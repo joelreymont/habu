@@ -7310,3 +7310,57 @@ producibility, not on taste.
   extracting each commit's tree, installing, and diffing its map
   against its parent's. Three builds, two minutes, and the prose can
   say which rows and why.
+
+## 2026-08-17 - the close (bake-chain-22, dot c7505a49)
+
+- **A stack's own base can be the only lineage that has it.** `master`
+  was a dots-only ruling lane carrying none of this lane's code, so
+  `jj rebase -s @ -d master` would not have caught anything up - it
+  would have moved the working copy onto a tree where
+  SOURCE-ARENA-CAP still read $400000, and the first symptom is
+  silence. Merge ruling TEXT by union; rebase code onto the stack
+  tip. Check `ancestors(master) & <your commits>` before believing a
+  rebase is a fast-forward.
+- **Break-and-watch before trust, every time.** Two handoffs carried
+  "registered and selected, so it runs" for a suite the battery never
+  ran. Four minutes of inverting one assertion answered what a lint's
+  green had not. A registration is a claim; a red is evidence.
+- **A test that restates the implementation's bounds cannot fail.**
+  Asserting a manifest holds exactly the rows between the walk's two
+  bounds repeats the walk. The assertion that does work is the
+  CONSEQUENCE the bounds were chosen for - a family the engine
+  arrived with must not be named in a scanned file's manifest - and
+  it reds the moment the bound is removed. The same trap was caught
+  one lane earlier when a layout case restated CODE-BAND:BYTES'
+  definition; it is the lane's most repeated mistake.
+- **ONE FACT, ONE WORD - three defects in this lane were one fact
+  spelled twice.** The stamp tag lived as a literal in the tool and
+  again in its fixture, so a rename broke the fixture silently. The
+  snapshot's build engine lived as a literal on each side, so a rule
+  that moved to the capture host left the fixture building from the
+  product. The publish rule lived in the walk and would have lived
+  again in the walk's own regression. Each fix is a word both callers
+  ask. When two places must agree, the agreement is a definition, not
+  a convention.
+- **Three debts were owed BEFORE the seed and the seed only made them
+  fail.** The dictionary was already under its own 25% headroom
+  standard unseeded; the source arena stood 1,956 bytes from its wall
+  with checker.f counted twice; and public-signatures already
+  attributed the whole live registry to whichever file it scanned. A
+  seed does not create these - it removes the slack that was hiding
+  them. Expect a bake to surface the arithmetic every fixed arena and
+  every "the live registry" query was already getting wrong.
+- **A seeded engine changes the ANSWER to every global-table query,
+  not just its size.** Growing the buffer would have kept a manifest
+  that claimed a 13-definition file defines 386 words. The fix is a
+  boundary that says which rows the file could have declared; the
+  capacity was the messenger.
+- **The package lint decides where a new regression may live.**
+  Adding a case to an unpackaged fixture makes every word it touches
+  a changed module word outside a package, and the lint refuses the
+  diff. That is not an obstacle to route around: it is the tree
+  asking for the new work to arrive packaged. A new file with its own
+  package, registered in the SUITE row AND in the list test/run.f
+  actually forks, cost less than migrating a legacy fixture would
+  have - and it made the registration provable by its own
+  break-and-watch.

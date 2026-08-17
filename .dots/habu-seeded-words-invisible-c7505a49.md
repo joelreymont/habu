@@ -837,60 +837,13 @@ different lines: merge the leaf TEXT (union: this lane's version
 plus master's ruling blocks) and rebase code onto 3210c5a5,
 never onto master.
 
-RECORD FOR LEAF (B), build-fixpoint-fixtures, captured from the
-battery's own pool log (gate-stdlib-tail/hb-pool-*/pool-0-7-21-
-out.log) - 10 failures, TWO classes, red on BOTH engines:
-  asserts 41 42 46 47 49 62  "expected true got false" - six
-    CONTAINS pins over the EMITTED STAGE2 SOURCE that are now
-    ABSENT (BFT-TEST-STAGE2-SOURCE and its neighbours). Absent,
-    not present-and-wrong: something the pins expect to be
-    emitted no longer is, or moved.
-  asserts 148 149 155 156    the snap child exits 82 with
-    `hb: AOT call site unresolved` where 0 was expected (case
-    label "snap trailer"). That message has ONE producer,
-    src/habu/habu2.f:4645, beside "AOT call site names a wordlist
-    outside the window".
-  Between the two, `certify: cert-blocking rejected rc 70` and
-  `habu: in bft-cert-bad2: at 'drop' expected: n actual:` are
-  EXPECTED negative-fixture output, not failures.
-The assert numbers are run ORDINALS, so the first job is to map
-them to their pins (count, or label them) - do not guess from the
-file. If the snap child's 82 traces to a real seed/snap
-interaction, CHECKPOINT with the bytes: that is the snapshot-verb
-ruling's ground (snap builds from the host) needing its wiring,
-which increment 3 carries.
-
-RECORD FOR LEAF (C), the diagnostics repair slice: the fork
-worker throws -2201 (E-FS-OPEN) AFTER the last passing case
-`byte-ptr store-target class`, i.e. entering test/gate-
-diagnostics-lib.f FILE-ORIGIN, which is the first case in that
-run to WRITE A SOURCE FILE (WRITE-SRC -> PATH! -> GT-PATH, rooted
-at the GT-START tmp root) and then hand the PATH to check.f
-rather than stdin. Every earlier case is stdin-only. WHY-THREW
-dumped SB fill=17, CK fill=0, CK-ROW fill=57. That is the whole
-of what is measured; the tmp-root-versus-fork question is
-UNANSWERED and must be dumped, not reasoned about. The task
-contract stands: diagnose to a verdict, and if it is genuinely
-pre-existing, prove it with a control build of master's tree in
-this workspace (the 2026-08-17 lesson) and DOT it rather than
-fixing out of scope.
-
-STILL OWED: leaves (B) and (C); the battery to honest zero (or to
-red-equals-dotted-preexisting with master controls); judge
---check; the remaining tool lints; THE NUMBERS OF RECORD on an
-idle box (bare / source-chain / baked-chain / baked-no-chain /
-install, 7 runs, high-low dropped; record to beat 258.3 / 1352.8
-/ ~350 / ~262 / 6.74s->16-17.6s - this lane measured install
-16.8s twice with the grown bands); the certified walk (4474 ->
-4574 -> current, attributed); lifting increment 3's BLOCKED
-marker LAST, only on an honest-green battery; and the closing
-package.
-ONE THING THE NEXT WORKER SHOULD RE-PROVE RATHER THAN TRUST: I
-could not find `region-room: ok` in any surviving pool log after
-the lint-tools slice passed, so the suite's presence IN the gate
-rests on the schedule lint's answer, not on observed output. The
-2026-08-15 lesson's own recipe - break one assertion and watch
-the full gate go red - has NOT been run for it.
+RECORDS FOR LEAVES (B) AND (C) SUPERSEDED - both named the wrong
+producer and are replaced by THE CLOSE below, which was measured.
+(B) was not emitted-stage2 CONTAINS pins; (C) was not -2102
+E-FS-OPEN in FILE-ORIGIN and was not pre-existing. The corrected
+diagnoses, their mutations and their fixes are in (2) and (3) of
+the close. The wrong ones are removed rather than kept beside the
+right ones, because two handoffs already re-inherited them.
 
 PUBLIC-SIGNATURES RULING 2026-08-17 (2f9cc56d; the tool walks
 the LIVE engine, so a seeded product publishes 386 defs where
@@ -904,104 +857,162 @@ question by text. The diag gate's golden follows the contract:
 update it WITH attribution (each removed row named as
 seed-provenance), never silently.
 
-BAKE-CHAIN-22 CLOSE 2026-08-17. Three commits on 2ca699d4:
-ef22bee0 the region-room fork, a413b3a8 the build-fixpoint
-fixtures, c1145b21 the code ratchet.
+THE CLOSE 2026-08-17 (bake-chain-22). THE BATTERY IS HONEST-GREEN
+and increment 3's marker is LIFTED - four moves, one lift, and the
+lift is on `bin/hb --load test/run.f` ENGINE RC=0 with zero FAIL
+and zero RED lines, not on a shorter run.
+
+THE STACK, in order, on master 4d632846:
+  c4ccaf36 aot: carry the window's checker signatures and its type registry
+  9219ec56 layout: size the source arena for the composite it holds
+  ac9c62c8 build: two engines, one artifact fixpoint     <- was the BLOCKED WIP
+  a85b420b dots: the arena bump, and the registry's lazy base
+  1d7e082d aot: install the seeded type registry at the seed point
+  c4192629 sumtype: spell the generated declaration's own family qualified
+  a9f97dfa checker: seeded rows parse in their own scope, candidates retry
+  8ec08026 tfam: no absolute foreign id survives the registry load
+  2842319a build: the install keeps the capture host beside the product
+  c3e9d59e test: partition fixtures by subject between product and host
+  8a44a8fb test: the bin-surface pins admit the kept capture host
+  78446ce4 dots: the partition table, the handoff, and the ruling merge
+  048b138a layout: size both region bands for the composite they hold
+  d9788e86 test: the region-room guard runs where the gate forks
+  f0ab2c47 build: the sandbox carries what the stamp key opens
+  d24f964e gate: bump the code ratchet to the bytes two commits added
+  484e59b0 dots: the dark suite, the three roots, and the lane's lessons
+  523a3b70 public-signatures: publish what this load declared, not what the engine holds
 
 (1) THE REGION-ROOM SUITE WAS DARK and the owed break-and-watch
-found it. One inverted assertion, full battery, same six reds, no
-pool log naming it. REASON: phase 17 is RESIDENT, so test/run.f
-forks test/run-worker-stdlib.f -> GSI-LINT-TOOLS ->
-test/gate-stdlib-lint-tools.f, and that body's fork list is the
-only thing it reads; a SUITE row plus a label predicate schedules
-the STANDALONE `test/gate-stdlib.f -- lint-tools` run and nothing
-else. tools/lint/schedule-lint.f SLICE-AT counts a slice live
-from PHASE-SLICE-TOKEN without asking TEST:PHASE-RESIDENT?, so it
-answered covered. Measured: 233 registrations, 8 label-only under
-a resident-only slice (tool, check-cli, lint-tools), 7 of them run
-anyway through the GSI body's own call, region-room genuinely
-dark. Fixed with a fork in the GSI body; row and predicate stay.
-Proven both ways: broken -> `RED: lint-tools/region-room`;
-restored -> `PASS: lint-tools/region-room (31ms)` in the full
-battery. Lint hole dotted habu-schedule-lint-resident-8b020630.
+found it: one inverted assertion, full battery, same six reds, no
+pool log naming it. Phase 17 is RESIDENT, so test/run.f forks
+test/run-worker-stdlib.f -> GSI-LINT-TOOLS ->
+test/gate-stdlib-lint-tools.f, whose fork list is the only thing it
+reads; a SUITE row plus a label predicate schedules the STANDALONE
+`test/gate-stdlib.f -- lint-tools` run and nothing else.
+schedule-lint's SLICE-AT counts a slice live from PHASE-SLICE-TOKEN
+without asking TEST:PHASE-RESIDENT?, so it said covered. Measured:
+233 registrations, 8 label-only under a resident-only slice, 7 run
+anyway through the GSI body's own call, region-room genuinely dark.
+Fixed with a fork in the GSI body; row and predicate stay. Broken
+-> `RED: lint-tools/region-room`; restored -> `PASS:
+lint-tools/region-room (25ms)` in the honest-green battery. The
+lint's hole is dotted habu-schedule-lint-resident-8b020630.
 
-(2) LEAF (B) IS THREE ROOTS, none the one the handoff named.
+(2) LEAF (B) WAS THREE ROOTS, none the one the handoff named.
 Ordinals mapped by printing T-CASES per subtest: 41/42 `stale seed
 install`, 46/47/49 `cert inject install`, 62 `chain stamp fold`,
-148/149/155/156 `snap trailer`. `stage2 source` is 92-116 and was
+148/149/155/156 `snap trailer`; `stage2 source` is 92-116 and was
 green throughout.
- (B1) Both sandbox subtests died `-2102` with an EMPTY tmp:
+ (B1) Both sandbox subtests died -2102 with an EMPTY tmp:
  BF-STAMP-MATCH? calls CHAIN-RECORD first, ENTRY$ is
  tools/aot-chain-capture.f, and the sandbox copied only
- build-fixpoint.f's require closure. It now copies ENTRY$'s
- closure, asked from the tool.
+ build-fixpoint.f's require closure. It copies ENTRY$'s closure
+ now, asked from the tool.
  (B2) The key writes `capture-src`; FRAGMENT$ searched for
- `chain-src`. The positive failed, the negative passed for the
- wrong reason. Both take BF-STAMP-CAPTURE-TAG$ now.
- (B3) BFT-SNAP0-BUILD built from `hb-stdin`, the seeded product;
- the build uses `hb-host` because a restore skips the AOT seed.
- Exit 82 `hb: AOT call site unresolved` was the seed refusing
- correctly about an engine production never asks for. Both ask
- BF-SNAP-ENGINE$ now.
+ `chain-src`, so the positive failed and the negative beside it
+ passed for the wrong reason. Both take BF-STAMP-CAPTURE-TAG$.
+ (B3) BFT-SNAP0-BUILD built from `hb-stdin`, the product; the build
+ uses `hb-host` because a restore skips the AOT seed. Exit 82
+ `hb: AOT call site unresolved` was the seed refusing correctly
+ about an engine production never asks for. Both ask
+ BF-SNAP-ENGINE$.
  MUTATIONS, each alone, each redding only its own asserts: drop
  `ENTRY$ COPY-CLOSURE` -> 41/42/46/47/49; drop the capture digest
- from the key -> 62; BF-SNAP-ENGINE$ back to hb-stdin ->
- 148/149/155/156 with the same 82. Fixture rc 0 in 40s.
+ -> 62; BF-SNAP-ENGINE$ back to hb-stdin -> 148/149/155/156, same 82.
 
-(3) LEAF (C) IS ONE DEFECT, IT IS OURS, IT IS DOTTED, AND IT
-BLOCKS THE CLOSE. Code is -2201 E-STR-CAPACITY (not -2102) and the
-case is PUBLIC-SIGNATURES (not FILE-ORIGIN, which is in the
-file-unsafe slice and green). PS-EMIT-REGISTRY walks TFAM-N@ over
-the LIVE engine and stamps every public family's rows with the
-SCANNED FILE: seeded, examples/llm/good.f reports 386 definitions
-in 60,491 bytes; the same tree's bin/hb-host reports 13 in 1,982.
-GT-OUT-CAP is 32768, so the diagnostics repair slice and GROUP
-stdlib/tool-doc (tools/public-signatures-test.f, 24 failures on
-the product, GREEN on the host) both overflow. NOT pre-existing.
-The fix is a product choice - load-time high-water base vs
-declared-in-file filter, cap growth refused - so it is
-CHECKPOINTED: habu-public-signatures-publishes-2f9cc56d.
+(3) LEAF (C) WAS ONE DEFECT, IT WAS OURS, AND THE RULED FIX LANDED.
+Code -2201 E-STR-CAPACITY (not -2102), case PUBLIC-SIGNATURES (not
+FILE-ORIGIN, which is in the file-unsafe slice and was green).
+PS-EMIT-REGISTRY walked TFAM-N@ over the LIVE engine and stamped
+every public family's rows with the SCANNED FILE: seeded,
+examples/llm/good.f reported 386 definitions in 60,491 bytes where
+the same tree's bin/hb-host reported 13 in 1,982. Per the 2f9cc56d
+ruling the walk starts at PS:FAM-BASE, a high-water taken when
+tools/public-signatures-core.f loads - the AOT seed installs its
+registry before any user token, so nothing a program declares can
+sit under the mark (FAM-BASE is 119 on the product, 49 on the
+host). AFTER: the product's manifest for that file is
+BYTE-IDENTICAL to the host's, 1,982 bytes.
+NO GOLDEN MOVED, checked and not assumed: the diag gate asserts
+that manifest through GJA-PUBLIC-SIGNATURES, schema-plus-presence
+with no committed bytes, so there was no row to attribute and none
+was quietly dropped.
+THE REGRESSION IS ITS OWN PACKAGED FILE,
+tools/public-signatures-bracket-test.f (package PS-BRACKET),
+because the package lint refused new words in the unpackaged
+fixture beside it - and the refusal was right. It asserts the
+CONSEQUENCE, not the bounds: a family the engine arrived with must
+not be named in a scanned file's manifest. The witness is FOUND,
+not spelled - the first family below the mark that the tool's own
+PS-ENUM-PUBLIC? / PS-DRV-PUBLIC? say it would publish - so the case
+asks the walk's question instead of keeping a second copy, and its
+buffer is $40000 so provenance answers before capacity can.
+Registered in the SUITE row AND in TOOL-SEMANTICS:BODY, the list
+test/run.f forks. MUTATION: the unfiltered walk reds it BY NAME on
+the product and leaves the host green - the honest answer, since an
+unseeded host holds no publishable family below the mark and the
+case says so rather than passing on an assertion that could not
+fail. Its registration was proven the same way: one inverted
+assertion reds GROUP stdlib/tool-doc by name.
 
 (4) THE CODE RATCHET, attributed by building each commit and
 diffing its HABU_ENGINE_SIZE_MAP against its parent's:
-135488 -> 281da640 135560 (+72: +52 compile/exit for
+135488 -> 1d7e082d 135560 (+72: +52 compile/exit for
 AOT-SIG:INSTALL,'s thirteen instructions, +20 aot-seed for the
-CK-AOT-REG-INSTALL name) -> 2ca699d4 135648 (+88: interpret/define
-+16, primitives/find +16, find-wl +8, find-used +8, hash-index
-+24, qualify-def +16 - the six phases that materialise the raised
-caps). container/text-pad 7872 -> 7712 absorbs all 160 in the same
-16 KiB page, so the file stays 165367. MACOS-CODE-TEXT ->  135648,
-MACOS-FLOOR-DIST -> 8672; manifest self-check and the live
-SIZE-ATTR coupling both green.
+CK-AOT-REG-INSTALL name it resolves by) -> 048b138a 135648 (+88:
+interpret/define +16, primitives/find +16, find-wl +8, find-used
++8, hash-index +24, qualify-def +16 - the six phases that
+materialise the raised DICT-CAP/HIDX caps). container/text-pad
+7872 -> 7712 absorbs all 160 inside the same 16 KiB page, so the
+file stays 165367 and SIGNATURE/TOTAL do not move. MACOS-CODE-TEXT
+135488 -> 135648, MACOS-FLOOR-DIST 8512 -> 8672.
 
-(5) NUMBERS OF RECORD, idle box, 7 runs each, high and low
-dropped, `--load` of a one-line program:
-  bare (hb-host, empty)            251.4 ms  [was 258.3]
-  source-chain (hb-host, require) 1255.2 ms  [was 1353.3]
-  baked-chain (bin/hb, require)    261.0 ms  [was 353.2]
-  baked-no-chain (bin/hb, empty)   259.8 ms  [was 261.1]
-THE BAKE REMOVES 994.2 ms PER CHAIN BOOT (-79.2%); the seed costs
-8.4 ms on a boot that never names a chain word. Through a real
-consumer (same require plus `using A64ASM : BENCH-T ( n -- n )
-ENC-B ;`, which drives the lazy intake): 1234.2 ms host vs 256.3
-ms product, -977.9 ms. Install --force 16.80 s then 16.89 s,
-byte-identical twice (bin/hb 58bd8a1f..., hb-host 8ddfbebd...),
-artifact fixpoint held both times.
-CERTIFIED WALK, host census per commit: 9e9263e7 4571 | 331a549a
-4571 | 281da640 4574 | c4e108d8 4574 | 08f715cd 4577 | 136ca999
-4578 | de5dcdd2 4578 | 2ca699d4 4578 | current 4578. The 4474 leg
-is below this stack's base and was NOT re-measured: master's tree
-will not build under this lane's engine (bin/hb and bin/hb-host
-both exit 82 with empty stdout and stderr), so that control needs
-master's own bootstrap engine.
+(5) THE NUMBERS OF RECORD, measured on the merged tree, idle box,
+7 runs each with high and low dropped, `--load` of a one-line
+program (empty, or `require src/compiler/native/migrate.f`):
+  bare (hb-host, empty)            248.8 ms   [was 258.3]
+  source-chain (hb-host, require) 1230.9 ms   [was 1353.3]
+  baked-chain (bin/hb, require)    253.4 ms   [was 353.2]
+  baked-no-chain (bin/hb, empty)   253.8 ms   [was 261.1]
+THE BAKE REMOVES 977.5 ms PER CHAIN BOOT (-79.4%). An independent
+7-run set earlier in the same session gave 994.2 ms (-79.2%), so
+the payoff is 977-994 ms. THE SEED'S OWN COST IS AT THE PROTOCOL'S
+RESOLUTION and is not quotable tighter: bare against baked-no-chain
+measured +8.4 ms in the first set and -0.4 ms in the second, i.e.
+0-8 ms and inside run-to-run spread. Through a real consumer (the
+same require plus `using A64ASM : BENCH-T ( n -- n ) ENC-B ;`,
+which drives the lazy signature intake): 1229.2 ms on the host
+against 256.4 ms on the product, -972.8 ms. Install --force 16.80 s
+then 16.89 s, byte-identical twice (bin/hb 58bd8a1f..., hb-host
+8ddfbebd...), artifact fixpoint held both times.
 
-(6) BATTERY 6 RED -> 3 RED. Newly green: build-fixpoint-fixtures,
-native stdlib tail slice, native engine build slice. Still red:
-the diagnostics repair slice, GROUP stdlib/tool-doc, and the
-diagnostics group wrapper - all three are 2f9cc56d.
-OTHER GATES: `bin/hb --load maki/test.f` rc 0 on the PRODUCT;
-judge --check 46 rows agree; error-code, stdin-closure, namespace,
-dot-dep and schedule lints 0 findings; both diff lints exit 0.
-INCREMENT 3'S BLOCKED MARKER IS NOT LIFTED - the battery is not
-honest-green, which was the condition. It lifts when 2f9cc56d
-lands.
+(6) THE CERTIFIED WALK, host census at each commit: ac9c62c8 4571 |
+a85b420b 4571 | 1d7e082d 4574 (+3, the seed's registry install) |
+c4192629 4574 | a9f97dfa 4577 (+3, the scope-parse and retry words)
+| 8ec08026 4578 (+1, the ctor-sym scrub) | 78446ce4 4578 |
+048b138a 4578 | merged tip 4578.
+THE 4474 LEG IS UNMEASURED AND IS RECORDED AS SUCH, not
+approximated: it belongs to the increments below this stack's base,
+and master's tree will not build under this lane's engine - both
+bin/hb and bin/hb-host exit 82 with empty stdout and stderr before
+writing anything - so that control needs master's own bootstrap
+engine. Whoever wants the full 4474 -> 4578 line bootstraps master
+first.
+
+(7) GATES ON THE MERGED TREE. `bin/hb --load test/run.f` ENGINE
+RC=0, zero FAIL, zero RED - the six phases red at the handoff are
+green by name (build-fixpoint-fixtures, native stdlib tail slice,
+native engine build slice, native checker diagnostics repair slice,
+GROUP stdlib/tool-doc, native checker diagnostics group).
+`bin/hb --load maki/test.f` rc 0 on the PRODUCT. judge --check: 46
+rows agree. Install fixpoint x2 byte-identical. error-code-lint 0
+findings, stdin-closure-lint drift 0, namespace-lint 0/0,
+dot-dep-lint 0 findings, schedule lint green in its own fork, both
+diff lints exit 0 on the lane diff.
+
+(8) LEFT OPEN: habu-schedule-lint-resident-8b020630 (the lint would
+not catch the next dark suite), habu-dot-lint-dies-ef01056e
+(LINT-SPLIT dies at 1024 lines naming no file - this leaf and
+e98b03d4 are both near it, and this close was compressed to fit),
+and the 4474 leg above. 2f9cc56d is answered by (3) and closes with
+this stack.
