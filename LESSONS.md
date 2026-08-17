@@ -7420,3 +7420,16 @@ producibility, not on taste.
   echo rc=$?` reported 0 for a build that exited 74. It cost a rerun, not
   a wrong conclusion, only because the diagnostic text was also being
   read. Capture to a variable and echo the rc on its own line.
+
+## 2026-08-17 - the audit's close (audit-close)
+
+- **The ATTR-LOCAL "packs 13, reads 0" flag was two different numbers.**
+  `test/compiler/ir-id.f` ATTR-CASE packs local 13 and reads 13 back; the
+  0 was the OTHER measurement in the same file, the TFAM-N delta the
+  fixture brackets around its `require` of `src/compiler/ir/id.f`, which
+  reads 0 on the product by construction because the product already
+  provides that file and the load is a no-op. Reported during the ctor-sym
+  defect era, when a wrong reading of a real defect was plausible, and
+  resolved by the fixture partition: `test/compiler/ir-id-host.f` runs it
+  on the capture host, where the require actually reads the file. Phase 0
+  of the partition ruling has no other standing record, so it has this one.

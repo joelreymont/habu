@@ -12850,9 +12850,16 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
 variable CK-RETRY-V
 variable CK-RETRY-TOKS
 
+\ What is compared is the token COUNT, not the tokens. That is enough because the
+\ split is a function of the TEXT alone (argued at SCAN-TOKS above: the reader
+\ splits on spaces and decides a payload skip from the token's own spelling), so
+\ two passes over the same bytes cut the same tokens and a differing count is the
+\ only way the streams can part. The message says count for the same reason: a
+\ death that claims more than it checked sends the next reader looking for a
+\ difference in the tokens themselves.
 : CK-RETRY-STREAM-CK ( -- )
    SCAN-TOKS @ CK-RETRY-TOKS @ = IF EXIT THEN
-   s" checker: a re-checked body read a different token stream than the observer holds"
+   s" checker: a re-checked body read a different NUMBER of tokens than the observer holds"
    76 die ;
 
 : CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
