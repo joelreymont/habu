@@ -277,6 +277,11 @@ private
 
 : BODY ( -- )
    s" tools/public-signatures-test.f" GSI-INCLUDE
+   \ The manifest's load-time bracket. It is here as well as in the
+   \ tool-boundary-doc-public SUITE row because only this list is what
+   \ test/run.f forks - phase 22 runs TOOL-SEMANTICS:DOC, and a
+   \ registration no forked list names is scheduled nowhere it runs.
+   s" tools/public-signatures-bracket-test.f" GSI-INCLUDE
    s" tools/repair-schema-doc-test.f" GSI-INCLUDE
    s" tools/examples-test.f" GSI-INCLUDE ;
 

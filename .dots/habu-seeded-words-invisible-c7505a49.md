@@ -892,6 +892,18 @@ rests on the schedule lint's answer, not on observed output. The
 2026-08-15 lesson's own recipe - break one assertion and watch
 the full gate go red - has NOT been run for it.
 
+PUBLIC-SIGNATURES RULING 2026-08-17 (2f9cc56d; the tool walks
+the LIVE engine, so a seeded product publishes 386 defs where
+the host publishes 13 - misattributed provenance, not a cap
+problem; cap growth stays refused): THE LOAD-TIME HIGH-WATER
+BRACKET - the tool publishes families created AFTER its scan's
+load began, the same bracket discipline the whole campaign uses.
+That IS "declared by this load," structurally - the
+declared-in-file parse would be new machinery answering the same
+question by text. The diag gate's golden follows the contract:
+update it WITH attribution (each removed row named as
+seed-provenance), never silently.
+
 BAKE-CHAIN-22 CLOSE 2026-08-17. Three commits on 2ca699d4:
 ef22bee0 the region-room fork, a413b3a8 the build-fixpoint
 fixtures, c1145b21 the code ratchet.
