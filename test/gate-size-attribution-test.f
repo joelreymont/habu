@@ -897,9 +897,31 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +3504 as well; a Linux window's payload is
 \ its own REPL capture, so the number there is that host's to measure.
-135488 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-17 the seed's registry install and the region's new caps, same dot.
+\ +160, and it divides between two commits with no residue. Each half was
+\ measured by building that commit's own tree and diffing its
+\ HABU_ENGINE_SIZE_MAP against its parent's, so every byte below names a row.
+\   +72  `aot: install the seeded type registry at the seed point`
+\        +52 compile/exit: AOT-SIG:INSTALL,, the thirteen instructions the seed
+\            runs to resolve CK-AOT-REG-INSTALL and call it - one TADR, (four
+\            words), MOVZ, BL, CBZ, BL, BLR, B, MOVZ, and a two-word SYS,.
+\        +20 aot-seed: the name it resolves by, `CK-AOT-REG-INSTALL`, 18 bytes
+\            in the emitted pool.
+\   +88  `layout: size both region bands for the composite they hold`
+\        +16 interpret/define, +16 primitives/find, +8 primitives/find-wl,
+\        +8 primitives/find-used, +24 primitives/hash-index,
+\        +16 primitives/qualify-def - the six phases that materialise DICT-CAP,
+\        HIDX-SLOTS, HIDX-BYTES and HIDX:LOAD-MAX. A raised cap needs a second
+\        instruction where one MOVZ carried the old one, which is the cost the
+\        LIT64 conversion made honest rather than the cost it added.
+\ CODELEN 135488 -> 135648, floor distance 8512 -> 8672. container/text-pad
+\ 7872 -> 7712 absorbs the whole +160 inside the same eighth 16 KiB __TEXT page,
+\ so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
+\ `FILE-SIZE bin/hb` is still 165367 (measured).
+\ The Linux rows below are owed this +160 as well.
+135648 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-8512 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+8672 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
