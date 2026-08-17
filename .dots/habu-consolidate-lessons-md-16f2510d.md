@@ -51,3 +51,40 @@ records what each member says that its siblings do not), the
 duplicate members deleted from their dated blocks, and the
 chronology kept for entries that are unique. Text-only; read it
 back and check the two contradictory pairs by hand.
+
+FIVE GROUPS DONE 2026-08-17 (audit-close), NOT CLAIMED - the dot
+stays open for the rest. Done means the whole group: one canonical
+entry carrying its dates as a list, and every member deleted from
+its dated block with that block's count and numbering repaired.
+  BOTH contradictory pairs, which were the risky part:
+    schedule-lint  4 members -> one entry under Gate Harness, all
+                   three readings kept and the tension stated
+                   (reachable-by-a-slice is not runs); the
+                   2026-08-15 library-entry-point false green is
+                   the third reading and belongs with them.
+    lldb           2 members -> one entry under Tool & Infra,
+                   split by seeded vs ordinary image.
+  never-edit-while-running   4 members -> one entry (a census
+                   counts as a run; the widen and do landings each
+                   had a member).
+  pgrep-in-a-wait-loop       3 members -> one entry.
+  pipeline/substitution RC   4 members -> one entry (two of them
+                   were in the topical half).
+Blocks retitled and renumbered: widen four->three, tail
+two-and-a-strengthening->two, no-return four->three, merge
+four->three, wordlist four->two, caller-naming pair->find,
+bake-chain-22 -> the lane's eight. Two blocks went entirely (gate
+hygiene 2026-08-10, the do landing 2026-08-13) because every
+member was in a group above. Net -85 duplicated lines, +60 of
+canonical text.
+
+REMAINING: the other 25 groups, including the four near-verbatim
+pairs the survey names (literal-memo dominance, refusal-list
+restatement, never-edit-during-test/run.f is now done, so three of
+the four), and the topical/dated split for probe-the-leaf (8),
+stale-binary (7), dump-the-record (11), load-sensitivity (8),
+mutation-earns-deletion (6), generated-strings (4) and
+per-record-walk (3). Those were left because the members are not
+line-listed anywhere and finding them all takes a full read of the
+file, which this lane did not have the room for. The five above
+are complete groups, so the file is in no half-merged state.

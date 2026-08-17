@@ -750,6 +750,19 @@ fits.
 
 ## Tool & Infra
 
+- **lldb stops an ordinary image and cannot stop a seeded engine** (2026-08-15,
+  08-16). Both halves are recorded, because the split is the finding.
+  - On an ordinary image, breakpoints set before `run` silently never fire.
+    `process launch --stop-at-entry`, then `br set -a`, then `continue` is the
+    recipe; two wrong conclusions came from breakpoints that never fired.
+  - On a SEEDED engine that recipe does not help either: neither software nor
+    hardware breakpoints fire at all. A breakpoint planted on `c!`'s `__text`
+    entry never fired while `c!` demonstrably executed, and `-H` addresses bind
+    into `dyld`. What works there is the engine's own `BP+`/`BP*`/`BPN`, a raw
+    `BRK #0` planted with `patch32` (an unregistered BRK falls through LTRAPH to
+    the crash dump, which prints every register), and `tools/code-owner.f` to
+    turn the addresses back into names. Reach for those first and do not spend
+    a lane on the debugger.
 - **To see the engine reject its OWN prefix source, build a warm snapshot engine
   BEFORE breaking the tree.** `bin/hb` recompiles `src/core/*.f` from the working
   tree at every launch, so a half-migrated prefix edit dies at the first
@@ -778,7 +791,7 @@ fits.
   size caps from the real corpus with the driver NAMED in a comment; sweep EVERY READ-FILE
   cap in one pass when a named file trips one; route lint CLIs through `LINT-MAIN` (catch,
   print `tool: threw <code> (<name>)`, re-throw); the shared `LINT-READ-DIE` prints the
-  offending path; never read `$?` after a pipeline.
+  offending path.
 - **Source and real consumers are authority.** Hand-maintained ledgers without a
   production consumer drift and must not gate changes.
 - **A capacity exit must ATTRIBUTE itself everywhere — a lone token byte or a bare rc
@@ -1184,6 +1197,52 @@ fits.
   exit 70) — and fixpoint refresh children spawn the checkout's `./bin/hb`, so a fresh DRIVER
   engine is not enough.** Recover by installing the freshest local engine as `bin/hb` first
   (new inode: `cp` to temp + `mv`, never over the live file), then `install --force`.
+
+- **Never edit the tree while a gate or a census is running** (2026-08-10,
+  08-12, 08-13, 08-16). Forked gate workers load source files mid-run and a
+  census re-reads `src`/`lib` file TEXT, so an edit lands inside the
+  measurement: six of eight reds in one stretch were the lane's own concurrent
+  builds and mutation experiments, and one mid-run edit produced reds that
+  looked real and cost a gate cycle. Two concurrent full gates on one host also
+  red each other's timing ratchets. The wait is cheaper than the unpicking.
+- **Wait on a FILE, never on a process pattern** (2026-08-11, 08-13, 08-14 -
+  paid for three times). `pgrep -f <pattern>` inside any wait loop, `until`
+  loops included, matches the waiting shell's own command line, so the loop is
+  satisfied by itself and never returns. Wait on the output: `until [ -s
+  out.txt ]`.
+- **Read an exit code on its own line, never through a pipe and never after a
+  substitution** (2026-08-08, 08-16, 08-17). `cmd | tail -2; echo rc=$?`
+  reports tail's status - it reported 0 for a build that exited 74, and it
+  recurred AT THE GATE, where only the runner printing its verdict as text
+  caught it. In zsh a command substitution runs first and overwrites `$?`, so
+  `echo "$(basename $p) exit=$?"` reports basename's 0; two bisect loops came
+  back all-green that way and manufactured a phantom "nondeterministic lint"
+  until a loop that captured `rc=$?` first exposed the real, deterministic
+  failure. Capture to a file or a variable, echo the rc on its own line, then
+  read the output. It has failed by habit, not by ignorance, every time.
+- **A schedule lint proves a registration is REACHABLE, not that anything runs
+  it - and only when something executes the lint** (2026-08-10, 08-15, 08-17).
+  Three readings of one tool, the last refuting the first. All three are kept,
+  because each is true of what it measured.
+  - 2026-08-10: trust the lint over "I added a SUITE block". It is what catches
+    a suite that is registered but dark, and it earned that the first time a
+    new suite landed registered, green by hand, and selected by NO slice
+    predicate - it would never have run in the gate.
+  - 2026-08-15: `bin/hb --load tools/lint/schedule-lint.f` loads a LIBRARY and
+    exits 0 having checked nothing, so the "0 findings" that reads like a pass
+    is an empty load. The lint runs only through its test driver
+    (`tools/lint/schedule-lint-test.f`) or its gate slice. Know which file
+    EXECUTES a check before believing its number.
+  - 2026-08-17: REFUTED as a scheduling oracle. It reads `test/run-lib.f`'s
+    phase-to-slice map and never asks `TEST:PHASE-RESIDENT?`, so a suite that
+    is registered AND slice-selected can still be dark: phase 17 is resident,
+    `test/run.f` forks `test/run-worker-stdlib.f`, and that body loads no
+    registration at all. Breaking one of the suite's assertions left the whole
+    battery green. Dot habu-schedule-lint-resident-8b020630.
+
+  The tension, stated: registration plus a predicate is all the lint can see;
+  the list the runner actually forks is what runs. Only a deliberately broken
+  assertion and a full battery tell you which of the two you have.
 
 ## VCS, Dots & Parallel Agents
 
@@ -2872,14 +2931,6 @@ fits.
   wordlist, and bind `CAST:` authorization to the engine's live namespace
   record and actual definition wordlist, never a mutable checker scope mirror;
   a second raw-authority package only splits ownership.
-
-- **Never put `$(...)` before `$?` in the same echo.** In zsh the command
-  substitution runs first and overwrites `$?`, so `echo "$(basename $p)
-  exit=$?"` reports basename's 0, not the command under test. Two whole
-  bisect loops returned all-green this way and manufactured a phantom
-  "nondeterministic lint" until a loop with `rc=$?` captured first exposed
-  the real, deterministic failure. Capture `rc=$?` on its own line before
-  any other command runs.
 
 - **Read the convention before "fixing" metadata, and never count a worker
   echo as confirmation.** `docs/critical-path.md:13` states that a dot's
@@ -5666,16 +5717,6 @@ run" missed swap over two adjacent whole bundles; the built test covers
 the whole window. Workers should strengthen a ruling when the code shows
 it short, and say so.
 
-## Gate hygiene on a shared box, and dark suites (2026-08-10)
-
-Three from one lane: never edit the tree while test/run.f is running (a
-mid-run edit produced reds that looked real and cost a gate cycle); two
-concurrent full gates on one host red each other's timing ratchets -
-check pgrep -f test/run.f before starting one; and schedule-lint is the
-thing that catches a suite that is registered but dark - trust it over
-"I added a SUITE block", and prove scheduling by breaking one assertion
-and watching the full gate go red.
-
 ## A running value across a block walk is a hidden dominance claim (2026-08-10)
 
 The selector kept one running memory-order value across its block walk;
@@ -5778,13 +5819,12 @@ mechanism when calls rename values - acceptance then tracks whether
 the inliner fired; carry facts on the vector entry the walk actually
 moves.
 
-## Four from the no-return lane (2026-08-11)
+## Three from the no-return lane (2026-08-11)
 
 Gate evidence must be sequential - three concurrent heavy suites
-produced a false red that vanished on rerun. pgrep -f inside a wait
-loop matches the waiting shell's own command line and deadlocks; use a
-marker file. Habu quotations are not closures - a probe's [: ;] cannot
-read the enclosing locals; park values in a variable. And a mutation
+produced a false red that vanished on rerun. Habu quotations are not
+closures - a probe's [: ;] cannot read the enclosing locals; park
+values in a variable. And a mutation
 that changes nothing falsifies the COMMENT that claimed it would - the
 honest outcome is rewriting the claim into a derivation (second
 occurrence of this pattern; it is a rule now).
@@ -6054,19 +6094,17 @@ measured number: re-measure both endpoints with each tree's OWN
 instrument, and check the instrument's fixed point - the NOOP row's
 0->4 announced the change in every report.
 
-## The widen landing's four (2026-08-12)
+## The widen landing's three (2026-08-12)
 
 (1) An emitter that writes an address into region bytes obligates
 BOTH halves of the relocation parity gate - formal/Common/Reloc.v
 AND the frozen manifest in reloc-schema.f, which names the bare
-source tail, so a package rename is a manifest edit. (2) Never edit
-the tree while test/run.f runs - forked workers load source files
-mid-run and produce reds that are not about your change. (3) jj op
+source tail, so a package rename is a manifest edit. (2) jj op
 restore is unavailable for undoing one lane's interleaving - the op
 log is repo-wide and shared; `jj --at-operation <op>
 --ignore-working-copy file show` reads a past state without touching
 anything (recovery verified by rebuilding a byte-identical engine).
-(4) A new package in a legacy engine file is byte-neutral for the
+(3) A new package in a legacy engine file is byte-neutral for the
 engine size but shifts baked WIDs - the sha changes while the size
 does not; expect it, don't chase it.
 
@@ -6177,15 +6215,6 @@ answer before calling a shape unsupported.
 case that threw ran clean under the wrapper and died without it. Run
 the cases SEQUENTIALLY and unwrapped, printing each name before it
 runs, when locating a throw; the catch changes what the case does.
-
-## The do landing's two (2026-08-13)
-
-(1) A census run re-reads src/lib file TEXT - editing the tree
-mid-census corrupts the measurement exactly as editing during
-test/run.f does. (2) (repeat of the no-return lane's lesson, hit
-again) pgrep -f <pattern> in a wait loop matches the
-waiting shell itself - two wait loops never returned. Wait on a
-file, not a process name.
 
 ## The return-stack lane's four (2026-08-13)
 
@@ -6416,18 +6445,14 @@ differentials - two mutations that looked like lost optimisations
 were named refusals (DKEEP, DSTACK). Read WHICH pass answers a
 mutation, not just that something red.
 
-## The tail landing's two, and a strengthening (2026-08-14)
+## The tail landing's two (2026-08-14)
 
-(1) STRENGTHENED, paid for a third time: pgrep -f in ANY wait loop
-- until-loops included - matches the waiting shell's own command
-line. Wait on the output FILE (until [ -s out.txt ]), never on a
-process pattern.
-(2) A generated constructor escapes hyphens in the owning package
+(1) A generated constructor escapes hyphens in the owning package
 name: package NTL-FIXTURE + PRODUCT pt publishes
 NTL--FIXTURE-PT:MAKE (TF-CTOR-ESC doubles the hyphen; production
 example CNUM-NUMERIC--POLICY:MAKE). A fixture package with a
 hyphen pays it - cheaper to know than to E-UNDEFINED into.
-(3) An impossibility argument belongs IN the suite's prose with
+(2) An impossibility argument belongs IN the suite's prose with
 its measurement: the padded-construction-feeds-tail shape is
 unwritable (the checker refuses the required signature), and the
 derivation is recorded where the next lane will look before
@@ -6740,26 +6765,13 @@ check what counts its tokens.
 
 ## 2026-08-15 - the prelude-band landing (bake-chain-4)
 
-(1) A lint whose entry point is a LIBRARY exits 0 having checked
-nothing: `bin/hb --load tools/lint/schedule-lint.f` loads words
-and stops, and the "0 findings" the worker reported was that empty
-load. The lint only runs through its TEST DRIVER
-(tools/lint/schedule-lint-test.f) or the gate slice. Before
-believing any lint number, know which file EXECUTES the check -
-and the orchestrator's own battery through test/run.f is what
-caught the false green, which is exactly why merges rest on gates
-the orchestrator runs.
-(2) The schedule lint earned its keep the first time a new suite
-landed: registered in gate-stdlib-cases.f, green by hand, selected
-by NO slice predicate - it would never have run in the gate.
-"Passing" and "scheduled" are separate facts with separate proofs.
-(3) A ruled design survived contact with measurement only halfway:
+(1) A ruled design survived contact with measurement only halfway:
 prelude-first ordering for the capture tool was refuted by 98 of
 18602 call sites (the chain's own closure shares asm.f with the
 prelude), and the foundation's "end-to-end capture" had been
 producing an unbootable seed. A capture that RUNS proves buffers
 and formats; only the band audit proves the seed can BOOT.
-(4) Folding a new refusal into an existing one beat adding a
+(2) Folding a new refusal into an existing one beat adding a
 second die line: the tried-and-reverted separate DATA refusal
 stole ACAP-UNCLASSIFIED's only producer under the D0-SKEW forge
 and lost a tested stop. When a new check classifies the same bad
@@ -6938,7 +6950,7 @@ false today - dotted habu-stdin-host-s-5a992a38: declare bands
 where the marks are true, or the audit fires never.
 
 
-## 2026-08-15 - the merge landing's four (bake-chain-8)
+## 2026-08-15 - the merge landing's three (bake-chain-8)
 
 (1) A range check over a live population is not a shift test:
 when the host side is small beside the artifact, "inside the
@@ -6946,39 +6958,26 @@ merged span" and "inside the artifact's span" are nearly the
 same band - four of nine shift mutations passed the range
 checks. Read the input once alone, keep a sum per row family,
 require merged = original + count x shift.
-(2) lldb breakpoints set before `run` silently never fire on
-these images: process launch --stop-at-entry, then br set -a,
-then continue. Two wrong conclusions came from breakpoints that
-never fired.
-(3) Exit 81 is two different deaths: BL-RANGE-RC writes a
+(2) Exit 81 is two different deaths: BL-RANGE-RC writes a
 message; EM-AOT-PATCH-SITES' name-not-found ($51) writes
 nothing. A silent 81 is the second.
-(4) A test window with no packages tests no packages: the AOT
+(3) A test window with no packages tests no packages: the AOT
 capture looked complete for a year because the only window ever
 captured was the package-free REPL - and 82% of the chain's call
 sites have packaged callees (dot 9d7d8e72).
 
-## 2026-08-16 - the wordlist landing's four (bake-chain-9 + gate)
+## 2026-08-16 - the wordlist landing's two (bake-chain-9 + gate)
 
-(1) Never edit the tree while test/run.f runs - six of eight reds
-in one stretch were the lane's own concurrent builds and mutation
-experiments. The wait is cheaper than the unpicking.
-(2) jj new <other> with an unsnapshotted working-copy edit loses
+(1) jj new <other> with an unsnapshotted working-copy edit loses
 it silently; re-read the file after any checkout when an edit was
 pending.
-(3) A gate whose stated purpose is broader than the invariant it
+(2) A gate whose stated purpose is broader than the invariant it
 protects refuses legitimate work the first time a real workload
 arrives: the AOT seal gate refused CALLS to public words of
 sealed packages, which the live seal permits every day - the
 discriminator (defining/opening vs calling) was in the engine
 source, not the gate's comment. State the invariant, not the
 category.
-(4) The pipeline-RC mistake recurred AT THE GATE: `run.f | tail;
-echo RC=$?` reports tail's status, and only the runner printing
-its verdict as text caught it. The rule exists ("echo RC
-separately, never behind a pipe") - it failed by habit, not
-ignorance. Capture to a file, echo the engine's RC on its own
-line, then read the file.
 
 ## 2026-08-16 - the layered gate's five (bake-chain-10)
 
@@ -7016,17 +7015,8 @@ register, so parking one of your own values in x13 across
 LPROTWIDQ reads as carried-across even when the later read is the
 callee's answer. Use a register the call does not own.
 
-## 2026-08-16 - the caller-naming pair (bake-chain-10, dot c970bf04)
+## 2026-08-16 - the caller-naming find (bake-chain-10, dot c970bf04)
 
-- **lldb cannot stop a seeded engine, so the engine's own tools have
-  to.** Neither software nor hardware breakpoints fire on these
-  images: a breakpoint planted on `c!`'s `__text` entry never fired
-  while `c!` demonstrably executed, and `-H` addresses bind into
-  `dyld`. What works is the engine's own `BP+`/`BP*`/`BPN`, a raw
-  `BRK #0` planted with `patch32` (an unregistered BRK falls through
-  LTRAPH to the crash dump, which prints every register), and
-  `tools/code-owner.f` to turn the addresses back into names. Reach
-  for those first and do not spend a lane on the debugger.
 - **A stale `lr` is not a caller.** At a trap, x30 names the last BL
   the thread executed, which is the caller only if the routine was
   entered by a BL and has not called anything since. Confirm entry
@@ -7246,18 +7236,8 @@ producibility, not on taste.
   test, restore - three minutes, and it turns "probably not mine" into
   a fact either way.
 
-## 2026-08-17 - the dark suite and three wrong producers (bake-chain-22)
+## 2026-08-17 - the bake-chain-22 lane's eight
 
-- **A schedule lint can only answer the question it asks.** The region
-  headroom suite was a SUITE row in test/gate-stdlib-cases.f, selected
-  by the lint-tools predicate, and the schedule lint said it was
-  covered - because it reads test/run-lib.f's phase-to-slice map and
-  never asks TEST:PHASE-RESIDENT?. Phase 17 is resident: test/run.f
-  forks test/run-worker-stdlib.f, which runs the in-process GSI body
-  and loads no registration at all. Breaking one of the suite's
-  assertions left the whole battery green. Registration plus a
-  predicate is not scheduling; only the list the runner actually forks
-  is. Dotted as habu-schedule-lint-resident-8b020630.
 - **Run the break-and-watch, do not inherit it.** Two handoffs carried
   "registered and selected, so it runs". One deliberately inverted
   assertion and one full battery settled it in four minutes, and the
@@ -7416,10 +7396,6 @@ producibility, not on taste.
   closure file `provided` and the `require` is a no-op. The capture host
   `bin/hb-host` is the only engine that can run it. The refusal named the
   cause exactly and was still misread once.
-- **The pipeline-RC trap, again, mid-lane.** `bin/hb --load ... | tail -2;
-  echo rc=$?` reported 0 for a build that exited 74. It cost a rerun, not
-  a wrong conclusion, only because the diagnostic text was also being
-  read. Capture to a variable and echo the rc on its own line.
 
 ## 2026-08-17 - the audit's close (audit-close)
 
