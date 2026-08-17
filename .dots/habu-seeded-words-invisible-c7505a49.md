@@ -289,3 +289,38 @@ of the row's, redding by name. Lane rule adopted into LESSONS at
 the close: DUMP THE RECORD BEFORE NAMING THE PRODUCER - twice
 this lane a symptom-read produced a wrong mechanism and the
 bytes settled it in minutes.
+
+CTOR-SYM RULING + PREMISE RATIFICATION 2026-08-17 (the fork's
+checkpoint; new defect class c98479f0 - seeded SUMV variant rows
+carry ABSOLUTE capture-engine sym ids, masked today by SVX-SYNC's
+deliberate direction gap; the honest reset converts the mask to
+active mis-binding and wedged the fixpoint - reverted, recovered,
+dotted):
+(1) THE INVARIANT RULES, the mechanism is the fork's to derive
+per consumer evidence: NO ABSOLUTE FOREIGN ID SURVIVES LOAD -
+whatever consumes SV.CTOR-SYM must see a TARGET-MINTED id or a
+structurally-absent marker, never a capture-engine number.
+Between (a) re-derive at load from the variant's (pkg,name) and
+(b) zero-on-load + re-intern at first use: pick by what the
+consumer's shape makes structural (if SVX treats 0 as absent
+and the first checked use interns through the existing intake,
+(b) is the lazy-where-priced shape; if the index must answer
+eagerly, (a) at the seed point beside the registry install).
+Checkpoint if both fail on contact. THE SVX RESET LANDS WITH
+THE REPAIR, never alone - ratified in the fork's words.
+scan-index stays red as the honest symptom until then.
+(2) PREMISE CORRECTION RATIFIED, reversing part of the scope-
+parse ruling on the fork's evidence: the 153 bare rows are ALL
+generator output, and the row package for generated words is
+the CTOR package, not the writing scope - so row-package parsing
+alone could never fix them. Hand-written signatures qualify even
+in-package (measured), so the generator was the SOLE producer of
+bare text, and TDGEN-OUT-TYPE qualifying the generated
+declaration's own family - matching its existing treatment of
+payload families - is fixing the only producer, not the patch
+the original refusal targeted. Both halves landed (generator
+qualification + SIGSCOPE row-package parse armed only in the
+intake) with the pv:zpl mutation pin.
+(3) The CHECK-CANDIDATE! retry-snapshot fix (seal candidates
+answering identically on product and host, caught by ir-context's
+seal battery) is noted as increment-C completion, not new scope.
