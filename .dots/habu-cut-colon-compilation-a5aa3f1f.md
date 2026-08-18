@@ -425,3 +425,13 @@ CENSUS NOTE for the record: 473 raw refusals = 75 compiler +
 114 unchecked spans (335547df's set). The plan's B scales to
 75, not 473.
 
+
+A1+A2 LANDED (master b4329129, 2026-08-18): A1 39668bcd - the register pool is
+derived from A64EFF:GPR-ALL via NABI:SCRATCH (24 regs), the regs parameter is
+gone from every entry, and tools/codegen-spill-probe.f pins the two interleaved
+walls per count with its code (register band 22-24 on the loads shape; the
+512K context bites at 21 and 25+). A2 b4329129 - NMIGRATE:DEFINE takes source
+only; arity reads off the checker's certificate (NDICT:SPELL-ARITY), the same
+reader every callee uses. E-NMIGRATE-ARITY reach-or-retire is 360162f5; the
+judge's own column parse is 20f3ac27. NEXT: A3, the stream-driven entry
+(b38a83d9).

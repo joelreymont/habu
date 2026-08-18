@@ -7366,3 +7366,22 @@ and --no-lldbinit.
   fixture to the smallest buffer a large section can be poured into, and keep
   the failure mode loud: if the overflow ever stops overflowing, the read
   succeeds and the case FAILS rather than passing vacuously.
+
+- **A mechanical pass over Forth call sites must be bounded by the last quote on
+  the line, and verified by an invariant over the quoted prefix.** An earlier
+  arity-removal pass ate one of the two spaces a HOSTILE string fixture exists
+  to protect, and shipped it because nothing checked. The redo moved only text
+  after the line's last `"`, then asserted per changed line that the quoted
+  prefix was byte-identical and the new tokens a strict subsequence of the old —
+  which caught two real corruptions in the redo itself (a merged token on 134
+  lines, and a word-boundary regex eating a longer name). Related: `\bTRY\b`
+  matches inside `TRY-SRC` — `-` is a regex word boundary.
+- **Never edit a chain source while a gate is running.** The capture verifies
+  "the chain sources have changed since this capture" (throw -2802) and the
+  whole gate run is wasted. Edit, then gate.
+- **A standalone slice runner and the same slice under `test/run.f` are
+  different scheduling environments — a standalone red is not a gate red.**
+  `gate-stdlib.f -- proof` reds `compiler-insn-proof` TIMEOUT-UNDER-LOAD on
+  pristine master (141s vs the 120s nominal calibrated at 99.5s on another
+  host) while the same slice is green inside `test/run.f`. Measure the red on
+  master before attributing it to a candidate; a time budget is host-relative.
