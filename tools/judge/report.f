@@ -42,6 +42,7 @@ variable TEXT-U
 
 32 constant NAME-COL
 7 constant NUM-COL
+8 constant TRAF-COL
 9 constant COST-COL
 
 : APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -82,11 +83,20 @@ variable TEXT-U
    k JUDGE-ROW:COVERED? 0= if NUM-COL DASH-RIGHT exit then
    k JUDGE-ROW:REF-BYTES@ NUM-COL NUM-RIGHT ;
 
+\ A data-stack traffic cell. A column with no routine to read - the chain on a
+\ refused row - carries a dash rather than a zero, because zero accesses is
+\ something a routine can really make and a missing routine is not.
+: TRAFFIC-CELL ( n -- ) {: n-acc:n :}
+   n-acc JUDGE-ROW:NOT-MEASURED = if TRAF-COL DASH-RIGHT exit then
+   n-acc TRAF-COL NUM-RIGHT ;
+
 : ROW-LINE ( n -- ) {: k:n :}
    k JUDGE-ROW:NAME$ NAME-COL PAD-RIGHT
    k JUDGE-ROW:OLD-BYTES@ NUM-COL NUM-RIGHT
    k CHAIN-CELL
    k REF-CELL
+   k JUDGE-ROW:OLD-TRAFFIC@ TRAFFIC-CELL
+   k JUDGE-ROW:NEW-TRAFFIC@ TRAFFIC-CELL
    s"   " APPEND
    k JUDGE-ROW:VERDICT JUDGE-ROW:VERDICT$ APPEND
    k JUDGE-ROW:NEW-TAIL? if s"  (tail)" APPEND then
@@ -149,6 +159,28 @@ variable TEXT-U
    s" tool's coverage. What guards the shared half is the reader's own fixtures," LINE
    s" tools/judge/src-test.f, which attack it with sources built to fool it." LINE
    NL
+   s" ds-old AND ds-new ARE THE CALLER'S OWN DATA STACK, touched. They count the" LINE
+   s" loads and stores each column's emitted code makes against the register the" LINE
+   s" running engine keeps its data-stack pointer in - all four spellings of one" LINE
+   s" access, over and under the pointer and in either register file. That is the" LINE
+   s" structural difference between the two code generators: the engine moves every" LINE
+   s" intermediate through a slot in memory and the chain holds it in a register" LINE
+   s" and touches the slot at the edges of the routine. It is EXACT, it moves for" LINE
+   s" one reason and it does not turn on host load, so it is compared here rather" LINE
+   s" than printed below with the costs. It is NOT the cost claim restated: a chain" LINE
+   s" that made the same accesses and took twice as long would pass every row of" LINE
+   s" it. That claim is bin/hb --load tools/judge-timed.f, run by hand." LINE
+   NL
+   s" ONE ROW TOUCHES IT MORE OFTEN THAN THE ENGINE DOES and the tally says so." LINE
+   s" On CODEGEN-CORPUS4:CALL-FAN-BIG the engine CALLS its callee five times, so" LINE
+   s" the caller's own code touches no slot at all and the five callees do that" LINE
+   s" work inside their own routines; the chain copies the five bodies in and" LINE
+   s" makes one entry and one exit of its own. Neither number is the whole" LINE
+   s" program, which is the same caveat a (tail) row carries. A row heavier here" LINE
+   s" is a fact to read beside its bytes and its cost and not a verdict of its" LINE
+   s" own, which is why every number is pinned and none of them is a finding by" LINE
+   s" itself." LINE
+   NL
    s" THE COSTS ARE BELOW THIS TABLE AND ARE NOT PART OF THE CHECK. A byte count" LINE
    s" is the same number on every host in every run; a cost is a measurement, and" LINE
    s" a machine with every core busy - which is what a gate is - moves one by more" LINE
@@ -156,8 +188,8 @@ variable TEXT-U
    s" to the line that says so, and the costs are printed under it as what they" LINE
    s" are, with the spread this run actually measured beside them." LINE
    NL
-   s" word                                old  chain  clang  verdict" LINE
-   s" --------------------------------  -----  -----  -----  -------" LINE ;
+   s" word                                old  chain  clang  ds-old  ds-new  verdict" LINE
+   s" --------------------------------  -----  -----  -----  ------  ------  -------" LINE ;
 
 : REFERENCE-NOTE ( -- )
    NL
@@ -173,7 +205,8 @@ variable TEXT-U
    s" , refused by the chain: " APPEND JUDGE-ROW:REFUSED-ROWS NUM$ APPEND
    s" , larger than the engine's: " APPEND JUDGE-ROW:LARGER-ROWS NUM$ APPEND
    s" , columns disagreeing on the answer: " APPEND JUDGE-ROW:DISAGREEING-ROWS NUM$ APPEND
-   s" , leaving by a tail branch: " APPEND JUDGE-ROW:TAIL-ROWS NUM$ LINE ;
+   s" , leaving by a tail branch: " APPEND JUDGE-ROW:TAIL-ROWS NUM$ APPEND
+   s" , touching the caller's stack more often: " APPEND JUDGE-ROW:HEAVIER-ROWS NUM$ LINE ;
 
 \ ---- the measured half -------------------------------------------------------
 \ Everything below MARK is printed and none of it is compared.

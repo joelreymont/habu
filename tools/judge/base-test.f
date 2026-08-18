@@ -70,17 +70,23 @@ variable FIX-U
    a 100 JUDGE-ROW:OLD!
    a 40 false JUDGE-ROW:NEW!
    a 12 JUDGE-ROW:REF!
+   a 9 JUDGE-ROW:OLD-TRAFFIC!
+   a 3 JUDGE-ROW:NEW-TRAFFIC!
    s" CODEGEN-CORPUSX:TWO" JUDGE-ROW:OPEN {: b:n :}
    b 80 JUDGE-ROW:OLD!
    b 20 false JUDGE-ROW:NEW!
-   b 8 JUDGE-ROW:REF! ;
+   b 8 JUDGE-ROW:REF!
+   b 7 JUDGE-ROW:OLD-TRAFFIC!
+   b 2 JUDGE-ROW:NEW-TRAFFIC! ;
 
 : ONE-ROW-TABLE ( -- )
    JUDGE-ROW:RESET
    s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:OPEN {: a:n :}
    a 100 JUDGE-ROW:OLD!
    a 40 false JUDGE-ROW:NEW!
-   a 12 JUDGE-ROW:REF! ;
+   a 12 JUDGE-ROW:REF!
+   a 9 JUDGE-ROW:OLD-TRAFFIC!
+   a 3 JUDGE-ROW:NEW-TRAFFIC! ;
 
 \ The artifact this table renders to, kept so the table can then be changed and
 \ the two held against each other.
@@ -111,6 +117,8 @@ variable FIX-U
    k JUDGE-BASE:OLD@ 100 T=
    k JUDGE-BASE:CHAIN@ 40 T=
    k JUDGE-BASE:REF@ 12 T=
+   k JUDGE-BASE:DS-OLD@ 9 T=
+   k JUDGE-BASE:DS-NEW@ 3 T=
    k JUDGE-BASE:REFUSED@ TFALSE ;
 
 \ ---- the two directions, which is the whole point ---------------------------
@@ -179,7 +187,29 @@ variable FIX-U
    TWO-ROW-TABLE
    SNAPSHOT
    s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:FIND 16 JUDGE-ROW:REF!
-   READ-BACK 0 T= ;
+   READ-BACK 0 T=
+
+   s" the chain touching the caller's stack MORE often is a regression too"
+   T-LABEL
+   TWO-ROW-TABLE
+   SNAPSHOT
+   s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:FIND 5 JUDGE-ROW:NEW-TRAFFIC!
+   READ-BACK 1 T=
+   JUDGE-BASE:REGRESSIONS 1 T=
+
+   s" and touching it less often is progress and is not a finding" T-LABEL
+   TWO-ROW-TABLE
+   SNAPSHOT
+   s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:FIND 1 JUDGE-ROW:NEW-TRAFFIC!
+   READ-BACK 0 T=
+   JUDGE-BASE:IMPROVEMENTS 1 T=
+
+   s" and the engine's own traffic moving is a finding either way" T-LABEL
+   TWO-ROW-TABLE
+   SNAPSHOT
+   s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:FIND 8 JUDGE-ROW:OLD-TRAFFIC!
+   READ-BACK 1 T=
+   JUDGE-BASE:ENGINE-MOVES 1 T= ;
 
 \ ---- a row on one side and not the other ------------------------------------
 
@@ -204,10 +234,10 @@ variable FIX-U
 \ committed file to.
 
 : HEAD$ ( -- ptr u8 n )
-   S\" habu code generator judge\n=========================\n\nword                                old  chain  clang  verdict\n--------------------------------  -----  -----  -----  -------\n" ;
+   S\" habu code generator judge\n=========================\n\nword                                old  chain  clang  ds-old  ds-new  verdict\n--------------------------------  -----  -----  -----  ------  ------  -------\n" ;
 
 : ONE-TRUE-ROW$ ( -- ptr u8 n )
-   S\" CODEGEN-CORPUSX:ONE                 100     40     12  smaller\n" ;
+   S\" CODEGEN-CORPUSX:ONE                 100     40     12       9       3  smaller\n" ;
 
 : TALLY-1$ ( -- ptr u8 n )
    S\" \nrows: 1, refused by the chain: 0, larger than the engine's: 0\n" ;
@@ -251,7 +281,7 @@ variable FIX-U
    T-LABEL
    FIX-RESET
    HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40  smaller\n" FIX+
+   S\" CODEGEN-CORPUSX:ONE                 100     40     12  smaller\n" FIX+
    ONE-TRUE-ROW$ FIX+
    TALLY-1$ FIX+
    FIX-END
@@ -262,7 +292,7 @@ variable FIX-U
    s" a verdict word that is not one of the four is malformed" T-LABEL
    FIX-RESET
    HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40     12  better\n" FIX+
+   S\" CODEGEN-CORPUSX:ONE                 100     40     12       9       3  better\n" FIX+
    TALLY-1$ FIX+
    FIX-END
    READ-BACK 0 > TTRUE
@@ -273,7 +303,7 @@ variable FIX-U
    T-LABEL
    FIX-RESET
    HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40     12  smaller yes\n" FIX+
+   S\" CODEGEN-CORPUSX:ONE                 100     40     12       9       3  smaller yes\n" FIX+
    TALLY-1$ FIX+
    FIX-END
    READ-BACK 0 > TTRUE
@@ -282,7 +312,7 @@ variable FIX-U
    s" a subject with no C twin carries a dash and is a row all the same" T-LABEL
    FIX-RESET
    HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40      -  smaller\n" FIX+
+   S\" CODEGEN-CORPUSX:ONE                 100     40      -       9       3  smaller\n" FIX+
    TALLY-1$ FIX+
    FIX-END
    READ-BACK 0 T=
@@ -316,7 +346,7 @@ variable FIX-U
    ONE-TRUE-ROW$ FIX+
    TALLY-1$ FIX+
    FIX-END
-   S\" CODEGEN-CORPUSX:ONE                  1.69     0.30     0.11\n" FIX+
+   S\" CODEGEN-CORPUSX:ONE                  1.69     0.30     0.11     0.02     0.01\n" FIX+
    READ-BACK 0 T=
    JUDGE-BASE:ROWS 1 T=
    JUDGE-BASE:MALFORMED@ 0 T= ;

@@ -30,7 +30,9 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require src/compiler/native/dict.f
+require src/compiler/a64-effect.f
 require tools/codegen-compare-corpus.f
+require tools/judge/traffic.f
 require tools/judge/check.f
 
 package JUDGE-TEST
@@ -114,6 +116,88 @@ private
 
    s" and the row is back where the measurement left it" T-LABEL
    ADJUDICATE-COMMITTED 0 T= ;
+
+\ ---- the caller's data stack, counted ----------------------------------------
+\ The ds-old and ds-new columns of the artifact. A counter that knew only some
+\ of the spellings of one access would report an access the routine really makes
+\ as no access at all, and a change of addressing mode or of register file would
+\ read as a saving - so the counter is handed the exact encodings rather than
+\ checked against another count of the same code. The base register is asked of
+\ src/compiler/a64-effect.f, which is the chain's own statement of where the
+\ running engine keeps that pointer, so these fixtures follow it if it moves.
+
+: DS-BASE ( -- n )
+   A64EFF:DSTACK-GPR 5 lshift ;
+
+\ Any register that is not the data-stack pointer. Flipping the low bit is
+\ enough and stays inside the register field.
+: OTHER-BASE ( -- n )
+   A64EFF:DSTACK-GPR 1 xor 5 lshift ;
+
+: DS? ( n -- bool )
+   JUDGE-TRAFFIC:INSN? ;
+
+: TRAFFIC-FORM-CASES ( -- )
+   s" every spelling of a whole-cell access to that register is counted" T-LABEL
+   $F9000000 DS-BASE or DS? TTRUE            \ str  Xt, [ds, #imm]
+   $F9400000 DS-BASE or DS? TTRUE            \ ldr  Xt, [ds, #imm]
+   $F8000000 DS-BASE or DS? TTRUE            \ stur Xt, [ds, #simm]
+   $F8400000 DS-BASE or DS? TTRUE            \ ldur Xt, [ds, #simm]
+   $FD000000 DS-BASE or DS? TTRUE            \ str  Dt, [ds, #imm]
+   $FD400000 DS-BASE or DS? TTRUE            \ ldr  Dt, [ds, #imm]
+   $FC000000 DS-BASE or DS? TTRUE            \ stur Dt, [ds, #simm]
+   $FC400000 DS-BASE or DS? TTRUE            \ ldur Dt, [ds, #simm]
+
+   s" and not one of them counts against any other base register" T-LABEL
+   $F9000000 OTHER-BASE or DS? TFALSE
+   $F9400000 OTHER-BASE or DS? TFALSE
+   $F8000000 OTHER-BASE or DS? TFALSE
+   $F8400000 OTHER-BASE or DS? TFALSE
+   $FD000000 OTHER-BASE or DS? TFALSE
+   $FD400000 OTHER-BASE or DS? TFALSE
+   $FC000000 OTHER-BASE or DS? TFALSE
+   $FC400000 OTHER-BASE or DS? TFALSE
+
+   s" a narrower access is not a cell of this stack" T-LABEL
+   $B9000000 DS-BASE or DS? TFALSE           \ str  Wt
+   $B9400000 DS-BASE or DS? TFALSE           \ ldr  Wt
+
+   s" and an instruction that reaches no memory is not an access at all" T-LABEL
+   $8B000000 DS-BASE or DS? TFALSE           \ add  Xd, ds, Xm
+   $91000000 DS-BASE or DS? TFALSE ;         \ add  Xd, ds, #imm
+
+\ And the column over real routines. A name nothing published is refused rather
+\ than answered with zero, which is what a silently missing routine would
+\ otherwise look like: no accesses at all.
+: TRAFFIC-COLUMN-CASES ( -- )
+   s" a subject this image does not hold is refused, not counted as zero"
+   T-LABEL
+   [: s" CODEGEN-CORPUS4:NO-SUCH-WORD" JUDGE-TRAFFIC:COUNT drop ;]
+   E-CODEGEN-COMPARE-SUBJECT TTHROWSQ
+
+   \ ONE row of the table is heavier, and it is named rather than only counted,
+   \ for the reason the refusal cases below are: a count would not notice which
+   \ row came back. On CALL-FAN-BIG the engine CALLS its callee five times, so
+   \ its caller touches no slot at all and the callees do that work in their own
+   \ routines, while the chain copies the five bodies in and makes its own entry
+   \ and exit.
+   s" one row of the table touches the caller's stack more often" T-LABEL
+   JUDGE-ROW:HEAVIER-ROWS 1 T=
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" ROW-OF JUDGE-ROW:HEAVIER? TTRUE
+   s" CODEGEN-CORPUS4:CALL-FAN-BIG" ROW-OF JUDGE-ROW:OLD-TRAFFIC@ 0 T=
+
+   \ The rows the whole column is about: a loop body whose intermediates the
+   \ engine moves through memory every turn and the chain keeps in registers.
+   s" and the loop rows spend a fraction of what the engine spends" T-LABEL
+   s" CODEGEN-CORPUS3:T-SUM" ROW-OF JUDGE-ROW:HEAVIER? TFALSE
+   s" CODEGEN-CORPUS4:PRESSURE-LOOP" ROW-OF JUDGE-ROW:HEAVIER? TFALSE
+   s" CODEGEN-CORPUS2:WS?" ROW-OF JUDGE-ROW:HEAVIER? TFALSE
+
+   \ A refused row has no routine to count, so it is neither heavier nor
+   \ lighter, and the artifact writes a dash rather than a zero.
+   s" a column with no routine is not measured rather than measured at zero"
+   T-LABEL
+   JUDGE-ROW:NOT-MEASURED -1 T= ;
 
 \ ---- the generated bodies, attacked ------------------------------------------
 \ tools/judge/cost.f builds a body out of a row's input text and one column's
@@ -316,6 +400,8 @@ public
    JUDGE-CHECK:JUDGE-ALL
    ARTIFACT-CASES
    DIRECTION-CASES
+   TRAFFIC-FORM-CASES
+   TRAFFIC-COLUMN-CASES
    REFUSAL-CASES
    WITNESS-CASES
    PROJECTION-CASES

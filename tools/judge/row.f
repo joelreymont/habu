@@ -33,15 +33,16 @@
 \   uncovered no clang twin for this subject, which is a fact about the C file
 \             and not about either code generator
 \
-\ WHY THIS TABLE IS BYTES AND NOT COSTS. A byte count is read off the word's own
-\ dictionary record: the same number on every host, in every run, moving only
-\ when a compiler moves it, so it can be compared exactly against a committed
-\ artifact. A cost is a measurement, and a machine with every core busy - which
-\ is what a gate is - moves one by more than any honest tolerance would catch,
-\ so a cost column belongs beside this one and not inside it. There is none here
-\ yet: dot habu-judge-both-chains-2b07fd19 carries bringing the three columns'
-\ costs over from bin/hb --load tools/codegen-compare.f, which measures them
-\ today and is run by hand on a quiet machine.
+\ WHY THE COMPARED TABLE IS COUNTS AND NOT COSTS. A byte count is read off the
+\ word's own dictionary record, and the data-stack traffic beside it is counted
+\ in the same emitted code: both are the same number on every host, in every
+\ run, moving only when a compiler moves them, so both can be compared exactly
+\ against a committed artifact. A cost is a measurement, and a machine with
+\ every core busy - which is what a gate is - moves one by more than any honest
+\ tolerance would catch, so the costs are held here but never written into the
+\ artifact. What is asked of them is a DIRECTION, at the foot of this file,
+\ against a band this run measured for itself; the entry that asserts it is
+\ tools/judge-timed.f and no suite schedules it.
 
 require lib/errors.f
 require lib/prelude.f
@@ -73,6 +74,8 @@ create REF-WIT CAP-MAX cells allot
 create HAS-WIT CAP-MAX cells allot         \ this row has a reader for that memory
 create OUTS CAP-MAX cells allot            \ how many values the subject leaves
 create NEW-TAIL CAP-MAX cells allot        \ the chain's routine leaves by a branch
+create OLD-TRAFFIC CAP-MAX cells allot     \ accesses to the caller's data stack
+create NEW-TRAFFIC CAP-MAX cells allot     \ NOT-MEASURED when the chain refused the row
 
 variable FILL
 variable WORST-SPREAD              \ permille, the worst gap between two measurements of one program
@@ -90,6 +93,7 @@ variable FLOOR-CELL                \ what every habu column's cost carries in co
 public
 
 -1 constant NO-REFERENCE           \ this subject has no C twin
+-1 constant NOT-MEASURED           \ no routine of this column exists to read
 
 : RESET ( -- )
    0 FILL !
@@ -154,6 +158,8 @@ public
    0 HAS-WIT FILL @ SLOT !
    1 OUTS FILL @ SLOT !
    0 NEW-TAIL FILL @ SLOT !
+   NOT-MEASURED OLD-TRAFFIC FILL @ SLOT !
+   NOT-MEASURED NEW-TRAFFIC FILL @ SLOT !
    FILL @
    FILL @ 1+ FILL ! ;
 
@@ -252,6 +258,37 @@ public
    k OK drop
    bytes REF-BYTES k SLOT ! ;
 
+\ ---- what each habu column spends on the caller's data stack -----------------
+\ An exact count off the emitted code, so it belongs in the checked half of the
+\ artifact beside the byte columns rather than beside the costs. The reference
+\ column has no such number: a C function keeps its intermediates where its own
+\ compiler put them and never touches this stack at all.
+
+: OLD-TRAFFIC! ( n n -- ) {: k:n n-acc:n :}
+   k OK drop
+   n-acc OLD-TRAFFIC k SLOT ! ;
+
+: NEW-TRAFFIC! ( n n -- ) {: k:n n-acc:n :}
+   k OK drop
+   n-acc NEW-TRAFFIC k SLOT ! ;
+
+: OLD-TRAFFIC@ ( n -- n ) {: k:n :}  OLD-TRAFFIC k OK SLOT @ ;
+: NEW-TRAFFIC@ ( n -- n ) {: k:n :}  NEW-TRAFFIC k OK SLOT @ ;
+
+\ Does the chain's routine touch the caller's data stack more often than the
+\ engine's code for the same body? A refused row has no routine to count, so it
+\ is not heavier and not lighter - it is not measured.
+: HEAVIER? ( n -- bool ) {: k:n :}
+   k NEW-TRAFFIC@ NOT-MEASURED = if false exit then
+   k OLD-TRAFFIC@ NOT-MEASURED = if false exit then
+   k NEW-TRAFFIC@ k OLD-TRAFFIC@ > ;
+
+: HEAVIER-ROWS ( -- n )
+   0
+   FILL @ 0 ?do
+      i HEAVIER? if 1+ then
+   loop ;
+
 \ ---- what a reader asks ------------------------------------------------------
 
 : OLD-BYTES@ ( n -- n ) {: k:n :}  OLD-BYTES k OK SLOT @ ;
@@ -348,6 +385,67 @@ public
    0
    FILL @ 0 ?do
       i VERDICT V-LARGER = if 1+ then
+   loop ;
+
+\ ---- is the chain's code slower than the engine's? ---------------------------
+\ THE CLAIM THE WHOLE COMPARISON EXISTS TO MAKE, and the one nothing above can
+\ carry: a byte count is not a cost, and a compiler that emitted fewer, slower
+\ instructions would pass every verdict in this file. It is answered here and
+\ asserted by tools/judge-timed.f, which no suite schedules.
+\
+\ WHAT MAKES IT A DIRECTION AND NOT A NUMBER. Both columns are measured in ONE
+\ pass, in one process, interleaved, with the same floor taken off - the two
+\ habu columns are entered the same way, so they lose the same constant and
+\ their difference is exact. So nothing is committed and nothing is compared
+\ across hosts: the engine's own cost for the same row IS the calibration, and
+\ what is claimed is only which of the two is larger.
+\
+\ AND THE BAND IS MEASURED, NOT CHOSEN. A cost is a measurement, so two columns
+\ that differ by less than the noise do not differ. The noise is not estimated
+\ here: SAMPLE above measures it, as the widest gap between two measurements of
+\ ONE program in this run, and that gap is the band. It widens by itself on a
+\ loaded host, because it is measured on that host in the same process - which
+\ is the property a fixed tolerance cannot have. The old comparison's
+\ COST-BAND, eight, is deliberately NOT reused: it is calibrated for a different
+\ question, a live measurement against a number recorded on ANOTHER machine on
+\ ANOTHER day, and it has to absorb the difference between two hosts as well as
+\ the noise on one. Against two columns of one pass it would admit a chain eight
+\ times slower than the engine and call it level.
+\
+\ A ROW WHOSE ENGINE COST IS AT OR UNDER THE MEASUREMENT'S OWN FLOOR has no
+\ ratio to be judged by, and it is counted apart rather than passed quietly: an
+\ un-adjudicable row that read as "not slower" is exactly how a claim goes
+\ silent.
+
+private
+
+1000 constant PERMILLE
+
+public
+
+: COST-COMPARABLE? ( n -- bool ) {: k:n :}
+   k REFUSED? if false exit then
+   k OLD-PICOS@ FLOOR@ - 0 > ;
+
+: UNCOMPARABLE-ROWS ( -- n )
+   0
+   FILL @ 0 ?do
+      i REFUSED? 0= if
+         i COST-COMPARABLE? 0= if 1+ then
+      then
+   loop ;
+
+: SLOWER? ( n -- bool ) {: k:n :}
+   k COST-COMPARABLE? 0= if false exit then
+   k OLD-PICOS@ FLOOR@ - {: old:n :}
+   k NEW-PICOS@ FLOOR@ - {: new:n :}
+   new old <= if false exit then
+   new old -  PERMILLE *  old /  WORST-SPREAD @ > ;
+
+: SLOWER-ROWS ( -- n )
+   0
+   FILL @ 0 ?do
+      i SLOWER? if 1+ then
    loop ;
 
 : REFUSED-ROWS ( -- n )

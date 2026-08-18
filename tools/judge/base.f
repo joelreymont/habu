@@ -76,6 +76,8 @@ create NAME-LENS CAP-MAX cells allot
 create OLD-CELLS CAP-MAX cells allot
 create CHAIN-CELLS CAP-MAX cells allot     \ bytes, or the code the chain refused with
 create REF-CELLS CAP-MAX cells allot       \ NO-REFERENCE for a dash
+create DS-OLD-CELLS CAP-MAX cells allot    \ the caller's data stack, touched
+create DS-NEW-CELLS CAP-MAX cells allot    \ NOT-MEASURED for a dash
 
 variable ROW-N
 variable DECLARED                  \ what the file's own `rows:` line says
@@ -115,7 +117,8 @@ variable FINDINGS
    k OK NAME-AT
    NAME-LENS k SLOT @ ;
 
-: KEEP-ROW ( ptr u8 n n n n -- ) {: a:ptr u:n old:n chain:n ref:n :}
+: KEEP-ROW ( ptr u8 n n n n n n -- )
+   {: a:ptr u:n old:n chain:n ref:n ds-old:n ds-new:n :}
    ROW-N @ CAP-MAX >= if E-JUDGE-BASE-CAP throw then
    u NAME-MAX > if E-JUDGE-BASE-CAP throw then
    a  ROW-N @ NAME-AT  u STR-LEN BYTE-COPY-LEN
@@ -123,6 +126,8 @@ variable FINDINGS
    old OLD-CELLS ROW-N @ SLOT !
    chain CHAIN-CELLS ROW-N @ SLOT !
    ref REF-CELLS ROW-N @ SLOT !
+   ds-old DS-OLD-CELLS ROW-N @ SLOT !
+   ds-new DS-NEW-CELLS ROW-N @ SLOT !
    ROW-N @ 1+ ROW-N ! ;
 
 \ ---- reading one line -------------------------------------------------------
@@ -146,8 +151,9 @@ variable FINDINGS
    a u s" LARGER" STR= if true exit then
    a u s" REFUSED" STR= ;
 
-\ The reference cell: a byte count, or the dash a subject with no C twin gets.
-: REF-CELL-OF ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+\ A cell that carries a number, or the dash a column with nothing to report
+\ writes: no C twin for the reference column, no routine for the chain's.
+: CELL-OF ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u s" -" STR= if JUDGE-ROW:NO-REFERENCE true exit then
    a u STR>NUMBER? MATCH option
      none OF 0 false ENDOF
@@ -168,7 +174,11 @@ variable FINDINGS
    CODEGEN-TEXT:NEXT-NUMBER 0= if drop la lu MALFORMED exit then {: old:n :}
    CODEGEN-TEXT:NEXT-NUMBER 0= if drop la lu MALFORMED exit then {: chain:n :}
    CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
-   REF-CELL-OF 0= if drop la lu MALFORMED exit then {: ref:n :}
+   CELL-OF 0= if drop la lu MALFORMED exit then {: ref:n :}
+   CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
+   CELL-OF 0= if drop la lu MALFORMED exit then {: ds-old:n :}
+   CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
+   CELL-OF 0= if drop la lu MALFORMED exit then {: ds-new:n :}
    CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
    VERDICT-WORD? 0= if la lu MALFORMED exit then
    CODEGEN-TEXT:NEXT$ if
@@ -176,7 +186,7 @@ variable FINDINGS
       CODEGEN-TEXT:NEXT$ if 2drop la lu MALFORMED exit then
       2drop
    else 2drop then
-   na nu old chain ref KEEP-ROW ;
+   na nu old chain ref ds-old ds-new KEEP-ROW ;
 
 \ The count on the artifact's `rows:` line. That line states the tally as a
 \ sentence - `rows: 46, refused by the chain: 0, ...` - so the count carries the
@@ -262,6 +272,8 @@ public
 : OLD@ ( n -- n ) {: k:n :}    OLD-CELLS k OK SLOT @ ;
 : CHAIN@ ( n -- n ) {: k:n :}  CHAIN-CELLS k OK SLOT @ ;
 : REF@ ( n -- n ) {: k:n :}    REF-CELLS k OK SLOT @ ;
+: DS-OLD@ ( n -- n ) {: k:n :} DS-OLD-CELLS k OK SLOT @ ;
+: DS-NEW@ ( n -- n ) {: k:n :} DS-NEW-CELLS k OK SLOT @ ;
 
 \ A committed chain cell holds bytes, or the negative code the chain refused the
 \ subject with. Nothing else can stand there, so the sign is the whole test.
@@ -323,6 +335,28 @@ variable GAINED-N
    ENGINE-MOVED @ 1+ ENGINE-MOVED !
    FIND+ ;
 
+\ The chain's data-stack traffic, adjudicated the way its bytes are: more is a
+\ regression against ourselves and fewer is progress. A side with no routine to
+\ count has nothing to compare, and neither has one whose partner has none.
+: CHAIN-TRAFFIC-CHECK ( n n -- ) {: k:n b:n :}
+   k JUDGE-ROW:NEW-TRAFFIC@ {: got:n :}
+   b DS-NEW@ {: had:n :}
+   got JUDGE-ROW:NOT-MEASURED = had JUDGE-ROW:NOT-MEASURED = or if exit then
+   got had = if exit then
+   k JUDGE-ROW:NAME$ {: a:ptr u:n :}
+   got had > if s" MORE-STACK-THAN-ARTIFACT" a u got had REGRESSION exit then
+   s" LESS-STACK-THAN-ARTIFACT" a u got had IMPROVEMENT ;
+
+: OLD-TRAFFIC-CHECK ( n n -- ) {: k:n b:n :}
+   k JUDGE-ROW:OLD-TRAFFIC@ {: got:n :}
+   b DS-OLD@ {: had:n :}
+   got JUDGE-ROW:NOT-MEASURED = had JUDGE-ROW:NOT-MEASURED = or if exit then
+   got had = if exit then
+   s" ENGINE-STACK-MOVED" NOTE
+   k JUDGE-ROW:NAME$ got had SAY-DELTA
+   ENGINE-MOVED @ 1+ ENGINE-MOVED !
+   FIND+ ;
+
 : MEASURED-ROW-CHECK ( n -- ) {: k:n :}
    k JUDGE-ROW:NAME$ FIND {: b:n :}
    b 0 < if
@@ -333,7 +367,9 @@ variable GAINED-N
       FIND+ exit
    then
    k b OLD-CHECK
-   k b CHAIN-CHECK ;
+   k b CHAIN-CHECK
+   k b OLD-TRAFFIC-CHECK
+   k b CHAIN-TRAFFIC-CHECK ;
 
 : COMMITTED-ROW-CHECK ( n -- ) {: b:n :}
    b ROW-NAME$ JUDGE-ROW:FIND 0 >= if exit then

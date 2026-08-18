@@ -68,6 +68,7 @@ require tools/codegen-tail-probe.f
 require tools/judge/src.f
 require tools/judge/chain.f
 require tools/judge/row.f
+require tools/judge/traffic.f
 require src/compiler/native/dict.f
 require tools/judge/cost.f
 
@@ -352,9 +353,14 @@ public
    NAME$ JUDGE-ROW:OPEN {: k:n :}
    k DEF JUDGE-SRC:OUT JUDGE-ROW:OUTS!
    k  NAME$ NTAILPROBE:CODE-BYTES  JUDGE-ROW:OLD!
+   k  NAME$ JUDGE-TRAFFIC:COUNT  JUDGE-ROW:OLD-TRAFFIC!
    RC@ {: rc:n :}
    rc 0<> if k rc JUDGE-ROW:REFUSED!
-   else k  DEF JUDGE-CHAIN:SIZE  DEF JUDGE-CHAIN:TAIL?  JUDGE-ROW:NEW! then
+   else
+      k  DEF JUDGE-CHAIN:SIZE  DEF JUDGE-CHAIN:TAIL?  JUDGE-ROW:NEW!
+      NEW-CALL!
+      k  CALL$ JUDGE-TRAFFIC:COUNT  JUDGE-ROW:NEW-TRAFFIC!
+   then
    CODEGEN-CLANG:PRESENT? 0= if exit then
    k  TWIN$ CODEGEN-MACHO:BYTES  JUDGE-ROW:REF! ;
 
