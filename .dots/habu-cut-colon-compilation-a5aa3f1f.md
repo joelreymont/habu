@@ -8,7 +8,7 @@ created-at: "2026-08-05T10:36:19.611694+02:00"
 
 CG-01, phase 4 of the hard cut: make checked HIR plus the native pipeline the sole compiler for normal colon definitions. habu2.f:7020 COMPILE-EMIT:EM-COMPILE is the single production entry (verified, no drift); route it and bootstrap through the chain, prove self-hosting to a byte-identical fixpoint, run every gate on the sole path, then delete the old emitter and bridges (habu-delete-the-old-679cfd35). An opt-in hook is not completion. Reconcile with habu-cut-over-staged-070d68c8 / habu-self-host-staged-520ab588.
 
-Claim: agent=thecut-1 workspace=.jj-ws/habu-thecut
+Claim: agent=thecut-2 workspace=.jj-ws/habu-thecut
 
 PREREQUISITES (scout-verified 2026-08-05/06):
 1. Data-word addresses (habu-resolve-a-data-a1c8067f) — the one hard capability blocker; lane in flight.
