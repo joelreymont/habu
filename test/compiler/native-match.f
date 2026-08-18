@@ -60,8 +60,6 @@ require src/compiler/native/trap.f
 package NMX
 private
 
-8 constant REGS
-18 constant WIDE-REGS                \ the pool the one row below needs, measured
 4 constant INSN-BYTES
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and the
@@ -750,30 +748,19 @@ private
 \ ---- driving one migration where its refusal can be read ----------------------
 \ A checked `catch` takes a stack-neutral quotation and a quotation cannot read
 \ the enclosing word's locals, so what the migration needs is parked first.
-variable M-A   variable M-U   variable M-IN   variable M-OUT   variable M-REGS
+variable M-A   variable M-U   variable M-IN   variable M-OUT
 
 : MIGRATE-RC ( -- n )
-   [: M-A @ M-U @ M-IN @ M-OUT @ M-REGS @ NMIGRATE:DEFINE ;] catch ;
+   [: M-A @ M-U @ M-IN @ M-OUT @ NMIGRATE:DEFINE ;] catch ;
 
-: STAGE-ONE ( ptr u8 n n n n -- ) {: a:ptr u:n in:n out:n regs:n :}
-   a M-A !  u M-U !  in M-IN !  out M-OUT !  regs M-REGS !
+: STAGE-ONE ( ptr u8 n n n -- ) {: a:ptr u:n in:n out:n :}
+   a M-A !  u M-U !  in M-IN !  out M-OUT !
    NELAB:REFUSED-RESET ;
 
 : TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}
-   a u in out REGS STAGE-ONE
+   a u in out STAGE-ONE
    MIGRATE-RC ;
 
-\ THE POOL IS THE CALLER'S NUMBER AND ONE ROW NEEDS A BIGGER ONE. Eight scratch
-\ registers carry every other migration in this file, and they do not carry an
-\ arm that holds THREE payload cells live across a branch: measured, the
-\ allocator answers E-A64RA-SPILL there before the case can say anything about
-\ the payload at all. That is a fact about the pool the caller offered and not
-\ about the dispatch, so the row states its own pool rather than moving
-\ everybody else's - the emission sizes the cost case pins are measured at
-\ eight and must stay there.
-: TRY-WIDE ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}
-   a u in out WIDE-REGS STAGE-ONE
-   MIGRATE-RC ;
 
 \ ---- what the chain published, read back off the emission and the seam --------
 \ THE WORDLIST IS THIS PACKAGE'S OWN, taken while it is open. The migration
@@ -865,7 +852,7 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    TWOW$ 1 1 TRY RC-TWOW !
    STRINST$ 1 1 TRY RC-STRINST !
    TRIO$ 4 1 TRY RC-TRIO !
-   ARMIF$ 4 1 TRY-WIDE RC-ARMIF !
+   ARMIF$ 4 1 TRY RC-ARMIF !
    ARMLOOP$ 4 1 TRY RC-ARMLOOP !
    HOLD3$ 4 1 TRY RC-HOLD3 !
    ROWS24$ 0 1 TRY RC-ROWS24 !
@@ -873,7 +860,7 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
    MKI3$ 1 4 TRY RC-MKI3 !
    MKC$ 1 3 TRY RC-MKC !
    RELAY$ 3 4 TRY RC-RELAY !
-   LOOPC$ 1 3 TRY-WIDE RC-LOOPC !
+   LOOPC$ 1 3 TRY RC-LOOPC !
    STRCON$ 1 3 TRY RC-STRCON !
    TWOC$ 0 7 TRY RC-TWOC !
    MKG$ 1 5 TRY RC-MKG !

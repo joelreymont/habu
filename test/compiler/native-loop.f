@@ -255,113 +255,111 @@ public
 
 \ ---- the chain's compilation: the subject ------------------------------------
 \ The same text, migrated through the production entry, published beside its
-\ reference. The register budget is the eighteen the comparison corpora state for
-\ every loop row.
+\ reference. No row states a register budget: the entry derives the pool from
+\ NABI:SCRATCH, the same one every migration here runs under.
 
 package NLPT-MIGRATED
 
 private
 
-18 constant REGS
-
 : SUM ( -- )
-   s" : NLPT-SUM-N ( n -- n ) 0 swap 0 ?do i + loop ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NLPT-SUM-N ( n -- n ) 0 swap 0 ?do i + loop ;" 1 1 NMIGRATE:DEFINE ;
 
 : TINY ( -- )
    s" : NLPT-TINY-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do 1 + 1 + 1 + 1 + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : MANY ( -- )
    s" : NLPT-MANY-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n len:n :} 0 len 0 ?do a + b + c + d + e + f + g + h + loop ;"
-   9 1 REGS NMIGRATE:DEFINE ;
+   9 1 NMIGRATE:DEFINE ;
 
 : MIX ( -- )
    s" : NLPT-MIX-N ( n n n -- n ) {: a:n seed:n len:n :} seed len 0 ?do a + i + 3 + loop ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : TWICE ( -- )
    s" : NLPT-TWICE-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do i + i + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : FROM5 ( -- )
    s" : NLPT-FROM5-N ( n n -- n ) {: seed:n len:n :} seed len 5 ?do i + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : FROMNEG ( -- )
    s" : NLPT-FROMNEG-N ( n n -- n ) {: seed:n len:n :} seed len -3 ?do i + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : AFTER-LOAD ( -- )
    s" : NLPT-AFTER-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} cell @ len 0 ?do 1 + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : RW ( -- )
    s" : NLPT-RW-N ( ptr n n -- n ) {: cell:ptr len:n :} 0 len 0 ?do cell @ + 5 cell ! loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : STORE ( -- )
    s" : NLPT-STORE-N ( ptr n n -- n ) {: cell:ptr len:n :} len 0 ?do cell @ 3 + cell ! loop cell @ ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : LOAD ( -- )
    s" : NLPT-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} 0 len 0 ?do cell @ + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : FIELDS ( -- )
    s" : NLPT-FIELDS-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base 16 + @ base 24 + @ base 32 + @ base 40 + @ + + + + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : WIDE ( -- )
    s" : NLPT-WIDE-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : VARLOAD ( -- )
    s" : NLPT-VARLOAD-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base i cells + @ + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NLPT-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : CALL ( -- )
    s" : NLPT-CALL-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NLPT-CALLEE-N loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : TWO ( -- )
    s" : NLPT-TWO-N ( n n -- n ) {: seed:n len:n :} seed 1 len 0 ?do 1 + swap 2 + swap loop + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : THREE ( -- )
    s" : NLPT-THREE-N ( n n -- n ) {: seed:n len:n :} seed 1 2 len 0 ?do 1 + rot 2 + rot 3 + rot loop + + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : MUL ( -- )
    s" : NLPT-MUL-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do 2 * loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : SUB ( -- )
    s" : NLPT-SUB-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do 1 - loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : SWAPPED ( -- )
    s" : NLPT-SWAPPED-N ( n -- n ) 0 swap 0 ?do i swap + loop ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : DEAD ( -- )
    s" : NLPT-DEAD-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do i 7 * drop 1 + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : VARSTART ( -- )
    s" : NLPT-VARSTART-N ( n n n -- n ) {: seed:n st:n len:n :} seed len st ?do i + loop ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : MAXSTART ( -- )
    s" : NLPT-MAXSTART-N ( n n -- n ) {: seed:n len:n :} seed len 9223372036854775807 ?do i + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : NOTCOUNTED ( -- )
    s" : NLPT-UNTIL-N ( n -- n ) begin 1- dup 0 <= until ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 public
 

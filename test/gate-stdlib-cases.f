@@ -398,7 +398,7 @@ SUITE codegen-workload
 \ which is exactly what happened when it was first listed there. No assertion it
 \ makes reads a clock - every one of them is a throw code from the chain - so
 \ scheduling it schedules no flake. It runs in the proof slice with the parity
-\ gates: at 26s through the real runner it is a minute-scale member, not a
+\ gates: at 58s through the real runner it is a minute-scale member, not a
 \ fast-tier one.
 SUITE codegen-spill-probe
    tools/codegen-spill-probe.f

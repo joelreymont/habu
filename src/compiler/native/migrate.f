@@ -66,7 +66,6 @@ PTR-VARIABLE M-DATA
 variable M-DATA-U
 variable M-IN
 variable M-OUT
-variable M-REGS
 variable M-OPEN                      \ a migration is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
@@ -290,20 +289,20 @@ variable REC-OK                      \ the body staged so far is still one worth
 : ROUTINE ( -- A64EFF:routine )
    NO-RETURN? if
       NELAB:CALLED? if
-         0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
+         NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
       then
-      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-LEAF-FRAMED exit
+      NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-LEAF-FRAMED exit
    then
    NELAB:TAIL-CALLED?  NELAB:TAIL-ENTRY@ NPUB:IN-REGION?  and if
       NELAB:CALLS-BACK? if
-         0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-CALLING-FRAMED exit
+         NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-CALLING-FRAMED exit
       then
-      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-FRAMED exit
+      NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-FRAMED exit
    then
    NELAB:CALLED? if
-      0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:CALL-FRAMED exit
+      NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:CALL-FRAMED exit
    then
-   0 M-REGS @ M-IN @ M-OUT @ M-SPILLS @ NABI:LEAF-FRAMED ;
+   NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:LEAF-FRAMED ;
 
 : A64-BUILDER ( -- IR-BUILD:builder )
    IR-BUILD:PLAN-DEFAULT
@@ -487,29 +486,30 @@ variable REC-OK                      \ the body staged so far is still one worth
    rc 0 <> if HELD-RETRACT rc throw then
    M-MEASURE @ 0<> if HELD-RETRACT then ;
 
-: STAGE ( ptr u8 n n n n -- )
-   {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
+: STAGE ( ptr u8 n n n -- )
+   {: sa su:n in:n out:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
-   in M-IN ! out M-OUT ! regs M-REGS !
+   in M-IN ! out M-OUT !
    0 M-DATA-U ! 0 M-SPILLS ! 0 M-REMATS !
    0 M-HELD ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
 
 public
 
-\ `in` and `out` are the declared arities, `regs` the scratch registers allowed.
-: DEFINE ( ptr u8 n n n n -- )
+\ `in` and `out` are the declared arities. The scratch pool is NABI:SCRATCH - the
+\ machine's, not a caller's.
+: DEFINE ( ptr u8 n n n -- )
    STAGE RUN ;
 
 \ The first entry that compiles a word the old emitter never published, which is
 \ what makes the old emitter unnecessary rather than prerequisite.
-: DEFINE-HELD ( ptr u8 n n n n -- )
+: DEFINE-HELD ( ptr u8 n n n -- )
    STAGE
    1 M-HELD !
    RUN ;
 
 \ Stops one step short of every write, because a publication is permanent and
 \ the two address-keyed records may not drop a row to make space.
-: MEASURE-HELD ( ptr u8 n n n n -- )
+: MEASURE-HELD ( ptr u8 n n n -- )
    STAGE
    1 M-HELD !
    1 M-MEASURE !
@@ -517,9 +517,9 @@ public
 
 \ The spelling is the whole of what the caller says: the address that word
 \ pushes is the engine's to answer.
-: DEFINE-DATA ( ptr u8 n ptr u8 n n n n -- )
-   {: sa su:n da du:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
-   sa su in out regs STAGE
+: DEFINE-DATA ( ptr u8 n ptr u8 n n n -- )
+   {: sa su:n da du:n in:n out:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
+   sa su in out STAGE
    da M-DATA ! du M-DATA-U !
    RUN ;
 

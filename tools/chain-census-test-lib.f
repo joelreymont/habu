@@ -200,10 +200,12 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s" ;package" LINE
    FIX$ ;
 
-\ Ten values carried across a nested counted loop. At the census's budget - every
-\ general register the ABI can describe - the allocator still cannot keep them
-\ all. That refusal is a fact about the program and must be classed as pressure,
-\ never as a missing language feature.
+\ Ten arguments and four values derived from one of them, all carried across a
+\ nested counted loop. Against NABI:SCRATCH - every general register the machine
+\ and the engine leave a routine - the allocator still cannot keep them all. That
+\ refusal is a fact about the program and must be classed as pressure, never as a
+\ missing language feature; and since no caller states a budget any more, the
+\ program has to be the thing that does not fit.
 : REGS-SRC ( -- ptr u8 n )
    FIX-RESET
    s" package CENSUS-FIX-REGS" LINE
@@ -212,8 +214,9 @@ create MISS-BUF FS-PATH-CAP allot      variable MISS-U
    s"    {: a:n b:n c:n d:n e:n f:n g:n h:n i2:n j:n :}" LINE
    s"    0 j 0 ?do" LINE
    s"       a b + c + d + e +" LINE
+   s"       a 1 + a 2 + a 3 + a 4 +" LINE
    s"       j 0 ?do f g + h + i2 + i + + loop" LINE
-   s"       + i +" LINE
+   s"       + i + + + + +" LINE
    s"    loop ;" LINE
    s" ;package" LINE
    FIX$ ;

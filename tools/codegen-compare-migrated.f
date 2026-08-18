@@ -49,36 +49,33 @@ package CODEGEN-MIGRATED
 
 private
 
-4 constant REGS                   \ registers a straight-line corpus routine may use
-
 \ A routine with control flow needs more, and says why. A block argument and
 \ every value handed to it across an edge are one class holding one register for
 \ the whole span between them, so a loop's carried values each hold a register
 \ from the pre-header to the latch whether or not they are read in between.
-8 constant LOOP-REGS
 
 : NOOP ( -- )
-   s" : NOOP-N ( -- ) ;" 0 0 REGS NMIGRATE:DEFINE ;
+   s" : NOOP-N ( -- ) ;" 0 0 NMIGRATE:DEFINE ;
 
 : ADD3 ( -- )
-   s" : ADD3-N ( n n n -- n ) + + ;" 3 1 REGS NMIGRATE:DEFINE ;
+   s" : ADD3-N ( n n n -- n ) + + ;" 3 1 NMIGRATE:DEFINE ;
 
 : SQUARE-SUM ( -- )
-   s" : SQUARE-SUM-N ( n n -- n ) dup * swap dup * + ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : SQUARE-SUM-N ( n n -- n ) dup * swap dup * + ;" 2 1 NMIGRATE:DEFINE ;
 
 : MAX2 ( -- )
-   s" : MAX2-N ( n n -- n ) 2dup < if swap then drop ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : MAX2-N ( n n -- n ) 2dup < if swap then drop ;" 2 1 NMIGRATE:DEFINE ;
 
 : LERP ( -- )
    s" : LERP-N ( n n n -- n ) {: a:n b:n t:n :} b a - t * 100 / a + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : SUM-TO ( -- )
-   s" : SUM-TO-N ( n -- n ) 0 swap 0 ?do i + loop ;" 1 1 LOOP-REGS NMIGRATE:DEFINE ;
+   s" : SUM-TO-N ( n -- n ) 0 swap 0 ?do i + loop ;" 1 1 NMIGRATE:DEFINE ;
 
 : COUNT-DOWN ( -- )
    s" : COUNT-DOWN-N ( n -- n ) begin 1- dup 0 <= until ;"
-   1 1 LOOP-REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ The one word whose point is a side effect. The cell it bumps is the corpus's
 \ own, so this routine and the interpreted word write the same memory. Its
@@ -88,22 +85,22 @@ private
 : CELL-BUMP ( -- )
    s" : CELL-BUMP-N ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;"
    s" BUMP-CELL"
-   1 1 REGS NMIGRATE:DEFINE-DATA ;
+   1 1 NMIGRATE:DEFINE-DATA ;
 
 : BYTE-SUM ( -- )
    s" : BYTE-SUM-N ( ptr u8 n -- n ) {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop ;"
-   2 1 LOOP-REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 \ The recursion, which is also the plain word-call-and-return shape: the only
 \ corpus routine that is not a leaf, so its contract declares the call and the
 \ frame its caller's return address goes in.
 : FACT ( -- )
    s" : FACT-N ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;"
-   1 1 LOOP-REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : BYTE-FIND ( -- )
    s" : BYTE-FIND-N ( ptr u8 n n -- n ) {: a:ptr u:n c:n :} u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;"
-   3 1 LOOP-REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 public
 

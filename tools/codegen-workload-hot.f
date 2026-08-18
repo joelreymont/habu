@@ -149,9 +149,6 @@ private
 \ tools/codegen-compare-migrated2.f's measured floors for the same two bodies:
 \ a body with control flow holds a register for every value carried across an
 \ edge, and COUNT-CH carries a counter and a cursor.
-4 constant REGS
-8 constant BRANCH-REGS
-12 constant WIDE-REGS
 
 public
 
@@ -168,10 +165,10 @@ public
 \ wordlist rule: a migration lands where the current wordlist points when it
 \ runs, so the caller opens the package it wants them in.
 : PUBLISH-CHAIN ( -- )
-   FOLD-C$ 1 1 BRANCH-REGS NMIGRATE:DEFINE
-   COUNT-CH$ 3 1 WIDE-REGS NMIGRATE:DEFINE
-   TERM-TAG$ 1 1 REGS NMIGRATE:DEFINE
-   TERM-PAY$ 1 1 REGS NMIGRATE:DEFINE ;
+   FOLD-C$ 1 1 NMIGRATE:DEFINE
+   COUNT-CH$ 3 1 NMIGRATE:DEFINE
+   TERM-TAG$ 1 1 NMIGRATE:DEFINE
+   TERM-PAY$ 1 1 NMIGRATE:DEFINE ;
 
 \ ---- the checker's OWN fold, and its callers ---------------------------------
 \ The four subjects above are a program this file publishes twice in order to
@@ -201,7 +198,7 @@ public
 variable REACHED-N
 
 : PUBLISH-CHECKER-FOLD ( -- )
-   CHECKER-FOLD$ 1 1 BRANCH-REGS NMIGRATE:DEFINE ;
+   CHECKER-FOLD$ 1 1 NMIGRATE:DEFINE ;
 
 \ Move the checker's own call sites onto it. The count is kept because it is the
 \ fact the compile-shaped row's delta rests on: nothing about that row means

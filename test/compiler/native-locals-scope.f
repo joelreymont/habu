@@ -315,68 +315,66 @@ package NLS-MIGRATED
 
 private
 
-18 constant REGS
-
 variable RC-SHADOW                   \ what a group shadowing a live name answered
 variable RC-DISJOINT                 \ and one reusing a name whose scope had closed
 variable RC-TWICE                    \ and one declaring the same name twice at once
 
 : ARM ( -- )
    s" : NLS-ARM-N ( n n -- n ) {: cls:n src:n :} src 0 > if cls 7 * {: off:n :} off cls 3 * + else cls 5 * then cls + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : NEST ( -- )
    s" : NLS-NEST-N ( n -- n ) dup 0 > if {: x:n :} x 3 * {: y:n :} y 5 * x 7 * + else drop 11 then ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : FEED ( -- )
    s" : NLS-FEED-N ( n n -- n ) {: base:n lim:n :} 0 lim 0 ?do base i + {: u:n :} u 3 * i 5 * + + loop base 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : TWO ( -- )
    s" : NLS-TWO-N ( n n -- n ) {: base:n lim:n :} 0 lim 0 ?do base i + {: u:n :} u 3 * {: v:n :} v 5 * u 7 * + + loop base + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : CROSS ( -- )
    s" : NLS-CROSS-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop k 5 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : REUSE ( -- )
    s" : NLS-REUSE-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop lim 0 ?do k i - {: a:n :} a 5 * + loop k 11 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : WLOOP ( -- )
    s" : NLS-WHILE-N ( n n -- n ) {: k:n lim:n :} 0 0 begin {: c:n :} c 1 + dup lim < while swap c k + 3 * + swap repeat drop k 5 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DISPATCH ( -- )
    s" : NLS-CASE-N ( n n -- n ) {: k:n sel:n :} sel case 1 of k 3 * {: a:n :} a 5 * endof 2 of k 7 * {: a:n :} a 11 * endof k 13 * swap endcase ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : LEAVELOOP ( -- )
    s" : NLS-LEAVE-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 > if leave then a 5 * + loop k 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : EARLY-EXIT ( -- )
    s" : NLS-EXIT-N ( n -- n ) dup 0 > if {: x:n :} x 3 * exit then drop 11 ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : SHADOW ( -- )
    s" : NLS-SHADOW-N ( n -- n ) dup 0 > if {: nls-w:n :} nls-w 2 * else drop 7 then nls-w + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : IDX ( -- )
    s" : NLS-IDX-N ( n -- n ) {: k:n :} 0 3 0 ?do 2 0 ?do k i + {: i:n :} i 3 * + loop i 5 * + loop ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NLS-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 
 : CALL ( -- )
    s" : NLS-CALL-N ( n n n -- n ) {: k:n s:n lim:n :} 0 lim 0 ?do s i + {: a:n :} a NLS-CALLEE-N k + a 3 * + + loop k 5 * + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 \ THE CALLEE THIS ONE NAMES IS THE ENGINE'S OWN ROUTINE, and that is the whole
 \ difference. A callee the chain compiled has a clobber row, so
@@ -389,21 +387,21 @@ variable RC-TWICE                    \ and one declaring the same name twice at 
 
 : SLOT ( -- )
    s" : NLS-SLOT-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do {: a:n :} a 3 * loop lim 0 ?do {: b:n :} b NLS-CALLEE k + b 5 * + loop k 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : CATCHLOOP ( -- )
    s" : NLS-CATCH-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a [: 3 * ;] catch nip a 3 * + + loop k 5 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : CATCHARM ( -- )
    s" : NLS-ARMCATCH-N ( n n -- n ) {: k:n sel:n :} sel 0 > if k 7 * {: a:n :} a [: 3 * ;] catch nip a 3 * + else k 5 * then k + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : KEYWORDLOC ( -- )
    s" : NLS-AGAINLOC-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: again:n :} again 3 * + loop k 5 * + ;"
-   2 1 REGS NMIGRATE:DEFINE
+   2 1 NMIGRATE:DEFINE
    s" : NLS-ENDOFLOC-N ( n n -- n ) {: k:n sel:n :} sel 0 > if k 7 * {: endof:n :} endof 3 * else k 5 * then k + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 \ ---- the three duplicate questions, measured and recorded ---------------------
 \ MEASURE-HELD runs every stage a publication runs and keeps none of it, so a
@@ -417,15 +415,15 @@ variable RC-TWICE                    \ and one declaring the same name twice at 
 \ what is in SCOPE where the declaration stands answers all three.
 : TRY-DISJOINT ( -- )
    s" : NLS-Z1-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop lim 0 ?do k i - {: a:n :} a 5 * + loop k 11 * + ;"
-   2 1 REGS NMIGRATE:MEASURE-HELD ;
+   2 1 NMIGRATE:MEASURE-HELD ;
 
 : TRY-SHADOW ( -- )
    s" : NLS-Z2-N ( n -- n ) {: v:n :} v 0 > if 1 0= {: v:bool :} v if 1 else 2 then else 0 then ;"
-   1 1 REGS NMIGRATE:MEASURE-HELD ;
+   1 1 NMIGRATE:MEASURE-HELD ;
 
 : TRY-TWICE ( -- )
    s" : NLS-Z3-N ( n n -- n ) {: a:n a:n :} a ;"
-   2 1 REGS NMIGRATE:MEASURE-HELD ;
+   2 1 NMIGRATE:MEASURE-HELD ;
 
 public
 

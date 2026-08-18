@@ -47,8 +47,6 @@ package CODEGEN-MIGRATED5
 
 private
 
-8 constant REGS                   \ general registers a straight-line routine may use
-
 \ ---- the two callees every row reaches through --------------------------------
 \ The corpus's own two, verbatim but for the `-N`. They are not rows and they are
 \ not measured: they are what the rows call, migrated so that the new column's
@@ -56,48 +54,48 @@ private
 
 : C5-LONG ( -- )
    s" : C5-LONG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : C5-PAIR ( -- )
    s" : C5-PAIR-N ( n n -- n n ) {: a:n b:n :} a 3 * b 5 xor + dup 7 and over 11 * 13 xor + ;"
-   2 2 REGS NMIGRATE:DEFINE ;
+   2 2 NMIGRATE:DEFINE ;
 
 \ ---- the six rows -------------------------------------------------------------
 
 \ The pure shape: one call, in tail position, and nothing else.
 : TAIL-BIG ( -- )
    s" : TAIL-BIG-N ( n -- n ) C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ Work before the tail call.
 : TAIL-WORK ( -- )
    s" : TAIL-WORK-N ( n -- n ) 1 + C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ The control: work after the call, so the call is not in tail position.
 : NONTAIL ( -- )
    s" : NONTAIL-N ( n -- n ) C5-LONG-N 1 + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ The second copy of the pure shape, and the callee of TAIL-CHAIN-N.
 : TAIL-MID ( -- )
    s" : TAIL-MID-N ( n -- n ) C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ A tail call to a word that is itself nothing but a tail call.
 : TAIL-CHAIN ( -- )
    s" : TAIL-CHAIN-N ( n -- n ) TAIL-MID-N ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ The pure shape at arity (2 -> 2).
 : TAIL-PAIR ( -- )
    s" : TAIL-PAIR-N ( n n -- n n ) C5-PAIR-N ;"
-   2 2 REGS NMIGRATE:DEFINE ;
+   2 2 NMIGRATE:DEFINE ;
 
 \ A real call and then a tail call.
 : TAIL-AFTER ( -- )
    s" : TAIL-AFTER-N ( n -- n ) C5-LONG-N C5-LONG-N ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 public
 

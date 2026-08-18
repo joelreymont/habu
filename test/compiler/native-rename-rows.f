@@ -72,8 +72,6 @@ require src/compiler/native/migrate.f
 package NRR
 private
 
-8 constant REGS
-
 \ ---- the bodies the engine compiles ------------------------------------------
 : MK ( n -- option<n> )                        OPTION:SOME ;
 
@@ -274,7 +272,7 @@ private
 variable M-A   variable M-U   variable M-IN   variable M-OUT
 
 : MIGRATE-RC ( -- n )
-   [: M-A @ M-U @ M-IN @ M-OUT @ REGS NMIGRATE:DEFINE ;] catch ;
+   [: M-A @ M-U @ M-IN @ M-OUT @ NMIGRATE:DEFINE ;] catch ;
 
 : TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}
    a M-A !  u M-U !  in M-IN !  out M-OUT !

@@ -8,18 +8,17 @@
 \ file's account below is about.
 \
 \ THE REFUSAL THAT WAS, AND WHAT ACTUALLY CLOSED IT. The corpus's own text, handed
-\ to the same migration entry every other row here uses, with the largest register
-\ pool the architecture allows, threw -8508 E-A64RA-SPILL:
+\ to the same migration entry every other row here uses, threw -8508
+\ E-A64RA-SPILL:
 \
 \     : PRESSURE-LOOP-N ( ptr n n -- n ) {: base:ptr len:n :}
 \        0 len 0 ?do base @ base 8 + @ ... base 104 + @ + + + + + + + + + + + + + +
 \        loop ;
 \
-\ It was never the budget. The same body with THIRTEEN fields compiled at eighteen
-\ registers and the fourteen-field body was refused at every budget between one
-\ and eighteen; nineteen is not a budget at all, because src/compiler/a64-effect.f
-\ refuses x18 in a routine's register set (E-A64EFF-GPR) and the platform reserves
-\ it. The wall was fourteen values live at once inside a LOOP BODY, exactly where
+\ It was never the budget. The same body with THIRTEEN fields compiled where the
+\ fourteen-field body was refused, at every budget it was tried under, and the
+\ pool is no longer a number anybody states: NABI:SCRATCH answers it. The wall was
+\ fourteen values live at once inside a LOOP BODY, exactly where
 \ src/compiler/native/regalloc.f says it is: MB-SPILLABLE? will not take a class
 \ defined or read in a block that is neither the entry nor the exit, because a
 \ frame access there would sit where the memory order cannot be stated.
@@ -34,10 +33,11 @@
 \ computed. The row holds no loop and never holds fourteen values inside one,
 \ which is also what the C twin does with the same program.
 \
-\ AND THE PRE-HEADER HAS A WALL OF ITS OWN, TWO WIDER. tools/codegen-spill-probe.f
-\ straddles it: fifteen fields read a turn compile and sixteen are refused with
-\ the same E-A64RA-SPILL, where the pair was thirteen and fourteen before the move
-\ landed. This corpus's fourteen sit inside that pair.
+\ AND THE PRE-HEADER HAS A WALL OF ITS OWN, WELL ABOVE THIS ROW.
+\ tools/codegen-spill-probe.f straddles it: twenty fields read a turn compile,
+\ and above that the shape meets the migration context's mapping and the register
+\ allocator in turn, which is why that file asserts a CODE and not just a
+\ refusal. This corpus's fourteen sit well inside all of it.
 \
 \ CALL-PRESSURE WAS THE SECOND GAP AND IS NOW A ROW, AND WHAT CLOSED IT IS NOT
 \ THE ALLOCATOR. That row holds eight values across a call inside a loop, and it
@@ -51,14 +51,14 @@
 \ (src/compiler/native/elaborate.f CALL-KEEPS?) and hands the local over only
 \ when the answer is no. This row's callee is the chain's own C-LONG-N, which
 \ published a record, so its eight values stay in registers the callee leaves
-\ alone and the body compiles at the same eighteen.
+\ alone and the body compiles.
 \
 \ WHICH IS NOT THE SAME AS SAYING THE CROSSING NEVER COSTS ANYTHING. Against a
 \ callee with NO record - every word the engine's own emitter compiled, and every
-\ `execute` - the locals still travel and the wall on this shape is still there,
-\ one value lower at six. tools/codegen-spill-probe.f straddles both walls with
-\ the corpus's own C-LONG compiled each way, so what the record is worth is a
-\ measurement in a suite and not a sentence here.
+\ `execute` - the values still travel and the wall on this shape is still there,
+\ one value lower. tools/codegen-spill-probe.f straddles both walls with the
+\ corpus's own C-LONG compiled each way and pins both counts, so what the record
+\ is worth is a measurement in a suite and not a sentence here.
 \
 \ THE WALL ON THIS SHAPE MOVED BY ONE BEFORE THAT, AND THE ROW WAS RE-DERIVED
 \ RATHER THAN RE-PINNED. It was at seven until the selection stage began emitting

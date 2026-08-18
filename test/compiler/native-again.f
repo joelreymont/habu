@@ -109,31 +109,29 @@ package NAG-MIGRATED
 
 private
 
-18 constant REGS
-
 : UP ( -- )
    s" : NAG-UP-N ( n -- n ) begin dup 5 < if 1 + else exit then again ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NAG-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : CALL ( -- )
    s" : NAG-CALL-N ( n n -- n n ) begin over 1 < if exit then swap 1 - swap NAG-CALLEE-N again ;"
-   2 2 REGS NMIGRATE:DEFINE ;
+   2 2 NMIGRATE:DEFINE ;
 
 : LOCAL ( -- )
    s" : NAG-LOCAL-N ( n n n -- n n ) {: k:n :} begin over 1 < if exit then swap 1 - swap NAG-CALLEE-N k + again ;"
-   3 2 REGS NMIGRATE:DEFINE ;
+   3 2 NMIGRATE:DEFINE ;
 
 : ACC ( -- )
    s" : NAG-ACC-N ( n -- n n ) 0 swap begin dup 0 = if drop negate 1 - throw then swap over + swap 1 - again ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 : AGAIN-LOCAL ( -- )
    s" : NAG-AGAIN-LOCAL-N ( n -- n ) {: again:n :} again again + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 public
 
@@ -153,8 +151,6 @@ package NAG-TEST
 
 private
 
-18 constant REGS
-
 \ How many loops a published routine's emitted code still holds. A back edge is
 \ what a loop IS in emitted code, and tools/codegen-loop-inventory.f decides one
 \ by walking the span's own control flow.
@@ -168,7 +164,7 @@ private
 \ Compiling a body without publishing anything, so a refusal can be measured at
 \ the register budget that reaches it and nothing is left behind on the way out.
 : MEASURE-AT ( ptr u8 n n n -- )
-   REGS NMIGRATE:MEASURE-HELD ;
+   NMIGRATE:MEASURE-HELD ;
 
 \ One source line through the engine's own compiler, caught. What it answers is
 \ whether the ENGINE and the CHECKER accept the text at all, which is a different

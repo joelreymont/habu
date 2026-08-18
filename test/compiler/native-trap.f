@@ -490,10 +490,9 @@ private
 \ with no frame and no saved return address (src/compiler/native/abi.f
 \ NORET-FRAMED). The victim returns 2*0, control falls into the trap, and the
 \ process ends with the callee's name and ENGINE-ERROR:CODE-CERT.
-18 constant MIG-REGS
 
 TRUSTED: MIG ( ptr u8 n n n -- )
-   MIG-REGS NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : NORET-RET-BODY ( IR-CTX:ctx -- )
    HIR-MOD
@@ -636,10 +635,9 @@ variable CHILD-MODE-N
 \ nowhere - which is what dropping the reserve and the link save IS - while the
 \ data-stack pointer still moves, so a routine that emitted nothing at all
 \ would not pass either.
-18 constant BYTES-REGS
 
 TRUSTED: BYTES-MIG ( ptr u8 n n n -- )
-   BYTES-REGS NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : MIG-DEAD-BYTES-CASE ( -- )
    s" : NTB ( n -- ) drop E-A-EMPTY throw ;" 1 0 BYTES-MIG

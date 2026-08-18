@@ -79,10 +79,6 @@ package NREACH-TEST
 \ written down twice and drifting.
 public
 
-8 constant REGS                      \ scratch registers the migrated routines may use
-12 constant WIDE-REGS                \ enough for the pressure body below to keep eight sums live
-3 constant NARROW-REGS               \ and few enough that the wide row is strictly wider
-
 private
 
 4 constant INSN-BYTES
@@ -356,9 +352,9 @@ NREACH-TEST:BEFORE-CASES
 \ a package and its callers are moved afterwards.
 package NRT-CHAIN
 public
-s" : NRT-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE
-s" : NRT-TINY ( n -- n ) 7 and ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE
-s" : NRT-ARITY ( n n -- n ) + 1 + 2 + 3 + 4 + 5 + ;" 2 1 NREACH-TEST:REGS NMIGRATE:DEFINE
+s" : NRT-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 NMIGRATE:DEFINE
+s" : NRT-TINY ( n -- n ) 7 and ;" 1 1 NMIGRATE:DEFINE
+s" : NRT-ARITY ( n n -- n ) + 1 + 2 + 3 + 4 + 5 + ;" 2 1 NMIGRATE:DEFINE
 ;package
 
 \ The same body once more, compiled by the ENGINE under the same tail. Nothing
@@ -390,13 +386,13 @@ public
 package NRT-NARROW
 public
 s" : NRT-CL ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 NREACH-TEST:NARROW-REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
 ;package
 
 package NRT-WIDE-P
 public
 s" : NRT-CL ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + + + + + + + + ;"
-   1 1 NREACH-TEST:WIDE-REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
 ;package
 
 \ A caller of the narrow routine, compiled after it, so the refused move has
@@ -409,7 +405,7 @@ public
 \ A migrated routine that calls the word it shares its name with.
 package NRT-SELFP
 public
-s" : NRT-SELF ( n -- n ) NRT-BASE:NRT-SELF 1 + ;" 1 1 NREACH-TEST:REGS NMIGRATE:DEFINE
+s" : NRT-SELF ( n -- n ) NRT-BASE:NRT-SELF 1 + ;" 1 1 NMIGRATE:DEFINE
 ;package
 
 package NREACH-TEST

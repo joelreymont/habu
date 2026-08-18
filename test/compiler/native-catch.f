@@ -41,12 +41,10 @@ package NCA-TEST
 
 private
 
-18 constant REGS
-
 \ Compiling a body without publishing anything, so a refusal can be measured with
 \ nothing left behind on the way out.
 : MEASURE-AT ( ptr u8 n n n -- )
-   REGS NMIGRATE:MEASURE-HELD ;
+   NMIGRATE:MEASURE-HELD ;
 
 \ ---- reading the windows a recorded definition's catch sites took -------------
 \ The chain's own reader, asked about the tape the migration above just recorded.
@@ -332,55 +330,53 @@ package NCA-MIGRATED
 
 private
 
-18 constant REGS
-
 
 : D1 ( -- )
    s" : NCA-D1-N ( n -- n n ) [: NCA-CLOB ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 : D2 ( -- )
    s" : NCA-D2-N ( n -- n n ) [: NCA-OK1 ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 : D4 ( -- )
    s" : NCA-D4-N ( n -- n n ) [: 1+ ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 : D5 ( -- )
    s" : NCA-D5-N ( n -- n ) 3 0 ?do [: NCA-OK1 ;] catch drop loop ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : D6 ( -- )
    s" : NCA-D6-N ( n -- n n ) [: NCA-DEEP1 ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 : D7 ( -- )
    s" : NCA-D7-N ( n -- n n ) [: NCA-WIDE ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 : D8 ( -- )
    s" : NCA-D8-N ( n n -- n n n ) [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;"
-   2 3 REGS NMIGRATE:DEFINE ;
+   2 3 NMIGRATE:DEFINE ;
 
 : D9 ( -- )
    S\" : NCA-D9-N ( n -- n n ) s\q hi\q 2drop [: NCA-OK1 ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 : PT ( -- )
    s" : NCA-PT-N ( n -- n n n ) 42 >r [: NCA-CLOB ;] catch r> ;"
-   1 3 REGS NMIGRATE:DEFINE ;
+   1 3 NMIGRATE:DEFINE ;
 
 : PN ( -- )
    s" : NCA-PN-N ( n -- n n n ) 42 >r [: NCA-OK1 ;] catch r> ;"
-   1 3 REGS NMIGRATE:DEFINE ;
+   1 3 NMIGRATE:DEFINE ;
 
 \ The caught body holding a control structure of its own, which used to be the
 \ ceiling this file's last refusal case pinned. It calls nothing, so it goes
 \ through the entry that stages no callee.
 : BC ( -- )
    s" : NCA-BC-N ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;"
-   1 2 REGS NMIGRATE:DEFINE ;
+   1 2 NMIGRATE:DEFINE ;
 
 public
 
@@ -401,10 +397,8 @@ package NCA-DIFF
 
 private
 
-18 constant REGS
-
 : MEASURE-AT ( ptr u8 n n n -- )
-   REGS NMIGRATE:MEASURE-HELD ;
+   NMIGRATE:MEASURE-HELD ;
 
 \ THE TWO ANSWERS ARE BOUND BEFORE EITHER IS COMPARED, because a catch site
 \ leaves TWO cells and a bare pair of comparators over four stack cells would

@@ -235,7 +235,7 @@ $F8400000 constant LDUR-OP
 \ one because a one-addition body is one the chain COPIES into its caller instead
 \ of calling: the head of this file says why that would leave nothing to measure.
 : MIGRATE-CALLEE ( -- )
-   s" : NCLOB-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCLOB-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 NMIGRATE:DEFINE ;
 
 \ The same body, compiled by the ENGINE and never migrated. Nothing knows what it
 \ destroys and nothing ever will, so a call site that reaches it saves
@@ -283,11 +283,11 @@ $F8400000 constant LDUR-OP
 
 : MIGRATE-NARROW ( -- )
    s" : NCLOB-NARROW ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-STEP NCLOB-STEP loop ;"
-   CALL-IN CALL-OUT REGS NMIGRATE:DEFINE ;
+   CALL-IN CALL-OUT NMIGRATE:DEFINE ;
 
 : MIGRATE-WIDE ( -- )
    s" : NCLOB-WIDE ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-ENGINE-STEP NCLOB-ENGINE-STEP loop ;"
-   CALL-IN CALL-OUT REGS NMIGRATE:DEFINE ;
+   CALL-IN CALL-OUT NMIGRATE:DEFINE ;
 
 : NARROW-CASES ( -- )
    s" both callers answer what their body says, on the same inputs" T-LABEL
@@ -360,35 +360,41 @@ $F8400000 constant LDUR-OP
 \ count is asserted to BE the number of registers the row names, so a change to
 \ either has to be a change to both.
 \
-\ THE CONTROL IS THE SAME BODY ONE VALUE SMALLER, against the same callee at the
-\ same budget, because without it "spills three" could mean "always spills three".
-\ One sum fewer and the allocator has room to keep every live value out of the
-\ row, and the count drops to the caller's own entry traffic.
+\ THE CALLER IS SIZED AGAINST THE MACHINE, not against a budget: no caller states
+\ one any more, so the pressure has to be real. NABI:SCRATCH leaves a routine
+\ twenty-four registers and this row names three of them, so a caller carrying
+\ twenty-two sums and the call's own result across the call has exactly three
+\ values with nowhere to sit.
+\
+\ THE CONTROL IS THE SAME BODY ONE VALUE SMALLER, against the same callee,
+\ because without it "spills three" could mean "always spills three". One sum
+\ fewer and the allocator has room to keep every live value out of the row, and
+\ the count drops to the caller's own entry traffic.
 : MIGRATE-PRESSURE-CALLEE ( -- )
    s" : NCLOB-PSTEP ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : DEFINE-PRESSURE-ENGINE-CALLEE ( -- )
    s" : NCLOB-ENGINE-PSTEP ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;" EV ;
 
 : MIGRATE-PRESSURE-NARROW ( -- )
-   s" : NCLOB-PN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s NCLOB-PSTEP + + + + + + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCLOB-PN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s NCLOB-PSTEP + + + + + + + + + + + + + + + + + + + + + + ;"
+   1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-PRESSURE-WIDE ( -- )
-   s" : NCLOB-PW ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s NCLOB-ENGINE-PSTEP + + + + + + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCLOB-PW ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s NCLOB-ENGINE-PSTEP + + + + + + + + + + + + + + + + + + + + + + ;"
+   1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-PRESSURE-CONTROL ( -- )
-   s" : NCLOB-PC ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s NCLOB-PSTEP + + + + + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCLOB-PC ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s NCLOB-PSTEP + + + + + + + + + + + + + + + + + + + + + ;"
+   1 1 NMIGRATE:DEFINE ;
 
 : PRESSURE-CASES ( -- )
    s" both pressure callers answer what their body says" T-LABEL
-   s" 5 NCLOB-PN" EV-N 304 T=
-   s" 5 NCLOB-PW" EV-N 304 T=
-   s" 0 NCLOB-PN" EV-N 70 T=
-   s" 0 NCLOB-PW" EV-N 70 T=
+   s" 5 NCLOB-PN" EV-N 616 T=
+   s" 5 NCLOB-PW" EV-N 616 T=
+   s" 0 NCLOB-PN" EV-N 302 T=
+   s" 0 NCLOB-PW" EV-N 302 T=
 
    s" the pressure callee really destroys three registers" T-LABEL
    s" NCLOB-PSTEP" ENTRY-OF GPR-AT $7 T=
@@ -400,8 +406,8 @@ $F8400000 constant LDUR-OP
    s" NCLOB-PN" DS-LOADS 3 T=
 
    s" while its engine-callee twin, with no room at all, spills every one" T-LABEL
-   s" NCLOB-PW" DS-STORES 8 T=
-   s" NCLOB-PW" DS-LOADS 8 T=
+   s" NCLOB-PW" DS-STORES 24 T=
+   s" NCLOB-PW" DS-LOADS 24 T=
 
    s" and one value fewer fits inside the room, leaving only its own traffic" T-LABEL
    s" NCLOB-PC" DS-STORES 1 T=
@@ -421,7 +427,7 @@ variable GONE-ENTRY
 
 : BUILD-RECLAIMED ( -- )
    NCLOB:ROWS ROWS-BEFORE !
-   s" : NCLOB-GONE ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NCLOB-GONE ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 NMIGRATE:DEFINE
    s" NCLOB-GONE" ENTRY-OF GONE-ENTRY ! ;
 
 \ The word that takes the freed slot is compiled by the ENGINE, so nothing knows
@@ -461,15 +467,14 @@ variable GONE-ENTRY
 \ caller answer 86. Its twin is the identical body against the engine-compiled
 \ callee that has never had a row, so the two counts are the same measurement of
 \ the same discipline and the comparison needs no number written down here.
-14 constant RECLAIM-REGS
 
 : MIGRATE-RECLAIM-CALLER ( -- )
    s" : NCLOB-RECYCLED-CALLER ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s NCLOB-RECYCLED + + + + + + + + + + ;"
-   1 1 RECLAIM-REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-RECLAIM-TWIN ( -- )
    s" : NCLOB-RECYCLED-TWIN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s NCLOB-ENGINE-STEP + + + + + + + + + + ;"
-   1 1 RECLAIM-REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : RECLAIM-CALLER-CASES ( -- )
    s" a caller of the word at a reclaimed slot computes what its body says" T-LABEL
@@ -510,7 +515,7 @@ variable SEED-ROW
    s" : NCLOB-ANCHOR ( -- ) ;" EV ;
 
 : ORDER-MIGRATE ( -- )
-   s" : NCLOB-REPLAY ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCLOB-REPLAY ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 NMIGRATE:DEFINE ;
 
 : ORDER-CASES ( -- )
    ORDER-ANCHOR

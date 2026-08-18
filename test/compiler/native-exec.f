@@ -38,7 +38,7 @@ package ARRAY
 : NX-A-SRC ( -- ptr u8 n )
    s" : A-MAPI! ( ptr a len [ idx a -- a ] -- ) {: arr:ptr len q :} len A-CHECK-WHOLE len LEN>N 0 ?do i A-IDX arr len i A-IDX A@ q execute arr len i A-IDX A! loop ;" ;
 : NX-A-GO ( -- )
-   NX-A-SRC 3 0 12 NMIGRATE:DEFINE ;
+   NX-A-SRC 3 0 NMIGRATE:DEFINE ;
 NX-A-GO
 ;package
 
@@ -126,10 +126,10 @@ $94000000 constant BL-FORM
 \ rather than increments: a routine that never entered the body at all, and
 \ simply handed its argument back, answers correctly for anything symmetric.
 : DEF-APPLY ( -- )
-   s" : NX-APPLY ( [ n -- n ] n -- n ) swap execute ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NX-APPLY ( [ n -- n ] n -- n ) swap execute ;" 2 1 NMIGRATE:DEFINE ;
 
 : DEF-LOCAL ( -- )
-   s" : NX-LOCAL ( [ n -- n ] n -- n ) {: q v :} v q execute ;" 2 1 REGS
+   s" : NX-LOCAL ( [ n -- n ] n -- n ) {: q v :} v q execute ;" 2 1
    NMIGRATE:DEFINE ;
 
 : PARAM-CASE ( -- )
@@ -175,7 +175,7 @@ $94000000 constant BL-FORM
 \ migration, because a program that executes such a parameter never reaches the
 \ chain at all: the checker refuses the definition itself, measured below.
 : SELF-EXEC ( -- )
-   s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" 1 1 REGS NMIGRATE:MEASURE-HELD ;
+   s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" 1 1 NMIGRATE:MEASURE-HELD ;
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 

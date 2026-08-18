@@ -1811,10 +1811,10 @@ private
 \ PRESSURE-LOOP" was a claim about a compiler, and the honest way to check it -
 \ then and now - is to hand the compiler the corpus's own text. Each body below is
 \ the corpus's, character for character, under the `-N` name
-\ tools/codegen-compare-migrated4.f gives it, at EIGHTEEN registers - the largest
-\ pool src/compiler/a64-effect.f allows, x18 being platform-reserved. Each has a
-\ neighbour beside it on the other side of its wall, because without one
-\ "compiles" and "refused" are both just numbers.
+\ tools/codegen-compare-migrated4.f gives it, at the pool NABI:SCRATCH derives -
+\ no row here states a budget. Each has a neighbour beside it on the other side
+\ of its wall, because without one "compiles" and "refused" are both just
+\ numbers.
 \
 \ THE TWO REFUSALS REACHED ONE RULE BY TWO ROADS AND NEITHER CLOSED BY MOVING
 \ THAT RULE. PRESSURE-LOOP held fourteen values live in a loop body and nothing
@@ -1824,21 +1824,20 @@ private
 \ handing its values over at the call; PRESSURE-LOOP stopped holding its values
 \ in the body at all, because src/compiler/native/loop.f moves reads that cannot
 \ change with the turn into the block above it. The rule is untouched, and the
-\ sixteen-field body below is where it still bites.
+\ twenty-four-field body below is where it still bites.
 
 PTR-VARIABLE TRY-SRC
 variable TRY-U
 variable TRY-IN
-variable TRY-REGS
 
 \ The migration a case is asking about, run where its failure can be read as a
 \ code. A quotation cannot see the enclosing word's locals, so what it needs is
 \ parked - the shape src/compiler/native/migrate.f uses for the same reason.
 : MIGRATE-RC ( -- n )
-   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 TRY-REGS @ NMIGRATE:DEFINE ;] catch ;
+   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 NMIGRATE:DEFINE ;] catch ;
 
-: TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n regs:n :}
-   a TRY-SRC ! u TRY-U ! in TRY-IN ! regs TRY-REGS !
+: TRY ( ptr u8 n n -- n ) {: a:ptr u:n in:n :}
+   a TRY-SRC ! u TRY-U ! in TRY-IN !
    MIGRATE-RC ;
 
 \ The corpus's PRESSURE-LOOP body, character for character.
@@ -1847,8 +1846,8 @@ variable TRY-REGS
 
 \ The same body two fields WIDER, which is the wall the reads meet once they have
 \ been moved: sixteen values in the pre-header is where E-A64RA-SPILL now is.
-: SPILL-16$ ( -- ptr u8 n )
-   s" : PRESSURE-16-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ base 112 + @ base 120 + @ + + + + + + + + + + + + + + + + loop ;" ;
+: SPILL-24$ ( -- ptr u8 n )
+   s" : PRESSURE-24-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base 0 + @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ base 112 + @ base 120 + @ base 128 + @ base 136 + @ base 144 + @ base 152 + @ base 160 + @ base 168 + @ base 176 + @ base 184 + @ + + + + + + + + + + + + + + + + + + + + + + + + loop ;" ;
 
 \ The same body with one field fewer, which was the control for the old wall and
 \ is the count that compiled before the reads moved.
@@ -1880,43 +1879,43 @@ variable TRY-REGS
 \ body compiles. The pair below is the whole of the claim: this text against the
 \ chain's callee compiles, and against the ENGINE's compilation of the same
 \ callee - which published nothing - it is still refused by name.
-: SPILL-CALL-8$ ( -- ptr u8 n )
-   s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop a + b + c + d + e + f + g + len + ;" ;
+: SPILL-CALL-10$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-N ( n n -- n ) {: s:n len:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s len 0 ?do CODEGEN-CORPUS4:C-LONG-N loop + + + + + + + + + + ;" ;
 
 \ The same body, character for character, against the engine's compilation of the
 \ callee instead of the chain's.
-: SPILL-CALL-8-ENG$ ( -- ptr u8 n )
-   s" : CALL-PRESSURE-E-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + g + len + ;" ;
+: SPILL-CALL-10-ENG$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-E-N ( n n -- n ) {: s:n len:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s len 0 ?do CODEGEN-CORPUS4:C-LONG loop + + + + + + + + + + ;" ;
 
 \ The same body against the engine's callee with one value fewer live across the
 \ call, which is the control the refusal above needs.
-: SPILL-CALL-7-ENG$ ( -- ptr u8 n )
-   s" : CALL-PRESSURE-E7-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do CODEGEN-CORPUS4:C-LONG loop a + b + c + d + e + f + ;" ;
+: SPILL-CALL-9-ENG$ ( -- ptr u8 n )
+   s" : CALL-PRESSURE-E9-N ( n n -- n ) {: s:n len:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s len 0 ?do CODEGEN-CORPUS4:C-LONG loop + + + + + + + + + ;" ;
 
 : REFUSAL-CASES ( -- )
-   s" the corpus's own pressure loop compiles at the largest register pool" T-LABEL
-   SPILL-14$ 2 18 TRY 0 T=
+   s" the corpus's own pressure loop compiles at the machine's pool" T-LABEL
+   SPILL-14$ 2 TRY 0 T=
 
    s" and so does the thirteen-field body that compiled before the reads moved" T-LABEL
-   SPILL-13$ 2 18 TRY 0 T=
+   SPILL-13$ 2 TRY 0 T=
 
-   s" and it is width and not the budget: two fields wider is still refused" T-LABEL
-   SPILL-16$ 2 18 TRY E-A64RA-SPILL T=
+   s" and it is width and not the pool: ten fields wider is still refused" T-LABEL
+   SPILL-24$ 2 TRY E-A64RA-SPILL T=
 
-   s" the corpus's own call-pressure loop compiles at the same pool" T-LABEL
-   SPILL-CALL-8$ 9 18 TRY 0 T=
+   s" ten values live across a call to the chain's own callee compile" T-LABEL
+   SPILL-CALL-10$ 2 TRY 0 T=
 
    s" and against a callee that published nothing the same text is refused" T-LABEL
-   SPILL-CALL-8-ENG$ 9 18 TRY E-A64RA-SPILL T=
+   SPILL-CALL-10-ENG$ 2 TRY E-A64RA-SPILL T=
 
-   s" and it is the seventh live value there and not the budget: six compiles" T-LABEL
-   SPILL-CALL-7-ENG$ 9 18 TRY 0 T=
+   s" and it is the tenth live value there and not the pool: nine compiles" T-LABEL
+   SPILL-CALL-9-ENG$ 2 TRY 0 T=
 
    s" a routine of eleven arguments is refused by the place list" T-LABEL
-   WIDE-11$ 11 18 TRY E-A64EFF-SEQ T=
+   WIDE-11$ 11 TRY E-A64EFF-SEQ T=
 
    s" and ten, which is what it holds, is not" T-LABEL
-   WIDE-10$ 10 18 TRY 0 T= ;
+   WIDE-10$ 10 TRY 0 T= ;
 
 \ ---- the cost assertions, which are not scheduled ----------------------------
 \ Everything below turns on a wall clock, so nothing below is reached from MAIN.

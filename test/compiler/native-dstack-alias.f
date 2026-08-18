@@ -93,8 +93,6 @@ variable ANS                         \ where a body leaves its answer
 package NDSA-TEST
 private
 
-8 constant REGS
-
 \ `evaluate` is the metaprogramming boundary the checker does not model, and it
 \ is how a caller is compiled for a word that did not exist when this file was.
 \ Every execution of a migrated body goes through it rather than through a
@@ -111,7 +109,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ Every body below names its callees and the chain resolves each of them off the
 \ dictionary while it elaborates the body, so a migration is all a caller states.
 : MIGRATE ( ptr u8 n n n -- ) {: a:ptr u:n in:n out:n :}
-   a u in out REGS NMIGRATE:DEFINE ;
+   a u in out NMIGRATE:DEFINE ;
 
 \ One run of an engine-compiled body on a fresh data stack, answering what it
 \ left behind. The buffer is re-taken per run so no answer can survive into the

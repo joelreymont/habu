@@ -209,8 +209,6 @@ package NRS-MIGRATED
 
 private
 
-18 constant REGS
-
 variable RC-BAL                      \ what a call to a body-mentions-`>r` word answered
 variable RC-RVAR                     \ and to one whose clause moves nothing
 variable RC-PUSH                     \ and to one whose clause really moves a cell
@@ -220,106 +218,106 @@ variable RC-QUOT                     \ what a body parking a QUOTATION answered
 variable RC-CELL                     \ and the same body parking the plain cell
 
 : TOR ( -- )
-   s" : NRS-TOR-N ( n -- n ) >r 5 r> + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NRS-TOR-N ( n -- n ) >r 5 r> + ;" 1 1 NMIGRATE:DEFINE ;
 
 : FET ( -- )
-   s" : NRS-FET-N ( n -- n ) >r r@ r@ + r> + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NRS-FET-N ( n -- n ) >r r@ r@ + r> + ;" 1 1 NMIGRATE:DEFINE ;
 
 : PAIR ( -- )
-   s" : NRS-PAIR-N ( n n -- n ) 2>r 2r> - ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NRS-PAIR-N ( n n -- n ) 2>r 2r> - ;" 2 1 NMIGRATE:DEFINE ;
 
 : TWOFET ( -- )
-   s" : NRS-2FET-N ( n n -- n ) 2>r 2r@ - 2r> - + ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NRS-2FET-N ( n n -- n ) 2>r 2r@ - 2r> - + ;" 2 1 NMIGRATE:DEFINE ;
 
 : DEEP ( -- )
    s" : NRS-DEEP-N ( n n n -- n ) >r >r >r 1 r> 3 * + r> 5 * + r> 7 * + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : BRANCH ( -- )
    s" : NRS-BRANCH-N ( n -- n ) >r 5 r@ 3 > if r> + else r> - then ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : SPLIT ( -- )
    s" : NRS-SPLIT-N ( n -- n ) >r r@ 4 > if r> 2 * else r> 3 * then ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : HELD ( -- )
    s" : NRS-HELD-N ( n -- n ) >r 0 r@ 3 > if 1 + then r> + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : NEST3 ( -- )
    s" : NRS-NEST3-N ( n -- n ) >r 0 r@ 1 > if r@ 2 > if 1 + else 2 + then else 3 + then r> + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : TWOHELD ( -- )
    s" : NRS-2HELD-N ( n n -- n ) {: a:n b:n :} a >r b >r 0 r@ 3 > if 1 + then r> 3 * + r> 5 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : TWOLOOP ( -- )
    s" : NRS-2LOOP-N ( n n n -- n ) {: a:n b:n lim:n :} a >r b >r 0 lim 0 ?do r@ i + + loop r> 3 * + r> 5 * + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : QLOOP ( -- )
    s" : NRS-QLOOP-N ( n n -- n ) {: k:n lim:n :} k >r 0 lim 0 ?do r@ i + + loop r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DLOOP ( -- )
    s" : NRS-DLOOP-N ( n n -- n ) {: k:n lim:n :} k >r 0 lim 0 do r@ i + + loop r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : CARRY ( -- )
    s" : NRS-CARRY-N ( n n -- n ) {: k:n lim:n :} k >r 0 lim 0 ?do r> dup >r + i + loop r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : WLOOP ( -- )
    s" : NRS-WHILE-N ( n n -- n ) {: k:n lim:n :} k >r 0 begin dup lim < while r@ 1 and + 1 + repeat r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : NESTLOOP ( -- )
    s" : NRS-NESTLOOP-N ( n n -- n ) {: k:n lim:n :} k >r 0 lim 0 ?do 3 0 ?do r@ i + + loop loop r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : AGAINLOOP ( -- )
    s" : NRS-AGAIN-N ( n n -- n ) {: k:n lim:n :} k >r 0 begin 1 + dup lim > if r> + exit then again ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : LEAVELOOP ( -- )
    s" : NRS-LEAVE-N ( n n -- n ) {: k:n lim:n :} k >r 0 lim 0 ?do i 2 > if leave then r@ i + + loop r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DISPATCH ( -- )
    s" : NRS-CASE-N ( n n -- n ) {: k:n sel:n :} k >r sel case 1 of r@ 10 * endof 2 of r@ 20 * endof 30 swap endcase r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NRS-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 
 : CALL ( -- )
    s" : NRS-CALL-N ( n n -- n ) {: k:n s:n :} k >r s NRS-CALLEE-N r> + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : TWOCALL ( -- )
    s" : NRS-2CALL-N ( n n n -- n ) {: a:n b:n s:n :} a >r b >r s NRS-CALLEE-N r> 3 * + r> 5 * + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : CALLLOOP ( -- )
    s" : NRS-CALLLOOP-N ( n n n -- n ) {: k:n s:n lim:n :} k >r s lim 0 ?do NRS-CALLEE-N k + loop r> + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 \ ---- the three callee questions, measured and recorded ------------------------
 \ MEASURE-HELD runs every stage a publication runs and keeps none of it, so a
 \ refusal is the throw it answers with and a compilable body is a zero. The three
 \ bodies differ ONLY in which word they call.
 : TRY-BAL ( -- )
-   s" : NRS-Z1-N ( n -- n ) NRS-BAL 1 + ;" 1 1 REGS NMIGRATE:MEASURE-HELD ;
+   s" : NRS-Z1-N ( n -- n ) NRS-BAL 1 + ;" 1 1 NMIGRATE:MEASURE-HELD ;
 
 : TRY-RVAR ( -- )
-   s" : NRS-Z2-N ( n -- n ) NRS-RVAR 1 + ;" 1 1 REGS NMIGRATE:MEASURE-HELD ;
+   s" : NRS-Z2-N ( n -- n ) NRS-RVAR 1 + ;" 1 1 NMIGRATE:MEASURE-HELD ;
 
 : TRY-PUSH ( -- )
-   s" : NRS-Z3-N ( n -- n ) NRS-PUSH NRS-POP 1 + ;" 1 1 REGS NMIGRATE:MEASURE-HELD ;
+   s" : NRS-Z3-N ( n -- n ) NRS-PUSH NRS-POP 1 + ;" 1 1 NMIGRATE:MEASURE-HELD ;
 
 \ ---- the ceiling, and the depth just below it --------------------------------
 \ SEVENTEEN PARKED CELLS IS ONE PAST WHAT THE COMPILE-TIME RETURN VECTOR HOLDS
@@ -335,11 +333,11 @@ variable RC-CELL                     \ and the same body parking the plain cell
 \ on how many cells a routine may be entered with.
 : TRY-D17 ( -- )
    s" : NRS-Z4-N ( -- n ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> + + + + + + + + + + + + + + + + ;"
-   0 1 REGS NMIGRATE:MEASURE-HELD ;
+   0 1 NMIGRATE:MEASURE-HELD ;
 
 : TRY-D16 ( -- )
    s" : NRS-Z5-N ( -- n ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r >r r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> r> + + + + + + + + + + + + + + + ;"
-   0 1 REGS NMIGRATE:MEASURE-HELD ;
+   0 1 NMIGRATE:MEASURE-HELD ;
 
 \ ---- a parked quotation, and the same body parking a plain cell --------------
 \ THIS IS THE ARRIVAL SHAPE THE REFUSAL WAS WRITTEN FOR, reduced to one line.
@@ -362,10 +360,10 @@ variable RC-CELL                     \ and the same body parking the plain cell
 \ habu-give-the-quotation-df06937c mints the quotation mark a code of its own, and
 \ when it lands the expected code here changes with it.
 : TRY-QUOT ( -- )
-   s" : NRS-Z6-N ( n [ n -- n ] -- n ) >r r> execute ;" 2 1 REGS NMIGRATE:MEASURE-HELD ;
+   s" : NRS-Z6-N ( n [ n -- n ] -- n ) >r r> execute ;" 2 1 NMIGRATE:MEASURE-HELD ;
 
 : TRY-CELL ( -- )
-   s" : NRS-Z7-N ( n [ n -- n ] -- n ) swap >r r> swap execute ;" 2 1 REGS NMIGRATE:MEASURE-HELD ;
+   s" : NRS-Z7-N ( n [ n -- n ] -- n ) swap >r r> swap execute ;" 2 1 NMIGRATE:MEASURE-HELD ;
 
 public
 

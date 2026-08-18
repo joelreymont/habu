@@ -194,10 +194,12 @@ public
 \ so a routine under it may not spill; `RUN-HABU-CALL-SPILL` declares room for
 \ more.
 : LEAF-HABU ( n n n n -- A64EFF:routine )
-   NABI:LEAF ;
+   {: base:n n:n in:n out:n :}
+   base n NABI:POOL in out NABI:LEAF ;
 
 : CALL-HABU ( n n n n -- A64EFF:routine )
-   NABI:CALL ;
+   {: base:n n:n in:n out:n :}
+   base n NABI:POOL in out NABI:CALL ;
 
 \ Allocate registers for a frozen machine module, have the validator accept the
 \ allocation, and emit. Nothing here emits from a claim the validator has not
@@ -268,18 +270,18 @@ public
 \ because a routine value cannot be held in a local.
 : RUN-HABU-SPILL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   c b a u  base n in out sp NABI:LEAF-FRAMED  SELECTED {: m:IR-BUILD:module :}
-   c m  base n in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
+   c b a u  base n NABI:POOL in out sp NABI:LEAF-FRAMED  SELECTED {: m:IR-BUILD:module :}
+   c m  base n NABI:POOL in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
    A64RA:SPILLS N-SPILLED !
    A64RA:SPILLS 0= if
       A64SPILL:RELEASE
-      m  base n in out sp NABI:LEAF-FRAMED  A64RAV:ACCEPT
+      m  base n NABI:POOL in out sp NABI:LEAF-FRAMED  A64RAV:ACCEPT
       c m A64EMIT:EMIT
       exit
    then
    c m a u LOWER {: m1:IR-BUILD:module :}
-   c m1  base n in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
-   m1  base n in out sp NABI:LEAF-FRAMED  A64RAV:ACCEPT
+   c m1  base n NABI:POOL in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
+   m1  base n NABI:POOL in out sp NABI:LEAF-FRAMED  A64RAV:ACCEPT
    c m1 A64EMIT:EMIT ;
 
 \ The same for a routine that calls itself. Its frame already holds the caller's
@@ -288,18 +290,18 @@ public
 \ owners of one frame at once.
 : RUN-HABU-CALL-SPILL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   c b a u  base n in out sp NABI:CALL-FRAMED  SELECTED {: m:IR-BUILD:module :}
-   c m  base n in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
+   c b a u  base n NABI:POOL in out sp NABI:CALL-FRAMED  SELECTED {: m:IR-BUILD:module :}
+   c m  base n NABI:POOL in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
    A64RA:SPILLS N-SPILLED !
    A64RA:SPILLS 0= if
       A64SPILL:RELEASE
-      m  base n in out sp NABI:CALL-FRAMED  A64RAV:ACCEPT
+      m  base n NABI:POOL in out sp NABI:CALL-FRAMED  A64RAV:ACCEPT
       c m A64EMIT:EMIT
       exit
    then
    c m a u LOWER {: m1:IR-BUILD:module :}
-   c m1  base n in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
-   m1  base n in out sp NABI:CALL-FRAMED  A64RAV:ACCEPT
+   c m1  base n NABI:POOL in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
+   m1  base n NABI:POOL in out sp NABI:CALL-FRAMED  A64RAV:ACCEPT
    c m1 A64EMIT:EMIT ;
 
 \ How many values the FIRST walk of the last spilling run put in the frame. A run

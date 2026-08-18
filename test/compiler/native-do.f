@@ -107,47 +107,45 @@ package NDO-MIGRATED
 
 private
 
-18 constant REGS
-
 : TURNS ( -- )
    s" : NDO-TURNS-N ( n n -- n ) {: lim:n st:n :} 0 lim st do 1 + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : QTURNS ( -- )
    s" : NDO-QTURNS-N ( n n -- n ) {: lim:n st:n :} 0 lim st ?do 1 + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : SUM ( -- )
    s" : NDO-SUM-N ( n n -- n ) {: lim:n st:n :} 0 lim st do i + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : QSUM ( -- )
    s" : NDO-QSUM-N ( n n -- n ) {: lim:n st:n :} 0 lim st ?do i + loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : NEST ( -- )
    s" : NDO-NEST-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 do i + loop loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DOQ ( -- )
    s" : NDO-DOQ-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 ?do i + loop loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : QDO ( -- )
    s" : NDO-QDO-N ( n n -- n ) {: a:n b:n :} 0 a 0 ?do b 0 do i + loop loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NDO-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : CALL ( -- )
    s" : NDO-CALL-N ( n n -- n ) {: seed:n len:n :} seed len 0 do NDO-CALLEE-N loop ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : LOCAL ( -- )
    s" : NDO-LOCAL-N ( n n n -- n ) {: k:n seed:n len:n :} seed len 0 do NDO-CALLEE-N k + loop ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 public
 

@@ -55,7 +55,6 @@ TRUSTED: EV ( ptr u8 n -- )
 TRUSTED: EV-N ( ptr u8 n -- n )
    evaluate ;
 
-4 constant REGS
 0 constant GLOBAL-WID
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -160,17 +159,17 @@ $D65F03C0 constant RET-WORD
 \ Each is migrated at top level, so the word it publishes is global and the
 \ callers this suite evaluates afterwards reach it as any program would.
 : DEF-INC ( -- )
-   s" : NQ-INC ( -- [ n -- n ] ) [: 1 + ;] ;" 0 1 REGS NMIGRATE:DEFINE ;
+   s" : NQ-INC ( -- [ n -- n ] ) [: 1 + ;] ;" 0 1 NMIGRATE:DEFINE ;
 
 : DEF-TAKE ( -- )
    s" : NQ-TAKE ( [ n -- n ] n -- n ) swap execute ;" EV ;
 
 : DEF-USE ( -- )
-   s" : NQ-USE ( n -- n ) [: 3 * ;] swap NQ-TAKE ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NQ-USE ( n -- n ) [: 3 * ;] swap NQ-TAKE ;" 1 1 NMIGRATE:DEFINE ;
 
 : DEF-THREE ( -- )
    s" : NQ-THREE ( -- n [ n n -- n ] [ n n n -- n ] ) 0 [: drop ;] [: drop drop ;] ;"
-   0 3 REGS NMIGRATE:DEFINE ;
+   0 3 NMIGRATE:DEFINE ;
 
 \ A `[:` inside a parenthesised comment and another inside a string literal,
 \ both in front of the real one. Neither is a token the checker's reader hands
@@ -191,12 +190,12 @@ create HID-TXT
 64 constant HID-N
 
 : DEF-HIDDEN ( -- )
-   HID-TXT HID-N 0 1 REGS NMIGRATE:DEFINE ;
+   HID-TXT HID-N 0 1 NMIGRATE:DEFINE ;
 
 \ The pair the recording case needs: a body of the same shape with no quotation
 \ in it, which the recorder DOES keep, and the quotation-carrying one beside it.
 : DEF-PLAIN ( -- )
-   s" : NQ-PLAIN ( n -- n ) 1 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NQ-PLAIN ( n -- n ) 1 + ;" 1 1 NMIGRATE:DEFINE ;
 
 \ ---- the cases ---------------------------------------------------------------
 : RUNS-CASE ( -- )
@@ -282,7 +281,7 @@ create HID-TXT
    s" NQ-DEAD" REC-START OLD-START ! ;
 
 : DEF-DEAD ( -- )
-   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" 1 1 NMIGRATE:DEFINE ;
 
 : DEAD-CASE ( -- )
    DEF-DIE

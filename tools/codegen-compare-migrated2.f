@@ -69,44 +69,40 @@ package CODEGEN-MIGRATED2
 
 private
 
-4 constant REGS                   \ registers a straight-line corpus routine may use
-
 \ A routine with control flow needs more, and says why. A block argument and
 \ every value handed to it across an edge are one class holding one register for
 \ the whole span between them, so a loop's carried values each hold a register
 \ from the pre-header to the latch whether or not they are read in between.
-8 constant LOOP-REGS
 
 \ A loop that carries TWO values round its back edge needs more again.
 \ COUNT-CHAR carries a counter and a cursor and reads a byte between them, and
 \ it is refused with E-A64RA-SPILL at nine registers and accepted at ten; twelve
 \ is the next even number above that floor. TV-NEXT? reaches a table, compares
 \ against two constants and answers a pair, and takes the same budget.
-12 constant WIDE-REGS
 
 : TAG ( -- )
-   s" : TAG-N ( n -- n ) 7 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : TAG-N ( n -- n ) 7 and ;" 1 1 NMIGRATE:DEFINE ;
 
 \ lib/json-read.f:252 with its four constants written as their values - the
 \ first of the two substitutions the head of this file lists.
 : WS? ( -- )
    s" : WS?-N ( n -- bool ) dup 32 = over 9 = or over 10 = or swap 13 = or ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ src/core/checker.f:3542 with its three hexadecimal literals written in
 \ decimal - the second substitution. Two range tests, each leaving the word from
 \ the middle through `exit`, which is the shape.
 : SYM-FOLD-C ( -- )
    s" : SYM-FOLD-C-N ( n -- n ) {: c:n :} c 65 < if c exit then c 90 > if c exit then c 32 or ;"
-   1 1 LOOP-REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : MAX-DIM ( -- )
    s" : MAX-DIM-N ( n n -- n ) {: a:n b:n :} a b > if a else b then ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : COUNT-CHAR ( -- )
    s" : COUNT-CHAR-N ( ptr u8 n n -- n ) {: a:ptr u c :} 0 0 begin dup u < while dup a + c@ c = if swap 1+ swap then 1+ repeat drop ;"
-   3 1 WIDE-REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 \ The walk's callee. Its one name outside the dialect is the corpus's own
 \ binding table, and its spelling is all the chain is told: the engine answers
@@ -115,7 +111,7 @@ private
 : TV-NEXT? ( -- )
    s" : TV-NEXT?-N ( n -- n bool ) dup 7 and 1 = 0= if 0 0= 0= exit then dup 3 rshift cells TV-TABLE + @ dup -1 = if drop 0 0= 0= else nip 0 0= then ;"
    s" TV-TABLE"
-   1 2 WIDE-REGS NMIGRATE:DEFINE-DATA ;
+   1 2 NMIGRATE:DEFINE-DATA ;
 
 \ The walk itself: a loop whose test is a call. Its routine declares the direct
 \ call and the frame its caller's return address goes in, for the reason
@@ -123,14 +119,14 @@ private
 \ so it has to have somewhere to live.
 : T-RES-WALK ( -- )
    s" : T-RES-WALK-N ( n -- n ) begin TV-NEXT?-N while repeat ;"
-   1 1 LOOP-REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ The copy's callee: a pointer and a cell index in, the address of that cell
 \ out. A `ptr n` is one cell of the caller's stack, so its convention is two
 \ values in and one out, which is what the declaration below says.
 : CELL-FIELD ( -- )
    s" : CELL-FIELD-N ( ptr n n -- ptr n ) cells + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 \ The copy itself: a counted loop with TWO calls in its body, one working out
 \ the address it reads and one the address it writes, and three locals live
@@ -145,11 +141,10 @@ private
 \ refused with E-A64RA-SPILL at twelve registers and accepted at fourteen; the
 \ budget is a budget, and dot habu-choose-the-register-a95390ac carries taking
 \ the number off the routine rather than off a line here.
-14 constant COPY-REGS
 
 : VEC-COPY-CELLS ( -- )
    s" : VEC-COPY-CELLS-N ( ptr n ptr n n -- ) {: src:ptr dst:ptr len:n :} len 0 ?do src i CELL-FIELD-N @ dst i CELL-FIELD-N ! loop ;"
-   3 0 COPY-REGS NMIGRATE:DEFINE ;
+   3 0 NMIGRATE:DEFINE ;
 
 public
 

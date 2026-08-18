@@ -189,36 +189,34 @@ package QSC-MIGRATED
 
 private
 
-18 constant REGS
-
 : DEF-P ( -- )
    s" : QSC-P-N ( n -- n ) [: QSC-BAD ;] catch {: rc:n :} rc 0 <> if rc throw then ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : DEF-A ( -- )
    s" : QSC-A-N ( n n -- n ) {: k:n lim:n :} lim 5 * [: QSC-OK1 ;] catch drop k 3 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DEF-T ( -- )
    s" : QSC-T-N ( n n -- n n ) {: k:n lim:n :} lim 5 * [: QSC-BAD ;] catch {: rc:n :} k 3 * + rc ;"
-   2 2 REGS NMIGRATE:DEFINE ;
+   2 2 NMIGRATE:DEFINE ;
 
 : DEF-TWO ( -- )
    s" : QSC-2-N ( n n -- n ) {: a:n b:n :} a 3 * [: QSC-OK1 ;] catch drop a 5 * + b 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DEF-E ( -- )
    s" : QSC-E-N ( n n -- n ) {: k:n lim:n :} [: QSC-OK1 ;] lim 5 * QSC-APPLY k 3 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DEF-L ( -- )
    s" : QSC-L-N ( n -- n ) {: v:n :} 0 3 0 ?do i {: t:n :} v [: QSC-OK1 ;] catch drop t 7 * + + loop ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ The bodies that call and the bodies that do not go through one entry: the
 \ chain resolves whatever name a body writes off the dictionary.
 : DEF ( ptr u8 n n n -- )
-   REGS NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : DEF-IF ( -- )
    s" : QSC-IF-N ( n -- n n ) [: dup 3 > if 3 * else 5 * then ;] catch ;" 1 2 DEF ;
@@ -247,7 +245,7 @@ private
 
 : DEF-EB ( -- )
    s" : QSC-EB-N ( n n -- n ) {: k:n lim:n :} [: dup 3 > if 3 * else 5 * then ;] lim QSC-APPLY k 7 * + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 public
 
@@ -269,13 +267,11 @@ package QSC-DIFF
 
 private
 
-18 constant REGS
-
 \ Compiling a body without publishing anything, so a refusal can be measured with
 \ nothing left behind on the way out. It takes no staged callee, which is why the
 \ refusal cases below are written with bodies that call nothing.
 : MEASURE-AT ( ptr u8 n n n -- )
-   REGS NMIGRATE:MEASURE-HELD ;
+   NMIGRATE:MEASURE-HELD ;
 
 \ BOTH ANSWERS ARE BOUND BEFORE EITHER IS COMPARED. A pair of comparators over
 \ four stack cells holds each answer against ITSELF - the top two are the second

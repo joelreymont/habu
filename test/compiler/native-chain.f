@@ -1368,7 +1368,7 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
    s" a pool naming an engine register is refused before selection" T-LABEL
    [: 20 4 NABI:POOL A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 24 4 NABI:POOL A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
-   [: 20 4 1 1 0 NABI:LEAF-FRAMED DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ ;
+   [: 20 4 NABI:POOL 1 1 0 NABI:LEAF-FRAMED DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ ;
 
 \ ---- what the no-return form declares, against the calling form it is not -----
 \ The two forms describe routines that make the same instruction - an ordinary
@@ -1381,10 +1381,10 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
 \ EACH CONTRACT IS BUILT AT EVERY READ because a routine is thirteen cells and a
 \ value of more than one cell cannot be bound to a typed local - the same reason
 \ src/compiler/native/abi.f states its own contract more than once.
-: NR0 ( -- A64EFF:routine )   0 4 1 0 0 NABI:NORET-FRAMED ;
-: CF0 ( -- A64EFF:routine )   0 4 1 0 0 NABI:CALL-FRAMED ;
-: NR4 ( -- A64EFF:routine )   0 4 1 0 4 NABI:NORET-FRAMED ;
-: CF4 ( -- A64EFF:routine )   0 4 1 0 4 NABI:CALL-FRAMED ;
+: NR0 ( -- A64EFF:routine )   0 4 NABI:POOL 1 0 0 NABI:NORET-FRAMED ;
+: CF0 ( -- A64EFF:routine )   0 4 NABI:POOL 1 0 0 NABI:CALL-FRAMED ;
+: NR4 ( -- A64EFF:routine )   0 4 NABI:POOL 1 0 4 NABI:NORET-FRAMED ;
+: CF4 ( -- A64EFF:routine )   0 4 NABI:POOL 1 0 4 NABI:CALL-FRAMED ;
 
 \ A contract of one control value and one link value, for the pair of questions
 \ LINK-SPLIT-CASE below asks about every way control can leave.

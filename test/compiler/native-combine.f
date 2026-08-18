@@ -151,74 +151,72 @@ package NCT-MIGRATED
 
 private
 
-8 constant REGS
-
 : SQSUM ( -- )
-   s" : NCT-SQSUM-N ( n n -- n ) dup * swap dup * + ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-SQSUM-N ( n n -- n ) dup * swap dup * + ;" 2 1 NMIGRATE:DEFINE ;
 
 : MAD3 ( -- )
-   s" : NCT-MAD3-N ( n -- n ) 3 * 5 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MAD3-N ( n -- n ) 3 * 5 + ;" 1 1 NMIGRATE:DEFINE ;
 
 : ACC ( -- )
    s" : NCT-ACC-N ( n n n -- n ) {: a:n b:n c:n :} a b * c + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : ACC2 ( -- )
    s" : NCT-ACC2-N ( n n n -- n ) {: a:n b:n c:n :} c a b * + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 : TWICE ( -- )
    s" : NCT-TWICE-N ( n n -- n ) {: a:n b:n :} a b * dup + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : SPLIT ( -- )
    s" : NCT-SPLIT-N ( n n -- n ) {: a:n b:n :} a b * dup 7 xor + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : TWO ( -- )
    s" : NCT-TWO-N ( n n n -- n ) {: a:n b:n c:n :} a b * c +  a c * b +  + ;"
-   3 1 REGS NMIGRATE:DEFINE ;
+   3 1 NMIGRATE:DEFINE ;
 
 \ ---- the folded constant -----------------------------------------------------
 \ One small constant added to a value, which is the whole of the pattern.
 : IADD ( -- )
-   s" : NCT-IADD-N ( n -- n ) 5 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-IADD-N ( n -- n ) 5 + ;" 1 1 NMIGRATE:DEFINE ;
 
 \ The same subtracted, which is the other opcode and not a negated immediate.
 : ISUB ( -- )
-   s" : NCT-ISUB-N ( n -- n ) 5 - ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-ISUB-N ( n -- n ) 5 - ;" 1 1 NMIGRATE:DEFINE ;
 
 \ THE CONSTANT ON THE WRONG SIDE OF A SUBTRACTION. `5 - x` subtracts the value
 \ FROM the constant, and the immediate form subtracts the immediate from the
 \ register, so this one must not fold however small the number is.
 : IRSUB ( -- )
-   s" : NCT-IRSUB-N ( n -- n ) 5 swap - ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-IRSUB-N ( n -- n ) 5 swap - ;" 1 1 NMIGRATE:DEFINE ;
 
 \ A constant with a SECOND READER. The literal memo gives both additions one
 \ value, so folding either would delete a move-wide the other still needs.
 : ISHARED ( -- )
    s" : NCT-ISHARED-N ( n n -- n ) {: a:n b:n :} a 9 + b 9 + + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 \ THE TWO ENDS OF THE FIELD. 4095 is the largest immediate the form carries and
 \ folds; 4096 is the first that does not fit and must stay a move-wide. The pair
 \ is what says the bound is the field's and not a number somebody liked.
 : IMAX ( -- )
-   s" : NCT-IMAX-N ( n -- n ) 4095 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-IMAX-N ( n -- n ) 4095 + ;" 1 1 NMIGRATE:DEFINE ;
 
 : IOVER ( -- )
-   s" : NCT-IOVER-N ( n -- n ) 4096 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-IOVER-N ( n -- n ) 4096 + ;" 1 1 NMIGRATE:DEFINE ;
 
 \ ---- the folded comparison ---------------------------------------------------
 \ A comparison against a small constant, whose flag the routine ANSWERS - so the
 \ machine form is the flag-materialising one and what folds is its immediate.
 : CEQ ( -- )
-   s" : NCT-CEQ-N ( n -- bool ) 7 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-CEQ-N ( n -- bool ) 7 = ;" 1 1 NMIGRATE:DEFINE ;
 
 \ THE ROW THE SURVEY IS ABOUT. `0=` is a constant zero and an equality, so it is
 \ this fold's largest single consumer, and zero is a value the field holds.
 : CZERO ( -- )
-   s" : NCT-CZERO-N ( n -- bool ) 0= ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-CZERO-N ( n -- bool ) 0= ;" 1 1 NMIGRATE:DEFINE ;
 
 \ THE THREE ENDS OF THE FIELD. 4095 is the largest value the compare immediate
 \ carries and folds; 4096 is the first that does not fit; -1 is the other side
@@ -227,13 +225,13 @@ private
 \ numbers, which is what makes the trio the check that the bound is the
 \ encoder's field and not somebody's idea of small.
 : CMAX ( -- )
-   s" : NCT-CMAX-N ( n -- bool ) 4095 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-CMAX-N ( n -- bool ) 4095 = ;" 1 1 NMIGRATE:DEFINE ;
 
 : COVER ( -- )
-   s" : NCT-COVER-N ( n -- bool ) 4096 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-COVER-N ( n -- bool ) 4096 = ;" 1 1 NMIGRATE:DEFINE ;
 
 : CNEG ( -- )
-   s" : NCT-CNEG-N ( n -- bool ) -1 = ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-CNEG-N ( n -- bool ) -1 = ;" 1 1 NMIGRATE:DEFINE ;
 
 \ THE CONSTANT ON THE LEFT. `7 x <` compares seven against the value, and the
 \ instruction subtracts the immediate FROM the register - so folding this one
@@ -241,7 +239,7 @@ private
 \ small the number is, and it is the case a fold written as "either operand"
 \ would get wrong while every corpus row still passed.
 : CSWAP ( -- )
-   s" : NCT-CSWAP-N ( n -- bool ) 7 swap < ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-CSWAP-N ( n -- bool ) 7 swap < ;" 1 1 NMIGRATE:DEFINE ;
 
 \ The same fold where the comparison is FUSED INTO A BRANCH rather than
 \ answered, which is the second of the two machine forms and the one that
@@ -258,7 +256,7 @@ private
 \ does. The divisor is never zero on any path that reaches the division.
 : CBR ( -- )
    s" : NCT-CBR-N ( n n -- n ) {: a:n b:n :} a 7 < if 0 exit then a b / ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 \ A constant the comparison shares with a SECOND reader - here the value the
 \ word answers on the arm the comparison chose. Folding it would delete a
@@ -268,25 +266,25 @@ private
 \ would say nothing about the use count.
 : CSHARED ( -- )
    s" : NCT-CSHARED-N ( n n -- n ) {: a:n b:n :} a 9 < if 9 exit then a b / ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 \ ---- the folded mask ---------------------------------------------------------
 \ One small mask over a value, in each of the three bitwise forms. 7 is a run of
 \ three ones, which the logical field describes, so all three fold.
 : MAND ( -- )
-   s" : NCT-MAND-N ( n -- n ) 7 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MAND-N ( n -- n ) 7 and ;" 1 1 NMIGRATE:DEFINE ;
 
 : MORR ( -- )
-   s" : NCT-MORR-N ( n -- n ) 7 or ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MORR-N ( n -- n ) 7 or ;" 1 1 NMIGRATE:DEFINE ;
 
 : MEOR ( -- )
-   s" : NCT-MEOR-N ( n -- n ) 7 xor ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MEOR-N ( n -- n ) 7 xor ;" 1 1 NMIGRATE:DEFINE ;
 
 \ THE MASK ON THE OTHER SIDE. All three forms are commutative, so unlike the
 \ subtraction this one folds too - and it is the case that says the fold reads
 \ both operands rather than only the second.
 : MSWAP ( -- )
-   s" : NCT-MSWAP-N ( n -- n ) 7 swap and ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MSWAP-N ( n -- n ) 7 swap and ;" 1 1 NMIGRATE:DEFINE ;
 
 \ THE MASK THE FIELD CANNOT DESCRIBE. 5 is 0b101 - three bits wide with a hole
 \ in the middle - so it is not a rotated contiguous run and the thirteen-bit
@@ -294,21 +292,21 @@ private
 \ `and`, and it is the row that catches a fold written as a range check: 5 is
 \ SMALLER than 7, so any bound on magnitude would have admitted it.
 : MHOLE ( -- )
-   s" : NCT-MHOLE-N ( n -- n ) 5 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MHOLE-N ( n -- n ) 5 and ;" 1 1 NMIGRATE:DEFINE ;
 
 \ And the two masks with no encoding at all, at the ends the packer refuses:
 \ a mask of no ones and a mask of nothing but ones.
 : MZERO ( -- )
-   s" : NCT-MZERO-N ( n -- n ) 0 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MZERO-N ( n -- n ) 0 and ;" 1 1 NMIGRATE:DEFINE ;
 
 : MALL ( -- )
-   s" : NCT-MALL-N ( n -- n ) -1 and ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCT-MALL-N ( n -- n ) -1 and ;" 1 1 NMIGRATE:DEFINE ;
 
 \ A mask with a SECOND READER, which must not fold for the reason a shared
 \ constant must not: the move-wide the fold would delete is still needed.
 : MSHARED ( -- )
    s" : NCT-MSHARED-N ( n n -- n ) {: a:n b:n :} a 7 and b 7 and + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 public
 
@@ -317,7 +315,7 @@ public
 \ compiled. A migration run at load time would have been overwritten by every
 \ migration after it.
 : ADDR-SURVIVES ( -- )
-   S\" : NCT-ADDR-N ( -- ptr u8 n ) s\" combine\" ;" 0 2 REGS NMIGRATE:DEFINE ;
+   S\" : NCT-ADDR-N ( -- ptr u8 n ) s\" combine\" ;" 0 2 NMIGRATE:DEFINE ;
 
 : RUN ( -- )
    MAND MORR MEOR MSWAP MHOLE MZERO MALL MSHARED

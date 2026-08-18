@@ -14,18 +14,14 @@
 \ out of, and a row that starts being refused becomes a refused row with its own
 \ code rather than a silently shorter column.
 \
-\ ONE REGISTER BUDGET, AND WHY IT IS THE ARCHITECTURE'S. A migration states how
-\ many scratch general registers its routine may use. The old column chose eight
-\ for straight-line subjects and eighteen for subjects with loops in them, which
-\ made every row's number partly a fact about that choice: a refusal under a
-\ budget somebody picked is a fact about the budget. This file states EIGHTEEN
-\ for every routine, which is the whole of what the machine has - the pool starts
-\ at x0 and src/compiler/a64-effect.f refuses x18 in any routine's register set,
-\ because the platform reserves it - so a refusal here is a fact about the
-\ compiler and a size here is what the compiler does with everything it has.
-\ Measured: every subject of tools/codegen-compare-corpus4.f compiles to the
-\ same bytes at eighteen as the old column's per-row choice produced, and the
-\ two it refuses are refused at every budget from one to eighteen.
+\ NO REGISTER BUDGET, AND WHY THAT IS THE POINT. The old column chose eight
+\ scratch registers for straight-line subjects and eighteen for subjects with
+\ loops in them, which made every row's number partly a fact about that choice: a
+\ refusal under a budget somebody picked is a fact about the budget. This file
+\ states nothing. The migration entry derives the pool from NABI:SCRATCH, which
+\ is every general register the machine and the engine leave a routine
+\ (src/compiler/native/abi.f), so a refusal here is a fact about the compiler and
+\ a size here is what the compiler does with everything it has.
 \
 \ NOTHING IS STAGED ABOUT A CALL. The migration entry has a way to hand it a
 \ callee's spelling, entry address and arity, and this file does not use it:
@@ -85,10 +81,6 @@ variable STAGED                   \ the definition PUBLISH is about to compile
 
 public
 
-\ x0..x17: the whole general pool, x18 being platform-reserved. Stated once,
-\ here, because it is a fact about the machine and not a choice about a row.
-18 constant REGS
-
 \ The suffix every derived word carries. It is settable because the judge
 \ measures one corpus at a time and their derived words share one dictionary: a
 \ suffix per corpus is what keeps two corpora that spell a subject the same way
@@ -142,13 +134,13 @@ private
    uses 1 > if E-JUDGE-CHAIN-DATA throw then
    k SUFFIX$ JUDGE-SRC:TEXT$ {: sa:ptr su:n :}
    uses 0= if
-      sa su k JUDGE-SRC:IN k JUDGE-SRC:OUT REGS NMIGRATE:DEFINE exit
+      sa su k JUDGE-SRC:IN k JUDGE-SRC:OUT NMIGRATE:DEFINE exit
    then
    sa su
    k 0 JUDGE-SRC:USE@ JUDGE-SRC:DATA-NAME$
    k JUDGE-SRC:IN
    k JUDGE-SRC:OUT
-   REGS NMIGRATE:DEFINE-DATA ;
+   NMIGRATE:DEFINE-DATA ;
 
 public
 

@@ -44,13 +44,11 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 TRUSTED: EV-B ( ptr u8 n -- bool )
    evaluate ;
 
-8 constant REGS
-
 \ ---- the words the chain compiles --------------------------------------------
 \ Each is migrated through the production entry with its declared arity in
 \ CELLS: `( -- ptr u8 n )` is two cells, an address and a length.
 : DEF ( ptr u8 n n n -- )
-   REGS NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : PLAIN ( -- )
    S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" 0 2 DEF ;

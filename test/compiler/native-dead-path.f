@@ -40,12 +40,10 @@ require src/compiler/native/migrate.f
 package DEADPATH-CHAIN-TEST
 private
 
-18 constant REGS                     \ x0..x17, the whole general pool
-
 \ `evaluate` is the metaprogramming boundary the checker does not model, and
 \ every entry below is one call through it: the migration entry takes SOURCE.
 TRUSTED: DEFINE ( ptr u8 n n n -- )
-   REGS NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ A published routine is called by NAME, and the name does not exist while this
 \ file is being compiled - the migration mints it. So every call below is one
@@ -214,7 +212,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ it would fail here. It is also the entry tools/chain-census.f asks with, which
 \ is what makes the census's answer about these bodies this file's subject too.
 : MEASURE ( ptr u8 n n n -- )
-   REGS NMIGRATE:MEASURE-HELD ;
+   NMIGRATE:MEASURE-HELD ;
 
 : ALL-DEAD-MEASURED ( -- )
    s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" 1 0 MEASURE ;
@@ -249,24 +247,25 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ and a contradiction of the bracket rule above. Both belong to the owners of
 \ src/compiler/native/spill.f and the machine dialect, not to this leaf.
 \
-\ IT IS PINNED AS THE REFUSAL IT IS, at the register budget that reaches it, for
-\ the same reason section 5's refusal was pinned before the form existed. No
-\ census body reaches it: tools/chain-census.f measures at eighteen registers and
-\ nothing in the tree spills a no-return body there.
-: MEASURE-AT ( ptr u8 n n n n -- )
+\ IT IS PINNED AS THE REFUSAL IT IS, for the same reason section 5's refusal was
+\ pinned before the form existed. No census body reaches it: nothing in the tree
+\ spills a no-return body at the machine's own pool.
+: MEASURE-AT ( ptr u8 n n n -- )
    NMIGRATE:MEASURE-HELD ;
 
-\ Four values every one of which is read after the last of them is written, at
-\ four scratch registers. The live twin below it is the same arithmetic with the
-\ result returned instead of thrown away, and it compiles: what the case
-\ measures is the frame, so the pressure has to be real on both sides of it.
+\ Twenty-eight values every one of which is read after the last of them is
+\ written, against the twenty-four registers NABI:SCRATCH leaves a routine, so
+\ four of them reach the frame. The live twin below it is the same arithmetic
+\ with the result returned instead of thrown away, and it compiles: what the case
+\ measures is the frame, so the pressure has to be real on both sides of it - and
+\ since no caller states a budget any more, real means bigger than the machine.
 : SPILL-DEAD ( -- )
-   s" : DPC-SPILLDEAD ( n n n n -- ) {: a:n b:n c:n d:n :} a b * c d * + a c * + b d * + drop E-A-EMPTY throw ;"
-   4 0 4 MEASURE-AT ;
+   s" : DPC-SPILLDEAD ( n -- ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + drop E-A-EMPTY throw ;"
+   1 0 MEASURE-AT ;
 
 : SPILL-LIVE ( -- )
-   s" : DPC-SPILLLIVE ( n n n n -- n ) {: a:n b:n c:n d:n :} a b * c d * + a c * + b d * + ;"
-   4 1 4 MEASURE-AT ;
+   s" : DPC-SPILLLIVE ( n -- n ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;"
+   1 1 MEASURE-AT ;
 
 : SPILL-CASE ( -- )
    s" the same arithmetic spills and compiles when it returns" T-LABEL

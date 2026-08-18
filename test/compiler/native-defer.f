@@ -55,7 +55,6 @@ TRUSTED: CELL@ ( n -- n ) @ ;
 TRUSTED: PCELL@ ( ptr a -- n ) @ ;
 TRUSTED: DBASE-N ( -- n ) data-base ;
 
-4 constant REGS
 0 constant GLOBAL-WID
 
 : REC ( ptr u8 n -- ptr a )
@@ -159,7 +158,7 @@ variable BLN-AT   variable BLN-SEEN
    s" : ND-ACTION ( n -- n ) ND-HOOK ;" EV ;
 
 : DEF-INSTALL ( -- )
-   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" 0 0 REGS NMIGRATE:DEFINE ;
+   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" 0 0 NMIGRATE:DEFINE ;
 
 \ The cell ND-HOOK dispatches through, asked of the same resolver the chain asks.
 : HOOK-CELL ( -- n )

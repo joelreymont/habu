@@ -65,7 +65,6 @@ require src/compiler/native/migrate.f
 package CREATE-AXIOM-TEST
 private
 
-18 constant REGS
 0 constant LOADED               \ what `catch` answers for a source that loaded
 70 constant REJECT-RC           \ src/core/check-hook.f LOWER-CERT-HOOK CHECK-RC (private there)
 
@@ -187,7 +186,7 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 \ MEASURE-HELD runs every stage a held migration runs and keeps none of it, so a
 \ measurement is the chain's own verdict on whether it could compile the body.
 : MEASURE ( ptr u8 n n n -- ) {: a:ptr u:n din:n dout:n :}
-   a u din dout REGS NMIGRATE:MEASURE-HELD ;
+   a u din dout NMIGRATE:MEASURE-HELD ;
 
 : CHAIN-ALONE ( -- )
    s" : CAX-D1 ( -- ) create ;" 0 0 MEASURE ;

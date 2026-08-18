@@ -138,14 +138,9 @@ package CHAIN-CENSUS
 private
 
 \ ---- the register budget ------------------------------------------------------
-\ Not a guess and not a taste: eighteen is the WHOLE pool the ABI can describe.
-\ src/compiler/native/abi.f POOL hands the allocator `n` general registers from
-\ x0, and x18 is platform-reserved, so a contract asking for nineteen cannot be
-\ built at all - src/compiler/a64-effect.f refuses it with E-A64EFF-GPR. Measured
-\ on a counted loop: budgets four through eighteen behave, nineteen and up throw
-\ that refusal. Choosing the maximum is what makes a register-pressure refusal a
-\ fact about the program instead of a fact about how stingy the census was.
-18 constant REGS
+\ There is no longer one to state. The chain takes NABI:SCRATCH - every register
+\ the machine and the engine leave a routine - so a pressure refusal the census
+\ records is a fact about the program and never about how stingy the census was.
 
 \ ---- capacities ---------------------------------------------------------------
 \ Each is a ceiling this tool refuses at rather than overruns, and each is sized
@@ -610,7 +605,7 @@ variable RUN-OUT
 \ Parked, because a quotation cannot read the enclosing word's locals and the run
 \ has to happen inside one so its refusal can be caught.
 : MIGRATE ( -- )
-   SRC-BUF SRC-U @ RUN-IN @ RUN-OUT @ REGS NMIGRATE:MEASURE-HELD ;
+   SRC-BUF SRC-U @ RUN-IN @ RUN-OUT @ NMIGRATE:MEASURE-HELD ;
 
 \ ---- the package scope a section runs in ---------------------------------------
 create PKG-BUF NAME-CAP allot

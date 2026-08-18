@@ -118,7 +118,6 @@ TRUSTED: EV ( ptr u8 n -- )
 TRUSTED: EV-N ( ptr u8 n -- n )
    evaluate ;
 
-8 constant REGS                      \ scratch registers the migrated routines may use
 0 constant GLOBAL-WID
 4 constant INSN-BYTES
 
@@ -460,17 +459,17 @@ variable CTRL-BODY
 \ now that the body is measured instead of derived.
 : MIGRATE-SMALL ( -- )
    s" : NINL-EDGE-IN ( n -- n ) dup + dup + dup + dup + dup + ;"
-   1 1 REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS EDGE-IN-BODY ! ;
 
 \ The same shape with ONE addition more, which is one instruction past the rule.
 : MIGRATE-LARGE ( -- )
    s" : NINL-EDGE-OUT ( n -- n ) dup + dup + dup + dup + dup + dup + ;"
-   1 1 REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS EDGE-OUT-BODY ! ;
 
 : MIGRATE-COPIES ( -- )
-   s" : NINL-COPIES ( n -- n ) NINL-EDGE-IN ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-COPIES ( n -- n ) NINL-EDGE-IN ;" 1 1 NMIGRATE:DEFINE ;
 
 \ The body count of a routine that CALLS has no meaning - a call site publishes
 \ and takes back through the very data-stack forms a routine's own crossings use,
@@ -481,17 +480,17 @@ variable CTRL-BODY
 variable CALLS-BODY-RC
 
 : MIGRATE-CALLS ( -- )
-   s" : NINL-CALLS ( n -- n ) NINL-EDGE-OUT ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-CALLS ( n -- n ) NINL-EDGE-OUT ;" 1 1 NMIGRATE:DEFINE
    [: A64EMIT:BODY-INSNS drop ;] catch CALLS-BODY-RC ! ;
 
 \ A third callee, whose body carries LITERALS. The two above are additions of a
 \ value to itself, so a copy that lost or altered a literal would answer the same
 \ as one that did not; this one answers differently for every literal in it.
 : MIGRATE-LIT ( -- )
-   s" : NINL-LIT ( n -- n ) 3 * 7 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-LIT ( n -- n ) 3 * 7 + ;" 1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-USE-LIT ( -- )
-   s" : NINL-USE-LIT ( n -- n ) NINL-LIT ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-USE-LIT ( n -- n ) NINL-LIT ;" 1 1 NMIGRATE:DEFINE ;
 
 \ The same three bodies as the engine compiles them, so that what the copied
 \ caller answers is held against a second compiler and not only against
@@ -587,18 +586,18 @@ variable CALLS-BODY-RC
 \ about that.
 : MIGRATE-CTRL ( -- )
    s" : NINL-CTRL ( n -- n ) dup 0 < if drop 0 then ;"
-   1 1 REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS CTRL-BODY ! ;
 
 : MIGRATE-VIA-CTRL ( -- )
-   s" : NINL-VIA-CTRL ( n -- n ) NINL-CTRL ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-VIA-CTRL ( n -- n ) NINL-CTRL ;" 1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-CALLER-CALLEE ( -- )
-   s" : NINL-VIA ( n -- n ) NINL-EDGE-IN ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-VIA ( n -- n ) NINL-EDGE-IN ;" 1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-SELF ( -- )
    s" : NINL-SELF ( n -- n ) dup 0 > if 1- RECURSE then ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : BODY-REFUSAL-CASES ( -- )
    s" a callee with a control structure is not recorded" T-LABEL
@@ -662,7 +661,7 @@ variable CALLS-BODY-RC
 \ its row is NINL-EDGE-IN's row, copied.
 : MIGRATE-CASE-NAME ( -- )
    s" : NINL-CASE-NAME ( n -- n ) ninl-edge-in ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : KEY-CASES ( -- )
    s" the two callees are both recorded and have the same arity" T-LABEL
@@ -695,15 +694,15 @@ variable CALLS-BODY-RC
 variable STALE-ENTRY
 
 : MIGRATE-TWICE-FIRST ( -- )
-   s" : NINL-TWICE ( n -- n ) 1 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-TWICE ( n -- n ) 1 + ;" 1 1 NMIGRATE:DEFINE
    s" NINL-TWICE" ENTRY-OF STALE-ENTRY ! ;
 
 : MIGRATE-TWICE-AGAIN ( -- )
    s" undefine NINL-TWICE" EV
-   s" : NINL-TWICE ( n -- n ) 2 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-TWICE ( n -- n ) 2 + ;" 1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-AFTER-TWICE ( -- )
-   s" : NINL-AFTER-TWICE ( n -- n ) NINL-TWICE ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-AFTER-TWICE ( n -- n ) NINL-TWICE ;" 1 1 NMIGRATE:DEFINE ;
 
 : STALE-CASES ( -- )
    s" the old address still holds a row, of the right arity, under this name"
@@ -748,11 +747,11 @@ variable STALE-ENTRY
 : MIGRATE-PKG-CALLEES ( -- )
    s" package NINL-PKG public" EV
    s" : NINL-PKG-IN ( n -- n ) dup + dup + dup + dup + dup + ;"
-   1 1 REGS NMIGRATE:DEFINE
-   s" : NINL-PKG-LIT ( n -- n ) 3 * 7 + ;" 1 1 REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
+   s" : NINL-PKG-LIT ( n -- n ) 3 * 7 + ;" 1 1 NMIGRATE:DEFINE
    s" ;package" EV
    s" package NINL-PKG2 public" EV
-   s" : NINL-PKG-IN ( n -- n ) 9 * ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-PKG-IN ( n -- n ) 9 * ;" 1 1 NMIGRATE:DEFINE
    s" ;package" EV ;
 
 \ A caller compiled INSIDE the package, naming its callee by the bare tail the
@@ -761,12 +760,12 @@ variable STALE-ENTRY
 : MIGRATE-PKG-INSIDE ( -- )
    s" package NINL-PKG public" EV
    s" : NINL-PKG-BARE ( n -- n ) NINL-PKG-IN ;"
-   1 1 REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
    s" ;package" EV ;
 
 : MIGRATE-QUALIFIED ( -- )
    s" : NINL-QUALIFIED ( n -- n ) NINL-PKG:NINL-PKG-IN ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 : QUALIFIED-CASES ( -- )
    s" a routine published inside a package is recorded under its own address"
@@ -811,11 +810,11 @@ variable STALE-ENTRY
 \ whether a definition needs an order answered about the CALL instead of about
 \ the body that replaces it, this migration would be refused by name.
 : MIGRATE-LOAD ( -- )
-   s" : NINL-LOAD ( ptr n -- n ) @ ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-LOAD ( ptr n -- n ) @ ;" 1 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-USE-LOAD ( -- )
    s" : NINL-USE-LOAD ( ptr n -- n ) NINL-LOAD 1 + ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ A division survives a copy as the same operation it was, and that operation is
 \ the guard and the divide together - the machine form branches over a `brk` when
@@ -823,22 +822,22 @@ variable STALE-ENTRY
 \ own instructions, which is what makes a copied `/` fault where a called one
 \ faults.
 : MIGRATE-DIV ( -- )
-   s" : NINL-DIV ( n n -- n ) / ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-DIV ( n n -- n ) / ;" 2 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-USE-DIV ( -- )
    s" : NINL-USE-DIV ( n n -- n ) NINL-DIV 1 + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 \ The same division past the size rule, and a caller that therefore CALLS it.
 \ It is the control the trap count needs: the guard is in the callee either way,
 \ and what the two callers differ in is whether it came with the body.
 : MIGRATE-DIV-BIG ( -- )
    s" : NINL-DIV-BIG ( n n -- n ) / 1 + 1 + 1 + 1 + 1 + 1 + ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : MIGRATE-CALL-DIV ( -- )
    s" : NINL-CALL-DIV ( n n -- n ) NINL-DIV-BIG ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : DEFINE-CELL ( -- )
    s" create NINL-CELL 16 allot" EV
@@ -934,23 +933,23 @@ variable L3-BODY
 variable L4-BODY
 
 : MIGRATE-LIT-CHAIN ( -- )
-   s" : NINL-L1 ( n -- n ) 3 + ;" 1 1 REGS NMIGRATE:DEFINE
-   s" : NINL-L2 ( n -- n ) NINL-L1 7 * ;" 1 1 REGS NMIGRATE:DEFINE
-   s" : NINL-L3 ( n -- n ) NINL-L2 11 * ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-L1 ( n -- n ) 3 + ;" 1 1 NMIGRATE:DEFINE
+   s" : NINL-L2 ( n -- n ) NINL-L1 7 * ;" 1 1 NMIGRATE:DEFINE
+   s" : NINL-L3 ( n -- n ) NINL-L2 11 * ;" 1 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS L3-BODY !
-   s" : NINL-L4 ( n -- n ) NINL-L3 5 - ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-L4 ( n -- n ) NINL-L3 5 - ;" 1 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS L4-BODY !
-   s" : NINL-L5 ( n -- n ) NINL-L4 ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-L5 ( n -- n ) NINL-L4 ;" 1 1 NMIGRATE:DEFINE ;
 
 variable R3-BODY
 
 : MIGRATE-RENAME-CHAIN ( -- )
    s" : NINL-R1 ( n n -- n n ) swap swap swap swap swap swap swap swap ;"
-   2 2 REGS NMIGRATE:DEFINE
-   s" : NINL-R2 ( n n -- n n ) NINL-R1 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE
-   s" : NINL-R3 ( n n -- n n ) NINL-R2 NINL-R1 ;" 2 2 REGS NMIGRATE:DEFINE
+   2 2 NMIGRATE:DEFINE
+   s" : NINL-R2 ( n n -- n n ) NINL-R1 NINL-R1 ;" 2 2 NMIGRATE:DEFINE
+   s" : NINL-R3 ( n n -- n n ) NINL-R2 NINL-R1 ;" 2 2 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS R3-BODY !
-   s" : NINL-R4 ( n n -- n n ) NINL-R3 ;" 2 2 REGS NMIGRATE:DEFINE ;
+   s" : NINL-R4 ( n n -- n n ) NINL-R3 ;" 2 2 NMIGRATE:DEFINE ;
 
 \ The same arithmetic as the whole literal chain, compiled by the ENGINE, so what
 \ the copied chain answers is held against a second compiler.
@@ -1050,11 +1049,11 @@ variable R3-BODY
 \ the bits that reach memory - a crossing that computed anything, or one that was
 \ not made, changes them.
 : MIGRATE-STORE ( -- )
-   s" : NINL-STORE ( r ptr a -- ) ! ;" 2 0 REGS NMIGRATE:DEFINE ;
+   s" : NINL-STORE ( r ptr a -- ) ! ;" 2 0 NMIGRATE:DEFINE ;
 
 : MIGRATE-PUT ( -- )
    s" : NINL-PUT ( r ptr a -- ) {: v:r b:ptr :} v v f+ b NINL-STORE ;"
-   2 0 REGS NMIGRATE:DEFINE ;
+   2 0 NMIGRATE:DEFINE ;
 
 : ARG-CASES ( -- )
    s" a body that stores its argument is recorded as the store it is" T-LABEL
@@ -1103,20 +1102,20 @@ variable FSUM-BODY
 variable FSUM-BIG-BODY
 
 : MIGRATE-FSUM ( -- )
-   s" : NINL-FSUM ( r r -- r ) f+ ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NINL-FSUM ( r r -- r ) f+ ;" 2 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS FSUM-BODY ! ;
 
 : MIGRATE-FSUM-BIG ( -- )
-   s" : NINL-FSUM-BIG ( r r -- r ) f+ 1.0 f* 1.0 f* ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NINL-FSUM-BIG ( r r -- r ) f+ 1.0 f* 1.0 f* ;" 2 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS FSUM-BIG-BODY ! ;
 
 : MIGRATE-FPUT ( -- )
    s" : NINL-FPUT ( r r ptr a -- ) {: x:r y:r b:ptr :} x y NINL-FSUM b ! ;"
-   3 0 REGS NMIGRATE:DEFINE ;
+   3 0 NMIGRATE:DEFINE ;
 
 : MIGRATE-FPUT-BIG ( -- )
    s" : NINL-FPUT-BIG ( r r ptr a -- ) {: x:r y:r b:ptr :} x y NINL-FSUM-BIG b ! ;"
-   3 0 REGS NMIGRATE:DEFINE ;
+   3 0 NMIGRATE:DEFINE ;
 
 \ And the result crossing computes nothing, which this second caller is what
 \ says: it copies the same body and goes on computing with the sum as a double.
@@ -1125,7 +1124,7 @@ variable FSUM-BIG-BODY
 \ reinterpreted answers a different number here.
 : MIGRATE-FUSE ( -- )
    s" : NINL-FUSE ( r r -- r ) NINL-FSUM 1.0 f* ;"
-   2 1 REGS NMIGRATE:DEFINE ;
+   2 1 NMIGRATE:DEFINE ;
 
 : RESULT-CASES ( -- )
    s" the small float callee is recorded and the padded one is not" T-LABEL
@@ -1206,11 +1205,11 @@ variable FULL-BODY
 
 : MIGRATE-FULL ( -- )
    s" : NINL-FULL ( n -- n ) dup + dup + dup + dup + dup + ;"
-   1 1 REGS NMIGRATE:DEFINE
+   1 1 NMIGRATE:DEFINE
    A64EMIT:BODY-INSNS FULL-BODY ! ;
 
 : MIGRATE-CALL-FULL ( -- )
-   s" : NINL-CALL-FULL ( n -- n ) NINL-FULL ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-CALL-FULL ( n -- n ) NINL-FULL ;" 1 1 NMIGRATE:DEFINE ;
 
 : CAP-CASES ( -- )
    s" the table is full, and it is the table that says so" T-LABEL
@@ -1265,12 +1264,12 @@ variable RECLAIM-ENTRY
 \ in the answer rather than in a count.
 : MIGRATE-RECLAIMED ( -- )
    NINL:ROWS RECLAIM-ROWS !
-   s" : NINL-GONE ( n -- n ) 1 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NINL-GONE ( n -- n ) 1 + ;" 1 1 NMIGRATE:DEFINE
    s" NINL-GONE" ENTRY-OF RECLAIM-ENTRY ! ;
 
 : MIGRATE-RECLAIM-CALLER ( -- )
    s" : NINL-RECYCLED-CALLER ( n -- n ) NINL-RECYCLED ;"
-   1 1 REGS NMIGRATE:DEFINE ;
+   1 1 NMIGRATE:DEFINE ;
 
 \ The freed row taken again, by a body small enough to be recorded. Its row is
 \ the index the reclamation gave back, which is what makes the body question
@@ -1279,7 +1278,7 @@ variable RECLAIM-ENTRY
 \ bodies differ in their literal - `2 +` here against the forgotten `1 +` - so
 \ the answer separates them rather than only their lengths.
 : MIGRATE-REUSER ( -- )
-   s" : NINL-REUSER ( n -- n ) 2 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NINL-REUSER ( n -- n ) 2 + ;" 1 1 NMIGRATE:DEFINE ;
 
 : RECLAIM-CASES ( -- )
    s" a small migrated body is recorded and answers its own arithmetic" T-LABEL

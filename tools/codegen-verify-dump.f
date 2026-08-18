@@ -77,7 +77,7 @@ variable SRC-REGS
 \ publishing entries run and retracts everything on the way out, so a body can be
 \ dumped as many times as it takes without filling the address-keyed records.
 : RUN-RC ( -- n )
-   [: SRC @ SRC-U @ SRC-IN @ SRC-OUT @ SRC-REGS @ NMIGRATE:MEASURE-HELD ;]
+   [: SRC @ SRC-U @ SRC-IN @ SRC-OUT @ NMIGRATE:MEASURE-HELD ;]
    catch ;
 
 : LBL ( ptr u8 n -- )   type ;
