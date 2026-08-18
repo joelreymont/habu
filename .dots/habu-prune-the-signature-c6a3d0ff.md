@@ -1,5 +1,5 @@
 ---
-title: The dictionary record carries its signature
+title: The dictionary record points at binary type info
 status: open
 priority: 2
 issue-type: task
@@ -121,4 +121,27 @@ division: compact certified encoding on disk, real structure
 inflated once on first touch. The record's offset points at the
 text; the materialized row then serves all subsequent lookups
 through the normal sym path - no re-parse, no second miss.
+
+FINAL RULING, USER, 2026-08-18 - TEXT IS REFUSED, FLAT: one
+self-contained hb binary; the dictionary carries info per word;
+that info points at the TYPE INFO - a compact BINARY structure.
+Elements: type codes (prims), family ids (stable across engines
+by the eager registry install - plain integers), role marks,
+R-clause/quotation/tyvar encodings as indices. THE CHECKER OWNS
+THE FORMAT: one encoder (at capture, from the certified effect
+row) and one decoder (at the miss point, minting the real
+effect row), both defined beside the effect store in checker.f
+- single owner, no second authority. My text defense measured
+the wrong thing (7.56MB = the live store's certification
+working state, not a canonical record ~tens of bytes/word).
+Interning still applies (identical signatures share one
+structure). Coverage requirement: the full grammar (roles,
+qualified families, R-clauses, quotation effects, tyvars,
+linearity) - the encoder refuses by name anything it cannot
+encode (fail-closed, never silent truncation); round-trip
+acceptance = encode-decode-compare against the certified row
+for ALL captured public words, mutation-backed. The record
+field is the offset into the type-info pool. Prior superseded
+sections (text pool, sidecar, TRUST header) stand as the
+design's history only.
 
