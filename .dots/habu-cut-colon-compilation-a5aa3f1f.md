@@ -8,7 +8,7 @@ created-at: "2026-08-05T10:36:19.611694+02:00"
 
 CG-01, phase 4 of the hard cut: make checked HIR plus the native pipeline the sole compiler for normal colon definitions. habu2.f:7020 COMPILE-EMIT:EM-COMPILE is the single production entry (verified, no drift); route it and bootstrap through the chain, prove self-hosting to a byte-identical fixpoint, run every gate on the sole path, then delete the old emitter and bridges (habu-delete-the-old-679cfd35). An opt-in hook is not completion. Reconcile with habu-cut-over-staged-070d68c8 / habu-self-host-staged-520ab588.
 
-Claim: agent=thecut workspace=.jj-ws/habu-cut-colon-compilation-a5aa3f1f
+Claim: agent=thecut-1 workspace=.jj-ws/habu-thecut
 
 PREREQUISITES (scout-verified 2026-08-05/06):
 1. Data-word addresses (habu-resolve-a-data-a1c8067f) — the one hard capability blocker; lane in flight.
@@ -356,3 +356,42 @@ stale - >r, r>, /mod and depth ALL MIGRATE today (probed through
 the production entry, exit 0). Re-measure the blocker's real
 population from the current census before pricing any cut step
 against this text.
+
+PHASE-1 VERDICTS + RULINGS 2026-08-18 (thecut-1's probe; two
+stale statements corrected: "no-emit landed" is WRONG - what
+landed is no-PUBLISH (EM-COMPILE-HELD? runs the whole old
+emitter and rewinds CP; habu2.f:7644); and the entry is
+COMPILE-EMIT:EM-COMPILE at src/habu/habu2.f:8552 - an emitter-
+GENERATOR laying twelve ENGINE-SIZE-measured slices, not a
+routable word; "route through the chain" = change what the
+engine emits for compile mode + call the chain from the ; tail
+as the check hook is called):
+VERDICTS ADOPTED: (a) data-words LANDED (unlimited undeclared,
+proven by execution); (b) spills landed for leaves, CALLING
+case refused - dda45093 IS CUT-BLOCKING; (c) seed DISSOLVED
+(the chain is baked; the 2026-08-11 unreachability conclusion
+is reversed; docs/bootstrap.md stale - fix rides Phase C);
+(d) the acquire (LDAR on XREF-START) is THE CUT'S, C2;
+(e) a5aa3f1f survives; 520ab588 closes as subsumed AT the
+cut's landing; 679cfd35 stays the payoff.
+ORDER RULED: thecut-1 takes A (A1 budget a95390ac, A2 arity
+ed4f9f87, A3 stream entry b38a83d9) then C; B parallelizes as
+lane capacity frees (review throttle: max 2 code-heavy lanes)
+- B's bag is independent owned dots.
+RISK RULINGS: (1) NO-EMIT LANDS INSIDE PHASE C - "sole path"
+cannot mean running the old emitter to discard its bytes;
+suppress the slices, never rewind-and-waste. (2) 859ea853 is a
+HARD prerequisite of declaring zero refusals - B includes it.
+(3) unchecked 0-set-check spans: PROBE DOT minted (census the
+41 files: which capability gap each span names; the cut's
+prerequisite is shrinking the set to chain-expressible or
+named engine-resident exceptions - the Habu-Only rule applied).
+(4) every chain edit seed-affecting: standing, install --force
+before every gate. (5) json-read-perf: re-measure before C
+(part of C's gate prep). (6) SCOPE: the cut = every colon
+definition compiles through the chain; THE PREFIX BAKE IS A
+PREREQUISITE OF E (the deletion), not of C - boot must not pay
+chain-compile for the prefix, and nothing may need the old
+emitter when it deletes. The spine's prefix-bake item slots
+between D and E.
+
