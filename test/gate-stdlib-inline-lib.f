@@ -689,6 +689,10 @@ public
    \ scheduled runner at all: the only slice that reaches an unselected label is
    \ the bare (ALL) one, and no phase of test/run.f has ever run it.
    s" test/export-package.f" GSI-FORK-INCLUDE
+   \ tools/tokstream.f's fixtures: twelve child engines and a tmpdir tree, 4s
+   \ measured - the same shape and cost as its neighbour above, so it forks here
+   \ rather than sharing an in-process group.
+   s" test/tokstream-suite.f" GSI-FORK-INCLUDE
    \ Forked, not in-process: every case evaluates a source string that defines
    \ global words, and the suite carries the same #FAIL/#CASE/T= vocabulary its
    \ nearest sibling test/using-test.f does. Sharing an in-process group with

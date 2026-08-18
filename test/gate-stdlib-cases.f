@@ -1358,6 +1358,10 @@ SUITE export-keyword-package
    test/export-package.f
 ;SUITE
 
+SUITE tokstream
+   test/tokstream-suite.f
+;SUITE
+
 SUITE using-import
    test/using-test.f
 ;SUITE
