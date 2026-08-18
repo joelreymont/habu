@@ -106,3 +106,19 @@ records share offsets, the name pool's own dedup discipline.
 Measure the interned pool size in the implementation; expected
 well under the naive 60KB.
 
+STRUCTURE-VS-WIRE 2026-08-18 (the user's structure-pointer
+framing, adopted with the measurement): the checker's effect
+store IS the signature structure, and post-first-touch the
+design converges to it - the intake mints a REAL effect row and
+every later lookup hits the structure, never the text. The text
+is the WIRE format only, and the trade is measured: the effect
+store grew 7.56MB for 6798 words (~1.1KB/word, full term graphs
++ node links) vs ~37B/word rendered text before interning - 30x.
+Shipping the structure was also historically impossible (sym
+string pointers; foreign family ids - the latter fixed by the
+eager registry install, the former still real). DWARF-shaped
+division: compact certified encoding on disk, real structure
+inflated once on first touch. The record's offset points at the
+text; the materialized row then serves all subsequent lookups
+through the normal sym path - no re-parse, no second miss.
+
