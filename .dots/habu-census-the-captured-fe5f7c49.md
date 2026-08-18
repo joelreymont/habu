@@ -45,3 +45,22 @@ relying on anon-mmap zero is an environmental assumption that
 merge and snapshot-restore paths can violate and future region
 reuse WILL violate; ~50us buys by-construction. Ruled.
 
+SHAPE RULINGS 2026-08-18 (the recon handoff): (1) THE NARROWING
+IS ADOPTED, superseding my fifth-scalar ruling's letter: S-WDATA
+becomes the RUN TABLE (8B rows, offset u32 + length u32), the
+run COUNT stays derived as length/8 (counts-not-stored working
+correctly), and ONLY THE SPAN is the new scalar - the amendment
+shrinks to exactly the one number that stopped being derivable.
+(2) THE RUN BYTES GET THEIR OWN SECTION (S-WRUNS, SEC-N 17->18)
+- the lane's recommendation adopted for its own reason: every
+row stays fixed-width and the whole-number-of-rows refusal
+stays STATABLE; riding bytes inside variable rows makes that
+refusal impossible to express. VERSION bumps once for both.
+(3) The AGREE trap is on the record: DATA-CAP's drop moves
+AOT-SECTION:BYTES ~2MB, so aot-decl.f + icode.f AOT-SECTION-CAP
++ CODE-CAP-BYTES move IN ONE COMMIT or the metabuild dies at
+load by design. (4) ACAP-MASK-XTCELL's invariant transfers:
+declared cells are EXCLUDED FROM EVERY RUN (no buffer to zero);
+the straddle refusal still fires. The ten walked anchors are
+the implementation map - do not re-find them.
+
