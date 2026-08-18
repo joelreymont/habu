@@ -491,7 +491,7 @@ private
 \ NORET-FRAMED). The victim returns 2*0, control falls into the trap, and the
 \ process ends with the callee's name and ENGINE-ERROR:CODE-CERT.
 
-TRUSTED: MIG ( ptr u8 n n n -- )
+TRUSTED: MIG ( ptr u8 n -- )
    NMIGRATE:DEFINE ;
 
 : NORET-RET-BODY ( IR-CTX:ctx -- )
@@ -504,7 +504,7 @@ TRUSTED: MIG ( ptr u8 n n n -- )
 : NORET-MIG-FORGE ( -- )
    NFIX:BINDING [: NORET-RET-BODY ;] IR-CTX:WITH-CONTEXT
    s" NORET-VICTIM" VICTIM-WID NPUB:REPUBLISH
-   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" 1 1 MIG
+   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" MIG
    s" 0 NTM drop" EV ;
 
 \ ---- running the forge in a child --------------------------------------------
@@ -636,11 +636,11 @@ variable CHILD-MODE-N
 \ data-stack pointer still moves, so a routine that emitted nothing at all
 \ would not pass either.
 
-TRUSTED: BYTES-MIG ( ptr u8 n n n -- )
+TRUSTED: BYTES-MIG ( ptr u8 n -- )
    NMIGRATE:DEFINE ;
 
 : MIG-DEAD-BYTES-CASE ( -- )
-   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" 1 0 BYTES-MIG
+   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" BYTES-MIG
 
    s" a migrated all-dead routine moves the machine stack pointer nowhere"
    T-LABEL
@@ -664,7 +664,7 @@ TRUSTED: BYTES-MIG ( ptr u8 n n n -- )
 \ about, and what would have to be re-chosen if a copied body ever came from
 \ somewhere other than a migration.
 : MIG-CALL-BYTES-CASE ( -- )
-   s" : NTC ( n -- n ) NTRAP-TEST:TRAP-VICTIM 1 + ;" 1 1 BYTES-MIG
+   s" : NTC ( n -- n ) NTRAP-TEST:TRAP-VICTIM 1 + ;" BYTES-MIG
 
    s" a migrated routine that calls and returns moves it twice" T-LABEL
    SPMOVES-IN-EMISSION 2 T=

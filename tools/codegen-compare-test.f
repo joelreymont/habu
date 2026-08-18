@@ -1828,16 +1828,15 @@ private
 
 PTR-VARIABLE TRY-SRC
 variable TRY-U
-variable TRY-IN
 
 \ The migration a case is asking about, run where its failure can be read as a
 \ code. A quotation cannot see the enclosing word's locals, so what it needs is
 \ parked - the shape src/compiler/native/migrate.f uses for the same reason.
 : MIGRATE-RC ( -- n )
-   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 NMIGRATE:DEFINE ;] catch ;
+   [: TRY-SRC @ TRY-U @ NMIGRATE:DEFINE ;] catch ;
 
-: TRY ( ptr u8 n n -- n ) {: a:ptr u:n in:n :}
-   a TRY-SRC ! u TRY-U ! in TRY-IN !
+: TRY ( ptr u8 n -- n ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a TRY-SRC ! u TRY-U !
    MIGRATE-RC ;
 
 \ The corpus's PRESSURE-LOOP body, character for character.
@@ -1894,28 +1893,28 @@ variable TRY-IN
 
 : REFUSAL-CASES ( -- )
    s" the corpus's own pressure loop compiles at the machine's pool" T-LABEL
-   SPILL-14$ 2 TRY 0 T=
+   SPILL-14$ TRY 0 T=
 
    s" and so does the thirteen-field body that compiled before the reads moved" T-LABEL
-   SPILL-13$ 2 TRY 0 T=
+   SPILL-13$ TRY 0 T=
 
    s" and it is width and not the pool: ten fields wider is still refused" T-LABEL
-   SPILL-24$ 2 TRY E-A64RA-SPILL T=
+   SPILL-24$ TRY E-A64RA-SPILL T=
 
    s" ten values live across a call to the chain's own callee compile" T-LABEL
-   SPILL-CALL-10$ 2 TRY 0 T=
+   SPILL-CALL-10$ TRY 0 T=
 
    s" and against a callee that published nothing the same text is refused" T-LABEL
-   SPILL-CALL-10-ENG$ 2 TRY E-A64RA-SPILL T=
+   SPILL-CALL-10-ENG$ TRY E-A64RA-SPILL T=
 
    s" and it is the tenth live value there and not the pool: nine compiles" T-LABEL
-   SPILL-CALL-9-ENG$ 2 TRY 0 T=
+   SPILL-CALL-9-ENG$ TRY 0 T=
 
    s" a routine of eleven arguments is refused by the place list" T-LABEL
-   WIDE-11$ 11 TRY E-A64EFF-SEQ T=
+   WIDE-11$ TRY E-A64EFF-SEQ T=
 
    s" and ten, which is what it holds, is not" T-LABEL
-   WIDE-10$ 10 TRY 0 T= ;
+   WIDE-10$ TRY 0 T= ;
 
 \ ---- the cost assertions, which are not scheduled ----------------------------
 \ Everything below turns on a wall clock, so nothing below is reached from MAIN.

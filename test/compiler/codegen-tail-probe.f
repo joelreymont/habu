@@ -110,7 +110,7 @@ private
 \ have a branch in it.
 : BIG ( -- )
    s" : NTP-BIG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ AND THE CALLER WHOSE CALLEE IS OUTSIDE THE REGION, which is the case the
 \ lowering DECLINES rather than refuses. `abs` is an engine primitive: its code
@@ -123,13 +123,13 @@ private
 \ compilation failure would not be an optimisation.
 : OUTSIDE ( -- )
    s" : OUTSIDE-N ( n -- n ) abs ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ And the caller whose whole body is that call. Its emitted code is one
 \ instruction: the branch.
 : TAILED ( -- )
    s" : TAILED-N ( n -- n ) NTP-BIG-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ THE EMPTY ROUTINE, which is where a recorded length is at its most misleading
 \ and why CODE-BYTES exists. Its emission is a return and nothing else, so the
@@ -140,13 +140,13 @@ private
 \ zero bytes in the chain column is what gave it away.
 : EMPTY ( -- )
    s" : EMPTY-N ( -- ) ;"
-   0 0 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 
 : RUN ( -- )
    s" : LOOPY-N ( ptr n n -- ) {: base:ptr len:n :} len 0 ?do i base i cells + ! loop ;"
-   2 0 NMIGRATE:DEFINE
+   NMIGRATE:DEFINE
    BIG
    TAILED
    OUTSIDE

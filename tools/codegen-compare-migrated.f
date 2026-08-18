@@ -36,10 +36,10 @@
 \ was a reader's job to catch. Here a body that is not a well typed Habu
 \ definition does not compile at all.
 \
-\ WHAT IS STILL STATED. The two arities and the register budget, on the same
-\ line as the source. The checker knows the arities and cannot yet hand them to a
-\ recorded unit (dot habu-bind-checker-env-ed4f9f87); the budget is a budget (dot
-\ habu-choose-the-register-a95390ac).
+\ NOTHING IS STATED BUT THE SOURCE. The two arities used to ride on the same
+\ line and the register budget beside them; the entry reads what the definition
+\ takes and leaves off the checker's certificate now, and derives the pool from
+\ the machine, so neither is a number a row here could get wrong.
 
 require lib/prelude.f
 require src/compiler/native/migrate.f
@@ -55,27 +55,27 @@ private
 \ from the pre-header to the latch whether or not they are read in between.
 
 : NOOP ( -- )
-   s" : NOOP-N ( -- ) ;" 0 0 NMIGRATE:DEFINE ;
+   s" : NOOP-N ( -- ) ;" NMIGRATE:DEFINE ;
 
 : ADD3 ( -- )
-   s" : ADD3-N ( n n n -- n ) + + ;" 3 1 NMIGRATE:DEFINE ;
+   s" : ADD3-N ( n n n -- n ) + + ;" NMIGRATE:DEFINE ;
 
 : SQUARE-SUM ( -- )
-   s" : SQUARE-SUM-N ( n n -- n ) dup * swap dup * + ;" 2 1 NMIGRATE:DEFINE ;
+   s" : SQUARE-SUM-N ( n n -- n ) dup * swap dup * + ;" NMIGRATE:DEFINE ;
 
 : MAX2 ( -- )
-   s" : MAX2-N ( n n -- n ) 2dup < if swap then drop ;" 2 1 NMIGRATE:DEFINE ;
+   s" : MAX2-N ( n n -- n ) 2dup < if swap then drop ;" NMIGRATE:DEFINE ;
 
 : LERP ( -- )
    s" : LERP-N ( n n n -- n ) {: a:n b:n t:n :} b a - t * 100 / a + ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : SUM-TO ( -- )
-   s" : SUM-TO-N ( n -- n ) 0 swap 0 ?do i + loop ;" 1 1 NMIGRATE:DEFINE ;
+   s" : SUM-TO-N ( n -- n ) 0 swap 0 ?do i + loop ;" NMIGRATE:DEFINE ;
 
 : COUNT-DOWN ( -- )
    s" : COUNT-DOWN-N ( n -- n ) begin 1- dup 0 <= until ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The one word whose point is a side effect. The cell it bumps is the corpus's
 \ own, so this routine and the interpreted word write the same memory. Its
@@ -85,22 +85,22 @@ private
 : CELL-BUMP ( -- )
    s" : CELL-BUMP-N ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;"
    s" BUMP-CELL"
-   1 1 NMIGRATE:DEFINE-DATA ;
+   NMIGRATE:DEFINE-DATA ;
 
 : BYTE-SUM ( -- )
    s" : BYTE-SUM-N ( ptr u8 n -- n ) {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The recursion, which is also the plain word-call-and-return shape: the only
 \ corpus routine that is not a leaf, so its contract declares the call and the
 \ frame its caller's return address goes in.
 : FACT ( -- )
    s" : FACT-N ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : BYTE-FIND ( -- )
    s" : BYTE-FIND-N ( ptr u8 n n -- n ) {: a:ptr u:n c:n :} u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 

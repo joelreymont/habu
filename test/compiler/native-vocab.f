@@ -153,8 +153,8 @@ create TXT TEXT-CAP allot
 \ case can drive the chain differently from its neighbour.
 \
 \ THE ONE SEAM WHERE ARITY ENTERS is the same one test/compiler/native-chain.f
-\ names: the declared effect is stated by the caller rather than read off the
-\ checker that just accepted it, until dot habu-bind-checker-env-ed4f9f87 lands.
+\ names: NELAB:COLON takes the two counts as arguments and this suite drives it
+\ directly. The production entry reads them off the checker's certificate.
 : PREP ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !

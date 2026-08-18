@@ -127,47 +127,47 @@ private
 
 : IJ ( -- )
    s" : NJ-IJ-N ( n n -- n ) {: a:n b:n :} 0 a 0 ?do b 0 ?do i 3 * j 5 * + + loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : IJ-DO ( -- )
    s" : NJ-IJ-DO-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 do i 3 * j 5 * + + loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : IJ-DOQ ( -- )
    s" : NJ-IJ-DOQ-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 ?do i 3 * j 5 * + + loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : IJ-QDO ( -- )
    s" : NJ-IJ-QDO-N ( n n -- n ) {: a:n b:n :} 0 a 0 ?do b 0 do i 3 * j 5 * + + loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : GUARD ( -- )
    s" : NJ-IF-N ( n n -- n ) {: a:n b:n :} 0 a 0 ?do b 0 ?do i 1 and 0= if j 3 * + else j 5 * + then loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : TRIPLE ( -- )
    s" : NJ-TRIPLE-N ( n n n -- n ) {: a:n b:n c:n :} 0 a 0 ?do b 0 ?do c 0 ?do i 3 * j 5 * + + loop loop loop ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NJ-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : CALL ( -- )
    s" : NJ-CALL-N ( n n n -- n ) {: seed:n a:n b:n :} seed a 0 ?do b 0 ?do NJ-CALLEE-N j + loop loop ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : EARLY ( -- )
    s" : NJ-LEAVE-N ( n n -- n ) {: a:n b:n :} 0 a 0 ?do b 0 ?do j 3 * + i 2 > if leave then loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : JLOCAL ( -- )
    s" : NJ-JLOCAL-N ( n n n -- n ) {: j:n a:n b:n :} 0 a 0 ?do b 0 ?do j 3 * i 5 * + + loop loop ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : FMA ( -- )
    s" : NJ-FMA-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 do 10 j 4 * + i + + loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 
@@ -204,7 +204,7 @@ private
 
 \ Compiling a body without publishing anything, so a refusal can be measured with
 \ nothing left behind on the way out.
-: MEASURE-AT ( ptr u8 n n n -- )
+: MEASURE-AT ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 \ One source line through the engine's own compiler, caught: whether the ENGINE
@@ -320,15 +320,15 @@ TRUSTED: EV-DEF ( ptr u8 n -- n )
    s" : NJ-OK5 ( -- n ) 0 3 0 ?do [: 0 2 0 ?do j + loop drop ;] catch + loop ;" EV-DEF 0 T=
 
    s" and the chain refuses it, while the same quotation with a literal compiles" T-LABEL
-   [: s" : NJ-QBAD ( -- n ) 0 3 0 ?do 2 0 ?do [: j drop ;] catch + loop loop ;" 0 1 MEASURE-AT ;]
+   [: s" : NJ-QBAD ( -- n ) 0 3 0 ?do 2 0 ?do [: j drop ;] catch + loop loop ;" MEASURE-AT ;]
    E-NELAB-CTRL TTHROWSQ
-   [: s" : NJ-QOK ( -- n ) 0 3 0 ?do 2 0 ?do [: 7 drop ;] catch + loop loop ;" 0 1 MEASURE-AT ;]
+   [: s" : NJ-QOK ( -- n ) 0 3 0 ?do 2 0 ?do [: 7 drop ;] catch + loop loop ;" MEASURE-AT ;]
    0 TTHROWSQ
 
    s" and one counted loop inside the quotation is still one short" T-LABEL
-   [: s" : NJ-QBAD2 ( -- n ) 0 3 0 ?do [: 0 2 0 ?do j + loop drop ;] catch + loop ;" 0 1 MEASURE-AT ;]
+   [: s" : NJ-QBAD2 ( -- n ) 0 3 0 ?do [: 0 2 0 ?do j + loop drop ;] catch + loop ;" MEASURE-AT ;]
    E-NELAB-CTRL TTHROWSQ
-   [: s" : NJ-QI ( -- n ) 0 3 0 ?do [: 0 2 0 ?do i + loop drop ;] catch + loop ;" 0 1 MEASURE-AT ;]
+   [: s" : NJ-QI ( -- n ) 0 3 0 ?do [: 0 2 0 ?do i + loop drop ;] catch + loop ;" MEASURE-AT ;]
    catch E-NELAB-CTRL T<> ;
 
 public

@@ -45,45 +45,46 @@ TRUSTED: EV-B ( ptr u8 n -- bool )
    evaluate ;
 
 \ ---- the words the chain compiles --------------------------------------------
-\ Each is migrated through the production entry with its declared arity in
-\ CELLS: `( -- ptr u8 n )` is two cells, an address and a length.
-: DEF ( ptr u8 n n n -- )
+\ Each is migrated through the production entry, which reads what the definition
+\ takes and leaves off the checker's certificate: `( -- ptr u8 n )` is TWO, an
+\ address and a length, and nothing here states it.
+: DEF ( ptr u8 n -- )
    NMIGRATE:DEFINE ;
 
 : PLAIN ( -- )
-   S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" 0 2 DEF ;
+   S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" DEF ;
 
 : EMPTY ( -- )
-   S\" : NST-EMPTY ( -- ptr u8 n ) s\" \" ;" 0 2 DEF ;
+   S\" : NST-EMPTY ( -- ptr u8 n ) s\" \" ;" DEF ;
 
 \ A body built to fool a reader that re-lexed it: two spaces that must not
 \ collapse, a definition closer, a colon and a comment opener that must not
 \ become syntax, and a trailing word that must not become a token.
 : HOSTILE ( -- )
-   S\" : NST-HOSTILE ( -- ptr u8 n ) s\" a  b ; : ( x\" ;" 0 2 DEF ;
+   S\" : NST-HOSTILE ( -- ptr u8 n ) s\" a  b ; : ( x\" ;" DEF ;
 
 \ A named escape, a hex escape and a quote escape in one body. The quote escape
 \ is the one a decoder that merely scanned for the closing quote would get wrong.
 : ESCAPED ( -- )
-   S\" : NST-ESCAPED ( -- ptr u8 n ) s\\\" a\\tb\\x41\\qc\" ;" 0 2 DEF ;
+   S\" : NST-ESCAPED ( -- ptr u8 n ) s\\\" a\\tb\\x41\\qc\" ;" DEF ;
 
 \ Two sites in ONE definition, writing the same body, so the addresses they push
 \ can be compared against each other.
 : TWICE ( -- )
-   S\" : NST-TWICE ( -- ptr u8 n ptr u8 n ) s\" dup\" s\" dup\" ;" 0 4 DEF ;
+   S\" : NST-TWICE ( -- ptr u8 n ptr u8 n ) s\" dup\" s\" dup\" ;" DEF ;
 
 \ And a second definition writing that same body, so the sharing can be shown to
 \ cross a definition boundary and not only a site boundary.
 : SHARED ( -- )
-   S\" : NST-SHARED ( -- ptr u8 n ) s\" dup\" ;" 0 2 DEF ;
+   S\" : NST-SHARED ( -- ptr u8 n ) s\" dup\" ;" DEF ;
 
 \ A body nothing else in this suite writes, for the counting cases, and a second
 \ definition writing exactly it.
 : LONE ( -- )
-   S\" : NST-LONE ( -- ptr u8 n ) s\" lone-body\" ;" 0 2 DEF ;
+   S\" : NST-LONE ( -- ptr u8 n ) s\" lone-body\" ;" DEF ;
 
 : LONE-AGAIN ( -- )
-   S\" : NST-LONE2 ( -- ptr u8 n ) s\" lone-body\" ;" 0 2 DEF ;
+   S\" : NST-LONE2 ( -- ptr u8 n ) s\" lone-body\" ;" DEF ;
 
 \ ---- what the published words answer -----------------------------------------
 : ROUND-TRIP-CASE ( -- )
@@ -175,8 +176,8 @@ TRUSTED: EV-B ( ptr u8 n -- bool )
 \ the host's DATA base rather than about this compiler. So the chain's side is
 \ pinned as the two relations that carry the claim.
 : COST-PAIR ( -- )
-   S\" : NST-COST-SHORT ( -- ptr u8 n ) s\" hi\" ;" 0 2 DEF
-   S\" : NST-COST-LONG ( -- ptr u8 n ) s\" 12345678901234567890123456789012\" ;" 0 2 DEF ;
+   S\" : NST-COST-SHORT ( -- ptr u8 n ) s\" hi\" ;" DEF
+   S\" : NST-COST-LONG ( -- ptr u8 n ) s\" 12345678901234567890123456789012\" ;" DEF ;
 
 : OLD ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u 0 NPUB:OLD-LEN ;

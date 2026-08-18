@@ -23,8 +23,8 @@
 \ row and assembles no instruction - and, unlike every other caller of the shared
 \ chain fixtures, it does not even state the source text as a line the fixture
 \ lexer will re-read: the tape comes off the engine's own compilation. The only
-\ inputs are the definition's source text and the two counts the elaborator is
-\ still told rather than reads (dot habu-bind-checker-env-ed4f9f87); everything
+\ inputs are the definition's source text and the two counts this suite hands
+\ NELAB:COLON directly, which is that word's own interface; everything
 \ else is produced by the stage before it and checked by the stage after it. That
 \ is what makes this case the chain's acceptance rather than another leaf test:
 \ it can only pass if every leaf agrees with its neighbours about the same
@@ -163,14 +163,13 @@ create TXT TEXT-CAP allot
 \ freeze and everything after it belong to the shared chain fixture, so this word
 \ stops at the point where the two halves meet.
 \
-\ THE ONE SEAM WHERE ARITY ENTERS. `1 1` is the word's declared effect, stated
-\ here rather than read from the checker that just accepted it. The checker knows
-\ - it parsed `( n -- n )` during this very scan - but it publishes an effect
-\ only through a lookup by NAME into its live store, which answers about whoever
-\ carries that name now and not about the definition this tape is. Binding the
-\ accepted effect to the recorded unit is dot habu-bind-checker-env-ed4f9f87,
-\ reached through habu-bind-the-colon-ea509e61; when it lands these two numbers
-\ come off this line and nothing else here changes.
+\ THE ONE SEAM WHERE ARITY ENTERS, AND IT IS THIS SUITE'S AND NOT THE ENTRY'S.
+\ `1 1` is the word's declared effect, handed to NELAB:COLON because this suite
+\ drives the elaborator stage by stage and the elaborator takes the counts as
+\ arguments. The PRODUCTION entry states nothing: src/compiler/native/migrate.f
+\ KEEP-ARITY reads what the definition takes and leaves off the checker's
+\ certificate through NDICT:SPELL-ARITY. So these two numbers stay on this line,
+\ and what they are is a fixture's business rather than a compiler's.
 : ELABORATE ( IR-ARENA:arena IR-ARENA:arena -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB TAPE p r 1 1 NELAB:COLON drop ;

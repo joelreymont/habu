@@ -748,17 +748,17 @@ private
 \ ---- driving one migration where its refusal can be read ----------------------
 \ A checked `catch` takes a stack-neutral quotation and a quotation cannot read
 \ the enclosing word's locals, so what the migration needs is parked first.
-variable M-A   variable M-U   variable M-IN   variable M-OUT
+variable M-A   variable M-U
 
 : MIGRATE-RC ( -- n )
-   [: M-A @ M-U @ M-IN @ M-OUT @ NMIGRATE:DEFINE ;] catch ;
+   [: M-A @ M-U @ NMIGRATE:DEFINE ;] catch ;
 
-: STAGE-ONE ( ptr u8 n n n -- ) {: a:ptr u:n in:n out:n :}
-   a M-A !  u M-U !  in M-IN !  out M-OUT !
+: STAGE-ONE ( ptr u8 n -- ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a M-A !  u M-U !
    NELAB:REFUSED-RESET ;
 
-: TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}
-   a u in out STAGE-ONE
+: TRY ( ptr u8 n -- n )
+   STAGE-ONE
    MIGRATE-RC ;
 
 
@@ -824,7 +824,7 @@ variable ROW-NOOF variable ROW-STRAY
 variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
 
 : RUN-HUE ( -- )
-   HUE$ 1 1 TRY RC-HUE !
+   HUE$ TRY RC-HUE !
    A64EMIT:SIZE EMIT-SIZE !
    A64EMIT:LEAVES-BY-BRANCH? if 1 else 0 then EMIT-BRANCH !
    A64EMIT:TRAILING-RETURN? if 1 else 0 then EMIT-RET !
@@ -832,54 +832,54 @@ variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
 
 : RUN-THE-MIGRATIONS ( -- )
    RUN-HUE
-   BOX$ 3 1 TRY RC-BOX !
-   UNW$ 3 1 TRY RC-UNW !
-   QUAD$ 1 1 TRY RC-QUAD !
-   SWAPPED$ 3 1 TRY RC-SWAPPED !
-   HOLD$ 4 1 TRY RC-HOLD !
-   STEP$ 1 1 TRY RC-STEP !
-   WIDE$ 1 1 TRY RC-WIDE !
-   OVER$ 1 1 TRY RC-OVER !
-   CASE$ 1 1 TRY RC-CASE !
-   MK$ 1 3 TRY RC-MK !
-   MK2$ 2 3 TRY RC-MK2 !
-   MK0$ 0 3 TRY RC-MK0 !
-   DEAD$ 1 1 TRY RC-DEAD !
-   CMT$ 1 1 TRY RC-CMT !
-   STR$ 1 1 TRY RC-STR !
-   INST$ 3 1 TRY RC-INST !
-   INST3$ 4 1 TRY RC-INST3 !
-   TWOW$ 1 1 TRY RC-TWOW !
-   STRINST$ 1 1 TRY RC-STRINST !
-   TRIO$ 4 1 TRY RC-TRIO !
-   ARMIF$ 4 1 TRY RC-ARMIF !
-   ARMLOOP$ 4 1 TRY RC-ARMLOOP !
-   HOLD3$ 4 1 TRY RC-HOLD3 !
-   ROWS24$ 0 1 TRY RC-ROWS24 !
-   MKI$ 1 3 TRY RC-MKI !
-   MKI3$ 1 4 TRY RC-MKI3 !
-   MKC$ 1 3 TRY RC-MKC !
-   RELAY$ 3 4 TRY RC-RELAY !
-   LOOPC$ 1 3 TRY RC-LOOPC !
-   STRCON$ 1 3 TRY RC-STRCON !
-   TWOC$ 0 7 TRY RC-TWOC !
-   MKG$ 1 5 TRY RC-MKG !
-   MKGC$ 1 5 TRY RC-MKGC !
-   MKP$ 1 4 TRY RC-MKP !
-   CONFIT$ 0 3 TRY RC-CONFIT ! ;
+   BOX$ TRY RC-BOX !
+   UNW$ TRY RC-UNW !
+   QUAD$ TRY RC-QUAD !
+   SWAPPED$ TRY RC-SWAPPED !
+   HOLD$ TRY RC-HOLD !
+   STEP$ TRY RC-STEP !
+   WIDE$ TRY RC-WIDE !
+   OVER$ TRY RC-OVER !
+   CASE$ TRY RC-CASE !
+   MK$ TRY RC-MK !
+   MK2$ TRY RC-MK2 !
+   MK0$ TRY RC-MK0 !
+   DEAD$ TRY RC-DEAD !
+   CMT$ TRY RC-CMT !
+   STR$ TRY RC-STR !
+   INST$ TRY RC-INST !
+   INST3$ TRY RC-INST3 !
+   TWOW$ TRY RC-TWOW !
+   STRINST$ TRY RC-STRINST !
+   TRIO$ TRY RC-TRIO !
+   ARMIF$ TRY RC-ARMIF !
+   ARMLOOP$ TRY RC-ARMLOOP !
+   HOLD3$ TRY RC-HOLD3 !
+   ROWS24$ TRY RC-ROWS24 !
+   MKI$ TRY RC-MKI !
+   MKI3$ TRY RC-MKI3 !
+   MKC$ TRY RC-MKC !
+   RELAY$ TRY RC-RELAY !
+   LOOPC$ TRY RC-LOOPC !
+   STRCON$ TRY RC-STRCON !
+   TWOC$ TRY RC-TWOC !
+   MKG$ TRY RC-MKG !
+   MKGC$ TRY RC-MKGC !
+   MKP$ TRY RC-MKP !
+   CONFIT$ TRY RC-CONFIT ! ;
 
 : RUN-THE-REFUSALS ( -- )
-   NONEXH$ 1 1 TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
-   DUPVAR$ 1 1 TRY RC-DUPVAR !  NELAB:REFUSED-ROW ROW-DUPVAR !
-   NOFAM$ 1 1 TRY RC-NOFAM !    NELAB:REFUSED-ROW ROW-NOFAM !
-   NOTSUM$ 1 1 TRY RC-NOTSUM !
-   NOOF$ 1 1 TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
-   STRAY$ 1 1 TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
-   DROPPED$ 4 1 TRY RC-DROPPED !
-   ROWS26$ 0 1 TRY RC-ROWS26 !
-   CONOVER$ 0 3 TRY RC-CONOVER !
-   NARROWC$ 3 4 TRY RC-NARROWC !  NELAB:REFUSED-ROW ROW-NARROWC !
-   NARROWK$ 3 4 TRY RC-NARROWK !  NELAB:REFUSED-ROW ROW-NARROWK ! ;
+   NONEXH$ TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
+   DUPVAR$ TRY RC-DUPVAR !  NELAB:REFUSED-ROW ROW-DUPVAR !
+   NOFAM$ TRY RC-NOFAM !    NELAB:REFUSED-ROW ROW-NOFAM !
+   NOTSUM$ TRY RC-NOTSUM !
+   NOOF$ TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
+   STRAY$ TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
+   DROPPED$ TRY RC-DROPPED !
+   ROWS26$ TRY RC-ROWS26 !
+   CONOVER$ TRY RC-CONOVER !
+   NARROWC$ TRY RC-NARROWC !  NELAB:REFUSED-ROW ROW-NARROWC !
+   NARROWK$ TRY RC-NARROWK !  NELAB:REFUSED-ROW ROW-NARROWK ! ;
 
 RUN-THE-MIGRATIONS
 RUN-THE-REFUSALS

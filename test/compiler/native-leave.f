@@ -113,35 +113,35 @@ private
 
 : FIRST ( -- )
    s" : NLV-FIRST-N ( n n -- n ) {: lim:n want:n :} -1 lim 0 ?do i want = if drop i leave then loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : FIRST-DO ( -- )
    s" : NLV-FIRST-DO-N ( n n -- n ) {: lim:n want:n :} -1 lim 0 do i want = if drop i leave then loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : NEST ( -- )
    s" : NLV-NEST-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 do i 2 = if leave then i + loop loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : BEGIN-IN ( -- )
    s" : NLV-BEGIN-N ( n -- n ) {: lim:n :} 0 lim 0 ?do 0 begin dup 3 < while 1 + repeat + dup 7 > if leave then loop ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NLV-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : CALL ( -- )
    s" : NLV-CALL-N ( n n -- n ) {: len:n seed:n :} seed len 0 ?do NLV-CALLEE-N dup 0 < if leave then loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : LOCAL ( -- )
    s" : NLV-LOCAL-N ( n n n -- n ) {: k:n len:n seed:n :} seed len 0 ?do NLV-CALLEE-N k + dup 0 < if leave then loop ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : LEAVE-LOCAL ( -- )
    s" : NLV-LEAVE-LOCAL-N ( n -- n ) {: leave:n :} leave leave + ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 
@@ -173,7 +173,7 @@ private
 
 \ Compiling a body without publishing anything, so a refusal can be measured with
 \ nothing left behind on the way out.
-: MEASURE-AT ( ptr u8 n n n -- )
+: MEASURE-AT ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 \ One source line through the engine's own compiler, caught: whether the ENGINE
@@ -267,9 +267,9 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    s" 9 NLV-OK3" EV-N 0 T=
 
    s" and the chain refuses it, while its live twin compiles" T-LABEL
-   [: s" : NLV-DEAD ( n -- n ) 3 0 ?do drop i leave loop ;" 1 1 MEASURE-AT ;]
+   [: s" : NLV-DEAD ( n -- n ) 3 0 ?do drop i leave loop ;" MEASURE-AT ;]
    E-NELAB-CTRL TTHROWSQ
-   [: s" : NLV-LIVE ( n -- n ) 3 0 ?do dup 2 > if drop i leave then loop ;" 1 1 MEASURE-AT ;]
+   [: s" : NLV-LIVE ( n -- n ) 3 0 ?do dup 2 > if drop i leave then loop ;" MEASURE-AT ;]
    0 TTHROWSQ ;
 
 public

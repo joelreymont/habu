@@ -90,7 +90,7 @@ variable B-U
 variable LEN-N
 
 : LEN-GO ( -- )
-   LEN-N @ LEN-SRC 1 1 NMIGRATE:MEASURE-HELD ;
+   LEN-N @ LEN-SRC NMIGRATE:MEASURE-HELD ;
 
 : LEN-TRY ( n -- n ) {: n:n :}
    n LEN-N !
@@ -112,7 +112,7 @@ variable LEN-N
    B$ ;
 
 : DENSE-GO ( -- )
-   DENSE-SRC 1 1 NMIGRATE:MEASURE-HELD ;
+   DENSE-SRC NMIGRATE:MEASURE-HELD ;
 
 \ ---- the real definition ------------------------------------------------------
 \ lib/date.f DAYS>YMD, line for line, under a name of its own. Nothing else about
@@ -144,7 +144,7 @@ public
 \ private one - and it is called BEFORE the cases are compiled, because a case
 \ that calls the migrated word has to be compiled against a word that exists.
 : MIGRATE-YMD ( -- )
-   YMD-SRC 1 3 NMIGRATE:DEFINE ;
+   YMD-SRC NMIGRATE:DEFINE ;
 
 ;package
 

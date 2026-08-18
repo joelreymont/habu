@@ -238,39 +238,39 @@ private
 
 : LEN ( -- )
    s" : NTL-LEN-N ( n -- n ) {: v:n :} v NTL-FIXTURE:NTL-GUARD  v NTL-FIXTURE:NTL-RAW NTL-FIXTURE:NTL-ROLE ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : SELF ( -- )
    s" : NTL-SELF-N ( n -- n ) {: v:n :} v NTL-FIXTURE:NTL-GUARD  v NTL-FIXTURE:NTL-ROLE ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : NOTAIL ( -- )
    s" : NTL-NOTAIL-N ( n -- n ) {: v:n :} v NTL-FIXTURE:NTL-GUARD  v NTL-FIXTURE:NTL-RAW v NTL-FIXTURE:NTL-ROLE2 ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : WIDE ( -- )
    s" : NTL-WIDE-N ( n n n n n -- n n n n n ) {: a:n b:n c:n d:n e:n :} c d NTL-FIXTURE:NTL-GUARD2 a b c d e NTL-FIXTURE:NTL-MAKE5 ;"
-   5 5 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : TEN ( -- )
    s" : NTL-TEN-N ( n n n n n n n n n n -- n n n n n n n n n n ) {: a:n b:n c:n d:n e:n f:n g:n h:n j:n k:n :} a k NTL-FIXTURE:NTL-GUARD2 a b c d e f g h j k NTL-FIXTURE:NTL-MAKE10 ;"
-   10 10 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : FRESULT ( -- )
    s" : NTL-FRESULT-N ( n -- r ) {: v:n :} v NTL-FIXTURE:NTL-GUARD  v NTL-FIXTURE:NTL-REAL ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : FARG ( -- )
    s" : NTL-FARG-N ( r -- r ) {: v:r :} 7 NTL-FIXTURE:NTL-GUARD  v NTL-FIXTURE:NTL-SCALE ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : WBUNDLE ( -- )
    s" : NTL-WBUNDLE-N ( option<pt> -- option<pt> ) NTL-FIXTURE:NTL-BUMP ;"
-   3 3 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : PADDED ( -- )
    s" : NTL-PADDED-N ( n -- option<pt> ) {: v:n :} v NTL-FIXTURE:NTL-GUARD v 0 > if v 3 * v 5 * NTL--FIXTURE-PT:MAKE OPTION:SOME else OPTION:NONE then NTL-FIXTURE:NTL-BUMP ;"
-   1 3 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 
@@ -292,7 +292,7 @@ public
 \ verifier's own lane lands, this row changes and the shape compiles.
 : TRY-QUOT ( -- )
    s" : NTL-QUOT-N ( n -- n ) dup [: NTL-FIXTURE:NTL-ROLE ;] swap NTL-FIXTURE:NTL-TAKE drop NTL-FIXTURE:NTL-ROLE ;"
-   1 1 NMIGRATE:MEASURE-HELD ;
+   NMIGRATE:MEASURE-HELD ;
 
 : RUN ( -- )
    LEN SELF NOTAIL

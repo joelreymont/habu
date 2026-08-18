@@ -158,7 +158,7 @@ variable BLN-AT   variable BLN-SEEN
    s" : ND-ACTION ( n -- n ) ND-HOOK ;" EV ;
 
 : DEF-INSTALL ( -- )
-   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" 0 0 NMIGRATE:DEFINE ;
+   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" NMIGRATE:DEFINE ;
 
 \ The cell ND-HOOK dispatches through, asked of the same resolver the chain asks.
 : HOOK-CELL ( -- n )

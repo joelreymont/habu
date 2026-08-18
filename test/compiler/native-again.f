@@ -111,27 +111,27 @@ private
 
 : UP ( -- )
    s" : NAG-UP-N ( n -- n ) begin dup 5 < if 1 + else exit then again ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : CALLEE ( -- )
    s" : NAG-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : CALL ( -- )
    s" : NAG-CALL-N ( n n -- n n ) begin over 1 < if exit then swap 1 - swap NAG-CALLEE-N again ;"
-   2 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : LOCAL ( -- )
    s" : NAG-LOCAL-N ( n n n -- n n ) {: k:n :} begin over 1 < if exit then swap 1 - swap NAG-CALLEE-N k + again ;"
-   3 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : ACC ( -- )
    s" : NAG-ACC-N ( n -- n n ) 0 swap begin dup 0 = if drop negate 1 - throw then swap over + swap 1 - again ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : AGAIN-LOCAL ( -- )
    s" : NAG-AGAIN-LOCAL-N ( n -- n ) {: again:n :} again again + ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 
@@ -163,7 +163,7 @@ private
 
 \ Compiling a body without publishing anything, so a refusal can be measured at
 \ the register budget that reaches it and nothing is left behind on the way out.
-: MEASURE-AT ( ptr u8 n n n -- )
+: MEASURE-AT ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 \ One source line through the engine's own compiler, caught. What it answers is
@@ -241,11 +241,11 @@ TRUSTED: EV1 ( n ptr u8 n -- n )
 \ absent order and not the `again`.
 : BARE-CASE ( -- )
    s" a begin-again body that neither calls nor touches memory is refused" T-LABEL
-   [: s" : NAG-BARE ( n -- n ) begin 1 - again ;" 1 1 MEASURE-AT ;]
+   [: s" : NAG-BARE ( n -- n ) begin 1 - again ;" MEASURE-AT ;]
    E-A64RAV-ORDER TTHROWSQ
 
    s" and the same loop with one memory access in it compiles" T-LABEL
-   [: s" : NAG-MEM ( n -- n ) begin NAG-FIXTURE:NAG-CELL @ + again ;" 1 1 MEASURE-AT ;]
+   [: s" : NAG-MEM ( n -- n ) begin NAG-FIXTURE:NAG-CELL @ + again ;" MEASURE-AT ;]
    0 TTHROWSQ ;
 
 public

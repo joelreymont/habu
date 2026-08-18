@@ -594,8 +594,6 @@ variable SUBJECT-U
 \ ---- the staged source ---------------------------------------------------------
 create SRC-BUF SRC-CAP allot
 variable SRC-U
-variable RUN-IN
-variable RUN-OUT
 
 : SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
    SRC-U @ u + SRC-CAP > if s" SRC-CAP" CAP-FULL then
@@ -605,7 +603,7 @@ variable RUN-OUT
 \ Parked, because a quotation cannot read the enclosing word's locals and the run
 \ has to happen inside one so its refusal can be caught.
 : MIGRATE ( -- )
-   SRC-BUF SRC-U @ RUN-IN @ RUN-OUT @ NMIGRATE:MEASURE-HELD ;
+   SRC-BUF SRC-U @ NMIGRATE:MEASURE-HELD ;
 
 \ ---- the package scope a section runs in ---------------------------------------
 create PKG-BUF NAME-CAP allot
@@ -738,7 +736,6 @@ variable STALE-N
    na nu POOL+ {: noff:n :}
    SUBJECT-MINT
    close STAGE-SOURCE
-   in RUN-IN !  out RUN-OUT !
    REFUSED-CLEAR
    [: MIGRATE ;] catch {: rc:n :}
    CUR-FILE noff nu rc in out SRC-U @ DEF+

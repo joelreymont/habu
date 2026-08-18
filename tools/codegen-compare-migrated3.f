@@ -39,13 +39,12 @@
 \ So a literal here is the same double the interpreted word pushes, to the bit,
 \ and the head-to-head check below is what says so rather than this sentence.
 \
-\ THE REGISTER BUDGET. Both routines hold their locals and their intermediate
+\ THE REGISTER POOL. Both routines hold their locals and their intermediate
 \ doubles at once, and the doubles are in the OTHER register file - the routine
 \ contract hands out the whole of it, for the reason src/compiler/native/abi.f
-\ gives - so what the budget below constrains is the general registers the frame
-\ pointers and the crossings need. It is a budget, exactly as the other two
-\ corpora's are: dot habu-choose-the-register-a95390ac carries taking the number
-\ off the routine.
+\ gives - so what constrains these rows is the general registers the frame
+\ pointers and the crossings need. No row states a number: NABI:SCRATCH answers
+\ the whole writable set.
 
 require lib/errors.f
 require lib/prelude.f
@@ -60,13 +59,13 @@ private
 \ maki/optim.f:12 through tools/codegen-compare-corpus3.f, verbatim: w' = w - lr*g.
 : SGD ( -- )
    s" : SGD-N ( r r r -- r ) {: w g lr :} w  lr g f* f- ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ maki/segment.f:61 through the same corpus, verbatim: an integer length becomes
 \ a double, and 1/sqrt(d) comes back.
 : SEG ( -- )
    s" : SEG-1/SQRT-N ( n -- r ) {: d:n :}  1.0 d s>f fsqrt f/ ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ maki/autograd.f:48 through the same corpus, verbatim: the two-armed branch on
 \ a two-operand float compare. It is the first row of this corpus with control
@@ -84,7 +83,7 @@ private
 \ that came back positive is a reported disagreement rather than an equal number.
 : MAXF ( -- )
    s" : MAX-F-N ( r r -- r ) {: x:r y:r :}  x y f< if y else x then ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ ---- the three words a tensor body reaches an element through -----------------
 \ maki/array.f:9-11 through the corpus, verbatim but for the `-N`. They are not
@@ -102,13 +101,13 @@ private
 \ a floating register, which is why the crossing at `hir.store` is still dot
 \ habu-store-a-double-a31b313e's and no row here waits for it.
 : T-AT ( -- )
-   s" : T-AT-N ( ptr a n -- ptr a ) cells + ;" 2 1 NMIGRATE:DEFINE ;
+   s" : T-AT-N ( ptr a n -- ptr a ) cells + ;" NMIGRATE:DEFINE ;
 
 : T-GET ( -- )
-   s" : T-GET-N ( ptr a n -- r ) T-AT-N @ ;" 2 1 NMIGRATE:DEFINE ;
+   s" : T-GET-N ( ptr a n -- r ) T-AT-N @ ;" NMIGRATE:DEFINE ;
 
 : T-SET ( -- )
-   s" : T-SET-N ( r ptr a n -- ) T-AT-N ! ;" 3 0 NMIGRATE:DEFINE ;
+   s" : T-SET-N ( r ptr a n -- ) T-AT-N ! ;" NMIGRATE:DEFINE ;
 
 \ ---- the five kernel rows ----------------------------------------------------
 \ WHAT THEY NEEDED THAT THE THREE ABOVE DID NOT. Every one of them carries a
@@ -124,38 +123,37 @@ private
 \ corpora: the accumulator, the loop's index and limit, two or three locals, and
 \ the call site's own scratch, all live from the header to the latch. The
 \ floating side costs none of it - the routine contract hands out the whole
-\ floating file - so what the number below constrains is the general registers,
-\ exactly as the other two corpora's budgets do. Dot
-\ habu-choose-the-register-a95390ac carries taking it off the routine.
+\ floating file - so what constrains these rows is the general registers, which
+\ the entry takes from NABI:SCRATCH rather than from a number written here.
 
 \ maki/array.f:16 through the corpus: the plain accumulation.
 : T-SUM ( -- )
    s" : T-SUM-N ( ptr a n -- r ) {: base len :} 0.0  len 0 ?do  base i T-GET-N f+  loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ maki/array.f:20 through the corpus: the in-place step, whose point is the
 \ stores. Both columns step the SAME weight buffer, so the head-to-head check is
 \ about the loads and the stores and not only about the arithmetic between them.
 : T-SGD ( -- )
    s" : T-SGD!-N ( r ptr a ptr a n -- ) {: lr wbase gbase len :} len 0 ?do wbase i T-GET-N lr gbase i T-GET-N f* f- wbase i T-SET-N loop ;"
-   4 0 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ maki/array.f:32 through the corpus: the two-pointer accumulation.
 : T-DIST2 ( -- )
    s" : T-DIST2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} 0.0 len 0 ?do abase i T-GET-N bbase i T-GET-N f- dup f* f+ loop ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ maki/array.f:39 through the corpus: the one-pointer square accumulation.
 : T-NORM2 ( -- )
    s" : T-NORM2-N ( ptr a n -- r ) {: bbase:ptr len:n :} 0.0 len 0 ?do bbase i T-GET-N dup f* f+ loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ maki/array.f:46 through the corpus: two accumulations, two square roots and a
 \ division, reached through two calls to two DIFFERENT words. It is the row that
 \ needed the migration to carry a list of callees rather than one.
 : T-REL-L2 ( -- )
    s" : T-REL-L2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} abase bbase len T-DIST2-N fsqrt bbase len T-NORM2-N fsqrt f/ ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ ---- the two branch rows whose arms disagree about the class -----------------
 \ maki/autograd.f:23 through the corpus. Its two arms hand the join a DOUBLE and
@@ -166,7 +164,7 @@ private
 \ takes.
 : RELU-F ( -- )
    s" : RELU-F-N ( r -- r ) {: x :}   x f0< if 0.0 else x  then ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ lib/fmath.f:36 through the corpus: round to nearest, written the way a
 \ truncating `f>s` makes necessary. Both of its arms leave a COMPUTED double, so
@@ -174,7 +172,7 @@ private
 \ other half of the same rule.
 : FROUND ( -- )
    s" : FROUND-N ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 

@@ -1062,6 +1062,7 @@ public
 -8571 constant E-NMIGRATE-TEXT    \ definition source longer than the engine's own body capture, whose overflow ends the process instead of throwing, or a name longer than the log holds
 -8572 constant E-NMIGRATE-VERDICT \ the engine's own check did not certify the definition, so there is no checked word to migrate
 -8573 constant E-NMIGRATE-NAME    \ the definition the source published is not the name the caller asked to migrate: the newest dictionary record carries another name
+-8579 constant E-NMIGRATE-ARITY   \ the checker holds no declared effect for the definition the source published, so there is no arity to compile it against
 
 \ The float subset: -8580..-8589
 \

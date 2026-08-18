@@ -328,13 +328,13 @@ variable SC                            \ one ordinary cell: the scalar access's 
 \ ---- driving one migration where its refusal can be read ---------------------
 \ A checked `catch` takes a stack-neutral quotation and a quotation cannot read
 \ the enclosing word's locals, so what the migration needs is parked first.
-variable M-A   variable M-U   variable M-IN   variable M-OUT
+variable M-A   variable M-U
 
 : MIGRATE-RC ( -- n )
-   [: M-A @ M-U @ M-IN @ M-OUT @ NMIGRATE:DEFINE ;] catch ;
+   [: M-A @ M-U @ NMIGRATE:DEFINE ;] catch ;
 
-: TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}   \ typed-local-lint: allow-bare-local
-   a M-A !  u M-U !  in M-IN !  out M-OUT !
+: TRY ( ptr u8 n -- n ) {: a:ptr u:n :}   \ typed-local-lint: allow-bare-local
+   a M-A !  u M-U !
    NELAB:REFUSED-RESET
    MIGRATE-RC ;
 
@@ -362,34 +362,34 @@ variable INL-ACC1 variable INL-ACC2
    entry NINL:KNOWN? if 1 else 0 then ;
 
 : RUN-THE-MIGRATIONS ( -- )
-   L1$ 1 1 TRY RC-L1 !
-   L2$ 1 1 TRY RC-L2 !
-   L3$ 1 1 TRY RC-L3 !
-   S1$ 2 0 TRY RC-S1 !
-   S2$ 3 0 TRY RC-S2 !
-   S3$ 4 0 TRY RC-S3 !
-   RT2$ 3 1 TRY RC-RT2 !
-   LMS$ 2 1 TRY RC-LMS !
-   COLPUT$ 4 0 TRY RC-COLPUT !
-   COLHDR$ 1 2 TRY RC-COLHDR !
-   COLAL$ 1 1 TRY RC-COLAL !
-   SBX$ 2 0 TRY RC-SBX !
-   LBX$ 1 1 TRY RC-LBX !
-   SOP$ 2 0 TRY RC-SOP !
-   LOP$ 1 1 TRY RC-LOP !
-   MIX$ 1 1 TRY RC-MIX !
-   SCW$ 2 1 TRY RC-SCW !
-   CMT$ 1 1 TRY RC-CMT !
-   STR$ 1 1 TRY RC-STR ! ;
+   L1$ TRY RC-L1 !
+   L2$ TRY RC-L2 !
+   L3$ TRY RC-L3 !
+   S1$ TRY RC-S1 !
+   S2$ TRY RC-S2 !
+   S3$ TRY RC-S3 !
+   RT2$ TRY RC-RT2 !
+   LMS$ TRY RC-LMS !
+   COLPUT$ TRY RC-COLPUT !
+   COLHDR$ TRY RC-COLHDR !
+   COLAL$ TRY RC-COLAL !
+   SBX$ TRY RC-SBX !
+   LBX$ TRY RC-LBX !
+   SOP$ TRY RC-SOP !
+   LOP$ TRY RC-LOP !
+   MIX$ TRY RC-MIX !
+   SCW$ TRY RC-SCW !
+   CMT$ TRY RC-CMT !
+   STR$ TRY RC-STR ! ;
 
 : RUN-THE-PAIR ( -- )
-   ACC1$ 1 1 TRY RC-ACC1 !
+   ACC1$ TRY RC-ACC1 !
    s" C-ACC1" RECORDED? INL-ACC1 !
-   ACC2$ 1 2 TRY RC-ACC2 !
+   ACC2$ TRY RC-ACC2 !
    s" C-ACC2" RECORDED? INL-ACC2 ! ;
 
 : RUN-THE-REFUSALS ( -- )
-   BYTEP$ 3 1 TRY RC-BYTEP !  NELAB:REFUSED-ROW ROW-BYTEP ! ;
+   BYTEP$ TRY RC-BYTEP !  NELAB:REFUSED-ROW ROW-BYTEP ! ;
 
 RUN-THE-MIGRATIONS
 RUN-THE-PAIR

@@ -116,12 +116,11 @@ private
 
 PTR-VARIABLE TRY-SRC
 variable TRY-U
-variable TRY-IN
 
 \ The migration, caught. Its throw code IS the measurement, so it is carried out
 \ as data rather than allowed to end the run.
 : MIGRATE-RC ( -- n )
-   [: TRY-SRC @ TRY-U @ TRY-IN @ 1 NMIGRATE:DEFINE ;] catch ;
+   [: TRY-SRC @ TRY-U @ NMIGRATE:DEFINE ;] catch ;
 
 \ Where a word's code starts, read off its own dictionary record. A name this
 \ image does not hold is refused rather than answered with an address, because
@@ -136,10 +135,10 @@ variable TRY-IN
 : PUBLISHES-CLOBBER? ( ptr u8 n -- bool )
    ENTRY-OF NCLOB:KNOWN? ;
 
-: STAGE ( ptr u8 n n -- ) {: a:ptr u:n in:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a TRY-SRC ! u TRY-U ! in TRY-IN ! ;
+: STAGE ( ptr u8 n -- ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a TRY-SRC ! u TRY-U ! ;
 
-: TRY ( ptr u8 n n -- n )
+: TRY ( ptr u8 n -- n )
    STAGE MIGRATE-RC ;
 
 \ ---- every body here is written by counting rather than by hand --------------
@@ -322,24 +321,24 @@ variable SRC-U
 : LOOP-WIDTH-CASES ( -- )
    s" the corpus row's own fourteen, which was the refusal this file opened for"
    T-LABEL
-   14 LOADS-SRC 2 TRY 0 T=
+   14 LOADS-SRC TRY 0 T=
 
    s" and twenty read a turn, which is the widest that compiles" T-LABEL
-   20 LOADS-SRC 2 TRY 0 T=
+   20 LOADS-SRC TRY 0 T=
 
    s" twenty-one plan five re-emissions and the rewritten module wants arena"
    T-LABEL
-   21 LOADS-SRC 2 TRY E-IR-CTX-SCRATCH T=
+   21 LOADS-SRC TRY E-IR-CTX-SCRATCH T=
 
    s" twenty-two plan none and are refused a register instead" T-LABEL
-   22 LOADS-SRC 2 TRY E-A64RA-SPILL T=
+   22 LOADS-SRC TRY E-A64RA-SPILL T=
 
    s" so are twenty-four, which is that wall's far side" T-LABEL
-   24 LOADS-SRC 2 TRY E-A64RA-SPILL T=
+   24 LOADS-SRC TRY E-A64RA-SPILL T=
 
    s" and twenty-five run the mapping out before a register is ever asked for"
    T-LABEL
-   25 LOADS-SRC 2 TRY E-IR-CTX-SCRATCH T= ;
+   25 LOADS-SRC TRY E-IR-CTX-SCRATCH T= ;
 
 \ ---- what the crossing refusal is NOT ----------------------------------------
 \ Both controls carry the SAME count as the refusal below, which is the only way
@@ -348,11 +347,11 @@ variable SRC-U
 : NOT-THE-LOOP-CASES ( -- )
    s" ten values live ACROSS a callless loop compile: residency is not it"
    T-LABEL
-   10 NOCALL-SRC 2 TRY 0 T= ;
+   10 NOCALL-SRC TRY 0 T= ;
 
 : NOT-THE-CALL-CASES ( -- )
    s" ten values across a call with NO loop compile: the call is not it" T-LABEL
-   10 NOLOOP-SRC 2 TRY 0 T= ;
+   10 NOLOOP-SRC TRY 0 T= ;
 
 \ ---- what it IS: the crossing, measured by moving one thing ------------------
 \ The same ten values, the same loop, the same call, the same pool. The only
@@ -368,10 +367,10 @@ variable SRC-U
 \ travel one value later, which is the next section, not a hole in this one.
 : CROSSING-CASES ( -- )
    s" ten values folded in BEFORE a loop that calls compile" T-LABEL
-   10 PRE-SRC 2 TRY 0 T=
+   10 PRE-SRC TRY 0 T=
 
    s" and read AFTER it they are refused: they had to travel" T-LABEL
-   10 EPOST-SRC 2 TRY E-A64RA-SPILL T= ;
+   10 EPOST-SRC TRY E-A64RA-SPILL T= ;
 
 \ ---- and what decides whether the crossing happens at all --------------------
 \ WHAT THE CASES ABOVE MEASURE IS THE PRICE OF TRAVELLING, AND THIS SECTION IS
@@ -404,13 +403,13 @@ variable SRC-U
    s" CODEGEN-CORPUS4:C-LONG" PUBLISHES-CLOBBER? TFALSE
 
    s" the refused body compiles against the callee that published one" T-LABEL
-   10 CPOST-SRC 2 TRY 0 T=
+   10 CPOST-SRC TRY 0 T=
 
    s" and one value wider that callee runs out too" T-LABEL
-   11 CPOST-SRC 2 TRY E-A64RA-SPILL T=
+   11 CPOST-SRC TRY E-A64RA-SPILL T=
 
    s" nine crossing the callee that published none compile" T-LABEL
-   9 EPOST-SRC 2 TRY 0 T= ;
+   9 EPOST-SRC TRY 0 T= ;
 
 \ ---- the wall a value that can be WRITTEN AGAIN moves ------------------------
 \ A CLASS WHOSE ONE VALUE WAS WRITTEN BY A MOVE-WIDE NEEDS NO FRAME SLOT, because
@@ -478,47 +477,47 @@ variable SRC-U
 : REMAT-INSIDE-CASES ( -- )
    s" twenty one-movz constants inside a loop body fit with nothing decided"
    T-LABEL
-   NARROW-BASE 20 s" RIN" INSIDE-SRC 2 TRY 0 T=
+   NARROW-BASE 20 s" RIN" INSIDE-SRC TRY 0 T=
    NMIGRATE:REMATS 0 T=
 
    s" and twenty-one compile by writing one of them again, taking no frame"
    T-LABEL
-   NARROW-BASE 21 s" RIN" INSIDE-SRC 2 TRY 0 T=
+   NARROW-BASE 21 s" RIN" INSIDE-SRC TRY 0 T=
    NMIGRATE:REMATS 1 T=
    NMIGRATE:SPILLS 0 T= ;
 
 : REMAT-ACROSS-CASES ( -- )
    s" fifteen of the same constants live ACROSS the loop compile" T-LABEL
-   NARROW-BASE 15 s" RAC" ACROSS-SRC 2 TRY 0 T=
+   NARROW-BASE 15 s" RAC" ACROSS-SRC TRY 0 T=
 
    s" sixteen re-emit what they can and run the context out" T-LABEL
-   NARROW-BASE 16 s" RAC" ACROSS-SRC 2 TRY E-IR-CTX-SCRATCH T=
+   NARROW-BASE 16 s" RAC" ACROSS-SRC TRY E-IR-CTX-SCRATCH T=
 
    s" and twenty re-emit nothing: a class of two values is no candidate" T-LABEL
-   NARROW-BASE 20 s" RAC" ACROSS-SRC 2 TRY E-A64RA-SPILL T= ;
+   NARROW-BASE 20 s" RAC" ACROSS-SRC TRY E-A64RA-SPILL T= ;
 
 : REMAT-WIDE-CASES ( -- )
    s" twenty-two one-movz constants inside the body compile on two re-emissions"
    T-LABEL
-   NARROW-BASE 22 s" RWC" INSIDE-SRC 2 TRY 0 T=
+   NARROW-BASE 22 s" RWC" INSIDE-SRC TRY 0 T=
    NMIGRATE:REMATS 2 T=
 
    s" and twenty-two sixty-four-bit ones are refused: a chain is not one form"
    T-LABEL
-   WIDE-BASE 22 s" RWI" INSIDE-SRC 2 TRY E-A64RA-SPILL T=
+   WIDE-BASE 22 s" RWI" INSIDE-SRC TRY E-A64RA-SPILL T=
 
    s" while twenty of the wide ones compile: it is the re-emission, not the width"
    T-LABEL
-   WIDE-BASE 20 s" RWI" INSIDE-SRC 2 TRY 0 T= ;
+   WIDE-BASE 20 s" RWI" INSIDE-SRC TRY 0 T= ;
 
 : REMAT-SCRATCH-CASES ( -- )
    s" forty-three re-emitted constants compile" T-LABEL
-   NARROW-BASE 43 s" RIN" INSIDE-SRC 2 TRY 0 T=
+   NARROW-BASE 43 s" RIN" INSIDE-SRC TRY 0 T=
    NMIGRATE:REMATS 23 T=
 
    s" and forty-four do not fit the migration context (who-owns-the-scratch)"
    T-LABEL
-   NARROW-BASE 44 s" RIN" INSIDE-SRC 2 TRY E-IR-CTX-SCRATCH T= ;
+   NARROW-BASE 44 s" RIN" INSIDE-SRC TRY E-IR-CTX-SCRATCH T= ;
 
 public
 

@@ -60,15 +60,12 @@ private
 
 PTR-VARIABLE SRC
 variable SRC-U
-variable SRC-IN
-variable SRC-OUT
-variable SRC-REGS
 
 \ The migration, caught. Nothing is published: MEASURE-HELD runs every stage the
 \ publishing entries run and retracts everything on the way out, so a body can be
 \ dumped as many times as it takes without filling the address-keyed records.
 : RUN-RC ( -- n )
-   [: SRC @ SRC-U @ SRC-IN @ SRC-OUT @ NMIGRATE:MEASURE-HELD ;]
+   [: SRC @ SRC-U @ NMIGRATE:MEASURE-HELD ;]
    catch ;
 
 : LBL ( ptr u8 n -- )
@@ -136,12 +133,11 @@ variable SRC-REGS
 public
 
 \ Compile this source through the production migration entry and print what the
-\ allocator decided, whether it was accepted or refused. The arities and the
-\ register budget are the caller's, so a case can be dumped at exactly the
-\ contract that refused it.
-: REPORT ( ptr u8 n n n n -- )
-   {: a:ptr u:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   a SRC ! u SRC-U ! in SRC-IN ! out SRC-OUT ! regs SRC-REGS !
+\ allocator decided, whether it was accepted or refused. The source is the whole
+\ of what a case says: the arity is the checker's and the pool is the machine's.
+: REPORT ( ptr u8 n -- )
+   {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a SRC ! u SRC-U !
    s" alloc rc " RUN-RC SAY-N
    s" alloc first-slots " NMIGRATE:SPILLS SAY-N
    s" alloc first-remats " NMIGRATE:REMATS SAY-N

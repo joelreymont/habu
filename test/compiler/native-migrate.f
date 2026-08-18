@@ -75,7 +75,7 @@ variable OLD-LEN
    s" : NMG-SQ ( n -- n ) dup * ;" ;
 
 : MIGRATE-SQ ( -- )
-   SQ-SRC 1 1 NMIGRATE:DEFINE ;
+   SQ-SRC NMIGRATE:DEFINE ;
 
 : MIGRATED-CASE ( -- )
    MIGRATE-SQ
@@ -122,7 +122,7 @@ variable OLD-LEN
 
 : MIGRATE-VOID ( -- )
    s" : NMG-VCALLS ( -- ) NMG-VBUMP NMG-VBUMP NMG-VCELL @ NMG-VADD3 NMG-VCELL ! ;"
-   0 0 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : VOID-CALL-CASE ( -- )
    DEFINE-VOID-PARTS
@@ -183,7 +183,7 @@ variable OLD-LEN
    s" : NMG-SPILL ( n -- n ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;" ;
 
 : MIGRATE-SPILL ( -- )
-   SPILL-SRC 1 1 NMIGRATE:DEFINE ;
+   SPILL-SRC NMIGRATE:DEFINE ;
 
 : SPILL-CASE ( -- )
    MIGRATE-SPILL
@@ -254,7 +254,7 @@ variable OLD-LEN
    s" : NMG-REMAT ( n n -- n ) {: s:n l:n :} s l 0 ?do 40001 40038 40075 40112 40149 40186 40223 40260 40297 40334 40371 40408 40445 40482 40519 40556 40593 40630 40667 40704 40741 40778 + + + + + + + + + + + + + + + + + + + + + + loop ;" ;
 
 : MIGRATE-REMAT ( -- )
-   REMAT-SRC 2 1 NMIGRATE:DEFINE ;
+   REMAT-SRC NMIGRATE:DEFINE ;
 
 : REMAT-CASE ( -- )
    MIGRATE-REMAT
@@ -301,13 +301,13 @@ variable OLD-LEN
    s" : NMG-USE ( n -- n ) NMG-DBL 1+ ;" ;
 
 : MIGRATE-DBL ( -- )
-   DBL-SRC 1 1 NMIGRATE:DEFINE ;
+   DBL-SRC NMIGRATE:DEFINE ;
 
 : DBL-ENTRY ( -- n )
    s" NMG-DBL" GLOBAL-WID NPUB:NEW-START ;
 
 : MIGRATE-USE ( -- )
-   USE-SRC 1 1 NMIGRATE:DEFINE ;
+   USE-SRC NMIGRATE:DEFINE ;
 
 : CALL-CASE ( -- )
    MIGRATE-DBL
@@ -348,13 +348,13 @@ variable OLD-LEN
    s" : NMG-L1 ( n -- n ) NMG-L2 3 * ;" ;
 
 : MIGRATE-L3 ( -- )
-   L3-SRC 1 1 NMIGRATE:DEFINE ;
+   L3-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-L2 ( -- )
-   L2-SRC 1 1 NMIGRATE:DEFINE ;
+   L2-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-L1 ( -- )
-   L1-SRC 1 1 NMIGRATE:DEFINE ;
+   L1-SRC NMIGRATE:DEFINE ;
 
 : DEEP-CASE ( -- )
    MIGRATE-L3
@@ -396,7 +396,7 @@ variable OLD-LEN
    s" : NMG-VIA ( n -- n ) dup NMG-ENG + ;" ;
 
 : MIGRATE-VIA ( -- )
-   VIA-SRC 1 1 NMIGRATE:DEFINE ;
+   VIA-SRC NMIGRATE:DEFINE ;
 
 : INTEROP-CASE ( -- )
    ENG-SRC EV
@@ -449,17 +449,17 @@ variable OLD-LEN
    s" : NMG-LN ( n -- n ) 0 swap 0 ?do 4 0 ?do i NMG-DBL + loop loop ;" ;
 
 \ A loop carries its two counters and each call site publishes them beside the
-\ vector, so this budget is wider than a leaf's. It is a budget: dot
-\ habu-choose-the-register-a95390ac carries taking the number off the routine.
+\ vector, so this body needs more registers than a leaf. Nothing states how many:
+\ the entry takes the whole pool from NABI:SCRATCH.
 
 : MIGRATE-LC ( -- )
-   LC-SRC 1 1 NMIGRATE:DEFINE ;
+   LC-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LF ( -- )
-   LF-SRC 1 1 NMIGRATE:DEFINE ;
+   LF-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LN ( -- )
-   LN-SRC 1 1 NMIGRATE:DEFINE ;
+   LN-SRC NMIGRATE:DEFINE ;
 
 : LOOP-CALL-CASE ( -- )
    MIGRATE-LC
@@ -522,7 +522,7 @@ variable OLD-LEN
    s" using NMG-AWAY : NMG-MOD ( n -- n ) NMG-K + ; ;using" ;
 
 : MIGRATE-MOD ( -- )
-   MOD-SRC 1 1 NMIGRATE:DEFINE ;
+   MOD-SRC NMIGRATE:DEFINE ;
 
 \ ---- and the same shape the chain CAN compile ---------------------------------
 \ The capability the refusal above is measured against, asserted rather than
@@ -545,10 +545,10 @@ variable OLD-LEN
    s" 5 constant NMG-GK" EV ;
 
 : MIGRATE-CONST ( -- )
-   s" : NMG-KC ( n -- n ) NMG-GK + ;" 1 1 NMIGRATE:DEFINE ;
+   s" : NMG-KC ( n -- n ) NMG-GK + ;" NMIGRATE:DEFINE ;
 
 : MIGRATE-DIGIT ( -- )
-   s" : NMG-KD ( n -- n ) 5 + ;" 1 1 NMIGRATE:DEFINE ;
+   s" : NMG-KD ( n -- n ) 5 + ;" NMIGRATE:DEFINE ;
 
 : CONST-CALL-CASE ( -- )
    CONST-GLOBAL
@@ -581,7 +581,7 @@ variable OLD-LEN
    s" NMG-MOD2" REC-LEN OLD-LEN ! ;
 
 : MIGRATE-MOD2 ( -- )
-   s" using NMG-AWAY : NMG-MOD3 ( n -- n ) NMG-K + ; ;using" 1 1 NMIGRATE:DEFINE ;
+   s" using NMG-AWAY : NMG-MOD3 ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE ;
 
 : UNTOUCHED-CASE ( -- )
    MOD-BEFORE
@@ -613,14 +613,14 @@ variable OLD-LEN
 \ all the same: without it the newest record is whatever the source published
 \ last, and the tape would be elaborated onto it.
 : NO-DEFINITION ( -- )
-   s" 1 2 + drop" 0 0 NMIGRATE:DEFINE ;
+   s" 1 2 + drop" NMIGRATE:DEFINE ;
 
 : TWO-DEFINITIONS ( -- )
-   s" : NMG-A ( -- n ) 1 ; : NMG-B ( -- n ) 2 ;" 0 1 NMIGRATE:DEFINE ;
+   s" : NMG-A ( -- n ) 1 ; : NMG-B ( -- n ) 2 ;" NMIGRATE:DEFINE ;
 
 \ One checked definition and one declaration beside it.
 : DEFINITION-AND-DATA ( -- )
-   s" : NMG-C ( -- n ) 3 ; variable NMG-V" 0 1 NMIGRATE:DEFINE ;
+   s" : NMG-C ( -- n ) 3 ; variable NMG-V" NMIGRATE:DEFINE ;
 
 : ENTRY-CASES ( -- )
    s" a source that publishes no definition records no scan" T-LABEL
@@ -633,7 +633,7 @@ variable OLD-LEN
    [: DEFINITION-AND-DATA ;] E-NFEED-SCAN TTHROWSQ
 
    s" and a migration still runs after every one of those" T-LABEL
-   s" : NMG-TRIPLE ( n -- n ) dup dup + + ;" 1 1 NMIGRATE:DEFINE
+   s" : NMG-TRIPLE ( n -- n ) dup dup + + ;" NMIGRATE:DEFINE
    s" 7 NMG-TRIPLE" EV-N 21 T=
    s" NMG-TRIPLE" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
@@ -715,15 +715,15 @@ variable KEEP-N
 
 : BUMP1 ( -- )
    s" : NMG-BUMP1 ( n -- n ) NMG-DAT ! NMG-DAT @ 1+ dup NMG-DAT ! ;"
-   s" NMG-DAT" 1 1 NMIGRATE:DEFINE-DATA ;
+   s" NMG-DAT" NMIGRATE:DEFINE-DATA ;
 
 : BUMP2 ( -- )
    s" : NMG-BUMP2 ( n -- n ) NMG-DAT ! NMG-DAT @ 1+ dup NMG-DAT ! ;"
-   s" NMG-DAT" 1 1 NMIGRATE:DEFINE-DATA ;
+   s" NMG-DAT" NMIGRATE:DEFINE-DATA ;
 
 : BUMP3 ( -- )
    s" : NMG-BUMP3 ( n -- n ) NMG-DAT ! NMG-DAT @ 1+ dup NMG-DAT ! ;"
-   s" NMG-DAT" 1 1 NMIGRATE:DEFINE-DATA ;
+   s" NMG-DAT" NMIGRATE:DEFINE-DATA ;
 
 \ The two shapes the query has no answer for. A word that leaves nothing and a
 \ word that leaves two are both refused, and BOTH are refused before either is
@@ -855,16 +855,16 @@ public
 \ the facts the survey at the head of tools/codegen-compare-corpus3.f establishes
 \ about this engine.
 : FLOAT-MIGRATIONS ( -- )
-   s" : NMG-FADD ( r r -- r ) f+ ;" 2 1 NMIGRATE:DEFINE
-   s" : NMG-FSUB ( r r -- r ) f- ;" 2 1 NMIGRATE:DEFINE
-   s" : NMG-FMUL ( r r -- r ) f* ;" 2 1 NMIGRATE:DEFINE
-   s" : NMG-FDIV ( r r -- r ) f/ ;" 2 1 NMIGRATE:DEFINE
-   s" : NMG-FNEG ( r -- r ) fnegate ;" 1 1 NMIGRATE:DEFINE
-   s" : NMG-FABS ( r -- r ) fabs ;" 1 1 NMIGRATE:DEFINE
-   s" : NMG-FSQRT ( r -- r ) fsqrt ;" 1 1 NMIGRATE:DEFINE
-   s" : NMG-SF ( n -- r ) s>f ;" 1 1 NMIGRATE:DEFINE
-   s" : NMG-FS ( r -- n ) f>s ;" 1 1 NMIGRATE:DEFINE
-   s" : NMG-FLIT ( r -- r ) 0.25 f+ ;" 1 1 NMIGRATE:DEFINE ;
+   s" : NMG-FADD ( r r -- r ) f+ ;" NMIGRATE:DEFINE
+   s" : NMG-FSUB ( r r -- r ) f- ;" NMIGRATE:DEFINE
+   s" : NMG-FMUL ( r r -- r ) f* ;" NMIGRATE:DEFINE
+   s" : NMG-FDIV ( r r -- r ) f/ ;" NMIGRATE:DEFINE
+   s" : NMG-FNEG ( r -- r ) fnegate ;" NMIGRATE:DEFINE
+   s" : NMG-FABS ( r -- r ) fabs ;" NMIGRATE:DEFINE
+   s" : NMG-FSQRT ( r -- r ) fsqrt ;" NMIGRATE:DEFINE
+   s" : NMG-SF ( n -- r ) s>f ;" NMIGRATE:DEFINE
+   s" : NMG-FS ( r -- n ) f>s ;" NMIGRATE:DEFINE
+   s" : NMG-FLIT ( r -- r ) 0.25 f+ ;" NMIGRATE:DEFINE ;
 
 : FLOAT-CASE ( -- )
    FLOAT-MIGRATIONS
@@ -944,21 +944,21 @@ public
 \   number, so `-0.0 f0=` is true and `-0.0 f0<` is false; a comparison done on
 \   bits rather than on numbers answers the other way for both.
 : FCMP-MIGRATIONS ( -- )
-   s" : NMG-FLT ( r r -- bool ) f< ;" 2 1 NMIGRATE:DEFINE
-   s" : NMG-FGT ( r r -- bool ) f> ;" 2 1 NMIGRATE:DEFINE
-   s" : NMG-FEQ ( r r -- bool ) f= ;" 2 1 NMIGRATE:DEFINE
-   s" : NMG-FLTZ ( r -- bool ) f0< ;" 1 1 NMIGRATE:DEFINE
-   s" : NMG-FEQZ ( r -- bool ) f0= ;" 1 1 NMIGRATE:DEFINE
+   s" : NMG-FLT ( r r -- bool ) f< ;" NMIGRATE:DEFINE
+   s" : NMG-FGT ( r r -- bool ) f> ;" NMIGRATE:DEFINE
+   s" : NMG-FEQ ( r r -- bool ) f= ;" NMIGRATE:DEFINE
+   s" : NMG-FLTZ ( r -- bool ) f0< ;" NMIGRATE:DEFINE
+   s" : NMG-FEQZ ( r -- bool ) f0= ;" NMIGRATE:DEFINE
    s" : NMG-BLT ( r r -- n ) {: x:r y:r :} x y f< if 1 else 2 then ;"
-      2 1 NMIGRATE:DEFINE
+      NMIGRATE:DEFINE
    s" : NMG-BGT ( r r -- n ) {: x:r y:r :} x y f> if 1 else 2 then ;"
-      2 1 NMIGRATE:DEFINE
+      NMIGRATE:DEFINE
    s" : NMG-BEQ ( r r -- n ) {: x:r y:r :} x y f= if 1 else 2 then ;"
-      2 1 NMIGRATE:DEFINE
+      NMIGRATE:DEFINE
    s" : NMG-BLTZ ( r -- n ) {: x:r :} x f0< if 1 else 2 then ;"
-      1 1 NMIGRATE:DEFINE
+      NMIGRATE:DEFINE
    s" : NMG-BEQZ ( r -- n ) {: x:r :} x f0= if 1 else 2 then ;"
-      1 1 NMIGRATE:DEFINE ;
+      NMIGRATE:DEFINE ;
 
 : FCMP-FLAG-CASE ( -- )
    s" the five comparisons answer what the engine's own primitives answer" T-LABEL
@@ -1156,11 +1156,11 @@ variable BRANCH-N
 
 : FOLD-MIGRATION ( -- )
    s" : NMG-FOLD ( n -- n ) {: c:n :} c 65 < if c exit then c 90 > if c exit then c 32 or ;"
-      1 1 NMIGRATE:DEFINE ;
+      NMIGRATE:DEFINE ;
 
 : TRAPPING-MIGRATION ( -- )
    s" : NMG-FOLDIV ( n -- n ) {: c:n :} c 65 < if 100 c / exit then c 90 > if c exit then c 32 or ;"
-      1 1 NMIGRATE:DEFINE ;
+      NMIGRATE:DEFINE ;
 
 \ The interpreted twins, compiled by the engine from the same text, so the
 \ answers are held against the emitter this chain is replacing and not against
@@ -1287,16 +1287,16 @@ variable BACK-N
    s" : NMG-WGT ( n -- n ) begin dup 0 > while 1- repeat ;" ;
 
 : MIGRATE-STEP ( -- )
-   STEP-SRC 1 2 NMIGRATE:DEFINE ;
+   STEP-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-WCALL ( -- )
-   WCALL-SRC 1 1 NMIGRATE:DEFINE ;
+   WCALL-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-UNTIL ( -- )
-   UNTIL-SRC 1 1 NMIGRATE:DEFINE ;
+   UNTIL-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-WGT ( -- )
-   WGT-SRC 1 1 NMIGRATE:DEFINE ;
+   WGT-SRC NMIGRATE:DEFINE ;
 
 \ The interpreted twins, compiled by the engine from the same text, so the
 \ answers below are held against the emitter this chain replaces.
@@ -1397,7 +1397,7 @@ variable BACK-N
 \ positions, which is the whole content of the NaN rule for this body.
 : MAXF-MIGRATION ( -- )
    s" : NMG-MAXF ( r r -- r ) {: x:r y:r :} x y f< if y else x then ;"
-      2 1 NMIGRATE:DEFINE ;
+      NMIGRATE:DEFINE ;
 
 \ The interpreted twin, compiled by the ENGINE from the same source the migration
 \ is handed. It is defined through `evaluate` rather than written here as an
@@ -1434,8 +1434,8 @@ variable BACK-N
 \ this is: what this asserts is that the compiled word and the interpreted word
 \ agree, on the inputs that separate one lowering from another.
 : SHAPE-MIGRATIONS ( -- )
-   s" : NMG-SGD ( r r r -- r ) {: w g lr :} w  lr g f* f- ;" 3 1 NMIGRATE:DEFINE
-   s" : NMG-SEG ( n -- r ) {: d:n :} 1.0 d s>f fsqrt f/ ;" 1 1 NMIGRATE:DEFINE ;
+   s" : NMG-SGD ( r r r -- r ) {: w g lr :} w  lr g f* f- ;" NMIGRATE:DEFINE
+   s" : NMG-SEG ( n -- r ) {: d:n :} 1.0 d s>f fsqrt f/ ;" NMIGRATE:DEFINE ;
 
 : SHAPE-CASE ( -- )
    SHAPE-MIGRATIONS
@@ -1474,20 +1474,20 @@ variable BACK-N
 \ double that came back through the wrong file, or an accumulation the loop
 \ carried in the wrong order, is a different number here rather than a near one.
 : FLOAT-STORE ( -- )
-   s" : NMG-BAD2 ( r ptr a -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;" 2 0 NMIGRATE:DEFINE ;
+   s" : NMG-BAD2 ( r ptr a -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;" NMIGRATE:DEFINE ;
 
 \ The loop-carried accumulator: the double enters the header from the block above
 \ it and comes back to it from the latch, so the header's argument is a floating
 \ register and every turn's Fadd feeds the next.
 : FLOAT-EDGE ( -- )
-   s" : NMG-FLOOP ( r n -- r ) 0 ?do 1.0 f+ loop ;" 2 1 NMIGRATE:DEFINE ;
+   s" : NMG-FLOOP ( r n -- r ) 0 ?do 1.0 f+ loop ;" NMIGRATE:DEFINE ;
 
 \ The join of a two-armed branch whose arms hand over values of DIFFERENT
 \ classes: `0.0` is a double and `x` is the cell the argument arrived in. It is
 \ RELU's shape, and it is the case the join-type rule exists for - one arm states
 \ the type and the other crosses to it.
 : FLOAT-JOIN ( -- )
-   s" : NMG-FRELU ( r -- r ) {: x :} x f0< if 0.0 else x then ;" 1 1 NMIGRATE:DEFINE ;
+   s" : NMG-FRELU ( r -- r ) {: x :} x f0< if 0.0 else x then ;" NMIGRATE:DEFINE ;
 
 \ The callee is migrated first, so both halves are the chain's code. The caller's
 \ `dup` is what makes this the whole statement about a call: one of the two
@@ -1496,11 +1496,11 @@ variable BACK-N
 \ the survivor below it - so a body that got either slot wrong answers a
 \ different number.
 : FLOAT-CALLEE ( -- )
-   s" : NMG-FD ( r -- r ) 2.0 f* ;" 1 1 NMIGRATE:DEFINE ;
+   s" : NMG-FD ( r -- r ) 2.0 f* ;" NMIGRATE:DEFINE ;
 
 : FLOAT-CALL ( -- )
    s" : NMG-FCALL ( r -- r ) 1.0 f* dup NMG-FD f+ ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ TWO DOUBLES CROSSING ONE JOIN IN SWAPPED ORDER. This is MAX2's shape in the
 \ other register file, and it is the case the edge SPLIT exists for: one arm
@@ -1514,7 +1514,7 @@ variable BACK-N
 \ is what makes a collapsed pair visible rather than absorbed.
 : FLOAT-SWAP ( -- )
    s" : NMG-FSWAP ( r r -- r ) {: x:r y:r :} x 1.0 f* y 1.0 f* x f0< if swap then f- ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The engine's own compilation of the join bodies, spelled exactly as the migrated
 \ ones are. It goes through `evaluate` for the reason MAXF-INTERPRETED does: it
@@ -1600,7 +1600,7 @@ variable HELD-ND1
 
 : HELD-MIGRATE ( -- )
    ndict@ HELD-ND0 !
-   s" : NMG-HELD ( n -- n ) 3 + ;" 1 1 NMIGRATE:DEFINE-HELD
+   s" : NMG-HELD ( n -- n ) 3 + ;" NMIGRATE:DEFINE-HELD
    ndict@ HELD-ND1 ! ;
 
 : HELD-CASE ( -- )
@@ -1629,7 +1629,7 @@ variable HELD-ND1
 \ so unlike every refusal case above there is no word left behind to keep
 \ running - the correct outcome is that the name does not exist at all.
 : HELD-REFUSED-MIGRATE ( -- )
-   s" using NMG-AWAY : NMG-HELD-BAD ( n -- n ) NMG-K + ; ;using" 1 1 NMIGRATE:DEFINE-HELD ;
+   s" using NMG-AWAY : NMG-HELD-BAD ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE-HELD ;
 
 : HELD-REFUSAL-CASE ( -- )
    s" a held body outside the dialect is refused with the dialect's own code" T-LABEL
@@ -1642,7 +1642,7 @@ variable HELD-ND1
    s" NMG-HELD-BAD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
 
    s" the recorder recovered, so the NEXT held migration still works" T-LABEL
-   s" : NMG-HELD-AFTER ( n -- n ) 7 + ;" 1 1 NMIGRATE:DEFINE-HELD
+   s" : NMG-HELD-AFTER ( n -- n ) 7 + ;" NMIGRATE:DEFINE-HELD
    s" 1 NMG-HELD-AFTER" EV-N 8 T=
 
    s" and the refused name is free again: the checker's signature went with it" T-LABEL
@@ -1672,13 +1672,13 @@ variable HELD-ND1
 70 constant REJECT-RC                \ src/core/checker.f PKGCTX-REJECT-RC (private there)
 
 : HELD-MOD-MIGRATE ( -- )
-   s" using NMG-AWAY : NMG-HELD-MOD ( n -- n ) NMG-K + ; ;using" 1 1 NMIGRATE:DEFINE-HELD ;
+   s" using NMG-AWAY : NMG-HELD-MOD ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE-HELD ;
 
 : HELD-UNDEF-MIGRATE ( -- )
-   s" : NMG-HELD-UA ( n -- n ) NMG-NO-SUCH-WORD-A and ;" 1 1 NMIGRATE:DEFINE-HELD ;
+   s" : NMG-HELD-UA ( n -- n ) NMG-NO-SUCH-WORD-A and ;" NMIGRATE:DEFINE-HELD ;
 
 : HELD-UNDEF2-MIGRATE ( -- )
-   s" : NMG-HELD-UB ( n -- n ) NMG-NO-SUCH-WORD-B and ;" 1 1 NMIGRATE:DEFINE-HELD ;
+   s" : NMG-HELD-UB ( n -- n ) NMG-NO-SUCH-WORD-B and ;" NMIGRATE:DEFINE-HELD ;
 
 : HELD-RECORD-CASE ( -- )
    s" a held body outside the dialect names the offending word through the chain's own record" T-LABEL
@@ -1697,7 +1697,7 @@ variable HELD-ND1
    NELAB:REFUSED$ nip 0 T=
 
    s" and the chain recovered: the next held migration compiles and leaves no record" T-LABEL
-   s" : NMG-HELD-AGAIN ( n -- n ) 9 + ;" 1 1 NMIGRATE:DEFINE-HELD
+   s" : NMG-HELD-AGAIN ( n -- n ) 9 + ;" NMIGRATE:DEFINE-HELD
    s" 1 NMG-HELD-AGAIN" EV-N 10 T=
    NELAB:REFUSED-ROW -1 T= ;
 
@@ -1731,7 +1731,7 @@ variable MEAS-ROWS0
 variable MEAS-PUB0
 
 : MEASURE-SUBJECT ( -- )
-   s" : NMG-MEASURED ( n -- n ) 3 + 4 * ;" 1 1 NMIGRATE:MEASURE-HELD ;
+   s" : NMG-MEASURED ( n -- n ) 3 + 4 * ;" NMIGRATE:MEASURE-HELD ;
 
 : MEASURE-BEFORE ( -- )
    ndict@ MEAS-ND0 !
@@ -1768,16 +1768,16 @@ variable MEAS-PUB0
 \ that appears computes what the body says.
 : MEASURE-AGREE-CASE ( -- )
    s" a body the measurement accepts is one the held publication accepts" T-LABEL
-   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" 1 1 NMIGRATE:MEASURE-HELD
+   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" NMIGRATE:MEASURE-HELD
    s" NMG-MEASURE-TWIN" DEFINED? TFALSE
-   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" 1 1 NMIGRATE:DEFINE-HELD
+   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" NMIGRATE:DEFINE-HELD
    s" 3 NMG-MEASURE-TWIN" EV-N 17 T=
 
    s" and the record it published is the chain's own emission" T-LABEL
    s" NMG-MEASURE-TWIN" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 : MEASURE-REFUSED-MIGRATE ( -- )
-   s" using NMG-AWAY : NMG-MEASURE-BAD ( n -- n ) NMG-K + ; ;using" 1 1 NMIGRATE:MEASURE-HELD ;
+   s" using NMG-AWAY : NMG-MEASURE-BAD ( n -- n ) NMG-K + ; ;using" NMIGRATE:MEASURE-HELD ;
 
 : MEASURE-REFUSAL-CASE ( -- )
    s" a measured body outside the dialect is refused with the dialect's own code" T-LABEL
@@ -1792,7 +1792,7 @@ variable MEAS-PUB0
    s" NMG-MEASURE-BAD" DEFINED? TFALSE
 
    s" the chain recovered, so the next measurement still answers" T-LABEL
-   s" : NMG-MEASURE-AFTER ( n -- n ) 6 + ;" 1 1 NMIGRATE:MEASURE-HELD
+   s" : NMG-MEASURE-AFTER ( n -- n ) 6 + ;" NMIGRATE:MEASURE-HELD
    s" NMG-MEASURE-AFTER" DEFINED? TFALSE ;
 
 \ ---- a name resolved off the engine ------------------------------------------
@@ -1815,10 +1815,10 @@ variable MEAS-PUB0
    s" 41 RES-VAR !" EV ;
 
 : MIGRATE-RESOLVED-CALL ( -- )
-   s" : RES-CALLER ( n n -- n ) RES-ADD3 2 * ;" 2 1 NMIGRATE:DEFINE ;
+   s" : RES-CALLER ( n n -- n ) RES-ADD3 2 * ;" NMIGRATE:DEFINE ;
 
 : MIGRATE-RESOLVED-DATA ( -- )
-   s" : RES-READ ( -- n ) RES-VAR @ 1 + ;" 0 1 NMIGRATE:DEFINE ;
+   s" : RES-READ ( -- n ) RES-VAR @ 1 + ;" NMIGRATE:DEFINE ;
 
 : RESOLVED-CASE ( -- )
    RESOLVED-SETUP
@@ -1856,10 +1856,10 @@ variable MEAS-PUB0
    s" : STL-CALLEE ( n -- n ) 100 * ;" EV ;
 
 : MIGRATE-STALE-1 ( -- )
-   s" : STL-A ( n -- n ) STL-CALLEE 1 + ;" 1 1 NMIGRATE:DEFINE ;
+   s" : STL-A ( n -- n ) STL-CALLEE 1 + ;" NMIGRATE:DEFINE ;
 
 : MIGRATE-STALE-2 ( -- )
-   s" : STL-B ( n -- n ) STL-CALLEE 1 + ;" 1 1 NMIGRATE:DEFINE ;
+   s" : STL-B ( n -- n ) STL-CALLEE 1 + ;" NMIGRATE:DEFINE ;
 
 : STALE-CASE ( -- )
    STALE-SETUP
@@ -1918,19 +1918,19 @@ variable MEAS-PUB0
    s" : LGP-EXIT ( n -- n ) {: a:n :} a 0 < if 0 exit then a 3 * {: d:n :} d a + ;" ;
 
 : MIGRATE-LGP-TWO ( -- )
-   LGP-TWO-SRC 2 1 NMIGRATE:DEFINE ;
+   LGP-TWO-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-THREE ( -- )
-   LGP-THREE-SRC 2 1 NMIGRATE:DEFINE ;
+   LGP-THREE-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-CALL ( -- )
-   LGP-CALL-SRC 2 1 NMIGRATE:DEFINE ;
+   LGP-CALL-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-SHADOW ( -- )
-   LGP-SHADOW-SRC 1 1 NMIGRATE:DEFINE ;
+   LGP-SHADOW-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-EXIT ( -- )
-   LGP-EXIT-SRC 1 1 NMIGRATE:DEFINE ;
+   LGP-EXIT-SRC NMIGRATE:DEFINE ;
 
 \ The engine's own compilations of the same text, under names of their own, so
 \ the answers below are held against the emitter this chain replaces rather than
@@ -2027,19 +2027,19 @@ variable MEAS-PUB0
    s" : LGP-IF ( n -- n ) {: if:n :} if if + ;" ;
 
 : MIGRATE-LGP-IDX ( -- )
-   LGP-IDX-SRC 1 1 NMIGRATE:DEFINE ;
+   LGP-IDX-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-JDX ( -- )
-   LGP-JDX-SRC 1 1 NMIGRATE:DEFINE ;
+   LGP-JDX-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-CAPI ( -- )
-   LGP-CAPI-SRC 1 1 NMIGRATE:DEFINE ;
+   LGP-CAPI-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-BEFORE ( -- )
-   LGP-BEFORE-SRC 1 1 NMIGRATE:DEFINE ;
+   LGP-BEFORE-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-LGP-IF ( -- )
-   LGP-IF-SRC 1 1 NMIGRATE:DEFINE ;
+   LGP-IF-SRC NMIGRATE:DEFINE ;
 
 \ The engine's own compilations of the same five texts, under names of their own.
 : LGD-INTERPRETED ( -- )

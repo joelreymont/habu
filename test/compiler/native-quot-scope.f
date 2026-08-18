@@ -191,61 +191,61 @@ private
 
 : DEF-P ( -- )
    s" : QSC-P-N ( n -- n ) [: QSC-BAD ;] catch {: rc:n :} rc 0 <> if rc throw then ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : DEF-A ( -- )
    s" : QSC-A-N ( n n -- n ) {: k:n lim:n :} lim 5 * [: QSC-OK1 ;] catch drop k 3 * + ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : DEF-T ( -- )
    s" : QSC-T-N ( n n -- n n ) {: k:n lim:n :} lim 5 * [: QSC-BAD ;] catch {: rc:n :} k 3 * + rc ;"
-   2 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : DEF-TWO ( -- )
    s" : QSC-2-N ( n n -- n ) {: a:n b:n :} a 3 * [: QSC-OK1 ;] catch drop a 5 * + b 7 * + ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : DEF-E ( -- )
    s" : QSC-E-N ( n n -- n ) {: k:n lim:n :} [: QSC-OK1 ;] lim 5 * QSC-APPLY k 3 * + ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : DEF-L ( -- )
    s" : QSC-L-N ( n -- n ) {: v:n :} 0 3 0 ?do i {: t:n :} v [: QSC-OK1 ;] catch drop t 7 * + + loop ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The bodies that call and the bodies that do not go through one entry: the
 \ chain resolves whatever name a body writes off the dictionary.
-: DEF ( ptr u8 n n n -- )
+: DEF ( ptr u8 n -- )
    NMIGRATE:DEFINE ;
 
 : DEF-IF ( -- )
-   s" : QSC-IF-N ( n -- n n ) [: dup 3 > if 3 * else 5 * then ;] catch ;" 1 2 DEF ;
+   s" : QSC-IF-N ( n -- n n ) [: dup 3 > if 3 * else 5 * then ;] catch ;" DEF ;
 
 : DEF-DO ( -- )
-   s" : QSC-DO-N ( n -- n n ) [: 4 0 ?do 2 * 1+ loop ;] catch ;" 1 2 DEF ;
+   s" : QSC-DO-N ( n -- n n ) [: 4 0 ?do 2 * 1+ loop ;] catch ;" DEF ;
 
 : DEF-IFDO ( -- )
-   s" : QSC-IFDO-N ( n -- n n ) [: 4 0 ?do dup 9 > if 3 * else 5 + then loop ;] catch ;" 1 2 DEF ;
+   s" : QSC-IFDO-N ( n -- n n ) [: 4 0 ?do dup 9 > if 3 * else 5 + then loop ;] catch ;" DEF ;
 
 : DEF-PB ( -- )
    s" : QSC-PB-N ( n -- n ) [: dup 3 > if 9 throw then 7 * ;] catch {: rc:n :} rc 0 <> if rc throw then ;"
-   1 1 DEF ;
+   DEF ;
 
 : DEF-2B ( -- )
    s" : QSC-2B-N ( n -- n ) [: dup 3 > if 3 * else 5 * then ;] catch drop [: dup 20 > if 7 * else 11 * then ;] catch drop ;"
-   1 1 DEF ;
+   DEF ;
 
 : DEF-3B ( -- )
    s" : QSC-3B-N ( n -- n ) dup 3 > if 1+ then [: dup 3 > if 3 * else 5 * then ;] catch drop [: dup 9 > if 1+ else 2 + then ;] catch drop ;"
-   1 1 DEF ;
+   DEF ;
 
 : DEF-BG ( -- )
    s" : QSC-BG-N ( n n -- n ) {: k:n lim:n :} lim [: dup 3 > if 3 * else 5 * then ;] catch drop k 7 * + ;"
-   2 1 DEF ;
+   DEF ;
 
 : DEF-EB ( -- )
    s" : QSC-EB-N ( n n -- n ) {: k:n lim:n :} [: dup 3 > if 3 * else 5 * then ;] lim QSC-APPLY k 7 * + ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 
@@ -270,7 +270,7 @@ private
 \ Compiling a body without publishing anything, so a refusal can be measured with
 \ nothing left behind on the way out. It takes no staged callee, which is why the
 \ refusal cases below are written with bodies that call nothing.
-: MEASURE-AT ( ptr u8 n n n -- )
+: MEASURE-AT ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 \ BOTH ANSWERS ARE BOUND BEFORE EITHER IS COMPARED. A pair of comparators over
@@ -358,11 +358,11 @@ public
 : ACCEPT-CASE ( -- )
    s" a calling quotation compiles under a definition with a group" T-LABEL
    [: s" : QSC-ACC1 ( n n -- n ) {: k:n lim:n :} lim [: QSC-FIXTURE:QSC-OK1 ;] catch drop k 3 * + ;"
-      2 1 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    s" and so does the same body with no group around it" T-LABEL
    [: s" : QSC-ACC2 ( n -- n n ) [: QSC-FIXTURE:QSC-OK1 ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ ;
 
 : PRODUCTION-CASE ( -- )
@@ -415,24 +415,24 @@ public
 : ENCLOSING-SHAPE-CASE ( -- )
    s" a branching body compiles the same way whatever encloses it" T-LABEL
    [: s" : QSC-B1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    [: s" : QSC-B2 ( n -- n n ) dup 3 > if 1+ then [: dup 3 > if 1+ then ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    [: s" : QSC-B3 ( n -- n n ) dup 3 > if 1+ else 2 + then [: dup 3 > if 1+ then ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    s" including where the two joins carry different numbers of values" T-LABEL
    [: s" : QSC-B5 ( n -- n n ) dup 3 > if 1+ then [: dup dup 3 > if 1+ else 2 + then + 1- ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    [: s" : QSC-B6 ( n n -- n n n ) 2dup > if 1+ then [: dup 3 > if 1+ then ;] catch ;"
-      2 3 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    s" and so does its straight-line twin, as it always did" T-LABEL
    [: s" : QSC-B4 ( n -- n n ) dup 3 > if 1+ then [: 1+ ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ ;
 
 \ WHAT IS STILL REFUSED, AND EACH BY ITS OWN OWNER. None of these three is this
@@ -459,15 +459,15 @@ public
 : STILL-REFUSED-CASE ( -- )
    s" a body whose every path throws is still refused by name" T-LABEL
    [: s" : QSC-R1 ( n -- n n ) [: dup 3 > if 9 throw else 5 throw then ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    E-NELAB-QUOT TTHROWSQ
    s" while one that throws on one path and returns on the other compiles" T-LABEL
    [: s" : QSC-R2 ( n -- n n ) [: dup 3 > if 9 throw else 1+ then ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    s" and an exit inside a body's arm is still an arity refusal" T-LABEL
    [: s" : QSC-R3 ( n -- n n ) [: dup 3 > if 1+ exit then 2 + ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    E-NELAB-ARITY TTHROWSQ ;
 
 \ ---- what the branching bodies ANSWER ----------------------------------------

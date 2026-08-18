@@ -269,13 +269,13 @@ private
 \ A checked `catch` takes a stack-neutral quotation and a quotation cannot read
 \ the enclosing word's locals, so what the migration needs is parked first - the
 \ same shape src/compiler/native/migrate.f uses for the same reason.
-variable M-A   variable M-U   variable M-IN   variable M-OUT
+variable M-A   variable M-U
 
 : MIGRATE-RC ( -- n )
-   [: M-A @ M-U @ M-IN @ M-OUT @ NMIGRATE:DEFINE ;] catch ;
+   [: M-A @ M-U @ NMIGRATE:DEFINE ;] catch ;
 
-: TRY ( ptr u8 n n n -- n ) {: a:ptr u:n in:n out:n :}
-   a M-A !  u M-U !  in M-IN !  out M-OUT !
+: TRY ( ptr u8 n -- n ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   a M-A !  u M-U !
    MIGRATE-RC ;
 
 \ ---- the migrations ----------------------------------------------------------
@@ -298,38 +298,38 @@ variable RC-MIXHI variable RC-MIXLO
 \ than about renames. And the twins that succeed have to exist before the
 \ comparisons below are compiled against their names.
 : MIGRATE-THE-FOUR ( -- )
-   SWAP$ 3 3 TRY RC-SWAP !
-   ROT$  4 4 TRY RC-ROT !
-   CTOR$ 2 3 TRY RC-CTOR !
-   USER$ 2 3 TRY RC-USER ! ;
+   SWAP$ TRY RC-SWAP !
+   ROT$  TRY RC-ROT !
+   CTOR$ TRY RC-CTOR !
+   USER$ TRY RC-USER ! ;
 
 : MIGRATE-THE-SHAPES ( -- )
-   OVER$ 3 5 TRY RC-OVER !
-   DUPB$ 2 4 TRY RC-DUPB !
-   NIPB$ 3 1 TRY RC-NIPB !
-   DRPB$ 3 2 TRY RC-DRPB ! ;
+   OVER$ TRY RC-OVER !
+   DUPB$ TRY RC-DUPB !
+   NIPB$ TRY RC-NIPB !
+   DRPB$ TRY RC-DRPB ! ;
 
 : MIGRATE-THE-SEAMS ( -- )
-   TWO$  4 4 TRY RC-TWO !
-   IF$   3 3 TRY RC-IF !
-   LP$   3 3 TRY RC-LP !
-   CALL$ 3 3 TRY RC-CALL !
-   PARK$ 4 4 TRY RC-PARK !
-   JRET$ 3 2 TRY RC-JRET !
-   STALE$ 2 1 TRY RC-STALE !
-   M2$   4 1 TRY RC-M2 ! ;
+   TWO$  TRY RC-TWO !
+   IF$   TRY RC-IF !
+   LP$   TRY RC-LP !
+   CALL$ TRY RC-CALL !
+   PARK$ TRY RC-PARK !
+   JRET$ TRY RC-JRET !
+   STALE$ TRY RC-STALE !
+   M2$   TRY RC-M2 ! ;
 
 : MIGRATE-THE-REST ( -- )
-   HOLD$ 4 4 TRY RC-HOLD !
-   PASS$ 2 2 TRY RC-PASS !
-   MADE$ 1 2 TRY RC-MADE !
-   LOOP$ 4 2 TRY RC-LOOP !
-   VARS$ 3 3 TRY RC-VARS !
-   CELL$ 2 2 TRY RC-CELL !
-   ENUM$ 2 2 TRY RC-ENUM !
-   TORB$ 2 2 TRY RC-TORB !
-   MIXHI$ 4 1 TRY RC-MIXHI !
-   MIXLO$ 4 1 TRY RC-MIXLO ! ;
+   HOLD$ TRY RC-HOLD !
+   PASS$ TRY RC-PASS !
+   MADE$ TRY RC-MADE !
+   LOOP$ TRY RC-LOOP !
+   VARS$ TRY RC-VARS !
+   CELL$ TRY RC-CELL !
+   ENUM$ TRY RC-ENUM !
+   TORB$ TRY RC-TORB !
+   MIXHI$ TRY RC-MIXHI !
+   MIXLO$ TRY RC-MIXLO ! ;
 
 MIGRATE-THE-FOUR
 MIGRATE-THE-SHAPES

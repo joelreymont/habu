@@ -477,7 +477,8 @@ bin/hb --load tools/codegen-verify-dump.f /tmp/dump-run.f
 ```
 
 where `/tmp/dump-run.f` is a single `VERIFY-DUMP:REPORT` call carrying the
-source text, its two arities and the register budget.
+source text and nothing else — the arity is the checker's and the register
+pool is the machine's, so neither is a thing the caller can get wrong.
 
 ## Performance measurement tools (tools/perf/)
 

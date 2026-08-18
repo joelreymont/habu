@@ -134,12 +134,10 @@ private
    uses 1 > if E-JUDGE-CHAIN-DATA throw then
    k SUFFIX$ JUDGE-SRC:TEXT$ {: sa:ptr su:n :}
    uses 0= if
-      sa su k JUDGE-SRC:IN k JUDGE-SRC:OUT NMIGRATE:DEFINE exit
+      sa su NMIGRATE:DEFINE exit
    then
    sa su
    k 0 JUDGE-SRC:USE@ JUDGE-SRC:DATA-NAME$
-   k JUDGE-SRC:IN
-   k JUDGE-SRC:OUT
    NMIGRATE:DEFINE-DATA ;
 
 public

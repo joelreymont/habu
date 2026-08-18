@@ -42,7 +42,7 @@ private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and
 \ every entry below is one call through it: the migration entry takes SOURCE.
-TRUSTED: DEFINE ( ptr u8 n n n -- )
+TRUSTED: DEFINE ( ptr u8 n -- )
    NMIGRATE:DEFINE ;
 
 \ A published routine is called by NAME, and the name does not exist while this
@@ -58,7 +58,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ the arm ends the path, and the chain would not because the arm left one value
 \ fewer than the fall-through.
 : MK-JT ( -- )
-   s" : DPC-JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;" 2 1 DEFINE ;
+   s" : DPC-JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;" DEFINE ;
 
 : JT-CASE ( -- )
    s" a one-armed if whose arm throws compiles, and its live path returns" T-LABEL
@@ -76,7 +76,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ from the FIRST argument, so an arm that had been confused for the other would
 \ answer differently rather than not at all.
 : MK-DE ( -- )
-   s" : DPC-DE ( n n -- n ) 0 = if drop E-A-EMPTY throw else 1 + then ;" 2 1 DEFINE ;
+   s" : DPC-DE ( n n -- n ) 0 = if drop E-A-EMPTY throw else 1 + then ;" DEFINE ;
 
 : ELSE-CASE ( -- )
    s" a dead first arm leaves the second arm to state the join" T-LABEL
@@ -91,7 +91,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ A dead SECOND arm, which is the other side of the same rule: the first arm
 \ states the width and the second contributes no edge at all.
 : MK-DS ( -- )
-   s" : DPC-DS ( n n -- n ) 0 = if drop 5 else drop E-A-BOUNDS throw then ;" 2 1 DEFINE ;
+   s" : DPC-DS ( n n -- n ) 0 = if drop 5 else drop E-A-BOUNDS throw then ;" DEFINE ;
 
 : SECOND-CASE ( -- )
    s" a dead second arm joins the same way round" T-LABEL
@@ -106,7 +106,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ would refuse that token as code after a path that ended (E-NELAB-CTRL). The
 \ case therefore compiles only if the chain resolved the word.
 : MK-SHADOW ( -- )
-   s" : DPC-SHADOW ( n n -- n ) 0 = if drop 5 DPCX:throw 7 then ;" 2 1 DEFINE ;
+   s" : DPC-SHADOW ( n n -- n ) 0 = if drop 5 DPCX:throw 7 then ;" DEFINE ;
 
 : SHADOW-CASE ( -- )
    s" a word whose name is throw but whose record is not dead still joins" T-LABEL
@@ -120,7 +120,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ And the other direction: a word that is dead by its OWN certified body, whose
 \ name is nothing special. A chain reading a list of names would miss it.
 : MK-OWNDEAD ( -- )
-   s" : DPC-VIA ( n n -- n ) 0 = if drop E-A-EMPTY DPCY:BOOM then ;" 2 1 DEFINE ;
+   s" : DPC-VIA ( n n -- n ) 0 = if drop E-A-EMPTY DPCY:BOOM then ;" DEFINE ;
 
 : OWNDEAD-CASE ( -- )
    s" a word the checker certified dead from its own body ends the path too" T-LABEL
@@ -166,7 +166,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ is that the caller gets the code the source names, out of a call the engine
 \ made, with the data stack where the caller left it.
 : MK-ALLDEAD ( -- )
-   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" 1 0 DEFINE ;
+   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" DEFINE ;
 
 : ALL-DEAD-CASE ( -- )
    s" a body whose every path ends compiles, publishes and throws" T-LABEL
@@ -179,7 +179,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ the two apart proves.
 : MK-BOTH-DEAD ( -- )
    s" : DPC-BOTHDEAD ( n -- ) 0 = if E-A-EMPTY throw else E-A-BOUNDS throw then ;"
-   1 0 DEFINE ;
+   DEFINE ;
 
 : BOTH-DEAD-CASE ( -- )
    s" two dead arms leave no return anywhere, and each arm is its own" T-LABEL
@@ -199,7 +199,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ computes: an answer equal to the argument would be a routine that returned it,
 \ and an answer equal to the code says the callee really ran.
 : MK-TAIL-SHAPED ( -- )
-   s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" 1 1 DEFINE ;
+   s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" DEFINE ;
 
 : TAIL-SHAPED-CASE ( -- )
    s" a dead last call of this definition's own arity still never returns" T-LABEL
@@ -211,18 +211,18 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ so a shape that compiles only because something earlier in this file published
 \ it would fail here. It is also the entry tools/chain-census.f asks with, which
 \ is what makes the census's answer about these bodies this file's subject too.
-: MEASURE ( ptr u8 n n n -- )
+: MEASURE ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 : ALL-DEAD-MEASURED ( -- )
-   s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" 1 0 MEASURE ;
+   s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" MEASURE ;
 
 \ The same with a declared result. Control never comes back, so the cell the
 \ signature names is never published - and the routine still declares it, because
 \ the convention a Habu word is entered under is what its CALLERS were compiled
 \ against and the module records the same arity.
 : OUT-DEAD-MEASURED ( -- )
-   s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" 1 1 MEASURE ;
+   s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" MEASURE ;
 
 : MEASURED-CASE ( -- )
    s" the whole chain accepts the shape with nothing published behind it" T-LABEL
@@ -250,7 +250,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ IT IS PINNED AS THE REFUSAL IT IS, for the same reason section 5's refusal was
 \ pinned before the form existed. No census body reaches it: nothing in the tree
 \ spills a no-return body at the machine's own pool.
-: MEASURE-AT ( ptr u8 n n n -- )
+: MEASURE-AT ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 \ Twenty-eight values every one of which is read after the last of them is
@@ -261,11 +261,11 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ since no caller states a budget any more, real means bigger than the machine.
 : SPILL-DEAD ( -- )
    s" : DPC-SPILLDEAD ( n -- ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + drop E-A-EMPTY throw ;"
-   1 0 MEASURE-AT ;
+   MEASURE-AT ;
 
 : SPILL-LIVE ( -- )
    s" : DPC-SPILLLIVE ( n -- n ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;"
-   1 1 MEASURE-AT ;
+   MEASURE-AT ;
 
 : SPILL-CASE ( -- )
    s" the same arithmetic spills and compiles when it returns" T-LABEL

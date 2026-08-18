@@ -51,13 +51,11 @@
 \ measures a chain-compiled word calling a chain-compiled word, which is the
 \ shape the first corpus has only as recursion.
 \
-\ WHAT IS STILL STATED. The two arities and the register budget, on the same line
-\ as the source, and for the caller the callee's spelling, entry and effect. The
-\ checker knows the arities and cannot yet hand them to a recorded unit (dot
-\ habu-bind-checker-env-ed4f9f87); the budget is a budget (dot
-\ habu-choose-the-register-a95390ac); the callee's three facts are the caller's
-\ statement until dot habu-resolve-a-callee-0340dfde lands, and the entry is read
-\ off the record here so that at least that one is not typed in twice.
+\ NOTHING IS STATED BUT THE SOURCE. The two arities and the register budget used
+\ to ride on the same line, and the callee's spelling, entry and effect with
+\ them. The entry reads what the definition takes and leaves off the checker's
+\ certificate, derives the pool from the machine, and resolves a callee through
+\ the same reader - so a row here is a body and a name and nothing else.
 
 require lib/errors.f
 require lib/prelude.f
@@ -81,28 +79,28 @@ private
 \ against two constants and answers a pair, and takes the same budget.
 
 : TAG ( -- )
-   s" : TAG-N ( n -- n ) 7 and ;" 1 1 NMIGRATE:DEFINE ;
+   s" : TAG-N ( n -- n ) 7 and ;" NMIGRATE:DEFINE ;
 
 \ lib/json-read.f:252 with its four constants written as their values - the
 \ first of the two substitutions the head of this file lists.
 : WS? ( -- )
    s" : WS?-N ( n -- bool ) dup 32 = over 9 = or over 10 = or swap 13 = or ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ src/core/checker.f:3542 with its three hexadecimal literals written in
 \ decimal - the second substitution. Two range tests, each leaving the word from
 \ the middle through `exit`, which is the shape.
 : SYM-FOLD-C ( -- )
    s" : SYM-FOLD-C-N ( n -- n ) {: c:n :} c 65 < if c exit then c 90 > if c exit then c 32 or ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : MAX-DIM ( -- )
    s" : MAX-DIM-N ( n n -- n ) {: a:n b:n :} a b > if a else b then ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : COUNT-CHAR ( -- )
    s" : COUNT-CHAR-N ( ptr u8 n n -- n ) {: a:ptr u c :} 0 0 begin dup u < while dup a + c@ c = if swap 1+ swap then 1+ repeat drop ;"
-   3 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The walk's callee. Its one name outside the dialect is the corpus's own
 \ binding table, and its spelling is all the chain is told: the engine answers
@@ -111,7 +109,7 @@ private
 : TV-NEXT? ( -- )
    s" : TV-NEXT?-N ( n -- n bool ) dup 7 and 1 = 0= if 0 0= 0= exit then dup 3 rshift cells TV-TABLE + @ dup -1 = if drop 0 0= 0= else nip 0 0= then ;"
    s" TV-TABLE"
-   1 2 NMIGRATE:DEFINE-DATA ;
+   NMIGRATE:DEFINE-DATA ;
 
 \ The walk itself: a loop whose test is a call. Its routine declares the direct
 \ call and the frame its caller's return address goes in, for the reason
@@ -119,14 +117,14 @@ private
 \ so it has to have somewhere to live.
 : T-RES-WALK ( -- )
    s" : T-RES-WALK-N ( n -- n ) begin TV-NEXT?-N while repeat ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The copy's callee: a pointer and a cell index in, the address of that cell
 \ out. A `ptr n` is one cell of the caller's stack, so its convention is two
 \ values in and one out, which is what the declaration below says.
 : CELL-FIELD ( -- )
    s" : CELL-FIELD-N ( ptr n n -- ptr n ) cells + ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The copy itself: a counted loop with TWO calls in its body, one working out
 \ the address it reads and one the address it writes, and three locals live
@@ -144,7 +142,7 @@ private
 
 : VEC-COPY-CELLS ( -- )
    s" : VEC-COPY-CELLS-N ( ptr n ptr n n -- ) {: src:ptr dst:ptr len:n :} len 0 ?do src i CELL-FIELD-N @ dst i CELL-FIELD-N ! loop ;"
-   3 0 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 

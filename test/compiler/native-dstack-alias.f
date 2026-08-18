@@ -108,8 +108,8 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 \ Every body below names its callees and the chain resolves each of them off the
 \ dictionary while it elaborates the body, so a migration is all a caller states.
-: MIGRATE ( ptr u8 n n n -- ) {: a:ptr u:n in:n out:n :}
-   a u in out NMIGRATE:DEFINE ;
+: MIGRATE ( ptr u8 n -- )
+   NMIGRATE:DEFINE ;
 
 \ One run of an engine-compiled body on a fresh data stack, answering what it
 \ left behind. The buffer is re-taken per run so no answer can survive into the
@@ -136,7 +136,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
    s" the same body through the chain compiles, where it used to be refused"
    T-LABEL
-   s" : DKA-CV ( -- ) DKA:SEVEN 200 DKA:BASE c! DKA:ID DKA:ANS! ;" 0 0 MIGRATE
+   s" : DKA-CV ( -- ) DKA:SEVEN 200 DKA:BASE c! DKA:ID DKA:ANS! ;" MIGRATE
    s" DKA-CV" ENTRY-OF 0 > TTRUE
 
    s" and it answers what the engine answers" T-LABEL
@@ -148,7 +148,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ the position resident, and the callee would have taken whatever the cell held.
 : SAVE-CASE ( -- )
    s" a value no cell held is stored before the call that takes it" T-LABEL
-   s" : DKA-CW ( -- ) 41 1 + DKA:ID DKA:ANS! ;" 0 0 MIGRATE
+   s" : DKA-CW ( -- ) 41 1 + DKA:ID DKA:ANS! ;" MIGRATE
    s" ' DKA-CW DKA:BASE DKA:SIZE run-in-stack" RUN-CHAIN 42 T= ;
 
 \ ---- 3. a computed value returned --------------------------------------------
@@ -156,7 +156,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ chance to apply one twice.
 : EXIT-CASE ( -- )
    s" and a computed result is published into the cell the caller reads" T-LABEL
-   s" : DKA-CX ( -- n ) 41 1 + ;" 0 1 MIGRATE
+   s" : DKA-CX ( -- n ) 41 1 + ;" MIGRATE
    s" DKA-CX" EV-N 42 T= ;
 
 public

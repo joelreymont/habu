@@ -7,9 +7,11 @@
 \ so the chain elaborates what the checker certified and not a second reading.
 \
 \ The NAME is not a parameter: it is read off the record the source published,
-\ and a source that published none or several is refused. Nothing about a callee
-\ is a parameter either - dict.f answers where its code starts and how many
-\ cells a call to it moves, at the point those are used.
+\ and a source that published none or several is refused. Neither is the ARITY -
+\ dict.f answers what the checker certified this definition takes and leaves, the
+\ same reader that answers for every callee, so the routine's contract and the
+\ calls to it come from one authority instead of agreeing by luck. Nothing about
+\ a callee is a parameter either.
 \
 \ Nothing the chain refuses is caught here, so a word the chain cannot compile
 \ keeps running the code the engine compiled for it, under the refuser's name.
@@ -198,6 +200,36 @@ variable M-MEASURE                   \ this migration proves the publication ins
    u NAME-CAP > if E-NMIGRATE-TEXT throw then
    a NAME-BUF u STR-LEN BYTE-COPY-LEN
    u NAME-U ! ;
+
+\ ---- what the definition takes and leaves ------------------------------------
+\ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
+\ from src/compiler/native/dict.f at the point it is used, and this is the same
+\ reader asked about the definition being compiled - so the routine's contract
+\ and every call to it are derived from one authority instead of agreeing by
+\ luck. It asks for CELLS, which is what NELAB:COLON checks the body's value
+\ vector against; a term of a family more than one cell wide makes the two
+\ counts differ, and dict.f EFF-CELLS is where that choice is stated.
+\
+\ ASKED WITH THE BARE NAME, in the scope the source was evaluated in, which is
+\ the one form that answers for a private definition as well as a public one.
+\ KEEP-NAME has just copied that name out of the record, which is what makes it
+\ askable at all - the record's own name span is about to move.
+\
+\ THE ABSENT ANSWER IS NAMED AND HAS NO REACHING CASE TODAY, which is written
+\ down rather than left for a reader to assume either way. SPELL-ARITY answers
+\ ARITY-NONE for a name the checker holds no effect for, so the code below is the
+\ reader's own contract handled rather than a -1 let through to NELAB:COLON,
+\ which would refuse it as E-NELAB-ARITY and name the wrong thing. No shape
+\ reaches it: E-NMIGRATE-VERDICT already refuses anything the engine's check did
+\ not certify, and this asks about a record published one step earlier in the
+\ scope that published it. Measured through MEASURE-HELD - a package opened and
+\ closed by the source is E-NMIGRATE-NAME, a `TRUSTED:` body is E-NFEED-STATE,
+\ an unsigned body answers its inferred effect. Dot
+\ habu-reach-the-absent-360162f5 owns finding one or retiring the code.
+: KEEP-ARITY ( -- )
+   NAME-BUF NAME-U @ NDICT:SPELL-ARITY {: din:n dout:n :}
+   din NDICT:ARITY-NONE = if E-NMIGRATE-ARITY throw then
+   din M-IN !  dout M-OUT ! ;
 
 \ If an earlier record of the same tail wins the lookup, the republication would
 \ rewrite the wrong one.
@@ -434,6 +466,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    KEEP-NAME
    wid NAME-WID !
    HELD-TAKEN
+   KEEP-ARITY
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
    r STAGE-BODY
@@ -486,30 +519,30 @@ variable REC-OK                      \ the body staged so far is still one worth
    rc 0 <> if HELD-RETRACT rc throw then
    M-MEASURE @ 0<> if HELD-RETRACT then ;
 
-: STAGE ( ptr u8 n n n -- )
-   {: sa su:n in:n out:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
+: STAGE ( ptr u8 n -- )
+   {: sa su:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
-   in M-IN ! out M-OUT !
+   0 M-IN ! 0 M-OUT !
    0 M-DATA-U ! 0 M-SPILLS ! 0 M-REMATS !
    0 M-HELD ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
 
 public
 
-\ `in` and `out` are the declared arities. The scratch pool is NABI:SCRATCH - the
-\ machine's, not a caller's.
-: DEFINE ( ptr u8 n n n -- )
+\ The source is the whole of what the caller says. What the definition takes and
+\ leaves is the checker's, and the scratch pool is NABI:SCRATCH - the machine's.
+: DEFINE ( ptr u8 n -- )
    STAGE RUN ;
 
 \ The first entry that compiles a word the old emitter never published, which is
 \ what makes the old emitter unnecessary rather than prerequisite.
-: DEFINE-HELD ( ptr u8 n n n -- )
+: DEFINE-HELD ( ptr u8 n -- )
    STAGE
    1 M-HELD !
    RUN ;
 
 \ Stops one step short of every write, because a publication is permanent and
 \ the two address-keyed records may not drop a row to make space.
-: MEASURE-HELD ( ptr u8 n n n -- )
+: MEASURE-HELD ( ptr u8 n -- )
    STAGE
    1 M-HELD !
    1 M-MEASURE !
@@ -517,9 +550,9 @@ public
 
 \ The spelling is the whole of what the caller says: the address that word
 \ pushes is the engine's to answer.
-: DEFINE-DATA ( ptr u8 n ptr u8 n n n -- )
-   {: sa su:n da du:n in:n out:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
-   sa su in out STAGE
+: DEFINE-DATA ( ptr u8 n ptr u8 n -- )
+   {: sa su:n da du:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
+   sa su STAGE
    da M-DATA ! du M-DATA-U !
    RUN ;
 

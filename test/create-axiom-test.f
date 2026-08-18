@@ -29,11 +29,12 @@
 \      src/core/enums.f ENUM+ ships - as E-NELAB-ARITY.
 \
 \ HOW THIS SUITE WOULD CATCH THE ROW COMING BACK. Restore `PE-PTR-A PE-OUT` on the
-\ row and eight assertions red (measured, 2026-08-14): the arity pair reads 0/1,
-\ the inferred effect reads 0/1, the bad caller certifies instead of being
-\ refused, the honest caller is refused instead of certifying, all three chain
-\ measurements come back E-NELAB-ARITY, and the arity-refusal control stops
-\ answering E-NELAB-ARITY because the body it names is refused earlier.
+\ row and seven assertions red (re-measured, 2026-08-18): the arity pair reads
+\ 0/1, the inferred effect reads 0/1, the bad caller certifies instead of being
+\ refused, the honest caller is refused instead of certifying, and all three
+\ chain measurements come back E-NELAB-ARITY. It was eight while a fourth chain
+\ case could state a wrong arity by hand; that case is retired below, with its
+\ reason, and the three that remain carry the same discrimination.
 \
 \ AND WHAT KEEPS IT FROM PASSING FOR A LAZY REASON. Zeroing every storage row
 \ would pass a `create`-only suite, so `here`, `allot` and `,` are measured
@@ -185,14 +186,14 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 \ ---- the reader the dot named: the native chain compiling a definer body ------
 \ MEASURE-HELD runs every stage a held migration runs and keeps none of it, so a
 \ measurement is the chain's own verdict on whether it could compile the body.
-: MEASURE ( ptr u8 n n n -- ) {: a:ptr u:n din:n dout:n :}
-   a u din dout NMIGRATE:MEASURE-HELD ;
+: MEASURE ( ptr u8 n -- )
+   NMIGRATE:MEASURE-HELD ;
 
 : CHAIN-ALONE ( -- )
-   s" : CAX-D1 ( -- ) create ;" 0 0 MEASURE ;
+   s" : CAX-D1 ( -- ) create ;" MEASURE ;
 
 : CHAIN-ENUM-HALF ( -- )
-   s" : CAX-D2 ( n -- n ) dup create , 1 + ;" 1 1 MEASURE ;
+   s" : CAX-D2 ( n -- n ) dup create , 1 + ;" MEASURE ;
 
 \ `create allot` was lib/string.f BUFFER:'s definer half until that definer was
 \ converted to a generated colon accessor (dot habu-the-reader-re-a65e56e5). The
@@ -200,10 +201,22 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 \ cell, and a body that allots after it is the sharpest form of that question - not
 \ because the tree still ships one.
 : CHAIN-BUFFER-HALF ( -- )
-   s" : CAX-D3 ( n -- ) create allot ;" 1 0 MEASURE ;
+   s" : CAX-D3 ( n -- ) create allot ;" MEASURE ;
 
-: CHAIN-WRONG-OUT ( -- )
-   s" : CAX-D4 ( n -- n ) dup create , 1 + ;" 1 2 MEASURE ;
+\ THE FOURTH CASE HERE WAS A WRONG ARITY AND IT IS RETIRED, because there is no
+\ longer a caller who can state one. It handed the same body as CHAIN-ENUM-HALF
+\ to the migration entry declared `1 2` and pinned E-NELAB-ARITY, which was the
+\ control that said the three above were refused for the arity and not for
+\ something else. The entry takes SOURCE now (dot habu-bind-checker-env-ed4f9f87)
+\ and reads what the definition takes and leaves off the checker's certificate,
+\ so a body cannot arrive with an arity that disagrees with the body: the
+\ refusal is unreachable from the production entry rather than merely unused.
+\ What still separates the two outcomes is the mutation this file's head
+\ describes - restore the row and the three measurements below turn from LOADED
+\ into E-NELAB-ARITY, which is the same discrimination the control was carrying.
+\ The cells-against-terms question that arity number now answers alone belongs to
+\ src/compiler/native/dict.f EFF-CELLS, and a case for it needs a term of a
+\ family more than one cell wide - not a definer body, so not this file.
 
 : CHAIN-CASE ( -- )
    s" the chain compiles a body that only calls `create`" T-LABEL
@@ -213,10 +226,7 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 
    s" the definer half the tree still ships, and the one it used to" T-LABEL
    [: CHAIN-ENUM-HALF ;] LOADED TTHROWSQ
-   [: CHAIN-BUFFER-HALF ;] LOADED TTHROWSQ
-
-   s" the arity refusal those three used to take is still reachable" T-LABEL
-   [: CHAIN-WRONG-OUT ;] E-NELAB-ARITY TTHROWSQ ;
+   [: CHAIN-BUFFER-HALF ;] LOADED TTHROWSQ ;
 
 public
 

@@ -1039,7 +1039,7 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
 
 \ Define a word through NMIGRATE:DEFINE - the chain's entry point - then call it.
 : PROGRAM$ ( -- ptr u8 n )
-   s\" s\" : FOO ( n -- n ) 1 + ;\" 1 1 NMIGRATE:DEFINE 7 FOO .\n" ;
+   s\" s\" : FOO ( n -- n ) 1 + ;\" NMIGRATE:DEFINE 7 FOO .\n" ;
 
 : RUN-BAKED-PROGRAM ( ptr u8 n -- ) {: p:ptr pu:n :}
    PROC-ARGV-RESET

@@ -143,12 +143,11 @@ private
 : TERM-PAY$ ( -- ptr u8 n )
    s" : TERM-PAY ( n -- n ) 3 rshift ;" ;
 
-\ The register budgets the chain is given for each. They are budgets, and
-\ choosing one from the routine instead of from a line here is dot
-\ habu-choose-the-register-a95390ac. The two wide ones are
-\ tools/codegen-compare-migrated2.f's measured floors for the same two bodies:
-\ a body with control flow holds a register for every value carried across an
-\ edge, and COUNT-CH carries a counter and a cursor.
+\ No row here gives the chain a register budget: the entry derives the pool from
+\ NABI:SCRATCH, the machine's whole writable set. The two widest bodies used to
+\ state tools/codegen-compare-migrated2.f's measured floors, because a body with
+\ control flow holds a register for every value carried across an edge and
+\ COUNT-CH carries a counter and a cursor.
 
 public
 
@@ -165,10 +164,10 @@ public
 \ wordlist rule: a migration lands where the current wordlist points when it
 \ runs, so the caller opens the package it wants them in.
 : PUBLISH-CHAIN ( -- )
-   FOLD-C$ 1 1 NMIGRATE:DEFINE
-   COUNT-CH$ 3 1 NMIGRATE:DEFINE
-   TERM-TAG$ 1 1 NMIGRATE:DEFINE
-   TERM-PAY$ 1 1 NMIGRATE:DEFINE ;
+   FOLD-C$ NMIGRATE:DEFINE
+   COUNT-CH$ NMIGRATE:DEFINE
+   TERM-TAG$ NMIGRATE:DEFINE
+   TERM-PAY$ NMIGRATE:DEFINE ;
 
 \ ---- the checker's OWN fold, and its callers ---------------------------------
 \ The four subjects above are a program this file publishes twice in order to
@@ -198,7 +197,7 @@ public
 variable REACHED-N
 
 : PUBLISH-CHECKER-FOLD ( -- )
-   CHECKER-FOLD$ 1 1 NMIGRATE:DEFINE ;
+   CHECKER-FOLD$ NMIGRATE:DEFINE ;
 
 \ Move the checker's own call sites onto it. The count is kept because it is the
 \ fact the compile-shaped row's delta rests on: nothing about that row means

@@ -902,21 +902,30 @@ other than one definition and is refused (`E-NELAB-MODE`). Two refusals retired
 with the frame: there is no frame word left whose immediate contract could be
 wrong, and no token can follow the definition.
 
-**The declared arity is still the caller's, at one seam.** Section 7.2 requires
-the elaborated operations to correspond to an accepted, source-bound checker
-certificate, and the checker does parse the declared signature during the very
-scan the tape was recorded from. But it publishes an effect only through a
-lookup by NAME into its live effect store (`EFFECT-QUERY` and the `EFFECT-*`
-readers in `src/core/checker.f`), which answers about whichever word carries that
-name at the moment of the call rather than about the definition a given tape is -
-a binding by lucky timing, not by structure. Binding the accepted effect to the
-recorded unit belongs to the frozen checker environment,
-`habu-bind-checker-env-ed4f9f87`, reached through `habu-bind-the-colon-ea509e61`;
-the same dot owns the definition's visibility, which is fixed to exported here
-while the package system is its real authority. Until then `NELAB:COLON` takes
-the two counts as its last two arguments and checks the body against them, so a
-body that leaves the wrong number of values is refused at elaboration rather than
-discovered later.
+**The declared arity is the checker's, and the caller no longer states it.**
+Section 7.2 requires the elaborated operations to correspond to an accepted,
+source-bound checker certificate, and the checker does parse the declared
+signature during the very scan the tape was recorded from. The production entry
+now reads it back: `src/compiler/native/migrate.f` KEEP-ARITY asks
+`NDICT:SPELL-ARITY` about the name the source just published, in the scope it
+published it in, and hands those two counts to `NELAB:COLON`. That is the same
+reader every callee's arity already came from, so a routine's contract and the
+calls to it are derived from one authority instead of agreeing by luck, and a
+caller cannot state a number the body contradicts. It asks for CELLS, which is
+what the elaborator checks the body's value vector against.
+
+The lookup is still by NAME into the live effect store (`EFFECT-QUERY` and the
+`EFFECT-*` readers in `src/core/checker.f`), and it answers about whichever word
+carries that name now. What makes it the right answer here rather than lucky
+timing is WHEN it is asked: one step after the record was published and before
+anything else can define, so the name denotes the definition this tape is. A
+frozen checker environment would make that structural rather than positional;
+`habu-bind-checker-env-ed4f9f87` keeps that half, together with the definition's
+visibility, which is fixed to exported here while the package system is its real
+authority. `NELAB:COLON` still takes the two counts as its last two arguments -
+that is the elaborator's interface, and the fixtures that drive it stage by stage
+still pass them - so a body that leaves the wrong number of values is refused at
+elaboration rather than discovered later.
 
 `test/compiler/native-chain.f` is the acceptance for both: it hands one colon
 definition to `evaluate`, takes the tape the engine's own check hook produced,

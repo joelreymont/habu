@@ -31,11 +31,10 @@
 \ first, and TAIL-CHAIN-N is a chain routine calling a chain routine calling a
 \ chain routine.
 \
-\ THE REGISTER BUDGET IS EIGHT, ONCE, FOR EVERY ROW. Every subject of this
-\ corpus is straight-line - there is no loop in the corpus at all, by design -
-\ and eight is what the other four corpora's straight-line rows state. Dot
-\ habu-choose-the-register-a95390ac carries taking the number off the routine
-\ instead of the caller.
+\ NO ROW STATES A REGISTER BUDGET. Every subject of this corpus is straight-line
+\ - there is no loop in the corpus at all, by design - and the rows used to state
+\ eight apiece; the migration entry derives the pool from NABI:SCRATCH now, so
+\ every corpus is measured under the same one.
 
 require lib/errors.f
 require lib/prelude.f
@@ -54,48 +53,48 @@ private
 
 : C5-LONG ( -- )
    s" : C5-LONG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : C5-PAIR ( -- )
    s" : C5-PAIR-N ( n n -- n n ) {: a:n b:n :} a 3 * b 5 xor + dup 7 and over 11 * 13 xor + ;"
-   2 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ ---- the six rows -------------------------------------------------------------
 
 \ The pure shape: one call, in tail position, and nothing else.
 : TAIL-BIG ( -- )
    s" : TAIL-BIG-N ( n -- n ) C5-LONG-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ Work before the tail call.
 : TAIL-WORK ( -- )
    s" : TAIL-WORK-N ( n -- n ) 1 + C5-LONG-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The control: work after the call, so the call is not in tail position.
 : NONTAIL ( -- )
    s" : NONTAIL-N ( n -- n ) C5-LONG-N 1 + ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The second copy of the pure shape, and the callee of TAIL-CHAIN-N.
 : TAIL-MID ( -- )
    s" : TAIL-MID-N ( n -- n ) C5-LONG-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ A tail call to a word that is itself nothing but a tail call.
 : TAIL-CHAIN ( -- )
    s" : TAIL-CHAIN-N ( n -- n ) TAIL-MID-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The pure shape at arity (2 -> 2).
 : TAIL-PAIR ( -- )
    s" : TAIL-PAIR-N ( n n -- n n ) C5-PAIR-N ;"
-   2 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ A real call and then a tail call.
 : TAIL-AFTER ( -- )
    s" : TAIL-AFTER-N ( n -- n ) C5-LONG-N C5-LONG-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 

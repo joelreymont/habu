@@ -63,16 +63,16 @@ private
 \ are not measured: they are what the call rows call, migrated so that the new
 \ column's call rows are the new chain's code all the way down.
 : C-ADD1 ( -- )
-   s" : C-ADD1-N ( n -- n ) 1 + ;" 1 1 NMIGRATE:DEFINE ;
+   s" : C-ADD1-N ( n -- n ) 1 + ;" NMIGRATE:DEFINE ;
 
 : C-MUL2 ( -- )
-   s" : C-MUL2-N ( n -- n ) 2 * ;" 1 1 NMIGRATE:DEFINE ;
+   s" : C-MUL2-N ( n -- n ) 2 * ;" NMIGRATE:DEFINE ;
 
 : C-AND7 ( -- )
-   s" : C-AND7-N ( n -- n ) 7 and ;" 1 1 NMIGRATE:DEFINE ;
+   s" : C-AND7-N ( n -- n ) 7 and ;" NMIGRATE:DEFINE ;
 
 : C-XOR5 ( -- )
-   s" : C-XOR5-N ( n -- n ) 5 xor ;" 1 1 NMIGRATE:DEFINE ;
+   s" : C-XOR5-N ( n -- n ) 5 xor ;" NMIGRATE:DEFINE ;
 
 \ ---- and the two callees the engine will not copy -----------------------------
 \ C-MAD is what CALL-FAN-BIG-N calls, and the chain copies it: that row's whole
@@ -88,11 +88,11 @@ private
 \ engine's C-LONG the same body is refused, which is the pair
 \ tools/codegen-spill-probe.f pins.
 : C-MAD ( -- )
-   s" : C-MAD-N ( n -- n ) 3 * 5 + ;" 1 1 NMIGRATE:DEFINE ;
+   s" : C-MAD-N ( n -- n ) 3 * 5 + ;" NMIGRATE:DEFINE ;
 
 : C-LONG ( -- )
    s" : C-LONG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ ---- the three call rows ------------------------------------------------------
 
@@ -101,61 +101,61 @@ private
 \ contains no call instruction at all and the chain's contains five.
 : CALL-FAN ( -- )
    s" : CALL-FAN-N ( n -- n ) C-ADD1-N C-MUL2-N C-AND7-N C-XOR5-N C-ADD1-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ Five sites over the callee the engine calls and the chain copies.
 : CALL-FAN-BIG ( -- )
    s" : CALL-FAN-BIG-N ( n -- n ) C-MAD-N C-MAD-N C-MAD-N C-MAD-N C-MAD-N ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ Three calls a turn with three locals live across the loop and read after it.
 : CALL-LOOP-3 ( -- )
    s" : CALL-LOOP-3-N ( n n n n n -- n ) {: a:n b:n c:n seed:n len:n :} seed len 0 ?do C-ADD1-N C-MUL2-N C-XOR5-N loop a + b + c + ;"
-   5 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ Four calls a turn and nothing else in the body.
 : TINY-CALLEE ( -- )
    s" : TINY-CALLEE-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do C-ADD1-N C-ADD1-N C-ADD1-N C-ADD1-N loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ Eight values live across a call the loop really makes, read only after it: the
 \ seven locals and the trip count. The callee is C-LONG-N, which neither
 \ generator copies.
 : CALL-PRESSURE ( -- )
    s" : CALL-PRESSURE-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n seed:n len:n :} seed len 0 ?do C-LONG-N loop a + b + c + d + e + f + g + len + ;"
-   9 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ ---- the two straight-line rows -----------------------------------------------
 
 : WIDE-ARITY ( -- )
    s" : WIDE-ARITY-N ( n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n :} a b - c d - + e f - + ;"
-   6 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : LADDER ( -- )
    s" : LADDER-N ( n -- n ) {: x:n :} x 1 < if 0 exit then x 2 < if 1 exit then x 4 < if 2 exit then x 8 < if 3 exit then x 16 < if 4 exit then x 32 < if 5 exit then x 64 < if 6 exit then x 128 < if 7 exit then 8 ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ ---- the five loop rows with no call in them ----------------------------------
 
 : PRESSURE-LOOP ( -- )
    s" : PRESSURE-LOOP-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : BIG-CONSTS ( -- )
    s" : BIG-CONSTS-N ( n -- n ) {: len:n :} 0 len 0 ?do i 1234605616436508552 xor + i 7378697629483820646 xor + i -6148914691236517206 xor + i 1311768467294899695 xor + loop ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : MANY-LOCALS ( -- )
    s" : MANY-LOCALS-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n len:n :} 0 len 0 ?do a + b + c + d + e + f + g + h + loop ;"
-   9 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : FLOAT-MIX ( -- )
    s" : FLOAT-MIX-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do i s>f 0.5 f* f>s + loop ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : STORE-LOAD ( -- )
    s" : STORE-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} len 0 ?do cell @ 3 + cell ! loop cell @ ;"
-   2 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 

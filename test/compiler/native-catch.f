@@ -43,7 +43,7 @@ private
 
 \ Compiling a body without publishing anything, so a refusal can be measured with
 \ nothing left behind on the way out.
-: MEASURE-AT ( ptr u8 n n n -- )
+: MEASURE-AT ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 \ ---- reading the windows a recorded definition's catch sites took -------------
@@ -73,25 +73,25 @@ private
 
 \ 0 NCA-W1  1 [:  2 drop  3 5  4 throw  5 ;]  6 catch
 : SRC-DEAD ( -- )
-   s" : NCA-W1 ( n -- n n ) [: drop 5 throw ;] catch ;" 1 2 MEASURE-AT ;
+   s" : NCA-W1 ( n -- n n ) [: drop 5 throw ;] catch ;" MEASURE-AT ;
 
 \ 0 NCA-W2  1 [:  2 1+  3 ;]  4 catch
 : SRC-LIVE ( -- )
-   s" : NCA-W2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;
+   s" : NCA-W2 ( n -- n n ) [: 1+ ;] catch ;" MEASURE-AT ;
 
 \ 0 NCA-W0  1 [:  2 1  3 2  4 3  5 throw  6 ;]  7 catch
 : SRC-EMPTY ( -- )
-   s" : NCA-W0 ( n -- n n ) [: 1 2 3 throw ;] catch ;" 1 2 MEASURE-AT ;
+   s" : NCA-W0 ( n -- n n ) [: 1 2 3 throw ;] catch ;" MEASURE-AT ;
 
 \ 0 NCA-WS  1 "hi"  2 2drop  3 [:  4 1+  5 ;]  6 catch
 : SRC-STRING ( -- )
-   S\" : NCA-WS ( n -- n n ) s\q hi\q 2drop [: 1+ ;] catch ;" 1 2 MEASURE-AT ;
+   S\" : NCA-WS ( n -- n n ) s\q hi\q 2drop [: 1+ ;] catch ;" MEASURE-AT ;
 
 \ 0 NCA-WW  1 [:  2 1+  3 swap  4 1+  5 swap  6 ;]  7 catch
 \ 8 drop  9 [:  10 1+  11 ;]  12 catch
 : SRC-TWO ( -- )
    s" : NCA-WW ( n n -- n n n ) [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;"
-   2 3 MEASURE-AT ;
+   MEASURE-AT ;
 
 \ ---- a definition with more catch sites than the checker records --------------
 \ The ceiling is the checker's (CWIN-MAX beside RSCATCH). This fixture has to
@@ -134,7 +134,7 @@ variable CAP-U
    SITE-TOKENS * 3 + ;
 
 : SRC-CAP ( -- )
-   CAP-BUILD 1 1 MEASURE-AT ;
+   CAP-BUILD MEASURE-AT ;
 
 \ Running one fixture and swallowing whatever the chain made of it. The recorded
 \ windows are the subject here, and they are recorded by the SCAN - which has
@@ -333,50 +333,50 @@ private
 
 : D1 ( -- )
    s" : NCA-D1-N ( n -- n n ) [: NCA-CLOB ;] catch ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : D2 ( -- )
    s" : NCA-D2-N ( n -- n n ) [: NCA-OK1 ;] catch ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : D4 ( -- )
    s" : NCA-D4-N ( n -- n n ) [: 1+ ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : D5 ( -- )
    s" : NCA-D5-N ( n -- n ) 3 0 ?do [: NCA-OK1 ;] catch drop loop ;"
-   1 1 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : D6 ( -- )
    s" : NCA-D6-N ( n -- n n ) [: NCA-DEEP1 ;] catch ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : D7 ( -- )
    s" : NCA-D7-N ( n -- n n ) [: NCA-WIDE ;] catch ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : D8 ( -- )
    s" : NCA-D8-N ( n n -- n n n ) [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;"
-   2 3 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : D9 ( -- )
    S\" : NCA-D9-N ( n -- n n ) s\q hi\q 2drop [: NCA-OK1 ;] catch ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : PT ( -- )
    s" : NCA-PT-N ( n -- n n n ) 42 >r [: NCA-CLOB ;] catch r> ;"
-   1 3 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 : PN ( -- )
    s" : NCA-PN-N ( n -- n n n ) 42 >r [: NCA-OK1 ;] catch r> ;"
-   1 3 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 \ The caught body holding a control structure of its own, which used to be the
 \ ceiling this file's last refusal case pinned. It calls nothing, so it goes
 \ through the entry that stages no callee.
 : BC ( -- )
    s" : NCA-BC-N ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;"
-   1 2 NMIGRATE:DEFINE ;
+   NMIGRATE:DEFINE ;
 
 public
 
@@ -397,7 +397,7 @@ package NCA-DIFF
 
 private
 
-: MEASURE-AT ( ptr u8 n n n -- )
+: MEASURE-AT ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
 \ THE TWO ANSWERS ARE BOUND BEFORE EITHER IS COMPARED, because a catch site
@@ -526,9 +526,9 @@ public
    nr 5 T=  nu 5 T=
 
    s" and the chain refuses it, while its returning twin compiles" T-LABEL
-   [: s" : NCA-NR1 ( n -- n n ) [: drop 5 throw ;] catch ;" 1 2 MEASURE-AT ;]
+   [: s" : NCA-NR1 ( n -- n n ) [: drop 5 throw ;] catch ;" MEASURE-AT ;]
    E-NELAB-QUOT TTHROWSQ
-   [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;]
+   [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" MEASURE-AT ;]
    0 TTHROWSQ ;
 
 \ THE THIRD CEILING IS GONE TOO, and this case is what it left behind. A
@@ -560,9 +560,9 @@ public
    7 BC=  3 BC=  4 BC=  0 BC=  -5 BC=
 
    s" and both it and its straight-line twin compile" T-LABEL
-   [: s" : NCA-BC1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" 1 2 MEASURE-AT ;]
+   [: s" : NCA-BC1 ( n -- n n ) [: dup 3 > if 1+ then ;] catch ;" MEASURE-AT ;]
    0 TTHROWSQ
-   [: s" : NCA-BC2 ( n -- n n ) [: 1+ ;] catch ;" 1 2 MEASURE-AT ;]
+   [: s" : NCA-BC2 ( n -- n n ) [: 1+ ;] catch ;" MEASURE-AT ;]
    0 TTHROWSQ ;
 
 \ THE SECOND CEILING IS GONE, and this case is what it left behind: the same two
@@ -581,10 +581,10 @@ public
 
    s" and the chain compiles it now, with the group and without it" T-LABEL
    [: s" : NCA-BL1 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ
    [: s" : NCA-BL2 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch ;"
-      1 2 MEASURE-AT ;]
+      MEASURE-AT ;]
    0 TTHROWSQ ;
 
 : RUN ( -- )
