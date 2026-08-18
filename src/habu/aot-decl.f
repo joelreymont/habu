@@ -205,15 +205,15 @@ variable AOT-CODE-B0
 \ four immediate lanes -- the same answer the call-site table gets for a BL, for a
 \ site that is not a BL. A capture stores 0 in the lanes, so the baked blob carries
 \ no host address and the patch is the only thing that can put a real one there.
-\ WHY THIS EXISTS BEFORE ITS PRODUCER. A code literal that names a PRE-WINDOW word
-\ cannot be rebased: its correct value is fixed by the prefix's own layout and
-\ differs between the metabuild host and bin/hb, which is why ACAP-SCAN-DSITES
-\ still refuses one. Resolving it by name is the answer, and the row is the format
-\ half of that answer; the pass that decides WHICH sites become named rows is the
-\ inliner-decline work, dot habu-aot-pre-window-0b01043c. The format is baked into
-\ the engine, so it migrates once - a row kind added later is a second migration
-\ of every baked-code route. In-window code literals stay b0-relative: rebasing
-\ them is correct and costs no lookup.
+\ ITS PRODUCER IS ACAP-OUT-CHAIN (aot-capture.f), which classifies every recorded
+\ chain the window's DATA span does not hold: in-window code goes to the CODE sweep,
+\ a value ACAP-TGT>REC resolves to a record's entry becomes a row here, and anything
+\ else ends the build. The class the row exists for is a code literal naming a
+\ PRE-WINDOW word (`['] X`, `postpone X`), which no delta relates to the target and
+\ the inliner decline cannot reach; ACAP-OUT-CHAIN carries that argument. The format
+\ is baked into the engine, so it migrates once - a row kind added later is a second
+\ migration of every baked-code route. In-window code literals stay b0-relative:
+\ rebasing them is correct and costs no lookup.
 
 ;package
 
