@@ -611,6 +611,15 @@ public
    \ reads no clock, so it belongs in this parallel group with its two
    \ neighbours.
    s" tools/judge/src-test.f" GSI-FORK-INCLUDE
+   \ And the symbol reader the judged artifact's third column comes out of,
+   \ attacked on nm and size listings built to fool it, then run against the real
+   \ object. It reaches the reference column, which this group's members already
+   \ do through the mapping test/run.f made before any fork; it reads no clock.
+   s" tools/judge/ref-test.f" GSI-FORK-INCLUDE
+   \ And the reader that adjudicates which way that artifact moved: small tables
+   \ rendered through the real report, read back, and each column's direction
+   \ judged. It compiles no corpus and reads no clock.
+   s" tools/judge/base-test.f" GSI-FORK-INCLUDE
    \ And the judged table that reader feeds: both code generators over one text,
    \ clang beside them, and the committed artifact. Its chain column holds a
    \ refusal CODE where the chain declined a subject, measured every run, so it

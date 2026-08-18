@@ -1305,6 +1305,8 @@ public
 -8729 constant E-JUDGE-FUZZ-REFUSED    \ the chain declined a generated body. Unlike a corpus row this is a failure: the generator emits straight-line integer programs inside the dialect the chain compiles, so a refusal means the generator left the dialect or the chain lost a capability
 -8730 constant E-JUDGE-FUZZ-COLUMN     \ the oracle's two derived words do not resolve to two different non-zero routines: a pair of names reaching one routine would agree about every input and prove nothing at all
 -8731 constant E-JUDGE-FUZZ-INDEX      \ a generated driver reaching outside the oracle's input or answer table: the body is generated, so an index it never had would be this file writing over its own storage rather than a program answering wrongly
+-8732 constant E-JUDGE-BASE-CAP        \ a committed artifact carrying more rows, or a longer subject name, than the reader that adjudicates its directions holds: a truncated reading would call every row it never reached a lost row
+-8733 constant E-JUDGE-BASE-ROW        \ a row index outside what the artifact reader recorded
 
 \ The interpreter's own input stream, as a migration reads it: -8740..-8749
 \

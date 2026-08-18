@@ -59,6 +59,62 @@ private
    JUDGE-ROW:LARGER-ROWS 0 T=
    JUDGE-ROW:DISAGREEING-ROWS 0 T= ;
 
+\ ---- which WAY the artifact moved --------------------------------------------
+\ The byte comparison above says the tree and the artifact are the same text. It
+\ cannot say what a difference WOULD have been, and a chain row that grew and
+\ one that shrank are two different events - a regression against ourselves and
+\ progress. tools/judge/base.f adjudicates them apart and `--check` prints that
+\ adjudication under its disagreement.
+\
+\ THE FIXTURE IS THE REAL MEASUREMENT WITH ONE NUMBER MOVED. The committed
+\ artifact is the artifact, and the row that is shifted is a row of this run, so
+\ what is compared is a whole real table against a whole real file differing in
+\ exactly one cell. tools/judge/base-test.f attacks the reader itself with
+\ artifacts built to fool it; what is asserted here is that it reads the REAL
+\ one - forty-six rows, no malformed line, nothing to report - so a report that
+\ changed the shape of a row is caught here rather than leaving those fixtures
+\ agreeing with a format nothing writes any more.
+
+: ADJUDICATE-COMMITTED ( -- n )
+   JUDGE-CHECK:COMMITTED$ JUDGE-BASE:LOAD-FROM
+   JUDGE-BASE:ADJUDICATE ;
+
+: DIRECTION-CASES ( -- )
+   JUDGE-BASE:QUIET!
+
+   s" the committed artifact reads back as the rows this run measured" T-LABEL
+   ADJUDICATE-COMMITTED 0 T=
+   JUDGE-BASE:ROWS JUDGE-ROW:ROWS T=
+   JUDGE-BASE:DECLARED@ JUDGE-ROW:ROWS T=
+   JUDGE-BASE:MALFORMED@ 0 T=
+   JUDGE-BASE:REGRESSIONS 0 T=
+   JUDGE-BASE:IMPROVEMENTS 0 T=
+   JUDGE-BASE:ENGINE-MOVES 0 T=
+   JUDGE-BASE:LOST 0 T=
+   JUDGE-BASE:GAINED 0 T=
+
+   0 JUDGE-ROW:NEW-BYTES@ {: bytes:n :}
+   0 JUDGE-ROW:NEW-TAIL? {: tail:bool :}
+
+   s" a chain row bigger than the artifact's is a regression and a finding"
+   T-LABEL
+   0 bytes 4 + tail JUDGE-ROW:NEW!
+   ADJUDICATE-COMMITTED 1 T=
+   JUDGE-BASE:REGRESSIONS 1 T=
+   JUDGE-BASE:IMPROVEMENTS 0 T=
+
+   s" a chain row smaller than the artifact's is progress and is not" T-LABEL
+   0 bytes 4 - tail JUDGE-ROW:NEW!
+   ADJUDICATE-COMMITTED 0 T=
+   JUDGE-BASE:REGRESSIONS 0 T=
+   JUDGE-BASE:IMPROVEMENTS 1 T=
+
+   0 bytes tail JUDGE-ROW:NEW!
+   JUDGE-BASE:LOUD!
+
+   s" and the row is back where the measurement left it" T-LABEL
+   ADJUDICATE-COMMITTED 0 T= ;
+
 \ ---- the generated bodies, attacked ------------------------------------------
 \ tools/judge/cost.f builds a body out of a row's input text and one column's
 \ word. A body that compiles is not a body that measures the row, so every way
@@ -259,6 +315,7 @@ public
    T-RESET
    JUDGE-CHECK:JUDGE-ALL
    ARTIFACT-CASES
+   DIRECTION-CASES
    REFUSAL-CASES
    WITNESS-CASES
    PROJECTION-CASES

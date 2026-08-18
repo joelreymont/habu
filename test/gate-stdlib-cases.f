@@ -322,6 +322,38 @@ SUITE judge-src
    tools/judge/src-test.f
 ;SUITE
 
+\ The reference column's symbol reader, which is where every `clang` cell of the
+\ judged artifact comes from. It is driven through CODEGEN-MACHO:LOAD-FROM - the
+\ word the judge's own pass calls, with the two listings as parameters - over
+\ listings built to fool it: a non-external symbol whose linkage word ENDS in
+\ the word a substring match would find, a symbol whose NAME is that word, a
+\ symbol in another section of the same segment, symbols in nm's name order
+\ rather than address order, and a section line naming __text in the wrong
+\ segment. Then the real object is read and its symbol sizes are required to
+\ tile its text section exactly. A reader fooled by one line would report a
+\ wrong number for every row and nothing else would notice, because the judge
+\ would commit that column and then agree with itself about it. A host with no C
+\ compiler runs the fixtures and says so about the object; it does not fail.
+\ Nothing it asserts reads a clock.
+SUITE judge-ref
+   tools/judge/ref-test.f
+;SUITE
+
+\ And the reader that says which WAY the judged artifact moved. The byte-for-byte
+\ check says the tree and the committed file differ and where; it cannot say
+\ whether the chain got smaller or bigger, and those are two different events.
+\ This member states small tables, renders them through the report the command
+\ prints, reads them back and adjudicates: bigger is a regression, smaller is
+\ progress, the engine moving either way is a finding, and a row on one side and
+\ not the other is a finding. Its fixtures are artifacts built to fool a reader
+\ that searched for text - a subject named inside a sentence, a row written
+\ twice, a verdict word that is not one, a field missing, a declared count that
+\ disagrees, and cost lines under the marker that must never be read as rows.
+\ It compiles no corpus and reads no clock.
+SUITE judge-base
+   tools/judge/base-test.f
+;SUITE
+
 \ And the judged table itself: every subject of a corpus compiled through both
 \ code generators from ONE text, with clang beside them, and the committed
 \ artifact that says what this tree emits. It runs the same words

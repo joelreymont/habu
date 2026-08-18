@@ -6,10 +6,12 @@ issue-type: task
 created-at: "\"2026-08-05T10:36:19.649103+02:00\""
 ---
 
+Claim: agent=judge-1 workspace=.jj-ws/habu-thecut
+
 WHAT IS LEFT ON THIS LEAF is the post-cut DELETION of the old comparison
-harness. The judge is built and covers every corpus; nothing here is claimed,
-and the deletion plan plus the four things the old harness still uniquely
-provides are at the foot of this leaf.
+harness. The judge is built and covers every corpus, and the deletion plan plus
+the four things the old harness still uniquely provides are at the foot of this
+leaf.
 
 MEASURED 2026-08-12, master 326b1216 - two claims once on this leaf are OUT OF
 DATE and the lane is not to act on them:

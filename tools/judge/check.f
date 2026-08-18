@@ -15,6 +15,7 @@ require lib/string.f
 require tools/lint/text.f
 require tools/judge/row.f
 require tools/judge/report.f
+require tools/judge/base.f
 require tools/judge/corpus1.f
 require tools/judge/corpus2.f
 require tools/judge/corpus3.f
@@ -59,25 +60,11 @@ public
 
 private
 
-\ Where a text says its checked half ends. The artifact carries a costs section
-\ under a marker line, and none of it is compared: a cost is a measurement and
-\ a gate is a loaded machine. A text with no marker is refused rather than
-\ compared whole - a truncated artifact would otherwise be checked against a
-\ prefix of itself and pass.
-: MARK-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   JUDGE-REPORT:MARK-TEXT$ {: ma:ptr mu:n :}
-   -1
-   u mu < if 0 else u mu - 1+ then 0 ?do
-      dup 0 < if
-         a i + mu ma mu STR= if drop i then
-      then
-   loop
-   dup 0 < if E-JUDGE-CHECK-MARK throw then ;
-
-\ The half of a text that is compared: everything before the marker line.
-: CHECKED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u MARK-AT {: at:n :}
-   a at ;
+\ Where a text says its checked half ends is tools/judge/base.f's, which reads
+\ that half as rows. One authority for where an artifact ends, rather than a
+\ copy of the cut in each reader of it.
+: CHECKED$ ( ptr u8 n -- ptr u8 n )
+   JUDGE-BASE:CHECKED$ ;
 
 \ The first byte at which two texts differ, or -1 when one is a prefix of the
 \ other and they are the same length. A shorter file is a disagreement at its
@@ -106,10 +93,26 @@ public
       i a + c@ $0A = if 1+ then
    loop ;
 
+\ Which rows moved and WHICH WAY. A byte comparison says the two texts differ
+\ and where; it cannot say whether the chain got better or worse, and those are
+\ two different events. So a disagreement is followed by the artifact read back
+\ as rows and adjudicated column by column - the adjudication the comparison
+\ this judge replaced made and the byte check conflates.
+: SAY-DIRECTIONS ( -- )
+   COMMITTED$ JUDGE-BASE:LOAD-FROM
+   JUDGE-BASE:ADJUDICATE drop
+   s" judge: " type JUDGE-BASE:REGRESSIONS FMT:.U
+   s"  regression(s), " type JUDGE-BASE:IMPROVEMENTS FMT:.U
+   s"  improvement(s), " type JUDGE-BASE:ENGINE-MOVES FMT:.U
+   s"  engine move(s), " type JUDGE-BASE:LOST FMT:.U
+   s"  lost row(s), " type JUDGE-BASE:GAINED FMT:.U
+   s"  new row(s)" type cr ;
+
 : SAY-DIFF ( n -- ) {: at:n :}
    s" judge: the tree and " type ARTIFACT$ type
    s"  disagree at byte " type at FMT:.U
    s" , line " type at LINE-OF FMT:.U cr
+   SAY-DIRECTIONS
    s" judge: regenerate with  bin/hb --load tools/judge.f > " type ARTIFACT$ type cr ;
 
 ;package
