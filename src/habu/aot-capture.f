@@ -1165,6 +1165,12 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ zeros where they should have been. Measured on the metabuild window before this
 \ changed: 5726 bytes of span, 24 of them nonzero.
 \
+\ AND WHY THE SPAN MAY NOT. Carrying the whole span was the first repair and it
+\ was too coarse: the compiler chain's window is 1,531,045 bytes of span holding
+\ 32 bytes of content, so the engine baked 1.5 MB of zeros - 42% of the product -
+\ to deliver four cells (dot habu-census-the-captured-fe5f7c49). What travels now
+\ is the NON-ZERO EXTENTS, and the seed zeroes the span before it lays them in.
+\
 \ AND WHY ONE KIND OF BYTE MAY NOT. A `defer` compiled inside the window allots a
 \ dispatch cell and registers it in the declared-address-cell table
 \ (src/habu/layout.f SNAP-RELOC:XTCELL-*), and that cell holds a code address in
@@ -1173,9 +1179,10 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ byte fixpoint would never close - the same defect the code literals avoid by
 \ being stored b0-relative. THE INVARIANT: a declared address cell's value is
 \ owned by whatever declares it, never by the window's bytes. So those cells are
-\ zeroed here and their offsets recorded, and the seed puts the `defer-unset`
-\ trap xt of the engine it is booting into each one - the same value a freshly
-\ declared cell holds, found through the same keyword lookup the compiler uses.
+\ excluded from every run here and their offsets recorded, and the seed puts the
+\ `defer-unset` trap xt of the engine it is booting into each one - the same value
+\ a freshly declared cell holds, found through the same keyword lookup the
+\ compiler uses.
 \ The boot-run list then installs the real vectors, which is what owns them; a
 \ cell the boot-run misses dies "defer: unset execution vector" at first use
 \ instead of branching to whatever the bytes held.
@@ -1186,14 +1193,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    woff  AOT-WINDOW:XTOFF-N @ 4 * AOT-WINDOW:XTOFF-BUF@ +  AOT-P32!
    AOT-WINDOW:XTOFF-N @ 1+ AOT-WINDOW:XTOFF-N ! ;
 
-: ACAP-ZERO-CELL ( n -- ) {: woff:n :}
-   8 0 ?do 0 AOT-WINDOW:DATA-BUF@ woff + i + c! loop ;
-
-: ACAP-COPY-DATA ( n n -- ) {: d0:n len:n :}
-   len AOT-WINDOW:DATA-CAP > if s" aot-capture: DATA window exceeds the AOT data buffer" 74 die then
-   len 0 ?do
-      d0 i + AOT-N>U8 c@  AOT-WINDOW:DATA-BUF@ i + c!
-   loop ;
+: ACAP-XTOFF@ ( n -- n ) {: k:n :}   k 4 * AOT-WINDOW:XTOFF-BUF@ + ACAP-W32@ ;
 
 \ A row that overlaps the window without lying wholly inside it would leave half a
 \ host address in the baked bytes, so it ends the build rather than being skipped.
@@ -1202,8 +1202,77 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    s" aot-capture: declared address cell straddles the window edge" 74 die ;
 
 : ACAP-MASK-XTCELL ( n n -- ) {: woff:n len:n :}
-   woff 8 + len <= if woff ACAP-ADD-XTOFF  woff ACAP-ZERO-CELL exit then
+   woff 8 + len <= if woff ACAP-ADD-XTOFF exit then
    woff ACAP-XTCELL-STRADDLES ;
+
+\ --- the window's non-zero extents --------------------------------------------
+\ ONE ROW AND ITS BYTES, APPENDED TOGETHER. The bytes go into their own section in
+\ ROW ORDER, so a row needs no offset into them: the decoder walks the byte
+\ section with a running cursor, which is the same counts-not-stored discipline
+\ the rest of the format keeps. Both buffers refuse their own overflow by name.
+variable ACAP-RS      \ the open run's start, or -1 when none is open
+variable ACAP-RP      \ the scan cursor inside one segment
+variable ACAP-RQ      \ the segment cursor across the window
+variable ACAP-RN      \ the next declared cell at or above ACAP-RQ
+variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
+
+: ACAP-ADD-RUN ( n n n -- ) {: d0:n off:n rl:n :}
+   AOT-WINDOW:RUN-N @ AOT-WINDOW:RUN-MAX >= if
+      s" aot-capture: too many window DATA runs" 74 die then
+   AOT-WINDOW:RBYTES-LEN @ rl + AOT-WINDOW:RBYTES-CAP > if
+      s" aot-capture: the window DATA runs exceed the AOT run-byte buffer" 74 die then
+   AOT-WINDOW:RUN-N @ 8 * AOT-WINDOW:RUN-BUF@ + {: r:ptr :}
+   off r AOT-P32!  rl r 4 + AOT-P32!
+   rl 0 ?do
+      d0 off + i + AOT-N>U8 c@
+      AOT-WINDOW:RBYTES-BUF@ AOT-WINDOW:RBYTES-LEN @ + i + c!
+   loop
+   AOT-WINDOW:RBYTES-LEN @ rl + AOT-WINDOW:RBYTES-LEN !
+   AOT-WINDOW:RUN-N @ 1+ AOT-WINDOW:RUN-N ! ;
+
+: ACAP-RUN-CLOSE ( n n -- ) {: d0:n at:n :}
+   ACAP-RS @ 0 < if exit then
+   d0 ACAP-RS @ at ACAP-RS @ - ACAP-ADD-RUN
+   -1 ACAP-RS ! ;
+
+\ The maximal non-zero extents of [from, to), which is one gap between declared
+\ cells. Nothing outside such a gap is ever offered, which is how the cells stay
+\ out of every run.
+: ACAP-SCAN-SEG ( n n n -- ) {: d0:n from:n to:n :}
+   -1 ACAP-RS !
+   from ACAP-RP !
+   begin ACAP-RP @ to < while
+      d0 ACAP-RP @ + AOT-N>U8 c@ 0=
+      if    d0 ACAP-RP @ ACAP-RUN-CLOSE
+      else  ACAP-RS @ 0 < if ACAP-RP @ ACAP-RS ! then
+      then
+      ACAP-RP @ 1+ ACAP-RP !
+   repeat
+   d0 to ACAP-RUN-CLOSE ;
+
+\ The lowest declared-cell offset at or above `p`, or the span when none is left.
+\ Asked once per gap rather than once per byte, and it reads the table in whatever
+\ order the engine registered it - so the scan needs no ordering the engine does
+\ not promise. That costs a pass per gap, and the gaps are the cells plus one, so
+\ the whole walk is the window's length plus the square of its declared-cell
+\ count. The count is bounded by SNAP-RELOC:XTCELL-CAP (4096) and the compiler
+\ chain's window declares ONE; a window that ever approached the cap would want
+\ the table ordered instead, which is a change to where the engine writes it.
+: ACAP-NEXT-CELL ( n n -- n ) {: p:n len:n :}
+   len ACAP-RC !
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      i ACAP-XTOFF@ {: off:n :}
+      off p >= off ACAP-RC @ < and if off ACAP-RC ! then
+   loop
+   ACAP-RC @ ;
+
+: ACAP-SCAN-RUNS ( n n -- ) {: d0:n len:n :}
+   0 ACAP-RQ !
+   begin ACAP-RQ @ len < while
+      ACAP-RQ @ len ACAP-NEXT-CELL ACAP-RN !
+      d0 ACAP-RQ @ ACAP-RN @ ACAP-SCAN-SEG
+      ACAP-RN @ 8 + ACAP-RQ !
+   repeat ;
 
 \ The declared-address-cell table, read where it lives. A row is the cell's own
 \ address counted from the DATA base, which is the form the engine stores and the
@@ -1217,14 +1286,17 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-XTCELL-AT ( n -- ptr a ) {: k:n :}
    AOT-LIVE-DATA k ACAP-XTCELL-OFF + ;
 
+\ The cells are collected BEFORE the runs, because a cell is what a run stops at.
 : ACAP-BAKE-DATA ( n n -- ) {: d0:n d1:n :}
    d1 d0 - {: len:n :}
-   d0 len ACAP-COPY-DATA
+   len AOT-WINDOW:SPAN-CAP > if
+      s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
    d0 AOT-DATA-N - {: d0off:n :}
    ACAP-XTCELL-ROWS 0 ?do
       i ACAP-XTCELL-OFF d0off - {: woff:n :}
       woff 0 >= woff len < and if woff len ACAP-MASK-XTCELL then
-   loop ;
+   loop
+   d0 len ACAP-SCAN-RUNS ;
 
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the
@@ -1390,6 +1462,7 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
    0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  ACAP-PWID-CLEAR
+   0 AOT-WINDOW:RUN-N !  0 AOT-WINDOW:RBYTES-LEN !
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public

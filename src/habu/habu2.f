@@ -4713,24 +4713,59 @@ public
 \ ENGINE-ERROR:AOT-SEED=82, the AOT seed-pass boot-integrity code), not LCOMPILEDIE. The die
 \ is inlined between the check and the reserve; the pass path branches over it (ok)
 \ so this word still falls through to EM-AOT-RELOC-CODE (it is inlined, not a call).
-\ Copy the captured window's DATA content to the seed DP. x3 = destination (seed
-\ DP), x5 = span; both survive. Byte at a time, like EM-AOT-COPY-BLOB - a few KB
-\ once at boot, and the span has no alignment guarantee.
+\ Deliver the captured window's DATA content to the seed DP. x3 = destination
+\ (seed DP), x5 = span; both survive.
+\
+\ THE SPAN IS ZEROED AND THE RUNS ARE LAID INTO IT, and the zero is written
+\ rather than assumed. The region is anon-mmap and therefore arrives zeroed, but
+\ that is a property of the ENVIRONMENT, not of this image: a merge composes two
+\ windows into one span, a snapshot restore hands the seed a region that has
+\ already been lived in, and any future reuse of a mapped region breaks the
+\ assumption outright. Writing it costs one pass of eight-byte stores over a
+\ span the old shape copied a byte at a time, so it is cheaper than what it
+\ replaces as well as being true by construction.
 package AOT-WINDOW
 public
-: COPY-DATA ( -- )
-   LBL LBL {: dcopy:label dcdone:label :}
-   9 10 LDATA LABEL@ TADR,  12 0 MOVZ,              \ x9 = content src (__text), x12 = i
-   dcopy LBL,  12 5 CMP,  C-GE dcdone BCOND,
-      13 9 12 ADD,  13 13 0 LDRB,  14 3 12 ADD,  13 14 0 STRB,
-      12 12 1 ADDI,  dcopy B,
-   dcdone LBL, ;
+: ZERO-SPAN ( -- )
+   LBL LBL LBL LBL {: z8:label z8done:label z1:label z1done:label :}
+   15 0 MOVZ,                                       \ x15 = the zero being stored
+   14 3 0 ADDI,                                     \ x14 = cursor
+   13 3 5 ADD,                                      \ x13 = one past the span
+   z8 LBL,  12 14 8 ADDI,  12 13 CMP,  C-HI z8done BCOND,
+      15 14 0 STR,  14 14 8 ADDI,  z8 B,
+   z8done LBL,                                      \ the tail: the span has no alignment guarantee
+   z1 LBL,  14 13 CMP,  C-CS z1done BCOND,
+      15 14 0 STRB,  14 14 1 ADDI,  z1 B,
+   z1done LBL, ;
+
+\ Each row is (window offset u32, length u32) and the bytes of every run are
+\ concatenated in ROW ORDER, so the byte cursor advances by each run's own length
+\ and no row carries an offset into them.
+: APPLY-RUNS ( -- )
+   LBL LBL LBL LBL {: rloop:label rdone:label bloop:label bdone:label :}
+   23 10 LNRUN LABEL@ TADR,  23 23 0 LDR,           \ x23 = run count
+   21 10 LRUNS LABEL@ TADR,                         \ x21 = row cursor
+   25 10 LRBYTES LABEL@ TADR,                       \ x25 = byte cursor
+   22 0 MOVZ,
+   rloop LBL,  22 23 CMP,  C-GE rdone BCOND,
+      24 21 0 LDRW,                                 \ x24 = window offset u32
+      15 21 4 LDRW,                                 \ x15 = run length u32
+      13 3 24 ADD,                                  \ x13 = destination
+      12 0 MOVZ,
+      bloop LBL,  12 15 CMP,  C-GE bdone BCOND,
+         14 25 12 ADD,  14 14 0 LDRB,  9 13 12 ADD,  14 9 0 STRB,
+         12 12 1 ADDI,  bloop B,
+      bdone LBL,
+      25 25 15 ADD,
+      21 21 8 ADDI,  22 22 1 ADDI,  rloop B,
+   rdone LBL, ;
 
 \ Put the trap xt into every declared address cell the window carried.
-\ WHAT THE BYTES COULD NOT SAY. The capture zeroed these cells because the value
-\ they held was a code address in the BUILDING host, which must not enter the
-\ image (aot-capture.f ACAP-BAKE-DATA states the invariant: a declared address
-\ cell's value is owned by whatever declares it, never by the window's bytes).
+\ WHAT THE RUNS COULD NOT SAY. The capture keeps these cells out of every run
+\ because the value they held was a code address in the BUILDING host, which must
+\ not enter the image (aot-capture.f ACAP-BAKE-DATA states the invariant: a
+\ declared address cell's value is owned by whatever declares it, never by the
+\ window's content).
 \ Zero is not what "no implementation yet" means here, though - a dispatch cell is
 \ read and branched to (`ldr x16,[x9]; blr x16`), so a zero cell is a jump to
 \ address 0. What it means is the xt of `defer-unset`, which is exactly what a
@@ -4741,8 +4776,8 @@ public
 \ is what owns them; this is the value a cell keeps if the boot-run has no entry
 \ for it, and then the first call dies "defer: unset execution vector" instead of
 \ branching into whatever the bytes happened to hold.
-\ Runs after the copy and the DP advance, so the window base is DP - span. LFIND
-\ clobbers x3-x16, hence the reload.
+\ Runs after the runs are laid down and the DP advance, so the window base is
+\ DP - span. LFIND clobbers x3-x16, hence the reload.
 28 constant TRAP-MSG-LEN   \ byte length of "hb: AOT defer-unset missing\n"
 
 : TRAP-XTCELLS ( -- )
@@ -4790,7 +4825,8 @@ public
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" hb: AOT data span out of range" BYTES,  NL-KW 1 BYTES,
    ok LBL,
-   AOT-WINDOW:COPY-DATA                             \ the window's own bytes, not a zeroed reserve
+   AOT-WINDOW:ZERO-SPAN                             \ the span, decided rather than inherited
+   AOT-WINDOW:APPLY-RUNS                            \ ... and the window's own non-zero extents
    3 3 5 ADD,  3 DATA DP-CELL STR,                  \ DP += span (bounded)
    21 10 LAOTDSITES LABEL@ TADR,                    \ x21 = DATA-site cursor (u32 offsets)
    23 10 LAOTNDSITE LABEL@ TADR,  23 23 0 LDR,      \ x23 = DATA-site count
@@ -8637,7 +8673,8 @@ package LABELS
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
-   LBL AOT-WINDOW:LDATA !  LBL AOT-WINDOW:LNXTOFF !  LBL AOT-WINDOW:LXTOFFS !
+   LBL AOT-WINDOW:LNRUN !  LBL AOT-WINDOW:LRUNS !  LBL AOT-WINDOW:LRBYTES !
+   LBL AOT-WINDOW:LNXTOFF !  LBL AOT-WINDOW:LXTOFFS !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
    LBL LAOTBOOTRUN !
@@ -8801,8 +8838,10 @@ public
 ;package
 package AOT-WINDOW
 public
-: EMIT-DATA ( -- )   \ the window's DATA content, declared address cells zeroed
-   AOT-DATA-SIZE @ 0 > IF DATA-BUF@ AOT-DATA-SIZE @ BYTES, THEN ;
+: EMIT-RUNS ( -- )   \ packed 8B rows (window offset u32 + length u32)
+   RUN-N @ 0 > IF RUN-BUF@ RUN-N @ 8 * BYTES, THEN ;
+: EMIT-RBYTES ( -- )   \ the run bytes, concatenated in row order
+   RBYTES-LEN @ 0 > IF RBYTES-BUF@ RBYTES-LEN @ BYTES, THEN ;
 : EMIT-XTOFFS ( -- )   \ packed u32 window offsets of the declared address cells
    XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ 4 * BYTES, THEN ;
 : EMIT-PWIN ( -- )   \ packed u32 window-relative protected WIDs
@@ -8897,7 +8936,9 @@ s" AOT-SIG-PAYLOAD:BUF@" s" -- ptr u8" TRUST
    LAOTDSITES LABEL@ LBL,  EMIT-AOT-DSITES
    AOT-WINDOW:LNXTOFF LABEL@ LBL,  AOT-WINDOW:XTOFF-N @ DCQ,
    AOT-WINDOW:LXTOFFS LABEL@ LBL,  AOT-WINDOW:EMIT-XTOFFS
-   AOT-WINDOW:LDATA LABEL@ LBL,  AOT-WINDOW:EMIT-DATA
+   AOT-WINDOW:LNRUN LABEL@ LBL,  AOT-WINDOW:RUN-N @ DCQ,
+   AOT-WINDOW:LRUNS LABEL@ LBL,  AOT-WINDOW:EMIT-RUNS
+   AOT-WINDOW:LRBYTES LABEL@ LBL,  AOT-WINDOW:EMIT-RBYTES
    LAOTCODEB0 LABEL@ LBL,  AOT-CODE-B0 @ DCQ,
    LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES

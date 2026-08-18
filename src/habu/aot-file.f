@@ -65,13 +65,24 @@
 \ them, which is what keeps one format in one place.
 \
 \ COUNTS ARE NOT STORED. AOT-REC-N is the record section's length divided by
-\ AOT-CREC-ROW, the site count is its length over 8, AOT-DATA-SIZE is the window
-\ DATA section's length, and so on. A stored count would be a second authority for
+\ AOT-CREC-ROW, the site count is its length over 8, the window's run count is its
+\ table's length over 8, and so on. A stored count would be a second authority for
 \ a number the length already fixes, and two authorities disagree eventually. A
-\ length that is not a whole number of rows is refused by name instead. Four
+\ length that is not a whole number of rows is refused by name instead. Five
 \ numbers are genuine scalars - the capture-time DATA base, the canonical code
-\ base, and the window's wordlist base and span - and they travel in a section of
-\ their own.
+\ base, the window's wordlist base and span, and the window's DATA SPAN - and they
+\ travel in a section of their own.
+\
+\ THE WINDOW'S DATA SPAN IS THE ONE AMENDMENT TO THAT RULE, and it is the rule
+\ working rather than bending. The span used to BE a section's length, because the
+\ window travelled verbatim; it does not any more. The compiler chain's window is
+\ 1,531,045 bytes of span holding 32 bytes of content, so what travels is the
+\ NON-ZERO EXTENTS - a fixed-width table of (offset u32, length u32) rows, and
+\ their bytes concatenated in row order in a section of their own - and the seed
+\ zeroes the span before it lays them in. No section's length fixes the span any
+\ more, so the scalar is not a second authority for it: it is the only one.
+\ Splitting the bytes out of the rows is what keeps the rows fixed-width, and that
+\ is what keeps "not a whole number of rows" a refusal this format can state.
 \
 \ WHAT THE READER REFUSES, each by name and each fail-closed: a wrong magic, a
 \ wrong version, a wrong target, a wrong section count, a producer that is not the
@@ -80,8 +91,11 @@
 \ section table that is not contiguous, a section with a negative length, one that
 \ runs past the payload, a set of sections that does not fill it, a fixed-width
 \ section that is not its fixed width, a section longer than the buffer it fills, a
-\ section length that is not a whole number of rows, a closure list that does not
-\ walk to its own end, a second pass that did not read what the first one verified,
+\ section length that is not a whole number of rows, a window DATA span no engine
+\ could reserve, an empty window run, a run reaching past the span, runs out of
+\ ascending order, runs that overlap, runs whose lengths do not fill the run-byte
+\ section, a closure list that does not walk to its own end, a second pass that did
+\ not read what the first one verified,
 \ and a chain digest that does not re-derive from the files on disk.
 \ Every one of them has a case in test/aot-chain-capture-suite.f, forged against a
 \ real artifact and run through the production reader in a child process.
@@ -96,7 +110,7 @@ package AOT-FILE
 using AOT-BUF
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-4 constant VERSION   \ 4 added the window's checker signatures and its type registry
+5 constant VERSION   \ 5 made the window's DATA sparse: the run table, the run bytes, the span scalar
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -111,7 +125,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 104 constant O-PAYSHA
 32 constant SHA-BYTES
 
-17 constant SEC-N
+18 constant SEC-N
 16 constant ROW-BYTES                \ one section-table row: offset u64 + length u64
 
 0 constant S-SCALARS
@@ -122,19 +136,21 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 5 constant S-DSITES
 6 constant S-CSITES
 7 constant S-XTOFFS
-8 constant S-WDATA
-9 constant S-XTSITES
-10 constant S-BOOTRUN
-11 constant S-PWID
-12 constant S-PWIN
-13 constant S-SIGS
-14 constant S-SIGSTR
-15 constant S-REG
-16 constant S-CLOSURE
+8 constant S-WDATA                   \ the window's non-zero extents: 8B rows
+9 constant S-WRUNS                   \ ... and their bytes, concatenated in row order
+10 constant S-XTSITES
+11 constant S-BOOTRUN
+12 constant S-PWID
+13 constant S-PWIN
+14 constant S-SIGS
+15 constant S-SIGSTR
+16 constant S-REG
+17 constant S-CLOSURE
 
-\ The four genuine scalars: the capture-time DATA base, the canonical code base,
-\ and the window's wordlist base and span. Everything else is a length.
-32 constant SCAL-BYTES
+\ The five genuine scalars: the capture-time DATA base, the canonical code base,
+\ the window's wordlist base and span, and the window's DATA span. Everything else
+\ is a length.
+40 constant SCAL-BYTES
 \ AOT-IDENT holds at most 256 paths of at most 256 bytes, so the list cannot
 \ exceed 8 + 256 * (8 + 256) = 67592 bytes. The cap is the next round number above
 \ it and the overflow is refused rather than truncated.
@@ -221,7 +237,8 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-BUF@ exit then
    k S-CSITES  = if AOT-DSITE-BUF@ exit then
    k S-XTOFFS  = if AOT-WINDOW:XTOFF-BUF@ exit then
-   k S-WDATA   = if AOT-WINDOW:DATA-BUF@ exit then
+   k S-WDATA   = if AOT-WINDOW:RUN-BUF@ exit then
+   k S-WRUNS   = if AOT-WINDOW:RBYTES-BUF@ exit then
    k S-XTSITES = if AOT-XTSITE:BUF@ exit then
    k S-BOOTRUN = if AOT-BOOTRUN-BUF@ exit then
    k S-PWID    = if AOT-PWID-BUF@ exit then
@@ -240,7 +257,8 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-N @ 4 * exit then
    k S-CSITES  = if AOT-CSITE-N @ 4 * exit then
    k S-XTOFFS  = if AOT-WINDOW:XTOFF-N @ 4 * exit then
-   k S-WDATA   = if AOT-DATA-SIZE @ exit then
+   k S-WDATA   = if AOT-WINDOW:RUN-N @ 8 * exit then
+   k S-WRUNS   = if AOT-WINDOW:RBYTES-LEN @ exit then
    k S-XTSITES = if AOT-XTSITE:N @ 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
    k S-PWID    = if PROT-BITS-BYTES exit then
@@ -259,6 +277,7 @@ variable CUR
    k S-DSITES  = if 4 exit then
    k S-CSITES  = if 4 exit then
    k S-XTOFFS  = if 4 exit then
+   k S-WDATA   = if 8 exit then
    k S-XTSITES = if 8 exit then
    k S-PWIN    = if 4 exit then
    k S-SIGS    = if SIG-ROW exit then
@@ -276,7 +295,8 @@ variable CUR
    k S-DSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-CSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-XTOFFS  = if AOT-WINDOW:XTOFF-MAX 4 * exit then
-   k S-WDATA   = if AOT-WINDOW:DATA-CAP exit then
+   k S-WDATA   = if AOT-WINDOW:RUN-MAX 8 * exit then
+   k S-WRUNS   = if AOT-WINDOW:RBYTES-CAP exit then
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
    k S-PWID    = if PROT-BITS-BYTES exit then
@@ -295,7 +315,8 @@ variable CUR
    k S-DSITES  = if s" DATA sites" exit then
    k S-CSITES  = if s" CODE sites" exit then
    k S-XTOFFS  = if s" address cells" exit then
-   k S-WDATA   = if s" window DATA" exit then
+   k S-WDATA   = if s" window DATA runs" exit then
+   k S-WRUNS   = if s" window DATA run bytes" exit then
    k S-XTSITES = if s" named code sites" exit then
    k S-BOOTRUN = if s" boot-run list" exit then
    k S-PWID    = if s" protected-WID bitmap" exit then
@@ -360,7 +381,8 @@ create BASE SEC-N cells allot
    AOT-DATA-D0 @ SCAL U64!
    AOT-CODE-B0 @ SCAL 8 + U64!
    AOT-WID-W0 @ SCAL 16 + U64!
-   AOT-WID-SPAN @ SCAL 24 + U64! ;
+   AOT-WID-SPAN @ SCAL 24 + U64!
+   AOT-DATA-SIZE @ SCAL 32 + U64! ;
 
 : CB! ( n n -- ) {: v:n at:n :} v CBUF at + U64! ;
 
@@ -570,7 +592,9 @@ private
    CHUNK-BUF k ROW-LEN@ GET
    CHUNK-BUF k ROW-LEN@ SHA256-UPDATE ;
 
-\ Every count is the length the table gave, divided by the row the format fixes.
+\ Every count is the length the table gave, divided by the row the format fixes -
+\ except the window's DATA SPAN, which no length fixes any more and which the
+\ scalars section is therefore the only authority for.
 \ Reading them back in the same order the writer derived them from is what makes
 \ the round trip an identity rather than a resemblance.
 : RESTORE-COUNTS ( -- )
@@ -578,6 +602,7 @@ private
    SCAL 8 + U64@ AOT-CODE-B0 !
    SCAL 16 + U64@ AOT-WID-W0 !
    SCAL 24 + U64@ AOT-WID-SPAN !
+   SCAL 32 + U64@ AOT-DATA-SIZE !
    S-BLOB ROW-LEN@ AOT-BLOB-LEN !
    S-RECS ROW-LEN@ AOT-CREC-ROW / AOT-REC-N !
    S-SITES ROW-LEN@ SITE-ROW / AOT-SITE-N !
@@ -585,7 +610,8 @@ private
    S-DSITES ROW-LEN@ 4 / AOT-DSITE-N !
    S-CSITES ROW-LEN@ 4 / AOT-CSITE-N !
    S-XTOFFS ROW-LEN@ 4 / AOT-WINDOW:XTOFF-N !
-   S-WDATA ROW-LEN@ AOT-DATA-SIZE !
+   S-WDATA ROW-LEN@ 8 / AOT-WINDOW:RUN-N !
+   S-WRUNS ROW-LEN@ AOT-WINDOW:RBYTES-LEN !
    S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
    S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
    S-PWIN ROW-LEN@ 4 / AOT-PWIN-N !
@@ -593,6 +619,50 @@ private
    S-SIGSTR ROW-LEN@ AOT-SIG-STR-LEN !
    S-REG ROW-LEN@ AOT-REG-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
+
+\ ---- the window's runs, which the table's own shape cannot state --------------
+\ ?TABLE already refuses a run table that is not a whole number of 8-byte rows.
+\ What it cannot see is whether those rows describe a window: a row has to name a
+\ non-empty extent inside the span, the rows have to arrive in ascending order
+\ without overlapping - because their bytes are concatenated in row order and the
+\ decoder walks them with one cursor - and their lengths have to add up to the
+\ byte section exactly. Each of the five is a shape a well-formed table can take
+\ and a booted engine could not survive, so each is refused by name here.
+variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
+
+: RUN-AT ( n -- ptr u8 ) {: k:n :} AOT-WINDOW:RUN-BUF@ k 8 * + ;
+: RUN-OFF@ ( n -- n ) RUN-AT U32@ ;
+: RUN-LEN@ ( n -- n ) RUN-AT 4 + U32@ ;
+
+: ?SPAN ( n -- ) {: span:n :}
+   span AOT-WINDOW:SPAN-CAP <= if exit then
+   s" aot-file: the window DATA span exceeds what this engine can bake" DIE ;
+
+\ `at` is the first row of the artifact's own block: a plain read puts it at 0 and
+\ a merge puts it behind the host's rows, whose ascending order this has already
+\ proved on the capture that produced them.
+: ?RUNS ( n n n -- ) {: at:n cnt:n span:n :}
+   0 RN-PREV-OFF !  0 RN-PREV-END !  0 RN-SUM !
+   cnt 0 ?do
+      at i + RUN-OFF@ {: off:n :}
+      at i + RUN-LEN@ {: rl:n :}
+      rl 0= if s" aot-file: a window DATA run is empty" DIE then
+      off rl + span > if
+         s" aot-file: a window DATA run reaches past the window DATA span" DIE
+      then
+      i 0 > if
+         off RN-PREV-OFF @ < if
+            s" aot-file: the window DATA runs are not in ascending order" DIE
+         then
+         off RN-PREV-END @ < if
+            s" aot-file: the window DATA runs overlap" DIE
+         then
+      then
+      off RN-PREV-OFF !  off rl + RN-PREV-END !
+      RN-SUM @ rl + RN-SUM !
+   loop
+   RN-SUM @ S-WRUNS ROW-LEN@ = if exit then
+   s" aot-file: the window DATA runs do not fill their own byte section" DIE ;
 
 \ The list walks to its own end or the artifact is refused: a count that promises
 \ more entries than the bytes hold, or bytes left after the last entry, are both a
@@ -678,6 +748,9 @@ public
    SEC-N 0 ?do i LOAD-SECTION loop
    FD @ close
    ?PAYLOAD-AGAIN
+   SCAL 32 + U64@ {: span:n :}
+   span ?SPAN
+   0  S-WDATA ROW-LEN@ 8 /  span  ?RUNS
    RESTORE-COUNTS
    RESTORE-CLOSURE
    ?CHAIN ;
@@ -702,7 +775,11 @@ private
 \   pool offsets    records' [8], call sites' [4], named code sites' [4]: + the
 \                   host's pool, which is appended to and never deduplicated
 \                   against (the remap would buy under a kilobyte).
-\   window offsets  the declared address cells: + the host's DATA span.
+\   window offsets  the declared address cells AND the run table's own offsets:
+\                   + where the artifact's window begins inside the merged one.
+\                   The host's runs all end at or below its span and the
+\                   artifact's all start at or above that, so the merged table is
+\                   still ascending and non-overlapping without a sort.
 \   DATA values     each recorded chain holds an address in the ARTIFACT's DATA
 \                   window; the merged window continues the host's, so it moves
 \                   to the same place inside that.
@@ -724,7 +801,9 @@ variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
 variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
 variable H-XTSITE variable H-BOOTRUN variable H-PWIN   variable H-SPAN
 variable H-SIG    variable H-SIGSTR  variable H-REG
+variable H-RUN    variable H-RBYTES
 variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
+variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
 : LATCH-HOST ( -- )
@@ -735,6 +814,7 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    AOT-XTSITE:N @ H-XTSITE !          AOT-BOOTRUN-LEN @ H-BOOTRUN !
    AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN !
    AOT-SIG-N @ H-SIG !                AOT-SIG-STR-LEN @ H-SIGSTR !
+   AOT-WINDOW:RUN-N @ H-RUN !         AOT-WINDOW:RBYTES-LEN @ H-RBYTES !
    AOT-REG-LEN @ H-REG ! ;
 
 \ A merge appends, so there has to be something to append to. A host that has not
@@ -757,6 +837,8 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    H-DSITE @ 4 *               S-DSITES BASE!
    H-DSITE @ 4 * S-DSITES ROW-LEN@ + H-CSITE @ 4 * +   S-CSITES BASE!
    H-XTOFF @ 4 *               S-XTOFFS BASE!
+   H-RUN @ 8 *                 S-WDATA BASE!
+   H-RBYTES @                  S-WRUNS BASE!
    H-XTSITE @ 8 *              S-XTSITES BASE!
    H-BOOTRUN @                 S-BOOTRUN BASE!
    H-PWIN @ 4 *                S-PWIN BASE!
@@ -787,7 +869,8 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    SCAL U64@ A-D0 !
    SCAL 8 + U64@ A-B0 !
    SCAL 16 + U64@ A-W0 !
-   SCAL 24 + U64@ A-SPAN ! ;
+   SCAL 24 + U64@ A-SPAN !
+   SCAL 32 + U64@ A-DSPAN ! ;
 
 \ WHERE THE ARTIFACT'S WINDOW BEGINS, and it is not simply the host's length.
 \ What a captured address needs kept is its 8-RESIDUE - the atomics fault on a
@@ -802,21 +885,19 @@ variable H-DATA-R                    \ where the artifact's window begins inside
 \ would not have fixed it: that length is already a multiple of four and the
 \ skew comes from the two BASES, not from it.
 \
-\ THE PAD IS WRITTEN, NOT LEFT. Measured, the metabuild's payload buffer holds
-\ zero above the host's window - nothing has written there - but these bytes
-\ become live DATA in the booted engine, and a byte no one decided is a byte
-\ that can change when another producer reaches this buffer first (the capture
-\ tool's own round trip smears $A5 over it). So the pad is stored.
+\ THE PAD IS NOW ZERO BY CONSTRUCTION, and it used to have to be written. While
+\ the window travelled verbatim these bytes were a buffer nobody had decided, and
+\ a byte no one decides can change when another producer reaches the buffer first
+\ (the capture tool's own round trip smears $A5 over it), so the merge stored
+\ them. With the window sparse there is no buffer: the pad is simply an extent no
+\ run covers, and the seed zeroes the whole span before it lays any run down.
 \
 \ IT IS SET HERE AND NOT WITH THE OTHER BASES because it needs the artifact's
 \ own DATA base, and that arrives in the scalars section - which the format puts
 \ first, so it is already read when the window's own section comes up.
 : PLACE-WDATA ( -- )
    SCALARS@
-   A-D0 @  AOT-DATA-D0 @ -  H-DATA @ -  7 and {: pad:n :}
-   pad 0 ?do 0 AOT-WINDOW:DATA-BUF@ H-DATA @ + i + c! loop
-   H-DATA @ pad +  H-DATA-R !
-   H-DATA-R @ S-WDATA BASE! ;
+   A-D0 @  AOT-DATA-D0 @ -  H-DATA @ -  7 and  H-DATA @ +  H-DATA-R ! ;
 
 \ THE TYPE REGISTRY IS THE ONE SECTION A MERGE CANNOT APPEND. Its records name
 \ each other by family id, schema node id and interned string offset, and each
@@ -912,6 +993,7 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 0 H-BLOB @ FIELD+
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
    S-XTOFFS SEC-AT   S-XTOFFS SEC-ROWS   4 0 H-DATA-R @ FIELD+
+   S-WDATA SEC-AT    S-WDATA SEC-ROWS    8 0 H-DATA-R @ FIELD+
    S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 0 H-SIGSTR @ FIELD+
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 4 H-SIGSTR @ FIELD+
@@ -929,7 +1011,7 @@ variable H-DATA-R                    \ where the artifact's window begins inside
 \ because it is what locates the chain.
 : MERGE-DSITES ( -- )
    S-DSITES SEC-AT {: p:ptr :}
-   S-WDATA ROW-LEN@ {: dlen:n :}
+   A-DSPAN @ {: dlen:n :}
    S-DSITES SEC-ROWS 0 ?do
       p i 4 * + {: q:ptr :}
       q U32@ {: boff:n :}
@@ -973,7 +1055,9 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    H-DSITE @ S-DSITES SEC-ROWS + AOT-DSITE-N !
    H-CSITE @ S-CSITES SEC-ROWS + AOT-CSITE-N !
    H-XTOFF @ S-XTOFFS SEC-ROWS + AOT-WINDOW:XTOFF-N !
-   H-DATA-R @ S-WDATA ROW-LEN@ + AOT-DATA-SIZE !
+   H-DATA-R @ A-DSPAN @ + AOT-DATA-SIZE !
+   H-RUN @ S-WDATA SEC-ROWS + AOT-WINDOW:RUN-N !
+   H-RBYTES @ S-WRUNS ROW-LEN@ + AOT-WINDOW:RBYTES-LEN !
    H-XTSITE @ S-XTSITES SEC-ROWS + AOT-XTSITE:N !
    H-BOOTRUN @ S-BOOTRUN ROW-LEN@ + AOT-BOOTRUN-LEN !
    H-PWIN @ S-PWIN SEC-ROWS + AOT-PWIN-N !
@@ -988,7 +1072,7 @@ public
 \ Where the artifact's own window begins inside the merged one. It is the one
 \ number in the placement a reader cannot recompute for itself, so
 \ test/aot-file-merge.f asks the merge for it and checks the pad's size, its
-\ bytes and its residue against numbers of its own.
+\ residue, and that no run covers it, against numbers of its own.
 : WDATA-BASE ( -- n ) H-DATA-R @ ;
 
 \ Append the artifact at `path` to the capture already in the live buffers,
@@ -1011,6 +1095,8 @@ public
    ?PAYLOAD-AGAIN
    SCALARS@
    ?BASES
+   H-DATA-R @ A-DSPAN @ + ?SPAN
+   H-RUN @  S-WDATA SEC-ROWS  A-DSPAN @  ?RUNS
    MERGE-RECS
    MERGE-ROWS
    MERGE-DSITES

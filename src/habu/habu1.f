@@ -189,13 +189,15 @@ variable LOPEN   variable LCLOSE   variable LGROW   variable LSPAN   variable LC
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
-\ The captured DATA window's own CONTENT, and the window-relative offsets of the
-\ declared address cells inside it, which the seed re-traps rather than copies.
+\ The captured DATA window's own CONTENT - its non-zero extents as a count, a
+\ table of (offset u32, length u32) rows and their bytes in row order - and the
+\ window-relative offsets of the declared address cells inside it, which the seed
+\ re-traps rather than copies.
 \ These are the window-content bake's label ids; the rest of its surface (buffers,
 \ section emitters, boot routines) is in src/habu/habu2.f under the same package.
 package AOT-WINDOW
 public
-variable LDATA  variable LNXTOFF  variable LXTOFFS
+variable LNRUN  variable LRUNS  variable LRBYTES  variable LNXTOFF  variable LXTOFFS
 \ The window's wordlist base and span, and the window-relative ids it sealed. The
 \ seed rebases every captured wid through the first pair and applies the third
 \ after that rebase, which is the only moment the target's own base is known.

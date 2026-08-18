@@ -13,7 +13,8 @@
 \ was never applied - the one bug this file exists to catch. So the window below
 \ is built to carry a nonzero population of EVERY axis the merge moves: code and
 \ records and names, a call site, a DATA literal, a code literal, a declared
-\ address cell, a wordlist of its own, a protected wordlist, and a boot-run entry.
+\ address cell, two initialised DATA cells with a gap between them, a wordlist of
+\ its own, a protected wordlist, and a boot-run entry.
 \ ?HOST asserts each of those is really nonzero, so the day one of them stops
 \ being produced this file fails instead of quietly testing nothing.
 \
@@ -62,6 +63,7 @@ $4A constant REFUSE-RC
 variable H-BLOB   variable H-REC    variable H-SITE  variable H-NAMES
 variable H-DSITE  variable H-CSITE  variable H-XTOFF variable H-DATA
 variable H-BOOT   variable H-PWIN   variable H-SPAN  variable H-SMOV
+variable H-RUN    variable H-RBYTES
 variable BAD
 
 \ The artifact on its own: its counts, its two window bases, and one sum per row
@@ -75,7 +77,14 @@ variable A-RBLOB  variable A-RNAME  variable A-RWID
 variable A-SBLOB  variable A-SNAME  variable A-SWID  variable A-SMOV
 variable A-DROW   variable A-CROW   variable A-XROW  variable A-PROW
 variable A-DVAL   variable A-CVAL
-variable A-DATA                      \ the artifact's own DATA window length
+variable A-DATA                      \ the artifact's own DATA window span
+variable A-RUN    variable A-RBYTES variable A-RROW
+\ Where the window's two initialised cells sit inside it, recorded by the window
+\ itself as it defines them. A fixture that hunted for the values in the run
+\ bytes would pass on a run table that named the wrong extents; asking for the
+\ cell AT ITS OWN OFFSET is what makes the rows carry the claim.
+variable MA-OFF   variable MB-OFF
+variable MK-CUR   variable MK-VAL   variable MK-N
 variable SUM      variable SUM2     variable CNT
 
 : DIE ( ptr u8 n -- ) REFUSE-RC die ;
@@ -99,6 +108,14 @@ public
 
 create BUF 32 allot                  \ DATA content, and the address a literal holds
 defer HOOK ( -- )                    \ a declared address cell
+\ Two INITIALISED cells with an allotted gap between them, which is the axis the
+\ sparse window exists for: the run table has to carry two separate extents, in
+\ ascending order, and the gap has to survive as zero without being stored.
+create MARK-A $0102030405060708 ,
+here 8 - AOT-ARM:D0 @ - AFM:MA-OFF !
+create GAP 64 allot
+create MARK-B $1112131415161718 ,
+here 8 - AOT-ARM:D0 @ - AFM:MB-OFF !
 
 \ Long enough that the engine's compile-mode inliner emits a call rather than
 \ copying the body: the call site is the point.
@@ -134,6 +151,8 @@ public
 : TOUCH ( -- ) 7 BUF c! ;            \ a DATA literal: BUF's address in this window
 
 : NONE ( -- ) ;
+
+: MARKS ( -- n n ) MARK-A @ MARK-B @ ;
 
 : INSTALL ( -- ) [: NONE ;] is HOOK ;   \ a code literal: the quotation's entry
 
@@ -183,6 +202,7 @@ variable T-SWID   variable T-SMOV
    AOT-DSITE-N @ H-DSITE !          AOT-CSITE-N @ H-CSITE !
    AOT-WINDOW:XTOFF-N @ H-XTOFF !   AOT-DATA-SIZE @ H-DATA !
    AOT-BOOTRUN-LEN @ H-BOOT !       AOT-PWIN-N @ H-PWIN !
+   AOT-WINDOW:RUN-N @ H-RUN !       AOT-WINDOW:RBYTES-LEN @ H-RBYTES !
    AOT-WID-SPAN @ H-SPAN !
    0 AOT-SITE-N @ WALK-SITES  T-SMOV @ H-SMOV ! ;
 
@@ -199,6 +219,7 @@ variable T-SWID   variable T-SMOV
    H-DSITE @ s" DATA sites" ?NONZERO    H-CSITE @ s" CODE sites" ?NONZERO
    H-XTOFF @ s" address cells" ?NONZERO H-DATA @ s" DATA bytes" ?NONZERO
    H-BOOT @ s" boot-run names" ?NONZERO H-PWIN @ s" protected window WIDs" ?NONZERO
+   H-RUN @ s" DATA runs" ?NONZERO       H-RBYTES @ s" DATA run bytes" ?NONZERO
    H-SPAN @ s" wordlists" ?NONZERO
    H-SMOV @ s" call sites into a window wordlist" ?NONZERO ;
 
@@ -267,6 +288,8 @@ variable T-ORD    variable T-WIDN
    AOT-WINDOW:XTOFF-N @ A-XTOFF !      AOT-PWIN-N @ A-PWIN !
    AOT-DATA-D0 @ A-D0 !                AOT-WID-W0 @ A-W0 !
    AOT-DATA-SIZE @ A-DATA !
+   AOT-WINDOW:RUN-N @ A-RUN !          AOT-WINDOW:RBYTES-LEN @ A-RBYTES !
+   AOT-WINDOW:RUN-BUF@ AOT-WINDOW:RUN-N @ 8 0 SUM-ROWS A-RROW !
    0 AOT-REC-N @ WALK-RECS
    T-RBLOB @ A-RBLOB !  T-RNAME @ A-RNAME !  T-RWID @ A-RWID !
    T-ORD @ A-ORD !      T-WIDN @ A-WIDN !
@@ -408,8 +431,13 @@ variable T-ORD    variable T-WIDN
 \ of eight" - it is not, and a check that asked that would pass a merge whose
 \ artifact came from a base with any other residue at all. What is asked is that
 \ the SHIFT the merge applies is a whole number of cells, that the pad is
-\ exactly what the residue rule needs and no more, and that its bytes are a
-\ value rather than whatever the buffer held.
+\ exactly what the residue rule needs and no more, and that NO RUN COVERS IT.
+\ That last one used to read the pad's stored bytes and require zero; with the
+\ window sparse there are no stored bytes to read, and the statement that
+\ replaces it is stronger - the seed zeroes the whole span, so an extent no run
+\ covers is zero by construction, and what can still go wrong is a run landing
+\ in the pad. Both directions are checked: no host run may reach past the host's
+\ own span, and no merged run may begin below the artifact's base.
 8 constant CELL-BYTES
 
 : ?PLACEMENT ( -- )
@@ -419,9 +447,48 @@ variable T-ORD    variable T-WIDN
       0 s" the merged window's shift in cells" ?SUM
    pad  0 CELL-BYTES s" the merged window's pad" ?IN
    AOT-DATA-SIZE @  base A-DATA @ +  s" the merged DATA size" ?SUM
-   pad 0 ?do
-      AOT-WINDOW:DATA-BUF@ H-DATA @ + i + c@ 0 s" a merged window pad byte" ?SUM
+   H-RUN @ 0 ?do
+      AOT-WINDOW:RUN-BUF@ i 8 * + {: r:ptr :}
+      r W32@ r 4 + W32@ +  1 H-DATA @ 1+  s" a host run's end" ?IN
+   loop
+   AOT-WINDOW:RUN-N @ H-RUN @ ?do
+      AOT-WINDOW:RUN-BUF@ i 8 * + W32@
+      base AOT-DATA-SIZE @ s" a merged run's offset" ?IN
    loop ;
+
+: RB@ ( n -- n ) {: at:n :} AOT-WINDOW:RBYTES-BUF@ at + c@ ;
+
+: RCELL@ ( n -- n ) {: at:n :}
+   0 8 0 ?do  8 lshift  at 7 i - + RB@ or  loop ;
+
+\ What the host's runs actually deliver at one window offset. Exactly one run
+\ must cover the whole cell: none means the window dropped an initialised value,
+\ and two means the table overlaps itself.
+: RUN-CELL@ ( n -- n ) {: off:n :}
+   0 MK-CUR !  0 MK-VAL !  0 MK-N !
+   H-RUN @ 0 ?do
+      AOT-WINDOW:RUN-BUF@ i 8 * + {: r:ptr :}
+      r W32@ {: ro:n :}
+      r 4 + W32@ {: rl:n :}
+      off ro >= off 8 + ro rl + <= and if
+         MK-CUR @ off ro - + RCELL@ MK-VAL !
+         MK-N @ 1+ MK-N !
+      then
+      MK-CUR @ rl + MK-CUR !
+   loop
+   MK-N @ 1 = if MK-VAL @ exit then
+   s" aot-file-merge: runs covering an initialised cell=" type MK-N @ . cr
+   s" aot-file-merge: exactly one run must carry each initialised cell" DIE
+   0 ;
+
+\ The window's own cells, read three ways: what the running engine holds, what
+\ the run rows say the extents are, and what the run bytes carry there.
+: ?MARKS ( -- )
+   AFMW:MARKS {: livea:n liveb:n :}
+   livea $0102030405060708 s" the first cell in the live window" ?SUM
+   liveb $1112131415161718 s" the second cell in the live window" ?SUM
+   MA-OFF @ RUN-CELL@ $0102030405060708 s" the first cell in the run bytes" ?SUM
+   MB-OFF @ RUN-CELL@ $1112131415161718 s" the second cell in the run bytes" ?SUM ;
 
 : ?EXACT ( -- )
    AOT-REC-N @ H-REC @ - A-REC @ = 0= if
@@ -458,6 +525,14 @@ variable T-ORD    variable T-WIDN
    AOT-WINDOW:XTOFF-BUF@ H-XTOFF @ 4 * + A-XTOFF @ 4 0 SUM-ROWS
       A-XROW @ A-XTOFF @ AOT-FILE:WDATA-BASE * +
       s" merged address cell offset" ?SUM
+   AOT-WINDOW:RUN-BUF@ H-RUN @ 8 * + A-RUN @ 8 0 SUM-ROWS
+      A-RROW @ A-RUN @ AOT-FILE:WDATA-BASE * +
+      s" merged run offset" ?SUM
+   AOT-WINDOW:RUN-BUF@ H-RUN @ 8 * + A-RUN @ 8 4 SUM-ROWS
+      A-RBYTES @
+      s" merged run length" ?SUM
+   AOT-WINDOW:RUN-N @  H-RUN @ A-RUN @ +  s" merged run count" ?SUM
+   AOT-WINDOW:RBYTES-LEN @  H-RBYTES @ A-RBYTES @ +  s" merged run bytes" ?SUM
    AOT-PWIN-BUF@ H-PWIN @ 4 * + A-PWIN @ 4 0 SUM-ROWS
       A-PROW @ A-PWIN @ H-SPAN @ * +
       s" merged protected window WID" ?SUM
@@ -506,6 +581,10 @@ variable T-ORD    variable T-WIDN
    s" mergeddatasz=" type AOT-DATA-SIZE @ .
    s" hostxtoff=" type H-XTOFF @ .
    s" mergedxtoff=" type AOT-WINDOW:XTOFF-N @ .
+   s" hostruns=" type H-RUN @ .
+   s" mergedruns=" type AOT-WINDOW:RUN-N @ .
+   s" hostrunbytes=" type H-RBYTES @ .
+   s" mergedrunbytes=" type AOT-WINDOW:RBYTES-LEN @ .
    s" hostspan=" type H-SPAN @ .
    s" mergedwidspan=" type AOT-WID-SPAN @ .
    s" hostpwin=" type H-PWIN @ .
@@ -521,7 +600,7 @@ variable T-ORD    variable T-WIDN
    KEY 0 SCRIPT-ARGV$ AOT-FILE:MERGE
    ?KEPT
    ?HOST-RECS  ?MERGED-RECS
-   ?SITES  ?PLACEMENT  ?DSITES  ?CSITES  ?XTOFFS  ?PWIN
+   ?SITES  ?PLACEMENT  ?MARKS  ?DSITES  ?CSITES  ?XTOFFS  ?PWIN
    ?EXACT
    ?BOOTRUN
    ?BAD

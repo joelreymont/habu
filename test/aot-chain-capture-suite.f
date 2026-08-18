@@ -404,6 +404,16 @@ create ART ART-CAP allot    variable ART-LEN
    s" sites=" FIELD     15000 s" ... its call sites" FLOOR
    s" dsites=" FIELD     3000 s" ... its DATA-literal sites" FLOOR
    s" xtoff=" FIELD         1 s" ... and its declared address cell" FLOOR
+   \ The window's DATA is SPARSE, and these three are what says so without
+   \ letting the sparseness hide a capture that stopped working. The span is the
+   \ chain's whole window and is now a scalar rather than a section length; the
+   \ runs are its INITIALISED extents, measured at four rows of eight bytes, and
+   \ a capture that emitted none would have dropped the four cells the seed has
+   \ to deliver. The identity above already ties the span to the window's own
+   \ measurement, so a shrunken span breaks that before it reaches this.
+   s" datasz=" FIELD  1000000 s" the window's DATA span is the chain's" FLOOR
+   s" runs=" FIELD          1 s" ... and its initialised extents are carried" FLOOR
+   s" runbytes=" FIELD      8 s" ... with their bytes" FLOOR
    s" bandrecs=" FIELD      1 s" the prelude band is not empty" FLOOR
    s" bandbytes=" FIELD     1 s" ... on the DATA axis either" FLOOR
 
@@ -510,14 +520,21 @@ create ART ART-CAP allot    variable ART-LEN
 24 constant O-SECTIONS
 32 constant O-PAYLEN
 104 constant O-PAYSHA
-17 constant SEC-N
+18 constant SEC-N
 16 constant ROW-BYTES
-0 constant S-SCALARS             \ the first section: the four genuine scalars, fixed width
+0 constant S-SCALARS             \ the first section: the five genuine scalars, fixed width
 1 constant S-BLOB                \ the code blob: bytes, so any length is a whole number of rows
-11 constant S-PWID               \ the protected-WID bitmap, the other fixed-width section
-13 constant S-SIGS               \ the window's checker signature rows
-15 constant S-REG                \ ... and the type registry those rows resolve against
-16 constant S-CLOSURE            \ the last section: the closure list
+8 constant S-WDATA               \ the window's non-zero extents: 8-byte rows
+9 constant S-WRUNS               \ ... and their bytes, concatenated in row order
+12 constant S-PWID               \ the protected-WID bitmap, the other fixed-width section
+14 constant S-SIGS               \ the window's checker signature rows
+16 constant S-REG                \ ... and the type registry those rows resolve against
+17 constant S-CLOSURE            \ the last section: the closure list
+32 constant O-SCAL-DSPAN         \ the window DATA span, the fifth scalar's offset in that section
+\ src/habu/aot-decl.f AOT-WINDOW:SPAN-CAP. The two cases below pin it from both
+\ sides, so a cap that moved without this moving fails here instead of leaving a
+\ forged span accepted.
+$800000 constant SPAN-CAP
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -530,6 +547,14 @@ create SW1 512 allot
 
 : A64! ( n n -- ) {: v:n at:n :}
    8 0 ?do  v i 8 * rshift $FF and  ART at i + + c!  loop ;
+
+\ The window's run rows are packed u32 pairs, so the run cases need the narrower
+\ accessor the rest of this fixture's edits do not.
+: A32@ ( n -- n ) {: at:n :}
+   0 4 0 ?do  8 lshift  ART at 3 i - + + c@ or  loop ;
+
+: A32! ( n n -- ) {: v:n at:n :}
+   4 0 ?do  v i 8 * rshift $FF and  ART at i + + c!  loop ;
 
 : LOAD-ART ( -- ) ART$ ART ART-CAP READ-ALL ART-LEN ! ;
 : EMIT-N ( n -- ) {: n:n :} CASE$ ART n WRITE-ALL ;
@@ -674,13 +699,20 @@ create SW1 512 allot
    s" a section length that is not a whole number of rows is refused, by section" T-LABEL
    s" section call sites is not a whole number of rows" READ-REFUSED
 
+   \ THE PAIR IS CHOSEN SO THE OVERFLOW IS REAL, and it moved when the window
+   \ went sparse: this used to hand the window's 1.5 MB to the blob, which no
+   \ longer exists to hand over - and no redistribution of today's payload can
+   \ fill the blob's own 2 MiB buffer. The run-byte section's buffer is the
+   \ smallest one a large section can be poured into, so the blob's megabyte
+   \ goes there instead. If it ever stops overflowing, the read succeeds and this
+   \ case fails rather than passing on a check it never reached.
    FRESH
-   1 SEC-LEN@ 8 SEC-LEN@ + {: both:n :}
-   both 1 SEC-LEN!  0 8 SEC-LEN!
+   1 SEC-LEN@ S-WRUNS SEC-LEN@ + {: both:n :}
+   both S-WRUNS SEC-LEN!  0 1 SEC-LEN!
    RETABLE RESEAL EMIT
    false RUN-READ
    s" a section larger than the buffer it fills is refused, by section" T-LABEL
-   s" section blob is larger than the buffer it fills" READ-REFUSED
+   s" section window DATA run bytes is larger than the buffer it fills" READ-REFUSED
 
    FRESH  1 S-CLOSURE SEC-AT A64!  RESEAL EMIT
    false RUN-READ
@@ -758,6 +790,82 @@ create SW1 512 allot
    false RUN-READ
    s" a closure entry claiming more bytes than remain is refused" T-LABEL
    s" the closure list ends inside a path" READ-REFUSED ;
+
+\ ---- the window's runs, which are a well-formed table describing no window ----
+\
+\ WHY THESE ARE THEIR OWN BLOCK. The span used to be a section's LENGTH, so the
+\ table's own contiguity arithmetic bounded it and ?TABLE caught every shape a
+\ forged window could take. It is a SCALAR now and the content is a table of
+\ extents, so a run table can be a whole number of rows, sit inside its buffer
+\ and fill the payload while describing a window no engine could reserve. Each
+\ case below is such a table, and each one passes every check before the one it
+\ is written for.
+\
+\ THE FIRST ROW IS EIGHT BYTES AT A REAL OFFSET, which is what makes the edits
+\ minimal: a length set to zero, an offset pushed past the span, two rows swapped,
+\ one row's start moved four bytes into the previous row's extent, and one row's
+\ length shortened. Nothing else in the artifact moves, so the refusal that fires
+\ is the one the edit describes.
+: RUN-OFF-AT ( n -- n ) {: k:n :} S-WDATA SEC-AT k 8 * + ;
+: RUN-LEN-AT ( n -- n ) {: k:n :} S-WDATA SEC-AT k 8 * + 4 + ;
+: RUN-OFF@ ( n -- n ) RUN-OFF-AT A32@ ;
+: RUN-LEN@ ( n -- n ) RUN-LEN-AT A32@ ;
+: RUN-OFF! ( n n -- ) {: v:n k:n :} v k RUN-OFF-AT A32! ;
+: RUN-LEN! ( n n -- ) {: v:n k:n :} v k RUN-LEN-AT A32! ;
+: DSPAN@ ( -- n ) S-SCALARS SEC-AT O-SCAL-DSPAN + A64@ ;
+: DSPAN! ( n -- ) {: v:n :} v S-SCALARS SEC-AT O-SCAL-DSPAN + A64! ;
+
+\ The fixture's own anchor: every case below edits row 0 and row 1, so a capture
+\ that stopped producing two runs would leave them editing nothing.
+: ?RUNS-PRESENT ( -- )
+   S-WDATA SEC-LEN@ 8 / 2 >= if exit then
+   s" aot-chain-capture-suite: the capture produced fewer than two window runs"
+   STOP-RC die ;
+
+: PROBE-RUN-SHAPE ( -- )
+   FRESH ?RUNS-PRESENT  0 0 RUN-LEN!  RESEAL EMIT
+   false RUN-READ
+   s" a window run of no length is refused" T-LABEL
+   s" a window DATA run is empty" READ-REFUSED
+
+   FRESH  DSPAN@ 4 -  S-WDATA SEC-LEN@ 8 / 1 - RUN-OFF!  RESEAL EMIT
+   false RUN-READ
+   s" a window run reaching past the span is refused" T-LABEL
+   s" a window DATA run reaches past the window DATA span" READ-REFUSED
+
+   FRESH
+   0 RUN-OFF@ {: o0:n :}
+   1 RUN-OFF@ {: o1:n :}
+   o1 0 RUN-OFF!  o0 1 RUN-OFF!
+   RESEAL EMIT
+   false RUN-READ
+   s" window runs out of ascending order are refused" T-LABEL
+   s" the window DATA runs are not in ascending order" READ-REFUSED
+
+   FRESH  0 RUN-OFF@ 0 RUN-LEN@ + 4 -  1 RUN-OFF!  RESEAL EMIT
+   false RUN-READ
+   s" window runs that overlap are refused" T-LABEL
+   s" the window DATA runs overlap" READ-REFUSED
+
+   FRESH  0 RUN-LEN@ 4 -  0 RUN-LEN!  RESEAL EMIT
+   false RUN-READ
+   s" run lengths that do not add up to the byte section are refused" T-LABEL
+   s" the window DATA runs do not fill their own byte section" READ-REFUSED ;
+
+\ The span stopped being derivable when the window went sparse, so it is the one
+\ number the artifact ASSERTS. Both sides of its cap are pinned: the cap itself
+\ is a span this engine will bake, and one byte more is not.
+: PROBE-SPAN-CAP ( -- )
+   FRESH  SPAN-CAP DSPAN!  RESEAL EMIT
+   false RUN-READ
+   s" a window DATA span at the cap is accepted" T-LABEL
+   RC @ 0 <> if DIAG. then
+   RC @ 0 T=
+
+   FRESH  SPAN-CAP 1+ DSPAN!  RESEAL EMIT
+   false RUN-READ
+   s" ... and one byte past it is refused" T-LABEL
+   s" the window DATA span exceeds what this engine can bake" READ-REFUSED ;
 
 \ ---- the refusal only a defective reader can raise ---------------------------
 \
@@ -1268,6 +1376,8 @@ variable CUR
    PROBE-SHORT-PAYLOAD
    PROBE-TABLE-SHAPE
    PROBE-FIXED-WIDTH
+   PROBE-RUN-SHAPE
+   PROBE-SPAN-CAP
    PROBE-CLOSURE-SHAPE
    PROBE-SECOND-PASS
    PROBE-CHAIN

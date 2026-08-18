@@ -919,9 +919,31 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
 \ `FILE-SIZE bin/hb` is still 165367 (measured).
 \ The Linux rows below are owed this +160 as well.
-135648 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-18 the window's DATA went sparse (dot
+\ habu-census-the-captured-fe5f7c49). The engine used to bake its REPL window's
+\ whole DATA span verbatim, and that span is a dictionary subrange: almost all of
+\ it is `allot`ed room nothing has written. It now bakes the window's NON-ZERO
+\ EXTENTS - a count, a table of (offset u32, length u32) rows, and their bytes in
+\ row order - and the seed zeroes the span before laying them in. -5560, and it
+\ divides between two rows with no residue:
+\  -5692  aot-seed: the REPL window's verbatim span, out; its extent count, its
+\         run table and its run bytes, in.
+\   +132  compile/exit: AOT-WINDOW:ZERO-SPAN and AOT-WINDOW:APPLY-RUNS, in place
+\         of the byte-at-a-time COPY-DATA they replace - an eight-byte store loop
+\         with a byte tail, then a run walk with a running byte cursor.
+\ CODELEN 135648 -> 130088, floor distance 8672 -> 3112. container/text-pad
+\ 7712 -> 13272 absorbs the whole -5560 inside the same eighth 16 KiB __TEXT
+\ page, so MACOS-SIGNATURE (1423) and MACOS-TOTAL (165367) do not move and
+\ `FILE-SIZE bin/hb-host` is still 165367 (measured).
+\ The PRODUCT is where the same change is worth megabytes rather than kilobytes:
+\ its window is the REPL capture merged with the compiler chain's, whose span is
+\ 1,531,045 bytes carrying 32 bytes of content in four cells. bin/hb goes
+\ 3,649,399 -> 2,097,271, aot-seed 3,486,060 -> 1,949,388 (measured on the same
+\ two builds), and the artifact the capture writes goes 3,454,098 -> 1,923,141.
+\ The Linux rows below are owed this -5560 as well, split the same two ways.
+130088 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-8672 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+3112 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

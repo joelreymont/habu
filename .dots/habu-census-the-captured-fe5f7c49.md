@@ -1,6 +1,6 @@
 ---
 title: "Census the captured DATA window: live bytes vs baked emptiness"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-18T14:04:04.550453+02:00"
@@ -65,5 +65,7 @@ load by design. (4) ACAP-MASK-XTCELL's invariant transfers:
 declared cells are EXCLUDED FROM EVERY RUN (no buffer to zero);
 the straddle refusal still fires. The ten walked anchors are
 the implementation map - do not re-find them.
+
+Claim: agent=collapse-1 workspace=.jj-ws/habu-collapse
 
 ++++++ rltzurlq 2e03ddba "dots: the collapse handoff - change surface, one shape question" (rebased revision)

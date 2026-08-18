@@ -1159,7 +1159,7 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 \ the protected-WID bitmap upward, a band that cannot be split.
 \
 \ They open the package src/habu/habu2.f reopens for the same window's baked half
-\ (AOT-WINDOW:LDATA, its declared-cell list and its boot-time copy), the way this
+\ (AOT-WINDOW:LRUNS, its declared-cell list and its boot-time decode), the way this
 \ file opens SNAP-RELOC for the bands habu2.f and snap-lib.f reopen.
 \
 \ T0-CELL is the SEED side of the same subject: the first wordlist id this boot's

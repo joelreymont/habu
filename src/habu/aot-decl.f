@@ -151,34 +151,51 @@ variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ the same thing in two processes, so the seed maps an in-window wid to
 \ T0 + (wid - W0) and refuses every other non-zero wid by name.
 variable AOT-WID-W0    variable AOT-WID-SPAN
-\ The window's DATA CONTENT, and the offsets the seed must not take from it.
+\ The window's DATA SPAN, and the offsets the seed must not take from its content.
 \ Reserving the span zeroed was right only while every byte in it was zero. It is
 \ not: the REPL sources put real bytes there - a TRUST row's name and signature
 \ are `s"` literals interned into DP - and those arrived in the seeded engine as
-\ zeros. So the span travels as bytes, sized by AOT-DATA-SIZE (one authority for
-\ the length; the buffer never carries more than the span).
-\ A DECLARED ADDRESS CELL IS THE ONE THING THE BYTES MAY NOT CARRY. `defer` in the
-\ window allots a dispatch cell and registers it (SNAP-RELOC's XTCELL table), and
-\ what it holds is a code address in the BUILDING host - ASLR-varying on macOS.
-\ Baking that would make the image depend on the run that built it and the byte
-\ fixpoint would never close, which is the same reason the code literals are
-\ stored b0-relative. Those cells are therefore zeroed in the image and their
+\ zeros. So the content travels, but as RUNS rather than as the span (AOT-WINDOW
+\ below); AOT-DATA-SIZE is the span itself and, with a sparse payload, the only
+\ authority for it.
+\ A DECLARED ADDRESS CELL IS THE ONE THING THE CONTENT MAY NOT CARRY. `defer` in
+\ the window allots a dispatch cell and registers it (SNAP-RELOC's XTCELL table),
+\ and what it holds is a code address in the BUILDING host - ASLR-varying on
+\ macOS. Baking that would make the image depend on the run that built it and the
+\ byte fixpoint would never close, which is the same reason the code literals are
+\ stored b0-relative. Those cells are therefore excluded from every run and their
 \ offsets listed here; EM-AOT-RELOC-DATA stores the seeded engine's own
 \ `defer-unset` trap xt into each one at boot. The offsets are u32, so the window
-\ they index is bounded by DATA-CAP alone.
+\ they index is bounded by AOT-WINDOW:SPAN-CAP alone.
 
 ;package
 
 package AOT-WINDOW
 public
-\ 2 MiB, and the term that made it move: the compiler chain's window measures
-\ 1,531,272 DATA bytes, so the 1 MiB this held refused the chain outright ("DATA
-\ window exceeds the AOT data buffer"). The metabuild REPL window that sized the
-\ old cap measures 5724. Raising it raises AOT-SECTION:BYTES by the same $100000,
-\ which is why icode.f AOT-SECTION-CAP and CODE-CAP-BYTES move with it and why
-\ AGREE below is executed rather than commented: the three are one number.
-$200000 constant DATA-CAP
-create DATA-BUF DATA-CAP allot
+\ THE WINDOW'S CONTENT TRAVELS AS RUNS, AND THE SPAN IS A NUMBER.
+\ The window is a dictionary subrange, so almost all of it is `allot`ed room that
+\ nothing has written: the compiler chain's window measures 1,531,045 bytes of
+\ span and 32 bytes of content, in four cells, 99.998% zero (dot
+\ habu-census-the-captured-fe5f7c49). Storing the span verbatim baked 1.5 MB of
+\ zeros into every engine. So what is stored is the NON-ZERO EXTENTS - one 8-byte
+\ row of (offset u32, length u32) each, and their bytes concatenated in row order -
+\ and the seed zeroes the span and lays the runs into it.
+\
+\ THE SPAN IS NO LONGER A LENGTH ANYWHERE, which is why AOT-DATA-SIZE is now a
+\ genuine scalar in the artifact rather than a section's length. SPAN-CAP bounds
+\ it, and it bounds nothing else: the window costs no buffer here now, so the cap
+\ exists only to keep the u32 offsets in the two tables below honest and to fail
+\ closed on a span no engine could reserve. 8 MiB against the chain's measured
+\ 1,531,045 leaves the chain room to grow five-fold at no storage cost.
+$800000 constant SPAN-CAP
+\ 16384 rows against the chain's measured FOUR. A run is a maximal non-zero
+\ extent, so the count is a property of the window's content and not of its size,
+\ and a window that outgrew this is refused by name rather than truncated.
+16384 constant RUN-MAX
+create RUN-BUF RUN-MAX 8 * allot    variable RUN-N
+\ $40000 against the chain's measured 32 bytes. Overflow is refused by name.
+$40000 constant RBYTES-CAP
+create RBYTES-BUF RBYTES-CAP allot    variable RBYTES-LEN
 \ One row per declared address cell that lies in the window, so the engine's own
 \ table bounds it: habu2.f EMIT-MARK is the single producer of a row, it dedupes
 \ and exits XTCELL-RC at the cap, and ACAP-BAKE-DATA offers each row here at most
@@ -327,8 +344,10 @@ s" AOT-XTSITE:BUF@" s" -- ptr u8" TRUST
 ;package
 package AOT-WINDOW
 public
-: DATA-BUF@ ( -- ptr u8 ) DATA-BUF ;
-s" AOT-WINDOW:DATA-BUF@" s" -- ptr u8" TRUST
+: RUN-BUF@ ( -- ptr u8 ) RUN-BUF ;
+s" AOT-WINDOW:RUN-BUF@" s" -- ptr u8" TRUST
+: RBYTES-BUF@ ( -- ptr u8 ) RBYTES-BUF ;
+s" AOT-WINDOW:RBYTES-BUF@" s" -- ptr u8" TRUST
 : XTOFF-BUF@ ( -- ptr u8 ) XTOFF-BUF ;
 s" AOT-WINDOW:XTOFF-BUF@" s" -- ptr u8" TRUST
 ;package
@@ -379,7 +398,8 @@ AOT-NAMES-CAP +                                    \ deduped name pool
 AOT-DSITE-MAX 4 * +                                \ DATA-literal sites
 AOT-DSITE-MAX 4 * +                                \ CODE-literal sites (same buffer's tail)
 AOT-WINDOW:XTOFF-MAX 4 * +                         \ declared address cells in the window
-AOT-WINDOW:DATA-CAP +                              \ the captured DATA window's content
+AOT-WINDOW:RUN-MAX 8 * +                           \ the captured DATA window's non-zero extents
+AOT-WINDOW:RBYTES-CAP +                            \ ... and their bytes
 AOT-XTSITE:MAX 8 * +                               \ named code-literal rows
 AOT-BOOTRUN-CAP 1 + +                              \ +1 = the live 0 terminator
 PROT-BITS-BYTES +                                  \ protected-WID bitmap image
