@@ -54,6 +54,7 @@ private
 
 64 constant CAP-MAX               \ subjects one judged table holds
 48 constant NAME-MAX
+1000 constant PERMILLE            \ the unit a measured noise gap is kept in
 
 CAP-MAX NAME-MAX * BUFFER: NAMES
 create NAME-LENS CAP-MAX cells allot
@@ -122,7 +123,7 @@ public
    had got < if had else got then {: lo:n :}
    had got - dup 0 < if negate then {: gap:n :}
    lo 0 > if
-      gap 1000 * lo / {: permille:n :}
+      gap PERMILLE * lo / {: permille:n :}
       permille WORST-SPREAD @ > if permille WORST-SPREAD ! then
    then
    lo ;
@@ -416,10 +417,6 @@ public
 \ ratio to be judged by, and it is counted apart rather than passed quietly: an
 \ un-adjudicable row that read as "not slower" is exactly how a claim goes
 \ silent.
-
-private
-
-1000 constant PERMILLE
 
 public
 
