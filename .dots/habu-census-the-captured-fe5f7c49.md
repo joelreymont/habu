@@ -22,3 +22,26 @@ Expected outcome: the DATA section collapses from 1.53MB to
 the constant tables' true size; the product approaches
 engine + dense code + constants + signatures.
 
+CENSUS VERDICT + FIX RULINGS 2026-08-18 (the table: 758 owners,
+1,531,045B, LIVE = 32B in four cells of -1, 99.998% zero -
+cross-checked by an independent parse; the fix = reserve + 4
+runs, restoring the semantics COPY-DATA's own header describes):
+(1) THE FIFTH SCALAR IS APPROVED with the honest amendment to
+the counts-not-stored rule: with a sparse payload the span is
+NO LONGER DERIVABLE from a section length, so the scalar is the
+ONLY authority - the rule's spirit (one authority per number)
+is preserved; the letter is amended in the format's own comment.
+VERSION bumps; a 42%-of-the-product migration is what the
+version field is for.
+(2) MERGE composes run tables by offsetting the second window's
+runs by the first's span - the established shift-class
+discipline; sum-family mutation per the merge suite's method.
+(3) The boot decoder: minimal run-walk (offset,len,bytes per
+run) with the DP residue step preceding as today and
+TRAP-XTCELLS after; mutation-backed through the existing
+suites.
+(4) EXPLICIT ZERO of the whole span before applying runs -
+relying on anon-mmap zero is an environmental assumption that
+merge and snapshot-restore paths can violate and future region
+reuse WILL violate; ~50us buys by-construction. Ruled.
+
