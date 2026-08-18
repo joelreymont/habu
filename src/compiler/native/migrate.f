@@ -22,6 +22,7 @@ require lib/string.f
 require src/compiler/native/abi.f
 require src/compiler/native/dict.f
 require src/compiler/native/feed.f
+require src/compiler/native/input.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/inline.f
 require src/compiler/native/loop.f
@@ -68,6 +69,7 @@ PTR-VARIABLE M-DATA
 variable M-DATA-U
 variable M-IN
 variable M-OUT
+variable M-STREAM                    \ the source is the interpreter's own input stream
 variable M-OPEN                      \ a migration is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
@@ -143,17 +145,34 @@ variable M-MEASURE                   \ this migration proves the publication ins
    M-HELD @ 0= if exit then
    CHECKER-TAPE:HOLD-DISARM ;
 
+\ The stream entry's source is everything the interpreter has left to read, and
+\ the reader's own close is what says where in it the definition ended. Opened
+\ and closed with the hold, around the same catch and for the same reason: an
+\ armed stream left armed would end the NEXT definition's stream.
+: STREAM-OPEN ( -- )
+   M-STREAM @ 0= if exit then
+   NINP:ARM ;
+
+: STREAM-CLOSE ( -- )
+   M-STREAM @ 0= if exit then
+   NINP:RELEASE ;
+
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
+\ The stream entry's source is a whole file tail, so the count is taken against
+\ the unit's text ceiling too: a scan longer than that is E-NFEED-TEXT before a
+\ row of it is appended, which makes it the real bound on what one tape can hold.
 : TAPE-ROOM ( -- n )
-   M-SRC-U @ 2 / 1 max ;
+   M-SRC-U @ TEXT-CAP min 2 / 1 max ;
 
 : RECORD ( -- n )
    CC BB IR-BUILD:MODULE-KEY TAPE-ROOM NTAPE:NEW {: tp:IR-ARENA:arena :}
    CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
    HOLD-OPEN
+   STREAM-OPEN
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
+   STREAM-CLOSE
    HOLD-CLOSE
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
    M-VERDICT @ -1 <> if E-NMIGRATE-VERDICT throw then
@@ -506,10 +525,17 @@ variable REC-OK                      \ the body staged so far is still one worth
    NAME-BUF NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
 \ The length refusal comes first because a source past the engine's body capture
-\ ends the process rather than throwing.
+\ ends the process rather than throwing. It is about a source a CALLER states: the
+\ stream entry hands over a file tail whose length says nothing about the
+\ definition in it, and an over-long definition there ends the process exactly as
+\ it does for a definition no migration ever touched.
+: LENGTH-CK ( -- )
+   M-STREAM @ 0<> if exit then
+   M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then ;
+
 : RUN ( -- )
    M-OPEN @ 0<> if E-NMIGRATE-STATE throw then
-   M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then
+   LENGTH-CK
    1 M-OPEN !
    0 M-RC !
    IN-CONTEXT
@@ -524,6 +550,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    sa M-SRC ! su M-SRC-U !
    0 M-IN ! 0 M-OUT !
    0 M-DATA-U ! 0 M-SPILLS ! 0 M-REMATS !
+   0 M-STREAM !
    0 M-HELD ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
 
 public
@@ -532,6 +559,21 @@ public
 \ leaves is the checker's, and the scratch pool is NABI:SCRATCH - the machine's.
 : DEFINE ( ptr u8 n -- )
    STAGE RUN ;
+
+\ The same migration over the definition WRITTEN AFTER IT, at top level, instead
+\ of inside a string: `NMIGRATE:NEXT : NAME ( .. ) body ;`. It states nothing at
+\ all - not the text, not the name, not what the definition takes and leaves.
+\
+\ THE ENGINE'S OWN PARSER IS WHAT CONSUMES THE DEFINITION. What is handed to
+\ `evaluate` is the whole tail of the stream; the reader stops that stream where
+\ it finished the definition (src/compiler/native/input.f), so the extent is the
+\ engine's answer and not a second lexer's - `;` inside a string body, a `;]`
+\ closing a quotation and a `:` inside a comment are the reader's business, as
+\ they are for every other definition in the file.
+: NEXT ( -- )
+   NINP:DEF$ STAGE
+   1 M-STREAM !
+   RUN ;
 
 \ The first entry that compiles a word the old emitter never published, which is
 \ what makes the old emitter unnecessary rather than prerequisite.

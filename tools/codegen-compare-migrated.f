@@ -36,103 +36,83 @@
 \ was a reader's job to catch. Here a body that is not a well typed Habu
 \ definition does not compile at all.
 \
-\ NOTHING IS STATED BUT THE SOURCE. The two arities used to ride on the same
-\ line and the register budget beside them; the entry reads what the definition
-\ takes and leaves off the checker's certificate now, and derives the pool from
-\ the machine, so neither is a number a row here could get wrong.
+\ NOTHING IS STATED AT ALL. The two arities used to ride on the same line and the
+\ register budget beside them; the entry reads what the definition takes and
+\ leaves off the checker's certificate now, and derives the pool from the
+\ machine, so neither is a number a row here could get wrong. The SOURCE was the
+\ last thing left to state, and NMIGRATE:NEXT takes that off the input stream
+\ too: every definition below is written at top level, indented, highlighted and
+\ diffed like the rest of the tree, and the engine's own parser is what decides
+\ where it ends.
+\
+\ CELL-BUMP-N IS THE ONE ROW STILL WRITTEN AS TEXT, because it is the one that
+\ names a data word: NMIGRATE:DEFINE-DATA takes that spelling, and no entry can
+\ take it off the stream while the address the body pushes is a fact the caller
+\ has to state. Dot habu-parse-a-migrated-b38a83d9 carries the move.
+\
+\ NOTHING HERE CATCHES. A body the chain cannot compile is a claim this file
+\ makes and does not keep, and it must surface as the refusing stage's own error
+\ rather than as a column that is quietly one row shorter.
 
 require lib/prelude.f
 require src/compiler/native/migrate.f
 require tools/codegen-compare-corpus.f
 
-package CODEGEN-MIGRATED
-
-private
+\ The definitions land in the corpus's own package, reopened: the `-N` words are
+\ CODEGEN-CORPUS publics, and CELL-BUMP-N names the private cell it shares with
+\ the word it is compared against.
+package CODEGEN-CORPUS
+public
 
 \ A routine with control flow needs more, and says why. A block argument and
 \ every value handed to it across an edge are one class holding one register for
 \ the whole span between them, so a loop's carried values each hold a register
 \ from the pre-header to the latch whether or not they are read in between.
 
-: NOOP ( -- )
-   s" : NOOP-N ( -- ) ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : NOOP-N ( -- ) ;
 
-: ADD3 ( -- )
-   s" : ADD3-N ( n n n -- n ) + + ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : ADD3-N ( n n n -- n ) + + ;
 
-: SQUARE-SUM ( -- )
-   s" : SQUARE-SUM-N ( n n -- n ) dup * swap dup * + ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : SQUARE-SUM-N ( n n -- n ) dup * swap dup * + ;
 
-: MAX2 ( -- )
-   s" : MAX2-N ( n n -- n ) 2dup < if swap then drop ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : MAX2-N ( n n -- n ) 2dup < if swap then drop ;
 
-: LERP ( -- )
-   s" : LERP-N ( n n n -- n ) {: a:n b:n t:n :} b a - t * 100 / a + ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: LERP-N ( n n n -- n )
+   {: a:n b:n t:n :}
+   b a - t * 100 / a + ;
 
-: SUM-TO ( -- )
-   s" : SUM-TO-N ( n -- n ) 0 swap 0 ?do i + loop ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : SUM-TO-N ( n -- n ) 0 swap 0 ?do i + loop ;
 
-: COUNT-DOWN ( -- )
-   s" : COUNT-DOWN-N ( n -- n ) begin 1- dup 0 <= until ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : COUNT-DOWN-N ( n -- n ) begin 1- dup 0 <= until ;
 
 \ The one word whose point is a side effect. The cell it bumps is the corpus's
 \ own, so this routine and the interpreted word write the same memory. Its
 \ spelling is all the chain is told: the address is the engine's answer, asked
 \ for in the scope this line runs in - which is the corpus's own package, where
-\ that spelling denotes the corpus's private cell and nothing else.
-: CELL-BUMP ( -- )
-   s" : CELL-BUMP-N ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;"
-   s" BUMP-CELL"
-   NMIGRATE:DEFINE-DATA ;
+\ that spelling denotes the corpus's private cell and nothing else. It is the
+\ one row the stream entry cannot take, for the reason the header gives.
+s" : CELL-BUMP-N ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;"
+s" BUMP-CELL"
+NMIGRATE:DEFINE-DATA
 
-: BYTE-SUM ( -- )
-   s" : BYTE-SUM-N ( ptr u8 n -- n ) {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: BYTE-SUM-N ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   0 u 0 ?do i a + c@ + loop ;
 
 \ The recursion, which is also the plain word-call-and-return shape: the only
 \ corpus routine that is not a leaf, so its contract declares the call and the
 \ frame its caller's return address goes in.
-: FACT ( -- )
-   s" : FACT-N ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: FACT-N ( n -- n )
+   dup 1 <= if drop 1 exit then
+   dup 1- RECURSE * ;
 
-: BYTE-FIND ( -- )
-   s" : BYTE-FIND-N ( ptr u8 n n -- n ) {: a:ptr u:n c:n :} u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;"
-   NMIGRATE:DEFINE ;
-
-public
-
-\ Publish all eleven. It is one word rather than eleven top-level lines because
-\ a migration claims code space at the engine's free slot, and the interpreter
-\ uses that slot for the line it is running.
-\
-\ Nothing here catches. A body the chain cannot compile is a claim this file
-\ makes and does not keep, and it must surface as the refusing stage's own error
-\ rather than as a column that is quietly one row shorter.
-: RUN ( -- )
-   NOOP
-   ADD3
-   SQUARE-SUM
-   MAX2
-   LERP
-   SUM-TO
-   COUNT-DOWN
-   CELL-BUMP
-   BYTE-SUM
-   FACT
-   BYTE-FIND ;
-
-;package
-
-\ The definitions land where the current wordlist points when RUN executes, so
-\ the corpus's package is reopened around the call: the `-N` words become
-\ CODEGEN-CORPUS publics, and CELL-BUMP-N can name the private cell it shares
-\ with the word it is compared against.
-package CODEGEN-CORPUS
-public
-
-CODEGEN-MIGRATED:RUN
+NMIGRATE:NEXT
+: BYTE-FIND-N ( ptr u8 n n -- n )
+   {: a:ptr u:n c:n :}
+   u 0 ?do i a + c@ c = if i unloop exit then loop
+   -1 ;
 
 ;package

@@ -23,6 +23,7 @@ require src/compiler/ir/arena.f
 require src/compiler/ir/source.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
+require src/compiler/native/input.f
 require src/compiler/native/tape.f
 
 package NFEED
@@ -165,12 +166,18 @@ variable F-VERDICT
    F-N @ 1+ F-N ! ;
 
 \ A verdict for some other text is a verdict for some other tape.
+\
+\ THE READER'S LAST EVENT IS ALSO WHERE THE DEFINITION ENDED, which is the one
+\ moment a unit whose text is the interpreter's own stream can be told about: the
+\ engine is between the definition it just read and whatever follows it in that
+\ stream. NINP says nothing for a unit opened over a string.
 : ON-DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    ST-SCANNING STATE-CK
    u F-LEN @ <> if E-NFEED-SCAN throw then
    TXT@ F-LEN @  a u  STR= 0= if E-NFEED-SCAN throw then
    verdict F-VERDICT !
-   ST-DONE F-STATE ! ;
+   ST-DONE F-STATE !
+   NINP:CLOSE ;
 
 \ Clears this producer's hold on the caller's buffer, not its contents.
 : CLEAR ( -- )

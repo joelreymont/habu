@@ -1305,3 +1305,12 @@ public
 -8729 constant E-JUDGE-FUZZ-REFUSED    \ the chain declined a generated body. Unlike a corpus row this is a failure: the generator emits straight-line integer programs inside the dialect the chain compiles, so a refusal means the generator left the dialect or the chain lost a capability
 -8730 constant E-JUDGE-FUZZ-COLUMN     \ the oracle's two derived words do not resolve to two different non-zero routines: a pair of names reaching one routine would agree about every input and prove nothing at all
 -8731 constant E-JUDGE-FUZZ-INDEX      \ a generated driver reaching outside the oracle's input or answer table: the body is generated, so an index it never had would be this file writing over its own storage rather than a program answering wrongly
+
+\ The interpreter's own input stream, as a migration reads it: -8740..-8749
+\
+\ src/compiler/native/input.f hands the tail of the stream the engine is reading
+\ to a migration and puts the interpreter back after the definition that
+\ migration consumed. Both codes below are about the STREAM and not about the
+\ definition in it: what the chain makes of the definition is NMIGRATE's to say.
+-8740 constant E-NINP-STATE     \ a second migration arming one stream: one stream is read by one migration, the same statement E-NMIGRATE-STATE makes about the recorder
+-8741 constant E-NINP-DEF       \ the stream does not continue with a definition: the entry that takes its source from the stream is written before `:` and nothing else, and the token after it is read with the engine's own reader rather than guessed at

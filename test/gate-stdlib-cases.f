@@ -472,6 +472,14 @@ SUITE compiler-native-migrate
    test/compiler/native-migrate.f
 ;SUITE
 
+\ The same entry taking its definition off the input stream instead of out of a
+\ string: where the engine's own reader says the definition ended, and the byte
+\ the interpreter is put back at. It runs beside the migration entry because the
+\ tape, the elaboration and the publication below it are the same ones.
+SUITE compiler-native-stream
+   test/compiler/native-stream.f
+;SUITE
+
 \ The two ceilings that entry opens a recording unit with, neither of which is a
 \ number this tree picks any more: the byte ceiling is the engine's own body
 \ capture and the tape is sized from the source. It runs beside the migration
