@@ -151,3 +151,96 @@ Deliberate drops, no port: CODEGEN-GAP vocabulary, COVERAGE-CK, --update paths.
 SEQUENCING RULED: this does not wait for the cut. Port a-d to the judge, then
 delete the 27 in the same series; the corpora keep their files (rename then or
 at E). Two code lanes are saturated today; this is next in the queue.
+
+LANDED 2026-08-19 (judge-1, .jj-ws/habu-thecut). a, b, c, d and the first half
+of e are in the tree. Each was gated on its own commit: install --force
+fixpoint byte-identical twice, the whole of test/run.f rc 0 with no FAIL or
+RED, maki, `tools/judge.f -- --check` at 46 rows, schedule-lint 0 unreached,
+both checked diff lints, error-code-lint and dot-dep-lint.
+
+a. tools/judge/ref-test.f. The listings moved unweakened and the tokenizer
+   cases with them. Mutation-checked three ways against the reader: a substring
+   linkage match, a dropped underscore strip and a reader that trusted nm's own
+   order each turn it red.
+b. tools/judge/base.f reads a committed artifact back as ROWS - structurally, a
+   line is a row only with the whole shape of one - and adjudicates each column:
+   chain bigger is a regression, smaller is progress, the engine moving either
+   way is a finding, a row on one side only is a finding. The byte-for-byte
+   check still decides the exit code, so nothing is weakened; what changed is
+   that a disagreement now names the rows and their directions. Fixtures in
+   tools/judge/base-test.f, attacked both ways plus prose built to fool it.
+c. tools/judge-timed.f, listed in no suite - the old flake ruling is kept and
+   the file says so. THE BAND IS NOT THE OLD COST-BAND. Eight is calibrated for
+   a live measurement against a number recorded on another host on another day;
+   against two columns of ONE interleaved pass it would admit a chain eight
+   times slower and call it level. The band used is the noise the run measured
+   for itself (JUDGE-ROW SAMPLE's worst same-program gap), which widens by
+   itself under load because it is measured under that load. Measured: the
+   claim reverses to 46 findings when the direction is flipped, so it is not
+   vacuous - the tightest row still has about 2.3x of margin.
+d. tools/judge/traffic.f, and the two columns are in the CHECKED half of the
+   artifact, so every row is pinned rather than the dozen the old member named
+   by hand. The counts reproduce the old harness's pinned numbers exactly.
+   ONE ROW IS HEAVIER: CODEGEN-CORPUS4:CALL-FAN-BIG, where the engine CALLS its
+   callee five times and the callees do the stack work in their own routines
+   while the chain copies the bodies in. Named in the artifact and in the
+   member, not hidden.
+e-FIRST-HALF. The clang object accounting is PORTED, and widened: the artifact
+   now prints the whole __text, HOW MUCH OF IT THE ROWS NAME, and the orphan
+   literal-pool bytes. The middle number is new and is the honest one - on this
+   host 5124 bytes of __text of which the rows name 4324, plus 530 of pool.
+
+e-SECOND-HALF IS DECIDED AND IS NOT DONE: THE SEVERAL INPUTS MUST BE PORTED.
+The drop cannot be argued honestly. What the extra inputs buy is the arms the
+timed input does not take - BYTE-SUM on an EMPTY span, BYTE-FIND on a MISS,
+FACT on 0, COUNT-DOWN on a negative turn count, MAX-F on a NaN and on -0.0,
+LADDER on each rung - and that is exactly the class a single input cannot see.
+The differential oracle does not cover it: it generates PROGRAMS, not inputs
+for corpus subjects, as this leaf already says. So: PORT, and the next lane owns
+it before the case lists die, because the vectors live in the files being
+deleted.
+
+THE DESIGN, MEASURED AND PART-BUILT (kept out of the tree rather than landed
+half-done). A row states extra inputs with a new JUDGE-PASS:ALSO between
+tuples:
+
+    s" ADD3" s" hc1_add3" JUDGE-PASS:ROW!
+       s" 1 2 3" JUDGE-PASS:IN+
+       JUDGE-PASS:ALSO s" -5 5 7" JUDGE-PASS:IN+
+       row execute
+
+tools/judge/pass.f holds HABU-IN and REF-IN as IN-MAX tuples with their own
+length cells; IN+ and STORE+ append to the tuple ALSO last opened; VALUE records
+tuple 0 in the row as today and COMPARES the rest through all three columns
+(answers and the memory witness), marking the row on any disagreement; TIME uses
+tuple 0 alone, so no cost and no committed byte moves. judge/row.f gains
+ALT-BAD (consulted by AGREES?) and INPUTS/TOTAL-INPUTS, and the artifact's tally
+gains `pinned inputs compared: N` so an input quietly dropped moves the
+committed file. The answers are NOT committed: what these inputs establish is
+that three independently compiled programs agree, which nothing has to keep in
+step by hand. IN-MAX must be at least 6 - CODEGEN-CORPUS4:LADDER has six rungs.
+The old vectors to move are in the VECTOR bodies of
+tools/codegen-compare-cases{,2,3,4,5}.f (23/28/47/45/29). Corpus 3's extra
+inputs need care: two of them name S-VEC and Z-VEC, which have no C twin in
+tools/clang/twins.c, so those rows either gain a twin or state their extra
+inputs over the buffers that do have one.
+
+STILL OPEN AFTER THIS LANE: the deletion itself (step 4), unstarted. The
+27-file set is confirmed by count against the tree, and the require closure is
+CLOSED - after the corpora, cabi, cc, clang, core, macho, text and
+migrated{,2..5} are kept, the only live require of a doomed file from outside
+the family is tools/codegen-spill-probe.f:106.
+
+ONE MORE CORRECTION TO THE SCOUT'S LIST, measured: correction 3 is incomplete.
+Repointing the spill probe at -corpus4.f alone BREAKS it. The probe names
+CODEGEN-CORPUS4:C-LONG-N at its lines 284 and 400, and that word is published
+by tools/codegen-compare-migrated4.f (line 94), which -cases4.f pulled in
+through -new4.f. The probe must require -corpus4.f AND -migrated4.f.
+
+Prose that still names deleted files, to fix in the deletion commit:
+test/gate-stdlib-lib.f:372-373, test/gate-stdlib-cases.f:386 and 394-402,
+test/compiler/native-chain-fixture.f, test/compiler/native-source-fixture.f,
+test/compiler/native-inline.f, tools/codegen-workload-test.f and
+tools/codegen-workload-timed-test.f (all name -new.f, -test.f or -timed-test.f
+in comments), plus docs/codegen-parity.md, which is the harness manual and is
+to be rewritten onto the judge rather than deleted.

@@ -191,13 +191,36 @@ variable TEXT-U
    s" word                                old  chain  clang  ds-old  ds-new  verdict" LINE
    s" --------------------------------  -----  -----  -----  ------  ------  -------" LINE ;
 
+\ How much of the reference object the table above accounts for.
+: REF-SUM ( -- n )
+   0
+   JUDGE-ROW:ROWS 0 ?do
+      i JUDGE-ROW:COVERED? if i JUDGE-ROW:REF-BYTES@ + then
+   loop ;
+
+\ THE WHOLE OBJECT, NOT ONLY THE TWINS THE TABLE NAMES. Two facts about the
+\ reference no per-twin column can carry, and both are exact for a given
+\ toolchain. The first is the rest of __text: the empty functions each row's
+\ floor is measured against and the helpers the twins share, which are real code
+\ in the object and under no row. The second is the LITERAL POOLS -
+\ __literal8, __literal16, __const - where an entry is shared by whichever
+\ functions need that constant and so belongs to no one twin at all. Both habu
+\ columns have no pools: they materialise a constant with move-wide
+\ instructions inside the routine, so a row's byte count there is the whole
+\ cost. Printing the three numbers together is what keeps the remainder visible
+\ instead of quietly missing.
 : REFERENCE-NOTE ( -- )
    NL
-   CODEGEN-CLANG:PRESENT? if
-      s" clang flags: " APPEND CODEGEN-CLANG:FLAGS$ LINE
+   CODEGEN-CLANG:PRESENT? 0= if
+      s" no clang column on this host: " APPEND CODEGEN-CLANG:ABSENT-WHY$ LINE
       exit
    then
-   s" no clang column on this host: " APPEND CODEGEN-CLANG:ABSENT-WHY$ LINE ;
+   s" clang flags: " APPEND CODEGEN-CLANG:FLAGS$ LINE
+   s" reference object: " APPEND CODEGEN-CLANG:TEXT-BYTES NUM$ APPEND
+   s"  bytes of __text, of which the rows above name " APPEND REF-SUM NUM$ APPEND
+   s" ; plus " APPEND CODEGEN-CLANG:POOL-BYTES NUM$ APPEND
+   s"  bytes of literal pool" LINE
+   s" that belongs to no one twin." LINE ;
 
 : TALLY ( -- )
    NL
