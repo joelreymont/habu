@@ -45,6 +45,8 @@ relying on anon-mmap zero is an environmental assumption that
 merge and snapshot-restore paths can violate and future region
 reuse WILL violate; ~50us buys by-construction. Ruled.
 
+
+
 SHAPE RULINGS 2026-08-18 (the recon handoff): (1) THE NARROWING
 IS ADOPTED, superseding my fifth-scalar ruling's letter: S-WDATA
 becomes the RUN TABLE (8B rows, offset u32 + length u32), the
@@ -64,3 +66,4 @@ declared cells are EXCLUDED FROM EVERY RUN (no buffer to zero);
 the straddle refusal still fires. The ten walked anchors are
 the implementation map - do not re-find them.
 
+++++++ rltzurlq 2e03ddba "dots: the collapse handoff - change surface, one shape question" (rebased revision)
