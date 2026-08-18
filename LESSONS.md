@@ -7385,3 +7385,24 @@ and --no-lldbinit.
   pristine master (141s vs the 120s nominal calibrated at 99.5s on another
   host) while the same slice is green inside `test/run.f`. Measure the red on
   master before attributing it to a candidate; a time budget is host-relative.
+
+- **Check a new production package name against the WHOLE tree, tests
+  included.** A new src/ package named NSRC collided with a package a test
+  fixture already owns, and the collision surfaced as the sealed-package exit
+  84 with a one-word message in three suites unrelated to the change. `rg
+  "package NAME"` over src+lib+test+tools before minting the name; renamed to
+  NINP. (The exit-84 mechanics are the prot-wid-add entry above.)
+- **A throw that crosses an `evaluate` frame is recovered by the engine:
+  definitions the evaluation made are given back.** "The engine's word survives
+  a chain refusal" is only observable when the catch stands inside the stream
+  that compiled it — a test that catches outside the evaluate sees the
+  definitions rolled back and proves nothing about the surviving word.
+- **`require` is a no-op for files a seeded `bin/hb` already carries.**
+  Instrumenting a chain source and re-running through the seeded binary proves
+  nothing — the seed's copy runs, not the tree's. `install --force` first, then
+  measure; and revert plus rebuild before any gate.
+- **A fixture that is a top-level definition is self-falsifying.** If a
+  stream-consuming entry stops consuming its definition, the suite file itself
+  fails to load on a duplicate definition — the strongest form of "the test
+  cannot pass vacuously," worth choosing over string fixtures where the shape
+  allows it.
