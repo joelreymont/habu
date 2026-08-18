@@ -395,3 +395,33 @@ chain-compile for the prefix, and nothing may need the old
 emitter when it deletes. The spine's prefix-bake item slots
 between D and E.
 
+A1 RULINGS 2026-08-18 (the contiguous-pool defect: 18 of 24
+registers reachable because NABI:POOL builds a run and the
+admissible set is not contiguous - six registers idle while six
+values spill, correspondence exact; safety of x21-x25/x29
+verified structurally - layout.f:28 sole authority, the
+engine's own JIT pool uses them, LVSPILL materializes the
+engine's stack before any call):
+(1) HALF 2 NOW, not A3 - the lane's reading is adopted: once
+the pool derives, regs selects nothing, and a dead parameter on
+the entry Phase C calls is an interface lie. 440 sites / 42
+files / 47 REGS constants is mechanical (one-token deletions);
+land as its own commit(s) beside the derived pool, rg-proof of
+zero remaining regs arguments.
+(2) JUDGE: 46/46 identical expected (nothing reaches 18) -
+VERIFY before/after, hard gate. The comparison harness's
+PRESSURE subjects keep their subject by moving to the explicit-
+pool path (NABI:POOL stays public; NFIX takes the pool) - a
+pressure test's identity is driving pressure, not the entry it
+drives it through. Baselines that then move, move WITH
+attribution; identical-or-attributed covers the old harness.
+(3) THE CAPACITY-CEILING CLASS IS MINTED as its own B dot -
+40 rows, the largest remaining compiler class, one coherent
+fix: size the chain's per-function tables from the function
+(the campaign's derived-caps discipline applied to the chain's
+own maps). B lane owns it.
+CENSUS NOTE for the record: 473 raw refusals = 75 compiler +
+284 census-instrument (package reopen - 859ea853's territory) +
+114 unchecked spans (335547df's set). The plan's B scales to
+75, not 473.
+
