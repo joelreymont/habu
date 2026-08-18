@@ -91,3 +91,18 @@ else; a record without a ref gives the honest E-UNDEFINED; the
 capture audit becomes "every PUBLIC checked window record
 carries a sig ref."
 
+FORMAT RULING 2026-08-18 (the user's pointer question): the
+field is an OFFSET INTO A SIG POOL - the name-pool scheme
+exactly. The pooled element is TEXT, not a typed array: an
+array is a second encoding of the checker's whole term grammar
+(roles, qualified families, R-clauses, quotation effects,
+tyvars, linearity) - two authorities, format migration on every
+grammar extension, the five-times-killed drift class. The parse
+costs ~12us once per word ever named, through the production
+parser, 2003/2003 round-trip proven. THE ARRAY'S SIZE WIN COMES
+FROM INTERNING INSTEAD: signatures repeat heavily (( n -- n )
+alone: hundreds) - the pool stores unique signatures once,
+records share offsets, the name pool's own dedup discipline.
+Measure the interned pool size in the implementation; expected
+well under the naive 60KB.
+
