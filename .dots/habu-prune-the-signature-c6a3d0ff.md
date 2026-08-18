@@ -1,5 +1,5 @@
 ---
-title: Signatures become a stamped sidecar the intake reads
+title: The dictionary record carries its signature
 status: open
 priority: 2
 issue-type: task
@@ -63,4 +63,31 @@ registry/NEWTYPE rider; plus one new: the file's OPEN path and
 search order (beside the binary? env? the driver-owns-paths
 rule applies - probe what the tree's existing sidecar
 precedents do, if any).
+
+FINAL DESIGN, USER RULING 2026-08-18 (the fourth and terminal
+simplification - baked subsystem -> header -> sidecar ->
+DICTIONARY FIELD): the record already carries partial type info
+(DNAME-MIN-IN arity bits, DKIND bits in [16]) - COMPLETE IT. A
+signature pool sits beside the name pool (same capture, same
+offset relocation); each record carries a sig reference as it
+carries its name reference; the checker's miss path finds the
+record (the wordlist-aware LFIND it already uses) and parses
+the signature off the record IN THE RECORD'S OWN WID SCOPE
+(also already on the record). Provenance is the binary's own -
+certified at capture, traveling in the same verified artifact
+as the code. DELETES vs the sidecar: the file, its open/search
+problem, the stamp ceremony, the miss-queue file plumbing.
+KEEPS: the three-producer capture, the production parser, the
+scope discipline. SHIPS: ~60KB public signatures as DICTIONARY
+DATA (the public-only prune stands - private records simply
+carry no sig ref, the producibility argument). Format: a sig-
+offset field in the record (spare bits in [16] or the [24..40)
+scheme's unused range for package records - probe the layout);
+compact record widens or reuses - VERSION bump either way,
+rides the buffers-at-startup artifact surgery. Acceptance: the
+T2-class reproducers green THROUGH THE RECORD PATH in both
+engines; binary sig bytes = the pool's true size and nothing
+else; a record without a ref gives the honest E-UNDEFINED; the
+capture audit becomes "every PUBLIC checked window record
+carries a sig ref."
 
