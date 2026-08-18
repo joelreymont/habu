@@ -110,3 +110,42 @@ assumed, and each of these has to move or be deliberately dropped IN the cut:
    assertions, which no suite schedules.
 
 CG-27 + CG-28, transition evidence. Old subjects live in tools/codegen-compare-corpus*.f while new subjects are hand-copied strings in tools/codegen-compare-migrated*.f with inputs/results repeated; the gate compares finite recorded vectors and its own tests fabricate comparator rows. Corpus 4 compiles 11/13 rows, and name-based known-loss/unsupported exemptions (compare-report.f:519-575,625-633,675-679) let the gate exit clean despite CALL-FAN-BIG 88-vs-36 and two uncompiled rows. Fix: compile one canonical source artifact through both chains and judge against an independent semantic oracle or property set; committed gaps and size losses are explicit failures or explicit raw measurements, never name exemptions; add adversarial inputs (MIN-INT/MAX-INT overflow boundaries, seeded random bodies, spill-pressure words). After the cut, delete the old-vs-new harness and keep the oracle, a compact production corpus, the new chain's committed baseline, and the optional clang reference.
+
+SCOUTED 2026-08-18 (full map with file:line in the scout's report; corrections
+verified against the tree). The deletion is 27 files + the 10 committed
+baseline tables + the SUITE codegen-compare block + two GSI-FORK-INCLUDE lines
++ docs/codegen-parity.md. THREE CORRECTIONS to the keep list above:
+1. KEEP -text.f — -macho.f:62 requires it; the old list omits it and the judge
+   breaks without it.
+2. KEEP -migrated{,2,3,4,5}.f — they are NOT compare members: four scheduled
+   inventory suites (compiler-codegen-{branch,loop,combine,callsite}-inventory)
+   and four hand-run tools walk them as an independent population of
+   chain-compiled routines. Rename them out of the codegen-compare- prefix at
+   deletion time.
+3. tools/codegen-spill-probe.f:106 requires -cases4.f but only ever names
+   CODEGEN-CORPUS4: words — repoint that require at -corpus4.f in the same
+   commit the case lists die.
+Also stale: this leaf's claim that only prose references remain is false —
+test/run.f:9, test/run-files.f:77, two fork probes, the spill probe and the
+eight inventory files hold live requires (all landing on the corrected keep
+list). KNOWN-LOSS$ is already gone from -report.f.
+
+PORT BEFORE DELETE (the capabilities the judge lacks, sharpest first):
+a. The Mach-O symbol reader's adversarial tests (-clang-test.f:6-17) — they are
+   the ONLY coverage of -macho.f, a file the judge keeps calling
+   (judge/pass.f:359). They move to a judge-side test, not to the grave.
+b. The chain-baseline direction check (grew = finding, shrank = not); the
+   judge's byte-for-byte artifact check conflates the directions.
+c. The cost-direction assertion (chain not slower than the engine, per-row
+   against a committed table as a calibration ratio) — the judge prints costs
+   and checks none; this leaf already owns bringing the cost columns over.
+d. The per-row data-stack traffic column (-test.f:962-969).
+e. The clang object accounting (whole __text + orphan literal-pool bytes,
+   -report.f:939-945) — decide keep-or-drop explicitly, with the several-
+   inputs-per-subject reduction (23/28/47/45/29 vectors -> 1 + memory witness)
+   named in the report either way.
+Deliberate drops, no port: CODEGEN-GAP vocabulary, COVERAGE-CK, --update paths.
+
+SEQUENCING RULED: this does not wait for the cut. Port a-d to the judge, then
+delete the 27 in the same series; the corpora keep their files (rename then or
+at E). Two code lanes are saturated today; this is next in the queue.
