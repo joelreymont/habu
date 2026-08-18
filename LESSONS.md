@@ -7406,3 +7406,14 @@ and --no-lldbinit.
   fails to load on a duplicate definition — the strongest form of "the test
   cannot pass vacuously," worth choosing over string fixtures where the shape
   allows it.
+
+- **A green `test/run.f` is a verdict about one tree — do not edit ANY tracked
+  file while it runs.** This generalizes the chain-source rule above: the pool
+  forks workers that load sources mid-run, so an edit during the run means the
+  verdict is about no single tree, and a green result obtained that way must be
+  thrown away and re-run. The -2802 capture guard only catches chain sources;
+  everything else fails silently into a mixed verdict.
+- **`test/proc-pty.f` case 10 is host-load sensitive** and can red the native
+  engine runtime slice on a busy machine (dot habu-the-pty-991d107e protocol:
+  rerun once, idle). Three consecutive standalone passes plus a green rerun of
+  the exact tree adjudicates it as the flake, not the candidate.
