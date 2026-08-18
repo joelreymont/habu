@@ -7357,3 +7357,12 @@ argument could not.
 (5) lldb -b returns to an interactive prompt on a crash and
 silently drops remaining -o commands; use -k for crash commands,
 and --no-lldbinit.
+
+- **A "steal bytes from section X to overflow buffer Y" fixture goes vacuous
+  when X shrinks.** The capture suite's larger-than-its-buffer case handed the
+  window's 1.5 MB to the blob; when the window went sparse (669eb949) no
+  redistribution of the remaining payload could fill the blob's 2 MiB buffer,
+  and the case would have passed on a check it never reached. Re-anchor such a
+  fixture to the smallest buffer a large section can be poured into, and keep
+  the failure mode loud: if the overflow ever stops overflowing, the read
+  succeeds and the case FAILS rather than passing vacuously.

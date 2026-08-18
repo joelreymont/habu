@@ -692,7 +692,9 @@ address arithmetic at the public boundary.
   what this project forbids in *user* code — hold our own code to it.
 - **Locals `{: a:type b:type :}`** are encouraged where they remove juggling.
   They bind inputs only; do not put `-- outputs` inside the locals form. Keep
-  the effect in the stack comment. New locals are typed by default when the
+  the effect in the stack comment. Binding is left-to-right from the deepest
+  stack item: the first local names the first value pushed, so
+  `1 2 {: a:n b:n :}` gives `a`=1, `b`=2. New locals are typed by default when the
   concrete checker type is known; a bare local name is allowed only when the
   entry stack effect intentionally preserves richer role detail that the local
   annotation cannot express, or when the missing typed capability is documented.
