@@ -1,5 +1,5 @@
 ---
-title: Replace the signature pool with a generated declarations file
+title: Signatures become a stamped sidecar the intake reads
 status: open
 priority: 2
 issue-type: task
@@ -39,4 +39,28 @@ Acceptance: the T2-class reproducers green VIA THE FILE in both
 engines; the binary's signature bytes ZERO; the subsystem
 deletion attributed; a consumer without the require gets the
 honest E-UNDEFINED.
+
+TRUST REFUSED, USER RULING 2026-08-18 (the header-as-TRUST-rows
+design is DEAD): TRUST is being retired (c5d41af6 - every
+remaining row carries the pointer) and 1600 new rows would be
+the largest unchecked-surface expansion in the project. PRIM: is
+worse - the axiom list is the trusted computing base; widening
+it was refused even for a test. THE FINAL SHAPE: the signatures
+are a STAMPED SIDECAR DATA FILE - the artifact's signature
+section standalone, written by the build from the checker's
+CERTIFIED store, stamped with the producer sha - and the
+EXISTING lazy intake reads it at the checker's miss point:
+production parser, row-package scope, real checker effects, no
+TRUST, no axioms. Provenance verified once at file-open (the
+stamp), never asserted per-row. The binary carries ZERO
+signature bytes (the buffers-at-startup ruling holds). DELETES:
+the baked pool sections from the artifact + the seed's sig emit
++ the AOT-SIG cells. KEEPS: the capture at three producers, the
+certified store, the miss-leg intake + retry + SIGSCOPE (re-
+aimed at the file), the public-only prune (private rows still
+serve nobody - sealed packages). Open probes unchanged: the
+registry/NEWTYPE rider; plus one new: the file's OPEN path and
+search order (beside the binary? env? the driver-owns-paths
+rule applies - probe what the tree's existing sidecar
+precedents do, if any).
 
