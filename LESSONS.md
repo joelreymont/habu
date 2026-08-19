@@ -7429,3 +7429,17 @@ and --no-lldbinit.
 - **zsh does not word-split unquoted parameters.** `for f in $LIST` over a
   space-separated list of filenames is one bogus name, silently. Use an array
   or an explicit list in batch deletions.
+
+- **When text moves out of a string into real source, the identity check is:
+  collapse only whitespace runs containing a newline, then compare
+  byte-for-byte.** Normalising all whitespace silently accepts an eaten double
+  space; comparing raw bytes rejects every legitimate reflow. That one rule
+  made twenty long-body reflows safe and caught all four hostile fixture
+  classes (eaten space, break placed at the double space, changed token,
+  dropped row). Compare rows by NAME, never position, and check publication
+  order as a separate fact with its own falsification.
+- **A green suite proves the code ran; a diffed measurement table proves the
+  measurement did not move.** The inventory suites print `test: ok` either
+  way — diffing the per-word byte/branch/chain tables the -run tools print
+  against a pre-edit capture is what proves a corpus conversion changed
+  nothing. Capture the tables BEFORE the first edit.
