@@ -92,3 +92,34 @@ COST, as now measured:
 STATUS: on hold at the user's desk. If the ratio stands, the cheapest correct
 path in the tree is the ~10-line drift fix in checker.f plus option C's prefix
 reorder, which unblocks roles.f without touching the engine or the frozen seed.
+
+SPEC BLOCKER FOUND WHILE BUILDING (trusted-3, 2026-08-19). The implementation
+spec above says "new DATA header cell CAST-CELL beside TRUSTED-CELL". That step
+is NOT free, and the obvious shortcut is a type lie. Both halves measured:
+
+ 1. THE BAND IS FULL. src/habu/layout.f allocates $2780..$27F8 contiguously at
+    8-byte stride - RPKG-CUR/PUB/PRI/PARENT/REC, CMM-CELL, DOESB-CELL,
+    TRUSTED-CELL, PKGRESYNC-CELL, CLAIMS, WINDOW, WLO, RLO,
+    COMPILE-PREFLIGHT-CELL, TOP-HOOK-CELL, ENGINE-SNAP-XT-CELL - and $2800 is
+    RSTK-OFF. layout.f:792 calls $27B8..$2800 "the reclaimed band", i.e. it was
+    already reclaimed once. A new cell needs a genuinely free offset found and
+    justified: these cells sit BELOW DATA-START, are snapshot-persistent, and
+    some carry their own PROT-GUARD band, so a wrong offset corrupts the engine
+    or the snapshot format silently. The frozen seed pins its own copy
+    (bootstrap/cg/forth.fs:191), so the offset must agree in both.
+
+ 2. TRUSTED-CELL CANNOT BE OVERLOADED AS A DEFINER-KIND TAG. Reusing it with
+    named constants (DEFK-COLON/DEFK-TRUSTED/DEFK-CAST) looked like the smaller
+    change - only 7 sites in habu2.f (3171 clear, 3217 set, 5886 clear, 7572
+    test, 7911 push, 7938 clear) and 4 in the frozen seed. It is refused:
+    habu2.f:7911 PUSHES that cell as the last argument of the compile-preflight
+    hook, whose checked-world signature is `PREFLIGHT ( ptr u8 n ptr u8 n bool
+    -- )` (src/core/check-hook.f:10). The cell's domain is a DECLARED bool at a
+    checked boundary; widening it to an enum hands 2 to a word declared to take
+    bool. That is a type lie at exactly the boundary this campaign exists to
+    remove, and it is the value-heuristic-where-a-structural-answer-is-possible
+    shape the fix-review gate sends back. A separate cell is the honest form.
+
+NEXT LANE STARTS HERE: find and justify a free DATA offset (or reclaim one with
+evidence), agree it across layout.f and bootstrap/cg/forth.fs:191, then the rest
+of the spec above is mechanical.
