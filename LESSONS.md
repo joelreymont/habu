@@ -7534,3 +7534,19 @@ and --no-lldbinit.
   load 16-to-9, and pristine master greened once idle and redded identically
   with six forge children running alongside. Attribute this one to the host,
   and treat `got 137` anywhere as "the budget fired", never as a wrong answer.
+
+- **A reader keyword's landing needs a crossing binary.** The old engine cannot
+  read the converted tree and the new one cannot read the unconverted tree, so
+  the install stages through the hb-host artifact built from the pre-conversion
+  tree: one atomic commit AND a three-step build. And after the merge, every
+  working copy must move to the converted tree BEFORE its refreshed binary
+  boots — the new engine on an old checkout dies loudly at the registrar guard
+  (observed live at the landing: exit 70 naming checker-defcast).
+- **A hazard written into a comment is a claim; a test written from the claim
+  can pass while the claim is false.** The stale-latch story survived a full
+  battery and fell to one mutation — the real mechanism was the record's own
+  min-in never being poked. Mutate the code before believing either.
+- **tools/bootstrap.sh earns its keep even when it refuses.** Skipping its
+  host gates to reach the seed's own legs found a recovery-only defect (the
+  recovery engine loads no checker, so an unguarded registrar call would kill
+  every recovery build) that no green gate could ever have shown.
