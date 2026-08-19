@@ -74,6 +74,13 @@ require tools/judge/cost.f
 
 package JUDGE-PASS
 
+\ How many pinned input tuples one row may state. Public because the member
+\ that proves a ninth is refused has to ask for one more than there are, and
+\ because it is the one number a corpus writing a long row has to know.
+public
+
+8 constant IN-MAX
+
 private
 
 $100 constant TXT-CAP             \ bytes of one part of one generated body
@@ -86,8 +93,11 @@ $49 constant CH-I                 \ the letter an integer-answering shape ends i
 $30 constant CH-0
 $39 constant CH-9
 
-create HABU-IN TXT-CAP allot
-create REF-IN TXT-CAP allot
+create HABU-IN IN-MAX TXT-CAP * allot
+create REF-IN IN-MAX TXT-CAP * allot
+create HABU-IN-LENS IN-MAX cells allot
+create REF-IN-LENS IN-MAX cells allot
+create IN-REF-OK IN-MAX cells allot       \ this tuple has a counterpart in the C world
 create HABU-SET TXT-CAP allot
 create REF-SET TXT-CAP allot
 create HABU-READ TXT-CAP allot
@@ -100,8 +110,7 @@ create QUAL-TXT TXT-CAP allot
 create SHAPE-TXT SHAPE-CAP allot
 create FLOOR-TXT SHAPE-CAP allot
 
-variable HABU-IN-U
-variable REF-IN-U
+variable IN-N                      \ how many tuples this row states
 variable HABU-SET-U
 variable REF-SET-U
 variable HABU-READ-U
@@ -127,8 +136,22 @@ variable OPENED                    \ a row has been stated
    a  dst lenp @ +  u STR-LEN BYTE-COPY-LEN
    lenp @ u + lenp ! ;
 
-: HABU-IN$ ( -- ptr u8 n )    HABU-IN HABU-IN-U @ ;
-: REF-IN$ ( -- ptr u8 n )     REF-IN REF-IN-U @ ;
+\ One input tuple's text, in one world. The tuples share one store, so each is
+\ a fixed stretch of it and its own length cell.
+: IN-AT ( ptr u8 n -- ptr u8 ) {: base:ptr j:n :}
+   base j TXT-CAP * + ;
+
+: IN-LEN ( ptr a n -- ptr a ) {: lens:ptr j:n :}
+   lens j cells + ;
+
+: HABU-IN$ ( n -- ptr u8 n ) {: j:n :}
+   HABU-IN j IN-AT
+   HABU-IN-LENS j IN-LEN @ ;
+
+: REF-IN$ ( n -- ptr u8 n ) {: j:n :}
+   REF-IN j IN-AT
+   REF-IN-LENS j IN-LEN @ ;
+
 : HABU-SET$ ( -- ptr u8 n )   HABU-SET HABU-SET-U @ ;
 : REF-SET$ ( -- ptr u8 n )    REF-SET REF-SET-U @ ;
 : HABU-READ$ ( -- ptr u8 n )  HABU-READ HABU-READ-U @ ;
@@ -260,7 +283,12 @@ variable SUB-N
 \ ---- opening a row -----------------------------------------------------------
 
 : CLEAR ( -- )
-   0 HABU-IN-U !    0 REF-IN-U !
+   1 IN-N !
+   IN-MAX 0 ?do
+      0 HABU-IN-LENS i IN-LEN !
+      0 REF-IN-LENS i IN-LEN !
+      1 IN-REF-OK i IN-LEN !
+   loop
    0 HABU-SET-U !   0 REF-SET-U !
    0 HABU-READ-U !  0 REF-READ-U !
    0 SHAPE-TXT-U !  0 FLOOR-TXT-U ! ;
@@ -311,18 +339,58 @@ public
    sa su SHAPE! ;
 
 \ The same text in both worlds: a number, or a name both columns resolve to the
-\ same value.
+\ same value. It joins the tuple ALSO last opened.
 : IN+ ( ptr u8 n -- ) {: a:ptr u:n :}
    STATED
-   a u HABU-IN HABU-IN-U ADD
-   a u REF-IN REF-IN-U ADD ;
+   IN-N @ 1- {: j:n :}
+   a u  HABU-IN j IN-AT  HABU-IN-LENS j IN-LEN  ADD
+   a u  REF-IN j IN-AT  REF-IN-LENS j IN-LEN  ADD ;
 
 \ Text that differs between the two worlds, which is how a pointer crosses: the
 \ twin owns its own copy of the pinned data and reaches it by its own name.
 : STORE+ ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ra:ptr ru:n :}
    STATED
-   ha hu HABU-IN HABU-IN-U ADD
-   ra ru REF-IN REF-IN-U ADD ;
+   IN-N @ 1- {: j:n :}
+   ha hu  HABU-IN j IN-AT  HABU-IN-LENS j IN-LEN  ADD
+   ra ru  REF-IN j IN-AT  REF-IN-LENS j IN-LEN  ADD ;
+
+\ Text for the habu columns that the C world has no counterpart for: an input
+\ over storage tools/clang/twins.c does not carry. The tuple is still compared
+\ across the two habu columns - which is the head-to-head this tool exists for -
+\ and the reference column simply has nothing to be asked about it. That is the
+\ same policy the byte column already runs on a subject with no twin and on a
+\ host with no compiler, one input at a time instead of one row at a time, and
+\ the tally prints how many tuples the reference did reach so a comparison not
+\ made cannot read as one made and passed.
+: HABU-ONLY+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   STATED
+   IN-N @ 1- {: j:n :}
+   a u  HABU-IN j IN-AT  HABU-IN-LENS j IN-LEN  ADD
+   0 IN-REF-OK j IN-LEN ! ;
+
+\ Does the reference column have a program for this tuple?
+: IN-REF-OK? ( n -- bool ) {: j:n :}
+   IN-REF-OK j IN-LEN @ 0<> ;
+
+\ ANOTHER PINNED INPUT FOR THE SAME SUBJECT. Everything IN+ and STORE+ append
+\ after this joins a new tuple, and the row is VALUED on every tuple it states -
+\ each one through all three columns, which must agree about it. It is TIMED on
+\ the first alone: a cost is about one program on one input, and timing a row on
+\ four would report the mean of four different programs' work under one name.
+\
+\ WHY A ROW WANTS MORE THAN ONE. The pinned input runs the longest path through
+\ the subject; the arms it does NOT take are exactly where a code generator can
+\ be wrong and agree about everything anybody measured. An empty span, a miss, a
+\ zero, a negative turn count: each is one line here and one whole arm of the
+\ compiled routine.
+: ALSO ( -- )
+   STATED
+   IN-N @ IN-MAX >= if E-JUDGE-PASS-INPUTS throw then
+   IN-N @ 1+ IN-N ! ;
+
+\ How many the row states.
+: INPUTS ( -- n )
+   IN-N @ ;
 
 \ What a VALUE body runs before the call, for a subject that is not idempotent.
 : SETUP+ ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ra:ptr ru:n :}
@@ -402,41 +470,114 @@ private
 : WITNESSED? ( -- bool )
    HABU-READ-U @ 0<> ;
 
-: OLD-VALUE ( n -- ) {: k:n :}
+: OLD-VALUE ( n n -- ) {: k:n j:n :}
    OLD-CALL!
    CALL$ NAME$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
-   k  0  HABU-SET$ HABU-IN$ VAL$  CALL$  SUB-OUTS SUB-PROJ
+   k  0  HABU-SET$ j HABU-IN$ VAL$  CALL$  SUB-OUTS SUB-PROJ
       JUDGE-COST:VALUE  JUDGE-ROW:OLD-COST!
    WITNESSED? 0= if exit then
-   k  HABU-SET$ HABU-IN$ VAL$  CALL$  HABU-READ$  SUB-OUTS
+   k  HABU-SET$ j HABU-IN$ VAL$  CALL$  HABU-READ$  SUB-OUTS
       JUDGE-COST:WITNESS  JUDGE-ROW:OLD-WITNESS! ;
 
-: NEW-VALUE ( n -- ) {: k:n :}
+: NEW-VALUE ( n n -- ) {: k:n j:n :}
    NEW-CALL!
    CALL$ CALL$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
-   k  0  HABU-SET$ HABU-IN$ VAL$  CALL$  SUB-OUTS SUB-PROJ
+   k  0  HABU-SET$ j HABU-IN$ VAL$  CALL$  SUB-OUTS SUB-PROJ
       JUDGE-COST:VALUE  JUDGE-ROW:NEW-COST!
    WITNESSED? 0= if exit then
-   k  HABU-SET$ HABU-IN$ VAL$  CALL$  HABU-READ$  SUB-OUTS
+   k  HABU-SET$ j HABU-IN$ VAL$  CALL$  HABU-READ$  SUB-OUTS
       JUDGE-COST:WITNESS  JUDGE-ROW:NEW-WITNESS! ;
 
-: REF-VALUE ( n -- ) {: k:n :}
+: REF-VALUE ( n n -- ) {: k:n j:n :}
    REF-CALL!
    TWIN$ CODEGEN-CABI:FN JUDGE-COST:TWIN!
-   k  0 0  REF-SET$ REF-IN$ VAL$  CALL$  REF-OUTS REF-PROJ
+   k  0 0  REF-SET$ j REF-IN$ VAL$  CALL$  REF-OUTS REF-PROJ
       JUDGE-COST:VALUE  JUDGE-ROW:REF-COST!
    WITNESSED? 0= if exit then
-   k  REF-SET$ REF-IN$ VAL$  CALL$  REF-READ$  REF-OUTS
+   k  REF-SET$ j REF-IN$ VAL$  CALL$  REF-READ$  REF-OUTS
       JUDGE-COST:WITNESS  JUDGE-ROW:REF-WITNESS! ;
+
+\ ---- the inputs past the first ----------------------------------------------
+\ The first pinned input is RECORDED in the row, because the artifact prints
+\ what it made the columns answer and the row's cost is about that program. The
+\ others are COMPARED and not recorded: what they are for is the arms the first
+\ input does not take, and the whole of that question is whether the three
+\ columns still agree. A disagreement on any of them makes the row disagree,
+\ which is the one condition that makes a whole row worthless.
+\
+\ THE ANSWERS ARE NOT COMMITTED, and that is deliberate. A recorded answer is a
+\ number somebody has to keep in step by hand the day a corpus subject changes;
+\ what these inputs establish is that three independently compiled programs
+\ compute the SAME thing on them, which nothing has to remember.
+
+: ALT-HABU ( ptr u8 n n -- n ) {: ca:ptr cu:n j:n :}
+   HABU-SET$ j HABU-IN$ VAL$  ca cu  SUB-OUTS SUB-PROJ JUDGE-COST:VALUE ;
+
+: ALT-HABU-WITNESS ( ptr u8 n n -- n ) {: ca:ptr cu:n j:n :}
+   HABU-SET$ j HABU-IN$ VAL$  ca cu  HABU-READ$ SUB-OUTS JUDGE-COST:WITNESS ;
+
+: ALT-REF ( n -- n ) {: j:n :}
+   REF-CALL!
+   TWIN$ CODEGEN-CABI:FN JUDGE-COST:TWIN!
+   REF-SET$ j REF-IN$ VAL$  CALL$  REF-OUTS REF-PROJ JUDGE-COST:VALUE ;
+
+: ALT-REF-WITNESS ( n -- n ) {: j:n :}
+   REF-CALL!
+   TWIN$ CODEGEN-CABI:FN JUDGE-COST:TWIN!
+   REF-SET$ j REF-IN$ VAL$  CALL$  REF-READ$ REF-OUTS JUDGE-COST:WITNESS ;
+
+\ The chain's answer against the engine's, on one input past the first.
+: ALT-NEW-AGREES? ( n n -- bool ) {: k:n j:n :}
+   k JUDGE-ROW:REFUSED? if true exit then
+   OLD-CALL!
+   CALL$ NAME$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
+   CALL$ j ALT-HABU {: old:n :}
+   WITNESSED? if CALL$ j ALT-HABU-WITNESS else 0 then {: old-wit:n :}
+   NEW-CALL!
+   CALL$ CALL$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
+   CALL$ j ALT-HABU {: new:n :}
+   WITNESSED? if CALL$ j ALT-HABU-WITNESS else 0 then {: new-wit:n :}
+   old new <> if false exit then
+   old-wit new-wit = ;
+
+\ And the C twin's, on the same input. A subject leaving more than one value has
+\ no single reference answer to be compared with, for the reason REF-OUTS gives.
+: ALT-REF-AGREES? ( n n -- bool ) {: k:n j:n :}
+   k JUDGE-ROW:COVERED? 0= if true exit then
+   j IN-REF-OK? 0= if true exit then
+   OLD-CALL!
+   CALL$ NAME$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
+   CALL$ j ALT-HABU {: old:n :}
+   WITNESSED? if CALL$ j ALT-HABU-WITNESS else 0 then {: old-wit:n :}
+   WITNESSED? if
+      j ALT-REF-WITNESS old-wit <> if false exit then
+   then
+   k JUDGE-ROW:MULTI? if true exit then
+   j ALT-REF old = ;
+
+: ALT-VALUE ( n n -- ) {: k:n j:n :}
+   k j ALT-NEW-AGREES? 0= if k JUDGE-ROW:ALT-BAD! exit then
+   k j ALT-REF-AGREES? 0= if k JUDGE-ROW:ALT-BAD! then ;
+
+\ How many of this row's tuples the reference column has a program for. A row
+\ with no twin at all reaches none of them.
+: REF-TUPLES ( n -- n ) {: k:n :}
+   k JUDGE-ROW:COVERED? 0= if 0 exit then
+   0
+   IN-N @ 0 ?do
+      i IN-REF-OK? if 1+ then
+   loop ;
 
 public
 
 : VALUE ( -- )
    NAME$ JUDGE-ROW:FIND {: k:n :}
-   k OLD-VALUE
-   k JUDGE-ROW:REFUSED? 0= if k NEW-VALUE then
-   k JUDGE-ROW:COVERED? 0= if exit then
-   k REF-VALUE ;
+   k IN-N @ JUDGE-ROW:INPUTS!
+   k  k REF-TUPLES  JUDGE-ROW:REF-INPUTS!
+   k 0 OLD-VALUE
+   k JUDGE-ROW:REFUSED? 0= if k 0 NEW-VALUE then
+   k JUDGE-ROW:COVERED? if k 0 REF-VALUE then
+   IN-N @ 1 ?do k i ALT-VALUE loop ;
 
 \ ---- pass three: the times ---------------------------------------------------
 \ Run more than once; each column keeps its fastest, through JUDGE-ROW:SAMPLE,
@@ -450,22 +591,22 @@ private
 : OLD-TIME ( n -- ) {: k:n :}
    OLD-CALL!
    CALL$ NAME$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
-   k  k JUDGE-ROW:OLD-PICOS@ HABU-IN$ CALL$ SUB-OUTS JUDGE-COST:TIME
+   k  k JUDGE-ROW:OLD-PICOS@ 0 HABU-IN$ CALL$ SUB-OUTS JUDGE-COST:TIME
       JUDGE-ROW:SAMPLE  k JUDGE-ROW:OLD-VALUE@  JUDGE-ROW:OLD-COST! ;
 
 : NEW-TIME ( n -- ) {: k:n :}
    NEW-CALL!
    CALL$ CALL$ NDICT:CALL-TARGET JUDGE-COST:COLUMN-CK
-   k  k JUDGE-ROW:NEW-PICOS@ HABU-IN$ CALL$ SUB-OUTS JUDGE-COST:TIME
+   k  k JUDGE-ROW:NEW-PICOS@ 0 HABU-IN$ CALL$ SUB-OUTS JUDGE-COST:TIME
       JUDGE-ROW:SAMPLE  k JUDGE-ROW:NEW-VALUE@  JUDGE-ROW:NEW-COST! ;
 
 : REF-TIME ( n -- ) {: k:n :}
    REF-CALL!
    TWIN$ CODEGEN-CABI:FN JUDGE-COST:TWIN!
-   k JUDGE-ROW:REF-PICOS@ REF-IN$ CALL$ REF-OUTS JUDGE-COST:TIME
+   k JUDGE-ROW:REF-PICOS@ 0 REF-IN$ CALL$ REF-OUTS JUDGE-COST:TIME
       JUDGE-ROW:SAMPLE {: picos:n :}
    FLOOR$ CODEGEN-CABI:FN JUDGE-COST:TWIN!
-   k JUDGE-ROW:REF-FLOOR@ REF-IN$ CALL$ REF-OUTS JUDGE-COST:TIME
+   k JUDGE-ROW:REF-FLOOR@ 0 REF-IN$ CALL$ REF-OUTS JUDGE-COST:TIME
       JUDGE-ROW:SAMPLE {: floor:n :}
    k picos floor k JUDGE-ROW:REF-VALUE@ JUDGE-ROW:REF-COST! ;
 

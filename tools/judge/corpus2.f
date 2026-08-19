@@ -52,6 +52,10 @@ public
 : SUBJECT$ ( -- ptr u8 n )
    s" aha aha aha" ;
 
+\ The EMPTY span, which is the arm the pinned one never reaches.
+: EMPTY-SPAN ( -- ptr u8 n )
+   s" " ;
+
 \ The same span in the reference world, and the length of the one above.
 : C-SUBJ ( -- n n )
    SUBJ-CELL @ 0= if
@@ -59,6 +63,10 @@ public
    then
    SUBJ-CELL @
    SUBJECT$ nip ;
+
+\ The twin's own pointer with no bytes after it, so both worlds scan none.
+: C-EMPTY-SPAN ( -- n n )
+   C-SUBJ drop 0 ;
 
 \ The twins' own two buffers, asked for once each: a generated TIMING body runs
 \ its inputs a quarter of a million times, and a foreign call inside that loop
@@ -113,6 +121,10 @@ private
 : SPAN+ ( -- )
    s" JUDGE-CORPUS2:SUBJECT$ " s" JUDGE-CORPUS2:C-SUBJ " JUDGE-PASS:STORE+ ;
 
+: EMPTY-SPAN+ ( -- )
+   s" JUDGE-CORPUS2:EMPTY-SPAN " s" JUDGE-CORPUS2:C-EMPTY-SPAN "
+   JUDGE-PASS:STORE+ ;
+
 : BUFFERS+ ( -- )
    s" CODEGEN-CORPUS2:COPY-FROM CODEGEN-CORPUS2:COPY-TO "
    s" JUDGE-CORPUS2:C-COPY-SRC JUDGE-CORPUS2:C-COPY-DST " JUDGE-PASS:STORE+
@@ -123,17 +135,45 @@ private
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" TAG" s" hc2_tag" JUDGE-PASS:ROW!
-      s" 9" JUDGE-PASS:IN+  row execute
+      s" 9" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 24" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 255" JUDGE-PASS:IN+
+      row execute
+   \ One input per arm, then one that is no arm at all.
    s" WS?" s" hc2_ws" JUDGE-PASS:ROW!
-      s" $20" JUDGE-PASS:IN+  row execute          \ a space, the first arm
+      s" $20" JUDGE-PASS:IN+                       \ a space, the first arm
+      JUDGE-PASS:ALSO s" $09" JUDGE-PASS:IN+       \ a tab
+      JUDGE-PASS:ALSO s" $0A" JUDGE-PASS:IN+       \ a line feed
+      JUDGE-PASS:ALSO s" $0D" JUDGE-PASS:IN+       \ a carriage return
+      JUDGE-PASS:ALSO s" $61" JUDGE-PASS:IN+       \ `a`, which is none of them
+      row execute
+   \ Both bounds, and one byte outside each of them.
    s" SYM-FOLD-C" s" hc2_sym_fold_c" JUDGE-PASS:ROW!
-      s" $41" JUDGE-PASS:IN+  row execute          \ `A`, the lower bound itself
+      s" $41" JUDGE-PASS:IN+                       \ `A`, the lower bound itself
+      JUDGE-PASS:ALSO s" $40" JUDGE-PASS:IN+       \ one under it
+      JUDGE-PASS:ALSO s" $5A" JUDGE-PASS:IN+       \ `Z`, the upper bound itself
+      JUDGE-PASS:ALSO s" $5B" JUDGE-PASS:IN+       \ one over it
+      JUDGE-PASS:ALSO s" $61" JUDGE-PASS:IN+       \ already lower case
+      row execute
    s" MAX-DIM" s" hc2_max_dim" JUDGE-PASS:ROW!
-      s" 3 7" JUDGE-PASS:IN+  row execute
+      s" 3 7" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 7 3" JUDGE-PASS:IN+       \ the other order
+      JUDGE-PASS:ALSO s" 5 5" JUDGE-PASS:IN+       \ equal, which is neither arm
+      row execute
    s" COUNT-CHAR" s" hc2_count_char" JUDGE-PASS:ROW!
-      SPAN+  s" $61" JUDGE-PASS:IN+  row execute   \ `a`, at both ends and between
+      SPAN+  s" $61" JUDGE-PASS:IN+                \ `a`, at both ends and between
+      JUDGE-PASS:ALSO SPAN+  s" $7A" JUDGE-PASS:IN+   \ `z`, in none of it
+      JUDGE-PASS:ALSO EMPTY-SPAN+  s" $61" JUDGE-PASS:IN+  \ nothing to scan
+      row execute
    s" T-RES-WALK" s" hc2_t_res_walk" JUDGE-PASS:ROW!
-      s" CODEGEN-CORPUS2:CHAIN-HEAD" JUDGE-PASS:IN+  row execute
+      s" CODEGEN-CORPUS2:CHAIN-HEAD" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" CODEGEN-CORPUS2:NOT-A-VAR" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" CODEGEN-CORPUS2:UNBOUND-VAR" JUDGE-PASS:IN+
+      row execute
+   \ The copy states ONE input. Its point is the store, and what it wrote is
+   \ read back through the row's own reader over five cells - the four the copy
+   \ moved and the fifth it must not have - so the arms a second input would
+   \ reach are already reached by the witness.
    s" VEC-COPY-CELLS" s" hc2_vec_copy_cells" JUDGE-PASS:ROW!
       BUFFERS+  s" CODEGEN-CORPUS2:COPY-LEN" JUDGE-PASS:IN+  row execute ;
 

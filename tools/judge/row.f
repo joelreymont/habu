@@ -75,6 +75,9 @@ create REF-WIT CAP-MAX cells allot
 create HAS-WIT CAP-MAX cells allot         \ this row has a reader for that memory
 create OUTS CAP-MAX cells allot            \ how many values the subject leaves
 create NEW-TAIL CAP-MAX cells allot        \ the chain's routine leaves by a branch
+create ALT-BAD CAP-MAX cells allot         \ a column disagreed on an input past the first
+create IN-COUNT CAP-MAX cells allot        \ pinned inputs this row is valued on
+create REF-INPUTS CAP-MAX cells allot      \ of those, how many the C twin was valued on too
 create OLD-TRAFFIC CAP-MAX cells allot     \ accesses to the caller's data stack
 create NEW-TRAFFIC CAP-MAX cells allot     \ NOT-MEASURED when the chain refused the row
 
@@ -159,6 +162,9 @@ public
    0 HAS-WIT FILL @ SLOT !
    1 OUTS FILL @ SLOT !
    0 NEW-TAIL FILL @ SLOT !
+   0 ALT-BAD FILL @ SLOT !
+   1 IN-COUNT FILL @ SLOT !
+   0 REF-INPUTS FILL @ SLOT !
    NOT-MEASURED OLD-TRAFFIC FILL @ SLOT !
    NOT-MEASURED NEW-TRAFFIC FILL @ SLOT !
    FILL @
@@ -258,6 +264,59 @@ public
 : REF! ( n n -- ) {: k:n bytes:n :}
    k OK drop
    bytes REF-BYTES k SLOT ! ;
+
+\ ---- the pinned inputs past the first ----------------------------------------
+\ A row states one input its cost is measured on and may state more, and the
+\ others exist for the arms the first does not take: an empty span, a miss, a
+\ zero, a NaN, each rung of a ladder. Their answers are not recorded - what they
+\ establish is that independently compiled programs still agree - so all a row
+\ keeps of them is HOW MANY it was valued on, how many of those the C twin was
+\ valued on too, and WHETHER any of them disagreed.
+\
+\ WHY THE REFERENCE COUNT IS KEPT APART. A twin is optional per row already: a
+\ subject with no C symbol carries a dash in the byte column and a host with no
+\ compiler has no reference column at all. The same holds one input at a time -
+\ a row may state an input the twin has no counterpart for, over a buffer the C
+\ file does not carry - so the two habu columns are compared on EVERY tuple and
+\ the reference on the ones it can reach. The tally prints both counts, because
+\ a reference comparison silently not made is indistinguishable from one made
+\ and passed.
+
+: INPUTS! ( n n -- ) {: k:n n-in:n :}
+   k OK drop
+   n-in IN-COUNT k SLOT ! ;
+
+: INPUTS@ ( n -- n ) {: k:n :}
+   IN-COUNT k OK SLOT @ ;
+
+: REF-INPUTS! ( n n -- ) {: k:n n-in:n :}
+   k OK drop
+   n-in REF-INPUTS k SLOT ! ;
+
+: REF-INPUTS@ ( n -- n ) {: k:n :}
+   REF-INPUTS k OK SLOT @ ;
+
+\ Every pinned input this run valued, over the whole table, and the ones the
+\ reference column reached. The artifact prints both, so an input quietly
+\ dropped from a corpus moves the committed file.
+: TOTAL-INPUTS ( -- n )
+   0
+   FILL @ 0 ?do
+      i INPUTS@ +
+   loop ;
+
+: TOTAL-REF-INPUTS ( -- n )
+   0
+   FILL @ 0 ?do
+      i REF-INPUTS@ +
+   loop ;
+
+: ALT-BAD! ( n -- ) {: k:n :}
+   k OK drop
+   1 ALT-BAD k SLOT ! ;
+
+: ALT-BAD? ( n -- bool ) {: k:n :}
+   ALT-BAD k OK SLOT @ 0<> ;
 
 \ ---- what each habu column spends on the caller's data stack -----------------
 \ An exact count off the emitted code, so it belongs in the checked half of the
@@ -371,7 +430,10 @@ public
    k MULTI? if true exit then
    k REF-VALUE@ k OLD-VALUE@ = ;
 
+\ An input past the first is compared and not recorded, so what it leaves behind
+\ is one flag. A row that disagreed on ANY of its inputs disagrees.
 : AGREES? ( n -- bool ) {: k:n :}
+   k ALT-BAD? if false exit then
    k NEW-AGREES? k REF-AGREES? and ;
 
 : DISAGREEING-ROWS ( -- n )

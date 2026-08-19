@@ -48,24 +48,36 @@ private
 : QUALIFIER$ ( -- ptr u8 n )
    s" CODEGEN-CORPUS5:" ;
 
+\ Every row of this corpus takes one integer and every one of them is a call
+\ shape rather than a computation, so they share the same three edges: zero, a
+\ negative, and a value with its high byte set.
+: EDGES ( -- )
+   JUDGE-PASS:ALSO s" 0" JUDGE-PASS:IN+
+   JUDGE-PASS:ALSO s" -1" JUDGE-PASS:IN+
+   JUDGE-PASS:ALSO s" 255" JUDGE-PASS:IN+ ;
+
 \ ---- the seven rows, written once --------------------------------------------
 \ typed-local-lint: allow-bare-local - row is the caller's own body, and a local
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" TAIL-BIG" s" hc5_tail_big" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute
+      s" 7" JUDGE-PASS:IN+  EDGES  row execute
    s" TAIL-WORK" s" hc5_tail_work" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute
+      s" 7" JUDGE-PASS:IN+  EDGES  row execute
    s" NONTAIL" s" hc5_nontail" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute
+      s" 7" JUDGE-PASS:IN+  EDGES  row execute
    s" TAIL-MID" s" hc5_tail_mid" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute
+      s" 7" JUDGE-PASS:IN+  EDGES  row execute
    s" TAIL-CHAIN" s" hc5_tail_chain" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute
+      s" 7" JUDGE-PASS:IN+  EDGES  row execute
    s" TAIL-PAIR" s" hc5_tail_pair" JUDGE-PASS:ROW!
-      s" 7 9" JUDGE-PASS:IN+  row execute
+      s" 7 9" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 0 0" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -1 5" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 255 -1" JUDGE-PASS:IN+
+      row execute
    s" TAIL-AFTER" s" hc5_tail_after" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute ;
+      s" 7" JUDGE-PASS:IN+  EDGES  row execute ;
 
 : OPEN-CORPUS ( -- )
    SOURCE$ SUFFIX$ QUALIFIER$ JUDGE-PASS:CORPUS! ;

@@ -1307,6 +1307,7 @@ public
 -8731 constant E-JUDGE-FUZZ-INDEX      \ a generated driver reaching outside the oracle's input or answer table: the body is generated, so an index it never had would be this file writing over its own storage rather than a program answering wrongly
 -8732 constant E-JUDGE-BASE-CAP        \ a committed artifact carrying more rows, or a longer subject name, than the reader that adjudicates its directions holds: a truncated reading would call every row it never reached a lost row
 -8733 constant E-JUDGE-BASE-ROW        \ a row index outside what the artifact reader recorded
+-8734 constant E-JUDGE-PASS-INPUTS     \ a row stating more pinned inputs than the shared pass holds tuples for: the inputs past the first are the arms the timed one does not take, and a store that silently kept the first eight would drop the ninth arm without saying so
 
 \ The interpreter's own input stream, as a migration reads it: -8740..-8749
 \

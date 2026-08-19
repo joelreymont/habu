@@ -225,6 +225,37 @@ inputs need care: two of them name S-VEC and Z-VEC, which have no C twin in
 tools/clang/twins.c, so those rows either gain a twin or state their extra
 inputs over the buffers that do have one.
 
+e2 LANDED 2026-08-19. THE SEVERAL INPUTS ARE PORTED: the table is valued on
+154 pinned inputs where it was valued on 46, and 150 of those the reference
+column reaches too. Both counts are in the artifact's tally, so an input
+quietly dropped from a corpus moves the committed file. IN-MAX is 8 and a
+ninth is refused by name (E-JUDGE-PASS-INPUTS), not dropped.
+
+WHAT THE EXTRA INPUTS BUY, MEASURED RATHER THAN ASSERTED. A wrong answer was
+planted in a C twin's BASE CASE - hc1_fact answering 2 for zero, right on the
+pinned ten - and the run reported one disagreeing row. The same mutation with
+CODEGEN-CORPUS:FACT back to its single input reported NONE. That is the whole
+argument for the port and it is a difference the tally shows.
+
+THE REFERENCE IS OPTIONAL ONE INPUT AT A TIME, which is the same policy the
+byte column already ran one row at a time. tools/clang/twins.c carries no
+S-VEC and no Z-VEC, so the four tuples over them (T-SUM, T-NORM2 and two of
+T-REL-L2's) are stated with JUDGE-PASS:HABU-ONLY+: the two habu columns are
+still compared on them and the reference simply has no program. The tally
+prints how many tuples the reference reached, so a comparison never made
+cannot read as one made and passed.
+
+DELIBERATELY NOT PORTED, with the reason. The old harness's vector counts
+(23/28/47/45/29) count WITNESS CELLS as vectors, and two subjects' extra
+vectors are entirely that: CODEGEN-CORPUS3:T-SGD! and
+CODEGEN-CORPUS2:VEC-COPY-CELLS each recorded five cells of the buffer they
+wrote - the four they moved and the fifth they must not have. The judge's
+readers for those rows already xor all five cells, so the arms are reached and
+a second input tuple would add nothing. Both rows keep ONE input and
+tools/judge-test.f asserts that count with the reason. CODEGEN-CORPUS:NOOP is
+still the only subject not carried over; it is the old harness's calibration
+row and not a case.
+
 STILL OPEN AFTER THIS LANE: the deletion itself (step 4), unstarted. The
 27-file set is confirmed by count against the tree, and the require closure is
 CLOSED - after the corpora, cabi, cc, clang, core, macho, text and

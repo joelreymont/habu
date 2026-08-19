@@ -135,6 +135,16 @@ private
 : LEN+ ( -- )
    s" CODEGEN-CORPUS4:LOOP-LEN" JUDGE-PASS:IN+ ;
 
+: ZERO-LEN+ ( -- )
+   s" 0" JUDGE-PASS:IN+ ;
+
+\ The stepped buffer WITHOUT the reset and the reader beside it. Those two are
+\ the row's, not the tuple's - they are what a valued body runs before and after
+\ the call whichever input it is on - so a second tuple states the pointer
+\ alone and would otherwise reset twice and read twice.
+: STEP-ONLY+ ( -- )
+   s" CODEGEN-CORPUS4:STEP-AT " s" JUDGE-CORPUS4:C-STEP " JUDGE-PASS:STORE+ ;
+
 \ ---- the twelve rows, written once -------------------------------------------
 \ Each is: the name the corpus publishes it under, the C symbol that is its twin,
 \ and then its pinned input in the order the subject takes it.
@@ -142,29 +152,73 @@ private
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" CALL-FAN" s" hc4_call_fan" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute
+      s" 7" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 0" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -1" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 255" JUDGE-PASS:IN+
+      row execute
    s" CALL-FAN-BIG" s" hc4_call_fan_big" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  row execute
+      s" 7" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 0" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -1" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 255" JUDGE-PASS:IN+
+      row execute
    s" CALL-LOOP-3" s" hc4_call_loop_3" JUDGE-PASS:ROW!
-      s" 1 2 3 7 " JUDGE-PASS:IN+  LEN+  row execute
+      s" 1 2 3 7 " JUDGE-PASS:IN+  LEN+
+      JUDGE-PASS:ALSO s" 1 2 3 7 " JUDGE-PASS:IN+  ZERO-LEN+
+      JUDGE-PASS:ALSO s" -1 -2 -3 -7 " JUDGE-PASS:IN+  LEN+
+      row execute
    s" WIDE-ARITY" s" hc4_wide_arity" JUDGE-PASS:ROW!
-      s" 1 2 3 4 5 6" JUDGE-PASS:IN+  row execute
+      s" 1 2 3 4 5 6" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 6 5 4 3 2 1" JUDGE-PASS:IN+   \ the arguments reversed
+      JUDGE-PASS:ALSO s" 0 0 0 0 0 0" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -1 -2 -3 -4 -5 -6" JUDGE-PASS:IN+
+      row execute
+   \ One input per rung, because a ladder is exactly as many arms as it has
+   \ rungs and the pinned one takes the last of them.
    s" LADDER" s" hc4_ladder" JUDGE-PASS:ROW!
-      s" 1000" JUDGE-PASS:IN+  row execute
+      s" 1000" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -5" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 0" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 1" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 3" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 20" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 100" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 127" JUDGE-PASS:IN+
+      row execute
    s" PRESSURE-LOOP" s" hc4_pressure_loop" JUDGE-PASS:ROW!
-      REC+  LEN+  row execute
+      REC+  LEN+
+      JUDGE-PASS:ALSO REC+  ZERO-LEN+
+      row execute
    s" CALL-PRESSURE" s" hc4_call_pressure" JUDGE-PASS:ROW!
-      s" 1 2 3 4 5 6 7 9 " JUDGE-PASS:IN+  LEN+  row execute
+      s" 1 2 3 4 5 6 7 9 " JUDGE-PASS:IN+  LEN+
+      JUDGE-PASS:ALSO s" 1 2 3 4 5 6 7 9 " JUDGE-PASS:IN+  ZERO-LEN+
+      JUDGE-PASS:ALSO s" -1 -2 -3 -4 -5 -6 -7 -9 " JUDGE-PASS:IN+  LEN+
+      row execute
    s" BIG-CONSTS" s" hc4_big_consts" JUDGE-PASS:ROW!
-      LEN+  row execute
+      LEN+
+      JUDGE-PASS:ALSO ZERO-LEN+
+      JUDGE-PASS:ALSO s" 1" JUDGE-PASS:IN+
+      row execute
    s" MANY-LOCALS" s" hc4_many_locals" JUDGE-PASS:ROW!
-      s" 1 2 3 4 5 6 7 8 " JUDGE-PASS:IN+  LEN+  row execute
+      s" 1 2 3 4 5 6 7 8 " JUDGE-PASS:IN+  LEN+
+      JUDGE-PASS:ALSO s" 1 2 3 4 5 6 7 8 " JUDGE-PASS:IN+  ZERO-LEN+
+      JUDGE-PASS:ALSO s" -1 2 -3 4 -5 6 -7 8 " JUDGE-PASS:IN+  LEN+
+      row execute
    s" TINY-CALLEE" s" hc4_tiny_callee" JUDGE-PASS:ROW!
-      s" 0 " JUDGE-PASS:IN+  LEN+  row execute
+      s" 0 " JUDGE-PASS:IN+  LEN+
+      JUDGE-PASS:ALSO s" 5 " JUDGE-PASS:IN+  ZERO-LEN+
+      JUDGE-PASS:ALSO s" -3 " JUDGE-PASS:IN+  LEN+
+      row execute
    s" FLOAT-MIX" s" hc4_float_mix" JUDGE-PASS:ROW!
-      s" 0 " JUDGE-PASS:IN+  LEN+  row execute
+      s" 0 " JUDGE-PASS:IN+  LEN+
+      JUDGE-PASS:ALSO s" 0 " JUDGE-PASS:IN+  ZERO-LEN+
+      JUDGE-PASS:ALSO s" -100 " JUDGE-PASS:IN+  s" 3" JUDGE-PASS:IN+
+      row execute
    s" STORE-LOAD" s" hc4_store_load" JUDGE-PASS:ROW!
-      STEP+  LEN+  row execute ;
+      STEP+  LEN+
+      JUDGE-PASS:ALSO STEP-ONLY+  ZERO-LEN+
+      row execute ;
 
 : OPEN-CORPUS ( -- )
    SOURCE$ SUFFIX$ QUALIFIER$ JUDGE-PASS:CORPUS! ;

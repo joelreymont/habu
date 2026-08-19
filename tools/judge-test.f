@@ -117,6 +117,60 @@ private
    s" and the row is back where the measurement left it" T-LABEL
    ADJUDICATE-COMMITTED 0 T= ;
 
+\ ---- the pinned inputs past the first ----------------------------------------
+\ A row is TIMED on one input and VALUED on every input it states. The ones past
+\ the first exist for the arms the timed one does not take, and what they
+\ establish is that independently compiled programs still agree about them - so
+\ what is asserted here is that the rows really state them, that a row naming a
+\ buffer the C file does not carry is counted apart rather than skipped in
+\ silence, and that a row cannot state more than the shared pass holds.
+\
+\ THE ARGUMENT FOR THEM, MEASURED. A wrong answer planted in a C twin's BASE
+\ CASE - right on ten, wrong on zero - is caught as a disagreeing row with
+\ CODEGEN-CORPUS:FACT's second input and is not caught without it. That is the
+\ whole of what these inputs buy, and it is a difference the artifact's own
+\ tally shows.
+
+: INPUT-CASES ( -- )
+   s" every row is valued on at least its own pinned input" T-LABEL
+   JUDGE-ROW:TOTAL-INPUTS JUDGE-ROW:ROWS >= TTRUE
+
+   s" and the table states far more than one input per row" T-LABEL
+   JUDGE-ROW:TOTAL-INPUTS JUDGE-ROW:ROWS 2 * > TTRUE
+
+   \ One input per rung, which is what a ladder is.
+   s" a row states as many inputs as its subject has arms" T-LABEL
+   s" CODEGEN-CORPUS4:LADDER" ROW-OF JUDGE-ROW:INPUTS@ 8 T=
+   s" CODEGEN-CORPUS2:WS?" ROW-OF JUDGE-ROW:INPUTS@ 5 T=
+   s" CODEGEN-CORPUS3:MAX-F" ROW-OF JUDGE-ROW:INPUTS@ 6 T=
+
+   \ The two subjects whose point is a STORE state ONE input each: what they
+   \ wrote is read back over five cells, so the witness already reaches what a
+   \ second input would.
+   s" a row whose point is a store states one and says so" T-LABEL
+   s" CODEGEN-CORPUS3:T-SGD!" ROW-OF JUDGE-ROW:INPUTS@ 1 T=
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" ROW-OF JUDGE-ROW:INPUTS@ 1 T=
+
+   \ THE REFERENCE IS OPTIONAL ONE INPUT AT A TIME, as it already was one row at
+   \ a time. tools/clang/twins.c carries no S-VEC and no Z-VEC, so an input over
+   \ either has no reference program - and the count of the tuples the reference
+   \ DID reach is what stops a comparison never made from reading as one made
+   \ and passed.
+   s" an input the C file has no buffer for is counted apart, not skipped"
+   T-LABEL
+   s" CODEGEN-CORPUS3:T-SUM" ROW-OF JUDGE-ROW:INPUTS@ 3 T=
+   s" CODEGEN-CORPUS3:T-SUM" ROW-OF JUDGE-ROW:REF-INPUTS@ 2 T=
+   s" CODEGEN-CORPUS3:T-NORM2" ROW-OF JUDGE-ROW:INPUTS@ 3 T=
+   s" CODEGEN-CORPUS3:T-NORM2" ROW-OF JUDGE-ROW:REF-INPUTS@ 2 T=
+   s" CODEGEN-CORPUS3:T-REL-L2" ROW-OF JUDGE-ROW:INPUTS@ 4 T=
+   s" CODEGEN-CORPUS3:T-REL-L2" ROW-OF JUDGE-ROW:REF-INPUTS@ 2 T=
+
+   s" and every other row's inputs are all reached by the reference" T-LABEL
+   JUDGE-ROW:TOTAL-INPUTS JUDGE-ROW:TOTAL-REF-INPUTS -  4 T=
+
+   s" a row that disagreed on any input disagrees" T-LABEL
+   JUDGE-ROW:DISAGREEING-ROWS 0 T= ;
+
 \ ---- the caller's data stack, counted ----------------------------------------
 \ The ds-old and ds-new columns of the artifact. A counter that knew only some
 \ of the spellings of one access would report an access the routine really makes
@@ -387,7 +441,13 @@ variable BUMP-RC
    [: s" NO-SUCH-SUBJECT" s" hc4_ladder" JUDGE-PASS:ROW! ;]
       E-JUDGE-SRC-ROW TTHROWSQ
    s" LADDER" s" hc4_ladder" s" IID" JUDGE-PASS:ROW-ABI!
-   JUDGE-PASS:NAME$ s" CODEGEN-CORPUS4:LADDER" T$= ;
+   JUDGE-PASS:NAME$ s" CODEGEN-CORPUS4:LADDER" T$=
+
+   \ A row cannot state more inputs than the shared pass holds tuples for, and
+   \ the refusal names that rather than reading as a text buffer overflowing: an
+   \ input silently dropped is an arm silently not compared.
+   [: JUDGE-PASS:IN-MAX 0 ?do JUDGE-PASS:ALSO loop ;]
+   E-JUDGE-PASS-INPUTS TTHROWSQ ;
 
 public
 
@@ -400,6 +460,7 @@ public
    JUDGE-CHECK:JUDGE-ALL
    ARTIFACT-CASES
    DIRECTION-CASES
+   INPUT-CASES
    TRAFFIC-FORM-CASES
    TRAFFIC-COLUMN-CASES
    REFUSAL-CASES

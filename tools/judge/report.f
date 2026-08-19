@@ -229,7 +229,9 @@ variable TEXT-U
    s" , larger than the engine's: " APPEND JUDGE-ROW:LARGER-ROWS NUM$ APPEND
    s" , columns disagreeing on the answer: " APPEND JUDGE-ROW:DISAGREEING-ROWS NUM$ APPEND
    s" , leaving by a tail branch: " APPEND JUDGE-ROW:TAIL-ROWS NUM$ APPEND
-   s" , touching the caller's stack more often: " APPEND JUDGE-ROW:HEAVIER-ROWS NUM$ LINE ;
+   s" , touching the caller's stack more often: " APPEND JUDGE-ROW:HEAVIER-ROWS NUM$ APPEND
+   s" , pinned inputs compared: " APPEND JUDGE-ROW:TOTAL-INPUTS NUM$ APPEND
+   s"  of which the reference reached: " APPEND JUDGE-ROW:TOTAL-REF-INPUTS NUM$ LINE ;
 
 \ ---- the measured half -------------------------------------------------------
 \ Everything below MARK is printed and none of it is compared.

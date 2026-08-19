@@ -48,6 +48,11 @@ public
 : SUBJECT$ ( -- ptr u8 n )
    s" habu codegen baseline" ;
 
+\ The EMPTY span, which is the arm the pinned one never reaches: a scan that
+\ ran once whatever its length would answer the same as a scan that ran none.
+: EMPTY-SPAN ( -- ptr u8 n )
+   s" " ;
+
 \ The same span in the reference world: the twin's own copy of those bytes, and
 \ the length of the span above, so the two columns scan the same number of them.
 \ The pointer is asked for once and kept, because a generated TIMING body runs
@@ -59,6 +64,10 @@ public
    then
    SUBJ-CELL @
    SUBJECT$ nip ;
+
+\ The twin's own pointer with no bytes after it, so both worlds scan none.
+: C-EMPTY-SPAN ( -- n n )
+   C-SUBJ drop 0 ;
 
 \ What CELL-BUMP left in memory, in each world.
 : BUMP-READ ( -- n )
@@ -89,6 +98,10 @@ private
 : SPAN+ ( -- )
    s" JUDGE-CORPUS1:SUBJECT$ " s" JUDGE-CORPUS1:C-SUBJ " JUDGE-PASS:STORE+ ;
 
+: EMPTY-SPAN+ ( -- )
+   s" JUDGE-CORPUS1:EMPTY-SPAN " s" JUDGE-CORPUS1:C-EMPTY-SPAN "
+   JUDGE-PASS:STORE+ ;
+
 : BUMP-WITNESS+ ( -- )
    s" JUDGE-CORPUS1:BUMP-READ" s" JUDGE-CORPUS1:C-BUMP-READ" JUDGE-PASS:READ+ ;
 
@@ -97,25 +110,45 @@ private
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" ADD3" s" hc1_add3" JUDGE-PASS:ROW!
-      s" 1 2 3" JUDGE-PASS:IN+  row execute
+      s" 1 2 3" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -5 5 7" JUDGE-PASS:IN+          \ a negative argument
+      row execute
    s" SQUARE-SUM" s" hc1_square_sum" JUDGE-PASS:ROW!
-      s" 3 4" JUDGE-PASS:IN+  row execute
+      s" 3 4" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -2 5" JUDGE-PASS:IN+            \ a square that lost its sign
+      row execute
    s" MAX2" s" hc1_max2" JUDGE-PASS:ROW!
-      s" 3 4" JUDGE-PASS:IN+  row execute
+      s" 3 4" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 9 -1" JUDGE-PASS:IN+            \ the other arm of the branch
+      row execute
    s" LERP" s" hc1_lerp" JUDGE-PASS:ROW!
-      s" 10 20 50" JUDGE-PASS:IN+  row execute
+      s" 10 20 50" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 0 100 25" JUDGE-PASS:IN+
+      row execute
    s" SUM-TO" s" hc1_sum_to" JUDGE-PASS:ROW!
-      s" 16" JUDGE-PASS:IN+  row execute
+      s" 16" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 1" JUDGE-PASS:IN+               \ one turn of the loop
+      row execute
    s" COUNT-DOWN" s" hc1_count_down" JUDGE-PASS:ROW!
-      s" 16" JUDGE-PASS:IN+  row execute
+      s" 16" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" -3" JUDGE-PASS:IN+              \ a loop that must not run
+      row execute
    s" FACT" s" hc1_fact" JUDGE-PASS:ROW!
-      s" 10" JUDGE-PASS:IN+  row execute
+      s" 10" JUDGE-PASS:IN+
+      JUDGE-PASS:ALSO s" 0" JUDGE-PASS:IN+               \ the base case
+      row execute
    s" CELL-BUMP" s" hc1_cell_bump" JUDGE-PASS:ROW!
-      s" 7" JUDGE-PASS:IN+  BUMP-WITNESS+  row execute
+      s" 7" JUDGE-PASS:IN+  BUMP-WITNESS+
+      JUDGE-PASS:ALSO s" -1" JUDGE-PASS:IN+
+      row execute
    s" BYTE-SUM" s" hc1_byte_sum" JUDGE-PASS:ROW!
-      SPAN+  row execute
+      SPAN+
+      JUDGE-PASS:ALSO EMPTY-SPAN+                        \ nothing to scan
+      row execute
    s" BYTE-FIND" s" hc1_byte_find" JUDGE-PASS:ROW!
-      SPAN+  s" $67" JUDGE-PASS:IN+  row execute ;   \ $67 is `g`, in the span
+      SPAN+  s" $67" JUDGE-PASS:IN+                      \ $67 is `g`, in the span
+      JUDGE-PASS:ALSO SPAN+  s" $7A" JUDGE-PASS:IN+      \ $7A is `z`, a miss
+      row execute ;
 
 : OPEN-CORPUS ( -- )
    SOURCE$ SUFFIX$ QUALIFIER$ JUDGE-PASS:CORPUS! ;
