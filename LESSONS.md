@@ -7417,3 +7417,15 @@ and --no-lldbinit.
   engine runtime slice on a busy machine (dot habu-the-pty-991d107e protocol:
   rerun once, idle). Three consecutive standalone passes plus a green rerun of
   the exact tree adjudicates it as the flake, not the candidate.
+
+- **A keep list derived by reading requires is not a closure.** The spill probe
+  needed a file no direct require named — reached transitively through a case
+  list that was itself being deleted. Resolve the require closure of every
+  keeper, then RUN the member; a keep list that was only read is a guess.
+- **Prose is a dependency.** Fifteen sources named a deleted file in a comment;
+  each one is a reader sent to a file that no longer exists. `rg` the deleted
+  names over the whole tree after a cut and rewrite or forward every mention —
+  a dated measurement record keeps the name under an explicit forwarding note.
+- **zsh does not word-split unquoted parameters.** `for f in $LIST` over a
+  space-separated list of filenames is one bogus name, silently. Use an array
+  or an explicit list in batch deletions.
