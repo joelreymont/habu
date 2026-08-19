@@ -7452,3 +7452,17 @@ and --no-lldbinit.
   one-cell opaque handle, and whether private products or zero-field families
   cover it, must be probed before any construction-authority mechanism is
   minted.
+
+- **A census that classifies by shape can be 90% wrong about the fact it
+  implies.** "Single-call shim onto a checked : word" described 548 sites'
+  syntax; the checker held effects for 110. Ask the checker, not the source:
+  EFFECT-QUERY (checker.f:7015) answers "does the checker hold an effect for
+  this name" in one run over a name list — start every trust census there,
+  never with rg alone.
+- **Only `install --force` is authoritative for src/core prefix files.** A
+  probe in user source loaded by bin/hb is a different environment from the
+  pre-hook prefix window; both screens can agree and still not bind. The
+  prefix probe costs 14 seconds — pay it.
+- **internal-mark.f's seal covers bare interpret and tick only.** It has never
+  blocked a compiled reference; any design assuming it does starts from a
+  false premise (its own line 26 says so).
