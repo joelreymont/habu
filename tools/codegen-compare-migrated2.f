@@ -51,11 +51,24 @@
 \ measures a chain-compiled word calling a chain-compiled word, which is the
 \ shape the first corpus has only as recursion.
 \
-\ NOTHING IS STATED BUT THE SOURCE. The two arities and the register budget used
-\ to ride on the same line, and the callee's spelling, entry and effect with
-\ them. The entry reads what the definition takes and leaves off the checker's
+\ NOTHING IS STATED AT ALL. The two arities and the register budget used to ride
+\ on the same line, and the callee's spelling, entry and effect with them. The
+\ entry reads what the definition takes and leaves off the checker's
 \ certificate, derives the pool from the machine, and resolves a callee through
-\ the same reader - so a row here is a body and a name and nothing else.
+\ the same reader. The SOURCE was the last thing left to state, and
+\ NMIGRATE:NEXT takes that off the input stream too: every definition below is
+\ written at top level, indented, highlighted and diffed like the rest of the
+\ tree, and the engine's own parser is what decides where it ends.
+\
+\ TV-NEXT?-N IS THE ONE ROW STILL WRITTEN AS TEXT, because it is the one that
+\ names a data word: NMIGRATE:DEFINE-DATA takes that spelling, and no entry can
+\ take it off the stream while the address the body pushes is a fact the caller
+\ has to state. Dot habu-let-a-migrated-77d34d82 carries the move.
+\
+\ A LINT ANNOTATION SITS ABOVE THE ENTRY IT SPEAKS FOR, never inside the
+\ definition, so that what the engine reads is the corpus's text and nothing
+\ else: the reader starts at the `:` that follows NMIGRATE:NEXT, so a comment
+\ written above the entry is outside the source the chain compiles.
 
 require lib/errors.f
 require lib/prelude.f
@@ -63,9 +76,11 @@ require src/compiler/native/migrate.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus2.f
 
-package CODEGEN-MIGRATED2
-
-private
+\ The definitions land in the corpus's own package, reopened: the `-N` words are
+\ CODEGEN-CORPUS2 publics, and TV-NEXT?-N names the private table it shares with
+\ the word it is compared against.
+package CODEGEN-CORPUS2
+public
 
 \ A routine with control flow needs more, and says why. A block argument and
 \ every value handed to it across an edge are one class holding one register for
@@ -78,53 +93,51 @@ private
 \ is the next even number above that floor. TV-NEXT? reaches a table, compares
 \ against two constants and answers a pair, and takes the same budget.
 
-: TAG ( -- )
-   s" : TAG-N ( n -- n ) 7 and ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : TAG-N ( n -- n ) 7 and ;
 
 \ lib/json-read.f:252 with its four constants written as their values - the
 \ first of the two substitutions the head of this file lists.
-: WS? ( -- )
-   s" : WS?-N ( n -- bool ) dup 32 = over 9 = or over 10 = or swap 13 = or ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: WS?-N ( n -- bool ) dup 32 = over 9 = or over 10 = or swap 13 = or ;
 
 \ src/core/checker.f:3542 with its three hexadecimal literals written in
 \ decimal - the second substitution. Two range tests, each leaving the word from
 \ the middle through `exit`, which is the shape.
-: SYM-FOLD-C ( -- )
-   s" : SYM-FOLD-C-N ( n -- n ) {: c:n :} c 65 < if c exit then c 90 > if c exit then c 32 or ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: SYM-FOLD-C-N ( n -- n )
+   {: c:n :}
+   c 65 < if c exit then
+   c 90 > if c exit then
+   c 32 or ;
 
-: MAX-DIM ( -- )
-   s" : MAX-DIM-N ( n n -- n ) {: a:n b:n :} a b > if a else b then ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : MAX-DIM-N ( n n -- n ) {: a:n b:n :} a b > if a else b then ;
 
-: COUNT-CHAR ( -- )
-   s" : COUNT-CHAR-N ( ptr u8 n n -- n ) {: a:ptr u c :} 0 0 begin dup u < while dup a + c@ c = if swap 1+ swap then 1+ repeat drop ;"
-   NMIGRATE:DEFINE ;
+\ typed-local-lint: allow-bare-local - `u` and `c` are the corpus's own
+\ spelling, and a migrated body renames no local.
+NMIGRATE:NEXT
+: COUNT-CHAR-N ( ptr u8 n n -- n )
+   {: a:ptr u c :}
+   0 0 begin dup u < while dup a + c@ c = if swap 1+ swap then 1+ repeat drop ;
 
 \ The walk's callee. Its one name outside the dialect is the corpus's own
 \ binding table, and its spelling is all the chain is told: the engine answers
 \ where that table is. Both columns therefore walk the SAME table, which is what
-\ makes the head-to-head check a statement about the loads.
-: TV-NEXT? ( -- )
-   s" : TV-NEXT?-N ( n -- n bool ) dup 7 and 1 = 0= if 0 0= 0= exit then dup 3 rshift cells TV-TABLE + @ dup -1 = if drop 0 0= 0= else nip 0 0= then ;"
-   s" TV-TABLE"
-   NMIGRATE:DEFINE-DATA ;
+\ makes the head-to-head check a statement about the loads. It is the one row
+\ the stream entry cannot take, for the reason the header gives.
+s" : TV-NEXT?-N ( n -- n bool ) dup 7 and 1 = 0= if 0 0= 0= exit then dup 3 rshift cells TV-TABLE + @ dup -1 = if drop 0 0= 0= else nip 0 0= then ;"
+s" TV-TABLE"
+NMIGRATE:DEFINE-DATA
 
 \ The walk itself: a loop whose test is a call. Its routine declares the direct
 \ call and the frame its caller's return address goes in, for the reason
 \ src/compiler/native/abi.f gives - the first call destroys the return address,
 \ so it has to have somewhere to live.
-: T-RES-WALK ( -- )
-   s" : T-RES-WALK-N ( n -- n ) begin TV-NEXT?-N while repeat ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : T-RES-WALK-N ( n -- n ) begin TV-NEXT?-N while repeat ;
 
 \ The copy's callee: a pointer and a cell index in, the address of that cell
 \ out. A `ptr n` is one cell of the caller's stack, so its convention is two
 \ values in and one out, which is what the declaration below says.
-: CELL-FIELD ( -- )
-   s" : CELL-FIELD-N ( ptr n n -- ptr n ) cells + ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : CELL-FIELD-N ( ptr n n -- ptr n ) cells + ;
 
 \ The copy itself: a counted loop with TWO calls in its body, one working out
 \ the address it reads and one the address it writes, and three locals live
@@ -140,36 +153,9 @@ private
 \ budget is a budget, and dot habu-choose-the-register-a95390ac carries taking
 \ the number off the routine rather than off a line here.
 
-: VEC-COPY-CELLS ( -- )
-   s" : VEC-COPY-CELLS-N ( ptr n ptr n n -- ) {: src:ptr dst:ptr len:n :} len 0 ?do src i CELL-FIELD-N @ dst i CELL-FIELD-N ! loop ;"
-   NMIGRATE:DEFINE ;
-
-public
-
-\ Publish all seven and the two callees. It is one word rather than nine
-\ top-level lines because a migration claims code space at the engine's free
-\ slot, and the interpreter uses that slot for the line it is running. Each
-\ callee is published before the caller that names it.
-: RUN ( -- )
-   TAG
-   WS?
-   SYM-FOLD-C
-   MAX-DIM
-   COUNT-CHAR
-   TV-NEXT?
-   T-RES-WALK
-   CELL-FIELD
-   VEC-COPY-CELLS ;
-
-;package
-
-\ The definitions land where the current wordlist points when RUN executes, so
-\ the corpus's package is reopened around the call: the `-N` words become
-\ CODEGEN-CORPUS2 publics, and TV-NEXT?-N can name the private table it shares
-\ with the word it is compared against.
-package CODEGEN-CORPUS2
-public
-
-CODEGEN-MIGRATED2:RUN
+NMIGRATE:NEXT
+: VEC-COPY-CELLS-N ( ptr n ptr n n -- )
+   {: src:ptr dst:ptr len:n :}
+   len 0 ?do src i CELL-FIELD-N @ dst i CELL-FIELD-N ! loop ;
 
 ;package

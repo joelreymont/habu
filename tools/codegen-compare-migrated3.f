@@ -45,6 +45,21 @@
 \ gives - so what constrains these rows is the general registers the frame
 \ pointers and the crossings need. No row states a number: NABI:SCRATCH answers
 \ the whole writable set.
+\
+\ AND NO ROW STATES ITS SOURCE EITHER. Every definition below used to be a
+\ string this file built and handed over. NMIGRATE:NEXT takes it off the input
+\ stream instead, so each one is written at top level - indented, highlighted
+\ and diffed like the rest of the tree - and the engine's own parser is what
+\ decides where it ends. THE ORDER BELOW IS THE ORDER THEY ARE PUBLISHED IN,
+\ which is the one thing the file's own layout now states: a call site is given
+\ the address its callee's record already carries, so T-GET-N, T-SET-N,
+\ T-DIST2-N and T-NORM2-N each stand above the rows that name them.
+\
+\ A LINT ANNOTATION SITS ABOVE THE ENTRY IT SPEAKS FOR, never inside the
+\ definition, so that what the engine reads is the corpus's text and nothing
+\ else: the reader starts at the `:` that follows NMIGRATE:NEXT, so a comment
+\ written above the entry is outside the source the chain compiles. Four bodies
+\ here carry the corpus's own untyped float locals and are annotated that way.
 
 require lib/errors.f
 require lib/prelude.f
@@ -52,20 +67,18 @@ require src/compiler/native/migrate.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus3.f
 
-package CODEGEN-MIGRATED3
-
-private
+\ The definitions land in the corpus's own package, reopened: the `-N` words are
+\ CODEGEN-CORPUS3 publics, beside the words they are compared against.
+package CODEGEN-CORPUS3
+public
 
 \ maki/optim.f:12 through tools/codegen-compare-corpus3.f, verbatim: w' = w - lr*g.
-: SGD ( -- )
-   s" : SGD-N ( r r r -- r ) {: w g lr :} w  lr g f* f- ;"
-   NMIGRATE:DEFINE ;
+\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
+NMIGRATE:NEXT : SGD-N ( r r r -- r ) {: w g lr :} w  lr g f* f- ;
 
 \ maki/segment.f:61 through the same corpus, verbatim: an integer length becomes
 \ a double, and 1/sqrt(d) comes back.
-: SEG ( -- )
-   s" : SEG-1/SQRT-N ( n -- r ) {: d:n :}  1.0 d s>f fsqrt f/ ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : SEG-1/SQRT-N ( n -- r ) {: d:n :}  1.0 d s>f fsqrt f/ ;
 
 \ maki/autograd.f:48 through the same corpus, verbatim: the two-armed branch on
 \ a two-operand float compare. It is the first row of this corpus with control
@@ -81,9 +94,23 @@ private
 \ TRUE on unordered - which is what a float less-than lowered under `lt` instead
 \ of `mi` would be. The recorded output is the whole cell, so a negative zero
 \ that came back positive is a reported disagreement rather than an equal number.
-: MAXF ( -- )
-   s" : MAX-F-N ( r r -- r ) {: x:r y:r :}  x y f< if y else x then ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : MAX-F-N ( r r -- r ) {: x:r y:r :}  x y f< if y else x then ;
+
+\ ---- the two branch rows whose arms disagree about the class -----------------
+\ maki/autograd.f:23 through the corpus. Its two arms hand the join a DOUBLE and
+\ a CELL - `0.0` is a float literal and `x` is the cell the argument arrived in -
+\ which is exactly the case the join-type rule exists for: the first arm states
+\ the position's type and the second crosses to it. Its pinned inputs include a
+\ NaN, because `f0<` is false on one and the ELSE arm is therefore the one a NaN
+\ takes.
+\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
+NMIGRATE:NEXT : RELU-F-N ( r -- r ) {: x :}   x f0< if 0.0 else x  then ;
+
+\ lib/fmath.f:36 through the corpus: round to nearest, written the way a
+\ truncating `f>s` makes necessary. Both of its arms leave a COMPUTED double, so
+\ what crosses its join is two doubles rather than a double and a cell - the
+\ other half of the same rule.
+NMIGRATE:NEXT : FROUND-N ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;
 
 \ ---- the three words a tensor body reaches an element through -----------------
 \ maki/array.f:9-11 through the corpus, verbatim but for the `-N`. They are not
@@ -100,14 +127,11 @@ private
 \ a cell and read one back as a cell. Nothing in this corpus stores a double from
 \ a floating register, which is why the crossing at `hir.store` is still dot
 \ habu-store-a-double-a31b313e's and no row here waits for it.
-: T-AT ( -- )
-   s" : T-AT-N ( ptr a n -- ptr a ) cells + ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : T-AT-N ( ptr a n -- ptr a ) cells + ;
 
-: T-GET ( -- )
-   s" : T-GET-N ( ptr a n -- r ) T-AT-N @ ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : T-GET-N ( ptr a n -- r ) T-AT-N @ ;
 
-: T-SET ( -- )
-   s" : T-SET-N ( r ptr a n -- ) T-AT-N ! ;" NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : T-SET-N ( r ptr a n -- ) T-AT-N ! ;
 
 \ ---- the five kernel rows ----------------------------------------------------
 \ WHAT THEY NEEDED THAT THE THREE ABOVE DID NOT. Every one of them carries a
@@ -127,83 +151,39 @@ private
 \ the entry takes from NABI:SCRATCH rather than from a number written here.
 
 \ maki/array.f:16 through the corpus: the plain accumulation.
-: T-SUM ( -- )
-   s" : T-SUM-N ( ptr a n -- r ) {: base len :} 0.0  len 0 ?do  base i T-GET-N f+  loop ;"
-   NMIGRATE:DEFINE ;
+\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
+NMIGRATE:NEXT
+: T-SUM-N ( ptr a n -- r )
+   {: base len :}
+   0.0  len 0 ?do  base i T-GET-N f+  loop ;
 
 \ maki/array.f:20 through the corpus: the in-place step, whose point is the
 \ stores. Both columns step the SAME weight buffer, so the head-to-head check is
 \ about the loads and the stores and not only about the arithmetic between them.
-: T-SGD ( -- )
-   s" : T-SGD!-N ( r ptr a ptr a n -- ) {: lr wbase gbase len :} len 0 ?do wbase i T-GET-N lr gbase i T-GET-N f* f- wbase i T-SET-N loop ;"
-   NMIGRATE:DEFINE ;
+\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
+NMIGRATE:NEXT
+: T-SGD!-N ( r ptr a ptr a n -- )
+   {: lr wbase gbase len :}
+   len 0 ?do wbase i T-GET-N lr gbase i T-GET-N f* f- wbase i T-SET-N loop ;
 
 \ maki/array.f:32 through the corpus: the two-pointer accumulation.
-: T-DIST2 ( -- )
-   s" : T-DIST2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} 0.0 len 0 ?do abase i T-GET-N bbase i T-GET-N f- dup f* f+ loop ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: T-DIST2-N ( ptr a ptr a n -- r )
+   {: abase:ptr bbase:ptr len:n :}
+   0.0 len 0 ?do abase i T-GET-N bbase i T-GET-N f- dup f* f+ loop ;
 
 \ maki/array.f:39 through the corpus: the one-pointer square accumulation.
-: T-NORM2 ( -- )
-   s" : T-NORM2-N ( ptr a n -- r ) {: bbase:ptr len:n :} 0.0 len 0 ?do bbase i T-GET-N dup f* f+ loop ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: T-NORM2-N ( ptr a n -- r )
+   {: bbase:ptr len:n :}
+   0.0 len 0 ?do bbase i T-GET-N dup f* f+ loop ;
 
 \ maki/array.f:46 through the corpus: two accumulations, two square roots and a
 \ division, reached through two calls to two DIFFERENT words. It is the row that
 \ needed the migration to carry a list of callees rather than one.
-: T-REL-L2 ( -- )
-   s" : T-REL-L2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} abase bbase len T-DIST2-N fsqrt bbase len T-NORM2-N fsqrt f/ ;"
-   NMIGRATE:DEFINE ;
-
-\ ---- the two branch rows whose arms disagree about the class -----------------
-\ maki/autograd.f:23 through the corpus. Its two arms hand the join a DOUBLE and
-\ a CELL - `0.0` is a float literal and `x` is the cell the argument arrived in -
-\ which is exactly the case the join-type rule exists for: the first arm states
-\ the position's type and the second crosses to it. Its pinned inputs include a
-\ NaN, because `f0<` is false on one and the ELSE arm is therefore the one a NaN
-\ takes.
-: RELU-F ( -- )
-   s" : RELU-F-N ( r -- r ) {: x :}   x f0< if 0.0 else x  then ;"
-   NMIGRATE:DEFINE ;
-
-\ lib/fmath.f:36 through the corpus: round to nearest, written the way a
-\ truncating `f>s` makes necessary. Both of its arms leave a COMPUTED double, so
-\ what crosses its join is two doubles rather than a double and a cell - the
-\ other half of the same rule.
-: FROUND ( -- )
-   s" : FROUND-N ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;"
-   NMIGRATE:DEFINE ;
-
-public
-
-\ Publish all ten, and the three callees the kernels reach memory through first,
-\ because a call site is given the address its callee's record already carries.
-\ It is one word rather than thirteen top-level lines because a migration claims
-\ code space at the engine's free slot, and the interpreter uses that slot for
-\ the line it is running.
-: RUN ( -- )
-   SGD
-   SEG
-   MAXF
-   RELU-F
-   FROUND
-   T-AT
-   T-GET
-   T-SET
-   T-SUM
-   T-SGD
-   T-DIST2
-   T-NORM2
-   T-REL-L2 ;
-
-;package
-
-\ The definitions land where the current wordlist points when RUN executes, so
-\ the corpus's package is reopened around the call: the `-N` words become
-\ CODEGEN-CORPUS3 publics, beside the words they are compared against.
-package CODEGEN-CORPUS3
-public
-
-CODEGEN-MIGRATED3:RUN
+NMIGRATE:NEXT
+: T-REL-L2-N ( ptr a ptr a n -- r )
+   {: abase:ptr bbase:ptr len:n :}
+   abase bbase len T-DIST2-N fsqrt bbase len T-NORM2-N fsqrt f/ ;
 
 ;package

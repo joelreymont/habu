@@ -24,10 +24,10 @@
 \ engine's calls. Nothing else changes: no constant is respelled, no operation is
 \ changed, no local is renamed and no annotation is added or removed.
 \
-\ TAIL-MID-N IS BOTH A ROW AND A CALLEE, which is why it is defined before
+\ TAIL-MID-N IS BOTH A ROW AND A CALLEE, which is why it is written before
 \ TAIL-CHAIN-N registers it. A call site is given the address its callee's
 \ dictionary record already carries, and TAIL-MID-N's record carries the chain's
-\ emission only after its own migration has run - so RUN below publishes it
+\ emission only after its own migration has run - so the order below publishes it
 \ first, and TAIL-CHAIN-N is a chain routine calling a chain routine calling a
 \ chain routine.
 \
@@ -35,6 +35,12 @@
 \ - there is no loop in the corpus at all, by design - and the rows used to state
 \ eight apiece; the migration entry derives the pool from NABI:SCRATCH now, so
 \ every corpus is measured under the same one.
+\
+\ AND NO ROW STATES ITS SOURCE EITHER. Every definition below used to be a string
+\ this file built and handed over. NMIGRATE:NEXT takes it off the input stream
+\ instead, so each one is written at top level - indented, highlighted and diffed
+\ like the rest of the tree - and the engine's own parser is what decides where
+\ it ends.
 
 require lib/errors.f
 require lib/prelude.f
@@ -42,86 +48,45 @@ require src/compiler/native/migrate.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus5.f
 
-package CODEGEN-MIGRATED5
-
-private
+\ The definitions land in the corpus's own package, reopened: the `-N` words are
+\ CODEGEN-CORPUS5 publics, beside the words they are compared against.
+package CODEGEN-CORPUS5
+public
 
 \ ---- the two callees every row reaches through --------------------------------
 \ The corpus's own two, verbatim but for the `-N`. They are not rows and they are
 \ not measured: they are what the rows call, migrated so that the new column's
 \ rows are the new chain's code all the way down.
 
-: C5-LONG ( -- )
-   s" : C5-LONG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: C5-LONG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 
-: C5-PAIR ( -- )
-   s" : C5-PAIR-N ( n n -- n n ) {: a:n b:n :} a 3 * b 5 xor + dup 7 and over 11 * 13 xor + ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT
+: C5-PAIR-N ( n n -- n n )
+   {: a:n b:n :}
+   a 3 * b 5 xor + dup 7 and over 11 * 13 xor + ;
 
 \ ---- the six rows -------------------------------------------------------------
 
 \ The pure shape: one call, in tail position, and nothing else.
-: TAIL-BIG ( -- )
-   s" : TAIL-BIG-N ( n -- n ) C5-LONG-N ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : TAIL-BIG-N ( n -- n ) C5-LONG-N ;
 
 \ Work before the tail call.
-: TAIL-WORK ( -- )
-   s" : TAIL-WORK-N ( n -- n ) 1 + C5-LONG-N ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : TAIL-WORK-N ( n -- n ) 1 + C5-LONG-N ;
 
 \ The control: work after the call, so the call is not in tail position.
-: NONTAIL ( -- )
-   s" : NONTAIL-N ( n -- n ) C5-LONG-N 1 + ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : NONTAIL-N ( n -- n ) C5-LONG-N 1 + ;
 
 \ The second copy of the pure shape, and the callee of TAIL-CHAIN-N.
-: TAIL-MID ( -- )
-   s" : TAIL-MID-N ( n -- n ) C5-LONG-N ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : TAIL-MID-N ( n -- n ) C5-LONG-N ;
 
 \ A tail call to a word that is itself nothing but a tail call.
-: TAIL-CHAIN ( -- )
-   s" : TAIL-CHAIN-N ( n -- n ) TAIL-MID-N ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : TAIL-CHAIN-N ( n -- n ) TAIL-MID-N ;
 
 \ The pure shape at arity (2 -> 2).
-: TAIL-PAIR ( -- )
-   s" : TAIL-PAIR-N ( n n -- n n ) C5-PAIR-N ;"
-   NMIGRATE:DEFINE ;
+NMIGRATE:NEXT : TAIL-PAIR-N ( n n -- n n ) C5-PAIR-N ;
 
 \ A real call and then a tail call.
-: TAIL-AFTER ( -- )
-   s" : TAIL-AFTER-N ( n -- n ) C5-LONG-N C5-LONG-N ;"
-   NMIGRATE:DEFINE ;
-
-public
-
-\ Publish the six, and the two callees they reach through first, because a call
-\ site is given the address its callee's record already carries - and TAIL-MID-N
-\ before TAIL-CHAIN-N for the same reason. It is one word rather than nine
-\ top-level lines because a migration claims code space at the engine's free
-\ slot, and the interpreter uses that slot for the line it is running.
-: RUN ( -- )
-   C5-LONG
-   C5-PAIR
-   TAIL-BIG
-   TAIL-WORK
-   NONTAIL
-   TAIL-MID
-   TAIL-CHAIN
-   TAIL-PAIR
-   TAIL-AFTER ;
-
-;package
-
-\ The definitions land where the current wordlist points when RUN executes, so
-\ the corpus's package is reopened around the call: the `-N` words become
-\ CODEGEN-CORPUS5 publics, beside the words they are compared against.
-package CODEGEN-CORPUS5
-public
-
-CODEGEN-MIGRATED5:RUN
+NMIGRATE:NEXT : TAIL-AFTER-N ( n -- n ) C5-LONG-N C5-LONG-N ;
 
 ;package
