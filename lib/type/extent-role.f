@@ -40,10 +40,10 @@
 \ IX>N ( ix<e> -- n ) : project any extent index back to a plain cell. Generic
 \ over the extent, so one word serves every extent, and the direction is always
 \ sound because a nominal cell IS a cell.
-CAST: IX>N ( ix<e> -- n ) ;
+CAST: IX>N ( ix<e> -- n )
 
 \ >RED ( ix<e> -- redx<e> ) : mark an extent index as a summation (reduction)
 \ axis. It cannot launder a free factor into a contraction: a word whose DECLARED
 \ signature carries redx over a free extent, or over a whole product, is already a
 \ load-time reject by the checker's contraction rule, independent of this cast.
-CAST: >RED ( ix<e> -- redx<e> ) ;
+CAST: >RED ( ix<e> -- redx<e> )

@@ -941,9 +941,26 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 3,649,399 -> 2,097,271, aot-seed 3,486,060 -> 1,949,388 (measured on the same
 \ two builds), and the artifact the capture writes goes 3,454,098 -> 1,923,141.
 \ The Linux rows below are owed this -5560 as well, split the same two ways.
-130088 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-08-19 the `cast:` declarer became an engine reader keyword (dot
+\ habu-cast-reads-the-1f151a30). It is a definer handler, so like `trusted:` and
+\ `defer` its code is emitted INLINE in the interpret dispatch chain: reading the
+\ name and signature, opening and naming the record, emitting the empty identity
+\ body, calling the checker's registrar and publishing. +1284, and it divides
+\ between two rows with no residue:
+\ +1228  interpret/define (10076 -> 11304): the handler and its missing-name
+\        die, emitted into the dispatch chain by the keyword row.
+\   +56  dictionary-code (7108 -> 7164): the three strings the keyword table
+\        bakes for it - `cast:` (5 bytes), `checker-defcast` (15) and the die's
+\        message (29) - each padded by BYTES, to a four-byte boundary.
+\ CODELEN 130088 -> 131372, floor distance 3112 -> 4396. container/text-pad
+\ 13272 -> 11988 absorbs the whole +1284 inside the same eighth 16 KiB __TEXT
+\ page, so MACOS-SIGNATURE (1423), container/data-const (16384),
+\ container/linkedit (104) and MACOS-TOTAL (165367) do not move and
+\ `FILE-SIZE bin/hb-host` is still 165367 (measured).
+\ The Linux rows below are owed this +1284 as well.
+131372 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-3112 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
+4396 constant MACOS-FLOOR-DIST    \ code above the 16 KiB floor: the page-recovery shave
 165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

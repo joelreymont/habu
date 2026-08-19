@@ -448,6 +448,7 @@ variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUSTDECL variable LKWCHKDOES variable LKWKERNEL
+variable LKWCAST variable LKWDEFCAST variable LCASTNONAME   \ cast declarer (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
@@ -2590,6 +2591,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWDEFER @ LBL,  s" defer" BYTES,   LKWIS @ LBL,  s" is" BYTES,
    LKWDEFERUNSET @ LBL,  s" defer-unset" BYTES,
    LKWTRUSTED @ LBL, s" trusted:" BYTES,
+   LKWCAST @ LBL, s" cast:" BYTES,
+   LKWDEFCAST @ LBL, s" checker-defcast" BYTES,
+   LCASTNONAME @ LBL, s" hb: cast: missing name after " BYTES,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
@@ -2913,6 +2917,24 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-CALL-TRUST-PEND ( -- )
    C-FIND-TRUST-DECL
+   12 DATA PEND-CELL LDR,
+   C-PUSH-DREC-NAME
+   TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED ;
+
+\ MIRROR of src/habu/habu2.f DEF-TRUST:FIND-CAST / REGISTER-CAST. Same seam and
+\ same push sequence as the two above, reaching `checker-defcast` — which proves
+\ the declared retype legal before it records the row, and throws the named
+\ refusal when it is not.
+: C-FIND-DEFCAST ( -- )  LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 LKWDEFCAST @ ADR,  10 15 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 LKWDEFCAST @ ADR,  2 15 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+: C-CALL-DEFCAST ( -- )
+   C-FIND-DEFCAST
    12 DATA PEND-CELL LDR,
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
@@ -4693,6 +4715,63 @@ variable CFSK2
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
+\ The body epilogue, beside the prologue above: both ends of a body are emitted
+\ from here now, because the cast declarer below publishes a whole body inside
+\ its own keyword handler and a handler must exist before the dispatch rows name
+\ it. The `;` tail calls it in exactly the same place it always did.
+: EMIT-COMPILE-RET ( -- )
+   9 $F94003FE LIT64,  LCEMIT @ BL,
+   9 $910043FF LIT64,  LCEMIT @ BL,
+   9 W-RET LIT64,  LCEMIT @ BL, ;
+
+\ ---- cast: NAME ( in -- out ) -------------------------------------------
+\ MIRROR of src/habu/habu2.f C-CAST. src/core/roles.f is the FIRST file
+\ tools/bootstrap.sh feeds this engine and it declares casts of its own, so the
+\ recovery host has to read the form. A cast is a DECLARATION: no body, no `;`,
+\ and the whole form completes here — the interpret loop never enters compile
+\ state. What it publishes is an empty colon body, so the recorded length follows
+\ the colon rule (CP - entry - 4 = 16) and a call to a cast inlines to nothing.
+\ The registrar runs BEFORE the record is counted, so a refused cast leaves no
+\ callable name behind - and it is asked only when a checker hook is installed.
+\ That guard is what keeps recovery readable: tools/bootstrap.sh hands this
+\ engine src/core/roles.f FIRST, with no checker anywhere, so an unguarded call
+\ would exit 70 on the first line of the build. The stage source it goes on to
+\ compile does load src/core/checker.f and src/core/check-hook.f, and a cast
+\ read after that point reaches the registrar exactly as the native one does.
+: C-CAST-DIE-NO-NAME ( -- )
+   0 2 MOVZ,  1 LCASTNONAME @ ADR,  2 29 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 $4A MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: C-CAST ( -- )
+   LBL LBL {: named nohook :}   \ typed-local-lint: allow-bare-local
+   2 3 MOVZ,  LPROT @ BL,                              \ region -> RW
+   C-COLON-CODE-ROOM
+   C-COLON-DICT-ROOM
+   LTOK @ BL,  0 named CBNZ,                           \ read NAME
+      C-CAST-DIE-NO-NAME
+   named LBL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,  \ "NAME " for the registrar
+   C-CLEAR-TRUSTED-STATE
+   C-PARSE-REQUIRED-SIG                                \ consume ( in -- out )
+   C-QUALIFY-DEF
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 DATA PEND-CELL STR,
+   C-STORE-DEF-NAME
+   CP 9 0 STR,                                         \ slot[0] = body start
+   C-COLON-WORD-PROLOGUE
+   EMIT-COMPILE-RET
+   9 DATA PEND-CELL LDR,  10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,                   \ x9 = body start for the flush
+   2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,                \ region -> RX + flush
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,                \ no checker in this engine: publish, register nothing
+      C-CALL-DEFCAST
+   nohook LBL,
+   NDICT NDICT 1 ADDI,
+   EM-REC-WIDE-PUBLISH
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
 \ ---- defer / is: deferred execution vectors ------------------------------
 \ Mirror of src/habu/habu2.f C-DEFER / J-IS. A defer word's body loads an 8-byte
 \ dispatch cell from the always-RW data heap and BLRs through it; `is` bakes that
@@ -5683,6 +5762,7 @@ variable P2SK
 : EMIT-INTERPRET-WORDS ( n n -- ) {: lmain lundef :}
    LBL {: lnotnum :}
    lmain LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY
+   lmain LKWCAST 5 ['] C-CAST CF-ENTRY
    lmain LKWPACKAGE 7 ['] C-PACKAGE CF-ENTRY
    lmain LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY
    lmain LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY
@@ -5727,11 +5807,6 @@ variable P2SK
    12 DATA LOCF-CELL LDR,  12 done CBZ,
       9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
    done LBL, ;
-
-: EMIT-COMPILE-RET ( -- )
-   9 $F94003FE LIT64,  LCEMIT @ BL,
-   9 $910043FF LIT64,  LCEMIT @ BL,
-   9 W-RET LIT64,  LCEMIT @ BL, ;
 
 : EMIT-COMPILE-FLUSH-PEND ( -- )
    C-DOES-LEN
@@ -6422,6 +6497,7 @@ variable P2SK
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !

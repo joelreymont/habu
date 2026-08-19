@@ -110,10 +110,10 @@ NEWTYPE module 0
 
 private
 
-CAST: MINT-B ( n -- IR-BUILD:builder ) ;
-CAST: B>N ( IR-BUILD:builder -- n ) ;
-CAST: MINT-M ( n -- IR-BUILD:module ) ;
-CAST: M>N ( IR-BUILD:module -- n ) ;
+CAST: MINT-B ( n -- IR-BUILD:builder )
+CAST: B>N ( IR-BUILD:builder -- n )
+CAST: MINT-M ( n -- IR-BUILD:module )
+CAST: M>N ( IR-BUILD:module -- n )
 
 \ ---- capacities and slot states ----------------------------------------------
 16 constant SLOT-MAX                 \ live + frozen + aborted registry slots

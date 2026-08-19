@@ -52,8 +52,8 @@ STRUCTURE token 0
 private
 
 \ A one-way projection of the sealed module key onto its serial, for the header.
-CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n ) ;
-CAST: MID-SERIAL ( IR-ID:ir-module-id -- n ) ;
+CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
+CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
 \ ---- layout ------------------------------------------------------------------
 $4E545031 constant MAGIC        \ "NTP1": the tape header format tag

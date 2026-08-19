@@ -574,12 +574,16 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
   after the checker hook, so these definitions publish their checked effects
   directly; no boot path loads the retained pre-hook effect mirror. Prefer the
   typed families above and reserve this form for raw layout (e.g. `lib/vector.f`).
-- `CAST: NAME ( source -- destination ) body ;` may introduce a resolved
-  scalar-cell family destination, including a parametric `NEWTYPE` instance,
-  only while the engine's live namespace record and actual public/private
-  definition wordlist identify that family's declaring package. Mutable
-  `CHECKER-PACKAGE-*` parser mirror state is not authority. Projection casts
-  from such a family remain unrestricted.
+- `CAST: NAME ( source -- destination )` declares a checked retype. It is an
+  engine reader keyword, not a word: it takes **no body and no `;`**, and it
+  publishes `NAME` as an identity word whose call sites emit zero instructions.
+  A conversion that needs to refuse a value is two things — a checked word that
+  throws, then the cast — because a cast carries no code. The declaration may
+  introduce a resolved scalar-cell family destination, including a parametric
+  `NEWTYPE` instance, only while the engine's live namespace record and actual
+  public/private definition wordlist identify that family's declaring package.
+  Mutable `CHECKER-PACKAGE-*` parser mirror state is not authority. Projection
+  casts from such a family remain unrestricted.
 - `ENUM+` / `ENUM4+` are the legacy numeric counter definers: `n ENUM+ NAME`
   defines `NAME = n` and leaves `n+1` (`ENUM4+` leaves `n+4`).
 - Type, field, and variant names are lowercase; generated and project-defined

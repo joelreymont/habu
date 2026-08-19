@@ -1,8 +1,9 @@
 \ roles.f — nominal scalar role conversions baked into hb.
 \
 \ The checker treats roles such as idx/len/fd as distinct nominal cell types.
-\ Runtime representation is still one cell, so these conversion bodies are no-op
-\ casts. Their effects are pinned by TRUST rows and covered by the engine gate.
+\ Runtime representation is still one cell, so a conversion is a retype and
+\ nothing else: each one is declared with `CAST:`, which publishes an identity
+\ word and costs nothing at a call site.
 
 \ The DTC-* words below build a nominal cell type's no-op converter pair —
 \ >NAME ( n -- NAME ) and NAME>N ( NAME -- n ), matching the built-in role
@@ -58,6 +59,20 @@ variable DTC-SIG-U
    sa su DTC+ s" >N" DTC+ DTC-NAME-END
    ta tu DTC+ s"  -- n" DTC+ DTC-SIG-END ;
 
+\ The 34 role conversions below are CASTS, not trusted declarations, and the
+\ difference is where the refusal lands. `TRUSTED: L ( n -- idx idx ) ;` records
+\ whatever it is handed and only fails later, at a caller that happens to
+\ disagree — `TRUSTED: L ( n -- ptr u8 ) ;` let `8 L c@` compile and SIGSEGV.
+\ A cast is refused at the DECLARATION by the five structural rules (arity,
+\ class, family, owner, linearity), so a role conversion can no longer declare a
+\ shape the runtime cannot produce.
+\
+\ This file could not declare a cast at all while `cast:` was a WORD: the
+\ declarer crossed source through the evaluate boundary src/core/include.f arms
+\ at prefix row 902, and this file is row 894, so one converted row killed every
+\ boot with "defer: unset execution vector". A reader keyword needs no evaluate
+\ and works from the first prefix row that has a checker.
+
 \ DEFLINEAR / VALUE-RECORD are top-level-interpret-only, like the sumtype.f
 \ block openers: executing one parses the live input stream and mutates the
 \ type registry — side effects their ( -- ) rows do not express. Unlike the
@@ -71,59 +86,58 @@ variable DTC-SIG-U
 \ them executable at top level (LAYOUT-BUFFER parity, dots
 \ habu-checker-deftype-deflinear-8e9d1dc5,
 \ habu-checker-unsafety-must-d12bc784).
-\ All 34 words are zero-runtime nominal identity casts.
 \ Retirement: habu-multishot-quotations-typed-8832cace.
 
-TRUSTED: >IDX ( n -- idx ) ;
-TRUSTED: IDX>N ( idx -- n ) ;
+CAST: >IDX ( n -- idx )
+CAST: IDX>N ( idx -- n )
 
-TRUSTED: >LEN ( n -- len ) ;
-TRUSTED: LEN>N ( len -- n ) ;
+CAST: >LEN ( n -- len )
+CAST: LEN>N ( len -- n )
 
-TRUSTED: >COUNT ( n -- count ) ;
-TRUSTED: COUNT>N ( count -- n ) ;
+CAST: >COUNT ( n -- count )
+CAST: COUNT>N ( count -- n )
 
-TRUSTED: >OFF ( n -- off ) ;
-TRUSTED: OFF>N ( off -- n ) ;
+CAST: >OFF ( n -- off )
+CAST: OFF>N ( off -- n )
 
-TRUSTED: >FD ( n -- fd ) ;
-TRUSTED: FD>N ( fd -- n ) ;
+CAST: >FD ( n -- fd )
+CAST: FD>N ( fd -- n )
 
-TRUSTED: >RC ( n -- rc ) ;
-TRUSTED: RC>N ( rc -- n ) ;
+CAST: >RC ( n -- rc )
+CAST: RC>N ( rc -- n )
 
-TRUSTED: >PID ( n -- pid ) ;
-TRUSTED: PID>N ( pid -- n ) ;
+CAST: >PID ( n -- pid )
+CAST: PID>N ( pid -- n )
 
-TRUSTED: >MS ( n -- ms ) ;
-TRUSTED: MS>N ( ms -- n ) ;
+CAST: >MS ( n -- ms )
+CAST: MS>N ( ms -- n )
 
-TRUSTED: >NS ( n -- ns ) ;
-TRUSTED: NS>N ( ns -- n ) ;
+CAST: >NS ( n -- ns )
+CAST: NS>N ( ns -- n )
 
-TRUSTED: >TOK ( n -- tok ) ;
-TRUSTED: TOK>N ( tok -- n ) ;
+CAST: >TOK ( n -- tok )
+CAST: TOK>N ( tok -- n )
 
-TRUSTED: >REG ( n -- reg ) ;
-TRUSTED: REG>N ( reg -- n ) ;
+CAST: >REG ( n -- reg )
+CAST: REG>N ( reg -- n )
 
-TRUSTED: >LABEL ( n -- label ) ;
-TRUSTED: LABEL>N ( label -- n ) ;
+CAST: >LABEL ( n -- label )
+CAST: LABEL>N ( label -- n )
 
-TRUSTED: >VA ( n -- va ) ;
-TRUSTED: VA>N ( va -- n ) ;
+CAST: >VA ( n -- va )
+CAST: VA>N ( va -- n )
 
-TRUSTED: >SYMIDX ( n -- symidx ) ;
-TRUSTED: SYMIDX>N ( symidx -- n ) ;
+CAST: >SYMIDX ( n -- symidx )
+CAST: SYMIDX>N ( symidx -- n )
 
-TRUSTED: >ASM ( n -- asm ) ;
-TRUSTED: ASM>N ( asm -- n ) ;
+CAST: >ASM ( n -- asm )
+CAST: ASM>N ( asm -- n )
 
-TRUSTED: >IMG ( n -- img ) ;
-TRUSTED: IMG>N ( img -- n ) ;
+CAST: >IMG ( n -- img )
+CAST: IMG>N ( img -- n )
 
-TRUSTED: >SNAP ( n -- snap ) ;
-TRUSTED: SNAP>N ( snap -- n ) ;
+CAST: >SNAP ( n -- snap )
+CAST: SNAP>N ( snap -- n )
 
 : ASM-PHASE ( -- asm )
    0 >ASM ;
@@ -214,71 +228,9 @@ variable VRDEF-I
       VRDEF-TOKEN+
    AGAIN ;
 
-\ --- CAST: checked nominal/family retype declarer (dot habu-checked-cast-primitive).
-\ `CAST: NAME ( in -- out ) <body> ;` compiles ONE ordinary checked colon word.
-\ The checker (checker.f CAST-PEND window) certifies <body> under the identity
-\ row ( in -- in ) and publishes the declared ( in -- out ), so the retype is
-\ CHECKED, not trusted — this is the converter form that ends per-declaration
-\ TRUSTED growth. NAME + signature + body are captured from the live input token
-\ by token (parse-name is the only source primitive) and rebuilt into a ": NAME
-\ ( in -- out ) <body> ;" definition; cast bodies are ordinary token code (a guard
-\ that throws, never a raw string literal), so whitespace-joined tokens reproduce
-\ them faithfully. The generated text never contains TRUST/TRUSTED:/set-check.
-\ Top-level-interpret-only like the sibling definers: UNSAFE-TOK? rejects `cast:`
-\ inside checked bodies and EXPORT refuses to alias it (checker.f), so it cannot
-\ be laundered; a certified ( -- ) usig keeps it top-level executable past the
-\ seal-time internal-word marking pass.
-$400 constant CAST-GEN-CAP
-create CAST-GEN CAST-GEN-CAP allot
-variable CAST-GEN-U
-variable CAST-GEN-I
-variable CAST-NAME-OFF
-variable CAST-NAME-U
-
-: CAST-GEN-CLEAR ( -- ) 0 CAST-GEN-U ! ;
-: CAST-GEN-C, ( n -- ) {: c:n :}
-   CAST-GEN-U @ CAST-GEN-CAP >= IF s" cast: generated text too long" 70 die THEN
-   c CAST-GEN CAST-GEN-U @ + c!
-   CAST-GEN-U @ 1 + CAST-GEN-U ! ;
-: CAST-GEN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 CAST-GEN-I !
-   BEGIN CAST-GEN-I @ u < WHILE
-      a CAST-GEN-I @ + c@ CAST-GEN-C,
-      CAST-GEN-I @ 1 + CAST-GEN-I !
-   REPEAT ;
-
-: CAST-NAME, ( ptr u8 n -- )   \ copy the name into the gen buffer, record its span
-   CAST-GEN-U @ CAST-NAME-OFF !
-   dup CAST-NAME-U !
-   CAST-GEN-APP ;
-: CAST-NAME$ ( -- ptr u8 n )
-   CAST-GEN CAST-NAME-OFF @ + CAST-NAME-U @ ;
-
-: CAST-CAPTURE-BODY ( -- )   \ append remaining live tokens through ';' (space-joined)
-   BEGIN
-      parse-name dup 0= IF s" cast: missing ;" 70 die THEN
-      2dup s" ;" CORE-STR= IF s" ;" CAST-GEN-APP 2drop EXIT THEN
-      CAST-GEN-APP 32 CAST-GEN-C,
-   AGAIN ;
-
-: CAST-EVAL-RUN ( -- ) CAST-GEN CAST-GEN-U @ TDECL-EVAL-XT ;
-: CAST-EVAL ( -- )
-   CAST-NAME$ CAST-PEND!                 \ arm the one-shot cast-certification window
-   [: CAST-EVAL-RUN ;] catch
-   CAST-NAME$ drop 0 CAST-PEND!          \ disarm (zero-length name) on every exit path
-   dup 0 <> IF throw THEN drop ;         \ re-raise a compile/legality reject to the caller
-
-: CAST: ( -- )
-   parse-name dup 0= IF s" cast: missing name" 70 die THEN {: name:ptr nameu:n :}
-   CAST-GEN-CLEAR
-   s" : " CAST-GEN-APP
-   name nameu CAST-NAME,
-   32 CAST-GEN-C,
-   parse-name dup 0= IF s" cast: missing ( in -- out ) signature" 70 die THEN
-   2dup s" (" CORE-STR= 0= IF s" cast: signature must open with (" 70 die THEN
-   CAST-GEN-APP 32 CAST-GEN-C,
-   CAST-CAPTURE-BODY
-   CAST-EVAL ;
+\ `cast:` used to be defined here, as a word that rebuilt its declaration as text
+\ and drove it back through TDECL-EVAL-XT's evaluate. It is an engine reader
+\ keyword now (src/habu/habu2.f C-CAST).
 
 \ Seal the aliasable-unsafe words (this file's DEFLINEAR/VALUE-RECORD and
 \ the earlier sumtype.f/type-family.f openers) into the checker's identity set so

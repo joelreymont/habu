@@ -815,7 +815,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    o 4 = if s" NEWTYPE pdlx 0" TEST-SOURCE-LINE exit then
    o 5 = if s" DEFTYPE pdlx" TEST-SOURCE-LINE exit then
    o 6 = if s" DEFLINEAR pdlx" TEST-SOURCE-LINE exit then
-   o 7 = if s" CAST: >PDLX ( n -- pdlx ) ;" TEST-SOURCE-LINE exit then
+   o 7 = if s" CAST: >PDLX ( n -- pdlx )" TEST-SOURCE-LINE exit then
    o 8 = if s" LAYOUT-BUFFER pdlx" TEST-SOURCE-LINE exit then
    o 9 = if s" DEFER-LAYOUT-BUFFER pdlx" TEST-SOURCE-LINE exit then
    o 10 = if s" TYPED-VARIABLE pdlx" TEST-SOURCE-LINE exit then

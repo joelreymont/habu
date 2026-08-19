@@ -29,8 +29,8 @@ ENUM class DERIVE eq
 
 private
 
-CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n ) ;
-CAST: MID-SERIAL ( IR-ID:ir-module-id -- n ) ;
+CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
+CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
 \ ---- layout ------------------------------------------------------------------
 $4E494D31 constant IMM-MAGIC         \ "NIM1": the contract-table header format tag

@@ -332,6 +332,14 @@ TRUSTED: DECL-SIGNATURE ( ptr u8 n ptr u8 n -- )
 TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    TRUST ;
 
+\ The cast declarer's registrar, on the same boundary and for the same reason as
+\ DECL-SIGNATURE above: UNSAFE-TOK? rejects `checker-defcast` inside a checked
+\ body, so the one place allowed to name it is a declared boundary word. The
+\ refusals it runs are the engine's own (checker.f CAST-CERTIFY), so a cast this
+\ pre-pass accepts is exactly a cast the engine accepts.
+TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
+   CHECKER-DEFCAST ;
+
 : CAST-TRUST ( -- )
    DTC-NAME$ DTC-SIG$ DECL-SIGNATURE ;
 
@@ -399,6 +407,15 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
    nameu 0= IF s" verify-source: missing trusted name" 74 die THEN
    name nameu REQUIRE-SIGNATURE DECL-SIGNATURE
    SKIP-TRUSTED-BODY ;
+
+\ A cast has no body and no `;`, so unlike TRUSTED-DEFINITION above there is
+\ nothing to skip: the declaration ends at its closing paren. Registration goes
+\ through the certifying registrar, not DECL-SIGNATURE, so an illegal retype is
+\ refused here too and not merely recorded.
+: CAST-DECLARATION ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing cast name" 74 die THEN
+   name nameu REQUIRE-SIGNATURE DEFCAST-SIGNATURE ;
 
 : UNDEFINE-WORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
@@ -790,6 +807,7 @@ variable STG-START
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
+   a u s" cast:" STR=CI IF CAST-DECLARATION 0 0= EXIT THEN
    a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
    a u s" immediate" STR=CI IF 0 0= EXIT THEN

@@ -361,7 +361,7 @@ private
       misaligned OF E-SIZE throw ENDOF
    ;MATCH ;
 
-CAST: SLOT>N ( CAD-NUM:index -- n ) ;
+CAST: SLOT>N ( CAD-NUM:index -- n )
 
 : ORD>GLOBAL ( n -- global-role )
    case

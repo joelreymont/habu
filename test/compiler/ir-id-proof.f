@@ -270,12 +270,16 @@ private
       s" {: key:IR-ID:ir-module-key bound:IR-ID:ir-count raw:n :} raw OWNER-N MODULE>N key KEY-SERIAL <> if E-IR-OWNER throw then raw LOCAL-N bound COUNT>N >= if E-IR-INDEX-BOUND throw then raw"
       BODY-IS ;
 
+\ Each guarded mint is now a checked word that refuses a bad value and THEN
+\ applies the retype: a cast declares a type and carries no code, so the guard
+\ and the retype are two things and the body has to name both. Dropping either
+\ half fails here.
 : FROZEN-SCALARS ( -- )
    s" MINT-COUNT"
-      s" dup 0 < if E-IR-SCALAR-RANGE throw then"
+      s" dup 0 < if E-IR-SCALAR-RANGE throw then N>COUNT"
       BODY-IS
    s" MINT-POOL-OFF"
-      s" dup 0 < if E-IR-SCALAR-RANGE throw then"
+      s" dup 0 < if E-IR-SCALAR-RANGE throw then N>POOL-OFF"
       BODY-IS ;
 
 \ The allocator cell is declared once, cell-aligned, and starts at a value that

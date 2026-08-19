@@ -10,7 +10,7 @@ private
 64 constant E-USAGE
 -5666 constant E-TOTALITY
 
-CAST: BL>N ( CAD-NUM:byte-len -- n ) ;
+CAST: BL>N ( CAD-NUM:byte-len -- n )
 
 using GPT2
 

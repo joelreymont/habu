@@ -13,8 +13,8 @@ public
 
 private
 
-CAST: BL>N ( CAD-NUM:byte-len -- n ) ;
-CAST: IC>N ( CAD-NUM:item-count -- n ) ;
+CAST: BL>N ( CAD-NUM:byte-len -- n )
+CAST: IC>N ( CAD-NUM:item-count -- n )
 
 4 constant F32-BYTES
 

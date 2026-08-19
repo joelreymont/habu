@@ -6251,11 +6251,13 @@ PRIM: CHECKER-ASIG-ROW-FOR PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN PE-PTR-U8 PE-IN
 PRIM: CHECKER-REG-AOT-MARK PRIM;
 PRIM: CHECKER-REG-AOT-CLOSE PRIM;
 PRIM: CHECKER-REG-AOT-SAVE PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-\ CAST-PEND! ( name$ -- ) arms the one-shot cast-certification window (defined
-\ near CTOR-PEND below). The axiom keeps it checker-known so the roles.f CAST:
-\ declarer — an ordinary checked word — can call it; unlike CTOR-PEND!/LBUF-PEND!
-\ it is deliberately NOT xref-erased (the rationale rides at the definition).
-PRIM: CAST-PEND! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+\ CHECKER-DEFCAST ( name$ effect$ -- ) is the whole `cast:` declaration, checker
+\ side (defined beside CHECK-DOES! below). The ENGINE looks it up by name at
+\ every cast, exactly as it looks up `trust-decl`, so it needs the same axiom to
+\ survive the seal-time internal-word marking pass and stay findable;
+\ UNSAFE-TOK? rejects `checker-defcast` inside checked bodies exactly like
+\ `trust-decl`, so the axiom adds no checked-code capability.
+PRIM: CHECKER-DEFCAST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
 \ The axiom keeps it checker-known so the seal-time internal-word marking pass
 \ (src/core/internal-mark.f) leaves it executable at top level (dot
@@ -8604,6 +8606,7 @@ variable CURSYM
    a u s" deflinear" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" value-record" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" cast:" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" checker-defcast" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -8697,7 +8700,9 @@ variable UNSAFE-SYM-N
 : UNSAFE-SET-SEAL ( -- )
    s" deflinear"     UNSAFE-NAME-ADD
    s" value-record"  UNSAFE-NAME-ADD
-   s" cast:"         UNSAFE-NAME-ADD
+   \ `cast:` is an engine reader keyword, not a word, so there is no symbol for
+   \ an alias to resolve to and this row could only ever be a no-op. EXPORT still
+   \ refuses it on the NAME leg (EXPORT-RESOLVE asks UNSAFE-TOK? first).
    s" sumtype"       UNSAFE-NAME-ADD
    s" enum"          UNSAFE-NAME-ADD
    s" product"       UNSAFE-NAME-ADD
@@ -12596,25 +12601,17 @@ variable CTOR-PEND-I
    REPEAT ;
 
 \ --- checked nominal/family cast certification (dot habu-checked-cast-primitive).
-\ CAST: (roles.f) arms this one-shot window with the declared cast name, then
-\ drives an ordinary checked colon compile of ": NAME ( in -- out ) <body> ;".
-\ On the matching CHECK the body is certified against SGIN — the identity retype
-\ ( in -- in ) — while the shared publish tail records the declared ( in -- out )
-\ row. It is the CTOR-PEND sibling for the nominal/family retype class instead of
-\ generated constructors. CAST-PEND! is a plain allowlist prim (above),
-\ deliberately NOT xref-erased: the window only ever admits an ( in -- in )-
-\ certified body retyped within the same single-cell machine class, which adds no
-\ unsoundness a plain checked word could not already contain — a checked word can
-\ already mint a nominal through an existing converter. The legality gate refuses
-\ any wider power (non-unit arity, a class/width reinterpret, an undeclared
-\ family), so exposing the arming prim grants no forgery the checker lacked.
-variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
-: CAST-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u CAST-PEND-U !  a CAST-PEND-A ! ;
-: CAST-PEND-CLEAR ( -- ) 0 CAST-PEND-U ! ;
-: CAST-PEND-MATCH? ( -- bool )
-   CAST-PEND-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
-   CAST-PEND-A @ CAST-PEND-U @ NMA @ NMU @ CORE-STR=CI ;   \ NMA is case-folded; the armed name is verbatim
+\ `cast: NAME ( in -- out )` is a DECLARATION: the engine's own reader keyword
+\ publishes an identity word and asks CHECKER-DEFCAST (below, beside CHECK-DOES!)
+\ to prove the declared retype legal. The refusals here are therefore properties
+\ of the two declared TERMS and of nothing else — there is no body in this path
+\ to certify, in either front end.
+\
+\ The one-shot CAST-PEND window this replaced is deleted rather than repaired. It
+\ armed a name and let whatever definition arrived next match it, with no
+\ positional bound, so an armed window could survive unrelated definitions and
+\ still certify a later same-named one. A window that cannot be armed cannot
+\ drift.
 
 \ CAST-ROW-1? : the row is exactly one term deep over its base (open or closed).
 : CAST-ROW-1? ( n -- bool )
@@ -12662,9 +12659,10 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
       REPEAT drop
    THEN
    RES-FALSE ;
-\ CAST-CERTIFY : the matched-window certification. Throw the named reject when the
-\ declared retype is illegal, else certify the body output against SGIN (the
-\ identity ( in -- in ) flow); the shared tail then records the declared row.
+\ CAST-CERTIFY : the legality gate, in refusal order. Every clause reads the
+\ parsed declaration (SGBAD/SGHASR/SGIN/SGOUT) and throws the named reject; a
+\ cast that survives all five is legal and its declared row is registered by the
+\ caller. Nothing here observes a body.
 : CAST-CERTIFY ( -- )
    SGBAD-UNKNOWN? IF E-CAST-FAM throw THEN
    SGHASR @ 0 <> IF E-CAST-ARITY throw THEN
@@ -12680,8 +12678,7 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    TWALK-RESET
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
-   SGOUT @ CAST-ROW-TERM CAST-OWNER? 0= IF E-CAST-OWNER throw THEN
-   SGIN @ SUNI-COERCE ;
+   SGOUT @ CAST-ROW-TERM CAST-OWNER? 0= IF E-CAST-OWNER throw THEN ;
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state
 \ dictionary name after compiling the allocator and CHECK, leaving only their
@@ -12708,9 +12705,6 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
          \ Matching consumes exactly one row from the sealed constructor plan.
          \ TDECL-GEN-EVAL's catch boundary clears it on every exit.
          CTOR-EXPECTED-ROW SUNI-COERCE
-      ELSE CAST-PEND-MATCH? IF
-         CAST-PEND-CLEAR                            \ single shot, even on reject
-         CAST-CERTIFY                               \ identity retype; the tail publishes ( in -- out )
       ELSE
          LBUF-PEND-MATCH? IF
             -1 LAYOUT-INTRO !
@@ -12719,7 +12713,7 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
          ELSE
             SGOUT @ SUNI-COERCE
          THEN
-      THEN THEN
+      THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
@@ -13324,6 +13318,31 @@ public
    ELSE
       2drop  SGOUT !  SGIN !
    THEN ;
+
+\ CHECKER-DEFCAST ( name$ effect$ -- ) : the checker half of `cast: NAME
+\ ( in -- out )`. Both front ends land here — the engine's reader keyword through
+\ its publish path (habu2.f DEF-TRUST:REGISTER-CAST) and the source pre-pass
+\ through verify-source's TRUSTED: boundary — so one set of refusals runs on one
+\ set of parsed rows whichever front end read the declaration.
+\
+\ PARSE-SIG-RAW/RAW-SIG! is CHECK-DOES!'s own move, for the same reason: it is
+\ how this file parses a declared effect OUTSIDE a definition and lands
+\ SGIN/SGOUT/SGHASR, which is exactly what CAST-CERTIFY reads. Family tails
+\ resolve through SIG-SCOPE$, which is off outside the AOT intake and therefore
+\ reads the engine's real open namespace — the same scope CAST-OWNER? asks
+\ about. An unresolvable family name lands in SGBAD and is named by E-CAST-FAM,
+\ so a mistyped type cannot mint a row.
+\
+\ THE ORDER IS THE CONTRACT: refuse first, register second. A refusal throws out
+\ of here before CHECKER-USIG-CERT-ADD, and the engine calls this BEFORE it counts
+\ the record into NDICT, so a rejected cast leaves no name behind in either the
+\ checker's tables or the dictionary.
+: CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+   NEW
+   SGBAD-CLEAR
+   sa su PARSE-SIG-RAW RAW-SIG!
+   CAST-CERTIFY
+   sa su na nu CHECKER-USIG-CERT-ADD ;
 
 \ CHECK-DOES! ( body-a body-u sig-a sig-u -- verdict ) verifies a DOES> body
 \ against a created-word runtime effect.  If the created word is declared

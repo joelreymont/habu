@@ -1,15 +1,16 @@
 \ cast-suite.f - positive behavior contract for the CAST: checked retype declarer
-\ (src/core/roles.f plus the checker.f CAST-PEND certification window). Run BY THE
-\ ENGINE over stdin, like test/deftype-suite.f:
+\ (the engine's `cast:` reader keyword plus checker.f CHECKER-DEFCAST). Run BY
+\ THE ENGINE over stdin, like test/deftype-suite.f:
 \     bin/hb < test/cast-suite.f
 \ Registered as a positive gate case in test/candidate-validation.f.
 \
 \ CAST: is the converter form that ends per-declaration TRUSTED growth: the
-\ checker certifies the body under the identity row ( in -- in ) and publishes the
-\ declared ( in -- out ), so the retype is CHECKED, not trusted. This suite pins:
-\   - an empty-body cast retypes n <-> an arity-0 family scalar, both directions
+\ checker proves the declared retype legal by its five structural refusals and
+\ publishes ( in -- out ), so the retype is CHECKED, not trusted. This suite pins:
+\   - a cast retypes n <-> an arity-0 family scalar, both directions
 \   - the value passes through UNCHANGED at runtime (identity data flow)
-\   - a guard body throws out of range and passes in-range values through
+\   - a guarded conversion (a checked word plus a cast) throws out of range and
+\     passes in-range values through
 \   - a parametric cell family round-trips, and its generic projection
 \     ( family<e> -- n ) certifies both generically and at a concrete instance
 \   - a checked caller certifies against the published ( in -- out ) row, and the
@@ -42,30 +43,40 @@ NEWTYPE csbnd 0
 NEWTYPE csix 1
 
 \ 1. empty-body cast: n <-> arity-0 family scalar, both directions.
-CAST: >CSROLE ( n -- csrole ) ;
-CAST: CSROLE>N ( csrole -- n ) ;
+CAST: >CSROLE ( n -- csrole )
+CAST: CSROLE>N ( csrole -- n )
 
-\ 2. guarded cast: identity data flow plus a range guard that throws at runtime.
-CAST: >CSBND ( n -- csbnd ) dup 0 < over 128 >= or if E-CS-RANGE throw then ;
-CAST: CSBND>N ( csbnd -- n ) ;
+\ 2. a guarded conversion is TWO things now — the retype, and the checked word
+\    that refuses an out-of-range value before applying it. The runtime cases
+\    below are unchanged, which is the point: the guard still throws and the
+\    in-range value still passes through untouched.
+CAST: N>CSBND ( n -- csbnd )
+package CS-BND
+public
+: >CSBND ( n -- csbnd ) dup 0 < over 128 >= or if E-CS-RANGE throw then N>CSBND ;
+;package
+CAST: CSBND>N ( csbnd -- n )
 
 \ 3. parametric cell family: its type argument is phantom, so the generic
 \    projection is structurally non-owning.
-CAST: >CSIXN ( n -- csix<n> ) ;
-CAST: CSIX>N ( csix<e> -- n ) ;
+CAST: >CSIXN ( n -- csix<n> )
+CAST: CSIX>N ( csix<e> -- n )
 
 \ --- runtime: the value passes through unchanged (identity data flow). --------
 5 >CSROLE CSROLE>N 5 T=
 0 >CSROLE CSROLE>N 0 T=
 
 \ --- runtime: the guard passes in-range values and throws out of range. -------
-9 >CSBND CSBND>N 9 T=
-127 >CSBND CSBND>N 127 T=
+9 CS-BND:>CSBND CSBND>N 9 T=
+127 CS-BND:>CSBND CSBND>N 127 T=
 variable CS-RC
-: CS-OOR-HI ( -- ) 200 >CSBND CSBND>N drop ;
-: CS-OOR-LO ( -- ) -1 >CSBND CSBND>N drop ;
-' CS-OOR-HI catch CS-RC ! CS-RC @ E-CS-RANGE T=
-' CS-OOR-LO catch CS-RC ! CS-RC @ E-CS-RANGE T=
+package CS-OOR
+public
+: HI ( -- ) 200 CS-BND:>CSBND CSBND>N drop ;
+: LO ( -- ) -1 CS-BND:>CSBND CSBND>N drop ;
+;package
+' CS-OOR:HI catch CS-RC ! CS-RC @ E-CS-RANGE T=
+' CS-OOR:LO catch CS-RC ! CS-RC @ E-CS-RANGE T=
 
 \ --- runtime: parametric round-trip through the projection. -------------------
 7 >CSIXN CSIX>N 7 T=
@@ -80,6 +91,38 @@ s" CC-WRONG ( n -- n ) >CSROLE"              CHECK-QUIET-CANDIDATE!  0 T=
 \ the projection certifies generically and at a concrete instance.
 s" CC-PROJ ( csix<e> -- n ) CSIX>N"          CHECK-QUIET-CANDIDATE! -1 T=
 s" CC-PROJ-N ( csix<n> -- n ) CSIX>N"        CHECK-QUIET-CANDIDATE! -1 T=
+
+\ --- the declaration publishes a REAL word, not just a checker row. -----------
+\ A cast the checker knows but the dictionary does not would certify every caller
+\ in this file and then die at run time on the first call, so findable and
+\ callable are asserted apart: the record is in the live wordlist, it has an
+\ execution token, and a COMPILED caller reaches it and gets its value back.
+package CS-LINK
+s" >CSROLE" 0 search-wl 0= 0 T=          \ declared at global scope, so wordlist 0 owns it
+s" CSROLE>N" 0 search-wl 0= 0 T=
+' >CSROLE 0 <> -1 T=
+' CSROLE>N 0 <> -1 T=
+: CALL-COMPILED ( n -- n ) >CSROLE CSROLE>N ;
+11 CALL-COMPILED 11 T=
+;package
+
+\ --- a call to a cast emits ZERO instructions. -------------------------------
+\ Not a memory of a measurement: the code pointer is read around three
+\ definitions that differ only in how many casts they call, and the three spans
+\ must be equal. An empty body is 16 bytes (CP - entry - 4), which is exactly the
+\ inliner's prologue-span window, so the copied span is empty. Make the published
+\ body one instruction longer and this fails.
+package CS-BYTES
+cp@ constant B0
+: NOCAST ( n -- n ) ;
+cp@ constant B1
+: ONECAST ( n -- n ) >CSROLE CSROLE>N ;
+cp@ constant B2
+: THREECAST ( n -- n ) >CSROLE CSROLE>N >CSROLE CSROLE>N >CSROLE CSROLE>N ;
+cp@ constant B3
+B2 B1 -  B1 B0 -  T=
+B3 B2 -  B1 B0 -  T=
+;package
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

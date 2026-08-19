@@ -25,7 +25,7 @@ private
 \ A double is one unboxed cell holding its own IEEE754 bits, so a test that
 \ wants to compare a recorded literal with the engine's own literal retypes the
 \ engine's and compares cells. It is the CAST: form the checker certifies.
-CAST: REAL-CELL ( r -- n ) ;
+CAST: REAL-CELL ( r -- n )
 
 \ ---- fixtures ----------------------------------------------------------------
 : BND ( -- CBIND:binding )

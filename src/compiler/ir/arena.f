@@ -51,12 +51,12 @@ NEWTYPE cell-id 0
 
 private
 
-CAST: MINT-ARENA ( n -- IR-ARENA:arena ) ;
-CAST: ARENA>N ( IR-ARENA:arena -- n ) ;
-CAST: MINT-VIEW ( n -- IR-ARENA:view ) ;
-CAST: VIEW>N ( IR-ARENA:view -- n ) ;
-CAST: MINT-IDX ( n -- IR-ARENA:cell-id ) ;
-CAST: IDX>N ( IR-ARENA:cell-id -- n ) ;
+CAST: MINT-ARENA ( n -- IR-ARENA:arena )
+CAST: ARENA>N ( IR-ARENA:arena -- n )
+CAST: MINT-VIEW ( n -- IR-ARENA:view )
+CAST: VIEW>N ( IR-ARENA:view -- n )
+CAST: MINT-IDX ( n -- IR-ARENA:cell-id )
+CAST: IDX>N ( IR-ARENA:cell-id -- n )
 
 \ ---- capacities and packing --------------------------------------------------
 64 constant SLOT-MAX                \ live + frozen registry slots

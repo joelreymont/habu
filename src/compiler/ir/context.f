@@ -62,8 +62,8 @@ NEWTYPE ctx 0
 
 private
 
-CAST: MINT-CTX ( n -- IR-CTX:ctx ) ;
-CAST: CTX>N ( IR-CTX:ctx -- n ) ;
+CAST: MINT-CTX ( n -- IR-CTX:ctx )
+CAST: CTX>N ( IR-CTX:ctx -- n )
 
 \ ---- capacities and layout ---------------------------------------------------
 $7FFFFFFF constant SERIAL-CEILING    \ production per-context module ceiling; the

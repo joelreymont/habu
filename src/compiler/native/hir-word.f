@@ -40,8 +40,8 @@ STRUCTURE interned 0
 
 private
 
-CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n ) ;
-CAST: MID-SERIAL ( IR-ID:ir-module-id -- n ) ;
+CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
+CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
 \ ---- layout ------------------------------------------------------------------
 $48575031 constant WPOOL-MAGIC       \ "HWP1": the pick-pool header format tag

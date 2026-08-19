@@ -70,7 +70,10 @@ private
       E-TBL-BOUNDS throw
    endcase ;
 
+\ CAST: (form 5) has no closer: the declaration ends at its signature, so it
+\ classifies with the forms that finish at their name.
 : FORM-KIND ( n -- n ) {: k:n :}
+   k 5 = if LINT-DEF:DATA exit then
    k 7 < if LINT-DEF:COLON exit then
    k 13 < if k 5 - exit then
    LINT-DEF:DATA ;

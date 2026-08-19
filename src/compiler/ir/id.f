@@ -29,40 +29,44 @@ here CELL 1- and CELL swap - CELL 1- and allot
 variable NEXT-SERIAL
 0 NEXT-SERIAL !
 
-CAST: MINT-KEY ( n -- IR-ID:ir-module-key ) ;
-CAST: KEY>N ( IR-ID:ir-module-key -- n ) ;
+CAST: MINT-KEY ( n -- IR-ID:ir-module-key )
+CAST: KEY>N ( IR-ID:ir-module-key -- n )
 
-CAST: MINT-MODULE ( n -- IR-ID:ir-module-id ) ;
-CAST: MODULE>N ( IR-ID:ir-module-id -- n ) ;
+CAST: MINT-MODULE ( n -- IR-ID:ir-module-id )
+CAST: MODULE>N ( IR-ID:ir-module-id -- n )
 
-CAST: MINT-COUNT ( n -- IR-ID:ir-count )
-   dup 0 < if E-IR-SCALAR-RANGE throw then ;
+\ A cast declares a retype and carries no code, so a guarded mint is two things:
+\ the retype, and the checked word that refuses a bad value before applying it.
+CAST: N>COUNT ( n -- IR-ID:ir-count )
+: MINT-COUNT ( n -- IR-ID:ir-count )
+   dup 0 < if E-IR-SCALAR-RANGE throw then N>COUNT ;
 
-CAST: COUNT>N ( IR-ID:ir-count -- n ) ;
+CAST: COUNT>N ( IR-ID:ir-count -- n )
 
-CAST: MINT-POOL-OFF ( n -- IR-ID:ir-pool-offset )
-   dup 0 < if E-IR-SCALAR-RANGE throw then ;
+CAST: N>POOL-OFF ( n -- IR-ID:ir-pool-offset )
+: MINT-POOL-OFF ( n -- IR-ID:ir-pool-offset )
+   dup 0 < if E-IR-SCALAR-RANGE throw then N>POOL-OFF ;
 
-CAST: POOL-OFF>N ( IR-ID:ir-pool-offset -- n ) ;
+CAST: POOL-OFF>N ( IR-ID:ir-pool-offset -- n )
 
-CAST: MINT-SOURCE ( n -- IR-ID:ir-source-id ) ;
-CAST: SOURCE>N ( IR-ID:ir-source-id -- n ) ;
-CAST: MINT-FUN ( n -- IR-ID:ir-fun-id ) ;
-CAST: FUN>N ( IR-ID:ir-fun-id -- n ) ;
-CAST: MINT-BLOCK ( n -- IR-ID:ir-block-id ) ;
-CAST: BLOCK>N ( IR-ID:ir-block-id -- n ) ;
-CAST: MINT-OP ( n -- IR-ID:ir-op-id ) ;
-CAST: OP>N ( IR-ID:ir-op-id -- n ) ;
-CAST: MINT-VALUE ( n -- IR-ID:ir-value-id ) ;
-CAST: VALUE>N ( IR-ID:ir-value-id -- n ) ;
-CAST: MINT-TYPE ( n -- IR-ID:ir-type-id ) ;
-CAST: TYPE>N ( IR-ID:ir-type-id -- n ) ;
-CAST: MINT-ATTR ( n -- IR-ID:ir-attr-id ) ;
-CAST: ATTR>N ( IR-ID:ir-attr-id -- n ) ;
-CAST: MINT-SYMBOL ( n -- IR-ID:ir-symbol-id ) ;
-CAST: SYMBOL>N ( IR-ID:ir-symbol-id -- n ) ;
-CAST: MINT-SPAN ( n -- IR-ID:ir-span-id ) ;
-CAST: SPAN>N ( IR-ID:ir-span-id -- n ) ;
+CAST: MINT-SOURCE ( n -- IR-ID:ir-source-id )
+CAST: SOURCE>N ( IR-ID:ir-source-id -- n )
+CAST: MINT-FUN ( n -- IR-ID:ir-fun-id )
+CAST: FUN>N ( IR-ID:ir-fun-id -- n )
+CAST: MINT-BLOCK ( n -- IR-ID:ir-block-id )
+CAST: BLOCK>N ( IR-ID:ir-block-id -- n )
+CAST: MINT-OP ( n -- IR-ID:ir-op-id )
+CAST: OP>N ( IR-ID:ir-op-id -- n )
+CAST: MINT-VALUE ( n -- IR-ID:ir-value-id )
+CAST: VALUE>N ( IR-ID:ir-value-id -- n )
+CAST: MINT-TYPE ( n -- IR-ID:ir-type-id )
+CAST: TYPE>N ( IR-ID:ir-type-id -- n )
+CAST: MINT-ATTR ( n -- IR-ID:ir-attr-id )
+CAST: ATTR>N ( IR-ID:ir-attr-id -- n )
+CAST: MINT-SYMBOL ( n -- IR-ID:ir-symbol-id )
+CAST: SYMBOL>N ( IR-ID:ir-symbol-id -- n )
+CAST: MINT-SPAN ( n -- IR-ID:ir-span-id )
+CAST: SPAN>N ( IR-ID:ir-span-id -- n )
 
 : SERIAL-NEXT ( n -- n )
    dup 0 < over MODULE-MAX >= or if E-IR-MODULE-EXHAUSTED throw then

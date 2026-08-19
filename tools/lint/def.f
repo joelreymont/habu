@@ -38,7 +38,15 @@ private
    k WORD? 0= if LINT-FALSE exit then
    k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
+\ CAST: sits among the colon-shaped forms in the table above but it is NOT one:
+\ a cast declares a name and an effect and ends at its closing paren, with no
+\ body and no `;` to close. Classifying it as COLON would leave a scan open
+\ across whatever follows until the NEXT definition's `;`, which is exactly the
+\ mis-attribution the package-diff walk is built on this classifier to avoid.
+5 constant CAST-FORM
+
 : FORM-KIND ( n -- n ) {: k:n :}
+   k CAST-FORM = if DATA exit then
    k 7 < if COLON exit then
    k 13 < if k 5 - exit then
    DATA ;

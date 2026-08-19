@@ -24,7 +24,7 @@ private
 1 constant TAG-ERR
 U32-N TAG-N + I64-N + constant REFUSAL-N
 
-CAST: BL>N ( CAD-NUM:byte-len -- n ) ;
+CAST: BL>N ( CAD-NUM:byte-len -- n )
 
 using GPT2
 using RESULT

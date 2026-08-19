@@ -13,7 +13,7 @@ $4C constant OVERLAP-RC
 
 \ Test-only observation erases an already checked owner. It is private, cannot
 \ mint an identity, and is absent from every production compiler package.
-CAST: MODULE>SERIAL ( IR-ID:ir-module-id -- n ) ;
+CAST: MODULE>SERIAL ( IR-ID:ir-module-id -- n )
 
 create SERIALS ID# cells allot
 here CELL 1- and CELL swap - CELL 1- and allot

@@ -123,22 +123,22 @@ MAX-CELL-N 1 cells / constant MAX-ALLOC-CELLS      \ a count above this overflow
 \ become the arity-zero family, so the crossing is declared. Private to the
 \ owning package - CAST-OWNER? refuses these names anywhere else - and directly
 \ tested.
-CAST: MINT-BYTE-LEN ( n -- byte-len ) ;
-CAST: MINT-ITEM-COUNT ( n -- item-count ) ;
-CAST: MINT-CELL-COUNT ( n -- cell-count ) ;
-CAST: MINT-INDEX ( n -- index ) ;
-CAST: MINT-BYTE-OFF ( n -- byte-off ) ;
-CAST: MINT-CELL-OFF ( n -- cell-off ) ;
-CAST: MINT-ALIGNMENT ( n -- alignment ) ;
-CAST: MINT-POSITIVE-DIVISOR ( n -- positive-divisor ) ;
-CAST: MINT-ALLOC-BYTE-LEN ( n -- alloc-byte-len ) ;
-CAST: MINT-ALLOC-CELL-COUNT ( n -- alloc-cell-count ) ;
+CAST: MINT-BYTE-LEN ( n -- byte-len )
+CAST: MINT-ITEM-COUNT ( n -- item-count )
+CAST: MINT-CELL-COUNT ( n -- cell-count )
+CAST: MINT-INDEX ( n -- index )
+CAST: MINT-BYTE-OFF ( n -- byte-off )
+CAST: MINT-CELL-OFF ( n -- cell-off )
+CAST: MINT-ALIGNMENT ( n -- alignment )
+CAST: MINT-POSITIVE-DIVISOR ( n -- positive-divisor )
+CAST: MINT-ALLOC-BYTE-LEN ( n -- alloc-byte-len )
+CAST: MINT-ALLOC-CELL-COUNT ( n -- alloc-cell-count )
 
 \ ---- private proof-erasure projections (allocator bound checks only) ----------
 \ Explicit representation reads with no public inverse; a role has no primitive
 \ that consumes it directly for the zero/overflow bound test.
-CAST: BYTE-LEN>N ( byte-len -- n ) ;
-CAST: CELL-COUNT>N ( cell-count -- n ) ;
+CAST: BYTE-LEN>N ( byte-len -- n )
+CAST: CELL-COUNT>N ( cell-count -- n )
 
 \ ---- result constructors (readable names over the escaped ctor spelling) ------
 : NR-OK       ( a -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:OK ;

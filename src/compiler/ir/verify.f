@@ -116,7 +116,7 @@ private
 
 \ The one raw crossing this package needs: a one-way projection of the sealed
 \ module key onto its serial, for the derived table's header binding.
-CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n ) ;
+CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
 
 \ ---- the derived block-edge table --------------------------------------------
 $45445031 constant EDP-MAGIC         \ "EDP1": the predecessor pool header tag

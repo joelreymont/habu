@@ -340,6 +340,19 @@ create EMPTY 1 allot            \ zero-length stdin
    EXPORT-FORGE$ RUN-SUBJECT
    ASSERT-EXPORT-UNSAFE ;
 
+\ A name that is not a word at all cannot be aliased, and the engine says so
+\ before the checker is asked: EXPORT's own lookup misses and the load dies
+\ naming the token. This is the STRONGER half of the two laundering routes —
+\ nonexistence rather than a blocklist entry.
+: ASSERT-EXPORT-ABSENT ( ptr u8 n -- ) {: a:ptr u:n :}
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   ERR$ a u CONTAINS? TTRUE ;
+
+: NEG-EXPORT-ABSENT ( ptr u8 n -- )
+   2dup EXPORT-FORGE$ RUN-SUBJECT
+   ASSERT-EXPORT-ABSENT ;
+
 : EXPORT-BODY-FORGE$ ( -- ptr u8 n ) \ alias-minting line is the reject; the body never checks
    SB-RESET
    s" package IWGXP" SB-APPEND LF
@@ -408,8 +421,14 @@ create EMPTY 1 allot            \ zero-length stdin
    s" DEFLINEAR" NEG-OPENER
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
    s" VALUE-RECORD" NEG-OPENER
-   s" cast: in a checked body is rejected unsafe" T-LABEL
-   s" cast:" NEG-OPENER
+   \ `cast:` is an engine reader keyword now, not a word. In a checked BODY the
+   \ compile loop never matches an interpret keyword, so the token is undefined
+   \ and the definition never compiles — the reject moved EARLIER than the
+   \ checker's unsafe-token rule, which still refuses the spelling on the
+   \ source-checking path (test/cast-negative-suite.f pins that half).
+   s" cast: in a checked body is an undefined token" T-LABEL
+   s" cast:" OPENER-BODY-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: cast:" ASSERT-DIAG
    s" DEFER-LAYOUT-BUFFER in a checked body is rejected unsafe" T-LABEL
    s" DEFER-LAYOUT-BUFFER" NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
@@ -418,8 +437,8 @@ create EMPTY 1 allot            \ zero-length stdin
    s" DEFLINEAR" NEG-EXPORT
    s" EXPORT VALUE-RECORD rejects E-EXPORT-UNSAFE" T-LABEL
    s" VALUE-RECORD" NEG-EXPORT
-   s" EXPORT cast: rejects E-EXPORT-UNSAFE" T-LABEL
-   s" cast:" NEG-EXPORT
+   s" EXPORT cast: has no word to alias" T-LABEL
+   s" cast:" NEG-EXPORT-ABSENT
    s" EXPORT SUMTYPE rejects E-EXPORT-UNSAFE" T-LABEL
    s" SUMTYPE" NEG-EXPORT
    s" EXPORT ENUM rejects E-EXPORT-UNSAFE" T-LABEL

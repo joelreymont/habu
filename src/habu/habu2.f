@@ -1904,6 +1904,16 @@ variable LKWTRUSTRAW
 \ resolves it, and the row below bakes it.
 variable LKWTRUSTDECL
 
+\ The `cast:` declarer's three baked strings: the keyword the interpret dispatch
+\ matches, the checker registrar C-CAST reaches by name (DEF-TRUST:FIND-CAST),
+\ and the one thing that can go wrong before the signature parser takes over.
+\ Same reasoning as the two above - the spellings are a habu2.f concern - and
+\ the length sits beside the string it measures, as DEFER-DIAG's do.
+variable LKWCAST
+variable LKWDEFCAST
+variable LCASTNONAME
+29 constant CASTNONAME-LEN       \ "hb: cast: missing name after "
+
 : EMIT ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
    LKWELSE LABEL@ LBL,   s" else"   BYTES,    LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
@@ -1933,6 +1943,9 @@ variable LKWTRUSTDECL
    LKWCOMPC LABEL@ LBL,  s" compile," BYTES,
    LKWDOES LABEL@ LBL,  s" does>" BYTES,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
+   LKWCAST LABEL@ LBL, s" cast:" BYTES,
+   LKWDEFCAST LABEL@ LBL, s" checker-defcast" BYTES,
+   LCASTNONAME LABEL@ LBL, s" hb: cast: missing name after " BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  HOLD-EMIT:LHOLDQ LABEL@ LBL, s" checker-hold?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
@@ -2274,6 +2287,26 @@ public
 \ and not a model to widen.
 : REGISTER ( -- )
    FIND
+   C-PUSH-DREC-NAME
+   TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED ;
+
+\ The cast declarer's registrar, same seam and same push sequence as REGISTER
+\ above, reaching `checker-defcast` instead of `trust-decl`. The two are one
+\ concern - what the engine hands the checker when a definer declares a
+\ signature - and differ only in what the checker is asked to do with the row:
+\ `trust-decl` records it, `checker-defcast` must first prove the declared
+\ retype legal (checker.f CAST-CERTIFY's five refusals) and refuses by throwing,
+\ which is why C-CAST calls this BEFORE it counts the record into NDICT.
+: FIND-CAST ( -- )  LBL {: ok:label :}
+   9 KWDATA:LKWDEFCAST LABEL@ ADR,  10 15 MOVZ,  LFIND LABEL@ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 KWDATA:LKWDEFCAST LABEL@ ADR,  2 15 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+: REGISTER-CAST ( -- )
+   FIND-CAST
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
@@ -3224,6 +3257,125 @@ package INTERP-EMIT
    9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
    9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
    done LBL, ;
+
+\ The two ends of every definition's publish, emitted by the `;` tail below and
+\ by the cast declarer just under here. They sit this early because the cast has
+\ no `;` to wait for: it publishes inside its own keyword handler, and a keyword
+\ handler must be defined before the interpret dispatch rows name it. Their
+\ callers and the order they are called in are unchanged, so the emitted image
+\ is too.
+\
+\ The body length lands in the record at the SECOND end of a colon definition,
+\ and a declaration does not survive that far: every checker call inside the body
+\ closes the bracket, and a close clears every band. So the record is declared
+\ again where it is written, rather than once at the colon.
+: EM-COMPILE-RET ( -- )
+   9 $F94003FE LIT64,  LCEMIT LABEL@ BL,
+   9 $910043FF LIT64,  LCEMIT LABEL@ BL,
+   9 W-RET LIT64,  LCEMIT LABEL@ BL, ;
+s" em-compile-ret" s" --" TRUST
+
+: EM-COMPILE-FLUSH-PEND ( -- )
+   DOES-REC:FLUSH
+   11 DATA PEND-CELL LDR,
+   1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
+   9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
+   PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
+s" em-compile-flush-pend" s" --" TRUST
+
+\ The cast declarer joins the other interpret-mode defining-word handlers in
+\ their package: the define-keyword dispatch rows below reopen it and resolve
+\ them bare.
+package INTERP-EMIT
+
+\ `cast:` with no following token. It names the cause, then the token it went
+\ wrong on, then a newline — DEFER-DIAG's shape, and rc $4A for DEFER-DIAG's
+\ reason: a reader keyword that needed a name and reached the end of the stream.
+\ Recoverable inside evaluate, fail-closed exit at top level; it fires before any
+\ dictionary write, so rollback drops only compile state and the region flip.
+: C-CAST-DIE-NO-NAME ( -- )
+   0 2 MOVZ,  1 KWDATA:LCASTNONAME LABEL@ ADR,  2 KWDATA:CASTNONAME-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,
+   0 $4A MOVZ,  LCOMPILEDIE LABEL@ B, ;
+
+\ `cast: NAME ( in -- out )` — the checked retype declarer, and the reason it is
+\ a reader keyword and not a word: a word would have to read its own name and
+\ signature off the live input and drive them back through `evaluate`, which
+\ src/core/roles.f did and which no file loading before src/core/include.f can
+\ do (LESSONS 2026-08-19). As a keyword the whole form is read here, where the
+\ engine already has the token reader.
+\
+\ IT IS A DECLARATION, NOT A DEFINITION. There is no body to read and no `;` to
+\ wait for, so the form completes inside this handler: the interpret loop never
+\ enters compile state (PEND-CELL is cleared before the return), which is why
+\ none of this needs a cell of engine state to survive a token boundary.
+\
+\ WHAT IT PUBLISHES is byte-for-byte an empty checked colon body: the same
+\ prologue, the same epilogue, and the same recorded length rule (CP - entry - 4
+\ = 16). That is not a coincidence to preserve by hand — it is what makes a call
+\ to a cast free. The inliner's prologue-span rule copies a 16-byte body as the
+\ span [entry+8, entry+8), which is empty, so a call site emits ZERO
+\ instructions and the retype costs nothing at run time.
+\
+\ THE REGISTRAR RUNS BEFORE THE RECORD IS COUNTED. CHECKER-DEFCAST throws the
+\ named refusal (E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR) for an illegal retype, and
+\ a refused cast must not leave a callable name behind, so NDICT is bumped only
+\ after the checker has accepted the row — the same order the colon publish tail
+\ uses (EM-COMPILE-PUBLISH-TRUSTED registers, then `publish`).
+\
+\ AND EM-REC-WIDE-PUBLISH IS NOT OPTIONAL HERE. Registering the row latches the
+\ checker's record facts, and this tail is what POKES them into the record that
+\ was just published — for a cast, the certified minimum input arity of
+\ `( in -- out )`, which is 1. Drop the call and the arity bits are never
+\ written: a bare `>ROLE` typed at an empty stack stops being refused and reads
+\ the cell below the interpret base instead. Measured both ways
+\ (test/cast-negative-suite.f pins the refusal).
+\
+\ THE REGISTRAR IS ASKED UNDER THE SAME CONDITION THE DRAIN IS, so the two can
+\ never be out of step. There are two worlds with no hook and a cast is legal in
+\ both: the window
+\ before src/core/check-hook.f installs one (a cast there publishes exactly as a
+\ `:` definition does, and the fixpoint's certification pass runs the five
+\ refusals over the same source text through verify-source), and the recovery
+\ engine, whose source list has no checker in it at all — an unguarded call
+\ there would exit 70 on the FIRST file tools/bootstrap.sh feeds it.
+: C-CAST ( -- )
+   C-TASK-LIVE-GUARD
+   LBL LBL LBL LBL {: cpok:label ndok:label named:label nohook:label :}
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
+   9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
+      C-DIE-CODE-FULL
+   cpok LBL,
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
+      C-DIE-DICT-FULL
+   ndok LBL,
+   LTOK LABEL@ BL,  0 named CBNZ,
+      C-CAST-DIE-NO-NAME
+   named LBL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+   LBCAP LABEL@ BL,                                  \ "NAME " — the spelling the registrar reads
+   C-CLEAR-TRUSTED-STATE
+   C-PARSE-REQUIRED-SIG                              \ malformed or missing sig dies named (rc 76)
+   C-QUALIFY-DEF
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 DATA PEND-CELL STR,
+   1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,  \ the record this declaration publishes
+   C-STORE-DEF-NAME
+   CP 9 0 STR,
+   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,             \ sub sp, sp, #16
+   9 $F90003FE LIT64,  LCEMIT LABEL@ BL,             \ str x30, [sp]
+   EM-COMPILE-RET
+   EM-COMPILE-FLUSH-PEND
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+      DEF-TRUST:REGISTER-CAST
+   nohook LBL,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-REC-WIDE-PUBLISH
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+
+;package
 
 : C-DEFER-DIE-TOKEN ( n -- ) {: rc:n :}               \ boot-integrity backstop: the bare token, then exit rc; recoverable inside evaluate, fail-closed exit rc at top level. Its ONE caller is C-DEFER-FIND-UNSET ($46), which fires before its DP alloc, so the eval-frame / REPL rollback drops only compile-state + region prot. It stays token-only on purpose: the token there is the engine's own `defer-unset` primitive name, not a name the source wrote, so there is no source misuse to explain. The four causes that ARE source misuse each name themselves through DEFER-DIAG below. Distinct from the pre-trust boot-integrity backstops (C-PD-DIE-FULL exit 72, BSEALCAP exit 73) which do NOT route here and STAY hard exits.
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -6568,6 +6720,7 @@ package INTERP-EMIT
    s" ;using" KEEP? IF LMAIN LABEL@ LKWSEMIUSING 6 ['] C-END-USING CF-ENTRY THEN
    s" export" KEEP? IF LMAIN LABEL@ LKWEXPORT 6 ['] C-EXPORT CF-ENTRY THEN
    s" trusted:" KEEP? IF LMAIN LABEL@ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
+   s" cast:" KEEP? IF LMAIN LABEL@ KWDATA:LKWCAST 5 ['] C-CAST CF-ENTRY THEN
    s" defer" KEEP? IF LMAIN LABEL@ LKWDEFER 5 ['] C-DEFER CF-ENTRY THEN
    s" create" KEEP? IF LMAIN LABEL@ LKWCREATE 6 ['] C-CREATE   CF-ENTRY THEN
    s" variable" KEEP? IF LMAIN LABEL@ LKWVAR    8 ['] C-VARIABLE CF-ENTRY THEN
@@ -6640,12 +6793,6 @@ s" em-interpret" s" --" TRUST
       9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,
    done LBL, ;
 s" em-compile-drop-locals" s" --" TRUST
-
-: EM-COMPILE-RET ( -- )
-   9 $F94003FE LIT64,  LCEMIT LABEL@ BL,
-   9 $910043FF LIT64,  LCEMIT LABEL@ BL,
-   9 W-RET LIT64,  LCEMIT LABEL@ BL, ;
-s" em-compile-ret" s" --" TRUST
 
 \ ---- item 12 slice 3b: pass-2 width-aware transport lowering ---------------
 \ ONE mechanism for every transport tier (register shuffle, inline rs keyword,
@@ -7554,18 +7701,6 @@ s" em-p2-check-definer" s" --" TRUST
    9 DATA TXN-FETCH-I-CELL STR,
    nop2 LBL, ;
 s" em-p2-finish" s" --" TRUST
-
-\ The body length lands in the record at the SECOND end of the definition, and a
-\ declaration does not survive that far: every checker call inside the body closes
-\ the bracket, and a close clears every band. So the record is declared again
-\ here, where it is written, rather than once at the colon.
-: EM-COMPILE-FLUSH-PEND ( -- )
-   DOES-REC:FLUSH
-   11 DATA PEND-CELL LDR,
-   1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
-   9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
-   PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL, ;
-s" em-compile-flush-pend" s" --" TRUST
 
 : EM-COMPILE-PUBLISH-TRUSTED ( label -- ) {: publish:label :}
    LBL LBL LBL {: ttrusted ndhas ndchk :}
@@ -8706,6 +8841,7 @@ package LABELS
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !

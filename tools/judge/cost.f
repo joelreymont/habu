@@ -152,7 +152,7 @@ public
 \ so this is a retype and not a conversion. The recorded value is the whole
 \ cell, which makes two columns agree only if every bit agrees: finer than float
 \ equality at +0.0 against -0.0, and at a NaN, both deliberately.
-CAST: REAL-BITS ( r -- n ) ;
+CAST: REAL-BITS ( r -- n )
 
 private
 

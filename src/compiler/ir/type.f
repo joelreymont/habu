@@ -171,8 +171,8 @@ private
 \ The one raw crossing this package needs: one-way projections of the sealed
 \ IR-ID identities onto their serials, for header binding and owner
 \ comparison. Nothing in this package re-mints a raw cell into a nominal.
-CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n ) ;
-CAST: MID-SERIAL ( IR-ID:ir-module-id -- n ) ;
+CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n )
+CAST: MID-SERIAL ( IR-ID:ir-module-id -- n )
 
 \ ---- layout ------------------------------------------------------------------
 $54594C31 constant TYL-MAGIC         \ "TYL1": the list-pool header format tag
