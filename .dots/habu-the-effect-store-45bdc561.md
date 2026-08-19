@@ -1,6 +1,6 @@
 ---
 title: "The effect store is 30x bloated: audit and slim it"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-18T19:52:30.439112+02:00"
@@ -40,3 +40,6 @@ still carries the 9-cell node at 2.6 cells full - node packing
 is a future format question (rides b659718e's family), not this
 fix.
 
+Claim: agent=effstore-2 workspace=.jj-ws/habu-effstore
+Takeover 2026-08-19: the earlier lane left no code and no claim line; this
+lane re-derived the phase-1 table from the tree before touching anything.
