@@ -104,10 +104,8 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
 
 ## Blackboard
 
-- `.blackboard/` is the chat channel between orchestrators — mechanics in
-  the bb skill. Check for unread messages at least every 60 seconds and
-  before and after every launch, review, commit, merge, or push; post on
-  every state change.
-- Show the user every message you post, with its channel and ID. Ask the
-  user in the conversation, not through the blackboard. Don't leave watchers
-  or workers running after the SSH session ends.
+- `.blackboard/` is the inter-orchestrator channel (bb skill) — it exists only
+  while more than one orchestrator is live. If the directory exists, check it
+  before and after every launch, review, merge, or push, and show the user
+  every message you post. Ask the user in the conversation, never through it.
+- Don't leave watchers or workers running after the session ends.
