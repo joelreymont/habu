@@ -8,8 +8,7 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
 ## Orchestrator Role (BLOCKING)
 
 - The main session plans, dispatches, reviews, and merges. It never writes
-  implementation code itself.
-- All coding is done by worker subagents (Opus for Claude).
+  implementation code itself; all coding is done by worker subagents.
 - Review every worker diff hunk by hunk before merging. No hacks, no shaved
   scope; only long-term-correct code merges. Substandard work goes back to
   the worker or to a fresh attempt.
@@ -29,153 +28,86 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
   deleted with existing mechanisms first.
 - When a design survives the probe, build the smallest sufficient form — one
   generator or compiler change beats a record/parse/enforce campaign.
-- Precedent (2026-08-04): a three-leaf owner-construction campaign was stopped
-  when production tests proved cfg-proof mints are already unresolvable outside
-  their package and layer re-MAKE is revalidated at every use — the existing
-  proof ceremony already enforced the needed boundary, so replacing it added no
-  product capability. Whether KV needs a one-cell opaque handle,
-  and whether private products or zero-field families cover it, is unresolved
-  and must be probed before any construction-authority mechanism is minted.
-
-## Conventions
-
-- If `bin/hb` is ever lost or broken, recover with
-  `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` (see `docs/bootstrap.md`).
-  Gforth is only a recovery host: it produces a working `bin/hb`, and the
-  native build takes over from there.
+  (Precedent: LESSONS.md, the 2026-08-04 owner-construction stop.)
 
 ## Forth Style (BLOCKING)
 
 - `docs/forth.md` is the standard — naming, packages, factoring, stack
-  signatures, testing, the commit gate, and the Checker-Miss RCA template
-  all live there. Read it at session start. The heart of it: small typed
-  words, factored aggressively, composed into readable checked
-  mini-languages.
-- One concern per file; split where responsibilities split.
-
-## Packages (BLOCKING)
-
-- Every new module opens a real `package NAME`; see `docs/forth.md`
-  § Packages. Run the package lint as soon as the first definition exists;
-  if it rejects a caller, fix the caller — no exceptions, no forwarding
-  shims.
+  signatures, testing, the commit gate, and the Checker-Miss RCA template.
+  Read it at session start. The heart of it: small typed words, factored
+  aggressively, composed into readable checked mini-languages. One concern
+  per file.
+- Every new module opens a real `package NAME`. Run the package lint as soon
+  as the first definition exists; if it rejects a caller, fix the caller — no
+  forwarding shims.
+- If `bin/hb` is ever lost or broken, recover with
+  `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` (`docs/bootstrap.md`).
 
 ## Test Integrity (BLOCKING)
 
-- A test must run the real thing: the same entry point and load path that
-  production uses. A test that re-implements the logic it is checking — a
-  copied validator, a hand-built state machine, a synthetic stand-in —
-  proves nothing about the implementation.
+- A test must run the real thing: the production entry point and load path.
+  A test that re-implements the logic it checks proves nothing.
 - A test for a parser or lint tool must check the structure of the input,
-  not just search its text. Include fixtures built to fool it: the expected
-  text hidden in a comment or a string, duplicated, reordered, or in the
-  wrong role. "The file contains this substring" is not proof.
+  not just search its text; include fixtures built to fool it. "The file
+  contains this substring" is not proof.
 
 ## Proof Integrity (BLOCKING)
 
-- Worth test for a published result: could a plausible change to the Habu code
-  falsify it? If not, it does no work. Mutate the CODE to decide — a result
-  that only breaks when the model is edited with it has no independent content.
-- A result that restates the model's own definition (proving `push` appends
-  when `push` is defined as appending) constrains nothing. Demote to `Lemma`
-  or delete; never publish it in a manifest, which inflates apparent coverage.
-- A family of concrete examples failing under one mutation is one result under
-  many names. Generalise to a universal statement or keep a representative few.
-- Every model carries counterexamples and negative results (a guard's removal
-  admits a bad state). A model with none is suspect.
-- Unprovable is a RESULT: record it in MODEL GAPS. Never weaken a statement
-  until it passes.
-- Falsify every parity-gate clause by mutation before believing the gate.
+- `docs/proofs.md` governs published results: mutation-falsifiable only,
+  and unprovable is a result, never a weakened statement. Read it before
+  touching models, manifests, or parity gates.
 
 ## Habu Only (BLOCKING)
 
-- Prefer Habu to write new tooling.
-- Unchecked Habu (`0 set-check`, `TRUSTED:`) is allowed only as a named,
-  tested boundary around something the checker cannot yet express — with a
-  dot for the missing capability, and the boundary removed when it lands.
+- Prefer Habu to write new tooling. Unchecked Habu (`0 set-check`,
+  `TRUSTED:`) only as a named, tested boundary around something the checker
+  cannot yet express — with a dot for the missing capability, and the
+  boundary removed when it lands.
 
 ## Correct Fixes (BLOCKING)
 
-- No hacks, no patches, no workarounds. Find the root cause, repair the
-  broken invariant, keep a test that proves the repair, and file dots for
-  whatever real work remains.
 - When a bug makes you ask "why didn't the checker catch this?", answer that
-  first: what rule should have made the bug impossible, and where should the
-  checker enforce it? Before touching runtime or library code, establish:
-  proof that the failure fails loudly on its load path (a minimal bad
-  program, its exit code, its error message), a minimal reproducer, and the
-  checker fix — or a dot for the missing capability — plus a regression test
-  showing the bad program is now rejected. Template: `docs/forth.md`
-  § Checker-Miss RCA.
-- If the checker can't express the needed rule yet, don't paper over the gap
-  with runtime guards everywhere. File a dot for the checker capability and
-  keep one named, tested boundary until it lands.
+  first: proof the failure fails loudly on its load path, a minimal
+  reproducer, and the checker fix — or a dot for the missing capability —
+  plus a regression test showing the bad program is now rejected. Template:
+  `docs/forth.md` § Checker-Miss RCA.
+- Never paper over a checker gap with runtime guards everywhere; one named,
+  tested boundary until the capability lands.
 
 ## Lessons
 
-- Read `docs/forth.md` and `LESSONS.md` at the start of every session, and
-  add to `LESSONS.md` whenever you learn something.
-- `LESSONS.md` is for lessons only — what worked, what didn't, why.
-  Reference material goes in `docs/`.
+- Read `docs/forth.md` and `LESSONS.md` at the start of every session; add to
+  `LESSONS.md` whenever you learn something. Lessons only — reference
+  material goes in `docs/`.
 
 ## Workflow
 
-- Version control is `jj`. Mechanics and safety rules live in the global
-  `jj` skill; dispatch and claim choreography in the global `dots` and
-  `parallel-agents` skills. Read-only scouts don't edit the tree; workers
-  edit in their own jj workspaces under `.jj-ws/`.
-- **Master is always green (BLOCKING).** Never point `master` at a commit
-  whose gates haven't passed. Work on your own branch and push there freely;
-  fast-forward `master` only after, on the exact tree being merged, all of
-  these are green: the maki suite (`bin/hb --load maki/test.f`), the
-  ptx-stdlib slice plus any native slices you touched.
-  Red, skipped, or unrun means no merge. A red master is a stop-everything
-  incident, and nobody commits to `master` directly.
-- Forth commit gate (BLOCKING): `docs/forth.md` § Commit gate.
-- Dots (BLOCKING): claim by writing
-  `Claim: agent=<name> workspace=.jj-ws/<dot-id>` into the leaf, run
-  `dot on <exact-id>`, and pass the dot lint
+- Version control is `jj`; mechanics in the jj skill, claim choreography in
+  the dots skill, dispatch doctrine in the parallel-agents skill. Read-only
+  scouts don't edit the tree; workers edit in their own `.jj-ws/` workspaces.
+- **Master is always green (BLOCKING).** Fast-forward `master` only after,
+  on the exact tree being merged, the maki suite
+  (`bin/hb --load maki/test.f`), the ptx-stdlib slice, and any native slices
+  you touched are all green. Red, skipped, or unrun means no merge; a red
+  master is a stop-everything incident; nobody commits to `master` directly.
+  Commit gate: `docs/forth.md` § Commit gate.
+- Dots (BLOCKING): claim per the dots skill and pass the dot lint
   (`HB_TMP=<private-root> bin/hb --load tools/dot-dep-lint.f` — exit 0,
-  `0 finding(s)`) before publishing the claim. The dot stays active until
-  its reviewed commit is merged and verified; only then
-  `dot off <exact-id> -r "..."`. Never rerun `dot on` on an active dot — it
-  rewrites metadata. Never take a dot that is blocked or claimed by someone
-  else. Dot metadata changes publish like code: gates, green `master`,
-  verified remote, before anything that depends on them merges.
-- If a generated test fixture hangs, times out, or dies silently, find out
-  why before shrinking or bypassing it. "Too expensive" is not a diagnosis.
-- Debug native crashes with the debugger first — breakpoints, stepping,
-  memory inspection (`docs/debugging.md`). If the debugger can't show the
-  state you need, extend the debugger before falling back to print probes.
-- **Build the tool, don't guess (BLOCKING).** On a crash, hang, or opaque
-  exit code, get evidence with a tool — and if no tool shows it, build a
-  small reusable one (a catch-and-report word, a dumper, an inspector)
-  instead of print-and-retry guessing. Keep it in `tools/` or
-  `docs/debugging.md` so the next crash starts with a tool. (An opaque exit
-  183 was solved in minutes by catching it in gdb and reading a register:
-  error -3401.)
+  `0 finding(s)`) before publishing the claim. The dot stays active until its
+  reviewed commit is merged and verified. Never rerun `dot on` on an active
+  dot; never take a blocked or claimed dot. Dot metadata publishes like code.
+- If a generated fixture hangs, times out, or dies silently, find out why
+  before shrinking or bypassing it. Debug native crashes with the debugger
+  first (`docs/debugging.md`); on any opaque failure, build a small reusable
+  tool (kept in `tools/` or `docs/debugging.md`) instead of print-and-retry
+  guessing.
 
 ## Blackboard
 
-- `.blackboard/` is the chat channel between orchestrators. Check for unread
-  messages at least every 60 seconds while working, and before and after
-  every launch, review, commit, merge, or push.
-- Post when you take, pause, block, redesign, review, commit, land, or
-  release work. Ask design questions early instead of discovering divergent
-  implementations later.
-- Blackboard messages don't replace review or the dot contract. Ask the user
-  in the conversation, not through the blackboard.
-- Show the user every message you post, with its channel and ID. Ideas,
-  honest feelings, and humor are welcome. Don't leave watchers or workers
-  running after the SSH session ends.
-
-## Fix Review Gate (BLOCKING)
-
-- Before a fix merges, the reviewer independently answers: is this the
-  correct long-term fix, or a patch dressed up as one? Re-derive the
-  invariant from the code; never take the implementer's own label
-  ("minimal", "documented pattern") as evidence.
-- A fix that leans on a lucky value — a magic range, a sentinel, timing —
-  where a structural check is possible (existence, capability probe, single
-  writer) is a patch. Send it back.
-- Workers answer the same question in their final reports.
+- `.blackboard/` is the chat channel between orchestrators — mechanics in
+  the bb skill. Check for unread messages at least every 60 seconds and
+  before and after every launch, review, commit, merge, or push; post on
+  every state change.
+- Show the user every message you post, with its channel and ID. Ask the
+  user in the conversation, not through the blackboard. Don't leave watchers
+  or workers running after the SSH session ends.

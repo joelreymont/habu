@@ -7443,3 +7443,12 @@ and --no-lldbinit.
   way — diffing the per-word byte/branch/chain tables the -run tools print
   against a pre-edit capture is what proves a corpus conversion changed
   nothing. Capture the tables BEFORE the first edit.
+- **Probe the existing ceremony before minting a construction-authority
+  mechanism (2026-08-04 precedent).** A three-leaf owner-construction campaign
+  was stopped when production tests proved cfg-proof mints are already
+  unresolvable outside their package and layer re-MAKE is revalidated at every
+  use — the existing proof ceremony already enforced the needed boundary, so
+  the replacement added no product capability. Still open: whether KV needs a
+  one-cell opaque handle, and whether private products or zero-field families
+  cover it, must be probed before any construction-authority mechanism is
+  minted.
