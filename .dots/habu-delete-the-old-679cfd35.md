@@ -21,3 +21,13 @@ reaching case exists should be answered THEN, against the final code, not
 against scaffolding. thecut-2's four measured non-reaching shapes (package
 close -8573, TRUSTED -8400, 0 set-check exit 70, unsigned infers) are the
 starting evidence.
+
+Also carried from habu-model-the-interpreter-f450db18 (closed 2026-08-19,
+same ruling): src/compiler/native/input.f (NINP) exists only to serve
+NMIGRATE:NEXT's evaluate-tail trick - the whole file, its two TRUSTED: rows,
+its two error codes and the NINP:CLOSE call in feed.f ON-DONE die here with
+the entry. The modeled-input-cursor checker capability the dot asked for has
+no consumer that survives the cut; if the final define path ever needs a
+stream-cursor seam, design it then against the final code. Until then the
+boundary stays exactly as landed: named, tested byte-exact by
+test/compiler/native-stream.f, and scheduled to die.
