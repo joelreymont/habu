@@ -35,19 +35,18 @@ variable DTC-SIG-U
 : DTC-SIG$ ( -- ptr u8 n )
    DTC-BUF DTC-SIG-OFF @ + DTC-SIG-U @ ;
 
+\ The buffer carries two spans and nothing else: DECL-SIGNATURE is handed
+\ DTC-NAME$ and DTC-SIG$ separately, so no declaration text is built here.
 : DTC-BEGIN ( -- )
    DTC-CLEAR
-   s" TRUSTED: " DTC+
    DTC-U @ DTC-NAME-OFF ! ;
 
 : DTC-NAME-END ( -- )
    DTC-U @ DTC-NAME-OFF @ - DTC-NAME-U !
-   s"  ( " DTC+
    DTC-U @ DTC-SIG-OFF ! ;
 
 : DTC-SIG-END ( -- )
-   DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U !
-   s"  ) ;" DTC+ ;
+   DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U ! ;
 
 : DTC-BUILD-IN ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n :}
    DTC-BEGIN
