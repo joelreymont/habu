@@ -388,10 +388,6 @@ public
    IN-N @ IN-MAX >= if E-JUDGE-PASS-INPUTS throw then
    IN-N @ 1+ IN-N ! ;
 
-\ How many the row states.
-: INPUTS ( -- n )
-   IN-N @ ;
-
 \ What a VALUE body runs before the call, for a subject that is not idempotent.
 : SETUP+ ( ptr u8 n ptr u8 n -- ) {: ha:ptr hu:n ra:ptr ru:n :}
    STATED

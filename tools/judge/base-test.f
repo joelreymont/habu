@@ -18,12 +18,10 @@
 \ there rather than leaving these fixtures agreeing with a format nothing
 \ writes any more.
 \
-\ THE FIXTURES ARE BUILT TO FOOL A READER THAT SEARCHED FOR TEXT. A row-shaped
-\ line inside the prose, a subject name written in a sentence, a row whose
-\ verdict word is not one, a row with a field missing, the same subject twice,
-\ and a `rows:` count that disagrees with the rows under it. A reader that
-\ matched substrings, or that trusted the count, or that stopped at the first
-\ bad line, fails one of them.
+\ THE FIXTURES ARE BUILT TO FOOL A READER THAT SEARCHED FOR TEXT. The subject's
+\ name written inside a sentence that also carries its numbers, and a row-shaped
+\ line under the marker where the costs are. A reader that matched substrings,
+\ or that read past the marker, fails one of them.
 
 require lib/errors.f
 require lib/prelude.f
@@ -106,8 +104,6 @@ variable FIX-U
    SNAPSHOT
    READ-BACK 0 T=
    JUDGE-BASE:ROWS 2 T=
-   JUDGE-BASE:DECLARED@ 2 T=
-   JUDGE-BASE:MALFORMED@ 0 T=
    JUDGE-BASE:REGRESSIONS 0 T=
    JUDGE-BASE:IMPROVEMENTS 0 T=
 
@@ -116,7 +112,6 @@ variable FIX-U
    k 0 >= TTRUE
    k JUDGE-BASE:OLD@ 100 T=
    k JUDGE-BASE:CHAIN@ 40 T=
-   k JUDGE-BASE:REF@ 12 T=
    k JUDGE-BASE:DS-OLD@ 9 T=
    k JUDGE-BASE:DS-NEW@ 3 T=
    k JUDGE-BASE:REFUSED@ TFALSE ;
@@ -239,96 +234,44 @@ variable FIX-U
 : ONE-TRUE-ROW$ ( -- ptr u8 n )
    S\" CODEGEN-CORPUSX:ONE                 100     40     12       9       3  smaller\n" ;
 
+\ Every fixture carries this line, and no fixture asserts anything about it:
+\ what it is here for is that `rows:` ends in its colon, so a reader that let it
+\ open a row would answer one row too many on every case below.
 : TALLY-1$ ( -- ptr u8 n )
    S\" \nrows: 1, refused by the chain: 0, larger than the engine's: 0\n" ;
-
-: TALLY-2$ ( -- ptr u8 n )
-   S\" \nrows: 2, refused by the chain: 0, larger than the engine's: 0\n" ;
 
 : FOOL-CASES ( -- )
    ONE-ROW-TABLE
 
-   \ A sentence that NAMES the subject and carries numbers, but is not a row.
-   \ A reader that searched the file for the subject's name would find it here.
+   \ A sentence that names the subject and then carries a WHOLE ROW's fields
+   \ behind it. A reader that searched the line for its first qualified token
+   \ instead of taking the line's first word would build a second row here, and
+   \ the table would answer about one of two programs under one name.
    s" a subject named inside a sentence is prose and not a row" T-LABEL
    FIX-RESET
    HEAD$ FIX+
-   S\" the row CODEGEN-CORPUSX:ONE was 100 bytes and is 40 bytes today\n" FIX+
+   S\" the row CODEGEN-CORPUSX:ONE 100 40 12 9 3 smaller was measured today\n"
+      FIX+
    ONE-TRUE-ROW$ FIX+
    TALLY-1$ FIX+
    FIX-END
    READ-BACK 0 T=
    JUDGE-BASE:ROWS 1 T=
-   JUDGE-BASE:MALFORMED@ 0 T=
 
-   \ The same subject, written twice with the whole shape of a row. Two rows
-   \ under one name is a table that answers about one of two programs, so the
-   \ declared count is what catches it.
-   s" the same row written twice disagrees with the count the file declares"
-   T-LABEL
-   FIX-RESET
-   HEAD$ FIX+
-   ONE-TRUE-ROW$ FIX+
-   ONE-TRUE-ROW$ FIX+
-   TALLY-1$ FIX+
-   FIX-END
-   READ-BACK 0 > TTRUE
-   JUDGE-BASE:ROWS 2 T=
-
-   \ A line that opens with a subject name and then is not a row. It is not
-   \ prose: it already claimed to be a row with its first word.
-   s" a line that opens with a subject name and lacks a field is malformed"
+   \ A line that opens with a subject name and then runs out of fields. It
+   \ stores no row, and the point is that this cannot go quiet: the subject this
+   \ run measured has no partner in the artifact and is reported as a row the
+   \ artifact does not have.
+   s" a line that opens with a subject name and lacks a field stores no row"
    T-LABEL
    FIX-RESET
    HEAD$ FIX+
    S\" CODEGEN-CORPUSX:ONE                 100     40     12  smaller\n" FIX+
-   ONE-TRUE-ROW$ FIX+
    TALLY-1$ FIX+
    FIX-END
-   READ-BACK 0 > TTRUE
-   JUDGE-BASE:MALFORMED@ 1 T=
-   JUDGE-BASE:ROWS 1 T=
-
-   s" a verdict word that is not one of the four is malformed" T-LABEL
-   FIX-RESET
-   HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40     12       9       3  better\n" FIX+
-   TALLY-1$ FIX+
-   FIX-END
-   READ-BACK 0 > TTRUE
-   JUDGE-BASE:MALFORMED@ 1 T=
+   READ-BACK 1 T=
    JUDGE-BASE:ROWS 0 T=
-
-   s" a row with a word after its verdict that is not (tail) is malformed"
-   T-LABEL
-   FIX-RESET
-   HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40     12       9       3  smaller yes\n" FIX+
-   TALLY-1$ FIX+
-   FIX-END
-   READ-BACK 0 > TTRUE
-   JUDGE-BASE:MALFORMED@ 1 T=
-
-   s" a subject with no C twin carries a dash and is a row all the same" T-LABEL
-   FIX-RESET
-   HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40      -       9       3  smaller\n" FIX+
-   TALLY-1$ FIX+
-   FIX-END
-   READ-BACK 0 T=
-   JUDGE-BASE:ROWS 1 T=
-   s" CODEGEN-CORPUSX:ONE" JUDGE-BASE:FIND JUDGE-BASE:REF@
-      JUDGE-ROW:NO-REFERENCE T=
-
-   s" the count a file declares is checked against the rows it carries" T-LABEL
-   FIX-RESET
-   HEAD$ FIX+
-   ONE-TRUE-ROW$ FIX+
-   TALLY-2$ FIX+
-   FIX-END
-   READ-BACK 0 > TTRUE
-   JUDGE-BASE:DECLARED@ 2 T=
-   JUDGE-BASE:ROWS 1 T=
+   JUDGE-BASE:GAINED 1 T=
 
    s" and a file with no marker line is refused, never read to its end" T-LABEL
    FIX-RESET
@@ -348,8 +291,7 @@ variable FIX-U
    FIX-END
    S\" CODEGEN-CORPUSX:ONE                  1.69     0.30     0.11     0.02     0.01\n" FIX+
    READ-BACK 0 T=
-   JUDGE-BASE:ROWS 1 T=
-   JUDGE-BASE:MALFORMED@ 0 T= ;
+   JUDGE-BASE:ROWS 1 T= ;
 
 public
 

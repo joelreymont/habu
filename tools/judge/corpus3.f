@@ -13,7 +13,7 @@
 \ THE ANSWERS ARE COMPARED BIT FOR BIT. A double is one unboxed cell holding its
 \ own IEEE754 bit pattern (the survey at the head of the corpus file establishes
 \ that from the engine's source and from what it prints), so a generated body
-\ projects it through CODEGEN-COMPARE:REAL-BITS - the one route the comparison
+\ projects it through JUDGE-COST:REAL-BITS - the one route the comparison
 \ already records floats by - and the columns are held against the whole cell.
 \ Two cells that differ by a bit are two different doubles: a column that
 \ reassociated a sum, flushed a subnormal, lost the sign of a zero or produced
@@ -35,7 +35,7 @@ require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-cabi.f
-require tools/codegen-compare-core.f
+require tools/judge/cost.f
 require tools/codegen-compare-corpus3.f
 require tools/judge/pass.f
 
@@ -78,10 +78,10 @@ public
 private
 
 : W-BITS ( n -- n )
-   CODEGEN-CORPUS3:W-CELL CODEGEN-COMPARE:REAL-BITS ;
+   CODEGEN-CORPUS3:W-CELL JUDGE-COST:REAL-BITS ;
 
 : C-W@ ( n -- n )
-   s" hc3_w_get" CODEGEN-CABI:FN CODEGEN-CABI:ID CODEGEN-COMPARE:REAL-BITS ;
+   s" hc3_w_get" CODEGEN-CABI:FN CODEGEN-CABI:ID JUDGE-COST:REAL-BITS ;
 
 public
 

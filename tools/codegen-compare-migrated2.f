@@ -70,10 +70,8 @@
 \ else: the reader starts at the `:` that follows NMIGRATE:NEXT, so a comment
 \ written above the entry is outside the source the chain compiles.
 
-require lib/errors.f
 require lib/prelude.f
 require src/compiler/native/migrate.f
-require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus2.f
 
 \ The definitions land in the corpus's own package, reopened: the `-N` words are

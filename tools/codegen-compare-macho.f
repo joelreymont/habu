@@ -299,9 +299,15 @@ public
 : COUNT ( -- n )
    SYM-N @ ;
 
+private
+
+\ Only the search below reads a stored name: a caller names a twin and asks for
+\ its size, never the other way round.
 : NAME$ ( n -- ptr u8 n ) {: k:n :}
    k SYM-OK NAME-AT
    NAME-LENS k SLOT @ ;
+
+public
 
 \ Which symbol goes by this name, or -1.
 : FIND ( ptr u8 n -- n ) {: a:ptr u:n :}

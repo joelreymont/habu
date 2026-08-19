@@ -21,15 +21,13 @@
 \ is what the run SAYS: the rows that moved, named, each with its direction.
 \
 \ THE READING IS STRUCTURAL, NOT A SEARCH. The checked half is split into lines
-\ and a line becomes a row only if it has the whole shape of one: a qualified
-\ subject name - exactly one colon, at neither end - then the engine's byte
-\ count, then the chain's cell, then the reference cell or a dash, then one of
-\ the four verdict words, and then nothing but an optional `(tail)`. Prose is
-\ everything else. So the expected text hidden inside a sentence satisfies
-\ nothing: either it is a well-formed row, in which case it is an EXTRA row and
-\ reported, or it is not, in which case the line is reported as malformed. The
-\ file also declares its own row count on its `rows: N` line, so a deleted row
-\ is a finding even when this run lost the same subject.
+\ and a line opens a row only when its FIRST word is a qualified subject name -
+\ exactly one colon, at neither end. Prose is everything else, so the subject's
+\ name written inside a sentence reads as the sentence it is in; `rows:` ends in
+\ its colon and `clang` carries none, so neither can open a row however its
+\ numbers read. A line that opens a row and then does not carry a row's fields
+\ is not stored, and the subject this run measured for it is then reported as a
+\ row the artifact has no row for.
 \
 \ ONLY THE CHECKED HALF IS READ. The costs under the marker line are
 \ nanoseconds with a decimal point in them and are measurements of one host;
@@ -37,7 +35,7 @@
 \ cut is this file's, and tools/judge/check.f takes it from here rather than
 \ keeping a second copy of where an artifact ends.
 \
-\ WHICH COLUMN IS ADJUDICATED WHICH WAY, and why the three differ.
+\ WHICH COLUMN IS ADJUDICATED WHICH WAY, and why the two differ.
 \
 \   old     the emitter bin/hb ships does not change under this campaign, so a
 \           byte count that moved in EITHER direction is a finding: it means the
@@ -50,8 +48,12 @@
 \           whose CODE changed is a different gap under the same word and is a
 \           regression, because a gap nobody has named must not read as the one
 \           that was named.
-\   clang   what a host's toolchain emits is a fact about that host. It is
-\           reported when it moved and is never a finding.
+\
+\ The reference column is not adjudicated at all - what a host's toolchain emits
+\ is a fact about that host - so it is consumed on the way to the data-stack
+\ columns and not kept. The byte comparison in tools/judge.f still moves when it
+\ moves; that is the gate, and this file only says which way the two habu
+\ columns went.
 
 require lib/errors.f
 require lib/prelude.f
@@ -69,19 +71,15 @@ private
 64 constant CAP-MAX               \ rows one committed artifact holds
 48 constant NAME-MAX
 $3A constant COLON-BYTE
-$2C constant COMMA-BYTE
 
 CAP-MAX NAME-MAX * BUFFER: NAMES
 create NAME-LENS CAP-MAX cells allot
 create OLD-CELLS CAP-MAX cells allot
 create CHAIN-CELLS CAP-MAX cells allot     \ bytes, or the code the chain refused with
-create REF-CELLS CAP-MAX cells allot       \ NO-REFERENCE for a dash
 create DS-OLD-CELLS CAP-MAX cells allot    \ the caller's data stack, touched
 create DS-NEW-CELLS CAP-MAX cells allot    \ NOT-MEASURED for a dash
 
 variable ROW-N
-variable DECLARED                  \ what the file's own `rows:` line says
-variable MALFORMED-N
 variable REPORT?
 variable FINDINGS
 
@@ -117,15 +115,14 @@ variable FINDINGS
    k OK NAME-AT
    NAME-LENS k SLOT @ ;
 
-: KEEP-ROW ( ptr u8 n n n n n n -- )
-   {: a:ptr u:n old:n chain:n ref:n ds-old:n ds-new:n :}
+: KEEP-ROW ( ptr u8 n n n n n -- )
+   {: a:ptr u:n old:n chain:n ds-old:n ds-new:n :}
    ROW-N @ CAP-MAX >= if E-JUDGE-BASE-CAP throw then
    u NAME-MAX > if E-JUDGE-BASE-CAP throw then
    a  ROW-N @ NAME-AT  u STR-LEN BYTE-COPY-LEN
    u NAME-LENS ROW-N @ SLOT !
    old OLD-CELLS ROW-N @ SLOT !
    chain CHAIN-CELLS ROW-N @ SLOT !
-   ref REF-CELLS ROW-N @ SLOT !
    ds-old DS-OLD-CELLS ROW-N @ SLOT !
    ds-new DS-NEW-CELLS ROW-N @ SLOT !
    ROW-N @ 1+ ROW-N ! ;
@@ -145,14 +142,9 @@ variable FINDINGS
    a c@ COLON-BYTE = if false exit then
    u 1- a + c@ COLON-BYTE <> ;
 
-: VERDICT-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" smaller" STR= if true exit then
-   a u s" equal" STR= if true exit then
-   a u s" LARGER" STR= if true exit then
-   a u s" REFUSED" STR= ;
-
 \ A cell that carries a number, or the dash a column with nothing to report
-\ writes: no C twin for the reference column, no routine for the chain's.
+\ writes: no C twin for the reference column, no routine to count for the
+\ chain's stack column.
 : CELL-OF ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u s" -" STR= if JUDGE-ROW:NO-REFERENCE true exit then
    a u STR>NUMBER? MATCH option
@@ -160,56 +152,35 @@ variable FINDINGS
      some OF true ENDOF
    ;MATCH ;
 
-: MALFORMED ( ptr u8 n -- )
-   s" MALFORMED-ROW" NOTE
-   SAY SAY-END
-   MALFORMED-N @ 1+ MALFORMED-N !
-   FIND+ ;
+: NEXT-CELL ( -- n bool )
+   CODEGEN-TEXT:NEXT$ 0= if 2drop 0 false exit then
+   CELL-OF ;
 
-\ Everything after the name. Each field is read in order and the first one that
-\ is not what a row carries there stops the line - the whole line is then a
-\ malformed row and not silently prose, because it already opened with a name
-\ only a row's first word has.
-: PARSE-TAIL ( ptr u8 n ptr u8 n -- ) {: la:ptr lu:n na:ptr nu:n :}
-   CODEGEN-TEXT:NEXT-NUMBER 0= if drop la lu MALFORMED exit then {: old:n :}
-   CODEGEN-TEXT:NEXT-NUMBER 0= if drop la lu MALFORMED exit then {: chain:n :}
-   CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
-   CELL-OF 0= if drop la lu MALFORMED exit then {: ref:n :}
-   CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
-   CELL-OF 0= if drop la lu MALFORMED exit then {: ds-old:n :}
-   CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
-   CELL-OF 0= if drop la lu MALFORMED exit then {: ds-new:n :}
-   CODEGEN-TEXT:NEXT$ 0= if 2drop la lu MALFORMED exit then
-   VERDICT-WORD? 0= if la lu MALFORMED exit then
-   CODEGEN-TEXT:NEXT$ if
-      s" (tail)" STR= 0= if la lu MALFORMED exit then
-      CODEGEN-TEXT:NEXT$ if 2drop la lu MALFORMED exit then
-      2drop
-   else 2drop then
-   na nu old chain ref ds-old ds-new KEEP-ROW ;
+\ The reference cell, crossed and not kept. Nothing here adjudicates what a
+\ host's toolchain emitted, so storing it would be a column with no reader - but
+\ it still stands between the chain's cell and the two data-stack columns.
+: SKIP-REF ( -- bool )
+   NEXT-CELL 0= if drop false exit then
+   drop true ;
 
-\ The count on the artifact's `rows:` line. That line states the tally as a
-\ sentence - `rows: 46, refused by the chain: 0, ...` - so the count carries the
-\ sentence's comma, which belongs to the sentence and not to the number.
-: TALLY-NUMBER ( -- n bool )
-   CODEGEN-TEXT:NEXT$ 0= if 2drop 0 false exit then {: a:ptr u:n :}
-   u 0= if 0 false exit then
-   u 1- a + c@ COMMA-BYTE = if a u 1- else a u then
-   STR>NUMBER? MATCH option
-     none OF 0 false ENDOF
-     some OF true ENDOF
-   ;MATCH ;
-
-: PARSE-DECLARED ( ptr u8 n -- ) {: la:ptr lu:n :}
-   TALLY-NUMBER 0= if drop la lu MALFORMED exit then
-   DECLARED ! ;
+\ Everything after the name, in the order the report writes it. A field that is
+\ not what a row carries there abandons the line and stores nothing, so the
+\ subject this run measured for it has no partner in the artifact and is
+\ reported as a row the artifact does not have. A line that is not a row does
+\ not become one by being adjudicated half way.
+: PARSE-TAIL ( ptr u8 n -- ) {: na:ptr nu:n :}
+   CODEGEN-TEXT:NEXT-NUMBER 0= if drop exit then {: old:n :}
+   CODEGEN-TEXT:NEXT-NUMBER 0= if drop exit then {: chain:n :}
+   SKIP-REF 0= if exit then
+   NEXT-CELL 0= if drop exit then {: ds-old:n :}
+   NEXT-CELL 0= if drop exit then {: ds-new:n :}
+   na nu old chain ds-old ds-new KEEP-ROW ;
 
 : SCAN-LINE ( ptr u8 n -- ) {: la:ptr lu:n :}
    la lu CODEGEN-TEXT:LINE!
    CODEGEN-TEXT:NEXT$ 0= if 2drop exit then {: na:ptr nu:n :}
-   na nu s" rows:" STR= if la lu PARSE-DECLARED exit then
    na nu QUALIFIED? 0= if exit then
-   la lu na nu PARSE-TAIL ;
+   na nu PARSE-TAIL ;
 
 : SCAN ( ptr u8 n -- )
    CODEGEN-TEXT:TEXT!
@@ -217,13 +188,6 @@ variable FINDINGS
       CODEGEN-TEXT:NEXT-LINE 0= if 2drop exit then
       SCAN-LINE
    again ;
-
-: COUNT-CHECK ( -- )
-   DECLARED @ ROW-N @ = if exit then
-   s" ROW-COUNT" NOTE
-   s" the artifact declares " SAY DECLARED @ SAY-NUM
-   s"  rows but carries " SAY ROW-N @ SAY-NUM SAY-END
-   FIND+ ;
 
 public
 
@@ -253,15 +217,10 @@ public
 \ tools/judge/check.f hands it the committed one.
 : LOAD-FROM ( ptr u8 n -- )
    0 ROW-N !
-   -1 DECLARED !
-   0 MALFORMED-N !
    0 FINDINGS !
-   CHECKED$ SCAN
-   COUNT-CHECK ;
+   CHECKED$ SCAN ;
 
 : ROWS ( -- n )         ROW-N @ ;
-: DECLARED@ ( -- n )    DECLARED @ ;
-: MALFORMED@ ( -- n )   MALFORMED-N @ ;
 
 : FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1
@@ -271,7 +230,6 @@ public
 
 : OLD@ ( n -- n ) {: k:n :}    OLD-CELLS k OK SLOT @ ;
 : CHAIN@ ( n -- n ) {: k:n :}  CHAIN-CELLS k OK SLOT @ ;
-: REF@ ( n -- n ) {: k:n :}    REF-CELLS k OK SLOT @ ;
 : DS-OLD@ ( n -- n ) {: k:n :} DS-OLD-CELLS k OK SLOT @ ;
 : DS-NEW@ ( n -- n ) {: k:n :} DS-NEW-CELLS k OK SLOT @ ;
 
@@ -399,14 +357,12 @@ public
 : ENGINE-MOVES ( -- n )   ENGINE-MOVED @ ;
 : LOST ( -- n )           LOST-N @ ;
 : GAINED ( -- n )         GAINED-N @ ;
-: FINDINGS@ ( -- n )      FINDINGS @ ;
 
 private
 
 : INIT ( -- )
    -1 REPORT? !
    0 ROW-N !
-   -1 DECLARED !
    0 FINDINGS ! ;
 
 INIT

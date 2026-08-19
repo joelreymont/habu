@@ -1,13 +1,14 @@
 \ codegen-workload-time.f - time two arms of one workload against each other and
 \ keep the row. One concern: turning two runnable arms into one recorded delta.
 \
-\ THE DISCIPLINE IS tools/codegen-compare-core.f's, WITH ONE ADDITION. That file
-\ established it and states the reasoning in full: one timed run executes the
-\ body a fixed number of times, the elapsed monotonic nanoseconds are the
-\ measurement, and each run is repeated. A run can only be made slower by the
-\ rest of the machine, never faster, so the FASTEST of several runs is the
-\ closest estimate of the real cost available, and the spread between fastest and
-\ slowest says how noisy the host was while the row was measured.
+\ THE DISCIPLINE IS THE JUDGE'S, WITH ONE ADDITION. tools/judge/cost.f states it
+\ in full: one timed run executes the body a fixed number of times, the elapsed
+\ monotonic nanoseconds are the measurement, and each run is repeated. A run can
+\ only be made slower by the rest of the machine, never faster, so the FASTEST of
+\ several runs is the closest estimate of the real cost available. The spread
+\ between fastest and slowest, which says how noisy the host was while the row
+\ was measured, is kept HERE and nowhere else: the judge has its own band, the
+\ widest gap between two measurements of one program in one run.
 \
 \ THE ADDITION IS INTERLEAVING, and it is the whole reason this file exists
 \ rather than a second call into that one. Here the two numbers being compared

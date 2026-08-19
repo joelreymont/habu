@@ -61,10 +61,8 @@
 \ written above the entry is outside the source the chain compiles. Four bodies
 \ here carry the corpus's own untyped float locals and are annotated that way.
 
-require lib/errors.f
 require lib/prelude.f
 require src/compiler/native/migrate.f
-require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus3.f
 
 \ The definitions land in the corpus's own package, reopened: the `-N` words are

@@ -35,7 +35,7 @@
 \ the cell straight into a floating register and back
 \ (src/habu/habu1.f, BF+: `B G-POP A G-POP 0 A FMOVXD, 1 B FMOVXD,
 \ 0 0 1 FADD, A 0 FMOVDX, A G-PUSH`). Read through the checked projection
-\ CODEGEN-COMPARE:REAL-BITS:
+\ JUDGE-COST:REAL-BITS:
 \
 \     1.0   -> 4607182418800017408   ($3FF0000000000000)
 \     0.5   -> 4602678819172646912   ($3FE0000000000000)

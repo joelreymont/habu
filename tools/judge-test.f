@@ -32,6 +32,7 @@ require lib/test.f
 require src/compiler/native/dict.f
 require src/compiler/a64-effect.f
 require tools/codegen-compare-corpus.f
+require tools/judge/cost.f
 require tools/judge/traffic.f
 require tools/judge/check.f
 
@@ -73,9 +74,9 @@ private
 \ what is compared is a whole real table against a whole real file differing in
 \ exactly one cell. tools/judge/base-test.f attacks the reader itself with
 \ artifacts built to fool it; what is asserted here is that it reads the REAL
-\ one - forty-six rows, no malformed line, nothing to report - so a report that
-\ changed the shape of a row is caught here rather than leaving those fixtures
-\ agreeing with a format nothing writes any more.
+\ one - every row of it, nothing lost, nothing gained, nothing to report - so a
+\ report that changed the shape of a row is caught here rather than leaving
+\ those fixtures agreeing with a format nothing writes any more.
 
 : ADJUDICATE-COMMITTED ( -- n )
    JUDGE-CHECK:COMMITTED$ JUDGE-BASE:LOAD-FROM
@@ -87,8 +88,6 @@ private
    s" the committed artifact reads back as the rows this run measured" T-LABEL
    ADJUDICATE-COMMITTED 0 T=
    JUDGE-BASE:ROWS JUDGE-ROW:ROWS T=
-   JUDGE-BASE:DECLARED@ JUDGE-ROW:ROWS T=
-   JUDGE-BASE:MALFORMED@ 0 T=
    JUDGE-BASE:REGRESSIONS 0 T=
    JUDGE-BASE:IMPROVEMENTS 0 T=
    JUDGE-BASE:ENGINE-MOVES 0 T=
@@ -414,9 +413,9 @@ variable BUMP-RC
 
    \ T-SUM over -2.5 0.0 1.5 0.25 is -0.75, whose cell is $BFE8000000000000.
    s" CODEGEN-CORPUS3:T-SUM" ROW-OF JUDGE-ROW:OLD-VALUE@
-      -0.75 CODEGEN-COMPARE:REAL-BITS T=
+      -0.75 JUDGE-COST:REAL-BITS T=
    s" CODEGEN-CORPUS3:T-SUM" ROW-OF JUDGE-ROW:NEW-VALUE@
-      -0.75 CODEGEN-COMPARE:REAL-BITS T=
+      -0.75 JUDGE-COST:REAL-BITS T=
 
    \ And the generator refuses what it cannot project or read back rather than
    \ emitting a body that reaches past the top of the stack or records the

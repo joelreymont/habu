@@ -29,7 +29,7 @@ require lib/string.f
 require lib/fmt.f
 require tools/codegen-compare-clang.f
 require tools/judge/row.f
-require tools/codegen-compare-core.f
+require tools/judge/cost.f
 require tools/judge/pass.f
 
 package JUDGE-REPORT
@@ -287,9 +287,9 @@ variable TEXT-U
    NL
    s" METHOD. Each body is generated from the row's ONE pinned input, certified by" LINE
    s" the checker and compiled, then run " APPEND
-   CODEGEN-COMPARE:REPS NUM$ APPEND
+   JUDGE-COST:REPS NUM$ APPEND
    s"  times per timed run, " APPEND
-   CODEGEN-COMPARE:RUNS NUM$ APPEND
+   JUDGE-COST:RUNS NUM$ APPEND
    s"  timed" LINE
    s" runs, fastest run kept. The whole row list is measured " APPEND
    JUDGE-PASS:TIME-PASSES NUM$ APPEND

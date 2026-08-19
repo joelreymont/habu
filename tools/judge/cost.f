@@ -2,6 +2,11 @@
 \ reading the value it computes. One concern: turning a row's pinned input TEXT
 \ and one word's spelling into a measured program.
 \
+\ THE TIMING DISCIPLINE IS THIS FILE'S OWN, and so are the two projections a
+\ measured value crosses into a comparable cell. They lived in the comparison
+\ harness's measurement store until that store went; the generator below is the
+\ only thing that writes either of them into a body, so they belong beside it.
+\
 \ WHY THE BODY IS GENERATED. A timed body has to CALL the subject, and a call
 \ names the word, and a body is compiled before it runs - so a body written by
 \ hand in a source file can only name words that already exist. Two things
@@ -79,9 +84,75 @@ require lib/string.f
 require lib/codegen.f
 require lib/fmt.f
 require src/compiler/native/dict.f
-require tools/codegen-compare-core.f
 
 package JUDGE-COST
+
+\ ---- how long one body takes -------------------------------------------------
+\ One timed run executes the body REPS times back to back and divides the
+\ elapsed monotonic nanoseconds by REPS. The body is timed RUNS times and the
+\ FASTEST run is kept: interference from the rest of the machine can only make a
+\ run slower, so the minimum is the closest estimate of the real cost available.
+\ Per-call costs are a few nanoseconds, so a measurement is kept in picoseconds,
+\ which leaves three significant digits where whole nanoseconds leave one.
+\
+\ SEVEN SHORT RUNS RATHER THAN THREE LONG ONES, measured and not preferred.
+\ Three runs of a million repetitions was tried first: on a 12-core host under
+\ 16 competing processes one case had all three runs hit by the same sustained
+\ scheduling delay and came out 4.1 times its idle cost. More, shorter runs give
+\ the fastest-run rule more chances at a clean window, and the whole pass got
+\ faster as well - 0.50 s idle against 0.90 s.
+
+public
+
+250000 constant REPS
+7 constant RUNS
+
+private
+
+1000 constant PICOS-PER-NS        \ the unit a measurement is kept in
+$7FFFFFFFFFFFFFFF constant PICOS-MAX
+
+variable FASTEST
+
+\ typed-local-lint: allow-bare-local - q is the timing body; its effect is in
+\ the stack signature and a local annotation cannot carry a quotation effect.
+: RUN-ONCE ( [ -- ] -- n ) {: q :}
+   mono-ns {: t0:n :}
+   REPS 0 ?do q execute loop
+   mono-ns t0 - PICOS-PER-NS * REPS / ;
+
+: SAMPLE ( n -- ) {: picos:n :}
+   picos FASTEST @ < if picos FASTEST ! then ;
+
+\ typed-local-lint: allow-bare-local - q is the timing body, as in RUN-ONCE.
+: TIME-RUNS ( [ -- ] -- ) {: q :}
+   PICOS-MAX FASTEST !
+   RUNS 0 ?do q RUN-ONCE SAMPLE loop
+   FASTEST @ 0= if E-CODEGEN-COMPARE-CLOCK throw then ;
+
+public
+
+\ What one body costs, in picoseconds per call. Public because every generated
+\ timing body ends in it.
+\ typed-local-lint: allow-bare-local - q is a timing body, as in RUN-ONCE.
+: TIME-ONLY ( [ -- ] -- n ) {: q :}
+   q TIME-RUNS
+   FASTEST @ ;
+
+\ ---- a value that is not a cell, as the cell a column is compared on ---------
+\ Each crossing has exactly one route, because two columns crossing by two
+\ routes of their own would let a difference in the routes read as a difference
+\ in the compiled code. Both are public for that reason: the generated bodies
+\ name them and must name the same ones.
+
+: FLAG-BITS ( bool -- n )
+   if 1 else 0 then ;
+
+\ A double is already one data-stack cell holding its raw IEEE754 bit pattern,
+\ so this is a retype and not a conversion. The recorded value is the whole
+\ cell, which makes two columns agree only if every bit agrees: finer than float
+\ equality at +0.0 against -0.0, and at a NaN, both deliberately.
+CAST: REAL-BITS ( r -- n ) ;
 
 private
 
@@ -234,10 +305,10 @@ public
    outs 0 ?do s"  drop" TXT CODEGEN:APPEND-STRING loop ;
 
 \ A DOUBLE and a FLAG are not cells a row can be compared on until they are
-\ projected, and each is projected by the one word the comparison already
-\ records that kind through, so two columns crossing from a float or a flag to a
-\ recorded cell by two routes of their own cannot read as a difference in the
-\ compiled code. Neither projection reaches past the value on top, so a subject
+\ projected, and each is projected by the one word above that records that kind,
+\ so two columns crossing from a float or a flag to a recorded cell by two
+\ routes of their own cannot read as a difference in the compiled code. Neither
+\ projection reaches past the value on top, so a subject
 \ leaving one UNDER another value is refused rather than folded through a swap
 \ nobody wrote: no corpus has that shape and inventing one here would be
 \ inventing the program.
@@ -252,16 +323,14 @@ public
       exit
    then
    outs 1 <> if E-JUDGE-COST-FOLD throw then
-   proj P-REAL = if s"  CODEGEN-COMPARE:REAL-BITS" TXT CODEGEN:APPEND-STRING exit then
-   proj P-FLAG = if s"  CODEGEN-COMPARE:FLAG-BITS" TXT CODEGEN:APPEND-STRING exit then
+   proj P-REAL = if s"  JUDGE-COST:REAL-BITS" TXT CODEGEN:APPEND-STRING exit then
+   proj P-FLAG = if s"  JUDGE-COST:FLAG-BITS" TXT CODEGEN:APPEND-STRING exit then
    E-JUDGE-COST-FOLD throw ;
 
 \ Time one row's program in one column: the row's pinned inputs as text, the
 \ text that consumes them, and how many values the subject leaves. Answers
-\ picoseconds per call,
-\ measured the way every other row of this repository is measured - the
-\ comparison harness's own timing word, which runs a fixed number of repetitions
-\ a fixed number of times and keeps the fastest run.
+\ picoseconds per call, measured by TIME-ONLY above and therefore by the
+\ discipline every measured row of this repository is read under.
 : TIME ( ptr u8 n ptr u8 n n -- n ) {: ia:ptr iu:n ca:ptr cu:n outs:n :}
    0 PICOS-CELL !
    OPEN+
@@ -270,7 +339,7 @@ public
    s"  " TXT CODEGEN:APPEND-STRING
    ca cu TXT CODEGEN:APPEND-STRING
    outs DROPS+
-   s"  ;] CODEGEN-COMPARE:TIME-ONLY JUDGE-COST:PICOS!" TXT CODEGEN:APPEND-STRING
+   s"  ;] JUDGE-COST:TIME-ONLY JUDGE-COST:PICOS!" TXT CODEGEN:APPEND-STRING
    CLOSE+
    COMPILE-AND-RUN
    PICOS-CELL @ ;
@@ -283,7 +352,7 @@ public
 : FLOOR ( -- n )
    0 PICOS-CELL !
    OPEN+
-   s" [: ;] CODEGEN-COMPARE:TIME-ONLY JUDGE-COST:PICOS!" TXT CODEGEN:APPEND-STRING
+   s" [: ;] JUDGE-COST:TIME-ONLY JUDGE-COST:PICOS!" TXT CODEGEN:APPEND-STRING
    CLOSE+
    COMPILE-AND-RUN
    PICOS-CELL @ ;

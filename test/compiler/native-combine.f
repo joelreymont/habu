@@ -567,10 +567,10 @@ public
    s" NCT-FIXTURE:NCT-CSHARED-N" CMPIS-IN 0 T=
    s" NCT-FIXTURE:NCT-CSHARED-N" CMPS-IN 1 T= ;
 
-\ A Habu flag as the number the harness records for one, so that two flags can
-\ be compared with the same assertion every other row uses. It is
-\ tools/codegen-compare-core.f's VECTOR-FLAG written here rather than reached
-\ for, because this suite loads none of that harness.
+\ A Habu flag as the number a measured row records for one, so that two flags
+\ can be compared with the same assertion every other row uses. It is
+\ tools/judge/cost.f's FLAG-BITS written here rather than reached for, because
+\ this suite loads none of the judge.
 : FLAG>N ( bool -- n )
    if 1 else 0 then ;
 

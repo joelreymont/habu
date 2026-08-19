@@ -11,7 +11,7 @@
 \ samples into one evidence line per workload and the six pass/fail verdicts -
 \ each judged on the FASTEST of its samples, because a run can only be made
 \ slower by the rest of the machine, never faster: the fastest run is the
-\ closest estimate of the real cost (tools/codegen-compare-core.f's standing
+\ closest estimate of the real cost (tools/judge/cost.f's standing
 \ discipline), a real regression slows every sample including it, and ambient
 \ load has to poison every window of every round to move it. The median it
 \ replaces moved whenever two of three consecutive samples were dirty, which is

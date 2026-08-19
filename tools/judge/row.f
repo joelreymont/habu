@@ -233,7 +233,14 @@ public
 
 : OLD-WITNESS@ ( n -- n ) {: k:n :}  OLD-WIT k OK SLOT @ ;
 : NEW-WITNESS@ ( n -- n ) {: k:n :}  NEW-WIT k OK SLOT @ ;
+
+private
+
+\ Only the agreement check below reads it: nothing outside compares a twin's
+\ memory with the engine's.
 : REF-WITNESS@ ( n -- n ) {: k:n :}  REF-WIT k OK SLOT @ ;
+
+public
 
 \ The chain compiled it, into this many bytes.
 : NEW! ( n n bool -- ) {: k:n bytes:n tail:bool :}
@@ -315,8 +322,12 @@ public
    k OK drop
    1 ALT-BAD k SLOT ! ;
 
+private
+
 : ALT-BAD? ( n -- bool ) {: k:n :}
    ALT-BAD k OK SLOT @ 0<> ;
+
+public
 
 \ ---- what each habu column spends on the caller's data stack -----------------
 \ An exact count off the emitted code, so it belongs in the checked half of the
@@ -380,11 +391,18 @@ public
    k REF-BYTES@ NO-REFERENCE <> ;
 
 \ ---- the verdict -------------------------------------------------------------
+\ The four are the store's own spelling of a verdict. A caller reads a row's
+\ verdict through VERDICT and renders it through VERDICT$, so the numbers stay
+\ inside.
+
+private
 
 0 constant V-SMALLER
 1 constant V-EQUAL
 2 constant V-LARGER
 3 constant V-REFUSED
+
+public
 
 : VERDICT ( n -- n ) {: k:n :}
    k REFUSED? if V-REFUSED exit then
@@ -405,7 +423,10 @@ public
 \ no C twin has no reference answer to compare. A disagreement means one of the
 \ generated bodies is not the program the row is about, so neither its time nor
 \ its bytes mean anything - it is the one condition that makes a whole row
-\ worthless rather than merely worse.
+\ worthless rather than merely worse. What a caller asks is DISAGREEING-ROWS;
+\ the three predicates it is made of stay inside.
+
+private
 
 : NEW-AGREES? ( n -- bool ) {: k:n :}
    k REFUSED? if true exit then
@@ -435,6 +456,8 @@ public
 : AGREES? ( n -- bool ) {: k:n :}
    k ALT-BAD? if false exit then
    k NEW-AGREES? k REF-AGREES? and ;
+
+public
 
 : DISAGREEING-ROWS ( -- n )
    0

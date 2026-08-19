@@ -73,12 +73,14 @@ What the gates run is `tools/judge-test.f`, `tools/judge/base-test.f`,
 | `tools/codegen-compare-macho.f` | per-symbol code sizes out of the reference object |
 | `tools/codegen-compare-text.f` | the line and word cursor the readers share |
 | `tools/codegen-compare-cabi.f` | the fourteen foreign-call shapes, and the only trusted boundary added |
-| `tools/codegen-compare-clang.f` | one C twin measured as one row |
-| `tools/codegen-compare-core.f` | the timing discipline, and the projections a recorded value crosses |
+| `tools/codegen-compare-clang.f` | whether there is a reference column, and how big the object it came out of is |
 | `tools/codegen-compare-corpus{,2..5}.f` | the pinned corpora themselves |
 | `test/compiler/judge-baseline.txt` | what this tree emits |
 
-The `codegen-compare-` prefix on the last six rows is the old comparison
+The timing discipline and the projections a measured value crosses live in
+`tools/judge/cost.f`, beside the generator that writes both into a body.
+
+The `codegen-compare-` prefix on the last five rows is the old comparison
 harness's, which was deleted; those files are the parts of it the judge kept,
 and renaming them is cosmetic work of its own.
 

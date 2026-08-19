@@ -57,10 +57,8 @@
 \ the address its callee's record already carries, so the six callees stand
 \ above the rows that name them.
 
-require lib/errors.f
 require lib/prelude.f
 require src/compiler/native/migrate.f
-require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus4.f
 
 \ The definitions land in the corpus's own package, reopened: the `-N` words are

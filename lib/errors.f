@@ -515,8 +515,8 @@ public
 \   -8200..-8219  ARM64 routine machine-effect contracts (package A64EFF)
 \   -8220..-8239  native immediate-word contract table (package NIMM)
 \   -8240..-8259  native stage N0 source tape (package NTAPE)
-\   -8260..-8279  old-vs-new code generator comparison harness
-\                 (package CODEGEN-COMPARE)
+\   -8260..-8279  codegen measurement probes, the judge's timing, and the
+\                 clang reference column
 \   -8280..-8299  native stage N1 straight-line HIR dialect (package HIR)
 \   -8300..-8319  native stage N1 straight-line elaborator (package NELAB)
 \   -8320..-8339  native ARM64 register allocation (package A64RA) and the
@@ -686,25 +686,23 @@ public
 -8225 constant E-NIMM-DUP       \ a symbol this table already classifies
 -8226 constant E-NIMM-UNMODELED \ an immediate word checked source may not compile: unregistered, or declared unmodeled
 
-\ Old-vs-new code generator comparison harness (package CODEGEN-COMPARE), and
-\ the native chain fixtures it shares with the compiler suites (package NSRC):
-\ -8260..-8279
+\ Measuring emitted machine code - the codegen probes, the judge's timing, the
+\ clang reference column - and the native chain fixtures those share with the
+\ compiler suites (package NSRC): -8260..-8279
 \
-\ The harness compiles a pinned corpus of small checked words through the real
-\ engine, then records each word's machine-code size, its execution outputs on
-\ pinned inputs, and how long one call takes. It then compiles the same words
-\ again through the new native chain and records the same three facts. Four
-\ conditions stop it outright: a store it cannot grow, a subject word it cannot
-\ find, a corpus word the new column names that the old column never measured,
-\ and an emitted routine whose answer is not in the register the call needs it
-\ in. Everything the comparison itself decides is reported as a finding instead,
-\ so one run names every disagreement rather than stopping at the first.
--8260 constant E-CODEGEN-COMPARE-CAP      \ a row, output-vector, or report-text store is full
+\ These are the conditions that stop a measurement outright instead of being
+\ reported as one of its findings, so that one run names every disagreement
+\ rather than halting at the first. The old-versus-new comparison harness that
+\ minted this block is gone; what is left is owned by the probes and by the
+\ judge, and the codes its measurement store needed went with it.
+-8260 constant E-CODEGEN-COMPARE-CAP      \ generated source is longer than the buffer that holds it
 -8261 constant E-CODEGEN-COMPARE-SUBJECT  \ a named subject word is not in the live dictionary
--8262 constant E-CODEGEN-COMPARE-ROW      \ a row or output index outside the recorded count
+\ -8262 and -8265 are retired and must not be reused: they were the comparison
+\ harness's row-or-output index bound and its check that the new column named a
+\ corpus word the old column had measured. The store they were about, and the
+\ two columns, went with the harness.
 -8263 constant E-CODEGEN-COMPARE-CLOCK    \ the monotonic clock reported no elapsed time across a whole timing run
--8264 constant E-CODEGEN-COMPARE-STAGE    \ a recorded value was read before the pass that computes it had finished
--8265 constant E-CODEGEN-COMPARE-CORPUS   \ a corpus word the new column names that the old column never measured
+-8264 constant E-CODEGEN-COMPARE-STAGE    \ a measurement step ran where it cannot produce one: out of order, or in the wrong process
 \ -8266 is retired and must not be reused: it was the comparison harness's check
 \ that an emitted routine's returned value sat in the register the C-ABI call
 \ reads one from, and the harness now compiles its routines under the data-stack

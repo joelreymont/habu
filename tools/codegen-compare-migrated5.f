@@ -42,10 +42,8 @@
 \ like the rest of the tree - and the engine's own parser is what decides where
 \ it ends.
 
-require lib/errors.f
 require lib/prelude.f
 require src/compiler/native/migrate.f
-require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus5.f
 
 \ The definitions land in the corpus's own package, reopened: the `-N` words are
