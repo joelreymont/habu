@@ -7483,3 +7483,54 @@ and --no-lldbinit.
 - **An accounting instrument needs an identity it can fail.** orphan-bytes=0
   caught the census mis-attributing below-window nodes the first time sharing
   existed (it went negative). Publish a number the walk can contradict.
+
+## 2026-08-19 - the cast sweep's load order (trusted-2, dot 1f5980b8)
+
+- **A declaration form that must RUN has a load-order requirement a textual
+  sweep cannot see.** `TRUSTED: X ( a -- b ) ;` records a row; `CAST: X
+  ( a -- b ) ;` executes a definer that crosses source through sumtype.f's
+  deferred TDECL-EVAL-XT. src/core/include.f arms that defer at prefix row 902
+  and src/core/roles.f is row 894, so ONE converted cast in roles.f kills every
+  boot with "defer: unset execution vector". Before planning any TRUSTED:
+  to CAST: conversion, check the target file's chain position against
+  include.f - the sweep is only textual for files that load after it.
+- **Editing a boot-prefix source breaks every later `bin/hb` invocation, so an
+  unrelated-looking probe is not evidence.** With roles.f converted, a probe
+  asking "does plain CAST: still work?" also died, and the obvious reading -
+  "the engine lost CAST:" - was wrong: the engine was dying reading the edited
+  prefix file before reaching the probe. Restore the prefix file (or reinstall)
+  before believing any probe result taken while it is edited.
+- **The blocker was a real cycle, and only the reorder attempt proved it.**
+  roles.f's casts need include.f's evaluate; include.f needs ZBYTE@ from
+  env-base.f (row 901); roles.f's converters are consumed in between by
+  bytes.f (>LEN/LEN>N) and os/linux/layout.f (>VA x4, VA>N x2). Putting
+  include.f first fails E-UNDEFINED: ZBYTE@ in one build - four minutes of
+  evidence against an argument that could have run all day.
+- **A converted prefix file cannot build its own fix.** The installed engine
+  dies at boot the moment the source is converted, so the engine that would
+  compile the corrected chain no longer starts. Any landing is two steps:
+  reorder (or arm) first, install, then convert.
+- **TRUSTED: catches a shape lie only where a caller happens to disagree, and
+  blames the caller.** `TRUSTED: L ( n -- idx idx ) ;` with an empty body hands
+  its caller the caller's own stack cell retyped, and `TRUSTED: L ( n -- ptr u8
+  ) ;` lets `8 L c@` compile and SIGSEGV (rc 134). Both are refused at the
+  declaration by CAST: (7129, 7130). When arguing that a declaration form is
+  safe "because the suites are green", write the uncalled declaration - that is
+  where the two forms differ.
+- **Dead generated text hides in span buffers.** roles.f's DEFTYPE buffer
+  appended `TRUSTED: `, ` ( ` and ` ) ;` around a name and a signature, but
+  DECL-SIGNATURE is handed the two spans separately and no consumer ever read
+  the buffer whole - the literals were decorative, and a trust census counted
+  them. Deleting them left the built engine byte-identical, which is the proof.
+  Corrupting the name span by one byte reds tools/check-all-errors-test.f: that
+  is the suite that owns the path.
+- **`test/compiler/native-match.f` case 234 is a 30-second child budget with
+  three seconds of headroom.** The case spawns `bin/hb --load
+  test/compiler/native-match.f -- forge`, so the child re-runs the whole suite
+  before reaching the trap: 26.7s measured standalone against `30000 constant
+  CHILD-MS`. On a loaded host the watchdog kills it and the case reports
+  `expected 85 got 137` - 137 is SIGKILL, not a verdict. Measured both ways
+  before believing it: the candidate redded twice at load 12-17 and greened at
+  load 16-to-9, and pristine master greened once idle and redded identically
+  with six forge children running alongside. Attribute this one to the host,
+  and treat `got 137` anywhere as "the budget fired", never as a wrong answer.
