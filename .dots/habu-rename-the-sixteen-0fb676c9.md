@@ -16,3 +16,9 @@ Fold in while touching these files (from the ce3ca8fd landing, 2026-08-19):
    `require tools/codegen-compare-core.f` and `require lib/errors.f` though
    nothing in the converted text names a word from either - verify and drop
    dead ones during the rename, since every require line moves anyway.
+
+Amendments (2026-08-19, post prune landing a2f5cf00): fold-in item 2 (dead
+requires in migrated{2..5}) is DONE - drop it. New item: E-CODEGEN-COMPARE-CLOCK
+is now thrown from package JUDGE-COST under a CODEGEN-COMPARE name - rename the
+code with the prefix cleanup. codegen-compare-core.f no longer exists; the
+sixteen are fifteen.
