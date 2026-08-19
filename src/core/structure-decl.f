@@ -78,6 +78,13 @@ package STRUCTURE-DECL
 \ post-hook checked body; the compiled reference survives the name seal exactly
 \ as decl-event.f's DEV-FLD-* forwarders and top-row.f's effect-read boundary do.
 \ Replacement owner: TYPE-FIXES-PLAN E5-E9.
+\
+\ A forwarder belongs here ONLY while its target has no checker-recorded effect.
+\ TFAM-PUBLIC?, TFAM-ARITY@, TFAM-WIDTH@, CHECKER-AUTH-PACKAGE-ACTIVE? and
+\ CHECKER-AUTH-PACKAGE-MODE@ carry primitive axioms in src/core/checker.f, so the
+\ bodies below call them by name and the checker enforces the axiom. Forwarding a
+\ word whose effect the checker holds restates a signature nothing verifies
+\ (dot habu-visibility-discharge-548-fab55650).
 \ ---------------------------------------------------------------------------
 TRUSTED: FAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
 TRUSTED: FAM-LAYOUT! ( n n -- ) TFAM-LAYOUT! ;
@@ -85,15 +92,10 @@ TRUSTED: FAM-EQ! ( n -- ) TFAM-DERIVE-EQ! ;
 TRUSTED: FAM-HASH! ( n -- ) TFAM-DERIVE-HASH! ;
 TRUSTED: FAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
 TRUSTED: FAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
-TRUSTED: FAM-PUBLIC? ( n -- bool ) TFAM-PUBLIC? ;
-TRUSTED: FAM-ARITY@ ( n -- n ) TFAM-ARITY@ ;
-TRUSTED: FAM-WIDTH@ ( n -- n ) TFAM-WIDTH@ ;
 TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
 TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
-TRUSTED: PKG-ACTIVE? ( -- bool ) CHECKER-AUTH-PACKAGE-ACTIVE? ;
-TRUSTED: PKG-MODE@ ( -- n ) CHECKER-AUTH-PACKAGE-MODE@ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
 TRUSTED: CONTROL-KW? ( ptr u8 n -- bool ) TYPE-NAME:CONTROL? ;
@@ -234,7 +236,7 @@ SD-RESET
    ACTIVE-PKG$ 2swap SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id FAM-LAYOUT? id FAM-CELL? or 0= IF 0 NO EXIT THEN
-   id FAM-ARITY@ 0 <> IF
+   id TFAM-ARITY@ 0 <> IF
       s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
@@ -268,7 +270,7 @@ SD-RESET
    2drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
-   dup SCH-APP? IF SCH-A@ FAM-WIDTH@ EXIT THEN drop 1 ;
+   dup SCH-APP? IF SCH-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
 
 \ ---------------------------------------------------------------------------
 \ clause drivers. Each emits its event through DECL-EVENT (which owns duplicate /
@@ -294,9 +296,9 @@ SD-RESET
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )                   \ derive needs a public, concrete (arity 0) family
-   FAM @ FAM-PUBLIC? 0= IF
+   FAM @ TFAM-PUBLIC? 0= IF
       s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
-   FAM @ FAM-ARITY@ 0 <> IF
+   FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )                \ ( fam feature-code -- ) emit the DERIVE event
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
@@ -337,7 +339,7 @@ SD-RESET
 \ transaction orchestration.
 \ ---------------------------------------------------------------------------
 : VIS ( -- n )                          \ declaration visibility (public at top level)
-   PKG-ACTIVE? 0= IF PKG-PUBLIC EXIT THEN PKG-MODE@ ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF PKG-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
 : SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
    {: na:ptr nu:n ar:n :}
    ar SD-ARITY !
@@ -352,7 +354,7 @@ SD-RESET
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 
 : SD-MAKEABLE? ( -- bool )                 \ a public structure WITH fields owns a MAKE/UNMAKE package
-   FAM @ FAM-PUBLIC? NFLD @ 0 > and ;
+   FAM @ TFAM-PUBLIC? NFLD @ 0 > and ;
 : SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
    DECL-REJECT:AT-FAMILY                   \ close-stage faults belong to the whole declaration
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
