@@ -7466,3 +7466,20 @@ and --no-lldbinit.
 - **internal-mark.f's seal covers bare interpret and tick only.** It has never
   blocked a compiled reference; any design assuming it does starts from a
   false premise (its own line 26 says so).
+
+- **A rewind performed by an optimisation is still a rewind its own watermark
+  must see.** The intern's hash-hit assigned the arena cursor directly, leaving
+  the intern table's own high-water mark above the new end; the next sync read
+  the interner's own rewind as foreign and dropped the whole table — measured
+  22% saving instead of 87%, correct and quietly worthless. Every cursor
+  assignment goes through the seam that carries the dependent marks with it.
+- **A "fresh" test fixture built from ordinary scalars is not fresh.** The
+  engine's own prefix already recorded every small arity; "a new signature
+  costs more than headers" passed standalone and failed in the gate pool.
+  Fresh means a family nothing else names.
+- **A recursive fold parks its accumulator on the return stack, not in a
+  shared variable** — one node answered with two shapes and the symptom
+  looked like an interner bug.
+- **An accounting instrument needs an identity it can fail.** orphan-bytes=0
+  caught the census mis-attributing below-window nodes the first time sharing
+  existed (it went negative). Publish a number the walk can contradict.
