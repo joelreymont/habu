@@ -743,6 +743,14 @@ public
    s" test/create-axiom-test.f" GSI-FORK-INCLUDE
    s" test/checker-assert-test.f" GSI-FORK-INCLUDE
    s" test/checker-dead-path-suite.f" GSI-FORK-INCLUDE
+   \ Forked for a stronger reason than the neighbours above: the interner suite
+   \ TRUNCATES the effect store back to a marker word and lets the checker reject
+   \ a definition, and the census suite declares families and reads the whole
+   \ store. Both are process-wide checker state no in-process neighbour may
+   \ inherit, and the census's whole-store identity is only true of a process
+   \ that has done nothing else.
+   s" test/effect-intern-suite.f" GSI-FORK-INCLUDE
+   s" test/effect-store-census-test.f" GSI-FORK-INCLUDE
    \ Forked with the rest of the checker family: it arms the signature pool and
    \ opens a rollback scope, which is process-wide checker state no in-process
    \ neighbour should inherit.

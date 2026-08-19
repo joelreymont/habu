@@ -4503,6 +4503,299 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
+\ --- node interning ------------------------------------------------------------
+\
+\ WHAT IT REMOVES. Loading the compiler chain used to leave 115,948 nodes in the
+\ store carrying 1,593 distinct shapes, and 48.86% of its bytes were a second
+\ copy of a signature the engine re-records at publish time. Both are the same
+\ fact — a node the store already holds gets copied again — so both go through
+\ one word: when E-COPY* has finished a subterm at the top of the arena, look for
+\ an identical one BELOW; on a hit rewind UEND over the fresh copy and hand back
+\ the older offset. Measured with tools/effect-store-census.f, the store after
+\ that load went from 10,462,080 bytes to 1,988,912, and its node count to 1,593
+\ — one node per shape, which is the floor.
+\
+\ WHY THE HASH ONLY CHOOSES A CHAIN. Deciding membership by hash alone is a memo
+\ that miscompiles silently on a collision: two unrelated effects would share one
+\ graph and a word would certify against another word's signature. Every hit is
+\ therefore decided by comparing the nodes themselves.
+\
+\ WHY COMPARING THE ROOTS IS A STRUCTURAL COMPARE. Children are interned before
+\ their parent, so a child cell holds the offset of the one node with that shape,
+\ and two roots that agree tag-for-tag and key-cell-for-key-cell describe the
+\ same subterm. The two fields that are NOT shared — an atom's or a param's name
+\ bytes, which every copy writes for itself — are compared by content. Shallow
+\ equality therefore implies structural equality whatever the table's history:
+\ interning the table has forgotten (a rewind, a snapshot) costs hits, never
+\ correctness.
+\
+\ THE KEY IS WRITTEN ONCE. E-KEY-N/E-KEY are the only description of what a node
+\ IS, and the hash and the compare both read it, so a field added to a node kind
+\ joins both by construction. A hash folded over one field list and a compare
+\ written over another is exactly the drift that would make this word wrong.
+\
+\ VAR IDS ARE THE STORED ONES, NEVER THE LIVE ONES. E-COPY* renumbers a record's
+\ type and row vars in first-appearance order as it writes them, so two records
+\ that mean the same rows agree here and two that differ in a var's position do
+\ not. E-TV-ID/E-RV-ID still run for a subterm that is then interned away,
+\ because the subterm is BUILT first and discarded after — ER.TVN/ER.RVN keep
+\ counting the record's own vars.
+\
+\ WHY THE REWIND IS SAFE. A finished subterm occupies the contiguous span from
+\ its root to UEND, and every offset it names lies below that top: inside its own
+\ span, or in a record below it. So no surviving node ever names a byte above a
+\ truncation point — which is what makes USIGS-RESTORE-END's rewind, and this
+\ word's own, structural rather than a bet.
+$1000 constant UIX-BKT-INIT       \ buckets; a power of two
+$400 constant UIX-ENT-INIT        \ entries; grows geometrically
+3 constant UIX-ENT-CELLS
+0 constant UIX-E-OFF              \ the interned node's store offset
+1 constant UIX-E-BKT              \ the bucket it is chained in
+2 constant UIX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
+variable UIX-BKT-P   variable UIX-ENT-P
+variable UIX-BKT-CAP variable UIX-ENT-CAP
+variable UIX-N       variable UIX-HI
+variable UIX-I       variable UIX-J   variable UIX-H
+PTR-VARIABLE UIX-BASE
+
+\ UIX-BASE holds the store the entry offsets were taken against, read through a
+\ cell-indexed ptr-field view so the nested pointer role survives the fetch —
+\ the same shape USX-BASE uses one screen below.
+: UIX-BASE-FIELD ( -- ptr ptr u8 )
+   UIX-BASE 0 ptr-field ;
+
+: UIX-BASE@ ( -- ptr u8 )
+   UIX-BASE-FIELD @ ;
+
+: UIX-BASE! ( ptr u8 -- )
+   UIX-BASE-FIELD ! ;
+
+: UIX-BKT ( -- ptr a ) UIX-BKT-P @ ;
+: UIX-ENT ( -- ptr a ) UIX-ENT-P @ ;
+
+: UIX-B ( n -- ptr a ) cells UIX-BKT + ;
+
+: UIX-E ( n n -- ptr a ) {: i:n f:n :}
+   i UIX-ENT-CELLS * f + cells UIX-ENT + ;
+
+: UIX-READY? ( -- bool )
+   UIX-BKT-P @ 0= 0= ;
+
+\ UIX-STAMP ( -- ) : the table is exact at this end. Every entry sits strictly
+\ below the mark, so a later UEND at or above it leaves every entry live and a
+\ UEND below it is a rewind this file did not perform.
+: UIX-STAMP ( -- )
+   UEND @ UIX-HI !
+   USIGS UIX-BASE! ;
+
+: UIX-DROP ( -- )                 \ forget every entry; the mapping stays allocated
+   0 UIX-N !
+   UIX-BKT 0 UIX-BKT-CAP @ ARENA-CELLS-ZERO
+   UIX-STAMP ;
+
+: UIX-ALLOC ( -- )
+   UIX-BKT-INIT cells ARENA-ALLOC UIX-BKT-P !
+   UIX-BKT-INIT UIX-BKT-CAP !
+   UIX-ENT-INIT UIX-ENT-CELLS * cells ARENA-ALLOC UIX-ENT-P !
+   UIX-ENT-INIT UIX-ENT-CAP !
+   UIX-DROP ;
+
+\ UIX-RESET ( -- ) : snapshot prepare. The mapping is process-local mmap memory,
+\ so a baked image must carry no address for it; the next append re-allocates.
+\ Mirrors HIDX-RESET.
+: UIX-RESET ( -- )
+   HIDX-MEM-NULL UIX-BKT-P !
+   HIDX-MEM-NULL UIX-ENT-P !
+   0 UIX-BKT-CAP !  0 UIX-ENT-CAP !  0 UIX-N !
+   UIX-STAMP ;
+
+UIX-RESET
+
+: UIX-SYNC ( -- )
+   UIX-READY? 0= IF EXIT THEN
+   UEND @ UIX-HI @ <
+   USIGS UIX-BASE@ <> or IF UIX-DROP EXIT THEN
+   UIX-STAMP ;
+
+: UIX-ENSURE ( -- )
+   UIX-READY? 0= IF UIX-ALLOC EXIT THEN
+   UIX-SYNC ;
+
+\ --- the key of a node: the one description the hash and the compare share -----
+: E-NODE-TAG ( n -- n )
+   E-PTR EN.TAG @ ;
+
+\ E-KEY-N ( n -- n ) : how many cells decide this node's shape. 0 means the tag
+\ is not one this file writes, and E-INTERN refuses to intern such a node rather
+\ than guess at its fields.
+: E-KEY-N ( n -- n ) {: p:n :}
+   p E-NODE-TAG {: tg:n :}
+   tg EN-CON = IF 1 EXIT THEN
+   tg EN-VAR = IF 2 EXIT THEN
+   tg EN-ROW = IF 1 EXIT THEN
+   tg EN-PTR = IF 1 EXIT THEN
+   tg EN-PUSH = IF 3 EXIT THEN
+   tg EN-QUOT = IF 8 EXIT THEN
+   tg EN-ATOM = IF 2 EXIT THEN
+   tg EN-PARAM = IF p E-PTR EN.C @ 4 + EXIT THEN
+   0 ;
+
+\ E-KEY ( n n -- n ) : key cell i. CON/VAR/ROW/PTR/PUSH/QUOT key on the cells
+\ after the tag in order; ATOM skips EN.A because that is its private copy of the
+\ name (compared as bytes below); PARAM skips EN.A for the same reason and EN.D
+\ because that is its private arg run, whose CONTENTS — already-interned child
+\ offsets — are the remaining key cells.
+: E-KEY ( n n -- n ) {: p:n i:n :}
+   p E-NODE-TAG {: tg:n :}
+   tg EN-ATOM = IF p E-PTR i 2 + cells + @ EXIT THEN
+   tg EN-PARAM = IF
+      i 0 = IF p E-PTR EN.B @ EXIT THEN
+      i 1 = IF p E-PTR EN.C @ EXIT THEN
+      i 2 = IF p E-PTR EN.E @ EXIT THEN
+      i 3 = IF p E-PTR EN.H @ EXIT THEN
+      p E-PTR EN.D @ i 4 - cells + E-PTR @ EXIT
+   THEN
+   p E-PTR i 1 + cells + @ ;
+
+\ ATOM and PARAM are the only kinds carrying bytes of their own; EN.A/EN.B is
+\ that span for both.
+: E-KEY-STR? ( n -- bool ) {: p:n :}
+   p E-NODE-TAG {: tg:n :}
+   tg EN-ATOM = tg EN-PARAM = or ;
+
+: E-KEY-STR ( n -- ptr u8 n ) {: p:n :}
+   USIGS p E-PTR EN.A @ +  p E-PTR EN.B @ ;
+
+: EH0 ( -- ) HIDX-FNV-BASIS UIX-H ! ;
+: EH+ ( n -- ) UIX-H @ xor HIDX-FNV-PRIME * UIX-H ! ;
+
+: E-NODE-HASH ( n -- n ) {: p:n :}
+   EH0
+   p E-NODE-TAG EH+
+   p E-KEY-N {: kn:n :}
+   kn EH+
+   0 BEGIN dup kn < WHILE
+      dup p swap E-KEY EH+
+      1 +
+   REPEAT drop
+   p E-KEY-STR? IF
+      p E-KEY-STR {: a:ptr u:n :}
+      0 BEGIN dup u < WHILE
+         dup a swap + c@ EH+
+         1 +
+      REPEAT drop
+   THEN
+   UIX-H @ ;
+
+: E-NODE-KEYS= ( n n -- bool ) {: a:n b:n :}
+   a E-KEY-N {: kn:n :}
+   kn b E-KEY-N <> IF RES-FALSE EXIT THEN
+   0 BEGIN dup kn < WHILE
+      dup a swap E-KEY  over b swap E-KEY  <> IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop
+   RES-TRUE ;
+
+: E-NODE-SAME? ( n n -- bool ) {: a:n b:n :}
+   a E-NODE-TAG b E-NODE-TAG <> IF RES-FALSE EXIT THEN
+   a b E-NODE-KEYS= 0= IF RES-FALSE EXIT THEN
+   a E-KEY-STR? 0= IF RES-TRUE EXIT THEN
+   a E-KEY-STR b E-KEY-STR CORE-STR= ;
+
+: UIX-ENT-GROW ( -- )
+   UIX-ENT-CAP @ 2 * {: nc:n :}
+   nc UIX-ENT-CELLS * cells ARENA-ALLOC {: nb:ptr :}
+   UIX-ENT nb UIX-ENT-CAP @ UIX-ENT-CELLS * cells ARENA-COPY
+   nb UIX-ENT-P !
+   nc UIX-ENT-CAP ! ;
+
+\ UIX-REHASH ( -- ) : re-chain every live entry into the freshly sized buckets,
+\ oldest first, so each bucket keeps its newest entry at the head — the ordering
+\ UIX-POP relies on. The nodes are all below UIX-HI, so re-reading them is safe.
+variable UIX-BK
+: UIX-REHASH ( -- )
+   0 UIX-I !
+   BEGIN UIX-I @ UIX-N @ < WHILE
+      UIX-I @ UIX-E-OFF UIX-E @ E-NODE-HASH UIX-BKT-CAP @ 1 - and UIX-BK !
+      UIX-BK @ UIX-I @ UIX-E-BKT UIX-E !
+      UIX-BK @ UIX-B @ UIX-I @ UIX-E-NEXT UIX-E !
+      UIX-I @ 1 + UIX-BK @ UIX-B !
+      UIX-I @ 1 + UIX-I !
+   REPEAT ;
+
+: UIX-BKT-GROW ( -- )
+   UIX-BKT-CAP @ 2 * {: nc:n :}
+   nc cells ARENA-ALLOC {: nb:ptr :}
+   nb 0 nc ARENA-CELLS-ZERO
+   nb UIX-BKT-P !
+   nc UIX-BKT-CAP !
+   UIX-REHASH ;
+
+: UIX-ADD ( n n -- ) {: off:n b:n :}
+   UIX-N @ UIX-ENT-CAP @ >= IF UIX-ENT-GROW THEN
+   off UIX-N @ UIX-E-OFF UIX-E !
+   b UIX-N @ UIX-E-BKT UIX-E !
+   b UIX-B @ UIX-N @ UIX-E-NEXT UIX-E !
+   UIX-N @ 1 + b UIX-B !
+   UIX-N @ 1 + UIX-N !
+   UIX-STAMP
+   UIX-N @ 2 * UIX-BKT-CAP @ > IF UIX-BKT-GROW THEN ;
+
+: UIX-TOP-DEAD? ( n -- bool ) {: newend:n :}
+   UIX-N @ 0= IF RES-FALSE EXIT THEN
+   UIX-N @ 1 - UIX-E-OFF UIX-E @ newend >= ;
+
+\ UIX-POP ( -- ) : drop the newest entry. Entries are pushed at their bucket's
+\ head and popped newest first, so the entry being dropped IS its bucket's head;
+\ anything else means the table and the store disagree and no later answer could
+\ be trusted through it.
+: UIX-POP ( -- )
+   UIX-N @ 1 - UIX-I !
+   UIX-I @ UIX-E-BKT UIX-E @ {: b:n :}
+   b UIX-B @ UIX-I @ 1 + <> IF
+      s" checker: node intern table corrupt" 76 die
+   THEN
+   UIX-I @ UIX-E-NEXT UIX-E @ b UIX-B !
+   UIX-I @ UIX-N ! ;
+
+: UIX-TRUNCATE ( n -- ) {: newend:n :}
+   UIX-READY? 0= IF EXIT THEN
+   BEGIN newend UIX-TOP-DEAD? WHILE UIX-POP REPEAT
+   newend UIX-HI @ min UIX-HI ! ;
+
+\ E-INTERN ( n -- n ) : the finished subterm at `noff` spans [noff, UEND). If the
+\ store already holds one just like it, rewind over this copy and answer with the
+\ older offset; otherwise keep it and remember it.
+\
+\ THE HIT CARRIES THE TABLE'S MARK DOWN WITH THE STORE. A bare `noff UEND !`
+\ leaves UIX-HI above the new end, and the very next sync reads this word's own
+\ rewind as one it did not perform and throws the whole table away — which is how
+\ the interner first measured a 22% saving instead of an 87% one. UIX-TRUNCATE is
+\ also what states, rather than assumes, that the discarded span holds no entry:
+\ a hit means every child hit too (a child the table had not seen would sit at a
+\ fresh offset that no older twin could name), so the loop finds nothing to pop.
+\ It does NOT go through USIGS-RESTORE-END: that seam also repairs the per-symbol
+\ record index, and this rewind happens mid-record, before the record being built
+\ has an ER.NEXT for a chain walk to follow.
+variable UIX-C
+: E-INTERN ( n -- n ) {: noff:n :}
+   noff 0= IF 0 EXIT THEN
+   noff E-KEY-N 0= IF noff EXIT THEN
+   UIX-ENSURE
+   noff E-NODE-HASH UIX-BKT-CAP @ 1 - and {: b:n :}
+   b UIX-B @ UIX-J !
+   BEGIN UIX-J @ 0 <> WHILE
+      UIX-J @ 1 - UIX-E-OFF UIX-E @ UIX-C !
+      UIX-C @ noff E-NODE-SAME? IF
+         noff UIX-TRUNCATE
+         noff UEND !
+         UIX-C @ EXIT
+      THEN
+      UIX-J @ 1 - UIX-E-NEXT UIX-E @ UIX-J !
+   REPEAT
+   noff b UIX-ADD
+   noff ;
+
 : E-COPY* ( n -- n ) {: x:n :}
    x 0= if 0 exit then
    x E-RES TAG case
@@ -4580,7 +4873,8 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
          noff
       endof
       0 swap
-   endcase ;
+   endcase
+   E-INTERN ;                          \ the finished subterm; older twin wins
 : E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
 : USIG-NEXT ( ptr a -- ptr a )
@@ -4719,6 +5013,7 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
    newend USX-HI ! ;
 
 : USIGS-RESTORE-END ( n -- )
+   dup UIX-TRUNCATE                      \ drop interned nodes the rewind discards
    dup USX-TRUNCATE
    UEND !
    UTERM! ;
@@ -4754,6 +5049,9 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 
 : E-REC-START ( -- ptr a )
    HIDX-EFF-SYNC
+   UIX-SYNC                              \ same discipline: UEND is the store's true top
+                                         \ HERE, so an entry at or above it is dead and a
+                                         \ regrow cannot mask the rewind that killed it
    USX-ENSURE                            \ USX-LINK writes into the mapping: it has to
                                          \ exist, and be current, before the append
    UEND @ EFF-REC + CELL + USIGS-ENSURE
@@ -8121,6 +8419,7 @@ REG-EXT-AOT-DEFAULTS
    VREC-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-PERSIST
    USIGS-SNAPSHOT-PERSIST
+   UIX-RESET                            \ process-local mmap: never bake its address
    HIDX-EFF-BASE-CLEAR
    NORET-SNAPSHOT-PERSIST
    REG-EXT-PERSIST-XT

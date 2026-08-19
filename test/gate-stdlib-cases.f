@@ -1273,6 +1273,14 @@ SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
+SUITE effect-intern
+   test/effect-intern-suite.f
+;SUITE
+
+SUITE effect-store-census
+   test/effect-store-census-test.f
+;SUITE
+
 SUITE checker-dead-path
    test/checker-dead-path-suite.f
 ;SUITE
