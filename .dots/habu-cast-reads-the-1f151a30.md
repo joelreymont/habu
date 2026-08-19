@@ -6,6 +6,8 @@ issue-type: task
 created-at: "2026-08-19T15:52:11.871693+02:00"
 ---
 
+Claim: agent=trusted-4 workspace=.jj-ws/habu-trusted
+
 USER-RULED FINAL (2026-08-19, supersedes both earlier designs on this leaf's
 history): `CAST: NAME ( from -- to )` manufactures a TYPE SIGNATURE and nothing
 else. The checker resolves the two declared signature terms in the current
@@ -120,6 +122,85 @@ is NOT free, and the obvious shortcut is a type lie. Both halves measured:
     remove, and it is the value-heuristic-where-a-structural-answer-is-possible
     shape the fix-review gate sends back. A separate cell is the honest form.
 
-NEXT LANE STARTS HERE: find and justify a free DATA offset (or reclaim one with
-evidence), agree it across layout.f and bootstrap/cg/forth.fs:191, then the rest
-of the spec above is mechanical.
+BLOCKER DISSOLVED, NO CELL IS NEEDED (trusted-4, 2026-08-19). The cell only ever
+paid for one thing: a flag telling the SHARED publish tail to call the cast
+registrar instead of `trust-decl`. A bodyless cast never crosses a token
+boundary, so it needs no persistent state at all:
+ - PEND-CELL non-zero IS compile state (habu2.f:5940). A cast reads NAME and the
+   signature and is done; it never re-enters the loop mid-definition.
+ - The engine already reaches the checked world BY NAME, not by cell:
+   DEF-TRUST:FIND resolves `trust-decl` through LFIND and calls it
+   (habu2.f:2262-2279); LASTC-TRUST:FIND-RAW does it for `trust-raw`,
+   C-CALL-CHECK-DOES for `check-does!`, EM-REC-WIDE-PUBLISH for
+   `rec-wide-publish`/`rec-min-in@`, HOLD-EMIT for `hold?`. Every one is
+   hook-guarded and fail-closed (a missing registrar names itself on fd 2 and
+   exits 70). CHECKER-HOLD?'s own note (checker.f:12036) argues for exactly this
+   seam. A cast registrar is one more question asked there, the same way.
+ - C-CONSTANT / C-CREATE (habu2.f:3129-3162) are the precedent for a
+   self-contained interpret-mode definer that opens, names, emits, publishes
+   (NDICT++/LHIDXADD) and registers its effect inline without entering
+   EM-COMPILE-PUBLISH.
+So layout.f is untouched and bootstrap/cg/forth.fs:191 is untouched; the frozen
+seed needs only its keyword-table row at :2592.
+
+RECORDED FALLBACK, NOT NEEDED: had a cell been required, the free offset is
+$2748 (7 cells $2748..$2778). BODYBUF-OFF $800 + BODYBUF-CAP 8000 ends at $2740;
+the PROT-GUARD band is `BODYBUF-CAP 2 +` (habu1.f:312) so guarded space ends at
+$2742; the next allocated offset is RPKG-CUR $2780. test/protection-span.f:87
+pins that edge live (`0 data-base $2742 + c!` ACCEPTS against $800 REJECTS), a
+repo-wide sweep finds no other claimant, the band is below DATA-START
+(snapshot-persistent, DP heap bounded above it), 8-aligned, and $2748/8 = 1257
+fits the 12-bit scaled `DATA <off> LDR` immediate. The 62-byte hole is genuine
+slack, not overflow headroom: LBCAP exits 71 BEFORE writing past the cap
+(habu1.f:3106).
+
+THE VERIFIED IMPLEMENTATION SPEC (trusted-4, 2026-08-19). The predecessor
+reported banking a spec and did not: no revision of this leaf back to 08d8d090
+ever carried one. Every point below was re-derived from the source and checked.
+
+ENGINE (src/habu/habu2.f). `cast:` is a self-contained interpret-mode definer
+shaped on C-TRUSTED (:3193) and C-CONSTANT (:3143), NOT a colon opener:
+label + bytes row beside `trusted:` (:1935), keyword dispatch row (:6570),
+label allocation (:8708), signature parse through C-PARSE-REQUIRED-SIG (:3173).
+It opens the record, stores the name, emits the identity body byte-identical to
+an empty checked colon (prologue + EM-COMPILE-RET), calls `cast-decl` through
+the hook-guarded find-by-name seam, then NDICT++/LHIDXADD/EM-REC-WIDE-PUBLISH,
+clears state and returns to LMAIN with PEND-CELL zero.
+
+THE LATCH CONSTRAINT (load-bearing, found while probing). USIG-ADD latches
+RECW/RECMI (checker.f:5527) and EM-REC-WIDE-PUBLISH is what DRAINS them
+(habu2.f:2394). A cast that registers without draining leaves the latch set, and
+the next SIG-LESS definition's tail drains the cast's latch and pokes its own
+record with the cast's facts - silent corruption. The cast therefore MUST run
+EM-REC-WIDE-PUBLISH, and a fixture pins it: a cast followed by a sig-less
+definition must not inherit the cast's latch.
+
+CHECKER (src/core/checker.f). CHECKER-DEFCAST is shaped on two existing words:
+CHECK-DOES! (:13333) shows a checker entry parsing a signature OUTSIDE a
+definition - `sa su PARSE-SIG-RAW RAW-SIG!` sets SGIN/SGOUT/SGHASR, which is
+exactly what CAST-CERTIFY (:12668) reads - and CHECKER-DEFTYPED-VARIABLE (:8045)
+shows the registration tail `... CHECKER-USIG-CERT-ADD`. So: PARSE-SIG-RAW under
+SIG-SCOPE$ (:3019), RAW-SIG!, the five refusals in order (7129 arity, 7130
+class, 7131 family, 7135 owner, 7137 linear), no SUNI-COERCE, then
+CHECKER-USIG-CERT-ADD (:7964).
+
+DELETIONS: roles.f CAST: / CAST-GEN / CAST-EVAL and the whole generated-text
+buffer (:231-281) plus its TDECL-EVAL-XT dependency; checker.f CAST-PEND-A/-U,
+CAST-PEND!, CAST-PEND-CLEAR, CAST-PEND-MATCH?, the PRIM: row (:6258) and the
+CHECK branch (:12711). The drift window dies whole - no repair is built for it.
+
+:8606 NEEDS NO EDIT: `cast:` is ALREADY in UNSAFE-TOK?, and the spelling does not
+change when it becomes a keyword. The negative test still lands (a `cast:` token
+inside a checked body, and EXPORT refusing to alias it).
+
+ATOMIC-COMMIT PREMISE VERIFIED STRUCTURALLY: LKWCMP (habu2.f:1766-1777) folds
+$41..$5A before comparing, so a lowercase `cast:` keyword row matches uppercase
+`CAST:` at every existing site, and EM-INTERPRET-DEFINE-KEYWORDS is emitted
+ahead of EM-INTERPRET-FIND (:6620-6624). No cold-prefix file (src/core,
+src/habu, src/os) has a real `CAST: NAME` use today - only roles.f's definer and
+string literals - so the new engine still boots before the conversions land.
+
+MEASURED BASELINE (trusted-4, through bin/hb --load): the direct form
+`cast: >PROLE ( n -- prole )` with no body dies `cast: missing ;` rc 70 today;
+and the zero-instruction property reproduces as 44 / 44 / 44 bytes by cp@ deltas
+around definitions calling 0, 2 and 6 casts.
