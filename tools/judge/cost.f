@@ -10,9 +10,8 @@
 \ does not compile and the whole file fails to load: the old harness lives with
 \ that by keeping a hand-written list of the refused subjects and simply not
 \ writing bodies for them. Second, the same pinned input has to be retyped once
-\ per column - tools/codegen-compare-cases4.f writes it for the engine,
-\ tools/codegen-compare-new4.f writes it again for the chain, and
-\ tools/codegen-compare-c4.f writes it a third time for the C twin - and three
+\ per column - the old comparison wrote it once for the engine, again for the
+\ chain and a third time for the C twin - and three
 \ copies of a number is three chances to time one column on a different program
 \ from the other two.
 \
@@ -29,9 +28,9 @@
 \
 \ `<inputs>` is the row's own text and `<call>` is the column's - the engine's
 \ word, the chain's word, or the foreign-call shape that reaches the C twin. The
-\ timed shape is the same one tools/codegen-compare-cases4.f writes by hand, so
-\ what is timed here is what that harness times: a quotation that calls the
-\ subject once and drops its answer.
+\ timed shape is the same one the old comparison wrote by hand, so what is timed
+\ here is what that harness timed: a quotation that calls the subject once and
+\ drops its answer.
 \
 \ `<fold>` accounts for what the subject left - `xor` for several values, the
 \ float or flag projection for one that is not a plain cell, a literal zero for

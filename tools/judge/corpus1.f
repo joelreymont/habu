@@ -8,9 +8,10 @@
 \ programs come from the corpus file's own bytes and the measuring is
 \ tools/judge/pass.f's.
 \
-\ EVERY INPUT HERE IS tools/codegen-compare-cases.f'S TIMED INPUT, unchanged, so
-\ the two harnesses time the same program on the same numbers while they run
-\ side by side.
+\ THE FIRST INPUT OF EVERY ROW IS THE ONE THE OLD COMPARISON TIMED, unchanged,
+\ so a cost measured here is a cost measured on the same program on the same
+\ numbers. The inputs after it are that harness's own recorded vectors, and they
+\ are what reaches the arms the timed one does not take.
 \
 \ THE ELEVENTH SUBJECT IS NOT A ROW. NOOP is the empty call the old harness
 \ calibrates against, and the judge measures its own floor over an empty

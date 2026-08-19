@@ -12,7 +12,7 @@
 \ native chain, which does not, and the two are run against each other.
 \
 \ WHY THE ENGINE IS THE REFERENCE. It is the same text compiled by a generator
-\ this pass cannot reach, and it is what tools/codegen-compare.f already
+\ this pass cannot reach, and it is what bin/hb --load tools/judge.f already
 \ adjudicates every corpus row against. A reference built by switching the pass
 \ off would be a second configuration of the thing under test; this one is a
 \ different compiler running a real loop.

@@ -921,7 +921,7 @@ using CODEGEN-SCAN
 \ the work of its new arm - and the two assertions are about ORDER, at a margin
 \ no host can close. They still read a clock, which is why they live behind
 \ TIMED and are reached only from tools/codegen-workload-timed-test.f, run by
-\ hand, exactly as tools/codegen-compare-timed-test.f holds the cost-direction
+\ hand, exactly as tools/judge-timed.f holds the cost-direction
 \ assertions its own scheduled suite may not make.
 private
 

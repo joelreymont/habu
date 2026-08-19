@@ -14,9 +14,9 @@
 \ WHY IT IS LOADED HERE AND NOT WHERE THE ROWS ARE MEASURED. A call site is
 \ resolved when the CALLER is compiled: the engine writes the callee's address
 \ into a direct branch, or copies the callee's body into the caller outright.
-\ tools/codegen-compare-cases.f is compiled first and its bodies therefore call
+\ the old comparison's case list was compiled first and its bodies therefore called
 \ the corpus words the engine's own emitter compiled; this file publishes the
-\ new-chain words next; tools/codegen-compare-new.f is compiled last and its
+\ new-chain words next; its chain column was compiled last and its
 \ bodies call these. Both files' bodies are ordinary checked Habu naming
 \ ordinary words, so neither knows anything about how the other's code was made.
 \

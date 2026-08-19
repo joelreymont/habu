@@ -12,7 +12,7 @@
 \ WHAT IT IS NOT. It is not a gate and nothing here fails. The gate that carries
 \ this work is tools/codegen-workload-test.f, and every assertion in it is a fact
 \ about compiled code rather than a number a busy host can move. Run this one on
-\ a quiet machine, the way tools/codegen-compare.f is run.
+\ a quiet machine, the way bin/hb --load tools/judge-timed.f is run.
 \
 \ Loading tools/codegen-workload-run.f is what does the work: it publishes the
 \ subjects, compiles the before-arms, migrates, compiles the after-arms, and

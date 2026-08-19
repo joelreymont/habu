@@ -18,15 +18,14 @@
 \ row's verdict.
 \
 \ THE INPUT IS WRITTEN ONCE, WHICH IS THE OTHER DUPLICATE GONE. The old harness
-\ writes each row's pinned input three times: tools/codegen-compare-cases4.f for
-\ the engine, tools/codegen-compare-new4.f for the chain, and
-\ tools/codegen-compare-c4.f for the C twin. Three copies of a number is three
+\ wrote each row's pinned input three times: once for the engine, once for the
+\ chain and once for the C twin. Three copies of a number is three
 \ chances to measure one column on a different program from the other two. Here
 \ the numbers are stated once and tools/judge/cost.f builds each column's body
 \ from them.
 \
 \ THE INPUT IS THE LONGEST PATH THROUGH THE SUBJECT, which is the rule
-\ tools/codegen-compare-cases4.f set for the same twelve: LADDER is measured at
+\ the old comparison's set for the same twelve: LADDER is measured at
 \ 1000, the input that runs every one of its eight compares, because timing the
 \ short way out would measure the first guard and call it a ladder. Every input
 \ here is that file's timed input, unchanged.

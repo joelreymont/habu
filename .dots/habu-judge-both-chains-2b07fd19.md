@@ -256,11 +256,36 @@ tools/judge-test.f asserts that count with the reason. CODEGEN-CORPUS:NOOP is
 still the only subject not carried over; it is the old harness's calibration
 row and not a case.
 
-STILL OPEN AFTER THIS LANE: the deletion itself (step 4), unstarted. The
-27-file set is confirmed by count against the tree, and the require closure is
-CLOSED - after the corpora, cabi, cc, clang, core, macho, text and
-migrated{,2..5} are kept, the only live require of a doomed file from outside
-the family is tools/codegen-spill-probe.f:106.
+THE CUT IS DONE 2026-08-19. 27 tool files and 10 committed baseline tables
+deleted - 37 files, 9032 lines, 409937 bytes - along with the SUITE
+codegen-compare registration and its 43-line prose header and the two
+GSI-FORK-INCLUDE lines. schedule-lint went 240 registrations / 347 scheduled
+files / 1069 reached sources to 239 / 345 / 1043, with 0 unreached and 0
+findings on both sides.
+
+THE SIXTEEN KEPT, and why each survives: the five corpora (they are the
+programs), migrated{,2..5} (eight scheduled inventory members and four hand-run
+tools walk them as an independent population of chain-compiled routines, and
+the spill probe branches to C-LONG-N), cabi and cc (the foreign-call shapes and
+the toolchain, mapped by test/run.f before any fork), clang and macho (the
+reference column), text (macho's tokenizer, and the judge's artifact reader),
+core (the timing discipline and the projections a recorded value crosses).
+Renaming them out of the codegen-compare- prefix is cosmetic and is not this
+lane's.
+
+BOTH CORRECTIONS APPLIED. tools/codegen-spill-probe.f now requires
+-corpus4.f AND -migrated4.f, and the member is green: repointing it at
+-corpus4.f alone would have left CODEGEN-CORPUS4:C-LONG-N undefined.
+
+EVERY SURVIVING MENTION OF THE PREFIX IS ONE OF THREE THINGS: a kept file, a
+require of one, or prose that was updated. Fifteen source files and two docs
+carried prose naming a deleted file and every one was rewritten to name what
+does the job now. docs/codegen-parity.md was REWRITTEN onto the judge rather
+than deleted - its substance is the clang reference (the per-row entry floor,
+the sub-nanosecond bodies, the __text-only accounting, the Mach-O-only column
+and the flags rationale) and that lives nowhere else. docs/codegen-placement.md
+is a dated measurement record and keeps its text with a forwarding note saying
+which tool reproduces it now.
 
 ONE MORE CORRECTION TO THE SCOUT'S LIST, measured: correction 3 is incomplete.
 Repointing the spill probe at -corpus4.f alone BREAKS it. The probe names

@@ -23,7 +23,7 @@
 \
 \ A ROW THE NEW CHAIN WINS IS THEREFORE NOT A FAILURE OF THE ROW. It is the
 \ answer to the question the row asked, and the account in
-\ tools/codegen-compare-new4.f says for each of them why the suspected weakness
+\ the old comparison said for each of them why the suspected weakness
 \ did not bite. What would be a failure is a row nobody could lose - a shape
 \ picked because it flatters, or an input picked after the numbers were seen.
 \ Every input below is pinned before the fact and every body is one both code
@@ -94,7 +94,7 @@
 \ four one-operation callees qualifies under both rules, so neither column emits a
 \ call instruction for the three call rows built on them any more. The rows are
 \ NOT retired by that: what they measure now is whether the two rules stay in
-\ step, and tools/codegen-compare-test.f counts the branch-with-link
+\ step, and test/compiler/codegen-callsite-inventory.f counts the branch-with-link
 \ instructions on both sides to say so.
 \
 \ AND WHERE THE TWO RULES DO NOT MEET, WHICH THOSE ROWS CANNOT REACH. The
@@ -177,7 +177,7 @@
 \ larger loss was left out on purpose: a body of more than ten arguments,
 \ because a routine's place list holds ten (src/compiler/a64-effect.f,
 \ SEQ-MAX-N, and an eleventh is refused with E-A64EFF-SEQ). That refusal is
-\ checked in tools/codegen-compare-test.f rather than described here, and it has
+\ checked by a member rather than described here, and it has
 \ a dot. Building a row on it would have measured a ceiling in the place list
 \ instead of a code generator. There is no longer a ceiling on how many words a
 \ body may call - the migration entry that held four was deleted with the
@@ -215,7 +215,7 @@ public
 
 \ The record PRESSURE-LOOP reads. Fourteen fields, because thirteen held live at
 \ once is the most the chain places and fourteen is one more - the survey that
-\ established that is at the head of tools/codegen-compare-new4.f.
+\ established that was at the head of the old comparison's fourth column.
 14 constant ROW-CELLS
 
 private
@@ -327,7 +327,8 @@ public
 \ are read after the loop so they add nothing to the body and everything to what
 \ must survive. Seven of them is the largest the chain places today and eight is
 \ one more, so this is the smallest body on the far side of that line - the
-\ survey that establishes both is at the head of tools/codegen-compare-new4.f.
+\ survey that established both was at the head of the old comparison's fourth
+\ column.
 \
 \ THE EIGHTH SURVIVOR IS THE TRIP COUNT AND NOT AN EIGHTH ARGUMENT, so that this
 \ row keeps the arity it was measured at while sitting past the wall. Reading the

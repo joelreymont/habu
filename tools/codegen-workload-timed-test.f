@@ -7,7 +7,7 @@
 \ WHY THIS IS NOT SCHEDULED. tools/codegen-workload-test.f states, at its head,
 \ that no assertion in it reads a clock, and that is what makes it safe to run
 \ beside seven other suites. The same split is already in force for the code
-\ comparison: tools/codegen-compare-timed-test.f holds the cost-direction claims
+\ judge: tools/judge-timed.f holds the cost-direction claims
 \ its scheduled suite may not make, after a nine per cent margin failed one run
 \ in ten idle and three in ten under load (dot habu-retire-the-flaky-25a37a74).
 \

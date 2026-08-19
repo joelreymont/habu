@@ -736,7 +736,7 @@ variable STALE-ENTRY
 \ tail resolves through the open package's wordlists exactly as the engine
 \ resolves the body that writes it.
 \ (The first version of the name check compared raw spellings and refused a legal
-\ program: tools/codegen-compare-test.f assertion 238, dot
+\ program: the old comparison's assertion 238, dot
 \ habu-resolve-qualified-spellings-ec037942.)
 \
 \ TWO PACKAGES HOLD A ROUTINE OF THE SAME TAIL, which is the case a comparison of

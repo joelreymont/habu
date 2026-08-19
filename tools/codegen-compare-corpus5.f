@@ -29,7 +29,7 @@
 \
 \ WHERE THE ANSWER LIVES AFTERWARDS. What either column emits for these bodies
 \ NOW is its committed table and not this comment: the engine's in
-\ test/compiler/codegen-compare-baseline5.txt, which does not move, and the
+\ the engine's committed table, which did not move, and the
 \ chain's in test/compiler/codegen-chain-baseline5.txt, which is re-pinned
 \ deliberately whenever the chain gets smaller. A reader who wants today's number
 \ reads the table; what is written here is the question the rows were built to
@@ -58,7 +58,7 @@
 \
 \ AND THAT IS A MEASUREMENT AND NOT A DERIVATION. Both columns' code for every
 \ row of this corpus really does contain a branch-with-link, counted off the
-\ emitted instructions in tools/codegen-compare-test.f: one for each of the six
+\ emitted instructions in the old comparison's member: one for each of the six
 \ single-call rows and two for TAIL-AFTER. A callee either was copied or was
 \ not, and the instruction says which.
 \
@@ -92,7 +92,7 @@
 \               not measure arity one only. What crosses the call is two values
 \               and what comes back is two values, and the second of them is
 \               what the C column has to read through an accessor - see the head
-\               of tools/codegen-compare-c5.f.
+\               of the old comparison's fifth C column.
 \   TAIL-AFTER  a real call FOLLOWED by a tail call. The routine still needs its
 \               frame and its saved link register for the FIRST call, so the
 \               tail branch has to come after the epilogue that gives them back.

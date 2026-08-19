@@ -7,7 +7,7 @@
 \ for one of the two. Reading it wrongly sends the fix at the wrong pass, so the
 \ discriminating cases are kept here and run as a suite member rather than left
 \ in a scratch file. Every case below goes through NMIGRATE's own entry, the same
-\ one tools/codegen-compare-new4.f uses, so what is measured is the production
+\ one tools/codegen-compare-migrated4.f uses, so what is measured is the production
 \ chain and not a model of it.
 \
 \ THERE ARE TWO WALLS AND THEY INTERLEAVE, WHICH IS THE FIRST THING TO KNOW.
@@ -103,7 +103,12 @@
 require lib/test.f
 require lib/string.f
 require lib/fmt.f
-require tools/codegen-compare-cases4.f
+\ The fourth corpus and its migration: the probe's cases branch to
+\ CODEGEN-CORPUS4:C-LONG for the engine's arm and to C-LONG-N for the
+\ chain's, and the two live in those two files. The case list that used to
+\ pull both in is gone with the comparison harness.
+require tools/codegen-compare-corpus4.f
+require tools/codegen-compare-migrated4.f
 require src/compiler/native/clobber.f
 require src/compiler/native/migrate.f
 

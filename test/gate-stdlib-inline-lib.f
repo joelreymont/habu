@@ -595,17 +595,7 @@ public
    \ compiled, and because its near-miss cases are decided by the register and
    \ immediate decoders the other two own.
    s" test/compiler/codegen-callsite-inventory.f" GSI-FORK-INCLUDE
-   \ Runs the exact half of the code generator comparison - bytes, computed
-   \ values, the two generators head to head, the committed table's structure.
-   \ The timing column is left out here because this group runs its members in
-   \ parallel; see the note on the codegen-compare entry in
-   \ test/gate-stdlib-cases.f, and run the timed check by hand.
-   s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
-   \ And the third column beside it: the symbol reader the reference column's
-   \ bytes come out of, the chain's own committed baseline, and the twins
-   \ themselves on the real corpora. No assertion in it reads a clock either.
-   s" tools/codegen-compare-clang-test.f" GSI-FORK-INCLUDE
-   \ And the reader that ends the comparison's one hand-kept duplicate: the
+   \ The reader that ends the comparison's one hand-kept duplicate: the
    \ canonical corpus source, read structurally, so both code generators compile
    \ one text. Its fixtures are sources built to fool a text matcher and it
    \ reads no clock, so it belongs in this parallel group with its two

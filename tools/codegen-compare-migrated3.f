@@ -18,7 +18,7 @@
 \ comparisons and the branch a comparison feeds; and this leaf added a double
 \ placed where a straight line does not reach - across a block edge, across a
 \ call, and round a loop's back edge. That is every shape the corpus has, so
-\ tools/codegen-compare-new3.f declares no gap at all. Nothing is respelled to
+\ the old comparison declared no gap at all. Nothing is respelled to
 \ buy a row.
 \
 \ THE SUBSTITUTIONS, AND THERE ARE ONLY THE TWO KINDS. Every body carries `-N` on

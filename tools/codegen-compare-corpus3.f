@@ -16,8 +16,8 @@
 \ committed BEFORE any float capability is built, so the day the chain compiles
 \ one there is something to compare it with that nobody chose after the fact.
 \ Every row of the new column is a gap today, naming the `floats` capability -
-\ tools/codegen-compare-new3.f declares them and the account in
-\ tools/codegen-compare-gap.f refuses a pass in which a corpus word is neither
+\ the old comparison declared them and its account refused a pass in which a
+\ corpus word was neither
 \ compiled nor declared.
 \
 \ ============================================================================
@@ -162,7 +162,7 @@
 \ The two orders differ in the recorded cell, which is what makes the T-SUM row
 \ a statement about the order and not only about the arithmetic. SUM-REVERSED
 \ below is that second order, kept as a witness so the claim is checked rather
-\ than described: tools/codegen-compare-test.f asserts the two disagree.
+\ than described: the old comparison's member asserted the two disagree.
 \
 \ (10) THE LITERAL READER, AND TWO THINGS A CONSTANT-MATERIALISING COMPILER
 \ MUST KNOW. The engine reads `int.frac` and nothing else - there is no
@@ -196,7 +196,7 @@
 \ of them would have read as half a job.
 \
 \ ALL TEN ARE COMPILED NOW, and where the chain stands is recorded in
-\ tools/codegen-compare-new3.f rather than here: this file is the pinned corpus
+\ the old comparison's own notes rather than here: this file is the pinned corpus
 \ and the semantics it is measured under, and both of those are facts about the
 \ ENGINE that do not move when the compiler gains a capability. What closed the
 \ ten was three leaves - scalar float arithmetic, the five comparisons, and the
@@ -421,7 +421,7 @@ public
 
 \ The other order, kept as the witness that the sum row's pinned input
 \ distinguishes one evaluation order from another (survey (9)). It is not a row
-\ and it is not a subject: it exists so tools/codegen-compare-test.f can assert
+\ and it is not a subject: it exists so a member can assert
 \ that it disagrees with what T-SUM recorded, which turns the claim into a check.
 : SUM-REVERSED ( -- r )
    0.0

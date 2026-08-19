@@ -210,6 +210,13 @@ not faster, and the reason is the branch-around idiom, not the size.
 
 ### The cross-tool disagreement is not a measurement error
 
+> **Note (2026-08-19).** The comparison harness this record names —
+> `tools/codegen-compare.f` and its case lists — was deleted when the code
+> generator judge took over. The measurements below are kept as the record
+> of what was decided and why; the tool that would reproduce them today is
+> `bin/hb --load tools/judge.f` and, for the costs,
+> `bin/hb --load tools/judge-timed.f`. See `docs/codegen-parity.md`.
+
 The dot recorded `tools/codegen-compare.f` saying 0.82 ns/call for the chain's
 fold where the workload's per-call derivation said 3.13 — 3.8x apart. Both are
 right about different things. `tools/codegen-compare-cases2.f` times the fold as

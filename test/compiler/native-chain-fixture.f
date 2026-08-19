@@ -4,7 +4,7 @@
 \
 \ WHY THIS IS ITS OWN FILE. Two callers drive the same four stages in the same
 \ order - test/compiler/native-emit.f, which proves the bytes are the
-\ instructions they claim to be, and tools/codegen-compare-new.f, which measures
+\ instructions they claim to be, and the judge's own corpus rows, which measure
 \ them against the emitter bin/hb uses today. The stages have to be driven
 \ identically or the two disagree for a reason that is about the harnesses rather
 \ than about the compiler, so the order lives here once: bind the source dialect

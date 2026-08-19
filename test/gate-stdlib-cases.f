@@ -265,49 +265,6 @@ SUITE compiler-native-immediate
    test/compiler/native-immediate.f
 ;SUITE
 
-\ The code generator comparison harness, and what a gate can honestly ask of it.
-\ Its member checks the exact half of ALL THREE pinned corpora - the original
-\ eleven shapes, the seven surveyed hot words of
-\ tools/codegen-compare-corpus2.f, and the ten float words of
-\ tools/codegen-compare-corpus3.f, whose whole new column is a gap today -
-\ in one run: machine-code bytes, the values each compiled word computes, the
-\ head-to-head agreement of the two code generators, and the structure of each
-\ committed table. The timing column is deliberately left out
-\ of every gate, here and in the resident group below. A cost is a measurement
-\ compared with a number recorded on an idle machine, and a loaded host reaches
-\ the tolerance band on its own - eight competing processes per core left two
-\ per cent of it, sixteen went through it and reported four words that no
-\ compiler change had touched. Those measurements, and what the band does and
-\ does not buy, are written at the head of tools/codegen-compare-baseline.f.
-\ The scheduled run prints one line naming the comparison it did not make, and
-\ the timed check is bin/hb --load tools/codegen-compare.f, run by hand before a
-\ change that is meant to move the numbers. The member is mirrored into the
-\ resident stdlib/tail-pure fork group, so it is scheduled rather than run by
-\ hand.
-\
-\ NO ASSERTION THE MEMBER RUNS READS A CLOCK, and that is deliberate rather than
-\ incidental: a cost-direction assertion on the third corpus's T-SUM row failed
-\ one scheduled run in ten (dot habu-retire-the-flaky-25a37a74). The claims that
-\ are about a cost live in tools/codegen-compare-timed-test.f, which is run by
-\ hand on a quiet machine beside the entry above and is listed in no suite for
-\ the same reason that entry is not: scheduling it would schedule a flake. What
-\ the member pins in their place is the data-stack traffic each column's
-\ emitted code makes, row by row, which is exact and moves for one reason.
-\ The third column and the second reference join the same member for the same
-\ reason: nothing either of them asserts reads a clock. The symbol reader is
-\ attacked on listings built to fool it, the chain baseline on fixtures built
-\ from a real measurement, and the reference column on the real corpora - where
-\ what is checked is that every row has a twin and every twin answers what the
-\ engine's word answered. A host without a C compiler runs the first two and
-\ says so about the third; it does not fail.
-\
-\ Both files sit in the resident tail-pure fork list, so this registration is
-\ covered file by file rather than by a label nobody selects.
-SUITE codegen-compare
-   tools/codegen-compare-test.f
-   tools/codegen-compare-clang-test.f
-;SUITE
-
 \ The reader that makes the comparison's two columns compile ONE text. The
 \ comparison used to keep every subject twice - a real definition in the corpus
 \ file and a hand-retyped string literal beside it - and two texts that are
@@ -415,7 +372,7 @@ SUITE codegen-fork-reference
 \ one claim that genuinely needs two arms to have taken measurably different
 \ times - that the column a row calls old holds the arm handed to it as old - is
 \ in tools/codegen-workload-timed-test.f, run by hand beside that entry and
-\ listed in no suite, exactly as tools/codegen-compare-timed-test.f is. The
+\ listed in no suite, exactly as tools/judge-timed.f is. The
 \ member is mirrored into the resident stdlib/tail-pure fork group, so it is
 \ scheduled rather than run by hand.
 SUITE codegen-workload
@@ -423,15 +380,13 @@ SUITE codegen-workload
 ;SUITE
 
 \ Where the register allocator's spill wall is, measured through the real
-\ migration entry. It is its OWN member and not one of codegen-compare's,
-\ because it migrates definitions of its own and requires the fourth corpus's
-\ cases to get a callee: sharing a process with the comparison would leave the
-\ comparison measuring the fourth corpus against the third corpus's baseline,
-\ which is exactly what happened when it was first listed there. No assertion it
-\ makes reads a clock - every one of them is a throw code from the chain - so
-\ scheduling it schedules no flake. It runs in the proof slice with the parity
-\ gates: at 58s through the real runner it is a minute-scale member, not a
-\ fast-tier one.
+\ migration entry. It is its own member because it migrates definitions of its
+\ own and requires the fourth corpus and that corpus's migration to get a
+\ callee - CODEGEN-CORPUS4:C-LONG for the engine's arm and C-LONG-N for the
+\ chain's. No assertion it makes reads a clock - every one of them is a throw
+\ code from the chain - so scheduling it schedules no flake. It runs in the
+\ proof slice with the parity gates: at 58s through the real runner it is a
+\ minute-scale member, not a fast-tier one.
 SUITE codegen-spill-probe
    tools/codegen-spill-probe.f
 ;SUITE

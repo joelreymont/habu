@@ -4,7 +4,7 @@
 \
 \ WHAT THIS FILE STATES is what tools/judge/corpus4.f states and no more, and
 \ the measuring is tools/judge/pass.f's. Every input here is
-\ tools/codegen-compare-cases2.f's timed input, unchanged.
+\ the old comparison's timed input, unchanged.
 \
 \ ONE ROW IS REFUSED, AND IT IS THE FINDING THIS CORPUS CARRIES. The chain
 \ cannot record a hexadecimal literal on its tape (dot

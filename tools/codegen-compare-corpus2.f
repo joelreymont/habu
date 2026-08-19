@@ -60,10 +60,10 @@
 \ the tape cannot read a hexadecimal spelling back (dot
 \ habu-record-the-engine-79c570ed). That file lists both substitutions in full
 \ with the measurement behind them: the engine compiles each body and its
-\ respelled twin to byte-identical code, and tools/codegen-compare-test.f pins
+\ respelled twin to byte-identical code, and the old comparison's member pinned
 \ that equality, so the two columns are two compilations of one program. What is
 \ NOT done anywhere is respelling something STRUCTURAL to buy a row: a body the
-\ chain cannot compile is a gap row in tools/codegen-compare-new2.f that names
+\ chain cannot compile was a gap row in the old comparison that named
 \ the capability and the dot, which is a result.
 \
 \ Two of the seven are ANALOGUES, because their real bodies walk state that

@@ -12,7 +12,7 @@
 \       and exits non-zero; prints one line and exits zero when they agree.
 \
 \ WHAT THE JUDGE IS AND WHY IT IS NOT THE OLD COMPARISON. The old-versus-new
-\ comparison (tools/codegen-compare.f) holds every subject TWICE - a real
+\ comparison, now deleted, held every subject TWICE - a real
 \ definition in a corpus file and a hand-retyped string literal beside it - and
 \ keeps a hand-written list of the subjects the chain cannot compile. The judge
 \ holds each subject once, derives the chain's copy from the corpus file's own

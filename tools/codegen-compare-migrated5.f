@@ -12,7 +12,7 @@
 \ a claim this file made and did not keep.
 \
 \ ALL SIX ROWS ARE HERE, and so are both callees. There is no gap in this
-\ corpus: tools/codegen-compare-new5.f measures every row the corpus declares.
+\ corpus: every row the corpus declares is measured.
 \
 \ THE SUBSTITUTIONS, AND THERE IS ONLY THE ONE KIND. Every body carries `-N` on
 \ the name it defines, which is the migration's own convention, and a row that

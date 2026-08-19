@@ -11,9 +11,9 @@
 \ shrank is progress. Both come out of the byte comparison as one sentence -
 \ "the tree and the artifact disagree at byte 2317" - and a reader has to open
 \ the diff to learn which of the two happened. The comparison this judge
-\ replaced adjudicated those two events apart (tools/codegen-compare-baseline.f
-\ SIZE-CHECK, and its IMPROVED note), and that adjudication is what this file
-\ carries over.
+\ replaced adjudicated those two events apart (its baseline reader's
+\ SIZE-CHECK, and the IMPROVED note beside it), and that adjudication is what
+\ this file carries over now that the harness is gone.
 \
 \ IT DOES NOT WEAKEN THE GATE AND IS NOT MEANT TO. An improvement still moves
 \ the artifact and still exits non-zero, because an artifact that drifted behind

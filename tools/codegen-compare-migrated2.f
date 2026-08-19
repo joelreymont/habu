@@ -13,7 +13,7 @@
 \
 \ ALL SEVEN ARE HERE. VEC-COPY-CELLS was the odd one out while a call inside a
 \ counted loop miscompiled; dot habu-save-the-loop-5f07e0c3 closed that, so the
-\ table has no gap row left and tools/codegen-compare-new2.f declares none.
+\ table has no gap row left and the old comparison declared none.
 \
 \ TWO BODIES DIFFER FROM THE CORPUS'S IN THE SPELLING OF A CONSTANT, AND IN
 \ NOTHING ELSE. This is the one liberty this file takes and it is listed in full
@@ -38,7 +38,7 @@
 \ ASSERTED. The engine compiles each body and its respelled twin to byte-identical
 \ code: WS? is 428 bytes written either way and SYM-FOLD-C is 144 bytes written
 \ either way, and both twins answer the same on every pinned input.
-\ tools/codegen-compare-test.f holds those twins and pins the equality, so the
+\ the old comparison's member held those twins and pinned the equality, so the
 \ claim is a test rather than a sentence - if a future engine ever compiled a
 \ named constant into something other than the literal behind it, the suite
 \ reds and this note is what it points at. Nothing STRUCTURAL is respelled: no

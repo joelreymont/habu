@@ -12,7 +12,7 @@
 \
 \ WHY THE ENGINE IS THE REFERENCE. It is the uncombined compilation of the
 \ identical text, produced by a generator this pass cannot reach, and it is
-\ already what tools/codegen-compare.f adjudicates every corpus row against. A
+\ already what bin/hb --load tools/judge.f adjudicates every corpus row against. A
 \ reference built by switching the pass off would be a second configuration of
 \ the thing under test; this one is a different compiler.
 \
