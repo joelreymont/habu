@@ -10,11 +10,17 @@
 \
 \ Authority model: the ONLY way to obtain a role value is through its public
 \ CHECKED validator. Each validator inspects the raw cell first and calls a
-\ PRIVATE audited `TRUSTED:` mint (`MINT-*`, a no-op representation cast the
-\ checker cannot infer) only on the success path. There is no public raw mint
-\ and no public role->n projection. The two private `*>N` projections are
-\ explicit proof erasure used only where an allocator bound must read a role's
-\ raw cell; they are never paired with a public inverse.
+\ PRIVATE `CAST:` mint (`MINT-*`, a no-op representation cast) only on the
+\ success path. There is no public raw mint and no public role->n projection.
+\ The two private `*>N` projections are explicit proof erasure used only where an
+\ allocator bound must read a role's raw cell; they are never paired with a
+\ public inverse.
+\ The mints are declarations the CHECKER certifies, not trusted assertions: a
+\ `CAST:` body is certified under the identity row, and the declaration itself is
+\ refused if it changes cell count, crosses the pointer/quotation class, widens,
+\ carries linear ownership, or mints a family this package does not declare
+\ (src/core/checker.f CAST-CERTIFY). So a mint can rename a cell; it cannot
+\ reshape one.
 \
 \ Failure is a VALUE, not a throw. Expected validation failures return the
 \ on-stack sum `numeric-result<a>` (success `ok`, carrying the validated role in
@@ -46,11 +52,13 @@
 \ (dot habu-seal-cad-num-36dbeec6) will close that namespace authority; the
 \ closed B5.2 arithmetic is lib/cad-num-arithmetic.f (dot
 \ habu-implement-cad-num-cb413b2a).
-\ The mints remain audited boundaries until the TVK-RAW checker capability (dot
-\ habu-nominal-storage-raw-a3430ef2) closes generic raw-value laundering.
+\ Independently of how the mints are declared, a raw cell read back out of
+\ storage can still stand in for the `n` a validator accepts until the TVK-RAW
+\ checker capability (dot habu-nominal-storage-raw-a3430ef2) lands; the mints
+\ themselves no longer assert anything the checker has not certified.
 \
 \ No `require`: the type-declaration grammar (package/NEWTYPE/ENUM/
-\ TRUSTED:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). CAD-NUM must
+\ CAST:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). CAD-NUM must
 \ not depend on lib/memory.f - MEM:ALLOC-* consumes CAD-NUM:alloc-* roles, so a
 \ dependency would be a cycle; MAX-CELL-N mirrors the machine max cell that
 \ lib/memory.f also names as MEM-MAX-N.
@@ -110,25 +118,27 @@ private
 $7FFFFFFFFFFFFFFF constant MAX-CELL-N              \ largest nonnegative machine cell
 MAX-CELL-N 1 cells / constant MAX-ALLOC-CELLS      \ a count above this overflows MAX-CELL-N bytes
 
-\ ---- audited representation mints: validated raw cell -> nominal role ---------
+\ ---- checked representation mints: validated raw cell -> nominal role ---------
 \ No-op identity casts; the checker cannot infer that a predicate-checked n has
-\ become the arity-zero family. Private to the owning package and directly tested.
-TRUSTED: MINT-BYTE-LEN ( n -- byte-len ) ;
-TRUSTED: MINT-ITEM-COUNT ( n -- item-count ) ;
-TRUSTED: MINT-CELL-COUNT ( n -- cell-count ) ;
-TRUSTED: MINT-INDEX ( n -- index ) ;
-TRUSTED: MINT-BYTE-OFF ( n -- byte-off ) ;
-TRUSTED: MINT-CELL-OFF ( n -- cell-off ) ;
-TRUSTED: MINT-ALIGNMENT ( n -- alignment ) ;
-TRUSTED: MINT-POSITIVE-DIVISOR ( n -- positive-divisor ) ;
-TRUSTED: MINT-ALLOC-BYTE-LEN ( n -- alloc-byte-len ) ;
-TRUSTED: MINT-ALLOC-CELL-COUNT ( n -- alloc-cell-count ) ;
+\ become the arity-zero family, so the crossing is declared. Private to the
+\ owning package - CAST-OWNER? refuses these names anywhere else - and directly
+\ tested.
+CAST: MINT-BYTE-LEN ( n -- byte-len ) ;
+CAST: MINT-ITEM-COUNT ( n -- item-count ) ;
+CAST: MINT-CELL-COUNT ( n -- cell-count ) ;
+CAST: MINT-INDEX ( n -- index ) ;
+CAST: MINT-BYTE-OFF ( n -- byte-off ) ;
+CAST: MINT-CELL-OFF ( n -- cell-off ) ;
+CAST: MINT-ALIGNMENT ( n -- alignment ) ;
+CAST: MINT-POSITIVE-DIVISOR ( n -- positive-divisor ) ;
+CAST: MINT-ALLOC-BYTE-LEN ( n -- alloc-byte-len ) ;
+CAST: MINT-ALLOC-CELL-COUNT ( n -- alloc-cell-count ) ;
 
 \ ---- private proof-erasure projections (allocator bound checks only) ----------
 \ Explicit representation reads with no public inverse; a role has no primitive
 \ that consumes it directly for the zero/overflow bound test.
-TRUSTED: BYTE-LEN>N ( byte-len -- n ) ;
-TRUSTED: CELL-COUNT>N ( cell-count -- n ) ;
+CAST: BYTE-LEN>N ( byte-len -- n ) ;
+CAST: CELL-COUNT>N ( cell-count -- n ) ;
 
 \ ---- result constructors (readable names over the escaped ctor spelling) ------
 : NR-OK       ( a -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:OK ;
