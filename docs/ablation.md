@@ -90,16 +90,28 @@ test: ok
 
 The `*-device-test.f` family is kept out of `maki/test.f` and its slices so the
 host gate stays host-independent; each member is run explicitly on a CUDA host
-(Orin / spark) with `bin/hb --load <file>`. A member refuses a driverless host
-loudly: its named precondition (the `KVT-REQUIRE-DEVICE` shape) probes
-`CUDA:OPEN?` and dies 74 naming the missing capability, so a bare load never
-decays into anonymous assertion failures. Members moved out of `maki/test.f` by
-dot `habu-move-device-suites-b4fff868`:
+(Orin / spark).
+
+The first two members were moved out of `maki/test.f` by dot
+`habu-move-device-suites-b4fff868`, and each refuses a driverless host loudly:
+its named precondition (the `KVT-REQUIRE-DEVICE` shape) probes `CUDA:OPEN?` and
+dies 74 naming the missing capability, so a bare load never decays into
+anonymous assertion failures.
+
+The three GPT-2 members were never in `maki/test.f` at all; dot
+`habu-gpt-2-prod-ed55d98c` named them here, because until then they sat outside
+every inventory with nothing recording that they existed. They need a real
+checkpoint as well as a device and take that checkpoint root as their single
+argument, and they carry no named precondition yet - a driverless host gets
+assertion failures out of them rather than one refusal.
 
 | Member | Contract | Rerun |
 |--------|----------|-------|
 | `maki/infer/kv-cache-device-test.f` | linear device KV cache (real sessions, real device bytes, COW/batch lifetime) | `bin/hb --load maki/infer/kv-cache-device-test.f` (device host) |
 | `maki/gpu-buffer-device-test.f` | persistent GPU buffer lifetime (MKD fake matrix + real alloc/copy/span/free leg) | `bin/hb --load maki/gpu-buffer-device-test.f` (device host) |
+| `maki/infer/gpt2-cli-device-test.f` | one-request GPT-2 CLI: exact stdout against the pinned reference, plus its failure legs | `bin/hb --load maki/infer/gpt2-cli-device-test.f -- <checkpoint-root>` (device host) |
+| `maki/infer/gpt2-logits-device-test.f` | production GPT-2 decode: real logits rows, two models coexisting and closing in either order | `bin/hb --load maki/infer/gpt2-logits-device-test.f -- <checkpoint-root>` (device host) |
+| `maki/infer/gpt2-serve-device-test.f` | persistent framed GPT-2 service over a real session, including its refusal and cleanup legs | `bin/hb --load maki/infer/gpt2-serve-device-test.f -- <checkpoint-root>` (device host) |
 
 ## Pending rows and their blockers
 

@@ -44,7 +44,8 @@ using CAD-NUM
 
 ;using
 
-64 TOKEN-COUNT constant CONT-N
+: CONT-N ( -- CAD-NUM:item-count )
+   64 TOKEN-COUNT ;
 
 : FIRST ( n n -- n ) {: first:n next:n :}
    first 0<> if first else next then ;

@@ -317,6 +317,25 @@ SUITE maki/infer/gpt2-tensor-test.f
 ;SUITE
 SUITE maki/infer/gpt2-model-test.f
 ;SUITE
+SUITE maki/infer/gpt2-serve-test.f
+;SUITE
+SUITE maki/infer/gpt2-entry-test.f
+;SUITE
+\ WHICH GPT-2 TESTS THIS INVENTORY DOES NOT CARRY, AND WHY. The two suites above
+\ are every GPT-2 test that runs on its own: gpt2-serve-test.f drives the framing
+\ layer over a pipe, and gpt2-entry-test.f spawns each production entry command
+\ and proves it loads and reaches its own guard. Three more are ordinary host
+\ tests this inventory still cannot schedule, because each needs a GPT-2
+\ checkpoint it has no way to supply. They are named here rather than left
+\ unscheduled and unmentioned - dot habu-gpt-2-prod-ed55d98c, where a broken
+\ production load path went unnoticed for exactly that reason:
+\
+\   bin/hb --load maki/infer/gpt2-generate-test.f    -- <checkpoint-root>
+\   bin/hb --load maki/infer/gpt2-token-guard-test.f -- <checkpoint-root>
+\   bin/hb --load maki/infer/gpt2-serve-close-test.f -- <checkpoint-root>
+\
+\ The GPT-2 members of the *-device-test.f family need a CUDA host on top of a
+\ checkpoint; docs/ablation.md owns that family and carries each one's command.
 SUITE maki/journal-test.f
 ;SUITE
 SUITE maki/rev-test.f

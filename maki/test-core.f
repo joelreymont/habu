@@ -267,6 +267,10 @@ SUITE maki/infer/gpt2-tensor-test.f
 ;SUITE
 SUITE maki/infer/gpt2-model-test.f
 ;SUITE
+SUITE maki/infer/gpt2-serve-test.f
+;SUITE
+SUITE maki/infer/gpt2-entry-test.f
+;SUITE
 SUITE maki/journal-test.f
 ;SUITE
 SUITE maki/rev-test.f
