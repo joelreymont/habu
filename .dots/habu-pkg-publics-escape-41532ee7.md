@@ -1,9 +1,19 @@
 ---
 title: "Package publics escape internal marking: two live defects"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-20T15:04:26.429714+02:00"
 ---
 
 VERIFIED ON MASTER 2026-08-20 (seal-2): internal-mark.f:83 IMK-GLOBAL-COLON? classifies only wid-0 records, so package PUBLIC colon words are never internal-marked - the executable top-level universe no longer equals the checker's (the file's own stated invariant). Two live consequences, both reachable from ordinary user source, both cold-prefix paths: (a) 0 0 SCHEMA-REG:REWIND exits 0 and wipes the schema registry (next declaration dies 'tfam: bad schema node' rc 76); (b) PRIM-LINK:COUNT aborts SIGABRT rc 134 reading 6 cells below base - the c5be6634 U-TYPE crash class alive behind a qualifier. FIX (sized by seal-2): extend IMK-WALK to classify package public colon records - build the wid->package map from the wid==-1 records (slot 0 = public wid, same slot FIND-NMATCH reads), form PKG:TAIL, ask the checker via SYM-FIND (checker.f:4212) / CHECKER-RESOLVES?. Privates need nothing. Blast radius: 73 pre-hook package publics, 18 without axioms (PRIM-LINK 4, CHECKER-TAPE 4, CHECKER-PREFLIGHT 3, CHECKER-BOUND 3, SCHEMA-REG 2, TYPE-NAME 2) - each earns a PPRIM row or correctly fails closed. ALSO: test/internal-word-gate.f has ZERO qualified-name child programs - add the qualified coverage in the same change; the three-way discriminator (private E-UNDEFINED qualified / public-no-axiom internal-word rc 70 / public-with-axiom runs) is the acceptance. Blocks c65f76cc (the seal pilot).
+
+Claim: agent=mark-1 workspace=.jj-ws/habu-trusted
+
+FOLLOW-UP FINDINGS (mark-1, 2026-08-20), recorded here for the two dots the coordinator mints at merge. Neither is fixed by this dot's commit.
+
+(1) package-reopen-reaches-privates, rc 134. A package PRIVATE is reachable, by reopening the package: `package PRIM-LINK` / `private` / `KEY-SYM` / `;package` aborts SIGABRT rc 134 on master AND on this dot's fixed seed. Ordinary user source, cold-prefix path, same crash class as the bare U-TYPE of c5be6634 and the qualified PRIM-LINK:COUNT of this leaf. This leaf's premise "Privates need nothing (unreachable bare and qualified)" is true for bare and for qualified and FALSE for reopen. It is also the sequencing constraint on src/core/internal-mark.f's own packaging: a package-private IMK-CLASSIFY would be callable with an arbitrary record index after a reopen, where the marked global is callable from nowhere at all - so `package INTERNAL-MARK` sealed with prot-wid-add (the src/habu/xref.f PKG-AUTH shape, which C-PACKAGE-SEAL-GUARD then refuses to reopen) must land AFTER this defect closes, and the tools/package-diff-lint-core.f GLOBAL-IMPLEMENTATION? row added by this commit retires with it.
+
+(2) pre-hook TRUSTED: is silently inert, 8 sites. A TRUSTED: definition compiled before the check hook exists registers no checker row at all. Measured: src/core/checker.f:28 declares `TRUSTED: ARENA-RC>PTR ( n -- ptr a )` and the word answers CHECKER-RESOLVES? 0 and carries DNAME-INT on master; a bare call reports `hb: internal engine word: ARENA-RC>PTR`. Eight such definitions exist (7 in src/core/checker.f, 1 in src/core/check-hook.f). This is the root cause of the PPRIM: LOWER-CERT-HOOK INSTALL row this commit adds: check-hook.f:49 already declares `TRUSTED: INSTALL ( -- )` in that package's public section, but check-hook.f is the file that installs the hook and so loads before one exists - the same load-order accident its sibling LOWER-CERT-HOOK HOOK already needed a row for. Fixing the registration is a checker-boot change with an 8-site blast radius and belongs in its own leaf.
+
+Also correcting this leaf's own measurement: the blast radius is 19 pre-hook package publics without axioms, not 18. Seal-2 missed LOWER-CERT-HOOK:INSTALL, most likely by reading its TRUSTED: declaration as an axiom - see (2) for why the declaration is inert.
