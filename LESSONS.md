@@ -7607,3 +7607,22 @@ and --no-lldbinit.
   {: and any backslash comment.** Reading a trailing comment as the signature
   forges a plausible, wrong row that rejects somewhere else entirely. A wrong
   hand-written row is not free.
+
+- **Recording a signature is the same act as publishing an API.**
+  `internal-mark.f` welds "checker-known" to "top-level executable", so any
+  move that makes a file checked publishes every global it defines. Count the
+  globals before scoping such a move.
+- **A scout's "costs nothing" about a file is about its CONSUMERS; measure its
+  BILL separately.** `layout-valid.f` had zero pre-hook consumers and 29
+  pre-hook dependencies.
+- **`undefine` retires a dictionary entry, not a recorded row.** A seam
+  designed as a `defer` specifically to stay retirable loses that property the
+  moment its file is checked.
+- **`jj edit <old-commit-id>` after the change was rewritten silently checks
+  out the stale snapshot and creates a divergent change.** Two edits were
+  reverted under me and only a marker sweep caught it. Use the change id, and
+  sweep for your own markers after any `abandon`/`edit` cycle.
+- **A gate assertion that fails after your change is often the tree telling you
+  which dot you are reversing.** `using-test.f`'s FRESH precondition and
+  `internal-word-gate.f`'s CT-LIVE? case both named their own obsolescence
+  condition in advance.
