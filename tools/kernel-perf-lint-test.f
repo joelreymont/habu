@@ -189,8 +189,6 @@ variable FILE2-U
 : NEW-PRODUCER-TESTS ( -- )   \ every producer the fix newly names fails closed on a bare touch
    s" lib/ptx/tile.f" TOUCH-MISSING
    s" lib/ptx/tile-v4.f" TOUCH-MISSING
-   s" lib/ptx/opt.f" TOUCH-MISSING
-   s" lib/ptx/opt-ir.f" TOUCH-MISSING
    s" lib/ptx/ir.f" TOUCH-MISSING
    s" lib/ptx/collective.f" TOUCH-MISSING
    s" lib/ptx/cg-collective.f" TOUCH-MISSING ;
@@ -198,8 +196,6 @@ variable FILE2-U
 : NEAR-MISS-TESTS ( -- )   \ test near-misses and declared non-producers never trigger
    s" lib/ptx/tile-test.f" TOUCH-CLEAN
    s" lib/ptx/tile-v4-test.f" TOUCH-CLEAN
-   s" lib/ptx/opt-test.f" TOUCH-CLEAN
-   s" lib/ptx/opt-ir-test.f" TOUCH-CLEAN
    s" lib/ptx/ir-test.f" TOUCH-CLEAN
    s" lib/ptx/collective-test.f" TOUCH-CLEAN
    s" lib/ptx/cg-collective-test.f" TOUCH-CLEAN
@@ -245,7 +241,7 @@ variable FILE2-U
    ra ru s" watched.diff" KLT-FILE-BUF JOIN-PATH KLT-FILE-U !
    ra ru s" other.diff" FILE2-BUF JOIN-PATH FILE2-U !
    KLT-FILE$ CLEANUP+ FILE2$ CLEANUP+
-   KLT-FILE$ s" lib/ptx/opt.f" MODE$ WRITE-ALL
+   KLT-FILE$ s" lib/ptx/ir.f" MODE$ WRITE-ALL
    FILE2$ s" lib/ptx/tile.f" MODE$ WRITE-ALL
    KERNEL-PERF-LINT:RESET
    KLT-OUT KLT-CAP LINT-OUT-BUFFER!
@@ -366,7 +362,7 @@ variable PW-BAD
 
 : CLASSIFY-TESTS ( -- )   \ the classifier keys every acceptance case exactly
    s" lib/ptx/tile.f"               PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
-   s" lib/ptx/opt.f"                PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
+   s" lib/ptx/ir.f"                 PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
    s" lib/ptx/collective.f"         PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
    s" lib/ptx/cg-collective.f"      PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
    s" src/arch/ptx/emit.f"          PERF-WATCH:CLASSIFY PERF-WATCH:PW-WATCHED  T=
@@ -379,7 +375,7 @@ variable PW-BAD
 : DEDUP-TESTS ( -- )   \ a path set accepts distinct paths and rejects a duplicate
    PW-SCRATCH-IX PERF-WATCH:PS-RESET
    PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/tile.f" PERF-WATCH:PS-ADD
-   PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/opt.f"  PERF-WATCH:PS-ADD
+   PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/ir.f"   PERF-WATCH:PS-ADD
    PW-SCRATCH-IX PERF-WATCH:PS-N 2 T=
    [: PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/tile.f" PERF-WATCH:PS-ADD ;] E-WATCH-DUP TTHROWSQ ;
 

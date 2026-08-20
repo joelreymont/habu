@@ -158,8 +158,10 @@ representative native/GPU measurements required by design section 14, Wave 0.
 
 - Reuse `habu-add-pinned-engine-90090800` only for its checker, fixpoint,
   interpreter, and future inference benchmarks.
-- Reuse `habu-adjudicate-dormant-ptx-482310bc` for the current PTX optimizer
-  evidence.
+- There is no PTX optimizer baseline to take: the line-oriented text optimizer
+  was deleted on 2026-08-20 with no consumer
+  (`habu-delete-the-nimm-329100c9`), and its measured before/after census is on
+  the closed `habu-adjudicate-dormant-ptx-482310bc` leaf.
 - Add the missing native baseline for JIT/AOT latency, emitted bytes, dynamic
   instructions, stack traffic, spills, calls, branches, runtime, binary size,
   and peak temporary memory.
@@ -167,7 +169,7 @@ representative native/GPU measurements required by design section 14, Wave 0.
   size, registers, shared memory, spills, occupancy, memory traffic, device time,
   effective throughput, and roofline class.
 - Inventory every raw instruction, machine-code scan, branch patch, PTX string
-  emitter, `opt-ir` path, production entry, and unsupported capability.
+  emitter, production entry, and unsupported capability.
 - Add a disabled `new-compiler` capability record and comparison-only native/GPU
   shadow harness plumbing. Wave 0 does not change generated code or publication.
 - Missing live Spark measurements block GPU code-generation changes, not the

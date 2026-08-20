@@ -650,10 +650,9 @@ No immediate word receives access to AArch64 emission in the new path.
 
 #### As implemented
 
-`src/compiler/native/tape.f` (package `NTAPE`) owns the tape and
-`src/compiler/native/immediate.f` (package `NIMM`) owns the three classes.
-Four decisions were taken while building them, and each one is a commitment
-later stages inherit.
+`src/compiler/native/tape.f` (package `NTAPE`) owns the tape. Four decisions
+were taken while building it, and each one is a commitment later stages
+inherit.
 
 **The resolved spelling is an interned symbol, not a second byte slice.** The
 byte span already says where the token was read from. Storing a second byte
@@ -685,10 +684,19 @@ owns; the bytes behind a span and behind a spelling are the source registry's
 and the interner's own content digests, and a stage that needs content
 identity binds both.
 
-The compile-time class of section 7.1 is recorded but not yet sealed: the
-guarantee that such an immediate reaches the program only through the builder
-is the HIR builder's to enforce, and there is no builder yet. Dot
-`habu-seal-the-compile-5f56e5e9` tracks that capability.
+The three classes above have no implementation in the tree.
+`src/compiler/native/immediate.f` (package `NIMM`) recorded them for a month
+and was deleted on 2026-08-20, together with its suite and its seven error
+codes, because nothing ever asked it: the elaborator hands each body token to
+`HIR-WORD` and never consulted the contract table, so no word was ever
+classified by it at compile time. What checked source may compile a word into
+is the straight-line word model's answer (`src/compiler/native/hir-word.f`),
+which refuses a word it does not model as `E-HIR-UNMODELED` and names a
+declared boundary's missing capability through its own reason table. The
+compile-time class comes back when an immediate word needs it: the deleted
+table is recoverable from history at that commit, and dot
+`habu-seal-the-compile-5f56e5e9` still owns the sealed builder capability such
+a class has to hold before it can mean anything.
 
 #### As implemented: the producer
 
@@ -1669,7 +1677,9 @@ Unknown PTX is not representable in generated modules unless carried as an expli
 
 ### 8.8 PTX optimization
 
-Port the existing exact rules to structured PTXIR:
+PTXIR's optimizer implements these exact rules. They are a specification, not a
+port: the line-oriented text optimizer that used to implement the first five
+was deleted on 2026-08-20 with no consumer (section 12.3).
 
 ```text
 copy propagation
@@ -2041,7 +2051,7 @@ As proofs land, these validators become the executable checkers justified by Roc
 - ELF and Mach-O image writers;
 - content-addressed cache and object-store concepts;
 - PTX target/header/toolchain handling;
-- current exact PTX optimization rules as specifications.
+- the exact PTX optimization rules of section 8.8 as specifications.
 
 ### 12.2 Replace
 
@@ -2054,7 +2064,6 @@ As proofs land, these validators become the executable checkers justified by Roc
 - AOT code scanning with emitted symbols and relocations;
 - PTX register-number semantic values with KIR value IDs;
 - immediate PTX string emission with structured KIR/GIR/PTXIR;
-- line-oriented PTX optimization with PTXIR optimization;
 - mutable MMA configuration globals with immutable schedule values;
 - fixed PTX register declarations with exact declarations;
 - fusion/materialization mutation of model IR with explicit RIR.
@@ -2068,12 +2077,13 @@ src/habu/jit.f
 src/habu/regalloc.f
 the direct user-definition compiler portions of src/habu/habu2.f
 src/habu/aot-capture.f machine-code scanning
-lib/ptx/opt-ir.f from the generated-code path
 the string-emitting operation bodies in lib/ptx/cg*.f
 lib/ptx/ir.f as the claimed optimizer/backend IR
 ```
 
 Do not delete a file merely to satisfy this list. Retire each responsibility only after the new owner and production tests are live.
+
+The line-oriented PTX text optimizer left this list a different way. `lib/ptx/opt-ir.f` and `lib/ptx/opt.f` had no production responsibility to retire — no emitter and no `ptxas` path ever called them — so on 2026-08-20 they were deleted outright, with their two suites and their two error codes. The rules they implemented are specified in section 8.8 and are PTXIR's to implement; the deleted source and its measured before/after census are in history at that commit.
 
 ---
 
@@ -2124,7 +2134,6 @@ NUMERIC-POLICY
 
 ```text
 src/compiler/native/tape.f
-src/compiler/native/immediate.f
 
 src/compiler/hir/op.f
 src/compiler/hir/builder.f
@@ -2239,7 +2248,7 @@ Deliverables:
 - record PTX text size, `ptxas` registers, shared memory, spills, cubin size, compile time, and device time for current kernels;
 - inventory every raw ARM instruction constant outside the encoder;
 - inventory every machine-code scan;
-- inventory every PTX string emitter and every path through `opt-ir`;
+- inventory every PTX string emitter;
 - add a disabled `new-compiler` feature/capability record;
 - add shadow-comparison harness plumbing.
 
@@ -2491,7 +2500,7 @@ Acceptance:
 - schedule candidates produce GIR and witnesses;
 - the autotuner accepts only validated candidates;
 - artifact promotion binds all evidence;
-- retire string-first `cg` operation emitters and old `opt-ir` from production.
+- retire string-first `cg` operation emitters from production.
 
 ---
 

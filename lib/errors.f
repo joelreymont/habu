@@ -134,8 +134,7 @@
 -3411 constant E-PTX-AD-CONTROL
 -3412 constant E-PTX-EMIT      \ spawned kernel-emit child exited nonzero (its stderr surfaced)
 -3413 constant E-PTX-CAP       \ in-process PTX capture buffer overflowed
--3414 constant E-PTX-OPT-OVERFLOW  \ PTX optimizer line/symbol/output arena overflowed
--3415 constant E-PTX-OPT-SYNTAX    \ PTX optimizer parse invariant violated (should be fail-closed opaque)
+\ -3414 and -3415 unassigned (PTX text optimizer deleted 2026-08-20: no consumer)
 -3416 constant E-KABI-CAP          \ kernel-ABI record capacity (params/fields/name pool) exceeded
 -3417 constant E-KABI-FIELD        \ kernel-ABI field: unknown name/index, or no .param offset
 -3418 constant E-KABI-DUP          \ kernel-ABI duplicate field name / conflicting extent-token source
@@ -513,7 +512,8 @@ public
 \   -8160..-8179  unassigned (pass witnesses retired 2026-07-30: no consumer)
 \   -8180..-8199  IR facade assembly and package protection (package IR)
 \   -8200..-8219  ARM64 routine machine-effect contracts (package A64EFF)
-\   -8220..-8239  native immediate-word contract table (package NIMM)
+\   -8220..-8239  unassigned (immediate-word contract table deleted 2026-08-20:
+\                 no consumer)
 \   -8240..-8259  native stage N0 source tape (package NTAPE)
 \   -8260..-8279  codegen measurement probes, the judge's timing, and the
 \                 clang reference column
@@ -672,19 +672,11 @@ public
 -8248 constant E-NTAPE-ROOT     \ an origin read on a directly lexed token, which has none
 -8249 constant E-NTAPE-DIGEST   \ a presented tape digest does not match the recomputed one
 
-\ Native immediate-word contract table (package NIMM): -8220..-8239
-\
-\ Design section 7.1 divides compile-time immediate words into front-end
-\ intrinsics, sealed compile-time computation, and an unmodeled boundary that
-\ checked source must not compile. This table is where a word's class is
-\ declared, so a rejection can name the word instead of failing anonymously.
--8220 constant E-NIMM-STATE     \ a contract table failed its header or row-shape recheck
--8221 constant E-NIMM-OWNER     \ a module key or symbol presented to a table that does not own it
--8222 constant E-NIMM-BOUND     \ a contract-row index at or past the count the table records
--8223 constant E-NIMM-CAP       \ a table capacity outside the accepted range, or a declaration past it
--8224 constant E-NIMM-CLASS     \ a stored class outside the vocabulary, or a declarer given a class it does not declare
--8225 constant E-NIMM-DUP       \ a symbol this table already classifies
--8226 constant E-NIMM-UNMODELED \ an immediate word checked source may not compile: unregistered, or declared unmodeled
+\ -8220..-8239 unassigned. The seven E-NIMM-* codes that held this block were
+\ the immediate-word contract table's, and they went with it on 2026-08-20: the
+\ elaborator asks HIR-WORD what a body token means and never asked the table,
+\ so nothing could throw them. What checked source may compile a word into is
+\ E-HIR-UNMODELED's to refuse.
 
 \ Measuring emitted machine code - the codegen probes, the judge's timing, the
 \ clang reference column - and the native chain fixtures those share with the

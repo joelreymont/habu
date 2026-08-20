@@ -109,10 +109,8 @@ create EXCLUDE-AR PS-ARENA-SIZE allot
    \ --- PTX text encoder + VJP table (src/arch/ptx) ---
    s" src/arch/ptx/emit.f" +P
    s" src/arch/ptx/vjp.f" +P
-   \ --- expression IR + bit-exact optimizer (lib/ptx) ---
+   \ --- expression IR (lib/ptx) ---
    s" lib/ptx/ir.f" +P
-   s" lib/ptx/opt.f" +P
-   s" lib/ptx/opt-ir.f" +P
    \ --- tile DSL vocabulary (lib/ptx) ---
    s" lib/ptx/tile.f" +P
    s" lib/ptx/tile-loop.f" +P

@@ -261,10 +261,6 @@ SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
 
-SUITE compiler-native-immediate
-   test/compiler/native-immediate.f
-;SUITE
-
 \ The reader that makes the comparison's two columns compile ONE text. The
 \ comparison used to keep every subject twice - a real definition in the corpus
 \ file and a hand-retyped string literal beside it - and two texts that are
@@ -1006,8 +1002,6 @@ SUITE ptx-stdlib
    lib/ptx/cg-activation-test.f
    lib/ptx/autograd-test.f
    lib/ptx/ir-test.f
-   lib/ptx/opt-ir-test.f
-   lib/ptx/opt-test.f
    lib/ptx/ad-test.f
    lib/ptx/ad-dag-test.f
    lib/ptx/ad-dag-eval-test.f

@@ -453,7 +453,6 @@ public
    s" test/compiler/native-tape.f" GSI-FORK-INCLUDE
    s" test/compiler/native-feed.f" GSI-FORK-INCLUDE
    s" test/compiler/native-string.f" GSI-FORK-INCLUDE
-   s" test/compiler/native-immediate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-hir.f" GSI-FORK-INCLUDE
    s" test/compiler/native-elaborate.f" GSI-FORK-INCLUDE
    s" test/compiler/asm-package-test.f" GSI-FORK-INCLUDE
@@ -845,8 +844,6 @@ public
    s" lib/ptx/cg-activation-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE
    s" lib/ptx/ir-test.f" GSI-INCLUDE
-   s" lib/ptx/opt-ir-test.f" GSI-INCLUDE
-   s" lib/ptx/opt-test.f" GSI-INCLUDE
    s" lib/ptx/ad-test.f" GSI-INCLUDE
    s" lib/ptx/ad-dag-test.f" GSI-INCLUDE
    s" lib/ptx/ad-dag-eval-test.f" GSI-INCLUDE
