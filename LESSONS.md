@@ -7598,3 +7598,12 @@ and --no-lldbinit.
   an arming gap (generative definer not yet armed), or a compile-host gap
   (stage source built by the old engine) — all indistinguishable from "wrong
   type" at the call site. Ask which one before scoping a sweep.
+
+- **A probe against a live engine inherits everything the prefix did AFTER the
+  file under test.** Baked PRIM: axioms and downstream undefine rows both read
+  as the file's own defects. Before believing a reject in a prefix file, ask
+  what the prefix did to that name after it loaded.
+- **A stack effect is the first ( ... ) of a header, and only if it precedes
+  {: and any backslash comment.** Reading a trailing comment as the signature
+  forges a plausible, wrong row that rejects somewhere else entirely. A wrong
+  hand-written row is not free.
