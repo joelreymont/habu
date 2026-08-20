@@ -92,9 +92,12 @@ TRUSTED: SCX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
 TRUSTED: SCX-TFX-SLOTS ( -- n ) TFX-SLOTS ;
 TRUSTED: SCX-TFX-SLOTS-INIT ( -- n ) TFX-SLOTS-INIT ;
 
-PTR-VARIABLE SCX-NA
-variable SCX-NU
-TRUSTED: SCX-NAME! ( ptr u8 n -- ) SCX-NU ! SCX-NA ! ;
+\ The span cells are pinned to what they hold, so the store is checked rather
+\ than asserted (test/typed-storage-structural-test.f §2). SCX-SYM-INTERN stays
+\ trusted for SYM-INTERN, not for these cells.
+TYPED-VARIABLE SCX-NA ptr u8
+TYPED-VARIABLE SCX-NU n
+: SCX-NAME! ( ptr u8 n -- ) SCX-NU ! SCX-NA ! ;
 TRUSTED: SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
 
 \ the two scans the dot names, read directly: SCAN-USIGS-SYM leaves its answer

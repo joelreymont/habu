@@ -5,11 +5,17 @@
 \
 \ Pins the convenience typed-storage surface: single typed cell (TYPED-VARIABLE)
 \ and typed fixed-capacity buffer (TYPED-BUFFER) for nominal scalars, closed
-\ layout families, and closed typed pointers. Same-family store/fetch round-trips
-\ certify and execute; cross-family / bounds / overflow / rollback reject with a
-\ named E-* code. Two capabilities stay DISTINCT: a live LAYOUT-BUFFER over a
-\ nominal-parameterized result keeps working, and a raw `variable` still cannot
-\ mint a nominal family (the definers are the sound alternative, not a bypass).
+\ layout families, closed typed pointers, and closed structural cells.
+\ Same-family store/fetch round-trips certify and execute; cross-family / bounds
+\ / overflow / rollback reject with a named E-* code. Two capabilities stay
+\ DISTINCT: a live LAYOUT-BUFFER over a nominal-parameterized result keeps
+\ working, and a raw `variable` still cannot mint a nominal family (the definers
+\ are the sound alternative, not a bypass).
+\
+\ The fourth admissible stored type, a CLOSED STRUCTURAL CELL (n, bool, the
+\ role tokens, `ptr u8`), is owned by test/typed-storage-structural-test.f
+\ together with the reason a bare `u8` stays out. This file keeps the nominal,
+\ layout, typed-pointer and quotation halves.
 
 require lib/errors.f
 require lib/string.f
@@ -150,8 +156,6 @@ TYPED-VARIABLE TSL tsres<n,n>
    \ test/xt-cell-test.f); a MALFORMED quotation (missing --) still rejects
    s" TYPED-VARIABLE BAD-QUOT [ n n ]" TS-EVAL E-STORAGE T=
    s" TYPED-VARIABLE BAD-LIN tsowned" TS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE BAD-PTR-N ptr n" TS-EVAL E-STORAGE T=
-   s" TYPED-VARIABLE BAD-N n" TS-EVAL E-STORAGE T=
    \ overflow: non-positive counts reject
    s" 0 TYPED-BUFFER BAD-ZERO tsk" TS-EVAL E-STORAGE T=
    s" -1 TYPED-BUFFER BAD-NEG tsk" TS-EVAL E-STORAGE T=

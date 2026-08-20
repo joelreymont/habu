@@ -3400,18 +3400,49 @@ variable LBI-BAD
 \ layout family — AND a CLOSED xt<effect> QUOTATION CELL `[ in -- out ]` (dot
 \ habu-typed-xt-storage-ddad4af8): a persistent monomorphic code cell whose @
 \ recovers the declared T-QUOT so `HK @ execute` fit-checks the row against E and
-\ a typed store fit-checks a word's certified effect against E. A bare `ptr a`/
-\ `ptr n`, an open var/arg, a linear value, a hidden field, and any trailing token
-\ all reject; a malformed quotation body rejects through SGBAD. LAYOUT-BUFFER keeps
+\ a typed store fit-checks a word's certified effect against E — AND a CLOSED
+\ STRUCTURAL CELL (dot habu-typed-storage-sweep-b2cd1a61), below. An open var/arg
+\ (`a`, `ptr a`), a linear value, a hidden field, and any trailing token all
+\ reject; a malformed quotation body rejects through SGBAD. LAYOUT-BUFFER keeps
 \ its own narrower CHECKER-LAYOUT-INFO gate unchanged, so the two capabilities
-\ stay distinct. Width is CELL-uniform (1) for nominal scalars and typed
-\ pointers, and the registry width for a layout family.
+\ stay distinct. Width is CELL-uniform (1) for nominal scalars, typed pointers
+\ and structural cells, and the registry width for a layout family.
+\
+\ WHY A BARE `n` IS ADMITTED HERE AND WAS NOT BEFORE. The original gate served
+\ one purpose — minting a NOMINAL cell — so a plain scalar was out of scope
+\ rather than unsound, and `variable` was held to be its answer. It is not: a
+\ raw cell's type is an open var each call site instantiates afresh, so ONE raw
+\ cell certifies `( n -- ) V !`, `( -- n ) V @`, `( ptr u8 -- ) V !`,
+\ `( -- ptr u8 ) V @`, `( -- bool ) V @` and `( -- ptr ptr u8 ) V @` — six
+\ contradictory readings, all -1. A cell whose honest type IS structural (a
+\ span, a counter, a flag) therefore had no way to state it except `TRUSTED:`.
+\ Pinning is what removes the trust, and the RAW discipline above already says
+\ so in as many words: it ADMITS a plain scalar/role con into a raw cell and
+\ fences only the nominal family, noting that fencing role atoms out of raw
+\ storage "needs that role/xt scratch migrated to typed cells first". This is
+\ that migration, so the nominal fence is untouched — a structural accessor
+\ never needs the LAYOUT-INTRO mint, because structural cons were never fenced.
+\
+\ SUB-CELL INTEGER CONS STAY OUT OF THE DIRECT STORED-TYPE POSITION. A stored
+\ `u8` would mint `( -- ptr u8 )`, and cell `@` over a concrete `ptr u8` is a
+\ checker error (byte spans use c@; measured: `( ptr u8 -- n ) @` rejects while
+\ `( ptr ptr u8 -- ptr u8 ) @` certifies) — the cell would be unreadable by the
+\ operator its own declaration implies, while the definer still allots a whole
+\ cell for it. Inside a POINTER chain they stay admissible, which is the shape
+\ the span cells actually hold: `ptr u8` stored yields `( -- ptr ptr u8 )`.
+: STORAGE-SUBCELL-CON? ( n -- bool ) {: c:n :}   \ con addresses bytes, not a whole cell
+   c CC-U8 = c CC-U16 = or c CC-U32 = or c CC-CHAR = or ;
+: STORAGE-STRUCT-CON? ( n -- bool ) {: t:n :}   \ resolved term is a closed one-cell structural con
+   t TAG T-CON <> IF RES-FALSE EXIT THEN
+   t PAY CT-LINEAR? IF RES-FALSE EXIT THEN
+   t PAY STORAGE-SUBCELL-CON? 0= ;
 : STORAGE-PTR-POINTEE-OK? ( n -- bool )   \ resolved pointee admissible for a stored typed pointer
    dup NOM-SCALAR? IF drop RES-TRUE EXIT THEN
    dup LAYOUT-PARAM? IF
       dup LAYOUT-MAYBE-LINEAR? IF drop RES-FALSE EXIT THEN
       LAYOUT-ARGS-OPEN? 0= EXIT THEN
    dup TAG T-PTR = IF PTR>INNER T-RES RECURSE EXIT THEN
+   dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN   \ ptr u8 / ptr n / ptr bool; a linear pointee still rejects
    drop RES-FALSE ;
 : STORAGE-TYPED-PTR? ( n -- bool )   \ resolved term is a closed typed pointer
    dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
@@ -3427,6 +3458,7 @@ variable LBI-BAD
    SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? IF 0 RES-FALSE EXIT THEN
    LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell (dot habu-typed-xt-storage-ddad4af8)
+   LBI-T @ STORAGE-STRUCT-CON? IF 1 RES-TRUE EXIT THEN   \ closed structural cell: one cell (dot habu-typed-storage-sweep-b2cd1a61)
    LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ STORAGE-TYPED-PTR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN

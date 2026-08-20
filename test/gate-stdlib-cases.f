@@ -1221,6 +1221,10 @@ SUITE typed-storage
    test/typed-storage-test.f
 ;SUITE
 
+SUITE typed-storage-structural
+   test/typed-storage-structural-test.f
+;SUITE
+
 SUITE underdepth-gate
    test/underdepth-gate.f
 ;SUITE

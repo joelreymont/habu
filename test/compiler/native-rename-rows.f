@@ -344,20 +344,26 @@ MIGRATE-THE-REST
 \ aside, the second word fills the row again, and the two rows are compared; a
 \ word leaving fewer than five cells zeroes the rest, so a case that lost or
 \ gained a cell differs from its twin inside the row rather than off the end of it.
-variable D1  variable D2  variable D3  variable D4  variable D5
-variable A1  variable A2  variable A3  variable A4  variable A5
+\ The ten cells are pinned to what they hold, so the eight accessors below are
+\ ordinary checked words: a raw `variable` types its cell with an open var that
+\ takes any reading, which is what used to force `TRUSTED:` here
+\ (test/typed-storage-structural-test.f §1-§2).
+TYPED-VARIABLE D1 n   TYPED-VARIABLE D2 n   TYPED-VARIABLE D3 n
+TYPED-VARIABLE D4 n   TYPED-VARIABLE D5 n
+TYPED-VARIABLE A1 n   TYPED-VARIABLE A2 n   TYPED-VARIABLE A3 n
+TYPED-VARIABLE A4 n   TYPED-VARIABLE A5 n
 
-TRUSTED: ZERO ( -- )  0 D1 !  0 D2 !  0 D3 !  0 D4 !  0 D5 ! ;
-TRUSTED: GRAB1 ( n -- )             ZERO  D1 ! ;
-TRUSTED: GRAB2 ( n n -- )           ZERO  D2 !  D1 ! ;
-TRUSTED: GRAB3 ( n n n -- )         ZERO  D3 !  D2 !  D1 ! ;
-TRUSTED: GRAB4 ( n n n n -- )       ZERO  D4 !  D3 !  D2 !  D1 ! ;
-TRUSTED: GRAB5 ( n n n n n -- )     ZERO  D5 !  D4 !  D3 !  D2 !  D1 ! ;
+: ZERO ( -- )  0 D1 !  0 D2 !  0 D3 !  0 D4 !  0 D5 ! ;
+: GRAB1 ( n -- )             ZERO  D1 ! ;
+: GRAB2 ( n n -- )           ZERO  D2 !  D1 ! ;
+: GRAB3 ( n n n -- )         ZERO  D3 !  D2 !  D1 ! ;
+: GRAB4 ( n n n n -- )       ZERO  D4 !  D3 !  D2 !  D1 ! ;
+: GRAB5 ( n n n n n -- )     ZERO  D5 !  D4 !  D3 !  D2 !  D1 ! ;
 
-TRUSTED: KEEP ( -- )
+: KEEP ( -- )
    D1 @ A1 !  D2 @ A2 !  D3 @ A3 !  D4 @ A4 !  D5 @ A5 ! ;
 
-TRUSTED: SAME ( -- )
+: SAME ( -- )
    A1 @ D1 @ T=  A2 @ D2 @ T=  A3 @ D3 @ T=  A4 @ D4 @ T=  A5 @ D5 @ T= ;
 
 \ ---- the four that were miscompiled, now compiled and agreeing ----------------
