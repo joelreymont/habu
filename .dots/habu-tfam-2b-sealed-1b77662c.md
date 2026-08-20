@@ -121,3 +121,16 @@ deletes; type-schema.f is on NO exception list so its 98 globals are
 frozen today. All of banked 4f1b44b6 survives; checker.f and
 internal-word-gate.f re-derive on top. Census scripts in seal-1's
 scratchpad. Iteration cost: 14.7s warm snap.
+
+CORRECTIONS FROM THE PILOT'S FALSIFICATION (seal-2, 2026-08-20): (1) census
+is 61 public / 37 private / 18 consumers - type-family and sumtype are
+ordinary consumers (+13 names); two maki false positives (maki/schema.f owns
+its own SCH-N/SCH-CAP). (2) The LOWER-CERT precedent was measured on PRIVATE
+words only - "packaging changes nobody's visibility" does NOT hold for
+publics: internal-mark.f:83 gates on wid 0, so package publics are never
+classified. (3) NAMING RULED: KEEP THE TAILS - mechanically shortening
+collapses 61 publics onto 48 tails (13 collisions across the file's three
+sub-registries); disambiguation is a design campaign, unreviewable inside a
+seal; OWNER-PREFIX? does not fire on SCHEMA-N@ under SCHEMA-REG, so nothing
+forces renames. (4) The pilot c65f76cc is BLOCKED on the internal-mark
+mechanism fix; sequence = mechanism, pilot, cascade.
