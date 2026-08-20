@@ -683,6 +683,20 @@ $8000000000000000 constant INT-MIN
    {: a:IR-ARENA:arena cells:n :}
    a PCELLS cells + a HC-CAP LCELL@ > if E-IR-ATTR-CAP throw then ;
 
+\ Reserve a row's whole storage before its first cell is written. A row that
+\ reaches the pool and not the row table, or that stops half way through either,
+\ leaves a count no row width divides and the table unreadable. Reserving comes
+\ after the room checks so this table's named capacity errors still come first,
+\ and covers BOTH arenas for the paths that write a pool window and a row.
+: ROW-TAKE ( IR-CTX:ctx IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx r:IR-ARENA:arena :}
+   c r ROW-CELLS IR-ARENA:RESERVE ;
+
+: POOL-ROW-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena cells:n :}
+   c a cells IR-ARENA:RESERVE
+   c r ROW-TAKE ;
+
 : ROW-ADD5 ( IR-CTX:ctx IR-ARENA:arena n n n n n -- n )
    {: c:IR-CTX:ctx r:IR-ARENA:arena k:n x:n y:n z:n w:n :}
    r CNT {: l:n :}
@@ -703,6 +717,7 @@ $8000000000000000 constant INT-MIN
    r k x y z w SCAN5 {: hit:n :}
    hit 0 < 0= if key hit IR-ID:PACK-ATTR exit then
    r ROOM-CK
+   c r ROW-TAKE
    c r k x y z w ROW-ADD5
    key swap IR-ID:PACK-ATTR ;
 
@@ -884,10 +899,12 @@ public
    rcap ROW-CAP-OK
    pcap POOL-CAP-OK
    c pcap HDR-CELLS + IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a HDR-CELLS IR-ARENA:RESERVE
    c a ATL-MAGIC IR-ARENA:PUSH drop
    c a key KEY-SERIAL IR-ARENA:PUSH drop
    c a pcap IR-ARENA:PUSH drop
    c rcap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
+   c r HDR-CELLS IR-ARENA:RESERVE
    c r ATR-MAGIC IR-ARENA:PUSH drop
    c r key KEY-SERIAL IR-ARENA:PUSH drop
    c r rcap IR-ARENA:PUSH drop
@@ -915,6 +932,7 @@ public
    hit 0 < 0= if key hit IR-ID:PACK-ATTR exit then
    r ROOM-CK
    a u BYTES>CELLS POOL-ROOM-CK
+   c a r u BYTES>CELLS POOL-ROW-TAKE
    a PCELLS {: st:n :}
    u BYTES>CELLS 0 ?do
       c a  p u i CELL-BYTES * PACK-CELL  IR-ARENA:PUSH drop
@@ -1016,6 +1034,7 @@ public
    hit 0 < 0= if key hit IR-ID:PACK-ATTR exit then
    r ROOM-CK
    a STG-N @ POOL-ROOM-CK
+   c a r STG-N @ POOL-ROW-TAKE
    a PCELLS {: st:n :}
    STG-N @ 0 ?do
       c a i SGV@ IR-ARENA:PUSH drop
@@ -1052,6 +1071,7 @@ public
    hit 0 < 0= if key hit IR-ID:PACK-ATTR exit then
    r ROOM-CK
    a STG-N @ 2 * POOL-ROOM-CK
+   c a r STG-N @ 2 * POOL-ROW-TAKE
    a PCELLS {: st:n :}
    STG-N @ 0 ?do
       c a i SGK@ IR-ARENA:PUSH drop

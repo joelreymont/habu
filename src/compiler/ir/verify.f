@@ -816,13 +816,31 @@ variable MOVED                       \ did any set change this round
    {: a:IR-ARENA:arena k:n :}
    a a k IR-ARENA:NTH IR-ARENA:PEEK ;
 
+\ The pool cells the publication below writes: one per predecessor edge, over
+\ every block. The ceiling check and the reservation both count them here, so
+\ the number the ceiling was checked against is the number that gets allocated.
+: EDGE-CELLS ( -- n )
+   0 BLOCKS 0 ?do i PN@ + loop ;
+
 : ROOM-CK ( -- )
    T-EDR T@ HC-CAP LCELL@ BLOCKS < if E-IR-VERIFY-CAP throw then
-   T-EDP T@ HC-CAP LCELL@  0 BLOCKS 0 ?do i PN@ + loop  < if E-IR-VERIFY-CAP throw then ;
+   T-EDP T@ HC-CAP LCELL@ EDGE-CELLS < if E-IR-VERIFY-CAP throw then ;
+
+\ The whole derived table is published in one run of appends - every block's
+\ predecessor window, then every block's row - so both arenas are reserved
+\ here, before the first cell of the first window. Half a derived table is
+\ worse than none: IR-BUILD publishes it with the module, and a pool or row
+\ count that no width divides makes the frozen module unreadable. Reserving
+\ after the room check keeps the verifier's own named capacity error first.
+: ROOM-TAKE ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c T-EDP T@ EDGE-CELLS IR-ARENA:RESERVE
+   c T-EDR T@ BLOCKS EROW-CELLS * IR-ARENA:RESERVE ;
 
 : EDGES-PUBLISH ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    ROOM-CK
+   c ROOM-TAKE
    BLOCKS 0 ?do
       i PN@ 0 ?do
          c T-EDP T@  j PS@ i + PL@  CELL+
@@ -845,10 +863,12 @@ public
    rcap 1 < rcap EROW-CAP-MAX > or if E-IR-VERIFY-CAP throw then
    pcap 0 < pcap EPOOL-CAP-MAX > or if E-IR-VERIFY-CAP throw then
    c pcap HDR-CELLS + IR-ARENA:NEW {: p:IR-ARENA:arena :}
+   c p HDR-CELLS IR-ARENA:RESERVE
    c p EDP-MAGIC CELL+
    c p key KEY-SERIAL CELL+
    c p pcap CELL+
    c rcap EROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
+   c r HDR-CELLS IR-ARENA:RESERVE
    c r EDR-MAGIC CELL+
    c r key KEY-SERIAL CELL+
    c r rcap CELL+

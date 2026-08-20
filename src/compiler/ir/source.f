@@ -196,6 +196,7 @@ public
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key cap:n :}
    cap CAP-OK
    c cap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a HDR-CELLS IR-ARENA:RESERVE
    c a SRC-MAGIC IR-ARENA:PUSH drop
    c a key KEY-SERIAL IR-ARENA:PUSH drop
    c a cap IR-ARENA:PUSH drop
@@ -208,24 +209,24 @@ private
    {: a:IR-ARENA:arena :}
    a CNT a HC-CAP LCELL@ >= if E-IR-SRC-CAP throw then ;
 
-: DG-PUSH ( IR-CTX:ctx IR-ARENA:arena CDIGEST:digest -- )
-   CDIGEST-DIGEST:UNMAKE
-   {: c:IR-CTX:ctx a:IR-ARENA:arena w0:n w1:n w2:n w3:n :}
-   c a w0 IR-ARENA:PUSH drop
-   c a w1 IR-ARENA:PUSH drop
-   c a w2 IR-ARENA:PUSH drop
-   c a w3 IR-ARENA:PUSH drop ;
-
 \ Append one validated row and report its module-local ordinal. The capacity
-\ check runs before the first cell is written and the arena ceiling equals the
-\ committed capacity exactly, so a row is always appended whole.
+\ check comes first, so a full registry still answers its own named error; the
+\ reservation then makes the whole row's storage real, so none of the six
+\ appends can allocate. The digest is taken before the reservation as well, so
+\ between the first cell of the row and the last there is nothing left that can
+\ fail - which is what makes the six appends one commit.
 : ROW-ADD ( IR-CTX:ctx IR-ARENA:arena ptr u8 n n -- n )
    {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n org:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    u 0 < if E-IR-SRC-LEN throw then
    a ROOM-CK
+   p u CDIGEST:COMPUTE CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
+   c a ROW-CELLS IR-ARENA:RESERVE
    a CNT {: l:n :}
    c a u IR-ARENA:PUSH drop
-   c a p u CDIGEST:COMPUTE DG-PUSH
+   c a w0 IR-ARENA:PUSH drop
+   c a w1 IR-ARENA:PUSH drop
+   c a w2 IR-ARENA:PUSH drop
+   c a w3 IR-ARENA:PUSH drop
    c a org IR-ARENA:PUSH drop
    l ;
 

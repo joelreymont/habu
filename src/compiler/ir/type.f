@@ -536,15 +536,17 @@ $FFFFFFFF HDR-CELLS - constant LIST-MAX
    loop ;
 
 \ The one fixed-field intern path: answer the structurally equal row's
-\ identity or append the four validated cells whole. Capacity is checked
-\ before the first write, so a full table stays usable and duplicate
-\ construction still answers.
+\ identity or append the four validated cells whole. Capacity is checked and
+\ the row's storage reserved before the first write, so a full table stays
+\ usable, duplicate construction still answers, and no allocation is left to
+\ fail between the four cells.
 : INTERN4 ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n n n -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key k:n x:n y:n z:n :}
    a r key KEY-CK
    r k x y z SCAN4 {: hit:n :}
    hit 0 < 0= if key hit IR-ID:PACK-TYPE exit then
    r CNT r HC-CAP LCELL@ >= if E-IR-TYPE-CAP throw then
+   c r ROW-CELLS IR-ARENA:RESERVE
    r CNT {: l:n :}
    c r k IR-ARENA:PUSH drop
    c r x IR-ARENA:PUSH drop
@@ -633,9 +635,9 @@ create STG-RL ARITY-MAX cells allot
    loop ;
 
 \ Close the stage and intern the staged function type. The stage is consumed
-\ first, so a rejected end never leaks a half-staged list; all validation and
-\ both room checks run before the first cell is written, so an intern appends
-\ its pool window and its row whole or mutates nothing.
+\ first, so a rejected end never leaks a half-staged list; all validation, both
+\ room checks and both arena reservations run before the first cell is written,
+\ so an intern appends its pool window and its row whole or mutates nothing.
 : FN-END ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key kc:n :}
    STG-OPEN-CK
@@ -646,6 +648,8 @@ create STG-RL ARITY-MAX cells allot
    hit 0 < 0= if key hit IR-ID:PACK-TYPE exit then
    r CNT r HC-CAP LCELL@ >= if E-IR-TYPE-CAP throw then
    a PCELLS STG-PN @ + STG-RN @ + a HC-CAP LCELL@ > if E-IR-TYPE-LIST throw then
+   c a STG-PN @ STG-RN @ + IR-ARENA:RESERVE
+   c r ROW-CELLS IR-ARENA:RESERVE
    a PCELLS {: st:n :}
    STG-PN @ STG-RN @ + 0 ?do
       c a i STG-AT IR-ARENA:PUSH drop
@@ -679,10 +683,12 @@ public
    tcap ROW-CAP-OK
    lcap LIST-CAP-OK
    c lcap HDR-CELLS + IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a HDR-CELLS IR-ARENA:RESERVE
    c a TYL-MAGIC IR-ARENA:PUSH drop
    c a key KEY-SERIAL IR-ARENA:PUSH drop
    c a lcap IR-ARENA:PUSH drop
    c tcap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
+   c r HDR-CELLS IR-ARENA:RESERVE
    c r TYR-MAGIC IR-ARENA:PUSH drop
    c r key KEY-SERIAL IR-ARENA:PUSH drop
    c r tcap IR-ARENA:PUSH drop

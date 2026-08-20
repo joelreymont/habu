@@ -106,6 +106,44 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    BND [: GROW-BODY ;] IR-CTX:WITH-CONTEXT
    20 T= TTRUE ;
 
+\ ---- reserving a row takes one span, not the whole series ----------------------
+\ A reservation reaches the same capacity a cell-at-a-time growth would have
+\ climbed to, and every cell still reads back - so reserving changes how many
+\ spans are taken and nothing a reader can see.
+\
+\ WHAT IT COSTS THE MAPPING, WHICH IS THE POINT. Growth abandons the span it
+\ grew out of; the old one stays in the context mapping until the context dies.
+\ Twenty-four cells appended one at a time out of an eight-cell seed therefore
+\ take a sixteen-cell span and then a thirty-two-cell one, and pay for both:
+\ three hundred and eighty-four bytes for a row that ends up in two hundred and
+\ fifty-six. Reserving the twenty-four first computes the same thirty-two and
+\ takes it once. That third of the mapping, saved on every row wider than its
+\ arena's current span, is what moved the upper scratch wall in
+\ tools/codegen-spill-probe.f out by one read.
+: SPAN-COST ( IR-CTX:ctx bool -- n n bool )
+   {: c:IR-CTX:ctx reserve:bool :}
+   c 64 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c IR-CTX:SCRATCH-USED {: before:n :}
+   reserve if c a 24 IR-ARENA:RESERVE then
+   c a 24 GROW-FILL
+   c IR-CTX:SCRATCH-USED before -
+   a IR-ARENA:USED
+   a 24 GROW-VERIFY ;
+
+: SPAN-STEP-BODY ( IR-CTX:ctx -- n n bool )
+   false SPAN-COST ;
+
+: SPAN-ONCE-BODY ( IR-CTX:ctx -- n n bool )
+   true SPAN-COST ;
+
+: SPAN-CASES ( -- )
+   s" a row appended a cell at a time pays for every span it passes through" T-LABEL
+   BND [: SPAN-STEP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 24 T= 384 T=
+   s" the same row reserved first takes one span, and reads back the same" T-LABEL
+   BND [: SPAN-ONCE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 24 T= 256 T= ;
+
 \ ---- overflow at the committed ceiling ---------------------------------------
 : OV-RUN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -425,6 +463,7 @@ public
 : RUN ( -- )
    T-RESET
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
+   SPAN-CASES
    SL-CASE
    WR-CASES
    CHECKER-CASES

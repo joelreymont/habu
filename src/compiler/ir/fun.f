@@ -813,6 +813,20 @@ variable BSTG-SLEN
    f FNCNT f HC-CAP LCELL@ >= if E-IR-FUN-CAP throw then
    p PCELLS FSTG-ATN @ + p HC-CAP LCELL@ > if E-IR-FUN-CAP throw then ;
 
+\ Ending a function writes the attribute pool and then the function row, so
+\ both are reserved here, before either is touched: an attribute window that
+\ landed without its row leaves the pool and the row table disagreeing about
+\ what the function owns. Reserving after the room check keeps this store's own
+\ named capacity error ahead of the arena's.
+: FNROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx p:IR-ARENA:arena f:IR-ARENA:arena :}
+   c p FSTG-ATN @ IR-ARENA:RESERVE
+   c f FNROW-CELLS IR-ARENA:RESERVE ;
+
+: BROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-ARENA:arena :}
+   c b BROW-CELLS IR-ARENA:RESERVE ;
+
 : BROOM-CK ( IR-ARENA:arena -- )
    {: b:IR-ARENA:arena :}
    b BCNT b HC-CAP LCELL@ >= if E-IR-FUN-CAP throw then ;
@@ -876,14 +890,17 @@ public
    bcap BLK-CAP-OK
    pcap POOL-CAP-OK
    c pcap HDR-CELLS + IR-ARENA:NEW {: p:IR-ARENA:arena :}
+   c p HDR-CELLS IR-ARENA:RESERVE
    c p FNP-MAGIC CELL+
    c p key KEY-SERIAL CELL+
    c p pcap CELL+
    c fcap FNROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: f:IR-ARENA:arena :}
+   c f HDR-CELLS IR-ARENA:RESERVE
    c f FNR-MAGIC CELL+
    c f key KEY-SERIAL CELL+
    c f fcap CELL+
    c bcap BROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: b:IR-ARENA:arena :}
+   c b HDR-CELLS IR-ARENA:RESERVE
    c b BLR-MAGIC CELL+
    c b key KEY-SERIAL CELL+
    c b bcap CELL+
@@ -977,6 +994,7 @@ public
    c TARGET-CK
    b l FSTG-BST @ bn PARENTS-CK
    p f FNROOM-CK
+   c p f FNROOM-TAKE
    p PCELLS {: atst:n :}
    c p ATTRS-ADD
    c f atst FSTG-BST @ bn FNROW-ADD
@@ -1044,6 +1062,7 @@ public
    agst BSTG-AGN @ + v IR-OP:VALUES > if E-IR-FUN-BOUND throw then
    v key l agst BSTG-AGN @ ARGS-CK
    b BROOM-CK
+   c b BROOM-TAKE
    c b f FNCNT agst BSTG-OPST @ opn BROW-ADD
    key l IR-ID:PACK-BLOCK ;
 

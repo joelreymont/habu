@@ -229,6 +229,7 @@ public
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key cap:n :}
    cap CAP-OK
    c cap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a HDR-CELLS IR-ARENA:RESERVE
    c a MAGIC IR-ARENA:PUSH drop
    c a key KEY-SERIAL IR-ARENA:PUSH drop
    c a cap IR-ARENA:PUSH drop
@@ -298,6 +299,7 @@ private
       k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
       sid:IR-ID:ir-source-id st:n ln:n og:n :}
    a ROOM-CK
+   c a ROW-CELLS IR-ARENA:RESERVE
    a CNT {: i:n :}
    c a k KIND-CODE IR-ARENA:PUSH drop
    c a m MODE-CODE IR-ARENA:PUSH drop

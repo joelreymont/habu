@@ -23,7 +23,8 @@
 \      if it carries a write token or CALLS a writer, and it GUARDS if it carries
 \      that throw code or calls a guard. Both relations are closed under calls,
 \      because `IR-ARENA:PUSH` reaches its ceiling check one call deep through
-\      `GROW` and carries no `E-IR-ARENA-FULL` token of its own.
+\      `GROW-TO` and carries no `E-IR-ARENA-FULL` token of its own, and
+\      `IR-ARENA:RESERVE` reaches the same check the same way.
 \
 \   3. The frozen guard bodies. These small words are what make the model's
 \      hypotheses true of the shipped code: index validation, ordinal minting,
@@ -165,7 +166,7 @@ public
       E-CST-ROW throw
    endcase ;
 
-8 constant ORDER-COUNT
+9 constant ORDER-COUNT
 
 : ORDER-FILE$ ( n -- ptr u8 n )
    case
@@ -173,23 +174,25 @@ public
       1 of s" src/compiler/ir/arena.f" endof
       2 of s" src/compiler/ir/arena.f" endof
       3 of s" src/compiler/ir/arena.f" endof
-      4 of s" src/compiler/ir/context.f" endof
+      4 of s" src/compiler/ir/arena.f" endof
       5 of s" src/compiler/ir/context.f" endof
       6 of s" src/compiler/ir/context.f" endof
       7 of s" src/compiler/ir/context.f" endof
+      8 of s" src/compiler/ir/context.f" endof
       E-CST-ROW throw
    endcase ;
 
 : ORDER-WORD$ ( n -- ptr u8 n )
    case
-      0 of s" GROW" endof
+      0 of s" GROW-TO" endof
       1 of s" PUSH" endof
       2 of s" NEW" endof
       3 of s" FREEZE" endof
-      4 of s" SCRATCH-TAKE" endof
-      5 of s" CTX-ENTER" endof
-      6 of s" WITH-CONTEXT-BOUND" endof
-      7 of s" MINT-TAKE" endof
+      4 of s" RESERVE" endof
+      5 of s" SCRATCH-TAKE" endof
+      6 of s" CTX-ENTER" endof
+      7 of s" WITH-CONTEXT-BOUND" endof
+      8 of s" MINT-TAKE" endof
       E-CST-ROW throw
    endcase ;
 
@@ -201,10 +204,11 @@ public
       1 of s" E-IR-ARENA-FULL" endof
       2 of s" E-IR-ARENA-CEIL" endof
       3 of s" E-IR-ARENA-FROZEN" endof
-      4 of s" E-IR-CTX-SCRATCH" endof
-      5 of s" E-IR-CTX-DEPTH" endof
-      6 of s" E-IR-CTX-CEILING" endof
-      7 of s" E-IR-CTX-SERIALS" endof
+      4 of s" E-IR-ARENA-CEIL" endof
+      5 of s" E-IR-CTX-SCRATCH" endof
+      6 of s" E-IR-CTX-DEPTH" endof
+      7 of s" E-IR-CTX-CEILING" endof
+      8 of s" E-IR-CTX-SERIALS" endof
       E-CST-ROW throw
    endcase ;
 

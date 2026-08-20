@@ -18,6 +18,7 @@
 
 require lib/test.f
 require test/checker-assert.f
+require test/compiler/ir-starve.f
 require src/compiler/ir/schema.f
 
 package IR-SCHEMA-TEST
@@ -217,6 +218,49 @@ private
 : TAB-NEW ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena key:IR-ID:ir-module-key v:n :}
    c sr key  c sp sr key v DIA-SYM  1 0 8 64 IR-SCHEMA:NEW ;
+
+\ ---- a definition is one commit, at the scratch edge ---------------------------
+\ Defining an opcode writes four pool windows and then a twenty-four-cell row.
+\ Each append grows its arena by taking a span from the context mapping, so
+\ defining at the edge of that mapping used to leave the windows in and the row
+\ half written - a cell count twenty-four does not divide, and the dialect's
+\ whole schema table becomes unreadable. Both arenas are now reserved before
+\ the first of them is touched.
+\
+\ One opcode already sits in the table, at thirty of thirty-two cells, so the
+\ second needs a doubled span and cannot have one. If that stops being true the
+\ definition succeeds, its code is zero, and this case fails.
+
+\ Depth-neutral: the six inputs ride beneath the definition that fails.
+: TORN-DEF ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key sr:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c a r key sr tr
+   c a r key sr tr IR-SCHEMA:DEFINE ;
+
+: TORN-BODY ( IR-CTX:ctx -- n n bool n n )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr tp tr key V-BASE STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE
+   a IR-ARENA:USED {: pcells:n :}
+   r IR-ARENA:USED {: rcells:n :}
+   c sp sr tp tr key V-NAME STAGE
+   c IR-STARVE:EDGE
+   c a r key sr tr [: TORN-DEF ;] catch
+   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key sr2:IR-ARENA:arena tr2:IR-ARENA:arena rc:n :}
+   rc
+   r2  c sp sr key V-BASE OP-SYM  IR-SCHEMA:OPERANDS
+   r2  c sp sr key V-NAME OP-SYM  IR-SCHEMA:DEFINED?
+   a2 IR-ARENA:USED pcells -
+   r2 IR-ARENA:USED rcells - ;
+
+: TORN-CASE ( -- )
+   s" a definition refused for want of scratch leaves both stores whole" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= TFALSE 1 T= E-IR-CTX-SCRATCH T= ;
 
 \ ---- one variation, built and digested ---------------------------------------
 : DIG ( IR-CTX:ctx n -- CDIGEST:digest )
@@ -1429,6 +1473,7 @@ public
    BND [: HARNESS-CAP ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-STATE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-FROZEN ;] IR-CTX:WITH-CONTEXT
+   TORN-CASE
    DIG-CASES
    TD-FRESH-CASE
    CHECKER-CASES

@@ -98,7 +98,9 @@
 \ ones. Each case is asserted with its code, and a fix must come here and say
 \ what it moved. A pass that lets a crossing value live in a frame slot across a
 \ loop would turn SP-EPOST10-N green; a context that sized its mapping from the
-\ function would move every -6644 row here and none of the -8508 ones.
+\ function would move every -6644 row here and none of the -8508 ones. So does
+\ anything that spends less of the mapping per module, which is how the upper
+\ scratch wall came to move to twenty-six; see the record above that row.
 
 require lib/test.f
 require lib/string.f
@@ -317,12 +319,28 @@ variable SRC-U
 \ WHERE EACH WALL IS AND WHICH ONE COMES FIRST. Twenty reads a turn compile.
 \ Twenty-one are refused by the CONTEXT: the allocator gets through it, plans
 \ five re-emissions, and the module the rewrite writes is the one that does not
-\ fit. Twenty-two through twenty-four are refused by the ALLOCATOR, which is what
+\ fit. Twenty-two through twenty-five are refused by the ALLOCATOR, which is what
 \ the file is named for - no rewrite is planned at all there, so the context is
-\ never asked. Twenty-five is refused by the context again, and this time before
+\ never asked. Twenty-six is refused by the context again, and this time before
 \ any allocation: selecting and combining the body alone already exhausts the
 \ mapping. The corpus row's own fourteen sits well inside all of it and compiles,
 \ which is what the loop-invariant move bought this shape.
+\
+\ THE UPPER SCRATCH WALL MOVED FROM TWENTY-FIVE TO TWENTY-SIX, AND WHAT MOVED IT
+\ WAS AN ARENA THAT STOPPED ABANDONING SPANS. An IR arena grows by taking a
+\ fresh, larger span from the context mapping and leaving the old one behind,
+\ and it used to take one step of the doubling series per append. A row wider
+\ than the current capacity therefore climbed the series a step at a time and
+\ paid for every landing: a twelve-cell operation row appended into an
+\ eight-cell span took sixteen cells and then thirty-two, and the sixteen were
+\ dead the moment the thirty-two arrived. Reserving the whole row's storage
+\ before its first cell (src/compiler/ir/arena.f RESERVE, the fix for a row torn
+\ in half by a refused growth) computes the same final capacity and takes ONE
+\ span for it, so the intermediate spans are never taken at all. That is less
+\ mapping spent per module, which is why selecting and combining a twenty-five
+\ read body now fits where it did not and the allocator is reached instead. The
+\ register band widened by one and the scratch wall above it moved out by one;
+\ neither wall's mechanism changed.
 : LOOP-WIDTH-CASES ( -- )
    s" the corpus row's own fourteen, which was the refusal this file opened for"
    T-LABEL
@@ -338,12 +356,12 @@ variable SRC-U
    s" twenty-two plan none and are refused a register instead" T-LABEL
    22 LOADS-SRC TRY E-A64RA-SPILL T=
 
-   s" so are twenty-four, which is that wall's far side" T-LABEL
-   24 LOADS-SRC TRY E-A64RA-SPILL T=
+   s" so are twenty-five, which is that wall's far side" T-LABEL
+   25 LOADS-SRC TRY E-A64RA-SPILL T=
 
-   s" and twenty-five run the mapping out before a register is ever asked for"
+   s" and twenty-six run the mapping out before a register is ever asked for"
    T-LABEL
-   25 LOADS-SRC TRY E-IR-CTX-SCRATCH T= ;
+   26 LOADS-SRC TRY E-IR-CTX-SCRATCH T= ;
 
 \ ---- what the crossing refusal is NOT ----------------------------------------
 \ Both controls carry the SAME count as the refusal below, which is the only way

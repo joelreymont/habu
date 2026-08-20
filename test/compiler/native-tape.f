@@ -12,6 +12,7 @@
 
 require lib/test.f
 require test/checker-assert.f
+require test/compiler/ir-starve.f
 require src/compiler/native/tape.f
 
 package NTAPE-TEST
@@ -44,6 +45,63 @@ private
 : SRC ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key -- IR-ID:ir-source-id )
    {: c:IR-CTX:ctx sr:IR-ARENA:arena key:IR-ID:ir-module-key :}
    c sr key TEXT IR-SOURCE:REGISTER ;
+
+\ ---- a token is one commit, at the scratch edge --------------------------------
+\ A tape token is eight appends, and an append grows the arena by taking a span
+\ from the context mapping. Pushing a token at the edge of that mapping used to
+\ stop part way through the eight - a cell count eight does not divide - and
+\ every later read of the tape failed its shape check. The token's storage is
+\ now reserved before its first cell.
+\
+\ Header and one token put the tape at eleven of sixteen cells, so the second
+\ token needs a doubled span and cannot have one. If that stops being true the
+\ push succeeds, its code is zero, and this case fails.
+3 constant T-HDR-CELLS
+8 constant T-ROW-CELLS
+
+\ Depth-neutral: the inputs ride beneath the push that fails.
+: TORN-PUSH ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-source-id IR-ID:ir-symbol-id -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-source-id IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx tp:IR-ARENA:arena sr:IR-ARENA:arena sy:IR-ARENA:arena key:IR-ID:ir-module-key s0:IR-ID:ir-source-id n1:IR-ID:ir-symbol-id :}
+   c tp sr sy key s0 n1
+   c tp sr sy
+      sr s0 9 1 IR-SOURCE:SPAN n1 NTAPE-MODE:COMPILING 2 NTAPE:INT-TOKEN
+      NTAPE:PUSH drop ;
+
+\ Everything the refusal must have left alone: the tape reads, holds exactly
+\ the one token that landed, still answers its fields, and has not advanced a
+\ cell. Sealing is how a tape's fields are read at all, and it is the operation
+\ a torn tape refuses first.
+: TORN-INTACT ( IR-ARENA:arena IR-ID:ir-module-key -- IR-ARENA:arena IR-ID:ir-module-key )
+   {: tp:IR-ARENA:arena key:IR-ID:ir-module-key :}
+   tp key
+   tp NTAPE:PUSHED 1 <> if E-NTAPE-STATE throw then
+   tp IR-ARENA:USED T-HDR-CELLS T-ROW-CELLS + <> if E-NTAPE-STATE throw then
+   tp NTAPE:SEAL {: v:IR-ARENA:view :}
+   v NTAPE:TOKENS 1 <> if E-NTAPE-STATE throw then
+   v 0 NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NTAPE-STATE throw then
+   v key 0 NTAPE:SPAN@ IR-SOURCE:SPAN-LEN 6 <> if E-NTAPE-STATE throw then ;
+
+: TORN-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c 8 MOD-NEW
+   {: key:IR-ID:ir-module-key sr:IR-ARENA:arena
+      sp:IR-ARENA:arena sy:IR-ARENA:arena tp:IR-ARENA:arena :}
+   c sr key SRC {: s0:IR-ID:ir-source-id :}
+   c sp sy key s" SQUARE" IR-SYM:INTERN {: n0:IR-ID:ir-symbol-id :}
+   c sp sy key s" 2" IR-SYM:INTERN {: n1:IR-ID:ir-symbol-id :}
+   c tp sr sy
+      sr s0 2 6 IR-SOURCE:SPAN n0 NTAPE-MODE:INTERPRETING NTAPE:NAME-TOKEN
+      NTAPE:PUSH drop
+   c IR-STARVE:EDGE
+   c tp sr sy key s0 n1 [: TORN-PUSH ;] catch
+   {: c2:IR-CTX:ctx tp2:IR-ARENA:arena sr2:IR-ARENA:arena sy2:IR-ARENA:arena key2:IR-ID:ir-module-key s02:IR-ID:ir-source-id n12:IR-ID:ir-symbol-id rc:n :}
+   rc
+   tp2 key2 [: TORN-INTACT ;] catch nip nip ;
+
+: TORN-CASE ( -- )
+   s" a token refused mid-row leaves the tape whole and readable" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= E-IR-CTX-SCRATCH T= ;
 
 \ ---- appending and reading back ----------------------------------------------
 \ One token of every kind, appended in parser order, read back through the
@@ -1015,6 +1073,7 @@ public
    BND [: GROUP-BUILT ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-BUILT-REFUSE-A ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-BUILT-REFUSE-B ;] IR-CTX:WITH-CONTEXT
+   TORN-CASE
    TD-CASE
    CHECKER-CASES
    T-REPORT ;

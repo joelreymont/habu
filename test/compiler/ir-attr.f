@@ -25,6 +25,7 @@
 require lib/test.f
 require lib/string.f
 require test/checker-assert.f
+require test/compiler/ir-starve.f
 require src/compiler/ir/attr.f
 
 package IR-ATTR-TEST
@@ -1214,6 +1215,54 @@ create CBUF 256 allot
    s" live readers reject the retired builder handle; the views read" T-LABEL
    [: FZ-READ ;] E-IR-ARENA-FROZEN TTHROWSQ ;
 
+\ ---- an intern is one commit, at the scratch edge ------------------------------
+\ A text attribute writes its bytes into the payload pool and then its
+\ five-cell row into the row table. Each append grows its arena by taking a
+\ span from the context mapping, so interning at the edge of that mapping used
+\ to put the bytes in and stop part way through the row - a cell count five
+\ does not divide, an unreadable table, and a pool holding cells no row's
+\ window names. Both arenas are now reserved before either is touched.
+\
+\ The table's own documented shapes, pinned so this case tests structure: a
+\ three-cell header on each store, five cells per row.
+3 constant T-HDR-CELLS
+5 constant T-ROW-CELLS
+
+\ Depth-neutral: the quadruple rides beneath the intern that fails.
+: TORN-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
+   c a r key
+   c a r key s" the second text" IR-ATTR:TEXT drop ;
+
+\ Everything the refusal must have left alone: the table reads, holds exactly
+\ the one attribute that landed, still answers its bytes, and neither store has
+\ advanced a cell past what that attribute needs - two pool cells for fourteen
+\ bytes, one row.
+: TORN-INTACT ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-attr-id -- IR-ARENA:arena IR-ARENA:arena IR-ID:ir-attr-id )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena t0:IR-ID:ir-attr-id :}
+   a r t0
+   r IR-ATTR:ATTRS 1 <> if E-IR-ATTR-STATE throw then
+   r t0 IR-ATTR:KIND@ IR--ATTR-KIND:TEXT IR--ATTR-KIND:EQ
+   0= if E-IR-ATTR-STATE throw then
+   r t0 IR-ATTR:TEXT-LEN@ 14 <> if E-IR-ATTR-STATE throw then
+   a IR-ARENA:USED T-HDR-CELLS 2 + <> if E-IR-ATTR-STATE throw then
+   r IR-ARENA:USED T-HDR-CELLS T-ROW-CELLS + <> if E-IR-ATTR-STATE throw then ;
+
+: TORN-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c 64 64 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key s" the first text" IR-ATTR:TEXT {: t0:IR-ID:ir-attr-id :}
+   c IR-STARVE:EDGE
+   c a r key [: TORN-ADD ;] catch
+   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   rc
+   a2 r2 t0 [: TORN-INTACT ;] catch nip nip nip ;
+
+: TORN-CASE ( -- )
+   s" an intern refused mid-row leaves both stores whole and readable" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= E-IR-CTX-SCRATCH T= ;
+
 \ ---- teardown releases everything --------------------------------------------
 : TD-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:arena IR-ID:ir-attr-id )
    {: c:IR-CTX:ctx :}
@@ -1310,6 +1359,7 @@ public
    BND [: HARNESS-PAYLOAD ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-OWNER ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-STATE ;] IR-CTX:WITH-CONTEXT
+   TORN-CASE
    TD-FRESH-CASE
    CHECKER-CASES
    T-REPORT ;

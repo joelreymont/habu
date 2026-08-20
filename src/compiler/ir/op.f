@@ -703,6 +703,18 @@ create STG-N LIST# cells allot
    v VCNT L-RS SN@ + v HC-CAP LCELL@ > if E-IR-OP-CAP throw then
    p PCELLS STAGED-CELLS + p HC-CAP LCELL@ > if E-IR-OP-CAP throw then ;
 
+\ One append writes all THREE arenas: the pool windows, then the operation row,
+\ then one value row per result. All three are reserved here, before the first
+\ of them is touched, because a pool window that landed without its row - or a
+\ row without its value rows - is a store whose windows no longer tile and whose
+\ counts no row width divides. Reserving after the room check keeps this store's
+\ own named capacity error ahead of the arena's.
+: ROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c p STAGED-CELLS IR-ARENA:RESERVE
+   c r ROW-CELLS IR-ARENA:RESERVE
+   c v L-RS SN@ VROW-CELLS * IR-ARENA:RESERVE ;
+
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
 
@@ -786,14 +798,17 @@ public
    vcap VAL-CAP-OK
    pcap POOL-CAP-OK
    c pcap HDR-CELLS + IR-ARENA:NEW {: p:IR-ARENA:arena :}
+   c p HDR-CELLS IR-ARENA:RESERVE
    c p OPL-MAGIC CELL+
    c p key KEY-SERIAL CELL+
    c p pcap CELL+
    c vcap VROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: v:IR-ARENA:arena :}
+   c v HDR-CELLS IR-ARENA:RESERVE
    c v OPV-MAGIC CELL+
    c v key KEY-SERIAL CELL+
    c v vcap CELL+
    c ocap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
+   c r HDR-CELLS IR-ARENA:RESERVE
    c r OPR-MAGIC CELL+
    c r key KEY-SERIAL CELL+
    c r ocap CELL+
@@ -876,6 +891,7 @@ public
    key KEY-SERIAL SUCCS-CK
    sa key SPAN-CK
    p v r ROOM-CK
+   c p v r ROOM-TAKE
    p PCELLS {: st:n :}
    r CNT {: l:n :}
    v VCNT {: base:n :}

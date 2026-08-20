@@ -836,6 +836,20 @@ create STG-T LIST# cells allot
    a PCELLS L-OP SN@ + L-RS SN@ + L-AT SN@ + L-TI SN@ TIE-CELLS +
    a PC-CAP LCELL@ > if E-IR-SCHEMA-CAP throw then ;
 
+\ The pool cells one definition writes: three plain lists and the two-cell tie
+\ list. The room check above and the reservation below both count them, so the
+\ number the ceiling was checked against is the number that gets allocated.
+: STAGED-CELLS ( -- n )
+   L-OP SN@ L-RS SN@ + L-AT SN@ + L-TI SN@ TIE-CELLS + ;
+
+\ A definition writes four pool windows and then one row, so both arenas are
+\ reserved here, before the first of them is touched. Reserving after the room
+\ check keeps this table's own named capacity error ahead of the arena's.
+: ROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a STAGED-CELLS IR-ARENA:RESERVE
+   c r ROW-CELLS IR-ARENA:RESERVE ;
+
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
 
@@ -904,10 +918,12 @@ public
    dia SYM-OWNER key KEY-SERIAL SERIAL-CK
    syr dia IR-SYM:LEN@ drop
    c pcap PHDR-CELLS + IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a PHDR-CELLS IR-ARENA:RESERVE
    c a SCL-MAGIC CELL+
    c a key KEY-SERIAL CELL+
    c a pcap CELL+
    c rcap ROW-CELLS * RHDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
+   c r RHDR-CELLS IR-ARENA:RESERVE
    c r SCR-MAGIC CELL+
    c r key KEY-SERIAL CELL+
    c r rcap CELL+
@@ -1066,6 +1082,7 @@ public
    c TARGET-CK
    r DUP-CK
    a r ROOM-CK
+   c a r ROOM-TAKE
    c a L-OP LIST-ADD {: opst:n :}
    c a L-RS LIST-ADD {: rsst:n :}
    c a L-AT LIST-ADD {: atst:n :}

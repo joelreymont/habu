@@ -344,6 +344,15 @@ private
    r CNT r HC-CAP LCELL@ >= if E-IR-SYM-CAP throw then
    a PCELLS u BYTES>CELLS + a HC-CAP LCELL@ > if E-IR-SYM-BYTES throw then ;
 
+\ An intern writes BOTH arenas, so both are reserved here, before either is
+\ touched: a row whose bytes went in and whose row did not is a symbol table
+\ that no longer divides into rows. Reserving after the room checks keeps this
+\ table's own named capacity errors ahead of the arena's.
+: ROOM-TAKE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena u:n :}
+   c a u BYTES>CELLS IR-ARENA:RESERVE
+   c r ROW-CELLS IR-ARENA:RESERVE ;
+
 : POOL-ADD ( IR-CTX:ctx IR-ARENA:arena ptr u8 n -- n )
    {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    a PCELLS {: st:n :}
@@ -372,10 +381,12 @@ public
    scap SYM-CAP-OK
    bcap BYTE-CAP-OK
    c bcap BYTES>CELLS HDR-CELLS + IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a HDR-CELLS IR-ARENA:RESERVE
    c a SYB-MAGIC IR-ARENA:PUSH drop
    c a key KEY-SERIAL IR-ARENA:PUSH drop
    c a bcap BYTES>CELLS IR-ARENA:PUSH drop
    c scap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
+   c r HDR-CELLS IR-ARENA:RESERVE
    c r SYM-MAGIC IR-ARENA:PUSH drop
    c r key KEY-SERIAL IR-ARENA:PUSH drop
    c r scap IR-ARENA:PUSH drop
@@ -393,6 +404,7 @@ public
    a r p u f SCAN {: hit:n :}
    hit 0 < 0= if key hit IR-ID:PACK-SYMBOL exit then
    a r u ROOM-CK
+   c a r u ROOM-TAKE
    c a p u POOL-ADD {: st:n :}
    c r f st u ROW-ADD
    key swap IR-ID:PACK-SYMBOL ;

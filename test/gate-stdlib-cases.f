@@ -241,6 +241,10 @@ SUITE compiler-ir-source
    test/compiler/ir-source.f
 ;SUITE
 
+SUITE compiler-ir-starve
+   test/compiler/ir-starve-test.f
+;SUITE
+
 SUITE compiler-ir-symbol
    test/compiler/ir-symbol.f
 ;SUITE

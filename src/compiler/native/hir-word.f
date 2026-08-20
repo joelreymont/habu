@@ -486,10 +486,12 @@ public
    rcap ROW-CAP-OK
    pcap POOL-CAP-OK
    c pcap HDR-CELLS + IR-ARENA:NEW {: p:IR-ARENA:arena :}
+   c p HDR-CELLS IR-ARENA:RESERVE
    c p WPOOL-MAGIC IR-ARENA:PUSH drop
    c p key KEY-SERIAL IR-ARENA:PUSH drop
    c p pcap IR-ARENA:PUSH drop
    c rcap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
+   c r HDR-CELLS IR-ARENA:RESERVE
    c r WROW-MAGIC IR-ARENA:PUSH drop
    c r key KEY-SERIAL IR-ARENA:PUSH drop
    c r rcap IR-ARENA:PUSH drop
@@ -508,6 +510,7 @@ private
    id IR-ID:SYMBOL-LOCAL {: so:n :}
    r so FIND 0 < 0= if E-HIR-DUP throw then
    r ROW-ROOM-CK
+   c r ROW-CELLS IR-ARENA:RESERVE
    c r so IR-ARENA:PUSH drop
    c r mean IR-ARENA:PUSH drop
    c r a IR-ARENA:PUSH drop
@@ -754,6 +757,11 @@ create STG-PICK PICK-MAX cells allot
    r so FIND 0 < 0= if E-HIR-DUP throw then
    r ROW-ROOM-CK
    p STG-N @ POOL-ROOM-CK
+   \ The row is reserved HERE, not left to ROW-ADD: its pool window goes in
+   \ first, and a window with no row is a table whose rows no longer name their
+   \ own cells. ROW-ADD's own reservation then finds the room already there.
+   c p STG-N @ IR-ARENA:RESERVE
+   c r ROW-CELLS IR-ARENA:RESERVE
    p PCELLS {: st:n :}
    STG-N @ 0 ?do
       c p i SP@ IR-ARENA:PUSH drop

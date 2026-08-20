@@ -18,6 +18,7 @@
 require lib/test.f
 require test/checker-assert.f
 require src/compiler/native/hir-word.f
+require test/compiler/ir-starve.f
 
 package HIR-TEST
 private
@@ -578,6 +579,54 @@ private
    r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LT HIR-OPCODE:EQ
    r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LE HIR-OPCODE:EQ
    r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:EQUAL HIR-OPCODE:EQ ;
+
+\ ---- a declared word is one commit, at the scratch edge ------------------------
+\ A word row is seven appends, and a rename word writes a pool window first.
+\ Each append grows its arena by taking a span from the context mapping, so
+\ declaring at the edge of that mapping used to stop part way through the seven
+\ - a cell count seven does not divide - and every later read of the vocabulary
+\ failed its shape check. Both arenas are now reserved before either is
+\ touched, so a starved registration declares whole words and then refuses.
+\
+\ The vocabulary is registered into a first table before the starve, so every
+\ symbol it needs is already interned and the second registration's only
+\ allocation is its own rows. The tables are made before the starve too: a
+\ margin is one seed span, so creating an arena after it would spend the margin.
+3 constant T-HDR-CELLS
+7 constant T-ROW-CELLS
+
+\ Depth-neutral: the four inputs ride beneath the registration that fails.
+: TORN-REG ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r
+   c b p r HIR-WORD:REGISTER-WORDS ;
+
+\ The vocabulary that did not fit still reads, and holds whole rows only.
+: TORN-INTACT ( IR-ARENA:arena -- IR-ARENA:arena )
+   {: r:IR-ARENA:arena :}
+   r
+   r HIR-WORD:MODELED {: n:n :}
+   r IR-ARENA:USED T-HDR-CELLS - T-ROW-CELLS mod 0 <> if E-HIR-STATE throw then
+   r IR-ARENA:USED T-HDR-CELLS n T-ROW-CELLS * + <> if E-HIR-STATE throw then ;
+
+: TORN-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-WORD:WORDS HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p0:IR-ARENA:arena r0:IR-ARENA:arena :}
+   c b HIR-WORD:WORDS HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p1:IR-ARENA:arena r1:IR-ARENA:arena :}
+   c b p0 r0 HIR-WORD:REGISTER-WORDS
+   c IR-STARVE:EDGE
+   c b p1 r1 [: TORN-REG ;] catch
+   {: c2:IR-CTX:ctx b2:IR-BUILD:builder p2:IR-ARENA:arena r2:IR-ARENA:arena rc:n :}
+   rc
+   r2 [: TORN-INTACT ;] catch nip ;
+
+: TORN-CASE ( -- )
+   s" a registration refused mid-row leaves whole words and a readable table" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= E-IR-CTX-SCRATCH T= ;
 
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
@@ -2230,6 +2279,7 @@ public
    BND [: GROUP-KEY ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-INTERNER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-JOINED ;] IR-CTX:WITH-CONTEXT
+   TORN-CASE
    CHECKER-CASES
    T-REPORT ;
 

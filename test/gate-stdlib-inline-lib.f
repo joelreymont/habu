@@ -448,6 +448,7 @@ public
    s" test/compiler/ir-attr.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-context.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-source.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-starve-test.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-symbol.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-type.f" GSI-FORK-INCLUDE
    s" test/compiler/native-tape.f" GSI-FORK-INCLUDE

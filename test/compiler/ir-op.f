@@ -17,6 +17,7 @@
 
 require lib/test.f
 require test/checker-assert.f
+require test/compiler/ir-starve.f
 require src/compiler/ir/op.f
 
 package IR-OP-TEST
@@ -876,6 +877,41 @@ private
    BND [: OVF-BODY ;] IR-CTX:WITH-CONTEXT
    2 T= 2 T= 2 T= E-IR-OP-CAP T= ;
 
+\ ---- an append is one commit, at the scratch edge ------------------------------
+\ An append writes all three stores: the pool windows, the twelve-cell
+\ operation row, then a four-cell value row per result. Each of those appends
+\ grows its arena by taking a span from the context mapping, so appending at
+\ the edge of that mapping used to leave the windows in and the row half
+\ written - a row-cell count twelve does not divide, and a pool holding cells
+\ no row's window names. All three arenas are now reserved before the first of
+\ them is touched, so the refusal below is the reservation, not a torn row.
+\
+\ Two seeded operations put the row table at twenty-seven of thirty-two cells,
+\ so the third needs a doubled span and cannot have one. If that stops being
+\ true the append succeeds, its code is zero, and this case fails.
+: TORN-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 16 16 128 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+   c sp sr key sa S-SEED STG-OPEN
+   key S-SEED STG-VALS
+   c tp tr key S-SEED STG-RES
+   c sp sr ap ar key S-SEED STG-ATT
+   c IR-STARVE:EDGE
+   c p v r key qr tr ar sa [: OVF-TRY ;] catch
+   {: c2:IR-CTX:ctx p2:IR-ARENA:arena v2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key qr2:IR-ARENA:arena tr2:IR-ARENA:arena ar2:IR-ARENA:arena sa2:IR-ARENA:arena rc:n :}
+   rc
+   r2 IR-OP:OPS
+   v2 IR-OP:VALUES
+   p2 IR-OP:POOL-CELLS ;
+
+: TORN-CASE ( -- )
+   s" an append refused for want of scratch leaves all three stores whole" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 2 T= 2 T= E-IR-CTX-SCRATCH T= ;
+
 : CAP-ZERO-RUN ( -- )   BND [: 0 16 128 CAP-BODY ;] IR-CTX:WITH-CONTEXT ;
 : CAP-BIG-RUN ( -- )    BND [: $100000000 16 128 CAP-BODY ;] IR-CTX:WITH-CONTEXT ;
 : CAP-VNEG-RUN ( -- )   BND [: 8 -1 128 CAP-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1079,6 +1115,7 @@ public
    FZ2-CASE
    FZ3-CASE
    OVF-CASES
+   TORN-CASE
    BND [: HARNESS-ARITY-A ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-ARITY-B ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-SSA ;] IR-CTX:WITH-CONTEXT

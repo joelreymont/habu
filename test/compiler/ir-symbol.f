@@ -19,6 +19,7 @@
 require lib/test.f
 require lib/string.f
 require test/checker-assert.f
+require test/compiler/ir-starve.f
 require src/compiler/ir/symbol.f
 
 package IR-SYM-TEST
@@ -456,6 +457,68 @@ create CBUF 32 allot
    s" live readers reject the retired builder handle; the views read" T-LABEL
    [: FZ-READ ;] E-IR-ARENA-FROZEN TTHROWSQ ;
 
+\ ---- an intern is one commit, at the scratch edge ------------------------------
+\ An intern writes two arenas: the symbol's bytes into the pool, then its
+\ three-cell row into the row table. An append grows an arena by taking a span
+\ from the context mapping, so interning at the edge of that mapping used to
+\ put the bytes in and stop part way through the row - leaving a row-cell count
+\ that three does not divide, an unreadable table, and a pool holding bytes no
+\ row accounts for. Both arenas are now reserved before either is touched.
+\
+\ The interner's own documented shapes, pinned so this case tests structure:
+\ a three-cell header on each store, three cells per row.
+3 constant T-HDR-CELLS
+3 constant T-ROW-CELLS
+
+create TORN-BUF 32 allot
+variable TORN-N
+
+\ Each attempt interns a different prefix, so every attempt is a miss that must
+\ append; interning the same bytes twice would answer from the table and
+\ allocate nothing, and the loop would never end.
+: TORN-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
+   c a r key
+   TORN-N @ 1+ dup TORN-N ! {: n:n :}
+   c a r key s" abcdefghijklmnopqrstuvwxyz" drop n IR-SYM:INTERN drop ;
+
+: TORN-FILL ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n )
+   0
+   begin
+      drop
+      [: TORN-ADD ;] catch
+      dup 0<>
+   until ;
+
+\ Everything the refusal must have left alone: the table reads, holds exactly
+\ the one symbol that landed, still answers its bytes, and neither store has
+\ advanced a cell past what that symbol needs - two pool cells for sixteen
+\ bytes, one row.
+: TORN-INTACT ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena s0:IR-ID:ir-symbol-id :}
+   a r s0
+   r IR-SYM:SYMBOLS 1 <> if E-IR-SYM-STATE throw then
+   r s0 IR-SYM:LEN@ 16 <> if E-IR-SYM-STATE throw then
+   a r s0 s" the first symbol" IR-SYM:EQ? 0= if E-IR-SYM-STATE throw then
+   a IR-ARENA:USED T-HDR-CELLS 2 + <> if E-IR-SYM-STATE throw then
+   r IR-ARENA:USED T-HDR-CELLS T-ROW-CELLS + <> if E-IR-SYM-STATE throw then ;
+
+: TORN-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   0 TORN-N !
+   c 64 512 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key s" the first symbol" IR-SYM:INTERN {: s0:IR-ID:ir-symbol-id :}
+   c IR-STARVE:EDGE
+   c a r key TORN-FILL
+   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   rc
+   a2 r2 s0 [: TORN-INTACT ;] catch nip nip nip ;
+
+: TORN-CASE ( -- )
+   s" an intern refused mid-row leaves both stores whole and readable" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= E-IR-CTX-SCRATCH T= ;
+
 \ ---- teardown releases everything --------------------------------------------
 : TD-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:arena IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx :}
@@ -518,6 +581,7 @@ public
 : RUN ( -- )
    T-RESET
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
+   TORN-CASE
    TD-FRESH-CASE
    CHECKER-CASES
    T-REPORT ;

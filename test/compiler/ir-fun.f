@@ -23,6 +23,7 @@
 
 require lib/test.f
 require test/checker-assert.f
+require test/compiler/ir-starve.f
 require src/compiler/ir/fun.f
 
 package IR-FUN-TEST
@@ -952,6 +953,37 @@ private
    c ap ar key 43 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
    c key sa fp fr br sr tr ar FUN-CLOSE drop ;
 
+\ ---- ending a function is one commit, at the scratch edge ----------------------
+\ Ending a function writes its attribute window into the pool and then its
+\ twelve-cell row into the function table. Each append grows its arena by
+\ taking a span from the context mapping, so ending a function at the edge of
+\ that mapping used to leave the row half written - a cell count twelve does
+\ not divide - and the function table unreadable. Both arenas are now reserved
+\ before either is touched.
+\
+\ One function already sits in the table, at fifteen of sixteen cells, so the
+\ second needs a doubled span and cannot have one. If that stops being true the
+\ close succeeds, its code is zero, and this case fails.
+: TORN-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c 8 8 32 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   c key sp sr tp tr ar sa qr p v r fp fr br N-MAIN ONE-FUN
+   c key sp sr br N-HELP FUN-OPEN
+   c tp tr key L-IMP V-EXPORT C-HABU FUN-DECL
+   c sa key A-SPAN IR-FUN:SET-FUN-SPAN
+   c IR-STARVE:EDGE
+   c fp fr br key sr tr ar sa [: OVF-TRY ;] catch
+   {: c2:IR-CTX:ctx fp2:IR-ARENA:arena fr2:IR-ARENA:arena br2:IR-ARENA:arena key2:IR-ID:ir-module-key sr2:IR-ARENA:arena tr2:IR-ARENA:arena ar2:IR-ARENA:arena sa2:IR-ARENA:arena rc:n :}
+   rc
+   fr2 IR-FUN:FUNS
+   br2 IR-FUN:BLOCKS ;
+
+: TORN-CASE ( -- )
+   s" a close refused for want of scratch leaves the function store whole" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 1 T= E-IR-CTX-SCRATCH T= ;
+
 : OVF-BLK-RUN ( -- )   BND [: OVF-BLK-BODY ;] IR-CTX:WITH-CONTEXT ;
 : OVF-ATT-RUN ( -- )   BND [: OVF-ATT-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -1171,6 +1203,7 @@ public
    BND [: HARNESS-OWNER-C ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-CAP ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-OVF ;] IR-CTX:WITH-CONTEXT
+   TORN-CASE
    BND [: HARNESS-FROZEN ;] IR-CTX:WITH-CONTEXT
    TD-FRESH-CASE
    CHECKER-CASES

@@ -209,13 +209,34 @@ SLOTS-CLEAR
       src i CDIGEST:SLOT@ dst i CDIGEST:SLOT!
    loop ;
 
-\ Double the data span toward the ceiling. The full check comes first, so a
-\ ceiling hit mutates nothing; the copy preserves every published ordinal.
-: GROW ( IR-CTX:ctx n -- )
-   {: c:IR-CTX:ctx slot:n :}
-   slot ACAP@ {: cap:n :}
-   cap slot ACEIL@ >= if E-IR-ARENA-FULL throw then
-   cap 2 * slot ACEIL@ min {: ncap:n :}
+\ The capacity the doubling series reaches for `need` cells. Growing to a whole
+\ row's worth at once lands on exactly the capacity a cell-at-a-time growth
+\ would have climbed to, so reserving changes how many spans are taken, never
+\ which capacities exist.
+: CAP-FOR ( n n n -- n )
+   {: cap:n need:n ceil:n :}
+   cap
+   begin
+      dup need <
+   while
+      2 * ceil min
+   repeat ;
+
+\ Grow the data span until it holds `need` cells. The ceiling refusal and the
+\ one scratch take both come before any slot field is written, so a refusal
+\ mutates nothing; the copy preserves every published ordinal.
+\
+\ The capacity is rechecked because the series above doubles it: a slot claiming
+\ a capacity of zero would double to zero forever, so the one state that could
+\ turn this into a hang is a named refusal instead. NEW cannot install it - a
+\ ceiling below one is refused there and the seed is the smaller of the two -
+\ so this is the recheck, not the check.
+: GROW-TO ( IR-CTX:ctx n n -- )
+   {: c:IR-CTX:ctx slot:n need:n :}
+   need slot ACAP@ <= if exit then
+   slot ACAP@ 1 < if E-IR-ARENA-STATE throw then
+   need slot ACEIL@ > if E-IR-ARENA-FULL throw then
+   slot ACAP@ need slot ACEIL@ CAP-FOR {: ncap:n :}
    c ncap CDIGEST:SLOT-BYTES * IR-CTX:SCRATCH-TAKE drop {: nbase:ptr :}
    slot ADATA-FIELD @ nbase slot ACOUNT@ COPY-CELLS
    nbase slot ADATA-FIELD !
@@ -344,17 +365,55 @@ public
    g MINT-ARENA ;
 
 \ ---- append ------------------------------------------------------------------
+\ A ROW IS SEVERAL PUSHES AND A PUSH CAN FAIL. Growth takes a span from the
+\ owning context's mapping, and that mapping runs out - E-IR-CTX-SCRATCH is a
+\ failure real compilations reach, which is why context.f's MAP-BYTES has been
+\ doubled three times. A caller that writes a six-cell row as six PUSH calls
+\ therefore has five places where the row can stop half written, and the tables
+\ built on this arena read their rows by position: five cells of a six-cell row
+\ leaves a count no row width divides, and every later read of that table fails
+\ its shape recheck. The registry is not damaged data, it is unreadable.
+\
+\ RESERVE IS HOW A ROW BECOMES ONE COMMIT. It performs the whole row's growth up
+\ front, so the pushes that follow have nothing left to allocate and cannot
+\ fail. Every caller that appends more than one cell - to more than one arena,
+\ if its row spans several - reserves all of them BEFORE writing the first cell,
+\ and reserves AFTER its own capacity check so a table's own named ceiling error
+\ still comes first.
+\
+\ ROLLBACK IS NOT THE ALTERNATIVE. Context scratch is a monotonic bump cursor
+\ with no free, so restoring the cell count after a failed grow would still
+\ leave the doubled span spent - a row that "did not happen" would consume the
+\ mapping anyway, and a retry loop would exhaust it. The tree already deleted an
+\ arena rollback for want of a consumer (lib/errors.f, -6654, 2026-08-05).
+\
 \ Append one cell and mint its nominal index. The ctx is the allocator for
 \ growth and must be the arena's owner; a foreign context is a named reject.
 : PUSH ( IR-CTX:ctx IR-ARENA:arena n -- IR-ARENA:cell-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena v:n :}
    a LIVE-SLOT {: slot:n :}
    c slot OWN-CHECK
-   slot ACOUNT@ slot ACAP@ >= if c slot GROW then
+   c slot slot ACOUNT@ 1+ GROW-TO
    slot ACOUNT@ {: at:n :}
    v slot ADATA-FIELD @ at CDIGEST:SLOT!
    at 1+ slot ACOUNT!
    slot AGEN@ at PACK MINT-IDX ;
+
+\ Make the capacity for k more cells real, so the next k PUSH calls to this
+\ arena allocate nothing and therefore cannot fail: after this word returns,
+\ every check a PUSH makes - liveness, ownership, capacity - has already been
+\ made here against state no push of this row can change.
+\
+\ The ceiling refusal and the scratch take are the only failures, and both
+\ happen before any cell of the row is written. A reservation larger than the
+\ arena's committed ceiling is E-IR-ARENA-FULL, exactly as the append that
+\ overran it would have been.
+: RESERVE ( IR-CTX:ctx IR-ARENA:arena n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena k:n :}
+   k 0 < k LOCAL-MAX > or if E-IR-ARENA-CEIL throw then
+   a LIVE-SLOT {: slot:n :}
+   c slot OWN-CHECK
+   c slot slot ACOUNT@ k + GROW-TO ;
 
 \ ---- live readers ------------------------------------------------------------
 : PEEK ( IR-ARENA:arena IR-ARENA:cell-id -- n )

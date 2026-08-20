@@ -15,6 +15,7 @@
 
 require lib/test.f
 require test/checker-assert.f
+require test/compiler/ir-starve.f
 require src/compiler/ir/source.f
 
 package IR-SOURCE-TEST
@@ -466,6 +467,62 @@ private
    s" a misaligned row shape rejects fail-closed" T-LABEL
    [: SHAPE-RUN ;] E-IR-SRC-STATE TTHROWSQ ;
 
+\ ---- a registration is one commit, at the scratch edge -------------------------
+\ The registry's six-cell row is six appends, and an append grows the arena by
+\ taking a span from the context mapping. Registering at the edge of that
+\ mapping therefore used to stop a row half written - five of six cells - and
+\ (5 mod 6) is not zero, so every later read of the registry failed its shape
+\ check and the module's sources became unreadable. The reservation in ROW-ADD
+\ is what makes the six appends one commit.
+\
+\ The registry's own documented row shape, pinned so this case tests the
+\ structure and not a message: a three-cell header, then six cells per source.
+3 constant T-HDR-CELLS
+6 constant T-ROW-CELLS
+
+\ Depth-neutral: the triple rides beneath the registration that fails, so it
+\ survives the throw.
+: TORN-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key :}
+   c a key
+   c a key s" filler" IR-SOURCE:REGISTER drop ;
+
+\ Register until one registration refuses, and answer its code. The registry
+\ has room for sixty-four sources, so the refusal is the arena reaching for a
+\ span the starved mapping cannot give it, never a full registry.
+: TORN-FILL ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key n )
+   0
+   begin
+      drop
+      [: TORN-ADD ;] catch
+      dup 0<>
+   until ;
+
+\ Everything the refusal must have left alone: the registry still reads, it
+\ holds exactly the rows that landed, and the first row still has its bytes.
+: TORN-INTACT ( IR-ARENA:arena IR-ID:ir-source-id -- IR-ARENA:arena IR-ID:ir-source-id )
+   {: a:IR-ARENA:arena s0:IR-ID:ir-source-id :}
+   a s0
+   a IR-SOURCE:SOURCES 2 <> if E-IR-SRC-STATE throw then
+   a s0 IR-SOURCE:LEN@ 16 <> if E-IR-SRC-STATE throw then
+   a s0 IR-SOURCE:ROOT? 0= if E-IR-SRC-STATE throw then ;
+
+: TORN-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c 64 REG-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena :}
+   c a key s" the first source" IR-SOURCE:REGISTER {: s0:IR-ID:ir-source-id :}
+   c IR-STARVE:EDGE
+   c a key TORN-FILL
+   {: c2:IR-CTX:ctx a2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
+   rc
+   a2 s0 [: TORN-INTACT ;] catch nip nip
+   a2 IR-ARENA:USED T-HDR-CELLS - T-ROW-CELLS mod ;
+
+: TORN-CASE ( -- )
+   s" a registration refused mid-row leaves whole rows and a readable registry" T-LABEL
+   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= E-IR-CTX-SCRATCH T= ;
+
 \ ---- teardown releases everything --------------------------------------------
 : TD-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:arena IR-ID:ir-source-id )
    {: c:IR-CTX:ctx :}
@@ -535,6 +592,7 @@ public
 : RUN ( -- )
    T-RESET
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
+   TORN-CASE
    TD-FRESH-CASE
    CHECKER-CASES
    T-REPORT ;

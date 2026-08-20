@@ -340,7 +340,7 @@ public
 -6653 constant E-IR-ARENA-FROZEN  \ a mutation word ran against a frozen arena
 \ -6654 unassigned (arena rollback deleted 2026-08-05: no consumer)
 -6655 constant E-IR-ARENA-BOUND   \ an arena index at or past the readable cell count
--6656 constant E-IR-ARENA-CEIL    \ an arena-creation cell ceiling outside the accepted range
+-6656 constant E-IR-ARENA-CEIL    \ an arena cell count outside the accepted range: a creation ceiling, or a reservation
 -6657 constant E-IR-ARENA-SLOTS   \ the live-arena registry has no free slot
 -6658 constant E-IR-ARENA-SERIALS \ arena generation serials reached their ceiling
 -6659 constant E-IR-ARENA-STATE   \ persisted arena state failed its consistency recheck
