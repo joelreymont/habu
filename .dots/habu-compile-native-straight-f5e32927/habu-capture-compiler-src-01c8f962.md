@@ -168,3 +168,13 @@ sharing, and the three stages that must agree all read it after it is sealed.
    holds its context until the enclosing harness exits. One harness ran the
    registry dry. The split is explained in both suites, but it is a fixture
    constraint a reader should know about before adding cases.
+
+AMENDED AT THE NIMM DELETION MERGE (2026-08-20, master b62b8dd5; the claim
+agent=srctape has no live lane - amendment made at merge per the same
+treatment as 5f56e5e9): the acceptance clause "immediate words are classified
+intrinsic, sealed compile-time computation, or named rejection" is
+unsatisfiable as written - NIMM and its three-class table are deleted (the
+ruling and sized list live on habu-delete-the-nimm-329100c9's closure).
+Re-derive the clause against HIR-WORD's admission path, which is the sole
+production classifier; the measured line naming test/compiler/
+native-immediate.f is likewise dead.

@@ -7691,3 +7691,13 @@ and --no-lldbinit.
   a "bare tick fails closed" case silently passes for the wrong reason the moment
   the name is removed. Keep tick cases on a spelling that still resolves to a
   record.
+
+- **`dot off` on a childless top-level leaf archives it into the gitignored
+  .dots/archive/, so the closure note never reaches the commit.** A leaf that
+  other dots list in blocks: stays tracked as closed. Check jj st right after
+  dot off; restore the leaf into .dots/ when the closure must publish.
+- **`rg` inside a `while read` loop reads the loop's stdin instead of
+  recursing.** An empty reachability sweep is not evidence until the probe is
+  checked against a name known to be present.
+- **Deleting error constants is seed-affecting even when the deleted subsystem
+  is not** — install --force loads lib/errors.f regardless of what compiled.
