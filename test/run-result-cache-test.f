@@ -1,7 +1,7 @@
 \ run-result-cache-test.f - focused tests for the gate phase result cache.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \   lib/fs.f lib/fs-mutate.f lib/content-key.f test/run-files.f
-\   test/run-result-cache.f test/run-closure-lint.f
+\   test/run-engine-set.f test/run-result-cache.f test/run-closure-lint.f
 \   test/run-result-cache-test.f
 
 require lib/errors.f
@@ -11,6 +11,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/content-key.f
 require test/run-files.f
+require test/run-engine-set.f
 require test/run-result-cache.f
 require test/run-closure-lint.f
 
@@ -102,6 +103,58 @@ variable CACHE-LEN
    AOT-NEG-SET! RUN-CLOSURE:RUN
    RUN-CLOSURE:FINDINGS 0 T= ;
 
+\ The engine half of every phase key. The closure lint above walks what a
+\ DECLARED member requires; it cannot see the source bin/hb re-reads for itself
+\ at process start, and that source - the checker, the core registries, the
+\ seeded stdlib - decides what every phase observes. Keying the binary alone
+\ therefore left a whole family of edits invisible to the cache: the tree that
+\ moved SCHEMA-N@ into package SCHEMA-REG turned the prop/debug phase red while
+\ its key stood still, and the gate reported PASS (cached) on a red tree
+\ (incident habu-incident-master-red-750d7ee7).
+\
+\ Naming the paths would not prove much - a set can list a file and fold none of
+\ its bytes. What is asserted instead is that the key MOVES with those files:
+\ the live SHA-256 of the checker source and of the schema registry source must
+\ appear in the fold's own preimage, which is the byte string CONTENT-KEY:FINAL
+\ hashes. Edit either file and both sides move together; drop the boot prefix
+\ from test/run-engine-set.f and neither digest is there to find.
+
+1 LAYOUT-BUFFER ENG-FOLD CONTENT-KEY:fold
+
+create ENG-DG 32 allot
+
+variable ENG-N
+variable ENG-HB?
+
+: ENG-FOLD! ( CONTENT-KEY:fold -- )
+   0 ENG-FOLD ! ;
+
+: ENG-FOLD@ ( -- CONTENT-KEY:fold )
+   0 ENG-FOLD @ ;
+
+: ENG-SEE ( ptr u8 n -- ) {: a:ptr u:n :}
+   ENG-N @ 1+ ENG-N !
+   a u s" bin/hb" STR= if -1 ENG-HB? ! then
+   ENG-FOLD@ a u CONTENT-KEY:FILE+ ENG-FOLD! ;
+
+: ENG-TRACKS ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u ENG-DG SHA256-FILE 0 T=
+   ENG-FOLD@ CONTENT-KEY:BUF$ ENG-DG 32 CONTAINS? TTRUE ;
+
+: ENGINE-KEY ( -- )
+   0 ENG-N !  0 ENG-HB? !
+   CONTENT-KEY:OPEN ENG-FOLD!
+   [: ENG-SEE ;] ENGINE-SET:FILES
+   s" the engine set carries the binary a phase runs" T-LABEL
+   ENG-HB? @ TTRUE
+   s" the engine set is more than that binary" T-LABEL
+   ENG-N @ 1 > TTRUE
+   s" a phase key moves with the checker source the binary re-reads" T-LABEL
+   s" src/core/checker.f" ENG-TRACKS
+   s" a phase key moves with the schema registry source the binary re-reads" T-LABEL
+   s" src/core/type-schema.f" ENG-TRACKS
+   ENG-FOLD@ CONTENT-KEY:DISCARD ;
+
 : CLEANUP ( -- )
    CONTENT-KEY:CACHE-CLEAR!
    CLEANUP-RUN
@@ -114,6 +167,7 @@ variable CACHE-LEN
    EDIT-INVALIDATES
    RED-NEVER-CACHED
    CLOSURE-LINT
+   ENGINE-KEY
    CLEANUP
    T-REPORT ;
 

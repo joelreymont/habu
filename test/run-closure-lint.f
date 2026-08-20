@@ -203,7 +203,17 @@ variable REPORT?
    a u s" tools/dynamic-tail-manifest.f" STR= if 0 0= exit then
    \ the audited checker-hook allowlist read by CHECKED-BOUNDARY-LINT, whose
    \ FILE entry lints whatever path its caller hands it
-   a u s" tools/hook-sites.f" STR= ;
+   a u s" tools/hook-sites.f" STR= if 0 0= exit then
+   \ the boot-prefix path list. Its rows ARE a load closure - the source bin/hb
+   \ re-reads at process start - and they are covered, but by folding rather
+   \ than by membership: test/run-engine-set.f FILES walks this same list
+   \ into every phase key, so whatever BP-EACH names is keyed the moment it is
+   \ named. Demanding the rows also be set members would duplicate that list in
+   \ a second place and make adding a prefix file a two-file edit.
+   \ test/run-result-cache-test.f ENGINE-KEY holds the folding side up: it
+   \ asserts a phase key moves with the checker and schema-registry sources, so
+   \ this exemption cannot outlive the coverage that justifies it.
+   a u s" tools/boot-pin.f" STR= ;
 
 : CUR-EXEMPT! ( -- )
    0 CUR-EXEMPT !

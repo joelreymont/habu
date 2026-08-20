@@ -6,6 +6,7 @@ require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switc
 require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
+require test/run-engine-set.f
 require test/run-result-cache.f
 
 package TEST
@@ -1356,10 +1357,16 @@ public
    idx IDX>N cells TR-DEFERRED-ORDER + @ >IDX ;
 
 \ Per-phase content-keyed PASS-stamp cache. A phase with a declared file set
-\ (test/run-files.f) keys (label, bin/hb, candidate sha for under phases,
+\ (test/run-files.f) keys (label, the engine, candidate sha for under phases,
 \ declared files); a stamp hit skips the phase as PASS (cached). Misses are
 \ recorded and stamped only after a fully green run; --cold-cache and
 \ --no-result-cache bypass both sides.
+\
+\ "The engine" is ENGINE-SET:FILES, not bin/hb alone: the binary re-reads its
+\ whole checker/core prefix from the checkout at every boot, so a src/core edit
+\ moves the phase's verdict without moving the binary. Keying bin/hb alone let a
+\ stamp outlive the tree that earned it and reported a red phase as
+\ PASS (cached) - see test/run-engine-set.f.
 private
 : TR-RESULT-CACHE-ON? ( -- bool )
    TR-COLD-CACHE @ 0 <> if TR-FALSE exit then
@@ -1388,9 +1395,9 @@ private
    CONTENT-KEY:OPEN TR-KEY-FOLD!
    s" gate-phase-pass-v1" TR-KEY-TEXT+
    idx PHASE-LABEL TR-KEY-TEXT+
-   s" bin/hb" TR-KEY-FILE+
    idx TR-RESULT-UNDER-KEY? 0= if TR-KEY-FOLD@ CONTENT-KEY:DISCARD TR-FALSE exit then
    idx TR-RESULT-KEY-FILES? 0= if TR-KEY-FOLD@ CONTENT-KEY:DISCARD TR-FALSE exit then
+   [: TR-KEY-FILE+ ;] ENGINE-SET:FILES       \ last: most phases exit above unkeyed
    TR-KEY-FOLD@ TR-RESULT-KEY-HEX CONTENT-KEY:FINAL-HEX
    TR-TRUE ;
 
