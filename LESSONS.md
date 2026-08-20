@@ -7701,3 +7701,17 @@ and --no-lldbinit.
   checked against a name known to be present.
 - **Deleting error constants is seed-affecting even when the deleted subsystem
   is not** — install --force loads lib/errors.f regardless of what compiled.
+
+- **`PASS (cached)` is a verdict about a key, not a tree.** When a gate is
+  green on a tree you can prove is red, recompute the key before re-reading
+  the wiring. And a bisection run through a cached gate bisects the cache
+  key, not the tree — re-verify endpoints with the narrowest direct command.
+- **`bin/hb` is not the engine** — it bakes primitives and re-reads its
+  checker/core prefix from the checkout at every boot. Any content key using
+  the binary as a proxy for "the engine" is structurally wrong; the engine is
+  the binary plus ENGINE-SET:FILES.
+- **The orchestrator's sandboxed shell mass-fails spawn-heavy suites.** The
+  same tree, same workspace: 295 FAIL/RED sandboxed, 6 documented load-class
+  reds unsandboxed, green in a worker's plain shell. Gate spawn-heavy
+  batteries unsandboxed, and when your environment is the variable, prove it
+  by varying only it.
