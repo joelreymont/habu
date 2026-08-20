@@ -99,3 +99,25 @@ accessor redesign that removed all 13 raw `ptr a` handouts of checker private
 state, the 101 effect rows, the 95 deleted TRUSTED: forwarders, every ordered
 manifest mirrored, and the mutation proofs. Most of it survives the reordering;
 re-derive it on top of the seal rather than alongside it.
+
+RE-SCOPED AND RULED (2026-08-20, seal-1's measured checkpoint): the seal is
+987 globals / 251 external names / 63 consumer files - three ordered dots,
+not one lane. RULING: option 1 - real packages with short public tails
+(TFAM:N@ shape), per docs/forth.md's own "prefix-style tails are legacy
+debt" and the LOWER-CERT precedent; option 2 (owner names chosen to dodge
+OWNER-PREFIX?) is a patch dressed as a seal; option 3 (using everywhere)
+re-exposes the surface bare. The PILOT decides on evidence before the
+rename cascade: type-schema.f first (98 defs, 49 names, 18 consumers,
+ZERO forced renames under the existing SCHEMA-REG owner). Key measured
+facts for the lanes: today 37 prefix rows publish registry globals (34
+PRIM: in checker.f:6175-6568 + 3 sumtype) and route 3 takes that to 987;
+the qualified-probe pair is the acceptance discriminator (sealed private:
+PKG:NAME E-UNDEFINED even qualified; bare-name refusal cannot distinguish
+package-scoped from unrecorded); sumtype.f's declaration grammar
+(NEWTYPE/SUMTYPE/PRODUCT/ENUM/DEFLINEAR + CHECKER-DEF* hooks) is
+irreducibly global - its exception row CONVERTS to a narrow
+GLOBAL-SURFACE? declaration-shape row with hostile fixtures, never
+deletes; type-schema.f is on NO exception list so its 98 globals are
+frozen today. All of banked 4f1b44b6 survives; checker.f and
+internal-word-gate.f re-derive on top. Census scripts in seal-1's
+scratchpad. Iteration cost: 14.7s warm snap.
