@@ -54,7 +54,7 @@ private
 \ RAW>PROMOTED: the only producer of a `promoted` cell, invoked by PROMOTE after it has
 \ consumed a real grant (the maki/typestate.f RAW>* stage-mint pattern). Private, so a raw n
 \ cannot forge a promoted artifact and no caller can fabricate one around ART:PROMOTE.
-TRUSTED: RAW>PROMOTED ( n -- promoted ) ;
+CAST: RAW>PROMOTED ( n -- promoted )
 public
 : PROMOTE ( ART:built POLICY:granted -- promoted )
    POLICY-GRANTED:UNMAKE            \ ART:built gart pol tok

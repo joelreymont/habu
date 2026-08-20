@@ -102,6 +102,11 @@ variable TGT-N
 TYPED-VARIABLE TGT-SM87 CAD-KIND:target-id  \ interned sm87 target id ( -- ptr CAD-KIND:target-id )
 TYPED-VARIABLE TGT-SM121A CAD-KIND:target-id \ interned sm_121a (GB10) target id
 
+\ Both rows stay trust rows, for two different reasons. CAST: refuses the mint
+\ with 7135 E-CAST-OWNER because package CAD-KIND declares the family. The
+\ projection out would certify, but its NAME repeats its owner, so the package
+\ lint refuses any edit to that line until it is renamed - a cascade owned by
+\ habu-cast-definer-330-1f5980b8, not by this file.
 TRUSTED: RAW>TARGET-ID ( n -- CAD-KIND:target-id ) ;
 TRUSTED: TARGET-ID>RAW ( CAD-KIND:target-id -- n ) ;
 

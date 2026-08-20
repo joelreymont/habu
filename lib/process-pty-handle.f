@@ -45,27 +45,37 @@ SLOT-CAP TYPED-BUFFER SLOT-TARGET-WATCH target-watch
 SLOT-CAP TYPED-BUFFER SLOT-SUP-WATCH sup-watch
 create SLOT-OWNER SLOT-CAP cells allot
 
-\ Packed slot/generation cell <-> three distinct linear lifecycle tokens. The
-\ checker cannot refine or erase these use-once roles.
-\ Retirement owner: habu-recover-checked-pty-04fcb611.
+\ Packed slot/generation cell <-> three distinct linear lifecycle tokens. These
+\ six stay trusted because a cast may not carry linear ownership: `CAST:` refuses
+\ every one of them with 7137 E-CAST-LINEAR (measured), and rightly so — minting
+\ or erasing a use-once token through a zero-instruction retype is exactly the
+\ unsoundness the rule exists to stop. The checker cannot refine or erase these
+\ use-once roles yet; retirement owner: habu-recover-checked-pty-04fcb611.
 TRUSTED: N>HANDLE ( n -- process-pty-handle ) ;
 TRUSTED: HANDLE>N ( process-pty-handle -- n ) ;
 TRUSTED: N>RESERVATION ( n -- process-pty-reservation ) ;
 TRUSTED: RESERVATION>N ( process-pty-reservation -- n ) ;
 TRUSTED: N>TEARDOWN ( n -- process-pty-teardown ) ;
 TRUSTED: TEARDOWN>N ( process-pty-teardown -- n ) ;
-TRUSTED: PID>SUP ( pid -- sup-pid ) ;
-TRUSTED: SUP>PID ( sup-pid -- pid ) ;
-TRUSTED: PID>PGRP ( pid -- pgrp ) ;
-TRUSTED: PGRP>PID ( pgrp -- pid ) ;
-TRUSTED: PID>TARGET ( pid -- target-pid ) ;
-TRUSTED: TARGET>PID ( target-pid -- pid ) ;
-TRUSTED: FD>GROUP-WATCH ( fd -- group-watch ) ;
-TRUSTED: GROUP-WATCH>FD ( group-watch -- fd ) ;
-TRUSTED: FD>TARGET-WATCH ( fd -- target-watch ) ;
-TRUSTED: TARGET-WATCH>FD ( target-watch -- fd ) ;
-TRUSTED: FD>SUP-WATCH ( fd -- sup-watch ) ;
-TRUSTED: SUP-WATCH>FD ( sup-watch -- fd ) ;
+
+\ The twelve supervisor-role conversions are checked casts: one cell in, one cell
+\ out, and every destination is either a family this package declares (the six
+\ NEWTYPEs above) or a core role the checker registers as a plain constant and
+\ leaves unowned (pid, fd). So the checker certifies each declaration rather than
+\ trusting it. What a cast still cannot say is that the pid really IS the
+\ supervisor's - that meaning stays this package's obligation.
+CAST: PID>SUP ( pid -- sup-pid )
+CAST: SUP>PID ( sup-pid -- pid )
+CAST: PID>PGRP ( pid -- pgrp )
+CAST: PGRP>PID ( pgrp -- pid )
+CAST: PID>TARGET ( pid -- target-pid )
+CAST: TARGET>PID ( target-pid -- pid )
+CAST: FD>GROUP-WATCH ( fd -- group-watch )
+CAST: GROUP-WATCH>FD ( group-watch -- fd )
+CAST: FD>TARGET-WATCH ( fd -- target-watch )
+CAST: TARGET-WATCH>FD ( target-watch -- fd )
+CAST: FD>SUP-WATCH ( fd -- sup-watch )
+CAST: SUP-WATCH>FD ( sup-watch -- fd )
 
 : CELL-AT ( ptr a idx -- ptr a ) {: base:ptr idx:idx :}
    base idx IDX>N cells + ;

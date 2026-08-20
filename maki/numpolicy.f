@@ -161,11 +161,13 @@ private
 4 constant DOM-COUNT            \ closed dom cardinality (exact..empirical); matches N>DOM
 8 constant WIRE-BYTES           \ fixed little-endian wire width of the registry raw
 
-\ Private representation refinements (owner-only, TRUSTED:, never public), the
+\ Private representation refinements (owner-only, never public), the
 \ maki/target/target.f RAW>TARGET-ID / TARGET-ID>RAW precedent. The raw IS the dom
 \ rank (0..3), so an id is content-addressed by its proof domain.
+\ The mint stays a trust row: CAST: refuses it with 7135 E-CAST-OWNER because
+\ package CAD-KIND declares the family. The projection out is a checked cast.
 TRUSTED: RAW>NUMERIC-POLICY-ID ( n -- CAD-KIND:numeric-policy-id ) ;
-TRUSTED: NUMERIC-POLICY-ID>RAW ( CAD-KIND:numeric-policy-id -- n ) ;
+CAST: NUMERIC-POLICY-ID>RAW ( CAD-KIND:numeric-policy-id -- n )
 
 : ID-CK ( CAD-KIND:numeric-policy-id -- n )
    NUMERIC-POLICY-ID>RAW dup 0 < over DOM-COUNT >= or if E-NPOL-DOM throw then ;

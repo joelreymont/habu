@@ -163,11 +163,12 @@ private
    64K-LEN CAD-NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
 
 \ Private allocation-role erasure for mmap/cells/munmap; no raw value escapes.
-\ Retire when those primitives accept the nominal roles directly.
-\ Retirement owner: habu-epic-model-cad-70b629a9.
-TRUSTED: ALLOC-BYTES>N ( CAD-NUM:alloc-byte-len -- n ) ;
-TRUSTED: ALLOC-CELLS>N ( CAD-NUM:alloc-cell-count -- n ) ;
-TRUSTED: BYTE-LEN>N ( CAD-NUM:byte-len -- n ) ;
+\ Checked casts, so none of the three can misdeclare its shape. They go away
+\ entirely when those primitives accept the nominal roles directly:
+\ habu-epic-model-cad-70b629a9.
+CAST: ALLOC-BYTES>N ( CAD-NUM:alloc-byte-len -- n )
+CAST: ALLOC-CELLS>N ( CAD-NUM:alloc-cell-count -- n )
+CAST: BYTE-LEN>N ( CAD-NUM:byte-len -- n )
 
 $47 constant UNMAP-EXIT
 

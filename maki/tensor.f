@@ -23,15 +23,18 @@ require maki/cad-kinds.f
 package MAKI
 
 \ Zero-arity families are runtime cells. These private identity boundaries are
-\ the only raw representation authority; public constructors validate first.
+\ the only raw representation authority; public constructors validate first. The
+\ four refinements stay trust rows: package CAD-KIND declares the families and
+\ these sit in package MAKI, so CAST: refuses each with 7135 E-CAST-OWNER. The
+\ four projections out are checked casts.
 TRUSTED: DIM-REFINE ( n -- CAD-KIND:dim ) ;
-TRUSTED: DIM-RAW ( CAD-KIND:dim -- n ) ;
+CAST: DIM-RAW ( CAD-KIND:dim -- n )
 TRUSTED: ROWS-REFINE ( n -- CAD-KIND:rows ) ;
-TRUSTED: ROWS-RAW ( CAD-KIND:rows -- n ) ;
+CAST: ROWS-RAW ( CAD-KIND:rows -- n )
 TRUSTED: COLS-REFINE ( n -- CAD-KIND:cols ) ;
-TRUSTED: COLS-RAW ( CAD-KIND:cols -- n ) ;
+CAST: COLS-RAW ( CAD-KIND:cols -- n )
 TRUSTED: SPACE-REFINE ( n -- CAD-KIND:address-space ) ;
-TRUSTED: SPACE-RAW ( CAD-KIND:address-space -- n ) ;
+CAST: SPACE-RAW ( CAD-KIND:address-space -- n )
 
 $7FFFFFFFFFFFFFFF constant DIM-MAX-N
 4 constant SPACE-N
@@ -94,7 +97,7 @@ public
 \ Pending owners: dot habu-nominal-storage-migrate-47ee0f93 (typed tensor-value
 \ columns + address-space swap rejection) and dot habu-v2-checked-async-8d460576
 \ (typed global->shared pipeline). The kept cluster is ADDRESS-SPACE-DECODE/
-\ -VALID?/-EQUAL?, SPACE-GLOBAL/SPACE-SHARED, RANGE, and trusted SPACE-RAW.
+\ -VALID?/-EQUAL?, SPACE-GLOBAL/SPACE-SHARED, RANGE, and the SPACE-RAW cast.
 : ADDRESS-SPACE-DECODE ( n -- CAD-KIND:address-space )
    SPACE-N E-MK-SPACE RANGE SPACE-REFINE ;
 

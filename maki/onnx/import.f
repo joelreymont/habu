@@ -111,10 +111,10 @@ variable IMP-NODE-N
    IMP-NODE-N @ 1+ IMP-NODE-N !
    node ;
 
-\ the importer's own audited raw-extent boundary (Model-CAD V2 R3: the module
-\ that decodes/indexes wire integers owns a private refinement, no public raw API)
-TRUSTED: IMP-ROWS-N ( CAD-KIND:rows -- n ) ;
-TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
+\ the importer's own raw-extent boundary, two checked casts (Model-CAD V2 R3: the
+\ module that decodes/indexes wire integers owns it privately, no public raw API)
+CAST: IMP-ROWS-N ( CAD-KIND:rows -- n )
+CAST: IMP-COLS-N ( CAD-KIND:cols -- n )
 
 : IMP-RESET ( -- )
    0 IMP-BUMP !  0 IMP-IN-N !  0 SYN-N !  0 IMP-NODE-N !

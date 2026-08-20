@@ -7550,3 +7550,40 @@ and --no-lldbinit.
   host gates to reach the seed's own legs found a recovery-only defect (the
   recovery engine loads no checker, so an unguarded registrar call would kill
   every recovery build) that no green gate could ever have shown.
+
+## 2026-08-20 - the cast sweep's refusals (trusted-5, dot 1f5980b8)
+
+- **`require <file>` is not proof the file was read.** Every candidate file in
+  the sweep got a per-site gate: convert one row, `require` the file, keep it if
+  nothing throws. src/compiler/native/string.f is compiled INTO `bin/hb`, so its
+  require is a no-op — the gate passed a conversion the engine refuses, and only
+  `install --force` caught it (7130, and the refresh child died with
+  E-BUILD-STATUS -2802). lib/ptx/tile-v4a.f had the opposite problem: nothing
+  requires it directly, so the load died before reaching the edit. Falsify every
+  per-file load gate before trusting it — append a known-bad `CAST: X ( n -- idx
+  idx )` and confirm you see 7129. Two of forty-two files failed that check.
+- **A refusal is not automatically a caught lie.** The sweep expected `CAST:` to
+  expose rows that had been lying under `TRUSTED:`. Sixty rows were refused and
+  NONE of them was a shape lie: measured with EFFECT-DIN-CELLS, a `ptr a`,
+  `ptr n` or `ptr u8` term is ONE cell (only `ptr u8 n` is two), so every refused
+  row was already cell-count honest. All sixty are policy refusals — pointer
+  class (7130), linear ownership (7137), foreign family (7135). Name which
+  refusal you got before calling a site dishonest.
+- **A conversion sweep splits mint/projection pairs, and that is the honest
+  outcome.** Sixteen maki id pairs now read `TRUSTED: RAW>X-ID` above
+  `CAST: X-ID>RAW`: a projection out of a family is unrestricted, an
+  introduction into one needs the declaring package. The asymmetry is not
+  untidiness — it puts the remaining trust exactly where the authority is, and
+  it turns twenty-six scattered chores into one packaging question.
+- **A green checker is not a green gate.** Twenty rows the checker certified
+  could not land: `tools/package-diff-lint.f` refuses the EDITED LINE because
+  the definition sits outside a package (lib/ptx/cg.f) or its name repeats its
+  package (`ARTIFACT:ARTIFACT-ID>RAW`). Both refusals reproduce on PRISTINE
+  master by adding a trailing comment to the untouched line, so the lint has
+  frozen those definition lines against every improvement until somebody pays
+  the packaging or rename cascade. Run the diff lints on a representative hunk
+  BEFORE converting a hundred more like it.
+- **A shape census over-counts what a checked form will accept.** The leaf's
+  "maki/ 111, tail 96 nominal casts" were 90 and 35: the rest were bodied rows
+  that drop a cell, run an emitter, or push a literal from nothing. Count the
+  rows the FORM can express, not the rows that look like it.

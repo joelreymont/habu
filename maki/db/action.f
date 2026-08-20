@@ -167,10 +167,15 @@ private
 : DR-UNAUTHORIZED ( -- dispatch-result )  ACTION-DISPATCH--RESULT:UNAUTHORIZED ;
 : DR-UNSUPPORTED ( -- dispatch-result )   ACTION-DISPATCH--RESULT:UNSUPPORTED ;
 
-\ Private representation refinement of the action identity (owner-only, TRUSTED:, never
+\ Private representation refinement of the action identity (owner-only, never
 \ public) - the maki/producer.f RAW>PRODUCER-ID precedent. REGISTER is the ONLY public
 \ authority-bearing mint, bound to a real name registration, so a raw n cannot forge an
 \ action identity.
+\ Both rows stay trust rows, for two different reasons. CAST: refuses the mint
+\ with 7135 E-CAST-OWNER because package CAD-KIND declares the family. The
+\ projection out would certify, but its NAME repeats its owner, so the package
+\ lint refuses any edit to that line until it is renamed - a cascade owned by
+\ habu-cast-definer-330-1f5980b8, not by this file.
 TRUSTED: RAW>ACTION-ID ( n -- CAD-KIND:action-id ) ;
 TRUSTED: ACTION-ID>RAW ( CAD-KIND:action-id -- n ) ;
 

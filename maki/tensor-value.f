@@ -246,8 +246,8 @@ $8000 constant TV-CAP          \ generous live-descriptor ceiling + handle strid
 
 private
 
-TRUSTED: RAW>TENSOR ( n -- tensor ) ;
-TRUSTED: TENSOR>RAW ( tensor -- n ) ;
+CAST: RAW>TENSOR ( n -- tensor )
+CAST: TENSOR>RAW ( tensor -- n )
 
 \ record table: one array per field so each keeps its own cell type (TV-DATA
 \ holds a pointer; TV-HAS holds n). Indexed by slot 0..TV-U-1. The enum-typed

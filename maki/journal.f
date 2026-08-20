@@ -70,12 +70,14 @@ create JRN-KL   JRN-CAP cells allot           \ per-event descriptor length
 variable JRN-KEY-U                             \ bytes used in JRN-KEYS
 variable JRN-N                                  \ appended count == next sequence
 
-\ Private representation refinements (owner-only, TRUSTED:, never public), the
+\ Private representation refinements (owner-only, never public), the
 \ maki/artifact.f RAW>ARTIFACT-ID / ARTIFACT-ID>RAW precedent. The only public
 \ producer is APPEND, bound to a real journal append, so a raw n cannot forge an
 \ audit-event identity.
+\ The mint stays a trust row: CAST: refuses it with 7135 E-CAST-OWNER because
+\ package CAD-KIND declares the family. The projection out is a checked cast.
 TRUSTED: RAW>AUDIT-EVENT-ID ( n -- CAD-KIND:audit-event-id ) ;
-TRUSTED: AUDIT-EVENT-ID>RAW ( CAD-KIND:audit-event-id -- n ) ;
+CAST: AUDIT-EVENT-ID>RAW ( CAD-KIND:audit-event-id -- n )
 
 : ID-CK ( CAD-KIND:audit-event-id -- n )
    AUDIT-EVENT-ID>RAW dup 0 < over JRN-N @ >= or if E-JOURNAL-ID throw then ;

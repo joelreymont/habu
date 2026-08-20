@@ -90,10 +90,15 @@ create CFG-CK   CFG-CAP CK-BYTES * allot      \ per-id SHA-256 content key over 
 variable CFG-KEY-U                             \ bytes used in CFG-KEYS
 variable CFG-N                                  \ registered count
 
-\ Private representation refinements (owner-only, TRUSTED:, never public), the
+\ Private representation refinements (owner-only, never public), the
 \ maki/artifact.f RAW>ARTIFACT-ID / ARTIFACT-ID>RAW precedent. The only public
 \ producer is REGISTER, bound to a real fact-set registration, so a raw n cannot
 \ forge a config identity.
+\ Both rows stay trust rows, for two different reasons. CAST: refuses the mint
+\ with 7135 E-CAST-OWNER because package CAD-KIND declares the family. The
+\ projection out would certify, but its NAME repeats its owner, so the package
+\ lint refuses any edit to that line until it is renamed - a cascade owned by
+\ habu-cast-definer-330-1f5980b8, not by this file.
 TRUSTED: RAW>CONFIG-ID ( n -- CAD-KIND:config-id ) ;
 TRUSTED: CONFIG-ID>RAW ( CAD-KIND:config-id -- n ) ;
 

@@ -123,13 +123,16 @@ create AO-INDEG ADAG-NCAP cells allot
 
 \ ---- nominal identity boundaries (R3 owner-module rule) ----------------------
 \ These private mints are the only raw representation authority; every public
-\ path revalidates the raw index against the live table before use.
+\ path revalidates the raw index against the live table before use. The three
+\ mints stay trust rows: package ADAG declares the families (above) but they are
+\ minted here inside package MAKI, so CAST: refuses the introduction with 7135
+\ E-CAST-OWNER. The three projections out are checked casts.
 TRUSTED: RAW>ANODE ( n -- ADAG:node-id ) ;
-TRUSTED: ANODE>RAW ( ADAG:node-id -- n ) ;
+CAST: ANODE>RAW ( ADAG:node-id -- n )
 TRUSTED: RAW>ASTREAM ( n -- ADAG:stream-id ) ;
-TRUSTED: ASTREAM>RAW ( ADAG:stream-id -- n ) ;
+CAST: ASTREAM>RAW ( ADAG:stream-id -- n )
 TRUSTED: RAW>AEVENT ( n -- ADAG:event-id ) ;
-TRUSTED: AEVENT>RAW ( ADAG:event-id -- n ) ;
+CAST: AEVENT>RAW ( ADAG:event-id -- n )
 
 : ANODE-CK ( ADAG:node-id -- n )
    ANODE>RAW dup 0 < over ADAG-N @ >= or if E-ADAG-IDX throw then ;

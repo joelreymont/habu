@@ -28,13 +28,13 @@ private
 2 constant GROWTH                         \ capacity doubling factor
 MEM-MAX-N constant MAX-BYTES              \ largest byte extent (one cell); the doubling-overflow ceiling
 
-\ ---- audited representation projection (the ONLY unchecked word in BUF) --------
+\ ---- representation projection (BUF's only retype, and it is checked) ----------
 \ Reads a validated `byte-len`'s raw cell to store the header capacity/length cell,
 \ to size the allocation, and to drive the byte-copy/pointer arithmetic - all of
 \ which still consume a bare `n`. BUF-private, no public export; there is no public
 \ inverse, so a length/offset role cannot round-trip through a raw cell by accident.
-\ Retirement owner: habu-build-exact-modular-44f4c2dc.
-TRUSTED: BLEN>N ( CAD-NUM:byte-len -- n ) ;
+\ Deleting the projection outright waits on habu-build-exact-modular-44f4c2dc.
+CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
 \ ---- n -> byte-len: the read/derived cell is provably nonnegative (SET-LEN keeps
 \ len >= 0, INIT keeps cap > 0), so the refusal arms are unreachable invariants

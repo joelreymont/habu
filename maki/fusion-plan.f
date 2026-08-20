@@ -81,8 +81,10 @@ private
 \ a raw n can never enter or leave it; the public constructors (FP-REGION-ID /
 \ FP-RID@) still validate the raw table position first, and the parallel
 \ per-region fact arrays stay indexed behind RGN>RAW.
+\ The mint stays a trust row: CAST: refuses it with 7135 E-CAST-OWNER because
+\ package CAD-KIND declares the family. The projection out is a checked cast.
 TRUSTED: RAW>RGN ( n -- CAD-KIND:region ) ;
-TRUSTED: RGN>RAW ( CAD-KIND:region -- n ) ;
+CAST: RGN>RAW ( CAD-KIND:region -- n )
 
 FP-CAP TYPED-BUFFER FP-RID-AT CAD-KIND:region  \ per-node region id ( n -- ptr CAD-KIND:region )
 create FP-MMC FP-CAP cells allot         \ per-region matmul count

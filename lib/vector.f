@@ -234,19 +234,19 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 \ byte-identical to the raw words (same storage, same E-VEC-CAPACITY/E-VEC-BOUNDS
 \ throws); the raw words stay for their not-yet-migrated callers.
 \
-\ VEC owns exactly two audited representation projections (ITEM-COUNT>N, INDEX>N),
-\ mirroring MEM's ALLOC-CELLS>N: the raw vector header cell and the cell-address
-\ arithmetic still consume a bare `n`, so the typed boundary reads a validated
-\ role's cell here. Private, no public export, confined to lib/vector.f like the MEM
-\ pair; retire when TVK-RAW (habu-nominal-storage-raw-a3430ef2) lets the header and
-\ address primitives take the nominal role directly.
-\ Retirement owner: habu-epic-model-cad-70b629a9.
+\ VEC owns exactly two representation projections (ITEM-COUNT>N, INDEX>N), both
+\ checked casts, mirroring MEM's ALLOC-CELLS>N: the raw vector header cell and the
+\ cell-address arithmetic still consume a bare `n`, so the typed boundary reads a
+\ validated role's cell here. Private, no public export, confined to lib/vector.f
+\ like the MEM pair. They disappear entirely when TVK-RAW
+\ (habu-nominal-storage-raw-a3430ef2, under habu-epic-model-cad-70b629a9) lets the
+\ header and address primitives take the nominal role directly.
 
 package VEC
 private
 
-TRUSTED: ITEM-COUNT>N ( CAD-NUM:item-count -- n ) ;
-TRUSTED: INDEX>N ( CAD-NUM:index -- n ) ;
+CAST: ITEM-COUNT>N ( CAD-NUM:item-count -- n )
+CAST: INDEX>N ( CAD-NUM:index -- n )
 
 \ ---- ok-extractors: the read/derived cell is provably nonnegative, so the -------
 \ refusal arms are unreachable invariants (E-VEC-BOUNDS; mirrors MEM's

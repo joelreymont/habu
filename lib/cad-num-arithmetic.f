@@ -52,14 +52,14 @@ private
 
 \ ---- proof-erasure projections: role -> raw cell (no public inverse) ----------
 \ Read a validated role's cell so the raw kernels can do the arithmetic. Slice 1
-\ already ships BYTE-LEN>N / CELL-COUNT>N; these six complete the set. Private,
-\ audited, private to the owning package, and tested like the slice 1 projections.
-TRUSTED: ITEM-COUNT>N ( item-count -- n ) ;
-TRUSTED: INDEX>N ( index -- n ) ;
-TRUSTED: BYTE-OFF>N ( byte-off -- n ) ;
-TRUSTED: CELL-OFF>N ( cell-off -- n ) ;
-TRUSTED: ALIGNMENT>N ( alignment -- n ) ;
-TRUSTED: POSITIVE-DIVISOR>N ( positive-divisor -- n ) ;
+\ already ships BYTE-LEN>N / CELL-COUNT>N; these six complete the set. Private to
+\ the owning package, checked casts like the slice 1 projections, and tested.
+CAST: ITEM-COUNT>N ( item-count -- n )
+CAST: INDEX>N ( index -- n )
+CAST: BYTE-OFF>N ( byte-off -- n )
+CAST: CELL-OFF>N ( cell-off -- n )
+CAST: ALIGNMENT>N ( alignment -- n )
+CAST: POSITIVE-DIVISOR>N ( positive-divisor -- n )
 
 \ ---- payloadless failure constructors (readable over the escaped ctor names) --
 : A-OVER     ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:OVERFLOW ;

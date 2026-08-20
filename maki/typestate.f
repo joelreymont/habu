@@ -42,8 +42,8 @@ public
 NEWTYPE decl 0
 NEWTYPE elab 0
 private
-TRUSTED: RAW>DECL ( n -- decl ) ;
-TRUSTED: RAW>ELAB ( n -- elab ) ;
+CAST: RAW>DECL ( n -- decl )
+CAST: RAW>ELAB ( n -- elab )
 public
 \ DECLARE seeds the pipeline: the only public entry to a CADMODEL:decl.
 : DECLARE ( -- decl )  0 RAW>DECL ;
@@ -55,7 +55,7 @@ package TIR
 public
 NEWTYPE solved 0
 private
-TRUSTED: RAW>SOLVED ( n -- solved ) ;
+CAST: RAW>SOLVED ( n -- solved )
 public
 : SOLVE ( CADMODEL:elab -- solved )  drop  0 RAW>SOLVED ;
 ;package
@@ -65,7 +65,7 @@ package RIR
 public
 NEWTYPE legal 0
 private
-TRUSTED: RAW>LEGAL ( n -- legal ) ;
+CAST: RAW>LEGAL ( n -- legal )
 public
 : LEGALIZE ( TIR:solved -- legal )  drop  0 RAW>LEGAL ;
 ;package
@@ -76,8 +76,8 @@ public
 NEWTYPE draft 0
 NEWTYPE complete 0
 private
-TRUSTED: RAW>DRAFT ( n -- draft ) ;
-TRUSTED: RAW>COMPLETE ( n -- complete ) ;
+CAST: RAW>DRAFT ( n -- draft )
+CAST: RAW>COMPLETE ( n -- complete )
 public
 \ DRAFT seeds an incomplete plan; FINISH promotes it against a legal region ir.
 : DRAFT ( -- draft )  0 RAW>DRAFT ;
@@ -90,8 +90,8 @@ public
 NEWTYPE drafted 0
 NEWTYPE verified 0
 private
-TRUSTED: RAW>DRAFTED ( n -- drafted ) ;
-TRUSTED: RAW>VERIFIED ( n -- verified ) ;
+CAST: RAW>DRAFTED ( n -- drafted )
+CAST: RAW>VERIFIED ( n -- verified )
 public
 : DRAFT ( -- drafted )  0 RAW>DRAFTED ;
 : VERIFY ( PLAN:complete drafted -- verified )  drop drop  0 RAW>VERIFIED ;
@@ -102,7 +102,7 @@ package CAND
 public
 NEWTYPE emitted 0
 private
-TRUSTED: RAW>EMITTED ( n -- emitted ) ;
+CAST: RAW>EMITTED ( n -- emitted )
 public
 : EMIT ( KIR:verified CAD-KIND:target-id -- emitted )  drop drop  0 RAW>EMITTED ;
 ;package

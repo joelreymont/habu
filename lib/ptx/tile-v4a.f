@@ -45,7 +45,10 @@ require lib/ptx/rep.f
 \ unchanged), re-tagged as a proven-aligned vspan. TRUSTED because the alignment
 \ assertion is a boundary the checker cannot express - the caller's launch ABI
 \ guarantees cuMemAlloc-aligned buffers, exactly as MK-SPAN's caller guarantees the
-\ extent.
+\ extent. It CERTIFIES as CAST: (measured; the cast would carry the representation,
+\ never the alignment), but this file defines outside a package, so the package
+\ lint refuses any edit to the line until that is settled - see lib/ptx/cg.f and
+\ dot habu-cast-definer-330-1f5980b8.
 TRUSTED: V4-ALIGN ( span<space-global,t,e> -- vspan<space-global,t,e> ) ;
 
 \ Context derivation touches no memory (lane index + bounds only), so it needs no

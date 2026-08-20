@@ -57,11 +57,13 @@ private
 64 constant SID-CAP                \ max distinct interned suite digests (v1 first-slice pool)
 32  constant CKW                   \ content-key / digest width (SHA-256 cross-process form)
 
-\ Private representation refinements (owner-only, TRUSTED:, never public), the
+\ Private representation refinements (owner-only, never public), the
 \ maki/db/evidence.f RAW>EVIDENCE-ID / EVIDENCE-ID>RAW precedent. The only public mint is
 \ REGISTER, bound to a real interned suite digest, so a raw n cannot forge a suite id.
+\ The mint stays a trust row: CAST: refuses it with 7135 E-CAST-OWNER because
+\ package CAD-KIND declares the family. The projection out is a checked cast.
 TRUSTED: RAW>SUITE-ID ( n -- CAD-KIND:suite-id ) ;
-TRUSTED: SUITE-ID>RAW ( CAD-KIND:suite-id -- n ) ;
+CAST: SUITE-ID>RAW ( CAD-KIND:suite-id -- n )
 
 \ ---- suite-id registry (per-id 32-byte content key = suite digest) --------------
 create SID-CK SID-CAP CKW * allot   \ interned per-id content keys (the suite digests)

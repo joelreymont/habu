@@ -28,14 +28,17 @@ TRUSTED: GB-MINT ( ptr n -- GPU:buffer ) ;
 
 TRUSTED: GB-TAKE ( GPU:buffer -- ptr n ) ;
 
-\ Typed buffer-header projections and cuda-devptr byte advance are not yet
+\ Typed buffer-header projections: checked casts, one role cell to one raw cell.
+\ They disappear when the header fields carry the roles directly:
+\ habu-type-gpu-buf-dd0dda87.
+CAST: GB-LEN>N ( CAD-NUM:alloc-byte-len -- n )
+
+CAST: GB-BYTE-LEN>N ( CAD-NUM:byte-len -- n )
+
+CAST: GB-BYTE-OFF>N ( CAD-NUM:byte-off -- n )
+
+\ The byte advance does arithmetic, so it is a word, not a cast; it is not yet
 \ checker-expressible. Retirement owner: habu-type-gpu-buf-dd0dda87.
-TRUSTED: GB-LEN>N ( CAD-NUM:alloc-byte-len -- n ) ;
-
-TRUSTED: GB-BYTE-LEN>N ( CAD-NUM:byte-len -- n ) ;
-
-TRUSTED: GB-BYTE-OFF>N ( CAD-NUM:byte-off -- n ) ;
-
 TRUSTED: GB-DEVPTR+ ( cuda-devptr CAD-NUM:byte-off -- cuda-devptr ) + ;
 
 : GB-ALLOC-HOST ( ptr u8 -- ptr u8 )

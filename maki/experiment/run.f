@@ -115,9 +115,14 @@ private
 64  constant FID-CAP               \ scratch cap for one foreign-id wire form
 $400 constant SCRATCH-CAP          \ canonical field-prefix scratch (13 fixed fields << this)
 
-\ Private representation refinements (owner-only, TRUSTED:, never public), the
+\ Private representation refinements (owner-only, never public), the
 \ maki/artifact.f RAW>ARTIFACT-ID / ARTIFACT-ID>RAW precedent. The only public mint is
 \ SEAL, bound to a real interned digest, so a raw n cannot forge a run identity.
+\ Both rows stay trust rows, for two different reasons. CAST: refuses the mint
+\ with 7135 E-CAST-OWNER because package CAD-KIND declares the family. The
+\ projection out would certify, but its NAME repeats its owner, so the package
+\ lint refuses any edit to that line until it is renamed - a cascade owned by
+\ habu-cast-definer-330-1f5980b8, not by this file.
 TRUSTED: RAW>RUN-ID ( n -- CAD-KIND:run-id ) ;
 TRUSTED: RUN-ID>RAW ( CAD-KIND:run-id -- n ) ;
 

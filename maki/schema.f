@@ -90,10 +90,15 @@ create SCH-CK   SCH-CAP CK-BYTES * allot      \ per-id SHA-256 content key over 
 variable SCH-KEY-U                             \ bytes used in SCH-KEYS
 variable SCH-N                                  \ registered count
 
-\ Private representation refinements (owner-only, TRUSTED:, never public), the
+\ Private representation refinements (owner-only, never public), the
 \ maki/artifact.f RAW>ARTIFACT-ID / ARTIFACT-ID>RAW precedent. The only public
 \ producer is REGISTER, bound to a real name registration, so a raw n cannot forge
 \ a schema identity.
+\ Both rows stay trust rows, for two different reasons. CAST: refuses the mint
+\ with 7135 E-CAST-OWNER because package CAD-KIND declares the family. The
+\ projection out would certify, but its NAME repeats its owner, so the package
+\ lint refuses any edit to that line until it is renamed - a cascade owned by
+\ habu-cast-definer-330-1f5980b8, not by this file.
 TRUSTED: RAW>SCHEMA-ID ( n -- CAD-KIND:schema-id ) ;
 TRUSTED: SCHEMA-ID>RAW ( CAD-KIND:schema-id -- n ) ;
 

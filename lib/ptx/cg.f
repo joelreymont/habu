@@ -102,6 +102,13 @@ variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX 
 \ surface is these thin from-register identity casts - the codegen analogue of
 \ MK-SPAN's from_raw_parts boundary). CG-PARAMS sets x=%rd1, y=%rd2, a=%f1.
 \ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
+\ All nine CERTIFY as CAST: (measured) - they are one-cell retypes, and this file
+\ is at global scope where the engine declares span/matrix/uniform, so no owner
+\ refusal applies. They stay TRUSTED: because the package lint refuses ANY edit to
+\ a definition outside a package (E-PACKAGE-OWNERSHIP), so converting them needs a
+\ packaging decision for this global codegen surface first. Owned by
+\ habu-cast-definer-330-1f5980b8. lib/ptx/cg-attention.f is the other half of the
+\ same question: inside package ATTN the identical mints are refused with 7135.
 TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
 TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
 TRUSTED: PTR-REG ( n -- ptr<space-global,f32> ) ;

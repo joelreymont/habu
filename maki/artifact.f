@@ -61,6 +61,11 @@ create ART-CK   ART-CAP CK-BYTES * allot   \ per-id SHA-256 content key over the
 variable ART-KEY-U                          \ bytes used in ART-KEYS
 variable ART-N                              \ registered count
 
+\ Both rows stay trust rows, for two different reasons. CAST: refuses the mint
+\ with 7135 E-CAST-OWNER because package CAD-KIND declares the family. The
+\ projection out would certify, but its NAME repeats its owner, so the package
+\ lint refuses any edit to that line until it is renamed - a cascade owned by
+\ habu-cast-definer-330-1f5980b8, not by this file.
 TRUSTED: RAW>ARTIFACT-ID ( n -- CAD-KIND:artifact-id ) ;
 TRUSTED: ARTIFACT-ID>RAW ( CAD-KIND:artifact-id -- n ) ;
 

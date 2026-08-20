@@ -275,9 +275,9 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 package STR
 private
 
-\ ---- audited representation projections (the ONLY unchecked words in STR) ------
-TRUSTED: BYTE-LEN>N ( CAD-NUM:byte-len -- n ) ;
-TRUSTED: BYTE-OFF>N ( CAD-NUM:byte-off -- n ) ;
+\ ---- representation projections (STR's only retypes, and both are checked) -----
+CAST: BYTE-LEN>N ( CAD-NUM:byte-len -- n )
+CAST: BYTE-OFF>N ( CAD-NUM:byte-off -- n )
 
 \ ---- raw-word aliases: bind the legacy globals before the package words shadow --
 \ their names. Defined here (before the public STR:<name> exist) so a bare

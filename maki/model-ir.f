@@ -234,17 +234,20 @@ variable MIR-PEND-ON
 
 \ ---- nominal graph handles (Model-CAD V2 R3) --------------------------------
 \ These private identity boundaries are the only raw representation authority;
-\ each public constructor validates the raw table position first.
+\ each public constructor validates the raw table position first. The five mints
+\ stay trust rows: their families are declared by packages CAD-KIND and MIR while
+\ the mints sit in package MAKI, so CAST: refuses each introduction with 7135
+\ E-CAST-OWNER. The five projections out are checked casts.
 TRUSTED: RAW>NODE ( n -- CAD-KIND:node-id ) ;
-TRUSTED: NODE>RAW ( CAD-KIND:node-id -- n ) ;
+CAST: NODE>RAW ( CAD-KIND:node-id -- n )
 TRUSTED: RAW>SLOT ( n -- MIR:input-slot ) ;
-TRUSTED: SLOT>RAW ( MIR:input-slot -- n ) ;
+CAST: SLOT>RAW ( MIR:input-slot -- n )
 TRUSTED: RAW>REF ( n -- MIR:operand-ref ) ;
-TRUSTED: REF>RAW ( MIR:operand-ref -- n ) ;
+CAST: REF>RAW ( MIR:operand-ref -- n )
 TRUSTED: RAW>INPUT-INDEX ( n -- MIR:input-index ) ;
-TRUSTED: INPUT-INDEX>RAW ( MIR:input-index -- n ) ;
+CAST: INPUT-INDEX>RAW ( MIR:input-index -- n )
 TRUSTED: RAW>REF-POS ( n -- MIR:ref-pos ) ;
-TRUSTED: REF-POS>RAW ( MIR:ref-pos -- n ) ;
+CAST: REF-POS>RAW ( MIR:ref-pos -- n )
 
 : NODE-RAW-CK ( n -- n )
    dup 0 < over MIR-N @ >= or if E-MIR-IDX throw then ;
