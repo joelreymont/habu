@@ -1,0 +1,11 @@
+---
+title: A mid-row IR arena grow tears every table row
+status: active
+priority: 2
+issue-type: task
+created-at: "\"2026-08-20T20:01:49.271707+02:00\""
+---
+
+VERIFIED on master 0a829cc8 (lane ir-1, probe tmp/ir1-tear-probe.f): IR-ARENA:PUSH grows the data span through src/compiler/ir/arena.f GROW (line 214), which calls IR-CTX:SCRATCH-TAKE and can throw E-IR-CTX-SCRATCH (-6644) once the context's 512K mapping is spent. Every table appends a multi-cell row as a run of independent PUSH calls after ONE logical capacity check, so the throw lands between cells and publishes a partial row. Reproduced through the production entry point IR-SOURCE:REGISTER with scratch starved to 64 free bytes: arena cells 3 -> 8 (five of the six row cells published), REGISTER threw -6644, and the registry is then permanently unreadable - IR-SOURCE:SOURCES throws E-IR-SRC-STATE (-6660) because (8-3) mod 6 = 5. Scratch exhaustion is a live production mode: src/compiler/ir/context.f MAP-BYTES records 256K refusing with E-IR-CTX-SCRATCH over the real comparison corpus. Confirmed by reading every append path: source.f ROW-ADD, symbol.f INTERN (POOL-ADD+ROW-ADD), type.f INTERN4 and FN-END, attr.f INTERN5/TEXT/INT-LIST/RECORD, schema.f END, op.f END (three arenas), fun.f END-FUN and END-BLOCK, verify.f EDGES-PUBLISH, native/immediate.f WRITE, native/tape.f WRITE, native/hir-word.f ROW-ADD and RENAME-ROW. The file comments claiming 'a row is always appended whole' and 'a refusal leaves the module exactly as it was' are false on this path. Fix: an arena-level RESERVE that completes all fallible allocation before the row's first cell is published; rollback is refused because IR-CTX scratch is a monotonic bump cursor with no free (a rolled-back row leaks its doubled span) and because the tree already deleted an arena rollback for want of a consumer (lib/errors.f -6654, 2026-08-05). Files: src/compiler/ir/arena.f, source.f, symbol.f, type.f, attr.f, schema.f, op.f, fun.f, verify.f, src/compiler/native/immediate.f, tape.f, hir-word.f. Depends: none.
+
+Claim: agent=ir-1 workspace=.jj-ws/habu-thecut
