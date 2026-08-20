@@ -7652,3 +7652,42 @@ and --no-lldbinit.
   applies to the dot's parked machinery exactly as it applies to new
   machinery: no named first consumer, no residency. Version control is the
   cache for maybe-futures; the working tree holds what runs.
+
+- **Sealing a pre-hook global file into a package changes the REFUSAL, and only
+  the bare-name leg proves it happened.** After `src/core/type-schema.f` became
+  `package SCHEMA-REG`, `SCHEMA-A@` answers `E-UNDEFINED` where it used to answer
+  `hb: internal engine word:` (rc 70 either way). The marking pass had already
+  made every global there unexecutable, so a case asserting rc 70 stays green
+  through the whole seal and proves nothing about it. The three-way answer —
+  bare gone, `PKG:PUBLIC` marked, `PKG:PRIVATE` E-UNDEFINED — is the only
+  discriminator, and a package private is unreachable on all three routes (bare,
+  qualified, and through a `using`, which imports publics only). The route that
+  still reaches privates is `package PKG` reopened from user source; that is dot
+  `habu-pkg-reopen-reaches-113ecd89`, reproduced on master with `package
+  PRIM-LINK` + bare `KEY-SYM` (rc 134), not something a seal introduces.
+- **A `variable` in a pre-hook registry with no `REG-PROTECT` is a live crash
+  hole, and the census will not find it.** `SCH-RBF-P` (the schema rollback-frame
+  arena base) had zero references outside its own file, so it looked like a
+  harmless internal — and `0 SCH-RBF-P !` in an ordinary `bin/hb --load` program
+  SIGSEGVed the engine (rc 134) inside the next `SUMTYPE`. Data records are
+  exempt from the internal-word marking by design, so only `REG-PROTECT` or a
+  package boundary closes them. When sealing a registry, list its `variable` and
+  `create` cells and check each for `REG-PROTECT`; `src/core/type-family.f`
+  TF-RBF-DEPTH is still unprotected.
+- **Qualifying a sealed package's callers trips `package-diff-lint` on every
+  unpackaged consumer; `using PKG … ;using` touches no definition.** Rewriting 335
+  lines to `SCHEMA-REG:TAIL` reported 80 `E-PACKAGE-OWNERSHIP` findings across
+  seven unpackaged test suites, because changing a global definition's body makes
+  it "a changed module word outside a package" — the seal would have owed those
+  suites' packaging. Two lines per consumer (`using SCHEMA-REG` / `;using`)
+  changed no definition, passed the lint, and built a BYTE-IDENTICAL engine
+  (sha 5f589c92…): the two spellings resolve to the same words, so "using
+  re-exposes the surface" has no machine content. `docs/forth.md` already
+  mandates `using` for a consumer calling two or more publics; qualification is
+  for one-offs and for escaping a collision (a consumer that defines its own tail
+  keeps it — open-package scope wins over a used public silently).
+- **`' NAME` for a name that does not exist exits 0.** Interpret-mode tick of an
+  unresolvable token is not a reject on this engine (measured on master too), so
+  a "bare tick fails closed" case silently passes for the wrong reason the moment
+  the name is removed. Keep tick cases on a spelling that still resolves to a
+  record.

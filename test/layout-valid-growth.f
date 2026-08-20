@@ -1,5 +1,7 @@
 \ layout-valid-growth.f — grow descriptor, environment, and guard arenas.
 
+using SCHEMA-REG
+
 package LAYOUT-VALID-GROWTH
 
 ENUM lvgd-inner zero one ;ENUM
@@ -61,3 +63,5 @@ READ
 s" ok" type cr
 
 ;package
+
+;using

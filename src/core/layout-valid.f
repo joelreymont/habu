@@ -2,6 +2,8 @@
 \ Reopens LOWER-CERT after type-family metadata is available and replaces the
 \ boot-safe scalar producer with the canonical width/fetch serializer.
 
+using SCHEMA-REG
+
 package LOWER-CERT
 
 $80 constant FETCH-INIT
@@ -361,3 +363,5 @@ variable FIELD-I
 FULL-PRODUCE-INSTALL
 
 ;package
+
+;using

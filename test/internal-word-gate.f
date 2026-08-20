@@ -665,17 +665,62 @@ create EMPTY 1 allot            \ zero-length stdin
    s" bare LAY-N layout high-water fails closed" T-LABEL                   s" LAY-N" NEG
    s" LAY-N high-water write + tick fail closed" T-LABEL                   s" LAY-N" CELL-WT ;
 
+\ The schema cells are the sealed ones (dot habu-seal-type-schema-c65f76cc):
+\ src/core/type-schema.f is package SCHEMA-REG, so each cell now has TWO spellings
+\ to refuse and they are refused by different mechanisms. The bare tail is
+\ E-UNDEFINED because no global record carries it any more — that is the seal, and
+\ it is a strictly stronger answer than the `internal engine word` these cases
+\ used to assert. The qualified tail is either the REG-PROTECTed public record
+\ (the four control cells the rest of the checker reads) or E-UNDEFINED again (the
+\ four arenas and bases, which are private and have no qualified spelling at all).
+\ Both legs are asserted for every cell: dropping the bare leg would miss a cell
+\ that silently escaped back to global scope, dropping the qualified one would
+\ miss a private that was published by mistake.
+\
+\ Bare `'` is deliberately NOT asserted on a sealed tail. Tick of a name that does
+\ not exist exits 0 on this engine (it does so on master too, for any spelling),
+\ so a bare tick case would pass for the wrong reason once the name is gone. The
+\ tick exploit is kept where the record still resolves: the qualified public.
+64 constant QNAME-CAP
+create QNAME QNAME-CAP allot
+
+: SCHQ-NAME$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ tail -> SCHEMA-REG:tail
+   s" SCHEMA-REG:" {: pa:ptr pu:n :}
+   pu u + QNAME-CAP > if E-FS-CAPACITY throw then
+   pa QNAME pu BYTE-COPY
+   a QNAME pu + u BYTE-COPY
+   QNAME pu u + ;
+
+: SCHQ-PROG$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )   \ "<pre>SCHEMA-REG:<tail><post>"
+   {: pa:ptr pu:n ta:ptr tu:n sa:ptr su:n :}
+   SB-RESET
+   pa pu SB-APPEND  ta tu SCHQ-NAME$ SB-APPEND  sa su SB-APPEND LF
+   SB$ ;
+
+: ASSERT-UNDEF ( ptr u8 n -- ) {: a:ptr u:n :}   \ child rejected: no such top-level name
+   SB-RESET
+   s" E-UNDEFINED: " SB-APPEND  a u SB-APPEND
+   SB$ ASSERT-DIAG ;
+
+: SCH-CELL-PUB ( ptr u8 n -- ) {: a:ptr u:n :}   \ REG-PROTECTed public control cell
+   a u TOKEN$ RUN-SUBJECT                            a u ASSERT-UNDEF
+   s" " a u s" " SCHQ-PROG$ RUN-SUBJECT              a u SCHQ-NAME$ ASSERT-INTERNAL
+   s" 99 " a u s"  !" SCHQ-PROG$ RUN-SUBJECT         a u SCHQ-NAME$ ASSERT-INTERNAL
+   s" ' " a u s" " SCHQ-PROG$ RUN-SUBJECT            a u SCHQ-NAME$ ASSERT-INTERNAL ;
+
+: SCH-CELL-PRIV ( ptr u8 n -- ) {: a:ptr u:n :}  \ arena or base: private, unspellable
+   a u TOKEN$ RUN-SUBJECT                            a u ASSERT-UNDEF
+   s" " a u s" " SCHQ-PROG$ RUN-SUBJECT              a u SCHQ-NAME$ ASSERT-UNDEF ;
+
 : SCH-CASES ( -- )
-   s" bare SCH-CAP-V schema-registry capacity cell fails closed" T-LABEL     s" SCH-CAP-V" NEG
-   s" bare SCH-A-BOOT schema arena fails closed" T-LABEL                     s" SCH-A-BOOT" NEG
-   s" bare SCH-A-P schema arena base fails closed" T-LABEL                   s" SCH-A-P" NEG
-   s" bare SCH-N schema node high-water fails closed" T-LABEL                s" SCH-N" NEG
-   s" SCH-N node high-water write + tick fail closed" T-LABEL                s" SCH-N" CELL-WT
-   s" bare SCH-ROOT-CAP-V schema-root capacity cell fails closed" T-LABEL    s" SCH-ROOT-CAP-V" NEG
-   s" bare SCH-ROOT-BOOT schema-root pool fails closed" T-LABEL              s" SCH-ROOT-BOOT" NEG
-   s" bare SCH-ROOT-P schema-root base fails closed" T-LABEL                 s" SCH-ROOT-P" NEG
-   s" bare SCH-ROOT-N schema-root high-water fails closed" T-LABEL           s" SCH-ROOT-N" NEG
-   s" SCH-ROOT-N high-water write + tick fail closed" T-LABEL                s" SCH-ROOT-N" CELL-WT ;
+   s" SCH-CAP-V capacity cell: bare gone, qualified marked" T-LABEL         s" SCH-CAP-V" SCH-CELL-PUB
+   s" SCH-N node high-water: bare gone, qualified write + tick marked" T-LABEL s" SCH-N" SCH-CELL-PUB
+   s" SCH-ROOT-CAP-V capacity cell: bare gone, qualified marked" T-LABEL    s" SCH-ROOT-CAP-V" SCH-CELL-PUB
+   s" SCH-ROOT-N high-water: bare gone, qualified write + tick marked" T-LABEL s" SCH-ROOT-N" SCH-CELL-PUB
+   s" SCH-A-BOOT schema arena is private on both spellings" T-LABEL         s" SCH-A-BOOT" SCH-CELL-PRIV
+   s" SCH-A-P schema arena base is private on both spellings" T-LABEL       s" SCH-A-P" SCH-CELL-PRIV
+   s" SCH-ROOT-BOOT schema-root pool is private on both spellings" T-LABEL  s" SCH-ROOT-BOOT" SCH-CELL-PRIV
+   s" SCH-ROOT-P schema-root base is private on both spellings" T-LABEL     s" SCH-ROOT-P" SCH-CELL-PRIV ;
 
 : SIBLING-CASES ( -- )
    TFAM-CASES
@@ -764,12 +809,26 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ The witness reads the engine's own record array — the array LFIND resolves
-\ through, not a copy — and dies unless the two names carry the roles the cases
-\ above assume: KEY-SYM once in PRIM-LINK's PRIVATE wordlist and never in its
-\ public one, COUNT once in the public one. A rename or a typo in either spelling
-\ reds this child instead of letting an E-UNDEFINED case pass for the wrong
-\ reason. Its own names are short because the whole program must fit SB-CAP.
-: QUAL-WITNESS-FORGE$ ( -- ptr u8 n )
+\ through, not a copy — and dies unless the named tails carry the roles the cases
+\ above assume: the private tail once in the package's PRIVATE wordlist and never
+\ in its public one, the public tail once in the public one. A rename or a typo
+\ in either spelling reds this child instead of letting an E-UNDEFINED case pass
+\ for the wrong reason. Its own names are short because the whole program must fit
+\ SB-CAP. Both sealed packages the cases below probe — PRIM-LINK and SCHEMA-REG —
+\ run the same child text with their own three names substituted.
+
+: QW-ROW ( ptr u8 n -- )                 \ the package-row line, keyed on the package name
+   S\" QI @ QWID DICT-WL:NAMESPACE = IF QI @ QNA QI @ QNU s\" " SB-APPEND
+   SB-APPEND
+   S\" \" CORE-STR= IF" SB-APPEND LF ;
+
+: QW-CNT ( ptr u8 n ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n na:ptr nu:n ca:ptr cu:n :}
+   wa wu SB-APPEND                       \ QPUB @ / QPRI @ — which wordlist to count in
+   S\" s\" " SB-APPEND  na nu SB-APPEND  S\" \" QCNT " SB-APPEND
+   ca cu SB-APPEND  s"  QIS" SB-APPEND LF ;
+
+: QUAL-WITNESS-FORGE$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n ra:ptr ru:n ba:ptr bu:n :}   \ package, private tail, public tail
    SB-RESET
    s" 0 set-check" SB-APPEND LF
    s" : QR DREC * dbase@ + ;" SB-APPEND LF
@@ -780,7 +839,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" variable QN variable QSW variable QSA variable QSU" SB-APPEND LF
    s" : QROW 0 QI ! 0 QPUB ! 0 QPRI !" SB-APPEND LF
    s" BEGIN QI @ ndict@ < WHILE" SB-APPEND LF
-   S\" QI @ QWID DICT-WL:NAMESPACE = IF QI @ QNA QI @ QNU s\" PRIM-LINK\" CORE-STR= IF" SB-APPEND LF
+   pa pu QW-ROW
    s" QI @ QR @ QPUB ! QI @ QR 8 + @ QPRI ! THEN THEN" SB-APPEND LF
    s" QI @ 1 + QI ! REPEAT ;" SB-APPEND LF
    s" : QCNT QSU ! QSA ! QSW ! 0 QN ! 0 QI !" SB-APPEND LF
@@ -792,9 +851,9 @@ create EMPTY 1 allot            \ zero-length stdin
    s" : QIS <> IF QDIE THEN ;" SB-APPEND LF
    s" : QSOME 0 = IF QDIE THEN ;" SB-APPEND LF
    s" QROW QPUB @ QSOME QPRI @ QSOME" SB-APPEND LF
-   S\" QPRI @ s\" KEY-SYM\" QCNT 1 QIS" SB-APPEND LF
-   S\" QPUB @ s\" KEY-SYM\" QCNT 0 QIS" SB-APPEND LF
-   S\" QPUB @ s\" COUNT\" QCNT 1 QIS" SB-APPEND LF
+   s" QPRI @ " ra ru s" 1" QW-CNT
+   s" QPUB @ " ra ru s" 0" QW-CNT
+   s" QPUB @ " ba bu s" 1" QW-CNT
    SB$ ;
 
 \ The third spelling of the same record. `using PKG` puts a package's publics on
@@ -821,7 +880,7 @@ create EMPTY 1 allot            \ zero-length stdin
    QUAL-PRIV-FORGE$ RUN-SUBJECT
    s" E-UNDEFINED: PRIM-LINK:KEY-SYM" ASSERT-DIAG
    s" the witness pins KEY-SYM private and COUNT public in the live dictionary" T-LABEL
-   QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" PRIM-LINK" s" KEY-SYM" s" COUNT" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
    s" a package that does not exist answers E-UNDEFINED the same way" T-LABEL
    QUAL-ABSENT-FORGE$ RUN-SUBJECT
    s" E-UNDEFINED: IWGNOPKG:KEY-SYM" ASSERT-DIAG
@@ -853,12 +912,89 @@ create EMPTY 1 allot            \ zero-length stdin
    QUAL-COUNT-FORGE$ RUN-LOAD
    s" PRIM-LINK:COUNT" ASSERT-INTERNAL ;
 
+\ --- the sealed schema registry (dot habu-seal-type-schema-c65f76cc). QUAL-CASES
+\ above proves the three-way answer for a package that was always a package. This
+\ group proves it for a file that BECAME one: src/core/type-schema.f used to
+\ define 98 globals and now defines 61 publics and 37 privates under
+\ package SCHEMA-REG, with nothing renamed.
+\
+\ THE MEASURABLE DIFFERENCE IS THE BARE NAME. Before the seal, `SCHEMA-A@` was a
+\ global the marking pass reached, so it answered `internal engine word` — the
+\ same answer a marked package public gives. Only E-UNDEFINED distinguishes "this
+\ name is not in the top-level universe at all" from "it is, and it is refused",
+\ so the bare leg below is what shows the seal did something the marking pass
+\ could not: it removed the spelling rather than flagging the record.
+\
+\ THE PRIVATE LEG IS THE PRODUCT CLAIM. SCH-RBF-P is the schema rollback-frame
+\ arena base. It is a `variable` — a data record, which the marking pass exempts
+\ by design — with no REG-PROTECT row and no reference outside its own file, and
+\ before the seal an ordinary `--load` program could write it: `0 SCH-RBF-P !`
+\ followed by any SUMTYPE declaration took the engine down with SIGSEGV (rc 134),
+\ the c5be6634 crash class reached through a name rather than a stack. Sealing is
+\ what closes it, because a package private has no top-level spelling on any of
+\ the three routes — bare, qualified, or through a `using`.
+\
+\ THE ONE ROUTE THAT STILL REACHES IT is `package SCHEMA-REG` in user source,
+\ which puts the private wordlist back on the bare chain. That is not this seal's
+\ defect and not specific to this package: on master, `package PRIM-LINK` plus a
+\ bare `KEY-SYM` crashes rc 134 the same way. It is dot
+\ habu-pkg-reopen-reaches-113ecd89, whose acceptance owns the fix, so no case here
+\ asserts a crash as expected behaviour. ----
+
+: SEAL-BARE-FORGE$ ( -- ptr u8 n )   \ the pre-seal crash program, verbatim
+   SB-RESET
+   s" 0 SCH-RBF-P !" SB-APPEND LF
+   s" SUMTYPE iwgseal 0" SB-APPEND LF
+   s" VARIANT iwgsa n ;VARIANT" SB-APPEND LF
+   s" VARIANT iwgsb n ;VARIANT" SB-APPEND LF
+   s" ;SUMTYPE" SB-APPEND LF
+   SB$ ;
+
+: SEAL-USING-FORGE$ ( -- ptr u8 n )  \ `using` imports publics only, never privates
+   SB-RESET
+   s" using SCHEMA-REG" SB-APPEND LF
+   s" 0 SCH-RBF-P !" SB-APPEND LF
+   SB$ ;
+
+: SEAL-AXIOM-FORGE$ ( -- ptr u8 n )  \ the two PPRIM: SCHEMA-REG rows relocated from checker.f
+   SB-RESET
+   s" SCHEMA-REG:SCHEMA-N@ drop SCHEMA-REG:SCHEMA-ROOT-N@ drop" SB-APPEND LF
+   SB$ ;
+
+: SEAL-PROTECT-FORGE$ ( -- ptr u8 n ) \ a public control cell still fails closed on its raw store
+   SB-RESET
+   s" 5 SCHEMA-REG:SCH-RBF-DEPTH !" SB-APPEND LF
+   SB$ ;
+
+: SEAL-CASES ( -- )
+   s" the witness pins SCH-RBF-P private and SCHEMA-A@ public in SCHEMA-REG" T-LABEL
+   s" SCHEMA-REG" s" SCH-RBF-P" s" SCHEMA-A@" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" the sealed tail left the global universe: bare SCHEMA-A@ is E-UNDEFINED" T-LABEL
+   s" SCHEMA-A@" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: SCHEMA-A@" ASSERT-DIAG
+   s" and its qualified spelling is a marked public instead" T-LABEL
+   s" SCHEMA-REG:SCHEMA-A@" NEG
+   s" a sealed private has no qualified spelling either" T-LABEL
+   s" SCHEMA-REG:SCH-RBF-P" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: SCHEMA-REG:SCH-RBF-P" ASSERT-DIAG
+   s" nor a bare one through a using, which imports publics only" T-LABEL
+   SEAL-USING-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: SCH-RBF-P" ASSERT-DIAG
+   s" a REG-PROTECTed public control cell still fails closed on its raw store" T-LABEL
+   SEAL-PROTECT-FORGE$ RUN-SUBJECT
+   s" SCHEMA-REG:SCH-RBF-DEPTH" ASSERT-INTERNAL
+   s" the two relocated PPRIM: SCHEMA-REG axioms keep their publics callable" T-LABEL
+   SEAL-AXIOM-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" `0 SCH-RBF-P !` before a declaration no longer SIGSEGVs the engine" T-LABEL
+   SEAL-BARE-FORGE$ RUN-LOAD
+   s" E-UNDEFINED: SCH-RBF-P" ASSERT-DIAG ;
+
 \ --- direct/subject parity. The PARITY- group used to be its own package; the
 \ names keep that marker because they are about the direct-versus-fork
 \ comparison, not about running a child in general. ----
 
-11 constant PARITY-DIRECT-N     \ +2: the two qualified-name defect regressions
-114 constant PARITY-SUBJECT-N   \ +11: the qualified-name discriminator and its fences
+12 constant PARITY-DIRECT-N     \ +1: the pre-seal `0 SCH-RBF-P !` crash program
+133 constant PARITY-SUBJECT-N   \ +19: SEAL-CASES (7) and the doubled schema-cell legs (12)
 
 : PARITY-RESULT ( -- ptr u8 n ptr u8 n n )
    OUT OUT-U @ ERR ERR-U @ RC @ ;
@@ -917,6 +1053,7 @@ create EMPTY 1 allot            \ zero-length stdin
    SIBLING-CASES
    CTLIVE-CASES
    QUAL-CASES
+   SEAL-CASES
    NEG-SHAPES
    POSITIVES
    OPENER-CASES

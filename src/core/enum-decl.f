@@ -64,6 +64,8 @@
 \ Loaded AFTER the checker hook and AFTER decl-event.f (it drives DECL-EVENT:*),
 \ in the post-hook DECL group after structure-decl.f.
 
+using SCHEMA-REG
+
 package ENUM-DECL
 
 \ --- named reject codes. Re-declared package-locally (values mirror sumtype.f
@@ -633,3 +635,5 @@ public
 \ ENUM type-name (variant)+ ;ENUM
 \ ENUM type-name arity [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
 : ENUM ( -- ) ENUM-DECL:ED-RUN ;
+
+;using

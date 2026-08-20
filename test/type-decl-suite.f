@@ -10,6 +10,8 @@
 
 require test/checker-assert.f
 
+using SCHEMA-REG
+
 variable #FAIL
 variable #CASE
 
@@ -2507,3 +2509,5 @@ s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-decl-suite: failures" 1 die ;
 REPORT
+
+;using

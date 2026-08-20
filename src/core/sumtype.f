@@ -21,6 +21,8 @@
 \ declaration either counts as a multi-error reject or throws its named code.
 \ Loaded unchecked in the checker prefix, right after render.f.
 
+using SCHEMA-REG
+
 \ --- named reject codes (7101-7106 live in type-family.f, 7103 in type-schema.f).
 7107 constant E-TDECL-SYNTAX    \ malformed declaration (name/arity/terminator/token)
 7108 constant E-TDECL-ARITY     \ arity token is not a small decimal
@@ -1906,3 +1908,5 @@ variable TDECL-I
 PRIM: NEWTYPE PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: PRODUCT PRIM;
+
+;using

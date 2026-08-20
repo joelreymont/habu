@@ -7,6 +7,8 @@
 \ top-level interpret line so the checker-internal state stays in scope. A failure
 \ prints F<index> + detail; REPORT exits 1 on any fail.
 
+using SCHEMA-REG
+
 variable #FAIL
 variable #CASE
 
@@ -399,3 +401,5 @@ FOUNDF @ 0 T=                                        \ and so is the head that n
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-family-rollback-suite: failures" 1 die ;
 REPORT
+
+;using

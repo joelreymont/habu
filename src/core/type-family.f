@@ -11,6 +11,8 @@
 \ sealing (dot 2b) lands. The declaration boundary rejects uppercase/mixed-case
 \ tails BEFORE storage, so the registry only ever stores already-canonical tails.
 
+using SCHEMA-REG
+
 \ --- kind of a family (what its values are).
 0 constant TK-CELL          \ scalar-cell family (no ADT layout)
 1 constant TK-PRODUCT       \ record / struct
@@ -3238,3 +3240,5 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
    [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ item 9: branch payload row from the scrutinee's args
    [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
 TFAM-HOOK-INSTALL
+
+;using

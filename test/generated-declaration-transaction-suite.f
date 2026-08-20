@@ -6,6 +6,8 @@ require tools/prot-wid-probe.f
 require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 
+using SCHEMA-REG
+
 T-RESET
 
 package GENERATED-DECLARATION-TXN-TEST
@@ -1340,3 +1342,5 @@ public
 ;package
 
 GENERATED-DECLARATION-TXN-TEST:RUN
+
+;using

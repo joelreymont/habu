@@ -5,18 +5,45 @@
 \ (con codes, family ids, root indices) — never a relocating pointer — so a grow
 \ is a plain cell copy and snapshot persist bakes stores verbatim with no rebase.
 \ Loaded unchecked in the checker prefix, right after checker.f, mirroring the
-\ VREC value-record registry it is modelled on. Mutators are package-private
-\ implementation words; only read-only queries are meant to leave the package
-\ once sealing (dot 2b) lands.
+\ VREC value-record registry it is modelled on.
+\
+\ THE WHOLE FILE IS package SCHEMA-REG (dot habu-seal-type-schema-c65f76cc).
+\ The split is measured, not chosen: a name the rest of the tree references is
+\ `public`, everything else is `private`, and no name was renamed to fit. The
+\ arena bases, the grow/ensure ladder, the record-address arithmetic and the
+\ rollback-frame store have no reference outside this file and are therefore
+\ private, which means they have no top-level spelling at all — bare misses them
+\ because they are not global, and PKG:TAIL misses them because a qualifier
+\ selects the PUBLIC wordlist (habu1.f FIND-NMATCH). That is the seal: before it,
+\ a plain user program could write `0 SCH-RBF-P !` and take the engine down with
+\ a SIGSEGV inside the next declaration.
+\
+\ The publics are not thereby callable from user source either. They carry no
+\ checker effect (this file loads before the check hook), so src/core/internal-
+\ mark.f marks each one DNAME-INT under its SCHEMA-REG:TAIL spelling and the
+\ interpret dispatch fails closed rc 70 — the same answer their bare names gave
+\ as globals. The two exceptions are SCHEMA-N@ and SCHEMA-ROOT-N@, which carry
+\ PPRIM: SCHEMA-REG axioms in checker.f because suites read the high-water marks
+\ at top level; they are the only two names measured to need it.
 
 \ --- schema node kinds (node tag values). Node id 0 is the reserved nil node.
+\ SCH-NIL is the reserved sentinel and SCH-KIND-MAX the creatable-tag ceiling
+\ SCHEMA-KIND? tests against; neither is a caller's value, so both stay private.
+package SCHEMA-REG
+
 0 constant SCH-NIL
+
+public
+
 1 constant SCH-PARAM      \ A = parameter index (>= 0)
 2 constant SCH-CON        \ A = concrete con code
 3 constant SCH-APP        \ A = family-id, B = arg-root start, C = arg count
 4 constant SCH-QUOT       \ A = hasr flag, B = side-row-root start, C = SCH-QUOT-ROWS
 5 constant SCH-PTR        \ A = pointee schema node (docs §8 SC-PTR)
 6 constant SCH-ROW        \ A = element-root start, B = element count (one quotation effect side)
+
+private
+
 6 constant SCH-KIND-MAX   \ highest valid creatable tag
 
 \ A quotation payload has four effect SIDES stored as four schema roots contiguous
@@ -25,6 +52,8 @@
 \ side's ordered type nodes (possibly empty), so a side can be multi-type or empty.
 \ The hasr flag (A) records whether the return-stack sides carry a non-neutral
 \ effect (an explicit `| rin -- rout` clause).
+public
+
 4 constant SCH-QUOT-ROWS
 
 \ --- named reject code. Thrown (not `die`d) so the parser/CHECK path and unit
@@ -34,13 +63,20 @@
 \ --- node record layout (interleaved cell arena, one grow buffer).
 \ Bit i in a PTR-MASK marks slot i as a relocating pointer. Schema records
 \ contain only scalar ids/codes, so both masks are zero.
+private
+
 0 cells constant SCH.TAG-OFF
 1 cells constant SCH.A-OFF
 2 cells constant SCH.B-OFF
 3 cells constant SCH.C-OFF
+
+public
+
 4 cells constant SCH-REC
 CELL constant SCH-REC-ALIGN
 0 constant SCH-REC-PTR-MASK
+
+private
 
 : SCH.TAG ( ptr a -- ptr a ) SCH.TAG-OFF + ;
 : SCH.A ( ptr a -- ptr a ) SCH.A-OFF + ;
@@ -67,24 +103,45 @@ SCH-REC-PTR-MASK 0 SCH-LAYOUT=
 4 constant SCH-ROOT-INIT        \ small seed schema-root pool cells; grows on demand
 
 \ Registry control cells are sealed DNAME-INT by REG-PROTECT / IMK-SEAL-REGISTRY
-\ (src/core/util.f, src/core/internal-mark.f): a bare `<cell> @`/`<cell> !` or
-\ `' <cell>` fails closed rc 70. Read the schema registry through the certified
-\ SCHEMA-N@ / SCHEMA-ROOT-N@ accessors, never the raw cell.
+\ (src/core/util.f, src/core/internal-mark.f): a `<cell> @`/`<cell> !` or
+\ `' <cell>` fails closed rc 70 under either spelling, because the flag is on the
+\ record and a `variable` is a data record the package walk cannot reach through
+\ its colon test. Read the schema registry through the certified
+\ SCHEMA-REG:SCHEMA-N@ / SCHEMA-REG:SCHEMA-ROOT-N@ accessors, never the raw cell.
+public
+
 variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !   REG-PROTECT
+
+private
+
 : SCH-CAP ( -- n ) SCH-CAP-V @ ;
 create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot   REG-PROTECT
 variable SCH-A-P    SCH-A-BOOT SCH-A-P !   REG-PROTECT
+
+public
+
 : SCH-BASE ( -- ptr a ) SCH-A-P @ ;
 
 variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !   REG-PROTECT
+
+private
+
 : SCH-ROOT-CAP ( -- n ) SCH-ROOT-CAP-V @ ;
 create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot   REG-PROTECT
 variable SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !   REG-PROTECT
+
+public
+
 : SCH-ROOT-BASE ( -- ptr a ) SCH-ROOT-P @ ;
 
 variable SCH-N   REG-PROTECT        \ next node id; 1 leaves node 0 as the nil sentinel
 variable SCH-ROOT-N   REG-PROTECT   \ next schema-root index
+
+private
+
 variable SCH-I        \ private scan index
+
+public
 
 : SCHEMA-RESET ( -- )           \ base state (item 3 will add high-water rollback)
    1 SCH-N !
@@ -97,14 +154,22 @@ SCHEMA-RESET
    need SCH-CAP-V @ 2 * max {: nc:n :}
    SCH-A-P  SCH-CAP-V @ SCH-REC *  nc SCH-REC *  REG-GROW1
    nc SCH-CAP-V ! ;
+
+private
+
 : SCH-ENSURE ( -- )             \ room for the next node id (SCH-N)
    SCH-N @ SCH-CAP-V @ < IF exit THEN
    SCH-N @ 1 + SCH-GROW ;
+
+public
 
 : SCH-ROOT-GROW ( n -- ) {: need:n :}
    need SCH-ROOT-CAP-V @ 2 * max {: nc:n :}
    SCH-ROOT-P  SCH-ROOT-CAP-V @ cells  nc cells  REG-GROW1
    nc SCH-ROOT-CAP-V ! ;
+
+private
+
 : SCH-ROOT-ENSURE ( -- )        \ room for the next root index (SCH-ROOT-N)
    SCH-ROOT-N @ SCH-ROOT-CAP-V @ < IF exit THEN
    SCH-ROOT-N @ 1 + SCH-ROOT-GROW ;
@@ -116,6 +181,8 @@ SCHEMA-RESET
 
 : SCHEMA-KIND? ( n -- bool ) {: tag:n :}   \ tag is a creatable node kind
    tag SCH-PARAM >= tag SCH-KIND-MAX <= and ;
+
+public
 
 : SCHEMA-NEW ( n n n n -- n ) {: tag:n a:n b:n c:n :}
    tag SCHEMA-KIND? 0= IF E-SCHEMA-BAD throw THEN
@@ -186,8 +253,13 @@ SCHEMA-RESET
 \ to a string. Each side is a full ordered row (multi-type or empty). A side that is
 \ not a live SCH-ROW node throws E-SCHEMA-BAD so parse/CHECK and unit tests can trap
 \ it with `catch`.
+private
+
 : SCH-FLAG ( n -- n )                       \ canonical 0/-1 flag as a plain cell (any nonzero -> -1)
    0= IF 0 ELSE -1 THEN ;
+
+public
+
 : SCHEMA-QUOT ( n n n n n -- n )
    {: din:n dout:n rin:n rout:n hasr:n :}
    din SCHEMA-ROW-OK? dout SCHEMA-ROW-OK? and
@@ -224,11 +296,18 @@ SCHEMA-RESET
 \ pointer-free, so restoring the counters fully retires the entries. Pushed/popped
 \ in lockstep with checker.f's core frame via the REG-EXT-RB-* hooks.
 \ ---------------------------------------------------------------------------
+private
+
 0 cells constant SCHRB.N-OFF
 1 cells constant SCHRB.ROOTN-OFF
+
+public
+
 2 cells constant SCH-RBF-REC
 CELL constant SCH-RBF-REC-ALIGN
 0 constant SCH-RBF-REC-PTR-MASK
+
+private
 
 : SCHRB.N ( ptr a -- ptr a ) SCHRB.N-OFF + ;
 : SCHRB.ROOTN ( ptr a -- ptr a ) SCHRB.ROOTN-OFF + ;
@@ -247,7 +326,19 @@ variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
 create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
 variable SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
 : SCH-RBF-BASE ( -- ptr a ) SCH-RBF-P @ ;
-variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
+
+\ The frame depth is the one rollback cell with a reader outside this file
+\ (type-family.f PREFIX-BOUND:AT-REST and CHECKER-DECL-FRAME:TYPES-READY both ask
+\ whether the schema half is at rest), so it is public and its raw cell is
+\ REG-PROTECTed like every other exported control cell here — the compiled
+\ readers resolve before the marking pass, while `SCHEMA-REG:SCH-RBF-DEPTH !`
+\ from user source fails closed rc 70. The sibling PF-TX-DEPTH carries the same
+\ pairing (type-family.f:1325).
+public
+
+variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !   REG-PROTECT
+
+private
 
 : SCH-RBF-GROW ( -- )
    SCH-RBF-CAP-V @ 2 * {: nc:n :}
@@ -257,6 +348,8 @@ variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
    SCH-RBF-DEPTH @ SCH-RBF-CAP-V @ < IF exit THEN
    SCH-RBF-GROW ;
 : SCH-RBF-CUR ( -- ptr a ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
+
+public
 
 : SCHEMA-ROLLBACK-SAVE ( -- )
    SCH-RBF-ENSURE
@@ -285,10 +378,6 @@ variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
 \ which carries this pair alongside the family registry's own counters so the
 \ two halves of a declaration frame move together here exactly as they do
 \ through CHECKER-DECL-FRAME:EXT-SAVE/EXT-RESTORE.
-package SCHEMA-REG
-
-public
-
 : COUNTS ( -- n n )
    SCH-N @ SCH-ROOT-N @ ;
 
@@ -298,8 +387,6 @@ public
    THEN
    n SCH-N !
    rootn SCH-ROOT-N ! ;
-
-;package
 
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
@@ -314,3 +401,5 @@ public
 : SCHEMA-SNAPSHOT-PERSIST ( -- )
    SCH-A-P    SCH-A-BOOT    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
    SCH-ROOT-P SCH-ROOT-BOOT SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
+
+;package

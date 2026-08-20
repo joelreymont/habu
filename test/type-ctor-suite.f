@@ -15,6 +15,8 @@ require test/checker-assert.f
 require tools/prot-wid-probe.f
 require lib/adt/result.f
 
+using SCHEMA-REG
+
 variable #FAIL
 variable #CASE
 
@@ -1315,3 +1317,5 @@ s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) co
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-ctor-suite: failures" 1 die ;
 REPORT
+
+;using

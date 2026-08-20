@@ -17,6 +17,8 @@
 \ Each field-publishing case uses its OWN family so committed field rows never
 \ collide on slot/byte layout across cases; header-only cases reuse one family.
 
+using SCHEMA-REG
+
 variable #FAIL
 variable #CASE
 
@@ -1126,3 +1128,5 @@ GENERATED-DECL:POISONED? 0= T-TRUE
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" decl-event-suite: failures" 1 die ;
 REPORT
+
+;using

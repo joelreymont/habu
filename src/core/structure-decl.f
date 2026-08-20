@@ -44,6 +44,8 @@
 \ generator must be defined first); the STRUCTURE opener is the only executable
 \ STRUCTURE declaration surface.
 
+using SCHEMA-REG
+
 package STRUCTURE-DECL
 
 \ --- named reject codes. Re-declared package-locally (values mirror sumtype.f
@@ -467,3 +469,5 @@ public
 \ time, so its checked effect is ( -- ).
 \ STRUCTURE type-name arity [POLICY p] [DERIVE f+] (FIELD name type)* ;STRUCTURE
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
+
+;using

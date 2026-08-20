@@ -60,6 +60,8 @@
 \ When the type-DSL cutover factors the shared
 \ generator into its own module, SM-EMIT re-points there; nothing else changes.
 
+using SCHEMA-REG
+
 \ --- named reject codes (7101-7128 = tfam/schema/pf; 7161-7164 = decl-event;
 \ 7161/7172/7173 are the event token, field-range, and family-scope rejects for
 \ provisional reads). E-SM-DUP re-declares the
@@ -158,3 +160,5 @@ public
    fam SM-EMIT-WORDS ;
 
 ;package
+
+;using

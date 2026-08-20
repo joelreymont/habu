@@ -6461,8 +6461,14 @@ PRIM: SUMV-N@ PE-N PE-OUT PRIM;
 PRIM: TF-STR-U@ PE-N PE-OUT PRIM;
 PRIM: TF-PK-N@ PE-N PE-OUT PRIM;
 PRIM: LAY-N@ PE-N PE-OUT PRIM;
-PRIM: SCHEMA-N@ PE-N PE-OUT PRIM;
-PRIM: SCHEMA-ROOT-N@ PE-N PE-OUT PRIM;
+\ The schema registry's two high-water reads. They are PPRIM: rather than PRIM:
+\ because src/core/type-schema.f is package SCHEMA-REG, so the name the checker
+\ and the marking pass both key on is SCHEMA-REG:SCHEMA-N@, not a bare global.
+\ These two are the whole of the package's checked surface: every other public
+\ there is reached only from a compiled pre-hook body or a TRUSTED: forwarder,
+\ and stays DNAME-INT under its qualified name.
+PPRIM: SCHEMA-REG SCHEMA-N@ PE-N PE-OUT PPRIM;
+PPRIM: SCHEMA-REG SCHEMA-ROOT-N@ PE-N PE-OUT PPRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USING PE-PTR-U8 PE-IN PE-N PE-IN PRIM;

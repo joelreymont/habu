@@ -7,6 +7,8 @@
 \ every registry op is a top-level interpret line so the checker-internal words
 \ stay in scope. A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
+using SCHEMA-REG
+
 variable #FAIL
 variable #CASE
 
@@ -1351,3 +1353,5 @@ s" ready" VREQ
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-family-suite: failures" 1 die ;
 REPORT
+
+;using
