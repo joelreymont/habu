@@ -134,3 +134,16 @@ sub-registries); disambiguation is a design campaign, unreviewable inside a
 seal; OWNER-PREFIX? does not fire on SCHEMA-N@ under SCHEMA-REG, so nothing
 forces renames. (4) The pilot c65f76cc is BLOCKED on the internal-mark
 mechanism fix; sequence = mechanism, pilot, cascade.
+
+PILOT LANDED (master 4370532e) - the cascade's decision inputs, measured:
+keep-tails confirmed cost-free (OWNER-PREFIX? never fired); CONSUMERS IMPORT
+VIA using PER THE STANDARD'S OWN MUST-RULE, never qualify (qualification
+makes you the packaging owner of every unpackaged consumer file - 80 findings
+across seven test suites; using is byte-identical engine, cannot reach
+privates, cannot execute marked publics); budget PPRIM rows by MEASUREMENT
+(pilot: 2 of 61, both pre-existing); sweep every variable/create for
+REG-PROTECT before trusting a census (SCH-RBF-P was a one-line SIGSEGV the
+census called unremarkable - TF-RBF-DEPTH is the open sibling, own dot);
+acceptance must use the discriminating legs (bare E-UNDEFINED + qualified-
+private E-UNDEFINED), never "public still rc 70" which is green both sides.
+Iteration cost ~14s install, ~4.5min run.f.
