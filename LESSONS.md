@@ -7587,3 +7587,14 @@ and --no-lldbinit.
   "maki/ 111, tail 96 nominal casts" were 90 and 35: the rest were bodied rows
   that drop a cell, run an emitter, or push a literal from nothing. Count the
   rows the FORM can express, not the rows that look like it.
+
+- **The shared scratchpad is not lane-private.** Two concurrent lanes writing
+  the same generic filenames (census.py) silently overwrote each other
+  mid-task, caught only because the clobbered file named the other workspace.
+  The $HB_TMP rule generalizes one directory up: lane-private subdirectory
+  plus a lane prefix, always.
+- **An admissibility refusal has three causes and only one is a type error.**
+  A storage conversion can refuse for a recording gap (pre-hook, invisible),
+  an arming gap (generative definer not yet armed), or a compile-host gap
+  (stage source built by the old engine) — all indistinguishable from "wrong
+  type" at the call site. Ask which one before scoping a sweep.
