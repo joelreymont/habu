@@ -1301,36 +1301,46 @@ s" other-variant-test" CHECKER-PACKAGE-PUBLIC s" foreign-variant" 0 TK-ENUM TWX-
 
 package variant-name-test
 
+\ The variant-name gate is a package public with no checker-known effect, so the
+\ seal-time pass marks it internal under its qualified spelling too (dot
+\ habu-pkg-publics-escape-41532ee7) and the probes below reach it through a
+\ shim, like every checker-internal global this suite probes. It is the shape
+\ production already uses: src/core/decl-event.f reaches the same gate through
+\ TRUSTED: DEV-NAME-VARIANT-REQUIRE. It lives inside this package rather than
+\ beside the TWX- globals so it owns its own name; the block's visibility is
+\ left exactly as the fixture had it.
+TRUSTED: VREQ ( ptr u8 n -- ) TYPE-NAME:VARIANT-REQUIRE ;
+
 VALUE-RECORD variant-record payload n END-VALUE-RECORD
 
-s" " ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" " ' VREQ catch TC ! 2drop
 TC @ 7107 T=
-s" Bad" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" Bad" ' VREQ catch TC ! 2drop
 TC @ 7101 T=
-s" n" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" n" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" q" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" q" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" variant-record" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" variant-record" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" field" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" field" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" bool" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" bool" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" space-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" space-x" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" fresh-mask-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" fresh-mask-x" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" if" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" if" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" variant" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" global-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" global-variant" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" local-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+s" local-variant" ' VREQ catch TC ! 2drop
 TC @ 7110 T=
-s" foreign-variant" TYPE-NAME:VARIANT-REQUIRE
-s" ready" TYPE-NAME:VARIANT-REQUIRE
+s" foreign-variant" VREQ
+s" ready" VREQ
 
 ;package
 

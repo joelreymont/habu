@@ -3,7 +3,9 @@
 \
 \ A word defined by the engine prefix with no checker-known effect (no
 \ certified/trusted signature and no primitive axiom) carries DNAME-INT after
-\ the seal-time marking pass (src/core/internal-mark.f). Interpret-mode
+\ the seal-time marking pass (src/core/internal-mark.f) — whether its top-level
+\ spelling is a bare global name or a package public's qualified PKG:TAIL one
+\ (QUAL-CASES below). Interpret-mode
 \ execution AND tick of such a word must fail closed with
 \ `hb: internal engine word: <token>` + rc 70. Previously a bare `U-TYPE` in a
 \ load file
@@ -23,7 +25,7 @@
 \   test/internal-word-gate.f
 \
 \ INTERNAL-WORD-GATE privately owns every definition in this file, exports
-\ nothing, and has no external callers. All 297 child-program literals must stay
+\ nothing, and has no external callers. Every child-program literal must stay
 \ byte-identical; names inside them belong to the child programs.
 
 require lib/errors.f
@@ -700,12 +702,163 @@ create EMPTY 1 allot            \ zero-length stdin
    s" CT-LIVE?" TOKEN$ RUN-STDIN
    s" CT-LIVE?" ASSERT-INTERNAL ;
 
+\ --- qualified names (dot habu-pkg-publics-escape-41532ee7). Until the marking
+\ pass learned to read package rows it classified only wid-0 records, so every
+\ package PUBLIC stayed top-level executable whatever the checker knew of it, and
+\ the two children at the end of this group were live defects on master:
+\ `0 0 SCHEMA-REG:REWIND` exited 0 having wiped the schema registry (the next
+\ declaration died 'tfam: bad schema node', rc 76) and `PRIM-LINK:COUNT` read six
+\ cells below the interpret base and aborted rc 134 — the c5be6634 crash class
+\ behind a qualifier.
+\
+\ THE DISCRIMINATOR IS THREE-WAY, and each leg is a different mechanism:
+\   PKG:PRIVATE          E-UNDEFINED — no top-level spelling exists at all,
+\                        because habu1.f FIND-NMATCH takes the search wordlist
+\                        from the package row's [0], its PUBLIC one.
+\   PKG:PUBLIC, no axiom `internal engine word`, rc 70 — marked, like a global.
+\   PKG:PUBLIC + axiom   runs, and its DNAME-MIN-IN now guards a short stack.
+\ The E-UNDEFINED leg is the one that can pass by accident, so it is fenced from
+\ three sides: the SAME package's public answers differently (so the qualifier
+\ does resolve the package), a package that does not exist answers the same way
+\ (so E-UNDEFINED is exactly "no such qualified name"), and the WITNESS child
+\ reads the live dictionary and dies unless KEY-SYM sits in PRIM-LINK's private
+\ wordlist and nowhere in its public one. The bare tail `COUNT` is a real global
+\ that underflows, which is a fourth fence: the qualified reject cannot be coming
+\ from the record the bare spelling finds. ----
+
+: QUAL-PRIV-FORGE$ ( -- ptr u8 n )   \ a package private has no qualified spelling
+   SB-RESET
+   s" PRIM-LINK:KEY-SYM" SB-APPEND LF
+   SB$ ;
+
+: QUAL-ABSENT-FORGE$ ( -- ptr u8 n ) \ control: no such package answers the same way
+   SB-RESET
+   s" IWGNOPKG:KEY-SYM" SB-APPEND LF
+   SB$ ;
+
+: QUAL-MALFORMED-FORGE$ ( -- ptr u8 n )   \ engine FIND-QBAD parity: NAME:a:b never resolves
+   SB-RESET
+   s" PRIM-LINK:COUNT:FP" SB-APPEND LF
+   SB$ ;
+
+: QUAL-TICK-FORGE$ ( -- ptr u8 n )   \ tick would launder the qualified xt to execute
+   SB-RESET
+   s" ' PRIM-LINK:COUNT" SB-APPEND LF
+   SB$ ;
+
+: QUAL-AXIOM-FORGE$ ( -- ptr u8 n )  \ a public the checker can type stays callable
+   SB-RESET
+   s" TYPE-FIELD:COUNT drop" SB-APPEND LF
+   SB$ ;
+
+: QUAL-MININ-FORGE$ ( -- ptr u8 n )  \ and its declared arity now guards a short stack
+   SB-RESET
+   s" TYPE-FIELD:FIND" SB-APPEND LF
+   SB$ ;
+
+: QUAL-TEXT-FORGE$ ( -- ptr u8 n )   \ the same characters as comment and string text
+   SB-RESET
+   s" \ PRIM-LINK:COUNT" SB-APPEND LF
+   S\" : IWG-QUAL-TEXT ( -- ptr u8 n ) s\" PRIM-LINK:COUNT\" ;" SB-APPEND LF
+   s" TYPE-FIELD:COUNT drop" SB-APPEND LF
+   SB$ ;
+
+\ The witness reads the engine's own record array — the array LFIND resolves
+\ through, not a copy — and dies unless the two names carry the roles the cases
+\ above assume: KEY-SYM once in PRIM-LINK's PRIVATE wordlist and never in its
+\ public one, COUNT once in the public one. A rename or a typo in either spelling
+\ reds this child instead of letting an E-UNDEFINED case pass for the wrong
+\ reason. Its own names are short because the whole program must fit SB-CAP.
+: QUAL-WITNESS-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 set-check" SB-APPEND LF
+   s" : QR DREC * dbase@ + ;" SB-APPEND LF
+   s" : QWID QR 40 + @ ;" SB-APPEND LF
+   s" : QNA QR dup 16 + @ DNAME-EXT and 0 <> IF 24 + @ ELSE 24 + THEN ;" SB-APPEND LF
+   s" : QNU QR 16 + @ DNAME-LEN-MASK and ;" SB-APPEND LF
+   s" variable QI variable QPUB variable QPRI" SB-APPEND LF
+   s" variable QN variable QSW variable QSA variable QSU" SB-APPEND LF
+   s" : QROW 0 QI ! 0 QPUB ! 0 QPRI !" SB-APPEND LF
+   s" BEGIN QI @ ndict@ < WHILE" SB-APPEND LF
+   S\" QI @ QWID DICT-WL:NAMESPACE = IF QI @ QNA QI @ QNU s\" PRIM-LINK\" CORE-STR= IF" SB-APPEND LF
+   s" QI @ QR @ QPUB ! QI @ QR 8 + @ QPRI ! THEN THEN" SB-APPEND LF
+   s" QI @ 1 + QI ! REPEAT ;" SB-APPEND LF
+   s" : QCNT QSU ! QSA ! QSW ! 0 QN ! 0 QI !" SB-APPEND LF
+   s" BEGIN QI @ ndict@ < WHILE" SB-APPEND LF
+   s" QI @ QWID QSW @ = IF QI @ QNA QI @ QNU QSA @ QSU @ CORE-STR= IF" SB-APPEND LF
+   s" QN @ 1 + QN ! THEN THEN" SB-APPEND LF
+   s" QI @ 1 + QI ! REPEAT QN @ ;" SB-APPEND LF
+   S\" : QDIE s\" witness: dictionary role mismatch\" 1 die ;" SB-APPEND LF
+   s" : QIS <> IF QDIE THEN ;" SB-APPEND LF
+   s" : QSOME 0 = IF QDIE THEN ;" SB-APPEND LF
+   s" QROW QPUB @ QSOME QPRI @ QSOME" SB-APPEND LF
+   S\" QPRI @ s\" KEY-SYM\" QCNT 1 QIS" SB-APPEND LF
+   S\" QPUB @ s\" KEY-SYM\" QCNT 0 QIS" SB-APPEND LF
+   S\" QPUB @ s\" COUNT\" QCNT 1 QIS" SB-APPEND LF
+   SB$ ;
+
+\ The third spelling of the same record. `using PKG` puts a package's publics on
+\ the bare-tail chain, so the token has no qualifier at all — and it still fails
+\ closed, because the flag is on the RECORD and every route ends at the same one.
+: QUAL-USING-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" using SCHEMA-REG" SB-APPEND LF
+   s" 0 0 REWIND" SB-APPEND LF
+   SB$ ;
+
+: QUAL-REWIND-FORGE$ ( -- ptr u8 n ) \ defect (a): exited 0 and wiped the schema registry
+   SB-RESET
+   s" 0 0 SCHEMA-REG:REWIND" SB-APPEND LF
+   SB$ ;
+
+: QUAL-COUNT-FORGE$ ( -- ptr u8 n )  \ defect (b): aborted rc 134 below the interpret base
+   SB-RESET
+   s" PRIM-LINK:COUNT . cr" SB-APPEND LF
+   SB$ ;
+
+: QUAL-CASES ( -- )
+   s" a package private has no qualified spelling" T-LABEL
+   QUAL-PRIV-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: PRIM-LINK:KEY-SYM" ASSERT-DIAG
+   s" the witness pins KEY-SYM private and COUNT public in the live dictionary" T-LABEL
+   QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" a package that does not exist answers E-UNDEFINED the same way" T-LABEL
+   QUAL-ABSENT-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: IWGNOPKG:KEY-SYM" ASSERT-DIAG
+   s" a malformed qualifier never resolves" T-LABEL
+   QUAL-MALFORMED-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: PRIM-LINK:COUNT:FP" ASSERT-DIAG
+   s" a package public with no checker effect fails closed" T-LABEL
+   s" PRIM-LINK:COUNT" NEG
+   s" the bare tail is a different record and still underflows" T-LABEL
+   s" COUNT" TOKEN$ RUN-SUBJECT
+   s" E-UNDERFLOW" ASSERT-DIAG
+   s" ' PKG:NAME (tick laundering) fails closed" T-LABEL
+   QUAL-TICK-FORGE$ RUN-SUBJECT
+   s" PRIM-LINK:COUNT" ASSERT-INTERNAL
+   s" a package public with an axiom stays callable" T-LABEL
+   QUAL-AXIOM-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" and its declared arity guards a short interpret stack" T-LABEL
+   QUAL-MININ-FORGE$ RUN-SUBJECT
+   s" interpret stack underdepth: TYPE-FIELD:FIND" ASSERT-DIAG
+   s" the qualified name as comment or string text executes nothing" T-LABEL
+   QUAL-TEXT-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" the used-publics bare tail reaches the same record and fails closed" T-LABEL
+   QUAL-USING-FORGE$ RUN-SUBJECT
+   s" REWIND" ASSERT-INTERNAL
+   s" 0 0 SCHEMA-REG:REWIND no longer wipes the schema registry" T-LABEL
+   QUAL-REWIND-FORGE$ RUN-LOAD
+   s" SCHEMA-REG:REWIND" ASSERT-INTERNAL
+   s" PRIM-LINK:COUNT no longer aborts below the interpret base" T-LABEL
+   QUAL-COUNT-FORGE$ RUN-LOAD
+   s" PRIM-LINK:COUNT" ASSERT-INTERNAL ;
+
 \ --- direct/subject parity. The PARITY- group used to be its own package; the
 \ names keep that marker because they are about the direct-versus-fork
 \ comparison, not about running a child in general. ----
 
-9 constant PARITY-DIRECT-N
-103 constant PARITY-SUBJECT-N   \ +2: the retired-TYPEFAMILY reject and its inert-text control
+11 constant PARITY-DIRECT-N     \ +2: the two qualified-name defect regressions
+114 constant PARITY-SUBJECT-N   \ +11: the qualified-name discriminator and its fences
 
 : PARITY-RESULT ( -- ptr u8 n ptr u8 n n )
    OUT OUT-U @ ERR ERR-U @ RC @ ;
@@ -763,6 +916,7 @@ create EMPTY 1 allot            \ zero-length stdin
    REGISTRY-CASES
    SIBLING-CASES
    CTLIVE-CASES
+   QUAL-CASES
    NEG-SHAPES
    POSITIVES
    OPENER-CASES

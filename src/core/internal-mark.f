@@ -4,8 +4,11 @@
 \ Loaded as the LAST cold-prefix source (after script-argv.f, before the
 \ SEAL-CAPTURE watermark token). Walks every dictionary record the engine
 \ prefix defined - from the util.f IMK-NDICT0 prim-boundary watermark to the
-\ current ndict - and classifies each global-wordlist COLON record (body entry
-\ = the C-CALL-PROLOGUE-INSTR frame setup):
+\ current ndict - and classifies each COLON record (body entry = the
+\ C-CALL-PROLOGUE-INSTR frame setup) that has a top-level spelling: a global
+\ one under its bare name, a package PUBLIC one under its qualified PKG:TAIL
+\ name (dot habu-pkg-publics-escape-41532ee7; package privates have no
+\ top-level spelling at all - see IMK-WALK-PACKAGES below):
 \ - no checker-known effect (no certified or trusted signature and no
 \   primitive axiom; SIG-MIN-IN misses): set DNAME-INT (flags bit 63). The
 \   interpret dispatch and interpret-mode tick (habu2.f EM-INTERPRET-FIND /
@@ -89,17 +92,99 @@ $D10043FF constant IMK-PROLOGUE
 : IMK-MIN-IN ( n -- n )      \ din cell width of the record's checker effect; -1 unknown
    dup IMK-NAME-A swap IMK-NAME-U SIG-MIN-IN ;
 
-: IMK-CLASSIFY ( n -- ) {: i:n :}   \ unknown -> DNAME-INT; known din>0 -> DNAME-MIN-IN
-   i IMK-GLOBAL-COLON? 0= IF EXIT THEN
-   i IMK-MIN-IN {: m:n :}
+: IMK-MARK ( n n -- ) {: i:n m:n :}   \ unknown -> DNAME-INT; known din>0 -> DNAME-MIN-IN
    m 0 < IF i int-mark EXIT THEN
    m 0 > IF i m min-in-mark THEN ;
+
+: IMK-CLASSIFY ( n -- ) {: i:n :}   \ a global record, under its bare name
+   i IMK-GLOBAL-COLON? 0= IF EXIT THEN
+   i i IMK-MIN-IN IMK-MARK ;
 
 : IMK-WALK ( -- )            \ classify every record in [IMK-NDICT0, ndict)
    IMK-NDICT0 @ IMK-I !
    BEGIN IMK-I @ ndict@ < WHILE
       IMK-I @ IMK-CLASSIFY
       IMK-I @ 1 + IMK-I !
+   REPEAT ;
+
+\ ---- package publics, under their qualified name ---------------------------
+\ A package word carries its wordlist, not 0, so IMK-WALK above never reaches
+\ one - and until dot habu-pkg-publics-escape-41532ee7 that left every package
+\ public top-level executable whatever the checker knew: `0 0 SCHEMA-REG:REWIND`
+\ wiped the schema registry and exited 0, and `PRIM-LINK:COUNT` read six cells
+\ below the interpret base and aborted, the same crash class as the bare U-TYPE
+\ this file was written for.
+\
+\ THE QUALIFIED SPELLING REACHES PUBLICS AND NOTHING ELSE, so publics are the
+\ whole of the escape. habu1.f FIND-NMATCH resolves PKG:TAIL by taking the
+\ search wid from the package row's [0] - the package's PUBLIC wordlist - and a
+\ package PRIVATE word therefore has no top-level spelling at all: bare misses
+\ it because it is not global, and qualified misses it because the qualifier
+\ never names its wordlist. Nothing to mark, and test/internal-word-gate.f pins
+\ that a private stays E-UNDEFINED under its own qualified name.
+\
+\ THE QUESTION IS THE SAME QUESTION, spelled the way the token is: SIG-MIN-IN of
+\ "PKG:TAIL". checker.f CHECKER-FIND-ACTIVE-SYM routes a qualified name straight
+\ to CHECKER-PUBLIC-SYM? -> SYM-FIND (checker.f:4212) keyed on (package,
+\ SYM-PUBLIC, tail), which is the key PPRIM; interns and the key the checker
+\ itself uses at a reference site. So a package public the checker can type stays
+\ callable and one it cannot fails closed, by the same rule as a global.
+\
+\ WHY THE PACKAGE ROWS DRIVE THE LOOP rather than a wid -> package map: the row
+\ IS the record that carries both halves of the answer, its public wordlist in
+\ [0] and the package name in its own name field, so reading it once per package
+\ needs no second table to fall out of step with the dictionary. The wid-0 arm
+\ above decides first, so the two passes partition the records no matter what a
+\ row's [0] holds. Each package's walk starts AT its own row because no earlier
+\ record can be in its public wordlist: habu2.f C-PACKAGE-NEW-RECORD allocates
+\ both wids and writes [0] as it publishes the row, so the id does not exist
+\ before the row does. Measured on the boot prefix, that is 112k record tests
+\ instead of 345k.
+\
+\ The body-read order IMK-GLOBAL-COLON? guards above is kept for the same
+\ reason and by a stronger test: a namespace row carries DICT-WL:NAMESPACE in
+\ its wordlist cell and an allocated wordlist id is never that, so matching the
+\ id first cannot select a row whose [0] is a number rather than a code pointer.
+1024 constant IMK-QCAP        \ qualified-name scratch: package + ':' + tail
+create IMK-QBUF IMK-QCAP allot
+variable IMK-QU
+variable IMK-QI
+variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
+
+: IMK-Q+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   IMK-QU @ u + IMK-QCAP > IF
+      s" internal-mark: qualified name exceeds scratch" 76 die THEN
+   0 IMK-QI !
+   BEGIN IMK-QI @ u < WHILE
+      a IMK-QI @ + c@ IMK-QBUF IMK-QU @ + c!
+      IMK-QU @ 1 + IMK-QU !
+      IMK-QI @ 1 + IMK-QI !
+   REPEAT ;
+
+: IMK-QUAL ( n n -- ptr u8 n ) {: p:n i:n :}   \ package row, word record -> PKG:TAIL
+   0 IMK-QU !
+   p IMK-NAME-A p IMK-NAME-U IMK-Q+
+   s" :" IMK-Q+
+   i IMK-NAME-A i IMK-NAME-U IMK-Q+
+   IMK-QBUF IMK-QU @ ;
+
+: IMK-CLASSIFY-PUB ( n n -- ) {: p:n i:n :}
+   i IMK-COLON? 0= IF EXIT THEN
+   i p i IMK-QUAL SIG-MIN-IN IMK-MARK ;
+
+: IMK-PKG-PUBLICS ( n -- ) {: p:n :}   \ every public colon record of package row p
+   p IMK-REC @ {: pub:n :}
+   p 1 + IMK-NDICT0 @ max IMK-I !
+   BEGIN IMK-I @ ndict@ < WHILE
+      IMK-I @ IMK-WID pub = IF p IMK-I @ IMK-CLASSIFY-PUB THEN
+      IMK-I @ 1 + IMK-I !
+   REPEAT ;
+
+: IMK-WALK-PACKAGES ( -- )   \ classify every package's public wordlist
+   0 IMK-P !
+   BEGIN IMK-P @ ndict@ < WHILE
+      IMK-P @ IMK-WID DICT-WL:NAMESPACE = IF IMK-P @ IMK-PKG-PUBLICS THEN
+      IMK-P @ 1 + IMK-P !
    REPEAT ;
 
 : IMK-NAMED? ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
@@ -132,6 +217,7 @@ $D10043FF constant IMK-PROLOGUE
 
 : IMK-PASS ( -- )
    IMK-WALK
+   IMK-WALK-PACKAGES
    IMK-SEAL-REGISTRY
    IMK-SEAL-PRIM ;
 

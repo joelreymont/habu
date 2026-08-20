@@ -324,6 +324,34 @@ variable FILE-USED
 \ files reference LAYOUT-BUFFER), which is why it is not the price of a one-word
 \ edit; when someone does it, this row goes with it, exactly as asm.f's did.
 \
+\ src/core/internal-mark.f is the LAST prefix source and the seal-time
+\ internal-word marking pass, and it is global for a reason its own header
+\ writes down rather than by drift: the pass reads raw dictionary-record cells,
+\ and every word in it must stay checker-unknown so the pass marks THEM
+\ DNAME-INT as it finishes -- self-sealing, nothing in the file remains callable
+\ from user source once IMK-PASS has run.  Measured 2026-08-20 on pristine
+\ master: adding a single trailing comment to the body of IMK-WALK -- defining
+\ no new word and changing no behaviour -- reported
+\ `E-PACKAGE-OWNERSHIP src/core/internal-mark.f:98:3`, so as configured the gate
+\ rejected every possible change to the marking pass, including the repair of the
+\ live SIGABRT that found this (dot habu-pkg-publics-escape-41532ee7: a qualified
+\ `PRIM-LINK:COUNT` read six cells below the interpret base and aborted rc 134).
+\ It is a full entry rather than a habu2.f-style body-only one because the pass
+\ grows by adding words: closing the qualified-name escape needed six.
+\
+\ ITS RETIREMENT CONDITION IS NAMED AND IS NOT "SOMEONE PACKAGES IT".  The end
+\ state is `package INTERNAL-MARK` with every word private and BOTH wordlists
+\ sealed by `get-current prot-wid-add`, the shape src/habu/xref.f already uses for
+\ PKG-AUTH, so C-PACKAGE-SEAL-GUARD refuses to reopen it and the privates are
+\ unreachable by every route.  That is strictly stronger than DNAME-INT and this
+\ entry goes with it.  It cannot land FIRST, and the ordering is measured, not
+\ cautious: a package private is reachable today by reopening its package --
+\ `package PRIM-LINK / private / KEY-SYM / ;package` aborts rc 134 on master --
+\ so packaging the pass before that hole closes would make IMK-CLASSIFY callable
+\ with an arbitrary record index, where the marked global is callable from
+\ nowhere at all.  Sealing removes that objection; until the reopen defect is
+\ closed, this file is more sealed as an allowlisted global than as a package.
+\
 \ Package-boundary changes are still reported for every file here
 \ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
 \ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
@@ -339,6 +367,9 @@ variable FILE-USED
    FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header
    FILE$ s" src/core/checker.f" LINT-STR= if true exit then      \ core surface, interim; see header
    FILE$ s" src/core/render.f" LINT-STR= if true exit then       \ checker's render half, interim; see header
+   \ Retires with `package INTERNAL-MARK` + prot-wid-add sealing, AFTER the
+   \ package-reopen defect closes; see header.
+   FILE$ s" src/core/internal-mark.f" LINT-STR= if true exit then \ self-sealing marking pass, interim; see header
    FILE$ s" src/arch/arm64/icode.f" LINT-STR= if true exit then  \ ARM64 encoder prefix, interim; see header
    FILE$ s" src/arch/arm64/mnem.f" LINT-STR= if true exit then   \ ARM64 encoder prefix, interim; see header
    FILE$ s" src/os/image-bytes.f" LINT-STR= if true exit then    \ image writer, interim; see header

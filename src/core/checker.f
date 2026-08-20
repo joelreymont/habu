@@ -6416,6 +6416,16 @@ PPRIM: LOWER-CERT CELL@ PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT BYTES PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
+\ The canonical re-arm, and the row says what src/core/check-hook.f already
+\ declares: `TRUSTED: INSTALL ( -- )` in that package's public section. The
+\ declaration alone cannot reach the effect store, because check-hook.f is the
+\ file that installs the hook and so loads before one exists - the same load-order
+\ accident that leaves HOOK above needing a row. Without it the seal-time pass
+\ (src/core/internal-mark.f) reads a public with no checker-known effect and marks
+\ it internal, and every top-level `LOWER-CERT-HOOK:INSTALL` dies rc 70:
+\ tools/check-core.f, tools/lint/text.f, the build source tools/build-fixpoint.f
+\ emits, and the re-arm tools/checked-boundary-lint-core.f tells authors to write.
+PPRIM: LOWER-CERT-HOOK INSTALL PPRIM;
 PPRIM: CHECKER-CERT INSTALL PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 \ The source-tape observer's arming surface (dot habu-feed-the-src-f7ed8733).

@@ -1000,9 +1000,21 @@ variable REG-I
    \ whose bodies compile with the hook off, on the same terms as the eight
    \ above, and all four exist so their callers do NOT have to name a registry
    \ store or a symbol table directly.
+   \ It was 390 before the qualified-name marking pass (dot
+   \ habu-pkg-publics-escape-41532ee7) added `LOWER-CERT-HOOK INSTALL`, the row
+   \ that keeps the canonical hook re-arm a top-level name. src/core/check-hook.f
+   \ already declares `TRUSTED: INSTALL ( -- )` in that package's public section,
+   \ but it is the file that installs the hook and so loads before one exists, so
+   \ the declaration never reaches the effect store - the same load-order accident
+   \ its sibling `LOWER-CERT-HOOK HOOK` above already needed a row for. Once the
+   \ seal-time pass reads package rows, a public with no checker-known effect is
+   \ marked internal, and without this row every top-level
+   \ `LOWER-CERT-HOOK:INSTALL` dies rc 70: tools/check-core.f, tools/lint/text.f,
+   \ the build source tools/build-fixpoint.f emits, and the re-arm
+   \ tools/checked-boundary-lint-core.f tells authors to write.
    \ A lexer that swallowed a row into a neighbouring string would drop the
    \ count, not raise it.
-   REG-COUNT 390 ASSERT=
+   REG-COUNT 391 ASSERT=
    \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
    \ string opener, so the word path consumed source through the quote in the next
    \ row. Name that row and pin that it is one token ending at its own closer.

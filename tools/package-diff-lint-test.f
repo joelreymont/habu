@@ -1537,6 +1537,67 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deleted package boundary in asm.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- src/core/internal-mark.f: the self-sealing marking pass ----
+\ The positive is the exact probe that measured the problem on pristine master:
+\ one trailing comment on an existing global body reported
+\ `E-PACKAGE-OWNERSHIP src/core/internal-mark.f:98:3`, so no change to the
+\ seal-time marking pass could land at all -- not even the repair of the rc 134
+\ abort that found it. The second positive is the new global word, which the
+\ entry must admit because closing the qualified-name escape added six.
+\ The negatives are the whole point of the pairing: the row must admit this one
+\ path and nothing that merely looks like it. A neighbour in the same directory,
+\ a sibling carrying the path as a prefix, the same basename elsewhere, and any
+\ scope change inside the admitted file itself all still report.
+
+: TEST-WRITE-INTMARK-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : IMK-PASS ( -- ) ;" TEST-SOURCE-LINE
+   s" src/core/internal-mark.f" TEST-WRITE-SOURCE ;
+
+: TEST-INTMARK-OWNER-LOSS-DIFF ( -- )
+   s" src/core/internal-mark.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package INTERNAL-MARK" TEST-DIFF+ TEST-LF
+   s"  : IMK-PASS ( -- ) ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-INTMARK-EXEMPTION ( -- )
+   \ Positive: the control probe that proved the gate rejected every possible
+   \ change to the marking pass -- one trailing comment on an existing global
+   \ body, defining no new word and changing no behaviour -- is now admitted.
+   s" src/core/internal-mark.f" TEST-CHECKER-COMMENT-CASE
+   s" the marking pass exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global word is admitted too. This is the exact shape the
+   \ qualified-name walk needed -- IMK-QUAL, IMK-PKG-PUBLICS, IMK-WALK-PACKAGES.
+   s" src/core/internal-mark.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" the marking pass exempts a new global definition" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying the allowlist path as a prefix is not an exact
+   \ match and must still fail (not a startswith match).
+   s" src/core/internal-mark-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/core/internal-mark-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the allowlist path
+   \ as a suffix but is not exact, so it must still fail (full path, not suffix).
+   s" lib/internal-mark.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/internal-mark.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the marking pass's own regression neighbour is NOT in the entry,
+   \ so a new global there is still reported - the category is one named file,
+   \ not the src/core tree and not everything the dot touched.
+   s" src/core/top-row.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" src/core/top-row.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): once the file DOES open a package - the retirement
+   \ this entry is waiting on - deleting that boundary still reports lost
+   \ ownership. The entry suppresses a plain global body or definition change,
+   \ never a scope change.
+   TEST-WRITE-INTMARK-OWNER-LOSS
+   TEST-DIFF-RESET TEST-INTMARK-OWNER-LOSS-DIFF
+   s" deleted package boundary in internal-mark.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 \ ---- src/os/{image-bytes,linux/elf,macos/macho}.f: the image writer ----
 \ Same category and same fixtures as the ARM64 encoder prefix: none of the three
 \ carries a package, and every later prefix source resolves their names bare. The
@@ -2800,6 +2861,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION
+   TEST-INTMARK-EXEMPTION
    TEST-ARM64-EXEMPTION
    TEST-IMAGE-EXEMPTION
    TEST-ENGINE-EXEMPTION
