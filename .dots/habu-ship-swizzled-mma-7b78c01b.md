@@ -41,3 +41,8 @@ that Triton head-to-head is unverified and likely mistaken - the
 default-flip decision must not rest on it until the config is re-measured
 on the sole benchmark platform, the GB10 spark. GB10 conclusions stand on
 their own referee runs.
+
+Coupling (2) is gone (2026-08-20, habu-delete-the-nimm-329100c9): lib/ptx/opt-test.f
+was deleted with the rest of the PTX text optimizer, so no fixture pins
+cvt.rna.tf32.f32 any more and the default flip no longer has to answer to it.
+Couplings (1) and (3) are untouched.
