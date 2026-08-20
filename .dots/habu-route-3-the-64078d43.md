@@ -38,7 +38,7 @@ SCOUTED VERDICT (2026-08-20, full map in the scout report; re-measured):
    If the owner-side bill approaches that, route 3 nets far less than the
    epic assumes - re-open the ruling on that number.
 
-Claim: agent=route3-1 workspace=.jj-ws/habu-trusted
+Claim: agent=route3-2 workspace=.jj-ws/habu-trusted (STOOD DOWN - see BLOCKED-ON below)
 
 HARD GATE ANSWERED (2026-08-20, lane route3-1). ALL 662 DEFINITIONS
 TYPECHECK. Measured through the real driver, tools/check.f -> check-core.f
@@ -108,3 +108,150 @@ measurement inherits the lie. That is not a probe defect - it is the same
 text a TRUSTED: row would carry, so the bill is exact for what route 3 would
 actually write. The harness lives in the lane scratch (route3-gate3.py,
 route3-falsify.py, route3-symidx.py); no production file was touched.
+
+BLOCKED-ON habu-tfam-2b-sealed-1b77662c (2026-08-20, lane route3-2, ruled by
+the orchestrator). Route 3 was BUILT, GATED AND STOPPED. The whole derivation
+is banked in the lane at commit 1b73ba47 ("codegen: check the type foundation
+past the hook", .jj-ws/habu-trusted, 31 files, +567/-329, NOT pushed, NOT
+merged); most of it survives the reordering and it is the record the next lane
+starts from rather than re-deriving. Nothing below is an estimate: every number
+came off the real prefix build.
+
+WHAT IT DELIVERED, so the size of the prize is on the record. src/'s TRUSTED:
+census goes 218 -> 123: NINETY-FIVE rows deleted. Per file: enum-decl.f 39->9,
+structure-decl.f 35->8, generated-declaration.f 23->13, structure-make.f 8->2,
+decl-event.f 3->0, plus one each in generated-declaration-dictionary.f and
+generated-declaration-protection.f. 74 of those were one-token forwarders into
+the moved block; the other 21 were forwarders into checker.f words the new rows
+answer (CON-OF, CC-N/CC-BOOL/CC-R, CHECKER-PACKAGE-PUBLIC, MULTI-ERR?,
+CTOR-PEND-CLEAR, ARENA-BYTES-GROW, REG-GROW1, TYPE-NAME:CONTROL?,
+TYPE-NAME:VARIANT-REQUIRE, SUMV-N@, MULTI-COUNT+). The block builds a
+byte-identical fixpoint twice (872d9292...), maki/test.f rc 0, typed-local
+diff lint 0, error-code-lint 0, dot lint 0, bootstrap-mirror-lint 0, and
+boot-pin, diagnose-hb, using, type-family, type-decl, enum-decl,
+structure-decl, layout-valid and lower-cert suites all rc 0.
+
+THE STOP - FINDING 1, MEASURED. Recording a signature IS publishing an API.
+src/core/internal-mark.f welds the two together by design: "the executable
+top-level name universe equals the checker's". So making the registry checked
+publishes its 653 GLOBAL definitions (type-schema.f 60, type-family.f 359,
+sumtype.f 202, layout-buffer.f 32; layout-valid.f 0 - it is fully packaged)
+as top-level-executable, checked-callable user API. This four-line user
+program runs to exit 0 on the candidate engine:
+
+    TFAM-N@ . cr        \ 119
+    TFAM-RESET          \ wipes the family registry from user source
+    TFAM-N@ . cr        \ 0
+    : LEAK-PF ( n n ptr u8 n -- n bool ) PF-FIND ;
+
+The tree's own gate says that must be refused: test/internal-word-gate.f
+OPENER-CASES asserts `: IWG-PF-RAW ( n n ptr u8 n -- n bool ) PF-FIND ;` is
+rejected at 'PF-FIND' ("raw implementation names are not checked/public", dot
+habu-protect-type-field-04d91409), and that is the assertion the candidate
+breaks. The same mechanism re-published CT-LIVE? (reversing
+habu-internalize-field-liveness for its one historical consumer,
+type-family.f PF-NODE-KIND?) and T-RES. RULING: route 3 lands AFTER the
+registry is sealed. Trading 95 package-private unchecked declarations for 653
+globally-callable registry internals is the fix-review gate's definition of
+worse.
+
+THE CONTAINMENT IS PACKAGING, AND THE LANE PROVED IT ON A WORKING EXAMPLE.
+src/core/lower-cert-effects.f publishes 16 rows inside `package LOWER-CERT`,
+before `public`. Bare MAGIC-V, BUF-N@, HEADER-N and LOWER-CERT:HEADER-N all
+answer E-UNDEFINED at top level: the rows are real to the package's own
+checked half and invisible to everyone else, with no visibility change at all.
+That file is the worked shape the sealing lane should copy.
+
+FINDING 2: A RECORDED ROW OUTLIVES `undefine`. type-family.f:1337's
+`defer TDECL-FIELD-CLEANUP-XT ( n -- )` records a row once the file is
+post-hook; generated-declaration-protection.f:196 retires the dictionary entry
+but NOT the row, so CHECKER-RESOLVES? answers true for a retired seam
+(test/type-field-owner-suite.f assert 188). That suite's own header explains
+what is lost: the seam is a `defer` rather than a PRIM precisely so `undefine`
+can retire it, and a post-hook row gives it the primitive's un-retirable
+property. Falsified properly: a child load naming it still exits 70
+E-UNDEFINED, so the dictionary boundary holds and no unsound acceptance was
+demonstrated - this is the loss of the middle boundary of three, not a hole.
+Full sweep of every `undefine` in src/ over moved names: TDECL-FIELD-CLEANUP-XT
+and TDECL-FIELD-RELEASE-XT (generated-declaration-protection.f:196-197),
+FULL-PRODUCE and FULL-PRODUCE-INSTALL (lower-cert-seal.f:22-23); plus three
+names the lane's own rows published that are sealed away later - LBUF-PEND!
+and LBUF-PEND-CLEAR (layout-buffer-seal.f:4-5) and FULL-INSTALL
+(lower-cert-seal.f:21). This generalises route3-1's artifact 3 (xref.f:673).
+
+FINDING 3: THE SCOUT'S "COSTS NOTHING" WAS FALSE, AND THE PACKAGE LINT BLOCKS
+THREE FILES. layout-buffer.f and layout-valid.f were admitted to the block on
+the ground that they have zero pre-hook consumers. True, and irrelevant: their
+own BILL was never measured. layout-valid.f reaches the registry at 19 names /
+29 sites so it CANNOT stay pre-hook, and moving it splits `package LOWER-CERT`
+across the hook (lower-cert-base.f must stay pre-hook - it arms the
+certificate dispatcher the checker calls at every publish). Paid with the
+16-row lower-cert-effects.f above. Separately, tools/package-diff-lint.f
+reports six E-PACKAGE-OWNERSHIP findings that no amount of care avoids: the
+four new label variables in habu2.f, BPT-PFX-ROW# in test/boot-pin-test.f, and
+BP-EACH in tools/boot-pin.f. CONTROL RUN, so this is attributed and not
+assumed: an inert trailing comment on an UNTOUCHED global line in habu2.f does
+NOT fire the lint, so these are genuine new/changed globals in unpackaged
+files, not the blanket line-freeze LESSONS.md describes. Adding any prefix
+source needs a packaging cascade in those three files or a lint-policy ruling.
+
+TWO-STEP LANDING CONSTRAINT (new, and it bites from both directions). The old
+engine cannot boot the converted tree and the new engine cannot boot the
+unconverted one. Build in two passes: (1) reorder + effects files, install;
+(2) then the forwarder deletions, install. Measured both ways - the old
+binary dies E-UNDEFINED on a deleted forwarder's caller, and the new binary
+dies "hb: cannot open src/core/util-effects.f" on master's tree. Any future
+attempt to verify a claim against master from this lane needs a
+master-compatible bin/hb copied in first.
+
+MODEL GAP, stated rather than weakened. The render-side defer wall gives
+TFAM-N-XT a registry-not-loaded default of 0, and I could NOT falsify it by
+mutation: deleting the default changes nothing observable, because
+TFAM-RESOLVE-XT's own default refuses every family term first, so no T-PARAM
+can exist in the check-hook.f -> type-family.f:3220 window and FAM-NAME-REND
+is never reached. The default is argued from the call graph, not proven. Two
+builds are on the record: with and without it, identical behaviour, and a
+planted `: ZZ-FAMPROBE ( extprod<a> -- ) ;` in the window dies at "unknown
+type 'extprod' in signature" rather than at the renderer. Whoever re-derives
+this either finds the reaching path or deletes the default and lets the hook
+fail closed on DEFER-UNSET like its documented siblings.
+
+WHAT IS STILL OWED IF AND WHEN THIS RESUMES: the CODELEN ratchet in
+test/gate-size-attribution-test.f and the two child-process counts in
+test/internal-word-gate.f (PARITY-DIRECT-N 9->10, PARITY-SUBJECT-N 103->102)
+need re-measuring, and test/run.f stays red until they are. They were left
+deliberately - finding 1 changes the tree, so measuring them now would be
+measuring a tree nobody is going to land. The full test/run.f on the candidate
+had 5 red phases and every one is accounted for above; none was unexplained.
+The recovery leg was not run for the same reason: bootstrap.sh's manifest is
+mirrored and `bash -n` clean, but a recovery build cannot be honestly judged
+until the design settles.
+
+FOR THE NEXT LANE, AND THIS IS THE POINT. Every gate this change had to pass
+would have passed it. The byte-identical fixpoint passed, maki passed, the
+diff lints passed, and the 95-row deletion looked exactly like the win the
+epic asked for. What stopped it was a worker reading a failing assertion as
+the tree telling it which dot it was reversing, instead of updating the
+assertion. That is the fourth time this campaign a lane's stop saved a merge
+every gate would have approved. The stop discipline is the campaign's best
+instrument - use it.
+
+LESSONS (verbatim, for LESSONS.md at merge):
+- **Recording a signature is the same act as publishing an API.**
+  `internal-mark.f` welds "checker-known" to "top-level executable", so any
+  move that makes a file checked publishes every global it defines. Count the
+  globals before scoping such a move.
+- **A scout's "costs nothing" about a file is about its CONSUMERS; measure its
+  BILL separately.** `layout-valid.f` had zero pre-hook consumers and 29
+  pre-hook dependencies.
+- **`undefine` retires a dictionary entry, not a recorded row.** A seam
+  designed as a `defer` specifically to stay retirable loses that property the
+  moment its file is checked.
+- **`jj edit <old-commit-id>` after the change was rewritten silently checks
+  out the stale snapshot and creates a divergent change.** Two edits were
+  reverted under me and only a marker sweep caught it. Use the change id, and
+  sweep for your own markers after any `abandon`/`edit` cycle.
+- **A gate assertion that fails after your change is often the tree telling you
+  which dot you are reversing.** `using-test.f`'s FRESH precondition and
+  `internal-word-gate.f`'s CT-LIVE? case both named their own obsolescence
+  condition in advance.
