@@ -7644,3 +7644,11 @@ and --no-lldbinit.
   loads reaches its own argument guard; the exit code alone separates
   "loaded and refused" (alive) from "failed to certify" (dead) — no
   checkpoint needed.
+
+- **An open dot is a plan, not evidence.** Two dead-code deletions were
+  refused by deferring to open adjudication dots as if the tree had ruled;
+  the tree's actual evidence was zero consumers. A dot's opinion earns
+  deference only through landed, gated results — otherwise the Simplify gate
+  applies to the dot's parked machinery exactly as it applies to new
+  machinery: no named first consumer, no residency. Version control is the
+  cache for maybe-futures; the working tree holds what runs.

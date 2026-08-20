@@ -32,3 +32,14 @@ the probe report):
    622 is stale.
 Both: the review's reachability method was right; its conclusions skipped
 the tree's own open adjudications. Verify-first held.
+
+SUPERSEDED BY USER RULING (2026-08-20, hard cut): the two "deletions refused"
+above are OVERTURNED. The refusals deferred to open dots' opinions as if they
+were evidence - they are plans; the tree's evidence is zero consumers in both
+cases. NIMM's parked capability fails the Simplify gate's own words (no named
+first consumer); the PTX optimizer's win-branch was always a rebuild at the
+canonical boundary, never preservation of the dormant pass; the 4-byte bug
+dies with the code. Version control is the cache for maybe-futures. Deletion
+lane prune-2 dispatched with the probe's sized lists (~1,600 lines) plus the
+verify-then-delete of HIR-WORD's test-only reason machinery the probe
+surfaced. The reachability probe itself stands - its lists are the map.
