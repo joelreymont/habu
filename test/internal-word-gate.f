@@ -140,6 +140,16 @@ create EMPTY 1 allot            \ zero-length stdin
    ERR$ s" hb: internal engine word: " CONTAINS? TTRUE
    ERR$ a u CONTAINS? TTRUE ;
 
+\ The other fail-closed shape the marking pass produces: a word the checker DOES
+\ know, whose declared effect consumes cells, is left top-level executable by
+\ design and guarded by DNAME-MIN-IN instead - a bare call with fewer interpret
+\ cells than the effect declares is refused before the body runs.
+: ASSERT-MIN-IN ( ptr u8 n -- ) {: a:ptr u:n :}
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   ERR$ s" hb: interpret stack underdepth: " CONTAINS? TTRUE
+   ERR$ a u CONTAINS? TTRUE ;
+
 : ASSERT-OK ( -- )
    EXITED @ TTRUE
    RC @ 0 T= ;
@@ -153,16 +163,18 @@ create EMPTY 1 allot            \ zero-length stdin
 : NEG-BARE ( -- )
    s" bare U-TYPE fails closed (was SIGSEGV)" T-LABEL
    s" U-TYPE" NEG
-   s" bare T-RES fails closed" T-LABEL
-   s" T-RES" NEG
+   \ T-RES carries a row since route 3 (dot habu-route-3-the-64078d43): the
+   \ post-hook type registry resolves terms through it, so the marking pass
+   \ guards it on declared input depth instead of hiding the name.
+   s" bare T-RES fails closed on its declared input depth" T-LABEL
+   s" T-RES" TOKEN$ RUN-SUBJECT
+   s" T-RES" ASSERT-MIN-IN
    s" bare PAIR fails closed" T-LABEL
    s" PAIR" NEG
    s" bare CHECKER-FIND-ACTIVE-SIG fails closed" T-LABEL
    s" CHECKER-FIND-ACTIVE-SIG" NEG
    s" bare E-INST fails closed" T-LABEL
-   s" E-INST" NEG
-   s" bare CT-LIVE? field-liveness query fails closed" T-LABEL
-   s" CT-LIVE?" NEG ;
+   s" E-INST" NEG ;
 
 : ARGS-FORGE$ ( -- ptr u8 n )        \ args present: the gate is not depth-keyed
    SB-RESET
@@ -683,22 +695,32 @@ create EMPTY 1 allot            \ zero-length stdin
    LAY-CASES
    SCH-CASES ;
 
-\ --- field-liveness internalization (dot habu-internalize-field-liveness).
-\ src/core/checker.f used to publish a global CT-LIVE? primitive-effect axiom
-\ solely so the field-schema validator (type-family.f PF-NODE-KIND?) could ask
-\ whether a SCHEMA-CON's concrete-type code is live. That axiom left the
-\ checker-internal concrete-type registry query top-level executable and callable
-\ from checked user code. The axiom is gone, so CT-LIVE? now carries DNAME-INT
-\ like its sibling CT-LINEAR? — a bare call fails closed on BOTH cold-prefix
-\ paths (--load file and piped stdin) while the compiled field-validation caller
-\ is unaffected. ----
+\ --- field-liveness (dots habu-internalize-field-liveness, then
+\ habu-route-3-the-64078d43).
+\ src/core/checker.f published a global CT-LIVE? primitive-effect axiom solely so
+\ the field-schema validator (type-family.f PF-NODE-KIND?) could ask whether a
+\ SCHEMA-CON's concrete-type code is live. The internalization dot deleted that
+\ axiom and CT-LIVE? carried DNAME-INT, refused bare on both cold-prefix paths.
+\ Route 3 moved type-family.f past the checker hook, so that same validator is
+\ now CHECKED source and needs a row again: src/core/checker-effects.f publishes
+\ CT-LIVE? for its one historical consumer. The marking pass therefore leaves it
+\ top-level executable and guards it with DNAME-MIN-IN instead — its declared
+\ effect consumes one cell, so a bare call still fails closed before the body
+\ runs, on BOTH paths. What the internalization dot bought and route 3 gave back
+\ is reachability from checked user code; that is the same exposure the tree
+\ already accepts for every axiom'd checker word.
 : CTLIVE-CASES ( -- )
    s" CT-LIVE? field-liveness query fails closed on --load" T-LABEL
    s" CT-LIVE?" TOKEN$ RUN-LOAD
-   s" CT-LIVE?" ASSERT-INTERNAL
+   s" CT-LIVE?" ASSERT-MIN-IN
    s" CT-LIVE? field-liveness query fails closed on stdin" T-LABEL
    s" CT-LIVE?" TOKEN$ RUN-STDIN
-   s" CT-LIVE?" ASSERT-INTERNAL ;
+   s" CT-LIVE?" ASSERT-MIN-IN
+   \ the registry's capacity cell gained no consumer past the hook and stays fully
+   \ internal, so the two fail-closed shapes are told apart rather than assumed
+   s" CT-CAP still carries no row and stays internal" T-LABEL
+   s" CT-CAP" TOKEN$ RUN-LOAD
+   s" CT-CAP" ASSERT-INTERNAL ;
 
 \ --- direct/subject parity. The PARITY- group used to be its own package; the
 \ names keep that marker because they are about the direct-versus-fork

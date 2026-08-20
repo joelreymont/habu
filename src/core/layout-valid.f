@@ -134,7 +134,7 @@ variable FIELD-I
    node SCHEMA-CON? if node SCHEMA-A@ MK-CON exit then
    node SCHEMA-PTR? if node SCHEMA-A@ recurse MK-PTR exit then
    node SCHEMA-APP? if
-      PARAM-SCR-N @ {: base:n :}
+      PARAM-SCR-N@ {: base:n :}
       0 begin dup node SCHEMA-C@ < while
          node SCHEMA-B@ over + SCHEMA-ROOT@ recurse PARAM-SCR+
          1 +
@@ -308,8 +308,8 @@ variable FIELD-I
    LOCW-HW-N@ BUF,
    FETCH-N @ BUF,
    DATA-N @ BUF,
-   BODY-LEN @ BUF,
-   BODY-HASH @ BUF, ;
+   BODY-LEN@ BUF,
+   BODY-HASH@ BUF, ;
 
 : WIDTH-FACTS, ( -- )
    0 begin dup WF-N@ < while
@@ -344,10 +344,10 @@ variable FIELD-I
    2dup SOURCE!
    2drop
    FETCH-BUILD
-   0 BUF-N !
+   BUF-REWIND
    TOTAL-CELLS BUF-ENSURE
    HEADER, WIDTH-FACTS, BIND-WIDTHS, FETCH-INDEX, FETCH-DATA,
-   BUF-N @ TOTAL-CELLS <> if s" lowering certificate size mismatch" 76 die then ;
+   BUF-N@ TOTAL-CELLS <> if s" lowering certificate size mismatch" 76 die then ;
 
 : FULL-PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    MULTI-ERR? if a u EMPTY exit then

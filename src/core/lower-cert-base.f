@@ -80,25 +80,35 @@ variable FULL-SET   0 FULL-SET !
    BUF-N @ cells BUF + !
    BUF-N @ 1 + BUF-N ! ;
 
+\ How many cells the certificate under construction holds, and the rewind that
+\ starts a fresh one. The producer half of this package loads after the checker
+\ hook, so it reaches the buffer through these two rather than through the cell.
+: BUF-N@ ( -- n ) BUF-N @ ;
+: BUF-REWIND ( -- ) 0 BUF-N ! ;
+
 : SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u BODY-LEN !
    a u HASH BODY-HASH ! ;
 
+\ The body length and FNV-1a64 that SOURCE! latched, for the header row.
+: BODY-LEN@ ( -- n ) BODY-LEN @ ;
+: BODY-HASH@ ( -- n ) BODY-HASH @ ;
+
 : EMPTY ( ptr u8 n -- )
    SOURCE!
-   0 BUF-N !
+   BUF-REWIND
    HEADER-N BUF-ENSURE
    MAGIC-V BUF,
    VERSION-V BUF,
    HEADER-N cells BUF,
    0 BUF,  0 BUF,  0 BUF,  0 BUF,  0 BUF,
-   BODY-LEN @ BUF,
-   BODY-HASH @ BUF, ;
+   BODY-LEN@ BUF,
+   BODY-HASH@ BUF, ;
 
-: CERT-BYTES ( -- ptr u8 n ) BUF BUF-N @ cells ;
+: CERT-BYTES ( -- ptr u8 n ) BUF BUF-N@ cells ;
 
 : CERT-CELL@ ( n -- n ) {: idx:n :}
-   idx 0 < idx BUF-N @ >= or if s" lowering certificate cell index" 76 die then
+   idx 0 < idx BUF-N@ >= or if s" lowering certificate cell index" 76 die then
    idx cells BUF + @ ;
 
 : FULL-INSTALL ( [ ptr u8 n n -- ] -- )
@@ -140,7 +150,7 @@ public
 : BODY-HASH-CELL ( -- n ) BODY-HASH-I ;
 : FNV-OFFSET ( -- n ) FNV-OFFSET-V ;
 : FNV-PRIME ( -- n ) FNV-PRIME-V ;
-: CELL-COUNT ( -- n ) BUF-N @ ;
+: CELL-COUNT ( -- n ) BUF-N@ ;
 : CELL@ ( n -- n ) CERT-CELL@ ;
 : BYTES ( -- ptr u8 n ) CERT-BYTES ;
 

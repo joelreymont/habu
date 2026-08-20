@@ -172,11 +172,13 @@ become callable dictionary words, so the shared classifier omits them.
 The complete-file global exceptions are exact paths, not directory rules:
 
 - `lib/prelude.f` owns the deliberately global prelude helpers.
-- `src/core/sumtype.f` owns the pre-hook type-declaration implementation and its
-  global `NEWTYPE`, `SUMTYPE`, `ENUM`, and `PRODUCT` language words.
+- `src/core/sumtype.f` owns the type-declaration implementation and its global
+  `NEWTYPE`, `SUMTYPE`, `ENUM`, and `PRODUCT` language words. It loads after the
+  checker hook (dot `habu-route-3-the-64078d43`), so its definitions are checked;
+  the exemption is about its global namespace, not about recording.
 - `src/core/layout-buffer.f` owns the global `LAYOUT-BUFFER` declaring word, the
-  same standing as `sumtype.f` above: a pre-hook core surface that exists to
-  publish a declarer every other package uses.
+  same standing as `sumtype.f` above: a core surface that exists to publish a
+  declarer every other package uses.
 - `src/core/roles.f` owns the pre-hook nominal role conversions and declaration
   words that must be available before application packages load.
 - `src/core/structures.f` owns the legacy global structure and field defining

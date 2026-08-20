@@ -7,3 +7,6 @@
 
 s" CELL" s" -- n" TRUST
 s" CELL-WIDTH-CHECK" s" --" TRUST
+\ CORE-LAYOUT-RC is the exit code every internal record-layout assertion dies
+\ with; the type registry loads after the hook and asserts its own layouts.
+s" CORE-LAYOUT-RC" s" -- n" TRUST

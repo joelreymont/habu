@@ -34,7 +34,7 @@ public
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-54 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 53 calls)
+58 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 57 calls)
                                     \ 22->26: +src/core/type-family.f +type-schema.f +sumtype.f
                                     \ +type-family-sha.f (TFAM growth; user sign-off dot
                                     \ habu-boot-pin-sign-be74cfd3). 26->31: +src/core/
@@ -67,6 +67,11 @@ public
                                     \ opens no package and its 146 globals make a bare
                                     \ name ambiguous under `using`, and it joins the
                                     \ block through dot habu-pkg-the-arm64-ce972795).
+                                    \ 54->58: the type foundation moved past the checker
+                                    \ hook (dot habu-route-3-the-64078d43), so the checker
+                                    \ words it calls need rows: +src/core/util-effects.f
+                                    \ +render-effects.f +checker-effects.f
+                                    \ +lower-cert-effects.f.
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex

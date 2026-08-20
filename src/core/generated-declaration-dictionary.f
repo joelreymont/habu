@@ -42,7 +42,6 @@ variable FRAME-CAP CAP-INIT FRAME-CAP !
 : ROW.CP ( ptr a -- ptr a ) ROW.CP-OFF + ;
 : ROW.DP ( ptr a -- ptr ptr a ) ROW.DP-OFF CELL / ptr-field ;
 
-TRUSTED: FRAME-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
 
 : CHECK-DEPTH ( n -- )
@@ -56,7 +55,7 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
    FRAME-CAP @ FRAME-ROW-MAX 2 / <=
       IF FRAME-CAP @ 2 * need max ELSE need THEN {: cap:n :}
    FRAME-P @ FRAME-CAP @ ROW-REC *
-      cap ROW-REC * FRAME-GROW FRAME-P !
+      cap ROW-REC * ARENA-BYTES-GROW FRAME-P !
    cap FRAME-CAP ! ;
 
 : SNAPSHOT ( n -- n ) {: depth:n :}

@@ -86,39 +86,6 @@ package STRUCTURE-DECL
 \ word whose effect the checker holds restates a signature nothing verifies
 \ (dot habu-visibility-discharge-548-fab55650).
 \ ---------------------------------------------------------------------------
-TRUSTED: FAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: FAM-LAYOUT! ( n n -- ) TFAM-LAYOUT! ;
-TRUSTED: FAM-EQ! ( n -- ) TFAM-DERIVE-EQ! ;
-TRUSTED: FAM-HASH! ( n -- ) TFAM-DERIVE-HASH! ;
-TRUSTED: FAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
-TRUSTED: FAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
-TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
-TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
-TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
-TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
-TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
-TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
-TRUSTED: CONTROL-KW? ( ptr u8 n -- bool ) TYPE-NAME:CONTROL? ;
-TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
-TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
-TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
-TRUSTED: CON-R ( -- n ) CC-R ;          \ single-letter r : real/float
-TRUSTED: LT-STACK ( -- n ) TL-STACK-CELL-TAG ;   \ default layout policy code
-TRUSTED: LT-PACKED ( -- n ) TL-PACKED-TAG ;      \ packed-tag layout policy code
-TRUSTED: DV-EQ ( -- n ) DRV-EQ ;                 \ derive feature code: equality
-TRUSTED: DV-HASH ( -- n ) DRV-HASH ;             \ derive feature code: hash
-TRUSTED: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;   \ public visibility code
-TRUSTED: SD-SCH-CON ( n -- n ) SCHEMA-CON ;
-TRUSTED: SD-SCH-PARAM ( n -- n ) SCHEMA-PARAM ;
-TRUSTED: SD-SCH-PTR ( n -- n ) SCHEMA-PTR ;
-TRUSTED: SD-SCH-APP ( n n n -- n ) SCHEMA-APP ;
-TRUSTED: SCH-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
-TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
-TRUSTED: SCH-APP? ( n -- bool ) SCHEMA-APP? ;
-TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
-TRUSTED: SCH-OWNS-LINEAR? ( n -- bool ) TFCL-NODE? ;   \ node reaches a linear value
-TRUSTED: FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;   \ field-record layout flag: none
-TRUSTED: TK-PROD ( -- n ) TK-PRODUCT ;         \ single-shape record family kind
 
 \ --- one-token pushback. The token bytes stay valid across a line refill (the
 \ engine buffers the input source), so the pushback holds the raw span; storing a
@@ -171,16 +138,16 @@ SD-RESET
 \ PRODUCT / SUMTYPE definers refuse it through TDECL-RESERVED?.
 \ ---------------------------------------------------------------------------
 : NAME-RESERVED? ( ptr u8 n -- bool )
-   2dup GRAMMAR-KW? IF 2drop YES EXIT THEN
-   2dup CONTROL-KW? IF 2drop YES EXIT THEN
+   2dup TF-GRAMMAR-KEYWORD? IF 2drop YES EXIT THEN
+   2dup TYPE-NAME:CONTROL? IF 2drop YES EXIT THEN
    2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
    dup 1 = IF 2drop YES EXIT THEN
-   CON-CODE 0 <> ;
+   CON-OF 0 <> ;
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup CANON? 0= IF
+   2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
@@ -233,21 +200,21 @@ SD-RESET
 \ kind it excludes, TK-EVIDENCE, has no declarer any source can write.
 \ ---------------------------------------------------------------------------
 : FIELD-FAM? ( ptr u8 n -- n bool )     \ resolve a closed arity-0 layout/cell family
-   ACTIVE-PKG$ 2swap SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
+   TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
-   id FAM-LAYOUT? id FAM-CELL? or 0= IF 0 NO EXIT THEN
+   id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
    id TFAM-ARITY@ 0 <> IF
       s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
 : LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
    drop c@
-   dup ASCII-N = IF drop CON-N SD-SCH-CON EXIT THEN
-   dup ASCII-F = IF drop CON-BOOL SD-SCH-CON EXIT THEN
-   dup ASCII-R = IF drop CON-R SD-SCH-CON EXIT THEN
+   dup ASCII-N = IF drop CC-N SCHEMA-CON EXIT THEN
+   dup ASCII-F = IF drop CC-BOOL SCHEMA-CON EXIT THEN
+   dup ASCII-R = IF drop CC-R SCHEMA-CON EXIT THEN
    TFAM-DECL-CHAR>PARAM 0= IF
       drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   dup SD-ARITY @ < IF SD-SCH-PARAM EXIT THEN
+   dup SD-ARITY @ < IF SCHEMA-PARAM EXIT THEN
    drop
    s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
@@ -257,20 +224,20 @@ SD-RESET
 \ family spelling and the con spelling launder identically, so both are refused
 \ here, at the declaration door, with one rule.
 : REQUIRE-POINTEE ( n -- n )                \ pointee node, or reject a linear owner behind the address
-   dup SCH-OWNS-LINEAR? IF
+   dup TFCL-NODE? IF
       s" field type is a pointer to a linear value and cannot own it"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE REQUIRE-POINTEE SD-SCH-PTR EXIT THEN
+   2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE REQUIRE-POINTEE SCHEMA-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
-   2dup CON-CODE dup 0 <> IF nip nip SD-SCH-CON EXIT THEN drop
-   2dup FIELD-FAM? IF nip nip 0 0 SD-SCH-APP EXIT THEN drop
+   2dup CON-OF dup 0 <> IF nip nip SCHEMA-CON EXIT THEN drop
+   2dup FIELD-FAM? IF nip nip 0 0 SCHEMA-APP EXIT THEN drop
    2drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
-   dup SCH-APP? IF SCH-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
+   dup SCHEMA-APP? IF SCHEMA-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
 
 \ ---------------------------------------------------------------------------
 \ clause drivers. Each emits its event through DECL-EVENT (which owns duplicate /
@@ -282,13 +249,13 @@ SD-RESET
 
 : POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
    dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
-   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop LT-STACK EXIT THEN
-   2dup s" packed-tag" CORE-STR=CI IF 2drop LT-PACKED EXIT THEN
+   2dup s" stack-cell-tag" CORE-STR=CI IF 2drop TL-STACK-CELL-TAG EXIT THEN
+   2dup s" packed-tag" CORE-STR=CI IF 2drop TL-PACKED-TAG EXIT THEN
    2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
    SD-NEXT POLICY-CODE {: code:n :}
-   FAM @ code FAM-LAYOUT!
+   FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
 : DERIVE-FEATURE? ( ptr u8 n -- bool )  \ a known/recognised derive feature token
@@ -304,8 +271,8 @@ SD-RESET
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 : DERIVE-ONE ( ptr u8 n -- )            \ apply one feature + emit its event
    DERIVE-GUARD
-   2dup s" eq" CORE-STR=CI IF 2drop FAM @ FAM-EQ! FAM @ DV-EQ EMIT-DERIVE EXIT THEN
-   2dup s" hash" CORE-STR=CI IF 2drop FAM @ FAM-HASH! FAM @ DV-HASH EMIT-DERIVE EXIT THEN
+   2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
+   2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
@@ -318,12 +285,12 @@ SD-RESET
    AGAIN ;
 
 : EMIT-FIELD ( ptr u8 n n -- )          \ ( na nu node -- ) layout + drive the field event
-   SCH-ROOT+ {: sch:n :}                \ ( na nu )
-   sch SCH-ROOT@ SCH-WIDTH {: fw:n :}
+   SCHEMA-ROOT+ {: sch:n :}                \ ( na nu )
+   sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
    2dup DECL-REJECT:TOKEN!              \ the field name owns the field record's rejects
    s" duplicate field name" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ 2swap sch                \ ( tok fam na nu sch )
-   SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  FLAGS-NONE
+   SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD TOK !
    fw SD-CELLS @ + SD-CELLS !
    NFLD @ 1 + NFLD ! ;
@@ -339,14 +306,14 @@ SD-RESET
 \ transaction orchestration.
 \ ---------------------------------------------------------------------------
 : VIS ( -- n )                          \ declaration visibility (public at top level)
-   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF PKG-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN CHECKER-AUTH-PACKAGE-MODE@ ;
 : SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
    {: na:ptr nu:n ar:n :}
    ar SD-ARITY !
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
-   ACTIVE-PKG$ VIS na nu
-   ar TK-PROD FAM-DECL FAM !
+   TFAM-ACTIVE-PKG$ VIS na nu
+   ar TK-PRODUCT TFAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
    0 NFLD !   0 SD-CELLS !
    DECL-EVENT:CURRENT TOK !
@@ -357,8 +324,8 @@ SD-RESET
    FAM @ TFAM-PUBLIC? NFLD @ 0 > and ;
 : SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
    DECL-REJECT:AT-FAMILY                   \ close-stage faults belong to the whole declaration
-   FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
-   FAM @ SD-CELLS @ FAM-SLOTS!
+   FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
+   FAM @ SD-CELLS @ TFAM-SLOTS!
    \ No reason is armed for the generator's own rejects, for the same reason
    \ ED-CLOSE arms none: they are raised past the last token this front end
    \ holds, so an arming here would cover all of generation rather than the one

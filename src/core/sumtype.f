@@ -102,7 +102,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    rc 0= IF EXIT THEN
    TDECL-RESTORE
    TDECL-REPORT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF MULTI-ERR-COUNT+ EXIT THEN
    rc throw ;
 
 : TDECL-CTX! ( ptr u8 n ptr u8 n ptr u8 n -- )   \ kind, name, body
@@ -246,7 +246,7 @@ variable TDA-I
 
 \ --- body cursor over the buffered declaration tokens (checker sig lexer).
 : TDECL-CURSOR! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a SB!  u SL !  0 SI !
+   a u SIG-SCAN!
    PKRESET ;
 : TDECL-NEXT ( -- ptr u8 n ) NEXT-SIG-TOK ;
 
@@ -985,12 +985,10 @@ defer TDECL-OWNER-SNAPSHOT-XT ( -- )
 TDECL-OWNER-SNAPSHOT-DEFAULTS
 
 : TDECL-SCRATCH-SNAPSHOT-RESET ( -- )
-   CTOR-PEND-COUNT @ 0 <> IF
+   CTOR-PEND-N@ 0 <> IF
       s" sumtype: snapshot inside generated declaration" 76 die
    THEN
-   CTOR-PEND-BOOT CTOR-PEND-P !
-   CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
-   CTOR-PEND-CLEAR
+   CTOR-PEND-ARENA-BOOT
    TDPLAN-BOOT TDPLAN-P !
    TDPLAN-ROW-BOOT TDPLAN-ROW-P !
    TDPLAN-CAP-INIT TDPLAN-CAP !

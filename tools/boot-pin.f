@@ -132,15 +132,19 @@ variable BP-SET
    s" src/core/checker.f" q execute
    s" src/core/engine-error-effects.f" q execute
    s" src/core/lower-cert-base.f" q execute
-   s" src/core/type-schema.f" q execute
-   s" src/core/type-family.f" q execute
    s" src/core/render.f" q execute
-   s" src/core/sumtype.f" q execute
-   s" src/core/layout-buffer.f" q execute
-   s" src/core/layout-valid.f" q execute
    s" src/core/check-hook.f" q execute
    s" src/core/cell-effects.f" q execute
    s" src/core/pointer-storage-effects.f" q execute
+   s" src/core/util-effects.f" q execute
+   s" src/core/render-effects.f" q execute
+   s" src/core/checker-effects.f" q execute
+   s" src/core/lower-cert-effects.f" q execute
+   s" src/core/type-schema.f" q execute
+   s" src/core/type-family.f" q execute
+   s" src/core/sumtype.f" q execute
+   s" src/core/layout-buffer.f" q execute
+   s" src/core/layout-valid.f" q execute
    s" src/core/declaration-transaction.f" q execute
    s" src/core/generated-declaration.f" q execute
    s" src/core/structures.f" q execute

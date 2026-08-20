@@ -118,8 +118,6 @@ package DECL-EVENT
 \ SEAM forwarders (see header). TRUSTED: only for the two pre-hook words that
 \ still have no checker axiom; every field-owner call is checked and qualified.
 \ ---------------------------------------------------------------------------
-TRUSTED: DEV-NAME-VARIANT-REQUIRE ( ptr u8 n -- ) TYPE-NAME:VARIANT-REQUIRE ;
-TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
 
 \ ---------------------------------------------------------------------------
 \ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD/OWNER are
@@ -158,11 +156,10 @@ variable DEV-FOUND    \ private dedup-scan hit marker
 
 \ raw arena realloc is the one memory boundary the checker cannot model here
 \ (relocating base held in a variable); everything above/below stays checked.
-TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
 
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
-   DEV-A-P  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  DEV-REG-GROW1
+   DEV-A-P  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  REG-GROW1
    nc DEV-CAP-V ! ;
 : DEV-ENSURE ( -- )               \ room for the next event id (DEV-N)
    DEV-N @ DEV-CAP-V @ < IF exit THEN
@@ -220,7 +217,7 @@ variable DEV-TX-SERIAL
 : DEV-TX-BASE ( -- ptr a ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
    DEV-TX-CAP-V @ 2 * {: nc:n :}
-   DEV-TX-P  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  DEV-REG-GROW1
+   DEV-TX-P  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  REG-GROW1
    nc DEV-TX-CAP-V ! ;
 : DEV-TX-ENSURE ( -- )
    DEV-TX-DEPTH @ DEV-TX-CAP-V @ < IF exit THEN
@@ -456,8 +453,8 @@ variable DEV-TX-SERIAL
 \ Close clears the selector.
 : DEV-VARIANT ( n n ptr u8 n -- n ) {: tok:n fam:n na:ptr nu:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
-   na nu DEV-NAME-VARIANT-REQUIRE
-   fam na nu DEV-VAR-ORD @ 0 0 0 DEV-SUMV-ADD {: vid:n :}
+   na nu TYPE-NAME:VARIANT-REQUIRE
+   fam na nu DEV-VAR-ORD @ 0 0 0 SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
    DEV-VAR-ORD @ 1 + DEV-VAR-ORD !
    DEV-K-VARIANT fam vid DEV-NO-FIELD DEV-EMIT
@@ -610,7 +607,7 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
    DEV-PART-CAP @ 2 * {: nc:n :}
    DEV-PART-BASE-P
       DEV-PART-CAP @ DEV-PART-REC * cells
-      nc DEV-PART-REC * cells DEV-REG-GROW1
+      nc DEV-PART-REC * cells REG-GROW1
    nc DEV-PART-CAP ! ;
 
 : DEV-PART-ENSURE ( -- )

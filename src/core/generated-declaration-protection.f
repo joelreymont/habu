@@ -24,7 +24,6 @@ variable STAGE-N
 variable STAGE-CAP
 variable BASE-CAP
 
-TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 
 : CELL@ ( ptr a n -- a ) {: base:ptr idx:n :}
    base idx cells + @ ;
@@ -39,7 +38,7 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    need ;
 
 : GROW ( ptr ptr a n n -- ) {: pvar:ptr oldcap:n newcap:n :}
-   pvar @ oldcap cells newcap cells ARENA-GROW pvar ! ;
+   pvar @ oldcap cells newcap cells ARENA-BYTES-GROW pvar ! ;
 
 : STAGE-ENSURE ( -- )
    STAGE-N @ STAGE-CAP @ < IF EXIT THEN

@@ -158,11 +158,11 @@ TVINIT
 
 : PAY 3 rshift ;
 
-: MK-CON 3 lshift ;
+: MK-CON ( n -- n ) 3 lshift ;
 
-: MK-VAR 3 lshift T-VAR or ;
+: MK-VAR ( n -- n ) 3 lshift T-VAR or ;
 
-: MK-ROW 3 lshift S-ROW or ;
+: MK-ROW ( n -- n ) 3 lshift S-ROW or ;
 
 1024 constant MAXPTR-INIT       \ ptr terms (grows on demand)
 create PTRA-BOOT MAXPTR-INIT cells allot   variable PTRN
@@ -295,7 +295,7 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    QXNA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXNA-P !
    nc QE-CAP ! ;
 
-: MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
+: MK-QUOT ( n n n n -- n ) {: din:n dout:n rin:n rout:n :}   \ allocate a quot<effect> term
    QEN @ 1 + QE-ENSURE
    QEN @ 32 * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
@@ -476,11 +476,34 @@ defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct varia
 defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL whose declared output has a direct closed layout arg routes through the bidirectionally seeded construct step; scalar/pointer/open/linear args fall through
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
-defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
+defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index); render.f's DIAG-VARIANT reads the same tag through it
 defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
 defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args (dot habu-checker-type-structure)
+
+\ The renderer's half of the same wall. src/core/render.f installs RECXT, the
+\ only inferred-effect row producer, so it must load BEFORE the hook while the
+\ registry now loads after it — the diagnostic and recorded-signature paths reach
+\ the registry through these hooks for exactly that reason. TFAM-N-XT is the only
+\ one reached before the registry exists (FAM-INTERNED? runs on every rendered
+\ type term), and its registry-not-loaded default 0 is the true answer: no family
+\ is interned yet, so every id is out of range and FAM-NAME-REND takes the
+\ stored-span fallback it already documents. The rest are reachable only behind an
+\ interned family id or a latched SUMV id, neither of which can exist before
+\ type-family.f runs, so they carry no default and fail closed on DEFER-UNSET.
+defer TFAM-N-XT ( -- n )                                \ family high-water (0 = registry not loaded)
+defer TFAM-NAME-XT ( n -- ptr u8 n )                    \ family id -> interned tail name
+defer TFAM-VAR-START-XT ( n -- n )                      \ family id -> first SUMV row
+defer SUMV-NAME-XT ( n -- ptr u8 n )                    \ SUMV id -> variant tail name
+defer SUMV-FAM-XT ( n -- n )                            \ SUMV id -> owning family id
+defer SUMV-PAY-N-XT ( n -- n )                          \ SUMV id -> declaration-order payload count
+defer SUMV-PAY-FIELD-XT ( n n -- n bool )               \ SUMV id + decl-order slot -> field id, true | false
+defer PF-NAME-XT ( n -- ptr u8 n )                      \ field id -> declared field name
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
+\ The registry sets the id when it declares the reserved ctor and puts -1 back
+\ when it retires it; -1 is the only value that means "not declared", so the
+\ registry names the id it wants recorded and never writes the cell itself.
+: FIELD-FAM! ( n -- ) FIELD-FAM ! ;
 
 \ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
 \ type-family.f at registration (loaded after checker.f). A word whose declared
@@ -786,13 +809,14 @@ UK-EXACT UNIFY-KIND !
    PARAM-SCR-ENSURE
    PARAM-SCR-N @ cells PARAM-SCR + !
    PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
+: PARAM-SCR-N@ ( -- n ) PARAM-SCR-N @ ;   \ the caller's scratch mark, for a nested MK-PARAM build
 \ MK-PARAM ( base a u fam -- t ) : build a T-PARAM from the scratch args pushed at
 \ [base, PARAM-SCR-N); argc = PARAM-SCR-N - base. `base` is the caller's scratch
 \ mark, so nested/replayed param builds are reentrant: MK-PARAM rewinds the shared
 \ scratch back to `base` (never to 0), so a parent's already-pushed args survive.
 \ The argc args are copied into a fresh contiguous run in the flat PARGP pool
 \ (uncapped arity); the run start is recorded in PARAMOFF.
-: MK-PARAM {: base:n a:ptr u:n fam:n :}
+: MK-PARAM ( n ptr u8 n n -- n ) {: base:n a:ptr u:n fam:n :}
    PARAMN @ 1 + PARAM-ENSURE
    PARAM-SCR-N @ base - {: argc:n :}
    argc PARG-ENSURE
@@ -904,7 +928,8 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
    [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
    [: drop RES-FALSE ;] is CTOR-STEP-XT
-   [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT ;   \ no registry: field projection fails closed
+   [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT    \ no registry: field projection fails closed
+   [: 0 ;] is TFAM-N-XT ;                           \ no registry: nothing interned, so no id is in range
 TFAM-QUERY-DEFAULTS
 
 \ registry-not-armed default for the PTX block-barrier hook: drop the sym (do not
@@ -1936,6 +1961,11 @@ variable DEADERR  variable DEADTA  variable DEADTU
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
+\ Refuse the definition under check outright and latch the diagnostic set, so no
+\ later unification overwrites the reason. The only honest way for a registry
+\ rule to veto a certificate: OK and FAILSET are this file's verdict cells and
+\ nothing outside it may poke them.
+: CHECK-REJECT! ( -- ) 0 OK !  -1 FAILSET ! ;
 variable DF-ACT   variable DF-EXP
 \ ADT variant capture (item 13, docs/type-families.md §13): the sum-variant/tag
 \ involved at a layout mismatch. CVLIVE holds the SUMV id of the variant a
@@ -2169,7 +2199,7 @@ variable CDT-ROW
       1 +
    REPEAT drop 0 RES-FALSE ;
 
-: CHECKER-STEP {: din dout :}
+: CHECKER-STEP ( n n -- ) {: din:n dout:n :}
    din dout LIN-EXPLICIT? LINEXP !
    LINEXP @ 0= IF LIN-SNAPSHOT THEN
    DCUR @ WAS !
@@ -2940,7 +2970,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ (the prim DB and the toolchain's own body use n), and the unifier lets n
 \ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
 \ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
-: CON-OF {: a u :}                      \ multi-char name -> con code, or 0
+: CON-OF ( ptr u8 n -- n ) {: a:ptr u:n :}   \ multi-char name -> con code, or 0
    a u CT-FIND ;
 : SGBAD-CLEAR ( -- )
    -1 SGBAD-AR-DECL !
@@ -3113,6 +3143,12 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
 : SB! ( ptr u8 -- )
    SB-FIELD ! ;
+
+\ Point the signature lexer at a span and rewind it. SB/SL/SI are one cursor in
+\ three cells and only ever move together; handing a caller the three cells
+\ instead of this word is how a half-moved cursor gets written.
+: SIG-SCAN! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SB!  u SL !  0 SI ! ;
 
 : SS@ ( -- ptr u8 )
    SS-FIELD @ ;
@@ -3363,9 +3399,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
 : PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
-   a SB!
-   u SL !
-   0 SI !
+   a u SIG-SCAN!
    PSIG ;
 
 \ Parse one type application for the generative LAYOUT-BUFFER definer. This is
@@ -3381,7 +3415,7 @@ variable LBI-BAD
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a SB!  u SL !  0 SI !
+   a u SIG-SCAN!
    NEXT-SIG-TOK dup 0= IF 2drop 0 0 RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
@@ -3451,7 +3485,7 @@ variable LBI-BAD
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a SB!  u SL !  0 SI !
+   a u SIG-SCAN!
    NEXT-SIG-TOK dup 0= IF 2drop 0 RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
@@ -3522,7 +3556,7 @@ variable LBI-BAD
 
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
-   fields SB! fieldsu SL ! 0 SI !
+   fields fieldsu SIG-SCAN!
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
    BEGIN
@@ -3656,7 +3690,7 @@ variable UCP-I
 
 \ USIGS-COPY ( ptr a ptr a n -- ) : cell-wise store copy with a byte tail
 \ (ARM64 tolerates unaligned cell access; spans can start byte-aligned).
-: USIGS-COPY {: src:ptr dst:ptr n:n :}
+: USIGS-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
    0 UCP-I !
    begin UCP-I @ CELL + n <= while
       src UCP-I @ + @ dst UCP-I @ + !
@@ -4035,6 +4069,10 @@ TRUSTED: HIDX-MEM-NULL ( -- ptr a )
 
 : HIDX-GEN+ ( -- )
    HIDX-GEN @ 1 + HIDX-GEN ! ;
+
+\ The live generation, for an index built on this mapping to compare its own
+\ stamp against. A reader gets the number, never the cell.
+: HIDX-GEN@ ( -- n ) HIDX-GEN @ ;
 
 \ Dropping the mapping drops every index built on it: the HT-USX, HT-NRX and
 \ HT-SVX cells live in this allocation, so no index word may touch them until it
@@ -5223,6 +5261,9 @@ defer BADSIG-XT ( ptr u8 n ptr u8 n -- )
 BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
+\ One more rejected definition on this load. MULTI-ERR-END returns this count as
+\ the driver's exit verdict, so every rejecter increments it the same way.
+: MULTI-ERR-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 
 : USIG-BAD-FOREIGN? ( ptr u8 n -- bool )   \ not the definition CHECK just handled
    NMA @ NMU @ CORE-STR= 0= ;
@@ -5553,7 +5594,7 @@ variable ASIG-MISS-K
       s" : checker: bad stored signature" 76 die
    THEN
    na nu USIG-BAD-FOREIGN? 0= IF EXIT THEN
-   1 MULTI-ERR-N +!
+   MULTI-ERR-COUNT+
    sa su na nu BADSIG-XT ;
 
 : USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
@@ -6776,7 +6817,7 @@ TSTALE-DIAG-DEFAULT
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
    a TSR-TOK-A !  u TSR-TOK-U !
    TSTALE-DIAG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF MULTI-ERR-COUNT+ EXIT THEN
    E-TRUST-UNRESOLVED throw ;
 variable USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
@@ -10652,6 +10693,10 @@ variable CTLNEW
 variable TKFU
 variable SKI  variable SKF
 
+\ The folded token TOKFOLD just wrote. The buffer may be reallocated, so the
+\ span is only valid until the next fold — read it, do not keep it.
+: TKF$ ( -- ptr u8 n ) TKF TKFU @ ;
+
 : SGBAD-IN-SOURCE? ( -- bool )
    SGBAD-U @ 0= IF RES-FALSE EXIT THEN
    SGBAD-A @ TBASE @ < IF RES-FALSE EXIT THEN
@@ -12592,6 +12637,19 @@ variable CTOR-PEND-I
    0 CTOR-PEND-POS !
    0 CTOR-PEND-K ! ;
 
+\ How many constructors the plan is holding: a snapshot may only be taken
+\ between declarations, and a non-zero count says one is still open.
+: CTOR-PEND-N@ ( -- n ) CTOR-PEND-COUNT @ ;
+
+\ Put the plan back on its boot buffer and empty it. A grown plan's arena is
+\ scratch that a snapshot/restore cycle must not carry across, and the boot
+\ buffer plus its initial capacity are this file's own storage, so the reset
+\ belongs here rather than in a caller poking three cells.
+: CTOR-PEND-ARENA-BOOT ( -- )
+   CTOR-PEND-BOOT CTOR-PEND-P !
+   CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
+   CTOR-PEND-CLEAR ;
+
 : CTOR-PEND-SYM+ ( n n -- ) {: sym:n cells:n :}
    cells 0 < IF s" checker: negative generated constructor width" 76 die THEN
    CTOR-PEND-ENSURE
@@ -12779,7 +12837,7 @@ variable CTOR-PEND-I
       THEN
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
-      1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
+      MULTI-ERR-COUNT+                                  \ count it (fail-closed exit) and
       CHECK-SIG? SGBAD @ 0= and IF                      \ trust the declared sig so later
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking —
       THEN                                              \ unless the sig itself was bad

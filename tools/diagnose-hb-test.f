@@ -13,7 +13,9 @@ package DHT
 
 $4000 constant CAP
 10000 constant TIMEOUT-MS
-31 constant COMMON-N               \ pre-hook structures effect rows retired
+35 constant COMMON-N               \ +4: the checker/util/render/lower-cert effect
+                                   \ rows the post-hook type foundation needs
+                                   \ (dot habu-route-3-the-64078d43)
 
 variable OUT-A
 variable ERR-A
