@@ -7626,3 +7626,21 @@ and --no-lldbinit.
   which dot you are reversing.** `using-test.f`'s FRESH precondition and
   `internal-word-gate.f`'s CT-LIVE? case both named their own obsolescence
   condition in advance.
+
+- **A definer that "just stores a number" is a type boundary.** Generic
+  `constant` erases nominal roles silently, and the failure surfaces at a
+  READER far from the store — the diagnostic named a word three definitions
+  from the bug. When a role-typed value is published, check what the definer
+  records, not what the value was.
+- **Fixing the first site is not fixing the defect.** The load aborts at the
+  first refusal, so the second site was invisible until the first was
+  repaired. Sweep by construct (rg for the definer over role-producing
+  words), never by chasing the error message.
+- **A test green standalone and absent from every inventory is worth zero.**
+  The serve test passed with no arguments the whole time the production
+  commands were dead. Cheapest audit: cross-check *-test.f files against the
+  SUITE lines; anything left over names its own command or its exemption.
+- **When a test cannot be scheduled, spawn the real command.** An entry that
+  loads reaches its own argument guard; the exit code alone separates
+  "loaded and refused" (alive) from "failed to certify" (dead) — no
+  checkpoint needed.
