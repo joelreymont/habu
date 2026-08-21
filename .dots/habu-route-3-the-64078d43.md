@@ -38,14 +38,17 @@ SCOUTED VERDICT (2026-08-20, full map in the scout report; re-measured):
    If the owner-side bill approaches that, route 3 nets far less than the
    epic assumes - re-open the ruling on that number.
 
-Claim: agent=route3-5 workspace=.jj-ws/habu-trusted (TAKEOVER 2026-08-21 from
+Claim: agent=route3-6 workspace=.jj-ws/habu-trusted (TAKEOVER 2026-08-21 from
+route3-5, which stood down at depth with SCHEMA-REG's half of the lifecycle
+contract banked and section 19's one open interface decision left for its
+successor. Section 20 is this lane's record. Earlier claim history, kept because
+each takeover names what it inherited: agent=route3-5 (TAKEOVER 2026-08-21 from
 route3-4, which stood down at depth with the mechanism landed and step 2's
 census measured but its first conversion batch failing for an unknown reason -
 see BANKED BY ROUTE3-3 for the first lane's record, MEASURED BY ROUTE3-4 for
 the attribution pass, and SOLVED BY ROUTE3-5 at the end of this leaf, which
 supersedes §8's reading of the failure AND §7's interpret-route residue.
-ROUTE3-5 STOOD DOWN AT DEPTH after banking SCHEMA-REG's unit; §19 is the
-successor's first commit and the claim is open for takeover)
+ROUTE3-5 STOOD DOWN AT DEPTH after banking SCHEMA-REG's unit))
 
 HARD GATE ANSWERED (2026-08-20, lane route3-1). ALL 662 DEFINITIONS
 TYPECHECK. Measured through the real driver, tools/check.f -> check-core.f
@@ -124,43 +127,16 @@ merged); most of it survives the reordering and it is the record the next lane
 starts from rather than re-deriving. Nothing below is an estimate: every number
 came off the real prefix build.
 
-WHAT IT DELIVERED, so the size of the prize is on the record. src/'s TRUSTED:
-census goes 218 -> 123: NINETY-FIVE rows deleted. Per file: enum-decl.f 39->9,
-structure-decl.f 35->8, generated-declaration.f 23->13, structure-make.f 8->2,
-decl-event.f 3->0, plus one each in generated-declaration-dictionary.f and
-generated-declaration-protection.f. 74 of those were one-token forwarders into
-the moved block; the other 21 were forwarders into checker.f words the new rows
-answer (CON-OF, CC-N/CC-BOOL/CC-R, CHECKER-PACKAGE-PUBLIC, MULTI-ERR?,
-CTOR-PEND-CLEAR, ARENA-BYTES-GROW, REG-GROW1, TYPE-NAME:CONTROL?,
-TYPE-NAME:VARIANT-REQUIRE, SUMV-N@, MULTI-COUNT+). The block builds a
-byte-identical fixpoint twice (872d9292...), maki/test.f rc 0, typed-local
-diff lint 0, error-code-lint 0, dot lint 0, bootstrap-mirror-lint 0, and
-boot-pin, diagnose-hb, using, type-family, type-decl, enum-decl,
-structure-decl, layout-valid and lower-cert suites all rc 0.
+WHAT IT DELIVERED is the 95-row headline BANKED BY ROUTE3-3 re-measured below,
+with the per-file breakdown; that section supersedes this one's numbers.
 
-THE STOP - FINDING 1, MEASURED. Recording a signature IS publishing an API.
-src/core/internal-mark.f welds the two together by design: "the executable
-top-level name universe equals the checker's". So making the registry checked
-publishes its 653 GLOBAL definitions (type-schema.f 60, type-family.f 359,
-sumtype.f 202, layout-buffer.f 32; layout-valid.f 0 - it is fully packaged)
-as top-level-executable, checked-callable user API. This four-line user
-program runs to exit 0 on the candidate engine:
-
-    TFAM-N@ . cr        \ 119
-    TFAM-RESET          \ wipes the family registry from user source
-    TFAM-N@ . cr        \ 0
-    : LEAK-PF ( n n ptr u8 n -- n bool ) PF-FIND ;
-
-The tree's own gate says that must be refused: test/internal-word-gate.f
-OPENER-CASES asserts `: IWG-PF-RAW ( n n ptr u8 n -- n bool ) PF-FIND ;` is
-rejected at 'PF-FIND' ("raw implementation names are not checked/public", dot
-habu-protect-type-field-04d91409), and that is the assertion the candidate
-breaks. The same mechanism re-published CT-LIVE? (reversing
-habu-internalize-field-liveness for its one historical consumer,
-type-family.f PF-NODE-KIND?) and T-RES. RULING: route 3 lands AFTER the
-registry is sealed. Trading 95 package-private unchecked declarations for 653
-globally-callable registry internals is the fix-review gate's definition of
-worse.
+THE STOP - FINDING 1, RULED AND EXECUTED (section 7). Recording a signature IS
+publishing an API: src/core/internal-mark.f welds "checker-known" to "top-level
+executable", so making the registry checked published its 653 GLOBAL definitions
+as checked-callable user API - `TFAM-RESET` from four lines of user source wiped
+the family registry at exit 0, and test/internal-word-gate.f OPENER-CASES already
+asserted that class must be refused. Closed by IMPLEMENTATION/API (section 7);
+the witness is a scheduled case.
 
 THE CONTAINMENT IS PACKAGING, AND THE LANE PROVED IT ON A WORKING EXAMPLE.
 src/core/lower-cert-effects.f publishes 16 rows inside `package LOWER-CERT`,
@@ -324,66 +300,34 @@ usually has none once that caller is served properly, and deletion beats a
 rename.
 
 --- 2. SEAL STATE, AND 113ecd89 --------------------------------------------
-`package X private ... ;package` from an ordinary `bin/hb --load` program:
-
-    package      before        after      closed by
-    TFAM         rc 84         rc 84      RESTAB (habu2.f KWDATA:RESTAB-BUF)
-    LOWER-CERT   rc 84         rc 84      RESTAB
-    SCHEMA-REG   rc 0 REOPENED rc 84      this lane's ceremony
-    TYPE-DECL    rc 0 REOPENED rc 84      this lane's ceremony
-
-So HALF the registry packages were already closed against reopen for a reason
-that has nothing to do with sealing - measure the reopen route per package
-before writing a ceremony. The two that needed it now carry src/habu/xref.f's
-ceremony (`private get-current prot-wid-add public get-current prot-wid-add`),
-placed before the closer of the LAST block that opens the package:
-src/core/type-schema.f tail, and src/core/sumtype.f BEFORE its `;package` at
-the TDECL-TXN-XT line - NOT at end of file, where the seven global grammar
-words live outside the package (that mistake is exit 75 printing the bare token
-`private` and nothing else).
-
-The two habu-pkg-reopen-reaches-113ecd89 WITNESS PROGRAMS, both previously
-rc 134 SIGSEGVs, are now refused AT THE REOPEN with rc 84, before the poke:
+`package X private ... ;package` from an ordinary `bin/hb --load` program: TFAM
+and LOWER-CERT were ALREADY rc 84 before any ceremony, closed by RESTAB
+(habu2.f KWDATA:RESTAB-BUF); SCHEMA-REG and TYPE-DECL went rc 0 REOPENED -> rc 84
+under this lane's ceremony. So measure the reopen route per package before
+writing one - half of them may already answer. The two that needed it carry
+src/habu/xref.f's ceremony (`private get-current prot-wid-add public
+get-current prot-wid-add`) before the closer of the LAST block that opens the
+package: src/core/type-schema.f tail, and src/core/sumtype.f BEFORE its
+`;package` at the TDECL-TXN-XT line - NOT at end of file, where the seven global
+grammar words live outside the package (that mistake is exit 75 printing the bare
+token `private` and nothing else).
+The two habu-pkg-reopen-reaches-113ecd89 WITNESS PROGRAMS, both previously rc 134
+SIGSEGVs, are now refused AT THE REOPEN with rc 84, before the poke:
     package TYPE-DECL / private / 0 TDPLAN-P ! / ;package / SUMTYPE ...
     package SCHEMA-REG / private / 0 SCH-RBF-P ! / ;package / SUMTYPE ...
-STILL OWED: these two witnesses and the four reopen-after-seal legs exist only
-as scratch probes in the lane's scratchpad. They must become REGISTERED cases
-(test/internal-word-gate.f is their home) before this lands - a passing probe
-is not a scheduled test.
+STILL OWED: these two witnesses and the four reopen-after-seal legs exist only as
+scratch probes. They must become REGISTERED cases (test/internal-word-gate.f is
+their home) before this lands - a passing probe is not a scheduled test.
 
---- 3. RECLASSIFICATION CENSUS (build step 1) -------------------------------
-TFAM, 221 publics, measured by consumer:
-    59  no consumer outside src/core/type-family.f at all  (the inner-package
-        class the seal leaf predicted: TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER,
-        CHECKER-DECL-FRAME, PREFIX-BOUND read the registry through the file's
-        own `using TFAM`)
-    14  consumed ONLY by prefix sibling implementation files
-    ---
-    73  PRIVATE CANDIDATES of 221
-Consumer-count histogram over the rest: 62 publics have exactly one consumer,
-32 have two, 14 three, 14 four, and the tail runs to one name with 22. The 14
-sibling-only names: DRV-EQ DRV-HASH PF-FAM-LIVE? PF-NAME-REQUIRE
-TDECL-FIELD-CLEANUP-XT TDECL-FIELD-RELEASE-XT TF-GRAMMAR-KEYWORD? TF-UPPER-C
-TFAM-DERIVE-ANY? TFAM-DERIVE-EQ! TFAM-DERIVE-HASH! TFAM-DERIVED-TAIL?
-TFAM-REWIND TFCL-NODE? (the last has TEST consumers - tests are not
-implementation, check before privatising it).
-ZERO TFAM publics are consumed by enum-decl.f alone, which is why the probe
-case had to come from the sibling-only set.
-SCHEMA-REG (63 publics) and TYPE-DECL (45 publics) are UNCENSUSED.
+--- 3. RECLASSIFICATION CENSUS (build step 1) — SUPERSEDED by ruling 1 -------
+The public->private sweep this censused is not the chosen route (see 15). Kept
+for its one live fact: ZERO TFAM publics are consumed by enum-decl.f alone, so
+the DERIVE-SET probe case had to come from the sibling-only set.
 
---- 4. THE 13 RED ASSERTIONS ------------------------------------------------
-test/internal-word-gate.f fails 13 assertions on the candidate: ordinals 36,
-52, 389, 393, 425, 426, 427, 429, 430, 431, 443, 467, 507. Two of them (425 and
-429, both `expected 70 got 0`) are the class route3-2 documented in its own
-internal-word-gate hunks: T-RES and CT-LIVE? gain rows because a CHECKED
-consumer needs them, so the marking pass stops hiding the name and guards it on
-declared input depth (DNAME-MIN-IN) instead. THE OTHER ELEVEN ARE UNATTRIBUTED.
-A successor must attribute each one before touching any of them - updating a
-number you have not explained is how this campaign's worst near-miss happened,
-and `internal-word-gate.f` has twice now named its own obsolescence condition
-in advance. Under the ruling these re-derive to pin the new containment:
-privates unreachable by every route INCLUDING reopen-after-seal, publics
-callable, protected cells refused.
+--- 4. THE 13 RED ASSERTIONS — CLOSED -------------------------------------
+Ordinals 36 52 389 393 425 426 427 429 430 431 443 467 507. Each is attributed
+to its mechanism in MEASURED BY ROUTE3-4 section 1, and all thirteen are green
+since ruling 1 landed (section 7), with no gate assertion edited.
 
 --- 5. BATTERY STILL OWED ---------------------------------------------------
 test/run.f UNSANDBOXED (the orchestrator's sandboxed shell mass-fails
@@ -672,37 +616,12 @@ LESSONS (verbatim, for LESSONS.md at merge):
   public. Only `private` closes both routes; measure the checked route
   separately or you will believe a hole is shut when half of it is open.
 
---- 8. STEP 2 STARTED, AND WHERE IT STOPPED (route3-4, at depth) -------------
-CENSUS OF THE CHECKED ROUTE, which is what step 2 has to close. Of the 291
-package publics reachable from checked user code on the candidate and
-E-UNDEFINED on master:
-     71  reachable only from files that already reopen the package
-         (TFAM 64, TYPE-DECL 7) - the set that should cost nothing
-    220  need a conversion (SCHEMA-REG 61, TFAM 130, TYPE-DECL 27, TYPE-NAME 2);
-         126 of those have test-only consumers, 94 production ones
-Production consumer files, by how many names each reaches: type-family-suite 51,
-type-family.f 38, enum-decl.f 30, structure-decl.f 27, sumtype.f 26,
-type-decl-suite 26, type-ctor-suite 17, type-family-rollback-suite 16,
-layout-valid.f 14, structure-make-suite 12, enum-decl-suite 11,
-structure-decl-suite 11, structure-make.f 11, then a tail of 30 files at 10 or
-fewer. The full per-name table is the lane's sweep291.json; regenerate it with
-tools/lint/source-lex.f rather than trusting this summary.
-
-THE 71 "FREE" CONVERSIONS ARE NOT FREE, AND THIS LANE DID NOT KNOW WHY.
-Applied mechanically the prefix stops loading with `E-UNDEFINED: TF.NAME-OFF`.
-Attributed in §9-§11 below: the census counted files, not scopes, and the
-failure is at type-family.f:448, not at the layout self-check. The lead this
-section left - instrument the checker's package mirror - is a DEAD END; do not
-spend the hour. The sweep edit was REVERTED; nothing of it is in the banked
-commit.
-
-WHAT THE SUCCESSOR INHERITS, all in this workspace: the mechanism (landed and
-green), the two residue measurements and the tooling that produces them -
-a dictionary dumper that reads the engine's own record array for both routes,
-a checked-body prober over every package public, and a structural token dumper
-built on tools/lint/source-lex.f. Reproduce the landing's numbers before
-touching anything: interpret-route residue 0, API regressions 0, and the
-checked-route figure 291, which is step 2's whole job.
+--- 8. STEP 2's FILE-GRANULAR CENSUS — SUPERSEDED by 11 --------------------
+It counted FILES, not scopes, and its "71 free conversions" are 0 free on scope.
+Its lead (instrument the checker's package mirror) is a DEAD END - do not spend
+the hour. The per-name table it produced is the lane's sweep291.json; regenerate
+with tools/lint/source-lex.f rather than trusting any summary of it. The sweep
+edit was REVERTED; nothing of it is in the banked commit.
 
 SOLVED BY ROUTE3-5 (2026-08-21). The mystery is attributed, §8's lead was a
 dead end, §7's interpret-route residue was wrong by ten names and is now really
@@ -750,22 +669,18 @@ prefix / 63 test-tool, SCHEMA-REG 45/16, TYPE-DECL 17/17, TYPE-NAME 2/0 -
 nine files sharing one registry, and prefix-scope consumers cost nothing under
 retirement because they compile first.
 
---- 12-13. WHY THE SWEEP COULD NOT EXPRESS THESE, AND WHAT CLOSES IT --------
+--- 12-13. WHY THE SWEEP COULD NOT EXPRESS THESE — capability dotted --------
 The DERIVE-SET shape serves a sibling needing one composite OPERATION. It cannot
-serve a sibling that is the registry's own PUBLIC VIEW: `package TYPE-FIELD`
-(type-family.f:2270-2308) is fifteen one-line forwarders, `: ALIGN@ ( n -- n )
-PF-ALIGN@ ;` and fourteen like it, each already marked API. TYPE-FIELD:ALIGN@ IS
-the API and TFAM:PF-ALIGN@ IS the implementation, and nothing moves the forwarder
-into TFAM's private scope: reopening TFAM renames the public and cascades its
-callers, EXPORT republishes under the same tail so it cannot rename, packages do
+serve a sibling that IS the registry's public view: `package TYPE-FIELD`
+(type-family.f:2270-2308) is fifteen one-line forwarders already marked API, and
+nothing moves a forwarder into TFAM's private scope - reopening renames the
+public and cascades callers, EXPORT republishes under the same tail, packages do
 not nest. TYPE-FIELD-OWNER, CHECKER-DECL-FRAME, PREFIX-BOUND and TYPE-NAME are
 the same shape. Capability dotted and closed at habu-a-pkg-needs-92764584.
 WHAT CLOSES IT INSTEAD: the checked route has exactly two entries and both read
 the package PUBLIC wordlist - qualified `TFAM:X`, and bare `X` under `using TFAM`,
-which ordinary user source may open (measured: `using TFAM : W ( -- )
-$63 PF-COMMIT-N ! ;` runs, TYPE-FIELD:COUNT goes 48 -> 99, exit 0). So §7's "only
-private closes both routes" survives re-derivation, but removal need not be a
-SOURCE edit. §16 builds the pass that does it.
+which ordinary user source may open. So "only private closes both routes"
+survives, but removal need not be a SOURCE edit: section 16 builds the pass.
 
 --- 14. §7's INTERPRET RESIDUE WAS 10, NOT 0; IT IS 0 NOW -------------------
 Measured differentially over the whole record array: ten names open on the
@@ -929,6 +844,74 @@ test/enum-decl-suite.f:87-95 and test/structure-decl-suite.f:70-78 REG-MARK/
 REG-RESTORE and the four TWX-TFAM-RESET/TWX-SCHEMA-RESET pairs WHOLE, then TFAM's
 marks, then the pass over both packages with PF-COMMIT-N retiring and
 test/type-field-owner-suite.f assert 188 strengthening in the same commit.
+
+--- 20. THE LIFECYCLE CONTRACT IS OVERTURNED AND DELETED (route3-6, 2026-08-21)
+STATUS AT HANDOFF (machine being wiped): step 1 of the overturn is DONE and
+verified; step 2 (child-process test conversion) is NOT STARTED; nothing is
+half-done - the source tree carries only the deletion.
+
+THE USER RULING, and its derivation. A published save/restore facility whose
+ONLY clients are test suites is a capability without a consumer: the tree's own
+testing idiom already isolates a polluting case by running it in a CHILD PROCESS
+(the RUN-LOAD idiom internal-word-gate uses throughout). Fresh engine, register
+freely, exit, nothing to restore. So SCHEMA-MARK/SCHEMA-RESTORE are DELETED and
+TFAM's half is NOT BUILT. The registries' internal rewind machinery - COUNTS,
+REWIND, TFAM-REWIND, PFX-MARK/PFX-REWIND, SCHEMA-ROLLBACK-* - stays
+implementation, unpublished and untouched. The facility lived less than a day
+because the question "who actually needs this" finally got asked; that is the
+campaign's simplification rule applied to its own freshly built machinery.
+
+DONE: the pair and its 21-line block are gone from src/core/type-schema.f. Boot
+rc 0. Nothing in the tree referenced either name. The criterion header, the
+self-check (SCH-BAD-TAG-REFUSED?/SCH-GUARD-HELD) and the remaining 35 marks
+stand. INTERPRET-ROUTE CENSUS re-printed against master 81d88a3a: 29 -> 27 names
+newly reachable, all 27 DECLARED API, UNDECLARED RESIDUE 0, API regressions 0 -
+a smaller published surface than before the ruling, as the ruling predicted.
+
+WHAT ROUTE3-6 BUILT AND THREW AWAY, recorded so nobody rebuilds it: TFAM's frame
+pair (TFAM:REGISTRY-MARK/REGISTRY-RESTORE over a private 7-cell save-point stack,
+five named refusals, 9 mutants each caught by a scheduled gate, all lints rc 0)
+was complete and green when the ruling landed, and was reverted whole. Two facts
+from it survive the revert and are worth keeping:
+  - CORRECTION: section 18's "an unpaired push ... fails the first declaration
+    after it (measured: throw 7113)" names a code this tree does not have. The
+    lockstep assertion is TF-RESTORE/TF-FINALIZE running TF-RBF-TOP PF-DEPTH=,
+    which throws E-PF-TX = 7123. A predecessor's number is a claim.
+  - THE CENSUS INSTRUMENT IS REBUILT AND STRONGER (r36-dict.f, r36-dict-m.f,
+    r36-census.py in the lane scratch): two extra columns per record, read out of
+    the engine's own record array, for "inside a declared IMPLEMENTATION span"
+    and "carries an API mark", plus a watermark at the instrument's own first
+    record so a census cannot count its own definitions - the predecessor's four
+    Q* helpers would have read as undeclared residue. Falsified over the whole
+    candidate dictionary: COLON records inside a declared span reachable WITHOUT
+    an API mark number ZERO, so the span mechanism has no colon-shaped hole.
+
+STEP 2, SCOPED BUT NOT STARTED, and the scoping changes its size. The polluting
+fixtures split into two classes and only one of them needs a child:
+  - BASELINE READS (the majority): REG-MARK with no REG-RESTORE under it -
+    enum-decl-suite 390 404 519 627 837 840 995, structure-decl-suite 144 - just
+    captures nine counters to assert a rejected declaration rolled back. No
+    isolation involved. These convert to the DECLARED ACCESSORS, which already
+    exist and are already API: TFAM-N@ TF-STR-U@ TF-PK-N@ SUMV-N@ LAY-N@,
+    SCHEMA-REG:SCHEMA-N@ SCHEMA-ROOT-N@, TYPE-FIELD:COUNT. That is what makes
+    them survive retirement, and it needs no process machinery at all.
+  - REAL POLLUTION (the minority): the two declaration-IDENTITY blocks that
+    re-declare the same family against a hand-rewound registry -
+    enum-decl-suite 453-481, structure-decl-suite 189-197 - plus the between-case
+    TWX-TFAM-RESET/TWX-SCHEMA-RESET pairs at structure-make-suite 226 238 250,
+    type-family-suite 269-270, type-family-rollback-suite 146 297 362 364. These
+    are the children. Note the suite-START resets (rollback-suite 90-91,
+    decl-event-suite 59-60, structure-make-suite 133-134, type-family-suite
+    242-243) are NOT pollution: each suite is already its own child process.
+  ONE GAP MEASURED: PF-N has no declared reader. TFAM:PF-N@ reads PF-COMMIT-N,
+  not PF-N, and is itself unmarked (int-marked today). A baseline that wants the
+  provisional field cursor has no API to ask; TYPE-FIELD:COUNT answers the
+  committed one. Decide before the conversion touches a PF-N site.
+  DESIGN NOT TAKEN, and it is why this lane stopped rather than start it:
+  enum-decl-suite and structure-decl-suite carry NO process machinery, and the
+  identity cases compare a value computed in-process (DECL-EVENT:IDENTITY), so a
+  child has to PRINT it and the parent compare stdout. That is expressible but it
+  is a new shape for those two files, not an edit.
 
 --- 15. THE THREE RULINGS, AND WHERE EACH ONE STANDS ------------------------
   1. RULED: the retirement pass, not the sweep, not a new visibility capability.

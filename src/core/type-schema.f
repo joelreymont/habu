@@ -445,27 +445,6 @@ public
    n SCH-N !
    rootn SCH-ROOT-N ! ;
 
-\ ---- the lifecycle contract: mark, declare, restore -------------------------
-\ A client that needs isolation across declarations - a suite between cases, a
-\ maintainer instrument between runs - takes a mark before it declares and
-\ restores to it afterwards. Node and root cells are pointer-free, so putting the
-\ two counts back retires every entry above them; that is the whole contract and
-\ there is no entry-by-entry undo to publish. RESTORE inherits REWIND's bounds
-\ die, so a pair this registry never issued fails closed instead of corrupting
-\ the arena, and a mark can only be restored DOWNWARD.
-\ This is the front door that has to exist because the need is real: without it a
-\ suite reaches for SCHEMA-RESET, which returns the registry to its BOOT base and
-\ discards every schema the prefix registered - the wipe dot
-\ habu-pkg-publics-escape-41532ee7 measured. A client need that can only be met
-\ by raw internal writes means the interface was missing.
-: SCHEMA-MARK ( -- n n )
-   COUNTS ;
-API   \ SCHEMA-REG:SCHEMA-MARK
-
-: SCHEMA-RESTORE ( n n -- )
-   REWIND ;
-API   \ SCHEMA-REG:SCHEMA-RESTORE
-
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
 : SCHEMA-RBF-SNAP-RESET ( -- )
