@@ -1,9 +1,11 @@
 ---
 title: Focused gate-runner slices exit 77 with lone-colon output
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-08T20:39:00.798054+02:00"
+closed-at: "2026-08-21T09:40:14.207284+02:00"
+close-reason: "Tracker GC 2026-08-21, proof commit-in-master plus re-run. The leaf names its own fix and its own closing action: commit db88a576 (Regress gate-runner-entry standalone load; close dot) with engine commit 9004102c (Raise dict capacity and label capacity exits), then run the focused command, confirm rc=0 with GROUP:/PASS output, then close this dot. Both commits are in master ancestry: jj log -r 'db88a576 & ::master' prints db88a57628f3 and jj log -r '9004102c & ::master' prints 9004102cc9dd. Re-ran the leaf's exact command in this workspace on master cd7d96c0 - printf '' | bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f -- lint-libs-ptx - rc 0, output GROUP: stdlib/lint-libs/ptx [sequential] ... PASS: lint-libs-ptx (170ms). The reported rc 77 with the lone colon byte is gone."
 ---
 
 printf '' | bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f
