@@ -301,3 +301,18 @@ still loaded UNCHECKED, so route 3's own goal for this file runs into item 3
 above and needs the checked-half split before its publics are callable from
 checked code; (d) layout-buffer.f (32 globals) is the one row of the original
 exposure table nobody has sealed, and it is now the only unsealed registry.
+
+ALL THREE SEALS LANDED (2026-08-21, master abefd6a8): SCHEMA-REG (pilot,
+4370532e), TFAM (3953b360), TYPE-DECL (dffcc30e - 45/271/7, six PTR-VARIABLE
+one-line SIGSEGVs sealed, engine sweep clean, zero new axioms, whole-file
+exception -> TYPE-DECL-GRAMMAR? 8/8-mutation row). The sealing phase is
+COMPLETE; route 3 re-derives against all three. Rulings on seal-5's two
+deferred items: (1) a RESTAB row for type-decl is DEFERRED to the reopen dot
+113ecd89 - the reopen defect's fix decides whether reserved names or sealed
+packages close that route tree-wide; piecemeal RESTAB rows would paper it.
+(2) The four CHECKER-DEF* hooks stay global by policy WITH seal-5's bounding
+measurement on the lint row (no engine spelling or AOT site requires it) -
+revisit only if a consumer cascade ever needs them packaged. Residuals owned:
+armed-writer cells (retirement written beside them), layout-buffer.f the last
+unsealed registry (32 globals), tick-of-unresolvable pushes nothing (uniform
+engine behavior - fold into 421f6ec0's tick dot).
