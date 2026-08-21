@@ -6,9 +6,6 @@ issue-type: task
 created-at: "2026-07-22T09:41:52.327832+02:00"
 blocks:
   - habu-prove-gb10-inference-d43eecce
-  - habu-parse-gpt-2-c8baa4db
-  - habu-use-canonical-checkpoint-92eac785
-  - habu-add-kv-layer-41961bed
 ---
 
 Why this exists:

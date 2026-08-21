@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-27T09:38:47.215580+02:00"
 closed-at: "2026-08-02T16:55:10.947184+02:00"
 close-reason: "Obsolete in exact ancestry: 85a9646fd6b97e5d2cbb86d637bcf8d8ab2aece8 deleted the sole filemap-lint subject."
-blocks:
-  - habu-pkg-filemap-lint-5d7baf5c
 ---
 
 tools/filemap-lint.f keeps a private FM-EXISTS? ( ptr u8 n -- bool ) at lines 57-58 that is a near-duplicate of EXISTS? in lib/fs.f:180. Both are path-existence checks and both are literally the same system call, `access(path, F_OK) == 0`; the filemap copy differs only in how it null-terminates the path, using LINT-PATHZ and the shared PATHBUF from tools/lint/text.f instead of FS-PATHZ and its own buffer. Owned result: delete FM-EXISTS? and call the library word, or prove a real behavioral difference and name the word for that difference.

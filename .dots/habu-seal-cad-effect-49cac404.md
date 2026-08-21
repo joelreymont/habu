@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-13T14:26:04.242036+02:00"
 blocks:
-  - habu-define-finite-cad-0bdf52ad
   - habu-checker-sealed-destructure-d967fc03
 ---
 

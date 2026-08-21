@@ -5,8 +5,6 @@ priority: 1
 issue-type: task
 created-at: "\"\\\"2026-07-13T17:13:45.006634+02:00\\\"\""
 blocks:
-  - habu-structure-generate-make-872a6e75
-  - habu-checker-type-structure-d996215b
   - habu-record-field-visibility-7bb1f8a7
 ---
 

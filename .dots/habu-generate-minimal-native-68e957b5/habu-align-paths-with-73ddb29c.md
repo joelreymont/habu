@@ -8,7 +8,6 @@ blocks:
   - habu-add-nested-pkg-d602c8f1
   - habu-pkg-ptx-compiler-db8cfa46
   - habu-pkg-maki-stores-8fc7f77b
-  - habu-adjudicate-dormant-ptx-482310bc
 ---
 
 Invariant: a subsystem package and its physical directory express the same ownership boundary; broad flat directories do not mix unrelated GPU, CUDA, store, autodiff, optimizer, and model concerns. Current flat roots contain more than two hundred Maki Forth modules and eighty-five PTX modules, including coherent clusters that already have or need distinct package owners.

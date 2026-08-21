@@ -8,7 +8,6 @@ blocks:
   - habu-infer-dense-large-a2437ab1
   - habu-encode-qwen-text-cf8260df
   - habu-upload-qwen-weights-ae774802
-  - habu-own-gpt-2-22b5e92b
   - habu-complete-qwen-runtime-f5fa19f2
   - habu-own-model-asset-c6f938e4
 ---

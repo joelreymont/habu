@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-30T07:31:05.255797+02:00"
 blocks:
   - habu-parse-serve-cmd-07cb5e18
-  - habu-own-gpt-2-22b5e92b
   - habu-infer-dense-full-14833530
 ---
 

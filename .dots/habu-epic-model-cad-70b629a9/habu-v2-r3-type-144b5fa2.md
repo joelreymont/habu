@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-12T07:41:45.031596+02:00"
 blocks:
-  - habu-v2-r3-type-69e81081
   - habu-verify-typed-region-6659e9af
 ---
 

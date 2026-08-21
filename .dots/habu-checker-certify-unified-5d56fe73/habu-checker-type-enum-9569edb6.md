@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"2026-07-13T17:14:49.624384+02:00\""
 closed-at: "2026-07-21T22:44:11.478374+02:00"
 close-reason: Unified named payload access now drives construction, matching, layout, and concrete linearity; negative regressions and the exact native gate passed on b925e8e427ab.
-blocks:
-  - habu-checker-type-structure-d996215b
 ---
 
 Own construct/MATCH effects and field-aware diagnostics for unified ENUM. Route

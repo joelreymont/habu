@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-23T07:47:11.550005+02:00"
-blocks:
-  - habu-consume-registry-events-efe7fe5e
 ---
 
 Problem: type-family.f installs raw combined rollback callbacks, schema owns a

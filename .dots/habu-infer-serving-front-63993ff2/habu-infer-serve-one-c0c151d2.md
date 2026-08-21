@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T10:07:44.376529+02:00"
-blocks:
-  - habu-drive-completion-cmd-b4ca1b5d
 ---
 
 Why: the engine is not a usable vLLM replacement until one native process retains an authenticated model and serves more than one exact completion request.

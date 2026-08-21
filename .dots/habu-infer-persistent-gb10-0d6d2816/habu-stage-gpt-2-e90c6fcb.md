@@ -6,9 +6,6 @@ issue-type: task
 created-at: "2026-07-30T00:01:46.875486+02:00"
 blocks:
   - habu-own-gpt-2-3292019c
-  - habu-pin-gpt-2-cdb5cfe0
-  - habu-use-canonical-checkpoint-92eac785
-  - habu-parse-gpt-2-c8baa4db
   - habu-prove-sealed-inference-1d007ad5
   - habu-own-model-asset-c6f938e4
   - habu-own-device-completion-9aed0a22

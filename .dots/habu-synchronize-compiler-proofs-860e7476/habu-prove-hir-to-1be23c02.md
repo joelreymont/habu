@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-26T23:04:26.741213+02:00"
 blocks:
-  - habu-compare-native-control-f8b5d801
   - habu-prove-shared-ir-1a95c6ef
 ---
 

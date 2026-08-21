@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-13T17:12:36.155644+02:00"
-blocks:
-  - habu-migration-core-records-77182600
 ---
 
 Own the shared-field campaign outcome, not an implementation workspace. The sole

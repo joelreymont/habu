@@ -6,9 +6,6 @@ issue-type: task
 created-at: "2026-07-28T13:45:26.362405+02:00"
 closed-at: "2026-07-28T17:14:27.169775+02:00"
 close-reason: "Landed in source commit 79c2cdc35ae5bf07c7cf7564fbc96ba1e93f8d55 on master: SAFET:U32-LE@? bounded read with derived fixture lengths, fixed-byte oracle, revoked-page none child, guaranteed-read refusal-arm mutants, and zero trusted additions (net -1 TRUSTED row via CAD-NUM:BYTE+); verified by independent review and destruction review."
-blocks:
-  - habu-seal-safet-wordlists-70973382
-  - habu-publish-typed-byte-429962bb
 ---
 
 Problem: SAFET has no checked way to read a little-endian 32-bit value while

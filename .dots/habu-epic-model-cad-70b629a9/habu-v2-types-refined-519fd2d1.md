@@ -5,8 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-11T10:25:02.729815+02:00"
 blocks:
-  - habu-reconcile-cad-num-64ea7c07
-  - habu-reconcile-cad-num-9af0abc0
   - habu-census-lower-shape-836287e4
 ---
 

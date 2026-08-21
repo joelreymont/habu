@@ -6,9 +6,6 @@ issue-type: task
 created-at: "2026-07-23T09:47:20.909072+02:00"
 closed-at: "2026-08-04T16:22:38.185955+02:00"
 close-reason: Landed 9a3797456ddbdc1887a367aef3c6d789d71612f0 on master after root, Claude, and discussion-blind destruction ACCEPT; exact maki, ptx-stdlib/lint-libs, and canonical native gates passed.
-blocks:
-  - habu-bpe-unicode-data-45a7c2e9
-  - habu-bpe-utf8-scalar-8c1d6f34
 ---
 
 Why: model-owned `GPT2:T-CP@` erases the tagged `UTF8:NEXT` distinction between a valid scalar and one malformed raw byte. The class matcher can therefore treat an invalid lead such as `C3` as Unicode U+00C3 Letter and merge it with adjacent ASCII. Result: inside the existing private `GPT2` tokenizer, use shared `UTF8:NEXT` and retain its scalar/raw-byte arm through every grammar decision. Scalars use `UNICODE-CLASS`; every raw byte is exactly one byte of progress and always OTHER, never Letter, Number, or White_Space. Preserve the existing leftmost greedy GPT-2 alternatives and arbitrary-byte round trips. Delete `T-CP@`; do not add another decoder, tokenizer package, public splitter, test hook, table, alias, manifest, lint, framework, or compatibility path.

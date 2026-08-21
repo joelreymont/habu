@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"\\\"2026-07-13T17:15:42.353492+02:00\\\"\""
 closed-at: "2026-07-13T23:11:33.678156+02:00"
 close-reason: Replaced all seven schema/type-family BEGIN-STRUCTURE records with explicit ABI metadata and ordinary accessors; load-time size/alignment/pointer-role/accessor assertions, focused suites, native fixpoint, Gforth recovery, full native, maki, ptx, and lint gates green at 4f2caac7.
-blocks:
-  - habu-core-layout-own-6f11e5ce
 ---
 
 Own the seven private record declarations in src/core/type-schema.f and

@@ -7,8 +7,6 @@ created-at: "2026-07-21T19:22:10+02:00"
 blocks:
   - habu-bpe-own-parity-00afdbd5
   - habu-bpe-factor-full-62bbd484
-  - habu-bpe-install-unicode-3c84e7a1
-  - habu-bpe-remove-chunk-acc70f20
   - habu-bpe-verify-gpt-543d4c98
   - habu-bpe-generate-compact-2d82e099
 ---

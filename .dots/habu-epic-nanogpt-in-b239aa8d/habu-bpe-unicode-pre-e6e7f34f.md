@@ -5,9 +5,6 @@ priority: 2
 issue-type: task
 created-at: "\"2026-07-20T23:03:34.681237+02:00\""
 blocks:
-  - habu-bpe-real-vocab-c973932a
-  - habu-bpe-unicode-data-45a7c2e9
-  - habu-bpe-utf8-scalar-8c1d6f34
   - habu-bpe-unicode-integration-d3e95a72
 ---
 

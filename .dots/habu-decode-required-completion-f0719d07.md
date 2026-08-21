@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-30T07:03:53.505359+02:00"
 blocks:
-  - habu-make-json-reader-882769ff
   - habu-infer-engine-owned-99a98d17
 ---
 

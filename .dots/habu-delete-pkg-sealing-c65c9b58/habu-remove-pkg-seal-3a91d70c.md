@@ -7,7 +7,6 @@ created-at: "2026-07-30T22:10:51.289700+02:00"
 blocks:
   - habu-delete-checker-pkg-476c96b4
   - habu-delete-owner-pkg-2e5b14dc
-  - habu-delete-owner-pkg-196de5cb
 ---
 
 After every package-seal source leaf lands, update `docs/forth.md`,

@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:43:30.801548+02:00"
-blocks:
-  - habu-infer-engine-64-02416606
 ---
 
 Why: multiple requests need one owner for the shared engine and their lifecycle; copyable request identifiers must never carry that ownership.

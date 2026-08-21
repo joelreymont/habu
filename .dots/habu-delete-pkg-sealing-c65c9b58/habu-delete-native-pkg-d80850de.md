@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-30T22:10:14.562565+02:00"
 blocks:
-  - habu-own-engine-emitter-42db38aa
   - habu-recognize-gforth-vocabulary-33e79326
 ---
 

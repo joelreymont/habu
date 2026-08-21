@@ -5,8 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-12T07:09:45.774985+02:00"
 blocks:
-  - habu-v2-r3-type-dfe5609e
-  - habu-v2-r3-type-9f89d1e9
   - habu-v2-r3-type-5809bec6
   - habu-v2-r3-type-5a20bd12
   - habu-v2-r3-type-2f60c17c

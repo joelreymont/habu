@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-12T07:09:31.314585+02:00"
 blocks:
-  - habu-v2-r3-declare-3fcdeebb
   - habu-checker-seal-nominal-0b2eaece
   - habu-checker-sealed-destructure-d967fc03
 ---

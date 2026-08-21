@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-13T17:14:57.178594+02:00"
 blocks:
-  - habu-checker-type-enum-9569edb6
   - habu-enum-infer-canonical-f07a77c2
 ---
 

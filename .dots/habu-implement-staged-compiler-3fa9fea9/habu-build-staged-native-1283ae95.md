@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-26T22:53:09.586192+02:00"
 blocks:
   - habu-compile-native-straight-f5e32927
-  - habu-compile-native-control-cf20ece7
-  - habu-compile-native-calls-80e7f940
   - habu-compile-native-language-b47a852f
   - habu-compile-native-wide-79743b60
   - habu-cut-over-native-984a5241

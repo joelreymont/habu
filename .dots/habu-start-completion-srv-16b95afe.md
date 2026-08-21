@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-30T07:31:05.561066+02:00"
 blocks:
-  - habu-start-completion-runtime-412475f9
   - habu-own-completion-srv-dfc8812e
 ---
 

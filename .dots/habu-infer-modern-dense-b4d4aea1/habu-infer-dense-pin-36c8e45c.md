@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.429028+02:00"
-blocks:
-  - habu-infer-engine-64-02416606
 ---
 
 Why: the second model must be one immutable checkpoint, not an unspecified family or moving download.

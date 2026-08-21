@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"\\\"2026-07-26T22:59:20.066896+02:00\\\"\""
 closed-at: "2026-08-13T19:49:37.079971+02:00"
 close-reason: "Landed at ed9431ce (three commits): catch lowers as an ordinary bare call to the engine entry - no new IR edge, the machine has one; the checker publishes each site's instantiated window in cells keyed by token ordinal (measured BEFORE the fit-check binds the tail - the recorded trap); throw needed nothing; evaluate struck. catch GONE from the refusal table (was 18, largest): 10 compile, 6 at the calling-quotation-under-locals ceiling 7578eaaa, 1 locals, 1 join. Census compiled 3306 to 3316 on the merge base. Parked-value seam applies by construction; differentials incl. depth-not-contents, two-windows, string-ordinal, parked-across-catch."
-blocks:
-  - habu-lower-native-calls-fef1fed5
 ---
 
 Full context: design Wave 4 adds throw/catch/evaluate edges to the IR and definition transaction. Acceptance: caught errors are testable in-process where safe; every failure releases modules/objects, restores dictionary/data/code marks, and publishes no half-definition; nested exception differentials pass.

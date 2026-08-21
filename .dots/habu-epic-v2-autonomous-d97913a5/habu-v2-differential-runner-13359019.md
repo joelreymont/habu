@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-11T12:25:27.511089+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
 closed-at: "2026-07-18T12:18:09.699408+02:00"
 close-reason: "All acceptance discharged: scalar + tensor suites with isolated deterministic execution, injected mismatch minimizes/replays (distinct CASE-ID, original preserved), timeout/crash distinct from numeric mismatch (FAULT dominates, real-child proofs), PyTorch adapter outside Habu semantics (TORCH-REFERENCE interface + recorded skip - torch absent on this host, boundary stands), evidence subject/suite/env keyed, and every input/output/environment durably stored (CASESTORE: content-keyed 155B envelopes, crash-safe temp+rename, fresh-process byte-match proof). Suites registered in maki/test.f; TRUSTED suite-id rows classified prim-axiom under the live epic habu-epic-model-cad-70b629a9."
-blocks:
-  - habu-v2-differential-suite-2d896ced
 ---
 
 Implement isolated deterministic differential execution for one scalar checker suite and one tensor forward suite. Store every input/output/environment, compare under declared domain, minimize discrepancies without replacing the original, and emit evidence or structured counterexample diagnostics. Acceptance: injected mismatch minimizes and replays, timeout/crash is distinct from numeric mismatch, PyTorch reference adapter remains outside Habu semantics, and success evidence is subject/suite/environment keyed.

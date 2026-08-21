@@ -7,7 +7,6 @@ created-at: "\"2026-07-26T22:54:58.856544+02:00\""
 closed-at: "2026-08-15T14:07:28.822083+02:00"
 close-reason: "Closed (vintage audit 2026-08-15, re-executed after the pool incident): dialect schemas (IR-SCHEMA, 18 named negatives). Production-consumed by the native chain; suites dual-registered, green through the real entry."
 blocks:
-  - habu-intern-compiler-attrs-37cfbca5
   - habu-extend-compiler-ir-e9b76351
 ---
 

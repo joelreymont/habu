@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-30T07:31:05.723904+02:00"
 closed-at: "2026-08-03T23:55:39.222807+02:00"
 close-reason: Landed persistent framed GPT-2 service at 2e43a3df41bb795cc18ce2737857b3142df0fdfd; exact device, Maki, and PTX gates passed.
-blocks:
-  - habu-start-completion-runtime-412475f9
 ---
 
 Why: the model now generates correctly, but each command pays the 146-second authenticated open. The smallest useful vLLM-replacement surface is one persistent process that keeps that exact model alive across bounded completion requests.

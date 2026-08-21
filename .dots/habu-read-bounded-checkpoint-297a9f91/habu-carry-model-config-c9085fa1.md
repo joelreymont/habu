@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-28T17:13:41.372373+02:00"
 closed-at: "2026-07-30T11:57:14.272124+02:00"
 close-reason: "Superseded: the current vLLM engine loads SAFET tensors directly into GPT2DEV weights; GPT2LOAD/WSTORE host models have no product consumer."
-blocks:
-  - habu-delete-model-config-1c71a13e
 ---
 
 Why: GPT-2 loading is split across public prepare, check, ready, mapped, and copied states. That split admits a second configuration authority, exposes cleanup states no product caller needs, and keeps result-valued release shells after owned unmap failure became fatal. The copied loader has no product caller and is wrong for the mapped unified-memory path being built.

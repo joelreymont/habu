@@ -5,8 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-30T00:55:50.404909+02:00"
 blocks:
-  - habu-upload-gpt-2-044b5364
-  - habu-own-persistent-inference-ecc98bdf
   - habu-infer-kv-atomic-cdfb00cb
 ---
 

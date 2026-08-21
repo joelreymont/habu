@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"\\\"2026-07-13T17:15:50.404414+02:00\\\"\""
 closed-at: "2026-07-13T23:31:08.933830+02:00"
 close-reason: implemented explicit checker registry layouts; reviewed; native fixpoint, full gate, Maki, PTX, and lints green
-blocks:
-  - habu-core-bootstrap-resize-5c07f625
 ---
 
 Own checker registry record declarations in src/core/checker.f: symbol, effect,

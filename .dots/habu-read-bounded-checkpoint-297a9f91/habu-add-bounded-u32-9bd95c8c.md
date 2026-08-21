@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-28T17:50:23.641645+02:00"
 closed-at: "2026-08-02T16:00:35.780081+02:00"
 close-reason: Superseded by commit 5b0ebb, which deleted the WSTORE/GPT2LOAD path; retaining this task would resurrect the removed design.
-blocks:
-  - habu-return-typed-idx-6811f99f
 ---
 
 Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-wstore-u32` and workspace `.jj-ws/habu-add-bounded-u32-9bd95c8c` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `rg 'U32-LE@' maki/infer/weight-store.f` returns nothing and the `RUN-PARKED`/`PARK` trust rows are still in `TRUSTED.md`. The dot stays active and is free to claim.

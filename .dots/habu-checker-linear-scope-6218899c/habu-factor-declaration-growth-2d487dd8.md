@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T21:39:46.814091+02:00"
-blocks:
-  - habu-rename-declaration-pkg-68e009c5
 ---
 
 Problem: once every throw in a quotation is required to expose one exceptional
@@ -29,3 +27,5 @@ checker candidate, the real engine suite must certify `GROW-TABLE` and proceed
 past its former `ROWS>BYTES` rejection. If that run exposes a different caller,
 stop and report it instead of expanding this leaf. Typed-local and package diff
 gates pass.
+
+Blocker sweep 2026-08-21 (tracker GC): the blocks: list is gone because every entry in it was already closed - habu-rename-declaration-pkg-68e009c5. The prose above still names them as prerequisites; they are satisfied, and nothing in the tracker blocks this leaf now.

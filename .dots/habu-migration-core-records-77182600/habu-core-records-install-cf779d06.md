@@ -6,10 +6,6 @@ issue-type: task
 created-at: "\"2026-07-13T17:55:26.678113+02:00\""
 closed-at: "2026-07-15T21:27:08.365549+02:00"
 close-reason: verified by focused, recovery, maki, ptx-stdlib, full native gates, and fresh destruction review
-blocks:
-  - habu-core-records-remove-31f84baf
-  - habu-core-records-remove-0d8ff4e2
-  - habu-core-bootstrap-isolate-45800fec
 ---
 
 Own src/habu/habu2.f, bootstrap/cg/forth.fs, and tools/bootstrap.sh load order.

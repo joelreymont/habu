@@ -6,10 +6,6 @@ issue-type: task
 created-at: "\"2026-07-22T17:33:51.543853+02:00\""
 closed-at: "2026-07-23T03:18:14.974865+02:00"
 close-reason: Landed package AOT lint core at 7c59207d; verified in master@origin 2db115be.
-blocks:
-  - habu-pkg-aot-lint-cd6f466a
-  - habu-pkg-aot-lint-defb0f2e
-  - habu-pkg-direct-build-d2e501d3
 ---
 
 Why: tools/aot-lint-core.f still publishes 41 package-less definitions. A representative changed body fails package-diff-lint with E-PACKAGE-OWNERSHIP, and the landed command, test, and direct-build packages now provide the complete caller boundary.

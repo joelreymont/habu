@@ -5,8 +5,6 @@ priority: 1
 issue-type: task
 blocks:
   - habu-lowering-hash-unified-586f7881
-  - habu-expose-checked-mmap-06c1d522
-  - habu-add-owned-growable-a178ca95
 created-at: "2026-07-19T23:07:54.163306+02:00"
 ---
 

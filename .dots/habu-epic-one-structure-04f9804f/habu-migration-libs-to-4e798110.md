@@ -5,9 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-07-13T16:46:21.449737+02:00"
 blocks:
-  - habu-migration-core-records-77182600
   - habu-migration-core-variants-af8e09b4
-  - habu-libs-migrate-option-510a7e40
   - habu-libs-migrate-process-6bfe40be
   - habu-libs-migrate-map-e52318f9
   - habu-libs-migrate-runtime-c2738a4d

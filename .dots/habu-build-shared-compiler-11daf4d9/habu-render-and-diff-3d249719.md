@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"\\\"2026-07-26T22:55:16.439866+02:00\\\"\""
 closed-at: "2026-08-05T11:57:17.938379+02:00"
 close-reason: "Obsolete: the canonical codec stack this dot built was deleted under CG-31 (no product consumer; hard-cut policy) in ad32f68b"
-blocks:
-  - habu-canonicalize-compiler-tables-e0c7f8f1
 ---
 
 Full context: design sections 5.6 and 6.6 require deterministic diagnostic rendering and structural diff that are never parsed by compiler code. Render every frozen table/reference with stable names and source locations; diff semantic structure, not text. Acceptance: golden output is deterministic and read-only; a repository search/gate rejects compiler parsing of renderer output. Dependency: canonical tables.

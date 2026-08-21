@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-18T11:52:36.913344+02:00"
-blocks:
-  - habu-record-native-slice-a01a8ad7
 ---
 
 Compiler-IR reconciliation: after the Wave 2 vertical slice, own deterministic structural SIR/LIR/A64IR optimization outcomes that are not already the basic Wave 2 fold/DCE passes. Preserve explicit numeric, target, effect, CFG, and witness contracts; no direct byte rewriting or old-emitter peepholes. Acceptance: each retained rewrite has pass-specific mutation and differential fixtures, accepted witnesses, measured attribution, and independent stage verification.

@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-29T22:00:35.832115+02:00"
 blocks:
   - habu-add-qwen-model-bf23d2ff
-  - habu-parse-gpt-2-c8baa4db
   - habu-infer-dense-pin-36c8e45c
   - habu-own-model-asset-c6f938e4
 ---

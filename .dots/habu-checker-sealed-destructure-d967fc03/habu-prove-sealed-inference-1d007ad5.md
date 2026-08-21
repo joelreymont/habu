@@ -7,8 +7,6 @@ created-at: "2026-07-29T20:36:50.572569+02:00"
 blocks:
   - habu-seal-validated-model-4361ff22
   - habu-seal-gpt-2-1426e51e
-  - habu-parse-gpt-2-c8baa4db
-  - habu-own-gpt-2-14415dcd
 ---
 
 Problem: isolated migration tests cannot prove the complete declaration,

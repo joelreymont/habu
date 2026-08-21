@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-30T00:55:48.558758+02:00"
 blocks:
-  - habu-own-device-runtime-5e7d559e
   - habu-add-qwen-model-bf23d2ff
   - habu-validate-qwen-tensor-0fba9ad6
 ---

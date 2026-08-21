@@ -6,10 +6,6 @@ issue-type: task
 created-at: "\"2026-07-23T00:08:08.366362+02:00\""
 closed-at: "2026-07-26T08:59:47.663117+02:00"
 close-reason: "Implemented, reviewed, merged: landed as 91b1bbd5be7d (Own product-field lifecycle in TYPE-FIELD-OWNER), an ancestor of master@origin. TYPE-FIELD-OWNER is the sole lifecycle authority (OPEN/ADD/PREPARE/COMMIT/FINALIZE/ROLLBACK plus token-scoped TX-SCHEMA-FOR); raw global PF lifecycle entries removed without aliases; DECL-EVENT delegates its matching phases and publishes COMMIT and FINALIZE beside its existing lifecycle; production suites cover stale-token, wrong-state, nested, and rollback cases."
-blocks:
-  - habu-bound-declaration-participant-9967c968
-  - habu-consume-registry-events-efe7fe5e
-  - habu-type-field-owner-619ec6b5
 ---
 
 Problem: product-field transactions are mutated through raw global PF-BEGIN, PF-ADD, PF-PUBLISH, PF-COMMIT, PF-FINALIZE, and PF-ROLLBACK words. The event participant cannot adopt a qualified owner without leaving duplicate authority or changing its direct callers. The rejected combined publish-and-release replacement is incorrect for the global declaration coordinator: participant COMMIT must retain rollback authority until global finalization, independently of whether the current later participants can fail after preflight.

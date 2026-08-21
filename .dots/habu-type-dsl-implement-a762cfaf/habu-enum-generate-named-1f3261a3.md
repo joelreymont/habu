@@ -7,8 +7,6 @@ created-at: "\"\\\"2026-07-13T17:14:05.104373+02:00\\\"\""
 closed-at: "2026-07-26T08:59:10.768176+02:00"
 close-reason: "Outcome landed, mechanism amended in the dot text: constructor generation became the fifth sealed participant (ORDER 820) in the generated-declaration transaction, armed by ED-CLOSE, publishing through the committed payload provider. Landed across aedcff552503 (participant), 3979b8fad73f (explicit family), 8146e7b4faf1 (committed provider), and 32182617b6e8 (;ENUM through the unified front end); all ancestors of master@origin. All-or-nothing publication and residue-free rollback hold via the dictionary savepoint preceding all commits; suites cover nullary, payload, duplicate-name, injected mid-set failure, rollback, snapshot, and AOT."
 blocks:
-  - habu-enum-parse-full-39c0dc1b
-  - habu-checker-type-enum-9569edb6
   - habu-fields-expose-provisional-96533716
 ---
 

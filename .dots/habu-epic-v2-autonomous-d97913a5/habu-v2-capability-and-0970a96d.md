@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"\\\"2026-07-11T12:25:27.142308+02:00\\\"\""
 closed-at: "2026-07-18T01:00:59.095012+02:00"
 close-reason: "Capability tokens + budget ledgers + COMMIT-AUTHORIZED landed (c06b0c14): forge-proof grants, subset-only attenuation, idempotent atomic charging, replay-equal digests - all five rules test-proven. Discharge authority folded into evidence-promotion."
-blocks:
-  - habu-v2-machine-action-a7357409
 ---
 
 Implement finite capability tokens and monotonic budget ledgers for agent actions. Validate compute time, device time, storage, candidate count, retries, and external effects before dispatch and charge actual usage atomically. Acceptance: raw values cannot forge capabilities, nested actions cannot exceed parent authority, exhaustion returns typed evidence without partial commit, retry does not double charge, and replay reproduces charges. Align with habu-v2-types-finite-18bb1b35.

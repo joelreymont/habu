@@ -6,9 +6,6 @@ issue-type: task
 created-at: "2026-07-29T23:22:19.585295+02:00"
 closed-at: "2026-08-04T22:42:42.047742+02:00"
 close-reason: "Landed 11a9ffbf21ec on verified origin/master: linear KV:cache owns one host metadata block and one GPU buffer; layer-aware bounded spans, transactional whole-page GPU COW, exact cleanup, no post-OPEN allocation, and hard-cut legacy pointer API. Root, Claude, and fresh destruction ACCEPT; focused GPU/KV/GPT2, full Maki, full PTX/toolchain lint-libs, diff, error, and dot gates green."
-blocks:
-  - habu-add-kv-layer-41961bed
-  - habu-copy-within-gpu-68cd883c
 ---
 
 Why: KV payload bytes are allocated in ordinary host memory while device kernels need one authenticated device region and the current caller-owned header is a public raw pointer.

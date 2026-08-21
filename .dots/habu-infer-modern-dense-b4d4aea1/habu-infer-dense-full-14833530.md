@@ -7,7 +7,6 @@ created-at: "2026-07-22T09:41:52.463168+02:00"
 blocks:
   - habu-add-qwen-infer-3fd69d6d
   - habu-infer-dense-host-4c9152ad
-  - habu-infer-engine-64-02416606
 ---
 
 Why: internal Qwen operations do not prove the public engine runs a second model without a second execution path.

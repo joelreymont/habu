@@ -7,7 +7,6 @@ created-at: "\"\\\"2026-07-19T22:43:46.224873+02:00\\\"\""
 closed-at: "2026-07-20T22:14:43.827009+02:00"
 close-reason: "Landed 390e722c: the corpus loader is transactional - capacity preflight (new DL-FIT) runs BEFORE the single publish point, so an undersized ids buffer can no longer swap the process-wide vocabulary while producing no corpus. Red-first with two corpora: 4 failures on the unfixed loader (vocab swapped, prior corpus broken), green after, with per-error-class proofs that vocab and loaded corpus stay bit-identical. Loader moved to its own DATA-LOADER package with a short LOAD API via the landed using-import idiom; STRUCTURE-corpus return stays behind the tokenizer-state dot as specified"
 blocks:
-  - habu-bound-tokenizer-api-111a9a88
   - habu-own-tokenizer-state-d5db1943
 ---
 

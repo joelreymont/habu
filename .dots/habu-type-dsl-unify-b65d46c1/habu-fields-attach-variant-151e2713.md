@@ -6,8 +6,6 @@ issue-type: task
 created-at: "\"2026-07-13T17:12:42.577284+02:00\""
 blocks:
   - habu-fields-add-shared-6b063c62
-  - habu-enum-parse-full-39c0dc1b
-  - habu-enum-generate-named-1f3261a3
 ---
 
 Re-sequenced 2026-07-21 (fieldtok lane evidence, no edits made): the re-scoped

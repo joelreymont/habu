@@ -5,8 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-29T22:00:24.767035+02:00"
 blocks:
-  - habu-delete-unused-llama-ff039e5e
-  - habu-delete-unused-config-a6f7d6dc
   - habu-infer-dense-pin-36c8e45c
 ---
 

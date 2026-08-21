@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-29T23:22:20.209752+02:00"
 blocks:
-  - habu-infer-engine-64-02416606
   - habu-infer-batch-decode-a7520e15
   - habu-exec-gpt-2-29a09d1a
   - habu-infer-decode-vector-e5ac69b3

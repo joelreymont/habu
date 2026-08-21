@@ -7,7 +7,6 @@ created-at: "2026-07-29T22:01:12.625329+02:00"
 blocks:
   - habu-validate-qwen-shard-2aa7d74f
   - habu-own-qwen-device-f2a8083c
-  - habu-use-canonical-checkpoint-92eac785
   - habu-validate-qwen-tensor-0fba9ad6
   - habu-own-model-asset-c6f938e4
 ---

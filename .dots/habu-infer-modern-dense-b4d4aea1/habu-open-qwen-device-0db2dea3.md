@@ -5,9 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-07-29T22:02:08.924735+02:00"
 blocks:
-  - habu-own-device-runtime-5e7d559e
   - habu-own-qwen-runtime-aee01377
-  - habu-publish-owner-product-32b3f03c
   - habu-add-qwen-model-bf23d2ff
   - habu-parse-qwen-config-cd65019c
 ---

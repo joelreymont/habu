@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-26T22:55:16.416248+02:00\""
-blocks:
-  - habu-freeze-compiler-ir-6f706100
 ---
 
 Full context: design sections 5.8, 6.5, and 16.1 require independent structural validation before publication. Implement a verifier separate from producers for owners, bounds, windows, parents, definitions, terminators, successors, dominance, schema, attributes, effects, symbols, spans, target legality, and placeholders. Acceptance: one hostile mutation fixture per invariant produces a named module/function/block/op/span diagnostic.
@@ -325,3 +323,5 @@ plain exit codes. I could not reproduce the brief's six-red baseline to compare
 against, so the honest statement is: no suite is red on this tree that is red
 because of this work, and the baseline the brief quoted does not describe this
 workspace. Confirming the six against a quiet machine is the integrator's call.
+
+Blocker sweep 2026-08-21 (tracker GC): the blocks: list is gone because every entry in it was already closed - habu-freeze-compiler-ir-6f706100. The prose above still names them as prerequisites; they are satisfied, and nothing in the tracker blocks this leaf now.

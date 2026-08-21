@@ -4,7 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-06T20:14:57.140561+02:00"
-blocks:
 ---
 
 src/compiler/ir/type.f has eight kinds (type.f:120-129): int float pointer quotation code-ref memory-token mask opaque. No vector kind, and it is not among the design's deferred ones either (type.f:19-24 names tuple/layout, register-class, tensor/memref) - so this is a new design entry.

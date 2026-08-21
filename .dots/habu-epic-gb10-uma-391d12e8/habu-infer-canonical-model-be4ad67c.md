@@ -5,11 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-29T20:33:51.509258+02:00"
 blocks:
-  - habu-parse-gpt-2-c8baa4db
-  - habu-delete-unused-config-a6f7d6dc
-  - habu-delete-unused-llama-ff039e5e
-  - habu-own-gpt-2-14415dcd
-  - habu-use-canonical-checkpoint-92eac785
   - habu-prove-sealed-inference-1d007ad5
 ---
 
