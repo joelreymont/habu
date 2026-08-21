@@ -28,7 +28,15 @@ variable SEQ
 \ the raw cell. Defined here in the first prefix source so every later prefix file
 \ (type-schema.f and type-family.f both load before internal-mark.f) can tag its
 \ cells at their definition site with a single REG-PROTECT.
-64 constant REG-PROT-CAP
+\ The cap is a real budget, not a round number: 47 of 64 slots were taken when
+\ dot habu-tfam-2b-sealed-1b77662c sealed src/core/sumtype.f, and that seal alone
+\ needs 14 more (11 public `defer` hooks and 3 public control cells - a package
+\ PUBLIC data or defer record is still reachable under its qualified spelling,
+\ and internal-mark.f classifies only COLON records, so REG-PROTECT is what
+\ closes it). Three free slots are not a budget, and the seal campaign has one
+\ registry left to convert, so the table is sized for it: 192 cells is 1.5 KB of
+\ prefix data and the die above still names the overflow if it is ever reached.
+192 constant REG-PROT-CAP
 create REG-PROT-IDX  REG-PROT-CAP cells allot
 variable REG-PROT-N   0 REG-PROT-N !
 : REG-PROTECT ( -- )   \ tag the just-defined data record for seal-time internal-marking

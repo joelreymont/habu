@@ -13,6 +13,11 @@
 \ families, AND closed typed pointers — without weakening LAYOUT-BUFFER, whose
 \ own narrower CHECKER-LAYOUT-INFO gate is unchanged.
 
+\ TDECL-EVAL-XT and TDECL-EVAL-ARMED are package TYPE-DECL's since dot
+\ habu-tfam-2b-sealed-1b77662c; imported bare here rather than qualified, per
+\ docs/forth.md's consumer rule.
+using TYPE-DECL
+
 $1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 7121 constant E-LAYOUT-BUFFER
@@ -461,3 +466,5 @@ variable STGT-START
 \ accessor source), so the axioms add no checked-code capability.
 PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
 PRIM: TYPED-VARIABLE PRIM;
+
+;using

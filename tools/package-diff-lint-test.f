@@ -603,7 +603,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" PRELUDE-GLOBAL" s" lib/prelude.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" UTIL-GLOBAL" s" src/core/util.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" SHA256-GLOBAL" s" src/core/sha256.f" TEST-ADD-WHOLE-CORE-EXEMPTION
-   s" SUMTYPE-GLOBAL" s" src/core/sumtype.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" LBUF-GLOBAL" s" src/core/layout-buffer.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" ROLE-GLOBAL" s" src/core/roles.f" TEST-ADD-WHOLE-CORE-EXEMPTION
    s" STRUCTURE-GLOBAL" s" src/core/structures.f" TEST-ADD-WHOLE-CORE-EXEMPTION
@@ -1362,6 +1361,89 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
    s" -variable TFL-MATCH-FAMILY?" TEST-DIFF+ TEST-LF
    s" +variable TFL-MATCH-FAM?" TEST-DIFF+ TEST-LF ;
+
+\ ---- src/core/sumtype.f: the declaration-grammar surface ---------------------
+\ The file is `package TYPE-DECL` since dot habu-tfam-2b-sealed-1b77662c, so its
+\ whole-file row is gone and exactly seven names are admitted, by exact path,
+\ exact name and exact definer.  These fixtures are built to fool the row: an
+\ eighth global beside the seven, an admitted name under another definer, an
+\ admitted name in a neighbouring file, and the retired whole-file case as a
+\ negative.
+
+: TEST-WRITE-TYPE-DECL-GRAMMAR ( -- )
+   TEST-SOURCE-RESET
+   s" : NEWTYPE ( -- ) TDECL-NEWTYPE ;" TEST-SOURCE-LINE
+   s" : SUMTYPE ( -- ) TDECL-SUMTYPE ;" TEST-SOURCE-LINE
+   s" : PRODUCT ( -- ) TDECL-PRODUCT ;" TEST-SOURCE-LINE
+   s" : CHECKER-DEFFAMILY ( -- ) TDECL-DEFFAMILY ;" TEST-SOURCE-LINE
+   s" : CHECKER-DEFSUM ( -- ) TDECL-DEFSUM ;" TEST-SOURCE-LINE
+   s" : CHECKER-DEFSUM-NOEND ( -- ) TDECL-DEFSUM-NOEND ;" TEST-SOURCE-LINE
+   s" : CHECKER-DEFPRODUCT ( -- ) TDECL-DEFPRODUCT ;" TEST-SOURCE-LINE
+   s" src/core/sumtype.f" TEST-WRITE-SOURCE ;
+
+: TEST-WRITE-TYPE-DECL-EIGHTH ( -- )
+   TEST-SOURCE-RESET
+   s" : NEWTYPE ( -- ) TDECL-NEWTYPE ;" TEST-SOURCE-LINE
+   s" : TDECL-HELPER ( -- ) ;" TEST-SOURCE-LINE
+   s" src/core/sumtype.f" TEST-WRITE-SOURCE ;
+
+: TEST-WRITE-TYPE-DECL-WRONG-DEFINER ( -- )
+   TEST-SOURCE-RESET
+   s" variable SUMTYPE" TEST-SOURCE-LINE
+   s" src/core/sumtype.f" TEST-WRITE-SOURCE ;
+
+\ A comment and a string that both carry the admitted spelling, plus the same
+\ name in the wrong role (a call, not a definition).  None of them is a
+\ declaration of an admitted name, and the one real definition beside them is
+\ an ordinary global, so this must report exactly once.
+: TEST-WRITE-TYPE-DECL-DECOY ( -- )
+   TEST-SOURCE-RESET
+   s" \ : SUMTYPE ( -- ) NEWTYPE PRODUCT CHECKER-DEFSUM ;" TEST-SOURCE-LINE
+   s" : TDECL-DECOY ( -- ) SUMTYPE NEWTYPE CHECKER-DEFFAMILY ;" TEST-SOURCE-LINE
+   s" src/core/sumtype.f" TEST-WRITE-SOURCE ;
+
+: TEST-TYPE-DECL-EXEMPTION ( -- )
+   \ Negative: the whole-file exemption is GONE.  A global that is not one of the
+   \ seven is an ordinary ownership fault now; this leg was the positive before
+   \ the seal and retires with the row.
+   TEST-DIFF-RESET
+   s" SUMTYPE-GLOBAL" TEST-GLOBAL-SOURCE
+   s" src/core/sumtype.f" TEST-ADD-SOURCE-SECTION
+   s" sumtype.f global no longer exempt after the TYPE-DECL seal" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Positive: the seven declaration-grammar names keep their global standing.
+   TEST-WRITE-TYPE-DECL-GRAMMAR
+   TEST-DIFF-RESET s" src/core/sumtype.f" TEST-ADD-SOURCE-SECTION
+   s" the seven declaration-grammar names stay global" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative (count): an eighth global beside an admitted one still reports, and
+   \ only the eighth does.
+   TEST-WRITE-TYPE-DECL-EIGHTH
+   TEST-DIFF-RESET s" src/core/sumtype.f" TEST-ADD-SOURCE-SECTION
+   s" an eighth global beside the grammar still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (shape): an admitted NAME under another definer is not the
+   \ declaration the row admits.
+   TEST-WRITE-TYPE-DECL-WRONG-DEFINER
+   TEST-DIFF-RESET s" src/core/sumtype.f" TEST-ADD-SOURCE-SECTION
+   s" an admitted grammar name under the wrong definer still reports" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structure, not text): the admitted spellings inside a comment and
+   \ in a call position do not admit the ordinary global that carries them.
+   TEST-WRITE-TYPE-DECL-DECOY
+   TEST-DIFF-RESET s" src/core/sumtype.f" TEST-ADD-SOURCE-SECTION
+   s" grammar names in a comment or a call position admit nothing" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (path): the same names in a neighbouring file are not admitted --
+   \ exact path, not a prefix, a suffix or a directory.
+   TEST-WRITE-TYPE-DECL-GRAMMAR
+   TEST-DIFF-RESET s" src/core/sumtype-extra.f" TEST-ADD-SOURCE-SECTION
+   s" the grammar names are not admitted in a sibling file" T-LABEL
+   7 TEST-EXPECT-FINDINGS
+   TEST-WRITE-TYPE-DECL-GRAMMAR
+   TEST-DIFF-RESET s" lib/sumtype.f" TEST-ADD-SOURCE-SECTION
+   s" the grammar names are not admitted under another directory" T-LABEL
+   7 TEST-EXPECT-FINDINGS ;
 
 : TEST-TYPE-FAMILY-EXEMPTION ( -- )
    \ Negative: the whole-file exemption is GONE (dot habu-tfam-2b-sealed-1b77662c
@@ -2983,6 +3065,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-RESULT-GLOBAL
    TEST-GRAMMAR-FIXTURES
    TEST-STAGE0-FIXTURES
+   TEST-TYPE-DECL-EXEMPTION
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION

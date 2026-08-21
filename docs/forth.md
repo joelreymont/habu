@@ -172,11 +172,9 @@ become callable dictionary words, so the shared classifier omits them.
 The complete-file global exceptions are exact paths, not directory rules:
 
 - `lib/prelude.f` owns the deliberately global prelude helpers.
-- `src/core/sumtype.f` owns the pre-hook type-declaration implementation and its
-  global `NEWTYPE`, `SUMTYPE`, `ENUM`, and `PRODUCT` language words.
-- `src/core/layout-buffer.f` owns the global `LAYOUT-BUFFER` declaring word, the
-  same standing as `sumtype.f` above: a pre-hook core surface that exists to
-  publish a declarer every other package uses.
+- `src/core/layout-buffer.f` owns the global `LAYOUT-BUFFER` declaring word: a
+  pre-hook core surface that exists to publish a declarer every other package
+  uses.
 - `src/core/roles.f` owns the pre-hook nominal role conversions and declaration
   words that must be available before application packages load.
 - `src/core/structures.f` owns the legacy global structure and field defining
@@ -186,9 +184,29 @@ The complete-file global exceptions are exact paths, not directory rules:
   language surface by current construction: the `PRIM:`/`PPRIM:` primitive-axiom
   machinery and the `RBF` rollback-frame surface are global by design and load
   before any package exists, so the checker is admitted on the same terms as
-  `sumtype.f`, `roles.f`, `structures.f`, and `enums.f`. This entry is interim:
-  it must be removed once the checker sealing work (dot
+  `roles.f`, `structures.f`, and `enums.f`. This entry is interim: it must be
+  removed once the checker sealing work (dot
   `habu-seal-the-checker-5314c0ab`) gives those seams real package owners.
+
+`src/core/sumtype.f` used to be on that list and is not any more: the same dot
+`habu-tfam-2b-sealed-1b77662c` put its 316 definitions inside `package
+TYPE-DECL`, 45 public and 271 private, with nothing renamed except the seven
+implementations the global entries call. Those seven names stayed global and are
+admitted by exact path, exact name and exact definer, because the
+*language* needs them there rather than the engine: `NEWTYPE`, `SUMTYPE` and
+`PRODUCT` are the block openers, and a user declaration has to register from
+genuine top level without opening any package — which is what
+`test/type-decl-suite.f` tests. `CHECKER-DEFFAMILY`, `CHECKER-DEFSUM`,
+`CHECKER-DEFSUM-NOEND` and `CHECKER-DEFPRODUCT` are the same grammar reached
+with a body text instead of the input stream, by the checker's preverify and
+all-errors replay and by the checked declarers built on them. Each of the seven
+is a one-line entry into a package public, the shape `src/core/enum-decl.f`
+already ships for `ENUM`; everything under them — the declaration buffer, the
+plan arena, the payload capture vectors, the renderers, the transaction context
+— is a package private with no top-level spelling. An eighth global beside them
+still reports, and so does any of the seven under another definer or in another
+file. The entry retires when a user declaration can register without a global
+declarer, which is a language change rather than a packaging one.
 
 `src/core/type-family.f` used to be on that list and is not any more: dot
 `habu-tfam-2b-sealed-1b77662c` put its 566 remaining definitions inside

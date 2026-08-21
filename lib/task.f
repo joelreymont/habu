@@ -5,6 +5,8 @@ s" lib/memory.f" required
 s" lib/ffi-abi.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 
+using TYPE-DECL
+
 package TASK
 
 $8 constant TASK-CELL
@@ -576,3 +578,5 @@ public
 get-current prot-wid-add
 
 ;package
+
+;using

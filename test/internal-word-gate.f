@@ -1147,15 +1147,157 @@ create QNAME QNAME-CAP allot
    s" TFAM-SLOTS@" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TFAM-SLOTS@" ASSERT-DIAG ;
 
+\ --- the sealed declaration grammar (dot habu-tfam-2b-sealed-1b77662c, third of
+\ three). src/core/sumtype.f defined 316 globals and now defines 45 publics and
+\ 271 privates under `package TYPE-DECL`, with SEVEN names left global.
+\
+\ THIS OWNER IS NOT A RESERVED SYSTEM-PACKAGE NAME, and that is the difference
+\ from TFAM-SEAL-CASES above rather than an omission here. `tfam` is in habu2.f
+\ KWDATA:RESTAB-BUF, so C-QUALIFY-SEAL-GUARD refuses `' TFAM:<anything>` with
+\ rc 84 before any lookup; `type-decl` is not in that table, so this package
+\ answers the SCHEMA-REG way and every case below asserts that answer: a marked
+\ public is `hb: internal engine word` at rc 70, and a private is E-UNDEFINED
+\ under its own qualified spelling. Reading rc 84 here would mean somebody added
+\ the name to RESTAB, which is a different design and has to be argued for.
+\
+\ ONE REGRESSION IS THE PRODUCT CLAIM, measured on master before the seal through
+\ `bin/hb --load`: `0 TDPLAN-P !` followed by any SUMTYPE declaration exited 134
+\ with a SIGSEGV register dump. TDPLAN-P is the generated-declaration plan arena
+\ base, a PTR-VARIABLE, which the marking pass exempts by design, and it carried
+\ no REG-PROTECT row -- the exact SCH-RBF-P / TF-RBF-P sibling, and one of six
+\ such cells in this file (TDPLAN-P, TDPLAN-ROW-P, TDPV-CNT-P, TDPV-CELLS-P,
+\ TDPV-OFF-P, TDPV-NODE-P). All six are private now, so the program has no name
+\ to write on any route.
+\
+\ THE SEVEN GLOBALS ARE THE DECLARATION GRAMMAR and are pinned here so the
+\ surface cannot grow: NEWTYPE, SUMTYPE and PRODUCT are the language's own block
+\ openers -- a user declaration must register from genuine top level, which is
+\ test/type-decl-suite.f's whole premise -- and CHECKER-DEFFAMILY, CHECKER-DEFSUM,
+\ CHECKER-DEFSUM-NOEND and CHECKER-DEFPRODUCT are the same grammar reached with a
+\ body text instead of the input stream. The negative leg is what bounds it: the
+\ package public each one calls must NOT answer bare.
+\
+\ THE ONE ROUTE THAT STILL REACHES A PRIVATE is the one the schema block above
+\ names, and it is not specific to this package: `package TYPE-DECL / private /
+\ 0 TDPLAN-P !` puts the private wordlist back on the bare chain and the SIGSEGV
+\ comes back, exactly as `package SCHEMA-REG` and `package PRIM-LINK` do on
+\ master. That is dot habu-pkg-reopen-reaches-113ecd89, whose acceptance owns the
+\ fix, so no case here asserts a crash as expected behaviour. TFAM is closed
+\ against it only because `tfam` is in habu2.f KWDATA:RESTAB-BUF, which is a
+\ decision about which packages are system packages rather than a property of
+\ sealing; whether `type-decl` joins that table is that dot's call. ----
+
+: DSEAL-PLAN-FORGE$ ( -- ptr u8 n )   \ the pre-seal SIGSEGV program, verbatim
+   SB-RESET
+   s" 0 TDPLAN-P !" SB-APPEND LF
+   s" SUMTYPE iwgdseal 0" SB-APPEND LF
+   s" VARIANT iwgda n ;VARIANT" SB-APPEND LF
+   s" VARIANT iwgdb n ;VARIANT" SB-APPEND LF
+   s" ;SUMTYPE" SB-APPEND LF
+   SB$ ;
+
+: DSEAL-USING-FORGE$ ( -- ptr u8 n )  \ `using` imports publics only, never privates
+   SB-RESET
+   s" using TYPE-DECL" SB-APPEND LF
+   s" 0 TDPLAN-P !" SB-APPEND LF
+   SB$ ;
+
+: DSEAL-PROTECT-FORGE$ ( -- ptr u8 n ) \ a public control cell fails closed on its raw store
+   SB-RESET
+   s" 5 TYPE-DECL:TDPLAN-N !" SB-APPEND LF
+   SB$ ;
+
+\ The one public record in this file that deliberately carries no REG-PROTECT,
+\ because its writers arm at genuine top level and REG-PROTECT would refuse them
+\ (see the note beside it in src/core/sumtype.f). What the seal bought is still
+\ asserted: the BARE name is gone, and the surviving qualified spelling fails
+\ closed on a named rc 76 die instead of corrupting anything. If this ever
+\ answers 0 and prints nothing, the fail-closed guard went with it.
+: DSEAL-ARMED-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 TDECL-EVAL-ARMED !" SB-APPEND LF
+   SB$ ;
+
+: DSEAL-ARMED-QUAL-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 TYPE-DECL:TDECL-EVAL-ARMED !" SB-APPEND LF
+   s" SUMTYPE iwgdarm 0" SB-APPEND LF
+   s" VARIANT iwgdc n ;VARIANT" SB-APPEND LF
+   s" ;SUMTYPE" SB-APPEND LF
+   SB$ ;
+
+\ The three block openers cannot be probed as bare tokens: their axiom is ( -- ),
+\ so a bare token would run and parse whatever followed it. The declaration IS
+\ the probe, written the way a user writes one -- at genuine top level, with no
+\ package open -- which is exactly the standing the seven names exist to keep.
+: DSEAL-GRAMMAR-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" NEWTYPE iwgdnt 0" SB-APPEND LF
+   s" PRODUCT iwgdpr 0 FIELD iwgdf n ;PRODUCT" SB-APPEND LF
+   s" SUMTYPE iwgdsm 0" SB-APPEND LF
+   s" VARIANT iwgdv n ;VARIANT" SB-APPEND LF
+   s" ;SUMTYPE" SB-APPEND LF
+   SB$ ;
+
+: TYPE-DECL-SEAL-CASES ( -- )
+   s" the witness pins TDPLAN-P private and TDPLAN-N public in TYPE-DECL" T-LABEL
+   s" TYPE-DECL" s" TDPLAN-P" s" TDPLAN-N" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" the sealed tail left the global universe: bare TDPLAN-N is E-UNDEFINED" T-LABEL
+   s" TDPLAN-N" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TDPLAN-N" ASSERT-DIAG
+   s" and its qualified spelling is a marked public instead" T-LABEL
+   s" TYPE-DECL:TDPLAN-N" NEG
+   s" a colon public went the same way: bare TDECL-CTOR-PUBLISH is undefined" T-LABEL
+   s" TDECL-CTOR-PUBLISH" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TDECL-CTOR-PUBLISH" ASSERT-DIAG
+   s" a sealed private has no qualified spelling either" T-LABEL
+   s" TYPE-DECL:TDPLAN-P" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TYPE-DECL:TDPLAN-P" ASSERT-DIAG
+   s" nor a bare one through a using, which imports publics only" T-LABEL
+   DSEAL-USING-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: TDPLAN-P" ASSERT-DIAG
+   s" a REG-PROTECTed public control cell fails closed on its raw store" T-LABEL
+   DSEAL-PROTECT-FORGE$ RUN-SUBJECT
+   s" TYPE-DECL:TDPLAN-N" ASSERT-INTERNAL
+   s" the tick answers the schema way, not the reserved-name way: public" T-LABEL
+   s" ' " s" TYPE-DECL:" s" TDPLAN-N" s" " QUAL-PROG$ RUN-SUBJECT
+   s" TYPE-DECL:TDPLAN-N" ASSERT-INTERNAL
+   s" `0 TDPLAN-P !` before a declaration no longer SIGSEGVs the engine" T-LABEL
+   DSEAL-PLAN-FORGE$ RUN-LOAD
+   s" E-UNDEFINED: TDPLAN-P" ASSERT-DIAG
+   s" the armed flag lost its bare name like every other sealed record" T-LABEL
+   DSEAL-ARMED-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: TDECL-EVAL-ARMED" ASSERT-DIAG
+   s" and its one surviving spelling still fails closed, on a named die" T-LABEL
+   DSEAL-ARMED-QUAL-FORGE$ RUN-LOAD
+   EXITED @ TTRUE
+   RC @ 76 T=
+   ERR$ s" sumtype: constructor eval hook not installed" CONTAINS? TTRUE
+   s" the three block openers still declare from genuine top level" T-LABEL
+   DSEAL-GRAMMAR-FORGE$ RUN-LOAD ASSERT-OK
+   s" CHECKER-DEFFAMILY stays global: it is the grammar without the stream" T-LABEL
+   s" CHECKER-DEFFAMILY" TSEAL-BRIDGE-AXIOM
+   s" CHECKER-DEFSUM stays global for the same reason" T-LABEL
+   s" CHECKER-DEFSUM" TSEAL-BRIDGE-AXIOM
+   s" CHECKER-DEFSUM-NOEND stays global for the same reason" T-LABEL
+   s" CHECKER-DEFSUM-NOEND" TSEAL-BRIDGE-AXIOM
+   s" CHECKER-DEFPRODUCT stays global for the same reason" T-LABEL
+   s" CHECKER-DEFPRODUCT" TSEAL-BRIDGE-AXIOM
+   s" and the global surface stopped there: TDECL-DEFSUM is package-only" T-LABEL
+   s" TDECL-DEFSUM" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TDECL-DEFSUM" ASSERT-DIAG
+   s" TDECL-RUN, the transaction under all seven, is package-only too" T-LABEL
+   s" TDECL-RUN" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TDECL-RUN" ASSERT-DIAG ;
+
 \ --- direct/subject parity. The PARITY- group used to be its own package; the
 \ names keep that marker because they are about the direct-versus-fork
 \ comparison, not about running a child in general. ----
 
-16 constant PARITY-DIRECT-N     \ +4: the qualified PF write on both cold paths, and
-                                \     the two TFAM crash programs replayed through --load
-182 constant PARITY-SUBJECT-N   \ +49: TFAM-SEAL-CASES (18), the PF cells going 10 -> 22
-                                \      and the family/variant/string/param/layout cells
-                                \      going 6 -> 9 in each of five groups
+19 constant PARITY-DIRECT-N     \ +3: TYPE-DECL-SEAL-CASES replays three programs through
+                                \     --load -- the pre-seal SIGSEGV, the armed-flag die, and
+                                \     the three block openers declaring at top level
+197 constant PARITY-SUBJECT-N   \ +15: the rest of TYPE-DECL-SEAL-CASES
 
 : PARITY-RESULT ( -- ptr u8 n ptr u8 n n )
    OUT OUT-U @ ERR ERR-U @ RC @ ;
@@ -1216,6 +1358,7 @@ create QNAME QNAME-CAP allot
    QUAL-CASES
    SEAL-CASES
    TFAM-SEAL-CASES
+   TYPE-DECL-SEAL-CASES
    NEG-SHAPES
    POSITIVES
    OPENER-CASES

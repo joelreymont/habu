@@ -511,8 +511,20 @@ public
 
 \ constructor generation (sumtype.f, loaded earlier in the boot prefix) crosses
 \ evaluate only through this audited INCLUDE-EVALUATE boundary; engines without
-\ include.f (stage builders) leave TDECL-EVAL-ARMED 0 and generation stays
+\ include.f (stage builders) leave TYPE-DECL's armed flag 0 and generation stays
 \ fail-closed. Bind the defer (wrapped so the quotation compiles), then arm.
-: TDECL-EVAL-INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TDECL-EVAL-XT ;
-TDECL-EVAL-INSTALL
+\ The binder is a package private rather than an 85th global in this file: it is
+\ a one-shot installer with no caller, and the `is` target has to be written
+\ qualified because `is` is a parsing word and parsing words resolve outside
+\ using-imports (measured: bare `is TDECL-EVAL-XT` under `using TYPE-DECL`
+\ answers `hb: is: no deferred word named TDECL-EVAL-XT`, rc 70).
+using TYPE-DECL
+
+package INCLUDE-EVAL-BIND
+private
+: INSTALL ( -- ) [: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT ;
+INSTALL
+;package
+
 -1 TDECL-EVAL-ARMED !
+;using

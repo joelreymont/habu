@@ -843,11 +843,11 @@ private
 \ not. Installed here rather than inside DEV-PART-INSTALL because a quotation
 \ binds its target at compile time and the public section is defined above.
 : DEV-EVENT-HOOKS-INSTALL ( -- )
-   [: CURRENT ;] is TDECL-EVENT-CURRENT-XT
-   [: DECL ;] is TDECL-EVENT-DECL-XT
-   [: ARITY ;] is TDECL-EVENT-ARITY-XT
-   [: FIELD ;] is TDECL-EVENT-FIELD-XT
-   [: 0 0= ;] is TDECL-EVENT-ARMED ;
+   [: CURRENT ;] is TYPE-DECL:TDECL-EVENT-CURRENT-XT
+   [: DECL ;] is TYPE-DECL:TDECL-EVENT-DECL-XT
+   [: ARITY ;] is TYPE-DECL:TDECL-EVENT-ARITY-XT
+   [: FIELD ;] is TYPE-DECL:TDECL-EVENT-FIELD-XT
+   [: 0 0= ;] is TYPE-DECL:TDECL-EVENT-ARMED ;
 
 DEV-EVENT-HOOKS-INSTALL
 DEV-PART-INSTALL

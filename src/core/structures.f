@@ -58,8 +58,10 @@ variable STRUCT-GEN-I
 \ TDECL-EVAL-XT is sumtype.f's audited evaluate boundary. It is a deferred word,
 \ so an engine that never armed it (a stage builder) fails closed here with the
 \ execution-vector error rather than defining anything.
+using TYPE-DECL
 : STRUCT-EVAL ( -- )
    STRUCT-GEN STRUCT-GEN-U @ TDECL-EVAL-XT ;
+;using
 
 \ Open ": NAME" with the name the live input holds next. The name span is
 \ transient, so it is copied into the buffer before anything else parses.

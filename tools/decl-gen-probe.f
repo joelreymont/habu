@@ -45,6 +45,7 @@ require lib/string.f
 require lib/argv.f
 
 using TFAM
+using TYPE-DECL
 
 package DECL-GEN-PROBE
 
@@ -152,4 +153,5 @@ private
 
 DECL-GEN-PROBE:RUN
 
+;using
 ;using

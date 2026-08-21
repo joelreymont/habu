@@ -6,7 +6,7 @@ package AOT-LINK
 
 \ The AOT maker compiles the user program with its own interpret loop, so it must
 \ install the sumtype constructor eval hook the stdin/REPL path gets from
-\ include.f (src/core/include.f binds `[: INCLUDE-EVALUATE ;] is TDECL-EVAL-XT`).
+\ include.f (src/core/include.f binds `[: INCLUDE-EVALUATE ;] is TYPE-DECL:TDECL-EVAL-XT`).
 \ Without it, any `SUMTYPE ...` declaration in an AOT source dies rc 76
 \ ("sumtype: constructor eval hook not installed") before it can lower a matched
 \ definition. `evaluate` compiles the generated constructor bodies into the
@@ -14,9 +14,11 @@ package AOT-LINK
 \ source-string metaprogramming (`evaluate`) is outside checked inference.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: AOT-CTOR-EVAL ( ptr u8 n -- ) evaluate ;
-: AOT-CTOR-EVAL-INSTALL ( -- ) [: AOT-CTOR-EVAL ;] is TDECL-EVAL-XT ;
-AOT-CTOR-EVAL-INSTALL
+using TYPE-DECL
+: CTOR-EVAL-INSTALL ( -- ) [: AOT-CTOR-EVAL ;] is TYPE-DECL:TDECL-EVAL-XT ;
+CTOR-EVAL-INSTALL
 -1 TDECL-EVAL-ARMED !
+;using
 
 \ --- preseeded test entry argv (tools/hb-build.f --preseed-entry / --preseed-seed):
 \ argv[3] = selected entry word (default MAIN), argv[4] = seed cells as big-endian

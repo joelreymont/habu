@@ -257,11 +257,14 @@ variable FILE-USED
 \ when the TFAM sealing work (dot habu-tfam-2b-sealed-1b77662c) put its 566
 \ remaining definitions inside `package TFAM`.  The six names that could not
 \ follow are admitted by TFAM-BRIDGE? below, by exact path, name and definer.
+\ src/core/sumtype.f left it the same way and on the same dot: 316 globals became
+\ `package TYPE-DECL`, 45 public and 271 private, and the SEVEN that stayed are
+\ admitted by TYPE-DECL-GRAMMAR? below, again by exact path, name and definer.
 \ src/core/checker.f is the first interim entry, on the
 \ same terms: the checker is a global pre-hook language surface by current
 \ construction -- its PRIM:/PPRIM: primitive-axiom machinery and its RBF
 \ rollback-frame surface are global by design and load before any package
-\ exists -- so it is admitted the way sumtype.f, roles.f, structures.f and
+\ exists -- so it is admitted the way roles.f, structures.f and
 \ enums.f are, and it must be removed once the checker sealing work (dot
 \ habu-seal-the-checker-5314c0ab) gives those seams real package owners.
 \ src/core/render.f is the third interim entry, admitted on exactly the same
@@ -411,7 +414,6 @@ variable FILE-USED
    FILE$ s" lib/prelude.f" LINT-STR= if true exit then
    FILE$ s" src/core/util.f" LINT-STR= if true exit then          \ first prefix source; see header
    FILE$ s" src/core/sha256.f" LINT-STR= if true exit then       \ standalone stage-0 prefix; tools/bootstrap.sh:81
-   FILE$ s" src/core/sumtype.f" LINT-STR= if true exit then
    FILE$ s" src/core/layout-buffer.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
@@ -1526,6 +1528,62 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    DEF-DEFINER-I @ s" defer" TOK= 0= if false exit then
    DEF-NAME-I @ s" TF-SHA16-XT" TOK=CI ;
 
+\ src/core/sumtype.f is `package TYPE-DECL` now (dot habu-tfam-2b-sealed-1b77662c):
+\ 316 globals became 45 publics and 271 privates under one owner, and the only
+\ renames are the seven implementations the global entries below call, so its
+\ whole-file GLOBAL-IMPLEMENTATION? entry is gone.  SEVEN names
+\ stayed global, and unlike the TFAM six the reason is not the engine's — it is
+\ the LANGUAGE's, which makes this a surface row rather than a bridge row.
+\
+\ NEWTYPE, SUMTYPE and PRODUCT are the declaration grammar itself.  A user
+\ declaration has to register from GENUINE top level, without opening any
+\ package: test/type-decl-suite.f says so in its own header and every accepting
+\ case in it is that proof, which is also why that suite is a GRAMMAR-FIXTURE?
+\ path above.  Wrapping these three in a package would not satisfy the ownership
+\ rule, it would delete the position the language is spoken from.  Their PRIM:
+\ rows at the foot of sumtype.f describe these three global names and stay PRIM:
+\ for that reason.
+\
+\ CHECKER-DEFFAMILY, CHECKER-DEFSUM, CHECKER-DEFSUM-NOEND and CHECKER-DEFPRODUCT
+\ are the same grammar reached without the input stream: the checker's preverify
+\ and all-errors replay (src/habu/verify-source.f, tools/check-core.f) and the
+\ checked declarers built on them (lib/type/deftype.f DEFTYPE, maki/extent.f
+\ EXTENT:) hand a name and a body text to these four instead of parsing tokens.
+\ They carry PRIM: rows of their own in src/core/checker.f, so they are part of
+\ the same global language surface and move only when it does.  Measured, and
+\ recorded because it bounds the claim: NO engine spelling forces these four --
+\ `rg 's" checker-def..."' over src/habu, src/os, src/arch and bootstrap/cg names
+\ none of them, and no AOT-captured call site does either.  They are global
+\ because the grammar is, not because the engine cannot reach them.
+\
+\ Everything under them is sealed: the declaration buffer, the plan arena, the
+\ payload capture vectors, the renderers and the transaction context are package
+\ privates with no top-level spelling, and each of the seven is a one-line entry
+\ into a package public, the shape src/core/enum-decl.f already ships for ENUM.
+\
+\ The row is exact path + exact name + exact definer, so an eighth global added
+\ beside them still reports, and so does any of the seven re-declared by another
+\ definer or in another file.  Retirement: it goes when a user declaration can
+\ register without a global declarer -- that is a language change, not a
+\ packaging one, so unlike the interim entries above this row has no packaging
+\ dot waiting on it.
+: TYPE-DECL-OPENER? ( -- bool )
+   DEF-NAME-I @ s" NEWTYPE" TOK=CI if true exit then
+   DEF-NAME-I @ s" SUMTYPE" TOK=CI if true exit then
+   DEF-NAME-I @ s" PRODUCT" TOK=CI ;
+
+: TYPE-DECL-HOOK? ( -- bool )
+   DEF-NAME-I @ s" CHECKER-DEFFAMILY" TOK=CI if true exit then
+   DEF-NAME-I @ s" CHECKER-DEFSUM" TOK=CI if true exit then
+   DEF-NAME-I @ s" CHECKER-DEFSUM-NOEND" TOK=CI if true exit then
+   DEF-NAME-I @ s" CHECKER-DEFPRODUCT" TOK=CI ;
+
+: TYPE-DECL-GRAMMAR? ( -- bool )
+   FILE$ s" src/core/sumtype.f" LINT-STR= 0= if false exit then
+   DEF-DEFINER-I @ s" :" TOK= 0= if false exit then
+   TYPE-DECL-OPENER? if true exit then
+   TYPE-DECL-HOOK? ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
@@ -1534,6 +1592,7 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    ENGINE-BODY-EDIT? if true exit then
    MIRROR-EDIT? if true exit then
    TFAM-BRIDGE? if true exit then
+   TYPE-DECL-GRAMMAR? if true exit then
    s" lib/adt/option.f" s" option" EXACT-ENUM? if true exit then
    s" lib/adt/result.f" s" result" EXACT-ENUM? if true exit then
    FILE$ s" lib/type/deftype.f" LINT-STR= if

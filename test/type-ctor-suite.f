@@ -17,6 +17,7 @@ require lib/adt/result.f
 
 using SCHEMA-REG
 using TFAM
+using TYPE-DECL
 
 variable #FAIL
 variable #CASE
@@ -1319,5 +1320,6 @@ s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) co
    #FAIL @ . s" type-ctor-suite: failures" 1 die ;
 REPORT
 
+;using
 ;using
 ;using

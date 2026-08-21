@@ -62,6 +62,7 @@
 
 using SCHEMA-REG
 using TFAM
+using TYPE-DECL
 
 \ --- named reject codes (7101-7128 = tfam/schema/pf; 7161-7164 = decl-event;
 \ 7161/7172/7173 are the event token, field-range, and family-scope rejects for
@@ -162,5 +163,6 @@ public
 
 ;package
 
+;using
 ;using
 ;using

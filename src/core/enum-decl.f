@@ -66,6 +66,7 @@
 
 using SCHEMA-REG
 using TFAM
+using TYPE-DECL
 
 package ENUM-DECL
 
@@ -637,5 +638,6 @@ public
 \ ENUM type-name arity [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
 : ENUM ( -- ) ENUM-DECL:ED-RUN ;
 
+;using
 ;using
 ;using

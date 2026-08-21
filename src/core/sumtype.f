@@ -20,11 +20,33 @@
 \ restored, the failure is reported through TDECL-DIAG (render.f), and the
 \ declaration either counts as a multi-error reject or throws its named code.
 \ Loaded unchecked in the checker prefix, right after render.f.
+\
+\ THE FILE IS `package TYPE-DECL` (dot habu-tfam-2b-sealed-1b77662c). Of the 316
+\ definitions it used to publish as globals, 45 are publics and 271 are privates;
+\ nothing was renamed except the seven implementations named below. SEVEN names
+\ stay global, at the foot of the file, and they are the declaration GRAMMAR:
+\ NEWTYPE, SUMTYPE and PRODUCT, because a user declaration must register from
+\ genuine top level without opening any package, and CHECKER-DEFFAMILY,
+\ CHECKER-DEFSUM, CHECKER-DEFSUM-NOEND and CHECKER-DEFPRODUCT, the same grammar
+\ reached with a body text instead of the input stream. Each is a one-line entry
+\ into the public it renamed (TDECL-NEWTYPE, TDECL-DEFSUM, ...), the shape
+\ src/core/enum-decl.f already ships for ENUM. Everything beneath them -- the
+\ declaration buffer, the plan arena, the payload capture vectors, the renderers,
+\ the transaction context -- is a private with no top-level spelling at all.
+\ tools/package-diff-lint-core.f TYPE-DECL-GRAMMAR? admits exactly the seven, by
+\ path, name and definer; test/internal-word-gate.f TYPE-DECL-SEAL-CASES pins
+\ that the surface stops there and that `0 TDPLAN-P !` before a declaration --
+\ rc 134 SIGSEGV on master -- is now E-UNDEFINED.
 
 using SCHEMA-REG
 using TFAM
 
+package TYPE-DECL
+
 \ --- named reject codes (7101-7106 live in type-family.f, 7103 in type-schema.f).
+
+public
+
 7107 constant E-TDECL-SYNTAX    \ malformed declaration (name/arity/terminator/token)
 7108 constant E-TDECL-ARITY     \ arity token is not a small decimal
 7109 constant E-TDECL-PAYLOAD   \ unknown variant payload type
@@ -33,6 +55,9 @@ using TFAM
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
 7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
+
+private
+
 7133 constant E-TDECL-PROVIDER  \ payload provider result contradicts the family's own schema/slot metadata
                                 \ (7120-7132 already belong to the checker, layout-buffer, field, and cast blocks)
 
@@ -49,6 +74,9 @@ variable TDECL-CUR-FAM              \ family id being declared (-1 outside a bod
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
 : TDECL-WHY! ( ptr u8 n -- ) TDW-U ! TDW-A ! ;
+
+public
+
 : TDECL-THROW ( ptr u8 n ptr u8 n n -- ) {: ta:ptr tu:n wa:ptr wu:n code:n :}
    ta tu TDECL-TOK!
    wa wu TDECL-WHY!
@@ -72,10 +100,16 @@ variable TDECL-CUR-FAM              \ family id being declared (-1 outside a bod
 \ right, which is why the suite's own base-state assertions passed either way.
 \
 \ The schema store is not the registry's, so its two marks are restored here.
+
+private
+
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
-variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 = none)
+
+public
+
+variable TDECL-FAM-REG   REG-PROTECT   \ family id registered by the LAST successful sum (-1 = none)
 
 \ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields through the
 \ nested declaration coordinator, whose event participant owns the field frame
@@ -83,6 +117,9 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 \ frame independently owns the enclosing family/schema/layout marks. Thus either
 \ participant can reject and the coordinator restores the complete declaration;
 \ SUMTYPE/ENUM/NEWTYPE never mutate PF directly.
+
+private
+
 : TDECL-MARK ( -- )
    TFAM-N @ TDM-TFAM !   TF-STR-U @ TDM-STR !   TF-PK-N @ TDM-PK !
    SUMV-N @ TDM-SUMV !   LAY-N @ TDM-LAY !
@@ -131,17 +168,23 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 \ Shared unterminated-sum reject: report the declaration-shaped E-BAD-DECLARATION
 \ packet (name + partial body) through TDECL-RUN so every path -- native SUMTYPE,
 \ the verify-source recording pass, and the check.f collector -- agrees (§24).
-\ Defined here (before CHECKER-DEFSUM) so every context that sees CHECKER-DEFSUM
-\ also sees CHECKER-DEFSUM-NOEND.
+\ Defined here (before TDECL-DEFSUM) so every context that sees TDECL-DEFSUM
+\ also sees TDECL-DEFSUM-NOEND.
 : TDECL-NOEND-BODY ( -- )
    TDN-A @ TDN-U @ s" missing ;SUMTYPE" E-TDECL-SYNTAX TDECL-THROW ;
-: CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- )   \ name, partial body -> declaration packet
+
+public
+
+: TDECL-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- )   \ name, partial body -> declaration packet
    {: na:ptr nu:n ba:ptr bu:n :}
    s" sumtype" na nu ba bu TDECL-CTX!
    [: TDECL-NOEND-BODY ;] TDECL-RUN ;
 
 \ --- name gate: reserved signature/type tokens, control words, and grammar
 \ keywords may not name a family or variant (docs §1, PLAN item 6).
+
+private
+
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? ;
 
@@ -574,6 +617,9 @@ create TDV-BADLETTER 1 allot
 \ so the slot stays empty and construction waits on item 9's `construct` form.
 \ The derived name is interned AFTER the escaped/hashed spelling is built, so the
 \ transient family package/tail pointers are consumed before any pool grow.
+
+public
+
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-PUBLIC? 0= IF EXIT THEN
    fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
@@ -596,6 +642,9 @@ create TDV-BADLETTER 1 allot
 \ and rejects at TDECL-PAY-ELEM with the docs §24 recursive-sum diagnostic
 \ (E-TDECL-RECURSIVE, boxed sub-slice 1 below); boxed — the only layout that
 \ admits recursion — will later route its self-references to a pointer layout.
+
+private
+
 : TDECL-POLICY-DEFERRED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" niche-null" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" boxed" CORE-STR=CI ;
@@ -610,6 +659,9 @@ create TDV-BADLETTER 1 allot
 \ field counts that PACKED-DESC reads are final. stack-cell-tag families bake
 \ no LAY row (nothing consumes one). Runs inside TDECL-RUN's transaction, so a
 \ later close-stage reject rolls LAY-N back with the family row.
+
+public
+
 : TDECL-LAYOUT-DESC ( n -- ) {: fam:n :}
    fam TFAM-LAYOUT-POLICY@ TL-PACKED-TAG = 0= IF EXIT THEN
    fam TL-PACKED-TAG fam PACKED-DESC LAY-ADD drop ;
@@ -633,6 +685,9 @@ create TDV-BADLETTER 1 allot
 \ non-integer/linear scalars reject (comparing a linear value consumes it;
 \ deferred to TFAM-11); a product's enum-typed field requires that family to
 \ also derive eq (its PKG:TAG is the field comparator).
+
+private
+
 : TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    fam TFAM-PUBLIC? 0= IF
       a u s" derive requires a public family" E-TDECL-DERIVE TDECL-THROW THEN
@@ -666,6 +721,9 @@ create TDV-BADLETTER 1 allot
 \ a DERIVE-marked family must not declare a variant spelled like a generated
 \ derived tail: the ctor package would hold two words with one name.
 variable TDD-I   variable TDD-J   variable TDD-K
+
+public
+
 : TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    0 TDD-I !
@@ -678,6 +736,9 @@ variable TDD-I   variable TDD-J   variable TDD-K
 
 \ payload-role gate (derive S2): every payload/field schema node must be
 \ derivably comparable, else the DECLARATION rejects naming the exact role.
+
+private
+
 : TDECL-DERIVE-NODE-OK ( n -- ) {: node:n :}
    node SCHEMA-CON? IF
       node SCHEMA-A@ CT-INT? 0= IF
@@ -694,6 +755,9 @@ variable TDD-I   variable TDD-J   variable TDD-K
       EXIT THEN
    TDN-A @ TDN-U @
    s" payload role has no derived equality" E-TDECL-DERIVE TDECL-THROW ;
+
+public
+
 : TDECL-DERIVE-REQUIRE ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    0 TDD-I !
@@ -707,6 +771,9 @@ variable TDD-I   variable TDD-J   variable TDD-K
    REPEAT ;
 
 \ --- registration entry points (verify-source and the definers below).
+
+private
+
 : CHECKER-DEFSUM-BODY ( -- )
    TDECL-REQUIRE-FIT
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
@@ -729,7 +796,10 @@ variable TDD-I   variable TDD-J   variable TDD-K
    fam vstart TDV-N @ TDECL-CTOR-PUBLISH
    fam TDECL-FAM-REG ! ;
 
-: CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
+
+public
+
+: TDECL-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}
    s" sumtype" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
@@ -768,18 +838,33 @@ variable TDD-I   variable TDD-J   variable TDD-K
 \ are generated only by the engine PRODUCT definer below. MATCH and
 \ `construct` stay kind-gated to sum/enum, so product rows are never matchable
 \ variants and private products have no construction surface (fail-closed).
+
+private
+
 variable TDP-N   \ product field count (schema roots)
 variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
 variable TDP-FAM
 variable TDP-EVT
 
-defer TDECL-TXN-XT ( [ -- ] -- )
-variable TDECL-TXN-ARMED
-defer TDECL-EVENT-CURRENT-XT ( -- n )
-defer TDECL-EVENT-DECL-XT ( n n -- n )
-defer TDECL-EVENT-ARITY-XT ( n n n -- n )
-defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )
-defer TDECL-EVENT-ARMED ( -- bool )
+
+public
+
+\ TDECL-TXN-ARMED carries REG-PROTECT and the two flags further down do not, and
+\ the difference is one measured fact about their writers: this one is stored
+\ from inside a colon body in src/core/generated-declaration.f, which loads
+\ before the checker hook, so the store is a COMPILED reference and REG-PROTECT
+\ (which closes interpret and the tick, not compile mode) leaves it alone. The
+\ note beside TDECL-EVAL-ARMED below has the other half.
+defer TDECL-TXN-XT ( [ -- ] -- )   REG-PROTECT
+variable TDECL-TXN-ARMED   REG-PROTECT
+defer TDECL-EVENT-CURRENT-XT ( -- n )   REG-PROTECT
+defer TDECL-EVENT-DECL-XT ( n n -- n )   REG-PROTECT
+defer TDECL-EVENT-ARITY-XT ( n n n -- n )   REG-PROTECT
+defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )   REG-PROTECT
+defer TDECL-EVENT-ARMED ( -- bool )   REG-PROTECT
+
+
+private
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -888,23 +973,32 @@ defer TDECL-EVENT-ARMED ( -- bool )
    fam TDECL-PRODUCT-TX
    fam TDECL-FAM-REG ! ;
 
-: CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
+
+public
+
+: TDECL-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}
    s" product" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFPRODUCT-BODY ;] TDECL-RUN ;
+
+
+private
 
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-ARITY
    TK-CELL TDECL-FAMILY drop ;
 
-: CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- )   \ name, arity token
+
+public
+
+: TDECL-DEFFAMILY ( ptr u8 n ptr u8 n -- )   \ name, arity token
    {: na:ptr nu:n aa:ptr au:n :}
    s" newtype" na nu aa au TDECL-CTX!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
 \ --- runtime constructor generation (item 8, docs §12). Only the engine's
-\ SUMTYPE word below generates dictionary words; the direct CHECKER-DEFSUM
+\ SUMTYPE word below generates dictionary words; the direct TDECL-DEFSUM
 \ entry stays metadata-only, so preverify/all-errors dispatch never mutates
 \ the tool dictionary and checker rollback stays complete. Each PUBLIC variant
 \ becomes one checked qualified definition
@@ -928,12 +1022,32 @@ defer TDECL-EVENT-ARMED ( -- bool )
 \ installed: a stage builder that omits those files leaves the flag 0, and the
 \ generator fails closed exactly as the old `hook @ 0=` guard did (a `defer`
 \ cannot be probed for its binding, so the flag carries that fact).
-defer TDECL-EVAL-XT ( ptr u8 n -- )
-defer TDECL-PROT-WID-XT ( ptr u8 n -- )
-defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
-defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
+defer TDECL-EVAL-XT ( ptr u8 n -- )   REG-PROTECT
+defer TDECL-PROT-WID-XT ( ptr u8 n -- )   REG-PROTECT
+defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )   REG-PROTECT
+defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )   REG-PROTECT
+\ These two flags are the only public records here that do NOT carry
+\ REG-PROTECT, and the reason is measured rather than chosen. Their writers are
+\ src/core/include.f, src/habu/aot.f, src/habu/xref.f and the three stage0
+\ test/bootstrap-wide-*-src.f fixtures, and every one of them arms at genuine
+\ TOP LEVEL. Two facts close the door on moving the store into a compiled body:
+\ this file is loaded UNCHECKED, so nothing it defines except a `defer` is
+\ checker-known, and include.f and xref.f are loaded AFTER the checker hook --
+\ measured, `-1 TDECL-EVAL-ARMED !` inside include.f's checked TDECL-EVAL-INSTALL
+\ answers `undefined word 'TDECL-EVAL-ARMED'`, rc 70. REG-PROTECT would then
+\ refuse the only remaining spelling: with it, the same store at top level in
+\ test/bootstrap-wide-memory-src.f answered `hb: internal engine word`, rc 70.
+\ What the seal still buys here is real and is what the sweep measured: the BARE
+\ name is gone, so `0 TDECL-EVAL-ARMED !` from user source is E-UNDEFINED, and
+\ the surviving qualified spelling names its owner and fails closed on a named
+\ rc 76 die rather than corrupting anything. The retirement condition is a
+\ checker-known arming surface: give this file a checked half (the
+\ lower-cert-effects.f shape) and the flags become privates behind an ARM word.
 variable TDECL-EVAL-ARMED
 variable TDECL-PROT-WID-ARMED
+
+
+private
 
 : TDECL-NAME-PREFLIGHT-MISSING ( ptr u8 n -- )
    2drop s" sumtype: generated name preflight not installed" 76 die ;
@@ -978,10 +1092,22 @@ PTR-VARIABLE TDPLAN-ROW-P   TDPLAN-ROW-BOOT TDPLAN-ROW-P !
 variable TDPLAN-CAP         TDPLAN-CAP-INIT TDPLAN-CAP !
 variable TDPLAN-ROW-CAP     TDPLAN-ROW-CAP-INIT TDPLAN-ROW-CAP !
 variable TDPLAN-U
-variable TDPLAN-N
+
+public
+
+variable TDPLAN-N   REG-PROTECT
+
+private
+
 variable TDPLAN-I
 
-defer TDECL-OWNER-SNAPSHOT-XT ( -- )
+
+public
+
+defer TDECL-OWNER-SNAPSHOT-XT ( -- )   REG-PROTECT
+
+private
+
 : TDECL-OWNER-SNAPSHOT-DEFAULT ( -- ) ;
 : TDECL-OWNER-SNAPSHOT-DEFAULTS ( -- )
    [: TDECL-OWNER-SNAPSHOT-DEFAULT ;] is TDECL-OWNER-SNAPSHOT-XT ;
@@ -1060,10 +1186,16 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
       cap TDPLAN-ROWS>BYTES ARENA-BYTES-GROW TDPLAN-ROW-P !
    cap TDPLAN-ROW-CAP ! ;
 
+
+public
+
 : TDPLAN-BEGIN ( -- )
    0 TDPLAN-U !
    0 TDPLAN-N !
    CTOR-PEND-CLEAR ;
+
+
+private
 
 : TDPLAN-C, ( n -- )
    1 TDPLAN-BYTE-NEED {: need:n :}
@@ -1150,6 +1282,9 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
    THEN
    TDPLAN-P @ off + u ;
 
+
+public
+
 : TDPLAN-DEF$ ( n -- ptr u8 n )
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.DEF-OFF @ r TDPLAN.DEF-U @ TDPLAN-SPAN$ ;
@@ -1157,6 +1292,9 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
 : TDPLAN-NAME$ ( n -- ptr u8 n )
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.NAME-OFF @ r TDPLAN.NAME-U @ TDPLAN-SPAN$ ;
+
+
+private
 
 : TDPLAN-PREFLIGHT-NAMES ( -- )
    0 TDPLAN-I !
@@ -1393,6 +1531,9 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 
 \ TDPV-CAPTURE ( ctx qn qr qc fam -- ) : take the family's whole payload view.
 \ Runs before any rendering; nothing below it calls a capability again.
+
+public
+
 : TDPV-CAPTURE ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- )
    {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
    -1 TDPV-FAM !
@@ -1415,6 +1556,9 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 \ The family check covers the case that ordering cannot rule out: a rolled-back
 \ declaration releases its variant rows, so a later family can be given the same
 \ row numbers, and then the range alone would not notice.
+
+private
+
 : TDPV-SLOT ( n n -- n ) {: fam:n vid:n :}   \ variant row -> snapshot index
    fam TDPV-FAM @ <> IF
       fam s" payload snapshot is not this family's" TDPV-THROW THEN
@@ -1445,11 +1589,17 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    vid j SUMV-PAY-ROOT ;
 : TDECL-SUMV-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :}
    vid SUMV-PAYCELLS@ ;
+
+public
+
 : TDECL-SUMV-PROVIDER ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )   \ ctx + the three committed capabilities
    0
    [: TDECL-SUMV-N ;]
    [: TDECL-SUMV-ROOT ;]
    [: TDECL-SUMV-CELLS ;] ;
+
+
+private
 
 : TDGEN-PAYLOAD ( n n -- ) {: fam:n vid:n :}
    fam vid TDPV-N@ {: k:n :}              \ declared inputs, one per schema root
@@ -1515,6 +1665,9 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    CTOR-PEND-CLEAR
    rc 0 <> IF rc throw THEN ;
 
+
+public
+
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
    fam vid TDGEN-PADS {: pads:n :}
    TDGEN-CLEAR
@@ -1526,6 +1679,9 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    s"  ) " TDGEN-APP
    vid pads TDGEN-BODY
    vid pads 1 + TDPLAN-CTOR+ ;
+
+
+private
 
 : TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
    TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
@@ -1763,6 +1919,9 @@ variable TDD-H
 \ publisher (src/core/structure-make.f) keeps its ( fam -- ) call: it declares its
 \ variant rows through SUMV-ADD before generating, so the committed view is
 \ already its own view.
+
+public
+
 : TDECL-PROD-WORDS ( n -- ) {: fam:n :}
    TDECL-SUMV-PROVIDER fam TDPV-CAPTURE
    fam TDECL-PROD-WORDS-BODY ;
@@ -1776,6 +1935,9 @@ variable TDD-H
 \ every result escapes. The provider and the family id travel on the data stack
 \ through it because a quotation cannot read its caller's locals, and the same
 \ family id comes back out on every normal branch.
+
+private
+
 : TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
    {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
    fam TFAM-PUBLIC? 0= IF ctx qn qr qc fam EXIT THEN
@@ -1799,6 +1961,9 @@ variable TDD-H
    fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID
    ctx qn qr qc fam ;
 
+
+public
+
 : TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )   \ generate one live family's constructors
    [: TDECL-GEN-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
@@ -1812,6 +1977,9 @@ variable TDD-H
 \ payload view is chosen: a definer that has already published its rows reads
 \ them back through TDECL-SUMV-PROVIDER. A refused declaration leaves -1 (the
 \ multi-error continue path in TDECL-RUN) and generates nothing.
+
+private
+
 : TDECL-CTOR-WORDS ( -- )
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
@@ -1819,10 +1987,16 @@ variable TDD-H
 
 \ --- public defining words. NEWTYPE consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
-: NEWTYPE ( -- )
+
+public
+
+: TDECL-NEWTYPE ( -- )
    parse-name {: na:ptr nu:n :}
    parse-name {: aa:ptr au:n :}
-   na nu aa au CHECKER-DEFFAMILY ;
+   na nu aa au TDECL-DEFFAMILY ;
+
+
+private
 
 create TDECL-BUF TDECL-CAP allot
 variable TDECL-U
@@ -1851,15 +2025,18 @@ variable TDECL-I
       TDECL-TOKEN+
    AGAIN ;
 
-: SUMTYPE ( -- )
+
+public
+
+: TDECL-SUMTYPE ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
    SUMTYPE-COLLECT 0= IF
-      na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM-NOEND EXIT
+      na nu TDECL-BUF TDECL-U @ TDECL-DEFSUM-NOEND EXIT
    THEN
    na TDN-A !  nu TDN-U !
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ CHECKER-DEFSUM TDECL-CTOR-WORDS ;]
+   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFSUM TDECL-CTOR-WORDS ;]
       TDECL-TXN-XT ;
 
 \ ENUM used to buffer bare variant names here and hand them to CHECKER-DEFENUM.
@@ -1871,6 +2048,9 @@ variable TDECL-I
 \ PRODUCT buffers the `arity FIELD f t ..` body up to ;PRODUCT (SUMTYPE's shape),
 \ then registers the whole block and generates the PKG:MAKE/PKG:UNMAKE words
 \ for a public product (TDECL-CTOR-WORDS branches on the family kind).
+
+private
+
 : PRODUCT-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
    BEGIN
       parse-name
@@ -1882,7 +2062,10 @@ variable TDECL-I
 : TDECL-PRODUCT-NOEND-BODY ( -- )
    TDN-A @ TDN-U @ s" missing ;PRODUCT" E-TDECL-SYNTAX TDECL-THROW ;
 
-: PRODUCT ( -- )
+
+public
+
+: TDECL-PRODUCT ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
    PRODUCT-COLLECT 0= IF
@@ -1891,8 +2074,41 @@ variable TDECL-I
    THEN
    na TDN-A !  nu TDN-U !
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT TDECL-CTOR-WORDS ;]
+   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFPRODUCT TDECL-CTOR-WORDS ;]
       TDECL-TXN-XT ;
+
+;package
+
+using TYPE-DECL
+
+\ --- the global declaration grammar. These seven names are the whole of this
+\ file's global surface and the only part of it a user program can spell. They
+\ stay global because a user declaration must register WITHOUT opening any
+\ package: test/type-decl-suite.f declares from genuine top level and that
+\ position is the thing it tests. Each one is a one-line entry into the sealed
+\ implementation above, the shape src/core/enum-decl.f already ships for ENUM
+\ (`: ENUM ( -- ) ENUM-DECL:ED-RUN ;`); the buffers, the plan arena, the
+\ transaction context and every renderer stay inside package TYPE-DECL, where
+\ neither a bare nor a qualified name reaches them.
+\ tools/package-diff-lint-core.f TYPE-DECL-GRAMMAR? admits exactly these seven,
+\ by exact path, exact name and exact definer; test/internal-word-gate.f
+\ SEAL-CASES pins that the surface stops there.
+
+\ NEWTYPE consumes name + arity. SUMTYPE and PRODUCT buffer their block up to
+\ the ;NAME closer (VALUE-RECORD's shape), then register it whole.
+: NEWTYPE ( -- ) TDECL-NEWTYPE ;
+: SUMTYPE ( -- ) TDECL-SUMTYPE ;
+: PRODUCT ( -- ) TDECL-PRODUCT ;
+
+\ The checker's own declaration entry points, reached by the preverify and
+\ all-errors replay paths (src/habu/verify-source.f, tools/check-core.f) and by
+\ the checked declarers that build on them (lib/type/deftype.f DEFTYPE,
+\ maki/extent.f EXTENT:). Their PRIM: rows live in src/core/checker.f and stay
+\ PRIM: because the names they describe stay global.
+: CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
+: CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
+: CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM-NOEND ;
+: CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT ;
 
 \ Public top-level surface of the type-family DSL: the block openers parse
 \ their own body tokens up to the ;NAME closer, so their cell effect is ( -- ).
@@ -1910,5 +2126,6 @@ PRIM: NEWTYPE PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: PRODUCT PRIM;
 
+;using
 ;using
 ;using

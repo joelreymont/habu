@@ -12,6 +12,7 @@ require test/checker-assert.f
 
 using SCHEMA-REG
 using TFAM
+using TYPE-DECL
 
 variable #FAIL
 variable #CASE
@@ -2511,5 +2512,6 @@ s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
    #FAIL @ . s" type-decl-suite: failures" 1 die ;
 REPORT
 
+;using
 ;using
 ;using

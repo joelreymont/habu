@@ -72,6 +72,7 @@
 \ only the offending token moves.
 \ ---------------------------------------------------------------------------
 using TFAM
+using TYPE-DECL
 
 package DECL-REJECT
 
@@ -653,7 +654,7 @@ DECLARATION-TRANSACTION:PHASE-ROLLBACK constant PHASE-ROLLBACK
 private
 
 TRUSTED: INSTALL-DECLARATION-RUNNER ( -- )
-   [: GENERATED-DECL-OWNER:RUN ;] is TDECL-TXN-XT
+   [: GENERATED-DECL-OWNER:RUN ;] is TYPE-DECL:TDECL-TXN-XT
    -1 TDECL-TXN-ARMED ! ;
 
 INSTALL-DECLARATION-RUNNER
@@ -871,4 +872,5 @@ get-current prot-wid-add
 
 ;package
 
+;using
 ;using
