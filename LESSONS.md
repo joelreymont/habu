@@ -7715,3 +7715,49 @@ and --no-lldbinit.
   reds unsandboxed, green in a worker's plain shell. Gate spawn-heavy
   batteries unsandboxed, and when your environment is the variable, prove it
   by varying only it.
+
+- **`blocks:` in this tracker means blocked-BY, and the reading is decidable,
+  not a matter of taste.** `dot ready` is exactly the open set minus the leaves
+  whose `blocks:` names an open or active leaf: 1390 open, 482 so blocked, 908
+  ready, zero contradictions. The opposite reading contradicts `dot ready` 90
+  times. Check a graph convention against the tool that consumes it before
+  editing 349 edges, because both readings look plausible in the prose - some
+  leaves write `Depends: X` right next to `blocks: - X`.
+
+- **`jj log -r 'master & <id>'` is not an ancestry test.** `master` is a single
+  commit, so the intersection is empty for every id but master's own and the
+  command silently answers "not in master" for work that landed. The test is
+  `jj log -r '<id> & ::master'`. Four spot checks were wrong before this was
+  caught, and the wrong answer is the safe-looking one.
+
+- **A leaf that shouts LANDED almost never means itself.** 322 open leaves
+  contained a landed/superseded word; reading them, the word nearly always
+  attached to a *blocker* that got satisfied, a *sub-slice*, or a *duplicate
+  merged into* this leaf. Three that read as decisive - `DELIVERED AND MERGED`,
+  `SATISFIED and removed`, `MERGED 2026-08-04` - were all correctly open.
+  Grep finds candidates; only the sentence around the banner decides.
+
+- **Corruption that compounds must be measured for depth, not assumed to be one
+  layer.** The `dot on` re-quoting bug wraps an already-wrapped value, so leaves
+  sat at two, three, four and five layers. "Strip one layer" would have left 151
+  of 361 still broken. Decode to the underlying value and re-serialize once,
+  then prove it by running the fixer twice and diffing.
+
+- **A frontmatter key only exists if the tool's parser reaches it.** One leaf
+  carried a blocker entry with no `blocks:` header above it, so no tool ever
+  read the dependency - the files held 1121 edges where dot-dep-lint counted
+  1120. Another leaf held two whole dot documents concatenated; the CLI reads
+  the first, so the second block's `status: active` was invisible to a sweep
+  that edited frontmatter. Both were found by counting the same thing two ways
+  and chasing the difference of one.
+
+- **Dead claims, not stale work, are what rots a tracker.** 99 of 106 active
+  leaves named a workspace that no longer existed, hiding them from `dot ready`
+  while their contracts stayed accurate. Of 1395 open leaves only six could be
+  disproved. Sweep ownership and dependency metadata on a schedule; the prose
+  looks after itself.
+
+- **`dot ready` did not move when 349 dead edges were swept.** The CLI already
+  treated a closed prerequisite as satisfied, which is exactly why those edges
+  rotted unnoticed for months - nothing ever surfaced them. Hygiene that no
+  tool can feel needs its own audit, because it will never be reported.
