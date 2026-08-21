@@ -109,6 +109,26 @@ variable GT-TAIL-U
 : GT-CHECK ( bool ptr u8 n -- ) {: ok name:ptr nameu :}
    ok 0= if name nameu GT-FAIL+ then ;
 
+\ A comparison keeps both sides: reducing them to a bool first leaves the
+\ reader with a label and no evidence. Detail lines follow the TFAIL record in
+\ the shape lib/test/assert.f prints for T= and T$=, under this layer's name.
+: GT-CHECK-N ( n n ptr u8 n -- ) {: got:n want:n name:ptr nameu:n :}
+   got want <> if
+      name nameu GT-FAIL+
+      s" runner: expected " type want .
+      s" got " type got .
+   then ;
+
+: GT-CHECK$ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: got:ptr gotu:n want:ptr wantu:n name:ptr nameu:n :}
+   got gotu want wantu STR= 0= if
+      name nameu GT-FAIL+
+      s" runner: expected string:" type cr
+      want wantu type cr
+      s" got string:" type cr
+      got gotu type cr
+   then ;
+
 \ Decompose an outcome into the runner's exited/timed-out/code cells (all one
 \ cell, lossless: exit codes >= 128 stay distinct from signal deaths).
 : GT-OUTCOME! ( outcome -- )
@@ -307,7 +327,7 @@ variable GT-TAIL-U
    GT-OUTCOME@ PROC-OUTCOME>RC RC>N ;
 
 : GT-RC= ( n ptr u8 n -- ) {: want name:ptr nameu :}
-   GT-RC@ want = name nameu GT-CHECK ;
+   GT-RC@ want name nameu GT-CHECK-N ;
 
 : GT-RC-NONZERO ( ptr u8 n -- ) {: name:ptr nameu :}
    GT-RC@ 0 <> name nameu GT-CHECK ;
@@ -316,10 +336,10 @@ variable GT-TAIL-U
    GT-TIMED-OUT @ name nameu GT-CHECK ;
 
 : GT-STDOUT= ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu name:ptr nameu :}
-   GT-OUT$ want wantu STR= name nameu GT-CHECK ;
+   GT-OUT$ want wantu name nameu GT-CHECK$ ;
 
 : GT-STDERR= ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu name:ptr nameu :}
-   GT-ERR$ want wantu STR= name nameu GT-CHECK ;
+   GT-ERR$ want wantu name nameu GT-CHECK$ ;
 
 : GT-STDOUT-HAS ( ptr u8 n ptr u8 n -- ) {: needle:ptr needleu name:ptr nameu :}
    GT-OUT$ needle needleu CONTAINS? name nameu GT-CHECK ;

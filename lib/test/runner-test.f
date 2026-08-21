@@ -18,8 +18,12 @@ create GTT-FAIL-PATH FS-PATH-CAP allot
 create GTT-HANG-PATH FS-PATH-CAP allot
 create GTT-LINE-PATH FS-PATH-CAP allot
 create GTT-REC-PATH FS-PATH-CAP allot
+create GTT-DETAIL-PATH FS-PATH-CAP allot
 128 constant GTT-LINE-CAP
 5000 constant GTT-HB-TIMEOUT-MS
+\ A nested child starts its own engine and then runs a child of its own on the
+\ runner's default budget, so its ceiling has to outlast that budget.
+GT-DEFAULT-TIMEOUT-MS GTT-HB-TIMEOUT-MS + constant GTT-NEST-TIMEOUT-MS
 1000 constant GTT-CMD-TIMEOUT-MS
 50 constant GTT-SHORT-TIMEOUT-MS
 4 constant GTT-OVERFLOW-EXTRA
@@ -31,6 +35,7 @@ variable GTT-FAIL-U
 variable GTT-HANG-U
 variable GTT-LINE-U
 variable GTT-REC-U
+variable GTT-DETAIL-U
 variable GTT-LINE-LEN
 variable GTT-LINE-FD
 variable GTT-OFI
@@ -49,6 +54,9 @@ variable GTT-OFI
 
 : GTT-REC$ ( -- ptr u8 n )
    GTT-REC-PATH GTT-REC-U @ ;
+
+: GTT-DETAIL$ ( -- ptr u8 n )
+   GTT-DETAIL-PATH GTT-DETAIL-U @ ;
 
 : GTT-LF ( -- )
    10 SB-APPEND-C ;
@@ -98,6 +106,56 @@ variable GTT-OFI
 : GTT-REC-LINE$ ( -- ptr u8 n )
    S\" TFAIL\tassert\t1\trecord-case" ;
 
+: GTT-LIT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   S\" s\q " SB-APPEND
+   a u SB-APPEND
+   S\" \q" SB-APPEND ;
+
+\ A child that runs the fail fixture through the real runner, then asserts two
+\ values that hold and three that do not, so its whole stdout witnesses what a
+\ failed comparison reports and what a passed one stays silent about.
+: GTT-DETAIL-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/errors.f" SB-APPEND GTT-LF
+   s" require lib/string.f" SB-APPEND GTT-LF
+   s" require lib/fs.f" SB-APPEND GTT-LF
+   s" require lib/fs-mutate.f" SB-APPEND GTT-LF
+   s" require lib/process.f" SB-APPEND GTT-LF
+   s" require lib/process-argv.f" SB-APPEND GTT-LF
+   s" require lib/test/runner.f" SB-APPEND GTT-LF
+   s" PROC-ARGV-RESET" SB-APPEND GTT-LF
+   GTT-FAIL$ GTT-LIT+ s"  >LEN PROC-ARGV+" SB-APPEND GTT-LF
+   s" bin/hb" GTT-LIT+ s"  GT-RUN-DEFAULT" SB-APPEND GTT-LF
+   s" 7 " SB-APPEND s" rc-pass" GTT-LIT+ s"  GT-RC=" SB-APPEND GTT-LF
+   s" GT-OUT$ " SB-APPEND s" out-pass" GTT-LIT+ s"  GT-STDOUT=" SB-APPEND GTT-LF
+   s" 0 " SB-APPEND s" rc-detail" GTT-LIT+ s"  GT-RC=" SB-APPEND GTT-LF
+   s" want-out" GTT-LIT+ s" out-detail" GTT-LIT+ s"  GT-STDOUT=" SB-APPEND GTT-LF
+   s" want-err" GTT-LIT+ s" err-detail" GTT-LIT+ s"  GT-STDERR=" SB-APPEND GTT-LF
+   \ Ends itself: a child that falls off the end waits on the stdin it
+   \ inherited, so its cost would be the caller's stdin and not its own work.
+   s" 0 0 0 die" SB-APPEND GTT-LF
+   SB$ ;
+
+\ Golden, written out rather than derived, so a change in what the runner prints
+\ cannot rewrite its own expectation. The blank line after each captured stream
+\ is the stream's own trailing newline plus the printer's.
+: GTT-DETAIL-OUT$ ( -- ptr u8 n )
+   SB-RESET
+   S\" TFAIL\trunner\t1\trc-detail" SB-APPEND GTT-LF
+   s" runner: expected 0" SB-APPEND GTT-LF
+   s" got 7" SB-APPEND GTT-LF
+   S\" TFAIL\trunner\t2\tout-detail" SB-APPEND GTT-LF
+   s" runner: expected string:" SB-APPEND GTT-LF
+   s" want-out" SB-APPEND GTT-LF
+   s" got string:" SB-APPEND GTT-LF
+   s" bad-out" SB-APPEND GTT-LF GTT-LF
+   S\" TFAIL\trunner\t3\terr-detail" SB-APPEND GTT-LF
+   s" runner: expected string:" SB-APPEND GTT-LF
+   s" want-err" SB-APPEND GTT-LF
+   s" got string:" SB-APPEND GTT-LF
+   s" bad-err" SB-APPEND GTT-LF GTT-LF
+   SB$ ;
+
 : GTT-OK-OUT$ ( -- ptr u8 n )
    SB-RESET
    s" alpha beta" SB-APPEND GTT-LF
@@ -146,7 +204,8 @@ variable GTT-OFI
    s" fail.f" GTT-FAIL-PATH GT-PATH GTT-FAIL-U !
    s" hang.f" GTT-HANG-PATH GT-PATH GTT-HANG-U !
    s" lines.txt" GTT-LINE-PATH GT-PATH GTT-LINE-U !
-   s" record.f" GTT-REC-PATH GT-PATH GTT-REC-U ! ;
+   s" record.f" GTT-REC-PATH GT-PATH GTT-REC-U !
+   s" detail.f" GTT-DETAIL-PATH GT-PATH GTT-DETAIL-U ! ;
 
 : GTT-WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu WRITE-ALL ;
@@ -157,7 +216,8 @@ variable GTT-OFI
    GTT-OK$ GTT-OK-SRC$ GTT-WRITE
    GTT-FAIL$ GTT-FAIL-SRC$ GTT-WRITE
    GTT-HANG$ GTT-HANG-SRC$ GTT-WRITE
-   GTT-REC$ GTT-REC-SRC$ GTT-WRITE ;
+   GTT-REC$ GTT-REC-SRC$ GTT-WRITE
+   GTT-DETAIL$ GTT-DETAIL-SRC$ GTT-WRITE ;
 
 : GTT-RUN-HB ( ptr u8 n n -- ) {: script:ptr scriptu timeout :}
    PROC-ARGV-RESET
@@ -259,6 +319,16 @@ variable GTT-OFI
    GTT-REC-LINE$ s" record tsv line" GT-STDOUT-HAS
    GT-FAILURES 0 T= ;
 
+: GTT-RUN-DETAIL ( -- )
+   GTT-DETAIL$ GTT-NEST-TIMEOUT-MS GTT-RUN-HB ;
+
+: GTT-TEST-CHECK-DETAIL ( -- )
+   GTT-RUN-DETAIL
+   0 s" detail rc" GT-RC=
+   GT-ERR$ s" " T$=
+   GT-OUT$ GTT-DETAIL-OUT$ T$=
+   GT-FAILURES 0 T= ;
+
 : GTT-FILL-FAILS ( -- )
    GT-RESET
    0 GTT-OFI !
@@ -327,6 +397,7 @@ variable GTT-OFI
    GTT-TEST-TIMEOUT
    GTT-TEST-AGGREGATE-FAILURES
    GTT-TEST-FAIL-RECORD
+   GTT-TEST-CHECK-DETAIL
    GTT-TEST-FAIL-OVERFLOW
    GTT-TEST-LINE-FLUSH-U
    GTT-TEST-LINE-FLUSH-FD
