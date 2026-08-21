@@ -7807,4 +7807,8 @@ and --no-lldbinit.
   at the cast landing and the lesson said "before its refreshed binary
   boots" — evidently a warning is not a procedure). A lane parked on an old
   base keeps working until its next boot, which makes the failure look like
-  a broken engine hours later.
+  a broken engine hours later. THIRD CLAUSE (same incident's correction): the
+  copy must REPLACE, never overwrite — `rm` then `cp`, new inode. macOS kills
+  a signed binary modified in place on sight (rc 137, no output) even when
+  codesign -v calls the file valid on disk; the 2x2 that separates it: the
+  other workspace's binary from your checkout vs yours from theirs.
