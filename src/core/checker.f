@@ -158,11 +158,11 @@ TVINIT
 
 : PAY 3 rshift ;
 
-: MK-CON 3 lshift ;
+: MK-CON ( n -- n ) 3 lshift ;
 
-: MK-VAR 3 lshift T-VAR or ;
+: MK-VAR ( n -- n ) 3 lshift T-VAR or ;
 
-: MK-ROW 3 lshift S-ROW or ;
+: MK-ROW ( n -- n ) 3 lshift S-ROW or ;
 
 1024 constant MAXPTR-INIT       \ ptr terms (grows on demand)
 create PTRA-BOOT MAXPTR-INIT cells allot   variable PTRN
@@ -295,7 +295,7 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    QXNA-P @ QE-CAP @ cells nc cells ARENA-BYTES-GROW QXNA-P !
    nc QE-CAP ! ;
 
-: MK-QUOT {: din dout rin rout :}   \ ( -- t ) allocate a quot<effect> term
+: MK-QUOT ( n n n n -- n ) {: din:n dout:n rin:n rout:n :}   \ allocate a quot<effect> term
    QEN @ 1 + QE-ENSURE
    QEN @ 32 * QEA + {: a :}
    din a !  dout a 8 + !  rin a 16 + !  rout a 24 + !
@@ -476,11 +476,34 @@ defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct varia
 defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL whose declared output has a direct closed layout arg routes through the bidirectionally seeded construct step; scalar/pointer/open/linear args fall through
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
-defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
+defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index); render.f's DIAG-VARIANT reads the same tag through it
 defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
 defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args (dot habu-checker-type-structure)
+
+\ The renderer's half of the same wall. src/core/render.f installs RECXT, the
+\ only inferred-effect row producer, so it must load BEFORE the hook while the
+\ registry now loads after it — the diagnostic and recorded-signature paths reach
+\ the registry through these hooks for exactly that reason. TFAM-N-XT is the only
+\ one reached before the registry exists (FAM-INTERNED? runs on every rendered
+\ type term), and its registry-not-loaded default 0 is the true answer: no family
+\ is interned yet, so every id is out of range and FAM-NAME-REND takes the
+\ stored-span fallback it already documents. The rest are reachable only behind an
+\ interned family id or a latched SUMV id, neither of which can exist before
+\ type-family.f runs, so they carry no default and fail closed on DEFER-UNSET.
+defer TFAM-N-XT ( -- n )                                \ family high-water (0 = registry not loaded)
+defer TFAM-NAME-XT ( n -- ptr u8 n )                    \ family id -> interned tail name
+defer TFAM-VAR-START-XT ( n -- n )                      \ family id -> first SUMV row
+defer SUMV-NAME-XT ( n -- ptr u8 n )                    \ SUMV id -> variant tail name
+defer SUMV-FAM-XT ( n -- n )                            \ SUMV id -> owning family id
+defer SUMV-PAY-N-XT ( n -- n )                          \ SUMV id -> declaration-order payload count
+defer SUMV-PAY-FIELD-XT ( n n -- n bool )               \ SUMV id + decl-order slot -> field id, true | false
+defer PF-NAME-XT ( n -- ptr u8 n )                      \ field id -> declared field name
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
+\ The registry sets the id when it declares the reserved ctor and puts -1 back
+\ when it retires it; -1 is the only value that means "not declared", so the
+\ registry names the id it wants recorded and never writes the cell itself.
+: FIELD-FAM! ( n -- ) FIELD-FAM ! ;
 
 \ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
 \ type-family.f at registration (loaded after checker.f). A word whose declared
@@ -786,13 +809,14 @@ UK-EXACT UNIFY-KIND !
    PARAM-SCR-ENSURE
    PARAM-SCR-N @ cells PARAM-SCR + !
    PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
+: PARAM-SCR-N@ ( -- n ) PARAM-SCR-N @ ;   \ the caller's scratch mark, for a nested MK-PARAM build
 \ MK-PARAM ( base a u fam -- t ) : build a T-PARAM from the scratch args pushed at
 \ [base, PARAM-SCR-N); argc = PARAM-SCR-N - base. `base` is the caller's scratch
 \ mark, so nested/replayed param builds are reentrant: MK-PARAM rewinds the shared
 \ scratch back to `base` (never to 0), so a parent's already-pushed args survive.
 \ The argc args are copied into a fresh contiguous run in the flat PARGP pool
 \ (uncapped arity); the run start is recorded in PARAMOFF.
-: MK-PARAM {: base:n a:ptr u:n fam:n :}
+: MK-PARAM ( n ptr u8 n n -- n ) {: base:n a:ptr u:n fam:n :}
    PARAMN @ 1 + PARAM-ENSURE
    PARAM-SCR-N @ base - {: argc:n :}
    argc PARG-ENSURE
@@ -904,7 +928,8 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
    [: 2drop 0 RES-FALSE ;] is MATCH-FAM-XT
    [: drop RES-FALSE ;] is CTOR-STEP-XT
-   [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT ;   \ no registry: field projection fails closed
+   [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT    \ no registry: field projection fails closed
+   [: 0 ;] is TFAM-N-XT ;                           \ no registry: nothing interned, so no id is in range
 TFAM-QUERY-DEFAULTS
 
 \ registry-not-armed default for the PTX block-barrier hook: drop the sym (do not
@@ -1936,6 +1961,11 @@ variable DEADERR  variable DEADTA  variable DEADTU
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
+\ Refuse the definition under check outright and latch the diagnostic set, so no
+\ later unification overwrites the reason. The only honest way for a registry
+\ rule to veto a certificate: OK and FAILSET are this file's verdict cells and
+\ nothing outside it may poke them.
+: CHECK-REJECT! ( -- ) 0 OK !  -1 FAILSET ! ;
 variable DF-ACT   variable DF-EXP
 \ ADT variant capture (item 13, docs/type-families.md §13): the sum-variant/tag
 \ involved at a layout mismatch. CVLIVE holds the SUMV id of the variant a
@@ -2169,7 +2199,7 @@ variable CDT-ROW
       1 +
    REPEAT drop 0 RES-FALSE ;
 
-: CHECKER-STEP {: din dout :}
+: CHECKER-STEP ( n n -- ) {: din:n dout:n :}
    din dout LIN-EXPLICIT? LINEXP !
    LINEXP @ 0= IF LIN-SNAPSHOT THEN
    DCUR @ WAS !
@@ -2940,7 +2970,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ (the prim DB and the toolchain's own body use n), and the unifier lets n
 \ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
 \ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
-: CON-OF {: a u :}                      \ multi-char name -> con code, or 0
+: CON-OF ( ptr u8 n -- n ) {: a:ptr u:n :}   \ multi-char name -> con code, or 0
    a u CT-FIND ;
 : SGBAD-CLEAR ( -- )
    -1 SGBAD-AR-DECL !
@@ -3113,6 +3143,12 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
 : SB! ( ptr u8 -- )
    SB-FIELD ! ;
+
+\ Point the signature lexer at a span and rewind it. SB/SL/SI are one cursor in
+\ three cells and only ever move together; handing a caller the three cells
+\ instead of this word is how a half-moved cursor gets written.
+: SIG-SCAN! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SB!  u SL !  0 SI ! ;
 
 : SS@ ( -- ptr u8 )
    SS-FIELD @ ;
@@ -3363,9 +3399,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
 : PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
-   a SB!
-   u SL !
-   0 SI !
+   a u SIG-SCAN!
    PSIG ;
 
 \ Parse one type application for the generative LAYOUT-BUFFER definer. This is
@@ -3381,7 +3415,7 @@ variable LBI-BAD
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a SB!  u SL !  0 SI !
+   a u SIG-SCAN!
    NEXT-SIG-TOK dup 0= IF 2drop 0 0 RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
@@ -3451,7 +3485,7 @@ variable LBI-BAD
    NEW
    SGBAD-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
-   a SB!  u SL !  0 SI !
+   a u SIG-SCAN!
    NEXT-SIG-TOK dup 0= IF 2drop 0 RES-FALSE EXIT THEN
    SIG-TYPE T-RES LBI-T !
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
@@ -3522,7 +3556,7 @@ variable LBI-BAD
 
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
-   fields SB! fieldsu SL ! 0 SI !
+   fields fieldsu SIG-SCAN!
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
    BEGIN
@@ -3656,7 +3690,7 @@ variable UCP-I
 
 \ USIGS-COPY ( ptr a ptr a n -- ) : cell-wise store copy with a byte tail
 \ (ARM64 tolerates unaligned cell access; spans can start byte-aligned).
-: USIGS-COPY {: src:ptr dst:ptr n:n :}
+: USIGS-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
    0 UCP-I !
    begin UCP-I @ CELL + n <= while
       src UCP-I @ + @ dst UCP-I @ + !
@@ -4035,6 +4069,10 @@ TRUSTED: HIDX-MEM-NULL ( -- ptr a )
 
 : HIDX-GEN+ ( -- )
    HIDX-GEN @ 1 + HIDX-GEN ! ;
+
+\ The live generation, for an index built on this mapping to compare its own
+\ stamp against. A reader gets the number, never the cell.
+: HIDX-GEN@ ( -- n ) HIDX-GEN @ ;
 
 \ Dropping the mapping drops every index built on it: the HT-USX, HT-NRX and
 \ HT-SVX cells live in this allocation, so no index word may touch them until it
@@ -5223,6 +5261,9 @@ defer BADSIG-XT ( ptr u8 n ptr u8 n -- )
 BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
+\ One more rejected definition on this load. MULTI-ERR-END returns this count as
+\ the driver's exit verdict, so every rejecter increments it the same way.
+: MULTI-ERR-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 
 : USIG-BAD-FOREIGN? ( ptr u8 n -- bool )   \ not the definition CHECK just handled
    NMA @ NMU @ CORE-STR= 0= ;
@@ -5553,7 +5594,7 @@ variable ASIG-MISS-K
       s" : checker: bad stored signature" 76 die
    THEN
    na nu USIG-BAD-FOREIGN? 0= IF EXIT THEN
-   1 MULTI-ERR-N +!
+   MULTI-ERR-COUNT+
    sa su na nu BADSIG-XT ;
 
 : USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
@@ -6176,7 +6217,27 @@ PRIM: prot-wid-room  PE-N PE-OUT PRIM;
 \ and its row is PRIM: rather than PPRIM: because the word itself is one of the
 \ six that stay at global scope: src/habu/xref.f calls it from AOT-captured code,
 \ and the boot seed re-resolves a baked callee only through a global scope.
-PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+\ ---- rows that used to describe the registry, and no longer may -------------
+\
+\ Fifty-seven axiom rows stood here for names src/core/type-schema.f,
+\ type-family.f and sumtype.f define -- 49 PPRIM: rows over the TFAM,
+\ TYPE-FIELD, TYPE-FIELD-OWNER and SCHEMA-REG publics, and 8 PRIM: rows over the
+\ globals the engine and the declaration grammar keep global. They existed
+\ because those files loaded before the hook and recorded nothing of their own.
+\ They load after it now (dot habu-route-3-the-64078d43), so each of those names
+\ carries its OWN certified signature, and DO-TOK reads a user row BEFORE it
+\ tries the prim table -- so every one of these rows had become unreachable.
+\
+\ This block's own prose already ruled the case: "A second row for a symbol is
+\ dead - PRIM-FIRST-SCAN answers with the first slot - so it would be a name
+\ with two authorities and no way to tell which one a caller got." Two
+\ authorities for one signature is the disease this campaign removes, so they
+\ are deleted rather than left as documentation.
+\
+\ Measured per name, not assumed: with the rows in place and again with them
+\ gone, EFFECT-QUERY answers the same din and dout cell counts for all 57, so
+\ SIG-MIN-IN -- which src/core/internal-mark.f reads to decide top-level
+\ executability -- cannot have changed its answer either.
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
 PRIM: set-current    PE-N PE-IN PRIM;
@@ -6226,15 +6287,11 @@ PRIM: CHECKER-AUTH-PACKAGE-MODE@ PE-N PE-OUT PRIM;
 PRIM: CHECKER-AUTH-PACKAGE-ACTIVE? PE-F PE-OUT PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ CHECKER-DEFENUM had a row here until the global ENUM keyword moved to the
 \ unified front end. Its only caller was sumtype.f's own ENUM definer, and the
 \ two tools that used it for metadata-only registration (tools/check-core.f and
 \ src/habu/verify-source.f) now register through ENUM-DECL:ED-REPLAY, so the word
 \ and its axiom went together.
-PRIM: CHECKER-DEFPRODUCT PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LAYOUT-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-STORAGE-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-DEFLAYOUT-BUFFER
@@ -6329,39 +6386,9 @@ PRIM: PTX-BARRIER! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ bare global. TFAM-NAME$ is the one exception in this block and stays PRIM:
 \ because it is one of the six names the engine resolves by bare spelling
 \ (habu2.f C-FIND-GLOBAL, for `;match`), so it is still defined at global scope.
-PPRIM: TFAM TFAM-N@ PE-N PE-OUT PPRIM;
-PPRIM: TFAM TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ Public-signature metadata: registry accessors so the checked public-signatures
 \ tool can synthesize constructor signatures from TFAM/SUMV metadata (item 13).
 \ Read-only registry reads (never hidden fields); NOT trust boundaries.
-PRIM: TFAM-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PPRIM: TFAM TFAM-ARITY@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TFAM TFAM-DECL-PARAM-COUNT PE-N PE-OUT PPRIM;
-PPRIM: TFAM TFAM-DECL-PARAM>CHAR PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
-PPRIM: TFAM TFAM-DECL-CHAR>PARAM PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
-PPRIM: TFAM TFAM-KIND@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TFAM TFAM-PUBLIC? PE-N PE-IN  PE-F PE-OUT PPRIM;
-PPRIM: TFAM TFAM-DERIVE-EQ? PE-N PE-IN  PE-F PE-OUT PPRIM;
-PPRIM: TFAM TFAM-DERIVE-HASH? PE-N PE-IN  PE-F PE-OUT PPRIM;
-PPRIM: TFAM TFAM-VAR-START@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TFAM TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TFAM SUMV-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
-PPRIM: TFAM SUMV-CTOR-PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD COUNT PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD TX-DEPTH PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD NO-VARIANT PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD FIND PE-N PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
-PPRIM: TYPE-FIELD EACH PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
-PPRIM: TYPE-FIELD FAMILY@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD VARIANT@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD SCHEMA@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD SLOT@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD CELLS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD BYTE-OFF@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD BYTES@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD ALIGN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD FLAGS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ Product-field transaction lifecycle (dots habu-own-product-field-86660116 /
 \ habu-type-field-owner-619ec6b5). TYPE-FIELD-OWNER is a pre-hook package, so
 \ without these axioms every post-hook caller would need a TRUSTED shim; with
@@ -6372,18 +6399,10 @@ PPRIM: TYPE-FIELD FLAGS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ the full field record: token, family, variant, name string, schema root, then
 \ the logical slot/cells and physical byte-offset/bytes/alignment/flags, and it
 \ returns the same token so callers can thread it.
-PPRIM: TYPE-FIELD-OWNER OPEN PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD-OWNER ADD PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD-OWNER PREPARE PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TYPE-FIELD-OWNER COMMIT PE-N PE-IN PPRIM;
-PPRIM: TYPE-FIELD-OWNER FINALIZE PE-N PE-IN PPRIM;
-PPRIM: TYPE-FIELD-OWNER ROLLBACK PE-N PE-IN PPRIM;
-PPRIM: TYPE-FIELD-OWNER TX-SCHEMA-FOR PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ TX-CELLS-FOR is the sibling token-scoped provisional query and the eighth
 \ public owner word DECL-EVENT calls. It needs its own axiom for the same reason
 \ TX-SCHEMA-FOR does: without it the payload-cell readers would keep the one
 \ DEV-FLD TRUSTED shim the migration is meant to remove entirely.
-PPRIM: TYPE-FIELD-OWNER TX-CELLS-FOR PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PRIM: WF-N@ PE-N PE-OUT PRIM;
 PRIM: WF-OFF@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-POS@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -6467,18 +6486,12 @@ PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-CUM@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PPRIM: TFAM SUMV-N@ PE-N PE-OUT PPRIM;
-PPRIM: TFAM TF-STR-U@ PE-N PE-OUT PPRIM;
-PPRIM: TFAM TF-PK-N@ PE-N PE-OUT PPRIM;
-PPRIM: TFAM LAY-N@ PE-N PE-OUT PPRIM;
 \ The schema registry's two high-water reads. They are PPRIM: rather than PRIM:
 \ because src/core/type-schema.f is package SCHEMA-REG, so the name the checker
 \ and the marking pass both key on is SCHEMA-REG:SCHEMA-N@, not a bare global.
 \ These two are the whole of the package's checked surface: every other public
 \ there is reached only from a compiled pre-hook body or a TRUSTED: forwarder,
 \ and stays DNAME-INT under its qualified name.
-PPRIM: SCHEMA-REG SCHEMA-N@ PE-N PE-OUT PPRIM;
-PPRIM: SCHEMA-REG SCHEMA-ROOT-N@ PE-N PE-OUT PPRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USING PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -6584,19 +6597,11 @@ PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ because those two words keep global scope: habu2.f compiles `match` and
 \ `construct` by looking them up through C-FIND-GLOBAL, which deliberately
 \ ignores the open package.
-PRIM: TFL-MATCH-FAM?  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
-PRIM: TFL-CON-FAM?    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
-PPRIM: TFAM TFL-VAR?  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
-PPRIM: TFAM TFAM-SLOTS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ TFAM-VAR-COUNT@ and TFAM-NAME$ are NOT repeated here: the public-signature
 \ metadata block above already states both, with the effects this file needs.
 \ family.f's VARIANTS and NAME$ read those rows. A second row for a symbol is
 \ dead - PRIM-FIRST-SCAN answers with the first slot - so it would be a name
 \ with two authorities and no way to tell which one a caller got.
-PPRIM: TFAM SUMV-TAG@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TFAM TFL-VPADS PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TFAM SUMV-PAYCELLS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-PPRIM: TFAM SUMV-PAY-N PE-N PE-IN  PE-N PE-OUT PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
 PRIM: EFFECT-DOUT-N      PE-N PE-OUT PRIM;
@@ -6612,6 +6617,115 @@ PRIM: EFFECT-RET-NEUTRAL? PE-F PE-OUT PRIM;
 PRIM: EFFECT-CATCH-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-MATCH-CELLS PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+
+
+\ ---- rows for the type foundation, which is checked now ----------------------
+\
+\ src/core/type-schema.f, type-family.f, sumtype.f, layout-buffer.f and
+\ layout-valid.f load AFTER src/core/check-hook.f (dot
+\ habu-route-3-the-64078d43), so their definitions are derived and checked. This
+\ file still loads before the hook and records nothing of its own, so every
+\ checker word that block calls needs a row here before a checked body may name
+\ it. Each row states the effect the owning definition's own header declares --
+\ that header is the single authority, and a row that disagrees with it is a bug
+\ in this file.
+\
+\ They live here rather than in a checker-effects.f beside cell-effects.f for the
+\ reason the block above gives about two authorities: an axiom row and a TRUST
+\ row for one symbol are two homes for one signature, and this table is where the
+\ checker's own axioms already live. CORE-FOLD-C (src/core/util.f) and
+\ TDECL-DIAG (src/core/render.f) join them because their owners cannot carry a
+\ row: util.f loads before `: TRUST` exists, and render.f is the pre-hook
+\ renderer the block reads its declaration diagnostics through.
+\
+\ These rows replace 58 one-token TRUSTED: forwarders that structure-decl.f and
+\ enum-decl.f carried for the same purpose, each re-declaring a signature its own
+\ file did not own.
+\
+\ Retirement: habu-seal-the-checker-5314c0ab. Once the checker has real package
+\ owners these become PPRIM: rows under those packages.
+PRIM: RES-TRUE PE-F PE-OUT PRIM;
+PRIM: RES-FALSE PE-F PE-OUT PRIM;
+PRIM: CHECK-REJECT! PRIM;
+PRIM: MULTI-ERR? PE-F PE-OUT PRIM;
+PRIM: MULTI-ERR-COUNT+ PRIM;
+PRIM: MDIAG! PE-N PE-IN PRIM;
+PRIM: MD-CON-FAM PE-N PE-OUT PRIM;
+PRIM: MD-CON-KIND PE-N PE-OUT PRIM;
+PRIM: MD-CON-VAR PE-N PE-OUT PRIM;
+PRIM: MD-FAM-UNKNOWN PE-N PE-OUT PRIM;
+PRIM: MD-FAM-KIND PE-N PE-OUT PRIM;
+PRIM: CONSTRUCT-WIDE-STAGED-REJECT PRIM;
+PRIM: FRESH PE-N PE-OUT PRIM;
+PRIM: MK-CON PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: MK-VAR PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: MK-PTR PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: MK-ROW PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: MK-PARAM PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: MK-QUOT PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: PUSH-LOGICAL PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: T-RES PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: T-WIDTH PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: TYPE-CLOSED? PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: PARAM>FAM PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: PARAM>ARG PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: PARAM>ARGC PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: PARAM-SCR+ PE-N PE-IN PRIM;
+PRIM: PARAM-SCR-N@ PE-N PE-OUT PRIM;
+PRIM: CHECKER-STEP PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: SIG-SCAN! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: NEXT-SIG-TOK PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: DELIM? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: PK! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: PKRESET PRIM;
+PRIM: TOKFOLD PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: TKF$ PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: CON-OF PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: CC-N PE-N PE-OUT PRIM;
+PRIM: CC-BOOL PE-N PE-OUT PRIM;
+PRIM: CC-R PE-N PE-OUT PRIM;
+PRIM: CT-INT? PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CT-LIVE? PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CT-LINEAR? PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CT-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: ATOM-TOK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: FRESH-ATOM-TOK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: VREC-FIND PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: REG-GROW1 PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: REG-PERSIST-BUF PE-PTR-A PE-IN PE-PTR-A PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: ARENA-CELLS-ZERO PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: ARENA-BYTES-GROW PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: USIGS-COPY PE-PTR-A PE-IN PE-PTR-A PE-IN PE-N PE-IN PRIM;
+PRIM: HIDX-ENSURE PRIM;
+PRIM: HIDX-GEN@ PE-N PE-OUT PRIM;
+PRIM: HIDX-FNV-PRIME PE-N PE-OUT PRIM;
+PRIM: HIDX-FNV-BASIS PE-N PE-OUT PRIM;
+PRIM: HT-SVX PE-N PE-OUT PRIM;
+PRIM: IDX-HEAD@ PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: IDX-HEAD! PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: IDX-SYM-OK PE-N PE-IN PRIM;
+PRIM: IDX-HEADS-CLEAR PE-N PE-IN PRIM;
+PRIM: CHECKER-RECORD-SYM PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: MWIN-CELLS! PE-N PE-IN PRIM;
+PRIM: WF-XPAD-FLAG PE-N PE-OUT PRIM;
+PRIM: WF-ADD-FULL PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: CONSTRUCT-DECL-LAYOUT PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: WF-XPAD? PE-F PE-OUT PRIM;
+PRIM: LAYOUT-PARAM? PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: LBUF-PEND! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: LBUF-PEND-CLEAR PRIM;
+PRIM: CTOR-PEND-N@ PE-N PE-OUT PRIM;
+PRIM: CTOR-PEND-CLEAR PRIM;
+PRIM: CTOR-PEND-SYM+ PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: CTOR-PEND-REQUIRE-DONE PRIM;
+PRIM: CTOR-PEND-REWIND PRIM;
+PRIM: CTOR-PEND-ARENA-BOOT PRIM;
+PRIM: CHECKER-PACKAGE-PUBLIC PE-N PE-OUT PRIM;
+PRIM: FIELD-FAM! PE-N PE-IN PRIM;
+PRIM: EXT-FREE-CLEAR PRIM;
+PRIM: RBF-SNAP-RESET PRIM;
+PRIM: CORE-FOLD-C PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: TDECL-DIAG PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 
 PTABLE-END
 
@@ -6807,7 +6921,7 @@ TSTALE-DIAG-DEFAULT
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
    a TSR-TOK-A !  u TSR-TOK-U !
    TSTALE-DIAG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF MULTI-ERR-COUNT+ EXIT THEN
    E-TRUST-UNRESOLVED throw ;
 variable USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
@@ -10683,6 +10797,10 @@ variable CTLNEW
 variable TKFU
 variable SKI  variable SKF
 
+\ The folded token TOKFOLD just wrote. The buffer may be reallocated, so the
+\ span is only valid until the next fold — read it, do not keep it.
+: TKF$ ( -- ptr u8 n ) TKF TKFU @ ;
+
 : SGBAD-IN-SOURCE? ( -- bool )
    SGBAD-U @ 0= IF RES-FALSE EXIT THEN
    SGBAD-A @ TBASE @ < IF RES-FALSE EXIT THEN
@@ -12623,6 +12741,19 @@ variable CTOR-PEND-I
    0 CTOR-PEND-POS !
    0 CTOR-PEND-K ! ;
 
+\ How many constructors the plan is holding: a snapshot may only be taken
+\ between declarations, and a non-zero count says one is still open.
+: CTOR-PEND-N@ ( -- n ) CTOR-PEND-COUNT @ ;
+
+\ Put the plan back on its boot buffer and empty it. A grown plan's arena is
+\ scratch that a snapshot/restore cycle must not carry across, and the boot
+\ buffer plus its initial capacity are this file's own storage, so the reset
+\ belongs here rather than in a caller poking three cells.
+: CTOR-PEND-ARENA-BOOT ( -- )
+   CTOR-PEND-BOOT CTOR-PEND-P !
+   CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
+   CTOR-PEND-CLEAR ;
+
 : CTOR-PEND-SYM+ ( n n -- ) {: sym:n cells:n :}
    cells 0 < IF s" checker: negative generated constructor width" 76 die THEN
    CTOR-PEND-ENSURE
@@ -12810,7 +12941,7 @@ variable CTOR-PEND-I
       THEN
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
-      1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
+      MULTI-ERR-COUNT+                                  \ count it (fail-closed exit) and
       CHECK-SIG? SGBAD @ 0= and IF                      \ trust the declared sig so later
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking —
       THEN                                              \ unless the sig itself was bad

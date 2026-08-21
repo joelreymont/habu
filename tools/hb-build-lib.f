@@ -522,15 +522,15 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/checker.f" HBB-KEY-FILE+
    s" src/core/engine-error-effects.f" HBB-KEY-FILE+
    s" src/core/lower-cert-base.f" HBB-KEY-FILE+
-   s" src/core/type-schema.f" HBB-KEY-FILE+
-   s" src/core/type-family.f" HBB-KEY-FILE+
    s" src/core/render.f" HBB-KEY-FILE+
-   s" src/core/sumtype.f" HBB-KEY-FILE+
-   s" src/core/layout-buffer.f" HBB-KEY-FILE+
-   s" src/core/layout-valid.f" HBB-KEY-FILE+
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/cell-effects.f" HBB-KEY-FILE+
    s" src/core/pointer-storage-effects.f" HBB-KEY-FILE+
+   s" src/core/type-schema.f" HBB-KEY-FILE+
+   s" src/core/type-family.f" HBB-KEY-FILE+
+   s" src/core/sumtype.f" HBB-KEY-FILE+
+   s" src/core/layout-buffer.f" HBB-KEY-FILE+
+   s" src/core/layout-valid.f" HBB-KEY-FILE+
    s" src/core/declaration-transaction.f" HBB-KEY-FILE+
    s" src/core/generated-declaration.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+

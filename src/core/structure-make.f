@@ -79,12 +79,6 @@ package STRUCTURE-MAKE
 
 \ --- pre-hook boundary forwarders. TRUSTED: because they call sealed pre-hook
 \ registry / generation words the checker cannot type here (decl-event.f idiom).
-TRUSTED: SM-FAM-LIVE? ( n -- bool ) PF-FAM-LIVE? ;
-TRUSTED: SM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
-TRUSTED: SM-PUBLIC? ( n -- bool ) TFAM-PUBLIC? ;
-TRUSTED: SM-FLD-START ( n -- n ) TFAM-FLD-START@ ;
-TRUSTED: SM-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
-TRUSTED: SM-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 
 : SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
    tok fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
@@ -120,19 +114,19 @@ TRUSTED: SM-EMIT-WORDS ( n -- ) {: fam:n :}
 \ --- validation pass (checked; no registry write). A reject here leaves every
 \ registry byte-identical, so publication is attempted only after it wholly passes.
 : SM-REQUIRE-FAMILY ( n -- ) {: fam:n :}   \ live, public, product-kind
-   fam SM-FAM-LIVE? 0= IF E-SM-FAM throw THEN
-   fam SM-PRODUCT? 0= IF E-SM-FAM throw THEN
-   fam SM-PUBLIC? 0= IF E-SM-FAM throw THEN ;
+   fam PF-FAM-LIVE? 0= IF E-SM-FAM throw THEN
+   fam TFAM-PRODUCT? 0= IF E-SM-FAM throw THEN
+   fam TFAM-PUBLIC? 0= IF E-SM-FAM throw THEN ;
 
 : SM-REQUIRE-READABLE ( n n n -- ) {: tok:n fam:n fc:n :}   \ every field row is live in this transaction
    0 BEGIN dup fc < WHILE
-      dup tok fam fam SM-FLD-START SM-FIELD-SCHEMA@ drop
+      dup tok fam fam TFAM-FLD-START@ SM-FIELD-SCHEMA@ drop
       1 +
    REPEAT drop ;
 
 : SM-REQUIRE-UNGENERATED ( n -- ) {: fam:n :}   \ MAKE/UNMAKE not already generated
-   fam s" make"   SM-SUMV-FIND IF drop E-SM-DUP throw THEN drop
-   fam s" unmake" SM-SUMV-FIND IF drop E-SM-DUP throw THEN drop ;
+   fam s" make"   SUMV-FIND IF drop E-SM-DUP throw THEN drop
+   fam s" unmake" SUMV-FIND IF drop E-SM-DUP throw THEN drop ;
 
 public
 
@@ -153,11 +147,11 @@ public
 \ ENUM cutover deleted it.
 : GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY
-   fam SM-FLD-COUNT {: fc:n :}
+   fam TFAM-FLD-COUNT@ {: fc:n :}
    fc 1 < IF E-SM-EMPTY throw THEN
    fam SM-REQUIRE-UNGENERATED
    tok fam fc SM-REQUIRE-READABLE
-   tok fam  fam SM-FLD-START  fc  SM-EMIT-ROWS
+   tok fam  fam TFAM-FLD-START@  fc  SM-EMIT-ROWS
    DECL-REPLAY:RP-ACTIVE? IF EXIT THEN
    fam SM-EMIT-WORDS ;
 

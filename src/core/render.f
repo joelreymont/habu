@@ -6,7 +6,13 @@
 \ Also the checker's sig RECORDER: certified words render "in -- out" to a buffer
 \ and append it to USIGS (installed via RECXT), so callers of certified words
 \ certify too.
-using TFAM
+\
+\ This file reaches the type registry through checker.f's deferred hooks, never
+\ by name. It installs RECXT, the only inferred-effect row producer, so it must
+\ load BEFORE src/core/check-hook.f, while the registry now loads after it (dot
+\ habu-route-3-the-64078d43) - so `using TFAM` here would name a package that
+\ does not exist yet and refuse the boot outright ("hb: using: unknown package:
+\ TFAM", measured). The hooks are bound at the foot of src/core/type-family.f.
 
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
@@ -178,15 +184,15 @@ REG-SCRATCH-SNAP-INSTALL
 \ reopening `package MEM` as `package mem` reports `MEM` either way and both
 \ sides of this compare read the one interned string.
 : FAM-INTERNED? ( n -- f ) {: fam:n :}
-   fam 0 >=  fam TFAM-N@ <  and ;
+   fam 0 >=  fam TFAM-N-XT <  and ;
 : FAM-FOREIGN? ( n -- f ) {: fam:n :}
-   fam TFAM-PKG$ {: pa:ptr pu:n :}
+   fam TFAM-PKG-XT {: pa:ptr pu:n :}
    pu 0 = IF RES-FALSE EXIT THEN
    pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
-   pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
+   pa pu CHECKER-AUTH-PACKAGE$ CORE-STR= 0= ;
 : FAM-QNAME-REND ( n -- ) {: fam:n :}    \ interned qualified name: folded pkg:tail if foreign, else bare tail
-   fam FAM-FOREIGN? IF fam TFAM-PKG$ RFOLD 58 EMIT1 THEN
-   fam TFAM-NAME$ RSTR ;
+   fam FAM-FOREIGN? IF fam TFAM-PKG-XT RFOLD 58 EMIT1 THEN
+   fam TFAM-NAME-XT RSTR ;
 : FAM-NAME-REND ( n -- ) {: t:n :}
    t PARAM>FAM {: fam:n :}
    fam FAM-INTERNED? 0= IF t PARAM>NAME-A t PARAM>NAME-U RSTR EXIT THEN
@@ -548,12 +554,12 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 : MDIAG-MISSING-WALK ( bool -- ) {: json:bool :}   \ unseen variant tails, space-led
-   MDIAG-FAM @ TFAM-VAR-START@ {: vstart:n :}
+   MDIAG-FAM @ TFAM-VAR-START-XT {: vstart:n :}
    0 MDV-I !  0 MDV-F !
    BEGIN MDV-I @ MDIAG-VCNT @ < WHILE
       MDIAG-SEEN @ MDV-I @ MSEEN-GET 0= IF
          json MDV-F @ 0= and 0= IF s"  " DTXT THEN
-         vstart MDV-I @ + SUMV-NAME$ DTXT
+         vstart MDV-I @ + SUMV-NAME-XT DTXT
          -1 MDV-F !
       THEN
       MDV-I @ 1 + MDV-I !
@@ -771,24 +777,24 @@ variable JPOS  variable JLINE  variable JCOL
    {: efam:n afam:n :}
    efam 0 >= IF efam EXIT THEN
    afam 0 >= IF afam EXIT THEN
-   DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
+   DVAR @ dup 0 >= IF SUMV-FAM-XT THEN ;
 \ Payload slot (item 13): the checker's DPOS is the slot-from-top of the failed
 \ expected-row element; the packet reports the declaration-order payload index
 \ (0-based, first declared payload = 0). Absent when the position is unknown or
 \ the failure was not inside the variant's payload cells.
 : DIAG-PAYLOAD-POS ( -- )                \ "payload_pos":<decl-order slot> when captured
    DPOS @ 0 < IF EXIT THEN
-   DVAR @ SUMV-PAY-N {: cnt:n :}
+   DVAR @ SUMV-PAY-N-XT {: cnt:n :}
    DPOS @ cnt < 0= IF EXIT THEN
    cnt 1 - DPOS @ - {: pos:n :}
    44 EMIT1 s" payload_pos" JKEY  pos JNUM
-   DVAR @ pos SUMV-PAY-FIELD IF
-      44 EMIT1 s" field" JKEY  PF-NAME$ JSTR
+   DVAR @ pos SUMV-PAY-FIELD-XT IF
+      44 EMIT1 s" field" JKEY  PF-NAME-XT JSTR
    ELSE drop THEN ;
 : DIAG-VARIANT ( -- )                    \ "variant":"<name>","tag":<n> for the captured arm
    DVAR @ 0 < IF EXIT THEN
-   44 EMIT1 s" variant" JKEY  DVAR @ SUMV-NAME$ JSTR
-   44 EMIT1 s" tag" JKEY  DVAR @ SUMV-TAG@ JNUM
+   44 EMIT1 s" variant" JKEY  DVAR @ SUMV-NAME-XT JSTR
+   44 EMIT1 s" tag" JKEY  DVAR @ MATCH-VTAG-XT JNUM
    DIAG-PAYLOAD-POS ;
 : DIAG-FAMILY ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
@@ -1049,5 +1055,3 @@ USHADOW-DIAG-INSTALL
    0 RDST !  0 RSN ! ;
 : TSTALE-DIAG-INSTALL ( -- ) [: TSTALE-DIAG ;] is TSTALE-DIAG-XT ;
 TSTALE-DIAG-INSTALL
-
-;using

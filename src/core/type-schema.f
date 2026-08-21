@@ -402,4 +402,21 @@ public
    SCH-A-P    SCH-A-BOOT    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
    SCH-ROOT-P SCH-ROOT-BOOT SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
 
+
+\ ---- the implementation boundary ---------------------------------------------
+\ Everything above is this package's implementation surface, and it is the whole
+\ of it: no other file in the prefix opens SCHEMA-REG. Sealing both wordlists here
+\ makes load order the authority (dot habu-route-3-the-64078d43) -- what loads
+\ before this line may extend the package, and user source, which arrives after,
+\ can neither reopen it nor reach a private through a reopen. Measured before
+\ the seal: `package SCHEMA-REG private` from an ordinary `bin/hb --load` program
+\ succeeded, which is dot habu-pkg-reopen-reaches-113ecd89's route; after it,
+\ the same program is refused. The ceremony is src/habu/xref.f's, one
+\ prot-wid-add per wordlist, because sealing the private half alone does not
+\ stop a public reopen.
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
+
 ;package

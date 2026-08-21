@@ -74,15 +74,15 @@ variable CHECKED
    s" src/core/checker.f" PREFIX-FILE
    s" src/core/engine-error-effects.f" PREFIX-FILE
    s" src/core/lower-cert-base.f" PREFIX-FILE
-   s" src/core/type-schema.f" PREFIX-FILE
-   s" src/core/type-family.f" PREFIX-FILE
    s" src/core/render.f" PREFIX-FILE
-   s" src/core/sumtype.f" PREFIX-FILE
-   s" src/core/layout-buffer.f" PREFIX-FILE
-   s" src/core/layout-valid.f" PREFIX-FILE
    s" src/core/check-hook.f" PREFIX-FILE
    s" src/core/cell-effects.f" PREFIX-FILE
    s" src/core/pointer-storage-effects.f" PREFIX-FILE
+   s" src/core/type-schema.f" PREFIX-FILE
+   s" src/core/type-family.f" PREFIX-FILE
+   s" src/core/sumtype.f" PREFIX-FILE
+   s" src/core/layout-buffer.f" PREFIX-FILE
+   s" src/core/layout-valid.f" PREFIX-FILE
    s" src/core/structures.f" PREFIX-FILE
    s" src/core/roles.f" PREFIX-FILE
    s" src/core/bytes.f" PREFIX-FILE

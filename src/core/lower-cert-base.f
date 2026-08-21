@@ -80,25 +80,35 @@ variable FULL-SET   0 FULL-SET !
    BUF-N @ cells BUF + !
    BUF-N @ 1 + BUF-N ! ;
 
+\ How many cells the certificate under construction holds, and the rewind that
+\ starts a fresh one. The producer half of this package loads after the checker
+\ hook, so it reaches the buffer through these two rather than through the cell.
+: BUF-N@ ( -- n ) BUF-N @ ;
+: BUF-REWIND ( -- ) 0 BUF-N ! ;
+
 : SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u BODY-LEN !
    a u HASH BODY-HASH ! ;
 
+\ The body length and FNV-1a64 that SOURCE! latched, for the header row.
+: BODY-LEN@ ( -- n ) BODY-LEN @ ;
+: BODY-HASH@ ( -- n ) BODY-HASH @ ;
+
 : EMPTY ( ptr u8 n -- )
    SOURCE!
-   0 BUF-N !
+   BUF-REWIND
    HEADER-N BUF-ENSURE
    MAGIC-V BUF,
    VERSION-V BUF,
    HEADER-N cells BUF,
    0 BUF,  0 BUF,  0 BUF,  0 BUF,  0 BUF,
-   BODY-LEN @ BUF,
-   BODY-HASH @ BUF, ;
+   BODY-LEN@ BUF,
+   BODY-HASH@ BUF, ;
 
-: CERT-BYTES ( -- ptr u8 n ) BUF BUF-N @ cells ;
+: CERT-BYTES ( -- ptr u8 n ) BUF BUF-N@ cells ;
 
 : CERT-CELL@ ( n -- n ) {: idx:n :}
-   idx 0 < idx BUF-N @ >= or if s" lowering certificate cell index" 76 die then
+   idx 0 < idx BUF-N@ >= or if s" lowering certificate cell index" 76 die then
    idx cells BUF + @ ;
 
 : FULL-INSTALL ( [ ptr u8 n n -- ] -- )
@@ -140,10 +150,49 @@ public
 : BODY-HASH-CELL ( -- n ) BODY-HASH-I ;
 : FNV-OFFSET ( -- n ) FNV-OFFSET-V ;
 : FNV-PRIME ( -- n ) FNV-PRIME-V ;
-: CELL-COUNT ( -- n ) BUF-N @ ;
+: CELL-COUNT ( -- n ) BUF-N@ ;
 : CELL@ ( n -- n ) CERT-CELL@ ;
 : BYTES ( -- ptr u8 n ) CERT-BYTES ;
 
 DISPATCH-INSTALL
+
+private
+
+\ Rows for this package's own PRIVATE half, because package LOWER-CERT is
+\ written in two files that now straddle the checker hook. This file holds the
+\ ABI constants, the certificate buffer and the boot-safe dispatcher and must
+\ load BEFORE src/core/check-hook.f, since the checker asks it for a certificate
+\ at every publish; src/core/layout-valid.f holds the full producer and loads
+\ AFTER the hook with the type registry it reads (dot
+\ habu-route-3-the-64078d43). So the checked half needs rows for the half that
+\ is not, and every row states the effect the owning definition above declares.
+\
+\ They are TRUST rows here rather than PPRIM: rows beside the checker's other
+\ axioms because every name below is package-PRIVATE and `PPRIM:` interns into a
+\ package's PUBLIC wordlist only -- an axiom row cannot reach a private tail.
+\ Written in this file's own private section they land in exactly the scope
+\ layout-valid.f reads them from, and nothing outside LOWER-CERT gains any
+\ visibility it did not already have.
+\
+\ Retirement: habu-primitive-effect-axiom-1119f176, or sooner if the certificate
+\ dispatcher stops having to be armed before the hook.
+s" MAGIC-V" s" -- n" TRUST
+s" VERSION-V" s" -- n" TRUST
+s" HEADER-N" s" -- n" TRUST
+s" WF-NCELLS" s" -- n" TRUST
+s" FETCH-NCELLS" s" -- n" TRUST
+\ FETCH-FLAG is NOT here: it is a public of this package and checker.f already
+\ carries `PPRIM: LOWER-CERT FETCH-FLAG`. A private row beside it would be a
+\ second authority for one signature, in the wrong scope.
+s" GROW-CAP" s" n n -- n" TRUST
+s" BUF-ENSURE" s" n --" TRUST
+s" BUF," s" n --" TRUST
+s" BUF-N@" s" -- n" TRUST
+s" BUF-REWIND" s" --" TRUST
+s" SOURCE!" s" ptr u8 n --" TRUST
+s" BODY-LEN@" s" -- n" TRUST
+s" BODY-HASH@" s" -- n" TRUST
+s" EMPTY" s" ptr u8 n --" TRUST
+s" FULL-INSTALL" s" [ ptr u8 n n -- ] --" TRUST
 
 ;package

@@ -142,7 +142,7 @@ private
    rc 0= IF EXIT THEN
    TDECL-RESTORE
    TDECL-REPORT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF MULTI-ERR-COUNT+ EXIT THEN
    rc throw ;
 
 : TDECL-CTX! ( ptr u8 n ptr u8 n ptr u8 n -- )   \ kind, name, body
@@ -292,7 +292,7 @@ variable TDA-I
 
 \ --- body cursor over the buffered declaration tokens (checker sig lexer).
 : TDECL-CURSOR! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a SB!  u SL !  0 SI !
+   a u SIG-SCAN!
    PKRESET ;
 : TDECL-NEXT ( -- ptr u8 n ) NEXT-SIG-TOK ;
 
@@ -688,6 +688,28 @@ public
 
 private
 
+\ ---- extension of package TFAM ----------------------------------------------
+\ The declaration layer has to set a family's derive bits, and the two raw
+\ setters that do it are TFAM privates - a registry write with no guard has no
+\ business being reachable from user source. So this file closes its own
+\ package, REOPENS the owner, and defines the one narrow entry the layer needs
+\ inside it: a genuine extension of TFAM, compiled where TFAM's privates are in
+\ scope. Packages do not nest (habu2.f C-PACKAGE exits $4B), so the blocks are
+\ sequential, and reopening TYPE-DECL afterwards resumes the same two wordlists
+\ it left (docs/forth.md § Packages).
+;package
+package TFAM
+public
+
+\ Set one derive feature bit on a family record. `bit` is a DRV-* code; the
+\ caller has already guarded the family (TDECL-DERIVE-GUARD).
+: DERIVE-SET ( n n -- ) {: fam:n bit:n :}
+   fam TF-REC@ TF.DERIVE dup @ bit or swap ! ;
+
+;package
+package TYPE-DECL
+private
+
 : TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    fam TFAM-PUBLIC? 0= IF
       a u s" derive requires a public family" E-TDECL-DERIVE TDECL-THROW THEN
@@ -695,9 +717,9 @@ private
       a u s" derive requires a concrete (arity 0) family" E-TDECL-DERIVE TDECL-THROW THEN ;
 : TDECL-DERIVE-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    a u s" eq" CORE-STR=CI IF
-      a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-EQ! EXIT THEN
+      a u fam TDECL-DERIVE-GUARD  fam DRV-EQ DERIVE-SET EXIT THEN
    a u s" hash" CORE-STR=CI IF
-      a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-HASH! EXIT THEN
+      a u fam TDECL-DERIVE-GUARD  fam DRV-HASH DERIVE-SET EXIT THEN
    a u s" order" CORE-STR=CI IF
       a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
@@ -1114,12 +1136,10 @@ private
 TDECL-OWNER-SNAPSHOT-DEFAULTS
 
 : TDECL-SCRATCH-SNAPSHOT-RESET ( -- )
-   CTOR-PEND-COUNT @ 0 <> IF
+   CTOR-PEND-N@ 0 <> IF
       s" sumtype: snapshot inside generated declaration" 76 die
    THEN
-   CTOR-PEND-BOOT CTOR-PEND-P !
-   CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
-   CTOR-PEND-CLEAR
+   CTOR-PEND-ARENA-BOOT
    TDPLAN-BOOT TDPLAN-P !
    TDPLAN-ROW-BOOT TDPLAN-ROW-P !
    TDPLAN-CAP-INIT TDPLAN-CAP !
@@ -2076,6 +2096,23 @@ public
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
    [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFPRODUCT TDECL-CTOR-WORDS ;]
       TDECL-TXN-XT ;
+
+\ ---- the implementation boundary ---------------------------------------------
+\ Everything above is this package's implementation surface, and it is the whole
+\ of it: no other file in the prefix opens TYPE-DECL. Sealing both wordlists here
+\ makes load order the authority (dot habu-route-3-the-64078d43) -- what loads
+\ before this line may extend the package, and user source, which arrives after,
+\ can neither reopen it nor reach a private through a reopen. Measured before
+\ the seal: `package TYPE-DECL private` from an ordinary `bin/hb --load` program
+\ succeeded, which is dot habu-pkg-reopen-reaches-113ecd89's route; after it,
+\ the same program is refused. The ceremony is src/habu/xref.f's, one
+\ prot-wid-add per wordlist, because sealing the private half alone does not
+\ stop a public reopen.
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
+
 
 ;package
 

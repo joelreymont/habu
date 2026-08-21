@@ -860,15 +860,15 @@ package BUILD-FIXPOINT
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-base.f" BF-APPEND-SOURCE
-   out outu s" src/core/type-schema.f" BF-APPEND-SOURCE
-   out outu s" src/core/type-family.f" BF-APPEND-SOURCE
    out outu s" src/core/render.f" BF-APPEND-SOURCE
-   out outu s" src/core/sumtype.f" BF-APPEND-SOURCE
-   out outu s" src/core/layout-buffer.f" BF-APPEND-SOURCE
-   out outu s" src/core/layout-valid.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/cell-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-schema.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-family.f" BF-APPEND-SOURCE
+   out outu s" src/core/sumtype.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-buffer.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-valid.f" BF-APPEND-SOURCE
    out outu s" src/core/declaration-transaction.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration.f" BF-APPEND-SOURCE ;
 

@@ -475,11 +475,17 @@ private
 
 : TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
 
+\ The two raw derive-bit setters that used to be public here are GONE, not
+\ merely hidden: each wrote a family record with no guard of any kind, so a
+\ public spelling was a registry mutator in user reach, and once the declaration
+\ layer sets a bit through TFAM:DERIVE-SET neither had a caller left.
+\ DERIVE-SET is defined by src/core/sumtype.f reopening this package (dot
+\ habu-route-3-the-64078d43): a genuine extension, compiled where TF.DERIVE is
+\ in scope, which is a place no consumer outside TFAM can reach.
+
 public
 
-: TFAM-DERIVE-EQ! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-EQ or swap ! ;
 : TFAM-DERIVE-EQ? ( n -- bool ) TFAM-DERIVE@ DRV-EQ and 0 <> ;
-: TFAM-DERIVE-HASH! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-HASH or swap ! ;
 : TFAM-DERIVE-HASH? ( n -- bool ) TFAM-DERIVE@ DRV-HASH and 0 <> ;
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
@@ -960,14 +966,14 @@ variable SVX-I
       SVX-I @ 1 + SVX-I !
    REPEAT
    SVX-STAMP
-   HIDX-GEN @ SVX-GEN ! ;
+   HIDX-GEN@ SVX-GEN ! ;
 
 public
 
 : SVX-ENSURE ( -- )
    HIDX-ENSURE
    SVX-SYNC
-   SVX-GEN @ HIDX-GEN @ <> IF SVX-BUILD THEN ;
+   SVX-GEN @ HIDX-GEN@ <> IF SVX-BUILD THEN ;
 
 \ SVX-TRUNCATE ( n -- ) : called before SUMV-N rewinds to `newn`. It refuses to
 \ run after the fact for the reason TFX-RETIRE gives: SVX-HI above SUMV-N means
@@ -977,7 +983,7 @@ public
 private
 
 : SVX-TRUNCATE ( n -- ) {: newn:n :}
-   SVX-GEN @ HIDX-GEN @ <> IF EXIT THEN
+   SVX-GEN @ HIDX-GEN@ <> IF EXIT THEN
    SVX-HI @ SUMV-N @ > IF s" tfam: ctor index retired after its rows went" 76 die THEN
    newn SVX-I !
    BEGIN SVX-I @ SUMV-N @ < WHILE
@@ -2454,7 +2460,7 @@ public
    0 TFX-READY !                         \ ... and every family row the tail index chains
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
-   -1 FIELD-FAM !     \ field family is de-registered until re-declared, so its id can't dangle
+   -1 FIELD-FAM!      \ field family is de-registered until re-declared, so its id can't dangle
    EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
 TFAM-RESET
 
@@ -3195,7 +3201,7 @@ s" redx"    PTX-FAM-ID EXT-REDX-FAM !
 \ Internal VREC field constructor: arity 3, PRIVATE in reserved package "@" (not a
 \ spellable user package) so it never resolves from user signatures, while every
 \ field<...> term still carries this reserved family-id for identity comparison.
-s" @" CHECKER-PACKAGE-PRIVATE s" field" 3 TK-CELL TFAM-DECL FIELD-FAM !
+s" @" CHECKER-PACKAGE-PRIVATE s" field" 3 TK-CELL TFAM-DECL FIELD-FAM!
 
 \ ---------------------------------------------------------------------------
 \ signature-token resolution (the checker's TFAM-RESOLVE-XT target). On top of
@@ -3322,7 +3328,7 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
    node SCHEMA-PTR?   IF node SCHEMA-A@ RECURSE MK-PTR EXIT THEN
    node SCHEMA-APP? IF
-      PARAM-SCR-N @ {: base:n :}
+      PARAM-SCR-N@ {: base:n :}
       0 BEGIN dup node SCHEMA-C@ < WHILE
          node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE PARAM-SCR+
          1 +
@@ -3371,7 +3377,7 @@ TFC-QUOT-ROW-INSTALL
    TFC-ROW @ ;
 
 : TFC-FAM-TERM ( n -- n ) {: fam:n :}     \ family<v0,..> output term over the minted vars
-   PARAM-SCR-N @ {: base:n :}
+   PARAM-SCR-N@ {: base:n :}
    0 TFC-I !
    BEGIN TFC-I @ fam TFAM-ARITY@ < WHILE
       TFC-I @ cells TFC-VARS + @ PARAM-SCR+
@@ -3427,7 +3433,7 @@ TFC-QUOT-ROW-INSTALL
 \ not only adds) would make these lowerable; that capability is tracked by dot
 \ habu-signed-pass-2-4fc2b960 and will flip these rejects to exact-width construct/MATCH.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
-   0 OK ! -1 FAILSET ! ;
+   CHECK-REJECT! ;
 
 : TFC-TAG-CELLS ( n -- n )   \ layout tag cells for a family: 1 for a tagged SUM/ENUM, 0 for a tagless PRODUCT/STRUCTURE
    dup TFAM-SUM? IF drop 1 EXIT THEN
@@ -3629,7 +3635,7 @@ public
    id TFAM-SUM? id TFAM-ENUM? or ;
 
 : TFL-FOLD$ ( ptr u8 n -- ptr u8 n )      \ fold a raw engine token (shared TKF buffer)
-   TOKFOLD drop TKF TKFU @ ;
+   TOKFOLD drop TKF$ ;
 
 ;package
 
@@ -3703,7 +3709,17 @@ private
    [: SUMV-TAG@ ;]          is MATCH-VTAG-XT    \ item 9: variant id -> declaration-order tag (bitset index)
    [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ item 9: exhaustiveness domain size
    [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ item 9: branch payload row from the scrutinee's args
-   [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
+   [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT   \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
+   \ render.f's half of the wall: it loads before the hook so its recorded-signature
+   \ and diagnostic paths reach this registry the same way the checker does.
+   [: TFAM-N@ ;]          is TFAM-N-XT
+   [: TFAM-NAME$ ;]       is TFAM-NAME-XT
+   [: TFAM-VAR-START@ ;]  is TFAM-VAR-START-XT
+   [: SUMV-NAME$ ;]       is SUMV-NAME-XT
+   [: SUMV-FAM@ ;]        is SUMV-FAM-XT
+   [: SUMV-PAY-N ;]       is SUMV-PAY-N-XT
+   [: SUMV-PAY-FIELD ;]   is SUMV-PAY-FIELD-XT
+   [: PF-NAME$ ;]         is PF-NAME-XT ;
 TFAM-HOOK-INSTALL
 
 ;package
