@@ -38,11 +38,14 @@ SCOUTED VERDICT (2026-08-20, full map in the scout report; re-measured):
    If the owner-side bill approaches that, route 3 nets far less than the
    epic assumes - re-open the ruling on that number.
 
-Claim: agent=route3-4 workspace=.jj-ws/habu-trusted (TAKEOVER 2026-08-21 from
-route3-3, which stood down at context depth with a BANKED three-commit chain -
-see BANKED BY ROUTE3-3 below for that lane's record, and MEASURED BY ROUTE3-4
-at the end of this leaf for what the attribution pass found, which supersedes
-route3-3's reading of two of the thirteen assertions)
+Claim: agent=route3-5 workspace=.jj-ws/habu-trusted (TAKEOVER 2026-08-21 from
+route3-4, which stood down at depth with the mechanism landed and step 2's
+census measured but its first conversion batch failing for an unknown reason -
+see BANKED BY ROUTE3-3 for the first lane's record, MEASURED BY ROUTE3-4 for
+the attribution pass, and SOLVED BY ROUTE3-5 at the end of this leaf, which
+supersedes §8's reading of the failure AND §7's interpret-route residue.
+ROUTE3-5 STOOD DOWN AT DEPTH after banking SCHEMA-REG's unit; §19 is the
+successor's first commit and the claim is open for takeover)
 
 HARD GATE ANSWERED (2026-08-20, lane route3-1). ALL 662 DEFINITIONS
 TYPECHECK. Measured through the real driver, tools/check.f -> check-core.f
@@ -685,32 +688,13 @@ structure-decl-suite 11, structure-make.f 11, then a tail of 30 files at 10 or
 fewer. The full per-name table is the lane's sweep291.json; regenerate it with
 tools/lint/source-lex.f rather than trusting this summary.
 
-THE 71 "FREE" CONVERSIONS ARE NOT FREE, AND THE REASON IS NOT YET KNOWN.
-Applied mechanically - each target definition bracketed with private/public in
-its owner file, sections otherwise untouched - the prefix stops loading:
-
-    E-UNDEFINED: TF.NAME-OFF
-
-at src/core/type-family.f:390, the top-level layout self-check
-`0 TF.NAME-OFF TF.NAME-OFF-AT TF-LAYOUT=`. The three identical lines above it
-(TF.PKG-OFF, TF.PKG-U, TF.VIS) pass; TF.NAME-OFF is the first name the sweep
-made private. Reverting that one name moves the failure to the next one, so it
-is the class and not the name.
-
-TWO OBVIOUS EXPLANATIONS ARE ALREADY ELIMINATED, both by probe, so the
-successor does not spend the same hour:
-  - "a package private has no top-level interpret spelling" is FALSE at user
-    level: `package R34PK private : R34PRIV ( -- n ) $2A ; public
-    : R34PUB ( -- n ) R34PRIV ; R34PUB . cr R34PRIV . cr ;package` prints 42
-    twice and exits 0.
-  - and it is FALSE in the PREFIX too: a `private : R34-PFX-PRIV ( -- n ) $2A ;
-    public` planted in type-family.f beside the failing line, with a top-level
-    `R34-PFX-PRIV drop` next to it, boots clean.
-So the difference is neither the interpret route nor the prefix context, and
-the next lane should instrument the checker's mirrored package mode
-(CHECKER-PACKAGE-MODE/NAME/U) around the private/public toggle rather than
-re-deriving the two facts above. The sweep edit was REVERTED; nothing of it is
-in the banked commit.
+THE 71 "FREE" CONVERSIONS ARE NOT FREE, AND THIS LANE DID NOT KNOW WHY.
+Applied mechanically the prefix stops loading with `E-UNDEFINED: TF.NAME-OFF`.
+Attributed in §9-§11 below: the census counted files, not scopes, and the
+failure is at type-family.f:448, not at the layout self-check. The lead this
+section left - instrument the checker's package mirror - is a DEAD END; do not
+spend the hour. The sweep edit was REVERTED; nothing of it is in the banked
+commit.
 
 WHAT THE SUCCESSOR INHERITS, all in this workspace: the mechanism (landed and
 green), the two residue measurements and the tooling that produces them -
@@ -719,3 +703,301 @@ a checked-body prober over every package public, and a structural token dumper
 built on tools/lint/source-lex.f. Reproduce the landing's numbers before
 touching anything: interpret-route residue 0, API regressions 0, and the
 checked-route figure 291, which is step 2's whole job.
+
+SOLVED BY ROUTE3-5 (2026-08-21). The mystery is attributed, §8's lead was a
+dead end, §7's interpret-route residue was wrong by ten names and is now really
+zero, and the sweep §8 specifies does not exist in the shape it specifies. Every
+number below came off the two engines side by side, candidate in
+.jj-ws/habu-trusted and master 81d88a3a in the main worktree.
+--- 9. THE MYSTERY, ATTRIBUTED ----------------------------------------------
+Not the checker's mirror, and not the top-level self-check. Markers at every
+top-level statement show `0 TF.NAME-OFF TF.NAME-OFF-AT TF-LAYOUT=` PASSING with
+the name private; the load dies eleven lines later at type-family.f:448,
+`: TFAM-NAME$`, which sits between the `;package` on 443 and the `package TFAM`
+on 451 - one of the SIX engine-required GLOBALS docs/forth.md admits by exact
+path - and reaches the registry through the file's own `using TFAM` on 445.
+`using` imports a package's PUBLIC wordlist only, so a private TF.NAME-OFF is
+correctly invisible there while the three identical lines above it read names
+from a scope where TFAM is OPEN. NO CHECKER MISS: the bad program fails loudly
+on its load path (rc 70) and test/using-test.f:84 already pins the shape.
+THE INSTRUMENT WAS THE DEFECT: privatisability is a property of every REFERENCE
+SITE's open package scope, not of the FILE the reference sits in.
+
+--- 10. THE MUTATION TABLE --------------------------------------------------
+Synthetic, one variable at a time: a private referenced in the SAME open block or
+in a REOPENED block of its owner is rc 0; the same private referenced from a
+SIBLING package under `using`, or at GLOBAL top level under `using`, is rc 70
+E-UNDEFINED, and the identical case with the name PUBLIC is rc 0. Real prefix
+names privatised alone and booted (bin/hb re-reads its core prefix, so no build
+is needed): TF.NAME-OFF, PF-FIND, PF-ALIGN@, PF-COMMIT-N, TF-REC@ and
+type-schema.f SCH-BASE all rc 70, each on ITS OWN name at the predicted site.
+sumtype.f TDPLAN-BEGIN rc 0 - its only closed-scope sites are in
+test/type-ctor-suite.f and tools/decl-gen-probe.f, which boot never loads, and
+running that suite under the same mutation gives rc 70 against a baseline rc 0.
+The scope-aware census predicts the engine on both routes; the file-granular one
+does not.
+
+--- 11. THE CENSUS, REDONE ON SCOPE -----------------------------------------
+Same structural token stream (r34-tok.f -> tools/lint/source-lex.f, all 1519 .f
+files, 1,255,527 word tokens), each reference site classified by the package OPEN
+at that token. Re-running §8's FILE-granular rule over the same data reproduces
+its number exactly - 71 free, TFAM 64, TYPE-DECL 7 - so the pipelines agree and
+only granularity differs. On scope: of the 291 checked-route names 0 are free, of
+§8's 71 "free" names 0 are free, and of all 351 package publics 0 have no
+closed-scope reference. By where the closed-scope references live: TFAM 131
+prefix / 63 test-tool, SCHEMA-REG 45/16, TYPE-DECL 17/17, TYPE-NAME 2/0 -
+195 prefix and 96 test-tool of 291. The prefix side is thirteen packages across
+nine files sharing one registry, and prefix-scope consumers cost nothing under
+retirement because they compile first.
+
+--- 12-13. WHY THE SWEEP COULD NOT EXPRESS THESE, AND WHAT CLOSES IT --------
+The DERIVE-SET shape serves a sibling needing one composite OPERATION. It cannot
+serve a sibling that is the registry's own PUBLIC VIEW: `package TYPE-FIELD`
+(type-family.f:2270-2308) is fifteen one-line forwarders, `: ALIGN@ ( n -- n )
+PF-ALIGN@ ;` and fourteen like it, each already marked API. TYPE-FIELD:ALIGN@ IS
+the API and TFAM:PF-ALIGN@ IS the implementation, and nothing moves the forwarder
+into TFAM's private scope: reopening TFAM renames the public and cascades its
+callers, EXPORT republishes under the same tail so it cannot rename, packages do
+not nest. TYPE-FIELD-OWNER, CHECKER-DECL-FRAME, PREFIX-BOUND and TYPE-NAME are
+the same shape. Capability dotted and closed at habu-a-pkg-needs-92764584.
+WHAT CLOSES IT INSTEAD: the checked route has exactly two entries and both read
+the package PUBLIC wordlist - qualified `TFAM:X`, and bare `X` under `using TFAM`,
+which ordinary user source may open (measured: `using TFAM : W ( -- )
+$63 PF-COMMIT-N ! ;` runs, TYPE-FIELD:COUNT goes 48 -> 99, exit 0). So §7's "only
+private closes both routes" survives re-derivation, but removal need not be a
+SOURCE edit. §16 builds the pass that does it.
+
+--- 14. §7's INTERPRET RESIDUE WAS 10, NOT 0; IT IS 0 NOW -------------------
+Measured differentially over the whole record array: ten names open on the
+candidate and ABSENT from master, all data cells of the sealing mechanism itself
+- IMPL-SPAN-CAP/FROM/TO/N, IMPL-OPEN, IMPL-API-CAP/IDX/N (util.f) and
+IMK-S/IMK-J (internal-mark.f). Not a claim: `IMPL-SPAN-N @ . cr` printed 7 and
+`$63 IMPL-SPAN-N !` then printed 99, from ordinary user source. util.f's own
+header says what closes it, so each cell now carries that row. After the fix,
+`hb: internal engine word: IMPL-SPAN-N` rc 70; §7's fail-closed proof still
+answers. REG-PROT-N is 71 of REG-PROT-CAP 192.
+PRE-EXISTING AND NOT ROUTE 3's: REG-PROT-N, REG-PROT-IDX, REG-PROT-CAP and IMK-I
+are open and writable on MASTER too - REG-PROTECT tags the just-defined record
+and structurally cannot reach records defined before itself. Dotted at
+habu-reg-protect-cannot-587ee552; not touched here.
+SCHEDULED, not merely passing: test/internal-word-gate.f IMPL-CELL-CASES is one
+case per cell plus the measured write and an `' IMPL-API-N` tick, and
+PARITY-SUBJECT-N moved 197 -> 209 -> 210. The gate is registered at
+test/gate-stdlib-cases.f:1202. Falsified by mutation: deleting IMPL-SPAN-N's row
+turns the gate red with six TFAILs, deleting IMK-J's with three, so every row is
+pinned by its own case.
+The scope-aware census is a lane instrument; the durable form is dotted at
+habu-a-pkg-public-99a005d8 and needs a named first consumer before minting.
+
+--- 16. THE RETIREMENT PASS: BUILT AND PROBED -------------------------------
+Ruled 2026-08-21: the retirement pass, not the sweep and not a new visibility
+capability.
+
+PLACEMENT IS LOAD-ORDER-DERIVED, NOT A CHOSEN ROW. habu2.f PFX-LOAD-INTMARK says
+in its own comment that internal-mark.f is the LAST cold-prefix source because
+its pass must see every prefix definition. Retirement needs the identical fact
+from the other side - every prefix consumer must already have COMPILED, because
+`undefine` retires a dictionary entry and not a compiled reference. Same row,
+same argument. Verified: src/core/top-row.f loads after it and names none of
+these words.
+
+THE PASS NEEDS NO NEW ENGINE WORD. src/habu/xref.f publishes global
+UNDEFINE-FOUND ( ptr u8 n n -- ) - name plus dictionary index, no lookup, no
+package reopen - at prefix row 907 against internal-mark's 972, and
+internal-mark.f already owns IMK-QUAL and IMK-API?. Three words: IMK-IN-SPAN?, a
+linear test against IMPL-SPAN-FROM/TO; IMK-RETIRE-PUB, which exits on a record
+outside every span or carrying an API mark and otherwise calls
+`p i IMK-QUAL i UNDEFINE-FOUND`; and IMK-RETIRE over package rows. IMK-PASS gains
+IMK-RETIRE last, after IMK-SEAL-PRIM. Source at the lane scratch as
+r35-retire-pass.snippet.
+
+THE PROBE, SCHEMA-REG end to end, on the real engine: 63 publics, 2 API-marked;
+61 closed on the CHECKED route and the 2 survivors are exactly the marked pair
+(SCHEMA-N@, SCHEMA-ROOT-N@) - the declared surface and nothing else; checked
+residue 291 -> 230, the drop exactly SCHEMA-REG; `SUMTYPE r35pk 0 VARIANT r35a n
+;VARIANT ;SUMTYPE` registers rc 0 with SCHEMA-N@ reading 51, so the registry is
+fully live; the prefix boots and every compiled prefix consumer still runs.
+HAZARD SWEEP FIRST, because a code-token census cannot see a name resolved from a
+string at runtime and that is exactly what retirement breaks (LESSONS.md, the
+type-family-sha incident). Over-approximating scan of every quoted region in all
+.f/.fs files for the 322 retire targets: 77 tails hit, and every hit in src/ or
+bootstrap/ is a diagnostic message or prose. ZERO name-resolution sites in the
+prefix or the recovery emitter. Every genuine hit is a test child program or a
+lint fixture - internal-word-gate, type-field-owner-suite, prop-test-core
+(TFAM:TFAM-DECL-PARAM-COUNT, the one LESSONS predicted), package-diff-lint-test,
+type-family-rollback-suite.
+THE DECISION SURFACE IS 130 NAMES, NOT 322: prefix-scope consumers compile before
+the pass and cost nothing. Per package, publics / API today / reached by a
+non-prefix consumer: TFAM 218/23/63, SCHEMA-REG 63/2/48 (now 37 marked),
+TYPE-DECL 45/0/17, TYPE-NAME 2/0/0, CHECKER-TAPE 15/5, PRIM-LINK 4/0/1,
+CHECKER-BOUND 3/0/1, CHECKER-PREFLIGHT 3/1/0. TYPE-FIELD 15/15 and
+TYPE-FIELD-OWNER 8/8 are already fully declared - the specimen, in the tree today.
+
+--- 17. RULING 2 IS NOT AVAILABLE, AND SCHEMA-REG IS MARKED ----------------
+THE SHIM ESCAPE HATCH DOES NOT EXIST. Retirement removes the dictionary entry,
+so nothing can name the word afterwards - a `TRUSTED:` shim least of all, since
+its body must resolve the name like any other body. Measured against a retired
+SCHEMA-REG:SCHEMA-A@, six routes and every one refused: a checked qualified
+reference, a TRUSTED: shim on the qualified name, a TRUSTED: shim on the bare
+tail under `using`, a `0 set-check` body and `EXPORT` all answer E-UNDEFINED
+(EXPORT rc 70), and `package SCHEMA-REG` is rc 84. That is retirement being
+stronger than hiding, which is why the ruling chose it - but it means the suites'
+EXISTING shims are exactly what breaks: test/type-family-suite.f:105 and
+test/structure-make-suite.f:55 already read
+`TRUSTED: TWX-SCHEMA-RESET ( -- ) SCHEMA-RESET ;`. That convention answers the
+DNAME-INT route, where a shim lets a body call an int-marked word. It has no
+answer here. Front door or API mark, and nothing else.
+
+SCHEMA-REG IS MARKED AND LANDED: 37 API of 63, the criterion written as six
+lines at the top of the file's block so the next person marks by rule and not by
+matching precedent. API is the term vocabulary (SCH-PARAM/CON/APP/QUOT/PTR/ROW,
+SCH-QUOT-ROWS), the constructors (SCHEMA-PARAM/CON/APP/ROW/QUOT/PTR, ROOT+), the
+readers and predicates (TAG@ A@ B@ C@ N@ ROOT-N@ ROOT@, the six SCHEMA-*?, the
+four SCHEMA-ROW-*, the five SCHEMA-QUOT-*@) and the error code E-SCHEMA-BAD.
+Implementation and unmarked: the bases, capacity and cursor cells, both layout
+triples, SCHEMA-RESET REWIND COUNTS SCHEMA-NEW SCHEMA-NODE-OK?, the rollback
+words and SCHEMA-SNAPSHOT-PERSIST.
+
+--- 18. THE THREE ANSWERS, BUILT --------------------------------------------
+1. THE LIFECYCLE CONTRACT NEEDED NO DESIGN CHANGE - no stop. The registry
+already carried the mark-and-restore pair for its own use: `COUNTS ( -- n n )`
+reads the node/root high-water and `REWIND ( n n -- )` puts it back behind a
+bounds die, and src/core/type-family.f PREFIX-BOUND:PFX-MARK/PFX-REWIND is the
+existing caller. Both stay implementation; the front door is two thin publics
+over them, `SCHEMA-MARK ( -- n n )` and `SCHEMA-RESTORE ( n n -- )`, API-marked,
+inheriting REWIND's guard so a pair this registry never issued fails closed and a
+mark can only be restored downward. The contract's own justification is
+measured: without it a suite reaches for SCHEMA-RESET, which returns the registry
+to its BOOT base and discards every schema the prefix registered.
+2. THE NEGATIVE GUARD PROBE IS NOW A SELF-CHECK in type-schema.f, in the shape
+the file already uses for SCH-LAYOUT= - a checked word plus a top-level row,
+because control words are compile-only at top level. `SCH-BAD-TAG-REFUSED?`
+catches `SCH-KIND-MAX 1 + ... SCHEMA-NEW` and `SCH-GUARD-HELD` dies if the throw
+did not come. Falsified BOTH ways: deleting SCHEMA-NEW's tag guard fails the boot
+rc 76 with the named message, and weakening the probe to a VALID tag fails it
+too, so the row cannot pass by accident.
+3. THE INSTRUMENT belongs to TYPE-DECL's landing: decl-gen-probe reaches
+TYPE-DECL names, not SCHEMA-REG's, so its extension block lands with that
+package.
+
+SEQUENCING FINDING, MEASURED, AND IT CHANGES THE UNIT. SCHEMA-REG cannot be a
+standalone green commit for its six red suites, and the reason is in their
+fixtures rather than in the marks. test/enum-decl-suite.f:87-95 and
+test/structure-decl-suite.f:70-78 hold ONE word, `REG-MARK`/`REG-RESTORE`, that
+snapshots NINE raw counters across three registries - TFAM-N TF-STR-U TF-PK-N
+SUMV-N LAY-N PF-N PF-COMMIT-N alongside SCH-N SCH-ROOT-N. The four SCHEMA-RESET
+callers are the same story: every one is `TWX-TFAM-RESET TWX-SCHEMA-RESET` on
+adjacent lines. Converting the SCHEMA half alone leaves a half-converted pair,
+which is worse than either end state. So the registry's mark/restore contract has
+to land for TFAM and SCHEMA-REG TOGETHER, and the natural unit is the registry,
+not the package. TFAM needs the same two words over its own counters.
+
+WHAT THIS COMMIT CARRIES: the contract, the self-check, the 37 marks, and one
+gate assertion the declaration obsoletes - SEAL-CASES asserted
+`SCHEMA-REG:SCHEMA-A@` answers `internal engine word`, and a declared API name
+answers `interpret stack underdepth` instead and runs with its declared input.
+Both legs are asserted now, and PARITY-SUBJECT-N goes 209 -> 210 for the second
+child. NOT carried: the pass, which retires the unmarked 26 and needs the TFAM
+half of the contract first.
+INTERPRET-ROUTE CENSUS ON THE INSTALLED ENGINE: 29 names newly reachable against
+master 81d88a3a, all 29 DECLARED API; UNDECLARED RESIDUE 0; API regressions 0.
+
+--- 19. TFAM'S HALF: MEASURED, AND ITS ONE OPEN DECISION --------------------
+TFAM already carries the machinery, but NOT in SCHEMA-REG's shape, and the
+difference is a design choice a successor must make before writing the contract.
+  src/core/type-family.f:2546 `TFAM-REWIND ( n n n n n -- )` is the guarded
+     restore over five counters - TFAM-N TF-STR-U TF-PK-N SUMV-N LAY-N - and it
+     does real work first: TFX-RETIRE unchains the family rows and SVX-TRUNCATE
+     drops the constructor heads before the ids go out of range.
+  src/core/type-family.f:2745 PREFIX-BOUND:PFX-MARK/PFX-REWIND is the live
+     caller. It is a STATEFUL pair over module variables (BTFAM BSTRU BPK BSUMV
+     BLAY BPF BPFC BSCH BSCHR), not a value-returning mark, and it carries TWO
+     more counters past TFAM-REWIND's five: PF-N and PF-COMMIT-N, restored with
+     `BPF @ PF-N @ PF-SCRUB` BETWEEN them because the field rows need scrubbing.
+So TFAM's mark is SEVEN counters plus an ordering constraint, against
+SCHEMA-REG's two. THE OPEN DECISION: `TFAM-MARK ( -- n n n n n n n )` puts seven
+cells on a caller's stack, which docs/forth.md's own factoring rules argue
+against; the alternatives are a save/restore FRAME STACK in the owner (the shape
+SCHEMA-ROLLBACK-SAVE/RESTORE already uses, and PFX-MARK's own shape), or a
+one-cell opaque mark handle. The frame stack is the tree's precedent and needs no
+new type; the handle is the shape CLAUDE.md records as unresolved for KV. This is
+a real interface decision, not mechanical work, and it is where this lane stopped
+rather than start it at depth.
+WHAT A SUCCESSOR DOES FIRST: pick the shape, publish the pair over TFAM-REWIND +
+the PF pair with PF-SCRUB inside, API-mark it with the criterion header, convert
+test/enum-decl-suite.f:87-95 and test/structure-decl-suite.f:70-78 REG-MARK/
+REG-RESTORE and the four TWX-TFAM-RESET/TWX-SCHEMA-RESET pairs WHOLE, then TFAM's
+marks, then the pass over both packages with PF-COMMIT-N retiring and
+test/type-field-owner-suite.f assert 188 strengthening in the same commit.
+
+--- 15. THE THREE RULINGS, AND WHERE EACH ONE STANDS ------------------------
+  1. RULED: the retirement pass, not the sweep, not a new visibility capability.
+     BUILT AND PROBED (§16). Remaining: the API declaration for 130 names and
+     the suite adaptation behind it.
+  2. RULED: tests do not reach retired internals, adapting through the shim
+     convention or the front door. THE SHIM HALF IS NOT AVAILABLE - §17 measures
+     six routes to a retired name and every one is refused, TRUSTED: included,
+     because retirement removes the entry rather than flagging it. Front door or
+     API mark, and nothing else. SCHEMA-REG is marked (37 of 63) and four suites
+     go green on the marks alone; three criterion-(c) names with no front door
+     block six more, listed in §17 for ruling.
+     tools/decl-gen-probe.f: a maintainer instrument, not a test - it drives the
+     declaration generator through TYPE-DECL:TDPLAN-BEGIN and eight siblings.
+     With no shim route it has no boundary to carry, so its eight probes are
+     stop items unless those names are API or the instrument moves inside the
+     owning package. LISTED FOR RULING.
+  3. The held red clears inside the retirement landing exactly as ruled -
+     PF-COMMIT-N carries no API mark, so the pass retires it, assert 188's
+     fixture strengthens to the closed answer and its REGISTRY-CASES sibling
+     moves TF-CELL-PUB -> TF-CELL-PRIV. It could NOT have cleared under the
+     privatisation sweep: PF-COMMIT-N has 14 closed-scope references inside
+     `package TYPE-FIELD-OWNER` and `package CHECKER-DECL-FRAME`. The ruling
+     picked the option that reaches it.
+
+STATE OF THIS CHAIN: crossing build + `install --force` rc 0, roundtrip ok, two
+processes wrote the same artifact; interpret residue 0, API regressions 0;
+checked residue 291 (unchanged - step 2 not done); internal-word-gate rc 0 all
+thirteen green plus the new phase; using, type-family, type-decl and boot-pin
+suites rc 0; maki rc 0 with zero FAIL/RED; both diff lints rc 0;
+error-code-lint 0 finding(s); dot-dep-lint 0 finding(s); schedule-lint 0
+finding(s); type-field-owner-suite still red on assert 188 only.
+NOT RUN, and deliberately: test/run.f unsandboxed, judge 46, the snapshot suites
+and the bootstrap recovery leg. The closing battery measures a tree that is
+ready to finalize, and this chain is not - ruling 1 changes the tree, so those
+numbers would be numbers for a tree nobody is going to land. The same reason §5
+gave, and it still holds.
+
+LESSONS (verbatim, for LESSONS.md at merge):
+- **A file is not a package scope, and a census that counts files will lie about
+  privatisability.** `src/core/type-family.f` reopens `package TFAM` fourteen
+  times and still carries five sibling packages and 21 global-span references
+  that reach TFAM only through `using`. Classify every reference SITE by the
+  package open at that token; the file-granular answer and the scope-aware answer
+  differed on all 71 names it mattered for.
+- **`using PKG` is a consumer import, so a bare name under it is a PUBLIC
+  reference.** The six engine-required globals in type-family.f sit outside the
+  package on purpose and reach the registry that way, which is why privatising a
+  name they use breaks the boot at the definition, not at the top-level statement
+  three lines above it. Print a marker at each top-level statement before
+  believing a reported line number.
+- **A predecessor's line number is a claim.** §8 named the top-level layout
+  self-check; markers showed that line passing and the failure eleven lines
+  later, in a definition. The wrong site sent the lead to the checker's package
+  mirror, which has nothing to do with it.
+- **The mechanism's own state cells are part of its residue.** IMPLEMENTATION /
+  API closed 288 names and left ten of its own control cells open and writable
+  from user source. Measure the differential over the WHOLE record array,
+  including names that exist only on the candidate, or the new machinery hides in
+  the gap between the two dictionaries.
+- **A dot leaf is capped at 1024 lines and the diagnostic does not say so.**
+  `tools/lint/text.f` SMAX is `$400`; past it the dot lint dies rc 1 printing
+  `lint: split result overflow` with no file name. This leaf is at 996. Trim
+  superseded sections before adding one, and re-run the dot lint after every
+  leaf edit, not only after `dot add`.
+- **`undefine` retires a public without breaking compiled callers, and that makes
+  a late demotion pass possible.** `s" PKG:TAIL" UNDEFINE-NAME` from
+  `src/core/internal-mark.f` leaves the prefix's own compiled consumers running
+  and a real declaration registering, while both `PKG:TAIL` and `using PKG` +
+  bare answer E-UNDEFINED. Before scoping a rename-and-restructure campaign, ask
+  whether the surface can simply be closed after everyone who needed it has
+  already compiled.

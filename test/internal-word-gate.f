@@ -193,6 +193,43 @@ create EMPTY 1 allot            \ zero-length stdin
    PRIM-FORGE$ RUN-SUBJECT
    s" int-mark" ASSERT-INTERNAL ;
 
+\ --- the publication mechanism's own control cells (dot
+\ habu-route-3-the-64078d43). IMPLEMENTATION / ;IMPLEMENTATION / API and
+\ IMK-SEAL-IMPLEMENTATION keep their state in data records, and the span walk
+\ classifies COLON records only, so each cell carries its own REG-PROTECT row in
+\ src/core/util.f and src/core/internal-mark.f. Before those rows existed the
+\ cells were open AND writable from ordinary user source: `IMPL-SPAN-N @ . cr`
+\ printed 7 and `$63 IMPL-SPAN-N !` then printed 99. One case per cell, because a
+\ dropped row is a per-record fact; the write and tick legs read the same flag on
+\ one record and are asserted once each.
+: IMPL-WRITE-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" $63 IMPL-SPAN-N !" SB-APPEND LF
+   SB$ ;
+
+: IMPL-TICK-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" ' IMPL-API-N" SB-APPEND LF
+   SB$ ;
+
+: IMPL-CELL-CASES ( -- )
+   s" IMPL-SPAN-CAP span-table capacity fails closed" T-LABEL   s" IMPL-SPAN-CAP" NEG
+   s" IMPL-SPAN-FROM span starts fail closed" T-LABEL           s" IMPL-SPAN-FROM" NEG
+   s" IMPL-SPAN-TO span ends fail closed" T-LABEL               s" IMPL-SPAN-TO" NEG
+   s" IMPL-SPAN-N span count fails closed" T-LABEL              s" IMPL-SPAN-N" NEG
+   s" IMPL-OPEN region latch fails closed" T-LABEL              s" IMPL-OPEN" NEG
+   s" IMPL-API-CAP api-table capacity fails closed" T-LABEL     s" IMPL-API-CAP" NEG
+   s" IMPL-API-IDX published indexes fail closed" T-LABEL       s" IMPL-API-IDX" NEG
+   s" IMPL-API-N api count fails closed" T-LABEL                s" IMPL-API-N" NEG
+   s" IMK-S seal-pass span cursor fails closed" T-LABEL         s" IMK-S" NEG
+   s" IMK-J api-lookup cursor fails closed" T-LABEL             s" IMK-J" NEG
+   s" $63 IMPL-SPAN-N ! (the measured write) fails closed" T-LABEL
+   IMPL-WRITE-FORGE$ RUN-SUBJECT
+   s" IMPL-SPAN-N" ASSERT-INTERNAL
+   s" ' IMPL-API-N (tick laundering) fails closed" T-LABEL
+   IMPL-TICK-FORGE$ RUN-SUBJECT
+   s" IMPL-API-N" ASSERT-INTERNAL ;
+
 \ --- positives: the public top-level surface is untouched -------------------
 
 : ASSERT-DIAG ( ptr u8 n -- ) {: a:ptr u:n :}   \ child rejected rc 70 with the given diagnostic
@@ -996,8 +1033,11 @@ create QNAME QNAME-CAP allot
    s" the sealed tail left the global universe: bare SCHEMA-A@ is E-UNDEFINED" T-LABEL
    s" SCHEMA-A@" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: SCHEMA-A@" ASSERT-DIAG
-   s" and its qualified spelling is a marked public instead" T-LABEL
-   s" SCHEMA-REG:SCHEMA-A@" NEG
+   s" its qualified spelling is DECLARED API, so depth is the only guard" T-LABEL
+   s" SCHEMA-REG:SCHEMA-A@" TOKEN$ RUN-SUBJECT
+   s" interpret stack underdepth: SCHEMA-REG:SCHEMA-A@" ASSERT-DIAG
+   s" and with its declared input it runs" T-LABEL
+   s" 1 SCHEMA-REG:SCHEMA-A@ drop" TOKEN$ RUN-SUBJECT ASSERT-OK
    s" a sealed private has no qualified spelling either" T-LABEL
    s" SCHEMA-REG:SCH-RBF-P" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: SCHEMA-REG:SCH-RBF-P" ASSERT-DIAG
@@ -1297,7 +1337,9 @@ create QNAME QNAME-CAP allot
 19 constant PARITY-DIRECT-N     \ +3: TYPE-DECL-SEAL-CASES replays three programs through
                                 \     --load -- the pre-seal SIGSEGV, the armed-flag die, and
                                 \     the three block openers declaring at top level
-197 constant PARITY-SUBJECT-N   \ +15: the rest of TYPE-DECL-SEAL-CASES
+210 constant PARITY-SUBJECT-N   \ +15: the rest of TYPE-DECL-SEAL-CASES;
+                                \ +12: IMPL-CELL-CASES, ten cells plus a write and a tick;
+                                \ +1: SEAL-CASES, SCHEMA-A@ declared API needs a second child
 
 : PARITY-RESULT ( -- ptr u8 n ptr u8 n n )
    OUT OUT-U @ ERR ERR-U @ RC @ ;
@@ -1360,6 +1402,7 @@ create QNAME QNAME-CAP allot
    TFAM-SEAL-CASES
    TYPE-DECL-SEAL-CASES
    NEG-SHAPES
+   IMPL-CELL-CASES
    POSITIVES
    OPENER-CASES
    DEFER-CASES

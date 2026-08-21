@@ -43,11 +43,17 @@ package SCHEMA-REG
 public
 
 1 constant SCH-PARAM      \ A = parameter index (>= 0)
+API   \ SCHEMA-REG:SCH-PARAM
 2 constant SCH-CON        \ A = concrete con code
+API   \ SCHEMA-REG:SCH-CON
 3 constant SCH-APP        \ A = family-id, B = arg-root start, C = arg count
+API   \ SCHEMA-REG:SCH-APP
 4 constant SCH-QUOT       \ A = hasr flag, B = side-row-root start, C = SCH-QUOT-ROWS
+API   \ SCHEMA-REG:SCH-QUOT
 5 constant SCH-PTR        \ A = pointee schema node (docs §8 SC-PTR)
+API   \ SCHEMA-REG:SCH-PTR
 6 constant SCH-ROW        \ A = element-root start, B = element count (one quotation effect side)
+API   \ SCHEMA-REG:SCH-ROW
 
 private
 
@@ -62,10 +68,12 @@ private
 public
 
 4 constant SCH-QUOT-ROWS
+API   \ SCHEMA-REG:SCH-QUOT-ROWS
 
 \ --- named reject code. Thrown (not `die`d) so the parser/CHECK path and unit
 \ tests can trap a malformed schema node with `catch` instead of aborting.
 7103 constant E-SCHEMA-BAD
+API   \ SCHEMA-REG:E-SCHEMA-BAD
 
 \ --- node record layout (interleaved cell arena, one grow buffer).
 \ Bit i in a PTR-MASK marks slot i as a relocating pointer. Schema records
@@ -200,26 +208,49 @@ public
    tag r SCH.TAG !   a r SCH.A !   b r SCH.B !   c r SCH.C !
    id ;
 
+\ SCHEMA-NEW's tag guard is the only thing between a caller's integer and a node
+\ whose readers would misread it, so it is probed HERE, at load, where the raw
+\ builder's name is in scope - the same shape as the SCH-LAYOUT= rows above. A
+\ suite cannot ask this question without the raw builder being published, and it
+\ is not.
+: SCH-GUARD-HELD ( bool -- )
+   0= if s" type-schema: SCHEMA-NEW tag guard missing" CORE-LAYOUT-RC die then ;
+
+: SCH-BAD-TAG-REFUSED? ( -- bool )
+   [: SCH-KIND-MAX 1 + 0 0 0 SCHEMA-NEW drop ;] catch E-SCHEMA-BAD = ;
+
+SCH-BAD-TAG-REFUSED? SCH-GUARD-HELD
+
 : SCHEMA-PARAM ( n -- n )                  \ paramref schema node
    dup 0 < IF drop E-SCHEMA-BAD throw THEN
    SCH-PARAM swap 0 0 SCHEMA-NEW ;
+API   \ SCHEMA-REG:SCHEMA-PARAM
 : SCHEMA-CON ( n -- n )                    \ concrete-type schema node
    SCH-CON swap 0 0 SCHEMA-NEW ;
+API   \ SCHEMA-REG:SCHEMA-CON
 : SCHEMA-APP ( n n n -- n )                \ family application node
    {: fam:n start:n count:n :}
    count 0 < IF E-SCHEMA-BAD throw THEN
    SCH-APP fam start count SCHEMA-NEW ;
+API   \ SCHEMA-REG:SCHEMA-APP
 
 : SCHEMA-TAG@ ( n -- n ) SCH-REC@ SCH.TAG @ ;
+API   \ SCHEMA-REG:SCHEMA-TAG@
 : SCHEMA-A@ ( n -- n ) SCH-REC@ SCH.A @ ;
+API   \ SCHEMA-REG:SCHEMA-A@
 : SCHEMA-B@ ( n -- n ) SCH-REC@ SCH.B @ ;
+API   \ SCHEMA-REG:SCHEMA-B@
 : SCHEMA-C@ ( n -- n ) SCH-REC@ SCH.C @ ;
+API   \ SCHEMA-REG:SCHEMA-C@
 : SCHEMA-N@ ( -- n ) SCH-N @ ;             \ node high-water (for rollback/tests)
 API   \ SCHEMA-REG:SCHEMA-N@
 
 : SCHEMA-PARAM? ( n -- bool ) SCHEMA-TAG@ SCH-PARAM = ;
+API   \ SCHEMA-REG:SCHEMA-PARAM?
 : SCHEMA-CON? ( n -- bool ) SCHEMA-TAG@ SCH-CON = ;
+API   \ SCHEMA-REG:SCHEMA-CON?
 : SCHEMA-APP? ( n -- bool ) SCHEMA-TAG@ SCH-APP = ;
+API   \ SCHEMA-REG:SCHEMA-APP?
 
 \ --- schema-root pool: a flat, growable list of node ids that SUMV variants and
 \ product fields reference as contiguous [start,start+count) ranges.
@@ -231,10 +262,12 @@ API   \ SCHEMA-REG:SCHEMA-N@
    node idx cells SCH-ROOT-BASE + !
    idx 1 + SCH-ROOT-N !
    idx ;
+API   \ SCHEMA-REG:SCHEMA-ROOT+
 : SCHEMA-ROOT@ ( n -- n ) {: idx:n :}
    idx 0 < IF s" tfam: bad schema root index" 76 die THEN
    idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    idx cells SCH-ROOT-BASE + @ ;
+API   \ SCHEMA-REG:SCHEMA-ROOT@
 : SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
 API   \ SCHEMA-REG:SCHEMA-ROOT-N@
 
@@ -247,14 +280,20 @@ API   \ SCHEMA-REG:SCHEMA-ROOT-N@
 : SCHEMA-ROW ( n n -- n ) {: start:n count:n :}   \ row over [start,start+count) element roots
    count 0 < IF E-SCHEMA-BAD throw THEN
    SCH-ROW start count 0 SCHEMA-NEW ;
+API   \ SCHEMA-REG:SCHEMA-ROW
 : SCHEMA-ROW? ( n -- bool ) SCHEMA-TAG@ SCH-ROW = ;
+API   \ SCHEMA-REG:SCHEMA-ROW?
 : SCHEMA-ROW-START@ ( n -- n ) SCHEMA-A@ ;
+API   \ SCHEMA-REG:SCHEMA-ROW-START@
 : SCHEMA-ROW-COUNT@ ( n -- n ) SCHEMA-B@ ;
+API   \ SCHEMA-REG:SCHEMA-ROW-COUNT@
 : SCHEMA-ROW-ELEM@ ( n n -- n ) {: node:n i:n :}   \ i-th element type node of the row
    i 0 < i node SCHEMA-ROW-COUNT@ >= or IF s" tfam: bad quot row elem index" 76 die THEN
    node SCHEMA-ROW-START@ i + SCHEMA-ROOT@ ;
+API   \ SCHEMA-REG:SCHEMA-ROW-ELEM@
 : SCHEMA-ROW-OK? ( n -- bool )                     \ live SCH-ROW node (no die on nil/oob)
    dup SCHEMA-NODE-OK? IF SCHEMA-ROW? ELSE drop RES-FALSE THEN ;
+API   \ SCHEMA-REG:SCHEMA-ROW-OK?
 
 \ --- SCH-QUOT quotation payload node. Mirrors the checker's VR-QUOT/EN-QUOT/MK-QUOT
 \ effect sides (din, dout, rin, rout) as four SCH-ROW roots plus a hasr flag, so a
@@ -278,16 +317,23 @@ public
    rin SCHEMA-ROOT+ drop
    rout SCHEMA-ROOT+ drop
    SCH-QUOT hasr SCH-FLAG start SCH-QUOT-ROWS SCHEMA-NEW ;
+API   \ SCHEMA-REG:SCHEMA-QUOT
 
 : SCHEMA-QUOT? ( n -- bool ) SCHEMA-TAG@ SCH-QUOT = ;
+API   \ SCHEMA-REG:SCHEMA-QUOT?
 : SCHEMA-QUOT-HASR@ ( n -- n ) SCHEMA-A@ ;
+API   \ SCHEMA-REG:SCHEMA-QUOT-HASR@
 : SCHEMA-QUOT-ROW@ ( n n -- n ) {: node:n i:n :}    \ i-th effect side's SCH-ROW node
    i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot side index" 76 die THEN
    node SCHEMA-B@ i + SCHEMA-ROOT@ ;
 : SCHEMA-QUOT-DIN@ ( n -- n ) 0 SCHEMA-QUOT-ROW@ ;
+API   \ SCHEMA-REG:SCHEMA-QUOT-DIN@
 : SCHEMA-QUOT-DOUT@ ( n -- n ) 1 SCHEMA-QUOT-ROW@ ;
+API   \ SCHEMA-REG:SCHEMA-QUOT-DOUT@
 : SCHEMA-QUOT-RIN@ ( n -- n ) 2 SCHEMA-QUOT-ROW@ ;
+API   \ SCHEMA-REG:SCHEMA-QUOT-RIN@
 : SCHEMA-QUOT-ROUT@ ( n -- n ) 3 SCHEMA-QUOT-ROW@ ;
+API   \ SCHEMA-REG:SCHEMA-QUOT-ROUT@
 
 \ --- SCH-PTR pointer payload node (docs §8 SC-PTR): a `ptr T` variant payload
 \ element. A malformed child (nil / out-of-range) throws E-SCHEMA-BAD so the
@@ -295,7 +341,9 @@ public
 : SCHEMA-PTR ( n -- n )
    dup SCHEMA-NODE-OK? 0= IF drop E-SCHEMA-BAD throw THEN
    SCH-PTR swap 0 0 SCHEMA-NEW ;
+API   \ SCHEMA-REG:SCHEMA-PTR
 : SCHEMA-PTR? ( n -- bool ) SCHEMA-TAG@ SCH-PTR = ;
+API   \ SCHEMA-REG:SCHEMA-PTR?
 
 \ ---------------------------------------------------------------------------
 \ rollback frame stack (SCHEMA half of the checker's transactional rollback).
@@ -396,6 +444,27 @@ public
    THEN
    n SCH-N !
    rootn SCH-ROOT-N ! ;
+
+\ ---- the lifecycle contract: mark, declare, restore -------------------------
+\ A client that needs isolation across declarations - a suite between cases, a
+\ maintainer instrument between runs - takes a mark before it declares and
+\ restores to it afterwards. Node and root cells are pointer-free, so putting the
+\ two counts back retires every entry above them; that is the whole contract and
+\ there is no entry-by-entry undo to publish. RESTORE inherits REWIND's bounds
+\ die, so a pair this registry never issued fails closed instead of corrupting
+\ the arena, and a mark can only be restored DOWNWARD.
+\ This is the front door that has to exist because the need is real: without it a
+\ suite reaches for SCHEMA-RESET, which returns the registry to its BOOT base and
+\ discards every schema the prefix registered - the wipe dot
+\ habu-pkg-publics-escape-41532ee7 measured. A client need that can only be met
+\ by raw internal writes means the interface was missing.
+: SCHEMA-MARK ( -- n n )
+   COUNTS ;
+API   \ SCHEMA-REG:SCHEMA-MARK
+
+: SCHEMA-RESTORE ( n n -- )
+   REWIND ;
+API   \ SCHEMA-REG:SCHEMA-RESTORE
 
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.

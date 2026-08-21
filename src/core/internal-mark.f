@@ -227,8 +227,8 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 \ in its wordlist cell and holds a wordlist id where a code pointer would be,
 \ so it is skipped before any body read - the same order IMK-GLOBAL-COLON?
 \ keeps above.
-variable IMK-S
-variable IMK-J
+variable IMK-S   REG-PROTECT
+variable IMK-J   REG-PROTECT
 
 : IMK-API? ( n -- bool ) {: i:n :}
    0 IMK-J !

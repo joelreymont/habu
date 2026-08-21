@@ -59,17 +59,20 @@ variable REG-PROT-N   0 REG-PROT-N !
 \ other edit - which is the property a list of protected names cannot have.
 \ Nothing here changes what a COMPILED caller or the checker resolves: DNAME-INT
 \ is read by interpret dispatch and interpret tick only.
-16 constant IMPL-SPAN-CAP
-create IMPL-SPAN-FROM IMPL-SPAN-CAP cells allot
-create IMPL-SPAN-TO   IMPL-SPAN-CAP cells allot
-variable IMPL-SPAN-N   0 IMPL-SPAN-N !
-variable IMPL-OPEN     0 IMPL-OPEN !
+\ These control cells are data records, so the span walk below never reaches
+\ them: each carries its own REG-PROTECT or the mechanism would hand its own
+\ state to the top level it exists to close.
+16 constant IMPL-SPAN-CAP   REG-PROTECT
+create IMPL-SPAN-FROM IMPL-SPAN-CAP cells allot   REG-PROTECT
+create IMPL-SPAN-TO   IMPL-SPAN-CAP cells allot   REG-PROTECT
+variable IMPL-SPAN-N   0 IMPL-SPAN-N !   REG-PROTECT
+variable IMPL-OPEN     0 IMPL-OPEN !   REG-PROTECT
 
 \ Sized for the surfaces the route-3 landing declares (checker.f 134, render.f 3,
 \ layout-buffer.f 6) with room for the files the seal campaign has left.
-512 constant IMPL-API-CAP
-create IMPL-API-IDX IMPL-API-CAP cells allot
-variable IMPL-API-N   0 IMPL-API-N !
+512 constant IMPL-API-CAP   REG-PROTECT
+create IMPL-API-IDX IMPL-API-CAP cells allot   REG-PROTECT
+variable IMPL-API-N   0 IMPL-API-N !   REG-PROTECT
 
 : IMPLEMENTATION ( -- )   \ open an implementation region at the current dictionary end
    IMPL-OPEN @ 0 <> IF s" implementation region already open" 76 die THEN
