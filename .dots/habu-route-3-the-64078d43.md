@@ -38,8 +38,9 @@ SCOUTED VERDICT (2026-08-20, full map in the scout report; re-measured):
    If the owner-side bill approaches that, route 3 nets far less than the
    epic assumes - re-open the ruling on that number.
 
-Claim: agent=route3-3 workspace=.jj-ws/habu-trusted (TAKEOVER 2026-08-21 from
-route3-2, which stood down; the three seals that blocked it have landed)
+Claim: agent=route3-3 workspace=.jj-ws/habu-trusted (STOOD DOWN 2026-08-21 at
+context depth, with a BANKED three-commit chain - see BANKED BY ROUTE3-3 below
+for the successor pointer and everything that exists nowhere else)
 
 HARD GATE ANSWERED (2026-08-20, lane route3-1). ALL 662 DEFINITIONS
 TYPECHECK. Measured through the real driver, tools/check.f -> check-core.f
@@ -256,3 +257,170 @@ LESSONS (verbatim, for LESSONS.md at merge):
   which dot you are reversing.** `using-test.f`'s FRESH precondition and
   `internal-word-gate.f`'s CT-LIVE? case both named their own obsolescence
   condition in advance.
+
+BANKED BY ROUTE3-3 (2026-08-21). Route 3 is BUILT AND GREEN ON ITS OWN GATES,
+under a user ruling that supersedes both shapes the earlier lanes argued. The
+chain is three commits in .jj-ws/habu-trusted, NOT pushed, NOT merged:
+
+    3effe189  dots: route 3 resumes past the seals, boot-pin's packaging gets
+              its owner
+    b9111615  boot-pin: the prefix list gets a package
+    ba2900e7  codegen: check the type foundation past the hook
+
+THE HEADLINE, unchanged and re-measured: src/'s TRUSTED: census goes 218 -> 123,
+NINETY-FIVE rows deleted, 75 of them answerable only by route 3's recorded rows
+(4 more were already answerable through an existing axiom - a seal dividend, not
+route 3's). Second: the DERIVE-SET specimen below is a registry mutator DELETED,
+not hidden.
+
+STATE: crossing build rc 0; self-check census `0 uncheckable, 0 rejected,
+certified = 4728`; fixpoint byte-identical across two generations
+(2db1520772ad992f...); both diff lints 0 over master::@; error-code-lint 0;
+dot-dep-lint 0; maki rc 0 zero FAIL/RED; bootstrap-mirror-lint 0; `bash -n
+tools/bootstrap.sh` clean.
+
+--- 1. THE RULING'S MODEL, AS EXECUTED ---------------------------------------
+Private by default; a sibling that needs an internal EXTENDS BY REOPENING; the
+package SEALS after its last prefix extender; whatever stays public is genuine
+API and is checker-known and callable.
+
+The unverified mechanic - a package'd sibling doing the sequential
+close/reopen-theirs/extend/close/resume dance at prefix scale - IS PROVEN. It
+works, it certifies, and it costs one definition. Worked example, and the
+specimen a successor should copy:
+
+  src/core/type-family.f:478 area  the two raw derive-bit setters
+      TFAM-DERIVE-EQ! and TFAM-DERIVE-HASH! were PUBLIC and wrote a family
+      record with NO guard of any kind. `: R33-DERIVED ( n -- )
+      TFAM:TFAM-DERIVE-EQ! ;` CERTIFIED from ordinary user source - measured.
+      They are now DELETED outright, because once the extension existed neither
+      had a caller left. TF.DERIVE stays private.
+  src/core/sumtype.f:700 area      the extension block, verbatim shape:
+      ;package / package TFAM / public / : DERIVE-SET ( n n -- ) {: fam:n
+      bit:n :} fam TF-REC@ TF.DERIVE dup @ bit or swap ! ; / ;package /
+      package TYPE-DECL / private
+      Packages do not nest (habu2.f C-PACKAGE exits $4B) so the blocks are
+      sequential; reopening TYPE-DECL resumes the same two wordlists it left.
+  consumers  src/core/sumtype.f, structure-decl.f:277-278,
+      enum-decl.f:307-308 call `fam DRV-EQ DERIVE-SET`.
+
+THE FIVE CONTAINMENT LEGS, all measured on the built engine:
+    TFAM:DERIVE-SET from a checked body ......... certifies, callable
+    private bare TFAM-DERIVE-EQ! ............... E-UNDEFINED
+    private qualified TFAM:TFAM-DERIVE-EQ! ..... E-UNDEFINED
+    private through `using TFAM` ............... E-UNDEFINED
+    production ENUM r33col DERIVE eq ... ;ENUM . works
+
+A NAMING NOTE THE NEXT SWEEP WILL HIT: moving a public to private puts its
+definition line in the diff, and package-diff-lint then reports
+E-REDUNDANT-PACKAGE-PREFIX (`TFAM-DERIVE-HASH!` repeats its owner `TFAM`).
+Count callers before renaming - a word that was public solely for one caller
+usually has none once that caller is served properly, and deletion beats a
+rename.
+
+--- 2. SEAL STATE, AND 113ecd89 --------------------------------------------
+`package X private ... ;package` from an ordinary `bin/hb --load` program:
+
+    package      before        after      closed by
+    TFAM         rc 84         rc 84      RESTAB (habu2.f KWDATA:RESTAB-BUF)
+    LOWER-CERT   rc 84         rc 84      RESTAB
+    SCHEMA-REG   rc 0 REOPENED rc 84      this lane's ceremony
+    TYPE-DECL    rc 0 REOPENED rc 84      this lane's ceremony
+
+So HALF the registry packages were already closed against reopen for a reason
+that has nothing to do with sealing - measure the reopen route per package
+before writing a ceremony. The two that needed it now carry src/habu/xref.f's
+ceremony (`private get-current prot-wid-add public get-current prot-wid-add`),
+placed before the closer of the LAST block that opens the package:
+src/core/type-schema.f tail, and src/core/sumtype.f BEFORE its `;package` at
+the TDECL-TXN-XT line - NOT at end of file, where the seven global grammar
+words live outside the package (that mistake is exit 75 printing the bare token
+`private` and nothing else).
+
+The two habu-pkg-reopen-reaches-113ecd89 WITNESS PROGRAMS, both previously
+rc 134 SIGSEGVs, are now refused AT THE REOPEN with rc 84, before the poke:
+    package TYPE-DECL / private / 0 TDPLAN-P ! / ;package / SUMTYPE ...
+    package SCHEMA-REG / private / 0 SCH-RBF-P ! / ;package / SUMTYPE ...
+STILL OWED: these two witnesses and the four reopen-after-seal legs exist only
+as scratch probes in the lane's scratchpad. They must become REGISTERED cases
+(test/internal-word-gate.f is their home) before this lands - a passing probe
+is not a scheduled test.
+
+--- 3. RECLASSIFICATION CENSUS (build step 1) -------------------------------
+TFAM, 221 publics, measured by consumer:
+    59  no consumer outside src/core/type-family.f at all  (the inner-package
+        class the seal leaf predicted: TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER,
+        CHECKER-DECL-FRAME, PREFIX-BOUND read the registry through the file's
+        own `using TFAM`)
+    14  consumed ONLY by prefix sibling implementation files
+    ---
+    73  PRIVATE CANDIDATES of 221
+Consumer-count histogram over the rest: 62 publics have exactly one consumer,
+32 have two, 14 three, 14 four, and the tail runs to one name with 22. The 14
+sibling-only names: DRV-EQ DRV-HASH PF-FAM-LIVE? PF-NAME-REQUIRE
+TDECL-FIELD-CLEANUP-XT TDECL-FIELD-RELEASE-XT TF-GRAMMAR-KEYWORD? TF-UPPER-C
+TFAM-DERIVE-ANY? TFAM-DERIVE-EQ! TFAM-DERIVE-HASH! TFAM-DERIVED-TAIL?
+TFAM-REWIND TFCL-NODE? (the last has TEST consumers - tests are not
+implementation, check before privatising it).
+ZERO TFAM publics are consumed by enum-decl.f alone, which is why the probe
+case had to come from the sibling-only set.
+SCHEMA-REG (63 publics) and TYPE-DECL (45 publics) are UNCENSUSED.
+
+--- 4. THE 13 RED ASSERTIONS ------------------------------------------------
+test/internal-word-gate.f fails 13 assertions on the candidate: ordinals 36,
+52, 389, 393, 425, 426, 427, 429, 430, 431, 443, 467, 507. Two of them (425 and
+429, both `expected 70 got 0`) are the class route3-2 documented in its own
+internal-word-gate hunks: T-RES and CT-LIVE? gain rows because a CHECKED
+consumer needs them, so the marking pass stops hiding the name and guards it on
+declared input depth (DNAME-MIN-IN) instead. THE OTHER ELEVEN ARE UNATTRIBUTED.
+A successor must attribute each one before touching any of them - updating a
+number you have not explained is how this campaign's worst near-miss happened,
+and `internal-word-gate.f` has twice now named its own obsolescence condition
+in advance. Under the ruling these re-derive to pin the new containment:
+privates unreachable by every route INCLUDING reopen-after-seal, publics
+callable, protected cells refused.
+
+--- 5. BATTERY STILL OWED ---------------------------------------------------
+test/run.f UNSANDBOXED (the orchestrator's sandboxed shell mass-fails
+spawn-heavy suites), judge 46, schedule-lint, the snapshot suites, the
+bootstrap recovery leg, and test/using-test.f (the banked commit has hunks for
+it that this lane deliberately did not apply). NOT an item: the
+tools/hb-build-lib.f "working-copy artifact" from the lane's own report was a
+truncated `jj st` misread - the file's manifest reorder is legitimate content
+of ba2900e7, and the working copy is clean against its commit.
+
+--- 6. LESSONS, verbatim for LESSONS.md -------------------------------------
+- **`public`/`private` outside an open package is exit 75 with the bare token
+  as the whole message.** A seal ceremony appended to a file's TAIL lands after
+  `;package` when the file has a global surface below its package block
+  (sumtype.f's seven grammar words). Place a seal before the closer of the LAST
+  block that opens the package, not at end-of-file; the giveaway is a boot that
+  prints `private` and nothing else.
+- **Two of the four registry packages were already closed against reopen, for a
+  reason that has nothing to do with sealing.** `tfam` and `lower-cert` are in
+  `KWDATA:RESTAB-BUF`, so `package TFAM` from user source is refused before any
+  lookup. Measure the reopen route per package before writing a ceremony - half
+  of them may already answer, and the ones that do answer with rc 84 and the
+  package name as the entire diagnostic.
+- **A cross-file package extension is the way to keep a mutator private and
+  still reach it.** Closing your own package, reopening the owner, defining a
+  narrow entry where its privates are in scope, then resuming, works at
+  boot-prefix scale and costs one certified definition. It converts "this
+  internal must be public because a sibling calls it" into "this internal stays
+  private and the sibling defines the API it actually needs."
+- **When making a word private trips `E-REDUNDANT-PACKAGE-PREFIX`, count its
+  callers before renaming it.** The prefix is only redundant because the name
+  was designed for global reach; a word that was public solely for one caller
+  usually has zero callers once that caller is served properly, and deletion
+  beats renaming.
+
+Earlier lessons from this lane, already stated above in context: PPRIM: cannot
+reach a package private (it interns through SYM-PUBLIC, so a checked consumer
+of a pre-hook package's PRIVATE needs a TRUST row in that package's own private
+section - lower-cert-base.f's tail carries 15); a `using` line is load-order
+sensitive in a way a call site is not (converting every call in render.f to a
+defer did not free it from `using TFAM`, which fails the boot outright with
+`hb: using: unknown package: TFAM`); and a reorder script that moves list
+entries must move their separators too (tools/bootstrap.sh's `printf '\n'`
+lines were left behind, gluing five concatenated sources together, and the file
+still passed `bash -n`).
