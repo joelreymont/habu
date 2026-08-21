@@ -1,6 +1,6 @@
 ---
 title: Replace nanogpt fetch scripts with checked Habu fetch tool
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-22T14:04:11.643513+02:00\""
@@ -25,4 +25,4 @@ Files: the checked fetch tool, focused fixtures, and the two existing shell
 paths. Run the local fixture, an authorized pinned-URL smoke, and the
 unchanged Maki gate. Ownership: nanogpt fetch path.
 
-Claim: agent=claude workspace=.jj-ws/habu-replace-nanogpt-fetch-5f905f97.
+Claim: agent=claude workspace=.jj-ws/habu-replace-nanogpt-fetch-5f905f97 (RELEASED 2026-08-21: workspace gone, no live lane - gc).

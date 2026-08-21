@@ -1,6 +1,6 @@
 ---
 title: Bind linear handles atomically
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-19T21:44:49.846693+02:00"
@@ -60,3 +60,5 @@ their own active product dots. Smallest owning checks: `test/cast-negative-suite
 and the focused linear-handle declaration suite.
 
 Landed subset: universal may-linear `CAST:` rejection and rollback proof at `a36d1700287c860f7d728d73062fca35ef64aea9`. The remaining `LINEAR-HANDLE` and PTY migration work is unclaimed.
+
+Claim: unassigned (RELEASED 2026-08-21: leaf carried status active with no claim line at all, and no live lane owns it - gc)

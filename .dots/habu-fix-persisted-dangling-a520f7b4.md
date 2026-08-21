@@ -1,6 +1,6 @@
 ---
 title: Fix persisted dangling-pointer owners
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-02T19:14:25.425920+02:00\""
@@ -76,7 +76,7 @@ into CHECKER-SNAPSHOT-PREPARE, refresh the fixpoint byte-exact, and shrink
 SND-QUARANTINE. Sandbox artifacts kept under /tmp/dot4 (hb-stdin, hb-snap-src,
 entry files) for a fast restart.
 
-Claim: agent=dangling workspace=.jj-ws/habu-fix-persisted-dangling-a520f7b4
+Claim: agent=dangling workspace=.jj-ws/habu-fix-persisted-dangling-a520f7b4 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 ## MEASURED 2026-07-30 (agent=dangling, workspace .jj-ws/habu-fix-persisted-dangling-a520f7b4)
 

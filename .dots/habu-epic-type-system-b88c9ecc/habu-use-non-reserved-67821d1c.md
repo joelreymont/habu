@@ -1,6 +1,6 @@
 ---
 title: Use non-reserved PRODUCT parameter names
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-21T23:34:12.595349+02:00"
@@ -14,4 +14,4 @@ Acceptance: generated products at arities 1 through 23 certify; every parameter 
 
 Files: src/core/type-family.f owns the shared mapping; src/core/sumtype.f, src/core/structure-decl.f, and src/core/enum-decl.f consume it; docs/type-families.md and focused type-family/type-declaration/structure/enum/constructor suites specify it. Include only required bootstrap/source-list mirrors. Verify generated-effect inspection, the type-family, type-declaration, structure, enum, constructor, and linear suites; typed-local, package, host, and dot lints; ahead-of-time compilation, fixpoint, and the full native gate.
 
-Claim: agent=fork-product-params workspace=.jj-ws/habu-use-non-reserved-67821d1c
+Claim: agent=fork-product-params workspace=.jj-ws/habu-use-non-reserved-67821d1c (RELEASED 2026-08-21: workspace gone, no live lane - gc)

@@ -1,6 +1,6 @@
 ---
 title: "GOAL: drain the ENTIRE tracker to the gates (no epic carve-out)"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-13T13:33:26.102998+02:00\""
@@ -32,3 +32,5 @@ The candidate-C SPEC: surface (docs/golden-syntax.md, gathered-GEMM/#10927 examp
 Flagship lanes are AUTHORED in type-family-enabled code, so Phase 0 (checker lane, serialized) precedes all flagship authoring: (1) the unified type-DSL hard cutover specified by `docs/type-families.md` §2, (2) fields hardening lane (habu-fields-add-shared children; protect -> rollback-canonical -> visibility/provenance -> factor -> harden -> validators), (3) Foundation A1 -> TENSOR: -> SPEC:. Lane A/B design-only artifacts (process-row numbers, nanoGPT inventory/gap list, SPEC grammar extraction) may proceed in parallel — no new flagship CODE in old idiom.
 ## Codegen verdict protocol (Joel: "our code generator absolutely sucks — prove me wrong")
 Measured, not argued, on GB10: (a) mem-bound kernels vs measured DRAM ceiling; (b) fp32 blocked GEMM vs CUDA-core fp32 roofline; (c) cuobjdump SASS audit of ptxas output on our PTX (reg pressure, scheduling, what ptxas fixed for us). Known-right: zero native opt passes (only bootstrap/cg/opt.fs 240-line gforth peephole); per-family hand-shaped emitters cap SPEC: generality — habu-ptx-opt-layer-325b9507 is the named fix. Known-mitigating: DRAM parity on Orin mem-bound; the 4.3x GEMM gap is TF32-tensor-core vs our fp32-CUDA-core (MMA unlanded), not proven codegen waste. If kernels sit near roof for their instruction mix: adequate, MMA/TMA are the gap. If far under: Joel is right, IR/opt layer joins Phase 0 on the critical path.
+
+Claim: unassigned (RELEASED 2026-08-21: leaf carried status active with no claim line at all, and no live lane owns it - gc)

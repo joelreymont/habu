@@ -1,12 +1,12 @@
 ---
 title: Complete the chain dialect to the engine surface
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-06T16:07:09.755260+02:00"
 ---
 
-Claim: agent=nameres workspace=.jj-ws/habu-complete-the-chain-5aab8cee
+Claim: agent=nameres workspace=.jj-ws/habu-complete-the-chain-5aab8cee (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 CENSUS 2026-08-06 — tools/chain-census.f, the tranching instrument this leaf
 asked for. It drives every plain-`:` definition of a file through held

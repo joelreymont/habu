@@ -1,6 +1,6 @@
 ---
 title: Vectorize the byte loops with NEON
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-05T09:41:37.405181+02:00"
@@ -10,7 +10,7 @@ The counted byte/cell scan loops (BYTE-SUM, BYTE-FIND, COUNT-CHAR shapes) are me
 
 Blocked by: habu-epic-hard-cut-a684f24d phases 1-6. Re-scoped: only recognized induction/access/reduction shapes with complete scalar head/tail handling and exact empty/short/aligned/unaligned goldens; start with byte scan/find/count workloads where clang shows a large measured gap.
 
-Claim: agent=neon workspace=.jj-ws/habu-vectorize-the-byte-a0da35a7
+Claim: agent=neon workspace=.jj-ws/habu-vectorize-the-byte-a0da35a7 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 MEASURED 2026-08-06 (agent neon). Stage 1 landed as `codegen: model the byte-strip SIMD forms` on bookmark `neon`: Ld1v, Uaddlv and Umovh in `formal/Common/Insn.v` with the full row discipline, `ENC-LD1V`/`ENC-UADDLV`/`ENC-UMOVH` in `src/arch/arm64/asm.f`, schema rows, and eleven mutations falsified. No emitter, so no emitted byte moved and codegen-compare reports 0 findings.
 

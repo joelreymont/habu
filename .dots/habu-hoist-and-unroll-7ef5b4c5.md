@@ -1,6 +1,6 @@
 ---
 title: Hoist and unroll the small loops
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-05T09:41:37.378317+02:00"
@@ -10,7 +10,7 @@ Loop-invariant code motion and bounded unrolling on the frozen IR: hoist pure co
 
 Blocked by: habu-epic-hard-cut-a684f24d phases 1-6. Re-scoped: LICM only when typed memory/effect facts prove invariance and alias safety; unroll only when the measured size/runtime tradeoff is favorable and the allocator accepts the pressure, threshold derived from target cache/sequence costs.
 
-Claim: agent=hoist workspace=.jj-ws/habu-hoist-and-unroll-7ef5b4c5
+Claim: agent=hoist workspace=.jj-ws/habu-hoist-and-unroll-7ef5b4c5 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 MEASURED FIRST (2026-08-06, on master 36959656). The instrument is
 tools/codegen-loop-inventory.f plus its runner and

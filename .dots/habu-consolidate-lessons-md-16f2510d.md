@@ -1,6 +1,6 @@
 ---
 title: Consolidate LESSONS.md overlap
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-08-16T18:58:41.830372+02:00\""
@@ -78,7 +78,7 @@ hygiene 2026-08-10, the do landing 2026-08-13) because every
 member was in a group above. Net -85 duplicated lines, +60 of
 canonical text.
 
-Claim: agent=lessons-close workspace=.jj-ws/habu-lessons-close
+Claim: agent=lessons-close workspace=.jj-ws/habu-lessons-close (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 THIRTEEN MORE GROUPS DONE 2026-08-17 (lessons-close), 74 members ->
 13 canonical entries. NOTE the leaf did NOT carry a banked survey:

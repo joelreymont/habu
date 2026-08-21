@@ -1,6 +1,6 @@
 ---
 title: "Tests: retire auxiliary enum fixtures"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-13T17:19:03.146351+02:00"
@@ -43,3 +43,5 @@ fixtures; create-axiom-test.f prose; 3 rows each in habu2.f and
 bootstrap/cg/forth.fs; build-fixpoint / hb-build-lib / boot-pin /
 diagnose-hb-core / bootstrap.sh / package-diff-lint-core
 exemption; docs/forth.md x2.
+
+Claim: unassigned (RELEASED 2026-08-21: leaf carried status active with no claim line at all, and no live lane owns it - gc)

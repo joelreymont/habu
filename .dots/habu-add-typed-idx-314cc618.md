@@ -1,6 +1,6 @@
 ---
 title: Add typed index byte arithmetic
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-28T01:34:31.462188+02:00"
@@ -54,4 +54,4 @@ must execute the focused suite, whose checked F32 composition certifies without
 a cast. The final tree must contain no false no-production-loader or sole-
 consumer claim for either CAD-NUM slice.
 
-Claim: agent=cad-index-bytes workspace=.jj-ws/habu-add-typed-idx-314cc618
+Claim: agent=cad-index-bytes workspace=.jj-ws/habu-add-typed-idx-314cc618 (RELEASED 2026-08-21: workspace gone, no live lane - gc)

@@ -1,6 +1,6 @@
 ---
 title: Verify frozen compiler IR
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-26T22:55:16.416248+02:00\""
@@ -54,7 +54,7 @@ for as long as any branch to the block is unwritten. This verifier must:
   arguments. IR-FUN supplies BLOCK-COUNT and ARG@ for both.
 
 
-Claim: agent=irverify workspace=.jj-ws/habu-verify-frozen-compiler-224d78ad
+Claim: agent=irverify workspace=.jj-ws/habu-verify-frozen-compiler-224d78ad (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 ## Result (irverify, measured)
 

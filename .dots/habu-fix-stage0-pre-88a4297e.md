@@ -1,6 +1,6 @@
 ---
 title: Fix stage0 pre-trust defer replay
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-28T10:38:57.712053+02:00\""
@@ -31,7 +31,7 @@ the stage0 using implementation (commit b9d5fca5 in
 real-checker leg cannot be proven until this dot closes, because a recovery
 build cannot yet compile a checked region at all.
 
-Claim: agent=stage0replay workspace=.jj-ws/habu-add-using-to-d815f0ab
+Claim: agent=stage0replay workspace=.jj-ws/habu-add-using-to-d815f0ab (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 ## MEASURED report 2026-07-30 (agent stage0replay, workspace .jj-ws/habu-add-using-to-d815f0ab)
 

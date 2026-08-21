@@ -1,6 +1,6 @@
 ---
 title: Model T-ATOM rigid host identities
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-30T00:02:43.415137+02:00\""
@@ -20,7 +20,7 @@ The mutation that must go red. Make ATOM-OK? (checker.f:1272) ignore the domain 
 
 Blocked by nothing. It touches the type vocabulary only, so it does not wait on the construct, transport or match leaves.
 
-Claim: agent=tatom workspace=.jj-ws/habu-model-t-atom-8110cc18
+Claim: agent=tatom workspace=.jj-ws/habu-model-t-atom-8110cc18 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 MEASURED. The rule is modelled, the omission line is gone from
 formal/Common/Effects.v, and the parity gate

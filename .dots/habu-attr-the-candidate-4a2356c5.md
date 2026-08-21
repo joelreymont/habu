@@ -1,6 +1,6 @@
 ---
 title: Attribute the candidate-validation forge red
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-06T17:36:40.365173+02:00"
@@ -8,7 +8,7 @@ created-at: "2026-08-06T17:36:40.365173+02:00"
 
 Master 44aa8134: test/run.f red at 'baseline validation shared' inside the candidate-validation slice — 3 failures, the visible suspects the layout forge cases (layout-valid-walk-forge.f exit 70, layout-valid-desc-forge.f exit 70) judged against recorded baselines. Reproduced twice by the orchestrator in merge-gate with a FRESH fixpoint engine, so not stale-seed. Was green at c68209e1 this morning and in every lane's own gates through spillwire; landed since: thecut audit (comments/dots), openplain memo carry (elaborate.f — not in engine seed), insnrows SMULH/MADD/MSUB (asm.f + formal — IS engine source; its lane's gates were green on ITS tree, gates not re-run post-rebase). Also possibly the same event the noemit lane saw as text-foundation assert 741 at ba7935d1 (standalone green for the orchestrator — pool/composition sensitivity suspected). Attribute by running the slice at each landing since c68209e1 with a per-commit fixpoint engine; fix at the root; the recorded-baseline machinery's sensitivity to engine growth is the design question if that is the cause. Blocks every merge (zero-red bar). 2026-08-06.
 
-Claim: agent=candfix workspace=.jj-ws/habu-attr-the-candidate
+Claim: agent=candfix workspace=.jj-ws/habu-attr-the-candidate (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 ## Attribution result: no landing is responsible
 

@@ -1,6 +1,6 @@
 ---
 title: Bind compiler ID parity
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-27T13:50:44.124249+02:00\""
@@ -10,7 +10,7 @@ blocks:
   - habu-prove-compiler-id-4fe3b4ea
 ---
 
-Claim: agent=bind_parity workspace=merged
+Claim: agent=bind_parity workspace=merged (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 Implementation complete and merged onto the proofs bookmark; the parity gate
 test/compiler/ir-id-proof.f passes and was independently verified non-vacuous by

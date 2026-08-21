@@ -1,6 +1,6 @@
 ---
 title: Guard provisional declaration ownership
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-24T02:56:00.553945+02:00\""
@@ -24,4 +24,4 @@ Test migration: in test/enum-decl-suite.f, TEST-PAYLOAD-VIEW binds its nested em
 
 Acceptance: same-family claims by published, finalized-nested, and active-ancestor rows reject 7173 before event, field, family, or depth mutation; the rejected frame remains usable for a different provisional family or rollback; different provisional families nest; an established family older than the saved mark remains legal; coordinated rollback permits later numeric-family reuse because it has already retired old rows. Active-frame and outer-scope RESET reject 7161 without mutation and RESET succeeds after both depths close. The enum token-scope and deterministic-identity assertions stay exact. Removing token validation, the provisional-range query, live-row kind/family matching, either RESET condition, or the atomic enum restore makes an owning regression fail.
 
-Files: src/core/decl-event.f, test/decl-event-suite.f, and test/enum-decl-suite.f only. Forbidden: cross-generation alias detection, published-only scan, verifier cleanup, second registry or watermark, latch, persisted bit, restore hook, event-record field, temporary owner package, global bridge, new TRUSTED boundary, finalizer/frontend/legacy edit, STATUS ratchet, or unrelated caller migration. Smallest owning checks: bin/hb < test/decl-event-suite.f and bin/hb --load test/enum-decl-suite.f. Then run exact typed-local, package, generated-declaration, and candidate-validation slices. Depends: habu-prove-verifier-event-f3454331. Claim: agent=guard_impl workspace=.jj-ws/habu-guard-provisional-ownership.
+Files: src/core/decl-event.f, test/decl-event-suite.f, and test/enum-decl-suite.f only. Forbidden: cross-generation alias detection, published-only scan, verifier cleanup, second registry or watermark, latch, persisted bit, restore hook, event-record field, temporary owner package, global bridge, new TRUSTED boundary, finalizer/frontend/legacy edit, STATUS ratchet, or unrelated caller migration. Smallest owning checks: bin/hb < test/decl-event-suite.f and bin/hb --load test/enum-decl-suite.f. Then run exact typed-local, package, generated-declaration, and candidate-validation slices. Depends: habu-prove-verifier-event-f3454331. Claim: agent=guard_impl workspace=.jj-ws/habu-guard-provisional-ownership (RELEASED 2026-08-21: workspace gone, no live lane - gc).

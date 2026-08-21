@@ -1,6 +1,6 @@
 ---
 title: Neutralize checker package scope at scope start
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-25T14:40:51.881718+02:00"
@@ -30,7 +30,7 @@ diff.
 
 Files: `src/core/checker.f`, `tools/check-core.f`, `tools/check-all-errors-core.f`, and the owning test files for the three new regressions.
 
-Claim: agent=pkg-neutral workspace=.jj-ws/habu-neutralize-checker-pkg-b9a250c8
+Claim: agent=pkg-neutral workspace=.jj-ws/habu-neutralize-checker-pkg-b9a250c8 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 Update 2026-07-28 (orchestrator, suite-red mapping): after the CHECKER-AUTH-PACKAGE fail-closed plumbing landed, the observed failure code at these sites is now an uncaught/asserted 7136 E-PKG-CONTEXT (src/core/checker.f:527), not exit 78. Confirmed live on the proofs branch in four suite phases sharing this root: the engine repair slice (tools/check-repair-hints-test.f case repair-batch expects 70, gets 7136), stdlib/tool-doc (tools/repair-schema-doc-test.f + tools/examples-test.f, assert 90 then 92-118 cascade), stdlib/tool-repair (tools/check-all-errors-test.f case package-caller-export, asserts 65/67), and test/xt-cell-test.f (fork-worker throw 7136). Same invariant as written above: the checker owns package-neutral replay scope. Re-derive the pre-change reds against 7136.
 

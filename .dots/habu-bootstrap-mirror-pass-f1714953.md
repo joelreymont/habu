@@ -1,6 +1,6 @@
 ---
 title: Bootstrap mirror pass-2 + wide-marking parity
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-09T13:28:23.589159+02:00"
@@ -44,7 +44,7 @@ wide-marking mirror in bootstrap/cg/forth.fs + jit.fs before (or with) the
 first src/ ADT declaration — the tripwire makes that ordering a red gate
 instead of a convention.
 
-Claim: agent=adt-fix workspace=.jj-ws/habu-bootstrap-mirror-pass-f1714953
+Claim: agent=adt-fix workspace=.jj-ws/habu-bootstrap-mirror-pass-f1714953 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 FINDINGS RETIRED AS VACUOUS, MIRROR STILL NOT BUILT (2026-08-06, adt-fix).
 All 56 findings named files under src/compiler, and src/compiler is NOT in the

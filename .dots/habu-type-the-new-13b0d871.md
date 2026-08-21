@@ -1,6 +1,6 @@
 ---
 title: Type the new definer registries
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-18T22:41:24.682153+02:00\""
@@ -10,6 +10,6 @@ The extent, tensor, and spec definers merged 2026-07-18 (maki/extent.f, maki/ext
 
 PLAN SHARPENED 2026-07-18 (orchestrator, answering how the checker comes to SEE these registries rather than just wrapping them). Step 1 (unblocked, no new capability): (a) option<n> lookups with MATCH callers - a missing not-found branch fails certification; (b) the tensor kind becomes a real sum type via the existing SUMTYPE + MATCH (not blocked on the ENUM ergonomics chain) - kind-vs-rank confusion becomes a type mismatch and kind branches must be exhaustive; (c) nominal-type the registry slot index and each column's value with the just-merged NOMINAL:/family machinery (xr-slot, distinct surface-length vs tail-length nominals), hiding raw cells-offset math behind one accessor per column with a typed effect - reading the wrong column or passing a rank as a slot becomes a checker reject. Step 2 (pivots on the layout-kinded product/sum fields capability, habu-checker-capability-layout-4e7f1f03, plus the unified type DSL): declare a registry row as a product whose fields CARRY those nominal types, generating the typed accessors instead of hand-writing them, and replacing the parallel arrays with one declared row type - the field-correspondence property (row i across six arrays is one entity) becomes structural. Step 1's hand-written accessors are the honest interim; step 2 deletes them. End state: definer registries are declared in the same checked type DSL the definers implement.
 
-Claim 2026-07-18: agent=treg-opus workspace=.jj-ws/habu-type-the-new-13b0d871 (step 1 only: option lookups, SUMTYPE kind, nominal slot/column accessors).
+Claim 2026-07-18: agent=treg-opus workspace=.jj-ws/habu-type-the-new-13b0d871 (RELEASED 2026-08-21: workspace gone, no live lane - gc) (step 1 only: option lookups, SUMTYPE kind, nominal slot/column accessors).
 
 STEP 1 DELIVERED 2026-07-18 (merged 03410e95, reviewed hunk-by-hunk): option<xr-slot>/option<tr-slot> lookups with MATCH-forced none handling; SUMTYPE tensor-kind with exhaustive-match rejects; nominal xr-slot/tr-slot/sp-fi row indices and distinct xr-surf-len/xr-tail-len column types with one typed accessor per column; reject fixtures for every class in the three owning tests. Claim released. REMAINING = STEP 2 (blocked on layout-kinded product/sum fields, habu-checker-capability-layout-4e7f1f03): declare registry rows as products carrying these nominal types, generate the accessors, replace the parallel arrays; also carry the kind as a real sum in storage (step 1 stores the variant tag in a flat cell and rebuilds on read - the documented interim). Worker papercuts worth folding into the ENUM/DSL chain: SUMTYPE bodies reject inline backslash comments, and a MATCH arm cannot bind its payload to a typed local (the payload must stay on the stack into a helper).

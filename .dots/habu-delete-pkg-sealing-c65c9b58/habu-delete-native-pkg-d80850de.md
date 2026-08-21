@@ -1,6 +1,6 @@
 ---
 title: Delete native package-name wall
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-30T22:10:14.562565+02:00"
@@ -21,4 +21,4 @@ Fixture ownership: test/seal.f opens package SEAL-SUITE. SLV-PUBLISH-FORGE$, SLV
 
 Owner and exact files: src/habu/habu1.f, src/habu/habu2.f, bootstrap/cg/forth.fs, src/core/engine-error.f, src/core/engine-error-effects.f, test/engine-suite.f, test/aot-wid-suite.f, test/seal.f, and tools/bootstrap-codegen-test.f. Dependencies: completed native ENGINE-EMIT ownership and structural Gforth vocabulary recognition in the existing package gate. Pre-change production probes: package ENGINE-ERROR and qualified ENGINE-ERROR:BAD-TAG both exit 84; a generated-constructor publication also exits 84. Acceptance before M17: the first two probes succeed; the constructor still refuses with PROTECTED-WID 84; native and recovery behavior match; RESTAB, LRESTAB, the named wall guards and calls, and SEAL-PACKAGE have zero live spellings in the owned files; the PROTECTED-WID rename closure is exact; package and typed-local gates pass. Runtime suites execute only in M17.
 
-Forbidden: protected registry deletion, ordinary owner registration changes, checker/export mirror edits, compatibility, aliases, versions, new lint or exemption, allowlists, documentation, unrelated seal work, any ENGINE-ERROR or ENGINE-EMIT package/vocabulary rename, or any public bootstrap helper beyond the three existing recovery entry points. Claim: agent=seal_native_impl workspace=.jj-ws/habu-delete-native-pkg-d80850de.
+Forbidden: protected registry deletion, ordinary owner registration changes, checker/export mirror edits, compatibility, aliases, versions, new lint or exemption, allowlists, documentation, unrelated seal work, any ENGINE-ERROR or ENGINE-EMIT package/vocabulary rename, or any public bootstrap helper beyond the three existing recovery entry points. Claim: agent=seal_native_impl workspace=.jj-ws/habu-delete-native-pkg-d80850de (RELEASED 2026-08-21: workspace gone, no live lane - gc).

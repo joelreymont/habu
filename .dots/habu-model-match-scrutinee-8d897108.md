@@ -1,6 +1,6 @@
 ---
 title: Model MATCH scrutinee pop
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-30T00:05:03.636384+02:00\""
@@ -20,7 +20,7 @@ The mutation that must go red. Make MATCH-SCRUT-CELL? (checker.f:8284) ignore th
 
 Blocked by nothing, but the certifying deep-match row also wants habu-model-construct-row-bcdd5ef6 landed, because construct is how a body mints a family value of a known variant.
 
-Claim: agent=scrutinee workspace=.jj-ws/habu-model-match-scrutinee-8d897108
+Claim: agent=scrutinee workspace=.jj-ws/habu-model-match-scrutinee-8d897108 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 MEASURED. The scrutinee pop is modelled in formal/Common/Control.v and the
 clause is gone from the header's omission list. What landed:

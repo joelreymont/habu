@@ -1,6 +1,6 @@
 ---
 title: Lex error-code claims with the shared lexer
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-25T14:41:35.080243+02:00"
@@ -59,4 +59,4 @@ Verify: bin/hb --load tools/error-code-lint-test.f, the gate entry point ERROR-C
 
 Files: tools/error-code-lint-core.f and tools/error-code-lint-test.f.
 
-Claim: agent=errlex workspace=.jj-ws/habu-lex-err-code-ac0673c3
+Claim: agent=errlex workspace=.jj-ws/habu-lex-err-code-ac0673c3 (RELEASED 2026-08-21: workspace gone, no live lane - gc)

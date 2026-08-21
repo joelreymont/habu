@@ -1,6 +1,6 @@
 ---
 title: Honor full grader artifact paths
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-24T07:02:15.367893+02:00\""
@@ -64,4 +64,4 @@ Verify: the focused real-device test with a private long `TMPDIR`, focused
 boundary and rejected-length mutations through `EVAL:LAUNCH-CUBIN!`, the exact
 owning load, typed-local and package diff lints, then root's combined Maki
 gate. Claim: agent=grader_path_impl
-workspace=.jj-ws/habu-honor-full-grader-d27f56cf.
+workspace=.jj-ws/habu-honor-full-grader-d27f56cf (RELEASED 2026-08-21: workspace gone, no live lane - gc).

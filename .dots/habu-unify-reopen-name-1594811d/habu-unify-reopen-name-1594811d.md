@@ -1,6 +1,6 @@
 ---
 title: Unify reopen name resolution
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-27T12:13:45.285697+02:00"
@@ -73,3 +73,5 @@ GET-REOPENED ( -- n ) REC REC.B @ ; / : W-SET ( -- ) 9 W REC.B ! ; / : W-GET (
 
 Then RUN, comparing same-file GET, which correctly answers 7, against
 GET-REOPENED, which answers wrongly or crashes.
+
+Claim: unassigned (RELEASED 2026-08-21: leaf carried status active with no claim line at all, and no live lane owns it - gc)

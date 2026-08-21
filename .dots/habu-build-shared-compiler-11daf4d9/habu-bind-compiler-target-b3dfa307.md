@@ -1,6 +1,6 @@
 ---
 title: Bind compiler target policy
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-26T22:54:38.097168+02:00\""
@@ -8,7 +8,7 @@ blocks:
   - habu-type-dsl-prove-93da83c4
 ---
 
-Claim: agent=bind_target workspace=.jj-ws/habu-bind-compiler-target-b3dfa307
+Claim: agent=bind_target workspace=.jj-ws/habu-bind-compiler-target-b3dfa307 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 Dependency review 2026-07-28: the listed prerequisite habu-type-dsl-prove-93da83c4
 is NOT a functional blocker and this task proceeds without it. That task is a

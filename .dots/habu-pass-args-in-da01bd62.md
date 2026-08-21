@@ -1,6 +1,6 @@
 ---
 title: Pass arguments in registers between native routines
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-05T09:41:37.358771+02:00"
@@ -12,7 +12,7 @@ The structural gap against LLVM: every call between chain-compiled routines stil
 
 Blocked by: habu-epic-hard-cut-a684f24d phases 1-6. Re-scoped: after the hard cut the old compiler is gone, so build NO convention adapters or per-record compatibility tags — one internal register convention, with explicit data-stack conversion only at true engine/foreign boundaries.
 
-Claim: agent=regargs workspace=.jj-ws/habu-pass-args-in-da01bd62
+Claim: agent=regargs workspace=.jj-ws/habu-pass-args-in-da01bd62 (RELEASED 2026-08-21: workspace gone, no live lane - gc)
 
 MEASURED FIRST (2026-08-06, regargs, master baee99e4). The instrument is
 `tools/codegen-callsite-inventory.f` (+ `-run.f`, suite

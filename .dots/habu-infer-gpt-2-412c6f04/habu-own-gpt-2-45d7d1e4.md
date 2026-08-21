@@ -1,6 +1,6 @@
 ---
 title: Own byte-BPE state
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:38:10.057008+02:00"
@@ -11,3 +11,5 @@ Problem: the landed byte-pair encoding implementation stores tables and work buf
 Abandoned candidate: `f6590c21bebddae340b495ba299aa5d942d0d791`; superseded by the model-owned hard cut in `habu-own-gpt-2-664626a8`. Do not land it.
 
 Frozen interface: `OPEN` takes, in order, vocabulary `CAD-NUM:item-count`, merge `CAD-NUM:item-count`, token-arena `CAD-NUM:byte-len`, encode-work `CAD-NUM:item-count`, encode-output `CAD-NUM:item-count`, and decode-output `CAD-NUM:byte-len`, initializes the empty construction state, and returns generic `result<BPE:builder,n>`. `CLOSE ( BPE:builder -- )` consumes an abandoned build. `RELEASE ( BPE:state -- )` consumes a sealed table. The one-block extent is checked, rounded up to whole cells, converted to `CAD-NUM:alloc-cell-count`, and allocated by existing `MEM:ALLOC-CELLS`; the returned `ptr a` is the canonical representation for both linear owners. The exact rounded whole-map byte extent is stored once for release. Their private ACQUIRE/BORROW/TAKE words come only from the fixed `LINEAR-HANDLE` declarer; no `TRUSTED:` or `CAST:` lifetime bridge exists. Cell headers use `ptr a` directly; token/decode byte tails and the call to `MEM:RELEASE-BYTES` weaken it through core `BYTE-VIEW`. `BLOCK>CELLS` is deleted. Builder-to-state sealing composes generated TAKE-BUILDER then MINT-STATE over the same `ptr a`; it is not a linear cast. Page-boundary destruction cases derive their exact mapping extent after cell rounding. A kernel unmap failure remains the existing uncatchable exit-71 ownership invariant from `habu-make-owned-release-79de2b5c`, because a consumed owner cannot be returned honestly. The sole hard prerequisite before combined publication is the first publishable core result of `habu-checked-nominal-and-94be09c9`; no new MEM surface is required. Callers pass named capacity constants, never bare literals. Production is split by concern into `bpe-state.f`, `bpe-table.f`, `bpe-encode.f`, and `bpe-decode.f`; `bpe.f` only assembles those files and seals both BPE wordlists after the last one. Storage projections remain private while those files reopen BPE. No limits wrapper, special result type, direct `munmap`, public `BEGIN`, or catch across a live linear owner exists. Positive vocabulary and merge capacities are not distinguishable through this lifetime-only surface; the table-builder acceptance owns the swapped-capacity mutation.
+
+Claim: unassigned (RELEASED 2026-08-21: leaf carried status active with no claim line at all, and no live lane owns it - gc)

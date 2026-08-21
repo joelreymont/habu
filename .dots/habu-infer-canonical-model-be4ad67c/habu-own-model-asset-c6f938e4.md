@@ -1,6 +1,6 @@
 ---
 title: Own model asset workspace
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-30T00:55:48.095932+02:00"
@@ -11,3 +11,5 @@ Why: config, tokenizer, index, and checkpoint intake require bounded path and by
 Abandoned candidate: `212498c8184f28c9f2aefa6917d19f20f5efbb11`; superseded by the model-owned hard cut in `habu-own-gpt-2-664626a8`. Do not land it.
 
 Frozen interface: `OPEN ( CAD-NUM:byte-len -- result<MODEL-ASSET:ws,n> )`; `PATH-SPAN ( MODEL-ASSET:ws -- MODEL-ASSET:ws ptr u8 CAD-NUM:byte-len )`; `BYTE-SPAN` has the same stack shape; `RELEASE ( MODEL-ASSET:ws -- )`. The one-block extent is checked, rounded up to whole cells, converted to `CAD-NUM:alloc-cell-count`, and allocated by existing `MEM:ALLOC-CELLS`; the returned `ptr a` is the workspace's canonical representation. The exact rounded whole-map byte extent is stored once for release. Its private ACQUIRE/BORROW/TAKE words come only from the fixed `LINEAR-HANDLE` declarer; no `TRUSTED:` or `CAST:` lifetime or pointer-view bridge exists. Header access uses `ptr a`; public byte borrows and the call to `MEM:RELEASE-BYTES` weaken it through core `BYTE-VIEW`. Page-boundary destruction cases derive their exact mapping extent after cell rounding. A kernel unmap failure remains the existing uncatchable exit-71 ownership invariant from `habu-make-owned-release-79de2b5c`, because the consumed workspace can no longer be returned honestly. Each span is an owner-threaded borrow valid only while that exact workspace remains live; callers must not retain it past a consuming call. The sole hard prerequisite before combined publication is the first publishable core result of `habu-checked-nominal-and-94be09c9`; no new MEM surface is required. The raw-buffer ban means no ambient or lifetime-free buffer, not no owner-threaded pointer. No callback, copy-out, limits type, special result type, direct `munmap`, compatibility alias, or version exists.
+
+Claim: unassigned (RELEASED 2026-08-21: leaf carried status active with no claim line at all, and no live lane owns it - gc)
