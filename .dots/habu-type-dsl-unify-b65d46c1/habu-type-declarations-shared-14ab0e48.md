@@ -3,7 +3,7 @@ title: "Type declarations: shared syntax events"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-15T06:39:01.661679+02:00\\\"\""
+created-at: "2026-07-15T06:39:01.661679+02:00"
 closed-at: "2026-07-21T00:12:21.195033+02:00"
 close-reason: "Landed 8763905f from the spark declevents lane: src/core/decl-event.f (434 lines, package DECL-EVENT) - the shared post-hook declaration syntax-event transaction both front ends drive. Token-threaded transaction words (OPEN/DECL/ARITY/POLICY/DERIVE/VARIANT/END-VARIANT/FIELD/PUBLISH/ROLLBACK/RESET + CURRENT-VARIANT/NO-VARIANT selectors), read-only reflection over published events, deterministic FNV-1a-64 IDENTITY. Raises E-DEV-TX 7161 / E-DEV-STATE 7162 / E-DEV-DUP-POLICY 7163 / E-DEV-DUP-DERIVE 7164 / E-DEV-ARITY 7108; passes field-record/SUMV rejects through unchanged. VARIANT drives SUMV-ADD and sets the current variant carried by FIELD events, per both scope expansions. 10-case red-first stdin suite registered in candidate-validation; boot rows in all four source-assembly paths; census 3626, CODELEN +44 re-measured at the merged fixpoint, 7 TRUSTED seam rows owned by the standing unify epic. Composition fact for the front ends: SUMV/TFAM/SCHEMA/LAY rollback rides the enclosing checker candidate frame - the parse driver opens it around each transaction (suite proves the composition). Design feedback recorded: shared declaration-codes module wanted (E-DEV-ARITY mirrors sumtype's 7108 locally across the fixpoint boundary); REG-GROW1 trusted-boundary capability gap; sumtype.f:61-68 legacy comment intentionally untouched (legacy PRODUCT path unchanged). Claim collision with declevents-mac resolved in the dot body - future chain stages are Mac-owned"
 blocks:

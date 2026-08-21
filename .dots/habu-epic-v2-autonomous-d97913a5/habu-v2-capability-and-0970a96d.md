@@ -3,7 +3,7 @@ title: V2 capability and budget enforcement
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.142308+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.142308+02:00"
 closed-at: "2026-07-18T01:00:59.095012+02:00"
 close-reason: "Capability tokens + budget ledgers + COMMIT-AUTHORIZED landed (c06b0c14): forge-proof grants, subset-only attenuation, idempotent atomic charging, replay-equal digests - all five rules test-proven. Discharge authority folded into evidence-promotion."
 ---

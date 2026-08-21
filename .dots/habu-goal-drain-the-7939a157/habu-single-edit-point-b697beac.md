@@ -3,7 +3,7 @@ title: Single edit point for gate-case manifests
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-18T23:21:32.735303+02:00\""
+created-at: "2026-07-18T23:21:32.735303+02:00"
 closed-at: "2026-07-19T15:50:13.062903+02:00"
 ---
 

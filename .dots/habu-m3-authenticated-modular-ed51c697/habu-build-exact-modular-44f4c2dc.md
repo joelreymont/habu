@@ -3,7 +3,7 @@ title: "Build: exact modular AOT source"
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-15T14:23:10.016110+02:00\""
+created-at: "2026-07-15T14:23:10.016110+02:00"
 blocks:
   - habu-m2-safe-filesystem-6d289b3d
 ---

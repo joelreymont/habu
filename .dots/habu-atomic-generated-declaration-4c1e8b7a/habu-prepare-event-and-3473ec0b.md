@@ -3,7 +3,7 @@ title: Prepare event and field release
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T23:20:58.516167+02:00\""
+created-at: "2026-07-22T23:20:58.516167+02:00"
 closed-at: "2026-07-26T08:59:33.237510+02:00"
 close-reason: "Implemented, reviewed, merged: landed as a2306c7b37cf (Bind declaration-event participant to its own frame) with the release adapters completed by 80dac3c072d2, both ancestors of master@origin. DEV-PREPARE proves the live token, open state, and event-to-field contiguity before any commit through TYPE-FIELD-OWNER:PREPARE; DEV-PART-RELEASE is total and only discards the already-proved frames. The abandoned first lane (559c0c03 in .jj-ws/habu-release-event) stayed evidence-only as recorded."
 ---

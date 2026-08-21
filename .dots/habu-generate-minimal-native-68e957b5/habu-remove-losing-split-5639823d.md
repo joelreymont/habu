@@ -3,7 +3,7 @@ title: Remove losing split K experiment
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T22:02:19.976216+02:00\\\"\""
+created-at: "2026-07-19T22:02:19.976216+02:00"
 closed-at: "2026-07-20T11:33:50.755404+02:00"
 close-reason: "Landed 87f5b053: split-K experiment deleted end to end - S>1 emitter/reduction kernel/workspace allocator/launch paths (cg-mma.f -150 lines incl. the XSWIZ split fence member), SPLIT-WS-ALLOC + now-dead CU-MEM-GET-INFO (cuda-driver.f -19), autotune SK axis + winner-row column (values preserved verbatim), GB-SPLIT-SWEEP (-87), MGC split rows + MGC-MAX 1024->512 retiring exactly 33.0 MiB of checker buffers. Proofs: emit-diff EMPTY across all committed configs, 267 PASS 0 mismatches on the GB10, committed winners resolve unchanged, repo-wide dormant-symbol sweep clean, bin/hb byte-identical, cold gate green. Round-12 falsification history preserved in the doc; round 13/14 prose left as historical record. Successor dots habu-check-split-k-fda7652d + habu-factor-split-k-362e08c0 are superseded by this deletion"
 ---

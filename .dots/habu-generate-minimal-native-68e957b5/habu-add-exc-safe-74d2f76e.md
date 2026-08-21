@@ -3,7 +3,7 @@ title: Add exception-safe CUDA scope
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:52:20.193802+02:00\\\"\""
+created-at: "2026-07-19T20:52:20.193802+02:00"
 closed-at: "2026-07-20T23:29:11.923644+02:00"
 close-reason: "Landed f8ec546f: package-owned exception-safe CUDA resource scope (lib/ptx/cuda-scope.f + test, 5 files +377 additive). Ownership ledger of typed (kind,handle) rows replaces ambient variables; SCOPE runs a body quotation under a fresh LIFO frame and unwinds in reverse on both return and throw; consume-on-release zeroes each slot before attempting its release so repeated cleanup is structurally a no-op, never a second driver call; primary error wins, cleanup errors are retained and counted, cleanup-only failure propagates. Release ops are defer words armed to the real driver at load and re-pointed by tests - pure checked code, no new TRUSTED row. Full injection matrix host-only (failure after every acquisition point, partial alloc, per-kind cleanup failure, simultaneous failures, reverse order, exactly-once, transfer, repeated cleanup) with four mutation-based red-first proofs. Full cold gate green at the merged tip. Caller migrations stay in their two standing dots, whose file inventory the lane's report enumerated"
 ---

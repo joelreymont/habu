@@ -3,7 +3,7 @@ title: Compact and index the content-key cache
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T04:09:44.837664+02:00\""
+created-at: "2026-07-19T04:09:44.837664+02:00"
 closed-at: "2026-07-19T05:21:08.019795+02:00"
 ---
 

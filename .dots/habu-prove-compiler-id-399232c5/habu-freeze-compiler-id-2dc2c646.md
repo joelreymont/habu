@@ -3,7 +3,7 @@ title: Freeze compiler ID manifest
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-27T13:50:14.622291+02:00\""
+created-at: "2026-07-27T13:50:14.622291+02:00"
 ---
 
 Claim: agent=freeze_manifest workspace=.jj-ws/habu-freeze-compiler-id-2dc2c646 (RELEASED 2026-08-21: workspace gone, no live lane - gc)

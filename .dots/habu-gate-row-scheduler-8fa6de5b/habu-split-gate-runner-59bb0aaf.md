@@ -3,7 +3,7 @@ title: Split gate runner into importable dispatch lib
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-06-30T21:23:24.838264+02:00\""
+created-at: "2026-06-30T21:23:24.838264+02:00"
 closed-at: "2026-06-30T21:40:53.750164+02:00"
 close-reason: "done: test/gate-runner-lib.f loads without dispatch, test/gate-runner-entry.f tail-runner path passes, filemap-lint and typed-local-diff-lint pass"
 ---

@@ -3,7 +3,7 @@ title: Make store replay transactional
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T21:59:05.007004+02:00\\\"\""
+created-at: "2026-07-19T21:59:05.007004+02:00"
 closed-at: "2026-07-20T22:25:39.633583+02:00"
 close-reason: "Landed ce46c985: store replay, table init, and durable writes are transactional via a single principle - every fallible allocation moves to an up-front RESERVE phase so the publishing COMMIT allocates nothing and cannot fail partway. SCHED-LOAD is validate+tally / reserve / infallible-apply (all rows publish or none); SK-TAB-ENSURE is the one atomic owner of the three vectors with SK-VECS? published once; SK-PUT reserves then commits allocation-free; SK-PUT-DURABLE stages hot capacity, appends durably, then publishes - the hot table can no longer serve a value that was never made durable. Proof both ways: old hot-first ordering restored makes store-replay-test assertions 31-32 fail, fix passes; real allocation-failure injections (E-MEM-MAP arena refusal, E-VEC-CAPACITY vector refusal) leave selections byte-identical with clean retry. 5 files +172/-30, maki-only; full cold gate green at the merged tip"
 blocks:

@@ -3,7 +3,7 @@ title: Commit and close F08 prefix-list refactor
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-06-25T14:01:24.291165+02:00\""
+created-at: "2026-06-25T14:01:24.291165+02:00"
 closed-at: "2026-06-25T14:17:42.036086+02:00"
 close-reason: "completed: committed F08 as 63e5d2a56f4ac08b0dd93296df3f84c0719b59b7 after updating docs/factorization-review.md and LESSONS.md with RCA/evidence; ready to fetch and push master"
 ---

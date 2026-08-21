@@ -3,7 +3,7 @@ title: Host batch-loop grad-accum trainer
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-18T17:36:22.585491+02:00\\\"\""
+created-at: "2026-07-18T17:36:22.585491+02:00"
 closed-at: "2026-07-20T12:05:54.540863+02:00"
 close-reason: "Landed 24b9f3f6: BTC-3 interim host batch-loop per docs/batch-sequence-design.md section 5 - one 2D IR run per sequence over the B*T-row AMT-BX buffer (B outermost), per-slot running-sum accumulation, MEAN normalization by 1/B before ONE AdamW step (nanoGPT semantics; clip applies to the meaned accumulated norm, clip-after-accumulation order). Pure additions, 325 lines, zero deletions. Proofs: accumulator equals sum of independent per-sequence reference gradients within 1e-8; B=1 batch run bit-exact equal to the single path; grad-leak fail-closed red-first (zeroing removal fails 4 poison assertions); B=4 locks 188->-2453 deterministic; clip and schedule composition locks distinct; single-path -2749 survives. Replaced-not-rewritten by the segment op (BTC-1) by design, labeled INTERIM in code"
 ---

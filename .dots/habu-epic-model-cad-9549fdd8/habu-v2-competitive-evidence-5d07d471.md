@@ -3,7 +3,7 @@ title: V2 competitive evidence matrix
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:14:24.933792+02:00\\\"\""
+created-at: "2026-07-11T12:14:24.933792+02:00"
 closed-at: "2026-07-18T13:22:54.307491+02:00"
 close-reason: "Schema landed: package CEVID versioned per-side evidence rows (workload/revision/shape/npol/target/compiler/cache-state/protocol + baseline + 6 metric readings), sealed UNITS vocabulary derived from the real corpus (joules excluded - no measured energy exists), flagship SAXPY + GEMM (3026577 milli-GFLOP/s = 1.601x Triton) migrated with falsified-non-vacuous byte goldens; mismatched numeric domains rejected statically and at render (E-CEVID-INCOMPARABLE); cold/warm explicit and key-bearing; renders byte-stable. Persistence codec follow-on minted as its own dot (persist-typed-cevid)."
 ---

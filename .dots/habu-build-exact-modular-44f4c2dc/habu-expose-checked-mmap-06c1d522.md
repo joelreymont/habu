@@ -3,7 +3,7 @@ title: Expose checked mmap release
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-15T23:48:26.535083+02:00\\\"\""
+created-at: "2026-07-15T23:48:26.535083+02:00"
 closed-at: "2026-07-20T23:43:15.756279+02:00"
 close-reason: "Landed 541b691f: checked munmap with native + Gforth-recovery parity and packaged MEM:RELEASE-BYTES (13 files +89/-18 lane-side). Native BMUNMAP mirrors BMMAP exactly (span guard, syscall, rc push) in habu1.f (the dot named habu2.f but the mmap primitive family lives in engine-builder part 1); recovery BMUNMAP in forth.fs; checker effect row types the address as ptr-u8 so a forged integer address is a static reject; MEM:RELEASE-BYTES projects the length through the existing audited alloc-bytes converter (no new trusted word) and throws named E-MEM-UNMAP on syscall failure. Red-first: base engine E-UNDEFINED on the suite; branch green with round-trip, misaligned-address EINVAL propagation, zero/negative-length typed rejects, and five static checker rejections. Merge onto the direct-BL engine required re-measuring at the merged fixpoint: +136 text (CODELEN 135072->135208) crossed the 96-byte headroom above the 4 KiB floor, so the file regains the page the BL landing dropped (total back to 143552; floor-dist 40); census 3547->3548; positional axiom ledger hand-merged over the Mac's ct-live? internalization. Fixpoint reached, full cold gate green at the merged tip. Loose ends: vector-resize migration already owned by habu-release-vector-resize-95575b87 (now unblocked); macOS census+CODELEN rows owed by the Mac; no MEM:RELEASE-CELLS (byte inverse only - dot it if a consumer appears)"
 ---

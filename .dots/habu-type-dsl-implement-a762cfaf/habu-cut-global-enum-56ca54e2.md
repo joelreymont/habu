@@ -3,7 +3,7 @@ title: Cut global ENUM to unified frontend
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T01:00:03.342498+02:00\""
+created-at: "2026-07-23T01:00:03.342498+02:00"
 closed-at: "2026-07-26T08:59:10.773255+02:00"
 close-reason: "Implemented, reviewed, merged: landed as 32182617b6e8 (Bind global ENUM to the unified front end) plus f8d3dccd2cae (plain-ENUM declaration census), both ancestors of master@origin. The census ran every plain ENUM declaration through the unified path with identical-or-ruled-improved results; the single ruled-improved case is 7107 E-SYNTAX over legacy 7110 for a full-mode keyword in compact position. The legacy-definer-lint wording was amended at closure to the authoritative reading (census tool plus bootstrap-mirror keyword list). F10 recorded: implemented against a then-unclaimed dot during the solo-orchestrator shift; retroactive claim and this closure recorded together."
 ---

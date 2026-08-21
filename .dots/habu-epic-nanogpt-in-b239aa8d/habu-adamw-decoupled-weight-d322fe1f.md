@@ -3,7 +3,7 @@ title: AdamW decoupled weight decay in tensor optimizer + trainer
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-18T15:24:38.457452+02:00\\\"\""
+created-at: "2026-07-18T15:24:38.457452+02:00"
 closed-at: "2026-07-20T09:33:23.757211+02:00"
 close-reason: "Landed c1255380: decoupled AdamW w'=w-lr*wd*w-lr*mhat/(sqrt(vhat)+eps) in TT-ADAMW! (maki/optim-tensor.f:41) + explicit WD-NONE/WD-DECAY param-group flags with checked resolver (maki/adam-train.f:49-63); golden DISTINGUISHES decoupled from coupled L2 (differs on both w and m), wd=0 bit-identical to TT-ADAM!, red-first on both guards. Residual: AMT-WD=0.0 keeps the committed convergence locks - see habu-adopt-nanogpt-weight dot"
 ---

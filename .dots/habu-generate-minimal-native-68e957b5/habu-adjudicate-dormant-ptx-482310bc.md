@@ -3,7 +3,7 @@ title: Adjudicate dormant PTX optimizer
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T20:39:15.920013+02:00\""
+created-at: "2026-07-19T20:39:15.920013+02:00"
 closed-at: "2026-08-20T21:01:45.830208+02:00"
 close-reason: Adjudicated DELETE by the 2026-08-20 hard cut (habu-delete-the-nimm-329100c9); the census stays on this leaf, the SASS question travels to the PTXIR2 canonical boundary.
 ---

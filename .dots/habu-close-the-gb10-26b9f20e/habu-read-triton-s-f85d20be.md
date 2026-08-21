@@ -3,7 +3,7 @@ title: "Read Triton's winning SASS for the issue-density gap"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T10:08:34.201511+02:00\""
+created-at: "2026-07-19T10:08:34.201511+02:00"
 closed-at: "2026-07-19T10:51:51.457569+02:00"
 ---
 

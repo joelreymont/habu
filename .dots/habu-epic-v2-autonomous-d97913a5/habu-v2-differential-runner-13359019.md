@@ -3,7 +3,7 @@ title: V2 differential runner core
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-11T12:25:27.511089+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
+created-at: "2026-07-11T12:25:27.511089+02:00"
 closed-at: "2026-07-18T12:18:09.699408+02:00"
 close-reason: "All acceptance discharged: scalar + tensor suites with isolated deterministic execution, injected mismatch minimizes/replays (distinct CASE-ID, original preserved), timeout/crash distinct from numeric mismatch (FAULT dominates, real-child proofs), PyTorch adapter outside Habu semantics (TORCH-REFERENCE interface + recorded skip - torch absent on this host, boundary stands), evidence subject/suite/env keyed, and every input/output/environment durably stored (CASESTORE: content-keyed 155B envelopes, crash-safe temp+rename, fresh-process byte-match proof). Suites registered in maki/test.f; TRUSTED suite-id rows classified prim-axiom under the live epic habu-epic-model-cad-70b629a9."
 ---

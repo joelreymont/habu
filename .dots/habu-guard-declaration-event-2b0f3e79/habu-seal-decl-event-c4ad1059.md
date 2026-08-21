@@ -3,7 +3,7 @@ title: Protect DECL-EVENT publication owners
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-24T16:57:44.992204+02:00\""
+created-at: "2026-07-24T16:57:44.992204+02:00"
 blocks:
   - habu-close-private-declaration-2df8035d
 ---

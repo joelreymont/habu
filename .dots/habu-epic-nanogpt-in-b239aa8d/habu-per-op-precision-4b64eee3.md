@@ -3,7 +3,7 @@ title: Per-op precision tags and golden tolerance policy
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T12:25:31.904396+02:00\""
+created-at: "2026-07-19T12:25:31.904396+02:00"
 closed-at: "2026-07-19T18:09:21.845621+02:00"
 close-reason: "Landed d09b3ae1 stack: maki/prec-attr.f CPREC tags in attrs bits[33:32], tf32-default byte-identical, GEMM-class guard, workload default, derived rtol rows (tf32/fp16 2e-3, bf16 2e-2). Grammar override tokens (MATMUL:FP16) split to follow-up dot"
 ---

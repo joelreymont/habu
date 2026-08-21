@@ -3,7 +3,7 @@ title: Collapse stdlib tool subprocesses
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-06-28T19:06:06.629889+02:00\\\"\""
+created-at: "2026-06-28T19:06:06.629889+02:00"
 closed-at: "2026-06-29T02:55:07.865869+02:00"
 close-reason: implemented checked core/entry splits for repl-lint and bundle-lib; removed duplicate repl-lint CLI smoke from tool-boundary and made bundle success in-process; focused hot tool slice 22.81s wall / lints 16.717s; full hot gate passed 44.811s internal / 47.81s wall
 ---

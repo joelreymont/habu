@@ -3,7 +3,7 @@ title: Define finite CAD effect rows
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T13:16:45.390552+02:00\\\"\""
+created-at: "2026-07-13T13:16:45.390552+02:00"
 closed-at: "2026-07-15T12:24:38.238405+02:00"
 close-reason: "Merged (chain tip on master): src/cad/effect-types.f + effect.f - the finite CAD semantic effect vocabulary (10 atoms: pure/parameter-read/state-write/random/host-io/device-launch/atomic/collective/allocation/publication + 4 slot kinds) with conservative DUP/CACHE/BARRIER tables and the symmetric COMMUTE matrix, every row pinned; row algebra over the public NOM API - binding key (atom, site-path, slot-kind, slot-index) encoded as self-describing tagged path segments so identity is pure content (no digest/handle/order artifacts); REMAP prefixes one site segment capture-free; UNION = NOM's sorted-chunk content-interned merge (assoc/comm/idempotent, deterministic after remap); direct duplicate rejects at FREEZE while UNION dedups; PURE = the unique empty row. Ten transactional-reject classes pinned (E-NOM-* + E-CADEFF-MALFORMED/DUPLICATE/ATOM/INDEX/SITE); weight+bias co-bind; state-write+atomic share a site/slot; 4096-binding compose/remap/union/snapshot with ~3.4-4.4x growth for 4x input. bootstrap-mirror-lint corpus-scoping root-caused (src/cad is native-only, outside SRC_COMMON). Bridge casts ROW>EFF/EFF>ROW are the documented substrate gap - rows re-owned to the minted NOM-export dot 20170121 which owns their retirement. Full resident run.f RUN_EXIT=0 solo on the exact merged tree (the worker's ptx-toolchain red was the documented pre-existing perf-regress fork flake - not reproduced)."
 ---

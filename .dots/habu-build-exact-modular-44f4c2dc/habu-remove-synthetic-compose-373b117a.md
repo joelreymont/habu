@@ -3,7 +3,7 @@ title: Remove synthetic compose separators
 status: open
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-15T23:48:26.539815+02:00\\\"\""
+created-at: "2026-07-15T23:48:26.539815+02:00"
 blocks:
   - habu-compile-authenticated-src-05e058a2
 ---

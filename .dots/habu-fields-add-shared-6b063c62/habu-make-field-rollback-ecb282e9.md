@@ -3,7 +3,7 @@ title: Make field rollback snapshots byte-canonical
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-18T14:16:55.120825+02:00\""
+created-at: "2026-07-18T14:16:55.120825+02:00"
 closed-at: "2026-07-21T06:39:56.181876+02:00"
 close-reason: "Landed 4f6ac573: PF-ROLLBACK and TFAM-ROLLBACK-RESTORE scrub retired product-field rows to canonical zero via PF-SCRUB (pointer-free records, zeroed row = canonical absent row); PF-PERSIST-CANONICAL zero-fills unused live capacity and the dead boot buffer before snapshot persist, so identical committed registries bake byte-identically regardless of rollback history. Falsified non-vacuous (scrub removed -> F390). Suites + battery green; fixpoint x2 byte-identical."
 ---

@@ -3,7 +3,7 @@ title: Replace nanogpt fetch scripts with checked Habu fetch tool
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-22T14:04:11.643513+02:00\""
+created-at: "2026-07-22T14:04:11.643513+02:00"
 ---
 
 Problem: `maki/examples/nanogpt/fetch-gpt2-model.sh` and

@@ -3,7 +3,7 @@ title: V2 proof obligation schema
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.203645+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.203645+02:00"
 closed-at: "2026-07-17T21:49:24.160421+02:00"
 close-reason: "Obligation schema landed (8df2320f): all four plan rules test-proven, NPOL bridged not forked, codec on house conventions. Txn repoint folded into the evidence-applicability chain link."
 ---

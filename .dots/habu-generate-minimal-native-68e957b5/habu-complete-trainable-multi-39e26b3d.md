@@ -3,7 +3,7 @@ title: Complete trainable multi-head attention
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T23:32:50.255160+02:00\\\"\""
+created-at: "2026-07-19T23:32:50.255160+02:00"
 closed-at: "2026-07-20T20:24:53.458311+02:00"
 close-reason: "Landed 2efa4388: mha.f reworked from the forward-only toy oracle into the full trainable GPT-2 c_attn sublayer - checked (B,T,C,H,hd) with all five roles declared, THREE projections each with its own bias (fusion stays with the serialized fuse dot) + output weight/bias + residual, per-head attention batched IN THE GRAPH (b,h as free indices on the score/context equations, SPEC-derived transposed adjoints, batch/head isolation structural), alias-safe by construction. Proofs: forward golden exact vs an independent per-(b,h) reference (doubling as B=1/H=1 single-head parity), central-FD gradcheck of X and EVERY weight/bias, causality per (b,h), repeated-batch grad accumulation, a GPT block with this sublayer training 1789->532 mCE deterministic run-twice. SV-6 DECIDED on evidence: per-head batched equations win (landed grammar, zero new machinery); head-major transpose is host glue with inverse-permutation adjoint, labeled interim - the copy-free view program (SV-1..4) sequences on this outcome per docs/strided-views.md. Device leg is the named boundary: rank-4 batched equations are host-composed, not MODEL nodes - device batched MHA belongs to habu-gb10-batched-attention-3055d565/SV-7. Closed-dot prose corrected in the header. Merge reconciliations: suite-registration format changed under the lane (re-added in the new format both files); trust rows repointed from the closed sizing dot to the standing test-metaprog owner - the second occurrence of the closed-owner trap today"
 blocks:

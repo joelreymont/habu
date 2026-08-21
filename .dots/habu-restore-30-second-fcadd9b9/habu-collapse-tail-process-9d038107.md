@@ -3,7 +3,7 @@ title: Collapse tail process boundaries
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-17T16:19:15.139238+02:00\\\"\""
+created-at: "2026-07-17T16:19:15.139238+02:00"
 closed-at: "2026-07-17T19:45:39.130792+02:00"
 close-reason: "Landed in b1f3cf00: tail-process keeps exactly 15 direct boundaries and 167 fork-isolated subjects with a 10s ratchet; focused tail 4.50s and full gate remains below 30s."
 ---

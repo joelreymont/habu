@@ -3,7 +3,7 @@ title: Single edit point for trusted-word bookkeeping
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-18T23:21:11.280481+02:00\""
+created-at: "2026-07-18T23:21:11.280481+02:00"
 closed-at: "2026-07-19T02:10:46.765108+02:00"
 ---
 

@@ -3,7 +3,7 @@ title: Reorder cp.async issue after the compute burst
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T15:48:31.409479+02:00\""
+created-at: "2026-07-19T15:48:31.409479+02:00"
 closed-at: "2026-07-19T17:17:51.601152+02:00"
 ---
 

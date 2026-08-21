@@ -3,7 +3,7 @@ title: Make SAFET mapping detach total
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T16:06:15.121298+02:00\""
+created-at: "2026-07-22T16:06:15.121298+02:00"
 ---
 
 Why: `SAFET:DETACH-MAPPING` allocates its mapping record after a census has

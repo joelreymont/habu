@@ -3,7 +3,7 @@ title: Bind framed section identity
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T23:07:54.158810+02:00\\\"\""
+created-at: "2026-07-19T23:07:54.158810+02:00"
 closed-at: "2026-07-20T10:38:00.855215+02:00"
 close-reason: "Merged 5968cfe2: framed section bound to exactly one parser section, byte-exact side identity, status/presence matrix, suite registered in gate"
 ---

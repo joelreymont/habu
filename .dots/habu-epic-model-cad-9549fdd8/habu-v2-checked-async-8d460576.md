@@ -3,7 +3,7 @@ title: V2 checked async pipeline
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:14:25.059595+02:00\\\"\""
+created-at: "2026-07-11T12:14:25.059595+02:00"
 closed-at: "2026-07-18T09:09:09.217362+02:00"
 close-reason: "Acceptance discharged: missing-wait/barrier-phase/lifetime-escape pinned by landed cpp-slot-neg + cg-mma-slot-neg + tile-pipe-neg N7 fixtures; target/depth legality delta landed as CPLEGAL (maki/cp-async-legal.f, E-CP-ASYNC-TGT fail-closed, suite green); emitted cp.async unchanged (byte-pinned goldens, device-proven history). Follow-ons folded into habu-feed-mma-config-d783e33b."
 ---

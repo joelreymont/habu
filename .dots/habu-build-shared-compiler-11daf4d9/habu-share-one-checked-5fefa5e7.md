@@ -3,7 +3,7 @@ title: Share one checked IR module test fixture
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-07-30T02:10:02.442026+02:00\""
+created-at: "2026-07-30T02:10:02.442026+02:00"
 closed-at: "2026-08-15T14:07:28.884604+02:00"
 close-reason: "Closed (vintage audit 2026-08-15, re-executed after the pool incident): OBSOLETE - subjects and fixture deleted under CG-31 (ad32f68b3). Production-consumed by the native chain; suites dual-registered, green through the real entry."
 ---

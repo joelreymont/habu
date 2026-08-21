@@ -3,7 +3,7 @@ title: Package signature lint command
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T17:32:16.377803+02:00\""
+created-at: "2026-07-22T17:32:16.377803+02:00"
 closed-at: "2026-07-22T17:58:42.960274+02:00"
 close-reason: Landed and reviewed in e10dc18699b1; combined closure 58a89f68 passed focused ownership gates.
 ---

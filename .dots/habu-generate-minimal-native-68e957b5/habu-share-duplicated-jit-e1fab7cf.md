@@ -3,7 +3,7 @@ title: Share duplicated JIT helper bodies
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-19T19:53:44.749601+02:00\\\"\""
+created-at: "2026-07-19T19:53:44.749601+02:00"
 closed-at: "2026-07-20T10:12:50.981278+02:00"
 close-reason: "Landed f1da6782: one shared LVPUSHT constant-push body (tag in x8, pushf = movz+b wrapper) and one LVBINPREP binary-prep base (LVBINIPREP probe tail-branches in; its 232-byte base copy eliminated). Net engine text -272 B, CODELEN 136088->135816 (floor 648), measured at merged fixpoint; fixpoint x3 byte-identical, gforth stage-0 recovery converges byte-identical; spill-on-full int+float regressions lock the widened push frame; modes 0-3/imm12 boundary/fold/negative delegate covered (test/engine-suite.f:1605-1637). MACOS-CODE-TEXT re-measure owed by the Mac at their next fixpoint (change is target-neutral, analogous shrink predicted)"
 ---

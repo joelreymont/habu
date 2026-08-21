@@ -3,7 +3,7 @@ title: BPE real-vocab loading and tiktoken parity
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-20T22:29:35.792619+02:00\\\"\""
+created-at: "2026-07-20T22:29:35.792619+02:00"
 closed-at: "2026-07-20T23:03:34.670615+02:00"
 close-reason: "Landed 808d6c99: real GPT-2 vocab BPE, 4 files additive (+485). bpe-real.f extends the landed engine with a validated real-vocab loader and internal-id to encoder.json-id translation - full pre-mutation validation proving the id map a bijection onto its image, 4 named E-codes, ready-gating, fail-closed. Artifacts fetched and hash-pinned (encoder.json + vocab.bpe, canonical URLs, tiktoken 0.13.0 in the ml venv); full 50257 vocab is runtime-loaded via a pinned-hash fetch script, with a committed hermetic subset (256 byte ids + the closed 79-merge fired-set + 16 parity fixtures). Parity proven beyond ASCII with exact tiktoken id vectors; the measured honest boundary: divergence occurs exactly when a multi-byte letter/number codepoint abuts an ASCII letter/digit, pinned from both sides as a fixture. Round-trips of real multi-byte samples in real-id space; red-first guards; clean-room reference reproduces tiktoken byte-for-byte over the full artifacts. Full cold gate green at the merged tip. Follow-ups dotted: full 50k-merge engine load, unicode pre-split closure"
 ---

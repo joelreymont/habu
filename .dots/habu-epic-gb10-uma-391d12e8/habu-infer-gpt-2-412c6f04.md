@@ -3,7 +3,7 @@ title: "Infer: GPT-2 pinned inputs"
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-21T15:57:56.745951+02:00\""
+created-at: "2026-07-21T15:57:56.745951+02:00"
 ---
 
 Campaign only; do not dispatch. Own the exact GPT-2 checkpoint identity, reusable byte-pair encoding state, and GPT-2 tokenizer adapter consumed by the shared device engine. The landed GPT2-REFERENCE package already owns the correctness probes, logits, and 64 reference identifiers; no second forward implementation or reference generator belongs here.

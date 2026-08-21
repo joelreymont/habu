@@ -3,7 +3,7 @@ title: Route the maki suite into the gate
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-18T23:36:09.301637+02:00\""
+created-at: "2026-07-18T23:36:09.301637+02:00"
 closed-at: "2026-07-19T01:17:27.177362+02:00"
 ---
 

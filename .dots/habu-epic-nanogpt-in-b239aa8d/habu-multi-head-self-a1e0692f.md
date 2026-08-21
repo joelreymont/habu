@@ -3,7 +3,7 @@ title: Multi-head self-attention sublayer composition
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-18T15:25:04.133383+02:00\""
+created-at: "2026-07-18T15:25:04.133383+02:00"
 closed-at: "2026-07-19T15:21:41.243178+02:00"
 close-reason: MHA sublayer merged (835655d0/f732124e) and verified on master.
 ---

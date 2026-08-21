@@ -3,7 +3,7 @@ title: Migrate PTX tool CUDA lifecycles
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:52:53.426911+02:00\\\"\""
+created-at: "2026-07-19T20:52:53.426911+02:00"
 closed-at: "2026-07-21T06:39:53.635318+02:00"
 close-reason: "Landed 771d921a: 13 PTX tool lifecycles migrated onto CUDA-SCOPE (18 files +329/-216) - per-run SCOPE frames for the launchers and device tests (fixing five pre-existing buffer leaks the census found: sum/softmax launchers, acc/redadd device tests, gradcheck DX/DY), per-kernel scopes in device-gold, nested per-burst event frames in the bench engine with timing unchanged, and a stated mechanism decision: modules reloaded mid-frame stay explicit mutable slots (the LIFO ledger cannot individually release a mid-frame row), while acquire-once modules are scope-owned. New public PTXBENCH:OWN-* transfer API opens the remaining bench consumers to mechanical migration. Both-direction leak proof committed host-only (cuda-scope-leak-proof-test.f, registered): unfixed shapes log ZERO releases on a mid-pipeline throw, migrated shapes unwind in exact reverse order exactly once. Real-device: rope+rmsnorm ran the migrated pipelines on the GB10 with goldens+gradchecks green before AND after the reboot. Full cold gate exit 0 at the merged tip (perf pass under the Mac's new load-calibrated budget). Follow-ups dotted: remaining bench/sweep consumers, ad-gradcheck-launch cross-tree contract"
 ---

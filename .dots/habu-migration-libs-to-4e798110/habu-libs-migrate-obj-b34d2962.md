@@ -3,7 +3,7 @@ title: "Libraries: migrate object index record"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-24T13:08:32.796309+02:00\\\"\""
+created-at: "2026-07-24T13:08:32.796309+02:00"
 closed-at: "2026-07-24T17:43:03.137221+02:00"
 close-reason: Reviewed implementation landed and verified at master@origin 4fb6f52fb815.
 ---

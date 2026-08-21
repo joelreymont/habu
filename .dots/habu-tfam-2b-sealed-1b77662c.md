@@ -3,7 +3,7 @@ title: "TFAM 2b: sealed system packages + friend latch + provenance"
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-03T23:36:48.915549+02:00\""
+created-at: "2026-07-03T23:36:48.915549+02:00"
 blocks:
   - habu-route-3-the-64078d43
 ---

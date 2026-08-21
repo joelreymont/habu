@@ -3,7 +3,7 @@ title: Define straight-line HIR
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-26T22:57:03.005233+02:00\""
+created-at: "2026-07-26T22:57:03.005233+02:00"
 blocks:
   - habu-bind-checker-env-ed4f9f87
 ---

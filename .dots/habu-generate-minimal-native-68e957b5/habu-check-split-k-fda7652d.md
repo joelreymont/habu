@@ -3,7 +3,7 @@ title: Check split K workspace size
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T21:53:03.542829+02:00\""
+created-at: "2026-07-19T21:53:03.542829+02:00"
 closed-at: "2026-07-20T11:33:59.775491+02:00"
 close-reason: "Superseded: the split-K experiment was deleted entire (87f5b053, dot habu-remove-losing-split-5639823d) - there is no workspace-size check to make because there is no workspace"
 ---

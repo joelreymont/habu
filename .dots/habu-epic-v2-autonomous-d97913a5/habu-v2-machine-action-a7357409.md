@@ -3,7 +3,7 @@ title: V2 machine action registry
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.021937+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.021937+02:00"
 closed-at: "2026-07-17T23:56:27.789755+02:00"
 close-reason: "Action-schema registry landed (34dc03d6): typed declarations, gate-only DISPATCH with honest implemented/declared staging, all four acceptance rules test-proven, action-id minted per precedent."
 ---

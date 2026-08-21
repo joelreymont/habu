@@ -3,7 +3,7 @@ title: Capture compiler source tape
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-26T22:57:02.984231+02:00\""
+created-at: "2026-07-26T22:57:02.984231+02:00"
 blocks:
   - habu-freeze-compiler-baseline-b9777eee
 ---

@@ -3,7 +3,7 @@ title: "Nominal storage: typed definers"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-12T16:08:46.264849+02:00\\\"\""
+created-at: "2026-07-12T16:08:46.264849+02:00"
 closed-at: "2026-07-15T09:16:05.472073+02:00"
 close-reason: "Merged aa84e22b on master: TYPED-VARIABLE/TYPED-BUFFER convenience definers in src/core/layout-buffer.f (the LAYOUT-BUFFER home - already in every load list incl. forth.fs, so NO grammar-mirror gap, strictly better than the rawkinds split) with checker admissibility (CHECKER-STORAGE-INFO superset: nominal scalars, closed non-linear layout families, closed typed pointers incl. ptr ptr fam; rejects open vars/bare ptr a/quotations/linear/hidden-field/unresolved/duplicates) + verify-source gate registration. Negatives all named+pinned: cross-family E-MISMATCH verdict 0, E-LAYOUT-BOUNDS, E-LAYOUT-BUFFER, E-DUP-DEFINITION with allocation rollback; rejected declarations define nothing (dict+data pinned). Distinct-capability pins: live numeric-result<nominal> LAYOUT-BUFFER positive unchanged; raw variable/create/constant still can't mint (TVK-RAW) while TYPED-VARIABLE of the same family certifies - sound alternative, not a bypass. INTEGRATION: rebased clean ACROSS sol's 25-commit engine-error namespace unification; gforth bootstrap recovery + fixpoint on the merged tree; typed-storage/layout-buffer/pointer-storage/maki/slices/inventory(1053)/coverage(106) + full run.f RUN_EXIT=0 all green on the exact merged tree with refreshed binary. Unblocks the consumer migration 47ee0f93."
 ---

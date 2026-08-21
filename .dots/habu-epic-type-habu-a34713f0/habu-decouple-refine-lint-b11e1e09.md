@@ -3,7 +3,7 @@ title: Decouple refine-lint from the trust manifest
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-21T16:29:03.849528+02:00\\\"\""
+created-at: "2026-07-21T16:29:03.849528+02:00"
 closed-at: "2026-07-21T18:09:23.091248+02:00"
 close-reason: "landed xvvzkvwx: liveness source-derived from CAST:/TRUSTED: declarations; retire-TRUSTED migration unblocked"
 ---

@@ -3,7 +3,7 @@ title: "M1a: dynamic Linux ELF (first-symbol bootstrap)"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-06-25T13:48:30.803398+02:00\\\"\""
+created-at: "2026-06-25T13:48:30.803398+02:00"
 closed-at: "2026-06-26T20:47:33.460298+02:00"
 close-reason: "completed: Linux bin/hb is dynamic ET_EXEC with PT_INTERP /lib/ld-linux-aarch64.so.1, RW PT_DYNAMIC, DT_NEEDED libc.so.6, SysV hash, R_AARCH64_GLOB_DAT for dlopen/dlsym at 0x5000b0/0x5000b8, nonzero runtime slots, AOT positive dynamic-ELF assertions, and full native gate pass."
 ---

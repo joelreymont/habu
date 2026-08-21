@@ -3,7 +3,7 @@ title: "Libraries: migrate regex hit"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-24T13:02:19.344752+02:00\\\"\""
+created-at: "2026-07-24T13:02:19.344752+02:00"
 closed-at: "2026-07-24T17:43:03.107353+02:00"
 close-reason: Reviewed implementation landed and verified at master@origin 4fb6f52fb815.
 ---

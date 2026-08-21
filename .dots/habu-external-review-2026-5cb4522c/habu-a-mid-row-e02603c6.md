@@ -3,7 +3,7 @@ title: A mid-row IR arena grow tears every table row
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-08-20T20:01:49.271707+02:00\""
+created-at: "2026-08-20T20:01:49.271707+02:00"
 closed-at: "2026-08-21T10:05:00.000000+02:00"
 close-reason: "Tracker GC 2026-08-21, proof commit-in-master plus re-run. The fix landed as cd7d96c0b9eb, 'ir: an arena row reserves its whole storage before its first cell', which is in master ancestry - jj log -r 'cd7d96c0 & ::master' prints it. It is this leaf's demanded fix and not a partial one: RESERVE exists at src/compiler/ir/arena.f:411 under the header 'RESERVE IS HOW A ROW BECOMES ONE COMMIT', and the commit touches every append path the leaf named - source.f, symbol.f, type.f, attr.f, schema.f, op.f, fun.f, verify.f, native/tape.f, native/hir-word.f (native/immediate.f went with the NIMM cut). The starvation reproducer the leaf described is now a regression the gate runs: test/compiler/ir-starve.f and ir-starve-test.f, registered as SUITE compiler-ir-starve at test/gate-stdlib-cases.f:244 and fork-included at test/gate-stdlib-inline-lib.f:451, so it is scheduled and not merely present. Re-run on master a4c13952: bin/hb --load test/compiler/ir-starve.f rc 0 and bin/hb --load test/compiler/ir-arena.f rc 0, test: ok. Closed instead of released even though the ir-1 claim named the live workspace .jj-ws/habu-thecut, because the claimed work is finished."
 ---

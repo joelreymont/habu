@@ -3,7 +3,7 @@ title: Factor split K loop control
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T21:54:22.109835+02:00\""
+created-at: "2026-07-19T21:54:22.109835+02:00"
 closed-at: "2026-07-20T11:33:59.789344+02:00"
 close-reason: "Superseded: the split-K experiment was deleted entire (87f5b053, dot habu-remove-losing-split-5639823d) - there is nothing left to factor"
 ---

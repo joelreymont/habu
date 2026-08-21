@@ -3,7 +3,7 @@ title: fp16 transposed-Bs feed
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T12:12:03.463453+02:00\""
+created-at: "2026-07-19T12:12:03.463453+02:00"
 closed-at: "2026-07-19T13:01:01.916731+02:00"
 ---
 

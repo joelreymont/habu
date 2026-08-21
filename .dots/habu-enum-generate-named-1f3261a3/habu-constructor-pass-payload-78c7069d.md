@@ -3,7 +3,7 @@ title: "Constructor: pass payload provider"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-24T23:05:33.083774+02:00\""
+created-at: "2026-07-24T23:05:33.083774+02:00"
 closed-at: "2026-07-26T08:59:10.748908+02:00"
 close-reason: "Implemented, reviewed, merged: landed as 8146e7b4faf1 (Read constructor payloads through a provider), an ancestor of master@origin. The shared renderer takes an explicit provider context, family id, and typed payload quotations; the committed adapter preserves generated text byte-for-byte; hostile-provider and mutation regressions landed with it. Claim workspace corrected at closure per review finding F5."
 ---

@@ -3,7 +3,7 @@ title: "TFAM 5: constant logical-shape parity in replay/public-sig"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-04T08:53:59.621169+02:00\""
+created-at: "2026-07-04T08:53:59.621169+02:00"
 closed-at: "2026-07-04T11:30:09.410710+02:00"
 ---
 

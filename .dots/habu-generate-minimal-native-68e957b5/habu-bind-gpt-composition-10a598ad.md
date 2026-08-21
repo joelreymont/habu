@@ -3,7 +3,7 @@ title: Bind GPT composition prerequisites
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T23:37:52.728072+02:00\\\"\""
+created-at: "2026-07-19T23:37:52.728072+02:00"
 closed-at: "2026-07-20T22:41:46.509005+02:00"
 close-reason: "Mandate fulfilled via the 2026-07-20 destruction audit (read-only, all four block suites test: ok at master 6d306744). Verdict: the closed habu-gpt-2-block-a9039501 composition is a B=1 untied single-head host-only block proven against an internal golden - the exact 'untied B=1 forward toy presented as GPT-2' this dot existed to stop; its close reason overstates on shared-wte/B>1/device/external-golden/dependency-honesty, with N-block-training and cross-batch isolation as recorded boundaries. Actions taken: the orphaned weight-tying landing (done-but-unmerged commit) was recovered, gated green, and merged as 482af1a6; the real composition owner habu-gpt-2-composition-a90e901e now carries this dot's full acceptance gate verbatim plus the audit record, with six corrective sub-dots (tie-in-block f276dc6a, real-B 3bdedf46 blocked on batched-pos, batched-MHA-composition d3166a09, external golden b7693e44, device parity 9f9270bb blocked on GB10 batched attention, N-block training 25fb2316). The audited dot's narrowed status (composition oracle, not milestone) is recorded in the owner dot since archive files are untracked"
 ---

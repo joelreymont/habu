@@ -3,7 +3,7 @@ title: Own suite coverage lint
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-24T17:15:38.605921+02:00\\\"\""
+created-at: "2026-07-24T17:15:38.605921+02:00"
 closed-at: "2026-07-24T18:11:55.655570+02:00"
 close-reason: Reviewed implementation landed at master@origin 7170b6b6; composed production paths and all required gates are green.
 ---

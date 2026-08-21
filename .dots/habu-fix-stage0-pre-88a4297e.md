@@ -3,7 +3,7 @@ title: Fix stage0 pre-trust defer replay
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-28T10:38:57.712053+02:00\""
+created-at: "2026-07-28T10:38:57.712053+02:00"
 ---
 
 Claim released 2026-07-28 during the anonymous-head harvest (dot

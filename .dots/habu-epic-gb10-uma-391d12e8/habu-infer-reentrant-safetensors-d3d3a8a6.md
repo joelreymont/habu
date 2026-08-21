@@ -3,7 +3,7 @@ title: "Infer: reentrant safetensors load sessions"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-21T22:49:17.866125+02:00\""
+created-at: "2026-07-21T22:49:17.866125+02:00"
 closed-at: "2026-07-26T08:59:47.668651+02:00"
 close-reason: "Implemented under the SAFET re-freeze, reviewed, merged: leaf A landed as 4f3741f10e7f (Replace safetensors registry with load sessions) and leaf B as 5d7a741bb288 (Detach safetensors mappings out of a census), both ancestors of master@origin. Explicit linear SAFET sessions replace the ambient parser registry; DETACH-MAPPING transfers the mapping into a linear SAFET:mapping owner with WITH-MAPPING and UNMAP-MAPPING; a detached census fails closed on byte access; live counters ruled in-contract as leak accounting. The rulings and ratified judgment calls are recorded in the amended dot text; the remaining linear-owner-on-throw checker gap is the linear-scope WITH-owner capability dot minted in this wave."
 blocks:

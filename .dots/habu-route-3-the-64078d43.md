@@ -3,7 +3,7 @@ title: "Route 3: the type foundation loads post-hook, checked"
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-08-19T10:53:19.909085+02:00\""
+created-at: "2026-08-19T10:53:19.909085+02:00"
 blocks:
   - habu-typed-storage-sweep-b2cd1a61
 ---

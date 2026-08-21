@@ -3,7 +3,7 @@ title: Pin factored MATCH stencils
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T22:27:54.853603+02:00\\\"\""
+created-at: "2026-07-19T22:27:54.853603+02:00"
 closed-at: "2026-07-20T10:47:17.508021+02:00"
 close-reason: "Landed bd23829a: test/match-factor-pin.f pins exact emitted bytes for 5 representative words (verbatim hex spans), every factored failure diagnostic (construct/match unknown, expected-of rc70, bad-mfp-tag rc85, underdepth), MATCH success + W^X round-trip, package wordlist restoration, and a load-scaled compile-throughput ratchet. Both-direction: fixture green on a rebuilt pre-factoring engine AND the factored one - byte/character identical, so future emit drift reds the gate without a historical engine. Throughput A/B: 500 compiles x15, factored 212.2ms vs unfactored 213.3ms median - null result, shared-BL overhead unmeasurable"
 ---

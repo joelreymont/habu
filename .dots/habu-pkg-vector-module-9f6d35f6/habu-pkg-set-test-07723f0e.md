@@ -3,7 +3,7 @@ title: Package set-test lint fixture
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-27T08:57:58.793013+02:00\""
+created-at: "2026-07-27T08:57:58.793013+02:00"
 blocks:
   - habu-own-nominal-linear-491d11e4
 ---

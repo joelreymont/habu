@@ -3,7 +3,7 @@ title: Remove stale duplicate PTX emitter
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:36:24.969295+02:00\\\"\""
+created-at: "2026-07-19T20:36:24.969295+02:00"
 closed-at: "2026-07-20T22:14:43.832717+02:00"
 close-reason: "Landed 7391244b: stale tools/ptx/emit.f deleted (74 lines, zero consumers verified pre-deletion - all 13 emitter-surface words were double-defined), FILEMAP corrected to the canonical src/arch/ptx owner, and a NEW self-hosted reachability lint (tools/lint/ptx-emitter-lint.f, shadow-lint family) walks the tree and dies if any surface word is not defined exactly once - red-first proven firing on all 13 with the duplicate present, clean after. Wired into the gate lint slices; saxpy tests green"
 ---

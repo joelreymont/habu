@@ -3,7 +3,7 @@ title: Shared-memory epilogue for coalesced C stores
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T10:08:34.186356+02:00\""
+created-at: "2026-07-19T10:08:34.186356+02:00"
 closed-at: "2026-07-19T10:51:51.442660+02:00"
 ---
 

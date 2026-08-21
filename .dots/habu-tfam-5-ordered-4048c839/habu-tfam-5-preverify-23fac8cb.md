@@ -3,7 +3,7 @@ title: "TFAM 5: preverify/all-errors ordered-event redrive + support parity"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-04T08:53:45.129143+02:00\""
+created-at: "2026-07-04T08:53:45.129143+02:00"
 closed-at: "2026-07-04T22:15:00.349671+02:00"
 ---
 

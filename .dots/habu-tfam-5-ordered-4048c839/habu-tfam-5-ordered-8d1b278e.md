@@ -3,7 +3,7 @@ title: "TFAM 5: ordered event log store + core loader instrumentation"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-04T08:53:29.659947+02:00\""
+created-at: "2026-07-04T08:53:29.659947+02:00"
 closed-at: "2026-07-04T09:58:18.890944+02:00"
 ---
 

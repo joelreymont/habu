@@ -3,7 +3,7 @@ title: Pin Blackwell-grade ptxas in the toolchain
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T13:54:47.072257+02:00\""
+created-at: "2026-07-19T13:54:47.072257+02:00"
 closed-at: "2026-07-19T14:37:41.810667+02:00"
 ---
 

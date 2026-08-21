@@ -3,7 +3,7 @@ title: Fix owner-wid snapshot trailer corruption
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T12:40:54.337084+02:00\""
+created-at: "2026-07-23T12:40:54.337084+02:00"
 closed-at: "2026-07-30T04:39:03.156456+02:00"
 close-reason: Superseded by hard deletion habu-delete-runtime-pkg-a21b0679; repairing or versioning the OWNER-WID trailer would preserve machinery the product no longer uses.
 ---

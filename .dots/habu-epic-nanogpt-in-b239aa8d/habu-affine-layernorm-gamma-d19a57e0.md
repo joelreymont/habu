@@ -3,7 +3,7 @@ title: Affine LayerNorm (gamma/beta) forward+backward+op
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-18T15:24:38.427278+02:00\""
+created-at: "2026-07-18T15:24:38.427278+02:00"
 closed-at: "2026-07-19T20:17:11.403090+02:00"
 close-reason: "Fully landed: stage 1 goldens 996b8ac3 + op integration 66c14dcb. OP-LAYERNORM in-count 0refs=unary/2refs=affine (backward-compat), 1xC shape guards, BW-STEP-LAYERNORM emits dgamma/dbeta/dx bound to goldens, xhat recomputed via BW-LN-FWD, host gradcheck 3/3 inputs V-PASS, Adam 30-step training proof, device lowering fail-closed E-LRED-OP"
 ---

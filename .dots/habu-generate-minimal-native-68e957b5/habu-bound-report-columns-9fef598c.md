@@ -3,7 +3,7 @@ title: Bound report columns before writes
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T21:15:26.506288+02:00\\\"\""
+created-at: "2026-07-19T21:15:26.506288+02:00"
 closed-at: "2026-07-20T10:38:00.845050+02:00"
 close-reason: "Merged f770b369: transactional COL+ with preflight capacity, E-REPORT-CAPACITY, canary regressions green"
 ---

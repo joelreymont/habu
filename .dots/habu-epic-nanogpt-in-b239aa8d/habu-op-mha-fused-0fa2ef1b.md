@@ -3,7 +3,7 @@ title: "OP-MHA: fused batched attention MODEL: node"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-21T06:37:19.914101+02:00\""
+created-at: "2026-07-21T06:37:19.914101+02:00"
 closed-at: "2026-07-23T00:38:54.366037+02:00"
 close-reason: Landed as b9c97b130045 on verified master 1ef723720909; fresh destruction READY; focused MHA, full Maki, full lint-libs, exact diff lints, host/filemap/dot, and native port gate green.
 ---

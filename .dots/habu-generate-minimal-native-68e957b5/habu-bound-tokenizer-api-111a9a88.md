@@ -3,7 +3,7 @@ title: Bound tokenizer API
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T22:43:11.376143+02:00\\\"\""
+created-at: "2026-07-19T22:43:11.376143+02:00"
 closed-at: "2026-07-20T10:47:17.512780+02:00"
 close-reason: "Landed fe907212: TOK-READY gate (empty-vocab calls throw E-TOK-EMPTY, kills the zero-image every-byte-maps-to-0 hole), byte-domain check before table indexing (b<0/b>=256 rejected before address arithmetic), TOK-CELL>ID proves decode cells finite+integral+in-vocab before conversion (NaN/inf/fractional/negative all named rejects), negative length/capacity guards before loop entry. Red-first both-direction: 13 new tests fail on the unfixed base, all green after; canaries prove rejected calls write nothing; 40-corpus round-trip property. Representation/package rework stays with habu-own-tokenizer-state-d5db1943"
 ---

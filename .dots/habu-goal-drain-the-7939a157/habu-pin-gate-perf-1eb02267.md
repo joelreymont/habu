@@ -3,7 +3,7 @@ title: Pin gate perf attempt to P-cores (bimodal epochs)
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T03:02:56.894631+02:00\""
+created-at: "2026-07-19T03:02:56.894631+02:00"
 closed-at: "2026-07-19T04:09:44.822206+02:00"
 ---
 

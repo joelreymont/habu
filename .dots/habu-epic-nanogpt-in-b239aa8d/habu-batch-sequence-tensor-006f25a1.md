@@ -3,7 +3,7 @@ title: Batch/sequence tensor dimension (B,T,C) design over 2D IR
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-18T15:24:38.493706+02:00\\\"\""
+created-at: "2026-07-18T15:24:38.493706+02:00"
 closed-at: "2026-07-18T17:39:24.801259+02:00"
 close-reason: "Design landed: docs/batch-sequence-design.md (Option D: 2D B*T rows B-outermost, extent roles #B/#T/#H, segment/causal attention op; interim host batch loop). Destruction-reviewed, fixes applied. 7 sub-dots minted: segment-causal-attention-5fbe00e1, extent-roles-b-df9d232f, host-batch-loop-66773b33, get-batch-loader-542f6f22, cross-seq-contraction-34a6265f, gb10-batched-attention-3055d565, extent-role-product-8e364885."
 ---

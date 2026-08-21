@@ -3,7 +3,7 @@ title: Extent-role product/factorization capability
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-18T17:36:22.604554+02:00\\\"\""
+created-at: "2026-07-18T17:36:22.604554+02:00"
 closed-at: "2026-07-20T12:59:58.354573+02:00"
 close-reason: "Landed b192992e: BTC-7 per docs/batch-sequence-design.md section 5. Product former: built-in arity-2 extprod family rides existing parametric unification (ordered/mismatch rejects free); EXTPROD: #ROWS ( #FREE #INNER ) verifies value = free*inner (E-EXT-FACTOR -5064) and derives checked FOLD/SPLIT/JOIN. Contraction rule: redx<free-extent> and redx<whole-product> rejected at signature parse (checker.f EXT-REDX-BAD-ARG?) - the cross-sequence leak is now UNREPRESENTABLE, with a flat-baseline fixture proving it WAS representable before and disable-the-rule flips both rejects to accepts (red-first both directions). Engine text unchanged 136112/944 (rows already correct). FLAG: STATUS.md 'Certified: 987' has no census tool or gate assertion; the lane added 5 checked words (would be 992 if checker.f words count) - left unedited rather than write an unverified number"
 ---

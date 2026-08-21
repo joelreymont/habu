@@ -3,7 +3,7 @@ title: "Infer GPT2: tensor role binding"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T09:40:20.832309+02:00\""
+created-at: "2026-07-22T09:40:20.832309+02:00"
 ---
 
 Why this exists:

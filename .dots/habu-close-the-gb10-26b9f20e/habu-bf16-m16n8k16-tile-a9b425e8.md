@@ -3,7 +3,7 @@ title: bf16 m16n8k16 tile variant
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T13:01:36.631542+02:00\""
+created-at: "2026-07-19T13:01:36.631542+02:00"
 closed-at: "2026-07-19T13:37:28.353585+02:00"
 ---
 

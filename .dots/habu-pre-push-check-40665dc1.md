@@ -3,7 +3,7 @@ title: Pre-push check tool
 status: open
 priority: 3
 issue-type: task
-created-at: "\"2026-07-21T16:31:12.726263+02:00\""
+created-at: "2026-07-21T16:31:12.726263+02:00"
 ---
 
 Build a cheap checked Habu preflight, not another full gate. The tool and any

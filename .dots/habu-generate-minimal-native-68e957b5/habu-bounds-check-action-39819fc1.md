@@ -3,7 +3,7 @@ title: Bounds-check action enumeration
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:55:58.402015+02:00\\\"\""
+created-at: "2026-07-19T20:55:58.402015+02:00"
 closed-at: "2026-07-20T23:18:13.374482+02:00"
 close-reason: "Merged 8e6f1edb: ENUM-AT guards k against ACT-N before ORD-BUILD, pointer math, and the nominal mint (E-ACTION-ID); LINEAGE-AT's missing negative arm completed; canary + property regressions fail-closed-proven both ways; sibling audit recorded - CONE@/DEP@/BUDGET-AT@ handed to habu-bound-remaining-maki (own error-block reallocation)"
 ---

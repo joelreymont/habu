@@ -3,7 +3,7 @@ title: Consume registry events in package lint
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T17:33:52.090432+02:00\""
+created-at: "2026-07-22T17:33:52.090432+02:00"
 closed-at: "2026-07-26T08:59:33.259819+02:00"
 close-reason: "Implemented, reviewed, merged: landed as fe092cd2a976 (Consume lexer registry events in package lint), an ancestor of master@origin. The package lint handles the REGISTRY event directly, fails closed on lexical row errors before ownership analysis, and the exact checker.f and sumtype.f real-diff fixtures are clean; the E-DIFF-SYNTAX mislabel for malformed registry rows is fixed with the negative fixture. Deviation amended in the dot text: dispatch amendment item 32 (verify-source row scanners onto LINT-LEX plus the char-operand differential fixture) did not land and is carried by the fail-open row-scanner migration dot minted in this wave."
 ---

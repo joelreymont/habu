@@ -3,7 +3,7 @@ title: Retire DEFTYPE onto the family substrate
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-18T23:20:52.626482+02:00\""
+created-at: "2026-07-18T23:20:52.626482+02:00"
 closed-at: "2026-07-19T10:51:51.468720+02:00"
 ---
 

@@ -3,7 +3,7 @@ title: Package stdlib gate worker
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-23T05:06:41.785483+02:00\\\"\""
+created-at: "2026-07-23T05:06:41.785483+02:00"
 closed-at: "2026-07-23T06:10:54.260884+02:00"
 close-reason: Landed 4d0ef032 on verified master 75bd2661; fresh destruction accepted the checked quotation handoff and Maki, PTX/stdlib, host, file-map, dot, and full native gates passed.
 ---

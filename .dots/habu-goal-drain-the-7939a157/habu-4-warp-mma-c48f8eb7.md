@@ -3,7 +3,7 @@ title: 4-warp MMA tile family with deeper pipeline stages
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T08:55:48.432992+02:00\""
+created-at: "2026-07-19T08:55:48.432992+02:00"
 closed-at: "2026-07-19T10:04:42.102904+02:00"
 ---
 

@@ -3,7 +3,7 @@ title: "Checker: seal owner packages"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-12T15:23:17.613639+02:00\""
+created-at: "2026-07-12T15:23:17.613639+02:00"
 closed-at: "2026-07-29T23:39:37.751193+02:00"
 close-reason: Superseded by owner-only product construction; no general sealed-package feature remains.
 ---

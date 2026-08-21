@@ -3,7 +3,7 @@ title: "Core records: install post-hook loader"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T17:55:26.678113+02:00\""
+created-at: "2026-07-13T17:55:26.678113+02:00"
 closed-at: "2026-07-15T21:27:08.365549+02:00"
 close-reason: verified by focused, recovery, maki, ptx-stdlib, full native gates, and fresh destruction review
 ---

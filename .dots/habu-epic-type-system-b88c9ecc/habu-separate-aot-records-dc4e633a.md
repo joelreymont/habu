@@ -3,7 +3,7 @@ title: Separate AOT records from owner freeze rows
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T12:47:59.547273+02:00\""
+created-at: "2026-07-13T12:47:59.547273+02:00"
 closed-at: "2026-07-21T13:20:50.994177+02:00"
 close-reason: "Landed d98d49ce. Prior-work finding first: the feared aliasing bug NEVER SHIPPED - two days after this dot was written, the owner-WID persistence landed already-correct with a dedicated freeze buffer disjoint from the record buffer (a7408001), and the dot's design assumptions (shared-buffer freeze, 8-byte rows, prove-after-freeze ordering) were all stale against the current 16-byte-row dedicated-ROWS reality. The linker narrowing is orthogonal (verified: no shared references). What was genuinely missing was the dot's falsifiable regression, which now exists: a build-time self-test drives the real freeze-row accessor across every row with sentinels while proving the record prefix stays byte-intact - red-first proven by temporarily aliasing the accessor to the record buffer (build dies exit 74 with the named message) and reverting. Engine byte-identical (host-only self-test); full tests green at the merged tip. Structural prevention stays with its standing owners as the dot itself noted"
 ---

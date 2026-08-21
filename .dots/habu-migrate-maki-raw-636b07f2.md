@@ -3,7 +3,7 @@ title: Migrate maki raw family-handle pools to converters
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-15T13:04:11.275326+02:00\""
+created-at: "2026-07-15T13:04:11.275326+02:00"
 close-reason: "Landed as 488a4937b5a7."
 ---
 

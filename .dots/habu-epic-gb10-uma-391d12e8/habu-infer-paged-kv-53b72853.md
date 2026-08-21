@@ -3,7 +3,7 @@ title: "Infer: paged KV cache allocator"
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-21T15:57:38.309268+02:00\""
+created-at: "2026-07-21T15:57:38.309268+02:00"
 blocks:
   - habu-finalize-provisional-kv-b8b46613
   - habu-infer-kv-atomic-c402952e

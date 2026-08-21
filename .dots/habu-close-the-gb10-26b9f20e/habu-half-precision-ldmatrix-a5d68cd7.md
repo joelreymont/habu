@@ -3,7 +3,7 @@ title: Half-precision ldmatrix fragment feed
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T14:23:36.358041+02:00\""
+created-at: "2026-07-19T14:23:36.358041+02:00"
 closed-at: "2026-07-19T18:48:45.806890+02:00"
 close-reason: "Landed: single-instruction ldmatrix.x4 A + x2.trans B feed for fp16/bf16, byte-identical tf32, 226 PASS element-exact, BK64 negative (-18..-25%). Honest verdict: half tile is mma-issue-bound; feed at parity (+3.7% 1024), Triton ratio unmoved (~0.54x) - ratio levers are elsewhere (split-K, autotune)"
 ---

@@ -3,7 +3,7 @@ title: Bound autotune sweep inputs
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T22:17:04.182473+02:00\\\"\""
+created-at: "2026-07-19T22:17:04.182473+02:00"
 closed-at: "2026-07-20T13:00:46.403134+02:00"
 close-reason: "Landed 6d6faba6: bounds at the owning boundary - every MX-* buffer-indexing word guards its own domain (MX-E-CAP -6110, edge 1..512 checked BEFORE any multiply so n*n/n*n*n overflow is unreachable by domain, canary tripwires past each buffer); sweep candidate row package-private + bounds-checked (E-SW-CAND), staging via checked public words, AT-SWEEP-VALIDATE rejects count/edge before buffer init/solo-wait/CUDA open, negative count refused not ?do-delegated. Red-first: unguarded fill at 513 and raw row at idx 32 both clobber canaries, then die named. Guard latency 6.6ns/call. Smoke preserved exactly on the GB10 (2 timed 1 pruned). Deviation folded in: the sweep's load-time device auto-run removed (explicit AT-SWEEP-SMOKE) - required for off-device unit-testing of the bounds, consistent with the import-safe dot landed earlier today. Split-K refs moot (deleted); mma-config STRUCTURE conversion stays with habu-structure-mma-autotune-e02d3197"
 blocks:

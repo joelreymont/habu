@@ -3,7 +3,7 @@ title: Inventory compiler emission paths
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-26T22:53:49.532780+02:00\""
+created-at: "2026-07-26T22:53:49.532780+02:00"
 closed-at: "2026-08-15T14:07:47.993628+02:00"
 close-reason: "Closed SUPERSEDED (vintage audit 2026-08-15, re-executed): emission-path inventory - never built, premise inverted (old emitter scheduled for deletion 679cfd35); the judge board's per-run refusal column + the lints + the four adversarial inventories do the real job, live and gated."
 ---

@@ -3,7 +3,7 @@ title: Give layout.f and snap-lib.f package owners
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-29T21:34:38.637859+02:00\""
+created-at: "2026-07-29T21:34:38.637859+02:00"
 blocks:
   - habu-add-using-to-d815f0ab
 ---

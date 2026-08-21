@@ -3,7 +3,7 @@ title: "TFAM 5 done: shared path emitter + loader reservation"
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-07-04T08:53:29.654234+02:00\""
+created-at: "2026-07-04T08:53:29.654234+02:00"
 closed-at: "2026-07-04T08:54:20.773412+02:00"
 close-reason: landed as commits lyxrxwqv + qlmumzns in workspace tfam-5
 ---

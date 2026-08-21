@@ -3,7 +3,7 @@ title: Encode compiler IR canonically
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-26T22:55:16.449418+02:00\\\"\""
+created-at: "2026-07-26T22:55:16.449418+02:00"
 closed-at: "2026-08-05T11:57:17.930933+02:00"
 close-reason: "Obsolete: the canonical codec stack this dot built was deleted under CG-31 (no product consumer; hard-cut policy) in ad32f68b"
 ---

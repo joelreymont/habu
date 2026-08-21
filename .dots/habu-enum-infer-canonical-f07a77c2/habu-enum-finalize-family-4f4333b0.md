@@ -3,7 +3,7 @@ title: "ENUM: finalize family kind"
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T14:53:49.128448+02:00\""
+created-at: "2026-07-23T14:53:49.128448+02:00"
 blocks:
   - habu-prove-enum-kind-72434e47
 ---

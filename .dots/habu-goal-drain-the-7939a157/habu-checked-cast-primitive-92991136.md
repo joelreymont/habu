@@ -3,7 +3,7 @@ title: Checked cast primitive to end per-declaration trust
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-18T23:21:11.265434+02:00\\\"\""
+created-at: "2026-07-18T23:21:11.265434+02:00"
 closed-at: "2026-07-21T16:29:03.843786+02:00"
 close-reason: "Landed b019d98d (with the CAST: primitive itself verified already in place: the checked declarer certifies the body under an identity row and publishes the declared retype through a one-shot window - checked not trusted, with named arity/class/family rejects all red-first in the negative suite). This landing migrates the two standalone extent-index casts off TRUSTED and deletes their trust rows; trust-lint fell by exactly 2 to 0 findings. The census reconciliation corrected the frozen audit's count (70 eligible converters, not 69). THE KEY FINDING, precisely proven: the remaining 68 converters CANNOT migrate until refine-lint is decoupled from the trust manifest - the confinement lint sources per-mint metadata from each mint's TRUSTED.md row, so deleting rows (the whole point) produces 40 stale-seed + 45 confinement findings even though the full migration passes every OTHER gate (proven by running it). The confinement invariant is orthogonal to trust and must survive for CAST: mints, so the fix is a source-derived, CAST:-aware refine-lint - dotted as the prerequisite under the retire-TRUSTED epic; after it, the 68-converter migration is mechanical (rewrite validated, script preserved). Full tests green at the merged tip"
 ---

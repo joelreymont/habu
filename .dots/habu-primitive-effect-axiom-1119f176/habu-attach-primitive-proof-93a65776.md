@@ -3,7 +3,7 @@ title: Attach primitive proof recipes
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T16:05:05.309072+02:00\""
+created-at: "2026-07-13T16:05:05.309072+02:00"
 closed-at: "2026-07-19T15:21:41.248167+02:00"
 close-reason: Recipe ledger merged at 651f30f4 (315 rows, canary+recipe self-tests) and verified on master.
 ---

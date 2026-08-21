@@ -3,7 +3,7 @@ title: Model MATCH scrutinee pop
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-30T00:05:03.636384+02:00\""
+created-at: "2026-07-30T00:05:03.636384+02:00"
 ---
 
 Full context: one of the omission leaves split out of habu-model-the-declared-4a2eb3c9.

@@ -3,7 +3,7 @@ title: Convert stack to SSA
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-26T22:57:03.025328+02:00\\\"\""
+created-at: "2026-07-26T22:57:03.025328+02:00"
 closed-at: "2026-07-30T23:20:39.678860+02:00"
 close-reason: subsumed by elaborator; empty leaf, analysis in dot
 blocks:

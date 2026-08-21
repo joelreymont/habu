@@ -3,7 +3,7 @@ title: Reject stale tensor handles after reset
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-12T07:50:58.369561+02:00\""
+created-at: "2026-07-12T07:50:58.369561+02:00"
 closed-at: "2026-07-12T08:51:26.698841+02:00"
 ---
 

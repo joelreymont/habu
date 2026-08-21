@@ -3,7 +3,7 @@ title: Give the immediate contract table a consumer again
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-31T19:07:38.855056+02:00\""
+created-at: "2026-07-31T19:07:38.855056+02:00"
 closed-at: "2026-08-20T21:01:45.819061+02:00"
 close-reason: "Superseded by the 2026-08-20 hard cut: NIMM deleted (habu-delete-the-nimm-329100c9) instead of rewired; the compile-time class re-derives from history when it has a named first consumer."
 ---

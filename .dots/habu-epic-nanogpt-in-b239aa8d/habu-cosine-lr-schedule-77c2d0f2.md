@@ -3,7 +3,7 @@ title: Cosine LR schedule + linear warmup
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-18T15:24:38.463318+02:00\\\"\""
+created-at: "2026-07-18T15:24:38.463318+02:00"
 closed-at: "2026-07-20T10:58:34.082992+02:00"
 close-reason: "Landed 53504232 (+ owner-row fix): LR-SCHED implements nanoGPT get_lr exactly (warmup lmax*(t+1)/(warmup+1), cosine decay, floor at lmin) with red-first domain guards (E-LR-SCHED -5159). Cosine built from scratch (no trig in tree): degree-12 Maclaurin on [0,pi/2] + exact reflection, measured max error 6.32e-9 at pi/2 vs proven series bound 6.4e-9, 7 closed-form angle goldens. Threading is opt-in: AMT-LR-EFF returns AMT-LR exactly when disarmed - committed -2749/9 locks bit-identical, verified re-lock after a scheduled run disarms. Scheduled 60-step proof run locks -2599 mNLL deterministically. Merge composed cleanly with the weight-init landing in the same file"
 ---

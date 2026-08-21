@@ -3,7 +3,7 @@ title: Emit direct BL for every known native call
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-07-03T17:59:14.114649+02:00\\\\\\\"\\\"\""
+created-at: "2026-07-03T17:59:14.114649+02:00"
 closed-at: "2026-07-21T06:27:08.975922+02:00"
 close-reason: "Landed 1e9a3926 (stage C, completing the BL campaign after prereqs A relocation-metadata e5ecd233 and B region-in-BL-range 80636de2): every statically known native call - dictionary and helper alike - emits one direct BL through a single shared primitive that computes the displacement, proves the +-128MB reach window and fails closed, and tails into the existing emit path; the 36-byte movz/movk/movk/blr chains are gone from emission, capture recognizes the 4-byte BL wire format, boot re-encodes only the imm26 by name, closure reflow follows BLs to callees with an exact code-entry match. Measured: callers 36->24 bytes with exactly one BL; AOT blob shrank exactly 12 bytes per site (219 sites, 0 unresolved); live dictionary 9523 indirect blr-x16 tails -> 48 (the honest dynamic boundary: execute/defer/DOES>/FFI), 163->10017 direct BLs; engine text -3344 dropping a 4KiB page, CODELEN rows and census updated same-commit, fixpoint x2 byte-identical, form-aware goldens keep the gforth seed's far-region chains valid. Full cold gate green at the merged tip; perf re-certified on the quiet box (d44d9321 close). NOTE: this close and its four follow-up dots were lost once in an orphaned working-copy commit during a push race and are re-recorded here"
 ---

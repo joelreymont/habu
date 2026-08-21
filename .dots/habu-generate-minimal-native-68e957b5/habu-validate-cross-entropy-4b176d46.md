@@ -3,7 +3,7 @@ title: Validate cross-entropy targets
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T23:04:30.200375+02:00\\\"\""
+created-at: "2026-07-19T23:04:30.200375+02:00"
 closed-at: "2026-07-20T23:24:28.743176+02:00"
 close-reason: "Merged b28379c6: composed parameter-gradient check proves every weight and bias against central finite differences of the real TT-XENT (worst residual 6.1e-8 abs with a detection fixture proving teeth), target/dimension guards with transactional preflight landed additively in loss-tensor, both test modules in real packages, and the false LINEAR-adjoint-as-CE-proof prose corrected; deferred typed-span and nominal class-id capabilities recorded"
 ---

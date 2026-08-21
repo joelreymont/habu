@@ -3,7 +3,7 @@ title: Prove autotune GPU exclusivity
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T22:16:38.252235+02:00\\\"\""
+created-at: "2026-07-19T22:16:38.252235+02:00"
 closed-at: "2026-07-20T21:44:21.760598+02:00"
 close-reason: "Landed 0341235c: the count-based solo check replaced with set-identity PID census - the exact pid,gpu_uuid set on the bound device must equal {our PID} before AND after every timed burst (probes outside the timed interval); typed census outcomes (exclusive/contended/probe-failed) so infrastructure failure is never relabeled contention; bounded clock parsing refuses the overflow poison at parse. Per-row evidence records device uuid, compute mode, owner PID, census verdict, clock range. Full injected-fixture negative matrix (14 classes, all produce no timing row). Live both directions: a spawned torch competitor makes the run throw contended with zero rows; exclusive reproduces the committed tf32-512 winner within 0.1%. Honest lease boundary documented: EXCLUSIVE_PROCESS needs root, this box has none - detection-only protocol, recorded per row, privileged lease left as an ops decision, not faked. One sampling boundary noted: contention wholly inside a single burst is unobservable - same class as clock sampling"
 blocks:

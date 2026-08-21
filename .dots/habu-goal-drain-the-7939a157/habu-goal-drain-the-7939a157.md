@@ -3,7 +3,7 @@ title: "GOAL: drain the ENTIRE tracker to the gates (no epic carve-out)"
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-13T13:33:26.102998+02:00\""
+created-at: "2026-07-13T13:33:26.102998+02:00"
 ---
 
 Completion is defined over the reconciled current tracker, not a frozen list

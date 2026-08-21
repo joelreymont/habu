@@ -3,7 +3,7 @@ title: Emit one shared definer publication path
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T19:52:41.962044+02:00\\\"\""
+created-at: "2026-07-19T19:52:41.962044+02:00"
 closed-at: "2026-07-21T16:59:06.361105+02:00"
 close-reason: "Landed d042cd6d: the definer qualification and name-publication bodies - previously metacompiler-composed and copied whole into every definer (2428 bytes x5 + 368 x6 = 14348 duplicated) - are now emitted ONCE as native branch-with-link routines with explicit documented register/clobber contracts, each definer calling the shared body; the source words became thin wrappers so all 11 call sites stay untouched. No rule changed (duplicate wall, sealed-package guard, protected-WID, capacity, rollback, checker ordering all verified green). Disassembly of the fixpoint engine proves exactly one body each and exactly 5+6 BL calls. Combined with the same-day literal split the engine dropped from 139456 to 127168 - three 4 KiB pages in one day - with CODELEN 122124 re-measured at the merged tip (regions: define -8728, colon -2788, dictionary-code -2788, +2 new primitive regions), census 3716, fixpoint x2 byte-identical, clobber lint clean over 330 routines. Coordination finding recorded: the Mac's definer chain was orthogonal (different regions) - nothing absorbed. macOS rows owed per the per-target asymmetry. Full tests green at the merged tip"
 ---

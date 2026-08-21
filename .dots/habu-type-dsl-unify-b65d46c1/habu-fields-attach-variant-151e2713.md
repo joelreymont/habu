@@ -3,7 +3,7 @@ title: "Fields: attach variant ranges"
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T17:12:42.577284+02:00\""
+created-at: "2026-07-13T17:12:42.577284+02:00"
 blocks:
   - habu-fields-add-shared-6b063c62
 ---

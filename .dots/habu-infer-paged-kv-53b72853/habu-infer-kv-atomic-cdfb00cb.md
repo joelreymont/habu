@@ -3,7 +3,7 @@ title: Cancel provisional KV batch
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T09:38:16.930498+02:00\""
+created-at: "2026-07-22T09:38:16.930498+02:00"
 blocks:
   - habu-describe-provisional-kv-ead10e30
 ---

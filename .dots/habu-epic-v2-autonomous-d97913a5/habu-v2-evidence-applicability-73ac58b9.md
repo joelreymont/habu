@@ -3,7 +3,7 @@ title: V2 evidence applicability checker
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.265401+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.265401+02:00"
 closed-at: "2026-07-17T22:35:23.553437+02:00"
 close-reason: "Applicability checker + identity legs landed (7f9fd877/d60c0389): mutation matrix complete, refusal rules proven with controls, cache==uncached closure over 7 change-sets, EVIDENCE registry landed. Txn repoint folded into the atomic-txn dot."
 ---

@@ -3,7 +3,7 @@ title: Package shared lint lexer
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T17:33:51.885178+02:00\""
+created-at: "2026-07-22T17:33:51.885178+02:00"
 closed-at: "2026-07-26T08:59:33.248847+02:00"
 close-reason: "Implemented, reviewed, merged: landed as e97d2e92f12a (Package shared source lexer as LINT-LEX), an ancestor of master@origin. Package LINT-LEX owns the shared lexer; storage and scanners private; the global LEX-* API and quote-specific diagnostic cells removed without aliases; all named direct consumers migrated to qualified calls."
 ---

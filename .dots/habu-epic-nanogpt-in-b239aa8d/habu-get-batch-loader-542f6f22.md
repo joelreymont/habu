@@ -3,7 +3,7 @@ title: get-batch loader into B*T-row buffer
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-18T17:36:22.590247+02:00\""
+created-at: "2026-07-18T17:36:22.590247+02:00"
 closed-at: "2026-07-19T08:26:43.885286+02:00"
 ---
 

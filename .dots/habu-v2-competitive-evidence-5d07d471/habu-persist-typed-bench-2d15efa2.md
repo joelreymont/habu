@@ -3,7 +3,7 @@ title: Persist typed BENCH comparison rows
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T16:58:06.385858+02:00\\\"\""
+created-at: "2026-07-13T16:58:06.385858+02:00"
 closed-at: "2026-07-15T02:18:18.825112+02:00"
 close-reason: "Merged a3f32118 on master: maki/competitive-store.f - the only public writers are typed BENCH-PUT-GBPS/-GFLOPS; the raw appender is package-BENCH-private (bypass regression: qualified BENCH:BENCH-ROW-APPEND verdict 1 unresolvable, read + typed-write + encode controls -1). Row = canonical render (the exact key - every field participates) + schema=bench/v1 + independent policy/unit re-encodings + FNV-1a-64 digest + promo=COMPARABLE? verdict. Eleven named reject classes -5310..-5320 all proven firing (fields/label/token/dup/schema/kind/policy/digest/canon/promo), each resolving against the clean golden; byte-for-byte round-trip goldens for gbps/gflops/absent-baseline rows. Zero TRUSTED surface. Documented deviation: cross-artifact linkage to a specific ART:promoted grant is the promotion lane's scope - the promo field records/re-checks the in-scope comparability evidence. maki suite + all lints + error-code green on the exact merged tree. Unblocks migrate-saxpy 2c02dd5a (the final competitive-chain leaf)."
 ---

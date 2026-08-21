@@ -3,7 +3,7 @@ title: Consolidate codegen buffers and case folds
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-18T23:07:22.032604+02:00\\\"\""
+created-at: "2026-07-18T23:07:22.032604+02:00"
 closed-at: "2026-07-19T10:51:51.462502+02:00"
 ---
 

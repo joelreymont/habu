@@ -3,7 +3,7 @@ title: Add shared inference model enums
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-22T16:06:15.012663+02:00\\\"\""
+created-at: "2026-07-22T16:06:15.012663+02:00"
 closed-at: "2026-07-26T08:59:10.778018+02:00"
 close-reason: "Implemented, reviewed, merged: landed as abc28c2baa7f (Add shared inference model enums, package MODEL), an ancestor of master@origin, as amended by the rev-4 inference leaf redesign: four enum families (gpt2/llama architecture, position, normalization, activation); the dtype family was deliberately deleted because MAKI:dtype in maki/tensor.f is the sole dtype authority - the module header records that decision. model-config consumes the MODEL types (MDLCFG landed d75a3846e5f4)."
 ---

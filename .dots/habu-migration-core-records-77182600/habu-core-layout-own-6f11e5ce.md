@@ -3,7 +3,7 @@ title: "Core layout: own early assertion status"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T22:46:29.890224+02:00\\\"\""
+created-at: "2026-07-13T22:46:29.890224+02:00"
 closed-at: "2026-07-13T23:11:12.070380+02:00"
 close-reason: Landed CORE-LAYOUT-RC with CELL, exact source pin, schema/family drift assertions, accessor wiring assertions, native fixpoint, Gforth recovery, and all gates green at 4f2caac7.
 ---

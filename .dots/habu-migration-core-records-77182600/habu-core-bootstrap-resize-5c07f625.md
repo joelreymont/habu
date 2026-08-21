@@ -3,7 +3,7 @@ title: "Core bootstrap: resize source prefix arena"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T18:40:14.505036+02:00\\\"\""
+created-at: "2026-07-13T18:40:14.505036+02:00"
 closed-at: "2026-07-13T22:36:03.529762+02:00"
 close-reason: "Landed 49266f87: shared 2 MiB source arena with 25% live headroom policy, native/recovery token parity, candidate-adjacent engine/stage2/maker boundaries, live REPL/AOT maker sizing. Recovery, fixpoint, BCG, BFT, HBT, typed lint, repository lints, PTX, Maki, and full gate green."
 ---

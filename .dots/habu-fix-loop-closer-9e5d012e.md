@@ -3,7 +3,7 @@ title: Fix loop closer crash without do opener
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-28T13:03:57.113716+02:00\""
+created-at: "2026-07-28T13:03:57.113716+02:00"
 ---
 
 Claim: agent=loop_closer workspace=.jj-ws/habu-fix-loop-closer-9e5d012e (RELEASED 2026-08-21: workspace gone, no live lane - gc)

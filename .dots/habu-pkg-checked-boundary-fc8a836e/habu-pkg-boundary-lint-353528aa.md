@@ -3,7 +3,7 @@ title: Package boundary lint command
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-23T03:46:58.199562+02:00\\\"\""
+created-at: "2026-07-23T03:46:58.199562+02:00"
 closed-at: "2026-07-23T05:55:08.285036+02:00"
 close-reason: Package BOUNDARY-LINT-CLI landed on verified master@origin as 62768e6000d2; focused command, privacy, typed-local, package, host, and file-map checks passed.
 ---

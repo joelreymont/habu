@@ -3,7 +3,7 @@ title: V2 canonical artifact envelope
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-07-11T12:25:26.829932+02:00\\\\\\\"\\\"\""
+created-at: "2026-07-11T12:25:26.829932+02:00"
 closed-at: "2026-07-17T18:52:08.295818+02:00"
 close-reason: "Envelope complete across three slices (aa83dcd0/469f1e15/7cc29623): all plan-named fields bound, digest coverage per the frozen table test-proven, VALIDATE landed; gated legs handed to the user-gated CAP dot and the new wire-content-key dot."
 ---

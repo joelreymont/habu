@@ -3,7 +3,7 @@ title: Segment/causal attention op + adjoint
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-18T17:36:01.935952+02:00\""
+created-at: "2026-07-18T17:36:01.935952+02:00"
 closed-at: "2026-07-19T07:37:45.336765+02:00"
 ---
 

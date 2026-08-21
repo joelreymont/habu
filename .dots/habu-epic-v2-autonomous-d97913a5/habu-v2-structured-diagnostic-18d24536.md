@@ -3,7 +3,7 @@ title: V2 structured diagnostic IR
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.328128+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.328128+02:00"
 closed-at: "2026-07-17T18:24:21.556592+02:00"
 close-reason: "Diagnostic IR + dual renderers landed (6b19cda8): nine typed classes, canonical round-trip, typed missing-owner/reproduction rejects, lossless lowering proven on four real failure classes. Field-promotion follow-up minted."
 ---

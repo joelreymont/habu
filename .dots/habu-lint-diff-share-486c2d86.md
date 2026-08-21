@@ -3,7 +3,7 @@ title: "Lint diff: share hunk parser"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-15T07:29:26.401667+02:00\\\"\""
+created-at: "2026-07-15T07:29:26.401667+02:00"
 closed-at: "2026-07-19T22:07:42.083830+02:00"
 close-reason: "Landed at master 10f1f48e (commit 'Recover shared jj-diff parser; migrate lints'): tools/lint/diff.f is the single shared unified-diff event parser (package DIFF, typed form/event ENUMs, DIFF:LINE event API, fail-closed E-DIFF-SYNTAX in the new shared tools/lint/diff-error.f home), with a 495-line suite. Both production consumers migrated onto it - typed-local-diff-lint and kernel-perf-lint now dispatch on typed DIFF events via their own packages - with behavior preservation proven baseline-green-before / migrated-green-after, stricter exact-finding positives, and the spoofed-header-outside-hunk negatives the dot demanded. Recovered from the stranded recover-lint-diff lane and adapted; the M5 frame codec deliberately remains on the recovery dot habu-recover-framed-and-32309120, to be rebuilt on this parser rather than recovering its duplicate validator."
 ---

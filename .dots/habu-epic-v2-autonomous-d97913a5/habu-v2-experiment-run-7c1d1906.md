@@ -3,7 +3,7 @@ title: V2 experiment run identity
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.690944+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.690944+02:00"
 closed-at: "2026-07-18T05:22:59.092221+02:00"
 close-reason: "Run identity landed (785c4021): 13-field interned key, static train/held-out separation, typed license/authority rejects, deterministic batch ids, lineage resume proven. Units vocabulary folded into competitive-evidence."
 ---

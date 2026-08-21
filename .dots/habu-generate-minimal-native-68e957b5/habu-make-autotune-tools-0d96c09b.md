@@ -3,7 +3,7 @@ title: Make autotune tools import safe
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T22:18:59.754347+02:00\\\"\""
+created-at: "2026-07-19T22:18:59.754347+02:00"
 closed-at: "2026-07-20T12:16:35.745827+02:00"
 close-reason: "Landed 930f1678: one import-safe MMA-EXACT library (tools/ptx/mma-exact-lib.f, 167 lines) owns the 7-buffer fill/reference/compare proof machinery + device alloc/copy/assemble; mma-gemm-check and autotune-sweep are thin explicit entries composing MX-* (the ~85-line admitted copy deleted; -177 lines net across the two tools). Import proof on the GB10: bare load 0.41s, 0 output bytes, no CUDA context (compute-apps 0->0), no ptxas, no spawn; committed test asserts the allocation witnesses are zero at load. Explicit campaigns byte-identical: 267 PASS sha-matched; sweep smoke structurally identical. Host-arena pattern moved verbatim and context lifecycles untouched - allocation unification stays with habu-unify-mma-checker-dbdb122b, CUDA unwind with habu-migrate-ptx-tool-f57679ef"
 ---

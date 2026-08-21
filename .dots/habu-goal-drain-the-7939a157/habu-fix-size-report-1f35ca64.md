@@ -3,7 +3,7 @@ title: Fix size-report review findings
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-18T23:07:03.166881+02:00\""
+created-at: "2026-07-18T23:07:03.166881+02:00"
 closed-at: "2026-07-18T23:36:45.059469+02:00"
 ---
 

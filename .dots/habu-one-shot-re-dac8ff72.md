@@ -3,7 +3,7 @@ title: One-shot re-measure tool for all size ratchets
 status: open
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-21T16:31:12.721005+02:00\\\"\""
+created-at: "2026-07-21T16:31:12.721005+02:00"
 ---
 
 Orchestration friction recurs when an engine/source landing changes census,

@@ -3,7 +3,7 @@ title: Make affine LayerNorm explicit
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T21:51:59.514100+02:00\\\"\""
+created-at: "2026-07-19T21:51:59.514100+02:00"
 closed-at: "2026-07-20T10:48:25.791006+02:00"
 close-reason: "Landed ef4e8233: affine LayerNorm now an explicit payload form (ENUM lnform plain|affine riding node attr) on the shared opcode - every consumer (shape pass, executor, backward, device lowering, cache keys) dispatches on the form, never input count; 0/2/4-input and payload-swap MIR fixtures all throw E-MIR-LN-FORM. THE correctness bug fixed: backward dxhat emitted MUL where the 1xC gamma broadcast requires BCAST-MUL - proven by shape-legality teeth (MUL variant crashes E-CAD-PARAM-SHAPE at BIND-SHAPES, BCAST-MUL passes). Device FORWARD lowering implemented (fused block-per-row kernel, +14% PTX vs plain, zero extra dispatches, PTX-diff asserted); device EXECUTION blocked by pre-existing E-PTXTC-ARCH harness gap in red-device-test (pre-existing, not a regression); device backward bounded by non-lowered layernorm-bwd/rowsum-bwd (out of scope). Distinct-opkind path rejected with evidence: exhaustive MATCH over opkind means a new variant forces arms in 7 files outside the lane footprint; the dot sanctions the payload-ENUM alternative. Plain-LN cache keys unchanged; affine keys migrate once (old representation was ambiguous)"
 ---

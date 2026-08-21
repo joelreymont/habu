@@ -3,7 +3,7 @@ title: Pass constructor family explicitly
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T06:59:22.740284+02:00\""
+created-at: "2026-07-23T06:59:22.740284+02:00"
 closed-at: "2026-07-26T08:59:10.764174+02:00"
 close-reason: "Implemented, reviewed, merged: landed as 3979b8fad73f (Pass constructor family to generator explicitly), an ancestor of master@origin. TDECL-CTOR-WORDS-BODY takes one live family id and never reads TDECL-FAM-REG; the legacy adapter is the sole ambient reader. Reviewer correction recorded: the REGISTRY-into-definition-path mutant is equivalent (WORD? guard second defense); true kills were ROW-START? disable 17, arm-removal 14, dispatch-collapse 1, old-side 1. Recorded workspace annotated: it holds only abandoned peer wip 2a2a5e5019c4, evidence only."
 ---

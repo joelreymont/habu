@@ -3,7 +3,7 @@ title: Bind compiler ID parity
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-27T13:50:44.124249+02:00\""
+created-at: "2026-07-27T13:50:44.124249+02:00"
 blocks:
   - habu-freeze-compiler-id-2dc2c646
   - habu-prove-compiler-id-cfe76485

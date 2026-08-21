@@ -3,7 +3,7 @@ title: "Nominal storage: migrate CAD owners"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-12T16:08:58.389635+02:00\\\"\""
+created-at: "2026-07-12T16:08:58.389635+02:00"
 closed-at: "2026-07-18T14:56:57.479511+02:00"
 close-reason: "Migration surface complete: FP-RID + FP-SP-NODE (fusion-plan.f) and LLA-IN-REF (lower-launch.f) to TYPED-BUFFER with typed readers; the 5 corruption seams rewritten typed (coverage preserved); raw-read/weakening/cross-family negatives added red. Scoping RCA: model-ir/tensor-value descriptor columns were ALREADY on the sealed LAYOUT-BUFFER facility (a retained capability per c5f44d66, not deprecated) and the handle pools landed typed in 488a4937 - not over-migrated per the acceptance line. TRUST 673->673: no row became structurally guaranteed (the RAW>*/*>RAW pairs are genuine index-refinement cast boundaries, re-audited 2026-07-18). LAYOUT-BUFFER correctly not retired (retained capability, many consumers)."
 ---

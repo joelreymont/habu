@@ -3,7 +3,7 @@ title: Guard provisional declaration ownership
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-24T02:56:00.553945+02:00\""
+created-at: "2026-07-24T02:56:00.553945+02:00"
 blocks:
   - habu-prove-verifier-event-f3454331
 ---

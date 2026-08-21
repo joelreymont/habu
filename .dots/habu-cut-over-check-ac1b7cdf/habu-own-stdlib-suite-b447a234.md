@@ -3,7 +3,7 @@ title: Own stdlib suite selector
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-24T17:15:00.681260+02:00\\\"\""
+created-at: "2026-07-24T17:15:00.681260+02:00"
 closed-at: "2026-07-24T18:11:55.690719+02:00"
 close-reason: Reviewed implementation landed at master@origin 7170b6b6; selector paths and all required gates are green.
 ---

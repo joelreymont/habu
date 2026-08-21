@@ -3,7 +3,7 @@ title: Add raw primitive row events
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T17:33:51.991951+02:00\""
+created-at: "2026-07-22T17:33:51.991951+02:00"
 closed-at: "2026-07-26T08:59:33.254708+02:00"
 close-reason: "Implemented, reviewed, merged: landed as c82a37cae0e2 (Emit primitive-axiom rows as one lexer token), an ancestor of master@origin. LINT-LEX emits one REGISTRY token per complete raw PRIM:/PPRIM: row with engine NEXT-RAW semantics for the eight quote-like labels; malformed rows set MALFORMED-REGISTRY with exact spans and stop the source. Delivery notes carried to the queue and follow-up dots: the slice-composition soundness finding, the non-short-circuiting bounds idiom, the LINT-WS? divergence, and the fail-open consumer wave remain tracked outside this dot."
 ---

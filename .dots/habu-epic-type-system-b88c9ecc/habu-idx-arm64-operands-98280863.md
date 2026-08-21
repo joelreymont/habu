@@ -3,7 +3,7 @@ title: Index ARM64 operands and control effects
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-13T11:44:22.090200+02:00\""
+created-at: "2026-07-13T11:44:22.090200+02:00"
 blocks:
   - habu-define-typed-arm64-4ab8894f
   - habu-lower-int-lir-20c79397

@@ -3,7 +3,7 @@ title: Link ARM64 contracts to primitive rows
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T16:05:05.312800+02:00\\\"\""
+created-at: "2026-07-13T16:05:05.312800+02:00"
 closed-at: "2026-07-21T17:59:03.794049+02:00"
 close-reason: "landed 39ac7cc3: PRIM-LINK checked query binds ARM64 contracts to PES axiom rows by stable identity; both-direction proof in test/prim-link-test.f; census 3774"
 ---

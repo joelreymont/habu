@@ -3,7 +3,7 @@ title: Bound profiler counter storage
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-07-19T20:15:02.741902+02:00\\\\\\\"\\\"\""
+created-at: "2026-07-19T20:15:02.741902+02:00"
 closed-at: "2026-07-21T12:40:49.595260+02:00"
 close-reason: "Fully landed across two changes: (1) 9aceba4f - the profiler counter band is derived from the dictionary capacity in the layout contract (256 KiB, lockstep growth, no magic tail), bootstrap mirror identical, with a strengthened source pin rejecting the old magic form; (2) cd16a08a - the user heap is now capped BELOW the band: the inline DP-advance check's high bound consumes the same shared band constant, so the heap ceiling and the band base are provably the same offset and can never drift. Red-first both ways: on the base engine an over-band allot succeeded silently (clobbering a counter); fixed, it rejects with the named out-of-range error at rc 76 while an allot ending exactly at the boundary succeeds; the old region-top allot now also rejects. Engine size and census UNCHANGED (the 11 inline check copies each stay a single MOVZ - only the immediate differs, 22 bytes of immediates); boundary test retargeted, bootstrap source pin covers the mirror. Full tests green at both landings"
 ---

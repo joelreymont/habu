@@ -3,7 +3,7 @@ title: "Kernel perf: ratchet waiver on touch"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-15T07:29:54.769623+02:00\\\"\""
+created-at: "2026-07-15T07:29:54.769623+02:00"
 closed-at: "2026-07-19T22:50:13.610540+02:00"
 close-reason: "Landed acc7def0-era: waiver-specific 14-field row form (zero committed rows rewritten), PERF:EMITTER? centralized predicate, diff-content-driven expiry via the shared jj-diff parser - touch without replacement fails E-PERF-ROW-MISSING, cross-kernel cannot satisfy, same-change replacement (measurement or newly-versioned waiver) passes, stale/dup/unknown/forged all reject. Full acceptance matrix both-directional; perf-rows.tsv untouched"
 ---

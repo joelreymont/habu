@@ -3,7 +3,7 @@ title: Migrate Maki CUDA lifecycles
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:52:37.079374+02:00\\\"\""
+created-at: "2026-07-19T20:52:37.079374+02:00"
 closed-at: "2026-07-21T07:41:15.423271+02:00"
 close-reason: "Landed in stack cb1e4cae: all maki CUDA lifecycles on CUDA-SCOPE (13 files +664/-180). New injectable driver seam maki/cuda-run.f (MKD defer table armed to the real sealed CUDA: words at load - the symmetric partner to the scope's release seam) + shared recording fake. Per-file shapes: gpu.f cross-call SETUP/RELEASE = module-level ledger owner with atomic setup (catch->unwind->rethrow) + per-LAUNCH scope for buffers (also fixes a real epoch-loop GDX/GDY leak in gpu-train); one-shot eval runs = single scope owning everything; lower/launch.f = nested outer-model/inner-region scopes with borrowed producer buffers correctly NOT transferred. Three host-only leak suites in the gate prove base-leaks/migrated-releases for all three failure classes, reverse order, exactly-once, plus whole-model buffer liveness. Real-GPU behavior preserved (sgd/train/emit-device/device-fault green). Loose ends dotted separately: model-device tool missing arch probe; CUDA-SCOPE public frame API"
 ---

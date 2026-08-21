@@ -3,7 +3,7 @@ title: Own checked hook sites
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T02:09:58.322065+02:00\""
+created-at: "2026-07-23T02:09:58.322065+02:00"
 closed-at: "2026-07-23T03:18:15.317882+02:00"
 close-reason: Landed immutable checker-hook identity registry at 2db115be; verified in master@origin.
 ---

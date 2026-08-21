@@ -3,7 +3,7 @@ title: "TFAM 5: one shared stdin-driver-closure manifest (gate 17e)"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-04T10:40:00.000000+02:00\""
+created-at: "2026-07-04T10:40:00.000000+02:00"
 closed-at: "2026-07-04T17:50:35.484174+02:00"
 ---
 

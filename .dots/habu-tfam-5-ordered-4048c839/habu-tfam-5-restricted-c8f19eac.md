@@ -3,7 +3,7 @@ title: "TFAM 5: restricted discovery pass + fresh require registry"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-04T08:53:45.124164+02:00\""
+created-at: "2026-07-04T08:53:45.124164+02:00"
 closed-at: "2026-07-04T09:58:18.895610+02:00"
 ---
 

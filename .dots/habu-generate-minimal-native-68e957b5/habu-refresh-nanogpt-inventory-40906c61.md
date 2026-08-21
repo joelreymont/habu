@@ -3,7 +3,7 @@ title: Refresh nanoGPT inventory
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-19T23:38:18.830019+02:00\\\"\""
+created-at: "2026-07-19T23:38:18.830019+02:00"
 closed-at: "2026-07-20T23:45:35.033672+02:00"
 close-reason: "Landed (stacked under 03834011): docs/nanogpt-inventory.md rebuilt from code + live dot status with six-dimension grading (prototype/host/AD/batched/device/measured) replacing the binary labels, every incomplete dimension linked to its live owner, destruction-review narrowings recorded in a dated section. Stale ABSENT/PARTIAL claims corrected with file:line evidence (positional embedding, affine LN, MHA/causal, cross-entropy, tokenizer/batch all landed; AdamW/cosine/clip/dropout/init/checkpoint/tying/RMSNorm-RoPE/generation newly reflected). New checked owner-consistency lint (tools/nanogpt-inventory-lint*, 77 owners) binds prose to a machine manifest and fails on unknown/duplicate/status-mismatched/dead owners - red-first proven on all three failure classes; registered in the gate like dot-dep-lint. At merge I refreshed rows the day's landings outdated (tie-in-block and xent-validation now closed-cited-as-history). Loose ends recorded in the doc: device-LN backward unowned (proposed dot), SGD/attention trainers under cosine+clip unowned, archive dots not citeable cross-tree"
 ---

@@ -3,7 +3,7 @@ title: Isolate corpus test fixtures
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T22:50:17.959475+02:00\\\"\""
+created-at: "2026-07-19T22:50:17.959475+02:00"
 closed-at: "2026-07-20T10:38:00.850449+02:00"
 close-reason: "Merged 283a9023: fixtures under unique TMPDIR-MKDIR roots, symlink substitution rejected, exception-safe cleanup, concurrent-run proof"
 ---

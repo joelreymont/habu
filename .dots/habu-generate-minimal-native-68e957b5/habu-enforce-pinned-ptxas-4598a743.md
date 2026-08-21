@@ -3,7 +3,7 @@ title: Enforce pinned ptxas identity
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:49:51.811755+02:00\\\"\""
+created-at: "2026-07-19T20:49:51.811755+02:00"
 closed-at: "2026-07-20T23:45:35.029427+02:00"
 close-reason: "Landed (stacked under 03834011): fail-closed GB10 ptxas identity. Key finding: the pinned 13.3.33 artifact IS provisioned at ~/.habu/toolchain (sha256 matches docs/codegen-verdict.md exactly), so the real-digest device matrix ran - no provisioning wall. TC-GATE runs in ASSEMBLE before any PTX is consumed: resolve once through a testable candidate enumerator (env->store->system->legacy), hash the executable bytes against the pinned digest allowlist, probe+parse --version with spawn/timeout/truncation folded into named rejects, require >=13.3, bind path+digest+version into a private descriptor. Typed policy SUMTYPE: gb10 = allowlist+floor, compat = readable identity with no implicit unknown-success; overrides get zero trust from presence. The old warn-and-continue path removed. 35-assertion fake-tool matrix green with every cell recorded failing OPEN on the unfixed base (arbitrary bytes with a valid version string were accepted with no digest check at all); exact no-assembly-on-reject spawn counts; RMSNorm/RoPE/MMA device tests green through the gate on sm_121a. Full cold gate green at the merged tip. Descriptor seam left private for the R3 identity dot per coordination constraint"
 ---

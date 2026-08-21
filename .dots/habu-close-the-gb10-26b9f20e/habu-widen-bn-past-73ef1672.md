@@ -3,7 +3,7 @@ title: "Widen BN past 64: the 4096-class tile"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T13:57:47.858639+02:00\""
+created-at: "2026-07-19T13:57:47.858639+02:00"
 closed-at: "2026-07-19T16:30:48.586880+02:00"
 ---
 

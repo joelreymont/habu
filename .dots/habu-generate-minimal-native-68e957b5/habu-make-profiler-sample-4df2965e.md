@@ -3,7 +3,7 @@ title: Make profiler sample totals exact
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:15:02.873821+02:00\\\"\""
+created-at: "2026-07-19T20:15:02.873821+02:00"
 closed-at: "2026-07-21T12:17:33.875498+02:00"
 close-reason: "Landed 9aceba4f: the profiler no longer drops its final sample - attribution now happens BEFORE the limit check, restoring the exact invariant sum(word counters) + other == total, including the limit-reaching sample. Red-first against a truly-unfixed engine built from the parent source: limit-1 runs produced EMPTY output (the lone sample always lost) and limits 1/2/5 summed to N-1; fixed engine attributes all N. Tests wired into the debug gate phase; bootstrap mirror carries the same reorder; instruction-count-neutral so no size movement"
 ---

@@ -3,7 +3,7 @@ title: Type device grader verdicts
 status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T21:27:11.455972+02:00\""
+created-at: "2026-07-19T21:27:11.455972+02:00"
 ---
 
 Claim: agent=device_grader_impl workspace=.jj-ws/habu-type-device-grader-974c9e44 (RELEASED 2026-08-21: workspace gone, no live lane - gc) machine=spark (owns device and grading verdict types, exit decoding, direct consumers, and focused tests)

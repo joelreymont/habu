@@ -3,7 +3,7 @@ title: Freeze canonical artifact type and wire contract
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T16:15:58.437032+02:00\\\"\""
+created-at: "2026-07-13T16:15:58.437032+02:00"
 closed-at: "2026-07-17T14:27:30.488995+02:00"
 close-reason: "Contract frozen and landed (commit dcbe61f9): 6 CAD kinds + verdict-0 fixture proofs, complete wire/package contract in plan 23.9 + type-families 9.1.1, failure taxonomy specced, zero open questions. Implementation dot unblocked."
 ---

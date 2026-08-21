@@ -3,7 +3,7 @@ title: Remove speculative stdlib skips
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T21:56:36.274909+02:00\\\"\""
+created-at: "2026-07-19T21:56:36.274909+02:00"
 closed-at: "2026-07-20T20:57:25.192530+02:00"
 close-reason: "Merged fc88c546: EXCLUDED?/PREFIX? speculative table removed from the bare-load gate; discovery is purely structural (FLAT-MODULE?); all three formerly reserved modules bare-load and are covered; injected-path fixture pins the structural rule"
 ---

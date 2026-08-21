@@ -3,7 +3,7 @@ title: PTX phantom-preserving effects
 status: open
 priority: 2
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-07-01T23:07:20.878978+02:00\\\\\\\"\\\"\""
+created-at: "2026-07-01T23:07:20.878978+02:00"
 ---
 
 Invariant: a type-preserving PTX emitter threads the same register phantom

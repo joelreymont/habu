@@ -3,7 +3,7 @@ title: "Core records: remove checker registries"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T17:15:50.404414+02:00\\\"\""
+created-at: "2026-07-13T17:15:50.404414+02:00"
 closed-at: "2026-07-13T23:31:08.933830+02:00"
 close-reason: implemented explicit checker registry layouts; reviewed; native fixpoint, full gate, Maki, PTX, and lints green
 ---

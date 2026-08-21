@@ -3,7 +3,7 @@ title: V2 evidence promotion typestate
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.570165+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.570165+02:00"
 closed-at: "2026-07-18T03:55:28.750113+02:00"
 close-reason: "Promotion typestate + discharge-authority gate landed (ecc1a806): unforgeable staged proofs, evidence-gated unconstructible transitions, digest-bound policy invalidation, audit closure proven. Commit-store threading folded into deterministic-audit."
 ---

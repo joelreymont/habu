@@ -3,7 +3,7 @@ title: Fix --all-errors double-registering declared families
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T06:16:46.631507+02:00\""
+created-at: "2026-07-19T06:16:46.631507+02:00"
 closed-at: "2026-07-19T06:49:59.410065+02:00"
 ---
 

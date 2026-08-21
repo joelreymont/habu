@@ -3,7 +3,7 @@ title: Enforce native region size budgets
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-18T11:52:19.533722+02:00\\\"\""
+created-at: "2026-07-18T11:52:19.533722+02:00"
 closed-at: "2026-07-21T16:27:50.340568+02:00"
 close-reason: "Landed 29b66ebd + re-measure 7216c664: per-region engine-text budgets close the attribution gap the whole-file and total ratchets leave open. A committed 43-row per-region budget manifest (measured at the byte fixpoint, asserted to sum exactly to the committed text total) enforced directionally in the build gate: over-budget fails NAMING the region, under-budget fails stale, new-unbudgeted and vanished rows both fail closed. Proof both ways includes the exact gap scenario: a compensating +4/-4 swap between regions keeps every existing ratchet green while the new one fails naming the region. Budgets live in the gate manifest, NOT baked into the engine (baking would self-reference the fixpoint) - engine byte-identical at the landing. And the ratchet earned its keep within the hour: the Mac's structure-make landing (+48) attributed exactly as startup +16 and dictionary-code +32 on its first live drift. Full tests green at the merged tip"
 ---

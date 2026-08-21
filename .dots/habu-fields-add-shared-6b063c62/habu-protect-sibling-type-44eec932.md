@@ -3,7 +3,7 @@ title: Protect sibling type-registry states via seal
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-18T18:12:28.426954+02:00\""
+created-at: "2026-07-18T18:12:28.426954+02:00"
 closed-at: "2026-07-19T10:15:15.200075+02:00"
 close-reason: "Merged: registry seal for sibling type registries landed at master 837b1377 (REG-PROTECT in src/core/util.f, 28 cells tagged across type-family/type-schema, IMK-SEAL-REGISTRY marking, internal-word-gate cases SUBJECT-N 99). Verified at master@origin including the interpret-only-scope note commit."
 ---

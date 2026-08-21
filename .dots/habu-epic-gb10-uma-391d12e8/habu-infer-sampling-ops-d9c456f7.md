@@ -3,7 +3,7 @@ title: "Infer: sampling ops (temperature, top-k, top-p)"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-21T15:57:38.315510+02:00\\\"\""
+created-at: "2026-07-21T15:57:38.315510+02:00"
 closed-at: "2026-07-21T16:44:02.464981+02:00"
 close-reason: "Landed b39e7dae: the canonical host sampling module (maki/sampling.f) - temperature/top-k/top-p over a logits span with named domain guards firing before any table read, exact-argmax short circuits, f64 max-subtraction softmax, caller-owned-scratch heap for nucleus (allocation-free per call), the committed LCG, and documented deterministic tie-breaking. Torch 2.9.1 parity fixture with provenance: deterministic legs exact-id vs torch, stochastic legs pin the committed RNG's ids and cross-check the distribution (4096-draw histogram within 0.006 of torch probs); softmax parity measured 4.6e-10. Six red-first guard rejects; run-twice locked. REVIEW CORRECTION carried into the close: this module is the CORRECTNESS REFERENCE - for a single sequence host sampling sits ON the autoregressive critical path and cannot hide behind the same sequence's next decode; the latency-sensitive path belongs to the device-sampling dot, whose baseline includes measuring this module's per-call latency. Follow-up dotted: fold generate.f's inline sampling copies onto this module. Full tests green at the merged tip"
 ---

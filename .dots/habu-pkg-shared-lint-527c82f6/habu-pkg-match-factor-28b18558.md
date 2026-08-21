@@ -3,7 +3,7 @@ title: Package match-factor bench source
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T06:20:47.334950+02:00\""
+created-at: "2026-07-23T06:20:47.334950+02:00"
 close-reason: "Landed as 37108aa73d38."
 ---
 

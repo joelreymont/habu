@@ -3,7 +3,7 @@ title: Derive adjoint equations for einsum ops
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T11:05:59.543417+02:00\""
+created-at: "2026-07-19T11:05:59.543417+02:00"
 closed-at: "2026-07-19T18:57:56.412293+02:00"
 close-reason: "Landed 3c21a234: EQ-ADJ-DERIVE at SPEC: through same parser/emitter, BW-STEP-EQUATION single arm, fd-checked vs central-FD oracle, equation-op GEMM trains bit-identically to matmul kind on adam-train fixture (40 steps, 0 mismatches), gather -> named E-CAD-GRAD at derivation boundary"
 ---

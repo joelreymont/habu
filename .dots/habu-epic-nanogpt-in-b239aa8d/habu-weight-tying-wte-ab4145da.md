@@ -3,7 +3,7 @@ title: Weight tying (wte <-> lm_head) with gradient accumulation
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-07-18T15:25:04.155430+02:00\\\"\""
+created-at: "2026-07-18T15:25:04.155430+02:00"
 closed-at: "2026-07-20T21:44:21.770128+02:00"
 close-reason: "Landed 47f249c2: GPT-2 weight tying at the trainer level. Probe-verified premise: EX-BIND is pointer-only so the tie is a TRANSPOSED role - one logical (V,C) parameter, a mirrored (C,V) transpose refreshed after every step, gradients summed (head side transposed) into ONE Adam moment pair. Five proofs: FD on the shared table equals the summed slot gradients; deterministic locked training (1781->1 mCE, raw-float run-twice bit-identical); the mirror verified equal after every step; the untied baseline diverges (L2 ~5.09 - the tie genuinely changes optimization); red-first shape guard E-TIE-SHAPE"
 ---

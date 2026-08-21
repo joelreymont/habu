@@ -3,7 +3,7 @@ title: Make transaction release total
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T23:21:11.378680+02:00\""
+created-at: "2026-07-22T23:21:11.378680+02:00"
 closed-at: "2026-07-26T08:59:33.243402+02:00"
 close-reason: "Implemented, reviewed, merged: landed as 80dac3c072d2 (Make declaration transaction release total), an ancestor of master@origin. Participant FINALIZE became RELEASE: a private zero-input, zero-output callback invoked uncaught in reverse order only after every reversible commit succeeded."
 ---

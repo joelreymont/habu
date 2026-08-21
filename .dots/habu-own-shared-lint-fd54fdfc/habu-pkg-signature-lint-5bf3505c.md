@@ -3,7 +3,7 @@ title: Package signature lint core
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T17:33:51.445418+02:00\""
+created-at: "2026-07-22T17:33:51.445418+02:00"
 closed-at: "2026-07-25T14:39:37.552833+02:00"
 close-reason: "Landed in master@origin as commit e3458e479e34 'Package signature lint core', reachable from 79c50e5a9dbf, in the composed CHECK train the landing note required. tools/signature-lint-core.f opens package SIGNATURE-LINT with a private body and publishes the six named API words; tools/signature-lint.f, tools/hb-build-direct-lints.f, tools/check-core.f and tools/signature-lint-test-lib.f call them qualified."
 ---

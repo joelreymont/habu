@@ -3,7 +3,7 @@ title: Package AOT lint core
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T17:33:51.543853+02:00\""
+created-at: "2026-07-22T17:33:51.543853+02:00"
 closed-at: "2026-07-23T03:18:14.974865+02:00"
 close-reason: Landed package AOT lint core at 7c59207d; verified in master@origin 2db115be.
 ---

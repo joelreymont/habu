@@ -3,7 +3,7 @@ title: V2 bounded autonomous agent loop
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:28.119666+02:00\\\"\""
+created-at: "2026-07-11T12:25:28.119666+02:00"
 closed-at: "2026-07-18T01:36:07.166504+02:00"
 close-reason: "Bounded controller landed (cfceb8be): untrusted chooser behind the action protocol, five acceptance legs proven, zero new trust. V2 autonomous implementation chain complete."
 blocks:

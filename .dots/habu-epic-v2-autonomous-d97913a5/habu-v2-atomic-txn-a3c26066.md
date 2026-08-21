@@ -3,7 +3,7 @@ title: V2 atomic transaction commit
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:26.960293+02:00\\\"\""
+created-at: "2026-07-11T12:25:26.960293+02:00"
 closed-at: "2026-07-17T23:17:47.009849+02:00"
 close-reason: "Crash-safe commit landed (bde39aea/c1cb38c8): all four acceptance proofs incl. cross-process crash children at every durability boundary; obligations interned; honest process-crash-vs-power-loss boundary recorded with the fsync capability minted."
 ---

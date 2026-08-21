@@ -3,7 +3,7 @@ title: Own resident CHECK gate
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-24T17:15:24.636628+02:00\\\"\""
+created-at: "2026-07-24T17:15:24.636628+02:00"
 closed-at: "2026-07-24T18:11:55.678382+02:00"
 close-reason: Reviewed implementation landed at master@origin 7170b6b6; both CHECK dispatch paths and all required gates are green.
 ---

@@ -3,7 +3,7 @@ title: Fail closed on negative extra-pad in construct/MATCH xpad record
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-22T14:04:11.627759+02:00\""
+created-at: "2026-07-22T14:04:11.627759+02:00"
 close-reason: "Landed as 932507edad14."
 ---
 

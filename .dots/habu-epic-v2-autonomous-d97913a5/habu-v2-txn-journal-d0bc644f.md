@@ -3,7 +3,7 @@ title: V2 transaction journal schema
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:26.896307+02:00\\\"\""
+created-at: "2026-07-11T12:25:26.896307+02:00"
 closed-at: "2026-07-17T18:16:33.413325+02:00"
 close-reason: "Transaction model + JOURNAL/REV codecs landed (16de285f): all four acceptance items test-proven, conservative readings documented, +4 audited refinement rows per precedent. Envelope field wiring noted as follow-up on the envelope dot."
 ---

@@ -3,7 +3,7 @@ title: Retract or re-verify the Orin 1.60x Triton claim
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T14:21:12.843093+02:00\""
+created-at: "2026-07-19T14:21:12.843093+02:00"
 closed-at: "2026-07-19T15:50:13.056913+02:00"
 ---
 

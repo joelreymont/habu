@@ -3,7 +3,7 @@ title: "Type DSL: specify the hard cutover"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T16:45:18.630318+02:00\\\"\""
+created-at: "2026-07-13T16:45:18.630318+02:00"
 closed-at: "2026-07-13T18:14:21.828055+02:00"
 close-reason: Specified and destruction-reviewed unified STRUCTURE/ENUM hard cutover; compact ENUM omits arity and headers; exact census and explicit bootstrap-layout ownership landed at 6e16bb08.
 ---

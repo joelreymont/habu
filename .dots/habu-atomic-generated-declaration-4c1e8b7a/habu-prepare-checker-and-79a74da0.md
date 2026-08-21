@@ -3,7 +3,7 @@ title: Tag checker declaration frames
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T23:20:42.484606+02:00\""
+created-at: "2026-07-22T23:20:42.484606+02:00"
 closed-at: "2026-07-26T08:59:33.222348+02:00"
 close-reason: "Implemented, reviewed, merged: landed as ae390a98d6c7 (Tag checker declaration frames), an ancestor of master@origin. Checker rollback frames carry an ordinary or declaration-owned tag with the recorded coordinator depth; CHECKER-DECL-PREPARE proves the exact tagged frame before publication, rollback removes leaked inner frames while preserving outer scopes, and CHECKER-DECL-RELEASE discards the already-prepared frame without validation or throw. Declaration cleanup no longer delegates to the ordinary finalizer."
 ---

@@ -3,7 +3,7 @@ title: V2 deterministic audit replay
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-11T12:25:27.630504+02:00\\\"\""
+created-at: "2026-07-11T12:25:27.630504+02:00"
 closed-at: "2026-07-18T04:40:15.769168+02:00"
 close-reason: Content-chained audit log + LLM-free byte-stable replay + the DAUTH commit threading landed complete (703b3f94); all rejects typed, all downstream suites green.
 ---

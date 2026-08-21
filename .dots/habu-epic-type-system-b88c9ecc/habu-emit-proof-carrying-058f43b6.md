@@ -3,7 +3,7 @@ title: Emit proof-carrying register allocation certificates
 status: closed
 priority: 3
 issue-type: task
-created-at: "\"2026-07-13T11:44:22.408382+02:00\""
+created-at: "2026-07-13T11:44:22.408382+02:00"
 closed-at: "2026-07-31T17:39:45.191526+02:00"
 close-reason: "Subsumed by A64RA/A64RAV (c19801e794c3): separate validator re-derives and rejects every listed mutation in-process; serialized certificate has no consumer; residue split into the spills and arg-binding dots"
 ---

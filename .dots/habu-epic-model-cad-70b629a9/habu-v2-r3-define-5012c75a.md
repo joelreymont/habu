@@ -3,7 +3,7 @@ title: "V2 R3: define target identity owner"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-12T07:39:30.202491+02:00\""
+created-at: "2026-07-12T07:39:30.202491+02:00"
 closed-at: "2026-07-12T09:41:10.836570+02:00"
 close-reason: Implemented immutable target descriptors and nominal target identity ownership; integrated typed targets into schedule keys without rendered-key drift; focused, Maki, typed-local, trust, inventory, host, filemap, and dependency gates pass.
 blocks:

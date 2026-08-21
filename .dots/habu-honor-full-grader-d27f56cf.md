@@ -3,7 +3,7 @@ title: Honor full grader artifact paths
 status: open
 priority: 2
 issue-type: task
-created-at: "\"2026-07-24T07:02:15.367893+02:00\""
+created-at: "2026-07-24T07:02:15.367893+02:00"
 ---
 
 Problem: `maki/device-artifacts.f` guarantees `MAKI-GRADE:CUBIN$` paths through

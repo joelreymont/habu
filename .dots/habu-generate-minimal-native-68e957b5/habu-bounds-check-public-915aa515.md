@@ -3,7 +3,7 @@ title: Bounds-check public SPEC accessors
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T20:56:48.587252+02:00\""
+created-at: "2026-07-19T20:56:48.587252+02:00"
 closed-at: "2026-07-21T13:30:40.357021+02:00"
 close-reason: "Landed 8f50c0f1: every public equation-spec accessor is bounds-checked against its live domain with the named E-SPEC-RANGE reject fired BEFORE any address arithmetic - six shared owner guards covering the free/contraction/factor/factor-index/row/equation-column domains. The audit found real holes beyond garbage reads: cross-factor index bleed (asking factor 0 for index 2 returned factor 1's variable), a forged row handle reaching raw addressing, and an equation-column overread returning a forged slot from a neighbor cell - all now reject. Red-first mechanically: with only the guard throws neutralized, all 40 new reject tests fail (accessors reach raw addressing); fixed, all flip green, plus last-valid-index sanity and an arena-invariant check. Full model blast radius clean: 185 suites green with zero behavior change beyond the rejects. One recorded scope note: the batch accessor is memory-safe via the free-domain guard; a tighter batch-count semantic check would be a refinement, not a safety fix"
 ---

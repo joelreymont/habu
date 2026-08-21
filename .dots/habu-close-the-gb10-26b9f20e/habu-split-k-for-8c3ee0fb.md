@@ -3,7 +3,7 @@ title: Split-K for the small-shape occupancy hole
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-19T14:23:36.363940+02:00\""
+created-at: "2026-07-19T14:23:36.363940+02:00"
 closed-at: "2026-07-19T20:17:11.389263+02:00"
 close-reason: "Landed 5af83092 with the occupancy hypothesis FALSIFIED: split-K regresses 512-class monotonically in S (S=2 0.40x, S=4 0.34x vs 0.67x committed) - S x partial-write traffic + reduce pass outweighs occupancy gain. Ships off-by-default (byte-identical S=1), element-exact 16/16 across tf32/fp16/bf16 at 512/1024, E-CUDA-WS fail-closed workspace sizing, Round 12 recorded. 512-class parity needs a different lever"
 ---

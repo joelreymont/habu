@@ -3,7 +3,7 @@ title: "Checker: type STRUCTURE words"
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"\\\\\\\"\\\\\\\\\\\\\\\"2026-07-13T17:14:41.079256+02:00\\\\\\\\\\\\\\\"\\\\\\\"\\\"\""
+created-at: "2026-07-13T17:14:41.079256+02:00"
 closed-at: "2026-07-21T18:09:23.095248+02:00"
 close-reason: "landed swusykrl: STRUCTURE construct/access already correct via shared product-ctor path; certify suite pins it; TRUSTED rows repointed to seal-set-check"
 ---

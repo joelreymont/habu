@@ -3,7 +3,7 @@ title: Propagate content cache failures
 status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-19T20:48:14.544871+02:00\\\"\""
+created-at: "2026-07-19T20:48:14.544871+02:00"
 closed-at: "2026-07-20T23:16:36.745670+02:00"
 close-reason: "Merged 412e2988: CK-CACHE-PERSIST rethrows the original code through cleanup (REMOVE-FILE-only swallow kept under its comment), CK-CACHE-DISABLED removed entirely (save is total: fully persists or throws), dirty state survives failure for retry, injected-fault seam proves all seven properties incl. mask-avoidance; run.f green on the gate-cache machinery"
 ---

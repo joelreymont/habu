@@ -3,7 +3,7 @@ title: Fuse multi-head QKV projection
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-19T23:34:28.076569+02:00\""
+created-at: "2026-07-19T23:34:28.076569+02:00"
 closed-at: "2026-07-20T21:44:21.765806+02:00"
 close-reason: "Landed 01128c75 (GO with measurements): one fused c_attn GEMM replaces three projections - total GEMM dispatches 12 -> 6 per training step, X handed to projection contractions 6 -> 2, bias passes 3 -> 1 each way. Honest caveats recorded: FLOPs unchanged (dispatch/traffic win); host-only sublayer so no device leg exists to measure yet. Numerics BIT-IDENTICAL: fused weight blocks equal the separate weights exactly, same LCG draw order, training locks 1789/532 held without moving. The lane's NaN turned out to be the ptr+n-where-index-meant hazard in its own test scaffolding (matching the orchestrator's read-through diagnosis) - fixed at the index form, pattern now recorded twice"
 ---
