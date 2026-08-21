@@ -147,3 +147,57 @@ census called unremarkable - TF-RBF-DEPTH is the open sibling, own dot);
 acceptance must use the discriminating legs (bare E-UNDEFINED + qualified-
 private E-UNDEFINED), never "public still rc 70" which is green both sides.
 Iteration cost ~14s install, ~4.5min run.f.
+
+TYPE-FAMILY SEALED (seal-4, 2026-08-21) - the second of the three ordered seals
+is done, and it moved the numbers the third one has to plan against.
+
+MEASURED SPLIT. 572 globals -> 221 public / 345 private / 6 that could not move.
+The census criterion is "referenced from outside the package", and it has THREE
+kinds of caller, not one: 46 consumer files elsewhere in the tree, the checker's
+own PRIM: rows, and the five inner packages type-family.f itself opens
+(TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER, CHECKER-DECL-FRAME, PREFIX-BOUND).
+The earlier scout's 572/163/53 counted only the first kind. Packages DO NOT NEST
+(habu2.f C-PACKAGE exits $4B), so the inner blocks close TFAM and reopen it and
+read the registry through the file's own `using TFAM` - which is why 50 names
+with no tree-wide consumer are public. They cost no capability: a colon public
+with no axiom is marked DNAME-INT (rc 70) and every public data record carries
+REG-PROTECT, so the qualified spelling is refused exactly like the bare one was.
+
+SIX NAMES ARE ENGINE ABI AND NO SEAL CAN MOVE THEM. habu2.f compiles
+match/construct/;match through C-FIND-GLOBAL, which ZEROES the open package's
+wordlist cells before the lookup, so TFAM-NAME$, TFL-CON-FAM?, TFL-CVAR? and
+TFL-MATCH-FAM? must stay global (bootstrap/cg/forth.fs mirrors the same four
+spellings byte for byte); the AOT boot seed re-resolves a baked call site only
+through a global scope, so TFAM-CTOR-WORD? (called from src/habu/xref.f) and
+TF-SHA16-XT (from src/core/type-family-sha.f) must too. Both failure modes were
+measured on the candidate, not assumed: the bare name written to fd 2 with rc 70
+on every boot, and `hb: AOT call site unresolved` rc 82. THE THIRD SEAL MUST
+SWEEP FOR THESE FIRST: rg the engine sources for `s" <name>"` literals matching
+the file's globals, and rg test files for names inside child-program strings
+(test/prop-test-core.f names eight registry accessors that no code-token census
+reports).
+
+WHAT THE SEAL BOUGHT, measured on master before and after through bin/hb --load:
+`0 TF-RBF-P !` + a SUMTYPE went from rc 134 SIGSEGV to E-UNDEFINED (the exact
+SCH-RBF-P sibling, private now); `99999 SVX-HI !` + a rejected declaration went
+from exit 76 `tfam: ctor index retired after its rows went` to E-UNDEFINED
+(SVX-HI has two outside readers, so it is public and gained REG-PROTECT, as did
+TF-RBF-DEPTH - dot habu-tf-rbf-depth-614c88e0, closed with this).
+
+TFAM IS A RESERVED SYSTEM-PACKAGE NAME, which the seal inherited for free and
+sumtype.f will not: `tfam` is in habu2.f KWDATA:RESTAB-BUF, so
+C-QUALIFY-SEAL-GUARD refuses `' TFAM:<any tail>` with rc 84 before any lookup.
+That is stronger than the schema package's answer and it covers privates too.
+It also breaks any fixture that ticks a TFAM tail - the laundered-execute case
+in test/internal-word-gate.f had to move to a SCHEMA-REG cell to keep testing
+E-EXEC-OPAQUE-XT rather than the seal guard.
+
+CROSSING BINARY. The installed bin/hb cannot boot a tree whose prefix moved
+words into a package, and tools/build-fixpoint.f BF-BOOTSTRAP-STAGE hard-codes
+bin/hb as its first-generation compiler, so `install` fails the same way.
+bin/hb-host (no AOT window) boots the converted tree: `cp bin/hb-host bin/hb`
+then `install --force`. ~15s to cross, byte-identical from the second generation.
+
+The whole-file GLOBAL-IMPLEMENTATION? row is GONE and its positive fixture is a
+negative; a narrow GLOBAL-SURFACE? row (TFAM-BRIDGE?) admits the six by exact
+path, name and definer, mutation-proved on both clauses.
