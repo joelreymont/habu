@@ -30,6 +30,10 @@ public
 : BPT-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
 ;package
 
+\ tools/boot-pin.f is `package BOOT-PIN`; this suite calls seven of its publics,
+\ so it imports the namespace once and keeps every call site bare and unchanged.
+using BOOT-PIN
+
 64 constant BPT-HEX-U
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
@@ -220,3 +224,5 @@ variable BPT-OFF
    T-REPORT ;
 
 BPT-RUN-ALL
+
+;using

@@ -29,6 +29,16 @@
 
 require lib/memory.f
 
+\ The file is `package BOOT-PIN` (dot habu-package-boot-pin-4a1c9f2e). It owns
+\ the boot-prefix path list, so every change to that list is a change to a word
+\ in this file, and while the file had no package at all the ownership lint
+\ refused the edit outright — `BP-EACH` defines a changed module word outside a
+\ package. Route 3 moves the prefix ORDER, so that edit had to become possible.
+\ The `BP-` tails are kept: consumers import with `using BOOT-PIN` and their
+\ call sites stay byte-identical, which is what keeps the packaging out of every
+\ consumer's definition lines.
+package BOOT-PIN
+
 32 constant BP-LEN                  \ SHA-256 digest bytes
 64 constant BP-HEX-LEN              \ SHA-256 hex digest chars
 $400 constant BP-MAN-INIT            \ initial manifest bytes; grows with prefix rows
@@ -46,10 +56,13 @@ variable BP-MAN-CAP BP-MAN-INIT BP-MAN-CAP !
 create BP-HEXOUT  80 allot
 create BP-ROOT    BP-PATH-CAP allot               \ optional path prefix (--root)
 create BP-PATHBUF BP-PATH-CAP allot
-variable BP-ROOT-U
 variable BP-MAN-U
 variable BP-OK
 variable BP-SET
+
+public
+variable BP-ROOT-U                  \ 0 = hash the checkout; else BP-ROOT is a tree root
+private
 
 : BP-MANIFEST ( -- ptr a ) BP-MAN-P @ ;
 
@@ -81,6 +94,7 @@ variable BP-SET
 : BP-HEX-BYTE ( ptr u8 -- n ) {: a:ptr :}
    a c@ BP-NIB 16 *  a 1 + c@ BP-NIB + ;
 
+public
 : BP-DIGEST-HEX! ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u BP-HEX-LEN <> if BP-FALSE exit then
    BP-LEN 0 do
@@ -92,6 +106,7 @@ variable BP-SET
 : BP-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    u BP-PATH-CAP > if s" boot-pin: --root too long" BP-USAGE-RC die then
    a BP-ROOT u BYTE-COPY  u BP-ROOT-U ! ;
+private
 
 : BP-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    BP-ROOT-U @ 0= if a u exit then
@@ -123,6 +138,7 @@ variable BP-SET
 \ PFX-LOAD-INTMARK; the cross-check
 \ test enforces membership + count against that source. The hash and the test
 \ sandbox-copy both drive this, so the list lives in exactly one place.
+public
 : BP-EACH ( [ ptr u8 n -- ] -- ) {: q :}  \ typed-local-lint: allow-bare-local - quotation bound as ordinary local (docs/forth.md)
    s" src/core/util.f" q execute
    s" src/core/cell.f" q execute
@@ -170,11 +186,13 @@ variable BP-SET
    s" lib/vector.f" q execute
    s" src/os/script-argv.f" q execute
    s" src/core/internal-mark.f" q execute ;
+private
 
 : BP-HASH ( -- )                                          \ -> BP-GOT (+ BP-OK)
    BP-TRUE BP-OK !  0 BP-MAN-U !  [: BP-ACC ;] BP-EACH
    BP-MANIFEST BP-MAN-U @ BP-GOT SHA256 ;
 
+public
 : BP-HASH-HEX ( ptr a -- ) {: dst:ptr :}                  \ hex of on-disk prefix -> dst (64 chars)
    BP-HASH BP-GOT dst SHA256>HEX ;
 
@@ -186,6 +204,7 @@ variable BP-SET
 \ ---- CLI -------------------------------------------------------------------
 : BP-DIAG$ ( -- ptr u8 n )
    s" boot-pin: on-disk boot prefix does not match expected digest (drift from certified checker/core source)" ;
+private
 
 : BP-USAGE ( -- )
    s" usage: tools/boot-pin.f [print | verify <64-hex>]" BP-USAGE-RC die ;
@@ -209,7 +228,9 @@ variable BP-SET
       1 +
    repeat drop ;
 
-: BOOT-PIN-MAIN ( -- )
+public
+\ The CLI entry, spelled `BOOT-PIN:MAIN` the way tools/check.f spells `CHECK:MAIN`.
+: MAIN ( -- )
    BP-SCAN-ROOT
    SCRIPT-ARGC 0= if BP-PRINT exit then
    0 SCRIPT-ARGV$ s" print" CORE-STR= if BP-PRINT exit then
@@ -218,3 +239,5 @@ variable BP-SET
       1 SCRIPT-ARGV$ BP-VERIFY exit
    then
    BP-USAGE ;
+
+;package

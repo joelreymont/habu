@@ -29,6 +29,6 @@ public
 \ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
 : FILES ( [ ptr u8 n -- ] -- ) {: q :}
    s" bin/hb" q execute
-   q BP-EACH ;
+   q BOOT-PIN:BP-EACH ;
 
 ;package
