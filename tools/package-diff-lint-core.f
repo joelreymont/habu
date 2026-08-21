@@ -353,6 +353,56 @@ variable FILE-USED
 \ nowhere at all.  Sealing removes that objection; until the reopen defect is
 \ closed, this file is more sealed as an allowlisted global than as a package.
 \
+\ lib/test/runner.f and lib/test/runner-test.f are the one entry here that does
+\ NOT fit the list's contract, and saying so is the point of the row rather than
+\ an apology for it.  Every other member is a core language or prelude surface:
+\ it loads before packages exist, or it owns a global declaring word.  The test
+\ runner is neither.  It loads long after the check hook, it declares nothing,
+\ and its globals are raw GT-/GTT- stems -- ordinary packaging debt, the shape
+\ this lint's own history packages rather than admits (test/internal-word-gate.f
+\ left the sibling category and became `package INTERNAL-WORD-GATE` with its 85
+\ IWG- helpers renamed; lib/process-pty-handle.f is named in that category's
+\ header as a file that must NOT be added).  This row is a bridge across a
+\ measured campaign, not a claim that the file belongs.
+\
+\ What it cost to avoid, measured 2026-08-21 rather than estimated.  The freeze
+\ is total and it is not about new words: on pristine master, editing one body
+\ line of GT-RC-NONZERO -- a word the change never touches -- reported
+\ `E-PACKAGE-OWNERSHIP lib/test/runner.f:312:3`, so no change to the runner
+\ could land at all, including the repair of the blind failure that found this
+\ (dot habu-gt-rc-throws-395eb72a: GT-RC= reduced the observed exit code to a
+\ bool, and two agents diagnosed spawn failures with the rc never printed).
+\ Packaging was then BUILT, not guessed: `package GT` with all 84 definitions
+\ stripped to bare names, `package GTT` beside it, 24 consumers rewritten to
+\ `GT:RUN` form, 558 token rewrites, loading clean and green.  It reported 64
+\ NEW ownership findings in seven more unpackaged files -- gate-common-lib.f,
+\ gate-pool.f, gate-engine-lib.f, gate-debug-lib.f, gate-build-common.f,
+\ gate-stdlib-inline-lib.f, gate-build-hbb.f -- because a qualifier edit lands
+\ inside their definitions and touching a definition in an unpackaged file IS
+\ the finding.  A static ring-3 census (scope-aware, comments and strings
+\ excluded) proved the cluster closes there: every global caller of those seven
+\ is another of the seven.  Bounded, then -- but two facts the census could not
+\ see decide it.  A transform over those 782 names is only safe driven by
+\ tools/lint/def.f's 57 defining forms, not a hand list: `defer RUN` at
+\ gate-engine-lib.f:899 and the three `defer` hooks in gate-pool.f are global
+\ definitions a six-definer scan never sees.  And nineteen of the names live
+\ inside string literals in three load-bearing classes, each a separate
+\ judgement: `GE-FILES:` is itself one of def.f's 57 forms, so the rename edits
+\ the classifier this lint consumes and its fixtures; `GSI-INCLUDE`,
+\ `GSI-FORK-INCLUDE` and `GSI-REQUIRE` are matched AS TEXT by
+\ tools/lint/schedule-lint.f:583-585, the lint that proves every test file is
+\ registered in a suite, so a rename that misses those strings stops it seeing
+\ registrations and still exits 0; and gate-engine-lib.f:779-791 builds child
+\ program source calling GE-HB$, GE-RUN-STDIN-FILE and GE-RUN-ENV by name while
+\ GE-SHAPE-FIND-AFTER searches source TEXT for the literal `GE-RUN-STDIN`.  A
+\ 782-name sweep whose failure mode is silent green is not a lane's tail work.
+\
+\ ITS RETIREMENT IS THE CAMPAIGN, dot habu-pkg-lib-test-06230d06, which owns the
+\ gate-cluster packaging with that first leg, the census and its static method,
+\ the def.f-driven requirement, the three string classes and a schedule-lint
+\ re-verification as a closing gate.  When it lands, this row's two positives
+\ below become negatives in the fixture, exactly as asm.f's did.
+\
 \ Package-boundary changes are still reported for every file here
 \ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
 \ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
@@ -375,6 +425,10 @@ variable FILE-USED
    FILE$ s" src/os/image-bytes.f" LINT-STR= if true exit then    \ image writer, interim; see header
    FILE$ s" src/os/linux/elf.f" LINT-STR= if true exit then      \ image writer, interim; see header
    FILE$ s" src/os/macos/macho.f" LINT-STR= if true exit then    \ image writer, interim; see header
+   \ Retires with the gate-cluster packaging campaign, habu-pkg-lib-test-06230d06;
+   \ does not fit this list's contract and says so in the header.
+   FILE$ s" lib/test/runner.f" LINT-STR= if true exit then       \ test runner, campaign bridge; see header
+   FILE$ s" lib/test/runner-test.f" LINT-STR= if true exit then  \ test runner, campaign bridge; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
 \ Declaration-grammar fixture suites.  The second principled category, built on

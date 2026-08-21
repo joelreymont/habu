@@ -182,6 +182,10 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" lib/adt" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ the test runner's own directory: the campaign-bridge row names two files in
+   \ it, so its neighbours and its prefix-sharing siblings are negatives
+   TEST-ROOT$ s" lib/test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" tools" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    \ holds the stage0 hostile that ends in a listed path from outside test/,
@@ -1652,6 +1656,73 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deleted package boundary in internal-mark.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- lib/test/{runner,runner-test}.f: the test runner, campaign bridge ----
+\ The positive is the exact probe that measured the freeze on pristine master:
+\ one body line of GT-RC-NONZERO, a word the repair never touches, reported
+\ `E-PACKAGE-OWNERSHIP lib/test/runner.f:312:3`, so no change to the runner could
+\ land -- not even printing the exit code a failed comparison saw.  The second
+\ positive is the new global word, which the row must admit because the repair
+\ adds GT-CHECK-N and GT-CHECK$ and the regression adds its own helpers.
+\ The negatives carry the whole weight of a row whose header admits the file does
+\ not belong: it must admit these two paths and nothing that merely resembles
+\ them.  A sibling carrying the path as a prefix, the same basename in another
+\ directory, the neighbour that shares the directory, and any scope change inside
+\ an admitted file itself all still report.
+
+: TEST-WRITE-RUNNER-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : GT-RC= ( -- ) ;" TEST-SOURCE-LINE
+   s" lib/test/runner.f" TEST-WRITE-SOURCE ;
+
+: TEST-RUNNER-OWNER-LOSS-DIFF ( -- )
+   s" lib/test/runner.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package GT" TEST-DIFF+ TEST-LF
+   s"  : GT-RC= ( -- ) ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-RUNNER-EXEMPTION ( -- )
+   \ Positive: the control probe that proved the gate rejected every possible
+   \ change to the runner -- one comment-only edit to an existing global body --
+   \ is now admitted.
+   s" lib/test/runner.f" TEST-CHECKER-COMMENT-CASE
+   s" the test runner exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global word is admitted too - the shape GT-CHECK-N and
+   \ GT-CHECK$ arrive in.
+   s" lib/test/runner.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" the test runner exempts a new global definition" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: the fixture file is the second admitted path, because the
+   \ regression that proves the repair adds definitions of its own.
+   s" lib/test/runner-test.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" the runner fixture exempts a new global definition" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying an admitted path as a prefix is not an exact
+   \ match and must still fail (not a startswith match).
+   s" lib/test/runner-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling lib/test/runner-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the admitted path
+   \ as a suffix but is not exact, so it must still fail (full path, not suffix).
+   s" test/runner.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" test/runner.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the runner's own neighbours in lib/test/ are NOT in the row - the
+   \ entry is two named files, not the lib/test tree and not the campaign's
+   \ eventual scope.
+   s" lib/test/suite.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/test/suite.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): once the file DOES open a package - the retirement
+   \ this row waits on - deleting that boundary still reports lost ownership.
+   \ The row suppresses a plain global body or definition change, never a scope
+   \ change.
+   TEST-WRITE-RUNNER-OWNER-LOSS
+   TEST-DIFF-RESET TEST-RUNNER-OWNER-LOSS-DIFF
+   s" deleted package boundary in runner.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 \ ---- src/os/{image-bytes,linux/elf,macos/macho}.f: the image writer ----
 \ Same category and same fixtures as the ARM64 encoder prefix: none of the three
 \ carries a package, and every later prefix source resolves their names bare. The
@@ -2916,6 +2987,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION
    TEST-INTMARK-EXEMPTION
+   TEST-RUNNER-EXEMPTION
    TEST-ARM64-EXEMPTION
    TEST-IMAGE-EXEMPTION
    TEST-ENGINE-EXEMPTION
