@@ -14,6 +14,11 @@
 \ does not exist yet and refuse the boot outright ("hb: using: unknown package:
 \ TFAM", measured). The hooks are bound at the foot of src/core/type-family.f.
 
+\ RENDER IS AN IMPLEMENTATION SURFACE. It reaches the registry through
+\ deferred hooks and publishes nothing but its diagnostic buffer; the three
+\ interface names carry a trailing API (src/core/util.f).
+IMPLEMENTATION
+
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 16384 constant RSBUF-CAP
@@ -38,10 +43,12 @@ variable RDIAG-I
    cap RDIAG-CAP !
    0 RDIAG-U !
    -1 RDIAG-ON ! ;
+API   \ DIAG-BUFFER!
 
 : DIAG-BUFFER-OFF ( -- )
    0 RDIAG-ON !
    0 RDIAG-U ! ;
+API   \ DIAG-BUFFER-OFF
 
 \ Typed slot for the diagnostic buffer pointer: a plain `variable @` reads back
 \ an untyped n, so the byte store below would not certify; `0 ptr-field` gives
@@ -51,6 +58,7 @@ variable RDIAG-I
 
 : DIAG-BUFFER$ ( -- ptr u8 n )
    RDIAG-A-FIELD @ RDIAG-U @ ;
+API   \ DIAG-BUFFER$
 
 : RDIAG-COPY ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -1055,3 +1063,4 @@ USHADOW-DIAG-INSTALL
    0 RDST !  0 RSN ! ;
 : TSTALE-DIAG-INSTALL ( -- ) [: TSTALE-DIAG ;] is TSTALE-DIAG-XT ;
 TSTALE-DIAG-INSTALL
+;IMPLEMENTATION

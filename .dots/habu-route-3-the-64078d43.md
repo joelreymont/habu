@@ -38,9 +38,11 @@ SCOUTED VERDICT (2026-08-20, full map in the scout report; re-measured):
    If the owner-side bill approaches that, route 3 nets far less than the
    epic assumes - re-open the ruling on that number.
 
-Claim: agent=route3-3 workspace=.jj-ws/habu-trusted (STOOD DOWN 2026-08-21 at
-context depth, with a BANKED three-commit chain - see BANKED BY ROUTE3-3 below
-for the successor pointer and everything that exists nowhere else)
+Claim: agent=route3-4 workspace=.jj-ws/habu-trusted (TAKEOVER 2026-08-21 from
+route3-3, which stood down at context depth with a BANKED three-commit chain -
+see BANKED BY ROUTE3-3 below for that lane's record, and MEASURED BY ROUTE3-4
+at the end of this leaf for what the attribution pass found, which supersedes
+route3-3's reading of two of the thirteen assertions)
 
 HARD GATE ANSWERED (2026-08-20, lane route3-1). ALL 662 DEFINITIONS
 TYPECHECK. Measured through the real driver, tools/check.f -> check-core.f
@@ -424,3 +426,296 @@ defer did not free it from `using TFAM`, which fails the boot outright with
 entries must move their separators too (tools/bootstrap.sh's `printf '\n'`
 lines were left behind, gluing five concatenated sources together, and the file
 still passed `bash -n`).
+
+MEASURED BY ROUTE3-4 (2026-08-21). The eleven unattributed assertions are
+attributed, and attributing them turned up a bigger fact than the assertions
+themselves. Every number below came off the two engines side by side: the
+candidate in .jj-ws/habu-trusted and master 81d88a3a in the main worktree,
+same probe program, same day.
+
+--- 1. THE THIRTEEN ASSERTIONS, EACH TO ITS MECHANISM -----------------------
+Ordinals were located by running the gate with a counter print at every phase
+boundary, then counting the assertions inside the phase word; every one was
+then confirmed by running its child program by hand. The gate file itself was
+not edited.
+
+  ord  phase / case                      what actually happens
+   36  NEG-BARE, bare T-RES              rc 70, but the message is now
+                                         "interpret stack underdepth: T-RES"
+   52  NEG-BARE, bare CT-LIVE?           same, for CT-LIVE?
+  389  CTLIVE-CASES, CT-LIVE? --load     same
+  393  CTLIVE-CASES, CT-LIVE? stdin      same
+  443  SEAL-CASES, SCHEMA-REG:SCHEMA-A@  same
+  467  TFAM-SEAL-CASES, TFAM:PF-FIND     same
+  507  TFAM-SEAL-CASES, TFL-CVAR?        same
+  425  QUAL-CASES, using SCHEMA-REG      the child EXITS 0. 426 and 427 are the
+  426                + bare REWIND       two message checks failing behind it.
+  427
+  429  QUAL-CASES, 0 0 SCHEMA-REG:REWIND the child EXITS 0. 430 and 431 are the
+  430                on --load           two message checks failing behind it.
+  431
+
+TWO MECHANISMS, NOT ONE. The seven "underdepth" rows are the class route3-2
+described: the name became checker-known, so src/core/internal-mark.f stopped
+setting DNAME-INT on it and poked DNAME-MIN-IN instead. Still refused, still
+rc 70, different sentence. T-RES and CT-LIVE? are checker-known because this
+change adds a PRIM: row for each in checker.f; SCHEMA-A@, PF-FIND and TFL-CVAR?
+are checker-known because their own definitions now record a signature.
+
+THE SIX rc-0 ROWS ARE NOT THAT CLASS, and route3-3's leaf attributes them to it
+in error. They are the habu-pkg-publics-escape-41532ee7 defect coming back:
+SCHEMA-REG:REWIND takes two inputs, the child program supplies two, so the
+depth guard has nothing to refuse and the word RUNS. Witness, on the candidate:
+
+    SCHEMA-REG:SCHEMA-N@ . cr      \ 50
+    0 0 SCHEMA-REG:REWIND
+    SCHEMA-REG:SCHEMA-N@ . cr      \ 0
+    SUMTYPE r34wipe 0 VARIANT r34a n ;VARIANT ;SUMTYPE   \ rc 76, bad schema node
+
+On master the same program answers "hb: internal engine word: SCHEMA-REG:REWIND"
+and rc 70. Anybody updating those six numbers without running the program would
+have written down that a live registry wipe is expected behaviour.
+
+--- 2. HOW BIG THE HOLE IS, MEASURED NOT ESTIMATED --------------------------
+Finding 1 is reduced, not closed. Probe: every public of the moved block (from
+tools/public-signatures.f, which reads the real sources and reports each word's
+declared inputs) plus every PRIM:/PPRIM: row this change adds to checker.f -
+369 names. Each was called from an ordinary `bin/hb --load` program with its
+declared inputs supplied as zeros, on the candidate and on master.
+
+  288 names that master REFUSES are REACHABLE on the candidate:
+      231 run to completion, rc 0
+       28 reach an engine die, rc 76
+       25 reach an uncaught throw, rc 67
+        4 take the process down with a register dump, rc 134
+
+  by owner:   TFAM 132   checker.f globals 68   SCHEMA-REG 42
+              layout-buffer.f globals 26   TYPE-DECL 18   TYPE-NAME 2
+
+The four crashes are the c5be6634 class this gate exists to prevent, and all
+four are refused on master:
+    0 0 0 REG-GROW1            rc 134   (checker.f)
+    0 0 0 REG-PERSIST-BUF      rc 134   (checker.f)
+    0 0 0 0 LBUF-VALIDATE      rc 134   (layout-buffer.f)
+    0 0 0 0 STORAGE-VALIDATE   rc 134   (layout-buffer.f)
+Also newly handed to user source: raw arena base pointers (TFAM:PF-BASE,
+SCHEMA-REG:SCH-BASE, SCHEMA-REG:SCH-ROOT-BASE, TFAM:TF-RBF-CUR) and whole-
+registry resets (TFAM:TFAM-RESET, SCHEMA-REG:SCHEMA-RESET).
+
+THE OWNING SOURCE STATES THE RULE ITSELF. src/core/internal-mark.f: a record
+with no checker-known effect gets DNAME-INT and is refused; one with a
+checker-known effect and declared inputs above zero gets DNAME-MIN-IN and is
+refused only on a short stack; one with a checker-known effect and no declared
+inputs gets nothing at all. Its stated aim - "the executable top-level name
+universe equals the checker's" - held while only a curated public API was
+checker-known. This change makes 662 implementation definitions checker-known,
+so the same rule admits all of them.
+
+--- 3. WHAT THE SPECIFIED SWEEP CAN AND CANNOT REACH ------------------------
+Consumer census over the 194 reachable names that belong to a package, counting
+references through the tree's own lexer (tools/lint/source-lex.f, so a name in
+a comment or a string is not a reference) across all 1519 .f files:
+
+    59  referenced nowhere outside their own file      -> private, or delete
+    83  referenced only by prefix siblings in src/core -> private + the
+                                                          DERIVE-SET extension
+    46  referenced only by TESTS                       -> needs a ruling
+     6  referenced outside src/core                    -> genuinely public
+   ---
+   194
+
+So the sweep reaches 142 cleanly and 46 more depend on whether a test may reach
+a registry internal. The remaining 94 are NOT package publics at all - they are
+globals in src/core/checker.f (68) and src/core/layout-buffer.f (26), both of
+which docs/forth.md admits by exact path as global surfaces. Making a word
+private is not available to either file, and PPRIM: cannot reach a package
+private in any case. Those 94 include all four crashes.
+
+--- 4. THE TREE DOES HAVE A CEREMONY THAT WOULD WORK ------------------------
+Falsified, not assumed. src/core/util.f REG-PROTECT records the just-defined
+record's dictionary index, and internal-mark.f IMK-SEAL-REGISTRY int-marks every
+index in that list after the classifying walk. Its comment scopes it to data
+cells, but the mechanism reads a dictionary index and nothing else. Adding one
+REG-PROTECT after `: PF-BASE ( -- ptr a ) PF-A-P @ ;` in type-family.f and
+rebooting turns the candidate's rc-0 `TFAM:PF-BASE . cr` into
+"hb: internal engine word: TFAM:PF-BASE" rc 70, while the engine still boots
+and a real SUMTYPE declaration still registers (family count 120, rc 0) - the
+compiled callers and the checker never consult that flag. The probe was reverted;
+the working copy is clean.
+
+So the residue is answerable with a mechanism the tree already ships. What it is
+NOT is a decision this lane may take: 94 REG-PROTECT rows is a hand-kept list
+where the ruling's own words ("private by default; whatever stays public is
+genuine API") point at a rule instead. The three shapes worth weighing are one
+REG-PROTECT row per residual name; packaging layout-buffer.f and checker.f,
+which is a docs/forth.md exact-path policy change plus the checker-sealing dot
+habu-seal-the-checker-5314c0ab; or giving internal-mark.f a second input so a
+file can declare its definitions to be implementation rather than top-level API.
+
+--- 5. WHY THIS LANE STOPPED HERE -------------------------------------------
+The reclassification sweep is worth doing and is tractable - 142 names with no
+argument to have about them. It is not sufficient. Running it first would leave
+94 reachable globals and four process crashes behind, pass every gate the
+banked chain already passes, and look finished. That is the shape this campaign
+has been caught by four times, and the leaf above says so in its own words.
+Open questions for the orchestrator, in the order they block work:
+  1. the 94 globals - which of the three shapes above;
+  2. the 46 test-only consumers - may a test reach a registry internal, or does
+     the test move to the public entry;
+  3. the six genuine external consumers (TFAM:SUMV-CTOR-SYM@,
+     TFAM:TFAM-SIG-RESOLVE, TFAM:TFAM-ACTIVE-PKG$, TYPE-DECL:TDPLAN-BEGIN,
+     TYPE-DECL:TDPLAN-DEF$, TYPE-DECL:TDECL-CTOR-WORD) - API, or consumers to
+     convert.
+Nothing in the banked chain was changed by this lane. The gate assertions were
+NOT updated: five of the thirteen describe behaviour that is currently wrong,
+and the number to write down depends on answer 1.
+
+--- 7. THE RULINGS EXECUTED, AND THE SECOND HOLE (route3-4, 2026-08-21) ------
+RULING 1 IS BUILT AND IT WORKS. src/core/util.f gains three words next to
+REG-PROTECT - IMPLEMENTATION, ;IMPLEMENTATION and API - recording a [from, to)
+dictionary span per declared file plus the records in it that are interface;
+src/core/internal-mark.f gains IMK-SEAL-IMPLEMENTATION, which sets DNAME-INT on
+every other COLON record in each span whatever the checker knows of it. Four
+files declare themselves: checker.f (138 API), type-family.f (51),
+sumtype.f (7), type-schema.f (2), layout-buffer.f (6), render.f (3), util.f (5).
+
+  Top-level name universe, candidate against master 81d88a3a, whole dictionary
+  including package publics, read out of the engine's own record array:
+      residue ............... 0   (was 288)
+      API regressions ....... 0
+  test/internal-word-gate.f: ALL THIRTEEN ASSERTIONS GREEN, no test edited.
+  The four register-dump programs, both registry wipes and the arena-base read
+  all answer `hb: internal engine word`, rc 70.
+
+THE FAIL-CLOSED PROOF THE RULING ASKED FOR, measured: a definition added inside
+a declared file with NO other edit is refused -
+`: R34-NEW-DEFINITION ( n -- n ) 1 + ;` in layout-buffer.f answers
+`hb: internal engine word: R34-NEW-DEFINITION` rc 70; the same line followed by
+API prints 4 and exits 0. A list of protected names cannot do that, which is why
+the 94 REG-PROTECT rows were the wrong shape.
+
+RULING 2 COST NOTHING. No suite needed a TRUSTED: shim: DNAME-INT is read by
+interpret dispatch and interpret tick only, so a test that calls a registry word
+from inside a definition is untouched, and none called one at top level.
+
+RULING 3, the six recorded as the moved block's intentional API surface:
+TFAM:SUMV-CTOR-SYM@, TFAM:TFAM-SIG-RESOLVE, TFAM:TFAM-ACTIVE-PKG$,
+TYPE-DECL:TDPLAN-BEGIN, TYPE-DECL:TDPLAN-DEF$, TYPE-DECL:TDECL-CTOR-WORD. Each
+is decl-machinery its consumers legitimately name.
+
+THE SECOND HOLE, AND IT IS THE WORSE ONE. DNAME-INT guards the interpret route
+by design and says so; it does not guard CHECKED code, and the checker never
+consults it. Being post-hook publishes every package PUBLIC of the three
+registry files to checked user source under its qualified name. Measured the
+same way, 351 package publics probed as `: X ( -- ) PKG:NAME drop drop ;` on
+both engines:
+
+    291 package publics reachable from CHECKED code on the candidate and
+        E-UNDEFINED on master   (TFAM 194, SCHEMA-REG 61, TYPE-DECL 34,
+        TYPE-NAME 2)
+
+and that includes the raw registry cells. util.f's own comment names the exploit
+it was written to stop; here it is, through the checked path, on the candidate:
+
+    : R34W ( -- ) $63 TFAM:PF-COMMIT-N ! ;
+    TYPE-FIELD:COUNT . cr     \ 48
+    R34W
+    TYPE-FIELD:COUNT . cr     \ 99      exit 0
+
+Master answers `E-UNDEFINED habu: in r34w: undefined word 'TFAM:PF-COMMIT-N'`
+and rc 70. The ONLY closure for this route is package `private` - which is the
+`public -> private` half of the ordered sweep, and it is therefore not
+optional and not deferrable. Consumer census for those names, counted through
+the tree's own lexer over all 1519 .f files:
+     65  reachable only from files that already REOPEN the package - private
+         costs those consumers nothing
+    129  reached through `using PKG` or a qualified call and need the
+         DERIVE-SET conversion (58 of them from tests only)
+The 42 SCHEMA-REG names in that second group are reached by six prefix siblings
+through `using SCHEMA-REG`; converting them means those siblings reopen the
+package, which is expressible but is a restructuring of the boot prefix rather
+than an edit.
+
+ONE RED IS LEFT AND IT IS THIS HOLE'S SYMPTOM, not a separate defect.
+test/type-field-owner-suite.f assert 188 is
+`s" TFO-N3 ( -- n ) PF-COMMIT-N" NOT-RETIRED`: the fixture was written when
+PF-COMMIT-N was unmodelled, so the checker answered 1 (uncheckable) and the
+assertion passed. The cell is checker-known now with effect `-- ptr n`, so the
+fixture's declared `( -- n )` is a type error and the verdict is 0. Correcting
+the fixture's effect would make it green while writing the defect down as
+expected, so it is left red and named here. It goes away when PF-COMMIT-N
+becomes private, and its REGISTRY-CASES sibling then moves from TF-CELL-PUB to
+TF-CELL-PRIV - a strengthening the model asks for.
+
+STATE OF THIS CHAIN: crossing fixpoint build + install rc 0 (roundtrip ok, two
+processes wrote the same artifact); internal-word-gate green; maki rc 0 zero
+FAIL/RED; both diff lints 0; error-code-lint 0; dot-dep-lint 0; type-decl,
+type-family, type-family-rollback, type-export, enum-decl, structure-decl,
+boot-pin and using suites all rc 0. NOT LANDABLE while assert 188 is red.
+
+LESSONS (verbatim, for LESSONS.md at merge):
+- **A gate ordinal is not a mechanism.** Two of thirteen failures carried the
+  same message and came from opposite causes - one a diagnostic reworded, one a
+  registry mutator running to exit 0. Print the assertion counter at each phase
+  boundary to locate the ordinal, then run its child program by hand; a
+  predecessor's attribution is a claim, not a measurement.
+- **"The checker can type it" and "a user may type it" are two facts, and
+  internal-mark.f read one off the other.** That was sound only while the
+  checker knew a curated surface. Any change that makes an implementation file
+  checked publishes it, so the file has to say which of its definitions are
+  interface - default closed, published by an act at the definition site.
+- **DNAME-INT guards the interpret route only, and that is written in the file.**
+  Closing every top-level spelling still leaves checked code reaching a package
+  public. Only `private` closes both routes; measure the checked route
+  separately or you will believe a hole is shut when half of it is open.
+
+--- 8. STEP 2 STARTED, AND WHERE IT STOPPED (route3-4, at depth) -------------
+CENSUS OF THE CHECKED ROUTE, which is what step 2 has to close. Of the 291
+package publics reachable from checked user code on the candidate and
+E-UNDEFINED on master:
+     71  reachable only from files that already reopen the package
+         (TFAM 64, TYPE-DECL 7) - the set that should cost nothing
+    220  need a conversion (SCHEMA-REG 61, TFAM 130, TYPE-DECL 27, TYPE-NAME 2);
+         126 of those have test-only consumers, 94 production ones
+Production consumer files, by how many names each reaches: type-family-suite 51,
+type-family.f 38, enum-decl.f 30, structure-decl.f 27, sumtype.f 26,
+type-decl-suite 26, type-ctor-suite 17, type-family-rollback-suite 16,
+layout-valid.f 14, structure-make-suite 12, enum-decl-suite 11,
+structure-decl-suite 11, structure-make.f 11, then a tail of 30 files at 10 or
+fewer. The full per-name table is the lane's sweep291.json; regenerate it with
+tools/lint/source-lex.f rather than trusting this summary.
+
+THE 71 "FREE" CONVERSIONS ARE NOT FREE, AND THE REASON IS NOT YET KNOWN.
+Applied mechanically - each target definition bracketed with private/public in
+its owner file, sections otherwise untouched - the prefix stops loading:
+
+    E-UNDEFINED: TF.NAME-OFF
+
+at src/core/type-family.f:390, the top-level layout self-check
+`0 TF.NAME-OFF TF.NAME-OFF-AT TF-LAYOUT=`. The three identical lines above it
+(TF.PKG-OFF, TF.PKG-U, TF.VIS) pass; TF.NAME-OFF is the first name the sweep
+made private. Reverting that one name moves the failure to the next one, so it
+is the class and not the name.
+
+TWO OBVIOUS EXPLANATIONS ARE ALREADY ELIMINATED, both by probe, so the
+successor does not spend the same hour:
+  - "a package private has no top-level interpret spelling" is FALSE at user
+    level: `package R34PK private : R34PRIV ( -- n ) $2A ; public
+    : R34PUB ( -- n ) R34PRIV ; R34PUB . cr R34PRIV . cr ;package` prints 42
+    twice and exits 0.
+  - and it is FALSE in the PREFIX too: a `private : R34-PFX-PRIV ( -- n ) $2A ;
+    public` planted in type-family.f beside the failing line, with a top-level
+    `R34-PFX-PRIV drop` next to it, boots clean.
+So the difference is neither the interpret route nor the prefix context, and
+the next lane should instrument the checker's mirrored package mode
+(CHECKER-PACKAGE-MODE/NAME/U) around the private/public toggle rather than
+re-deriving the two facts above. The sweep edit was REVERTED; nothing of it is
+in the banked commit.
+
+WHAT THE SUCCESSOR INHERITS, all in this workspace: the mechanism (landed and
+green), the two residue measurements and the tooling that produces them -
+a dictionary dumper that reads the engine's own record array for both routes,
+a checked-body prober over every package public, and a structural token dumper
+built on tools/lint/source-lex.f. Reproduce the landing's numbers before
+touching anything: interpret-route residue 0, API regressions 0, and the
+checked-route figure 291, which is step 2's whole job.

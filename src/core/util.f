@@ -44,6 +44,56 @@ variable REG-PROT-N   0 REG-PROT-N !
    ndict@ 1 -  REG-PROT-IDX REG-PROT-N @ cells + !
    1 REG-PROT-N +! ;
 
+\ --- implementation surfaces: publication is an act, not a default -----------
+\ internal-mark.f refuses a global colon word the checker cannot type and lets
+\ every one it CAN type stay top-level executable, because for a file whose
+\ definitions record no signature those two questions are the same question.
+\ They stop being the same question the moment an implementation file becomes
+\ checker-known: its internals acquire effects and the pass then admits all of
+\ them to the top-level name universe (measured: 102 global names, four of them
+\ taking the process down with a register dump, dot habu-route-3-the-64078d43).
+\ A file wraps itself in IMPLEMENTATION ... ;IMPLEMENTATION to say that its
+\ definitions are internals whatever the checker knows of them, and marks each
+\ definition that IS interface with a trailing API. Unmarked means closed, so a
+\ definition added anywhere in a declared file is refused at top level with no
+\ other edit - which is the property a list of protected names cannot have.
+\ Nothing here changes what a COMPILED caller or the checker resolves: DNAME-INT
+\ is read by interpret dispatch and interpret tick only.
+16 constant IMPL-SPAN-CAP
+create IMPL-SPAN-FROM IMPL-SPAN-CAP cells allot
+create IMPL-SPAN-TO   IMPL-SPAN-CAP cells allot
+variable IMPL-SPAN-N   0 IMPL-SPAN-N !
+variable IMPL-OPEN     0 IMPL-OPEN !
+
+\ Sized for the surfaces the route-3 landing declares (checker.f 134, render.f 3,
+\ layout-buffer.f 6) with room for the files the seal campaign has left.
+512 constant IMPL-API-CAP
+create IMPL-API-IDX IMPL-API-CAP cells allot
+variable IMPL-API-N   0 IMPL-API-N !
+
+: IMPLEMENTATION ( -- )   \ open an implementation region at the current dictionary end
+   IMPL-OPEN @ 0 <> IF s" implementation region already open" 76 die THEN
+   IMPL-SPAN-N @ IMPL-SPAN-CAP >= IF s" implementation span overflow" 76 die THEN
+   ndict@ IMPL-SPAN-FROM IMPL-SPAN-N @ cells + !
+   -1 IMPL-OPEN ! ;
+
+: ;IMPLEMENTATION ( -- )
+   IMPL-OPEN @ 0 = IF s" implementation region not open" 76 die THEN
+   ndict@ IMPL-SPAN-TO IMPL-SPAN-N @ cells + !
+   1 IMPL-SPAN-N +!
+   0 IMPL-OPEN ! ;
+
+: API ( -- )   \ publish the just-defined record out of the open implementation region
+   IMPL-OPEN @ 0 = IF s" api outside an implementation region" 76 die THEN
+   IMPL-API-N @ IMPL-API-CAP >= IF s" implementation api overflow" 76 die THEN
+   ndict@ 1 -  IMPL-API-IDX IMPL-API-N @ cells + !
+   1 IMPL-API-N +! ;
+
+\ Everything util.f defines below this line is internal to the prefix unless its
+\ closing line is followed by API. CORE-FOLD-C is a case-fold helper the moved
+\ type foundation calls, not a top-level name.
+IMPLEMENTATION
+
 : CORE-STR= {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
    u v = IF
      -1 SEQ !
@@ -52,6 +102,7 @@ variable REG-PROT-N   0 REG-PROT-N !
        1 + REPEAT drop
 	   ELSE 0 SEQ ! THEN
 	   SEQ @ 0 <> ;
+API   \ CORE-STR=
 
 \ ASCII case fold + case-insensitive equality (declaration keyword matching).
 : CORE-FOLD-C ( n -- n ) {: c:n :}
@@ -67,6 +118,7 @@ variable REG-PROT-N   0 REG-PROT-N !
        1 + REPEAT drop
 	   ELSE 0 SEQ ! THEN
 	   SEQ @ 0 <> ;
+API   \ CORE-STR=CI
 
 \ NUL-terminated path helper for open: copy (a,u) to d, append NUL.
 \ Both guards below are load-bearing and neither may be a die. This is a library
@@ -87,12 +139,16 @@ variable REG-PROT-N   0 REG-PROT-N !
    u 0 < IF E-PATH-RANGE throw THEN
    u 1 + PATH-CAP > IF E-PATH-RANGE throw THEN
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
+API   \ PATHZ
 create PZB PATH-CAP allot
 
 : PATH0 {: a:ptr u :} ( ptr u8 n -- ptr u8 )
    a u PZB PATHZ  PZB ;     \ shared scratch
+API   \ PATH0
 \ read a little-endian u32 from byte addr p
 variable RDP
 
 : RD32 {: p:ptr :} ( ptr u8 -- n )
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+API   \ RD32
+;IMPLEMENTATION

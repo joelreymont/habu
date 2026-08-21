@@ -38,6 +38,12 @@
 \ that the surface stops there and that `0 TDPLAN-P !` before a declaration --
 \ rc 134 SIGSEGV on master -- is now E-UNDEFINED.
 
+\ THE DECLARATION GRAMMAR IS AN IMPLEMENTATION SURFACE. The seven global
+\ openers and the publics marked API are what a program may type; the plan
+\ arena, the payload vectors and the transaction context are reachable only
+\ from code (src/core/util.f).
+IMPLEMENTATION
+
 using SCHEMA-REG
 using TFAM
 
@@ -2134,8 +2140,11 @@ using TYPE-DECL
 \ NEWTYPE consumes name + arity. SUMTYPE and PRODUCT buffer their block up to
 \ the ;NAME closer (VALUE-RECORD's shape), then register it whole.
 : NEWTYPE ( -- ) TDECL-NEWTYPE ;
+API   \ NEWTYPE
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
+API   \ SUMTYPE
 : PRODUCT ( -- ) TDECL-PRODUCT ;
+API   \ PRODUCT
 
 \ The checker's own declaration entry points, reached by the preverify and
 \ all-errors replay paths (src/habu/verify-source.f, tools/check-core.f) and by
@@ -2143,9 +2152,13 @@ using TYPE-DECL
 \ maki/extent.f EXTENT:). Their PRIM: rows live in src/core/checker.f and stay
 \ PRIM: because the names they describe stay global.
 : CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- ) TDECL-DEFFAMILY ;
+API   \ CHECKER-DEFFAMILY
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
+API   \ CHECKER-DEFSUM
 : CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM-NOEND ;
+API   \ CHECKER-DEFSUM-NOEND
 : CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT ;
+API   \ CHECKER-DEFPRODUCT
 
 \ Public top-level surface of the type-family DSL: the block openers parse
 \ their own body tokens up to the ;NAME closer, so their cell effect is ( -- ).
@@ -2166,3 +2179,4 @@ PRIM: PRODUCT PRIM;
 ;using
 ;using
 ;using
+;IMPLEMENTATION

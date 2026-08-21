@@ -44,6 +44,13 @@
 \ tools/package-diff-lint-core.f TFAM-BRIDGE? admits exactly these six, by path,
 \ name and definer; test/internal-word-gate.f pins that the surface stops there.
 
+\ THE FAMILY REGISTRY IS AN IMPLEMENTATION SURFACE. Being checked gave every
+\ definition here an effect, and internal-mark.f reads an effect as permission to
+\ type the name at top level - which handed out arena base pointers and whole-
+\ registry resets. A public whose closing line carries API keeps its top-level
+\ spelling; everything else is reachable only from code (src/core/util.f).
+IMPLEMENTATION
+
 using SCHEMA-REG
 
 package TFAM
@@ -149,6 +156,7 @@ public
 : TFAM-DECL-PARAM>CHAR ( n -- n bool ) {: index:n :}
    index 0 < index TFAM-DECL-PARAM-COUNT >= or IF 0 RES-FALSE EXIT THEN
    TFAM-DECL-PARAM-ALPHABET index + c@ RES-TRUE ;
+API   \ TFAM:TFAM-DECL-PARAM>CHAR
 
 : TFAM-DECL-CHAR>PARAM ( n -- n bool ) {: char:n :}
    0 BEGIN dup TFAM-DECL-PARAM-COUNT < WHILE
@@ -156,6 +164,7 @@ public
       1 +
    REPEAT
    drop 0 RES-FALSE ;
+API   \ TFAM:TFAM-DECL-CHAR>PARAM
 
 \ ---------------------------------------------------------------------------
 \ shared string pool. Names are interned as byte offsets; offsets stay valid
@@ -421,8 +430,11 @@ public
    id TF-REC * TF-BASE + ;
 
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
+API   \ TFAM:TFAM-N@
 : TF-STR-U@ ( -- n ) TF-STR-U @ ;        \ interned string-pool high-water
+API   \ TFAM:TF-STR-U@
 : TF-PK-N@ ( -- n ) TF-PK-N @ ;          \ param-kind pool high-water
+API   \ TFAM:TF-PK-N@
 
 \ --- read-only queries.
 : TFAM-PKG$ ( n -- ptr u8 n ) {: id:n :}
@@ -434,6 +446,7 @@ using TFAM
 
 : TFAM-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
+API   \ TFAM-NAME$
 
 package TFAM
 
@@ -441,11 +454,16 @@ public
 
 : TFAM-VIS@ ( n -- n ) TF-REC@ TF.VIS @ ;
 : TFAM-ARITY@ ( n -- n ) TF-REC@ TF.ARITY @ ;
+API   \ TFAM:TFAM-ARITY@
 : TFAM-KIND@ ( n -- n ) TF-REC@ TF.KIND @ ;
+API   \ TFAM:TFAM-KIND@
 : TFAM-LAYOUT-POLICY@ ( n -- n ) TF-REC@ TF.LAYOUT @ ;
 : TFAM-SLOTS@ ( n -- n ) TF-REC@ TF.SLOTS @ ;
+API   \ TFAM:TFAM-SLOTS@
 : TFAM-VAR-START@ ( n -- n ) TF-REC@ TF.VAR-START @ ;
+API   \ TFAM:TFAM-VAR-START@
 : TFAM-VAR-COUNT@ ( n -- n ) TF-REC@ TF.VAR-COUNT @ ;
+API   \ TFAM:TFAM-VAR-COUNT@
 : TFAM-FLD-START@ ( n -- n ) TF-REC@ TF.FLD-START @ ;
 : TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
 : TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
@@ -457,6 +475,7 @@ public
    id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + @ ;
 
 : TFAM-PUBLIC? ( n -- bool ) TFAM-VIS@ CHECKER-PACKAGE-PUBLIC = ;
+API   \ TFAM:TFAM-PUBLIC?
 : TFAM-CELL? ( n -- bool ) TFAM-KIND@ TK-CELL = ;
 : TFAM-PRODUCT? ( n -- bool ) TFAM-KIND@ TK-PRODUCT = ;
 : TFAM-SUM? ( n -- bool ) TFAM-KIND@ TK-SUM = ;
@@ -486,7 +505,9 @@ private
 public
 
 : TFAM-DERIVE-EQ? ( n -- bool ) TFAM-DERIVE@ DRV-EQ and 0 <> ;
+API   \ TFAM:TFAM-DERIVE-EQ?
 : TFAM-DERIVE-HASH? ( n -- bool ) TFAM-DERIVE@ DRV-HASH and 0 <> ;
+API   \ TFAM:TFAM-DERIVE-HASH?
 : TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ a boxed value is a single heap/DATA pointer (docs §22.4 `ptr fam-box`) and a
@@ -515,6 +536,7 @@ public
    id TFAM-SUM? id TFAM-ENUM? or IF id TFAM-SLOTS@ 1 + EXIT THEN
    id TFAM-PRODUCT? IF id TFAM-SLOTS@ EXIT THEN
    1 ;
+API   \ TFAM:TFAM-WIDTH@
 
 \ --- friend-only field mutators (populated by later declaration passes / tests).
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
@@ -889,7 +911,9 @@ public
 : SUMV-FAM@ ( n -- n ) SUMV-REC@ SV.FAM @ ;
 : SUMV-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id SUMV-REC@ {: r:ptr :}  r SV.NAME-OFF @ r SV.NAME-U @ TF-OFF$ ;
+API   \ TFAM:SUMV-NAME$
 : SUMV-TAG@ ( n -- n ) SUMV-REC@ SV.TAG @ ;
+API   \ TFAM:SUMV-TAG@
 : SUMV-SCH-START@ ( n -- n ) SUMV-REC@ SV.SCH-START @ ;
 : SUMV-SCH-COUNT@ ( n -- n ) SUMV-REC@ SV.SCH-COUNT @ ;
 
@@ -900,6 +924,7 @@ private
 public
 
 : SUMV-N@ ( -- n ) SUMV-N @ ;
+API   \ TFAM:SUMV-N@
 
 \ generated-constructor metadata (item 8). A PUBLIC sum/enum family stores its
 \ derived constructor package name (interned offset+len) in every variant; the
@@ -910,6 +935,7 @@ public
    off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
 : SUMV-CTOR-PKG$ ( n -- ptr u8 n ) {: id:n :}
    id SUMV-REC@ {: r:ptr :}  r SV.CTOR-PKG-OFF @ r SV.CTOR-PKG-U @ TF-OFF$ ;
+API   \ TFAM:SUMV-CTOR-PKG$
 : SUMV-CTOR-SYM@ ( n -- n ) SUMV-REC@ SV.CTOR-SYM @ ;
 
 \ --- constructor-symbol index (SVX) --------------------------------------------
@@ -1088,6 +1114,7 @@ public
       a u TF-CI @ TFAM-DERIVED-AT? IF RES-TRUE EXIT THEN
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
+API   \ TFAM-CTOR-WORD?
 
 package TFAM
 
@@ -1173,6 +1200,7 @@ create TF-CTOR-HEX 16 allot       \ 16 lowercase hex digits from the SHA fallbac
 \ friend hook: 16 hex of SHA-256 over (ptr,n) into the 16-byte output;
 \ type-family-sha.f installs TF-SHA16 once the registry and hash both exist.
 defer TF-SHA16-XT ( ptr u8 n ptr u8 -- )
+API   \ TF-SHA16-XT
 
 package TFAM
 
@@ -1499,6 +1527,7 @@ public
       fid PF-FAM@ fam = fid PF-VAR@ vid = and IF swap 1 + swap THEN
       1 +
    REPEAT drop ;
+API   \ TFAM:SUMV-PAY-N
 
 : SUMV-PAY-ROOT ( n n -- n ) {: vid:n index:n :}
    index 0 < IF E-TFAM-PAYLOAD throw THEN
@@ -1518,6 +1547,7 @@ public
       PF-CELLS@ rot + swap
       1 +
    REPEAT drop ;
+API   \ TFAM:SUMV-PAYCELLS@
 
 \ --- arg-aware instantiated width (item 12 / layout-cap slice 1, docs §18). The
 \ registry TFAM-WIDTH@ assumes every parameter contributes one cell; that is exact
@@ -1745,18 +1775,22 @@ public
    tok r PFTX.TOK !
    PF-TX-DEPTH @ 1 + PF-TX-DEPTH !
    tok ;
+API   \ TYPE-FIELD-OWNER:OPEN
 : PREPARE ( n -- n ) {: tx:n :}
    tx STATE-OPEN TX-STATE-REQUIRE
    TX-OPEN-MARKS-REQUIRE
    PF-N @ ;
+API   \ TYPE-FIELD-OWNER:PREPARE
 : COMMIT ( n -- ) {: tx:n :}
    tx PREPARE drop
    PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N ! THEN
    STATE-COMMITTED TX-TOP PFTX.STATE ! ;
+API   \ TYPE-FIELD-OWNER:COMMIT
 : FINALIZE ( n -- ) {: tx:n :}
    tx STATE-COMMITTED TX-STATE-REQUIRE
    TX-COMMITTED-MARKS-REQUIRE
    RELEASE ;
+API   \ TYPE-FIELD-OWNER:FINALIZE
 \ A live frame is in exactly one of the two states OPEN sets and COMMIT moves it
 \ to, so the state selects which watermark check applies; there is no third value
 \ to reject.
@@ -1771,6 +1805,7 @@ public
    r PFTX.STRU @ TF-STR-U !
    r PFTX.COMMITN @ PF-COMMIT-N !
    RELEASE ;
+API   \ TYPE-FIELD-OWNER:ROLLBACK
 
 \ The field owner is the only authority that can read a provisional row.  The
 \ caller must present the exact live top transaction token, the row must have
@@ -1784,9 +1819,11 @@ public
    id PF-ROW {: r:ptr :}
    r PF.FAM @ fam <> IF E-PF-OWNER throw THEN
    r PF.SCH @ ;
+API   \ TYPE-FIELD-OWNER:TX-SCHEMA-FOR
 : TX-CELLS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
    tx fam id TX-SCHEMA-FOR drop
    id PF-ROW PF.CELLS @ ;
+API   \ TYPE-FIELD-OWNER:TX-CELLS-FOR
 
 private
 
@@ -2214,6 +2251,7 @@ public
    al r PF.ALIGN !   flags r PF.FLAGS !
    id 1 + PF-N !
    tx ;
+API   \ TYPE-FIELD-OWNER:ADD
 
 private
 get-current prot-wid-add
@@ -2234,20 +2272,35 @@ package TYPE-FIELD
 public
 
 : COUNT ( -- n ) PF-N@ ;
+API   \ TYPE-FIELD:COUNT
 : TX-DEPTH ( -- n ) PF-TX-DEPTH @ ;
+API   \ TYPE-FIELD:TX-DEPTH
 : NO-VARIANT ( -- n ) PF-NO-VARIANT ;
+API   \ TYPE-FIELD:NO-VARIANT
 : FIND ( n n ptr u8 n -- n bool ) PF-FIND ;
+API   \ TYPE-FIELD:FIND
 : EACH ( n n n -- n bool ) PF-EACH ;
+API   \ TYPE-FIELD:EACH
 : FAMILY@ ( n -- n ) PF-FAM@ ;
+API   \ TYPE-FIELD:FAMILY@
 : VARIANT@ ( n -- n ) PF-VAR@ ;
+API   \ TYPE-FIELD:VARIANT@
 : NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
+API   \ TYPE-FIELD:NAME$
 : SCHEMA@ ( n -- n ) PF-SCH@ ;
+API   \ TYPE-FIELD:SCHEMA@
 : SLOT@ ( n -- n ) PF-SLOT@ ;
+API   \ TYPE-FIELD:SLOT@
 : CELLS@ ( n -- n ) PF-CELLS@ ;
+API   \ TYPE-FIELD:CELLS@
 : BYTE-OFF@ ( n -- n ) PF-BYTE-OFF@ ;
+API   \ TYPE-FIELD:BYTE-OFF@
 : BYTES@ ( n -- n ) PF-BYTES@ ;
+API   \ TYPE-FIELD:BYTES@
 : ALIGN@ ( n -- n ) PF-ALIGN@ ;
+API   \ TYPE-FIELD:ALIGN@
 : FLAGS@ ( n -- n ) PF-FLAGS@ ;
+API   \ TYPE-FIELD:FLAGS@
 
 private
 get-current prot-wid-add
@@ -2377,6 +2430,7 @@ public
 : LAY-ALIGN@ ( n -- n ) LAY-REC@ LAY.ALIGN @ ;
 : LAY-TAGW@ ( n -- n ) LAY-REC@ LAY.TAGW @ ;
 : LAY-N@ ( -- n ) LAY-N @ ;
+API   \ TFAM:LAY-N@
 
 : LAY-FIND ( n -- n bool ) {: fam:n :}
    0 TF-I !
@@ -3644,6 +3698,7 @@ public
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+API   \ TFL-CON-FAM?
 
 package TFAM
 
@@ -3654,6 +3709,7 @@ package TFAM
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
+API   \ TFL-MATCH-FAM?
 
 package TFAM
 
@@ -3661,12 +3717,19 @@ public
 
 : TFL-VAR? ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}   \ variant in fam -> vid
    fam na nu TFL-FOLD$ SUMV-FIND ;
+API   \ TFAM:TFL-VAR?
 
 : TFL-VPADS ( n n -- n ) {: fam:n vid:n :}   \ zero pads M-p for a variant's construct
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - ;
+API   \ TFAM:TFL-VPADS
 
 ;package
 
+\ One of the six names this file keeps at global top level, because habu2.f
+\ C-FIND-GLOBAL resolves the construct/match keyword bridge by bare spelling and
+\ no package spelling reaches that lookup. Five of the six are interface and stay
+\ callable under their declared arity; this one is not, and now that the file is
+\ checked its own signature would otherwise publish it (src/core/util.f).
 : TFL-CVAR? ( ptr u8 n n -- n n bool )   \ variant in a resolved fam -> ( tag pads ok )
    {: va:ptr vu:n fam:n :}
    va vu fam TFL-VAR? 0= IF drop 0 0 RES-FALSE EXIT THEN
@@ -3726,3 +3789,4 @@ TFAM-HOOK-INSTALL
 
 ;using
 ;using
+;IMPLEMENTATION

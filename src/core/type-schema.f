@@ -29,6 +29,13 @@
 \ --- schema node kinds (node tag values). Node id 0 is the reserved nil node.
 \ SCH-NIL is the reserved sentinel and SCH-KIND-MAX the creatable-tag ceiling
 \ SCHEMA-KIND? tests against; neither is a caller's value, so both stay private.
+\ THE SCHEMA REGISTRY IS AN IMPLEMENTATION SURFACE. Its publics are the
+\ interface its prefix siblings compile against, not names a user program may
+\ type: `0 0 SCHEMA-REG:REWIND` wiped the registry and exited 0 once this file
+\ became checked. A public whose closing line carries API keeps its top-level
+\ spelling; everything else is reachable only from code (src/core/util.f).
+IMPLEMENTATION
+
 package SCHEMA-REG
 
 0 constant SCH-NIL
@@ -208,6 +215,7 @@ public
 : SCHEMA-B@ ( n -- n ) SCH-REC@ SCH.B @ ;
 : SCHEMA-C@ ( n -- n ) SCH-REC@ SCH.C @ ;
 : SCHEMA-N@ ( -- n ) SCH-N @ ;             \ node high-water (for rollback/tests)
+API   \ SCHEMA-REG:SCHEMA-N@
 
 : SCHEMA-PARAM? ( n -- bool ) SCHEMA-TAG@ SCH-PARAM = ;
 : SCHEMA-CON? ( n -- bool ) SCHEMA-TAG@ SCH-CON = ;
@@ -228,6 +236,7 @@ public
    idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    idx cells SCH-ROOT-BASE + @ ;
 : SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
+API   \ SCHEMA-REG:SCHEMA-ROOT-N@
 
 \ --- SCH-ROW effect-side node: one ordered row of schema element type nodes,
 \ referenced by [start, start+count) contiguous schema roots. An empty side has
@@ -420,3 +429,4 @@ public
 get-current prot-wid-add
 
 ;package
+;IMPLEMENTATION

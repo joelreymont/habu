@@ -125,12 +125,17 @@ s" MW drop" UCE-CATCH 0 T=
 \ === globals the checker cannot see (dot habu-reject-a-bare-1f43a9a6) ===
 \ The cases above collide with globals that carry a checker signature. The engine
 \ also holds globals that carry NONE - every engine-prefix colon word with no
-\ certified/trusted signature and no primitive axiom, the checker's own FRESH
+\ certified/trusted signature and no primitive axiom, the checker's own PAIR
 \ among them. Those live in the engine's global wordlist, so the ENGINE binds
 \ them; they are absent from the checker's symbol table, so the checker used to
 \ walk straight past them into the used publics and certify the reference against
 \ the WRONG word's effect - exit 0, no diagnostic, wrong values on the stack.
-\ Preconditions are asserted rather than assumed: if FRESH ever stops being a
+\ The exemplar was the checker's FRESH until dot habu-route-3-the-64078d43 gave
+\ FRESH a primitive axiom so the checked type foundation could call it, which is
+\ exactly the obsolescence condition the next sentence states: the precondition
+\ went red, and the answer is a global that is still invisible to the checker,
+\ not a weaker assertion. PAIR is one; `: X ( -- n ) PAIR ;` is E-UNDEFINED.
+\ Preconditions are asserted rather than assumed: if PAIR ever stops being a
 \ checker-invisible global, the two precondition cases fail instead of leaving
 \ the shadow case to pass vacuously.
 \ The engine's own wordlist probe, as a number T= can compare.
@@ -140,17 +145,17 @@ package DICTQ public
 ;package
 
 package USH public
-   : FRESH ( n -- n ) 1 + ;             \ tail of the checker's global FRESH ( -- n )
+   : PAIR ( n -- n ) 1 + ;              \ tail of the checker's global PAIR ( n n -- n )
    : SOLO ( -- n ) 7 ;                  \ no global of this name: purely additive
    : LATER ( n -- n ) 2 * ;             \ the order-swapped fixture's used public
    : SOONER ( -- n ) 13 ;               \ bound before any global of the name exists
 ;package
 
-\ precondition: FRESH is a live word in the ENGINE's global wordlist
-s" FRESH" 0 DICTQ:HAS? 1 T=
+\ precondition: PAIR is a live word in the ENGINE's global wordlist
+s" PAIR" 0 DICTQ:HAS? 1 T=
 \ precondition: and it is invisible to the CHECKER (bare use in a checked body
 \ is undefined), so the two resolvers really do disagree about this name
-s" : USH-P2 ( -- n ) FRESH ;" UCE-CATCH E-REJECT T=
+s" : USH-P2 ( -- n ) PAIR ;" UCE-CATCH E-REJECT T=
 \ the fixture tails that must NOT already name a global, or the additive and
 \ order cases below would be testing a collision instead of the absence of one
 s" SOLO" 0 DICTQ:HAS? 0 T=
@@ -158,10 +163,10 @@ s" LATER" 0 DICTQ:HAS? 0 T=
 s" SOONER" 0 DICTQ:HAS? 0 T=
 \ the hole: the bare tail must be refused at the reference site, not bound to the
 \ used public while the engine runs the global
-s" using USH : USH-R1 ( -- ) 41 FRESH drop ; ;using" UCE-CATCH E-SHADOW T=
+s" using USH : USH-R1 ( -- ) 41 PAIR drop ; ;using" UCE-CATCH E-SHADOW T=
 \ the qualified escape still certifies AND runs the used public: certification and
-\ execution name one word (41 + 1 = 42, not the checker's FRESH counter)
-s" using USH : USH-R2 ( -- n ) 41 USH:FRESH ; ;using" UCE-CATCH 0 T=
+\ execution name one word (41 + 1 = 42, not the checker's PAIR constructor)
+s" using USH : USH-R2 ( -- n ) 41 USH:PAIR ; ;using" UCE-CATCH 0 T=
 USH-R2 42 T=
 \ purely additive when nothing collides: the bare used public certifies and the
 \ engine executes the same word

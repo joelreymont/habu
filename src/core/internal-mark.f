@@ -215,10 +215,54 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
       IMK-I @ 1 + IMK-I !
    REPEAT ;
 
+\ Declared implementation surfaces (dot habu-route-3-the-64078d43). The two
+\ walks above ask one question - can the checker type this name - and answer it
+\ two ways, because for a file that records no signature "the checker cannot
+\ type it" and "it is an internal" are the same fact. A file that becomes
+\ checker-known breaks that: its internals acquire effects and the walks then
+\ admit every one of them. util.f IMPLEMENTATION/;IMPLEMENTATION record a
+\ [from, to) dictionary span per declared file and API tags the records in it
+\ that are interface; every other COLON record in the span gets DNAME-INT
+\ whatever the checker knows of it. A namespace row carries DICT-WL:NAMESPACE
+\ in its wordlist cell and holds a wordlist id where a code pointer would be,
+\ so it is skipped before any body read - the same order IMK-GLOBAL-COLON?
+\ keeps above.
+variable IMK-S
+variable IMK-J
+
+: IMK-API? ( n -- bool ) {: i:n :}
+   0 IMK-J !
+   BEGIN IMK-J @ IMPL-API-N @ < WHILE
+      IMPL-API-IDX IMK-J @ cells + @ i = IF 0 0= EXIT THEN
+      IMK-J @ 1 + IMK-J !
+   REPEAT
+   0 0= 0= ;
+
+: IMK-SEAL-SPAN ( n -- ) {: s:n :}
+   IMPL-SPAN-FROM s cells + @ IMK-I !
+   BEGIN IMK-I @ IMPL-SPAN-TO s cells + @ < WHILE
+      IMK-I @ IMK-WID DICT-WL:NAMESPACE <> IF
+         IMK-I @ IMK-COLON? IF
+            IMK-I @ IMK-API? 0= IF IMK-I @ int-mark THEN
+         THEN
+      THEN
+      IMK-I @ 1 + IMK-I !
+   REPEAT ;
+
+: IMK-SEAL-IMPLEMENTATION ( -- )
+   IMPL-OPEN @ 0 <> IF
+      s" internal-mark: implementation region left open" 76 die THEN
+   0 IMK-S !
+   BEGIN IMK-S @ IMPL-SPAN-N @ < WHILE
+      IMK-S @ IMK-SEAL-SPAN
+      IMK-S @ 1 + IMK-S !
+   REPEAT ;
+
 : IMK-PASS ( -- )
    IMK-WALK
    IMK-WALK-PACKAGES
    IMK-SEAL-REGISTRY
+   IMK-SEAL-IMPLEMENTATION
    IMK-SEAL-PRIM ;
 
 LOWER-CERT-HOOK:INSTALL

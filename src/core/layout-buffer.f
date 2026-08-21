@@ -18,6 +18,12 @@
 \ docs/forth.md's consumer rule.
 using TYPE-DECL
 
+\ Everything this file defines is internal to the layout-buffer definers unless
+\ its closing line is followed by API. The six published names are the ones the
+\ axiom rows below already name, and a definition added here is refused at top
+\ level until somebody publishes it on purpose (src/core/util.f).
+IMPLEMENTATION
+
 $1000 constant LBUF-GEN-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 7121 constant E-LAYOUT-BUFFER
@@ -199,6 +205,7 @@ variable LBUF-EVAL-U
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
    base LBUF-ALLOT ;
+API                                    \ LAYOUT-BUFFER is interface
 
 \ LAYOUT-BUFFER is the public top-level introduction form: it consumes the
 \ count operand and parses its own name + type tokens. The axiom keeps it
@@ -267,6 +274,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
       count  cb CELL +  !                               \ cap-cell = new allotted capacity
    then
    count  cb 2 CELL * +  ! ;                             \ cnt-cell = live bound
+API                                    \ LDEFER-BIND is interface
 
 \ The generated NAME-BIND words are user-level (minted at model load), so the
 \ shared binder must survive the seal-time internal-word pass. The axiom keeps it
@@ -309,6 +317,7 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-A PE-IN PE-N PE-IN PRIM;
       count  cb 2 CELL * + @  -  wc * cells  LBUF-ZERO        \ zero [old-live, count)
    then then
    count  cb 2 CELL * +  ! ;                                 \ cnt-cell = new live bound
+API                                    \ LDEFER-GROW is interface
 
 \ Same seal treatment as LDEFER-BIND: the axiom keeps the shared grow binder
 \ checker-known and top-level executable for the generated NAME-GROW callers; it
@@ -369,6 +378,7 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-A PE-IN PE-N PE-IN PRIM;
    name nameu type typeu LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
    cbase LBUF-ALLOT ;                                      \ all 0 = unbound
+API                                    \ DEFER-LAYOUT-BUFFER is interface
 
 \ Like LAYOUT-BUFFER: the axiom keeps DEFER-LAYOUT-BUFFER checker-known so the
 \ seal-time internal-word pass leaves it top-level executable; it parses its own
@@ -446,6 +456,7 @@ variable STGT-START
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
    base LBUF-ALLOT ;
+API                                    \ TYPED-BUFFER is interface
 
 : TYPED-VARIABLE ( -- )
    parse-name {: name:ptr nameu:n :}
@@ -459,6 +470,7 @@ variable STGT-START
    name nameu type typeu TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
    base LBUF-ALLOT ;
+API                                    \ TYPED-VARIABLE is interface
 
 \ Axioms keep the two definers checker-known so the seal-time internal-word pass
 \ leaves them executable at top level (like LAYOUT-BUFFER); UNSAFE-TOK? rejects
@@ -467,4 +479,5 @@ variable STGT-START
 PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
 PRIM: TYPED-VARIABLE PRIM;
 
+;IMPLEMENTATION
 ;using

@@ -1,3 +1,13 @@
+\ CHECKER IS AN IMPLEMENTATION SURFACE. Its definitions are the checker's
+\ internals; the ones that are interface carry a trailing API and nothing else
+\ in this file has a top-level spelling (src/core/util.f, dot
+\ habu-route-3-the-64078d43). Before the type foundation moved past the hook
+\ this file recorded no signatures, so "the checker cannot type it" and "it is
+\ an internal" were the same fact and internal-mark.f could read one off the
+\ other. They are different facts now: the moved block needs axiom rows for
+\ checker internals it calls, and every such row used to publish its name.
+IMPLEMENTATION
+
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
 3 constant S-ROW   4 constant S-PUSH
 5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
@@ -463,23 +473,39 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 \ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN query
 \ hooks, whose call sites never run before type-family.f installs them.
 defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
+API   \ TFAM-RESOLVE-XT
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
+API   \ TFAM-ARITY-XT
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
+API   \ TFAM-LAYOUT?-XT
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
+API   \ TFAM-CELL?-XT
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
 defer PKG-LIVE-XT ( -- ptr u8 n n bool )                \ authenticated engine package name + mode
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
+API   \ TFAM-WIDTH-XT
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
+API   \ TFAM-INST-WIDTH-XT
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
+API   \ TFAM-CON-LIN-XT
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ item 9 construct family resolve, active package only
+API   \ CONSTRUCT-FAM-XT
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct variant resolve + step effect
+API   \ CONSTRUCT-STEP-XT
 defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL whose declared output has a direct closed layout arg routes through the bidirectionally seeded construct step; scalar/pointer/open/linear args fall through
+API   \ CTOR-STEP-XT
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
+API   \ MATCH-FAM-XT
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
+API   \ MATCH-VAR-XT
 defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index); render.f's DIAG-VARIANT reads the same tag through it
+API   \ MATCH-VTAG-XT
 defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
+API   \ MATCH-VCOUNT-XT
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
+API   \ MATCH-PAY-XT
 defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args (dot habu-checker-type-structure)
+API   \ FIELD-PROJ-XT
 
 \ The renderer's half of the same wall. src/core/render.f installs RECXT, the
 \ only inferred-effect row producer, so it must load BEFORE the hook while the
@@ -529,6 +555,7 @@ variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
 \ PTX-BARRIER-SET installs. Reached from BOTH the checked `:` and the TRUSTED:
 \ publish paths through the one E-ADD-EFFECT choke.
 defer PTX-BARRIER-SET-XT ( n -- )
+API   \ PTX-BARRIER-SET-XT
 
 \ --- checker package scope state. Declared here (not with the package words
 \ further down) so signature parsing (SIG-FAM?) can resolve family tokens
@@ -543,6 +570,7 @@ variable CHECKER-PACKAGE-MODE
 
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
+API   \ CHECKER-PACKAGE-ACTIVE?
 
 \ A scope opened by CHECKER-SCOPE-START-NEUTRAL DECLARES its package context
 \ instead of inheriting the caller's: the source it replays is standalone, so
@@ -733,12 +761,15 @@ CHECKER-PKG-LIVE-DEFAULT
 
 : CHECKER-AUTH-PACKAGE$ ( -- ptr u8 n )
    CHECKER-PKG-CONTEXT drop ;
+API   \ CHECKER-AUTH-PACKAGE$
 
 : CHECKER-AUTH-PACKAGE-MODE@ ( -- n )
    CHECKER-PKG-CONTEXT >r 2drop r> ;
+API   \ CHECKER-AUTH-PACKAGE-MODE@
 
 : CHECKER-AUTH-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-NONE <> ;
+API   \ CHECKER-AUTH-PACKAGE-ACTIVE?
 
 \ Before the mirror becomes the replay's package authority it has to be proved
 \ against the context the enclosing scope claims, and both proofs are exact
@@ -2074,6 +2105,7 @@ variable JSON-DIAGS   0 JSON-DIAGS !
 
 : DIAG-JSON! ( bool -- )
    JSON-DIAGS ! ;
+API   \ DIAG-JSON!
 
 variable LINC
 variable LINP
@@ -3064,6 +3096,7 @@ variable SIGSCOPE-U
 \ calls it for a product's free (outer) factor. An unresolvable tail is a no-op.
 : EXT-MARK-FREE-TAIL ( ptr u8 n -- )
    SIG-FAM? IF EXT-MARK-FREE ELSE drop THEN ;
+API   \ EXT-MARK-FREE-TAIL
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
@@ -3204,6 +3237,7 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 \ TFAM-RESOLVE-XT). Left unset until then: it is never reached before install, so
 \ an unset call fails closed via DEFER-UNSET rather than the old execute-of-0.
 defer SIG-QUOT-XT ( -- n )
+API   \ SIG-QUOT-XT
 
 \ EXT-REDX-BAD-ARG? ( argterm -- bool ) : BTC-7 contraction rule. `redx<E>` marks
 \ extent E as a contraction (+Σ) axis; it is ill-formed when E is a FREE (outer /
@@ -3425,6 +3459,7 @@ variable LBI-BAD
    LBI-T @ LAYOUT-PARAM? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
+API   \ CHECKER-LAYOUT-INFO
 
 \ Admissibility gate for the TYPED-VARIABLE / TYPED-BUFFER convenience definers
 \ (dot habu-nominal-storage-typed). Superset of CHECKER-LAYOUT-INFO: it admits
@@ -3498,6 +3533,7 @@ variable LBI-BAD
    LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 RES-FALSE EXIT THEN
    LBI-T @ T-WIDTH RES-TRUE ;
+API   \ CHECKER-STORAGE-INFO
 
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
@@ -3575,6 +3611,7 @@ variable LBI-BAD
    name nameu VREC-BEGIN {: id:n :}
    id name nameu fields fieldsu VREC-PARSE-FIELDS
    id VREC-FINISH ;
+API   \ CHECKER-DEFRECORD
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
@@ -5196,6 +5233,7 @@ variable RECW   0 RECW !
 : REC-WIDE-PUBLISH ( -- )
    RECW @ 0 <> IF wide-mark THEN
    0 RECW ! ;
+API   \ REC-WIDE-PUBLISH
 
 \ RECMI: latch holding the din cell count of the LAST effect record — the
 \ certified minimum input arity (dot habu-habu-certified-words-84e84eaf).
@@ -5208,6 +5246,7 @@ variable RECW   0 RECW !
 variable RECMI   0 RECMI !
 : REC-MIN-IN@ ( -- n )
    RECMI @  0 RECMI ! ;
+API   \ REC-MIN-IN@
 
 \ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records (prims go
 \ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
@@ -5257,6 +5296,7 @@ variable MULTI-ERR-N    \ rejected definitions recorded this load
 \ with a no-op DEFAULT so the diagnostic call is statically effect-known; the
 \ default drops the sig+name spans, exactly the old 0-hook fallback.
 defer BADSIG-XT ( ptr u8 n ptr u8 n -- )
+API   \ BADSIG-XT
 : BADSIG-DEFAULT ( -- ) [: 2drop 2drop ;] is BADSIG-XT ;
 BADSIG-DEFAULT
 
@@ -5341,6 +5381,7 @@ PTR-VARIABLE ASIG-DIST-P
 PTR-VARIABLE ASIG-LAST-P
 
 : CHECKER-ASIG-ARMED? ( -- bool ) ASIG-ARMED @ 0 <> ;
+API   \ CHECKER-ASIG-ARMED?
 
 : ASIG-U16! ( n n -- ) {: v:n at:n :}
    v $FF and  ASIG-STR-P @ at + c!
@@ -5535,19 +5576,26 @@ PTR-VARIABLE ASIG-LAST-P
    THEN
    CHECKER-ASIG-RESET
    -1 ASIG-ARMED ! ;
+API   \ CHECKER-ASIG-ARM
 
 : CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
+API   \ CHECKER-ASIG-DISARM
 
 \ The read surface src/habu/aot-capture.f copies the pool out through.
 : CHECKER-ASIG-N ( -- n ) ASIG-ROW-U @ ASIG-ROW / ;
+API   \ CHECKER-ASIG-N
 : CHECKER-ASIG-ROW-BYTES ( -- n ) ASIG-ROW-U @ ;
+API   \ CHECKER-ASIG-ROW-BYTES
 : CHECKER-ASIG-STR-BYTES ( -- n ) ASIG-STR-U @ ;
+API   \ CHECKER-ASIG-STR-BYTES
 : CHECKER-ASIG-ROW-C@ ( n -- n ) {: at:n :}
    at 0 < at ASIG-ROW-U @ >= or IF s" checker: signature-pool row read out of range" 76 die THEN
    ASIG-ROW-P @ at + c@ ;
+API   \ CHECKER-ASIG-ROW-C@
 : CHECKER-ASIG-STR-C@ ( n -- n ) {: at:n :}
    at 0 < at ASIG-STR-U @ >= or IF s" checker: signature-pool string read out of range" 76 die THEN
    ASIG-STR-P @ at + c@ ;
+API   \ CHECKER-ASIG-STR-C@
 
 \ ---- the names one check pass could not resolve ------------------------------
 \ WHY THE MISSES ARE COLLECTED RATHER THAN READ OFF FAILTK. The pinned token is
@@ -6841,6 +6889,7 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
       1 +
    REPEAT drop
    u d cells CK-USE-LENS + ! ;
+API   \ CHECKER-USING
 
 \ --- the replay's own `using` boundary --------------------------------------
 \ Live compilation splits these two steps between the engine and the checker: the
@@ -6859,12 +6908,14 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-USING
    CHECKER-USE-OWNED-N @ 1 + CHECKER-USE-OWNED-N ! ;
+API   \ CHECKER-USING-PUSH
 
 : CHECKER-USING-POP ( -- )
    CHECKER-PKG-MIRROR-AUTHORITY? 0= IF E-PKG-CONTEXT throw THEN
    CHECKER-USE-OWNED-N @ {: d:n :}
    d 0 <= IF E-USING-UNBALANCED throw THEN
    d 1 - CHECKER-USE-OWNED-N ! ;
+API   \ CHECKER-USING-POP
 
 \ Resolve a bare tail against the live used publics (searched only after the open-scope +
 \ global chain missed). A single distinct interned public sym wins; a second distinct sym
@@ -6907,6 +6958,7 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
 7143 constant E-TRUST-UNRESOLVED
 variable TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
 defer TSTALE-DIAG-XT ( -- )                 \ render.f installs the row-site diagnostic
+API   \ TSTALE-DIAG-XT
 : TSTALE-DIAG-DEFAULT ( -- ) [: ;] is TSTALE-DIAG-XT ;
 TSTALE-DIAG-DEFAULT
 
@@ -6927,6 +6979,7 @@ variable USH-TOK-A   variable USH-TOK-U     \ the ambiguous bare token (raw, val
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
 variable USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 defer USHADOW-DIAG-XT ( -- )                \ render.f installs the reference-site diagnostic
+API   \ USHADOW-DIAG-XT
 : USHADOW-DIAG-DEFAULT ( -- ) [: ;] is USHADOW-DIAG-XT ;
 USHADOW-DIAG-DEFAULT
 
@@ -7025,8 +7078,11 @@ USHADOW-DIAG-DEFAULT
 \ registry-not-loaded default reports "not a protected ctor", matching the old
 \ 0-hook guards which skipped the throw before the registry existed.
 defer CTOR-PKG?-XT ( ptr u8 n -- bool )       \ name is a recorded ctor package?
+API   \ CTOR-PKG?-XT
 defer CTOR-WORD?-XT ( ptr u8 n -- bool )      \ name is a generated ctor word?
+API   \ CTOR-WORD?-XT
 defer CTOR-EXTEND?-XT ( ptr u8 n -- bool )    \ new tail in a closed ctor package?
+API   \ CTOR-EXTEND?-XT
 : CTOR-PROT-DEFAULTS ( -- )
    [: 2drop RES-FALSE ;] is CTOR-PKG?-XT
    [: 2drop RES-FALSE ;] is CTOR-WORD?-XT
@@ -7035,21 +7091,26 @@ CTOR-PROT-DEFAULTS
 
 : CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CTOR-WORD?-XT IF E-CTOR-PROTECTED throw THEN ;
+API   \ CHECKER-UNDEFINE-GUARD
 
 : CHECKER-PACKAGE ( ptr u8 n -- )
    2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
+API   \ CHECKER-PACKAGE
 
 : CHECKER-PUBLIC ( -- )
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PUBLIC CHECKER-PACKAGE-MODE ! THEN ;
+API   \ CHECKER-PUBLIC
 
 : CHECKER-PRIVATE ( -- )
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! THEN ;
+API   \ CHECKER-PRIVATE
 
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U ! ;
+API   \ CHECKER-END-PACKAGE
 
 package CHECKER-CERT
 
@@ -7158,6 +7219,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       THEN
    THEN
    a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN ;
+API   \ CHECKER-LBUF-NAME-GUARD
 
 \ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
 : CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
@@ -7275,6 +7337,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM ;
+API   \ CHECKER-ASIG-KNOWN?
 
 \ True exactly when the checker knows an effect for the name and the pool carries
 \ no signature for it - the one condition a capture must refuse, because that
@@ -7285,6 +7348,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym ASIG-LAST@ 0= ;
+API   \ CHECKER-ASIG-MISSING?
 
 \ The third question, asked with the same key: WHERE is this word's row, so the
 \ capture can copy it. The answer is the row's byte offset plus one, 0 for none,
@@ -7307,6 +7371,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    pkg pkgu  pkgu pub ASIG-AUDIT-VIS  na nu SYM-FIND {: sym:n hit:bool :}
    hit 0= IF 0 EXIT THEN
    sym ASIG-LAST@ ;
+API   \ CHECKER-ASIG-ROW-FOR
 
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
@@ -7316,6 +7381,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       s" checker: missing signature truncation mark" 76 die
    THEN
    USIGS-RESTORE-END ;
+API   \ CHECKER-USIGS-TRUNCATE-FROM-RAW
 
 \ TFAM 2b-iii: a direct post-seal user call would forget the checker's signature
 \ for an engine word so it could be redefined (spoof). Reject it fail-closed; the
@@ -7329,6 +7395,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
       2drop s" seal: cannot truncate sealed checker signatures" ENGINE-ERROR:SEAL-VIOLATION die
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+API   \ CHECKER-USIGS-TRUNCATE-FROM
 
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
    FEP-CLEAR
@@ -7496,6 +7563,7 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
       FEP @ ER.RIN @ EFFQ-RIN !  FEP @ ER.ROUT @ EFFQ-ROUT !
    else 0 EFFQ-DIN !  0 EFFQ-DOUT !  0 EFFQ-RIN !  0 EFFQ-ROUT ! then
    EFFQ-OK @ ;
+API   \ EFFECT-QUERY
 
 \ EFF-ROW-CELLS: the row's width in STACK CELLS — what a call site actually
 \ moves, which is the number the term count above only coincides with when every
@@ -7515,13 +7583,19 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    repeat drop ;
 
 : EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;      \ fixed din term count
+API   \ EFFECT-DIN-N
 : EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;     \ fixed dout term count
+API   \ EFFECT-DOUT-N
 : EFFECT-DIN-FAM ( i -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
 : EFFECT-DOUT-FAM ( i -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
 : EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
+API   \ EFFECT-DIN-CELLS
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
+API   \ EFFECT-DOUT-CELLS
 : EFFECT-DIN-SLOT ( i -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
+API   \ EFFECT-DIN-SLOT
 : EFFECT-DOUT-SLOT ( i -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
+API   \ EFFECT-DOUT-SLOT
 
 \ ---- the quotation descent ----------------------------------------------------
 \ Move the latch onto the rows of the quotation a term IS, so that every reader
@@ -7542,7 +7616,9 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    0 0= ;
 
 : EFFECT-DIN-QUOT ( i -- bool )    EFFQ-DIN @ EFF-ROW-TERM EFF-DESCEND ;
+API   \ EFFECT-DIN-QUOT
 : EFFECT-DOUT-QUOT ( i -- bool )   EFFQ-DOUT @ EFF-ROW-TERM EFF-DESCEND ;
+API   \ EFFECT-DOUT-QUOT
 
 \ Put the displaced row pair back. False when no descent is open, which is the
 \ same fail-closed answer a descent into a term that is not a quotation gives:
@@ -7553,6 +7629,7 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    EFFQ-SAVE-DOUT @ EFFQ-DOUT !
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    0 0= ;
+API   \ EFFECT-QUOT-UP
 
 \ ARE THE QUOTATION'S TWO RETURN ROWS THE SAME STACK? They are when neither holds
 \ a fixed term and both end in the same row variable, which is what a signature
@@ -7609,6 +7686,7 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    EFFQ-OK @ 0= if 0 0= 0= exit then
    EFFQ-RIN @ 0=  EFFQ-ROUT @ 0=  and if 0 0= exit then
    EFFQ-RIN @ EFFQ-ROUT @ EFF-RET-NEUTRAL? ;
+API   \ EFFECT-RET-NEUTRAL?
 
 \ IS THE QUOTATION THE LATCH IS INSIDE ONE A CALLER MAY COMPILE AS AN ORDINARY
 \ ROUTINE? Three clauses, and none of them is decoration.
@@ -7631,6 +7709,7 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    q EFF-C@ q EFF-D@ EFF-RET-NEUTRAL? 0= if 0 0= 0= exit then
    q EFF-E@ 0= 0= if 0 0= 0= exit then
    q EFF-F@ 0= ;
+API   \ EFFECT-QUOT-SIMPLE?
 
 \ ---- HOW WIDE THE WINDOW A CATCH SITE INSTANTIATED IS -------------------------
 \ WHAT THE QUESTION IS AND WHY NO READER ABOVE ANSWERS IT. `catch` runs a
@@ -7903,6 +7982,7 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
       1 +
    REPEAT drop
    CELLS-NONE CELLS-NONE ;
+API   \ EFFECT-CATCH-CELLS
 
 \ How many cells the layout token `ix` really moves: a `MATCH` family token's
 \ instantiated bundle width, an arm's `of` token's instantiated pad count, or a
@@ -7919,6 +7999,7 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
       1 +
    REPEAT drop
    CELLS-NONE ;
+API   \ EFFECT-MATCH-CELLS
 
 \ ---- ARM64 contract link: stable link from an emitted primitive/callable
 \ contract to its checker primitive-effect (PES) row (dot
@@ -8099,6 +8180,7 @@ variable DFER-POS
 
 : CHECKER-DEFER ( ptr u8 n -- )
    CHECKER-RECORD-NAME DFER-ADD ;
+API   \ CHECKER-DEFER
 
 : CHECKER-USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu CHECKER-RECORD-NAME USIG-ADD ;
@@ -8123,6 +8205,7 @@ variable DFER-POS
 \ shadowing a global from inside a package is legal (docs/forth.md § Packages).
 : CHECKER-DEFINED-HERE? ( ptr u8 n -- bool )
    CHECKER-FIND-USIG ;
+API   \ CHECKER-DEFINED-HERE?
 
 \ The REFERENCE-scope question: which word would this token bind to here, and
 \ does the checker know its effect? CHECKER-FIND-ACTIVE-SYM is the resolver the
@@ -8136,6 +8219,7 @@ variable DFER-POS
 \ separate question with no consumer yet.
 : CHECKER-RESOLVES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM ;
+API   \ CHECKER-RESOLVES?
 
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
@@ -8199,6 +8283,7 @@ variable LBUF-INFO-W
    count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+API   \ CHECKER-DEFLAYOUT-BUFFER
 
 \ Checker-side registration for the TYPED-BUFFER / TYPED-VARIABLE gate path
 \ (verify-source RECORD-TYPED-*). Mirrors CHECKER-DEFLAYOUT-BUFFER but gates on
@@ -8220,6 +8305,7 @@ variable LBUF-INFO-W
    count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+API   \ CHECKER-DEFTYPED-BUFFER
 
 : CHECKER-DEFTYPED-VARIABLE
    ( ptr u8 n ptr u8 n -- )
@@ -8228,6 +8314,7 @@ variable LBUF-INFO-W
    type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+API   \ CHECKER-DEFTYPED-VARIABLE
 
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
@@ -8527,8 +8614,11 @@ variable REG-PERSIST-DELTA
 \ this cell; a 0 cell keeps the call a no-op before they load. Same late-binding
 \ shape the checker already uses for the source-check hook (`set-check`).
 defer REG-EXT-PERSIST-XT ( -- )
+API   \ REG-EXT-PERSIST-XT
 defer REG-SCRATCH-SNAP-XT ( -- )
+API   \ REG-SCRATCH-SNAP-XT
 defer REG-LATE-SCRATCH-SNAP-XT ( -- )
+API   \ REG-LATE-SCRATCH-SNAP-XT
 \ registry-not-loaded defaults: no extension registry to persist / no scratch to
 \ snapshot before type-schema.f / type-family.f / render.f install the real words.
 : REG-EXT-DEFAULTS ( -- )
@@ -8562,9 +8652,13 @@ REG-EXT-DEFAULTS
 \ into the caller's buffer, and LOAD asserts the marks against the live stores
 \ and appends.
 defer REG-EXT-AOT-MARK-XT ( -- )
+API   \ REG-EXT-AOT-MARK-XT
 defer REG-EXT-AOT-CLOSE-XT ( -- )
+API   \ REG-EXT-AOT-CLOSE-XT
 defer REG-EXT-AOT-SAVE-XT ( ptr u8 n -- n )
+API   \ REG-EXT-AOT-SAVE-XT
 defer REG-EXT-AOT-LOAD-XT ( ptr u8 n -- )
+API   \ REG-EXT-AOT-LOAD-XT
 
 \ A build with no type registry loaded has no delta to write. Reading one is a
 \ different matter: bytes that no store can take are a seeded engine whose
@@ -8586,8 +8680,11 @@ REG-EXT-AOT-DEFAULTS
 \ and the registry is not theirs, so the two sides meet at these two names and
 \ the axioms below them.
 : CHECKER-REG-AOT-MARK ( -- ) REG-EXT-AOT-MARK-XT ;
+API   \ CHECKER-REG-AOT-MARK
 : CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
+API   \ CHECKER-REG-AOT-CLOSE
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
+API   \ CHECKER-REG-AOT-SAVE
 
 : CHECKER-SNAPSHOT-PREPARE ( -- )
    TOKBUF-RESET
@@ -8667,9 +8764,11 @@ NORET-AXIOMS
    name nameu USIG-DELETE
    name nameu DFER-DELETE
    name nameu 0 NORET-ADD ;
+API   \ CHECKER-UNDEFINE
 
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
    CT-ADD-LINEAR ;
+API   \ CHECKER-DEFLINEAR
 
 variable NORET-FMEND
 
@@ -8710,6 +8809,7 @@ variable NORET-FMEND
 \ current symbol, which is the other half of the same encoding and stays here too.
 : CTL-DEAD? ( ptr u8 n -- bool )
    CTL-FLAGS CTL-DEAD and 0 <> ;
+API   \ CTL-DEAD?
 
 \ M5: OR CTL-BARRIER into a symbol's control flags (append later-wins, preserving
 \ any dead/throw already recorded), then arm the E-ADD-EFFECT hook.
@@ -8730,6 +8830,7 @@ PTX-BARRIER-SET-INSTALL
    a u CHECKER-FIND-ACTIVE-SYM dup 0= IF
       drop s" PTX-BARRIER!: unknown word" 76 die
    ELSE PTX-BARRIER-SET THEN ;
+API   \ PTX-BARRIER!
 
 \ CURSYM: the resolved symbol of the current body token (set by DO-TOK, 0 for
 \ literals/definers/memory tokens), so the throw/dead classification after the
@@ -8987,6 +9088,7 @@ variable UNSAFE-SYM-N
    E-ADD-EFFECT
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-ASIG-EXPORT
    a u EXPORT-META-COPY ;
+API   \ CHECKER-EXPORT
 
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
@@ -9182,12 +9284,19 @@ variable WF-I
    i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
    i WF-ROW ;
 : WF-N@ ( -- n ) WF-N @ ;
+API   \ WF-N@
 : WF-OFF@ ( n -- n ) WF-ROW@ WF.OFF @ ;
+API   \ WF-OFF@
 : WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
+API   \ WF-POS@
 : WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
+API   \ WF-FAM@
 : WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
+API   \ WF-WIDTH@
 : WF-TERM@ ( n -- n ) WF-ROW@ WF.TERM @ ;
+API   \ WF-TERM@
 : WF-FLAGS@ ( n -- n ) WF-ROW@ WF.FLAGS @ ;
+API   \ WF-FLAGS@
 
 : WF-ROW-COPY ( n n -- ) {: src:n dst:n :}
    src WF-ROW dst WF-ROW WF-REC ARENA-COPY ;
@@ -9393,6 +9502,7 @@ variable WF-I
       dup WF-WIDTH@ 1 > IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
+API   \ WF-WIDE?
 : WF-XPAD? ( -- bool )   \ layout-cap slice 4: any construct/MATCH extra-pad fact (triggers pass-2 even at extra=1)
    0 BEGIN dup WF-N @ < WHILE
       dup WF-FLAGS@ WF-XPAD-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
@@ -9406,6 +9516,7 @@ variable WF-I
       dup WF-FETCH? IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
+API   \ WF-NEEDS-P2?
 : WF-HIT? ( n n n -- bool ) {: i:n off:n pos:n :}   \ row i records (off,pos)?
    i WF-OFF@ off <> IF RES-FALSE EXIT THEN
    i WF-POS@ pos = ;
@@ -9414,6 +9525,7 @@ variable WF-I
       dup off pos WF-HIT? IF WF-WIDTH@ EXIT THEN
       1 +
    REPEAT drop 1 ;
+API   \ WF-W-AT
 
 \ --- item 12 slice 3b: whole-bundle transport row surgery (docs §17) ----------
 \ With hidden-field expansion a layout value is W consecutive hidden cells (tag
@@ -9678,7 +9790,9 @@ variable LOCSEQ
 : LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s (die 76 = pass-2 misalignment)
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
    s cells LOC-HW + @ ;
+API   \ LOCW-HW@
 : LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
+API   \ LOCW-HW-N@
 \ Pass-2 live-width table: the width-aware recompiler (habu2.f EM-P2-CARVE /
 \ EM-P2-LOCREF) replays the certified body's {: groups in bind order — each
 \ carve consumes the next bind seq (P2-CARVE-W) and records that local's width
@@ -9691,15 +9805,18 @@ variable P2SEQ
    drop ;
 : P2-LOCSEQ-RESET ( -- )           \ engine EM-P2-TRIGGER: the pass-2 re-run starts at bind seq 0
    0 P2SEQ ! ;
+API   \ P2-LOCSEQ-RESET
 : P2-CARVE-W ( n -- n ) {: i:n :}  \ next bind's width, recorded as live local i's width
    i P2LW-IX-GUARD
    P2SEQ @ LOCW-HW@ {: w:n :}
    P2SEQ @ 1 + P2SEQ !
    w i cells P2LW + !
    w ;
+API   \ P2-CARVE-W
 : P2-LIVE-W@ ( n -- n ) {: i:n :}  \ live local i's width (recorded at its carve)
    i P2LW-IX-GUARD
    i cells P2LW + @ ;
+API   \ P2-LIVE-W@
 : P2-LIVE-CUM@ ( n -- n ) {: i:n :}   \ frame cells from the frame top through live local i
    i P2LW-IX-GUARD
    0
@@ -9707,10 +9824,12 @@ variable P2SEQ
       dup cells P2LW + @  rot +  swap
       1 +
    REPEAT drop ;
+API   \ P2-LIVE-CUM@
 \ per-local type display hook (render.f installs SHOW-LOCAL-TYPE). A `defer` with a
 \ no-op DEFAULT so the call is statically effect-known; the default drops the
 \ name span + length + type, matching the old 0-hook skip before render binds it.
 defer LOCSHOWXT ( ptr u8 n n -- )
+API   \ LOCSHOWXT
 : LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
 variable #CFC
@@ -10785,7 +10904,9 @@ variable MTCH-W                      \ the bundle width the walk below really co
 \ suppress" trick, which a `defer` cannot express as data.
 variable TOK0
 defer RECXT ( ptr u8 n -- )
+API   \ RECXT
 defer DIAGXT ( -- )
+API   \ DIAGXT
 variable DIAG-QUIET
 : DIAG-HOOK-DEFAULTS ( -- )
    [: 2drop ;] is RECXT
@@ -11083,8 +11204,10 @@ variable DIAGL0  variable DIAGC0  variable DIAGB0
       1 +
    REPEAT drop
    u DIAGFU ! ;
+API   \ DIAG-FILE!
 : DIAG-ORIGIN! {: line col byte :}
    line DIAGL0 !  col DIAGC0 !  byte DIAGB0 ! ;
+API   \ DIAG-ORIGIN!
 \ Set DIAG-ORIGIN! to the FILE position of a definition's name token, given the
 \ eval-buffer base ptr, the name-token ptr into that buffer, and the buffer
 \ start's own file line/col/byte. Mirrors verify-source ABS-ORIGIN so the native
@@ -11145,6 +11268,7 @@ s" <input>" DIAG-FILE!
 \ ahead of the check on TRUST.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su TRUST-USIG! ;
+API   \ TRUST-DECL
 
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
@@ -11194,6 +11318,7 @@ s" <input>" DIAG-FILE!
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    na nu sa su TRUST-USIG! ;
+API   \ TRUST
 
 \ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
 \ that seals a storage cell at the moment its definer publishes it.
@@ -11221,6 +11346,7 @@ s" <input>" DIAG-FILE!
    RES-TRUE SIG-RAW-DEFINER!
    na nu sa su TRUST-USIG!
    RES-FALSE SIG-RAW-DEFINER! ;
+API   \ TRUST-RAW
 
 \ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust-decl`
 \ (above) and `checker-defer` (5208) are both defined now — the earliest safe
@@ -11387,6 +11513,7 @@ public
    sym PIMM-N @ cells PIMM-SYMS + !
    cnt PIMM-N @ cells PIMM-NS + !
    PIMM-N @ 1 + PIMM-N ! ;
+API   \ PARSE-IMM
 \ the TRUST row keeps parse-imm out of the internal-word marking (a library
 \ declares its parsing immediates at top level; UNSAFE-TOK? already bars it
 \ from checked bodies).
@@ -12123,16 +12250,19 @@ variable ARMED   0 ARMED !
    is TOKEN-XT
    is SCAN-XT
    1 SET ! ;
+API   \ INSTALL
 
 : ARM ( -- )
    SET @ 0= if s" checker: no source-tape observer to arm" 76 die then
    ARMED @ 0 <> if s" checker: source-tape observer already armed" 76 die then
    1 ARMED !
    REC-RESET ;
+API   \ CHECKER-TAPE:ARM
 
 : DISARM ( -- )
    0 ARMED !
    REC-OFF ;
+API   \ CHECKER-TAPE:DISARM
 
 \ ---- withholding the definition this tape is being recorded for -------------
 \ A definition whose tape is being recorded is one the native chain is about to
@@ -12159,9 +12289,11 @@ variable HOLD-ARMED   0 HOLD-ARMED !
    ARMED @ 0= if s" checker: hold without a recording unit" 76 die then
    HOLD-ARMED @ 0 <> if s" checker: publication already held" 76 die then
    1 HOLD-ARMED ! ;
+API   \ CHECKER-TAPE:HOLD-ARM
 
 : HOLD-DISARM ( -- )
    0 HOLD-ARMED ! ;
+API   \ CHECKER-TAPE:HOLD-DISARM
 
 private
 
@@ -12946,6 +13078,7 @@ variable CTOR-PEND-I
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking —
       THEN                                              \ unless the sig itself was bad
    THEN ;
+API   \ CHECK
 
 \ ---------------------------------------------------------------------------
 \ Transactional rollback-frame STACK. Depth-safe replacement for the old single
@@ -12961,15 +13094,20 @@ variable CTOR-PEND-I
 ;
 
 defer REG-EXT-RB-SAVE-XT ( -- )
+API   \ REG-EXT-RB-SAVE-XT
 defer REG-EXT-RB-FINALIZE-XT ( -- )
+API   \ REG-EXT-RB-FINALIZE-XT
 defer REG-EXT-RB-RESTORE-XT ( -- )
+API   \ REG-EXT-RB-RESTORE-XT
 
 \ The same two extension registries again, for the ONE mark that is not a scope:
 \ the core-prefix boundary below records into a single record instead of pushing
 \ a frame, so its extension halves have to be depth-neutral too. Same installers,
 \ same owners, different bodies - see CHECKER-BOUND.
 defer REG-EXT-BND-SAVE-XT ( -- )
+API   \ REG-EXT-BND-SAVE-XT
 defer REG-EXT-BND-RESTORE-XT ( -- )
+API   \ REG-EXT-BND-RESTORE-XT
 
 : REG-EXT-RB-DEFAULTS ( -- )
    [: REG-EXT-RB-NOOP ;] is REG-EXT-RB-SAVE-XT
@@ -13340,6 +13478,7 @@ TYPES-DEFAULTS
 
 : CHECKER-SCOPE-START ( -- )
    RBF-PUSH ;
+API   \ CHECKER-SCOPE-START
 
 \ The scope opener for replaying STANDALONE source. CHECKER-SCOPE-START saves
 \ the caller's package mirror but leaves it live, which is right for a scope
@@ -13360,15 +13499,19 @@ TYPES-DEFAULTS
    CHECKER-END-PACKAGE
    0 CHECKER-USE-OWNED-N !
    1 CHECKER-PACKAGE-NEUTRAL ! ;
+API   \ CHECKER-SCOPE-START-NEUTRAL
 
 : CHECKER-SCOPE-FINALIZE ( -- )
    RBF-FINALIZE ;
+API   \ CHECKER-SCOPE-FINALIZE
 
 : CHECKER-SCOPE-DONE ( -- )
    RBF-POP ;
+API   \ CHECKER-SCOPE-DONE
 
 : CHECKER-SCOPE-DEPTH ( -- n )
    RBF-DEPTH @ ;
+API   \ CHECKER-SCOPE-DEPTH
 
 : CHECK-CANDIDATE-START ( -- )
    RBF-PUSH
@@ -13384,9 +13527,11 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
 
 : CHECKER-CANDIDATE-SCOPE-START ( -- )
    CHECK-CANDIDATE-START ;
+API   \ CHECKER-CANDIDATE-SCOPE-START
 
 : CHECKER-CANDIDATE-SCOPE-DONE ( -- )
    0 CHECK-CANDIDATE-DONE drop ;
+API   \ CHECKER-CANDIDATE-SCOPE-DONE
 
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
@@ -13474,6 +13619,7 @@ variable CK-RETRY-TOKS
    toks0 CK-RETRY-TOKS !
    rc 0 <> IF rc throw THEN
    CAND-VERDICT @ ;
+API   \ CHECK-CANDIDATE!
 
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1 VSIG !
@@ -13482,6 +13628,7 @@ variable CK-RETRY-TOKS
    CHECKER-TAPE:ARMED @ IF a u verdict CHECKER-TAPE:DONE THEN
    a u verdict CHECKER-CERT:PRODUCE
    verdict ;
+API   \ CHECK! - the global checker entry
 
 package CHECKER-PREFLIGHT
 
@@ -13498,6 +13645,7 @@ public
    0 ACTIVE !
    rc 0 <> IF rc throw THEN
    VERDICT @ ;
+API   \ CHECK!
 
 ;package
 
@@ -13537,6 +13685,7 @@ public
    sa su PARSE-SIG-RAW RAW-SIG!
    CAST-CERTIFY
    sa su na nu CHECKER-USIG-CERT-ADD ;
+API   \ CHECKER-DEFCAST
 
 \ CHECK-DOES! ( body-a body-u sig-a sig-u -- verdict ) verifies a DOES> body
 \ against a created-word runtime effect.  If the created word is declared
@@ -13560,3 +13709,5 @@ public
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD ! ;
+
+;IMPLEMENTATION
