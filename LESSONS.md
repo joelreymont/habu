@@ -7798,3 +7798,13 @@ and --no-lldbinit.
   treated a closed prerequisite as satisfied, which is exactly why those edges
   rotted unnoticed for months - nothing ever surfaced them. Hygiene that no
   tool can feel needs its own audit, because it will never be reported.
+
+- **A crossing refresh is ONE procedure with two halves, never two steps:**
+  for every workspace, `jj new master` (or rebase the lane) AND `cp` the new
+  binary — in that order, together, per workspace. Shipping the binary without
+  moving the checkout produced pool-wide `AOT call site unresolved` rc 82 at
+  the type-family seal (second occurrence of the class; the first was caught
+  at the cast landing and the lesson said "before its refreshed binary
+  boots" — evidently a warning is not a procedure). A lane parked on an old
+  base keeps working until its next boot, which makes the failure look like
+  a broken engine hours later.
