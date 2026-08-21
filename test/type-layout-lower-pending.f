@@ -25,6 +25,8 @@
 \ staged shape-carry fixtures were deleted as unsound (a one-cell bake cannot
 \ carry a multi-cell shape). Parity: check-all-errors-test const-layout-narrow.
 
+using TFAM
+
 variable #FAIL
 variable #CASE
 
@@ -445,3 +447,5 @@ TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-layout-lower-pending: failures" 1 die ;
 REPORT
+
+;using

@@ -1,6 +1,7 @@
 \ layout-valid-guard-base.f — low-level nested SUM schema for guard tests.
 
 using SCHEMA-REG
+using TFAM
 
 package LAYOUT-VALID-GUARD
 
@@ -67,4 +68,5 @@ TRUSTED: SET ( n n n -- )
 
 ;package
 
+;using
 ;using

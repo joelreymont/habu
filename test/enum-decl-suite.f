@@ -30,6 +30,7 @@ require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 reje
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 
 using SCHEMA-REG
+using TFAM
 
 \ Every reject below now renders a declaration diagnostic. Capture it from the
 \ start so the suite's own output stays clean; section 22 turns the capture into
@@ -1640,4 +1641,5 @@ DECL-DIAG:OFF
    #FAIL @ . s" enum-decl-suite: failures" 1 die ;
 REPORT
 
+;using
 ;using

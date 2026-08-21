@@ -7672,8 +7672,45 @@ and --no-lldbinit.
   SIGSEGVed the engine (rc 134) inside the next `SUMTYPE`. Data records are
   exempt from the internal-word marking by design, so only `REG-PROTECT` or a
   package boundary closes them. When sealing a registry, list its `variable` and
-  `create` cells and check each for `REG-PROTECT`; `src/core/type-family.f`
-  TF-RBF-DEPTH is still unprotected.
+  `create` cells and check each for `REG-PROTECT`. Done for type-family.f: the
+  same sweep found `TF-RBF-P` (the identical crash, rc 134) and `SVX-HI`, whose
+  write turned a clean catchable declaration reject into `tfam: ctor index
+  retired after its rows went`, exit 76 — and `SVX-HI` had TWO outside readers,
+  so "no external reference" is not what makes a cell dangerous.
+- **A package name the ENGINE reserves refuses `'` and `postpone` on every tail
+  it owns, public or private.** `tfam` is one of seven names baked into habu2.f
+  `KWDATA:RESTAB-BUF`, so `' TFAM:PF-COMMIT-N` exits 84
+  (`ENGINE-ERROR:SEAL-PACKAGE`) before any lookup, where `' SCHEMA-REG:SCH-N`
+  reaches the record and answers `internal engine word`. Two consequences: a
+  laundering fixture (tick a protected cell into a variable, then `execute` it)
+  must be written against a NON-reserved owner or it stops testing the
+  E-EXEC-OPAQUE-XT rule it exists for; and the reserved-name refusal is one guard
+  reading one table, so assert it once per role, not once per cell.
+- **Four things the engine resolves by BARE GLOBAL NAME survive no packaging, and
+  a name census over source tokens cannot see any of them.** Sealing
+  `src/core/type-family.f` hit them one at a time: `habu2.f` compiles `match` /
+  `construct` / `;match` by calling `C-FIND-GLOBAL`, which ZEROES the open
+  package's wordlist cells before the lookup, so `tfl-match-fam?`,
+  `tfl-con-fam?`, `tfl-cvar?` and `tfam-name$` must be global (the failure is
+  the bare name written to fd 2 and rc 70 on EVERY boot, and
+  `bootstrap/cg/forth.fs` carries the same four spellings); the AOT boot seed
+  re-resolves each baked call site by (name, scope) and accepts a global scope or
+  a qualified pooled name but NOT a `using`-imported bare one, so
+  `tfam-ctor-word?` (called from `src/habu/xref.f`) and `tf-sha16-xt` (from
+  `src/core/type-family-sha.f`) must be global too — the failure is
+  `hb: AOT call site unresolved`, rc 82. Sweep the ENGINE sources for `s" name"`
+  string literals matching the file's globals BEFORE planning a seal, and sweep
+  test files for names embedded in child-program strings (`test/prop-test-core.f`
+  names eight registry accessors inside `s" : PROP-PC ... ; "` text that no
+  code-token census reports).
+- **A prefix-source seal needs a crossing binary, and `bin/hb-host` is it.**
+  The installed `bin/hb` cannot boot a tree whose prefix moved words into a
+  package — its baked AOT call sites name the old scopes — and
+  `tools/build-fixpoint.f BF-BOOTSTRAP-STAGE` hard-codes `bin/hb` as its
+  first-generation compiler, so `install` fails the same way. `bin/hb-host`, the
+  capture host built from the pre-conversion tree, has no AOT window and boots
+  the converted tree: `cp bin/hb-host bin/hb` then `install --force` crosses in
+  ~15s and the fixpoint is byte-identical from the second generation on.
 - **Qualifying a sealed package's callers trips `package-diff-lint` on every
   unpackaged consumer; `using PKG … ;using` touches no definition.** Rewriting 335
   lines to `SCHEMA-REG:TAIL` reported 80 `E-PACKAGE-OWNERSHIP` findings across

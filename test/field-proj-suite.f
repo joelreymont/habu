@@ -34,6 +34,8 @@ variable #CASE
    then ;
 
 require test/checker-assert.f
+using TFAM
+
 
 \ --- sealed friend boundary (dot habu-hb-crash-bare-c5be6634 idiom): the
 \ field-projection window is armed only by the generative crossing, so its arming
@@ -184,3 +186,5 @@ s" FPX-FORGE ( ptr u8 n n n -- ) FIELD-PROJ!" CHECK-QUIET-CANDIDATE! 1 T=
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" field-proj-suite: failures" 1 die ;
 REPORT
+
+;using

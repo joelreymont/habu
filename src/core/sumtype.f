@@ -22,6 +22,7 @@
 \ Loaded unchecked in the checker prefix, right after render.f.
 
 using SCHEMA-REG
+using TFAM
 
 \ --- named reject codes (7101-7106 live in type-family.f, 7103 in type-schema.f).
 7107 constant E-TDECL-SYNTAX    \ malformed declaration (name/arity/terminator/token)
@@ -1909,4 +1910,5 @@ PRIM: NEWTYPE PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: PRODUCT PRIM;
 
+;using
 ;using

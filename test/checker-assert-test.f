@@ -26,6 +26,8 @@ require test/checker-assert.f
 \ ---- fixtures ------------------------------------------------------------------------
 \ Two PUBLIC families share the tail `probe`. They differ in arity, case count, case names
 \ and payload names, so a lookup that resolved the wrong one cannot accidentally agree.
+using TFAM
+
 package REFLTEST-A
 public
 ENUM probe 0
@@ -151,3 +153,5 @@ WRONG$ s" first" REFLECT:CELLS -1 T=
 T-REPORT
 
 ;package
+
+;using

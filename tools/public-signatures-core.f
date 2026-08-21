@@ -6,6 +6,8 @@ require tools/lint/text.f
 require tools/lint/intern.f
 require tools/event-closure-lib.f
 
+using TFAM
+
 package PS
 
 256 constant PS-WORD-CAP
@@ -960,3 +962,5 @@ public
    PS-JSON-DOC-END ;
 
 ;package
+
+;using

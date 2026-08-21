@@ -7,6 +7,8 @@ require lib/test/outcome.f
 require lib/test/subject.f
 require test/checker-assert.f
 
+using TFAM
+
 package IR-ID-AUDIT
 private
 
@@ -577,3 +579,5 @@ public
 
 IR-ID-AUDIT:RUN
 IR-ID-TEST:RUN
+
+;using

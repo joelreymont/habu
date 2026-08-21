@@ -8,6 +8,7 @@
 \ stay in scope. A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 using SCHEMA-REG
+using TFAM
 
 variable #FAIL
 variable #CASE
@@ -1354,4 +1355,5 @@ s" ready" VREQ
    #FAIL @ . s" type-family-suite: failures" 1 die ;
 REPORT
 
+;using
 ;using

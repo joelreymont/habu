@@ -42,6 +42,8 @@ require maki/db/budget-dim.f
 require maki/db/evidence.f
 require maki/db/diagnostic.f
 
+using TFAM
+
 package DIFFRUN
 
 create CID-A CIDW allot           \ case-id buffer A (original case)
@@ -462,3 +464,5 @@ s" RV-D-X2 ( DIFFRUN:run-verdict -- ) MATCH rv-decoy verified OF ENDOF falsified
 ;package
 
 T-REPORT
+
+;using

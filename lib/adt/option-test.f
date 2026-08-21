@@ -9,6 +9,7 @@ T-RESET
 package OPTION-TEST
 
 using REFLECT
+using TFAM
 
 private
 
@@ -113,7 +114,9 @@ public
    T-REPORT ;
 
 ;using
+;using
 
 ;package
 
 OPTION-TEST:RUN
+

@@ -44,6 +44,8 @@ require lib/errors.f
 require lib/string.f
 require lib/argv.f
 
+using TFAM
+
 package DECL-GEN-PROBE
 
 \ Trusted forwarders to the pre-hook generator, plan buffer, and family registry.
@@ -149,3 +151,5 @@ private
 ;package
 
 DECL-GEN-PROBE:RUN
+
+;using

@@ -12,6 +12,8 @@ require maki/extent.f
 
 T-RESET
 
+using TFAM
+
 package MAKI
 
 4 EXTENT: #EA
@@ -109,3 +111,5 @@ s" PCP ( ix<extprod<extpb,extpt>> -- redx<extprod<extpb,extpt>> ) >RED "  CHECK-
 ;package
 
 T-REPORT
+
+;using

@@ -57,6 +57,8 @@ require lib/string.f
 require lib/fmt.f
 require lib/memory.f
 
+using TFAM
+
 package COMPILER-ID-PROOF
 private
 
@@ -673,3 +675,5 @@ public
    IR-ID:POOL-OFF IR-ID:POOL-OFF-N ;
 
 ;package
+
+;using

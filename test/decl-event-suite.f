@@ -18,6 +18,7 @@
 \ collide on slot/byte layout across cases; header-only cases reuse one family.
 
 using SCHEMA-REG
+using TFAM
 
 variable #FAIL
 variable #CASE
@@ -1129,4 +1130,5 @@ GENERATED-DECL:POISONED? 0= T-TRUE
    #FAIL @ . s" decl-event-suite: failures" 1 die ;
 REPORT
 
+;using
 ;using

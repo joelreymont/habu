@@ -34,6 +34,8 @@ require maki/artifact.f
 require maki/config.f
 require maki/producer.f
 
+using TFAM
+
 package OBLIG
 
 create OB-A 1024 allot
@@ -691,3 +693,5 @@ s" TW-ID-X2 ( CAD-KIND:obligation-id -- OBLIG:id-result<CAD-KIND:obligation-id> 
 ;package
 
 T-REPORT
+
+;using

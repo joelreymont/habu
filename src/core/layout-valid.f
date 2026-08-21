@@ -3,6 +3,7 @@
 \ boot-safe scalar producer with the canonical width/fetch serializer.
 
 using SCHEMA-REG
+using TFAM
 
 package LOWER-CERT
 
@@ -364,4 +365,5 @@ FULL-PRODUCE-INSTALL
 
 ;package
 
+;using
 ;using

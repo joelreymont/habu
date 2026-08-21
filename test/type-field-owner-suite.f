@@ -7,6 +7,8 @@ require test/checker-assert.f
 
 T-RESET
 
+using TFAM
+
 package TYPE-FIELD-OWNER-TEST
 
 $400 constant CAP
@@ -189,8 +191,15 @@ variable RC
 \ Measured, not hypothetical: commenting out the `undefine TDECL-FIELD-CLEANUP-XT`
 \ line in src/core/generated-declaration-protection.f and refreshing the engine
 \ makes the first assertion below fail on every run.
+\ The bare leg alone stopped being proof when the registry was sealed: the seam
+\ lives in `package TFAM` now (dot habu-tfam-2b-sealed-1b77662c), so a bare name
+\ is absent whether or not the `undefine` ran. The QUALIFIED leg is what the
+\ retirement claim rests on — `undefine TFAM:TDECL-FIELD-CLEANUP-XT` is the line
+\ in src/core/generated-declaration-protection.f, and deleting it makes exactly
+\ that assertion fail.
 : CLEANUP-SEAM-ABSENT ( -- )
    s" TDECL-FIELD-CLEANUP-XT" ABSENT
+   s" TFAM:TDECL-FIELD-CLEANUP-XT" QUALIFIED-ABSENT
    s" TDECL-FIELD-CLEANUP-XT" CHECKER-RESOLVES? 0= TTRUE
    s" : TFO-NO-CLEANUP ( n -- ) TDECL-FIELD-CLEANUP-XT ;"
       s" TDECL-FIELD-CLEANUP-XT" LOAD-REJECTS
@@ -221,6 +230,7 @@ variable RC
 \ the first assertion below fail on every run.
 : RELEASE-SEAM-ABSENT ( -- )
    s" TDECL-FIELD-RELEASE-XT" ABSENT
+   s" TFAM:TDECL-FIELD-RELEASE-XT" QUALIFIED-ABSENT
    s" TDECL-FIELD-RELEASE-XT" CHECKER-RESOLVES? 0= TTRUE
    s" : TFO-NO-RELEASE ( -- ) TDECL-FIELD-RELEASE-XT ;"
       s" TDECL-FIELD-RELEASE-XT" LOAD-REJECTS
@@ -516,3 +526,5 @@ TYPE-FIELD-OWNER-TEST:REOPEN-SEALED
 TYPE-FIELD-OWNER-TEST:REOPEN-CLEANUP-SEALED
 T-REPORT
 s" type-field-owner-suite: ok" type cr
+
+;using

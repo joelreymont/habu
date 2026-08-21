@@ -27,6 +27,8 @@ require maki/target/target.f
 require maki/db/obligation.f
 require maki/db/budget-dim.f
 
+using TFAM
+
 package CASESTORE-TEST
 
 create EXPREC 256 allot           \ RECORD-INTO byte-match buffer
@@ -341,3 +343,5 @@ LR$ 0 s" a" REFLECT:ARM-SLOT -1 T=      \ the old positional spelling is not a f
 T-REPORT
 
 ;package
+
+;using

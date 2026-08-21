@@ -37,6 +37,8 @@ require maki/competitive-evidence-store.f
 \ anything. With just one of them loaded the tail would be trivially unambiguous.
 require maki/db/diff-case-store.f
 
+using TFAM
+
 package CEVIDSTORE-TEST
 
 \ One private store dir for the whole suite; tests RESET their files as needed.
@@ -326,3 +328,5 @@ CEVID:RESET
 ;package
 
 T-REPORT
+
+;using

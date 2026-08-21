@@ -6172,6 +6172,10 @@ PRIM: DRAIN-PRETRUST PRIM;   \ dot habu-engine-pre-trust-77410827: drains the pe
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: prot-wid-add   PE-N PE-IN PRIM;
 PRIM: prot-wid-room  PE-N PE-OUT PRIM;
+\ TFAM-CTOR-WORD? is defined in src/core/type-family.f, which is `package TFAM`,
+\ and its row is PRIM: rather than PPRIM: because the word itself is one of the
+\ six that stay at global scope: src/habu/xref.f calls it from AOT-captured code,
+\ and the boot seed re-resolves a baked callee only through a global scope.
 PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
@@ -6319,24 +6323,30 @@ PRIM: TRUST-RAW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ adds no checked-code capability. Marking is monotone-safe: it only ever ADDS a
 \ rejection under control flow and can never force an unsound acceptance.
 PRIM: PTX-BARRIER! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: TFAM-N@ PE-N PE-OUT PRIM;
-PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
+\ The type-family registry rows below are PPRIM: rather than PRIM: because
+\ src/core/type-family.f is `package TFAM` (dot habu-tfam-2b-sealed-1b77662c), so
+\ the name the checker and the marking pass both key on is TFAM:TFAM-N@, not a
+\ bare global. TFAM-NAME$ is the one exception in this block and stays PRIM:
+\ because it is one of the six names the engine resolves by bare spelling
+\ (habu2.f C-FIND-GLOBAL, for `;match`), so it is still defined at global scope.
+PPRIM: TFAM TFAM-N@ PE-N PE-OUT PPRIM;
+PPRIM: TFAM TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ Public-signature metadata: registry accessors so the checked public-signatures
 \ tool can synthesize constructor signatures from TFAM/SUMV metadata (item 13).
 \ Read-only registry reads (never hidden fields); NOT trust boundaries.
 PRIM: TFAM-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: TFAM-ARITY@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: TFAM-DECL-PARAM-COUNT PE-N PE-OUT PRIM;
-PRIM: TFAM-DECL-PARAM>CHAR PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
-PRIM: TFAM-DECL-CHAR>PARAM PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
-PRIM: TFAM-KIND@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: TFAM-PUBLIC? PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: TFAM-DERIVE-EQ? PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: TFAM-DERIVE-HASH? PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: TFAM-VAR-START@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: SUMV-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: SUMV-CTOR-PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PPRIM: TFAM TFAM-ARITY@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TFAM TFAM-DECL-PARAM-COUNT PE-N PE-OUT PPRIM;
+PPRIM: TFAM TFAM-DECL-PARAM>CHAR PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
+PPRIM: TFAM TFAM-DECL-CHAR>PARAM PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
+PPRIM: TFAM TFAM-KIND@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TFAM TFAM-PUBLIC? PE-N PE-IN  PE-F PE-OUT PPRIM;
+PPRIM: TFAM TFAM-DERIVE-EQ? PE-N PE-IN  PE-F PE-OUT PPRIM;
+PPRIM: TFAM TFAM-DERIVE-HASH? PE-N PE-IN  PE-F PE-OUT PPRIM;
+PPRIM: TFAM TFAM-VAR-START@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TFAM TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TFAM SUMV-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+PPRIM: TFAM SUMV-CTOR-PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD COUNT PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD TX-DEPTH PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD NO-VARIANT PE-N PE-OUT PPRIM;
@@ -6457,10 +6467,10 @@ PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-CUM@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: SUMV-N@ PE-N PE-OUT PRIM;
-PRIM: TF-STR-U@ PE-N PE-OUT PRIM;
-PRIM: TF-PK-N@ PE-N PE-OUT PRIM;
-PRIM: LAY-N@ PE-N PE-OUT PRIM;
+PPRIM: TFAM SUMV-N@ PE-N PE-OUT PPRIM;
+PPRIM: TFAM TF-STR-U@ PE-N PE-OUT PPRIM;
+PPRIM: TFAM TF-PK-N@ PE-N PE-OUT PPRIM;
+PPRIM: TFAM LAY-N@ PE-N PE-OUT PPRIM;
 \ The schema registry's two high-water reads. They are PPRIM: rather than PRIM:
 \ because src/core/type-schema.f is package SCHEMA-REG, so the name the checker
 \ and the marking pass both key on is SCHEMA-REG:SCHEMA-N@, not a bare global.
@@ -6569,19 +6579,24 @@ PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ trust boundary rather than cross it, so their wrappers stay named boundaries.
 \ `execute` and the two raw-address casts stay for the reasons their own files
 \ give (owners habu-typed-xt-storage-ddad4af8, habu-guard-an-executed-8a0f2f77).
+\ The registry half of this block is PPRIM: TFAM now, for the reason the
+\ high-water block above gives. TFL-MATCH-FAM? and TFL-CON-FAM? keep PRIM: rows
+\ because those two words keep global scope: habu2.f compiles `match` and
+\ `construct` by looking them up through C-FIND-GLOBAL, which deliberately
+\ ignores the open package.
 PRIM: TFL-MATCH-FAM?  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: TFL-CON-FAM?    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
-PRIM: TFL-VAR?        PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
-PRIM: TFAM-SLOTS@     PE-N PE-IN  PE-N PE-OUT PRIM;
+PPRIM: TFAM TFL-VAR?  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
+PPRIM: TFAM TFAM-SLOTS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ TFAM-VAR-COUNT@ and TFAM-NAME$ are NOT repeated here: the public-signature
 \ metadata block above already states both, with the effects this file needs.
 \ family.f's VARIANTS and NAME$ read those rows. A second row for a symbol is
 \ dead - PRIM-FIRST-SCAN answers with the first slot - so it would be a name
 \ with two authorities and no way to tell which one a caller got.
-PRIM: SUMV-TAG@       PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: TFL-VPADS       PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: SUMV-PAYCELLS@  PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: SUMV-PAY-N      PE-N PE-IN  PE-N PE-OUT PRIM;
+PPRIM: TFAM SUMV-TAG@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TFAM TFL-VPADS PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TFAM SUMV-PAYCELLS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TFAM SUMV-PAY-N PE-N PE-IN  PE-N PE-OUT PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
 PRIM: EFFECT-DOUT-N      PE-N PE-OUT PRIM;

@@ -223,6 +223,8 @@ STAT
 \ ok arm owned NO field row at all.
 T-RESET
 
+using TFAM
+
 package CAD-NUM-TEST
 private
 
@@ -395,3 +397,5 @@ T-MAX-ALLOC-CELLS 1 + RT-VALUE# E-CADNUM-OVERFLOW T=   \ the overflow edge did n
 ;package
 
 T-REPORT
+
+;using

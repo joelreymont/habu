@@ -1,6 +1,7 @@
 \ layout-valid-growth.f — grow descriptor, environment, and guard arenas.
 
 using SCHEMA-REG
+using TFAM
 
 package LAYOUT-VALID-GROWTH
 
@@ -64,4 +65,5 @@ s" ok" type cr
 
 ;package
 
+;using
 ;using

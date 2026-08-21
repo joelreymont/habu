@@ -191,8 +191,10 @@ get-current prot-wid-add
 \ The field owner's multi-frame cleanup vector and its total release vector are
 \ now bound into the compiled declaration-event participant, the only caller
 \ either is ever meant to have, so retire their source-level names here with the
-\ other one-shot install seams above. They are retired outside the package block
-\ because they are global names and `undefine` resolves an unqualified name in
-\ the CURRENT wordlist.
-undefine TDECL-FIELD-CLEANUP-XT
-undefine TDECL-FIELD-RELEASE-XT
+\ other one-shot install seams above. They are retired outside the package block,
+\ and by their QUALIFIED names: `undefine` resolves an unqualified name in the
+\ CURRENT wordlist, and since dot habu-tfam-2b-sealed-1b77662c these two live in
+\ TFAM's public wordlist rather than the global one. A `using` would not help --
+\ `undefine` is a parsing word and parsing words resolve outside using-imports.
+undefine TFAM:TDECL-FIELD-CLEANUP-XT
+undefine TFAM:TDECL-FIELD-RELEASE-XT

@@ -5,6 +5,8 @@
 require lib/prelude.f
 require lib/errors.f
 
+using TFAM
+
 package NFAM
 
 public
@@ -59,3 +61,5 @@ public
 get-current prot-wid-add
 
 ;package
+
+;using

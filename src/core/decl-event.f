@@ -67,6 +67,8 @@
 \   TYPE-NAME:VARIANT-REQUIRE ( na nu -- )                  reserved/collision gate
 \   SUMV-ADD         ( fam na nu tag ss sc pc -- vid )      register one canonical, unique variant
 
+using TFAM
+
 package DECL-EVENT
 
 \ --- syntax-event kinds (record tag values). No 0 tag: an unwritten cell is
@@ -851,3 +853,5 @@ DEV-EVENT-HOOKS-INSTALL
 DEV-PART-INSTALL
 
 ;package
+
+;using

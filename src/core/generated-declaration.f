@@ -71,6 +71,8 @@
 \ ENUM) is not packet nesting: the family stays the declaration's family and
 \ only the offending token moves.
 \ ---------------------------------------------------------------------------
+using TFAM
+
 package DECL-REJECT
 
 \ --- spans.  Four short byte slots hold the packet text.  They are copies, not
@@ -868,3 +870,5 @@ INSTALL
 get-current prot-wid-add
 
 ;package
+
+;using

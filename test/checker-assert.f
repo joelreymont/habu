@@ -42,6 +42,8 @@ TRUSTED: CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n )
    CHECK-CANDIDATE!
    -1 DIAG-QUIET +! ;
 
+using TFAM
+
 package REFLECT
 private
 
@@ -148,3 +150,5 @@ public
    fam TYPE-FIELD:NO-VARIANT na nu LIVE-CELLS ;
 
 ;package
+
+;using

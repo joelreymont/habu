@@ -653,10 +653,10 @@ TRUSTED: EVAL-RUNNER ( -- n )
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam-decl-param-count ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( n -- n bool ) tfam-decl-param>char ; " s" 7 " 2 CHECK-CASE
-   s" : PROP-PC ( n -- n bool ) tfam-decl-char>param ; " s" 7 " 2 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam:tfam-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam:tfam-decl-param-count ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n bool ) tfam:tfam-decl-param>char ; " s" 7 " 2 CHECK-CASE
+   s" : PROP-PC ( n -- n bool ) tfam:tfam-decl-char>param ; " s" 7 " 2 CHECK-CASE
    s" : PROP-PC ( -- n ) type-field:tx-depth ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) wf-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- bool ) wf-wide? ; " s" " 1 CHECK-CASE
@@ -686,10 +686,10 @@ TRUSTED: EVAL-RUNNER ( -- n )
    s" : PROP-PC ( -- n ) lower-cert:fnv-offset ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) lower-cert:fnv-prime ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) lower-cert:cell-count ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) sumv-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tf-str-u@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tf-pk-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lay-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam:sumv-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam:tf-str-u@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam:tf-pk-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam:lay-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) schema-reg:schema-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) schema-reg:schema-root-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n -- r ) s>f ; " s" 7 " 1 CHECK-CASE

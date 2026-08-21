@@ -42,6 +42,8 @@ require lib/process-env.f
 \ open package is where the definitions those cases make land — which is why
 \ symbols are resolved with CHECKER-FIND-ACTIVE-SYM (the current scope) rather
 \ than as globals.
+using TFAM
+
 package SCANIDX-TEST
 
 variable #FAIL
@@ -435,7 +437,20 @@ variable SCX-RC
 
 s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP USX-LINK ; SCXCAP" SCX-REFUSED
 s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP NRX-LINK ; SCXCAP" SCX-REFUSED
-s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP SVX-LINK ; SCXCAP" SCX-REFUSED
+
+\ SVX-LINK used to be the third subject here and cannot be one any more: it is a
+\ private of `package TFAM` since dot habu-tfam-2b-sealed-1b77662c, so a child
+\ program has no spelling for it on any route and never reaches the guard. That
+\ is a stronger answer than the guard's own die and it is what this case now
+\ pins. The RULE is unchanged and still proved live above: all three linking
+\ words call the one shared range test (checker.f IDX-SYM-OK), and USX-LINK and
+\ NRX-LINK are global, so a deleted guard still reds this suite.
+: SCX-SEALED ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu SCX-CHILD
+   SCX-RC @ 70 T=
+   SCX-ERR$ s" E-UNDEFINED: SVX-LINK" CONTAINS? TTRUE ;
+
+s" TRUSTED: SCXCAP ( -- ) 0 SYM-CAP SVX-LINK ; SCXCAP" SCX-SEALED
 \ id 0 is the symbol table's own "no symbol", not a key: the control store has
 \ no early return for it, so its linking word is where that shows.
 s" TRUSTED: SCXCAP ( -- ) 0 0 NRX-LINK ; SCXCAP" SCX-REFUSED
@@ -497,3 +512,5 @@ s" scxpk" s" scxfam" SCX-TFAM-FIND-IN TTRUE drop
 REPORT
 
 ;package
+
+;using

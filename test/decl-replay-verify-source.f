@@ -41,6 +41,8 @@ require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f
 
+using TFAM
+
 package VSPARITY
 
 variable #FAIL
@@ -361,3 +363,5 @@ DECL-DIAG:HAS? -1 VSPARITY:T=
 DECL-DIAG:OFF
 
 VSPARITY:REPORT
+
+;using

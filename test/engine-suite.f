@@ -66,6 +66,8 @@ variable T-LABEL-U
 \ A registered engine helper is sealed system-private: search-wl must never
 \ surface (PROT-SPAN) or (LP2VEXEC) in any wordlist, so no checked program can
 \ name or call it.
+using TFAM
+
 package ENGINE-SUITE
 
 1 constant OWNER-PUBLIC-WID
@@ -2795,3 +2797,5 @@ ES-SWL:DIFF -1 T=
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then
    #FAIL @ . s" engine-suite: failures" 1 die ;
 REPORT
+
+;using

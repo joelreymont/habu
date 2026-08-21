@@ -6,6 +6,8 @@
 \ Also the checker's sig RECORDER: certified words render "in -- out" to a buffer
 \ and append it to USIGS (installed via RECXT), so callers of certified words
 \ certify too.
+using TFAM
+
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 16384 constant RSBUF-CAP
@@ -1047,3 +1049,5 @@ USHADOW-DIAG-INSTALL
    0 RDST !  0 RSN ! ;
 : TSTALE-DIAG-INSTALL ( -- ) [: TSTALE-DIAG ;] is TSTALE-DIAG-XT ;
 TSTALE-DIAG-INSTALL
+
+;using

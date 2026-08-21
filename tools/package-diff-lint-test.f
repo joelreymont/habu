@@ -1323,12 +1323,66 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s"  : TFAM-N@ ( -- n ) 0 ;" TEST-DIFF+ TEST-LF
    s" -;package" TEST-DIFF+ TEST-LF ;
 
+: TEST-WRITE-TYPE-FAMILY-BRIDGE ( -- )
+   TEST-SOURCE-RESET
+   s" : TFL-MATCH-FAM? ( ptr u8 n -- n bool )" TEST-SOURCE-LINE
+   s"    TFAM-SIG-RESOLVE" TEST-SOURCE-LINE
+   s" ;" TEST-SOURCE-LINE
+   s" src/core/type-family.f" TEST-WRITE-SOURCE ;
+
+: TEST-TYPE-FAMILY-BRIDGE-DIFF ( -- )
+   s" src/core/type-family.f" TEST-MODIFY-HEAD
+   s" @@ -1,2 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : TFL-MATCH-FAM? ( ptr u8 n -- n bool )" TEST-DIFF+ TEST-LF
+   s" +   TFAM-SIG-RESOLVE" TEST-DIFF+ TEST-LF
+   s"  ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-WRITE-TYPE-FAMILY-BRIDGE-DEFER ( -- )
+   TEST-SOURCE-RESET
+   s" defer TF-SHA16-XT ( ptr u8 n ptr u8 -- )" TEST-SOURCE-LINE
+   s" src/core/type-family.f" TEST-WRITE-SOURCE ;
+
+: TEST-TYPE-FAMILY-BRIDGE-DEFER-DIFF ( -- )
+   s" src/core/type-family.f" TEST-MODIFY-HEAD
+   s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
+   s" -defer TF-SHA16-XT ( ptr u8 -- )" TEST-DIFF+ TEST-LF
+   s" +defer TF-SHA16-XT ( ptr u8 n ptr u8 -- )" TEST-DIFF+ TEST-LF ;
+
+: TEST-WRITE-TYPE-FAMILY-BRIDGE-WRONG-DEFINER ( -- )
+   TEST-SOURCE-RESET
+   s" variable TFL-MATCH-FAM?" TEST-SOURCE-LINE
+   s" src/core/type-family.f" TEST-WRITE-SOURCE ;
+
+: TEST-TYPE-FAMILY-BRIDGE-WRONG-DEFINER-DIFF ( -- )
+   s" src/core/type-family.f" TEST-MODIFY-HEAD
+   s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
+   s" -variable TFL-MATCH-FAMILY?" TEST-DIFF+ TEST-LF
+   s" +variable TFL-MATCH-FAM?" TEST-DIFF+ TEST-LF ;
+
 : TEST-TYPE-FAMILY-EXEMPTION ( -- )
-   \ Positive: a changed body line of a global word in the documented core
-   \ type-family surface is exempt from package ownership.
+   \ Negative: the whole-file exemption is GONE (dot habu-tfam-2b-sealed-1b77662c
+   \ sealed the file into package TFAM), so the body change that used to be
+   \ admitted is an ordinary unowned global now.  This is the fixture leg that
+   \ retires with the row: it was the positive above and it is a negative here.
    s" src/core/type-family.f" TEST-TYPE-FAMILY-CASE
-   s" type-family core surface exempts a changed global body" T-LABEL
+   s" type-family.f global body no longer exempt after the TFAM seal" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Positive: the six names the ENGINE resolves by bare spelling keep their
+   \ global standing, by exact path + exact name + exact definer.
+   TEST-WRITE-TYPE-FAMILY-BRIDGE
+   TEST-DIFF-RESET TEST-TYPE-FAMILY-BRIDGE-DIFF
+   s" the TFL-MATCH-FAM? engine bridge stays global" T-LABEL
    TEST-EXPECT-CLEAN
+   TEST-WRITE-TYPE-FAMILY-BRIDGE-DEFER
+   TEST-DIFF-RESET TEST-TYPE-FAMILY-BRIDGE-DEFER-DIFF
+   s" the TF-SHA16-XT defer bridge stays global" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative (shape): the same admitted NAME under another definer is not the
+   \ declaration the row admits, so it reports.
+   TEST-WRITE-TYPE-FAMILY-BRIDGE-WRONG-DEFINER
+   TEST-DIFF-RESET TEST-TYPE-FAMILY-BRIDGE-WRONG-DEFINER-DIFF
+   s" a bridge name under the wrong definer still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
    \ Negative: a sibling name in the same directory shares the allowlist path as
    \ a prefix but is not exact, so it must still fail (not a startswith match).
    s" src/core/type-family-extra.f" TEST-TYPE-FAMILY-CASE

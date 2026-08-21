@@ -252,11 +252,12 @@ variable FILE-USED
 \ loads before the check hook exists, and the checker registers the words it
 \ defines (CORE-STR=, PATHZ, PATH0) as global primitive axioms that every later
 \ prefix file and the makers resolve bare -- giving them a package owner would
-\ break those axiom rows and every core caller.  All the entries are
-\ entirely global except src/core/type-family.f, which also opens inner packages:
-\ it is exempt only for its global surface, and only until the TFAM sealing work
-\ (dot habu-tfam-2b-sealed-1b77662c) seals that surface into packages, when this
-\ entry must be removed.  src/core/checker.f is the second interim entry, on the
+\ break those axiom rows and every core caller.  Every entry here is entirely
+\ global; src/core/type-family.f was the one that was not, and it left this list
+\ when the TFAM sealing work (dot habu-tfam-2b-sealed-1b77662c) put its 566
+\ remaining definitions inside `package TFAM`.  The six names that could not
+\ follow are admitted by TFAM-BRIDGE? below, by exact path, name and definer.
+\ src/core/checker.f is the first interim entry, on the
 \ same terms: the checker is a global pre-hook language surface by current
 \ construction -- its PRIM:/PPRIM: primitive-axiom machinery and its RBF
 \ rollback-frame surface are global by design and load before any package
@@ -364,7 +365,6 @@ variable FILE-USED
    FILE$ s" src/core/layout-buffer.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
-   FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header
    FILE$ s" src/core/checker.f" LINT-STR= if true exit then      \ core surface, interim; see header
    FILE$ s" src/core/render.f" LINT-STR= if true exit then       \ checker's render half, interim; see header
    \ Retires with `package INTERNAL-MARK` + prot-wid-add sealing, AFTER the
@@ -1432,6 +1432,46 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    DEF-DEFINER-I @ s" ENUM" TOK=CI 0= if false exit then
    DEF-NAME-I @ name nameu TOK=CI ;
 
+\ src/core/type-family.f is `package TFAM` now (dot habu-tfam-2b-sealed-1b77662c):
+\ 221 publics and 345 privates under one owner, with nothing renamed, so its
+\ whole-file GLOBAL-IMPLEMENTATION? entry is gone.  SIX names could not go with
+\ them, and the reason is the ENGINE's, not a preference: it resolves each one by
+\ a bare global spelling that no package spelling can reach.
+\
+\ Four are the `construct`/`match`/`;match` keyword bridge.  habu2.f
+\ EM-ADT-MATCH-FAM and EM-MATCH-SEMI call C-FIND-GLOBAL, which ZEROES the open
+\ package's wordlist cells before the lookup so that the answer cannot depend on
+\ where the user's `match` is written; the four spellings are baked byte for byte
+\ into KWDATA (habu2.f:1955) and mirrored in the Gforth recovery emitter
+\ (bootstrap/cg/forth.fs:2612).  Measured on the candidate: moving TFL-MATCH-FAM?
+\ into the package made every engine boot write `tfl-match-fam?` to fd 2 and exit
+\ 70, because that lookup is what compiles the keyword.
+\
+\ Two more are named by AOT-captured call sites.  The boot seed re-resolves each
+\ baked callee by (name, scope) and admits a global scope or an explicitly
+\ qualified pooled name; a `using`-imported bare name is neither, and a qualified
+\ one is not resolvable at seed time.  Measured: `using TFAM` in src/habu/xref.f
+\ and `package TFAM` in src/core/type-family-sha.f each produced `hb: AOT call
+\ site unresolved`, exit 82, on every run of the built engine.
+\
+\ The row is exact path + exact name + exact definer, so a seventh global added
+\ beside them still reports, and so does any of the six re-declared by another
+\ definer or in another file.  Retirement: it goes when the engine learns to
+\ resolve these six under their owner - the keyword bridge through a qualified
+\ C-FIND, the AOT pool through a scope the seed can rebase - not before.
+: TFAM-BRIDGE-COLON? ( -- bool )
+   DEF-NAME-I @ s" TFAM-NAME$" TOK=CI if true exit then
+   DEF-NAME-I @ s" TFL-CON-FAM?" TOK=CI if true exit then
+   DEF-NAME-I @ s" TFL-CVAR?" TOK=CI if true exit then
+   DEF-NAME-I @ s" TFL-MATCH-FAM?" TOK=CI if true exit then
+   DEF-NAME-I @ s" TFAM-CTOR-WORD?" TOK=CI ;
+
+: TFAM-BRIDGE? ( -- bool )
+   FILE$ s" src/core/type-family.f" LINT-STR= 0= if false exit then
+   DEF-DEFINER-I @ s" :" TOK= if TFAM-BRIDGE-COLON? exit then
+   DEF-DEFINER-I @ s" defer" TOK= 0= if false exit then
+   DEF-NAME-I @ s" TF-SHA16-XT" TOK=CI ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
@@ -1439,6 +1479,7 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
    ERR-VOCAB? if true exit then
    ENGINE-BODY-EDIT? if true exit then
    MIRROR-EDIT? if true exit then
+   TFAM-BRIDGE? if true exit then
    s" lib/adt/option.f" s" option" EXACT-ENUM? if true exit then
    s" lib/adt/result.f" s" result" EXACT-ENUM? if true exit then
    FILE$ s" lib/type/deftype.f" LINT-STR= if
@@ -1471,9 +1512,10 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ A changed unpackaged definition normally loses its package owner.  A non-zero
 \ SCOPE-DELTA means a `package`/`;package` boundary around this definition was
 \ added or deleted in this diff, so its ownership genuinely changed: that is
-\ reported for every file, including the allowlisted core surface (type-family.f
-\ still opens inner packages).  Only a plain body change or whole-file change of
-\ an already-global definition is exempt, and only on that surface.
+\ reported for every file, including the allowlisted core surface (checker.f and
+\ render.f still stand beside real packages).  Only a plain body change or
+\ whole-file change of an already-global definition is exempt, and only on that
+\ surface.
 : FINISH-DEFINITION ( n -- ) {: last-line:n :}
    DEF-PACKAGED @ if
       s" lib/adt/result.f" s" result" EXACT-ENUM? if

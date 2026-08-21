@@ -39,6 +39,8 @@ require maki/db/diagnostic.f
 \ than ill-typed. The tail is kept short on purpose: the generated constructor package is
 \ ACTION--TEST-REGR--TWIN at 23 characters, clear of the 32-character readability cap
 \ above which a generated name falls back to an unreadable hash spelling.
+using TFAM
+
 package ACTION-TEST
 public
 
@@ -486,3 +488,5 @@ EA-NEG-ALL    TTRUE                             \ every k in [-8, -1] rejects
 T-REPORT
 
 ;package
+
+;using

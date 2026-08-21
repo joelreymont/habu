@@ -7,6 +7,7 @@ require test/checker-assert.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 
 using SCHEMA-REG
+using TFAM
 
 T-RESET
 
@@ -1343,4 +1344,5 @@ public
 
 GENERATED-DECLARATION-TXN-TEST:RUN
 
+;using
 ;using

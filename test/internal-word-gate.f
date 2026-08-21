@@ -46,6 +46,7 @@ package INTERNAL-WORD-GATE
 2048 constant CAP
 70 constant REJECT-RC           \ interpret-level reject exit (RC-REJECT)
 67 constant THROW-RC            \ engine uncaught-throw boundary exit
+84 constant SEAL-RC             \ ENGINE-ERROR:SEAL-PACKAGE, the reserved-name guard
 
 variable ROOT-U
 variable CHILD-U
@@ -291,8 +292,8 @@ create EMPTY 1 allot            \ zero-length stdin
    s" PRODUCT iwgpf 0 FIELD x n ;PRODUCT" SB-APPEND LF
    s" : IWG-PF-READ ( -- n )" SB-APPEND LF
    s"    TYPE-FIELD:COUNT drop" SB-APPEND LF
-   s"    TFAM-N@ 1 - TYPE-FIELD:NO-VARIANT 0 TYPE-FIELD:EACH if drop else drop then" SB-APPEND LF
-   S\"    TFAM-N@ 1 - TYPE-FIELD:NO-VARIANT s\" x\" TYPE-FIELD:FIND" SB-APPEND LF
+   s"    TFAM:TFAM-N@ 1 - TYPE-FIELD:NO-VARIANT 0 TYPE-FIELD:EACH if drop else drop then" SB-APPEND LF
+   S\"    TFAM:TFAM-N@ 1 - TYPE-FIELD:NO-VARIANT s\" x\" TYPE-FIELD:FIND" SB-APPEND LF
    s"    if dup TYPE-FIELD:FAMILY@ drop dup TYPE-FIELD:VARIANT@ drop" SB-APPEND LF
    s"       dup TYPE-FIELD:NAME$ 2drop dup TYPE-FIELD:SCHEMA@ drop" SB-APPEND LF
    s"       dup TYPE-FIELD:CELLS@ drop dup TYPE-FIELD:BYTE-OFF@ drop" SB-APPEND LF
@@ -406,9 +407,15 @@ create EMPTY 1 allot            \ zero-length stdin
    TOMB-TEXT-FORGE$ RUN-SUBJECT ASSERT-OK
    s" packaged field reflection is checked/public" T-LABEL
    PF-REFLECT-FORGE$ RUN-LOAD ASSERT-OK
+   \ The raw implementation name is still refused, and the refusal moved EARLIER
+   \ than the checker. Before the TFAM seal PF-FIND was a global the checker had
+   \ no signature for, so the reject arrived from the publish hook as
+   \ `non-certified definition: iwg-pf-raw at 'PF-FIND'`. It is a package private
+   \ now, so the ENGINE's own find misses the token first and the body never
+   \ compiles: E-UNDEFINED, which is the answer an absent name gets.
    s" raw field reflection is unavailable to checked code" T-LABEL
    PF-RAW-FORGE$ RUN-LOAD
-   s" at 'PF-FIND'" ASSERT-DIAG
+   s" E-UNDEFINED: PF-FIND" ASSERT-DIAG
    s" NEWTYPE in a checked body is rejected unsafe" T-LABEL
    s" NEWTYPE" NEG-OPENER
    s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
@@ -497,10 +504,18 @@ create EMPTY 1 allot            \ zero-length stdin
    s" : IWG-LBAD ( -- ) IWG-LV @ execute ;" SB-APPEND LF
    SB$ ;
 
-: PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick the protected PF cell writer, launder its execute
+\ The laundered registry-cell write is spelled against a SCHEMA-REG cell, not a
+\ TFAM one, and the reason is measured rather than stylistic: `tfam` is a reserved
+\ system-package name, so `['] TFAM:PF-COMMIT-N` never reaches the checker at all
+\ (habu2.f C-QUALIFY-SEAL-GUARD, rc 84 — asserted in TFAM-SEAL-CASES below), and a
+\ case written on it would stop testing the E-EXEC-OPAQUE-XT rule it exists for.
+\ SCHEMA-REG:SCH-N is the same kind of record — a REG-PROTECTed public control
+\ cell — under an owner the engine does not reserve, so the tick still lands and
+\ the checker still has to refuse the laundered `execute`.
+: PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick a protected registry cell, launder its execute
    SB-RESET
    s" variable IWG-PFV" SB-APPEND LF
-   s" : IWG-PFSET ( -- ) ['] PF-COMMIT-N IWG-PFV ! ;" SB-APPEND LF
+   s" : IWG-PFSET ( -- ) ['] SCHEMA-REG:SCH-N IWG-PFV ! ;" SB-APPEND LF
    s" IWG-PFSET" SB-APPEND LF
    s" : IWG-PFBAD ( -- ) IWG-PFV @ execute 99 swap ! ;" SB-APPEND LF
    SB$ ;
@@ -535,7 +550,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" layout-buffer laundered through a variable rejects at CHECK" T-LABEL
    s" LAYOUT-BUFFER" LAUNDER-DEFINER$ RUN-SUBJECT
    ASSERT-OPAQUE
-   s" PF registry-cell write laundered through a variable rejects at CHECK, not runtime" T-LABEL
+   s" registry-cell write laundered through a variable rejects at CHECK, not runtime" T-LABEL
    PF-LAUNDER-FORGE$ RUN-SUBJECT
    ASSERT-OPAQUE
    s" deflinear laundered through a variable + catch also rejects at CHECK" T-LABEL
@@ -567,46 +582,6 @@ create EMPTY 1 allot            \ zero-length stdin
    s" XREF of an internal word still works" T-LABEL
    XREF-FORGE$ RUN-SUBJECT ASSERT-OK ;
 
-\ --- registry write-protection (dot habu-protect-type-field-04d91409, Layer 1).
-\ A din=0 registry control cell (variable/create) used to stay executable at top
-\ level because the internal-word pass exempts data records; REG-PROTECT +
-\ IMK-SEAL-REGISTRY now mark the PF cells DNAME-INT, so a bare cell name and the
-\ confirmed `99 PF-COMMIT-N !` write both fail closed (rc 70, internal engine
-\ word) on --load and stdin, while checked user code still rejects them earlier
-\ as non-certified (E-UNDEFINED, covered by OPENER-CASES' PF-FIND row). ----
-: PF-EXPLOIT-FORGE$ ( -- ptr u8 n )   \ the confirmed exploit: a bare registry-cell write
-   SB-RESET
-   s" 99 PF-COMMIT-N !" SB-APPEND LF
-   SB$ ;
-
-: REGISTRY-CASES ( -- )
-   s" bare PF-CAP-V registry cell fails closed" T-LABEL
-   s" PF-CAP-V" NEG
-   s" bare PF-A-BOOT arena fails closed" T-LABEL
-   s" PF-A-BOOT" NEG
-   s" bare PF-A-P arena base fails closed" T-LABEL
-   s" PF-A-P" NEG
-   s" bare PF-N registry cell fails closed" T-LABEL
-   s" PF-N" NEG
-   s" bare PF-COMMIT-N registry cell fails closed" T-LABEL
-   s" PF-COMMIT-N" NEG
-   s" bare PF-TX-CAP-V registry cell fails closed" T-LABEL
-   s" PF-TX-CAP-V" NEG
-   s" bare PF-TX-BOOT arena fails closed" T-LABEL
-   s" PF-TX-BOOT" NEG
-   s" bare PF-TX-P arena base fails closed" T-LABEL
-   s" PF-TX-P" NEG
-   s" bare PF-TX-DEPTH registry cell fails closed" T-LABEL
-   s" PF-TX-DEPTH" NEG
-   s" bare PF-TX-SERIAL registry cell fails closed" T-LABEL
-   s" PF-TX-SERIAL" NEG
-   s" registry-cell write exploit fails closed on --load" T-LABEL
-   PF-EXPLOIT-FORGE$ RUN-LOAD
-   s" PF-COMMIT-N" ASSERT-INTERNAL
-   s" registry-cell write exploit fails closed on stdin" T-LABEL
-   PF-EXPLOIT-FORGE$ RUN-STDIN
-   s" PF-COMMIT-N" ASSERT-INTERNAL ;
-
 \ --- sibling type-registry write-protection (dot habu-protect-sibling-type-44eec932).
 \ The family (TFAM), sum-variant (SUMV), interned-string, param-kind, logical-layout
 \ (src/core/type-family.f) and schema/schema-root (src/core/type-schema.f) registries
@@ -616,66 +591,18 @@ create EMPTY 1 allot            \ zero-length stdin
 \ `' <cell>` tick all fail closed (rc 70, internal engine word) exactly like the PF
 \ cells. Compiled cold-prefix writers and the certified accessors (TFAM-N@, SUMV-N@,
 \ TF-STR-U@, TF-PK-N@, SCHEMA-N@, SCHEMA-ROOT-N@) are unaffected. ----
-: WRITE-FORGE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ program "99 <cell> !"
-   SB-RESET
-   s" 99 " SB-APPEND  a u SB-APPEND  s"  !" SB-APPEND LF
-   SB$ ;
-
-: TICK-CELL-FORGE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ program "' <cell>"
-   SB-RESET
-   s" ' " SB-APPEND  a u SB-APPEND LF
-   SB$ ;
-
-: CELL-WT ( ptr u8 n -- ) {: a:ptr u:n :}   \ bare write AND bare tick both fail closed naming the cell
-   a u WRITE-FORGE$ RUN-SUBJECT       a u ASSERT-INTERNAL
-   a u TICK-CELL-FORGE$ RUN-SUBJECT   a u ASSERT-INTERNAL ;
-
-: TFAM-CASES ( -- )
-   s" bare TF-CAP-V family-registry capacity cell fails closed" T-LABEL   s" TF-CAP-V" NEG
-   s" bare TF-A-BOOT family arena fails closed" T-LABEL                    s" TF-A-BOOT" NEG
-   s" bare TF-A-P family arena base fails closed" T-LABEL                  s" TF-A-P" NEG
-   s" bare TFAM-N family high-water fails closed" T-LABEL                  s" TFAM-N" NEG
-   s" TFAM-N high-water write + tick fail closed" T-LABEL                  s" TFAM-N" CELL-WT ;
-
-: SUMV-CASES ( -- )
-   s" bare SUMV-CAP-V variant-registry capacity cell fails closed" T-LABEL  s" SUMV-CAP-V" NEG
-   s" bare SUMV-A-BOOT variant arena fails closed" T-LABEL                  s" SUMV-A-BOOT" NEG
-   s" bare SUMV-A-P variant arena base fails closed" T-LABEL                s" SUMV-A-P" NEG
-   s" bare SUMV-N variant high-water fails closed" T-LABEL                  s" SUMV-N" NEG
-   s" SUMV-N high-water write + tick fail closed" T-LABEL                   s" SUMV-N" CELL-WT ;
-
-: STR-CASES ( -- )
-   s" bare TF-STR-CAP-V string-pool capacity cell fails closed" T-LABEL   s" TF-STR-CAP-V" NEG
-   s" bare TF-STR-BOOT string pool fails closed" T-LABEL                  s" TF-STR-BOOT" NEG
-   s" bare TF-STR-P string-pool base fails closed" T-LABEL               s" TF-STR-P" NEG
-   s" bare TF-STR-U string-pool high-water fails closed" T-LABEL         s" TF-STR-U" NEG
-   s" TF-STR-U high-water write + tick fail closed" T-LABEL              s" TF-STR-U" CELL-WT ;
-
-: PK-CASES ( -- )
-   s" bare TF-PK-CAP-V param-pool capacity cell fails closed" T-LABEL   s" TF-PK-CAP-V" NEG
-   s" bare TF-PK-BOOT param pool fails closed" T-LABEL                  s" TF-PK-BOOT" NEG
-   s" bare TF-PK-P param-pool base fails closed" T-LABEL               s" TF-PK-P" NEG
-   s" bare TF-PK-N param-pool high-water fails closed" T-LABEL         s" TF-PK-N" NEG
-   s" TF-PK-N high-water write + tick fail closed" T-LABEL             s" TF-PK-N" CELL-WT ;
-
-: LAY-CASES ( -- )
-   s" bare LAY-CAP-V layout-registry capacity cell fails closed" T-LABEL   s" LAY-CAP-V" NEG
-   s" bare LAY-A-BOOT layout arena fails closed" T-LABEL                   s" LAY-A-BOOT" NEG
-   s" bare LAY-A-P layout arena base fails closed" T-LABEL                 s" LAY-A-P" NEG
-   s" bare LAY-N layout high-water fails closed" T-LABEL                   s" LAY-N" NEG
-   s" LAY-N high-water write + tick fail closed" T-LABEL                   s" LAY-N" CELL-WT ;
-
-\ The schema cells are the sealed ones (dot habu-seal-type-schema-c65f76cc):
-\ src/core/type-schema.f is package SCHEMA-REG, so each cell now has TWO spellings
-\ to refuse and they are refused by different mechanisms. The bare tail is
-\ E-UNDEFINED because no global record carries it any more — that is the seal, and
-\ it is a strictly stronger answer than the `internal engine word` these cases
-\ used to assert. The qualified tail is either the REG-PROTECTed public record
-\ (the four control cells the rest of the checker reads) or E-UNDEFINED again (the
-\ four arenas and bases, which are private and have no qualified spelling at all).
-\ Both legs are asserted for every cell: dropping the bare leg would miss a cell
-\ that silently escaped back to global scope, dropping the qualified one would
-\ miss a private that was published by mistake.
+\ EVERY REGISTRY CELL BELOW NOW LIVES IN A PACKAGE — SCHEMA-REG for the schema
+\ half (dot habu-seal-type-schema-c65f76cc) and TFAM for the family, variant,
+\ string-pool, param-pool, layout and product-field halves (this dot) — so each
+\ one has TWO spellings to refuse and they are refused by different mechanisms.
+\ The bare tail is E-UNDEFINED because no global record carries it any more; that
+\ is the seal, and it is a strictly stronger answer than the `internal engine
+\ word` these cases used to assert. The qualified tail is either the REG-PROTECTed
+\ public record (the control cells the rest of the checker reads) or E-UNDEFINED
+\ again (the arenas and bases, which are private and have no qualified spelling at
+\ all). Both legs are asserted for every cell: dropping the bare leg would miss a
+\ cell that silently escaped back to global scope, dropping the qualified one
+\ would miss a private that was published by mistake.
 \
 \ Bare `'` is deliberately NOT asserted on a sealed tail. Tick of a name that does
 \ not exist exits 0 on this engine (it does so on master too, for any spelling),
@@ -684,17 +611,17 @@ create EMPTY 1 allot            \ zero-length stdin
 64 constant QNAME-CAP
 create QNAME QNAME-CAP allot
 
-: SCHQ-NAME$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ tail -> SCHEMA-REG:tail
-   s" SCHEMA-REG:" {: pa:ptr pu:n :}
+: QUAL-NAME$ ( ptr u8 n ptr u8 n -- ptr u8 n )   \ "PKG:" prefix, tail -> PKG:tail
+   {: pa:ptr pu:n a:ptr u:n :}
    pu u + QNAME-CAP > if E-FS-CAPACITY throw then
    pa QNAME pu BYTE-COPY
    a QNAME pu + u BYTE-COPY
    QNAME pu u + ;
 
-: SCHQ-PROG$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )   \ "<pre>SCHEMA-REG:<tail><post>"
-   {: pa:ptr pu:n ta:ptr tu:n sa:ptr su:n :}
+: QUAL-PROG$ ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )  \ "<pre>PKG:<tail><post>"
+   {: xa:ptr xu:n pa:ptr pu:n ta:ptr tu:n sa:ptr su:n :}
    SB-RESET
-   pa pu SB-APPEND  ta tu SCHQ-NAME$ SB-APPEND  sa su SB-APPEND LF
+   xa xu SB-APPEND  pa pu ta tu QUAL-NAME$ SB-APPEND  sa su SB-APPEND LF
    SB$ ;
 
 : ASSERT-UNDEF ( ptr u8 n -- ) {: a:ptr u:n :}   \ child rejected: no such top-level name
@@ -702,15 +629,70 @@ create QNAME QNAME-CAP allot
    s" E-UNDEFINED: " SB-APPEND  a u SB-APPEND
    SB$ ASSERT-DIAG ;
 
-: SCH-CELL-PUB ( ptr u8 n -- ) {: a:ptr u:n :}   \ REG-PROTECTed public control cell
-   a u TOKEN$ RUN-SUBJECT                            a u ASSERT-UNDEF
-   s" " a u s" " SCHQ-PROG$ RUN-SUBJECT              a u SCHQ-NAME$ ASSERT-INTERNAL
-   s" 99 " a u s"  !" SCHQ-PROG$ RUN-SUBJECT         a u SCHQ-NAME$ ASSERT-INTERNAL
-   s" ' " a u s" " SCHQ-PROG$ RUN-SUBJECT            a u SCHQ-NAME$ ASSERT-INTERNAL ;
+: ASSERT-SEALED ( ptr u8 n -- ) {: a:ptr u:n :}   \ engine reserved-name guard: rc 84 naming the token
+   EXITED @ TTRUE
+   RC @ SEAL-RC T=
+   ERR$ a u CONTAINS? TTRUE ;
 
-: SCH-CELL-PRIV ( ptr u8 n -- ) {: a:ptr u:n :}  \ arena or base: private, unspellable
-   a u TOKEN$ RUN-SUBJECT                            a u ASSERT-UNDEF
-   s" " a u s" " SCHQ-PROG$ RUN-SUBJECT              a u SCHQ-NAME$ ASSERT-UNDEF ;
+: CELL-PUB ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}   \ REG-PROTECTed public control cell
+   a u TOKEN$ RUN-SUBJECT                                a u ASSERT-UNDEF
+   s" " pa pu a u s" " QUAL-PROG$ RUN-SUBJECT            pa pu a u QUAL-NAME$ ASSERT-INTERNAL
+   s" 99 " pa pu a u s"  !" QUAL-PROG$ RUN-SUBJECT       pa pu a u QUAL-NAME$ ASSERT-INTERNAL ;
+
+: CELL-PRIV ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}  \ arena or base: private, unspellable
+   a u TOKEN$ RUN-SUBJECT                                a u ASSERT-UNDEF
+   s" " pa pu a u s" " QUAL-PROG$ RUN-SUBJECT            pa pu a u QUAL-NAME$ ASSERT-UNDEF ;
+
+\ The tick leg splits by OWNER, and the split is the engine's, not a convention.
+\ `tfam` is one of the seven reserved system-package names baked into habu2.f
+\ KWDATA:RESTAB-BUF, so C-QUALIFY-SEAL-GUARD refuses `' TFAM:<anything>` with
+\ ENGINE-ERROR:SEAL-PACKAGE (rc 84) BEFORE any lookup — a strictly stronger
+\ answer than the marked record's rc 70, and one that covers privates too.
+\ SCHEMA-REG is not a reserved name, so its tick reaches the marked record and
+\ answers `internal engine word`, which is a PER-CELL fact (it is the record's own
+\ DNAME-INT flag) and is asserted for every schema cell. The TFAM answer is not a
+\ per-cell fact at all — it is one guard reading one name table — so it is
+\ asserted once on a public and once on a private in TFAM-SEAL-CASES below, not
+\ twenty times here. Twenty children for one rule is cost without evidence.
+: TF-CELL-PUB ( ptr u8 n -- )    s" TFAM:" 2swap CELL-PUB ;
+: TF-CELL-PRIV ( ptr u8 n -- )   s" TFAM:" 2swap CELL-PRIV ;
+
+: SCH-CELL-PUB ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" SCHEMA-REG:" a u CELL-PUB
+   s" ' " s" SCHEMA-REG:" a u s" " QUAL-PROG$ RUN-SUBJECT
+   s" SCHEMA-REG:" a u QUAL-NAME$ ASSERT-INTERNAL ;
+
+: SCH-CELL-PRIV ( ptr u8 n -- )  s" SCHEMA-REG:" 2swap CELL-PRIV ;
+
+: TFAM-CASES ( -- )
+   s" TFAM-N family high-water: bare gone, qualified write + tick marked" T-LABEL s" TFAM-N" TF-CELL-PUB
+   s" TF-CAP-V family capacity cell is private on both spellings" T-LABEL    s" TF-CAP-V" TF-CELL-PRIV
+   s" TF-A-BOOT family arena is private on both spellings" T-LABEL           s" TF-A-BOOT" TF-CELL-PRIV
+   s" TF-A-P family arena base is private on both spellings" T-LABEL         s" TF-A-P" TF-CELL-PRIV ;
+
+: SUMV-CASES ( -- )
+   s" SUMV-N variant high-water: bare gone, qualified write + tick marked" T-LABEL s" SUMV-N" TF-CELL-PUB
+   s" SUMV-CAP-V variant capacity cell is private on both spellings" T-LABEL s" SUMV-CAP-V" TF-CELL-PRIV
+   s" SUMV-A-BOOT variant arena is private on both spellings" T-LABEL        s" SUMV-A-BOOT" TF-CELL-PRIV
+   s" SUMV-A-P variant arena base is private on both spellings" T-LABEL      s" SUMV-A-P" TF-CELL-PRIV ;
+
+: STR-CASES ( -- )
+   s" TF-STR-U pool high-water: bare gone, qualified write + tick marked" T-LABEL s" TF-STR-U" TF-CELL-PUB
+   s" TF-STR-CAP-V pool capacity cell is private on both spellings" T-LABEL  s" TF-STR-CAP-V" TF-CELL-PRIV
+   s" TF-STR-BOOT string pool is private on both spellings" T-LABEL          s" TF-STR-BOOT" TF-CELL-PRIV
+   s" TF-STR-P string-pool base is private on both spellings" T-LABEL        s" TF-STR-P" TF-CELL-PRIV ;
+
+: PK-CASES ( -- )
+   s" TF-PK-N pool high-water: bare gone, qualified write + tick marked" T-LABEL s" TF-PK-N" TF-CELL-PUB
+   s" TF-PK-CAP-V pool capacity cell is private on both spellings" T-LABEL   s" TF-PK-CAP-V" TF-CELL-PRIV
+   s" TF-PK-BOOT param pool is private on both spellings" T-LABEL            s" TF-PK-BOOT" TF-CELL-PRIV
+   s" TF-PK-P param-pool base is private on both spellings" T-LABEL          s" TF-PK-P" TF-CELL-PRIV ;
+
+: LAY-CASES ( -- )
+   s" LAY-N layout high-water: bare gone, qualified write + tick marked" T-LABEL s" LAY-N" TF-CELL-PUB
+   s" LAY-CAP-V layout capacity cell is private on both spellings" T-LABEL   s" LAY-CAP-V" TF-CELL-PRIV
+   s" LAY-A-BOOT layout arena is private on both spellings" T-LABEL          s" LAY-A-BOOT" TF-CELL-PRIV
+   s" LAY-A-P layout arena base is private on both spellings" T-LABEL        s" LAY-A-P" TF-CELL-PRIV ;
 
 : SCH-CASES ( -- )
    s" SCH-CAP-V capacity cell: bare gone, qualified marked" T-LABEL         s" SCH-CAP-V" SCH-CELL-PUB
@@ -721,6 +703,48 @@ create QNAME QNAME-CAP allot
    s" SCH-A-P schema arena base is private on both spellings" T-LABEL       s" SCH-A-P" SCH-CELL-PRIV
    s" SCH-ROOT-BOOT schema-root pool is private on both spellings" T-LABEL  s" SCH-ROOT-BOOT" SCH-CELL-PRIV
    s" SCH-ROOT-P schema-root base is private on both spellings" T-LABEL     s" SCH-ROOT-P" SCH-CELL-PRIV ;
+
+\ --- product-field registry write-protection (dot habu-protect-type-field-04d91409,
+\ Layer 1). A din=0 registry control cell (variable/create) used to stay executable
+\ at top level because the internal-word pass exempts data records; REG-PROTECT +
+\ IMK-SEAL-REGISTRY marked the PF cells DNAME-INT, and the TFAM seal took the bare
+\ spelling away on top of that. The confirmed exploit `99 PF-COMMIT-N !` therefore
+\ has two answers to pin: E-UNDEFINED bare, and the older `internal engine word`
+\ under the qualified spelling that still resolves. Both are asserted on --load and
+\ on stdin, because the cold-prefix paths are separate. ----
+: PF-EXPLOIT-FORGE$ ( -- ptr u8 n )   \ the confirmed exploit: a bare registry-cell write
+   SB-RESET
+   s" 99 PF-COMMIT-N !" SB-APPEND LF
+   SB$ ;
+
+: PF-QEXPLOIT-FORGE$ ( -- ptr u8 n )  \ the same write under the qualified spelling
+   SB-RESET
+   s" 99 TFAM:PF-COMMIT-N !" SB-APPEND LF
+   SB$ ;
+
+: REGISTRY-CASES ( -- )
+   s" PF-N field high-water: bare gone, qualified write + tick marked" T-LABEL  s" PF-N" TF-CELL-PUB
+   s" PF-COMMIT-N commit cursor: bare gone, qualified marked" T-LABEL           s" PF-COMMIT-N" TF-CELL-PUB
+   s" PF-TX-CAP-V transaction capacity: bare gone, qualified marked" T-LABEL    s" PF-TX-CAP-V" TF-CELL-PUB
+   s" PF-TX-P transaction base: bare gone, qualified marked" T-LABEL            s" PF-TX-P" TF-CELL-PUB
+   s" PF-TX-DEPTH transaction depth: bare gone, qualified marked" T-LABEL       s" PF-TX-DEPTH" TF-CELL-PUB
+   s" PF-TX-SERIAL transaction serial: bare gone, qualified marked" T-LABEL     s" PF-TX-SERIAL" TF-CELL-PUB
+   s" PF-CAP-V field capacity cell is private on both spellings" T-LABEL        s" PF-CAP-V" TF-CELL-PRIV
+   s" PF-A-BOOT field arena is private on both spellings" T-LABEL               s" PF-A-BOOT" TF-CELL-PRIV
+   s" PF-A-P field arena base is private on both spellings" T-LABEL             s" PF-A-P" TF-CELL-PRIV
+   s" PF-TX-BOOT transaction arena is private on both spellings" T-LABEL        s" PF-TX-BOOT" TF-CELL-PRIV
+   s" registry-cell write exploit has no bare name left on --load" T-LABEL
+   PF-EXPLOIT-FORGE$ RUN-LOAD
+   s" PF-COMMIT-N" ASSERT-UNDEF
+   s" registry-cell write exploit has no bare name left on stdin" T-LABEL
+   PF-EXPLOIT-FORGE$ RUN-STDIN
+   s" PF-COMMIT-N" ASSERT-UNDEF
+   s" the qualified write still fails closed on --load" T-LABEL
+   PF-QEXPLOIT-FORGE$ RUN-LOAD
+   s" TFAM:PF-COMMIT-N" ASSERT-INTERNAL
+   s" the qualified write still fails closed on stdin" T-LABEL
+   PF-QEXPLOIT-FORGE$ RUN-STDIN
+   s" TFAM:PF-COMMIT-N" ASSERT-INTERNAL ;
 
 : SIBLING-CASES ( -- )
    TFAM-CASES
@@ -989,12 +1013,149 @@ create QNAME QNAME-CAP allot
    SEAL-BARE-FORGE$ RUN-LOAD
    s" E-UNDEFINED: SCH-RBF-P" ASSERT-DIAG ;
 
+\ --- the sealed family registry (dot habu-tfam-2b-sealed-1b77662c). Same three-way
+\ answer as the schema seal above, for a file that defined 572 globals and now
+\ defines 221 publics and 345 privates under `package TFAM` with nothing renamed.
+\
+\ TWO REGRESSIONS ARE THE PRODUCT CLAIM, and both were measured on master before
+\ the seal, through `bin/hb --load`:
+\   `0 TF-RBF-P !` then a SUMTYPE declaration exited 134 with a SIGSEGV register
+\   dump — the rollback-frame arena base is a `variable`, which the marking pass
+\   exempts by design, and it carried no REG-PROTECT row. It is the exact sibling
+\   of SCH-RBF-P and it is private now, so the program has no name to write.
+\   `99999 SVX-HI !` then a REJECTED declaration exited 76 `tfam: ctor index
+\   retired after its rows went`, turning a clean catchable duplicate-family reject
+\   (rc 67) into an engine die. SVX-HI has two readers outside the file, so it is
+\   public and carries the REG-PROTECT its siblings already had; TF-RBF-DEPTH (dot
+\   habu-tf-rbf-depth-614c88e0) is the other cell that gained one.
+\
+\ SIX NAMES STAY GLOBAL AND ARE PINNED HERE, because the ENGINE resolves them by
+\ bare spelling and no package spelling can reach that lookup: TFAM-NAME$,
+\ TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are read by habu2.f C-FIND-GLOBAL for
+\ `construct`/`match`/`;match` (and mirrored byte for byte in bootstrap/cg/forth.fs),
+\ while TF-SHA16-XT and TFAM-CTOR-WORD? are named by AOT-captured engine call sites
+\ that the boot seed re-resolves. The negative leg below is what keeps that surface
+\ from growing: an ordinary public must NOT answer bare. ----
+
+: TSEAL-RBF-FORGE$ ( -- ptr u8 n )    \ the pre-seal SIGSEGV program, verbatim
+   SB-RESET
+   s" 0 TF-RBF-P !" SB-APPEND LF
+   s" SUMTYPE iwgtseal 0" SB-APPEND LF
+   s" VARIANT iwgta n ;VARIANT" SB-APPEND LF
+   s" VARIANT iwgtb n ;VARIANT" SB-APPEND LF
+   s" ;SUMTYPE" SB-APPEND LF
+   SB$ ;
+
+: TSEAL-SVX-FORGE$ ( -- ptr u8 n )    \ the pre-seal `die` program, verbatim
+   SB-RESET
+   s" SUMTYPE iwgsvx 0" SB-APPEND LF
+   s" VARIANT iwgsv1 n ;VARIANT" SB-APPEND LF
+   s" ;SUMTYPE" SB-APPEND LF
+   s" 99999 SVX-HI !" SB-APPEND LF
+   s" SUMTYPE iwgsvx 0" SB-APPEND LF
+   s" VARIANT iwgsv2 n ;VARIANT" SB-APPEND LF
+   s" ;SUMTYPE" SB-APPEND LF
+   SB$ ;
+
+: TSEAL-USING-FORGE$ ( -- ptr u8 n )  \ `using` imports publics only, never privates
+   SB-RESET
+   s" using TFAM" SB-APPEND LF
+   s" 0 TF-RBF-P !" SB-APPEND LF
+   SB$ ;
+
+: TSEAL-AXIOM-FORGE$ ( -- ptr u8 n )  \ two of the 24 PPRIM: TFAM rows relocated from checker.f
+   SB-RESET
+   s" TFAM:TFAM-N@ drop TFAM:SUMV-N@ drop" SB-APPEND LF
+   SB$ ;
+
+: TSEAL-PROTECT-FORGE$ ( -- ptr u8 n ) \ the cell dot 614c88e0 named, now REG-PROTECTed
+   SB-RESET
+   s" 5 TFAM:TF-RBF-DEPTH !" SB-APPEND LF
+   SB$ ;
+
+\ A bridge name is proved global by the fact that its BARE token still resolves,
+\ and the two ways it can be refused after that are different mechanisms, so they
+\ get different assertions rather than one loose "not E-UNDEFINED". A name with a
+\ PRIM: axiom is checker-known, so the marking pass poked DNAME-MIN-IN and a bare
+\ call short of its declared inputs answers `interpret stack underdepth`. TFL-CVAR?
+\ has no axiom, so the same pass set DNAME-INT and it answers `internal engine
+\ word`. Either way the record is there — which is the claim.
+: TSEAL-BRIDGE-AXIOM ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TOKEN$ RUN-SUBJECT
+   SB-RESET  s" interpret stack underdepth: " SB-APPEND  a u SB-APPEND
+   SB$ ASSERT-DIAG ;
+
+: TSEAL-BRIDGE-MARKED ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TOKEN$ RUN-SUBJECT  a u ASSERT-INTERNAL ;
+
+: TSEAL-TICK-FORGE$ ( -- ptr u8 n )  \ the launder route, refused at the tick by the seal guard
+   SB-RESET
+   s" variable IWG-TFV" SB-APPEND LF
+   s" : IWG-TFSET ( -- ) ['] TFAM:PF-COMMIT-N IWG-TFV ! ;" SB-APPEND LF
+   SB$ ;
+
+: TFAM-SEAL-CASES ( -- )
+   s" the witness pins TF-RBF-P private and TFAM-N@ public in TFAM" T-LABEL
+   s" TFAM" s" TF-RBF-P" s" TFAM-N@" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" the sealed tail left the global universe: bare PF-FIND is E-UNDEFINED" T-LABEL
+   s" PF-FIND" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: PF-FIND" ASSERT-DIAG
+   s" and its qualified spelling is a marked public instead" T-LABEL
+   s" TFAM:PF-FIND" NEG
+   s" a sealed private has no qualified spelling either" T-LABEL
+   s" TFAM:TF-RBF-P" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TFAM:TF-RBF-P" ASSERT-DIAG
+   s" nor a bare one through a using, which imports publics only" T-LABEL
+   TSEAL-USING-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: TF-RBF-P" ASSERT-DIAG
+   s" the REG-PROTECT dot 614c88e0 asked for holds on the raw store" T-LABEL
+   TSEAL-PROTECT-FORGE$ RUN-SUBJECT
+   s" TFAM:TF-RBF-DEPTH" ASSERT-INTERNAL
+   s" the relocated PPRIM: TFAM axioms keep their publics callable" T-LABEL
+   TSEAL-AXIOM-FORGE$ RUN-SUBJECT ASSERT-OK
+   s" `0 TF-RBF-P !` before a declaration no longer SIGSEGVs the engine" T-LABEL
+   TSEAL-RBF-FORGE$ RUN-LOAD
+   s" E-UNDEFINED: TF-RBF-P" ASSERT-DIAG
+   s" `99999 SVX-HI !` no longer turns a reject into an engine die" T-LABEL
+   TSEAL-SVX-FORGE$ RUN-LOAD
+   s" E-UNDEFINED: SVX-HI" ASSERT-DIAG
+   s" the launder route is refused at the tick: `tfam` is a reserved name" T-LABEL
+   TSEAL-TICK-FORGE$ RUN-SUBJECT
+   s" TFAM:PF-COMMIT-N" ASSERT-SEALED
+   s" a bare tick of a public tail is refused by the same guard" T-LABEL
+   s" ' " s" TFAM:" s" PF-COMMIT-N" s" " QUAL-PROG$ RUN-SUBJECT
+   s" TFAM:PF-COMMIT-N" ASSERT-SEALED
+   s" and so is a tick of a private tail, before any lookup can miss" T-LABEL
+   s" ' " s" TFAM:" s" TF-RBF-P" s" " QUAL-PROG$ RUN-SUBJECT
+   s" TFAM:TF-RBF-P" ASSERT-SEALED
+   s" TFAM-NAME$ stays global: habu2.f C-FIND-GLOBAL reads that spelling" T-LABEL
+   s" TFAM-NAME$" TSEAL-BRIDGE-AXIOM
+   s" TFL-MATCH-FAM? stays global for the same match-keyword bridge" T-LABEL
+   s" TFL-MATCH-FAM?" TSEAL-BRIDGE-AXIOM
+   s" TFL-CON-FAM? stays global for the construct-keyword bridge" T-LABEL
+   s" TFL-CON-FAM?" TSEAL-BRIDGE-AXIOM
+   s" TFL-CVAR? stays global for the construct bridge, marked not axiom'd" T-LABEL
+   s" TFL-CVAR?" TSEAL-BRIDGE-MARKED
+   s" TFAM-CTOR-WORD? stays global: an AOT call site names it" T-LABEL
+   s" TFAM-CTOR-WORD?" TSEAL-BRIDGE-AXIOM
+   s" TF-SHA16-XT stays global: an AOT call site names it" T-LABEL
+   s" TF-SHA16-XT" TSEAL-BRIDGE-AXIOM
+   s" and the global surface stopped there: TFL-VAR? is package-only" T-LABEL
+   s" TFL-VAR?" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TFL-VAR?" ASSERT-DIAG
+   s" TFAM-SLOTS@ is package-only too, though a PPRIM row names it" T-LABEL
+   s" TFAM-SLOTS@" TOKEN$ RUN-SUBJECT
+   s" E-UNDEFINED: TFAM-SLOTS@" ASSERT-DIAG ;
+
 \ --- direct/subject parity. The PARITY- group used to be its own package; the
 \ names keep that marker because they are about the direct-versus-fork
 \ comparison, not about running a child in general. ----
 
-12 constant PARITY-DIRECT-N     \ +1: the pre-seal `0 SCH-RBF-P !` crash program
-133 constant PARITY-SUBJECT-N   \ +19: SEAL-CASES (7) and the doubled schema-cell legs (12)
+16 constant PARITY-DIRECT-N     \ +4: the qualified PF write on both cold paths, and
+                                \     the two TFAM crash programs replayed through --load
+182 constant PARITY-SUBJECT-N   \ +49: TFAM-SEAL-CASES (18), the PF cells going 10 -> 22
+                                \      and the family/variant/string/param/layout cells
+                                \      going 6 -> 9 in each of five groups
 
 : PARITY-RESULT ( -- ptr u8 n ptr u8 n n )
    OUT OUT-U @ ERR ERR-U @ RC @ ;
@@ -1054,6 +1215,7 @@ create QNAME QNAME-CAP allot
    CTLIVE-CASES
    QUAL-CASES
    SEAL-CASES
+   TFAM-SEAL-CASES
    NEG-SHAPES
    POSITIVES
    OPENER-CASES

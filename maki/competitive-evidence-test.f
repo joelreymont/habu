@@ -29,6 +29,8 @@ require test/checker-assert.f       \ CHECK-QUIET-CANDIDATE! for the static-reje
 require maki/evidence/schema.f      \ EVID:prec-class for the numeric-policy-confusion negative
 require maki/competitive-evidence.f
 
+using TFAM
+
 package CEVID
 
 \ ---- stable copy (the shared SB render is overwritten by the next render) --------
@@ -362,3 +364,5 @@ s" N-ID ( BENCH:baseline CEVID:revision BENCH:shape NPOL:dom CAD-KIND:target-id 
 
 ;package
 T-REPORT
+
+;using

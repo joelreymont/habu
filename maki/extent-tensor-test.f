@@ -14,6 +14,8 @@ require maki/extent-tensor.f
 
 T-RESET
 
+using TFAM
+
 package MAKI
 
 4 EXTENT: #M   3 EXTENT: #N   2 EXTENT: #K
@@ -182,3 +184,5 @@ s" TKOK ( tensor-kind -- ) MATCH tkother data OF ENDOF gather OF ENDOF ;MATCH " 
 ;package
 
 T-REPORT
+
+;using

@@ -35,6 +35,8 @@ require maki/db/obligation.f
 \ homonym, which is exactly the coexistence maki/test.f exercises.
 require lib/adt/result.f
 
+using TFAM
+
 package TX
 
 create RT-A 4096 allot
@@ -561,3 +563,5 @@ RT-CROSS? TFALSE            \ and it is not merely answering true for any base
 ;package
 
 T-REPORT
+
+;using

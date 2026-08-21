@@ -42,6 +42,8 @@ require maki/target/target.f
 require maki/db/obligation.f
 require maki/db/budget-dim.f
 
+using TFAM
+
 package DIFFSUITE
 
 : DST-SUITE-ROUNDTRIP ( n -- n )
@@ -642,3 +644,5 @@ s" decode-result" s" NOPE-DECODE--RESULT" REFLECT:FAMS 0 T=
 T-REPORT
 
 ;package
+
+;using

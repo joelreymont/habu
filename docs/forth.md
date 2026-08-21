@@ -182,20 +182,30 @@ The complete-file global exceptions are exact paths, not directory rules:
 - `src/core/structures.f` owns the legacy global structure and field defining
   language.
 - `src/core/enums.f` owns the legacy global numeric enum defining language.
-- `src/core/type-family.f` owns the checker's global type-family registry
-  surface. Unlike the five files above it is not entirely global: it also opens
-  inner packages (`TYPE-NAME`, `TYPE-FIELD-OWNER`, `TYPE-FIELD`), so the
-  exemption covers only its global definitions, and a diff that adds or deletes
-  one of those package boundaries is still reported. This entry is interim: it
-  must be removed once the TFAM sealing work (dot
-  `habu-tfam-2b-sealed-1b77662c`) moves the registry into sealed packages.
 - `src/core/checker.f` owns the checker itself, which is a global pre-hook
   language surface by current construction: the `PRIM:`/`PPRIM:` primitive-axiom
   machinery and the `RBF` rollback-frame surface are global by design and load
   before any package exists, so the checker is admitted on the same terms as
-  `sumtype.f`, `roles.f`, `structures.f`, and `enums.f`. Like `type-family.f`
-  this entry is interim: it must be removed once the checker sealing work (dot
+  `sumtype.f`, `roles.f`, `structures.f`, and `enums.f`. This entry is interim:
+  it must be removed once the checker sealing work (dot
   `habu-seal-the-checker-5314c0ab`) gives those seams real package owners.
+
+`src/core/type-family.f` used to be on that list and is not any more: dot
+`habu-tfam-2b-sealed-1b77662c` put its 566 remaining definitions inside
+`package TFAM`, 221 public and 345 private, with nothing renamed. Six names
+stayed global and are admitted by exact path, exact name and exact definer,
+because the *engine* resolves each one by a bare global spelling that no package
+spelling can reach. `TFAM-NAME$`, `TFL-CON-FAM?`, `TFL-CVAR?` and
+`TFL-MATCH-FAM?` are the `construct`/`match`/`;match` keyword bridge:
+`src/habu/habu2.f` looks them up through `C-FIND-GLOBAL`, which zeroes the open
+package's wordlist cells first so the answer cannot depend on where the user's
+`match` is written, and `bootstrap/cg/forth.fs` mirrors the same four spellings
+byte for byte. `TFAM-CTOR-WORD?` and `TF-SHA16-XT` are named by AOT-captured
+call sites, and the boot seed re-resolves a baked callee only through a global
+scope or an explicitly qualified pooled name — a `using`-imported bare name is
+neither. A seventh global added beside them still reports, and so does any of the
+six under another definer or in another file. The entry retires when the engine
+can resolve these six under their owner, not before.
 
 `lib/errors.f` carries a global surface too, admitted by declaration shape
 rather than by whole file: every package in the repository throws and catches

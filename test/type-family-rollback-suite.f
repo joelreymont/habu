@@ -8,6 +8,7 @@
 \ prints F<index> + detail; REPORT exits 1 on any fail.
 
 using SCHEMA-REG
+using TFAM
 
 variable #FAIL
 variable #CASE
@@ -402,4 +403,5 @@ FOUNDF @ 0 T=                                        \ and so is the head that n
    #FAIL @ . s" type-family-rollback-suite: failures" 1 die ;
 REPORT
 
+;using
 ;using

@@ -65,6 +65,7 @@
 \ in the post-hook DECL group after structure-decl.f.
 
 using SCHEMA-REG
+using TFAM
 
 package ENUM-DECL
 
@@ -636,4 +637,5 @@ public
 \ ENUM type-name arity [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
 : ENUM ( -- ) ENUM-DECL:ED-RUN ;
 
+;using
 ;using

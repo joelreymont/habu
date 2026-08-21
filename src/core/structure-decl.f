@@ -45,6 +45,7 @@
 \ STRUCTURE declaration surface.
 
 using SCHEMA-REG
+using TFAM
 
 package STRUCTURE-DECL
 
@@ -470,4 +471,5 @@ public
 \ STRUCTURE type-name arity [POLICY p] [DERIVE f+] (FIELD name type)* ;STRUCTURE
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
 
+;using
 ;using

@@ -32,6 +32,7 @@
 require test/checker-assert.f
 
 using SCHEMA-REG
+using TFAM
 
 variable #FAIL
 variable #CASE
@@ -313,4 +314,5 @@ TF-STR-U@ STRU0 @ T=
    #FAIL @ . s" structure-make-suite: failures" 1 die ;
 REPORT
 
+;using
 ;using

@@ -20,6 +20,8 @@ require maki/artifact.f
 require maki/config.f
 require maki/producer.f
 
+using TFAM
+
 package PROMO-AUTH-TEST
 
 \ ---- shared identities (test-owned names; REGISTER interns by content) ----------
@@ -270,3 +272,5 @@ AZR$ 0 REFLECT:ARM$ s" ok" T$=
 T-REPORT
 
 ;package
+
+;using
