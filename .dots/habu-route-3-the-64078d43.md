@@ -1,6 +1,6 @@
 ---
 title: "Route 3: the type foundation loads post-hook, checked"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-19T10:53:19.909085+02:00"
@@ -38,7 +38,8 @@ SCOUTED VERDICT (2026-08-20, full map in the scout report; re-measured):
    If the owner-side bill approaches that, route 3 nets far less than the
    epic assumes - re-open the ruling on that number.
 
-Claim: agent=route3-2 workspace=.jj-ws/habu-trusted (STOOD DOWN - see BLOCKED-ON below)
+Claim: agent=route3-3 workspace=.jj-ws/habu-trusted (TAKEOVER 2026-08-21 from
+route3-2, which stood down; the three seals that blocked it have landed)
 
 HARD GATE ANSWERED (2026-08-20, lane route3-1). ALL 662 DEFINITIONS
 TYPECHECK. Measured through the real driver, tools/check.f -> check-core.f
