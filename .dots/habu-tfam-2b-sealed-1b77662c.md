@@ -201,3 +201,103 @@ then `install --force`. ~15s to cross, byte-identical from the second generation
 The whole-file GLOBAL-IMPLEMENTATION? row is GONE and its positive fixture is a
 negative; a narrow GLOBAL-SURFACE? row (TFAM-BRIDGE?) admits the six by exact
 path, name and definer, mutation-proved on both clauses.
+
+SUMTYPE SEALED (seal-5, 2026-08-21) - the third and last of the three ordered
+seals. src/core/sumtype.f is `package TYPE-DECL`.
+
+MEASURED SPLIT. 316 globals -> 45 public / 271 private (the package holds all 316,
+seven of them renamed) plus 7 new one-line globals, over
+18 consumer files. The census criterion had only TWO kinds of caller here, not
+the three type-family needed: tree-wide consumers, and the file's own global
+tail. sumtype.f opens no inner packages at all, so the 50-name inner-package
+class that surprised seal-4 does not exist in this file. The engine classes the
+type-family seal warned about were swept for and came back EMPTY: no `s" <name>"`
+literal in src/habu, src/os, src/arch or bootstrap/cg/forth.fs names any of the
+file's globals, and no AOT-captured call site does either - the only string hits
+anywhere in the tree are the three block openers inside child-program text, and
+those stay global regardless.
+
+THE SEVEN GLOBALS ARE LANGUAGE, NOT ENGINE, and that is a different kind of row
+from TFAM-BRIDGE?. NEWTYPE, SUMTYPE and PRODUCT are the block openers, and
+CHECKER-DEFFAMILY / CHECKER-DEFSUM / CHECKER-DEFSUM-NOEND / CHECKER-DEFPRODUCT
+are the same grammar reached with a body text instead of the input stream. Each
+is now a one-line entry into a package public (the ENUM-DECL:ED-RUN shape), so
+the buffer, plan arena, capture vectors, renderers and transaction context are
+all privates. tools/package-diff-lint-core.f TYPE-DECL-GRAMMAR? admits the seven
+by exact path + name + definer; the whole-file GLOBAL-IMPLEMENTATION? row is
+gone and its positive fixture is a negative. Eight mutations kill it, one per
+clause (row-always-false, no-path, no-definer, suffix-path, any-name,
+whole-file-restored, opener-drops-PRODUCT, hook-drops-DEFSUM-NOEND).
+
+FOUR THINGS THE NEXT SEAL AND ROUTE 3 HAVE TO KNOW, all measured on the
+candidate, none of them visible from the type-family seal:
+
+1. REG-PROTECT HAS A FIXED BUDGET AND IT WAS NEARLY SPENT. src/core/util.f
+   REG-PROT-CAP was 64 and 47 slots were already taken; this seal needs 14 more
+   and the live count is now 61. The cap is raised to 192 here. Any later seal
+   that publishes data or `defer` records must check REG-PROT-N first - the
+   overflow is a die, not a lint.
+
+2. REG-PROTECT CLOSES INTERPRET AND THE TICK, NOT COMPILE MODE, and that decides
+   which public records can carry it. TDECL-EVAL-ARMED and TDECL-PROT-WID-ARMED
+   are the only two publics here WITHOUT a REG-PROTECT row, because their writers
+   (include.f, aot.f, xref.f and the three stage0 bootstrap-wide fixtures) arm at
+   genuine top level: with the row, `-1 TYPE-DECL:TDECL-PROT-WID-ARMED !` in
+   test/bootstrap-wide-memory-src.f answered `hb: internal engine word` rc 70 and
+   reddened the candidate-validation slice.
+
+3. AN UNCHECKED PREFIX FILE'S COLON PUBLICS ARE CHECKER-UNKNOWN, so a CHECKED
+   consumer can only reach a `defer`. Moving the arming into include.f's checked
+   TDECL-EVAL-INSTALL answered `undefined word 'TDECL-EVAL-ARMED'` rc 70, and an
+   ARM word would have needed a brand-new PPRIM axiom to fix a self-inflicted
+   problem. This is the ceiling on what package publics buy a file that has no
+   checked half; the lower-cert-effects.f shape is the way past it.
+
+4. `is` AND `undefine` ARE PARSING WORDS AND RESOLVE OUTSIDE using-IMPORTS.
+   Measured: bare `is TDECL-EVAL-XT` under `using TYPE-DECL` answers `hb: is: no
+   deferred word named TDECL-EVAL-XT`, rc 70. Every defer binding in a consumer
+   is written `is TYPE-DECL:<tail>`, and because that CHANGES the definition's
+   line, the package lint then reports the enclosing global - which is how three
+   stage0 fixtures and src/core/include.f ended up packaged rather than waived.
+
+CRASH CLASS. The REG-PROTECT sweep ran every one of the file's 87 data records
+through a hostile store followed by a declaration. Six PTR-VARIABLEs were
+one-line SIGSEGVs from ordinary `bin/hb --load` source - TDPLAN-P, TDPLAN-ROW-P,
+TDPV-CNT-P, TDPV-CELLS-P, TDPV-OFF-P, TDPV-NODE-P - and five more variables
+turned a clean declaration into an exit-76 die. All six crash cells are private
+now; `0 TDPLAN-P !` before a SUMTYPE went from rc 134 to E-UNDEFINED, and
+test/internal-word-gate.f TYPE-DECL-SEAL-CASES keeps that program.
+
+RESIDUALS, both measured and both bounded by an owning dot rather than waived.
+(a) The package-reopen defect still reaches the privates: `package TYPE-DECL /
+private / 0 TDPLAN-P !` followed by a declaration is rc 134 again, exactly as
+`package SCHEMA-REG` and `package PRIM-LINK` are on master. That is dot
+habu-pkg-reopen-reaches-113ecd89. TFAM is closed against it only because `tfam`
+is in RESTAB, so the available stronger answer here is a RESTAB row rather than
+more sealing - a system-package decision, not a seal one, and deliberately not
+taken inside this lane. (b) The two armed flags keep a writable qualified
+spelling, so `0 TYPE-DECL:TDECL-EVAL-ARMED !` still turns a declaration into an
+rc 76 die; item 3 above is why, and the retirement condition is written beside
+the cells.
+
+TICK CLASS. `type-decl` is NOT in habu2.f KWDATA:RESTAB-BUF, so this package
+answers the SCHEMA-REG way rather than TFAM's: `' TYPE-DECL:<public>` is
+`hb: internal engine word` rc 70 and `' TYPE-DECL:<private>` is E-UNDEFINED,
+never rc 84. The gate asserts that answer, so adding the name to RESTAB later is
+a visible design change rather than a silent one.
+
+WHAT ROUTE 3 MUST NOW RE-DERIVE DIFFERENTLY. The banked derivation 4f1b44b6
+predates all three seals and its exposure table is void: type-schema.f,
+type-family.f and sumtype.f no longer contribute 621 globals between them, they
+contribute the six TFAM bridges plus these seven grammar names. What survives is
+the block move, the render-side defer wall, the accessor redesign, the 101
+effect rows and the 95 deleted TRUSTED: forwarders. What has to be re-derived on
+top of the seals: (a) every PRIM: row for a name that is now a package public is
+a PPRIM: <OWNER> row, and checker.f already carries 24 PPRIM: TFAM and 2 PPRIM:
+SCHEMA-REG rows as the worked shape; (b) the 662 definitions route 3 wanted to
+publish are mostly PRIVATE now, so checking them publishes nothing - the
+exposure that stopped the lane is gone rather than mitigated; (c) sumtype.f is
+still loaded UNCHECKED, so route 3's own goal for this file runs into item 3
+above and needs the checked-half split before its publics are callable from
+checked code; (d) layout-buffer.f (32 globals) is the one row of the original
+exposure table nobody has sealed, and it is now the only unsealed registry.
