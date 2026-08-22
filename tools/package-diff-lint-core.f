@@ -1447,6 +1447,14 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ exact-path rule in docs/forth.md is for.  The extension is deliberately NOT the
 \ key: `.fs` alone would admit any future file that happened to be named that way.
 \
+\ A DIRECTORY rule was proposed and rejected a second time on 2026-08-22, for the
+\ same reason and a fresh measurement: `bootstrap/cg/*.fs` with `bootstrap/src/*.fs`
+\ would admit 61 files on disk where the seed's require closure loads 41, so twenty
+\ ride in without the recovery loading them at all, and it would still MISS
+\ bootstrap/habu.fs and bootstrap/habu-lib.fs, which the closure does load.  A
+\ directory is the same weak key `.fs` is: it admits whatever is dropped into it
+\ next, before anyone has named an authority for that file.
+\
 \ A rename or copy that makes some other file arrive AT this path is reported, the
 \ same way the trunk reports it.  The mirror is one committed file whose content
 \ the parity gates know; a wholesale replacement arriving at its path is exactly
@@ -1465,11 +1473,43 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ fixture row table gives: a weakening -- a suffix match, a case fold, a prefix
 \ test -- then has exactly one place to live and moves every row at once, so the
 \ hostile fixtures in tools/package-diff-lint-test.f kill it.
-1 constant MIRROR-N
+\ The rows.  bootstrap/cg/forth.fs is the original, measured 2026-07-30 above.
+\ The five below were measured on 2026-08-22 by dot habu-stage0-elf-text-2c16821e,
+\ which made the emitted text page follow the emission and could not land: one
+\ change confined to Gforth-hosted sources reported 29 E-PACKAGE-OWNERSHIP
+\ findings against a table holding one row for a 29-file directory.  Each row
+\ names the blocked change, the findings it drew, and the gate that owns the
+\ file's correctness instead of a wordlist.
+\
+\   asm.fs    (7)   the ARM64 encoders; gained the ADR reach reserve.
+\   elf.fs    (4)   the ELF writer; lost its fixed text page.
+\   image.fs  (10)  the shared image buffer; grew to fit, gained bounds checks.
+\
+\ Authority for those three: tools/bootstrap.sh executes them end to end on every
+\ recovery run -- the wide, preflight and using gates, then the hb-stage0 emission
+\ and boot -- measured to `bootstrap OK: bin/hb` on 2026-08-22.
+\
+\   macho.fs  (5)   the Mach-O writer; the same change, plus the LE-VMSIZE split.
+\   sign.fs   (3)   the ad-hoc signer; image fit and its own cursor bounds check.
+\
+\ Authority for those two: the SAME tools/bootstrap.sh under
+\ HABU_TARGET=macos-aarch64, which executes BUILD-MACHO and CODESIG on every macOS
+\ recovery.  That authority is TARGET-BOUND and the row says so: no Linux gate
+\ executes a line of either file, and the 2026-08-22 change to them was reviewed
+\ by reading for parity with the ELF writer, not by running it.  A row whose
+\ authority is target-bound is an admission with its reach stated, not a
+\ wave-through: it names the machine that has to run the gate before the change is
+\ trusted, and it retires with the rest when the recovery stops being Gforth-hosted.
+6 constant MIRROR-N
 
 : MIRROR-AT ( n -- ptr u8 n ) {: row:n :}
    row 0 < row MIRROR-N >= or if E-PKGDIFF-ROWTAB throw then
-   s" bootstrap/cg/forth.fs" ;
+   row 0 = if s" bootstrap/cg/forth.fs" exit then
+   row 1 = if s" bootstrap/cg/asm.fs"   exit then
+   row 2 = if s" bootstrap/cg/elf.fs"   exit then
+   row 3 = if s" bootstrap/cg/image.fs" exit then
+   row 4 = if s" bootstrap/cg/macho.fs" exit then
+   s" bootstrap/cg/sign.fs" ;
 
 : MIRROR-PATH? ( -- bool )
    0 MIRROR-HIT !

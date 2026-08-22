@@ -2180,6 +2180,12 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    \ fault whose only repair breaks the recovery path.
    s" bootstrap/cg/forth.fs" TEST-MIRROR-NEW-CASE
    s" the Gforth mirror exempts a new global definition too" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: one of the five rows added 2026-08-22.  image.fs is a row of its
+   \ own, with tools/bootstrap.sh named as the gate that executes it, so a changed
+   \ definition in it is admitted exactly as forth.fs's is.
+   s" bootstrap/cg/image.fs" TEST-MIRROR-BODY-CASE
+   s" the row bootstrap/cg/image.fs exempts a changed global body" T-LABEL
    TEST-EXPECT-CLEAN ;
 
 : TEST-MIRROR-OTHER-PATHS ( -- )
@@ -2223,7 +2229,16 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" bootstrap/cg/jit.fs" TEST-MIRROR-NEW-CASE
    s" sibling mirror bootstrap/cg/jit.fs still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS
-   s" BUSING" TEST-NAMES ;
+   s" BUSING" TEST-NAMES
+   \ Negative, and the fixture that proves the six entries are ROWS and not a
+   \ directory prefix: opt.fs sits in bootstrap/cg/ beside five admitted rows and
+   \ is Gforth-hosted exactly as they are, but no gate has been named for it, so
+   \ it still reports.  A `bootstrap/cg/` prefix test admits it, and this fixture
+   \ is the one that dies the moment the rows are loosened into a directory.
+   s" bootstrap/cg/opt.fs" TEST-MIRROR-BODY-CASE
+   s" sibling bootstrap/cg/opt.fs outside the table still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES ;
 
 : TEST-MIRROR-STRUCTURAL ( -- )
    \ Negative (hostile): a pure rename that makes some OTHER file arrive at the
