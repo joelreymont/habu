@@ -1,6 +1,6 @@
 ---
 title: "Cast definer: 330 nominal casts want one declaration form"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-08-19T10:05:19.378520+02:00"
@@ -13,7 +13,7 @@ uses `CAST: REAL-BITS ( r -- n ) ;`. Find its definition and semantics FIRST;
 the capability may be extending CAST: with representation-compatibility
 enforcement rather than minting a new form.
 
-Claim: agent=trusted-5 workspace=.jj-ws/habu-trusted
+Claim: unassigned (RELEASED 2026-08-22: workspace gone, no live lane - the 2026-08-21 gc keyed on dot-id workspaces and missed the shared habu-thecut/habu-trusted names)
 
 PROBE ANSWER (2026-08-19, trusted-2). The capability is already built and
 already tested; nothing was added. `CAST:` is defined in src/core/roles.f and
