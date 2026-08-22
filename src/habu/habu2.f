@@ -2219,8 +2219,9 @@ s" c-task-live-guard" s" --" TRUST
 \ ( pkg, tail ) PUBLIC -- matching the certify record -- instead of leaking a
 \ bare-global `tail` effect row that shadowed core prims and certified bare-tail
 \ calls the engine rejects (dot habu-qualified-defs-leak-aadeb5c9). Unqualified
-\ defs are unchanged (first token == whole name). The Gforth stage0 mirror keeps
-\ the record-name form: it has no package system, so its name cannot diverge.
+\ defs are unchanged (first token == whole name). The Gforth stage0 mirror reads
+\ the body buffer for the same reason: it has C-QUALIFY-DEF too, so its record
+\ carries the bare tail and the record form would register the same leak here.
 \ Scratch stays off x11: DEF-TRUST:FIND/C-FIND-GLOBAL leave the record XT in x11
 \ for the caller's later C-CALL-X11-SAVED, so this word must preserve it.
 : C-PUSH-DREC-NAME ( -- )

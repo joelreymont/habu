@@ -305,6 +305,37 @@ bootstrap_wide_gate() {
 
 bootstrap_wide_gate
 
+# The recovery engine publishes a created word's effect from its definer: `-- ptr a`
+# for `create` and `variable`, `-- a` for `constant`, and the declared created
+# effect for `create ... does>`. Every row goes through `trust-raw`, so its type
+# variables are raw and cannot bind a nominal family. Each fixture below arms the
+# marker and then offers one definition the checker must refuse; a fixture that
+# certifies means the row is missing, wrong, or unsealed.
+bootstrap_created_gate() {
+  local src bin out err marker rc
+  for src in bootstrap-created-effect bootstrap-created-raw \
+             bootstrap-created-const bootstrap-created-does; do
+    bin="$T/$src"
+    out="$T/$src.out"
+    err="$T/$src.err"
+    "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/test/$src-src.f\" slurp-file s\" $bin\" FORTH-EXE bye"
+    set +e
+    "$bin" >"$out" 2>"$err"
+    rc=$?
+    set -e
+    marker=""
+    if ! IFS= read -r marker < "$out"; then
+      marker=""
+    fi
+    if [[ "$rc" -ne 70 || "$marker" != "BOOTSTRAP-CREATED-ARMED" ]]; then
+      printf '%s: expected armed created rejection rc=70; got rc=%s marker=%s\n' "$src" "$rc" "$marker" >&2
+      exit 75
+    fi
+  done
+}
+
+bootstrap_created_gate
+
 bootstrap_preflight_recovery_gate() {
   local src="test/compile-preflight-recovery.f"
   local bin="$T/bootstrap-preflight-recovery"

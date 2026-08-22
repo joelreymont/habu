@@ -447,11 +447,12 @@ variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
-variable LKWTRUSTED variable LKWTRUSTDECL variable LKWCHKDOES variable LKWKERNEL
+variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDOES variable LKWKERNEL
 variable LKWCAST variable LKWDEFCAST variable LCASTNONAME   \ cast declarer (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
+variable LSIGPTRA variable LSIGA   \ the two effects a raw-storage definer publishes
 variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK variable LRESENGINEERROR
 variable LKWAT2 variable LKWSTORE2 variable LP2FETCH variable LP2STORE
 variable LKWTUCK3 variable LKWROT3 variable LKWMROT3
@@ -2595,7 +2596,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWDEFCAST @ LBL, s" checker-defcast" BYTES,
    LCASTNONAME @ LBL, s" hb: cast: missing name after " BYTES,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
-   LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
+   LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW @ LBL, s" trust-raw" BYTES,
+   LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
    LKWUSING @ LBL, s" using" BYTES,  LKWSEMIUSING @ LBL, s" ;using" BYTES,
@@ -2603,6 +2605,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LCHKPACKAGE @ LBL, s" checker-package" BYTES,  LCHKPUB @ LBL, s" checker-public" BYTES,
    LCHKPRI @ LBL, s" checker-private" BYTES,  LCHKENDPKG @ LBL, s" checker-end-package" BYTES,
    LCHKDEFER @ LBL, s" checker-defer" BYTES,
+   LSIGPTRA @ LBL, s" -- ptr a" BYTES,  LSIGA @ LBL, s" -- a" BYTES,
    LRESCHECKCERT @ LBL, s" checker-cert" BYTES,
    LRESLOWERCERT @ LBL, s" lower-cert" BYTES,
    LRESLOWERHOOK @ LBL, s" lower-cert-hook" BYTES,
@@ -2869,14 +2872,29 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
+\ MIRROR of src/habu/habu2.f C-PUSH-DREC-NAME. Push the definition's ORIGINAL
+\ qualified spelling for the engine->checker record calls. It is the first token
+\ of the body buffer: LBCAP seeds "NAME " there before C-QUALIFY-DEF rewrites the
+\ token, so it is the QUALIFIED `PKG:tail`, where the published dictionary record
+\ carries only the bare tail (C-QUALIFY-DEF advances TKA past the `PKG:` prefix).
+\ Reading the record instead registered `tail` for a `PKG:tail` definition, and a
+\ bare-global row for a package-private name certifies callers the engine refuses.
+\ Scratch stays off x11: the FIND words leave the registrar XT there for the
+\ caller's later C-CALL-X11-SAVED, so this word must preserve it.
 : C-PUSH-DREC-NAME ( -- )
-   LBL {: pinl :}
-   9 12 24 ADDI,
-   10 12 16 LDR,  10 10 DNAME-EXT ANDI,  10 pinl CBZ,
-      9 12 24 LDR,
-   pinl LBL,
+   LBL LBL {: scan done :} \ typed-local-lint: allow-bare-local
+   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
+   10 0 MOVZ,                           \ x10 = name length
+   12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
+   scan LBL,
+      10 12 CMP,  C-GE done BCOND,      \ hit body end without a space -> stop
+      13 9 10 ADD,  13 13 0 LDRB,       \ x13 = name[x10]
+      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
+      13 done CBZ,                      \ NUL also ends it (safety)
+      10 10 1 ADDI,  scan B,
+   done LBL,
    9 G-PUSH
-   9 12 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 G-PUSH ;
+   10 G-PUSH ;
 
 : C-PUSH-DATA-CELL ( n -- ) {: off :}
    9 DATA off LDR,  9 G-PUSH ;
@@ -2905,19 +2923,56 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    32 C-CALL-MOVK-X16-32 C-CALL-EMIT-MOVK-X16
    9 C-CALL-BLR-X16 LIT64,  LCEMIT @ BL, ;
 
-: C-CALL-TRUST-LASTC ( -- )
+\ MIRROR of src/habu/habu2.f LASTC-TRUST:FIND-RAW. Resolve `trust-raw`, the
+\ checker's raw-storage effect registrar (src/core/checker.f TRUST-RAW). Every
+\ word a definer publishes owns a cell of raw dictionary storage, so its effect
+\ must be registered with raw type variables that cannot bind a nominal family;
+\ the three publish words below all route here instead of at `trust-decl`. Same
+\ fail-closed shape as C-FIND-TRUST-DECL: a missing registrar names itself on
+\ fd 2 and exits 70 rather than publishing the word unsealed.
+: C-FIND-TRUST-RAW ( -- )  LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 LKWTRUSTRAW @ ADR,  10 9 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 LKWTRUSTRAW @ ADR,  2 9 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+\ MIRROR of src/habu/habu2.f LASTC-TRUST:PUBLISH / PUBLISH-PTR-A / PUBLISH-A -
+\ every place this engine gives a defining word's creation an effect the checker
+\ will believe. C-PUBLISH registers the effect a `does>` clause declared for the
+\ words its defining word creates; C-PUBLISH-PTR-A registers `-- ptr a` for
+\ `create` and `variable`; C-PUBLISH-A registers `-- a` for `constant`.
+: C-PUBLISH ( -- )
    LBL {: nohook :} \ typed-local-lint: allow-bare-local
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST-DECL
-   12 DATA LASTC-CELL LDR,
+   C-FIND-TRUST-RAW
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
    nohook LBL, ;
 
+: C-PUBLISH-PTR-A ( -- )
+   LBL {: nohook :} \ typed-local-lint: allow-bare-local
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   C-FIND-TRUST-RAW
+   C-PUSH-DREC-NAME
+   9 LSIGPTRA @ ADR,  9 G-PUSH
+   9 8 MOVZ,  9 G-PUSH
+   C-CALL-X11-SAVED
+   nohook LBL, ;
+
+: C-PUBLISH-A ( -- )
+   LBL {: nohook :} \ typed-local-lint: allow-bare-local
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   C-FIND-TRUST-RAW
+   C-PUSH-DREC-NAME
+   9 LSIGA @ ADR,  9 G-PUSH
+   9 4 MOVZ,  9 G-PUSH
+   C-CALL-X11-SAVED
+   nohook LBL, ;
+
 : C-CALL-TRUST-PEND ( -- )
    C-FIND-TRUST-DECL
-   12 DATA PEND-CELL LDR,
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
@@ -2935,7 +2990,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-CALL-DEFCAST ( -- )
    C-FIND-DEFCAST
-   12 DATA PEND-CELL LDR,
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
@@ -3219,7 +3273,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
-      C-CALL-TRUST-LASTC
+      C-PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
@@ -3388,7 +3442,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: C-CREATE ( -- )  15 1 MOVZ,  LCREATE @ BL, ;
+: C-CREATE ( -- )  15 1 MOVZ,  LCREATE @ BL,
+   C-PUBLISH-PTR-A ;
 
 : C-VARIABLE ( -- )  C-CREATE
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;          \ reserve 1 cell
@@ -3409,7 +3464,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
-   LKWCONST 8 C-DEFHOOK ;
+   LKWCONST 8 C-DEFHOOK
+   C-PUBLISH-A ;
 
 \ IMMEDIATE: mark the LAST defined word — the compile loop EXECUTES immediate
 \ words instead of compiling calls (flag = DNAME-IMM in slot.name-len|flags).
@@ -4834,7 +4890,6 @@ variable CFSK2
 \ always resolvable by the time any user defer compiles), matching the native seed.
 : C-CALL-CHECKER-DEFER ( -- )
    LCHKDEFER 13 C-P2-FIND-GLOBAL
-   12 DATA PEND-CELL LDR,
    C-PUSH-DREC-NAME
    C-CALL-X11-SAVED ;
 
@@ -4866,8 +4921,7 @@ variable CFSK2
    capok LBL,
    15 PD-SLOT MOVZ,  15 13 15 MUL,
    14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,           \ x14 = slot base (survives C-PUSH-DREC-NAME/copies)
-   12 DATA PEND-CELL LDR,                            \ x12 = record ptr (mirror C-PUSH-DREC-NAME reads it)
-   C-PUSH-DREC-NAME
+   C-PUSH-DREC-NAME                                 \ G: name-addr, name-len (clobbers x9,x10,x12,x13)
    10 G-POP  9 G-POP                                 \ x10=name-len x9=name-addr
    16 PD-NAME-CAP MOVZ,  10 16 CMP,  C-LS nameok BCOND,
       C-PD-DIE-FULL
@@ -6496,11 +6550,12 @@ variable P2SK
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !
+   LBL LSIGPTRA !  LBL LSIGA !
    LBL LRESCHECKCERT !  LBL LRESLOWERCERT !  LBL LRESLOWERHOOK !  LBL LRESENGINEERROR !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !

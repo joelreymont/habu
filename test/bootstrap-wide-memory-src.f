@@ -288,6 +288,32 @@ variable BWM-CF-ACC
    BWM-CF-RSP 42 BWM=
    BWM-CF-LOOP 3 BWM= ;
 
+\ Created-word effect publication. `create` and `variable` publish `-- ptr a`,
+\ `constant` publishes `-- a` and `:` publishes its declared effect, each from
+\ its own definer, and the name every row carries is the definition's QUALIFIED
+\ spelling. So a word defined as `PKG:TAIL` certifies through `PKG:TAIL`, where
+\ a row registered under the bare tail would leave the qualified call unknown.
+\ Certification is the assertion here: a missing or bare-named row stops these
+\ definitions loading at all. The negative half is test/bootstrap-created-*-src.f.
+package BWM-PUB ;package
+
+package BWM-PUBLISHED
+create BWM-PUB:MADE 1 cells allot
+variable BWM-PUB:CELL
+41 constant BWM-PUB:KONST
+: BWM-PUB:FN ( -- n ) 7 ;
+: MADE-PTR ( -- ptr a ) BWM-PUB:MADE ;
+: CELL-PTR ( -- ptr a ) BWM-PUB:CELL ;
+: KONST-VAL ( -- a ) BWM-PUB:KONST ;
+: FN-VAL ( -- n ) BWM-PUB:FN ;
+public
+: TEST ( -- )
+   MADE-PTR drop
+   CELL-PTR drop
+   KONST-VAL 41 BWM=
+   FN-VAL 7 BWM= ;
+;package
+
 : BWM-REPORT ( -- )
    BWM-FAILS @ 0= if s" ok" type cr exit then
    BWM-FAILS @ . s" bootstrap-wide-memory failures" 1 die ;
@@ -297,4 +323,5 @@ BWM-TEST-RUNTIME
 BWM-TEST-DEFER
 BWM-TEST-CDEFER
 BWM-TEST-CATCH-FRAME
+BWM-PUBLISHED:TEST
 BWM-REPORT

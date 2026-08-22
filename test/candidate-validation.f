@@ -192,7 +192,7 @@ variable FAILS
 \ trips loudly. The lone top-row case is a positive, counted here too.
 37 constant N-POSITIVE
 5 constant N-DIAGNOSTIC
-13 constant N-NEGATIVE
+17 constant N-NEGATIVE
 
 : SHARED-CASES ( -- )
    s" test/type-family-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
@@ -259,6 +259,14 @@ variable FAILS
    s" test/lower-txn-protection.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/lower-txn-large.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/bootstrap-wide-memory-src.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/bootstrap-created-effect-src.f" construct case-kind negative 70
+      s" BOOTSTRAP-CREATED-ARMED" s" actual: ptr a" RUN-CASE
+   s" test/bootstrap-created-raw-src.f" construct case-kind negative 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: nom-id<> actual: a" RUN-CASE
+   s" test/bootstrap-created-const-src.f" construct case-kind negative 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: kon-id<> actual: a" RUN-CASE
+   s" test/bootstrap-created-does-src.f" construct case-kind negative 70
+      s" BOOTSTRAP-CREATED-ARMED" s" expected: dow-id<> actual: a" RUN-CASE
    s" test/extent-product-test.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" tools/hb-build-direct-lints-test.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/candidate-validation-test.f" construct case-kind positive 0 s" " s" " RUN-CASE ;
