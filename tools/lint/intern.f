@@ -5,11 +5,19 @@ require lib/memory.f
 require lib/vector.f
 require tools/lint/text.f
 
+package LINT-INTERN
+public
+
 76 constant E-LINT-INTERN-CAP
 s" E-LINT-INTERN-CAP" E-LINT-INTERN-CAP LINT-CODE-NAME+
-\ Shared by repository-scale lint tools; retain capacity for their largest
-\ interned path and token sets plus growth headroom.
-$800 constant INTERN-MAX   \ crossed $400 on 2026-07-21 as FILEMAP grew past 1024 interned paths (structure-decl/make, field-proj, enum suites)
+
+private
+
+\ The set has no entry ceiling: ids live in growable vectors and their bytes in
+\ chunks allocated on demand, so a repository-scale input is bounded by memory
+\ alone and a failed chunk allocation reports as a memory error. The bounds
+\ below are real resources: the chunk granularity, the fixed fold buffer, and
+\ the starting vector capacities.
 $1000 constant INTERN-CHUNK-MIN
 $100 constant INTERN-FOLD-CAP
 8 constant INTERN-VEC-CAP
@@ -66,7 +74,7 @@ variable INTERN-CHUNK-I
 \ live interned count. RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@
 \ yields a CAD-NUM:item-count and the checker correctly refuses to launder a count
 \ back to n, but INTERN# is pinned to a raw n that drives the INTERN$/INTERN-FIND
-\ bounds and the INTERN-CHECK-NEW-ID compare, so the count is read through the raw
+\ bounds and the id a new entry is stored under, so the count is read through raw
 \ VEC-LEN@ accessor for this word alone (no new projection). A typed
 \ item-count-bounded VEC iterator would retire it.
 : INTERN# ( -- n )
@@ -96,15 +104,14 @@ variable INTERN-CHUNK-I
       1+
    repeat drop ;
 
+public
+
 : INTERN-RESET ( -- )
    INTERN-INIT-ONCE
    INTERN-ADDR-V VEC:CLEAR
    INTERN-LEN-V VEC:CLEAR
    0 INTERN-CHUNK-I !
    INTERN-RESET-CHUNKS ;
-
-: INTERN-INIT ( -- )
-   INTERN-RESET ;
 
 : INTERN$ ( n -- ptr u8 n ) {: id :}
    INTERN-INIT-ONCE
@@ -122,6 +129,8 @@ variable INTERN-CHUNK-I
 
 : INTERN? ( ptr u8 n -- bool )
    INTERN-FIND 0 >= ;
+
+private
 
 : INTERN-CHUNK-SIZE ( n -- n )
    dup INTERN-CHUNK-MIN < IF drop INTERN-CHUNK-MIN THEN ;
@@ -168,17 +177,16 @@ variable INTERN-CHUNK-I
 : INTERN-COPY$ ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
    a u u INTERN-ALLOC-SPAN INTERN-COPY-TO ;
 
-: INTERN-CHECK-NEW-ID ( -- n )
-   INTERN# dup INTERN-MAX >= IF drop E-LINT-INTERN-CAP throw THEN ;
-
 : INTERN-STORE-NEW ( ptr u8 n n -- n ) {: a:ptr u id :}
    a u INTERN-COPY$ INTERN-ADDR-V VEC:PUSH drop
    u INTERN-LEN-V VEC:PUSH drop
    id ;
 
+public
+
 : INTERN ( ptr u8 n -- n ) {: a:ptr u :}
    a u INTERN-FIND dup 0 >= IF exit THEN drop
-   a u INTERN-CHECK-NEW-ID INTERN-STORE-NEW ;
+   a u INTERN# INTERN-STORE-NEW ;
 
 : INTERN-FOLD ( ptr u8 n -- n ) {: a:ptr u :}
    u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
@@ -189,3 +197,5 @@ variable INTERN-CHUNK-I
    u INTERN-FOLD-CAP > IF E-LINT-INTERN-CAP throw THEN
    a u INTERN-FOLD-BUF FOLD-TO
    INTERN-FOLD-BUF u INTERN? ;
+
+;package

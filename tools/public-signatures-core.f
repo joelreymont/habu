@@ -7,6 +7,7 @@ require tools/lint/intern.f
 require tools/event-closure-lib.f
 
 using TFAM
+using LINT-INTERN
 
 package PS
 
@@ -963,4 +964,5 @@ public
 
 ;package
 
+;using
 ;using

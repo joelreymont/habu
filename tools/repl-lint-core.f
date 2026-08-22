@@ -2,6 +2,8 @@
 \ Load after lib/errors.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
 \ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
 
+using LINT-INTERN
+
 $8000 constant REPL-FILE-CAP
 $400 constant REPL-PATH-CAP
 $80 constant REPL-PATH-MAX
@@ -300,3 +302,5 @@ variable REPL-ROOT-U
    REPL-LINT-CHECK 0 > if s" " 1 die then ;
 
 1 >FD REPL-OUT-FD!
+
+;using

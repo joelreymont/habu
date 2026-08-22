@@ -50,6 +50,7 @@ require tools/lint/token.f
 require tools/lint/source-lex.f
 
 package ERROR-CODE-LINT
+using LINT-INTERN
 public
 
 \ ---- source-defect codes ----------------------------------------------------

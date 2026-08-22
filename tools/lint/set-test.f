@@ -9,6 +9,9 @@ require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
+package LINT-INTERN
+private
+
 variable TEST-N
 : ASSERT  ( bool -- )
    0= if
@@ -23,6 +26,10 @@ create MUT-BUF 3 allot
 create KEY-BUF 2 allot
 variable SET-I
 $40 constant WALK-LIMIT
+$1000 constant GROW-LIMIT
+INTERN-FOLD-CAP 1+ constant FOLD-OVER
+create FOLD-BUF FOLD-OVER allot
+variable FOLD-I
 
 : MUT!  {: c :}  ( -- )
    c MUT-BUF c!
@@ -90,16 +97,39 @@ $40 constant WALK-LIMIT
    WALK-LIMIT KEY$ INTERN? 0= ASSERT
    WALK-LIMIT CHECK-WALK ;
 
-: FILL-CAP  ( -- )
-   INTERN-RESET  0 SET-I !
-   begin SET-I @ INTERN-MAX < while
-      SET-I @ KEY$ INTERN SET-I @ ASSERT=
-      SET-I @ 1+ SET-I !
-   repeat
-   INTERN# INTERN-MAX ASSERT= ;
-: COUNT-OVERFLOW  ( -- )  FILL-CAP  INTERN-MAX KEY$ INTERN drop ;
-: TEST-CAPACITY  ( -- )
-   [: COUNT-OVERFLOW ;] catch E-LINT-INTERN-CAP ASSERT= ;
+\ the set has no entry ceiling left, so growth past the old $800 one is the
+\ positive case: 4096 distinct ids, every id its insertion order, and a repeat
+\ of the last one finds instead of appending.
+: TEST-GROWTH  ( -- )
+   GROW-LIMIT FILL-WALK
+   INTERN# GROW-LIMIT ASSERT=
+   0 KEY$ INTERN-FIND 0 ASSERT=
+   GROW-LIMIT 2 / KEY$ INTERN-FIND GROW-LIMIT 2 / ASSERT=
+   GROW-LIMIT 1- KEY$ INTERN? ASSERT
+   GROW-LIMIT KEY$ INTERN? 0= ASSERT
+   GROW-LIMIT 1- KEY$ INTERN GROW-LIMIT 1- ASSERT=
+   INTERN# GROW-LIMIT ASSERT= ;
+
+\ E-LINT-INTERN-CAP now marks real bounds only. The fold buffer is the one a
+\ caller can reach: a string one byte past it throws, the exact buffer interns,
+\ so an off-by-one in the guard fails this test in one direction or the other.
+: FOLD-FILL  ( -- )
+   0 FOLD-I !
+   begin FOLD-I @ FOLD-OVER < while
+      $41 FOLD-BUF FOLD-I @ + c!
+      FOLD-I @ 1+ FOLD-I !
+   repeat ;
+: FOLD-PAST-CAP   ( -- )  FOLD-BUF FOLD-OVER INTERN-FOLD drop ;
+: FOLD?-PAST-CAP  ( -- )  FOLD-BUF FOLD-OVER INTERN-FOLD? drop ;
+: TEST-FOLD-BOUND  ( -- )
+   INTERN-RESET  FOLD-FILL
+   [: FOLD-PAST-CAP ;] catch E-LINT-INTERN-CAP ASSERT=
+   [: FOLD?-PAST-CAP ;] catch E-LINT-INTERN-CAP ASSERT=
+   INTERN# 0 ASSERT=
+   FOLD-BUF INTERN-FOLD-CAP INTERN-FOLD 0 ASSERT=
+   FOLD-BUF INTERN-FOLD-CAP INTERN-FOLD? ASSERT
+   0 INTERN$ nip INTERN-FOLD-CAP ASSERT=
+   0 INTERN$ drop c@ $61 ASSERT= ;
 
 \ a cap throw routed through LINT-MAIN prints an attribution line naming the
 \ tool and the code, and re-throws the same code (never a silent rc-only death)
@@ -129,10 +159,13 @@ create ATTR-BUF ATTR-CAP allot
    TEST-CASE
    TEST-MEMBERSHIP
    TEST-WALK
-   TEST-CAPACITY
+   TEST-GROWTH
+   TEST-FOLD-BOUND
    TEST-ATTRIBUTION
    TEST-ATTRIBUTION-OK
    INTERN-RESET
    s" set-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
 SET-TEST
+
+;package
