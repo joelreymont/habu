@@ -7812,3 +7812,41 @@ and --no-lldbinit.
   a signed binary modified in place on sight (rc 137, no output) even when
   codesign -v calls the file valid on disk; the 2x2 that separates it: the
   other workspace's binary from your checkout vs yours from theirs.
+
+## 2026-08-22 - the recovery leg's three breaks (first Linux session)
+
+- **A trust root nobody exercises is not a trust root.** The no-binary
+  recovery (`tools/bootstrap.sh`) was red from 2026-07-21 behind an open P1
+  dot, and on the day the machine was wiped it took THREE independent fixes
+  to get an engine: the mirror had never grown the definer-side effect
+  publication (`LASTC-TRUST:PUBLISH*` / `trust-raw`), so correcting the
+  `create` axiom row (760e9c90) silently broke every `variable` under the
+  seed; the seed's fixed 2 MiB text page refused an image whose real reach
+  constraint was 8% consumed; and the seed's source list had never carried
+  two boot-prefix rows (`bytes.f`, `include.f`). None of the three had a
+  gate. A leg that only runs on the day you need it will have accumulated
+  every break since the last time it ran. Put the recovery check on a
+  scheduled gate (dot habu-put-the-recovery-4dabaab9).
+- **A native seam change needs its mirror half, and the mirror's tripwires
+  could not see any of the three.** `bootstrap-mirror-lint` polices ADT
+  keywords; `bootstrap-codegen-test` polices three constants. Neither sees a
+  checker-call seam, a keyword row, a prefix row, or a name-source shape (the
+  mirror pushed the record tail where native pushes the qualified body-buffer
+  token, and native's own comment asserted the mirror had no package system).
+  A comment about the other engine is a claim; the other engine is the
+  evidence. Structural seam lint: dot habu-structural-lint-for-103677fb.
+- **A fixed builder buffer read as an architectural limit.** `MPAGE` was the
+  size of a scratch `allot`, not a reach bound: 96% of the "text" was the
+  baked source blob that nothing addresses PC-relatively. Measure what binds
+  (ADR ±1 MiB across the 83 KB code region) before raising a number; the
+  right fix deleted the number and gated the bound that exists.
+- **Two lists that must agree need a lint, not an order.** boot-pin's rows
+  are the boot RELOAD order and the seed's are a COMPILE order; they differ on
+  two rows by construction and the seed's own build refuses a wrong order
+  loudly. Membership was the invariant; checking order would have encoded a
+  design split as two permanent exceptions. A `cat` row inside a driver
+  conditional is in at most one emission, so it is not in the seed.
+- **A die that prints only the offending token costs a day per break.**
+  `BYTE-COPY`, `REQUIRE-REG:COUNT`, `pick-reason at 'CODE-REASON'`: each
+  needed a bisect or a splice probe to read. Twelve native sites and ten
+  mirror sites still do this (dot habu-twelve-native-die-a7a5139d).
