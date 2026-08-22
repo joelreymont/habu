@@ -68,6 +68,7 @@ fi
 
 SRC_COMMON=(
   src/core/roles.f
+  src/core/bytes.f
   "$OS_TARGET"
   src/arch/arm64/asm.f
   src/arch/arm64/icode.f
@@ -76,6 +77,7 @@ SRC_COMMON=(
   "$OS_SYS"
   src/habu/layout.f
   src/os/env-base.f
+  src/core/include.f
   src/os/script-argv.f
   src/core/enums.f
   src/core/sha256.f
@@ -261,10 +263,6 @@ emit_src() {
     cat "$f" >> "$out"
     printf '\n' >> "$out"
   done
-  if [[ "$driver" == "src/habu/snap.f" ]]; then
-    cat src/core/include.f >> "$out"
-    printf '\n' >> "$out"
-  fi
   cat src/habu/driver-io.f >> "$out"
   printf '\n' >> "$out"
   if [[ "$driver" == "src/habu/stdin.f" ]]; then
