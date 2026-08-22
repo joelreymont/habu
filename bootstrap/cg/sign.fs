@@ -38,7 +38,17 @@ variable  SIG-DOFF                     \ signature data offset = codeLimit (file
 \ --- big-endian cursor into MBUF (the signature blob) ---
 variable SC
 
-: B8   ( c -- )    MBUF SC @ + c!  1 SC +! ;
+\ The blob cursor is an offset of its own, independent of the image cursor, so it
+\ carries its own bounds check -- same rule as image.fs: name the buffer, what
+\ the write needed and what it has.
+: B-ROOM ( n -- )  SC @ + {: need :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   need MBUF-CAP @ > if
+      cr ." cg: signature overrun: MBUF needs " need .
+      ." bytes, has " MBUF-CAP @ . cr
+      E-M-OVER throw
+   then ;
+
+: B8   ( c -- )    1 B-ROOM  MBUF SC @ + c!  1 SC +! ;
 
 : B32  ( w -- )    dup 24 rshift B8  dup 16 rshift B8  dup 8 rshift B8  B8 ;
 
@@ -83,14 +93,16 @@ $00020400 constant CD-VERSION                \ supports execSeg fields
 \ CODESIG ( -- ) : self-sign the finished unsigned MBUF in place. Hashes the file
 \ pages [0,codeLimit) — all strictly below the signature, so no self-reference.
 : CODESIG ( -- )
-   MLEN @ SIG-DOFF !                          \ codeLimit = current file end (= MPAGE)
+   MLEN @ SIG-DOFF !                          \ codeLimit = current file end (= TEXTSZ)
+   SIG-DOFF @ SB-SIZE + M-FIT                 \ the image grows by its own signature
    ADD-CODESIG-LC  PATCH-LINKEDIT
    SIG-DOFF @ SC !
    CSMAGIC-EMBEDDED B32   SB-SIZE B32   1 B32  \ SuperBlob: magic,length,count
    0 B32   20 B32                             \ index: slot CODEDIRECTORY @ offset 20
    CD-HDR,
    SIG-ID 2@ BSTR  0 B8                       \ identifier + NUL
-   NCSLOTS 0 ?do  MBUF i CS-PAGE * +  CS-PAGE  MBUF SC @ +  SHA256  CS-HASH SC +!  loop
+   NCSLOTS 0 ?do  CS-HASH B-ROOM
+      MBUF i CS-PAGE * +  CS-PAGE  MBUF SC @ +  SHA256  CS-HASH SC +!  loop
    SC @ MLEN ! ;
 
 : SIGN-IMAGE ( -- )  CODESIG ;

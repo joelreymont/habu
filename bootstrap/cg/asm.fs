@@ -14,6 +14,7 @@ s" cg: branch out of range"    exception constant E-BRANCH-RANGE
 s" cg: undefined label"        exception constant E-UNDEF-LBL
 s" cg: immediate out of range" exception constant E-IMM-RANGE
 s" cg: missing encoder"        exception constant E-NO-ENC
+s" cg: ADR reach past reserve" exception constant E-ADR-RESERVE
 
 variable ABUF  variable WPOS
 
@@ -23,6 +24,29 @@ variable ABUF  variable WPOS
 : ?REL26 ( d -- d )  dup -33554432 33554432 within 0= if E-BRANCH-RANGE throw then ;
 
 : ?REL19 ( d -- d )  dup -262144 262144 within 0= if E-BRANCH-RANGE throw then ;
+
+\ ADR reaches +/-1 MiB from the instruction. The seed refuses at a reserve below
+\ that, so a program growing into the cliff is a loud build failure with runway
+\ left rather than a discovery on a recovery day with no binary to fall back on.
+\ The bound tracks the engine CODE region and only engine growth spends it: the
+\ widest ADR an emitted engine needs is its entry reaching the baked source
+\ label, the baked source is the last section, and nothing is PC-relative past
+\ its start -- so a bigger source cannot consume reach. Measured 2026-08-22 on
+\ the build-mode stage2 emission: 82,856 bytes of 1,048,576 used (7.9%), code
+\ region 83,424 bytes, baked source 2,060,400 bytes.
+$100000 constant ADR-REACH          \ hardware limit: ADR reaches +/-1 MiB
+4 constant ADR-RESERVE-DIV          \ hold a quarter of the reach back as reserve
+ADR-REACH  ADR-REACH ADR-RESERVE-DIV /  -  constant ADR-BUDGET
+
+\ ADR-BUDGET <= ADR-REACH by construction, so this one check can never let an
+\ out-of-range displacement through no matter what the reserve is set to.
+: ADR-OVER ( d -- )
+   cr ." cg: ADR reach past reserve: needs " abs .
+   ." bytes, budget " ADR-BUDGET . ." of " ADR-REACH . ." hardware reach" cr
+   E-ADR-RESERVE throw ;
+
+: ?ADR ( d -- d )
+   dup  ADR-BUDGET negate ADR-BUDGET within 0= if dup ADR-OVER then ;
 
 : ?SC8   ( off -- imm12 )
    dup 0 32761 within 0=  over 7 and 0<> or  if E-IMM-RANGE throw then  3 rshift ;
@@ -163,8 +187,8 @@ CHECKING-ON? off
 
 : ENC-RET  ( i -- )  drop $D65F03C0 EMITW ;
 
-: ENC-ADR  ( i -- )  {: i :}  i BDELTA 4 * {: d :}
-   d -1048576 1048576 within 0= if E-BRANCH-RANGE throw then
+: ENC-ADR  ( i -- )  {: i :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   i BDELTA 4 * ?ADR {: d :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    $10000000  d 3 and 29 lshift or  d 4 / $7FFFF and 5 lshift or  i IC-B or EMITW ;
 
 : ENC-LDR  ( i -- )  >r $F9400000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?SC8 10 lshift or EMITW ;

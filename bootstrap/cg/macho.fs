@@ -25,20 +25,23 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$200000   constant MPAGE              \ maximum generated executable window
+$200000   constant LE-VMSIZE         \ __LINKEDIT VM window; sign.fs re-patches it
 
 variable CODELEN
-create SCODE MPAGE allot              \ assembled-code scratch (grows with the standalone)
+variable SCODE   variable SCODE-CAP   \ assembled-code scratch, grown to the emission
 
-\ size via PASS1 (computes WPOS without writing) BEFORE PASS2 touches SCODE —
-\ a post-write guard would segfault first on overflow
+\ __TEXT follows the emitted program: PASS1 sizes the scratch buffer, PASS2 fills
+\ it, and TEXTSZ carries that length into the load commands. There is no fixed
+\ text page; an image is bounded by instruction reach, which asm.fs checks per
+\ instruction (?ADR, ?REL19, ?REL26), and by nothing else. One constant used to
+\ serve both as that page and as the __LINKEDIT VM window above -- two unrelated
+\ facts under one name -- so the window keeps its own name and the page is gone.
+\ Same rule and same shape as bootstrap/cg/elf.fs.
 : ASM-CODE ( -- )
-   PASS1  WPOS @ 4 *  MPAGE CODE-OFF -  > abort" cg: code exceeds __TEXT page"
-   SCODE ASSEMBLE CODELEN ! ;
+   PASS1  WPOS @ 4 *  SCODE SCODE-CAP BUF-FIT
+   SCODE @ ASSEMBLE CODELEN ! ;
 
-\ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
-\ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
-\ maximum generated-code window for builder images.
+\ __TEXT sized to CONTENT (16 KB pages): a 24 KB program is a 28 KB binary.
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 
 variable LE-OFF                       \ file offset of the __LINKEDIT LC (for sign.fs post-pass)
@@ -82,18 +85,17 @@ variable NCMDS                        \ load commands counted as emitted
    M-HERE MH-HDR-SZ -  MBUF 20 +  l! ;
 
 : BUILD-MACHO ( -- )                 \ assumes ICODE holds the program
-   ASM-CODE  M-RESET  0 NCMDS !
+   ASM-CODE  TEXTSZ M-FIT  M-RESET  0 NCMDS !
    MH-HDR,
    s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
    s" __TEXT" VMBASE TEXTSZ 0 TEXTSZ 5 1 80 SEG,  LC+
       s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
    M-HERE LE-OFF !                    \ remember __LINKEDIT LC offset for the sign post-pass
-   s" __LINKEDIT" VMBASE TEXTSZ + MPAGE TEXTSZ 0 1 0 0 SEG,  LC+
+   s" __LINKEDIT" VMBASE TEXTSZ + LE-VMSIZE TEXTSZ 0 1 0 0 SEG,  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR                          \ derive ncmds/sizeofcmds (no frozen magic)
-   CODELEN @  MPAGE CODE-OFF -  > abort" cg: emitted code exceeds __TEXT page"
    CODE-OFF M-PAD                    \ header slack (room for the post-pass LC_CODE_SIGNATURE)
-   SCODE CODELEN @ M-BYTES           \ copy assembled code
+   SCODE @ CODELEN @ M-BYTES         \ copy assembled code
    TEXTSZ M-PAD                        \ pad file to content-aligned TEXT size
    M-HERE MLEN ! ;
 

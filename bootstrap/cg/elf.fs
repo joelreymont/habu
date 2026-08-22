@@ -18,14 +18,18 @@ $B7 constant EM-AARCH64
 56 constant ELF-PHDR-SZ
 $400000 constant VMBASE
 $1000 constant CODE-OFF
-$200000 constant MPAGE
 variable CODELEN
-create SCODE MPAGE allot
+variable SCODE   variable SCODE-CAP
 2variable SIG-ID
 
+\ The text segment follows the emitted program: PASS1 sizes the scratch buffer,
+\ PASS2 fills it, and TEXTSZ carries that length into the segment headers. There
+\ is no fixed text page. An image is bounded by instruction reach, which asm.fs
+\ checks per instruction (?ADR, ?REL19, ?REL26), and by nothing else -- a page
+\ chosen as a round number refused images the loader would have accepted.
 : ASM-CODE ( -- )
-   PASS1  WPOS @ 4 *  MPAGE CODE-OFF -  > abort" cg: code exceeds ELF text page"
-   SCODE ASSEMBLE CODELEN ! ;
+   PASS1  WPOS @ 4 *  SCODE SCODE-CAP BUF-FIT
+   SCODE @ ASSEMBLE CODELEN ! ;
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $FFF +  $FFF invert and ;
 
@@ -55,11 +59,11 @@ create SCODE MPAGE allot
    $1000 M64 ;
 
 : BUILD-ELF ( -- )
-   ASM-CODE  M-RESET
+   ASM-CODE  TEXTSZ M-FIT  M-RESET
    ELF-HDR,
    ELF-PHDR,
    CODE-OFF M-PAD
-   SCODE CODELEN @ M-BYTES
+   SCODE @ CODELEN @ M-BYTES
    TEXTSZ M-PAD
    M-HERE MLEN ! ;
 
