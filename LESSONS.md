@@ -7883,3 +7883,44 @@ and --no-lldbinit.
   delimiter-space slip made `s"SDC-AOT$"` a plain word instead of a string
   opener. Every composed fixture needs a mutation that discriminates it — not
   just an expected value that happens to come out right.
+
+## 2026-08-23 - the green-gate campaign's first day (eight lanes)
+
+- **A staged self-call names function zero wherever the token stands.** Three
+  native-chain passes said "the function being processed" where the IR says
+  "the definition": a `RECURSE` inside `[: … ;]` compiled to a call of the
+  quotation itself and exited 0 with the wrong answer. The checker was right
+  all along (`J-RECURSE` loads PEND); a "QDEPTH guard" would have refused a
+  legal program. When codegen and the checker disagree, re-derive who owns
+  the invariant before touching either.
+- **`bin/hb` carries the native compiler as a baked AOT payload.** A `require`
+  of `src/compiler/native/*.f` is a no-op, so the compiler suites test the
+  baked chain until `tools/build-fixpoint-refresh.f -- install` runs; an
+  undefined word appended to `elaborate.f` leaves `native-chain` green.
+  Refresh before any compiler suite means anything (dot c83f1869).
+- **A growth path that installs a new span and forgets the old one leaks a
+  mapping per doubling, and `/dev/null` cannot witness it.** Its write handler
+  returns the count without reading the buffer, so a freed span "writes"
+  fine. The structural witness is a real, unlinked file: `write(2)` from an
+  unmapped source faults. Allocate, install, release last — a refused
+  allocation then strands nothing.
+- **The package lint's path allowlist is an anti-invariant.** Six lanes in
+  two days hit "frozen legacy global": one-line fixes cost a seal (intern.f,
+  source.f, budget.f) or stopped (fs.f: a 267-file cascade). The structural
+  key already existed for five files (`ENGINE-BODY-EDIT?` = old global, body
+  edit); deleting the path test admits every historical wall. Policy: body
+  edits of existing globals are admitted everywhere, new globals still report
+  — the campaign's forcing function is "no new globals", not "no edits".
+- **A host's page size is a fact the ELF writer must read, not assume.** The
+  writer aligned `PT_LOAD` at 4 KiB; Asahi runs 16 KiB pages and the kernel
+  rounds the RW segment down onto the text. The shipped engine survived only
+  because its text ended 9,558 bytes into the RW mapping. Align to the
+  architecture's maximum page (`PROT-PAGE-MAX`), and treat a "works here"
+  literal as the next host's crash.
+- **A checkpoint that measures the contract can overturn it.** The timing
+  lane showed the 3x hang-detector floor is by design on every profile and the
+  real cause of the 600 s timeouts was the one remaining fixed wall; the
+  seed-list lane showed boot-pin order and compile order differ by design;
+  the axiom-rows lane showed the bad caller certified through the verifier,
+  not the engine. Write contracts as hypotheses; the lane's first job is to
+  falsify them.
