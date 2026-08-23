@@ -1112,36 +1112,37 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ stage2 engine source.
 \ cda6ec6d: compile/ops +288, dictionary-code +16, aot-seed -312; net -8, total 123072 unchanged.
 \
-\ 2026-08-05 THE LINUX DECOMPOSITION IS OWED A RE-MEASURE, AND SAYS SO.
-\ Merge cd7bf8eb resolved these four rows to the pre-merge MASTER binary's numbers
-\ (118420 / 3732 / 123072) while keeping the campaign's prose above them, which is
-\ why that prose ends "the whole file remains exactly 127168". The rebuilt
-\ integrated tip measures 127168, so the whole-file row was simply wrong and is
-\ corrected here; BUILD-SIZE:BASELINE-LINUX carries the same number.
+\ 2026-08-23 THE OWED LINUX RE-MEASURE IS PAID (dot habu-gate-cannot-be-6d68b203),
+\ the first measurement on a Linux host since the 2026-08-05 merge. Measured on
+\ linux-arm64 (Arch/Asahi aarch64) through the gate's OWN capture path - the
+\ candidate build the engine-build slice performs, HABU_ENGINE_SIZE_MAP=1 on the
+\ freshly built hb-host-mk - then rendered and reconciled by tools/size-report.f
+\ with zero residue: attributed 147648 = engine-file 147648. Three cold-cache runs
+\ of the slice produced byte-identical maps and a byte-identical fixpoint engine
+\ (hb-host = hb-stdin-got, sha 61ce1e9320c99a38f99f4663b6e56cf73713599430454aaa3fd7121856c5a7ba).
 \
-\ The DECOMPOSITION cannot be corrected the same way, and inventing it would be
-\ the same defect again. The model reconstructs the total as
-\ PAGE-UP(CODE-OFF + CODE-TEXT, 4 KiB) + LINUX-RW, so a measured total of 127168
-\ pins CODE-OFF + CODE-TEXT only to the half-open 4 KiB page (122880, 126976] -
-\ one equation, two unknowns. Neither surviving candidate describes this binary:
-\ 118420 is master's engine before the campaign's text landed, and the campaign's
-\ own 122592 predates master's owner-registry deletion, which removes engine text
-\ (the per-region rows below still carry master's shape - no aot-owner row, and
-\ protected-wid at 120 rather than 1540). Deriving a third number from the page
-\ boundary would be page rounding wearing an attribution's clothes.
+\ The 2026-08-05 note was right that the decomposition cannot be recovered from a
+\ committed total: PAGE-UP(CODE-OFF + CODE-TEXT, 4 KiB) + LINUX-RW pins
+\ CODE-OFF + CODE-TEXT only to one 4 KiB page - one equation, two unknowns.
+\ Measuring answers it directly and never inverts the total. The map reports
+\ __text as 139564; the model then RECONSTRUCTS the file from that measurement,
+\ PAGE-UP(4096 + 139564, 4096) + 192 = 147456 + 192 = 147648, and that equals the
+\ measured engine byte for byte. The reconstruction is a confirmation, not a
+\ derivation - nothing here is page rounding wearing an attribution's clothes.
 \
-\ So CODE-TEXT and FLOOR-DIST are ZERO, which this manifest already means as
-\ "unmeasured target, fail closed with the measured size to commit"
-\ (test/gate-build-size.f header), and LINUX-MEASURED? gates the committed-row
-\ self-checks the way HOST-REGION-BUDGETS-MEASURED? already gates the macOS
-\ per-region rows. A Linux host running the candidate gate now reports the real
-\ CODELEN to commit instead of a drift against a binary that no longer exists.
-\ The per-region rows are left standing as the last measurement anyone took, so
-\ that re-measure starts from a diff rather than from nothing.
-0 constant LINUX-CODE-TEXT        \ OWED: unmeasured on the integrated tree
+\ The whole-file row was wrong as well as owed. 127168 was the pre-merge master
+\ binary; the engine this tree builds measures 147648, five 4 KiB pages larger.
+\ BUILD-SIZE:BASELINE-LINUX carries the same number, and HOST-SIZE-CHECK ratchets
+\ the capture host (hb-host) against it. The shipped bin/hb is NOT this number:
+\ it bakes the AOT REPL chain and measures 2076864 bytes on this host, which is
+\ the relation LIVE-CARRIES-ENGINE? asserts (bin/hb >= HOST-TOTAL).
+\
+\ The macOS rows above are untouched. This host cannot build or measure a Mach-O
+\ engine, so moving them would be the same defect this entry closes.
+139564 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-0 constant LINUX-FLOOR-DIST       \ OWED: derives from CODE-TEXT, unmeasured with it
-127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
+300 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+147648 constant LINUX-TOTAL       \ = FILE-SIZE of the fixpoint engine (hb-host) = BUILD-SIZE:BASELINE-LINUX
 
 \ A zero CODE-TEXT row is this manifest's spelling of "unmeasured": there is no
 \ committed decomposition to check against, and the rows that would check it stay
@@ -1168,50 +1169,60 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ structure-make split (+48 total) attributes as main/startup +16 (new load row)
 \ and dictionary-code +32 (the generator's baked entry) - exactly the
 \ attribution this ratchet exists to give.
+\ 2026-08-23 re-measured on linux-arm64 at the byte fixpoint (dot
+\ habu-gate-cannot-be-6d68b203), the first Linux measurement since the 2026-08-05
+\ merge. 28 of the 44 committed rows moved, 16 were already exact, none vanished,
+\ and primitives/find-wl (524) is emitted with no budget row at all - it would
+\ have failed GE-REGION-UNBUDGETED-FAIL the moment the ratchet stopped skipping.
+\ The rows now sum to 139564 = LINUX-CODE-TEXT, which RUN asserts. Setting
+\ LINUX-CODE-TEXT nonzero is what makes HOST-REGION-BUDGETS-MEASURED? true, so
+\ GE-REGION-RATCHET enforces every row on this target from here on instead of
+\ reporting the page prediction and returning.
 : LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
-   s" main/startup"            4792 q execute
+   s" main/startup"            6628 q execute
    s" main/comment"             380 q execute
-   s" interpret/colon"         752 q execute
-   s" interpret/define"       10464 q execute
-   s" interpret/string"        1148 q execute
+   s" interpret/colon"         768 q execute
+   s" interpret/define"       12392 q execute
+   s" interpret/string"        1168 q execute
    s" interpret/number"          48 q execute
    s" interpret/find"           132 q execute
-   s" compile/adt"             2140 q execute
-   s" compile/semi"            6892 q execute
+   s" compile/adt"             2148 q execute
+   s" compile/semi"            7432 q execute
    s" compile/local"            552 q execute
    s" compile/p2wide"          2460 q execute
-   s" compile/keywords"       9916 q execute
+   s" compile/keywords"      11260 q execute
    s" compile/literal"           36 q execute
    s" compile/ops"             2744 q execute
-   s" compile/call"             628 q execute
-   s" compile/undef"            924 q execute
-   s" compile/die"              200 q execute
-   s" compile/exit"            1868 q execute
+   s" compile/call"             700 q execute
+   s" compile/undef"            916 q execute
+   s" compile/die"              192 q execute
+   s" compile/exit"            3928 q execute
    s" compile/eval-recover"     724 q execute
-   s" main/underflow"           192 q execute
-   s" primitives/base"        17604 q execute
-   s" primitives/arity"         760 q execute
-   s" primitives/extra"         568 q execute
+   s" main/underflow"           188 q execute
+   s" primitives/base"        18336 q execute
+   s" primitives/arity"         856 q execute
+   s" primitives/extra"         668 q execute
    s" primitives/prof"          220 q execute
    s" primitives/float"         764 q execute
-   s" primitives/cemit"         108 q execute
-   s" primitives/cemitbl"       100 q execute
+   s" primitives/cemit"         164 q execute
+   s" primitives/cemitbl"       172 q execute
    s" primitives/capture"       156 q execute
    s" primitives/token"         104 q execute
-   s" primitives/protect"       304 q execute
-   s" primitives/protected-wid" 120 q execute
+   s" primitives/protect"      1072 q execute
+   s" primitives/protected-wid" 124 q execute
    s" primitives/flush"          72 q execute
-   s" primitives/find"          952 q execute
-   s" primitives/find-used"     520 q execute
-   s" primitives/hash-index"    852 q execute
+   s" primitives/find"         1300 q execute
+   s" primitives/find-wl"       524 q execute
+   s" primitives/find-used"     944 q execute
+   s" primitives/hash-index"   1164 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         5016 q execute
-   s" runtime"                 9464 q execute
-   s" seed-dictionary"         8352 q execute
-   s" aot-seed"               22156 q execute
-   s" primitives/qualify-def"  2448 q execute
-   s" primitives/store-def-name"   388 q execute
+   s" dictionary-code"         7332 q execute
+   s" runtime"                 9708 q execute
+   s" seed-dictionary"         8640 q execute
+   s" aot-seed"               29128 q execute
+   s" primitives/qualify-def"  2504 q execute
+   s" primitives/store-def-name"   416 q execute
    s" baked-source"               0 q execute ;
 
 variable RB-ACC

@@ -114,7 +114,18 @@ package BUILD-SIZE
 \ page-rounded whole-file total is unchanged. Exact CODE-TEXT/floor rows in
 \ test/gate-size-attribution-test.f. The Linux row below is owed the same +240.
 165367 constant BASELINE-MACOS
-127168 constant BASELINE-LINUX
+\ 2026-08-23 Linux 127168 -> 147648: first measurement on a Linux host since the
+\ 2026-08-05 merge (dot habu-gate-cannot-be-6d68b203). 127168 was the pre-merge
+\ master binary's size, carried forward by a merge resolution and never rebuilt;
+\ the engine this tree builds measures 147648. Measured through the gate's own
+\ capture path - the candidate build the engine-build slice performs - and
+\ reconciled by tools/size-report.f with zero residue (attributed 147648 =
+\ engine-file 147648, __text 139564, header 4096, text-pad 3796, rw-segment 192).
+\ Three cold-cache slice runs gave a byte-identical fixpoint engine, sha 61ce1e93.
+\ This row is the capture host hb-host, which HOST-SIZE-CHECK ratchets; the
+\ shipped bin/hb bakes the AOT REPL chain on top and measures 2076864 bytes. The
+\ macOS row is untouched: this host cannot build or measure a Mach-O engine.
+147648 constant BASELINE-LINUX
 
 : BASELINE ( -- n )
    HB-TARGET-MACOS? if BASELINE-MACOS exit then
