@@ -7708,14 +7708,13 @@ and --no-lldbinit.
 
 ## 2026-08-23 - the lint port's two process findings (lint lane)
 
-- **An immediate engine control word wins at the call site even over a
-  package-private definition of the same name, and the diagnostic names the
-  wrong token.** `package P private : CASE ( -- ) ; : M ( -- ) CASE ;` exits
-  70 as `habu: in m: at 'CASE'`; when the shadowed word opens a construct, the
-  error names the LAST token of the caller instead. Screen a candidate name
-  with `: FOO ( -- ) ; : BAR ( -- ) FOO <name> FOO ;` — `E-UNDEFINED` means
-  free, `in bar: at 'FOO'` means an immediate word you must not shadow. `FOLD`
-  is one too. Engine defect: dot habu-immediate-control-words-6d7507da.
+- **Compile syntax and dictionary immediacy are different facts.** All 28
+  hard-coded control/loop spellings published as definition names, then beat
+  dictionary lookup; EXIT, RECURSE, UNLOOP, and `{:` could even compile rc 0
+  with syntax semantics. `FOLD` is ordinary and remains definable/callable.
+  Checker-Miss RCA: the name is consumed before body checking, so the owner is
+  `C-QUALIFY-DEF`; replay the compiler dispatch rows there instead of inventing
+  a second registry. Engine defect: dot habu-immediate-control-words-6d7507da.
 - **A mutation that fails to compile is not a falsification, and a fixture
   that passes for the wrong reason is not a fixture.** Three mutants of the
   lint port exited 70 before proving anything; two fixtures passed because a

@@ -618,9 +618,6 @@ public
 : R! ( n n -- )
    RG! ;
 
-: R@ ( n -- n )
-   RG@ ;
-
 \ Read and write the machine's memory the way the pass sees it: by address and
 \ width, through the same segment check, so a fixture that lays out its region
 \ wrongly faults here instead of silently agreeing with itself.

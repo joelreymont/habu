@@ -76,7 +76,10 @@ IC-INIT IC-BYTES allocate throw ICBUF !
    1 #IC +! ;
 
 \ --- labels (positions bound by asm.fs PASS1; -1 = unplaced) ---
-2048 constant MAX-LBL
+\ The recovery engine reached the former 2048-label ceiling when the shared
+\ compile-keyword definition guard added its two real control labels. This is a
+\ fixed host-builder array only; generated engines carry no label table.
+4096 constant MAX-LBL
 create LBLPOS MAX-LBL cells allot
 variable #LBL
 

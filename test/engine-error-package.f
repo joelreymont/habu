@@ -32,6 +32,7 @@ variable MATCH-OFF
 variable MATCH-N
 variable ROOT-U
 variable PATCHED-U
+variable OUT-U         \ bytes the last child wrote to fd 1
 variable ERR-U         \ bytes the last child wrote to fd 2
 
 create ROOT-BUF FS-PATH-CAP allot
@@ -52,6 +53,9 @@ create PATCHED-BUF FS-PATH-CAP allot
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
 
+: OUT$ ( -- ptr u8 n )
+   OUT OUT-U @ ;
+
 : HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
@@ -69,8 +73,8 @@ create PATCHED-BUF FS-PATH-CAP allot
    exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
    MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N ERR-U ! 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N ERR-U ! c RC>N ENDOF
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N OUT-U ! e LEN>N ERR-U ! 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N OUT-U ! e LEN>N ERR-U ! c RC>N ENDOF
    ;MATCH ;
 
 : CHILD-RC ( ptr u8 n -- n )
@@ -144,6 +148,61 @@ create PATCHED-BUF FS-PATH-CAP allot
    s" code certificate exits 88" T-LABEL
    s" ENGINE-ERROR:CODE-CERT" CHILD-RC 88 T= ;
 
+: COMPILE-KEYWORD-SOURCE$ ( ptr u8 n -- ptr u8 n ) {: tok:ptr toku:n :}
+   SB-RESET
+   s" package KW-NAME private : " SB-APPEND
+   tok toku SB-APPEND
+   S\"  ( -- ) ; s\" AFTER\" type ;package" SB-APPEND
+   SB$ ;
+
+: COMPILE-KEYWORD-REJECT ( ptr u8 n -- ) {: tok:ptr toku:n :}
+   tok toku COMPILE-KEYWORD-SOURCE$ {: src:ptr srcu:n :}
+   s" compile keyword definition rejects at its name" T-LABEL
+   HB$ src srcu RUN-SOURCE 70 T=
+   s" compile keyword definition names the constraint" T-LABEL
+   ERR$ s" compile keyword cannot be a definition name: " CONTAINS? TTRUE
+   s" compile keyword definition stops before later source" T-LABEL
+   OUT$ s" AFTER" CONTAINS? 0= TTRUE ;
+
+: COMPILE-KEYWORD-DEFINITION ( -- )
+   \ These are the complete control and loop rows consumed before dictionary
+   \ lookup. All 28 used to publish silently. EXIT, RECURSE, UNLOOP, and {:
+   \ were especially deceptive: a later same-name use could compile rc 0 while
+   \ executing syntax semantics instead of the definition.
+   s" if" COMPILE-KEYWORD-REJECT       s" then" COMPILE-KEYWORD-REJECT
+   s" else" COMPILE-KEYWORD-REJECT     s" begin" COMPILE-KEYWORD-REJECT
+   s" until" COMPILE-KEYWORD-REJECT    s" again" COMPILE-KEYWORD-REJECT
+   s" while" COMPILE-KEYWORD-REJECT    s" repeat" COMPILE-KEYWORD-REJECT
+   s" case" COMPILE-KEYWORD-REJECT     s" of" COMPILE-KEYWORD-REJECT
+   s" endof" COMPILE-KEYWORD-REJECT    s" endcase" COMPILE-KEYWORD-REJECT
+   s" construct" COMPILE-KEYWORD-REJECT s" match" COMPILE-KEYWORD-REJECT
+   s" do" COMPILE-KEYWORD-REJECT       s" loop" COMPILE-KEYWORD-REJECT
+   s" i" COMPILE-KEYWORD-REJECT        s" >r" COMPILE-KEYWORD-REJECT
+   s" r>" COMPILE-KEYWORD-REJECT       s" r@" COMPILE-KEYWORD-REJECT
+   s" exit" COMPILE-KEYWORD-REJECT     s" recurse" COMPILE-KEYWORD-REJECT
+   s" ?do" COMPILE-KEYWORD-REJECT      s" +loop" COMPILE-KEYWORD-REJECT
+   s" j" COMPILE-KEYWORD-REJECT        s" leave" COMPILE-KEYWORD-REJECT
+   s" unloop" COMPILE-KEYWORD-REJECT   s" {:" COMPILE-KEYWORD-REJECT
+   \ CASE is the minimal wrong-token reproducer: the diagnostic must include the
+   \ guilty spelling itself, not a later body token where syntax finally trips.
+   s" compile keyword definition names CASE" T-LABEL
+   HB$ S\" package KW-UPPER private : CASE ( -- ) ; s\" AFTER\" type ;package"
+      RUN-SOURCE 70 T=
+   ERR$ s" compile keyword cannot be a definition name: CASE" CONTAINS? TTRUE
+   s" qualified compile keyword definition rejects at its tail" T-LABEL
+   HB$ s" : KW-QUAL:CASE ( -- ) ;" RUN-SOURCE 70 T=
+   ERR$ s" compile keyword cannot be a definition name: CASE" CONTAINS? TTRUE
+   \ FOLD is a normal, non-immediate dictionary word, not engine syntax. Its
+   \ same-name private definition must remain callable through ordinary lookup.
+   s" ordinary FOLD definition remains callable" T-LABEL
+   HB$ s" package KW-FOLD private : FOLD ( n -- n ) 1+ ; : CALL-FOLD ( -- n ) 41 FOLD ; CALL-FOLD . ;package"
+      RUN-SOURCE 0 T=
+   s" ordinary FOLD definition returns through dictionary lookup" T-LABEL
+   OUT$ s" 42" CONTAINS? TTRUE
+   s" qualified ordinary FOLD definition remains callable" T-LABEL
+   HB$ s" : KW-FOLD-Q:FOLD ( n -- n ) 1+ ; 41 KW-FOLD-Q:FOLD ." RUN-SOURCE 0 T=
+   OUT$ s" 42" CONTAINS? TTRUE ;
+
 : POST-SEAL-BRIDGE ( -- )
    s" post-seal package reaches checker bridge" T-LABEL
    PACKAGE-RC 0 T=
@@ -168,6 +227,7 @@ public
    T-RESET
    EXACT-EXITS
    MISSING-DEFINITION-NAME
+   COMPILE-KEYWORD-DEFINITION
    POST-SEAL-BRIDGE
    T-REPORT
    s" engine-error-package: ok" type cr ;

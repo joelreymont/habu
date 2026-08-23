@@ -437,6 +437,8 @@ variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  v
 variable LPREFMISS  variable LPREFMISSMSG
 variable LTHROWDISPATCH
 35 constant PREFMISSMSG-LEN
+variable LDEFKWGUARD variable LDEFKWFAIL variable LDEFKWMSG
+49 constant DEFKWMSG-LEN
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST
 variable LKWDO variable LKWLOOP variable LKWI
@@ -2574,6 +2576,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCONST @ LBL,  s" constant" BYTES,
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
+   LDEFKWMSG @ LBL, s" hb: compile keyword cannot be a definition name: " BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
    LKWEXIT @ LBL,  s" exit" BYTES,   LKWREC @ LBL,  s" recurse" BYTES,
@@ -3336,6 +3339,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       14 11 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
       17 17 1 ADDI,  qscan B,
    qnone LBL,
+      LDEFKWGUARD @ BL,
       done B,
    qhas LBL,
       17 qnone CBZ,
@@ -3397,6 +3401,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       12 DATA DEF-TKL-CELL LDR,
       11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
+      LDEFKWGUARD @ BL,
       done B,
    qbad LBL,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
@@ -4336,8 +4341,18 @@ previous
    ok LBL,
    C-CALL ;
 
+\ Build-time-only mode: replay the compiler's own rows as the definition-name
+\ guard, without maintaining a second spelling list in the recovery generator.
+variable CF-DEF-GUARD
+variable CF-DEF-LMAIN
+
+: CF-DEF-GUARD-ROW ( ptr u8 -- ) {: kwvar kwlen -- :}
+   0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
+   0 LDEFKWFAIL @ CBNZ, ;
+
 \ emit one compile-mode keyword case: if TKA/TKL == kw, run handler then back to lmain
 : CF-ENTRY ( n ptr u8 xt -- ) {: lmainlbl kwvar kwlen hxt -- :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    LBL {: skip :}  0 skip CBZ,
    LVSPILL @ BL,
@@ -4347,6 +4362,7 @@ previous
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
 : CFN-ENTRY ( n ptr u8 xt -- ) {: lmainlbl kwvar kwlen hxt -- :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    LBL {: skip :}  0 skip CBZ,
    hxt execute  lmainlbl B,
@@ -4359,6 +4375,7 @@ variable CFSK2
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
 : CFB-ENTRY ( n ptr u8 xt xt -- ) {: lmainlbl kwvar kwlen hxtm hxtr :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -4381,6 +4398,7 @@ variable CFSK2
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
 : CFBN-ENTRY ( n ptr u8 xt xt -- ) {: lmainlbl kwvar kwlen hxtm hxtr :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -5978,11 +5996,29 @@ variable P2SK
    lmain LKWLBRACE 2 ['] C-LBRACE CF-ENTRY ;
 
 : EMIT-COMPILE-KEYWORDS ( n -- ) {: lmain :}
-   LBCAP @ BL,
+   CF-DEF-GUARD @ 0= IF LBCAP @ BL, THEN
    lmain EMIT-COMPILE-CONTROL-KEYWORDS
    lmain EMIT-COMPILE-STRING-KEYWORDS
    lmain EMIT-COMPILE-META-KEYWORDS
    lmain EMIT-COMPILE-LOOP-KEYWORDS ;
+
+: EMIT-DEF-KW-ROWS ( -- )
+   CF-DEF-LMAIN @ EMIT-COMPILE-KEYWORDS ;
+
+: EMIT-DEF-KW-GUARD ( n -- ) {: lmain :}
+   lmain CF-DEF-LMAIN !
+   LDEFKWGUARD @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   -1 CF-DEF-GUARD !
+   ['] EMIT-DEF-KW-ROWS catch {: rc :}
+   0 CF-DEF-GUARD !
+   rc 0<> IF rc throw THEN
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET,
+   LDEFKWFAIL @ LBL,
+      0 2 MOVZ,  1 LDEFKWMSG @ ADR,  2 DEFKWMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : EMIT-COMPILE-LOCAL ( n -- ) {: lmain :}
    LBL LBL LBL {: notloc lmem qok :}
@@ -6506,21 +6542,23 @@ variable P2SK
 	      LMAIN LUNDEF EMIT-COMPILE
 	   EMIT-PREFMISS
 	   LUNDEF EMIT-UNDEF
-	   LEXIT LMAIN EMIT-EXIT ;
+	   LEXIT LMAIN EMIT-EXIT
+      LMAIN EMIT-DEF-KW-GUARD ;                         \ after exit: BL-only helper, never main-loop fall-through
 
 : EMIT-RESET-BUILDER ( -- )
-   ICODE-RESET  CF-RESET  0 #PL !  0 PNP ! ;
+   ICODE-RESET  CF-RESET  0 #PL !  0 PNP !  0 CF-DEF-GUARD !  0 CF-DEF-LMAIN ! ;
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
-   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
+   LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !
+   LBL LDEFKWGUARD !  LBL LDEFKWFAIL ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
-   LBL LPREFMISS !  LBL LPREFMISSMSG !
+   LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;
 

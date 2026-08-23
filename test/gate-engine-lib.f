@@ -1983,7 +1983,7 @@ public
    IDENTITY-NEG
    s" runtime-parity" RUN ;
 
-: CONSTRUCT ( -- )
+: CONSTRUCT-PARITY ( -- )
    s" construct-parity" RUN ;
 
 ;package
@@ -2002,7 +2002,7 @@ public
 
 : GENG-CONSTRUCT-PARITY-SLICE ( -- )
    s" hb-gate-construct-parity" GT-START
-   RUNTIME-WORKER:CONSTRUCT
+   RUNTIME-WORKER:CONSTRUCT-PARITY
    GT-CLEANUP
    s" PASS: exact candidate construct parity slice" type cr ;
 

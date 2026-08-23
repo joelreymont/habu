@@ -114,6 +114,8 @@ variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCF
 35 constant CFCAPMSG-LEN   \ byte length of "hb: control-flow nesting too deep: " (LCFCAPMSG)
 variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message (dot habu-recovery-pkg-scope-e0bd98e2)
 37 constant CSTRMSG-LEN    \ byte length of "hb: counted string too long (max 255)" (LCSTRMSG); previously a bare silent 76 shared with C-SIG-BAD
+variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-name wall generated from the compile-keyword dispatch rows
+49 constant DEFKWMSG-LEN    \ byte length of the definition-name diagnostic (LDEFKWMSG)
 variable LDPBADMSG   \ DP-heap bound reject (habu1.f DP-CHECK, allot/,/c,/definer sinks) fd-2 message (dot habu-dictionary-allot-past-4e5c3c2b); label LDPBAD declared in habu1.f forward-ref block
 27 constant DPBADMSG-LEN    \ byte length of "hb: data space out of range" (LDPBADMSG); LDPBAD appends a newline. Was a bare silent exit_group(76)
 variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exit-compile): a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it exit_group(x0) byte-identically to the old raw exit.
@@ -619,6 +621,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LINTMSG LABEL@ LBL, s" hb: internal engine word: " BYTES,             \ INTMSG-LEN bytes; LINTERNAL appends the token + newline
    LMINMSG LABEL@ LBL, s" hb: interpret stack underdepth: " BYTES,       \ MINMSG-LEN bytes; LMININ appends the token + newline
    LPREFMISSMSG LABEL@ LBL, S\" hb: compile preflight hook missing\n" BYTES, \ PREFMISSMSG-LEN contiguous bytes
+   LDEFKWMSG LABEL@ LBL, s" hb: compile keyword cannot be a definition name: " BYTES, \ DEFKWMSG-LEN bytes
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
    LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
@@ -3030,6 +3033,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
       17 17 1 ADDI,  qscan B,
    qnone LBL,
+      LDEFKWGUARD LABEL@ BL,
       C-QUALIFY-CAP
       C-REJECT-DUP-DEF
       done B,
@@ -3082,6 +3086,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
+      LDEFKWGUARD LABEL@ BL,
       C-QUALIFY-CAP
       C-REJECT-DUP-DEF
       done B,
@@ -4362,10 +4367,21 @@ s" c-lbrace-die" s" --" TRUST
    C-CALL ;
 variable CFSK
 
+\ LDEFKWGUARD replays the compile dispatch rows in comparison-only mode. The
+\ flag exists only in this image generator; generated engines contain the
+\ comparisons, not mutable mode state.
+variable CF-DEF-GUARD
+
+: CF-DEF-GUARD-ROW ( ptr a n -- ) {: kwvar:ptr kwlen:n :}
+   0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
+   0 LDEFKWFAIL LABEL@ CBNZ, ;
+s" cf-def-guard-row" s" ptr a n --" TRUST
+
 TRUSTED: EM-HXT-EXECUTE ( n -- )
    execute ;
 
 : CF-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -4376,6 +4392,7 @@ TRUSTED: EM-HXT-EXECUTE ( n -- )
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
 : CFN-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -4397,6 +4414,7 @@ variable CFSK2
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
 : CFB-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -4419,6 +4437,7 @@ variable CFSK2
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
 : CFBN-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
+   CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
@@ -7951,12 +7970,27 @@ s" em-compile-loop-keywords" s" --" TRUST
 package COMPILE-EMIT
 
 : EM-COMPILE-KEYWORDS ( -- )
-   LBCAP LABEL@ BL,
+   CF-DEF-GUARD @ 0= IF LBCAP LABEL@ BL, THEN
    EM-COMPILE-CONTROL-KEYWORDS
    EM-COMPILE-STRING-KEYWORDS
    EM-COMPILE-META-KEYWORDS
    LOOP-EMIT:EM-COMPILE-LOOP-KEYWORDS ;
 s" em-compile-keywords" s" --" TRUST
+
+: EMIT-DEF-KW-GUARD ( -- )
+   LDEFKWGUARD LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,                       \ LKWCMP is BL-called by every row
+   -1 CF-DEF-GUARD !
+   [: EM-COMPILE-KEYWORDS ;] catch {: rc:n :}         \ reset mode even if row emission throws
+   0 CF-DEF-GUARD !
+   rc 0 <> IF rc throw THEN
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET,
+   LDEFKWFAIL LABEL@ LBL,
+      0 2 MOVZ,  1 LDEFKWMSG LABEL@ ADR,  2 DEFKWMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  LCOMPILEDIE LABEL@ B, ;
+s" emit-def-kw-guard" s" --" TRUST
 
 ;package
 
@@ -8751,6 +8785,7 @@ public
 
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
+   EMIT-DEF-KW-GUARD
    LCOMPILE LABEL@ LBL,
    EM-COMPILE-ADT-MODE
    lnotsemi EM-COMPILE-SEMI
@@ -8824,7 +8859,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
    SRCN !  SRCA !
-   ASM-INIT  0 #PL !  0 PNP ! ;
+   ASM-INIT  0 #PL !  0 PNP !  0 CF-DEF-GUARD ! ;
 
 \ Label allocation for the emitter: one private allocator per engine region,
 \ one public entry that reserves every label a build uses.
@@ -8850,7 +8885,7 @@ package LABELS
    LBL HIDX:LREBUILD !  LBL HIDX:LFULL !  LBL WLFIND:LENTRY !
    LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !
    LBL SNAP-RELOC:LADDRS !  LBL SNAP-RELOC:LADDRSITE !
-   LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !
+   LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !  LBL LDEFKWGUARD !  LBL LDEFKWFAIL !
    LBL LAOTWIDGATE !  LBL AOT-WINDOW:LOUTSIDE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
@@ -8895,7 +8930,7 @@ package LABELS
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !
    LBL LMININ !  LBL LMINMSG !
-   LBL LPREFMISS !  LBL LPREFMISSMSG !
+   LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !
    LBL LCSTR !  LBL LCSTRMSG !
