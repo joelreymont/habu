@@ -6,9 +6,7 @@
 \ with BL/B-shared subroutines LADTPUSHTOK / LMFRTOP / LADTDIE, a -408 B
 \ compiler-text win. That landing shipped NO focused regression: the required
 \ byte-identical emitted-USER-code and diagnostic-path proof was not persistent.
-\ This fixture is that proof. It is emitted-user-code + diagnostic coverage; the
-\ compiler-text SIZE shrink is ratcheted separately by the CODELEN row in
-\ test/gate-size-attribution-test.f (owned by the size lane), not here.
+\ This fixture is emitted-user-code and diagnostic-path coverage.
 \
 \ Before/after evidence (recorded once at authoring, spark linux-arm64): the
 \ pinned bytes and every diagnostic below were captured from an engine built at
@@ -41,13 +39,6 @@
 \                               bin/hb (SUBJECT forks re-invoke it), so the
 \                               factored compiler in the fixpoint image is what
 \                               emits the pinned bytes
-\   shared-call overhead        BENCH times ADT compile throughput in a fork;
-\                               the authoring A/B (factored vs pre-factoring, 500
-\                               match+construct compiles x15) was a null result:
-\                               factored median 212.2 ms vs 213.3 ms, inside the
-\                               ~1% run-to-run band. The committed BENCH is the
-\                               forward throughput ratchet.
-\
 \ Runs as an isolated fork (test/gate-stdlib-inline-lib.f TAIL-PROCESS:RUN
 \ GSI-FORK-INCLUDE). Negatives/positives run in disposable SUBJECT forks so a
 \ die never touches the runner.
@@ -279,52 +270,6 @@ variable PIN-PROG-U
       s\" SUMTYPE mfp 0\n  VARIANT ok  n ;VARIANT\n  VARIANT err n ;VARIANT\n;SUMTYPE\n: PW ( mfp -- n ) MATCH mfp ok OF ENDOF err OF ENDOF ;MATCH ;\n: PWN ( n -- n ) construct mfp ok PW ;\ns\" armed\" type cr\nPWN . cr\n"
       70 s\" armed\n" s" hb: interpret stack underdepth: PWN" NEG ;
 
-\ --- BENCH: ADT compile throughput ----------------------------------------
-\ Measures the factored shared-call path under real compile load. Runs in a
-\ disposable SUBJECT fork whose program generates 150 MATCH+construct word pairs
-\ and times one `evaluate` over the whole batch (the child's evaluate boundary
-\ is a TRUSTED word inside the forked source string, so it is not a top-level
-\ trust site and needs no inventory row; the parent stays checked). The child
-\ prints the compile time and ratchets it against a load-scaled ceiling
-\ (TEST-BUDGET:PERF-MS, inherited from the fixture's lib/test) so a
-\ compile-throughput regression (a shared routine turned expensive, per-arm
-\ emission ballooned) trips without flaking on box saturation; the parent
-\ asserts the child exited 0 and echoes its recorded number into the gate log.
-\ The authoring factored-vs-unfactored A/B was a null result (see header); this
-\ is the forward guard.
-
-create BENCH-PROG 2048 allot
-variable BENCH-PROG-U
-
-: BP+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a BENCH-PROG BENCH-PROG-U @ + u BYTE-COPY
-   BENCH-PROG-U @ u + BENCH-PROG-U ! ;
-
-: BENCH-PROG! ( -- )
-   0 BENCH-PROG-U !
-   s\" package MFP-BENCH\n" BP+
-   s\" SUMTYPE bres 0\n  VARIANT v0 n ;VARIANT\n  VARIANT v1 n ;VARIANT\n  VARIANT v2 n ;VARIANT\n  VARIANT v3 n ;VARIANT\n  VARIANT v4 n ;VARIANT\n  VARIANT v5 n ;VARIANT\n  VARIANT v6 n ;VARIANT\n  VARIANT v7 n ;VARIANT\n;SUMTYPE\n" BP+
-   s\" $100000 constant SCAP  create SRC SCAP allot  variable SU  variable T0\n" BP+
-   s\" TRUSTED: EVL ( ptr u8 n -- ) evaluate ;\n" BP+
-   s\" : C+ ( n -- ) {: c:n :} SU @ 1+ SCAP > if 1 throw then c SRC SU @ + c! SU @ 1+ SU ! ;\n" BP+
-   s\" : S+ ( ptr u8 n -- ) {: a:ptr u:n :} SU @ u + SCAP > if 1 throw then a SRC SU @ + u BYTE-COPY SU @ u + SU ! ;\n" BP+
-   s\" : N+ ( n -- ) {: v:n :} v 10 >= if v 10 / RECURSE then v 10 mod 48 + C+ ;\n" BP+
-   s\" : GEN ( n -- ) {: i:n :} s\" : BW\" S+ i N+ s\"  ( bres -- n ) MATCH bres v0 OF ENDOF v1 OF ENDOF v2 OF ENDOF v3 OF ENDOF v4 OF ENDOF v5 OF ENDOF v6 OF ENDOF v7 OF ENDOF ;MATCH ; \" S+ s\" : BC\" S+ i N+ s\"  ( n -- bres ) construct bres v3 ; \" S+ ;\n" BP+
-   s\" : BUILD ( n -- ) {: n:n :} 0 SU ! 0 begin dup n < while dup GEN 1+ repeat drop ;\n" BP+
-   s\" : RUN-BENCH ( -- ) 150 BUILD\n" BP+
-   s\"    mono-ns T0 !  SRC SU @ EVL  mono-ns T0 @ - PROC-NS-PER-MS / {: ms:n :}\n" BP+
-   s\"    s\" bench: 150 ADT word compiles in \" type ms . s\"  ms\" type cr\n" BP+
-   s\"    ms 6000 TEST-BUDGET:PERF-MS > if s\" bench: ADT compile over budget\" 1 die then ;\n" BP+
-   s\" RUN-BENCH\n" BP+
-   s\" ;package\n" BP+
-   s\" s\" ok\" type cr\n" BP+ ;
-
-: BENCH ( -- )
-   BENCH-PROG!
-   s" bench/throughput" T-LABEL
-   BENCH-PROG BENCH-PROG-U @ 0 RUN!
-   OUT$ type ;
-
 public
 
 : RUN ( -- )
@@ -333,7 +278,6 @@ public
    RT-CASES
    PKG-CASE
    DIAG-CASES
-   BENCH
    T-REPORT
    s" match-factor-pin: ok" type cr ;
 

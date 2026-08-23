@@ -38,12 +38,13 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/test/subject.f
-require test/tail-ratchet.f
+require test/tail-parity.f
 require lib/type/deftype.f         \ DEFTYPE - the declared-nominal exemplar used at top level
 
 package INTERNAL-WORD-GATE
 
 2048 constant CAP
+30000 constant TIMEOUT-MS
 70 constant REJECT-RC           \ interpret-level reject exit (RC-REJECT)
 67 constant THROW-RC            \ engine uncaught-throw boundary exit
 84 constant SEAL-RC             \ ENGINE-ERROR:SEAL-PACKAGE, the reserved-name guard
@@ -104,30 +105,27 @@ create EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a --load file with empty stdin.
 : RUN-LOAD ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    CHILD >LEN PROC-ARGV+
    HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : RUN-STDIN ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    IN!
    PROC-ARGV-RESET
    HB$ >LEN  IN$ >LEN  OUT CAP >LEN
-   ERR CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    STORE! ;
 
 \ The third child-run path, beside RUN-LOAD and RUN-STDIN above: a disposable
 \ SUBJECT fork rather than a fresh engine process.
 : RUN-SUBJECT ( ptr u8 n -- )
-   TAIL-RATCHET:SUBJECT
    OUT CAP >LEN ERR CAP >LEN
-   TAIL-BUDGET:TIMEOUT-MS >MS SUBJECT:RUN STORE! ;
+   TIMEOUT-MS >MS SUBJECT:RUN STORE! ;
 
 : LF ( -- )
    10 SB-APPEND-C ;
@@ -1294,35 +1292,30 @@ create QNAME QNAME-CAP allot
 \ names keep that marker because they are about the direct-versus-fork
 \ comparison, not about running a child in general. ----
 
-19 constant PARITY-DIRECT-N     \ +3: TYPE-DECL-SEAL-CASES replays three programs through
-                                \     --load -- the pre-seal SIGSEGV, the armed-flag die, and
-                                \     the three block openers declaring at top level
-197 constant PARITY-SUBJECT-N   \ +15: the rest of TYPE-DECL-SEAL-CASES
-
 : PARITY-RESULT ( -- ptr u8 n ptr u8 n n )
    OUT OUT-U @ ERR ERR-U @ RC @ ;
 
 : PARITY-NEG-LOAD ( ptr u8 n -- )
    2dup RUN-LOAD
    s" U-TYPE" ASSERT-INTERNAL
-   PARITY-RESULT TAIL-RATCHET:SNAPSHOT
+   PARITY-RESULT TAIL-PARITY:SNAPSHOT
    RUN-SUBJECT
    s" U-TYPE" ASSERT-INTERNAL
-   PARITY-RESULT TAIL-RATCHET:SAME ;
+   PARITY-RESULT TAIL-PARITY:SAME ;
 
 : PARITY-NEG-STDIN ( ptr u8 n -- )
    2dup RUN-STDIN
    s" U-TYPE" ASSERT-INTERNAL
-   PARITY-RESULT TAIL-RATCHET:SNAPSHOT
+   PARITY-RESULT TAIL-PARITY:SNAPSHOT
    RUN-SUBJECT
    s" U-TYPE" ASSERT-INTERNAL
-   PARITY-RESULT TAIL-RATCHET:SAME ;
+   PARITY-RESULT TAIL-PARITY:SAME ;
 
 : PARITY-POS-LOAD ( ptr u8 n -- )
    2dup RUN-LOAD ASSERT-OK
-   PARITY-RESULT TAIL-RATCHET:SNAPSHOT
+   PARITY-RESULT TAIL-PARITY:SNAPSHOT
    RUN-SUBJECT ASSERT-OK
-   PARITY-RESULT TAIL-RATCHET:SAME ;
+   PARITY-RESULT TAIL-PARITY:SAME ;
 
 : PARITY-TEST ( -- )
    s" direct --load and subject preserve raw internal-word results" T-LABEL
@@ -1331,9 +1324,6 @@ create QNAME QNAME-CAP allot
    s" U-TYPE" TOKEN$ PARITY-NEG-STDIN
    s" direct --load and subject preserve raw successful results" T-LABEL
    RAW-FORGE$ PARITY-POS-LOAD ;
-
-: PARITY-CHECK ( -- )
-   PARITY-DIRECT-N PARITY-SUBJECT-N TAIL-RATCHET:CHECK ;
 
 : PREPARE ( -- )
    CLEANUP-RESET
@@ -1348,7 +1338,6 @@ create QNAME QNAME-CAP allot
 
 : MAIN ( -- )
    T-RESET
-   TAIL-RATCHET:START
    PREPARE
    PARITY-TEST
    NEG-BARE
@@ -1364,7 +1353,6 @@ create QNAME QNAME-CAP allot
    OPENER-CASES
    DEFER-CASES
    LAUNDER-CASES
-   PARITY-CHECK
    CLEANUP
    T-REPORT
    s" internal-word-gate: ok" type cr ;

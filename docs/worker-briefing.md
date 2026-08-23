@@ -15,18 +15,6 @@ the gate files are the source of truth.
 - Do NOT modify `.dots/`, do NOT move bookmarks, do NOT push. When done,
   `jj -R <workspace> describe -m "..."` and report. The orchestrator merges.
 
-## Size ratchets (engine-touching lanes)
-
-- Any change under `src/` (boot-loaded engine source) obligates a SAME-COMMIT
-  update of every affected row: `test/gate-size-attribution-test.f`
-  (LINUX-CODE-TEXT, LINUX-FLOOR-DIST, LINUX-TOTAL, and the per-region
-  LINUX-REGION-BUDGETS rows — regions must sum exactly to CODE-TEXT),
-  and `test/gate-build-size.f` (GB-SIZE-BASELINE-LINUX).
-- MEASURE then transcribe, never predict: rebuild with
-  `HABU_ENGINE_SIZE_MAP=1 ... install --force`, run `tools/size-report.f`,
-  copy the measured numbers. Arithmetic predictions have been wrong twice.
-- macOS rows are OWED, never guessed. Update linux-arm64 rows only.
-
 ## Trusted boundaries
 
 - Every `TRUST` or `TRUSTED:` site needs source-local rationale, a retirement
@@ -37,9 +25,6 @@ the gate files are the source of truth.
 - Run gates as `... > /tmp/<name>.log 2>&1; echo $?` then
   `rg 'RED:|red phases:' /tmp/<name>.log`. Never `| tail; echo $?` — that
   echoes tail's status and red gates print pass-looking perf lines mid-stream.
-- ONE timing lane machine-wide. Unless the orchestrator granted you the timing
-  lane, do not run perf/timing passes; a perf verdict that fails under
-  contention is environment-deferred — land on correctness-green + stable sha.
 - Evidence hazard: the `rg` wrapper in agent shells can silently REWRITE
   matched-line text in its output (line numbers stay correct). Use rg only to
   locate lines; use Read/grep/sed for any text you quote or assert on.

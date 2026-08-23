@@ -11,7 +11,7 @@
 \
 \ BE CLEAR ABOUT WHAT IT IS NOT. It is not the cost claim restated. A chain that
 \ made the same number of accesses and took twice as long would pass every row.
-\ The cost claim itself is tools/judge-timed.f, run by hand on a quiet machine.
+\ Cost measurements are printed in the live judge report.
 \
 \ FOUR SPELLINGS OF ONE ACCESS, which is why the count adds eight forms and not
 \ two. Two of them are the addressing mode: the chain stands its data-stack

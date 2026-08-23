@@ -38,10 +38,8 @@ Decisions and rationale:
    The honest divergence is stated rather than hidden: Moore trusted one
    careful human and had no use for type systems; Habu's highest-volume
    author is an LLM, so the discipline is enforced by a checker.
-6. **Smallness evidence is the binary, not line counts.** `bin/hb` — the
-   self-hosted engine that type-checks, JITs, and rebuilds itself to a
-   fixpoint — is under 128 KB (115,831 bytes measured 2026-07-04). Line
-   counts drift and invite quibbling; the binary is one checkable number.
+6. **Smallness claims need current evidence.** Describe the self-hosted engine's
+   capabilities directly; do not publish a frozen binary-size claim.
 
 ## Recommended hero
 

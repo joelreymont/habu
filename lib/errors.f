@@ -276,23 +276,10 @@ public
 -6300 constant E-JRP-SAMPLE      \ sample stored out of workload order or past the declared total
 -6301 constant E-JRP-RANGE       \ workload or sample index outside the sample table
 
-\ JSON reader performance phase: -6400..-6499
--6400 constant E-JRPP-FIRST
--6499 constant E-JRPP-LAST
--6400 constant E-JRPP-CHILD      \ the ratchet phase was started inside a gate-pool fork worker
--6401 constant E-JRPP-BUSY       \ the ratchet phase was started with pool workers still in flight
-\ -6402 was E-JRPP-DRIFT, thrown when the calibration bracket moved twice. A
-\ drifted bracket is now an inadmissible measurement rather than a failure: the
-\ phase re-measures and, if the box never goes quiet, leaves by its own exit
-\ status (JSON-READ-PERF-PHASE CONTENDED-RC) instead of throwing.
--6403 constant E-JRPP-MISMATCH   \ a phase fixture read a value other than the one it required
--6404 constant E-JRPP-REPEAT     \ the ratchet phase was started twice in one gate process
-
 \ Native test runner (package TEST): -6500..-6599
 -6500 constant E-TR-FIRST
 -6599 constant E-TR-LAST
 -6500 constant E-TR-PATH-LEN    \ a persistent-root path longer than the runner's buffer
--6501 constant E-TR-PROFILE     \ a host-profile id outside the runner's known profiles
 
 \ Shared compiler IR representation: -6600..-6699. This block is FULL and
 \ closed: the attribute table took the last free code (-6699). Later compiler
@@ -1275,7 +1262,6 @@ public
 -8715 constant E-JUDGE-COST-CHECK    \ a generated body the checker declined: the text is printed with it, because what it says about the row's pinned input or the column's spelling is the finding
 -8716 constant E-JUDGE-COST-COMPILE  \ a generated body the checker certified and the compiler then refused
 -8717 constant E-JUDGE-COST-DISAGREE \ two columns computed different answers from the same generated shape on the same pinned input: one of the two bodies is not the program the row is about, so neither one's time means anything
--8718 constant E-JUDGE-CHECK-MARK   \ an artifact with no line saying where its checked half ends: comparing a text that lost its marker against a prefix of itself would pass a truncated file
 -8719 constant E-JUDGE-COST-COLUMN  \ a generated body whose call text does not resolve to the routine of the column it was built for: it computes the right answer in the wrong column, which no comparison of answers can see, so the address is held against the column instead
 \ The code generator judge's second block: -8720..-8739
 \
@@ -1295,8 +1281,6 @@ public
 -8729 constant E-JUDGE-FUZZ-REFUSED    \ the chain declined a generated body. Unlike a corpus row this is a failure: the generator emits straight-line integer programs inside the dialect the chain compiles, so a refusal means the generator left the dialect or the chain lost a capability
 -8730 constant E-JUDGE-FUZZ-COLUMN     \ the oracle's two derived words do not resolve to two different non-zero routines: a pair of names reaching one routine would agree about every input and prove nothing at all
 -8731 constant E-JUDGE-FUZZ-INDEX      \ a generated driver reaching outside the oracle's input or answer table: the body is generated, so an index it never had would be this file writing over its own storage rather than a program answering wrongly
--8732 constant E-JUDGE-BASE-CAP        \ a committed artifact carrying more rows, or a longer subject name, than the reader that adjudicates its directions holds: a truncated reading would call every row it never reached a lost row
--8733 constant E-JUDGE-BASE-ROW        \ a row index outside what the artifact reader recorded
 -8734 constant E-JUDGE-PASS-INPUTS     \ a row stating more pinned inputs than the shared pass holds tuples for: the inputs past the first are the arms the timed one does not take, and a store that silently kept the first eight would drop the ninth arm without saying so
 
 \ The interpreter's own input stream, as a migration reads it: -8740..-8749

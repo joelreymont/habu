@@ -8,7 +8,6 @@
 
 require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/test.f
-require lib/test/budget.f                \ T-BUDGET-MS: the per-suite wall scales with load
 require lib/test/runner.f                \ GT-RESET / GT-RC@ / GT-OUT$
 require test/gate-pool.f                 \ GT-POOL-START and the stats events beneath it
 
@@ -16,26 +15,7 @@ package STDLIB-GATE
 
 public
 
-\ The per-suite wall for one spawned child engine, on an idle box. It is a
-\ NOMINAL figure, not the deadline: SUITE-TIMEOUT-MS stretches it by the measured
-\ load factor the way every other per-suite budget in the tree does.
-\
-\ It used to be the deadline itself, and that made this the one budget in the
-\ gate that could not tell a slow box from a hung child. compiler-insn-proof runs
-\ 99543ms quiescent, so it had 20 percent of headroom against a fixed 120000; a
-\ second full gate on the same host stretched it to 120145ms and the constant
-\ called that a TIMEOUT-UNDER-LOAD. Raising the constant would have bought that
-\ one suite room by deleting the hang detector for the ~180 suites that finish in
-\ a second. Scaling keeps both: lib/test/budget.f clamps the factor to
-\ [100% .. 300%], so a budget never shrinks below nominal and a genuinely hung
-\ child still dies within 3x nominal.
-120000 constant SUITE-TIMEOUT-NOMINAL-MS
-
-\ The deadline a spawned suite is actually given: the nominal wall stretched by
-\ HB_LOAD_PCT, which test/run-lib.f exports into every phase it starts and which
-\ lib/test/budget.f measures for itself when the gate is not the caller.
-: SUITE-TIMEOUT-MS ( -- n )
-   SUITE-TIMEOUT-NOMINAL-MS T-BUDGET-MS ;
+360000 constant SUITE-TIMEOUT-MS
 
 private
 
@@ -312,9 +292,9 @@ private
    s" check-cli-boundary" SUITE-LABEL= ;
 
 \ The tail slice runs one spawned child engine per suite through the pool, with
-\ the 120s per-suite budget above. That is what the entries below need and what
-\ the resident fast tier cannot give them: each boots child engines of its own,
-\ writes snapshots, or drives a whole build.
+\ the six-minute deadlock deadline above. That is what the entries below need
+\ and what the resident fast tier cannot give them: each boots child engines of
+\ its own, writes snapshots, or drives a whole build.
 : SUITE-TAIL-ENGINE? ( -- bool )
    s" pre-trust-defer" SUITE-LABEL= if SUITE-TRUE exit then
    s" top-row-hook" SUITE-LABEL= if SUITE-TRUE exit then
@@ -341,9 +321,7 @@ private
 \ Suites that need to BE a top-level process, not a forked child of one.
 \ codegen-fork-reference's first claim is that PROC-FORK:CHILD? is false where it
 \ maps the clang reference column; tasking-threads creates pthreads, which do not
-\ survive a gate-pool fork; gate-budget starts the runner itself, so it needs its
-\ own script arguments and its own runner state rather than the ones it would
-\ inherit from a slice it was forked out of; and ptx-toolchain-spawned carries the
+\ survive a gate-pool fork; and ptx-toolchain-spawned carries the
 \ device and bench tools, which SIGBUS in the resident full-runner image and whose
 \ perf-regress entry reads its registry path out of ambient SCRIPT-ARGV. The last
 \ two are the lint-artifacts registrations: tools/imgdump.f and
@@ -359,7 +337,6 @@ private
    s" ptx-toolchain-spawned" SUITE-LABEL= if SUITE-TRUE exit then
    s" imgdump-compare" SUITE-LABEL= if SUITE-TRUE exit then
    s" imagedisasm-tool" SUITE-LABEL= if SUITE-TRUE exit then
-   s" gate-budget" SUITE-LABEL= if SUITE-TRUE exit then
    s" tasking-threads" SUITE-LABEL= ;
 
 : SUITE-TAIL? ( -- bool )

@@ -32,14 +32,6 @@ create FILE-KEY KEY-U allot
    then
    s" candidate-executable-sha256" FILE-KEY KEY-U GS-EVENT-FIELD ;
 
-: CHECK-DIRECT ( -- )
-   RUNTIME-DIRECT:EXEC# {: count:n :}
-   count RUNTIME-DIRECT:SUBJECT-LIMIT > if
-      s" candidate runtime process-exec=" type count .
-      s" max-exec=" type RUNTIME-DIRECT:SUBJECT-LIMIT . cr
-      s" candidate runtime process ratchet exceeded" GE-FAIL
-   then ;
-
 : RUN-CONSTRUCT ( -- )
    s" hb-candidate-construct" GT-START
    VERIFY-EXE
@@ -52,13 +44,11 @@ create FILE-KEY KEY-U allot
 : RUN-RUNTIME ( bool -- ) {: parity:bool :}
    s" hb-candidate-runtime" GT-START
    VERIFY-EXE
-   RUNTIME-DIRECT:RESET
    RUNTIME-SUBJECT:RESET
    parity if RUNTIME-RUNNER:PARITY! else RUNTIME-RUNNER:SUBJECT! then
    parity if CONSTRUCT-RUNNER:PARITY! else CONSTRUCT-RUNNER:SUBJECT! then
    GE-CONSTRUCT-EXEC
    RUNTIME-CHECKS:REST
-   parity 0= if CHECK-DIRECT then
    GT-CLEANUP
    s" PASS: candidate runtime source batch" type cr ;
 

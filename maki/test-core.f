@@ -2,7 +2,6 @@
 \ Split from the monolithic maki/test.f (dot habu-split-monolithic-maki-fccca4ea):
 \ core compute, autograd, executor, lowering, model-IR, cad, store framing,
 \ onnx, competitive and target checks - everything that is not the eval harness.
-\ Measured self-time on GB10 (idle, 2026-07-19): ~9041 ms across 120 suites.
 \ Run standalone: bin/hb --load maki/test-core.f
 
 require maki/test-harness.f

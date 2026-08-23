@@ -2416,7 +2416,7 @@ Acceptance:
 - run the complete candidate suite;
 - make the new compiler default;
 - remove old direct compilation paths after one release-quality green checkpoint;
-- lower trust and size ratchets with the same change.
+- lower trust with the same change.
 
 ### GPU Wave A: structured PTXIR
 

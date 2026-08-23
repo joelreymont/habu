@@ -1,21 +1,4 @@
-\ judge/report.f - the judged table as text, and the committed artifact it is
-\ checked against. One concern: rendering what a run measured, and saying
-\ whether the tree still agrees with it.
-\
-\ WHY THE CHECKED HALF IS COMPARED AS TEXT. Every column of it is exact: a byte
-\ count is read off a word's own dictionary record and is the same number on
-\ every host in every run, a refusal code is what the compiler answered, and a
-\ verdict follows from the two. So that half is a value the tree either still
-\ produces or does not, and the check is a comparison of what this run renders
-\ with what is committed - line for line, byte for byte. There is nothing to
-\ parse and so nothing a parser could read past.
-\
-\ WHAT MOVES THE CHECKED HALF, AND WHAT THAT MEANS. The chain emitting
-\ different code moves a byte column; the chain gaining a capability turns a
-\ REFUSED row into a compiled one; the chain losing one turns a compiled row
-\ into REFUSED. Every one of those is a thing somebody did on purpose, so the
-\ artifact is regenerated in the same change, and the diff is the record of
-\ what moved.
+\ judge/report.f - render the live code-generator comparison table.
 \
 \ THE REFERENCE COLUMN IS NOT PART OF THE COMPARISON. What clang emits for a
 \ fixed C file with fixed flags is a fact about a toolchain and a host, not
@@ -118,13 +101,9 @@ variable TEXT-U
    s" host's toolchain emits is a fact about that host and no change to habu can" LINE
    s" falsify one of its cells." LINE
    NL
-   s" Regenerate this file with ONE command, from the repository root:" LINE
+   s" Print the live report from the repository root with:" LINE
    NL
-   s"   bin/hb --load tools/judge.f > test/compiler/judge-baseline.txt" LINE
-   NL
-   s" and check the tree against it with:" LINE
-   NL
-   s"   bin/hb --load tools/judge.f -- --check" LINE
+   s"   bin/hb --load tools/judge.f" LINE
    NL
    s" THE CHAIN COLUMN HOLDS EITHER BYTES OR A REFUSAL CODE, and which of the two" LINE
    s" is what the verdict says. A refusal is measured every run by handing the" LINE
@@ -139,7 +118,7 @@ variable TEXT-U
    s" several rows and adding it to each would claim its bytes several times over." LINE
    s" Read the gap on those rows as arithmetic rather than as a verdict." LINE
    NL
-   s" A LARGER row is a finding and the check exits non-zero on it. A REFUSED row" LINE
+   s" A LARGER row is a live comparison result. A REFUSED row" LINE
    s" is a raw measurement printed with its code: the capability it waits for is a" LINE
    s" dot, and a check that failed on it would fail every day until that dot lands." LINE
    s" NO ROW IS REFUSED. The last one was PRESSURE-LOOP, whose -8508 was the" LINE
@@ -176,7 +155,7 @@ variable TEXT-U
    s" one reason and it does not turn on host load, so it is compared here rather" LINE
    s" than printed below with the costs. It is NOT the cost claim restated: a chain" LINE
    s" that made the same accesses and took twice as long would pass every row of" LINE
-   s" it. That claim is bin/hb --load tools/judge-timed.f, run by hand." LINE
+   s" it. The live costs are measurements, not a gate verdict." LINE
    NL
    s" ONE ROW TOUCHES IT MORE OFTEN THAN THE ENGINE DOES and the tally says so." LINE
    s" On CODEGEN-CORPUS4:CALL-FAN-BIG the engine CALLS its callee five times, so" LINE
@@ -374,7 +353,7 @@ variable TEXT-U
 
 public
 
-\ Everything a committed artifact holds, checked half first.
+\ The complete live report.
 : TEXT$ ( -- ptr u8 n )
    0 TEXT-U !
    HEAD
@@ -385,14 +364,12 @@ public
    COSTS
    TEXT TEXT-U @ ;
 
-\ Where the checked half ends. The check compares the bytes before this line
-\ and prints what follows it.
+\ Where the host-measured section begins.
 : MARK-TEXT$ ( -- ptr u8 n )
    MARK$ ;
 
 \ Where the reference section begins, which is BELOW that line. Published so a
-\ fixture can hold the two offsets against each other rather than searching the
-\ checked half for the word `clang`, which its own prose is entitled to use.
+\ fixture can hold the two offsets against each other.
 : REFERENCE-ANCHOR$ ( -- ptr u8 n )
    ANCHOR$ ;
 

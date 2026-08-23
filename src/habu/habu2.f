@@ -6799,18 +6799,18 @@ s" em-interpret-find" s" --" TRUST
 
 : EM-INTERPRET-WORDS ( -- )
    LBL {: lnotnum :}
-   EM-INTERPRET-DEFINE-KEYWORDS s" interpret/define" ENGINE-SIZE:MARK
-   EM-INTERPRET-STRING-KEYWORDS s" interpret/string" ENGINE-SIZE:MARK
+   EM-INTERPRET-DEFINE-KEYWORDS
+   EM-INTERPRET-STRING-KEYWORDS
    lnotnum EM-INTERPRET-NUMBER
-   lnotnum LBL,               s" interpret/number" ENGINE-SIZE:MARK
-   EM-INTERPRET-FIND          s" interpret/find" ENGINE-SIZE:MARK ;
+   lnotnum LBL,
+   EM-INTERPRET-FIND ;
 s" em-interpret-words" s" --" TRUST
 
 public
 
 : EM-INTERPRET ( -- )
    LBL {: lnotcolon :}
-   lnotcolon EM-INTERPRET-COLON s" interpret/colon" ENGINE-SIZE:MARK
+   lnotcolon EM-INTERPRET-COLON
    EM-INTERPRET-WORDS ;
 s" em-interpret" s" --" TRUST
 
@@ -8752,18 +8752,18 @@ public
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
-   EM-COMPILE-ADT-MODE        s" compile/adt" ENGINE-SIZE:MARK
-   lnotsemi EM-COMPILE-SEMI   s" compile/semi" ENGINE-SIZE:MARK
-   EM-COMPILE-LOCAL           s" compile/local" ENGINE-SIZE:MARK
-   EM-COMPILE-P2WIDE          s" compile/p2wide" ENGINE-SIZE:MARK
-   EM-COMPILE-KEYWORDS        s" compile/keywords" ENGINE-SIZE:MARK
-   EM-COMPILE-LITERAL         s" compile/literal" ENGINE-SIZE:MARK
-   ENGINE-EMIT:EM-COMPILE-OPS s" compile/ops" ENGINE-SIZE:MARK
-   EM-COMPILE-CALL            s" compile/call" ENGINE-SIZE:MARK
-   EM-COMPILE-UNDEF           s" compile/undef" ENGINE-SIZE:MARK
-   EM-COMPILE-DIE             s" compile/die" ENGINE-SIZE:MARK
-   EM-COMPILE-EXIT            s" compile/exit" ENGINE-SIZE:MARK
-   EM-EVAL-THROW-RECOVER      s" compile/eval-recover" ENGINE-SIZE:MARK ;
+   EM-COMPILE-ADT-MODE
+   lnotsemi EM-COMPILE-SEMI
+   EM-COMPILE-LOCAL
+   EM-COMPILE-P2WIDE
+   EM-COMPILE-KEYWORDS
+   EM-COMPILE-LITERAL
+   ENGINE-EMIT:EM-COMPILE-OPS
+   EM-COMPILE-CALL
+   EM-COMPILE-UNDEF
+   EM-COMPILE-DIE
+   EM-COMPILE-EXIT
+   EM-EVAL-THROW-RECOVER ;
 s" em-compile" s" --" TRUST
 
 ;package
@@ -8775,11 +8775,11 @@ package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
-   EM-STARTUP                 s" main/startup" ENGINE-SIZE:MARK
-   EM-COMMENT                 s" main/comment" ENGINE-SIZE:MARK
+   EM-STARTUP
+   EM-COMMENT
    INTERP-EMIT:EM-INTERPRET
    COMPILE-EMIT:EM-COMPILE
-   EM-INTERPRET-UNDERFLOW     s" main/underflow" ENGINE-SIZE:MARK ;
+   EM-INTERPRET-UNDERFLOW ;
 s" emit-main" s" --" TRUST
 
 ;package
@@ -9141,29 +9141,29 @@ s" AOT-SIG-PAYLOAD:BUF@" s" -- ptr u8" TRUST
 package ENGINE-EMIT
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
-   EMIT-PRIMS                    s" primitives/base" ENGINE-SIZE:MARK
-   EMIT-ARITY-GUARD             s" primitives/arity" ENGINE-SIZE:MARK
+   EMIT-PRIMS
+   EMIT-ARITY-GUARD
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
-   s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F  s" primitives/extra" ENGINE-SIZE:MARK
-   PROF:EMIT-PROF-PRIMS       s" primitives/prof" ENGINE-SIZE:MARK
-   EMIT-FP-PRIMS              s" primitives/float" ENGINE-SIZE:MARK
-   EMIT-CEMIT                 s" primitives/cemit" ENGINE-SIZE:MARK
-   EMIT-CEMITBL               s" primitives/cemitbl" ENGINE-SIZE:MARK
-   EMIT-BCAP                  s" primitives/capture" ENGINE-SIZE:MARK
-   EMIT-TOK                   s" primitives/token" ENGINE-SIZE:MARK
-   EMIT-PROT                  s" primitives/protect" ENGINE-SIZE:MARK
-   EMIT-PROTWID                s" primitives/protected-wid" ENGINE-SIZE:MARK
-   EMIT-FLUSH                 s" primitives/flush" ENGINE-SIZE:MARK
-   EMIT-FIND                  s" primitives/find" ENGINE-SIZE:MARK
-   WLFIND:EMIT                s" primitives/find-wl" ENGINE-SIZE:MARK
-   EMIT-FIND-USED             s" primitives/find-used" ENGINE-SIZE:MARK
-   EMIT-HIDX                  s" primitives/hash-index" ENGINE-SIZE:MARK
-   EMIT-QUALIFY-DEF           s" primitives/qualify-def" ENGINE-SIZE:MARK
-   EMIT-STORE-DEF-NAME        s" primitives/store-def-name" ENGINE-SIZE:MARK
-   EMIT-NUM                   s" primitives/number" ENGINE-SIZE:MARK
-   EMIT-TOPHOOK               s" primitives/top-hook" ENGINE-SIZE:MARK ;
+   s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F
+   PROF:EMIT-PROF-PRIMS
+   EMIT-FP-PRIMS
+   EMIT-CEMIT
+   EMIT-CEMITBL
+   EMIT-BCAP
+   EMIT-TOK
+   EMIT-PROT
+   EMIT-PROTWID
+   EMIT-FLUSH
+   EMIT-FIND
+   WLFIND:EMIT
+   EMIT-FIND-USED
+   EMIT-HIDX
+   EMIT-QUALIFY-DEF
+   EMIT-STORE-DEF-NAME
+   EMIT-NUM
+   EMIT-TOPHOOK ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
@@ -9196,19 +9196,15 @@ package ENGINE-EMIT
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN
    EMIT-PRIMITIVE-SECTIONS
-   EMIT-DICTIONARY-SECTIONS   s" dictionary-code" ENGINE-SIZE:MARK
-   EMIT-RUNTIME-SECTIONS      s" runtime" ENGINE-SIZE:MARK
-   EMIT-DICT                  s" seed-dictionary" ENGINE-SIZE:MARK ;
+   EMIT-DICTIONARY-SECTIONS
+   EMIT-RUNTIME-SECTIONS
+   EMIT-DICT ;
 
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
 
 public
 
-\ Records one region row per emitter phase; the container rows (header, page pad,
-\ and the target tail) and the HABU_ENGINE_SIZE_MAP report are added post-sign by
-\ src/habu/driver-io.f DRV-SIZE-MAP, once the image length is final and the map
-\ can reconcile to the exact file size.
 \ Balanced whole-engine emission boundary.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 \ THE THREE PARTS, IN THIS ORDER, AND WHY THE ORDER IS THE CONTRACT.
@@ -9224,12 +9220,11 @@ public
 \ The payload is last and is addressed only through TADR,, so its size cannot
 \ enter any reach.
 : FORTH ( ptr u8 n -- )
-   ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
    LABELS:INIT
    EMIT-CODE-SECTIONS
-   EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK
-   EMIT-AOT-SEED              s" aot-seed" ENGINE-SIZE:MARK
+   EMIT-SOURCE-BYTES
+   EMIT-AOT-SEED
    LIMGEND LABEL@ LBL, ;                 \ nothing follows: this label IS the content length
 s" forth" s" ptr u8 n --" TRUST
 

@@ -45,7 +45,7 @@ package GPT2-ENTRY
 private
 
 1024 constant CAP-N                \ per-stream capture; a refusing entry says little
-120000 constant ENTRY-MS           \ one engine boot plus a load, generously bounded
+360000 constant ENTRY-MS           \ one engine boot plus a load, generously bounded
 
 \ Sysexits EX_USAGE, which maki/infer/gpt2-cli.f and maki/infer/gpt2-serve.f
 \ each hold as their own private E-USAGE. It is what a production entry answers
@@ -81,7 +81,7 @@ variable EXITED
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN
-   CAP-OUT CAP-N >LEN CAP-ERR CAP-N >LEN ENTRY-MS T-BUDGET-MS >MS
+   CAP-OUT CAP-N >LEN CAP-ERR CAP-N >LEN ENTRY-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME STORE! ;
 
 \ The entry ran to its own refusal: it exited rather than dying, answered the

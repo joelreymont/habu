@@ -22,7 +22,7 @@ whole-file token scan it was meant to replace.
 
 ## 0. Reproduced facts (probe evidence)
 
-All probes run against the committed `bin/hb` (`115831` bytes, built Jul 4).
+All probes run against the committed `bin/hb`.
 
 ### 0.1 DISCOVER is blind to colon-body loaders; the static scan is not
 

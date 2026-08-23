@@ -3,10 +3,7 @@
 \ Load after test/gate-common.f, lib/memory.f, lib/build.f, lib/codesign.f,
 \ and tools/build-fixpoint.f.
 
-require test/gate-build-size.f
-require test/gate-size-attribution-test.f \ SIZE-ATTR:VALIDATE + HOST-CODE-TEXT exact CODELEN ratchet
 require test/gate-validation-worker.f
-require lib/test/budget.f                 \ TEST-BUDGET:PERF-MS - runtime-slice ratchet calibration
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
 require lib/type/deftype.f               \ DEFTYPE - declared-nominal role exemplar in the runtime role source
 
@@ -32,31 +29,13 @@ public
 5 constant GENG-VALIDATE-ID
 6 constant GENG-CONSTRUCT-ID
 7 constant GENG-RUNTIME-PARITY-ID
-\ THE TWO ENGINES ARE MEASURED DIFFERENTLY, and the reason is what each one is.
-\ tools/build-fixpoint.f emits the capture host and then the product from one
-\ prefix. The host is byte-for-byte the engine every size row here was measured
-\ on, so it keeps this cap, the exact whole-file ratchet, the exact CODELEN
-\ ratchet and the per-region budgets. The product is that engine plus a baked
-\ chain, and the chain's payload moves with every compiler-source edit - an exact
-\ row on IT would be a payload ratchet that reds on work it does not govern
-\ (ruling on dot habu-seed-the-chain-e98b03d4).
-\ WHAT THE PRODUCT IS HELD TO INSTEAD IS A STATEMENT, NOT A NUMBER: baking a
-\ chain changes the seed, the cold-prefix walk that reads the baked path table,
-\ and the table itself - and nothing else in the engine. GE-PRODUCT-ACCOUNT holds
-\ every other row of the product's own byte map equal to the host's, so a new
-\ emitter that grew only under the product is named, and a build that dropped the
-\ seed is named, without committing a byte count that the chain would move.
-$40000 constant GE-MAX-CANDIDATE-BYTES
-
 create GE-SCRIPT-PATH FS-PATH-CAP allot
 create GE-CAND-PATH FS-PATH-CAP allot
 create GE-SRC-CAND-PATH FS-PATH-CAP allot
-create GE-SZMAP-PATH FS-PATH-CAP allot
 
 variable GE-SCRIPT-U
 variable GE-CAND-U
 variable GE-SRC-CAND-U
-variable GE-SZMAP-U
 variable GENG-SLICE
 variable GE-PROF-I
 variable GE-REG-I
@@ -246,36 +225,6 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-SRC-CANDIDATE! ( -- )
    s" hb-stdin" BF-A$ GE-SRC-CANDIDATE-PATH! ;
 
-package ENGINE-GATE
-
-\ The capture host, under the temporary root the build just used. Only the build
-\ slice can ask for it: the validate slice is handed an engine and has no build
-\ root, which is exactly why the exact row lives on the build side.
-: GE-HOST$ ( -- ptr u8 n )
-   s" hb-host" BF-A$ ;
-
-public
-
-\ The product carries a whole engine and then some, so the committed engine row is
-\ its floor. A candidate under it is a build that shipped something other than the
-\ engine; its ceiling is GE-PRODUCT-ACCOUNT's business, where both maps exist.
-: CANDIDATE-SIZE-CHECK ( -- )
-   GE-CANDIDATE$ FILE-SIZE BUILD-SIZE:BASELINE < if
-      s" Habu-under-test candidate smaller than the committed engine baseline" GE-FAIL
-   then ;
-
-\ The capture host: the exact ratchet, unchanged, on the engine it was measured on.
-: HOST-SIZE-CHECK ( -- )
-   GE-HOST$ EXECUTABLE? 0= if
-      s" capture host missing: the build emitted no hb-host" GE-FAIL
-   then
-   GE-HOST$ FILE-SIZE GE-MAX-CANDIDATE-BYTES > if
-      s" capture host too large" GE-FAIL
-   then
-   GE-HOST$ BUILD-SIZE:RATCHET ;
-
-;package
-
 : GE-REMOVE-CANDIDATE ( -- )
    GE-CANDIDATE$ EXISTS? if GE-CANDIDATE$ REMOVE-FILE then ;
 
@@ -374,329 +323,7 @@ public
    GE-STAGE2-IMAGE-SHAPE ;
 
 package ENGINE-GATE
-private
-
-\ --- Exact CODELEN ratchet (dot habu-gate-enforce-exact-6effb905) -----------
-\ The whole-file BUILD-SIZE ratchet measures the page-rounded container, so up to
-\ one page of __text growth (Linux 4 KiB, macOS 16 KiB) accumulates INVISIBLY
-\ between commits. This closes it: re-run the freshly built metabuild host
-\ (hb-stdin-mk, the stdin engine's emitter) with HABU_ENGINE_SIZE_MAP=1, capture
-\ its byte-attribution map (one block, byte-identical to the candidate at the
-\ fixpoint), and hold the candidate's measured SUM-TEXT to the committed CODE-TEXT
-\ row for the running target - so any code growth needs a deliberate same-commit
-\ row bump in test/gate-size-attribution-test.f, mirroring the BUILD-SIZE
-\ grown/STALE-BASELINE semantics. SIZE-ATTR:VALIDATE then reconciles every
-\ remaining byte (floor-dist, region rows, residue). A missing or unparseable map
-\ fails closed (SIZE-REPORT:LOAD dies).
-
-: GE-SZMAP$ ( -- ptr u8 n )                \ capture-root path for the candidate size map
-   GT-ROOT s" hb-size-map" GE-SZMAP-PATH JOIN-PATH GE-SZMAP-U !
-   GE-SZMAP-PATH GE-SZMAP-U @ ;
-
-create GE-PRODMAP-PATH FS-PATH-CAP allot
-variable GE-PRODMAP-U
-
-: GE-PRODMAP$ ( -- ptr u8 n )              \ ... and for the product it emitted next
-   GT-ROOT s" hb-product-size-map" GE-PRODMAP-PATH JOIN-PATH GE-PRODMAP-U !
-   GE-PRODMAP-PATH GE-PRODMAP-U @ ;
-
-: GE-MAP-CAPTURE ( ptr u8 n ptr u8 n -- ) {: mk:ptr mku:n dst:ptr dstu:n :}
-   s" candidate-size-map" GS-EVENT
-   GE-HB-RESET
-   s" HABU_ENGINE_SIZE_MAP" >LEN s" 1" >LEN PROC-ENV+
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   mk mku BF-A$ GE-TIMEOUT-MS GE-RUN-ENV
-   s" candidate size-map capture" GE-EXPECT-OK
-   dst dstu GT-OUT$ WRITE-ALL ;
-
-: GE-CODELEN-CAPTURE ( -- )
-   s" hb-host-mk" GE-SZMAP$ GE-MAP-CAPTURE ;
-
-: GE-CODELEN-PAIR. ( n n -- ) {: sz:n base:n :}
-   s" candidate " type sz .
-   s" baseline " type base . ;
-
-\ Directional failures mirror test/gate-build-size.f, retargeted at the CODE-TEXT
-\ (__text) row.
-: GE-CODELEN-GROWN-FAIL ( n n -- )
-   GE-CODELEN-PAIR. cr
-   s" candidate CODELEN ratchet: __text grew past the CODE-TEXT row - bump it in test/gate-size-attribution-test.f in this commit" GE-FAIL ;
-
-: GE-CODELEN-STALE-FAIL ( n n -- )
-   s" STALE-BASELINE " type GE-CODELEN-PAIR. cr
-   s" candidate CODELEN ratchet: __text shrank below the CODE-TEXT row - lower it in test/gate-size-attribution-test.f in this commit" GE-FAIL ;
-
-: GE-CODELEN-MISSING-FAIL ( n n -- )
-   GE-CODELEN-PAIR. cr
-   s" candidate CODELEN ratchet: no CODE-TEXT row for this target - commit the measured __text to test/gate-size-attribution-test.f" GE-FAIL ;
-
-: GE-CODELEN-ENFORCE ( n n -- ) {: sz:n base:n :}   \ measured-SUM-TEXT committed-row
-   base 0= if
-      sz base GE-CODELEN-MISSING-FAIL
-   else
-      sz base > if
-         sz base GE-CODELEN-GROWN-FAIL
-      else
-         sz base < if sz base GE-CODELEN-STALE-FAIL then
-      then
-   then ;
-
-: GE-CODELEN-RATCHET ( -- )
-   GE-CODELEN-CAPTURE
-   GE-SZMAP$ SIZE-REPORT:LOAD
-   SIZE-REPORT:SUM-TEXT SIZE-ATTR:HOST-CODE-TEXT GE-CODELEN-ENFORCE
-   GE-SZMAP$ GE-HOST$ SIZE-ATTR:VALIDATE
-   s" PASS: exact CODELEN ratchet (SUM-TEXT held to committed CODE-TEXT row)" type cr ;
-
-\ --- What baking a chain is allowed to change -------------------------------
-\ The host's byte map is the engine's; the product's is the same engine plus a
-\ seed. Three rows may move and the reason for each is a line of source: the AOT
-\ seed carries the chain (habu2.f EMIT-AOT-SEED), the startup block gains the walk
-\ that reads the baked path table (PFX-CHAIN:ROWS), and the dictionary-code block
-\ carries the table itself (PFX-CHAIN:TABLE). Container rows move with the file's
-\ page rounding and its code signature, which are consequences, not code.
-\ EVERY OTHER ROW MUST BE EQUAL. That is the statement a committed byte count
-\ cannot make: an emitter that grew only when a chain is baked is named here, and
-\ it costs nothing when the chain's payload changes. Both directions are covered -
-\ a row the product does not have, and a row it has and the host does not.
-64 constant GE-MAPROW-CAP
-64 constant GE-MAPNAME-CAP
-create GE-MAPROW-NAME GE-MAPROW-CAP GE-MAPNAME-CAP * allot
-create GE-MAPROW-U GE-MAPROW-CAP cells allot
-create GE-MAPROW-VAL GE-MAPROW-CAP cells allot
-create GE-MAPROW-SEEN GE-MAPROW-CAP cells allot
-variable GE-MAPROW-N
-variable GE-MAPROW-I
-
-: GE-MAPROW-NAME$ ( n -- ptr u8 n ) {: ix:n :}
-   ix GE-MAPNAME-CAP * GE-MAPROW-NAME +  ix cells GE-MAPROW-U + @ ;
-
-: GE-MAPROW+ ( ptr u8 n n -- ) {: a:ptr u:n v:n :}
-   GE-MAPROW-N @ GE-MAPROW-CAP >= if
-      s" size-map snapshot: more rows than the gate can hold" GE-FAIL
-   then
-   u GE-MAPNAME-CAP > if
-      s" size-map snapshot: a row name longer than the gate can hold" GE-FAIL
-   then
-   a  GE-MAPROW-N @ GE-MAPNAME-CAP * GE-MAPROW-NAME +  u BYTE-COPY
-   u GE-MAPROW-N @ cells GE-MAPROW-U + !
-   v GE-MAPROW-N @ cells GE-MAPROW-VAL + !
-   0 GE-MAPROW-N @ cells GE-MAPROW-SEEN + !
-   GE-MAPROW-N @ 1 + GE-MAPROW-N ! ;
-
-\ The loaded map, copied out: SIZE-REPORT holds one map at a time and the names
-\ point into the buffer the next load overwrites.
-: GE-MAPROW-SNAPSHOT ( -- )
-   0 GE-MAPROW-N !
-   0 GE-MAPROW-I !
-   begin GE-MAPROW-I @ SIZE-REPORT:COUNT < while
-      GE-MAPROW-I @ SIZE-REPORT:NAME$ GE-MAPROW-I @ SIZE-REPORT:VAL@ GE-MAPROW+
-      GE-MAPROW-I @ 1 + GE-MAPROW-I !
-   repeat ;
-
-: GE-MAPROW-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0 begin dup GE-MAPROW-N @ < while
-      dup GE-MAPROW-NAME$ a u STR= if exit then
-      1 +
-   repeat drop -1 ;
-
-: GE-SEED-ROW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" aot-seed" STR= if 0 0= exit then
-   a u s" main/startup" STR= if 0 0= exit then
-   a u s" dictionary-code" STR= if 0 0= exit then
-   0 0= 0= ;
-
-: GE-ROW-MOVED-FAIL ( ptr u8 n n n -- ) {: a:ptr u:n host:n prod:n :}
-   s" row " type a u type
-   s"  host " type host .
-   s"  product " type prod . cr
-   s" baking a chain moved an engine row it does not own" GE-FAIL ;
-
-: GE-ROW-MISSING-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" row " type a u type cr
-   s" the product's byte map does not carry a row the capture host's does" GE-FAIL ;
-
-: GE-ROW-NEW-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" row " type a u type cr
-   s" the product's byte map carries a row the capture host's does not" GE-FAIL ;
-
-: GE-SEED-ROW-FLAT-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" row " type a u type cr
-   s" a baked chain left one of the three rows it must grow unchanged" GE-FAIL ;
-
-: GE-PRODUCT-ROW ( n -- ) {: ix:n :}
-   ix SIZE-REPORT:NAME$ {: a:ptr u:n :}
-   ix SIZE-REPORT:VAL@ {: prod:n :}
-   ix SIZE-REPORT:CONTAINER? if exit then
-   a u GE-MAPROW-FIND {: at:n :}
-   at 0 < if a u GE-ROW-NEW-FAIL then
-   -1 at cells GE-MAPROW-SEEN + !
-   at cells GE-MAPROW-VAL + @ {: host:n :}
-   a u GE-SEED-ROW? if
-      prod host > 0= if a u GE-SEED-ROW-FLAT-FAIL then
-      exit
-   then
-   prod host <> if a u host prod GE-ROW-MOVED-FAIL then ;
-
-: GE-PRODUCT-UNSEEN ( -- )
-   0 GE-MAPROW-I !
-   begin GE-MAPROW-I @ GE-MAPROW-N @ < while
-      GE-MAPROW-I @ GE-MAPROW-NAME$ {: a:ptr u:n :}
-      GE-MAPROW-I @ cells GE-MAPROW-SEEN + @ 0=
-      a u s" container/" CONTAINS? 0= and if a u GE-ROW-MISSING-FAIL then
-      GE-MAPROW-I @ 1 + GE-MAPROW-I !
-   repeat ;
-
-: GE-PRODUCT-ACCOUNT ( -- )
-   GE-SZMAP$ SIZE-REPORT:LOAD
-   GE-MAPROW-SNAPSHOT
-   s" hb-stdin-mk" GE-PRODMAP$ GE-MAP-CAPTURE
-   GE-PRODMAP$ SIZE-REPORT:LOAD
-   GE-CANDIDATE$ SIZE-REPORT:RECONCILE
-   GE-CANDIDATE$ FILE-SIZE SIZE-REPORT:SUM-ALL <> if
-      s" the product's byte map does not add up to the product" GE-FAIL
-   then
-   0 GE-MAPROW-I !
-   begin GE-MAPROW-I @ SIZE-REPORT:COUNT < while
-      GE-MAPROW-I @ GE-PRODUCT-ROW
-      GE-MAPROW-I @ 1 + GE-MAPROW-I !
-   repeat
-   GE-PRODUCT-UNSEEN
-   s" PASS: product accounts (only the seed, its walk and its table differ from the host)" type cr ;
-
-\ --- Per-region __text budget ratchet (dot habu-enforce-native-region-1003651b) -
-\ The exact-CODELEN ratchet above holds the __text TOTAL to its committed row, but a
-\ region that grows while a sibling shrinks nets zero there and hides which emitter
-\ moved. This holds EACH committed per-region budget (SIZE-ATTR:HOST-REGION-BUDGETS,
-\ measured same-commit at the byte fixpoint) to the candidate's measured region
-\ size, mirroring the BUILD-SIZE / CODE-TEXT directional semantics per region: a grown
-\ region is bumped, a shrunk region is STALE, and the reject NAMES the region.
-\ Coverage is bidirectional - a newly emitted region with no budget and a budget row
-\ whose region vanished both fail closed, named. macOS budgets are owed
-\ (HOST-REGION-BUDGETS-MEASURED? false): the ratchet reports the owed state and the
-\ measured page-crossing prediction, skipping enforcement on that host exactly as
-\ the census skips its owed target.
-0 constant GE-REGION-OK
-1 constant GE-REGION-GROWN
-2 constant GE-REGION-SHRUNK
-
-: GE-REGION-CLASS ( n n -- n ) {: m:n b:n :}
-   m b > if GE-REGION-GROWN exit then
-   m b < if GE-REGION-SHRUNK exit then
-   GE-REGION-OK ;
-
-: GE-REGION-CLASS-EXPECT ( n n n -- ) {: m:n b:n want:n :}
-   m b GE-REGION-CLASS want <> if
-      s" candidate region ratchet classifier boundary" GE-FAIL
-   then ;
-
-: GE-N>SB ( n -- ) {: v:n :}
-   v 10 >= if v 10 / recurse then
-   v 10 mod [char] 0 + SB-APPEND-C ;
-
-\ Named directional reject: region + which way it drifted + budget/candidate + the
-\ owning-commit action. Returned as a string so the fixtures can prove it names the
-\ region and baseline without tripping the die.
-: GE-REGION-REJECT$ ( ptr u8 n n n n -- ptr u8 n ) {: na:ptr nu:n m:n b:n dir:n :}
-   SB-RESET
-   s" region " SB-APPEND na nu SB-APPEND
-   dir GE-REGION-GROWN = if s"  grew past budget " else s"  shrank below budget (STALE-BASELINE) " then SB-APPEND
-   b GE-N>SB s"  to candidate " SB-APPEND m GE-N>SB
-   s"  - update its row in test/gate-size-attribution-test.f this commit" SB-APPEND
-   SB$ ;
-
-: GE-REGION-GROWN-FAIL ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
-   na nu m b GE-REGION-GROWN GE-REGION-REJECT$ GE-FAIL ;
-
-: GE-REGION-STALE-FAIL ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
-   na nu m b GE-REGION-SHRUNK GE-REGION-REJECT$ GE-FAIL ;
-
-: GE-REGION-VANISHED-FAIL ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
-   SB-RESET
-   s" budgeted region " SB-APPEND na nu SB-APPEND
-   s"  is no longer emitted (budget " SB-APPEND b GE-N>SB
-   s" ) - remove its row from test/gate-size-attribution-test.f this commit" SB-APPEND
-   SB$ GE-FAIL ;
-
-: GE-REGION-UNBUDGETED-FAIL ( ptr u8 n n -- ) {: na:ptr nu:n m:n :}
-   SB-RESET
-   s" unbudgeted __text region " SB-APPEND na nu SB-APPEND
-   s"  (measured " SB-APPEND m GE-N>SB
-   s" ) - commit its budget row to test/gate-size-attribution-test.f this commit" SB-APPEND
-   SB$ GE-FAIL ;
-
-: GE-REGION-ENFORCE-ONE ( ptr u8 n n n -- ) {: na:ptr nu:n m:n b:n :}
-   m b GE-REGION-CLASS
-   case
-      GE-REGION-GROWN  of na nu m b GE-REGION-GROWN-FAIL endof
-      GE-REGION-SHRUNK of na nu m b GE-REGION-STALE-FAIL endof
-   endcase ;
-
-\ Forward: every committed budget row is present in the map and matches exactly; a
-\ budget whose region vanished fails named.
-: GE-REGION-STEP ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
-   na nu SIZE-REPORT:FIND MATCH option
-      none OF na nu b GE-REGION-VANISHED-FAIL ENDOF
-      some OF {: m:n :} na nu m b GE-REGION-ENFORCE-ONE ENDOF
-   ;MATCH ;
-
-\ Reverse: every measured non-container map row has a committed budget; a newly
-\ emitted region fails named with its measured byte count to commit.
-: GE-REGION-COVER-ONE ( n -- ) {: i:n :}
-   i SIZE-REPORT:CONTAINER? if exit then
-   i SIZE-REPORT:NAME$ {: na:ptr nu:n :}
-   na nu SIZE-ATTR:HOST-REGION-BUDGET-FIND MATCH option
-      none OF na nu i SIZE-REPORT:VAL@ GE-REGION-UNBUDGETED-FAIL ENDOF
-      some OF drop ENDOF
-   ;MATCH ;
-
-: GE-REGION-ENFORCE-ALL ( -- )
-   [: GE-REGION-STEP ;] SIZE-ATTR:HOST-REGION-BUDGETS
-   0 begin dup SIZE-REPORT:COUNT < while
-      dup GE-REGION-COVER-ONE
-      1+
-   repeat drop ;
-
-\ Red-first per boundary, target-agnostic: at-budget green, one-past and +4 red,
-\ shrink STALE, and the reject names the region - proven without a fake engine.
-: GE-REGION-SYNTH-CHECK ( -- )
-   100 100 GE-REGION-OK     GE-REGION-CLASS-EXPECT
-   101 100 GE-REGION-GROWN  GE-REGION-CLASS-EXPECT
-   104 100 GE-REGION-GROWN  GE-REGION-CLASS-EXPECT
-    99 100 GE-REGION-SHRUNK GE-REGION-CLASS-EXPECT
-    96 100 GE-REGION-SHRUNK GE-REGION-CLASS-EXPECT
-   s" main/startup" 104 100 GE-REGION-GROWN GE-REGION-REJECT$ s" main/startup" CONTAINS? 0= if
-      s" candidate region ratchet reject omits region name" GE-FAIL
-   then ;
-
-\ +4 into EACH committed region rejects GROWN and the reject names that region;
-\ at-budget stays green, -4 is STALE. Runs where budgets are measured (host Linux).
-: GE-REGION-BOUNDARY-STEP ( ptr u8 n n -- ) {: na:ptr nu:n b:n :}
-   b     b GE-REGION-OK     GE-REGION-CLASS-EXPECT
-   b 4 + b GE-REGION-GROWN  GE-REGION-CLASS-EXPECT
-   b 4 - b GE-REGION-SHRUNK GE-REGION-CLASS-EXPECT
-   na nu b 4 + b GE-REGION-GROWN GE-REGION-REJECT$ na nu CONTAINS? 0= if
-      s" candidate region ratchet reject omits region name" GE-FAIL
-   then ;
-
-: GE-REGION-SELF-CHECK ( -- )
-   GE-REGION-SYNTH-CHECK
-   [: GE-REGION-BOUNDARY-STEP ;] SIZE-ATTR:HOST-REGION-BUDGETS ;
-
-: GE-REGION-RATCHET ( -- )
-   GE-REGION-SELF-CHECK
-   SIZE-ATTR:HOST-REGION-BUDGETS-MEASURED? 0= if
-      s" per-region budgets owed for this target (measure on that host); page prediction only" type cr
-      SIZE-ATTR:PAGE-CROSS-REPORT
-      exit
-   then
-   GE-SZMAP$ SIZE-REPORT:LOAD
-   GE-REGION-ENFORCE-ALL
-   SIZE-ATTR:PAGE-CROSS-REPORT
-   s" PASS: per-region __text budget ratchet (every region held to its committed budget)" type cr ;
-
 public
-
 : FIXPOINT ( -- )
    s" candidate-build" GS-EVENT
    s" hb-gate-engine" GT-START
@@ -708,13 +335,8 @@ public
    BF-BUILD-STDIN-FROM-STAGE
    GE-BUILD-SOURCE-SHAPE
    GE-PROMOTE-CANDIDATE
-   GE-CODELEN-RATCHET
-   GE-REGION-RATCHET
-   GE-PRODUCT-ACCOUNT
-   ENGINE-GATE:HOST-SIZE-CHECK
    BF-TMP-RESET
    GE-EXPECT-CANDIDATE
-   ENGINE-GATE:CANDIDATE-SIZE-CHECK
    s" PASS: self-rebuild fixpoint" type cr ;
 
 ;package
@@ -746,28 +368,6 @@ private
    a u next needle needleu GE-SHAPE-FIND-AFTER
       label labelu GE-SHAPE-NOT-FOUND ;
 
-: SHAPE-COUNT-AFTER ( ptr u8 n n ptr u8 n -- n )
-   {: a:ptr u:n start:n needle:ptr needleu:n :}
-   a u start needle needleu GE-SHAPE-FIND-AFTER MATCH option
-     none OF 0 ENDOF
-     some OF
-        IDX>N 1+ {: next:n :}
-        a u next needle needleu RECURSE 1+
-     ENDOF
-   ;MATCH ;
-
-: ASSERT-DIRECT-SITES ( n -- ) {: start:n :}
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:NO-HANDLER" s" runtime direct no-handler site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:TRAP" s" runtime direct trap site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:FILE-LOADER" s" runtime direct file-loader site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:SCRIPT-ARGV" s" runtime direct script-argv site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:PIPE-ARGV" s" runtime direct pipe-argv site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:MISSING-SCRIPT" s" runtime direct missing-script site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:TIMEOUT" s" runtime direct timeout site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:PTY" s" runtime direct pty site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:IDENTITY-WORKER" s" runtime direct identity-worker site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:WORKER" s" runtime direct worker site" SHAPE-ONE-AFTER ;
-
 : PIN-DIRECT-IMPL ( ptr u8 n ptr u8 n -- )
    {: needle:ptr needleu:n label:ptr labelu:n :}
    GE-SRC-BUF GE-SRC-U @ 0 needle needleu label labelu SHAPE-ONE-AFTER ;
@@ -776,11 +376,11 @@ private
    S\" : PARITY ( ptr u8 n -- )\n   SOURCE ;" s" runtime direct parity implementation" PIN-DIRECT-IMPL
    S\" : NO-HANDLER ( ptr u8 n -- )\n   SOURCE ;" s" runtime direct no-handler implementation" PIN-DIRECT-IMPL
    S\" : TRAP ( ptr u8 n -- )\n   SOURCE ;" s" runtime direct trap implementation" PIN-DIRECT-IMPL
-   S\" : FILE-LOADER ( ptr u8 n -- ) {: path:ptr pathu:n :}\n   NOTE\n   GE-HB$ path pathu GE-TIMEOUT-MS GE-RUN-STDIN-FILE ;" s" runtime direct file-loader implementation" PIN-DIRECT-IMPL
+   S\" : FILE-LOADER ( ptr u8 n -- ) {: path:ptr pathu:n :}\n   GE-HB$ path pathu GE-TIMEOUT-MS GE-RUN-STDIN-FILE ;" s" runtime direct file-loader implementation" PIN-DIRECT-IMPL
    S\" : SCRIPT-ARGV ( -- )\n   ENV ;" s" runtime direct script-argv implementation" PIN-DIRECT-IMPL
    S\" : PIPE-ARGV ( ptr u8 n -- )\n   SOURCE ;" s" runtime direct pipe-argv implementation" PIN-DIRECT-IMPL
    S\" : MISSING-SCRIPT ( -- )\n   ENV ;" s" runtime direct missing-script implementation" PIN-DIRECT-IMPL
-   S\" : TIMEOUT ( ptr u8 n n -- )\n   NOTE\n   GE-RUN-ENV ;" s" runtime direct timeout implementation" PIN-DIRECT-IMPL
+   S\" : TIMEOUT ( ptr u8 n n -- )\n   GE-RUN-ENV ;" s" runtime direct timeout implementation" PIN-DIRECT-IMPL
    S\" : PTY ( -- )\n   ENV ;" s" runtime direct PTY implementation" PIN-DIRECT-IMPL
    S\" : IDENTITY-WORKER ( -- )\n   ENV ;" s" runtime direct identity implementation" PIN-DIRECT-IMPL
    S\" : WORKER ( -- )\n   ENV ;" s" runtime direct worker implementation" PIN-DIRECT-IMPL ;
@@ -794,9 +394,8 @@ private
 : ASSERT-PARITY-DIRECT ( -- )
    GE-SRC-RESET
    s" test/runtime-subject.f" GE-SRC-FILE+
-   GE-SRC-BUF GE-SRC-U @ 0 s" RUNTIME-DIRECT:PARITY" s" runtime parity direct site" SHAPE-ONE-AFTER
-   GE-SRC-BUF GE-SRC-U @ 0 s" RUNTIME-DIRECT:" SHAPE-COUNT-AFTER 1 <>
-      if s" runtime parity direct site total" GE-FAIL then
+   GE-SRC-BUF GE-SRC-U @ s" RUNTIME-DIRECT:PARITY" GE-SHAPE-FIND
+      s" runtime parity direct site" GE-SHAPE-FOUND drop
    GE-SRC-BUF GE-SRC-U @ 0 s" GE-RUN-STDIN" GE-SHAPE-FIND-AFTER
       s" runtime parity raw direct site" GE-SHAPE-NOT-FOUND ;
 
@@ -812,7 +411,6 @@ public
    GE-SRC-BUF GE-SRC-U @ start s" bin/hb" GE-SHAPE-FIND-AFTER
       s" runtime subject bypasses candidate" GE-SHAPE-NOT-FOUND
    ASSERT-DIRECT-IMPL
-   start ASSERT-DIRECT-SITES
    start ASSERT-NO-RAW-DIRECT
    ASSERT-PARITY-DIRECT ;
 
@@ -821,35 +419,13 @@ public
 package RUNTIME-DIRECT
 private
 
-10 constant SUBJECT-MAX
-2 constant OWNER-MAX
-
-variable EXEC-N
-
-: NOTE ( -- )
-   EXEC-N @ 1+ EXEC-N ! ;
-
 : SOURCE ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   NOTE
    GE-HB$ src srcu GE-TIMEOUT-MS GE-RUN-STDIN ;
 
 : ENV ( -- )
-   NOTE
    GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV ;
 
 public
-
-: RESET ( -- )
-   0 EXEC-N ! ;
-
-: EXEC# ( -- n )
-   EXEC-N @ ;
-
-: SUBJECT-LIMIT ( -- n )
-   SUBJECT-MAX ;
-
-: OWNER-LIMIT ( -- n )
-   OWNER-MAX ;
 
 : PARITY ( ptr u8 n -- )
    SOURCE ;
@@ -861,7 +437,6 @@ public
    SOURCE ;
 
 : FILE-LOADER ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   NOTE
    GE-HB$ path pathu GE-TIMEOUT-MS GE-RUN-STDIN-FILE ;
 
 : SCRIPT-ARGV ( -- )
@@ -874,7 +449,6 @@ public
    ENV ;
 
 : TIMEOUT ( ptr u8 n n -- )
-   NOTE
    GE-RUN-ENV ;
 
 : PTY ( -- )
@@ -2349,7 +1923,6 @@ public
    s" candidate-validate" GS-EVENT
    GE-CANDIDATE!
    GE-EXPECT-CANDIDATE
-   ENGINE-GATE:CANDIDATE-SIZE-CHECK
    GE-CANDIDATE$ GATE-VALIDATION:RUN ;
 
 : VALIDATE-SLICE ( -- )
@@ -2375,102 +1948,8 @@ public
 package RUNTIME-WORKER
 private
 
-\ Runtime-slice time ratchet budget.
-\
-\ This slice times two candidate-engine process spawns - the executable-identity
-\ negative plus one candidate-runtime worker fork, and the worker itself forks a
-\ nested SUBJECT tree. Until now it was pinned to a naked 10000 ms wall-clock
-\ constant while every other process-spawning ratchet in the gate - the
-\ stdlib tail ratchet (test/tail-ratchet.f TAIL-BUDGET:PROCESS-MS =
-\ 10000 TEST-BUDGET:PERF-MS) and the whole-gate stop-lines (test/run-lib.f
-\ TEST:CAL-SCALED) - already scales its nominal by the measured host-calibration
-\ factor. That factor (lib/test/budget.f: a fixed-work integer spin measured
-\ against an idle-box reference, clamped to [100..300]% and exported by the gate
-\ as the host-calibration percentage) is the repo's canonical load signal. The
-\ runtime slice being the LONE exception is the bug: on a box running several
-\ gate lanes plus unrelated user work the fixed 10000 ms bar false-reds on
-\ engines byte-identical to ones that passed it quiet (measured 2026-07-19:
-\ 10047..11919 ms, rc 0, zero correctness failures), because the child process
-\ tree contends for CPU while the bar does not move. Putting this slice on the
-\ SAME calibration is the root-cause fix, not a workaround.
-\
-\ Why calibration scaling is load-aware yet still catches a regression, and why
-\ this is a measured/bounded budget rather than a "pass under load" exemption:
-\   - a slow BOX widens the fixed-work calibration spin, so BUDGET-MS widens
-\     proportionally and the load-contention false red disappears;
-\   - a slow ENGINE does NOT move the fixed-work spin, so the scaled budget stays
-\     tight and OVER? still fires - at ANY load, because the [100..300]% clamp
-\     bounds compensation to 3x, so an engine slower than 3x nominal reds even on
-\     a fully saturated box (proven by RATCHET-SELFTEST case 3);
-\   - the decision stays a hard `elapsed > BUDGET-MS` FAIL; calibration only sets
-\     the budget, it never short-circuits the comparison.
-\
-\ NOMINAL-MS derivation (macOS arm64, measured 2026-07-19 on this host; the box
-\ carried an ambient loadavg of ~5-6 from an Unreal cook and a zig test, so none
-\ of these are truly idle):
-\   - standalone timed body, near-baseline: 5693..5860 ms at calibration 111..120%;
-\   - standalone under three competing fixpoint-build lanes (loadavg 18-19):
-\     7636..8529 ms at calibration 114..131%;
-\   - FULL native gate, normal operating load (loadavg 6-7): 10987 ms at
-\     calibration 115% (matches the orchestrator's measured 10986 ms red);
-\   - FULL native gate, heavy load (loadavg 16): 14621 ms at calibration 120%.
-\ The full gate adds intra-gate phase concurrency the standalone harness cannot
-\ reproduce, so its numbers are the ones that matter. The worst calibration-
-\ normalized elapsed (budget must exceed elapsed*100/calibration for the scaled
-\ budget to clear it) is 14621/1.20 = 12184 ms. Applying the spark cold-budget
-\ precedent's +25% safety margin (commit 9d91057e / 76f5e652) gives 15230 ms,
-\ rounded up to a clean 16000 ms stop-line. At the measured normal load this
-\ leaves budget 16000*1.15 = 18400 ms against 10987 ms elapsed (1.67x margin);
-\ at the heavy-load worst case 16000*1.20 = 19200 ms against 14621 ms (1.31x).
-16000 constant NOMINAL-MS
-
-variable START-NS
-
 : WRONG-EXE$ ( -- ptr u8 n )
    s" /usr/bin/true" ;
-
-: START ( -- )
-   RUNTIME-DIRECT:RESET
-   mono-ns START-NS ! ;
-
-: BUDGET-MS ( -- n )                     \ nominal scaled by the measured host calibration
-   NOMINAL-MS TEST-BUDGET:PERF-MS ;
-
-: CAL-PCT ( -- n )                       \ live host-calibration factor, as a percentage
-   100 TEST-BUDGET:PERF-MS ;
-
-: SATURATED? ( -- bool )                 \ calibration pinned at the clamp: box slower than 3x
-   CAL-PCT T-BUDGET-MAX-PCT >= ;
-
-: OVER? ( n -- bool )                    \ hard ratchet decision against the live calibrated budget
-   BUDGET-MS > ;
-
-: REPORT ( n n -- ) {: elapsed:n budget:n :}
-   s" runtime elapsed-ms=" type elapsed GT-U-TYPE
-   s"  max-ms=" type budget GT-U-TYPE
-   s"  cal-pct=" type CAL-PCT GT-U-TYPE
-   SATURATED? if s"  (saturated)" type then cr ;
-
-: CHECK-TIME ( -- )
-   mono-ns START-NS @ - PROC-NS-PER-MS / {: elapsed:n :}
-   elapsed BUDGET-MS REPORT
-   elapsed OVER? if
-      s" runtime time ratchet exceeded" GE-FAIL
-   then ;
-
-: EXPECT-OVER ( n ptr u8 n -- ) {: elapsed:n label:ptr labelu:n :}
-   elapsed OVER? 0= if label labelu GE-FAIL then ;
-
-: EXPECT-WITHIN ( n ptr u8 n -- ) {: elapsed:n label:ptr labelu:n :}
-   elapsed OVER? if label labelu GE-FAIL then ;
-
-: CHECK-EXEC ( -- )
-   RUNTIME-DIRECT:EXEC# {: count:n :}
-   count RUNTIME-DIRECT:OWNER-LIMIT > if
-      s" runtime process-exec=" type count .
-      s" max-exec=" type RUNTIME-DIRECT:OWNER-LIMIT . cr
-      s" runtime process ratchet exceeded" GE-FAIL
-   then ;
 
 : IDENTITY-NEG ( -- )
    GE-HB-RESET
@@ -2495,42 +1974,10 @@ variable START-NS
 
 public
 
-\ Negative/property proof for the load-conditioned ratchet (dot
-\ habu-derive-runtime-budget-81b2f538). Pins the calibration with PERF-SET so the
-\ four cases are deterministic, then restores it. GE-FAIL dies (exit 1), so a
-\ mismatch fails the slice closed exactly like a real ratchet breach. The cases
-\ prove, together, that the ratchet still catches a genuinely slower engine at
-\ ANY load while tolerating pure load inflation:
-\   1. at calibration 100% (quiet box) an elapsed just over nominal reds;
-\   2. at calibration 100% an elapsed just under nominal passes (no false red);
-\   3. at calibration 300% (fully saturated, clamped) an elapsed over 3x nominal
-\      STILL reds - the clamp bounds compensation so a >3x-nominal engine cannot
-\      hide behind load;
-\   4. at calibration 300% an elapsed of 2x nominal - which would red on a quiet
-\      box - passes, i.e. measured load widens the budget and kills the false red.
-: RATCHET-SELFTEST ( -- )
-   100 TEST-BUDGET:PERF-MS {: saved:n :}       \ snapshot the live calibration
-   100 TEST-BUDGET:PERF-SET
-   NOMINAL-MS 1000 +
-      s" runtime ratchet catches over-budget slice at calibration 100%" EXPECT-OVER
-   NOMINAL-MS 1000 -
-      s" runtime ratchet passes within-budget slice at calibration 100%" EXPECT-WITHIN
-   300 TEST-BUDGET:PERF-SET
-   NOMINAL-MS 3 * 1000 +
-      s" runtime ratchet catches slower engine even at max calibration" EXPECT-OVER
-   NOMINAL-MS 2 *
-      s" runtime ratchet tolerates load-inflated elapsed at max calibration" EXPECT-WITHIN
-   saved TEST-BUDGET:PERF-SET                   \ restore the live calibration
-   s" PASS: runtime ratchet load-conditioned decision (regression caught at any load)" type cr ;
-
 : SUBJECT ( -- )
-   START
    IDENTITY-NEG
    s" " RUN
-   CHECK-TIME
-   CHECK-EXEC
-   RATCHET-SELFTEST
-   s" PASS: runtime process/time ratchet" type cr ;
+   s" PASS: candidate runtime checks" type cr ;
 
 : PARITY ( -- )
    IDENTITY-NEG

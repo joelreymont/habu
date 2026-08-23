@@ -226,10 +226,9 @@ fits.
   Beware same-tail collisions: maki's `package SCHEMA` defines its OWN `SCH-N`
   (a retired Maki schema registry counter), a different cell from core
   `type-schema.f` `SCH-N` — grep before assuming a bare read targets the core
-  registry. The `internal-word-gate`
-  subject-count ratchet (`SUBJECT-N`) must be bumped by exactly the number of new
-  `IWG-EXEC:SUBJECT` fork cases, or `TAIL-RATCHET:CHECK` reds "exact subject
-  child-process count".
+  registry. When a gate exercises both direct and forked load paths, compare
+  their exit status and output; how many helper processes the implementation
+  uses is not part of the semantic contract.
 
 - **`checker.f` (and `type-family.f`/`sumtype.f`/…) is a boot-time SOURCE prefix,
   not baked engine bytes.** `bin/hb` recompiles `src/core/*.f` from the working
@@ -965,15 +964,11 @@ fits.
   `bin/hb`/target-source/syscalls/ELF-AOT/checker/lints/self-refresh/REPL — do not install
   JS/Python/Rust to prove a native port; external Python baselines live as fenced
   ```python``` in docs.
-- **`Habu-under-test` is the SMALL engine, not a snapshot; candidate size is
-  RATCHETED.** Promoting `hb-new` (snapshot trailer bakes MBs of live DATA → 22MB
-  candidates that jump into zeroed code on Linux) is wrong; promote `hb-stdin`, enforce a
-  small candidate size. `GE-MAX-CANDIDATE-BYTES` only rejects catastrophic bloat — gradual
-  growth needs committed per-target baseline rows (`test/gate-build-size.f`, per-target
-  because Mach-O/ELF differ): growth fails until the same commit bumps the row, shrinkage
-  prints `STALE-BASELINE`, an unmeasured target (0) fails closed. Bake side-effect-free phase
-  libs into a warm gate runner keyed by runner source + seed image; baking the runner FROM
-  the candidate on the critical path regressed the gate — start it in the early pool.
+- **`Habu-under-test` is the runnable stdin engine, not a snapshot.** Promoting
+  `hb-new` is wrong because its snapshot trailer carries live process state; promote
+  `hb-stdin`. Bake side-effect-free phase libs into a warm gate runner keyed by runner
+  source + seed image; baking the runner from the candidate on the critical path adds
+  redundant work, so start it in the early pool.
 - **`bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks on stdin
   (looks like a hang / rc 124); pipe `< /dev/null`.** Errors still exit non-zero
   immediately; gate/test files that call `T-REPORT`/`die` exit on their own. Any tool that
@@ -1128,26 +1123,10 @@ fits.
   touches `src/core/checker.f` (or any file a manual/heavy suite OWNS but the fast
   tier never forks) must run that owning suite at merge time — a green fast `run.f`
   tier is not proof for suites run only by `test/gate-stdlib.f`.
-- **The tail-ratchet asserts EXACT child-process counts AND elapsed ≤ budget
-  (`PROCESS-NOMINAL-MS` 10000 × PERF-MS).** An elapsed-only overshoot with no
-  child-count delta (e.g. 10099/10000) is machine-load noise, not your change —
-  the counts prove your work isn't in that timed group; re-run to confirm it
-  clears.
-- **Every process-spawning time ratchet must scale its nominal by the host
-  calibration (`TEST-BUDGET:PERF-MS`), never a naked wall-clock constant.** The
-  engine gate's runtime slice was the lone exception (`10000 constant MAX-MS`,
-  test/gate-engine-lib.f) and false-redded 10047–11919 ms on byte-identical
-  engines whenever other lanes or user workloads loaded the box; fixed 2026-07-19
-  by dot habu-derive-runtime-budget-81b2f538 (derived `NOMINAL-MS`, cal-scaled
-  budget, `cal-pct=`/`(saturated)` attribution on every run, RATCHET-SELFTEST
-  proving a >3×-nominal engine reds even at the 300% clamp). Two measurement
-  rules from the derivation: (1) the calibration spin (cal-pct) tracks a short
-  phase's ACTUAL contention better than 1-minute loadavg — a loadavg-3 sample
-  showed elapsed 2× the loadavg-6 steady state while cal-pct 151 tracked it;
-  attribute with cal-pct, not `uptime`. (2) In-gate elapsed far exceeds the same
-  slice standalone because of intra-gate phase concurrency — derive budgets from
-  the REAL gate's numbers (extract from `$HB_TMP/pool-*-out.log`), never from a
-  standalone harness run.
+- **Process deadlines are hang protection, not performance verdicts.** Keep them
+  generous enough for a healthy child under contention. Test the timeout outcome
+  with a deliberately tiny deadline, but do not make ordinary elapsed time or the
+  exact helper-process count an acceptance criterion.
 - **Full-DAG timing beats isolated wins; every focused optimization must survive the whole
   command under contention.** Splitting suites, per-phase forks, higher nested pools, and
   preloading shared setup all passed focused probes but regressed the full gate — record reverted
@@ -1158,20 +1137,6 @@ fits.
   widen the shared base further: pre-setup fork spans are reap-inflated by the serial setup (a
   phase exiting during setup reads ~the setup duration), so widening puts serial load on every
   post-setup fork's critical path — reclassify only HIGH-redundancy family workers.
-- **Gate budgets are stop-line thresholds tuned per HOST PROFILE, not comfort blankets.**
-  macOS/generic-Linux/Jetson have different CPU envelopes even at the same pool policy — auto-detect
-  a concrete profile; portable budget = base × (probe-ms / profile-reference-ms) clamped
-  [100%,300%], factor 100% for unmeasured profiles, never scale user `--budget-ms`. A spin probe
-  (~95ms macOS ref) captures load/downclocking (what actually failed green trees); print
-  cal-ms/cal-factor so a stretched budget is visible telemetry. Timeout floors ≠ ratchets:
-  `HB_LOAD_PCT` carries a 3× structural pool-pressure floor so healthy children aren't killed;
-  export measured `HB_CAL_PCT` separately for phase ratchets (applying the load floor silently
-  turned nominal 8/10s into 24/30s). A faster gate is not protected until its budget is TIGHTENED
-  (a 24s impl still permits the old regression at a 70s verdict). Never bump MAX-MS to pass a
-  ratchet — the engine battery's runtime ratchet catches real per-process regressions (region
-  growth to 8MB regressed boot +41ms via LPROT's full-region mprotect brackets, linear in the flip
-  window). Report maker and artifact cache fills as budget coverage; neither changes whether phase
-  15 runs.
 - **Every ordinary gate run builds Habu-under-test in phase 15; only explicit `--under` skips it.**
   A persistent candidate cache can publish a binary before phase 15's verdict, then reuse it and
   skip the failing phase on a later run. Build the candidate in the early engine-build slot, then
@@ -1290,8 +1255,8 @@ fits.
   census re-reads `src`/`lib` file TEXT, so an edit lands inside the
   measurement: six of eight reds in one stretch were the lane's own concurrent
   builds and mutation experiments, and one mid-run edit produced reds that
-  looked real and cost a gate cycle. Two concurrent full gates on one host also
-  red each other's timing ratchets. The wait is cheaper than the unpicking.
+  looked real and cost a gate cycle. Concurrent full gates also contend for the
+  same host. The wait is cheaper than the unpicking.
 - **Wait on a FILE, never on a process pattern** (2026-08-11, 08-13, 08-14 -
   paid for three times). `pgrep -f <pattern>` inside any wait loop, `until`
   loops included, matches the waiting shell's own command line, so the loop is
@@ -1695,10 +1660,8 @@ fits.
   fixpoint held. Emitter helpers called from several `C-*` words are text multipliers (the escape
   decoder expanded inline into all six quote handlers, ~4.1KB) — emit once behind forward labels, and
   callers must re-audit register liveness across the new `BL` (scan count / copy length shared the
-  flag register). Keep a PERMANENT emitted-engine region map — historical RCA goes stale (July's
-  cold-prefix duplication was already fixed; later growth moved into dispatch/primitives/AOT seed);
-  pair a mutable exact-size ratchet with an IMMUTABLE architectural ceiling so a baseline update
-  can't normalize growth.
+  flag register). Use one-off emitted-region measurements for attribution; do not turn them into
+  committed acceptance baselines.
 - **A shared native helper that gains a `BL` needs a real LR frame, and a new scratch register
   must be one the helper ALREADY clobbers.** Extending `LCFPOP` to call `LCEMIT` without saving x30
   made `RET` jump back into `LCFPOP` (branch-local defs hung). A cap loaded into x14 (which `LCFPUSH`
@@ -2325,7 +2288,7 @@ fits.
   makes the reported exit status false evidence. Run each probe alone, preserve
   its real status, and inspect optional artifacts only after recording failure.
 - **The unified payload-bearing `ENUM` and `STRUCTURE` surface is specified, not operational.** Current master still exposes payloadless `ENUM`, payload `SUMTYPE`, and `PRODUCT`; `STRUCTURE` rejects as undefined. New design dots target the hard cutover, but implementation must wait for `habu-type-dsl-prove-93da83c4` or be absorbed into its exact migration owner.
-- **Container size steps do not measure feature code.** A 16 KiB macOS file jump can be page padding triggered by a much smaller `__text` increase. Attribute exact emitted regions and `__text` before blaming one feature or approving a ratchet.
+- **Container size steps do not measure feature code.** A 16 KiB macOS file jump can be page padding triggered by a much smaller `__text` increase. Attribute emitted regions and `__text` before blaming one feature or making a size claim.
 - **Dormant at startup is not dead.** Profiler, cross-reference, debugger, and REPL words are product features when users can invoke them later. Measure their resident cost and privatize helpers, but require reachability evidence before deleting them.
 - **Parallel arrays turn one logical row into several fallible commits.** Same-cell column swaps still certify, and a throw between stores leaves torn state. Prefer one checked `STRUCTURE`, preflight every backing arena, and publish the row last.
 - **A long prefix is not package ownership.** It spends dictionary bytes while leaving scratch state and helpers globally callable. Package legacy subsystems, shorten private tails, and retain only the measured cross-package API.
@@ -2345,12 +2308,11 @@ fits.
 - **Benchmark failure classes are data, not booleans.** Infrastructure failure, foreign-process contention, unstable clocks, and an inexact kernel require distinct payload-bearing `ENUM` outcomes; collapsing them to `-1`, zero, or false produces confident false diagnoses.
 - **Invariant reference work belongs outside candidate loops.** Prepare shape-dependent fills and an O(n^3) golden once, cache dtype-dependent packing once, then measure only candidate-dependent upload, launch, and comparison.
 - **Consume linear authority only after validation succeeds.** A teardown completion that consumes its sole token before checking drained state strands live resources when it rejects; either require a statically drained state or return the still-owned authority in a payload-bearing `ENUM` result.
-- **Exact size ratchets are target-specific composed history.** A source primitive landed after one platform was measured makes that platform row stale even when another platform was remeasured; every affected target needs a fresh fixpoint attribution before publication.
 - **Accepted syntax is not implemented behavior until lowering consumes it.** A parser and attribute test can prove metadata round trips while generated code ignores it completely; every semantic tag needs an end-to-end emitted-code and runtime golden.
 - **A zero-filled lookup table is not initialized state.** Validate readiness and bounds before computing an address, and publish one typed ready value only after every forward and inverse table is complete.
 - **Store bounded identifiers in their canonical compact form.** Expanding byte token ids into float cells for an entire corpus used eight times the memory even though only small sampled batches need float conversion.
 - **Test paths are owned resources.** Predictable shared `/tmp` names race, leak, falsify absence tests, and permit symlink truncation; use unique private roots and exception-safe cleanup.
-- **Never copy a performance bound across targets.** A Spark-derived cold budget was lower than a directly observed macOS suite long pole; keep the last measured target bound until repeated exact-target runs prove a replacement.
+- **Never copy a hang deadline across targets without checking the slowest healthy path.** Keep deadlines generous; they guard deadlock, not ordinary performance.
 - **Compile-once helpers must not become permanent dictionary residents.** If a generated checked word exists only to capture one value, use a checked anonymous or transactionally reclaimed compilation boundary and prove every compiler registry rolls back.
 - **One suite needs one canonical inventory.** Repeating membership across a full loader, slices, and runner dispatch creates more reconciliation code than the split saves and lets each copy drift independently.
 - **A frame must bind its declared identity to the parsed payload.** Validating path syntax and body syntax independently still accepts path substitution, presence/status contradictions, and several raw files under one declared section.
@@ -2382,10 +2344,6 @@ fits.
   script, generated file, or committed consumer that calls two or more publics
   from one package uses one bounded `using NAME ... ;using` block and bare
   tails. A one-off call may stay qualified.
-- **Engine size and candidate-validation coverage move with their owning changes.** Engine growth
-  updates the exact-CODELEN baseline, and a new candidate-validation case updates its declared kind
-  tally in the same commit.
-
 - **Fix review gate: re-derive the invariant, never accept the fix's own label.**
   The USING seed-boot repair first shipped as a value-range clamp ("depth 0..16
   else 0") framed as a documented tolerant shim; review accepted the label and
@@ -2621,17 +2579,17 @@ fits.
 - **Explicit parser state must not add a threaded call per field access.** Derive
   one private state view at the public operation boundary, use named direct
   offsets internally, and publish numeric kind during the existing grammar pass
-  instead of rescanning the token. Ratchet both repeated small documents and one
-  long stream against the pre-refactor medians.
+  instead of rescanning the token. Benchmark both repeated small documents and one
+  long stream when evaluating the change.
 - **Object-key search is parser state, not token scanning.** Require an active
   object search phase, capture its depth, accept keys only at that depth, skip
   each unmatched value, and stop at that object's close. Compare decoded bytes
   through the shared streaming unescape sink so key length never becomes a
   reader-storage capacity.
-- **A performance ratchet must execute every changed production path.** Numeric
-  token scans cannot bound string sink dispatch or object-key traversal. Use
-  long repeated raw, escape-heavy, hit, and miss workloads; median repeated
-  samples; and leave measured headroom above timing noise.
+- **A performance benchmark must execute every changed production path.** Numeric
+  token scans say nothing about string sink dispatch or object-key traversal. Use
+  long repeated raw, escape-heavy, hit, and miss workloads and report repeated
+  samples for human comparison.
 - **A lint claiming grammar parity must be differentially probed, not read.**
   A whole-file trust scanner that mirrored the engine's tokenizer passed a
   hunk-by-hunk review and still diverged four ways: compiled TRUST inside
@@ -2794,24 +2752,6 @@ fits.
   package seal can be correct yet make its required proof unloadable when the
   suite reopens that package to define private helpers. Move those tests onto
   production public seams first; never weaken the seal or add a test bridge.
-- **A wall-clock ratchet inside a parallel test group measures the contention,
-  not the code.** The six JSON reader ratchets ran through
-  `lib/json-read-test.f`, a member of the parallel `stdlib/tail-pure` fork
-  group, so every budget had to be padded for whatever else the box was doing.
-  Split timing from judging - one word that runs the warm-up and stores every
-  raw sample, one word that turns those samples into budgets and verdicts - so a
-  scheduler can measure while nothing else runs. Extracting them also cut the
-  correctness suite from 2.20s to 0.44s.
-- **A quiet measurement phase must refuse by construction, not by convention.**
-  The one place the JSON reader ratchets now run is scheduled outside the
-  numbered phases, after every parallel phase has drained and before the run is
-  judged, so the box is idle. That is only trustworthy because the phase proves
-  its own preconditions instead of trusting the schedule: a nonzero worker slot
-  identity proves the caller is already inside a fork worker and it refuses, a
-  caller with pool workers still in flight is refused, and a second call in one
-  gate process is refused with the turn claimed only after admission, so a
-  refused call cannot burn it. When a check depends on the rest of the system
-  being quiet, make the check test that quiet itself.
 - **A gate that exits nonzero is not the same as a gate that ran.** On master
   79c50e5a, `error-code-lint` decided string membership by
   counting quote characters, so one bare quote token silently skips every claim
@@ -3220,7 +3160,7 @@ fits.
   worker discovering the gaps at line 500.
 - **A numeric coincidence is not a cause; attribute by differential
   measurement.** A leaf added eight new checked definitions to the engine, and
-  two size ratchets drifted by exactly eight bytes. That was reported as the
+  two size reports differed by exactly eight bytes. That was reported as the
   leaf's cost and repeated downstream as established fact. Independent
   measurement of the intermediate tips proved the leaf moves ZERO engine
   bytes: the eight belonged to an unrelated commit, and the region map showed
@@ -3621,19 +3561,10 @@ fits.
   ask for the package context directly rather than through the hook. A capability
   probe is only structural if it is armed before the state it guards.
 
-- **A child-process budget in a test is a deadlock guard, never a performance
-  expectation.** `test/compiler/ir-id.f` gave each spawned engine 2000 ms and
-  `tools/check-test-lib.f` gave each of its six children a bare `$2710`, and both
-  phases turned red only when the gate pool had eight slots busy. Measured on a
-  12-core machine: the ir-id concurrency child costs 0.62-1.10 s idle and
-  2.34-3.00 s under eight busy slots, the check-cli cleanup child 4.7-5.0 s and
-  11.2-13.4 s. Decisive test: raising only the budget in a scratch copy turned
-  eight concurrent runs from eight reds into eight passes, so the concurrency
-  property held the whole time and the stopwatch was the only thing failing. The
-  fix that lasts is not a bigger number - it is writing the budget as a measured
-  worst case times a stated margin, so a reviewer can see what it is guarding
-  against, plus a verdict that says which of the three things happened. The
-  shared `T-OUTCOME-EXITED=` prints `expected 0 got 1` for a hung child, a
+- **A child-process deadline in a test is a deadlock guard, never a performance
+  expectation.** Make it generous enough for healthy execution under contention
+  and report which outcome occurred. The shared `T-OUTCOME-EXITED=` prints
+  `expected 0 got 1` for a hung child, a
   signalled child and a wrong exit code alike, and an expired capture inside
   `RUN-ARGV-CAPTURE` escaped as `hb: uncaught throw code -2502`, naming no case.
   Both hid a load problem behind a line that looked like a real defect.
@@ -6009,8 +5940,8 @@ two workers:
    suite that actually reds.
 3. A refusal reached through a shape another guard already rejects
    proves nothing about the guard you meant.
-4. A stricter replacement pass reds a size ratchet with the same
-   signal as a broken one - explain the count before touching the row.
+4. A stricter replacement pass can move a size report by the same
+   amount as a broken one - explain the measurement before attributing it.
 5. A record replacing a heuristic must enumerate every path that
    REPRODUCES the artifact, not just every path that creates it; the
    inliner's refusal set is the map of what the tree already knew was
@@ -6055,14 +5986,6 @@ registers NO effect. It fails closed downstream (uncheckable) but
 looks exactly like a broken fixture, and it silently turned a
 suite's 19 declarations into stubs. Declarations go above the
 window. Engine-side loudness is dot 527eea9a.
-
-## A __text change answers two ratchets (2026-08-11)
-
-gate-build-size.f measures the page-rounded file and padding can
-absorb growth; gate-size-attribution-test.f measures the bytes and
-trips. One green is not evidence about the other - it is evidence
-the padding hid the growth, which is the gap the byte ratchet
-exists to close.
 
 ## An engine older than a two-stage landing cannot skip the stages (2026-08-11)
 

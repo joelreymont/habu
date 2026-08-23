@@ -379,11 +379,8 @@ public
    s" tools/signature-scan-emitter-test.f" GSI-INCLUDE
    s" tools/compiler-dispatch-test.f" GSI-INCLUDE ;
 
-\ This group owns its own member list, so it owns a package, the same way
-\ TAIL-PROCESS below already does. Scheduling lib/json-read-perf-contract-test.f
-\ is the change that made the list move; the group moved with it rather than
-\ keeping a raw global name for a definition that is still being edited. Both
-\ dispatchers (test/run-worker-stdlib.f and test/gate-runner-lib.f) now call
+\ This group owns its own member list, so it owns a package. Both dispatchers
+\ (test/run-worker-stdlib.f and test/gate-runner-lib.f) call
 \ TAIL-PURE:RUN, so the two entry points cannot schedule different members.
 package TAIL-PURE
 
@@ -407,7 +404,6 @@ public
    GSI-FORK-RESET
    s" lib/json-write-test.f" GSI-FORK-INCLUDE
    s" lib/json-read-test.f" GSI-FORK-INCLUDE
-   s" lib/json-read-perf-contract-test.f" GSI-FORK-INCLUDE
    s" lib/memory-test.f" GSI-FORK-INCLUDE
    s" lib/vector-test.f" GSI-FORK-INCLUDE
    s" lib/byte-buffer-test.f" GSI-FORK-INCLUDE
@@ -588,12 +584,8 @@ public
    \ object. It reaches the reference column, which this group's members already
    \ do through the mapping test/run.f made before any fork; it reads no clock.
    s" tools/judge/ref-test.f" GSI-FORK-INCLUDE
-   \ And the reader that adjudicates which way that artifact moved: small tables
-   \ rendered through the real report, read back, and each column's direction
-   \ judged. It compiles no corpus and reads no clock.
-   s" tools/judge/base-test.f" GSI-FORK-INCLUDE
-   \ And the judged table that reader feeds: both code generators over one text,
-   \ clang beside them, and the committed artifact. Its chain column holds a
+   \ The judged table runs both code generators over one text with clang beside
+   \ them. Its chain column holds a
    \ refusal CODE where the chain declined a subject, measured every run, so it
    \ reads no clock either and belongs in this group.
    s" tools/judge-test.f" GSI-FORK-INCLUDE
@@ -623,11 +615,8 @@ public
    s" tools/codegen-role-test.f" GSI-FORK-INCLUDE
    s" test/icode-fixup-test.f" GSI-FORK-INCLUDE
    s" tools/aot-section-reach-lint-test.f" GSI-FORK-INCLUDE
-   s" test/engine-size-test.f" GSI-FORK-INCLUDE
-   s" tools/size-report-test.f" GSI-FORK-INCLUDE
    s" tools/ddc-verify-test.f" GSI-FORK-INCLUDE
    s" tools/ddc-scheduled-test.f" GSI-FORK-INCLUDE
-   s" test/gate-size-attribution-test.f" GSI-FORK-INCLUDE
    s" tools/include-events-test.f" GSI-FORK-INCLUDE
    s" tools/source-discovery-test.f" GSI-FORK-INCLUDE
    s" tools/event-closure-test.f" GSI-FORK-INCLUDE
@@ -657,7 +646,7 @@ public
    GSI-TEST-SETUP
    GSI-SETUP!
    s" lib/test/subject.f" GSI-REQUIRE
-   s" test/tail-ratchet.f" GSI-REQUIRE
+   s" test/tail-parity.f" GSI-REQUIRE
    GSI-TEST!
    GSI-FORK-RESET
    s" tools/hb-cli-contracts-test.f" GSI-FORK-INCLUDE

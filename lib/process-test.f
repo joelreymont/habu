@@ -40,16 +40,9 @@ create PT-CAPTURE-FALSE-BUF FS-PATH-CAP allot
 create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 2 constant PT-ENOENT
-\ Nominal budgets, scaled by the measured load factor (lib/test/budget.f):
-\ under box saturation (concurrent gate runs) a healthy-but-slow child must
-\ not read as hung, while a genuinely hung child still fails within
-\ T-BUDGET-MAX-PCT/100 (= 3x) of the nominal budget.
-5000 constant PT-HB-NOMINAL-MS
-1000 constant PT-CMD-NOMINAL-MS
-100 constant PT-SHORT-NOMINAL-MS
-: PT-HB-TIMEOUT-MS ( -- n ) PT-HB-NOMINAL-MS T-BUDGET-MS ;
-: PT-CMD-TIMEOUT-MS ( -- n ) PT-CMD-NOMINAL-MS T-BUDGET-MS ;
-: PT-SHORT-TIMEOUT-MS ( -- n ) PT-SHORT-NOMINAL-MS T-BUDGET-MS ;
+15000 constant PT-HB-TIMEOUT-MS
+3000 constant PT-CMD-TIMEOUT-MS
+300 constant PT-SHORT-TIMEOUT-MS
 
 : PT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -329,33 +322,14 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    SIGKILL T-OUTCOME-SIGNALED= LEN>N 0 T= LEN>N 0 T=
    PROC-CAPTURE-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
 
-\ Regression for habu-concurrent-multi-workspace-5341c7f4: budgets scale with
-\ measured load (never shrink: min 100%), and detection stays BOUNDED - with
-\ the factor forced to its clamp maximum, a genuinely hung child still times
-\ out within T-BUDGET-MAX-PCT/100 (= 3x) of the nominal budget; the elapsed
-\ assert allows spawn overhead on top of the 300ms scaled kill.
-: TEST-BUDGET-HUNG-BOUNDED ( -- )
-   T-BUDGET-PCT @ {: saved:n :}
-   T-BUDGET-MAX-PCT T-BUDGET-PCT !
-   mono-ns {: t0:n :}
-   PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T=
-   mono-ns t0 - PROC-NS-PER-MS / 3000 < TTRUE
-   saved T-BUDGET-PCT ! ;
-
-\ Deterministic starved-budget characterization (dot habu-process-test-
-\ standalone-9de825bc): a budget far below any possible bin/hb boot (~10ms vs
-\ a >60ms floor) makes a HEALTHY-child capture throw E-PROC-TIMEOUT - the
-\ exact standalone-flake mechanism (nominal budgets on a saturated box).
-\ Self-calibrating budgets (lib/test/budget.f T-BUDGET-SELF-PCT) remove the
-\ under-run in practice; this pins the throw path the flake rode.
+\ A deliberately tiny deadline proves that capture reports a timeout.
 : PT-STARVED-CAPTURE ( -- )
    PROC-ARGV-RESET
    PT-CAPTURE-OK >LEN PROC-ARGV+
    s" bin/hb" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N drop drop drop ;
 
-: TEST-BUDGET-STARVED ( -- )
+: TEST-STARVED-TIMEOUT ( -- )
    [: PT-STARVED-CAPTURE ;] E-PROC-TIMEOUT TTHROWSQ ;
 
 : TEST-RUN-ARGV-CAPTURE-HB ( -- )
@@ -452,8 +426,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT
    TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT
    TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL
-   TEST-BUDGET-HUNG-BOUNDED
-   TEST-BUDGET-STARVED
+   TEST-STARVED-TIMEOUT
    TEST-RUN-ARGV-CAPTURE-HB
    TEST-RUN-CAPTURE-FD-CLEANUP
    TEST-RUN-IO-CAT

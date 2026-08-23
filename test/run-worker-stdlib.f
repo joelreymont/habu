@@ -18,7 +18,6 @@ TEST:TRW-LOAD-DONE
    GSI-TAIL-RUNNER
    s" test/gate-pool-test.f" GSI-INCLUDE
    s" test/gate-pool-orphan-test.f" GSI-INCLUDE
-   s" test/json-read-perf-phase-test.f" GSI-INCLUDE
    TEST:INSTALL-POOL-HOOKS ;
 
 : RUN ( -- )

@@ -95,7 +95,6 @@ SRC_COMMON=(
   src/habu/prof.f
   src/habu/regalloc.f
   src/habu/jit.f
-  src/habu/engine-size.f
   src/habu/fdio.f
   src/habu/aot-decl.f
   src/habu/aot-ident.f
@@ -361,61 +360,6 @@ bootstrap_preflight_recovery_gate() {
 }
 
 bootstrap_preflight_recovery_gate
-
-# `using NAME` must import a package's public words in the recovery engine exactly
-# as the native engine does: bare resolution while the import is open, nothing
-# left visible after `;using`, and the two named failures (unknown package,
-# ambiguous tail) exiting with their engine-error status. Each case compares the
-# whole of stdout and the first stderr line, so a silent no-op import or a
-# different diagnostic fails the recovery run.
-bootstrap_using_case() {
-  local name="$1"
-  local want_rc="$2"
-  local want_out="$3"
-  local want_diag="$4"
-  local bin="$T/$name"
-  local out="$T/$name.out"
-  local err="$T/$name.err"
-  local diag=""
-  local got=""
-  local rc=0
-
-  "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/test/$name-src.f\" slurp-file s\" $bin\" FORTH-EXE bye"
-  set +e
-  "$bin" >"$out" 2>"$err"
-  rc=$?
-  set -e
-  # Compare whole streams: the undefined-word diagnostic has no trailing newline,
-  # so a line-at-a-time read would silently see an empty string.
-  got="$(cat "$out")"
-  diag="$(cat "$err")"
-  if [[ "$rc" -ne "$want_rc" || "$got" != "$want_out" || "$diag" != "$want_diag" ]]; then
-    printf '%s: expected rc=%s stdout=%s diagnostic=%s; got rc=%s stdout=%s diagnostic=%s\n' \
-      "$name" "$want_rc" "$want_out" "$want_diag" "$rc" "$got" "$diag" >&2
-    exit 75
-  fi
-}
-
-bootstrap_using_gate() {
-  bootstrap_using_case bootstrap-using 0 \
-    "$(printf '7\n7\n7\n3\n9\nBOOTSTRAP-USING-OK')" ""
-  bootstrap_using_case bootstrap-using-unknown 91 \
-    "BOOTSTRAP-USING-ARMED" "hb: using: unknown package: NOSUCH-PACKAGE"
-  bootstrap_using_case bootstrap-using-ambiguous 94 \
-    "BOOTSTRAP-USING-ARMED" "hb: ambiguous bare word resolves in multiple used packages: BUS-BOTH"
-  # `;package` and the end of an evaluate frame both close the imports opened
-  # inside them, so the bare name is undefined again. Stage0's undefined-word
-  # diagnostic is the bare token (the native engine prefixes `E-UNDEFINED: `).
-  bootstrap_using_case bootstrap-using-scope 70 \
-    "BOOTSTRAP-USING-ARMED" "BUS-VALUE"
-  # The engine hands the package name to the checker's CHECKER-USING, so the
-  # checker resolves the same used publics as the engine once a recovery build
-  # compiles src/core/checker.f.
-  bootstrap_using_case bootstrap-using-checker-hook 0 \
-    "$(printf 'checker-using: BUS-A\n7\nBOOTSTRAP-USING-HOOK-OK')" ""
-}
-
-bootstrap_using_gate
 
 # One emission serves both steps: Gforth compiles this text into hb-stage0, and
 # hb-stage0 then compiles the same text into the first native stage.

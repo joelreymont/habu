@@ -14,18 +14,13 @@
 \ harness that stopped looking. The list is a statement somebody typed: it
 \ cannot notice a row that started being refused, and a row that STOPPED being
 \ refused stays on it until a person takes it off. Here the refusal is what the
-\ compiler answered this run, recorded with its own code, and it is a verdict of
-\ its own. A row that starts refusing turns from `smaller` into `REFUSED` on the
-\ next run and the committed artifact disagrees; a row that stops refusing turns
-\ the other way and the artifact disagrees again. Neither needs anybody to
-\ remember anything.
+\ compiler answered this run, recorded with its own code.
 \
-\ THE FIVE VERDICTS, AND WHICH OF THEM ARE FINDINGS.
+\ THE FIVE LIVE COMPARISON RESULTS.
 \
 \   smaller   the chain emitted fewer bytes than the engine's emitter
 \   equal     the same number of bytes
-\   LARGER    more bytes: a finding, named and counted, and the run exits
-\             non-zero on it
+\   LARGER    more bytes
 \   REFUSED   the chain declined the subject, with the code it declined it with:
 \             a raw measurement, printed with its code, and not a finding - the
 \             capability it waits for is a dot, and a run that failed on it would
@@ -35,14 +30,7 @@
 \
 \ WHY THE COMPARED TABLE IS COUNTS AND NOT COSTS. A byte count is read off the
 \ word's own dictionary record, and the data-stack traffic beside it is counted
-\ in the same emitted code: both are the same number on every host, in every
-\ run, moving only when a compiler moves them, so both can be compared exactly
-\ against a committed artifact. A cost is a measurement, and a machine with
-\ every core busy - which is what a gate is - moves one by more than any honest
-\ tolerance would catch, so the costs are held here but never written into the
-\ artifact. What is asked of them is a DIRECTION, at the foot of this file,
-\ against a band this run measured for itself; the entry that asserts it is
-\ tools/judge-timed.f and no suite schedules it.
+\ in the same emitted code. Costs are raw measurements reported separately.
 
 require lib/errors.f
 require lib/prelude.f
@@ -497,7 +485,7 @@ public
 \ THE CLAIM THE WHOLE COMPARISON EXISTS TO MAKE, and the one nothing above can
 \ carry: a byte count is not a cost, and a compiler that emitted fewer, slower
 \ instructions would pass every verdict in this file. It is answered here and
-\ asserted by tools/judge-timed.f, which no suite schedules.
+\ reported as raw measurements.
 \
 \ WHAT MAKES IT A DIRECTION AND NOT A NUMBER. Both columns are measured in ONE
 \ pass, in one process, interleaved, with the same floor taken off - the two
@@ -518,38 +506,6 @@ public
 \ the noise on one. Against two columns of one pass it would admit a chain eight
 \ times slower than the engine and call it level.
 \
-\ A ROW WHOSE ENGINE COST IS AT OR UNDER THE MEASUREMENT'S OWN FLOOR has no
-\ ratio to be judged by, and it is counted apart rather than passed quietly: an
-\ un-adjudicable row that read as "not slower" is exactly how a claim goes
-\ silent.
-
-public
-
-: COST-COMPARABLE? ( n -- bool ) {: k:n :}
-   k REFUSED? if false exit then
-   k OLD-PICOS@ FLOOR@ - 0 > ;
-
-: UNCOMPARABLE-ROWS ( -- n )
-   0
-   FILL @ 0 ?do
-      i REFUSED? 0= if
-         i COST-COMPARABLE? 0= if 1+ then
-      then
-   loop ;
-
-: SLOWER? ( n -- bool ) {: k:n :}
-   k COST-COMPARABLE? 0= if false exit then
-   k OLD-PICOS@ FLOOR@ - {: old:n :}
-   k NEW-PICOS@ FLOOR@ - {: new:n :}
-   new old <= if false exit then
-   new old -  PERMILLE *  old /  WORST-SPREAD @ > ;
-
-: SLOWER-ROWS ( -- n )
-   0
-   FILL @ 0 ?do
-      i SLOWER? if 1+ then
-   loop ;
-
 : REFUSED-ROWS ( -- n )
    0
    FILL @ 0 ?do

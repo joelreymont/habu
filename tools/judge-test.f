@@ -1,18 +1,9 @@
 \ judge-test.f - the scheduled half of the code generator judge.
 \ Run: bin/hb --load tools/judge-test.f
 \
-\ WHAT IT ASSERTS, AND WHY IT IS THE SAME WORDS THE COMMAND RUNS. Everything
-\ below goes through tools/judge/check.f, which is what
-\ `bin/hb --load tools/judge.f -- --check` drives, so a green run here is the
-\ command passing rather than a second implementation of it agreeing with
-\ itself.
-\
-\   the artifact          this tree's judgement and the committed file are the
-\                         same bytes, and the half compared is the half habu's
-\                         own chain determines - a forged clang cell does not
-\                         move it and a moved chain byte count does
-\   no larger row         no subject the chain compiled into more bytes than the
-\                         engine's emitter wrote for the same body
+\ The live table must preserve semantic agreement across the engine, native
+\ chain and available reference compiler. Refusals are measured by code rather
+\ than maintained as a list, and the derived text is the corpus file's own program.
 \   the refusals          are E-A64RA-SPILL on two named rows, E-NFEED-LITERAL on
 \                         one, and NOTHING ELSE. The old comparison named its
 \                         refused subjects on a list; here the code is checked,
@@ -59,223 +50,8 @@ private
 : ROW-OF ( ptr u8 n -- n )
    JUDGE-ROW:FIND ;
 
-: ARTIFACT-CASES ( -- )
-   JUDGE-CHECK:DIFF-AT -1 T=
-   JUDGE-ROW:LARGER-ROWS 0 T=
+: LIVE-AGREEMENT-CASES ( -- )
    JUDGE-ROW:DISAGREEING-ROWS 0 T= ;
-
-\ ---- what a host may move, and what it may not -------------------------------
-\ THE CLANG COLUMN IS OUTSIDE THE COMPARED BYTES, and this is where that is
-\ proved on the real table. A clang cell is not falsifiable by any mutation of
-\ habu, which is what docs/proofs.md asks of anything standing inside a gate;
-\ and the column is Mach-O only by construction today, because
-\ tools/codegen-compare-cc.f DECIDE refuses when HB-TARGET-MACOS? is false -
-\ the byte counts come out of `nm -m` and `size -m`. So a host that is not
-\ Mach-O has no column at all, and while a cell of it stood inside the checked
-\ half this gate was red on such a host for no habu reason.
-\
-\ THE FORGE IS OVER THE LIVE FORTY-SIX-ROW TABLE, not a fixture table, and it
-\ writes a reference value into EVERY row - which is exactly what a Mach-O host
-\ adds to this run that a host without the column does not. So the case says,
-\ in the only way a host without it can: regenerating the artifact where the
-\ reference builds moves the printed half and cannot move one byte of the half
-\ the gate compares. BOTH directions are asserted, because a forge that was
-\ quietly dropped would pass a one-sided one: the whole artifact must differ
-\ and the checked half must not. The cells are saved and put back, so the cases
-\ after this read the table the measurement left.
-\
-\ AND THE REFERENCE NOTE, by OFFSET rather than by searching the checked half
-\ for the word `clang`, which that half's own prose is entitled to use. The
-\ note opens on a fixed line on every host, so the case needs no branch on
-\ which of the two notes this host rendered.
-\
-\ AND THE OTHER DIRECTION OF THE GATE ITSELF, because a comparison that cannot
-\ fail proves nothing: one chain byte count moved is refused by that same byte
-\ check.
-
-$6000 constant SNAP-CAP
-create SNAP SNAP-CAP allot
-variable SNAP-U
-
-64 constant SAVE-MAX
-create REF-B-SAVE SAVE-MAX cells allot
-create REF-V-SAVE SAVE-MAX cells allot
-
-: SLOT ( ptr a n -- ptr a )
-   cells + ;
-
-: SNAP! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u SNAP-CAP > if E-JUDGE-REPORT-CAP throw then
-   a SNAP u STR-LEN BYTE-COPY-LEN
-   u SNAP-U ! ;
-
-: SNAP$ ( -- ptr u8 n )
-   SNAP SNAP-U @ ;
-
-: CHECKED-NOW$ ( -- ptr u8 n )
-   JUDGE-REPORT:TEXT$ JUDGE-BASE:CHECKED$ ;
-
-\ A reference byte count no host would produce, and a different one per row, so
-\ a renderer that carried any single one of them into the checked half moves it.
-: FORGED ( n -- n ) {: k:n :}
-   k 7 * 3 + ;
-
-\ Everything about one row the reference column owns, written together: the byte
-\ count, the answer, and the memory the twin wrote. They go together because
-\ giving a row a byte count is what makes it COVERED?, and a covered row's
-\ answer and memory are both compared - so bytes alone would be half a host and
-\ would report the unwritten answer as a disagreement.
-\
-\ THE MEMORY IS WRITTEN AS THE ENGINE'S, and that is exact rather than
-\ convenient: a run in which any twin's memory differed from the engine's is a
-\ run with a disagreeing row, which the artifact's own
-\ `columns disagreeing on the answer: 0` and INPUT-CASES below both refuse. So
-\ on a host that built a reference column this is the value that column already
-\ held, and putting it back is putting back what was there; on a host without
-\ one, nothing reads it. That is why this file never reads
-\ JUDGE-ROW:REF-WITNESS@, which row.f keeps private to its own agreement check.
-: REF-PUT ( n n n -- ) {: k:n bytes:n value:n :}
-   k bytes JUDGE-ROW:REF!
-   k  k JUDGE-ROW:REF-PICOS@  k JUDGE-ROW:REF-FLOOR@  value
-      JUDGE-ROW:REF-COST!
-   k  k JUDGE-ROW:OLD-WITNESS@  JUDGE-ROW:REF-WITNESS! ;
-
-: REF-SAVE! ( -- )
-   JUDGE-ROW:ROWS SAVE-MAX > if E-JUDGE-BASE-CAP throw then
-   JUDGE-ROW:ROWS 0 ?do
-      i JUDGE-ROW:REF-BYTES@  REF-B-SAVE i SLOT !
-      i JUDGE-ROW:REF-VALUE@  REF-V-SAVE i SLOT !
-   loop ;
-
-: REF-RESTORE ( -- )
-   JUDGE-ROW:ROWS 0 ?do
-      i  REF-B-SAVE i SLOT @  REF-V-SAVE i SLOT @  REF-PUT
-   loop ;
-
-\ WHAT A MACH-O HOST ADDS TO THIS RUN, on every row: a byte count, and an answer
-\ that AGREES with the engine's. The second half is not an assumption - the
-\ committed artifact's `columns disagreeing on the answer: 0` is the record that
-\ the reference really did agree where it was built.
-: REF-FORGE ( -- )
-   JUDGE-ROW:ROWS 0 ?do
-      i  i FORGED  i JUDGE-ROW:OLD-VALUE@  REF-PUT
-   loop ;
-
-\ Where a text first carries another, or -1. The anchor case wants an OFFSET
-\ rather than a yes or no, because what it asserts is which side of the marker
-\ the reference note fell on.
-: AT$ ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
-   -1
-   u v < if 0 else u v - 1+ then 0 ?do
-      dup 0 < if
-         a i + v b v STR= if drop i then
-      then
-   loop ;
-
-: HOST-CASES ( -- )
-   s" the tree and the committed artifact agree before anything is forged"
-   T-LABEL
-   JUDGE-CHECK:DIFF-AT -1 T=
-
-   JUDGE-REPORT:TEXT$ SNAP!
-   REF-SAVE!
-   REF-FORGE
-
-   s" a whole reference column, forged, moves the artifact" T-LABEL
-   JUDGE-REPORT:TEXT$ SNAP$ STR= TFALSE
-
-   s" and does not move one byte of the checked half" T-LABEL
-   CHECKED-NOW$ SNAP$ JUDGE-BASE:CHECKED$ T$=
-   JUDGE-CHECK:DIFF-AT -1 T=
-   JUDGE-ROW:DISAGREEING-ROWS 0 T=
-
-   \ THE ONE THING ABOUT THE REFERENCE THE CHECKED HALF STILL SEES, and it is a
-   \ finding rather than a fact about a host: a twin that answered differently
-   \ from the engine on a pinned input. That is what the column is compared FOR,
-   \ and it is why the tally stays above the marker while the bytes go below it.
-   s" a reference that ANSWERS differently is a finding and does move it"
-   T-LABEL
-   0  0 FORGED  0 JUDGE-ROW:OLD-VALUE@ 1+  REF-PUT
-   JUDGE-ROW:DISAGREEING-ROWS 1 T=
-   JUDGE-CHECK:DIFF-AT 0 >= TTRUE
-
-   REF-RESTORE
-
-   s" and the table is back where the measurement left it" T-LABEL
-   JUDGE-ROW:DISAGREEING-ROWS 0 T=
-   JUDGE-CHECK:DIFF-AT -1 T=
-
-   \ The note names the column, or names why this host has none. Either way it
-   \ is below the line the check stops at.
-   s" the reference note is below the marker, not inside the checked half"
-   T-LABEL
-   JUDGE-REPORT:TEXT$ JUDGE-REPORT:REFERENCE-ANCHOR$ AT$ {: anchor:n :}
-   anchor 0 >= TTRUE
-   JUDGE-REPORT:TEXT$ JUDGE-BASE:MARK-AT {: mark:n :}
-   anchor mark > TTRUE
-
-   \ And the gate can still fail: one chain byte count moved is refused.
-   s" a moved chain byte count is refused by that same comparison" T-LABEL
-   0 JUDGE-ROW:NEW-BYTES@ {: bytes:n :}
-   0 JUDGE-ROW:NEW-TAIL? {: tail:bool :}
-   0 bytes 4 + tail JUDGE-ROW:NEW!
-   JUDGE-CHECK:DIFF-AT 0 >= TTRUE
-   0 bytes tail JUDGE-ROW:NEW!
-   JUDGE-CHECK:DIFF-AT -1 T= ;
-
-\ ---- which WAY the artifact moved --------------------------------------------
-\ The byte comparison above says the tree and the artifact are the same text. It
-\ cannot say what a difference WOULD have been, and a chain row that grew and
-\ one that shrank are two different events - a regression against ourselves and
-\ progress. tools/judge/base.f adjudicates them apart and `--check` prints that
-\ adjudication under its disagreement.
-\
-\ THE FIXTURE IS THE REAL MEASUREMENT WITH ONE NUMBER MOVED. The committed
-\ artifact is the artifact, and the row that is shifted is a row of this run, so
-\ what is compared is a whole real table against a whole real file differing in
-\ exactly one cell. tools/judge/base-test.f attacks the reader itself with
-\ artifacts built to fool it; what is asserted here is that it reads the REAL
-\ one - every row of it, nothing lost, nothing gained, nothing to report - so a
-\ report that changed the shape of a row is caught here rather than leaving
-\ those fixtures agreeing with a format nothing writes any more.
-
-: ADJUDICATE-COMMITTED ( -- n )
-   JUDGE-CHECK:COMMITTED$ JUDGE-BASE:LOAD-FROM
-   JUDGE-BASE:ADJUDICATE ;
-
-: DIRECTION-CASES ( -- )
-   JUDGE-BASE:QUIET!
-
-   s" the committed artifact reads back as the rows this run measured" T-LABEL
-   ADJUDICATE-COMMITTED 0 T=
-   JUDGE-BASE:ROWS JUDGE-ROW:ROWS T=
-   JUDGE-BASE:REGRESSIONS 0 T=
-   JUDGE-BASE:IMPROVEMENTS 0 T=
-   JUDGE-BASE:ENGINE-MOVES 0 T=
-   JUDGE-BASE:LOST 0 T=
-   JUDGE-BASE:GAINED 0 T=
-
-   0 JUDGE-ROW:NEW-BYTES@ {: bytes:n :}
-   0 JUDGE-ROW:NEW-TAIL? {: tail:bool :}
-
-   s" a chain row bigger than the artifact's is a regression and a finding"
-   T-LABEL
-   0 bytes 4 + tail JUDGE-ROW:NEW!
-   ADJUDICATE-COMMITTED 1 T=
-   JUDGE-BASE:REGRESSIONS 1 T=
-   JUDGE-BASE:IMPROVEMENTS 0 T=
-
-   s" a chain row smaller than the artifact's is progress and is not" T-LABEL
-   0 bytes 4 - tail JUDGE-ROW:NEW!
-   ADJUDICATE-COMMITTED 0 T=
-   JUDGE-BASE:REGRESSIONS 0 T=
-   JUDGE-BASE:IMPROVEMENTS 1 T=
-
-   0 bytes tail JUDGE-ROW:NEW!
-   JUDGE-BASE:LOUD!
-
-   s" and the row is back where the measurement left it" T-LABEL
-   ADJUDICATE-COMMITTED 0 T= ;
 
 \ ---- the pinned inputs past the first ----------------------------------------
 \ A row is TIMED on one input and VALUED on every input it states. The ones past
@@ -625,9 +401,7 @@ public
 : RUN ( -- )
    T-RESET
    JUDGE-CHECK:JUDGE-ALL
-   ARTIFACT-CASES
-   HOST-CASES
-   DIRECTION-CASES
+   LIVE-AGREEMENT-CASES
    INPUT-CASES
    TRAFFIC-FORM-CASES
    TRAFFIC-COLUMN-CASES

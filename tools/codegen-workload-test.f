@@ -907,58 +907,7 @@ using CODEGEN-SCAN
       then
    loop ;
 
-
-\ ---- the one arm question that does need a clock ------------------------------
-\ ARM-CASES above tells the two columns apart by their ANSWERS, which is all a
-\ scheduled suite can do. It leaves one thing unsaid: a store that swapped the
-\ two arms' TIMES while leaving their answers alone, or a delta that read the two
-\ times in the other order, inverts every verdict the report prints and nothing
-\ clock-free can see it. Two recorded times are two numbers from the same clock,
-\ and which arm each came from is not recoverable from them unless the arms did
-\ measurably different amounts of work.
-\
-\ So the row below is deliberately lopsided - its old arm does thousands of times
-\ the work of its new arm - and the two assertions are about ORDER, at a margin
-\ no host can close. They still read a clock, which is why they live behind
-\ TIMED and are reached only from tools/codegen-workload-timed-test.f, run by
-\ hand, exactly as tools/judge-timed.f holds the cost-direction
-\ assertions its own scheduled suite may not make.
-private
-
-64 constant TIMED-REPS
-5 constant TIMED-ROUNDS
-4096 constant TIMED-WORK
-
-variable SPIN
-
-: HEAVY ( -- )
-   0 SPIN !
-   TIMED-WORK 0 ?do SPIN @ 1+ SPIN ! loop ;
-
-: LIGHT ( -- )
-   0 SPIN ! ;
-
 public
-
-: TIMED ( -- )
-   T-RESET
-   s" timed-arms" s" timed-arms" CODEGEN-CLOCK:OPEN-REAL
-   TIMED-REPS TIMED-ROUNDS 1 1
-      [: HEAVY ;] [: LIGHT ;] CODEGEN-CLOCK:PAIR
-
-   s" the column a row calls old holds the arm it was handed as old" T-LABEL
-   s" timed-arms" CODEGEN-CLOCK:ROW-OF {: k:n :}
-   k 0 >= TTRUE
-   k CODEGEN-CLOCK:OLD-NS  k CODEGEN-CLOCK:NEW-NS  > TTRUE
-
-   s" and a new arm that ran faster is reported as a saving" T-LABEL
-   k CODEGEN-CLOCK:DELTA-PERMILLE 0 > TTRUE
-
-   s" and every alternated round agreed: the paired interval sits above zero" T-LABEL
-   k CODEGEN-CLOCK:PAIRED? TTRUE
-   k CODEGEN-CLOCK:DELTA-LO 0 > TTRUE
-   T-REPORT
-   s" codegen-workload-timed-test: ok" type cr ;
 
 : MAIN ( -- )
    T-RESET

@@ -309,9 +309,7 @@ variable BF-CERT-PATH-U
 
 : BF-PREPARE-ENV ( -- )
    PROC-ENV-RESET
-   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+
-   s" HABU_ENGINE_SIZE_MAP" GETENV {: map:ptr mapu:n :}
-   mapu 0 > if s" HABU_ENGINE_SIZE_MAP" >LEN map mapu >LEN PROC-ENV+ then ;
+   s" HB_TMP" >LEN BF-TMP$ >LEN PROC-ENV+ ;
 
 : BF-FINISH-PID ( pid -- n ) {: pid :}
    PROC-ARGV-ENV-RESET
@@ -1049,7 +1047,6 @@ package BUILD-FIXPOINT
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
-   out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
    out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
@@ -1150,7 +1147,6 @@ package BUILD-FIXPOINT
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
-   out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
    out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
@@ -1331,9 +1327,8 @@ package BUILD-FIXPOINT
 \ this report proves Uncheckable and Rejected are 0. CENSUS-COUNT reopens
 \ VERIFY to reuse its tokenizer (NEXT-SCAN skips strings and `\`/`( )` comments and
 \ each colon body), so the tally is exactly the top-level colon definitions the
-\ certify scanner verified. The count is per target: both assemblies include the
-\ target's src/os leg, so linux-arm64 and macos-arm64 measure their
-\ own totals, mirroring the per-target CODELEN rows in test/gate-build-size.f.
+\ certify scanner verified. The count is per target because both assemblies
+\ include the target's src/os leg.
 \
 \ The total is reported with its two phases beside it because they answer
 \ different questions: the boot prefix is what the host already carries and the
@@ -1633,8 +1628,7 @@ variable BF-DRV-R
 \ second prefix, no second source list:
 \
 \   hb-host    the CAPTURE HOST. No artifact: today's bin/hb shape. A build
-\              artifact, never installed - but the engine every size gate has
-\              always measured, and the one the capture runs in.
+\              artifact, never installed, and the engine the capture runs in.
 \   hb-stdin   the PRODUCT, seeded from the artifact captured in hb-host.
 \              BF-INSTALL-HB is untouched, so bin/hb is the product by
 \              construction.
@@ -1651,12 +1645,9 @@ variable BF-DRV-R
    s" hb-stdin" BF-CHMOD-X-TMP
    s" hb-stdin" BF-CODESIGN-VERIFY-TMP ;
 
-\ The capture host and the maker that wrote it. The maker is kept because the
-\ CODELEN gate re-runs it with HABU_ENGINE_SIZE_MAP to attribute the engine's
-\ bytes, and the engine it must attribute is the host.
 : BF-KEEP-HOST ( -- )
    s" hb-stdin" s" hb-host" BF-RENAME-TMP
-   s" hb-stdin-mk" s" hb-host-mk" BF-RENAME-TMP ;
+   s" hb-stdin-mk" BF-REMOVE-TMP ;
 
 : BF-BUILD-STDIN-FROM-STAGE ( -- )
    s" src/habu/stdin.f" BF-EMIT-ENGINE

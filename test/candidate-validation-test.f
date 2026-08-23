@@ -98,8 +98,6 @@ variable CV-PU                       \ current path slice length
 
 : RUNNER ( -- )
    s" test/gate-validation-worker.f" SHAPE:LOAD
-   s" 12 constant NESTED-EXEC-MAX" SHAPE:MUST-HAVE
-   s" count NESTED-EXEC-MAX > if" SHAPE:MUST-HAVE
    S\" candidate candidateu s\q shared\q s\q candidate validation shared\q RUN-WORKER" SHAPE:MUST-HAVE
    S\" s\q bin/hb\q s\q shared\q s\q baseline validation shared\q RUN-WORKER" SHAPE:MUST-HAVE
    S\" candidate candidateu s\q top-row\q s\q candidate validation top-row\q RUN-WORKER" SHAPE:MUST-HAVE

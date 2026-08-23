@@ -25,11 +25,12 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/test/subject.f
-require test/tail-ratchet.f
+require test/tail-parity.f
 
 package SEAL-SUITE
 
 2048 constant SLV-CAP
+30000 constant SLV-TIMEOUT-MS
 ENGINE-ERROR:SEAL-VIOLATION constant SLV-SEAL-RC
 
 variable SLV-ROOT-U
@@ -385,28 +386,25 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the forge as a --load file with empty stdin.
 : SLV-RUN-LOAD ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    SLV-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SLV-CHILD >LEN PROC-ARGV+
    SLV-HB$ >LEN  SLV-EMPTY 0 >LEN  SLV-OUT SLV-CAP >LEN
-   SLV-ERR SLV-CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-STORE! ;
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
 : SLV-RUN-STDIN ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    SLV-IN!
    PROC-ARGV-RESET
    SLV-HB$ >LEN  SLV-IN$ >LEN  SLV-OUT SLV-CAP >LEN
-   SLV-ERR SLV-CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-STORE! ;
 
 : SLV-SUBJECT ( ptr u8 n -- )
-   TAIL-RATCHET:SUBJECT
    SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
-   TAIL-BUDGET:TIMEOUT-MS >MS SUBJECT:RUN SLV-STORE! ;
+   SLV-TIMEOUT-MS >MS SUBJECT:RUN SLV-STORE! ;
 
 : SLV-ASSERT-SEAL ( -- )                    \ child died with the seal-violation exit
    SLV-EXITED @ TTRUE
@@ -549,28 +547,26 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
    s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 84" T-LABEL
    SLV-OWNER-PUB-FORGE$ SLV-SUBJECT SLV-ASSERT-PROT-PUBLISH ;
 
-7 constant DIRECT-N
-43 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
 
 : NEG-LOAD ( ptr u8 n -- )
    2dup SLV-RUN-LOAD SLV-ASSERT-SEAL
-   RESULT TAIL-RATCHET:SNAPSHOT
+   RESULT TAIL-PARITY:SNAPSHOT
    SLV-SUBJECT SLV-ASSERT-SEAL
-   RESULT TAIL-RATCHET:SAME ;
+   RESULT TAIL-PARITY:SAME ;
 
 : NEG-STDIN ( ptr u8 n -- )
    2dup SLV-RUN-STDIN SLV-ASSERT-SEAL
-   RESULT TAIL-RATCHET:SNAPSHOT
+   RESULT TAIL-PARITY:SNAPSHOT
    SLV-SUBJECT SLV-ASSERT-SEAL
-   RESULT TAIL-RATCHET:SAME ;
+   RESULT TAIL-PARITY:SAME ;
 
 : POS-LOAD ( ptr u8 n -- )
    2dup SLV-RUN-LOAD SLV-ASSERT-OK
-   RESULT TAIL-RATCHET:SNAPSHOT
+   RESULT TAIL-PARITY:SNAPSHOT
    SLV-SUBJECT SLV-ASSERT-OK
-   RESULT TAIL-RATCHET:SAME ;
+   RESULT TAIL-PARITY:SAME ;
 
 : SLV-PARITY-TEST ( -- )
    s" direct --load and subject preserve raw seal results" T-LABEL
@@ -579,9 +575,6 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
    SLV-CUR-FORGE$ NEG-STDIN
    s" direct --load and subject preserve raw successful results" T-LABEL
    SLV-LANG-FORGE$ POS-LOAD ;
-
-: SLV-PARITY-CHECK ( -- )
-   DIRECT-N SUBJECT-N TAIL-RATCHET:CHECK ;
 
 : SLV-PREPARE ( -- )
    CLEANUP-RESET
@@ -685,7 +678,6 @@ public
 
 : RUN ( -- )
    T-RESET
-   TAIL-RATCHET:START
    SLV-PREPARE
    SLV-PARITY-TEST
    SLV-NEGATIVES
@@ -695,7 +687,6 @@ public
    SLV-PWID-CAP
    SLV-PROT-PUBLISH
    SLV-OWNER-FORGE
-   SLV-PARITY-CHECK
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;

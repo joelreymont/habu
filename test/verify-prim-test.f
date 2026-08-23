@@ -356,7 +356,7 @@ create PATH-BUF FS-PATH-CAP allot
 $1000 constant CHILD-MAX
 create CHILD-OUT CHILD-MAX allot
 create CHILD-ERR CHILD-MAX allot
-5000 constant CHILD-NOMINAL-MS
+15000 constant CHILD-TIMEOUT-MS
 $1000 constant CORPUS-MAX
 create NATIVE-PATH FS-PATH-CAP allot
 create VERIFY-PATH FS-PATH-CAP allot
@@ -372,7 +372,7 @@ variable COLD-U
 variable ROOT-U
 
 : CHILD-CAP ( -- len ) CHILD-MAX >LEN ;
-: CHILD-TIMEOUT ( -- ms ) CHILD-NOMINAL-MS T-BUDGET-MS >MS ;
+: CHILD-TIMEOUT ( -- ms ) CHILD-TIMEOUT-MS >MS ;
 
 : BUILD-DRIVER ( ptr u8 n -- ) {: row:ptr rowu:n :}
    BUF-CLEAR

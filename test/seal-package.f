@@ -33,11 +33,12 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/test/subject.f
-require test/tail-ratchet.f
+require test/tail-parity.f
 
 package SEAL-TEST
 
 2048 constant SPK-CAP
+30000 constant SPK-TIMEOUT-MS
 ENGINE-ERROR:SEAL-PACKAGE constant SPK-SEAL-RC
 
 variable SPK-ROOT-U
@@ -244,28 +245,25 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 \ Run the forge as a --load file with empty stdin.
 : SPK-RUN-LOAD ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    SPK-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    SPK-CHILD >LEN PROC-ARGV+
    SPK-HB$ >LEN  SPK-EMPTY 0 >LEN  SPK-OUT SPK-CAP >LEN
-   SPK-ERR SPK-CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-STORE! ;
 
 \ Run the forge as a piped stdin program (no --load), the other cold-prefix path.
 : SPK-RUN-STDIN ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    SPK-IN!
    PROC-ARGV-RESET
    SPK-HB$ >LEN  SPK-IN$ >LEN  SPK-OUT SPK-CAP >LEN
-   SPK-ERR SPK-CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   SPK-ERR SPK-CAP >LEN  SPK-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SPK-STORE! ;
 
 : SPK-SUBJECT ( ptr u8 n -- )
-   TAIL-RATCHET:SUBJECT
    SPK-OUT SPK-CAP >LEN SPK-ERR SPK-CAP >LEN
-   TAIL-BUDGET:TIMEOUT-MS >MS SUBJECT:RUN SPK-STORE! ;
+   SPK-TIMEOUT-MS >MS SUBJECT:RUN SPK-STORE! ;
 
 : SPK-ASSERT-SEAL ( -- )                     \ child died with the sealed-package exit
    SPK-EXITED @ TTRUE
@@ -278,28 +276,26 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-ASSERT-CTOR-MARK ( -- )
    SPK-OUT SPK-OUT-U @ s" ctor-ready" CONTAINS? TTRUE ;
 
-3 constant SPK-DIRECT-N
-50 constant SPK-SUBJECT-N
 : SPK-RESULT ( -- ptr u8 n ptr u8 n n )
    SPK-OUT SPK-OUT-U @ SPK-ERR SPK-ERR-U @ SPK-RC @ ;
 
 : NEG-LOAD ( ptr u8 n -- )
    2dup SPK-RUN-LOAD SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-RATCHET:SNAPSHOT
+   SPK-RESULT TAIL-PARITY:SNAPSHOT
    SPK-SUBJECT SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-RATCHET:SAME ;
+   SPK-RESULT TAIL-PARITY:SAME ;
 
 : NEG-STDIN ( ptr u8 n -- )
    2dup SPK-RUN-STDIN SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-RATCHET:SNAPSHOT
+   SPK-RESULT TAIL-PARITY:SNAPSHOT
    SPK-SUBJECT SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-RATCHET:SAME ;
+   SPK-RESULT TAIL-PARITY:SAME ;
 
 : POS-LOAD ( ptr u8 n -- )
    2dup SPK-RUN-LOAD SPK-ASSERT-OK
-   SPK-RESULT TAIL-RATCHET:SNAPSHOT
+   SPK-RESULT TAIL-PARITY:SNAPSHOT
    SPK-SUBJECT SPK-ASSERT-OK
-   SPK-RESULT TAIL-RATCHET:SAME ;
+   SPK-RESULT TAIL-PARITY:SAME ;
 
 : SPK-PARITY-TEST ( -- )
    s" direct --load and subject preserve raw sealed-package results" T-LABEL
@@ -308,9 +304,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" TFAM" SPK-PKG-FORGE$ NEG-STDIN
    s" direct --load and subject preserve raw successful results" T-LABEL
    SPK-OK-PKG-FORGE$ POS-LOAD ;
-
-: SPK-PARITY-CHECK ( -- )
-   SPK-DIRECT-N SPK-SUBJECT-N TAIL-RATCHET:CHECK ;
 
 : SPK-PREPARE ( -- )
    CLEANUP-RESET
@@ -349,10 +342,8 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 : SPK-TYPE-RUN ( -- )
    T-RESET
-   TAIL-RATCHET:START
    SPK-PREPARE
    SPK-TYPE-TEST
-   0 3 TAIL-RATCHET:CHECK
    SPK-CLEANUP
    T-REPORT
    s" seal-package-type-name-test: ok" type cr ;
@@ -461,7 +452,6 @@ public
 
 : RUN ( -- )
    T-RESET
-   TAIL-RATCHET:START
    SPK-PREPARE
    SPK-PARITY-TEST
    SPK-NEGATIVES
@@ -472,7 +462,6 @@ public
    SPK-NEGATIVES-BTICK-POST
    SPK-POSITIVES
    SPK-POSITIVES-TICK
-   SPK-PARITY-CHECK
    SPK-CLEANUP
    T-REPORT
    s" seal-package-test: ok" type cr

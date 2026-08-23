@@ -324,9 +324,7 @@ Use the repo skills for current commands:
   missing `bin/hb` with Gforth 0.7.9+, refresh the self-hosted engine, and
   port bootstrap work to Linux/aarch64.
 - [`skills/habu-gate/SKILL.md`](skills/habu-gate/SKILL.md) — run focused and
-  full native gates with explicit pool and budget arguments.
-- [`skills/habu-host-profiles/SKILL.md`](skills/habu-host-profiles/SKILL.md) —
-  run host-class macOS and Jetson/Orin timing profiles.
+  full native gates.
 - [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md) — build AOT
   binaries and REPL images.
 

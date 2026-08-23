@@ -1787,15 +1787,6 @@ throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
 audited execution-token boundary for top-level test scripts, where `[: ;]`
 quotation syntax is unavailable.
 
-`lib/test/budget.f` keeps child timeouts and performance ratchets separate.
-`T-BUDGET-MS ( n -- n )` scales a nominal timeout by `HB_LOAD_PCT`, which
-includes measured host load plus the gate's structural pool-pressure floor, so
-a healthy-but-slow child does not read as hung. `TEST-BUDGET:PERF-MS ( n -- n )`
-scales a performance ratchet by measured `HB_CAL_PCT` only, so an idle full gate
-still enforces its nominal phase limits. Both factors are clamped to 100..300
-percent; standalone runs without an exported factor self-calibrate. Declare
-budgets as named nominal constants behind the appropriate scaling word.
-
 `TEST:*` defines reusable suite/group/test orchestration. Project adapters
 install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
 `TEST:ARGS-BEGIN!`, `TEST:ARG+!`, `TEST:SELECT?!`, `TEST:RUNNER!`, and

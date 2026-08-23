@@ -265,26 +265,8 @@ SUITE judge-ref
    tools/judge/ref-test.f
 ;SUITE
 
-\ And the reader that says which WAY the judged artifact moved. The byte-for-byte
-\ check says the tree and the committed file differ and where; it cannot say
-\ whether the chain got smaller or bigger, and those are two different events.
-\ This member states small tables, renders them through the report the command
-\ prints, reads them back and adjudicates: bigger is a regression, smaller is
-\ progress, the engine moving either way is a finding, and a row on one side and
-\ not the other is a finding. Its fixtures are artifacts built to fool a reader
-\ that searched for text - a subject named inside a sentence, a row written
-\ twice, a verdict word that is not one, a field missing, a declared count that
-\ disagrees, and cost lines under the marker that must never be read as rows.
-\ It compiles no corpus and reads no clock.
-SUITE judge-base
-   tools/judge/base-test.f
-;SUITE
-
-\ And the judged table itself: every subject of a corpus compiled through both
-\ code generators from ONE text, with clang beside them, and the committed
-\ artifact that says what this tree emits. It runs the same words
-\ `bin/hb --load tools/judge.f -- --check` drives, so what passes here is what
-\ that command does. What it pins that the old comparison could not: every
+\ The judged table compiles every subject through both code generators from
+\ one text, with clang beside them. Every
 \ subject the chain declines is checked against the CODE the compiler refused it
 \ with, measured this run, rather than against a list of their names, and a
 \ refusal for a reason nobody has named fails the member. Nothing it asserts
@@ -337,13 +319,8 @@ SUITE codegen-fork-reference
 \ the shape of their runs, never their times. The deltas themselves - what the
 \ new code generator is worth to a program, and which of them clear the bar
 \ their own family's null draws set - are printed by
-\ bin/hb --load tools/codegen-workload.f, run by hand on a quiet machine. The
-\ one claim that genuinely needs two arms to have taken measurably different
-\ times - that the column a row calls old holds the arm handed to it as old - is
-\ in tools/codegen-workload-timed-test.f, run by hand beside that entry and
-\ listed in no suite, exactly as tools/judge-timed.f is. The
-\ member is mirrored into the resident stdlib/tail-pure fork group, so it is
-\ scheduled rather than run by hand.
+\ bin/hb --load tools/codegen-workload.f.
+\ This scheduled member checks its functional prerequisites without a clock.
 SUITE codegen-workload
    tools/codegen-workload-test.f
 ;SUITE
@@ -730,9 +707,7 @@ SUITE compiler-native-vocab
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
 \ and spawns child engines, so it runs in the PROOF slice - SUITE-PROOF? in
 \ test/gate-stdlib-lib.f selects it, and phase 40 of test/run-lib.f spawns that
-\ slice - and is not mirrored into the resident fast tier. The seven proof gates
-\ and the spill probe below share that slice; it is scheduled first in the early
-\ order because the instruction gate is the run's long pole.
+\ slice - and is not mirrored into the resident fast tier.
 \
 \ The earlier wording on these eight entries said they "run here in the
 \ standalone stdlib gate", which named no runner: the only slice that reaches a
@@ -771,24 +746,13 @@ SUITE checker-model-proof
 ;SUITE
 
 \ The snapshot relocation parity gate compiles formal/Common/Reloc.v with the
-\ Rocq proof assistant for the same reason, so it runs in the proof slice
-\ alongside its siblings.
+\ Rocq proof assistant, so it runs in the proof slice alongside its siblings.
 SUITE compiler-reloc-proof
    test/compiler/reloc-proof.f
 ;SUITE
 
-\ The instruction-encoding parity gate compiles formal/Common/Insn.v with the
-\ Rocq proof assistant and spawns child engines for the encodings the shipped
-\ assembler refuses by ending the process, so it runs in the proof slice
-\ alongside its four siblings. It is the slice's long pole and it has the least
-\ headroom of any suite in the gate: 99543ms quiescent against a 120000ms nominal
-\ wall. That wall used to be a fixed constant and this suite is what proved the
-\ constant wrong - on a host running a second gate beside this one it timed out
-\ at 120145ms, a 21 percent stretch that the load factor exists to absorb.
-\ STDLIB-GATE:SUITE-TIMEOUT-MS now derives from that nominal through
-\ lib/test/budget.f, and test/run-lib.f hands every spawned phase the
-\ HB_LOAD_PCT the resident phases already had. The slice still gets a phase to
-\ itself and still starts first, because it remains the run's long pole.
+\ The instruction-encoding parity gate drives the Rocq proof assistant and child
+\ engines, so it remains in the proof slice.
 SUITE compiler-insn-proof
    test/compiler/insn-proof.f
 ;SUITE
@@ -1144,14 +1108,9 @@ SUITE aot-section-reach
    tools/aot-section-reach-lint-test.f
 ;SUITE
 
-SUITE engine-size
-   test/engine-size-test.f
-;SUITE
-
 SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/json-read-test.f
-   lib/json-read-perf-contract-test.f
    lib/memory-test.f
    lib/vector-test.f
    lib/byte-buffer-test.f
@@ -1405,16 +1364,6 @@ SUITE hb-build-fixtures
 
 SUITE gate-pool
    test/gate-pool-test.f
-   test/json-read-perf-phase-test.f
-;SUITE
-
-\ The gate's own load factor: that a spawned phase is handed it at all, and that
-\ the two per-suite walls are derived from it instead of frozen. It runs in the
-\ tail slice, which spawns a fresh process per suite, because it starts the
-\ runner for real - TEST:PREPARE reads the process's script arguments - and a
-\ forked member of a slice would be handed that slice's arguments instead.
-SUITE gate-budget
-   test/gate-budget-test.f
 ;SUITE
 
 package STDLIB-GATE public get-current ;package

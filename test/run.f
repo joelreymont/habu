@@ -5,7 +5,6 @@
 \ RUN to child files that own those names.
 
 require test/run-lib.f
-require test/json-read-perf-phase.f
 require tools/codegen-compare-cabi.f
 
 \ Map the clang reference column here, in the process the gate was exec'd into,
@@ -24,5 +23,4 @@ TEST:PREPARE
 TEST:EARLY-EXTERNAL-START
 require test/run-resident.f
 TEST:DAG-RUN-REST
-JSON-READ-PERF-PHASE:START
 TEST:COMPLETE

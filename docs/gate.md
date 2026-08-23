@@ -125,9 +125,7 @@ process-fork<TAB>generation<TAB>owner<TAB>-<TAB>direct|reaper
 ```
 
 The explicit owner is the authoritative pool slot or helper label; otherwise
-the active child label or executable path is used. Performance ratchets are
-owner-local: unrelated concurrent phases and process-contract fixtures remain
-visible in the total without consuming another phase's budget.
+the active child label or executable path is used.
 `tools/process-primitive-lint.f` makes the census closed-world by rejecting raw
 spawn/fork primitive calls outside the checked process modules and the checker
 primitive declaration table.
@@ -193,21 +191,11 @@ Infrastructure failures are distinct from test failures: pool spawn, poll, or
 capture-open errors are a fast abort that kills all live children and throws
 instead of recording a red phase.
 
-## Host Profiles
+## Pool size
 
-Timing regression checks are host-specific. Use named profiles instead of
-remembering slot counts or cache state:
-
-| Profile | Host proof | Slots | Nested |
-|---|---|---:|---:|
-| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 |
-| `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 |
-| `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 |
-
-The default profile is `auto`: the runner inspects the target and host files
-before the suite starts. Manual `--perf-profile NAME` forces a profile. Pool
-overrides must appear after the profile; top-level `--pool-slots` is capped at
-12.
+The gate pool chooses its platform default. Use `--pool-slots N` and
+`--nested-pool-slots N` only for an explicit override; top-level slots are
+capped at 12.
 
 `--cold-cache` selects a private per-run scratch cache root under the suite temp
 directory and measures builder, maker, and artifact cache fill without deleting
@@ -217,7 +205,7 @@ Wrap the command with `/usr/bin/time -p` when comparing end-to-end shell wall
 time across hosts. `test/run.f` runs the suite directly in `bin/hb`; no
 top-level test-suite snapshot is built. The side-effect-free implementation
 lives in `test/run-lib.f`; invoking it directly is for focused harness debugging
-only. Current commands live in `skills/habu-host-profiles/SKILL.md`.
+only.
 
 ## Implementation Sequence
 
@@ -281,87 +269,6 @@ only. Current commands live in `skills/habu-host-profiles/SKILL.md`.
    suite; only explicit deps and isolation barriers drain the pool.
    Status: top runner snapshots and fixed runner slots are removed. Remaining
    drains are isolation barriers or candidate readiness dependencies.
-
-## Targets
-
-Short-term Jetson/Orin target: warm builder, maker, and artifact caches;
-uncontended full gate passes.
-
-Architecture target:
-
-- `inner-hb + inner-hb-stdin <= 15`;
-- candidate validation uses at most 3 worker execs plus 8 nested execs;
-- normal runtime uses at most 2 owner execs plus 10 subject execs and 10 seconds;
-- the stdlib process tail retains exactly 15 direct execs and 167 isolated
-  subject cases, with a nominal 10-second group ratchet;
-- `boundary <= 20`;
-- slowest host-source semantic test under 10 seconds on Jetson/Orin;
-- hot Jetson/Orin median near 30 seconds once candidate-source batching and
-  dependency scheduling land.
-
-Global exec/fork totals are diagnostic census values, not performance limits:
-process API tests intentionally launch large fixed matrices, and co-located
-reapers depend on whether a case runs inside a pool worker. Tail child timeouts
-use bounded `HB_LOAD_PCT`, including the structural pool-pressure floor;
-the remaining wall-clock ratchets — the engine runtime slice, both stdlib tail
-ratchets and the MATCH compile bench — use measured `HB_CAL_PCT` only,
-preserving the nominal 8/10-second limits on an idle full gate. Per-owner
-ratchets catch semantic engine-boot regressions without conflating those
-contracts.
-
-## json-read ratchet ratios
-
-The six JSON-reader benchmarks do **not** read `HB_CAL_PCT`, and must not. They
-are judged as ratios against a frozen reference workload timed in the same
-interleaved rounds (`lib/json-read-perf-test.f`), so the machine's speed appears
-in both terms and divides out instead of being compensated for.
-
-Two rules make the ratio mean anything, and both were established by
-measurement rather than argument:
-
-- **The reference must have the workloads' shape.** A flat byte-scan reference
-  made the verdicts *worse* than no reference on four of six rows. This host has
-  8 performance and 4 efficiency cores, and each loop shape has its own penalty
-  between them, so a wrong-shaped reference compounds core placement rather than
-  cancelling it — the same defect that disqualified the register-only
-  calibration spin. The reference copies the reader's silhouette: a per-item
-  call, a byte-at-a-time classify-and-copy, a teardown.
-- **Both terms must be measured the same way.** Timing the reference as the
-  fastest of ten short sub-runs while timing each workload as one long run let
-  the denominator find quiet gaps the numerator could not, and a *healthy* tree
-  red five of six rows under load. Every slot is now the fastest of
-  `SLOT-CHUNKS` sub-runs of a tenth of its own work.
-
-- **Sub-runs must be short enough to fit between interruptions.** Timing each
-  slot as one long run left a 7.8–12.8% spread and red healthy trees inside the
-  real gate whenever ambient load rose — two of five consecutive gate runs, on
-  an unchanged tree. Cutting every slot into `SLOT-CHUNKS` = 40 short sub-runs
-  and keeping the fastest collapsed the spread to under 1%.
-
-**Recorded basis (2026-08-07, macOS arm64).** Medians of 8 healthy measurements
-taken with a foreign build already on half the cores (load ~12, calibration spin
-158–170 ms); no quiet window was sought. Full spread per row at that load was
-0.4–0.6%; under twelve extra busy loops (load ~32) the worst observation sat
-8.1% above its median. `HEADROOM-PCT` is bounded by that loaded tail below
-(~108) and by the smallest demonstrated regression above (~115, escape-heavy at
-+15.5%); 112 sits between them. Re-record only with a fresh basis written the
-same way.
-
-**Provenance, recorded as fact.** The wall-clock baselines these replaced named
-parents `83fae24d6628` and `aa2a169469ad`. Neither commit resolves in this repo.
-The four suspect decode-path commits that *do* resolve
-(`bc6b49080b49`, `ddb4f44c8a18`, `82fa49c1f160`, `d32daa5bbd0e`) can no longer
-be compiled: the checker has since tightened and rejects their `lib/json-read.f`
-(`in push: at 'c!' expected: u8 ptr u8 actual: n ptr n`). There is therefore no
-tree to re-measure and no source that can be timed on the current engine, so
-**whether the reader regressed against the old numbers is unanswerable**, and
-nothing in the current ratios should be read as having answered it. Continuity
-to the old baselines is broken; the first honest ratchet starts here.
-
-**Known limit.** The class reliably separated starts near fifteen percent, set
-by the loaded tail rather than the quiet resolution — on a quiet host these rows
-resolve to better than one percent, so a tighter headroom is available to anyone
-willing to record the basis for one.
 
 Generated stats, caches, build images, and test logs remain local artifacts and
 are never committed. Standalone snapshot-launcher tooling is not part of the

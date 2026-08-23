@@ -2,7 +2,6 @@
 \ Split from the monolithic maki/test.f (dot habu-split-monolithic-maki-fccca4ea):
 \ the eval harness: authoring, repair, matrix, pass@k, transcript, live and
 \ device-fault checks (the two heavy device-emit suites are in test-eval-emit.f).
-\ Measured self-time on GB10 (idle, 2026-07-19): ~5385 ms across 14 suites.
 \ Run standalone: bin/hb --load maki/test-eval.f
 
 require maki/test-harness.f

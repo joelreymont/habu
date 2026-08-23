@@ -1,12 +1,9 @@
 \ judge/ref-test.f - the reference column's symbol reader, attacked.
 \ Run: bin/hb --load tools/judge/ref-test.f
 \
-\ WHAT IS ATTACKED HERE, AND WHY IT MATTERS TO THE JUDGE. Every `clang` cell of
-\ test/compiler/judge-baseline.txt is a number this reader took out of `nm -m`
-\ and `size -m` (tools/judge/pass.f BYTES calls CODEGEN-MACHO:BYTES). A reader
-\ that is fooled by one line reports a wrong number for every row of the
-\ artifact and nothing goes red: the judge would commit the wrong reference
-\ column and then agree with itself about it for ever. So the reader is driven
+\ WHAT IS ATTACKED HERE, AND WHY IT MATTERS TO THE JUDGE. Every live `clang`
+\ cell is a number this reader took out of `nm -m` and `size -m`
+\ (tools/judge/pass.f BYTES calls CODEGEN-MACHO:BYTES). So the reader is driven
 \ through CODEGEN-MACHO:LOAD-FROM - the same word production uses, with the two
 \ listings as parameters - over listings built to fool it.
 \

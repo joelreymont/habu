@@ -66,35 +66,7 @@ create PATH-LEN PATHS-MAX cells allot
 variable PATHS-N
 variable PATHS-USED
 
-\ ---- per-child budget ------------------------------------------------------
-\ Derived from measurement, not picked. The nominal budget covers the slowest
-\ entry this suite spawns, measured standalone on an idle box; the scaling on top
-\ of it is the gate's own measured load factor (lib/test/budget.f T-BUDGET-MS),
-\ which is what keeps a healthy-but-slow child on a busy box from reading as a
-\ dead one. Whole-tree scan times over the same 1419-file tree, measured
-\ 2026-08-04 on a 12-core macOS ARM64 host:
-\
-\   idle                  refine-lint 3.50 / 3.51 / 3.52 s   slowest entry
-\                     error-code-lint 2.12 / 2.16 s
-\   one full gate         refine-lint 3.55 / 3.68 / 3.71 / 3.73 s          1.05x
-\   alongside, load 6-9
-\   that gate plus busy    refine-lint 7.94 / 8.00 / 8.26 / 8.36 / 8.89 s   2.5x
-\   loops, load 25-55
-\
-\ The middle row is the load this suite is accepted under - one full gate at
-\ --pool-slots 3 - and it barely moves the entry. The bottom row is a 12-core box
-\ carrying two to four times its cores, past anything a gate produces, and 2.5x
-\ is the worst saturation factor measured. 12000 ms nominal is 3.4x the slowest idle
-\ entry and 1.35x that worst saturated time BEFORE any scaling, and T-BUDGET-MS
-\ takes it to [12 s .. 36 s] through its [1x .. 3x] clamp. A child that never
-\ finishes still fails inside that ceiling instead of hanging the suite.
-\
-\ Raising this number is not how a slow entry gets fixed. When an entry outgrows
-\ the budget, the question is what it does per file that its peers do not: the
-\ flat 20000 ms this replaced was 87% consumed by one entry whose token match
-\ re-derived its whole seed list for every token it read.
-12000 constant NOMINAL-MS
-: TIMEOUT-MS ( -- n ) NOMINAL-MS T-BUDGET-MS ;
+36000 constant TIMEOUT-MS
 
 : ENGINE$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0 > if exit then

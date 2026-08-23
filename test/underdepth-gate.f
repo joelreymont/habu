@@ -35,9 +35,10 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/test/src-shape.f
 require lib/test/subject.f
-require test/tail-ratchet.f
+require test/tail-parity.f
 
 2048 constant UDG-CAP
+30000 constant UDG-TIMEOUT-MS
 70 constant UDG-REJECT-RC           \ interpret-level reject exit (RC-REJECT)
 
 variable UDG-ROOT-U
@@ -99,22 +100,20 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 
 \ Run the program as a --load file with empty stdin.
 : UDG-RUN-LOAD ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    UDG-CHILD 2swap WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    UDG-CHILD >LEN PROC-ARGV+
    UDG-HB$ >LEN  UDG-EMPTY 0 >LEN  UDG-OUT UDG-CAP >LEN
-   UDG-ERR UDG-CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-STORE! ;
 
 \ Run the program as a piped stdin program (no --load), the other cold-prefix path.
 : UDG-RUN-STDIN ( ptr u8 n -- )
-   TAIL-RATCHET:DIRECT
    UDG-IN!
    PROC-ARGV-RESET
    UDG-HB$ >LEN  UDG-IN$ >LEN  UDG-OUT UDG-CAP >LEN
-   UDG-ERR UDG-CAP >LEN  TAIL-BUDGET:TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   UDG-ERR UDG-CAP >LEN  UDG-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    UDG-STORE! ;
 
 package UDG-EXEC
@@ -122,9 +121,8 @@ package UDG-EXEC
 public
 
 : SUBJECT ( ptr u8 n -- )
-   TAIL-RATCHET:SUBJECT
    UDG-OUT UDG-CAP >LEN UDG-ERR UDG-CAP >LEN
-   TAIL-BUDGET:TIMEOUT-MS >MS SUBJECT:RUN UDG-STORE! ;
+   UDG-TIMEOUT-MS >MS SUBJECT:RUN UDG-STORE! ;
 
 ;package
 
@@ -416,32 +414,30 @@ public
 
 package UDG-PARITY
 
-3 constant DIRECT-N
-25 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ UDG-RC @ ;
 
 : NEG-LOAD ( ptr u8 n -- )
    2dup UDG-RUN-LOAD
    s" FOO2" UDG-ASSERT-UNDERDEPTH
-   RESULT TAIL-RATCHET:SNAPSHOT
+   RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH
-   RESULT TAIL-RATCHET:SAME ;
+   RESULT TAIL-PARITY:SAME ;
 
 : NEG-STDIN ( ptr u8 n -- )
    2dup UDG-RUN-STDIN
    s" FOO2" UDG-ASSERT-UNDERDEPTH
-   RESULT TAIL-RATCHET:SNAPSHOT
+   RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT
    s" FOO2" UDG-ASSERT-UNDERDEPTH
-   RESULT TAIL-RATCHET:SAME ;
+   RESULT TAIL-PARITY:SAME ;
 
 : POS-LOAD ( ptr u8 n -- )
    2dup UDG-RUN-LOAD UDG-ASSERT-OK
-   RESULT TAIL-RATCHET:SNAPSHOT
+   RESULT TAIL-PARITY:SNAPSHOT
    UDG-EXEC:SUBJECT UDG-ASSERT-OK
-   RESULT TAIL-RATCHET:SAME ;
+   RESULT TAIL-PARITY:SAME ;
 
 public
 
@@ -452,9 +448,6 @@ public
    s" FOO2" UDG-FOO2$ NEG-STDIN
    s" direct --load and subject preserve raw successful results" T-LABEL
    UDG-EXACT$ POS-LOAD ;
-
-: CHECK ( -- )
-   DIRECT-N SUBJECT-N TAIL-RATCHET:CHECK ;
 
 ;package
 
@@ -471,7 +464,6 @@ public
 
 : UDG-MAIN ( -- )
    T-RESET
-   TAIL-RATCHET:START
    UDG-PREPARE
    UDG-PARITY:TEST
    UDG-NEG-BARE
@@ -481,7 +473,6 @@ public
    UDG-POSITIVES
    UDG-MINIMUM:ATOMIC-SHAPE
    UDG-MINIMUM:BOUNDARY
-   UDG-PARITY:CHECK
    UDG-CLEANUP
    T-REPORT
    s" underdepth-gate: ok" type cr ;

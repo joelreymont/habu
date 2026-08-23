@@ -115,7 +115,7 @@ $48425350414E5321 constant SNAP-MAGIC
 \ maki peaked ndict 16347/16384 (dict side full) AND the code area measured ~92%
 \ of the 4 MB split via LATEST/XREF (code side full). Narrowed dict-poke flips
 \ (LPROTREC) keep the seal-time internal-mark cost off the grown region, so the
-\ 4 MB -> 8 MB growth stays under the runtime ratchet. Keep DICT-CAP/CFSTK-OFF/
+\ Keep DICT-CAP/CFSTK-OFF/
 \ DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step.
 \ Grown $181000 -> $301000 with DICT-CAP 32768 -> 65536 and REGION $800000 ->
 \ $A00000 (dot habu-seeded-words-invisible-c7505a49). The derivation is under

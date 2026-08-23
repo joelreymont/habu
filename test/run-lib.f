@@ -3,7 +3,6 @@
 \ Load after test/run-support.f.
 
 require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
-require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
 
@@ -11,7 +10,6 @@ package TEST
 private
 
 64 constant TR-USAGE-RC
-66 constant TR-PROFILE-RC
 public
 4 constant DEFAULT-NESTED-POOL-SLOTS
 private
@@ -24,7 +22,6 @@ public
 private
 PHASES constant TR-PHASES
 32 constant TR-NUM-CAP
-$100 constant TR-HOST-CAP
 public
 $2 constant CANDIDATE-HOST-PHASES
 $1C constant EARLY-HOST-PHASES
@@ -36,60 +33,19 @@ $3 constant DEFERRED-PHASES
 private
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
-1 constant TR-PROFILE-MACOS-ARM64-10X2
-2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
-3 constant TR-PROFILE-LINUX-ARM64-4X2
-public
-4 constant PROFILE-DGX-SPARK-10X2
-
 ;package
 
 
 package TEST
 private
 
-\ Host calibration. A startup spin probe measures this run's speed against the
-\ profile's reference probe time; the resulting factor scales the PER-SUITE wall
-\ budgets (lib/test/budget.f) so a loaded or downclocked box does not fail a
-\ green tree on its own slowness. A profile with reference 0 is uncalibrated and
-\ leaves those budgets alone. The factor is clamped to [100%,300%] so a thrashing
-\ host still trips its suite stop-lines rather than stretching them unbounded.
-\
-\ There is no whole-gate timed budget here any more. Timing the entire gate made
-\ every landed suite eat the margin of a fixed constant, so a tree that had not
-\ regressed failed on its own growth (dot habu-recalibrate-cold-gate-ec0ba309).
-\ Performance is judged only where a stopwatch wraps one fixed workload and
-\ nothing else - today the six confined benchmarks behind
-\ test/json-read-perf-phase.f, each with its own recorded RATIO against a frozen
-\ reference workload timed in the same rounds. Those six do not read the
-\ calibration factor below and must not: their verdicts divide the machine out
-\ instead of compensating for it. The factor is still owned here for the
-\ consumers that genuinely need one - the engine runtime slice, both stdlib tail
-\ ratchets, and the MATCH compile bench.
-T-BUDGET-CAL-ITERS constant TR-CAL-ITERS             \ shared with lib/test/budget.f self-calibration
-T-BUDGET-CAL-REF-MACOS-MS constant TR-CAL-REF-MACOS-MS
-0 constant TR-CAL-REF-JETSON-MS
-0 constant TR-CAL-REF-LINUX-MS
-public
-87 constant CAL-REF-SPARK-MS       \ committed: fixed spin on a GB10 X925 performance core (idle box)
-private
-T-BUDGET-MIN-PCT constant TR-CAL-MIN-PCT
-T-BUDGET-MAX-PCT constant TR-CAL-MAX-PCT
-
-variable TR-CAL-SINK
-variable TR-CAL-MEASURED-MS
-
-\ Longest resident/direct phases first; this keeps ARM gates inside budget
-\ without dropping coverage or raising the threshold.
 create TR-CANDIDATE-HOST-ORDER
 $9 , $E ,
 
 create TR-LATE-ORDER
 $3 , $14 , $10 ,
 
-\ The proof slice ($28) leads: its own long pole is the instruction parity gate
-\ at about a minute and a half, so anything that starts ahead of it lengthens the
-\ run. The tail slice ($4) follows it because it too is a spawned slice with
+\ The proof slice ($28) leads. The tail slice ($4) follows it because it too is a spawned slice with
 \ child-engine and build members, and because until this change NOTHING started
 \ it at all - its five registered suites were selected by SUITE-TAIL? and then
 \ never run, which is the same dark corner the unscheduled labels sat in.
@@ -149,7 +105,6 @@ create TR-UNDER-HEX 64 allot
 create TR-UNDER-ARG-BUF FS-PATH-CAP allot
 create TR-PERSIST-BUF FS-PATH-CAP allot
 create TR-NUM-BUF TR-NUM-CAP allot
-create TR-HOST-BUF TR-HOST-CAP allot
 
 $8000 constant TR-RED-FILE-CAP
 create TR-RED-FILE-BUF TR-RED-FILE-CAP allot
@@ -172,7 +127,6 @@ variable TR-ARG-I
 variable TR-NESTED-POOL
 variable TR-TIMINGS
 variable TR-COLD-CACHE
-variable TR-PROFILE-ID
 variable TR-NUM-U
 variable TR-RESIDENT-ID
 variable TR-PRE-CHECK
@@ -205,7 +159,7 @@ private
    TR-UNDER-ARG-BUF TR-UNDER-ARG-U @ ;
 
 : TR-USAGE ( -- )
-   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--perf-profile NAME|auto] [--pool-slots N] [--nested-pool-slots N] [--cold-cache] [--rerun-failed] [--timings]" TR-USAGE-RC die ;
+   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--pool-slots N] [--nested-pool-slots N] [--cold-cache] [--rerun-failed] [--timings]" TR-USAGE-RC die ;
 
 : TR-ARG$ ( -- ptr u8 n )
    TR-ARG-I @ SCRIPT-ARGV$ ;
@@ -251,121 +205,12 @@ private
    -1 TR-COLD-CACHE !
    1 TR-ADVANCE ;
 
-: TR-PROFILE-FAIL ( ptr u8 n -- ) {: msg:ptr msgu:n :}
-   msg msgu TR-PROFILE-RC die ;
-
-: TR-HOST-READ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u EXISTS? 0= if s" missing host profile file" TR-PROFILE-FAIL then
-   a u TR-HOST-BUF TR-HOST-CAP READ-ALL
-   TR-HOST-BUF swap ;
-
-: TR-JETSON-MODEL? ( -- bool )
-   s" /proc/device-tree/model" TR-HOST-READ s" NVIDIA Jetson" CONTAINS? ;
-
-: TR-JETSON-ONLINE? ( -- bool )
-   s" /sys/devices/system/cpu/online" TR-HOST-READ TRIM s" 0-7" STR= ;
-
-\ DGX Spark (GB10) exposes no /proc/device-tree; the SMBIOS/DMI product family is
-\ the stable identity ("DGX Spark"). product_name is "NVIDIA_DGX_Spark".
-: TR-SPARK-DMI$ ( -- ptr u8 n )
-   s" /sys/class/dmi/id/product_family" ;
-
-public
-: SPARK-MODEL? ( -- bool )
-   TR-SPARK-DMI$ TR-HOST-READ s" DGX Spark" CONTAINS? ;
-
-: DETECT-PROFILE ( -- n )
-   HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-10X2 exit then
-   HB-TARGET-LINUX? if
-      s" /proc/device-tree/model" EXISTS? if
-         TR-JETSON-MODEL? if TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
-      then
-      TR-SPARK-DMI$ EXISTS? if
-         SPARK-MODEL? if PROFILE-DGX-SPARK-10X2 exit then
-      then
-      TR-PROFILE-LINUX-ARM64-4X2 exit
-   then
-   s" no supported timed host profile" TR-PROFILE-FAIL ;
-
-: PROFILE-ID? ( ptr u8 n -- n )
-   2dup s" auto" STR= if 2drop DETECT-PROFILE exit then
-   2dup s" macos-arm64-10x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-10X2 exit then
-   2dup s" jetson-orin-clocks-4x2" STR= if 2drop TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
-   2dup s" linux-arm64-4x2" STR= if 2drop TR-PROFILE-LINUX-ARM64-4X2 exit then
-   2dup s" dgx-spark-10x2" STR= if 2drop PROFILE-DGX-SPARK-10X2 exit then
-   2drop TR-USAGE ;
-
-private
-: TR-CAL-SPIN ( n -- n )
-   T-BUDGET-CAL-SPIN ;
-
-: TR-CALIBRATE ( -- )
-   mono-ns {: t0:n :}
-   TR-CAL-ITERS TR-CAL-SPIN TR-CAL-SINK !
-   mono-ns t0 - PROC-NS-PER-MS / TR-CAL-MEASURED-MS ! ;
-
-public
-: CAL-REF-MS ( -- n )
-   TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of TR-CAL-REF-MACOS-MS endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CAL-REF-JETSON-MS endof
-      TR-PROFILE-LINUX-ARM64-4X2 of TR-CAL-REF-LINUX-MS endof
-      PROFILE-DGX-SPARK-10X2 of CAL-REF-SPARK-MS endof
-      0 swap
-   endcase ;
-
-private
-: TR-CAL-CLAMP ( n -- n ) {: pct:n :}
-   pct TR-CAL-MIN-PCT < if TR-CAL-MIN-PCT exit then
-   pct TR-CAL-MAX-PCT > if TR-CAL-MAX-PCT exit then
-   pct ;
-
-: TR-CAL-PCT ( -- n )
-   CAL-REF-MS {: ref:n :}
-   ref 0 <= if TR-CAL-MIN-PCT exit then
-   TR-CAL-MEASURED-MS @ 0 <= if TR-CAL-MIN-PCT exit then
-   TR-CAL-MEASURED-MS @ 100 * ref / TR-CAL-CLAMP ;
-
-public
-: CAL-SCALED ( n -- n )
-   TR-CAL-PCT * 100 / ;
-
-private
-: TR-PROFILE-APPLY ( n -- ) {: id:n :}
-   id TR-PROFILE-ID !
-   id case
-      TR-PROFILE-MACOS-ARM64-10X2 of
-         10 TR-TOP-POOL-SLOTS!
-         2 TR-NESTED-POOL !
-      endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of
-         4 GT-POOL-SLOTS!
-         2 TR-NESTED-POOL !
-         \ +17% over the pre-maki 100000/110000 - the same relative bump spark took,
-         \ applied unmeasured (no Jetson here) because the Orin runs maki's CUDA legs
-         \ and has fewer pool slots, so its maki wall scales with its ~3.3x budget.
-      endof
-      TR-PROFILE-LINUX-ARM64-4X2 of
-         4 GT-POOL-SLOTS!
-         2 TR-NESTED-POOL !
-      endof
-      PROFILE-DGX-SPARK-10X2 of
-         10 TR-TOP-POOL-SLOTS!
-         2 TR-NESTED-POOL !
-      endof
-   endcase ;
-
 : TR-ARGS-DEFAULTS ( -- )
    DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
    0 TR-TIMINGS !
    0 TR-COLD-CACHE !
    0 TR-RERUN !
-   0 TR-UNDER-ARG-U !
-   DETECT-PROFILE TR-PROFILE-APPLY ;
-
-: TR-PERF-PROFILE-OPT ( -- )
-   TR-ARG-VALUE$ PROFILE-ID? TR-PROFILE-APPLY
-   2 TR-ADVANCE ;
+   0 TR-UNDER-ARG-U ! ;
 
 : TR-UNDER-ARG! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-FS-PATH throw then
@@ -388,7 +233,6 @@ private
    TR-ARG$ s" --under" STR= if TR-UNDER-OPT exit then
    TR-ARG$ s" --pool-slots" STR= if TR-POOL-OPT exit then
    TR-ARG$ s" --nested-pool-slots" STR= if TR-NESTED-POOL-OPT exit then
-   TR-ARG$ s" --perf-profile" STR= if TR-PERF-PROFILE-OPT exit then
    TR-ARG$ s" --cold-cache" STR= if TR-COLD-CACHE-OPT exit then
    TR-ARG$ s" --rerun-failed" STR= if TR-RERUN-OPT exit then
    TR-ARG$ s" --timings" STR= if TR-TIMINGS-OPT exit then
@@ -413,45 +257,10 @@ private
 : TR-GATE-ELAPSED-MS ( -- n )
    mono-ns TR-GATE-START-NS @ - PROC-NS-PER-MS / ;
 
-public
-: PROFILE$ ( -- ptr u8 n )
-   TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of s" macos-arm64-10x2" endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of s" jetson-orin-clocks-4x2" endof
-      TR-PROFILE-LINUX-ARM64-4X2 of s" linux-arm64-4x2" endof
-      PROFILE-DGX-SPARK-10X2 of s" dgx-spark-10x2" endof
-      s" unknown" rot
-   endcase ;
-
 private
 : TR-CACHE-ROOT$ ( -- ptr u8 n )
    TR-COLD-CACHE @ 0 <> if s" scratch" exit then
    s" persistent" ;
-
-: TR-CHECK-MACOS-PROFILE ( -- )
-   HB-TARGET-MACOS? 0= if s" macos-arm64-10x2 requires macOS target" TR-PROFILE-FAIL then ;
-
-: TR-CHECK-JETSON-PROFILE ( -- )
-   HB-TARGET-LINUX? 0= if s" jetson-orin-clocks-4x2 requires Linux target" TR-PROFILE-FAIL then
-   TR-JETSON-MODEL? 0= if s" jetson-orin-clocks-4x2 requires NVIDIA Jetson model" TR-PROFILE-FAIL then
-   TR-JETSON-ONLINE? 0= if s" jetson-orin-clocks-4x2 requires CPUs 0-7 online" TR-PROFILE-FAIL then ;
-
-: TR-CHECK-LINUX-PROFILE ( -- )
-   HB-TARGET-LINUX? 0= if s" linux-arm64-4x2 requires Linux target" TR-PROFILE-FAIL then ;
-
-: TR-CHECK-DGX-SPARK-PROFILE ( -- )
-   HB-TARGET-LINUX? 0= if s" dgx-spark-10x2 requires Linux target" TR-PROFILE-FAIL then
-   TR-SPARK-DMI$ EXISTS? 0= if s" dgx-spark-10x2 requires NVIDIA DGX Spark DMI" TR-PROFILE-FAIL then
-   SPARK-MODEL? 0= if s" dgx-spark-10x2 requires NVIDIA DGX Spark model" TR-PROFILE-FAIL then ;
-
-: TR-CHECK-PROFILE ( -- )
-   TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of TR-CHECK-MACOS-PROFILE endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CHECK-JETSON-PROFILE endof
-      TR-PROFILE-LINUX-ARM64-4X2 of TR-CHECK-LINUX-PROFILE endof
-      PROFILE-DGX-SPARK-10X2 of TR-CHECK-DGX-SPARK-PROFILE endof
-      drop s" unknown perf profile" TR-PROFILE-FAIL
-   endcase ;
 
 : TR-PERSIST-TMP ( -- )
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
@@ -490,13 +299,10 @@ private
 : TR-PERSIST-ENSURE ( -- )
    PERSIST$ MAKE-DIRS ;
 
-: TR-PERF-LINE ( -- )
-   s" perf-profile: " type PROFILE$ type
-   s"  cache-root=" type TR-CACHE-ROOT$ type
+: TR-RUN-LINE ( -- )
+   s" gate: cache-root=" type TR-CACHE-ROOT$ type
    s"  pool=" type GT-POOL-LIMIT @ GT-U-TYPE
    s"  nested=" type TR-NESTED-POOL @ GT-U-TYPE
-   s"  cal-ms=" type TR-CAL-MEASURED-MS @ GT-U-TYPE
-   s"  cal-factor=" type TR-CAL-PCT GT-U-TYPE s" %" type
    s"  elapsed-ms=" type TR-GATE-ELAPSED-MS GT-U-TYPE
    cr ;
 
@@ -516,53 +322,6 @@ public
 : TMP-DEFAULT+ ( -- )
    s" HB_TMP" GT-ROOT TR-DEFAULT+ ;
 
-private
-create TR-CAL-PCT-BUF 4 allot
-
-: TR-CAL-PCT-DIGIT! ( n n -- ) {: d:n i:n :}
-   d 48 + TR-CAL-PCT-BUF i + c! ;
-
-\ The clamp guarantees 100..300, so the text is always exactly three digits.
-: TR-PCT$ ( n -- ptr u8 n ) {: pct:n :}
-   pct 100 / 0 TR-CAL-PCT-DIGIT!
-   pct 10 / 10 mod 1 TR-CAL-PCT-DIGIT!
-   pct 10 mod 2 TR-CAL-PCT-DIGIT!
-   TR-CAL-PCT-BUF 3 ;
-
-\ Structural pressure floor: startup calibration runs on an otherwise idle
-\ box (cal-factor 100), but the gate's OWN pool oversubscribes it by the
-\ nested factor, and in practice merge gating overlaps a SECOND full gate
-\ (and often an install) on the same box - suites spawned inside that window
-\ run several times slower than the calibration saw. The nested x 100 floor
-\ (200%) was MEASURED MARGINAL: four incidents on 2026-07-07 alone killed
-\ lib/process-test.f at exactly its 2x-floored 10s budget under merge+worker
-\ overlap (throw -2502, WHY-THREW buffers far from caps every time), and the
-\ 8000-program sweep experiment pushed past 2x as well. Any nested pool
-\ therefore floors at TR-CAL-MAX-PCT (300%): the same worst case the clamp
-\ already accepts for the wall budget, so a genuinely hung child still fails
-\ within 3x its nominal budget - detection stays bounded. nested=1 setups
-\ keep the measured cal-factor alone (no self-contention to cover).
-: TR-POOL-PRESSURE-PCT ( -- n )
-   TR-NESTED-POOL @ 1 > if TR-CAL-MAX-PCT exit then
-   TR-CAL-MIN-PCT ;
-
-: TR-LOAD-PCT-EXPORT ( -- n )
-   TR-CAL-PCT {: cal:n :}
-   TR-POOL-PRESSURE-PCT {: floor:n :}
-   cal floor < if floor exit then
-   cal ;
-
-\ Export the load factor to spawned workers so suite budgets
-\ (lib/test/budget.f T-BUDGET-MS) scale with the gate's measured calibration
-\ and its structural pool pressure; forked/in-process suites read the cell
-\ PREPARE sets directly.
-public
-: LOAD-PCT-DEFAULT+ ( -- )
-   s" HB_LOAD_PCT" TR-LOAD-PCT-EXPORT TR-PCT$ TR-DEFAULT+ ;
-
-: CAL-PCT-DEFAULT+ ( -- )
-   s" HB_CAL_PCT" TR-CAL-PCT TR-PCT$ TR-DEFAULT+ ;
-
 : BUILD-CACHE-DEFAULT+ ( -- )
    TR-BUILD-CACHE-PATHS
    s" HABU_BUILD_CACHE" BUILD-CACHE$ TR-DEFAULT+ ;
@@ -571,18 +330,6 @@ public
    GS-ON? if s" HABU_GATE_STATS" GS-PATH$ TR-DEFAULT+ then ;
 
 private
-\ The same two factors, written into a SPAWNED child's environment. The resident
-\ path above hands them to a fork through PROC-ENV-DEFAULT+, which a spawned
-\ child never sees, so every word that builds a child environment puts them in
-\ explicitly: PHASE-BASE for the phases and TR-MAKI-BASE for maki. Without
-\ them a spawned slice reads no HB_LOAD_PCT, lib/test/budget.f self-calibrates
-\ against an idle-box reference, and its per-suite budgets stay at nominal while
-\ the box runs several times slower - which is how the stdlib gate's 120s
-\ per-suite wall killed a 100s suite at 120145ms under a second concurrent gate.
-: TR-PCT-ENV+ ( -- )
-   s" HB_LOAD_PCT" >LEN TR-LOAD-PCT-EXPORT TR-PCT$ >LEN PROC-ENV+
-   s" HB_CAL_PCT" >LEN TR-CAL-PCT TR-PCT$ >LEN PROC-ENV+ ;
-
 : TR-UNDER-PATHS ( -- )
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    UNDER$ EXISTS? if UNDER$ REMOVE-FILE then
@@ -1239,11 +986,7 @@ private
    s" lib/test/runner.f"  >LEN PROC-ARGV+ ;
 
 public
-\ The environment and --load prefix a spawned phase starts from. Public because
-\ it is the whole of what a spawned child inherits from this runner, and because
-\ test/gate-budget-test.f asks it directly whether the load factor is in there:
-\ the resident phases get that factor through PROC-ENV-DEFAULT+ and a spawned
-\ one gets nothing but what is written here.
+\ The environment and --load prefix shared by both spawned-phase start paths.
 : PHASE-BASE ( idx -- ) {: idx:idx :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
@@ -1251,7 +994,6 @@ public
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    idx TR-PHASE-TOOLS-ENV
    TR-BUILD-CACHE-ENV
-   TR-PCT-ENV+
    GS-ENV+
    idx TR-PHASE-UNDER-ENV
    PROC-ENV-INHERIT-MISSING
@@ -1593,7 +1335,6 @@ private
    i TR-MAKI-SLICE-TMP TR-MAKI-TMP!
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    TR-BUILD-CACHE-ENV
-   TR-PCT-ENV+
    TR-UNDER-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
@@ -1643,12 +1384,8 @@ public
    TR-UNDER-ARG? 0= if PHASE-ENGINE-BUILD >IDX PHASE-START then ;
 
 : PREPARE ( -- )
-   TR-CALIBRATE
    TR-GATE-START!
    TR-CHECK-ARGS
-   TR-CHECK-PROFILE
-   TR-LOAD-PCT-EXPORT T-BUDGET-PCT !
-   TR-CAL-PCT TEST-BUDGET:PERF-SET
    TR-START
    TR-PRE-RESET
    TR-EXPECT-HB
@@ -1662,21 +1399,14 @@ public
    s" native test suite phases failed" 1 die ;
 
 public
-\ The gate finishes on CORRECTNESS alone. It used to time itself as a whole and
-\ judge that number against a fixed budget, which meant every suite anyone landed
-\ ate the margin until a tree that had not regressed failed on its own growth
-\ (dot habu-recalibrate-cold-gate-ec0ba309). Performance now belongs to the
-\ confined benchmark phases, where a stopwatch wraps one fixed workload and
-\ nothing else, and each reds the gate through the ordinary red-phase path when
-\ its own budget is missed. What is left here is the profile line: how this host
-\ was calibrated and how long the run took, reported as information, never a
-\ verdict.
+\ The run line reports the run's configuration and elapsed time as raw
+\ information. It is not a verdict.
 : COMPLETE ( -- )
    GS-SUMMARY
    GT-POOL-RED# 0 > if RED-COMPLETE then
    GS-LABEL-DUP-GUARD
    GT-CLEANUP
-   TR-PERF-LINE ;
+   TR-RUN-LINE ;
 
 \ ---- the persistent-root path, set from a caller's bytes -------------------
 \ The length is CHECKED before the copy. TR-PERSIST-BUF is a fixed FS-PATH-CAP
@@ -1695,28 +1425,10 @@ public
 \ Everything the runner's own family needs it reaches as package members: the
 \ worker bodies, the resident dispatcher and the white-box tests all live in or
 \ reopen TEST, so they use the state directly and need no public surface at
-\ all. What is left below crosses a REAL boundary - test/json-read-perf-phase.f
-\ and its test own a different package - and each one is a question or a
-\ validated operation, never a store.
-\
-\ The readers cannot corrupt anything: they answer about the run rather than
-\ handing out the cell. PROFILE! is the one mutator, and it is a behaviour with
-\ a domain: the runner only knows the profile ids below, and anything else is a
-\ caller bug reported as a named throw rather than a runner that quietly
-\ believes in profile 99.
 public
 
 : TIMINGS? ( -- bool )        TR-TIMINGS @ 0 <> ;
 : UNDER-READY? ( -- bool )    TR-UNDER-READY @ 0 <> ;
-: PROFILE ( -- n )            TR-PROFILE-ID @ ;
 : RESIDENT ( -- n )           TR-RESIDENT-ID @ ;
-
-: PROFILE-KNOWN? ( n -- bool ) {: id:n :}
-   id TR-PROFILE-MACOS-ARM64-10X2 >=
-   id PROFILE-DGX-SPARK-10X2 <= and ;
-
-: PROFILE! ( n -- ) {: id:n :}
-   id PROFILE-KNOWN? 0= if E-TR-PROFILE throw then
-   id TR-PROFILE-ID ! ;
 
 ;package

@@ -316,13 +316,11 @@ broad import would make those references ambiguous.
 
 ```forth
 require test/run-lib.f
-require test/json-read-perf-phase.f
 
 TEST:PREPARE
 TEST:EARLY-EXTERNAL-START
 require test/run-resident.f
 TEST:DAG-RUN-REST
-JSON-READ-PERF-PHASE:START
 TEST:COMPLETE
 ```
 

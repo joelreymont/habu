@@ -29,8 +29,8 @@ run; artifact promotion and evidence persistence remain withheld until
 independent CERTIFY and PROFILE producers exist. The same IR differentiates:
 adjoints are generated, gradient-checked against finite differences, and
 used to train a model from scratch through the identical pipeline, with a
-seeded convergence gate committed as a test. The entire toolchain is a
-single self-hosted binary under 128\,KB. On a Jetson Orin NX we measure
+seeded convergence gate committed as a test. The toolchain is delivered as a
+single self-hosted binary. On a Jetson Orin NX we measure
 that this verification carries no measured performance tax: generated,
 device-checked kernels match hand-written Triton at the streaming-memory
 roof, while a whole class of kernel-authoring errors---measured
@@ -55,8 +55,8 @@ a copy-back actually happened, or that a generated gradient is the
 gradient.
 
 Habu rejects both costs. It is a Forth in the lineage of Chuck Moore's
-OKAD~\cite{okad}: a small, self-hosted system---engine, compiler, and
-checker fit in one binary under 128\,KB---in which programs are
+OKAD~\cite{okad}: a small, self-hosted system in which the engine, compiler,
+and checker share one binary and programs are
 compositions of words. The departure from tradition is that every word
 carries a typed, row-polymorphic stack effect that the self-hosted checker
 verifies; kernels for the GPU are written, or generated, in the same
@@ -184,12 +184,8 @@ syscall pointer walk, an FFI cast), the boundary is a named
 \code{TRUSTED:} word with source-local rationale and a focused
 production-path test; adding or changing such a site requires explicit review.
 
-\paragraph{Scale.} The measured binary is 115{,}831 bytes on macOS/ARM64
-and 102{,}592 bytes on Linux/AArch64---both committed size-ratchet
-baselines; growing either requires a deliberate same-commit bump. The
-full native gate (fixpoint rebuild, engine suite, checker, REPL, AOT
-build) runs in about seven seconds on a laptop and eleven on the Jetson,
-which makes ``prove everything on every commit'' a practical policy.
+\paragraph{Scale.} The full native gate covers a fixpoint rebuild, engine
+suite, checker, REPL, and AOT build on every commit.
 
 \section{The Checked Kernel Target}\label{sec:target}
 GPU kernels are Habu words that \emph{emit} PTX. Each per-operation
@@ -723,8 +719,8 @@ instead of unchecked authorship, exact byte accounting instead of
 folklore, device-vs-host checks with fault-injection controls instead of
 emitted hope, and explicit refusal instead of fabricated promotion
 evidence while required producers are absent. Gradients are generated,
-checked, and then trusted to train. The system is small enough to read---one
-self-hosted binary under 128\,KB---and every claim above is a running test in
+checked, and then trusted to train. The system is delivered as one self-hosted
+binary, and every claim above is a running test in
 its repository. What remains, deliberately unclaimed until measured, is the
 compute-bound contest; the machinery to run it honestly is what this
 paper described.

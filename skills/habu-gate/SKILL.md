@@ -1,16 +1,11 @@
 ---
 name: habu-gate
-description: Use when running Habu focused tests, the full native gate, timing the gate, or changing gate pool and budget arguments.
+description: Use when running Habu focused tests or the full native gate.
 ---
 
 # Habu Gate
 
-Use native `bin/hb` for all gate work. Do not add env-var knobs; expose policy as
-script arguments.
-
-For timing-regression checks, use `skills/habu-host-profiles/SKILL.md`. The
-runner auto-detects the host profile; force `--perf-profile NAME` only when
-reproducing a specific policy.
+Use native `bin/hb` for all gate work.
 
 Run the full native gate:
 
@@ -18,22 +13,10 @@ Run the full native gate:
 bin/hb --load test/run.f
 ```
 
-Run with explicit timing policy:
-
-```sh
-bin/hb --load test/run.f -- --perf-profile macos-arm64-10x2 --timings
-```
-
-Run the macOS timing profile:
-
-```sh
-bin/hb --load test/run.f -- --under bin/hb --timings
-```
-
 Reuse an already-built Habu candidate instead of rebuilding it:
 
 ```sh
-bin/hb --load test/run.f -- --under bin/hb --perf-profile macos-arm64-10x2 --timings
+bin/hb --load test/run.f -- --under bin/hb --timings
 ```
 
 Run focused tests through their owning load path before the full gate. Keep
