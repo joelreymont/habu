@@ -60,7 +60,8 @@ REQUIRE-HARNESS
    s" tools/lint/ptx-emitter-lint-test.f" GSI-INCLUDE
    s" tools/process-primitive-lint.f" GSI-INCLUDE
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
-   s" tools/stdin-closure-lint.f" GSI-REQUIRE ;
+   s" tools/stdin-closure-lint.f" GSI-REQUIRE
+   s" tools/stdin-closure-lint-test.f" GSI-INCLUDE ;
 
 : REPL-GROUP ( -- )
    s" repl-lint" [: REPL ;] GSI-RUN
@@ -133,7 +134,10 @@ REQUIRE-HARNESS
    s" tools/error-code-lint-test.f" GSI-INCLUDE
    s" tools/error-code-region-test.f" GSI-INCLUDE ;
 
+\ The shared launcher reader and the tripwire that consumes it: one fork, because
+\ the reader's fixtures and the tripwire's seed-list cases are the same concern.
 : BOOTSTRAP-MIRROR ( -- )
+   s" tools/bootstrap-src-lib-test.f" GSI-INCLUDE
    s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
 
 : BOOTSTRAP-REFRESH ( -- )

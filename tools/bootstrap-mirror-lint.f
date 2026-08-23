@@ -28,9 +28,9 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require tools/bootstrap-src-lib.f
 
 package BOOTSTRAP-MIRROR-LINT
-using LINT-SPLIT
 
 $20 constant NUM-CAP
 $0A constant LF
@@ -237,36 +237,21 @@ public
 \ `$OS_*` entries name files under src/os/macos and src/os/linux, both already
 \ inside the src/os root, and they are checked by their expansion's directory
 \ rather than by the variable's spelling.
-$8000 constant BS-CAP
-create BS-BUF BS-CAP allot
-
-: BS-LINE-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" .f" LINT-SUFFIX? 0= if LINT-FALSE exit then
-   a u s" /" LINT-CONTAINS? ;
-
 : DRIFT-BAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" BOOTSTRAP-MIRROR tools/bootstrap.sh: SRC_COMMON entry `" type
+   s" BOOTSTRAP-MIRROR " type BOOTSTRAP-SRC:SCRIPT$ type
+   s" : SRC_COMMON entry `" type
    a u type
    s" ` lies outside the roots this lint scans; widen ROOT-AT, and mirror the pass-2 lowering first if it carries ADTs (dot habu-bootstrap-mirror-pass-f1714953)" type NL
    BAD-N @ 1+ BAD-N ! ;
 
-variable BS-IN
 
-: DRIFT-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u LINT-TRIM {: t:ptr tu:n :}
-   tu 0= if exit then
-   t tu s" SRC_COMMON=(" LINT-CONTAINS? if 1 BS-IN ! exit then
-   BS-IN @ 0= if exit then
-   t tu s" )" LINT-PREFIX? if 0 BS-IN ! exit then
-   t tu BS-LINE-PATH? 0= if exit then
-   t tu IN-CORPUS? if exit then
-   t tu DRIFT-BAD ;
+: DRIFT-ROW ( n -- ) {: i:n :}
+   i BOOTSTRAP-SRC:ROW-ROLE BOOTSTRAP-SRC:ROLE-ARRAY <> if exit then
+   i BOOTSTRAP-SRC:ROW$ 2dup IN-CORPUS? if 2drop exit then
+   DRIFT-BAD ;
 
 : CORPUS-DRIFT-CK ( -- )
-   0 BS-IN !
-   s" tools/bootstrap.sh" BS-BUF BS-CAP READ-FILE {: a:ptr u:n :}
-   a u SPLIT-LINES
-   SN# @ 0 ?do i S@ DRIFT-LINE loop ;
+   BOOTSTRAP-SRC:ROWS 0 ?do i DRIFT-ROW loop ;
 
 \ ---- every boot-prefix row reaches the seed ------------------------------------
 \ tools/boot-pin.f BP-EACH owns the list of sources the engine re-reads at boot.
@@ -285,171 +270,12 @@ variable BS-IN
 \ src/os/script-argv.f sit in different relative places in each). The seed's own
 \ order needs no lint: a use before its definition is refused by the recovery
 \ build itself, loudly, on every run.
-$24 constant DOLLAR
-$3B constant SEMI
-
-$8000 constant SEED-CAP                    \ tools/bootstrap.sh is ~16K today
-create SEED-BUF SEED-CAP allot
-$80 constant SEED-MAX                      \ seed rows; ~64 today
-create SEED-ROW-A SEED-MAX cells allot
-create SEED-ROW-U SEED-MAX cells allot
+\ How many sources the parse yielded, mirrored here because it is this lint's
+\ own report of the seed list's size. Set at the one place the script is parsed.
 variable SEED-N
-variable SEED-TEXT-U
-variable SEED-I                            \ line cursor into the script text
-variable TEXT-A
-variable IN-ARRAY
-variable IN-EMIT
-variable IF-DEPTH                          \ conditional nesting inside emit_src
-variable ARRAY-USED                        \ emit_src really expands SRC_COMMON
 
-: TEXT-A-FIELD ( -- ptr ptr u8 )
-   TEXT-A 0 ptr-field ;
-
-: TEXT-A@ ( -- ptr u8 )
-   TEXT-A-FIELD @ ;
-
-: SEED-A-FIELD ( n -- ptr ptr u8 )
-   SEED-ROW-A swap ptr-field ;
-
-: SEED-ROW+ ( ptr u8 n -- )                \ one source path the seed compiles
-   SEED-N @ SEED-MAX >= if
-      s" bootstrap-mirror-lint: seed row table full" 1 die
-   then
-   SEED-N @ cells SEED-ROW-U + !
-   SEED-N @ SEED-A-FIELD !
-   SEED-N @ 1+ SEED-N ! ;
-
-: SEED-ROW$ ( n -- ptr u8 n ) {: i:n :}
-   i SEED-A-FIELD @
-   i cells SEED-ROW-U + @ ;
-
-: SEED-HAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup SEED-N @ < while
-      dup SEED-ROW$ a u LINT-STR= if drop LINT-TRUE exit then
-      1 +
-   repeat
-   drop LINT-FALSE ;
-
-\ Neither list spells the two target-selected sources: the script reaches them
-\ through the $OS_* variables its `case` sets, boot-pin through the BP-OS-*$
-\ words. Both sides normalise to one key, so those rows still take part.
-: OS-TARGET-KEY ( -- ptr u8 n )
-   s" src/os/*/target.f" ;
-
-: OS-LAYOUT-KEY ( -- ptr u8 n )
-   s" src/os/*/layout.f" ;
-
-\ ---- the script's two lists, read by field role --------------------------------
-: FIELD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k SN# @ >= if LINT-FALSE exit then
-   k S@ a u LINT-STR= ;
-
-: PEEK-LAST ( ptr u8 n -- ptr u8 n n )     \ last byte of a non-empty span
-   2dup 1 - + c@ ;
-
-: UNQUOTE ( ptr u8 n -- ptr u8 n )         \ a shell word without its "..."
-   dup 2 < if exit then
-   over c@ DQUOTE <> if exit then
-   PEEK-LAST DQUOTE <> if exit then
-   swap 1 + swap 2 - ;
-
-: STRIP-SEMI ( ptr u8 n -- ptr u8 n )      \ a shell word without its trailing `;`
-   dup 0= if exit then
-   PEEK-LAST SEMI <> if exit then
-   1 - ;
-
-: SHELL-VAR? ( ptr u8 n -- bool )
-   dup 0= if 2drop LINT-FALSE exit then
-   drop c@ DOLLAR = ;
-
-: OS-VAR-ROW ( ptr u8 n -- )               \ the two keyed $OS_* entries; the rest name no boot-pin row
-   2dup s" $OS_TARGET" LINT-STR= if 2drop OS-TARGET-KEY SEED-ROW+ exit then
-   2dup s" $OS_LAYOUT" LINT-STR= if 2drop OS-LAYOUT-KEY SEED-ROW+ exit then
-   2drop ;
-
-: PATH-ROW+ ( ptr u8 n -- )                \ a shell word, kept only if it names a source
-   2dup SHELL-VAR? if OS-VAR-ROW exit then
-   2dup BS-LINE-PATH? 0= if 2drop exit then
-   SEED-ROW+ ;
-
-: ARRAY-LINE ( -- )                        \ one line of the SRC_COMMON array
-   SN# @ 1 <> if exit then
-   0 S@ UNQUOTE PATH-ROW+ ;
-
-\ `cat <path> >> "$out"` is the only row shape emit_src writes. Every field is
-\ matched by its ROLE, so a path in a comment (`#` leads), inside a string
-\ (`printf` leads), or with another redirect target is not a row.
-: CAT-ROW? ( -- bool )
-   SN# @ 4 <> if LINT-FALSE exit then
-   0 s" cat" FIELD= 0= if LINT-FALSE exit then
-   2 s" >>" FIELD= 0= if LINT-FALSE exit then
-   3 S\" \"$out\"" FIELD= ;
-
-\ The array reaches a stage source only where emit_src expands it; bash splices
-\ the entries in at this line, so without it no array entry is compiled at all.
-: ARRAY-EXPANDS? ( -- bool )
-   SN# @ 5 <> if LINT-FALSE exit then
-   0 s" for" FIELD= 0= if LINT-FALSE exit then
-   3 S@ STRIP-SEMI S\" \"${SRC_COMMON[@]}\"" LINT-STR= ;
-
-: IF-OPEN? ( -- bool )
-   0 s" if" FIELD= ;
-
-: IF-CLOSE? ( -- bool )
-   SN# @ 1 <> if LINT-FALSE exit then
-   0 s" fi" FIELD= ;
-
-\ A cat row inside a conditional is NOT in the seed. Every emission is a full
-\ engine that re-reads the whole boot prefix, so a boot-prefix row has to be in
-\ EVERY emission, and a guarded row is in at most one. Measured: src/core/
-\ include.f sat behind `if [[ "$driver" == "src/habu/snap.f" ]]`, a branch no
-\ emit_src call site could select, and hb-stage0 died `REQUIRE-REG:COUNT`.
-: EMIT-LINE ( -- )                         \ one line of emit_src
-   IF-OPEN? if IF-DEPTH @ 1+ IF-DEPTH ! exit then
-   IF-CLOSE? if IF-DEPTH @ 1- IF-DEPTH ! exit then
-   IF-DEPTH @ 0= 0= if exit then
-   ARRAY-EXPANDS? if 1 ARRAY-USED ! exit then
-   CAT-ROW? 0= if exit then
-   1 S@ UNQUOTE PATH-ROW+ ;
-
-\ The four openers and closers are compared against the WHOLE line, so they hold
-\ only at column 0 where the script writes them; an indented look-alike is not a
-\ boundary, and a script that stops matching collects no rows and fails closed.
-: SCRIPT-LINE ( ptr u8 n -- )
-   2dup s" SRC_COMMON=(" LINT-STR= if 2drop 1 IN-ARRAY ! exit then
-   2dup s" emit_src() {" LINT-STR= if 2drop 1 IN-EMIT ! 0 IF-DEPTH ! exit then
-   IN-ARRAY @ 0= 0= if
-      2dup s" )" LINT-STR= if 2drop 0 IN-ARRAY ! exit then
-      SPLIT-WHITESPACE ARRAY-LINE exit
-   then
-   IN-EMIT @ 0= 0= if
-      2dup s" }" LINT-STR= if 2drop 0 IN-EMIT ! exit then
-      SPLIT-WHITESPACE EMIT-LINE exit
-   then
-   2drop ;
-
-\ Lines are walked on this package's own cursor: LINT-SPLIT holds ONE result
-\ table, and the field split of each line would overwrite a line split.
-: LINE-END ( -- n )                        \ offset of the LF ending the line at the cursor
-   SEED-I @
-   begin dup SEED-TEXT-U @ < while
-      TEXT-A@ over + c@ LF = if exit then
-      1 +
-   repeat ;
-
-: NEXT-LINE ( -- ptr u8 n )                \ the line at the cursor; cursor moves past it
-   LINE-END {: e:n :}
-   TEXT-A@ SEED-I @ +
-   e SEED-I @ -
-   e 1 + SEED-I ! ;
-
-: SEED-SOURCES ( ptr u8 n -- )             \ a bootstrap.sh -> the set of sources it compiles
-   0 SEED-N !  0 IN-ARRAY !  0 IN-EMIT !  0 IF-DEPTH !  0 ARRAY-USED !
-   SEED-BUF SEED-CAP READ-FILE SEED-TEXT-U ! TEXT-A-FIELD !
-   0 SEED-I !
-   begin SEED-I @ SEED-TEXT-U @ < while
-      NEXT-LINE SCRIPT-LINE
-   repeat ;
+: SEED-HAS? ( ptr u8 n -- bool )           \ does the seed source compile this path
+   BOOTSTRAP-SRC:HAS? ;
 
 \ ---- boot-pin's list, read through the shared source lexer ---------------------
 \ boot-pin.f spells the list once, in BP-EACH. The walk is bounded by that one
@@ -485,8 +311,8 @@ variable PIN-DEPTH
    k s" BP-OS-LAYOUT$" TOKEN= ;
 
 : PIN-ROW$ ( n -- ptr u8 n ) {: k:n :}
-   k s" BP-OS-TARGET$" TOKEN= if OS-TARGET-KEY exit then
-   k s" BP-OS-LAYOUT$" TOKEN= if OS-LAYOUT-KEY exit then
+   k s" BP-OS-TARGET$" TOKEN= if BOOTSTRAP-SRC:OS-TARGET-KEY exit then
+   k s" BP-OS-LAYOUT$" TOKEN= if BOOTSTRAP-SRC:OS-LAYOUT-KEY exit then
    k LINT-LEX:CONTENT ;
 
 \ Only src/ rows: the lib/ prefix rows are compiled by the recovered NATIVE
@@ -551,7 +377,8 @@ variable WANT-HIT
 \ ---- findings ------------------------------------------------------------------
 : MISSING-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
    BAD-N @ 1+ BAD-N !
-   s" BOOTSTRAP-MIRROR tools/bootstrap.sh: boot-prefix source `" type
+   s" BOOTSTRAP-MIRROR " type BOOTSTRAP-SRC:SCRIPT$ type
+   s" : boot-prefix source `" type
    a u type
    s" ` is named by tools/boot-pin.f but no seed list compiles it; hb-stage0 dies at its first call with the bare token and exit 70" type
    NL ;
@@ -576,7 +403,8 @@ variable WANT-HIT
 
 : ARRAY-DEAD ( -- )
    BAD-N @ 1+ BAD-N !
-   s" BOOTSTRAP-MIRROR tools/bootstrap.sh: emit_src no longer expands SRC_COMMON, so no array entry reaches a stage source" type
+   s" BOOTSTRAP-MIRROR " type BOOTSTRAP-SRC:SCRIPT$ type
+   s" : emit_src no longer expands SRC_COMMON, so no array entry reaches a stage source" type
    NL ;
 
 : PIN-LIST-GONE ( -- )
@@ -596,11 +424,17 @@ variable WANT-HIT
       i EXEMPT-PATH$ PIN-HAS? 0= if i STALE-UNPINNED then
    loop ;
 
+\ ONE read of the script answers both halves: the drift guard reads its array
+\ entries and the seed check reads every source it compiles. The driver is EMPTY,
+\ which is the driver-independent question - a `cat` row inside a driver
+\ conditional reaches at most one emission, so it is not in the seed.
 : SEED-LIST-CK ( ptr u8 n ptr u8 n -- )    \ bootstrap.sh path, boot-pin.f path
    {: sa:ptr su:n pa:ptr pu:n :}
-   sa su SEED-SOURCES
+   sa su s" " BOOTSTRAP-SRC:LOAD
+   BOOTSTRAP-SRC:ROWS SEED-N !
+   CORPUS-DRIFT-CK
    pa pu LEX-FILE
-   ARRAY-USED @ 0= if ARRAY-DEAD then
+   BOOTSTRAP-SRC:ARRAY-USED? 0= if ARRAY-DEAD then
    PIN-BODY-START 0 < if PIN-LIST-GONE exit then
    [: CHECK-ROW ;] PIN-EACH
    EXEMPT-CK ;
@@ -610,7 +444,6 @@ variable WANT-HIT
    ROOTS-N 0 ?do
       i ROOT-AT [: WALK-FILE ;] WALK-FILES
    loop
-   CORPUS-DRIFT-CK
    s" tools/bootstrap.sh" s" tools/boot-pin.f" SEED-LIST-CK
    FINISH ;
 
