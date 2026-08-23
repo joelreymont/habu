@@ -71,18 +71,21 @@ $8000 constant CAP
 ENGINE-ERROR:SEAL-PACKAGE constant FORGE-RC
 create OUT CAP allot
 create ERR CAP allot
+create ENGINE-BUF FS-PATH-CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
 variable EXITED
 
 \ SUBJECT: source-loading. The child builds a snapshot image from emitted
-\ source, so it runs on the CAPTURE HOST the install keeps beside the product
-\ (bin/hb-host): the product's provided closure turns parts of that load into
-\ no-ops and the writer refuses. HABU_UNDER_TEST still overrides for harnesses
-\ that pin their own engine.
+\ source, so it runs on the CAPTURE HOST the install keeps beside the product:
+\ the product's provided closure turns parts of that load into no-ops and the
+\ writer refuses.
 : ENGINE$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
+   s" HABU_UNDER_TEST" GETENV dup 0 > if
+      s" -host" ENGINE-BUF FS-MUT-SUFFIX-PATH
+      ENGINE-BUF swap exit
+   then
    2drop s" bin/hb-host" ;
 
 \ ---- isolated tmp root ----
