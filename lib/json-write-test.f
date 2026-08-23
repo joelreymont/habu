@@ -7,6 +7,7 @@ require lib/string.f
 require lib/test.f
 require lib/memory.f
 require lib/json-write.f
+require lib/test/mapped.f
 require test/checker-assert.f
 
 \ White-box test: reopen the module's package so the fixtures reach json-write's
@@ -153,6 +154,30 @@ MEM-64K 17 + constant JWT-LARGE-N
    a c@ 65 T=
    a u 1 - + c@ 65 T= ;
 
+\ Append one byte at a time until the writer takes a new span: one growth step,
+\ whatever capacity the cases above left behind.
+: JWT-GROW-ONCE ( -- )
+   JW-CAP {: cap:n :}
+   begin JW-CAP cap = while 65 JW-C repeat ;
+
+\ Every grow leaves exactly ONE live span. Two growth steps abandon two spans;
+\ both must be unmapped and the buffer in hand must still be live. The witness is
+\ structural (lib/test/mapped.f), so a release that never happens cannot pass by
+\ staying inside a tolerance.
+: JWT-TEST-GROWTH-RELEASE ( -- )
+   RESET
+   $ drop {: p0:ptr :}
+   JWT-GROW-ONCE
+   $ drop {: p1:ptr :}
+   p0 p1 <> TTRUE
+   p0 MAPPED:LIVE? TFALSE
+   p1 MAPPED:LIVE? TTRUE
+   JWT-GROW-ONCE
+   $ drop {: p2:ptr :}
+   p1 p2 <> TTRUE
+   p1 MAPPED:LIVE? TFALSE
+   p2 MAPPED:LIVE? TTRUE ;
+
 : JWT-TEST-ERRORS ( -- )
    [: JWT-RAW-NEG ;] E-JW-CAPACITY TTHROWSQ
    [: JWT-C-NEG ;] E-JW-BYTE TTHROWSQ
@@ -170,6 +195,7 @@ MEM-64K 17 + constant JWT-LARGE-N
    JWT-TEST-ARRAY
    JWT-TEST-BUF-ACCESSORS
    JWT-TEST-GROWTH
+   JWT-TEST-GROWTH-RELEASE
    JWT-TEST-ERRORS
    T-REPORT
    s" json-write-test: ok" type cr ;

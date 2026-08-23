@@ -7,6 +7,11 @@ require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/test/src-shape.f
+require lib/test/mapped.f
+
+\ Fixture helpers belong to the file, not the global dictionary; all twelve of
+\ these names had zero consumers elsewhere in the tree.
+package SHAPE-TEST
 
 create SST-DIR-BUF FS-PATH-CAP allot
 variable SST-DIR-U
@@ -37,6 +42,23 @@ variable SST-PATH-U
    [: s" fits.f" 10 100 SHAPE:CHECK-FIT ;] 0 TTHROWSQ
    [: s" big.f" 100 10 SHAPE:CHECK-FIT ;] E-FS-CAPACITY TTHROWSQ ;
 
+\ One span is live per loaded source: every LOAD installs its own mapping and
+\ releases the span the previous LOAD owned. Three loads of different sizes, so
+\ two spans are abandoned; both must be unmapped (lib/test/mapped.f).
+: SST-RELEASE-CASES ( -- )
+   SST-PATH$ SHAPE:LOAD
+   SHAPE:TEXT drop {: p0:ptr :}
+   s" AGENTS.md" SHAPE:LOAD
+   SHAPE:TEXT drop {: p1:ptr :}
+   p0 p1 <> TTRUE
+   p0 MAPPED:LIVE? TFALSE
+   p1 MAPPED:LIVE? TTRUE
+   s" README.md" SHAPE:LOAD
+   SHAPE:TEXT drop {: p2:ptr :}
+   p1 p2 <> TTRUE
+   p1 MAPPED:LIVE? TFALSE
+   p2 MAPPED:LIVE? TTRUE ;
+
 \ LOAD auto-sizes the buffer to the file, then TEXT/HAS?/COUNT read it back.
 : SST-LOAD-CASES ( -- )
    SST-PATH$ SHAPE:LOAD
@@ -54,7 +76,10 @@ variable SST-PATH-U
    SST-SETUP
    SST-CHECK-FIT-CASES
    SST-LOAD-CASES
+   SST-RELEASE-CASES
    T-REPORT
    s" src-shape-test: ok" type cr ;
 
 SST-MAIN
+
+;package

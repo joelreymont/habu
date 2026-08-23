@@ -812,6 +812,7 @@ public
    s" lib/object-link-test.f" GSI-FORK-INCLUDE
    s" lib/layout/box-test.f" GSI-FORK-INCLUDE
    s" lib/test/src-shape-test.f" GSI-FORK-INCLUDE
+   s" lib/test/mapped-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-LINT-LIBS-PTX ( -- )
