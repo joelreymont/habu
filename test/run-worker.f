@@ -58,7 +58,6 @@ public
       21 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       22 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       23 of s" test/run-worker-stdlib.f" TRW-LOAD endof
-      24 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       25 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       26 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       27 of s" test/run-worker-stdlib.f" TRW-LOAD endof

@@ -29,7 +29,6 @@ TEST:TRW-LOAD-DONE
       21 of GSI-TOOL-REPAIR endof
       22 of TOOL-SEMANTICS:DOC endof
       23 of GSI-TOOL-LINT-PHASE endof
-      24 of GSI-TOOL-TYPED endof
       25 of GSI-TAIL-FAST endof
       26 of TAIL-PURE:RUN endof
       27 of TAIL-RUNNER endof

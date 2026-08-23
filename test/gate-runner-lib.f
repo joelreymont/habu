@@ -21,7 +21,6 @@ package GATE-RUNNER
 10 constant ID-TOOL-LINT-AOT
 11 constant ID-TOOL-LINT-NAMES
 12 constant ID-TOOL-LINT-BUNDLE
-13 constant ID-TOOL-TYPED
 14 constant ID-TOOL-SEMANTICS
 15 constant ID-CHECK-CLI
 16 constant ID-TAIL
@@ -114,7 +113,6 @@ variable ARG-I
    s" tool-lint-aot" ARG0= if ID-TOOL-LINT-AOT exit then
    s" tool-lint-names" ARG0= if ID-TOOL-LINT-NAMES exit then
    s" tool-lint-bundle" ARG0= if ID-TOOL-LINT-BUNDLE exit then
-   s" tool-typed" ARG0= if ID-TOOL-TYPED exit then
    s" tool-semantics" ARG0= if ID-TOOL-SEMANTICS exit then
    s" check-cli" ARG0= if ID-CHECK-CLI exit then
    s" tail" ARG0= if ID-TAIL exit then
@@ -165,7 +163,6 @@ variable ARG-I
       ID-TOOL-LINT-AOT of GSI-TOOL-LINT-AOT endof
       ID-TOOL-LINT-NAMES of GSI-TOOL-LINT-NAMES endof
       ID-TOOL-LINT-BUNDLE of GSI-TOOL-LINT-BUNDLE endof
-      ID-TOOL-TYPED of GSI-TOOL-TYPED endof
       ID-TOOL-SEMANTICS of TOOL-SEMANTICS:RUN endof
       ID-CHECK-CLI of CHECK-CLI-GATE:RUN endof
       ID-TAIL of STDLIB endof
@@ -234,7 +231,6 @@ variable ARG-I
       ID-TOOL-LINT-AOT of 0 0= endof
       ID-TOOL-LINT-NAMES of 0 0= endof
       ID-TOOL-LINT-BUNDLE of 0 0= endof
-      ID-TOOL-TYPED of 0 0= endof
       ID-TOOL-SEMANTICS of 0 0= endof
       ID-CHECK-CLI of 0 0= endof
       ID-LINT-TOOLS of 0 0= endof

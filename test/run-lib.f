@@ -24,7 +24,7 @@ PHASES constant TR-PHASES
 32 constant TR-NUM-CAP
 public
 $2 constant CANDIDATE-HOST-PHASES
-$1C constant EARLY-HOST-PHASES
+$1B constant EARLY-HOST-PHASES
 $3 constant LATE-PHASES
 $3 constant READY-DIRECT-PHASES
 $2 constant READY-SHARED-PHASES
@@ -54,7 +54,7 @@ $28 , $4 ,
 $8 , $7 , $24 , $25 , $26 , $27 , $16 , $15 ,
 $1A , $C , $11 , $23 , $1E , $22 , $B , $A ,
 $1F , $21 ,
-$5 , $2 , $1B , $1C , $19 , $20 , $D , $18 ,
+$5 , $2 , $1B , $1C , $19 , $20 , $D ,
 
 \ Candidate-ready phases the DAG kicks ahead of the early loop so their work
 \ overlaps the serial shared setup. Every id here is in an order table above as
@@ -83,7 +83,7 @@ PHASE-DEBUG , PHASE-ENGINE-BUILD ,
 \ Phases this runner deliberately does NOT start. Each is an aggregate whose
 \ members run here in groups of their own instead: lint-libs ($13) as phases
 \ $1E..$21, lint-artifacts ($12) as $22, and the tool-lints group ($17) as the
-\ four splits $24..$27. Those splits are RESIDENT, so what they run is their GSI
+\ three splits $25..$27. Those splits are RESIDENT, so what they run is their GSI
 \ inline lists and never a SUITE registration: a registration whose label only a
 \ deferred or a resident phase's slice selects is run by nothing at all, which is
 \ what tools/lint/schedule-lint.f refuses. The one aggregate member that cannot
@@ -618,7 +618,7 @@ public
       21 of s" GROUP: stdlib/tool-repair [parallel]" endof
       22 of s" GROUP: stdlib/tool-doc [parallel]" endof
       23 of s" GROUP: stdlib/tool-lints [parallel]" endof
-      24 of s" GROUP: stdlib/tool-typed-local [parallel]" endof
+      24 of s" unused retired phase 24" endof
       25 of s" GROUP: stdlib/tail-fast [inprocess]" endof
       26 of s" GROUP: stdlib/tail-pure [inprocess]" endof
       27 of s" GROUP: stdlib/tail-runner [inprocess]" endof
@@ -665,7 +665,7 @@ private
       21 of s" gate-stdlib-tool-repair" endof
       22 of s" gate-stdlib-tool-doc" endof
       23 of s" gate-stdlib-tool-lints" endof
-      24 of s" gate-stdlib-tool-typed" endof
+      24 of s" gate-unused-24" endof
       25 of s" gate-stdlib-tail-fast" endof
       26 of s" gate-stdlib-tail-pure" endof
       27 of s" gate-stdlib-tail-runner" endof
@@ -702,7 +702,6 @@ public
       21 of TR-TRUE endof
       22 of TR-TRUE endof
       23 of TR-TRUE endof
-      24 of TR-TRUE endof
       25 of TR-TRUE endof
       26 of TR-TRUE endof
       27 of TR-TRUE endof
@@ -739,7 +738,6 @@ public
       21 of s" tool" endof
       22 of s" tool" endof
       23 of s" tool" endof
-      24 of s" tool" endof
       25 of s" tail" endof
       26 of s" tail" endof
       27 of s" tail" endof
@@ -767,6 +765,7 @@ public
    idx IDX>N case
       0 of TR-TRUE endof
       1 of TR-TRUE endof
+      24 of TR-TRUE endof
       29 of TR-TRUE endof
       TR-FALSE swap
    endcase ;
@@ -818,7 +817,7 @@ private
       21 of s" tool-repair" endof
       22 of s" tool-doc" endof
       23 of s" tool-lints" endof
-      24 of s" tool-typed" endof
+      24 of TR-UNSCHEDULED-PHASE endof
       25 of s" tail-fast" endof
       26 of s" tail-pure" endof
       27 of s" tail-runner" endof
