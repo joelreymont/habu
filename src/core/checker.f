@@ -6539,8 +6539,8 @@ PRIM: space  PRIM;
 PRIM: u.     PE-N PE-IN PRIM;
 
 PRIM: create   PRIM;
-PRIM: variable PE-PTR-A PE-OUT PRIM;
-PRIM: constant PE-A PE-OUT PRIM;
+PRIM: variable PRIM;
+PRIM: constant PE-N PE-IN PRIM;
 PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
 PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
 PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
