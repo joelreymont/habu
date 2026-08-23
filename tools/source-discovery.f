@@ -28,6 +28,7 @@ require lib/source.f
 require tools/dynamic-tail-manifest.f
 
 package DISCOVER
+using SOURCE                             \ the shared source-string emitters
 
 $80000 constant SD-SRC-CAP
 $400 constant SD-PATH-CAP
@@ -260,4 +261,5 @@ public
    repeat drop
    SD-EMIT-LEN @ LEN>N ;
 
+;using
 ;package

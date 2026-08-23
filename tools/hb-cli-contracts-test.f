@@ -10,6 +10,12 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 
+\ Sealed because the source seal reaches into this file: the child program
+\ below names SOURCE:READ-STDIN-ALL, and package-diff-lint refuses a changed
+\ definition in an unpackaged module file. Named for the contracts it covers,
+\ not HCT, so the existing tails do not repeat their own package owner.
+package CLI-CONTRACTS
+
 2048 constant HCT-CAP
 10000 constant HCT-TIMEOUT-MS
 
@@ -44,7 +50,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    SB-RESET
    s" create HCT-BUF 32 allot" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
-   s"    HCT-BUF 32 >LEN READ-STDIN-ALL LEN>N dup ." SB-APPEND HCT-LF
+   s"    HCT-BUF 32 >LEN SOURCE:READ-STDIN-ALL LEN>N dup ." SB-APPEND HCT-LF
    s"    HCT-BUF swap type cr ;" SB-APPEND HCT-LF
    s" MAIN" SB-APPEND HCT-LF
    SB$ ;
@@ -168,3 +174,5 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" hb-cli-contracts-test: ok" type cr ;
 
 HCT-MAIN
+
+;package

@@ -28,6 +28,7 @@ s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
 package CHECK
+using SOURCE                             \ the shared source-string emitters
 
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
@@ -1411,4 +1412,5 @@ public
    CHK-PARSE
    RUN dup 0 <> if throw then drop ;
 
+;using
 ;package

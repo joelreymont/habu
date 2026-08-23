@@ -5,9 +5,17 @@ require lib/string.f
 require lib/memory.f
 require lib/fs.f
 
-$20000 constant SOURCE-CAP
+\ Sealed as package SOURCE. package-diff-lint refuses every edit to a definition
+\ in an unpackaged module file, so the seal is the price of fixing the buffer
+\ below; the interner lane paid the same price for tools/lint/intern.f (dot
+\ habu-lint-intern-table-85ae462f). Nothing surviving is renamed. Four words
+\ whose only consumer was lib/source-test.f - CONCAT-FILES, WRITE-SOURCE-LIST,
+\ INSERT-BEFORE-FINAL-LINE and SOURCE-FILE-LINES - went with the seal, because a
+\ sealed package does not publish words nothing calls.
+package SOURCE
+private
+
 1 constant SOURCE-PROBE-CAP
-4096 constant SOURCE-LS-READ-CAP
 9 constant SOURCE-TAB
 10 constant SOURCE-LF
 13 constant SOURCE-CR
@@ -16,23 +24,24 @@ $20000 constant SOURCE-CAP
 92 constant SOURCE-BACKSLASH
 
 create SOURCE-PROBE SOURCE-PROBE-CAP allot
-create SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP allot
 
 variable SOURCE-BUF-A
 variable SOURCE-LEN
 variable SOURCE-RD
 variable SOURCE-I
 variable SOURCE-J
-variable SOURCE-CUT
 variable SOURCE-SKIP
 variable SOURCE-END
-variable SOURCE-LS-FD
-variable SOURCE-LS-RD
-variable SOURCE-LS-LEN
-variable SOURCE-LS-LINE#
+
+\ Bytes behind SOURCE-BUF-A. There is no capacity CONSTANT here any more: a
+\ build's source is not bounded by any number this file could name, so the
+\ commented-source buffer is sized from the source on every call.
+variable BUF-CAP
 
 : SOURCE-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
+
+public
 
 : SOURCE-PTR-U8@ ( ptr a -- ptr u8 )
    SOURCE-PTR-U8-FIELD @ ;
@@ -40,20 +49,59 @@ variable SOURCE-LS-LINE#
 : SOURCE-PTR-U8! ( ptr u8 ptr a -- )
    SOURCE-PTR-U8-FIELD ! ;
 
-\ Fixed-size buffer allocation. SOURCE-CAP is a positive library constant;
-\ MEM:BYTES-ALLOC-LEN narrows the raw size to the validated alloc role before
-\ MEM:ALLOC-BYTES, throwing E-MEM-SIZE on any refusal (unreachable for the constant).
+\ One-shot allocation of a caller-owned span. MEM:BYTES-ALLOC-LEN narrows the
+\ raw size to the validated alloc role before MEM:ALLOC-BYTES, throwing
+\ E-MEM-SIZE on any refusal (zero, negative, or overflow).
 : SOURCE-ALLOC-BUF ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
+private
+
 : SOURCE-BUF ( -- ptr u8 )
-   SOURCE-BUF-A @ 0= if SOURCE-CAP SOURCE-ALLOC-BUF SOURCE-BUF-A SOURCE-PTR-U8! then
    SOURCE-BUF-A SOURCE-PTR-U8@ ;
+
+\ Capacity exits name the need and the have, so a refusal reads as a size and
+\ not as a mystery (LESSONS 2026-08-22: a die that prints only the offending
+\ token costs a day per break).
+: GROW-REFUSED ( n n -- ) {: need:n have:n :}
+   s" source: cannot grow the commented-source buffer" type cr
+   s" source: needed " type need .
+   s" source: have " type have .
+   E-FS-CAPACITY throw ;
+
+\ Install the new mapping, then release the prior one. Release is LAST, so a
+\ refused allocation never reaches it and leaves the old span owned and intact
+\ (the shape lib/vector.f VEC-INSTALL-RESIZE and lib/byte-buffer.f
+\ INSTALL-RESIZE already carry). No copy: this buffer is scratch that every use
+\ refills from its source before reading it.
+\
+\ INVARIANT, and the reason releasing is safe: no caller holds a pointer into
+\ this buffer across a grow. SOURCE-BUF is fetched at the point of use and the
+\ only word that reaches it, COMMENT-EXPORTS$, fetches AFTER its BUF-ENSURE.
+: BUF-GROW ( n -- ) {: need:n :}
+   need MEM-ALLOC-64K-SPAN {: buf:ptr got:n :}
+   got need < if need got GROW-REFUSED then
+   SOURCE-BUF {: old:ptr :}
+   BUF-CAP @ {: oldcap:n :}
+   buf SOURCE-BUF-A SOURCE-PTR-U8!
+   got BUF-CAP !
+   oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then ;
+
+\ Grows only, and only when the request does not already fit: the buffer
+\ outlives one call so a build that comments two sources reuses the larger span.
+\ An empty source still gets a real span, so the answer is always a pointer a
+\ caller may write through rather than a null one caller in three checks for.
+: BUF-ENSURE ( n -- ) {: need:n :}
+   SOURCE-BUF-A @ 0= if need 1 max BUF-GROW exit then
+   need BUF-CAP @ <= if exit then
+   need BUF-GROW ;
 
 : SOURCE-READ-PROBE ( -- )
    0 SOURCE-PROBE SOURCE-PROBE-CAP read SOURCE-RD !
    SOURCE-RD @ 0 < if E-FS-IO throw then
    SOURCE-RD @ 0 > if E-FS-CAPACITY throw then ;
+
+public
 
 : READ-STDIN-ALL ( ptr u8 len -- len ) {: dst:ptr cap :}
    cap LEN>N 0 < if E-FS-CAPACITY throw then
@@ -84,6 +132,8 @@ variable SOURCE-LS-LINE#
    c dst lenp @ LEN>N + c!
    lenp @ LEN>N 1 + >LEN lenp ! ;
 
+private
+
 \ One shared checked path-string emitter. Path bytes that would change source
 \ structure (`"`, `\`, LF, CR) are rejected fail-closed so materialized loader
 \ lines and diagnostic prefix labels cannot be broken or injected by a path.
@@ -103,6 +153,8 @@ variable SOURCE-LS-LINE#
 : SOURCE-QPATH-CHECK ( ptr u8 n -- )
    SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;
 
+public
+
 : SOURCE-APPEND-QPATH ( ptr u8 len ptr u8 len ptr len -- )
    {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
    path pathu LEN>N SOURCE-QPATH-CHECK
@@ -112,71 +164,7 @@ variable SOURCE-LS-LINE#
    path pathu dst cap lenp SOURCE-APPEND-BYTES
    SOURCE-DQ dst cap lenp SOURCE-APPEND-C ;
 
-: SOURCE-PATH-A@ ( ptr a idx -- ptr u8 ) {: table:ptr idx :}
-   idx IDX>N cells table + @ ;
-
-: SOURCE-PATH-U@ ( ptr a idx -- len ) {: table:ptr idx :}
-   idx IDX>N cells table + @ >LEN ;
-
-: SOURCE-APPEND-FILE ( ptr u8 len ptr u8 len ptr len -- )
-   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
-   path pathu LEN>N dst lenp @ LEN>N + cap LEN>N lenp @ LEN>N - READ-ALL SOURCE-RD !
-   lenp @ LEN>N SOURCE-RD @ + >LEN lenp ! ;
-
-: SOURCE-APPEND-PROVIDED ( ptr u8 len ptr u8 len ptr len -- )
-   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
-   path pathu dst cap lenp SOURCE-APPEND-QPATH
-   SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
-   s" provided" >LEN dst cap lenp SOURCE-APPEND-BYTES
-   SOURCE-LF dst cap lenp SOURCE-APPEND-C ;
-
-: SOURCE-APPEND-SOURCE-FILE ( ptr u8 len ptr u8 len ptr len -- )
-   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
-   path pathu dst cap lenp SOURCE-APPEND-PROVIDED
-   path pathu dst cap lenp SOURCE-APPEND-FILE
-   SOURCE-LF dst cap lenp SOURCE-APPEND-C ;
-
-: CONCAT-FILES ( ptr a ptr a count ptr u8 len -- len )
-   {: paths:ptr lens:ptr count dst:ptr cap :}
-   count COUNT>N 0 < if E-FS-CAPACITY throw then
-   cap LEN>N 0 < if E-FS-CAPACITY throw then
-   0 >LEN SOURCE-LEN !
-   0 begin dup count COUNT>N < while
-      dup SOURCE-I !
-      paths SOURCE-I @ >IDX SOURCE-PATH-A@ lens SOURCE-I @ >IDX SOURCE-PATH-U@ dst cap SOURCE-LEN SOURCE-APPEND-FILE
-      1+
-   repeat drop
-   SOURCE-LEN @ ;
-
-: WRITE-SOURCE-LIST ( ptr a ptr a count ptr u8 len -- )
-   {: paths:ptr lens:ptr count out:ptr outu :}
-   count COUNT>N 0 < if E-FS-CAPACITY throw then
-   0 >LEN SOURCE-LEN !
-   0 begin dup count COUNT>N < while
-      dup SOURCE-I !
-      paths SOURCE-I @ >IDX SOURCE-PATH-A@ lens SOURCE-I @ >IDX SOURCE-PATH-U@ SOURCE-BUF SOURCE-CAP >LEN SOURCE-LEN SOURCE-APPEND-SOURCE-FILE
-      1+
-   repeat drop
-   out outu LEN>N SOURCE-BUF SOURCE-LEN @ LEN>N WRITE-ALL ;
-
-: SOURCE-FINAL-LINE-START ( ptr u8 len -- off ) {: src:ptr u :}
-   u LEN>N 0= if 0 >OFF exit then
-   u LEN>N >OFF SOURCE-I !
-   src u LEN>N 1 - + c@ SOURCE-LF = if u LEN>N 1 - >OFF SOURCE-I ! then
-   begin SOURCE-I @ OFF>N 0 > while
-      src SOURCE-I @ OFF>N 1 - + c@ SOURCE-LF = if SOURCE-I @ exit then
-      SOURCE-I @ OFF>N 1 - >OFF SOURCE-I !
-   repeat
-   0 >OFF ;
-
-: INSERT-BEFORE-FINAL-LINE ( ptr u8 len ptr u8 len ptr u8 len -- len )
-   {: src:ptr u ins:ptr insu dst:ptr cap :}
-   src u SOURCE-FINAL-LINE-START SOURCE-CUT !
-   0 >LEN SOURCE-LEN !
-   src SOURCE-CUT @ OFF>N >LEN dst cap SOURCE-LEN SOURCE-APPEND-BYTES
-   ins insu dst cap SOURCE-LEN SOURCE-APPEND-BYTES
-   src SOURCE-CUT @ OFF>N + u LEN>N SOURCE-CUT @ OFF>N - >LEN dst cap SOURCE-LEN SOURCE-APPEND-BYTES
-   SOURCE-LEN @ ;
+private
 
 : SOURCE-LINE-END ( ptr u8 len off -- off ) {: src:ptr u start :}
    start SOURCE-J !
@@ -231,10 +219,16 @@ variable SOURCE-PKG-DEPTH
       SOURCE-PKG-DEPTH @ 0 > if SOURCE-PKG-DEPTH @ 1 - SOURCE-PKG-DEPTH ! then
    then ;
 
+\ The only spelling of the comment marker. The emitter below writes it and
+\ COMMENT-NEED sizes with it, so the destination bound cannot drift from the
+\ bytes that are actually emitted.
+: COMMENT-PREFIX$ ( -- ptr u8 n )
+   s" \ " ;
+
 : SOURCE-APPEND-COMMENTED-EXPORT ( ptr u8 len ptr u8 len ptr len -- )
    {: line:ptr lineu dst:ptr cap lenp:ptr :}
    line lineu SOURCE-LINE-SKIP-WS SOURCE-SKIP !
-   s" \ " >LEN dst cap lenp SOURCE-APPEND-BYTES
+   COMMENT-PREFIX$ >LEN dst cap lenp SOURCE-APPEND-BYTES
    line SOURCE-SKIP @ OFF>N + lineu LEN>N SOURCE-SKIP @ OFF>N - >LEN dst cap lenp SOURCE-APPEND-BYTES ;
 
 : SOURCE-APPEND-COMMENT-LINE ( ptr u8 len ptr u8 len ptr len -- )
@@ -257,61 +251,29 @@ variable SOURCE-PKG-DEPTH
    repeat
    SOURCE-LEN @ ;
 
-: SOURCE-LS-CLOSE ( -- )
-   SOURCE-LS-FD @ dup 0 >= if close else drop then
-   -1 SOURCE-LS-FD ! ;
-
-: SOURCE-LS-THROW ( n -- )
-   SOURCE-LS-CLOSE
-   throw ;
-
-: SOURCE-LS-OPEN ( ptr u8 n -- )
-   -1 SOURCE-LS-FD !
-   FS-PATHZ open-rd SOURCE-LS-FD !
-   SOURCE-LS-FD @ 0 < if E-FS-OPEN throw then ;
-
-: SOURCE-LS-READ ( -- n )
-   SOURCE-LS-FD @ SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP read SOURCE-LS-RD !
-   SOURCE-LS-RD @ 0 < if E-FS-IO SOURCE-LS-THROW then
-   SOURCE-LS-RD @ SOURCE-LS-READ-CAP > if E-FS-IO SOURCE-LS-THROW then
-   SOURCE-LS-RD @ ;
-
-: SOURCE-LS-TRIM-CR ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   u 0 > if
-      a u 1 - + c@ SOURCE-CR = if a u 1 - exit then
-   then
-   a u ;
-
-: SOURCE-LS-APPEND ( n ptr u8 n -- ) {: c line:ptr cap :}
-   SOURCE-LS-LEN @ cap >= if E-FS-CAPACITY SOURCE-LS-THROW then
-   c line SOURCE-LS-LEN @ + c!
-   SOURCE-LS-LEN @ 1+ SOURCE-LS-LEN ! ;
-
-: SOURCE-LS-EMIT ( ptr u8 [ ptr u8 n n -- ] -- ) {: line:ptr q :}
-   SOURCE-LS-LINE# @ 1+ SOURCE-LS-LINE# !
-   line SOURCE-LS-LEN @ SOURCE-LS-TRIM-CR SOURCE-LS-LINE# @ q execute
-   0 SOURCE-LS-LEN ! ;
-
-: SOURCE-LS-BYTE ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: c line:ptr cap q :}
-   c SOURCE-LF = if line q SOURCE-LS-EMIT exit then
-   c line cap SOURCE-LS-APPEND ;
-
-: SOURCE-LS-CHUNK ( n ptr u8 n [ ptr u8 n n -- ] -- ) {: got line:ptr cap q :}
-   0 begin dup got < while
-      SOURCE-LS-READ-BUF over + c@ line cap q SOURCE-LS-BYTE
+\ Lines the strip will walk, counting a final unterminated one.
+: LINE-COUNT ( ptr u8 len -- n ) {: src:ptr u:len :}
+   0 >OFF SOURCE-I !
+   0 begin SOURCE-I @ OFF>N u LEN>N < while
+      src u SOURCE-I @ SOURCE-LINE-END SOURCE-I !
       1+
-   repeat drop ;
+   repeat ;
 
-: SOURCE-LS-DRAIN ( ptr u8 n [ ptr u8 n n -- ] -- ) {: line:ptr cap q :}
-   cap 0 <= if E-FS-CAPACITY SOURCE-LS-THROW then
-   0 SOURCE-LS-LEN !
-   0 SOURCE-LS-LINE# !
-   begin SOURCE-LS-READ dup 0 > while
-      line cap q SOURCE-LS-CHUNK
-   repeat drop
-   SOURCE-LS-LEN @ 0 > if line q SOURCE-LS-EMIT then
-   SOURCE-LS-CLOSE ;
+\ The exact destination bound. A commented line loses its leading whitespace and
+\ gains the comment prefix, so no line grows by more than the prefix, and every
+\ other line is copied byte for byte.
+: COMMENT-NEED ( ptr u8 len -- n ) {: src:ptr u:len :}
+   u LEN>N  src u LINE-COUNT COMMENT-PREFIX$ nip *  + ;
 
-: SOURCE-FILE-LINES ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- ) {: path:ptr pathu line:ptr cap q :}
-   path pathu SOURCE-LS-OPEN
-   line cap q SOURCE-LS-DRAIN ;
+public
+
+\ COMMENT-EXPORTS into this module's own buffer, sized from the source. The
+\ caller gets a span, not a buffer and a capacity: the size question belongs to
+\ the code that owns the emission rule, and a caller that had to guess it is how
+\ a 128 KiB constant silently capped hb-build (dot habu-hb-build-cannot-d09df17e).
+: COMMENT-EXPORTS$ ( ptr u8 len -- ptr u8 len ) {: src:ptr u:len :}
+   src u COMMENT-NEED BUF-ENSURE
+   src u SOURCE-BUF BUF-CAP @ >LEN COMMENT-EXPORTS {: outu:len :}
+   SOURCE-BUF outu ;
+
+;package

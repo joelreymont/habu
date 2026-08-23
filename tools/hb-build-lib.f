@@ -24,6 +24,7 @@ require tools/event-closure-lib.f
 \ a different concern with its own published surface.
 package HB-BUILD-CLI
 using BUILD-FIXPOINT                     \ the emitted-source and tmp-root surface
+using SOURCE                             \ the EXPORT-directive strip
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -97,6 +98,8 @@ variable HBB-SEED-HEX-U
 variable HBB-PRESEED-MODE
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
+variable HBB-COMMENTED-A
+variable HBB-COMMENTED-U
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -113,6 +116,15 @@ variable HBB-ELAPSED-NS
 : HBB-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
    slot @ 0= if cap HBB-ALLOC-BUF slot HBB-PTR-U8! then
    slot HBB-PTR-U8@ ;
+
+\ The commented source is a SPAN the strip hands back, not a buffer this file
+\ sizes: lib/source.f owns the emission rule, so it owns how big the result is.
+: HBB-COMMENTED! ( ptr u8 len -- ) {: a:ptr u:len :}
+   a HBB-COMMENTED-A HBB-PTR-U8!
+   u LEN>N HBB-COMMENTED-U ! ;
+
+: HBB-COMMENTED$ ( -- ptr u8 n )
+   HBB-COMMENTED-A HBB-PTR-U8@ HBB-COMMENTED-U @ ;
 
 : HBB-OUT-BUF ( -- ptr u8 )
    HBB-OUT-BUF-A HBB-CAPTURE-CAP HBB-BUF ;
@@ -700,16 +712,19 @@ HBB-INSTALL-CHILD-LINTS
    -1 HBB-MAKER-BUILD !
    HBB-BUILD-MAKER-FRESH ;
 
+: HBB-COMMENT-SOURCE ( -- )
+   BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN COMMENT-EXPORTS$ HBB-COMMENTED! ;
+
 : HBB-READ-COMMENTED-SOURCE ( -- )
    HBB-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
-   BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN SOURCE-BUF SOURCE-CAP >LEN COMMENT-EXPORTS SOURCE-LEN ! ;
+   HBB-COMMENT-SOURCE ;
 
 : HBB-READ-ORIGIN-COMMENTED-SOURCE ( -- )
    HBB-DIAG-ORIGIN-SOURCE
-   BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN SOURCE-BUF SOURCE-CAP >LEN COMMENT-EXPORTS SOURCE-LEN ! ;
+   HBB-COMMENT-SOURCE ;
 
 : HBB-WRITE-COMMENTED-SOURCE ( ptr u8 n -- ) {: name:ptr nameu :}
-   name nameu BF-OUT$ SOURCE-BUF SOURCE-LEN @ LEN>N WRITE-ALL ;
+   name nameu BF-OUT$ HBB-COMMENTED$ WRITE-ALL ;
 
 : HBB-TARGET-UNKNOWN ( -- )
    s" hb-build: unknown target" HBB-BUILD-RC die ;
@@ -734,7 +749,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-APPEND-TARGET-REPL-TERM ;
 
 : HBB-APPEND-COMMENTED-SOURCE ( -- )
-   HBB-SRC-NAME$ SOURCE-BUF SOURCE-LEN @ BF-APPEND-BYTES ;
+   HBB-SRC-NAME$ HBB-COMMENTED$ BF-APPEND-BYTES ;
 
 : HBB-PREPARE-AOT-SOURCE ( -- )
    HBB-READ-ORIGIN-COMMENTED-SOURCE
@@ -1085,5 +1100,6 @@ EXPORT HBB-SIGNATURE-LINT-HOOK
 EXPORT HBB-SRC$
 EXPORT HBB-STRICT-ON
 
+;using
 ;using
 ;package
