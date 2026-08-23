@@ -7866,3 +7866,20 @@ and --no-lldbinit.
   Twenty-three of the twenty-five slices the runner's live phases named were
   resident or deferred, so 33 registered files were certified covered and never
   ran. Coverage from a slice needs the phase started AND non-resident.
+
+## 2026-08-23 - the lint port's two process findings (lint lane)
+
+- **An immediate engine control word wins at the call site even over a
+  package-private definition of the same name, and the diagnostic names the
+  wrong token.** `package P private : CASE ( -- ) ; : M ( -- ) CASE ;` exits
+  70 as `habu: in m: at 'CASE'`; when the shadowed word opens a construct, the
+  error names the LAST token of the caller instead. Screen a candidate name
+  with `: FOO ( -- ) ; : BAR ( -- ) FOO <name> FOO ;` — `E-UNDEFINED` means
+  free, `in bar: at 'FOO'` means an immediate word you must not shadow. `FOLD`
+  is one too. Engine defect: dot habu-immediate-control-words-6d7507da.
+- **A mutation that fails to compile is not a falsification, and a fixture
+  that passes for the wrong reason is not a fixture.** Three mutants of the
+  lint port exited 70 before proving anything; two fixtures passed because a
+  delimiter-space slip made `s"SDC-AOT$"` a plain word instead of a string
+  opener. Every composed fixture needs a mutation that discriminates it — not
+  just an expected value that happens to come out right.
