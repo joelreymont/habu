@@ -154,6 +154,34 @@ MEM-64K 17 + constant JWT-LARGE-N
    a c@ 65 T=
    a u 1 - + c@ 65 T= ;
 
+\ The capacity setup is white-box, but each failure path below feeds the public
+\ span returned by $ directly to a public writer entry.
+: JWT-FILL-CAP ( -- n )
+   RESET
+   JW-CAP {: cap:n :}
+   cap 0 ?do s" a" RAW loop
+   cap ;
+
+: JWT-TEST-SELF-RAW ( -- )
+   JWT-FILL-CAP {: cap:n :}
+   $ RAW
+   $ {: a:ptr u:n :}
+   u cap 2 * T=
+   a c@ 97 T=
+   a cap + c@ 97 T=
+   a u 1 - + c@ 97 T= ;
+
+: JWT-TEST-SELF-STRING ( -- )
+   JWT-FILL-CAP {: cap:n :}
+   $ STRING
+   $ {: a:ptr u:n :}
+   u cap 2 * 2 + T=
+   a c@ 97 T=
+   a cap 1 - + c@ 97 T=
+   a cap + c@ JW-DQ T=
+   a cap 1+ + c@ 97 T=
+   a u 1 - + c@ JW-DQ T= ;
+
 \ Append one byte at a time until the writer takes a new span: one growth step,
 \ whatever capacity the cases above left behind.
 : JWT-GROW-ONCE ( -- )
@@ -194,6 +222,8 @@ MEM-64K 17 + constant JWT-LARGE-N
    JWT-TEST-OBJECT
    JWT-TEST-ARRAY
    JWT-TEST-BUF-ACCESSORS
+   JWT-TEST-SELF-RAW
+   JWT-TEST-SELF-STRING
    JWT-TEST-GROWTH
    JWT-TEST-GROWTH-RELEASE
    JWT-TEST-ERRORS

@@ -114,6 +114,14 @@ public
 
 private
 
+: JW-OUTPUT-ALIAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 < if false exit then
+   u JW-OUT-LEN @ > if false exit then
+   a JW-BUF = ;
+
+: JW-SOURCE ( ptr u8 bool -- ptr u8 )
+   if drop JW-BUF then ;
+
 : JW-C ( n -- ) {: c :}
    c 0 < if E-JW-BYTE throw then
    c JW-BYTE-MAX > if E-JW-BYTE throw then
@@ -122,8 +130,9 @@ private
    JW-OUT-LEN @ 1+ JW-OUT-LEN ! ;
 
 : JW-RAW-LEN ( ptr u8 len -- ) {: a:ptr u :}
+   a u LEN>N JW-OUTPUT-ALIAS? {: alias:bool :}
    u JW-CHECK-LEN-ROOM
-   a JW-BUF JW-OUT-LEN @ + u BYTE-COPY-LEN
+   a alias JW-SOURCE JW-BUF JW-OUT-LEN @ + u BYTE-COPY-LEN
    JW-OUT-LEN @ u LEN>N + JW-OUT-LEN ! ;
 
 public
@@ -158,9 +167,10 @@ private
 public
 
 : STRING ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u JW-OUTPUT-ALIAS? {: alias:bool :}
    JW-DQ JW-C
    0 begin dup u < while
-      dup a + c@ JW-ESC-C
+      dup a alias JW-SOURCE + c@ JW-ESC-C
       1+
    repeat drop
    JW-DQ JW-C ;
