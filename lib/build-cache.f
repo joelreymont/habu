@@ -51,10 +51,22 @@ variable CAUSE-CODE
 : SELECT-ALLOC ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
+\ Storage flows through MEM:ALLOC-BYTES / MEM:RELEASE-BYTES.
+: SELECT-RELEASE ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ Install the new span, then release the prior one; the release is LAST, so an
+\ alloc that throws leaves the old span owned. No copy: growing invalidates the
+\ previous bytes and every caller overwrites what it asked for - SELECT-COPY! and
+\ SELECT-JOIN! both BYTE-COPY into the returned pointer, SELECTED>ROOT copies out
+\ to the static ROOT-BUF, and no caller sources from the buffer it is growing.
 : SELECT-BUF ( n -- ptr u8 ) {: need:n :}
    SELECT-CAP @ need < if
+      SELECT-A@ {: old:ptr :}
+      SELECT-CAP @ {: oldcap:n :}
       need SELECT-ALLOC SELECT-A!
       need SELECT-CAP !
+      oldcap 0 > if old oldcap SELECT-RELEASE then
    then
    SELECT-A@ ;
 

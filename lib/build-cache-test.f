@@ -15,6 +15,7 @@ require lib/build-cache.f
 require lib/json-write.f
 require lib/float.f
 require lib/json-read.f
+require lib/test/mapped.f
 require tools/hb-build-report.f
 
 package BUILD-CACHE-TEST
@@ -366,6 +367,25 @@ $7E constant ROOT-C
    REPORT-OUT rootu F$ T$=
    JR:CLOSE ;
 
+\ A longer root grows the select buffer; each growth must leave exactly ONE live
+\ span. Runs first, while the buffer is still unallocated, so 16 -> 128 -> 384
+\ are three genuine growth steps; the `<>` assertions fail loudly rather than
+\ passing vacuously if a reorder ever leaves a larger buffer behind.
+: CHECK-GROWTH-RELEASE ( -- )
+   BUILD-CACHE:RESET
+   MAX-ROOT 16 BUILD-CACHE:ROOT!
+   BUILD-CACHE:SELECTED-ROOT$ drop {: p0:ptr :}
+   MAX-ROOT 128 BUILD-CACHE:ROOT!
+   BUILD-CACHE:SELECTED-ROOT$ drop {: p1:ptr :}
+   p0 p1 <> TTRUE
+   p0 MAPPED:LIVE? TFALSE
+   p1 MAPPED:LIVE? TTRUE
+   MAX-ROOT 384 BUILD-CACHE:ROOT!
+   BUILD-CACHE:SELECTED-ROOT$ drop {: p2:ptr :}
+   p1 p2 <> TTRUE
+   p1 MAPPED:LIVE? TFALSE
+   p2 MAPPED:LIVE? TTRUE ;
+
 : CHECK-ERROR-REPORT ( -- )
    BUILD-CACHE:RESET
    A$ BUILD-CACHE:ROOT!
@@ -442,6 +462,7 @@ $7E constant ROOT-C
 : MAIN ( -- )
    T-RESET
    PREPARE
+   CHECK-GROWTH-RELEASE
    CHECK-EXPLICIT
    CHECK-XDG
    CHECK-HOME

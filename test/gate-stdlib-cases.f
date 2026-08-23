@@ -1133,6 +1133,7 @@ SUITE test-stdlib
    lib/test/snap-test.f
    lib/test/record-test.f
    lib/test/src-shape-test.f
+   lib/test/mapped-test.f
 ;SUITE
 
 SUITE property-stdlib

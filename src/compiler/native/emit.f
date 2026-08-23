@@ -1211,16 +1211,31 @@ variable CH-AT
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE ;
 
-\ Block zero is where the caller entered and therefore where the callee enters.
-0 constant CALL-BLOCK                \ the routine's own entry
+\ A self-call is RECURSE, which names the DEFINITION and not the body the token
+\ stands in - so it goes to function zero of this emission, which is the
+\ definition, wherever it is staged. Inside function zero that is the block the
+\ caller entered at; inside a quotation's function it is another function
+\ entirely, and a branch to this one's own block zero would be the quotation
+\ calling itself.
+0 constant SELF-FUN                  \ the definition, which every self-call goes to
+
+\ ---- the address of another function of this emission ------------------------
+\ Known because MEASURE laid every function out and filed its start before a
+\ byte was written; the ordinal is held against what the emission really holds.
+: FUN-START ( n -- n )
+   {: k:n :}
+   k 0 < k N-FUNS @ >= or if E-A64EMIT-SHAPE throw then
+   k cells F-START + @ ;
 
 : BL-WORD ( n -- n )
    {: d:n :}
    d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
    d ENC-BL ;
 
-\ A self-call adds nothing: the callee IS this routine. A word with no recorded
-\ row adds the whole register file, because nothing is known about it.
+\ A self-call adds nothing, and does not stop adding nothing inside a quotation:
+\ the callee is a function of THIS emission, whose registers this same set is
+\ being collected over. A word with no recorded row adds the whole register file,
+\ because nothing is known about it.
 : NOTE-CALLEE ( n -- )
    {: e:n :}
    e A64EFF:GPR-ALL NCLOB:GPR-CLOB A64EFF:GPRS-N  EM-KGPR @ or  EM-KGPR !
@@ -1229,7 +1244,7 @@ variable CH-AT
 : PUT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE
-   id  CALL-BLOCK DELTA BL-WORD  APPEND
+   id  SELF-FUN FUN-START  N-INS @ -  BL-WORD  APPEND
    id  id DBACK-SIZE negate  PUT-DMOVE ;
 
 \ ---- calling another word ----------------------------------------------------
@@ -1249,14 +1264,6 @@ variable CH-AT
    id  id DBYTES-SIZE  PUT-DMOVE
    id  id WORD-DELTA BL-WORD  APPEND
    id  id DBACK-SIZE negate  PUT-DMOVE ;
-
-\ ---- the address of another function of this emission ------------------------
-\ Known because MEASURE laid every function out and filed its start before a
-\ byte was written; the ordinal is held against what the emission really holds.
-: FUN-START ( n -- n )
-   {: k:n :}
-   k 0 < k N-FUNS @ >= or if E-A64EMIT-SHAPE throw then
-   k cells F-START + @ ;
 
 \ In BYTES, which is the unit this field counts - the branch fields count
 \ instructions.

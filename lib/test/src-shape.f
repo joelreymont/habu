@@ -38,8 +38,18 @@ variable SHAPE-LEN                 \ length of the currently loaded source
 : ALLOC-NEED ( n -- n )
    dup 0 <= if drop 1 then ;
 
+\ Storage flows through MEM-ALLOC-64K-SPAN / MEM:RELEASE-BYTES.
+: RELEASE-SPAN ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ One span is live per loaded source: install the new mapping, then release the
+\ span the previous LOAD owned. The release is LAST, so an alloc that throws
+\ leaves the old span owned; a first LOAD has no prior span (capacity zero).
 : ALLOC ( n -- )
-   ALLOC-NEED MEM-ALLOC-64K-SPAN SHAPE-CAP ! BUF! ;
+   BUF@ {: old:ptr :}
+   SHAPE-CAP @ {: oldcap:n :}
+   ALLOC-NEED MEM-ALLOC-64K-SPAN SHAPE-CAP ! BUF!
+   oldcap 0 > if old oldcap RELEASE-SPAN then ;
 
 : OVERSIZE ( ptr u8 n n n -- ) {: path:ptr pathu:n size:n cap:n :}
    s" src-shape: " type path pathu type

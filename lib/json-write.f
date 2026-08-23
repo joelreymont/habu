@@ -81,10 +81,21 @@ variable JW-NUM-I
 : JW-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
    JW-OUT-LEN @ 0 > if JW-BUF dst JW-OUT-LEN @ BYTE-COPY then ;
 
+\ Storage flows through MEM-ALLOC-64K-SPAN / MEM:RELEASE-BYTES.
+: JW-RELEASE-SPAN ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+\ Copy into the new mapping, install it, then release the prior one. The release
+\ is LAST and the allocation runs before anything is overwritten, so a grow whose
+\ alloc throws leaves the old span owned and intact (BUF:INSTALL-RESIZE's order).
+\ The first grow has no prior span: capacity zero is the proved no-op.
 : JW-GROW ( n -- ) {: need :}
+   JW-BUF@ {: old:ptr :}
+   JW-CAP {: oldcap:n :}
    need JW-MIN-ONE MEM-ALLOC-64K-SPAN
    over JW-COPY-OLD
-   JW-STORE-SPAN ;
+   JW-STORE-SPAN
+   oldcap 0 > if old oldcap JW-RELEASE-SPAN then ;
 
 : JW-CHECK-LEN-ROOM ( len -- )
    JW-NEED-CAP-LEN dup JW-CAP > if JW-GROW else drop then ;
