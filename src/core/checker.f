@@ -6532,7 +6532,6 @@ PRIM: space  PRIM;
 PRIM: u.     PE-N PE-IN PRIM;
 
 PRIM: create   PRIM;
-PRIM: variable PRIM;
 PRIM: constant PE-N PE-IN PRIM;
 PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
 PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
@@ -8956,10 +8955,13 @@ variable FLD  variable FLI  variable FLO  variable FLC
    u 0 > IF a u 1 - + c@ 46 = IF drop RES-FALSE THEN THEN ;
 
 : DEFINER-TOK ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF
+      a u s" variable" CORE-STR=  a u s" constant" CORE-STR= or IF
+         -1 UNDEFERR !  0 OK !  -1 FAILSET !  RES-TRUE EXIT
+      THEN
+   THEN
    SGSEEN @ 0= IF RES-FALSE EXIT THEN
    a u s" create" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" variable" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" constant" CORE-STR= IF STEP-N-IN RES-TRUE EXIT THEN
    RES-FALSE ;
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}

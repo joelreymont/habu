@@ -7762,3 +7762,7 @@ and --no-lldbinit.
   the axiom-rows lane showed the bad caller certified through the verifier,
   not the engine. Write contracts as hypotheses; the lane's first job is to
   falsify them.
+- **An exit-70 wrapper can hide a fail-open pre-pass behind a later compiler
+  refusal.** `tools/check.f` rejected parser-only definers only after its child
+  engine tried to compile them; `VERIFY:SOURCE-BUF` alone returned success.
+  Probe the inner production gate directly before assigning an exit code to it.
