@@ -364,7 +364,7 @@ embedded CodeDirectory when signature behavior is involved.
 
 ## Source arenas
 
-Three independent source arenas share one capacity policy but have different
+Three independent source arenas share one capacity but have different
 contents and failure boundaries:
 
 - `IBUFSZ` holds the cold source prefix and the later program input in the
@@ -382,21 +382,9 @@ contents and failure boundaries:
   candidate-backed reader regression proves the same adjacent boundary with the
   exact `maker: source exceeds buffer` diagnostic.
 
-`SOURCE-HEADROOM-PCT` requires at least 25 percent above the live composite,
-then `SOURCE-ARENA-CAP` is the smallest power of two meeting that requirement.
-The 2026-07-15 owner-persistence merge measured a 1,687,332-byte live composite;
-25 percent headroom required 2,109,165 bytes and selected 4 MiB. The 2026-08-17
-seeded-signature merge measured 3,421,904 bytes (a 1,422,190-byte cold prefix
-plus a 1,999,714-byte stage2 source); 25 percent headroom required 4,277,380
-bytes and selected 8 MiB. Measurements are selection history, not enforcement
-constants.
-The fixpoint regression regenerates the stage2 source, derives cold-prefix
-occupancy from the candidate's probed boundary minus the required EOF-read byte,
-and enforces the minimal shared power-of-two from those live sizes. The hb-build
-regression generates both REPL and AOT `hb-maker-src` inputs and proves their live
-maximum retains the required headroom under that shared power of two. Native
-layout and Gforth recovery carry matching owner tokens; stage2 and maker alias
-that owner rather than carrying independent numeric ceilings.
+`SOURCE-ARENA-CAP` is the shared capacity owner. Native layout and Gforth
+recovery carry matching owner tokens; stage2 and maker alias that owner rather
+than carrying independent numeric ceilings.
 
 ## A child-process fixture disagrees with itself — `tools/launch-context.f`
 

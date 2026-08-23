@@ -1,18 +1,15 @@
 \ gate-pool-orphan-test.f - regression: pool children die on parent death.
 \
-\ Proves the death-pipe reaper design that fixes forked-pool-worker orphans: a
-\ worker in its own process group forks a reaper that watches its parent's
-\ death-pipe write end. When the watched parent is SIGKILLed - the exact case
-\ where the pool's own GT-POOL-KILL-ALL cleanup can never run - the reaper reaps
-\ the worker's group, so no orphan keeps spinning. Built only from
-\ pipe/read/close/kill/setpgid, so it is portable (no PR_SET_PDEATHSIG / kqueue).
-\ The mechanism is defined here (GPO-*) rather than promoted to lib/process-fork.f
-\ until the live pool wiring lands (habu-reap-spawned-pool-fc4dc468), so this
-\ regression pins the design independently.
+\ Proves the production death-pipe reaper that fixes forked-pool-worker orphans:
+\ a worker in its own process group calls PROC-FORK:DEATH-PIPE and
+\ PROC-FORK:FORK-REAPER to watch its pool parent's death pipe and its own
+\ worker-alive pipe. When the watched parent is SIGKILLed - the exact case where
+\ the pool's own GT-POOL-KILL-ALL cleanup can never run - the reaper kills the
+\ worker's group, so no orphan keeps spinning.
 \
 \ Topology (T = this test):
 \   T forks P (holds the death-pipe write end WR) and W (its own group).
-\   W forks R (reaper, in W's group): R closes every fd but RD and blocks on it.
+\   W creates its worker-alive pipe and arms the production reaper R.
 \   T SIGKILLs P -> WR closes -> R reads EOF -> R SIGKILLs W's group.
 \   T observes W's death through an alive-pipe EOF (immediate, no zombie wait),
 \   all within a hard deadline so a broken mechanism FAILS instead of hanging.
@@ -33,11 +30,8 @@ require lib/process-fork.f
 50 constant GPO-OBSERVE-STEPS
 200 constant GPO-IDLE-MS
 150 constant GPO-IDLE-STEPS
-1024 constant GPO-MAXFD
 
 create GPO-SLEEP-PFD 8 allot
-create GPO-DEATH-BUF 8 allot
-variable GPO-DEATH-GOT
 
 : GPO-SLEEP ( n -- ) {: ms:n :}
    GPO-SLEEP-PFD 0 ms poll drop ;
@@ -53,44 +47,6 @@ variable GPO-DEATH-GOT
 : GPO-EXIT ( n -- )
    s" " rot die ;
 
-\ ---- death-pipe reaper (design under test) ---------------------------------
-\ Both ends close-on-exec so an exec'd grandchild never wedges the EOF.
-: GPO-DEATH-PIPE ( -- fd fd )
-   PIPE-PAIR {: rd:fd wr:fd :}
-   rd FD-CLOEXEC!
-   wr FD-CLOEXEC!
-   rd wr ;
-
-\ A forked reaper inherits every fd the worker held; if it kept a capture-pipe
-\ write end open it would wedge the pool's EOF, so it closes all but RD.
-: GPO-CLOSE-EXCEPT ( fd -- ) {: keep:fd :}
-   0 begin dup GPO-MAXFD < while
-      dup keep FD>N <> if dup close then
-      1+
-   repeat drop ;
-
-\ Reap the reaper's own process group (kill(0, SIGKILL)).
-: GPO-KILL-GROUP ( -- )
-   0 >PID SIGKILL PROC-KILL-RAW drop ;
-
-\ Reaper body: block reading RD; EOF (<= 0) means the parent died, so reap the
-\ group. Never returns.
-: GPO-WATCH ( fd -- ) {: rd:fd :}
-   begin
-      rd FD>N GPO-DEATH-BUF 1 read GPO-DEATH-GOT !
-      GPO-DEATH-GOT @ 0 <= if GPO-KILL-GROUP exit then
-   again ;
-
-\ Fork a reaper into the caller's current process group. Never returns in the
-\ reaper child; returns the reaper pid to the caller.
-: GPO-FORK-REAPER ( fd fd -- pid ) {: rd:fd wr:fd :}
-   PROC-FORK:RAW {: pid:pid :}
-   pid PID>N 0= if
-      rd GPO-CLOSE-EXCEPT
-      rd GPO-WATCH
-   then
-   pid ;
-
 \ ---- test topology ----------------------------------------------------------
 \ P: hold only WR and idle until SIGKILLed; its death is the trigger.
 : GPO-PARENT ( fd fd fd fd -- ) {: rd:fd wr:fd ar:fd aw:fd :}
@@ -100,13 +56,15 @@ variable GPO-DEATH-GOT
    GPO-IDLE
    0 GPO-EXIT ;
 
-\ W: become its own group leader, arm the reaper in that group (it closes every
-\ inherited fd but RD, so it never holds AW), keep only AW, and idle.
+\ W: become its own group leader, create a worker-alive pipe, arm the production
+\ reaper on both death watches, keep only the write ends, and idle.
 : GPO-WORKER ( fd fd fd fd -- ) {: rd:fd wr:fd ar:fd aw:fd :}
    0 >PID 0 >PID PROC-FORK:SET-PGID drop
-   rd wr GPO-FORK-REAPER drop
+   PROC-FORK:DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
+   rd wa-rd PROC-FORK:FORK-REAPER
    rd FD>N close
    wr FD>N close
+   wa-rd FD>N close
    ar FD>N close
    GPO-IDLE
    0 GPO-EXIT ;
@@ -123,7 +81,7 @@ variable GPO-DEATH-GOT
    repeat drop 1 0= ;
 
 : GPO-RUN ( -- bool )
-   GPO-DEATH-PIPE {: rd:fd wr:fd :}
+   PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
    PIPE-PAIR {: ar:fd aw:fd :}
    PROC-FORK:RAW {: ppid:pid :}
    ppid PID>N 0= if rd wr ar aw GPO-PARENT then

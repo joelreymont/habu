@@ -2,20 +2,13 @@
 \
 \ REQUIRE-MAX (src/core/include.f) caps the per-image require inventory; the die
 \ site REQUIRE-CHECK-ROOM fails closed ("require: too many files", INCLUDE-IO-RC)
-\ once REQUIRE-N reaches the cap. The standalone full-image maki/test.f inventory
-\ reached the old $100 (256) cap exactly (dot habu-raise-require-max), so the cap
-\ was raised to $200 (512); this pins the fail-closed named die at the new
-\ boundary and proves the raise.
+\ once REQUIRE-N reaches the cap. This pins the fail-closed named die at the
+\ current boundary.
 \
 \ Each case forks a disposable SUBJECT child that resets the require registry,
 \ flips DISCOVERY so synthetic paths never touch the filesystem (required stores
 \ then skips the load), and drives `require` to a target count. The dedup scan and
 \ die site both run on the real loader path.
-\
-\ Red-first (2026-07-20, base seed cap 256): "one past the old cap loads" and "a
-\ full new-cap inventory loads" die at the 257th require (rc 74) and go RED under
-\ the unraised engine; the named-overflow case stays GREEN either way. Under the
-\ raised $200 cap all three are GREEN.
 \
 \ Registered beside the sister capacity regression test/seal.f.
 
@@ -26,7 +19,6 @@ require lib/test/subject.f       \ SUBJECT:RUN - isolated evaluation of the subj
 
 package REQUIRE-CAP
 
-256 constant OLD-CAP             \ the $100 cap this dot raised on 2026-07-20
 $4000 constant FORGE-CAP         \ REQUIRE-MAX+1 "require pXX" lines fit well under this
 $800 constant IO-CAP
 30000 constant TIMEOUT-MS
@@ -98,11 +90,9 @@ variable EXITED?
 \ ---- cases -------------------------------------------------------------------
 
 : CASES ( -- )
-   s" one require past the old 256 cap now loads" T-LABEL
-   OLD-CAP 1+ RUN-CHILD ASSERT-LOADS
-   s" a full new-cap (REQUIRE-MAX) inventory loads" T-LABEL
+   s" a full REQUIRE-MAX inventory loads" T-LABEL
    REQUIRE-MAX RUN-CHILD ASSERT-LOADS
-   s" one require past the new cap still dies named" T-LABEL
+   s" one require past REQUIRE-MAX dies named" T-LABEL
    REQUIRE-MAX 1+ RUN-CHILD ASSERT-CAP-DIE ;
 
 : MAIN ( -- )

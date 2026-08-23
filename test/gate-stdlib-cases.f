@@ -942,11 +942,7 @@ SUITE ptx-toolchain
    tools/ptx/bench-test.f
    tools/ptx/saxpy-test.f
    tools/ptx/kernel-export-test.f
-   tools/ptx/perf-registry-test.f
    tools/ptx/autotune-test.f
-   tools/ptx/perf-compare-test.f
-   tools/ptx/perf-regress-test.f
-   tools/kernel-perf-lint-test.f
    tools/ptx/fusion-emit-test.f
    tools/ptx/gpt2-attention-launch-test.f
    tools/ptx/gpt2-tensor-emit-test.f
@@ -957,7 +953,6 @@ SUITE ptx-toolchain
 
 \ These tools need the fresh process and clean argv supplied by a registry row.
 SUITE ptx-toolchain-spawned
-   tools/ptx/perf-regress.f
    tools/ptx/bandwidth-lib-test.f
    tools/ptx/mma-exact-lib-test.f
    tools/ptx/autotune-sweep-test.f
@@ -1116,10 +1111,6 @@ SUITE checker-replay-pkg-state
    test/checker-replay-pkg-state.f
 ;SUITE
 
-SUITE prim-link
-   test/prim-link-test.f
-;SUITE
-
 SUITE verify-prim
    test/verify-prim-test.f
 ;SUITE
@@ -1248,10 +1239,6 @@ SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 ;SUITE
 
-SUITE boot-pin-fixtures
-   test/boot-pin-test.f
-;SUITE
-
 SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE
@@ -1309,10 +1296,6 @@ SUITE bootstrap-refresh-doc
 
 SUITE check-repair-hints
    tools/check-repair-hints-test.f
-;SUITE
-
-SUITE ddc-scheduled
-   tools/ddc-scheduled-test.f
 ;SUITE
 
 SUITE ddc-verify

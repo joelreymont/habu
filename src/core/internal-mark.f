@@ -111,9 +111,8 @@ $D10043FF constant IMK-PROLOGUE
 \ A package word carries its wordlist, not 0, so IMK-WALK above never reaches
 \ one - and until dot habu-pkg-publics-escape-41532ee7 that left every package
 \ public top-level executable whatever the checker knew: `0 0 SCHEMA-REG:REWIND`
-\ wiped the schema registry and exited 0, and `PRIM-LINK:COUNT` read six cells
-\ below the interpret base and aborted, the same crash class as the bare U-TYPE
-\ this file was written for.
+\ wiped the schema registry and exited 0, the same unchecked execution class as
+\ the bare U-TYPE this file was written for.
 \
 \ THE QUALIFIED SPELLING REACHES PUBLICS AND NOTHING ELSE, so publics are the
 \ whole of the escape. habu1.f FIND-NMATCH resolves PKG:TAIL by taking the

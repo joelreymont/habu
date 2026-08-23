@@ -1,7 +1,7 @@
-# habu kernel profile-row registry v1 (tools/ptx/perf-registry.f owns the format)
+# Historical Habu kernel profile measurements.
 # One row per kernel-optimization rung, shape, and metric. Tab-separated, 12 fields:
 # kernel	grid	gridy	block	blocky	iters	work	metric	value_x1000	device	date	note
-# metric: GBS (GB/s x1000), GFLOPS (GFLOP/s x1000), PCT-ROOF (permille of the owning roof), WAIVER (device-gated, value 0, note documents why).
+# metric: GBS (GB/s x1000), GFLOPS (GFLOP/s x1000), PCT-ROOF (permille of the owning roof).
 # Values are CUDA-event device timings via tools/ptx/bench.f unless the note says otherwise.
 SAXPY	4096	1	256	1	200	1048576	GBS	42865	orin-nx-15w	2026-07-01	M9 scalar baseline, 1 elem/thread (dot 548b0d4c checkpoint)
 SAXPY-V4	1024	1	256	1	200	1048576	GBS	64209	orin-nx-15w	2026-07-01	M9 v4 tile, 4 elems/thread; memory-roof parity with Triton (docs/eval-triton.md)
@@ -148,11 +148,3 @@ MMM-SPLIT2-W4-M4	8	8	16	8	400	262144	GFLOPS	8604583	dgx-spark-gb10-ptxas133	2026
 MMM-SPLIT2-W4-M4	16	16	16	8	200	1048576	GFLOPS	15701138	dgx-spark-gb10-ptxas133	2026-07-19	tf32 split-K S=2 4-warp MFRAGS=4 stages=2 dyn ldmatrix-A (128x64), 1024^3, MMM+MMR timed; ptxas 13.3.33 pinned; best-of-3 solo; 15.70 TF = 0.47x Triton 33.5 and 0.65x the S=1 winner 24.13 -- REGRESSION; element-exact (MGC-CFG-SPLIT)
 MMM-SPLIT4-W4-M4	8	16	16	8	400	262144	GFLOPS	7467858	dgx-spark-gb10-ptxas133	2026-07-19	tf32 split-K S=4 4-warp MFRAGS=4 stages=2 dyn ldmatrix-A (128x64), 512^3, MMM+MMR timed; ptxas 13.3.33 pinned; best-of-3 solo; 7.47 TF = 0.34x Triton 21.7 -- deeper split is WORSE (monotonic in S: more partial-write + reduce overhead, no compute win); element-exact (MGC-CFG-SPLIT)
 MMM-SPLIT4-W4-M4	16	32	16	8	200	1048576	GFLOPS	11709503	dgx-spark-gb10-ptxas133	2026-07-19	tf32 split-K S=4 4-warp MFRAGS=4 stages=2 dyn ldmatrix-A (128x64), 1024^3, MMM+MMR timed; ptxas 13.3.33 pinned; best-of-3 solo; 11.71 TF = 0.35x Triton 33.5 -- monotonic regression vs S=2 15.70 and S=1 24.13; element-exact (MGC-CFG-SPLIT)
-RMSNORM_ROWS	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-20	historical result from the manual rmsnorm device test: RMSNORM_ROWS forward golden vs maki RMS-FWD + FD gradcheck element-close on GB10 sm_121a; timing not measured; Orin sm_87 golden+timing OWED	tools/ptx/rmsnorm-cg.f	1
-RMSNORM_BWD_ROWS	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-20	correctness-only: RMSNORM_BWD_ROWS closed-form VJP (maki RMS-BWD) FD-gradchecked on GB10 sm_121a; timing not measured; Orin sm_87 golden+timing OWED	tools/ptx/rmsnorm-cg.f	1
-ROPE_ROWS	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-20	historical result from the manual rope device test: ROPE_ROWS pair-rotation forward golden vs maki ROPE-PAIR on GB10 sm_121a; timing not measured; Orin sm_87 golden+timing OWED	tools/ptx/rope-cg.f	1
-ROPE_BWD_ROWS	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-20	correctness-only: ROPE_BWD_ROWS VJP (rotation by -angle) FD-gradchecked on GB10 sm_121a; timing not measured; Orin sm_87 golden+timing OWED	tools/ptx/rope-cg.f	1
-LAYERNORM_ROWS	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-21	historical result from the manual layernorm device test: LAYERNORM_ROWS forward golden vs maki LN-FWD element-close on GB10 sm_121a; timing not measured; Orin sm_87 golden+timing OWED	tools/ptx/layernorm-cg.f	1
-LAYERNORM_BWD_ROWS	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-21	correctness-only: LAYERNORM_BWD_ROWS closed-form VJP (maki LN-BWD) FD-gradchecked + host closed-form parity on GB10 sm_121a; timing not measured; Orin sm_87 golden+timing OWED	tools/ptx/layernorm-cg.f	1
-BLOCK_REDUCE	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-21	historical result from the manual device tests: added the WAR reuse bar.sync to EMIT-REDUCE stage-write; the fence was re-verified by layernorm/rmsnorm/softmax device gradchecks on GB10 sm_121a; timing not re-measured; Orin LN-FUSE-ON/OFF re-measure + GB10 reduction timing OWED	lib/ptx/cg-collective.f	1
-SWIGLU_ROWS	1	1	256	1	0	4	WAIVER	0	dgx-spark-gb10-sm121a	2026-07-21	historical result from the manual swiglu device test: SWIGLU_ROWS forward golden vs maki SWIGLU-F + both-input finite-difference gradcheck element-close on GB10 sm_121a; timing not measured; Orin sm_87 golden+timing OWED	tools/ptx/swiglu-cg.f	1

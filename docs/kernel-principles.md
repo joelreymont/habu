@@ -48,15 +48,14 @@ runs 306, 408, 510, 612, 714, 816, 918 MHz; 918 is the top rung). Re-measured on
 GB/s** (v4 SAXPY 64.2 GB/s); ridge **I\* ≈ 15 FLOP/byte**. Moving to 25W (8 SMs at
 the same 918 MHz GPU clock) roughly **doubled the FP32 roof** (940 → 1880) and
 lifted achievable memory bandwidth **~1.5×** (63 → 93 GB/s). The `orin-nx-15w`
-registry rows are retained as history — a new device tag is a fresh baseline, so
-`PERF:SCAN` never compares 25W against 15W.
+profile rows are retained as history under their distinct device tag.
 
 ## Where each Habu kernel sits (apply, don't assume)
 
 The `I` and `bound` columns are power-mode-independent; the absolute `roof`/`measured`
 figures below are the **15W baseline** (63 GB/s memory, 940 GFLOP/s FP32). At the
 canonical **25W** environment the roofs scale to **93 GB/s / 1880 GFLOP/s** (see
-above), and current absolute numbers live in the `orin-nx-25w` registry rows.
+above), and current absolute numbers live in the `orin-nx-25w` profile rows.
 
 | kernel | I (FLOP/byte) | bound | roof (15W) | measured (15W) | verdict |
 |---|---|---|---|---|---|
@@ -329,7 +328,7 @@ the verdict (close) is **invariant** to the one residual ambiguity (512 vs 256 F
 probe could refine the *practical* issue roof but cannot open a tf32 instruction-level lever that
 waves 1-3 did not already close. A pure-mma probe would only convert "40% of a strongly-inferred
 7520 peak" into "40% of a measured 7520 peak"; it does not change the recommendation. The Orin
-was left untouched (no new perf-rows rows; the ladder above is the committed registry).
+was left untouched; the ladder above remains the existing measurement record.
 
 ## The five things that govern speed (check all five)
 
@@ -379,54 +378,6 @@ GEMM is where we can move strictly fewer bytes than hand-fused Triton** (dotted
   profile row explains which roof it moved toward. Current fused-vs-unfused device
   row: v4 SAXPY + v4 RELU as separate launches sums to 66.269 ms / 200 iters, while
   fused v4 RELU is 39.209 ms / 200 iters (`fusion_elapsed_ratio_x1000=1690`).
-
-## Profile-row registry & perf-regression workflow (BLOCKING)
-
-Measured rows are durable, not prose: every kernel-optimization rung carries its
-own row in **`tools/ptx/perf-rows.tsv`** — kernel id, launch config
-(grid/gridy/block/blocky/iters/work-items), metric kind (`GBS`, `GFLOPS`,
-`PCT-ROOF`, all value×1000), value, device, date, note. The checked owner is
-`tools/ptx/perf-registry.f` (package `PERF`); rows fail closed under
-`PERF:LOAD`/`PERF:LINE-OK?`. Measurement rows are exactly 12 fields; a `WAIVER`
-row appends **two more** (`emitter waiver_version`) so an off-device waiver is
-accountable — non-measurement rows are never rewritten by the extension.
-
-- **Changing kernel codegen requires a row.** `tools/kernel-perf-lint.f` scans a
-  `jj diff --git` artifact and fails when the diff touches a kernel emitter
-  (`lib/ptx/cg.f`, `lib/ptx/cg-*.f`, `tools/ptx/*-cg.f`, `src/arch/ptx/emit.f`)
-  without adding a registry row. Run it in the pre-commit Forth gate:
-  `bin/hb --load tools/kernel-perf-lint.f -- diff.patch`.
-- **Off-device sessions add an owned WAIVER row instead — and it ratchets.**
-  When the device is unavailable, add a `WAIVER` row (value 0) whose note
-  documents the device-gated reason and whose two extra fields name the
-  `emitter` it owns (a canonical kernel emitter — `PERF:EMITTER?`) and a
-  monotonic `waiver_version` (≥ 1). The waiver is **not** a standing pass: it is
-  valid only while its emitter is untouched. The **lifecycle is deterministic,
-  driven by diff content, never wall-clock**:
-  - *Untouched → valid.* A committed waiver whose emitter the change does not
-    touch stays valid.
-  - *Touched → expired.* The moment the change touches that emitter, the standing
-    waiver expires and the **same change** must supply a replacement: either a
-    measurement row for the kernel, or a **newly-versioned** waiver for the same
-    emitter (`waiver_version` strictly greater than every standing sibling).
-    Touching the emitter with no replacement fails (`E-PERF-ROW-MISSING`).
-  - *Ownership is enforced.* A waiver for another emitter cannot satisfy the touch
-    (`E-PERF-ROW-MISSING`); an added waiver naming an emitter the change does not
-    touch is rejected (`E-PERF-WAIVER-CROSS`); a version not newer than the
-    standing waiver is stale (`E-PERF-WAIVER-STALE`); two waivers sharing
-    `kernel+emitter+version` are a duplicate live waiver (`E-PERF-WAIVER-DUP`);
-    an unknown emitter or a forged/reordered identity fails the parser
-    (`E-PERF-BAD-ROW`). The lint resolves added waivers against the standing
-    registry it loads from disk, so re-pasting an old waiver cannot re-satisfy a
-    fresh touch.
-- **Re-measurements are appended, never edited**, so the latest same-key pair is
-  comparable. `tools/ptx/perf-compare.f` flags a new value more than
-  `PERF:TOL-MILLI` (50 permille = 5%) below its baseline as a regression;
-  `bin/hb tools/ptx/perf-regress.f` runs that scan over the committed registry
-  and exits nonzero on any regression.
-- **Suite wiring:** the `ptx-toolchain` row in `test/gate-stdlib-cases.f` runs the
-  portable registry, comparison, lint, and host-emission tests. Benchmarks and
-  device launches are manual tools, not optional suite legs.
 
 ## The one-line instinct (say it on every op)
 

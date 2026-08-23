@@ -1074,9 +1074,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ closes that trust hole for every installed engine: the refresh's stage-N
 \ binary certifies the FULL assembled stage-N+1 source (this prefix included)
 \ before any stage compile (tools/build-fixpoint.f BF-CERTIFY-*, blocking),
-\ and the BF-PIN content hashes close the mid-build reload TOCTOU. Remaining
-\ gap: a post-install disk edit is reloaded unchecked at next boot until the
-\ pin is baked into the image (dot habu-boot-pin-bake-8b284046).
+\ and the BF-PIN content hashes close the mid-build reload TOCTOU. That proof
+\ covers the exact installed tree; a later on-disk edit happens after the build
+\ proof and is outside it.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK

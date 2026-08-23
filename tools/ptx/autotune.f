@@ -18,8 +18,8 @@
 \                outside all buckets -> E-AT-NEWCLASS (never a silent default or a
 \                runtime bench). Every row cites its perf-rows.tsv source.
 \
-\ This is the HOST-side planning surface, so it lives in tools/ptx (beside
-\ perf-registry.f / perf-rows.tsv) and not in the lib/ptx device-emit library:
+\ This is the HOST-side planning surface, so it lives in tools/ptx (beside the
+\ historical perf-rows.tsv measurements) and not in the lib/ptx device-emit library:
 \ it reads committed measurements and picks knobs; it emits no PTX itself. The
 \ selector consulting the committed table is what gives Habu deterministic cold
 \ start (no first-call runtime autotune stall) - a headline vs Triton.

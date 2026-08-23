@@ -5,7 +5,7 @@
 \ certified/trusted signature and no primitive axiom) carries DNAME-INT after
 \ the seal-time marking pass (src/core/internal-mark.f) — whether its top-level
 \ spelling is a bare global name or a package public's qualified PKG:TAIL one
-\ (QUAL-CASES below). Interpret-mode
+\ (SEAL-CASES below). Interpret-mode
 \ execution AND tick of such a word must fail closed with
 \ `hb: internal engine word: <token>` + rc 70. Previously a bare `U-TYPE` in a
 \ load file
@@ -769,75 +769,11 @@ create QNAME QNAME-CAP allot
    s" CT-LIVE?" TOKEN$ RUN-STDIN
    s" CT-LIVE?" ASSERT-INTERNAL ;
 
-\ --- qualified names (dot habu-pkg-publics-escape-41532ee7). Until the marking
-\ pass learned to read package rows it classified only wid-0 records, so every
-\ package PUBLIC stayed top-level executable whatever the checker knew of it, and
-\ the two children at the end of this group were live defects on master:
-\ `0 0 SCHEMA-REG:REWIND` exited 0 having wiped the schema registry (the next
-\ declaration died 'tfam: bad schema node', rc 76) and `PRIM-LINK:COUNT` read six
-\ cells below the interpret base and aborted rc 134 — the c5be6634 crash class
-\ behind a qualifier.
-\
-\ THE DISCRIMINATOR IS THREE-WAY, and each leg is a different mechanism:
-\   PKG:PRIVATE          E-UNDEFINED — no top-level spelling exists at all,
-\                        because habu1.f FIND-NMATCH takes the search wordlist
-\                        from the package row's [0], its PUBLIC one.
-\   PKG:PUBLIC, no axiom `internal engine word`, rc 70 — marked, like a global.
-\   PKG:PUBLIC + axiom   runs, and its DNAME-MIN-IN now guards a short stack.
-\ The E-UNDEFINED leg is the one that can pass by accident, so it is fenced from
-\ three sides: the SAME package's public answers differently (so the qualifier
-\ does resolve the package), a package that does not exist answers the same way
-\ (so E-UNDEFINED is exactly "no such qualified name"), and the WITNESS child
-\ reads the live dictionary and dies unless KEY-SYM sits in PRIM-LINK's private
-\ wordlist and nowhere in its public one. The bare tail `COUNT` is a real global
-\ that underflows, which is a fourth fence: the qualified reject cannot be coming
-\ from the record the bare spelling finds. ----
-
-: QUAL-PRIV-FORGE$ ( -- ptr u8 n )   \ a package private has no qualified spelling
-   SB-RESET
-   s" PRIM-LINK:KEY-SYM" SB-APPEND LF
-   SB$ ;
-
-: QUAL-ABSENT-FORGE$ ( -- ptr u8 n ) \ control: no such package answers the same way
-   SB-RESET
-   s" IWGNOPKG:KEY-SYM" SB-APPEND LF
-   SB$ ;
-
-: QUAL-MALFORMED-FORGE$ ( -- ptr u8 n )   \ engine FIND-QBAD parity: NAME:a:b never resolves
-   SB-RESET
-   s" PRIM-LINK:COUNT:FP" SB-APPEND LF
-   SB$ ;
-
-: QUAL-TICK-FORGE$ ( -- ptr u8 n )   \ tick would launder the qualified xt to execute
-   SB-RESET
-   s" ' PRIM-LINK:COUNT" SB-APPEND LF
-   SB$ ;
-
-: QUAL-AXIOM-FORGE$ ( -- ptr u8 n )  \ a public the checker can type stays callable
-   SB-RESET
-   s" TYPE-FIELD:COUNT drop" SB-APPEND LF
-   SB$ ;
-
-: QUAL-MININ-FORGE$ ( -- ptr u8 n )  \ and its declared arity now guards a short stack
-   SB-RESET
-   s" TYPE-FIELD:FIND" SB-APPEND LF
-   SB$ ;
-
-: QUAL-TEXT-FORGE$ ( -- ptr u8 n )   \ the same characters as comment and string text
-   SB-RESET
-   s" \ PRIM-LINK:COUNT" SB-APPEND LF
-   S\" : IWG-QUAL-TEXT ( -- ptr u8 n ) s\" PRIM-LINK:COUNT\" ;" SB-APPEND LF
-   s" TYPE-FIELD:COUNT drop" SB-APPEND LF
-   SB$ ;
-
 \ The witness reads the engine's own record array — the array LFIND resolves
-\ through, not a copy — and dies unless the named tails carry the roles the cases
-\ above assume: the private tail once in the package's PRIVATE wordlist and never
-\ in its public one, the public tail once in the public one. A rename or a typo
-\ in either spelling reds this child instead of letting an E-UNDEFINED case pass
-\ for the wrong reason. Its own names are short because the whole program must fit
-\ SB-CAP. Both sealed packages the cases below probe — PRIM-LINK and SCHEMA-REG —
-\ run the same child text with their own three names substituted.
+\ through, not a copy — and dies unless the named tails carry the roles the real
+\ package cases assume: the private tail once in the package's PRIVATE wordlist
+\ and never in its public one, the public tail once in the public one. A rename or
+\ typo reds the child instead of letting an E-UNDEFINED case pass accidentally.
 
 : QW-ROW ( ptr u8 n -- )                 \ the package-row line, keyed on the package name
    S\" QI @ QWID DICT-WL:NAMESPACE = IF QI @ QNA QI @ QNU s\" " SB-APPEND
@@ -878,65 +814,9 @@ create QNAME QNAME-CAP allot
    s" QPUB @ " ba bu s" 1" QW-CNT
    SB$ ;
 
-\ The third spelling of the same record. `using PKG` puts a package's publics on
-\ the bare-tail chain, so the token has no qualifier at all — and it still fails
-\ closed, because the flag is on the RECORD and every route ends at the same one.
-: QUAL-USING-FORGE$ ( -- ptr u8 n )
-   SB-RESET
-   s" using SCHEMA-REG" SB-APPEND LF
-   s" 0 0 REWIND" SB-APPEND LF
-   SB$ ;
-
-: QUAL-REWIND-FORGE$ ( -- ptr u8 n ) \ defect (a): exited 0 and wiped the schema registry
-   SB-RESET
-   s" 0 0 SCHEMA-REG:REWIND" SB-APPEND LF
-   SB$ ;
-
-: QUAL-COUNT-FORGE$ ( -- ptr u8 n )  \ defect (b): aborted rc 134 below the interpret base
-   SB-RESET
-   s" PRIM-LINK:COUNT . cr" SB-APPEND LF
-   SB$ ;
-
-: QUAL-CASES ( -- )
-   s" a package private has no qualified spelling" T-LABEL
-   QUAL-PRIV-FORGE$ RUN-SUBJECT
-   s" E-UNDEFINED: PRIM-LINK:KEY-SYM" ASSERT-DIAG
-   s" the witness pins KEY-SYM private and COUNT public in the live dictionary" T-LABEL
-   s" PRIM-LINK" s" KEY-SYM" s" COUNT" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
-   s" a package that does not exist answers E-UNDEFINED the same way" T-LABEL
-   QUAL-ABSENT-FORGE$ RUN-SUBJECT
-   s" E-UNDEFINED: IWGNOPKG:KEY-SYM" ASSERT-DIAG
-   s" a malformed qualifier never resolves" T-LABEL
-   QUAL-MALFORMED-FORGE$ RUN-SUBJECT
-   s" E-UNDEFINED: PRIM-LINK:COUNT:FP" ASSERT-DIAG
-   s" a package public with no checker effect fails closed" T-LABEL
-   s" PRIM-LINK:COUNT" NEG
-   s" the bare tail is a different record and still underflows" T-LABEL
-   s" COUNT" TOKEN$ RUN-SUBJECT
-   s" E-UNDERFLOW" ASSERT-DIAG
-   s" ' PKG:NAME (tick laundering) fails closed" T-LABEL
-   QUAL-TICK-FORGE$ RUN-SUBJECT
-   s" PRIM-LINK:COUNT" ASSERT-INTERNAL
-   s" a package public with an axiom stays callable" T-LABEL
-   QUAL-AXIOM-FORGE$ RUN-SUBJECT ASSERT-OK
-   s" and its declared arity guards a short interpret stack" T-LABEL
-   QUAL-MININ-FORGE$ RUN-SUBJECT
-   s" interpret stack underdepth: TYPE-FIELD:FIND" ASSERT-DIAG
-   s" the qualified name as comment or string text executes nothing" T-LABEL
-   QUAL-TEXT-FORGE$ RUN-SUBJECT ASSERT-OK
-   s" the used-publics bare tail reaches the same record and fails closed" T-LABEL
-   QUAL-USING-FORGE$ RUN-SUBJECT
-   s" REWIND" ASSERT-INTERNAL
-   s" 0 0 SCHEMA-REG:REWIND no longer wipes the schema registry" T-LABEL
-   QUAL-REWIND-FORGE$ RUN-LOAD
-   s" SCHEMA-REG:REWIND" ASSERT-INTERNAL
-   s" PRIM-LINK:COUNT no longer aborts below the interpret base" T-LABEL
-   QUAL-COUNT-FORGE$ RUN-LOAD
-   s" PRIM-LINK:COUNT" ASSERT-INTERNAL ;
-
-\ --- the sealed schema registry (dot habu-seal-type-schema-c65f76cc). QUAL-CASES
-\ above proves the three-way answer for a package that was always a package. This
-\ group proves it for a file that BECAME one: src/core/type-schema.f used to
+\ --- the sealed schema registry (dot habu-seal-type-schema-c65f76cc). This
+\ group proves the package-public/private answer for a file that BECAME a package:
+\ src/core/type-schema.f used to
 \ define 98 globals and now defines 61 publics and 37 privates under
 \ package SCHEMA-REG, with nothing renamed.
 \
@@ -958,8 +838,7 @@ create QNAME QNAME-CAP allot
 \
 \ THE ONE ROUTE THAT STILL REACHES IT is `package SCHEMA-REG` in user source,
 \ which puts the private wordlist back on the bare chain. That is not this seal's
-\ defect and not specific to this package: on master, `package PRIM-LINK` plus a
-\ bare `KEY-SYM` crashes rc 134 the same way. It is dot
+\ defect. It is dot
 \ habu-pkg-reopen-reaches-113ecd89, whose acceptance owns the fix, so no case here
 \ asserts a crash as expected behaviour. ----
 
@@ -976,6 +855,17 @@ create QNAME QNAME-CAP allot
    SB-RESET
    s" using SCHEMA-REG" SB-APPEND LF
    s" 0 SCH-RBF-P !" SB-APPEND LF
+   SB$ ;
+
+: QUAL-USING-FORGE$ ( -- ptr u8 n )   \ a used package public reaches the marked record
+   SB-RESET
+   s" using SCHEMA-REG" SB-APPEND LF
+   s" 0 0 REWIND" SB-APPEND LF
+   SB$ ;
+
+: QUAL-REWIND-FORGE$ ( -- ptr u8 n )  \ the qualified package public on the load path
+   SB-RESET
+   s" 0 0 SCHEMA-REG:REWIND" SB-APPEND LF
    SB$ ;
 
 : SEAL-AXIOM-FORGE$ ( -- ptr u8 n )  \ the two PPRIM: SCHEMA-REG rows relocated from checker.f
@@ -996,6 +886,12 @@ create QNAME QNAME-CAP allot
    s" E-UNDEFINED: SCHEMA-A@" ASSERT-DIAG
    s" and its qualified spelling is a marked public instead" T-LABEL
    s" SCHEMA-REG:SCHEMA-A@" NEG
+   s" the used-publics bare tail reaches the same record and fails closed" T-LABEL
+   QUAL-USING-FORGE$ RUN-SUBJECT
+   s" REWIND" ASSERT-INTERNAL
+   s" 0 0 SCHEMA-REG:REWIND no longer wipes the schema registry" T-LABEL
+   QUAL-REWIND-FORGE$ RUN-LOAD
+   s" SCHEMA-REG:REWIND" ASSERT-INTERNAL
    s" a sealed private has no qualified spelling either" T-LABEL
    s" SCHEMA-REG:SCH-RBF-P" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: SCHEMA-REG:SCH-RBF-P" ASSERT-DIAG
@@ -1176,10 +1072,10 @@ create QNAME QNAME-CAP allot
 \ package public each one calls must NOT answer bare.
 \
 \ THE ONE ROUTE THAT STILL REACHES A PRIVATE is the one the schema block above
-\ names, and it is not specific to this package: `package TYPE-DECL / private /
-\ 0 TDPLAN-P !` puts the private wordlist back on the bare chain and the SIGSEGV
-\ comes back, exactly as `package SCHEMA-REG` and `package PRIM-LINK` do on
-\ master. That is dot habu-pkg-reopen-reaches-113ecd89, whose acceptance owns the
+\ names: `package TYPE-DECL / private / 0 TDPLAN-P !` puts the private wordlist
+\ back on the bare chain and the SIGSEGV comes back, exactly as `package
+\ SCHEMA-REG` does on master. That is dot habu-pkg-reopen-reaches-113ecd89,
+\ whose acceptance owns the
 \ fix, so no case here asserts a crash as expected behaviour. TFAM is closed
 \ against it only because `tfam` is in habu2.f KWDATA:RESTAB-BUF, which is a
 \ decision about which packages are system packages rather than a property of
@@ -1344,7 +1240,6 @@ create QNAME QNAME-CAP allot
    REGISTRY-CASES
    SIBLING-CASES
    CTLIVE-CASES
-   QUAL-CASES
    SEAL-CASES
    TFAM-SEAL-CASES
    TYPE-DECL-SEAL-CASES

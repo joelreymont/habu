@@ -511,9 +511,8 @@ fits.
   a puller breaks.** Native `habu2.f`/fixpoint does NOT update the Gforth recovery
   compiler: mirror load/path/provide/label rows in `bootstrap/cg/forth.fs`, concatenate
   in `tools/bootstrap.sh` (SRC_COMMON), and update `build-fixpoint.f` (CHECKER-BOOT/
-  COMMON/SNAP-KEEP), `boot-pin.f`, `diagnose-hb-core.f` (+ count in its test),
-  `hb-build-lib.f` key list, `boot-pin-test.f`, `diagnose-hb-test.f`, and
-  `bootstrap-codegen-test.f`.
+  COMMON/SNAP-KEEP), `diagnose-hb-core.f` (+ count in its test), `hb-build-lib.f`
+  key list, `diagnose-hb-test.f`, and `bootstrap-codegen-test.f`.
   The codegen test's expected rows are the order proof, not bookkeeping: update its
   exact native, recovery, and fixpoint sequences whenever a prefix owner is added.
   Baked prefix files must be marked `provided` (else `require src/core/sha256.f`
@@ -7666,3 +7665,9 @@ and --no-lldbinit.
   refusal.** `tools/check.f` rejected parser-only definers only after its child
   engine tried to compile them; `VERIFY:SOURCE-BUF` alone returned success.
   Probe the inner production gate directly before assigning an exit code to it.
+
+## 2026-08-24 - PTY shutdown synchronization
+
+- **Boot output is not a PTY readiness barrier.** A generated engine can print
+  its boot-run report before the REPL installs raw mode and reads input; Ctrl-D
+  sent then can be lost. Wait for the real `habu> ` prompt before sending it.

@@ -278,6 +278,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    CONTENT-MAGIC$ WAIT-FOR TTRUE
    s" AOT window content: it is not the zeroed reserve's answer" T-LABEL
    RBUF$ s" awb-cell=0" CONTAINS? 0= TTRUE
+   s" habu> " WAIT-FOR TTRUE
    4 SEND-C
    s" AOT window content: the engine still exits 0" T-LABEL
    PID @ >PID PROC-WAIT-RC MATCH result
@@ -320,6 +321,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    BIG-MAGIC$ WAIT-FOR TTRUE
    s" AOT wide format: it is not the zeroed or unrelocated answer" T-LABEL
    RBUF$ s" awb-big=0" CONTAINS? 0= TTRUE
+   s" habu> " WAIT-FOR TTRUE
    4 SEND-C
    s" AOT wide format: the over-64 KiB engine exits 0" T-LABEL
    PID @ >PID PROC-WAIT-RC MATCH result
@@ -347,6 +349,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HBPWID$ PTY-SPAWN
    s" AOT out-of-line name: the long-named word is found and runs at boot" T-LABEL
    EXT-MAGIC$ WAIT-FOR TTRUE
+   s" habu> " WAIT-FOR TTRUE
    4 SEND-C
    s" AOT out-of-line name: the engine exits 0, not the boot-run's not-found" T-LABEL
    PID @ >PID PROC-WAIT-RC MATCH result
@@ -381,6 +384,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    PRE-MAGIC$ WAIT-FOR TTRUE
    s" AOT pre-window: not the zero an unrelocated or window-DATA read gives" T-LABEL
    RBUF$ PRE-ZEROED$ CONTAINS? 0= TTRUE
+   s" habu> " WAIT-FOR TTRUE
    4 SEND-C
    s" AOT pre-window: the engine exits 0" T-LABEL
    PID @ >PID PROC-WAIT-RC MATCH result

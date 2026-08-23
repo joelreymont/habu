@@ -291,29 +291,8 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 170 = min
 \ magic byte count, so the band can never fall short of the slots it serves.
 DICT-CAP cells constant PROF-CNT-BYTES
 
-25 constant SOURCE-HEADROOM-PCT
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
-\ The cap is the largest measured composite plus SOURCE-HEADROOM-PCT, rounded up
-\ to a power of two, and tools/build-fixpoint-test.f SOURCE-BOUNDARY enforces
-\ that equality from live measurements rather than from this comment.
-\ RE-DERIVED 2026-08-17 (dot habu-single-prefix-load-17a8c792). A `--build`
-\ holds the cold prefix and the generated stage source in ONE arena, so the
-\ composite is their sum, and the generated source stopped re-emitting the whole
-\ core prefix: the payload now rewinds to the mark at that prefix's end and
-\ compiles against the host's own live copy. Measured on that tree, the
-\ composite is 2,242,544 bytes and 25% headroom requires 2,803,180, so the
-\ smallest power of two is $400000 - back to where it stood before the
-\ 2026-08-17 doubling (dot habu-seeded-words-invisible-c7505a49), which was
-\ owed entirely to that duplication: the composite was 3,421,904 bytes then,
-\ with roughly 1.4 MB of it one checker/core text counted twice.
-\ THE OTHER CONSUMER IS THE RECOVERY HOST, whose stage engines bake their whole
-\ source: tools/bootstrap.sh's stdin-driver emission measures 2,198,603 bytes,
-\ which leaves the same order of room as the fixpoint composite. That path was
-\ NOT run end to end for this change - tools/bootstrap.sh refuses on this host
-\ at its own Gforth pre-flight (test/bootstrap-wide-memory.fs, and it refuses on
-\ master too), so the recovery arena is argued from the measurement, not proved.
-\ IBUFSZ overflow is labeled rc 74. Keep the bootstrap mirror token-identical.
 20 constant DATA
 
 0 constant DP-CELL

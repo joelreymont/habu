@@ -48,8 +48,7 @@ the gate files are the source of truth.
 Follow the dropout/SwiGLU template end to end: `maki/op-kind.f` enum +
 OPKIND>N, `maki/op-registry.f`, `maki/adjoint.f`, `maki/executor.f`,
 `maki/cad.f` token + shape rule, `maki/backward.f`, `maki/move-facts.f`,
-device kernel under `tools/ptx/`, `perf-watch.f` registration, and a
-`perf-rows.tsv` WAIVER row proven load-bearing.
+and the device kernel under `tools/ptx/`.
 
 ## Diff hygiene
 

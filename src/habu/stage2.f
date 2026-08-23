@@ -45,10 +45,7 @@ s" PATH-BUF" s" -- ptr u8" TRUST
 : OUT-PATH$ ( -- ptr u8 n )
    s" stage2-got" PATH ;
 variable BUF  variable LEN  variable FD  variable GOT
-SOURCE-ARENA-CAP constant SOURCE-CAP     \ mmap'd generated compiler source;
-                                         \ the 2026-07-13 baseline was 1,036,134
-                                         \ bytes. The fixpoint test enforces the
-                                         \ named policy from the live source size.
+SOURCE-ARENA-CAP constant SOURCE-CAP     \ mmap'd generated compiler source
 $1002 constant MAP-PRIVATE-ANON
 : BUF@ BUF @ ;
 s" BUF@" s" -- ptr u8" TRUST

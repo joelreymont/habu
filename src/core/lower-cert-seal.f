@@ -32,12 +32,7 @@ undefine FULL-SET
 \
 \ The mark's invariant is POSITION: it must be taken at the boundary, and the
 \ boundary is the end of this file — the last row of src/habu/habu2.f
-\ PFX-LOAD-CORE-FILES. A file of its own would name the concern more plainly
-\ and was measured and rejected: a new prefix source file is a row in every
-\ list that names the prefix, the package lint refuses that row in
-\ tools/boot-pin.f, and the row reaches an engine only after one has been
-\ rebuilt carrying it — against these four lines at the fact itself
-\ (dot habu-single-prefix-load-17a8c792).
+\ PFX-LOAD-CORE-FILES, so it stays at the fact it records.
 \
 \ WHO READS IT. src/habu/prefix-rewind.f, at the head of every generated engine
 \ source. That source used to truncate the dictionary back to util.f's first

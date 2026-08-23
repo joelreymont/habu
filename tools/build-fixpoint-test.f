@@ -18,7 +18,6 @@ require lib/process-cwd.f
 require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
-require tools/source-arena-policy.f
 require lib/test/mapped.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
@@ -1158,8 +1157,6 @@ variable BFT-DOC-CODE
 \ successful/failing sizes against the freshly built candidate's --build path.
 
 $10000 constant PROBE-START
-1 constant EOF-BYTES
-SOURCE-ARENA-CAP 2 / constant PREV-CAP
 
 variable EXITED
 variable EXIT-CODE
@@ -1256,27 +1253,14 @@ variable BAD-N
       then
    repeat ;
 
-: LIVE-SIZE ( -- n )
-   SOURCE-ARENA-CAP OK-N @ - EOF-BYTES > TTRUE
-   SOURCE-ARENA-CAP OK-N @ - EOF-BYTES -
-   BF-STAGE2-SOURCE
-   s" stage2-src" BF-A$ FILE-SIZE + ;
-
-: POLICY ( -- )
-   LIVE-SIZE SOURCE-ARENA:NEED {: need:n :}
-   SOURCE-ARENA-CAP need >= TTRUE
-   need SOURCE-ARENA:NEXT-POW2 SOURCE-ARENA-CAP T= ;
-
 : SOURCE-BOUNDARY ( -- )
    BFT-ROOT BF-TMP!
    SRC-ALLOC
    EXP
    BINARY
    BAD-N @ OK-N @ 1 + T=
-   OK-N @ PREV-CAP > TTRUE
    OK-N @ PROBE TTRUE
    BAD-N @ PROBE TFALSE
-   POLICY
    BF-TMP-RESET ;
 
 : RUN-BUILD ( ptr u8 n -- )

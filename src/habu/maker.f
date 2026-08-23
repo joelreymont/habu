@@ -19,9 +19,7 @@ variable MK-SLEN
 variable MK-FD
 variable MK-RD
 
-SOURCE-ARENA-CAP constant MK-SOURCE-CAP  \ generated maker source uses the same
-                                         \ live-enforced headroom policy as stage2.f;
-                                         \ its historical baseline is not a ceiling.
+SOURCE-ARENA-CAP constant MK-SOURCE-CAP  \ shared generated-source capacity
 
 : MK-SBUF@ ( -- ptr u8 )
    MK-SBUF @ ;

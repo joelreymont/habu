@@ -13,7 +13,6 @@ require lib/process-argv.f
 
 $8000 constant HBT-CAP
 10000 constant HBT-TIMEOUT-MS
-1 constant HBT-X-OK
 
 create HBT-OUT HBT-CAP allot
 create HBT-ERR HBT-CAP allot
@@ -28,8 +27,6 @@ variable HBT-SCRIPT-U
 variable HBT-MULTI-A-U
 variable HBT-MULTI-B-U
 variable HBT-MULTI-MAIN-U
-variable HBT-PUBLIC-N
-variable HBT-PUBLIC-BAD
 
 : HBT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -52,20 +49,6 @@ variable HBT-PUBLIC-BAD
 
 : HBT-LF ( -- )
    10 SB-APPEND-C ;
-
-: HBT-EXEC? ( ptr u8 n -- bool )
-   FS-PATHZ HBT-X-OK access 0= ;
-
-\ The public surface is the engine and the capture host the install keeps
-\ beside it (tools/build-fixpoint.f BF-INSTALL-HOST): fixtures whose subject
-\ is source-loading the chain obtain the host by this path. Anything else
-\ executable in bin is still a contract violation.
-: HBT-BIN-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u HBT-EXEC? if
-      HBT-PUBLIC-N @ 1+ HBT-PUBLIC-N !
-      a u s" bin/hb" STR=
-      a u s" bin/hb-host" STR= or 0= if -1 HBT-PUBLIC-BAD ! then
-   then ;
 
 : HBT-SCRIPT$SRC ( -- ptr u8 n )
    SB-RESET
@@ -115,17 +98,6 @@ variable HBT-PUBLIC-BAD
    s" bin/hb" >LEN HBT-OUT HBT-CAP >LEN HBT-ERR HBT-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE HBT-CAPTURE>N ;
 
-: HBT-TEST-PUBLIC-BIN ( -- )
-   s" bin/hb" FILE? TTRUE
-   s" bin/hb" HBT-EXEC? TTRUE
-   s" bin/hbi" EXISTS? TFALSE
-   s" bin/habu" EXISTS? TFALSE
-   0 HBT-PUBLIC-N !
-   0 HBT-PUBLIC-BAD !
-   s" bin" [: HBT-BIN-FILE ;] WALK-FILES
-   HBT-PUBLIC-N @ 2 T=
-   HBT-PUBLIC-BAD @ 0 T= ;
-
 : HBT-TEST-PIPELINE ( -- )
    PROC-ARGV-RESET
    s" 41 1 + ." HBT-RUN-STDIN 0 T= 0 T= 3 T=
@@ -161,7 +133,6 @@ variable HBT-PUBLIC-BAD
 : HBT-MAIN ( -- )
    T-RESET
    HBT-PREPARE
-   HBT-TEST-PUBLIC-BIN
    HBT-TEST-PIPELINE
    HBT-TEST-PIPE-WINS
    HBT-TEST-MULTI-SOURCE

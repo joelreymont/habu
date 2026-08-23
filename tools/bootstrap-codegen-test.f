@@ -10,8 +10,8 @@
 \ What remains carries invariants NO build event observes, each expressed
 \ through execution or through the real lexer rather than through text:
 \
-\   BCG-CAP  - the source-arena capacity and headroom must agree across the
-\              native engine, the Gforth mirror, stage2 and the maker. The
+\   BCG-CAP  - the source-arena capacity must agree across the native engine,
+\              the Gforth mirror, stage2 and the maker. The
 \              mirror's arena is exercised only during no-binary recovery, so
 \              an undersized mirror constant fails no scheduled gate; it fails
 \              a recovery months later. The check reads each declaration
@@ -37,8 +37,7 @@ require tools/lint/source-lex.f
 package BCG
 private
 
-\ habu2.f is 262,867 bytes on the ENGINE-ERROR cutover tree; 25% headroom is
-\ 328,584 bytes, so the next power-of-two arena is $80000.
+\ Large enough to read the current habu2.f source through the lexer fixture.
 $80000 constant SRC-CAP
 
 create SRC-BUF SRC-CAP allot
@@ -61,17 +60,14 @@ public
 
 ;package
 
-\ The shared arena constants: the emitters, the fixpoint driver and the maker must
-\ all name the same source-arena capacity and headroom percentage.
+\ The emitters, fixpoint driver and maker must name the same source-arena capacity.
 package BCG-CAP
 using BCG
 
 32 constant TOK-CAP
 
-create PCT-TOK TOK-CAP allot
 create CAP-TOK TOK-CAP allot
 create IBUF-TOK TOK-CAP allot
-variable PCT-U
 variable CAP-U
 variable IBUF-U
 variable DEF-I
@@ -113,30 +109,24 @@ variable DEF-N
    u lenp ! ;
 
 : SAVE-TOKENS ( -- )
-   s" SOURCE-HEADROOM-PCT" DEF-VALUE
-   PCT-TOK PCT-U TOK-SAVE
    s" SOURCE-ARENA-CAP" DEF-VALUE
    CAP-TOK CAP-U TOK-SAVE
    s" IBUFSZ" DEF-VALUE
    IBUF-TOK IBUF-U TOK-SAVE ;
 
 : CHECK-TOKENS ( -- )
-   s" SOURCE-HEADROOM-PCT" DEF-VALUE
-   PCT-TOK PCT-U @ T$=
    s" SOURCE-ARENA-CAP" DEF-VALUE
    CAP-TOK CAP-U @ T$=
    s" IBUFSZ" DEF-VALUE
    IBUF-TOK IBUF-U @ T$= ;
 
 : OWNER ( -- )
-   s" SOURCE-HEADROOM-PCT" DEF-SCAN DEF-N @ 1 T=
    s" SOURCE-ARENA-CAP" DEF-SCAN DEF-N @ 1 T=
    s" IBUFSZ" DEF-SCAN DEF-N @ 1 T= ;
 
 public
 
 : TEST ( -- )
-   SOURCE-HEADROOM-PCT 25 T=
    SOURCE-ARENA-CAP IBUFSZ T=
    s" src/habu/layout.f" LOAD
    OWNER

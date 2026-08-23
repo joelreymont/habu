@@ -601,8 +601,6 @@ TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
 \ path length), value = SHA-256 of the file content. Per-file (not one digest
 \ over a concatenated manifest) so the map spans all three emissions with no
 \ separate file list to drift, and so a mismatch names the exact drifted path.
-\ Baking the combined pin into the image for boot-time reload verification needs
-\ engine work and is tracked by dot habu-boot-pin-bake.
 : BF-PIN-RESET ( -- )
    0 BF-PIN-N ! ;
 
