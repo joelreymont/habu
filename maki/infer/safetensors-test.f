@@ -1042,8 +1042,8 @@ private
    s" datatype comparison consumes only the canonical MAKI enum" T-LABEL
    s" STT-OK-DATATYPE ( SAFET:file n MAKI:datatype -- SAFET:file bool ) SAFET:DATATYPE=" ACCEPTED
    s" STT-BAD-DATATYPE-N ( SAFET:file n n -- SAFET:file bool ) SAFET:DATATYPE=" REJECTED
-   s" STT-OK-ID-ERROR ( CAD-KIND:id-error -- CAD-KIND:id-error )" ACCEPTED
-   s" STT-BAD-DATATYPE-FOREIGN ( SAFET:file n CAD-KIND:id-error -- SAFET:file bool ) SAFET:DATATYPE=" REJECTED
+   s" STT-OK-TARGET-ID ( CAD-KIND:target-id -- CAD-KIND:target-id )" ACCEPTED
+   s" STT-BAD-DATATYPE-FOREIGN ( SAFET:file n CAD-KIND:target-id -- SAFET:file bool ) SAFET:DATATYPE=" REJECTED
    s" retired and private datatype words are absent from the runtime dictionary" T-LABEL
    s" SAFET:DATATYPE=" XREF-FIND dup XREF-FOUND? TTRUE XREF-WORDLIST {: wid:n :}
    s" dup" 0 search-wl 0= TFALSE

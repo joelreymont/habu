@@ -881,7 +881,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ which only ever understood the compact form; the replay entry accepts both
 \ modes. STRUCTURE had no arm at all, so any file declaring one left that family
 \ unregistered and the next declaration naming it as a payload type rejected
-\ with "unknown payload type" — check could not check maki/db/promotion.f.
+\ with "unknown payload type".
 \ PRODUCT stays on the legacy definer; the cutover retires that arm with the
 \ definer itself.
 \

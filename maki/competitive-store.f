@@ -37,11 +37,7 @@
 \     GFLOPS-COMPARABLE?, maki/numpolicy.f witnesses); the historical FP32-vs-TF32
 \     confusion is exactly an incomparable pair. So the row records whether the value is
 \     promotion-licensed, and rehydration re-derives it and rejects a row whose recorded
-\     verdict is stale (E-BENCH-ROW-PROMO). The FULLER cross-artifact linkage (binding a
-\     row to a specific ART:promoted decision via the sealed POLICY:granted grant) needs
-\     the store-seal internals (maki/evidence/*) out of this dot's scope; this file
-\     implements the recorded-evidence check precisely and leaves the artifact binding to
-\     the promotion lane.
+\     verdict is stale (E-BENCH-ROW-PROMO). This schema does not bind a row to an artifact.
 \ The persisted row is  <canonical-render>|schema=bench/v1|spol=<p>|bpol=<p>|unit=<u>|
 \ digest=<hex16>|promo=<comparable|incomparable> . The policy/unit fields are recorded
 \ REDUNDANTLY (they also live inside the render key): the read boundary cross-checks the

@@ -18,8 +18,7 @@
 \ Namespace split: the stateful report builder/renderer is package REPORT
 \ (callers write REPORT:NEW, REPORT:VERDICT!, REPORT:RENDER). The report is a
 \ RENDER of typed evidence: gate verdicts enter through the typed REPORT:VERDICT!
-\ (verdict ENUM + gate family); the raw (verdict, gate-id) writer REPORT:GATE! is
-\ RETIRED (R7 sub-dot 5, MODEL-CAD-V2-PLAN.md:1827-1830/:1941-1948). The verdict/
+\ (verdict ENUM + gate family); the raw (verdict, gate-id) writer is retired. The verdict/
 \ roofline/coalescing/gate enums are cross-cutting value substrate shared by the
 \ whole CAD pipeline and the device tests, so they stay in the MAKI substrate
 \ package.
@@ -109,8 +108,7 @@ ENUM costatus
 
 \ ---- typed gate family (render boundary) ----
 \ The report render boundary consumes a TYPED gate (REPORT:VERDICT!), so the
-\ retired raw (verdict, gate-id) pair (census probe 1, MODEL-CAD-V2-PLAN.md:1564-
-\ 1570) is unrepresentable: a verdict and a gate are DISTINCT families, so the
+\ raw (verdict, gate-id) pair is unrepresentable: a verdict and a gate are DISTINCT families, so the
 \ swapped-slot call the old REPORT:GATE! certified can no longer type-check.
 \ Declaration order tracks G-* for the fixed-column index projection (GATE>IDX).
 \ Constructors: MAKI-GATE:CERTIFY/GOLDEN/GRADCHECK/PROFILE.

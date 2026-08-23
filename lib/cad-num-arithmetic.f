@@ -1,6 +1,5 @@
-\ cad-num-arithmetic.f - CAD-NUM B5.2 closed, dimensionally-valid arithmetic
-\ (MODEL-CAD-V2-PLAN.md B5.2; dot habu-implement-cad-num-cb413b2a, epic
-\ habu-epic-model-cad-70b629a9). Reopens package CAD-NUM (slice 2); depends on
+\ cad-num-arithmetic.f - CAD-NUM closed, dimensionally-valid arithmetic.
+\ Reopens package CAD-NUM (slice 2); depends on
 \ lib/cad-num-types.f (slice 1) and adds no roles or overloads.
 \
 \ This file is the COMPLETE admitted role algebra. The B5.2 table is closed: an

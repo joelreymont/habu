@@ -67,8 +67,7 @@ ENUM descriptor 0
    ;VARIANT
 ;ENUM
 
-\ WIRE>ID decode result (MODEL-CAD-V2-PLAN.md § 23.9 "Foreign identity
-\ constructors and wire codecs", the art-result custom-sum idiom): `ok` carries the
+\ WIRE>ID decode result: `ok` carries the
 \ refined nominal id in its `id` field; the reject arms are the fixed-width
 \ byte-decode refusals the contract names (wrong width, unresolved/out-of-range
 \ value). A bespoke per-package sum, not result<a,b>, so a total ok construction

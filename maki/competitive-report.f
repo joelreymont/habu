@@ -1,6 +1,4 @@
-\ maki/competitive-report.f - the checked BENCH competitive-comparison schema
-\ (dot habu-define-checked-bench-5341ffc8, epic habu-v2-competitive-evidence-5d07d471;
-\ MODEL-CAD-V2-PLAN.md:1376-1395 non-cherry-picked exact-key comparisons).
+\ maki/competitive-report.f - the checked BENCH competitive-comparison schema.
 \
 \ A competitive row used to be an opaque string plus raw n, so a historical Habu
 \ FP32 GEMM number and a Triton TF32 GEMM number could masquerade as ONE

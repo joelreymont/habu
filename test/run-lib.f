@@ -1553,7 +1553,7 @@ private
 \ habu-split-monolithic-maki-fccca4ea). Before the candidate routing the gate ran
 \ maki on the baseline bin/hb, so a broken candidate engine could still show maki
 \ GREEN - a gate-soundness hole. The maki suite was one monolithic ~31s child (the
-\ cold long pole); it is now split into four parallel slice loaders
+\ cold long pole); it is now split into three parallel slice loaders
 \ (maki/test-<slice>.f) that each sit at the DICT-CAP word wall, so each must run
 \ STANDALONE - never with the gate base libs prepended, which would overflow its
 \ image. Each runs the freshly built candidate (UNDER$) with HABU_UNDER_TEST set,
@@ -1563,27 +1563,24 @@ private
 \ closed through the normal red-phase path (GT-POOL-RED# in COMPLETE).
 \
 \ Slice metadata, ordered heaviest-first (measured GB10 idle walls: core ~9.2s,
-\ db ~9.0s, eval-emit ~7.7s, eval ~5.8s) so the long slice grabs a pool slot first
+\ eval-emit ~7.7s, eval ~5.8s) so the long slice grabs a pool slot first
 \ and its wall overlaps the rest. Each slice gets its own HB_TMP subdir and a UNIQUE
 \ label (a duplicate label dies the gate: gate-stats GS-LABEL-DUP).
-4 constant TR-MAKI-SLICES
+3 constant TR-MAKI-SLICES
 
 : TR-MAKI-SLICE-LOAD ( i -- ptr u8 n )
    dup 0 = if drop s" maki/test-core.f" exit then
-   dup 1 = if drop s" maki/test-db.f" exit then
-   dup 2 = if drop s" maki/test-eval-emit.f" exit then
+   dup 1 = if drop s" maki/test-eval-emit.f" exit then
    drop s" maki/test-eval.f" ;
 
 : TR-MAKI-SLICE-LABEL ( i -- ptr u8 n )
    dup 0 = if drop s" native maki core suite" exit then
-   dup 1 = if drop s" native maki db suite" exit then
-   dup 2 = if drop s" native maki eval-emit suite" exit then
+   dup 1 = if drop s" native maki eval-emit suite" exit then
    drop s" native maki eval suite" ;
 
 : TR-MAKI-SLICE-TMP ( i -- ptr u8 n )
    dup 0 = if drop s" gate-maki-core" exit then
-   dup 1 = if drop s" gate-maki-db" exit then
-   dup 2 = if drop s" gate-maki-eval-emit" exit then
+   dup 1 = if drop s" gate-maki-eval-emit" exit then
    drop s" gate-maki-eval" ;
 
 : TR-MAKI-TMP! ( ptr u8 n -- ) {: nm:ptr nu:n :}

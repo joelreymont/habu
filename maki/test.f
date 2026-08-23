@@ -133,8 +133,6 @@ SUITE maki/store-test.f
 ;SUITE
 SUITE maki/store-replay-test.f
 ;SUITE
-SUITE maki/store-rehydrate-test.f
-;SUITE
 SUITE maki/store-frame-test.f
 ;SUITE
 SUITE maki/embedding-test.f
@@ -176,62 +174,6 @@ SUITE maki/report-test.f
 SUITE maki/cad-kinds-test.f
 ;SUITE
 SUITE maki/target/target-test.f
-;SUITE
-SUITE maki/artifact-test.f
-;SUITE
-SUITE maki/db/artifact-test.f
-;SUITE
-SUITE maki/db/transaction-test.f
-;SUITE
-SUITE maki/db/commit-store-test.f
-;SUITE
-SUITE maki/db/commit-store-crash-test.f
-;SUITE
-SUITE maki/db/diagnostic-test.f
-;SUITE
-SUITE maki/db/obligation-test.f
-;SUITE
-SUITE maki/db/evidence-test.f
-;SUITE
-SUITE maki/db/evidence-applicability-test.f
-;SUITE
-SUITE maki/db/promotion-policy-test.f
-;SUITE
-SUITE maki/db/promotion-authority-test.f
-;SUITE
-SUITE maki/db/promotion-test.f
-;SUITE
-SUITE maki/db/action-test.f
-;SUITE
-SUITE maki/db/diff-suite-test.f
-;SUITE
-SUITE maki/db/diff-suite-id-test.f
-;SUITE
-SUITE maki/db/diff-runner-test.f
-;SUITE
-SUITE maki/db/diff-runner-tensor-test.f
-;SUITE
-SUITE maki/db/diff-runner-spawn-test.f
-;SUITE
-SUITE maki/db/diff-runner-inject-test.f
-;SUITE
-SUITE maki/db/diff-case-store-test.f
-;SUITE
-SUITE maki/db/diff-case-store-xproc-test.f
-;SUITE
-SUITE maki/db/capbud-test.f
-;SUITE
-SUITE maki/db/agent-loop-test.f
-;SUITE
-SUITE maki/db/audit-log-test.f
-;SUITE
-SUITE maki/db/commit-store-discharge-test.f
-;SUITE
-SUITE maki/experiment/run-test.f
-;SUITE
-SUITE maki/experiment/run-metric-test.f
-;SUITE
-SUITE maki/experiment/run-lineage-test.f
 ;SUITE
 SUITE maki/cad-test.f
 ;SUITE
@@ -291,15 +233,7 @@ SUITE maki/async-dag-test.f
 ;SUITE
 SUITE maki/plan-ir-test.f
 ;SUITE
-SUITE maki/typestate-test.f
-;SUITE
 SUITE maki/numpolicy-test.f
-;SUITE
-SUITE maki/schema-test.f
-;SUITE
-SUITE maki/producer-test.f
-;SUITE
-SUITE maki/config-test.f
 ;SUITE
 SUITE maki/infer/safetensors-test.f
 ;SUITE
@@ -334,33 +268,11 @@ SUITE maki/infer/gpt2-entry-test.f
 \
 \ The GPT-2 members of the *-device-test.f family need a CUDA host on top of a
 \ checkpoint; docs/ablation.md owns that family and carries each one's command.
-SUITE maki/journal-test.f
-;SUITE
-SUITE maki/rev-test.f
-;SUITE
-SUITE maki/db/keywire-xproc-test.f
-;SUITE
-SUITE maki/db/keywire-xproc-env-test.f
-;SUITE
-SUITE maki/db/audit-log-xproc-test.f
-;SUITE
-SUITE maki/evidence/schema-test.f
-;SUITE
-SUITE maki/evidence/policy-test.f
-;SUITE
-SUITE maki/evidence/policy-e2e-test.f
-;SUITE
-SUITE maki/evidence/promote-test.f
-;SUITE
 SUITE maki/competitive-report-test.f
 ;SUITE
 SUITE maki/competitive-store-test.f
 ;SUITE
 SUITE tools/eval-triton-test.f
-;SUITE
-SUITE maki/competitive-evidence-test.f
-;SUITE
-SUITE maki/competitive-evidence-store-test.f
 ;SUITE
 SUITE maki/device-artifacts-test.f
 ;SUITE

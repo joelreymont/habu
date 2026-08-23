@@ -25,8 +25,7 @@
 > as "will", not "does". The single source of truth for what actually ships —
 > including the real error codes and the positional `SUMTYPE` / bare-names `ENUM`
 > split — is [`docs/forth.md`](forth.md) § Structures And Enums. The remaining
-> cutover is owned by epic `habu-epic-one-structure-04f9804f` (implementation
-> chain in `MODEL-CAD-V2-PLAN.md` § 3.1).
+> cutover is owned by epic `habu-epic-one-structure-04f9804f`.
 
 ---
 
@@ -863,82 +862,21 @@ An arity-zero `NEWTYPE` is a package-scoped nominal cell kind:
 ```forth
 package CAD-KIND
 public
-NEWTYPE design-id 0
 NEWTYPE node-id 0
+NEWTYPE target-id 0
 ;package
 ```
 
-Inside the package, signatures use `design-id`; outside, they use
-`CAD-KIND:design-id`. The resolved family id is the identity, so an equally
+Inside the package, signatures use `node-id`; outside, they use
+`CAD-KIND:node-id`. The resolved family id is the identity, so an equally
 spelled tail in another package does not unify. Ordinary typed `@` and `!`
-preserve the family through `ptr CAD-KIND:design-id` storage.
+preserve the family through `ptr CAD-KIND:node-id` storage.
 
 Do not add universal `n` casts for authority-bearing ids. The allocator,
 decoder, or table owner keeps any raw-representation refinement private and
 validates its range, generation, schema, or provenance first. Use `DEFTYPE`
 only when a global nominal plus its generated raw converter pair is the desired
 contract.
-
-#### 9.1.1 Canonical artifact envelope identities
-
-The `CAD-KIND` package (maki/cad-kinds.f) is the worked example of authority-safe
-arity-0 nominals, and it owns the identities the canonical artifact envelope
-binds (MODEL-CAD-V2-PLAN.md § 23.9 Canonical typed artifacts; dot
-`habu-freeze-canonical-artifact-3b6b7087`). The envelope-provenance roles are
-`CAD-KIND:artifact-kind`, `producer-id`, `config-id`, `numeric-policy-id`,
-and `audit-event-id`, alongside the pre-existing
-`artifact-id`, `schema-id`, `rev-id`, and `target-id`. Each is a distinct
-family id, so no id-shaped scalar of one role unifies with another — the
-type-family mechanism, not a runtime tag check, is the confusion barrier.
-
-Three separations are contract, each pinned by a verdict-0 fixture with a
-resolving positive in `maki/cad-kinds-test.f`:
-
-- **class versus identity.** `artifact-kind` (the artifact's semantic CLASS) is
-  a different family from `artifact-id` (its content-addressed IDENTITY), so a
-  kind can never be read or stored where an id is required, or vice versa
-  (`CK-XA6`/`CK-XA7`).
-- **persistent audit versus ephemeral runtime event.** `audit-event-id` is the
-  append-only audit-record link; it is a persistent provenance identity and
-  never unifies with the runtime async synchronization event `ADAG:event-id`
-  (maki/async-dag.f) — a synchronization resource handle, not provenance
-  (`CK-EV-X1`/`CK-EV-X2`).
-- **identity versus content digest.** The 256-bit content digest is
-  deliberately NOT a one-cell nominal kind — a one-cell digest would be a
-  scalar an id could launder into. It is an owned multi-cell value type (four
-  64-bit words) owned by the envelope encoder (package `ARTIFACT`), so
-  `artifact-id` and the digest never unify (`CK-DIG-X1`/`CK-DIG-X2`).
-
-The logical envelope is `artifact<kind>`: a family parameterized by the
-artifact-kind. Distinct concrete kinds do not unify — `artifact<weight-kind>`
-and `artifact<kernel-kind>` are different types (`CK-ART-XK`) — while an
-identity `( artifact<k> -- artifact<k> )` certifies. Two DISTINCT parameter
-VARIABLES `a`/`b` in a bare `( artifact<a> -- artifact<b> )` signature would
-unify (the checker binds the fresh vars), so kind separation is expressed with
-CONCRETE kind arguments, exactly as the flat stage families
-(MODEL-CAD-V2-PLAN.md, "Stage families") realize `model<elaborated>` as
-per-stage families until parametric application enters the declaration grammar
-(§ 9.4). The encoder (`habu-v2-canonical-artifact-ee5121b4`) may realize the
-envelope parametrically or as flat per-kind families; the checker enforces the
-separation either way.
-
-Each identity family is OBTAINED and SERIALIZED through its OWNER package, never
-through a refinement inside the envelope codec. An owner publishes a private
-`RAW>X-ID` / `X-ID>RAW` representation refinement (the maki/artifact.f /
-maki/target/target.f precedent), one public authority-bearing constructor bound
-to the id's origin (registry intern, content digest, closed vocabulary, or
-commit/append sequence), and a public wire-codec pair `X:ID>WIRE` (total) /
-`X:WIRE>ID` (fail-closed, returning a custom sum-family result). The envelope
-codec calls these across the package boundary and adds no per-family boundary of
-its own; the per-family owner, origin, wire width, and open descriptor decisions
-are tabulated in MODEL-CAD-V2-PLAN.md § 23.9 "Foreign identity constructors and
-wire codecs". Because `package ARTIFACT` owns both the content-addressed identity
-registry (`ARTIFACT:REGISTER`, maki/artifact.f) and the envelope-bytes codec
-(maki/db/artifact.f), and a public wordlist rejects duplicate tails, the
-identity-registry range check is `ARTIFACT:VALIDATE-ID`
-(`CAD-KIND:artifact-id -- CAD-KIND:artifact-id`) and the bare `ARTIFACT:VALIDATE`
-tail is reserved for the envelope-bytes leg
-(`owned-bytes -- result<content-digest,diag-set>`).
 
 ### 9.2 Removed `SUMTYPE`
 

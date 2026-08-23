@@ -154,7 +154,7 @@ fits.
   the failing command yourself, on your tree, before believing a note about it.
 - **Re-prove a frozen contract's package owner against the live tree at
   dispatch (`rg 'package NAME'`).** The S5a "sealed package MODEL" contract
-  collided with the CAD typestate stage package `MODEL` (maki/typestate.f);
+  collided with a now-retired CAD typestate stage package named `MODEL`;
   the checkpoint red proof caught it before any code, and the right resolution
   was renaming the SMALLER side — the 8-reference internal stage vocabulary
   became `CADMODEL` — so every frozen cross-contract `MODEL:*` spelling stayed
@@ -224,8 +224,9 @@ fits.
   cold-prefix SOURCE, the current `bin/hb` recompiles it every launch — test seal
   behaviour immediately, the x2 byte-identical fixpoint is only the seed gate.
   Beware same-tail collisions: maki's `package SCHEMA` defines its OWN `SCH-N`
-  (maki/schema.f:87), a different cell from core `type-schema.f` `SCH-N` — grep
-  before assuming a bare read targets the core registry. The `internal-word-gate`
+  (a retired Maki schema registry counter), a different cell from core
+  `type-schema.f` `SCH-N` — grep before assuming a bare read targets the core
+  registry. The `internal-word-gate`
   subject-count ratchet (`SUBJECT-N`) must be bumped by exactly the number of new
   `IWG-EXEC:SUBJECT` fork cases, or `TAIL-RATCHET:CHECK` reds "exact subject
   child-process count".
@@ -631,7 +632,7 @@ fits.
   `b` free; a free var unifies with a structural type but NOT a nominal ENUM/TYPEFAMILY.
   Define `SUMTYPE foo-result 1` whose ok variant carries the payload and whose error
   members are baked-in nullary variants (the `numeric-result` idiom). An arity-1
-  SUMTYPE needs its type ARGUMENT in a signature (`family<CAD-KIND:rev-id>`, "wrong
+  SUMTYPE needs its type ARGUMENT in a signature (`family<CAD-KIND:node-id>`, "wrong
   arity for type family" otherwise) but its BARE qualifier in a `MATCH` selector — do
   not put qualifier and `<...>` together. A parameterized `result` type can't be a
   `{: :}` local — specialize the word or keep it on the stack.
@@ -3001,7 +3002,7 @@ fits.
   a regression proves the bug cannot recur.
 - **A new Maki suite needs two registrations: the master list and one slice.**
   Add it to `maki/test.f` and to exactly one of `maki/test-core.f`,
-  `maki/test-db.f`, `maki/test-eval.f`, or `maki/test-eval-emit.f`;
+  `maki/test-core.f`, `maki/test-eval.f`, or `maki/test-eval-emit.f`;
   it appears exactly once among the slices.
 - **Destructive cleanup requires a validated target.** An unsupported
   `jj diff --check` left a temporary-path variable empty, so unconditional

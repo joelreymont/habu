@@ -656,8 +656,7 @@ variable START-NS
 \ --- unified STRUCTURE declarations. The nominal pass had no arm for these at
 \ all: the keyword was skipped, so the family was never registered and any later
 \ use of it as a payload type rejected with "unknown payload type". That is the
-\ live bug these cover — it made every STRUCTURE-declaring file uncheckable,
-\ including maki/db/promotion.f through maki/db/obligation.f.
+\ live bug these cover — it made every STRUCTURE-declaring file uncheckable.
 : STRUCT-GOOD$ ( -- ptr u8 n )   \ declaration + signature use of the family
    SB-RESET
    s" STRUCTURE sck 0 FIELD lo n FIELD hi n ;STRUCTURE" SB-APPEND
@@ -666,8 +665,7 @@ variable START-NS
    SB$ ;
 
 \ The shape that actually broke: a STRUCTURE family named as a later
-\ declaration's payload type, exactly as maki/db/obligation.f names `evidence`
-\ inside `SUMTYPE discharge-result`.
+\ declaration's payload type inside a SUMTYPE.
 : STRUCT-PAYLOAD$ ( -- ptr u8 n )
    SB-RESET
    s" STRUCTURE spay 0 FIELD v n ;STRUCTURE" SB-APPEND

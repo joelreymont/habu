@@ -1,6 +1,4 @@
-\ cad-num-types.f - CAD-NUM scalar nominal numeric roles + validators
-\ (MODEL-CAD-V2-PLAN.md B5.1; dot habu-implement-cad-num-962bf5d9, epic
-\ habu-epic-model-cad-70b629a9).
+\ cad-num-types.f - CAD-NUM scalar nominal numeric roles + validators.
 \
 \ All of these values occupy one cell, but they do not have interchangeable
 \ meaning: a byte length is not a cell count, an index is not an offset, and an

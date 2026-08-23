@@ -321,13 +321,8 @@ public
    u 0 > if a u EXISTS? if a u REMOVE-TREE then then ;
 
 \ ---- schedules -------------------------------------------------------------
-\ SEALED WRITER (R7 store seal, dot habu-v2-typestate-promotion-2266b236): SCHED-PUT
-\ leaves the public MAKI surface so nothing outside the promote/store owner can plant a
-\ schedule row (census probe 3, MODEL-CAD-V2-PLAN.md:1576-1583). It stays reachable to the
-\ package-MAKI durable writer SK-PUT-DURABLE (maki/store-replay.f) and the store suite
-\ (both package-MAKI reopens); a cross-package / qualified `MAKI:SCHED-PUT` no longer
-\ resolves (proven by maki/evidence/promote-test.f). Retiring the full durable-write path
-\ behind a typed grant is the store-rehydrate sub-dot (habu-v2-typestate-store-57afdc0a).
+\ SCHED-PUT stays private to the promote/store owner. The package-MAKI durable
+\ writer SK-PUT-DURABLE and the store suite reopen the package to reach it.
 private
 : SCHED-PUT ( ptr u8 n n -- ) {: ka:ptr ku:n sel:n :}
    ka ku STORE-CK-KEY
@@ -402,12 +397,8 @@ public
 \ (slice 5) writes "golden=device-<v>:<prec>" so a promoted artifact carries both the
 \ proof the device leg ran and the precision row that licensed it; the host
 \ self-consistency / artifact legs write the plain "golden=<v>" (no precision axis).
-\ SEALED WRITERS (R7 store seal, dot habu-v2-typestate-promotion-2266b236): the evidence
-\ row writers leave the public MAKI surface so nothing outside the promote/store owner can
-\ plant a `certify=pass|golden=pass|gradcheck=pass|profile=pass` row under any key (census
-\ probe 3, MODEL-CAD-V2-PLAN.md:1576-1583). They stay reachable to the package-MAKI promote
-\ path (maki/cad.f PROMOTE-EVIDENCE) and the store suite; a cross-package / qualified
-\ `MAKI:EVID-PUT` / `MAKI:EVID-PUT-G` no longer resolves (maki/evidence/promote-test.f).
+\ Evidence-row writers stay private to the promote/store owner, so external
+\ callers cannot plant passing gate rows under arbitrary keys.
 \ The golden leg/precision reach the wire encoding as raw ids projected from the typed
 \ EVID:golden-leg / EVID:prec-class the promote path threads (maki/cad.f PROMOTE-EVIDENCE),
 \ retiring the maki/golden.f ambient globals; the store owns its on-disk encoding.

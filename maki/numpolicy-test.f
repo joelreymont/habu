@@ -6,9 +6,7 @@
 \ policy is now DERIVED PER-OP by maki/sched-key.f REGION-POL (folding OP-DOM over the
 \ region's ops), so the KEY-invalidation half of the dot (a different op mix => a
 \ different honest policy => a different plan/artifact key) is proven in
-\ maki/sched-key-test.f (skey's pol field + the per-op SK-KEY$ render), and the golden
-\ RECORD carrying a relative result refusing an exact policy in
-\ maki/evidence/policy-e2e-test.f.
+\ maki/sched-key-test.f (skey's pol field + the per-op SK-KEY$ render).
 
 require lib/test.f
 require test/checker-assert.f

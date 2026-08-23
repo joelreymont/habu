@@ -479,11 +479,9 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
 The unified `STRUCTURE … ;STRUCTURE` and `ENUM … ;ENUM` openers **do ship**
 (`src/core/structure-decl.f`, `src/core/enum-decl.f`), and the tree uses them
 widely — around 71 `STRUCTURE` and 207 `ENUM` declaration sites. A declaration
-such as `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE` loads clean. What has *not*
-happened is the removal half of the MODEL-CAD-V2 plan described in
-[type-families.md](type-families.md) and `MODEL-CAD-V2-PLAN.md`: the
-`E-REMOVED-TYPE-SYNTAX` code named by those plan docs exists nowhere in the
-engine, and none of the older words above are removed.
+such as `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE` loads clean. The older words
+above also remain supported: `E-REMOVED-TYPE-SYNTAX` exists nowhere in the
+engine, and none of those forms are removed.
 
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
@@ -1119,6 +1117,4 @@ through a bare `ptr` local does not certify. Consequence: a generic
 word parameterized over "some cell buffer base" cannot be written
 checked (e.g. a shared canonical-set sort over caller buffers); the
 blessed pattern is CONCRETE per-buffer words sharing only scalar
-cursor/index helpers - see maki/db/transaction.f's per-buffer sorts and
-maki/db/artifact.f's DSCR/SSCR pair. Factor the arithmetic, duplicate
-the buffer touch.
+cursor/index helpers. Factor the arithmetic and duplicate the buffer touch.

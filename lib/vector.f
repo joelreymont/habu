@@ -221,7 +221,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
       i VEC-IDX vec i VEC-IDX VEC@ q execute
    loop ;
 
-\ ---- B5.5 typed VEC surface over CAD-NUM roles (MODEL-CAD-V2-PLAN.md B5.5) -----
+\ ---- typed VEC surface over CAD-NUM roles -------------------------------------
 \
 \ The raw VEC-* words above conflate item counts, capacities, and indices on one
 \ interchangeable `n` and allocate through the raw MEM-ALLOC-CELLS sink. Package

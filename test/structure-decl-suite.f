@@ -403,8 +403,8 @@ DECL-DIAG:OFF
 \ is reading source rather than interpreting it, so tools/check-core.f simply
 \ skipped the keyword: the family was never registered, and the next declaration
 \ that named it as a payload type rejected with "unknown payload type". That is
-\ the live bug this closes — `bin/hb --load tools/check.f -- maki/db/promotion.f`
-\ could not get past maki/db/obligation.f's `STRUCTURE evidence`.
+\ the live bug this closes: a later declaration could not use a STRUCTURE family
+\ as its payload type.
 \
 \ Registration here includes the family's MAKE/UNMAKE variant rows and their
 \ constructor package, because that is how a later `FAMILY:MAKE` in the same

@@ -4,9 +4,7 @@
 \
 \ Focused direct-loaded gate home for the B5.1 contract. Production modules load
 \ these types transitively through lib/cad-num-arithmetic.f; this file owns the
-\ validator boundary matrix, not library authority. Permanent sealing is dot
-\ habu-seal-cad-num-36dbeec6; the MODEL-CAD-V2-PLAN.md B5.5 final-integration dot
-\ (ba510e2e) wires this test into a scheduled gate suite. Until then it is not in
+\ validator boundary matrix, not library authority. It is not yet in
 \ test/gate-stdlib-cases.f, so no gate slice schedules it.
 \
 \ numeric-result<a> has no polymorphic eliminator yet (whole-bundle MATCH, dot

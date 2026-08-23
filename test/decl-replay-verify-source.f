@@ -287,9 +287,7 @@ VSPARITY:VS-LOAD
 s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 
 \ ---------------------------------------------------------------------------
-\ 3. A STRUCTURE named as a later declaration's payload type — the shape that
-\    was broken end to end. maki/db/obligation.f declares `STRUCTURE evidence`
-\    and then names `evidence` inside `SUMTYPE discharge-result`; with no
+\ 3. A STRUCTURE named as a later declaration's payload type. Without a
 \    STRUCTURE arm on this path the payload was unresolvable.
 \ ---------------------------------------------------------------------------
 s" package edpay public STRUCTURE slotrec 0 FIELD v n ;STRUCTURE SUMTYPE box 0 VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"

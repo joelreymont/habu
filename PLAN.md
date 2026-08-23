@@ -81,9 +81,8 @@ an owner.
   protects package wordlists only after a closed schema has passed through the
   real builder/freeze path without reopening `IR`.
 - Dialects are separate closed packages: `HIR`, `SIR`, `LIR`, `A64IR`,
-  `GPU-RIR`, `GPU-KIR`, `GPU-GIR`, and `GPU-PTXIR2`. The `GPU-` names avoid the
-  existing `RIR` and `KIR` packages in `maki/typestate.f`; the architectural
-  stage names remain RIR, KIR, GIR, and PTXIR2.
+  `GPU-RIR`, `GPU-KIR`, `GPU-GIR`, and `GPU-PTXIR2`. The `GPU-` prefix keeps
+  those architectural stage packages explicit.
 
 ### Storage and lifecycle
 

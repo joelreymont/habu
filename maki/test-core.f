@@ -1,8 +1,7 @@
 \ maki/test-core.f - a parallel slice of the maki checked suite.
 \ Split from the monolithic maki/test.f (dot habu-split-monolithic-maki-fccca4ea):
 \ core compute, autograd, executor, lowering, model-IR, cad, store framing,
-\ onnx, competitive, experiment, evidence and target checks - everything that is
-\ not the eval harness or the provenance database.
+\ onnx, competitive and target checks - everything that is not the eval harness.
 \ Measured self-time on GB10 (idle, 2026-07-19): ~9041 ms across 120 suites.
 \ Run standalone: bin/hb --load maki/test-core.f
 
@@ -133,8 +132,6 @@ SUITE maki/store-test.f
 ;SUITE
 SUITE maki/store-replay-test.f
 ;SUITE
-SUITE maki/store-rehydrate-test.f
-;SUITE
 SUITE maki/store-frame-test.f
 ;SUITE
 SUITE maki/embedding-test.f
@@ -174,14 +171,6 @@ SUITE maki/report-test.f
 SUITE maki/cad-kinds-test.f
 ;SUITE
 SUITE maki/target/target-test.f
-;SUITE
-SUITE maki/artifact-test.f
-;SUITE
-SUITE maki/experiment/run-test.f
-;SUITE
-SUITE maki/experiment/run-metric-test.f
-;SUITE
-SUITE maki/experiment/run-lineage-test.f
 ;SUITE
 SUITE maki/cad-test.f
 ;SUITE
@@ -241,15 +230,7 @@ SUITE maki/async-dag-test.f
 ;SUITE
 SUITE maki/plan-ir-test.f
 ;SUITE
-SUITE maki/typestate-test.f
-;SUITE
 SUITE maki/numpolicy-test.f
-;SUITE
-SUITE maki/schema-test.f
-;SUITE
-SUITE maki/producer-test.f
-;SUITE
-SUITE maki/config-test.f
 ;SUITE
 SUITE maki/infer/safetensors-test.f
 ;SUITE
@@ -269,27 +250,11 @@ SUITE maki/infer/gpt2-serve-test.f
 ;SUITE
 SUITE maki/infer/gpt2-entry-test.f
 ;SUITE
-SUITE maki/journal-test.f
-;SUITE
-SUITE maki/rev-test.f
-;SUITE
-SUITE maki/evidence/schema-test.f
-;SUITE
-SUITE maki/evidence/policy-test.f
-;SUITE
-SUITE maki/evidence/policy-e2e-test.f
-;SUITE
-SUITE maki/evidence/promote-test.f
-;SUITE
 SUITE maki/competitive-report-test.f
 ;SUITE
 SUITE maki/competitive-store-test.f
 ;SUITE
 SUITE tools/eval-triton-test.f
-;SUITE
-SUITE maki/competitive-evidence-test.f
-;SUITE
-SUITE maki/competitive-evidence-store-test.f
 ;SUITE
 SUITE maki/device-artifacts-test.f
 ;SUITE

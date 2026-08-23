@@ -320,8 +320,8 @@ s" RT-HOT-NOUT ( n -- n ) HOT-ST-AT @"            CHECK-QUIET-CANDIDATE! 0 T=
 s" RT-HOT-VERD ( verdict n -- ) HOT-ST-AT !"      CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- TS-OLD-GATE: the raw (verdict, gate-id) writer is retired (demotion pin) --
-\ Report demoted to a RENDER of typed evidence (MODEL-CAD-V2-PLAN.md:1827-1830,
-\ sub-dot 5 :1941-1948): the raw REPORT:GATE! ( report ptr u8 n n n -- report )
+\ Report is a render of typed evidence: the raw
+\ REPORT:GATE! ( report ptr u8 n n n -- report )
 \ left the public surface, folded into the typed REPORT:VERDICT! (verdict ENUM +
 \ gate family). A candidate using the old raw writer is UNRESOLVABLE (verdict 1),
 \ not merely a type reject -- the word is GONE, so census probe 1's slot swap has

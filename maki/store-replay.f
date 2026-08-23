@@ -24,9 +24,7 @@
 \ could tear the store under a crash or a concurrent process), latest-wins on load
 \ already gives correct semantics over superseded rows, and the file is loudly
 \ capped (E-STORE-FULL at maki/store.f STORE-READ-CAP) rather than silently
-\ unbounded. Real compaction belongs to the V2 design database's atomic
-\ content-addressed store (MODEL-CAD-V2-PLAN.md section 9.5), which replaces this
-\ file wholesale.
+\ unbounded.
 \
 \ Session latch (REPLAY-READY? / REPLAY-ENSURE): production callers never load the
 \ file explicitly - they call REPLAY-ENSURE, which MERGES schedules.rows into the
@@ -115,13 +113,8 @@ public
 \ record a schedule selection in the hot table AND durably in schedules.rows.
 \ THE production write path: it rehydrates first (load-before-first-write), so
 \ the fresh row lands after the durable merge and can never be shadowed by it.
-\ SEALED WRITER (R7 store rehydrate, dot habu-v2-typestate-store-57afdc0a): SK-PUT-DURABLE
-\ leaves the public MAKI surface so nothing outside the promote/store owner (package MAKI)
-\ can plant a DURABLE schedule row - the direct SCHED-PUT plant was already sealed by the
-\ promotion sub-dot (maki/store.f, census probe 3, MODEL-CAD-V2-PLAN.md:1576-1583); this
-\ closes the durable side. It stays reachable to the package-MAKI promote path (maki/cad.f
-\ PROMOTE-EVIDENCE) and the store suites (all package-MAKI reopens); a cross-package /
-\ qualified MAKI:SK-PUT-DURABLE no longer resolves (maki/store-rehydrate-test.f).
+\ SK-PUT-DURABLE stays private to package MAKI. The promotion path and store
+\ suites reopen that package to reach the durable writer.
 private
 : SK-PUT-DURABLE ( ptr u8 n n -- ) {: a:ptr u:n sel:n :}
    REPLAY-ENSURE

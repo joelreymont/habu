@@ -451,13 +451,12 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   more (`rev-id evidence-id run-id obligation-id schema-id action-id
   suite-id producer-id config-id audit-event-id`; the original
   "suite-id is live" note was wrong — its only consumers were maki/db
-  files). Nine survive: `node-id artifact-id target-id
-  numeric-policy-id dim rows cols address-space region`; artifact-id
-  rides M10a with maki/typestate.f. Wrong-type negative fixtures in
+  files). Eight survive: `node-id target-id numeric-policy-id dim rows
+  cols address-space region`. Wrong-type negative fixtures in
   lower/model-test, fusion-plan-test, model-ir-test, target-test, and
   cad-kinds-test re-based onto live substitutes, verified against real
   signatures with paired resolve/reject probes. Remaining M8 work: the
-  carrier-form conversion of the nine survivors. blocked-by M7.
+  carrier-form conversion of the eight survivors. blocked-by M7.
 - (dead `sched` — the VALUE-RECORD at maki/schedule.f:42, its four
   words at 251-254, and the schedule-test.f checks — is wave 2+ dead-code
   deletion: it does not block old-form removal or GPT-2 and gets no
@@ -466,14 +465,10 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   model-ir.f `input-slot operand-ref input-index ref-pos`,
   tensor-value.f `tensor`, extent.f `ix XR-SLOT XR-SURF-LEN
   XR-TAIL-LEN`, extent-tensor.f `TR-SLOT`, report.f `REPORT`, spec.f
-  `SP-FI EQ-SLOT` (17 declarations; artifact.f's id-result belongs to
-  M12's direct cut). Closure: their
+  `SP-FI EQ-SLOT` (17 declarations). Closure: their
   generated-name consumers per file (extent's ix carries the phantom
   binder — the item-16 witness). blocked-by M7.
-- M10a proofs, typestate: typestate.f `decl elab solved legal draft
-  complete drafted verified emitted build-proof` — CONSTRUCT owner on
-  the owning stage structures, tokens+mints deleted. blocked-by M7.
-- (M10b/M10c/M10d db and evidence proofs: their files die under item
+- (M10a/M10b/M10c/M10d typestate, db, and evidence proofs: their files die under item
   37 — no migration, no evaporation needed.)
 - M10e proofs, infer: infer/gpt2-tensor.f `layer-proof` only
   (cfg-proof deletion is owned by M14c). Probe (all M10x): foreign
@@ -488,9 +483,9 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   DETACH-MAPPING returns option<SAFET:mapping>, consumers re-matched.
   Probe: map-take spellings E-UNDEFINED. blocked-by M7.
 - M12 id-result collapses, TWO members after the item-37 deletion:
-  target/target.f:79 and numpolicy.f:153 become
-  result<a,CAD-KIND:id-error> (freeze rides M8). The other ten die with
-  their files. One leaf each, parallel. blocked-by M8.
+  target/target.f:79 and numpolicy.f:153. Resolve each surviving bespoke
+  decode sum in its owning package; the retired generic CAD-KIND error family
+  is not a destination. One leaf each, parallel. blocked-by M8.
 - M13 deleted (its families all lived in files item 37 deletes).
 - M13b the V2-complex deletion leaves per item 37: one leaf per
   directory/file-cluster (maki/db in bounded slices, maki/experiment,
@@ -610,18 +605,17 @@ everything is finished — not during.
     2026-07-30: delete code we don't need or that smells; no parking.)
     Deleted whole, each deletion leaf verifying only-consumer-is-own-test
     at claim time: all of maki/db (78 files including tests),
-    maki/experiment, the competitive stores
-    (competitive-evidence-store.f, competitive-evidence.f,
-    competitive-store.f), maki/evidence EXCEPT the two live enums, and
+    maki/experiment, competitive-evidence-store.f,
+    competitive-evidence.f, maki/evidence EXCEPT the two live enums, and
     the orphan identity files rev.f, journal.f, producer.f, config.f,
-    artifact.f, maki/schema.f. SURVIVES with named live consumers:
+    artifact.f, and the schema registry. SURVIVES with named live consumers:
     spec.f (equation registry: mha/backward/plan-ops), report.f
     (cad/store/golden/lower), async-dag.f (runtime event identity),
-    numpolicy.f and target/ (sched-key), and evidence/schema.f's
-    `golden-leg` + `prec-class` which MOVE to a live provenance home as
-    part of the deletion leaf (cad.f and store-rehydrate.f consume
-    them). Their suite entries, lint seeds, and dots retire with the
-    files. Consequences folded: M12 shrinks to TWO id-result collapses
+    numpolicy.f and target/ (sched-key), competitive-store.f (the shipped
+    tools/eval-triton.f entry), and `golden-leg` + `prec-class`, which MOVE
+    into cad.f as their only production consumer. Their suite entries, lint
+    seeds, and dots retire with the files. Consequences folded: M12 shrinks to
+    TWO id-result collapses
     (target/target.f:79, numpolicy.f:153 — the other ten die with their
     files); M13 is DELETED (all three of its collapses lived in dying
     files); M10b/c die with db; the DIAG/OBLIG/presence recordings are
@@ -640,8 +634,7 @@ everything is finished — not during.
     EVERYWHERE — M17's terminal census additionally proves zero
     remaining `*-proof` / `MINT-*` / seal-named definitions in the tree
     outside the two survivors with live consumers at that point
-    (typestate's stage machinery converts under CONSTRUCT owner in M10a;
-    layer-proof and cfg-proof die in M10e/M14c-d).
+    (layer-proof and cfg-proof die in M10e/M14c-d).
 
 39. **Package names restructure onto the nested tree.** [wave 1, rides the
     sweep's respell] (Joel, 2026-07-30.) The hyphen-glued and standalone

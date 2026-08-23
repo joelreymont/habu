@@ -18,7 +18,6 @@
 require lib/test.f
 require lib/string.f
 require test/checker-assert.f       \ CHECK-QUIET-CANDIDATE! for the type-reject negatives
-require maki/evidence/schema.f      \ EVID:prec-class for the FP32/TF32 policy-confusion negative
 require maki/competitive-report.f
 
 \ ---- registry-shape reflection -------------------------------------------------
@@ -255,8 +254,8 @@ BAD-CMP   TFALSE     \ exact FP32 vs relative TF32 (the historical confusion) ->
 \ resolving positive control: every slot correct -> certifies.
 s" P0 ( BENCH:workload BENCH:shape BENCH:protocol BENCH:baseline BENCH:cache-state NPOL:dom NPOL:dom BENCH:gbps BENCH:gbps -- BENCH:comparison-gbps ) BENCH:COMPARE-GBPS"
    CHECK-QUIET-CANDIDATE! -1 T=
-\ FP32/TF32 policy confusion: a precision class (EVID:prec-class) in the numeric-policy slot.
-s" N-POL ( BENCH:workload BENCH:shape BENCH:protocol BENCH:baseline BENCH:cache-state EVID:prec-class NPOL:dom BENCH:gbps BENCH:gbps -- BENCH:comparison-gbps ) BENCH:COMPARE-GBPS"
+\ A foreign nominal identity cannot fill the numeric-policy slot.
+s" N-POL ( BENCH:workload BENCH:shape BENCH:protocol BENCH:baseline BENCH:cache-state CAD-KIND:target-id NPOL:dom BENCH:gbps BENCH:gbps -- BENCH:comparison-gbps ) BENCH:COMPARE-GBPS"
    CHECK-QUIET-CANDIDATE! 0 T=
 s" P-POL ( BENCH:workload BENCH:shape BENCH:protocol BENCH:baseline BENCH:cache-state NPOL:dom NPOL:dom BENCH:gbps BENCH:gbps -- BENCH:comparison-gbps ) BENCH:COMPARE-GBPS"
    CHECK-QUIET-CANDIDATE! -1 T=

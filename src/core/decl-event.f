@@ -1,9 +1,8 @@
 \ decl-event.f — shared typed-declaration syntax-event transaction (package
 \ DECL-EVENT). ONE transaction, event log, rollback/publication boundary, and
 \ read-only event reflection that BOTH post-hook declarers (STRUCTURE and ENUM)
-\ drive, so neither front end duplicates parser state or publication logic
-\ (MODEL-CAD-V2-PLAN.md §3.1; docs/type-families.md §2.5; dot
-\ habu-type-declarations-shared-14ab0e48). This file owns NO front end, no
+\ drive, so neither front end duplicates parser state or publication logic.
+\ This file owns NO front end, no
 \ parser state, no cold descriptors, no legacy syntax: the two front ends
 \ (structure-decl.f / enum-decl.f, later dots) only recognise tokens and drive
 \ the words below; ALL declaration state lives here.

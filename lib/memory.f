@@ -72,7 +72,7 @@ TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
 : MEM-ALLOC-64K ( -- ptr u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;
 
-\ ---- B5 package-first typed allocation surface (MODEL-CAD-V2-PLAN.md B5.5) -----
+\ ---- package-first typed allocation surface -----------------------------------
 \
 \ The raw MEM-ALLOC-* words above enforce positivity at RUNTIME on interchangeable
 \ `n`. Package MEM re-states the same sizing as CHECKED words over CAD-NUM roles:

@@ -224,7 +224,7 @@ s" MT-TYPED-INPUT ( CAD-KIND:node-id MIR:input-index -- MIR:operand-ref ) MIR-IN
 
 s" MT-NODE-AS-SLOT ( CAD-KIND:node-id -- CAD-KIND:rows ) MIR-SLOT-ROWS@" MT-CHECK-NO
 s" MT-NODE-AS-REF ( CAD-KIND:node-id -- ) MIR-IN+" MT-CHECK-NO
-s" MT-NODE-AS-OBJ ( CAD-KIND:obj-id -- opkind ) MIR-OP@" MT-CHECK-NO
+s" MT-NODE-AS-OBJ ( CAD-KIND:target-id -- opkind ) MIR-OP@" MT-CHECK-NO
 s" MT-N-AS-INPUT ( CAD-KIND:node-id n -- MIR:operand-ref ) MIR-IN@" MT-CHECK-NO
 s" MT-N-AS-NODE ( n -- opkind ) MIR-OP@" MT-CHECK-NO
 s" MT-RAW-DESC ( n n n layout -- MIR:input-slot ) MIR-INPUT+" MT-CHECK-NO

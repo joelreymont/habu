@@ -127,7 +127,7 @@ MEMT-MANY-LIVE-SPANS
 ' MEMT-TOO-MANY-CELLS E-MEM-SIZE TTHROWS
 T-REPORT
 
-\ ---- B5 package MEM: typed allocation roles (MODEL-CAD-V2-PLAN.md B5.5) --------
+\ ---- package MEM: typed allocation roles --------------------------------------
 \ numeric-result<a> is a layout value with no polymorphic eliminator yet, so each
 \ classifier MATCHes the concrete role it holds and maps ok -> 0 / refusal ->
 \ E-CADNUM-* (the cad-num-types-test.f idiom). The scalar words admit zero; only

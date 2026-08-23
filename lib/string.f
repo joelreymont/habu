@@ -244,7 +244,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    then
    a u STR-PARSE-POS ;
 
-\ ---- B5.5 typed STR surface over CAD-NUM roles (MODEL-CAD-V2-PLAN.md B5.5) -----
+\ ---- typed STR surface over CAD-NUM roles -------------------------------------
 \
 \ The raw string words above conflate byte lengths, byte offsets, and logical
 \ counts on one interchangeable `n`. Package STR re-states the same helpers over

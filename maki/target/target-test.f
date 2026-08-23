@@ -132,9 +132,9 @@ TARGET:COUNT BASE-N @ 1+ T=
 s" TGT-OK ( CAD-KIND:target-id -- CAD-KIND:target-id ) TARGET:VALIDATE" YES
 s" TGT-ROUND ( CAD-KIND:target-id -- CAD-KIND:target-id ) TARGET:DESCRIPTOR@ TARGET:RESOLVE" YES
 s" TGT-KW ( CAD-KIND:target-id ptr u8 n -- n ) TARGET:KEY>WIRE" YES            \ content-key encode
-s" TGT-TOOL ( CAD-KIND:toolchain-id -- ptr u8 n ) TARGET:LABEL$" NO
-s" TGT-ART ( CAD-KIND:artifact-id -- ptr u8 n ) TARGET:LABEL$" NO
-s" TGT-XKW ( CAD-KIND:artifact-id ptr u8 n -- n ) TARGET:KEY>WIRE" NO          \ a foreign id cannot encode
+s" TGT-TOOL ( CAD-KIND:numeric-policy-id -- ptr u8 n ) TARGET:LABEL$" NO
+s" TGT-ART ( CAD-KIND:node-id -- ptr u8 n ) TARGET:LABEL$" NO
+s" TGT-XKW ( CAD-KIND:node-id ptr u8 n -- n ) TARGET:KEY>WIRE" NO          \ a foreign id cannot encode
 s" TARGET:RAW>TARGET-ID" 0 search-wl 0= TTRUE
 
 \ ---- the generated constructors: exact spelling + exact effect -----------------
@@ -161,7 +161,7 @@ s" TC-DVR ( ptr u8 n n n n n -- TARGET:descriptor ) TARGET-DESCRIPTOR:VALUE" NO
 s" TC-RAW ( n -- TARGET:id-result<CAD-KIND:target-id> ) TARGET-ID--RESULT:OK" NO
 s" TC-BARE ( CAD-KIND:target-id -- n ) TARGET-ID--RESULT:OK" NO
 s" TC-NONE ( -- TARGET:id-result<CAD-KIND:target-id> ) TARGET-ID--RESULT:OK" NO
-s" TC-FGN ( CAD-KIND:artifact-id -- TARGET:id-result<CAD-KIND:target-id> ) TARGET-ID--RESULT:OK" NO
+s" TC-FGN ( CAD-KIND:node-id -- TARGET:id-result<CAD-KIND:target-id> ) TARGET-ID--RESULT:OK" NO
 
 \ ---- the six named payload cells sit at the six declared slots ------------------
 \ Exactly one registered family answers to each (tail, constructor package) pair,

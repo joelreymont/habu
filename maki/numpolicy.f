@@ -3,11 +3,10 @@
 \ approximate rewrite requires evidence in one of the exact, ULP, relative-error,
 \ or empirically licensed domains").
 \
-\ V1 already tags every op with a RAW numeric class in maki/op-registry.f
+\ Every op is tagged with a raw numeric class in maki/op-registry.f
 \ (NUM-EXACT / NUM-ULP / NUM-RELTOL). Those are bare ints: nothing stops a
 \ relative-tolerance TF32 tensor-core result from being compared against an exact
-\ FP32-FMA reference under the same plan/artifact key (the motivating confusion,
-\ MODEL-CAD-V2-PLAN.md:2804 "No result may mix arithmetic domains silently").
+\ FP32-FMA reference under the same plan/artifact key.
 \
 \ This file promotes that raw tag to a TYPED proof domain `dom` and gives it the
 \ two operations the plan's Exit line requires:
@@ -54,7 +53,7 @@ public
 
 \ ---- the proof domain, ordered by STRENGTH (exact strongest .. empirical weakest) ----
 \ DERIVE eq gives NPOL-DOM:EQ so `dom` can be an enum FIELD of the typed schedule
-\ key (maki/sched-key.f skey) and the typed golden record (maki/evidence/schema.f).
+\ key (maki/sched-key.f skey) and the promotion path's typed provenance.
 \ Variants, strongest first (inline `\` notes inside an ENUM block are a parse error):
 \   exact     - bit-exact / FP32 FMA reference: no approximation licensed
 \   ulp       - ULP-bounded arithmetic
@@ -133,15 +132,13 @@ ENUM dom DERIVE eq
 \ habu-npol-numeric-policy-a90657e1 from real usage): a numeric policy is a SINGLE
 \ proof `dom`, NOT a per-region map or tolerance bundle. Every maki consumer binds
 \ exactly one dom - sched-key.f REGION-POL ( region -- dom ) and its `FIELD pol
-\ NPOL:dom`, cad.f REGION-ACHIEVED ( region -- dom ), evidence/schema.f `FIELD pol
-\ NPOL:dom`, evidence/policy.f `FIELD npol NPOL:dom` and GOLD-VERDICT's `need` dom -
-\ and no numeric tolerance value exists anywhere (the enum lattice
+\ NPOL:dom`, plus cad.f REGION-ACHIEVED ( region -- dom ) - and no numeric
+\ tolerance value exists anywhere (the enum lattice
 \ {exact,ulp,relative,empirical} captures it). The region->policy association lives in
 \ sched-key's per-region key, not in a policy bundle. So the identity's content is its
-\ single dom, and DOM>N / N>DOM (rank 0..3) is the exact content key the plan names as
-\ the minimal precedent (MODEL-CAD-V2-PLAN.md § 23.9 numeric-policy-id row).
+\ single dom, and DOM>N / N>DOM (rank 0..3) is its exact content key.
 
-\ WIRE>ID decode result (the maki/db/artifact.f art-result custom-sum idiom): `ok`
+\ WIRE>ID decode result: `ok`
 \ carries the refined nominal id in its `id` field; the reject arms are the
 \ fixed-width byte-decode refusals. A bespoke per-package sum, not result<a,b>, so a
 \ total ok construction leaves no free error variable. Declared through the unified

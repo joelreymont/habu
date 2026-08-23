@@ -29,8 +29,8 @@
 \ Not reentrant. The engine's SHA-256 state (src/core/sha256.f) is a single
 \ process-wide context, and this module keeps one output buffer, so a digest must
 \ be computed on one thread at a time. That is a pre-existing property of every
-\ SHA-256 caller in the tree (lib/content-key.f, maki/db/transaction.f,
-\ maki/target/target.f), not something the compiler records introduce; a
+\ SHA-256 caller in the tree (lib/content-key.f and maki/target/target.f), not
+\ something the compiler records introduce; a
 \ multi-threaded compiler needs a reentrant hash context first.
 
 require lib/errors.f

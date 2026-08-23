@@ -190,17 +190,17 @@ s" FPT-RSN-BARE ( n -- ptr a ) FP-SP-REASON-AT" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- region-id swapped-role negatives (dot habu-maki-apply-cad-27b7a7d7) ----
 \ A fusion region id is a CAD-KIND:region: laundering it into a raw n, a
-\ node-id, or a plan-id (and back) rejects before runtime; positives certify.
+\ node-id, or a target-id (and back) rejects before runtime; positives certify.
 s" FPT-RGN-OK ( CAD-KIND:node-id -- CAD-KIND:region ) FP-RID@"           CHECK-QUIET-CANDIDATE! -1 T=
 s" FPT-RGN-ID-OK ( n -- CAD-KIND:region ) FP-REGION-ID"                  CHECK-QUIET-CANDIDATE! -1 T=
 s" FPT-RGN-EQ-OK ( CAD-KIND:region CAD-KIND:region -- bool ) FP-RGN="    CHECK-QUIET-CANDIDATE! -1 T=
 s" FPT-RGN-MEM-OK ( CAD-KIND:region -- n ) FP-REGION-MEMBERS"            CHECK-QUIET-CANDIDATE! -1 T=
 s" FPT-NEG-RGN-AS-N ( CAD-KIND:node-id -- n ) FP-RID@"                   CHECK-QUIET-CANDIDATE! 0 T=
 s" FPT-NEG-RGN-AS-NODE ( CAD-KIND:node-id -- CAD-KIND:node-id ) FP-RID@" CHECK-QUIET-CANDIDATE! 0 T=
-s" FPT-NEG-RGN-AS-PLAN ( CAD-KIND:node-id -- CAD-KIND:plan-id ) FP-RID@" CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-RGN-AS-TARGET ( CAD-KIND:node-id -- CAD-KIND:target-id ) FP-RID@" CHECK-QUIET-CANDIDATE! 0 T=
 s" FPT-NEG-ID-AS-NODE ( n -- CAD-KIND:node-id ) FP-REGION-ID"            CHECK-QUIET-CANDIDATE! 0 T=
 s" FPT-NEG-EQ-NODE ( CAD-KIND:region CAD-KIND:node-id -- bool ) FP-RGN=" CHECK-QUIET-CANDIDATE! 0 T=
-s" FPT-NEG-EQ-PLAN ( CAD-KIND:region CAD-KIND:plan-id -- bool ) FP-RGN=" CHECK-QUIET-CANDIDATE! 0 T=
+s" FPT-NEG-EQ-TARGET ( CAD-KIND:region CAD-KIND:target-id -- bool ) FP-RGN=" CHECK-QUIET-CANDIDATE! 0 T=
 s" FPT-NEG-MEM-RAW ( n -- n ) FP-REGION-MEMBERS"                         CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- migrated typed-storage columns (dot habu-nominal-storage-migrate) ------

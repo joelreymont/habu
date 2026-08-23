@@ -112,7 +112,19 @@ require maki/store-replay.f          \ durable replay bridge: SK-PUT-DURABLE + R
 require maki/golden.f
 require maki/lower/golden.f
 require maki/gradcheck.f
-require maki/evidence/schema.f      \ EVID:golden-leg / EVID:prec-class: the typed home of the promote path's golden provenance (retires the maki/golden.f ambient globals)
+
+\ The promotion path owns the two provenance values it threads into the store.
+package EVID public
+ENUM golden-leg DERIVE eq
+   host
+   external
+   device
+;ENUM
+ENUM prec-class DERIVE eq
+   prec-f32
+   prec-tf32
+;ENUM
+;package
 
 \ ---- audited find-index projection (STR:INDEX-OF result -> raw scan offset) -----
 \ MODEL: parsing slices name/shape/op spans on the byte position STR:INDEX-OF reports
@@ -1346,10 +1358,9 @@ private
 \ REQUESTED policy (maki/sched-key.f REGION-POL, the skey pol field). The achieved
 \ domain is the golden's judged precision (GPREC>DOM: f32 FMA = exact, TF32 = relative)
 \ COMPOSEd with region 0's per-op achieved domains (REGION-ACHIEVED, the OP-DOM
-\ sibling of sched-key.f's per-class REGION-POL fold). The authoritative sealed-grant
-\ enforcement is POLICY:CHECK (maki/evidence/policy.f); this is the V1 report-path
-\ mirror so the user-facing PROMOTE command refuses with the same named code, and
-\ carries the honest REGION-POL into the section-7.4 key PROMOTE-EVIDENCE writes.
+\ sibling of sched-key.f's per-class REGION-POL fold). PROMOTE refuses with the
+\ named numeric-policy code and carries the honest REGION-POL into the
+\ section-7.4 key PROMOTE-EVIDENCE writes.
 : GPREC>DOM ( EVID:prec-class -- NPOL:dom )
    MATCH prec-class
       prec-f32  OF NPOL-DOM:EXACT    ENDOF

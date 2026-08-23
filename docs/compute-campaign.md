@@ -3,14 +3,12 @@
 **Status:** living record. Extracted 2026-07-18 from `docs/archive/cad-plan.md` §8.1 (now
 archived at `docs/archive/cad-plan.md`) so the compute-bound strategy,
 sequencing, and LANDED measurement log keep a single editable home after the
-Model CAD design was superseded by `MODEL-CAD-V2-PLAN.md` (2026-07-11).
+broader Model CAD plans were archived.
 
 **Scope.** This doc owns the compute-bound campaign: the strategy levers, the
 dependency-ordered sequencing, the LANDED log with measured GFLOP/s history, and
 the Blackwell/TMA second-target extension pointer. The raw measured columns live
-in `docs/eval-triton.md` (the measured record); the V2 architecture that
-consumes this strategy is `MODEL-CAD-V2-PLAN.md` §22 (compute backend parity,
-delivery order, competitive-evidence schema). Measured numbers below are
+in `docs/eval-triton.md` (the measured record). Measured numbers below are
 preserved verbatim from the original §8.1. Bare `§` references in the text
 (e.g. §7.4, §9, §13) point at the archived design, `docs/archive/cad-plan.md`,
 whose section numbering is unchanged.
