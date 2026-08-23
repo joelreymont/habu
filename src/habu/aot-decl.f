@@ -20,9 +20,8 @@
 \
 \ WHO LOADS IT. It is a common engine-prefix source, immediately before habu2.f
 \ in both builders (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
-\ BF-APPEND-COMMON), named through the stdin-closure manifest
-\ (tools/stdin-closure-lib.f SDC-DECL$) so the two lists cannot drift apart, and
-\ it loads into a booted bin/hb behind src/arch/arm64/asm.f, icode.f and
+\ BF-APPEND-COMMON), and it loads into a booted bin/hb behind
+\ src/arch/arm64/asm.f, icode.f and
 \ src/habu/layout.f, which is what AGREE and the caps need there.
 \
 \ THE PUBLIC TAILS KEEP THEIR `AOT-` PREFIX, and that is recorded debt rather

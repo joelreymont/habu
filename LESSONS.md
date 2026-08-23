@@ -864,7 +864,7 @@ fits.
   blaming the tree. An engine older than the tree's core dies at the first
   unknown core word (bare name + exit 70); recover by installing the freshest
   local engine as `bin/hb` first, then `install --force`.
-  `src/arch/arm64/asm.f` is in the engine prefix (srclist `SL-PREFIX`)
+  `src/arch/arm64/asm.f` is in the engine prefix
   so its comment-only edits leave the sha identical yet still precede a gate
   that reads it, and install after every mutation experiment too — a mutant
   whose build succeeds replaces `bin/hb` and every later mutant then runs on a
@@ -1172,13 +1172,13 @@ fits.
   (a 24s impl still permits the old regression at a 70s verdict). Never bump MAX-MS to pass a
   ratchet — the engine battery's runtime ratchet catches real per-process regressions (region
   growth to 8MB regressed boot +41ms via LPROT's full-region mprotect brackets, linear in the flip
-  window). Report maker, artifact, and result cache fills as budget coverage; none changes whether
-  phase 15 runs.
+  window). Report maker and artifact cache fills as budget coverage; neither changes whether phase
+  15 runs.
 - **Every ordinary gate run builds Habu-under-test in phase 15; only explicit `--under` skips it.**
   A persistent candidate cache can publish a binary before phase 15's verdict, then reuse it and
   skip the failing phase on a later run. Build the candidate in the early engine-build slot, then
-  release downstream phases onto `HABU_UNDER_TEST` after it is ready. Maker, artifact, and result
-  caches may hit, but none may suppress phase 15.
+  release downstream phases onto `HABU_UNDER_TEST` after it is ready. Maker and artifact caches
+  may hit, but neither may suppress phase 15.
 - **Private temp dirs for native builds; shared `/tmp` races parallel agents.** `HB_TMP` defaults
   to `/tmp` with fixed names (`stage2-src`, `hb-stdin-got`) — concurrent workspaces corrupt each
   other's refresh/gate with transient opaque exits. Allocate+export a private `HB_TMP` (create it
@@ -1259,9 +1259,9 @@ fits.
   a fresh `HB_TMP` reports `performance=hard-fail correctness=t` at ~33s
   against a 25s cold budget while the warm rerun passes at ~31s against 35s,
   and the unmodified parent measured 32793ms against the changed tree's
-  32982ms — 0.6%. Editing any file in the declared phase sets
-  (`test/run-files.f`, `lib/content-key.f`, `test/run-lib.f`) invalidates every
-  phase key, so the next battery runs fully cold and takes minutes longer,
+  32982ms — 0.6%. Before the phase PASS cache was deleted, editing any file in its declared sets
+  (`test/run-files.f`, `lib/content-key.f`, `test/run-lib.f`) invalidated every
+  phase key, so the next battery ran fully cold and took minutes longer,
   which is exactly when timing assertions red (TIMEOUT-UNDER-LOAD, group-time
   ratchets). So: a red whose failing member does not reference the changed code,
   on a fully-cold or loaded run, is this — prove it, then rerun sequentially;
@@ -5493,17 +5493,17 @@ a tool that was there and refused, which throws with its own diagnosis printed.
 The whole pipeline (compile, link, nm, size) is the probe, so what is asked is
 the question that matters: does the toolchain do the job.
 
-## A lint that says "missing X" must say missing from what (2026-08-05)
+## A retired lint that said "missing X" had to say missing from what (2026-08-05)
 
 The stdlib gate went red with `result-cache closure:
 tools/checked-boundary-lint-core.f -> missing tools/hook-sites.f`, the file
 plainly existed on disk, and the finding was filed across a merge as a scanner
 bug. The scanner was right: "missing" meant missing from the declared phase
 file set in test/run-files.f, which had gone stale when 04a7ee9c added the
-require edge without keying the file. Two changes close the class, and neither
-is the fix itself: the diagnostic now names the set it means (`...which the
+require edge without keying the file. Two changes closed the class, and neither
+was the fix itself: the diagnostic named the set it meant (`...which the
 phase file set in test/run-files.f does not list`), and the scanner - which had
-no fixtures at all - now has sixteen, each pinned by a mutation that turns
+no fixtures at all - gained sixteen, each pinned by a mutation that turned
 exactly its own case red. A lint with no hostile fixtures cannot be trusted the
 first time it fires, because the only way to answer "is the tool wrong?" is to
 read the tool; give a lint its fixtures the day it is written. And when a task
@@ -5528,7 +5528,7 @@ reduce to one member before theorising about siblings.
 
 ## A substring assertion protects exactly nothing (2026-08-05)
 
-The bootstrap mirror suite held 259 source-text assertions and the fixpoint
+The retired bootstrap mirror suite held 259 source-text assertions and the fixpoint
 builder an exact-substring window audit. Every one failed both directions: a
 comment decoy satisfies the assertion, and a stale comment keeps it green
 after the real code is gone. What replaced them is nothing, deliberately -
@@ -7739,14 +7739,6 @@ and --no-lldbinit.
 - **Deleting error constants is seed-affecting even when the deleted subsystem
   is not** — install --force loads lib/errors.f regardless of what compiled.
 
-- **`PASS (cached)` is a verdict about a key, not a tree.** When a gate is
-  green on a tree you can prove is red, recompute the key before re-reading
-  the wiring. And a bisection run through a cached gate bisects the cache
-  key, not the tree — re-verify endpoints with the narrowest direct command.
-- **`bin/hb` is not the engine** — it bakes primitives and re-reads its
-  checker/core prefix from the checkout at every boot. Any content key using
-  the binary as a proxy for "the engine" is structurally wrong; the engine is
-  the binary plus ENGINE-SET:FILES.
 - **The orchestrator's sandboxed shell mass-fails spawn-heavy suites.** The
   same tree, same workspace: 295 FAIL/RED sandboxed, 6 documented load-class
   reds unsandboxed, green in a worker's plain shell. Gate spawn-heavy
@@ -7827,9 +7819,9 @@ and --no-lldbinit.
   gate. A leg that only runs on the day you need it will have accumulated
   every break since the last time it ran. Put the recovery check on a
   scheduled gate (dot habu-put-the-recovery-4dabaab9).
-- **A native seam change needs its mirror half, and the mirror's tripwires
-  could not see any of the three.** `bootstrap-mirror-lint` polices ADT
-  keywords; `bootstrap-codegen-test` polices three constants. Neither sees a
+- **A native seam change needs its mirror half, and the retired mirror tripwires
+  could not see any of the three.** One policed ADT keywords and
+  `bootstrap-codegen-test` polices three constants. Neither sees a
   checker-call seam, a keyword row, a prefix row, or a name-source shape (the
   mirror pushed the record tail where native pushes the qualified body-buffer
   token, and native's own comment asserted the mirror had no package system).
@@ -7880,7 +7872,7 @@ and --no-lldbinit.
 - **A mutation that fails to compile is not a falsification, and a fixture
   that passes for the wrong reason is not a fixture.** Three mutants of the
   lint port exited 70 before proving anything; two fixtures passed because a
-  delimiter-space slip made `s"SDC-AOT$"` a plain word instead of a string
+  delimiter-space slip made an intended literal a plain word instead of a string
   opener. Every composed fixture needs a mutation that discriminates it — not
   just an expected value that happens to come out right.
 

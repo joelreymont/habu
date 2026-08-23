@@ -9,9 +9,6 @@
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require src/habu/verify-source.f
-require tools/stdin-closure-lib.f
-\ the manifest is the one place a stdin-closure path lives; read its names bare.
-using STDIN-CLOSURE
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
@@ -988,7 +985,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/fdio.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu SDC-INCLUDE$ BF-APPEND-SOURCE ;
+   out outu s" src/core/include.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-ENUMS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/enums.f" BF-APPEND-SOURCE ;
@@ -1058,8 +1055,8 @@ package BUILD-FIXPOINT
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
-   out outu SDC-DECL$ BF-APPEND-SOURCE
-   out outu SDC-IDENT$ BF-APPEND-SOURCE
+   out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
@@ -1101,9 +1098,9 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-COMMON
    out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
-   out outu SDC-ARM$ BF-APPEND-SOURCE
-   out outu SDC-AOT$ BF-APPEND-SOURCE
-   out outu SDC-FILE$ BF-APPEND-SOURCE
+   out outu s" src/habu/aot-arm.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-capture.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-file.f" BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 
 \ Snapshot keep surface: what the persisted image must carry that the rewind
@@ -1159,8 +1156,8 @@ package BUILD-FIXPOINT
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
-   out outu SDC-DECL$ BF-APPEND-SOURCE
-   out outu SDC-IDENT$ BF-APPEND-SOURCE
+   out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 
@@ -1251,7 +1248,7 @@ package BUILD-FIXPOINT
    s" stage2-src" s" src/habu/stage2.f" BF-EMIT-SOURCE ;
 
 : BF-STDIN-SOURCE ( -- )
-   s" stage2-src" SDC-DRIVER$ BF-EMIT-STDIN-RUN-SOURCE ;
+   s" stage2-src" s" src/habu/stdin.f" BF-EMIT-STDIN-RUN-SOURCE ;
 
 : BF-SNAP-SOURCE ( -- )
    s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-SNAP-RUN-SOURCE ;
@@ -1592,7 +1589,7 @@ variable BF-DRV-R
 \ check. Two spellings of one fact drift, and the fact is which bytes of a
 \ shipped source file a build may keep.
 : BF-DRV-SOURCE-KEEP ( -- n )
-   SDC-DRIVER$ BF-READ-SOURCE
+   s" src/habu/stdin.f" BF-READ-SOURCE
    BF-DRV-KEEP ;
 
 \ A path holding a `"` would end the generated string literal early and the driver
@@ -1666,7 +1663,7 @@ variable BF-DRV-R
    s" hb-stdin-mk" s" hb-host-mk" BF-RENAME-TMP ;
 
 : BF-BUILD-STDIN-FROM-STAGE ( -- )
-   SDC-DRIVER$ BF-EMIT-ENGINE
+   s" src/habu/stdin.f" BF-EMIT-ENGINE
    BF-RECORD-STDIN                              \ the HOST's source is the stamp's: the
    BF-KEEP-HOST                                 \ product's names a temporary artifact path
    BF-ARTIFACT-FIXPOINT

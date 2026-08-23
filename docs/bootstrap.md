@@ -247,7 +247,7 @@ Python, Rust, TypeScript, or model runtimes.
 The test suite runs directly in the small `bin/hb` engine; it does not bake a
 top-level test-suite snapshot and it does not use checker/tool snapshot images
 as launchers. Every ordinary run builds its `HABU_UNDER_TEST` candidate in
-phase 15. Maker, artifact, and result caches remain, but none can skip that
+phase 15. Maker and artifact caches remain, but neither can skip that
 phase. Snapshot coverage belongs to the native build/fixpoint path; generated
 images are local artifacts and must not be committed.
 

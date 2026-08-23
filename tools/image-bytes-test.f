@@ -171,9 +171,7 @@ package IMAGE-BYTES-TEST
    s" : BSTR" IBT-MUST-LACK
    s" M-BE32" IBT-MUST-HAVE
    s" tools/build-fixpoint.f" IBT-LOAD
-   s" src/os/image-bytes.f" IBT-MUST-HAVE
-   s" tools/srclist.f" IBT-LOAD
-   s" src/os/image-bytes.f " IBT-MUST-HAVE ;
+   s" src/os/image-bytes.f" IBT-MUST-HAVE ;
 
 public
 

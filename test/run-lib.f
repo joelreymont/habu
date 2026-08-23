@@ -6,8 +6,6 @@ require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switc
 require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
-require test/run-engine-set.f
-require test/run-result-cache.f
 
 package TEST
 private
@@ -148,7 +146,6 @@ create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
 create TR-UNDER-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
-create TR-RESULT-KEY-HEX 64 allot
 create TR-UNDER-ARG-BUF FS-PATH-CAP allot
 create TR-PERSIST-BUF FS-PATH-CAP allot
 create TR-NUM-BUF TR-NUM-CAP allot
@@ -175,7 +172,6 @@ variable TR-ARG-I
 variable TR-NESTED-POOL
 variable TR-TIMINGS
 variable TR-COLD-CACHE
-variable TR-NO-RESULT-CACHE
 variable TR-PROFILE-ID
 variable TR-NUM-U
 variable TR-RESIDENT-ID
@@ -209,7 +205,7 @@ private
    TR-UNDER-ARG-BUF TR-UNDER-ARG-U @ ;
 
 : TR-USAGE ( -- )
-   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--perf-profile NAME|auto] [--pool-slots N] [--nested-pool-slots N] [--cold-cache] [--no-result-cache] [--rerun-failed] [--timings]" TR-USAGE-RC die ;
+   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--perf-profile NAME|auto] [--pool-slots N] [--nested-pool-slots N] [--cold-cache] [--rerun-failed] [--timings]" TR-USAGE-RC die ;
 
 : TR-ARG$ ( -- ptr u8 n )
    TR-ARG-I @ SCRIPT-ARGV$ ;
@@ -253,10 +249,6 @@ private
 
 : TR-COLD-CACHE-OPT ( -- )
    -1 TR-COLD-CACHE !
-   1 TR-ADVANCE ;
-
-: TR-NO-RESULT-CACHE-OPT ( -- )
-   -1 TR-NO-RESULT-CACHE !
    1 TR-ADVANCE ;
 
 : TR-PROFILE-FAIL ( ptr u8 n -- ) {: msg:ptr msgu:n :}
@@ -367,7 +359,6 @@ private
    DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
    0 TR-TIMINGS !
    0 TR-COLD-CACHE !
-   0 TR-NO-RESULT-CACHE !
    0 TR-RERUN !
    0 TR-UNDER-ARG-U !
    DETECT-PROFILE TR-PROFILE-APPLY ;
@@ -399,7 +390,6 @@ private
    TR-ARG$ s" --nested-pool-slots" STR= if TR-NESTED-POOL-OPT exit then
    TR-ARG$ s" --perf-profile" STR= if TR-PERF-PROFILE-OPT exit then
    TR-ARG$ s" --cold-cache" STR= if TR-COLD-CACHE-OPT exit then
-   TR-ARG$ s" --no-result-cache" STR= if TR-NO-RESULT-CACHE-OPT exit then
    TR-ARG$ s" --rerun-failed" STR= if TR-RERUN-OPT exit then
    TR-ARG$ s" --timings" STR= if TR-TIMINGS-OPT exit then
    TR-USAGE ;
@@ -629,8 +619,6 @@ private
    TR-PERSIST-INIT
    TR-PERSIST-ENSURE
    PERSIST$ CONTENT-KEY:CACHE-ROOT!
-   TRC:RESET
-   PERSIST$ TRC:ROOT!
    GT-ROOT GS-ROOT!
    TR-UNDER-PATHS ;
 
@@ -733,28 +721,6 @@ private
 : TR-POOL-ARG+ ( n -- )
    s" --pool-slots" TR-ARG+
    TR-NUM-ARG+ ;
-
-\ The phase-key fold is parked in a typed cell for the length of the key rather
-\ than threaded on the stack. The declared file sets are walked by a generic
-\ walker (test/run-files.f TR-FILES-WALK) whose callback contract is
-\ ( ptr u8 n -- ), so a threaded handle cannot ride through it, and the handle
-\ is a sealed nominal that cannot be smuggled as a cell. This parks ONE fold
-\ owned by this package: it is not the shared accumulator the fold handles
-\ replaced, because the bytes live in that fold's own slot and no other module
-\ can reach them.
-1 LAYOUT-BUFFER TR-KEY-FOLD CONTENT-KEY:fold
-
-: TR-KEY-FOLD! ( CONTENT-KEY:fold -- )
-   0 TR-KEY-FOLD ! ;
-
-: TR-KEY-FOLD@ ( -- CONTENT-KEY:fold )
-   0 TR-KEY-FOLD @ ;
-
-: TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   TR-KEY-FOLD@ a u CONTENT-KEY:FILE+ TR-KEY-FOLD! ;
-
-: TR-KEY-TEXT+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   TR-KEY-FOLD@ a u CONTENT-KEY:TEXT+ TR-KEY-FOLD! ;
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
@@ -1362,76 +1328,6 @@ public
 : DEFERRED-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-DEFERRED-ORDER + @ >IDX ;
 
-\ Per-phase content-keyed PASS-stamp cache. A phase with a declared file set
-\ (test/run-files.f) keys (label, the engine, candidate sha for under phases,
-\ declared files); a stamp hit skips the phase as PASS (cached). Misses are
-\ recorded and stamped only after a fully green run; --cold-cache and
-\ --no-result-cache bypass both sides.
-\
-\ "The engine" is ENGINE-SET:FILES, not bin/hb alone: the binary re-reads its
-\ whole checker/core prefix from the checkout at every boot, so a src/core edit
-\ moves the phase's verdict without moving the binary. Keying bin/hb alone let a
-\ stamp outlive the tree that earned it and reported a red phase as
-\ PASS (cached) - see test/run-engine-set.f.
-private
-: TR-RESULT-CACHE-ON? ( -- bool )
-   TR-COLD-CACHE @ 0 <> if TR-FALSE exit then
-   TR-NO-RESULT-CACHE @ 0 <> if TR-FALSE exit then
-   TRC:ROOT? ;
-
-: TR-RESULT-BASE-KEY ( -- )
-   [: TR-KEY-FILE+ ;] TR-GATE-HARNESS-FILES
-   [: TR-KEY-FILE+ ;] TR-GATE-COMMON-FILES ;
-
-: TR-RESULT-KEY-FILES? ( idx -- bool ) {: idx:idx :}
-   idx IDX>N case
-      6 of TR-RESULT-BASE-KEY [: TR-KEY-FILE+ ;] TR-DEBUG-PHASE-FILES TR-TRUE endof
-      8 of TR-RESULT-BASE-KEY [: TR-KEY-FILE+ ;] TR-AOT-NEG-PHASE-FILES TR-TRUE endof
-      TR-FALSE swap
-   endcase ;
-
-: TR-RESULT-UNDER-KEY? ( idx -- bool ) {: idx:idx :}
-   idx PHASE-UNDER? 0= if TR-TRUE exit then
-   TR-UNDER-READY @ 0= if TR-FALSE exit then
-   TR-UNDER-SHA!
-   TR-UNDER-HEX 64 TR-KEY-TEXT+
-   TR-TRUE ;
-
-: TR-RESULT-KEY? ( idx -- bool ) {: idx:idx :}
-   CONTENT-KEY:OPEN TR-KEY-FOLD!
-   s" gate-phase-pass-v1" TR-KEY-TEXT+
-   idx PHASE-LABEL TR-KEY-TEXT+
-   idx TR-RESULT-UNDER-KEY? 0= if TR-KEY-FOLD@ CONTENT-KEY:DISCARD TR-FALSE exit then
-   idx TR-RESULT-KEY-FILES? 0= if TR-KEY-FOLD@ CONTENT-KEY:DISCARD TR-FALSE exit then
-   [: TR-KEY-FILE+ ;] ENGINE-SET:FILES       \ last: most phases exit above unkeyed
-   TR-KEY-FOLD@ TR-RESULT-KEY-HEX CONTENT-KEY:FINAL-HEX
-   TR-TRUE ;
-
-public
-: RESULT-CACHED? ( idx -- bool ) {: idx:idx :}
-   TR-RESULT-CACHE-ON? 0= if TR-FALSE exit then
-   idx TR-RESULT-KEY? 0= if TR-FALSE exit then
-   TR-RESULT-KEY-HEX TRC:HIT? if TR-TRUE exit then
-   s" result-cache-miss" GS-EVENT
-   idx IDX>N TR-RESULT-KEY-HEX TRC:PENDING+
-   TR-FALSE ;
-
-: RESULT-SKIP ( idx -- ) {: idx:idx :}
-   s" result-cache-hit" GS-EVENT
-   s" PASS (cached): " type idx PHASE-LABEL type cr ;
-
-private
-: TR-RESULT-STAMP-I ( n -- ) {: i:n :}
-   i TRC:PENDING-PHASE >IDX PHASE-LABEL i TRC:PENDING-KEY TRC:STAMP+ ;
-
-: TR-RESULT-STAMPS ( -- )
-   TR-RESULT-CACHE-ON? 0= if exit then
-   GT-POOL-RED# 0 > if exit then
-   0 begin dup TRC:PENDING# < while
-      dup TR-RESULT-STAMP-I
-      1+
-   repeat drop ;
-
 : TR-PRE-RESET ( -- )
    0 TR-PRE-CHECK !
    0 TR-PRE-POST !
@@ -1782,7 +1678,6 @@ public
    GS-SUMMARY
    GT-POOL-RED# 0 > if RED-COMPLETE then
    GS-LABEL-DUP-GUARD
-   TR-RESULT-STAMPS
    GT-CLEANUP
    TR-PERF-LINE ;
 

@@ -280,9 +280,9 @@ variable FILE-USED
 \ alongside the checker sealing work.
 \ src/arch/arm64/icode.f and src/arch/arm64/mnem.f are the fourth entry, on the
 \ same terms and for one subsystem: the ARM64 encoder prefix.  Neither contains a
-\ `package` at all.  They are the fourth and fifth files tools/srclist.f puts in
-\ the engine source prefix, ahead of the compiler that defines packages in the
-\ first place, and every later prefix file resolves their names bare --
+\ `package` at all.  They are early engine source-prefix files, ahead of the
+\ compiler that defines packages in the first place, and every later prefix file
+\ resolves their names bare --
 \ src/habu/jit.f, src/habu/habu1.f and src/habu/habu2.f call `LDR,` and `CBZ,`
 \ with no qualifier, as do tools/asm-src-test.f and test/compiler/insn-schema.f.
 \ Their own headers say why: they are written in the STANDALONE's Forth so the
@@ -1425,13 +1425,11 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ reporting a fault whose only repair breaks the recovery path.  The category
 \ therefore admits changed and new definitions alike.
 \
-\ What owns the mirror's correctness instead.  Not package scope -- the parity
-\ gates.  tools/bootstrap-mirror-lint.f names it as the file whose absent
-\ width-aware pass makes the src/ declaration boundary a red gate, and the
-\ recovery fixtures driven by tools/bootstrap.sh run it end to end.  A
-\ definition added here is reviewed by those gates, which read what the emitter
-\ produces, and that is a stronger statement about this file than a wordlist name
-\ would be.
+\ What owns the mirror's correctness instead.  Not package scope -- the real
+\ recovery gate. HABU_BOOTSTRAP_CHECK_ONLY drives tools/bootstrap.sh through the
+\ generated seed and its native recovery fixtures end to end. A definition added
+\ here has to compile and survive that real recovery chain, which is a stronger
+\ statement about this file than a wordlist name would be.
 \
 \ Why this exact path and not its neighbours.  There are 63 other Gforth-hosted
 \ `.fs` sources in the tree (bootstrap/cg, bootstrap/src, the bootstrap load

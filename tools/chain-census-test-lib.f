@@ -821,9 +821,8 @@ variable ACC
 \ with an uncatchable exit 84, so this case reads the engine's own source and
 \ rebuilds the table from it: the `create RESTAB-BUF` block, record by record,
 \ `[len][len bytes]` to the zero terminator, exactly as habu2.f's comment
-\ describes and as the native C-SEAL-MATCH walk reads it. tools/bootstrap-mirror-lint.f
-\ is the tree's shape for "a claim about src/, checked by lexing src/", and this
-\ follows it: the shared source lexer, token positions, no substring search.
+\ describes and as the native C-SEAL-MATCH walk reads it. This uses the shared
+\ source lexer and token positions, never substring search.
 \
 \ IT IS THE BYTES AND NOT THE COMMENTS. Each record's letters are written as `$74
 \ c,` hex cells with the spelling only in a trailing `\` comment, which the lexer

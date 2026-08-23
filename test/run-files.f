@@ -1,4 +1,4 @@
-\ run-files.f - file sets that key native test suite caches.
+\ run-files.f - AOT runner support file registry.
 
 require lib/errors.f
 require lib/string.f
@@ -41,7 +41,6 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/cad-num-arithmetic.f lib/cad-num-types.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-fork.f lib/test/record.f lib/test/runner.f
    lib/source.f lib/build.f lib/codesign.f lib/sort.f lib/codegen.f lib/type/deftype.f lib/content-key.f tools/build-fixpoint.f
-   tools/stdin-closure-lib.f
    lib/object.f lib/object-cache.f lib/object-index.f lib/object-resolve.f
    lib/object-link.f tools/cli-run.f tools/object-image.f tools/hb-build-lib.f
    tools/lint/text.f tools/lint/token.f
@@ -51,54 +50,4 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    test/gate-stats.f test/gate-common-lib.f test/gate-build-common.f
    test/gate-build-hbb.f src/habu/aot-closure.f
    test/gate-aot-positive-lib.f test/gate-aot-negative-lib.f
-;TR-FILES
-
-\ Result-cache phase file sets. A phase PASS-stamp key must cover every file
-\ that can change the phase verdict; test/run-result-cache-test.f enforces
-\ that each declared set is closed over require/include lines and existing
-\ s" source literals (src/ members are keyed but not scanned). Phases with
-\ no declared set are never result-cached.
-
-\ test/run.f maps the clang reference column before it forks anything (dyld is
-\ not fork-safe), so the bindings it maps through are files this phase reads:
-\ lib/process-command.f, lib/ffi-abi.f and the two codegen-compare-c* sources.
-\ NOTE: a TR-FILES: body is a bare token list -- it has no comment syntax, so a
-\ `\` line inside the block becomes four members named after its own words.
-TR-FILES: TR-GATE-HARNESS-FILES
-   test/run.f test/run-support.f test/run-lib.f test/run-files.f
-   test/run-result-cache.f test/run-resident.f test/run-worker.f
-   test/run-engine-set.f tools/boot-pin.f
-   lib/errors.f lib/string.f lib/prelude.f lib/fmt.f lib/float.f lib/memory.f
-   lib/cad-num-arithmetic.f lib/cad-num-types.f lib/vector.f lib/adt/option.f
-   lib/adt/result.f lib/fs.f
-   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-   lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f
-   lib/sort.f lib/codegen.f lib/type/deftype.f lib/content-key.f tools/cli-run.f
-   lib/process-command.f lib/ffi-abi.f
-   tools/codegen-compare-cc.f tools/codegen-compare-cabi.f
-   test/gate-pool.f test/gate-stats.f tools/why-threw.f
-   test/json-read-perf-phase.f test/cal-spin-lib.f
-   lib/json-read-perf-test.f lib/json-read.f lib/test/assert.f
-;TR-FILES
-
-TR-FILES: TR-GATE-COMMON-FILES
-   test/gate-common-lib.f lib/date.f lib/source.f tools/lint/text.f
-   tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-   tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
-   tools/json-only-core.f tools/signature-lint-core.f
-   tools/checked-boundary-lint-core.f tools/hook-sites.f
-   tools/reserved-name-lint-core.f
-   tools/check-all-errors-core.f lib/argv.f
-   tools/dynamic-tail-manifest.f tools/source-discovery.f
-   tools/check-core.f tools/check-main.f src/habu/verify-source.f
-;TR-FILES
-
-TR-FILES: TR-DEBUG-PHASE-FILES
-   test/run-worker-debug.f test/gate-debug-lib.f tools/jitdump-core.f
-   src/arch/arm64/disasm.f test/prop-test.f test/prop-test-core.f
-;TR-FILES
-
-TR-FILES: TR-AOT-NEG-PHASE-FILES
-   test/run-worker-aot-neg.f test/gate-aot-negative-lib.f
-   src/habu/aot-closure.f tools/gate-json-assert-core.f
 ;TR-FILES

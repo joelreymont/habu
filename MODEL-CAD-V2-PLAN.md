@@ -1473,8 +1473,8 @@ wave, `MEM-ALLOC-BYTES`, is split into disjoint caller dots:
 - Maki callers: `maki/eval/repair-mech.f`, `maki/eval/transcript.f`, and
   `maki/onnx/import.f`;
 - test callers: `test/gate-build-common.f`, `test/gate-engine-lib.f`,
-  `test/gate-pool.f`, `test/gate-stdlib-inline-lib.f`,
-  `test/run-result-cache-test.f`, and `test/seal-absence.f`;
+  `test/gate-pool.f`, `test/gate-stdlib-inline-lib.f`, and
+  `test/seal-absence.f`;
 - tool callers: `tools/aot-call-report-test.f`, `tools/build-fixpoint-test.f`,
   `tools/build-fixpoint.f`, `tools/check-core.f`, `tools/check-test-lib.f`,
   `tools/codegen-role-test.f`, `tools/codegen-role.f`,

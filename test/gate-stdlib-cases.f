@@ -33,14 +33,6 @@ SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint-test.f
 ;SUITE
 
-SUITE stdin-closure-lint
-   tools/stdin-closure-lint.f
-;SUITE
-
-SUITE stdin-closure-lint-fixtures
-   tools/stdin-closure-lint-test.f
-;SUITE
-
 SUITE gate-stats
    test/gate-stats-test.f
 ;SUITE

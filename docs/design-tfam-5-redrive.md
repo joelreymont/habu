@@ -127,8 +127,8 @@ pre-scan (a conditionally-opened package is invisible).
 ### 0.7 Sizing
 
 `tools/check.f` require-closure = 26 files, ≤42 loader tokens (upper bound,
-including non-loader string literals). `tools/srclist.f` emits ~32 file paths for
-the compiler order. `EVENT-MAX=$100` (256), `EVENT-POOL-CAP=$8000` (32 KiB),
+including non-loader string literals). `EVENT-MAX=$100` (256),
+`EVENT-POOL-CAP=$8000` (32 KiB),
 `EVENT-FIELDS=6` (`src/core/include.f:192-194`). Per-file event counts are tiny;
 the pool is `EVENTS-RESET` per `DISCOVER:RUN`, so 256 is ample **per file**. The
 whole tree is 597 `.f`/`.fs` files, so a *global* accumulation across a full-tree
@@ -220,8 +220,8 @@ discipline (§5). The manifest is data, never executed → no crash surface, no
 circularity.
 
 **Who maintains it / what it looks like.** A sidecar list (e.g. a checked
-`MANIFEST: file.f … ;MANIFEST` table in `tools/srclist.f` style, or a
-`\ deps: …` header the producer parses) enumerating the transitive files. Cost:
+`MANIFEST: file.f … ;MANIFEST` table, or a `\ deps: …` header the producer
+parses) enumerating the transitive files. Cost:
 **every** file using the load-if-absent idiom (`CA-MAYBE-VERIFY-SOURCE` and its
 peers — dozens of support files register support this way) would need a manifest,
 kept in sync by hand, with drift risk. That is a large, permanent maintenance tax

@@ -218,8 +218,8 @@ variable ND#
 \ After one of these the engine PARSES the next token as raw text and never
 \ executes it, so the operand is not code: `[char] :` is the colon BYTE, not a
 \ definition, and `' create` ticks a word rather than declaring one. The rule is
-\ tools/bootstrap-mirror-lint.f ESCAPED?, and it is deliberately the immediately
-\ preceding token: an inert span between the two is not this shape.
+\ deliberately the immediately preceding token: an inert span between the two is
+\ not this shape.
 : ESCAPED? ( n -- bool ) {: k:n :}
    k 0 <= if LINT-FALSE exit then
    k 1- WORD? 0= if LINT-FALSE exit then

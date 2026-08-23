@@ -1,8 +1,7 @@
 \ stdin.f — internal driver: emit the stdin-program engine used while building
 \ the single installed `bin/hb`. The output reads its program from stdin; on a
 \ tty it runs the baked repl.f instead, which turns it into the interactive REPL.
-\ Swapped in for stage2.f by `bin/hb --load lib/argv.f tools/srclist.f -- stdin`
-\ (see tools/build-fixpoint.f).
+\ Swapped in for stage2.f by tools/build-fixpoint.f's stdin build path.
 
 \ output path — the single knob; the build-fixpoint driver owns the artifact
 : STDIN-OUT ( -- ptr u8 n ) s" hb-stdin-got" TMP-PATH ;

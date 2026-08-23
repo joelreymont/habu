@@ -6,9 +6,9 @@
 \ closure in a header comment and relies on the caller having loaded it first, the
 \ command is dead - and stays silently dead, because the resident test/run.f DAG
 \ loads those same modules in order before the entry's unit tests run, so the suite
-\ never exercises the command path. Five entries were dead that way when this guard
+\ never exercises the command path. Four entries were dead that way when this guard
 \ was written: signature-lint, reserved-name-lint, duplicate-definition-lint,
-\ aot-lint and bootstrap-mirror-lint.
+\ and aot-lint.
 \
 \ Each entry is spawned in a fresh child engine with empty stdin. The verdict is
 \ deliberately NOT "exit 0": these entries RUN when loaded, so a healthy one may
@@ -290,8 +290,6 @@ variable GOT-U
       s" tools/duplicate-definition-lint.f" SCHEDULES? TTRUE
    s" aot-lint entry scheduled" T-LABEL
       s" tools/aot-lint.f" SCHEDULES? TTRUE
-   s" bootstrap-mirror-lint entry scheduled" T-LABEL
-      s" tools/bootstrap-mirror-lint.f" SCHEDULES? TTRUE
    s" newly added lint entry scheduled" T-LABEL
       s" tools/newly-added-lint.f" SCHEDULES? TTRUE
    s" lint core is not an entry" T-LABEL

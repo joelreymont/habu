@@ -210,8 +210,8 @@ overrides must appear after the profile; top-level `--pool-slots` is capped at
 12.
 
 `--cold-cache` selects a private per-run scratch cache root under the suite temp
-directory, disables the result cache, and measures builder, maker, and artifact
-cache fill without deleting the default persistent caches.
+directory and measures builder, maker, and artifact cache fill without deleting
+the default persistent caches.
 
 Wrap the command with `/usr/bin/time -p` when comparing end-to-end shell wall
 time across hosts. `test/run.f` runs the suite directly in `bin/hb`; no
@@ -245,8 +245,7 @@ only. Current commands live in `skills/habu-host-profiles/SKILL.md`.
    diagnostic SARIF/public-signature and JIT dump semantics.
    Current runs distinguish ordinary candidate production
    (`candidate=1`) from explicit import (`candidate-import=1`, `candidate=0`).
-   Maker, artifact, and result caches remain independent
-   of candidate production.
+   Maker and artifact caches remain independent of candidate production.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
@@ -285,7 +284,7 @@ only. Current commands live in `skills/habu-host-profiles/SKILL.md`.
 
 ## Targets
 
-Short-term Jetson/Orin target: warm builder, maker, artifact, and result caches,
+Short-term Jetson/Orin target: warm builder, maker, and artifact caches;
 uncontended full gate passes.
 
 Architecture target:

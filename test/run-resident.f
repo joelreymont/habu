@@ -49,7 +49,6 @@ variable TR-R-SETUP-START-NS
 
 : TR-R-PHASE-START ( idx -- ) {: idx:idx :}
    idx RERUN-SKIP? if exit then
-   idx RESULT-CACHED? if idx RESULT-SKIP exit then
    idx PHASE-RESIDENT? if idx TR-PHASE-START-RESIDENT exit then
    idx PHASE-START ;
 

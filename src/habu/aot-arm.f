@@ -24,8 +24,8 @@
 \ there compiles 0 records, while requiring asm.f compiles 178 (both measured).
 \
 \ WHO LOADS IT. Two processes, the same way aot-decl.f is loaded by two: the stdin
-\ metabuild host compiles it in (manifest slot tools/stdin-closure-lib.f SDC-ARM$,
-\ ahead of the driver src/habu/stdin.f whose CAPTURE-REPL calls it), and the chain
+\ metabuild host compiles it ahead of the driver src/habu/stdin.f whose
+\ CAPTURE-REPL calls it, and the chain
 \ capture tool requires it in its own prelude behind layout.f alone.
 \
 \ EVERY CALLER CALLS THIS WORD, not a wrapper. src/habu/aot-capture.f briefly
