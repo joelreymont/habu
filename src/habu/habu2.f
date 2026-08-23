@@ -1912,7 +1912,9 @@ variable LKWTRUSTDECL
 variable LKWCAST
 variable LKWDEFCAST
 variable LCASTNONAME
+variable LCOLONNONAME
 29 constant CASTNONAME-LEN       \ "hb: cast: missing name after "
+36 constant COLONNONAME-LEN      \ "hb: : missing definition name after "
 
 : EMIT ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
@@ -1946,6 +1948,7 @@ variable LCASTNONAME
    LKWCAST LABEL@ LBL, s" cast:" BYTES,
    LKWDEFCAST LABEL@ LBL, s" checker-defcast" BYTES,
    LCASTNONAME LABEL@ LBL, s" hb: cast: missing name after " BYTES,
+   LCOLONNONAME LABEL@ LBL, s" hb: : missing definition name after " BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  HOLD-EMIT:LHOLDQ LABEL@ LBL, s" checker-hold?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
@@ -6096,7 +6099,7 @@ public
 \ dynamically found checker package words.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 : EM-INTERPRET-COLON ( label -- ) {: lnotcolon:label :}
-   LBL LBL LBL LBL {: cpok ndok kcolon ktry :}
+   LBL LBL LBL LBL LBL {: cpok:label ndok:label named:label kcolon:label ktry:label :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 $3A CMPI,  C-NE ktry BCOND,
    kcolon LBL,
@@ -6113,7 +6116,11 @@ public
       9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
          C-DIE-DICT-FULL
       ndok LBL,
-      LTOK LABEL@ BL,
+      LTOK LABEL@ BL,  0 named CBNZ,
+         0 2 MOVZ,  1 KWDATA:LCOLONNONAME LABEL@ ADR,  2 KWDATA:COLONNONAME-LEN MOVZ,  NR-WRITE SYS,
+         0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 1 MOVZ,  NR-WRITE SYS,
+         0 $4A MOVZ,  LCOMPILEDIE LABEL@ B,
+      named LBL,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
       LBCAP LABEL@ BL,             \ seed with the NAME (checker records certified sigs)
       C-QUALIFY-DEF
@@ -8842,7 +8849,7 @@ package LABELS
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
-   LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !
+   LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !  LBL KWDATA:LCOLONNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !

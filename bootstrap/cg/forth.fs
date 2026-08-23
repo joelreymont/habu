@@ -448,7 +448,7 @@ variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDOES variable LKWKERNEL
-variable LKWCAST variable LKWDEFCAST variable LCASTNONAME   \ cast declarer (mirrors src/habu/habu2.f)
+variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
@@ -2595,6 +2595,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCAST @ LBL, s" cast:" BYTES,
    LKWDEFCAST @ LBL, s" checker-defcast" BYTES,
    LCASTNONAME @ LBL, s" hb: cast: missing name after " BYTES,
+   LCOLONNONAME @ LBL, s" hb: : missing definition name after " BYTES,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW @ LBL, s" trust-raw" BYTES,
    LKWCHKDOES @ LBL, s" check-does!" BYTES,
@@ -4732,7 +4733,12 @@ variable CFSK2
    ndok LBL, ;
 
 : C-COLON-PENDING-DREC ( -- )
-   LTOK @ BL,
+   LBL {: named :} \ typed-local-lint: allow-bare-local
+   LTOK @ BL,  0 named CBNZ,
+      0 2 MOVZ,  1 LCOLONNONAME @ ADR,  2 36 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 $4A MOVZ,  NR-EXIT-GROUP SYS,
+   named LBL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP @ BL,                                           \ checker sees the original spelling
    C-QUALIFY-DEF
@@ -6551,7 +6557,7 @@ variable P2SK
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
-   LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !
+   LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !  LBL LCOLONNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !

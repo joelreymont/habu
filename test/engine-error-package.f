@@ -131,6 +131,11 @@ create PATCHED-BUF FS-PATH-CAP allot
    PACKAGE-SOURCE$ {: src:ptr u:n :}
    PATCHED$ src u RUN-SOURCE ;
 
+: MISSING-DEFINITION-NAME ( -- )
+   s" a lone colon rejects at the engine reader" T-LABEL
+   HB$ s" :" RUN-SOURCE $4A T=
+   ERR$ s" missing definition name" CONTAINS? TTRUE ;
+
 : EXACT-EXITS ( -- )
    s" callable ABI exits 86" T-LABEL
    s" ENGINE-ERROR:CALLABLE-ABI" CHILD-RC 86 T=
@@ -162,6 +167,7 @@ public
 : RUN ( -- )
    T-RESET
    EXACT-EXITS
+   MISSING-DEFINITION-NAME
    POST-SEAL-BRIDGE
    T-REPORT
    s" engine-error-package: ok" type cr ;
