@@ -6,7 +6,6 @@
 package SIGNATURE-LINT
 private
 
-$10000 constant SL-FILE-CAP
 32 constant SL-NUM-CAP
 
 10 constant SL-LF
@@ -16,7 +15,11 @@ $10000 constant SL-FILE-CAP
 create SL-NUM-BUF SL-NUM-CAP allot
 create SL-LF-BUF 1 allot
 
-variable SL-BUF-A
+\ Runtime-sized slab, for the same reason as tools/aot-lint-core.f: --strict-signatures
+\ runs this lint inside hb-build, so a fixed read buffer here caps the program the
+\ build tool accepts (dot habu-hb-build-cannot-d09df17e).
+create SL-SRC-SLAB LINT-SLAB:CELLS cells allot
+
 variable SL-BAD
 variable SL-I
 variable SL-KIND
@@ -38,9 +41,6 @@ variable SL-WORD-U
 variable SL-SUG-A
 variable SL-SUG-U
 
-: SL-BUF-A-FIELD ( -- ptr ptr u8 )
-   SL-BUF-A 0 ptr-field ;
-
 : SL-FILE-A-FIELD ( -- ptr ptr u8 )
    SL-FILE-A 0 ptr-field ;
 
@@ -53,9 +53,6 @@ variable SL-SUG-U
 : SL-SUG-A-FIELD ( -- ptr ptr u8 )
    SL-SUG-A 0 ptr-field ;
 
-: SL-BUF-A@ ( -- ptr u8 )
-   SL-BUF-A-FIELD @ ;
-
 : SL-FILE-A@ ( -- ptr u8 )
    SL-FILE-A-FIELD @ ;
 
@@ -67,9 +64,6 @@ variable SL-SUG-U
 
 : SL-SUG-A@ ( -- ptr u8 )
    SL-SUG-A-FIELD @ ;
-
-: SL-BUF-A! ( ptr u8 -- )
-   SL-BUF-A-FIELD ! ;
 
 : SL-FILE-A! ( ptr u8 -- )
    SL-FILE-A-FIELD ! ;
@@ -92,15 +86,6 @@ public
    SL-OUT-FD ! ;
 
 private
-
-: SL-ALLOC-FILE-BUF ( -- )
-   SL-BUF-A @ 0= if
-      SL-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop SL-BUF-A!
-   then ;
-
-: SL-FILE-BUF ( -- ptr u8 )
-   SL-ALLOC-FILE-BUF
-   SL-BUF-A@ ;
 
 : SL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    fd a u LINT-OUT-WRITE ;
@@ -266,7 +251,8 @@ public
 
 : FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
    label SL-FILE-A! labelu SL-FILE-U !
-   path pathu SL-FILE-BUF SL-FILE-CAP READ-FILE LINT-LEX:SOURCE
+   path pathu SL-SRC-SLAB LINT-SLAB:LOAD
+   SL-SRC-SLAB LINT-SLAB:TEXT LINT-LEX:SOURCE
    SL-SCAN-TOKENS ;
 
 : FILE ( ptr u8 n -- )

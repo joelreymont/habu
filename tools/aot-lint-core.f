@@ -5,10 +5,12 @@
 
 package AOT-LINT
 
-$10000 constant FILE-CAP
 32 constant NUM-CAP
 
-create FILE-BUF FILE-CAP allot
+\ The source is read into a runtime-sized slab, not a fixed buffer: hb-build
+\ runs this lint on every non-repl build, so a constant here is a ceiling on
+\ how large a program the build tool accepts (dot habu-hb-build-cannot-d09df17e).
+create SRC-SLAB LINT-SLAB:CELLS cells allot
 create NUM-BUF NUM-CAP allot
 create C-BUF 1 allot
 
@@ -177,7 +179,8 @@ public
 : FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
    label FILE-A!
    labelu FILE-U !
-   path pathu FILE-BUF FILE-CAP READ-FILE LINT-LEX:SOURCE
+   path pathu SRC-SLAB LINT-SLAB:LOAD
+   SRC-SLAB LINT-SLAB:TEXT LINT-LEX:SOURCE
    SCAN-TOKENS ;
 
 : FILE ( ptr u8 n -- )

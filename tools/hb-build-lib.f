@@ -416,25 +416,17 @@ variable HBB-COMMENTED-U
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
-: HBB-RUN-DIAG-CAPTURE ( -- n n n )
-   CLI-TOOLS$ >LEN BF-SOURCE-BUF BF-SOURCE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   HBB-CAPTURE>N ;
+: HBB-DIAG-NAME$ ( -- ptr u8 n )
+   s" hb-diag-src" ;
+
+: HBB-DIAG-SRC$ ( -- ptr u8 n )
+   HBB-DIAG-NAME$ BF-B$ ;
 
 : HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
    rc 0= if exit then
    outu HBB-WOUT-ERR
    erru HBB-WERR-ERR
    rc HBB-EXIT ;
-
-: HBB-FINISH-DIAG-ORIGIN ( n n n -- n ) {: outu erru rc :}
-   rc 0= if
-      erru HBB-WERR-ERR
-      outu exit
-   then
-   BF-SOURCE-BUF outu HBB-WERR
-   erru HBB-WERR-ERR
-   0 rc HBB-EXIT ;
 
 : HBB-RUN-AOT-LINT-CHILD ( -- )
    HBB-ADD-AOT-LINT-CMD
@@ -461,9 +453,35 @@ HBB-INSTALL-CHILD-LINTS
    HBB-STRICT @ 0= if exit then
    HBB-SIGNATURE-LINT-HOOK ;
 
+: HBB-DIAG-TIMEOUT$ ( -- ptr u8 n )
+   SB-RESET
+   s" hb-build: diag-origin timed out after " SB-APPEND
+   HBB-TIMEOUT-MS FS-MUT-SB-U
+   s" ms on " SB-APPEND
+   HBB-SRC$ SB-APPEND
+   SB$ ;
+
+: HBB-FINISH-DIAG ( outcome -- )
+   MATCH outcome
+     exited   OF dup 0 <> if HBB-EXIT else drop then ENDOF
+     signaled OF 128 + HBB-EXIT ENDOF
+     timeout  OF HBB-DIAG-TIMEOUT$ HBB-BUILD-RC die ENDOF
+   ;MATCH ;
+
+\ diag-origin rewrites the source, so its output grows with the source and with
+\ no ratio anything here could name; it goes to a file and comes back through
+\ FILE-SIZE. Its stderr is still captured and forwarded verbatim, under the same
+\ deadline the lint and maker children get, so a hung rewriter fails the build
+\ by its own name instead of hanging it. Only the partial stdout a failing child
+\ had written is no longer echoed.
 : HBB-DIAG-ORIGIN-SOURCE ( -- )
    HBB-ADD-DIAG-ORIGIN-CMD
-   HBB-RUN-DIAG-CAPTURE HBB-FINISH-DIAG-ORIGIN BF-SOURCE-LEN ! ;
+   CLI-TOOLS$ HBB-DIAG-SRC$ HBB-ERR-BUF HBB-CAPTURE-CAP >LEN HBB-TIMEOUT-MS >MS
+   BF-RUN-ARGV-ENV-OUTFILE                 \ ( len outcome )
+   swap LEN>N HBB-WERR-ERR                 \ the child's stderr, forwarded verbatim
+   HBB-FINISH-DIAG
+   HBB-DIAG-SRC$ BF-READ-SOURCE
+   HBB-DIAG-NAME$ BF-REMOVE-TMP ;
 
 : HBB-DRIVER$ ( -- ptr u8 n )
    HBB-REPL @ if s" src/habu/build.f" else s" src/habu/aot.f" then ;
@@ -716,7 +734,7 @@ HBB-INSTALL-CHILD-LINTS
    BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN COMMENT-EXPORTS$ HBB-COMMENTED! ;
 
 : HBB-READ-COMMENTED-SOURCE ( -- )
-   HBB-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
+   HBB-SRC$ BF-READ-SOURCE
    HBB-COMMENT-SOURCE ;
 
 : HBB-READ-ORIGIN-COMMENTED-SOURCE ( -- )
@@ -925,7 +943,8 @@ HBB-INSTALL-CHILD-LINTS
    HBB-OBJ-NAME$ BF-A$ ;
 
 : HBB-READ-OBJECT-TEXT ( -- n )
-   HBB-OBJ$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL ;
+   HBB-OBJ$ BF-READ-SOURCE
+   BF-SOURCE-LEN @ ;
 
 : HBB-BUILD-OBJECT-RECORD ( n -- ) {: textu:n :}
    OBJ:RESET

@@ -20,7 +20,6 @@ using STDIN-CLOSURE
 \ packages do not nest, and import what they need with `using BUILD-FIXPOINT`.
 package BUILD-FIXPOINT
 
-262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
 $10000 constant BF-CERT-DIAG-CAP
 4 constant BF-MAX-GENS
@@ -69,6 +68,7 @@ require tools/event-closure-lib.f        \ the chain fold
 package BUILD-FIXPOINT
 
 create BF-LF-BUF 1 allot
+create BF-CAP-SINK 1 allot
 create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
 create BF-PIN-DIGS BF-PIN-CAP BF-STAMP-DG-U * allot
 create BF-PIN-KEYBUF 40 allot
@@ -95,6 +95,7 @@ variable BF-OUT-PATH-A
 variable BF-A-PATH-A
 variable BF-B-PATH-A
 variable BF-SOURCE-BUF-A
+variable BF-SOURCE-CAP-V
 variable BF-CMP-A-BUF-A
 variable BF-CMP-B-BUF-A
 variable BF-SOURCE-LEN
@@ -181,8 +182,49 @@ variable BF-CERT-PATH-U
    slot @ 0= if cap BF-ALLOC-BUF slot BF-PTR-U8! then
    slot BF-PTR-U8@ ;
 
+: BF-SOURCE-CAP ( -- n )
+   BF-SOURCE-CAP-V @ ;
+
+\ One allocator granule until somebody asks for more. There is no capacity
+\ CONSTANT here any more: this buffer holds user programs and generated stage
+\ text, and no number written in this file can bound either (dot
+\ habu-hb-build-cannot-d09df17e, where 262144 was the third wall).
 : BF-SOURCE-BUF ( -- ptr u8 )
-   BF-SOURCE-BUF-A BF-SOURCE-CAP BF-BUF ;
+   BF-SOURCE-BUF-A @ 0= if
+      MEM-64K MEM-ALLOC-64K-SPAN {: buf:ptr got:n :}
+      buf BF-SOURCE-BUF-A BF-PTR-U8!
+      got BF-SOURCE-CAP-V !
+   then
+   BF-SOURCE-BUF-A BF-PTR-U8@ ;
+
+\ Capacity exits name the file, the need and the have (LESSONS 2026-08-22: a die
+\ that prints only the offending token costs a day per break).
+: BF-SOURCE-REFUSED ( ptr u8 n n n -- ) {: path:ptr pathu:n need:n have:n :}
+   s" build-fixpoint: cannot grow the source buffer for " type path pathu type cr
+   s" build-fixpoint: needed " type need .
+   s" build-fixpoint: have " type have .
+   E-FS-CAPACITY throw ;
+
+\ Install the new mapping, then release the prior one. Release is LAST, so a
+\ refused allocation never reaches it and leaves the old span owned and intact
+\ (the shape lib/vector.f VEC-INSTALL-RESIZE and lib/byte-buffer.f
+\ INSTALL-RESIZE already carry). No copy: this buffer is scratch that every use
+\ refills from its source before reading it.
+\
+\ INVARIANT, and the reason releasing is safe: no caller holds a pointer into
+\ this buffer across a grow. Every reader fetches BF-SOURCE-BUF at the point of
+\ use, and the three words that grow it - BF-READ-SOURCE and the two
+\ BF-APPEND-SOURCE-* around it - fetch AFTER the read. A future caller that
+\ binds the pointer into a local and then reads another file breaks this.
+: BF-SOURCE-ENSURE ( ptr u8 n n -- ) {: path:ptr pathu:n need:n :}
+   need BF-SOURCE-CAP <= if exit then
+   need MEM-ALLOC-64K-SPAN {: buf:ptr got:n :}
+   got need < if path pathu need got BF-SOURCE-REFUSED then
+   BF-SOURCE-BUF-A BF-PTR-U8@ {: old:ptr :}
+   BF-SOURCE-CAP {: oldcap:n :}
+   buf BF-SOURCE-BUF-A BF-PTR-U8!
+   got BF-SOURCE-CAP-V !
+   oldcap 0 > if old oldcap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES then ;
 
 : BF-CMP-A ( -- ptr u8 )
    BF-CMP-A-BUF-A BF-CMP-CAP BF-BUF ;
@@ -292,6 +334,43 @@ variable BF-CERT-PATH-U
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    infd close
    pid BF-FINISH-PID ;
+
+\ PROC-SPAWN-ARGV-ENV-CAPTURE with the child's stdout on a caller fd instead of
+\ the capture pipe. The out pipe the capture machine opened is never handed to
+\ the child and is closed here, so it reads EOF at once and the drain below ends
+\ on stderr alone.
+: BF-SPAWN-OUTFD-CAPTURE ( ptr u8 ptr a ptr a n -- ) {: pathz:ptr argv:ptr envp:ptr outfd:n :}
+   pathz argv envp -1 >FD outfd >FD PROC-ERR-W @ PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
+   PROC-ARGV-ENV-RESET
+   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
+   pid PROC-CAPTURE-PID!
+   PROC-OUT-W PROC-CLOSE-CELL
+   PROC-ERR-W PROC-CLOSE-CELL ;
+
+\ Spawn the argv/env the CALLER has already built, with stdout on a FILE and
+\ stderr captured under the same deadline every other spawned child here gets.
+\ A capture buffer bounds a child's output by a number chosen before the child
+\ runs; a file does not, and its size is knowable afterwards - which is the only
+\ way a child whose output is a source transform can be read back through
+\ FILE-SIZE (dot habu-hb-build-cannot-d09df17e). The answer is an `outcome`, so
+\ a deadline expiry is a named arm and not a bare rc.
+\
+\ Its home is lib/process-env.f beside RUN-ARGV-ENV-CAPTURE-OUTCOME, whose
+\ choreography it mirrors line for line; that file carries no package, so
+\ package-diff-lint refuses a definition added there. Move it when the file is
+\ sealed.
+: BF-RUN-ARGV-ENV-OUTFILE ( ptr u8 n ptr u8 n ptr u8 len ms -- len outcome )
+   {: exe:ptr exeu:n out:ptr outu:n err:ptr errcap:len timeout:ms :}
+   out outu BF-LF-BUF 0 WRITE-ALL
+   out outu OPEN-APPEND-FD {: outfd:n :}
+   exe exeu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout PROC-CAPTURE-BEGIN
+   pathz argv envp outfd BF-SPAWN-OUTFD-CAPTURE
+   outfd close
+   BF-CAP-SINK 1 >LEN err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME             \ ( len len outcome )
+   rot drop ;                              \ the sunk stdout length is nobody's business
 
 : BF-PREPARE-STAGE-ARGV ( ptr u8 n -- ptr u8 ptr a )
    PROC-ARGV-RESET
@@ -642,8 +721,10 @@ public
 
 package BUILD-FIXPOINT
 
-: BF-READ-SOURCE ( ptr u8 n -- )
-   BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
+: BF-READ-SOURCE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: size:n :}
+   path pathu size BF-SOURCE-ENSURE
+   path pathu BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
 
 : BF-SOURCE-HAS? ( ptr u8 n -- bool )
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
@@ -2117,9 +2198,11 @@ EXPORT BF-EXPECT
 EXPORT BF-OUT$
 EXPORT BF-PREFLIGHT
 EXPORT BF-RC0
+EXPORT BF-READ-SOURCE
 EXPORT BF-REMOVE-TMP
 EXPORT BF-RENAME-TMP
 EXPORT BF-RESET-OUT
+EXPORT BF-RUN-ARGV-ENV-OUTFILE
 EXPORT BF-RUN-ENV-TMP
 EXPORT BF-RUN-STAGE
 EXPORT BF-SOURCE-BUF

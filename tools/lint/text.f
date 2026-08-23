@@ -144,7 +144,8 @@ $1000000 constant MAX-BYTES
 
 : TOO-LARGE ( ptr u8 n n -- ) {: path:ptr pathu:n size:n :}
    s" lint-slab: file exceeds maximum: " type path pathu type cr
-   s" lint-slab: bytes=" type size .
+   s" lint-slab: needed " type size .
+   s" lint-slab: have " type MAX-BYTES .
    E-FS-CAPACITY throw ;
 
 : ENSURE-CAPACITY ( ptr u8 n n ptr a -- ) {: path:ptr pathu:n size:n s:ptr :}
