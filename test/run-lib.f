@@ -127,9 +127,15 @@ create TR-DIRECT-ORDER
 PHASE-DEBUG , PHASE-ENGINE-BUILD ,
 
 \ Phases this runner deliberately does NOT start. Each is an aggregate whose
-\ members already run here, split into their own groups: lint-libs ($13) as
-\ phases $1E..$21, lint-artifacts ($12) as $22, and the tool-lints group ($17) as
-\ the four splits $24..$27. The aggregates are still reachable - by hand as
+\ members run here in groups of their own instead: lint-libs ($13) as phases
+\ $1E..$21, lint-artifacts ($12) as $22, and the tool-lints group ($17) as the
+\ four splits $24..$27. Those splits are RESIDENT, so what they run is their GSI
+\ inline lists and never a SUITE registration: a registration whose label only a
+\ deferred or a resident phase's slice selects is run by nothing at all, which is
+\ what tools/lint/schedule-lint.f refuses. The one aggregate member that cannot
+\ live in a resident list is the device/bench half of ptx-toolchain, which SIGBUSes
+\ in the full-runner image; it is registered as `SUITE ptx-toolchain-spawned` and
+\ spawned by phase $4 instead. The aggregates are still reachable - by hand as
 \ `test/gate-stdlib.f -- lint-libs` at the merge gate and on the device, and by id
 \ through test/gate-runner-entry.f - so they are not retired. They are NAMED here
 \ instead of being quietly absent from every order table, because quietly absent

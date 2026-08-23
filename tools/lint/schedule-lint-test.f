@@ -39,6 +39,30 @@ private
 : DARK-LABEL$ ( -- ptr u8 n )
    s" no-slice-names-this-label" ;
 
+\ Two labels a real predicate really does select, for slices no runner asks for.
+\ `clobber-lint` is selected by SUITE-LINT-TOOLS-LABEL? for the lint-tools slice,
+\ which only RESIDENT phases name (test/run-lib.f $11, and $17 which is deferred
+\ besides); `string-helpers` is selected by SUITE-LINT-LIBS-LABEL? for lint-libs,
+\ whose own phase $13 sits in the deferred table and whose splits $1E..$21 are
+\ resident. Neither slice can run a registration: a resident phase forks
+\ test/run-worker-stdlib.f, which reads the GSI inline bodies and never
+\ test/gate-stdlib-cases.f. Each premise is ASSERTED below, not assumed, so a
+\ label that stopped being selected fails the fixture instead of quietly making
+\ it stand for nothing.
+: RESIDENT-LABEL$ ( -- ptr u8 n )
+   s" clobber-lint" ;
+
+: DEFERRED-LABEL$ ( -- ptr u8 n )
+   s" string-helpers" ;
+
+\ The gate's own token -> slice map, refused rather than guessed at: a fixture
+\ asking about a slice this gate does not have would assert nothing.
+: SLICE-ID ( ptr u8 n -- n )
+   STDLIB-GATE:SLICE-ID? MATCH option
+     none OF E-STR-BOUNDS throw ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
 \ Scheduled files: three real schedulers, one path in the wrong role, one path
 \ that exists only inside a line comment.
 : SCHED-SRC ( -- ptr u8 n )
@@ -104,6 +128,16 @@ private
 : CASES-EMPTY ( -- ptr u8 n )
    S\" SUITE empty-suite\n;SUITE\n" ;
 
+\ A registration under a label a live predicate selects, for a slice no started
+\ non-resident phase asks for. Every text-level fact about it reads as
+\ scheduled - the label is in a predicate, the predicate is in a live slice -
+\ and nothing runs it.
+: CASES-RESIDENT-ONLY ( -- ptr u8 n )
+   S\" SUITE clobber-lint\n   lib/never-scheduled.f\n;SUITE\n" ;
+
+: CASES-DEFERRED-ONLY ( -- ptr u8 n )
+   S\" SUITE string-helpers\n   lib/never-scheduled.f\n;SUITE\n" ;
+
 \ ---- sources the scanner must refuse -----------------------------------------
 
 : CASES-NO-CLOSER ( -- ptr u8 n )
@@ -155,6 +189,29 @@ private
    COVERED-LABEL$ SCHEDULE-LINT:LABEL-COVER? TTRUE
    s" a label no predicate names is not" T-LABEL
    DARK-LABEL$ SCHEDULE-LINT:LABEL-COVER? TFALSE ;
+
+\ The residency half, which no count above can reach. A slice whose predicate
+\ selects the label is not a runner unless a STARTED, NON-RESIDENT phase asks for
+\ it, so each case asserts the predicate first and the verdict second: the pair
+\ is the whole claim. Deleting either test from SCHEDULE-LINT's SLICE-AT turns
+\ both verdicts green while both premises stay true, which is exactly the state
+\ this file exists to refuse.
+: T-RESIDENT-ONLY ( -- )
+   LOAD-SETS
+   s" the lint-tools predicate really does select the resident-only label" T-LABEL
+   RESIDENT-LABEL$ s" lint-tools" SLICE-ID STDLIB-GATE:SLICE-SELECTS? TTRUE
+   s" but no started non-resident phase asks for the lint-tools slice" T-LABEL
+   RESIDENT-LABEL$ SCHEDULE-LINT:LABEL-COVER? TFALSE
+   s" so a registration under it reports" T-LABEL
+   [: CASES-RESIDENT-ONLY ;] CASE-COUNT 1 T=
+   SCHEDULE-LINT:HIT-LABEL$ RESIDENT-LABEL$ T$=
+   s" the lint-libs predicate really does select the deferred-only label" T-LABEL
+   DEFERRED-LABEL$ s" lint-libs" SLICE-ID STDLIB-GATE:SLICE-SELECTS? TTRUE
+   s" but the phase that asks for lint-libs is deferred, not started" T-LABEL
+   DEFERRED-LABEL$ SCHEDULE-LINT:LABEL-COVER? TFALSE
+   s" so a registration under it reports too" T-LABEL
+   [: CASES-DEFERRED-ONLY ;] CASE-COUNT 1 T=
+   SCHEDULE-LINT:HIT-LABEL$ DEFERRED-LABEL$ T$= ;
 
 : T-MIXED ( -- )
    s" one partial registration reports, the two covered ones do not" T-LABEL
@@ -287,6 +344,7 @@ private
 : MAIN ( -- )
    T-RESET
    T-SETS
+   T-RESIDENT-ONLY
    T-MIXED
    T-REORDER
    T-DUPLICATE

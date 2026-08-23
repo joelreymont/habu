@@ -7850,3 +7850,19 @@ and --no-lldbinit.
   `BYTE-COPY`, `REQUIRE-REG:COUNT`, `pick-reason at 'CODE-REASON'`: each
   needed a bisect or a splice probe to read. Twelve native sites and ten
   mirror sites still do this (dot habu-twelve-native-die-a7a5139d).
+- **A tool that ends in `SCRIPT-ARGC 0 > IF MAIN THEN` cannot be scheduled
+  into any resident list.** Requiring `tools/imgdump.f` or
+  `tools/imagedisasm.f` into an image that carries script argv runs its CLI
+  against that argv: rc 74 `imgdump: stat failed` and rc 64
+  `usage: imagedisasm ...`, measured under both
+  `test/run.f -- --under bin/hb` and `gate-runner-entry -- <group>`, which
+  always passes a group token. Such a file needs a spawned process whose argv
+  the registration alone decides. `tools/ptx/perf-regress.f` is the same shape.
+  Check the tail of a tool before adding its test to a GSI list.
+- **"A slice predicate selects it" is not "something runs it".** Only a
+  NON-RESIDENT phase execs `test/gate-stdlib.f -- <slice>`, and only that entry
+  includes `test/gate-stdlib-cases.f`; a resident phase forks
+  `test/run-worker-stdlib.f`, which reads GSI inline bodies and no SUITE row.
+  Twenty-three of the twenty-five slices the runner's live phases named were
+  resident or deferred, so 33 registered files were certified covered and never
+  ran. Coverage from a slice needs the phase started AND non-resident.

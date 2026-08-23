@@ -27,9 +27,15 @@
 \              names the registrations that slice was carrying.
 \   LABELS     a registration's label counts as covered only when the REAL
 \              predicate - STDLIB-GATE:SLICE-SELECTS?, which is SUITE-RUN? with
-\              the label the registry stores - answers yes for a slice that some
-\              live phase asks for. A predicate written for a slice no phase
-\              names schedules nothing, and now says so.
+\              the label the registry stores - answers yes for a slice that a
+\              STARTED, NON-RESIDENT phase asks for. Only a non-resident phase
+\              execs test/gate-stdlib.f, and only that entry includes the
+\              registrations; a resident phase forks test/run-worker-stdlib.f,
+\              which runs a GSI inline body and reads no SUITE row at all. So a
+\              predicate written for a slice nothing starts, or one only a
+\              resident phase names, schedules nothing, and now says so.
+\              Resident coverage comes from the GSI lists alone - the scheduled
+\              set below, which is where it belonged all along.
 \
 \ WHAT IT CHECKS. A registration is covered when its label is covered as above
 \ OR every one of its files is in the scheduled set. Partial coverage is a
@@ -524,12 +530,17 @@ variable NUM-D
    MARK-DEFERRED ;
 
 \ ---- the slices those phases ask for -----------------------------------------
-\ LIVE-SLICE holds every slice a live phase names. A label is covered when one of
-\ them selects it: a predicate written for a slice NO phase names schedules
-\ nothing, whatever it selects. Whether the phases that name a slice are actually
-\ started is the phase audit's question, not this list's - keeping the two apart
-\ is what lets the audit report say which registrations a dark phase was
-\ carrying.
+\ LIVE-SLICE holds every slice a STARTED, NON-RESIDENT phase names, because those
+\ are the only phases that ever read a registration. A non-resident phase execs
+\ `test/gate-stdlib.f -- <slice>` (test/run-lib.f TR-STDLIB-SLICE-ARGS), and that
+\ entry is one of the only two places that include test/gate-stdlib-cases.f. A
+\ resident phase forks test/run-worker.f into test/run-worker-stdlib.f, which
+\ requires the gate lib and the inline bodies and never the registrations, so the
+\ slice token it carries schedules no SUITE row whatever its predicate answers -
+\ its coverage is the GSI lists it runs, and those are in the scheduled set. A
+\ phase no order table starts asks for nothing at all. Both tests belong here
+\ rather than only in the phase audit below: the audit derives the slice id
+\ itself, so it still names what a dark phase was carrying.
 
 : SLICE-CELL ( ptr a n -- ptr a ) {: base:ptr i:n :}
    i 0 < if E-SCHED-CAP throw then
@@ -542,6 +553,8 @@ variable NUM-D
 
 : SLICE-AT ( n -- ) {: i:n :}
    i LIVE-PHASE? 0= if exit then
+   i STARTED? 0= if exit then
+   i >IDX TEST:PHASE-RESIDENT? if exit then
    i >IDX TEST:STDLIB-SLICE? 0= if exit then
    i >IDX TEST:PHASE-SLICE-TOKEN STDLIB-GATE:SLICE-ID? MATCH option
      none OF exit ENDOF

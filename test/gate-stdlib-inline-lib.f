@@ -848,7 +848,19 @@ public
    s" lib/ptx/ad-test.f" GSI-INCLUDE
    s" lib/ptx/ad-dag-test.f" GSI-INCLUDE
    s" lib/ptx/ad-dag-eval-test.f" GSI-INCLUDE
-   s" lib/ptx/ad-saved-test.f" GSI-INCLUDE ;
+   s" lib/ptx/ad-saved-test.f" GSI-INCLUDE
+   \ The five members of SUITE ptx-stdlib that this list did not carry. The
+   \ registration is selected by SUITE-LINT-LIBS-LABEL?, and the lint-libs slice
+   \ is asked for by phase $13, which the deferred table does not start, and by
+   \ the resident splits $1E..$21, which read these lists and no registration -
+   \ so a member missing from here ran nowhere at all. The two cuda files load
+   \ the driver through dlopen and report it unavailable off-device, which is
+   \ the same shape as their neighbours here.
+   s" lib/ptx/sentinel-test.f" GSI-INCLUDE
+   s" lib/ptx/cuda-driver-test.f" GSI-INCLUDE
+   s" lib/ptx/cuda-scope-test.f" GSI-INCLUDE
+   s" lib/ptx/ad-gen-test.f" GSI-INCLUDE
+   s" src/arch/ptx/vjp-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-LIBS-PTX-NEG ( -- )
    s" stdlib/lint-libs/ptx-neg" GSI-GROUP-SEQ GSI-GROUP-HEADER
@@ -886,19 +898,19 @@ public
    s" tools/ptx/device-gold-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/cuda-scope-leak-proof-test.f" GSI-INCLUDE \ ( -- ) host-only CUDA-lifecycle leak proof
    s" tools/ptx/attention-bench-test.f" GSI-INCLUDE ; \ ( -- )
-\ NOTE: the device/bench tools (bandwidth-lib-test, fusion-compare, gemm-bench, attention-bench)
-\ run only in the ptx-toolchain suite of the MANUAL lint-libs slice
-\ (`bin/hb --load test/gate-stdlib.f -- lint-libs`, a documented merge gate -
-\ test/run.f does NOT schedule the spawned slices), where they compile-check +
-\ device-SKIP in a fresh image. Loaded into the resident full-runner image they
-\ SIGBUS, so the inprocess list carries the unit tests + the substantive perf
-\ regression scan. That scan runs via perf-regress-test.f (an argv-free checked
-\ fixture: committed-registry PERF:LOAD + PERF:SCAN); the CLI tools/ptx/perf-regress.f
-\ resolves its registry path from ambient SCRIPT-ARGV, so in the resident image it
-\ would mis-read the harness argv as a path - it is spawn-only, run in a fresh
-\ image with clean argv. The spawned list stays a superset. Retire the duplication
-\ + give the bench compile-checks a scheduled runner per
-\ habu-derive-inprocess-spawned-a54e760d.
+\ NOTE: the device and bench tools are NOT in this list and cannot be. Loaded into
+\ the resident full-runner image they SIGBUS, and the CLI tools/ptx/perf-regress.f
+\ resolves its registry path from ambient SCRIPT-ARGV, so here it would mis-read
+\ the harness argv as a path. What they need is a fresh process with clean argv,
+\ and they now have a SCHEDULED one: `SUITE ptx-toolchain-spawned` in
+\ test/gate-stdlib-cases.f, selected by SUITE-TAIL-PROCESS? and spawned one
+\ process per suite by phase $4 of test/run-lib.f, which is started and is not
+\ resident. The two halves are disjoint now, not a list and its superset: this one
+\ holds the in-process unit tests plus the argv-free perf regression scan
+\ (perf-regress-test.f - committed-registry PERF:LOAD + PERF:SCAN), and that
+\ registration holds the nineteen that need an image of their own. That is the
+\ scheduled runner habu-derive-inprocess-spawned-a54e760d asked for, and the
+\ duplication it asked to retire is retired with it.
 
 : GSI-LINT-ARTIFACTS-FAST ( -- )
    s" stdlib/lint-artifacts/fast" GSI-GROUP-SEQ GSI-GROUP-HEADER
@@ -913,6 +925,16 @@ public
    s" test/golden-test.f" GSI-INCLUDE
    s" tools/diagnose-hb-test.f" GSI-INCLUDE
    s" lib/object-test.f" GSI-INCLUDE ;
+
+\ tools/imgdump-test.f and tools/imagedisasm-test.f are deliberately NOT in the
+\ list above, though they are the lint-artifacts slice's only two registrations.
+\ Each requires its tool, and both tools end in `SCRIPT-ARGC 0 > IF <MAIN> THEN`
+\ (tools/imgdump.f, tools/imagedisasm.f): loaded into an image that has ANY
+\ script argv they run their CLI against that argv and die - rc 74 and rc 64,
+\ measured, both under `test/run.f -- --under bin/hb` and under
+\ gate-runner-entry, which always passes a group token. They need a process with
+\ argv of their own, so they are spawned from the tail slice instead; see
+\ SUITE-TAIL-PROCESS? in test/gate-stdlib-lib.f.
 
 ;package
 
