@@ -413,6 +413,47 @@ variable BAND-WID
    EXITED @ TTRUE  RC @ 0 T=
    PARSE-OUT 0 > TTRUE ;
 
+\ ---- the code-region hint clears the loaded snapshot ------------------------
+: PAGE-UP ( n -- n )
+   PROT-PAGE-MAX 1- +  PROT-PAGE-MAX 1- invert and ;
+
+: IMAGE-BASE-VA ( -- n )
+   HB-TARGET-LINUX? if 80 else $80 then U64@ ;
+
+: IMAGE-END-VA ( -- n )
+   HB-TARGET-LINUX? if
+      136 U64@ 160 U64@ + exit
+   then
+   $1B0 U64@ $1B8 U64@ + ;
+
+: RECORDED-TEXT-BASE ( -- n )
+   IMAGE-BASE-VA CODE-OFF + ;
+
+: IMAGE-END-FROM-TEXT ( -- n )
+   IMAGE-END-VA RECORDED-TEXT-BASE - ;
+
+: RECORDED-HINT ( -- n )
+   RECORDED-TEXT-BASE REGION-OFF + PAGE-UP ;
+
+: WARM-PROBE ( ptr u8 n -- n )
+   WARM-STDIN
+   EXITED @ TTRUE
+   RC @ 0 T=
+   PARSE-OUT ;
+
+: REGION-HINT-CASE ( -- )
+   SNAP0$ LOAD-IMAGE
+   s" snapshot image covers the old fixed hint" T-LABEL
+   IMAGE-END-VA RECORDED-HINT > TTRUE
+   s" an image covering the canonical hint boots and computes" T-LABEL
+   s" 1 2 + ." WARM-PROBE 3 T=
+   HB-TARGET-LINUX? if
+      s" rbase ." WARM-PROBE {: rb:n :}
+      s" dbase@ ." WARM-PROBE {: db:n :}
+      s" the code region starts after the mapped image" T-LABEL
+      db rb IMAGE-END-FROM-TEXT + PAGE-UP >= TTRUE
+   then ;
+
 \ ---- scenarios ----
 : POISON-CASE ( -- )
    s" test/snapshot-writer-poison.f" BUILD-WITH
@@ -439,6 +480,7 @@ variable BAND-WID
 : BODY ( -- )
    SETUP-ROOT
    POISON-CASE
+   REGION-HINT-CASE
    CLOSE-FAIL-CASE ;
 
 public

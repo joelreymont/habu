@@ -9,10 +9,17 @@ using HB-BUILD-CLI                       \ the preseed knobs and the json flag
 
 46 constant DOT
 99 constant C-LOWER
-$10000 constant STRIPPED-TEXT-MAX
+\ Linux reports the padded RX segment; macOS reports the __text section.
+$10000 constant STRIPPED-TEXT-MACOS-MAX
+48 constant PH-ALIGN-OFF       \ p_align inside an Elf64_Phdr; the rest are GB-ELF-PH-*-OFF
 $D63F0200 constant BLR-X16     \ arm64 `blr x16`: an indirect engine-address call the linker never emits
 
 variable BLR-CNT
+
+: STRIPPED-TEXT-MAX ( -- n )
+   HB-TARGET-LINUX? if PROT-PAGE-MAX 2 * exit then
+   STRIPPED-TEXT-MACOS-MAX ;
+
 \ Count `blr x16` words in the built image's executable text region. A correctly
 \ linked stripped image has none: under the direct-BL-only contract every native call
 \ is a direct BL that the linker relocates in place to a PC-relative branch into the
@@ -48,6 +55,15 @@ variable BLR-CNT
 : PH-FILESZ ( n -- n )
    GB-ELF-PH-OFF GB-ELF-PH-FILESZ-OFF + GB-U64-OFF ;
 
+: PH-ALIGN ( n -- n )
+   GB-ELF-PH-OFF PH-ALIGN-OFF + GB-U64-OFF ;
+
+\ Verify the real ELF headers keep RX and RW on maximum-page boundaries.
+: PH-LOAD-ALIGNED ( n ptr u8 n -- ) {: idx:n label:ptr labelu:n :}
+   idx PH-ALIGN PROT-PAGE-MAX < if label labelu GE-FAIL then
+   idx PH-FILE-OFF idx PH-ALIGN mod 0 <> if label labelu GE-FAIL then
+   idx PH-VADDR    idx PH-ALIGN mod 0 <> if label labelu GE-FAIL then ;
+
 : ELF-TEXT-SZ ( -- n )
    0 PH-FILESZ ;
 
@@ -70,6 +86,8 @@ variable BLR-CNT
    1 PH-FLAGS GB-ELF-PF-R GB-ELF-PF-W or label labelu N=
    1 PH-VADDR ELF-RW-VA label labelu N=
    1 PH-FILESZ GB-ELF-RW-SZ label labelu N=
+   0 label labelu PH-LOAD-ALIGNED
+   1 label labelu PH-LOAD-ALIGNED
    2 PH-TYPE GB-ELF-PT-INTERP label labelu N=
    2 PH-FILE-OFF GB-ELF-INTERP-OFF label labelu N=
    2 PH-FILESZ GB-ELF-INTERP-SZ label labelu N=

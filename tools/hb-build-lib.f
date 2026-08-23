@@ -48,6 +48,8 @@ create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-TMP-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-LOCK-PATH FS-PATH-CAP allot
+create HBB-INSTALL-TMP-PATH FS-PATH-CAP allot
+variable HBB-INSTALL-TMP-U
 create HBB-ARTIFACT-NAME-BUF 128 allot
 create HBB-ARTIFACT-KEY-HEX 80 allot
 create HBB-LF-BUF 1 allot
@@ -697,9 +699,42 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-MAKER-READY? ( -- bool )
    HBB-MAKER$ EXECUTABLE? ;
 
+: HBB-INSTALL-TMP$ ( -- ptr u8 n )
+   HBB-INSTALL-TMP-PATH HBB-INSTALL-TMP-U @ ;
+
+\ Unique destination-sibling staging path for same-directory publication.
+: HBB-INSTALL-TMP! ( ptr u8 n -- ) {: dst:ptr dstu:n :}
+   SB-RESET
+   dst dstu SB-APPEND
+   s" ." SB-APPEND  getpid FS-MUT-SB-U
+   s" -" SB-APPEND  mono-ns FS-MUT-SB-U
+   s" .tmp" SB-APPEND
+   SB$ {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a HBB-INSTALL-TMP-PATH u BYTE-COPY
+   u HBB-INSTALL-TMP-U ! ;
+
+\ Copy across filesystems, then chmod and rename within the destination directory.
+: HBB-PUBLISH-CLEAN-TMP ( -- )
+   HBB-INSTALL-TMP$ EXISTS? if
+      [: HBB-INSTALL-TMP$ REMOVE-FILE ;] catch drop
+   then ;
+
+: HBB-PUBLISH-DONE ( n -- ) {: rc:n :}
+   rc 0 <> if
+      HBB-PUBLISH-CLEAN-TMP
+      rc throw
+   then ;
+
+: HBB-INSTALL-MAKER-ACT ( -- )
+   s" stage2-got" BF-A$ HBB-INSTALL-TMP$ COPY-FILE-STREAM
+   HBB-INSTALL-TMP$ CHMOD-X
+   HBB-INSTALL-TMP$ HBB-MAKER$ RENAME-FILE ;
+
 : HBB-INSTALL-MAKER ( -- )
-   s" stage2-got" BF-A$ HBB-MAKER$ RENAME-FILE
-   HBB-MAKER$ CHMOD-X ;
+   HBB-MAKER$ HBB-INSTALL-TMP!
+   [: HBB-INSTALL-MAKER-ACT ;] catch HBB-PUBLISH-DONE
+   s" stage2-got" BF-A$ REMOVE-FILE ;
 
 \ Attributable maker-build failure: the child engine's diagnostics stream to
 \ the inherited stderr, but a silent child (e.g. an uncaught throw) must still
@@ -815,11 +850,16 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-REMOVE-OUT ( -- )
    HBB-OUT$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
+: HBB-INSTALL-OUT-ACT ( -- )
+   HBB-GOT-NAME$ BF-A$ HBB-INSTALL-TMP$ COPY-FILE-STREAM
+   HBB-INSTALL-TMP$ CHMOD-X
+   HBB-INSTALL-TMP$ HBB-OUT$ RENAME-FILE ;
+
 : HBB-INSTALL-OUT ( -- )
    HBB-GOT-NAME$ BF-EXPECT
-   HBB-REMOVE-OUT
-   HBB-GOT-NAME$ BF-A$ HBB-OUT$ RENAME-FILE
-   HBB-OUT$ CHMOD-X ;
+   HBB-OUT$ HBB-INSTALL-TMP!
+   [: HBB-INSTALL-OUT-ACT ;] catch HBB-PUBLISH-DONE
+   HBB-GOT-NAME$ BF-A$ REMOVE-FILE ;
 
 : HBB-ARTIFACT$ ( -- ptr u8 n )
    HBB-ARTIFACT-PATH HBB-ARTIFACT-U @ ;

@@ -4514,7 +4514,23 @@ s" c-local-ref" s" label label --" TRUST
    \ We ask for PROT-PAGE-MAX extra bytes and round the base up, so the region base keeps
    \ the 64 KiB alignment LPROT flips protection at even when the kernel moves us to an
    \ address that is only page aligned.
-   6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,  9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,  6 6 16 LSRI,  6 6 16 LSLI,   \ x6 = 64KB-aligned hint
+   6 REGION-OFF LIT64,  6 XREG-RBASE 6 ADD,
+   9 PROT-PAGE-MAX 1 - MOVZ,  6 6 9 ADD,
+   9 PROT-PAGE-MAX negate LIT64,  6 6 9 AND,       \ x6 = page-aligned canonical hint
+   \ Clamp the hint after the last segment described by the loaded image.
+   9 CODE-OFF MOVZ,  9 XREG-RBASE 9 SUB,           \ x9 = this run's image base
+   HB-TARGET-LINUX? IF
+      7 9 136 LDR,  8 9 80 LDR,  7 7 8 SUB,
+      8 9 160 LDR,
+   ELSE
+      7 9 $1B0 LDR,  8 9 $80 LDR,  7 7 8 SUB,
+      8 9 $1B8 LDR,
+   THEN
+   7 7 8 ADD,                                      \ x7 = final segment end offset
+   7 9 7 ADD,
+   8 PROT-PAGE-MAX 1 - MOVZ,  7 7 8 ADD,
+   8 PROT-PAGE-MAX negate LIT64,  7 7 8 AND,
+   6 7 CMP,  6 6 7 C-HI CSEL,                      \ x6 = the higher of hint and image end
    0 6 0 ADDI,  1 REGION PROT-PAGE-MAX + LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    \ SYS, leaves the same syscall-error convention on both targets -- Darwin sets the
@@ -4525,7 +4541,8 @@ s" c-local-ref" s" label label --" TRUST
       1 LMMAPCODE LABEL@ ADR,  0 2 MOVZ,  2 MMAPCODE-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    rok LBL,
-   9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,  0 0 16 LSRI,  0 0 16 LSLI,   \ x0 = 64KB-aligned region base inside the mapping
+   9 PROT-PAGE-MAX 1 - MOVZ,  0 0 9 ADD,
+   9 PROT-PAGE-MAX negate LIT64,  0 0 9 AND,       \ page-aligned region base
    \ Boot BL-range assertion (permanent guarantee stage C's direct BL relies on): the
    \ whole region must lie within +/-128 MiB of __text. region_end - __text base is the
    \ farthest displacement; die named if it reaches BL-REACH. x0 (region base) survives.
@@ -5871,7 +5888,7 @@ public
       snbadver:label snpresent:label :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
-   10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
+   10 9 0 ADDI,  5 CODE-OFF LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,                   \ S = our executable text size
    12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,   \ x12 = trailer END (base+SNL+ADJ)
    \ The executable header is consumed by the OS loader and therefore owns the
@@ -5880,6 +5897,8 @@ public
    \ base IS that length (page-rounded on ELF, which pads its text). A larger
    \ authenticated text extent means a snapshot exists, so missing trailer magic
    \ is corruption.
+   \ Reconstruct the cold extent with the writer's maximum-page rounding,
+   \ including and then removing the target's content adjustment.
    \ This used to add up the layout instead - LSRC plus the padded baked source -
    \ which was true only while the source was the last thing emitted. It stopped
    \ being true when the AOT payload moved after it (dot
@@ -5887,8 +5906,10 @@ public
    \ corrupt snapshot. A label cannot go stale that way.
    14 LIMGEND LABEL@ LOFF,
    HB-TARGET-LINUX? IF
-      5 $FFF MOVZ,  14 14 5 ADD,
-      5 -$1000 LIT64,  14 14 5 AND,
+      5 IMAGE-TEXT-CONTENT-ADJ LIT64,  14 14 5 ADD,
+      5 PROT-PAGE-MAX 1 - MOVZ,  14 14 5 ADD,
+      5 PROT-PAGE-MAX negate LIT64,  14 14 5 AND,
+      5 IMAGE-TEXT-CONTENT-ADJ LIT64,  14 14 5 SUB,
    THEN
    5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
    11 14 CMP,  C-LT snbad BCOND,  C-GT snpresent BCOND,

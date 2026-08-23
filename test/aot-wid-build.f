@@ -210,7 +210,7 @@ create DRV-CH 1 allot
 : SPAN-FORGE-LINE ( -- )
    s" HABU_AOT_SPAN" GETENV {: v:ptr vu:n :}
    vu 0 > if
-      v vu DRV+  s"  AOT-DATA-SIZE !" DRV-LINE
+      v vu DRV+  s"  AOT-BUF:AOT-DATA-SIZE !" DRV-LINE
    then ;
 
 \ Optional wid-window forges (dot habu-rebase-captured-wids-54dec421). The seed

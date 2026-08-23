@@ -51,10 +51,8 @@ $A00000 constant REGION
 \ sentinel and the loader rebases them back to the live region base, keeping images
 \ byte-identical across runs and imgdump's region->offset math target-independent.
 $300000000 constant RBASE-VA
-\ REGION-OFF: offset of the live region base past the runtime-discovered __text base
-\ (XREG-RBASE). Clears the loaded image with wide headroom and keeps region_end -
-\ __text (= REGION-OFF + REGION) far below BL-REACH. A multiple of the largest target
-\ page (16 KiB on macOS) so the mmap hint is page-aligned on both targets.
+\ Canonical code-region hint past __text. The engine clamps it after the loaded
+\ image and checks the resulting mapping against BL-REACH at boot.
 $1000000 constant REGION-OFF
 \ BL-REACH: AArch64 BL imm26 reach (+/-128 MiB). The boot assertion dies BL-RANGE-RC
 \ if the mapped region falls outside this of __text -- the permanent guarantee stage

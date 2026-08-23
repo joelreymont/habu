@@ -1,6 +1,8 @@
 \ elf.f -- dynamic Linux/aarch64 ELF executable writer.
 \ Provides the same image-builder surface as the Mach-O writer: MBUF, MLEN@/!,
 \ CODE-OFF, MPAGE, ASM-CODE, BUILD-IMAGE.
+\ Every PT_LOAD sits on a PROT-PAGE-MAX boundary so the text and the read-write
+\ tail never share a kernel page on any supported page size.
 \ Snapshot extras name the staged dynamic/GOT tail and its fixed byte size.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 
@@ -61,13 +63,12 @@ CODE-CAP-BYTES CODE-OFF + constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 
-\ Fail closed at load time: the image buffer must fit the largest emittable
-\ image (text at MPAGE + the RW tail) so the loud MPAGE code-window guard
-\ stays the binding constraint, never a silent M-BOUNDS-RC throw from the
-\ byte cursor. MSIZE belongs to the target-neutral src/os/image-bytes.f, which
-\ cannot see this target's tail, so this is the check that binds the two.
+: ELF-PAGE-UP ( n -- n )
+   PROT-PAGE-MAX 1- + PROT-PAGE-MAX 1- invert and ;
+
+\ The image buffer includes the maximum-page-rounded text and its RW tail.
 : ELF-MSIZE-CHECK ( -- )
-   MPAGE ELF-RW-SZ + MSIZE >
+   MPAGE ELF-PAGE-UP ELF-RW-SZ + MSIZE >
    IF s" elf: MSIZE below max image" 73 die THEN ;
 ELF-MSIZE-CHECK
 
@@ -78,7 +79,7 @@ ELF-MSIZE-CHECK
    ASM-CODELEN!
    ASM-PHASE ;
 
-: TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $FFF +  $FFF invert and ;
+: TEXTSZ ( -- n )  CODE-OFF CODELEN @ + ELF-PAGE-UP ;
 
 : ELF-VA ( n -- n )
    VMBASE + ;
@@ -118,10 +119,10 @@ ELF-MSIZE-CHECK
    align IMG-M64 ;
 
 : ELF-RX-PHDR, ( -- )
-   PT-LOAD PF-RX 0 VMBASE ELF-TEXT-SIZE @ $1000 ELF-PHDR, ;
+   PT-LOAD PF-RX 0 VMBASE ELF-TEXT-SIZE @ PROT-PAGE-MAX ELF-PHDR, ;
 
 : ELF-RW-PHDR, ( -- )
-   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ $1000 ELF-PHDR, ;
+   PT-LOAD PF-RW ELF-TEXT-SIZE @ ELF-RW-VA ELF-RW-SZ PROT-PAGE-MAX ELF-PHDR, ;
 
 : ELF-INTERP-PHDR, ( -- )
    PT-INTERP PF-R ELF-INTERP-OFF ELF-INTERP-OFF ELF-VA ELF-INTERP-SZ 1
@@ -230,7 +231,7 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    IMG-PHASE ;
 
 : BUILD-SNAP-HDR ( n -- snap n ) {: snl :}
-   CODE-OFF snl + $FFF + $FFF invert and {: sfts :}
+   CODE-OFF snl + ELF-PAGE-UP {: sfts:n :}
    sfts ELF-TEXT-SIZE !
    M-RESET
    ELF-HDR,
