@@ -49,8 +49,12 @@
 \ that runs in its context.
 
 require lib/test.f
+require lib/prelude.f
+require lib/string.f
+require lib/errors.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
+require src/compiler/native/migrate.f
 require test/compiler/native-chain-fixture.f
 require test/compiler/native-run-fixture.f
 
@@ -742,6 +746,98 @@ $54000000 constant BCOND-FORM
    s" a definition that calls itself compiles and runs" T-LABEL
    NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 3628800 T= 1 T= 3628800 T= 0 T= 3 T= ;
+
+\ ---- the same call, staged one function deeper -------------------------------
+\ FACT-CASE's self-call written inside a quotation. `RECURSE` names the
+\ DEFINITION and not the body the token stands in, at any depth: the engine's own
+\ compilation branches to the open definition's entry (src/habu/habu2.f
+\ J-RECURSE loads PEND), and the checker types the token as the definition's
+\ declared effect however many `[:` are open around it. Both of those are right.
+\
+\ WHAT WAS WRONG WAS THE CHAIN, IN THREE PASSES THAT EACH SAID "THIS FUNCTION"
+\ WHERE THE MODEL SAYS "FUNCTION ZERO". src/compiler/native/select.f SELF-SHAPE
+\ took the call's shape off the arity of the function being SELECTED;
+\ src/compiler/native/emit.f PUT-CALL branched to block zero of the function
+\ being WRITTEN; and src/compiler/native/regalloc-verify.f VDNET-CK re-derived
+\ the site's pointer movement from the net movement of the function being
+\ VERIFIED. Inside function zero those are three names for one number and every
+\ answer was right, which is why FACT-CASE above never saw any of it. Inside a
+\ quotation's function they are three different numbers, and the routine the
+\ chain published had the quotation calling ITSELF. The elaborator was right all
+\ along: it stages the self-call with the DEFINITION's arity wherever the token
+\ stands.
+\
+\ SO THE MISS BELONGS TO THE CODEGEN MODEL AND NOT TO THE CHECKER, and that is
+\ why this pair is a differential and not a rejection: a quotation-depth guard on
+\ the checker's CF-RECURSE would refuse a program the engine compiles, runs and
+\ answers correctly.
+\
+\ THE TWO CASES ARE THE TWO WAYS IT CAME OUT. When the body's window and the
+\ definition's arity AGREE nothing refused anything - the three numbers still
+\ matched each other, they just all named the quotation - so the published
+\ routine recursed inside the quotation, bottomed out at zero and ran the
+\ definition's tail exactly once: a flat 100 at every depth where the word
+\ answers 100, 200, 300, 400, at exit zero, with no diagnostic anywhere. When
+\ they DISAGREE the chain refused, but with E-A64SEL-CALL, which lib/errors.f
+\ documents as unreachable from any contract src/compiler/native/abi.f builds -
+\ "a defect in the chain rather than a program it cannot compile". So the second
+\ case pins a refusal that was a self-diagnosis rather than a verdict, and both
+\ of them now answer what the interpreted word answers.
+\
+\ AND THE ENTRY IS THE MIGRATION RATHER THAN THIS SUITE'S STAGE FIXTURE. A
+\ quotation makes the emission multi-function and turns its `catch` into a call
+\ to a routine of the engine's, which needs a placement declared before emission
+\ to measure its branch from; the stage fixture declares none and answers
+\ E-A64EMIT-PLACE, so these two go through NMIGRATE:DEFINE - the production
+\ entry the other quotation suites drive.
+
+\ The two the engine compiles, which are the spec.
+: NCH-QWALK ( n -- n )
+   [: dup 0 > if 1- RECURSE then ;] catch drop 100 + ;
+
+: NCH-QWIDE ( n -- n n )
+   [: dup 0 > if 1- RECURSE drop 10 + then ;] catch ;
+
+\ And the same two texts, character for character but for the suffix on each
+\ name, put through the chain. They are published as the file loads, because a
+\ chain that cannot compile them at all has to say so where it happens.
+: QWALK-DEF ( -- )
+   s" : NCH-QWALK-N ( n -- n ) [: dup 0 > if 1- RECURSE then ;] catch drop 100 + ;"
+   NMIGRATE:DEFINE ;
+
+\ The one whose quotation window is not the definition's arity: the body takes
+\ and leaves one cell, the definition leaves two, and the self-call inside the
+\ body is the site where those two counts meet.
+: QWIDE-DEF ( -- )
+   s" : NCH-QWIDE-N ( n -- n n ) [: dup 0 > if 1- RECURSE drop 10 + then ;] catch ;"
+   NMIGRATE:DEFINE ;
+
+QWALK-DEF
+QWIDE-DEF
+
+\ THE ANSWERS ARE BOUND BEFORE EITHER IS COMPARED for the pair that leaves two
+\ cells: a catch site publishes its window AND its code, so four cells over two
+\ bare comparators would hold each call's answer against its own.
+: QWALK= ( n -- ) {: v:n :}
+   v NCH-QWALK  v NCH-QWALK-N  T= ;
+
+: QWIDE= ( n -- ) {: v:n :}
+   v NCH-QWIDE   v NCH-QWIDE-N
+   {: eu:n er:n cu:n cr:n :}
+   er cr T=  eu cu T= ;
+
+\ FIVE DEPTHS AND NOT ONE. Zero never enters the recursion at all, so it is the
+\ depth a quotation calling itself gets RIGHT; every depth above it is one the
+\ two targets disagree about, and the wrong one answers the same number at all
+\ of them.
+: QWALK-CASE ( -- )
+   s" a definition that calls itself from inside a quotation runs" T-LABEL
+   0 QWALK=  1 QWALK=  2 QWALK=  3 QWALK=  7 QWALK= ;
+
+: QWIDE-CASE ( -- )
+   s" the same call where the body's window is not the definition's arity"
+   T-LABEL
+   0 QWIDE=  1 QWIDE=  2 QWIDE=  3 QWIDE= ;
 
 \ ---- a definition that does not fit in its registers -------------------------
 \ The same run over a routine of more than one block whose values do not all fit
@@ -1494,6 +1590,8 @@ public
    NESTW-CASE
    ELSEXIT-CASE
    FACT-CASE
+   QWALK-CASE
+   QWIDE-CASE
    ISLT-CASE
    LTKEEP-CASE
    SPILL-CASE

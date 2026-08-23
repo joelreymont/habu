@@ -843,12 +843,19 @@ variable KEPT-F
    id 0 RESULT-AT  TOK  VBIND
    N-CALLS @ 1+ N-CALLS ! ;
 
-\ A call to THIS routine keeps nothing: its contract destroys exactly the
-\ registers the allocator hands out.
+\ A self-call is RECURSE, which names the DEFINITION and not the body the token
+\ stands in, so its shape is the CONTRACT's declaration - function zero's arity -
+\ and not the arity of the function being selected. FUN-PLACES! holds those two
+\ to the same numbers for function zero and to different ones for a quotation's
+\ function, which is where reading the wrong one showed.
+\
+\ AND IT KEEPS NOTHING ACROSS THE CALL either way, because the callee is a
+\ function of THIS emission: it destroys exactly the registers the allocator
+\ hands out here.
 : SELF-SHAPE ( IR-ID:ir-op-id -- n n n n )
    {: id:IR-ID:ir-op-id :}
-   ARGS SLOT-POSITIONS {: a:n :}
-   OUTS SLOT-POSITIONS {: r:n :}
+   S-DECL-IN @ {: a:n :}
+   S-DECL-OUT @ {: r:n :}
    id a r CALL-LIVE {: k:n :}
    a r k 0 ;
 

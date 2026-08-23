@@ -1005,6 +1005,13 @@ variable VD-ENTRY                    \ where the caller leaves it: 8*in
 variable VD-LEAVE                    \ where the caller expects it back: 8*out
 0 VD-LEAVE !
 
+\ A self-call is RECURSE, which names the DEFINITION - function zero - wherever
+\ the token stands, so what one does to the pointer is the DEFINITION's net
+\ movement and not the movement of the body the site is in. The two are the same
+\ number inside function zero and are not inside a quotation's function.
+variable VD-SELF                     \ what a self-call does to the pointer: 8*(out-in) of the definition
+0 VD-SELF !
+
 256 constant VDREQ-MAX               \ places one routine's collection holds
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -1512,7 +1519,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    {: id:IR-ID:ir-op-id :}
    id VCALL-ENTRY NOSLOT <> if exit then
    id DBACK-OF  id DBYTES-OF -  {: net:n :}
-   net  VD-LEAVE @ VD-ENTRY @ -  <> if E-A64RAV-CALL throw then ;
+   net VD-SELF @ <> if E-A64RAV-CALL throw then ;
 
 : VDREQ+ ( n -- )
    {: at:n :}
@@ -1752,6 +1759,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    pool 0 V-POOL !
    fpool 0 V-FPOOL !
    pool fpool CONTRACT-CK
+   outs A64EFF:SEQ-SLOTS  args A64EFF:SEQ-SLOTS -  A64IR:SLOT-WIDTH *  VD-SELF !
    m VIEWS!
    VALS-N!
    TABLES-CLEAR
