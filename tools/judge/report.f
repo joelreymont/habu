@@ -2,26 +2,31 @@
 \ checked against. One concern: rendering what a run measured, and saying
 \ whether the tree still agrees with it.
 \
-\ WHY THE ARTIFACT IS COMPARED AS TEXT. Every column in it is exact: a byte
+\ WHY THE CHECKED HALF IS COMPARED AS TEXT. Every column of it is exact: a byte
 \ count is read off a word's own dictionary record and is the same number on
 \ every host in every run, a refusal code is what the compiler answered, and a
-\ verdict follows from the two. So the whole file is a value the tree either
-\ still produces or does not, and the check is a comparison of what this run
-\ renders with what is committed - line for line, byte for byte. There is
-\ nothing to parse and so nothing a parser could read past.
+\ verdict follows from the two. So that half is a value the tree either still
+\ produces or does not, and the check is a comparison of what this run renders
+\ with what is committed - line for line, byte for byte. There is nothing to
+\ parse and so nothing a parser could read past.
 \
-\ WHAT MOVES THE ARTIFACT, AND WHAT THAT MEANS. The chain emitting different
-\ code moves a byte column; the chain gaining a capability turns a REFUSED row
-\ into a compiled one; the chain losing one turns a compiled row into REFUSED;
-\ and a change to the C twins moves the reference column. Every one of those is
-\ a thing somebody did on purpose, so the artifact is regenerated in the same
-\ change, and the diff is the record of what moved.
+\ WHAT MOVES THE CHECKED HALF, AND WHAT THAT MEANS. The chain emitting
+\ different code moves a byte column; the chain gaining a capability turns a
+\ REFUSED row into a compiled one; the chain losing one turns a compiled row
+\ into REFUSED. Every one of those is a thing somebody did on purpose, so the
+\ artifact is regenerated in the same change, and the diff is the record of
+\ what moved.
 \
-\ THE REFERENCE COLUMN IS PART OF THE COMPARISON AND THE ABSENCE OF IT IS NOT.
-\ A host with no C compiler has no reference column, and the artifact says so on
-\ its own line rather than falling silent; a host that HAS one must produce the
-\ committed numbers, because what clang emits for a fixed C file with fixed
-\ flags is a fact about that toolchain and a change in it is worth seeing.
+\ THE REFERENCE COLUMN IS NOT PART OF THE COMPARISON. What clang emits for a
+\ fixed C file with fixed flags is a fact about a toolchain and a host, not
+\ about habu: no mutation of habu can falsify one of its cells, which is what
+\ docs/proofs.md asks of anything standing inside a gate. The column is also
+\ Mach-O only by construction today - tools/codegen-compare-cc.f DECIDE refuses
+\ when HB-TARGET-MACOS? is false, because the byte counts come out of `nm -m`
+\ and `size -m` - so a Linux host has no column at all and a compared cell
+\ would be red there for no habu reason. It is measured every run and PRINTED
+\ BELOW THE MARKER, its absence stated on its own line rather than fallen
+\ silent over, and it stays the parity target docs/codegen-parity.md calls it.
 
 require lib/errors.f
 require lib/prelude.f
@@ -36,7 +41,11 @@ package JUDGE-REPORT
 
 private
 
-$4000 constant TEXT-MAX
+\ Room for the whole artifact, both halves. The printed half carries a row per
+\ subject twice over - the reference column and the costs - so this grows three
+\ lines per corpus row added, and APPEND throws rather than truncating when it
+\ runs out.
+$6000 constant TEXT-MAX
 create TEXT TEXT-MAX allot
 variable TEXT-U
 
@@ -79,10 +88,6 @@ variable TEXT-U
    k JUDGE-ROW:REFUSED? if k JUDGE-ROW:NEW-RC@ NUM-COL NUM-RIGHT exit then
    k JUDGE-ROW:NEW-BYTES@ NUM-COL NUM-RIGHT ;
 
-: REF-CELL ( n -- ) {: k:n :}
-   k JUDGE-ROW:COVERED? 0= if NUM-COL DASH-RIGHT exit then
-   k JUDGE-ROW:REF-BYTES@ NUM-COL NUM-RIGHT ;
-
 \ A data-stack traffic cell. A column with no routine to read - the chain on a
 \ refused row - carries a dash rather than a zero, because zero accesses is
 \ something a routine can really make and a missing routine is not.
@@ -94,7 +99,6 @@ variable TEXT-U
    k JUDGE-ROW:NAME$ NAME-COL PAD-RIGHT
    k JUDGE-ROW:OLD-BYTES@ NUM-COL NUM-RIGHT
    k CHAIN-CELL
-   k REF-CELL
    k JUDGE-ROW:OLD-TRAFFIC@ TRAFFIC-CELL
    k JUDGE-ROW:NEW-TRAFFIC@ TRAFFIC-CELL
    s"   " APPEND
@@ -106,10 +110,13 @@ variable TEXT-U
    s" habu code generator judge" LINE
    s" =========================" LINE
    NL
-   s" One row per corpus subject, three code generators, judged on the bytes of" LINE
-   s" machine code each emitted for the SAME program. The engine's emitter and the" LINE
-   s" native chain compile one text - the corpus source file itself, read by" LINE
-   s" tools/judge/src.f - and clang -O2 compiles a C twin of it." LINE
+   s" One row per corpus subject, judged on the bytes of machine code each habu" LINE
+   s" code generator emitted for the SAME program: the engine's emitter and the" LINE
+   s" native chain, which compile one text - the corpus source file itself, read" LINE
+   s" by tools/judge/src.f. A third generator, clang -O2 over a C twin of the same" LINE
+   s" program, is measured every run and PRINTED BELOW THE MARKER, because what a" LINE
+   s" host's toolchain emits is a fact about that host and no change to habu can" LINE
+   s" falsify one of its cells." LINE
    NL
    s" Regenerate this file with ONE command, from the repository root:" LINE
    NL
@@ -181,22 +188,79 @@ variable TEXT-U
    s" own, which is why every number is pinned and none of them is a finding by" LINE
    s" itself." LINE
    NL
-   s" THE COSTS ARE BELOW THIS TABLE AND ARE NOT PART OF THE CHECK. A byte count" LINE
-   s" is the same number on every host in every run; a cost is a measurement, and" LINE
-   s" a machine with every core busy - which is what a gate is - moves one by more" LINE
-   s" than any honest tolerance would catch. So the check compares everything down" LINE
-   s" to the line that says so, and the costs are printed under it as what they" LINE
-   s" are, with the spread this run actually measured beside them." LINE
+   s" WHAT IS BELOW THE MARKER, AND WHY NONE OF IT IS CHECKED. Everything in the" LINE
+   s" table above is what habu's own chain determines, so it is the same number on" LINE
+   s" every host in every run and it is compared byte for byte. Two things are" LINE
+   s" not. A COST is a measurement, and a machine with every core busy - which is" LINE
+   s" what a gate is - moves one by more than any honest tolerance would catch." LINE
+   s" The REFERENCE COLUMN is what another compiler made of another program on" LINE
+   s" this host, and today it is Mach-O only: a host that is not Mach-O has no" LINE
+   s" column at all. Neither can be falsified by a change to habu, so neither is" LINE
+   s" inside the compared bytes; both are printed under the marker as what they" LINE
+   s" are, with the spread this run actually measured beside the costs." LINE
    NL
-   s" word                                old  chain  clang  ds-old  ds-new  verdict" LINE
-   s" --------------------------------  -----  -----  -----  ------  ------  -------" LINE ;
+   s" word                                old  chain  ds-old  ds-new  verdict" LINE
+   s" --------------------------------  -----  -----  ------  ------  -------" LINE ;
 
-\ How much of the reference object the table above accounts for.
+: TALLY ( -- )
+   NL
+   s" rows: " APPEND JUDGE-ROW:ROWS NUM$ APPEND
+   s" , refused by the chain: " APPEND JUDGE-ROW:REFUSED-ROWS NUM$ APPEND
+   s" , larger than the engine's: " APPEND JUDGE-ROW:LARGER-ROWS NUM$ APPEND
+   s" , columns disagreeing on the answer: " APPEND JUDGE-ROW:DISAGREEING-ROWS NUM$ APPEND
+   s" , leaving by a tail branch: " APPEND JUDGE-ROW:TAIL-ROWS NUM$ APPEND
+   s" , touching the caller's stack more often: " APPEND JUDGE-ROW:HEAVIER-ROWS NUM$ APPEND
+   s" , pinned inputs compared: " APPEND JUDGE-ROW:TOTAL-INPUTS NUM$ APPEND
+   s"  of which the C twins carry a program for: " APPEND
+   JUDGE-ROW:TOTAL-REF-INPUTS NUM$ LINE ;
+
+\ ---- the measured half -------------------------------------------------------
+\ Everything below MARK is printed and none of it is compared.
+
+: MARK$ ( -- ptr u8 n )
+   s" ---- measured on this host, printed and not checked -------------------" ;
+
+: MARK-LINE ( -- )
+   NL
+   MARK$ LINE ;
+
+\ ---- the reference column ----------------------------------------------------
+\ PRINTED HERE AND NOT COMPARED, for the reason the head of this file gives: a
+\ clang cell is a fact about a toolchain and a host, and no mutation of habu
+\ can falsify one. It stays what docs/codegen-parity.md calls it - the parity
+\ target, and the priority list read beside the two habu columns above.
+
+\ The reference's cell for one row: its bytes, or a dash where there is no C
+\ twin to read - a subject the C file does not carry, or a host with no
+\ reference column at all.
+: REF-CELL ( n -- ) {: k:n :}
+   k JUDGE-ROW:COVERED? 0= if NUM-COL DASH-RIGHT exit then
+   k JUDGE-ROW:REF-BYTES@ NUM-COL NUM-RIGHT ;
+
+\ How much of the reference object the table below accounts for.
 : REF-SUM ( -- n )
    0
    JUDGE-ROW:ROWS 0 ?do
       i JUDGE-ROW:COVERED? if i JUDGE-ROW:REF-BYTES@ + then
    loop ;
+
+\ HOW MANY TUPLES THE REFERENCE ACTUALLY REACHED, against how many the C file
+\ carries a program for. The second number is what the corpus rows and
+\ tools/clang/twins.c between them STATE, so it is the same on every host and
+\ the checked tally carries it; the first is what this run did, so a host with
+\ no reference column reads zero here. Printing both is what stops a comparison
+\ never made from reading as one made and passed.
+: REACHED-LINE ( -- )
+   s" pinned inputs the reference reached this run: " APPEND
+   JUDGE-ROW:TOTAL-REF-REACHED NUM$ APPEND
+   s"  of the " APPEND JUDGE-ROW:TOTAL-REF-INPUTS NUM$ APPEND
+   s"  the C twins carry a program for." LINE ;
+
+\ The line a reader - and tools/judge-test.f - finds this section by. It is
+\ fixed text on every host, so the fixture that proves this section sits below
+\ the marker needs no branch on which of the two notes below it got.
+: ANCHOR$ ( -- ptr u8 n )
+   s" THE REFERENCE COLUMN, MEASURED ON THIS HOST." ;
 
 \ THE WHOLE OBJECT, NOT ONLY THE TWINS THE TABLE NAMES. Two facts about the
 \ reference no per-twin column can carry, and both are exact for a given
@@ -211,33 +275,31 @@ variable TEXT-U
 \ instead of quietly missing.
 : REFERENCE-NOTE ( -- )
    NL
+   ANCHOR$ LINE
    CODEGEN-CLANG:PRESENT? 0= if
       s" no clang column on this host: " APPEND CODEGEN-CLANG:ABSENT-WHY$ LINE
+      REACHED-LINE
       exit
    then
    s" clang flags: " APPEND CODEGEN-CLANG:FLAGS$ LINE
    s" reference object: " APPEND CODEGEN-CLANG:TEXT-BYTES NUM$ APPEND
-   s"  bytes of __text, of which the rows above name " APPEND REF-SUM NUM$ APPEND
+   s"  bytes of __text, of which the rows below name " APPEND REF-SUM NUM$ APPEND
    s" ; plus " APPEND CODEGEN-CLANG:POOL-BYTES NUM$ APPEND
    s"  bytes of literal pool" LINE
-   s" that belongs to no one twin." LINE ;
+   s" that belongs to no one twin." LINE
+   REACHED-LINE ;
 
-: TALLY ( -- )
+: REF-LINE ( n -- ) {: k:n :}
+   k JUDGE-ROW:NAME$ NAME-COL PAD-RIGHT
+   k REF-CELL
+   NL ;
+
+: REFERENCE ( -- )
+   REFERENCE-NOTE
    NL
-   s" rows: " APPEND JUDGE-ROW:ROWS NUM$ APPEND
-   s" , refused by the chain: " APPEND JUDGE-ROW:REFUSED-ROWS NUM$ APPEND
-   s" , larger than the engine's: " APPEND JUDGE-ROW:LARGER-ROWS NUM$ APPEND
-   s" , columns disagreeing on the answer: " APPEND JUDGE-ROW:DISAGREEING-ROWS NUM$ APPEND
-   s" , leaving by a tail branch: " APPEND JUDGE-ROW:TAIL-ROWS NUM$ APPEND
-   s" , touching the caller's stack more often: " APPEND JUDGE-ROW:HEAVIER-ROWS NUM$ APPEND
-   s" , pinned inputs compared: " APPEND JUDGE-ROW:TOTAL-INPUTS NUM$ APPEND
-   s"  of which the reference reached: " APPEND JUDGE-ROW:TOTAL-REF-INPUTS NUM$ LINE ;
-
-\ ---- the measured half -------------------------------------------------------
-\ Everything below MARK is printed and none of it is compared.
-
-: MARK$ ( -- ptr u8 n )
-   s" ---- measured on this host, printed and not checked -------------------" ;
+   s" word                                clang" LINE
+   s" --------------------------------  -----" LINE
+   JUDGE-ROW:ROWS 0 ?do i REF-LINE loop ;
 
 \ The machine a cost was measured on, as far as the engine can say: the target
 \ it was built for. The numbers below are local to one host and are not
@@ -271,8 +333,6 @@ variable TEXT-U
    NL ;
 
 : COSTS ( -- )
-   NL
-   MARK$ LINE
    NL
    s" One call, in nanoseconds, with the measurement's own floor taken off. The" LINE
    s" two habu columns are entered the same way - a quotation that calls one word" LINE
@@ -319,8 +379,9 @@ public
    0 TEXT-U !
    HEAD
    JUDGE-ROW:ROWS 0 ?do i ROW-LINE loop
-   REFERENCE-NOTE
    TALLY
+   MARK-LINE
+   REFERENCE
    COSTS
    TEXT TEXT-U @ ;
 
@@ -328,5 +389,11 @@ public
 \ and prints what follows it.
 : MARK-TEXT$ ( -- ptr u8 n )
    MARK$ ;
+
+\ Where the reference section begins, which is BELOW that line. Published so a
+\ fixture can hold the two offsets against each other rather than searching the
+\ checked half for the word `clang`, which its own prose is entitled to use.
+: REFERENCE-ANCHOR$ ( -- ptr u8 n )
+   ANCHOR$ ;
 
 ;package

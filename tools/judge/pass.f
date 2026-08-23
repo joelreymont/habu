@@ -555,10 +555,14 @@ private
    k j ALT-NEW-AGREES? 0= if k JUDGE-ROW:ALT-BAD! exit then
    k j ALT-REF-AGREES? 0= if k JUDGE-ROW:ALT-BAD! then ;
 
-\ How many of this row's tuples the reference column has a program for. A row
-\ with no twin at all reaches none of them.
-: REF-TUPLES ( n -- n ) {: k:n :}
-   k JUDGE-ROW:COVERED? 0= if 0 exit then
+\ How many of this row's tuples tools/clang/twins.c carries a program for. This
+\ is what the CORPUS ROW and the C file between them STATE - IN+ and STORE+ say
+\ the C world has a counterpart, HABU-ONLY+ says it does not - so it is the
+\ same number on every host, whether or not a reference column was built. That
+\ is why the artifact's CHECKED tally can carry it. What this run's reference
+\ column actually reached is JUDGE-ROW:TOTAL-REF-REACHED, which the artifact
+\ prints below the marker.
+: REF-TUPLES ( -- n )
    0
    IN-N @ 0 ?do
       i IN-REF-OK? if 1+ then
@@ -569,7 +573,7 @@ public
 : VALUE ( -- )
    NAME$ JUDGE-ROW:FIND {: k:n :}
    k IN-N @ JUDGE-ROW:INPUTS!
-   k  k REF-TUPLES  JUDGE-ROW:REF-INPUTS!
+   k  REF-TUPLES  JUDGE-ROW:REF-INPUTS!
    k 0 OLD-VALUE
    k JUDGE-ROW:REFUSED? 0= if k 0 NEW-VALUE then
    k JUDGE-ROW:COVERED? if k 0 REF-VALUE then

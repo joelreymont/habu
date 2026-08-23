@@ -77,7 +77,7 @@ create OUTS CAP-MAX cells allot            \ how many values the subject leaves
 create NEW-TAIL CAP-MAX cells allot        \ the chain's routine leaves by a branch
 create ALT-BAD CAP-MAX cells allot         \ a column disagreed on an input past the first
 create IN-COUNT CAP-MAX cells allot        \ pinned inputs this row is valued on
-create REF-INPUTS CAP-MAX cells allot      \ of those, how many the C twin was valued on too
+create REF-INPUTS CAP-MAX cells allot      \ of those, how many the C twins cover
 create OLD-TRAFFIC CAP-MAX cells allot     \ accesses to the caller's data stack
 create NEW-TRAFFIC CAP-MAX cells allot     \ NOT-MEASURED when the chain refused the row
 
@@ -280,14 +280,22 @@ public
 \ keeps of them is HOW MANY it was valued on, how many of those the C twin was
 \ valued on too, and WHETHER any of them disagreed.
 \
-\ WHY THE REFERENCE COUNT IS KEPT APART. A twin is optional per row already: a
-\ subject with no C symbol carries a dash in the byte column and a host with no
-\ compiler has no reference column at all. The same holds one input at a time -
-\ a row may state an input the twin has no counterpart for, over a buffer the C
-\ file does not carry - so the two habu columns are compared on EVERY tuple and
-\ the reference on the ones it can reach. The tally prints both counts, because
-\ a reference comparison silently not made is indistinguishable from one made
-\ and passed.
+\ WHY THE REFERENCE COUNT IS KEPT APART, AND WHICH OF THE TWO IS CHECKED. A twin
+\ is optional per row already: a subject with no C symbol carries a dash in the
+\ byte column and a host with no compiler has no reference column at all. The
+\ same holds one input at a time - a row may state an input the twin has no
+\ counterpart for, over a buffer the C file does not carry - so the two habu
+\ columns are compared on EVERY tuple and the reference on the ones it can
+\ reach.
+\
+\ REF-INPUTS counts what the CORPUS ROW and tools/clang/twins.c between them
+\ STATE: how many of this row's tuples the C world carries a program for. That
+\ is a fact about the two files and is the same number on every host, so the
+\ artifact's checked tally carries it. TOTAL-REF-REACHED is the other number -
+\ how many the reference column actually reached in THIS run, which is zero on
+\ a host that has no such column - and the artifact prints it below the marker.
+\ Both are printed, because a reference comparison silently not made is
+\ indistinguishable from one made and passed.
 
 : INPUTS! ( n n -- ) {: k:n n-in:n :}
    k OK drop
@@ -303,9 +311,9 @@ public
 : REF-INPUTS@ ( n -- n ) {: k:n :}
    REF-INPUTS k OK SLOT @ ;
 
-\ Every pinned input this run valued, over the whole table, and the ones the
-\ reference column reached. The artifact prints both, so an input quietly
-\ dropped from a corpus moves the committed file.
+\ Every pinned input this run valued, over the whole table, and the ones the C
+\ twins carry a program for. Both are stated by the corpora, so an input
+\ quietly dropped from one moves the committed file.
 : TOTAL-INPUTS ( -- n )
    0
    FILL @ 0 ?do
@@ -389,6 +397,18 @@ public
 
 : COVERED? ( n -- bool ) {: k:n :}
    k REF-BYTES@ NO-REFERENCE <> ;
+
+\ How many pinned inputs the reference column ACTUALLY reached this run: the
+\ tuples the C world carries a program for, on the rows that have a reference
+\ cell at all. A host with no reference column reaches none of them, so this is
+\ a fact about the host and the artifact prints it below the marker rather than
+\ comparing it. TOTAL-REF-INPUTS is the number the corpora state, and it is the
+\ one the checked tally carries.
+: TOTAL-REF-REACHED ( -- n )
+   0
+   FILL @ 0 ?do
+      i COVERED? if i REF-INPUTS@ + then
+   loop ;
 
 \ ---- the verdict -------------------------------------------------------------
 \ The four are the store's own spelling of a verdict. A caller reads a row's

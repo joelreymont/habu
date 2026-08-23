@@ -22,6 +22,12 @@
 \ name written inside a sentence that also carries its numbers, and a row-shaped
 \ line under the marker where the costs are. A reader that matched substrings,
 \ or that read past the marker, fails one of them.
+\
+\ AND ONE THAT SAYS WHERE THE REFERENCE COLUMN LIVES. A clang cell is a fact
+\ about a host's toolchain that no mutation of habu can falsify, so it is
+\ printed below the marker and is not among the bytes the gate compares.
+\ FORGE-CASES holds both halves of that: a forged cell moves the artifact and
+\ does not move its checked half.
 
 require lib/errors.f
 require lib/prelude.f
@@ -177,13 +183,6 @@ variable FIX-U
    READ-BACK 1 T=
    JUDGE-BASE:ENGINE-MOVES 1 T=
 
-   s" the reference column moved and that is a fact about a host, not a finding"
-   T-LABEL
-   TWO-ROW-TABLE
-   SNAPSHOT
-   s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:FIND 16 JUDGE-ROW:REF!
-   READ-BACK 0 T=
-
    s" the chain touching the caller's stack MORE often is a regression too"
    T-LABEL
    TWO-ROW-TABLE
@@ -205,6 +204,25 @@ variable FIX-U
    s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:FIND 8 JUDGE-ROW:OLD-TRAFFIC!
    READ-BACK 1 T=
    JUDGE-BASE:ENGINE-MOVES 1 T= ;
+
+\ ---- the reference column, forged ------------------------------------------
+\ A CLANG CELL IS NOT FALSIFIABLE BY ANY MUTATION OF HABU, so it is printed
+\ below the marker and none of it is inside the bytes the gate compares. The
+\ case forges a different cell into the table and asserts BOTH halves of that:
+\ the two checked halves are the same bytes, and the two whole artifacts are
+\ NOT - so the forge demonstrably took effect rather than being quietly
+\ dropped, which is what a one-sided assertion would have let past.
+
+: FORGE-CASES ( -- )
+   s" a forged clang cell moves the artifact and not its checked half" T-LABEL
+   TWO-ROW-TABLE
+   SNAPSHOT
+   s" CODEGEN-CORPUSX:ONE" JUDGE-ROW:FIND 16 JUDGE-ROW:REF!
+   JUDGE-REPORT:TEXT$ JUDGE-BASE:CHECKED$ FIX$ JUDGE-BASE:CHECKED$ T$=
+   JUDGE-REPORT:TEXT$ FIX$ STR= TFALSE
+
+   s" and the reader finds nothing to adjudicate in it" T-LABEL
+   READ-BACK 0 T= ;
 
 \ ---- a row on one side and not the other ------------------------------------
 
@@ -229,10 +247,10 @@ variable FIX-U
 \ committed file to.
 
 : HEAD$ ( -- ptr u8 n )
-   S\" habu code generator judge\n=========================\n\nword                                old  chain  clang  ds-old  ds-new  verdict\n--------------------------------  -----  -----  -----  ------  ------  -------\n" ;
+   S\" habu code generator judge\n=========================\n\nword                                old  chain  ds-old  ds-new  verdict\n--------------------------------  -----  -----  ------  ------  -------\n" ;
 
 : ONE-TRUE-ROW$ ( -- ptr u8 n )
-   S\" CODEGEN-CORPUSX:ONE                 100     40     12       9       3  smaller\n" ;
+   S\" CODEGEN-CORPUSX:ONE                 100     40       9       3  smaller\n" ;
 
 \ Every fixture carries this line, and no fixture asserts anything about it:
 \ what it is here for is that `rows:` ends in its colon, so a reader that let it
@@ -250,7 +268,7 @@ variable FIX-U
    s" a subject named inside a sentence is prose and not a row" T-LABEL
    FIX-RESET
    HEAD$ FIX+
-   S\" the row CODEGEN-CORPUSX:ONE 100 40 12 9 3 smaller was measured today\n"
+   S\" the row CODEGEN-CORPUSX:ONE 100 40 9 3 smaller was measured today\n"
       FIX+
    ONE-TRUE-ROW$ FIX+
    TALLY-1$ FIX+
@@ -266,7 +284,7 @@ variable FIX-U
    T-LABEL
    FIX-RESET
    HEAD$ FIX+
-   S\" CODEGEN-CORPUSX:ONE                 100     40     12  smaller\n" FIX+
+   S\" CODEGEN-CORPUSX:ONE                 100     40       9  smaller\n" FIX+
    TALLY-1$ FIX+
    FIX-END
    READ-BACK 1 T=
@@ -300,6 +318,7 @@ public
    JUDGE-BASE:QUIET!
    ROUND-TRIP-CASES
    DIRECTION-CASES
+   FORGE-CASES
    MEMBERSHIP-CASES
    FOOL-CASES
    JUDGE-BASE:LOUD!

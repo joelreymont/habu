@@ -23,11 +23,11 @@
 \ THE READING IS STRUCTURAL, NOT A SEARCH. The checked half is split into lines
 \ and a line opens a row only when its FIRST word is a qualified subject name -
 \ exactly one colon, at neither end. Prose is everything else, so the subject's
-\ name written inside a sentence reads as the sentence it is in; `rows:` ends in
-\ its colon and `clang` carries none, so neither can open a row however its
-\ numbers read. A line that opens a row and then does not carry a row's fields
-\ is not stored, and the subject this run measured for it is then reported as a
-\ row the artifact has no row for.
+\ name written inside a sentence reads as the sentence it is in, and `rows:`
+\ ends in its colon, so the tally cannot open a row however its numbers read. A
+\ line that opens a row and then does not carry a row's fields is not stored,
+\ and the subject this run measured for it is then reported as a row the
+\ artifact has no row for.
 \
 \ ONLY THE CHECKED HALF IS READ. The costs under the marker line are
 \ nanoseconds with a decimal point in them and are measurements of one host;
@@ -49,11 +49,13 @@
 \           regression, because a gap nobody has named must not read as the one
 \           that was named.
 \
-\ The reference column is not adjudicated at all - what a host's toolchain emits
-\ is a fact about that host - so it is consumed on the way to the data-stack
-\ columns and not kept. The byte comparison in tools/judge.f still moves when it
-\ moves; that is the gate, and this file only says which way the two habu
-\ columns went.
+\ The reference column is not read here at all, and is not in the checked half
+\ to be read: what a host's toolchain emits is a fact about that host, no
+\ mutation of habu can falsify one of its cells, and a Mach-O host and a Linux
+\ one would disagree about every one of them for no habu reason. The artifact
+\ prints it below the marker instead (tools/judge/report.f REFERENCE), so a row
+\ line here carries the four columns habu's own chain determines and nothing
+\ else.
 
 require lib/errors.f
 require lib/prelude.f
@@ -143,10 +145,12 @@ variable FINDINGS
    u 1- a + c@ COLON-BYTE <> ;
 
 \ A cell that carries a number, or the dash a column with nothing to report
-\ writes: no C twin for the reference column, no routine to count for the
-\ chain's stack column.
+\ writes. Since the reference column left the checked half the only dash a row
+\ line can still carry is the chain's stack column on a refused row, which has
+\ no routine to count - so the dash reads as NOT-MEASURED, which is the
+\ constant the traffic checks below compare against.
 : CELL-OF ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   a u s" -" STR= if JUDGE-ROW:NO-REFERENCE true exit then
+   a u s" -" STR= if JUDGE-ROW:NOT-MEASURED true exit then
    a u STR>NUMBER? MATCH option
      none OF 0 false ENDOF
      some OF true ENDOF
@@ -156,13 +160,6 @@ variable FINDINGS
    CODEGEN-TEXT:NEXT$ 0= if 2drop 0 false exit then
    CELL-OF ;
 
-\ The reference cell, crossed and not kept. Nothing here adjudicates what a
-\ host's toolchain emitted, so storing it would be a column with no reader - but
-\ it still stands between the chain's cell and the two data-stack columns.
-: SKIP-REF ( -- bool )
-   NEXT-CELL 0= if drop false exit then
-   drop true ;
-
 \ Everything after the name, in the order the report writes it. A field that is
 \ not what a row carries there abandons the line and stores nothing, so the
 \ subject this run measured for it has no partner in the artifact and is
@@ -171,7 +168,6 @@ variable FINDINGS
 : PARSE-TAIL ( ptr u8 n -- ) {: na:ptr nu:n :}
    CODEGEN-TEXT:NEXT-NUMBER 0= if drop exit then {: old:n :}
    CODEGEN-TEXT:NEXT-NUMBER 0= if drop exit then {: chain:n :}
-   SKIP-REF 0= if exit then
    NEXT-CELL 0= if drop exit then {: ds-old:n :}
    NEXT-CELL 0= if drop exit then {: ds-new:n :}
    na nu old chain ds-old ds-new KEEP-ROW ;
