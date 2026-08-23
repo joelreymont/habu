@@ -8,7 +8,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/source.f
-require lib/test/vmsize.f
+require lib/test/mapped.f
 
 \ Reopens the package rather than importing it: the strip rule (COMMENT-EXPORTS)
 \ and its destination bound (COMMENT-NEED) are package privates, and they are
@@ -168,23 +168,15 @@ create ST-QP-BUF ST-CAP allot
    ST-SRC >LEN COMMENT-EXPORTS$ {: out:ptr outu:len :}
    outu LEN>N 0 T= ;
 
-\ Growing must not accumulate mappings. One measured growth of S pages is the
-\ unit; growing S -> 2S -> 4S -> 8S afterwards costs 8 units live, and 15 if
-\ every superseded span is kept. The threshold sits between them, and the whole
-\ assertion is a RATIO of measured pages, so it never assumes a page size.
-1024 1024 * constant ST-GROW-STEP
-
 : TEST-BUF-GROWTH-RELEASES ( -- )
-   VMSIZE:PAGES {: m0:n :}
-   ST-GROW-STEP BUF-ENSURE
-   VMSIZE:PAGES {: m1:n :}
-   ST-GROW-STEP 2 * BUF-ENSURE
-   ST-GROW-STEP 4 * BUF-ENSURE
-   ST-GROW-STEP 8 * BUF-ENSURE
-   VMSIZE:PAGES {: m2:n :}
-   m1 m0 - {: unit:n :}
-   unit 0 > TTRUE
-   m2 m0 - unit 11 * <= TTRUE ;
+   SOURCE-BUF {: old:ptr :}
+   BUF-CAP @ 1+ {: need:n :}
+   need MEM-ALLOC-64K-SPAN {: src got:n :}
+   old MAPPED:LIVE? TTRUE
+   src need >LEN COMMENT-EXPORTS$ drop {: new:ptr :}
+   old MAPPED:LIVE? TFALSE
+   new MAPPED:LIVE? TTRUE
+   src got MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
 : TEST-SOURCE-APPEND-NEG-LEN ( -- )
    -1 ST-APPEND-LEN !

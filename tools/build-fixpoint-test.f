@@ -19,7 +19,7 @@ require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
 require tools/source-arena-policy.f
-require lib/test/vmsize.f
+require lib/test/mapped.f
 require tools/event-closure-lib.f      \ EC:BUILD, used by the sandbox and the chain-key fixtures
 
 \ This fixture drives the tool's internals - the emitted stage sources, the
@@ -1682,28 +1682,12 @@ create DG-C 40 allot
 \ checker resolves the verified source's names in whatever package scope is open
 \ when it runs.
 public
-\ Growing the shared source buffer must not accumulate mappings. One measured
-\ growth of S pages is the unit; growing S -> 2S -> 4S -> 8S afterwards costs 8
-\ units live, and 15 if every superseded span is kept. The bar sits between them,
-\ and the whole assertion is a RATIO of measured pages, so it assumes no page
-\ size. Drives BF-SOURCE-ENSURE directly: the leak is in the growth path, not in
-\ whatever read happens to call it.
-1024 1024 * constant BFT-GROW-STEP
-
-: BFT-GROW ( n -- )
-   s" (growth probe)" rot BF-SOURCE-ENSURE ;
-
 : BFT-SOURCE-GROWTH-RELEASES ( -- )
-   VMSIZE:PAGES {: m0:n :}
-   BFT-GROW-STEP BFT-GROW
-   VMSIZE:PAGES {: m1:n :}
-   BFT-GROW-STEP 2 * BFT-GROW
-   BFT-GROW-STEP 4 * BFT-GROW
-   BFT-GROW-STEP 8 * BFT-GROW
-   VMSIZE:PAGES {: m2:n :}
-   m1 m0 - {: unit:n :}
-   unit 0 > TTRUE
-   m2 m0 - unit 11 * <= TTRUE ;
+   BF-SOURCE-BUF {: old:ptr :}
+   old MAPPED:LIVE? TTRUE
+   s" (growth probe)" BF-SOURCE-CAP 1+ BF-SOURCE-ENSURE
+   old MAPPED:LIVE? TFALSE
+   BF-SOURCE-BUF MAPPED:LIVE? TTRUE ;
 
 : BFT-RUN-ALL ( -- )
    T-RESET
