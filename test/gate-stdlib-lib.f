@@ -228,21 +228,21 @@ private
 : SUITE-ALL? ( -- bool )
    SUITE-SLICE @ SUITE-ALL-ID = ;
 
+\ The five bare CLI-wrapper labels - repl-lint, dot-dep-lint, maki-dep-lint,
+\ namespace-lint, error-code-lint - are deliberately absent: their registrations
+\ were retired (see the note in test/gate-stdlib-cases.f), and a predicate arm
+\ selecting a label no registration carries selects nothing. Their -fixtures
+\ siblings below are registrations still, and stay.
 : SUITE-LINT-TOOLS-LABEL? ( -- bool )
    s" shadow-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" clobber-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" clobber-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" repl-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdin-closure-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
-   s" dot-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" maki-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" lint-def-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" namespace-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" namespace-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" error-code-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" error-code-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" lint-intern-set" SUITE-LABEL= if SUITE-TRUE exit then
    s" diff-parser" SUITE-LABEL= if SUITE-TRUE exit then
@@ -345,12 +345,24 @@ private
 \ Suites that need to BE a top-level process, not a forked child of one.
 \ codegen-fork-reference's first claim is that PROC-FORK:CHILD? is false where it
 \ maps the clang reference column; tasking-threads creates pthreads, which do not
-\ survive a gate-pool fork; and gate-budget starts the runner itself, so it needs
-\ its own script arguments and its own runner state rather than the ones it would
-\ inherit from a slice it was forked out of. This slice spawns one fresh process
-\ per suite, which is exactly the shape all three ask for.
+\ survive a gate-pool fork; gate-budget starts the runner itself, so it needs its
+\ own script arguments and its own runner state rather than the ones it would
+\ inherit from a slice it was forked out of; and ptx-toolchain-spawned carries the
+\ device and bench tools, which SIGBUS in the resident full-runner image and whose
+\ perf-regress entry reads its registry path out of ambient SCRIPT-ARGV. The last
+\ two are the lint-artifacts registrations: tools/imgdump.f and
+\ tools/imagedisasm.f both end in `SCRIPT-ARGC 0 > IF <MAIN> THEN`, so their test
+\ files cannot be loaded into any image that carries script argv - measured rc 74
+\ and rc 64 under `test/run.f -- --under bin/hb` and under gate-runner-entry,
+\ which always passes a group token. Their own slice is asked for only by the
+\ deferred phase $12 and the resident phase $22, so this is what gives them a
+\ started runner. This slice spawns one fresh process per suite with argv the
+\ registration alone decides, which is exactly the shape all six ask for.
 : SUITE-TAIL-PROCESS? ( -- bool )
    s" codegen-fork-reference" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-toolchain-spawned" SUITE-LABEL= if SUITE-TRUE exit then
+   s" imgdump-compare" SUITE-LABEL= if SUITE-TRUE exit then
+   s" imagedisasm-tool" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-budget" SUITE-LABEL= if SUITE-TRUE exit then
    s" tasking-threads" SUITE-LABEL= ;
 

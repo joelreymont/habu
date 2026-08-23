@@ -15,9 +15,18 @@ SUITE clobber-lint-fixtures
    tools/lint/clobber-lint-test.f
 ;SUITE
 
-SUITE repl-lint
-   tools/repl-lint.f
-;SUITE
+\ repl-lint, dot-dep-lint, maki-dep-lint, namespace-lint and error-code-lint are
+\ deliberately NOT registered here. Each was a registration naming the flat CLI
+\ wrapper tools/<name>-lint.f, and each wrapper is a require of its own core plus
+\ a MAIN that calls one word - the very word test/gate-stdlib-lint-tools.f
+\ already runs in-process, under this same label, in a fork of its own. The
+\ registration was selected only by the lint-tools slice, which no started
+\ non-resident phase asks for, so it ran nowhere and re-adding it would buy a
+\ second whole-tree pass of each lint for nothing. The wrapper's own contract -
+\ that `bin/hb --load tools/<name>-lint.f` still loads and runs standalone - is
+\ pinned by test/lint-cli-standalone-load.f, which derives its entry set by
+\ walking tools/ for flat <name>-lint.f files and so covers all five by
+\ structure, with no list to keep.
 
 SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint.f
@@ -32,24 +41,12 @@ SUITE gate-stats
    test/gate-stats-test.f
 ;SUITE
 
-SUITE dot-dep-lint
-   tools/dot-dep-lint.f
-;SUITE
-
 SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
 ;SUITE
 
-SUITE maki-dep-lint
-   tools/maki-dep-lint.f
-;SUITE
-
 SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
-;SUITE
-
-SUITE namespace-lint
-   tools/namespace-lint.f
 ;SUITE
 
 SUITE namespace-lint-fixtures
@@ -58,10 +55,6 @@ SUITE namespace-lint-fixtures
 
 SUITE package-diff-lint-fixtures
    tools/package-diff-lint-test.f
-;SUITE
-
-SUITE error-code-lint
-   tools/error-code-lint.f
 ;SUITE
 
 SUITE error-code-lint-fixtures
@@ -1076,15 +1069,30 @@ SUITE ptx-toolchain
    tools/ptx/autotune-test.f
    tools/ptx/perf-compare-test.f
    tools/ptx/perf-regress-test.f
-   tools/ptx/perf-regress.f
    tools/kernel-perf-lint-test.f
-   tools/ptx/bandwidth-lib-test.f
-   tools/ptx/mma-exact-lib-test.f
-   tools/ptx/autotune-sweep-test.f
    tools/ptx/fusion-emit-test.f
    tools/ptx/device-gold-test.f
    tools/ptx/cuda-scope-leak-proof-test.f
    tools/ptx/attention-bench-test.f
+;SUITE
+
+\ The spawn-only half of the toolchain suite. These nineteen cannot be members of
+\ the list above: test/gate-stdlib-inline-lib.f's GSI-LINT-LIBS-PTX-TOOL runs in
+\ the resident full-runner image, where the device/bench tools SIGBUS, and
+\ tools/ptx/perf-regress.f resolves its registry path from ambient SCRIPT-ARGV
+\ and would read the harness argv as a path. What they need is a FRESH process
+\ with clean argv, which is exactly what a registration the tail slice selects
+\ gets: SUITE-TAIL-PROCESS? in test/gate-stdlib-lib.f names this label, and
+\ phase $4 of test/run-lib.f - started, and not resident - spawns that slice.
+\ Until this registration existed they were members of ptx-toolchain above,
+\ selected only by the lint-libs slice that nothing starts, and so ran nowhere.
+\ Sixteen of them SKIP their device leg and exit 0 off-device; that vacuous-pass
+\ contract is dot habu-device-gated-suites-ec4ea07e's and is untouched here.
+SUITE ptx-toolchain-spawned
+   tools/ptx/perf-regress.f
+   tools/ptx/bandwidth-lib-test.f
+   tools/ptx/mma-exact-lib-test.f
+   tools/ptx/autotune-sweep-test.f
    tools/ptx/fusion-compare.f
    tools/ptx/gemm-bench.f
    tools/ptx/attention-bench.f
