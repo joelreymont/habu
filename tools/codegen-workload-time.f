@@ -187,7 +187,6 @@ variable DHI-V                  \ largest per-round paired delta so far
    arm k ROW-OK s ARM-SLOT @ ;
 
 \ ---- one timed run ----------------------------------------------------------
-\ typed-local-lint: allow-bare-local - q is the timing body; its effect is in the
 \ stack signature and a local annotation cannot carry a quotation effect.
 : RUN-ONCE ( n [ -- ] -- n ) {: reps:n q :}
    mono-ns {: t0:n :}
@@ -281,7 +280,6 @@ public
 \ closed with an arm missing is refused rather than reported with half a
 \ measurement in it.
 
-\ typed-local-lint: allow-bare-local - q is the arm's body, and a local
 \ annotation cannot carry a quotation effect.
 : ARM-OLD ( n n [ -- ] -- ) {: reps:n rounds:n q :}
    OPEN-CK
@@ -289,7 +287,6 @@ public
    reps REPS-V !  rounds ROUNDS-V !
    -1 HAVE-OLD ! ;
 
-\ typed-local-lint: allow-bare-local - q is the arm's body, as in ARM-OLD.
 : ARM-NEW ( n n [ -- ] -- ) {: reps:n rounds:n q :}
    OPEN-CK
    rounds 0 ?do reps q RUN-ONCE SAMPLE-NEW loop
@@ -344,7 +341,6 @@ private
    d DLO-V @ < if d DLO-V ! then
    d DHI-V @ > if d DHI-V ! then ;
 
-\ typed-local-lint: allow-bare-local - old and new are the two arms' bodies, and
 \ a local annotation cannot carry a quotation effect.
 : PAIR-ROUND ( n n [ -- ] [ -- ] -- ) {: r:n reps:n old new :}
    r 1 and 0= if
@@ -357,7 +353,6 @@ private
    PR-NOTE ;
 public
 
-\ typed-local-lint: allow-bare-local - old and new are the two arms' bodies, and
 \ a local annotation cannot carry a quotation effect.
 : PAIR ( n n n n [ -- ] [ -- ] -- )
    {: reps:n rounds:n oldsum:n newsum:n old new :}
@@ -401,7 +396,6 @@ private
       0 SW-SLOW i SLOT !
    loop ;
 
-\ typed-local-lint: allow-bare-local - q is the arm's body, as in ARM-OLD.
 : SW-RUN ( n n [ -- ] -- ) {: arm:n reps:n q :}
    reps q RUN-ONCE {: ns:n :}
    ns SW-FAST arm SLOT @ < if ns SW-FAST arm SLOT ! then
@@ -428,7 +422,6 @@ private
 
 public
 
-\ typed-local-lint: allow-bare-local - q1..q5 are the arms' bodies, and a local
 \ annotation cannot carry a quotation effect.
 : SWEEP ( n n n [ -- ] [ -- ] [ -- ] [ -- ] [ -- ] -- )
    {: reps:n rounds:n sum:n q1 q2 q3 q4 q5 :}

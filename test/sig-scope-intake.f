@@ -39,8 +39,7 @@
 \ AND THE SUBJECT IS READ WHERE IT IS DECLARED, so this file cannot go quietly
 \ vacuous. Qualify that one signature and the forge stops discriminating while
 \ every probe still passes - the rule would be untested again with nothing to
-\ say so. The source read below is structural, through the same lexer
-\ package-diff-lint reads Habu with: a definition is `:` then the name then the
+\ say so. The source read below is structural: a definition is `:` then the name then the
 \ signature, in those roles, and the fixtures at the foot carry the same
 \ spelling in a comment, in a string, in the wrong role and under a longer name
 \ so that none of them can pass for one.

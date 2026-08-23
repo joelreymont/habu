@@ -164,7 +164,6 @@ $100000001b3 constant TGT-HASH-PRIME
    loop -1 ;
 
 : DESC-EQ? ( descriptor descriptor -- bool )
-   \ typed-local-lint: allow-bare-local - closed descriptor bundles preserve roles.
    {: a b :}
    a DESC-UN {: ai:n aa:n aw:n at:n as:n ac:n :}
    b DESC-UN {: bi:n ba:n bw:n bt:n bs:n bc:n :}
@@ -203,7 +202,6 @@ $100000001b3 constant TGT-HASH-PRIME
    TGT-DESCS ! ;
 
 : DESC-FIND ( descriptor -- n )
-   \ typed-local-lint: allow-bare-local - closed descriptor bundle preserves its role.
    {: d :}
    TGT-N @ 0 ?do
       d i DESC-RAW@ DESC-EQ? if i unloop exit then
@@ -264,7 +262,6 @@ public
    construct descriptor value dup DESC-CK ;
 
 : REGISTER ( ptr u8 n descriptor -- CAD-KIND:target-id )
-   \ typed-local-lint: allow-bare-local - d is a closed descriptor bundle.
    {: label:ptr labelu:n d :}
    label labelu LABEL-CK
    d DESC-CK

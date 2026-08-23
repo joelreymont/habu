@@ -216,7 +216,7 @@ private
 \ between the first cell of the row and the last there is nothing left that can
 \ fail - which is what makes the six appends one commit.
 : ROW-ADD ( IR-CTX:ctx IR-ARENA:arena ptr u8 n n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n org:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n org:n :}
    u 0 < if E-IR-SRC-LEN throw then
    a ROOM-CK
    p u CDIGEST:COMPUTE CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
@@ -246,7 +246,7 @@ public
 \ Register a root source: digest the bytes, append the row, mint the next
 \ module-local identity under key. The bytes are not retained.
 : REGISTER ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-source-id )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :}
    a key KEY-CK
    c a p u ORG-NONE ROW-ADD
    key swap IR-ID:PACK-SOURCE ;
@@ -254,7 +254,7 @@ public
 \ Register a source whose origin - its include or expansion parent - is an
 \ already registered source of this registry.
 : REGISTER-FROM ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-source-id ptr u8 n -- IR-ID:ir-source-id )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key parent:IR-ID:ir-source-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key parent:IR-ID:ir-source-id p u:n :}
    a key KEY-CK
    a parent ORIGIN-CK {: org:n :}
    c a p u org ROW-ADD

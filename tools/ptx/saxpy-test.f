@@ -56,7 +56,6 @@ variable PTXT-ERR-SAVE
 : PTXT-STORE-RC ( n -- ) {: rc:n :}
    rc >RC PROC-RC ! ;
 
-\ typed-local-lint: allow-bare-local - q is the action quotation under capture.
 : PTXT-CAPTURE ( [ -- ] -- n n n ) {: q :}
    PTXT-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
    PTXT-REDIRECT!

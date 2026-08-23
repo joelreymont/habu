@@ -83,7 +83,7 @@ public
 
 \ ---- the source text ---------------------------------------------------------
 : TEXT+ ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    TXT-U @ u + TXT-CAP > if E-NSRC-CAP throw then
    0 begin dup u < while
       dup a + c@  over TXT-U @ + TXT + c!
@@ -246,7 +246,7 @@ public
 \ the whole of the declaration: the address that word pushes is the engine's to
 \ answer, so a caller of this fixture has to have created the word it names.
 : MODEL-DATA ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ARENA:arena IR-ARENA:arena )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :}
    c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r HIR-WORD:REGISTER-WORDS

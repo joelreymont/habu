@@ -111,14 +111,14 @@ variable TAKEN   0 TAKEN !            \ raw samples stored by the current MEASUR
 
 \ One sub-run, wall ns.
 : CHUNK-ONCE ( [ -- ] -- n )
-   {: body :} \ typed-local-lint: allow-bare-local - body carries a quotation effect
+   {: body :}
    mono-ns {: t0:n :}
    body execute
    mono-ns t0 - ;
 
 \ The fastest of SLOT-CHUNKS sub-runs.
 : TIME-SLOT ( [ -- ] -- n )
-   {: body :} \ typed-local-lint: allow-bare-local - body carries a quotation effect
+   {: body :}
    body CHUNK-ONCE
    SLOT-CHUNKS 1 ?do body CHUNK-ONCE MIN2 loop ;
 

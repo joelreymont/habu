@@ -19,7 +19,7 @@ variable HI
 
 \ Does this record claim `wid` as either of its two wordlists? A private cell of
 \ 0 means the package has no private wordlist, so it claims nothing.
-: CLAIMS? ( ptr a n -- bool ) {: r w:n :}   \ typed-local-lint: allow-bare-local - r keeps the ptr a record role
+: CLAIMS? ( ptr a n -- bool ) {: r w:n :}
    r PKG-REC? 0= if 0 0= 0= exit then
    r XREF-START w = if 0 0= exit then
    w 0= if 0 0= 0= exit then
@@ -29,7 +29,7 @@ public
 
 \ The public wordlist id the package record spelled `name` claims, or 0.
 : WID-OF ( ptr u8 n -- n )
-   {: a u:n :}   \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    0
    ndict@ 0 ?do
       i XREF-REC PKG-REC? if

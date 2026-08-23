@@ -41,7 +41,7 @@ variable SC
 \ The blob cursor is an offset of its own, independent of the image cursor, so it
 \ carries its own bounds check -- same rule as image.fs: name the buffer, what
 \ the write needed and what it has.
-: B-ROOM ( n -- )  SC @ + {: need :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: B-ROOM ( n -- )  SC @ + {: need :}
    need MBUF-CAP @ > if
       cr ." cg: signature overrun: MBUF needs " need .
       ." bytes, has " MBUF-CAP @ . cr

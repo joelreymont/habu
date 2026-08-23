@@ -102,8 +102,7 @@ file.
   namespace; the dictionary record stores the tail (`COUNT`) in that wordlist.
   Maki is the worked adoption: each maki file is wrapped in a `package MAKI` block
   (see Packages below), so its words live in the `MAKI` wordlist and a bare reference
-  does not resolve from habu core — enforcing the one-way maki↔habu seam at the
-  *dictionary* level, complementing `tools/maki-dep-lint.f`. External callers use
+  does not resolve from habu core. External callers use
   `MAKI:WORD`; maki-internal cross-file calls reopen `package MAKI` and use bare names.
   Match qualifier case to the word vocabulary: project-defined namespaces and
   words are uppercase (`HB:COUNT`); lowercase built-in namespaces keep lowercase
@@ -135,146 +134,6 @@ words; keep package names and project-defined words uppercase unless the package
 intentionally belongs to a lowercase vocabulary. Define implementation helpers
 before `public` or after `private`; define the public interface only in the
 `public` section.
-
-The commit gate checks this policy against the exact Jujutsu diff and the
-post-change files. From the repository root, generate one artifact and pass it
-to both checked diff linters. **Name the artifact after the lane that wrote
-it.** Parallel lanes share `$HB_TMP`, so a fixed `change.diff` is one file two
-workspaces write and either may read: a lane that lints a name another lane has
-just overwritten is linting somebody else's change, and the failure looks like
-a syntax error in a diff it did not produce (`E-DIFF-SYNTAX`, `-7400`, on a
-truncated or foreign artifact). Derive the name from the workspace so it is
-unique without anybody having to remember to make it so:
-
-```sh
-diff_artifact="$HB_TMP/$(basename "$PWD").diff"
-jj diff --git > "$diff_artifact"
-bin/hb --load tools/typed-local-diff-lint.f -- "$diff_artifact"
-bin/hb --load tools/package-diff-lint.f -- "$diff_artifact"
-```
-
-`package-diff-lint` accepts exactly one diff artifact. It validates every
-new-side hunk line against the current file, reconstructs the complete old side
-from those canonical diff events, and lexes both complete sources. A package
-opener outside the hunk is therefore authoritative, while comment, string,
-definition-body, or diff-header text on either side cannot forge a boundary.
-The shared `tools/lint/def.f` inventory classifies native dictionary definers,
-checker-owned type and storage declarers, every repository defining word that
-executes `create`, and every repository declarer that generates definitions
-through the audited `evaluate` boundaries. Its focused fixture names all 57
-forms; package and authority lints consume that one structural classifier.
-Parser grammars that only add rows to an owning registry are not word
-definitions: `PRIM:` and `PPRIM:` add checker axioms; `SUITE`, `GROUP`, and
-`SUITE-STDIN` add test-runner rows; `VJP:` adds an automatic-differentiation
-row; and `GRID:` and `WHERE` consume kernel-header metadata. Their labels do not
-become callable dictionary words, so the shared classifier omits them.
-
-The complete-file global exceptions are exact paths, not directory rules:
-
-- `lib/prelude.f` owns the deliberately global prelude helpers.
-- `src/core/layout-buffer.f` owns the global `LAYOUT-BUFFER` declaring word: a
-  pre-hook core surface that exists to publish a declarer every other package
-  uses.
-- `src/core/roles.f` owns the pre-hook nominal role conversions and declaration
-  words that must be available before application packages load.
-- `src/core/structures.f` owns the legacy global structure and field defining
-  language.
-- `src/core/enums.f` owns the legacy global numeric enum defining language.
-- `src/core/checker.f` owns the checker itself, which is a global pre-hook
-  language surface by current construction: the `PRIM:`/`PPRIM:` primitive-axiom
-  machinery and the `RBF` rollback-frame surface are global by design and load
-  before any package exists, so the checker is admitted on the same terms as
-  `roles.f`, `structures.f`, and `enums.f`. This entry is interim: it must be
-  removed once the checker sealing work (dot
-  `habu-seal-the-checker-5314c0ab`) gives those seams real package owners.
-
-`src/core/sumtype.f` used to be on that list and is not any more: the same dot
-`habu-tfam-2b-sealed-1b77662c` put its 316 definitions inside `package
-TYPE-DECL`, 45 public and 271 private, with nothing renamed except the seven
-implementations the global entries call. Those seven names stayed global and are
-admitted by exact path, exact name and exact definer, because the
-*language* needs them there rather than the engine: `NEWTYPE`, `SUMTYPE` and
-`PRODUCT` are the block openers, and a user declaration has to register from
-genuine top level without opening any package — which is what
-`test/type-decl-suite.f` tests. `CHECKER-DEFFAMILY`, `CHECKER-DEFSUM`,
-`CHECKER-DEFSUM-NOEND` and `CHECKER-DEFPRODUCT` are the same grammar reached
-with a body text instead of the input stream, by the checker's preverify and
-all-errors replay and by the checked declarers built on them. Each of the seven
-is a one-line entry into a package public, the shape `src/core/enum-decl.f`
-already ships for `ENUM`; everything under them — the declaration buffer, the
-plan arena, the payload capture vectors, the renderers, the transaction context
-— is a package private with no top-level spelling. An eighth global beside them
-still reports, and so does any of the seven under another definer or in another
-file. The entry retires when a user declaration can register without a global
-declarer, which is a language change rather than a packaging one.
-
-`src/core/type-family.f` used to be on that list and is not any more: dot
-`habu-tfam-2b-sealed-1b77662c` put its 566 remaining definitions inside
-`package TFAM`, 221 public and 345 private, with nothing renamed. Six names
-stayed global and are admitted by exact path, exact name and exact definer,
-because the *engine* resolves each one by a bare global spelling that no package
-spelling can reach. `TFAM-NAME$`, `TFL-CON-FAM?`, `TFL-CVAR?` and
-`TFL-MATCH-FAM?` are the `construct`/`match`/`;match` keyword bridge:
-`src/habu/habu2.f` looks them up through `C-FIND-GLOBAL`, which zeroes the open
-package's wordlist cells first so the answer cannot depend on where the user's
-`match` is written, and `bootstrap/cg/forth.fs` mirrors the same four spellings
-byte for byte. `TFAM-CTOR-WORD?` and `TF-SHA16-XT` are named by AOT-captured
-call sites, and the boot seed re-resolves a baked callee only through a global
-scope or an explicitly qualified pooled name — a `using`-imported bare name is
-neither. A seventh global added beside them still reports, and so does any of the
-six under another definer or in another file. The entry retires when the engine
-can resolve these six under their owner, not before.
-
-`lib/errors.f` carries a global surface too, admitted by declaration shape
-rather than by whole file: every package in the repository throws and catches
-the same numbered codes, so the codes themselves have to stay global words. Only
-one shape is allowed there — an error-code name defined by the lower-case
-`constant` definer, where the name starts with `E-` and is written in capitals,
-digits, and hyphens. Everything else in that file is still reported: any other
-name, any other defining word, `CONSTANT` written in capitals, and the same
-declaration in any other file. A `package` or `;package` change is reported too
-when it leaves one of these constants unpackaged where the scan reaches it, so a
-deleted or moved boundary still loses ownership; adding a complete block whose
-opener and closer both arrive together moves nothing in or out of a package and
-stays clean.
-
-The stage0 recovery fixtures carry a global surface on the same terms — by exact
-path plus declaration shape, not by whole file. `tools/bootstrap.sh` builds these
-sources for its `using` gate by handing each one to Gforth, which compiles it
-with the recovery emitter in `bootstrap/cg/forth.fs` into a standalone binary;
-the script then runs that binary and compares the whole of stdout and the first
-stderr line against exact expected text. `bin/hb` never loads them, so the
-fixture is the gate's own input and the whole-stream comparison is its
-correctness authority. Two of them need a word at genuine global top level, and
-a package there would delete the proof rather than satisfy the rule:
-
-- `test/bootstrap-using-checker-hook-src.f` defines a stand-in `CHECKER-USING`.
-  The emitter looks that hook up by the bare 13-byte name `checker-using`, the
-  same way the real global `CHECKER-USING` in `src/core/checker.f` is found. In a
-  package the tail would be invisible to that bare lookup, the mirror call would
-  find nothing, and the case would stop testing the mirror.
-- `test/bootstrap-using-src.f` defines `BUS-SHADOW` and `BUS-CALLER` at top level
-  because top-level bare visibility is the property under test. `BUS-SHADOW` is
-  the name that must already resolve before `using BUS-A` opens; `BUS-CALLER` is
-  compiled while the import is open, from the real top-level position a recovery
-  build's own source occupies.
-
-Only the plain lower-case `:` definer is admitted there, and only at those two
-exact paths, which additionally must start with `test/` and end with `-src.f`. A
-global `variable`, `create`, `constant`, `CHECKED:`, `TRUSTED:` or type
-declaration in a listed fixture still reports, and so does a global colon word in
-any fixture that is not listed. Unlike the interim core-surface entries this
-category has no retirement condition: while `using` exists in the stage0 engine
-the recovery gate has to keep proving what a real top-level user program sees.
-
-Four declarations receive narrower exact-definition exceptions: only `DEFTYPE`
-may be global in `lib/type/deftype.f`, only `STRUCTURE` may be global in
-`src/core/structure-decl.f`, only `ENUM` may be global in
-`src/core/enum-decl.f`, and only the unified `ENUM option` declaration may be
-global in `lib/adt/option.f`. The OPTION exception matches the exact path,
-definer, and family name; a legacy `SUMTYPE option`, another family in that file,
-or the same declaration in a neighboring file still fails. Hostile fixtures pin
-every exception and prove that nearby paths are not implicitly exempt.
 
 ```forth
 package HB
@@ -730,8 +589,6 @@ address arithmetic at the public boundary.
   concrete checker type is known; a bare local name is allowed only when the
   entry stack effect intentionally preserves richer role detail that the local
   annotation cannot express, or when the missing typed capability is documented.
-  New diff-introduced bare locals must be made explicit with
-  `typed-local-lint: allow-bare-local` so review sees the exception.
 - **Local type annotations can erase role detail.** A local such as `a:ptr`
   records only a pointer cell; it does not preserve `ptr u8`. If the body uses
   byte operations such as `c@`/`c!`, keep the detailed type in the stack effect
@@ -1080,9 +937,7 @@ Run on the exact tree that is being landed, from the repository root. Red,
 skipped, or unrun means the bookmark does not move.
 
 1. The behaviour suites the change touched, plus `bin/hb --load maki/test.f`.
-2. The two checked diff linters over one Jujutsu artifact, named per lane
-   (`docs/forth.md` § Packages), plus `tools/error-code-lint.f` and the dot
-   lint.
+2. `tools/error-code-lint.f` and the dot lint.
 
 ## Comments & hygiene
 

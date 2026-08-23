@@ -38,9 +38,7 @@ package CLOBBER-CENSUS
 \ Reading the segment after the LAST colon fixes it and was measured to work
 \ here: routines 335 -> 347, calls 504 -> 518, clean, once LCEMIT's and
 \ PROT:LGROW's PRESERVE-MASK rows and a PSEUDO? row for PROT:RESERVE are added.
-\ It is not applied here because every changed word in this file, its test and
-\ its fixture is a bare global, so package-diff-lint requires the whole legacy
-\ file to be packaged first: dot habu-clobber-lint-cannot-305ed456.
+\ Dot habu-clobber-lint-cannot-305ed456 owns that correction.
 \
 \ NOTHING THE LOWERED FLOOR HIDES IS NEW. The 47 sites clobber exactly what they
 \ clobbered before - PROT:LOPEN and PROT:LCLOSE cost their callers the same

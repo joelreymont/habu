@@ -589,7 +589,7 @@ $8000000000000000 constant INT-MIN
    CELL-BYTES 1- + CELL-BYTES / ;
 
 : PACK-CELL ( ptr u8 n n -- n )
-   {: p u:n j:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n j:n :}
    0
    CELL-BYTES 0 ?do
       j i + u < if
@@ -609,7 +609,7 @@ $8000000000000000 constant INT-MIN
    pv st i CELL-BYTES / + FPC@  i CELL-BYTES mod CELL-BYTE ;
 
 : BYTES-EQ ( IR-ARENA:arena n ptr u8 n -- bool )
-   {: a:IR-ARENA:arena st:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena st:n p u:n :}
    u BYTES>CELLS 0 ?do
       a st i + PC@  p u i CELL-BYTES * PACK-CELL <> if
          false unloop exit
@@ -723,13 +723,13 @@ $8000000000000000 constant INT-MIN
 
 \ ---- string interning --------------------------------------------------------
 : ROWTXT-MATCH? ( IR-ARENA:arena IR-ARENA:arena n ptr u8 n -- bool )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n p u:n :}
    r l OFF-KIND RC@ K-TXT <> if false exit then
    r l OFF-B RC@ u <> if false exit then
    a  a r l TXT-WIN drop  p u BYTES-EQ ;
 
 : SCANTXT ( IR-ARENA:arena IR-ARENA:arena ptr u8 n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena p u:n :}
    -1
    r CNT 0 ?do
       a r i p u ROWTXT-MATCH? if drop i leave then
@@ -925,7 +925,7 @@ public
 \ String bytes intern by content from any buffer; the bytes are copied into
 \ the pool packed, so no caller pointer is retained.
 : TEXT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :}
    u 0 < if E-IR-ATTR-VALUE throw then
    a r key KEY-CK
    a r p u SCANTXT {: hit:n :}
@@ -1111,7 +1111,7 @@ public
 \ Copy a string attribute's bytes into the caller's span and answer the byte
 \ length; a span smaller than the string rejects named before any write.
 : TEXT-COPY ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-attr-id ptr u8 n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-attr-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-attr-id q cap:n :}
    a r PAIR-CK
    r id ID-CK {: l:n :}
    r l OFF-KIND RC@ K-TXT KND-CK
@@ -1249,13 +1249,13 @@ private
 \ Byte emitters over the caller span: cur rides on top so emission chains
 \ read left to right without juggling.
 : EMIT-B ( n ptr u8 n n -- n )
-   {: cur:n q cap:n b:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n b:n :}
    cur cap >= if E-IR-ATTR-RANGE throw then
    b q cur + c!
    cur 1+ ;
 
 : EMIT-S ( n ptr u8 n ptr u8 n -- n )
-   {: cur:n q cap:n p u:n :} \ typed-local-lint: allow-bare-local - q and p keep the ptr u8 byte-span roles
+   {: cur:n q cap:n p u:n :}
    cur u + cap > if E-IR-ATTR-RANGE throw then
    u 0 ?do
       p i + c@ q cur + i + c!
@@ -1286,7 +1286,7 @@ create DBUF 24 allot
    repeat ;
 
 : EMIT-U ( n ptr u8 n n -- n )
-   {: cur:n q cap:n v:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n v:n :}
    v DEC-BUILD
    cur
    DLEN @ 0 ?do
@@ -1294,7 +1294,7 @@ create DBUF 24 allot
    loop ;
 
 : EMIT-N ( n ptr u8 n n -- n )
-   {: cur:n q cap:n v:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n v:n :}
    v INT-MIN = if cur q cap s" -9223372036854775808" EMIT-S exit then
    v 0 < if
       cur q cap $2D EMIT-B
@@ -1307,7 +1307,7 @@ create DBUF 24 allot
    dup 10 < if $30 + else 10 - $61 + then ;
 
 : EMIT-H16 ( n ptr u8 n n -- n )
-   {: cur:n q cap:n v:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n v:n :}
    cur
    16 0 ?do
       q cap  v 15 i - 4 * rshift $F and HEXDIG  EMIT-B
@@ -1410,14 +1410,14 @@ create DBUF 24 allot
    endcase ;
 
 : EMIT-ENUM ( n ptr u8 n n n -- n )
-   {: cur:n q cap:n f:n m:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n f:n m:n :}
    f m ENUM-CK
    cur q cap f FAM-STR EMIT-S
    q cap $3A EMIT-B
    q cap f m MEM-STR EMIT-S ;
 
 : EMIT-BOOL ( n ptr u8 n n -- n )
-   {: cur:n q cap:n v:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n v:n :}
    cur q cap
    v N>BOOL if s" bool(true)" else s" bool(false)" then
    EMIT-S ;
@@ -1428,7 +1428,7 @@ create DBUF 24 allot
 \ reference passes REF-OK's strict decrease, so recursion depth is bounded by
 \ the ordinal itself on any table state.
 : R-EMIT ( IR-ARENA:arena IR-ARENA:arena ptr u8 n n n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena q cap:n cur:n l:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena q cap:n cur:n l:n :}
    r l OFF-KIND RC@ {: k:n :}
    k K-INT = if
       cur q cap s" int(" EMIT-S
@@ -1493,7 +1493,7 @@ create DBUF 24 allot
 
 \ The frozen twin of R-EMIT over the arena views.
 : FR-EMIT ( IR-ARENA:view IR-ARENA:view ptr u8 n n n -- n )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view q cap:n cur:n l:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view rv:IR-ARENA:view q cap:n cur:n l:n :}
    rv l OFF-KIND FRC@ {: k:n :}
    k K-INT = if
       cur q cap s" int(" EMIT-S
@@ -1563,7 +1563,7 @@ public
 \ overflowing write. The text depends only on structural content, never on
 \ interning history.
 : RENDER ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-attr-id ptr u8 n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-attr-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-attr-id q cap:n :}
    a r PAIR-CK
    r id ID-CK {: l:n :}
    a r q cap 0 l R-EMIT ;
@@ -1599,7 +1599,7 @@ public
    dup 0 < if E-IR-ATTR-STATE throw then ;
 
 : FTEXT-COPY ( IR-ARENA:view IR-ARENA:view IR-ID:ir-attr-id ptr u8 n -- n )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-attr-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-attr-id q cap:n :}
    pv rv FPAIR-CK
    rv id FID-CK {: l:n :}
    rv l OFF-KIND FRC@ K-TXT KND-CK
@@ -1710,7 +1710,7 @@ public
    F-PTRW FEMEM N>PTRW ;
 
 : FRENDER ( IR-ARENA:view IR-ARENA:view IR-ID:ir-attr-id ptr u8 n -- n )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-attr-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-attr-id q cap:n :}
    pv rv FPAIR-CK
    rv id FID-CK {: l:n :}
    pv rv q cap 0 l FR-EMIT ;

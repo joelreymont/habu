@@ -45,7 +45,6 @@ variable START-NS
    u CANDIDATE-U !
    a CANDIDATE-A-FIELD ! ;
 
-\ typed-local-lint: allow-bare-local - q carries the case action effect.
 : CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns START-NS !
    q execute

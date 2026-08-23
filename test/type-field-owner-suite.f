@@ -522,8 +522,20 @@ RELEASE-SEAM-ABSENT
 
 ;package
 
+\ A package may own a tail that is retired only from the global wordlist.
+package RETIRED-TAIL-PROBE
+
+: PF-ADD ( -- n ) 1 ;
+
+public
+
+: RUN ( -- ) PF-ADD 1 T= ;
+
+;package
+
 TYPE-FIELD-OWNER-TEST:REOPEN-SEALED
 TYPE-FIELD-OWNER-TEST:REOPEN-CLEANUP-SEALED
+RETIRED-TAIL-PROBE:RUN
 T-REPORT
 s" type-field-owner-suite: ok" type cr
 

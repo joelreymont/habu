@@ -71,7 +71,6 @@ package CODEGEN-CORPUS3
 public
 
 \ maki/optim.f:12 through tools/codegen-compare-corpus3.f, verbatim: w' = w - lr*g.
-\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
 NMIGRATE:NEXT : SGD-N ( r r r -- r ) {: w g lr :} w  lr g f* f- ;
 
 \ maki/segment.f:61 through the same corpus, verbatim: an integer length becomes
@@ -101,7 +100,6 @@ NMIGRATE:NEXT : MAX-F-N ( r r -- r ) {: x:r y:r :}  x y f< if y else x then ;
 \ the position's type and the second crosses to it. Its pinned inputs include a
 \ NaN, because `f0<` is false on one and the ELSE arm is therefore the one a NaN
 \ takes.
-\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
 NMIGRATE:NEXT : RELU-F-N ( r -- r ) {: x :}   x f0< if 0.0 else x  then ;
 
 \ lib/fmath.f:36 through the corpus: round to nearest, written the way a
@@ -149,7 +147,6 @@ NMIGRATE:NEXT : T-SET-N ( r ptr a n -- ) T-AT-N ! ;
 \ the entry takes from NABI:SCRATCH rather than from a number written here.
 
 \ maki/array.f:16 through the corpus: the plain accumulation.
-\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
 NMIGRATE:NEXT
 : T-SUM-N ( ptr a n -- r )
    {: base len :}
@@ -158,7 +155,6 @@ NMIGRATE:NEXT
 \ maki/array.f:20 through the corpus: the in-place step, whose point is the
 \ stores. Both columns step the SAME weight buffer, so the head-to-head check is
 \ about the loads and the stores and not only about the arithmetic between them.
-\ typed-local-lint: allow-bare-local - the corpus's own untyped locals, verbatim
 NMIGRATE:NEXT
 : T-SGD!-N ( r ptr a ptr a n -- )
    {: lr wbase gbase len :}

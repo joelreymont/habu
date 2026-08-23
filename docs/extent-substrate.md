@@ -36,8 +36,7 @@ structured-atom grammar); CT roles are flat cons with no argument slots (a
 product is not expressible without reinventing parametric families in the CT
 registry).
 
-All three substrates were probed and **all type `idx<#M>` with two extents
-distinct** (`test/extent-substrate-probe.f`; probes below). The choice is decided
+All three substrates type `idx<#M>` with two extents distinct. The choice is decided
 by the *product/factorization* axis and the secondary axes (typo protection,
 package-scoping, persistence, SPEC read-back), on all of which TFAM wins or ties.
 
@@ -128,17 +127,6 @@ TFAM. Recorded here so the pivot is explicit.
   factorization/join rule + the free/inner contraction rule — no new type
   representation or unification kernel.
 
-## Probe fixture
-
-`test/extent-substrate-probe.f` — checked, standalone (not a routed gate case;
-BTC-2/BTC-5/BTC-7 own the permanent regressions). Run:
-
-    bin/hb < test/extent-substrate-probe.f      # exit 0 + "ok"
-
-It demonstrates the chosen substrate typing `idx<#M>` with two extents distinct,
-plus the BTC-7 product structure (ordered factors, split-is-re-typing, mismatch
-reject) riding existing TFAM parametric unification.
-
 ## Proposed re-scope drafts (orchestrator mints/edits the dots)
 
 ### `habu-foundation-a1b-pkg-6692f4e3` — de-prioritize (off the extent path)
@@ -163,7 +151,7 @@ reject) riding existing TFAM parametric unification.
 > - `idx` is a **arity-1 TFAM family** (the width-1 index-value nominal); the
 >   `TENSOR:`/`ITENSOR:` accessor sigs carry `idx<extent-family>`. Two extents
 >   distinct + flipping = checker reject rides TFAM parametric identity
->   unification (proven, `test/extent-substrate-probe.f`).
+>   unification.
 > - The index↔`n` crossing (offsets/arithmetic) is the **`idx` family's**
 >   responsibility (accessor-mediated or an explicit `idx` converter), NOT the
 >   extent's — extents are phantom type arguments with no runtime value.

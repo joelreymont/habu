@@ -57,8 +57,8 @@ PTR-VARIABLE RESUME-AT               \ the byte after that definition
 \ the whole tail - this token included - to `evaluate`, and a refusal leaves the
 \ stream exactly where it found it.
 : COLON-CK ( -- )
-   INP@ {: at:ptr :}                \ typed-local-lint: allow-bare-local - at keeps the ptr u8 byte-span role
-   parse-name {: t:ptr tu:n :}      \ typed-local-lint: allow-bare-local - t keeps the ptr u8 byte-span role
+   INP@ {: at:ptr :}
+   parse-name {: t:ptr tu:n :}
    at INP!
    tu 1 <> if E-NINP-DEF throw then
    t c@ COLON-CH <> if E-NINP-DEF throw then ;

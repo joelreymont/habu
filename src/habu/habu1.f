@@ -2523,7 +2523,7 @@ public
 package ENGINE-EMIT
 
 : BSEALCAP ( -- )
-   LBL LBL LBL {: pdok pdloop pdexit :}   \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: pdok pdloop pdexit :}
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,   \ x10 = pending count; 0 -> drained
       13 0 MOVZ,                                                     \ x13 = index
       pdloop LBL,  13 10 CMP,  C-GE pdexit BCOND,
@@ -3687,10 +3687,9 @@ variable FIND-HMATCH
 \
 \ ONE MODEL IS STILL A REGISTER BEHIND, ON PURPOSE. tools/lint/clobber-lint.f
 \ lists Lfind's and Lfindused's returns as x11/x12/x13 and Laotwidgate's
-\ preserved set as x11; each should gain x5. That edit changes the body of a bare
-\ global in a legacy file, which package-diff-lint refuses until the whole file is
-\ packaged (dot habu-clobber-lint-cannot-305ed456, which owns exactly that
-\ prerequisite). The stale rows cost nothing today - no routine reads x5 after an
+\ preserved set as x11; each should gain x5. Dot
+\ habu-clobber-lint-cannot-305ed456 owns that correction. The stale rows cost
+\ nothing today - no routine reads x5 after an
 \ LFIND call site, so nothing is poisoned that should not be - and the direction
 \ of the staleness is a false RED, never a false green.
 : EMIT-FIND ( -- )

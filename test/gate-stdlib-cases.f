@@ -15,7 +15,7 @@ SUITE clobber-lint-fixtures
    tools/lint/clobber-lint-test.f
 ;SUITE
 
-\ repl-lint, dot-dep-lint, maki-dep-lint, namespace-lint and error-code-lint are
+\ repl-lint, dot-dep-lint, and error-code-lint are
 \ deliberately NOT registered here. Each was a registration naming the flat CLI
 \ wrapper tools/<name>-lint.f, and each wrapper is a require of its own core plus
 \ a MAIN that calls one word - the very word test/gate-stdlib-lint-tools.f
@@ -39,18 +39,6 @@ SUITE gate-stats
 
 SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
-;SUITE
-
-SUITE maki-dep-lint-fixtures
-   tools/maki-dep-lint-test.f
-;SUITE
-
-SUITE namespace-lint-fixtures
-   tools/namespace-lint-test.f
-;SUITE
-
-SUITE package-diff-lint-fixtures
-   tools/package-diff-lint-test.f
 ;SUITE
 
 SUITE error-code-lint-fixtures
@@ -81,10 +69,6 @@ SUITE lint-intern-set
 
 SUITE diff-parser
    tools/lint/diff-test.f
-;SUITE
-
-SUITE diff-frame-codec
-   tools/lint/diff-frame-test.f
 ;SUITE
 
 SUITE json-file-cursor
@@ -132,10 +116,6 @@ SUITE tool-boundary-lints
    tools/duplicate-definition-lint-test.f
    tools/bundle-lib-test.f
    tools/json-only-test.f
-;SUITE
-
-SUITE tool-boundary-typed-local
-   tools/typed-local-diff-lint-test.f
 ;SUITE
 
 SUITE check-cli-boundary

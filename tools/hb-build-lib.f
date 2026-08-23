@@ -16,12 +16,9 @@ require tools/event-closure-lib.f
 
 \ The hb-build command's implementation lives in package HB-BUILD-CLI.
 \ Everything below is private to it; the export block at the end of the file
-\ names the whole surface other files call. The package is NOT named HBB: the
-\ `HBB-` tails would then repeat their own package owner, which
-\ package-diff-lint reports as E-REDUNDANT-PACKAGE-PREFIX the moment one of
-\ their heads changes - and changing ~12 of them is what this packaging exists
-\ to unblock. HB-BUILD is taken by the report module (tools/hb-build-report.f),
-\ a different concern with its own published surface.
+\ names the whole surface other files call. HB-BUILD is taken by the report
+\ module (tools/hb-build-report.f), a different concern with its own published
+\ surface.
 package HB-BUILD-CLI
 using BUILD-FIXPOINT                     \ the emitted-source and tmp-root surface
 using SOURCE                             \ the EXPORT-directive strip

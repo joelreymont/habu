@@ -146,7 +146,6 @@ variable SCRIPT-I
 \ GT-POOL-OK?, not the raw exit code: a worker the pool timed out records code 0,
 \ so only "exited, and exited zero" may count as the worker agreeing.
 : FORK-CASE ( ptr u8 n [ -- ] -- bool )  \ label, body -> did the worker exit clean?
-   \ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
    {: label:ptr labelu:n q :}
    GT-POOL-FIND-FREE {: idx:idx :}
    label labelu WORK-TIMEOUT-MS idx q GT-POOL-START-FORK-SLOT

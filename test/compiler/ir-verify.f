@@ -178,7 +178,7 @@ private
    b IR-BUILD:MODULE-KEY ord IR-ID:PACK-BLOCK ;
 
 \ ---- one legal function ------------------------------------------------------
-: FN-OPEN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- ) \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+: FN-OPEN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    c b  c b p u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
    c b  c b SIGT  IR-BUILD:SET-SIGNATURE

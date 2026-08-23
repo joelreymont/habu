@@ -340,7 +340,6 @@ TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejec
 : LOG-FR ( -- )
    s" prop-test: false-reject confirmed: " type POS. cr
    s" definition: " type REBUILD-G DEF. ;
-\ typed-local-lint: allow-bare-local - pred keeps the predicate quotation from the stack signature.
 : SHRINK  ( R [ -- bool ] -- R ) {: pred :}  \ minimize BBUF keeping (pred) true
    begin
       BLEN @ BSAVE !

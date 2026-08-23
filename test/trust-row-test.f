@@ -57,9 +57,8 @@ public
 
 : TCE-CATCH ( ptr u8 n -- n )  TCE-U ! TCE-A !  [: TCE-GO ;] catch ;
 
-\ The two codes the cases below expect. They live in the package because a test
-\ file may publish no new global name (tools/package-diff-lint.f reports every
-\ one), and because a global `E-*` constant is lib/errors.f's surface alone.
+\ The two codes the cases below expect. They live in the package because a
+\ global `E-*` constant is lib/errors.f's surface alone.
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 7143 constant E-STALE           \ E-TRUST-UNRESOLVED: the row names no word here
 

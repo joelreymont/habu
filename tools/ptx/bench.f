@@ -39,7 +39,7 @@ variable BENCH-NS-TMP                   \ BENCH-GPU-NS result held across the ev
 8 constant CUDA-ATTR-MAX-DYNSMEM        \ CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES
 
 : COPY! ( ptr u8 n ptr u8 ptr a -- )
-   {: a u:n dst lenp:ptr :} \ typed-local-lint: allow-bare-local - ptr roles.
+   {: a u:n dst lenp:ptr :}
    u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;

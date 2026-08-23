@@ -53,7 +53,6 @@ public
    s" WHY-THREW: CK-ROW fill=" type CONTENT-KEY:ROW$ nip .
    s" WHY-THREW: CK-ROW cap=" type CONTENT-KEY:ROW-CAP . ;
 
-\ typed-local-lint: allow-bare-local - q keeps the suspect quotation effect.
 : WHY-THREW ( [ -- ] -- ) {: q :}
    q catch {: rc:n :}
    rc 0= if exit then

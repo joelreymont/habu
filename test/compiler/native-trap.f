@@ -77,7 +77,7 @@ create TXT
    CC BB IR-BUILD:INTERN-CODE-REF ;
 
 : OPEN-FUN ( ptr u8 n n n -- )
-   {: p u:n in:n out:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n in:n out:n :}
    CC BB  CC BB p u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
    CC BB  in out SIGN  IR-BUILD:SET-SIGNATURE
    CC BB IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
@@ -174,7 +174,7 @@ create TXT
 \ with a second terminator that names no successor - and the whole point of the
 \ exit-block rule is that it now goes through.
 : BUILD-MIXED-NAMED ( ptr u8 n n -- )
-   {: p u:n ord:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n ord:n :}
    p u 1 1 OPEN-FUN
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
@@ -223,7 +223,7 @@ create TXT
 \ the emitted bytes are read off, because its LAST instruction is the branch with
 \ nothing after it to account for.
 : BUILD-TRAP-ONLY ( ptr u8 n n -- )
-   {: p u:n ord:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n ord:n :}
    p u 1 1 OPEN-FUN
    ARG+ drop
    ord CONSTOP TRAP1

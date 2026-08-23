@@ -62,7 +62,7 @@ $100000 constant HEAPSZ
    T1 G-POP
    T0 G-POP
    T0 T1 CMP,
-   LBL {: l :} \ typed-local-lint: allow-bare-local
+   LBL {: l :}
    C-LE l BCOND,
    T0 T1 0 ADDI,
    l LBL,
@@ -72,7 +72,7 @@ $100000 constant HEAPSZ
    T1 G-POP
    T0 G-POP
    T0 T1 CMP,
-   LBL {: l :} \ typed-local-lint: allow-bare-local
+   LBL {: l :}
    C-GE l BCOND,
    T0 T1 0 ADDI,
    l LBL,

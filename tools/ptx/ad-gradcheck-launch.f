@@ -418,7 +418,6 @@ variable AG-MISS#
    AG-dO @ AG-DXA AG-READBACK
    AG-dO2 @ AG-DYA AG-READBACK ;
 
-\ typed-local-lint: allow-bare-local - runner keeps the fwd-run quotation effect.
 : AG2-NUM-J ( ptr a n [ ptr a -- ] -- r ) {: arr:ptr jx:n runner :}
    arr jx AG-F@ {: x0:r :}
    x0 AG-EPS f+ arr jx AG-F!   AG-YP runner execute
@@ -532,7 +531,6 @@ variable AG-MISS#
    AG-dO2 @ AG-DYA AG-READBACK             \ dao broadcast tile; lane 0 = da
    AG-DYA 0 AG-F@ AG-DAA 0 AG-F! ;
 
-\ typed-local-lint: allow-bare-local - runner keeps the fwd-run quotation effect.
 : AG-NUM-A ( [ ptr a -- ] -- r ) {: runner :}   \ central difference over the scalar a
    AG-AH 0 AG-F@ {: a0:r :}
    a0 AG-EPS f+ AG-AH 0 AG-F!   AG-YP runner execute

@@ -219,7 +219,7 @@ create OUTPUT-LOCK 65 allot
    idx 0 > if lo prev-hi 1+ <= if E-CANONICAL throw then then
    idx 1+ hi ;
 
-: CHECK-TABLE ( n [ n -- n n ] -- ) {: count:n getter :} \ typed-local-lint: allow-bare-local - quotation effect
+: CHECK-TABLE ( n [ n -- n n ] -- ) {: count:n getter :}
    0 -2
    begin over count < while
       over getter execute CHECK-RANGE

@@ -260,7 +260,7 @@ POOL-CELL-MAX CELL-BYTES * constant BYTE-MAX
 \ bytes little-endian, missing tail bytes zero. Packing is deterministic, so
 \ byte equality of two symbols is exactly cell equality of their packed spans.
 : PACK-CELL ( ptr u8 n n -- n )
-   {: p u:n j:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n j:n :}
    0
    CELL-BYTES 0 ?do
       j i + u < if
@@ -282,7 +282,7 @@ POOL-CELL-MAX CELL-BYTES * constant BYTE-MAX
 \ The verify step of interning and of every equality probe: compare the
 \ stored packed cells with the presented bytes packed the same way.
 : BYTES-EQ ( IR-ARENA:arena n ptr u8 n -- bool )
-   {: a:IR-ARENA:arena st:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena st:n p u:n :}
    u BYTES>CELLS 0 ?do
       a st i + DC@  p u i CELL-BYTES * PACK-CELL <> if
          false unloop exit
@@ -291,7 +291,7 @@ POOL-CELL-MAX CELL-BYTES * constant BYTE-MAX
    true ;
 
 : FBYTES-EQ ( IR-ARENA:view n ptr u8 n -- bool )
-   {: pv:IR-ARENA:view st:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view st:n p u:n :}
    u BYTES>CELLS 0 ?do
       pv st i + FDC@  p u i CELL-BYTES * PACK-CELL <> if
          false unloop exit
@@ -314,13 +314,13 @@ private
 
 \ ---- scan --------------------------------------------------------------------
 : ROW-MATCH? ( IR-ARENA:arena IR-ARENA:arena n ptr u8 n n -- bool )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n p u:n f:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n p u:n f:n :}
    r l OFF-FLT RC@ f <> if false exit then
    r l OFF-LEN RC@ u <> if false exit then
    a  a r l ROW-START  p u BYTES-EQ ;
 
 : SCAN ( IR-ARENA:arena IR-ARENA:arena ptr u8 n n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena p u:n f:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena p u:n f:n :}
    -1
    r CNT 0 ?do
       a r i p u f ROW-MATCH? if drop i leave then
@@ -354,7 +354,7 @@ private
    c r ROW-CELLS IR-ARENA:RESERVE ;
 
 : POOL-ADD ( IR-CTX:ctx IR-ARENA:arena ptr u8 n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n :}
    a PCELLS {: st:n :}
    u BYTES>CELLS 0 ?do
       c a  p u i CELL-BYTES * PACK-CELL  IR-ARENA:PUSH drop
@@ -397,7 +397,7 @@ public
 \ bytes mint the next module-local identity under key. A hit allocates
 \ nothing; a miss appends bytes and row whole or throws with nothing written.
 : INTERN ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-symbol-id )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :}
    u 0 < if E-IR-SYM-LEN throw then
    a r key KEY-CK
    p u FILTER {: f:n :}
@@ -421,7 +421,7 @@ public
 \ Byte equality between a symbol and a presented span - the observable form
 \ of the interning invariant, with no pointer crossing the boundary.
 : EQ? ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id ptr u8 n -- bool )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id p u:n :}
    a r PAIR-CK
    r id ID-CK {: l:n :}
    r l OFF-LEN RC@ u <> if false exit then
@@ -430,7 +430,7 @@ public
 \ Copy a symbol's bytes into the caller's span and answer the byte length; a
 \ span smaller than the symbol rejects with a named error before any write.
 : COPY ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id ptr u8 n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id q cap:n :}
    a r PAIR-CK
    r id ID-CK {: l:n :}
    r l OFF-LEN RC@ {: u:n :}
@@ -453,14 +453,14 @@ public
    rv l OFF-LEN FRC@ ;
 
 : FEQ? ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id ptr u8 n -- bool )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-symbol-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-symbol-id p u:n :}
    pv rv FPAIR-CK
    rv id FID-CK {: l:n :}
    rv l OFF-LEN FRC@ u <> if false exit then
    pv  pv rv l FROW-START  p u FBYTES-EQ ;
 
 : FCOPY ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id ptr u8 n -- n )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-symbol-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-symbol-id q cap:n :}
    pv rv FPAIR-CK
    rv id FID-CK {: l:n :}
    rv l OFF-LEN FRC@ {: u:n :}

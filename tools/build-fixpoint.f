@@ -352,10 +352,6 @@ variable BF-CERT-PATH-U
 \ FILE-SIZE (dot habu-hb-build-cannot-d09df17e). The answer is an `outcome`, so
 \ a deadline expiry is a named arm and not a bare rc.
 \
-\ Its home is lib/process-env.f beside RUN-ARGV-ENV-CAPTURE-OUTCOME, whose
-\ choreography it mirrors line for line; that file carries no package, so
-\ package-diff-lint refuses a definition added there. Move it when the file is
-\ sealed.
 : BF-RUN-ARGV-ENV-OUTFILE ( ptr u8 n ptr u8 n ptr u8 len ms -- len outcome )
    {: exe:ptr exeu:n out:ptr outu:n err:ptr errcap:len timeout:ms :}
    out outu BF-LF-BUF 0 WRITE-ALL

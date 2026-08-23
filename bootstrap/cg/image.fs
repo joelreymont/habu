@@ -9,7 +9,7 @@ s" image: buffer overrun" exception constant E-M-OVER
 
 \ Grow a heap buffer so it holds at least n bytes. The same idiom the IR buffer
 \ in icode.fs uses: allocate once, resize on demand, throw when the heap says no.
-: BUF-FIT ( n buf cap -- )  {: n bp cp :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: BUF-FIT ( n buf cap -- )  {: n bp cp :}
    n cp @ <= if exit then
    cp @ if  bp @ n resize throw  else  n allocate throw  then
    bp !  n cp ! ;
@@ -23,13 +23,13 @@ variable MLEN
 : M-HERE ( -- off )  MP @ MBUF - ;
 
 \ Resizing can move the buffer, so carry the cursor across the move as an offset.
-: M-FIT ( n -- )  M-HERE {: at :}  MBUF-A MBUF-CAP BUF-FIT  MBUF at + MP ! ; \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: M-FIT ( n -- )  M-HERE {: at :}  MBUF-A MBUF-CAP BUF-FIT  MBUF at + MP ! ;
 
 : M-RESET ( -- )  MBUF MP ! ;
 
 \ Name the buffer, what the write needed and what it has. An overrun is never a
 \ silent scribble past the end and never a bare exit.
-: M-ROOM ( n -- )  M-HERE + {: need :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: M-ROOM ( n -- )  M-HERE + {: need :}
    need MBUF-CAP @ > if
       cr ." cg: image buffer overrun: MBUF needs " need .
       ." bytes, has " MBUF-CAP @ . cr

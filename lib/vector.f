@@ -331,7 +331,6 @@ public
    value vec VEC-PUSH IDX>N N>INDEX ;
 
 \ ---- iterate active cells, index-first (index lifted to the role) -------------
-\ typed-local-lint: allow-bare-local - q preserves the row-polymorphic quotation
 \ effect [ R CAD-NUM:index a -- R ], which a local annotation cannot express.
 : EACH ( R ptr a [ R CAD-NUM:index a -- R ] -- R ) {: vec:ptr q :}
    vec VEC-LEN@ LEN>N 0 ?do

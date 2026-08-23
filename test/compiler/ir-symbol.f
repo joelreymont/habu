@@ -133,7 +133,7 @@ create CBUF 32 allot
    {: c:IR-CTX:ctx :}
    c 4 64 TAB-NEW
    {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
-   s" abc" {: p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   s" abc" {: p u:n :}
    c a r key p -1 IR-SYM:INTERN drop ;
 
 : LN-RUN ( -- )

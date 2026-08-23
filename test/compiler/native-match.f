@@ -753,7 +753,7 @@ variable M-A   variable M-U
 : MIGRATE-RC ( -- n )
    [: M-A @ M-U @ NMIGRATE:DEFINE ;] catch ;
 
-: STAGE-ONE ( ptr u8 n -- ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+: STAGE-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
    a M-A !  u M-U !
    NELAB:REFUSED-RESET ;
 

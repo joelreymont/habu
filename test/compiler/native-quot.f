@@ -112,7 +112,7 @@ $D65F03C0 constant RET-WORD
 \ quotation has exactly one, and that is the count a `[:` the source never wrote
 \ would move.
 : ADRS ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u REC-START {: start:n :}
    0
    a u INSNS 0 ?do
@@ -122,7 +122,7 @@ $D65F03C0 constant RET-WORD
 \ Where the FIRST Adr of the word's code stands, in instructions, and -1 when
 \ there is none.
 : ADR-AT ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u REC-START {: start:n :}
    -1
    a u INSNS 0 ?do
@@ -135,7 +135,7 @@ $D65F03C0 constant RET-WORD
 \ address the Adr has to compute, derived from the code itself rather than from
 \ the emitter's own table of function starts.
 : RET-AT ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u REC-START {: start:n :}
    -1
    a u INSNS 0 ?do
@@ -144,7 +144,7 @@ $D65F03C0 constant RET-WORD
 
 \ The address the word's first Adr computes.
 : ADR-TARGET ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u ADR-AT {: k:n :}
    a u REC-START  k INSN-BYTES * +  {: site:n :}
    site  a u REC-START k INSN-AT ADR-DELTA  + ;
@@ -152,7 +152,7 @@ $D65F03C0 constant RET-WORD
 \ And the address the second function of the emission begins at, derived the
 \ other way.
 : BODY-START ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u REC-START  a u RET-AT 1+ INSN-BYTES *  + ;
 
 \ ---- the definitions the chain compiles --------------------------------------

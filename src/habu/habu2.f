@@ -3508,7 +3508,7 @@ s" c-defer-room" s" --" TRUST
 \ replays both registrations after `: TRUST`.
 
 : C-PD-COPY ( -- )                                   \ copy x5 bytes [x9..)->[x16..); advances x9/x16, x5->0
-   LBL LBL {: top done :}   \ typed-local-lint: allow-bare-local
+   LBL LBL {: top done :}
    top LBL,  5 done CBZ,
       6 9 0 LDRB,  6 16 0 STRB,
       9 9 1 ADDI,  16 16 1 ADDI,  5 5 1 SUBI,  top B,
@@ -3524,7 +3524,7 @@ s" c-pd-copy" s" --" TRUST
 s" c-pd-die-full" s" --" TRUST
 
 : C-PD-CAPTURE ( -- )                                \ record this defer's (name,sig) into the next pending slot
-   LBL LBL LBL {: capok nameok sigok :}   \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: capok nameok sigok :}
    12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ x12 = &band
    13 12 0 LDR,  14 PD-CAP MOVZ,  13 14 CMP,  C-LT capok BCOND,
       C-PD-DIE-FULL
@@ -3549,7 +3549,7 @@ s" c-pd-die-full" s" --" TRUST
 s" c-pd-capture" s" --" TRUST
 
 : C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust-decl` and `checker-defer` are defined (non-dying)
-   LBL {: done :}   \ typed-local-lint: allow-bare-local
+   LBL {: done :}
    9 KWDATA:LKWTRUSTDECL LABEL@ ADR,  10 10 MOVZ,  LFIND LABEL@ BL,
    13 done CBZ,                                      \ trust-decl absent -> x13=0
    LCHKDEFER 13 C-FIND-GLOBAL?                       \ x13 = checker-defer found? (global scope)
@@ -3581,7 +3581,7 @@ s" c-pretrust-ready?" s" --" TRUST
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
-   LBL LBL {: ready pdone :}                          \ typed-local-lint: allow-bare-local — pre-trust defer capability (dot habu-engine-pre-trust-77410827)
+   LBL LBL {: ready pdone :}
    C-PRETRUST-READY?  13 ready CBNZ,
       C-PD-CAPTURE  pdone B,                          \ trust/checker-defer absent: record into the pending table
    ready LBL,
@@ -3637,7 +3637,7 @@ s" j-is" s" --" TRUST
 \ supplies the copied name+sig, so no body-buffer/record read is needed at drain
 \ time. Registered as a framed prim (BLRs into the checker) via FPRIM below.
 : BDRAINPRETRUST ( -- )
-   LBL LBL {: loop done :}   \ typed-local-lint: allow-bare-local
+   LBL LBL {: loop done :}
    loop LBL,
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 done CBZ,   \ remaining==0 -> done
       DEF-TRUST:FIND                                  \ x11 = trust-decl XT (clobbers x12-x16)
@@ -4819,7 +4819,7 @@ public
    {: ploop:label pdone:label pnf:label pnomark:label
       pqual:label pscope:label pgate:label pbad:label
       nfmsg:label badmsg:label
-      nfa nfu bada badu :}                           \ typed-local-lint: allow-bare-local
+      nfa nfu bada badu :}
    21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor
    23 5 LAOTNSITE LABEL@ TADR,  23 23 0 LDR,         \ x23 = site count M
    22 0 MOVZ,                                        \ x22 = site index
@@ -5743,7 +5743,7 @@ public
 : EM-AOTWIDGATE ( -- )
    LBL LBL LBL LBL LBL LBL LBL  s" hb: AOT gate: lookup record unusable"
    {: wbad:label wdone:label wmsg:label winl:label
-      wploop:label wpnext:label wrej:label ma mu :}   \ typed-local-lint: allow-bare-local
+      wploop:label wpnext:label wrej:label ma mu :}
    LAOTWIDGATE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,           \ save return + xt
    5 wbad CBZ,                                          \ LFIND reported a hit, so a record must be here

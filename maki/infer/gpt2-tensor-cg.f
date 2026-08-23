@@ -225,13 +225,13 @@ TRUSTED: UNEMBED-ABI ( -- span<space-global,f32,h> matrix<space-global,f32,v,h> 
    [: PTX-ACT:EMIT-GELU ;] PTXREP:REP1 ;
 
 KERNEL: GELU-K ( span<space-global,f32,e> -- ) GRID: ceil-n-256
-   {: x :} \ typed-local-lint: allow-bare-local - inferred span carries comma-separated phantom args.
-   x GRID-CTX {: c :} \ typed-local-lint: allow-bare-local - inferred grid context carries comma-separated phantom args.
+   {: x :}
+   x GRID-CTX {: c :}
    x c LOAD GELU.  x c STORE ;
 
 KERNEL: RESIDUAL-K ( span<space-global,f32,e> span<space-global,f32,e> span<space-global,f32,e> -- ) GRID: ceil-n-256
-   {: x res out :} \ typed-local-lint: allow-bare-local - inferred spans carry comma-separated phantom args.
-   x GRID-CTX {: c :} \ typed-local-lint: allow-bare-local - inferred grid context carries comma-separated phantom args.
+   {: x res out :}
+   x GRID-CTX {: c :}
    x c LOAD  res c LOAD  +.  out c STORE ;
 
 : EMBED ( -- )

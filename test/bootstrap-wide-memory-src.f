@@ -71,18 +71,14 @@ TRUSTED: BWM-XT ( ptr u8 n -- n ) 0 search-wl ;
    BWM-MK4 BWM-STORE4
    BWM-FETCH4 BWM-UN4 ;
 
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : BWM-LOCAL2 ( -- n n n ) BWM-MK2 5 {: r s:n :} s r BWM-UN2 ;
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : BWM-LOCAL4 ( -- n n n n n ) 5 BWM-MK4 {: s:n m :} s m BWM-UN4 ;
 package BWM-LOCAL-TEST
 : HIDDEN ( -- n ) 13 ;
 : HIDDEN2 ( -- n ) 29 ;
 public
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : DUAL ( -- n n n n n n )
    BWM-MK2 BWM-MK4 {: r m :} r BWM-UN2 m BWM-UN4 ;
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : DEEP ( -- n n n n n n )
    BWM-MK2 1 2 3 4 {: r a:n b:n c:n d:n :}
    a b c d r BWM-UN2 ;
@@ -116,19 +112,12 @@ public
    s" BWM-LOCAL-TEST:HIDDEN" ABSENT
    s" BWM-LOCAL-TEST:HIDDEN2" ABSENT ;
 ;package
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : BWM-BR2 ( n -- n n ) 0 > if BWM-MK2 {: r :} r BWM-UN2
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
    else BWM-MK2B {: r :} r BWM-UN2 then ;
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : BWM-BRW ( n -- n n n n ) 0 > if BWM-MK2 {: r :} r BWM-UN2 0 0
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
    else BWM-MK4 {: m :} m BWM-UN4 then ;
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : BWM-BRMIX ( n -- n n n ) 0 > if BWM-MK2 5 {: r s:n :} s r BWM-UN2 else 6 7 8 then ;
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : BWM-BROUTER ( n -- n n n n ) BWM-MK4 {: m :}
-\ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
    0 > if BWM-MK2 {: r :} r BWM-UN2 drop drop then m BWM-UN4 ;
 
 TRUSTED: BWM-W32 ( n n -- n )

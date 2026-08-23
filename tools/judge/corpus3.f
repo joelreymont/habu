@@ -182,7 +182,6 @@ private
    s" CODEGEN-CORPUS3:SUM-LEN" JUDGE-PASS:HABU-ONLY+ ;
 
 \ ---- the ten rows, written once -----------------------------------------------
-\ typed-local-lint: allow-bare-local - row is the caller's own body, and a local
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" T-SUM" s" hc3_t_sum" s" IID" JUDGE-PASS:ROW-ABI!

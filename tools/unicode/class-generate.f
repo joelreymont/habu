@@ -71,14 +71,12 @@ create OUTPUT-LOCK SHA256-HEX-LENGTH 1+ allot
    hi OUT-N
    s"  ," OUT-LINE ;
 
-\ typed-local-lint: allow-bare-local - getter preserves the range-accessor quotation effect.
 : OUT-RANGES ( n [ n -- n n ] -- ) {: count:n getter :}
    0 begin dup count < while
       dup getter execute OUT-RANGE
       1+
    repeat drop ;
 
-\ typed-local-lint: allow-bare-local - getter preserves the range-accessor quotation effect.
 : OUT-TABLE ( ptr u8 n n [ n -- n n ] -- )
    {: name:ptr nameu:n count:n getter :}
    s" create " OUT$ name nameu OUT$ s" -RANGES" OUT-LINE

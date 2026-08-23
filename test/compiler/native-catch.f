@@ -114,7 +114,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 create CAP-BUF CAP-BUF-CAP allot
 variable CAP-U
 
-: CAP+ ( ptr u8 n -- ) {: a:ptr u:n :}   \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+: CAP+ ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-U @ u + CAP-BUF-CAP > if E-STR-CAPACITY throw then
    a  CAP-BUF CAP-U @ +  u STR-LEN BYTE-COPY-LEN
    CAP-U @ u + CAP-U ! ;

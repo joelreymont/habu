@@ -184,7 +184,6 @@ public
    loop
    drop ;
 
-\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
 : A-FIND-INDEX ( ptr a len [ a -- bool ] -- option<idx> ) {: arr:ptr len:len q :}   \ SOME first value-matching index, else NONE
    len A-CHECK-WHOLE
    len LEN>N 0 ?do
@@ -192,7 +191,6 @@ public
    loop
    OPTION:NONE ;
 
-\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
 : A-FIND-INDEXI ( ptr a len [ idx a -- bool ] -- option<idx> ) {: arr:ptr len:len q :}   \ SOME first index-aware match, else NONE
    len A-CHECK-WHOLE
    len LEN>N 0 ?do

@@ -35,7 +35,6 @@ package EVAL
 
 variable ER-NTOK  variable ER-ST
 \ count whitespace-separated tokens in a kernel source string
-\ typed-local-lint: allow-bare-local  (a keeps the `ptr u8` role the typed split needs)
 : COUNT-TOKS ( ptr u8 n -- n ) {: a u :}
    0 ER-NTOK !  0 ER-ST !
    begin  a u STR:LENGTH $20 ER-ST @ STR:OFFSET STR:SPLIT-NEXT MATCH option   ( SOME tokptr byte-len byte-off )

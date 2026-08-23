@@ -14,9 +14,9 @@ require lib/ptx/tile-smem.f
 256 %BLOCK
 
 KERNEL: SMEM-CHECKED ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
-   {: s :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
-   s COOP-CTX {: g :} \ typed-local-lint: allow-bare-local - fresh coopctx mask is inferred.
-   s g STAGE {: sh :} \ typed-local-lint: allow-bare-local - shared span type is inferred.
+   {: s :}
+   s COOP-CTX {: g :}
+   s g STAGE {: sh :}
    sh g SLOAD
    sh g SSTORE ;
 

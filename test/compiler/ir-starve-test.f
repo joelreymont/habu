@@ -31,7 +31,7 @@ private
 : EXACT-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
    c IR-STARVE:EDGE
-   c IR-STARVE:MARGIN IR-CTX:SCRATCH-TAKE {: got:ptr n:n :} \ typed-local-lint: allow-bare-local - got keeps the ptr u8 span role
+   c IR-STARVE:MARGIN IR-CTX:SCRATCH-TAKE {: got:ptr n:n :}
    n ;
 
 : EXACT-OVER-BODY ( IR-CTX:ctx -- )

@@ -546,7 +546,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    M-MEASURE @ 0<> if HELD-RETRACT then ;
 
 : STAGE ( ptr u8 n -- )
-   {: sa su:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
+   {: sa su:n :}
    sa M-SRC ! su M-SRC-U !
    0 M-IN ! 0 M-OUT !
    0 M-DATA-U ! 0 M-SPILLS ! 0 M-REMATS !
@@ -593,7 +593,7 @@ public
 \ The spelling is the whole of what the caller says: the address that word
 \ pushes is the engine's to answer.
 : DEFINE-DATA ( ptr u8 n ptr u8 n -- )
-   {: sa su:n da du:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
+   {: sa su:n da du:n :}
    sa su STAGE
    da M-DATA ! du M-DATA-U !
    RUN ;

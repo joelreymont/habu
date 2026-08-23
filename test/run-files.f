@@ -22,7 +22,6 @@ require lib/string.f
       TR-FILES-ITEM,
    again ;
 
-\ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
 : TR-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
    p begin dup c@ 0= 0= while
       dup 1+ over c@ q execute

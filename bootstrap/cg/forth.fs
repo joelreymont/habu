@@ -410,7 +410,7 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
    na nu lbl elbl REG-PRIM
    lbl LBL,  xt execute  RET,  elbl LBL, ;
 
-: FPRIM-WID ( ptr u8 xt n -- ) {: na nu xt wid -- :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: FPRIM-WID ( ptr u8 xt n -- ) {: na nu xt wid -- :}
    na nu xt FPRIM
    wid #PL @ 1- cells PWID + ! ;
 
@@ -470,7 +470,7 @@ also LOWER-TXN-CODE definitions
 variable BAD-LABEL variable MEM-LABEL variable FULL-LABEL variable DRIFT-LABEL
 variable VDESC-LABEL variable DRIFT-FAIL-LABEL
 
-: DIE ( n n -- ) {: msg len :} \ typed-local-lint: allow-bare-local
+: DIE ( n n -- ) {: msg len :}
    0 2 MOVZ,  1 msg @ ADR,  2 len MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -486,8 +486,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ x12 is scratch; address+length wrap and intersection with every compiler-owned
 \ interval fail closed after the friend latch seals.
 : GUARD-BAND ( n n n n -- )
-   {: addr off len trap :} \ typed-local-lint: allow-bare-local
-   LBL {: skip :} \ typed-local-lint: allow-bare-local
+   {: addr off len trap :}
+   LBL {: skip :}
    DREG off len + LIT64,  DREG DATA DREG ADD,
    addr DREG CMP,  C-CS skip BCOND,
    DREG off LIT64,  DREG DATA DREG ADD,
@@ -495,7 +495,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    skip LBL, ;
 
 : GUARD-ADDR-BAND ( n n n n -- )
-   {: addr off len trap :} \ typed-local-lint: allow-bare-local
+   {: addr off len trap :}
    DREG addr DATA SUB,
    EREG off LIT64,  EREG DREG EREG SUB,
    DREG len LIT64,
@@ -506,8 +506,8 @@ vocabulary GUARD
 also GUARD definitions
 
 : BLOB-SPAN ( n n -- )
-   {: addr trap :} \ typed-local-lint: allow-bare-local
-   LBL {: skip :} \ typed-local-lint: allow-bare-local
+   {: addr trap :}
+   LBL {: skip :}
    DREG DATA TXN-BLOB-A-CELL LDR,
    DREG skip CBZ,
    EREG DREG CMP,  C-LS skip BCOND,
@@ -517,8 +517,8 @@ also GUARD definitions
    skip LBL, ;
 
 : BLOB-ADDR ( n n -- )
-   {: addr trap :} \ typed-local-lint: allow-bare-local
-   LBL {: skip :} \ typed-local-lint: allow-bare-local
+   {: addr trap :}
+   LBL {: skip :}
    DREG DATA TXN-BLOB-A-CELL LDR,
    DREG skip CBZ,
    EREG addr DREG SUB,
@@ -529,8 +529,8 @@ also GUARD definitions
 previous definitions
 
 : GUARD-SPAN ( n n -- )
-   {: addr len :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: ok trap :} \ typed-local-lint: allow-bare-local
+   {: addr len :}
+   LBL LBL {: ok trap :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
@@ -547,8 +547,8 @@ previous definitions
    ok LBL, ;
 
 : PROT-GUARD ( n -- )
-   {: addr :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: ok trap :} \ typed-local-lint: allow-bare-local
+   {: addr :}
+   LBL LBL {: ok trap :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
@@ -562,8 +562,8 @@ previous definitions
    ok LBL, ;
 
 : GUARD-CODE-WORD ( n -- )
-   {: addr :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: ok trap :} \ typed-local-lint: allow-bare-local
+   {: addr :}
+   LBL LBL {: ok trap :}
    DREG DICT-SIZE LIT64,  DREG DBASE DREG ADD,
    addr DREG CMP,  C-CC trap BCOND,
    DREG REGION 4 - LIT64,  DREG DBASE DREG ADD,
@@ -768,8 +768,7 @@ previous definitions
    B G-POP
    A G-POP
    A B CMP,
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL {: done :} \ typed-local-lint: allow-bare-local - Gforth label id
+   LBL {: done :}
    C-LE done BCOND,
    A B 0 ADDI,
    done LBL,
@@ -779,7 +778,6 @@ previous definitions
    B G-POP
    A G-POP
    A B CMP,
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL {: done :}
    C-GE done BCOND,
    A B 0 ADDI,
@@ -846,8 +844,8 @@ previous definitions
 \ Labeled fd-2 diagnostic + exit(rc): branch over the inline message bytes,
 \ write them to fd 2, then exit_group(rc). Mirrors the native engine's labeled
 \ capacity/snapshot exits so no fatal path is a bare rc-only exit.
-: C-EXIT-DIAG ( ptr u8 n rc -- ) {: a u rc :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: msg after :} \ typed-local-lint: allow-bare-local
+: C-EXIT-DIAG ( ptr u8 n rc -- ) {: a u rc :}
+   LBL LBL {: msg after :}
    after B,
    msg LBL,  a u BYTES,
    after LBL,
@@ -884,7 +882,7 @@ previous definitions
 \ deliberate success exit); anything else would be silently masked to `rc & 0xFF`,
 \ so it maps to UNCAUGHT-RC instead (mirrors src/habu/habu1.f BDIE).
 : BDIE ( -- )
-   LBL {: lfixed :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: lfixed :}
    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
    0 7 0 ADDI,
    7 0 CMPI,    C-LT lfixed BCOND,
@@ -924,7 +922,7 @@ previous definitions
 
 : BMMAP ( -- )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
-   LBL {: notfixed :} \ typed-local-lint: allow-bare-local
+   LBL {: notfixed :}
    6 3 $10 ANDI,  6 notfixed CBZ,
       0 1 GUARD-SPAN
    notfixed LBL,
@@ -985,7 +983,7 @@ previous definitions
    LTHROWDISPATCH @ LBL,
    11 DATA 8 LDR,                        \ HND
    LBL {: lnoh :}  11 lnoh CBZ,
-   LBL {: lcorrupt :} \ typed-local-lint: allow-bare-local - gforth-hosted label id, like lnoh/lfixed in this word
+   LBL {: lcorrupt :}
    \ handler-frame integrity: check sentinel + saved depths BEFORE any restore store
    14 CATCH-FRAME-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE lcorrupt BCOND,   \ forged/adjacent-mutated frame
    10 11 40 LDR,  10 0 CMPI,  C-LT lcorrupt BCOND,           \ saved RSP underflow
@@ -1002,7 +1000,7 @@ previous definitions
    10 DATA REPLH-CELL LDR,  LBL {: lnorec :}  10 lnorec CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,                                \ tty REPL: recover instead of dying
    lnorec LBL,                           \ no handler: exit(exc) if kernel-representable [1,255], else the
-   LBL {: lfixed :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: lfixed :}
    0 9 0 ADDI,                           \ deterministic UNCAUGHT-RC, never the silently masked code
                                          \ (mirrors src/habu/habu1.f BTHROW THROW-NOREC-FB)
    9 1 CMPI,    C-LT lfixed BCOND,
@@ -1022,7 +1020,7 @@ previous definitions
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 
 : BSETCHECK ( -- )
-   LBL {: done :} \ typed-local-lint: allow-bare-local - Gforth label id
+   LBL {: done :}
    A G-POP
    A DATA HOOK-CELL STR,
    A done CBNZ,
@@ -1030,7 +1028,7 @@ previous definitions
    done LBL, ;                                      \ ( xt -- ): install check hook; 0 clears its paired preflight
 
 : BSETPREFLIGHT ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: bad invalid empty emit done msg invalid-msg :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL LBL LBL LBL {: bad invalid empty emit done msg invalid-msg :}
    A G-POP
    10 DATA COMPILE-PREFLIGHT-CELL LDR,
    10 empty CBZ,
@@ -1064,7 +1062,7 @@ previous definitions
 \ never ran — name each undrained defer on fd 2 and exit 73. MIRROR of native
 \ BSEALCAP; leaf-safe (syscalls only), loop state stays off write-clobbered regs.
 : BSEALCAP ( -- )
-   LBL LBL LBL {: pdok pdloop pdexit :}   \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: pdok pdloop pdexit :}
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,
       13 0 MOVZ,
       pdloop LBL,  13 10 CMP,  C-GE pdexit BCOND,
@@ -1089,18 +1087,18 @@ previous definitions
 \ Recovery and native use the same protected-WID registry contract.
 \ xw = WID -> xa = &bitmap word holding its bit, xm = that bit's mask; xscratch dies.
 \ Callers must have proved w < PROT-WID-MAX, which is what keeps xa inside the band.
-: PROT-BITS-AT, ( bits w a m scratch -- ) {: bits w a m scratch :} \ typed-local-lint: allow-bare-local
+: PROT-BITS-AT, ( bits w a m scratch -- ) {: bits w a m scratch :}
    scratch w 6 LSRI,  scratch scratch 3 LSLI,
    a bits scratch ADD,
    m w 63 ANDI,
    scratch 1 MOVZ,  m scratch m LSLV, ;
 
-: PROT-BITS-ADDR, ( base w a m scratch -- ) {: base w a m scratch :} \ typed-local-lint: allow-bare-local
+: PROT-BITS-ADDR, ( base w a m scratch -- ) {: base w a m scratch :}
    a PROT-BITS-OFF MOVZ,  a base a ADD,
    a w a m scratch PROT-BITS-AT, ;
 
 : BPROTWIDADD ( -- )
-   LBL LBL LBL {: ok done msg :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: ok done msg :}
    9 G-POP
    LPROTWIDQ @ BL,
    13 done CBNZ,
@@ -1116,7 +1114,7 @@ previous definitions
    done LBL, ;
 
 : BPROTWIDROOM ( -- )
-   LBL {: pos :} \ typed-local-lint: allow-bare-local
+   LBL {: pos :}
    14 DATA WIDN-CELL LDR,
    9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
    14 0 MOVZ,  9 14 CMP,  C-GT pos BCOND,
@@ -1343,7 +1341,7 @@ previous definitions
    LBCAP @ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS @ LBL,
-   LBL LBL LBL LBL {: bok bcp bcd go :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   LBL LBL LBL LBL {: bok bcp bcd go :}
    14 DATA P2-CELL LDR,  14 go CBZ,  RET,
    go LBL,
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
@@ -1395,7 +1393,7 @@ previous definitions
    RET, ;
 
 : EMIT-PROTWID ( -- )
-   LBL {: done :} \ typed-local-lint: allow-bare-local
+   LBL {: done :}
    LPROTWIDQ @ LBL,
    SP SP 32 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
@@ -1431,7 +1429,7 @@ previous definitions
 : EMIT-FIND ( -- )
    LFIND @ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qunqual qpkg qloop qnext qcmp qmatch qinl qmiss floop fdone fnext frank fcmp fscan fhit finl pri pub have :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: qscan qunqual qpkg qloop qnext qcmp qmatch qinl qmiss floop fdone fnext frank fcmp fscan fhit finl pri pub have :}
    0 9 0 ADDI,  1 10 0 ADDI,                             \ original token
    2 0 MOVN,  2 2 1 SUBI,                               \ -2 = unqualified
    3 9 0 ADDI,  4 10 0 ADDI,  7 0 MOVZ,                \ search token, len, colon index
@@ -1515,7 +1513,7 @@ previous definitions
 \ already written its message, so this appends the offending token, a newline and
 \ exits rc. Native routes the same failures through C-DIE-TOKEN-NL, which can be
 \ caught inside evaluate; stage0 has no compile-die path and exits.
-: C-USING-DIE-TOKEN ( n -- ) {: rc :} \ typed-local-lint: allow-bare-local
+: C-USING-DIE-TOKEN ( n -- ) {: rc :}
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -1532,7 +1530,7 @@ previous definitions
 : EMIT-FIND-USED ( -- )
    LFINDUSED @ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone ret uloop mloop member ninl ncmp nmatch unext udone amb ambmsg :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: qscan qnone ret uloop mloop member ninl ncmp nmatch unext udone amb ambmsg :}
    13 0 MOVZ,
    17 0 MOVZ,
    qscan LBL,
@@ -1893,7 +1891,7 @@ create ZBYTE 0 c,
 
 : EMIT-SOURCE-READ ( -- )
    LSRCRD @ LBL,
-   LBL LBL LBL LBL LBL {: srl sdone sreaderr sopenerr sbufull :}   \ typed-local-lint: allow-bare-local - gforth host emitter; {: :} has no :type
+   LBL LBL LBL LBL LBL {: srl sdone sreaderr sopenerr sbufull :}
    12 OS-OPEN-RD
    13 C-CS CSET,  13 sopenerr CBNZ,
    12 0 0 ADDI,
@@ -2168,7 +2166,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 0 0 ADDI, ;
 
 : C-SOURCE-APPEND-X4-TO ( n -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    {: fail :}
    2 11 0 ADDI,
    5 IBUFSZ LIT64,
@@ -2182,19 +2179,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-SFAIL @ C-SOURCE-APPEND-X4-TO ;
 
 : C-SOURCE-APPEND-CHAR ( n -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    {: c :}
    4 c MOVZ,
    C-SOURCE-APPEND-X4 ;
 
 : C-SOURCE-APPEND-CHAR-TO ( n n -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    {: c fail :}
    4 c MOVZ,
    fail C-SOURCE-APPEND-X4-TO ;
 
 : C-SOURCE-APPEND-Z12 ( -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL {: loop done :}
    loop LBL,
       4 12 0 LDRB,
@@ -2227,7 +2221,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ must re-freeze at the true engine-prefix end. Source token, not a native
 \ store: nothing has evaluated at cold-prefix assembly time. Cold boots only.
 : EMIT-SEAL-CAPTURE-TOKEN ( -- )
-   LBL {: done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: done :}
    12 DATA SNAP-CELL LDR,
    12 done CBNZ,
    $53 C-SOURCE-APPEND-CHAR
@@ -2246,9 +2240,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : EMIT-SEAL-FRIEND-TOKEN ( n -- )
-   {: fail :} \ typed-local-lint: allow-bare-local
+   {: fail :}
    BUILD-SOURCE? @ if exit then
-   LBL {: done :} \ typed-local-lint: allow-bare-local
+   LBL {: done :}
    12 DATA SNAP-CELL LDR,
    12 done CBNZ,
    $53 fail C-SOURCE-APPEND-CHAR-TO
@@ -2266,7 +2260,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : PFX-PROVIDE-ROW ( n ptr n ptr u8 n -- )
-   {: kind var a u :} \ typed-local-lint: allow-bare-local
+   {: kind var a u :}
    kind PFX-LOAD? if
       12 var @ ADR,
       C-SOURCE-APPEND-PROVIDED
@@ -2395,7 +2389,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       SRC-FLOOP @ B, ;
 
 : C-SOURCE-APPEND-LSRC ( -- )
-   LBL LBL {: lsloop lsdone :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: lsloop lsdone :}
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    lsloop LBL,
       12 13 CMP,  C-GE lsdone BCOND,
@@ -2467,14 +2461,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ Lcfpush(x9=val), Lcfpop(->x9), Lpat(x9=addr: patch CBZ/B to current CP),
 \ Lkwcmp(x0=kwaddr x1=kwlen -> x0=match? vs TKA/TKL, case-folded).
 : C-EMIT-DROP-X12 ( -- )
-   LBL {: done :} \ typed-local-lint: allow-bare-local
+   LBL {: done :}
    12 done CBZ,
       9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
    done LBL, ;
 
 : EMIT-CF-HELPERS ( -- )
    LCFPUSH @ LBL,
-      LBL {: cfcapok :}   \ typed-local-lint: allow-bare-local (gforth-hosted control-flow label id, like cfok in LCFPOP)
+      LBL {: cfcapok :}
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,   \ x11 = control-flow depth
       12 CFSTK-DEPTH-MAX MOVZ,  11 12 CMP,  C-LT cfcapok BCOND,   \ depth < cap -> ok (x12 = internal scratch, reloaded below; callers like J-ELSE preserve x14 across this call); else fail closed (never overflow the region into the code area)
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,      \ write the offending opener token
@@ -2487,7 +2481,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       13 DATA LOCF-CELL LDR,  13 12 CF-LOCF STR,
       11 11 1 ADDI,  11 10 0 STR,  RET,
    LCFPOP @ LBL,
-      LBL {: cfok :}   \ typed-local-lint: allow-bare-local (gforth-hosted control-flow label id, like pisb/kno in this word)
+      LBL {: cfok :}
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,   \ x11 = control-flow depth (peek before pop)
       11 cfok CBNZ,                                       \ empty stack: orphan closer -> fail closed (never underflow); recovery-seed mirror of the native LORPHAN reject
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,      \ write the offending closer token
@@ -2669,13 +2663,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $D1002273 C-EMITW ;
 
 : J-ENDOF ( -- )
-   LBL {: nm :} \ typed-local-lint: allow-bare-local
+   LBL {: nm :}
    J-ELSE
    14 DATA CMBK-CELL LDR,  15 14 1 ANDI,  14 14 1 LSRI,  14 DATA CMBK-CELL STR,
    15 nm CBZ,  12 4 MOVZ,  12 DATA CMM-CELL STR,  nm LBL, ;
 
 : J-ENDCASE ( -- )
-   LBL LBL {: cloop done :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: cloop done :}
    $D1002273 C-EMITW
    cloop LBL,
       LCFPOP @ BL,
@@ -2740,7 +2734,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ a stray earlier `leave` could defeat. Fail closed on the offending token
 \ exactly like the inline LCFPOP orphan reject above.
 : J-LVREQUIRE ( -- )                    \ reject a loop-family word with no open DO level
-   LBL {: lvok :}   \ typed-local-lint: allow-bare-local (gforth-hosted control-flow label id, like cfok in LCFPOP)
+   LBL {: lvok :}
    9 DATA LVD-CELL LDR,  9 lvok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,   \ write the offending token
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
@@ -2849,7 +2843,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the current word's entry (PEND slot.addr) — every word has the standard
 \ prologue/epilogue, so calling into the open definition is well-formed.
 : J-EXIT ( -- )
-   LBL {: qexit :} \ typed-local-lint: allow-bare-local
+   LBL {: qexit :}
    9 DATA QPATCH-CELL LDR,  9 qexit CBNZ,
       12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12
    qexit LBL,
@@ -2866,7 +2860,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ signature for a record that is not findable yet, so they must not route
 \ through `trust`, which fails closed on a name the dictionary cannot resolve
 \ (dot habu-make-trust-refuse-cc8e19de).
-: C-FIND-TRUST-DECL ( -- )  LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+: C-FIND-TRUST-DECL ( -- )  LBL {: ok :}
    9 LKWTRUSTDECL @ ADR,  10 10 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
       0 2 MOVZ,  1 LKWTRUSTDECL @ ADR,  2 10 MOVZ,  NR-WRITE SYS,
@@ -2883,7 +2877,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ Scratch stays off x11: the FIND words leave the registrar XT there for the
 \ caller's later C-CALL-X11-SAVED, so this word must preserve it.
 : C-PUSH-DREC-NAME ( -- )
-   LBL LBL {: scan done :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: scan done :}
    9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
    10 0 MOVZ,                           \ x10 = name length
    12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
@@ -2914,7 +2908,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    7 11 5 AND,  7 7 5 LSLI,
    8 C-CALL-MOVZ-X16 LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
 
-: C-CALL-EMIT-MOVK-X16 ( n n -- ) {: sh op :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: C-CALL-EMIT-MOVK-X16 ( n n -- ) {: sh op :}
    7 11 sh LSRI,  7 7 5 AND,  7 7 5 LSLI,
    8 op LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
 
@@ -2931,7 +2925,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the three publish words below all route here instead of at `trust-decl`. Same
 \ fail-closed shape as C-FIND-TRUST-DECL: a missing registrar names itself on
 \ fd 2 and exits 70 rather than publishing the word unsealed.
-: C-FIND-TRUST-RAW ( -- )  LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+: C-FIND-TRUST-RAW ( -- )  LBL {: ok :}
    9 LKWTRUSTRAW @ ADR,  10 9 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
       0 2 MOVZ,  1 LKWTRUSTRAW @ ADR,  2 9 MOVZ,  NR-WRITE SYS,
@@ -2944,7 +2938,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ words its defining word creates; C-PUBLISH-PTR-A registers `-- ptr a` for
 \ `create` and `variable`; C-PUBLISH-A registers `-- a` for `constant`.
 : C-PUBLISH ( -- )
-   LBL {: nohook :} \ typed-local-lint: allow-bare-local
+   LBL {: nohook :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    C-FIND-TRUST-RAW
    C-PUSH-DREC-NAME
@@ -2953,7 +2947,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nohook LBL, ;
 
 : C-PUBLISH-PTR-A ( -- )
-   LBL {: nohook :} \ typed-local-lint: allow-bare-local
+   LBL {: nohook :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    C-FIND-TRUST-RAW
    C-PUSH-DREC-NAME
@@ -2963,7 +2957,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nohook LBL, ;
 
 : C-PUBLISH-A ( -- )
-   LBL {: nohook :} \ typed-local-lint: allow-bare-local
+   LBL {: nohook :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    C-FIND-TRUST-RAW
    C-PUSH-DREC-NAME
@@ -2982,7 +2976,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ same push sequence as the two above, reaching `checker-defcast` — which proves
 \ the declared retype legal before it records the row, and throws the named
 \ refusal when it is not.
-: C-FIND-DEFCAST ( -- )  LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+: C-FIND-DEFCAST ( -- )  LBL {: ok :}
    9 LKWDEFCAST @ ADR,  10 15 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
       0 2 MOVZ,  1 LKWDEFCAST @ ADR,  2 15 MOVZ,  NR-WRITE SYS,
@@ -3136,7 +3130,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ x11 = the parent's pending record, x13 = the clause name's length, x14 = the
 \ parent's name bytes, x15 = that length rounded up to a word.
 : C-DOES-NAME$ ( -- )
-   LBL {: inl :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: inl :}
    11 DATA PEND-CELL LDR,
    12 11 16 LDR,
    13 12 0 ADDI,  13 13 14 LSLI,  13 13 14 LSRI,
@@ -3148,7 +3142,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    15 13 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI, ;
 
 : C-DOES-ROOM ( -- )
-   LBL LBL {: ndok cpok :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: ndok cpok :}
    9 DICT-CAP 1 - LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
       0 77 MOVZ,  NR-EXIT-GROUP SYS,
    ndok LBL,
@@ -3164,7 +3158,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LCEMIT @ BL, ;
 
 : C-DOES-REC ( -- )
-   LBL LBL LBL LBL {: cpy cpd pad pend :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL {: cpy cpd pad pend :}
    C-DOES-NAME$
    10 CP 0 ADDI,
    12 13 DOES-SUF-LEN SUBI,
@@ -3192,20 +3186,20 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    CP CP 15 ADD, ;
 
 : C-DOES-LEN ( -- )
-   LBL {: none :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: none :}
    9 DATA DOESB-CELL LDR,  9 none CBZ,
    11 NDICT 1 ADDI,  12 DREC MOVZ,  11 11 12 MUL,  11 DBASE 11 ADD,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    none LBL, ;
 
 : C-DOES-PUB ( -- )
-   LBL {: none :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: none :}
    9 DATA DOESB-CELL LDR,  9 none CBZ,
    NDICT NDICT 1 ADDI,
    none LBL, ;
 
 : J-DOES ( -- )
-   LBL {: dok :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
@@ -3332,7 +3326,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ entries are created.
 : C-QUALIFY-DEF ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qtail qseal qsealed qlookup nloop nnext ncmp nmatch ninl nmake nroom qapply qbad done :} \ typed-local-lint: allow-bare-local
+   {: qscan qnone qhas qtail qseal qsealed qlookup nloop nnext ncmp nmatch ninl nmake nroom qapply qbad done :}
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
@@ -3503,7 +3497,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : C-TICK ( -- )
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL LBL LBL LBL {: tk twide usedtry found :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL {: tk twide usedtry found :}
    13 usedtry CBZ,                      \ open-scope + global miss -> try the used publics (` ' SUITE` under a `using`)
    found LBL,
    14 13 8 ANDI,  14 twide CBNZ,        \ DNAME-WIDE gate (mirror of native C-TICK; inert in stage0)
@@ -3520,7 +3514,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: bk :}  13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
 
 : C-LBRACE-GUARDS ( -- )
-   LBL {: qlok :} \ typed-local-lint: allow-bare-local
+   LBL {: qlok :}
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
@@ -3550,19 +3544,19 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR, ;
 
 \ Stage0 has no package scope; pass-2 checker queries are global lookups.
-: C-P2-FIND-GLOBAL? ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: C-P2-FIND-GLOBAL? ( n n -- ) {: lvar len :}
    9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL, ;
 
-: C-P2-FIND-GLOBAL ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+: C-P2-FIND-GLOBAL ( n n -- ) {: lvar len :}
+   LBL {: ok :}
    lvar len C-P2-FIND-GLOBAL?
    13 ok CBNZ,
       0 2 MOVZ,  1 lvar @ ADR,  2 len MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
-: C-P2-FIND-CHECKER ( n n n -- ) {: lvar len done :} \ typed-local-lint: allow-bare-local
-   LBL {: ready :} \ typed-local-lint: allow-bare-local
+: C-P2-FIND-CHECKER ( n n n -- ) {: lvar len done :}
+   LBL {: ready :}
    lvar len C-P2-FIND-GLOBAL?
    13 ready CBNZ,
    9 DATA FRIEND-LATCH-CELL LDR,  9 done CBZ,
@@ -3573,14 +3567,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ and clen=private WID, matching the native dictionary representation. This is
 \ sufficient for the early checker/certificate packages and keeps their words
 \ out of the global vocabulary during recovery.
-: C-PACKAGE-CHECK-CALL ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local
-   LBL {: done :} \ typed-local-lint: allow-bare-local
+: C-PACKAGE-CHECK-CALL ( n n -- ) {: lvar len :}
+   LBL {: done :}
    lvar len done C-P2-FIND-CHECKER
    C-CALL-X11-SAVED
    done LBL, ;
 
 : EMIT-PKG-RESYNC ( -- )
-   LBL {: done :} \ typed-local-lint: allow-bare-local - Gforth-hosted label id.
+   LBL {: done :}
    9 DATA PKGRESYNC-CELL LDR,  9 done CBZ,
       9 0 MOVZ,  9 DATA PKGRESYNC-CELL STR,
       9 DATA PKG-PUB-CELL LDR,  9 done CBNZ,
@@ -3588,9 +3582,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : C-PACKAGE-RECORD-MATCH ( n n -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    {: hit miss :}
-   LBL LBL {: cmp inl :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: cmp inl :}
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
    14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
@@ -3609,8 +3602,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       7 7 1 ADDI,  cmp B, ;
 
 : C-PACKAGE-PROT-GUARD ( n -- )
-   {: bad :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL LBL {: loop miss hit done :} \ typed-local-lint: allow-bare-local
+   {: bad :}
+   LBL LBL LBL LBL {: loop miss hit done :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    loop LBL,
       6 done CBZ,
@@ -3624,7 +3617,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : C-PACKAGE-SEAL-GUARD ( -- )
-   LBL LBL {: ok bad :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: ok bad :}
    9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,
    0 LRESCHECKCERT @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
    0 LRESLOWERCERT @ ADR,  1 10 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
@@ -3639,7 +3632,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    ok LBL, ;
 
 : C-PACKAGE-NAME-GUARD ( -- )
-   LBL LBL LBL {: loop bad done :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: loop bad done :}
    14 0 MOVZ,
    loop LBL,
       15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE done BCOND,
@@ -3651,7 +3644,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-PACKAGE-ENSURE ( -- )
    LBL LBL LBL LBL LBL LBL
-   {: loop miss hit make room done :} \ typed-local-lint: allow-bare-local
+   {: loop miss hit make room done :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    loop LBL,
       6 make CBZ,
@@ -3674,7 +3667,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : C-PACKAGE ( -- )
-   LBL LBL LBL {: inactive hastok checkdone :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: inactive hastok checkdone :}
    9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    inactive LBL,
@@ -3702,7 +3695,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 DATA CUR-CELL STR, ;
 
 : C-PUBLIC ( -- )
-   LBL {: active :} \ typed-local-lint: allow-bare-local
+   LBL {: active :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    active LBL,
@@ -3710,7 +3703,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA PKG-PUB-CELL LDR,  9 DATA CUR-CELL STR, ;
 
 : C-PRIVATE ( -- )
-   LBL {: active :} \ typed-local-lint: allow-bare-local
+   LBL {: active :}
    9 DATA PKG-PRI-CELL LDR,  9 active CBNZ,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    active LBL,
@@ -3718,7 +3711,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA PKG-PRI-CELL LDR,  9 DATA CUR-CELL STR, ;
 
 : C-END-PACKAGE ( -- )
-   LBL {: active :} \ typed-local-lint: allow-bare-local
+   LBL {: active :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    active LBL,
@@ -3739,7 +3732,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ public wid joins the search (privates stay invisible), definitions still land in
 \ the current scope's wordlist, and qualified NAME:WORD is unchanged.
 : C-USING-CHECK-CALL ( -- )   \ mirror the name into checker.f CHK-USE-NAMES when the checker is loaded
-   LBL {: done :} \ typed-local-lint: allow-bare-local
+   LBL {: done :}
    LCHKUSING 13 done C-P2-FIND-CHECKER            \ 13 = len "checker-using"
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
@@ -3747,7 +3740,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : C-USING-NAME-GUARD ( -- )   \ consume the next token; reject a missing name / a ':' in it
-   LBL LBL LBL LBL LBL LBL {: mmiss hastok cscan cbad cmsg cok :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL LBL LBL {: mmiss hastok cscan cbad cmsg cok :}
    LTOK @ BL,  0 hastok CBNZ,
       0 2 MOVZ,  1 mmiss ADR,  2 31 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
@@ -3766,7 +3759,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    cok LBL, ;
 
 : C-USING-WID ( -- )   \ TKA/TKL name a package -> x2 = its public WID; die unknown otherwise
-   LBL LBL LBL LBL LBL LBL {: loop miss hit notfound umsg done :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL LBL LBL {: loop miss hit notfound umsg done :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    loop LBL,
       6 notfound CBZ,
@@ -3780,7 +3773,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : C-USING-PUSH ( -- )   \ x2 = public WID; push it onto the using stack (overflow -> die)
-   LBL LBL {: fmsg pushok :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: fmsg pushok :}
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (overflow test)
    14 USE-MAX MOVZ,  8 14 CMP,  C-LT pushok BCOND,
       0 2 MOVZ,  1 fmsg ADR,  2 39 MOVZ,  NR-WRITE SYS,
@@ -3798,7 +3791,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-USING-PUSH ;
 
 : C-END-USING ( -- )
-   LBL LBL {: ok umsg :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: ok umsg :}
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (underflow test)
    8 ok CBNZ,
       0 2 MOVZ,  1 umsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
@@ -3809,7 +3802,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ depth--
 
 : EM-REC-WIDE-PUBLISH ( -- )
-   LBL {: nohook :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: nohook :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    LRECWPUB 16 C-P2-FIND-GLOBAL
    C-CALL-X11-SAVED
@@ -3822,7 +3815,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 also LOWER-CERT
 
 : EM-P2-CARVE-W ( -- )
-   LBL LBL {: localok bindok :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: localok bindok :}
    9 SP 0 LDR,  9 64 CMPI,  C-CC localok BCOND,
       EM-P2-SLOT-DIE
    localok LBL,
@@ -3843,7 +3836,7 @@ also LOWER-CERT
 previous
 
 : EM-P2-LIVE-W ( -- )
-   LBL {: ok :} \ typed-local-lint: allow-bare-local
+   LBL {: ok :}
    9 SP 0 LDR,  9 64 CMPI,  C-CC ok BCOND,
       EM-P2-SLOT-DIE
    ok LBL,
@@ -3851,7 +3844,7 @@ previous
    13 9 3 LSLI,  12 12 13 ADD,  10 12 0 LDR, ;
 
 : EM-P2-LIVE-CUM ( -- )
-   LBL LBL LBL {: ok loop done :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: ok loop done :}
    9 SP 0 LDR,  9 64 CMPI,  C-CC ok BCOND,
       EM-P2-SLOT-DIE
    ok LBL,
@@ -3864,7 +3857,7 @@ previous
 
 : EM-P2-CARVE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: ql qd wl wd wok pl pd jl jd sok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   {: ql qd wl wd wok pl pd jl jd sok :}
    SP SP 32 SUBI,
    9 DATA P2LOC0-CELL LDR,  9 SP 0 STR,
    9 0 MOVZ,  9 SP 8 STR,
@@ -3924,7 +3917,7 @@ previous
    SP SP 32 ADDI, ;
 
 : EM-P2-LOCREF ( -- )
-   LBL LBL LBL {: rl rd sok :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: rl rd sok :}
    SP SP 32 SUBI,
    0 SP 0 STR,
    EM-P2-LIVE-W  10 SP 8 STR,
@@ -3961,7 +3954,7 @@ previous
 
 : C-LBRACE-CARVE-FRAME ( -- )
    LBL LBL {: pl pd :}
-   LBL LBL {: p1c pjoin :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: p1c pjoin :}
    9 DATA P2-CELL LDR,  9 p1c CBZ,
       EM-P2-CARVE
       pjoin B,
@@ -4027,8 +4020,8 @@ previous
 : C-QUOTE-SAVED-DROP ( -- )
    SP SP 16 ADDI, ;
 
-: C-ESC-HEX-X9 ( label -- ) {: bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
-   LBL LBL LBL {: lower upper done :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+: C-ESC-HEX-X9 ( label -- ) {: bad :}
+   LBL LBL LBL {: lower upper done :}
    9 $30 CMPI,  C-LT lower BCOND,
    9 $39 CMPI,  C-GT lower BCOND,
    9 9 $30 SUBI,  done B,
@@ -4042,8 +4035,8 @@ previous
    9 9 $37 SUBI,
    done LBL, ;
 
-: C-ESC-DECODE-BASIC ( label label -- ) {: hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL {: dq bs bel bs8 esc lf ff cr tab vt nul done :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+: C-ESC-DECODE-BASIC ( label label -- ) {: hex bad :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL {: dq bs bel bs8 esc lf ff cr tab vt nul done :}
    9 $22 CMPI,  C-EQ dq BCOND,
    9 $71 CMPI,  C-EQ dq BCOND,
    9 $5C CMPI,  C-EQ bs BCOND,
@@ -4078,7 +4071,7 @@ previous
 \ x9 byte, x10 0=ok 1=hex 2=bad. LESCHEX: x9 hex digit -> x9 nibble, x10 0=ok 2=bad.
 \ Mirrors src/habu/habu2.f EMIT-ESC-DECODE.
 : EMIT-ESC-DECODE ( -- )
-   LBL LBL LBL {: hex bad hbad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LBL LBL LBL {: hex bad hbad :}
    LESCDEC @ LBL,  hex bad C-ESC-DECODE-BASIC  10 0 MOVZ,  RET,
    hex LBL,  10 1 MOVZ,  RET,
    bad LBL,  10 2 MOVZ,  RET,
@@ -4089,7 +4082,7 @@ previous
 \ out, x11/x14/x15 scratch; saves LR around the inner decoder BLs).
 \ Mirrors src/habu/habu2.f EMIT-ESC-SCAN.
 : EMIT-ESC-SCAN ( -- )
-   LBL LBL LBL LBL LBL {: scan done esc hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LBL LBL LBL LBL LBL {: scan done esc hex bad :}
    LESCSCAN @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    11 0 MOVZ,
@@ -4114,7 +4107,7 @@ previous
 \ in/out; incoming x10 decoded count preserved; saves LR).
 \ Mirrors src/habu/habu2.f EMIT-ESC-COPY.
 : EMIT-ESC-COPY ( -- )
-   LBL LBL LBL LBL LBL {: copy done esc hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LBL LBL LBL LBL LBL {: copy done esc hex bad :}
    LESCCOPY @ LBL,
    SP SP 16 SUBI,  10 SP 0 STR,  30 SP 8 STR,
    copy LBL,  11 12 CMP,  C-GE done BCOND,
@@ -4202,7 +4195,7 @@ previous
 : C-EICQ ( -- )
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
-   LBL {: capok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LBL {: capok :}
    10 255 CMPI,  C-LE capok BCOND,  s" bootstrap: counted string literal too long" C-EXIT76
    capok LBL,
    C-ESC-QUOTE-CONSUME
@@ -4315,7 +4308,7 @@ previous
 : C-ECQ ( -- )
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
-   LBL {: capok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LBL {: capok :}
    10 255 CMPI,  C-LE capok BCOND,  s" bootstrap: compiled counted string too long" C-EXIT76
    capok LBL,
    C-ESC-QUOTE-CONSUME
@@ -4336,7 +4329,7 @@ previous
    C-ESC-QUOTE-SAVED-DROP ;
 
 : C-EDOTQ ( -- )
-   LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LBL {: ok :}
    C-ESDQ
    9 LKWTYPE @ ADR,  10 4 MOVZ,  LFIND @ BL,
    13 ok CBNZ,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
@@ -4442,7 +4435,7 @@ variable CFSK2
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, ;
 
 : EMIT-SEED-DICT ( -- )
-   LBL LBL LBL LBL {: scopy scdone pkg fields :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL {: scopy scdone pkg fields :}
    11 LNCOUNT @ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,
    9 LDICT @ ADR,  10 DBASE 0 ADDI,  12 11 0 ADDI,
    scopy LBL,
@@ -4542,9 +4535,9 @@ variable CFSK2
    2 5 MOVZ,  LPROT @ BL,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH @ BL, ;
 
-: EMIT-SNAPSHOT-VALIDATE-WIDS ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: EMIT-SNAPSHOT-VALIDATE-WIDS ( n -- ) {: bad :}
    LBL LBL LBL LBL LBL
-   {: prot-loop prot-max prot-inner prot-next widn :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: prot-loop prot-max prot-inner prot-next widn :}
    5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,
    11 10 PROT-REG-TAG-CELL LDR,
@@ -4572,7 +4565,7 @@ variable CFSK2
 
 : EMIT-SNAPSHOT-RESTORE ( -- )
    LBL LBL LBL LBL LBL LBL LBL
-   {: snomag snbad snok snnew snhave snbadver snpresent :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: snomag snbad snok snnew snhave snbadver snpresent :}
    24 0 MOVZ,
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
@@ -4634,7 +4627,7 @@ variable CFSK2
    snomag LBL, ;
 
 : EMIT-STARTUP-RUNTIME-STATE ( -- )
-   LBL LBL LBL {: cwok pwclr pwclrd :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: cwok pwclr pwclrd :}
    9 0 MOVZ,  9 DATA HND-CELL STR,
    9 DATA SNAP-CELL LDR,
    9 cwok CBNZ,
@@ -4720,7 +4713,6 @@ variable CFSK2
 \ habu-gate-runner-entry-81c84af0): fixed label + the current token + newline
 \ to fd 2, exit 77. The msg blob carries the newline at offset 24.
 : C-COLON-DICT-ROOM ( -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL {: ndok msg full :}
    9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
    full B,
@@ -4733,7 +4725,7 @@ variable CFSK2
    ndok LBL, ;
 
 : C-COLON-PENDING-DREC ( -- )
-   LBL {: named :} \ typed-local-lint: allow-bare-local
+   LBL {: named :}
    LTOK @ BL,  0 named CBNZ,
       0 2 MOVZ,  1 LCOLONNONAME @ ADR,  2 36 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
@@ -4806,7 +4798,7 @@ variable CFSK2
    0 $4A MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-CAST ( -- )
-   LBL LBL {: named nohook :}   \ typed-local-lint: allow-bare-local
+   LBL LBL {: named nohook :}
    2 3 MOVZ,  LPROT @ BL,                              \ region -> RW
    C-COLON-CODE-ROOM
    C-COLON-DICT-ROOM
@@ -4845,14 +4837,14 @@ variable CFSK2
 \ guard (which only checks runtime store prims) is never involved.
 
 \ Labeled fd-2 diagnostic then exit(rc): write the offending token, then exit rc.
-: C-DEFER-DIE-TOKEN ( n -- )  {: rc :}   \ typed-local-lint: allow-bare-local
+: C-DEFER-DIE-TOKEN ( n -- )  {: rc :}
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ x11 <- code addr of the DEFER-UNSET word (case-insensitive FIND of its lower-
 \ case keyword bytes); die $46 if the exec-vector prefix is somehow absent.
 : C-DEFER-FIND-UNSET ( -- )
-   LBL {: found :}   \ typed-local-lint: allow-bare-local
+   LBL {: found :}
    9 LKWDEFERUNSET @ ADR,  10 11 MOVZ,  LFIND @ BL,
    13 found CBNZ,
       $46 C-DEFER-DIE-TOKEN
@@ -4906,7 +4898,7 @@ variable CFSK2
 \ replays both registrations after `: TRUST`. Keep byte-for-byte with native.
 
 : C-PD-COPY ( -- )                                   \ copy x5 bytes [x9..)->[x16..); advances x9/x16, x5->0
-   LBL LBL {: top done :}   \ typed-local-lint: allow-bare-local
+   LBL LBL {: top done :}
    top LBL,  5 done CBZ,
       6 9 0 LDRB,  6 16 0 STRB,
       9 9 1 ADDI,  16 16 1 ADDI,  5 5 1 SUBI,  top B,
@@ -4920,7 +4912,7 @@ variable CFSK2
    0 72 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-PD-CAPTURE ( -- )                                \ record this defer's (name,sig) into the next pending slot
-   LBL LBL LBL {: capok nameok sigok :}   \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: capok nameok sigok :}
    12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,
    13 12 0 LDR,  14 PD-CAP MOVZ,  13 14 CMP,  C-LT capok BCOND,
       C-PD-DIE-FULL
@@ -4944,7 +4936,7 @@ variable CFSK2
    13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR, ;       \ count++
 
 : C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust` and `checker-defer` are defined (non-dying)
-   LBL {: done :}   \ typed-local-lint: allow-bare-local
+   LBL {: done :}
    9 LKWTRUSTDECL @ ADR,  10 10 MOVZ,  LFIND @ BL,
    13 done CBZ,                                      \ trust absent -> x13=0
    LCHKDEFER 13 C-P2-FIND-GLOBAL?                    \ x13 = checker-defer found? (global scope)
@@ -4954,7 +4946,7 @@ variable CFSK2
 \ unchecked in stage0). clen spans the whole body incl RET, so addr+clen lands
 \ exactly on the trailer.
 : C-DEFER ( -- )
-   LBL {: named :}   \ typed-local-lint: allow-bare-local
+   LBL {: named :}
    2 3 MOVZ,  LPROT @ BL,                           \ region -> RW
    C-COLON-CODE-ROOM
    C-COLON-DICT-ROOM
@@ -4975,7 +4967,7 @@ variable CFSK2
    NDICT NDICT 1 ADDI,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,               \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,             \ region -> RX + flush
-   LBL LBL {: ready pdone :}                          \ typed-local-lint: allow-bare-local — pre-trust defer capability (dot habu-engine-pre-trust-77410827)
+   LBL LBL {: ready pdone :}
    C-PRETRUST-READY?  13 ready CBNZ,
       C-PD-CAPTURE  pdone B,                          \ trust/checker-defer absent: record into the pending table
    ready LBL,
@@ -4988,7 +4980,7 @@ variable CFSK2
 \ is NAME : resolve NAME's dispatch cell via its meta trailer (FIND addr+clen ->
 \ DEFER-MAGIC then the cell addr); die if NAME is missing or is not a defer.
 : C-DEFER-TARGET-META ( -- )
-   LBL LBL LBL {: named found ok :}   \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: named found ok :}
    LTOK @ BL,  0 named CBNZ,
       $4A C-DEFER-DIE-TOKEN
    named LBL,
@@ -5021,7 +5013,7 @@ variable CFSK2
 \ empty the table. Called once from checker.f right after `: TRUST`. Drains top-down
 \ using the band count as loop state; each slot supplies the copied name+sig.
 : BDRAINPRETRUST ( -- )
-   LBL LBL {: loop done :}   \ typed-local-lint: allow-bare-local
+   LBL LBL {: loop done :}
    loop LBL,
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 done CBZ,   \ remaining==0 -> done
       C-FIND-TRUST-DECL                               \ x11 = trust-decl XT (clobbers x12-x16)
@@ -5078,7 +5070,7 @@ variable CFSK2
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 : EMIT-P2-RS ( -- )
-   LBL LBL {: rsto rsdone :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: rsto rsdone :}
    LP2RS @ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,  6 SP 16 STR,
    10 20 RSP-CELL W-LDRX C-EMITW
@@ -5108,7 +5100,7 @@ variable CFSK2
 also LOWER-CERT
 
 : EMIT-P2-VALID-EXEC ( -- )
-   LBL LBL LBL LBL LBL LBL {: outer guard active inactive invalid done :} \ typed-local-lint: allow-bare-local - Gforth labels cannot use Habu type suffixes.
+   LBL LBL LBL LBL LBL LBL {: outer guard active inactive invalid done :}
    LP2VEXEC @ LBL,
    15 30 4 ADDI,
    9 15 0 LDR,  15 15 8 ADDI,
@@ -5150,7 +5142,7 @@ previous
 
 \ Copy the frozen certificate descriptor inline and emit an absolute validator call.
 : EMIT-P2-VALID-EMIT ( -- )
-   LBL LBL LBL {: copy patch done :} \ typed-local-lint: allow-bare-local - Gforth labels cannot use Habu type suffixes.
+   LBL LBL LBL {: copy patch done :}
    LP2VEMIT @ LBL,
    SP SP 48 SUBI,  30 SP 0 STR,
    9 0 MOVZ,  9 SP 24 STR,
@@ -5216,7 +5208,7 @@ previous
 also LOWER-CERT also LOWER-TXN-LOOKUP definitions
 
 : EMIT-WIDTH ( -- )
-   LBL LBL LBL LBL {: missing keyeq found drift :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL {: missing keyeq found drift :}
    LP2CWAT @ LBL,
    14 10 0 ADDI,
    11 DATA TXN-CERT-A-CELL LDR,
@@ -5236,7 +5228,7 @@ also LOWER-CERT also LOWER-TXN-LOOKUP definitions
    drift LBL,  [ also LOWER-TXN-CODE ] DRIFT-LABEL 37 DIE [ previous ] ;
 
 : EMIT-DESC ( -- )
-   LBL LBL LBL {: missing found drift :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: missing found drift :}
    LP2CDESC @ LBL,
    10 DATA TXN-CERT-A-CELL LDR,
    13 10 WF-COUNT-CELL cells LDR,
@@ -5294,7 +5286,7 @@ previous previous definitions
 also LOWER-CERT also LOWER-TXN-CODE definitions
 
 : EMIT-DESC ( -- )
-   LBL LBL LBL LBL LBL {: outer guards next done bad :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL LBL {: outer guards next done bad :}
    VDESC-LABEL @ LBL,
    15 12 3 LSLI,  15 11 15 ADD,
    16 13 3 LSLI,  16 15 16 ADD,
@@ -5330,8 +5322,8 @@ also LOWER-CERT also LOWER-TXN definitions
 
 4095 constant MAX-WIDTH
 
-: PROTECT ( n -- ) {: prot :} \ typed-local-lint: allow-bare-local
-   LBL {: ok :} \ typed-local-lint: allow-bare-local
+: PROTECT ( n -- ) {: prot :}
+   LBL {: ok :}
    0 DATA TXN-BLOB-A-CELL LDR,
    1 DATA TXN-BLOB-CAP-CELL LDR,
    2 prot MOVZ,  NR-MPROTECT SYS,
@@ -5339,8 +5331,8 @@ also LOWER-CERT also LOWER-TXN definitions
    [ also LOWER-TXN-CODE ] MEM-LABEL 38 DIE [ previous ]
    ok LBL, ;
 
-: MAP ( n -- ) {: cap :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL {: clear mapped ok :} \ typed-local-lint: allow-bare-local
+: MAP ( n -- ) {: cap :}
+   LBL LBL LBL {: clear mapped ok :}
    12 DATA TXN-BLOB-A-CELL LDR,
    13 DATA TXN-BLOB-CAP-CELL LDR,  12 12 13 ORR,
    13 DATA TXN-SRC-A-CELL LDR,  12 12 13 ORR,
@@ -5364,7 +5356,7 @@ also LOWER-CERT also LOWER-TXN definitions
    cap DATA TXN-BLOB-CAP-CELL STR, ;
 
 : RELEASE-MAP ( -- )
-   LBL LBL LBL {: empty mapped ok :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: empty mapped ok :}
    0 DATA TXN-BLOB-A-CELL LDR,
    1 DATA TXN-BLOB-CAP-CELL LDR,
    0 mapped CBNZ,
@@ -5389,15 +5381,15 @@ also LOWER-CERT also LOWER-TXN definitions
 : RELEASE ( -- ) RELEASE-MAP ;
 : SEAL ( -- ) 1 PROTECT ;
 
-: COPY-BYTES ( n n n -- ) {: src len dst :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: loop done :} \ typed-local-lint: allow-bare-local
+: COPY-BYTES ( n n n -- ) {: src len dst :}
+   LBL LBL {: loop done :}
    loop LBL,  len done CBZ,
       17 src 0 LDRB,  17 dst 0 STRB,
       src src 1 ADDI,  dst dst 1 ADDI,  len len 1 SUBI,
       loop B,
    done LBL, ;
 
-: ROW-END ( n n n n n -- ) {: count stride cur total bad :} \ typed-local-lint: allow-bare-local
+: ROW-END ( n n n n n -- ) {: count stride cur total bad :}
    16 stride MOVZ,
    15 count 16 MUL,
    17 15 16 UDIV,  17 count CMP,  C-NE bad BCOND,
@@ -5405,8 +5397,8 @@ also LOWER-CERT also LOWER-TXN definitions
    cur 16 CMP,  C-CC bad BCOND,
    cur total CMP,  C-HI bad BCOND, ;
 
-: SOURCE-LEN ( n -- ) {: dst :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: full done :} \ typed-local-lint: allow-bare-local
+: SOURCE-LEN ( n -- ) {: dst :}
+   LBL LBL {: full done :}
    dst DATA DOESB-CELL LDR,
    dst full CBZ,
       dst dst 6 SUBI,  done B,
@@ -5414,7 +5406,7 @@ also LOWER-CERT also LOWER-TXN definitions
    done LBL, ;
 
 : HASH-BODY ( -- )
-   LBL LBL {: loop done :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: loop done :}
    12 DATA BODYBUF-OFF ADDI,
    13 SOURCE-LEN
    14 FNV-OFFSET LIT64,
@@ -5424,8 +5416,8 @@ also LOWER-CERT also LOWER-TXN definitions
       12 12 1 ADDI,  13 13 1 SUBI,  loop B,
    done LBL, ;
 
-: VALIDATE-WF ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL LBL LBL LBL LBL {: loop ordered flags fetch advance done xdone :} \ typed-local-lint: allow-bare-local
+: VALIDATE-WF ( n -- ) {: bad :}
+   LBL LBL LBL LBL LBL LBL LBL {: loop ordered flags fetch advance done xdone :}
    5 11 WF-COUNT-CELL cells LDR,
    13 11 HEADER-CELLS cells ADDI,
    14 0 MOVZ,  9 0 MOVZ,  8 0 MOVZ,  6 0 MOVZ,  7 0 MOVZ,
@@ -5454,8 +5446,8 @@ also LOWER-CERT also LOWER-TXN definitions
    done LBL,
    15 11 FETCH-COUNT-CELL cells LDR,  15 8 CMP,  C-NE bad BCOND, ;
 
-: VALIDATE-BINDS ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: loop done :} \ typed-local-lint: allow-bare-local
+: VALIDATE-BINDS ( n -- ) {: bad :}
+   LBL LBL {: loop done :}
    5 11 WF-COUNT-CELL cells LDR,
    6 11 BIND-COUNT-CELL cells LDR,
    13 11 HEADER-CELLS cells ADDI,
@@ -5468,8 +5460,8 @@ also LOWER-CERT also LOWER-TXN definitions
       13 13 1 cells ADDI,  14 14 1 ADDI,  loop B,
    done LBL, ;
 
-: VALIDATE-FETCHES ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL LBL {: loop scan linked done :} \ typed-local-lint: allow-bare-local
+: VALIDATE-FETCHES ( n -- ) {: bad :}
+   LBL LBL LBL LBL {: loop scan linked done :}
    5 11 WF-COUNT-CELL cells LDR,
    6 11 BIND-COUNT-CELL cells LDR,
    7 11 FETCH-COUNT-CELL cells LDR,
@@ -5511,7 +5503,7 @@ also LOWER-CERT also LOWER-TXN definitions
    12 11 NEEDS-CELL cells LDR,  12 9 CMP,  C-NE bad BCOND, ;
 
 : VALIDATE ( -- )
-   LBL LBL {: bad done :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: bad done :}
    10 HEADER-CELLS cells CMPI,  C-CC bad BCOND,
    13 11 MAGIC-CELL cells LDR,
    14 MAGIC LIT64,  13 14 CMP,  C-NE bad BCOND,
@@ -5542,15 +5534,15 @@ also LOWER-CERT also LOWER-TXN definitions
    done LBL, ;
 
 : ZERO-LIVE ( -- )
-   LBL LBL {: loop done :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: loop done :}
    11 TXN-LIVE-W-OFF MOVZ,  11 DATA 11 ADD,
    12 TXN-LIVE-W-CAP MOVZ,  13 0 MOVZ,
    loop LBL,  12 done CBZ,
       13 11 0 STR,  11 11 1 cells ADDI,  12 12 1 SUBI,  loop B,
    done LBL, ;
 
-: VERIFY-COUNT ( n n -- ) {: state header :} \ typed-local-lint: allow-bare-local
-   LBL {: ok :} \ typed-local-lint: allow-bare-local
+: VERIFY-COUNT ( n n -- ) {: state header :}
+   LBL {: ok :}
    11 DATA TXN-CERT-A-CELL LDR,
    12 11 header cells LDR,
    13 DATA state LDR,
@@ -5564,7 +5556,7 @@ also LOWER-CERT also LOWER-TXN definitions
    TXN-FETCH-I-CELL FETCH-COUNT-CELL VERIFY-COUNT ;
 
 : FREEZE ( -- )
-   LBL LBL LBL LBL {: skip copy room alloc :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL {: skip copy room alloc :}
    LCERTBYTES 16 C-P2-FIND-GLOBAL
    C-CALL-X11-SAVED
    10 G-POP  11 G-POP
@@ -5627,8 +5619,8 @@ also LOWER-CERT also LOWER-TXN definitions
 
 previous previous definitions
 
-: EM-P2-TRIGGER ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL {: nowide p2ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+: EM-P2-TRIGGER ( n -- ) {: lmain :}
+   LBL LBL {: nowide p2ok :}
    9 DATA P2-CELL LDR,  9 nowide CBNZ,
    [ also LOWER-TXN ] NEEDS? [ previous ]
    10 nowide CBZ,
@@ -5642,8 +5634,8 @@ previous previous definitions
    lmain B,
    nowide LBL, ;
 
-: EM-P2-CHECK-DEFINER ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL {: p2sk :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+: EM-P2-CHECK-DEFINER ( n -- ) {: lmain :}
+   LBL {: p2sk :}
    9 DATA P2-CELL LDR,  9 p2sk CBNZ,
       C-CALL-CHECK-DEFINER
       [ also LOWER-TXN ] FREEZE [ previous ]
@@ -5653,7 +5645,7 @@ previous previous definitions
 also LOWER-CERT also LOWER-TXN definitions
 
 : FINISH ( -- )
-   LBL {: nop2 :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   LBL {: nop2 :}
    9 DATA P2-CELL LDR,  9 nop2 CBZ,
    VERIFY-DONE
    9 DATA P2INP-CELL LDR,  9 DATA INP-CELL STR,
@@ -5674,16 +5666,16 @@ previous previous definitions
    2 = if P2W2-CELL exit then
    P2W3-CELL ;
 
-: EM-P2-QUERY-1 ( n -- ) {: pos :} \ typed-local-lint: allow-bare-local
-   pos EM-P2-W-CELL {: wcell :} \ typed-local-lint: allow-bare-local
+: EM-P2-QUERY-1 ( n -- ) {: pos :}
+   pos EM-P2-W-CELL {: wcell :}
    9 DATA TKA-CELL LDR,
    10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,
    10 pos MOVZ,
    LP2CWAT @ BL,
    10 DATA wcell STR, ;
 
-: EM-P2-QUERY-WIDTHS ( n -- ) {: k :} \ typed-local-lint: allow-bare-local
-   LBL {: scal :} \ typed-local-lint: allow-bare-local
+: EM-P2-QUERY-WIDTHS ( n -- ) {: k :}
+   LBL {: scal :}
    0 begin dup k < while dup EM-P2-QUERY-1 1 + repeat drop
    9 DATA P2W0-CELL LDR,
    k 1 > if 10 DATA P2W1-CELL LDR,  9 9 10 ADD, then
@@ -5693,7 +5685,7 @@ previous previous definitions
    scal LBL, ;
 
 variable P2SK
-: P2W-ENTRY ( n n n n n n -- ) {: lmain kwvar kwlen k hxt :} \ typed-local-lint: allow-bare-local
+: P2W-ENTRY ( n n n n n n -- ) {: lmain kwvar kwlen k hxt :}
    LBL P2SK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 P2SK @ CBZ,
@@ -5704,7 +5696,7 @@ variable P2SK
    lmain B,
    P2SK @ LBL, ;
 
-: P2F-ENTRY ( n n n n n -- ) {: lmain kwvar kwlen hxt :} \ typed-local-lint: allow-bare-local
+: P2F-ENTRY ( n n n n n -- ) {: lmain kwvar kwlen hxt :}
    LBL P2SK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 P2SK @ CBZ,
@@ -5764,8 +5756,8 @@ variable P2SK
 : EM-P2X-STORE ( -- )
    5 DATA P2W0-CELL LDR,  LP2STORE @ BL, ;
 
-: EMIT-COMPILE-P2WIDE ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL {: notp2 :} \ typed-local-lint: allow-bare-local
+: EMIT-COMPILE-P2WIDE ( n -- ) {: lmain :}
+   LBL {: notp2 :}
    9 DATA P2-CELL LDR,  9 notp2 CBZ,
    lmain LKWDUP2    3 1 ['] EM-P2X-DUP P2W-ENTRY
    lmain LKWDROP2   4 1 ['] EM-P2X-DROP P2W-ENTRY
@@ -5802,7 +5794,7 @@ variable P2SK
 
 : EMIT-INTERPRET-COLON ( n n -- ) {: lmain lnotcolon :}
    lnotcolon C-COLON-TOKEN?
-      LBL {: p2ok :} \ typed-local-lint: allow-bare-local
+      LBL {: p2ok :}
       9 DATA P2-CELL LDR,  9 p2ok CBZ,
          0 2 MOVZ,  1 LP2NEST @ ADR,  2 33 MOVZ,  NR-WRITE SYS,
          0 76 MOVZ,  NR-EXIT-GROUP SYS,
@@ -5846,7 +5838,7 @@ variable P2SK
    12 lnotnum CBZ,  11 G-PUSH  lmain B,
    lnotnum LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL LBL LBL {: lwide usedtry found :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL {: lwide usedtry found :}
    13 usedtry CBZ,                      \ open-scope + global miss -> try the used publics
    found LBL,
    14 13 8 ANDI,  14 lwide CBNZ,        \ DNAME-WIDE gate (mirror of EM-INTERPRET-FIND; inert in stage0)
@@ -5874,8 +5866,8 @@ variable P2SK
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
 
-: EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL {: ttrusted ndhas ndchk :} \ typed-local-lint: allow-bare-local
+: EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :}
+   LBL LBL LBL {: ttrusted ndhas ndchk :}
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       lmain EM-P2-CHECK-DEFINER
    ttrusted LBL,
@@ -5895,8 +5887,8 @@ variable P2SK
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    lmain B, ;
 
-: EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: nohook rejected :} \ typed-local-lint: allow-bare-local
+: EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :}
+   LBL LBL {: nohook rejected :}
    9 DATA P2-CELL LDR,  9 nohook CBNZ,
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
@@ -5915,8 +5907,8 @@ variable P2SK
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    lmain B, ;
 
-: EMIT-COMPILE-PUBLISH ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: checked unsigned :} \ typed-local-lint: allow-bare-local
+: EMIT-COMPILE-PUBLISH ( n -- ) {: lmain :}
+   LBL LBL {: checked unsigned :}
    9 DATA HOOK-CELL LDR,  9 checked CBNZ,
       lmain EMIT-COMPILE-PUBLISH-HOOKED
    checked LBL,
@@ -5992,9 +5984,9 @@ variable P2SK
    lmain EMIT-COMPILE-META-KEYWORDS
    lmain EMIT-COMPILE-LOOP-KEYWORDS ;
 
-: EMIT-COMPILE-LOCAL ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   LBL LBL LBL {: notloc lmem qok :} \ typed-local-lint: allow-bare-local
-   LBL {: p1c :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: EMIT-COMPILE-LOCAL ( n -- ) {: lmain :}
+   LBL LBL LBL {: notloc lmem qok :}
+   LBL {: p1c :}
    LLOC-FIND @ BL,  0 0 CMPI,  C-LT notloc BCOND,
       LBCAP @ BL,
       11 DATA QPATCH-CELL LDR,  11 qok CBZ,
@@ -6075,7 +6067,7 @@ variable P2SK
    lmain EMIT-COMPILE-FLOAT-OPS ;
 
 : EMIT-COMPILE-CALL ( n n -- ) {: lmain lundef :}
-   LBL LBL LBL LBL LBL {: notimm callimm noxc ploop pdone :} \ typed-local-lint: allow-bare-local - Gforth label ids
+   LBL LBL LBL LBL LBL {: notimm callimm noxc ploop pdone :}
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT @ BL,                               \ x10 = extra pads, x11 = found
@@ -6091,7 +6083,7 @@ variable P2SK
    noxc LBL,
    LVSPILL @ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL LBL {: usedtry found :} \ typed-local-lint: allow-bare-local - Gforth label ids
+   LBL LBL {: usedtry found :}
    13 usedtry CBZ,                                \ open-scope + global miss -> try the used publics
    found LBL,
    14 13 2 ANDI,  14 notimm CBZ,
@@ -6125,8 +6117,8 @@ variable P2SK
 \ (LVPUSHC, the generated-constructor literal path), mode off. Resolution
 \ failure dies fail-closed at its token: named message + token + newline, 70.
 \ find a global word by kwdata name or die 70
-: C-FIND-GLOBAL ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local
-   LBL {: ok :} \ typed-local-lint: allow-bare-local
+: C-FIND-GLOBAL ( n n -- ) {: lvar len :}
+   LBL {: ok :}
    9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL,
    13 ok CBNZ,
       0 2 MOVZ,  1 lvar @ ADR,  2 len MOVZ,  NR-WRITE SYS,
@@ -6139,8 +6131,7 @@ variable P2SK
 \ emission resumes (mirrors habu2.f; DATA stores are outside the flipped
 \ region, die legs exit the process).
 \ CMM=1 leg: resolve family, arm state 2
-: EM-ADT-CON-FAM ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: EM-ADT-CON-FAM ( n -- ) {: lmain :}
    LBL LBL {: fmsg fok :}
    LBCAP @ BL,                          \ operand reaches the checker's body too
    2 5 MOVZ,  LPROT @ BL,               \ region -> RX: checker-call window
@@ -6163,7 +6154,6 @@ variable P2SK
    lmain B, ;
 
 : EM-ADT-CON-PUSHES ( -- )              \ pads x 0 + tag as VS constants (x12=pads, x13=tag)
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL {: ploop pdone :}
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,   \ frame the counters: LVPUSHC may
    2 3 MOVZ,  LPROT @ BL,                       \ spill (emission -> region RW first)
@@ -6176,9 +6166,8 @@ variable P2SK
    SP SP 16 ADDI, ;
 
 \ CMM=2 leg: resolve variant, emit, mode off
-: EM-ADT-CON-VAR ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL LBL {: vmsg vok nox :} \ typed-local-lint: allow-bare-local - Gforth label ids
+: EM-ADT-CON-VAR ( n -- ) {: lmain :}
+   LBL LBL LBL {: vmsg vok nox :}
    LBCAP @ BL,                          \ operand reaches the checker's body too
    2 5 MOVZ,  LPROT @ BL,               \ region -> RX: checker-call window
    LTFLCVAR 9 C-FIND-GLOBAL
@@ -6218,7 +6207,6 @@ variable P2SK
 \ the message, "hb: bad <family> tag\n" copied inline, then a self-contained
 \ write(2)+exit_group(ENGINE-ERROR:BAD-TAG). x11=name addr, x12=name len. Region RW.
 : C-DIE-BAD-TAG ( -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL LBL LBL LBL {: p1 p2 s1 s2 t1 t2 :}
    SP SP $20 SUBI,  11 SP 0 STR,  12 SP 8 STR,
    15 CP 0 ADDI,  15 SP 16 STR,
@@ -6249,8 +6237,7 @@ variable P2SK
    SYS-EMIT-SVC C-EMITW
    SP SP $20 ADDI, ;
 
-: EM-MATCH-SEMI ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: EM-MATCH-SEMI ( n -- ) {: lmain :}
    LBL LBL {: jl jd :}
    2 5 MOVZ,  LPROT @ BL,
    LTFLNAME 10 C-FIND-GLOBAL
@@ -6273,8 +6260,7 @@ variable P2SK
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    lmain B, ;
 
-: EM-ADT-MATCH-FAM ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: EM-ADT-MATCH-FAM ( n -- ) {: lmain :}
    LBL LBL {: fmsg fok :}
    LBCAP @ BL,
    2 5 MOVZ,  LPROT @ BL,
@@ -6296,8 +6282,7 @@ variable P2SK
    2 3 MOVZ,  LPROT @ BL,
    lmain B, ;
 
-: EM-ADT-MATCH-VAR ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: EM-ADT-MATCH-VAR ( n -- ) {: lmain :}
    LBL LBL LBL {: notsemi vmsg vok :}
    LBCAP @ BL,
    0 LKWSEMIMATCH @ ADR,  1 6 MOVZ,  LKWCMP @ BL,
@@ -6326,9 +6311,8 @@ variable P2SK
    2 3 MOVZ,  LPROT @ BL,
    lmain B, ;
 
-: EM-ADT-MATCH-OF ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL LBL {: emsg eok noxm :} \ typed-local-lint: allow-bare-local - Gforth label ids
+: EM-ADT-MATCH-OF ( n -- ) {: lmain :}
+   LBL LBL LBL {: emsg eok noxm :}
    LBCAP @ BL,
    0 LKWOF @ ADR,  1 2 MOVZ,  LKWCMP @ BL,
    0 eok CBNZ,
@@ -6357,9 +6341,8 @@ variable P2SK
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    lmain B, ;
 
-: EMIT-COMPILE-ADT-MODE ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL LBL LBL LBL {: s2 s3 s4 s5 off :} \ typed-local-lint: allow-bare-local
+: EMIT-COMPILE-ADT-MODE ( n -- ) {: lmain :}
+   LBL LBL LBL LBL LBL {: s2 s3 s4 s5 off :}
    9 DATA CMM-CELL LDR,  9 off CBZ,
    9 2 CMPI,  C-EQ s2 BCOND,
    9 3 CMPI,  C-EQ s3 BCOND,
@@ -6427,7 +6410,7 @@ variable P2SK
    LREAD @ B, ;
 
 : EMIT-PREFMISS-RECOVER ( -- )
-   LBL LBL LBL {: loop pop deliver :} \ typed-local-lint: allow-bare-local - Gforth-hosted label ids.
+   LBL LBL LBL {: loop pop deliver :}
    15 70 MOVZ,
    11 DATA HND-CELL LDR,
    loop LBL,

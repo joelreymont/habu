@@ -3950,7 +3950,6 @@ variable SYM-ID
    SYM-STR-U @ u + SYM-STR-U !
    SYM-DST@ u ;
 
-\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
 : SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool )
    {: pkg pkgu:n vis:n name nameu:n id:n :}
    id SYM-ROW SYM.VIS @ vis <> IF RES-FALSE EXIT THEN
@@ -4075,7 +4074,6 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
       1 +
    repeat drop ;
 
-\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
 : HIDX-HASH ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    HIDX-FNV-BASIS HIDX-H !
    pkg pkgu HIDX-H$
@@ -4208,7 +4206,6 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 : HIDX-DFR-DEP+ ( n -- )
    HIDX-DFR-HI @ max HIDX-DFR-HI ! ;
 
-\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
 : SYM-FIND ( ptr u8 n n ptr u8 n -- n bool ) {: pkg pkgu:n vis:n name nameu:n :}
    HIDX-ENSURE
    pkg pkgu vis name nameu HIDX-HASH HIDX-BKT @ HIDX-CUR !
@@ -4228,7 +4225,6 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    dst id SYM-NAME-A-FIELD !
    len id SYM-ROW SYM.NAME-U ! ;
 
-\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
 : SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg pkgu:n vis:n name nameu:n id:n :}
    pkg pkgu id SYM-PKG!
    name nameu id SYM-NAME!
@@ -4250,7 +4246,6 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    SYM-N @ SYM-CAP-V @ < IF exit THEN
    SYM-N @ 1 + SYM-GROW ;
 
-\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
 : SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
@@ -4500,7 +4495,6 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-ENSURE-NODE ( -- )
    UEND @ EFF-NODE + CELL + USIGS-ENSURE ;
 
-\ typed-local-lint: allow-bare-local - p preserves ptr a field-owner role.
 : E-NODE-INIT ( n ptr a -- ) {: tag:n p :}
    tag p EN.TAG !
    0 p EN.A !  0 p EN.B !  0 p EN.C !  0 p EN.D !
@@ -5071,7 +5065,6 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
 \ read-time-only check could be masked by rewind-then-regrow.
-\ typed-local-lint: allow-bare-local - p preserves ptr a record-owner role.
 : E-REC-INIT ( ptr a -- ) {: p :}
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
@@ -7045,31 +7038,24 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
    THEN
    a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN ;
 
-\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
 : CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
-\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
 : CHECKER-GLOBAL-SYM? ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-FIND IF EXIT THEN drop 0 ;
 
-\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
 : CHECKER-PUBLIC-SYM ( ptr u8 n ptr u8 n -- n ) {: pkg pkgu:n a u:n :}
    pkg pkgu SYM-PUBLIC a u SYM-INTERN ;
 
-\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
 : CHECKER-PUBLIC-SYM? ( ptr u8 n ptr u8 n -- n ) {: pkg pkgu:n a u:n :}
    pkg pkgu SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
 
-\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
 : CHECKER-PKG-SYM ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-INTERN ;
 
-\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
 : CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
 
-\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
 : CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
@@ -7840,7 +7826,6 @@ variable LNK-CNT           \ active PES rows for the last scanned key
 variable LNK-I  variable LNK-J
 24 constant PL-ARITY-CAP   \ din+dout fitting the 62-bit fingerprint (each fam = 2 bits)
 
-\ typed-local-lint: allow-bare-local - pa/na preserve ptr u8 roles.
 : KEY-SYM ( ptr u8 n ptr u8 n -- n )  {: pa pu:n na nu:n :}   \ 0 = no such (pkg,spelling) row
    pu 0= if na nu CHECKER-GLOBAL-SYM? exit then
    pa pu na nu CHECKER-PUBLIC-SYM? ;
@@ -8692,10 +8677,7 @@ variable CURSYM
 \
 \ The invariant is about the retired GLOBAL words, not about the spelling. A
 \ package that owns its own word with one of these tails owns a DIFFERENT word,
-\ and it must stay live and certifiable: tools/lint/diff-frame.f has had a
-\ private `1 constant PF-ADD` ("parser form: add") inside package DIFF-FRAME
-\ since long before this retirement, and a context-free blocklist made that file
-\ fail to load. So RETIRED-GLOBAL? matches the spelling first (exact and
+\ and it must stay live and certifiable. So RETIRED-GLOBAL? matches the spelling first (exact and
 \ case-folded — DO-TOK1 passes folded tokens — never a prefix, so PF-COMMIT-N
 \ and PF-NO-VARIANT are untouched), then asks the ordinary resolver where the
 \ token actually binds. It rejects only at the two positions that would have
@@ -9783,7 +9765,6 @@ variable LCO
       t dup LIN-LOCAL-REF-TAINT  DCUR @ MK-PUSH DCUR !
    THEN ;
 
-\ typed-local-lint: allow-bare-local - a/u preserve the token's ptr u8 role.
 : LOC-REF? {: a u :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE

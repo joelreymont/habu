@@ -593,7 +593,7 @@ public
 
 : REGISTER
    ( n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
-   {: id:n order:n snapshot prepare commit rollback release :} \ typed-local-lint: allow-bare-local
+   {: id:n order:n snapshot prepare commit rollback release :}
    STATE id order snapshot prepare commit rollback release
    DECLARATION-TRANSACTION:REGISTER ;
 

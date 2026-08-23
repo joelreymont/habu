@@ -67,7 +67,7 @@ private
 public
 
 : RESET ( -- ) 0 COL-N ! ;
-: COL+ ( ptr u8 n n [ n -- ] -- ) {: ha:ptr u:n al:n q :}   \ q = xt<[ n -- ]>: typed-local-lint: allow-bare-local
+: COL+ ( ptr u8 n n [ n -- ] -- ) {: ha:ptr u:n al:n q :}   \ q = xt<[ n -- ]>
    COL-FULL? if E-REPORT-CAPACITY throw then                \ preflight capacity before ANY store
    COL-N @ {: idx:n :}
    ha u al REPORT-COL:MAKE idx COL-AT !                     \ store header + alignment as one record

@@ -2934,7 +2934,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 \ ---- what one selection run is told ------------------------------------------
 \ The new module gets the same source the old one has, proved by digest.
 : SOURCE! ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-A64SEL-SHAPE throw then
    V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
    p u CDIGEST:COMPUTE
@@ -3044,7 +3044,7 @@ public
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
-   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
    BND-TAKE
    m BND-MODULE-CK
    gi 0 S-ARGS !

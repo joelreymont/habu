@@ -394,8 +394,7 @@ accountable — non-measurement rows are never rewritten by the extension.
 - **Changing kernel codegen requires a row.** `tools/kernel-perf-lint.f` scans a
   `jj diff --git` artifact and fails when the diff touches a kernel emitter
   (`lib/ptx/cg.f`, `lib/ptx/cg-*.f`, `tools/ptx/*-cg.f`, `src/arch/ptx/emit.f`)
-  without adding a registry row. Run it alongside `tools/typed-local-diff-lint.f`
-  in the pre-commit Forth gate:
+  without adding a registry row. Run it in the pre-commit Forth gate:
   `bin/hb --load tools/kernel-perf-lint.f -- diff.patch`.
 - **Off-device sessions add an owned WAIVER row instead — and it ratchets.**
   When the device is unavailable, add a `WAIVER` row (value 0) whose note

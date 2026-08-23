@@ -41,10 +41,7 @@ subsystem name.
 
 - **One-way dependency: `maki → habu`, never the reverse.** Maki loads Habu
   libraries (`lib/*.f`, the PTX vocabulary `lib/ptx*.f`); Habu core, the gate, and
-  the fixpoint must never reference `maki/`. Enforced by `tools/maki-dep-lint.f`
-  (token-scans `src/`, `lib/`, `test/` for any forbidden `maki/` path reference and
-  throws on a hit), wired into the native gate lint slice as `maki-dep-lint` +
-  `maki-dep-lint-fixtures`.
+  the fixpoint must never depend on `maki/`.
 - **Layered package namespaces (the runtime package feature, `docs/forth.md` "Packages").**
   `package NAME` / `public` / `private` / `;package` gives each module a real wordlist
   namespace; a bare `WORD` reference from habu core does not resolve, enforcing the one-way

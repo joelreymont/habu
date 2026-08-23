@@ -174,7 +174,7 @@ variable SAT-ACC                                  \ APPLIC-SATISFIED accumulator
 \ gates it). Its checked effect is exactly the proposal type, so a chooser that does not produce
 \ (ordinal, txn) fails the checker - a raw command / a forged raw-n txn cannot cross this boundary.
 public
-: CHOOSE ( [ -- n txn ] -- n txn ) {: chooser :}   chooser execute ;   \ typed-local-lint: allow-bare-local (quotation local)
+: CHOOSE ( [ -- n txn ] -- n txn ) {: chooser :}   chooser execute ;
 private
 
 \ ---- proposal gates -------------------------------------------------------------
@@ -218,7 +218,7 @@ private
 \ PROPOSE-APPLY runs one untrusted proposal through the range check, the registry gate, and the
 \ mutation, returning the step code.
 : PROPOSE-APPLY ( CAPTOK:grant LEDGER:ledger [ -- n txn ] -- n )
-   {: child:CAPTOK:grant ledger:LEDGER:ledger chooser :}   \ typed-local-lint: allow-bare-local (quotation local)
+   {: child:CAPTOK:grant ledger:LEDGER:ledger chooser :}
    chooser CHOOSE {: ord:n t:txn :}
    ord PROPOSAL-LEGAL? 0= if SC-ILLEGAL exit then
    ord ACTION:ENUM-AT child GATE {: g:n :}
@@ -238,7 +238,7 @@ private
    RS-ITER @ 1+ RS-ITER !
    RS-ITER @ CFG-MAX-ITERS @ >= if RN-ITER-BOUND BLOCK then ;
 
-: MEASURE ( [ -- n ] -- ) {: metric :}   \ typed-local-lint: allow-bare-local (quotation local)
+: MEASURE ( [ -- n ] -- ) {: metric :}
    metric execute {: m1:n :}
    m1 RS-METRIC @ >  m1 RS-METRIC !               \ ( -- improved? ) then store the new metric
    if PROGRESS-STEP else STALL-STEP then
@@ -247,7 +247,7 @@ private
 \ STEP is one full iteration: propose+apply, map a terminal step code to a blocked reason, else
 \ measure progress against the focused verifier.
 : STEP ( CAPTOK:grant LEDGER:ledger [ -- n txn ] [ -- n ] -- )
-   {: child:CAPTOK:grant ledger:LEDGER:ledger chooser metric :}   \ typed-local-lint: allow-bare-local (quotation locals)
+   {: child:CAPTOK:grant ledger:LEDGER:ledger chooser metric :}
    child ledger chooser PROPOSE-APPLY {: sc:n :}
    sc SC-ILLEGAL   = if RN-ILLEGAL BLOCK exit then
    sc SC-UNAUTH    = if RN-UNAUTH  BLOCK exit then
@@ -257,7 +257,7 @@ private
 \ DRIVE seeds the baseline metric (an already-satisfied goal promotes immediately) then iterates
 \ under the child grant until a terminal transition sets RS-DONE.
 : DRIVE ( CAPTOK:grant LEDGER:ledger [ -- n txn ] [ -- n ] -- )
-   {: child:CAPTOK:grant ledger:LEDGER:ledger chooser metric :}   \ typed-local-lint: allow-bare-local (quotation locals)
+   {: child:CAPTOK:grant ledger:LEDGER:ledger chooser metric :}
    metric execute RS-METRIC !
    RS-METRIC @ CFG-GOAL @ >= if PROMOTE exit then
    begin RS-DONE @ 0= while
@@ -321,7 +321,7 @@ public
 \ LEDGER, measuring progress with the trusted METRIC verifier, and returns the typed outcome. An
 \ attenuation escape is blocked(unauthorized) before any mutation.
 : RUN ( CAPTOK:grant LEDGER:ledger [ -- n txn ] [ -- n ] -- loop-result )
-   {: root:CAPTOK:grant ledger:LEDGER:ledger chooser metric :}   \ typed-local-lint: allow-bare-local (quotation locals)
+   {: root:CAPTOK:grant ledger:LEDGER:ledger chooser metric :}
    RUN-INIT
    root MK-CHILD
    MATCH CAPTOK:attenuate-result

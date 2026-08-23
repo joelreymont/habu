@@ -147,7 +147,6 @@ private
 \ ---- the twelve rows, written once -------------------------------------------
 \ Each is: the name the corpus publishes it under, the C symbol that is its twin,
 \ and then its pinned input in the order the subject takes it.
-\ typed-local-lint: allow-bare-local - row is the caller's own body, and a local
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" CALL-FAN" s" hc4_call_fan" JUDGE-PASS:ROW!

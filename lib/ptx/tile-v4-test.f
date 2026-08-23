@@ -25,8 +25,8 @@ KERNEL: RELU-SPAN-V4 ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
    rot rot STORE-V4 ;
 
 KERNEL: SUBDIV-SPAN-V4 ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
-   {: x y :} \ typed-local-lint: allow-bare-local
-   x GRID-CTX-V4 {: g :} \ typed-local-lint: allow-bare-local
+   {: x y :}
+   x GRID-CTX-V4 {: g :}
    x g LOAD-V4  y g LOAD-V4  SUB-V4
    y g LOAD-V4  DIV-V4
    y g STORE-V4 ;

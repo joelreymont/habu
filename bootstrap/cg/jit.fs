@@ -374,7 +374,6 @@ variable FESK2
 variable FESK6
 
 \ vopi-entry: VOP-ENTRY plus small top-constant immediate lowering.
-\ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
 : VOPI-ENTRY ( n ptr a n n n n n -- ) {: lmainlbl kwvar kwlen foldxt emitxt immxt max :}
    LBL FESK !  LBL FESK2 !  LBL FESK6 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
@@ -863,7 +862,6 @@ variable FESK4
 : EUCMP0 ( -- )  8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT @ BL, ;
 
 : EUCSET ( n -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    {: cond :}
    8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,
    9 8 14 ORR,

@@ -113,7 +113,6 @@ variable GSI-TOOL-BASE-READY
    [: GSI-REQUIRE-ACT ;] catch GSI-RC !
    GSI-LOAD-FINISH ;
 
-\ typed-local-lint: allow-bare-local - q keeps the action effect from the stack signature.
 : GSI-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    label GSI-PATH-A!
    labelu GSI-PATH-U !
@@ -301,13 +300,6 @@ private
    s" tools/bundle-lib-test.f" GSI-INCLUDE
    s" tools/json-only-test.f" GSI-INCLUDE ;
 
-: GSI-TOOL-TYPED-SETUP ( -- )
-   GSI-TOOL-SETUP
-   s" tools/typed-local-diff-lint-core.f" GSI-TOOL-SETUP-FILE ;
-
-: GSI-TOOL-TYPED-BODY ( -- )
-   s" tools/typed-local-diff-lint-test.f" GSI-INCLUDE ;
-
 : GSI-TOOL-REPAIR ( -- )
    s" stdlib/tool-repair" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-TOOL-REPAIR-SETUP
@@ -328,11 +320,6 @@ public
    GSI-TOOL-LINT-SETUP
    GSI-TOOL-LINT-BODY ;
 
-: GSI-TOOL-TYPED ( -- )
-   s" stdlib/tool-typed-local" GSI-GROUP-PAR GSI-GROUP-HEADER
-   GSI-TOOL-TYPED-SETUP
-   GSI-TOOL-TYPED-BODY ;
-
 package TOOL-SEMANTICS
 public
 
@@ -346,10 +333,7 @@ public
    BODY
    s" stdlib/tool-lints" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-LINT-SETUP
-   GSI-TOOL-LINT-BODY
-   s" stdlib/tool-typed-local" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   GSI-TOOL-TYPED-SETUP
-   GSI-TOOL-TYPED-BODY ;
+   GSI-TOOL-LINT-BODY ;
 
 ;package
 
@@ -358,8 +342,6 @@ public
    GSI-TOOL-BASE
    s" tools/repl-lint-core.f" GSI-REQUIRE
    s" tools/dot-dep-lint-core.f" GSI-REQUIRE
-   s" tools/maki-dep-lint-core.f" GSI-REQUIRE
-   s" tools/namespace-lint-core.f" GSI-REQUIRE
    s" tools/error-code-lint-core.f" GSI-REQUIRE
    GSI-TEST! ;
 

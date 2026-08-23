@@ -15,10 +15,9 @@
 \
 \ THE SECOND PARTY. COLLIDER publishes a `ENC-B ( n -- )` of its own - the shape
 \ maki/onnx/encode.f's protobuf byte appender has, which is the collision that
-\ measured the problem. It is declared here rather than imported because the
-\ habu<-maki dependency guard (tools/maki-dep-lint-core.f) forbids a test/ file
-\ from naming a maki/ path; maki/onnx/asm-collide-test.f runs the same inversion
-\ against the real encoder from the side that is allowed to. What the fixture has
+\ measured the problem. It is declared here to keep the compiler fixture
+\ independent; maki/onnx/asm-collide-test.f runs the same inversion against the
+\ real encoder. What the fixture has
 \ to be is any package publishing that tail with an effect the assembler's ENC-B
 \ ( n -- n ) does not share, and the differing effects are what make the cases
 \ observable: a body certifying as ( n -- ) reached COLLIDER and a body

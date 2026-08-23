@@ -237,7 +237,6 @@ TRUSTED: WB-REL-CUR ( -- )
    WB-CUR-BUF @ WB-CUR-LEN @ RELEASE-BYTES
    NULL$ drop WB-CUR-BUF !  0 WB-CUR-LEN ! ;
 
-\ typed-local-lint: allow-bare-local - `body` carries the row-polymorphic quotation
 \ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
 TRUSTED: WB-SCOPE ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
    {: body :}

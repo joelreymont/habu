@@ -279,7 +279,7 @@ TX-NONE TX-SLOT !
    0 TX-CTX @ ;
 
 : TX-OPEN ( IR-CTX:ctx n ptr u8 n n n -- )
-   {: c:IR-CTX:ctx slot:n p u:n major:n minor:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx slot:n p u:n major:n minor:n :}
    TX-SLOT @ TX-NONE <> if E-IR-BUILD-STATE throw then
    c 0 TX-CTX !
    p TX-DIA !
@@ -735,7 +735,7 @@ public
 \ table took from the mapping, which is a bump allocator with no free. Neither
 \ is a registry slot and neither stops the next builder.
 : NEW-BUILDER ( IR-CTX:ctx ptr u8 n n n -- IR-BUILD:builder )
-   {: c:IR-CTX:ctx p u:n major:n minor:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx p u:n major:n minor:n :}
    PLAN-OPEN-CK
    SWEEP
    FREE-SLOT {: slot:n :}
@@ -777,17 +777,17 @@ public
 
 \ ---- interning: symbols, sources, and spans (design lines 517-520) ------------
 : INTERN-SYMBOL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    c b USE {: slot:n :}
    c  slot T-SP TAB@  slot T-SR TAB@  slot KEY@  p u IR-SYM:INTERN ;
 
 : ADD-SOURCE ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-source-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    c b USE {: slot:n :}
    c slot T-SA TAB@ slot KEY@ p u IR-SOURCE:REGISTER ;
 
 : ADD-SOURCE-FROM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-source-id ptr u8 n -- IR-ID:ir-source-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder parent:IR-ID:ir-source-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder parent:IR-ID:ir-source-id p u:n :}
    c b USE {: slot:n :}
    c slot T-SA TAB@ slot KEY@ parent p u IR-SOURCE:REGISTER-FROM ;
 
@@ -852,7 +852,7 @@ public
    c b ATTR-USE v IR-ATTR:BOOLEAN ;
 
 : INTERN-TEXT-ATTR ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-attr-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    c b ATTR-USE p u IR-ATTR:TEXT ;
 
 : INTERN-SYMBOL-ATTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- IR-ID:ir-attr-id )
@@ -1157,7 +1157,7 @@ public
 \ append a symbol when they are absent, which is a write, and a check must not
 \ change the module it is checking.
 : SYMBOL-IS? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id ptr u8 n -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p u:n :}
    c b USE {: slot:n :}
    slot T-SP TAB@  slot T-SR TAB@  id p u IR-SYM:EQ? ;
 
@@ -1169,7 +1169,7 @@ public
 \ read, and IR-SYM refuses an identity of another module or an ordinal it never
 \ minted, exactly as it does for SYMBOL-IS?.
 : SYMBOL-COPY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id ptr u8 n -- n )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p cap:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p cap:n :}
    c b USE {: slot:n :}
    slot T-SP TAB@  slot T-SR TAB@  id p cap IR-SYM:COPY ;
 

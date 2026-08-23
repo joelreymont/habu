@@ -1586,7 +1586,7 @@ and therefore blocks on D0.
   `test/seal-absence.f` (FIND-SUB, SPLIT-NEXT),
   `test/run-lib.f` (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C `(C)`),
   `test/run-rerun-failed-test.f` (BUF-RESET). Blocks on D0.
-- **D4 — tool callers** `Migrate tool string callers to STR:` (12 files):
+- **D4 — tool callers** `Migrate tool string callers to STR:` (11 files):
   `tools/codegen-role.f` (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C `(C)`),
   `tools/codegen-role-test.f` (FIND-SUB, BUF-APPEND),
   `tools/hb-build-lib.f` (INDEX-OF),
@@ -1595,8 +1595,7 @@ and therefore blocks on D0.
   `tools/ptx/perf-registry.f` (SPLIT-NEXT),
   `tools/lint/text.f` (BUF-RESET, BUF-APPEND),
   `tools/lint/text-foundation-test.f` (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C `(C)`),
-  `tools/public-signatures-core.f` (BUF-APPEND),
-  `tools/typed-local-diff-lint-test.f` (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C `(C)`).
+  `tools/public-signatures-core.f` (BUF-APPEND).
   Blocks on D0.
 
 All four caller leaves depend on the already-landed `STR:` owner surface. Leaf
@@ -1626,7 +1625,7 @@ dot add "Migrate Maki string callers to STR:" -d "Full context: MODEL-CAD-V2-PLA
 
 dot add "Migrate test string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, test lane. Migrate every raw STR call to the typed STR: surface in: test/boot-pin-test.f (FIND-SUB), test/gate-engine-lib.f (FIND-SUB), test/gate-pool-test.f (FIND-SUB, INDEX-OF), test/seal-absence.f (FIND-SUB, SPLIT-NEXT), test/run-lib.f (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C), test/run-rerun-failed-test.f (BUF-RESET). test/run-lib.f uses BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: test/gate-engine-lib.f and test/seal-absence.f were touched by the landed MEM test wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/gate slice green. Files: the 6 listed test files plus their focused tests. Verify: bin/hb --load the owned focused tests / gate slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 6 listed test files. Claim: unassigned."
 
-dot add "Migrate tool string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, tool lane. Migrate every raw STR call to the typed STR: surface in: tools/codegen-role.f (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C), tools/codegen-role-test.f (FIND-SUB, BUF-APPEND), tools/hb-build-lib.f (INDEX-OF), tools/bootstrap-codegen-test.f (FIND-SUB), tools/build-fixpoint.f (FIND-SUB), tools/build-fixpoint-test.f (FIND-SUB), tools/ptx/saxpy-test.f (FIND-SUB), tools/ptx/perf-registry.f (SPLIT-NEXT), tools/lint/text.f (BUF-RESET, BUF-APPEND), tools/lint/text-foundation-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C), tools/public-signatures-core.f (BUF-APPEND), tools/typed-local-diff-lint-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C). Three files use BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: build-fixpoint(.f/-test.f), codegen-role(.f/-test.f), hb-build-lib.f, lint/text-foundation-test.f were touched by the landed MEM/VEC tool wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/lint slice green. Files: the 12 listed tool files plus their focused tests. Verify: bin/hb --load the owned focused tests / lint slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 12 listed tool files. Claim: unassigned."
+dot add "Migrate tool string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, tool lane. Migrate every raw STR call to the typed STR: surface in: tools/codegen-role.f (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C), tools/codegen-role-test.f (FIND-SUB, BUF-APPEND), tools/hb-build-lib.f (INDEX-OF), tools/bootstrap-codegen-test.f (FIND-SUB), tools/build-fixpoint.f (FIND-SUB), tools/build-fixpoint-test.f (FIND-SUB), tools/ptx/saxpy-test.f (FIND-SUB), tools/ptx/perf-registry.f (SPLIT-NEXT), tools/lint/text.f (BUF-RESET, BUF-APPEND), tools/lint/text-foundation-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C), tools/public-signatures-core.f (BUF-APPEND). Three files use BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: build-fixpoint(.f/-test.f), codegen-role(.f/-test.f), hb-build-lib.f, lint/text-foundation-test.f were touched by the landed MEM/VEC tool wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/lint slice green. Files: the 11 listed tool files plus their focused tests. Verify: bin/hb --load the owned focused tests / lint slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 11 listed tool files. Claim: unassigned."
 ~~~
 
 **`habu-integrate-sealed-cad-ba510e2e` amendment.** Before it closes, its

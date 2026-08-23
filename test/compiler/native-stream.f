@@ -108,7 +108,7 @@ public
    MARK-V ! ;
 
 : KEEP$! ( ptr u8 n -- )
-   {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a:ptr u:n :}
    u KEEP-CAP > if E-STR-CAPACITY throw then
    a KEEP-BUF u BYTE-COPY
    u KEEP-U ! ;
@@ -141,7 +141,7 @@ variable SRC-SEMI
 $3B constant SEMI-CH
 
 : SRC-BUILD ( ptr u8 n ptr u8 n -- )
-   {: ha:ptr hu:n ta:ptr tu:n :} \ typed-local-lint: allow-bare-local - ha and ta keep the ptr u8 byte-span role
+   {: ha:ptr hu:n ta:ptr tu:n :}
    hu tu + SRC-CAP > if E-STR-CAPACITY throw then
    ha SRC-BUF hu BYTE-COPY
    ta SRC-BUF hu + tu BYTE-COPY

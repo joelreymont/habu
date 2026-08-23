@@ -29,12 +29,12 @@ T-RESET
 \ ---- part 1: the typed pipelined kernel certifies (positive proof) --------------
 \ test-local recomposition (TPT- prefix: cg-matmul.f owns the production RB- words)
 : TPT-KSTEP ( mmracc<f32,block-256,geom-mt4x4,w> n mmaslice<f32,block-256,geom-as64x32-bs32x64,w,p> mmbslice<f32,block-256,geom-as64x32-bs32x64,w,p> -- mmracc<f32,block-256,geom-mt4x4,w> )
-   {: acc k:n as bs :} \ typed-local-lint: allow-bare-local - parametric tile-pipe types contain commas.
+   {: acc k:n as bs :}
    acc  as k A-FRAG  bs k B-FRAG.V4  RB-FMA ;
 
 : TPT-TILE ( mmstage<f32,block-256,geom-as64x32-bs32x64,w,p> mmracc<f32,block-256,geom-mt4x4,w> -- mmracc<f32,block-256,geom-mt4x4,w> )
-   {: st acc :} \ typed-local-lint: allow-bare-local - parametric tile-pipe types contain commas.
-   st STAGE-SLICES {: as bs :} \ typed-local-lint: allow-bare-local - slice types are inferred.
+   {: st acc :}
+   st STAGE-SLICES {: as bs :}
    MM-BK as bs acc [: TPT-KSTEP ;] K-UNROLL ;
 
 KERNEL: MM-PIPED ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- )  GRID: tile-mn-64

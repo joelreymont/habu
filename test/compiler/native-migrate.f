@@ -685,7 +685,7 @@ variable KEEP-N
 \ The instruction words of the record this spelling names, read through the same
 \ walker the branch counts above use, and answering how many there were.
 : SPAN-READ ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    0 SPAN-N !
    a u REC-START  a u REC-LEN  [: SPAN-NOTE ;] NWALK:SPAN-EACH
    SPAN-N @ ;
@@ -1149,7 +1149,7 @@ variable BRANCH-N
    w BRANCH-INSN? if BRANCH-N @ 1+ BRANCH-N ! then ;
 
 : BRANCHES-IN ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    0 BRANCH-N !
    a u REC-START  a u REC-LEN  [: BRANCH-NOTE ;] NWALK:SPAN-EACH
    BRANCH-N @ ;
@@ -1249,7 +1249,7 @@ variable BACK-N
    w B-BACK and 0<> if BACK-N @ 1+ BACK-N ! then ;
 
 : UNCOND-COUNT ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    0 UNCOND-N !
    0 BACK-N !
    a u REC-START  a u REC-LEN  [: UNCOND-NOTE ;] NWALK:SPAN-EACH ;

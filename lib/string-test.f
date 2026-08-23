@@ -156,13 +156,11 @@ variable STR-TEST-BUF2-LEN
 
 \ switchover wave A: STR-PARSE-POS/NEG and STR>NUMBER? return option<n>
 \ (SOME parsed value, else NONE).
-\ typed-local-lint: allow-bare-local - q keeps the parser quotation effect from the stack signature.
 : STR-PARSE-SOME ( ptr u8 n n [ ptr u8 n -- option<n> ] -- ) {: a:ptr u:n want:n q :}
    a u q execute MATCH option
      none OF 0 0= 0= ENDOF                          \ none -> fail (expected a value)
      some OF want = ENDOF
    ;MATCH STR-ASSERT ;
-\ typed-local-lint: allow-bare-local - q keeps the parser quotation effect from the stack signature.
 : STR-PARSE-NONE ( ptr u8 n [ ptr u8 n -- option<n> ] -- ) {: a:ptr u:n q :}
    a u q execute MATCH option
      none OF 0 0= ENDOF                             \ none -> pass

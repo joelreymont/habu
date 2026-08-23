@@ -86,7 +86,7 @@ create CBUF 256 allot
 \ Copy a literal into the scratch buffer, so a fixture can present the same
 \ bytes from a different buffer than the one the literal lives in.
 : FILL-CBUF ( ptr u8 n -- n )
-   {: p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n :}
    p CBUF u BYTE-COPY
    u ;
 
@@ -872,7 +872,7 @@ create CBUF 256 allot
 
 \ ---- render fixtures pin identity --------------------------------------------
 : REND= ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-attr-id ptr u8 n -- bool )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-attr-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-attr-id p u:n :}
    a r id CBUF 256 IR-ATTR:RENDER {: n0:n :}
    CBUF n0 p u STR= ;
 

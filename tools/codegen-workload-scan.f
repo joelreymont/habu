@@ -158,7 +158,6 @@ $10000000 constant C-CALL-ADR
 \ walk covers the record end to end" is a case it can state directly, and a
 \ dropped end fails it before it can quietly change a count.
 \
-\ typed-local-lint: allow-bare-local - q receives an instruction's address and
 \ the instruction at it, and a local annotation cannot carry a quotation effect.
 : SPAN-EACH ( n n [ n n -- ] -- ) {: s:n len:n q :}
    s len q NWALK:SPAN-EACH ;

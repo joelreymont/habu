@@ -600,7 +600,6 @@ create CAE-LF-BYTE 10 c,
    s" cli-smoke diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T= ;
 
-\ typed-local-lint: allow-bare-local - q is the test action quotation.
 : CAE-CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns CAE-START-NS !
    q execute

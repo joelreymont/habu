@@ -112,7 +112,7 @@ create TXT
    CC BB IR-BUILD:INTERN-CODE-REF ;
 
 : OPEN-FUN ( ptr u8 n n n -- )
-   {: p u:n in:n out:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n in:n out:n :}
    CC BB  CC BB p u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
    CC BB  in out SIGN  IR-BUILD:SET-SIGNATURE
    CC BB IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE

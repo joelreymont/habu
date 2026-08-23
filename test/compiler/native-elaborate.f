@@ -120,7 +120,7 @@ using NSRC
    m IR-BUILD:FBLOCK-ROWS blk IR-FUN:FARG-COUNT ;
 
 : F-OPC? ( IR-BUILD:module IR-ID:ir-op-id ptr u8 n -- bool )
-   {: m:IR-BUILD:module op:IR-ID:ir-op-id a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: m:IR-BUILD:module op:IR-ID:ir-op-id a u:n :}
    m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS
    m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op IR-OP:FOPCODE@
    a u IR-SYM:FEQ? ;
@@ -136,7 +136,7 @@ using NSRC
 \ constrains what the body computes and stays silent about how many operations
 \ express it.
 : F-OPC-N ( IR-BUILD:module IR-ID:ir-block-id ptr u8 n -- n )
-   {: m:IR-BUILD:module blk:IR-ID:ir-block-id a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: m:IR-BUILD:module blk:IR-ID:ir-block-id a u:n :}
    0
    m blk F-OPS 0 ?do
       m  m blk i F-OP  a u F-OPC? if 1+ then
@@ -147,7 +147,7 @@ using NSRC
 \ operation, because "the second store" not existing is exactly the kind of
 \ change a fixture is here to catch.
 : F-OPC-AT ( IR-BUILD:module IR-ID:ir-block-id ptr u8 n n -- IR-ID:ir-op-id )
-   {: m:IR-BUILD:module blk:IR-ID:ir-block-id a u:n k:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: m:IR-BUILD:module blk:IR-ID:ir-block-id a u:n k:n :}
    k
    m blk F-OPS 0 ?do
       m  m blk i F-OP  a u F-OPC? if
@@ -196,7 +196,7 @@ using NSRC
 \ constant operation computed it, so it reads the same whether or not two equal
 \ literals in the block were folded into one value.
 : F-FROM? ( IR-BUILD:module IR-ID:ir-block-id IR-ID:ir-value-id ptr u8 n -- bool )
-   {: m:IR-BUILD:module blk:IR-ID:ir-block-id v:IR-ID:ir-value-id a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: m:IR-BUILD:module blk:IR-ID:ir-block-id v:IR-ID:ir-value-id a u:n :}
    false
    m blk F-OPS 0 ?do
       m blk i F-OP {: op:IR-ID:ir-op-id :}
@@ -862,7 +862,7 @@ private
 \ That token's spelling, taken off the fixture's own text rather than written out
 \ a second time here: four bytes of `BAD ` and then the whole of the body.
 : BODY$ ( -- ptr u8 n )
-   TEXT$ {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   TEXT$ {: a u:n :}
    a 4 + u 4 - ;
 
 \ A body word the chain cannot compile - the other of the two constants above, so
@@ -2360,7 +2360,7 @@ create TW-BUF TW-CAP allot
 
 : TW-OPC? ( IR-BUILD:module IR-ID:ir-op-id IR-BUILD:module IR-ID:ir-op-id -- bool )
    {: ma:IR-BUILD:module oa:IR-ID:ir-op-id mb:IR-BUILD:module ob:IR-ID:ir-op-id :}
-   ma oa TW-OPC$ {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   ma oa TW-OPC$ {: a u:n :}
    mb ob a u F-OPC? ;
 
 \ Operands, results and successors are compared as the module-local ordinals they
@@ -2420,7 +2420,7 @@ create TW-BUF TW-CAP allot
 
 \ One source text, compiled and frozen, as the pair a comparison takes.
 : BUILT ( IR-CTX:ctx ptr u8 n n n -- IR-BUILD:module IR-ID:ir-fun-id )
-   {: c:IR-CTX:ctx a u:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx a u:n in:n out:n :}
    a u TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
@@ -2704,7 +2704,7 @@ create TW-BUF TW-CAP allot
 \ could come from. The tape is then lexed from the same body, so what is
 \ elaborated is the definition the checker certified.
 : QDEF ( ptr u8 n ptr u8 n -- )
-   {: na nu:n sa su:n :} \ typed-local-lint: allow-bare-local - na and sa keep the ptr u8 byte-span role
+   {: na nu:n sa su:n :}
    na nu 0 search-wl 0<> if exit then
    sa su EV ;
 
@@ -2742,7 +2742,7 @@ create TW-BUF TW-CAP allot
 \ that were named the same thing would be one function - which is why the name is
 \ read back rather than described.
 : F-FUN-NAME? ( IR-BUILD:module n ptr u8 n -- bool )
-   {: m:IR-BUILD:module k:n a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: m:IR-BUILD:module k:n a u:n :}
    m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS
    m IR-BUILD:FFUN-ROWS m IR-BUILD:FKEY  m IR-BUILD:FKEY k IR-ID:PACK-FUN
    IR-FUN:FSYMBOL@

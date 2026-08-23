@@ -149,7 +149,6 @@ public
 private
 \ One row-summing loop over the rows a predicate accepts; the four public totals
 \ below are this loop under a fixed row predicate.
-\ typed-local-lint: allow-bare-local - q carries the row predicate effect from the stack signature.
 : SUM-ROWS ( [ n -- bool ] -- n ) {: q :}
    0 ACC !
    0 begin dup ROW-N @ < while

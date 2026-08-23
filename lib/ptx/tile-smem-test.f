@@ -16,16 +16,16 @@ T-RESET
 
 \ stage a global block into shared, then read a tile back out of shared
 KERNEL: SMEM-READ ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
-   {: s :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
-   s COOP-CTX {: g :} \ typed-local-lint: allow-bare-local - fresh coopctx mask is inferred.
+   {: s :}
+   s COOP-CTX {: g :}
    s g STAGE  g SLOAD
    drop ;
 
 \ stage the shared span, load a tile from global, write it into shared
 KERNEL: SMEM-WRITE ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
-   {: s :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
-   s COOP-CTX {: g :} \ typed-local-lint: allow-bare-local - fresh coopctx mask is inferred.
-   s g STAGE {: sh :} \ typed-local-lint: allow-bare-local - shared span type is inferred.
+   {: s :}
+   s COOP-CTX {: g :}
+   s g STAGE {: sh :}
    sh g SLOAD
    sh g SSTORE ;
 

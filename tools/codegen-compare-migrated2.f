@@ -110,7 +110,6 @@ NMIGRATE:NEXT
 
 NMIGRATE:NEXT : MAX-DIM-N ( n n -- n ) {: a:n b:n :} a b > if a else b then ;
 
-\ typed-local-lint: allow-bare-local - `u` and `c` are the corpus's own
 \ spelling, and a migrated body renames no local.
 NMIGRATE:NEXT
 : COUNT-CHAR-N ( ptr u8 n n -- n )

@@ -120,13 +120,11 @@ create AT-WORK 5 cells allot
    arr len A-LEN q A-FIND-INDEXI MATCH option none OF -1 ENDOF some OF IDX>N ENDOF ;MATCH ;
 
 \ Direct option<idx> assertions for the migrated finders (found -> some, absent -> none).
-\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
 : AT-A-FIND-SOME ( ptr a n [ a -- bool ] n -- ) {: arr:ptr len q want:n :}
    arr len A-LEN q A-FIND-INDEX MATCH option
      none OF 0 0= 0= ENDOF                          \ none -> false (unexpected)
      some OF IDX>N want = ENDOF                       \ some(idx) -> idx == want
    ;MATCH T-ASSERT ;
-\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
 : AT-A-FIND-NONE ( ptr a n [ a -- bool ] -- ) {: arr:ptr len q :}
    arr len A-LEN q A-FIND-INDEX MATCH option
      none OF 0 0= ENDOF                             \ none -> true

@@ -66,8 +66,7 @@ REQUIRE-HARNESS
    s" test/gate-stats-test.f" GSI-INCLUDE ;
 
 \ One fork per sub-suite so GT-POOL-FAIL's `FAIL: <label>` line names the
-\ failing sub-suite directly. The old lint-tools/dot-maki bundled dot, maki,
-\ maki-ns, and unrelated tests in a single fork; a test file's
+\ failing sub-suite directly. A test file's
 \ T-REPORT `die` exits the fork and bypasses GSI-INCLUDE's per-file FAIL line,
 \ so an inventory failure surfaced only under the misleading
 \ dot-maki label. Setup is loaded once in the parent and inherited copy-on-
@@ -76,14 +75,10 @@ REQUIRE-HARNESS
    s" dot-dep-lint" [: DOT-DEP-LINT ;] GSI-RUN
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE ;
 
-: MAKI ( -- )
-   s" maki-dep-lint" [: MAKI-DEP-LINT:RUN ;] GSI-RUN
-   s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
-
 : LINT-DEF ( -- )
    s" tools/lint/def-test.f" GSI-INCLUDE ;
 
-\ The other three tools/lint fixture files. Each is its own SUITE registration
+\ The other tools/lint fixture files. Each is its own SUITE registration
 \ in test/gate-stdlib-cases.f and each gets its own fork for the reason written
 \ above: a test file's T-REPORT `die` exits the fork before GSI-INCLUDE can
 \ print its per-file FAIL line, so a shared fork would report every one of them
@@ -94,9 +89,6 @@ REQUIRE-HARNESS
 
 : LINT-DIFF ( -- )
    s" tools/lint/diff-test.f" GSI-INCLUDE ;
-
-: LINT-DIFF-FRAME ( -- )
-   s" tools/lint/diff-frame-test.f" GSI-INCLUDE ;
 
 \ The scheduling closure itself: every SUITE registration must be reachable by a
 \ slice predicate or by a gate fork list. The fixture file drives the scanner
@@ -120,13 +112,6 @@ REQUIRE-HARNESS
 : REGION-ROOM ( -- )
    s" test/region-room-suite.f" GSI-INCLUDE ;
 
-: NAMESPACE ( -- )
-   s" namespace-lint" [: NAMESPACE-LINT:STRICT ;] GSI-RUN
-   s" tools/namespace-lint-test.f" GSI-INCLUDE ;
-
-: PACKAGE-OWNERSHIP ( -- )
-   s" tools/package-diff-lint-test.f" GSI-INCLUDE ;
-
 : ERROR-CODE ( -- )
    s" error-code-lint" [: ERROR-CODE-LINT:STRICT ;] GSI-RUN
    s" tools/error-code-lint-test.f" GSI-INCLUDE
@@ -147,15 +132,11 @@ public
    s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: REPOSITORY ;] GT-POOL-START-FORK
    s" lint-tools/repl" GSI-FORK-TIMEOUT-MS [: REPL-GROUP ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
-   s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
    s" lint-tools/def" GSI-FORK-TIMEOUT-MS [: LINT-DEF ;] GT-POOL-START-FORK
    s" lint-tools/intern-set" GSI-FORK-TIMEOUT-MS [: LINT-INTERN-SET ;] GT-POOL-START-FORK
    s" lint-tools/diff" GSI-FORK-TIMEOUT-MS [: LINT-DIFF ;] GT-POOL-START-FORK
-   s" lint-tools/diff-frame" GSI-FORK-TIMEOUT-MS [: LINT-DIFF-FRAME ;] GT-POOL-START-FORK
    s" lint-tools/schedule" GSI-FORK-TIMEOUT-MS [: SCHEDULE ;] GT-POOL-START-FORK
    s" lint-tools/region-room" GSI-FORK-TIMEOUT-MS [: REGION-ROOM ;] GT-POOL-START-FORK
-   s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
-   s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK
    s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: ERROR-CODE ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-refresh" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-REFRESH ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;

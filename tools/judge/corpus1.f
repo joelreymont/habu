@@ -107,7 +107,6 @@ private
    s" JUDGE-CORPUS1:BUMP-READ" s" JUDGE-CORPUS1:C-BUMP-READ" JUDGE-PASS:READ+ ;
 
 \ ---- the ten rows, written once ----------------------------------------------
-\ typed-local-lint: allow-bare-local - row is the caller's own body, and a local
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" ADD3" s" hc1_add3" JUDGE-PASS:ROW!

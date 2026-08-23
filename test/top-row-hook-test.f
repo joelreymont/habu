@@ -86,7 +86,6 @@ variable TRH-OK-A
    data-base COMPILE-PREFLIGHT-CELL + @ 0 <> TTRUE ;
 
 \ The installed top-row hook: record ( class, token bytes, flags ) per event.
-\ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role for BYTE-COPY
 : TRH-LOG ( ptr u8 n n n -- ) {: a u:n cls:n flg:n :}
    u TRH-ROOM!
    a TRH-ARENA TRH-AU @ + u BYTE-COPY
@@ -107,7 +106,6 @@ variable TRH-OK-A
    TRH-ARENA TRH-TOFF i TRH-SLOT @ +
    TRH-TLEN i TRH-SLOT @ ;
 
-\ typed-local-lint: allow-bare-local - a keeps the ptr u8 expected-token role for T$=
 : TRH-EV-ASSERT ( n n n ptr u8 n -- ) {: i:n cls:n flg:n a u:n :}
    i TRH-EV-CLS cls T=
    i TRH-EV-FLG flg T=

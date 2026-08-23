@@ -136,7 +136,7 @@ public
 \ allocator decided, whether it was accepted or refused. The source is the whole
 \ of what a case says: the arity is the checker's and the pool is the machine's.
 : REPORT ( ptr u8 n -- )
-   {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a:ptr u:n :}
    a SRC ! u SRC-U !
    s" alloc rc " RUN-RC SAY-N
    s" alloc first-slots " NMIGRATE:SPILLS SAY-N

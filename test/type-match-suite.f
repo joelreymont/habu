@@ -137,9 +137,8 @@ s" ML4=" type s" KB2 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF dup drop 
 \ declared rather than written; a bare row would additionally CLAIM the word
 \ already exists somewhere, and nothing defines it. That claim is now refused at
 \ the row (src/core/checker.f TRUST-RESOLVES?, dot
-\ habu-make-trust-refuse-cc8e19de). The package is not decoration either: a test
-\ file may publish no new global name (tools/package-diff-lint.f reports every
-\ one), and the cases below cannot simply be wrapped in an open package instead -
+\ habu-make-trust-refuse-cc8e19de). The cases below cannot simply be wrapped in
+\ an open package instead -
 \ `construct` resolves its family owner-only, so KNL3 two lines down stops
 \ certifying the moment a package is open around it. A package the cases name by
 \ its qualified spelling leaves every case's scope exactly as it was.

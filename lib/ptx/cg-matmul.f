@@ -40,13 +40,13 @@ TRUSTED: MM-ABI ( -- matrix<space-global,f32,extent-m,extent-k> matrix<space-glo
 \ one k step of the register-blocked compute: strided A fragment, vectorized
 \ 16B-proven B fragment, 16-FMA micro-tile accumulate - same-stage operands only
 : RB-KSTEP ( mmracc<f32,block-256,geom-mt4x4,w> n mmaslice<f32,block-256,geom-as64x32-bs32x64,w,p> mmbslice<f32,block-256,geom-as64x32-bs32x64,w,p> -- mmracc<f32,block-256,geom-mt4x4,w> )
-   {: acc k:n as bs :} \ typed-local-lint: allow-bare-local - parametric tile-pipe types contain commas.
+   {: acc k:n as bs :}
    acc  as k A-FRAG  bs k B-FRAG.V4  RB-FMA ;
 
 \ one READY staged K-tile: derive the layout slices, unroll the BK k-steps
 : RB-TILE ( mmstage<f32,block-256,geom-as64x32-bs32x64,w,p> mmracc<f32,block-256,geom-mt4x4,w> -- mmracc<f32,block-256,geom-mt4x4,w> )
-   {: st acc :} \ typed-local-lint: allow-bare-local - parametric tile-pipe types contain commas.
-   st STAGE-SLICES {: as bs :} \ typed-local-lint: allow-bare-local - slice types are inferred.
+   {: st acc :}
+   st STAGE-SLICES {: as bs :}
    MM-BK as bs acc [: RB-KSTEP ;] K-UNROLL ;
 
 \ ---- the checked GEMM authoring vocabulary (see design note) ----------------

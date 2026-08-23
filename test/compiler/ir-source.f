@@ -93,7 +93,7 @@ private
 : LN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 4 REG-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena :}
-   s" abc" {: p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   s" abc" {: p u:n :}
    c a key p -1 IR-SOURCE:REGISTER drop ;
 
 : LN-RUN ( -- )

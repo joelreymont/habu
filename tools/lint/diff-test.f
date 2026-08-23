@@ -130,7 +130,6 @@ $09 constant TAB-C
    s" diff-test: " type label labelu type s"  threw " type rc .
    rc throw ;
 
-\ typed-local-lint: allow-bare-local - q preserves the named test action effect.
 : RUN-CASE ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    q catch {: rc:n :}
    rc 0= if exit then

@@ -1,13 +1,11 @@
 \ extent-product-test.f — BTC-7 permanent regression for the checker half of the
 \ extent-role product/factorization capability (dot habu-extent-role-product-
-\ 8e364885, docs/batch-sequence-design.md §5 BTC-7, docs/extent-substrate.md). The
-\ standalone decision-record probe (test/extent-substrate-probe.f) demonstrated the
-\ CHOSEN substrate on raw stand-in families; this routes the permanent gate
-\ regression over the REAL built-in `extprod`/`redx` families and the free-vs-inner
+\ 8e364885, docs/batch-sequence-design.md §5 BTC-7, docs/extent-substrate.md).
+\ This routes the permanent gate regression over the real built-in
+\ `extprod`/`redx` families and the free-vs-inner
 \ contraction rule. The candidate-B SURFACE half (EXTPROD:/>RED, the generated
 \ fold/split/join, the E-EXT-FACTOR value reject) is exercised maki-side in
-\ maki/extent-test.f — the one-way habu<-maki dependency guard forbids a test/ file
-\ from importing maki/extent.f, so the surface fixtures live where the surface does.
+\ maki/extent-test.f, where the surface lives.
 \
 \ Soundness goal: a cross-sequence contraction (+Σ that sums the batch axis of a
 \ folded (B,T) row) is UNREPRESENTABLE in a checked program. The folded row is typed

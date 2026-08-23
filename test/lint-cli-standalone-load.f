@@ -76,7 +76,6 @@ variable PATHS-USED
 \
 \   idle                  refine-lint 3.50 / 3.51 / 3.52 s   slowest entry
 \                     error-code-lint 2.12 / 2.16 s
-\                      namespace-lint 0.52 / 0.53 s
 \   one full gate         refine-lint 3.55 / 3.68 / 3.71 / 3.73 s          1.05x
 \   alongside, load 6-9
 \   that gate plus busy    refine-lint 7.94 / 8.00 / 8.26 / 8.36 / 8.89 s   2.5x

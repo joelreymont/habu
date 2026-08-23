@@ -321,8 +321,8 @@ In order:
    their slices are in scope by the touch rule).
 5. both exact-diff gates on the final combined diff — the ownership
    check on every migrated definition, run once.
-6. the cheap lints, seconds each: error-code-lint, maki-dep-lint,
-   dot-dep-lint. The separate "native dot gate" entry
+6. the cheap lints, seconds each: error-code-lint and dot-dep-lint. The separate
+   "native dot gate" entry
    is deleted as a duplicate of dot-dep-lint.
 Deliberately absent: a
 performance gate — declaration-time machinery changed, not runtime hot
@@ -541,8 +541,8 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   a test migrates ONLY if it names the live capability it proves; a
   test that cannot, deletes; tests of machinery in the deletion set die
   with their machinery). MIGRATE, one leaf per file, purpose stated:
-  extent-product-test.f 5 + extent-substrate-probe.f 5 (extent
-  substrate — live via M9 survivors), bootstrap-wide-memory-src.f 2 +
+  extent-product-test.f 5 (extent substrate — live via M9 survivors),
+  bootstrap-wide-memory-src.f 2 +
   bootstrap-wide-interpret-src.f 1 + bootstrap-wide-tick-src.f 1
   (gforth recovery covenant), typed-storage-test.f 4 (typed storage),
   cad-kinds-test.f 3 (the nine surviving CAD:KIND nominals),

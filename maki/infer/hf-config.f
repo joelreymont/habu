@@ -273,7 +273,6 @@ DIGEST-LEN HEX-LEN + constant DIGEST-BUF-LEN
 
 : OPEN-FRAME ( result<GPT2:config,n> ptr u8 n -- result<GPT2:config,n> ptr u8 n )
    2dup OPEN-INNER RESULT:OK
-   \ typed-local-lint: allow-bare-local - result is a concrete multi-cell sum.
    {: root:ptr rootu:n result :}
    drop
    result

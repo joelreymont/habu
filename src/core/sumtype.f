@@ -33,8 +33,7 @@
 \ src/core/enum-decl.f already ships for ENUM. Everything beneath them -- the
 \ declaration buffer, the plan arena, the payload capture vectors, the renderers,
 \ the transaction context -- is a private with no top-level spelling at all.
-\ tools/package-diff-lint-core.f TYPE-DECL-GRAMMAR? admits exactly the seven, by
-\ path, name and definer; test/internal-word-gate.f TYPE-DECL-SEAL-CASES pins
+\ test/internal-word-gate.f TYPE-DECL-SEAL-CASES pins
 \ that the surface stops there and that `0 TDPLAN-P !` before a declaration --
 \ rc 134 SIGSEGV on master -- is now E-UNDEFINED.
 
@@ -1480,7 +1479,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 \ the loop below are bounded by the family's own metadata and do not rest on any
 \ property of the element widths.
 : TDPV-COUNT ( n [ n n n -- n ] n n -- n )   \ ctx qn fam slots -- validated count
-   {: ctx:n qn fam:n slots:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qn fam:n slots:n :}
    ctx fam TDPV-BASE @ TDPV-VARS @ + qn execute {: k:n :}
    k 0 < IF fam s" payload provider returned a negative count" TDPV-THROW THEN
    k slots > IF
@@ -1488,7 +1487,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    k ;
 
 : TDPV-NODE+ ( n [ n n n n -- n ] n -- )   \ ctx qr fam -- : append the next validated schema node
-   {: ctx:n qr fam:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qr fam:n :}
    ctx fam TDPV-BASE @ TDPV-VARS @ + TDPV-J @ qr execute {: root:n :}
    root 0 < root SCHEMA-ROOT-N@ >= or IF
       fam s" payload provider returned an unknown schema root" TDPV-THROW THEN
@@ -1499,7 +1498,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    TDPV-NODES @ 1 + TDPV-NODES ! ;
 
 : TDPV-NODES+ ( n [ n n n n -- n ] n n -- )   \ ctx qr fam k -- : the variant's whole root run
-   {: ctx:n qr fam:n k:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qr fam:n k:n :}
    0 TDPV-W !
    0 TDPV-J !
    BEGIN TDPV-J @ k < WHILE
@@ -1510,7 +1509,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 \ `cw` is never spelled `cells` here: that is the core cell-size operator, and a
 \ local of that name would silently shadow it in the array indexing below.
 : TDPV-CELLS ( n [ n n n -- n ] n n -- n )   \ ctx qc fam slots -- validated cell width
-   {: ctx:n qc fam:n slots:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qc fam:n slots:n :}
    ctx fam TDPV-BASE @ TDPV-VARS @ + qc execute {: cw:n :}
    cw TDPV-W @ <> IF
       fam s" payload provider cell width contradicts its own schema" TDPV-THROW THEN
@@ -1519,7 +1518,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    cw ;
 
 : TDPV-VARIANT+ ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n n -- )   \ one variant's whole view
-   {: ctx:n qn qr qc fam:n slots:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qn qr qc fam:n slots:n :}
    TDPV-VARS @ 1 + TDPV-VAR-ENSURE
    TDPV-NODES @ TDPV-OFF-P @ TDPV-VARS @ cells + !
    ctx qn fam slots TDPV-COUNT {: k:n :}
@@ -1535,7 +1534,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 public
 
 : TDPV-CAPTURE ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- )
-   {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qn qr qc fam:n :}
    -1 TDPV-FAM !
    fam TFAM-VAR-START@ TDPV-BASE !
    0 TDPV-VARS !   0 TDPV-NODES !
@@ -1939,7 +1938,7 @@ public
 private
 
 : TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
-   {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qn qr qc fam:n :}
    fam TFAM-PUBLIC? 0= IF ctx qn qr qc fam EXIT THEN
    ctx qn qr qc fam TDPV-CAPTURE          \ the whole payload view, once, validated
    fam TFAM-PRODUCT? IF
@@ -1968,7 +1967,7 @@ public
    [: TDECL-GEN-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
    rc 0 <> IF rc throw THEN
-   {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
+   {: ctx:n qn qr qc fam:n :}
    fam ;
 
 \ The legacy SUMTYPE / ENUM / PRODUCT definers below announce the family they
@@ -2090,9 +2089,7 @@ using TYPE-DECL
 \ (`: ENUM ( -- ) ENUM-DECL:ED-RUN ;`); the buffers, the plan arena, the
 \ transaction context and every renderer stay inside package TYPE-DECL, where
 \ neither a bare nor a qualified name reaches them.
-\ tools/package-diff-lint-core.f TYPE-DECL-GRAMMAR? admits exactly these seven,
-\ by exact path, exact name and exact definer; test/internal-word-gate.f
-\ SEAL-CASES pins that the surface stops there.
+\ test/internal-word-gate.f SEAL-CASES pins that the surface stops there.
 
 \ NEWTYPE consumes name + arity. SUMTYPE and PRODUCT buffer their block up to
 \ the ;NAME closer (VALUE-RECORD's shape), then register it whole.

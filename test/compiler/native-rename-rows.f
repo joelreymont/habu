@@ -274,7 +274,7 @@ variable M-A   variable M-U
 : MIGRATE-RC ( -- n )
    [: M-A @ M-U @ NMIGRATE:DEFINE ;] catch ;
 
-: TRY ( ptr u8 n -- n ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+: TRY ( ptr u8 n -- n ) {: a:ptr u:n :}
    a M-A !  u M-U !
    MIGRATE-RC ;
 

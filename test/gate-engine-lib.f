@@ -1410,11 +1410,8 @@ variable GE-DFULL-I                 \ copy/definition loop index
    s" PASS: div/mod by zero traps (no silent 0)" type cr ;
 
 \ These runtime checks belong to RUNTIME-CHECKS, the package whose REST word
-\ already drives them. They are here rather than at global top level because a
-\ change to a test file may publish no new global name and may not edit a global
-\ definition's body (tools/package-diff-lint.f reports both), and the trust-row
-\ rule below required editing these two source builders. REST calls them by bare
-\ name from inside this same package, so nothing else moves.
+\ already drives them. REST calls them by bare name from inside this same
+\ package.
 package RUNTIME-CHECKS
 private
 

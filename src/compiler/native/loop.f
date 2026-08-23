@@ -1434,7 +1434,7 @@ variable W-K?
 
 \ ---- what one rewrite is told ------------------------------------------------
 : SOURCE! ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
    V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-NLOOP-SHAPE throw then
    V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
    p u CDIGEST:COMPUTE
@@ -1567,7 +1567,7 @@ public
 \ The bytes are the source text the old module was compiled from, proved by
 \ digest before any span is carried across.
 : REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
-   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
    BND-TAKE
    m BND-MODULE-CK
    0 N-FOLDED !

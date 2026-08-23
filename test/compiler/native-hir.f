@@ -1027,7 +1027,7 @@ variable BC-OUT
 \ plus one, so a single comparison pins the list and its order.
 : REN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena ptr u8 n -- n n n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
-      a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+      a u:n :}
    c b a u IR-BUILD:INTERN-SYMBOL {: id:IR-ID:ir-symbol-id :}
    r id HIR-WORD:INPUTS@
    r id HIR-WORD:PICKS

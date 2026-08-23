@@ -110,7 +110,7 @@ TRUSTED: B-FRAG.V4 ( mmbslice<f32,block-256,geom-as64x32-bs32x64,w,p> n -- mmbfr
 \ cnt times, re-supplying the loop-invariant slices. Certifies with the existing
 \ typed-quotation machinery - not a trusted boundary.
 : K-UNROLL ( n mmaslice<t,b,l,w,p> mmbslice<t,b,l,w,p> mmracc<t,b,g,w> [ mmracc<t,b,g,w> n mmaslice<t,b,l,w,p> mmbslice<t,b,l,w,p> -- mmracc<t,b,g,w> ] -- mmracc<t,b,g,w> )
-   {: cnt:n as bs acc body :} \ typed-local-lint: allow-bare-local - parametric tile-pipe types contain commas.
+   {: cnt:n as bs acc body :}
    acc
    cnt 0 ?do  i as bs body execute  loop ;
 

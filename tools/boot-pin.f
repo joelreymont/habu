@@ -123,7 +123,7 @@ variable BP-SET
 \ PFX-LOAD-INTMARK; the cross-check
 \ test enforces membership + count against that source. The hash and the test
 \ sandbox-copy both drive this, so the list lives in exactly one place.
-: BP-EACH ( [ ptr u8 n -- ] -- ) {: q :}  \ typed-local-lint: allow-bare-local - quotation bound as ordinary local (docs/forth.md)
+: BP-EACH ( [ ptr u8 n -- ] -- ) {: q :}
    s" src/core/util.f" q execute
    s" src/core/cell.f" q execute
    s" src/core/pointer-storage.f" q execute

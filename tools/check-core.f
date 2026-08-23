@@ -1376,7 +1376,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-MATERIALIZE
    CHK-RUN-SCOPED ;
 
-\ typed-local-lint: allow-bare-local - q is the next guarded run action.
 : CHK-IF-CLEAN ( n [ -- ] -- n ) {: rc:n q :}
    rc 0 <> if rc exit then
    q catch ;

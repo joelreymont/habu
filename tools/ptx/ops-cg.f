@@ -8,8 +8,8 @@
 256 %BLOCK
 
 KERNEL: TILE-OPS ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- )  GRID: ceil-n-256
-   {: x y a :} \ typed-local-lint: allow-bare-local
-   x GRID-CTX {: g :} \ typed-local-lint: allow-bare-local
+   {: x y a :}
+   x GRID-CTX {: g :}
    x g LOAD  y g LOAD  -.
    y g LOAD  /.
    y g STORE
@@ -19,8 +19,8 @@ KERNEL: TILE-OPS ( span<space-global,f32,extent-n> span<space-global,f32,extent-
    y g SCATTER-ADD ;
 
 KERNEL: TILE-OPS-V4 ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
-   {: x y :} \ typed-local-lint: allow-bare-local
-   x GRID-CTX-V4 {: g :} \ typed-local-lint: allow-bare-local
+   {: x y :}
+   x GRID-CTX-V4 {: g :}
    x g LOAD-V4  y g LOAD-V4  SUB-V4
    y g LOAD-V4  DIV-V4
    y g STORE-V4 ;

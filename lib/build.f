@@ -221,7 +221,6 @@ public
    root rootu name nameu BUILD-PATH-BUF JOIN-PATH
    BUILD-PATH-BUF swap ;
 
-\ typed-local-lint: allow-bare-local - q is the step's checked action quotation.
 : STEP ( ptr u8 n [ -- n ] -- ) {: name:ptr nameu:n q :}
    nameu 0 <= if E-BUILD-COMMAND throw then
    q execute {: rc:n :}

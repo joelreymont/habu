@@ -123,7 +123,6 @@ variable LABEL-U
 : CHECK-RUN ( -- )
    CHECK:RUN throw ;
 
-\ typed-local-lint: allow-bare-local - q preserves the quotation effect.
 : CHECK-CAPTURE ( [ -- ] -- ) {: q :}
    q GE-CAPTURE-ACTION OUTCOME:EXITED GT-OUTCOME! ;
 

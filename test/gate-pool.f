@@ -667,7 +667,6 @@ GT-POOL-ABORT-KILL!
    wa-rd FD>N PROC-FORK:REAP-WATCH-FD !
    0 GT-POOL-DEATH-MADE ! ;
 
-\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
 : GT-POOL-FORK-CHILD ( idx [ -- ] -- ) {: idx:idx q :}
    idx GT-POOL-CLOSE-READS
    idx GT-POOL-OUT-W-PTR @ 1 GT-POOL-DUP2!
@@ -683,7 +682,6 @@ GT-POOL-ABORT-KILL!
    rc 0= if 0 GT-POOL-FORK-EXIT then
    rc GT-POOL-FORK-THROW ;
 
-\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
 : GT-POOL-FORK ( idx [ -- ] -- ) {: idx:idx q :}
    idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
    PROC-FORK:RAW {: pid:pid :}
@@ -899,7 +897,6 @@ GT-POOL-ABORT-KILL!
    idx path pathu GT-POOL-SPAWN
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
-\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
 : GT-POOL-START-FORK-SLOT ( ptr u8 n n idx [ -- ] -- ) {: label:ptr labelu:n timeout:n idx:idx q :}
    idx GT-POOL-DONE@ 0= if
       s" test pool: fixed slot already active" type cr
@@ -1118,7 +1115,6 @@ GT-POOL-ABORT-KILL!
    GT-POOL-FIND-FREE {: idx :}
    path pathu label labelu timeout idx GT-POOL-START-SLOT ;
 
-\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
 : GT-POOL-START-FORK ( ptr u8 n n [ -- ] -- ) {: label:ptr labelu:n timeout:n q :}
    GT-POOL-WAIT-FREE
    GT-POOL-FIND-FREE {: idx:idx :}

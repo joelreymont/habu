@@ -242,7 +242,6 @@ variable START-NS
    CAP-OUT-PATH$ CAP-OUT BUF-CAP READ-ALL
    CAP-ERR-PATH$ CAP-ERR BUF-CAP READ-ALL ;
 
-\ typed-local-lint: allow-bare-local - q is the guarded in-process run action.
 : IN-PROC ( [ -- ] -- n n n )   \ outn errn code, the same triple the CLI drivers return
    {: q :}
    CAP-BEGIN
@@ -1806,7 +1805,6 @@ create BIG $2000 allot   variable BIG-U
    rc E-PROC-TIMEOUT <> if rc throw then
    label labelu CASE-HUNG ;
 
-\ typed-local-lint: allow-bare-local - CASE-RUN q preserves its quotation effect.
 : CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns START-NS !
    q catch {: rc:n :}

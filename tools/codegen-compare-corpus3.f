@@ -327,13 +327,11 @@ public
 
 \ maki/array.f:16, verbatim, bare locals and all - the corpus is pinned to the
 \ surveyed body and an annotation would be an edit to it.
-\ typed-local-lint: allow-bare-local - base and len are maki/array.f:16's own
 \ spelling; this corpus records the body that runs, not a rewrite of it.
 : T-SUM ( ptr a n -- r ) {: base len :}
    0.0  len 0 ?do  base i T-GET f+  loop ;
 
 \ maki/array.f:20, verbatim. The in-place step: w[i] -= lr * g[i].
-\ typed-local-lint: allow-bare-local - lr, wbase, gbase and len are
 \ maki/array.f:20's own spelling.
 : T-SGD! ( r ptr a ptr a n -- ) {: lr wbase gbase len :}
    len 0 ?do
@@ -362,7 +360,6 @@ public
    f/ ;
 
 \ maki/autograd.f:23, verbatim, bare local and all.
-\ typed-local-lint: allow-bare-local - x is maki/autograd.f:23's own spelling.
 : RELU-F ( r -- r ) {: x :}   x f0< if 0.0 else x  then ;
 
 \ maki/autograd.f:48, verbatim: the two-armed branch on a two-operand compare.
@@ -370,7 +367,6 @@ public
 
 \ maki/optim.f:12, verbatim: w' = w - lr*g, the smallest honest piece of
 \ straight-line float arithmetic this system runs.
-\ typed-local-lint: allow-bare-local - w, g and lr are maki/optim.f:12's own
 \ spelling.
 : SGD ( r r r -- r ) {: w g lr :}
    w  lr g f*  f- ;

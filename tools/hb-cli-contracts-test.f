@@ -10,10 +10,6 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 
-\ Sealed because the source seal reaches into this file: the child program
-\ below names SOURCE:READ-STDIN-ALL, and package-diff-lint refuses a changed
-\ definition in an unpackaged module file. Named for the contracts it covers,
-\ not HCT, so the existing tails do not repeat their own package owner.
 package CLI-CONTRACTS
 
 2048 constant HCT-CAP

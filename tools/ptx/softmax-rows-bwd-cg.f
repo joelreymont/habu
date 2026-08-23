@@ -27,14 +27,14 @@ require lib/ptx/collective.f
 \ KERNEL: locals hold tile/span/rowctx types the cell annotations cannot
 \ express; the signature carries the detail (docs/forth.md bare-local exception).
 KERNEL: SOFTMAX-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
-   {: y dy dx :}       \ typed-local-lint: allow-bare-local matrices
-   ROW            {: r :}    \ typed-local-lint: allow-bare-local rowidx
-   y  r ROW-SPAN  {: ys :}   \ typed-local-lint: allow-bare-local span
-   dy r ROW-SPAN  {: dys :}  \ typed-local-lint: allow-bare-local span
-   ys ROW-CTX     {: c :}    \ typed-local-lint: allow-bare-local rowctx
-   ys  c ROW-LOAD {: yt :}   \ typed-local-lint: allow-bare-local tile
-   dys c ROW-LOAD {: dyt :}  \ typed-local-lint: allow-bare-local tile
-   dyt yt *. BLOCK-SUM {: s :}  \ typed-local-lint: allow-bare-local uniform
+   {: y dy dx :}
+   ROW            {: r :}
+   y  r ROW-SPAN  {: ys :}
+   dy r ROW-SPAN  {: dys :}
+   ys ROW-CTX     {: c :}
+   ys  c ROW-LOAD {: yt :}
+   dys c ROW-LOAD {: dyt :}
+   dyt yt *. BLOCK-SUM {: s :}
    dyt s PTX:B-  yt *.
    dx r ROW-SPAN c ROW-STORE ;
 

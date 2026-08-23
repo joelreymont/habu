@@ -523,7 +523,6 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    dup 0= if 2drop s" bin/hb" then ;
 
 : TEST-DIAG ( ptr u8 n ptr u8 n -- )
-   \ typed-local-lint: allow-bare-local - counted strings retain ptr-u8 roles
    {: mode modeu want wantu :}
    PROC-ARGV-RESET
    s" --load" ARG+

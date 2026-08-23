@@ -53,7 +53,6 @@ variable PREPARED?
    CODEGEN-CC:OWNER? if E-CODEGEN-COMPARE-STAGE throw then
    CODEGEN-CC:REMOVE ;
 
-\ typed-local-lint: allow-bare-local - q keeps the forked member quotation effect.
 : FORK-CASE ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    GT-POOL-RESET
    label labelu 180000 q GT-POOL-START-FORK

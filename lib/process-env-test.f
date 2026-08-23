@@ -96,7 +96,6 @@ variable PET-START-NS
    $0A SB-APPEND-C
    SB$ ;
 
-\ typed-local-lint: allow-bare-local - q is the test action quotation.
 : PET-CASE ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns PET-START-NS !
    q execute

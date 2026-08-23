@@ -48,7 +48,7 @@ public
    s" xrt-suffix:" XRT-EXPECT-FOUND {: erec :}
    erec XREF-NAME$ s" XRT-SUFFIX:" T$=
    erec XREF-WORDLIST get-current T=
-   s" XRT:XRT-PUBLIC" XRT-EXPECT-FOUND {: prec :} \ typed-local-lint: allow-bare-local
+   s" XRT:XRT-PUBLIC" XRT-EXPECT-FOUND {: prec :}
    prec XREF-NAME$ s" XRT-PUBLIC" T$=
    s" XRT:XRT-PRIVATE" XREF-FIND XREF-FOUND? TFALSE ;
 

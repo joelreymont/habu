@@ -80,11 +80,11 @@ public
 \ see: the quotation the first takes consumes two cells and leaves one, and the
 \ quotation the second takes consumes one and leaves two.
 : QTAKE2 ( n n [ n n -- n ] -- n )
-   {: a:n b:n q :} \ typed-local-lint: allow-bare-local - q keeps the quotation's own effect
+   {: a:n b:n q :}
    a b q execute ;
 
 : QTAKE1 ( n n [ n -- n n ] -- n n )
-   {: a:n b:n q :} \ typed-local-lint: allow-bare-local - q keeps the quotation's own effect
+   {: a:n b:n q :}
    a drop b q execute ;
 
 \ Three din terms and three cells again, and not a quotation anywhere: the
@@ -109,7 +109,7 @@ public
 \ a body whose return stack does not come back the way it arrived is not one a
 \ caller may reach with an ordinary branch.
 : QRET ( n [ n -- n | a -- a ] -- n )
-   {: a:n q :} \ typed-local-lint: allow-bare-local - q keeps the quotation's own effect
+   {: a:n q :}
    a ;
 
 \ ---- the four words EFFECT-RET-NEUTRAL? is asked about -----------------------
@@ -286,7 +286,7 @@ private
 variable ERA-AGREE   variable ERA-DIFF
 
 : ERA-ONE ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u EFFECT-QUERY 0= if exit then
    a u SIG-MIN-IN {: mini:n :}
    EFFECT-DIN-CELLS mini = if ERA-AGREE @ 1+ ERA-AGREE ! exit then

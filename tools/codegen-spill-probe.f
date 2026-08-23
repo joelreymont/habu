@@ -132,7 +132,7 @@ variable TRY-U
 \ Where a word's code starts, read off its own dictionary record. A name this
 \ image does not hold is refused rather than answered with an address, because
 \ every case below is about WHICH routine is branched to.
-: ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+: ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u XREF-FIND dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
    XREF-START ;
 
@@ -142,7 +142,7 @@ variable TRY-U
 : PUBLISHES-CLOBBER? ( ptr u8 n -- bool )
    ENTRY-OF NCLOB:KNOWN? ;
 
-: STAGE ( ptr u8 n -- ) {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+: STAGE ( ptr u8 n -- ) {: a:ptr u:n :}
    a TRY-SRC ! u TRY-U ! ;
 
 : TRY ( ptr u8 n -- n )
@@ -161,7 +161,7 @@ variable SRC-U
    0 SRC-U ! ;
 
 : SRC+ ( ptr u8 n -- )
-   {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a:ptr u:n :}
    SRC-U @ u + SRC-CAP > if E-CODEGEN-COMPARE-CAP throw then
    a  SRC-BUF SRC-U @ +  u STR-LEN BYTE-COPY-LEN
    SRC-U @ u + SRC-U ! ;
@@ -190,7 +190,7 @@ variable SRC-U
 1234605616436508552 constant WIDE-BASE
 
 : HEAD+ ( ptr u8 n n -- )
-   {: a:ptr u:n k:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a:ptr u:n k:n :}
    s" : SP-" SRC+ a u SRC+ k SRC-N+
    s" -N ( n n -- n ) {: s:n l:n :} " SRC+ ;
 
@@ -205,7 +205,7 @@ variable SRC-U
 \ there. Every one of them is written and read within one turn, so all K are live
 \ at once at the point the last is written and none of them crosses a block edge.
 : INSIDE-SRC ( n n ptr u8 n -- ptr u8 n )
-   {: base:n k:n a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: base:n k:n a:ptr u:n :}
    SRC-RESET
    a u k HEAD+
    s" s l 0 ?do " SRC+
@@ -219,7 +219,7 @@ variable SRC-U
 \ value, and the eligibility test refuses such a class before it ever looks at
 \ the operation that wrote it.
 : ACROSS-SRC ( n n ptr u8 n -- ptr u8 n )
-   {: base:n k:n a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: base:n k:n a:ptr u:n :}
    SRC-RESET
    a u k HEAD+
    base k CONSTS+
@@ -274,7 +274,7 @@ variable SRC-U
 \ loop makes. The callee is named rather than assumed: which compilation of it
 \ the body reaches is the fifth fact.
 : POST-SRC ( n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: k:n t:ptr tu:n c:ptr cu:n :} \ typed-local-lint: allow-bare-local - t and c keep the ptr u8 byte-span role
+   {: k:n t:ptr tu:n c:ptr cu:n :}
    SRC-RESET
    s" : SP-" SRC+ t tu SRC+ s" POST" SRC+ k SRC-N+
    s" -N ( n n -- n ) {: s:n len:n :} " SRC+

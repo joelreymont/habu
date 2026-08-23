@@ -37,9 +37,7 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
   Read it at session start. The heart of it: small typed words, factored
   aggressively, composed into readable checked mini-languages. One concern
   per file.
-- Every new module opens a real `package NAME`. Run the package lint as soon
-  as the first definition exists; if it rejects a caller, fix the caller — no
-  forwarding shims.
+- Every new module opens a real `package NAME`.
 - If `bin/hb` is ever lost or broken, recover with
   `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` (`docs/bootstrap.md`).
 

@@ -75,7 +75,6 @@ private
    SCHEDULE-LINT:SCHEDULE
    ORIGIN$ SCHED-SRC SCHEDULE-LINT:SCHED-SRC ;
 
-\ typed-local-lint: allow-bare-local - q keeps the source-producing effect from
 \ the stack signature.
 : CASE-COUNT ( [ -- ptr u8 n ] -- n ) {: q :}
    LOAD-SETS

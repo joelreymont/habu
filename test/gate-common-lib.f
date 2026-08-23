@@ -352,7 +352,6 @@ variable GE-EVAL-SRC-U
    a dst u BYTE-COPY
    u up ! ;
 
-\ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
 : GE-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
    p begin dup c@ 0= 0= while
       dup 1+ over c@ q execute
@@ -522,7 +521,6 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
 : GE-EVAL-DRAIN ( -- )
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
 
-\ typed-local-lint: allow-bare-local - q is the captured action quotation.
 : GE-CAPTURE-ACTION ( [ -- ] -- n ) {: q :}
    GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
    GE-EVAL-REDIRECT!

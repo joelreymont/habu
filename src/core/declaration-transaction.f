@@ -157,7 +157,7 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
    2drop ;
 
 : INIT-STATE ( ptr a ptr a n [ n n -- ] -- )
-   {: state:ptr table:ptr cap:n diagnostic :} \ typed-local-lint: allow-bare-local
+   {: state:ptr table:ptr cap:n diagnostic :}
    cap 1 < cap MAX-ROWS > or if E-PARTICIPANT-CAPACITY throw then
    table state ST.TABLE !
    cap state ST.CAP !
@@ -220,7 +220,7 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 
 : REGISTER-ROW
    ( ptr a n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
-   {: state:ptr id:n order:n snapshot prepare commit rollback release :} \ typed-local-lint: allow-bare-local
+   {: state:ptr id:n order:n snapshot prepare commit rollback release :}
    state id REQUIRE-REGISTRATION
    state order OPEN-SLOT {: idx:n :}
    id state idx ID!
@@ -240,7 +240,7 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
    state POISON@ 0= IF code state ST.POISON ! THEN ;
 
 : CALL-PARTICIPANT ( ptr a n n [ n -- n ] -- n )
-   {: state:ptr phase:n idx:n callback :} \ typed-local-lint: allow-bare-local
+   {: state:ptr phase:n idx:n callback :}
    state phase idx ENTER-PHASE
    state DEPTH@ {: expected:n :}
    expected callback catch {: actual:n code:n :}
@@ -335,7 +335,7 @@ TRUSTED: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
    primary throw ;
 
 : RUN-TRANSACTION ( ptr a [ -- ] -- )
-   {: state:ptr body :} \ typed-local-lint: allow-bare-local
+   {: state:ptr body :}
    state POISON@ 0 <> IF E-TRANSACTION-POISONED throw THEN
    state DEPTH@ 1 + state ST.DEPTH !
    state SNAPSHOT-ALL {: active:n code:n :}

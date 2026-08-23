@@ -94,7 +94,7 @@ create SBUF SRC-CAP allot
 variable SBUF-U
 
 : SRC! ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    u SRC-CAP > if E-NSRC-CAP throw then
    0 begin dup u < while
       dup a + c@  over SBUF + c!
@@ -168,7 +168,7 @@ create TXT TEXT-CAP allot
 \ carries. R-EXTRA is set back to zero here, so a case that needs extra word-model
 \ rows raises it AFTER this and no case inherits its neighbour's.
 : CASE! ( ptr u8 n n n -- )
-   {: a u:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n in:n out:n :}
    a u SRC!
    in R-IN !
    out R-OUT !
@@ -607,7 +607,7 @@ $FFE0FFE0 constant MVN-SHAPE
    s" 13 constant NVC-CR" EV ;
 
 : WS-FIXED ( IR-ARENA:arena ptr u8 n -- )
-   {: r:IR-ARENA:arena a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: r:IR-ARENA:arena a u:n :}
    CC BB r  CC BB a u IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED ;
 
 \ The four rows the body's constants need, on top of the dialect's vocabulary.

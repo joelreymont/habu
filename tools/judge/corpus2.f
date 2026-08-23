@@ -131,7 +131,6 @@ private
    s" JUDGE-CORPUS2:DST-READ" s" JUDGE-CORPUS2:C-DST-READ" JUDGE-PASS:READ+ ;
 
 \ ---- the seven rows, written once ---------------------------------------------
-\ typed-local-lint: allow-bare-local - row is the caller's own body, and a local
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" TAG" s" hc2_tag" JUDGE-PASS:ROW!

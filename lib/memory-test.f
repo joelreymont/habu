@@ -271,7 +271,7 @@ create RBT-ERR RBT-CAP allot
    s" " 0 die ;
 
 : MEMT-FORK ( [ -- ] -- outcome )
-   {: body :} \ typed-local-lint: allow-bare-local - body keeps the quotation effect.
+   {: body :}
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if
       body execute

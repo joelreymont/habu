@@ -228,8 +228,8 @@ private
 : SUITE-ALL? ( -- bool )
    SUITE-SLICE @ SUITE-ALL-ID = ;
 
-\ The five bare CLI-wrapper labels - repl-lint, dot-dep-lint, maki-dep-lint,
-\ namespace-lint, error-code-lint - are deliberately absent: their registrations
+\ The three bare CLI-wrapper labels - repl-lint, dot-dep-lint, and
+\ error-code-lint - are deliberately absent: their registrations
 \ were retired (see the note in test/gate-stdlib-cases.f), and a predicate arm
 \ selecting a label no registration carries selects nothing. Their -fixtures
 \ siblings below are registrations still, and stay.
@@ -239,13 +239,10 @@ private
    s" clobber-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" lint-def-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" namespace-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" error-code-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" lint-intern-set" SUITE-LABEL= if SUITE-TRUE exit then
    s" diff-parser" SUITE-LABEL= if SUITE-TRUE exit then
-   s" diff-frame-codec" SUITE-LABEL= if SUITE-TRUE exit then
    s" schedule-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" region-room" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;

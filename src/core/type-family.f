@@ -41,8 +41,7 @@
 \ TF-SHA16-XT are named by AOT-captured call sites, and the boot seed re-resolves
 \ a baked callee only through a global scope. Each of the six sits between a
 \ `;package` and a `package TFAM` and reads the registry through `using TFAM`.
-\ tools/package-diff-lint-core.f TFAM-BRIDGE? admits exactly these six, by path,
-\ name and definer; test/internal-word-gate.f pins that the surface stops there.
+\ test/internal-word-gate.f pins that the surface stops there.
 
 using SCHEMA-REG
 
@@ -3149,7 +3148,7 @@ s" rowidx"     1 TFAM-REG-CELL
 \ docs/extent-substrate.md). `extprod<free,inner>` is the product former: an
 \ ORDERED arity-2 cell family so ix<extprod<extb,extt>> types a folded (B,T) row
 \ and its ordered args already reject a swapped or mismatched factor on the
-\ existing parametric unification (probe test/extent-substrate-probe.f). `redx`
+\ existing parametric unification. `redx`
 \ is the arity-1 contraction/reduction index: a value of ix<e> re-typed as
 \ redx<e> is an axis marked for summation. The checker's free-vs-inner rule
 \ (checker.f EXT-REDX-BAD-ARG? at SIG-END-PARAM) rejects redx over a free factor,

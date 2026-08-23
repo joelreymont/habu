@@ -34,14 +34,14 @@ private
 \ `search-wl` is the engine's own scan and case fold, and zero is its absent
 \ answer; no word's code starts there.
 : OPEN-START ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    OPEN-PRI 0= if 0 exit then
    a u OPEN-PRI search-wl {: pri:n :}
    pri 0<> if pri exit then
    a u OPEN-PUB search-wl ;
 
 : BARE-START ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u OPEN-START {: open:n :}
    open 0<> if open exit then
    a u 0 search-wl ;
@@ -55,20 +55,20 @@ private
 \ `search-wl` stays the authority on whether and where. This walk supplies only
 \ the slots a start does not carry, and is REFUSED unless the two starts agree.
 : OPEN-REC ( ptr u8 n -- ptr a )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    OPEN-PRI 0= if XREF-NULL exit then
    a u OPEN-PRI XREF-FIND-WL {: pri:ptr :}
    pri XREF-FOUND? if pri exit then
    a u OPEN-PUB XREF-FIND-WL ;
 
 : BARE-REC ( ptr u8 n -- ptr a )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u OPEN-REC {: open:ptr :}
    open XREF-FOUND? if open exit then
    a u 0 XREF-FIND-WL ;
 
 : SPELL-REC ( ptr u8 n -- ptr a )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q QUAL-BAD = if XREF-NULL exit then
    q 0 >= if a u q XREF-FIND-QUALIFIED exit then
@@ -87,7 +87,7 @@ variable FX-BASE
 public
 
 : SPELL-START ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q QUAL-BAD = if 0 exit then
    q 0 >= if a u q QUAL-START exit then
@@ -101,7 +101,7 @@ public
 2 constant FIXED-ADDR                \ `create`/`variable`: the body pushes a DATA address
 
 : SPELL-FIXED ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u SPELL-START {: start:n :}
    start 0= if FIXED-NONE exit then
    a u SPELL-REC {: rec:ptr :}
@@ -116,7 +116,7 @@ public
 \ A record no definer stamped is refused BEFORE the word is entered. The count
 \ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77).
 : FIXED-VALUE ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u SPELL-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
    a u SPELL-FIXED FIXED-NONE = if E-NDICT-KIND throw then
@@ -206,7 +206,7 @@ public
 \ all: an IMMEDIATE word runs at compile time, an ENGINE-INTERNAL word has no
 \ name past the seal, and a RETIRED record's start is code nothing can reach.
 : CALL-TARGET ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u SPELL-START {: start:n :}
    start 0= if 0 exit then
    a u SPELL-REC {: rec:ptr :}
@@ -265,14 +265,14 @@ public
 \ QUOT-NONE twice when there is no such term, it is not a quotation, the row is
 \ not indexable, or the body is not one a caller may branch to and come back from.
 : SPELL-QUOT-DIN ( ptr u8 n n -- n n )
-   {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n i:n :}
    a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
    true ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
    i EFFECT-DIN-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
 : SPELL-QUOT-DOUT ( ptr u8 n n -- n n )
-   {: a u:n i:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n i:n :}
    a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
    false ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
    i EFFECT-DOUT-QUOT 0= if QUOT-NONE QUOT-NONE exit then
@@ -338,7 +338,7 @@ public
 \ The record carries the code's start and its length, and the trailer begins
 \ where the code ends, so there is no second opinion about a word's extent.
 : SPELL-DEFER-CELL ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u SPELL-REC {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-RETIRED? if 0 exit then

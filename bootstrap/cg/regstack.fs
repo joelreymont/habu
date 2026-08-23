@@ -126,8 +126,8 @@ variable RL-ACTIVE   variable RL-FAIL
 \ comparisons -> Forth flag (0/-1). Distinct names (templ.fs has its own memory
 \ g-cmp in the FORTH wordlist; these must not be shadowed by it).
 : VCMP ( cond -- )
-   V-POPR {: b :} \ typed-local-lint: allow-bare-local
-   V-POPR {: a :} \ typed-local-lint: allow-bare-local
+   V-POPR {: b :}
+   V-POPR {: a :}
    a b CMP,
    a swap CSET,
    a SP a SUB,
@@ -182,17 +182,17 @@ variable RL-ACTIVE   variable RL-FAIL
    R-ALLOC {: r :} r va MOV, r V-PUSHR ;
 
 : V-ROT1 ( -- )
-   V-POP {: tc vc :} \ typed-local-lint: allow-bare-local
-   V-POP {: tb vb :} \ typed-local-lint: allow-bare-local
-   V-POP {: ta va :} \ typed-local-lint: allow-bare-local
+   V-POP {: tc vc :}
+   V-POP {: tb vb :}
+   V-POP {: ta va :}
    tb vb V-PUSHX
    tc vc V-PUSHX
    ta va V-PUSHX ;
 
 : V-MROT1 ( -- )
-   V-POP {: tc vc :} \ typed-local-lint: allow-bare-local
-   V-POP {: tb vb :} \ typed-local-lint: allow-bare-local
-   V-POP {: ta va :} \ typed-local-lint: allow-bare-local
+   V-POP {: tc vc :}
+   V-POP {: tb vb :}
+   V-POP {: ta va :}
    tc vc V-PUSHX
    ta va V-PUSHX
    tb vb V-PUSHX ;
@@ -280,9 +280,9 @@ get-current  CG-VS set-current
 : c! ( -- ) V-POPR {: p :} V-POPR {: v :}  v p 0 STRB,  p R-FREE v R-FREE ;
 
 : +! ( -- )
-   V-POPR {: p :} \ typed-local-lint: allow-bare-local
-   V-POPR {: n :} \ typed-local-lint: allow-bare-local
-   R-ALLOC {: t :} \ typed-local-lint: allow-bare-local
+   V-POPR {: p :}
+   V-POPR {: n :}
+   R-ALLOC {: t :}
    t p 0 LDR,
    t t n ADD,
    t p 0 STR,

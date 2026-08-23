@@ -5,13 +5,6 @@ require lib/string.f
 require lib/memory.f
 require lib/fs.f
 
-\ Sealed as package SOURCE. package-diff-lint refuses every edit to a definition
-\ in an unpackaged module file, so the seal is the price of fixing the buffer
-\ below; the interner lane paid the same price for tools/lint/intern.f (dot
-\ habu-lint-intern-table-85ae462f). Nothing surviving is renamed. Four words
-\ whose only consumer was lib/source-test.f - CONCAT-FILES, WRITE-SOURCE-LIST,
-\ INSERT-BEFORE-FINAL-LINE and SOURCE-FILE-LINES - went with the seal, because a
-\ sealed package does not publish words nothing calls.
 package SOURCE
 private
 

@@ -94,7 +94,7 @@ $94000000 constant BL-FORM
    REC-LEN INSN-BYTES / ;
 
 : BLS ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u REC-START {: start:n :}
    0
    a u INSNS 0 ?do
@@ -102,7 +102,7 @@ $94000000 constant BL-FORM
    loop ;
 
 : BL-AT ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u REC-START {: start:n :}
    -1
    a u INSNS 0 ?do
@@ -110,7 +110,7 @@ $94000000 constant BL-FORM
    loop ;
 
 : BL-TARGET ( ptr u8 n -- n )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u BL-AT {: k:n :}
    a u REC-START  k INSN-BYTES * +  {: site:n :}
    site  a u REC-START k INSN-AT BL-DELTA INSN-BYTES *  + ;

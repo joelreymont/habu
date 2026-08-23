@@ -17,8 +17,7 @@
 \ and only the words carrying a PRIM: axiom can be named. Adding four axioms so a
 \ test could read four literals would grow the checker's public surface for a
 \ test's convenience. So the checker's side is read where it is DEFINED: the
-\ source, through tools/lint/source-lex.f - the same lexer package-diff-lint and
-\ schedule-lint read Habu with - and only a `<number> constant <NAME>` whose
+\ source, through tools/lint/source-lex.f, and only a `<number> constant <NAME>` whose
 \ three tokens are all real code tokens counts. The layout side is read from the
 \ LIVE ENGINE, by naming the constants, which is the authority a compiled
 \ reference would use.

@@ -832,13 +832,13 @@ private
 \ Byte emitters over the caller span: cur rides on top so emission chains
 \ read left to right without juggling.
 : EMIT-B ( n ptr u8 n n -- n )
-   {: cur:n q cap:n b:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n b:n :}
    cur cap >= if E-IR-TYPE-RANGE throw then
    b q cur + c!
    cur 1+ ;
 
 : EMIT-S ( n ptr u8 n ptr u8 n -- n )
-   {: cur:n q cap:n p u:n :} \ typed-local-lint: allow-bare-local - q and p keep the ptr u8 byte-span roles
+   {: cur:n q cap:n p u:n :}
    cur u + cap > if E-IR-TYPE-RANGE throw then
    u 0 ?do
       p i + c@ q cur + i + c!
@@ -896,12 +896,12 @@ private
    endcase ;
 
 : EMIT-INT ( n ptr u8 n n n -- n )
-   {: cur:n q cap:n wc:n sc:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n wc:n sc:n :}
    cur q cap sc SIGN-STR EMIT-S
    q cap wc WIDTH-STR EMIT-S ;
 
 : EMIT-TOKEN ( n ptr u8 n n -- n )
-   {: cur:n q cap:n dc:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: cur:n q cap:n dc:n :}
    cur q cap s" token<" EMIT-S
    q cap dc DOMAIN-STR EMIT-S
    q cap $3E EMIT-B ;
@@ -918,7 +918,7 @@ private
 \ reference passes REF-OK's strict decrease, so recursion depth is bounded
 \ by the ordinal itself on any table state.
 : R-EMIT ( IR-ARENA:arena IR-ARENA:arena ptr u8 n n n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena q cap:n cur:n l:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena q cap:n cur:n l:n :}
    r l OFF-KIND RC@ {: k:n :}
    k K-INT = if cur q cap r l OFF-A RC@ r l OFF-B RC@ EMIT-INT exit then
    k K-FLT = if cur q cap r l OFF-A RC@ FMT-STR EMIT-S exit then
@@ -954,7 +954,7 @@ private
 
 \ The frozen twin of R-EMIT over the arena views.
 : FR-EMIT ( IR-ARENA:view IR-ARENA:view ptr u8 n n n -- n )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view q cap:n cur:n l:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view rv:IR-ARENA:view q cap:n cur:n l:n :}
    rv l OFF-KIND FRC@ {: k:n :}
    k K-INT = if cur q cap rv l OFF-A FRC@ rv l OFF-B FRC@ EMIT-INT exit then
    k K-FLT = if cur q cap rv l OFF-A FRC@ FMT-STR EMIT-S exit then
@@ -995,7 +995,7 @@ public
 \ overflowing write. The text depends only on structural content, never on
 \ interning history.
 : RENDER ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-type-id ptr u8 n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-type-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-type-id q cap:n :}
    a r PAIR-CK
    r id ID-CK {: l:n :}
    a r q cap 0 l R-EMIT ;
@@ -1065,7 +1065,7 @@ public
    key l pv st pn + i + FPC@ REF-OK IR-ID:PACK-TYPE ;
 
 : FRENDER ( IR-ARENA:view IR-ARENA:view IR-ID:ir-type-id ptr u8 n -- n )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-type-id q cap:n :} \ typed-local-lint: allow-bare-local - q keeps the ptr u8 byte-span role
+   {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-type-id q cap:n :}
    pv rv FPAIR-CK
    rv id FID-CK {: l:n :}
    pv rv q cap 0 l FR-EMIT ;

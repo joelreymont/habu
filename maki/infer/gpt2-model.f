@@ -371,7 +371,6 @@ TRUSTED: M-TAKE
 \ the loops below only derive tensor ids from slots inside that same census.
 : M-FIND-SLOT
    ( SAFET:file config n ptr u8 -- SAFET:file config n n )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c slot:n scratch:ptr :}
    c slot M-SLOT-INDEX TENSOR-ID-FOR-SLOT
    scratch M-NAME-CAP COPY-NAME?
@@ -389,10 +388,8 @@ TRUSTED: M-TAKE
 
 : M-CATALOG-ROW
    ( SAFET:file config ptr u8 n -- SAFET:file config ptr u8 n )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr slot:n :}
    c slot scratch M-FIND-SLOT
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c2 id:n code:n :}
    code 0<> if c2 scratch code exit then
    id c2 M-CFG-DTYPE SAFET:DATATYPE=
@@ -417,17 +414,14 @@ TRUSTED: M-TAKE
 
 : M-CATALOG-ROWS
    ( SAFET:file config ptr u8 n n -- SAFET:file config ptr u8 n )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr slot:n total:n :}
    slot total = if c scratch 0 exit then
    c scratch slot M-CATALOG-ROW
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c2 scratch2:ptr code:n :}
    code 0<> if c2 scratch2 code exit then
    c2 scratch2 slot 1+ total RECURSE ;
 
 : M-CATALOG ( SAFET:file config ptr u8 -- SAFET:file config ptr u8 n )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
    SAFET:COUNT {: got:n :}
    c COUNT {: want:n :}
@@ -597,19 +591,15 @@ private
 : M-O-SPAN
    ( GPU:session GPU:buffer config n n n -- GPU:session GPU:buffer config n )
    {: off:n bytes:n slot:n :}
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c :}
    off M-BYTE-OFF bytes M-BYTE-LEN GPU:SPAN slot M-SPAN-SAVE {: code:n :}
    c code ;
 
 : M-W-SPAN
    ( GPU:session GPU:buffer config tensor-id n -- GPU:session GPU:buffer config n )
-   \ typed-local-lint: allow-bare-local - tensor-id is a variant structure.
    {: id slot:n :}
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c :}
    c id SPAN
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c2 off:CAD-NUM:byte-off bytes:CAD-NUM:byte-len :}
    off bytes GPU:SPAN slot M-SPAN-SAVE {: code:n :}
    c2 code ;
@@ -631,7 +621,6 @@ private
 
 : M-LN-LAYER
    ( GPU:session GPU:buffer config n n layer-role layer-role n n -- GPU:session GPU:buffer config n )
-   \ typed-local-lint: allow-bare-local - roles are arity-zero enum values.
    {: x:n out:n grole brole layer:n fn:n :}
    NEMBD@ {: ne:n :}
    1 4 M-U!  ne 5 M-U!
@@ -664,7 +653,6 @@ private
 
 : M-LINEAR
    ( GPU:session GPU:buffer config n n n n layer-role layer-role n n -- GPU:session GPU:buffer config n )
-   \ typed-local-lint: allow-bare-local - roles are arity-zero enum values.
    {: x:n out:n in:n cols:n wrole brole layer:n fn:n :}
    1 4 M-U!  in 5 M-U!  cols 6 M-U!
    x in 4 CHECKED-MUL 0 M-O-SPAN {: c0:n :}
@@ -803,7 +791,6 @@ private
    ( GPU:session GPU:buffer config n n -- GPU:session GPU:buffer config n )
    {: token:n off:n :}
    token 0 M-U!
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c :}
    off M-BYTE-OFF M-PARAM 4 M-BYTE-LEN GPU:UPLOAD M-RESULT-CODE {: code:n :}
    c code ;
@@ -811,7 +798,6 @@ private
 : M-DOWNLOAD
    ( GPU:session GPU:buffer config n ptr u8 CAD-NUM:byte-len -- GPU:session GPU:buffer config n )
    {: off:n dst:ptr outu:CAD-NUM:byte-len :}
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c :}
    off M-BYTE-OFF dst outu GPU:DOWNLOAD M-RESULT-CODE {: code:n :}
    c code ;
@@ -967,10 +953,8 @@ private
 
 : M-UPLOAD-ONE
    ( GPU:session GPU:buffer SAFET:file config ptr u8 ptr u8 n -- GPU:session GPU:buffer SAFET:file config ptr u8 n )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr base:ptr slot:n :}
    c slot scratch M-FIND-SLOT
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c2 id:n find-code:n :}
    find-code 0<> if c2 scratch find-code exit then
    id SAFET:MAP-OFFSET? M-OPT {: src-off:n off-code:n :}
@@ -985,11 +969,9 @@ private
 
 : M-UPLOADS
    ( GPU:session GPU:buffer SAFET:file config ptr u8 ptr u8 n n -- GPU:session GPU:buffer SAFET:file config ptr u8 n )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr base:ptr slot:n total:n :}
    slot total = if c scratch 0 exit then
    c scratch base slot M-UPLOAD-ONE
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c2 scratch2:ptr code:n :}
    code 0<> if c2 scratch2 code exit then
    c2 scratch2 base slot 1+ total RECURSE ;
@@ -999,7 +981,6 @@ private
    {: base:ptr len:n :}
    len drop
    >r
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
    c COUNT {: total:n :}
    drop
@@ -1013,10 +994,8 @@ private
 : M-CATALOG-ORDER
    ( config ptr u8 SAFET:file SAFET:mapping -- config ptr u8 SAFET:file SAFET:mapping n )
    >r >r
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
    r> c scratch M-CATALOG
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c2 scratch2:ptr code:n :}
    >r c2 scratch2 r> r> code ;
 
@@ -1025,7 +1004,6 @@ private
    {: prior:n :}
    prior 0<> if prior exit then
    >r >r
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
    r> scratch r> M-PIN-FRAME
    >r {: scratch2:ptr code:n :}
@@ -1069,7 +1047,6 @@ private
    {: tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :}
    SAFET:UNMAP-MAPPING M-RESULT-CODE {: code:n :}
    drop
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c :}
    SAFET:RELEASE
    code 0<> if
@@ -1115,7 +1092,6 @@ private
    ( config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
    {: alloc:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :}
    >r >r
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
    GPU:OPEN
    MATCH result
@@ -1165,7 +1141,7 @@ private
 
 : M-BODY
    ( ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:alloc-byte-len ptr a CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
-   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :} \ typed-local-lint: allow-bare-local
+   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:alloc-byte-len tokstate:ptr toklen:CAD-NUM:alloc-byte-len rec:ptr :}
    scratchu drop
    c scratch
    root rootu GPT2PIN:MODEL-NAME$ scratch JOIN-PATH {: pathu:n :}
@@ -1206,7 +1182,7 @@ private
    ;MATCH ;
 
 : M-OPEN-CFG ( ptr u8 n config ptr a CAD-NUM:alloc-byte-len -- result<GPT2:model,n> )
-   {: root:ptr rootu:n c tokstate:ptr toklen:CAD-NUM:alloc-byte-len :} \ typed-local-lint: allow-bare-local - c preserves GPT2:config's W>1 layout, which locals cannot annotate.
+   {: root:ptr rootu:n c tokstate:ptr toklen:CAD-NUM:alloc-byte-len :}
    root rootu GPT2PIN:MODEL-NAME$ nip M-JOIN-LEN
    FS-PATH-CAP > if
       c M-DROP-CFG
@@ -1251,7 +1227,6 @@ private
    tokstate toklen root rootu ;
 
 : M-OPEN-TOK ( ptr u8 n config -- result<GPT2:model,n> )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: root:ptr rootu:n c :}
    NULL$ drop 1 MEM:BYTES-ALLOC-LEN [: M-ALLOC-TOK ;] catch {: alloc-code:n :}
    alloc-code 0<> if
@@ -1282,7 +1257,6 @@ public
    MATCH result
       err OF M-MODEL-ERR ENDOF
       ok OF
-         \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
          {: c :}
          root rootu c M-OPEN-TOK
       ENDOF

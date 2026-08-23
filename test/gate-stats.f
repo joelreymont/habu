@@ -711,7 +711,6 @@ GATE-PROCESS:INSTALL
 
 : GS-STRAY-LINT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dot-dep-lint" STARTS-WITH? if GS-TRUE exit then
-   a u s" maki-dep-lint" STARTS-WITH? if GS-TRUE exit then
    a u s" repl-lint" STARTS-WITH? if GS-TRUE exit then
    GS-FALSE ;
 

@@ -3,8 +3,8 @@
 256 %BLOCK
 
 KERNEL: RELUK-V4 ( span<space-global,f32,e> span<space-global,f32,e> uniform<f32> -- ) GRID: ceil-n-1024
-   {: x y a :} \ typed-local-lint: allow-bare-local - PTX param roles.
-   x GRID-CTX-V4 {: g :} \ typed-local-lint: allow-bare-local - fresh mask role.
+   {: x y a :}
+   x GRID-CTX-V4 {: g :}
    x g LOAD-V4 RELU-V4
    y g STORE-V4 ;
 

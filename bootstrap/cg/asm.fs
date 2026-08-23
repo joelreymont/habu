@@ -187,8 +187,8 @@ CHECKING-ON? off
 
 : ENC-RET  ( i -- )  drop $D65F03C0 EMITW ;
 
-: ENC-ADR  ( i -- )  {: i :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   i BDELTA 4 * ?ADR {: d :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+: ENC-ADR  ( i -- )  {: i :}
+   i BDELTA 4 * ?ADR {: d :}
    $10000000  d 3 and 29 lshift or  d 4 / $7FFFF and 5 lshift or  i IC-B or EMITW ;
 
 : ENC-LDR  ( i -- )  >r $F9400000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?SC8 10 lshift or EMITW ;

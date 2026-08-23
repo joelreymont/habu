@@ -110,7 +110,7 @@ variable N-SPILLED                   \ slots the first walk of the last run used
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :}
    c b A64SEL:BIND-SOURCE
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    c A64-BUILDER {: ab:IR-BUILD:builder :}
@@ -171,7 +171,7 @@ public
 \ builder of its own bound to every pass that will read it. The allocator has to
 \ have run and decided at least one slot before this is reached.
 : LOWER ( IR-CTX:ctx IR-BUILD:module ptr u8 n -- IR-BUILD:module )
-   {: c:IR-CTX:ctx m:IR-BUILD:module a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx m:IR-BUILD:module a u:n :}
    A64EMIT:RELEASE
    c A64-BUILDER {: nb:IR-BUILD:builder :}
    c nb A64RA:BIND-DIALECT
@@ -221,20 +221,20 @@ public
 
 \ Select and finish in one step, out of a pool of `n` registers from `base`.
 : RUN-FROM ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n :}
    c b a u base n LEAF-FROM SELECTED {: m:IR-BUILD:module :}
    A64SPILL:RELEASE
    c m base n FINISH ;
 
 \ The same, out of the pool that starts at register zero.
 : RUN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n n:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n n:n :}
    c b a u 0 n RUN-FROM ;
 
 \ Select alone, without allocating or emitting: the step a caller needs when it
 \ is measuring what the selector produced rather than what the routine runs as.
 : SELECT-HABU ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- IR-BUILD:module )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :}
    c b a u base n in out LEAF-HABU SELECTED
    A64SPILL:RELEASE ;
 
@@ -243,7 +243,7 @@ public
 \ scratch registers from `base`. This is the whole of what makes an emitted
 \ routine callable the way an interpreted word is.
 : RUN-HABU ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :}
    c b a u base n in out LEAF-HABU SELECTED {: m:IR-BUILD:module :}
    A64SPILL:RELEASE
    c m base n in out FINISH-HABU ;
@@ -253,7 +253,7 @@ public
 \ local; every one of the three is the same declaration, so the selector, the
 \ allocator and the validator are answering about one routine.
 : RUN-HABU-CALL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :}
    c b a u  base n in out CALL-HABU  SELECTED {: m:IR-BUILD:module :}
    A64SPILL:RELEASE
    c m  base n in out CALL-HABU  A64RA:ALLOCATE
@@ -269,7 +269,7 @@ public
 \ assumed. The contract is built once per stage, from the same five numbers,
 \ because a routine value cannot be held in a local.
 : RUN-HABU-SPILL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :}
    c b a u  base n NABI:POOL in out sp NABI:LEAF-FRAMED  SELECTED {: m:IR-BUILD:module :}
    c m  base n NABI:POOL in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
    A64RA:SPILLS N-SPILLED !
@@ -289,7 +289,7 @@ public
 \ allocator's own slots go above it - so this is the one run that exercises both
 \ owners of one frame at once.
 : RUN-HABU-CALL-SPILL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :}
    c b a u  base n NABI:POOL in out sp NABI:CALL-FRAMED  SELECTED {: m:IR-BUILD:module :}
    c m  base n NABI:POOL in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
    A64RA:SPILLS N-SPILLED !

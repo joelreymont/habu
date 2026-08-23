@@ -139,7 +139,7 @@ KERNEL: SUM-ROWS-1024 ( matrix<space-global,f32,extent-r,extent-c>  matrix<space
 
 s" PTX-GOOD-MK-MATRIX ( ptr<space-global,f32> u32 u32 -- ) MK-MATRIX ROW ROW-SPAN drop" CHECK! -1 T=
 s" PTX-GOOD-MK-MATRIX-ONCE ( ptr<space-global,f32> u32 u32 -- ) MK-MATRIX-ONCE ROW ROW-SPAN-ONCE drop" CHECK! -1 T=
-s" PTX-GOOD-ROW-ONCE {: m :} ROW {: r :} m r ROW-SPAN-ONCE {: xs :} xs ROW-CTX-ONCE {: c :} xs c ROW-LOAD-ONCE xs c ROW-STORE-ONCE" CHECK! -1 T= \ typed-local-lint: allow-bare-local
+s" PTX-GOOD-ROW-ONCE {: m :} ROW {: r :} m r ROW-SPAN-ONCE {: xs :} xs ROW-CTX-ONCE {: c :} xs c ROW-LOAD-ONCE xs c ROW-STORE-ONCE" CHECK! -1 T=
 s" PTX-BAD-ROW-ONCE-FROM-PLAIN ( tile<f32,block-256,mask-live> span<space-global,f32,extent-n> rowctx<block-256,extent-n,mask-live> -- ) ROW-STORE-ONCE" PTXC-CHECK-REJECTS
 s" PTX-BAD-ROW-PLAIN-FROM-ONCE ( tile<f32,block-256,mask-live> span<space-global-once,f32,extent-n> rowctx<block-256,extent-n,mask-live> -- ) ROW-STORE" PTXC-CHECK-REJECTS
 s" PTX-BAD-ROW-ONCE-CTX-FROM-PLAIN ( span<space-global,f32,extent-n> -- rowctx<block-256,extent-n,mask-live> ) ROW-CTX-ONCE" PTXC-CHECK-REJECTS

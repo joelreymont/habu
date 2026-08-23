@@ -123,7 +123,7 @@ variable RS-PAST       \ a run claiming more terms than the row has
    cells 0 < ;
 
 : ROW-TALLY ( ptr u8 n n n bool -- )
-   {: a u:n terms:n cells:n din:bool :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n terms:n cells:n din:bool :}
    N-ROWS @ 1+ N-ROWS !
    cells ROW-UNSIZED? if  N-UNSIZED @ 1+ N-UNSIZED !  exit  then
    terms cells <> if
@@ -141,7 +141,7 @@ variable RS-PAST       \ a run claiming more terms than the row has
    RS-PAST @ 0<> if N-PAST @ 1+ N-PAST ! then ;
 
 : TALLY ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    N-SEEN @ 1+ N-SEEN !
    a u HAS-EFFECT? 0= if exit then
    N-EFFECT @ 1+ N-EFFECT !
@@ -152,7 +152,7 @@ variable RS-PAST       \ a run claiming more terms than the row has
 \ The two counts and every slot, so a reader can check a shape this file's prose
 \ claims instead of believing it. A name the checker holds no effect for in THIS
 \ scope says so rather than being counted as anything.
-: SHOW-ROW ( ptr u8 n bool -- ) {: a u:n din:bool :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+: SHOW-ROW ( ptr u8 n bool -- ) {: a u:n din:bool :}
    din if ."   din  t=" EFFECT-DIN-N . ." c=" EFFECT-DIN-CELLS .
    else ."   dout t=" EFFECT-DOUT-N . ." c=" EFFECT-DOUT-CELLS . then
    ." slots:"
@@ -162,7 +162,7 @@ variable RS-PAST       \ a run claiming more terms than the row has
    cr ;
 
 : SHOW-NAME ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    a u type cr
    a u HAS-EFFECT? 0= if ."   (no effect in this scope)" cr exit then
    a u true SHOW-ROW

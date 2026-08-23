@@ -1670,7 +1670,6 @@ create DG-C 40 allot
    DG-A FRAGMENT$ PREIMAGE-HAS? TTRUE
    DG-B FRAGMENT$ PREIMAGE-HAS? TFALSE ;
 
-\ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
    q catch {: rc:n :}

@@ -189,7 +189,7 @@ public
 \ Both ceilings are the caller's commitment: too many tokens is NTAPE's capacity
 \ error and text longer than the buffer is refused here; neither is truncated.
 : BEGIN-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n :} \ typed-local-lint: allow-bare-local - txt keeps the ptr u8 byte-span role
+   {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n :}
    ST-IDLE STATE-CK
    cap 0 < if E-NFEED-TEXT throw then
    c 0 F-CTX !

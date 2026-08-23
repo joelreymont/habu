@@ -176,7 +176,7 @@ public
 \ machine's. The module's lines come out BEFORE the rc, because they are printed
 \ at the moment it was judged and the rc is what the run answered afterwards.
 : REPORT ( ptr u8 n -- )
-   {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a:ptr u:n :}
    a SRC ! u SRC-U !
    HOOK-ON
    s" verify rc " RUN-RC SAY-N

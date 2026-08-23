@@ -1178,7 +1178,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ LINUX-CODE-TEXT nonzero is what makes HOST-REGION-BUDGETS-MEASURED? true, so
 \ GE-REGION-RATCHET enforces every row on this target from here on instead of
 \ reporting the page prediction and returning.
-: LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
+: LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}
    s" main/startup"            6628 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         768 q execute
@@ -1298,7 +1298,7 @@ public
 \ Committed per-region __text budgets for the running target, applied to xt as
 \ ( ptr u8 n budget -- ) per row. macOS is owed (no rows) until a macOS host
 \ measures it; HOST-REGION-BUDGETS-MEASURED? gates live per-region enforcement.
-: HOST-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
+: HOST-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}
    HB-TARGET-LINUX? if q LINUX-REGION-BUDGETS then ;
 
 : HOST-REGION-BUDGETS-MEASURED? ( -- bool )

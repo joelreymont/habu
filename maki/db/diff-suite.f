@@ -330,7 +330,6 @@ create CASEBUF DIGEST-BYTES U64W + U64W + allot \ [digest][seed][k] for CASE-ID
    DEDUP-W @ ;
 
 : SET-CANON ( ptr u8 n -- n )
-   \ typed-local-lint: allow-bare-local - base is a byte-set buffer address, passed only to BYTE-COPY.
    {: base cnt:n :}
    base CANON  cnt CKW *  BYTE-COPY
    cnt CANON-SORT

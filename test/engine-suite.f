@@ -428,10 +428,7 @@ TC-SYMU=? -1 T=
 \ scope retires. T-PRESO is the case that pins it - a package-owned outer word
 \ does not come back after `;package` (measured: the candidate answers 1, and
 \ the case requires -1), so packaging these would delete the property under
-\ test. tools/package-diff-lint-core.f carries the exact-path row that admits
-\ `TRUSTED:` here and nowhere else, with the same reasoning written out, and
-\ tools/package-diff-lint-test.f pins that it admits this fixture rather than
-\ the pattern.
+\ test.
 \ ---------------------------------------------------------------------------
 \ later-wins redefinition through the audited TRUST override path: the second
 \ row must replace the first for all later callers (in-place index update).

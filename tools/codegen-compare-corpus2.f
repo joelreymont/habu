@@ -175,7 +175,6 @@ public
 
 \ lib/string.f:103, verbatim, including its two unannotated locals - the corpus
 \ is pinned to the surveyed body and an annotation would be an edit to it.
-\ typed-local-lint: allow-bare-local - u and c are lib/string.f:103's own
 \ spelling; this corpus records the body that runs, not a rewrite of it.
 : COUNT-CHAR ( ptr u8 n n -- n ) {: a:ptr u c :}
    0 0 begin dup u < while

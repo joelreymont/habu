@@ -379,7 +379,6 @@ public
 
 \ How many instructions of the row satisfy a predicate.
 \
-\ typed-local-lint: allow-bare-local - q receives one instruction word, and a
 \ local annotation cannot carry a quotation effect.
 : COUNT1 ( [ n -- bool ] -- n ) {: q :}
    0
@@ -391,7 +390,6 @@ public
 \ two instructions holds no pair, and is answered rather than looped over: the
 \ bound below would otherwise run backwards.
 \
-\ typed-local-lint: allow-bare-local - q receives the two instruction words.
 : COUNT2 ( [ n n -- bool ] -- n ) {: q :}
    0
    INSNS 2 < if exit then

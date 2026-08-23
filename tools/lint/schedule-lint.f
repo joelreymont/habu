@@ -91,12 +91,9 @@
 \
 \ THE PRAGMA. A source that is deliberately unscheduled says so in itself:
 \   \ schedule-lint: allow-unscheduled - <why, naming the spawner or the dot>
-\ It is the `typed-local-lint: allow-bare-local` convention this tree already
-\ runs 425 times, with one tightening: the marker is read at the head of a `\`
-\ comment LINE, so a mention of it inside prose, a string, or a longer sentence
-\ is not a pragma. Every use carries its reason on the same line. A pragma is
-\ not an allowlist entry - it lives in the file it excuses, and it is the thing
-\ a reviewer of that file reads first.
+\ The marker is read at the head of a `\` comment line, so a mention of it
+\ inside prose, a string, or a longer sentence is not a pragma. Every use
+\ carries its reason on the same line.
 \
 \ WHERE THE SETS COME FROM. All of them are derived from the real sources; there
 \ is no hand-written list of suites, slices or phases to go stale.
@@ -251,8 +248,7 @@ variable HIT-U
 -1 REPORT? !                            \ findings print unless a caller silences them
 
 \ The engine's `.` ends its number with a newline, which would break every line
-\ below in half. This is the namespace-lint NL-U. digit-buffer render, kept
-\ package-local: unsigned, inline, no trailing byte of its own.
+\ below in half. Render digits inline with no trailing byte.
 $30 constant ZERO-C
 create NUM-BUF 32 allot
 variable NUM-D

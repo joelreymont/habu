@@ -535,7 +535,7 @@ create CBUF 64 allot
 
 \ ---- render fixtures pin identity --------------------------------------------
 : REND= ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-type-id ptr u8 n -- bool )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-type-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-type-id p u:n :}
    a r id CBUF 64 IR-TYPE:RENDER {: n0:n :}
    CBUF n0 p u STR= ;
 

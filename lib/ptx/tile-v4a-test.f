@@ -26,26 +26,26 @@ T-RESET
 
 \ ---- part 1: the typed vec4 kernels certify (positive proof) --------------------
 KERNEL: SAXPY-V4A ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>  uniform<f32> -- )  GRID: ceil-n-1024
-   {: x y a :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
-   x GRID-CTX.V4 {: g :} \ typed-local-lint: allow-bare-local - checked gridctx type is inferred.
-   x V4-ALIGN {: xa :} \ typed-local-lint: allow-bare-local - checked vspan type is inferred.
-   y V4-ALIGN {: ya :} \ typed-local-lint: allow-bare-local
+   {: x y a :}
+   x GRID-CTX.V4 {: g :}
+   x V4-ALIGN {: xa :}
+   y V4-ALIGN {: ya :}
    xa g LOAD.V4  a SCALE.V4
    ya g LOAD.V4  ADD.V4
    ya g STORE.V4 ;
 
 KERNEL: RELU-SPAN-V4A ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
-   {: s :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
-   s GRID-CTX.V4 {: g :} \ typed-local-lint: allow-bare-local - checked gridctx type is inferred.
-   s V4-ALIGN {: sa :} \ typed-local-lint: allow-bare-local - checked vspan type is inferred.
+   {: s :}
+   s GRID-CTX.V4 {: g :}
+   s V4-ALIGN {: sa :}
    sa g LOAD.V4 RELU.V4
    sa g STORE.V4 ;
 
 KERNEL: SUBDIV-SPAN-V4A ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
-   {: x y :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
-   x GRID-CTX.V4 {: g :} \ typed-local-lint: allow-bare-local - checked gridctx type is inferred.
-   x V4-ALIGN {: xa :} \ typed-local-lint: allow-bare-local - checked vspan type is inferred.
-   y V4-ALIGN {: ya :} \ typed-local-lint: allow-bare-local
+   {: x y :}
+   x GRID-CTX.V4 {: g :}
+   x V4-ALIGN {: xa :}
+   y V4-ALIGN {: ya :}
    xa g LOAD.V4  ya g LOAD.V4  SUB.V4
    ya g LOAD.V4  DIV.V4
    ya g LOAD.V4  MUL.V4
@@ -53,8 +53,8 @@ KERNEL: SUBDIV-SPAN-V4A ( span<space-global,f32,extent-n> span<space-global,f32,
 
 \ ---- the hyphenated legacy twin, for the byte-identity proof ---------------------
 KERNEL: SAXPY-V4H ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>  uniform<f32> -- )  GRID: ceil-n-1024
-   {: x y a :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
-   x GRID-CTX-V4 {: g :} \ typed-local-lint: allow-bare-local - checked gridctx type is inferred.
+   {: x y a :}
+   x GRID-CTX-V4 {: g :}
    x g LOAD-V4  a SCALE-V4
    y g LOAD-V4  ADD-V4
    y g STORE-V4 ;

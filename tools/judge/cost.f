@@ -114,7 +114,6 @@ $7FFFFFFFFFFFFFFF constant PICOS-MAX
 
 variable FASTEST
 
-\ typed-local-lint: allow-bare-local - q is the timing body; its effect is in
 \ the stack signature and a local annotation cannot carry a quotation effect.
 : RUN-ONCE ( [ -- ] -- n ) {: q :}
    mono-ns {: t0:n :}
@@ -124,7 +123,6 @@ variable FASTEST
 : SAMPLE ( n -- ) {: picos:n :}
    picos FASTEST @ < if picos FASTEST ! then ;
 
-\ typed-local-lint: allow-bare-local - q is the timing body, as in RUN-ONCE.
 : TIME-RUNS ( [ -- ] -- ) {: q :}
    PICOS-MAX FASTEST !
    RUNS 0 ?do q RUN-ONCE SAMPLE loop
@@ -134,7 +132,6 @@ public
 
 \ What one body costs, in picoseconds per call. Public because every generated
 \ timing body ends in it.
-\ typed-local-lint: allow-bare-local - q is a timing body, as in RUN-ONCE.
 : TIME-ONLY ( [ -- ] -- n ) {: q :}
    q TIME-RUNS
    FASTEST @ ;

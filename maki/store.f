@@ -373,12 +373,12 @@ public
    ed 1+ ;
 
 \ advance over one line; the APPLY pass re-parses and hands <key> <selection> to q.
-: SCHED-APPLY-AT ( ptr u8 n n [ ptr u8 n n -- ] -- n ) {: ba:ptr bu:n off:n q :} \ typed-local-lint: allow-bare-local - q is the schedule-row callback quotation
+: SCHED-APPLY-AT ( ptr u8 n n [ ptr u8 n n -- ] -- n ) {: ba:ptr bu:n off:n q :}
    ba bu off STORE-LINE-END {: ed:n :}
    ed off > if  ba off +  ed off -  SCHED-ROW  q execute  then
    ed 1+ ;
 
-: SCHED-LOAD ( [ n n -- ] [ ptr u8 n n -- ] -- ) {: rq aq :} \ typed-local-lint: allow-bare-local - rq/aq are the reserve + apply quotations
+: SCHED-LOAD ( [ n n -- ] [ ptr u8 n n -- ] -- ) {: rq aq :}
    CLS-SCHED STORE-READ-CLASS {: ba:ptr bu:n :}
    0 SL-ROWS !  0 SL-KEYBYTES !
    0 begin dup bu < while  >r ba bu r> SCHED-VALIDATE-AT repeat drop    \ pass 1: authenticate + tally every row

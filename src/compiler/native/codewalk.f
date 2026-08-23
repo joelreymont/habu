@@ -27,7 +27,6 @@ public
    AT-PTR 2 + c@ 16 lshift or
    AT-PTR 3 + c@ 24 lshift or ;
 
-\ typed-local-lint: allow-bare-local - q receives an instruction's address and
 \ the instruction at it, and a local annotation cannot carry a quotation effect.
 : SPAN-EACH ( n n [ n n -- ] -- ) {: s:n len:n q :}
    len NBR:INSN-BYTES / 0 ?do
@@ -52,14 +51,12 @@ public
    k REC-WL LOWEST-WL < if false exit then
    k REC-LEN 0 > ;
 
-\ typed-local-lint: allow-bare-local - q is the walk's own callback.
 : REC-EACH ( n [ n n -- ] -- ) {: k:n q :}
    k CODED? 0= if exit then
    k REC-START k REC-LEN q SPAN-EACH ;
 
 \ Written out rather than delegating to REC-EACH: a quotation cannot read the
 \ enclosing word's locals, so the callback has to stay in this body's scope.
-\ typed-local-lint: allow-bare-local - q is the walk's own callback.
 : LIVE-EACH ( [ n n -- ] -- ) {: q :}
    RECS 0 ?do
       i CODED? if i REC-START i REC-LEN q SPAN-EACH then

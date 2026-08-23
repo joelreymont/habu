@@ -403,7 +403,6 @@ TRUSTED: CE-RUN ( -- )
 \ storage that survives both paths out of one frame - on the throw path the data
 \ stack is truncated to the catch point, and on the normal path the body's
 \ result row is sitting on top of anything that was left there.
-\ typed-local-lint: allow-bare-local - the caught code is the caller's, and its
 \ effect is the row-polymorphic one this word's own signature carries.
 TRUSTED: CE-SCOPE ( R [ R IR-CTX:ctx -- S ] n -- S )
    {: at:n :}
@@ -433,7 +432,7 @@ public
 \ the production spelling that passes the full serial range. The binding is
 \ revalidated before anything is built on it.
 : WITH-CONTEXT-BOUND ( R CBIND:binding n [ R IR-CTX:ctx -- S ] -- S )
-   {: ceil:n body :} \ typed-local-lint: allow-bare-local - body carries the row-polymorphic quotation effect
+   {: ceil:n body :}
    ceil CEIL-OK
    CBIND:VALIDATE STAGE-BINDING
    body ceil CTX-ALLOC-LEN [: CTX-ENTER ;] MEM:WITH-BYTES ;

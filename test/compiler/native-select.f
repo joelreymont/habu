@@ -159,7 +159,7 @@ create TXT
 \ function needs a name per function; every fixture that builds one names it
 \ SQUARE, which is what OPEN-FUN below still does.
 : OPEN-FUN$ ( ptr u8 n n n -- )
-   {: p u:n in:n out:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: p u:n in:n out:n :}
    CC BB  CC BB p u IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
    CC BB  in out SIGN  IR-BUILD:SET-SIGNATURE
    CC BB IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
@@ -1123,7 +1123,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    R-BLKR RV R-VALR RV RK BLK0 i IR-FUN:FARG@ ;
 
 : OPCODE-IS? ( n ptr u8 n -- bool )
-   {: i:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: i:n p u:n :}
    R-SYMP RV R-SYMR RV  R-OPR RV RK i OP@ IR-OP:FOPCODE@  p u IR-SYM:FEQ? ;
 
 : OPERAND@ ( n n -- IR-ID:ir-value-id )
@@ -1152,7 +1152,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    R-ATTR RV  R-OPP RV R-OPR RV RK i OP@ k IR-OP:FATTR@  IR-ATTR:FINT@ ;
 
 : ATTR-KEY-IS? ( n n ptr u8 n -- bool )
-   {: i:n k:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: i:n k:n p u:n :}
    R-SYMP RV R-SYMR RV
    R-OPP RV R-OPR RV RK i OP@ k IR-OP:FATTR-KEY@
    p u IR-SYM:FEQ? ;
@@ -2263,7 +2263,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    R-BLKR RV R-OPR RV RK  f FBLK0  i IR-FUN:FOP@ ;
 
 : FOPCODE-IS? ( n n ptr u8 n -- bool )
-   {: f:n i:n p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   {: f:n i:n p u:n :}
    R-SYMP RV R-SYMR RV  R-OPR RV RK f i FOP@ IR-OP:FOPCODE@  p u IR-SYM:FEQ? ;
 
 : TWO-ARITIES-BODY ( IR-CTX:ctx -- n n n bool bool )

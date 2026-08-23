@@ -815,7 +815,7 @@ create SB-BUF SB-CAP allot
    SB-BUF  CTX BLD sy SB-BUF SB-CAP IR-BUILD:SYMBOL-COPY ;
 
 : EMIT-STRING ( n -- ) {: ix:n :}
-   ix STRING-BODY {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   ix STRING-BODY {: a u:n :}
    ix  a u NSTR:INTERN  HIR:ADDR-DATA  EMIT-KIND-LIT
    ix  u  EMIT-LIT ;
 
@@ -3034,7 +3034,7 @@ create DN-BUF DN-CAP allot
 : DO-IS ( n -- )
    {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
-   ix 1+ QSPELL {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   ix 1+ QSPELL {: a u:n :}
    a u NDICT:SPELL-DEFER-CELL {: cell:n :}
    cell 0= if E-NELAB-DEFER throw then
    a u NDICT:SPELL-ARITY {: din:n dout:n :}
@@ -3336,7 +3336,7 @@ create QNAME-BUF QNAME-CAP allot
 variable QNAME-U
 
 : QNAME+ ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    QNAME-U @ u + QNAME-CAP > if E-NELAB-QUOT-CAP throw then
    a  QNAME-BUF QNAME-U @ +  u BYTE-COPY
    QNAME-U @ u + QNAME-U ! ;

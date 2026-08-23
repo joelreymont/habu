@@ -793,7 +793,7 @@ fits.
   is explicitly disjoint.
 - **Repo lints, the lint tokenizer, and whole-source readers all carry a
   largest-file capacity watermark, and an uncaught positive throw dies SILENT.**
-  Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint, maki-dep-lint,
+  Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint and
   error-code-lint) and the tokenizer `TMAX` ($6000→$8000) all trip
   "file exceeds buffer" as `checker.f` grows (it is the largest). Rules:
   size caps from the real corpus with the driver NAMED in a comment; sweep EVERY READ-FILE
@@ -1024,13 +1024,10 @@ fits.
   ran in NO automatic gate). The standalone slices and the gate's resident groups are
   different execution paths; register a test in the path that must execute it.
 - **Gate slices see different lints — the integrator runs the slice that OWNS each touched
-  file class.** maki-dep-lint (dependency direction) and error-code-lint live in the
-  lint-tools slice; a lane validating only lint-libs + maki/test can land a maki/ reference or
-  a code collision in the stdlib layer and stay green until the resident run. `error-code-lint`
+  file class.** `error-code-lint`
   is part of the OWNING gate for ANY new `E-*` (including maki/, whose subdirs a bare `maki/*.f`
   glob misses — scan recursively); grep for a free negative code, never pick by adjacency
-  (error codes are a global namespace with real collisions). `maki/` as a code TOKEN trips
-  maki-dep-lint anywhere but maki/ files — register only prefixes that actually occur.
+  (error codes are a global namespace with real collisions).
 - **Off-device `CUDA:OPEN?`-style SKIP guards are a FAIL-OPEN class.** They kept
   `fusion-compare.f` green for weeks off-device while it would die uncaught (missing /tmp cubin,
   `E-CUDA`) the moment a device appeared. A device suite is proven only by an on-device run;
@@ -1488,9 +1485,7 @@ fits.
   with correct signatures.** Put the word effect on the definition line; add body-line effects only
   where they prevent real stack-state reconstruction (empty/no-op line comments are noise — factor
   instead). State the full public effect BEFORE `{: ... :}` (locals-then-`( -- result )` hides the
-  inputs from readers). Bare-local lint markers are per locals-group (`typed-local-diff-lint` clears
-  allow-state at each `:}`; in `bootstrap/cg/*.fs` stock Gforth forces bare locals, so each changed
-  group needs its own `allow-bare-local` marker). Prefer hex for machine-adjacent literals (bytes,
+  inputs from readers). Prefer hex for machine-adjacent literals (bytes,
   ASCII, masks, offsets, crypto); decimal for small human counts.
 - **Do not port SwiftForth's unchecked contracts by habit.** `PLACE`/`APPEND`/`ZPLACE` don't check
   destination capacity — borrowed string utilities carry capacity+length cells (`BUF-APPEND*`) and
@@ -1582,13 +1577,6 @@ fits.
   therefore `GPR-WRITABLE` (destroyed plus returned), derived from the contract
   rather than stored, and both the allocator and its validator derive it from
   the contract each is handed.
-- **`tools/typed-local-diff-lint.f` only lexes ADDED lines, so a `{:` you change
-  whose `:}` is context leaves the group open for the rest of the hunk.** Every
-  later added token in that hunk is reported as a bare local. It is not a false
-  positive to argue with: re-flow the locals group so the closing `:}` lands on
-  a changed line (move one local up), and the lint goes quiet without weakening
-  anything.
-
 - **A pass that DECIDES a spill cannot also be the pass that leaves the module
   alone: put the decision in one file and the operations in another, and make
   the wrong order refuse itself.** `src/compiler/native/regalloc.f` now chooses
@@ -2824,12 +2812,9 @@ fits.
   refused call cannot burn it. When a check depends on the rest of the system
   being quiet, make the check test that quiet itself.
 - **A gate that exits nonzero is not the same as a gate that ran.** On master
-  79c50e5a, `package-diff-lint` throws `E-DIFF-SYNTAX` and exits 67 on any real
-  diff touching `src/core/checker.f` or `src/core/sumtype.f`, printing no
-  findings, so the mandatory package-ownership rule has never been applied to
-  the two largest core files; `error-code-lint` decides string membership by
+  79c50e5a, `error-code-lint` decided string membership by
   counting quote characters, so one bare quote token silently skips every claim
-  in the rest of a file. Both look fine from the outside. Before trusting any
+  in the rest of a file. Before trusting any
   gate's verdict on a class of input, feed it a deliberately bad example of that
   exact class on the same command path and confirm it reports the finding you
   expect - a clean run and an opaque throw are indistinguishable in a log.
@@ -3652,15 +3637,6 @@ fits.
   `RUN-ARGV-CAPTURE` escaped as `hb: uncaught throw code -2502`, naming no case.
   Both hid a load problem behind a line that looked like a real defect.
 
-- **Check whether the file you want to fix can be edited at all before designing
-  the fix.** The natural home for named completion-variant diagnostics is
-  `lib/test/outcome.f`, but that file defines its three assertions at global
-  scope with no package, so `tools/package-diff-lint.f` reports
-  `E-PACKAGE-OWNERSHIP` on any change to them - measured with a one-character
-  edit. Unpackaged global surfaces are frozen against edits, not just against
-  additions; the fix went into the calling test packages and the library work
-  became its own dot.
-
 - **A mutation that never RAN tests nothing — prove the mutant compiled and
   reached the assertions before reading its verdict** (2026-08-11, 08-12,
   08-14, 08-15). Four measured ways a mutation silently tests nothing: the edit
@@ -3938,14 +3914,6 @@ fits.
   check does not compile, which is a much better guarantee than a note above the
   appender saying to remember it.
 
-- **A partly changed locals group makes `typed-local-diff-lint` report the line
-  after it.** The lint only sees added lines, and it tracks whether it is inside
-  a `{: ... :}` group across them. If the opening line changed but the closing
-  `:}` line did not, the closer arrives as unchanged context, the lint never
-  leaves the group, and the first bare word on the next added line is reported as
-  an untyped local. Reflow the group so its closing line is part of the change;
-  do not silence a real-looking finding with an allow-comment.
-
 - **A compiler-suite fixture that refuses leaks its context's arenas until an
   enclosing context leaves normally.** `IR-CTX:WITH-CONTEXT` releases its
   mapping on the throw path, but the registry slots of an abandoned context are
@@ -4176,15 +4144,6 @@ fits.
   independent validator then reads as operations. The one-authority rule is about
   the emitter never materialising instructions no module contains; it does not
   ask for a second module when the first one can hold them.
-
-- **A diff lint that reads only the added lines gets the parser state wrong in
-  both directions.** `typed-local-diff-lint` tracked `{:` … `:}` over added lines
-  only, so a locals group opened on an UNCHANGED line looked closed - and a bare
-  local added inside it was never reported - while one closed on an unchanged
-  line looked open, and the ordinary body words after it were reported as untyped
-  locals. Both are the same defect: the state is a property of the new file, and
-  every line of the new file is either added or context. Reading context lines for
-  the two delimiters (and reporting nothing from them) fixes both.
 
 - **A typed local named `i` silently shadows the loop index.** The selector's
   multi-block walk took the block ordinal as `{: bk:… i:n :}` and then read its
@@ -5190,19 +5149,6 @@ correct rule is declined on cost, write down the measurement and the cost that
 would make it affordable — that turns "we did not do it" into a dependency
 another dot can discharge, and the resolver leg lands the day the primitive does.
 
-## A new global in an engine-trunk file has to join a package, even where its neighbours do not
-
-`tools/package-diff-lint.f` admits changes to the BODY of a global that
-`src/habu/{layout,habu1,habu2,xref}.f` already defines, and still reports a
-genuinely NEW global there — the asymmetry is deliberate, because those files
-already open real packages, so a new name has an owner it can join. Adding two
-constants beside `DREC` and `OWNER-API-PRI-WID` in `layout.f` was reported
-twice; putting the same two in `package DICT-WL` was clean and cost nothing,
-because a brand-new name has no bare callers yet and so does not inherit the
-`using` blocker that stops the rest of that file from being packaged (dot
-habu-give-layout-f-315df2ca). Do not read the surrounding global surface as
-permission: check whether the name is new before deciding where it lives.
-
 ## A fixture that pins "what the elaborator leaves" outlives its subject
 
 `test/compiler/native-select.f` pinned the fused compare-and-branch on `MAX2` -
@@ -6126,7 +6072,7 @@ working, not a defect. Recovery for a stale workspace engine: copy a
 current fixpoint binary from a sibling workspace (then install
 --force to confirm), pass through the stage-1 tree, or bootstrap.
 
-## The write-window landing's five (2026-08-11)
+## The write-window landing's four (2026-08-11)
 
 From the code-region window lane, verbatim: (1) a design sentence
 about a hot path must be checked against EVERY writer, not the one
@@ -6136,10 +6082,7 @@ stores-based-at-R scan must follow one level of register copy AND
 both spellings of the register (CP and 28); (3) an emit-time macro carrying a bare
 register number leaves it in front of the next instruction where a
 positional reader takes the wrong operand - give macros a register
-ABI; (4) package-diff-lint refuses any changed word in an
-unpackaged legacy file, so "fix the lint" can be gated behind
-"package the lint" - check before planning a lint fix into a lane;
-(5) the crash handler exits 134 itself, so a refused write is an
+ABI; (4) the crash handler exits 134 itself, so a refused write is an
 EXIT not a signal on both targets - assert T-OUTCOME-EXITED= 134.
 
 ## A profile of a system that no longer exists (2026-08-11)
@@ -7575,14 +7518,6 @@ and --no-lldbinit.
   introduction into one needs the declaring package. The asymmetry is not
   untidiness — it puts the remaining trust exactly where the authority is, and
   it turns twenty-six scattered chores into one packaging question.
-- **A green checker is not a green gate.** Twenty rows the checker certified
-  could not land: `tools/package-diff-lint.f` refuses the EDITED LINE because
-  the definition sits outside a package (lib/ptx/cg.f) or its name repeats its
-  package (`ARTIFACT:ARTIFACT-ID>RAW`). Both refusals reproduce on PRISTINE
-  master by adding a trailing comment to the untouched line, so the lint has
-  frozen those definition lines against every improvement until somebody pays
-  the packaging or rename cascade. Run the diff lints on a representative hunk
-  BEFORE converting a hundred more like it.
 - **A shape census over-counts what a checked form will accept.** The leaf's
   "maki/ 111, tail 96 nominal casts" were 90 and 35: the rest were bodied rows
   that drop a cell, run an emitter, or push a literal from nothing. Count the
@@ -7711,18 +7646,6 @@ and --no-lldbinit.
   capture host built from the pre-conversion tree, has no AOT window and boots
   the converted tree: `cp bin/hb-host bin/hb` then `install --force` crosses in
   ~15s and the fixpoint is byte-identical from the second generation on.
-- **Qualifying a sealed package's callers trips `package-diff-lint` on every
-  unpackaged consumer; `using PKG … ;using` touches no definition.** Rewriting 335
-  lines to `SCHEMA-REG:TAIL` reported 80 `E-PACKAGE-OWNERSHIP` findings across
-  seven unpackaged test suites, because changing a global definition's body makes
-  it "a changed module word outside a package" — the seal would have owed those
-  suites' packaging. Two lines per consumer (`using SCHEMA-REG` / `;using`)
-  changed no definition, passed the lint, and built a BYTE-IDENTICAL engine
-  (sha 5f589c92…): the two spellings resolve to the same words, so "using
-  re-exposes the surface" has no machine content. `docs/forth.md` already
-  mandates `using` for a consumer calling two or more publics; qualification is
-  for one-offs and for escaping a collision (a consumer that defines its own tail
-  keeps it — open-package scope wins over a used public silently).
 - **`' NAME` for a name that does not exist exits 0.** Interpret-mode tick of an
   unresolvable token is not a reject on this engine (measured on master too), so
   a "bare tick fails closed" case silently passes for the wrong reason the moment

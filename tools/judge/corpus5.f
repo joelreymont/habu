@@ -57,7 +57,6 @@ private
    JUDGE-PASS:ALSO s" 255" JUDGE-PASS:IN+ ;
 
 \ ---- the seven rows, written once --------------------------------------------
-\ typed-local-lint: allow-bare-local - row is the caller's own body, and a local
 \ annotation cannot carry a quotation effect.
 : EACH ( [ -- ] -- ) {: row :}
    s" TAIL-BIG" s" hc5_tail_big" JUDGE-PASS:ROW!

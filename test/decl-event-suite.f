@@ -650,7 +650,7 @@ variable WF-PK      variable WF-LAY
    DEPTH 0 T=
    CURRENT-VARIANT NO-VARIANT T= ;
 
-: WF-RUN ( [ -- ] -- ) {: op :} \ typed-local-lint: allow-bare-local
+: WF-RUN ( [ -- ] -- ) {: op :}
    WF-REG-SAVE
    WF-STATE-SAVE
    op catch TC !

@@ -67,7 +67,7 @@ variable N-LISTED
    else 2drop then ;
 
 : TALLY ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a u:n :}
    N-SEEN @ 1+ N-SEEN !
    a u NDICT:CALL-TARGET 0 <> {: callable:bool :}
    a u NDICT:SPELL-ARITY drop NDICT:ARITY-NONE <> {: sized:bool :}

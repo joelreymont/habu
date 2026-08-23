@@ -97,7 +97,7 @@ variable S-ROW
 
 \ Every constructor below ends here, so both capacities are proved in one place.
 : S-PUT ( ptr u8 n NTAPE:kind n -- )
-   {: a:ptr u:n k:NTAPE:kind v:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a:ptr u:n k:NTAPE:kind v:n :}
    S-OPEN-CK
    S-N @ {: j:n :}
    j BODY-MAX >= if E-NINL-CAP throw then
@@ -203,7 +203,7 @@ public
 
 \ One constructor per token kind, so the literal rule is structural.
 : STAGE-NAME ( ptr u8 n -- )
-   {: a:ptr u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   {: a:ptr u:n :}
    u 1 < if E-NINL-STATE throw then
    a u NTAPE-KIND:NAME 0 S-PUT ;
 
