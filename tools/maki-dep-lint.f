@@ -9,6 +9,7 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require tools/lint/source-lex.f
 require tools/maki-dep-lint-core.f
 
 \ The entry is this package's own public word, the shape tools/chain-census.f

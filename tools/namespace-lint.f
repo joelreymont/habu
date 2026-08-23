@@ -13,10 +13,19 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require tools/lint/source-lex.f
 require tools/namespace-lint-core.f
 
-: NL-MAIN ( -- )
-   [: NAMESPACE-LINT-STRICT ;] catch {: code:n :}
+\ The entry is this package's own public word, the shape tools/maki-dep-lint.f
+\ uses: nothing here is global.
+package NAMESPACE-LINT-CLI
+
+public
+
+: MAIN ( -- )
+   [: NAMESPACE-LINT:STRICT ;] catch {: code:n :}
    s" namespace-lint" code LINT-MAIN ;
 
-NL-MAIN
+;package
+
+NAMESPACE-LINT-CLI:MAIN

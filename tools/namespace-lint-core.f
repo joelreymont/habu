@@ -6,14 +6,33 @@
 \ maki file (no `package` block open) leaks into the shared dictionary and is the
 \ opposite of that goal, so this lint reports each one as a TODO-ledger entry.
 \
-\ Scan: each maki/*.f source is TOKENIZEd (PARENS? on, so `\` line comments and
-\ `( )` stack comments are stripped and `s"` bodies stay single tokens), then the
-\ token stream is walked while tracking `package`/`;package` depth. Every
-\ defining word (`:`, `constant`, `variable`, `create`, `KERNEL:`, ...)
-\ seen at depth 0 names a global maki def; its name token is a finding unless
-\ whitelisted. Definer and package tokens match case-INSENSITIVELY: the dictionary
-\ is case-insensitive (docs/forth.md § Naming), so `CREATE BUF` defines a global
-\ and `;package` closes a package exactly like their lower-case spellings; a
+\ WHICH BYTES ARE CODE is decided by the one shared source lexer, package LINT-LEX
+\ in tools/lint/source-lex.f, exactly as tools/error-code-lint-core.f decides it.
+\ The lexer consumes `\` line comments, `( ... )` and `.( ... )` comment bodies and
+\ every string-literal body, so none of that text reaches this scan as a token and
+\ the scan has no opinion of its own about where a string starts.
+\
+\ It used to have one, and that is the defect this file was rewritten to remove.
+\ The scan counted `"` bytes per token and toggled an in-string flag on an odd
+\ count - a value heuristic standing in for a structural fact - and it failed in
+\ both directions. One bare `[char] "` set the flag and blinded the REST OF THE
+\ FILE while the summary still printed `0 finding(s)`. A `\` written INSIDE a
+\ string body made the old splitter strip that string's closing quote and skip to
+\ end of line, inverting the flag for everything after it. And in the other
+\ direction it over-reported: a `.( ... )` printing comment, and a `( ` comment
+\ opened before a NEWLINE rather than a space, both read as code, so a definition
+\ written inside either one was reported as a global. The same heuristic in
+\ tools/error-code-lint-core.f is recorded there as having failed the same way.
+\
+\ Scan: each maki/*.f source is lexed, then the token stream is walked while
+\ tracking `package`/`;package` depth. Every defining word (`:`, `constant`,
+\ `variable`, `create`, `KERNEL:`, ...) seen at depth 0 names a global maki def;
+\ the next WORD token is its name, and that name is a finding unless whitelisted.
+\ A token the engine PARSES rather than executes - the word after `'`, `[']`,
+\ `postpone`, `char` or `[char]` - is an operand, not code, so `[char] :` declares
+\ nothing. Definer and package tokens match case-INSENSITIVELY: the dictionary is
+\ case-insensitive (docs/forth.md § Naming), so `CREATE BUF` defines a global and
+\ `;package` closes a package exactly like their lower-case spellings; a
 \ case-sensitive scan is an evasion vector (this subsumed the retired
 \ tools/maki-ns-lint.f, whose one-package-per-file marker model could not express
 \ the multi-package subsystem files - dot habu-maki-ns-lint-reconcile).
@@ -29,55 +48,92 @@
 \     maki/test.f under lib/test.f (T-RESET/TTRUE/T-REPORT). It is gate scaffolding,
 \     the same category as *-test.f, and just lacks the -test suffix by history.
 \
-\ NAMESPACE-LINT prints the ledger and the count without throwing (a report view).
-\ NAMESPACE-LINT-STRICT throws on any finding and is the gate entrypoint now that the
-\ eval/gpu GLOBAL clusters have landed in per-subsystem packages: the ledger is clean,
+\ LEDGER prints the ledger and the count without throwing (a report view).
+\ STRICT throws on any finding and is the gate entrypoint now that the eval/gpu
+\ GLOBAL clusters have landed in per-subsystem packages: the ledger is clean,
 \ enforcement is on, and any NEW global maki def outside a package fails the gate.
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/lint/text.f,
-\ and tools/lint/token.f.
+\ The module lives in `package NAMESPACE-LINT`, the shape its sibling lints use
+\ (tools/error-code-lint-core.f, tools/maki-dep-lint-core.f). It carried no
+\ package at all while its body was being edited here, and the package lint will
+\ not let a definition outside one be touched, so it is sealed in the same change
+\ - the route tools/lint/intern.f took. Consumers import it with `using` or name
+\ it qualified; nothing here is global.
+\
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f and
+\ tools/lint/source-lex.f.
 
-$40000 constant NL-CAP
-512 constant NL-PCAP
-48 constant NL-ZERO
+package NAMESPACE-LINT
 
-create NL-BUF  NL-CAP allot
-create NL-PATH NL-PCAP allot
-create NL-NBUF 32 allot
+public
 
-variable NL-PATHU
-variable NL-INSTR                       \ inside an s" ... " string literal body
-variable NL-DEPTH                       \ current package nesting depth
-variable NL-BAD                         \ primary findings (global maki defs)
-variable NL-LEGACY                      \ legacy BEGIN-/END- pair tally
-variable NL-FILES
-variable NL-REPORT?
-variable NL-ND#
-variable NL-QI
+\ ---- source-defect codes ----------------------------------------------------
+\ A lexer diagnostic truncates the token table at the defect, so every definition
+\ after it in that source is invisible while the summary still prints its count -
+\ which is precisely the blindness this rewrite exists to end, so it must not
+\ come back through the lexer's own diagnostics. Each defect gets its own name,
+\ the way tools/error-code-lint-core.f splits E-QUOTE from E-ROW, and they are
+\ public so a fixture can pin which one refused. -4824..-4827 continue the
+\ unclaimed lint-tool gap that holds E-SHADOW-UNTERM (-4800) through
+\ E-MAKIDEP-LEX (-4823); the gap ends before lib/errors.f's reserved E-REPORT
+\ block at -4900.
+-4824 constant E-NS-QUOTE    \ a string literal ran past end of input
+-4825 constant E-NS-ROW      \ a `PRIM:`/`PPRIM:` axiom row lacked a header or its closer
+\ The residual arm: a diagnostic or token kind added to LINT-LEX after this
+\ consumer was written. It must reach a named refusal rather than borrow one of
+\ the two labels above, and it must never pass in silence.
+-4826 constant E-NS-LEX      \ a lexer diagnostic or token kind this lint was never taught
+\ A definer whose name never arrives - the definer stands at the end of the scan
+\ with no WORD after it. That is a defect of the FILE, and a scan that shrugged
+\ at it would drop the one definition most likely to be malformed.
+-4827 constant E-NS-NONAME   \ a defining word has no name token after it
 
-: NL-NL ( -- ) 10 emit ;
+private
 
-: NL-REPORT! ( bool -- )  NL-REPORT? ! ;
-: NL-REPORT-ON  ( -- )  LINT-TRUE  NL-REPORT! ;
-: NL-REPORT-OFF ( -- )  LINT-FALSE NL-REPORT! ;
+512 constant PCAP
+48 constant ZERO
+10 constant LF
+
+\ One file at a time, in a slab sized from the file. It was a fixed $40000 arena,
+\ and a whole-file reader over an input that grows is what tools/lint/text.f
+\ LINT-SLAB exists for: the arena's next overrun would stop the lint on a maki
+\ file's length rather than on anything the lint is about.
+create SLAB LINT-SLAB:CELLS cells allot
+create PATH PCAP allot
+create NBUF 32 allot
+
+variable PATHU
+variable DEPTH                          \ current package nesting depth
+variable BAD                            \ primary findings (global maki defs)
+variable LEGACY                         \ legacy BEGIN-/END- pair tally
+variable FILES
+variable REPORT?
+variable ND#
+
+: NL ( -- ) LF emit ;
+
+: REPORT! ( bool -- )  REPORT? ! ;
+: REPORT-ON  ( -- )  LINT-TRUE  REPORT! ;
+: REPORT-OFF ( -- )  LINT-FALSE REPORT! ;
 
 \ unsigned decimal (no <# number ring in this Habu; digit-buffer like maki-dep)
-: NL-U. ( n -- )
-   0 NL-ND# !
-   dup 0= if drop NL-ZERO emit exit then
+: U. ( n -- )
+   0 ND# !
+   dup 0= if drop ZERO emit exit then
    begin dup 0 > while
-      dup 10 mod NL-ZERO + NL-NBUF NL-ND# @ + c!
-      10 / NL-ND# @ 1+ NL-ND# !
+      dup 10 mod ZERO + NBUF ND# @ + c!
+      10 / ND# @ 1+ ND# !
    repeat drop
-   begin NL-ND# @ 0 > while
-      NL-ND# @ 1- NL-ND# !
-      NL-NBUF NL-ND# @ + c@ emit
+   begin ND# @ 0 > while
+      ND# @ 1- ND# !
+      NBUF ND# @ + c@ emit
    repeat ;
 
 \ ---- token classification ---------------------------------------------------
 \ true when the token names the next token as a new global word (CI: the
 \ dictionary is case-insensitive, so `CREATE`/`Constant` define like `create`)
-: NL-DEF-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DEF-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" :"         LINT-STR=   if LINT-TRUE exit then
    a u s" +:"        LINT-STR=   if LINT-TRUE exit then
    a u s" constant"  LINT-STR=CI if LINT-TRUE exit then
@@ -95,127 +151,206 @@ variable NL-QI
    a u s" KERNEL:"   LINT-STR=CI if LINT-TRUE exit then
    LINT-FALSE ;
 
-: NL-LEGACY-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LEGACY-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" BEGIN-" LINT-PREFIX? a u s" END-" LINT-PREFIX? or ;
 
-\ odd number of `"` bytes -> this token flips the in-string state (an opener like
-\ s"/."/c"/s\" or a closer ...") so string bodies never read as definitions
-: NL-QUOTES-ODD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0  0 NL-QI !
-   begin NL-QI @ u < while
-      a NL-QI @ BYTE@ 34 = if 1+ then
-      NL-QI @ 1+ NL-QI !
-   repeat
-   1 and 0= 0= ;
-
 \ E-* error constants are documented cross-cutting exceptions
-: NL-WHITELISTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: WHITELISTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" E-" LINT-PREFIX? ;
 
 \ ---- file selection ---------------------------------------------------------
-: NL-MAKI-SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" maki/" LINT-CONTAINS?  a u s" .f" HAS-EXT?  and ;
+\ The walk is rooted at `maki/`, so a source of this lint is a path UNDER that
+\ root: an anchored prefix, not the four bytes occurring anywhere in the path.
+: MAKI-SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" maki/" LINT-PREFIX?  a u s" .f" HAS-EXT?  and ;
 
 \ documented ARRAY substrate + test/canary scaffolding are exempt from the scan
-: NL-SKIP-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: SKIP-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" -test.f"             HAS-EXT?        if LINT-TRUE exit then
    a u s" maki/device-smoke.f" LINT-ENDS-WITH? if LINT-TRUE exit then
    a u s" maki/array.f"        LINT-ENDS-WITH? ;
 
-: NL-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a NL-PATH u LINT-BMOVE  u NL-PATHU ! ;
+: PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a PATH u LINT-BMOVE  u PATHU ! ;
 
-: NL-WHERE ( -- )  NL-PATH NL-PATHU @ type ;
+: WHERE ( -- )  PATH PATHU @ type ;
 
-: NL-HIT ( ptr u8 n -- ) {: nptr:ptr nu:n :}
-   NL-REPORT? @ if
-      s" NAMESPACE " type NL-WHERE
+: HIT ( ptr u8 n -- ) {: nptr:ptr nu:n :}
+   REPORT? @ if
+      s" NAMESPACE " type WHERE
       s" : global maki def '" type  nptr nu type  s" ' outside a package" type
-      NL-NL
+      NL
    then
-   NL-BAD @ 1+ NL-BAD ! ;
+   BAD @ 1+ BAD ! ;
 
-: NL-LEGACY-HIT ( ptr u8 n -- ) {: nptr:ptr nu:n :}
-   NL-REPORT? @ if
-      s" NAMESPACE-LEGACY " type NL-WHERE
-      s" : legacy scope-pair name '" type  nptr nu type  s" '" type NL-NL
+: LEGACY-HIT ( ptr u8 n -- ) {: nptr:ptr nu:n :}
+   REPORT? @ if
+      s" NAMESPACE-LEGACY " type WHERE
+      s" : legacy scope-pair name '" type  nptr nu type  s" '" type NL
    then
-   NL-LEGACY @ 1+ NL-LEGACY ! ;
+   LEGACY @ 1+ LEGACY ! ;
 
 \ ---- token walk with package-scope tracking ---------------------------------
-\ classify one definition at depth 0: primary finding, legacy tally, or exempt
-: NL-DEF-AT ( n -- ) {: i:n :}
-   i 1+ TN# @ >= if exit then           \ no name token follows (malformed tail)
-   i 1+ TOK {: nptr:ptr nu:n :}
-   nptr nu NL-LEGACY-NAME? if nptr nu NL-LEGACY-HIT exit then
-   nptr nu NL-WHITELISTED? if exit then
-   nptr nu NL-HIT ;
+: WORD? ( n -- bool ) {: k:n :}
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
-: NL-PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+\ Kinds this scan understands. A WORD is code. A `( ... )` or `.( ... )` comment
+\ and a complete `PRIM:`/`PPRIM:` axiom row are inert spans that publish no
+\ dictionary word (docs/forth.md § Packages), so they are stepped over whole. Any
+\ other kind is one this lint was never taught, and skipping it in silence is how
+\ a scanner goes blind: the token would span source the scan never reads while
+\ the ledger still reports zero findings.
+: KNOWN-KIND? ( n -- bool ) {: k:n :}
+   k LINT-LEX:KIND@ {: kind:n :}
+   kind LINT-LEX:WORD = if LINT-TRUE exit then
+   kind LINT-LEX:COMMENT = if LINT-TRUE exit then
+   kind LINT-LEX:REGISTRY = ;
+
+\ Index of the next WORD token at or after k, or the token count when the source
+\ has no word left. A comment sits between words without being code, so
+\ `create ( note ) BUF` still names BUF.
+: NEXT-WORD ( n -- n ) {: k:n :}
+   k begin dup LINT-LEX:COUNT < while
+      dup WORD? if exit then
+      1+
+   repeat ;
+
+\ After one of these the engine PARSES the next token as raw text and never
+\ executes it, so the operand is not code: `[char] :` is the colon BYTE, not a
+\ definition, and `' create` ticks a word rather than declaring one. The rule is
+\ tools/bootstrap-mirror-lint.f ESCAPED?, and it is deliberately the immediately
+\ preceding token: an inert span between the two is not this shape.
+: ESCAPED? ( n -- bool ) {: k:n :}
+   k 0 <= if LINT-FALSE exit then
+   k 1- WORD? 0= if LINT-FALSE exit then
+   k 1- LINT-LEX:TOKEN s" '" LINT-STR= if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" [']" LINT-STR= if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" postpone" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" char" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" [char]" LINT-STR=CI ;
+
+: NO-NAME ( n -- ) {: k:n :}
+   s" namespace-lint: " type WHERE
+   s" :" type k LINT-LEX:LINE@ U.
+   s" : defining word '" type k LINT-LEX:TOKEN type
+   s" ' has no name token after it" type NL
+   E-NS-NONAME throw ;
+
+\ classify one definition at depth 0: primary finding, legacy tally, or exempt
+: DEF-AT ( n -- ) {: i:n :}
+   i 1+ NEXT-WORD {: ni:n :}
+   ni LINT-LEX:COUNT >= if i NO-NAME then
+   ni LINT-LEX:TOKEN {: nptr:ptr nu:n :}
+   nptr nu LEGACY-NAME? if nptr nu LEGACY-HIT exit then
+   nptr nu WHITELISTED? if exit then
+   nptr nu HIT ;
+
+: PACKAGE-OPEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" package" LINT-STR=CI ;
+
+: PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" ;package" LINT-STR=CI ;
 
-: NL-STEP ( n -- n ) {: i:n :}          \ handle token i, return next index
-   i TOK {: tp:ptr tu:n :}
-   NL-INSTR @ if                                     \ skip string bodies wholesale
-      tp tu NL-QUOTES-ODD? if NL-INSTR @ 0= NL-INSTR ! then
-      i 1+ exit then
-   tp tu s" package" LINT-STR=CI if
-      NL-DEPTH @ 1+ NL-DEPTH !  i 2 + exit then      \ skip the package name token
-   tp tu NL-PACKAGE-CLOSE? if
-      NL-DEPTH @ 1- NL-DEPTH !  i 1+ exit then
-   NL-DEPTH @ 0= tp tu NL-DEF-WORD? and if
-      i NL-DEF-AT  i 2 + exit then                   \ skip past the defined name
-   tp tu NL-QUOTES-ODD? if NL-INSTR @ 0= NL-INSTR ! then   \ e.g. an s" opener
+: STEP ( n -- n ) {: i:n :}             \ handle WORD token i, return next index
+   i ESCAPED? if i 1+ exit then
+   i LINT-LEX:TOKEN {: tp:ptr tu:n :}
+   tp tu PACKAGE-OPEN? if
+      DEPTH @ 1+ DEPTH !
+      i 1+ NEXT-WORD 1+ exit then       \ step past the package NAME token
+   tp tu PACKAGE-CLOSE? if
+      DEPTH @ 1- DEPTH !  i 1+ exit then
+   DEPTH @ 0= tp tu DEF-WORD? and if
+      i DEF-AT
+      i 1+ NEXT-WORD 1+ exit then       \ step past the defined name
    i 1+ ;
 
-: NL-SCAN-TOKENS ( -- )
-   0 NL-DEPTH !  0 NL-INSTR !
-   0 begin dup TN# @ < while NL-STEP repeat drop ;
+: UNKNOWN-KIND ( n -- ) {: k:n :}
+   s" namespace-lint: " type WHERE
+   s"  token " type k U.
+   s" : unknown lexer token kind " type k LINT-LEX:KIND@ U. NL
+   E-NS-LEX throw ;
 
-: NL-SCAN-STR ( ptr u8 n -- ) {: a:ptr u:n :}
-   LINT-TRUE PARENS? !
-   a u TOKENIZE
-   NL-SCAN-TOKENS ;
+: SCAN-TOKENS ( -- )
+   0 DEPTH !
+   0 begin dup LINT-LEX:COUNT < while
+      dup KNOWN-KIND? 0= if dup UNKNOWN-KIND then
+      dup WORD? if STEP else 1+ then
+   repeat drop ;
+
+: DEFECT-SITE ( -- )
+   s" namespace-lint: " type WHERE
+   s" :" type LINT-LEX:ERROR-LINE@ U.
+   s" :" type LINT-LEX:ERROR-COL@ U.
+   s" : " type ;
+
+\ Fail-closed: a lexer diagnostic stops the scan at the defect, so every
+\ definition after it in that source is unreadable. Name the file, the site and
+\ the defect, then throw a catchable code rather than certify a partial file.
+: LEX-DEFECT ( -- )
+   DEFECT-SITE
+   LINT-LEX:ERROR-KIND@ {: kind:n :}
+   kind LINT-LEX:UNTERMINATED-QUOTE = if
+      s" unterminated string literal" type NL  E-NS-QUOTE throw
+   then
+   kind LINT-LEX:MALFORMED-REGISTRY = if
+      s" malformed primitive-axiom row" type NL  E-NS-ROW throw
+   then
+   s" unknown lexer diagnostic" type NL  E-NS-LEX throw ;
+
+: SCAN-STR ( ptr u8 n -- )
+   LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if LEX-DEFECT then
+   SCAN-TOKENS ;
 
 \ findings from scanning one string in isolation (reset -> scan -> count); tests
-: NL-COUNT ( ptr u8 n -- n )
-   NL-REPORT? @ {: report:bool :}
-   NL-REPORT-OFF
-   0 NL-BAD !  0 NL-LEGACY !
-   NL-SCAN-STR
-   report NL-REPORT!
-   NL-BAD @ ;
+: COUNT ( ptr u8 n -- n )
+   REPORT? @ {: report:bool :}
+   REPORT-OFF
+   0 BAD !  0 LEGACY !
+   SCAN-STR
+   report REPORT!
+   BAD @ ;
 
-: NL-LEGACY-COUNT ( ptr u8 n -- n )
-   NL-REPORT? @ {: report:bool :}
-   NL-REPORT-OFF
-   0 NL-BAD !  0 NL-LEGACY !
-   NL-SCAN-STR
-   report NL-REPORT!
-   NL-LEGACY @ ;
+: LEGACY-COUNT ( ptr u8 n -- n )
+   REPORT? @ {: report:bool :}
+   REPORT-OFF
+   0 BAD !  0 LEGACY !
+   SCAN-STR
+   report REPORT!
+   LEGACY @ ;
 
-: NL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u NL-MAKI-SRC? 0= if exit then
-   a u NL-SKIP-FILE? if exit then
-   a u NL-PATH!
-   NL-FILES @ 1+ NL-FILES !
-   a u NL-BUF NL-CAP READ-FILE NL-SCAN-STR ;
+: SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u MAKI-SRC? 0= if exit then
+   a u SKIP-FILE? if exit then
+   a u PATH!
+   FILES @ 1+ FILES !
+   a u SLAB LINT-SLAB:LOAD
+   SLAB LINT-SLAB:TEXT SCAN-STR ;
 
-: NL-RUN ( -- )
-   0 NL-BAD !  0 NL-LEGACY !  0 NL-FILES !
-   s" maki/" [: NL-SCAN-FILE ;] WALK-FILES ;
+: WALK ( -- )
+   0 BAD !  0 LEGACY !  0 FILES !
+   s" maki/" [: SCAN-FILE ;] WALK-FILES ;
 
-: NL-SUMMARY ( -- )
+: SUMMARY ( -- )
    s" namespace-lint: " type
-   NL-FILES  @ NL-U. s"  maki file(s), " type
-   NL-BAD    @ NL-U. s"  global-def finding(s), " type
-   NL-LEGACY @ NL-U. s"  legacy-pair(s)" type NL-NL ;
+   FILES  @ U. s"  maki file(s), " type
+   BAD    @ U. s"  global-def finding(s), " type
+   LEGACY @ U. s"  legacy-pair(s)" type NL ;
 
-\ report view: prints the ledger without throwing (NAMESPACE-LINT-STRICT enforces)
-: NAMESPACE-LINT ( -- )
-   NL-REPORT-ON  NL-RUN  NL-SUMMARY ;
+public
+
+\ report view: prints the ledger without throwing (STRICT enforces)
+: LEDGER ( -- )
+   REPORT-ON  WALK  SUMMARY ;
 
 \ gate entry (enforcing): any global maki def outside a package fails the gate
-: NAMESPACE-LINT-STRICT ( -- )
-   NAMESPACE-LINT
-   NL-BAD @ 0 > if 1 throw then ;
+: STRICT ( -- )
+   LEDGER
+   BAD @ 0 > if 1 throw then ;
+
+EXPORT COUNT
+EXPORT LEGACY-COUNT
+EXPORT MAKI-SRC?
+EXPORT SKIP-FILE?
+
+;package

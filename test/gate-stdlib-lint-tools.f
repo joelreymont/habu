@@ -122,7 +122,7 @@ REQUIRE-HARNESS
    s" test/region-room-suite.f" GSI-INCLUDE ;
 
 : NAMESPACE ( -- )
-   s" namespace-lint" [: NAMESPACE-LINT-STRICT ;] GSI-RUN
+   s" namespace-lint" [: NAMESPACE-LINT:STRICT ;] GSI-RUN
    s" tools/namespace-lint-test.f" GSI-INCLUDE ;
 
 : PACKAGE-OWNERSHIP ( -- )
