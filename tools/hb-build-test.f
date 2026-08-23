@@ -44,6 +44,8 @@ package HB-BUILD-CLI
 64 constant HBT-KEY-U
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
+4096 constant HBT-LARGE-CHUNK-U
+$40000 1 - constant HBT-LARGE-INPUT-U
 
 variable HBT-ROOT-U
 variable HBT-TMP-U
@@ -83,6 +85,7 @@ create HBT-AOT-HEX 80 allot
 create HBT-SRC-KEY 80 allot
 create HBT-KEY-A 64 allot
 create HBT-KEY-B 64 allot
+create HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U allot
 create HBT-REPORT-BUF FS-PATH-CAP allot
 variable HBT-EXP-SRC-U
 variable HBT-EXP-OUT-U
@@ -195,6 +198,21 @@ create HBT-EXP-HEX2 64 allot
 
 : HBT-AOT-SRC2$ ( -- ptr u8 n )
    s" : MAIN ( -- ) 0 drop ;" ;
+
+: HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
+   s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
+
+: HBT-LARGE-CHUNK! ( -- )
+   HBT-LARGE-CHUNK-U 0 ?do 32 HBT-LARGE-CHUNK i + c! loop ;
+
+: HBT-WRITE-LARGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n src:ptr srcu:n :}
+   path pathu src srcu WRITE-ALL
+   HBT-LARGE-INPUT-U srcu - {: spaces:n :}
+   spaces HBT-LARGE-CHUNK-U / 0 ?do
+      path pathu HBT-LARGE-CHUNK HBT-LARGE-CHUNK-U APPEND-FILE
+   loop
+   spaces HBT-LARGE-CHUNK-U mod {: rem:n :}
+   rem 0 > if path pathu HBT-LARGE-CHUNK rem APPEND-FILE then ;
 
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
@@ -505,6 +523,47 @@ create READER-STATE JR:STORAGE-BYTES allot
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn HBT-REPL-EXPECTED$ T$= ;
+
+: HBT-CLI-LARGE-SOURCE ( -- )
+   HBT-LARGE-CHUNK!
+   HBT-REPL-SRC HBT-REPL-SRC$ HBT-WRITE-LARGE
+   HBT-REPL-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   s" --repl" >LEN PROC-ARGV+
+   HBT-REPL-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-REPL-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: rout:n rerr:n rrc:n :}
+   rrc 0 <> if HBT-OUT rout type HBT-ERR rerr type then
+   rrc 0 T=
+   HBT-OUT rout s" hb-build OK" CONTAINS? TTRUE
+   rerr 0 T=
+   HBT-TMP BF-TMP!
+   s" hb-build-check-src" BF-A$ FILE-SIZE $40000 > TTRUE
+   s" hb-build-src" BF-A$ FILE-SIZE $40000 > TTRUE
+   BF-TMP-RESET
+   HBT-RUN-REPL
+
+   HBT-AOT-SRC HBT-LARGE-AOT-SRC$ HBT-WRITE-LARGE
+   HBT-AOT-OUT HBT-REMOVE-FILE?
+   HBT-ARGV-BASE
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-AOT-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: aout:n aerr:n arc:n :}
+   arc 0 <> if HBT-OUT aout type HBT-ERR aerr type then
+   arc 0 T=
+   HBT-OUT aout s" hb-build OK" CONTAINS? TTRUE
+   aerr 0 T=
+   HBT-TMP BF-TMP!
+   s" hb-aot-src" BF-A$ FILE-SIZE $40000 > TTRUE
+   BF-TMP-RESET
+   HBT-AOT-OUT FILE? TTRUE
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn s" 9" CONTAINS? TTRUE ;
 
 : HBT-REPL-ARGS-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
@@ -886,6 +945,7 @@ public
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS
+   HBT-CLI-LARGE-SOURCE
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

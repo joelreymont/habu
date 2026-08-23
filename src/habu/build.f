@@ -13,16 +13,13 @@
 \ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
 0 set-check
 
+package BUILD-DRIVER
+
 : BLD-IN  s" hb-build-src" TMP-PATH ;
 : BLD-CHK s" hb-build-check-src" TMP-PATH ;
 : BLD-OUT s" hb-build-got" TMP-PATH ;
 
-variable PB  variable PN  variable PFD  variable PRD
-$40000 constant PMAX
-\ PB is the raw standalone-build source-buffer cell.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
-: BLD-PB@ PB @ ;
-s" BLD-PB@" s" -- ptr u8" TRUST
+variable PN
 
 : BLD-FALSE ( -- bool ) 0 0= 0= ;
 : BLD-JSON-ARG? ( -- bool )
@@ -32,35 +29,20 @@ s" BLD-PB@" s" -- ptr u8" TRUST
    ARGC 1 > IF 1 ARGV$ DIAG-FILE! THEN
    BLD-JSON-ARG? IF -1 JSON-DIAGS ! THEN ;
 
-: ENSURE-PBUF
-   PB @ 0= IF here PB !  PMAX allot THEN ;
-
 : READ-PATH {: a:ptr u :}
-   a u PATH0  0 0 open PFD !
-   PFD @ 0 < IF s" hb-build: cannot open source" 74 die THEN
-   ENSURE-PBUF  0 PN !
-   BEGIN                                                 \ read() may return short
-     PFD @  BLD-PB@ PN @ +  PMAX PN @ -  read PRD !
-     PRD @ 0 >
-   WHILE  PN @ PRD @ + PN !  REPEAT
-   PRD @ 0 < IF PFD @ close s" hb-build: read failed" 74 die THEN
-   PFD @ close
-   PN @ 0 > 0= IF s" hb-build: empty source" 74 die THEN
-   PN @ PMAX = IF s" hb-build: source exceeds buffer" 74 die THEN ;
+   a u 0 MAKER-SOURCE:READ PN ! ;
 
 : READ-CHECK  BLD-CHK READ-PATH ;
 : READ-PROG   BLD-IN  READ-PATH ;
 
-package BUILD-DRIVER
-
 : GO ( -- )
    BLD-RUNTIME-ARGS
    READ-CHECK
-   BLD-PB@ PN @ VERIFY:SOURCE-BUF
+   MAKER-SOURCE:SOURCE PN @ VERIFY:SOURCE-BUF
    READ-PROG
-   BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
+   MAKER-SOURCE:SOURCE SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 0= 0= STDIN? !
-   BLD-PB@ PN @ ENGINE-EMIT:FORTH
+   MAKER-SOURCE:SOURCE PN @ ENGINE-EMIT:FORTH
    s" hb-prog" BLD-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently

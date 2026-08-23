@@ -17,22 +17,19 @@
 \ pointer inference until the typed dictionary-record schema lands (dot
 \ habu-typed-dictionary-record-c67adddb). The driver installs USER-HOOK below
 \ for user source only.
-\ Retirement: MAP-IN-BLOB under habu-typed-dictionary-record-c67adddb;
-\ the raw AOT source-buffer view under habu-builder-trust-rows-c5d41af6.
+\ Retirement: MAP-IN-BLOB under habu-typed-dictionary-record-c67adddb.
 
 package AOT-LINK
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 
-variable PB  variable PN  variable PFD  variable PRD
+variable PN
 variable AOT-SI
 10 constant AOT-LF
-$40000 constant PMAX
-: AOT-PB@ PB @ ;
-s" AOT-PB@" s" -- ptr u8" TRUST
 : AOT-IN   s" hb-aot-src" TMP-PATH ;
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 : AOT-OBJ ( -- ptr u8 n )  s" hb-aot-obj" TMP-PATH ;
+: AOT-SENT$ ( -- ptr u8 n )  s"  AOT-LINK:LINK " ;
 
 : AOT-FALSE ( -- bool ) 0 0= 0= ;
 : AOT-JSON-ARG? ( -- bool )
@@ -46,34 +43,22 @@ s" AOT-PB@" s" -- ptr u8" TRUST
    CHECK!  dup -1 <> IF s" hb-build: check did not certify" 70 die THEN ;
 
 : READ-PROG
-   AOT-IN PATH0  0 0 open PFD !
-   PFD @ 0 < IF s" aot: cannot open source" 74 die THEN
-   here PB !  PMAX allot  0 PN !
-   BEGIN
-      PFD @  AOT-PB@ PN @ +  PMAX PN @ -  read PRD !
-      PRD @ 0 >
-   WHILE
-      PN @ PRD @ + PN !
-   REPEAT
-   PFD @ close
-   PRD @ 0 < IF s" aot: source read failed" 74 die THEN
-   PN @ 0 > 0= IF s" aot: empty source" 74 die THEN
-   PN @ PMAX = IF s" aot: source exceeds buffer" 74 die THEN ;
+   AOT-IN AOT-SENT$ nip 1 + MAKER-SOURCE:READ PN ! ;
 
 : SENT-ROOM ( n -- )
-   PN @ + PMAX > IF s" aot: source exceeds buffer" 74 die THEN ;
+   PN @ + MAKER-SOURCE:CAPACITY > IF s" aot: source exceeds buffer" 74 die THEN ;
 
 : SENTLF ( -- )
    1 SENT-ROOM
-   AOT-LF AOT-PB@ PN @ + c!
+   AOT-LF MAKER-SOURCE:SOURCE PN @ + c!
    PN @ 1 + PN ! ;
 
-: SENTSET ( -- )  s"  AOT-LINK:LINK " {: sa:ptr su:n :}
+: SENTSET ( -- )  AOT-SENT$ {: sa:ptr su:n :}
    SENTLF
    su SENT-ROOM
    0 AOT-SI !
    BEGIN AOT-SI @ su < WHILE
-      sa AOT-SI @ + c@  AOT-PB@ PN @ + AOT-SI @ + c!
+      sa AOT-SI @ + c@  MAKER-SOURCE:SOURCE PN @ + AOT-SI @ + c!
       AOT-SI @ 1 + AOT-SI !
    REPEAT
    PN @ su + PN ! ;
@@ -83,9 +68,9 @@ variable MLBL  variable REC2
 create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 
 \ --- persistent data region: the program's compile-time create/variable/allot/
-\ ,/s" data lives contiguously in the maker's fixed DATA region at
-\ [PB+PMAX, here) (the source buffer occupies [PB,PB+PMAX)); the assembler CODE
-\ buffer is a separate mmap so AOT-LINK never allots into DATA. We emit that span
+\ ,/s" data lives contiguously from the DATA pointer latched before user
+\ compilation to `here`; the source buffer and assembler CODE buffer are separate
+\ mmaps, so AOT-LINK never allots either into DATA. We emit that span
 \ into __text and the entry maps DATA-VA and copies it back to the SAME absolute
 \ VA (DATA-VA is a fixed MAP_FIXED VA, so those addresses are load-stable). All
 \ other runtime cells stay zero from the fresh anonymous mmap; only x20, S0-CELL,
@@ -94,8 +79,10 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN  variable BLOB-LBL
 variable DSCAN
 $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB range
 
+: AOT-DATA-START ( -- )
+   here BLOB-SRC ! ;
+
 : AOT-DATA-SPAN ( -- )
-   PB @ PMAX +  BLOB-SRC !
    here  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
 

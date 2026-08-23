@@ -625,6 +625,7 @@ HBB-INSTALL-CHILD-LINTS
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
 : HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
+   s" src/habu/maker-source.f" HBB-KEY-FILE+
    HBB-REPL @ if
       s" maker-mode:repl" CONTENT-KEY:TEXT+
       s" src/habu/verify-source.f" HBB-KEY-FILE+
@@ -674,6 +675,7 @@ HBB-INSTALL-CHILD-LINTS
    s" hb-maker-src" ;
 
 : HBB-APPEND-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/habu/maker-source.f" BF-APPEND-SOURCE
    HBB-REPL @ if out outu s" src/habu/verify-source.f" BF-APPEND-SOURCE then
    HBB-REPL @ 0= if out outu s" src/habu/aot-closure.f" BF-APPEND-SOURCE then
    HBB-REPL @ 0= if out outu s" src/habu/aot-lib.f" BF-APPEND-SOURCE then
