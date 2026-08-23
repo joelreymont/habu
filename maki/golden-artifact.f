@@ -1,8 +1,8 @@
 \ maki/golden-artifact.f - external GOLDEN reference artifacts + synthetic inputs.
 \
 \ docs/archive/cad-plan.md section 11: GOLDEN may compare a model's device/host output against an
-\ EXTERNAL reference artifact - a saved tensor dump with a per-artifact tolerance -
-\ instead of only the self-consistency oracle (maki/golden.f). This file owns two
+\ EXTERNAL reference artifact - a saved tensor dump with a per-artifact tolerance.
+\ This file owns two
 \ concerns of the same "reference material" seam: (1) the deterministic synthetic
 \ input binding both golden legs share (GA-BIND-SYNTH, kept here so golden.f can call
 \ it without a load-order cycle back through the artifact reader), and (2) the on-disk

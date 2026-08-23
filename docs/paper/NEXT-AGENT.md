@@ -55,7 +55,8 @@ consistent with README.md + docs/positioning.md.
    numbers (maki/demo-ffn-test.f: regions 3, bytes 3040->2272, splits);
    named refs/true skip (maki/cad-ref-test.f, FFN-SKIP node.3.in "n2 i0");
    the four lowering slices (dot habu-maki-lower-tensor SLICE 1-4 entries);
-   gate set + promote + store rows (maki/cad-test.f, store.f).
+   gate reports + honest promotion refusal with no store rows
+   (maki/cad-test.f, store.f).
    Include a generated REGION_0 PTX excerpt (emit via maki/lower/ew.f
    capture sink; see maki/lower/ew-test.f).
 5. Section 6 (Verified gradients): maki/backward.f headers, from-scratch
@@ -69,7 +70,8 @@ consistent with README.md + docs/positioning.md.
    PLDI'13; TVM OSDI'18; TC arXiv 1802.04730; XLA; Williams et al.
    roofline CACM'09; PyTorch 2/Inductor ASPLOS'24).
 8. Figures: (a) pipeline diagram (capture->fuse->memory->schedule->lower->
-   gates->promote); (b) roofline plot with measured points (mirrors
+   gates->refusal, with promotion pending real CERTIFY/PROFILE producers);
+   (b) roofline plot with measured points (mirrors
    eval-triton Figure-1 style); (c) fusion byte-accounting example.
    Generate via checked Habu tools where practical (report reducers exist);
    static SVG/TikZ acceptable for (a).

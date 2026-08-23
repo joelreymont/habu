@@ -7,7 +7,7 @@ language fronts is `docs/archive/model-cad.md`.
 
 > **Habu — Model CAD for GPUs**
 
-> **Change the model; Habu re-fuses, re-tiles, and re-tunes the GPU path.**
+> **Change the model; Habu re-fuses and re-tiles the GPU path.**
 
 Decisions and rationale:
 
@@ -48,16 +48,17 @@ Decisions and rationale:
 ```markdown
 # Habu — Model CAD for GPUs
 
-**Change the model; Habu re-fuses, re-tiles, and re-tunes the GPU path.**
+**Change the model; Habu re-fuses and re-tiles the GPU path.**
 
 Habu keeps the optimization loop at the model level: one live REPL where
-fusion, memory coalescing, tiling, validation, profiling, and tuning stay in
-sync with model edits — the way EDA keeps placement, routing, design-rule
-checks, and timing in sync with a schematic.
+fusion, memory coalescing, tiling, and available validation stay in sync with
+model edits — the way EDA keeps placement, routing, design-rule checks, and
+timing in sync with a schematic.
 
-Whether a change is typed by a person or proposed by an LLM, it passes the
-same gates before promotion: author-time type check, golden test against a
-reference, gradcheck for generated backward code, and device profile.
+Whether a change is typed by a person or proposed by an LLM, the checker and
+available independent golden and gradcheck paths judge it the same way.
+Promotion is currently withheld because CERTIFY and PROFILE have no real
+producers.
 ```
 
 Why this works:
@@ -107,7 +108,7 @@ Rules for using the lineage in any copy:
 
 ### Agent-centric
 
-> **Let agents explore GPU schedules while Habu validates, measures, and caches the winners.**
+> **Let agents explore GPU schedules while Habu checks and reports each candidate.**
 
 ### More memorable
 
@@ -124,8 +125,8 @@ Rules for using the lineage in any copy:
 ### Strong for README first paragraph
 
 > **Habu keeps performance work at the model level: it fuses operations, plans
-> memory, chooses tiles, validates outputs, tunes schedules, and runs the result
-> from one REPL.**
+> memory, chooses tiles, validates available outputs, and runs the result from
+> one REPL.**
 
 ## Avoid these as primary subtitles
 
@@ -161,15 +162,15 @@ Keep the optimization loop at the model level.
 ### Then state the mechanism
 
 ```text
-Habu fuses operations, plans memory, chooses tiles, validates results, tunes
-schedules, and caches the best GPU artifact.
+Habu fuses operations, plans memory, chooses tiles, validates available
+results, and reports the candidate. Promotion and caching remain withheld.
 ```
 
 ### Then state the differentiator
 
 ```text
 All of this happens from one REPL, with the model, fusion plan, memory plan,
-schedule, validation result, and profile report visible in one place.
+schedule, validation result, and gate reports visible in one place.
 ```
 
 ### Then mention internals only after the user benefit
@@ -200,8 +201,8 @@ Say:
 
 > Triton gives you a productive way to write a kernel. Habu tries to avoid
 > making the user decide every kernel boundary by hand. The model block is the
-> design artifact; fused kernels and schedules are derived, validated, tuned,
-> and cached.
+> design artifact; fused kernels and schedules are derived and available
+> independent validations are reported. Promotion remains withheld.
 
 The earned comparison today lives in `docs/eval-triton.md`: Habu-PTX moves the
 stack-discipline error class to author time and reaches SAXPY v4 bandwidth
@@ -214,7 +215,7 @@ Do not say "compilers cannot optimize." They can.
 Say:
 
 > Habu should be inspectable and interactive. Fusion plans, memory plans,
-> schedules, validation, and profile rows are first-class outputs, not hidden
+> schedules, validation, and gate reports are first-class outputs, not hidden
 > compiler side effects.
 
 ## Tagline shortlist

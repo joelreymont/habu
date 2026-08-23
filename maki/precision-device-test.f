@@ -10,8 +10,9 @@
 \   (1) request tf32 for CLASS-MATMUL -> LMM-EMIT emits the mma.sync kernel ->
 \       LOWER-GOLDEN V-PASS under the tf32 row AND the reason + LG-PREC-USED@ name tf32
 \       (the passing verdict is the running license for the tensor-core path);
-\   (2) the cad.f gate path on the same model: PROMOTE's evidence row reads
-\       golden=device-pass:tf32 (the recorded license);
+\   (2) the cad.f gate path on the same model: GOLDEN passes device-vs-host at
+\       tf32, but PROMOTE refuses and writes nothing because CERTIFY and PROFILE
+\       have no real producers yet;
 \   (3) the INVERSE guard: a seeded PTX fault (maki/ablate-ptx.f ABL-MUTATE scales
 \       the first output store by 1.005 = 0.5% relative error - in-bounds,
 \       every output cell still written) must FAIL even under the tf32 band
@@ -85,17 +86,21 @@ variable PDT-PTX-U                                         \ correct-module text
    V-PASS PREC-TF32 PDT-GOLDEN
    LOWER-GOLDEN-REASON$ s" within tf32 tol" CONTAINS? TTRUE ;
 
-\ ============ (2) PROMOTE records the license: golden=device-pass:tf32 =================
-: PDT-EVIDENCE ( -- )
+\ ============ (2) real device GOLDEN passes, but incomplete evidence refuses promotion =
+: PDT-PROMOTE-REFUSAL ( -- )
    CUDA:OPEN? 0= if exit then
-   s"  (2) PROMOTE under the tf32 request: evidence row records the license" type cr
+   s"  (2) device GOLDEN passes tf32; absent certifier/profiler refuses PROMOTE" type cr
    MDL-CUBINS-RESET  PTXTC:CUBIN$ 0 FP-REGION-ID MDL-CUBIN!    \ region 0 = the CORRECT cubin
    STORE-RESET
-   PROMOTE drop
-   0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
-   found TTRUE
-   ra ru type cr                                  \ verbatim evidence row
-   ra ru s" golden=device-pass:tf32" CONTAINS? TTRUE
+   GOLDEN
+   dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+   dup G-GOLDEN REPORT:GATE-REASON@ s" within tf32 tol" CONTAINS? TTRUE
+   drop
+   [: PROMOTE drop ;] E-CAD-GATE TTHROWSQ
+   0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET
+   {: evid-a:ptr evid-u:n evid-found:bool :}  evid-found TFALSE
+   0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET
+   {: sched-sel:n sched-found:bool :}  sched-found TFALSE
    STORE-RESET ;
 
 \ ============ (3) inverse guard: a 0.5% seeded fault fails EVEN under tf32 =============
@@ -141,7 +146,7 @@ s" == GATE-LICENSED PRECISION: blocked MATMUL 64x64 (tf32 licenses the mma.sync 
 MODEL: PMB ( x:64x64 w:64x64 -- y ) MATMUL ;  FP-BUILD
 
 PDT-TF32-PASS
-PDT-EVIDENCE
+PDT-PROMOTE-REFUSAL
 PDT-INVERSE
 PDT-RESET
 

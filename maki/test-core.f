@@ -195,8 +195,6 @@ SUITE maki/plan-compose-test.f
 ;SUITE
 SUITE maki/plan-vocab-test.f
 ;SUITE
-SUITE maki/golden-test.f
-;SUITE
 SUITE maki/golden-artifact-test.f
 ;SUITE
 SUITE maki/gradcheck-test.f

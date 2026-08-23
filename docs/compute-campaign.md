@@ -30,11 +30,13 @@ compute-bound plan, in dependency order:
 2. **`cp.async` + multi-stage SMEM pipelining**: the schedule family already
    parameterizes `stages`; the emitter honors it with double/triple-buffered
    `cp.async` staging. Pure emitter work on existing machinery.
-3. **Persistent autotuning beats JIT autotuning** (`cad-6-tune` + the §13
-   store): Triton tunes at JIT time, in-process, per deployment, with generic
-   configs on sm_87. We tune once on the real device, key by §7.4, store the
-   winner with evidence, and replay with zero warmup — so we can also afford
-   larger search spaces, paid offline.
+3. **Planned persistent autotuning versus JIT autotuning** (`cad-6-tune` +
+   the §13 store): Triton tunes at JIT time, in-process, per deployment, with
+   generic configs on sm_87. The intended path would tune once on the real
+   device, key by §7.4, store the winner with evidence, and replay with zero
+   warmup. Today `TUNE` reports `measurement needs device`, and `PROMOTE`
+   refuses because CERTIFY and PROFILE lack real producers; nothing is stored
+   or replayed.
 4. **Fusion depth is the real Orin lever**: this target is memory-starved, so
    most "compute-bound" work is composites whose intermediates spill. The
    planner owns the whole IR with exact bytes: GEMM with prologue
@@ -43,8 +45,8 @@ compute-bound plan, in dependency order:
    `habu-re-express-fused`, `habu-ptx-m11-attention`). End-to-end model
    latency is the honest metric, and fewer launches moving fewer bytes wins
    it even at equal per-kernel FLOPs.
-5. **Whole-model decisions a kernel DSL cannot make**: weight layout owned at
-   PROMOTE time (pre-transpose/pre-swizzle into the artifact —
+5. **Whole-model decisions a kernel DSL cannot make**: weight layout would be
+   owned at PROMOTE time (pre-transpose/pre-swizzle into the artifact —
    `habu-cad-weight-layout`); launch amortization on Jetson-class overheads
    (persistent kernels / a graph-style driver loop —
    `habu-cad-launch-amortize`); precision policy LICENSED by the gates —
@@ -54,12 +56,14 @@ compute-bound plan, in dependency order:
    default everywhere, PREC-TF32 licensed for the matmul class only (atol 1e-6,
    rtol 2e-3 from the measured ~7.9e-4 TF32 GEMM error, ~2.5x headroom); golden
    verdicts judged under each class's ACTIVE precision row and named in the
-   reason; PROMOTE evidence records `golden=device-pass:<prec>`; the inverse
+   reason; promotion remains withheld until independent CERTIFY and PROFILE
+   evidence exists; the inverse
    guard (a seeded 0.5% fault fails even under tf32) is proven on-device by
    `maki/precision-device-test.f`. The MMA lane runs licensed via
    `PREC-TF32 CLASS-MATMUL PREC!` — the passing golden IS the license].
-6. **Roofline-directed search**: PROFILE's classification (§9) spends tuner
-   candidates only on regions actually under the compute roof.
+6. **Planned roofline-directed search**: once PROFILE has a real producer,
+   its classification (§9) can spend tuner candidates only on regions
+   actually under the compute roof.
 
 ## Sequencing and LANDED log
 

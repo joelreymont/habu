@@ -57,10 +57,10 @@
 \ (maki/fusion-plan.f, maki/traffic.f); MEMORY plans per-hot coalescing status +
 \ vector-width/tail facts (maki/mem-plan.f, cad-3); TILE selects conservative
 \ defaults and replays a PROMOTEd selection by its section 7.4 key (cad-4/cad-5).
-\ GOLDEN/GRADCHECK are REAL on the host now; PROFILE stays honest not-run without a
-\ GPU. PROMOTE (CAD 7c gate set) refuses (E-CAD-GATE) unless CERTIFY passes, GOLDEN
-\ passes, and GRADCHECK did not FAIL (not-run clears it); PROFILE is mandatory-to-run
-\ but never blocks. maki -> habu only; cad owns -5020..-5029 and -5164.
+\ External-artifact or device-vs-host GOLDEN and host GRADCHECK produce real evidence.
+\ CERTIFY and PROFILE stay honest NOT-RUN until real implementations exist. PROMOTE
+\ refuses (E-CAD-GATE) unless all four evidence gates PASS. maki -> habu only; cad
+\ owns -5020..-5029 and -5164.
 \
 \ Definition capture (dot habu-size-model-proportional-16994186 stage-3ii): MODEL: does
 \ NOT parse the input stream directly. The frozen engine exposes only parse-name
@@ -1256,16 +1256,15 @@ private
    TILE-INTO
    s" tune: measurement needs device (cad-6)" REPORT:WARN+ ;
 
-: CERTIFY-INTO ( report -- report )            \ static, no GPU: model-level legality
-   s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY REPORT:VERDICT!
-   s" certify: model-level legality only; kernel legality in cad-5" REPORT:WARN+ ;
+: CERTIFY-INTO ( report -- report )
+   s" no independent certifier" MAKI-VERDICT:NOT-RUN MAKI-GATE:CERTIFY REPORT:VERDICT! ;
 
 \ GOLDEN is REAL (maki/golden.f + maki/lower/golden.f). Precedence: an external reference
 \ artifact wins; else, when a device is present and the model is device-lowerable, the DEVICE
 \ model golden runs the whole forward IR on the GPU (cross-region device buffers) and compares
 \ the final output vs the host executor under a composed f32 tolerance (LOWER-MODEL-GOLDEN,
-\ installed via golden.f's device hook); else the host self-consistency oracle runs. Off-device
-\ the device leg is inert, so the host legs are unchanged. GOLDEN-INTO is provided by maki/golden.f.
+\ installed via golden.f's device hook). Without either independent comparison, the
+\ host gate is NOT-RUN. HOST-INTO is provided by maki/golden.f.
 
 \ GRADCHECK is REAL on the host (maki/gradcheck.f): a numeric model-level gradcheck
 \ that drives the full-tensor executor over the whole IR (forward + emitted backward),
@@ -1275,16 +1274,16 @@ private
 \ reason). GRADCHECK-INTO is provided by maki/gradcheck.f.
 
 : PROFILE-INTO ( report -- report )
-   s" no-device" MAKI-VERDICT:NOT-RUN MAKI-GATE:PROFILE REPORT:VERDICT! ;
+   s" no profiler" MAKI-VERDICT:NOT-RUN MAKI-GATE:PROFILE REPORT:VERDICT! ;
 
 \ ---- device golden leg (cad.f owns the device dependency; golden.f stays device-free) ---------
-\ GOLDEN precedence: external artifact > DEVICE model golden > host self-consistency. The device
+\ GOLDEN precedence: external artifact > DEVICE model golden > unavailable host leg. The device
 \ leg runs when a GPU is present, every region's cubin is registered (MDL-CUBIN!), and the model is
 \ device-lowerable; LOWER-MODEL-GOLDEN executes the whole forward IR on the GPU with cross-region
 \ device buffers and compares the final output vs the host executor under the composed tolerance
 \ of each region class's ACTIVE precision (maki/precision.f - the licensed-precision rows).
-\ Off-device (or without cubins / a non-lowerable model) GOLDEN-GATE-INTO is exactly GOLDEN-INTO,
-\ so the host gates are unchanged.
+\ Off-device (or without cubins / a non-lowerable model), HOST-INTO reports NOT-RUN unless an
+\ external artifact exists.
 \ ---- typed golden provenance projections (retire the maki/golden.f ambient globals) ---
 \ The golden leg + precision now travel as typed EVID values (EVID:golden-leg /
 \ EVID:prec-class) threaded through the promote path, not as ambient process state. These
@@ -1312,12 +1311,12 @@ private
 \ GOLDEN-GATE-G threads the golden provenance out of the gate; GOLDEN-GATE-INTO is the
 \ provenance-dropping wrapper the standalone GOLDEN command and FULL-REPORT (OPTIMIZE/EXPLAIN) use.
 : GOLDEN-GATE-G ( report -- report EVID:golden-leg EVID:prec-class )
-   GA-EXISTS? if GOLDEN-INTO EVID-GOLDEN--LEG:EXTERNAL EVID-PREC--CLASS:PREC-F32 exit then  \ external artifact wins
+   GA-EXISTS? if HOST-INTO EVID-GOLDEN--LEG:EXTERNAL EVID-PREC--CLASS:PREC-F32 exit then  \ external artifact wins
    CUDA:OPEN? if
       FP-BUILD                                     \ the device legs read the region plan
       MDL-CUBINS-READY? if MDL-LOWERABLE? if GOLDEN-GATE-DEVICE exit then then
    then
-   GOLDEN-INTO EVID-GOLDEN--LEG:HOST EVID-PREC--CLASS:PREC-F32 ;   \ host self-consistency (no precision axis)
+   HOST-INTO EVID-GOLDEN--LEG:HOST EVID-PREC--CLASS:PREC-F32 ;   \ unavailable host leg; never persisted
 : GOLDEN-GATE-INTO ( report -- report )  GOLDEN-GATE-G 2drop ;
 
 \ full conservative report over every phase (PROMOTE / OPTIMIZE / EXPLAIN). FULL-REPORT-G
@@ -1334,23 +1333,13 @@ private
 \ ---- promotion gate (CAD 7c gate-set alignment) ----------------------------
 : GATE-PASS? ( report n -- report bool )
    over swap REPORT:GATE-TAG@ V-PASS = ;
-: GATE-NOT-FAIL? ( report n -- report bool )   \ pass or not-run, but not a real fail
-   over swap REPORT:GATE-TAG@ V-FAIL <> ;
-: GATE-RECORDED? ( report n -- report bool )   \ a recorded verdict (any legal tag)
-   over swap REPORT:GATE-TAG@ dup 0 >= swap V-N < and ;
 
-\ PROMOTE gate set (docs/archive/model-cad.md Phase 7 / docs/archive/cad-plan.md, cad-7 UPDATE fold):
-\ a model promotes when CERTIFY passes AND GOLDEN passes AND GRADCHECK did not
-\ FAIL. GRADCHECK not-run (the model has no host-differentiable backward - cast /
-\ decode) clears the gate exactly like a pass; only a real gradient mismatch
-\ (V-FAIL) blocks. PROFILE is mandatory-to-run but NON-blocking: FULL-REPORT
-\ always runs PROFILE-INTO so a verdict is recorded, yet its value (not-run
-\ off-device, or a device roofline tag on Orin) never gates promotion.
+\ Promotion requires affirmative evidence from every retained prerequisite.
 : PROMOTE-OK? ( report -- report bool )
-   G-CERTIFY   GATE-PASS?      >r
-   G-GOLDEN    GATE-PASS?      r> and >r
-   G-GRADCHECK GATE-NOT-FAIL?  r> and >r
-   G-PROFILE   GATE-RECORDED?  r> and ;
+   G-CERTIFY   GATE-PASS?  >r
+   G-GOLDEN    GATE-PASS?  r> and >r
+   G-GRADCHECK GATE-PASS?  r> and >r
+   G-PROFILE   GATE-PASS?  r> and ;
 
 \ ---- numeric-policy promote gate (maki/numpolicy.f NPOL:ENFORCE) --------------
 \ At promotion the golden's ACHIEVED numeric domain must SATISFY the region's
@@ -1416,7 +1405,7 @@ private
    gates-ok npol-ok and if
       CACHE-KEY-INTO  s" promote: gates pass; artifact cached" REPORT:WARN+
    else
-      s" promote: refused; certify/golden/gradcheck/numeric gate not satisfied" REPORT:WARN+
+      s" promote: refused; certify/golden/gradcheck/profile/numeric gate not satisfied" REPORT:WARN+
    then ;
 
 public

@@ -4,7 +4,7 @@
 \ docs/archive/model-cad.md flagship FFN block and locks every number as a regression. It IS
 \ the demo transcript: model defined in the REPL -> LOWER keys -> FUSE regions +
 \ traffic -> MEMORY coalescing -> TILE schedule -> CERTIFY/GOLDEN/GRADCHECK gates ->
-\ OPTIMIZE promote decision -> PROMOTE artifact + store rows -> traffic comparison vs
+\ honest OPTIMIZE/PROMOTE refusal -> traffic comparison vs
 \ the unfused baseline. The win is fusion/traffic reduction, not a tensor-core parity
 \ claim (docs/archive/model-cad.md "Flagship demo").
 \
@@ -25,12 +25,11 @@
 \      operand, so node.3.in is "n2 i0" and the separate r input is gone - a real skip.
 \      Named-value capture is the v1 seam; compiling the whole body as ONE checker-
 \      verified composition (docs/archive/cad-plan.md section 3 full static compilation) is still
-\      pending. The pipeline, gates, traffic, and promote loop are the full flagship for
+\      pending. The pipeline, gates, traffic, and promotion refusal are the full flagship for
 \      both, and FFN-SKIP's backward makes x's gradient SUM two paths (fan-out).
 \
-\ The store (GA-SAVE artifact + PROMOTE evidence/schedule rows) is bracketed by
-\ STORE-RESET, and the tail also resets the shared replay table + session latch
-\ (PROMOTE SK-PUTs into both) so the test leaks nothing. maki -> habu only.
+\ The external artifact store is bracketed by STORE-RESET so the test leaks nothing.
+\ maki -> habu only.
 
 require lib/test.f
 require lib/string.f
@@ -48,6 +47,7 @@ variable DM-VA  variable DM-VU
 : DM-SAVE  ( ptr u8 n -- )  DM-VU ! DM-VA ! ;
 : DM-IN    ( ptr u8 n -- )  DM-VA @ DM-VU @ 2swap CONTAINS? TTRUE ;
 : DM-NOTIN ( ptr u8 n -- )  DM-VA @ DM-VU @ 2swap CONTAINS? TFALSE ;
+: DM-TRY-PROMOTE ( -- )  PROMOTE drop ;
 
 \ ---- traffic-reduction line built from the report's byte fields --------------
 \ ratio = bytes-before / bytes-after in hundredths -> "demo: traffic <i>.<ff>x reduced".
@@ -136,13 +136,16 @@ ENGINE-ID:KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
 STR= TTRUE
 drop
 
-\ ==== 6. CERTIFY: model-level static legality passes ========================
-CERTIFY dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T= drop
+\ ==== 6. CERTIFY: no independent certifier is available =====================
+CERTIFY
+dup G-CERTIFY REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-CERTIFY REPORT:GATE-REASON@ s" no independent certifier" T$=
+drop
 
-\ ==== 7. GOLDEN: self-consistency, then GA-SAVE + artifact-backed pass =======
+\ ==== 7. GOLDEN: no artifact is NOT-RUN; an external artifact can PASS =======
 GOLDEN
-dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
-dup G-GOLDEN REPORT:GATE-REASON@ DM-SAVE  s" host self-consistent (5 nodes)" DM-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-GOLDEN REPORT:GATE-REASON@ s" no independent golden evidence" T$=
 drop
 GA-EXISTS? TFALSE                                  \ no external artifact yet
 GA-SAVE                                            \ dump synthetic inputs + executed output
@@ -159,26 +162,24 @@ dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T=
 dup G-GRADCHECK REPORT:GATE-REASON@ DM-SAVE  s" input(s) gradchecked" DM-IN
 drop
 
-\ ==== 9. OPTIMIZE: aggregate report; CAD 7c gate set promotes on host ========
-\ CERTIFY + GOLDEN + GRADCHECK pass; PROFILE is not-run but mandatory-to-run and
-\ non-blocking, so the gate set clears and OPTIMIZE records the promote decision.
+\ ==== 9. OPTIMIZE: external GOLDEN alone cannot authorize promotion ==========
 OPTIMIZE
-dup G-CERTIFY   REPORT:GATE-TAG@ V-PASS   T=
+dup G-CERTIFY   REPORT:GATE-TAG@ V-NOTRUN T=
 dup G-GOLDEN    REPORT:GATE-TAG@ V-PASS   T=
 dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS   T=
 dup G-PROFILE   REPORT:GATE-TAG@ V-NOTRUN T=
 dup REPORT:RENDER DM-SAVE
-s" gate.certify.verdict: pass"           DM-IN
+s" gate.certify.verdict: not-run"        DM-IN
 s" gate.golden.verdict: pass"            DM-IN
 s" gate.gradcheck.verdict: pass"         DM-IN
-s" promote: gates pass; artifact cached" DM-IN
+s" gate.profile.verdict: not-run"        DM-IN
+s" promote: refused"                     DM-IN
 drop
 
-\ ==== 10. PROMOTE: artifact promoted; store evidence + schedule rows land ====
-PROMOTE dup REPORT:CACHE$ s" FFN-DEMO" T$= drop
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET TTRUE
-s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET TTRUE 0 T=         \ region-0 selection = gemm default (candidate 0)
+\ ==== 10. PROMOTE: refusal writes neither evidence nor schedule rows =========
+' DM-TRY-PROMOTE E-CAD-GATE TTHROWS
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET  nip TFALSE
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET nip TFALSE
 
 \ ==== 11. Comparison vs the unfused baseline ================================
 \ unfused traffic 3040 B, fused 2272 B: the flagship win, computed from the report's
@@ -190,8 +191,8 @@ s" demo: traffic 1.33x reduced" T$=
 \ Same flagship block, but the residual adds back the ORIGINAL input x. The body
 \ names it by writing a bare "x" (the signature input) before RESIDUAL-ADD, so the
 \ residual's second operand is input 0 (node.3.in "n2 i0"), and the separate r input
-\ is GONE - 5 inputs, not 6. The 5-node IR, fusion/traffic win, gates, and PROMOTE are
-\ the full flagship; the traffic is IDENTICAL to the r-input version (x and r are both
+\ is GONE - 5 inputs, not 6. The 5-node IR, fusion/traffic win, gates, and promotion
+\ refusal are the full flagship; the traffic is IDENTICAL to the r-input version (x and r are both
 \ 4x8 and each is read once by the residual), so the skip changes wiring, not bytes.
 STORE-RESET
 MODEL: FFN-SKIP ( x:4x8 w1:8x16 b1:1x16 w2:16x8 b2:1x8 -- y ) LINEAR GELU LINEAR x RESIDUAL-ADD RMSNORM ;
@@ -224,20 +225,20 @@ dup REPORT:BYTES-BEFORE@ 3040 T=
 dup REPORT:BYTES-AFTER@  2272 T=
 drop
 
-\ gates + promote end-to-end: host self-consistent + gradcheck pass, PROFILE non-blocking
-CERTIFY dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T= drop
+\ gates remain honest: only the real host gradcheck passes
+CERTIFY dup G-CERTIFY REPORT:GATE-TAG@ V-NOTRUN T= drop
 GOLDEN
-dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
-dup G-GOLDEN REPORT:GATE-REASON@ DM-SAVE  s" host self-consistent (5 nodes)" DM-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-GOLDEN REPORT:GATE-REASON@ s" no independent golden evidence" T$=
 drop
 GRADCHECK dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T= drop
 OPTIMIZE
-dup G-CERTIFY   REPORT:GATE-TAG@ V-PASS T=
-dup G-GOLDEN    REPORT:GATE-TAG@ V-PASS T=
+dup G-CERTIFY   REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-GOLDEN    REPORT:GATE-TAG@ V-NOTRUN T=
 dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T=
-dup REPORT:RENDER DM-SAVE  s" promote: gates pass; artifact cached" DM-IN
+dup G-PROFILE   REPORT:GATE-TAG@ V-NOTRUN T=
+dup REPORT:RENDER DM-SAVE  s" promote: refused" DM-IN
 drop
-PROMOTE dup REPORT:CACHE$ s" FFN-SKIP" T$= drop
 
 \ backward: x fans out (the first LINEAR reads it AND the residual skip re-reads it),
 \ so its cotangent SUMS the two paths -> the input-0 gradient node is an OP-ADD. The
@@ -248,9 +249,7 @@ BW-BUILD
 0 MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE MIR-ROWS@ ROWS-RAW 4 T=
 0 MIR-SLOT-ID BW-SLOT-GRAD@ MIR-REF-NODE MIR-COLS@ COLS-RAW 8 T=
 
-\ leave the store, replay table, and session latch as we found them: PROMOTE
-\ wrote keys through SK-PUT-DURABLE into the shared table (maki/test.f is one
-\ process, so a dirty tail leaks into later suites)
+\ leave the store, replay table, and session latch clean
 STORE-RESET  SK-TAB-RESET  REPLAY-RESET
 SK-TAB-COUNT 0 T=
 T-REPORT

@@ -17,7 +17,8 @@
 \ Adoption seam (dot habu-cad-f-imported): ONNX:IMPORT adopts the model it built by
 \ setting the shared model-IR provenance cell (maki/model-ir.f) to imported, so the
 \ CAD command surface runs LOWER/CERTIFY over it under its TRUE provenance - the
-\ deploy path IMPORT -> LOWER -> CERTIFY is asserted positive below. The fail-open
+\ deploy path IMPORT -> LOWER works while CERTIFY honestly reports no independent
+\ certifier. The fail-open
 \ regression: an armed MODEL: capture before an import must never leak - IMPORT's
 \ MIR reset clears provenance first and adoption is the atomic last step, so the
 \ report renders model.provenance: imported (never the stale captured model), and
@@ -225,7 +226,7 @@ MAKI:MODEL-DEFINED? TTRUE
 MAKI:MODEL-CAPTURED? TFALSE
 MAKI:MODEL-IMPORTED? TTRUE
 
-\ ---- the deploy path: IMPORT -> LOWER -> CERTIFY, positive end-to-end -------------
+\ ---- the deploy path: IMPORT -> LOWER -> CERTIFY, with no invented evidence --------
 MAKI:LOWER
 dup REPORT:OPS-BEFORE@ 2 T=                    \ Gemm->linear + Relu: the imported node count
 dup REPORT:SHAPE$  s" 2x2" T$=
@@ -236,7 +237,8 @@ s" model.provenance: imported"     ODT-IN      \ ... under its true provenance
 s" model.provenance: captured"     ODT-NOTIN
 s" ODT-STALE"                      ODT-NOTIN   \ the stale capture is gone, not reported
 MAKI:CERTIFY
-dup MAKI:G-CERTIFY REPORT:GATE-TAG@ MAKI:V-PASS T=
+dup MAKI:G-CERTIFY REPORT:GATE-TAG@ MAKI:V-NOTRUN T=
+dup MAKI:G-CERTIFY REPORT:GATE-REASON@ s" no independent certifier" T$=
 drop
 
 \ ---- capture-only commands refuse the imported model BY NAME ----------------------

@@ -4,13 +4,7 @@
 
 require lib/test.f
 require lib/string.f
-require lib/fs.f
-require lib/process.f
-require lib/process-env.f           \ RUN-ARGV-ENV-CAPTURE: the fresh-process replay child
-require lib/engine-candidate.f      \ ENGINE-CANDIDATE:PATH$: the one shared HABU_UNDER_TEST-else-self engine resolver
 require lib/engine-id.f             \ ENGINE-ID:KEY$: content key of the running engine binary for the section-7.4 store key
-require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
-require maki/device-artifacts.f     \ MAKI-GRADE: private tmp driver path (PREPARE/DRIVER$/CLEAN)
 require maki/report.f
 require maki/cad.f
 require maki/eval/eval.f                 \ EVAL:CHECK-PASSES?: drive the checker over the translated body
@@ -77,58 +71,13 @@ variable CT-VA  variable CT-VU
 : TRY-SCALE-BAD   ( -- )                              \ scale param neither same-shape nor 1x1
    TENSOR:TV-RESET  2 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC  1 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC  MAKI-OPKIND:SCALE EW-SHAPE-CHECK ;
 
-\ all-pass report for the promote success path
+\ Minimal reports for the promotion predicate's truth table.
 : ALL-PASS ( -- report )
    REPORT:NEW
    s" " MAKI-VERDICT:PASS MAKI-GATE:CERTIFY   REPORT:VERDICT!
    s" " MAKI-VERDICT:PASS MAKI-GATE:GOLDEN     REPORT:VERDICT!
    s" " MAKI-VERDICT:PASS MAKI-GATE:GRADCHECK  REPORT:VERDICT!
    s" " MAKI-VERDICT:PASS MAKI-GATE:PROFILE    REPORT:VERDICT! ;
-
-\ ---- fresh-process replay child (durable loop: PROMOTE here, TILE there) -----
-\ The child is a fresh instance of THIS engine (RPL-ENGINE$, never a hardcoded
-\ bin/hb) that defines the SAME model (identical region facts -> identical section
-\ 7.4 key: same engine binary, same target facts, inherited cwd -> same store root)
-\ and renders TILE to stdout; the parent asserts the
-\ render replays the selection this process PROMOTEd - the rehydration path
-\ through the production TILE entry, in a genuinely fresh process.
-create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
-
-: RPL-NL ( -- )  $0A SB-APPEND-C ;
-: RPL-DRIVER! ( -- )
-   SB-RESET
-   s" require maki/cad.f" SB-APPEND RPL-NL
-   s" package MAKI" SB-APPEND RPL-NL
-   s" MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;" SB-APPEND RPL-NL
-   s" TILE CAD-SHOW" SB-APPEND RPL-NL
-   s" ;package" SB-APPEND RPL-NL
-   MAKI-GRADE:DRIVER$ SB$ WRITE-ALL ;
-
-\ Resolve the engine the replay child must run: the SAME one running this parent,
-\ never a hardcoded bin/hb. The section-7.4 store key hashes the running engine
-\ binary (lib/engine-id.f), so a candidate engine has to replay through ITSELF or
-\ the child computes a different key and misses this parent's store (F100/F101).
-\ The one shared resolver (lib/engine-candidate.f) applies the HABU_UNDER_TEST
-\ override (the gate exports it to the maki child, default table then live
-\ environment) else this engine's own path, so the replay child, a PTY-supervised
-\ engine, and this test all agree on one rule and validate the path once.
-: RPL-ENGINE$ ( -- ptr u8 n )
-   ENGINE-CANDIDATE:PATH$ ;
-
-: RPL-CHILD-TILE$ ( -- ptr u8 n )               \ spawn the child; return its stdout
-   PROC-ARGV-ENV-RESET
-   s" --load"           >LEN PROC-ARGV+
-   MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" HABU_CAD_STORE" >LEN  STORE-ROOT$ >LEN  PROC-ENV+
-   RPL-ENGINE$ >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-ENV-CAPTURE
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean child exit -> rc 0
-     err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
-   ;MATCH
-   {: outu:len erru:len rc:rc :}
-   rc RC>N 0 <> if RPL-ERR erru LEN>N type cr then   \ surface child stderr on failure
-   rc RC>N 0 T=
-   RPL-OUT outu LEN>N ;
 
 T-RESET
 STORE-RESET  SK-TAB-RESET  REPLAY-RESET   \ hermetic: no stale rows, table entries, or warm latch
@@ -272,19 +221,19 @@ s" schedule: defaults (unmeasured shape class - cad-6 tunes)"   CT-IN
 s" schedule: family from region 0 only (v1 limitation)"        CT-IN
 drop
 
-\ ---- CERTIFY: model-level static legality passes ---------------------------
-CERTIFY dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T= drop
-
-\ ---- host gates now real; profile still needs a device -----------------------
-\ cad-7a: FFN (LINEAR GELU LINEAR) is reference-complete + host-executable, so GOLDEN
-\ (self-consistency) and GRADCHECK both pass on host; only PROFILE needs a device.
+\ ---- missing independent certifier/golden/profiler evidence is NOT-RUN -----
+CERTIFY
+dup G-CERTIFY REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-CERTIFY REPORT:GATE-REASON@ s" no independent certifier" T$=
+drop
 GOLDEN
-dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
-dup G-GOLDEN REPORT:GATE-REASON@ CT-SAVE  s" host self-consistent" CT-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-GOLDEN REPORT:GATE-REASON@ s" no independent golden evidence" T$=
 drop
 GRADCHECK dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T= drop
 PROFILE
 dup G-PROFILE REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-PROFILE REPORT:GATE-REASON@ s" no profiler" T$=
 dup REPORT:ROOFLINE@ RC-UNKNOWN T=
 drop
 
@@ -294,84 +243,46 @@ dup REPORT:CAND-COUNT 32 T=
 dup REPORT:RENDER CT-SAVE  s" tune: measurement needs device (cad-6)" CT-IN
 drop
 
-\ ---- OPTIMIZE: aggregate report; CAD 7c gate set PROMOTES on host -----------
-\ FFN (LINEAR GELU LINEAR) is reference-complete + host-executable, so CERTIFY,
-\ GOLDEN, and GRADCHECK all pass; PROFILE stays not-run but is non-blocking. The
-\ CAD 7c gate set therefore clears and OPTIMIZE records the promote decision.
+\ ---- OPTIMIZE reports refusal and does not invent promotion evidence --------
 OPTIMIZE
-dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T=
-dup G-GOLDEN  REPORT:GATE-TAG@ V-PASS T=
+dup G-CERTIFY   REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-GOLDEN    REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T=
+dup G-PROFILE   REPORT:GATE-TAG@ V-NOTRUN T=
 dup REPORT:RENDER CT-SAVE
-s" gate.certify.verdict: pass"           CT-IN
-s" gate.golden.verdict: pass"            CT-IN
-s" promote: gates pass; artifact cached" CT-IN
+s" gate.certify.verdict: not-run" CT-IN
+s" gate.golden.verdict: not-run"  CT-IN
+s" gate.profile.verdict: not-run" CT-IN
+s" promote: refused"              CT-IN
 drop
 
-\ ---- promotion gate logic (CAD 7c: certify+golden pass, gradcheck != fail) ---
-\ FFN clears the gate set on host now (PROFILE not-run is recorded, non-blocking).
-FULL-REPORT PROMOTE-OK? TTRUE drop
-ALL-PASS    PROMOTE-OK? TTRUE drop
+\ ---- every retained promotion prerequisite requires PASS -------------------
+FULL-REPORT PROMOTE-OK? TFALSE drop
+ALL-PASS PROMOTE-OK? TTRUE drop
+ALL-PASS s" absent" MAKI-VERDICT:NOT-RUN MAKI-GATE:CERTIFY REPORT:VERDICT!
+PROMOTE-OK? TFALSE drop
+ALL-PASS s" absent" MAKI-VERDICT:NOT-RUN MAKI-GATE:GOLDEN REPORT:VERDICT!
+PROMOTE-OK? TFALSE drop
+ALL-PASS s" absent" MAKI-VERDICT:NOT-RUN MAKI-GATE:GRADCHECK REPORT:VERDICT!
+PROMOTE-OK? TFALSE drop
+ALL-PASS s" absent" MAKI-VERDICT:NOT-RUN MAKI-GATE:PROFILE REPORT:VERDICT!
+PROMOTE-OK? TFALSE drop
 
-\ ---- promote success path caches the artifact key --------------------------
-ALL-PASS PROMOTE-REPORT
-dup REPORT:CACHE$ s" FFN" T$=
-drop
-
-\ ---- a passing PROMOTE writes the schedules + evidence rows -----------------
-\ FFN now promotes on host: drive the REAL PROMOTE and read its rows back, keyed by
-\ region 0's section-7.4 key. STORE-RESET brackets keep the store leak-free. The
-\ evidence row records profile=not-run (mandatory-to-run, non-blocking off-device).
+\ ---- the real off-device/no-artifact PROMOTE refuses and writes nothing -----
 STORE-RESET
-PROMOTE dup REPORT:CACHE$ s" FFN" T$= drop
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET TTRUE 0 T=         \ region-0 selection = gemm default (candidate 0)
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET TTRUE
-s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
-
-\ ---- same-process replay: the promoted selection replays into TILE ----------
-\ PROMOTE wrote the schedules row through SK-PUT-DURABLE (hot table + file in one
-\ step), so this session's next TILE is a replay HIT: the report renders the hit
-\ row and drops both "defaults" rows.
-TILE
-dup REPORT:SELECT@ 0 T=
-dup REPORT:RENDER CT-SAVE
-s" schedule: replay hit -> stored selection 0"                CT-IN
-s" schedule: unmeasured shape class -> using defaults"        CT-NOTIN
-s" schedule: defaults (unmeasured shape class - cad-6 tunes)" CT-NOTIN
-drop
-
-\ ---- a stored non-default selection overrides the closed-form default -------
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ 7 SK-PUT-DURABLE
-TILE
-dup REPORT:SELECT@ 7 T=
-dup REPORT:RENDER CT-SAVE  s" schedule: replay hit -> stored selection 7" CT-IN
-drop
-
-\ ---- cold-session rehydration: cleared table + latch reload from the file ----
-SK-TAB-RESET  REPLAY-RESET
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET nip TFALSE            \ the table really is cold
-TILE
-dup REPORT:SELECT@ 7 T=                                         \ rehydrated; latest row wins
-dup REPORT:RENDER CT-SAVE  s" schedule: replay hit -> stored selection 7" CT-IN
-drop
-
-\ ---- fresh-process replay: a spawned bin/hb TILEs the same shape -> HIT ------
-s" habu-cad-replay" MAKI-GRADE:PREPARE
-RPL-DRIVER!
-RPL-CHILD-TILE$ CT-SAVE
-s" schedule: replay hit -> stored selection 7"         CT-IN
-s" schedule: unmeasured shape class -> using defaults" CT-NOTIN
-MAKI-GRADE:CLEAN
-STORE-RESET  SK-TAB-RESET  REPLAY-RESET   \ leave the store, table, and latch clean
+' TRY-PROMOTE E-CAD-GATE TTHROWS
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET nip TFALSE
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET  nip TFALSE
+STORE-RESET
 
 \ ---- EXPLAIN: repair packets for the non-pass gates ------------------------
-\ certify + golden + gradcheck all pass on host, so only PROFILE (device) emits a packet.
+\ GRADCHECK passes; each missing independent prerequisite emits a repair packet.
 EXPLAIN CT-SAVE
-s" packet.certify"                 CT-NOTIN
-s" packet.gradcheck"               CT-NOTIN
-s" packet.golden"                  CT-NOTIN
-s" packet.profile: class=not-run"  CT-IN
-s" repair=run-device-profile"      CT-IN
-s" repro=model:FFN"                CT-IN
+s" packet.certify: class=not-run" CT-IN
+s" packet.golden: class=not-run"  CT-IN
+s" packet.gradcheck"              CT-NOTIN
+s" packet.profile: class=not-run" CT-IN
+s" repro=model:FFN"               CT-IN
 
 \ ---- numeric-policy gate reacts to the PER-OP requested policy (executed flip) --
 \ REGION-POL folds each op's intrinsic domain (NPOL:OP-DOM) over region 0, so the
@@ -382,8 +293,8 @@ s" repro=model:FFN"                CT-IN
 \ relative requested); the exact region REFUSES with the named E-NPOL-APPROX (relative
 \ cannot satisfy exact). An exact (f32) golden promotes the exact region too, so the
 \ verdict flips on both the requested policy AND the achieved precision. (On host the
-\ real GOLDEN is always f32/exact; this injects the TF32 achieved leg the device golden
-\ would carry - the same EVID:prec-class seam the FFN real PROMOTE above threaded.)
+\ external host GOLDEN is f32/exact; this injects the TF32 achieved leg a device golden
+\ would carry.)
 : NPOL-GATE ( EVID:prec-class -- )  REPORT:NEW swap PROMOTE-NPOL drop ;  \ report-path gate over live region 0
 : TF32-GATE ( -- )  EVID-PREC--CLASS:PREC-TF32 NPOL-GATE ;   \ relative (TF32) golden
 : F32-GATE  ( -- )  EVID-PREC--CLASS:PREC-F32  NPOL-GATE ;   \ exact (f32) golden
@@ -397,19 +308,6 @@ LOWER drop
 ' TF32-GATE E-NPOL-APPROX TTHROWS                         \ relative golden cannot satisfy exact request -> refuse
 ' F32-GATE  0             TTHROWS                         \ exact golden satisfies exact request -> promote (flip)
 STORE-RESET  SK-TAB-RESET  REPLAY-RESET
-
-\ ---- refusal fixture: a CAST model whose GOLDEN is not-run -> PROMOTE refuses -
-\ CAST has no host oracle (incomplete op), so GOLDEN is not-run: it never reaches
-\ pass, so the CAD 7c gate set refuses (E-CAD-GATE) and PROMOTE-REPORT throws before
-\ any row lands - proving the gate still fails closed on a non-promotable model.
-MODEL: MCAST ( x:2x4 -- y ) CAST ;
-GOLDEN dup G-GOLDEN REPORT:GATE-TAG@ V-NOTRUN T= drop
-FULL-REPORT PROMOTE-OK? TFALSE drop
-STORE-RESET
-' TRY-PROMOTE E-CAD-GATE TTHROWS
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET nip TFALSE
-0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET  nip TFALSE
-STORE-RESET
 
 \ ---- movement ops: capture grammar, IR facts, verdicts, MEMORY rows ---------
 \ concat materializes (v1); an aligned row-slice dissolves (free) - no traffic.

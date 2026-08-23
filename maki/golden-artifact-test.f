@@ -1,8 +1,8 @@
 \ maki/golden-artifact-test.f - checked tests for external GOLDEN reference artifacts.
 \ save->load->check round-trips; a corrupted / out-of-tolerance stored output FAILs; a
 \ within-tolerance perturbation still PASSes; a missing artifact is not-run; a save on a
-\ non-host-executable model fails closed; GOLDEN-INTO prefers an artifact over the
-\ self-consistency v1; and GA-BIND-SYNTH fills gather INDEX slots with a varied in-range
+\ non-host-executable model fails closed; the host gate uses an artifact and otherwise
+\ reports NOT-RUN; and GA-BIND-SYNTH fills gather INDEX slots with a varied in-range
 \ row permutation whose executed output discriminates real row selection from both a
 \ row-0-only fill and an index-ignoring positional copy. The store lives under a
 \ throwaway CAD store root (STORE-RESET).
@@ -85,7 +85,7 @@ GA-RE$ GT-SAVE  s" not host-executable" GT-IN
 ' TRY-SAVE-CAST E-GA-UNSUP TTHROWS
 ' TRY-GA-PI      E-GA-PARSE  TTHROWS
 
-\ ---- GOLDEN-INTO prefers the external artifact (real comparison) -------------
+\ ---- the host gate prefers the external artifact (real comparison) -----------
 MODEL: GA-RT ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
 GA-EXISTS? TTRUE
 GOLDEN
@@ -94,12 +94,12 @@ dup G-GOLDEN REPORT:GATE-REASON@ GT-SAVE  s" external artifact GA-RT matched" GT
 dup REPORT:RENDER GT-SAVE  s" golden: external reference artifact comparison" GT-IN
 drop
 
-\ ---- ...and falls back to self-consistency when no artifact exists -----------
+\ ---- ...and reports no independent evidence when no artifact exists ----------
 MODEL: GA-SELF ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
 GA-EXISTS? TFALSE
 GOLDEN
-dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
-dup G-GOLDEN REPORT:GATE-REASON@ GT-SAVE  s" host self-consistent" GT-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-NOTRUN T=
+dup G-GOLDEN REPORT:GATE-REASON@ s" no independent golden evidence" T$=
 drop
 
 \ ---- gather index slots fill with a varied in-range row permutation ----------

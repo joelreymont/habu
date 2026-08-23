@@ -1,15 +1,16 @@
 # Habu — Model CAD for GPUs
 
-**Change the model; Habu re-fuses, re-tiles, and re-tunes the GPU path.**
+**Change the model; Habu re-fuses and re-tiles the GPU path.**
 
 Habu keeps the optimization loop at the model level: one live REPL where
-fusion, memory coalescing, tiling, validation, profiling, and tuning stay in
-sync with model edits — the way EDA keeps placement, routing, design-rule
-checks, and timing in sync with a schematic.
+fusion, memory coalescing, tiling, and available validation stay in sync with
+model edits — the way EDA keeps placement, routing, design-rule checks, and
+timing in sync with a schematic.
 
-Whether a change is typed by a person or proposed by an LLM, it passes the
-same gates before promotion: author-time type check, golden test against a
-reference, gradcheck for generated backward code, and device profile.
+Whether a change is typed by a person or proposed by an LLM, the checker and
+available independent golden and gradcheck paths judge it the same way.
+Promotion is currently withheld because CERTIFY and PROFILE have no real
+producers.
 
 ## What "Model CAD" means
 
@@ -148,7 +149,8 @@ useful model blocks from one REPL.
 The REPL is host-resident; the GPU sees generated kernels. The REPL
 orchestrates the whole loop: model definition, lowering, fusion planning,
 layout planning, tiling, PTX emission, assembly and driver loading, launch,
-golden checks, gradchecks, profiling, autotuning, artifact caching.
+golden checks, gradchecks, and gate reporting. Profiling, autotuning, and
+artifact caching remain pending.
 
 A target interaction should feel like:
 
@@ -163,17 +165,17 @@ coalescing:   all hot loads coalesced; one masked tail path
 schedule:     selected 64x128x32, 4 warps, 2 stages
 numerics:     golden pass
 backward:     generated; gradcheck pass
-profile:      memory-bound region at 92% measured roof
-cache:        implementation saved for shape/dtype/device
+profile:      not run; no profiler
+promote:      refused; CERTIFY and PROFILE did not pass
 
 maki> TRY FFN WITH GELU-APPROX=poly3
 numerics: max error within tolerance
-profile:  1.08x faster on sm_87
-cache:    promoted candidate
+profile:  not run; no profiler
+promote:  refused; CERTIFY and PROFILE did not pass
 ```
 
-This is the differentiator: the model, implementation, validation,
-measurement, and tuning loop are live together.
+This is the differentiator: the model, implementation, validation, and gate
+reports are live together.
 
 ### Automatic mega-fusion
 
@@ -280,8 +282,8 @@ The reviewed plan with phases, acceptance criteria, and dependencies is
    MMA, epilogue fusion, shape-keyed search.
 5. **One-REPL command loop** — `MODEL:` `LOWER` `FUSE` `MEMORY` `TILE`
    `CERTIFY` `GOLDEN` `GRADCHECK` `PROFILE` `TUNE` `PROMOTE` `EXPLAIN`.
-6. **Agent loop** — agents propose; legality, golden, gradcheck, and profile
-   gates decide; only winners are promoted.
+6. **Agent loop** — agents propose and the available gates report; promotion
+   remains refused until every prerequisite has a real passing producer.
 
 ## The machinery: checked Forth
 

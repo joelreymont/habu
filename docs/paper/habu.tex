@@ -22,16 +22,17 @@ every word, and Maki, a model-development layer that treats GPU compilation
 as computer-aided design: models are captured into an IR, fused by a
 planner under typed legality rules with exact byte accounting, lowered to
 generated PTX kernels---one per fusion region, for elementwise, row-reduce,
-matmul, and movement region classes---and \emph{verified}: every generated
-kernel, and the whole multi-region model, is proven element-wise against a
-checked host reference on the target device before its artifact is
-promoted with a recorded evidence trail. The same IR differentiates:
+matmul, and movement region classes---and evaluated against a checked host
+reference on the target device, both per kernel and over the whole
+multi-region model. These device goldens and their fault-injection controls
+run; artifact promotion and evidence persistence remain withheld until
+independent CERTIFY and PROFILE producers exist. The same IR differentiates:
 adjoints are generated, gradient-checked against finite differences, and
 used to train a model from scratch through the identical pipeline, with a
 seeded convergence gate committed as a test. The entire toolchain is a
 single self-hosted binary under 128\,KB. On a Jetson Orin NX we measure
 that this verification carries no measured performance tax: generated,
-gate-proven kernels match hand-written Triton at the streaming-memory
+device-checked kernels match hand-written Triton at the streaming-memory
 roof, while a whole class of kernel-authoring errors---measured
 head-to-head against Triton on the same device---moves from runtime to
 author time, and the gates catch defect classes (silent copy-back loss,
@@ -69,9 +70,9 @@ exact traffic in bytes; a memory planner reports coalescing classes; a
 schedule layer names candidate kernels per region family under a
 content-addressed key; and a lowering layer generates one PTX kernel per
 region. At every stage the system emits facts that a person---or an
-agent---can audit, and the final artifact is admitted only through gates
-(\S\ref{sec:gates}). Only a model that passes is \emph{promoted}: its
-schedule selection and evidence are recorded in a content-addressed store.
+agent---can audit. Available independent gates run, but \code{PROMOTE}
+currently refuses and records neither a schedule nor evidence because
+CERTIFY and PROFILE have no real producers (\S\ref{sec:gates}).
 
 This paper contributes:
 \begin{enumerate}
@@ -79,10 +80,11 @@ This paper contributes:
   stack-discipline and composition error class at author time, measured
   head-to-head against Triton on identical tasks and hardware
   (\S\ref{sec:errors});
-\item Model CAD: the first ML compilation pipeline we know of whose
-  artifacts are admitted by device-proof with recorded evidence rather
-  than emitted on trust---at measured parity with the status quo where
-  memory-bound, i.e., verification without a performance tax
+\item Model CAD: an ML compilation pipeline whose candidates undergo
+  device-vs-host comparison with fault-injection controls rather than being
+  emitted on trust---at measured parity with the status quo where
+  memory-bound. Promotion and evidence persistence remain deliberately
+  withheld until all prerequisites have real producers
   (\S\ref{sec:cad});
 \item a verified-gradient facility in which the training IR and the
   gradchecked IR are the same object, demonstrated by training a model
@@ -104,23 +106,25 @@ three axes. First, the composition is \emph{typed}: fused chains are
 checked words whose stack effects the compiler verifies, so a malformed
 composition fails to compile rather than misbehaving on device. Second,
 fusion is a \emph{planner decision with an audit trail} (regions, typed
-split reasons, byte deltas), not an authoring convention. Third, artifacts
-are \emph{gated}: device-vs-host verification is part of compilation, not
-an external test the author may skip.
+split reasons, byte deltas), not an authoring convention. Third, available
+device-vs-host comparisons run as explicit gates; artifact enforcement
+remains pending real CERTIFY and PROFILE producers.
 
 Automatic fusion above kernel DSLs is the province of graph compilers such
 as \code{torch.compile}/Inductor~\cite{pytorch2}, which fuse and emit
 Triton kernels. Inductor decides fusion but neither types the result nor
 accounts for it in falsifiable units, and its artifacts carry no
 verification evidence; Habu's planner reports exact bytes (the same number
-serves as fusion objective, traffic report, and roofline denominator) and
-its artifacts are admitted by proof. Modern Triton (a Python DSL on MLIR)
-retains per-kernel horizons and per-process JIT autotuning; Habu's tuning
-is persistent and content-keyed, which matters on embedded targets where
-warmup is a deployment cost. A separate lineage---translation validation
-and proof-carrying artifacts---informs the gate design: not a formal
-semantics proof, but a machine-checked, reproducible equivalence test on
-the target device, recorded per artifact.
+serves as fusion objective, traffic report, and roofline denominator), and
+its candidate kernels undergo target device-vs-host comparison. Promotion
+and evidence persistence are currently withheld. Modern Triton (a Python
+DSL on MLIR) retains per-kernel horizons and per-process JIT autotuning;
+Habu plans persistent, content-keyed tuning to avoid deployment warmup on
+embedded targets, but that path remains pending. A separate
+lineage---translation validation and proof-carrying artifacts---informs the
+gate design: not a formal semantics proof, but a machine-checked,
+reproducible equivalence test on the target device, reported per candidate
+while durable promoted evidence remains pending.
 
 \section{Habu: The Checked Language}\label{sec:lang}
 Habu is a concatenative language: a program is a sequence of words, each
@@ -225,8 +229,9 @@ tree resolves driver symbols by hand.
 
 \section{Model CAD}\label{sec:cad}
 Maki treats model compilation as computer-aided design: every stage
-produces inspectable facts, every decision has a reason, and the artifact
-is admitted by proof.
+produces inspectable facts and every decision has a reason. Independent
+device or external-reference comparisons can pass, but the artifact is not
+promoted until every prerequisite has a real passing producer.
 
 \paragraph{Capture.} \code{MODEL:} parses a signature of named, shaped
 inputs and a body of operation words into an IR node table:
@@ -298,12 +303,13 @@ bandwidth.
 
 \paragraph{Schedules and keys.} Each region class has a schedule family
 (for GEMM: block tile, $K$-step, warps, stages) with a closed-form
-default and a bounded searched space. Selections and evidence live in a
-file-backed store under a content key: region signature, shape class,
+default and a bounded searched space. The file-backed store defines a
+content key for selections and evidence: region signature, shape class,
 dtype, layout, alignment class, target architecture, \emph{engine build}
 (the SHA-256 of the running toolchain binary, resolved by the engine
 itself from its process image), and assembler version. A schedule
-measured by one engine build is never silently replayed under another.
+measured by one engine build is never silently replayed under another;
+today, \code{PROMOTE} writes neither selection nor evidence rows.
 
 \paragraph{Lowering.} Each region compiles to one generated PTX kernel
 named \code{REGION\_$k$}. Four class emitters exist: flat elementwise
@@ -329,23 +335,19 @@ kernel error rather than representation.
 
 \subsection{Gates and Promotion}\label{sec:gates}
 \begin{itemize}
-\item \textbf{CERTIFY}: static legality of the whole plan.
+\item \textbf{CERTIFY}: not run; no independent certifier is implemented yet.
 \item \textbf{GOLDEN}, with precedence: an external reference artifact
   (saved input/output tensors with per-dtype tolerances---the seam for
   porting existing models) if one exists; else the \emph{device} model
-  golden; else a host self-consistency oracle. Generated kernels are
-  proven, not trusted.
+  golden; else not run. Re-executing the host implementation is not
+  independent evidence.
 \item \textbf{GRADCHECK}: generated adjoints against central finite
   differences at tensor granularity (\S\ref{sec:train}).
-\item \textbf{PROFILE}: measured occupancy and roofline placement;
-  mandatory to run, non-blocking. \todo{populate when the roofline
-  microbenches land.}
+\item \textbf{PROFILE}: not run; no profiler is implemented yet.
 \end{itemize}
-\code{PROMOTE} admits an artifact only when certify and golden pass and
-gradcheck did not fail; the evidence row records exactly what ran---on
-the Jetson, a promoted FFN records
-\code{certify=pass|golden=device-pass:f32|gradcheck=pass|profile=not-run}
-(the golden leg's suffix names the licensed precision it was judged under).
+\code{PROMOTE} admits an artifact only when all four gates pass. Because
+CERTIFY and PROFILE currently have no real producers, promotion refuses
+and persists no evidence or schedule row.
 Failures render as \emph{repair packets}: a typed failure class, the
 offending node or region, a reproduction pointer, and a suggested next
 action---designed so an agent or a person can act on the report without
@@ -518,13 +520,14 @@ TF32 tensor-core instructions (measured relative error ${\sim}8{\times}
 kernels)---a precision our golden gate would currently \emph{reject}
 under the matmul tolerance. The first \code{mma.sync} rung is landed and reported with the same
 honesty: fragment layout proven element-exact in isolation before tiling,
-the kernel admitted under a gate-\emph{licensed} TF32 tolerance (evidence
-row \code{golden=device-pass:tf32}; an injected $0.5\%$ fault still
-fails), but at 398\,GFLOP/s it does not yet beat the tuned f32 tile:
+the device golden passes under the TF32 tolerance and an injected $0.5\%$
+fault still fails. Promotion nevertheless refuses and writes no evidence
+because CERTIFY and PROFILE have no real producers. At 398\,GFLOP/s it
+does not yet beat the tuned f32 tile:
 \code{ptxas} shows 38 registers and no spills, so it is starved by scalar
 shared-memory fragment loads and conversion overhead, not compute---the
 next rungs (\code{ldmatrix} fragment loads, wider A-reuse warp shapes,
-autotuned staging) are exactly what the persistent tuner will search. \todo{cp.async stages, tensor-core
+autotuned staging) are what the planned persistent tuner would search. \todo{cp.async stages, tensor-core
 MMA under a licensed-precision row, persistent-vs-JIT autotune warmup,
 end-to-end model latency vs torch.compile.}
 
@@ -540,9 +543,9 @@ memory-bound, and a v4 candidate that closed to the same 63\,GB/s roof
 Triton occupies). The difference is failure mode and recourse: heuristics
 miss silently---Triton's own evaluation concedes the split-$K$ regime,
 and low-priority targets inherit generic configs---and the author's
-recourse is rewriting; here schedules are data, and the recourse is a
-searched candidate, selected by measurement on the deployed device and
-replayed by content key with zero warmup.
+recourse is rewriting. Here schedules are data and device measurements can
+compare candidates; automatic selection and content-keyed zero-warmup replay
+remain pending.
 
 \paragraph{Why no block-level dataflow analysis.} Readers comparing
 against Triton and PyTorch will ask where our equivalent of block-level
@@ -578,10 +581,10 @@ removes traffic---and our byte model makes the gap exact and falsifiable
 per model. The honest opponent of that argument is the per-kernel
 paradigm, not Triton-plus-Inductor: an automatic-fusion layer above
 Triton occupies the same scope, and against it our residual claims are
-exactness (a falsifiable cost model), verification (gated artifacts),
-and persistence (offline-amortized tuning). Whether those structural
-advantages outweigh maturer per-kernel codegen on real workloads is an
-empirical question---precisely the one the pending measurements answer.
+exactness (a falsifiable cost model), available device comparison, and a
+planned persistence path (offline-amortized tuning). Whether those
+structural advantages outweigh maturer per-kernel codegen on real workloads
+is an empirical question---precisely the one the pending measurements answer.
 
 \section{Effectiveness of Each Mechanism}\label{sec:ablation}
 Each mechanism is paired with a committed, rerunnable experiment
@@ -717,11 +720,12 @@ come from one device class; breadth is future work.
 Habu demonstrates that a kernel target can be \emph{checked} and a
 compilation pipeline can be \emph{accountable}: typed compositions
 instead of unchecked authorship, exact byte accounting instead of
-folklore, device-proven artifacts with recorded evidence instead of
-emitted hope, and gradients that are generated, checked, and then trusted
-to train. The system is small enough to read---one self-hosted binary
-under 128\,KB---and every claim above is a running test in its
-repository. What remains, deliberately unclaimed until measured, is the
+folklore, device-vs-host checks with fault-injection controls instead of
+emitted hope, and explicit refusal instead of fabricated promotion
+evidence while required producers are absent. Gradients are generated,
+checked, and then trusted to train. The system is small enough to read---one
+self-hosted binary under 128\,KB---and every claim above is a running test in
+its repository. What remains, deliberately unclaimed until measured, is the
 compute-bound contest; the machinery to run it honestly is what this
 paper described.
 

@@ -11,7 +11,7 @@
 \ This is the shared driver, defining words only (no load-time run). Its consumers stage the
 \ model fixtures and drive the run:
 \   maki/lower/model-device-test.f      - the FFN chain (LINEAR GELU LINEAR RMSNORM) + a movement
-\                                         model, plus the cad.f OPTIMIZE/PROMOTE gate (LMDM-CAD-GATE).
+\                                         model, plus the cad.f promotion refusal (LMDM-CAD-GATE).
 \   maki/lower/model-mlp-device-test.f  - the dot's named relu MLP (LINEAR RELU LINEAR) whole-model
 \                                         e2e forward/eval proof.
 \
@@ -22,8 +22,8 @@
 \                                           model golden, print the reason + per-element evidence, assert
 \                                           V-PASS. <src> is the model's MODEL: ... ; source text (the
 \                                           spawned emit child re-builds the IR from it).
-\   LMDM-CAD-GATE                         - the cad.f gate path: OPTIMIZE records golden device-pass and
-\                                           PROMOTE writes an evidence row with golden=device-pass:f32.
+\   LMDM-CAD-GATE                         - GOLDEN passes device-vs-host; PROMOTE refuses without
+\                                           independent CERTIFY and PROFILE evidence and writes nothing.
 \   LMDM-END                              - off-device T-REPORTs a pass; else cleans the toolchain + dir.
 \
 \ Corruption sensitivity of the whole-model golden (that a wrong kernel is REJECTED, not silently
@@ -131,7 +131,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    LMDM-EVIDENCE
    v V-PASS T= ;
 
-\ ---- the cad.f gate path: OPTIMIZE golden device-pass + PROMOTE evidence row -------------------
+\ ---- the cad.f gate path: device GOLDEN passes; incomplete evidence refuses promotion ----------
 \ Assumes the model + its cubins are already built (LMDM-GOLD ran). No external artifact
 \ (STORE-RESET), so the golden gate takes the DEVICE leg (artifact would otherwise win).
 : LMDM-CAD-GATE ( -- )
@@ -139,15 +139,17 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    STORE-RESET
    s" == OPTIMIZE (device golden into the gate) ==" type cr
    OPTIMIZE
+   dup G-CERTIFY REPORT:GATE-TAG@ V-NOTRUN T=
    dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+   dup G-PROFILE REPORT:GATE-TAG@ V-NOTRUN T=
    dup G-GOLDEN REPORT:GATE-REASON@ type cr                  \ verbatim device golden reason
    drop
-   s" == PROMOTE (evidence row) ==" type cr
-   PROMOTE drop
-   0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
-   found TTRUE
-   ra ru type cr                                          \ verbatim evidence row
-   ra ru s" golden=device-pass:f32" CONTAINS? TTRUE      \ device leg + its licensed precision
+   s" == PROMOTE refuses without certifier/profile evidence ==" type cr
+   [: PROMOTE drop ;] E-CAD-GATE TTHROWSQ
+   0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET
+   {: evid-a:ptr evid-u:n evid-found:bool :}  evid-found TFALSE
+   0 FP-REGION-ID TARGET:SM87 SK-KEY$ SCHED-GET
+   {: sched-sel:n sched-found:bool :}  sched-found TFALSE
    STORE-RESET ;
 
 : LMDM-BEGIN ( -- )
