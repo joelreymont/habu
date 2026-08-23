@@ -49,9 +49,7 @@
 \
 \ Focused command: `bin/hb --load test/compiler/ir-structure-proof.f`. The gate
 \ compiles the model itself, so nothing has to be built first. It shells out to
-\ `rocq` with no capability probe, exactly as the identity and interning gates
-\ do, which is why it runs in the standalone stdlib gate and is documented a
-\ manual gate rather than mirrored into the resident fast tier.
+\ `rocq` with no capability probe and is registered directly in the native suite.
 
 require lib/prelude.f
 require lib/errors.f

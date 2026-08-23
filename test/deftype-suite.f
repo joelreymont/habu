@@ -2,7 +2,7 @@
 \ (lib/type/deftype.f: package-scoped arity-0 type-family nominals + generated
 \ converters). Run BY THE ENGINE over stdin, like test/type-family-suite.f:
 \     bin/hb < test/deftype-suite.f
-\ Registered as a positive gate case in test/candidate-validation.f.
+\ Registered directly in the native suite.
 \
 \ This suite LOCKS the value-nominal contract against regression. It proves a
 \ `DEFTYPE NAME` type behaves EXACTLY like the built-in CT-roles the older

@@ -1,9 +1,8 @@
 \ stdlib-date-test.f - focused tests for lib/date.f.
 \
 \ Uses the shared lib/test.f assert vocabulary (T= / TTRUE / T$= / T-RESET /
-\ T-REPORT), like the sibling lib/property-test.f. A test file loaded into the
-\ resident in-process gate image (GSI-INCLUDE, stdlib/tail-fast) shares one
-\ dictionary with the already-loaded test framework, so defining a private T= /
+\ T-REPORT), like the sibling lib/property-test.f. The test shares one dictionary
+\ with the already-loaded test framework, so defining a private T= /
 \ TTRUE / T$= here collides (duplicate definition: T=). Reusing the framework
 \ words composes cleanly standalone, spawned, and in-process.
 

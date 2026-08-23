@@ -8,16 +8,16 @@
 \ first), never a stale shared /tmp cubin. The fusion emit prelude already provides every
 \ checked lib attention-cg requires (errors/string/float/fmt + emit/cg/header), so the emit
 \ word is reused unchanged. The emit half needs no device and is proven host-side by
-\ tools/ptx/attention-bench-test.f; assemble + launch need the CUDA toolchain, so the whole
-\ device leg sits behind CUDA:OPEN? and is a recorded SKIP off-device (this file still
-\ check-loads). ABI: pQ@0 pK@8 pV@16 pO@24 pN@32 pD@36; grid=N, block=N.
+\ tools/ptx/attention-bench-test.f; assemble + launch remain a manual CUDA-toolchain
+\ operation. ABI: pQ@0 pK@8 pV@16 pO@24 pN@32 pD@36; grid=N, block=N.
+\ Run: bin/hb --load tools/ptx/attention-bench.f
+\ Requires a CUDA device and ptxas.
 \
 \ FLOP MODEL (per launch, one head, N queries x D dims):
 \   QK^T   : each of N queries dots N keys over D  -> N*N*D multiply-adds = 2*N*N*D flops
 \   softmax: per row max + (sub,exp,add) + reciprocal over N elements ~ 5*N*N flops
 \   PV     : each of N*D outputs sums S[i]*V[i]    -> N*N*D multiply-adds = 2*N*N*D flops
 \   total  = 4*N*N*D + 5*N*N flops   (the softmax term is a small correction to the two GEMMs)
-\ Run on the Orin: scp to zed:Work/habu then `bin/hb --load tools/ptx/attention-bench.f`.
 
 require lib/errors.f
 require lib/string.f

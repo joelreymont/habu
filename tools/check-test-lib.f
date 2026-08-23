@@ -61,14 +61,11 @@ $100001 constant OVERCAP-SOURCE-LEN
 \ eight gate pool slots are busy; the `--load tools/check.f` children are 2.0 to
 \ 3.2 s and 7.5 to 8.7 s under the same two conditions. WORST-CHILD-MS records
 \ the busiest measurement. HANG-MARGIN is 4 rather than the order of magnitude
-\ the cheaper fixtures can afford, because the product is bounded from above as
-\ well: the gate gives this whole suite 120 s on an idle box
-\ (STDLIB-GATE:SUITE-TIMEOUT-MS, which stretches with the measured load factor
-\ but never shrinks below that), and a guard above the nominal figure would
-\ always lose the race to the suite guard and never get to name anything.
+\ the cheaper fixtures can afford, because the product is bounded from above by
+\ the registry's outer timeout as well.
 \ Between those two bounds the
 \ guard is unreachable by load, since a host slow enough to stretch one child to
-\ 54 s would have blown the phase guard on the earlier cases already.
+\ 54 s would have blown the earlier cases already.
 13500 constant WORST-CHILD-MS
 4 constant HANG-MARGIN
 WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS

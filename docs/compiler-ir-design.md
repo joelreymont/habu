@@ -2569,7 +2569,7 @@ Every IR has a hostile fixture for:
 - source-tape/checker/HIR digest binding;
 - stage verifier after every pass in debug/gate builds;
 - old/new differential corpus during migration;
-- full `test/run.f` candidate validation;
+- full native `test/run.f` registry;
 - AOT, REPL, snapshot, debugger, profiler, and image tests;
 - cross-target macOS and Linux AArch64 fixtures;
 - encoder/fixup golden vectors;

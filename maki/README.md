@@ -80,11 +80,6 @@ the group, test name, pass/fail status, and elapsed time:
 bin/hb --load maki/test.f
 ```
 
-`maki/device-smoke.f` is the device-FFI canary: a stale `bin/hb` (predating the
-AAPCS64 FFI-ABI primitives) fails to load it, so the gate stops early at the FFI
-layer instead of erroring cryptically deep in a device tool. `maki/device-smoke.f`
-then runs a live `cuInit`/`cuDeviceGet` smoke on the Orin (SKIPPED off-device).
-
 ## Components (v0, all runnable + tested)
 
 `tensor` (shape/dtype) · `autograd` (VJP rules + numeric gradcheck) · `optim`

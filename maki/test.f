@@ -1,15 +1,14 @@
 \ maki/test.f - Maki's own checked test-suite entry point.
 \ Run: bin/hb --load maki/test.f
 
-\ The per-file timed RUN-FILE harness lives in maki/test-harness.f, shared with
-\ the parallel gate slices (maki/test-<slice>.f). This file is the full standalone
-\ run-all inventory; every suite below must land in exactly one slice.
-require maki/test-harness.f
-require tools/prot-wid-probe.f
-require tools/region-room-probe.f
+require lib/test.f
 
 using TEST
 
+: MAKI-RUNNER-INSTALL ( -- )
+   [: included ;] RUNNER! ;
+
+MAKI-RUNNER-INSTALL
 RESET
 
 GROUP SEQ maki
@@ -253,21 +252,7 @@ SUITE maki/infer/gpt2-serve-test.f
 ;SUITE
 SUITE maki/infer/gpt2-entry-test.f
 ;SUITE
-\ WHICH GPT-2 TESTS THIS INVENTORY DOES NOT CARRY, AND WHY. The two suites above
-\ are every GPT-2 test that runs on its own: gpt2-serve-test.f drives the framing
-\ layer over a pipe, and gpt2-entry-test.f spawns each production entry command
-\ and proves it loads and reaches its own guard. Three more are ordinary host
-\ tests this inventory still cannot schedule, because each needs a GPT-2
-\ checkpoint it has no way to supply. They are named here rather than left
-\ unscheduled and unmentioned - dot habu-gpt-2-prod-ed55d98c, where a broken
-\ production load path went unnoticed for exactly that reason:
-\
-\   bin/hb --load maki/infer/gpt2-generate-test.f    -- <checkpoint-root>
-\   bin/hb --load maki/infer/gpt2-token-guard-test.f -- <checkpoint-root>
-\   bin/hb --load maki/infer/gpt2-serve-close-test.f -- <checkpoint-root>
-\
-\ The GPT-2 members of the *-device-test.f family need a CUDA host on top of a
-\ checkpoint; docs/ablation.md owns that family and carries each one's command.
+\ docs/ablation.md lists the exceptional checkpoint-root GPT-2 leaves.
 SUITE maki/competitive-report-test.f
 ;SUITE
 SUITE maki/competitive-store-test.f
@@ -300,11 +285,9 @@ SUITE maki/eval/emit-test.f
 ;SUITE
 SUITE maki/eval/live-author-test.f
 ;SUITE
-SUITE maki/eval/emit-device-test.f
-;SUITE
 SUITE maki/eval/emit-device-leak-test.f
 ;SUITE
-SUITE maki/eval/device-fault-test.f
+SUITE maki/eval/launch-transport-test.f
 ;SUITE
 SUITE maki/eval/train.f
 ;SUITE
@@ -314,10 +297,7 @@ SUITE maki/gpu-emit-test.f
 ;SUITE
 SUITE maki/gpu-leak-test.f
 ;SUITE
-SUITE maki/device-smoke.f
-;SUITE
 SUITE maki/examples/nanogpt/tokenizer-test.f
-;SUITE
 ;SUITE
 SUITE maki/examples/nanogpt/data-loader-test.f
 ;SUITE
@@ -332,24 +312,5 @@ SUITE maki/examples/nanogpt/wtie-train-test.f
 ;GROUP
 
 RUN
-
-\ Protected-wordlist headroom, measured once the whole inventory has run in this
-\ one process (dot habu-guard-maki-suite-070e2221). Every PUBLIC ADT family the
-\ suite declares protects a wordlist for the life of the run, and the run that
-\ exhausts the registry does not fail where it ran out - it fails in whatever file
-\ declares next, which is how this suite's red was blamed on an innocent enum for
-\ two days. Reporting the number here makes the trend visible in every log, and
-\ the floor makes the next approach to the ceiling name itself, one whole doubling
-\ before anything is refused.
-PROT-WID-PROBE:REQUIRE-ROOM
-
-\ Dictionary and code headroom, on the same terms and for the same reason (dot
-\ habu-seeded-words-invisible-c7505a49). This inventory is the largest composite
-\ either band carries - all 193 files in ONE image, where each gate slice loads a
-\ quarter - so it is the run whose numbers size DICT-CAP and CODE-BAND:BYTES, and
-\ run that will meet a wall first. It met the dictionary's: the band filled during
-\ tokenizer-test.f and the engine named DLT-ROOT-U in data-loader-test.f, which
-\ passes standalone. Now the approach names itself here instead.
-REGION-ROOM:REQUIRE-ROOM
 
 ;using

@@ -1858,10 +1858,9 @@ package HOLD-EMIT
 public
 variable LHOLDQ
 ;package
-\ ADT lowering keywords (TFAM 10, docs §16): `construct` dispatches through the
-\ CMM-CELL mode machine (J-CONSTRUCT + EM-COMPILE-ADT-MODE, slice 2; execution
-\ gate-pinned by GE-CONSTRUCT-EXEC). The MATCH rows are data-only until slice 3
-\ wires the eliminator states — those tokens still fail closed as undefined.
+\ ADT lowering keywords (TFAM 10, docs §16): `construct` and MATCH dispatch
+\ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
+\ CLI positives, negatives, forged-tag diagnostic, and checked round-trips.
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-FIND-GLOBAL)
 variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$

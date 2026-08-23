@@ -8,9 +8,8 @@
 \ module, so it is written here once.
 \
 \ `/usr/bin/env` is the path lookup: the proof assistant is a toolchain
-\ dependency on PATH, not a file at a fixed place in the tree. A gate that calls
-\ this fails outright on a host without `rocq`, which is why both gates run in the
-\ standalone stdlib gate rather than in the resident fast tier.
+\ dependency on PATH, not a file at a fixed place in the tree. A test that calls
+\ this fails outright on a host without `rocq`.
 
 require lib/prelude.f
 require lib/errors.f

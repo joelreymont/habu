@@ -1,8 +1,8 @@
 \ cast-negative-suite.f - reject contract for the CAST: checked retype declarer.
 \ Run BY THE ENGINE over stdin, like test/deftype-suite.f:
 \     bin/hb < test/cast-negative-suite.f
-\ Registered as a positive gate case in test/candidate-validation.f: it asserts
-\ every reject in-process and prints ok, so the process exits 0 with clean stderr.
+\ The native registry runs it as a positive case: it asserts every reject
+\ in-process and prints ok, so the process exits 0 with clean stderr.
 \
 \ Each illegal cast is rejected by its NAMED reject:
 \   - E-CAST-ARITY : more than one input term, or more than one output term

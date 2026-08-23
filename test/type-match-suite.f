@@ -8,9 +8,8 @@
 \ Family/variant tokens are captured before locals/control/word lookup;
 \ OF/ENDOF are shared with CASE and dispatched by the enclosing frame kind.
 \ Family resolution is signature scope (eliminability = nameability), unlike
-\ construct's owner-only rule. All fixtures are CHECK-only candidates —
-\ construct lowering landed with item 10 slice 2 (GE-CONSTRUCT-EXEC); MATCH
-\ lowering is item 10 slice 3, so MATCH bodies stay engine fail-closed.
+\ construct's owner-only rule. test/match-factor-pin.f owns the native CLI
+\ positives, negatives, forged-tag diagnostic, and checked round-trips.
 
 require test/checker-assert.f
 

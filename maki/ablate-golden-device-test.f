@@ -125,7 +125,7 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
    [: ABL-LAUNCH-NO-DTOH ;] E-PTX-READBACK TTHROWSQ
    s"   sentinel fired: E-PTX-READBACK (dropped copy-back caught)" type cr ;
 
-\ ---- off-device SKIP scaffolding (device-smoke pattern) --------------------------------------
+\ ---- off-device availability ------------------------------------------------------------------
 : ABL-BEGIN ( -- )
    T-RESET
    CUDA:OPEN? 0= if

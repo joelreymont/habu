@@ -1,7 +1,6 @@
 \ gate-diagnostics.f - entry wrapper for checker diagnostic contracts.
 \
-\ Load after test/gate-common.f.
-
+require test/gate-common.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 require lib/date.f
@@ -27,7 +26,7 @@ include test/gate-diagnostics-entry-lib.f
 
 package GATE-DIAGNOSTICS
 
-' DISPATCH
+' RUN
 
 ;package
 

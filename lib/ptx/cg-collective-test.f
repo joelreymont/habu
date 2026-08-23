@@ -3,8 +3,7 @@
 \ EMIT-REDUCE lowers BLOCK-MAX / BLOCK-SUM to a two-level WARP reduction: a
 \ full-warp shfl.sync.down tree per 32-lane warp, per-warp partials staged to
 \ shared, then a final single-warp reduce - NOT the old O(B) thread-0 fold. This
-\ pins that shape off-device (the numeric proof is on the Orin:
-\ tools/ptx/softmax-launch.f + sum-launch.f), and pins the inactive-lane identity
+\ pins that shape off-device and pins the inactive-lane identity
 \ seed (-inf for max, 0 for sum) that must thread through BOTH shuffle levels so
 \ inactive lanes (tid>=%r1) and past-the-warp-count final lanes contribute the
 \ reducer identity, never garbage. In-process PTX capture; no device, no ptxas.

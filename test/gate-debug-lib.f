@@ -141,6 +141,6 @@ variable GDB-LS
    GDB-PROFILER-EXACT-ALL
    GDB-JITDUMP
    GT-CLEANUP
-   s" PASS: native prop/debug gate phase" type cr ;
+   s" PASS: native prop/debug tests" type cr ;
 
 ;using

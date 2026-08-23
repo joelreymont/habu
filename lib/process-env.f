@@ -110,8 +110,7 @@ public
 
 : PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a fd fd fd -- pid )
    {: pathz:ptr argv:ptr envp:ptr infd outfd errfd :}
-   pathz argv envp infd FD>N outfd FD>N errfd FD>N spawn-argv-env-io >PID
-   pathz swap PROCESS-TRACE:EXECUTED ;
+   pathz argv envp infd FD>N outfd FD>N errfd FD>N spawn-argv-env-io >PID ;
 
 : PROC-ENV-RESET ( -- )
    0 >COUNT PROC-ENV-N !

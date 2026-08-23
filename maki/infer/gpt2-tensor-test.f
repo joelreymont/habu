@@ -4,9 +4,9 @@
 \   1. HF tensor-name pins at the real 124M geometry via COPY-NAME? into caller
 \      buffers: all four globals, all thirteen layer-0 keys, a two-digit
 \      layer-11 name, and the 39-byte largest-representable-index render, each
-\      against the exact checkpoint spelling (census 160 = 4 + 12*13, pinned
-\      by the safetensors-test real-artifact leg over the SHA-256-pinned
-\      checkpoint); a too-small caller buffer answers NONE with the buffer
+\      against the exact checkpoint spelling (census 160 = 4 + 12*13, proved
+\      by maki/infer/gpt2-artifact-test.f over the SHA-256-pinned checkpoint);
+\      a too-small caller buffer answers NONE with the buffer
 \      untouched, and two interleaved copies into two distinct buffers leave
 \      both intact;
 \   2. shape pins at 124M (qkv weight [768,2304], fc [768,3072], mproj

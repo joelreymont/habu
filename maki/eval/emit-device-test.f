@@ -1,12 +1,12 @@
-\ maki/eval/emit-device-test.f - the device NUMERIC golden suite for the
+\ maki/eval/emit-device-test.f - manual device NUMERIC goldens for the
 \ sumnorm / gemm / attention authoring tasks (dot habu-eval-device-numeric-c2e98ec4).
 \
 \ This is the leg the structural autograder (maki/eval/emit.f) CANNOT be: it runs
 \ each EMITTED kernel on the Orin against a CPU reference and asserts the actual
-\ per-shape outcome. Keyed on the device-FFI probe (EVND:ON-DEVICE?, the
-\ maki/device-smoke.f pattern), NOT an ambient always-off gate: off-device it is a
-\ recorded SKIP and this file still check-loads; on the Orin it RUNS with no manual
-\ flag. Every assertion prints its measured max|err| (or ptxas rc) as evidence.
+\ per-shape outcome. This manual leaf requires CUDA. Every assertion prints its
+\ measured max|err| (or ptxas rc) as evidence.
+\ Run: bin/hb --load maki/eval/emit-device-test.f
+\ Requires a CUDA device and ptxas.
 \
 \ What each pinned wrong-but-green shape does on-device (see maki/eval/emit-device.f):
 \   sumnorm in/out swap / div-by-sum^2 : NUMERIC DIVERGENCE beyond tolerance (caught);
@@ -24,8 +24,7 @@ require maki/eval/emit-device.f
 : RUN-DEVICE-GOLDENS ( -- )
    T-RESET
    EVND:ON-DEVICE? 0= if
-      s" eval-emit-device: libcuda unavailable -> device numeric goldens SKIPPED (off-device; file check-loads)" type cr
-      T-REPORT exit
+      s" eval-emit-device: CUDA device is required" 74 die
    then
    s" device: cuInit OK -> running sumnorm/gemm/attention numeric goldens on " type  ATGT:LABEL$ type cr
    \ positive controls: the correct kernel matches the CPU reference within tolerance

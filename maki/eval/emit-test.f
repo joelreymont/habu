@@ -11,17 +11,14 @@
 \ attention Q/K swap and output-into-V all pass structure while computing the
 \ wrong result. The `wrong-but-green` block below pins those at their real
 \ grade 2 so a future grader strengthening flips them intentionally, not
-\ silently; only the device NUMERIC golden closes the class
-\ (habu-eval-device-numeric-c2e98ec4). The attention task is NOT free of
+\ silently. The attention task is NOT free of
 \ reachable non-zero wrong kernels: reorder/omission reject at 0, but a role
 \ swap grades 2. What the checker's linear-use discipline DOES catch for free
-\ is a dead normalized value (pinned as a 0 below). The device-golden leg is
-\ Orin-gated and recorded as a SKIP here (device-FFI SKIP pattern,
-\ maki/device-smoke.f).
+\ is a dead normalized value (pinned as a 0 below).
 
 require lib/test.f
 require maki/eval/emit.f
-require maki/eval/emit-device.f   \ shared wrong-but-green fixtures + the device numeric golden
+require maki/eval/emit-device.f   \ shared wrong-but-green fixtures
 
 T-RESET
 
@@ -104,37 +101,21 @@ s" attn no-softmax" T-LABEL
    EVAL:GRADE-ATTN 0 T=
 
 \ ---- wrong-but-green: same-type semantic bugs the STRUCTURAL gates miss ------
-\ These certify AND emit the required instructions, so structure passes and they
-\ grade GREEN(2) on the host. The host grade is STILL the real grade 2 here (no
-\ device); the class is now closed by the device NUMERIC golden
-\ (maki/eval/emit-device-test.f, dot habu-eval-device-numeric-c2e98ec4), which
-\ runs the EXACT same EVND:* fixture and reports per shape:
-\   - sumnorm in/out swap  -> NUMERIC DIVERGENCE on the Orin (EVND:SN-SWAP-CAUGHT?)
-\   - sumnorm div-by-sum^2  -> NUMERIC DIVERGENCE on the Orin (EVND:SN-SQSUM-CAUGHT?)
-\   - gemm double-accumulate -> ptxas rejects duplicate labels (EVND:GEMM-DOUBLE-REJECTED?)
-\   - attn Q/K swap / out-into-V -> NUMERIC DIVERGENCE on the Orin, like the sumnorm
-\     swaps (EVND:ATTN-QK-CAUGHT? / EVND:ATTN-OV-CAUGHT?). The attention scaffold now
-\     THREADS each operand's pointer register through the phase pipeline (ATTN-PACK /
-\     ATTN-QREG..ATTN-OREG, dot habu-attention-scaffold-erases-e03f933b), so permuting
-\     Q/K/V/O emits genuinely swapped loads/stores instead of the old byte-identical,
-\     role-erased kernel; the emitted kernel now computes the wrong result and the
-\     device golden catches it. The register identity is invisible to the structural
-\     gate, so the HOST grade stays 2 - exactly the sumnorm-swap situation.
-s" wrong-but-green sumnorm in/out swap [device: numeric-caught]" T-LABEL
+\ These certify and emit the required instructions, exposing the structural
+\ grader's semantic limit.
+s" wrong-but-green sumnorm in/out swap [structural limit]" T-LABEL
    EVND:SN-SWAP$ EVAL:GRADE-SUMNORM 2 T=
-s" wrong-but-green sumnorm div-by-sum-squared [device: numeric-caught]" T-LABEL
+s" wrong-but-green sumnorm div-by-sum-squared [structural limit]" T-LABEL
    EVND:SN-SQSUM$ EVAL:GRADE-SUMNORM 2 T=
-s" wrong-but-green gemm double-accumulate [device: ptxas-caught]" T-LABEL
+s" wrong-but-green gemm double-accumulate [structural limit]" T-LABEL
    EVND:GEMM-DOUBLE$ EVAL:GRADE-GEMM 2 T=
-s" wrong-but-green attn Q/K swap [device: numeric-caught]" T-LABEL
+s" wrong-but-green attn Q/K swap [structural limit]" T-LABEL
    EVND:ATTN-QK$ EVAL:GRADE-ATTN 2 T=
-s" wrong-but-green attn output-into-V [device: numeric-caught]" T-LABEL
+s" wrong-but-green attn output-into-V [structural limit]" T-LABEL
    EVND:ATTN-OV$ EVAL:GRADE-ATTN 2 T=
 \ the checker's linear-use discipline DOES catch a dead normalized value (0, not 2):
 s" reject sumnorm dead-normalize" T-LABEL
    s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-SUM {: s :} out r ROW-SPAN c x ROW-STORE"
    EVAL:GRADE-SUMNORM 0 T=
-
-s" eval-emit: sumnorm/gemm/attention graded at checker/emit level; device NUMERIC golden is maki/eval/emit-device-test.f (Orin, EVND:ON-DEVICE?-keyed)" type cr
 
 T-REPORT

@@ -5,7 +5,7 @@ libc helpers.
 
 ## Focused Gate
 
-Use the native gate slice through `bin/hb --load`; do not concatenate files with
+Use the direct test through `bin/hb --load`; do not concatenate files with
 host shell logic:
 
 ```sh
@@ -13,7 +13,7 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f \
   lib/process-argv.f lib/process-env.f lib/test.f test/proc-pty.f
 ```
 
-The full port gate loads this slice through `test/run.f`.
+The canonical native registry loads this test through `test/run.f`.
 
 ## Process Capture
 

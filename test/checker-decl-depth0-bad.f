@@ -12,7 +12,7 @@
 \ must be bounded by the live depth and fail closed with the named diagnostic
 \ (exit 76) instead.
 \
-\ Registered as a negative gate case in test/candidate-validation.f.
+\ Loaded as a negative case by test/program-diagnostics-test.f.
 
 package CHECKER-DECL-DEPTH0-BAD
 

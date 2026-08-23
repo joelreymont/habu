@@ -15,26 +15,9 @@ SUITE clobber-lint-fixtures
    tools/lint/clobber-lint-test.f
 ;SUITE
 
-\ repl-lint, dot-dep-lint, and error-code-lint are
-\ deliberately NOT registered here. Each was a registration naming the flat CLI
-\ wrapper tools/<name>-lint.f, and each wrapper is a require of its own core plus
-\ a MAIN that calls one word - the very word test/gate-stdlib-lint-tools.f
-\ already runs in-process, under this same label, in a fork of its own. The
-\ registration was selected only by the lint-tools slice, which no started
-\ non-resident phase asks for, so it ran nowhere and re-adding it would buy a
-\ second whole-tree pass of each lint for nothing. The wrapper's own contract -
-\ that `bin/hb --load tools/<name>-lint.f` still loads and runs standalone - is
-\ pinned by test/lint-cli-standalone-load.f, which derives its entry set by
-\ walking tools/ for flat <name>-lint.f files and so covers all five by
-\ structure, with no list to keep.
-
 SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint.f
    tools/lint/ptx-emitter-lint-test.f
-;SUITE
-
-SUITE gate-stats
-   test/gate-stats-test.f
 ;SUITE
 
 SUITE dot-dep-lint-fixtures
@@ -43,16 +26,6 @@ SUITE dot-dep-lint-fixtures
 
 SUITE error-code-lint-fixtures
    tools/error-code-lint-test.f
-;SUITE
-
-\ The scheduling closure over this very file: every registration below must be
-\ reachable by a slice predicate in test/gate-stdlib-lib.f or by a gate fork
-\ list under test/. The tool derives both sides from those real sources through
-\ the shared lexer, so a registration nobody scheduled reds the gate instead of
-\ sitting dark. It runs in the lint-tools body beside the other lint entries.
-SUITE schedule-lint
-   tools/lint/schedule-lint.f
-   tools/lint/schedule-lint-test.f
 ;SUITE
 
 SUITE text-foundation-fixtures
@@ -83,12 +56,7 @@ SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE
 
-\ The two tools that REPORT over the tree rather than judging one file, so they
-\ share the suite that has no skip flag: a report nobody scheduled is a report
-\ nobody reads. The native-chain census belongs here and not with the lints - it
-\ makes no findings and passes no verdict, it measures how much of the tree the
-\ chain can compile, and its own suite label would need the slice tables in
-\ test/gate-stdlib-lib.f and test/gate-runner-lib.f to name it.
+\ These two reports share their common load path.
 SUITE tool-boundary-aot-call
    tools/aot-call-report-test.f
    tools/chain-census-test.f
@@ -146,14 +114,8 @@ SUITE compiler-ir-intern-manifest
    test/compiler/ir-intern-manifest.f
 ;SUITE
 
-\ The other four proof manifests, registered here beside the two above for the
-\ same reason those two are: a manifest is the cheap resident half of a proof
-\ family - it asserts the obligation rows and their schema without spawning Rocq,
-\ so it belongs in the standalone gate as well as in the resident fork list,
-\ where all six already sit. Only ir-id and ir-intern had rows; the other four
-\ were fork-only, which meant `test/gate-stdlib.f` run on its own checked two
-\ manifests out of six. The proof gates they belong to stay cases-only and say
-\ why further down.
+\ Each proof manifest directly asserts its obligation rows and schema; the
+\ corresponding proof test below runs Rocq.
 SUITE compiler-ir-structure-manifest
    test/compiler/ir-structure-manifest.f
 ;SUITE
@@ -287,13 +249,9 @@ SUITE judge-fuzz
    tools/judge-fuzz-test.f
 ;SUITE
 
-\ The fork question, which used to be a third member of the registration above
-\ and was the one member nothing scheduled. It is its own registration because it
-\ needs a runner the other two do not: its first claim is that PROC-FORK:CHILD?
-\ is FALSE in the process that maps the reference column, so it has to BE the
-\ forking process. Put in the tail-pure fork group it runs as a forked child
-\ already and that claim inverts (measured: expected false got true). The tail
-\ slice spawns one fresh process per suite, which is the shape it asks for.
+\ The fork question is its own registration because its first claim is that
+\ PROC-FORK:CHILD? is false in the process that maps the reference column. The
+\ suite runner starts a fresh process for the file, which is the shape it asks for.
 SUITE codegen-fork-reference
    test/codegen-fork-reference-test.f
 ;SUITE
@@ -330,9 +288,8 @@ SUITE codegen-workload
 \ own and requires the fourth corpus and that corpus's migration to get a
 \ callee - CODEGEN-CORPUS4:C-LONG for the engine's arm and C-LONG-N for the
 \ chain's. No assertion it makes reads a clock - every one of them is a throw
-\ code from the chain - so scheduling it schedules no flake. It runs in the
-\ proof slice with the parity gates: at 58s through the real runner it is a
-\ minute-scale member, not a fast-tier one.
+\ code from the chain - so scheduling it schedules no flake. At 58s through the
+\ real runner it is a minute-scale member.
 SUITE codegen-spill-probe
    tools/codegen-spill-probe.f
 ;SUITE
@@ -705,54 +662,38 @@ SUITE compiler-native-vocab
 ;SUITE
 
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
-\ and spawns child engines, so it runs in the PROOF slice - SUITE-PROOF? in
-\ test/gate-stdlib-lib.f selects it, and phase 40 of test/run-lib.f spawns that
-\ slice - and is not mirrored into the resident fast tier.
-\
-\ The earlier wording on these eight entries said they "run here in the
-\ standalone stdlib gate", which named no runner: the only slice that reaches a
-\ label no predicate selects is the bare (ALL) one, and no phase of test/run.f
-\ has ever run it. They were unscheduled, not deferred.
+\ and spawns child engines through this registry entry.
 SUITE compiler-ir-id-proof
    test/compiler/ir-id-proof-host.f
 ;SUITE
 
-\ The interning parity gate compiles formal/Common/Interning.v with the Rocq
-\ proof assistant for the same reason, so it runs in the proof slice alongside
-\ its sibling.
+\ The interning parity test compiles formal/Common/Interning.v with Rocq.
 SUITE compiler-ir-intern-proof
    test/compiler/ir-intern-proof.f
 ;SUITE
 
-\ The structure parity gate compiles formal/Common/Structure.v with the Rocq
-\ proof assistant for the same reason, so it runs in the proof slice alongside
-\ its two siblings.
+\ The structure parity test compiles formal/Common/Structure.v with Rocq.
 SUITE compiler-ir-structure-proof
    test/compiler/ir-structure-proof.f
 ;SUITE
 
-\ The storage and lifetime parity gate compiles formal/Common/Storage.v with the
-\ Rocq proof assistant for the same reason, so it runs in the proof slice
-\ alongside its two siblings.
+\ The storage and lifetime parity test compiles formal/Common/Storage.v with Rocq.
 SUITE compiler-ir-storage-proof
    test/compiler/ir-storage-proof.f
 ;SUITE
 
-\ The checker model parity gate compiles formal/Common/Effects.v and
-\ formal/Common/Control.v with the Rocq proof assistant for the same reason, so
-\ it runs in the proof slice alongside its three siblings.
+\ The checker model parity test compiles formal/Common/Effects.v and
+\ formal/Common/Control.v with Rocq.
 SUITE checker-model-proof
    test/compiler/checker-model-proof.f
 ;SUITE
 
-\ The snapshot relocation parity gate compiles formal/Common/Reloc.v with the
-\ Rocq proof assistant, so it runs in the proof slice alongside its siblings.
+\ The snapshot relocation parity test compiles formal/Common/Reloc.v with Rocq.
 SUITE compiler-reloc-proof
    test/compiler/reloc-proof.f
 ;SUITE
 
-\ The instruction-encoding parity gate drives the Rocq proof assistant and child
-\ engines, so it remains in the proof slice.
+\ The instruction-encoding parity test drives Rocq and child engines.
 SUITE compiler-insn-proof
    test/compiler/insn-proof.f
 ;SUITE
@@ -814,12 +755,8 @@ SUITE engine-candidate-resolver
    test/engine-candidate-test.f
 ;SUITE
 
-\ CPU tasking over pthread. It runs in the tail slice, which spawns a fresh
-\ process per suite, because it does not survive a gate-pool FORK: on one image,
-\ loaded in-process it is green, and forked through GT-POOL-START-FORK from the
-\ same image it dies (rc 75 in the minimal probe, SIGSEGV in the gate's
-\ tail-process group). Creating pthreads in a forked child of the pool worker is
-\ the difference; dot habu-task-pthreads-die-4fea8480 owns the root cause.
+\ CPU tasking over pthread. The suite runner starts it in a fresh process; it does
+\ not survive a fork from an image that already has tasking state.
 SUITE tasking-threads
    lib/task-test.f
 ;SUITE
@@ -1011,43 +948,19 @@ SUITE ptx-toolchain
    tools/ptx/perf-regress-test.f
    tools/kernel-perf-lint-test.f
    tools/ptx/fusion-emit-test.f
+   tools/ptx/gpt2-attention-launch-test.f
+   tools/ptx/gpt2-tensor-emit-test.f
    tools/ptx/device-gold-test.f
    tools/ptx/cuda-scope-leak-proof-test.f
    tools/ptx/attention-bench-test.f
 ;SUITE
 
-\ The spawn-only half of the toolchain suite. These nineteen cannot be members of
-\ the list above: test/gate-stdlib-inline-lib.f's GSI-LINT-LIBS-PTX-TOOL runs in
-\ the resident full-runner image, where the device/bench tools SIGBUS, and
-\ tools/ptx/perf-regress.f resolves its registry path from ambient SCRIPT-ARGV
-\ and would read the harness argv as a path. What they need is a FRESH process
-\ with clean argv, which is exactly what a registration the tail slice selects
-\ gets: SUITE-TAIL-PROCESS? in test/gate-stdlib-lib.f names this label, and
-\ phase $4 of test/run-lib.f - started, and not resident - spawns that slice.
-\ Until this registration existed they were members of ptx-toolchain above,
-\ selected only by the lint-libs slice that nothing starts, and so ran nowhere.
-\ Sixteen of them SKIP their device leg and exit 0 off-device; that vacuous-pass
-\ contract is dot habu-device-gated-suites-ec4ea07e's and is untouched here.
+\ These tools need the fresh process and clean argv supplied by a registry row.
 SUITE ptx-toolchain-spawned
    tools/ptx/perf-regress.f
    tools/ptx/bandwidth-lib-test.f
    tools/ptx/mma-exact-lib-test.f
    tools/ptx/autotune-sweep-test.f
-   tools/ptx/fusion-compare.f
-   tools/ptx/gemm-bench.f
-   tools/ptx/attention-bench.f
-   tools/ptx/acc-device-test.f
-   tools/ptx/redadd-device-test.f
-   tools/ptx/saxpy-v4-tail-device-test.f
-   tools/ptx/device-gold.f
-   tools/ptx/sum-launch.f
-   tools/ptx/softmax-launch.f
-   tools/ptx/softmax-gradcheck.f
-   tools/ptx/rmsnorm-device-test.f
-   tools/ptx/rope-device-test.f
-   tools/ptx/layernorm-device-test.f
-   tools/ptx/swiglu-device-test.f
-   tools/ptx/cuda-launch.f
 ;SUITE
 
 SUITE-STDIN source-stdlib-stdin DATA
@@ -1133,10 +1046,6 @@ SUITE stdlib-process-fixtures
    lib/process-test.f
    lib/process-command-test.f
    lib/process-pty-handle-test.f
-;SUITE
-
-SUITE gate-environment-empty-stdin
-   test/gate-env-stdin-tty-test.f
 ;SUITE
 
 SUITE friend-arena-seal
@@ -1271,10 +1180,6 @@ SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
 
-SUITE region-room
-   test/region-room-suite.f
-;SUITE
-
 SUITE does-clause-record
    test/does-clause-record.f
 ;SUITE
@@ -1317,10 +1222,6 @@ SUITE using-import
 
 SUITE trust-row-refusal
    test/trust-row-test.f
-;SUITE
-
-SUITE gate-runner-entry-load
-   test/gate-runner-entry-test.f
 ;SUITE
 
 SUITE load-reject-diag
@@ -1366,36 +1267,332 @@ SUITE gate-pool
    test/gate-pool-test.f
 ;SUITE
 
-package STDLIB-GATE public get-current ;package
+SUITE cad-num-types
+   lib/cad-num-types-test.f
+;SUITE
 
-package STDLIB-GATE-TEST
+SUITE fs-mutate
+   lib/fs-mutate-test.f
+;SUITE
 
-constant TARGET-WID
+SUITE process-argv
+   lib/process-argv-test.f
+;SUITE
 
-: REQUIRE-FOUND ( n -- )
-   0= if E-TBL-BOUNDS throw then ;
+SUITE process-cwd
+   lib/process-cwd-test.f
+;SUITE
 
-: REQUIRE-MISSING ( n -- )
-   0= 0= if E-TBL-BOUNDS throw then ;
+SUITE process-env
+   lib/process-env-test.f
+;SUITE
 
-: RUN ( -- )
-   s" MAIN" TARGET-WID search-wl REQUIRE-FOUND
-   s" SKIP-SEMANTIC!" TARGET-WID search-wl REQUIRE-FOUND
-   s" SUITE-CHECK-CLI?" TARGET-WID search-wl REQUIRE-MISSING
-   s" GATE-STDLIB-MAIN" 0 search-wl REQUIRE-MISSING
-   s" SUITE-SKIP-TOOL-SEMANTIC!" 0 search-wl REQUIRE-MISSING ;
+SUITE render
+   lib/render-test.f
+;SUITE
 
-: ACTION ( -- [ -- ] )
-   [: RUN ;] ;
+SUITE report
+   lib/report-test.f
+;SUITE
 
-ACTION
+SUITE test-outcome
+   lib/test/outcome-test.f
+;SUITE
 
-;package
+SUITE test-subject
+   lib/test/subject-test.f
+;SUITE
 
-execute
+SUITE bootstrap-refresh-doc
+   tools/bootstrap-refresh-doc-test.f
+;SUITE
+
+SUITE check-repair-hints
+   tools/check-repair-hints-test.f
+;SUITE
+
+SUITE ddc-scheduled
+   tools/ddc-scheduled-test.f
+;SUITE
+
+SUITE ddc-verify
+   tools/ddc-verify-test.f
+;SUITE
+
+SUITE diagnose-hb
+   tools/diagnose-hb-test.f
+;SUITE
+
+SUITE diff-side-content
+   tools/diff-side-content-test.f
+;SUITE
+
+SUITE error-code-region
+   tools/error-code-region-test.f
+;SUITE
+
+SUITE event-closure
+   tools/event-closure-test.f
+;SUITE
+
+SUITE hb-baseline-contracts
+   tools/hb-baseline-contracts-test.f
+;SUITE
+
+SUITE hb-open-failure
+   tools/hb-open-failure-test.f
+;SUITE
+
+SUITE include-events
+   tools/include-events-test.f
+;SUITE
+
+SUITE json
+   tools/json-test.f
+;SUITE
+
+SUITE process-primitive-lint
+   tools/process-primitive-lint-test.f
+;SUITE
+
+SUITE source-discovery
+   tools/source-discovery-test.f
+;SUITE
+
+SUITE stdlib-time
+   tools/stdlib-time-test.f
+;SUITE
+
+SUITE xref
+   tools/xref-test.f
+;SUITE
+
+SUITE zed-run
+   tools/zed-run-test.f
+;SUITE
+
+SUITE seed
+   tools/seed-test.f
+;SUITE
+
+SUITE cast-negative
+   test/cast-negative-suite.f
+;SUITE
+
+SUITE cast
+   test/cast-suite.f
+;SUITE
+
+SUITE decl-event
+   test/decl-event-suite.f
+;SUITE
+
+SUITE deftype
+   test/deftype-suite.f
+;SUITE
+
+SUITE engine
+   test/engine-suite.f
+;SUITE
+
+SUITE engine-runtime-regressions
+   test/runtime-regression-test.f
+;SUITE
+
+SUITE declaration-replay-source
+   test/decl-replay-verify-source.f
+;SUITE
+
+SUITE program-diagnostics
+   test/program-diagnostics-test.f
+;SUITE
+
+SUITE native-suite-cli
+   test/run-cli-test.f
+;SUITE
+
+SUITE gate-env-stdin-tty
+   test/gate-env-stdin-tty-test.f
+;SUITE
+
+SUITE match-factor-pin
+   test/match-factor-pin.f
+;SUITE
+
+SUITE native-gate-debug
+   test/gate-debug.f
+;SUITE
+
+SUITE native-gate-dictionary
+   test/gate-dictionary.f
+;SUITE
+
+GROUP SEQ native-serial-gates
+
+SUITE native-gate-diagnostics
+   test/gate-diagnostics.f
+;SUITE
+
+SUITE native-gate-aot-positive
+   test/gate-aot-positive.f
+;SUITE
+
+SUITE native-gate-aot-negative
+   test/gate-aot-negative.f
+;SUITE
+
+;GROUP
+
+SUITE type-layout-lower-pending
+   test/type-layout-lower-pending.f
+;SUITE
+
+SUITE layout-buffer
+   test/layout-buffer.f
+;SUITE
+
+SUITE layout-defer
+   test/layout-defer.f
+;SUITE
+
+SUITE lower-cert
+   test/lower-cert.f
+;SUITE
+
+SUITE layout-buffer-depth
+   test/layout-buffer-depth.f
+;SUITE
+
+SUITE layout-valid-guards
+   test/layout-valid-guards.f
+;SUITE
+
+SUITE layout-valid-growth
+   test/layout-valid-growth.f
+;SUITE
+
+SUITE wide-store-seal
+   test/wide-store-seal.f
+;SUITE
+
+SUITE protection-span
+   test/protection-span.f
+;SUITE
+
+SUITE code-window
+   test/code-window.f
+;SUITE
+
+SUITE addrmap-set
+   test/addrmap-set.f
+;SUITE
+
+SUITE addrmap-inline
+   test/addrmap-inline.f
+;SUITE
+
+SUITE p2-map-rewind
+   test/p2-map-rewind.f
+;SUITE
+
+SUITE lower-txn-protection
+   test/lower-txn-protection.f
+;SUITE
+
+SUITE lower-txn-large
+   test/lower-txn-large.f
+;SUITE
+
+SUITE bootstrap-wide-memory-src
+   test/bootstrap-wide-memory-src.f
+;SUITE
+
+SUITE enum-decl
+   test/enum-decl-suite.f
+;SUITE
+
+SUITE extent-product
+   test/extent-product-test.f
+;SUITE
+
+SUITE field-proj
+   test/field-proj-suite.f
+;SUITE
+
+SUITE gate-pool-orphan
+   test/gate-pool-orphan-test.f
+;SUITE
+
+SUITE generated-declaration-transaction
+   test/generated-declaration-transaction-suite.f
+;SUITE
+
+SUITE golden
+   test/golden-test.f
+;SUITE
+
+SUITE lit-emit-size
+   test/lit-emit-size-test.f
+;SUITE
+
+SUITE prop
+   test/prop-test.f
+;SUITE
+
+SUITE require-cap
+   test/require-cap-test.f
+;SUITE
+
+SUITE rigid-region
+   test/rigid-region-suite.f
+;SUITE
+
+SUITE structure-certify
+   test/structure-certify-suite.f
+;SUITE
+
+SUITE structure-decl
+   test/structure-decl-suite.f
+;SUITE
+
+SUITE structure-make
+   test/structure-make-suite.f
+;SUITE
+
+SUITE type-ctor
+   test/type-ctor-suite.f
+;SUITE
+
+SUITE type-decl
+   test/type-decl-suite.f
+;SUITE
+
+SUITE type-export
+   test/type-export-suite.f
+;SUITE
+
+SUITE type-family-rollback
+   test/type-family-rollback-suite.f
+;SUITE
+
+SUITE type-family
+   test/type-family-suite.f
+;SUITE
+
+SUITE type-field-owner
+   test/type-field-owner-suite.f
+;SUITE
+
+SUITE type-linear
+   test/type-linear-suite.f
+;SUITE
+
+SUITE type-match
+   test/type-match-suite.f
+;SUITE
 
 RUN
 
 ;using
 
-s" PASS: native lint/stdlib test phase" type cr
+s" PASS: native tests" type cr

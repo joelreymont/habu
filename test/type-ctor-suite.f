@@ -322,8 +322,8 @@ PROT-WID-PROBE:COUNT 0 > -1 T=
 \ inline from SUMV metadata, so payload arity/type/instantiation rejects are
 \ the same as the generated-word call sites. Operand capture runs BEFORE
 \ locals and word lookup, so family/variant tokens never resolve as either.
-\ Native construct lowering landed with item 10 slice 2 (execution round-trips
-\ gate-pinned in GE-CONSTRUCT-EXEC); these stay CHECK-only candidates.
+\ Native construct execution is pinned by test/match-factor-pin.f's CLI
+\ positives and checked construct/MATCH round-trips; these stay CHECK candidates.
 \ ---------------------------------------------------------------------------
 s" CN1 ( n -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN2 ( n -- zres ) construct ZRES OK" CHECK-QUIET-CANDIDATE! -1 T=   \ folded spelling
@@ -506,8 +506,7 @@ s" PRODUCT-PROTECTED" type cr
 \ EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, gforth mirror) emits the
 \ arg-aware pad count. The slice-3 staged reject FLIPS: CLFC1 (generated ctor)
 \ and CLFC2 (raw `construct`) now compile AND round-trip; CLFC3 (cell) unchanged.
-\ Nested named ADTs land in slice 5 (below). This suite is a candidate-validation
-\ `diagnostic` case, so the adversarials' compile-hook stderr is permitted here.
+\ Nested named ADTs land below. The adversarials' compile-hook stderr is expected.
 \ ---------------------------------------------------------------------------
 PRODUCT clw2 0 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE clopt 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE

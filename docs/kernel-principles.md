@@ -424,11 +424,9 @@ accountable — non-measurement rows are never rewritten by the extension.
   `PERF:TOL-MILLI` (50 permille = 5%) below its baseline as a regression;
   `bin/hb tools/ptx/perf-regress.f` runs that scan over the committed registry
   and exits nonzero on any regression.
-- **Gate wiring:** the `ptx-toolchain` suite (lint-libs slice of
-  `test/gate-stdlib.f`) runs the registry/compare/lint tests, validates the
-  committed registry, runs the regression scan, and host-loads the bench stack
-  (`bench.f`, `bandwidth-lib.f`, `fusion-compare.f`, `gemm-bench.f`) with device
-  legs as recorded SKIPs off-device.
+- **Suite wiring:** the `ptx-toolchain` row in `test/gate-stdlib-cases.f` runs the
+  portable registry, comparison, lint, and host-emission tests. Benchmarks and
+  device launches are manual tools, not optional suite legs.
 
 ## The one-line instinct (say it on every op)
 

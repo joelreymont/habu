@@ -11,7 +11,7 @@
 \ ROLE TABLE DERIVATION (pinned against the real checkpoint). The real
 \ openai-community/gpt2 model.safetensors (SHA-256 pinned by
 \ GPT2PIN:MODEL-SHA256$ in maki/infer/gpt2-pin.f) publishes a census of 160 tensors
-\ (maki/infer/safetensors-test.f real-artifact leg): 4 globals (wte.weight,
+\ (maki/infer/gpt2-artifact-test.f): 4 globals (wte.weight,
 \ wpe.weight, ln_f.weight, ln_f.bias) + 12 layers x 13. The thirteen, in HF
 \ GPT2Block state-dict order (ln_1, then the attention module's causal-mask
 \ buffer and its two Conv1D projections, ln_2, then the MLP's two Conv1D

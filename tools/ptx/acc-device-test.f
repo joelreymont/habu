@@ -5,6 +5,8 @@
 \ y[0] = x*y = 6.0 (FP32 exact). Proves the (c) accumulator path is not just type-checked
 \ but device-correct. Orin-only (FFI device launch). Load after lib/test.f, lib/ffi-abi.f, and
 \ the fs/process libs.
+\ Run: bin/hb --load tools/ptx/acc-device-test.f
+\ Requires a CUDA device and ptxas.
 
 require lib/test.f
 require lib/ptx/toolchain.f
@@ -13,7 +15,7 @@ require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
 
-package ACCDEV        \ AD-* names are package-local: avoid colliding with autograd AD-* (lib/ptx/ad-dag.f) in the shared spawned suite image
+package ACCDEV        \ AD-* names are package-local: avoid colliding with autograd AD-* (lib/ptx/ad-dag.f) in the shared image
 
 create AD-PATH 64 allot  create AD-KN 32 allot
 variable AD-DEV variable AD-CTX variable AD-MOD variable AD-FUNC
@@ -77,9 +79,8 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
 
 : ACC-DEV-MAIN ( -- )
    T-RESET
-   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
-      s" acc-device-test: libcuda.so.1 unavailable -> device AXPY-ACC SKIPPED (off-device)" type cr
-      T-REPORT exit
+   CUDA:OPEN? 0= if
+      s" acc-device-test: CUDA device is required" 74 die
    then
    s" habu-ptx-acc" PTXTC:PREPARE
    AD-EMIT drop

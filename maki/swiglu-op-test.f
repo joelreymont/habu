@@ -18,8 +18,8 @@
 \       BOTH inputs (GC-RUN), the bcast-mul precedent.
 \   (7) DETERMINISM: forward AND grads are bit-reproducible run-twice (run-twice locked).
 \   (8) DEVICE LOWERING: a swiglu region is a fail-closed named reject (E-LEW-OP) - device
-\       SwiGLU in the model-IR path is a later capability; the standalone device kernel is
-\       tools/ptx/swiglu-cg.f (proven on the GB10 by tools/ptx/swiglu-device-test.f).
+\       SwiGLU in the model-IR path is a later capability; the standalone emitter is
+\       tools/ptx/swiglu-cg.f and tools/ptx/swiglu-device-test.f is its manual leaf.
 \   (9) INTEGRATION: SwiGLU composed with GELU gradchecks (correct gradients flow through).
 \
 \ NUMERICS: sigmoid is the SHARED maki/fmath.f SIGMOID-F (= 1/(1+exp(-x)), the same stable

@@ -4,9 +4,10 @@
 \ PRIVATE per-run toolchain root and ptxas-assembled fail-closed - no shared
 \ /tmp/*.cubin that could be stale/missing/wrong. A missing producer or a nonzero
 \ emit/ptxas rc fails CLOSED with the named E-PTX-EMIT throw, never an uncaught
-\ E-CUDA from a stale path. The device launch/compare half is gated on CUDA:OPEN?
-\ (recorded SKIP off-device); the emit half is proven host-side by
-\ tools/ptx/fusion-emit-test.f.
+\ E-CUDA from a stale path. This is a manual device tool; the emit half is proven
+\ host-side by tools/ptx/fusion-emit-test.f.
+\ Run: bin/hb --load tools/ptx/fusion-compare.f
+\ Requires a CUDA device and ptxas.
 
 require tools/ptx/fusion-emit.f
 require tools/ptx/bandwidth-lib.f
@@ -71,7 +72,7 @@ package PTXBW
    sax relu + fused REPORT-SPEEDUP
    PTXTC:CLEAN ;                             \ remove the last private per-run root
 
-: RUN ( -- )   \ off-device the compare is a recorded SKIP; the emit half is proven by fusion-emit-test.f
+: RUN ( -- )
    CUDA:OPEN? 0= if
       s" fusion-compare: libcuda.so.1 unavailable -> device compare SKIPPED (off-device)" type cr
       exit

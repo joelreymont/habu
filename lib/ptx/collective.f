@@ -16,8 +16,7 @@
 \ of the PTXREP:SINK3 / REPMIX3B combinators (lib/ptx/rep.f). Each body still
 \ lowers in emit mode through its EMIT-* helper (lib/ptx/cg-collective.f), so the
 \ checked SOFTMAX-ROWS body that ptx-collective-test.f certifies also emits PTX -
-\ shared-mem + bar.sync block reduction, reducer-identity inactive lanes (proven
-\ correct-vs-golden on the Orin by tools/ptx/softmax-launch.f).
+\ shared-mem + bar.sync block reduction with reducer-identity inactive lanes.
 \
 \ BOUNDARY (named, tested). As in lib/ptx/tile.f, context producers mint fresh
 \ rigid mask tokens per call, while shared tokens prove agreement through loads,

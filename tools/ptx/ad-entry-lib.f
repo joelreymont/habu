@@ -1,5 +1,5 @@
-\ ad-entry-lib.f - per-VJP-entry forward/backward kernel emitters for the
-\ device gradcheck gate (habu-ptx-ad-device).
+\ ad-entry-lib.f - per-VJP-entry forward/backward kernel emitters for manual
+\ device gradchecks.
 \
 \ Each VJP entry in lib/ptx/ad-dag.f (BLOCK-MAX select, B- both branches, EXP,
 \ BLOCK-SUM broadcast, B/ both branches, DUP fan-out accumulation) is exercised

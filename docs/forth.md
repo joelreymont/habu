@@ -310,20 +310,6 @@ this staged rule does not claim they are already converted. PREFER `NAME:WORD`
 for a one-off call or when qualification is needed to escape a collision or
 ambiguity.
 
-The native test entry qualifies its TEST calls because global `RESET` collides
-with `TEST:RESET`, and `DAG-RUN-REST` later loads child files that own `RUN`; a
-broad import would make those references ambiguous.
-
-```forth
-require test/run-lib.f
-
-TEST:PREPARE
-TEST:EARLY-EXTERNAL-START
-require test/run-resident.f
-TEST:DAG-RUN-REST
-TEST:COMPLETE
-```
-
 - `using NAME` consumes the next token, rejects a missing name and a name
   containing `:`, and rejects a name that is not a known package. It is valid at
   top level and inside an open package. Only `NAME`'s public wordlist joins the
@@ -869,7 +855,7 @@ T-REPORT
 
   `lib/test.f` is the public framework interface: `T*` words are assertions,
   `TEST:SETUP!`/`TEST:TEARDOWN!`/`TEST:DRAIN!`/`TEST:ARGS-BEGIN!`/
-  `TEST:ARG+!`/`TEST:SELECT?!`/`TEST:RUNNER!`/`TEST:STDIN-RUNNER!` install
+  `TEST:ARG+!`/`TEST:RUNNER!`/`TEST:STDIN-RUNNER!` install
   typed hooks, `TEST:GROUP SEQ|PARA name` opens a named group (mode is a
   mandatory positional token — `SEQ` sequential, `PARA` parallel — before the
   name), and `TEST:;GROUP`, `TEST:SUITE`, `TEST:SUITE-STDIN`, `TEST:;SUITE`, and
@@ -932,8 +918,10 @@ T-REPORT
 Run on the exact tree that is being landed, from the repository root. Red,
 skipped, or unrun means the bookmark does not move.
 
-1. The behaviour suites the change touched, plus `bin/hb --load maki/test.f`.
-2. `tools/error-code-lint.f` and the dot lint.
+1. `bin/hb --load tools/build-fixpoint-refresh.f -- install --force`.
+2. Focused tests for touched behaviour.
+3. `bin/hb --load maki/test.f` and `bin/hb --load test/run.f`.
+4. `tools/error-code-lint.f` and the dot lint.
 
 ## Comments & hygiene
 

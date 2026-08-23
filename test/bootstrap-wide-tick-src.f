@@ -1,6 +1,5 @@
 \ bootstrap-wide-tick-src.f - stage0 rejects ticking a wide-effect word.
-\ schedule-lint: allow-unscheduled - habu-rehome-or-retire-65f56d69 owns the
-\ decision. This isolated stage0 fixture has no automatic runner.
+\ This is an input fixture, not a standalone test.
 
 \ This isolated fixture does not load xref.f's constructor-package registration
 \ bridge. The no-op hook keeps the fixture focused on wide-effect ticking.

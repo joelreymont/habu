@@ -11,7 +11,7 @@
 \ FINALIZE discard the enclosing declaration's savepoint. Rollback then finds no
 \ frame of its own and dies with the named diagnostic (exit 76).
 \
-\ Registered as a negative gate case in test/candidate-validation.f. The ARMED
+\ Loaded as a negative case by test/program-diagnostics-test.f. The ARMED
 \ marker is the only stdout line, so a build that accepts the wrong coordinator
 \ depth returns from the inner declaration, prints LEAKED-PAST-INNER, and fails
 \ the exact-marker check even though it also ends up at exit 76.

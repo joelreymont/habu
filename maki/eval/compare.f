@@ -21,9 +21,8 @@
 \ (maki/eval/device.f), so they resolve bare here; the CMP- state + API and the
 \ device fixture stay private to this file.
 \
-\ Device-gated (maki/device-smoke.f pattern): the ablation launches every no-check
-\ candidate on the GPU, so off-device CMP-RUN records a SKIP and this file still
-\ check-loads; on the Orin it runs and asserts.
+\ CMP-RUN is a manual device operation: every no-check candidate reaches the GPU,
+\ so run it only on a host with the CUDA device prerequisites.
 
 require lib/test.f
 require maki/eval/device.f
@@ -119,8 +118,8 @@ variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-FAULT  varia
    s" WITHOUT checker later failures: emit=" type NU-EMIT @ . s" ptxas=" type NU-PTXAS @ . s" device-wrong=" type NU-WRONG @ . s" device-fault=" type NU-FAULT @ . s" green=" type NU-GREEN @ . cr
    s" => the static checker catches the type/stack bug class for free -- including one bug that FAULTS the GPU without it (device-fault), not just a wrong number. Confirmed vs real Triton on the Orin (docs/eval-triton.md): Triton catches name/type errors at compile but the stack-discipline class only at runtime (3/5 battery bugs slipped to runtime)." type cr ;
 
-\ Device-gated: every no-check candidate launches on the GPU, so off-device this is
-\ a recorded SKIP and the file still check-loads; on the Orin it runs and asserts.
+\ CMP-RUN is a manual device operation that launches every no-check candidate on
+\ the GPU.
 : CMP-RUN ( -- )
    T-RESET
    CUDA:OPEN? 0= if

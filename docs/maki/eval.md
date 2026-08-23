@@ -127,8 +127,8 @@ but fails the required `fma.rn.f32`/`cp.async` gate), and **attention** (the
 `ATTN:START..FINISH` phase-token pipeline, where omission/reordering is a checker
 reject). GRADE = certify AND child-process PTX emit AND structural gates
 (required features present, forbidden patterns absent); verdicts mirror
-`GRADE-CANDIDATE` (2/1/0). The device-golden leg of these tasks is Orin-gated and
-recorded as a SKIP by the suites (device-FFI SKIP pattern). Prompt specs live at
+`GRADE-CANDIDATE` (2/1/0). Device-golden runs are manual and are not optional
+suite legs. Prompt specs live at
 `maki/transcripts/prompts-live-2026-07-13/`; the live 2026-07-13 round
 (`live-habu-ptx-2026-07-13.txt`, pinned by `maki/eval/live-author-test.f`) went
 15/15 first-try green across all three tasks (docs/eval-triton.md).

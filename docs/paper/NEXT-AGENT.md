@@ -38,8 +38,8 @@ consistent with README.md + docs/positioning.md.
 9. Section 4.1 (Type Families): DONE 2026-07-10. Written from the merged
    implementation (TFAM 9/10/12/14/15) and its negative regressions: 228
    reject fixtures across type-{decl,ctor,match,linear}-suite.f, the
-   GE-MATCH-EXEC/GE-CONSTRUCT-EXEC engine batteries (forged-tag die, rc 85
-   ENGINE-ERROR:BAD-TAG, "hb: bad gemt tag"), and the mirror/AOT-persistence proofs.
+   `test/match-factor-pin.f` CLI positives, negatives, checked round-trips, and
+   forged-tag rc-85 diagnostic, plus the mirror/AOT-persistence proofs.
    Adoption honestly deferred: the cad-adt-swap audit
    (.dots/habu-cad-adt-swap-7bf0bb1f.md) proves the swap is blocked on
    stack-only layout (WALL-1/2/3), gated on three capability dots; the paper

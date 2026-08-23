@@ -85,8 +85,8 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
   scouts don't edit the tree; workers edit in their own `.jj-ws/` workspaces.
 - **Master is always green (BLOCKING).** Fast-forward `master` only after,
   on the exact tree being merged, the maki suite
-  (`bin/hb --load maki/test.f`), the ptx-stdlib slice, and any native slices
-  you touched are all green. Red, skipped, or unrun means no merge; a red
+  (`bin/hb --load maki/test.f`) and the native suite
+  (`bin/hb --load test/run.f`) are green. Red, skipped, or unrun means no merge; a red
   master is a stop-everything incident; nobody commits to `master` directly.
   Commit gate: `docs/forth.md` § Commit gate.
 - Dots (BLOCKING): claim per the dots skill and pass the dot lint

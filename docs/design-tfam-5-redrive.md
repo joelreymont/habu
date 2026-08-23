@@ -119,8 +119,6 @@ pre-scan (a conditionally-opened package is invisible).
 
 - `tools/check-all-errors-core.f:8` — guarded colon-wrapped `required` (monotone,
   load-if-absent).
-- `test/run-worker.f:34` — `path pathu included` (genuinely dynamic; path is a
-  runtime value chosen by a `case` dispatch, `run-worker.f:36-73`).
 - `src/habu/driver-io.f:11-14` — loader retirement via
   `s" include" UNDEFINE-IF-DEFINED` (helper form).
 
@@ -169,9 +167,7 @@ regression we are trying to avoid), now nondeterministically truncated at the
 crash site.
 
 **Idiom outcomes.** `CA-MAYBE-VERIFY-SOURCE`: recorded (body runs) on a *valid*
-load; truncated/lost on a broken load. `run-worker.f` `path pathu included`:
-recorded exactly (real path value is on the stack at run time) — (a) is the only
-candidate that resolves dynamic paths. `driver-io.f` loader retirement: the child
+load; truncated/lost on a broken load. `driver-io.f` loader retirement: the child
 would actually undefine the loaders and subsequent recording would stop — must be
 rejected/guarded.
 
@@ -187,9 +183,8 @@ loaders instead of skipping their bodies.
 **The fatal question — "how does it know which to execute without full
 evaluation?"** It cannot. To fire the guarded `required` in `CA-MAYBE-VERIFY-SOURCE`
 the walker must evaluate the guard `s" VERIFY:SOURCE-BUF" XREF-FIND 0= if …`,
-which depends on live dictionary state; to fire `run-worker.f`'s
-`path pathu included` it must evaluate the `case` that computes `path`. Any walker
-that executes bodies is running arbitrary Forth = candidate (a) with all of its
+which depends on live dictionary state. Any walker that executes bodies is
+running arbitrary Forth = candidate (a) with all of its
 crash exposure (§0.3) and none of its child-process isolation. Any walker that
 *guesses* which body statements to run (e.g. "execute only tokens that look like
 loaders, skip the guard") drops the guard and is unsound — it would record a
@@ -230,7 +225,6 @@ whole-file scan already reads it). Applying (c) everywhere throws away informati
 the lexer already has.
 
 **Idiom outcomes.** `CA-MAYBE-VERIFY-SOURCE`: rejected unless manifested.
-`run-worker.f`: rejected unless manifested (correct — it is genuinely dynamic).
 `driver-io.f`: rejected (correct — it retires loaders).
 
 **Cost.** Low engine cost, high recurring human cost if applied to the whole
@@ -270,7 +264,7 @@ runtime closure," never smaller — the invariant in the header holds by
 construction. It never executes source → no circularity, no crash (§0.3 cannot
 happen). It is the identical information source the master-green `CHK-SCAN-DEPS`
 already uses (§0.1), so it cannot regress the flows that pass today
-(`GE-ENGINE-STDLIB-CHECK`, `CKT-TEST-REQUIRE-FACADE`). The genuinely dynamic tail
+in the check acceptance cases. The genuinely dynamic tail
 is the only thing it cannot see, and that is exactly where (c) applies.
 
 **Over-approximation: acceptable for keys, acceptable for preverify here.**
@@ -293,7 +287,6 @@ is the only thing it cannot see, and that is exactly where (c) applies.
 
 **Idiom outcomes.** `CA-MAYBE-VERIFY-SOURCE`: captured statically (superset),
 matches runtime under monotone load-if-absent — no manifest needed.
-`run-worker.f` `path pathu included`: reject fail-closed → manifest.
 `driver-io.f` retirement: reject fail-closed (loader retirement) → manifest or
 documented boundary + dot.
 
@@ -352,9 +345,7 @@ where dataflow is truly dynamic.
    (`tools/public-signatures-core.f:612`) together.
 3. **Migrate preverify onto the shared closure.** Point `tools/check-core.f`
    preverify/closure at the event producer (retire `CHK-SCAN-DEPS` once slice 2
-   proves parity), asserting identical dep sets on `GE-ENGINE-STDLIB-CHECK`
-   (`test/gate-engine-lib.f:106`) and `CKT-TEST-REQUIRE-FACADE`
-   (`tools/check-test-lib.f:423`).
+   proves parity), asserting identical dep sets in the check tests.
 4. **D4 per-original-file redrive.** Replace the `required`-lines materialization
    (`CHK-MATERIALIZE-LIST`, 532-545) for the all-errors path: iterate
    `CHK-DEP-ORDER` and run all-errors on each **original** file, replaying prior
@@ -362,7 +353,7 @@ where dataflow is truly dynamic.
    `tools/check-all-errors-core.f`, alongside `CA-SUPPORT-BEFORE`). Reset the event
    log per original file to stay inside `EVENT-MAX`.
 5. **Dynamic manifest.** Fail-closed rejection + checked manifest sidecar for the
-   dynamic tail (`test/run-worker.f:34`, `src/habu/driver-io.f:11-14`); track any
+   dynamic tail (`src/habu/driver-io.f:11-14`); track any
    file kept out of event-closure consumers as a documented boundary + dot.
 
 ### Acceptance fixtures
@@ -394,15 +385,14 @@ The dot's RCA is accurate; no contradictions found. Refinements/additions:
 
 - **Confirmed exact:** `CHK-SCAN-DEPS` at `tools/check-core.f:468-473` catches the
   colon-wrapped idiom (§0.1); `CHK-MATERIALIZE-LIST` 532-545 + `CHK-RUN-ALL-CURRENT`
-  903-906 make source-list all-errors a no-op (§0.4); `run-worker.f:34` dynamic
-  `included`; `driver-io.f:11-14` loader retirement; `EC:BUILD` via `DISCOVER:RUN`
+  903-906 make source-list all-errors a no-op (§0.4); `driver-io.f:11-14` loader
+  retirement; `EC:BUILD` via `DISCOVER:RUN`
   (`event-closure-lib.f:102`) feeding hb-build (`:724`) and public-signatures
   (`:612`).
 - **Refinement of "sees FEWER deps = soundness regression":** precise direction
   differs per consumer. For hb-build/`EC:BUILD` **keys** a subset closure is a
   genuine *soundness* bug (stale-hit). For **preverify** a subset is a
-  *completeness* regression (fail-closed reject of good code, breaking
-  `GE-ENGINE-STDLIB-CHECK`/`CKT-TEST-REQUIRE-FACADE`); it does not produce a false
+  *completeness* regression (fail-closed reject of good code); it does not produce a false
   accept. The unsound-accept risk is the *opposite* error (over-approx of a
   non-monotone guard), which the design excludes fail-closed (§4/§5).
 - **New gap not in the dot:** the loader-retirement idiom

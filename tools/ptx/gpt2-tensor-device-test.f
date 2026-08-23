@@ -1,4 +1,6 @@
 \ Real-CUDA parity for the six fixed GPT-2 tensor entries.
+\ Run: bin/hb --load tools/ptx/gpt2-tensor-device-test.f
+\ Requires a CUDA device and ptxas.
 
 require lib/errors.f
 require lib/float.f
@@ -310,6 +312,7 @@ variable E0   variable E1   variable E2
    NH RESIDUAL-CASE  1 RESIDUAL-CASE ;
 
 : MAIN ( -- )
+   CUDA:OPEN? 0= if s" gpt2-tensor-device-test: CUDA device is required" 74 die then
    T-RESET
    BUILD
    [: SETUP RUN ;] CUDA-SCOPE:SCOPE

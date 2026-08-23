@@ -2,7 +2,7 @@
 \ (the engine's `cast:` reader keyword plus checker.f CHECKER-DEFCAST). Run BY
 \ THE ENGINE over stdin, like test/deftype-suite.f:
 \     bin/hb < test/cast-suite.f
-\ Registered as a positive gate case in test/candidate-validation.f.
+\ Registered directly in the native suite.
 \
 \ CAST: is the converter form that ends per-declaration TRUSTED growth: the
 \ checker proves the declared retype legal by its five structural refusals and

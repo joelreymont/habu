@@ -1,4 +1,4 @@
-\ gate-diagnostics-all-strict-lib.f - SARIF-backed diagnostic slice.
+\ gate-diagnostics-all-strict-lib.f - SARIF assertion for diagnostics.
 \
 \ Load after test/gate-diagnostics-lib.f.
 
@@ -14,20 +14,5 @@ package GATE-DIAGNOSTICS
    s" habu-all-errors.sarif" WRITE-OUT
    s" diag-all-errors.sarif" s" sarif golden" OUT-GOLDEN-R
    s" sarif" s" habu-all-errors.sarif" s" sarif output" GJA1 ;
-
-public
-
-: ALL-STRICT ( -- )
-   s" hb-gate-diagnostics-all-strict" GT-START
-   ALL-ERRORS
-   SARIF
-   STRICT-SIGNATURES
-   BARE-PTR-SIGNATURE
-   BAD-NOMINAL-DECL
-   SOURCE-LOCAL-NOMINAL
-   LABEL-COPY
-   LOAD-CLOSED
-   GT-CLEANUP
-   s" PASS: native checker diagnostics all-strict slice" type cr ;
 
 ;package

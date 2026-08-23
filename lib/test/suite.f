@@ -1,7 +1,7 @@
 \ suite.f - TEST package suite/group/test implementation.
 \
 \ Loaded by lib/test.f. A project adapter configures setup, teardown, argument
-\ construction, selection, and runner words; suite files define named
+\ construction and runner words; suite files define named
 \ groups/tests, then call TEST:RUN once.
 
 require lib/errors.f
@@ -13,7 +13,7 @@ package TEST
 1024 constant STDIN-CAP
 \ Shared suite-table budget. Grow by constant when it fills (FM-BUF-CAP
 \ precedent); keep the loud E-TBL-BOUNDS wall (ITEM-CHECK / ITEM-ALLOC).
-256 constant ITEM-MAX
+512 constant ITEM-MAX
 32 constant GROUP-MAX
 $10000 constant ARG-CAP
 0 constant GROUP-PARALLEL
@@ -33,7 +33,6 @@ create GROUP-NAMES GROUP-MAX NAME-CAP * allot
 create GROUP-NAME-US GROUP-MAX cells allot
 create GROUP-MODES GROUP-MAX cells allot
 create ARGS ARG-CAP allot
-create CUR-LABEL-BUF NAME-CAP allot
 
 variable ITEM-N
 variable GROUP-N
@@ -42,33 +41,23 @@ variable ARG-U
 variable ARG-SCAN
 variable DEF-ID
 variable LAST-GROUP
-variable CUR-LABEL-U
-variable RUN-I
-variable RUN-N
 
 defer SETUP ( -- )
-defer TEARDOWN ( -- )
+defer TEARDOWN ( n -- )
 defer DRAIN ( -- )
 defer ARGS-BEGIN ( -- )
 defer ARG+ ( ptr u8 n -- )
-defer SELECT? ( -- bool )
 defer RUNNER ( ptr u8 n -- )
 defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 
 : TRUE ( -- bool )
    0 0= ;
 
-: FALSE ( -- bool )
-   0 0= 0= ;
-
 : NOOP ( -- )
 ;
 
 : ARG-DROP ( ptr u8 n -- )
    2drop ;
-
-: YES ( -- bool )
-   TRUE ;
 
 : RUN-MISSING ( ptr u8 n -- )
    2drop E-FS-OPEN throw ;
@@ -112,11 +101,6 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    u NAME-CAP CAP-CHECK
    a id ITEM-NAME-BUF u BYTE-COPY
    u ITEM-NAME-US id ITEM-CELL ! ;
-
-: CUR-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u NAME-CAP CAP-CHECK
-   a CUR-LABEL-BUF u BYTE-COPY
-   u CUR-LABEL-U ! ;
 
 : GROUP-NAME! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
    u NAME-CAP CAP-CHECK
@@ -247,9 +231,6 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    id ITEM-ARGS-BEGIN
    id PARSE-ARGS ;
 
-: LABEL-CURRENT ( n -- ) {: id:n :}
-   id ITEM-NAME$ CUR-LABEL! ;
-
 : GROUP-HEADER? ( n -- bool ) {: gid:n :}
    gid LAST-GROUP @ <> ;
 
@@ -286,8 +267,6 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    DRAIN ;
 
 : ITEM-RUN ( n -- ) {: id:n :}
-   id LABEL-CURRENT
-   SELECT? 0= if exit then
    id ITEM-GROUP@ GROUP-HEADER
    id SEQUENTIAL? if DRAIN then
    id ITEM-KIND@
@@ -300,18 +279,15 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 
 : RUN-BODY ( -- )
    -1 LAST-GROUP !
-   ITEM-N @ RUN-N !
-   0 RUN-I !
-   begin RUN-I @ RUN-N @ < while
-      RUN-I @ ITEM-RUN
-      RUN-I @ 1+ RUN-I !
-   repeat
+   ITEM-N @ 0 ?do
+      i ITEM-RUN
+   loop
    DRAIN ;
 
 : RUN-ACT ( -- )
    SETUP
    [: RUN-BODY ;] catch {: rc:n :}
-   TEARDOWN
+   rc TEARDOWN
    rc 0 <> if rc throw then ;
 
 public
@@ -319,7 +295,7 @@ public
 : SETUP! ( [ -- ] -- )
    is SETUP ;
 
-: TEARDOWN! ( [ -- ] -- )
+: TEARDOWN! ( [ n -- ] -- )
    is TEARDOWN ;
 
 : DRAIN! ( [ -- ] -- )
@@ -331,9 +307,6 @@ public
 : ARG+! ( [ ptr u8 n -- ] -- )
    is ARG+ ;
 
-: SELECT?! ( [ -- bool ] -- )
-   is SELECT? ;
-
 : RUNNER! ( [ ptr u8 n -- ] -- )
    is RUNNER ;
 
@@ -342,11 +315,10 @@ public
 
 : DEFAULTS ( -- )
    [: NOOP ;] SETUP!
-   [: NOOP ;] TEARDOWN!
+   [: drop ;] TEARDOWN!
    [: NOOP ;] DRAIN!
    [: NOOP ;] ARGS-BEGIN!
    [: ARG-DROP ;] ARG+!
-   [: YES ;] SELECT?!
    [: RUN-MISSING ;] RUNNER!
    [: STDIN-RUN-MISSING ;] STDIN-RUNNER! ;
 
@@ -355,20 +327,6 @@ public
    0 GROUP-N !
    0 ARG-U !
    DEFAULT-GROUP ;
-
-\ The label the selector sees. ITEM-RUN sets it from the registration it is about
-\ to run and then asks SELECT?; a caller that wants the same question answered
-\ about a registration it has NOT reached - tools/lint/schedule-lint.f asks which
-\ slices would select each label in the gate's registration file - sets it here
-\ and asks the same predicate, rather than growing a second copy of the rule.
-: LABEL! ( ptr u8 n -- )
-   CUR-LABEL! ;
-
-: LABEL$ ( -- ptr u8 n )
-   CUR-LABEL-BUF CUR-LABEL-U @ ;
-
-: LABEL= ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   CUR-LABEL-BUF CUR-LABEL-U @ a u STR= ;
 
 : GROUP ( -- )
    MODE-TOKEN {: mode:n :}

@@ -4,11 +4,8 @@
 \ a COMMAND: `bin/hb --load tools/<name>-lint.f` is how a person or a script runs it.
 \ Such an entry must `require` its own dependency closure. When it only lists the
 \ closure in a header comment and relies on the caller having loaded it first, the
-\ command is dead - and stays silently dead, because the resident test/run.f DAG
-\ loads those same modules in order before the entry's unit tests run, so the suite
-\ never exercises the command path. Four entries were dead that way when this guard
-\ was written: signature-lint, reserved-name-lint, duplicate-definition-lint,
-\ and aot-lint.
+\ command is dead. Four entries were dead that way when this guard was written:
+\ signature-lint, reserved-name-lint, duplicate-definition-lint, and aot-lint.
 \
 \ Each entry is spawned in a fresh child engine with empty stdin. The verdict is
 \ deliberately NOT "exit 0": these entries RUN when loaded, so a healthy one may
@@ -53,10 +50,6 @@ $4000 constant PATHS-CAP                     \ collected entry path bytes
 \ The engine's load/compile reject status (src/habu/habu2.f RC-REJECT). An entry
 \ that dies of an unrequired dependency leaves exactly this code behind.
 70 constant REJECT-RC
-\ The engine's status for an uncaught throw. A file that is deliberately NOT a
-\ standalone entry refuses with a throw, so it exits here instead.
-67 constant THROW-RC
-
 create OUT CAP allot
 create ERR CAP allot
 create EMPTY 1 allot                         \ zero-length stdin
@@ -175,24 +168,6 @@ variable PATHS-USED
       1+
    repeat drop ;
 
-\ ---- a harness body must refuse, not die opaquely --------------------------
-\ test/gate-stdlib-lint-tools.f is deliberately NOT a standalone entry: its header
-\ says "Load after GSI-LINT-TOOLS-SETUP", and the harness supplies the lint cores and
-\ GSI-* words its bodies compile against, so there is nothing it could require to
-\ stand alone. Direct invocation must therefore REFUSE by name rather than die on
-\ whichever harness word is reached first, because an opaque E-UNDEFINED there reads
-\ like a missing require and sent one earlier investigation down that path. The two
-\ statuses must stay distinct for this row to mean anything.
-: REFUSES ( ptr u8 n -- ) {: p:ptr u:n :}
-   TIMEOUT-MS {: ms:n :}
-   p u ms SPAWN
-   MATCH outcome
-     exited   OF {: rc:n :} p u T-LABEL rc THROW-RC T= ENDOF
-     signaled OF {: sig:n :} p u sig SIGNALLED ENDOF
-     timeout  OF p u ms TIMED-OUT ENDOF
-   ;MATCH
-   DROP-LENS ;
-
 \ ---- fixture: a timeout is its own verdict ---------------------------------
 \ The distinction this suite exists to make is between an entry that never
 \ finished loading and one that merely ran out of wall clock, so the timeout path
@@ -272,9 +247,7 @@ variable GOT-U
    \ A usage failure is not a dead load: the two statuses must stay distinct, or the
    \ verdict above would accept an entry that never finished loading.
    s" usage status differs from a dead load" T-LABEL
-      ARGV:E-USAGE REJECT-RC <> TTRUE
-   s" refusal status differs from a dead load" T-LABEL
-      THROW-RC REJECT-RC <> TTRUE ;
+      ARGV:E-USAGE REJECT-RC <> TTRUE ;
 
 public
 
@@ -286,7 +259,6 @@ public
    s" tools/signature-lint.f discovered" T-LABEL
       s" tools/signature-lint.f" COLLECTED? TTRUE
    LOAD-ALL
-   s" test/gate-stdlib-lint-tools.f" REFUSES
    T-REPORT
    s" lint-cli-standalone-load-test: ok" type cr ;
 

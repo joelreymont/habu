@@ -9,6 +9,8 @@
 \ no shared /tmp/softmax.cubin. Load after lib/errors.f, lib/string.f, lib/test.f,
 \ lib/float.f, lib/fmt.f, src/arch/ptx/emit.f, lib/ptx/cg.f, lib/ptx/header.f,
 \ lib/ptx/launch.f, lib/ffi-abi.f.
+\ Run: bin/hb --load tools/ptx/softmax-launch.f
+\ Requires a CUDA device and ptxas.
 \
 \ Data: in = [[1,2,3,4],[1,1,1,1]] (2 rows, k=4). Golden softmax (f32 bits):
 \   row0 = 1023627234 1035106489 1047695721 1059379089   (~1 ULP, ex2.approx)

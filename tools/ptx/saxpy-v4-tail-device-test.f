@@ -3,6 +3,8 @@
 \ Emits the checked v4 SAXPY kernel, assembles it with ptxas, then launches
 \ n=4,5,7,1000003. The output buffer has one sentinel element beyond n; the test
 \ proves active lanes write 6.0f and the first inactive lane remains 1.0f.
+\ Run: bin/hb --load tools/ptx/saxpy-v4-tail-device-test.f
+\ Requires a CUDA device and ptxas.
 
 require lib/test.f
 require lib/fs.f
@@ -139,9 +141,8 @@ variable CN-N                                     \ current CHECK-N element coun
 
 : MAIN ( -- )
    T-RESET
-   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
-      s" saxpy-v4-tail-device-test: libcuda.so.1 unavailable -> device SAXPY-V4 tail SKIPPED (off-device)" type cr
-      T-REPORT exit
+   CUDA:OPEN? 0= if
+      s" saxpy-v4-tail-device-test: CUDA device is required" 74 die
    then
    s" habu-ptx-v4-tail" PTXTC:PREPARE
    EMIT-V4-SAXPY {: outn:n erc:n :}

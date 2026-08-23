@@ -51,11 +51,7 @@ So "one declaration feeds both the golden and the device plan"
 are not tied to atoms. The `extent-*` atom is consumed **only** by identity
 unification (`ATOM-OK?`, `checker.f:1012`); there is no downstream
 `extent-`-prefix pass — `extent-relative bounds` is enforced by family-identity
-unification, not by reading atom names (0 `extent-*` usages in `src/core`
-outside the parser prefix at `checker.f:2478`; in `maki`, 1 production sig
-(`fusion.f:71`) plus 2 live checked eval fixtures — `maki/eval/repair-mech-test.f:85,87`
-and `maki/eval/device-fault-test.f:28,32` (`span<…,extent-n>`); the rest is docs
-prose).
+unification, not by reading atom names.
 
 Product structure (the decider) rides TFAM parametric unification **today**:
 
@@ -163,17 +159,16 @@ TFAM. Recorded here so the pivot is explicit.
 > - **Legacy `extent-*` atoms:** device families accept TFAM extent args
 >   transparently (proven), so a SPEC-declared TFAM extent flows into both the
 >   golden `idx<xm>` and the device `span<…,xm>` — "one declaration feeds both".
->   Migrate the live atom sigs — `maki/fusion.f:71`, `maki/eval/repair-mech-test.f:85,87`,
->   `maki/eval/device-fault-test.f:28,32` — and the docs opportunistically; atoms
+>   Migrate the live atom sigs in `maki/fusion.f` and the eval fixtures, and the
+>   docs opportunistically; atoms
 >   and TFAM extents may coexist (both unify by identity), but a single substrate
 >   is preferred — track the migration.
 
 ## Open questions for the orchestrator
 
 1. **Legacy `extent-*` migration vs coexistence.** Adopt TFAM extents for new
-   `EXTENT:` surface and migrate the live atom sigs (`maki/fusion.f:71`,
-   `maki/eval/repair-mech-test.f:85,87`, `maki/eval/device-fault-test.f:28,32`) +
-   `docs/ptx.md` examples, or allow atoms (device) + TFAM (golden) to coexist
+   `EXTENT:` surface and migrate the live atom sigs in `maki/fusion.f`, the eval
+   fixtures, and `docs/ptx.md` examples, or allow atoms (device) + TFAM (golden) to coexist
    during transition? (Capability is unaffected either way; this is a consistency
    call.) Recommend: migrate opportunistically, single substrate as the target.
 2. **`#`→tail mangling scheme.** `TDECL-RESERVED?` (`src/core/sumtype.f:152-160`)

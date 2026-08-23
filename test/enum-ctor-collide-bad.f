@@ -28,7 +28,7 @@
 \ to publish a second definition of a live word, which is the corruption that
 \ matters, and it fails closed. It just fails closed far too hard.
 \
-\ Registered as a negative gate case in test/candidate-validation.f. The ARMED
+\ Loaded as a negative case by test/program-diagnostics-test.f. The ARMED
 \ marker is the only stdout line, so a build that silently accepts the collision
 \ and completes the declaration prints LEAKED-PAST-COLLIDE and fails the
 \ exact-marker check even if it also ends up at exit 76 for some other reason.

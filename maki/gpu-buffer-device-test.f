@@ -13,7 +13,7 @@
 \ of leaving an uncaught -5002 behind.
 \
 \ It is a member of the *-device-test.f family (docs/ablation.md): kept out of
-\ maki/test.f and its slices, run explicitly on a device host.
+\ maki/test.f; run explicitly on a device host.
 
 require maki/gpu-session-test.f
 require maki/gpu-buffer.f

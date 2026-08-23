@@ -10,7 +10,9 @@
 \ table build is a separate op). FORWARD GOLDEN: ROPE_ROWS vs maki/rope.f ROPE-PAIR
 \ per pair. GRADCHECK: perturb each x[j] by +-eps (cos/sin FIXED), re-run the SAME
 \ device forward, central-difference sum_i dy[i]*(y+[i]-y-[i])/(2eps), and assert it
-\ matches the device backward dx[j]. Off-device it records a SKIP and check-loads.
+\ matches the device backward dx[j]. This manual leaf requires CUDA.
+\ Run: bin/hb --load tools/ptx/rope-device-test.f
+\ Requires a CUDA device and ptxas.
 \
 \ OWED: the dot targets sm_87 goldens on Orin; that box is unavailable here, so the
 \ Orin sm_87 golden + its profile row are OWED (tools/ptx/perf-rows.tsv).
@@ -162,8 +164,7 @@ variable RO-FWD variable RO-BWD variable RO-dX variable RO-dCOS variable RO-dSIN
 : ROPE-DEVICE-MAIN ( -- )
    T-RESET
    RO-DEVICE? 0= if
-      s" rope-device: libcuda.so.1 unavailable -> ROPE_ROWS golden + ROPE_BWD_ROWS gradcheck SKIPPED (off-device)" type cr
-      T-REPORT exit
+      s" rope-device-test: CUDA device is required" 74 die
    then
    s" habu-ptx-rope" PTXTC:PREPARE
    RO-EMIT drop

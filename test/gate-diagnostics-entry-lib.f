@@ -1,4 +1,4 @@
-\ gate-diagnostics-entry-lib.f - diagnostic slice CLI dispatch.
+\ gate-diagnostics-entry-lib.f - one serial diagnostic test.
 \
 \ Load after test/gate-diagnostics-lib.f.
 
@@ -20,43 +20,30 @@ package GATE-DIAGNOSTICS
    LABEL-COPY
    STRICT-SIGNATURES
    UNSAFE-CHECKS
+   CAP-TRUSTED
+   CAP-TRUSTED-FFI
    LOCAL-IN-LOOP
+   RENDER-CAP-CLOSED
+   ADT-FAMILY
+   ADT-VARIANT
+   ADT-PAYLOAD-POS
+   SIG-ARITY
+   TFAM-DECL
    LOAD-CLOSED
    ALL-ERRORS
    UNDEFINED-RECURSIVE
    SARIF
    PUBLIC-SIGNATURES
-   LINT-STALE
    GT-CLEANUP
-   s" PASS: native checker diagnostics gate phase" type cr ;
+   s" PASS: native checker diagnostics" type cr ;
 
-: ARG-FLAG? ( ptr u8 n -- bool )
-   s" --update-golden" STR= ;
+public
 
-\ Slice selection ignores the golden flag so `-- <slice> --update-golden`
-\ regenerates goldens for that slice.
-: EFFECTIVE-ARGC ( -- n )
-   0
-   0 begin dup SCRIPT-ARGC < while
-      dup SCRIPT-ARGV$ ARG-FLAG? 0= if swap 1+ swap then
-      1+
-   repeat drop ;
-
-: SLICE$ ( -- ptr u8 n )
-   0 begin dup SCRIPT-ARGC < while
-      dup SCRIPT-ARGV$ ARG-FLAG? 0= if SCRIPT-ARGV$ exit then
-      1+
-   repeat drop s" " ;
-
-: DISPATCH ( -- )
+: RUN ( -- )
+   SCRIPT-ARGC 0 <> if
+      s" usage: bin/hb --load test/gate-diagnostics.f" 64 die
+   then
    GOLD:INIT
-   EFFECTIVE-ARGC 0= if SERIAL exit then
-   EFFECTIVE-ARGC 1 <> if USAGE then
-   SLICE$ s" diag-repair" STR= if REPAIR exit then
-   SLICE$ s" diag-undef-primary" STR= if UNDEFINED-PRIMARY exit then
-   SLICE$ s" diag-all-strict" STR= if ALL-STRICT exit then
-   SLICE$ s" diag-file-unsafe" STR= if FILE-UNSAFE exit then
-   SLICE$ s" diag-label-copy" STR= if LABEL-COPY-SLICE exit then
-   USAGE ;
+   SERIAL ;
 
 ;package

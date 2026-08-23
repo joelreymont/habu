@@ -6,8 +6,8 @@
 \ command strings are assembled here from controlled path tokens only; test data
 \ travels as files, not as command arguments. Failures map to named E-ZED-*
 \ throw codes (lib/errors.f). Device availability is policy: when HABU_ZED is
-\ unset or `0`, device suites SKIP explicitly with a printed reason; when set,
-\ every failure is fail-closed. First consumer: the ptx device goldens.
+\ unset or `0`, manual callers can report that the device is unavailable; when set,
+\ every failure is fail-closed.
 \
 \ Config via env (each has a default): HABU_ZED (availability), ZED_HOST (ssh
 \ target, default `zed`), ZED_SSH/ZED_SCP/ZED_RSYNC (tool paths).

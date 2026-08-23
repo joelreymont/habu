@@ -219,9 +219,7 @@ s" RSAR ( sm:ne -- sm:rs ) SM-RS:MAKE" CHECK-QUIET-CANDIDATE! 0 T=       \ one a
 \ ---------------------------------------------------------------------------
 \ 8. Determinism: two identical structure declarations fold to an identical
 \    DECL-EVENT snapshot identity and byte-stable committed field layout. (The
-\    generated words are a pure function of that identical metadata; the
-\    cross-process byte-identity is proven by candidate-validation's digest
-\    comparison.)
+\    generated words are a pure function of that identical metadata.)
 \ ---------------------------------------------------------------------------
 TWX-TFAM-RESET TWX-SCHEMA-RESET DECL-EVENT:RESET
 s" d1" 0 S-DECL FD1 !

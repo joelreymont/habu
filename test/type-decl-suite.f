@@ -217,8 +217,7 @@ s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 \ must exit 70 with `E-UNDEFINED: TYPEFAMILY` on its stderr. It cannot be proved
 \ here, because that diagnostic comes from the engine's undefined-word handler
 \ rather than the checker's diagnostic renderer, so neither DIAG-BUFFER! nor
-\ DIAG-QUIET captures it, and this suite is a candidate-validation positive case
-\ that must leave stderr empty (test/candidate-validation.f).
+\ DIAG-QUIET captures it.
 \
 \ What this suite owns is the registry half, which no subprocess can see. The
 \ retired spelling inside a line comment, inside a paren comment, or inside a
@@ -2472,9 +2471,8 @@ s" TDPA3 ( -- tdpbopt<tdpbw2> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDPA4 ( tdown -- tdpbopt<tdown> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUIET-CANDIDATE! 0 T=
 \ NOTE: the staged lowering fail-closed (a REAL compile of a wide construct
-\ rejects rc 70) is pinned in test/type-ctor-suite.f — that suite permits the
-\ compile-hook stderr, while candidate-validation requires this positive suite
-\ to stay stderr-clean.
+\ rejects rc 70) is pinned in test/type-ctor-suite.f; this positive suite stays
+\ stderr-clean.
 
 \ ---------------------------------------------------------------------------
 \ layout-cap slice 5 (same dot): NESTED named ADTs. A named multi-cell family

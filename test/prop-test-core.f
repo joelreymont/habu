@@ -7,7 +7,7 @@
 \ all habu, run by bin/hb.
 \
 \ The default run shards the sweep across PROP-SHARD-N forked slots, each a
-\ distinct seed running DEFAULT-COUNT iterations, so a single gate phase covers
+\ distinct seed running DEFAULT-COUNT iterations, so one direct run covers
 \ N x DEFAULT-COUNT distinct-seed programs in parallel; one red shard fails the
 \ phase. The `bin/hb <seed> <count>` argv override runs one seed serially to
 \ reproduce a specific run. Fork wrappers load before the check hook so their
@@ -505,6 +505,12 @@ variable ARG-N  variable ARG-I  variable ARG-L
 : USAGE ( -- )  s" prop-test: usage: bin/hb [seed count] < test/prop-test.f" 64 die ;
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
 
+: SCRIPT-ARG-U ( n -- n )
+   SCRIPT-ARGV$ STR>NUMBER? MATCH option
+     none OF USAGE ENDOF
+     some OF ENDOF
+   ;MATCH ;
+
 \ Primitive semantic properties compile typed candidates through the production
 \ checker, execute the real operations on valid operands, and compare runtime
 \ output depth while preserving a guard below the declared inputs. Cases are
@@ -747,7 +753,7 @@ public
    FINISH ;
 
 \ ---- seed-sweep: shard the sweep across PROP-SHARD-N forked slots, each a
-\ distinct seed for DEFAULT-COUNT iterations, so one gate phase covers
+\ distinct seed for DEFAULT-COUNT iterations, so one direct run covers
 \ N x DEFAULT-COUNT distinct-seed programs in parallel. Self-tests + baits run
 \ once in the parent; children run silently (SWEEP-QUIET) and die 1 on a
 \ false-cert or metamorphic inconsistency. One red shard fails the phase.
@@ -865,6 +871,13 @@ private
    FRESH-SEED SWEEP ;
 
 : MAIN ( -- )
+   SCRIPT-SOURCE? IF
+      SCRIPT-ARGC 0 = IF RUN-DEFAULT
+      ELSE SCRIPT-ARGC 2 = IF
+         PRIM-PROP:RUN 0 SCRIPT-ARG-U 1 SCRIPT-ARG-U PROP-RUN
+      ELSE USAGE THEN THEN
+      exit
+   THEN
    ARGC 1 = IF  RUN-DEFAULT
    ELSE ARGC 3 = IF  PRIM-PROP:RUN  1 ARG-U  2 ARG-U  PROP-RUN
    ELSE  USAGE  THEN THEN ;

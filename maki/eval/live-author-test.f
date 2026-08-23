@@ -10,8 +10,7 @@
 \ shape is additionally graded through the emit-structural autograder
 \ (maki/eval/emit.f, candidate text copied verbatim from the transcript), so
 \ GREEN(2) here proves certify + child-process emit + PTX structural gates on
-\ real model output. The device-golden leg of these tasks is Orin-gated and
-\ recorded as a SKIP (device-FFI SKIP pattern, maki/device-smoke.f).
+\ real model output.
 \ INTENDED COUPLING: grading is LIVE through the CURRENT checker + emitters,
 \ so a checker or emitter change that flips any committed verdict fails this
 \ suite loudly (re-grade + re-pin with the change that legitimately moved it,
@@ -92,8 +91,6 @@ variable LAA  variable LAU
    s" | sumnorm | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 194 | 472 | not-run | not-run | checker | proxy |" LAHAS
    s" | gemm | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 50 | 320 | not-run | not-run | checker | proxy |" LAHAS
    s" | attention | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 90 | 469 | not-run | not-run | checker | proxy |" LAHAS
-
-   s" eval-live-author: 2026-07-13 round graded at checker/emit level -> device leg SKIPPED (Orin-gated)" type cr
 
    T-REPORT ;
 

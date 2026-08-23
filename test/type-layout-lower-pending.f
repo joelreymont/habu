@@ -1,7 +1,6 @@
 \ type-layout-lower-pending.f — TFAM 12 width-aware lowering suite
 \ (habu-tfam-12-layout, docs/type-families.md §17-18). Run BY THE ENGINE over
-\ stdin, standalone or through the engine gate (GE-TYPE-LAYOUT-SUITE in
-\ test/gate-engine-lib.f, next to the type-decl suite):
+\ stdin, standalone or through the native registry:
 \     bin/hb < test/type-layout-lower-pending.f
 \ Three sections:
 \   1. width-fact contracts — every TLP-* subject is a REAL checked definition;

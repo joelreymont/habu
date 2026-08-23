@@ -12,8 +12,9 @@
 \ x[j] by +-eps, re-run the SAME device forward, form the central difference
 \ sum_i dy[i]*(y+[i]-y-[i])/(2eps), and assert it matches the device backward dx[j].
 \ BACKWARD PARITY: assert the device dx[j] also matches the maki LN-BWD closed form.
-\ Fully checked Habu via lib/ffi-abi.f. Off-device (no libcuda) it records a SKIP and
-\ still check-loads. Load after lib/test.f, lib/ffi-abi.f, lib/ptx/cg.f, maki/array.f.
+\ Fully checked Habu via lib/ffi-abi.f. This manual leaf requires CUDA.
+\ Run: bin/hb --load tools/ptx/layernorm-device-test.f
+\ Requires a CUDA device and ptxas.
 \
 \ AFFINE: only PLAIN LayerNorm is proved here - the kernel pair takes no gamma/beta
 \ (tools/ptx/layernorm-cg.f records the affine boundary); the affine parameter grads
@@ -174,8 +175,7 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
 : LAYERNORM-DEVICE-MAIN ( -- )
    T-RESET
    RN-DEVICE? 0= if
-      s" layernorm-device: libcuda.so.1 unavailable -> LAYERNORM_ROWS golden + LAYERNORM_BWD_ROWS gradcheck SKIPPED (off-device)" type cr
-      T-REPORT exit
+      s" layernorm-device-test: CUDA device is required" 74 die
    then
    s" habu-ptx-layernorm" PTXTC:PREPARE
    RN-EMIT drop

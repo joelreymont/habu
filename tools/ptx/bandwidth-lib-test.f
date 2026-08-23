@@ -1,5 +1,5 @@
 \ bandwidth-lib-test.f - host-side coverage for the SAXPY bandwidth runner
-\ configuration math; the device leg is a recorded SKIP off-device.
+\ configuration math.
 
 require lib/test.f
 require tools/ptx/bandwidth-lib.f
@@ -39,13 +39,6 @@ BW-FPE @ 3 T=
 s" TEST-K" KERNEL!
 s" TEST-K" LABEL!
 PTXBENCH:LABEL$ s" TEST-K" T$=
-
-: BWT-DEVICE-LEG ( -- )
-   CUDA:OPEN? 0= if
-      s" bandwidth-lib: libcuda.so.1 unavailable -> device leg SKIPPED (host config math verified)" type cr
-   then ;
-
-BWT-DEVICE-LEG
 
 T-REPORT
 

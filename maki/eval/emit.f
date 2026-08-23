@@ -2,11 +2,10 @@
 \ 2D-GEMM / attention tasks: GRADE = certify AND emit AND PTX structure.
 \
 \ Extends the SAXPY/softmax device-golden mechanism (maki/eval/device.f /
-\ eval-device-sm.f) to three tasks whose device leg is Orin-gated: grading here
+\ eval-device-sm.f) to three authoring tasks: grading here
 \ stops at the checker + a fresh child-process PTX emit + structural assertions
 \ on the emitted PTX (required instruction features present, forbidden patterns
-\ absent). The device-golden leg for these tasks is recorded as a SKIP by the
-\ suites (device-FFI SKIP pattern, maki/device-smoke.f). Verdicts mirror
+\ absent). Verdicts mirror
 \ GRADE-CANDIDATE: 2 GREEN (certifies + emit + structure), 1 TYPED-WRONG
 \ (certifies but a structural gate fails - e.g. sum-normalize
 \ written with BLOCK-MAX, or a GEMM that skips the K-loop), 0 REJECTED.

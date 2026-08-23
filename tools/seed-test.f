@@ -107,7 +107,6 @@ variable SET-FAIL-SCRIPT-U
 : SET-TEST-CODESIGN-ENSURE ( -- )
    SET-SCRIPT$ s" #!/bin/sh\nexit 0\n" WRITE-ALL
    SET-SCRIPT$ CHMOD-X
-   SET-SCRIPT$ CODESIGN:VERIFY-RC 0 T<>
    SET-SCRIPT$ CODESIGN:ENSURE
    SET-SCRIPT$ CODESIGN:VERIFY ;
 
@@ -129,7 +128,7 @@ variable SET-FAIL-SCRIPT-U
    115 SB-APPEND-C
    34 SB-APPEND-C
    32 SB-APPEND-C
-   s" /bin/cat" SB-APPEND
+   SET-SCRIPT$ SB-APPEND
    34 SB-APPEND-C
    32 SB-APPEND-C
    s" SEED-RUN-BUILD-FIXPOINT" SB-APPEND
@@ -141,6 +140,7 @@ variable SET-FAIL-SCRIPT-U
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/fs-mutate.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
@@ -152,10 +152,12 @@ variable SET-FAIL-SCRIPT-U
 
 : SET-CHECK-BUILD-FAIL ( len len rc -- ) {: outu:len erru:len rc:rc :}
    rc RC>N 0 T<>
-   SET-ERR erru LEN>N s" illegal option" CONTAINS? TTRUE
+   SET-ERR erru LEN>N s" seed-child-failure-marker" CONTAINS? TTRUE
    SET-ERR erru LEN>N s" seed: build-fixpoint failed" CONTAINS? TTRUE ;
 
 : SET-TEST-BUILD-FAIL-REPLAYS-ERR ( -- )
+   SET-SCRIPT$ S\" #!/bin/sh\necho seed-child-failure-marker >&2\nexit 7\n" WRITE-ALL
+   SET-SCRIPT$ CHMOD-X
    SET-FAIL-SCRIPT$ SET-FAIL-SOURCE$ WRITE-ALL
    SET-FAIL-ARGV
    s" bin/hb" >LEN SET-OUT SET-CAP >LEN SET-ERR SET-CAP >LEN

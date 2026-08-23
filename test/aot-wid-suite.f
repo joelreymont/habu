@@ -76,11 +76,8 @@
 \ the moment a family is added. Reading the two baked ids back BY ID is the direct,
 \ stable proof, and it is what a bitmap makes cheap.
 \
-\ Cost: six child engine builds (~12 s each; two of them are the boot-gate
-\ modes). It is registered as
-\ `TEST:SUITE aot-wid-restore` in test/gate-stdlib-cases.f, so it runs in the
-\ standalone stdlib gate (a required master gate) - not the fast tail-process
-\ fork tier, whose perf ratchet the build cost would exceed. Run standalone:
+\ Cost: six child engine builds (~12 s each). It is registered directly in
+\ test/gate-stdlib-cases.f. Run standalone:
 \ bin/hb --load test/aot-wid-suite.f
 
 require lib/errors.f
@@ -396,13 +393,13 @@ create PRB PRB-CAP allot   variable PRB-U
 \ because these engines carry a boot-run entry that prints first.
 : ALIAS-PROBE$ ( -- ptr u8 n )
    PRB-RESET
+   s" require lib/fmt.f" PRB+ PRB-NL
    s" require tools/pkg-wid-probe.f" PRB+ PRB-NL
-   s" require tools/prot-wid-probe.f" PRB+ PRB-NL
-   S\" : PRB-ALIAS ( -- ) s\" AWBGATE\" PKG-WID-PROBE:WID-OF {: w:n :}" PRB+ PRB-NL
+   S\" : PRB-ALIAS ( -- ) wordlist {: next:n :} s\" AWBGATE\" PKG-WID-PROBE:WID-OF {: w:n :}" PRB+ PRB-NL
    S\"    s\" awb-wid=\" type w FMT:.U cr" PRB+ PRB-NL
    S\"    s\" awb-owners=\" type w PKG-WID-PROBE:OWNERS FMT:.U cr" PRB+ PRB-NL
    S\"    s\" awb-high=\" type PKG-WID-PROBE:HIGH FMT:.U cr" PRB+ PRB-NL
-   S\"    s\" awb-widn=\" type PROT-WID-PROBE:WIDS FMT:.U cr ;" PRB+ PRB-NL
+   S\"    s\" awb-next=\" type next FMT:.U cr ;" PRB+ PRB-NL
    s" PRB-ALIAS" PRB+
    PRB$ ;
 
@@ -575,7 +572,7 @@ variable ALIAS-SEALED   variable ALIAS-OPEN   variable ALIAS-W
    s" ... at an id the target's own prefix never handed out" T-LABEL
    s" awb-wid=" TAGGED-N  wid >  TTRUE
    s" ... and the engine's next id is past every id its records claim" T-LABEL
-   s" awb-widn=" TAGGED-N  s" awb-high=" TAGGED-N  >  TTRUE ;
+   s" awb-next=" TAGGED-N  s" awb-high=" TAGGED-N  >  TTRUE ;
 
 \ The capture's own refusal, reached by telling it the window made fewer
 \ wordlists than it did. It names the RECORD, which is what the boot's refusal

@@ -6,8 +6,7 @@
 \ engine PREFIX load, which is re-read from source at boot, so the suite copies the
 \ src tree ONCE to a private root; each case patches the copy, boots the
 \ engine-under-test with CWD = that root, then restores the touched files -- the
-\ real workspace tree is never touched. Suite weight is five child-engine boots
-\ (~2s total), so it runs in the standalone stdlib gate instead of the fast tier.
+\ real workspace tree is never touched. The canonical native registry runs it.
 \ Cases:
 \   positive  - a pre-trust defer ( -- n ) + a post-hook CHECKED selftest that
 \               `is`-installs [: 42 ;] and round-trips it: boots exit 0 and the
@@ -195,7 +194,7 @@ variable LAST-ERR-U
 \ returned and the case died on the 20s timeout (E-PROC-TIMEOUT) instead of
 \ reporting an exit code. The empty pipe makes the child see a closed stdin - the
 \ state every case here assumes - from a pipe, a terminal, or a gate pool slot
-\ alike. test/gate-env-stdin-tty-test.f holds the same property for GE-RUN-ENV.
+\ alike.
 : SPAWN-STDIN-RC ( ptr u8 n -- n ) {: in:ptr inu:n :}
    PROC-ARGV-RESET
    HB$ >LEN  ROOT$ >LEN  in inu >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS

@@ -33,16 +33,15 @@ the gate files are the source of truth.
 
 ## Test registration
 
-- Register new tests in `test/gate-stdlib-cases.f` and
-  `test/gate-stdlib-inline-lib.f`. Read the findings lines, not exit codes
-  (same for `tools/dot-dep-lint.f`).
+- Register new tests in `test/gate-stdlib-cases.f`. Read the findings lines,
+  not exit codes (same for `tools/dot-dep-lint.f`).
 
 ## Forth policy
 
 - All Forth runs through `bin/hb`. gforth exists only for no-binary seed
   recovery. If Habu lacks a capability you need, ADD it properly — no
   shell-script workaround for core logic. (Process-spawn idiom:
-  `maki/eval/device-fault-test.f`.)
+  `maki/cross-seq-contraction-test.f`.)
 
 ## New-op discipline (op-adding lanes)
 

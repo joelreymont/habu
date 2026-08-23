@@ -628,8 +628,8 @@ variant.
 
 The axiom set is audited two ways:
 
-- **Per-row proof recipes** — `test/prop-test-core.f` (`AX-CENSUS`, run by the
-  prop/debug gate phase) carries an audited recipe ledger at the end of the file,
+- **Per-row proof recipes** — `test/prop-test-core.f` (`AX-CENSUS`, run directly
+  by the native registry) carries an audited recipe ledger at the end of the file,
   with exactly one `\ AXR …` line per live `PES` slot. Each recipe restates the
   row's identity — defining package, primitive name, declared arity, and the
   per-slot typed operands — and one proof kind: executable generic, owned-memory,

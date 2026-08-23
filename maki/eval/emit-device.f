@@ -37,9 +37,8 @@
 \ candidate kernel K + the task scaffold, spawn a bin/hb CHILD to emit its PTX
 \ (untrusted generated source never mutates this dictionary), ptxas-assemble to a
 \ private per-run cubin, load + launch on the Orin, copy the output back, and take
-\ max|err| vs a host reference. The whole device leg is keyed on the device-FFI
-\ probe (ON-DEVICE?, the maki/device-smoke.f pattern), so off-device the suite is
-\ a recorded SKIP and this file still check-loads. This file OWNS the canonical
+\ max|err| vs a host reference. The whole device leg is keyed on ON-DEVICE? and
+\ remains a manual device operation. This file OWNS the canonical
 \ wrong-but-green fixture strings; maki/eval/emit-test.f references them so the
 \ structural pins and the device golden grade the EXACT same candidates.
 \ Fully checked Habu; no 0 set-check. Load after lib/ptx/cuda-driver.f.
@@ -385,7 +384,7 @@ public
 \ tolerance: divergences are >= ~0.09, matches are 0 (exact inputs); 1/1024 splits them wide
 : TOL ( -- r )  0.0009765625 ;
 
-\ device-FFI probe (maki/device-smoke.f pattern): libcuda present AND cuInit ok
+\ Device probe: libcuda present and cuInit succeeds.
 : ON-DEVICE? ( -- bool )
    CUDA:OPEN? 0= if false exit then
    0 CUDA:CU-INIT RC>N 0= ;

@@ -39,9 +39,8 @@
 \                               bin/hb (SUBJECT forks re-invoke it), so the
 \                               factored compiler in the fixpoint image is what
 \                               emits the pinned bytes
-\ Runs as an isolated fork (test/gate-stdlib-inline-lib.f TAIL-PROCESS:RUN
-\ GSI-FORK-INCLUDE). Negatives/positives run in disposable SUBJECT forks so a
-\ die never touches the runner.
+\ Negatives and positives run in disposable SUBJECT forks so a die never touches
+\ the registry process.
 \
 \ Standalone (requires resolve every dependency; run BY THE ENGINE over stdin):
 \   bin/hb < test/match-factor-pin.f

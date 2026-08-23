@@ -12,7 +12,7 @@
 \
 \ Run: HABU_ZED=1 bin/hb --load lib/test.f lib/fs.f lib/fs-mutate.f
 \   tools/zed-run-lib.f tools/ptx/zed-gradcheck-suite.f
-\ When HABU_ZED is unset/0 it SKIPS explicitly (no device).
+\ HABU_ZED must identify an available device host.
 
 require lib/test.f
 require lib/fs.f
@@ -161,7 +161,7 @@ variable AGS-PTX-U
    OUT$ type ;
 
 : AGS-MAIN ( -- )
-   AVAILABLE? 0= if s" per-VJP device gradcheck needs HABU_ZED" SKIP exit then
+   AVAILABLE? 0= if s" per-VJP device gradcheck needs HABU_ZED=1" 74 die then
    AGS-TIMEOUT-MS TIMEOUT!
    PING
    s" /usr/local/cuda/bin/ptxas" NEED-TOOL

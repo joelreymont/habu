@@ -431,10 +431,9 @@ interchangeable — issuing Linux `TCGETS` on macOS kills the process (exit 83) 
 so an unrecognised host throws `E-PROC-HOST` instead of trying both.
 
 Before concluding "environment", check the cheaper explanations the same way
-this class was mis-filed once already: the suite may not be selected by the
-slice that looked green (`SUITE-RUN?` in `test/gate-stdlib-lib.f`), and a
-fixture that asserts a specific exit code may simply be asserting a code the
-tree stopped producing.
+this class was mis-filed once already: the test may not be registered in
+`test/gate-stdlib-cases.f`, and a fixture that asserts a specific exit code may
+simply be asserting a code the tree stopped producing.
 
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
@@ -500,7 +499,5 @@ pool is the machine's, so neither is a thing the caller can get wrong.
 - `tools/perf/boot-census-watcher.c` + `boot-census-analyze.py` — follow a
   command's whole process tree via kqueue `EVFILT_PROC` and classify every
   child fork-vs-exec by image path and argv (fork children keep the
-  parent's argv). Built to count the gate's cold engine boots for the
-  Stage B refutation; cross-checked exactly against `lib/process.f`
-  PROCESS-TRACE at the top level. Start here for any "how many engines
-  does this run actually start" question.
+  parent's argv). Start here for any "how many engines does this run actually
+  start" question.

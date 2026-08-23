@@ -132,7 +132,7 @@ variable RC
    post postu SB-APPEND
    path pathu SB$ WRITE-ALL ;
 
-\ Resolve the child engine (the gate-runner-entry-test pattern).
+\ Resolve the child engine used by the production-load probe.
 : HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop

@@ -5,8 +5,10 @@
 \ Self-contained, mirrors tools/ptx/rmsnorm-device-test.f: spawns bin/hb to emit the PTX
 \ module holding SWIGLU_ROWS (tools/ptx/swiglu-cg.f), ptxas-assembles it to a PRIVATE
 \ per-run cubin for the PROBED device arch (sm_121a GB10, ATGT:LABEL$ - never a hardcoded
-\ target), loads the cubin and pulls the handle. IDLE-CHECK FIRST: off-device (no libcuda)
-\ it records a SKIP and still check-loads. FORWARD GOLDEN: run SWIGLU_ROWS on a fixed row
+\ target), loads the cubin and pulls the handle. This manual leaf requires CUDA.
+\ Run: bin/hb --load tools/ptx/swiglu-device-test.f
+\ Requires a CUDA device and ptxas.
+\ FORWARD GOLDEN: run SWIGLU_ROWS on a fixed row
 \ and assert each y[i] matches maki/swiglu.f SWIGLU-F within tolerance. GRADCHECK: SwiGLU has
 \ two inputs; for each j perturb gate[j] (then up[j]) by +-eps, re-run the SAME device
 \ forward, form the central difference sum_i ct[i]*(y+[i]-y-[i])/(2eps), and assert it
@@ -164,8 +166,7 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
 : SWIGLU-DEVICE-MAIN ( -- )
    T-RESET
    SW-DEVICE? 0= if
-      s" swiglu-device: libcuda.so.1 unavailable -> SWIGLU_ROWS forward golden + FD gradcheck SKIPPED (off-device)" type cr
-      T-REPORT exit
+      s" swiglu-device-test: CUDA device is required" 74 die
    then
    s" habu-ptx-swiglu" PTXTC:PREPARE
    SW-EMIT drop

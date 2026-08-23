@@ -32,10 +32,8 @@ variable CT-VA  variable CT-VU
 : MODEL-CAND$ ( -- ptr u8 n )  MSRC$ ;
 
 \ ---- fail-closed probes ----------------------------------------------------
-\ v2 MODEL: compiles the body as a checked PLAN definition, so an arity underflow (an op
-\ with too few operands) is now a load-time checker diagnostic, proven THROUGH MODEL: by
-\ the subprocess fixtures GE-MODEL-* in test/gate-engine-lib.f. The catchable throws below
-\ drive the capture primitives directly (as the old suite did), since the MODEL: driver's
+\ v2 MODEL: compiles the body as a checked PLAN definition. The catchable throws below
+\ drive the capture primitives directly, since the MODEL: driver's
 \ own throws cross an `evaluate` boundary and are not catchable in-process.
 : TRY-NOMODEL ( -- )  MODEL-CLEAR LOWER drop ;
 : TRY-BADOP   ( -- )  s" BOGUS" OP-KIND drop ;

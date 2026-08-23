@@ -23,7 +23,6 @@ require lib/process-argv.f
 require lib/process-fork.f
 require lib/test.f
 require lib/test/runner.f
-require test/gate-stats.f
 require test/gate-pool.f
 require test/gate-common-lib.f
 require tools/codegen-compare-cabi.f

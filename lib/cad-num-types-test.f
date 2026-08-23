@@ -4,8 +4,8 @@
 \
 \ Focused direct-loaded gate home for the B5.1 contract. Production modules load
 \ these types transitively through lib/cad-num-arithmetic.f; this file owns the
-\ validator boundary matrix, not library authority. It is not yet in
-\ test/gate-stdlib-cases.f, so no gate slice schedules it.
+\ validator boundary matrix, not library authority. The canonical native registry
+\ schedules it through test/gate-stdlib-cases.f.
 \
 \ numeric-result<a> has no polymorphic eliminator yet (whole-bundle MATCH, dot
 \ habu-typestate-result-drop-5ae048a7), so a caller MATCHes the concrete

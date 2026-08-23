@@ -10,8 +10,9 @@
 \       4x4 accumulators/thread; the perf tile the lower-mm.f blocked path emits.
 \ A=B=1.0, C=0 (values are immaterial to timing). Shapes 512/1024/2048 are multiples of
 \ 64/16, valid for both tiles. Device-only: off the Orin (no libcuda) GB-ALL SKIPS so the
-\ file still check-loads. Run on the Orin: scp to zed:Work/habu then
-\ `bin/hb --load tools/ptx/gemm-bench.f`. The Triton column is docs/eval-triton.md (external).
+\ file still check-loads. The Triton column is docs/eval-triton.md (external).
+\ Run: bin/hb --load tools/ptx/gemm-bench.f
+\ Requires a CUDA device and ptxas.
 
 require lib/errors.f
 require lib/string.f

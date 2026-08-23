@@ -18,10 +18,7 @@ variable PATH2-U
 variable LABEL-U
 
 : USAGE ( -- )
-   s" usage: test/gate-diagnostics.f [diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe|diag-label-copy]" USAGE-RC die ;
-
-: ARG0= ( ptr u8 n -- bool )
-   0 SCRIPT-ARGV$ STR= ;
+   s" diagnostics: invalid assertion mode" USAGE-RC die ;
 
 : J-DQ ( -- )
    GE-DQ SB-APPEND-C ;
@@ -755,46 +752,5 @@ variable LABEL-U
    PATH$ PS-OUT$ WRITE-ALL
    PS-BUFFERS-OFF
    s" public-signatures" s" public-signatures.json" s" public signatures output" GJA1 ;
-
-public
-
-: LABEL-COPY-SLICE ( -- )
-   s" hb-gate-diagnostics-label-copy" GT-START
-   LABEL-COPY
-   GT-CLEANUP
-   s" PASS: native checker diagnostics label-copy slice" type cr ;
-
-: REPAIR ( -- )
-   s" hb-gate-diagnostics-repair" GT-START
-   REPAIR-CLASSES
-   PUBLIC-SIGNATURES
-   GT-CLEANUP
-   s" PASS: native checker diagnostics repair slice" type cr ;
-
-: UNDEFINED-PRIMARY ( -- )
-   s" hb-gate-diagnostics-undef-primary" GT-START
-   UNDEFINED-RECURSIVE
-   PRIMARY-JSON
-   UNKNOWN-SIGNATURE
-   MALFORMED-QUOTATION-SIGNATURE
-   BAD-PARAM-SIGNATURE
-   RENDER-CAP-CLOSED
-   ADT-FAMILY
-   ADT-VARIANT
-   ADT-PAYLOAD-POS
-   SIG-ARITY
-   TFAM-DECL
-   GT-CLEANUP
-   s" PASS: native checker diagnostics undef-primary slice" type cr ;
-
-: FILE-UNSAFE ( -- )
-   s" hb-gate-diagnostics-file-unsafe" GT-START
-   FILE-ORIGIN
-   UNSAFE-CHECKS
-   CAP-TRUSTED
-   CAP-TRUSTED-FFI
-   LOCAL-IN-LOOP
-   GT-CLEANUP
-   s" PASS: native checker diagnostics file-unsafe slice" type cr ;
 
 ;package

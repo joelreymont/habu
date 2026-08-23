@@ -14,8 +14,11 @@
 \ => y' = a*x+y = 2a. The kernel name, block shape, cuParamSetSize total, and
 \ every cuParamSetV offset/size are GENERATED from the kernel-ABI record
 \ (lib/ptx/kernel-abi.f) - the same record that renders the kernel's entry and
-\ param loads - and LL-ABI-CHECK pins them to the old hand literals. The
-\ host-side marshalling + ABI assertions run unconditionally; the device leg
+\ param loads - and LL-ABI-CHECK pins them to the old hand literals.
+\ Run: bin/hb --load tools/ptx/cuda-launch.f
+\ Requires a CUDA device and ptxas.
+\
+\ Host-side marshalling + ABI assertions run unconditionally; the device leg
 \ (emit+ptxas+launch) is SKIPPED off-Orin (libcuda absent).
 
 require lib/errors.f

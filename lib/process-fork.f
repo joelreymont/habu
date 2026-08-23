@@ -68,7 +68,7 @@ public
    CHILD-FLAG @ 0= 0= ;
 
 : RAW ( -- pid )
-   fork >PID PROCESS-TRACE:FORKED {: pid:pid :}
+   fork >PID {: pid:pid :}
    pid PID>N 0= if ENTER-CHILD then
    pid ;
 
@@ -168,10 +168,8 @@ public
 \ - the worker never has to track or kill it. The worker must already be its
 \ own group leader; it keeps the wa write end open (dropped only at its exit).
 : FORK-REAPER ( fd fd -- ) {: pd:fd wa:fd :}
-   PROCESS-TRACE:REAPER
    RAW {: ipid:pid :}
    ipid PID>N 0= if
-      PROCESS-TRACE:REAPER
       RAW {: r2:pid :}
       r2 PID>N 0= if
          pd wa CLOSE-EXCEPT2
@@ -215,7 +213,6 @@ public
 \ blocks; when the pool parent is SIGKILLed the write end EOFs and the reaper
 \ SIGKILLs the child's group.
 : SPAWN-REAPER ( fd pid -- pid ) {: pd:fd cpid:pid :}
-   PROCESS-TRACE:REAPER
    RAW {: rpid:pid :}
    rpid PID>N 0= if
       0 >PID cpid SET-PGID RC>N 0 < if

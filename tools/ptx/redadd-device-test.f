@@ -4,6 +4,8 @@
 \ threads each atomically adding 1.0 to out[0] and asserts out[0] = 256.0 (FP32 exact). Orin-only.
 \ Releases the primary context before exit (or bin/hb hangs at teardown). Load after lib/test.f,
 \ lib/ffi-abi.f, and the fs/process libs.
+\ Run: bin/hb --load tools/ptx/redadd-device-test.f
+\ Requires a CUDA device and ptxas.
 
 require lib/test.f
 require lib/ptx/toolchain.f
@@ -66,9 +68,8 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
 
 : REDADD-MAIN ( -- )
    T-RESET
-   CUDA:OPEN? 0= if                     \ off-device: no libcuda -> recorded device SKIP, compile-check only
-      s" redadd-device-test: libcuda.so.1 unavailable -> device red.global.add.f32 SKIPPED (off-device)" type cr
-      T-REPORT exit
+   CUDA:OPEN? 0= if
+      s" redadd-device-test: CUDA device is required" 74 die
    then
    s" habu-ptx-redadd" PTXTC:PREPARE
    RA-EMIT drop

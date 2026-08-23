@@ -12,7 +12,8 @@
 \
 \ Run: bin/hb --load test/gate-env-stdin-tty-test.f
 
-require test/gate-runner-support.f
+require lib/test.f
+require test/gate-common.f
 
 package GATE-ENV-STDIN-TTY-TEST
 
@@ -141,7 +142,7 @@ variable OUTPUT-RD
 
 : RUN-OUTER ( -- )
    HB-TARGET-LINUX? 0= if
-      s" gate-env-stdin-tty-test: Linux controlling-terminal case skipped" type cr
+      s" gate-env-stdin-tty-test: controlling-terminal regression applies to Linux" type cr
       exit
    then
    T-RESET
@@ -161,14 +162,15 @@ variable OUTPUT-RD
    s" bin/hb" CHILD-TIMEOUT-MS GE-RUN-ENV
    s" background no-input child exits" GE-EXPECT-OK
    s" background no-input child is silent" GE-EXPECT-SILENT
-   s" gate-env-stdin-tty-driver: ok" type cr ;
+   s" gate-env-stdin-tty-driver: ok" type cr
+   s" " 0 die ;
 
 : DRIVER? ( -- bool )
    SCRIPT-ARGC 1 <> if false exit then
    0 SCRIPT-ARGV$ s" driver" STR= ;
 
 : MAIN ( -- )
-   DRIVER? if RUN-DRIVER exit then
+   DRIVER? if RUN-DRIVER then
    RUN-OUTER ;
 
 MAIN

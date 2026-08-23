@@ -605,7 +605,7 @@ public
    START-PRESEED
    GT-POOL-DRAIN
    GT-CLEANUP
-   s" PASS: native hb-build AOT positive gate phase" type cr ;
+   s" PASS: native hb-build AOT positive tests" type cr ;
 
 ;using
 ;package

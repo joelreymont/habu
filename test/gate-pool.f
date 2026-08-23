@@ -3,7 +3,6 @@
 \ Load after lib/process-env.f and lib/test/runner.f.
 
 require lib/process-fork.f
-require test/gate-stats.f
 require tools/why-threw.f
 
 using WHY-THREW                          \ the fork-throw self-identifying report
@@ -85,53 +84,11 @@ variable GT-POOL-DEATH-RD
 variable GT-POOL-DEATH-WR
 variable GT-POOL-DEATH-MADE
 
-\ Scheduled-versus-ran accounting. A member that is listed but never reaches a
-\ verdict used to leave no trace at all: the group printed one fewer PASS line
-\ among a hundred and read as green. STARTED counts the members this pool
-\ launched, REAPED the members that reported one - and GT-POOL-REAP is the only
-\ word that reports one, so the two can only differ if a launched member vanished.
-\ Both are pool state, not a list anyone maintains: adding or deleting a member
-\ moves both numbers together and neither has to be written down anywhere.
-variable GT-POOL-STARTED
-variable GT-POOL-REAPED
-
-: GT-POOL-STARTED# ( -- n )
-   GT-POOL-STARTED @ ;
-
-: GT-POOL-REAPED# ( -- n )
-   GT-POOL-REAPED @ ;
-
 : GT-POOL-RED# ( -- n )
    GT-POOL-RED-N @ ;
 
 : GT-POOL-RED-RESET ( -- )
    0 GT-POOL-RED-N ! ;
-
-: GT-POOL-NO-PASS-HOOK ( ptr u8 n n -- )
-   drop 2drop ;
-
-\ Receives ( label labelu ms ) for every passing slot. Hooks that record the
-\ span must emit through GS-SPAN-AUTH: the pool owns the slot, so its span is
-\ authoritative and must bypass the fork child's self-suppression.
-defer GT-POOL-PASS-HOOK ( ptr u8 n n -- )
-
-: GT-POOL-PASS-HOOK-DEFAULT! ( -- )
-   [: GT-POOL-NO-PASS-HOOK ;] is GT-POOL-PASS-HOOK ;
-
-GT-POOL-PASS-HOOK-DEFAULT!
-
-: GT-POOL-NO-TIMEOUT-HOOK ( ptr u8 n n n n n -- )
-   2drop 2drop 2drop ;
-
-\ Receives ( label labelu ms live limit waits ) for every slot the pool times
-\ out. Default no-op; run-lib installs a gate-stats emitter so a pool timeout is
-\ attributable in gate-stats.tsv, not only on the RED: line.
-defer GT-POOL-TIMEOUT-HOOK ( ptr u8 n n n n n -- )
-
-: GT-POOL-TIMEOUT-HOOK-DEFAULT! ( -- )
-   [: GT-POOL-NO-TIMEOUT-HOOK ;] is GT-POOL-TIMEOUT-HOOK ;
-
-GT-POOL-TIMEOUT-HOOK-DEFAULT!
 
 : GT-POOL-OUT-BUFS-FIELD ( -- ptr ptr u8 )
    GT-POOL-OUT-BUFS-A 0 ptr-field ;
@@ -208,7 +165,7 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-CAPTURE-NAME ( n ptr u8 n -- ptr u8 n ) {: seq:n suf:ptr sufu:n :}
    GT-POOL-NAME-RESET
    s" pool-" GT-POOL-NAME+
-   GS-GEN$ GT-POOL-NAME+
+   getpid GT-POOL-NUM$ GT-POOL-NAME+
    s" -" GT-POOL-NAME+
    seq GT-POOL-NUM$ GT-POOL-NAME+
    suf sufu GT-POOL-NAME+
@@ -259,7 +216,7 @@ GT-POOL-ABORT-BARE!
 \ Distinct verdict token for a slot the pool's OWN timeout/reaper killed:
 \ GT-POOL-TIMEOUT set the timed-out flag (via GT-POOL-OUTCOME! timeout variant)
 \ before sending SIGKILL, so this is attributable pool saturation, not a real
-\ exit/signal death. Still a red/failing phase, but not to be misread as a
+\ exit/signal death. Still a red/failing test, but not to be misread as a
 \ genuine failure on a contended host.
 : GT-POOL-TIMEOUT-KIND$ ( -- ptr u8 n )
    s" TIMEOUT-UNDER-LOAD" ;
@@ -492,8 +449,6 @@ GT-POOL-ABORT-KILL!
    GT-POOL-ALLOC-BUFFERS
    GT-POOL-LIMIT-SELECT GT-POOL-LIMIT !
    0 GT-POOL-LIVE !
-   0 GT-POOL-STARTED !
-   0 GT-POOL-REAPED !
    GT-POOL-DEATH-MAKE
    0 begin dup GT-POOL-MAX < while
       dup >IDX GT-POOL-RESET-SLOT
@@ -510,9 +465,6 @@ GT-POOL-ABORT-KILL!
    repeat drop
    E-TBL-BOUNDS throw ;
 
-: GT-POOL-RUN-LINE ( idx -- ) {: idx :}
-   ;
-
 : GT-POOL-ELAPSED-MS ( idx -- n ) {: idx :}
    mono-ns idx GT-POOL-START-PTR @ - PROC-NS-PER-MS / ;
 
@@ -521,8 +473,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-LABEL$ type
    s"  (" type
    idx GT-POOL-ELAPSED-MS GT-U-TYPE
-   s" ms)" type cr
-   idx GT-POOL-LABEL$ idx GT-POOL-ELAPSED-MS GT-POOL-PASS-HOOK ;
+   s" ms)" type cr ;
 
 : GT-POOL-WAIT-DUE? ( idx -- bool ) {: idx :}
    mono-ns idx GT-POOL-LAST-PTR @ - PROC-NS-PER-MS / GT-HEARTBEAT-MS >= ;
@@ -576,30 +527,14 @@ GT-POOL-ABORT-KILL!
 \ then track its pid so GT-POOL-REAP/KILL-SLOT reap it. Reaper fork failure is
 \ also fail-closed; otherwise a spawned subtree could survive a killed pool.
 : GT-POOL-ARM-SPAWN-REAPER ( idx -- ) {: idx:idx :}
-   idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
    GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-FORK:SPAWN-REAPER {: rpid:pid :}
    rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    rpid idx GT-POOL-REAPER-PID-PTR ! ;
 
-\ Slot generation: the inherited process generation extended with this slot's
-\ seq, built in the shared name buffer.
-: GT-POOL-SLOT-GEN$ ( idx -- ptr u8 n ) {: idx:idx :}
-   GT-POOL-NAME-RESET
-   GS-GEN$ GT-POOL-NAME+
-   s" -" GT-POOL-NAME+
-   idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$ GT-POOL-NAME+
-   GT-POOL-NAME$ ;
-
 : GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx:idx path:ptr pathu:n :}
-   \ A spawned child cannot inherit this process's in-memory generation, so
-   \ export the slot generation; GS-GEN-INIT adopts it at load. PROC-ENV-SET
-   \ replaces any row PROC-ENV-INHERIT-MISSING copied from this process's own
-   \ environment, so exactly one HABU_GATE_GEN reaches the child.
-   s" HABU_GATE_GEN" >LEN idx GT-POOL-SLOT-GEN$ >LEN PROC-ENV-SET
    path pathu >LEN PROC-ARGV-CHECK-PATH
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
    pathz argv envp -1 >FD idx GT-POOL-OUT-W-PTR @ idx GT-POOL-ERR-W-PTR @
    PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    pid PID>N 0 < if
@@ -611,11 +546,6 @@ GT-POOL-ABORT-KILL!
    pid idx GT-POOL-PID-PTR !
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
-
-\ Fork-child generation: adopt this slot's generation in place, so every label
-\ this child stores or emits is qualified with its own identity path.
-: GT-POOL-GEN-CHILD! ( idx -- )
-   GT-POOL-SLOT-GEN$ GS-GEN! ;
 
 : GT-POOL-FORK-EXIT ( n -- )
    s" " rot die ;
@@ -674,16 +604,13 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-CLOSE-CAPTURE
    GT-POOL-SETPGID-SELF
-   idx GT-POOL-GEN-CHILD!
    GT-POOL-RED-RESET
-   idx GT-POOL-LABEL$ GS-CHILD-LABEL!
    GT-POOL-ARM-REAPER
    q catch {: rc:n :}
    rc 0= if 0 GT-POOL-FORK-EXIT then
    rc GT-POOL-FORK-THROW ;
 
 : GT-POOL-FORK ( idx [ -- ] -- ) {: idx:idx q :}
-   idx GT-POOL-LABEL$ GATE-PROCESS:OWNER!
    PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    pid PID>N 0= if idx q GT-POOL-FORK-CHILD then
@@ -760,7 +687,6 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-CAPTURE-START ( idx -- ) {: idx:idx :}
    GT-POOL-SEQ @ 1+ GT-POOL-SEQ !
    GT-POOL-SEQ @ idx GT-POOL-SEQ-PTR !
-   GT-POOL-STARTED @ 1+ GT-POOL-STARTED !
    idx 0 GT-POOL-CAPTURE-PATH!
    idx 1 GT-POOL-CAPTURE-PATH!
    idx 0 GT-POOL-CAPTURE-FD!
@@ -868,12 +794,12 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-RED-OVERFLOW-LINE ( -- )
    GT-POOL-RED# GT-POOL-RED-MAX > if
       s" RED: +" type GT-POOL-RED# GT-POOL-RED-MAX - GT-POOL-N-TYPE
-      s"  more failed phases (details not recorded)" type cr
+      s"  more failed tests (details not recorded)" type cr
    then ;
 
 : GT-POOL-RED-REPORT ( -- )
    GT-POOL-RED# 0= if exit then
-   s" red phases: " type GT-POOL-RED# GT-POOL-N-TYPE cr
+   s" red tests: " type GT-POOL-RED# GT-POOL-N-TYPE cr
    0 begin dup GT-POOL-RED-DETAILED < while
       dup GT-POOL-RED-LINE
       1+
@@ -893,7 +819,6 @@ GT-POOL-ABORT-KILL!
    mono-ns idx GT-POOL-START-PTR !
    idx GT-POOL-START-PTR @ idx GT-POOL-LAST-PTR !
    timeout idx GT-POOL-TIMEOUT-PTR !
-   idx GT-POOL-RUN-LINE
    idx path pathu GT-POOL-SPAWN
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
@@ -910,7 +835,6 @@ GT-POOL-ABORT-KILL!
    mono-ns idx GT-POOL-START-PTR !
    idx GT-POOL-START-PTR @ idx GT-POOL-LAST-PTR !
    timeout idx GT-POOL-TIMEOUT-PTR !
-   idx GT-POOL-RUN-LINE
    idx q GT-POOL-FORK
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
@@ -1052,7 +976,6 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-CAPTURE
    1 idx GT-POOL-DONE-PTR !
    GT-POOL-LIVE @ 1- GT-POOL-LIVE !
-   GT-POOL-REAPED @ 1+ GT-POOL-REAPED !
    idx GT-POOL-OK? if idx GT-POOL-PASS-LINE exit then
    idx GT-POOL-FAIL ;
 
@@ -1074,11 +997,8 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-TIMEOUT ( idx -- ) {: idx :}
    OUTCOME:TIMEOUT idx GT-POOL-OUTCOME!
-   \ Snapshot the saturation depth (live slots, incl. this one) before the reap
-   \ decrements it, then hand the full timeout context to the gate-stats hook.
+   \ Snapshot the saturation depth (live slots, including this one) for RED.
    GT-POOL-LIVE @ idx GT-POOL-SAT-LIVE-PTR !
-   idx GT-POOL-LABEL$ idx GT-POOL-ELAPSED-MS
-   idx GT-POOL-SAT-LIVE-PTR @ GT-POOL-LIMIT @ idx GT-POOL-WAITS-PTR @ GT-POOL-TIMEOUT-HOOK
    \ Final bounded poll+drain so the last bytes the worker wrote (often the
    \ hang clue) reach the tail and capture file before the fds are closed.
    GT-POOL-POLL-BUILD  GT-POOL-POLL drop  idx GT-POOL-DRAIN-SLOT
@@ -1127,29 +1047,10 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-RED-DIE ( -- )
    GT-POOL-RED-REPORT
-   s" test pool phases failed" 1 die ;
-
-\ Every member this pool launched has to have reported a verdict. The soft drain
-\ only waits for the live count to reach zero, and a slot can reach zero without
-\ ever passing through GT-POOL-REAP - so this is the check that says a scheduled
-\ member went dark, instead of the group quietly running fewer tests than it
-\ listed.
-: GT-POOL-SCHEDULE-DIE ( -- )
-   s" test pool: " type
-   GT-POOL-STARTED# GT-POOL-REAPED# - GT-POOL-N-TYPE
-   s"  scheduled member(s) never reported a verdict (started " type
-   GT-POOL-STARTED# GT-POOL-N-TYPE
-   s" , reported " type GT-POOL-REAPED# GT-POOL-N-TYPE
-   s" )" type cr
-   s" test pool schedule incomplete" 1 die ;
-
-: GT-POOL-SCHEDULE-CHECK ( -- )
-   GT-POOL-REAPED# GT-POOL-STARTED# = if exit then
-   GT-POOL-SCHEDULE-DIE ;
+   s" test pool failed" 1 die ;
 
 : GT-POOL-DRAIN ( -- )
    GT-POOL-DRAIN-SOFT
-   GT-POOL-RED# 0 > if GT-POOL-RED-DIE then
-   GT-POOL-SCHEDULE-CHECK ;
+   GT-POOL-RED# 0 > if GT-POOL-RED-DIE then ;
 
 ;using

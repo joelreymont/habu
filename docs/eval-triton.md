@@ -757,8 +757,8 @@ pattern-match), **gemm** (the tiled-GEMM checked phase pipeline
 `MM-BEGIN MM-K-LOOP MM-STORE`), and **attention** (the fused phase-token
 pipeline `ATTN:START .. ATTN:FINISH`, where omitting or reordering a phase is a
 checker reject). GREEN for these tasks = certify + child-process PTX emit +
-structural gates (required instructions present, forbidden patterns absent);
-the device-golden leg is Orin-gated and recorded as a SKIP in the suites.
+structural gates (required instructions present, forbidden patterns absent).
+Device-golden runs are manual and are not optional suite legs.
 
 Protocol: generator = independent **opus-model subagents** (orchestrator Agent
 tool, one fresh blind session per sample, zero tool uses), **n = 5 per task**,

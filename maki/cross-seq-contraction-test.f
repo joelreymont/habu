@@ -21,9 +21,8 @@
 \     WHOLE fold (redx over the extprod). Proven with the reduced-bad-program idiom
 \     of test/load-reject-diag-test.f — a spawned child engine LOADS the bad program
 \     and this suite asserts the child's process exit code (70) + the named stderr
-\     diagnostic — so the committed suite stays green while proving the reject. Spawn
-\     (fork+exec), not bare fork: safe inside the maki gate where an earlier suite may
-\     have initialized CUDA (maki/eval/device-fault-test.f:8-12).
+\     diagnostic — so the committed suite stays green while proving the reject.
+\     Spawn (fork+exec), not bare fork, keeps the child isolated.
 \     The child path comes from ENGINE-CANDIDATE:PATH$, so this same fixture also
 \     exercises the override-or-running-engine contract from a clean jj workspace,
 \     where an ignored workspace-local bin/hb does not exist.

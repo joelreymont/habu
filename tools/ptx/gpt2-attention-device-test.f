@@ -1,4 +1,6 @@
 \ gpt2-attention-device-test.f - real-CUDA GPT-2 decode attention proof.
+\ Run: bin/hb --load tools/ptx/gpt2-attention-device-test.f
+\ Requires a CUDA device and ptxas.
 
 require lib/prelude.f
 require lib/errors.f
@@ -342,6 +344,7 @@ public
 
 : MAIN ( -- )
    EMIT-MODE? if EMIT-CHILD exit then
+   CUDA:OPEN? 0= if s" gpt2-attention-device-test: CUDA device is required" 74 die then
    T-RESET
    HOST-FILL
    s" habu-gpt2-attention" PTXTC:PREPARE

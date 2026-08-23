@@ -17,8 +17,7 @@
 \ the unraised engine; the named-overflow case stays GREEN either way. Under the
 \ raised $200 cap all three are GREEN.
 \
-\ Fork-included by test/gate-stdlib-inline-lib.f (stdlib/tail-process), alongside
-\ the sister capacity regression test/seal.f.
+\ Registered beside the sister capacity regression test/seal.f.
 
 require lib/test.f
 require lib/string.f

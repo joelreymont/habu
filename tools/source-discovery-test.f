@@ -196,10 +196,6 @@ variable SDT-SRC-U
 
 \ --- dynamic-tail manifest: seeded repo files tolerated, path-keyed ----------
 
-: SDT-TEST-MANIFEST-WORKER ( -- )
-   s" test/run-worker.f" DISCOVER:RUN
-   EVENT-COUNT 0 T= ;
-
 : SDT-TEST-MANIFEST-DRIVER ( -- )
    s" src/habu/driver-io.f" DISCOVER:RUN
    EVENT-COUNT 0 T= ;
@@ -233,7 +229,6 @@ variable SDT-SRC-U
    SDT-TEST-RETIRE-OTHER
    SDT-TEST-BIG-STRING-DATA
    SDT-TEST-BIG-STRING-LOADER
-   SDT-TEST-MANIFEST-WORKER
    SDT-TEST-MANIFEST-DRIVER
    SDT-TEST-EMIT-CAP
    EVENT-OFF DISCOVERY-OFF EVENTS-RESET

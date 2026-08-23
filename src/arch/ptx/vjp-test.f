@@ -4,10 +4,8 @@
 \ review-corrected direction facts get explicit negatives: OVER's adjoint SUMS
 \ the copied value's two cotangents (never the permutation model that silently
 \ drops a gradient term) and DROP's adjoint is a typed zero (never a leaked
-\ cotangent). Device gradcheck coverage per entry lives in the ad-entry
-\ device suite (tools/ptx/ad-entry-lib.f + tools/ptx/zed-gradcheck-suite.f);
-\ LOAD/STORE scatter-add adjoints are device-proven by the committed
-\ scatter-add/redadd Orin tools.
+\ cotangent). This file owns the portable table assertions. Per-entry device
+\ gradchecks remain the explicit manual tools/ptx/zed-gradcheck-suite.f path.
 
 require lib/ptx/test-prelude.f
 

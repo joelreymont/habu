@@ -1,4 +1,4 @@
-\ gate-build-common.f - checked helpers for native hb-build gate slices.
+\ gate-build-common.f - checked helpers for native hb-build tests.
 \
 \ Load after test/gate-common.f and lib/memory.f.
 
@@ -157,7 +157,6 @@ variable GB-LC-OFF
    GB-OUT$ GB-ARGV+ ;
 
 : GB-HB-BUILD-CAPTURE ( -- )
-   s" maker-run" GS-EVENT
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    ;
 

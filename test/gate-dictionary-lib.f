@@ -23,7 +23,6 @@ variable LABEL-U
 variable CANDIDATE-A
 variable CANDIDATE-U
 variable CANDIDATE-VERDICT
-variable START-NS
 
 : LABEL-A-FIELD ( -- ptr ptr u8 )
    LABEL-A 0 ptr-field ;
@@ -44,11 +43,6 @@ variable START-NS
 : CANDIDATE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u CANDIDATE-U !
    a CANDIDATE-A-FIELD ! ;
-
-: CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
-   mono-ns START-NS !
-   q execute
-   label labelu mono-ns START-NS @ - PROC-NS-PER-MS / GS-SPAN ;
 
 : EMIT-LONG-NAME ( -- )
    LONG-NAME-LEN NAME-CHAR GE-SRC-REPEAT-C ;
@@ -502,10 +496,10 @@ variable START-NS
    s" package hb" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : MORE ( -- n ) EXPOSED 10 + ;" GE-SRC-LINE
-   s" : AGAIN ( -- n ) HIDDEN 7 + ;" GE-SRC-LINE
+   s" : AGAIN-WORD ( -- n ) HIDDEN 7 + ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" HB:MORE ." GE-SRC-LINE
-   s" HB:AGAIN ." GE-SRC-LINE ;
+   s" HB:AGAIN-WORD ." GE-SRC-LINE ;
 
 : PACKAGE-RUNTIME ( -- )
    GE-HB-RESET
@@ -575,7 +569,6 @@ variable START-NS
 
 : CHECK-BUF-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" inprocess-check" GS-EVENT
    label labelu LABEL!
    GT-ERR-BUF GT-ERR-CAP GT-OUT-BUF GT-OUT-CAP CHECK-ALL-ERRORS:BUFFERS!
    0 0= 0= CHECK-ALL-ERRORS:JSON!
@@ -604,7 +597,6 @@ variable START-NS
 
 : CANDIDATE-RUN ( ptr u8 n ptr u8 n -- ) {: body:ptr bodyu:n label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" inprocess-candidate" GS-EVENT
    body bodyu CANDIDATE!
    -1 CANDIDATE-VERDICT !
    GT-ERR-BUF GT-ERR-CAP DIAG-BUFFER!
@@ -1324,50 +1316,50 @@ public
 
 : RUN ( -- )
    s" hb-gate-dictionary" GT-START
-   s" dictionary/long-dictionary" [: LONG-DICTIONARY ;] CASE-RUN
-   s" dictionary/wordlist" [: WORDLIST ;] CASE-RUN
-   s" dictionary/wordlist-bare" [: WORDLIST-BARE ;] CASE-RUN
-   s" dictionary/long-name" [: LONG-NAME ;] CASE-RUN
-   s" dictionary/trusted-does" [: TRUSTED-DOES ;] CASE-RUN
-   s" dictionary/bad-does" [: BAD-DOES ;] CASE-RUN
-   s" dictionary/bad-is" [: BAD-IS ;] CASE-RUN
-   s" dictionary/row-quot" [: ROW-QUOT-CHECKS ;] CASE-RUN
-   s" dictionary/primitives" [: PRIMITIVE-CHECKS ;] CASE-RUN
-   s" dictionary/return" [: RETURN-CHECKS ;] CASE-RUN
-   s" dictionary/combinators" [: COMBINATOR-CHECKS ;] CASE-RUN
-   s" dictionary/local-quot" [: LOCAL-QUOT-CHECKS ;] CASE-RUN
-   s" dictionary/local-quot-compile" [: LOCAL-QUOT-FAIL ;] CASE-RUN
-   s" dictionary/local-first" [: LOCAL-FIRST ;] CASE-RUN
-   s" dictionary/literal-first" [: LITERAL-FIRST ;] CASE-RUN
-   s" dictionary/literal-float" [: LITERAL-FLOAT-FIRST ;] CASE-RUN
-   s" dictionary/literal-float-eval" [: LITERAL-FLOAT-EVAL ;] CASE-RUN
-   s" dictionary/namespace" [: NAMESPACE-QUALIFIED ;] CASE-RUN
-   s" dictionary/package-runtime" [: PACKAGE-RUNTIME ;] CASE-RUN
-   s" dictionary/package-semicolon" [: PACKAGE-SEMICOLON ;] CASE-RUN
-   s" dictionary/package-jit-stack" [: PACKAGE-JIT-STACK ;] CASE-RUN
-   s" dictionary/package-check" [: PACKAGE-CHECK ;] CASE-RUN
-   s" dictionary/package-noret" [: PACKAGE-NORET ;] CASE-RUN
-   s" dictionary/duplicate" [: DUPLICATE-DEFINITION-REJECTS ;] CASE-RUN
-   s" dictionary/redefine" [: EXPLICIT-REDEFINITION ;] CASE-RUN
-   s" dictionary/package-shadow" [: PACKAGE-SHADOW-POSITIVES ;] CASE-RUN
-   s" dictionary/package-duplicate-check" [: PACKAGE-DUPLICATE-CHECK ;] CASE-RUN
-   s" dictionary/package-multifile" [: PACKAGE-MULTIFILE-LOAD ;] CASE-RUN
-   s" dictionary/package-include" [: PACKAGE-INCLUDE ;] CASE-RUN
-   s" dictionary/package-misuse" [: PACKAGE-MISUSE ;] CASE-RUN
-   s" dictionary/structures" [: STRUCTURES ;] CASE-RUN
-   s" dictionary/structure-misuse" [: STRUCTURE-MISUSE ;] CASE-RUN
-   s" dictionary/enums" [: ENUMS ;] CASE-RUN
-   s" dictionary/exec-vectors" [: EXEC-VECTORS ;] CASE-RUN
-   s" dictionary/exec-vector-package" [: EXEC-VECTOR-PACKAGE ;] CASE-RUN
-   s" dictionary/exec-vector-misuse" [: EXEC-VECTOR-MISUSE ;] CASE-RUN
-   s" dictionary/case" [: CASES ;] CASE-RUN
-   s" dictionary/case-misuse" [: CASE-MISUSE ;] CASE-RUN
-   s" dictionary/parsing-runtime" [: PARSING-RUNTIME ;] CASE-RUN
-   s" dictionary/check-positive-batch" [: CHECK-POSITIVE-BATCH ;] CASE-RUN
-   s" dictionary/data-overflow" [: DATA-OVERFLOW ;] CASE-RUN
-   s" dictionary/named-row" [: NAMED-ROW-RUN ;] CASE-RUN
-   s" dictionary/xref" [: XREF ;] CASE-RUN
+   LONG-DICTIONARY
+   WORDLIST
+   WORDLIST-BARE
+   LONG-NAME
+   TRUSTED-DOES
+   BAD-DOES
+   BAD-IS
+   ROW-QUOT-CHECKS
+   PRIMITIVE-CHECKS
+   RETURN-CHECKS
+   COMBINATOR-CHECKS
+   LOCAL-QUOT-CHECKS
+   LOCAL-QUOT-FAIL
+   LOCAL-FIRST
+   LITERAL-FIRST
+   LITERAL-FLOAT-FIRST
+   LITERAL-FLOAT-EVAL
+   NAMESPACE-QUALIFIED
+   PACKAGE-RUNTIME
+   PACKAGE-SEMICOLON
+   PACKAGE-JIT-STACK
+   PACKAGE-CHECK
+   PACKAGE-NORET
+   DUPLICATE-DEFINITION-REJECTS
+   EXPLICIT-REDEFINITION
+   PACKAGE-SHADOW-POSITIVES
+   PACKAGE-DUPLICATE-CHECK
+   PACKAGE-MULTIFILE-LOAD
+   PACKAGE-INCLUDE
+   PACKAGE-MISUSE
+   STRUCTURES
+   STRUCTURE-MISUSE
+   ENUMS
+   EXEC-VECTORS
+   EXEC-VECTOR-PACKAGE
+   EXEC-VECTOR-MISUSE
+   CASES
+   CASE-MISUSE
+   PARSING-RUNTIME
+   CHECK-POSITIVE-BATCH
+   DATA-OVERFLOW
+   NAMED-ROW-RUN
+   XREF
    GT-CLEANUP
-   s" PASS: native dictionary/checker gate phase" type cr ;
+   s" PASS: native dictionary/checker tests" type cr ;
 
 ;package

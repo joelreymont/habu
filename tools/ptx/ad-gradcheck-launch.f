@@ -624,7 +624,7 @@ variable AG-MISS#
 
 : AG-MAIN ( -- )
    T-RESET
-   CUDA:OPEN? 0= if s" ad-gradcheck: no libcuda, skipping (not a device box)" type cr T-REPORT exit then
+   CUDA:OPEN? 0= if s" ad-gradcheck: CUDA device is required" 74 die then
    AG-DIR!
    AG-INIT
    AG-EXP-ENTRY

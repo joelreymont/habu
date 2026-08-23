@@ -62,9 +62,8 @@ $4C constant OVERLAP-RC
 \ file, every child included, runs in 2.8 s idle and 9 to 14 s under those same
 \ eight busy slots. WORST-CHILD-MS records that busiest measurement and
 \ HANG-MARGIN keeps the guard an order of magnitude above it, so host load
-\ cannot reach the guard. The product also stays well inside the gate's own
-\ per-suite guard (STDLIB-GATE:SUITE-TIMEOUT-MS, 120 s nominal and more when the
-\ box is loaded), so a real
+\ cannot reach the guard. The product also stays well inside the registry's
+\ outer timeout, so a real
 \ deadlock is still reported here by name, with its case, instead of arriving as
 \ an anonymous killed phase.
 3000 constant WORST-CHILD-MS

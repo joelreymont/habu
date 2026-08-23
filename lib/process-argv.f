@@ -34,8 +34,7 @@ variable PROC-ARGV-BUF-A
 
 : PROC-SPAWN-ARGV-RAW ( ptr u8 ptr a fd fd fd -- pid )
    {: pathz:ptr argv:ptr infd outfd errfd :}
-   pathz argv infd FD>N outfd FD>N errfd FD>N spawn-argv-io >PID
-   pathz swap PROCESS-TRACE:EXECUTED ;
+   pathz argv infd FD>N outfd FD>N errfd FD>N spawn-argv-io >PID ;
 
 : PROC-ARGV-RESET ( -- )
    0 >COUNT PROC-ARGV-N !

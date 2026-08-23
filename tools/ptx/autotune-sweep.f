@@ -23,14 +23,13 @@
 \
 \ The device-free decisions (clock classifier, exclusion bookkeeping, row
 \ formatting) live in tools/ptx/autotune.f (package AUTOTUNE) and are unit-tested
-\ in the gate's ptx-toolchain slice (tools/ptx/autotune-test.f). This file adds the
+\ by tools/ptx/autotune-test.f. This file adds the
 \ GPU-driving orchestration to the SAME package, so the entry point AT-SWEEP is a
 \ named AUTOTUNE word. IMPORT-SAFE by construction: loading this file defines the
 \ words but opens no libcuda, allocates nothing, assembles nothing, and runs no
 \ sweep - the candidate staging + bounds validation are host-side and unit-tested
 \ off-device (tools/ptx/autotune-sweep-test.f). AT-SWEEP-SMOKE is the explicit
-\ device entry (it opens a CUDA context and drives the GB10); a human or a device
-\ suite invokes it, and it self-skips off-device via CUDA:OPEN?.
+\ manual device entry (it opens a CUDA context and drives the GB10).
 \
 \ ELEMENT-EXACT: the integer fill / f64 host reference / zero-tolerance compare / dtype
 \ pack / device alloc-htod-params-dtoh / ptxas assemble are the import-safe library

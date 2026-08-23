@@ -11,7 +11,7 @@ Run the live report from the repository root:
 bin/hb --load tools/judge.f
 ```
 
-The scheduled functional gate is:
+The focused functional test, also registered in the native suite, is:
 
 ```sh
 bin/hb --load tools/judge-test.f

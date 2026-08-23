@@ -5,6 +5,8 @@
 \ toolchain root, ptxas-assembles it, then launches on the Orin - no shared
 \ /tmp/sum.cubin. Load after lib/test.f, lib/ptx/header.f, lib/ptx/launch.f,
 \ lib/ffi-abi.f, and f32 marshalling helpers.
+\ Run: bin/hb --load tools/ptx/sum-launch.f
+\ Requires a CUDA device and ptxas.
 
 require lib/errors.f
 require lib/string.f

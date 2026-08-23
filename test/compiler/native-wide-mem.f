@@ -511,10 +511,7 @@ RUN-THE-REFUSALS
 \ SO THE CASE IS A FULL DIFFERENTIAL ON BOTH HALVES. Each store is read back by
 \ BOTH loads and the two answers are bound together before either is held
 \ against the expected number, which is what says the two compilers agree about
-\ the cells rather than that each agrees with itself. The guard that used to
-\ abort here is not weakened by any of this: test/gate-engine-lib.f
-\ WIDE-FETCH:RUN forges an out-of-range tag into a wide instantiation and
-\ requires the same abort, in a child process because a die exits the engine.
+\ the cells rather than that each agrees with itself.
 : WIDE-INST-CASE ( -- )
    s" the chain compiles both halves of a wide instantiation through memory" T-LABEL
    RC-SOP @ 0 T=  RC-LOP @ 0 T=

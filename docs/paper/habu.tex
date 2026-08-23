@@ -661,8 +661,8 @@ error code with a registry-rollback proof and 45 layout-misuse rejects
 and 16 linear-discipline rejects (\code{type-linear-suite.f})---every one a
 committed \code{CHECK} candidate asserted to reject. The residual is a single
 runtime path: an out-of-range tag, reachable only through a \code{TRUSTED:}
-constructor that forges it. The engine battery (\code{GE-MATCH-EXEC}) compiles
-a \code{MATCH} natively, forges such a tag, and proves the lowered die
+constructor that forges it. \code{test/match-factor-pin.f} compiles checked
+construct/\code{MATCH} round-trips through the real CLI, forges such a tag, and proves the lowered die
 fires---process exit status 85 (\code{ENGINE-ERROR:BAD-TAG}) and the inline diagnostic
 \code{hb: bad gemt tag} written to \code{fd~2}, with no normal continuation
 past the die, which a well-typed scrutinee never reaches. The

@@ -108,8 +108,8 @@ $48425350414E5321 constant SNAP-MAGIC
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
-\ Grown $61000 -> $C1000 with DICT-CAP 8192 -> 16384 (the gate-runner-support
-\ tool closure needs ~9.5k records; dot habu-gate-runner-entry-81c84af0).
+\ Grown $61000 -> $C1000 with DICT-CAP 8192 -> 16384 (the native test closure
+\ needs ~9.5k records; dot habu-gate-runner-entry-81c84af0).
 \ Grown $C1000 -> $181000 with DICT-CAP 16384 -> 32768 and REGION $400000 ->
 \ $800000 (dot habu-lprot-narrow-protection-03cc8d7f): both sides grew because
 \ maki peaked ndict 16347/16384 (dict side full) AND the code area measured ~92%
@@ -260,24 +260,7 @@ $4000000000000000 constant DNAME-WIDE
 \ unchecked user code, TRUSTED: bodies, hide.f refresh shims) are unaffected:
 \ those are declared trusted boundaries.
 $8000000000000000 constant DNAME-INT
-\ DICT-CAP: dictionary record slots. Raised 32768 -> 65536 by the same method
-\ SOURCE-ARENA-CAP states below - the largest measured composite, plus
-\ SOURCE-HEADROOM-PCT, rounded up to a power of two.
-\ THE COMPOSITE IS THE MONOLITHIC MAKI INVENTORY, `bin/hb --load maki/test.f`,
-\ which loads all 193 files into ONE image (the gate's four maki slices are
-\ smaller: 28626 / 20637 / 20315 / 15985 seeded). Measured per file through the
-\ real MAKI-TEST harness: 26419 records unseeded and 33131 seeded, +25% = 41414,
-\ and the smallest power of two above that is 65536.
-\ THE SEED'S SHARE IS 6892 RECORDS AT BOOT (94 package records + 6798 checked
-\ words), constant to the record at every one of the 193 files - it publishes its
-\ window once. The end-to-end delta is 178 smaller because one file
-\ (maki/onnx/asm-collide-test.f) requires chain sources the seeded engine already
-\ provides, so the unseeded run publishes records the seeded run does not.
-\ THE OLD CAP WAS ALREADY SHORT OF THIS FILE'S OWN STANDARD, UNSEEDED: 26419
-\ needed 33024 and the cap was 32768. The seed did not create the debt, it made
-\ it fail loudly - as `hb: dictionary full at: DLT-ROOT-U` in the file AFTER the
-\ one that exhausted the slots, which is why REGION-ROOM:REQUIRE-ROOM now ends
-\ the inventory with both bands' numbers.
+\ DICT-CAP: dictionary record slots.
 \ 65536 exceeds the move-wide imm16 field, so the DICT-CAP comparison sites in
 \ src/habu/habu2.f and bootstrap/cg/forth.fs load it with LIT64 - the same
 \ treatment HIDX-SLOTS $10000 already needed. LIT64 emits ONE instruction for a
@@ -658,10 +641,7 @@ $3CB0 constant USER-END
 \
 \ CAPACITY: PROT-WID-MAX is now a WID BOUND, not a slot count: the highest wordlist
 \ id + 1 that can ever be protected. The band is the SAME $3CC0..$40C0 the 256-slot
-\ table occupied, so nothing above it moves, and $400 bytes of bitmap index 8192 WIDs
-\ against the 700 a full maki suite run allocates. prot-wid-room reports
-\ PROT-WID-MAX - WIDN, i.e. how many more wordlists may still be allocated AND
-\ protected, so a declaration's preflight is exact instead of approximate, and
+\ table occupied, so nothing above it moves, and $400 bytes of bitmap index 8192 WIDs.
 \ prot-wid-add names the bound itself when handed a WID at or above it. Growing the
 \ bound later means widening the band upward into the free $40C8..$43A8 gap and
 \ bumping UNCGH-CELL, exactly as the 16 -> 256 raise did. That gap ended at $43C0

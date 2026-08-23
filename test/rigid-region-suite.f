@@ -8,7 +8,7 @@
 \ (or a recreated owner, or a stale generation) reject with a NAMED reason.
 \
 \ Run standalone:  bin/hb < test/rigid-region-suite.f   (exit 0 + "ok"; dies on miss)
-\ Routed positive case in test/candidate-validation.f.
+\ Registered directly in the native suite.
 \
 \ Modeling note: consumer type-var binding across 3+ co-resident fresh atoms in
 \ one family application is SOUND — a matrix carrying region+extent+generation on

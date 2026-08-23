@@ -123,7 +123,7 @@ variable PDT-PTX-U                                         \ correct-module text
    V-PASS PREC-F32 PDT-GOLDEN
    LOWER-GOLDEN-REASON$ s" within f32 tol" CONTAINS? TTRUE ;
 
-\ ---- off-device SKIP scaffolding (device-smoke pattern) --------------------------------
+\ ---- off-device availability ------------------------------------------------------------
 : PDT-BEGIN ( -- )
    T-RESET
    CUDA:OPEN? 0= if

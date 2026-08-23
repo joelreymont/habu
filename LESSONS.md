@@ -488,9 +488,8 @@ fits.
   Round-trips lost to `-1`/`0` where `bool` was declared, and a render flag only the
   fixpoint CERTIFY pass caught (local stdin runs parse unchecked). The `0 0=` / `0 0= 0=`
   literal idiom is the convention; run the certify path early when adding checked
-  prefix words. `test/candidate-validation.f` hardcodes per-file stderr — a fail-closed
-  pin that evaluates a failing `: NAME ;` prints the hook diagnostic to stderr, so put
-  it in a `diagnostic` suite, not a stderr-clean `positive` one.
+  prefix words. `test/program-diagnostics-test.f` loads diagnostic fixtures through
+  the production CLI and pins their exit code, armed marker, and diagnostic needle.
 - **CHECK! is line-oriented and REGISTERS what it certifies.** Feed it one
   whitespace-normalized line (multi-line body → verdict 1 regardless); after a -1
   verdict the name is registered, so a checked re-compile dies duplicate-definition —
@@ -508,13 +507,13 @@ fits.
   `VERIFY:SOURCE-BUF` (parse+check, zero execution). Checker.f words are NOT
   registry-published to later checked loads — checker-internal access from tools rides
   small documented `TRUSTED:` one-liners.
-- **A new baked prefix file has SEVEN+ synchronized owners; miss one and recovery or
+- **A new baked prefix file has synchronized build owners; miss one and recovery or
   a puller breaks.** Native `habu2.f`/fixpoint does NOT update the Gforth recovery
   compiler: mirror load/path/provide/label rows in `bootstrap/cg/forth.fs`, concatenate
   in `tools/bootstrap.sh` (SRC_COMMON), and update `build-fixpoint.f` (CHECKER-BOOT/
   COMMON/SNAP-KEEP), `boot-pin.f`, `diagnose-hb-core.f` (+ count in its test),
-  `hb-build-lib.f` key list, `test/run-files.f`, and pinned row counts
-  (`boot-pin-test.f` PFX-LOAD-ROW, `diagnose-hb-test.f` common-source, `bootstrap-codegen-test.f`).
+  `hb-build-lib.f` key list, `boot-pin-test.f`, `diagnose-hb-test.f`, and
+  `bootstrap-codegen-test.f`.
   The codegen test's expected rows are the order proof, not bookkeeping: update its
   exact native, recovery, and fixpoint sequences whenever a prefix owner is added.
   Baked prefix files must be marked `provided` (else `require src/core/sha256.f`
@@ -812,18 +811,7 @@ fits.
   1M→1.5M in native + gforth mirror), the image build `MSIZE` (must be ≥ `MPAGE`; silent
   `M-BOUNDS 75`, raised to $120000), the stage2/maker source caps ($C0000). A load path
   that only ever runs SUBSETS needs an explicit whole-closure regression (the
-  gate-runner-support closure hit ~9.3k dict entries against the old 8192 cap).
-- **`maki/test.f` is at the DICT-CAP word-count wall** (~16284/16384 on master): it
-  accumulates EVERY suite's defs into ONE image with no per-suite forget, so a new
-  subsystem's suites overflow it as `hb: dictionary full at: :` at a LATER unrelated
-  suite. Keep new suites gated STANDALONE (their own `bin/hb file-test.f`), or land a
-  precedented `DICT-CAP` bump in `layout.f`.
-- **The shared maki suite table (`lib/test/suite.f ITEM-MAX`) is a capacity wall too;
-  RAISE it (loud-fail preserved), do not aggregate unrelated suites into one entry** —
-  overflow throws `E-TBL-BOUNDS` (-3000) at LOAD with stdout lost. `ITEM-MAX` is only
-  referenced inside suite.f (128→256, fully contained). Same FM-BUF-CAP pattern: a fixed
-  cap sized for a statically-known registration set, grown by constant with the wall kept.
-  The `maki-suite ITEM-MAX=128` note is stale.
+  native test closure hit ~9.3k dict entries against the old 8192 cap).
 - **A worktree's `bin/hb` is not its commit, and a copied `bin/hb` is not a
   frozen baseline — `install --force` before ANY gate, then attribute against a
   control built the same way** (2026-07, 2026-08-05, 08-06, 08-11, 08-14,
@@ -1013,25 +1001,11 @@ fits.
   cap-bounded shared registry. Test files reopening a shared package need globally-unique
   helper tails (`SUBJ-A` collides across two `package DIFFRUN` files → `duplicate definition
   rc=78`).
-- **"Wired into a TEST:SUITE" is not "runs".** `gate-stdlib-cases.f` suites execute only if
-  a `SUITE-*-LABEL?` slice selects the label AND someone invokes that slice; the resident
-  `test/run.f` runs the in-process GSI groups + a few spawned slices, NOT the full TEST:SUITE
-  inventory — the two lists are hand-synced and drift silently (four checker-invariant suites
-  ran in NO automatic gate). The standalone slices and the gate's resident groups are
-  different execution paths; register a test in the path that must execute it.
-- **Gate slices see different lints — the integrator runs the slice that OWNS each touched
-  file class.** `error-code-lint`
-  is part of the OWNING gate for ANY new `E-*` (including maki/, whose subdirs a bare `maki/*.f`
-  glob misses — scan recursively); grep for a free negative code, never pick by adjacency
-  (error codes are a global namespace with real collisions).
-- **Off-device `CUDA:OPEN?`-style SKIP guards are a FAIL-OPEN class.** They kept
-  `fusion-compare.f` green for weeks off-device while it would die uncaught (missing /tmp cubin,
-  `E-CUDA`) the moment a device appeared. A device suite is proven only by an on-device run;
-  every device tool's top-level entry probes `CUDA:OPEN?`, prints a recorded SKIP line, exits
-  (the GB-ALL shape) so it composes into host suites; prefer self-emit + fail-closed throws
-  over prebuilt /tmp artifacts, and key device legs on the probed device-FFI capability. Keep
-  a new `maki/*-device-test.f` OUT of `maki/test.f` (needs CUDA) and device-PROVEN
-  before adding it anywhere.
+- **A registry row must execute the real test.** Keep one canonical registry per suite;
+  do not duplicate membership in slices or wrapper inventories.
+- **Optional device legs do not belong in canonical suites.** Keep portable host
+  assertions in the registry and run device tools manually on a device; a printed SKIP
+  is not a test verdict.
 - **PTX/emitter shape tests are NOT assembler proof.** `ptxas` rejects undeclared predicates
   above `%p15` and stale resource pools (`%p<8>` when the emitter now needs `%p21`); a text
   fixture rendered plausible text that never assembled. Keep the text fixture, then assemble
@@ -1067,15 +1041,13 @@ fits.
   references before `dot off`; engine-suite standalone exits 0 after checker errors
   (drop-to-REPL masks) — the last-line `ok` marker or the full gate is the signal. Reproduce
   engine-suite changes through `bin/hb --repl < test/engine-suite.f` (a `cp@ patch32` proof
-  passes via `--load` yet SIGILLs via the stdin REPL). Hot-cache full-gate passes do not prove
-  the engine-build closure — `test/run.f -- --cold-cache` exercises the native build slice
-  (merge-gate runs cold); when a change adds a transitive `require` to any gate file, run cold
-  before claiming green.
+  passes via `--load` yet SIGILLs via the stdin REPL). Rebuild the exact tree before
+  running the canonical native registry when engine sources change.
 - **In zsh, `path` is the array tied to `PATH`; never use it as a loop or scratch
   variable.** Assigning it can make the next command disappear. Use a purpose-specific
   name such as `dot_file`, especially in verification scripts that must fail closed.
 
-## Gate Harness, Scheduling & Caching
+## Native Suite and Process Tests
 
 - **A regression that pins ONE fail-closed exit code stops testing what it
   names the moment an earlier fail-closed boundary appears, and nothing goes
@@ -1120,28 +1092,12 @@ fits.
   now correctly FAILS CLOSED at seal (exit 73, "undrained pre-trust defer"). That
   merged without the manual/heavy pre-trust-defer suite being rerun on the Mac
   battery, so master carried a red manual-tier suite for a day. Rule: a merge that
-  touches `src/core/checker.f` (or any file a manual/heavy suite OWNS but the fast
-  tier never forks) must run that owning suite at merge time — a green fast `run.f`
-  tier is not proof for suites run only by `test/gate-stdlib.f`.
+  touches `src/core/checker.f` (or another file whose owning suite is not registered)
+  must register and run that suite before merge.
 - **Process deadlines are hang protection, not performance verdicts.** Keep them
   generous enough for a healthy child under contention. Test the timeout outcome
   with a deliberately tiny deadline, but do not make ordinary elapsed time or the
   exact helper-process count an acceptance criterion.
-- **Full-DAG timing beats isolated wins; every focused optimization must survive the whole
-  command under contention.** Splitting suites, per-phase forks, higher nested pools, and
-  preloading shared setup all passed focused probes but regressed the full gate — record reverted
-  timings in the dot so failed variants aren't rediscovered. The winning shape overlaps
-  non-stdlib phases with shared stdlib setup, loads the common tool base ONCE as silent suite
-  setup, then forks phase-owned resident workers that inherit it copy-on-write (their unchanged
-  `require` lists dedupe against the inherited image and load only the family delta). Do NOT
-  widen the shared base further: pre-setup fork spans are reap-inflated by the serial setup (a
-  phase exiting during setup reads ~the setup duration), so widening puts serial load on every
-  post-setup fork's critical path — reclassify only HIGH-redundancy family workers.
-- **Every ordinary gate run builds Habu-under-test in phase 15; only explicit `--under` skips it.**
-  A persistent candidate cache can publish a binary before phase 15's verdict, then reuse it and
-  skip the failing phase on a later run. Build the candidate in the early engine-build slot, then
-  release downstream phases onto `HABU_UNDER_TEST` after it is ready. Maker and artifact caches
-  may hit, but neither may suppress phase 15.
 - **Private temp dirs for native builds; shared `/tmp` races parallel agents.** `HB_TMP` defaults
   to `/tmp` with fixed names (`stage2-src`, `hb-stdin-got`) — concurrent workspaces corrupt each
   other's refresh/gate with transient opaque exits. Allocate+export a private `HB_TMP` (create it
@@ -1169,17 +1125,10 @@ fits.
   subprocesses need their own timeout caps sized for aggregate contention (a fixture spawning a
   repo-scale tool needs a bigger cap; `rc 58` = `E-PROC-TIMEOUT` surfaces only once outcome
   attribution prints the throw code).
-- **Pool failures must DRAIN, not kill; and telemetry has one owning emitter per label.**
+- **Pool failures must DRAIN, not kill.**
   `GT-POOL-FAIL` records a red row + capture paths and continues, `GT-POOL-DRAIN` dies after the
-  drain when reds exist, `GT-ROOT` survives on failure so per-child captures survive triage. Fork
-  children share the stats file, so the pool owns spans for its entries (`GT-POOL-FORK-CHILD`
-  records the fork label, `GS-SPAN` skips matching labels, load time is a separate `span-load`
-  class); the test pool legitimately reuses one label across entries, so dedup by a single-use
-  ownership claim + rejecting duplicate TEST-ROW labels at index time, NOT by rejecting duplicate
-  pool labels. Suppression is process-local, ownership is not — a pool parent's authoritative spans
-  bypass the fork-child dedupe (`GS-SPAN-AUTH`); qualify a byte-keyed (row,span) pair with the
-  EMITTING process's generation, never the slot's. Emit the stats SUMMARY before deleting the gate
-  temp tree, then enforce the budget. A per-worker parent-death reaper must NOT be a
+  drain when reds exist, and `GT-ROOT` survives on failure so per-child captures survive triage.
+  A per-worker parent-death reaper must NOT be a
   `wait(-1)`-visible child of its worker (`PROC-WAIT-RC` on `-1` blocked forever) — double-fork so
   it reparents to init yet inherits the worker's group. Shard a fuzzer across forked slots but mute
   shard stderr (`/dev/null`) — bounded capture buffers overflow (`E-PROC-TRUNCATED`); a false-cert
@@ -1222,11 +1171,7 @@ fits.
   a fresh `HB_TMP` reports `performance=hard-fail correctness=t` at ~33s
   against a 25s cold budget while the warm rerun passes at ~31s against 35s,
   and the unmodified parent measured 32793ms against the changed tree's
-  32982ms — 0.6%. Before the phase PASS cache was deleted, editing any file in its declared sets
-  (`test/run-files.f`, `lib/content-key.f`, `test/run-lib.f`) invalidated every
-  phase key, so the next battery ran fully cold and took minutes longer,
-  which is exactly when timing assertions red (TIMEOUT-UNDER-LOAD, group-time
-  ratchets). So: a red whose failing member does not reference the changed code,
+  32982ms — 0.6%. So: a red whose failing member does not reference the changed code,
   on a fully-cold or loaded run, is this — prove it, then rerun sequentially;
   two sequential greens settle it. Never run foreground suites concurrently
   with a gate battery on the same box, and one gate at a time even inside your
@@ -1272,30 +1217,6 @@ fits.
   until a loop that captured `rc=$?` first exposed the real, deterministic
   failure. Capture to a file or a variable, echo the rc on its own line, then
   read the output. It has failed by habit, not by ignorance, every time.
-- **A schedule lint proves a registration is REACHABLE, not that anything runs
-  it - and only when something executes the lint** (2026-08-10, 08-15, 08-17).
-  Three readings of one tool, the last refuting the first. All three are kept,
-  because each is true of what it measured.
-  - 2026-08-10: trust the lint over "I added a SUITE block". It is what catches
-    a suite that is registered but dark, and it earned that the first time a
-    new suite landed registered, green by hand, and selected by NO slice
-    predicate - it would never have run in the gate.
-  - 2026-08-15: `bin/hb --load tools/lint/schedule-lint.f` loads a LIBRARY and
-    exits 0 having checked nothing, so the "0 findings" that reads like a pass
-    is an empty load. The lint runs only through its test driver
-    (`tools/lint/schedule-lint-test.f`) or its gate slice. Know which file
-    EXECUTES a check before believing its number.
-  - 2026-08-17: REFUTED as a scheduling oracle. It reads `test/run-lib.f`'s
-    phase-to-slice map and never asks `TEST:PHASE-RESIDENT?`, so a suite that
-    is registered AND slice-selected can still be dark: phase 17 is resident,
-    `test/run.f` forks `test/run-worker-stdlib.f`, and that body loads no
-    registration at all. Breaking one of the suite's assertions left the whole
-    battery green. Dot habu-schedule-lint-resident-8b020630.
-
-  The tension, stated: registration plus a predicate is all the lint can see;
-  the list the runner actually forks is what runs. Only a deliberately broken
-  assertion and a full battery tell you which of the two you have.
-
 ## VCS, Dots & Parallel Agents
 
 - **A worker's edits exist only after a jj snapshot — hours of validated work
@@ -2729,10 +2650,6 @@ fits.
   Restoring files from a candidate also imports unrelated parent content that
   the candidate did not change. Duplicate or rebase the reviewed commit onto
   the integration parent, then inspect its exact delta before composing it.
-- **Serialize device-owning gate slices.** Running the Maki device suite beside
-  the PTX toolchain made the PTX phase fail while its isolated `ptx-stdlib`
-  members passed. Parallelize CPU-only gates, but give each GPU-owning gate
-  exclusive device time so resource contention cannot masquerade as a defect.
 - **Inspect legacy timestamps after `dot on`.** Older dot files may contain an
   already-quoted `created-at` value; the current serializer can quote it again
   while changing status. Restore the original timestamp bytes before
@@ -2940,10 +2857,6 @@ fits.
   reproduced on the current tool, so inspect every status mutation, normalize
   the changed file before publication, and keep the writer-fix dot open until
   a regression proves the bug cannot recur.
-- **A new Maki suite needs two registrations: the master list and one slice.**
-  Add it to `maki/test.f` and to exactly one of `maki/test-core.f`,
-  `maki/test-core.f`, `maki/test-eval.f`, or `maki/test-eval-emit.f`;
-  it appears exactly once among the slices.
 - **Destructive cleanup requires a validated target.** An unsupported
   `jj diff --check` left a temporary-path variable empty, so unconditional
   `gio trash "$candidate_file"` trashed the current directory. Stop when target
@@ -5149,7 +5062,8 @@ background group: the boot never returned and the case died on the 20s timeout
 instead of reporting an exit code. From a pipe the same tree gave a clean
 verdict. A fixture that asserts a child's exit code must hand that child an
 explicit stdin (the empty-pipe `*-STDIN-CAPTURE` variants) — the same promise
-`test/gate-env-stdin-tty-test.f` already holds for `GE-RUN-ENV`. `test/gate-pool.f`
+The capture helpers' explicit-stdin variants already hold this contract.
+`test/gate-pool.f`
 `GT-POOL-SPAWN` passes `-1` too, so every pooled job inherits the gate's fd 0;
 only jobs that spawn a BARE engine are exposed, because `--load` takes the
 file-list path and never reaches the tty REPL branch.
@@ -7246,13 +7160,6 @@ and --no-lldbinit.
 - **Never edit a chain source while a gate is running.** The capture verifies
   "the chain sources have changed since this capture" (throw -2802) and the
   whole gate run is wasted. Edit, then gate.
-- **A standalone slice runner and the same slice under `test/run.f` are
-  different scheduling environments — a standalone red is not a gate red.**
-  `gate-stdlib.f -- proof` reds `compiler-insn-proof` TIMEOUT-UNDER-LOAD on
-  pristine master (141s vs the 120s nominal calibrated at 99.5s on another
-  host) while the same slice is green inside `test/run.f`. Measure the red on
-  master before attributing it to a candidate; a time budget is host-relative.
-
 - **Check a new production package name against the WHOLE tree, tests
   included.** A new src/ package named NSRC collided with a package a test
   fixture already owns, and the collision surfaced as the sealed-package exit
@@ -7275,13 +7182,12 @@ and --no-lldbinit.
   allows it.
 
 - **A green `test/run.f` is a verdict about one tree — do not edit ANY tracked
-  file while it runs.** This generalizes the chain-source rule above: the pool
-  forks workers that load sources mid-run, so an edit during the run means the
+  file while it runs.** The suite loads sources during the run, so an edit means the
   verdict is about no single tree, and a green result obtained that way must be
   thrown away and re-run. The -2802 capture guard only catches chain sources;
   everything else fails silently into a mixed verdict.
-- **`test/proc-pty.f` case 10 is host-load sensitive** and can red the native
-  engine runtime slice on a busy machine (dot habu-the-pty-991d107e protocol:
+- **`test/proc-pty.f` case 10 is host-load sensitive** and can red the direct
+  runtime regression test on a busy machine (dot habu-the-pty-991d107e protocol:
   rerun once, idle). Three consecutive standalone passes plus a green rerun of
   the exact tree adjudicates it as the flake, not the candidate.
 
@@ -7694,19 +7600,13 @@ and --no-lldbinit.
   `tools/imagedisasm.f` into an image that carries script argv runs its CLI
   against that argv: rc 74 `imgdump: stat failed` and rc 64
   `usage: imagedisasm ...`, measured under both
-  `test/run.f -- --under bin/hb` and `gate-runner-entry -- <group>`, which
-  always passes a group token. Such a file needs a spawned process whose argv
-  the registration alone decides. `tools/ptx/perf-regress.f` is the same shape.
-  Check the tail of a tool before adding its test to a GSI list.
-- **"A slice predicate selects it" is not "something runs it".** Only a
-  NON-RESIDENT phase execs `test/gate-stdlib.f -- <slice>`, and only that entry
-  includes `test/gate-stdlib-cases.f`; a resident phase forks
-  `test/run-worker-stdlib.f`, which reads GSI inline bodies and no SUITE row.
-  Twenty-three of the twenty-five slices the runner's live phases named were
-  resident or deferred, so 33 registered files were certified covered and never
-  ran. Coverage from a slice needs the phase started AND non-resident.
-
+  a load image that carries script arguments. Such a file needs a direct process
+  whose argv the registry alone decides. Check the tail of a tool before adding it.
 ## 2026-08-23 - the lint port's two process findings (lint lane)
+
+- **Rebuild the paired engine before judging an exact-source suite.** A stale
+  `bin/hb`/`bin/hb-host` pair made current engine and snapshot tests fail; the
+  documented fixpoint install made both pass without a test or runner change.
 
 - **Compile syntax and dictionary immediacy are different facts.** All 28
   hard-coded control/loop spellings published as definition names, then beat

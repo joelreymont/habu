@@ -317,11 +317,9 @@ In order:
    declarers and checker.
 3. full maki — behavior evidence for every migrated file (the frontier
    only proved loads).
-4. ptx-stdlib and the touched native slices (lib/ptx files migrated, so
-   their slices are in scope by the touch rule).
-5. both exact-diff gates on the final combined diff — the ownership
+4. both exact-diff gates on the final combined diff — the ownership
    check on every migrated definition, run once.
-6. the cheap lints, seconds each: error-code-lint and dot-dep-lint. The separate
+5. the cheap lints, seconds each: error-code-lint and dot-dep-lint. The separate
    "native dot gate" entry
    is deleted as a duplicate of dot-dep-lint.
 Deliberately absent: a

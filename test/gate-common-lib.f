@@ -1,4 +1,4 @@
-\ gate-common.f - checked helpers for native gate runner slices.
+\ gate-common.f - checked helpers for native tests.
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
@@ -119,7 +119,6 @@ variable GE-EVAL-SRC-U
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
-   path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    GT-OUT-BUF 0 >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
@@ -130,7 +129,6 @@ variable GE-EVAL-SRC-U
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
-   path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
    PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
@@ -154,7 +152,6 @@ variable GE-EVAL-SRC-U
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-CAPTURE-BEGIN
-   path pathu GS-HELPER-EVENT
    pathz argv envp GE-SPAWN-FILE-CAPTURE
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
@@ -238,7 +235,7 @@ variable GE-EVAL-SRC-U
    GT-OUT$ type
    s" stderr:" type cr
    GT-ERR$ type
-   s" gate phase failed" 1 die ;
+   s" native test failed" 1 die ;
 
 : GE-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GT-RC@ 0 <> if label labelu GE-FAIL then ;
@@ -425,32 +422,24 @@ variable GE-EVAL-SRC-U
 
 : GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   label labelu GS-INNER-HB-EVENT
-   label labelu GS-BOUNDARY-EVENT
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   label labelu GS-INNER-HB-EVENT
-   label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   label labelu GS-INNER-HB-STDIN-EVENT
-   label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN-NZ ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   label labelu GS-INNER-HB-STDIN-EVENT
-   label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO
    label labelu GT-PROGRESS-PASS ;
@@ -560,7 +549,6 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
 : GE-EVAL-FORK-BAD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" fork-eval" GS-EVENT
    GE-EVAL-FORK-CAPTURE
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS
@@ -568,7 +556,6 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
 
 : GE-EVAL-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" inprocess-eval" GS-EVENT
    GE-EVAL-MARK
    GE-EVAL-CAPTURE
    GE-EVAL-FORGET

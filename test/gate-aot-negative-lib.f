@@ -164,6 +164,6 @@ public
    CLOSURE-LIMIT
    PATCH32
    GT-CLEANUP
-   s" PASS: native hb-build AOT negative gate phase" type cr ;
+   s" PASS: native hb-build AOT negative tests" type cr ;
 
 ;package

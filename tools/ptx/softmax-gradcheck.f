@@ -12,6 +12,8 @@
 \ no shared /tmp/softmax.cubin + /tmp/softmax-bwd.cubin pair. Load after lib/errors.f
 \ lib/string.f lib/test.f lib/float.f lib/fmt.f src/arch/ptx/emit.f lib/ptx/cg.f
 \ lib/ptx/header.f lib/ptx/launch.f lib/ffi-abi.f maki/array.f.
+\ Run: bin/hb --load tools/ptx/softmax-gradcheck.f
+\ Requires a CUDA device and ptxas.
 
 require lib/errors.f
 require lib/string.f

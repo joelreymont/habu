@@ -15,8 +15,8 @@
 \ each census keeps answering about its own file, a failing session leaves a
 \ live census byte-identical, and the linear session/census/mapping tokens are
 \ proved un-duplicable, un-droppable, and un-reusable by feeding bad definitions
-\ to the checker itself. The presence-gated real leg parses HuggingFace GPT-2
-\ (openai-community/gpt2) and asserts the tensor census.
+\ to the checker itself. The real GPT-2 artifact census lives in
+\ maki/infer/gpt2-artifact-test.f.
 \
 \ The mapping half adds the other question this loader has to answer: after
 \ DETACH-MAPPING hands the file mapping to its own owner, does the census still
@@ -1074,35 +1074,6 @@ private
    CHILD-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
    0 T-OUTCOME-EXITED= 2drop ;
 
-\ ---- presence-gated real artifact (HF gpt2 model.safetensors) --------------
-: REAL-PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
-
-: CHECK-REAL ( SAFET:file -- SAFET:file )
-   s" real gpt2 tensors=" type SAFET:COUNT dup . cr
-   160 T=
-   s" wte.weight" ID-OF {: w:n :}
-   w 0 < 0= TTRUE
-   w SAFET:RANK? 2 OPT=
-   w 0 SAFET:DIM? 50257 OPT=
-   w 1 SAFET:DIM? 768 OPT=
-   w MAKI-DATATYPE:DF32 SAFET:DATATYPE= TTRUE
-   w SAFET:NBYTES? 154389504 OPT=               \ 50257*768*4
-   s" wpe.weight" ID-OF {: p:n :}
-   p 0 SAFET:DIM? 1024 OPT=   p 1 SAFET:DIM? 768 OPT=
-   s" h.0.attn.c_attn.weight" ID-OF {: c:n :}
-   c 0 SAFET:DIM? 768 OPT=                      \ Conv1D: [in, out], NOT [out, in]
-   c 1 SAFET:DIM? 2304 OPT= ;
-
-: TEST-REAL ( -- )
-   REAL-PATH SAFET:PRESENT? 0= if
-      s" safetensors: gpt2-model/model.safetensors absent -> real-artifact leg SKIPPED (run maki/examples/nanogpt/fetch-gpt2-model.sh)" type cr
-      0 0= TTRUE exit
-   then
-   s" the real gpt2 checkpoint publishes its full census" T-LABEL
-   REAL-PATH MUST-LOAD
-   CHECK-REAL
-   SAFET:RELEASE ;
-
 public
 
 : RUN ( -- )
@@ -1137,7 +1108,6 @@ public
    TEST-OPTION-DISCIPLINE
    TEST-DATATYPE-TYPING
    TEST-STANDALONE-LOAD
-   TEST-REAL
    s" the whole suite released every mapping it took" T-LABEL
    NO-LEAK
    T-REPORT ;

@@ -1,12 +1,11 @@
-\ device-gold.f - COMMITTED device-correctness goldens for the flagship kernels.
+\ device-gold.f - manual device-correctness goldens for the flagship kernels.
 \
 \ GAP #4 (dot habu-committed-device-correctness): the flagship kernels - the tiled
 \ SGEMM (lib/ptx/cg-matmul.f MM), the fused attention (lib/ptx/cg-attention.f ATTN),
 \ the v4 fused chain relu(a*x+y) (tools/ptx/fused-relu-cg.f SAXPY), and the memory-
-\ bandwidth SAXPY (tools/ptx/saxpy-cg.f, the kernel bandwidth.f benchmarks) - were
-\ device-VERIFIED only by throwaway /tmp runners + python, so a regression in the
-\ emitted PTX was caught by NOTHING in the committed tree. This harness closes that:
-\ for EACH flagship kernel it spawns bin/hb to emit the COMMITTED self-emitting entry
+\ bandwidth SAXPY (tools/ptx/saxpy-cg.f, the kernel bandwidth.f benchmarks) are
+\ exercised here on a CUDA device. For EACH flagship kernel it spawns bin/hb to emit
+\ the COMMITTED self-emitting entry
 \ file (tools/ptx/{matmul,attention,fused-relu,saxpy}-cg.f), ptxas-assembles it, loads
 \ + launches it on the Orin, and compares the device output against a COMMITTED CPU
 \ golden on deterministic exact-binary-fraction inputs. A wrong kernel FAILS its golden
@@ -18,12 +17,10 @@
 \ the exact committed producer entry files (EMIT-MATMUL / ATTN:EMIT / EMIT-FUSED /
 \ EMIT-SAXPY) - a regression editing those committed emit paths is caught here.
 \
-\ Off-device (no libcuda) it is a recorded SKIP and still check-loads; the emit halves
-\ are host-proven in tools/ptx/device-gold-test.f (the gpu-emit-test pattern), so the
-\ ptx-toolchain suite compile-checks this file. It requires the CUDA driver FFI, so it
-\ is a SPAWN-ONLY ptx-toolchain member (it SIGBUSes in the resident runner image, like
-\ the other device-leg tools) and DEVICE-runs on zed via one command:
-\   cd ~/Work/habu && ./bin/hb --load tools/ptx/device-gold.f
+\ The portable emit halves are covered by tools/ptx/device-gold-test.f. This manual
+\ tool requires the CUDA driver FFI.
+\ Run: bin/hb --load tools/ptx/device-gold.f
+\ Requires a CUDA device and ptxas.
 \ Fully checked Habu; no 0 set-check. Load after the PTX codegen + CUDA driver stack.
 
 require lib/prelude.f
@@ -341,7 +338,7 @@ variable SP-DX variable SP-DY variable SP-A variable SP-NV
    s" bandwidth SAXPY scale-identity n=1024" e REPORT-ERR
    s" bandwidth(SAXPY) device==committed golden" T-LABEL  e SCALAR-TOL f< TTRUE ;
 
-\ ---- device-FFI probe (maki/device-smoke.f pattern): libcuda present AND cuInit ok
+\ ---- device probe: libcuda present and cuInit succeeds ---------------------
 : DEV? ( -- bool )
    CUDA:OPEN? 0= if false exit then
    0 CUDA:CU-INIT RC>N 0= ;

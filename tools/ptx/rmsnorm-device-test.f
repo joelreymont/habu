@@ -10,8 +10,9 @@
 \ assert it matches maki/rmsnorm.f RMS-FWD within tolerance. GRADCHECK: perturb each
 \ x[j] by +-eps, re-run the SAME device forward, form the central difference
 \ sum_i dy[i]*(y+[i]-y-[i])/(2eps), and assert it matches the device backward dx[j].
-\ Fully checked Habu via lib/ffi-abi.f. Off-device (no libcuda) it records a SKIP and
-\ still check-loads. Load after lib/test.f, lib/ffi-abi.f, lib/ptx/cg.f, maki/array.f.
+\ Fully checked Habu via lib/ffi-abi.f. This manual leaf requires CUDA.
+\ Run: bin/hb --load tools/ptx/rmsnorm-device-test.f
+\ Requires a CUDA device and ptxas.
 \
 \ OWED: the dot targets sm_87 goldens on Orin; that box is unavailable here, so the
 \ Orin sm_87 golden + its profile row are OWED and recorded in tools/ptx/perf-rows.tsv.
@@ -165,8 +166,7 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
 : RMSNORM-DEVICE-MAIN ( -- )
    T-RESET
    RN-DEVICE? 0= if
-      s" rmsnorm-device: libcuda.so.1 unavailable -> RMSNORM_ROWS golden + RMSNORM_BWD_ROWS gradcheck SKIPPED (off-device)" type cr
-      T-REPORT exit
+      s" rmsnorm-device-test: CUDA device is required" 74 die
    then
    s" habu-ptx-rmsnorm" PTXTC:PREPARE
    RN-EMIT drop

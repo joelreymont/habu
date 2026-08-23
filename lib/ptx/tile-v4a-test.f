@@ -11,8 +11,7 @@
 \     shared cg-vec.f emit.
 \  3. Byte-identity: the typed SAXPY-V4A emits PTX byte-for-byte identical to the legacy
 \     hyphenated SAXPY-V4 (tile-v4.f), proving the typed layer is a PURE checker
-\     refinement - no codegen change - so its device correctness is the already-passing
-\     saxpy-v4-tail-device-test.f cubin.
+\     refinement with no codegen change.
 \
 \ The negatives (misaligned base, unproven store base, wrong lane arity) are gated
 \ separately by lib/ptx/tile-v4a-neg-test.f. Load after lib/ptx/tile.f + tile-v4.f + tile-v4a.f.

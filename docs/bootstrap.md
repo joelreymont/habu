@@ -225,10 +225,7 @@ or candidate launcher, and must be rebuilt after source changes.
 
 If a device tool (`maki/eval/device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
 cryptic missing-primitive name such as `ffi-call-abi`, the running `bin/hb` predates a
-native FFI primitive — **refresh it with the command above.** The maki test suite
-guards this with `maki/device-smoke.f`: it requires `lib/ffi-abi.f` (which fails closed
-on a stale engine) and then runs a live `cuInit`/`cuDeviceGet` canary, so the break
-surfaces early at the FFI layer.
+native FFI primitive — **refresh it with the command above.**
 
 Run the gate after bootstrap or refresh:
 
@@ -236,20 +233,16 @@ Run the gate after bootstrap or refresh:
 bin/hb --load test/run.f
 ```
 
-This is the native port gate. It runs as a checked bounded DAG pool with
-private `HB_TMP` roots. It proves the host `bin/hb`, source selection,
-checker/lints, self-refresh, engine suite, REPL build, and AOT output for the
-current platform. Host policy is argv, not env: append
-`-- --pool-slots N --nested-pool-slots M` when running on a specific machine.
+This is the native port gate. It runs every entry in the one native registry
+through the installed `bin/hb`, using a bounded process pool and one private
+capture root.
 It intentionally does not run LLM benchmark fixtures or require JavaScript,
 Python, Rust, TypeScript, or model runtimes.
 
 The test suite runs directly in the small `bin/hb` engine; it does not bake a
 top-level test-suite snapshot and it does not use checker/tool snapshot images
-as launchers. Every ordinary run builds its `HABU_UNDER_TEST` candidate in
-phase 15. Maker and artifact caches remain, but neither can skip that
-phase. Snapshot coverage belongs to the native build/fixpoint path; generated
-images are local artifacts and must not be committed.
+as launchers. Build and install the exact tree first with the refresh command
+above. Generated snapshot images are local artifacts and must not be committed.
 
 ## Future Port Checklist
 

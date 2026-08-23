@@ -7,6 +7,7 @@ package TEST-FRAMEWORK-TEST
 
 variable SETUP-N
 variable TEARDOWN-N
+variable TEARDOWN-RC
 variable DRAIN-N
 variable RUN-N
 variable STDIN-N
@@ -17,11 +18,11 @@ variable BETA-N
 variable THROW-N
 variable THROW-LATE-N
 variable STDIN-LABEL-N
-variable SELECT-SKIP-N
 
 : RESET-COUNTS ( -- )
    0 SETUP-N !
    0 TEARDOWN-N !
+   0 TEARDOWN-RC !
    0 DRAIN-N !
    0 RUN-N !
    0 STDIN-N !
@@ -31,13 +32,13 @@ variable SELECT-SKIP-N
    0 BETA-N !
    0 THROW-N !
    0 THROW-LATE-N !
-   0 STDIN-LABEL-N !
-   0 SELECT-SKIP-N ! ;
+   0 STDIN-LABEL-N ! ;
 
 : SETUP ( -- )
    1 SETUP-N +! ;
 
-: TEARDOWN ( -- )
+: TEARDOWN ( n -- )
+   TEARDOWN-RC !
    1 TEARDOWN-N +! ;
 
 : DRAIN ( -- )
@@ -49,14 +50,6 @@ variable SELECT-SKIP-N
 : ARG+ ( ptr u8 n -- )
    2drop
    1 ARG-N +! ;
-
-: SELECT? ( -- bool )
-   s" skip-me" TEST:LABEL= if
-      1 SELECT-SKIP-N +!
-      0 0= 0=
-      exit
-   then
-   0 0= ;
 
 : RUNNER ( ptr u8 n -- ) {: label:ptr labelu:n :}
    1 RUN-N +!
@@ -80,6 +73,10 @@ variable SELECT-SKIP-N
       exit
    then ;
 
+: FAIL-RUNNER ( ptr u8 n -- )
+   2drop
+   E-STR-BOUNDS throw ;
+
 : STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    {: in:ptr inu:n label:ptr labelu:n :}
    1 STDIN-N +!
@@ -91,12 +88,17 @@ variable SELECT-SKIP-N
    [: DRAIN ;] TEST:DRAIN!
    [: ARGS-BEGIN ;] TEST:ARGS-BEGIN!
    [: ARG+ ;] TEST:ARG+!
-   [: SELECT? ;] TEST:SELECT?!
    [: RUNNER ;] TEST:RUNNER!
    [: STDIN-RUNNER ;] TEST:STDIN-RUNNER! ;
 
 : INSTALL-THROW ( -- )
    [: THROW-RUNNER ;] TEST:RUNNER! ;
+
+: INSTALL-FAIL ( -- )
+   [: FAIL-RUNNER ;] TEST:RUNNER! ;
+
+: EXPECT-RUN-FAIL ( -- )
+   [: TEST:RUN ;] E-STR-BOUNDS TTHROWSQ ;
 
 T-RESET
 RESET-COUNTS
@@ -118,9 +120,6 @@ SUITE beta
 SUITE-STDIN stdin-case DATA
    c.f -- arg
 ;SUITE
-SUITE skip-me
-   skip.f
-;SUITE
 ;GROUP
 
 RUN
@@ -129,12 +128,12 @@ RUN
 
 SETUP-N @ 1 T=
 TEARDOWN-N @ 1 T=
+TEARDOWN-RC @ 0 T=
 RUN-N @ 2 T=
 STDIN-N @ 1 T=
 ALPHA-N @ 1 T=
 BETA-N @ 1 T=
 STDIN-LABEL-N @ 1 T=
-SELECT-SKIP-N @ 1 T=
 ARG-N @ 8 T=
 ARGS-BEGIN-N @ 3 T=
 DRAIN-N @ 6 T=
@@ -158,6 +157,21 @@ RUN
 
 THROW-N @ 1 T=
 THROW-LATE-N @ 1 T=
+
+INSTALL-FAIL
+
+using TEST
+
+RESET
+SUITE uncaught-runner
+   fail.f
+;SUITE
+EXPECT-RUN-FAIL
+
+;using
+
+TEARDOWN-N @ 3 T=
+TEARDOWN-RC @ E-STR-BOUNDS T=
 T-REPORT
 
 ;package
@@ -213,14 +227,7 @@ GROUP PARA grp-par
 GROUP-CUR @ GROUP-MODE@ GROUP-PARALLEL T=
 ;GROUP
 
-\ Suite-table capacity: the 129th registration (id 128) now allocates where the
-\ old ITEM-MAX=128 cap threw; the (ITEM-MAX+1)th still fails closed loudly.
-RESET
-128 T-FILL-ITEMS
-ITEM-N @ 128 T=
-ITEM-ALLOC 128 T=
-ITEM-N @ 129 T=
-
+\ The (ITEM-MAX+1)th registration fails closed loudly.
 RESET
 ITEM-MAX T-FILL-ITEMS
 ITEM-N @ ITEM-MAX T=

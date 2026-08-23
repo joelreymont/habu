@@ -1,6 +1,5 @@
 \ bootstrap-using-ambiguous-src.f - stage0 rejects an ambiguous used-public name.
-\ schedule-lint: allow-unscheduled - habu-rehome-or-retire-65f56d69 owns the
-\ decision. This isolated stage0 fixture has no automatic runner.
+\ This is an input fixture, not a standalone test.
 
 \ Recovery-emitter fixture: when two imported packages both export the same tail,
 \ a bare use of that tail must be a hard error (USING-AMBIGUOUS = 94), never a

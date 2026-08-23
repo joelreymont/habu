@@ -97,9 +97,9 @@ Proof (temp engine + installed byte-fixpoint):
 - A post-seal `PRODUCT p 0 FIELD x n FIELD y n ;PRODUCT` still advances
   `TYPE-FIELD:COUNT` 0 → 2; the reflection API is intact (declarations admitted).
 - Checked-body reference still `E-UNDEFINED` (unchanged).
-- `install --force` twice → byte-identical shasum. `test/run.f`
-  `perf-verdict: performance=pass` (Layer 1 adds NO per-store cost — it only marks
-  ten records at seal time and calls `REG-PROTECT` at load).
+- `install --force` twice produced a byte-identical shasum, and the canonical
+  `test/run.f` suite passed (Layer 1 adds no per-store cost — it only marks ten
+  records at seal time and calls `REG-PROTECT` at load).
 - Negatives in `test/internal-word-gate.f` (`IWG-REGISTRY-CASES`): bare cell
   names fail closed; the `99 PF-COMMIT-N !` exploit fails closed on `--load` and
   stdin. `PF-FIND` remains an internal reflection helper. The seven former raw
