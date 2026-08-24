@@ -39,6 +39,13 @@ using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
+HIR-OPCODE:CONST HIR:ORD constant O-CONST
+HIR-OPCODE:ADD   HIR:ORD constant O-ADD
+HIR-OPCODE:SUB   HIR:ORD constant O-SUB
+HIR-OPCODE:LT    HIR:ORD constant O-LT
+HIR-OPCODE:BR    HIR:ORD constant O-BR
+HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
+
 \ This pass writes one key of its own and COPIES every one the elaborator built;
 \ a field copied under the wrong key would be a call reaching the wrong routine.
 5 constant KEYS-N
@@ -233,7 +240,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
 \ number" is one question asked in one place.
 : CONST-VALUE ( IR-ID:ir-op-id -- n bool )
    {: id:IR-ID:ir-op-id :}
-   id HIR-OPCODE:CONST HIR:ORD OP-IS? 0= if 0 false exit then
+   id O-CONST OP-IS? 0= if 0 false exit then
    id RESULTS-OF 1 <> if 0 false exit then
    id K-VALUE ATTR-BY-KEY ;
 
@@ -511,7 +518,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
 : BR-TARGET ( IR-ID:ir-block-id -- n bool )
    {: bk:IR-ID:ir-block-id :}
    bk TERM-AT {: t:IR-ID:ir-op-id :}
-   t HIR-OPCODE:BR HIR:ORD OP-IS? 0= if 0 false exit then
+   t O-BR OP-IS? 0= if 0 false exit then
    t SUCCS-OF 1 <> if 0 false exit then
    t 0 SUCC-ORD true ;
 
@@ -521,7 +528,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
 : PLAN-STUBS? ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id h:n :}
    f h BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
-   t HIR-OPCODE:BRZ HIR:ORD OP-IS? 0= if false exit then
+   t O-BRZ OP-IS? 0= if false exit then
    t SUCCS-OF 2 <> if false exit then
    t 0 SUCC-ORD {: xt:n :}
    t 1 SUCC-ORD {: la:n :}
@@ -569,7 +576,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
 : PLAN-GUARD? ( IR-ID:ir-fun-id -- bool )
    {: f:IR-ID:ir-fun-id :}
    f P-G @ BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
-   t HIR-OPCODE:BRZ HIR:ORD OP-IS? 0= if false exit then
+   t O-BRZ OP-IS? 0= if false exit then
    t SUCCS-OF 2 <> if false exit then
    t 1 SUCC-ORD P-PR @ <> if false exit then
    t 0 SUCC-ORD P-PR @ = if false exit then
@@ -577,7 +584,7 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    gb  t 0 OPERAND-AT  DEF-INDEX {: d:n :}
    d 0 < if false exit then
    gb d OP-AT {: sb:IR-ID:ir-op-id :}
-   sb HIR-OPCODE:SUB HIR:ORD OP-IS? 0= if false exit then
+   sb O-SUB OP-IS? 0= if false exit then
    sb OPERANDS-OF 2 <> if false exit then
    f P-PR @ BLOCK-AT TERM-AT {: pt:IR-ID:ir-op-id :}
    sb 0 OPERAND-AT  pt P-IDX @ 1+ OPERAND-AT  SAME-VALUE? 0= if false exit then
@@ -627,12 +634,12 @@ create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as
    hb  ht 0 OPERAND-AT  DEF-INDEX {: fi:n :}
    fi 0 < if false exit then
    hb fi OP-AT {: fop:IR-ID:ir-op-id :}
-   fop HIR-OPCODE:LT HIR:ORD OP-IS? 0= if false exit then
+   fop O-LT OP-IS? 0= if false exit then
    fop OPERANDS-OF 2 <> if false exit then
    hb  fop 0 OPERAND-AT  DEF-INDEX {: ni:n :}
    ni 0 < if false exit then
    hb ni OP-AT {: nop:IR-ID:ir-op-id :}
-   nop HIR-OPCODE:ADD HIR:ORD OP-IS? 0= if false exit then
+   nop O-ADD OP-IS? 0= if false exit then
    nop OPERANDS-OF 2 <> if false exit then
    hb  nop 1 OPERAND-AT  DEF-INDEX {: oi:n :}
    oi 0 < if false exit then
@@ -729,7 +736,7 @@ variable CH-STATE
    hb 0 CH-V @ DEF-INDEX {: d:n :}
    d 0 < if CH-NO CH-STATE ! exit then
    hb d OP-AT {: id:IR-ID:ir-op-id :}
-   id HIR-OPCODE:ADD HIR:ORD OP-IS? 0= if CH-NO CH-STATE ! exit then
+   id O-ADD OP-IS? 0= if CH-NO CH-STATE ! exit then
    id OPERANDS-OF 2 <> if CH-NO CH-STATE ! exit then
    id RESULTS-OF 1 <> if CH-NO CH-STATE ! exit then
    d COV!

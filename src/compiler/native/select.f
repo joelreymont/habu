@@ -48,6 +48,28 @@ ENUM cmpkind DERIVE eq
 private
 
 \ ---- the bound source dialect ------------------------------------------------
+HIR-OPCODE:CONST    HIR:ORD constant O-CONST
+HIR-OPCODE:RETURN   HIR:ORD constant O-RETURN
+HIR-OPCODE:LT       HIR:ORD constant O-LT
+HIR-OPCODE:LE       HIR:ORD constant O-LE
+HIR-OPCODE:BR       HIR:ORD constant O-BR
+HIR-OPCODE:BRZ      HIR:ORD constant O-BRZ
+HIR-OPCODE:STORE    HIR:ORD constant O-STORE
+HIR-OPCODE:EQUAL    HIR:ORD constant O-EQUAL
+HIR-OPCODE:CALL     HIR:ORD constant O-CALL
+HIR-OPCODE:WORDCALL HIR:ORD constant O-WORDCALL
+HIR-OPCODE:GT       HIR:ORD constant O-GT
+HIR-OPCODE:GE       HIR:ORD constant O-GE
+HIR-OPCODE:NE       HIR:ORD constant O-NE
+HIR-OPCODE:FCONST   HIR:ORD constant O-FCONST
+HIR-OPCODE:BITSREAL HIR:ORD constant O-BITSREAL
+HIR-OPCODE:FLT      HIR:ORD constant O-FLT
+HIR-OPCODE:FGT      HIR:ORD constant O-FGT
+HIR-OPCODE:FEQ      HIR:ORD constant O-FEQ
+HIR-OPCODE:FLTZ     HIR:ORD constant O-FLTZ
+HIR-OPCODE:FEQZ     HIR:ORD constant O-FEQZ
+HIR-OPCODE:TRAP     HIR:ORD constant O-TRAP
+
 0 constant BOUND-NO
 1 constant BOUND-YES
 
@@ -405,9 +427,9 @@ variable D-RETS                                    \ returns seen while surveyin
 
 : PLACE-POS? ( n n n -- bool )
    {: k:n ix:n p:n :}
-   p PLACE-LOAD = if k HIR-OPCODE:BITSREAL HIR:ORD = ix 0= and exit then
-   k HIR-OPCODE:STORE HIR:ORD = ix 0= and
-   k HIR-OPCODE:RETURN HIR:ORD = DSTACK? and or ;
+   p PLACE-LOAD = if k O-BITSREAL = ix 0= and exit then
+   k O-STORE = ix 0= and
+   k O-RETURN = DSTACK? and or ;
 
 : PLACE-OP? ( IR-ID:ir-value-id IR-ID:ir-op-id n -- n )
    {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id p:n :}
@@ -899,8 +921,8 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : CONST-KIND-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: sl:n :}
-   sl HIR-OPCODE:CONST HIR:ORD = if id CONST-ADDR exit then
-   sl HIR-OPCODE:FCONST HIR:ORD = if HIR:ADDR-NONE exit then
+   sl O-CONST = if id CONST-ADDR exit then
+   sl O-FCONST = if HIR:ADDR-NONE exit then
    E-A64SEL-ATTR throw ;
 
 : RLIT-REUSED? ( IR-ID:ir-op-id -- bool )
@@ -1065,17 +1087,17 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : COMPARE-COND ( IR-ID:ir-op-id -- A64IR:cond )
    OPCODE-AT OPCODE-SLOT
    case
-      HIR-OPCODE:LT HIR:ORD of A64IR-COND:LT    endof
-      HIR-OPCODE:LE HIR:ORD of A64IR-COND:LE    endof
-      HIR-OPCODE:GT HIR:ORD of A64IR-COND:GT    endof
-      HIR-OPCODE:GE HIR:ORD of A64IR-COND:GE    endof
-      HIR-OPCODE:EQUAL HIR:ORD of A64IR-COND:EQUAL endof
-      HIR-OPCODE:NE HIR:ORD of A64IR-COND:NE    endof
-      HIR-OPCODE:FLT HIR:ORD  of A64IR-COND:MI    endof
-      HIR-OPCODE:FGT HIR:ORD  of A64IR-COND:GT    endof
-      HIR-OPCODE:FEQ HIR:ORD  of A64IR-COND:EQUAL endof
-      HIR-OPCODE:FLTZ HIR:ORD of A64IR-COND:MI    endof
-      HIR-OPCODE:FEQZ HIR:ORD of A64IR-COND:EQUAL endof
+      O-LT    of A64IR-COND:LT    endof
+      O-LE    of A64IR-COND:LE    endof
+      O-GT    of A64IR-COND:GT    endof
+      O-GE    of A64IR-COND:GE    endof
+      O-EQUAL of A64IR-COND:EQUAL endof
+      O-NE    of A64IR-COND:NE    endof
+      O-FLT   of A64IR-COND:MI    endof
+      O-FGT   of A64IR-COND:GT    endof
+      O-FEQ   of A64IR-COND:EQUAL endof
+      O-FLTZ  of A64IR-COND:MI    endof
+      O-FEQZ  of A64IR-COND:EQUAL endof
       E-A64SEL-OPCODE throw
    endcase ;
 
@@ -1422,7 +1444,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n 2 < if -1 exit then
-   bk n 1- OP-AT OPCODE-AT OPCODE-SLOT HIR-OPCODE:BRZ HIR:ORD <> if -1 exit then
+   bk n 1- OP-AT OPCODE-AT OPCODE-SLOT O-BRZ <> if -1 exit then
    bk n 2 - OP-AT {: d:IR-ID:ir-op-id :}
    d OPCODE-AT OPCODE-SLOT COMPARE-SLOT? 0= if -1 exit then
    d RESULTS-OF 1 <> if -1 exit then
@@ -1444,10 +1466,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk n 1- OP-AT ;
 
 : BRZ-TERM? ( IR-ID:ir-block-id -- bool )
-   TERM-OP OP-SLOT HIR-OPCODE:BRZ HIR:ORD = ;
+   TERM-OP OP-SLOT O-BRZ = ;
 
 : BR-TERM? ( IR-ID:ir-block-id -- bool )
-   TERM-OP OP-SLOT HIR-OPCODE:BR HIR:ORD = ;
+   TERM-OP OP-SLOT O-BR = ;
 
 \ May this run on a path the program would not have taken? Both halves of the
 \ answer are the source dialect's own declarations.
@@ -1562,7 +1584,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ ---- the literals the region's memo will make one ----------------------------
 : R-FOLDABLE? ( IR-ID:ir-op-id -- bool )
    OP-SLOT {: s:n :}
-   s HIR-OPCODE:CONST HIR:ORD =  s HIR-OPCODE:FCONST HIR:ORD =  or ;
+   s O-CONST =  s O-FCONST =  or ;
 
 : R-FOLD-IN? ( IR-ID:ir-block-id n n n -- bool )
    {: bk:IR-ID:ir-block-id k:n s:n v:n :}
@@ -1894,8 +1916,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk OP-COUNT {: n:n :}
    n 2 < if false exit then
    at n 2 - <> if false exit then
-   bk at OP-AT OP-SLOT HIR-OPCODE:WORDCALL HIR:ORD <> if false exit then
-   bk n 1- OP-AT OP-SLOT HIR-OPCODE:RETURN HIR:ORD = ;
+   bk at OP-AT OP-SLOT O-WORDCALL <> if false exit then
+   bk n 1- OP-AT OP-SLOT O-RETURN = ;
 
 : VALUE-READ? ( IR-ID:ir-fun-id IR-ID:ir-value-id -- bool )
    {: f:IR-ID:ir-fun-id v:IR-ID:ir-value-id :}
@@ -2073,9 +2095,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : DOP-XFER ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
-   s HIR-OPCODE:CALL HIR:ORD = if id  id SELF-SHAPE  DCALL-XFER exit then
-   s HIR-OPCODE:WORDCALL HIR:ORD = if id  id SITE-SHAPE  DCALL-XFER exit then
-   s HIR-OPCODE:RETURN HIR:ORD = if
+   s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
+   s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
+   s O-RETURN = if
       DSTACK? 0= if 0 exit then
       id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
    then
@@ -2182,7 +2204,7 @@ create D-MEET DSLOT-MAX cells allot
    v 0 < if v exit then
    tb ARG-COUNT {: k:n :}
    DANY
-   t OP-SLOT HIR-OPCODE:BR HIR:ORD = if
+   t OP-SLOT O-BR = if
       t OPERANDS-OF k = if
          k 0 ?do
             t i OPERAND-AT VSLOT v = if
@@ -2315,11 +2337,11 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: id:IR-ID:ir-op-id :}
    id DOP-XFER {: mask:n :}
    id OP-SLOT {: s:n :}
-   s HIR-OPCODE:BR HIR:ORD = if exit then
-   s HIR-OPCODE:CALL HIR:ORD = if id mask  id SELF-SHAPE  DNEED-CALL exit then
-   s HIR-OPCODE:WORDCALL HIR:ORD = if id mask  id SITE-SHAPE  DNEED-CALL exit then
-   s HIR-OPCODE:RETURN HIR:ORD = if id mask DNEED-EXIT exit then
-   s HIR-OPCODE:TRAP HIR:ORD = if id DNEED-OPERANDS exit then
+   s O-BR = if exit then
+   s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
+   s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
+   s O-RETURN = if id mask DNEED-EXIT exit then
+   s O-TRAP = if id DNEED-OPERANDS exit then
    id DNEED-OPERANDS ;
 
 : DNEED-BLOCK ( IR-ID:ir-fun-id n -- )
@@ -2331,7 +2353,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 : DNEED-EDGE-OF ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
-   t OP-SLOT HIR-OPCODE:BR HIR:ORD <> if exit then
+   t OP-SLOT O-BR <> if exit then
    t BR-TARGET {: tb:n :}
    FUN tb BLOCK-AT ARG-COUNT {: k:n :}
    t OPERANDS-OF k <> if exit then
@@ -2389,10 +2411,10 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 : DPLACE-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
-   s HIR-OPCODE:CALL HIR:ORD = if id SELF-SHAPE DPLACE-CALL exit then
-   s HIR-OPCODE:WORDCALL HIR:ORD = if id SITE-SHAPE DPLACE-CALL exit then
-   s HIR-OPCODE:TRAP HIR:ORD = if DPLACE-TRAP exit then
-   s HIR-OPCODE:RETURN HIR:ORD = if DPLACE-RETURN then ;
+   s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
+   s O-WORDCALL = if id SITE-SHAPE DPLACE-CALL exit then
+   s O-TRAP = if DPLACE-TRAP exit then
+   s O-RETURN = if DPLACE-RETURN then ;
 
 : DPLACE-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
@@ -2611,7 +2633,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk ARG-COUNT {: k:n :}
    f b R-FROM@ BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
-   t OP-SLOT HIR-OPCODE:BR HIR:ORD <> if
+   t OP-SLOT O-BR <> if
       k 0<> if E-A64SEL-SHAPE throw then
       exit
    then

@@ -41,6 +41,39 @@ using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
+A64IR-OPCODE:MOV       A64IR:ORD constant O-MOV
+A64IR-OPCODE:DTAKE     A64IR:ORD constant O-DTAKE
+A64IR-OPCODE:DLOAD     A64IR:ORD constant O-DLOAD
+A64IR-OPCODE:DSTORE    A64IR:ORD constant O-DSTORE
+A64IR-OPCODE:DPUBLISH  A64IR:ORD constant O-DPUBLISH
+A64IR-OPCODE:FLAG      A64IR:ORD constant O-FLAG
+A64IR-OPCODE:BR        A64IR:ORD constant O-BR
+A64IR-OPCODE:BRZ       A64IR:ORD constant O-BRZ
+A64IR-OPCODE:RET       A64IR:ORD constant O-RET
+A64IR-OPCODE:SDIV      A64IR:ORD constant O-SDIV
+A64IR-OPCODE:CALL      A64IR:ORD constant O-CALL
+A64IR-OPCODE:CMPBR     A64IR:ORD constant O-CMPBR
+A64IR-OPCODE:WORDCALL  A64IR:ORD constant O-WORDCALL
+A64IR-OPCODE:FFLAG     A64IR:ORD constant O-FFLAG
+A64IR-OPCODE:FFLAGZ    A64IR:ORD constant O-FFLAGZ
+A64IR-OPCODE:FCMPBR    A64IR:ORD constant O-FCMPBR
+A64IR-OPCODE:FCMPBRZ   A64IR:ORD constant O-FCMPBRZ
+A64IR-OPCODE:FMOVDD    A64IR:ORD constant O-FMOVDD
+A64IR-OPCODE:SELZ      A64IR:ORD constant O-SELZ
+A64IR-OPCODE:CMPSEL    A64IR:ORD constant O-CMPSEL
+A64IR-OPCODE:SELZD     A64IR:ORD constant O-SELZD
+A64IR-OPCODE:CMPSELD   A64IR:ORD constant O-CMPSELD
+A64IR-OPCODE:FCMPSEL   A64IR:ORD constant O-FCMPSEL
+A64IR-OPCODE:FCMPSELZ  A64IR:ORD constant O-FCMPSELZ
+A64IR-OPCODE:FCMPSELD  A64IR:ORD constant O-FCMPSELD
+A64IR-OPCODE:FCMPSELZD A64IR:ORD constant O-FCMPSELZD
+A64IR-OPCODE:TAILCALL  A64IR:ORD constant O-TAILCALL
+A64IR-OPCODE:FDLOAD    A64IR:ORD constant O-FDLOAD
+A64IR-OPCODE:FDSTORE   A64IR:ORD constant O-FDSTORE
+A64IR-OPCODE:TRAP      A64IR:ORD constant O-TRAP
+A64IR-OPCODE:FLAGI     A64IR:ORD constant O-FLAGI
+A64IR-OPCODE:CMPBRI    A64IR:ORD constant O-CMPBRI
+
 0 constant BOUND-NO
 1 constant BOUND-YES
 
@@ -521,39 +554,39 @@ variable N-FUNS                        \ how many functions the emission holds
 \ the eight conditional selects, which are two.
 : INSNS-OF ( n -- n )
    {: k:n :}
-   k A64IR-OPCODE:SELZ A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:CMPSEL A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:SELZD A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:CMPSELD A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:FCMPSEL A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:FCMPSELZ A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:FCMPSELD A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:FCMPSELZD A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:FLAG A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:FLAGI A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:FFLAG A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:FFLAGZ A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:SDIV A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:CALL A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:WORDCALL A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:CMPBR A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:CMPBRI A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:FCMPBR A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:FCMPBRZ A64IR:ORD = if 3 exit then
-   k A64IR-OPCODE:BRZ A64IR:ORD = if 2 exit then
-   k A64IR-OPCODE:TRAP A64IR:ORD = if 2 exit then
+   k O-SELZ = if 2 exit then
+   k O-CMPSEL = if 2 exit then
+   k O-SELZD = if 2 exit then
+   k O-CMPSELD = if 2 exit then
+   k O-FCMPSEL = if 2 exit then
+   k O-FCMPSELZ = if 2 exit then
+   k O-FCMPSELD = if 2 exit then
+   k O-FCMPSELZD = if 2 exit then
+   k O-FLAG = if 3 exit then
+   k O-FLAGI = if 3 exit then
+   k O-FFLAG = if 3 exit then
+   k O-FFLAGZ = if 3 exit then
+   k O-SDIV = if 3 exit then
+   k O-CALL = if 3 exit then
+   k O-WORDCALL = if 3 exit then
+   k O-CMPBR = if 3 exit then
+   k O-CMPBRI = if 3 exit then
+   k O-FCMPBR = if 3 exit then
+   k O-FCMPBRZ = if 3 exit then
+   k O-BRZ = if 2 exit then
+   k O-TRAP = if 2 exit then
    1 ;
 
 \ Which successor the trailing unconditional branch names, and -1 for a form
 \ that ends in no such branch.
 : TAIL-SUCC ( n -- n )
    {: k:n :}
-   k A64IR-OPCODE:BR A64IR:ORD = if 0 exit then
-   k A64IR-OPCODE:BRZ A64IR:ORD = if 1 exit then
-   k A64IR-OPCODE:CMPBR A64IR:ORD = if 1 exit then
-   k A64IR-OPCODE:CMPBRI A64IR:ORD = if 1 exit then
-   k A64IR-OPCODE:FCMPBR A64IR:ORD = if 1 exit then
-   k A64IR-OPCODE:FCMPBRZ A64IR:ORD = if 1 exit then
+   k O-BR = if 0 exit then
+   k O-BRZ = if 1 exit then
+   k O-CMPBR = if 1 exit then
+   k O-CMPBRI = if 1 exit then
+   k O-FCMPBR = if 1 exit then
+   k O-FCMPBRZ = if 1 exit then
    -1 ;
 
 \ ---- the chosen block order --------------------------------------------------
@@ -612,7 +645,7 @@ variable N-FUNS                        \ how many functions the emission holds
    NO-RET
    f BLOCK-COUNT 0 ?do
       f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
-      t SUCCS-OF 0=  t SLOT-AT A64IR-OPCODE:TRAP A64IR:ORD <>  and if
+      t SUCCS-OF 0=  t SLOT-AT O-TRAP <>  and if
          dup NO-RET <> if E-A64EMIT-SHAPE throw then
          drop i
       then
@@ -632,7 +665,7 @@ variable N-FUNS                        \ how many functions the emission holds
 : COPY? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT {: k:n :}
-   k A64IR-OPCODE:MOV A64IR:ORD =  k A64IR-OPCODE:FMOVDD A64IR:ORD =  or ;
+   k O-MOV =  k O-FMOVDD =  or ;
 
 : SELF-MOV? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
@@ -692,7 +725,7 @@ variable N-FUNS                        \ how many functions the emission holds
    b 0= if false exit then
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk TERM-AT {: t:IR-ID:ir-op-id :}
-   t SLOT-AT A64IR-OPCODE:BR A64IR:ORD <> if false exit then
+   t SLOT-AT O-BR <> if false exit then
    bk SILENT-BEFORE-TERM? ;
 
 variable CH-AT
@@ -1163,8 +1196,8 @@ variable CH-AT
 
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
    OP-AT SLOT-AT {: k:n :}
-   k A64IR-OPCODE:RET A64IR:ORD = k A64IR-OPCODE:BR A64IR:ORD = or k A64IR-OPCODE:BRZ A64IR:ORD = or k A64IR-OPCODE:CMPBR A64IR:ORD = or k A64IR-OPCODE:CMPBRI A64IR:ORD = or
-   k A64IR-OPCODE:FCMPBR A64IR:ORD = or k A64IR-OPCODE:FCMPBRZ A64IR:ORD = or k A64IR-OPCODE:TAILCALL A64IR:ORD = or k A64IR-OPCODE:TRAP A64IR:ORD = or ;
+   k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or k O-CMPBRI = or
+   k O-FCMPBR = or k O-FCMPBRZ = or k O-TAILCALL = or k O-TRAP = or ;
 
 : BLOCK-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -1186,18 +1219,18 @@ variable CH-AT
 \ at a CALL SITE, which is why BODY-INSNS refuses a routine that calls.
 : IFACE-FORM? ( n -- bool )
    {: k:n :}
-   k A64IR-OPCODE:DTAKE A64IR:ORD = k A64IR-OPCODE:DLOAD A64IR:ORD = or k A64IR-OPCODE:DSTORE A64IR:ORD = or k A64IR-OPCODE:DPUBLISH A64IR:ORD = or k A64IR-OPCODE:RET A64IR:ORD = or
-   k A64IR-OPCODE:FDLOAD A64IR:ORD = or k A64IR-OPCODE:FDSTORE A64IR:ORD = or ;
+   k O-DTAKE = k O-DLOAD = or k O-DSTORE = or k O-DPUBLISH = or k O-RET = or
+   k O-FDLOAD = or k O-FDSTORE = or ;
 
 : CALL-FORM? ( n -- bool )
    {: k:n :}
-   k A64IR-OPCODE:CALL A64IR:ORD = k A64IR-OPCODE:WORDCALL A64IR:ORD = or k A64IR-OPCODE:TAILCALL A64IR:ORD = or ;
+   k O-CALL = k O-WORDCALL = or k O-TAILCALL = or ;
 
 \ Both end control here, and a caller may not COPY such a routine: a copied `b`
 \ would branch out of whatever caller it was copied into.
 : LEAVE-FORM? ( n -- bool )
    {: k:n :}
-   k A64IR-OPCODE:TAILCALL A64IR:ORD = k A64IR-OPCODE:TRAP A64IR:ORD = or ;
+   k O-TAILCALL = k O-TRAP = or ;
 
 : PUT-COUNTED ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id home:n :}
@@ -1453,7 +1486,7 @@ variable SCAN-K
 \ The last OPERATION is asked about rather than the last instruction word,
 \ because a return is exactly one instruction.
 : TRAILING-RETURN? ( -- bool )
-   SEAL-CK EM-LAST @ A64IR-OPCODE:RET A64IR:ORD = ;
+   SEAL-CK EM-LAST @ O-RET = ;
 
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;

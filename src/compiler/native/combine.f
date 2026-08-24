@@ -33,6 +33,16 @@ using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
+A64IR-OPCODE:MOVZ  A64IR:ORD constant O-MOVZ
+A64IR-OPCODE:ADD   A64IR:ORD constant O-ADD
+A64IR-OPCODE:SUB   A64IR:ORD constant O-SUB
+A64IR-OPCODE:MUL   A64IR:ORD constant O-MUL
+A64IR-OPCODE:FLAG  A64IR:ORD constant O-FLAG
+A64IR-OPCODE:CMPBR A64IR:ORD constant O-CMPBR
+A64IR-OPCODE:AND   A64IR:ORD constant O-AND
+A64IR-OPCODE:ORR   A64IR:ORD constant O-ORR
+A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
+
 \ This pass writes no attribute of its own but COPIES every one the selector
 \ built, and a field copied under the wrong key would misread a frame.
 14 constant KEYS-N
@@ -221,7 +231,7 @@ create CMP-AT OPS-MAX cells allot
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    k 0 < if false exit then
    bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT A64IR-OPCODE:MUL A64IR:ORD <> if false exit then
+   id OP-SLOT O-MUL <> if false exit then
    id RESULTS-OF 1 <> if false exit then
    f  id 0 RESULT-AT  USES-OF 1 = ;
 
@@ -237,7 +247,7 @@ create CMP-AT OPS-MAX cells allot
 : FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT A64IR-OPCODE:ADD A64IR:ORD <> if -1 exit then
+   id OP-SLOT O-ADD <> if -1 exit then
    id OPERANDS-OF 2 <> if -1 exit then
    bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
    f bk d0 k FOLDS-HERE? if d0 exit then
@@ -260,7 +270,7 @@ create CMP-AT OPS-MAX cells allot
 \ under a movk is one half of a larger one, which the single-use test excludes.
 : MOVZ-VALUE ( IR-ID:ir-op-id -- n bool )
    {: id:IR-ID:ir-op-id :}
-   id OP-SLOT A64IR-OPCODE:MOVZ A64IR:ORD <> if 0 false exit then
+   id OP-SLOT O-MOVZ <> if 0 false exit then
    id RESULTS-OF 1 <> if 0 false exit then
    id K-SHIFT ATTR-BY-KEY 0<> if 0 false exit then
    id K-IMM ATTR-BY-KEY {: v:n :}
@@ -307,10 +317,10 @@ create CMP-AT OPS-MAX cells allot
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    f bk k FOLD-FOR 0 >= if -1 exit then
    bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT A64IR-OPCODE:ADD A64IR:ORD <>  id OP-SLOT A64IR-OPCODE:SUB A64IR:ORD <>  and if -1 exit then
+   id OP-SLOT O-ADD <>  id OP-SLOT O-SUB <>  and if -1 exit then
    id OPERANDS-OF 2 <> if -1 exit then
    id RESULTS-OF 1 <> if -1 exit then
-   id OP-SLOT A64IR-OPCODE:ADD A64IR:ORD = if
+   id OP-SLOT O-ADD = if
       bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
       f bk d0 k IMM-FOLDS-HERE? if d0 exit then
    then
@@ -335,7 +345,7 @@ create CMP-AT OPS-MAX cells allot
 
 : LOGICAL-OP? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id OP-SLOT A64IR-OPCODE:AND A64IR:ORD =  id OP-SLOT A64IR-OPCODE:ORR A64IR:ORD =  or  id OP-SLOT A64IR-OPCODE:EOR A64IR:ORD =  or ;
+   id OP-SLOT O-AND =  id OP-SLOT O-ORR =  or  id OP-SLOT O-EOR =  or ;
 
 : MASK-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
@@ -356,7 +366,7 @@ create CMP-AT OPS-MAX cells allot
 \ and turning a left-hand constant round means changing the condition too.
 : COMPARE-OP? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id OP-SLOT A64IR-OPCODE:FLAG A64IR:ORD =  id OP-SLOT A64IR-OPCODE:CMPBR A64IR:ORD =  or ;
+   id OP-SLOT O-FLAG =  id OP-SLOT O-CMPBR =  or ;
 
 : CMP-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
@@ -573,7 +583,7 @@ create CMP-AT OPS-MAX cells allot
 : EMIT-ADDI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id ar:IR-ID:ir-op-id :}
    mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
-   ar OP-SLOT A64IR-OPCODE:SUB A64IR:ORD =
+   ar OP-SLOT O-SUB =
    if A64IR-OPCODE:SUBI else A64IR-OPCODE:ADDI then {: o:A64IR:opcode :}
    ar o OPEN
    ar k ADDEND-OF VOF OPERAND+
@@ -588,9 +598,9 @@ create CMP-AT OPS-MAX cells allot
 : EMIT-MASKI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id lg:IR-ID:ir-op-id :}
    mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
-   lg OP-SLOT A64IR-OPCODE:AND A64IR:ORD =
+   lg OP-SLOT O-AND =
    if   A64IR-OPCODE:ANDI
-   else lg OP-SLOT A64IR-OPCODE:ORR A64IR:ORD =
+   else lg OP-SLOT O-ORR =
         if A64IR-OPCODE:ORRI else A64IR-OPCODE:EORI then
    then {: o:A64IR:opcode :}
    lg o OPEN
@@ -615,12 +625,12 @@ create CMP-AT OPS-MAX cells allot
 : EMIT-CMPI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
    cm OP-SLOT {: s:n :}
-   s A64IR-OPCODE:FLAG A64IR:ORD =  s A64IR-OPCODE:CMPBR A64IR:ORD =  or 0= if E-A64COMB-SHAPE throw then
-   s A64IR-OPCODE:CMPBR A64IR:ORD =
+   s O-FLAG =  s O-CMPBR =  or 0= if E-A64COMB-SHAPE throw then
+   s O-CMPBR =
    if A64IR-OPCODE:CMPBRI else A64IR-OPCODE:FLAGI then {: o:A64IR:opcode :}
    cm o OPEN
    cm 0 OPERAND-AT VOF OPERAND+
-   s A64IR-OPCODE:FLAG A64IR:ORD = if
+   s O-FLAG = if
       CTX BLD  cm 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
    then
    cm COPY-SUCCS

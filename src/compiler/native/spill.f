@@ -39,6 +39,12 @@ using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
+A64IR-OPCODE:RESERVE  A64IR:ORD constant O-RESERVE
+A64IR-OPCODE:RELEASE  A64IR:ORD constant O-RELEASE
+A64IR-OPCODE:LINKSAVE A64IR:ORD constant O-LINKSAVE
+A64IR-OPCODE:LINKLOAD A64IR:ORD constant O-LINKLOAD
+A64IR-OPCODE:TRAP     A64IR:ORD constant O-TRAP
+
 \ One slot per attribute key the dialect declares.
 14 constant KEYS-N
 0 constant K-IMM
@@ -553,7 +559,7 @@ create NAMEBUF NAME-CAP allot
    NO-RET
    f BLOCK-COUNT 0 ?do
       f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
-      t SUCCS-OF 0=  t OPCODE-AT OPCODE-SLOT A64IR-OPCODE:TRAP A64IR:ORD = 0=  and if
+      t SUCCS-OF 0=  t OPCODE-AT OPCODE-SLOT O-TRAP = 0=  and if
          dup NO-RET <> if E-A64SPILL-SHAPE throw then
          drop i
       then
@@ -609,10 +615,10 @@ create NAMEBUF NAME-CAP allot
 \ at all, or exactly a selector's prologue with its reserve opening the entry block.
 : COUNT-FRAME-OP ( IR-ID:ir-op-id -- )
    OPCODE-AT OPCODE-SLOT {: k:n :}
-   k A64IR-OPCODE:RESERVE A64IR:ORD  = if N-RES @ 1+ N-RES ! then
-   k A64IR-OPCODE:RELEASE A64IR:ORD  = if N-REL @ 1+ N-REL ! then
-   k A64IR-OPCODE:LINKSAVE A64IR:ORD = if N-SAV @ 1+ N-SAV ! then
-   k A64IR-OPCODE:LINKLOAD A64IR:ORD = if N-LDL @ 1+ N-LDL ! then ;
+   k O-RESERVE  = if N-RES @ 1+ N-RES ! then
+   k O-RELEASE  = if N-REL @ 1+ N-REL ! then
+   k O-LINKSAVE = if N-SAV @ 1+ N-SAV ! then
+   k O-LINKLOAD = if N-LDL @ 1+ N-LDL ! then ;
 
 : COUNT-FRAME ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
@@ -630,7 +636,7 @@ create NAMEBUF NAME-CAP allot
    {: f:IR-ID:ir-fun-id :}
    N-RES @ 1 <>  N-REL @ 1 <> or  N-SAV @ 1 <> or  N-LDL @ 1 <> or
    if E-A64SPILL-SHAPE throw then
-   f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT A64IR-OPCODE:RESERVE A64IR:ORD <>
+   f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
    if E-A64SPILL-SHAPE throw then ;
 
 : ONCE-CK ( IR-ID:ir-fun-id n -- )
