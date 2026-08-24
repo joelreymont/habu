@@ -480,7 +480,6 @@ using CODEGEN-SCAN
 
    s" and every one of those call sites was moved onto the chain's routine" T-LABEL
    CODEGEN-HOT:REACHED 0 > TTRUE
-   s" HOT-REACH:SYM-FOLD-C" CALL-SITES CODEGEN-HOT:REACHED T=
    s" SYM-FOLD-C" CALL-SITES 0 T=
 
    s" so the checker's callers enter the chain's fold and nothing else" T-LABEL
