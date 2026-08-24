@@ -6788,6 +6788,7 @@ s" em-interpret-string-keywords" s" --" TRUST
 
 : EM-INTERPRET-NUMBER ( label -- ) {: lnotnum:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
+   17 LUNDEF LABEL@ CBNZ,                                  \ range-refused decimal never falls through to LFIND
    12 lnotnum CBZ,  11 G-PUSH
    TOP-EV-NUM C-TOPHOOK-LIT
    LMAIN LABEL@ B, ;
@@ -8002,6 +8003,7 @@ s" em-compile-local" s" --" TRUST
 : EM-COMPILE-LITERAL ( -- )
    LBL LBL {: lcnotnum lcflt :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
+   17 LUNDEF LABEL@ CBNZ,                                  \ range-refused decimal never becomes a call
    12 lcnotnum CBZ,
    2 lcflt CBNZ,
       LVPUSHC LABEL@ BL,  LMAIN LABEL@ B,

@@ -2413,12 +2413,13 @@ fits.
   exact F32 narrowing and widening into a package-owned library removes duplicate
   numeric logic, but raw load/store/pack operations must stay with their existing
   owner until the common bounded MEM span and subspan types can express capacity.
-- **Long decimal reference literals can overflow the fractional scale.** The native
-  float-literal path currently accepts a 19-digit fractional denominator that overflows
-  its signed cell and silently changes the value. Keep committed f64 references within
-  the parser's exact 18-fractional-digit boundary until the compiler rejects or correctly
-  scales longer decimals. The compiler work remains recorded in
-  `habu-reject-overflowing-decimal-2f3b3a29`.
+- **Latch decimal overflow, but keep the complete shape claimed.** The native
+  float-literal path accumulates the integer magnitude, fractional numerator, and
+  power-of-ten scale in cells before binary64 conversion. Check each next recurrence,
+  latch overflow while scanning the rest of the token, and reject a complete
+  over-bound decimal before dictionary lookup. Returning an ordinary parse miss lets
+  a hostile definition with that numeric spelling bypass the refusal; limiting the
+  checker's grammar instead creates the same bypass in checked code.
 - **Subagents inherit model and reasoning effort unless explicitly overridden.**
   Dispatch should not silently select a weaker model or effort level.
 - **Repair dependency cycles by re-deriving the architecture, not by deleting a
@@ -4480,10 +4481,9 @@ deterministic bit pattern, which is what makes a NaN row pinnable at all; and
 has a rounding word wrapped around it. Two probes went into the corpus header
 because they are surprising rather than because they are hard: the float literal
 reader computes int + frac/10^k with three roundings, so a seventeen-digit
-literal can land one ulp off the nearest double, and past eighteen fractional
-digits its integer accumulator wraps and the literal is silently read as a
-NEGATIVE number. A benchmark that pins only short exactly-representable literals
-sidesteps both; a compiler that materialises constants cannot.
+literal can land one ulp off the nearest double, while a nineteenth fractional
+digit is rejected before its cell accumulators overflow. A compiler that
+materialises constants must preserve both the admitted bits and that refusal.
 
 ## Record a float output as the CELL, and the harness gains two free tests
 
@@ -4497,23 +4497,17 @@ that dropped the sign of a zero, and two NaNs are equal cells while being unequa
 numbers, so two rows produced by two different words can be asserted to carry the
 same NaN. Neither test would exist if the harness had recorded a rounded decimal.
 
-## Re-derive the engine's number reader, bug for bug, or the literal is a different program
+## Use the engine's number reader or the literal is a different program
 
-The source tape has to record a float literal's VALUE, and the engine's own
-parser is not reachable from the compiler - so the value is read back from the
-spelling, exactly as the integer literal already was. The temptation is to use
-the stdlib's `STR>FLOAT`, which is a better parser: it accumulates the
-significand in a double and scales by a power of ten. The engine does something
-else - two integer accumulators and a power of ten, finished with three SCVTFs,
-one FDIV and one FADD - and the two routes do not agree on every spelling. A
-compiled literal one bit from the interpreted literal is a different program, so
-the reader reproduces the engine's route instruction for instruction, wrapping
-accumulator and all. It reads `0.1234567890123456789` as a NEGATIVE cell because
-the engine does, and a test compares it against the engine's own literal on ten
-spellings rather than against a table of expected numbers. When the reader bug is
-repaired the test goes red and points at the file that has to move with it, which
-is what keeps two independently-correct parsers from being two different
-compilers.
+The source tape has to record a float literal's VALUE. It asks `num-parse`, which
+enters the same engine routine used by interpreted and compiled literals, rather
+than re-reading the spelling through `STR>FLOAT`. The engine uses two integer
+accumulators and a power of ten, finished with three SCVTFs, one FDIV and one
+FADD, and that route does not agree with `STR>FLOAT` on every spelling. The
+checker keeps the syntactic shape claimed, then asks this reader for admission;
+`STR>FLOAT` asks it too for engine-shaped decimals while preserving its broader
+sign, exponent, and trailing-dot language. One reader therefore owns both the
+admitted bits and the overflow refusal.
 
 ## A second register file is a second FILE, not a second flag
 

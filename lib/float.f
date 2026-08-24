@@ -72,6 +72,25 @@ public
      some OF OPTION:SOME ENDOF
    ;MATCH ;
 
+\ STR>FLOAT accepts signs, exponent notation and a trailing dot beyond the
+\ engine literal grammar. For the spellings that are engine-shaped decimals,
+\ ask the engine's own reader whether its cell accumulators admit the value.
+: FL-ENGINE-DECIMAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if 0 0= 0= exit then
+   a c@ STR-PLUS = if 0 0= 0= exit then
+   a u FL-FIND-E MATCH option
+     none OF 0 0= 0= ENDOF
+     some OF drop 0 0= ENDOF
+   ;MATCH if 0 0= 0= exit then
+   a u STR:LENGTH FL-DOT STR:INDEX-OF MATCH option
+     none OF 0 0= 0= ENDOF
+     some OF CAD-NUM:FL-IX>N u 1- <> ENDOF
+   ;MATCH ;
+
+: FL-ENGINE-DECIMAL-ADMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u FL-ENGINE-DECIMAL? 0= if 0 0= exit then
+   a u num-parse and nip ;
+
 \ ---- significand (no sign, no exponent) -----------------------------------
 \ Split the mantissa at the dot, parse both halves, combine. Requires at least
 \ one digit across the two halves, so "" and "." are rejected.
@@ -108,9 +127,11 @@ public
 
 \ ---- public entry ---------------------------------------------------------
 : STR>FLOAT ( ptr u8 n -- option<r> ) {: a0:ptr u0:n :}
+   a0 u0 FL-ENGINE-DECIMAL-ADMITTED? {: admitted:bool :}
    -1 FL-VALID !
    a0 u0 FL-STRIP-SIGN {: a:ptr u neg :}
    a u FL-PARSE-EXP {: mlen :}
+   admitted 0= if OPTION:NONE exit then
    a mlen FL-SIG MATCH option
      none OF OPTION:NONE exit ENDOF                 \ bad significand -> NONE
      some OF ENDOF                                  \ SOME significand left on the stack

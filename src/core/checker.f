@@ -8852,8 +8852,9 @@ variable TSEEN  variable TSOK  variable TFA
    TSOK @ 0 <> ;
 variable FLD  variable FLI  variable FLO  variable FLC
 
-\ float literal: -?d*.d+ — exactly one dot, >=1 digit after it, digits-before-dot
-\ optional. Mirrors the engine number parser (habu1.f EMIT-NUM/C-NUM-DOT) exactly:
+\ float literal shape: -?d*.d+ — exactly one dot, >=1 digit after it,
+\ digits-before-dot optional. Admission is asked separately of num-parse so an
+\ overflowing decimal stays claimed here instead of falling through as a name.
 \ dot-leading spellings (.5 -.5 .0) ARE engine float literals, and the checker
 \ must claim precisely the tokens the runtime claims (GD-LITERAL-FIRST) or a
 \ number-shaped word certifies as a call the runtime can never reach.
@@ -8869,6 +8870,11 @@ variable FLD  variable FLI  variable FLO  variable FLC
    FLD @ 1 = FLO @ 0 <> and
    u 0 > IF a u 1 - + c@ 46 = IF drop RES-FALSE THEN THEN ;
 
+: FLOAT-LITERAL-ADMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u num-parse {: v:n flt:bool ok:bool :}
+   v drop
+   flt ok and ;
+
 : DEFINER-TOK ( ptr u8 n -- bool ) {: a:ptr u:n :}
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF
       a u s" variable" CORE-STR=  a u s" constant" CORE-STR= or IF
@@ -8881,7 +8887,10 @@ variable FLD  variable FLI  variable FLO  variable FLC
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u ALLDIG? IF STEP-N-OUT RES-TRUE EXIT THEN
-   a u FLODIG? IF STEP-R-OUT RES-TRUE EXIT THEN
+   a u FLODIG? IF
+      a u FLOAT-LITERAL-ADMITTED? IF STEP-R-OUT ELSE 0 OK ! -1 FAILSET ! THEN
+      RES-TRUE EXIT
+   THEN
    RES-FALSE ;
 
 : BYTE-CON? ( n -- bool )

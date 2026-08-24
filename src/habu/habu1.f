@@ -581,6 +581,7 @@ variable NUM-ND
 variable NUM-NUC
 variable NUM-NDOT
 variable NUM-ISFRAC
+variable NUM-FRAC-NEXT
 variable NUM-LINT
 variable NUM-FPOS
 
@@ -2813,12 +2814,10 @@ public
 \ the spelling was a float), x2 whether it read a float, x12 whether it read a
 \ number at all.
 \
-\ A REFUSED SPELLING ANSWERS NOTHING, and that is what the two ANDs are for. The
-\ routine stops at the first byte it cannot read and leaves whatever it had
-\ accumulated in x11 - `12a` leaves 12 - and it writes x2 only after the base is
-\ chosen, so the two early refusals (an empty token, a lone sign) never write it
-\ at all. Neither is a value the engine ever pushes, so a caller must not be able
-\ to read one: with the flag false both answers are zero.
+\ A REFUSED SPELLING ANSWERS NOTHING, and that is what the two ANDs are for. A
+\ syntax miss stops at the first unreadable byte (`12a` leaves 12); a complete
+\ over-bound decimal reaches float finish with x12 still false. Neither partial
+\ cell is a value the engine pushes, so a caller sees zero with the false flag.
 package ENGINE-EMIT
 public
 
@@ -3916,7 +3915,8 @@ variable FIND-HMATCH
       FIND-MISS LABEL@ LBL,   5 0 MOVZ,  RET, ;
 
 : C-NUM-INIT-REGS ( -- )
-   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;
+   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,
+   16 0 MOVZ,  17 0 MOVZ, ;                                  \ overflow latch, final decimal refusal
 
 : C-NUM-SIGN ( -- )
    10 NUM-DONE LABEL@ CBZ,
@@ -3953,15 +3953,23 @@ variable FIND-HMATCH
       7 15 55 SUBI, ;
 
 : C-NUM-INT-STEP ( -- )
+   5 $7FFFFFFFFFFFFFFF LIT64,  5 5 7 SUB,
+   8 5 6 UDIV,  11 8 CMP,  5 C-GT CSET,  16 16 5 ORR,
    11 11 6 MUL,  11 11 7 ADD,
    14 14 1 ADDI,  NUM-LOOP LABEL@ B, ;
 
 : C-NUM-FRAC-STEP ( -- )
+   5 $7FFFFFFFFFFFFFFF LIT64,  5 5 7 SUB,
+   8 10 MOVZ,  5 5 8 UDIV,  4 5 CMP,  5 C-GT CSET,  16 16 5 ORR,
+   5 $0CCCCCCCCCCCCCCC LIT64,  3 5 CMP,  5 C-GT CSET,  16 16 5 ORR,
+   16 NUM-FRAC-NEXT LABEL@ CBNZ,
    5 10 MOVZ,  4 4 5 MUL,  4 4 7 ADD,  3 3 5 MUL,
+   NUM-FRAC-NEXT LABEL@ LBL,
    14 14 1 ADDI,  NUM-LOOP LABEL@ B, ;
 
 : C-NUM-FLOAT-FINISH ( -- )
    3 1 CMPI,  C-EQ NUM-DONE LABEL@ BCOND,                       \ "1." (no frac digits) -> fail
+   17 16 0 ADDI,  17 NUM-DONE LABEL@ CBNZ,                      \ a complete decimal owns its range refusal
    0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
    1 1 2 FDIV,  0 0 1 FADD,
    13 0 CMPI,  C-GE NUM-FPOS LABEL@ BCOND,  0 0 FNEG,
@@ -3982,6 +3990,7 @@ variable FIND-HMATCH
    LBL NUM-NUC !
    LBL NUM-NDOT !
    LBL NUM-ISFRAC !
+   LBL NUM-FRAC-NEXT !
    LBL NUM-LINT !
    LBL NUM-FPOS !
    C-NUM-INIT-REGS

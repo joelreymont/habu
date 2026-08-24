@@ -1161,6 +1161,18 @@ previous definitions
       9 0 MOVZ,  9 G-PUSH
    done LBL, ;
 
+\ Recovery mirror of habu1.f BNUMPARSE: expose the one LNUM routine to the
+\ checker and native-feed sources that the stage0 engine compiles.
+: BNUMPARSE ( -- )
+   B G-POP  A G-POP
+   2 0 MOVZ,
+   LNUM @ BL,
+   12 0 CMPI,  12 C-NE CSET,  12 SP 12 SUB,
+   2 0 CMPI,   2 C-NE CSET,   2 SP 2 SUB,
+   2 2 12 AND,
+   C C 12 AND,
+   C G-PUSH  2 G-PUSH  12 G-PUSH ;
+
 \ tok-imm? ( ptr u8 n -- n ): Gforth recovery mirror of habu2.f's live
 \ dictionary immediate probe. LFIND returns the immediate bit in flag bit 1;
 \ FPRIM preserves x30 across the nested call.
@@ -1219,6 +1231,7 @@ previous definitions
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
+   s" num-parse" ['] BNUMPARSE FPRIM
    s" evaluate" ['] B-EVAL FPRIM-L ;
 
 : EMIT-ENGINE-PRIMS ( -- )
@@ -1588,10 +1601,11 @@ previous definitions
                                                         \ loop's RW code region needs no flip back to RX
    ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
 
-\ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok ) ----
+\ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok x17=range-refused ) ----
 \ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
 : C-NUM-INIT-REGS ( -- )
-   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;
+   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,
+   16 0 MOVZ,  17 0 MOVZ, ;                                  \ overflow latch, final decimal refusal
 
 : C-NUM-SIGN ( n n -- ) {: ldone ndoll :}
    10 ldone CBZ,                                                \ empty token -> fail
@@ -1628,15 +1642,24 @@ previous definitions
       7 15 55 SUBI, ;                                           \ 'A'..'F' -> c-55
 
 : C-NUM-INT-STEP ( n -- ) {: lloop :}
+   5 $7FFFFFFFFFFFFFFF LIT64,  5 5 7 SUB,
+   8 5 6 UDIV,  11 8 CMP,  5 C-GT CSET,  16 16 5 ORR,
    11 11 6 MUL,  11 11 7 ADD,                                   \ val = val*base + digit
    14 14 1 ADDI,  lloop B, ;
 
 : C-NUM-FRAC-STEP ( n -- ) {: lloop :}
+   LBL {: next :}
+   5 $7FFFFFFFFFFFFFFF LIT64,  5 5 7 SUB,
+   8 10 MOVZ,  5 5 8 UDIV,  4 5 CMP,  5 C-GT CSET,  16 16 5 ORR,
+   5 $0CCCCCCCCCCCCCCC LIT64,  3 5 CMP,  5 C-GT CSET,  16 16 5 ORR,
+   16 next CBNZ,
    5 10 MOVZ,  4 4 5 MUL,  4 4 7 ADD,  3 3 5 MUL,
+   next LBL,
    14 14 1 ADDI,  lloop B, ;
 
 : C-NUM-FLOAT-FINISH ( n n -- ) {: ldone fpos :}
    3 1 CMPI,  C-EQ ldone BCOND,                                 \ "1." (no frac digits) -> fail
+   17 16 0 ADDI,  17 ldone CBNZ,                                \ a complete decimal owns its range refusal
    0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
    1 1 2 FDIV,  0 0 1 FADD,
    13 0 CMPI,  C-GE fpos BCOND,  0 0 FNEG,
@@ -5852,6 +5875,7 @@ variable P2SK
    lmain LKWECQ    3 ['] C-EICQ     CF-ENTRY
    lmain LKWEDOTQ  3 ['] C-EIDOTQ   CF-ENTRY
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
+   17 lundef CBNZ,                                           \ range-refused decimal never falls through to LFIND
    12 lnotnum CBZ,  11 G-PUSH  lmain B,
    lnotnum LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
@@ -6045,9 +6069,10 @@ variable P2SK
       lmain B,
    notloc LBL, ;
 
-: EMIT-COMPILE-LITERAL ( n -- ) {: lmain :}
+: EMIT-COMPILE-LITERAL ( n n -- ) {: lmain lundef :}
    LBL LBL {: lcnotnum lcflt :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
+   17 lundef CBNZ,                                           \ range-refused decimal never becomes a call
    12 lcnotnum CBZ,
    2 lcflt CBNZ,
       LVPUSHC @ BL,  lmain B,
@@ -6397,7 +6422,7 @@ variable P2SK
    lmain EMIT-COMPILE-LOCAL
    lmain EMIT-COMPILE-P2WIDE
    lmain EMIT-COMPILE-KEYWORDS
-   lmain EMIT-COMPILE-LITERAL
+   lmain lundef EMIT-COMPILE-LITERAL
    lmain EMIT-COMPILE-OPS
    lmain lundef EMIT-COMPILE-CALL ;
 

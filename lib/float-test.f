@@ -18,6 +18,11 @@ require lib/float.f
      none OF 0 0= ENDOF                              \ none -> true
      some OF drop 0 0= 0= ENDOF                       \ some -> false (unexpected)
    ;MATCH T-ASSERT ;
+: T-FL-OK ( ptr u8 n -- )                           \ parse string, expect SOME
+   STR>FLOAT MATCH option
+     none OF false ENDOF
+     some OF drop true ENDOF
+   ;MATCH T-ASSERT ;
 
 : FL-RUN ( -- )
    T-RESET
@@ -35,13 +40,20 @@ require lib/float.f
    s" +7"      7.0     T-FL
    s" 6285"    6285.0  T-FL
    s" 0.000001" 0.000001 T-FL
+   s" -0.008503115738340623" -0.008503115738340623 T-FL
+   s" 9223372036854775807.0" T-FL-OK
+   s" -9223372036854775807.0" T-FL-OK
    s" "       T-FL-BAD
    s" ."      T-FL-BAD
    s" abc"    T-FL-BAD
    s" 1.2.3"  T-FL-BAD
    s" 1e"     T-FL-BAD
    s" -"      T-FL-BAD
-   s" 1.2e3x" T-FL-BAD ;
+   s" 1.2e3x" T-FL-BAD
+   s" -0.0085031157383406233" T-FL-BAD
+   s" 0.0000000000000000000" T-FL-BAD
+   s" 9223372036854775808.0" T-FL-BAD
+   s" -9223372036854775808.0" T-FL-BAD ;
 
 \ --- switchover wave A: FL-FIND-E now returns option<CAD-NUM:index> (SOME index
 \ of e/E, else NONE) and FL-PARSE-EXP MATCHes it. Test both words directly.

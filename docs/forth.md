@@ -85,9 +85,13 @@ file.
   digit-leading names that cannot parse as a number (`1STNZ`, `0<>`, `2DUP`)
   remain legal. The literal grammar is ONE grammar in every context —
   interpret, colon-compile, `evaluate`, and the checker: int `-?d+ | -?$h+`,
-  float `-?d*.d+` (exactly one dot, at least one digit after it, digits before
-  it optional — so dot-leading `.5`/`-.5`/`.0` ARE float literals, while `5.`
-  and `..5` are ordinary words). The checker's literal claim
+  float shape `-?d*.d+` (exactly one dot, at least one digit after it, digits
+  before it optional — so dot-leading `.5`/`-.5`/`.0` ARE float literals,
+  while `5.` and `..5` are ordinary words). A shaped decimal is admitted only
+  while its integer magnitude, fractional numerator, and power-of-ten scale
+  fit their signed-cell accumulators. An over-bound shape stays claimed and is
+  rejected before dictionary lookup; it never becomes a callable name. The
+  checker's literal claim
   (`LITERAL-TOK?`/`ALLDIG?`/`FLODIG?` in `src/core/checker.f`) mirrors the
   engine number parser (`EMIT-NUM` in `src/habu/habu1.f`) token for token;
   `test/gate-dictionary-lib.f` GD-LITERAL-FLOAT-FIRST pins the whole matrix,

@@ -30,7 +30,7 @@ package FMT
 \ Fail-closed negative cases (quotation bodies for TTHROWSQ, each ( -- )).
 : NEG-U-CASE ( -- )        SB-RESET -1 SB-U ;                            \ unsigned rejects negative
 : OVERFLOW-FIX-CASE ( -- ) SB-RESET 1000000000000000000.0 2 SB-FIX ;     \ 1e18 * 10^2 overflows i64
-: OVERFLOW-2P63-CASE ( -- ) SB-RESET 9223372036854775808.0 0 SB-FIX ;    \ boundary is exclusive at 2^63
+: OVERFLOW-2P63-CASE ( -- ) SB-RESET 4611686018427387904.0 2.0 f* 0 SB-FIX ;  \ boundary is exclusive at 2^63
 
 : FMT-RUN ( -- )
    T-RESET

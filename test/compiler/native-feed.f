@@ -736,24 +736,24 @@ create UTXT-TINY TINY-CAP allot
    0 T= -0.0 REAL-CELL T= ;
 
 \ The three spellings the survey at the head of tools/codegen-compare-corpus3.f
-\ measures as the engine's own answers, including the two where the engine's
-\ route lands one bit off the nearest double and the one where the fractional
-\ accumulator wraps into a negative cell. A reader that used the stdlib's float
-\ parser instead would agree on ordinary literals and disagree on exactly these,
-\ so this is the case that says the two routes are one route.
+\ measures as the engine's own answers, including two where the engine's route
+\ lands one bit off the nearest double and the last fractional scale that fits
+\ its signed-cell accumulator. A reader that used the stdlib's float parser
+\ instead would agree on ordinary literals and can disagree on these, so this is
+\ the case that says the two routes are one route.
 : AWKWARD-BODY ( IR-CTX:ctx -- n n n )
    {: c:IR-CTX:ctx :}
    c s" : NF-R1 ( -- r ) 1.9482199351819093 ;" 0 REC
    0 1 LIT
    c s" : NF-R2 ( -- r ) 0.11471049746507529 ;" 1 REC
    1 1 LIT
-   c s" : NF-R3 ( -- r ) 0.1234567890123456789 ;" 0 REC
+   c s" : NF-R3 ( -- r ) 0.123456789012345678 ;" 0 REC
    0 1 LIT ;
 
 : AWKWARD-CASE ( -- )
    s" a float literal the engine reads inexactly is recorded as the engine reads it" T-LABEL
    BND [: AWKWARD-BODY ;] IR-CTX:WITH-CONTEXT
-   0.1234567890123456789 REAL-CELL T=
+   0.123456789012345678 REAL-CELL T=
    0.11471049746507529 REAL-CELL T=
    1.9482199351819093 REAL-CELL T= ;
 
@@ -799,11 +799,17 @@ create UTXT-TINY TINY-CAP allot
    s" $" PARSED? TFALSE
    s" -" PARSED? TFALSE
    s" " PARSED? TFALSE
+   s" 0.0000000000000000000" PARSED? TFALSE
+   s" -0.0085031157383406233" PARSED? TFALSE
+   s" 9223372036854775808.0" PARSED? TFALSE
+   s" -9223372036854775808.0" PARSED? TFALSE
    s" a declined spelling answers no value and no float flag" T-LABEL
    s" 12a" PARSED-VALUE 0 T=
    s" 12a" PARSED-FLOAT? TFALSE
    s" 5." PARSED-VALUE 0 T=
-   s" 5." PARSED-FLOAT? TFALSE ;
+   s" 5." PARSED-FLOAT? TFALSE
+   s" 0.0000000000000000000" PARSED-VALUE 0 T=
+   s" 0.0000000000000000000" PARSED-FLOAT? TFALSE ;
 
 \ THE DISAGREEMENT E-NFEED-LITERAL EXISTS FOR. The reader classifies a token
 \ with the checker's own predicates and the producer asks the engine's routine

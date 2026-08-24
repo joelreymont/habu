@@ -937,7 +937,8 @@ public
    s" : NMG-FSQRT ( r -- r ) fsqrt ;" NMIGRATE:DEFINE
    s" : NMG-SF ( n -- r ) s>f ;" NMIGRATE:DEFINE
    s" : NMG-FS ( r -- n ) f>s ;" NMIGRATE:DEFINE
-   s" : NMG-FLIT ( r -- r ) 0.25 f+ ;" NMIGRATE:DEFINE ;
+   s" : NMG-FLIT ( r -- r ) 0.25 f+ ;" NMIGRATE:DEFINE
+   s" : NMG-FLIT18 ( -- r ) -0.008503115738340623 ;" NMIGRATE:DEFINE ;
 
 : FLOAT-CASE ( -- )
    FLOAT-MIGRATIONS
@@ -979,7 +980,8 @@ public
 
    s" a float literal in a compiled body is the double the interpreter pushes" T-LABEL
    s" 1.5 NMG-FLIT" EV-N  s" 1.5 0.25 f+" EV-N T=
-   s" -0.25 NMG-FLIT" EV-N  s" 0.0" EV-N T= ;
+   s" -0.25 NMG-FLIT" EV-N  s" 0.0" EV-N T=
+   s" NMG-FLIT18" EV-N  s" -0.008503115738340623" EV-N T= ;
 
 \ ---- the five float comparisons, both ways they can be lowered ---------------
 \ Each of the five is migrated twice: once as a body whose whole content is the
@@ -1549,6 +1551,9 @@ variable BACK-N
 : FLOAT-STORE ( -- )
    s" : NMG-BAD2 ( r ptr a -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;" NMIGRATE:DEFINE ;
 
+: FLOAT-LITERAL-OVERFLOW ( -- )
+   s" : NMG-FOVER ( -- r ) 9223372036854775808.0 ;" NMIGRATE:DEFINE ;
+
 \ The loop-carried accumulator: the double enters the header from the block above
 \ it and comes back to it from the latch, so the header's argument is a floating
 \ register and every turn's Fadd feeds the next.
@@ -1651,6 +1656,10 @@ variable BACK-N
    s" 0.0 0.0 f/ NMG-FCALL" EV-N  s" 0.0 0.0 f/ 1.0 f* dup 2.0 f* f+" EV-N T= ;
 
 : FLOAT-REFUSAL-CASES ( -- )
+   s" an overflowing decimal never reaches native migration" T-LABEL
+   [: FLOAT-LITERAL-OVERFLOW ;] 70 TTHROWSQ
+   s" NMG-FOVER" DEFINED? TFALSE
+
    s" a double stored into a memory cell is refused - the crossing is not placed yet" T-LABEL
    [: FLOAT-STORE ;] E-NELAB-TYPE TTHROWSQ
 

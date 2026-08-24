@@ -174,13 +174,10 @@
 \      the decimal it spells. `1.9482199351819093` reads as
 \      4611452821746767930 where the nearest double is 4611452821746767931,
 \      and `0.11471049746507529` reads one below its nearest double too.
-\   b. The fraction is accumulated in an integer cell, so past eighteen
-\      fractional digits it wraps and the value is silently wrong - and can
-\      even change sign: `0.1234567890123456789` reads as the cell
-\      -4628938082669329042, a negative number. Dot
-\      habu-fix-the-float-1d1467c8 carries the repair; nothing in this
-\      corpus depends on it, because every literal pinned here is short and
-\      exactly representable.
+\   b. The integer magnitude, fraction, and power-of-ten scale are accumulated
+\      in signed cells, so a complete decimal spelling is refused before any
+\      recurrence would overflow. The last admitted fractional scale has
+\      eighteen digits; every literal pinned here keeps those accumulators exact.
 \
 \ (11) WHAT STOPPED THE NATIVE CHAIN WHEN THIS CORPUS WAS COMMITTED, WHICH IS WHY
 \ EVERY ROW OF IT STARTED AS A GAP. Two refusals, in two different stages, both

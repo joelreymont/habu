@@ -677,8 +677,8 @@ variable CANDIDATE-VERDICT
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
 \ One literal grammar everywhere (engine + checker): int -?d+ | -?$h+, float
-\ -?d*.d+ — dot-leading spellings (.5 -.5 .0) ARE float literals; 5. and ..5
-\ are words. The engine number parser claims literals before dictionary lookup
+\ shape -?d*.d+ — dot-leading spellings (.5 -.5 .0) ARE float literals; 5. and
+\ ..5 are words. The engine number parser claims shaped decimals before lookup
 \ (LITERAL-FIRST), so the checker must claim exactly the same token set or a
 \ number-shaped word certifies with an effect the runtime never executes (the
 \ lib/fmt.f .0 incident). Number-shaped definitions appear only inside child
@@ -750,6 +750,64 @@ variable CANDIDATE-VERDICT
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    SB$ s" hb resident evaluate float literal-first output" GE-EXPECT-OUT ;
+
+: LITERAL-FLOAT-LAST-SAFE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" -0.008503115738340623 ." GE-SRC-LINE
+   s" : GD-FLOAT-LAST-SAFE ( -- r ) -0.008503115738340623 ;" GE-SRC-LINE
+   s" GD-FLOAT-LAST-SAFE ." GE-SRC-LINE
+   s" 9223372036854775807.0 ." GE-SRC-LINE
+   s" -9223372036854775807.0 ." GE-SRC-LINE
+   s" : GD-FLOAT-CELL-POS ( -- r ) 9223372036854775807.0 ;" GE-SRC-LINE
+   s" : GD-FLOAT-CELL-NEG ( -- r ) -9223372036854775807.0 ;" GE-SRC-LINE
+   s" GD-FLOAT-CELL-POS ." GE-SRC-LINE
+   s" GD-FLOAT-CELL-NEG ." GE-SRC-LINE
+   s" hb accepts the last signed-cell decimal accumulators" GE-EVAL-RUN-STDIN
+   SB-RESET
+   s" -4647316702578275452" GE-OUT-LINE
+   s" -4647316702578275452" GE-OUT-LINE
+   s" 4890909195324358656" GE-OUT-LINE
+   s" -4332462841530417152" GE-OUT-LINE
+   s" 4890909195324358656" GE-OUT-LINE
+   s" -4332462841530417152" GE-OUT-LINE
+   SB$ s" hb last safe decimal value" GE-EXPECT-OUT ;
+
+: LITERAL-FLOAT-BAD-INTERPRETED ( ptr u8 n ptr u8 n -- )
+   {: lit:ptr litu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   lit litu GE-SRC+
+   s"  ." GE-SRC-LINE
+   70 lit litu label labelu GE-EVAL-FORK-BAD ;
+
+: LITERAL-FLOAT-BAD-CHECKED ( ptr u8 n ptr u8 n -- )
+   {: lit:ptr litu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GD-FLOAT-OVERFLOW ( -- r ) " GE-SRC+
+   lit litu GE-SRC+
+   s"  ;" GE-SRC-LINE
+   70 lit litu label labelu GE-EVAL-FORK-BAD ;
+
+: LITERAL-FLOAT-HOSTILE-NAME ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 0 set-check" GE-SRC-LINE
+   s" : 0.0000000000000000000 42 ;" GE-SRC-LINE
+   s" 0.0000000000000000000 ." GE-SRC-LINE
+   70 s" E-UNDEFINED: 0.0000000000000000000"
+   s" hb rejects an overflowing decimal before hostile dictionary lookup" GE-EVAL-FORK-BAD ;
+
+: LITERAL-FLOAT-BOUNDARY ( -- )
+   LITERAL-FLOAT-LAST-SAFE
+   s" -0.0085031157383406233" s" hb rejects an interpreted overflowing fraction" LITERAL-FLOAT-BAD-INTERPRETED
+   s" -0.0085031157383406233" s" hb rejects an overflowing fraction in a checked definition" LITERAL-FLOAT-BAD-CHECKED
+   s" 9223372036854775808.0" s" hb rejects an interpreted positive cell overflow" LITERAL-FLOAT-BAD-INTERPRETED
+   s" -9223372036854775808.0" s" hb rejects an interpreted negative cell overflow" LITERAL-FLOAT-BAD-INTERPRETED
+   s" 9223372036854775808.0" s" hb rejects a positive cell overflow in a checked definition" LITERAL-FLOAT-BAD-CHECKED
+   s" -9223372036854775808.0" s" hb rejects a negative cell overflow in a checked definition" LITERAL-FLOAT-BAD-CHECKED
+   LITERAL-FLOAT-HOSTILE-NAME ;
 
 : DUPLICATE-DEFINITION-REJECTS ( -- )
    GE-HB-RESET
@@ -1333,6 +1391,7 @@ public
    LITERAL-FIRST
    LITERAL-FLOAT-FIRST
    LITERAL-FLOAT-EVAL
+   LITERAL-FLOAT-BOUNDARY
    NAMESPACE-QUALIFIED
    PACKAGE-RUNTIME
    PACKAGE-SEMICOLON
