@@ -4,7 +4,7 @@
 \ things are owed and each is proved rather than sampled:
 \
 \ 1. THE BOUNDS ARE THE ASSEMBLER'S. The schema states how many registers a file
-\    holds, which register is platform-reserved, and how far a frame slot can sit
+\    holds, whether x18 is platform-reserved, and how far a frame slot can sit
 \    from the stack pointer. Every one of those numbers is asserted against the
 \    constant in src/arch/arm64/asm.f it was derived from, so a bound that moved
 \    in the shipped encoder reddens here instead of silently disagreeing. The
@@ -89,7 +89,7 @@ private
 \ ---- forged set values -------------------------------------------------------
 \ A set the generated constructor assembled without passing the checked one, so
 \ it names something the schema says no routine can hold state in.
-: FORGED-GPRS ( -- A64EFF:gprs )     1 18 lshift A64EFF-GPRS:MAKE ;
+: FORGED-GPRS ( -- A64EFF:gprs )     1 30 lshift A64EFF-GPRS:MAKE ;
 : FORGED-FPRS ( -- A64EFF:fprs )     1 32 lshift A64EFF-FPRS:MAKE ;
 : FORGED-TRAITS ( -- A64EFF:traits ) 8 A64EFF-TRAITS:MAKE ;
 
@@ -147,12 +147,17 @@ private
    {: size:n :}
    A64EFF-CONTROL:RETURNS size 0 R-STACK ;
 
+: X18-RESERVED-MASK ( -- n )
+   HB-TARGET-LINUX? if 0 exit then
+   HB-TARGET-MACOS? if 1 ARM-X18 lshift exit then
+   E-CTGT-ABI throw ;
+
 \ ---- 1. the bounds are the assembler's ---------------------------------------
-\ REG-LIM, ARM-RESERVED-REG and IMM12-LIM are the shipped encoder's own
+\ REG-LIM, ARM-X18 and IMM12-LIM are the shipped encoder's own
 \ constants. Every schema bound is stated as a function of one of them.
 : MACHINE-FACTS ( -- )
    A64EFF:FILE-SIZE REG-LIM T=
-   A64EFF:RESERVED-GPR ARM-RESERVED-REG T=
+   A64EFF:RESERVED-GPRS 1 ARM-X18 lshift and X18-RESERVED-MASK T=
    A64EFF:ZERO-GPR REG-LIM 1- T=
    A64EFF:LINK-GPR 30 T=
    A64EFF:SP-ALIGN 16 T=
@@ -160,7 +165,8 @@ private
    4 A64EFF:SLOT-REACH IMM12-LIM 1- 4 * T=
    1 A64EFF:SLOT-REACH IMM12-LIM 1- T=
    8 A64EFF:SLOT-REACH dup A64EFF:SP-ALIGN mod - A64EFF:FRAME-MAX T=
-   \ The whole file less BOTH owners' claims: the target's x18/x30/x31 and the
+   \ The whole file less BOTH owners' claims: the target's optional x18 plus
+   \ x30/x31 and the
    \ five registers the running engine occupies (x19 data stack, x20 DATA/RBASE,
    \ x26 DBASE, x27 NDICT, x28 CP). Written as the derivation rather than as one
    \ hex number, so a register claimed in src/habu/layout.f moves this assertion
@@ -171,20 +177,33 @@ private
    A64EFF:ENGINE-GPRS ENGINE-GPR:MASK T=
    A64EFF:FPR-ALL A64EFF:FPRS-N $FFFFFFFF T= ;
 
+: X18-VOCABULARY ( -- )
+   HB-TARGET-LINUX? if
+      1 18 lshift A64EFF:GPR-SET A64EFF:GPRS-N 1 18 lshift T=
+      18 A64EFF:GPR-REG A64EFF:GPRS-N 1 18 lshift T=
+      exit
+   then
+   HB-TARGET-MACOS? if
+      [: 1 18 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;]
+         E-A64EFF-GPR TTHROWSQ
+      [: 18 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+      exit
+   then
+   E-CTGT-ABI throw ;
+
 \ ---- 2a. the register vocabulary ---------------------------------------------
-\ The three registers a general set may not name, each because another owner has
-\ the fact, plus a bit past the file. The floating file has no reserved member,
-\ so its whole width is nameable and only a bit past the file is refused.
+\ x19, x30 and x31 may never be named; x18 follows the host policy above. A bit
+\ past the file is also refused. The floating file has no reserved member, so its
+\ whole width is nameable.
 : VOCABULARY ( -- )
    A64EFF:GPR-NONE A64EFF:GPRS-N 0 T=
    0 A64EFF:GPR-SET A64EFF:GPRS-N 0 T=
    X0 A64EFF:GPRS-N 1 T=
-   [: 1 18 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   X18-VOCABULARY
    [: 1 19 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 1 30 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 1 31 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 1 32 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
-   [: 18 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 19 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 30 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 31 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
@@ -239,6 +258,14 @@ private
    SQ-NONE
    n 0 ?do i A64EFF:SEQ-WITH loop ;
 
+: X18-SEQUENCE ( -- )
+   HB-TARGET-LINUX? if 18 SQ 0 A64EFF:SEQ-REG@ 18 T= exit then
+   HB-TARGET-MACOS? if
+      [: 18 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+      exit
+   then
+   E-CTGT-ABI throw ;
+
 : SEQUENCE ( -- )
    SQ-NONE A64EFF:SEQ-LEN 0 T=
    SQ-NONE A64EFF:SEQ-SET A64EFF:GPRS-N 0 T=
@@ -254,10 +281,10 @@ private
    A64EFF:SEQ-LIMIT LONG-SEQ A64EFF:SEQ-LEN A64EFF:SEQ-LIMIT T=
    A64EFF:SEQ-LIMIT LONG-SEQ A64EFF:SEQ-LIMIT 1- A64EFF:SEQ-REG@ A64EFF:SEQ-LIMIT 1- T=
    17 SQ 0 A64EFF:SEQ-REG@ 17 T=
+   X18-SEQUENCE
    29 SQ 0 A64EFF:SEQ-REG@ 29 T=
    [: 0 0 SQ2 A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
    [: 2 1 SQ2 1 A64EFF:SEQ-WITH A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: 18 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
    [: 30 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
    [: 31 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
    [: 32 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
@@ -268,7 +295,7 @@ private
    [: 0 SQ -1 A64EFF:SEQ-REG@ drop ;] E-A64EFF-SEQ TTHROWSQ
    [: 1 A64EFF-PLACESEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
    [: 15 60 lshift A64EFF-PLACESEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: 1 60 lshift 18 or A64EFF-PLACESEQ:MAKE A64EFF:SEQ-LEN drop ;]
+   [: 1 60 lshift 30 or A64EFF-PLACESEQ:MAKE A64EFF:SEQ-LEN drop ;]
       E-A64EFF-GPR TTHROWSQ
    [: -1 A64EFF-PLACESEQ:MAKE A64EFF:SEQ-SET A64EFF:GPRS-N drop ;]
       E-A64EFF-SEQ TTHROWSQ ;
@@ -358,7 +385,7 @@ private
 \ The running engine holds its data-stack pointer, DATA/RBASE, DBASE, NDICT and
 \ CP in general registers, and no routine this schema can describe may hold
 \ state in any of them: they are out of the general-register mask exactly as
-\ x18, x30 and 31 are, so every route into a contract refuses them and there is
+\ x30 and 31 are, so every route into a contract refuses them and there is
 \ no contract that hands one out to be allocated from. Each register under test
 \ comes from src/habu/layout.f's own per-register constant - the emitters'
 \ authority - so the claim proved here is the engine's actual claim: dropping a
@@ -527,9 +554,9 @@ variable ER-REG
 
 \ A second forgery, this one naming the reserved register at argument position
 \ zero of a list the checked constructor would never have accepted.
-: FORGED-X18 ( -- A64EFF:routine )
+: FORGED-RESERVED ( -- A64EFF:routine )
    A64EFF-CONV:REGISTER
-   1 60 lshift 18 or A64EFF-PLACESEQ:MAKE SQ-NONE A64EFF:GPR-NONE
+   1 60 lshift 30 or A64EFF-PLACESEQ:MAKE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF-ROUTINE:MAKE ;
@@ -544,12 +571,13 @@ variable ER-REG
    [: FORGED A64EFF:FPR-PRESERVED A64EFF:FPRS-N drop ;] E-A64EFF-SP TTHROWSQ
    [: FORGED A64EFF:RETURNS? drop ;] E-A64EFF-SP TTHROWSQ
    [: 0 8 FORGED A64EFF:CHECK-SLOT ;] E-A64EFF-SP TTHROWSQ
-   [: FORGED-X18 A64EFF:VALIDATE DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ
-   [: FORGED-X18 A64EFF:DIGEST DROP-DIGEST ;] E-A64EFF-GPR TTHROWSQ
-   [: FORGED-X18 A64EFF:GPR-PRESERVED A64EFF:GPRS-N drop ;]
+   [: FORGED-RESERVED A64EFF:VALIDATE DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ
+   [: FORGED-RESERVED A64EFF:DIGEST DROP-DIGEST ;] E-A64EFF-GPR TTHROWSQ
+   [: FORGED-RESERVED A64EFF:GPR-PRESERVED A64EFF:GPRS-N drop ;]
       E-A64EFF-GPR TTHROWSQ
-   [: FORGED-X18 A64EFF:GPR-IN@ A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
-   [: FORGED-X18 A64EFF:GPR-WRITABLE A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ ;
+   [: FORGED-RESERVED A64EFF:GPR-IN@ A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: FORGED-RESERVED A64EFF:GPR-WRITABLE A64EFF:GPRS-N drop ;]
+      E-A64EFF-GPR TTHROWSQ ;
 
 \ A field reader only projects, so it answers about a forged record without
 \ pretending the record is declarable. That is the documented split, and it is
@@ -557,7 +585,8 @@ variable ER-REG
 : READERS ( -- )
    FORGED A64EFF:FRAME@ 32 T=
    FORGED A64EFF:DELTA@ -16 T=
-   FORGED-X18 A64EFF:ARGS@ A64EFF-PLACESEQ:UNMAKE 1 60 lshift 18 or T=
+   FORGED-RESERVED A64EFF:ARGS@ A64EFF-PLACESEQ:UNMAKE
+      1 60 lshift 30 or T=
    0 SQ 1 SQ X2 R-GPR A64EFF:ARGS@ 0 A64EFF:SEQ-REG@ 0 T=
    0 SQ 1 SQ X2 R-GPR A64EFF:RESULTS@ 0 A64EFF:SEQ-REG@ 1 T=
    0 SQ 1 SQ X2 R-GPR A64EFF:GPR-CLOBBER@ A64EFF:GPRS-N X2 A64EFF:GPRS-N T=

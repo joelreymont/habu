@@ -54,8 +54,7 @@ using NLOOPINV
 
 private
 
-\ The registers the fixtures below name. x18 is what no emitted routine may hold
-\ and the classifiers screen it, so no fixture is built from it.
+\ The ordinary registers the fixtures below name.
 0 constant R0
 1 constant R1
 2 constant R2
@@ -74,6 +73,8 @@ public
    R0 $1234 HW1 MOVZHW MOVZ? TTRUE
    R0 $1234 HW0 MOVKHW MOVK? TTRUE
    R0 $1234 HW1 MOVKHW MOVK? TTRUE
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-LINUX? if 18 $1234 HW0 MOVZHW MOVZ? TTRUE then
 
    s" and neither move-wide form is the other" T-LABEL
    R0 $1234 HW0 MOVZHW MOVK? TFALSE

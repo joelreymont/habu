@@ -227,6 +227,11 @@ create TXT TEXT-CAP allot
 : SRC2 ( -- ptr u8 n )
    s" : NCH-SQD ( n -- n ) dup * ;" ;
 
+: HABU-BASE ( -- n )
+   HB-TARGET-LINUX? if 18 exit then
+   HB-TARGET-MACOS? if 0 exit then
+   E-CTGT-ABI throw ;
+
 : RECORD2 ( -- )
    CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
    CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
@@ -240,14 +245,16 @@ create TXT TEXT-CAP allot
    CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    RECORD2
    p r ELABORATE
-   CC BB TXT TEXT-LEN 0 REGS 1 1 NFIX:RUN-HABU
+   CC BB TXT TEXT-LEN HABU-BASE 1 1 1 NFIX:RUN-HABU
    A64EMIT:INSNS
    7 NRUN:PUBLISH NRUN:ENTER1
    s" 7 NCH-SQD" EV-N
    s" 11 NCH-SQD" EV-N ;
 
-\ Four instructions: the load, the multiply, the store and the return. NEITHER
-\ pointer move is written, and that is the placement rather than an omission: the
+\ On Linux the one-register pool is x18, so this path proves the compiler can
+\ allocate, encode and execute with the register Darwin reserves. The four
+\ instructions are the load, multiply, store and return. NEITHER pointer move is
+\ written, and that is the placement rather than an omission: the
 \ routine takes one cell and leaves one, so the place the caller left the pointer
 \ and the place it expects it back are the same place, the routine stands there,
 \ and both adjustments are distances of zero. The two accesses reach their cell
@@ -1465,6 +1472,20 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
    [: 24 4 NABI:POOL A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 20 4 NABI:POOL 1 1 0 NABI:LEAF-FRAMED DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ ;
 
+: BINDING-CASE ( -- )
+   s" the native binding names the host ABI" T-LABEL
+   HB-TARGET-LINUX? if
+      NABI:BINDING CBIND:TARGET@ CTARGET:ABI@
+         CTARGET-ABI:AAPCS64-LINUX CTARGET-ABI:EQ TTRUE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      NABI:BINDING CBIND:TARGET@ CTARGET:ABI@
+         CTARGET-ABI:AAPCS64-DARWIN CTARGET-ABI:EQ TTRUE
+      exit
+   then
+   E-CTGT-ABI throw ;
+
 \ ---- what the no-return form declares, against the calling form it is not -----
 \ The two forms describe routines that make the same instruction - an ordinary
 \ Bl - and differ in what happens after it. Reading the fields side by side is
@@ -1597,6 +1618,7 @@ public
    SPILL-CASE
    RSPILL-CASE
    AGREE-CASES
+   BINDING-CASE
    POOL-CASES
    NORET-TRAIT-CASE
    NORET-FIELD-CASE

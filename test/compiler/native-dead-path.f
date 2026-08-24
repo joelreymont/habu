@@ -254,8 +254,9 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    NMIGRATE:MEASURE-HELD ;
 
 \ Twenty-eight values every one of which is read after the last of them is
-\ written, against the twenty-four registers NABI:SCRATCH leaves a routine, so
-\ four of them reach the frame. The live twin below it is the same arithmetic
+\ written, against the twenty-five Linux or twenty-four Darwin registers
+\ NABI:SCRATCH leaves a routine, so some of them reach the frame. The live twin
+\ below it is the same arithmetic
 \ with the result returned instead of thrown away, and it compiles: what the case
 \ measures is the frame, so the pressure has to be real on both sides of it - and
 \ since no caller states a budget any more, real means bigger than the machine.

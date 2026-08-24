@@ -29,8 +29,8 @@
 \      engine's own compilation stand would fail here even though every answer
 \      below would still be right.
 \
-\   4. That a refusal leaves the engine's word running, the stream past the
-\      definition it consumed, and the recorder ready for the next one.
+\   4. That a refusal leaves no word, the stream past the definition it consumed,
+\      and the recorder ready for the next one.
 \
 \ THE FILE'S OWN STREAM IS A CASE TOO. Everything above drives the entry through
 \ `evaluate`, because that is the only way a test can state the bytes it is
@@ -62,6 +62,9 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    evaluate ;
 
 0 constant GLOBAL-WID
+
+: DEFINED? ( ptr u8 n -- bool )
+   GLOBAL-WID XREF-FIND-WL XREF-FOUND? ;
 
 \ ---- the entry through a FILE's own stream -----------------------------------
 \ Compiled while this file loads, at the top level of the stream the loader is
@@ -117,6 +120,17 @@ public
 \ it. This is that caller, and nothing else in the suite uses it.
 : TAKE ( [ n -- n ] n -- n )
    swap execute ;
+
+\ Executed by the engine while it compiles the reentrancy fixture below.
+: REENTER ( -- )
+   s" : NST-INNER ( n -- n ) 1+ ;" NMIGRATE:DEFINE ;
+immediate
+s" NSTREAM-TEST:REENTER" 0 parse-imm
+
+: REENTER-NEXT ( -- )
+   NMIGRATE:NEXT ;
+immediate
+s" NSTREAM-TEST:REENTER-NEXT" 0 parse-imm
 
 private
 
@@ -229,6 +243,18 @@ $3B constant SEMI-CH
 : NO-DEF-TAIL ( -- ptr u8 n )
    s"  " ;
 
+: REENTER-HEAD ( -- ptr u8 n )
+   s" NMIGRATE:NEXT : NST-REENTER ( -- ) NSTREAM-TEST:REENTER ;" ;
+
+: REENTER-AFTER-HEAD ( -- ptr u8 n )
+   s" NMIGRATE:NEXT : NST-REENTER-AFTER ( n -- n ) 4 + ;" ;
+
+: REENTER-AFTER-TAIL ( -- ptr u8 n )
+   s"  3 NST-REENTER-AFTER NSTREAM-TEST:MARK!" ;
+
+: REENTER-NEXT-HEAD ( -- ptr u8 n )
+   s" NMIGRATE:NEXT : NST-REENTER-NEXT ( -- ) NSTREAM-TEST:REENTER-NEXT ;" ;
+
 \ ---- the cases ---------------------------------------------------------------
 : FILE-CASE ( -- )
    s" the entry migrates the definition written after it in a FILE's stream" T-LABEL
@@ -247,11 +273,9 @@ $3B constant SEMI-CH
    s" a body the chain declines is refused by the dialect's own name" T-LABEL
    REFUSED-RC @ E-HIR-UNMODELED T=
 
-   s" the word the engine published is still there and still runs" T-LABEL
-   37 NST-FBAD 42 T=
-
-   s" and the publication seam never logged it" T-LABEL
-   s" NST-FBAD" NMIGRATE:WID NPUB:REPUBLISHED? TFALSE ;
+   s" and no word or publication row survives" T-LABEL
+   s" NST-FBAD" DEFINED? TFALSE
+   s" NST-FBAD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
 
 : PLAIN-CASE ( -- )
    0 MARK-V !
@@ -334,6 +358,10 @@ $3B constant SEMI-CH
    s" the throw left the rest of that stream unread" T-LABEL
    MARK@ 0 T=
 
+   s" and no word or publication row survives" T-LABEL
+   s" NST-BAD" DEFINED? TFALSE
+   s" NST-BAD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+
    s" and the recorder takes the NEXT definition from a stream as usual" T-LABEL
    0 MARK-V !
    AFTER-HEAD AFTER-TAIL SRC-BUILD
@@ -353,6 +381,31 @@ $3B constant SEMI-CH
 
    s" and the refusal read no token of the stream it refused" T-LABEL
    MARK@ 0 T= ;
+
+: REENTER-RUN ( -- )
+   REENTER-HEAD NO-DEF-TAIL SRC-BUILD
+   SRC-RUN ;
+
+: REENTER-NEXT-RUN ( -- )
+   REENTER-NEXT-HEAD NO-DEF-TAIL SRC-BUILD
+   SRC-RUN ;
+
+: REENTER-CASE ( -- )
+   s" a migration invoked while NEXT is compiling is refused before staging" T-LABEL
+   [: REENTER-RUN ;] E-NMIGRATE-STATE TTHROWSQ
+   s" NST-INNER" DEFINED? TFALSE
+   s" NST-REENTER" DEFINED? TFALSE
+
+   s" nested NEXT is refused before it reads the outer stream" T-LABEL
+   [: REENTER-NEXT-RUN ;] E-NMIGRATE-STATE TTHROWSQ
+   s" NST-REENTER-NEXT" DEFINED? TFALSE
+
+   s" and the outer stream state still belongs to its cleanup" T-LABEL
+   0 MARK-V !
+   REENTER-AFTER-HEAD REENTER-AFTER-TAIL SRC-BUILD
+   SRC-RUN
+   MARK@ 7 T=
+   s" NST-REENTER-AFTER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 \ ---- the stream module's own state machine ------------------------------------
 \ Two migrations reading one stream is the refusal NINP owns. CLOSE is asked of
@@ -387,6 +440,7 @@ public
    PAIR-CASE
    REFUSED-CASE
    NO-DEF-CASE
+   REENTER-CASE
    STATE-CASE
    T-REPORT ;
 

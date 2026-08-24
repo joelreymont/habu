@@ -45,8 +45,7 @@
 \      word described by a row belonging to something else - and the next caller
 \      compiled against that row computed the wrong answer. The case below seeds
 \      a narrow row at the exact slot a replayed migration will claim and
-\      requires the refusal to leave the word's record pointing at the code the
-\      engine compiled.
+\      requires the default transaction to leave no word or publication behind.
 \
 \ WHY THE COUNT IS OF INSTRUCTIONS AND NOT OF BYTES. A byte count moves for any
 \ reason at all. What the narrowing removes is exactly the traffic between a
@@ -65,6 +64,7 @@
 \ test/compiler/native-inline.f.
 
 require lib/test.f
+require lib/codegen.f
 require src/compiler/native/migrate.f
 require src/compiler/native/clobber.f
 
@@ -84,6 +84,11 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 8 constant REGS                      \ scratch registers the migrated routines may use
 0 constant GLOBAL-WID
 4 constant INSN-BYTES
+
+: HOST-N ( n n -- n )
+   HB-TARGET-LINUX? if drop exit then
+   HB-TARGET-MACOS? if nip exit then
+   E-CTGT-ABI throw ;
 
 \ ---- addresses no code occupies ----------------------------------------------
 \ The row rules are about a table keyed by an address, so the cases that are
@@ -229,6 +234,9 @@ $F8400000 constant LDUR-OP
    dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
    XREF-START ;
 
+: DEFINED? ( ptr u8 n -- bool )
+   GLOBAL-WID XREF-FIND-WL XREF-FOUND? ;
+
 \ ---- what a real publication records -----------------------------------------
 \ The callee both loss cases below call. It is migrated, so the chain compiled it
 \ and the seam recorded what it destroys. Its body is six additions rather than
@@ -359,10 +367,10 @@ $F8400000 constant LDUR-OP
 \ either has to be a change to both.
 \
 \ THE CALLER IS SIZED AGAINST THE MACHINE, not against a budget: no caller states
-\ one any more, so the pressure has to be real. NABI:SCRATCH leaves a routine
-\ twenty-four registers and this row names three of them, so a caller carrying
-\ twenty-two sums and the call's own result across the call has exactly three
-\ values with nowhere to sit.
+\ one any more, so the pressure has to be real. NABI:SCRATCH leaves a Linux
+\ routine twenty-five registers and a Darwin routine twenty-four. The generated
+\ caller carries twenty-three sums on Linux or twenty-two on Darwin, keeping the
+\ same pressure against the three-register row on both hosts.
 \
 \ THE CONTROL IS THE SAME BODY ONE VALUE SMALLER, against the same callee,
 \ because without it "spills three" could mean "always spills three". One sum
@@ -375,24 +383,46 @@ $F8400000 constant LDUR-OP
 : DEFINE-PRESSURE-ENGINE-CALLEE ( -- )
    s" : NCLOB-ENGINE-PSTEP ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;" EV ;
 
+1024 CODEGEN:BUFFER PRESSURE-TEXT
+
+: PRESSURE-SRC+ ( ptr u8 n -- )
+   PRESSURE-TEXT CODEGEN:APPEND-STRING ;
+
+: PRESSURE-TERMS ( -- n )
+   23 22 HOST-N ;
+
+: PRESSURE-SRC ( ptr u8 n ptr u8 n n -- ptr u8 n )
+   {: name:ptr nameu:n callee:ptr calleeu:n terms:n :}
+   PRESSURE-TEXT CODEGEN:RESET
+   s" : " PRESSURE-SRC+  name nameu PRESSURE-SRC+
+   s"  ( n -- n ) {: s:n :} " PRESSURE-SRC+
+   terms 1 + 1 ?do
+      s" s " PRESSURE-SRC+
+      i PRESSURE-TEXT CODEGEN:APPEND-DECIMAL
+      s"  + " PRESSURE-SRC+
+   loop
+   s" s " PRESSURE-SRC+  callee calleeu PRESSURE-SRC+  s"  " PRESSURE-SRC+
+   terms 0 ?do s" + " PRESSURE-SRC+ loop
+   s" ;" PRESSURE-SRC+
+   PRESSURE-TEXT CODEGEN:CONTENTS ;
+
 : MIGRATE-PRESSURE-NARROW ( -- )
-   s" : NCLOB-PN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s NCLOB-PSTEP + + + + + + + + + + + + + + + + + + + + + + ;"
-   NMIGRATE:DEFINE ;
+   s" NCLOB-PN" s" NCLOB-PSTEP" PRESSURE-TERMS PRESSURE-SRC NMIGRATE:DEFINE ;
 
 : MIGRATE-PRESSURE-WIDE ( -- )
-   s" : NCLOB-PW ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s NCLOB-ENGINE-PSTEP + + + + + + + + + + + + + + + + + + + + + + ;"
+   s" NCLOB-PW" s" NCLOB-ENGINE-PSTEP" PRESSURE-TERMS PRESSURE-SRC
    NMIGRATE:DEFINE ;
 
 : MIGRATE-PRESSURE-CONTROL ( -- )
-   s" : NCLOB-PC ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s NCLOB-PSTEP + + + + + + + + + + + + + + + + + + + + + ;"
+   s" NCLOB-PC" s" NCLOB-PSTEP" PRESSURE-TERMS 1 - PRESSURE-SRC
    NMIGRATE:DEFINE ;
 
 : PRESSURE-CASES ( -- )
    s" both pressure callers answer what their body says" T-LABEL
-   s" 5 NCLOB-PN" EV-N 616 T=
-   s" 5 NCLOB-PW" EV-N 616 T=
-   s" 0 NCLOB-PN" EV-N 302 T=
-   s" 0 NCLOB-PW" EV-N 302 T=
+   s" 5 NCLOB-PN" EV-N 644 616 HOST-N T=
+   s" 5 NCLOB-PW" EV-N 644 616 HOST-N T=
+   s" 0 NCLOB-PN" EV-N 325 302 HOST-N T=
+   s" 0 NCLOB-PW" EV-N 325 302 HOST-N T=
 
    s" the pressure callee really destroys three registers" T-LABEL
    s" NCLOB-PSTEP" ENTRY-OF GPR-AT $7 T=
@@ -404,8 +434,8 @@ $F8400000 constant LDUR-OP
    s" NCLOB-PN" DS-LOADS 3 T=
 
    s" while its engine-callee twin, with no room at all, spills every one" T-LABEL
-   s" NCLOB-PW" DS-STORES 24 T=
-   s" NCLOB-PW" DS-LOADS 24 T=
+   s" NCLOB-PW" DS-STORES 25 24 HOST-N T=
+   s" NCLOB-PW" DS-LOADS 25 24 HOST-N T=
 
    s" and one value fewer fits inside the room, leaving only its own traffic" T-LABEL
    s" NCLOB-PC" DS-STORES 1 T=
@@ -488,8 +518,8 @@ variable GONE-ENTRY
 
 \ ---- a refusal from this record costs nothing ---------------------------------
 \ The widen refusal has to be raised BEFORE the seam writes a byte, because the
-\ seam's own contract is that a refused publication leaves the word running the
-\ code it was running. Reaching it needs a row already sitting at the slot the
+\ default transaction must leave no definition or publication behind. Reaching
+\ it needs a row already sitting at the slot the
 \ seam is about to claim, and the slot is learnt the only honest way: the same
 \ source is migrated once, forgotten back to the same anchor, and migrated again
 \ - the engine compiles the identical text from the identical free slot, so the
@@ -534,10 +564,9 @@ variable SEED-ROW
    ORDER-ANCHOR
    [: ORDER-MIGRATE ;] E-NCLOB-WIDEN TTHROWSQ
 
-   s" and the refusal leaves the word running the code the engine compiled" T-LABEL
-   s" NCLOB-REPLAY" ENTRY-OF ANCHOR-ENTRY @ T<>
-   s" NCLOB-REPLAY" ENTRY-OF NCLOB:KNOWN? FLAG# 0 T=
-   s" 0 NCLOB-REPLAY" EV-N 21 T=
+   s" and the refusal leaves no definition or publication behind" T-LABEL
+   s" NCLOB-REPLAY" DEFINED? TFALSE
+   s" NCLOB-REPLAY" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
 
    s" with the seeded row exactly as the refusal found it" T-LABEL
    ANCHOR-ENTRY @ GPR-AT SEED-ROW @ T= ;

@@ -2,7 +2,7 @@
 \ compiled. One concern: src/compiler/native/reach.f, and the branch reader it
 \ moves call sites with.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Six things.
+\ WHAT THIS SUITE HAS TO SHOW. Seven things.
 \
 \   1. THAT THE BRANCH ARITHMETIC IS THE MACHINE'S. A `bl` is read out of a
 \      caller the engine really compiled and its decoded target is held against
@@ -47,6 +47,10 @@
 \      carrying different words, a target the publication seam never wrote, two
 \      words declaring different effects, and a routine that itself calls the
 \      code being redirected.
+\   7. THAT AN EXPORT ALIAS DOES NOT DUPLICATE THE WRITE COUNT. EXPORT gives one
+\      caller span two dictionary records. The caller still holds two physical
+\      BL instructions, and REDIRECT reports the same two instructions it
+\      actually rewrites.
 \
 \ WHAT HAS NO FIXTURE AND WHY. E-NREACH-RANGE, the seam's own refusal for a
 \ site too far from its new target, cannot be reached by a fixture: the whole
@@ -248,6 +252,15 @@ public
    s" NRT-BASE:NRT-TINY-CALLER" s" NRT-CHAIN:NRT-TINY" CODEGEN-SCAN:CALLS-IN 0 T=
    s" 15 NRT-BASE:NRT-TINY-CALLER" EV-N 7 T= ;
 
+\ ---- one caller span published under two names ------------------------------
+: ALIAS-CASES ( -- )
+   s" the exported caller span contains two physical calls" T-LABEL
+   s" NRT-BASE:NRT-ALIAS-CALLER" CODEGEN-SCAN:BLS-IN 2 T=
+
+   s" redirect rewrites and reports those same two physical instructions" T-LABEL
+   s" NRT-BASE:NRT-ALIAS-STEP" s" NRT-CHAIN:NRT-ALIAS-STEP"
+      NREACH:REDIRECT 2 T= ;
+
 \ ---- the unsafe move ---------------------------------------------------------
 \ The pair is asserted to have the shape the case needs before the case is made:
 \ the wide routine really does destroy registers the narrow one does not, and
@@ -335,12 +348,22 @@ public
 : NRT-TINY ( n -- n ) 7 and ;
 : NRT-TINY-CALLER ( n -- n ) NRT-TINY NRT-TINY ;
 
+\ The alias case has its own sized callee so its redirect cannot disturb the
+\ two-site baseline case above.
+: NRT-ALIAS-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;
+: NRT-ALIAS-CALLER ( n -- n ) NRT-ALIAS-STEP NRT-ALIAS-STEP ;
+
 \ A word with an effect of its own, for the effect refusal.
 : NRT-ARITY ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;
 
 \ A word whose migrated twin will call it, for the self refusal.
 : NRT-SELF ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;
 
+;package
+
+package NRT-ALIAS
+public
+EXPORT NRT-BASE:NRT-ALIAS-CALLER
 ;package
 
 NREACH-TEST:BRANCH-CASES
@@ -355,6 +378,7 @@ public
 s" : NRT-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" NMIGRATE:DEFINE
 s" : NRT-TINY ( n -- n ) 7 and ;" NMIGRATE:DEFINE
 s" : NRT-ARITY ( n n -- n ) + 1 + 2 + 3 + 4 + 5 + ;" NMIGRATE:DEFINE
+s" : NRT-ALIAS-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" NMIGRATE:DEFINE
 ;package
 
 \ The same body once more, compiled by the ENGINE under the same tail. Nothing
@@ -413,6 +437,7 @@ public
 
 : MAIN ( -- )
    COPY-CASES
+   ALIAS-CASES
    CLOBBER-CASES
    REFUSAL-CASES
    MOVE

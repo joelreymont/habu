@@ -68,11 +68,12 @@ using A64ASM
 
 private
 
-18 constant RESERVED-REG           \ x18: no emitted routine holds it, and every
-                                   \ X-register encoder ends the process on it
+18 constant RESERVED-REG           \ Darwin screens x18 before re-encoding
 
 : ENCODABLE? ( n -- bool ) {: r:n :}
-   r RESERVED-REG <> ;
+   r RESERVED-REG <> if true exit then
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-LINUX? ;
 
 \ The forms below name two registers; the offset is a field, not a register.
 : R2-OK? ( n -- bool ) {: w:n :}
@@ -94,10 +95,9 @@ private
 \ them would report a float row as carrying less marshalling than it does, which
 \ is the silent wrong number this file exists to prevent.
 \
-\ AND THEY SCREEN ONE REGISTER AND NOT TWO. The base is an X register and no
-\ emitted routine may hold x18; the transferred register is a D register and the
-\ floating file has no reserved member, so d18 is one the allocator really hands
-\ out. Screening both would answer false for every access through it.
+\ AND THEY SCREEN ONE REGISTER AND NOT TWO. The base is an X register; the
+\ transferred register is a D register and the floating file has no reserved
+\ member. Screening both would answer false for every access through d18.
 : LDURD? ( n -- bool ) {: w:n :}
    w NCOMBINV:FRN ENCODABLE? 0= if false exit then
    w NCOMBINV:FRD  w NCOMBINV:FRN  w NCOMBINV:FSIMM9  ENC-LDURD  w = ;

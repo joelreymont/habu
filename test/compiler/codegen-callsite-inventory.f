@@ -52,14 +52,12 @@ using NSITEINV
 
 private
 
-\ The registers the fixtures below name. x18 is what no emitted routine may hold
-\ and the classifiers screen it, so no fixture may be built from it.
+\ The registers the fixtures below name.
 0 constant R0
 1 constant R1
 19 constant RBASE                  \ the data-stack pointer
 31 constant RSP                    \ the stack pointer: the frame's own base
-18 constant RRSVD                  \ x18, which no routine holds - and d18,
-                                   \ which is an ordinary floating register
+18 constant R18
 
 public
 
@@ -67,6 +65,8 @@ public
    s" a load and a store through the data-stack pointer are its accesses" T-LABEL
    R0 RBASE 8 ENC-LDUR DACCESS? TTRUE
    R0 RBASE 8 ENC-STUR DACCESS? TTRUE
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-LINUX? if R18 RBASE -8 ENC-LDUR DACCESS? TTRUE then
 
    s" and the same forms through another base are not" T-LABEL
    R0 R1 8 ENC-LDUR DACCESS? TFALSE
@@ -93,8 +93,8 @@ public
    R0 RBASE 8 ENC-STRD DACCESS? TFALSE
 
    s" d18 is an ordinary D register, so an access transferring it is one" T-LABEL
-   RRSVD RBASE 8 ENC-LDURD DACCESS? TTRUE
-   RRSVD RBASE 8 ENC-STURD DACCESS? TTRUE
+   R18 RBASE 8 ENC-LDURD DACCESS? TTRUE
+   R18 RBASE 8 ENC-STURD DACCESS? TTRUE
 
    s" an access is not an adjustment and an adjustment is not an access" T-LABEL
    R0 RBASE 8 ENC-LDUR DADJUST? TFALSE

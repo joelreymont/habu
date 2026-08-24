@@ -787,9 +787,6 @@ NDICT:OPEN-PRI MY-WID !
 : NEW-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u MY-WID @ NPUB:NEW-LEN ;
 
-: OLD-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u MY-WID @ NPUB:OLD-LEN ;
-
 : NEW-START ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u MY-WID @ NPUB:NEW-START ;
 
@@ -1316,45 +1313,14 @@ RUN-THE-REFUSALS
    TRAP-N @ 1 T= ;
 
 \ ---- what a dispatch costs in code bytes --------------------------------------
-\ THE MEASUREMENT THE DOT TURNS ON, taken through the publication seam's own two
-\ readers: OLD-LEN is the code the ENGINE compiled for that definition and
-\ NEW-LEN is the code the chain published in its place, so ONE migration answers
-\ both columns for one body and nothing has to be lined up by hand. That is
-\ test/compiler/native-string.f's instrument, and it is used here rather than a
-\ new codegen-comparison corpus for a reason: a corpus is a committed artifact
-\ with a baseline table of its own, a table nobody may add a row to, so a sixth
-\ one would be six new files whose two columns still have to be matched up by
-\ hand - and this reads both columns off one publication.
-\
-\ WHERE THE ENGINE'S BYTES GO. src/habu/habu2.f copies the whole diagnostic
-\ INLINE into every compiled MATCH - `"hb: bad "`, the family name and `" tag\n"`,
-\ then a write and an exit - so a dispatch pays the message once per SITE, and
-\ the cost carries the family's NAME. That is measurable here and it is the
-\ reason the four-armed row below is 188 rather than the 188-minus-four the
-\ campaign measured: the dispatch it measured was over a three-character family
-\ and this one's name is a byte longer, which the engine rounds up to one more
-\ instruction word. The chain pays neither: one constant - the ordinal
-\ src/compiler/native/trap.f keyed that name by - and the branch to the one
-\ routine that owns the bytes.
-\
-\ SO THE ENGINE'S NUMBERS ARE PINNED EXACTLY AND THE CHAIN'S ARE PINNED AGAINST
-\ THEM. The campaign's two figures - 128 bytes for a two-armed dispatch and 184
-\ for a four-armed one - are what the chain had to beat, so they are written here
-\ as the bound rather than as a note, and the chain's own figures are asserted
-\ under them.
+\ The two campaign bounds remain useful without retaining an old-emitter
+\ publication: the chain keeps both shapes below them, and grows with the arms
+\ rather than with a copied diagnostic message.
 : COST-CASE ( -- )
-   s" a two-armed dispatch costs the engine 128 bytes and the chain fewer" T-LABEL
-   s" C-UNW" OLD-LEN 128 T=
-   s" C-UNW" NEW-LEN  s" C-UNW" OLD-LEN  < TTRUE
-
-   s" and the chain is under the 128 the campaign measured" T-LABEL
+   s" a two-armed dispatch is under the 128-byte campaign bound" T-LABEL
    s" C-UNW" NEW-LEN 128 < TTRUE
 
-   s" a four-armed one costs the engine the same shape plus its name" T-LABEL
-   s" C-QUAD" OLD-LEN 188 T=
-   s" C-QUAD" NEW-LEN  s" C-QUAD" OLD-LEN  < TTRUE
-
-   s" and the chain is under the 184 the campaign measured" T-LABEL
+   s" and a four-armed dispatch is under its 184-byte bound" T-LABEL
    s" C-QUAD" NEW-LEN 184 < TTRUE
 
    s" and the chain's cost grows with the arms rather than with the message" T-LABEL

@@ -2343,12 +2343,7 @@ create TXT
    0 A64RAV:REG@ drop ;
 
 \ ---- registers no routine may hold state in ----------------------------------
-\ x18 is platform-reserved, x30 is the link register and 31 is the zero register
-\ or the stack pointer. None of them can enter a contract at all, so no pool the
-\ allocator is given can contain one.
 : RESERVED-CASES ( -- )
-   s" the platform-reserved register cannot be declared destroyable" T-LABEL
-   [: A64EFF:RESERVED-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ
    s" the data-stack pointer cannot be declared destroyable" T-LABEL
    [: A64EFF:DSTACK-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ
    s" the data-stack pointer cannot be declared as an argument place" T-LABEL

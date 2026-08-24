@@ -1401,21 +1401,25 @@ public
 
 \ ---- where this emission's address chains start ------------------------------
 \ One chain is four instructions, so the bound is derived rather than chosen.
-\ A site is admitted only for a run of EXACTLY four consecutive lanes of one
-\ kind writing the SAME register; every other run length is a refusal.
+\ A site is admitted only for four consecutive lanes of one kind writing the
+\ same register. Scanning one carrier at a time keeps two adjacent chains
+\ distinct even when the allocator reuses their register.
 INSN-CAP A64IR:HALVES / constant SITE-CEIL
 create SITES SITE-CEIL cells allot
 variable N-SITES
 
-: RUN-AT ( n -- n )
+: ADDR-LANE? ( n n n -- bool )
+   {: k:n kind:n rd:n :}
+   k cells M-ADDR + @ kind =
+   k cells M-ARD + @ rd = and ;
+
+: CHAIN-CK ( n -- )
    {: k:n :}
+   k A64IR:HALVES + N-INS @ > if E-A64EMIT-ADDR throw then
    k cells M-ADDR + @ {: kind:n :}
    k cells M-ARD + @ {: rd:n :}
-   0
-   N-INS @ k ?do
-      i cells M-ADDR + @ kind =
-      i cells M-ARD + @ rd = and 0= if leave then
-      1+
+   A64IR:HALVES 0 ?do
+      k i + kind rd ADDR-LANE? 0= if E-A64EMIT-ADDR throw then
    loop ;
 
 : SITE+ ( n -- )
@@ -1433,10 +1437,9 @@ variable SCAN-K
       SCAN-K @ cells M-ADDR + @ A64IR:ADDR-NONE = if
          SCAN-K @ 1+ SCAN-K !
       else
-         SCAN-K @ RUN-AT {: n:n :}
-         n A64IR:HALVES <> if E-A64EMIT-ADDR throw then
+         SCAN-K @ CHAIN-CK
          SCAN-K @ SITE+
-         SCAN-K @ n + SCAN-K !
+         SCAN-K @ A64IR:HALVES + SCAN-K !
       then
    repeat ;
 

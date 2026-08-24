@@ -24,8 +24,9 @@
 \     requires it to be refused, so the pair says the two bounds are the same
 \     bound: loosen it in the model and this obligation fails, loosen it in the
 \     assembler and the child emits instead of dying;
-\   - a reserved-register row asks whether the model says that operand slot is
-\     checked, against what the shipped code actually did with x18 in it.
+\   - an x18 row asks whether the target-independent encoding model says that
+\     operand slot is an X register. The Habu side then applies the host policy:
+\     Darwin refuses it and Linux emits it.
 \
 \ Statements, not just names. Asking Rocq what a theorem assumes says nothing
 \ about what it says, so every theorem the manifest binds is also written out as
@@ -125,7 +126,8 @@ variable PIN-N
    s" Proof. vm_compute. reflexivity. Qed." +$ +NL ;
 
 \ ---- the reserved-register rows ----------------------------------------------
-\ Exit code 72 is the shipped refusal; anything else is a slot no check reaches.
+\ The code-72 marker names an X-register slot, which Darwin refuses. A zero row
+\ is a non-X control that every host emits.
 
 : EMIT-RESERVED ( n -- ) {: r:n :}
    s" Example reserved_" +$ r RES-FORM@ FORM-NAME$ +$ s" _" +$ r +N s"  :" +$ +NL

@@ -15,15 +15,11 @@
 \
 \ Two halves, because one of them ends processes:
 \
-\   - `HABU-SIDE` runs in this engine. It covers the encoding vectors, the
-\     reserved-register rows the shipped code does NOT refuse, and the `>LIMM`
-\     bindings.
-\   - `REFUSAL-SIDE` runs the rows the shipped code DOES refuse: the reserved
-\     register, an operand outside its field, an operand a scale division would
-\     round, and a mask `>LIMM` cannot pack. Every refusal reports itself by
-\     ending the process with `die`, so each of those rows runs in a child
-\     engine through `test/compiler/insn-refusal.f` and is judged by its exit
-\     status.
+\   - `HABU-SIDE` runs in this engine. It covers the encoding vectors, x18 in
+\     every X-register slot on Linux, the non-X controls, and `>LIMM` bindings.
+\   - `REFUSAL-SIDE` runs field, alignment and mask refusals on every host, plus
+\     the x18 rows on Darwin. Every refusal ends a child process with `die`, so
+\     the parent can judge its exit status.
 \
 \ Consumers: `test/compiler/insn-manifest.f` (the first half only) and
 \ `test/compiler/insn-proof.f` (both, plus the proof assistant).
@@ -305,8 +301,22 @@ private
    r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-D@ r RES-MASK@ EMITTED-WORD
    r RES-WORD@ T= ;
 
+: LINUX-X18-ROW ( n -- ) {: r:n :}
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-LINUX? 0= if exit then
+   r RES-RC@ RESERVED-RC <> if exit then
+   SB-RESET
+   s" Linux emits x18 in that operand of " SB-APPEND
+   r RES-FORM@ FORM-NAME$ SB-APPEND
+   SB$ T-LABEL
+   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-D@ r RES-MASK@ EMIT-ROW drop
+   ASM-LEN 4 / 1 T= ;
+
 : PHASE-RESERVED-ALLOWED ( -- )
-   RESERVEDS 0 ?do i RESERVED-ALLOWED-ROW loop ;
+   RESERVEDS 0 ?do
+      i RESERVED-ALLOWED-ROW
+      i LINUX-X18-ROW
+   loop ;
 
 \ ---- the logical-immediate bindings ------------------------------------------
 
@@ -362,6 +372,8 @@ private
    s" bin/hb" >LEN CHILD-MS >MS PROC-CMD:RUN-OUTCOME ;
 
 : RESERVED-REFUSED-ROW ( n -- ) {: r:n :}
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-MACOS? 0= if exit then
    r RES-RC@ 0= if exit then
    SB-RESET
    s" x18 in that operand of " SB-APPEND

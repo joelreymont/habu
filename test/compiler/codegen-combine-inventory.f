@@ -56,9 +56,7 @@ using NCOMBINV
 
 private
 
-\ The registers the fixtures below name. They are ordinary allocatable ones:
-\ x18 is what no emitted routine may hold, and the classifiers screen it, so no
-\ fixture may be built from it.
+\ The ordinary registers the fixtures below name.
 0 constant R0
 1 constant R1
 2 constant R2
@@ -76,6 +74,8 @@ public
    R0 R1 R2 ENC-SUB SUB? TTRUE
    R0 RBASE 8 ENC-LDR LDR? TTRUE
    R0 RBASE 8 ENC-STR STR? TTRUE
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-LINUX? if 18 R1 R2 ENC-ADD ADD? TTRUE then
 
    s" and is not recognised as any of the others" T-LABEL
    R0 R1 R2 ENC-MUL ADD? TFALSE

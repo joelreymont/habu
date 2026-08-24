@@ -90,7 +90,8 @@ variable WRITING
    SITES @ 1+ SITES ! ;
 
 : SITE-WRITE ( n -- ) {: at:n :}
-   at NEW-ENTRY @ NBR:BL-WORD  at XREF-N>REC POKE ;
+   at NEW-ENTRY @ NBR:BL-WORD  at XREF-N>REC POKE
+   SITES @ 1+ SITES ! ;
 
 : SITE ( n n -- ) {: at:n w:n :}
    w NBR:BL? 0= if exit then
@@ -107,13 +108,13 @@ variable WRITING
    SITES @ 0= if E-NREACH-NONE throw then ;
 
 : MOVE-SITES ( -- )
-   1 WRITING !
+   0 SITES !  1 WRITING !
    SWEEP
    0 WRITING ! ;
 
 public
 
-\ Answers how many call sites moved. Each name is resolved TWICE, against the
+\ Answers how many physical call instructions moved. Each name is resolved TWICE, against the
 \ dictionary and against the checker's effect store, so a package word must be
 \ written qualified or the two answers are about two different words.
 \ Everything that can refuse refuses before the first instruction is written.

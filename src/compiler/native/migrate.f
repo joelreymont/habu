@@ -6,15 +6,16 @@
 \ way, and the checker's own reader fills the tape while it consumes the tokens,
 \ so the chain elaborates what the checker certified and not a second reading.
 \
-\ The NAME is not a parameter: it is read off the record the source published,
-\ and a source that published none or several is refused. Neither is the ARITY -
+\ The NAME is not a parameter: it is read off the recorded tape and checked
+\ against the held record, and a source that published none or several is
+\ refused. Neither is the ARITY -
 \ dict.f answers what the checker certified this definition takes and leaves, the
 \ same reader that answers for every callee, so the routine's contract and the
 \ calls to it come from one authority instead of agreeing by luck. Nothing about
 \ a callee is a parameter either.
 \
-\ Nothing the chain refuses is caught here, so a word the chain cannot compile
-\ keeps running the code the engine compiled for it, under the refuser's name.
+\ The engine withholds the definition. Only a chain emission that passes every
+\ stage is published, so a refusal leaves no word behind.
 
 require lib/prelude.f
 require lib/errors.f
@@ -53,6 +54,7 @@ BODYBUF-CAP constant TEXT-CAP
 
 create TXT TEXT-CAP allot
 create NAME-BUF NAME-CAP allot
+PTR-VARIABLE NAME-A
 variable NAME-U
 variable NAME-WID
 
@@ -77,11 +79,8 @@ variable M-SPILLS                    \ frame slots this definition proved it nee
 variable M-REMATS                    \ values it writes again instead of putting away
 
 \ ---- compiling without publishing --------------------------------------------
-\ A HELD migration asks the engine to certify and publish NOTHING; the chain's
-\ own publisher commits the record `:` built, so nothing is reachable under the
-\ name until code the validator accepted stands behind it. A MEASURED migration
-\ is a held one that never commits. M-HELD-PENDING is the obligation to retract.
-variable M-HELD                      \ this migration compiles without publishing
+\ The engine certifies and publishes NOTHING; the chain's publisher commits the
+\ record `:` built only after validation. A MEASURED migration never commits.
 variable M-HELD-PENDING              \ a held record is waiting to be committed or retracted
 variable M-MEASURE                   \ this migration proves the publication instead of making it
 
@@ -95,6 +94,11 @@ variable M-MEASURE                   \ this migration proves the publication ins
 
 : DATA$ ( -- ptr u8 n )
    M-DATA @ M-DATA-U @ ;
+
+\ From the recorder's accepted definition until the commit, a held record exists
+\ that nothing else will publish. RUN's failure path is what settles it.
+: HELD-TAKEN ( -- )
+   1 M-HELD-PENDING ! ;
 
 
 \ ---- the module the definition is compiled into ------------------------------
@@ -130,19 +134,45 @@ variable M-MEASURE                   \ this migration proves the publication ins
 \ ---- stage N0: the definition the engine compiles ----------------------------
 \ Parked rather than left on the stack, because this runs inside the quotation
 \ the recovery below catches.
+: END-RECORDED ( -- )
+   NFEED:END-UNIT M-VERDICT !
+   0 M-TAPE ! ;
+
+\ Row zero's structural span names the exact spelling already copied into TXT.
+: TAPE-NAME$ ( -- ptr u8 n )
+   TAPE MKEY 0 NTAPE:SPAN@ IR--SOURCE-SPAN:UNMAKE
+   {: src:IR-ID:ir-source-id st:n u:n :}
+   TXT st + u ;
+
+\ The tape's first token is the definition's name. Recover it after sealing even
+\ when a rejected second `:` left a tentative spelling in the record slot.
+: KEEP-TAPE-NAME ( -- )
+   TAPE-NAME$ {: a:ptr u:n :}
+   a NAME-A !  u NAME-U !
+   u NAME-CAP > if E-NMIGRATE-TEXT throw then
+   a NAME-BUF u STR-LEN BYTE-COPY-LEN ;
+
+: KEEP-TAPE-NAME-RC ( n -- n ) {: end-rc:n :}
+   end-rc 0<> if 0 exit then
+   M-HELD-PENDING @ 0= if 0 exit then
+   [: KEEP-TAPE-NAME ;] catch ;
+
 : SCAN ( -- )
-   SRC$ EV
-   NFEED:END-UNIT M-VERDICT !  0 M-TAPE ! ;
+   [: SRC$ EV ;] catch {: src-rc:n :}
+   CHECKER-TAPE:HOLD-TAKEN? if HELD-TAKEN then
+   [: END-RECORDED ;] catch {: end-rc:n :}
+   end-rc KEEP-TAPE-NAME-RC {: name-rc:n :}
+   src-rc 0<> if src-rc throw then
+   end-rc 0<> if end-rc throw then
+   name-rc 0<> if name-rc throw then ;
 
 \ A failure between open and close leaves the producer holding a half-recorded
 \ unit, so it is caught only to release the recorder and rethrown unchanged.
 \ The hold is closed on every path: left armed it would withhold the NEXT definition.
 : HOLD-OPEN ( -- )
-   M-HELD @ 0= if exit then
    CHECKER-TAPE:HOLD-ARM ;
 
 : HOLD-CLOSE ( -- )
-   M-HELD @ 0= if exit then
    CHECKER-TAPE:HOLD-DISARM ;
 
 \ The stream entry's source is everything the interpreter has left to read, and
@@ -185,24 +215,18 @@ variable M-MEASURE                   \ this migration proves the publication ins
    IR-BUILD:SOURCE-LEN ;
 
 \ ---- which word the source published -----------------------------------------
-\ Exactly one record, and the name is that record's.
-: PUBLISHED-ONE ( n -- ) {: before:n :}
-   ndict@ before 1+ <> if E-NMIGRATE-NAME throw then ;
-
-\ The opposite assertion: anything published under a hold means the record this
-\ migration is about is not the one the count points at, so the count must not move.
+\ Anything published under a hold means the record this migration is about is
+\ not the one the count points at, so the count must not move.
 : PUBLISHED-NONE ( n -- ) {: before:n :}
    ndict@ before <> if E-NMIGRATE-NAME throw then ;
 
 : SOURCE-PUBLICATION-CK ( n -- ) {: before:n :}
-   M-HELD @ 0<> if before PUBLISHED-NONE exit then
-   before PUBLISHED-ONE ;
+   before PUBLISHED-NONE ;
 
-\ A published record is the newest; a held one is the unpublished slot the count
-\ still points at, which is exactly the slot publish.f will commit.
+\ The held record is the unpublished slot the count still points at, which is
+\ exactly the slot publish.f will commit.
 : REC-INDEX ( -- n )
-   M-HELD @ 0<> if ndict@ exit then
-   ndict@ 1- ;
+   ndict@ ;
 
 : LATEST-NAME$ ( -- ptr u8 n )
    REC-INDEX XREF-REC XREF-NAME$ ;
@@ -212,13 +236,11 @@ variable M-MEASURE                   \ this migration proves the publication ins
 : LATEST-WID ( -- n )
    REC-INDEX XREF-REC XREF-WORDLIST ;
 
-\ The record's name is a span of the dictionary the next definition may move, so
-\ the migration keeps its own copy of the name it published.
-: KEEP-NAME ( -- )
+\ The tape chose the held name before a later tentative record could overwrite
+\ its slot. The record must name that same definition before it can be committed.
+: RECORD-NAME-CK ( -- )
    LATEST-NAME$ {: a:ptr u:n :}
-   u NAME-CAP > if E-NMIGRATE-TEXT throw then
-   a NAME-BUF u STR-LEN BYTE-COPY-LEN
-   u NAME-U ! ;
+   a u NAME-BUF NAME-U @ STR= 0= if E-NMIGRATE-NAME throw then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
 \ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
@@ -231,8 +253,8 @@ variable M-MEASURE                   \ this migration proves the publication ins
 \
 \ ASKED WITH THE BARE NAME, in the scope the source was evaluated in, which is
 \ the one form that answers for a private definition as well as a public one.
-\ KEEP-NAME has just copied that name out of the record, which is what makes it
-\ askable at all - the record's own name span is about to move.
+\ KEEP-TAPE-NAME has copied that name out of the tape, which is what makes it
+\ askable while the record's own name span is about to move.
 \
 \ THE ABSENT ANSWER IS NAMED AND HAS NO REACHING CASE TODAY, which is written
 \ down rather than left for a reader to assume either way. SPELL-ARITY answers
@@ -249,11 +271,6 @@ variable M-MEASURE                   \ this migration proves the publication ins
    NAME-BUF NAME-U @ NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE = if E-NMIGRATE-ARITY throw then
    din M-IN !  dout M-OUT ! ;
-
-\ If an earlier record of the same tail wins the lookup, the republication would
-\ rewrite the wrong one.
-: RESOLVES-TO-LATEST ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
-   a u wid XREF-FIND-WL-INDEX ndict@ 1- <> if E-NMIGRATE-NAME throw then ;
 
 \ ---- recording this definition's body for its callers ------------------------
 \ Which body qualifies is the ELABORATOR's rule, asked token by token through
@@ -452,26 +469,10 @@ variable REC-OK                      \ the body staged so far is still one worth
    m1 EMIT-AT ;
 
 \ ---- one migration -----------------------------------------------------------
-\ A held record is not in the name index, so publish.f HELD-CK answers this
-\ instead - it refuses any index but the one slot the engine can have withheld.
-: RESOLUTION-CK ( n -- ) {: wid:n :}
-   M-HELD @ 0<> if exit then
-   LATEST-NAME$ wid RESOLVES-TO-LATEST ;
-
-\ From here until the commit, a record exists that nothing will ever publish
-\ unless this run finishes. RUN's failure path is what settles it.
-: HELD-TAKEN ( -- )
-   M-HELD @ 0= if exit then
-   1 M-HELD-PENDING ! ;
-
-: PUBLISH-IT ( n -- ) {: wid:n :}
-   M-HELD @ 0<> if
-      M-MEASURE @ 0<> if NPUB:VALIDATE-HELD exit then
-      NPUB:COMMIT-HELD
-      0 M-HELD-PENDING !
-      exit
-   then
-   NAME-BUF NAME-U @ wid NPUB:REPUBLISH ;
+: PUBLISH-IT ( -- )
+   M-MEASURE @ 0<> if NPUB:VALIDATE-HELD exit then
+   NPUB:COMMIT-HELD
+   0 M-HELD-PENDING ! ;
 
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
@@ -481,10 +482,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
    LATEST-WID {: wid:n :}
-   wid RESOLUTION-CK
-   KEEP-NAME
+   RECORD-NAME-CK
    wid NAME-WID !
-   HELD-TAKEN
    KEEP-ARITY
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
@@ -492,7 +491,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    EMITTED
    SIZE-CK
    CLAIM-ROW
-   wid PUBLISH-IT
+   PUBLISH-IT
    KEEP-BODY ;
 
 \ Caught INSIDE the context so it always leaves the ordinary way and gives its
@@ -516,13 +515,19 @@ variable REC-OK                      \ the body staged so far is still one worth
 : IN-CONTEXT ( -- )
    NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ ---- what a refused HELD migration owes --------------------------------------
+\ ---- what a refused migration owes -------------------------------------------
 \ The engine gives the count and the code space back by itself; the certified
-\ signature has no owner that does, so it is retracted here by the record's tail.
+\ signature has no owner that does. Use the stable tape spelling whenever
+\ END-UNIT produced it; only an END-UNIT failure before that span exists falls
+\ back to the still-current held record.
 : HELD-RETRACT ( -- )
    M-HELD-PENDING @ 0= if exit then
    0 M-HELD-PENDING !
-   NAME-BUF NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+   NAME-U @ 0<> if
+      NAME-A @ NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+      exit
+   then
+   LATEST-NAME$ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
 \ The length refusal comes first because a source past the engine's body capture
 \ ends the process rather than throwing. It is about a source a CALLER states: the
@@ -533,25 +538,29 @@ variable REC-OK                      \ the body staged so far is still one worth
    M-STREAM @ 0<> if exit then
    M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then ;
 
+: IDLE-CK ( -- )
+   M-OPEN @ 0<> if E-NMIGRATE-STATE throw then ;
+
 : RUN ( -- )
-   M-OPEN @ 0<> if E-NMIGRATE-STATE throw then
    LENGTH-CK
    1 M-OPEN !
    0 M-RC !
-   IN-CONTEXT
+   [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
    NINL:STAGED? if NINL:STAGE-CLEAR then
+   entry-rc 0<> if entry-rc throw then
    M-RC @ {: rc:n :}
    rc 0 <> if HELD-RETRACT rc throw then
    M-MEASURE @ 0<> if HELD-RETRACT then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
+   IDLE-CK
    sa M-SRC ! su M-SRC-U !
    0 M-IN ! 0 M-OUT !
    0 M-DATA-U ! 0 M-SPILLS ! 0 M-REMATS !
    0 M-STREAM !
-   0 M-HELD ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
+   0 NAME-U ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
 
 public
 
@@ -571,22 +580,15 @@ public
 \ closing a quotation and a `:` inside a comment are the reader's business, as
 \ they are for every other definition in the file.
 : NEXT ( -- )
+   IDLE-CK
    NINP:DEF$ STAGE
    1 M-STREAM !
-   RUN ;
-
-\ The first entry that compiles a word the old emitter never published, which is
-\ what makes the old emitter unnecessary rather than prerequisite.
-: DEFINE-HELD ( ptr u8 n -- )
-   STAGE
-   1 M-HELD !
    RUN ;
 
 \ Stops one step short of every write, because a publication is permanent and
 \ the two address-keyed records may not drop a row to make space.
 : MEASURE-HELD ( ptr u8 n -- )
    STAGE
-   1 M-HELD !
    1 M-MEASURE !
    RUN ;
 

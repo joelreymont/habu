@@ -3946,10 +3946,11 @@ fits.
   allocator must never hand it out" into something no contract can say.**
   `src/arch/arm64/mnem.f` calls x19 XDS, `src/habu/rt.f`'s push and pop are a
   store and a load through it, and `src/habu/habu2.f` measures interpreter depth
-  as `(XDS - S0) / 8`. Excluding 19 from `A64EFF`'s general-register mask - the
-  same line x18, x30 and 31 are excluded on - means every route into a contract
-  refuses it: the set constructor, the single-register constructor, a place list,
-  and the writable set an allocator derives. There is no check any pass has to
+  as `(XDS - S0) / 8`. Excluding 19 from `A64EFF`'s general-register mask -
+  alongside target-dependent x18 and unconditional x30/x31 - means every route
+  into a contract refuses it: the set constructor, the single-register
+  constructor, a place list, and the writable set an allocator derives. There is
+  no check any pass has to
   remember, because there is no contract to remember it about.
 
 - **An emitted routine is callable as a Habu word the moment its arguments come
@@ -7677,3 +7678,23 @@ and --no-lldbinit.
 - **A closed enum's declaration order is not a consumer's stable ordinal.**
   Preserve the existing exhaustive mapping in the dialect owner; reordering the
   enum or schema to make two orders look identical changes a different contract.
+
+## 2026-08-24 - native-chain address carriers
+
+- **Scan fixed-width records by their width, not by maximal equal-field runs.**
+  Adjacent address carriers may reuse a register; validate each four-lane
+  carrier independently and advance four lanes.
+
+## 2026-08-24 - fail-closed native publication
+
+- **A reentrancy check belongs before the first staged write or stream read.**
+  `NMIGRATE:STAGE` used to clear `M-STREAM` before `RUN` rejected a nested
+  migration, so the outer `NEXT` skipped `NINP:RELEASE` and poisoned the next
+  stream with `E-NINP-STATE`. Check idle before staging and before `NEXT` asks
+  for `NINP:DEF$`.
+- **Rollback ownership starts when the producer has a held draft, not after
+  downstream setup.** A second definition can make `evaluate` throw after the
+  first one was held, so a normal return is not the boundary. Have the existing
+  hold cell record when the engine actually consumes it at the publish tail,
+  sample that fact before disarming, and retract by the stable tape spelling;
+  use the held record only when `END-UNIT` failed before producing that span.

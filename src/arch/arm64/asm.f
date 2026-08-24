@@ -27,9 +27,8 @@ public
 1 9 lshift 1 - constant SIMM9-MASK
 12 constant SIMM9-SHIFT
 
-\ x18 is Darwin platform-reserved: XNU zeroes it on any synchronous trap return,
-\ so emitted code must never hold live state there. Fail closed at encode time.
-18 constant ARM-RESERVED-REG
+\ x18 is platform-reserved on Darwin and ordinary on Linux.
+18 constant ARM-X18
 
  0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
  4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
@@ -83,7 +82,10 @@ private
 
 : XREG? ( n -- n )
    ?REG
-   dup ARM-RESERVED-REG = IF s" asm: x18 is Darwin-reserved" ASM-EXIT-RC die THEN ;
+   dup ARM-X18 <> IF exit THEN
+   HB-TARGET-LINUX? IF exit THEN
+   HB-TARGET-MACOS? IF s" asm: x18 is Darwin-reserved" ASM-EXIT-RC die THEN
+   s" asm: unknown target" ASM-EXIT-RC die ;
 
 : XR2 ( n n -- n n )  XREG? swap XREG? swap ;
 

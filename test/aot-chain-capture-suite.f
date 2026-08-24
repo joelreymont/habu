@@ -1037,9 +1037,9 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
 
 : RUN-BAKE ( -- ) BAKE-TOOL$ ART$ BAKE-WITH ;
 
-\ Define a word through NMIGRATE:DEFINE - the chain's entry point - then call it.
+\ Define through the default entry, inspect its publication row, then call it.
 : PROGRAM$ ( -- ptr u8 n )
-   s\" s\" : FOO ( n -- n ) 1 + ;\" NMIGRATE:DEFINE 7 FOO .\n" ;
+   s\" s\" : FOO ( n -- n ) 1 + ;\" NMIGRATE:DEFINE s\" FOO\" 0 NPUB:OLD-START . s\" FOO\" 0 NPUB:OLD-LEN . 7 FOO .\n" ;
 
 : RUN-BAKED-PROGRAM ( ptr u8 n -- ) {: p:ptr pu:n :}
    PROC-ARGV-RESET
@@ -1067,8 +1067,8 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
    s" ... and that engine compiles a word through the chain and runs it" T-LABEL
    RC @ 0 <> if DIAG. then
    RC @ 0 T=
-   s" ... answering what the word computes, and printing nothing else" T-LABEL
-   OUT$ s\" 8\n" T$= ;
+   s" ... retaining no old-emitter publication and answering what the word computes" T-LABEL
+   OUT$ s\" 0\n0\n8\n" T$= ;
 
 \ ---- and its words can be NAMED by checked code ------------------------------
 \

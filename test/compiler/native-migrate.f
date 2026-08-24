@@ -1,24 +1,19 @@
 \ native-migrate.f - the production entry, end to end: a definition the engine
-\ compiles, recompiled by the native chain and republished under its own name.
+\ checks, compiled by the native chain and published under its own name.
 \ One concern: src/compiler/native/migrate.f.
 \
 \ WHAT THIS SUITE HAS TO SHOW.
 \
-\   1. That the migrated word IS the chain's code. The old emitter and the new
-\      chain compute the same answers - that is the point of the chain - so an
-\      answer test alone cannot tell which one ran. What tells them apart is the
-\      record: after the migration the word's code address is the one the
-\      publication seam claimed, and its length is the emission's, which the code
-\      the engine compiled was not.
+\   1. That the migrated word IS the chain's code. An answer test alone cannot
+\      tell which compiler published it. What tells them apart is the
+\      publication row: its new address and length describe the word's record,
+\      while its old address and length are both zero.
 \   2. That every existing caller reaches it as an ordinary word. A definition
 \      compiled after the migration calls it, and the interpreter enters it, and
 \      both answer what the definition says - with no address pushed and nothing
 \      executed.
-\   3. That a word the chain CANNOT compile is refused by name and left alone.
-\      The engine has already published it by then, so the failure has to leave a
-\      working word behind: the case below migrates a body with a word outside
-\      the dialect's vocabulary, checks the refusal is the dialect's own, and then
-\      checks that the word still runs and that its record never moved.
+\   3. That a word the chain CANNOT compile is refused by name and leaves no
+\      dictionary, signature, code, or publication state behind.
 \
 \ THE TAPE IS THE CHECKER'S. Nothing in this suite lexes anything. The source is
 \ handed to the engine, the engine compiles it the way it compiles every
@@ -47,8 +42,10 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 4 constant INSN-BYTES
 0 constant GLOBAL-WID
 
-variable OLD-START
-variable OLD-LEN
+: HOST-N ( n n -- n )
+   HB-TARGET-LINUX? if drop exit then
+   HB-TARGET-MACOS? if nip exit then
+   E-CTGT-ABI throw ;
 
 \ The migrations run at top level, so the words they publish are global: that is
 \ what makes them reachable by the callers this suite compiles afterwards, and it
@@ -70,6 +67,38 @@ variable OLD-LEN
 : DEFINED? ( ptr u8 n -- bool )
    GLOBAL-WID XREF-FIND-WL XREF-FOUND? ;
 
+\ ---- context entry fails before the migration body ---------------------------
+\ Fill the real IR context registry, catch the migration's own attempt to enter
+\ one more context while the outermost frame is still live, then try the same
+\ production entry again after every frame has retired.
+64 constant ENTRY-DEPTH
+variable ENTRY-RC
+
+: ENTRY-MIGRATE ( -- )
+   s" : NMG-ENTRY-AFTER ( n -- n ) 1+ ;" NMIGRATE:MEASURE-HELD ;
+
+defer ENTRY-STEP ( n IR-CTX:ctx -- )
+
+: ENTRY-STEP-IMPL ( n IR-CTX:ctx -- )
+   drop 1-
+   dup 0 > if
+      NABI:BINDING [: ENTRY-STEP ;] IR-CTX:WITH-CONTEXT
+      exit
+   then
+   drop
+   [: ENTRY-MIGRATE ;] catch ENTRY-RC ! ;
+
+: ENTRY-FAILURE-CASE ( -- )
+   [: ENTRY-STEP-IMPL ;] is ENTRY-STEP
+   ENTRY-DEPTH NABI:BINDING [: ENTRY-STEP ;] IR-CTX:WITH-CONTEXT
+
+   s" context entry reports its own depth failure" T-LABEL
+   ENTRY-RC @ E-IR-CTX-DEPTH T=
+
+   s" and the next migration is not poisoned by the failed entry" T-LABEL
+   ENTRY-MIGRATE
+   s" NMG-ENTRY-AFTER" DEFINED? TFALSE ;
+
 \ ---- a word the chain can compile --------------------------------------------
 : SQ-SRC ( -- ptr u8 n )
    s" : NMG-SQ ( n -- n ) dup * ;" ;
@@ -88,9 +117,10 @@ variable OLD-LEN
    s" NMG-SQ" REC-START
    s" NMG-SQ" GLOBAL-WID NPUB:NEW-START T=
 
-   s" and its length is the chain's emission, not the engine's code" T-LABEL
+   s" and no old-emitter publication was retained" T-LABEL
    s" NMG-SQ" REC-LEN  s" NMG-SQ" GLOBAL-WID NPUB:NEW-LEN T=
-   s" NMG-SQ" REC-LEN  s" NMG-SQ" GLOBAL-WID NPUB:OLD-LEN T<>
+   s" NMG-SQ" GLOBAL-WID NPUB:OLD-START 0 T=
+   s" NMG-SQ" GLOBAL-WID NPUB:OLD-LEN 0 T=
 
    s" a definition compiled afterwards calls it" T-LABEL
    s" : NMG-CALL ( n -- n ) NMG-SQ ;" EV
@@ -169,10 +199,11 @@ variable OLD-LEN
 \
 \ THE BODY IS SIZED PAST THE MACHINE, not past a budget. The chain takes
 \ NABI:SCRATCH - every register the machine and the engine leave a routine, which
-\ is twenty-four - so a body that spills has to need more than twenty-four values
-\ at once, and this one needs twenty-eight. That is the only way a spill case can
-\ be honest now that no caller states a budget: an eight-term body spilled here
-\ once because the caller had said four registers, which measured the caller.
+\ is twenty-five on Linux and twenty-four on Darwin - so a body that spills has
+\ to need more than the host leaves it, and this one needs twenty-eight. That is
+\ the only way a spill case can be honest now that no caller states a budget: an
+\ eight-term body spilled here once because the caller had said four registers,
+\ which measured the caller.
 \
 \ AND THE SPILL COUNT IS ASSERTED BECAUSE THE ANSWERS ALONE CANNOT SEE IT. The
 \ same body compiled with registers to spare answers 686 too. NMIGRATE:SPILLS is
@@ -188,17 +219,14 @@ variable OLD-LEN
 : SPILL-CASE ( -- )
    MIGRATE-SPILL
 
-   \ FOUR, AND THE FOUR ARE THE MEASUREMENT. Every one of this body's terms adds a
-   \ small number to the same argument, and the combine pass folds each of those
-   \ numbers into the addition's own immediate field, so no constant takes a
-   \ register: the pressure is what the body needs LIVE AT ONCE, which is its
-   \ twenty-eight terms against the machine's twenty-four registers. Twenty-five
-   \ terms put one value in the frame and each term after that adds one, measured
-   \ through this entry, so the count moves if the pool, the folding or the
-   \ allocator's choice of victim moves - and the answers below say the values
-   \ that went to the frame came back.
-   s" four values went to the frame, and the migration says so" T-LABEL
-   NMIGRATE:SPILLS 4 T=
+   \ THE COUNT IS THE MEASUREMENT. Every one of this body's terms adds a small
+   \ number to the same argument, and the combine pass folds each number into the
+   \ addition's immediate field, so the pressure is its twenty-eight live terms
+   \ against twenty-five Linux registers or twenty-four Darwin registers. The
+   \ count moves if the host pool, folding or victim choice moves - and the
+   \ answers below say the values that went to the frame came back.
+   s" the host-sized spill count is reported by the migration" T-LABEL
+   NMIGRATE:SPILLS 3 4 HOST-N T=
 
    s" the record points at the code the publication seam claimed" T-LABEL
    s" NMG-SPILL" REC-START
@@ -217,9 +245,9 @@ variable OLD-LEN
 
 \ ---- a definition that is lowered and puts NOTHING in a frame ----------------
 \ TWENTY-TWO CONSTANTS MATERIALISED INSIDE A LOOP BODY. All twenty-two are live
-\ at once where the last is written, two more than the machine's pool can hold,
-\ and the two that lose their register are WRITTEN AGAIN in front of the
-\ addition that reads them rather than put away
+\ at once where the last is written. One loses its register on Linux and two do
+\ on Darwin; each is WRITTEN AGAIN in front of the addition that reads it rather
+\ than put away
 \ (src/compiler/native/regalloc.f MB-REMATABLE?). So this definition goes through
 \ the whole lowering - allocate, rewrite, allocate the rewritten module, accept -
 \ with an empty frame, which is the case the driver above SPILL-CASE could not
@@ -241,15 +269,13 @@ variable OLD-LEN
 \ program - that check reads two modules and is dot
 \ habu-prove-the-spill-0294e0e8, which re-emission now shares.
 \
-\ TWENTY-TWO, BECAUSE THE POOL IS THE MACHINE'S. The chain takes NABI:SCRATCH,
-\ twenty-four registers, so twenty-one constants all fit and re-emit nothing;
-\ each one past that loses its register and is written again where it is read.
-\ Measured through this entry: twenty-one gives one, twenty-two gives two.
+\ TWENTY-TWO, BECAUSE THE POOL IS THE MACHINE'S. With its other live values, the
+\ body holds twenty constants outright on Darwin and twenty-one on Linux; each
+\ one past that is written again where it is read.
 \
 \ AND THE COUNTS ARE STILL ASSERTED, because the answers cannot see the route.
-\ The same body at a wider pool answers 888569 too. REMATS is what says two
-\ values were written again, and SPILLS being zero is what says neither of them
-\ was put in a frame instead.
+\ The same body at a wider pool answers 888569 too. REMATS says how many values
+\ were written again, and SPILLS being zero says none entered a frame instead.
 : REMAT-SRC ( -- ptr u8 n )
    s" : NMG-REMAT ( n n -- n ) {: s:n l:n :} s l 0 ?do 40001 40038 40075 40112 40149 40186 40223 40260 40297 40334 40371 40408 40445 40482 40519 40556 40593 40630 40667 40704 40741 40778 + + + + + + + + + + + + + + + + + + + + + + loop ;" ;
 
@@ -259,8 +285,9 @@ variable OLD-LEN
 : REMAT-CASE ( -- )
    MIGRATE-REMAT
 
-   s" two values were written again, and none went to the frame" T-LABEL
-   NMIGRATE:REMATS 2 T=
+   s" the host-sized values were written again, and none entered the frame"
+   T-LABEL
+   NMIGRATE:REMATS 1 2 HOST-N T=
    NMIGRATE:SPILLS 0 T=
 
    s" the record points at the code the publication seam claimed" T-LABEL
@@ -564,38 +591,9 @@ variable OLD-LEN
    s" a body outside the dialect is refused with the dialect's own code" T-LABEL
    [: MIGRATE-MOD ;] E-HIR-UNMODELED TTHROWSQ
 
-   s" the word the engine published is still there and still runs" T-LABEL
-   s" 12 NMG-MOD" EV-N 17 T=
-   s" 40 NMG-MOD" EV-N 45 T=
-
-   s" and the publication seam never logged it" T-LABEL
+   s" and no word or publication row survives" T-LABEL
+   s" NMG-MOD" DEFINED? TFALSE
    s" NMG-MOD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
-
-\ The record of the refused word, read before the migration is attempted and
-\ again after it, so "untouched" is a measurement rather than an inference. The
-\ definition is made here and migrated in the case above, which is why the two
-\ halves are separate words: the record has to be read between them.
-: MOD-BEFORE ( -- )
-   s" using NMG-AWAY : NMG-MOD2 ( n -- n ) NMG-K + ; ;using" EV
-   s" NMG-MOD2" REC-START OLD-START !
-   s" NMG-MOD2" REC-LEN OLD-LEN ! ;
-
-: MIGRATE-MOD2 ( -- )
-   s" using NMG-AWAY : NMG-MOD3 ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE ;
-
-: UNTOUCHED-CASE ( -- )
-   MOD-BEFORE
-   [: MIGRATE-MOD2 ;] E-HIR-UNMODELED TTHROWSQ
-
-   s" a refusal leaves the record of the word it was given exactly as it was" T-LABEL
-   s" NMG-MOD3" REC-START  s" NMG-MOD3" REC-LEN  {: st:n ln:n :}
-   s" NMG-MOD2" REC-LEN OLD-LEN @ T=
-   s" NMG-MOD2" REC-START OLD-START @ T=
-
-   s" and the word it refused still runs the code the engine compiled for it" T-LABEL
-   ln s" NMG-MOD2" REC-LEN T=
-   st 0 T<>
-   s" 12 NMG-MOD3" EV-N 17 T= ;
 
 \ ---- what the entry itself refuses --------------------------------------------
 \ A source that publishes no definition never opens a scan, so the recorder's own
@@ -615,8 +613,17 @@ variable OLD-LEN
 : NO-DEFINITION ( -- )
    s" 1 2 + drop" NMIGRATE:DEFINE ;
 
+: LONG-NAME ( -- )
+   s" : NMG-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ( -- n ) 1 ;" NMIGRATE:DEFINE ;
+
+: LONG-NAME-AND-SECOND ( -- )
+   s" : NMG-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB ( -- n ) 7 ; : NMG-LONG-SECOND ( -- n ) 8 ;" NMIGRATE:DEFINE ;
+
 : TWO-DEFINITIONS ( -- )
    s" : NMG-A ( -- n ) 1 ; : NMG-B ( -- n ) 2 ;" NMIGRATE:DEFINE ;
+
+: DEFINITION-AND-THROW ( -- )
+   s" : NMG-LATE-A ( -- n ) 5 ; E-NMIGRATE-TEXT throw" NMIGRATE:DEFINE ;
 
 \ One checked definition and one declaration beside it.
 : DEFINITION-AND-DATA ( -- )
@@ -626,8 +633,48 @@ variable OLD-LEN
    s" a source that publishes no definition records no scan" T-LABEL
    [: NO-DEFINITION ;] E-NFEED-STATE TTHROWSQ
 
+   s" a recorded name past the migration's buffer is refused by its named code" T-LABEL
+   [: LONG-NAME ;] E-NMIGRATE-TEXT TTHROWSQ
+   s" NMG-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" DEFINED? TFALSE
+
+   s" and that long certified name was retracted rather than poisoned" T-LABEL
+   s" : NMG-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ( -- n ) 2 ;" EV
+   s" NMG-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" EV-N 2 T=
+
+   s" a long held name followed by a second definition preserves the scan refusal" T-LABEL
+   [: LONG-NAME-AND-SECOND ;] E-NFEED-SCAN TTHROWSQ
+   s" NMG-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" DEFINED? TFALSE
+   s" NMG-LONG-SECOND" DEFINED? TFALSE
+
+   s" and both names remain free after that combined refusal" T-LABEL
+   s" : NMG-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB ( -- n ) 9 ;" EV
+   s" : NMG-LONG-SECOND ( -- n ) 10 ;" EV
+   s" NMG-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" EV-N 9 T=
+   s" NMG-LONG-SECOND" EV-N 10 T=
+
    s" a source with two definitions opens a second scan and is refused" T-LABEL
    [: TWO-DEFINITIONS ;] E-NFEED-SCAN TTHROWSQ
+
+   s" and neither definition or publication survives" T-LABEL
+   s" NMG-A" DEFINED? TFALSE
+   s" NMG-B" DEFINED? TFALSE
+   s" NMG-A" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+   s" NMG-B" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+
+   s" both certified names are free to define normally" T-LABEL
+   s" : NMG-A ( -- n ) 3 ;" EV
+   s" : NMG-B ( -- n ) 4 ;" EV
+   s" NMG-A" EV-N 3 T=
+   s" NMG-B" EV-N 4 T=
+
+   s" a top-level throw after an accepted definition is returned unchanged" T-LABEL
+   [: DEFINITION-AND-THROW ;] E-NMIGRATE-TEXT TTHROWSQ
+
+   s" and the held definition and its certified signature are both retracted" T-LABEL
+   s" NMG-LATE-A" DEFINED? TFALSE
+   s" NMG-LATE-A" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+   s" : NMG-LATE-A ( -- n ) 6 ;" EV
+   s" NMG-LATE-A" EV-N 6 T=
 
    s" so does a source that declares anything beside its definition" T-LABEL
    [: DEFINITION-AND-DATA ;] E-NFEED-SCAN TTHROWSQ
@@ -707,6 +754,28 @@ variable KEEP-N
 \ The data word the three migrations name, and the three bodies that name it.
 \ They are one body under three names: the whole point of the comparison is that
 \ nothing about the source differs between them.
+: ADJ-ADDR-SETUP ( -- )
+   s" create NMG-ADJ-A 1 ,  create NMG-ADJ-B 2 ," EV ;
+
+: ADJ-ADDR-MIGRATE ( -- )
+   s" : NMG-ADJ ( -- ptr a ) NMG-ADJ-A drop NMG-ADJ-B ;" NMIGRATE:DEFINE ;
+
+: ADJ-ADDR-CASE ( -- )
+   ADJ-ADDR-SETUP
+   ADJ-ADDR-MIGRATE
+
+   s" adjacent address carriers are recorded as two chains" T-LABEL
+   A64EMIT:ADDR-SITES 2 T=
+   0 A64EMIT:ADDR-SITE-KIND@ A64IR:ADDR-DATA T=
+   1 A64EMIT:ADDR-SITE-KIND@ A64IR:ADDR-DATA T=
+
+   s" and the second starts exactly where the first carrier ends" T-LABEL
+   1 A64EMIT:ADDR-SITE@
+   0 A64EMIT:ADDR-SITE@ A64IR:HALVES + T=
+
+   s" the migrated word returns the second data word's address" T-LABEL
+   s" NMG-ADJ" EV-N  s" NMG-ADJ-B" EV-N T= ;
+
 : DAT-NEW ( -- )
    s" create NMG-DAT 1 cells allot" EV ;
 
@@ -809,6 +878,10 @@ variable KEEP-N
 
    BUMP1
    BUMP2
+
+   s" data-aware definitions also retain no old-emitter publication" T-LABEL
+   s" NMG-BUMP1" GLOBAL-WID NPUB:OLD-START 0 T=
+   s" NMG-BUMP1" GLOBAL-WID NPUB:OLD-LEN 0 T=
 
    s" one body migrated twice emits the same instruction words" T-LABEL
    s" NMG-BUMP1" SPAN-READ SPAN-KEEP
@@ -1585,69 +1658,73 @@ variable BACK-N
    s" NMG-BAD1 ( r -- n ) 1.0 f+ 1 +" CHECK-QUIET-CANDIDATE! 0 T=
    s" NMG-OKAY ( r -- r ) 1.0 f+" CHECK-QUIET-CANDIDATE! -1 T=
 
-   s" and a body the chain refused keeps the record the engine compiled for it" T-LABEL
-   s" NMG-BAD2" DEFINED? TTRUE ;
+   s" and a body the chain refused leaves no definition behind" T-LABEL
+   s" NMG-BAD2" DEFINED? TFALSE ;
 
-\ ---- compiling without publishing --------------------------------------------
-\ Every case above migrates a word the ENGINE published: the chain is a second
-\ pass, and the record it rewrites already had the old emitter's code in it.
-\ These cases are the other thing - the definition is certified and WITHHELD, so
-\ nothing is published under its name until the chain's own publisher commits a
-\ record. That is what makes the old emitter's emission unnecessary rather than
-\ prerequisite, which is the whole point of the mode.
-variable HELD-ND0
-variable HELD-ND1
+\ ---- fail-closed publication --------------------------------------------------
+\ The definition stays unreachable until the checked chain commits it. These
+\ cases measure both outcomes through the sole public definition entry.
+variable ATOMIC-ND0
+variable ATOMIC-ND1
+variable ATOMIC-CP0
+variable ATOMIC-PUB0
+variable ATOMIC-CLOB0
 
-: HELD-MIGRATE ( -- )
-   ndict@ HELD-ND0 !
-   s" : NMG-HELD ( n -- n ) 3 + ;" NMIGRATE:DEFINE-HELD
-   ndict@ HELD-ND1 ! ;
+: ATOMIC-MIGRATE ( -- )
+   ndict@ ATOMIC-ND0 !
+   s" : NMG-ATOMIC ( n -- n ) 3 + ;" NMIGRATE:DEFINE
+   ndict@ ATOMIC-ND1 ! ;
 
-: HELD-CASE ( -- )
-   s" a held definition compiles end to end and answers" T-LABEL
-   HELD-MIGRATE
-   s" 5 NMG-HELD" EV-N 8 T=
-   s" 0 NMG-HELD" EV-N 3 T=
-   s" -3 NMG-HELD" EV-N 0 T=
+: ATOMIC-CASE ( -- )
+   s" a default definition compiles end to end and answers" T-LABEL
+   ATOMIC-MIGRATE
+   s" 5 NMG-ATOMIC" EV-N 8 T=
+   s" 0 NMG-ATOMIC" EV-N 3 T=
+   s" -3 NMG-ATOMIC" EV-N 0 T=
 
    s" exactly one record appeared, and the chain's publisher is what added it" T-LABEL
-   HELD-ND1 @ HELD-ND0 @ 1 + T=
+   ATOMIC-ND1 @ ATOMIC-ND0 @ 1 + T=
 
    s" the record points at the chain's emission" T-LABEL
-   s" NMG-HELD" REC-START  s" NMG-HELD" GLOBAL-WID NPUB:NEW-START T=
+   s" NMG-ATOMIC" REC-START  s" NMG-ATOMIC" GLOBAL-WID NPUB:NEW-START T=
 
-   s" and the old emitter produced NOTHING for that name, which is the point" T-LABEL
-   s" NMG-HELD" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
-   s" NMG-HELD" GLOBAL-WID NPUB:OLD-START 0 T=
-   s" NMG-HELD" GLOBAL-WID NPUB:OLD-LEN 0 T=
+   s" and no old-emitter publication was retained" T-LABEL
+   s" NMG-ATOMIC" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" NMG-ATOMIC" GLOBAL-WID NPUB:OLD-START 0 T=
+   s" NMG-ATOMIC" GLOBAL-WID NPUB:OLD-LEN 0 T=
 
    s" a definition compiled afterwards calls it as an ordinary word" T-LABEL
-   s" : NMG-HELD-CALLER ( n -- n ) NMG-HELD NMG-HELD ;" EV
-   s" 1 NMG-HELD-CALLER" EV-N 7 T= ;
+   s" : NMG-ATOMIC-CALLER ( n -- n ) NMG-ATOMIC NMG-ATOMIC ;" EV
+   s" 1 NMG-ATOMIC-CALLER" EV-N 7 T= ;
 
-\ A held migration the CHAIN refuses. The engine has published nothing by then,
-\ so unlike every refusal case above there is no word left behind to keep
-\ running - the correct outcome is that the name does not exist at all.
-: HELD-REFUSED-MIGRATE ( -- )
-   s" using NMG-AWAY : NMG-HELD-BAD ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE-HELD ;
+\ The chain refuses after the engine has certified a held record. Every durable
+\ high-water must return to where it was before the attempt.
+: ATOMIC-REFUSED-MIGRATE ( -- )
+   s" using NMG-AWAY : NMG-ATOMIC-BAD ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE ;
 
-: HELD-REFUSAL-CASE ( -- )
-   s" a held body outside the dialect is refused with the dialect's own code" T-LABEL
-   ndict@ HELD-ND0 !
-   [: HELD-REFUSED-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
+: ATOMIC-REFUSAL-CASE ( -- )
+   s" a default body outside the dialect is refused with the dialect's own code" T-LABEL
+   ndict@ ATOMIC-ND0 !
+   cp@ ATOMIC-CP0 !
+   NPUB:REPUBLISHED ATOMIC-PUB0 !
+   NCLOB:ROWS ATOMIC-CLOB0 !
+   [: ATOMIC-REFUSED-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
 
-   s" and it leaves NOTHING published - no record, no name, no log row" T-LABEL
-   ndict@ HELD-ND0 @ T=
-   s" NMG-HELD-BAD" DEFINED? TFALSE
-   s" NMG-HELD-BAD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+   s" and it leaves no record, name, code, or publication row" T-LABEL
+   ndict@ ATOMIC-ND0 @ T=
+   cp@ ATOMIC-CP0 @ T=
+   NPUB:REPUBLISHED ATOMIC-PUB0 @ T=
+   NCLOB:ROWS ATOMIC-CLOB0 @ T=
+   s" NMG-ATOMIC-BAD" DEFINED? TFALSE
+   s" NMG-ATOMIC-BAD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
 
-   s" the recorder recovered, so the NEXT held migration still works" T-LABEL
-   s" : NMG-HELD-AFTER ( n -- n ) 7 + ;" NMIGRATE:DEFINE-HELD
-   s" 1 NMG-HELD-AFTER" EV-N 8 T=
+   s" the transaction recovered, so the next default migration still works" T-LABEL
+   s" : NMG-ATOMIC-AFTER ( n -- n ) 7 + ;" NMIGRATE:DEFINE
+   s" 1 NMG-ATOMIC-AFTER" EV-N 8 T=
 
    s" and the refused name is free again: the checker's signature went with it" T-LABEL
-   s" : NMG-HELD-BAD ( n -- n ) 1 + ;" EV
-   s" 4 NMG-HELD-BAD" EV-N 5 T= ;
+   s" : NMG-ATOMIC-BAD ( n -- n ) 1 + ;" EV
+   s" 4 NMG-ATOMIC-BAD" EV-N 5 T= ;
 
 \ ---- which token the chain refused, read through the real entry --------------
 \ src/compiler/native/elaborate.f writes down the body token its refusal was
@@ -1671,38 +1748,38 @@ variable HELD-ND1
 \ not the only caller of. The clear does not rest on anything.
 70 constant REJECT-RC                \ src/core/checker.f PKGCTX-REJECT-RC (private there)
 
-: HELD-MOD-MIGRATE ( -- )
-   s" using NMG-AWAY : NMG-HELD-MOD ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE-HELD ;
+: ATOMIC-MOD-MIGRATE ( -- )
+   s" using NMG-AWAY : NMG-ATOMIC-MOD ( n -- n ) NMG-K + ; ;using" NMIGRATE:DEFINE ;
 
-: HELD-UNDEF-MIGRATE ( -- )
-   s" : NMG-HELD-UA ( n -- n ) NMG-NO-SUCH-WORD-A and ;" NMIGRATE:DEFINE-HELD ;
+: ATOMIC-UNDEF-MIGRATE ( -- )
+   s" : NMG-ATOMIC-UA ( n -- n ) NMG-NO-SUCH-WORD-A and ;" NMIGRATE:DEFINE ;
 
-: HELD-UNDEF2-MIGRATE ( -- )
-   s" : NMG-HELD-UB ( n -- n ) NMG-NO-SUCH-WORD-B and ;" NMIGRATE:DEFINE-HELD ;
+: ATOMIC-UNDEF2-MIGRATE ( -- )
+   s" : NMG-ATOMIC-UB ( n -- n ) NMG-NO-SUCH-WORD-B and ;" NMIGRATE:DEFINE ;
 
-: HELD-RECORD-CASE ( -- )
-   s" a held body outside the dialect names the offending word through the chain's own record" T-LABEL
+: ATOMIC-RECORD-CASE ( -- )
+   s" a default body outside the dialect names the offending word through the chain's own record" T-LABEL
    NELAB:REFUSED-RESET
-   [: HELD-MOD-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
+   [: ATOMIC-MOD-MIGRATE ;] E-HIR-UNMODELED TTHROWSQ
    NELAB:REFUSED$ s" NMG-K" T$=
 
    s" a refusal the engine raises before elaboration leaves that record standing" T-LABEL
-   [: HELD-UNDEF-MIGRATE ;] REJECT-RC TTHROWSQ
+   [: ATOMIC-UNDEF-MIGRATE ;] REJECT-RC TTHROWSQ
    NELAB:REFUSED$ s" NMG-K" T$=
 
    s" so a driver clears the record before each attempt, and then reads no word at all" T-LABEL
    NELAB:REFUSED-RESET
-   [: HELD-UNDEF2-MIGRATE ;] REJECT-RC TTHROWSQ
+   [: ATOMIC-UNDEF2-MIGRATE ;] REJECT-RC TTHROWSQ
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T=
 
-   s" and the chain recovered: the next held migration compiles and leaves no record" T-LABEL
-   s" : NMG-HELD-AGAIN ( n -- n ) 9 + ;" NMIGRATE:DEFINE-HELD
-   s" 1 NMG-HELD-AGAIN" EV-N 10 T=
+   s" and the chain recovered: the next default migration compiles and leaves no record" T-LABEL
+   s" : NMG-ATOMIC-AGAIN ( n -- n ) 9 + ;" NMIGRATE:DEFINE
+   s" 1 NMG-ATOMIC-AGAIN" EV-N 10 T=
    NELAB:REFUSED-ROW -1 T= ;
 
 \ ---- asking the chain without spending anything on the answer ----------------
-\ THE THIRD MODE, AND THE ONE A MEASUREMENT NEEDS. A held migration commits its
+\ THE NO-PUBLICATION ENTRY A MEASUREMENT NEEDS. A default migration commits its
 \ emission, and committing is permanent: it takes a code slot, a row of the
 \ clobber record and a row of the replacement log, and neither record may drop a
 \ row to make space, because a row is the whole of what a caller compiled against
@@ -1716,7 +1793,7 @@ variable HELD-ND1
 \ is that "keeps none of it" is each of the four things a publication would have
 \ kept, one assertion apiece, plus the fifth thing the checker holds: the
 \ certified signature under the definition's name, which is retracted the way a
-\ refused held run retracts it.
+\ refused default run retracts it.
 \
 \ THE SAME NAME IS MEASURED OVER AND OVER ON PURPOSE. A second certified
 \ definition of one name is refused, so a measurement that failed to retract the
@@ -1763,14 +1840,14 @@ variable MEAS-PUB0
    s" 5 NMG-MEASURED" EV-N 32 T= ;
 
 \ What measuring answers has to be what publishing answers, or the count is a
-\ measurement of a second chain. The same source text is measured and then HELD -
+\ measurement of a second chain. The same source text is measured and then published -
 \ under the same name, which the measurement had to leave free - and the word
 \ that appears computes what the body says.
 : MEASURE-AGREE-CASE ( -- )
-   s" a body the measurement accepts is one the held publication accepts" T-LABEL
+   s" a body the measurement accepts is one the default publication accepts" T-LABEL
    s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" NMIGRATE:MEASURE-HELD
    s" NMG-MEASURE-TWIN" DEFINED? TFALSE
-   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" NMIGRATE:DEFINE-HELD
+   s" : NMG-MEASURE-TWIN ( n -- n ) 5 * 2 + ;" NMIGRATE:DEFINE
    s" 3 NMG-MEASURE-TWIN" EV-N 17 T=
 
    s" and the record it published is the chain's own emission" T-LABEL
@@ -2086,6 +2163,7 @@ variable MEAS-PUB0
 
 : RUN ( -- )
    T-RESET
+   ENTRY-FAILURE-CASE
    MOD-CONST
    RESOLVED-CASE
    STALE-CASE
@@ -2102,8 +2180,8 @@ variable MEAS-PUB0
    CONST-CALL-CASE
    CONST-FOLD-CASE
    REFUSED-CASE
-   UNTOUCHED-CASE
    ENTRY-CASES
+   ADJ-ADDR-CASE
    DATA-CASES
    FLOAT-CASE
    FCMP-MIGRATIONS
@@ -2115,9 +2193,9 @@ variable MEAS-PUB0
    SHAPE-CASE
    FLOAT-PLACE-CASES
    FLOAT-REFUSAL-CASES
-   HELD-CASE
-   HELD-REFUSAL-CASE
-   HELD-RECORD-CASE
+   ATOMIC-CASE
+   ATOMIC-REFUSAL-CASE
+   ATOMIC-RECORD-CASE
    MEASURE-CASE
    MEASURE-AGREE-CASE
    MEASURE-REFUSAL-CASE

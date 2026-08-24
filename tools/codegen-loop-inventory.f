@@ -91,15 +91,14 @@ $1000 constant IMM12-LIM
 : FHW ( n -- n ) {: w:n :}
    w 21 rshift HW-MASK and ;
 
-\ x18 is Darwin platform-reserved and every X-register encoder in
-\ src/arch/arm64/asm.f ends the process on it, so a word whose register field
-\ decodes to x18 was not written by that assembler and is screened before any
-\ field is handed to one - the same guard tools/codegen-combine-inventory.f
-\ carries, and for the same reason.
+\ On Darwin, screen x18 before asking an encoder that must refuse it. Linux can
+\ re-encode it normally.
 18 constant RESERVED-REG
 
 : ENCODABLE? ( n -- bool ) {: r:n :}
-   r RESERVED-REG <> ;
+   r RESERVED-REG <> if true exit then
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-LINUX? ;
 
 public
 
