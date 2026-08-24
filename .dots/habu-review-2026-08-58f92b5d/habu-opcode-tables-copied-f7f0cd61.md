@@ -1,6 +1,6 @@
 ---
 title: opcode tables copied five times with a copy-paste defect
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-22T22:38:25.902441+02:00"
