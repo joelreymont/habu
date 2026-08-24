@@ -1,9 +1,9 @@
 ---
 title: Reject unsafe top-level rows before execution
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-21T22:00:40.892118+02:00"
+created-at: "\"2026-07-21T22:00:40.892118+02:00\""
 ---
 
 Current `src/core/top-row.f` defaults every `HABU_TOP_TIER` value other than 2

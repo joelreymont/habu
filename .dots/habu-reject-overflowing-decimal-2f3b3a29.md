@@ -1,9 +1,9 @@
 ---
 title: Reject overflowing decimal literal scaling
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-21T22:33:32.482667+02:00"
+created-at: "\"2026-07-21T22:33:32.482667+02:00\""
 ---
 
 Problem: the shared native literal path accepts -0.0085031157383406233, but C-NUM-FRAC-STEP accumulates the fractional numerator and power-of-ten denominator in signed cells without overflow checks. At 19 fractional digits the denominator wraps, the token still classifies as a float, and execution produces a positive value near 0.010066737744 instead of the negative literal. This is a compiler/parser soundness bug, not an application-data error.
