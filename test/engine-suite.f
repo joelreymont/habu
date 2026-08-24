@@ -261,6 +261,22 @@ TRS2@ 6 T=
 \ locals (typed)
 : TLOC ( n n -- n ) {: a:n b:n :} a b + ;
 3 4 TLOC 7 T=
+: TLOC-LIVE-SHADOW ( n -- n )
+   {: v:n :}
+   v 0 > if
+      1 0= {: v:bool :}
+      v if 1 else 2 then
+   else 0 then ;
+s" innermost live local wins" T-LABEL
+5 TLOC-LIVE-SHADOW 2 T=
+: TLOC-LIVE-CONTROL ( n -- n )
+   {: v:n :}
+   v 0 > if
+      1 0= {: inner:bool :}
+      inner if 1 else 2 then
+   else 0 then ;
+s" unshadowed nested local control" T-LABEL
+5 TLOC-LIVE-CONTROL 2 T=
 : TLOC-IF ( n bool -- n )
    if {: x:n :} x else drop 0 then ;
 7 0 0= TLOC-IF 7 T=

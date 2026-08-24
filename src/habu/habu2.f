@@ -1794,9 +1794,9 @@ s" c-emit-drop-x12" s" --" TRUST
 : EMIT-LOC-FIND ( -- )
    LBL LBL LBL LBL LBL {: ll lmiss lhit lcmp lnext :}
    LLOC-FIND LABEL@ LBL,
-   9 DATA LOCN-CELL LDR,  10 0 MOVZ,
+   9 DATA LOCN-CELL LDR,  10 9 1 SUBI,
    6 DATA TKL-CELL LDR,  7 DATA TKA-CELL LDR,
-   ll LBL,  10 9 CMP,  C-GE lmiss BCOND,
+   ll LBL,  10 0 CMPI,  C-LT lmiss BCOND,
       12 LOC-REC MOVZ,  11 10 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
       12 11 0 LDR,  12 6 CMP,  C-NE lnext BCOND,
       13 0 MOVZ,
@@ -1806,7 +1806,7 @@ s" c-emit-drop-x12" s" --" TRUST
          14 15 CMP,  C-NE lnext BCOND,
          13 13 1 ADDI,  lcmp B,
       lhit LBL,  0 10 0 ADDI,  RET,
-      lnext LBL,  10 10 1 ADDI,  ll B,
+      lnext LBL,  10 10 1 SUBI,  ll B,
    lmiss LBL,  0 0 MOVN,  RET, ;
 \ keyword bytes (lower-case / literal) at known labels
 create SQ-KW  115 c, 34 c,

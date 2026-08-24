@@ -1,6 +1,6 @@
 ---
 title: Reconcile the locals search direction between checker and engine
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-13T19:06:58.680066+02:00"

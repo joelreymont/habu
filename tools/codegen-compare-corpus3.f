@@ -175,9 +175,11 @@
 \      4611452821746767930 where the nearest double is 4611452821746767931,
 \      and `0.11471049746507529` reads one below its nearest double too.
 \   b. The integer magnitude, fraction, and power-of-ten scale are accumulated
-\      in signed cells, so a complete decimal spelling is refused before any
-\      recurrence would overflow. The last admitted fractional scale has
-\      eighteen digits; every literal pinned here keeps those accumulators exact.
+\      in signed cells. The parser latches range overflow while scanning; a
+\      recurrence may still wrap, but the complete decimal is refused before
+\      conversion, publication, or dictionary lookup. The last admitted
+\      fractional scale has eighteen digits; every literal pinned here keeps
+\      those accumulators exact.
 \
 \ (11) WHAT STOPPED THE NATIVE CHAIN WHEN THIS CORPUS WAS COMMITTED, WHICH IS WHY
 \ EVERY ROW OF IT STARTED AS A GAP. Two refusals, in two different stages, both
