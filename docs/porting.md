@@ -41,6 +41,16 @@ Target selection must fail closed. Do not write boolean branches that mean
 "Linux, otherwise macOS"; every selector should handle each supported target
 explicitly and call a named target-unknown error when none match.
 
+## Native Compiler ABI
+
+`src/compiler/native/abi.f` maps the same target predicates to
+`aapcs64-linux` or `aapcs64-darwin`; `src/compiler/a64-effect.f` and
+`src/arch/arm64/asm.f` make x18 available only on Linux. The ABI field records
+the host platform identity. Habu-to-Habu calls still use Habu's internal
+contract: arguments and results occupy caller data-stack slots, the usable
+register pool is scratch, and frames are 16-byte aligned. No current compiler
+consumer uses platform variadic or stack-argument rules.
+
 ## Syscalls And Signals
 
 All kernel entry goes through `sys.f`. The engine assumes arguments in x0..x5;

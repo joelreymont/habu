@@ -20,12 +20,19 @@ require src/compiler/native/frame.f
 
 package NABI
 
+private
+
+: TARGET-ABI ( -- CTARGET:abi )
+   HB-TARGET-LINUX? if CTARGET-ABI:AAPCS64-LINUX exit then
+   HB-TARGET-MACOS? if CTARGET-ABI:AAPCS64-DARWIN exit then
+   E-CTGT-ABI throw ;
+
 public
 
-\ The AArch64 Darwin binding. Overflow wraps, as ARM64's add, sub and mul do; a
+\ The host AArch64 binding. Overflow wraps, as ARM64's add, sub and mul do; a
 \ trapping unit is refused by the selector.
 : BINDING ( -- CBIND:binding )
-   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
+   CTARGET-ARCH:AARCH64 TARGET-ABI CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
    CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
    CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
@@ -44,11 +51,10 @@ public
 \ Every general register a routine of this convention may hold state in, which is
 \ a fact about the machine and the engine and never a number a caller picks. The
 \ set is not a run: src/habu/layout.f claims x19, x20, x26, x27 and x28 out of
-\ the middle of it, so the largest run from x0 stops at x18 and leaves six
-\ registers - x21..x25 and x29 - that no caller could ever name. Measured on a
-\ twenty-four-value body: six values went to frame slots while those six sat
-\ idle. A routine that still does not fit spills, which is the spill path's job
-\ and not the caller's to pre-empt.
+\ the middle of it, so the largest run from x0 ends at x18 on Linux and x17 on
+\ Darwin. The complete set is twenty-five registers on Linux and twenty-four on
+\ Darwin, including x21..x25 and x29 on both. A routine that still does not fit
+\ spills, which is the spill path's job and not the caller's to pre-empt.
 : SCRATCH ( -- A64EFF:gprs )
    A64EFF:GPR-ALL ;
 

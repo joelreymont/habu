@@ -60,11 +60,8 @@ using A64ASM
 
 private
 
-\ x18 is Darwin platform-reserved and every X-register encoder in
-\ src/arch/arm64/asm.f ends the process on it, so no emitted routine holds it.
-\ A word whose register field decodes to x18 was therefore not written by that
-\ assembler and is not the form being tested - the classifiers ask this before
-\ they re-encode, so a screening answer replaces a process exit.
+\ On Darwin, screen x18 before asking an encoder that must refuse it. Linux can
+\ re-encode it normally.
 18 constant RESERVED-REG
 
 $1F constant REG-MASK              \ a register operand is a five-bit field
@@ -134,7 +131,9 @@ $1FFF constant NIS-MASK            \ the packed N:immr:imms of a logical immedia
    w 10 rshift NIS-MASK and ;
 
 : ENCODABLE? ( n -- bool ) {: r:n :}
-   r RESERVED-REG <> ;
+   r RESERVED-REG <> if true exit then
+   HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
+   HB-TARGET-LINUX? ;
 
 \ The three-register forms share one screen: all three fields must be registers
 \ an encoder will accept before any of them is handed to one.

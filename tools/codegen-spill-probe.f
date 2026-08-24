@@ -80,14 +80,14 @@
 \   written again where it is read instead of put away. What that did NOT move is
 \   the same constants live ACROSS the loop, and the sixty-four-bit ones.
 \
-\ WHERE THE WALLS SIT, AND WHY THESE COUNTS HAVE MOVED BEFORE. The crossing wall
-\ is at TEN values against a callee that published nothing, and nine is the
-\ control beside it, so it is pinned from both sides. It has moved twice: at a
-\ budget of eighteen registers it was at seven, and before the selection stage
-\ began emitting the add and subtract immediate forms it was at six. WHICH
-\ register those forms handed back was deliberately not claimed then and is not
-\ claimed now - it would be a guess, and these cases are worth having precisely
-\ because a wall's position is not derivable by reading the pass that moved it.
+\ WHERE THE WALLS SIT, AND WHY THESE COUNTS HAVE MOVED BEFORE. Against a callee
+\ that published nothing, the first refused crossing count is eleven on Linux
+\ and ten on Darwin; the control beside it is one smaller. It has moved before:
+\ at a budget of eighteen registers it was seven, and before selection emitted
+\ add/sub immediate forms it was six. WHICH register those forms handed back was
+\ deliberately not claimed then and is not claimed now - it would be a guess,
+\ and these cases are worth having precisely because a wall's position is not
+\ derivable by reading the pass that moved it.
 \
 \ EACH TIME, THE CASES WERE RE-DERIVED TO STRADDLE THE WALL RATHER THAN RE-PINNED
 \ to the new answers. What this file is for is the DISCRIMINATION - which
@@ -120,6 +120,11 @@ private
 
 \ Every case is measured at NABI:SCRATCH, the machine's whole pool, so a refusal
 \ here is never a budget that was set too low.
+
+: HOST-N ( n n -- n )
+   HB-TARGET-LINUX? if drop exit then
+   HB-TARGET-MACOS? if nip exit then
+   E-CTGT-ABI throw ;
 
 PTR-VARIABLE TRY-SRC
 variable TRY-U
@@ -316,15 +321,14 @@ variable SRC-U
 
 \ ---- the loads shape, which meets both walls ---------------------------------
 
-\ WHERE EACH WALL IS AND WHICH ONE COMES FIRST. Twenty reads a turn compile.
-\ Twenty-one are refused by the CONTEXT: the allocator gets through it, plans
-\ five re-emissions, and the module the rewrite writes is the one that does not
-\ fit. Twenty-two through twenty-five are refused by the ALLOCATOR, which is what
-\ the file is named for - no rewrite is planned at all there, so the context is
-\ never asked. Twenty-six is refused by the context again, and this time before
-\ any allocation: selecting and combining the body alone already exhausts the
-\ mapping. The corpus row's own fourteen sits well inside all of it and compiles,
-\ which is what the loop-invariant move bought this shape.
+\ WHERE EACH WALL IS AND WHICH ONE COMES FIRST. Twenty-one reads a turn compile
+\ on Linux and twenty on Darwin. The next width is refused by the CONTEXT: the
+\ allocator gets through it, plans re-emissions, and the rewritten module does
+\ not fit. The following widths through twenty-five are refused by the ALLOCATOR,
+\ which is what the file is named for - no rewrite is planned there, so the
+\ context is never asked. Twenty-six is refused by the context again, before a
+\ register is ever asked for. The corpus row's own fourteen sits well inside all
+\ of it and compiles, which is what the loop-invariant move bought this shape.
 \
 \ THE UPPER SCRATCH WALL MOVED FROM TWENTY-FIVE TO TWENTY-SIX, AND WHAT MOVED IT
 \ WAS AN ARENA THAT STOPPED ABANDONING SPANS. An IR arena grows by taking a
@@ -346,15 +350,15 @@ variable SRC-U
    T-LABEL
    14 LOADS-SRC TRY 0 T=
 
-   s" and twenty read a turn, which is the widest that compiles" T-LABEL
-   20 LOADS-SRC TRY 0 T=
+   s" the host's widest load row compiles" T-LABEL
+   21 20 HOST-N LOADS-SRC TRY 0 T=
 
-   s" twenty-one plan five re-emissions and the rewritten module wants arena"
+   s" the next row plans re-emissions and the rewritten module wants arena"
    T-LABEL
-   21 LOADS-SRC TRY E-IR-CTX-SCRATCH T=
+   22 21 HOST-N LOADS-SRC TRY E-IR-CTX-SCRATCH T=
 
-   s" twenty-two plan none and are refused a register instead" T-LABEL
-   22 LOADS-SRC TRY E-A64RA-SPILL T=
+   s" the following row plans none and is refused a register instead" T-LABEL
+   23 22 HOST-N LOADS-SRC TRY E-A64RA-SPILL T=
 
    s" so are twenty-five, which is that wall's far side" T-LABEL
    25 LOADS-SRC TRY E-A64RA-SPILL T=
@@ -364,21 +368,21 @@ variable SRC-U
    26 LOADS-SRC TRY E-IR-CTX-SCRATCH T= ;
 
 \ ---- what the crossing refusal is NOT ----------------------------------------
-\ Both controls carry the SAME count as the refusal below, which is the only way
-\ they control for anything.
+\ Both controls carry the SAME host-sized count as the refusal below, which is
+\ the only way they control for anything.
 
 : NOT-THE-LOOP-CASES ( -- )
-   s" ten values live ACROSS a callless loop compile: residency is not it"
+   s" the refused count lives across a callless loop: residency is not it"
    T-LABEL
-   10 NOCALL-SRC TRY 0 T= ;
+   11 10 HOST-N NOCALL-SRC TRY 0 T= ;
 
 : NOT-THE-CALL-CASES ( -- )
-   s" ten values across a call with NO loop compile: the call is not it" T-LABEL
-   10 NOLOOP-SRC TRY 0 T= ;
+   s" the refused count crosses a call with no loop: the call is not it" T-LABEL
+   11 10 HOST-N NOLOOP-SRC TRY 0 T= ;
 
 \ ---- what it IS: the crossing, measured by moving one thing ------------------
-\ The same ten values, the same loop, the same call, the same pool. The only
-\ difference between the two cases is whether they are folded into the
+\ The same host-sized values, the same loop, the same call, the same pool. The
+\ only difference between the two cases is whether they are folded into the
 \ accumulator before the loop or read after it, which is exactly what decides
 \ whether they must survive the call.
 \
@@ -389,11 +393,11 @@ variable SRC-U
 \ this pair measures the crossing. Against a callee that DID publish one they
 \ travel one value later, which is the next section, not a hole in this one.
 : CROSSING-CASES ( -- )
-   s" ten values folded in BEFORE a loop that calls compile" T-LABEL
-   10 PRE-SRC TRY 0 T=
+   s" the crossing count folded in before a loop that calls compiles" T-LABEL
+   11 10 HOST-N PRE-SRC TRY 0 T=
 
    s" and read AFTER it they are refused: they had to travel" T-LABEL
-   10 EPOST-SRC TRY E-A64RA-SPILL T= ;
+   11 10 HOST-N EPOST-SRC TRY E-A64RA-SPILL T= ;
 
 \ ---- and what decides whether the crossing happens at all --------------------
 \ WHAT THE CASES ABOVE MEASURE IS THE PRICE OF TRAVELLING, AND THIS SECTION IS
@@ -414,10 +418,9 @@ variable SRC-U
 \ which was refused until the elaborator started asking.
 \
 \ BOTH WALLS ARE PINNED FROM BOTH SIDES HERE, WHICH IS WHAT PRICES THE RECORD.
-\ Against the callee that published nothing the wall is at ten and nine compile;
-\ against the one that published a record it is at eleven and ten compile. So
-\ what a clobber record is worth to a crossing body is exactly one more live
-\ value, and a change claiming more or less has a row here to move.
+\ Linux's boundaries are eleven/ten without a row and twelve/eleven with one;
+\ Darwin's are ten/nine and eleven/ten. A clobber record is therefore worth
+\ exactly one more crossing value on either host.
 : RECORD-CASES ( -- )
    s" the chain's callee publishes what it destroys" T-LABEL
    s" CODEGEN-CORPUS4:C-LONG-N" PUBLISHES-CLOBBER? TTRUE
@@ -426,13 +429,13 @@ variable SRC-U
    s" CODEGEN-CORPUS4:C-LONG" PUBLISHES-CLOBBER? TFALSE
 
    s" the refused body compiles against the callee that published one" T-LABEL
-   10 CPOST-SRC TRY 0 T=
+   11 10 HOST-N CPOST-SRC TRY 0 T=
 
    s" and one value wider that callee runs out too" T-LABEL
-   11 CPOST-SRC TRY E-A64RA-SPILL T=
+   12 11 HOST-N CPOST-SRC TRY E-A64RA-SPILL T=
 
-   s" nine crossing the callee that published none compile" T-LABEL
-   9 EPOST-SRC TRY 0 T= ;
+   s" one below the rowless wall compiles" T-LABEL
+   10 9 HOST-N EPOST-SRC TRY 0 T= ;
 
 \ ---- the wall a value that can be WRITTEN AGAIN moves ------------------------
 \ A CLASS WHOSE ONE VALUE WAS WRITTEN BY A MOVE-WIDE NEEDS NO FRAME SLOT, because
@@ -440,11 +443,10 @@ variable SRC-U
 \ replaces would have been (src/compiler/native/regalloc.f MB-REMATABLE?). These
 \ four cases are what that moved, what it did NOT move, and where it stops.
 \
-\   THE WALL IT MOVED. Twenty constants materialised inside a loop body are held
-\   outright; the twenty-first is compiled by writing one of them again, with an
-\   EMPTY FRAME - which is the whole of the claim: this is not a spill that found
-\   somewhere to put the value, it is a value that needed nowhere. Forty-three go
-\   the same way on twenty-three re-emissions.
+\   THE WALL IT MOVED. Darwin holds twenty constants inside a loop body outright
+\   and Linux holds twenty-one; the next is compiled by writing one again, with
+\   an EMPTY FRAME. Forty-three compile on twenty-three Darwin re-emissions or
+\   twenty-two Linux re-emissions.
 \
 \   THE WALL IT DID NOT MOVE, AND WHY THAT IS THE SAME RULE. The same constants
 \   written before the loop and read after it stop at fifteen. Each of them is
@@ -452,16 +454,17 @@ variable SRC-U
 \   carrying it round into a class of MORE THAN ONE value, and a class of more
 \   than one value is not a constant this pass can write again - there is no
 \   single operation to re-emit. That shape then meets BOTH walls in turn:
-\   sixteen still plan re-emissions for what they can and run the context out,
-\   twenty plan none and are refused a register.
+\   sixteen still plan re-emissions for what they can and run the context out;
+\   the register refusal is twenty on Darwin and twenty-one on Linux.
 \
 \   AND THE CHAIN IS REFUSED WHERE THE SINGLE MOVE-WIDE IS ADMITTED, which is the
-\   one-variable contrast this file is for. Twenty-two constants inside the body
-\   compile when each is one move-wide and are refused when each is sixty-four
-\   bits wide: same count, same shape, same pool, and the only difference is that
+\   one-variable contrast this file is for. Twenty-two constants on Darwin or
+\   twenty-three on Linux compile when each is one move-wide and are refused when
+\   each is sixty-four bits wide: same count, same shape, same pool, and the only
+\   difference is that
 \   a wide constant is a move-wide followed by three overwrites. Re-emitting the
 \   end of that chain would mean re-emitting all of it, so it is not one
-\   instruction and not a candidate. Twenty of the wide ones compile, which is
+\   instruction and not a candidate. Two fewer wide constants compile, which is
 \   what says the refusal is the re-emission and not the width. That is what
 \   protects CODEGEN-CORPUS4:BIG-CONSTS, whose four constants are exactly this
 \   shape, and it is asserted here as a refusal rather than as a byte count
@@ -498,14 +501,14 @@ variable SRC-U
 \ base pointer live across the whole body while the constants shape holds nothing
 \ else at all.
 : REMAT-INSIDE-CASES ( -- )
-   s" twenty one-movz constants inside a loop body fit with nothing decided"
+   s" the host's one-movz constants fit with nothing decided"
    T-LABEL
-   NARROW-BASE 20 s" RIN" INSIDE-SRC TRY 0 T=
+   NARROW-BASE 21 20 HOST-N s" RIN" INSIDE-SRC TRY 0 T=
    NMIGRATE:REMATS 0 T=
 
-   s" and twenty-one compile by writing one of them again, taking no frame"
+   s" and the next compiles by writing one again, taking no frame"
    T-LABEL
-   NARROW-BASE 21 s" RIN" INSIDE-SRC TRY 0 T=
+   NARROW-BASE 22 21 HOST-N s" RIN" INSIDE-SRC TRY 0 T=
    NMIGRATE:REMATS 1 T=
    NMIGRATE:SPILLS 0 T= ;
 
@@ -516,27 +519,27 @@ variable SRC-U
    s" sixteen re-emit what they can and run the context out" T-LABEL
    NARROW-BASE 16 s" RAC" ACROSS-SRC TRY E-IR-CTX-SCRATCH T=
 
-   s" and twenty re-emit nothing: a class of two values is no candidate" T-LABEL
-   NARROW-BASE 20 s" RAC" ACROSS-SRC TRY E-A64RA-SPILL T= ;
+   s" and the host wall re-emits nothing: a tied class is no candidate" T-LABEL
+   NARROW-BASE 21 20 HOST-N s" RAC" ACROSS-SRC TRY E-A64RA-SPILL T= ;
 
 : REMAT-WIDE-CASES ( -- )
-   s" twenty-two one-movz constants inside the body compile on two re-emissions"
+   s" the host's one-movz constants compile on two re-emissions"
    T-LABEL
-   NARROW-BASE 22 s" RWC" INSIDE-SRC TRY 0 T=
+   NARROW-BASE 23 22 HOST-N s" RWC" INSIDE-SRC TRY 0 T=
    NMIGRATE:REMATS 2 T=
 
-   s" and twenty-two sixty-four-bit ones are refused: a chain is not one form"
+   s" and the same count of wide ones is refused: a chain is not one form"
    T-LABEL
-   WIDE-BASE 22 s" RWI" INSIDE-SRC TRY E-A64RA-SPILL T=
+   WIDE-BASE 23 22 HOST-N s" RWI" INSIDE-SRC TRY E-A64RA-SPILL T=
 
-   s" while twenty of the wide ones compile: it is the re-emission, not the width"
+   s" while two fewer wide ones compile: it is the re-emission, not the width"
    T-LABEL
-   WIDE-BASE 20 s" RWI" INSIDE-SRC TRY 0 T= ;
+   WIDE-BASE 21 20 HOST-N s" RWI" INSIDE-SRC TRY 0 T= ;
 
 : REMAT-SCRATCH-CASES ( -- )
    s" forty-three re-emitted constants compile" T-LABEL
    NARROW-BASE 43 s" RIN" INSIDE-SRC TRY 0 T=
-   NMIGRATE:REMATS 23 T=
+   NMIGRATE:REMATS 22 23 HOST-N T=
 
    s" and forty-four do not fit the migration context (who-owns-the-scratch)"
    T-LABEL

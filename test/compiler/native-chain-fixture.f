@@ -124,7 +124,7 @@ variable N-SPILLED                   \ slots the first walk of the last run used
 
 public
 
-\ The AArch64 Darwin binding these chain runs are made under. Overflow wraps,
+\ The host AArch64 binding these chain runs are made under. Overflow wraps,
 \ which is what ARM64's add, sub and mul do; a trapping unit is refused by the
 \ selector and has its own case in the selection suite. It is the compiler's own
 \ binding, stated in src/compiler/native/abi.f.

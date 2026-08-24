@@ -25,9 +25,8 @@
 \   - a field that moved, a base opcode that changed, or a scale that stopped
 \     dividing, through the emitted word of every row on the Habu side and the
 \     generated Rocq obligation built from that same row;
-\   - a reserved-register check that appeared or disappeared, through the child
-\     engines that run the refusing rows and read their exit status, and through
-\     the rows the shipped code lets through unrefused;
+\   - a target register policy that drifted: Darwin runs every x18 X-register
+\     row in a refusing child, while Linux emits every one in-process;
 \   - a rewritten theorem statement, through the statement each manifest row
 \     pins. The row's type is ascribed to a generated definition whose body is
 \     the theorem, so Rocq itself has to accept the proved statement as the one

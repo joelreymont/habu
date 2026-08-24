@@ -3946,10 +3946,11 @@ fits.
   allocator must never hand it out" into something no contract can say.**
   `src/arch/arm64/mnem.f` calls x19 XDS, `src/habu/rt.f`'s push and pop are a
   store and a load through it, and `src/habu/habu2.f` measures interpreter depth
-  as `(XDS - S0) / 8`. Excluding 19 from `A64EFF`'s general-register mask - the
-  same line x18, x30 and 31 are excluded on - means every route into a contract
-  refuses it: the set constructor, the single-register constructor, a place list,
-  and the writable set an allocator derives. There is no check any pass has to
+  as `(XDS - S0) / 8`. Excluding 19 from `A64EFF`'s general-register mask -
+  alongside target-dependent x18 and unconditional x30/x31 - means every route
+  into a contract refuses it: the set constructor, the single-register
+  constructor, a place list, and the writable set an allocator derives. There is
+  no check any pass has to
   remember, because there is no contract to remember it about.
 
 - **An emitted routine is callable as a Habu word the moment its arguments come

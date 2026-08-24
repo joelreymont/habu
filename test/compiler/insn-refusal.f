@@ -9,11 +9,8 @@
 \ same frozen tables the rest of the gate reads, so a row cannot be refused here
 \ and encoded there. Which environment variable is set says which table:
 \
-\   HABU_INSN_RESERVED_ROW - a reserved-register row. The child emits it
-\     through the real mnemonic. If `XREG?` refuses, the child never returns
-\     and the parent sees 72; if it does not, the child exits 0 and the parent's
-\     row - which records the word instead of a code - is the one that has to
-\     hold.
+\   HABU_INSN_RESERVED_ROW - an x18 row, used on Darwin. The child emits it
+\     through the real mnemonic; `XREG?` refuses and the parent sees 72.
 \   HABU_INSN_RANGE_ROW - an operand outside the field it goes in, or one a
 \     scale division would round down.
 \   HABU_INSN_LIMM_ROW - a mask `>LIMM` cannot pack.

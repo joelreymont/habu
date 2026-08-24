@@ -47,6 +47,11 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 4 constant INSN-BYTES
 0 constant GLOBAL-WID
 
+: HOST-N ( n n -- n )
+   HB-TARGET-LINUX? if drop exit then
+   HB-TARGET-MACOS? if nip exit then
+   E-CTGT-ABI throw ;
+
 variable OLD-START
 variable OLD-LEN
 
@@ -169,10 +174,11 @@ variable OLD-LEN
 \
 \ THE BODY IS SIZED PAST THE MACHINE, not past a budget. The chain takes
 \ NABI:SCRATCH - every register the machine and the engine leave a routine, which
-\ is twenty-four - so a body that spills has to need more than twenty-four values
-\ at once, and this one needs twenty-eight. That is the only way a spill case can
-\ be honest now that no caller states a budget: an eight-term body spilled here
-\ once because the caller had said four registers, which measured the caller.
+\ is twenty-five on Linux and twenty-four on Darwin - so a body that spills has
+\ to need more than the host leaves it, and this one needs twenty-eight. That is
+\ the only way a spill case can be honest now that no caller states a budget: an
+\ eight-term body spilled here once because the caller had said four registers,
+\ which measured the caller.
 \
 \ AND THE SPILL COUNT IS ASSERTED BECAUSE THE ANSWERS ALONE CANNOT SEE IT. The
 \ same body compiled with registers to spare answers 686 too. NMIGRATE:SPILLS is
@@ -188,17 +194,14 @@ variable OLD-LEN
 : SPILL-CASE ( -- )
    MIGRATE-SPILL
 
-   \ FOUR, AND THE FOUR ARE THE MEASUREMENT. Every one of this body's terms adds a
-   \ small number to the same argument, and the combine pass folds each of those
-   \ numbers into the addition's own immediate field, so no constant takes a
-   \ register: the pressure is what the body needs LIVE AT ONCE, which is its
-   \ twenty-eight terms against the machine's twenty-four registers. Twenty-five
-   \ terms put one value in the frame and each term after that adds one, measured
-   \ through this entry, so the count moves if the pool, the folding or the
-   \ allocator's choice of victim moves - and the answers below say the values
-   \ that went to the frame came back.
-   s" four values went to the frame, and the migration says so" T-LABEL
-   NMIGRATE:SPILLS 4 T=
+   \ THE COUNT IS THE MEASUREMENT. Every one of this body's terms adds a small
+   \ number to the same argument, and the combine pass folds each number into the
+   \ addition's immediate field, so the pressure is its twenty-eight live terms
+   \ against twenty-five Linux registers or twenty-four Darwin registers. The
+   \ count moves if the host pool, folding or victim choice moves - and the
+   \ answers below say the values that went to the frame came back.
+   s" the host-sized spill count is reported by the migration" T-LABEL
+   NMIGRATE:SPILLS 3 4 HOST-N T=
 
    s" the record points at the code the publication seam claimed" T-LABEL
    s" NMG-SPILL" REC-START
@@ -217,9 +220,9 @@ variable OLD-LEN
 
 \ ---- a definition that is lowered and puts NOTHING in a frame ----------------
 \ TWENTY-TWO CONSTANTS MATERIALISED INSIDE A LOOP BODY. All twenty-two are live
-\ at once where the last is written, two more than the machine's pool can hold,
-\ and the two that lose their register are WRITTEN AGAIN in front of the
-\ addition that reads them rather than put away
+\ at once where the last is written. One loses its register on Linux and two do
+\ on Darwin; each is WRITTEN AGAIN in front of the addition that reads it rather
+\ than put away
 \ (src/compiler/native/regalloc.f MB-REMATABLE?). So this definition goes through
 \ the whole lowering - allocate, rewrite, allocate the rewritten module, accept -
 \ with an empty frame, which is the case the driver above SPILL-CASE could not
@@ -241,15 +244,13 @@ variable OLD-LEN
 \ program - that check reads two modules and is dot
 \ habu-prove-the-spill-0294e0e8, which re-emission now shares.
 \
-\ TWENTY-TWO, BECAUSE THE POOL IS THE MACHINE'S. The chain takes NABI:SCRATCH,
-\ twenty-four registers, so twenty-one constants all fit and re-emit nothing;
-\ each one past that loses its register and is written again where it is read.
-\ Measured through this entry: twenty-one gives one, twenty-two gives two.
+\ TWENTY-TWO, BECAUSE THE POOL IS THE MACHINE'S. With its other live values, the
+\ body holds twenty constants outright on Darwin and twenty-one on Linux; each
+\ one past that is written again where it is read.
 \
 \ AND THE COUNTS ARE STILL ASSERTED, because the answers cannot see the route.
-\ The same body at a wider pool answers 888569 too. REMATS is what says two
-\ values were written again, and SPILLS being zero is what says neither of them
-\ was put in a frame instead.
+\ The same body at a wider pool answers 888569 too. REMATS says how many values
+\ were written again, and SPILLS being zero says none entered a frame instead.
 : REMAT-SRC ( -- ptr u8 n )
    s" : NMG-REMAT ( n n -- n ) {: s:n l:n :} s l 0 ?do 40001 40038 40075 40112 40149 40186 40223 40260 40297 40334 40371 40408 40445 40482 40519 40556 40593 40630 40667 40704 40741 40778 + + + + + + + + + + + + + + + + + + + + + + loop ;" ;
 
@@ -259,8 +260,9 @@ variable OLD-LEN
 : REMAT-CASE ( -- )
    MIGRATE-REMAT
 
-   s" two values were written again, and none went to the frame" T-LABEL
-   NMIGRATE:REMATS 2 T=
+   s" the host-sized values were written again, and none entered the frame"
+   T-LABEL
+   NMIGRATE:REMATS 1 2 HOST-N T=
    NMIGRATE:SPILLS 0 T=
 
    s" the record points at the code the publication seam claimed" T-LABEL

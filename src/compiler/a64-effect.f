@@ -52,8 +52,8 @@
 \ src/arch/arm64/asm.f emits, and test/compiler/a64-effect.f pins each one against
 \ that source instead of restating it:
 \   - a register operand is a five-bit field, so a file holds 32 registers;
-\   - x18 is Darwin platform-reserved and `XREG?` refuses it in EVERY X-register
-\     operand slot, so no emitted routine can hold state there;
+\   - x18 is platform-reserved on Darwin and ordinary on Linux; `XREG?` enforces
+\     that policy in every X-register operand slot;
 \   - x19 holds the running engine's data-stack pointer. src/arch/arm64/mnem.f
 \     names it (`19 constant XDS`), src/habu/rt.f's push and pop are stores and
 \     loads through it, and src/habu/habu2.f measures the interpreter's stack
@@ -61,7 +61,7 @@
 \     through this one register and leaves its results through it. It is not a
 \     register a routine may be given: a routine that wrote to it would move the
 \     caller's stack under the caller. It is excluded from the general-register
-\     mask for the same reason x18 is, which is what makes "the allocator may
+\     mask unconditionally, which is what makes "the allocator may
 \     never hand out the data-stack pointer" a fact about what a contract can BE
 \     rather than a check some pass has to remember;
 \   - the D-register file has no reserved member, so all 32 are nameable;
@@ -292,18 +292,24 @@ private
 
 5 constant REG-BITS       \ a register operand is a five-bit field
 1 REG-BITS lshift constant FILE-N        \ registers per file, which is that field's reach
-18 constant RESERVED-N    \ x18, refused by XREG? in every X-register operand slot
+18 constant DARWIN-RESERVED-N
 30 constant LINK-N        \ x30, the link register, which has its own contract field
 31 constant ZERO-N        \ operand 31: the zero register, or the stack pointer
 
-\ The registers this TARGET gives another owner: the platform register and the
-\ two operand slots that are not general state. Everything the ENGINE occupies is
+: PLATFORM-RESERVED-MASK ( -- n )
+   HB-TARGET-LINUX? if 0 exit then
+   HB-TARGET-MACOS? if 1 DARWIN-RESERVED-N lshift exit then
+   E-CTGT-ABI throw ;
+
+\ The registers this TARGET gives another owner: its optional platform register
+\ and the two operand slots that are not general state. Everything the ENGINE
+\ occupies is
 \ not this file's to know - src/habu/layout.f declares its own register
 \ assignments and derives ENGINE-GPR:MASK from them, and that mask is the one
 \ authority. This file used to name x19 here as a fifth constant, which is
 \ exactly the second copy that let x20, x26, x27 and x28 through: the engine
 \ claimed four more registers and nothing propagated (CG-13).
-1 RESERVED-N lshift
+PLATFORM-RESERVED-MASK
    1 LINK-N lshift or
    1 ZERO-N lshift or
 constant TARGET-RESERVED-MASK
@@ -435,8 +441,7 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    PAY-MASK and ;
 
 \ A register a routine can hold state in, decided by the set rule rather than by
-\ a second list of what is forbidden: x18, x19, x30 and 31 fail here because no
-\ general-register set may name them either.
+\ a second list of what is forbidden.
 : SEQ-REG-CK ( n -- )
    REG-CK 1 swap lshift GPR-CK drop ;
 
@@ -614,7 +619,6 @@ public
 
 \ ---- the machine facts, for a consumer that has to agree with them ------------
 : FILE-SIZE ( -- n )      FILE-N ;
-: RESERVED-GPR ( -- n )   RESERVED-N ;
 : LINK-GPR ( -- n )       LINK-N ;
 : ZERO-GPR ( -- n )       ZERO-N ;
 

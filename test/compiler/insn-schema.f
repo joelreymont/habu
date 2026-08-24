@@ -27,13 +27,10 @@
 \      bound the shipped code loosened would emit instead of dying, and a bound
 \      the model loosened would answer `true` here.
 \
-\   3. The reserved-register vectors. x18 is Darwin platform-reserved, and
-\      `XREG?` in `src/arch/arm64/asm.f` refuses it at encode time. A row names
-\      an operand slot holding x18 and what the shipped code does with it. There
-\      is one row for every X-register operand slot of every form, because the
-\      model's `checked_regs` is a claim about each slot on its own, and a row
-\      is what makes that claim answerable. All of them refuse; the one row that
-\      does not is the control, an immediate that happens to be 18.
+\   3. The x18 vectors. x18 is Darwin platform-reserved and ordinary on Linux.
+\      There is one row for every X-register operand slot of every form: Darwin
+\      must refuse each and Linux must emit each. The non-X controls emit on
+\      both hosts.
 \
 \   4. The logical-immediate vectors. `>LIMM` turns a plain mask into the
 \      packed N:immr:imms the encoding carries. The packing is what the model
@@ -426,8 +423,9 @@ variable LIM-N
 : RES+ ( n n n n n n n -- ) {: form:n a:n b:n c:n mask:n rc:n word:n :}
    form a b c 0 mask rc word RES4+ ;
 
-\ Almost every reserved-register row is the same shape: an operand slot holding
-\ x18, no mask, refused before a word exists.
+\ Almost every x18 row is the same shape: an X-register slot holding x18, no
+\ mask, and the Darwin refusal marker. Linux uses the same rows to require a
+\ successfully emitted word.
 : X18 ( n n n n -- ) {: form:n a:n b:n c:n :}
    form a b c 0 RESERVED-RC 0 RES+ ;
 
@@ -572,12 +570,9 @@ variable LIM-N
 \ read against those: `F-LDURD 0 19 -8` beside `F-LDUR 0 19 -8` differs in the
 \ word by exactly bit 26.
 \
-\ THE ROWS THAT NAME REGISTER 18 ARE THE POINT OF THIS BLOCK, exactly as they
-\ are for the SIMD group. d18 is an ordinary D register and must ENCODE here,
-\ while x18 in the BASE slot must die and sits in `RESERVED-MEMORY` below. One
-\ form, one number, one file apart: `F-LDRD 18 3 16` encodes and
-\ `F-LDRD 1 18 0` refuses. Put `XREG?` on the transfer slot and the first fails;
-\ take it off the base and the second stops refusing.
+\ d18 is an ordinary D register and must encode here. x18 in the base slot
+\ follows the host policy in `RESERVED-MEMORY`: Darwin refuses it and Linux
+\ emits it.
 \
 \ Reference: ARM ARM for A-profile, C6.2, LDR/STR (immediate, SIMD&FP, unsigned
 \ offset) and LDUR/STUR (SIMD&FP) with size=11. Words checked against the
@@ -667,16 +662,8 @@ variable LIM-N
 \ that result into a general register. Three instructions, and between them the
 \ whole of a byte-summing strip.
 \
-\ THE ROWS THAT NAME REGISTER 18 ARE THE POINT OF THIS BLOCK. x18 is Darwin
-\ platform-reserved and every X-register slot in the table below refuses it, but
-\ v18 is an ordinary vector register and refusing it would be wrong code
-\ refused. So the vector slots are exercised AT 18 here and must encode, while
-\ the general-register slots at 18 are in `RESERVED-SIMD` below and must die.
-\ The two blocks are the same question asked of one instruction twice, and
-\ `F-UMOVH 3 18 0` against `F-UMOVH 18 3 0` is the pair that answers it: the
-\ same form, the same number, one file apart, one encodes and one refuses. Put
-\ `XREG?` on the vector operand and the first of those rows fails; take it off
-\ the general one and the second stops refusing.
+\ v18 is an ordinary vector register on every host. The general-register slots
+\ at 18 are in `RESERVED-SIMD`, where Darwin refuses and Linux emits them.
 \
 \ Reference: ARM ARM for A-profile, C7.2, LD1 (multiple structures, one
 \ register, no offset) / UADDLV / UMOV. Words checked against the assembler.
