@@ -252,28 +252,6 @@ variable LABEL-U
    CHECK-PATH
    label labelu GE-EXPECT-NONZERO ;
 
-: FILE-STRICT-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
-   file fileu PATH!
-   CHECK-START
-   s" strict-signatures" CHECK-OPT
-   s" json-errors" CHECK-OPT
-   PATH$ CHECK-FILE
-   CHECK-PATH
-   label labelu GE-EXPECT-NONZERO ;
-
-: CHECK-STRICT ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   CHECK-START
-   s" strict-signatures" CHECK-OPT
-   CHECK-STDIN
-   label labelu GE-EXPECT-NONZERO ;
-
-: CHECK-STRICT-JSON ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   CHECK-START
-   s" strict-signatures" CHECK-OPT
-   s" json-errors" CHECK-OPT
-   CHECK-STDIN
-   label labelu GE-EXPECT-NONZERO ;
-
 : CHECK-JSON-FIELDS ( -- )
    s" verdict" s" rejected" s" --json-errors verdict" ERR-JSTR
    s" declared_effect" s" i64 -- i64 " s" --json-errors declared effect" ERR-JSTR
@@ -400,23 +378,6 @@ variable LABEL-U
    s" habu-json-file.err" WRITE-ERR
    s" habu-json-file.err" s" file-origin diagnostic contract" DIAG-CONTRACT
    s" diag-file-origin" s" habu-json-file.err" s" habu-json-file.f" s" file origin" GJA2P ;
-
-: STRICT-SIGNATURES ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : GDX-NOSIG dup ;" GE-SRC-LINE
-   s" tools/check.f --strict-signatures accepted nosig" CHECK-STRICT
-   s" E-MISSING-SIGNATURE" s" strict-signatures text diagnostic" GE-EXPECT-ERR-HAS
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : GDX-NOSIG dup ;" GE-SRC-LINE
-   s" tools/check.f --strict-signatures --json-errors accepted nosig" CHECK-STRICT-JSON
-   s" code" s" E-MISSING-SIGNATURE" s" strict-signatures JSON diagnostic" ERR-JSTR
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : X ( infer ) dup ;" GE-SRC-LINE
-   s" tools/check.f --strict-signatures accepted infer opt-out" CHECK-STRICT-JSON
-   s" code" s" E-UNVERIFIED-SIGNATURE" s" strict-signatures opt-out diagnostic" ERR-JSTR ;
 
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET

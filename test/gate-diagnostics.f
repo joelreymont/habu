@@ -14,7 +14,6 @@ require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/diag-origin-core.f
 require tools/json-only-core.f
-require tools/signature-lint-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
 require tools/public-signatures-core.f

@@ -1,7 +1,7 @@
 \ argv-test.f -- focused tests for lib/argv.f.
 \ Run mocks:  cat lib/errors.f lib/string.f lib/argv.f lib/argv-test.f | bin/hb
 \ Run script: cat lib/errors.f lib/string.f lib/argv.f lib/argv-test.f > /tmp/hb-argv-test.f
-\             bin/hb /tmp/hb-argv-test.f --json --label NAME --strict-signatures --all-errors --strict-boundary -o OUT -- file.f --literal
+\             bin/hb /tmp/hb-argv-test.f --json --label NAME --all-errors --strict-boundary -o OUT -- file.f --literal
 
 require lib/errors.f
 require lib/string.f
@@ -55,7 +55,6 @@ variable TEST-FAIL
    s" --json" MOCK+
    s" --label" MOCK+
    s" NAME" MOCK+
-   s" --strict-signatures" MOCK+
    s" --all-errors" MOCK+
    s" --strict-boundary" MOCK+
    s" -o" MOCK+
@@ -69,7 +68,6 @@ variable TEST-FAIL
    s" STDOUT" OUT-DEFAULT!
    PARSE
    JSON? ASSERT
-   STRICT-SIGNATURES? ASSERT
    ALL-ERRORS? ASSERT
    STRICT-BOUNDARY? ASSERT
    LABEL? ASSERT
@@ -196,7 +194,6 @@ variable TEST-FAIL
    PARSE
    2 EXPECT-POS-EXACT
    JSON? ASSERT
-   STRICT-SIGNATURES? ASSERT
    ALL-ERRORS? ASSERT
    STRICT-BOUNDARY? ASSERT
    LABEL$ s" NAME" ASSERT$

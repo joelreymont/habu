@@ -78,10 +78,8 @@ SUITE tool-boundary-lints
    tools/repl-lint-test.f
    tools/diag-origin-test.f
    tools/aot-lint-test.f
-   tools/signature-lint-test.f
    tools/checked-boundary-lint-test.f
    tools/reserved-name-lint-test.f
-   tools/duplicate-definition-lint-test.f
    tools/bundle-lib-test.f
    tools/json-only-test.f
 ;SUITE
@@ -967,7 +965,7 @@ SUITE argv-stdlib-mocks
 ;SUITE
 
 SUITE argv-stdlib-script-args
-   lib/argv-test.f -- --json --label NAME --strict-signatures --all-errors
+   lib/argv-test.f -- --json --label NAME --all-errors
    --strict-boundary -o OUT -- file.f --literal
 ;SUITE
 
@@ -1332,10 +1330,6 @@ SUITE include-events
 
 SUITE json
    tools/json-test.f
-;SUITE
-
-SUITE process-primitive-lint
-   tools/process-primitive-lint-test.f
 ;SUITE
 
 SUITE source-discovery

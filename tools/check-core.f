@@ -4,8 +4,7 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, tools/lint/source-lex.f,
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
-\ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
-\ tools/reserved-name-lint-core.f,
+\ tools/checked-boundary-lint-core.f, tools/reserved-name-lint-core.f,
 \ tools/check-all-errors-core.f (which loads verify-source.f), and lib/argv.f.
 \ The dependency-closure producer (whole-file ordered loader events) and its
 \ dynamic-tail manifest are required below.
@@ -85,7 +84,6 @@ variable CHK-SEL-SRC-BUF-A
 variable CHK-ARG-I
 variable CHK-POS-N
 variable CHK-JSON
-variable CHK-STRICT
 variable CHK-ALL
 variable CHK-SEL-MODE
 variable CHK-SEL-SRC-U
@@ -210,7 +208,7 @@ variable CHK-TFAM-NAME-I
    CHK-LF CHK-ERR-C ;
 
 : CHK-USAGE ( -- )
-   s" usage: tools/check.f [--json-errors] [--strict-signatures] [--all-errors] [--source-list file ... | prog.f]" CHK-ERR-LN
+   s" usage: tools/check.f [--json-errors] [--all-errors] [--source-list file ... | prog.f]" CHK-ERR-LN
    CHK-E-USAGE throw ;
 
 : CHK-THROW ( n -- )
@@ -259,7 +257,6 @@ variable CHK-TFAM-NAME-I
 
 : CHK-OPT ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" json-errors" LINT-STR= if LINT-TRUE CHK-JSON ! exit then
-   a u s" strict-signatures" LINT-STR= if LINT-TRUE CHK-STRICT ! exit then
    a u s" all-errors" LINT-STR= if LINT-TRUE CHK-ALL ! exit then
    a u s" source-list" LINT-STR= if CHK-LIST-OPT exit then
    CHK-USAGE ;
@@ -284,7 +281,6 @@ private
 
 : CHK-PARSE-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" --json-errors" LINT-STR= if s" json-errors" OPT exit then
-   a u s" --strict-signatures" LINT-STR= if s" strict-signatures" OPT exit then
    a u s" --all-errors" LINT-STR= if s" all-errors" OPT exit then
    a u s" --source-list" LINT-STR= if s" source-list" OPT exit then
    a u CHK-DASH? if CHK-USAGE then
@@ -353,7 +349,6 @@ private
 : CHK-RESET-CFG ( -- )
    0 CHK-ARG-I !
    0 CHK-JSON !
-   0 CHK-STRICT !
    0 CHK-ALL !
    CHK-SELECT-CLEAR
    CHK-RUN-TEMP-CLEAR ;
@@ -1159,14 +1154,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-OUT-BUF CHK-OUT-U @ CHK-OUT
    CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
 
-: CHK-RUN-STRICT ( -- )
-   CHK-STRICT @ 0= if exit then
-   SIGNATURE-LINT:RESET
-   2 >FD SIGNATURE-LINT:OUT-FD!
-   CHK-JSON @ SIGNATURE-LINT:JSON!
-   CHK-LINT-SOURCE CHK-LINT-LABEL SIGNATURE-LINT:FILE-AS
-   SIGNATURE-LINT:FINISH ;
-
 : CHK-RUN-BOUNDARY ( -- )
    2 >FD CHECKED-BOUNDARY-LINT:OUT-FD!
    CHK-JSON @ CHECKED-BOUNDARY-LINT:JSON!
@@ -1343,7 +1330,6 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
       CHK-RUN-NOMINAL-AUTH
       CHK-RUN-RESERVED-NAMES
       CHK-RUN-BOUNDARY
-      CHK-RUN-STRICT
    ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0 <> if rc throw then ;

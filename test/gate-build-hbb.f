@@ -20,11 +20,5 @@ using HB-BUILD-CLI                       \ the hb-build options and entry
    GB-HBB-PREPARE
    GB-HBB-BUILD-OUT ;
 
-: GB-HBB-BUILD-STRICT ( ptr u8 n -- )
-   GB-WRITE-SRC
-   GB-HBB-PREPARE
-   HBB-STRICT-ON
-   GB-HBB-BUILD-OUT ;
-
 ;using                                   \ HB-BUILD-CLI
 ;using                                   \ BUILD-FIXPOINT

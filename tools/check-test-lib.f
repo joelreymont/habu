@@ -5,7 +5,7 @@
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
-\ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
+\ tools/checked-boundary-lint-core.f
 \ tools/reserved-name-lint-core.f
 \ tools/check-all-errors-core.f lib/argv.f
 \ tools/check-core.f tools/check-test.f
@@ -31,7 +31,6 @@ require tools/lint/source-lex.f
 require tools/diag-origin-core.f
 require tools/json.f
 require tools/json-only-core.f
-require tools/signature-lint-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f
@@ -1043,11 +1042,9 @@ variable LONG-J
 
 : TEST-OPTIONS ( -- )
    RESET
-   s" strict-signatures" OPT
    s" json-errors" OPT
    s" all-errors" OPT
    s" json-errors" OPT
-   s" strict-signatures" OPT
    s" all-errors" OPT
    GOOD$ s" options.f" SOURCE
    RUN 0 T=

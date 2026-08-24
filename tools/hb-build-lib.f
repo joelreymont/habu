@@ -82,7 +82,6 @@ variable HBB-KEY-I
 variable HBB-REPL
 variable HBB-JSON
 variable HBB-REPORT-JSON
-variable HBB-STRICT
 variable HBB-MAKER-HIT
 variable HBB-MAKER-BUILD
 variable HBB-MAKER-RUN
@@ -141,7 +140,7 @@ variable HBB-COMMENTED-U
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--repl] [--json-errors] [--report-json] [--strict-signatures] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--repl] [--json-errors] [--report-json] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-BUILD-PATH throw then
@@ -222,7 +221,6 @@ variable HBB-COMMENTED-U
    0 HBB-REPL !
    0 HBB-JSON !
    0 HBB-REPORT-JSON !
-   0 HBB-STRICT !
    0 HBB-PRESEED !
    0 HBB-ENTRY-NAME-U !
    0 HBB-SEED-HEX-U !
@@ -261,9 +259,6 @@ variable HBB-COMMENTED-U
    0 HBB-OBJECT-STORE !
    0 HBB-ARTIFACT-CACHE ! ;
 
-: HBB-STRICT-ON ( -- )
-   -1 HBB-STRICT ! ;
-
 : HBB-REPL-ON ( -- )
    -1 HBB-REPL ! ;
 
@@ -291,7 +286,6 @@ variable HBB-COMMENTED-U
    HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --report-json" HBB-ARG= if -1 HBB-REPORT-JSON ! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --strict-signatures" HBB-ARG= if -1 HBB-STRICT ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-entry" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-ENTRY! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-seed" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-SEED! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-mode" HBB-ARG= if
@@ -367,13 +361,6 @@ variable HBB-COMMENTED-U
    s" tools/aot-lint.f"  >LEN PROC-ARGV+
    HBB-LOAD-END ;
 
-: HBB-ADD-SIGNATURE-LINT-ENTRY ( -- )
-   s" tools/signature-lint.f" CLI-TOOLS-LOAD if exit then
-   HBB-ADD-LINT-LOADS
-   s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/signature-lint.f"  >LEN PROC-ARGV+
-   HBB-LOAD-END ;
-
 : HBB-ADD-DIAG-ORIGIN-ENTRY ( -- )
    s" tools/diag-origin.f" CLI-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
@@ -390,12 +377,6 @@ variable HBB-COMMENTED-U
 : HBB-ADD-AOT-LINT-CMD ( -- )
    HBB-CMD-RESET
    HBB-ADD-AOT-LINT-ENTRY
-   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-SRC$  >LEN PROC-ARGV+ ;
-
-: HBB-ADD-SIGNATURE-LINT-CMD ( -- )
-   HBB-CMD-RESET
-   HBB-ADD-SIGNATURE-LINT-ENTRY
    HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
    HBB-SRC$  >LEN PROC-ARGV+ ;
 
@@ -431,26 +412,16 @@ variable HBB-COMMENTED-U
    HBB-ADD-AOT-LINT-CMD
    HBB-RUN-HB-CAPTURE HBB-FINISH-TOOL ;
 
-: HBB-RUN-SIGNATURE-LINT-CHILD ( -- )
-   HBB-ADD-SIGNATURE-LINT-CMD
-   HBB-RUN-HB-CAPTURE HBB-FINISH-TOOL ;
-
 defer HBB-AOT-LINT-HOOK ( -- )
-defer HBB-SIGNATURE-LINT-HOOK ( -- )
 
-: HBB-INSTALL-CHILD-LINTS ( -- )
-   [: HBB-RUN-AOT-LINT-CHILD ;] is HBB-AOT-LINT-HOOK
-   [: HBB-RUN-SIGNATURE-LINT-CHILD ;] is HBB-SIGNATURE-LINT-HOOK ;
+: HBB-INSTALL-CHILD-LINT ( -- )
+   [: HBB-RUN-AOT-LINT-CHILD ;] is HBB-AOT-LINT-HOOK ;
 
-HBB-INSTALL-CHILD-LINTS
+HBB-INSTALL-CHILD-LINT
 
 : HBB-RUN-AOT-LINT ( -- )
    HBB-REPL @ if exit then
    HBB-AOT-LINT-HOOK ;
-
-: HBB-RUN-SIGNATURE-LINT ( -- )
-   HBB-STRICT @ 0= if exit then
-   HBB-SIGNATURE-LINT-HOOK ;
 
 : HBB-DIAG-TIMEOUT$ ( -- ptr u8 n )
    SB-RESET
@@ -934,7 +905,6 @@ HBB-INSTALL-CHILD-LINTS
    CONTENT-KEY:OPEN
    s" hb-build-artifact-cache-v2" CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
-   s" strict" HBB-STRICT @ 0 <> HBB-OPTION-TEXT+
    s" json" HBB-JSON @ 0 <> HBB-OPTION-TEXT+
    s" tools/diag-origin-core.f" HBB-KEY-FILE+
    s" tools/diag-origin.f" HBB-KEY-FILE+
@@ -1092,7 +1062,6 @@ HBB-INSTALL-CHILD-LINTS
    mono-ns HBB-START-NS !
    HB-BUILD:RESET
    HBB-RESET-TRACE
-   HBB-RUN-SIGNATURE-LINT
    HBB-RUN-AOT-LINT ;
 
 : HBB-BUILD-REST ( -- )
@@ -1135,7 +1104,7 @@ HBB-INSTALL-CHILD-LINTS
 \ ---------------------------------------------------------------------------
 \ The HB-BUILD-CLI surface: the words other files call, promoted in one place
 \ so the whole export list reads at a glance. tools/hb-build.f runs the entry
-\ with the package closed; the two lint hooks are `defer` words their installer
+\ with the package closed; the lint hook is a `defer` word its installer
 \ assigns through the QUALIFIED name, because `is` resolves its target through
 \ the engine's own lookup and does not consult used publics.
 
@@ -1151,10 +1120,7 @@ EXPORT HBB-PRESEED-ENTRY!
 EXPORT HBB-PRESEED-SEED!
 EXPORT HBB-RESET-OPTIONS
 EXPORT HBB-RUN-AOT-LINT
-EXPORT HBB-RUN-SIGNATURE-LINT
-EXPORT HBB-SIGNATURE-LINT-HOOK
 EXPORT HBB-SRC$
-EXPORT HBB-STRICT-ON
 
 ;using
 ;using

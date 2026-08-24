@@ -413,7 +413,6 @@ variable GE-EVAL-SRC-U
    s" tools/diag-origin-core.f" GE-ARG+
    s" tools/json.f" GE-ARG+
    s" tools/json-only-core.f" GE-ARG+
-   s" tools/signature-lint-core.f" GE-ARG+
    s" tools/checked-boundary-lint-core.f" GE-ARG+
    s" tools/reserved-name-lint-core.f" GE-ARG+
    s" tools/check-all-errors-core.f" GE-ARG+

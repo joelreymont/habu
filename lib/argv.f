@@ -42,7 +42,6 @@ create ARGV-POS-A ARGV-MAX cells allot
 create ARGV-POS-U ARGV-MAX cells allot
 
 variable ARGV-JSON
-variable ARGV-STRICT-SIGNATURES
 variable ARGV-ALL-ERRORS
 variable ARGV-STRICT-BOUNDARY
 
@@ -153,7 +152,6 @@ public
    0 ARGV-I !
    0 ARGV-NPOS !
    0 ARGV-JSON !
-   0 ARGV-STRICT-SIGNATURES !
    0 ARGV-ALL-ERRORS !
    0 ARGV-STRICT-BOUNDARY !
    NULL$ drop ARGV-LABEL-A ARGV-PTR-U8!  0 ARGV-LABEL-U !  0 ARGV-LABEL-SET !
@@ -237,8 +235,6 @@ public
 
 : JSON? ( -- bool )  ARGV-JSON @ 0 <> ;
 
-: STRICT-SIGNATURES? ( -- bool )  ARGV-STRICT-SIGNATURES @ 0 <> ;
-
 : ALL-ERRORS? ( -- bool )  ARGV-ALL-ERRORS @ 0 <> ;
 
 : STRICT-BOUNDARY? ( -- bool )  ARGV-STRICT-BOUNDARY @ 0 <> ;
@@ -254,7 +250,6 @@ private
    a u s" --json" ARGV-BYTES= if -1 ARGV-JSON ! exit then
    a u s" --json-errors" ARGV-BYTES= if -1 ARGV-JSON ! exit then
    a u s" --label" ARGV-BYTES= if a u ARGV-TAKE-NEXT LABEL! exit then
-   a u s" --strict-signatures" ARGV-BYTES= if -1 ARGV-STRICT-SIGNATURES ! exit then
    a u s" --all-errors" ARGV-BYTES= if -1 ARGV-ALL-ERRORS ! exit then
    a u s" --strict-boundary" ARGV-BYTES= if -1 ARGV-STRICT-BOUNDARY ! exit then
    a u s" -o" ARGV-BYTES= if a u ARGV-TAKE-NEXT OUT! exit then

@@ -4,8 +4,8 @@
 \ a COMMAND: `bin/hb --load tools/<name>-lint.f` is how a person or a script runs it.
 \ Such an entry must `require` its own dependency closure. When it only lists the
 \ closure in a header comment and relies on the caller having loaded it first, the
-\ command is dead. Four entries were dead that way when this guard was written:
-\ signature-lint, reserved-name-lint, duplicate-definition-lint, and aot-lint.
+\ command is dead. Reserved-name-lint and aot-lint were dead that way when this
+\ guard was written.
 \
 \ Each entry is spawned in a fresh child engine with empty stdin. The verdict is
 \ deliberately NOT "exit 0": these entries RUN when loaded, so a healthy one may
@@ -228,20 +228,16 @@ variable GOT-U
    a u COLLECTED? ;
 
 : FIXTURE ( -- )
-   s" signature-lint entry scheduled" T-LABEL
-      s" tools/signature-lint.f" SCHEDULES? TTRUE
    s" reserved-name-lint entry scheduled" T-LABEL
       s" tools/reserved-name-lint.f" SCHEDULES? TTRUE
-   s" duplicate-definition-lint entry scheduled" T-LABEL
-      s" tools/duplicate-definition-lint.f" SCHEDULES? TTRUE
    s" aot-lint entry scheduled" T-LABEL
       s" tools/aot-lint.f" SCHEDULES? TTRUE
    s" newly added lint entry scheduled" T-LABEL
       s" tools/newly-added-lint.f" SCHEDULES? TTRUE
    s" lint core is not an entry" T-LABEL
-      s" tools/signature-lint-core.f" SCHEDULES? TFALSE
+      s" tools/reserved-name-lint-core.f" SCHEDULES? TFALSE
    s" lint suite is not an entry" T-LABEL
-      s" tools/signature-lint-test.f" SCHEDULES? TFALSE
+      s" tools/reserved-name-lint-test.f" SCHEDULES? TFALSE
    s" nested lint helper is not an entry" T-LABEL
       s" tools/lint/shadow-lint.f" SCHEDULES? TFALSE
    \ A usage failure is not a dead load: the two statuses must stay distinct, or the
@@ -256,8 +252,8 @@ public
    FIXTURE
    0 PATHS-N !  0 PATHS-USED !
    s" tools" [: COLLECT ;] WALK-FILES
-   s" tools/signature-lint.f discovered" T-LABEL
-      s" tools/signature-lint.f" COLLECTED? TTRUE
+   s" tools/reserved-name-lint.f discovered" T-LABEL
+      s" tools/reserved-name-lint.f" COLLECTED? TTRUE
    LOAD-ALL
    T-REPORT
    s" lint-cli-standalone-load-test: ok" type cr ;

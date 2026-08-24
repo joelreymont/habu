@@ -24,7 +24,6 @@ for the certified compiler prefix; every generated payload executes
 - `--json`
 - `--json-errors`
 - `--label NAME`
-- `--strict-signatures`
 - `--all-errors`
 - `--strict-boundary`
 - `-o OUT`
@@ -42,7 +41,6 @@ exits 64.
 - `ARGV-EXPECT-POS ( lo hi -- )` validates positional count; `hi < 0` means unbounded.
 - `ARGV-EXPECT-POS-EXACT ( n -- )` validates an exact positional count.
 - `ARGV-REQUIRE-OUT ( -- )` and `ARGV-REQUIRE-LABEL ( -- )` require those options.
-- `ARGV-JSON?`, `ARGV-STRICT-SIGNATURES?`, `ARGV-ALL-ERRORS?`, and
-  `ARGV-STRICT-BOUNDARY?` return flags.
+- `ARGV-JSON?`, `ARGV-ALL-ERRORS?`, and `ARGV-STRICT-BOUNDARY?` return flags.
 - `ARGV-LABEL$`, `ARGV-OUT$`, and `ARGV-POS$ ( idx -- a u )` return parsed strings.
 - `ARGV-PATHZ`, `ARGV-POSZ`, and `ARGV-OUTZ` return NUL-terminated scratch paths.

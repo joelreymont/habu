@@ -1612,8 +1612,8 @@ packaged module and call it through the qualified `ARGV:` API. The parser reads
 `SCRIPT-ARGC` and `SCRIPT-ARGV$` by
 default, or an
 in-memory mock argv set for focused tests. `ARGV:PARSE` recognizes `--json`,
-`--json-errors`, `--label NAME`, `--strict-signatures`, `--all-errors`,
-`--strict-boundary`, `-o OUT`, and `--`; tokens after `--` are always
+`--json-errors`, `--label NAME`, `--all-errors`, `--strict-boundary`, `-o OUT`,
+and `--`; tokens after `--` are always
 positionals, even when they begin with a dash. Unknown dash-prefixed options and
 missing option values throw `ARGV:E-USAGE` after emitting the configured usage
 text unless quiet mode is enabled.
@@ -1636,7 +1636,6 @@ ARGV:POS#               ( -- n )
 ARGV:POS$               ( n -- ptr u8 n )
 ARGV:POSZ               ( n -- ptr u8 )
 ARGV:JSON?              ( -- bool )
-ARGV:STRICT-SIGNATURES? ( -- bool )
 ARGV:ALL-ERRORS?        ( -- bool )
 ARGV:STRICT-BOUNDARY?   ( -- bool )
 ARGV:LABEL-DEFAULT!     ( ptr u8 n -- )

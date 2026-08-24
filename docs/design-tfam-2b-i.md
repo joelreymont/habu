@@ -276,10 +276,9 @@ calls by real user-source files loaded through `--load`:
   `tools/hb-build-test.f` — atomics / `patch32`.
 - `tools/xref-test.f` — `LATEST`, `XREF-WORDLIST/-NAME$`, `search-wl`.
 - `tools/jitdump-core.f:31` — `get-current search-wl`.
-- Dict-introspection live-call files that would break under a broad A (16):
+- Dict-introspection live-call files that would break under a broad A:
   `test/gate-common-lib.f`, `test/gate-dictionary-lib.f`, `test/prop-test-core.f`,
   `tools/asm-src-test.f`, `tools/check-all-errors-core.f`,
-  `tools/duplicate-definition-lint-core.f`, `tools/duplicate-definition-lint-test-lib.f`,
   `tools/image-bytes-test.f`, `tools/imgdump.f`, `tools/jitdump-core.f`,
   `tools/object-image.f`, `tools/reserved-name-lint-core.f`,
   `tools/reserved-name-lint-test-lib.f`,
@@ -288,7 +287,7 @@ calls by real user-source files loaded through `--load`:
 So A can only ever be applied to the *pure mutators with zero tool use*
 (`CHECKER-DEFTYPE/DEFLINEAR/DEFRECORD`, registry truncate/undefine hooks,
 `snap-rebase`, `XREF-RETIRE*`, `HIDE/FORGET-DEFS-FROM`) — and even some of those are
-touched by `check-all-errors-core`/`duplicate-definition-lint`/`reserved-name-lint`,
+touched by `check-all-errors-core`/`reserved-name-lint`,
 so the truly-hideable set is small. That is fine: under C the *state* is protected
 regardless of whether the *word* is visible, so A is pure hardening.
 

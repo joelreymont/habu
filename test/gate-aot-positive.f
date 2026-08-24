@@ -14,7 +14,6 @@ require tools/lint/lib.f
 require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/aot-lint-core.f
-require tools/signature-lint-core.f
 require tools/hb-build-direct-lints.f
 require tools/json.f
 require tools/gate-json-assert-core.f

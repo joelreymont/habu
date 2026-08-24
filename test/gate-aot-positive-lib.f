@@ -120,9 +120,6 @@ variable BLR-CNT
    out outu GB-OUT!
    report reportu GB-REPORT! ;
 
-: BUILD-STRICT ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   label labelu GB-HBB-BUILD-STRICT ;
-
 : AOT-ASSERT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n label:ptr labelu:n :}
    mode modeu label labelu GB-GJA ;
 
@@ -239,7 +236,7 @@ variable BLR-CNT
 : BUNDLE ( -- )
    s" hb-aot-bundle.f" s" hb-aot-bundle" s" hb-aot-bundle-report.json" PATHS
    BUNDLE-SOURCE
-   s" hb-build AOT strict compact/features" BUILD-STRICT
+   s" hb-build AOT compact/features" GB-HBB-BUILD
    BUNDLE-EXPECT s" hb-build AOT compact/features output" GB-RUN-EXPECT
    GB-OUT$ GB-EXEC-TEXT-SIZE {: textsz:n :}
    textsz STRIPPED-TEXT-MAX >= if s" hb-build AOT stripped text" GE-FAIL then
@@ -247,7 +244,7 @@ variable BLR-CNT
    s" hb-build AOT call report" GB-AOT-REPORT
    s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
    s" aot-compact" s" aot-compact call report" AOT-ASSERT
-   s" PASS: hb-build AOT strict compact/feature coverage (text " type
+   s" PASS: hb-build AOT compact/feature coverage (text " type
    textsz GB-U.
    s"  B)" type cr ;
 
@@ -297,7 +294,7 @@ variable BLR-CNT
 : DATA ( -- )
    s" hb-aot-data.f" s" hb-aot-data" s" hb-aot-data-report.json" PATHS
    DATA-SOURCE
-   s" hb-build AOT data region build" BUILD-STRICT
+   s" hb-build AOT data region build" GB-HBB-BUILD
    DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
@@ -335,7 +332,7 @@ variable BLR-CNT
 : DATA-WINDOW ( -- )
    s" hb-aot-window.f" s" hb-aot-window" s" hb-aot-window-report.json" PATHS
    DATA-WINDOW-SOURCE
-   s" hb-build AOT code-window datum build" BUILD-STRICT
+   s" hb-build AOT code-window datum build" GB-HBB-BUILD
    DATA-WINDOW-EXPECT s" hb-build AOT code-window datum output" GB-RUN-EXPECT
    s" PASS: hb-build AOT code-window datum (metadata classification, not magnitude)" type cr ;
 
@@ -370,7 +367,7 @@ variable BLR-CNT
 : LAYOUT-STORE ( -- )
    s" hb-aot-layout-store.f" s" hb-aot-layout-store" s" hb-aot-layout-store-report.json" PATHS
    LAYOUT-STORE-SOURCE
-   s" hb-build AOT layout-bundle store build" BUILD-STRICT
+   s" hb-build AOT layout-bundle store build" GB-HBB-BUILD
    LAYOUT-STORE-EXPECT s" hb-build AOT layout-bundle store output" GB-RUN-EXPECT
    s" PASS: hb-build AOT layout-bundle store (LP2STORE reaches (PROT-SPAN) via a relocated call)" type cr ;
 
@@ -407,7 +404,7 @@ variable BLR-CNT
 : LAYOUT-FETCH ( -- )
    s" hb-aot-layout-fetch.f" s" hb-aot-layout-fetch" s" hb-aot-layout-fetch-report.json" PATHS
    LAYOUT-FETCH-SOURCE
-   s" hb-build AOT layout-bundle fetch build" BUILD-STRICT
+   s" hb-build AOT layout-bundle fetch build" GB-HBB-BUILD
    LAYOUT-FETCH-EXPECT s" hb-build AOT layout-bundle fetch output" GB-RUN-EXPECT
    s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
    s" PASS: hb-build AOT layout-bundle fetch (LP2VEXEC reaches via a relocated call; zero blr x16)" type cr ;

@@ -1,8 +1,6 @@
 \ lib.f - shared scanner foundation for native lint tools.
 \ Load after tools/lint/text.f and tools/lint/token.f.
 
-using LINT-SPLIT   \ tools/lint/text.f: SPLIT-LINES/SPLIT-WHITESPACE/SN#/S@
-
 \ ---- named scanners replacing the former regex use-cases ------------------
 \ Scanner captures remain in shared cells for scanner callers; scanner logic is
 \ checked and returns typed bools.
@@ -203,26 +201,6 @@ variable PTA  variable PTU
       PAT-ADV
    repeat  LINT-FALSE ;
 
-\ Signature comment classification used by strict source tools.
-
-0 constant SIG-MISSING
-1 constant SIG-TYPED
-2 constant SIG-OPTOUT
-: SIG-OPTOUT? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u SPLIT-WHITESPACE
-   SN# @ 1 = IF
-      0 S@ s" infer" LINT-STR=CI IF LINT-TRUE exit THEN
-      0 S@ s" private" LINT-STR=CI IF LINT-TRUE exit THEN
-   THEN
-   SN# @ 2 = IF
-      0 S@ s" infer" LINT-STR=CI  1 S@ s" private" LINT-STR=CI and IF LINT-TRUE exit THEN
-      0 S@ s" private" LINT-STR=CI  1 S@ s" infer" LINT-STR=CI and IF LINT-TRUE exit THEN
-   THEN LINT-FALSE ;
-: SIG-KIND ( ptr u8 n -- n ) {: a:ptr u :}
-   a u s" --" LINT-CONTAINS? IF SIG-TYPED exit THEN
-   a u SIG-OPTOUT? IF SIG-OPTOUT exit THEN
-   SIG-MISSING ;
-
 \ ---- attributed CLI failure -------------------------------------------------
 \ Route lint CLI entrypoints through LINT-MAIN so an uncaught throw (e.g. an
 \ E-LINT-*-CAP limit) names the tool and code instead of dying rc-only: the
@@ -275,5 +253,3 @@ variable LINT-MAIN-NI
 
 \ Downstream scanner modules that need an unchecked boundary must declare and
 \ test that boundary locally instead of inheriting one from this shared library.
-
-;using

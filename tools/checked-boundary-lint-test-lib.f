@@ -302,8 +302,6 @@ create LF-BYTE 10 c,
    s" tools/json-file.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/hook-sites.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/signature-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/signature-lint.f" CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
 : RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}

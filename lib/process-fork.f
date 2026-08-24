@@ -42,11 +42,8 @@ private
 \ so the fork wrapper, which is the one place that knows, records it.
 variable CHILD-FLAG
 
-\ Everything a new process entered by fork owes itself, run on the child's very
-\ first instruction after the fork and before any caller code. The gate's
-\ process-primitive lint (tools/process-primitive-lint.f) confines the `fork`
-\ primitive to the lib/process*.f family, and RAW is its only call site in the
-\ tree, so this is the one seam every forked child in the system passes through.
+\ Everything a new process entered through RAW owes itself, run on the child's
+\ very first instruction after the fork and before any caller code.
 \
 \ lib/fs-mutate.f's cleanup table is process-owned state: its entries name paths
 \ THIS process created and promised to remove, and CLEANUP-RUN deletes every

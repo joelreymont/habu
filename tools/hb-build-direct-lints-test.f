@@ -27,25 +27,19 @@ require tools/lint/lib.f
 require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/aot-lint-core.f
-require tools/signature-lint-core.f
 
 package HB-BUILD-DIRECT-LINTS-TEST
 private
 
 $7A01 constant AOT-SENTINEL-RC
-$7A02 constant SIG-SENTINEL-RC
 
 : AOT-SENTINEL ( -- )
    AOT-SENTINEL-RC throw ;
 
-: SIG-SENTINEL ( -- )
-   SIG-SENTINEL-RC throw ;
+: INSTALL-SENTINEL ( -- )
+   [: AOT-SENTINEL ;] is HB-BUILD-CLI:HBB-AOT-LINT-HOOK ;
 
-: INSTALL-SENTINELS ( -- )
-   [: AOT-SENTINEL ;] is HB-BUILD-CLI:HBB-AOT-LINT-HOOK
-   [: SIG-SENTINEL ;] is HB-BUILD-CLI:HBB-SIGNATURE-LINT-HOOK ;
-
-INSTALL-SENTINELS
+INSTALL-SENTINEL
 
 ;package
 
@@ -61,7 +55,6 @@ $4000 constant CAP
 create ROOT-BUF FS-PATH-CAP allot
 create GOOD-BUF FS-PATH-CAP allot
 create AOT-BAD-BUF FS-PATH-CAP allot
-create SIG-BAD-BUF FS-PATH-CAP allot
 create MISSING-BUF FS-PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
@@ -69,7 +62,6 @@ create ERR CAP allot
 variable ROOT-U
 variable GOOD-U
 variable AOT-BAD-U
-variable SIG-BAD-U
 variable MISSING-U
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -85,9 +77,6 @@ variable MISSING-U
 : AOT-BAD$ ( -- ptr u8 n )
    AOT-BAD-BUF AOT-BAD-U @ ;
 
-: SIG-BAD$ ( -- ptr u8 n )
-   SIG-BAD-BUF SIG-BAD-U @ ;
-
 : MISSING$ ( -- ptr u8 n )
    MISSING-BUF MISSING-U @ ;
 
@@ -97,23 +86,17 @@ variable MISSING-U
 : AOT-BAD-SRC$ ( -- ptr u8 n )
    S\" : HBBDL-AOT-BAD ( -- ) 0 0 patch32 ;\n" ;
 
-: SIG-BAD-SRC$ ( -- ptr u8 n )
-   S\" : HBBDL-SIG-BAD dup ;\n" ;
-
 : PREPARE ( -- )
    CLEANUP-RESET
    s" habu-direct-lints" TMPDIR-MKDIR ROOT!
    ROOT$ CLEANUP-DIR+
    ROOT$ s" good.f" GOOD-BUF JOIN-PATH GOOD-U !
    ROOT$ s" aot-bad.f" AOT-BAD-BUF JOIN-PATH AOT-BAD-U !
-   ROOT$ s" sig-bad.f" SIG-BAD-BUF JOIN-PATH SIG-BAD-U !
    ROOT$ s" missing-hb" MISSING-BUF JOIN-PATH MISSING-U !
    GOOD$ CLEANUP+
    AOT-BAD$ CLEANUP+
-   SIG-BAD$ CLEANUP+
    GOOD$ GOOD-SRC$ WRITE-ALL
-   AOT-BAD$ AOT-BAD-SRC$ WRITE-ALL
-   SIG-BAD$ SIG-BAD-SRC$ WRITE-ALL ;
+   AOT-BAD$ AOT-BAD-SRC$ WRITE-ALL ;
 
 : SET-PATHS ( ptr u8 n -- )
    2dup HBB-PATHS! ;
@@ -123,19 +106,11 @@ variable MISSING-U
    GOOD$ SET-PATHS
    [: HBB-RUN-AOT-LINT ;] catch 0 T= ;
 
-: TEST-SIG-GOOD ( -- )
-   HBB-RESET-OPTIONS
-   GOOD$ SET-PATHS
-   HBB-STRICT-ON
-   [: HBB-RUN-SIGNATURE-LINT ;] catch 0 T= ;
-
 : TEST-DIRECT-GOOD ( -- )
    MISSING$ EXISTS? TFALSE
    MISSING$ MISSING$ CLI-TOOLS!
    s" direct AOT hook replaces child hook" T-LABEL
    TEST-AOT-GOOD
-   s" direct signature hook replaces child hook" T-LABEL
-   TEST-SIG-GOOD
    s" " s" " CLI-TOOLS! ;
 
 : ARG+ ( ptr u8 n -- )
@@ -167,9 +142,6 @@ variable MISSING-U
 : TEST-AOT-BAD ( -- )
    s" aot-bad" AOT-BAD$ s" E-AOT-UNSUPPORTED" EXPECT-FAIL ;
 
-: TEST-SIG-BAD ( -- )
-   s" signature-bad" SIG-BAD$ s" E-MISSING-SIGNATURE" EXPECT-FAIL ;
-
 : CHILD-PATHS ( -- )
    1 SCRIPT-ARGV$ SET-PATHS ;
 
@@ -179,28 +151,13 @@ variable MISSING-U
    HBB-RUN-AOT-LINT
    s" " 0 die ;
 
-: CHILD-SIG ( -- )
-   HBB-RESET-OPTIONS
-   CHILD-PATHS
-   HBB-STRICT-ON
-   HBB-RUN-SIGNATURE-LINT
-   s" " 0 die ;
-
 : AOT-MODE? ( -- bool )
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s" aot-bad" STR= exit then
    0 0= 0= ;
 
-: SIG-MODE? ( -- bool )
-   SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s" signature-bad" STR= exit then
-   0 0= 0= ;
-
-: CHILD-MODE? ( -- bool )
-   AOT-MODE? SIG-MODE? or ;
-
 : CHILD-MAIN ( -- )
    SCRIPT-ARGC 2 <> if E-TBL-BOUNDS throw then
    AOT-MODE? if CHILD-AOT then
-   SIG-MODE? if CHILD-SIG then
    E-TBL-BOUNDS throw ;
 
 : TEST-MAIN ( -- )
@@ -209,15 +166,13 @@ variable MISSING-U
    TEST-DIRECT-GOOD
    s" direct AOT failure propagates" T-LABEL
    TEST-AOT-BAD
-   s" direct signature failure propagates" T-LABEL
-   TEST-SIG-BAD
    CLEANUP-RUN
    ROOT$ EXISTS? TFALSE
    T-REPORT
    s" hb-build-direct-lints-test: ok" type cr ;
 
 : MAIN ( -- )
-   CHILD-MODE? if CHILD-MAIN then
+   AOT-MODE? if CHILD-MAIN then
    TEST-MAIN ;
 
 MAIN
