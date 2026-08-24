@@ -1,6 +1,6 @@
 ---
 title: chain ABI is Darwin with x18 reserved on the Linux host
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-08-22T22:38:25.899371+02:00"
