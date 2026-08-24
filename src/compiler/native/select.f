@@ -48,54 +48,6 @@ ENUM cmpkind DERIVE eq
 private
 
 \ ---- the bound source dialect ------------------------------------------------
-46 constant OPCODES-N
-0 constant O-CONST
-1 constant O-ADD
-2 constant O-SUB
-3 constant O-MUL
-4 constant O-RETURN
-5 constant O-LT
-6 constant O-LE
-7 constant O-BR
-8 constant O-BRZ
-9 constant O-MEM
-10 constant O-LOAD
-11 constant O-STORE
-12 constant O-DIV
-13 constant O-BLOAD
-14 constant O-BSTORE
-15 constant O-EQ
-16 constant O-CALL
-17 constant O-WORDCALL
-18 constant O-GT
-19 constant O-GE
-20 constant O-NE
-21 constant O-AND
-22 constant O-OR
-23 constant O-XOR
-24 constant O-LSHIFT
-25 constant O-RSHIFT
-26 constant O-INVERT
-27 constant O-FCONST
-28 constant O-FADD
-29 constant O-FSUB
-30 constant O-FMUL
-31 constant O-FDIV
-32 constant O-FNEG
-33 constant O-FABS
-34 constant O-FSQRT
-35 constant O-INTREAL
-36 constant O-REALINT
-37 constant O-BITSREAL
-38 constant O-REALBITS
-39 constant O-FLT
-40 constant O-FGT
-41 constant O-FEQ
-42 constant O-FLTZ
-43 constant O-FEQZ
-44 constant O-TRAP
-45 constant O-QUOT
-
 0 constant BOUND-NO
 1 constant BOUND-YES
 
@@ -106,7 +58,7 @@ variable BND-MODE
 BOUND-NO BND-MODE !
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
+HIR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-VAL IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ADDR IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
@@ -233,112 +185,11 @@ variable D-RETS                                    \ returns seen while surveyin
 : BLK ( -- IR-ID:ir-block-id )       0 S-BLK @ ;
 
 \ ---- the source dialect's opcode family --------------------------------------
-: SLOT-OF ( HIR:opcode -- n )
-   MATCH HIR:opcode
-      const  OF O-CONST  ENDOF
-      add    OF O-ADD    ENDOF
-      sub    OF O-SUB    ENDOF
-      mul    OF O-MUL    ENDOF
-      div    OF O-DIV    ENDOF
-      lt     OF O-LT     ENDOF
-      le     OF O-LE     ENDOF
-      gt     OF O-GT     ENDOF
-      ge     OF O-GE     ENDOF
-      equal  OF O-EQ     ENDOF
-      ne     OF O-NE     ENDOF
-      and    OF O-AND    ENDOF
-      or     OF O-OR     ENDOF
-      xor    OF O-XOR    ENDOF
-      lshift OF O-LSHIFT ENDOF
-      rshift OF O-RSHIFT ENDOF
-      invert OF O-INVERT ENDOF
-      br     OF O-BR     ENDOF
-      brz    OF O-BRZ    ENDOF
-      mem    OF O-MEM    ENDOF
-      load   OF O-LOAD   ENDOF
-      store  OF O-STORE  ENDOF
-      bload  OF O-BLOAD  ENDOF
-      bstore OF O-BSTORE ENDOF
-      call   OF O-CALL   ENDOF
-      wordcall OF O-WORDCALL ENDOF
-      return OF O-RETURN ENDOF
-      trap   OF O-TRAP   ENDOF
-      fconst   OF O-FCONST   ENDOF
-      fadd     OF O-FADD     ENDOF
-      fsub     OF O-FSUB     ENDOF
-      fmul     OF O-FMUL     ENDOF
-      fdiv     OF O-FDIV     ENDOF
-      fneg     OF O-FNEG     ENDOF
-      fabs     OF O-FABS     ENDOF
-      fsqrt    OF O-FSQRT    ENDOF
-      intreal  OF O-INTREAL  ENDOF
-      realint  OF O-REALINT  ENDOF
-      bitsreal OF O-BITSREAL ENDOF
-      realbits OF O-REALBITS ENDOF
-      flt      OF O-FLT      ENDOF
-      fgt      OF O-FGT      ENDOF
-      feq      OF O-FEQ      ENDOF
-      fltz     OF O-FLTZ     ENDOF
-      feqz     OF O-FEQZ     ENDOF
-      quot     OF O-QUOT     ENDOF
-   ;MATCH ;
-
-: SLOT-OPCODE ( n -- HIR:opcode )
-   case
-      O-CONST  of HIR-OPCODE:CONST  endof
-      O-ADD    of HIR-OPCODE:ADD    endof
-      O-SUB    of HIR-OPCODE:SUB    endof
-      O-MUL    of HIR-OPCODE:MUL    endof
-      O-DIV    of HIR-OPCODE:DIV    endof
-      O-LT     of HIR-OPCODE:LT     endof
-      O-LE     of HIR-OPCODE:LE     endof
-      O-GT     of HIR-OPCODE:GT     endof
-      O-GE     of HIR-OPCODE:GE     endof
-      O-EQ     of HIR-OPCODE:EQUAL endof
-      O-NE     of HIR-OPCODE:NE     endof
-      O-AND    of HIR-OPCODE:AND    endof
-      O-OR     of HIR-OPCODE:OR     endof
-      O-XOR    of HIR-OPCODE:XOR    endof
-      O-LSHIFT of HIR-OPCODE:LSHIFT endof
-      O-RSHIFT of HIR-OPCODE:RSHIFT endof
-      O-INVERT of HIR-OPCODE:INVERT endof
-      O-BR     of HIR-OPCODE:BR     endof
-      O-BRZ    of HIR-OPCODE:BRZ    endof
-      O-MEM    of HIR-OPCODE:MEM    endof
-      O-LOAD   of HIR-OPCODE:LOAD   endof
-      O-STORE  of HIR-OPCODE:STORE  endof
-      O-BLOAD  of HIR-OPCODE:BLOAD  endof
-      O-BSTORE of HIR-OPCODE:BSTORE endof
-      O-CALL   of HIR-OPCODE:CALL   endof
-      O-WORDCALL of HIR-OPCODE:WORDCALL endof
-      O-RETURN of HIR-OPCODE:RETURN endof
-      O-TRAP   of HIR-OPCODE:TRAP   endof
-      O-FCONST   of HIR-OPCODE:FCONST   endof
-      O-FADD     of HIR-OPCODE:FADD     endof
-      O-FSUB     of HIR-OPCODE:FSUB     endof
-      O-FMUL     of HIR-OPCODE:FMUL     endof
-      O-FDIV     of HIR-OPCODE:FDIV     endof
-      O-FNEG     of HIR-OPCODE:FNEG     endof
-      O-FABS     of HIR-OPCODE:FABS     endof
-      O-FSQRT    of HIR-OPCODE:FSQRT    endof
-      O-INTREAL  of HIR-OPCODE:INTREAL  endof
-      O-REALINT  of HIR-OPCODE:REALINT  endof
-      O-BITSREAL of HIR-OPCODE:BITSREAL endof
-      O-REALBITS of HIR-OPCODE:REALBITS endof
-      O-QUOT     of HIR-OPCODE:QUOT     endof
-      O-FLT      of HIR-OPCODE:FLT      endof
-      O-FGT      of HIR-OPCODE:FGT      endof
-      O-FEQ      of HIR-OPCODE:FEQ      endof
-      O-FLTZ     of HIR-OPCODE:FLTZ     endof
-      O-FEQZ     of HIR-OPCODE:FEQZ     endof
-      E-A64SEL-OPCODE throw
-   endcase ;
-
 \ A symbol naming no member is an operation this pass has no rule for.
 : OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
-   OPCODES-N 0 ?do
+   HIR:OPCODES 0 ?do
       sym i BND-OP @ SAME-SYM? if drop i leave then
    loop
    dup 0 < if E-A64SEL-OPCODE throw then ;
@@ -554,9 +405,9 @@ variable D-RETS                                    \ returns seen while surveyin
 
 : PLACE-POS? ( n n n -- bool )
    {: k:n ix:n p:n :}
-   p PLACE-LOAD = if k O-BITSREAL = ix 0= and exit then
-   k O-STORE = ix 0= and
-   k O-RETURN = DSTACK? and or ;
+   p PLACE-LOAD = if k HIR-OPCODE:BITSREAL HIR:ORD = ix 0= and exit then
+   k HIR-OPCODE:STORE HIR:ORD = ix 0= and
+   k HIR-OPCODE:RETURN HIR:ORD = DSTACK? and or ;
 
 : PLACE-OP? ( IR-ID:ir-value-id IR-ID:ir-op-id n -- n )
    {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id p:n :}
@@ -1048,8 +899,8 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : CONST-KIND-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: sl:n :}
-   sl O-CONST = if id CONST-ADDR exit then
-   sl O-FCONST = if HIR:ADDR-NONE exit then
+   sl HIR-OPCODE:CONST HIR:ORD = if id CONST-ADDR exit then
+   sl HIR-OPCODE:FCONST HIR:ORD = if HIR:ADDR-NONE exit then
    E-A64SEL-ATTR throw ;
 
 : RLIT-REUSED? ( IR-ID:ir-op-id -- bool )
@@ -1214,17 +1065,17 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 : COMPARE-COND ( IR-ID:ir-op-id -- A64IR:cond )
    OPCODE-AT OPCODE-SLOT
    case
-      O-LT of A64IR-COND:LT    endof
-      O-LE of A64IR-COND:LE    endof
-      O-GT of A64IR-COND:GT    endof
-      O-GE of A64IR-COND:GE    endof
-      O-EQ of A64IR-COND:EQUAL endof
-      O-NE of A64IR-COND:NE    endof
-      O-FLT  of A64IR-COND:MI    endof
-      O-FGT  of A64IR-COND:GT    endof
-      O-FEQ  of A64IR-COND:EQUAL endof
-      O-FLTZ of A64IR-COND:MI    endof
-      O-FEQZ of A64IR-COND:EQUAL endof
+      HIR-OPCODE:LT HIR:ORD of A64IR-COND:LT    endof
+      HIR-OPCODE:LE HIR:ORD of A64IR-COND:LE    endof
+      HIR-OPCODE:GT HIR:ORD of A64IR-COND:GT    endof
+      HIR-OPCODE:GE HIR:ORD of A64IR-COND:GE    endof
+      HIR-OPCODE:EQUAL HIR:ORD of A64IR-COND:EQUAL endof
+      HIR-OPCODE:NE HIR:ORD of A64IR-COND:NE    endof
+      HIR-OPCODE:FLT HIR:ORD  of A64IR-COND:MI    endof
+      HIR-OPCODE:FGT HIR:ORD  of A64IR-COND:GT    endof
+      HIR-OPCODE:FEQ HIR:ORD  of A64IR-COND:EQUAL endof
+      HIR-OPCODE:FLTZ HIR:ORD of A64IR-COND:MI    endof
+      HIR-OPCODE:FEQZ HIR:ORD of A64IR-COND:EQUAL endof
       E-A64SEL-OPCODE throw
    endcase ;
 
@@ -1279,7 +1130,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    ;MATCH ;
 
 : SLOT-KIND ( n -- A64SEL:cmpkind )
-   SLOT-OPCODE COMPARE-KIND ;
+   HIR:NTH COMPARE-KIND ;
 
 : COMPARE-SLOT? ( n -- bool )
    SLOT-KIND A64SEL-CMPKIND:NONE A64SEL-CMPKIND:EQ 0= ;
@@ -1571,14 +1422,14 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n 2 < if -1 exit then
-   bk n 1- OP-AT OPCODE-AT OPCODE-SLOT O-BRZ <> if -1 exit then
+   bk n 1- OP-AT OPCODE-AT OPCODE-SLOT HIR-OPCODE:BRZ HIR:ORD <> if -1 exit then
    bk n 2 - OP-AT {: d:IR-ID:ir-op-id :}
    d OPCODE-AT OPCODE-SLOT COMPARE-SLOT? 0= if -1 exit then
    d RESULTS-OF 1 <> if -1 exit then
    d 0 RESULT-AT  bk n 1- OP-AT 0 OPERAND-AT  SAME-VALUE? 0= if -1 exit then
    d 0 RESULT-AT USES-OF 1 <> if -1 exit then
    d OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
-   sym OPCODE-SLOT SLOT-OPCODE  sym TRAP-CK  drop
+   sym OPCODE-SLOT HIR:NTH  sym TRAP-CK  drop
    n 2 - ;
 
 : FUSE-SCAN ( IR-ID:ir-block-id -- )
@@ -1593,10 +1444,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk n 1- OP-AT ;
 
 : BRZ-TERM? ( IR-ID:ir-block-id -- bool )
-   TERM-OP OP-SLOT O-BRZ = ;
+   TERM-OP OP-SLOT HIR-OPCODE:BRZ HIR:ORD = ;
 
 : BR-TERM? ( IR-ID:ir-block-id -- bool )
-   TERM-OP OP-SLOT O-BR = ;
+   TERM-OP OP-SLOT HIR-OPCODE:BR HIR:ORD = ;
 
 \ May this run on a path the program would not have taken? Both halves of the
 \ answer are the source dialect's own declarations.
@@ -1711,7 +1562,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ ---- the literals the region's memo will make one ----------------------------
 : R-FOLDABLE? ( IR-ID:ir-op-id -- bool )
    OP-SLOT {: s:n :}
-   s O-CONST =  s O-FCONST =  or ;
+   s HIR-OPCODE:CONST HIR:ORD =  s HIR-OPCODE:FCONST HIR:ORD =  or ;
 
 : R-FOLD-IN? ( IR-ID:ir-block-id n n n -- bool )
    {: bk:IR-ID:ir-block-id k:n s:n v:n :}
@@ -2043,8 +1894,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk OP-COUNT {: n:n :}
    n 2 < if false exit then
    at n 2 - <> if false exit then
-   bk at OP-AT OP-SLOT O-WORDCALL <> if false exit then
-   bk n 1- OP-AT OP-SLOT O-RETURN = ;
+   bk at OP-AT OP-SLOT HIR-OPCODE:WORDCALL HIR:ORD <> if false exit then
+   bk n 1- OP-AT OP-SLOT HIR-OPCODE:RETURN HIR:ORD = ;
 
 : VALUE-READ? ( IR-ID:ir-fun-id IR-ID:ir-value-id -- bool )
    {: f:IR-ID:ir-fun-id v:IR-ID:ir-value-id :}
@@ -2222,9 +2073,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : DOP-XFER ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
-   s O-CALL = if id  id SELF-SHAPE  DCALL-XFER exit then
-   s O-WORDCALL = if id  id SITE-SHAPE  DCALL-XFER exit then
-   s O-RETURN = if
+   s HIR-OPCODE:CALL HIR:ORD = if id  id SELF-SHAPE  DCALL-XFER exit then
+   s HIR-OPCODE:WORDCALL HIR:ORD = if id  id SITE-SHAPE  DCALL-XFER exit then
+   s HIR-OPCODE:RETURN HIR:ORD = if
       DSTACK? 0= if 0 exit then
       id  OUTS SLOT-POSITIONS  DEXIT-XFER exit
    then
@@ -2235,7 +2086,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
-   sym OPCODE-SLOT SLOT-OPCODE  sym TRAP-CK
+   sym OPCODE-SLOT HIR:NTH  sym TRAP-CK
    id DOP-XFER {: mask:n :}
    MATCH HIR:opcode
       const  OF id EMIT-CONST ENDOF
@@ -2331,7 +2182,7 @@ create D-MEET DSLOT-MAX cells allot
    v 0 < if v exit then
    tb ARG-COUNT {: k:n :}
    DANY
-   t OP-SLOT O-BR = if
+   t OP-SLOT HIR-OPCODE:BR HIR:ORD = if
       t OPERANDS-OF k = if
          k 0 ?do
             t i OPERAND-AT VSLOT v = if
@@ -2464,11 +2315,11 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: id:IR-ID:ir-op-id :}
    id DOP-XFER {: mask:n :}
    id OP-SLOT {: s:n :}
-   s O-BR = if exit then
-   s O-CALL = if id mask  id SELF-SHAPE  DNEED-CALL exit then
-   s O-WORDCALL = if id mask  id SITE-SHAPE  DNEED-CALL exit then
-   s O-RETURN = if id mask DNEED-EXIT exit then
-   s O-TRAP = if id DNEED-OPERANDS exit then
+   s HIR-OPCODE:BR HIR:ORD = if exit then
+   s HIR-OPCODE:CALL HIR:ORD = if id mask  id SELF-SHAPE  DNEED-CALL exit then
+   s HIR-OPCODE:WORDCALL HIR:ORD = if id mask  id SITE-SHAPE  DNEED-CALL exit then
+   s HIR-OPCODE:RETURN HIR:ORD = if id mask DNEED-EXIT exit then
+   s HIR-OPCODE:TRAP HIR:ORD = if id DNEED-OPERANDS exit then
    id DNEED-OPERANDS ;
 
 : DNEED-BLOCK ( IR-ID:ir-fun-id n -- )
@@ -2480,7 +2331,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 : DNEED-EDGE-OF ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
-   t OP-SLOT O-BR <> if exit then
+   t OP-SLOT HIR-OPCODE:BR HIR:ORD <> if exit then
    t BR-TARGET {: tb:n :}
    FUN tb BLOCK-AT ARG-COUNT {: k:n :}
    t OPERANDS-OF k <> if exit then
@@ -2538,10 +2389,10 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
 : DPLACE-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
-   s O-CALL = if id SELF-SHAPE DPLACE-CALL exit then
-   s O-WORDCALL = if id SITE-SHAPE DPLACE-CALL exit then
-   s O-TRAP = if DPLACE-TRAP exit then
-   s O-RETURN = if DPLACE-RETURN then ;
+   s HIR-OPCODE:CALL HIR:ORD = if id SELF-SHAPE DPLACE-CALL exit then
+   s HIR-OPCODE:WORDCALL HIR:ORD = if id SITE-SHAPE DPLACE-CALL exit then
+   s HIR-OPCODE:TRAP HIR:ORD = if DPLACE-TRAP exit then
+   s HIR-OPCODE:RETURN HIR:ORD = if DPLACE-RETURN then ;
 
 : DPLACE-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
@@ -2760,7 +2611,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk ARG-COUNT {: k:n :}
    f b R-FROM@ BLOCK-AT TERM-OP {: t:IR-ID:ir-op-id :}
-   t OP-SLOT O-BR <> if
+   t OP-SLOT HIR-OPCODE:BR HIR:ORD <> if
       k 0<> if E-A64SEL-SHAPE throw then
       exit
    then
@@ -2950,10 +2801,6 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64SEL-SOURCE throw then ;
 
-: BIND1 ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder o:HIR:opcode :}
-   c b o HIR:OPCODE  o SLOT-OF BND-OP ! ;
-
 : HIR-CK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b  c b IR-BUILD:DIALECT@  HIR:NAME IR-BUILD:SYMBOL-IS?
@@ -2971,52 +2818,9 @@ public
    BND-MODE @ BOUND-YES = if E-A64SEL-BIND throw then
    c b HIR-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
-   c b HIR-OPCODE:CONST  BIND1
-   c b HIR-OPCODE:ADD    BIND1
-   c b HIR-OPCODE:SUB    BIND1
-   c b HIR-OPCODE:MUL    BIND1
-   c b HIR-OPCODE:DIV    BIND1
-   c b HIR-OPCODE:LT     BIND1
-   c b HIR-OPCODE:LE     BIND1
-   c b HIR-OPCODE:GT     BIND1
-   c b HIR-OPCODE:GE     BIND1
-   c b HIR-OPCODE:EQUAL  BIND1
-   c b HIR-OPCODE:NE     BIND1
-   c b HIR-OPCODE:AND    BIND1
-   c b HIR-OPCODE:OR     BIND1
-   c b HIR-OPCODE:XOR    BIND1
-   c b HIR-OPCODE:LSHIFT BIND1
-   c b HIR-OPCODE:RSHIFT BIND1
-   c b HIR-OPCODE:INVERT BIND1
-   c b HIR-OPCODE:BR     BIND1
-   c b HIR-OPCODE:BRZ    BIND1
-   c b HIR-OPCODE:MEM    BIND1
-   c b HIR-OPCODE:LOAD   BIND1
-   c b HIR-OPCODE:STORE  BIND1
-   c b HIR-OPCODE:BLOAD  BIND1
-   c b HIR-OPCODE:BSTORE BIND1
-   c b HIR-OPCODE:CALL   BIND1
-   c b HIR-OPCODE:WORDCALL BIND1
-   c b HIR-OPCODE:QUOT   BIND1
-   c b HIR-OPCODE:RETURN BIND1
-   c b HIR-OPCODE:FCONST   BIND1
-   c b HIR-OPCODE:FADD     BIND1
-   c b HIR-OPCODE:FSUB     BIND1
-   c b HIR-OPCODE:FMUL     BIND1
-   c b HIR-OPCODE:FDIV     BIND1
-   c b HIR-OPCODE:FNEG     BIND1
-   c b HIR-OPCODE:FABS     BIND1
-   c b HIR-OPCODE:FSQRT    BIND1
-   c b HIR-OPCODE:INTREAL  BIND1
-   c b HIR-OPCODE:REALINT  BIND1
-   c b HIR-OPCODE:BITSREAL BIND1
-   c b HIR-OPCODE:REALBITS BIND1
-   c b HIR-OPCODE:FLT      BIND1
-   c b HIR-OPCODE:FGT      BIND1
-   c b HIR-OPCODE:FEQ      BIND1
-   c b HIR-OPCODE:FLTZ     BIND1
-   c b HIR-OPCODE:FEQZ     BIND1
-   c b HIR-OPCODE:TRAP     BIND1
+   HIR:OPCODES 0 ?do
+      c b i HIR:BIND i BND-OP !
+   loop
    c b HIR:KEY-VALUE 0 BND-VAL !
    c b HIR:KEY-ADDR  0 BND-ADDR !
    c b HIR:KEY-FUN   0 BND-FUN !

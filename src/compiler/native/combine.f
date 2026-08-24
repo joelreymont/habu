@@ -33,86 +33,6 @@ using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
-\ One slot per member of the machine operation family, so a member added to
-\ A64IR:opcode fails to compile here until it has a slot and a rebuild rule.
-76 constant OPCODES-N
-
-0 constant O-MOVZ
-1 constant O-MOVK
-2 constant O-MOV
-3 constant O-ADD
-4 constant O-SUB
-5 constant O-MUL
-6 constant O-STORE
-7 constant O-LOAD
-8 constant O-RESERVE
-9 constant O-RELEASE
-10 constant O-DTAKE
-11 constant O-DLOAD
-12 constant O-DSTORE
-13 constant O-DPUBLISH
-14 constant O-FLAG
-15 constant O-BR
-16 constant O-BRZ
-17 constant O-RET
-18 constant O-ALOAD
-19 constant O-ASTORE
-20 constant O-SDIV
-21 constant O-ABLOAD
-22 constant O-ABSTORE
-23 constant O-CALL
-24 constant O-LINKSAVE
-25 constant O-LINKLOAD
-26 constant O-CMPBR
-27 constant O-WORDCALL
-28 constant O-AND
-29 constant O-ORR
-30 constant O-EOR
-31 constant O-LSLV
-32 constant O-LSRV
-33 constant O-MVN
-34 constant O-FADD
-35 constant O-FSUB
-36 constant O-FMUL
-37 constant O-FDIV
-38 constant O-FNEG
-39 constant O-FABS
-40 constant O-FSQRT
-41 constant O-SCVTF
-42 constant O-FCVTZS
-43 constant O-FMOVXD
-44 constant O-FMOVDX
-45 constant O-FFLAG
-46 constant O-FFLAGZ
-47 constant O-FCMPBR
-48 constant O-FCMPBRZ
-49 constant O-FMOVDD
-50 constant O-SELZ
-51 constant O-CMPSEL
-52 constant O-SELZD
-53 constant O-CMPSELD
-54 constant O-FCMPSEL
-55 constant O-FCMPSELZ
-56 constant O-FCMPSELD
-57 constant O-FCMPSELZD
-58 constant O-TAILCALL
-59 constant O-MADD
-60 constant O-ADDI
-61 constant O-SUBI
-62 constant O-MOVN
-63 constant O-ANDI
-64 constant O-ORRI
-65 constant O-EORI
-66 constant O-FLOAD
-67 constant O-FSTORE
-68 constant O-FALOAD
-69 constant O-FASTORE
-70 constant O-FDLOAD
-71 constant O-FDSTORE
-72 constant O-TRAP
-73 constant O-CODEADDR
-74 constant O-FLAGI
-75 constant O-CMPBRI
 \ This pass writes no attribute of its own but COPIES every one the selector
 \ built, and a field copied under the wrong key would misread a frame.
 14 constant KEYS-N
@@ -149,7 +69,7 @@ BOUND-NO BND-MODE !
 variable N-FUSED                     \ pairs this rewrite folded, counted as it goes
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
+A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
@@ -174,173 +94,12 @@ create CMP-AT OPS-MAX cells allot
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
 : SID ( -- IR-ID:ir-source-id )      0 S-SID @ ;
-: SLOT-OF ( A64IR:opcode -- n )
-   MATCH A64IR:opcode
-      movz    OF O-MOVZ    ENDOF
-      movk    OF O-MOVK    ENDOF
-      mov     OF O-MOV     ENDOF
-      add     OF O-ADD     ENDOF
-      sub     OF O-SUB     ENDOF
-      mul     OF O-MUL     ENDOF
-      sdiv    OF O-SDIV    ENDOF
-      and     OF O-AND     ENDOF
-      orr     OF O-ORR     ENDOF
-      eor     OF O-EOR     ENDOF
-      lslv    OF O-LSLV    ENDOF
-      lsrv    OF O-LSRV    ENDOF
-      mvn     OF O-MVN     ENDOF
-      store    OF O-STORE    ENDOF
-      load     OF O-LOAD     ENDOF
-      reserve  OF O-RESERVE  ENDOF
-      release  OF O-RELEASE  ENDOF
-      dtake    OF O-DTAKE    ENDOF
-      dload    OF O-DLOAD    ENDOF
-      dstore   OF O-DSTORE   ENDOF
-      dpublish OF O-DPUBLISH ENDOF
-      aload    OF O-ALOAD   ENDOF
-      astore   OF O-ASTORE  ENDOF
-      abload   OF O-ABLOAD  ENDOF
-      abstore  OF O-ABSTORE ENDOF
-      flag     OF O-FLAG     ENDOF
-      selz     OF O-SELZ     ENDOF
-      cmpsel   OF O-CMPSEL   ENDOF
-      br       OF O-BR       ENDOF
-      brz      OF O-BRZ      ENDOF
-      cmpbr    OF O-CMPBR    ENDOF
-      call     OF O-CALL     ENDOF
-      wordcall OF O-WORDCALL ENDOF
-      linksave OF O-LINKSAVE ENDOF
-      linkload OF O-LINKLOAD ENDOF
-      ret      OF O-RET      ENDOF
-      fadd     OF O-FADD     ENDOF
-      fsub     OF O-FSUB     ENDOF
-      fmul     OF O-FMUL     ENDOF
-      fdiv     OF O-FDIV     ENDOF
-      fneg     OF O-FNEG     ENDOF
-      fabs     OF O-FABS     ENDOF
-      fsqrt    OF O-FSQRT    ENDOF
-      scvtf    OF O-SCVTF    ENDOF
-      fcvtzs   OF O-FCVTZS   ENDOF
-      fmovxd   OF O-FMOVXD   ENDOF
-      fmovdx   OF O-FMOVDX   ENDOF
-      fmovdd   OF O-FMOVDD   ENDOF
-      fflag    OF O-FFLAG    ENDOF
-      fflagz   OF O-FFLAGZ   ENDOF
-      fcmpbr   OF O-FCMPBR   ENDOF
-      fcmpbrz  OF O-FCMPBRZ  ENDOF
-      selzd    OF O-SELZD    ENDOF
-      cmpseld  OF O-CMPSELD  ENDOF
-      fcmpsel   OF O-FCMPSEL   ENDOF
-      fcmpselz  OF O-FCMPSELZ  ENDOF
-      fcmpseld  OF O-FCMPSELD  ENDOF
-      fcmpselzd OF O-FCMPSELZD ENDOF
-      tailcall  OF O-TAILCALL  ENDOF
-      trap      OF O-TRAP      ENDOF
-      codeaddr  OF O-CODEADDR  ENDOF
-      flagi     OF O-FLAGI     ENDOF
-      cmpbri    OF O-CMPBRI    ENDOF
-      madd      OF O-MADD      ENDOF
-      addi      OF O-ADDI      ENDOF
-      subi      OF O-SUBI      ENDOF
-      movn      OF O-MOVN      ENDOF
-      andi      OF O-ANDI      ENDOF
-      orri      OF O-ORRI      ENDOF
-      eori      OF O-EORI      ENDOF
-      fload     OF O-FLOAD     ENDOF
-      fstore    OF O-FSTORE    ENDOF
-      faload    OF O-FALOAD    ENDOF
-      fastore   OF O-FASTORE   ENDOF
-      fdload    OF O-FDLOAD    ENDOF
-      fdstore   OF O-FDSTORE   ENDOF
-   ;MATCH ;
-
-: SLOT-OPCODE ( n -- A64IR:opcode )
-   case
-      O-MOVZ    of A64IR-OPCODE:MOVZ    endof
-      O-MOVK    of A64IR-OPCODE:MOVK    endof
-      O-MOV     of A64IR-OPCODE:MOV     endof
-      O-ADD     of A64IR-OPCODE:ADD     endof
-      O-SUB     of A64IR-OPCODE:SUB     endof
-      O-MUL     of A64IR-OPCODE:MUL     endof
-      O-SDIV    of A64IR-OPCODE:SDIV    endof
-      O-AND     of A64IR-OPCODE:AND     endof
-      O-ORR     of A64IR-OPCODE:ORR     endof
-      O-EOR     of A64IR-OPCODE:EOR     endof
-      O-LSLV    of A64IR-OPCODE:LSLV    endof
-      O-LSRV    of A64IR-OPCODE:LSRV    endof
-      O-MVN     of A64IR-OPCODE:MVN     endof
-      O-STORE   of A64IR-OPCODE:STORE   endof
-      O-LOAD    of A64IR-OPCODE:LOAD    endof
-      O-RESERVE  of A64IR-OPCODE:RESERVE  endof
-      O-RELEASE  of A64IR-OPCODE:RELEASE  endof
-      O-DTAKE    of A64IR-OPCODE:DTAKE    endof
-      O-DLOAD    of A64IR-OPCODE:DLOAD    endof
-      O-DSTORE   of A64IR-OPCODE:DSTORE   endof
-      O-DPUBLISH of A64IR-OPCODE:DPUBLISH endof
-      O-FLAG     of A64IR-OPCODE:FLAG     endof
-      O-SELZ     of A64IR-OPCODE:SELZ     endof
-      O-CMPSEL   of A64IR-OPCODE:CMPSEL   endof
-      O-BR       of A64IR-OPCODE:BR       endof
-      O-BRZ      of A64IR-OPCODE:BRZ      endof
-      O-CMPBR    of A64IR-OPCODE:CMPBR    endof
-      O-RET      of A64IR-OPCODE:RET      endof
-      O-ALOAD    of A64IR-OPCODE:ALOAD    endof
-      O-ASTORE   of A64IR-OPCODE:ASTORE   endof
-      O-ABLOAD   of A64IR-OPCODE:ABLOAD   endof
-      O-ABSTORE  of A64IR-OPCODE:ABSTORE  endof
-      O-CALL     of A64IR-OPCODE:CALL     endof
-      O-WORDCALL of A64IR-OPCODE:WORDCALL endof
-      O-LINKSAVE of A64IR-OPCODE:LINKSAVE endof
-      O-LINKLOAD of A64IR-OPCODE:LINKLOAD endof
-      O-FADD     of A64IR-OPCODE:FADD     endof
-      O-FSUB     of A64IR-OPCODE:FSUB     endof
-      O-FMUL     of A64IR-OPCODE:FMUL     endof
-      O-FDIV     of A64IR-OPCODE:FDIV     endof
-      O-FNEG     of A64IR-OPCODE:FNEG     endof
-      O-FABS     of A64IR-OPCODE:FABS     endof
-      O-FSQRT    of A64IR-OPCODE:FSQRT    endof
-      O-SCVTF    of A64IR-OPCODE:SCVTF    endof
-      O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
-      O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
-      O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
-      O-FMOVDD   of A64IR-OPCODE:FMOVDD   endof
-      O-FFLAG    of A64IR-OPCODE:FFLAG    endof
-      O-FFLAGZ   of A64IR-OPCODE:FFLAGZ   endof
-      O-FCMPBR   of A64IR-OPCODE:FCMPBR   endof
-      O-FCMPBRZ  of A64IR-OPCODE:FCMPBRZ  endof
-      O-SELZD    of A64IR-OPCODE:SELZD    endof
-      O-CMPSELD  of A64IR-OPCODE:CMPSELD  endof
-      O-FCMPSEL   of A64IR-OPCODE:FCMPSEL   endof
-      O-FCMPSELZ  of A64IR-OPCODE:FCMPSELZ  endof
-      O-FCMPSELD  of A64IR-OPCODE:FCMPSELD  endof
-      O-FCMPSELZD of A64IR-OPCODE:FCMPSELZD endof
-      O-TAILCALL  of A64IR-OPCODE:TAILCALL  endof
-      O-TRAP      of A64IR-OPCODE:TRAP      endof
-      O-CODEADDR  of A64IR-OPCODE:CODEADDR  endof
-      O-FLAGI     of A64IR-OPCODE:FLAGI     endof
-      O-CMPBRI    of A64IR-OPCODE:CMPBRI    endof
-      O-MADD      of A64IR-OPCODE:MADD      endof
-      O-ADDI      of A64IR-OPCODE:ADDI      endof
-      O-SUBI      of A64IR-OPCODE:SUBI      endof
-      O-MOVN      of A64IR-OPCODE:MOVN      endof
-      O-ANDI      of A64IR-OPCODE:ANDI      endof
-      O-ORRI      of A64IR-OPCODE:ORRI      endof
-      O-EORI      of A64IR-OPCODE:EORI      endof
-      O-FLOAD     of A64IR-OPCODE:FLOAD     endof
-      O-FSTORE    of A64IR-OPCODE:FSTORE    endof
-      O-FALOAD    of A64IR-OPCODE:FALOAD    endof
-      O-FASTORE   of A64IR-OPCODE:FASTORE   endof
-      O-FDLOAD    of A64IR-OPCODE:FDLOAD    endof
-      O-FDSTORE   of A64IR-OPCODE:FDSTORE   endof
-      E-A64SPILL-OPCODE throw
-   endcase ;
-
 \ An operation of a form outside the family has no rule here and is refused
 \ rather than copied blind.
 : OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
    {: sym:IR-ID:ir-symbol-id :}
    -1
-   OPCODES-N 0 ?do
+   A64IR:OPCODES 0 ?do
       sym i BND-OP @ SAME-SYM? if drop i leave then
    loop
    dup 0 < if E-A64COMB-OPCODE throw then ;
@@ -462,7 +221,7 @@ create CMP-AT OPS-MAX cells allot
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    k 0 < if false exit then
    bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-MUL <> if false exit then
+   id OP-SLOT A64IR-OPCODE:MUL A64IR:ORD <> if false exit then
    id RESULTS-OF 1 <> if false exit then
    f  id 0 RESULT-AT  USES-OF 1 = ;
 
@@ -478,7 +237,7 @@ create CMP-AT OPS-MAX cells allot
 : FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-ADD <> if -1 exit then
+   id OP-SLOT A64IR-OPCODE:ADD A64IR:ORD <> if -1 exit then
    id OPERANDS-OF 2 <> if -1 exit then
    bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
    f bk d0 k FOLDS-HERE? if d0 exit then
@@ -501,7 +260,7 @@ create CMP-AT OPS-MAX cells allot
 \ under a movk is one half of a larger one, which the single-use test excludes.
 : MOVZ-VALUE ( IR-ID:ir-op-id -- n bool )
    {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-MOVZ <> if 0 false exit then
+   id OP-SLOT A64IR-OPCODE:MOVZ A64IR:ORD <> if 0 false exit then
    id RESULTS-OF 1 <> if 0 false exit then
    id K-SHIFT ATTR-BY-KEY 0<> if 0 false exit then
    id K-IMM ATTR-BY-KEY {: v:n :}
@@ -548,10 +307,10 @@ create CMP-AT OPS-MAX cells allot
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
    f bk k FOLD-FOR 0 >= if -1 exit then
    bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-ADD <>  id OP-SLOT O-SUB <>  and if -1 exit then
+   id OP-SLOT A64IR-OPCODE:ADD A64IR:ORD <>  id OP-SLOT A64IR-OPCODE:SUB A64IR:ORD <>  and if -1 exit then
    id OPERANDS-OF 2 <> if -1 exit then
    id RESULTS-OF 1 <> if -1 exit then
-   id OP-SLOT O-ADD = if
+   id OP-SLOT A64IR-OPCODE:ADD A64IR:ORD = if
       bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
       f bk d0 k IMM-FOLDS-HERE? if d0 exit then
    then
@@ -576,7 +335,7 @@ create CMP-AT OPS-MAX cells allot
 
 : LOGICAL-OP? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-AND =  id OP-SLOT O-ORR =  or  id OP-SLOT O-EOR =  or ;
+   id OP-SLOT A64IR-OPCODE:AND A64IR:ORD =  id OP-SLOT A64IR-OPCODE:ORR A64IR:ORD =  or  id OP-SLOT A64IR-OPCODE:EOR A64IR:ORD =  or ;
 
 : MASK-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
@@ -597,7 +356,7 @@ create CMP-AT OPS-MAX cells allot
 \ and turning a left-hand constant round means changing the condition too.
 : COMPARE-OP? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-FLAG =  id OP-SLOT O-CMPBR =  or ;
+   id OP-SLOT A64IR-OPCODE:FLAG A64IR:ORD =  id OP-SLOT A64IR-OPCODE:CMPBR A64IR:ORD =  or ;
 
 : CMP-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
@@ -780,7 +539,7 @@ create CMP-AT OPS-MAX cells allot
 
 : COPY-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id OP-SLOT SLOT-OPCODE {: o:A64IR:opcode :}
+   id OP-SLOT A64IR:NTH {: o:A64IR:opcode :}
    id o OPEN
    id COPY-OPERANDS
    id COPY-RESULTS
@@ -814,7 +573,7 @@ create CMP-AT OPS-MAX cells allot
 : EMIT-ADDI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id ar:IR-ID:ir-op-id :}
    mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
-   ar OP-SLOT O-SUB =
+   ar OP-SLOT A64IR-OPCODE:SUB A64IR:ORD =
    if A64IR-OPCODE:SUBI else A64IR-OPCODE:ADDI then {: o:A64IR:opcode :}
    ar o OPEN
    ar k ADDEND-OF VOF OPERAND+
@@ -829,9 +588,9 @@ create CMP-AT OPS-MAX cells allot
 : EMIT-MASKI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id lg:IR-ID:ir-op-id :}
    mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
-   lg OP-SLOT O-AND =
+   lg OP-SLOT A64IR-OPCODE:AND A64IR:ORD =
    if   A64IR-OPCODE:ANDI
-   else lg OP-SLOT O-ORR =
+   else lg OP-SLOT A64IR-OPCODE:ORR A64IR:ORD =
         if A64IR-OPCODE:ORRI else A64IR-OPCODE:EORI then
    then {: o:A64IR:opcode :}
    lg o OPEN
@@ -856,12 +615,12 @@ create CMP-AT OPS-MAX cells allot
 : EMIT-CMPI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: mz:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
    cm OP-SLOT {: s:n :}
-   s O-FLAG =  s O-CMPBR =  or 0= if E-A64COMB-SHAPE throw then
-   s O-CMPBR =
+   s A64IR-OPCODE:FLAG A64IR:ORD =  s A64IR-OPCODE:CMPBR A64IR:ORD =  or 0= if E-A64COMB-SHAPE throw then
+   s A64IR-OPCODE:CMPBR A64IR:ORD =
    if A64IR-OPCODE:CMPBRI else A64IR-OPCODE:FLAGI then {: o:A64IR:opcode :}
    cm o OPEN
    cm 0 OPERAND-AT VOF OPERAND+
-   s O-FLAG = if
+   s A64IR-OPCODE:FLAG A64IR:ORD = if
       CTX BLD  cm 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
    then
    cm COPY-SUCCS
@@ -962,10 +721,6 @@ create CMP-AT OPS-MAX cells allot
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64COMB-BIND throw then ;
 
-: BIND1 ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
-   c b o A64IR:OPCODE  o SLOT-OF BND-OP ! ;
-
 : DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
@@ -983,82 +738,9 @@ public
    BND-MODE @ BOUND-YES = if E-A64COMB-BIND throw then
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
-   c b A64IR-OPCODE:MOVZ    BIND1
-   c b A64IR-OPCODE:MOVK    BIND1
-   c b A64IR-OPCODE:MOV     BIND1
-   c b A64IR-OPCODE:ADD     BIND1
-   c b A64IR-OPCODE:SUB     BIND1
-   c b A64IR-OPCODE:MUL     BIND1
-   c b A64IR-OPCODE:SDIV    BIND1
-   c b A64IR-OPCODE:AND     BIND1
-   c b A64IR-OPCODE:ORR     BIND1
-   c b A64IR-OPCODE:EOR     BIND1
-   c b A64IR-OPCODE:LSLV    BIND1
-   c b A64IR-OPCODE:LSRV    BIND1
-   c b A64IR-OPCODE:MVN     BIND1
-   c b A64IR-OPCODE:STORE   BIND1
-   c b A64IR-OPCODE:LOAD    BIND1
-   c b A64IR-OPCODE:RESERVE  BIND1
-   c b A64IR-OPCODE:RELEASE  BIND1
-   c b A64IR-OPCODE:DTAKE    BIND1
-   c b A64IR-OPCODE:DLOAD    BIND1
-   c b A64IR-OPCODE:DSTORE   BIND1
-   c b A64IR-OPCODE:DPUBLISH BIND1
-   c b A64IR-OPCODE:FLAG     BIND1
-   c b A64IR-OPCODE:SELZ     BIND1
-   c b A64IR-OPCODE:CMPSEL   BIND1
-   c b A64IR-OPCODE:BR       BIND1
-   c b A64IR-OPCODE:BRZ      BIND1
-   c b A64IR-OPCODE:CMPBR    BIND1
-   c b A64IR-OPCODE:RET      BIND1
-   c b A64IR-OPCODE:ALOAD    BIND1
-   c b A64IR-OPCODE:ASTORE   BIND1
-   c b A64IR-OPCODE:ABLOAD   BIND1
-   c b A64IR-OPCODE:ABSTORE  BIND1
-   c b A64IR-OPCODE:CALL      BIND1
-   c b A64IR-OPCODE:WORDCALL  BIND1
-   c b A64IR-OPCODE:LINKSAVE  BIND1
-   c b A64IR-OPCODE:LINKLOAD  BIND1
-   c b A64IR-OPCODE:FADD     BIND1
-   c b A64IR-OPCODE:FSUB     BIND1
-   c b A64IR-OPCODE:FMUL     BIND1
-   c b A64IR-OPCODE:FDIV     BIND1
-   c b A64IR-OPCODE:FNEG     BIND1
-   c b A64IR-OPCODE:FABS     BIND1
-   c b A64IR-OPCODE:FSQRT    BIND1
-   c b A64IR-OPCODE:SCVTF    BIND1
-   c b A64IR-OPCODE:FCVTZS   BIND1
-   c b A64IR-OPCODE:FMOVXD   BIND1
-   c b A64IR-OPCODE:FMOVDX   BIND1
-   c b A64IR-OPCODE:FMOVDD   BIND1
-   c b A64IR-OPCODE:FLOAD    BIND1
-   c b A64IR-OPCODE:FSTORE   BIND1
-   c b A64IR-OPCODE:FALOAD   BIND1
-   c b A64IR-OPCODE:FASTORE  BIND1
-   c b A64IR-OPCODE:FDLOAD   BIND1
-   c b A64IR-OPCODE:FDSTORE  BIND1
-   c b A64IR-OPCODE:FFLAG    BIND1
-   c b A64IR-OPCODE:FFLAGZ   BIND1
-   c b A64IR-OPCODE:FCMPBR   BIND1
-   c b A64IR-OPCODE:FCMPBRZ  BIND1
-   c b A64IR-OPCODE:SELZD    BIND1
-   c b A64IR-OPCODE:CMPSELD  BIND1
-   c b A64IR-OPCODE:FCMPSEL   BIND1
-   c b A64IR-OPCODE:FCMPSELZ  BIND1
-   c b A64IR-OPCODE:FCMPSELD  BIND1
-   c b A64IR-OPCODE:FCMPSELZD BIND1
-   c b A64IR-OPCODE:TAILCALL  BIND1
-   c b A64IR-OPCODE:TRAP      BIND1
-   c b A64IR-OPCODE:CODEADDR  BIND1
-   c b A64IR-OPCODE:FLAGI     BIND1
-   c b A64IR-OPCODE:CMPBRI    BIND1
-   c b A64IR-OPCODE:MADD      BIND1
-   c b A64IR-OPCODE:ADDI      BIND1
-   c b A64IR-OPCODE:SUBI      BIND1
-   c b A64IR-OPCODE:MOVN      BIND1
-   c b A64IR-OPCODE:ANDI      BIND1
-   c b A64IR-OPCODE:ORRI      BIND1
-   c b A64IR-OPCODE:EORI      BIND1
+   A64IR:OPCODES 0 ?do
+      c b i A64IR:BIND i BND-OP !
+   loop
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-ADDR   K-ADDR  BND-KEY !

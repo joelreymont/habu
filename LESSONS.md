@@ -7671,3 +7671,9 @@ and --no-lldbinit.
 - **Boot output is not a PTY readiness barrier.** A generated engine can print
   its boot-run report before the REPL installs raw mode and reads input; Ctrl-D
   sent then can be lost. Wait for the real `habu> ` prompt before sending it.
+
+## 2026-08-24 - opcode ownership
+
+- **A closed enum's declaration order is not a consumer's stable ordinal.**
+  Preserve the existing exhaustive mapping in the dialect owner; reordering the
+  enum or schema to make two orders look identical changes a different contract.
