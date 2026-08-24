@@ -6452,6 +6452,7 @@ PPRIM: CHECKER-TAPE DISARM PPRIM;
 \ (src/compiler/native/migrate.f HELD-RETRACT).
 PPRIM: CHECKER-TAPE HOLD-ARM PPRIM;
 PPRIM: CHECKER-TAPE HOLD-DISARM PPRIM;
+PPRIM: CHECKER-TAPE HOLD-TAKEN? PE-F PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
@@ -11932,6 +11933,9 @@ variable ARMED   0 ARMED !
 \ compiled by anything - the engine gave up its emission and no chain is waiting
 \ for the tape. Requiring the unit to be armed first makes "somebody is going to
 \ publish this" a property of the state machine instead of a promise.
+\ Zero is idle, positive is armed, and negative records that the engine consumed
+\ this hold at its publish tail. One existing cell therefore carries both sides
+\ of the hand-off without a second owner flag.
 variable HOLD-ARMED   0 HOLD-ARMED !
 
 : HOLD-ARM ( -- )
@@ -11941,6 +11945,9 @@ variable HOLD-ARMED   0 HOLD-ARMED !
 
 : HOLD-DISARM ( -- )
    0 HOLD-ARMED ! ;
+
+: HOLD-TAKEN? ( -- bool )
+   HOLD-ARMED @ 0 < ;
 
 private
 
@@ -12011,7 +12018,9 @@ public
 \ converge on one publish label, and that is where this is asked - once, for
 \ every definition, whichever route certified it.
 : CHECKER-HOLD? ( -- n )
-   CHECKER-TAPE:HOLD-ARMED @ ;
+   CHECKER-TAPE:HOLD-ARMED @ 0= if 0 exit then
+   -1 CHECKER-TAPE:HOLD-ARMED !
+   -1 ;
 
 \ ---- the baked signature pool, and the lazy intake that reads it -------------
 \

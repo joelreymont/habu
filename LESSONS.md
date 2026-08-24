@@ -7677,3 +7677,17 @@ and --no-lldbinit.
 - **Scan fixed-width records by their width, not by maximal equal-field runs.**
   Adjacent address carriers may reuse a register; validate each four-lane
   carrier independently and advance four lanes.
+
+## 2026-08-24 - fail-closed native publication
+
+- **A reentrancy check belongs before the first staged write or stream read.**
+  `NMIGRATE:STAGE` used to clear `M-STREAM` before `RUN` rejected a nested
+  migration, so the outer `NEXT` skipped `NINP:RELEASE` and poisoned the next
+  stream with `E-NINP-STATE`. Check idle before staging and before `NEXT` asks
+  for `NINP:DEF$`.
+- **Rollback ownership starts when the producer has a held draft, not after
+  downstream setup.** A second definition can make `evaluate` throw after the
+  first one was held, so a normal return is not the boundary. Have the existing
+  hold cell record when the engine actually consumes it at the publish tail,
+  sample that fact before disarming, and retract by the stable tape spelling;
+  use the held record only when `END-UNIT` failed before producing that span.

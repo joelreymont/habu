@@ -57,9 +57,6 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 
 0 constant GLOBAL-WID
 
-here CELL 1- and CELL swap - CELL 1- and allot
-variable OLD-START
-
 : REC ( ptr u8 n -- ptr a )
    GLOBAL-WID XREF-FIND-WL
    dup XREF-FOUND? 0= if E-NPUB-NAME throw then ;
@@ -69,6 +66,9 @@ variable OLD-START
 
 : REC-LEN ( ptr u8 n -- n )
    REC XREF-LEN ;
+
+: DEFINED? ( ptr u8 n -- bool )
+   GLOBAL-WID XREF-FIND-WL XREF-FOUND? ;
 
 \ ---- reading the emitted instructions ----------------------------------------
 \ THE TWO INSTRUCTION FORMS THIS SUITE HAS TO RECOGNISE, and both are decoded
@@ -269,16 +269,14 @@ create HID-TXT
 \ the function it would build has no return, so what the emitter writes for it
 \ and what a caller may do with its address are both open questions.
 \
-\ AND THE WORD IS LEFT AS THE ENGINE COMPILED IT. The refusal happens after the
-\ engine has published the definition, so what a refusal must not do is damage
-\ it: the case runs the word afterwards and reads its record.
+\ The default publication is fail-closed. The independent engine definition is a
+\ control that still runs; the attempted migrated definition never appears.
 : DEF-DIE ( -- )
    s" : NQ-DIE ( n -- ) drop E-FS-OPEN throw ;" EV
    s" : NQ-KEEP ( [ n -- ] n -- n ) swap drop ;" EV ;
 
 : DEAD-BEFORE ( -- )
-   s" : NQ-DEAD ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV
-   s" NQ-DEAD" REC-START OLD-START ! ;
+   s" : NQ-DEAD ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV ;
 
 : DEF-DEAD ( -- )
    s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" NMIGRATE:DEFINE ;
@@ -293,10 +291,10 @@ create HID-TXT
    \ the record of whatever elaborated last; which token each refusal names is
    \ test/compiler/native-elaborate.f's measurement, taken where the record is
    \ still the one the refusal left.
-   s" and the word the engine published still runs its own code" T-LABEL
-   s" NQ-DEAD" REC-START OLD-START @ T=
+   s" and the independent engine word still runs" T-LABEL
    s" 7 NQ-DEAD" EV-N 7 T=
-   s" 7 NQ-DEAD2" EV-N 7 T=
+   s" while the refused default definition never appears" T-LABEL
+   s" NQ-DEAD2" DEFINED? TFALSE
    s" NQ-DEAD2" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
 
 \ ---- the reach of the address form -------------------------------------------

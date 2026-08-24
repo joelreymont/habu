@@ -89,9 +89,8 @@ public
    INE@ INP! ;
 
 \ Give the stream back. A definition that closed inside it was consumed by this
-\ migration, so the interpreter goes on at the byte after it - on the failing
-\ path too, where the engine has already published the word and only the chain
-\ refused it. A stream no definition closed in is left exactly where it was.
+\ migration, so the interpreter goes on at the byte after it on the failing path
+\ too. A stream no definition closed in is left exactly where it was.
 : RELEASE ( -- )
    0 ARMED !
    CLOSED @ 0= if exit then

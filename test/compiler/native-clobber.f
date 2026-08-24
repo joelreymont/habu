@@ -45,8 +45,7 @@
 \      word described by a row belonging to something else - and the next caller
 \      compiled against that row computed the wrong answer. The case below seeds
 \      a narrow row at the exact slot a replayed migration will claim and
-\      requires the refusal to leave the word's record pointing at the code the
-\      engine compiled.
+\      requires the default transaction to leave no word or publication behind.
 \
 \ WHY THE COUNT IS OF INSTRUCTIONS AND NOT OF BYTES. A byte count moves for any
 \ reason at all. What the narrowing removes is exactly the traffic between a
@@ -228,6 +227,9 @@ $F8400000 constant LDUR-OP
    GLOBAL-WID XREF-FIND-WL
    dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
    XREF-START ;
+
+: DEFINED? ( ptr u8 n -- bool )
+   GLOBAL-WID XREF-FIND-WL XREF-FOUND? ;
 
 \ ---- what a real publication records -----------------------------------------
 \ The callee both loss cases below call. It is migrated, so the chain compiled it
@@ -488,8 +490,8 @@ variable GONE-ENTRY
 
 \ ---- a refusal from this record costs nothing ---------------------------------
 \ The widen refusal has to be raised BEFORE the seam writes a byte, because the
-\ seam's own contract is that a refused publication leaves the word running the
-\ code it was running. Reaching it needs a row already sitting at the slot the
+\ default transaction must leave no definition or publication behind. Reaching
+\ it needs a row already sitting at the slot the
 \ seam is about to claim, and the slot is learnt the only honest way: the same
 \ source is migrated once, forgotten back to the same anchor, and migrated again
 \ - the engine compiles the identical text from the identical free slot, so the
@@ -534,10 +536,9 @@ variable SEED-ROW
    ORDER-ANCHOR
    [: ORDER-MIGRATE ;] E-NCLOB-WIDEN TTHROWSQ
 
-   s" and the refusal leaves the word running the code the engine compiled" T-LABEL
-   s" NCLOB-REPLAY" ENTRY-OF ANCHOR-ENTRY @ T<>
-   s" NCLOB-REPLAY" ENTRY-OF NCLOB:KNOWN? FLAG# 0 T=
-   s" 0 NCLOB-REPLAY" EV-N 21 T=
+   s" and the refusal leaves no definition or publication behind" T-LABEL
+   s" NCLOB-REPLAY" DEFINED? TFALSE
+   s" NCLOB-REPLAY" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
 
    s" with the seeded row exactly as the refusal found it" T-LABEL
    ANCHOR-ENTRY @ GPR-AT SEED-ROW @ T= ;
