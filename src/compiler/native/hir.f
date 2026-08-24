@@ -255,6 +255,114 @@ public
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
+\ ---- the closed opcode vocabulary -------------------------------------------
+\ These are the stable codes stored by HIR-WORD, not enum representation.
+46 constant OPCODES
+
+: ORD ( HIR:opcode -- n )
+   MATCH opcode
+      const    OF 0  ENDOF
+      add      OF 1  ENDOF
+      sub      OF 2  ENDOF
+      mul      OF 3  ENDOF
+      return   OF 4  ENDOF
+      lt       OF 5  ENDOF
+      le       OF 6  ENDOF
+      br       OF 7  ENDOF
+      brz      OF 8  ENDOF
+      mem      OF 9  ENDOF
+      load     OF 10 ENDOF
+      store    OF 11 ENDOF
+      div      OF 12 ENDOF
+      bload    OF 13 ENDOF
+      bstore   OF 14 ENDOF
+      equal    OF 15 ENDOF
+      call     OF 16 ENDOF
+      wordcall OF 17 ENDOF
+      gt       OF 18 ENDOF
+      ge       OF 19 ENDOF
+      ne       OF 20 ENDOF
+      and      OF 21 ENDOF
+      or       OF 22 ENDOF
+      xor      OF 23 ENDOF
+      lshift   OF 24 ENDOF
+      rshift   OF 25 ENDOF
+      invert   OF 26 ENDOF
+      fconst   OF 27 ENDOF
+      fadd     OF 28 ENDOF
+      fsub     OF 29 ENDOF
+      fmul     OF 30 ENDOF
+      fdiv     OF 31 ENDOF
+      fneg     OF 32 ENDOF
+      fabs     OF 33 ENDOF
+      fsqrt    OF 34 ENDOF
+      intreal  OF 35 ENDOF
+      realint  OF 36 ENDOF
+      bitsreal OF 37 ENDOF
+      realbits OF 38 ENDOF
+      flt      OF 39 ENDOF
+      fgt      OF 40 ENDOF
+      feq      OF 41 ENDOF
+      fltz     OF 42 ENDOF
+      feqz     OF 43 ENDOF
+      trap     OF 44 ENDOF
+      quot     OF 45 ENDOF
+   ;MATCH ;
+
+: NTH ( n -- HIR:opcode )
+   case
+      0  of HIR-OPCODE:CONST    endof
+      1  of HIR-OPCODE:ADD      endof
+      2  of HIR-OPCODE:SUB      endof
+      3  of HIR-OPCODE:MUL      endof
+      4  of HIR-OPCODE:RETURN   endof
+      5  of HIR-OPCODE:LT       endof
+      6  of HIR-OPCODE:LE       endof
+      7  of HIR-OPCODE:BR       endof
+      8  of HIR-OPCODE:BRZ      endof
+      9  of HIR-OPCODE:MEM      endof
+      10 of HIR-OPCODE:LOAD     endof
+      11 of HIR-OPCODE:STORE    endof
+      12 of HIR-OPCODE:DIV      endof
+      13 of HIR-OPCODE:BLOAD    endof
+      14 of HIR-OPCODE:BSTORE   endof
+      15 of HIR-OPCODE:EQUAL    endof
+      16 of HIR-OPCODE:CALL     endof
+      17 of HIR-OPCODE:WORDCALL endof
+      18 of HIR-OPCODE:GT       endof
+      19 of HIR-OPCODE:GE       endof
+      20 of HIR-OPCODE:NE       endof
+      21 of HIR-OPCODE:AND      endof
+      22 of HIR-OPCODE:OR       endof
+      23 of HIR-OPCODE:XOR      endof
+      24 of HIR-OPCODE:LSHIFT   endof
+      25 of HIR-OPCODE:RSHIFT   endof
+      26 of HIR-OPCODE:INVERT   endof
+      27 of HIR-OPCODE:FCONST   endof
+      28 of HIR-OPCODE:FADD     endof
+      29 of HIR-OPCODE:FSUB     endof
+      30 of HIR-OPCODE:FMUL     endof
+      31 of HIR-OPCODE:FDIV     endof
+      32 of HIR-OPCODE:FNEG     endof
+      33 of HIR-OPCODE:FABS     endof
+      34 of HIR-OPCODE:FSQRT    endof
+      35 of HIR-OPCODE:INTREAL  endof
+      36 of HIR-OPCODE:REALINT  endof
+      37 of HIR-OPCODE:BITSREAL endof
+      38 of HIR-OPCODE:REALBITS endof
+      39 of HIR-OPCODE:FLT      endof
+      40 of HIR-OPCODE:FGT      endof
+      41 of HIR-OPCODE:FEQ      endof
+      42 of HIR-OPCODE:FLTZ     endof
+      43 of HIR-OPCODE:FEQZ     endof
+      44 of HIR-OPCODE:TRAP     endof
+      45 of HIR-OPCODE:QUOT     endof
+      E-HIR-OPCODE throw
+   endcase ;
+
+: BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
+   NTH OPCODE ;
+
 \ The literal's value is the whole content of a constant.
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.value" IR-BUILD:INTERN-SYMBOL ;

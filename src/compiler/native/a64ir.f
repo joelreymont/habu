@@ -401,6 +401,175 @@ public
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
+\ ---- the closed opcode vocabulary -------------------------------------------
+\ These ordinals predate the enum declaration order and are kept stable for the
+\ native passes that store them in their own tables.
+76 constant OPCODES
+
+: ORD ( A64IR:opcode -- n )
+   MATCH opcode
+      movz      OF 0  ENDOF
+      movk      OF 1  ENDOF
+      mov       OF 2  ENDOF
+      add       OF 3  ENDOF
+      sub       OF 4  ENDOF
+      mul       OF 5  ENDOF
+      store     OF 6  ENDOF
+      load      OF 7  ENDOF
+      reserve   OF 8  ENDOF
+      release   OF 9  ENDOF
+      dtake     OF 10 ENDOF
+      dload     OF 11 ENDOF
+      dstore    OF 12 ENDOF
+      dpublish  OF 13 ENDOF
+      flag      OF 14 ENDOF
+      br        OF 15 ENDOF
+      brz       OF 16 ENDOF
+      ret       OF 17 ENDOF
+      aload     OF 18 ENDOF
+      astore    OF 19 ENDOF
+      sdiv      OF 20 ENDOF
+      abload    OF 21 ENDOF
+      abstore   OF 22 ENDOF
+      call      OF 23 ENDOF
+      linksave  OF 24 ENDOF
+      linkload  OF 25 ENDOF
+      cmpbr     OF 26 ENDOF
+      wordcall  OF 27 ENDOF
+      and       OF 28 ENDOF
+      orr       OF 29 ENDOF
+      eor       OF 30 ENDOF
+      lslv      OF 31 ENDOF
+      lsrv      OF 32 ENDOF
+      mvn       OF 33 ENDOF
+      fadd      OF 34 ENDOF
+      fsub      OF 35 ENDOF
+      fmul      OF 36 ENDOF
+      fdiv      OF 37 ENDOF
+      fneg      OF 38 ENDOF
+      fabs      OF 39 ENDOF
+      fsqrt     OF 40 ENDOF
+      scvtf     OF 41 ENDOF
+      fcvtzs    OF 42 ENDOF
+      fmovxd    OF 43 ENDOF
+      fmovdx    OF 44 ENDOF
+      fflag     OF 45 ENDOF
+      fflagz    OF 46 ENDOF
+      fcmpbr    OF 47 ENDOF
+      fcmpbrz   OF 48 ENDOF
+      fmovdd    OF 49 ENDOF
+      selz      OF 50 ENDOF
+      cmpsel    OF 51 ENDOF
+      selzd     OF 52 ENDOF
+      cmpseld   OF 53 ENDOF
+      fcmpsel   OF 54 ENDOF
+      fcmpselz  OF 55 ENDOF
+      fcmpseld  OF 56 ENDOF
+      fcmpselzd OF 57 ENDOF
+      tailcall  OF 58 ENDOF
+      madd      OF 59 ENDOF
+      addi      OF 60 ENDOF
+      subi      OF 61 ENDOF
+      movn      OF 62 ENDOF
+      andi      OF 63 ENDOF
+      orri      OF 64 ENDOF
+      eori      OF 65 ENDOF
+      fload     OF 66 ENDOF
+      fstore    OF 67 ENDOF
+      faload    OF 68 ENDOF
+      fastore   OF 69 ENDOF
+      fdload    OF 70 ENDOF
+      fdstore   OF 71 ENDOF
+      trap      OF 72 ENDOF
+      codeaddr  OF 73 ENDOF
+      flagi     OF 74 ENDOF
+      cmpbri    OF 75 ENDOF
+   ;MATCH ;
+
+: NTH ( n -- A64IR:opcode )
+   case
+      0  of A64IR-OPCODE:MOVZ      endof
+      1  of A64IR-OPCODE:MOVK      endof
+      2  of A64IR-OPCODE:MOV       endof
+      3  of A64IR-OPCODE:ADD       endof
+      4  of A64IR-OPCODE:SUB       endof
+      5  of A64IR-OPCODE:MUL       endof
+      6  of A64IR-OPCODE:STORE     endof
+      7  of A64IR-OPCODE:LOAD      endof
+      8  of A64IR-OPCODE:RESERVE   endof
+      9  of A64IR-OPCODE:RELEASE   endof
+      10 of A64IR-OPCODE:DTAKE     endof
+      11 of A64IR-OPCODE:DLOAD     endof
+      12 of A64IR-OPCODE:DSTORE    endof
+      13 of A64IR-OPCODE:DPUBLISH  endof
+      14 of A64IR-OPCODE:FLAG      endof
+      15 of A64IR-OPCODE:BR        endof
+      16 of A64IR-OPCODE:BRZ       endof
+      17 of A64IR-OPCODE:RET       endof
+      18 of A64IR-OPCODE:ALOAD     endof
+      19 of A64IR-OPCODE:ASTORE    endof
+      20 of A64IR-OPCODE:SDIV      endof
+      21 of A64IR-OPCODE:ABLOAD    endof
+      22 of A64IR-OPCODE:ABSTORE   endof
+      23 of A64IR-OPCODE:CALL      endof
+      24 of A64IR-OPCODE:LINKSAVE  endof
+      25 of A64IR-OPCODE:LINKLOAD  endof
+      26 of A64IR-OPCODE:CMPBR     endof
+      27 of A64IR-OPCODE:WORDCALL  endof
+      28 of A64IR-OPCODE:AND       endof
+      29 of A64IR-OPCODE:ORR       endof
+      30 of A64IR-OPCODE:EOR       endof
+      31 of A64IR-OPCODE:LSLV      endof
+      32 of A64IR-OPCODE:LSRV      endof
+      33 of A64IR-OPCODE:MVN       endof
+      34 of A64IR-OPCODE:FADD      endof
+      35 of A64IR-OPCODE:FSUB      endof
+      36 of A64IR-OPCODE:FMUL      endof
+      37 of A64IR-OPCODE:FDIV      endof
+      38 of A64IR-OPCODE:FNEG      endof
+      39 of A64IR-OPCODE:FABS      endof
+      40 of A64IR-OPCODE:FSQRT     endof
+      41 of A64IR-OPCODE:SCVTF     endof
+      42 of A64IR-OPCODE:FCVTZS    endof
+      43 of A64IR-OPCODE:FMOVXD    endof
+      44 of A64IR-OPCODE:FMOVDX    endof
+      45 of A64IR-OPCODE:FFLAG     endof
+      46 of A64IR-OPCODE:FFLAGZ    endof
+      47 of A64IR-OPCODE:FCMPBR    endof
+      48 of A64IR-OPCODE:FCMPBRZ   endof
+      49 of A64IR-OPCODE:FMOVDD    endof
+      50 of A64IR-OPCODE:SELZ      endof
+      51 of A64IR-OPCODE:CMPSEL    endof
+      52 of A64IR-OPCODE:SELZD     endof
+      53 of A64IR-OPCODE:CMPSELD   endof
+      54 of A64IR-OPCODE:FCMPSEL   endof
+      55 of A64IR-OPCODE:FCMPSELZ  endof
+      56 of A64IR-OPCODE:FCMPSELD  endof
+      57 of A64IR-OPCODE:FCMPSELZD endof
+      58 of A64IR-OPCODE:TAILCALL  endof
+      59 of A64IR-OPCODE:MADD      endof
+      60 of A64IR-OPCODE:ADDI      endof
+      61 of A64IR-OPCODE:SUBI      endof
+      62 of A64IR-OPCODE:MOVN      endof
+      63 of A64IR-OPCODE:ANDI      endof
+      64 of A64IR-OPCODE:ORRI      endof
+      65 of A64IR-OPCODE:EORI      endof
+      66 of A64IR-OPCODE:FLOAD     endof
+      67 of A64IR-OPCODE:FSTORE    endof
+      68 of A64IR-OPCODE:FALOAD    endof
+      69 of A64IR-OPCODE:FASTORE   endof
+      70 of A64IR-OPCODE:FDLOAD    endof
+      71 of A64IR-OPCODE:FDSTORE   endof
+      72 of A64IR-OPCODE:TRAP      endof
+      73 of A64IR-OPCODE:CODEADDR  endof
+      74 of A64IR-OPCODE:FLAGI     endof
+      75 of A64IR-OPCODE:CMPBRI    endof
+      E-A64IR-OPCODE throw
+   endcase ;
+
+: BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
+   NTH OPCODE ;
+
 \ ---- the condition a comparison is made under --------------------------------
 : COND-CODE ( A64IR:cond -- n )
    MATCH cond

@@ -807,6 +807,7 @@ public
 -8345 constant E-A64IR-OFF      \ an add or subtract immediate outside the unsigned twelve-bit field the form holds: negative, or past the largest value that field carries with no shift
 -8346 constant E-A64IR-MASK     \ a mask the logical immediate forms cannot carry: the field holds a rotated contiguous run of ones repeating at a power-of-two element width, which excludes zero, all ones, and every run that is broken
 -8347 constant E-A64IR-FUN      \ a function ordinal the address-of-a-function form cannot name: negative, so it denotes no function of any emission. WHICH emission it must be a function of is the emitter's fact and not the dialect's, and is refused there
+-8348 constant E-A64IR-OPCODE   \ an ordinal outside the machine dialect's closed opcode vocabulary
 
 \ Native ARM64 instruction selection (package A64SEL): -8360..-8379
 \

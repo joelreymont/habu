@@ -77,6 +77,24 @@ private
    A64IR:HALVES A64IR:HALF-BITS * A64IR:REG-BITS T=
    A64IR:HALF-BITS 16 T= ;
 
+: OPCODE-NTH-LOW ( -- )
+   -1 A64IR:NTH drop ;
+
+: OPCODE-NTH-HIGH ( -- )
+   A64IR:OPCODES A64IR:NTH drop ;
+
+: OPCODE-ORDINAL-CASE ( -- )
+   s" every machine opcode round-trips through the dialect-owned ordinal" T-LABEL
+   A64IR:OPCODES 0 ?do
+      i A64IR:NTH A64IR:ORD i T=
+   loop
+   s" the stable machine ordinal is independent of enum declaration order" T-LABEL
+   A64IR-OPCODE:SDIV A64IR:ORD 20 T=
+   s" machine opcode ordinals below the vocabulary are refused" T-LABEL
+   [: OPCODE-NTH-LOW ;] E-A64IR-OPCODE TTHROWSQ
+   s" machine opcode ordinals above the vocabulary are refused" T-LABEL
+   [: OPCODE-NTH-HIGH ;] E-A64IR-OPCODE TTHROWSQ ;
+
 \ ---- the halves of a value ---------------------------------------------------
 \ A negative value has to read as the bit pattern the machine holds, because a
 \ move-wide chain reproduces bits and not arithmetic.
@@ -1786,6 +1804,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   OPCODE-ORDINAL-CASE
    BOUND-CASE
    FRAME-BOUND-CASE
    s" the deepest frame this dialect can reserve is the add-sub immediate" T-LABEL

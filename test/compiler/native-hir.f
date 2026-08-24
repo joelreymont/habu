@@ -76,6 +76,25 @@ private
    c b HIR:REGISTER
    b ;
 
+: OPCODE-NTH-LOW ( -- )
+   -1 HIR:NTH drop ;
+
+: OPCODE-NTH-HIGH ( -- )
+   HIR:OPCODES HIR:NTH drop ;
+
+: OPCODE-ORDINAL-CASE ( -- )
+   s" every HIR opcode round-trips through the dialect-owned ordinal" T-LABEL
+   HIR:OPCODES 0 ?do
+      i HIR:NTH HIR:ORD i T=
+   loop
+   s" the stored HIR ordinal is independent of enum declaration order" T-LABEL
+   HIR-OPCODE:RETURN HIR:ORD 4 T=
+   HIR-OPCODE:QUOT HIR:ORD 45 T=
+   s" HIR opcode ordinals below the vocabulary are refused" T-LABEL
+   [: OPCODE-NTH-LOW ;] E-HIR-OPCODE TTHROWSQ
+   s" HIR opcode ordinals above the vocabulary are refused" T-LABEL
+   [: OPCODE-NTH-HIGH ;] E-HIR-OPCODE TTHROWSQ ;
+
 \ ---- the dialect: what registration defines ----------------------------------
 \ The opcodes, and the count, so "nothing else was defined" is measured rather
 \ than assumed. The family outgrew one case's worth of locals when the
@@ -2264,6 +2283,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   OPCODE-ORDINAL-CASE
    BND [: GROUP-DIALECT ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-POLICY ;] IR-CTX:WITH-CONTEXT
