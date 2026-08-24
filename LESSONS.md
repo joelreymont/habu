@@ -7671,3 +7671,9 @@ and --no-lldbinit.
 - **Boot output is not a PTY readiness barrier.** A generated engine can print
   its boot-run report before the REPL installs raw mode and reads input; Ctrl-D
   sent then can be lost. Wait for the real `habu> ` prompt before sending it.
+
+## 2026-08-24 - native-chain address carriers
+
+- **Scan fixed-width records by their width, not by maximal equal-field runs.**
+  Adjacent address carriers may reuse a register; validate each four-lane
+  carrier independently and advance four lanes.

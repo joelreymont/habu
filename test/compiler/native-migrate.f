@@ -70,6 +70,38 @@ variable OLD-LEN
 : DEFINED? ( ptr u8 n -- bool )
    GLOBAL-WID XREF-FIND-WL XREF-FOUND? ;
 
+\ ---- context entry fails before the migration body ---------------------------
+\ Fill the real IR context registry, catch the migration's own attempt to enter
+\ one more context while the outermost frame is still live, then try the same
+\ production entry again after every frame has retired.
+64 constant ENTRY-DEPTH
+variable ENTRY-RC
+
+: ENTRY-MIGRATE ( -- )
+   s" : NMG-ENTRY-AFTER ( n -- n ) 1+ ;" NMIGRATE:MEASURE-HELD ;
+
+defer ENTRY-STEP ( n IR-CTX:ctx -- )
+
+: ENTRY-STEP-IMPL ( n IR-CTX:ctx -- )
+   drop 1-
+   dup 0 > if
+      NABI:BINDING [: ENTRY-STEP ;] IR-CTX:WITH-CONTEXT
+      exit
+   then
+   drop
+   [: ENTRY-MIGRATE ;] catch ENTRY-RC ! ;
+
+: ENTRY-FAILURE-CASE ( -- )
+   [: ENTRY-STEP-IMPL ;] is ENTRY-STEP
+   ENTRY-DEPTH NABI:BINDING [: ENTRY-STEP ;] IR-CTX:WITH-CONTEXT
+
+   s" context entry reports its own depth failure" T-LABEL
+   ENTRY-RC @ E-IR-CTX-DEPTH T=
+
+   s" and the next migration is not poisoned by the failed entry" T-LABEL
+   ENTRY-MIGRATE
+   s" NMG-ENTRY-AFTER" DEFINED? TFALSE ;
+
 \ ---- a word the chain can compile --------------------------------------------
 : SQ-SRC ( -- ptr u8 n )
    s" : NMG-SQ ( n -- n ) dup * ;" ;
@@ -707,6 +739,28 @@ variable KEEP-N
 \ The data word the three migrations name, and the three bodies that name it.
 \ They are one body under three names: the whole point of the comparison is that
 \ nothing about the source differs between them.
+: ADJ-ADDR-SETUP ( -- )
+   s" create NMG-ADJ-A 1 ,  create NMG-ADJ-B 2 ," EV ;
+
+: ADJ-ADDR-MIGRATE ( -- )
+   s" : NMG-ADJ ( -- ptr a ) NMG-ADJ-A drop NMG-ADJ-B ;" NMIGRATE:DEFINE ;
+
+: ADJ-ADDR-CASE ( -- )
+   ADJ-ADDR-SETUP
+   ADJ-ADDR-MIGRATE
+
+   s" adjacent address carriers are recorded as two chains" T-LABEL
+   A64EMIT:ADDR-SITES 2 T=
+   0 A64EMIT:ADDR-SITE-KIND@ A64IR:ADDR-DATA T=
+   1 A64EMIT:ADDR-SITE-KIND@ A64IR:ADDR-DATA T=
+
+   s" and the second starts exactly where the first carrier ends" T-LABEL
+   1 A64EMIT:ADDR-SITE@
+   0 A64EMIT:ADDR-SITE@ A64IR:HALVES + T=
+
+   s" the migrated word returns the second data word's address" T-LABEL
+   s" NMG-ADJ" EV-N  s" NMG-ADJ-B" EV-N T= ;
+
 : DAT-NEW ( -- )
    s" create NMG-DAT 1 cells allot" EV ;
 
@@ -2086,6 +2140,7 @@ variable MEAS-PUB0
 
 : RUN ( -- )
    T-RESET
+   ENTRY-FAILURE-CASE
    MOD-CONST
    RESOLVED-CASE
    STALE-CASE
@@ -2104,6 +2159,7 @@ variable MEAS-PUB0
    REFUSED-CASE
    UNTOUCHED-CASE
    ENTRY-CASES
+   ADJ-ADDR-CASE
    DATA-CASES
    FLOAT-CASE
    FCMP-MIGRATIONS

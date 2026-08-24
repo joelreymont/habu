@@ -41,11 +41,8 @@
 \ machine-stack argument slot, a floating register and an immediate would each be
 \ a further kind with a further owner, and none of them exists in the chain.
 \ The floating-register interface is still a pair of sets, deliberately: the
-\ machine dialect has no floating value class yet, so an ordered floating list
-\ would be a promise rather than a declaration anything could honour, and a
-\ convention that interleaves integer and floating arguments needs the position
-\ of an argument to carry its class as well (dot
-\ habu-bind-floating-and-d2a16dbd).
+\ Habu convention passes floating values through canonical data-stack slots too,
+\ so it has no ordered floating-register argument or result positions to state.
 \
 \ THE VOCABULARY IS THE ASSEMBLER'S, NOT A SECOND ONE. Every bound here is read
 \ off the instruction vocabulary that formal/Common/Insn.v models and

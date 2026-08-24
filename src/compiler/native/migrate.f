@@ -538,9 +538,10 @@ variable REC-OK                      \ the body staged so far is still one worth
    LENGTH-CK
    1 M-OPEN !
    0 M-RC !
-   IN-CONTEXT
+   [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
    NINL:STAGED? if NINL:STAGE-CLEAR then
+   entry-rc 0<> if entry-rc throw then
    M-RC @ {: rc:n :}
    rc 0 <> if HELD-RETRACT rc throw then
    M-MEASURE @ 0<> if HELD-RETRACT then ;

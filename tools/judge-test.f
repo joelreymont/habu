@@ -29,6 +29,11 @@ require tools/judge/cost.f
 require tools/judge/traffic.f
 require tools/judge/check.f
 
+\ A pre-existing derived name for the collision case below. It is deliberately
+\ not a chain publication: treating it as a successful judge compilation would
+\ measure this unrelated body.
+: ADD3-JT-COLLISION ( n n n -- n ) drop drop ;
+
 package JUDGE-TEST
 
 private
@@ -161,7 +166,23 @@ private
 
    s" and an instruction that reaches no memory is not an access at all" T-LABEL
    $8B000000 DS-BASE or DS? TFALSE           \ add  Xd, ds, Xm
-   $91000000 DS-BASE or DS? TFALSE ;         \ add  Xd, ds, #imm
+   $91000000 DS-BASE or DS? TFALSE           \ add  Xd, ds, #imm
+
+   s" updating and register-offset forms are not unscaled accesses" T-LABEL
+   $F8000400 DS-BASE or DS? TFALSE           \ str  Xt, [ds], #simm
+   $F8400C00 DS-BASE or DS? TFALSE           \ ldr  Xt, [ds, #simm]!
+   $F8206800 DS-BASE or DS? TFALSE           \ str  Xt, [ds, Xm]
+   $FC000400 DS-BASE or DS? TFALSE           \ str  Dt, [ds], #simm
+   $FC400C00 DS-BASE or DS? TFALSE           \ ldr  Dt, [ds, #simm]!
+   $FC206800 DS-BASE or DS? TFALSE ;         \ str  Dt, [ds, Xm]
+
+\ ---- a derived-name collision is not a compiled row -------------------------
+: CHAIN-NAME-CASE ( -- )
+   s" tools/codegen-compare-corpus.f" JUDGE-SRC:LOAD
+   s" -JT-COLLISION" JUDGE-CHAIN:SUFFIX!
+   s" a pre-existing derived name is refused, not reported as compiled" T-LABEL
+   [: s" ADD3" JUDGE-SRC:FIND JUDGE-CHAIN:PUBLISH drop ;]
+   E-JUDGE-CHAIN-NAME TTHROWSQ ;
 
 \ And the column over real routines. A name nothing published is refused rather
 \ than answered with zero, which is what a silently missing routine would
@@ -404,6 +425,7 @@ public
    LIVE-AGREEMENT-CASES
    INPUT-CASES
    TRAFFIC-FORM-CASES
+   CHAIN-NAME-CASE
    TRAFFIC-COLUMN-CASES
    REFUSAL-CASES
    WITNESS-CASES

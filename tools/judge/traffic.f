@@ -47,6 +47,7 @@ package JUDGE-TRAFFIC
 private
 
 $FFC00000 constant MEM-MASK
+$FFE00C00 constant UNSCALED-MASK
 $F9000000 constant STR-OP          \ str  Xt, [Xn, #imm]   - scaled unsigned
 $F9400000 constant LDR-OP          \ ldr  Xt, [Xn, #imm]
 $F8000000 constant STUR-OP         \ stur Xt, [Xn, #simm]  - unscaled signed
@@ -59,8 +60,8 @@ $FC400000 constant LDURD-OP        \ ldur Dt, [Xn, #simm]
 5 constant RN-SHIFT
 $1F constant REG-MASK
 
-: FORM? ( n n -- bool ) {: w:n op:n :}
-   w MEM-MASK and op =
+: FORM? ( n n n -- bool ) {: w:n op:n mask:n :}
+   w mask and op =
    w RN-SHIFT rshift REG-MASK and  A64EFF:DSTACK-GPR =  and ;
 
 public
@@ -70,14 +71,14 @@ public
 \ be checked against another count, while this can be handed the exact encodings
 \ a miss would look like.
 : INSN? ( n -- bool ) {: w:n :}
-   w STR-OP FORM? if true exit then
-   w LDR-OP FORM? if true exit then
-   w STUR-OP FORM? if true exit then
-   w LDUR-OP FORM? if true exit then
-   w STRD-OP FORM? if true exit then
-   w LDRD-OP FORM? if true exit then
-   w STURD-OP FORM? if true exit then
-   w LDURD-OP FORM? ;
+   w STR-OP MEM-MASK FORM? if true exit then
+   w LDR-OP MEM-MASK FORM? if true exit then
+   w STUR-OP UNSCALED-MASK FORM? if true exit then
+   w LDUR-OP UNSCALED-MASK FORM? if true exit then
+   w STRD-OP MEM-MASK FORM? if true exit then
+   w LDRD-OP MEM-MASK FORM? if true exit then
+   w STURD-OP UNSCALED-MASK FORM? if true exit then
+   w LDURD-OP UNSCALED-MASK FORM? ;
 
 \ How many such accesses a live word's own compiled code makes.
 : COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}

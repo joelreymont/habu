@@ -147,12 +147,8 @@ public
 \ and otherwise the code the chain refused it with - which is a measurement of
 \ the compiler, taken here, and not a name on a list.
 \
-\ A definition already published is left alone and answered 0: the callees of
-\ two subjects overlap, and publishing one twice would be refused by the name
-\ check below for a reason that is about this file rather than about the
-\ compiler.
 : PUBLISH ( n -- n ) {: k:n :}
-   k WORD$ PUBLISHED? if 0 exit then
+   k WORD$ PUBLISHED? if E-JUDGE-CHAIN-NAME throw then
    k STAGED !
    [: MIGRATE ;] catch ;
 
@@ -202,12 +198,15 @@ public
 \ the chain refused K with - or 0. A DEPENDENCY the chain refuses is not
 \ answered as k's refusal: it is a different fact, and reporting it as k's would
 \ record the allocator declining a callee as the subject being declined. It is
-\ thrown instead, so the run says which.
+\ thrown instead, so the run says which. Dependencies already published by an
+\ earlier row are skipped; K itself still goes through PUBLISH's name check.
 : PUBLISH-CALLING ( n -- n ) {: k:n :}
    k MARK-DEPS
    k 0 ?do
       i MARKED? if
-         i PUBLISH 0<> if E-JUDGE-CHAIN-DEP throw then
+         i WORD$ PUBLISHED? 0= if
+            i PUBLISH 0<> if E-JUDGE-CHAIN-DEP throw then
+         then
       then
    loop
    k PUBLISH ;
