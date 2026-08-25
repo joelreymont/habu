@@ -7702,6 +7702,8 @@ and --no-lldbinit.
 - **A code rewind must clear both relocation maps over the whole reclaimed span.**
   Otherwise reused code or name padding inherits stale call/address claims and
   poisons a later snapshot.
+- **Address-keyed compiler caches cannot survive reclaimed-slot reuse without
+  lifecycle identity.** Delete them and compile conservative calls from live XREF instead.
 
 ## 2026-08-25 - generated constructor operands
 

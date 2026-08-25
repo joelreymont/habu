@@ -914,7 +914,7 @@ wrong, and no token can follow the definition.
 Section 7.2 requires the elaborated operations to correspond to an accepted,
 source-bound checker certificate, and the checker does parse the declared
 signature during the very scan the tape was recorded from. The production entry
-now reads it back: `src/compiler/native/migrate.f` KEEP-ARITY asks
+now reads it back: `src/compiler/native/compiler.f` KEEP-ARITY asks
 `NDICT:SPELL-ARITY` about the name the source just published, in the scope it
 published it in, and hands those two counts to `NELAB:COLON`. That is the same
 reader every callee's arity already came from, so a routine's contract and the

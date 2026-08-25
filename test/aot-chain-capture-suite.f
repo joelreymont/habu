@@ -374,7 +374,7 @@ create ART ART-CAP allot    variable ART-LEN
    s" the capture names the closure it loaded" T-LABEL
    s" closure=" FIELD  40 s" closure files" FLOOR
    s" ... starting at the chain root the window required" T-LABEL
-   s" first=src/compiler/native/migrate.f" SAID? TTRUE
+   s" first=src/compiler/native/compiler.f" SAID? TTRUE
    s" ... and carries a full-width digest over their bytes" T-LABEL
    s" chaindigest=" 64 TEXT-FIELD nip 64 T=
    s" the producer key is the engine that ran the capture" T-LABEL
@@ -550,7 +550,7 @@ create SW1 512 allot
    s" ... and the closure it names" T-LABEL
    s" closure=" FIELD T-CLOSURE @ T=
    s" ... starting at the chain root" T-LABEL
-   s" first=src/compiler/native/migrate.f" SAID? TTRUE ;
+   s" first=src/compiler/native/compiler.f" SAID? TTRUE ;
 
 : PROBE-DAMAGE ( -- )
    FRESH  0 A64@ 1 xor 0 A64!  EMIT
@@ -1106,13 +1106,9 @@ create ENGINE-BUF FS-PATH-CAP allot   variable ENGINE-U
 
 \ ---- and it says it has the files the seed carries ---------------------------
 \
-\ WHAT THIS LOCKS. Baking the chain puts its 43 files' definitions in the engine
-\ but tells src/core/include.f nothing, so a program's `require
-\ src/compiler/native/migrate.f` reads the file a second time and dies on a
-\ duplicate definition - the seeded engine would be WORSE than the source one for
-\ the chain's own consumers. src/habu/habu2.f marks every merged closure file
-\ `provided` in the cold prefix, ahead of the freeze that decides what
-\ ENGINE-PROVIDES? answers for.
+\ WHAT THIS LOCKS. src/habu/habu2.f marks every merged closure file `provided`
+\ in the cold prefix, ahead of the freeze that decides what ENGINE-PROVIDES?
+\ answers for.
 \
 \ THE PROBE IS GENERATED FROM THE ARTIFACT'S OWN CLOSURE LIST, not from a list
 \ written here: the suite walks the closure section it already parses and asks the
@@ -1168,7 +1164,7 @@ variable CUR
    NOT-IN-CLOSURE$ s" PROBE-ASK-X" ASK+
    s\" s\" provided=\" type PROBE-PROV @ .\n" PROG+
    s\" s\" extra=\" type PROBE-EXTRA @ .\n" PROG+
-   s\" require src/compiler/native/migrate.f\n" PROG+
+   s\" require src/compiler/native/compiler.f\n" PROG+
    PROGRAM$ PROG+ ;
 
 : TAIL= ( ptr u8 n -- bool ) {: a:ptr u:n :}
