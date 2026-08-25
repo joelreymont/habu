@@ -240,7 +240,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 \ One `name=value` per line. `codespan`/`dataspan` are the window's own measured
 \ extents, so a reader can check the capture against the window instead of taking
 \ the capture's word for its own size.
-: CENSUS. ( -- )
+: CAPTURE-CENSUS. ( -- )
    s" recs=" type AOT-REC-N @ .
    s" sites=" type AOT-SITE-N @ .
    s" blob=" type AOT-BLOB-LEN @ .
@@ -248,14 +248,18 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    s" dsites=" type AOT-DSITE-N @ .
    s" csites=" type AOT-CSITE-N @ .
    s" xtsites=" type AOT-XTSITE:N @ .
-   s" xtoff=" type AOT-WINDOW:XTOFF-N @ .
+   s" xtoff=" type AOT-WINDOW:XTOFF-N @ . ;
+
+: METADATA-CENSUS. ( -- )
    s" sigs=" type CHECKER-ASIG-N .
    s" sigbytes=" type CHECKER-ASIG-ROW-BYTES CHECKER-ASIG-STR-BYTES + .
    s" sigknown=" type AOT-CAPTURE:SIG-KNOWN .
    s" sigexempt=" type AOT-CAPTURE:SIG-EXEMPT .
    s" sigrows=" type AOT-SIG-N @ .
    s" sigstr=" type AOT-SIG-STR-LEN @ .
-   s" reg=" type AOT-REG-LEN @ .
+   s" reg=" type AOT-REG-LEN @ . ;
+
+: WINDOW-CENSUS. ( -- )
    s" datasz=" type AOT-DATA-SIZE @ .
    s" runs=" type AOT-WINDOW:RUN-N @ .
    s" runbytes=" type AOT-WINDOW:RBYTES-LEN @ .
@@ -265,7 +269,9 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    s" bandbytes=" type AOT-ARM:D0 @ PRE-D @ - .
    s" widw0=" type AOT-ARM:W0 @ .
    s" widspan=" type AOT-ARM:W1 @ AOT-ARM:W0 @ - .
-   s" pwin=" type AOT-PWIN-N @ .
+   s" pwin=" type AOT-PWIN-N @ . ;
+
+: IDENTITY-CENSUS. ( -- )
    s" closure=" type AOT-IDENT:COUNT .
    s" first=" type 0 AOT-IDENT:PATH$ type cr
    s" last=" type AOT-IDENT:COUNT 1 - AOT-IDENT:PATH$ type cr
@@ -273,6 +279,12 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    CHAIN-SHA HEX SHA256>HEX
    s" chaindigest=" type HEX 64 type cr
    s" producer=" type ENGINE-ID:KEY$ type cr ;
+
+: CENSUS. ( -- )
+   CAPTURE-CENSUS.
+   METADATA-CENSUS.
+   WINDOW-CENSUS.
+   IDENTITY-CENSUS. ;
 
 \ ---- the artifact, and the proof that writing it is a round trip -------------
 \
