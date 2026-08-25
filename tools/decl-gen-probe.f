@@ -101,7 +101,7 @@ variable PI         \ dump cursor
       PI @ 1 + PI !
    REPEAT ;
 
-\ A generated variant carries the constructor symbol TDPLAN-CTOR+ recorded for
+\ A generated variant carries the constructor symbol TDPLAN-SUM-CTOR+ recorded for
 \ it; an ungenerated one carries none.
 : GENERATED? ( -- bool )
    FAM @ FAM-VAR-COUNT 0 <= IF 0 0= 0= EXIT THEN

@@ -1001,7 +1001,8 @@ public
 \ entry stays metadata-only, so preverify/all-errors dispatch never mutates
 \ the tool dictionary and checker rollback stays complete. Each PUBLIC variant
 \ becomes one checked qualified definition
-\    : <CTOR-PKG>:<VARIANT> ( payload.. -- family<a,..> ) 0 .. 0 <tag> ;
+\    : <CTOR-PKG>:<VARIANT> ( payload.. -- family<a,..> )
+\       construct <family> <variant> ;
 \ rendered from interned SUMV metadata only. Before any generated source reaches
 \ the evaluator, the generator renders every constructor and derived word,
 \ rejects duplicate, live, or visibility-invalid symbols, grows all
@@ -1065,7 +1066,7 @@ create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
 variable TDGEN-NA   variable TDGEN-NU     \ word-name span inside TDGEN-BUF
 variable TDGEN-I    variable TDGEN-J      \ render loop indexes
-variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
+variable TDGEN-M    variable TDGEN-B
 
 \ Generated declarations are planned and checked in full before the evaluator
 \ sees any source. The per-word renderer remains bounded by TDGEN-CAP, while this
@@ -1263,9 +1264,15 @@ private
    THEN
    TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM dup TDPLAN-SYM+ ;
 
-: TDPLAN-CTOR+ ( n n -- ) {: vid:n cells:n :}
-   TDPLAN-NAME+ dup cells CTOR-PEND-SYM+
-   vid swap SUMV-CTOR-SYM!
+: TDPLAN-CTOR-NAME+ ( n -- n ) {: vid:n :}
+   TDPLAN-NAME+ dup vid swap SUMV-CTOR-SYM! ;
+
+: TDPLAN-SUM-CTOR+ ( n -- )
+   TDPLAN-CTOR-NAME+ drop
+   TDPLAN-WORD+ ;
+
+: TDPLAN-PROD-CTOR+ ( n -- )
+   TDPLAN-CTOR-NAME+ 0 CTOR-PEND-SYM+
    TDPLAN-WORD+ ;
 
 : TDPLAN-DERIVED+ ( -- )
@@ -1575,9 +1582,6 @@ private
       fam s" payload snapshot has no such payload element" TDPV-THROW THEN
    TDPV-NODE-P @ TDPV-OFF-P @ i cells + @ j + cells + @ ;
 
-: TDGEN-PADS ( n n -- n ) {: fam:n vid:n :}   \ zero cells before the tag
-   fam TFAM-SLOTS@ fam vid TDPV-CELLS@ - ;
-
 \ The provider the legacy definers supply: the committed SUMV metadata. Each
 \ capability takes the full ( ctx fam vid .. ) argument list the renderer passes
 \ every provider and answers from the variant row alone, so the context and the
@@ -1641,13 +1645,10 @@ private
    TDGEN-U @ n0 - TDGEN-NU !
    32 TDGEN-C, ;
 
-: TDGEN-BODY ( n n -- ) {: vid:n pads:n :}   \ "0 .. 0 tag ;" zero pads + tag
-   0 TDGEN-K !
-   BEGIN TDGEN-K @ pads < WHILE
-      48 TDGEN-C,  32 TDGEN-C,
-      TDGEN-K @ 1 + TDGEN-K !
-   REPEAT
-   vid SUMV-TAG@ TDGEN-DEC
+: TDGEN-CONSTRUCT-BODY ( n n -- ) {: fam:n vid:n :}
+   s" construct " TDGEN-APP
+   fam TFAM-NAME$ TDGEN-APP  32 TDGEN-C,
+   vid SUMV-NAME$ TDGEN-APP
    s"  ;" TDGEN-APP ;
 
 : TDECL-GEN-EVAL-BODY ( -- )
@@ -1668,7 +1669,6 @@ private
 public
 
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
-   fam vid TDGEN-PADS {: pads:n :}
    TDGEN-CLEAR
    vid TDGEN-NAME
    s" ( " TDGEN-APP
@@ -1676,8 +1676,8 @@ public
    s" -- " TDGEN-APP
    fam TDGEN-OUT-TYPE
    s"  ) " TDGEN-APP
-   vid pads TDGEN-BODY
-   vid pads 1 + TDPLAN-CTOR+ ;
+   fam vid TDGEN-CONSTRUCT-BODY
+   vid TDPLAN-SUM-CTOR+ ;
 
 
 private
@@ -1709,7 +1709,7 @@ private
       fam vid TDGEN-PAYLOAD
       s" ) ;" TDGEN-APP
    THEN
-   vid 0 TDPLAN-CTOR+ ;
+   vid TDPLAN-PROD-CTOR+ ;
 
 \ --- derived typed equality (derive S1+S2, dot habu-checker-capability-derive):
 \ `DERIVE eq` on a PUBLIC arity-0 ENUM/SUMTYPE/PRODUCT generates ORDINARY
