@@ -1,5 +1,25 @@
 # Bootstrap
 
+## Current recovery status (2026-09-10)
+
+This checkout's Gforth recovery and native self-refresh currently fail with
+`hb: native compiler dispatch unset`: the generated stage still loads source
+before the sole native compiler has been seeded. Do not use those paths to
+replace a working engine until that build transition is complete.
+
+The compatible local seed `.jj-ws/bootstrap-seed-hardcut/bin/hb` was copied to
+`bin/hb` (SHA-256
+`dc719a7bb03da1b979ca6c4167486fdb1a32b6226b6f2cdec1d5773a121f96b8`).
+It loads the current source, accepts a
+typed increment, rejects a mismatched stack effect with exit 70, and passes
+`test/engine-error-package.f` and `test/catch-frame.f`. This recovery does not
+claim a successful self-refresh or a green full native suite.
+
+External applications can launch from the Habu checkout with an absolute
+entry path: `bin/hb --load /absolute/path/to/app.f`. Includes resolve from the
+working directory. With terminal stdin, the loaded program continues into the
+REPL; with piped stdin, EOF exits. `bye` is not defined in this engine.
+
 `bin/hb` is generated and ignored. It is the only installed native build output.
 It is the small stdin/TTY engine, not a snapshot launcher: core/checker/tool source
 is loaded from the checkout at process start, and large dictionaries/checker

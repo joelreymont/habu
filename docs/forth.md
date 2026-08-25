@@ -1,7 +1,8 @@
 # Forth Standards (habu)
 
-How we write Forth in this repo. **BLOCKING** — code that violates these is wrong,
-not a matter of taste. Target is the native `bin/hb` engine.
+How we write Forth in this repo. Target is the native `bin/hb` engine.
+Use these conventions to keep code readable and correctly checked; choose the
+development workflow and verification effort to suit the actual change.
 
 Durable Forth language guidance belongs here, not in `LESSONS.md`. Lessons may
 record the incident that taught a rule, but the reusable rule itself lives in this
@@ -625,7 +626,7 @@ address arithmetic at the public boundary.
   Write a comment only for a constraint the code cannot state — a units,
   ownership or ordering invariant, a hardware encoding fact, a checker
   boundary — and keep it to one or two lines. No design essays, no narrated
-  rationale, no refutation history: that belongs in the dot leaf and in
+  rationale, no refutation history: that belongs in technical documentation and in
   `LESSONS.md`. Meaning lives in word names and factoring.
 - **Every definition** carries `( before -- after )`.
 - **Multi-line definitions use line effects where they clarify.** The
@@ -803,13 +804,14 @@ address arithmetic at the public boundary.
   spelling from the spec, not decimal transcriptions. The standalone parses
   `$hex` (case-insensitive, optional leading `-`).
 
-## Testing (BLOCKING)
+## Testing
 
-- **Every word is exercised by a checked assertion** as it's written — happy path
-  plus each error/edge. Use the typed comparators in `lib/test/`: `T=` / `T<>` for
+- Exercise changed behavior through checked assertions, including meaningful
+  errors and edges. Test compositions through their public entry points rather
+  than requiring a separate test for every trivial helper. Use `T=` / `T<>` for
   scalars, `T$=` for strings, `TTRUE` / `TFALSE` for flags, `TTHROWS` for error
   codes, and `SNAP=` (two equal-shape quotations) for multi-value stack snapshots.
-  A word without a test is unfinished.
+  A regression must distinguish the defect it is intended to prevent.
 - Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
   fixtures, and source-specific checks wired through `test/run.f`.
 - Test orchestration uses `lib/test.f`. The framework vocabulary is test
@@ -869,8 +871,8 @@ T-REPORT
   `[: WORD ;] TTHROWSQ` or another stack-preserving quotation `catch` and check
   the exact THROW code; top-level scripts that cannot push quotations may use
   `' WORD TTHROWS`. For diagnostics, capture text and match a substring.
-- Run focused fixtures during dev with their owning `tools/*-test.f`, then run
-  the full native gate command shown in `docs/bootstrap.md`.
+- Run focused fixtures during development with their owning `tools/*-test.f`.
+  Run the full native suite for changes whose impact warrants it; see below.
 - **False-reject claims need execution proof.** Count a checker limitation only
   after running an unchecked copy and proving the measured stack behavior matches
   the declared effect. Generator bugs become rejections, not false certifications.
@@ -878,54 +880,28 @@ T-REPORT
   new token, test the atom parser/type mapper directly (`ATOM-TOK?`, `TOK-TYPE`,
   renderer output) so prefix/length mistakes fail small.
 
-### Checker-Miss RCA
+### Diagnosing a checker miss
 
-- Treat the phrase "why didn't the checker catch this?" and equivalent wording
-  as an immediate trigger, even in meta-discussion about process. Before any
-  tool call or visible text, ask: **What static invariant should have made this
-  impossible before runtime, and where should the compiler/checker enforce it?**
-  The first visible line of the response, progress update, note, dot, or
-  investigation is `Static invariant:` followed by that invariant and boundary.
-  If the invariant is not known yet, say so on that same line and reduce the
-  case until it is known. If you have already started with runtime symptoms,
-  stop and restart from this line. Questions about strengthening this rule,
-  quoted examples, and process reviews are still live triggers.
-- Do not put runtime symptoms first. The checker/compiler/primitive model owns
-  the investigation until the exact checked path proves that the invariant is
-  outside its contract. Guards, runtime repairs, documentation edits, and
-  library edits come only after the static owner and negative regression are
-  identified.
-- Use this template before editing runtime/library code:
-  `Static invariant:` the pre-runtime fact that should be impossible to violate;
-  `Owner:` checker semantics, compiler/codegen model, primitive/boundary effect,
-  or typed capability gap; `Path proof:` exact command proving the source path is
-  fail-closed or the harness gap to fix first; `Reproducer:` minimal checked
-  source that should reject; `Compiler fix:` checker/compiler/primitive metadata
-  change or capability dot; `Regression:` negative test added with the fix.
-- Prove the exact command path is fail-closed before touching runtime/library
-  code. If bad checked source can run on that path, fix the harness/tooling path
-  first.
-- Classify the miss as wrong primitive/boundary effect, checker semantics,
-  codegen/runtime mismatch, or same-type semantic-role gap. Add a minimal checked
-  reproducer and a negative regression for that class.
-- The runtime/library repair is incomplete until the checker/compiler/primitive
-  model rejects the bad program. If the checker cannot yet express the invariant,
-  create a detailed dot for the missing checker capability and keep only a named,
-  tested boundary until that capability lands.
-- Treat the compiler/checker as the owner until evidence excludes it. The normal
-  fix sequence is: add the minimal negative checked regression, make it fail for
-  the right reason, update checker semantics, compiler metadata, primitive
-  effects, or boundary typing, then repair any downstream code.
+Reduce the failing checked program and identify the contract that was violated.
+Check whether the defect is in a declaration, the checker, generated code or
+runtime behavior. Fix the responsible layer and add a regression through the
+actual load path. If the desired property is outside the type system's contract,
+state that limitation and check it at the appropriate runtime or analysis layer.
+No prescribed response template or task record is required.
 
-## Commit gate (BLOCKING)
+## Verification before committing
 
-Run on the exact tree that is being landed, from the repository root. Red,
-skipped, or unrun means the bookmark does not move.
+Run focused tests for changed behavior. For compiler, runtime or broad library
+changes, rebuild the native engine and run the full native suite from the repo:
 
-1. `bin/hb --load tools/build-fixpoint-refresh.f -- install --force`.
-2. Focused tests for touched behaviour.
-3. `bin/hb --load maki/test.f` and `bin/hb --load test/run.f`.
-4. `tools/error-code-lint.f` and the dot lint.
+```sh
+bin/hb --load tools/build-fixpoint-refresh.f -- install --force
+bin/hb --load test/run.f
+```
+
+Run relevant lints when their inputs change. Documentation-only edits and file
+moves do not require an engine rebuild. Maki's tests belong to its own repo.
+Report failed or unrun checks plainly; never represent them as a passing suite.
 
 ## Comments & hygiene
 
@@ -946,9 +922,8 @@ skipped, or unrun means the bookmark does not move.
 - **Semantic xref is an in-image responsibility.** Dictionary ownership,
   word-reference, and call/reference RCA should use Forth words in the live
   image (`XREF`/`SEE`/`USES`/`USED-BY` or their current equivalents), with any
-  CLI as a thin wrapper. Use source search only to locate files or as a temporary
-  fallback after verifying the native word is missing; then add a dot for the
-  missing Forth capability.
+  CLI as a thin wrapper. Use source search where it answers the question, and
+  native inspection where runtime dictionary or generated-code state matters.
 - **Boundary spawns must attribute failures.** Gate/test/tool boundaries that
   spawn `hb` or another child use outcome capture for expected timeouts and
   failures, not throw-only capture that collapses into a shell rc. The failure
