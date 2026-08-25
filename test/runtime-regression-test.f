@@ -795,7 +795,7 @@ variable GE-CF-BODY-U
 \ --- dot habu-convert-residual-compile-f460b9f2: residual compile-die conversions ---
 \ The out-of-inventory recoverable die sites (J-DOES/J-QUOT/J-SEMIQUOT 75,
 \ C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74, counted-string 76,
-\ C-LBRACE-STORE-ONE 75, postpone/export-undefined 70) now route through the same
+\ C-LBRACE-STORE-ONE 75 and export-undefined 70) now route through the same
 \ LCOMPILEDIE tail: catchable inside evaluate, byte-identical fail-closed at top level.
 
 create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
@@ -887,8 +887,6 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
    s" defer" s" 74" s" defer" GE-RXE-CATCH-USABLE
    s" defer" 74 s" defer" GE-RXE-TOP
-   s" : RXPP ( -- ) postpone RXNOPEWORD ;" s" 70" s" RXNOPEWORD" GE-RXE-CATCH-USABLE
-   s" : RXPP ( -- ) postpone RXNOPEWORD ;" 70 s" RXNOPEWORD" GE-RXE-TOP
    s" package RXPKG public export RXNOEXPORT ;package" s" 70" s" RXNOEXPORT" GE-RXE-CATCH-USABLE
    s" package RXPKG public export RXNOEXPORT ;package" 70 s" RXNOEXPORT" GE-RXE-TOP
    GE-RXE-TML-BUILD

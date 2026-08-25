@@ -1529,9 +1529,6 @@ variable QCUR                        \ the body being walked, or QOWNER-DEF
 : QOWN@ ( n -- n )
    TOK-CK cells QOWN + @ ;
 
-: QSKIP? ( n -- bool )
-   QOWN@ QCUR @ <> ;
-
 : QINSIDE? ( n -- bool )
    QOWN@ QOWNER-DEF <> ;
 
@@ -1553,6 +1550,14 @@ create QSPELL-BUF QSPELL-CAP allot
    {: ix:n :}
    CTX BLD  VW MKEY ix NTAPE:SPELL@  QSPELL-BUF QSPELL-CAP IR-BUILD:SYMBOL-COPY
    QSPELL-BUF swap ;
+
+: PARSE-IMM-TOKEN? ( n -- bool ) {: ix:n :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   ix QSPELL NEUTRAL-PARSE-IMM? ;
+
+: WALK-SKIP? ( n -- bool )
+   dup QOWN@ QCUR @ <> if drop true exit then
+   PARSE-IMM-TOKEN? ;
 
 \ ---- where a body's arity comes from -----------------------------------------
 : QARG-FILL ( n n -- )
@@ -2348,7 +2353,7 @@ create JOIN-TAB TMAX cells allot
 : SK-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
-   ix QSKIP? if exit then
+   ix WALK-SKIP? if exit then
    ix MOPERAND? if exit then
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
@@ -3248,7 +3253,7 @@ variable IX                          \ the body token the walk stands on
 : STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
-   ix QSKIP? if exit then
+   ix WALK-SKIP? if exit then
    ix MOPERAND? if exit then
    PATH-ENDED? if r ix AFTER-END-CK then
    ix IN-DECL? if exit then

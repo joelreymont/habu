@@ -97,7 +97,6 @@ private
 \ `callmap-set` and `addrmap-set` write the two relocation maps that only a
 \ region-resident compiler has anything to say about.
 : UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" compile," LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" code-publish" LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" callmap-set" LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" addrmap-set" LINT-STR=CI IF LINT-TRUE exit THEN
@@ -125,7 +124,7 @@ private
    s" token" LJW-KEY k LINT-LEX:TOKEN LJW-STRING LJW-COMMA
    s" reason" LJW-KEY s" stripped AOT has no runtime compiler or writable code" LJW-STRING LJW-COMMA
    s" suggestion" LJW-KEY
-   s" stripped AOT cannot run compile,/patch32 at runtime; use --repl or remove the word" LJW-STRING
+   s" stripped AOT cannot run patch32 at runtime; use --repl or remove the word" LJW-STRING
    LJW-OBJECT-END
    LJW$ OUT NL ;
 

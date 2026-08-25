@@ -5,7 +5,7 @@
 \ interpret stack, so the published certificate describes an EMPTY runtime
 \ body. Checked callers then unify against effects the runtime never delivers.
 \ The checker must reject an immediate word as a checked body step unless its
-\ compile-time expansion is explicitly modeled (trust-immediate).
+\ compile-time expansion is explicitly modeled as stack-neutral with parse-imm.
 \ Run: bin/hb --load test/immediate-model-test.f
 
 require lib/test.f
@@ -17,16 +17,16 @@ T-RESET
    2dup T-LABEL
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-TRUSTED: IMT-PASSES ( ptr u8 n -- )
-   2dup T-LABEL
-   CHECK! -1 T= ;
-
 \ --- p5 reproducer: fitting-arity immediate called in a checked body --------
 : IMT-IM2 ( n -- n n ) dup ; immediate
 
 \ negative regression: the p5 shape must REJECT. The runtime body of IMT-USER
 \ would be empty while its certificate claims ( n -- n n ).
 s" IMT-USER ( n -- n n ) IMT-IM2" IMT-REJECTS
+
+\ A parser declaration does not make a non-neutral immediate sound.
+s" IMT-IM2" 0 parse-imm
+s" IMT-USER-MODELED ( n -- n n ) IMT-IM2" IMT-REJECTS
 
 \ a fitting no-op immediate must also reject without an audited expansion row:
 \ the checker cannot prove the compile-time expansion is empty.

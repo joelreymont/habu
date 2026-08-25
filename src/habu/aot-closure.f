@@ -114,16 +114,15 @@ s" MAIN" ENTRY-NAME!
 \ maps the fixed DATA region and restores the program's persistent data (see
 \ aot-lib.f). Only words that need machinery the stripped binary does not carry
 \ stay rejected — the closure walk distinguishes runtime use from compile-time
-\ definition, so `create` here means runtime dictionary creation (no dictionary),
-\ `compile,` means runtime compilation (no compiler), and the four writers below
-\ all reach the code region or a live dictionary record (stripped __text is r-x
-\ and not at RBASE-VA). `patch32` is the isolated single-word poke;
+\ definition, so `create` here means runtime dictionary creation (no dictionary).
+\ The five writers below all reach the code region or a live dictionary record
+\ (stripped __text is r-x and not at RBASE-VA). `patch32` is the isolated
+\ single-word poke;
 \ `code-publish` is the bulk publication window, `xref-retarget` points a record
 \ at a routine, `callmap-set` records a call site's relocation class, and
 \ `addrmap-set` records an address chain's.
 : AOT-UNSAFE? {: r:ptr :} ( ptr a -- bool )
    r s" create" REC-NAME= IF 0 0= EXIT THEN
-   r s" compile," REC-NAME= IF 0 0= EXIT THEN
    r s" patch32" REC-NAME= IF 0 0= EXIT THEN
    r s" code-publish" REC-NAME= IF 0 0= EXIT THEN
    r s" callmap-set" REC-NAME= IF 0 0= EXIT THEN
@@ -166,7 +165,7 @@ create AENB 20 allot  variable AENV  variable AENN
    s" token" AEJKEY callee REC-NAME@ AEJSTR 44 AE1
    s" reason" AEJKEY s" stripped AOT has no runtime compiler, dictionary, or writable code" AEJSTR 44 AE1
    s" suggestion" AEJKEY
-   s" stripped AOT cannot run create/compile,/patch32 at runtime; use --repl or remove the word from the runtime path" AEJSTR
+   s" stripped AOT cannot run create/patch32 at runtime; use --repl or remove the word from the runtime path" AEJSTR
    125 AE1 10 AE1 ;
 : AOT-UNSAFE-PROSE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    s" hb-build: stripped AOT unsupported word '" AETXT

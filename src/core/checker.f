@@ -8562,8 +8562,6 @@ variable CURSYM
    a u s" set-check" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" set-preflight" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" parse-imm" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" postpone" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" compile," CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" immediate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ]" CORE-STR=CI ;
@@ -8603,7 +8601,7 @@ variable CURSYM
 \ --- unsafe-symbol set (dot habu-checker-unsafety-as-1c537c1f) ----------------
 \ Unsafety is a property of the WORD, not its spelling. UNSAFE-TOK? above keeps
 \ the canonical name list for the DO-TOK1 body reject and for the symbol-less
-\ engine/syntax tokens ([, ], postpone, immediate, compile,, evaluate, trust,
+\ engine/syntax tokens ([, ], immediate, evaluate, trust,
 \ set-check, set-preflight) that never intern a checker symbol. The
 \ definers/openers (deflinear, value-record, sumtype, enum, product,
 \ newtype, layout-buffer)
@@ -11085,21 +11083,19 @@ variable RTL-I                        \ retired-token local scan index
 \ signature-carrying live-dictionary immediate in a checked body is a
 \ fail-closed reject (the design doc's interim, mirroring the opener
 \ treatment). Modeled parsing immediates ([char]/char via PARSE-LIT?) stay
-\ green; engine prims are modeled by TRY-PRIMS and carry no usig row;
-\ signature-less immediates already land on the uncheckable path; TRUSTED:
-\ immediates are audited boundaries outside the usig table.
+\ green; engine prims are modeled by TRY-PRIMS and carry no usig row.
 s" tok-imm?" s" ptr u8 n -- n" TRUST
 
 variable IMMERR
 
 \ --- declared parsing immediates (modeled compile-time expansion, minimal form).
 \ A parsing immediate consumes a fixed number of source tokens at COMPILE time
-\ and contributes only its declared runtime effect to the body (GRID: eats one
-\ header token, WHERE eats three). Declaring one teaches the body scan to skip
-\ its payload and exempts it from the wrong-certificate reject below. The
-\ declaration is itself a checking-soundness boundary (a wrong count skips live
-\ code or eats real tokens), so `parse-imm` is UNSAFE-TOK?-listed: top-level
-\ declarations only, never a checked body step. Symbol-keyed like UNSAFE-SYMS;
+\ and contributes no runtime step (GRID: eats one header token, WHERE eats
+\ three). Only a live immediate with an exact `( -- )` semantic row is admitted;
+\ declaring one teaches the body scan to skip its payload. The declaration is
+\ itself a checking-soundness boundary (a wrong count skips live code or eats
+\ real tokens), so `parse-imm` is UNSAFE-TOK?-listed: top-level declarations
+\ only, never a checked body step. Symbol-keyed like UNSAFE-SYMS;
 \ monotonic, never rolled back (a retired symbol id is never reused, so a stale
 \ entry can never match a new word).
 16 constant PIMM-CAP
@@ -11117,6 +11113,17 @@ variable PIMM-N
 
 : PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
    cells PIMM-NS + @ ;
+
+: NEUTRAL-PARSE-IMM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u tok-imm? 0= IF RES-FALSE EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < IF RES-FALSE EXIT THEN
+   a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
+   EFFECT-DIN-N 0=
+   EFFECT-DOUT-N 0= and
+   EFFECT-RET-NEUTRAL? and ;
+\ The native compiler asks this prefix API after internal-mark has sealed the
+\ engine. Its declared row is what keeps that one shared decision callable.
+s" neutral-parse-imm?" s" ptr u8 n -- bool" TRUST
 
 package CHECKER-PREFLIGHT
 
@@ -11150,11 +11157,6 @@ variable ACTIVE
    ACTIVE @ 0= IF RES-FALSE EXIT THEN
    TAIL-WS? 0= IF RES-FALSE EXIT THEN
    a u TARGET-A@ TARGET-U @ CORE-STR=CI ;
-
-public
-
-: MODELED? ( ptr u8 n -- bool )
-   CHECKER-FIND-ACTIVE-SYM PIMM-IX 0 < 0= ;
 
 ;package
 
@@ -11198,7 +11200,7 @@ public
    a u PARSE-LIT? IF RES-FALSE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
-   sym PIMM-IX 0 < 0= IF RES-FALSE EXIT THEN
+   a u NEUTRAL-PARSE-IMM? IF RES-FALSE EXIT THEN
    a u tok-imm? 0 <> ;
 
 ;package

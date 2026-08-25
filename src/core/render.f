@@ -572,7 +572,7 @@ variable MDV-I   variable MDV-F
    s" model_compile_immediate" ;
 
 : IMM-SUGGEST$ ( -- ptr u8 n )
-   s" Declare the compile-time expansion with parse-imm, or move the behavior behind an audited TRUSTED: boundary." ;
+   s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body." ;
 
 : DCODE
    IMMERR @ if IMM-CODE$ exit then
@@ -693,7 +693,7 @@ variable JPOS  variable JLINE  variable JCOL
    IMMERR @ if
      IMM-CODE$ DTXT  s"  habu: in " DTXT  NMA @ NMU @ DTXT
      s" : compile-time immediate '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' has no modeled expansion; declare it with parse-imm or use an audited TRUSTED: boundary" DTXT exit
+     s" ' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body" DTXT exit
    then
    NPBAD @ IF
      s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT

@@ -445,7 +445,7 @@ variable LKWTOR variable LKWRFROM variable LKWRFET
 variable LKWEXIT variable LKWREC
 variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUNLOOP
 variable LKWCHAR variable LKWBCHAR
-variable LKWIMM variable LKWPOST variable LKWCOMPC
+variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDOES variable LKWKERNEL
@@ -671,18 +671,6 @@ previous definitions
 
 : BCREATE ( -- )  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
-
-: BCOMPILE ( -- )  A G-POP  11 9 0 ADDI,    \ ( xt -- ) append `movz-chain x16 ; blr x16` at CP
-   SP SP 16 SUBI,  11 SP 8 STR,
-   2 3 MOVZ,  LPROT @ BL,             \ run with region RX (immediate caller) — flip RW
-   11 SP 8 LDR,
-   5 $FFFF MOVZ,
-   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-   9 $D63F0200 LIT64,  LCEMIT @ BL,
-   2 5 MOVZ,  LPROT @ BL,             \ back to RX for the caller
-   SP SP 16 ADDI, ;
 
 : BEMIT ( -- ) A G-POP  13 9 0 ADDI,  G-EMITC ;   \ ( c -- ) write one byte
 
@@ -1228,7 +1216,6 @@ previous definitions
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
    s" execute" ['] BEXEC FPRIM
-   s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] BNUMPARSE FPRIM
@@ -1736,7 +1723,7 @@ previous definitions
 : C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
 \ raw DATA-region address into x9, no push (the defer dispatch-cell address).
 : C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
-\ push a CODE-region address (quotation entry xt, ['] / postpone target xt).
+\ push a CODE-region address (quotation entry xt or ['] target xt).
 : C-CODE-ADDR ( -- )  C-ADDR-PUSH ;
 
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
@@ -2605,8 +2592,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWQDO @ LBL,  s" ?do" BYTES,   LKWPLOOP @ LBL,  s" +loop" BYTES,   LKWJ @ LBL,  s" j" BYTES,
    LKWLEAVE @ LBL,  s" leave" BYTES,   LKWUNLOOP @ LBL,  s" unloop" BYTES,
    LKWCHAR @ LBL,  s" char" BYTES,   LKWBCHAR @ LBL,  BCHAR-KW 6 BYTES,
-   LKWIMM @ LBL,  s" immediate" BYTES,   LKWPOST @ LBL,  s" postpone" BYTES,
-   LKWCOMPC @ LBL,  s" compile," BYTES,
+   LKWIMM @ LBL,  s" immediate" BYTES,
    LKWDOES @ LBL,  s" does>" BYTES,
    LKWDEFER @ LBL,  s" defer" BYTES,   LKWIS @ LBL,  s" is" BYTES,
    LKWDEFERUNSET @ LBL,  s" defer-unset" BYTES,
@@ -3496,23 +3482,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROT @ BL, ;
-
-\ POSTPONE NAME (compile): immediate -> compile the call; ordinary -> bake the
-\ xt and compile a call to the `compile,` prim (appends the call at ITS runtime).
-: C-POSTPONE ( -- )
-   LBL {: pok :}  LBL {: pnimm :}  LBL {: pdone :}
-   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   13 pok CBNZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   pok LBL,
-   14 13 2 ANDI,  14 pnimm CBZ,
-      C-CALL  pdone B,
-   pnimm LBL,
-      C-CODE-ADDR                                        \ bake the xt (x11) -- relocatable code addr
-      9 LKWCOMPC @ ADR,  10 8 MOVZ,  LFIND @ BL,         \ find `compile,`
-      C-CALL
-   pdone LBL, ;
 
 \ CHAR NAME (interpret): push NAME's first byte. [CHAR] NAME (compile): bake it
 \ as a VS constant (folds like any literal).
@@ -5996,7 +5965,6 @@ variable P2SK
 : EMIT-COMPILE-META-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWBTICK  3 ['] C-BTICK  CF-ENTRY
    lmain LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY
-   lmain LKWPOST   8 ['] C-POSTPONE CF-ENTRY
    lmain LKWDOES   5 ['] J-DOES     CF-ENTRY
    lmain LKWQUOT   2 ['] J-QUOT     CF-ENTRY
    lmain LKWIS     2 ['] J-IS       CF-ENTRY
@@ -6600,7 +6568,7 @@ variable P2SK
    LBL LKWEXIT !  LBL LKWREC !
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
-   LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
+   LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !  LBL LCOLONNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !

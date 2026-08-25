@@ -842,7 +842,6 @@ variable REG-I
    s" : PRIM: dup ;" ROW+  ROW-NL
    s" : PPRIM: drop ;" ROW+  ROW-NL
    s" : A ' PRIM: drop ;" ROW+  ROW-NL
-   s" : B postpone PPRIM: ;" ROW+  ROW-NL
    s" : C undefine PRIM: ;" ROW+  ROW-NL
    s" : D ['] PRIM: drop ;" ROW+  ROW-NL
    s" : LAST over ;" ROW+
@@ -852,14 +851,14 @@ variable REG-I
    DEFINER-POSITION$ LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    REG-COUNT 0 ASSERT=
-   LINT-LEX:COUNT 34 ASSERT=
+   LINT-LEX:COUNT 29 ASSERT=
    1 LINT-LEX:TOKEN s" PRIM:" ASSERT$   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=
    2 LINT-LEX:TOKEN s" dup" ASSERT$
    5 LINT-LEX:TOKEN s" PPRIM:" ASSERT$
-   30 LINT-LEX:TOKEN s" :" ASSERT$
-   31 LINT-LEX:TOKEN s" LAST" ASSERT$
-   32 LINT-LEX:TOKEN s" over" ASSERT$
-   33 LINT-LEX:TOKEN s" ;" ASSERT$ ;
+   25 LINT-LEX:TOKEN s" :" ASSERT$
+   26 LINT-LEX:TOKEN s" LAST" ASSERT$
+   27 LINT-LEX:TOKEN s" over" ASSERT$
+   28 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
 \ SOURCE clears the diagnostic before every scan, so a good row source scanned
 \ after a malformed one reports nothing and returns a full table.

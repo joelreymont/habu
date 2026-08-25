@@ -263,7 +263,7 @@ $25 constant BL-OP-HI
 : C-DATA-ADDR-RAW ( -- )
    SNAP-RELOC:MARK-SITE
    C-ADDR-RAW ;
-\ push a CODE address (quotation entry xt, ['] / postpone target xt). The word it
+\ push a CODE address (quotation entry xt or ['] target xt). The word it
 \ names lives in the JIT region or in the engine's loaded __text, and neither of
 \ those is at the same address in the run that restores a snapshot image, so the
 \ relocation pass rewrites this one where it leaves a DATA chain alone.
@@ -645,7 +645,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 \ LCEMITBL ( x11 = absolute target ) : emit ONE direct BL imm26 to x11 at CP, then CP += 4.
 \ The single call-emit primitive for every statically known native call — dictionary words
-\ (C-CALL), the runtime compiler (compile,/BCOMPILE), and the registered engine helpers
+\ (C-CALL) and the registered engine helpers
 \ (LP2VEXEC/(PROT-SPAN)) alike. disp = target - CP; the region maps at __text + REGION-OFF
 \ so every call site and callee sit within BL's +/-128 MiB reach, and the boot assertion
 \ (EM-MMAP-CODE-REGION, exit BL-RANGE-RC) guarantees the whole region stays in range. Each
@@ -1853,7 +1853,7 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variab
 \ cell holds the capture-only compiler entry.
 package NCOMP-EMIT
 public
-variable LWORD  variable LENTRY
+variable LWORD  variable LNEUTRAL  variable LENTRY
 ;package
 \ ADT lowering keywords (TFAM 10, docs §16): `construct` and MATCH dispatch
 \ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
@@ -1940,8 +1940,7 @@ variable LCOLONNONAME
    LKWQDO LABEL@ LBL,  s" ?do" BYTES,   LKWPLOOP LABEL@ LBL,  s" +loop" BYTES,   LKWJ LABEL@ LBL,  s" j" BYTES,
    LKWLEAVE LABEL@ LBL,  s" leave" BYTES,   LKWUNLOOP LABEL@ LBL,  s" unloop" BYTES,
    LKWCHAR LABEL@ LBL,  s" char" BYTES,   LKWBCHAR LABEL@ LBL,  BCHAR-KW 6 BYTES,
-   LKWIMM LABEL@ LBL,  s" immediate" BYTES,   LKWPOST LABEL@ LBL,  s" postpone" BYTES,
-   LKWCOMPC LABEL@ LBL,  s" compile," BYTES,
+   LKWIMM LABEL@ LBL,  s" immediate" BYTES,
    LKWDOES LABEL@ LBL,  s" does>" BYTES,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWCAST LABEL@ LBL, s" cast:" BYTES,
@@ -1950,7 +1949,7 @@ variable LCOLONNONAME
    LCOLONNONAME LABEL@ LBL, s" hb: : missing definition name after " BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, s" NEUTRAL-PARSE-IMM?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -3677,22 +3676,6 @@ s" bdrainpretrust" s" --" TRUST
    2 3 MOVZ,  LPROTREC LABEL@ BL,
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
-
-: C-POSTPONE ( -- )
-   LBL LBL LBL {: pok pnimm pdone :}
-   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `postpone RESERVED:tail` once sealed (TFAM 2b-iii)
-   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 pok CBNZ,                                          \ postpone <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. Only LTOK + LFIND ran; nothing published/emitted -> clean rollback
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
-   pok LBL,
-   14 13 2 ANDI,  14 pnimm CBZ,
-      C-CALL  pdone B,
-   pnimm LBL,
-      C-CODE-ADDR
-      9 LKWCOMPC LABEL@ ADR,  10 8 MOVZ,  LFIND LABEL@ BL,
-      C-CALL
-   pdone LBL, ;
 
 : C-QUOTE-START ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
@@ -5523,7 +5506,7 @@ public
 \ Address-literal relocation: the MOVZ/MOVK-shaped counterpart of the dictionary
 \ walk and of the call pass, and the third and last thing that has to move when a
 \ snapshot image is restored at addresses the writing run never saw.
-\ The chain a `[: ... ;]`, a `[']` or a `postpone` pushes names a word's code, and
+\ The chain a `[: ... ;]` or a `[']` pushes names a word's code, and
 \ that code sits either inside the JIT region or in the engine's loaded __text.
 \ Both move independently between the writing and the restoring run, so the pass
 \ is parameterized exactly like the dictionary walk and is CALLED ONCE PER BAND,
@@ -5840,7 +5823,7 @@ public
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 PROT-GUARD:CALL
    LSNAPRBD LABEL@ BL,
-   \ address-literal pass, text band: an xt a `[']` or a `postpone` compiled in may
+   \ address-literal pass, text band: an xt a `[']` compiled in may
    \ name a primitive, whose code is in __text, so the same (x21,x22,x25) triple
    \ pass 1 just used for dictionary cells applies to those chains too.
    11 16 8 SUB,                                         \ x11 = region payload length
@@ -6121,6 +6104,25 @@ public
          C-CALL-X11-SAVED
    nosync LBL, ;
 
+: C-CALL-COMPILE-IMMEDIATE ( -- )
+   LBL {: callimm:label :}
+   SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
+   PROT:LCLOSE LABEL@ BL,
+   9 DATA HOOK-CELL LDR,  9 callimm CBZ,
+   9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ,  9 SP 16 STR,
+   9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
+   9 DATA BODYLEN-CELL LDR,  9 G-PUSH
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   9 DATA TRUSTED-CELL LDR,  9 G-PUSH
+   9 SP 16 LDR,  9 BLR,
+   callimm LBL,
+   11 SP 8 LDR,  11 BLR,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
+   30 SP 0 LDR,  SP SP 32 ADDI,
+   LMAIN LABEL@ B, ;
+s" c-call-compile-immediate" s" --" TRUST
+
 package NCOMP-EMIT
 
 public
@@ -6145,6 +6147,25 @@ public
    LMAIN LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
    LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
+: CAPTURE-IMMEDIATE ( -- )
+   LBL LBL {: done:label notneutral:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   14 13 2 ANDI,  14 done CBZ,
+   SP SP 16 SUBI,  11 SP 0 STR,
+   PROT:LCLOSE LABEL@ BL,
+   LNEUTRAL 18 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   9 G-POP  9 notneutral CBZ,
+   11 SP 0 LDR,  SP SP 16 ADDI,
+   C-CALL-COMPILE-IMMEDIATE
+   notneutral LBL,
+   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
+   SP SP 16 ADDI,
+   done LBL, ;
+s" ncomp-emit:capture-immediate" s" --" TRUST
+
 : EM-COMPILE ( -- )
    LBL {: notsemi:label :}
    LENTRY LABEL@ LBL,
@@ -6160,6 +6181,7 @@ public
       LMAIN LABEL@ B,
    notsemi LBL,
    LBCAP LABEL@ BL,
+   CAPTURE-IMMEDIATE
    CAPTURE-STRING
    LMAIN LABEL@ B, ;
 s" ncomp-emit:em-compile" s" --" TRUST
@@ -7912,7 +7934,6 @@ s" em-compile-string-keywords" s" --" TRUST
 : EM-COMPILE-META-KEYWORDS ( -- )
    s" [']" KEEP? IF LMAIN LABEL@ LKWBTICK  3 ['] C-BTICK  CF-ENTRY THEN
    s" [char]" KEEP? IF LMAIN LABEL@ LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY THEN
-   s" postpone" KEEP? IF LMAIN LABEL@ LKWPOST   8 ['] C-POSTPONE CF-ENTRY THEN
    s" does>" KEEP? IF LMAIN LABEL@ LKWDOES   5 ['] J-DOES     CF-ENTRY THEN
    s" [:" KEEP? IF LMAIN LABEL@ LKWQUOT   2 ['] J-QUOT     CF-ENTRY THEN
    s" is" KEEP? IF LMAIN LABEL@ LKWIS 2 ['] J-IS CF-ENTRY THEN
@@ -8053,7 +8074,7 @@ s" em-compile-ops" s" --" TRUST
 ;package
 
 : EM-COMPILE-CALL ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label callimm:label noxc:label ploop:label pdone:label usedtry:label found:label :}
+   LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label :}
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                          \ x10 = extra pads, x11 = found
@@ -8077,21 +8098,7 @@ s" em-compile-ops" s" --" TRUST
          9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI, \ x10 = interpret depth in cells
          10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ compile-time depth < declared inputs -> named reject BEFORE the immediate BLRs below the interpret base (dict region still RW here; LDIAGRET restores RX)
       depthok LBL,
-      SP SP 32 SUBI,  30 SP 0 STR,  11 SP 8 STR,
-      PROT:LCLOSE LABEL@ BL,
-      9 DATA HOOK-CELL LDR,  9 callimm CBZ,
-      9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ,  9 SP 16 STR,
-      9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
-      9 DATA BODYLEN-CELL LDR,  9 G-PUSH
-      9 DATA TKA-CELL LDR,  9 G-PUSH
-      9 DATA TKL-CELL LDR,  9 G-PUSH
-      9 DATA TRUSTED-CELL LDR,  9 G-PUSH
-      9 SP 16 LDR,  9 BLR,
-      callimm LBL,
-      11 SP 8 LDR,  11 BLR,
-      1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
-      30 SP 0 LDR,  SP SP 32 ADDI,
-      LMAIN LABEL@ B,
+      C-CALL-COMPILE-IMMEDIATE
    notimm LBL,
    C-CALL  LMAIN LABEL@ B,
    usedtry LBL,
@@ -8883,13 +8890,13 @@ package LABELS
    LBL LKWEXIT !  LBL LKWREC !
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
-   LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
+   LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !  LBL KWDATA:LCOLONNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !

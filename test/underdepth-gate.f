@@ -279,42 +279,6 @@ public
    UDG-ENGINE$ UDG-EXEC:SUBJECT
    s" CORE-STR=" UDG-ASSERT-UNDERDEPTH ;
 
-\ --- p4 compile-path: compile-mode immediate underdepth (docs §5 sub-dot 5) --
-\ An IMMEDIATE word executes at COMPILE time on the interpret stack, via the
-\ EM-COMPILE-CALL BLR. The checked path is fail-closed by the p5 checker model
-\ (test/immediate-model-test.f rejects the immediate as a body step); this is the
-\ native floor beneath it, reached inside a `0 set-check` window where the
-\ checker/hook is suspended. The compile-path BLR now carries the same
-\ DNAME-MIN-IN depth gate the interpret path has (EM-INTERPRET-FIND), so an
-\ immediate at compile-time underdepth diverts to the shared LMININ leg and fails
-\ closed BEFORE the below-base read - rc 70, `hb: interpret stack underdepth:
-\ <token>`, matching the FOO2 regression pattern. IMM2/IMM-DROP are defined
-\ checked so their
-\ DNAME-MIN-IN byte is poked before the window opens.
-
-: UDG-IMM-NEG$ ( -- ptr u8 n )           \ IMM2 wants 1 cell; empty interpret stack -> compile-time underdepth
-   SB-RESET
-   s" : IMM2 ( n -- n n ) dup ; immediate" UDG-LINE
-   s" 0 set-check" UDG-LINE
-   s" : USER IMM2 ;" UDG-LINE
-   SB$ ;
-
-: UDG-IMM-POS$ ( -- ptr u8 n )           \ IMM-DROP wants 1 cell; 42 supplied before `:` -> depth ok, compiles
-   SB-RESET
-   s" : IMM-DROP ( n -- ) drop ; immediate" UDG-LINE
-   s" 0 set-check" UDG-LINE
-   s" 42 : USER IMM-DROP ;" UDG-LINE
-   s" 777 . cr" UDG-LINE
-   SB$ ;
-
-: UDG-COMPILE-IMM ( -- )
-   s" compile-time immediate underdepth fails closed" T-LABEL
-   UDG-IMM-NEG$ UDG-EXEC:SUBJECT
-   s" IMM2" UDG-ASSERT-UNDERDEPTH
-   s" compile-time immediate at satisfied depth still compiles" T-LABEL
-   UDG-IMM-POS$ UDG-EXEC:SUBJECT UDG-ASSERT-OK
-   s" 777" UDG-ASSERT-OUT ;
-
 \ --- census negatives: unguarded-prim gaps closed via the LARITY table ------
 \ (dot census: bare catch/ffi-call/patch32 crashed with SIGSEGV exit 134;
 \ evaluate/search-wl silently deref'd below-base garbage when it happened to
@@ -468,7 +432,6 @@ public
    UDG-PARITY:TEST
    UDG-NEG-BARE
    UDG-NEG-SHAPES
-   UDG-COMPILE-IMM
    UDG-NEG-PRIMS
    UDG-POSITIVES
    UDG-MINIMUM:ATOMIC-SHAPE

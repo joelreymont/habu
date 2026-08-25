@@ -108,8 +108,7 @@ private
    k LINT-LEX:TOKEN s" char" LINT-STR=CI if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" [char]" LINT-STR=CI if LINT-TRUE exit then
    k LINT-LEX:TOKEN s" '" LINT-STR= if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" [']" LINT-STR= if LINT-TRUE exit then
-   k LINT-LEX:TOKEN s" postpone" LINT-STR=CI ;
+   k LINT-LEX:TOKEN s" [']" LINT-STR= ;
 
 : RNL-COLON-DEFINER? ( n -- bool ) {: k :}
    k LINT-LEX:TOKEN s" :" LINT-STR= if LINT-TRUE exit then
@@ -164,8 +163,6 @@ private
    a u s" char" LINT-STR=CI if LINT-TRUE exit then
    a u s" [char]" LINT-STR=CI if LINT-TRUE exit then
    a u s" immediate" LINT-STR=CI if LINT-TRUE exit then
-   a u s" postpone" LINT-STR=CI if LINT-TRUE exit then
-   a u s" compile," LINT-STR=CI if LINT-TRUE exit then
    a u s" does>" LINT-STR=CI if LINT-TRUE exit then
    a u s" trusted:" LINT-STR=CI if LINT-TRUE exit then
    a u s" trust" LINT-STR=CI if LINT-TRUE exit then

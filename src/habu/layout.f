@@ -75,8 +75,8 @@ $48425350414E5321 constant SNAP-MAGIC
 \ writing run's own form. A version 4 engine would read both as live values and
 \ jump to wild addresses, so it must fail closed rc 80 instead.
 \ Version 6: the address literals the compiler builds inside region code -- the
-\ four-instruction MOVZ/MOVK chain that pushes a quotation entry, a `[']` target
-\ or a `postpone` target -- are canonicalized as well, region-valued ones against
+\ four-instruction MOVZ/MOVK chain that pushes a quotation entry or a `[']`
+\ target -- are canonicalized as well, region-valued ones against
 \ the RBASE-VA sentinel and engine-text-valued ones against text base 0, from a
 \ third table in the SNAP-RELOC band. A version 5 image stores those chains as
 \ the writing run's own absolute addresses, so a version 5 engine and a version 6
@@ -965,7 +965,7 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ Address-literal map: the same shape as the call map, one bit per four-byte word
 \ of the JIT region, recording the FIRST word of every four-instruction MOVZ/MOVK
 \ chain the compiler builds an execution token with. Those are the quotation entry
-\ address a `[: ... ;]` pushes and the target a `[']` or a `postpone` pushes; the
+\ address a `[: ... ;]` pushes and the target a `[']` pushes; the
 \ chain names a word's code, which lives either inside the region or in the
 \ engine's loaded __text, and neither of those keeps its address between the run
 \ that writes a snapshot image and the run that restores it.

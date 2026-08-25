@@ -131,8 +131,8 @@ Current checker classes:
   attempts to call `evaluate`, declare effects with `TRUST`, or disable/replace
   the checker hook with `set-check` from inside a checked definition.
 - `model_compile_immediate`: a checked definition names an immediate whose
-  compile-time expansion has no checker model; declare its token consumption
-  with `parse-imm` or isolate it behind an audited `TRUSTED:` boundary.
+  compile-time expansion is not modeled as stack-neutral; declare its token
+  consumption with `parse-imm` or remove it from the compiled body.
 - `factor_local_shape`: locals were introduced inside active control flow, inside
   a quotation, or after a dead `exit` path; factor a helper or move locals before
   control opens.
@@ -170,7 +170,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_type` | `Change the body so produced types match the signature.` |
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
-| `model_compile_immediate` | `Declare the compile-time expansion with parse-imm, or move the behavior behind an audited TRUSTED: boundary.` |
+| `model_compile_immediate` | `Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
 | `factor_linear_local` | `Keep the linear value on the stack; do not bind it to a local.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |

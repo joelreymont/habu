@@ -382,8 +382,6 @@ variable LABEL-U
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
    s" EV ( -- n ) evaluate" GE-SRC-CHECK-LINE
-   s" PO ( -- ) postpone dup" GE-SRC-CHECK-LINE
-   s" CO ( -- ) compile," GE-SRC-CHECK-LINE
    s" IM ( -- ) immediate" GE-SRC-CHECK-LINE
    s" LB ( -- ) [" GE-SRC-CHECK-LINE
    s" RB ( -- ) ]" GE-SRC-CHECK-LINE
@@ -395,8 +393,7 @@ variable LABEL-U
    s" unsafe compiler words verdicts" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
-   s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
-   s" 0" GE-OUT-LINE
+   s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
    SB$ s" unsafe compiler words verdict output" GE-EXPECT-OUT
    GE-HB-RESET
    GE-SRC-RESET

@@ -467,7 +467,6 @@ private
    PREV$ s" :" LINT-STR= if LINT-TRUE exit then
    PREV$ s" '" LINT-STR= if LINT-TRUE exit then
    PREV$ s" [']" LINT-STR= if LINT-TRUE exit then
-   PREV$ s" postpone" LINT-STR=CI if LINT-TRUE exit then
    PREV$ s" undefine" LINT-STR=CI ;
 
 : ROW-START? ( -- bool )

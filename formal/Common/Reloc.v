@@ -18,7 +18,7 @@
        declared set is the address-cell table in the same band.
      - every ADDRESS LITERAL the compiler bakes into region code as the fixed
        four-instruction MOVZ/MOVK chain: a quotation's entry address, and the
-       target of a `[']` or a `postpone`.  The word such a chain names lives
+       target of a `[']`.  The word such a chain names lives
        either in the JIT region or in the engine's loaded __text, and both
        move independently between the two runs.  Those sites too are RECORDED
        when the chain is created (the address-literal map in
@@ -706,8 +706,8 @@ Qed.
 (* ------------------------------------------------------------------ *)
 (* Address literals: the four-instruction MOVZ/MOVK chain.            *)
 (*                                                                    *)
-(* A quotation's entry address, and the target of a `[']` or a         *)
-(* `postpone`, are compiled into region code as four instructions that *)
+(* A quotation's entry address and the target of a `[']` are compiled  *)
+(* into region code as four instructions that                          *)
 (* spell out a 64-bit address sixteen bits at a time.  The word the    *)
 (* chain names lives either in the JIT region or in the engine's       *)
 (* loaded __text, and both land somewhere else in the run that         *)

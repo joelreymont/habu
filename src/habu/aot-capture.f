@@ -1022,8 +1022,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ that class is empty by construction and the refusal guards the next producer of
 \ one rather than the one that used to arrive here every build.
 \
-\ PRE-WINDOW CODE IS CARRIED, AND THE DECLINE CANNOT REACH IT. A `['] X` or
-\ `postpone X` naming a prefix word is not a copied body - the compile handler
+\ PRE-WINDOW CODE IS CARRIED, AND THE DECLINE CANNOT REACH IT. A `['] X`
+\ naming a prefix word is not a copied body - the compile handler
 \ emits the chain into the window word's own body - so there is nothing for the
 \ inliner to decline. It is instead a call target that is not a BL, and it gets the
 \ answer a call target gets: the name travels and the seed resolves it. That is the
@@ -1050,11 +1050,11 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ builder-dependent and wrong in the seeded engine - and zeroing it means the boot
 \ patch is the only thing that can put an address there.
 \ ITS PRODUCER IS ACAP-OUT-CHAIN BELOW. A code literal a window word CREATES for a
-\ pre-window word (`['] X` or `postpone X` on a prefix word) is what needs this.
+\ pre-window word (`['] X` on a prefix word) is what needs this.
 \ Eliminating the class the way the DATA literals were eliminated does not reach
 \ it: the inliner's decline removes COPIES of such a chain, not the one the compile
-\ handler emits into the window word's own body (habu2.f C-BTICK and C-POSTPONE
-\ both call C-CODE-ADDR there), so the decline leaves the case standing and only a
+\ handler emits into the window word's own body (habu2.f C-BTICK calls
+\ C-CODE-ADDR there), so the decline leaves the case standing and only a
 \ carry can answer it. An in-window code literal is NOT a candidate: rebasing it by
 \ the code delta is correct and costs no lookup.
 : ACAP-ADD-XTSITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
@@ -1083,7 +1083,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \
 \ A WORD'S ENTRY becomes a name-keyed row. The chain holds the code entry of a word
 \ the host dictionary knows and the window does not contain, which is exactly the
-\ shape a `['] X` or `postpone X` on a PRE-WINDOW word compiles to. Its value cannot
+\ shape a `['] X` on a PRE-WINDOW word compiles to. Its value cannot
 \ be rebased -- the metabuild host recompiles the whole core prefix a second time
 \ without rewinding DP, so its prefix band has no counterpart in the target and no
 \ delta relates the two -- and it cannot be left, because that bakes the building

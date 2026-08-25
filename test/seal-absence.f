@@ -22,8 +22,8 @@
 \ PRESENT seal machinery (the GUARD-SPAN sink guards and the EMIT-SEAL-FRIEND
 \ entry seals) so a mirrored guard cannot be silently deleted.
 \
-\ Wordlist-creation (BWORDLIST/BSETCUR/BSETCHECK) and the execute/compile sinks
-\ (BEXEC/BCOMPILE/C-POSTPONE) are intentionally NOT PROT-GUARD surfaces on either
+\ Wordlist-creation (BWORDLIST/BSETCUR/BSETCHECK) and the execute sink (BEXEC)
+\ are intentionally NOT PROT-GUARD surfaces on either
 \ side: they are trusted engine primitives that mutate friend-arena cells through
 \ dedicated `DATA <CELL> STR,` stores (LESSONS.md, TFAM 2b-i) or transfer control,
 \ never through a computed raw store, so the seal deliberately leaves them open

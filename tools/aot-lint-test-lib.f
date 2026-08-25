@@ -210,8 +210,6 @@ create OUT BUF-CAP allot
    t tu AS-TAIL$ PASSES ;
 
 : TEST-TOKENS ( -- )
-   s" a runtime compile is unsupported" T-LABEL
-   s" compile," TOKEN-CASE
    s" a single-word code poke is unsupported" T-LABEL
    s" patch32" TOKEN-CASE
    s" the bulk publication window is unsupported" T-LABEL

@@ -48,14 +48,12 @@ variable CUR-PREV?   variable CUR-PREV-VAL
 \ Forbidden = compiler-manipulating words (need TRUSTED:). Compared by name
 \ token so matching is case-insensitive (find-name is CI), like Forth itself.
 s" EVALUATE" find-name constant NT-EVALUATE
-s" POSTPONE" find-name constant NT-POSTPONE
-s" COMPILE," find-name constant NT-COMPILE,
 s" [" find-name constant NT-LBRACK
 s" ]" find-name constant NT-RBRACK
 : FORBIDDEN? ( c-addr u -- f )
    find-name {: nt :}
    nt 0= if false exit then
-   nt NT-EVALUATE =  nt NT-POSTPONE = or  nt NT-COMPILE, = or
+   nt NT-EVALUATE =
    nt NT-LBRACK = or  nt NT-RBRACK = or ;
 
 \ Check one body token, in classification order.

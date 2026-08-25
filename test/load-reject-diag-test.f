@@ -205,7 +205,7 @@ LOWER-CERT-HOOK:INSTALL
    s" 73 require " FRAG$ s"  ." TOP-REQ$ FRAG-FIXTURE!
    RUNTIME$ RUNTIME-SOURCE$ WRITE-ALL
    MODELED$ S\" : PI ( -- ) ; immediate s\" PI\" 0 parse-imm : PIM ( -- n ) PI 73 ; PIM ." WRITE-ALL
-   TRUSTED$ s" : OK-TI ( -- ) ; immediate TRUSTED: OK-TIM ( -- n ) OK-TI 73 ; OK-TIM ." WRITE-ALL ;
+   TRUSTED$ S\" -1 JSON-DIAGS ! : LRD-TRUST-IMM ( -- ) ; immediate TRUSTED: LRD-TRUST-BODY ( -- n ) LRD-TRUST-IMM 73 ;" WRITE-ALL ;
 
 : FIXTURES! ( -- )
    REJECT-FIXTURES!
@@ -350,6 +350,12 @@ LOWER-CERT-HOOK:INSTALL
    root s" byte_start" 31 GJA-ASSERT-INT-FIELD
    root s" byte_end" 38 GJA-ASSERT-INT-FIELD ;
 
+: TEST-IMM-TRUSTED ( -- )
+   s" trusted body cannot bypass immediate preflight" T-LABEL
+   TRUSTED$ RUN
+   s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
+   s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
+
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
    TOP-INC$ RUN s" 74" ASSERT-OK-OUT
@@ -358,9 +364,7 @@ LOWER-CERT-HOOK:INSTALL
    s" runtime included required and provided remain live" T-LABEL
    RUNTIME$ RUN s" 74" ASSERT-OK-OUT
    s" parse-imm modeled immediate remains live" T-LABEL
-   MODELED$ RUN s" 73" ASSERT-OK-OUT
-   s" trusted immediate body remains live" T-LABEL
-   TRUSTED$ RUN s" 73" ASSERT-OK-OUT ;
+   MODELED$ RUN s" 73" ASSERT-OK-OUT ;
 
 : MAIN ( -- )
    T-RESET
@@ -375,6 +379,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
    TEST-IMM-SIGNATURELESS
+   TEST-IMM-TRUSTED
    TEST-PREFLIGHT-POSITIVES
    CLEANUP-RUN
    T-REPORT

@@ -45,6 +45,12 @@ get-current constant TEST-WID
 : ADD3 ( n -- n )
    3 + ;
 
+: REVIEW-PI ( -- ) ; immediate
+s" REVIEW-PI" 0 parse-imm
+
+: REVIEW-RUN ( -- n )
+   REVIEW-PI 73 ;
+
 \ The pending package member is not findable until `;`: its body still resolves
 \ the case-folded spelling to the used-package word.
 using NCOMP-COLON-PRIOR
@@ -136,6 +142,9 @@ public
 : RUN ( -- )
    s" ordinary colon executes the native routine" T-LABEL
    4 ADD3 7 T=
+
+   s" a neutral parsing immediate executes during capture" T-LABEL
+   REVIEW-RUN 73 T=
 
    USED-CASE
 

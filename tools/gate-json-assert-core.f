@@ -319,7 +319,7 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" trusted_boundary_required" s" Move this compiler or runtime boundary behind audited TRUST."
    GJA-SUGGEST-ROW IF exit THEN
-   s" model_compile_immediate" s" Declare the compile-time expansion with parse-imm, or move the behavior behind an audited TRUSTED: boundary."
+   s" model_compile_immediate" s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body."
    GJA-SUGGEST-ROW IF exit THEN
    s" factor_local_shape" s" Move locals to a live top-level path or factor a helper."
    GJA-SUGGEST-ROW IF exit THEN

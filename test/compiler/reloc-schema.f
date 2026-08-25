@@ -40,8 +40,8 @@
 \
 \   5. The address-literal chain vector rows. The same idea again for the fixed
 \      four-instruction MOVZ/MOVK chain the compiler bakes into region code for
-\      a quotation's entry address and for the target of a `[']` or a
-\      `postpone`. A row names the band the pass is moving - a base, a length
+\      a quotation's entry address and for the target of a `[']`. A row names
+\      the band the pass is moving - a base, a length
 \      and the base those addresses are moving to - and every slot of a small
 \      region: whether the address map records it, whether one of its four words
 \      is damaged, and the address it carries before the writer's pass, after
@@ -373,7 +373,7 @@ public
       2 of s" C-ADDR-RAW EMIT-ADDRS" endof
       3 of s" EMIT-CREATE" endof
       4 of s" C-DEFER-EMIT-CODE J-IS" endof
-      5 of s" J-SEMIQUOT C-POSTPONE C-BTICK" endof
+      5 of s" J-SEMIQUOT C-BTICK" endof
       6 of s" C-SDQ C-CQ C-ESDQ C-ECQ" endof
       7 of s" C-CALL EMIT-CEMITBL EMIT-P2-VALID-EMIT EMIT-P2-STORE CORE" endof
       8 of s" EM-STARTUP-RUNTIME-STATE" endof
@@ -825,7 +825,7 @@ variable XOPEN-BASE
    ROLE-CH-REBASE $101000000 $300000000 $105000000 $800000 8 0 ;AROW ;
 
 \ A recorded chain naming an address OUTSIDE the band this call is moving: a
-\ `[']` or a `postpone` that names a PRIMITIVE, whose code is in the engine's
+\ `[']` that names a PRIMITIVE, whose code is in the engine's
 \ loaded __text. The region band's call must leave it exactly as it is, for the
 \ text band's call to move; slot one is in the band and moves, so the row cannot
 \ pass by the pass doing nothing at all.

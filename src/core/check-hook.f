@@ -8,9 +8,9 @@ package LOWER-CERT-HOOK
    dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and if DIAGXT then ;
 
 : PREFLIGHT ( ptr u8 n ptr u8 n bool -- )
-   {: ba:ptr bu:n ta:ptr tu:n trusted:bool :}
-   trusted if exit then
-   ta tu CHECKER-PREFLIGHT:MODELED? if exit then
+   drop
+   {: ba:ptr bu:n ta:ptr tu:n :}
+   ta tu NEUTRAL-PARSE-IMM? if exit then
    ba bu ta tu CHECKER-PREFLIGHT:CHECK! 0 <> if
       s" checker: preflight did not reject unmodeled immediate" 76 die
    then

@@ -225,7 +225,7 @@ variable AOT-CODE-B0
 \ chain the window's DATA span does not hold: in-window code goes to the CODE sweep,
 \ a value ACAP-TGT>REC resolves to a record's entry becomes a row here, and anything
 \ else ends the build. The class the row exists for is a code literal naming a
-\ PRE-WINDOW word (`['] X`, `postpone X`), which no delta relates to the target and
+\ PRE-WINDOW word (`['] X`), which no delta relates to the target and
 \ the inliner decline cannot reach; ACAP-OUT-CHAIN carries that argument. The format
 \ is baked into the engine, so it migrates once - a row kind added later is a second
 \ migration of every baked-code route. In-window code literals stay b0-relative:

@@ -256,7 +256,7 @@ variable LKWTOR variable LKWRFROM variable LKWRFET
 variable LKWEXIT variable LKWREC
 variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUNLOOP
 variable LKWCHAR variable LKWBCHAR
-variable LKWIMM variable LKWPOST variable LKWCOMPC
+variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
 variable LKWTRUSTED variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
@@ -1379,15 +1379,6 @@ variable SZA-I
 : BCREATE ( -- )
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
-
-: BCOMPILE ( -- )
-   A G-POP  11 9 0 ADDI,
-   SP SP 16 SUBI,  11 SP 8 STR,
-   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,         \ one instruction, at CP
-   11 SP 8 LDR,
-   LCEMITBL LABEL@ BL,                         \ one direct BL to the popped xt (x11)
-   PROT:LCLOSE LABEL@ BL,
-   SP SP 16 ADDI, ;
 
 : BEMIT ( -- )
    A G-POP  13 9 0 ADDI,  G-EMITC ;
@@ -2875,7 +2866,6 @@ public
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
    s" execute" ['] BEXEC 1 GDEREF-F
    s" run-in-stack" ['] BRUNSTACK 3 GDEREF-F
-   s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
    s" num-parse" ['] ENGINE-EMIT:BNUMPARSE FPRIM
