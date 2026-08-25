@@ -1170,6 +1170,11 @@ previous definitions
    9 13 2 ANDI,
    A G-PUSH ;
 
+\ Recovery images have no CALLMAP/ADDRMAP bands. Consume CODE-RECLAIM's exact
+\ span so the shared xref source keeps the full engine's private primitive seam.
+: BRELOCMAPSCLEAR ( -- )
+   A G-POP  B G-POP ;
+
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
    s" /"    ['] BDIV  FPRIM-L   s" mod"  ['] BMOD  FPRIM-L   s" /mod" ['] BDIVMOD FPRIM-L
@@ -1238,6 +1243,7 @@ previous definitions
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" munmap" ['] BMUNMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
+   s" reloc-maps-clear" ['] BRELOCMAPSCLEAR FPRIM-L
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 

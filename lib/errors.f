@@ -864,7 +864,7 @@ public
 \ handed over fits the buffer the caller committed, and whether this stage can
 \ record the token at all.
 -8400 constant E-NFEED-STATE    \ a producer word reached in a state that has no meaning for it: no unit open, a unit still scanning, or a second unit over a live one
--8401 constant E-NFEED-SCAN     \ a second or foreign reader scan reached an open unit: one unit is one scan
+-8401 constant E-NFEED-SCAN     \ a foreign scan or an unexpected defining-word segment reached the open unit
 -8402 constant E-NFEED-SPAN     \ a token whose bytes are not the bytes at the offset it claims, or that leaves the scanned text
 -8403 constant E-NFEED-ORDER    \ an append answered an ordinal other than the next one: the tape gained a row this producer did not write
 -8404 constant E-NFEED-KIND     \ a token class this stage has no tape kind for

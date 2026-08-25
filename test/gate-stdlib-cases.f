@@ -1169,6 +1169,10 @@ SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
 
+SUITE compiler-native-create-does
+   test/compiler/native-create-does.f
+;SUITE
+
 SUITE does-clause-record
    test/does-clause-record.f
 ;SUITE

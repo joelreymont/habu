@@ -1494,6 +1494,11 @@ variable SCAN-K
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;
 
+\ The byte offset of one function in this sealed emission. Publication uses the
+\ clause function's real measured start for the companion `;does` record.
+: FUNCTION-OFFSET@ ( n -- n )
+   SEAL-CK FUN-START INSN-BYTES * ;
+
 \ An INSTRUCTION INDEX, which is the coordinate the seam turns into an address
 \ by the same arithmetic it uses for a call site.
 : ADDR-SITES ( -- n )

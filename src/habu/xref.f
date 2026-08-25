@@ -434,11 +434,10 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 \ from the same pointer.
 \
 \ SO LOWERING THE CODE POINTER IS AN EVENT AND NOT A STORE. Every checked word
-\ that reclaims code space does it through TRUNCATE below, and everything
-\ holding an address-keyed fact registers once and is told the floor BEFORE the
-\ space is released. That is what makes the lifetime of such a fact a
-\ consequence of the lifetime of the code it describes rather than of a
-\ pointer's happening to move one way.
+\ that reclaims code space does it through TRUNCATE below. Address-keyed owners
+\ are told the floor, and the two relocation maps are cleared over the exact
+\ released span, BEFORE the space is released. That makes every fact's lifetime
+\ a consequence of the code it describes rather than of a pointer moving.
 \
 \ THE WATCHERS RUN FIRST AND THE POINTER MOVES AFTER, so there is no instant at
 \ which the pointer says a slot is free while a live row still claims to
@@ -453,6 +452,11 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 package CODE-RECLAIM
 
 private
+
+\ The raw engine primitive edits relocation metadata and is callable only at
+\ this audited boundary with TRUNCATE's proved [start,start+len) span.
+TRUSTED: CLEAR-MAPS ( n n -- )
+   reloc-maps-clear ;
 
 \ One slot per file that keeps an address-keyed fact. Three files do today -
 \ src/compiler/native/publish.f, which remembers where the routine it published
@@ -580,9 +584,8 @@ public
    FLOOR-A @ ;
 
 \ Reclaim the code space above this address. Every watcher is told the floor,
-\ and only then is the pointer moved: a watcher drops what it holds at or above
-\ the floor, so the bytes are released with nothing left claiming to describe
-\ them.
+\ both relocation maps are cleared over [floor,old CP), and only then is the
+\ pointer moved, so the bytes are released with nothing left describing them.
 \
 \ AND THE FLOOR IS HELD AGAINST THE RECORDS THAT SURVIVE IT rather than taken on
 \ the caller's word. Every caller computes its floor from something else - this
@@ -599,6 +602,7 @@ public
    WATCH-N @ 0 ?do
       floor i WATCH-AT @ execute
    loop
+   floor cp@ over - CLEAR-MAPS
    floor cp! ;
 
 \ How many watchers are registered, which is what a test measures a registration

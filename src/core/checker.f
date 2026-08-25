@@ -6143,6 +6143,12 @@ PRIM: addrmap-set   PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 PRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ points a live dictionary record at new code
+PRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ clears metadata over reclaimed code
+PRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ native defining-word runtime patch
+PRIM: does-record PE-N PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ native `;does` companion publication
 PRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: close         PE-N PE-IN PRIM;
@@ -6287,6 +6293,11 @@ PRIM: CHECKER-REG-AOT-SAVE PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ UNSAFE-TOK? rejects `checker-defcast` inside checked bodies exactly like
 \ `trust-decl`, so the axiom adds no checked-code capability.
 PRIM: CHECKER-DEFCAST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: CHECK-DOES-DIN-CELLS PE-N PE-OUT PRIM;
+PRIM: CHECK-DOES-DOUT-CELLS PE-N PE-OUT PRIM;
+PRIM: CHECK-DOES-WIDE? PE-F PE-OUT PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
 \ The axiom keeps it checker-known so the seal-time internal-word marking pass
 \ (src/core/internal-mark.f) leaves it executable at top level (dot
@@ -6442,6 +6453,7 @@ PPRIM: CHECKER-TAPE INSTALL
 PPRIM;
 PPRIM: CHECKER-TAPE ARM PPRIM;
 PPRIM: CHECKER-TAPE DISARM PPRIM;
+PPRIM: CHECKER-TAPE ADVANCE PPRIM;
 PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
@@ -11915,6 +11927,11 @@ variable ARMED   0 ARMED !
    0 ARMED !
    REC-OFF ;
 
+\ One structurally supplied token between two checker scans still occupies one
+\ reported-token ordinal in the side tables, just as it does in the source tape.
+: ADVANCE ( -- )
+   REC-STEP ;
+
 private
 
 \ Which of the reader's three token classes this token is. It asks the two
@@ -12291,15 +12308,16 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 variable SCAN-U       \ the token's own byte length, taken before the judgement
 variable SCAN-TOK0    \ was it the definition's name token?
 
-\ THE OBSERVER SEES ONE SCAN PER DEFINITION, and a lazy signature intake makes
+\ THE OBSERVER SEES ONE SCAN PER CHECKED BODY, and a lazy signature intake makes
 \ the checker scan some bodies twice. src/compiler/native/feed.f ON-SCAN refuses
-\ a second scan of a unit it is already recording, and it is right to: two scans
-\ would be two tapes. What it is owed is the token stream, and that is a function
-\ of the TEXT alone - the reader splits on spaces and decides a payload skip from
-\ the token's own spelling, so an intake between passes changes which words
-\ resolve and not which tokens exist. So the first pass gives the observer the
-\ whole stream, every later pass is silent, and CHECK! hands over the one verdict
-\ at the end. CHECK-RETRY asserts the streams matched rather than assuming it.
+\ a retry of a body it is already recording: that would duplicate its tape rows.
+\ What it is owed is the token stream, and that is a function of the TEXT alone -
+\ the reader splits on spaces and decides a payload skip from the token's own
+\ spelling, so an intake between passes changes which words resolve and not which
+\ tokens exist. So the first pass gives the observer the whole stream, every later
+\ pass is silent, and CHECK! hands over the one verdict at the end. CHECK-RETRY
+\ asserts the streams matched rather than assuming it. A defining word has two
+\ distinct checked bodies; feed joins those around its one verified `does>` row.
 variable RESCAN       \ this pass is a retry; the observer already has the stream
 variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 
@@ -13221,6 +13239,21 @@ public
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
+\ Capture the stable physical widths and the existing wide-layout refusal before
+\ checking binds either row tail.
+variable CD-DIN-CELLS
+variable CD-DOUT-CELLS
+variable CD-WIDE
+
+: CHECK-DOES-EFFECT! ( n n -- ) {: din:n dout:n :}
+   din ROW-CELLS CD-DIN-CELLS !
+   dout ROW-CELLS CD-DOUT-CELLS !
+   din ROW-WIDE? dout ROW-WIDE? or CD-WIDE ! ;
+
+: CHECK-DOES-DIN-CELLS ( -- n ) CD-DIN-CELLS @ ;
+: CHECK-DOES-DOUT-CELLS ( -- n ) CD-DOUT-CELLS @ ;
+: CHECK-DOES-WIDE? ( -- bool ) CD-WIDE @ ;
+
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
    RR-SHARED @ SGRBASE !
@@ -13264,7 +13297,9 @@ public
    ba bu CHECK-RESET
    0 TOK0 !
    sa su PARSE-SIG-RAW RAW-SIG!
-   SGIN @ DOES-DIN dup BROW ! DCUR !
+   SGIN @ DOES-DIN dup BROW !
+   SGOUT @ CHECK-DOES-EFFECT!
+   BROW @ DCUR !
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    CHECK-SCAN
    CHECK-FOLD-EXITS
@@ -13276,4 +13311,5 @@ public
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
-   CHECK-VERDICT dup DVERD ! ;
+   CHECK-VERDICT dup DVERD !
+   CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;

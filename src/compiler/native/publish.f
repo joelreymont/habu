@@ -62,6 +62,11 @@ TRUSTED: RETARGET-REC ( n n n -- )
 TRUSTED: MIN-IN-REC ( n n -- )
    min-in-mark ;
 
+\ The clause companion is written only after its slot, name span, and emitted
+\ function offset have all been proved below.
+TRUSTED: DOES-RECORD ( n n -- )
+   does-record ;
+
 \ ---- the replacement log -----------------------------------------------------
 128 constant ROWS-SEED
 
@@ -425,6 +430,26 @@ public
    u LOG-CK
    idx fn size ;
 
+5 constant DOES-SUFFIX-BYTES
+
+: PAD-INSTRUCTION ( n -- n )
+   3 + -4 and ;
+
+: DOES-NAME-PAD ( n -- n ) {: idx:n :}
+   idx XREF-REC XREF-NAME$ nip DOES-SUFFIX-BYTES +
+   dup DNAME-LEN-MASK > if E-NPUB-CAP throw then
+   PAD-INSTRUCTION ;
+
+: DOES-PROVE ( n -- n n n n ) {: fun:n :}
+   PENDING-PROVE {: idx:n fn:n size:n :}
+   idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
+   idx DOES-NAME-PAD {: pad:n :}
+   fn size + pad + CODE-CEILING > if E-NPUB-ROOM throw then
+   fun A64EMIT:FUNCTION-OFFSET@ {: off:n :}
+   off 0 <= if E-NPUB-OFFSET throw then
+   off size OFFSET-CK drop
+   idx fn size off ;
+
 : PUBLISH-PENDING ( -- )
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
@@ -432,6 +457,21 @@ public
    idx fn size COMMIT
    ndict@ 1+ ndict!
    idx PENDING-FACTS
+   a u wid 0 0 fn  size RECORDED-LEN  LOG+ ;
+
+\ The parent owns the whole emission. Its adjacent `;does` record names only the
+\ hidden clause entry so an AOT-restored created-word branch has a stable target.
+\ Every refusal precedes COMMIT; the remaining steps are the existing no-refusal
+\ parent publish tail and the existing companion record shape.
+: PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
+   fun DOES-PROVE {: idx:n fn:n size:n off:n :}
+   idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
+   idx XREF-REC XREF-WORDLIST {: wid:n :}
+   idx fn size COMMIT
+   fn off +  size off - RECORDED-LEN  DOES-RECORD
+   ndict@ 1+ ndict!
+   idx PENDING-FACTS
+   ndict@ 1+ ndict!
    a u wid 0 0 fn  size RECORDED-LEN  LOG+ ;
 
 \ One word and not a copy of one, so the two answers cannot drift apart; a

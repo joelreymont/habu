@@ -32,11 +32,13 @@ private
 \ IDLE      no unit is open
 \ ARMED     a unit is open and the reader has not started its scan
 \ SCANNING  the reader is consuming this unit's tokens
+\ BETWEEN   a defining word's parent scan ended before its `does>` clause
 \ DONE      the scan ended and its verdict arrived
 0 constant ST-IDLE
 1 constant ST-ARMED
 2 constant ST-SCANNING
-3 constant ST-DONE
+3 constant ST-BETWEEN
+4 constant ST-DONE
 
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER F-CTX IR-CTX:ctx
@@ -49,6 +51,8 @@ variable F-CAP                         \ how many bytes that buffer holds
 variable F-LEN                         \ how many it was handed
 variable F-N                           \ rows appended so far
 variable F-VERDICT
+variable F-DOES                        \ byte split after `does> `, or zero
+variable F-BASE                        \ start of the scan now being recorded
 
 : TXT-FIELD ( -- ptr ptr u8 )
    F-TXT 0 ptr-field ;
@@ -66,6 +70,17 @@ variable F-VERDICT
 
 : STATE-CK ( n -- )
    F-STATE @ <> if E-NFEED-STATE throw then ;
+
+: DOES? ( -- bool )
+   F-DOES @ 0<> ;
+
+: SCAN-LEN ( -- n )
+   F-BASE @ 0= if F-DOES @ 6 - exit then
+   F-LEN @ F-DOES @ - ;
+
+: SCAN-CK ( ptr u8 n -- ) {: a:ptr u:n :}
+   u SCAN-LEN <> if E-NFEED-SCAN throw then
+   TXT@ F-BASE @ + u  a u  STR= 0= if E-NFEED-SCAN throw then ;
 
 \ ---- one token ---------------------------------------------------------------
 \ The offset and the bytes have to be the same token, compared against the KEPT
@@ -152,36 +167,42 @@ variable F-VERDICT
 \ registry's content digest is taken over the bytes that were kept.
 : ON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    F-STATE @ ST-ARMED <> if E-NFEED-SCAN throw then
-   u F-CAP @ > if E-NFEED-TEXT throw then
-   a TXT@ u BYTE-COPY
-   u F-LEN !
-   CTX BLD TXT@ u IR-BUILD:ADD-SOURCE 0 F-SID !
+   DOES? if
+      a u SCAN-CK
+   else
+      u F-CAP @ > if E-NFEED-TEXT throw then
+      a TXT@ u BYTE-COPY
+      u F-LEN !
+      CTX BLD TXT@ u IR-BUILD:ADD-SOURCE 0 F-SID !
+   then
    ST-SCANNING F-STATE ! ;
 
 : ON-TOKEN ( ptr u8 n n n n n -- ) {: a:ptr u:n off:n ru:n kind:n first:n :}
    ST-SCANNING STATE-CK
-   kind CHECKER-TAPE:K-STRING = if u off ru SPAN-CK else a u off BYTES-CK then
-   a u off ru kind first APPEND ORDER-CK
+   off F-BASE @ + {: goff:n :}
+   kind CHECKER-TAPE:K-STRING = if u goff ru SPAN-CK else a u goff BYTES-CK then
+   a u goff ru kind first APPEND ORDER-CK
    F-N @ 1+ F-N ! ;
 
 \ A verdict for some other text is a verdict for some other tape.
 : ON-DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    ST-SCANNING STATE-CK
-   u F-LEN @ <> if E-NFEED-SCAN throw then
-   TXT@ F-LEN @  a u  STR= 0= if E-NFEED-SCAN throw then
+   DOES? if
+      a u SCAN-CK
+   else
+      u F-LEN @ <> if E-NFEED-SCAN throw then
+      TXT@ F-LEN @  a u  STR= 0= if E-NFEED-SCAN throw then
+   then
    verdict F-VERDICT !
-   ST-DONE F-STATE ! ;
+   DOES? F-BASE @ 0= and if ST-BETWEEN else ST-DONE then F-STATE ! ;
 
 \ Clears this producer's hold on the caller's buffer, not its contents.
 : CLEAR ( -- )
    0 F-N !  0 F-LEN !  0 F-CAP !  0 F-VERDICT !
+   0 F-DOES !  0 F-BASE !
    ST-IDLE F-STATE ! ;
 
-public
-
-\ Both ceilings are the caller's commitment: too many tokens is NTAPE's capacity
-\ error and text longer than the buffer is refused here; neither is truncated.
-: BEGIN-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n -- )
+: OPEN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n :}
    ST-IDLE STATE-CK
    cap 0 < if E-NFEED-TEXT throw then
@@ -190,8 +211,45 @@ public
    tp 0 F-TAPE !
    txt TXT!  cap F-CAP !
    0 F-N !  0 F-LEN !  0 F-VERDICT !
+   0 F-DOES !  0 F-BASE ! ;
+
+public
+
+\ Both ceilings are the caller's commitment: too many tokens is NTAPE's capacity
+\ error and text longer than the buffer is refused here; neither is truncated.
+: BEGIN-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n -- )
+   OPEN
    ST-ARMED F-STATE !
    CHECKER-TAPE:ARM ;
+
+\ A defining word is checked as two bodies, but remains one source and one tape.
+\ The engine supplies the exact byte split it recorded while consuming `does>`.
+: BEGIN-DOES-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n ptr u8 n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n src su:n cut:n :}
+   cut 6 < cut su > or if E-NFEED-SCAN throw then
+   src cut 6 - + 5 s" does>" STR=CI 0= if E-NFEED-SCAN throw then
+   src cut 1- + c@ 32 <> if E-NFEED-SCAN throw then
+   su cap > if E-NFEED-TEXT throw then
+   c b tp txt cap OPEN
+   src TXT@ su BYTE-COPY
+   su F-LEN !  cut F-DOES !
+   CTX BLD TXT@ su IR-BUILD:ADD-SOURCE 0 F-SID !
+   ST-ARMED F-STATE !
+   CHECKER-TAPE:ARM ;
+
+\ Insert the one verified keyword between the two checker bodies and advance the
+\ checker's matching token ordinal, then admit the clause scan.
+: DOES-CLAUSE ( -- n )
+   ST-BETWEEN STATE-CK
+   F-DOES @ 6 - {: off:n :}
+   F-N @ {: row:n :}
+   TXT@ off + 5 off BYTES-CK
+   TXT@ off + 5 off 0 APPEND-NAME ORDER-CK
+   F-N @ 1+ F-N !
+   CHECKER-TAPE:ADVANCE
+   F-DOES @ F-BASE !
+   ST-ARMED F-STATE !
+   row ;
 
 \ Sealing here is where the digest becomes worth sharing: after it the tape
 \ refuses every append. The source is not answered separately - every span names it.

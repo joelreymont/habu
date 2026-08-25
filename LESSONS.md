@@ -7696,3 +7696,9 @@ and --no-lldbinit.
   hold cell record when the engine actually consumes it at the publish tail,
   sample that fact before disarming, and retract by the stable tape spelling;
   use the held record only when `END-UNIT` failed before producing that span.
+
+## 2026-08-25 - code reclamation
+
+- **A code rewind must clear both relocation maps over the whole reclaimed span.**
+  Otherwise reused code or name padding inherits stale call/address claims and
+  poisons a later snapshot.

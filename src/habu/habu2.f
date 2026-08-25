@@ -2648,6 +2648,14 @@ package DOESPATCH
 
 public
 
+\ Native defining words pass the measured clause entry and the already parsed
+\ created-word signature. The existing patch routine remains the one owner of
+\ the created record, branch, kind stamp, and checker publication.
+: PRIM ( -- )
+   C G-POP  B G-POP  A G-POP
+   B DATA CRSIG-A-CELL STR,  C DATA CRSIG-U-CELL STR,
+   B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
+
 : EMIT ( -- )
    LBL {: nocr :}
    LDOESPATCH LABEL@ LBL,
@@ -2825,14 +2833,10 @@ public
    10 $1000000A LIT64,  9 9 10 ORR,
    LCEMIT LABEL@ BL, ;
 
-\ The clause's name bytes at CP, then the record that names them, then CP up to
-\ the clause entry. The pad between the two is written zero rather than left:
-\ these bytes are copied into the AOT blob verbatim, so they have to be a value
-\ and not whatever the last abandoned definition put there.
-: MAKE ( -- )
+\ Copy the derived name at CP. NAME$ has already supplied x11..x15 and the
+\ caller owns a write window covering the padded span.
+: COPY-NAME ( -- )
    LBL LBL LBL LBL {: cpy:label cpd:label pad:label pend:label :}
-   NAME$
-   1 15 0 ADDI,  PROT:RESERVE
    10 CP 0 ADDI,                                       \ the write cursor
    12 13 SUF-LEN SUBI,
    cpy LBL,  12 cpd CBZ,
@@ -2847,17 +2851,42 @@ public
    12 15 13 SUB,  9 0 MOVZ,
    pad LBL,  12 pend CBZ,
       9 10 0 STRB,  10 10 1 ADDI,  12 12 1 SUBI,  pad B,
-   pend LBL,
+   pend LBL, ;
+
+\ Write the clause record in the existing pending+1 slot. Entry and length are
+\ runtime registers so the legacy and native compilers share the exact layout.
+: RECORD ( n n -- ) {: entry:n len:n :}
    14 NDICT 1 ADDI,  9 DREC MOVZ,  14 14 9 MUL,  14 DBASE 14 ADD,
    1 14 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
    9 0 MOVZ,                                           \ a slot an abandoned definition may have written
    9 14 0 STR,  9 14 8 STR,  9 14 16 STR,
    9 14 24 STR,  9 14 32 STR,  9 14 40 STR,
-   9 CP 15 ADD,  9 14 0 STR,                           \ [0] = the clause entry
+   entry 14 0 STR,                                     \ [0] = the clause entry
+   len 14 8 STR,                                       \ [8] = its recorded body length
    9 DNAME-EXT LIT64,  9 13 9 ORR,  9 14 16 STR,       \ [16] = its name length, out of line
    9 CP 0 ADDI,  9 14 24 STR,                          \ [24] = the name bytes
-   11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR,  \ [40] = the parent's wordlist
+   11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR, ; \ [40] = the parent's wordlist
+
+\ The legacy compiler places the clause immediately after the name bytes and
+\ fills its length at `;` as before.
+: MAKE ( -- )
+   NAME$
+   1 15 0 ADDI,  PROT:RESERVE
+   COPY-NAME
+   5 CP 15 ADD,  6 0 MOVZ,  5 6 RECORD
    CP CP 15 ADD, ;
+
+\ Native publication has already emitted the clause. Append only the permanent
+\ derived name and record, using the measured entry and length it supplies.
+: NATIVE-PRIM ( -- )
+   B G-POP  A G-POP
+   5 A 0 ADDI,  6 B 0 ADDI,
+   NAME$
+   1 CP 15 ADD,  PROT:LOPEN LABEL@ BL,
+   COPY-NAME
+   5 6 RECORD
+   CP CP 15 ADD,
+   PROT:LCLOSE LABEL@ BL, ;
 
 \ The clause record's own length, by the parent's rule and inside the parent's
 \ protection span: both bodies end at the shared epilogue. It runs BEFORE the
@@ -6127,6 +6156,18 @@ package NCOMP-EMIT
 
 public
 
+: CAPTURE-DOES ( label -- ) {: notdoes:label :}
+   LBL {: first:label :}
+   9 DATA TKL-CELL LDR,  9 5 CMPI,  C-NE notdoes BCOND,
+   0 LKWDOES LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,
+   0 notdoes CBZ,
+   9 DATA DOESB-CELL LDR,  9 first CBZ,
+      C-DIE-DOES
+   first LBL,
+   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   C-PARSE-CREATED-SIG
+   LMAIN LABEL@ B, ;
+
 : CAPTURE-PLAIN-STRING ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -6148,9 +6189,9 @@ public
    LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
 : CAPTURE-IMMEDIATE ( -- )
-   LBL LBL {: done:label notneutral:label :}
+   LBL LBL LBL LBL {: done:label notneutral:label noimm:label maybe-does:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   14 13 2 ANDI,  14 done CBZ,
+   14 13 2 ANDI,  14 noimm CBZ,
    SP SP 16 SUBI,  11 SP 0 STR,
    PROT:LCLOSE LABEL@ BL,
    LNEUTRAL 18 C-FIND-GLOBAL
@@ -6163,6 +6204,11 @@ public
    notneutral LBL,
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    SP SP 16 ADDI,
+   maybe-does LBL,
+   done CAPTURE-DOES
+   noimm LBL,
+   13 done CBNZ,
+   maybe-does B,
    done LBL, ;
 s" ncomp-emit:capture-immediate" s" --" TRUST
 
@@ -9164,6 +9210,8 @@ package ENGINE-EMIT
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
+   s" does-patch" ['] DOESPATCH:PRIM FPRIM
+   s" does-record" ['] DOES-REC:NATIVE-PRIM FPRIM
    EMIT-ARITY-GUARD
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM

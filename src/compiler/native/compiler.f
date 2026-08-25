@@ -70,6 +70,13 @@ variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-SPILLS                    \ padded spill slots that define the cumulative frame
+variable M-DOES                      \ byte split after `does> `, or zero
+variable M-DOES-ROW                  \ the tape row that carries `does>`
+PTR-VARIABLE M-DOES-SIG
+variable M-DOES-SIG-U
+variable M-DOES-IN
+variable M-DOES-OUT
+variable M-DOES-FUN                  \ hidden clause function ordinal
 variable TRUST-VERDICT
 PTR-VARIABLE TRUST-SRC-A
 variable TRUST-SRC-U
@@ -81,6 +88,12 @@ variable TRUST-SRC-U
 
 : SRC$ ( -- ptr u8 n )
    M-SRC @ M-SRC-U @ ;
+
+: DOES-BYTE@ ( -- n )
+   data-base DOESB-CELL + @ ;
+
+: DOES-SIG-FIELD ( -- ptr ptr u8 )
+   data-base TCSIG-A-CELL CELL / ptr-field ;
 
 : TRUSTED? ( -- bool )
    data-base TRUSTED-CELL + @ 0<> ;
@@ -181,12 +194,37 @@ TRUSTED: QUIET+ ( n -- )
    na nu sa su REGISTER-TRUST
    TRUST-VERDICT @ ;
 
+: CHECK-PARENT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   TRUSTED? if PENDING-NAME$ TRUST-SIG$ a u CHECK-TRUSTED exit then
+   a u LOWER-CERT-HOOK:HOOK ;
+
 : CHECK-SOURCE ( -- n )
-   TRUSTED? if PENDING-NAME$ TRUST-SIG$ SRC$ CHECK-TRUSTED exit then
-   SRC$ LOWER-CERT-HOOK:HOOK ;
+   SRC$ CHECK-PARENT ;
+
+\ CHECK-DOES! is a trusted checker mutation, like the ordinary lower-cert hook.
+TRUSTED: CHECK-DOES ( ptr u8 n ptr u8 n -- n )
+   CHECK-DOES! ;
+
+: CHECK-DOES-SPLIT ( -- n )
+   M-DOES @ {: cut:n :}
+   cut 6 < cut M-SRC-U @ > or if E-NCOMP-TEXT throw then
+   M-SRC @ cut 6 - CHECK-PARENT
+   TRUSTED? if drop else -1 <> if E-NCOMP-VERDICT throw then then
+   NFEED:DOES-CLAUSE M-DOES-ROW !
+   M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
+   CHECK-DOES -1 <> if E-NCOMP-VERDICT throw then
+   CHECK-DOES-DIN-CELLS M-DOES-IN !
+   CHECK-DOES-DOUT-CELLS M-DOES-OUT !
+   M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-NCOMP-ARITY throw then
+   CHECK-DOES-WIDE? if E-NELAB-BUNDLE throw then
+   -1 ;
+
+: CHECK-RECORDED ( -- n )
+   M-DOES @ 0<> if CHECK-DOES-SPLIT exit then
+   CHECK-SOURCE ;
 
 : SCAN ( -- )
-   [: CHECK-SOURCE M-VERDICT ! ;] catch {: src-rc:n :}
+   [: CHECK-RECORDED M-VERDICT ! ;] catch {: src-rc:n :}
    [: END-RECORDED ;] catch {: end-rc:n :}
    end-rc 0= if [: KEEP-TAPE-NAME ;] catch else 0 then {: name-rc:n :}
    src-rc 0<> if src-rc throw then
@@ -203,7 +241,11 @@ TRUSTED: QUIET+ ( n -- )
 
 : RECORD ( -- n )
    CC BB IR-BUILD:MODULE-KEY TAPE-ROOM NTAPE:NEW {: tp:IR-ARENA:arena :}
-   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   M-DOES @ 0<> if
+      CC BB tp TXT TEXT-CAP SRC$ M-DOES @ NFEED:BEGIN-DOES-UNIT
+   else
+      CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   then
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
@@ -513,7 +555,19 @@ variable REC-OK                      \ the body staged so far is still one worth
    ready EMIT-AT ;
 
 : PUBLISH-IT ( -- )
+   M-DOES @ 0<> if M-DOES-FUN @ NPUB:PUBLISH-PENDING-DOES exit then
    NPUB:PUBLISH-PENDING ;
+
+: ELABORATE ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   M-DOES @ 0<> if
+      CC BB TAPE p r M-IN @ M-OUT @ M-DOES-ROW @
+      M-DOES-IN @ M-DOES-OUT @ NDICT:GLUE-NONE NDICT:GLUE-NONE
+      M-DOES-SIG @ M-DOES-SIG-U @ NELAB:DOES drop
+      NELAB:DOES-FUNCTION M-DOES-FUN !
+      exit
+   then
+   CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop ;
 
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
@@ -526,8 +580,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    KEEP-ARITY
    r BIND-PRIOR
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
-   CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
-   r STAGE-BODY
+   p r ELABORATE
+   M-DOES @ 0= if r STAGE-BODY then
    EMITTED
    SIZE-CK
    CLAIM-ROW
@@ -591,6 +645,12 @@ variable REC-OK                      \ the body staged so far is still one worth
    0 M-IN ! 0 M-OUT !
    0 M-VERDICT !
    0 M-SPILLS !
+   DOES-BYTE@ M-DOES !
+   DOES-SIG-FIELD @ M-DOES-SIG !
+   data-base TCSIG-U-CELL + @ M-DOES-SIG-U !
+   0 M-DOES-IN ! 0 M-DOES-OUT !
+   -1 M-DOES-FUN !
+   -1 M-DOES-ROW !
    0 NAME-U ! ;
 
 public
