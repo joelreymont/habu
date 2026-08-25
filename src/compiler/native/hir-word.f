@@ -559,6 +559,14 @@ public
       id:IR-ID:ir-symbol-id entry:n in:n out:n :}
    c r  c b id BKEY-CK  entry in out NDICT:GLUE-NONE COMES-BACK CALLABLE-ROW ;
 
+\ Declare the exact callable facts already bound to a dictionary entry.  This
+\ door is for a caller that captured those facts together, before a later
+\ definition of the same name could change the checker's name lookup.
+: DECLARE-BOUND-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n n bool -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id entry:n in:n out:n glue:n dead:bool :}
+   c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW ;
+
 \ Make a FIXED row for a spelling nobody staged, by asking the engine which
 \ Asked BEFORE the callable question because a stamped record is never a call
 \ and an unstamped one is never anything but - the cheaper question first.

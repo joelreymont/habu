@@ -2375,6 +2375,10 @@ fits.
   checker owns `PACKAGE:TAIL`, while the dictionary record stores bare `TAIL` in
   the package wordlist; resolve once, mutate checker state with the qualified
   token, and mutate runtime state with the resolved record's tail and wordlist.
+- **Bind a call's effect to its dictionary entry before publishing a pending
+  signature.** Until `;`, a same-tail body token still calls the prior word, so
+  a later name lookup can combine that entry with the pending word's arity and
+  deadness. Match case-folded and qualified aliases by resolved entry, not bytes.
 - **Transaction finalization releases proof state; it is not a late publication
   phase.** Forward commit may change visible high-water marks only while every
   owner snapshot remains rollbackable, and an exactly preflighted irreversible

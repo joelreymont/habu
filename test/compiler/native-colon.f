@@ -19,6 +19,18 @@ public
 : SHARED ( -- n ) 2 ;
 ;package
 
+package NCOMP-COLON-PRIOR
+public
+: PRIOR-BARE ( n -- )
+   drop E-A-EMPTY throw ;
+
+: PRIOR-RECURSE ( n -- )
+   drop E-A-BOUNDS throw ;
+
+: PRIOR-QUAL ( n -- )
+   drop E-A-BOUNDS throw ;
+;package
+
 using NST-AWAY
 : NST-USED ( -- n )
    NST-K 2 + ;
@@ -32,6 +44,23 @@ get-current constant TEST-WID
 
 : ADD3 ( n -- n )
    3 + ;
+
+\ The pending package member is not findable until `;`: its body still resolves
+\ the case-folded spelling to the used-package word.
+using NCOMP-COLON-PRIOR
+: PRIOR-BARE ( n n -- n )
+   0= if prior-bare then ;
+
+\ `RECURSE` names this pending definition, never the prior same-tail word.
+: PRIOR-RECURSE ( n -- n )
+   dup 1 <= if drop 1 exit then
+   1- RECURSE ;
+
+\ A qualified spelling reaches the same used-package record as the bare name
+\ captured before checking this pending member.
+: PRIOR-QUAL ( n n -- n )
+   0= if ncomp-colon-prior:PrIoR-qUaL then ;
+;using
 
 : PLAIN$ ( -- ptr u8 n )
    s" alpha; beta" ;
@@ -90,6 +119,18 @@ using NCOMP-COLON-USED-B
    s" live kept results still cross the call" T-LABEL
    10 DK-LIVE 11 T= ;
 
+: PRIOR-BINDING-CASE ( -- )
+   s" a case-folded pending-name call reaches the prior word" T-LABEL
+   7 -1 PRIOR-BARE 7 T=
+   [: 7 0 PRIOR-BARE drop ;] E-A-EMPTY TTHROWSQ
+
+   s" a qualified pending-name call reaches the same prior record" T-LABEL
+   8 -1 PRIOR-QUAL 8 T=
+   [: 8 0 PRIOR-QUAL drop ;] E-A-BOUNDS TTHROWSQ
+
+   s" recurse still names the pending definition" T-LABEL
+   4 PRIOR-RECURSE 1 T= ;
+
 public
 
 : RUN ( -- )
@@ -122,6 +163,7 @@ public
    REPEATED-DATA-ADDRESS T=
 
    DEAD-RESULT-CASE
+   PRIOR-BINDING-CASE
 
    s" a real trusted cast uses the same native compiler" T-LABEL
    TRUSTED-DBASE drop

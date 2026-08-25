@@ -60,6 +60,12 @@ PTR-VARIABLE M-SRC
 variable M-SRC-U
 variable M-IN
 variable M-OUT
+variable PRIOR-ENTRY
+variable PRIOR-IN
+variable PRIOR-OUT
+variable PRIOR-GLUE
+variable PRIOR-DEAD
+variable PRIOR-CALLABLE
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
@@ -87,6 +93,30 @@ variable TRUST-SRC-U
 
 : PENDING-NAME$ ( -- ptr u8 n )
    ndict@ XREF-REC XREF-NAME$ ;
+
+\ The pending record is not searchable yet.  Capture the word its bare name
+\ denotes while the dictionary and checker still agree about that prior entry.
+: READ-PRIOR ( -- )
+   PENDING-NAME$ {: a:ptr u:n :}
+   a u NDICT:CALL-TARGET {: entry:n :}
+   entry PRIOR-ENTRY !
+   entry 0= if exit then
+   a u NDICT:SPELL-ARITY {: in:n out:n :}
+   in NDICT:ARITY-NONE = if exit then
+   a u NDICT:SPELL-RET-NEUTRAL? 0= if exit then
+   a u NDICT:SPELL-GLUE nip {: glue:n :}
+   glue NDICT:GLUE-UNKNOWN = if exit then
+   a u NDICT:SPELL-DEAD? {: dead:bool :}
+   in PRIOR-IN !  out PRIOR-OUT !  glue PRIOR-GLUE !  dead PRIOR-DEAD !
+   1 PRIOR-CALLABLE ! ;
+
+\ An ambiguous bare name is no prior binding.  A qualified body token remains
+\ free to resolve its own unambiguous record after the check.
+: KEEP-PRIOR ( -- )
+   0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !
+   [: READ-PRIOR ;] catch {: rc:n :}
+   rc E-USING-AMBIGUOUS = if exit then
+   rc 0<> if rc throw then ;
 
 \ ---- the module the definition is compiled into ------------------------------
 : HIR-MOD ( IR-CTX:ctx -- IR-BUILD:builder )
@@ -250,6 +280,30 @@ create SPELL-BUF SPELL-CAP allot
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable REC-OK                      \ the body staged so far is still one worth keeping
+
+\ Match by the dictionary entry, not by bytes: folding and a qualified spelling
+\ can both name the same prior word.  `recurse` has no callable dictionary
+\ target and therefore keeps its separate elaborator rule.
+: PRIOR-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   PRIOR-ENTRY @ 0= if exit then
+   TAPE ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
+   CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM
+   {: sy:IR-ID:ir-symbol-id :}
+   CC BB sy IR-BUILD:SYMBOL-LEN SPELL-CAP > if exit then
+   CC BB sy SPELL-BUF SPELL-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   SPELL-BUF u NDICT:CALL-TARGET PRIOR-ENTRY @ <> if exit then
+   r sy HIR-WORD:MODELS? if exit then
+   PRIOR-CALLABLE @ 0= if E-HIR-UNMODELED throw then
+   CC BB r sy
+   PRIOR-ENTRY @ PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @ PRIOR-DEAD @
+   HIR-WORD:DECLARE-BOUND-CALLABLE ;
+
+: BIND-PRIOR ( IR-ARENA:arena -- )
+   {: r:IR-ARENA:arena :}
+   TAPE NTAPE:TOKENS 1 ?do
+      r i PRIOR-STEP
+   loop ;
 
 \ The row is already flat - no row holds a call - so this adds operations only.
 : REC-CALL ( IR-ARENA:arena n -- )
@@ -470,6 +524,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
+   r BIND-PRIOR
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
    r STAGE-BODY
@@ -532,6 +587,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    {: sa su:n :}
    IDLE-CK
    sa M-SRC ! su M-SRC-U !
+   KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
    0 M-VERDICT !
    0 M-SPILLS !
