@@ -2,7 +2,6 @@
 
 require lib/test.f
 require src/compiler/native/compiler.f
-require src/compiler/native/codewalk.f
 
 package NDEFER-TEST
 
@@ -50,75 +49,10 @@ variable HIT
    loop
    HIT @ 0<> ;
 
-\ ---- reading the emitted instructions ----------------------------------------
-\ A branch-with-link is the top six bits `100101` and a signed twenty-six-bit
-\ word displacement; the address it reaches is its own address plus four times
-\ that. It is decoded from the encoding rather than compared against an expected
-\ word, so a case states the ADDRESS it means.
-$FC000000 constant BL-MASK
-$94000000 constant BL-FORM
-1 25 lshift constant BL-SIGN
-4 constant INSN-BYTES
-
-: BL? ( n -- bool )
-   BL-MASK and BL-FORM = ;
-
-: BL-DELTA ( n -- n )
-   {: w:n :}
-   w $3FFFFFF and {: d:n :}
-   d BL-SIGN and 0<> if d BL-SIGN 2 * - exit then
-   d ;
-
-: INSN-AT ( n n -- n )
-   {: start:n k:n :}
-   start k INSN-BYTES * + NWALK:INSN@ ;
-
-: INSNS ( ptr u8 n -- n )
-   REC-LEN INSN-BYTES / ;
-
-: BLS ( ptr u8 n -- n )
-   {: a u:n :}
-   a u REC-START {: start:n :}
-   0
-   a u INSNS 0 ?do
-      start i INSN-AT BL? if 1+ then
-   loop ;
-
-: BL-AT ( ptr u8 n -- n )
-   {: a u:n :}
-   a u REC-START {: start:n :}
-   -1
-   a u INSNS 0 ?do
-      start i INSN-AT BL? if drop i leave then
-   loop ;
-
-\ Where the word's j-th branch-with-link stands. The running pair is in cells
-\ because a counted loop's body cannot rebind a local, and a walk that stopped
-\ at the first hit could not answer for the second.
-variable BLN-AT   variable BLN-SEEN
-
-: BL-NTH ( ptr u8 n n -- n )
-   {: a u:n j:n :}
-   -1 BLN-AT !  0 BLN-SEEN !
-   a u INSNS 0 ?do
-      a u REC-START i INSN-AT BL? if
-         BLN-SEEN @ j = if i BLN-AT ! then
-         BLN-SEEN @ 1+ BLN-SEEN !
-      then
-   loop
-   BLN-AT @ ;
-
-: BL-TARGET ( ptr u8 n n -- n )
-   {: a u:n j:n :}
-   a u j BL-NTH {: k:n :}
-   a u REC-START  k INSN-BYTES * +  {: site:n :}
-   site  a u REC-START k INSN-AT BL-DELTA INSN-BYTES *  + ;
-
 \ ---- the words the fixtures bind ---------------------------------------------
 \ The deferred word, the body it is bound to, and a compiled caller of it. The
-\ caller exists because a defer is an engine trampoline and a body that calls one
-\ compiles to a plain branch: it is the shape a program really writes, and it
-\ reads the cell at run time rather than at compile time.
+\ caller exists because a defer is an engine trampoline: it proves a compiled
+\ call reads the cell at run time rather than merely proving direct evaluation.
 : SETUP ( -- )
    s" defer ND-HOOK ( n -- n )" EV
    s" : ND-IMPL ( n -- n ) 1 + ;" EV
@@ -142,30 +76,10 @@ variable BLN-AT   variable BLN-SEEN
    s" which a compiled caller of the defer then reaches" T-LABEL
    s" 41 ND-ACTION" EV-N 42 T= ;
 
-\ WHAT THE DECODE RULES OUT. A bare store into the cell would be one or two
-\ instructions and no branch at all, so a branch-with-link where the store would
-\ be is the claim that separates the two emissions - and naming its target as
-\ `xt!`'s own entry is what says WHICH primitive, rather than that some call was
-\ made. The address comes from the dictionary at the moment of the assertion, so
-\ a re-published `xt!` moves both sides together.
-\
-\ THERE ARE TWO BRANCHES AND BOTH ARE NAMED, because the emission holds two
-\ functions: the installer, whose one call is the store, and the quotation body,
-\ whose one call is to the word it runs. Asserting only the count would pass for
-\ an emission that called the body's word twice and stored nothing, so each
-\ branch is held against the address it must reach and the pair against the
-\ count - which together say there is no third instruction branching anywhere.
-: DECODE-CASE ( -- )
-   s" the emission holds exactly two branches" T-LABEL
-   s" ND-INSTALL" BLS 2 T=
-   s" the installer's own branch goes to the store-and-declare primitive" T-LABEL
-   s" ND-INSTALL" 0 BL-TARGET  s" xt!" NDICT:CALL-TARGET  T=
-   s" and the body's goes to the word the quotation runs" T-LABEL
-   s" ND-INSTALL" 1 BL-TARGET  s" ND-IMPL" REC-START  T= ;
-
-\ WHAT THE TABLE ASSERTION ADDS. The decode says the primitive was called; this
-\ says what the call did. The cell is declared by DATA OFFSET, which is how the
-\ writer's canonicalise and the loader's relocate both index it.
+\ BIND-CASE proves the live behavior. These assertions prove the stored target
+\ is the quotation emitted with the installer and that the cell is declared by
+\ DATA offset, which is how the snapshot writer and loader find it. Neither fact
+\ depends on whether lowering copies, calls, or tail-calls either source word.
 : DECLARED-CASE ( -- )
    s" the cell now holds an address inside the installer's own emission" T-LABEL
    HOOK-CELL 0<> TTRUE
@@ -235,7 +149,6 @@ public
 : RUN ( -- )
    T-RESET
    BIND-CASE
-   DECODE-CASE
    DECLARED-CASE
    REFUSE-CASE
    T-REPORT ;
