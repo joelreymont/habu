@@ -493,6 +493,30 @@ create NAMEBUF NAME-CAP allot
    loop
    PRED-SEEN @ 0<> PRED-ONE @ 0<> and ;
 
+: PLAN-FRAME? ( n -- bool )
+   dup A64RA:PLAN-STORE? if drop true exit then
+   dup A64RA:PLAN-MOVE? if drop false exit then
+   A64RA:PLAN-REMAT? 0= ;            \ the remaining plan kind is reload
+
+: PLAN-FRAME-IN? ( n -- bool )
+   {: b:n :}
+   false
+   A64RA:PLAN-N 0 ?do
+      i A64RA:PLAN-BLOCK@ b = if
+         i PLAN-FRAME? if drop true leave then
+      then
+   loop ;
+
+: TRAP-END? ( IR-ID:ir-block-id -- bool )
+   TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0=  t OPCODE-AT OPCODE-SLOT O-TRAP =  and ;
+
+\ A trap block needs no new frame lane when this rewrite does no frame work there.
+: SYNTH-FRAME-ARG? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id b:n :}
+   bk TRAP-END? if b PLAN-FRAME-IN? 0= if false exit then then
+   f bk ONE-SUCC-IN? ;
+
 -1 constant NO-FRAME-ARG
 
 : OP-READS? ( IR-ID:ir-op-id IR-ID:ir-value-id -- bool )
@@ -548,8 +572,8 @@ create NAMEBUF NAME-CAP allot
 : F-ORDER-EDGE! ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- )
    {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id i:n :}
    id i SUCC-AT {: sb:IR-ID:ir-block-id :}
-   sb FRAME-ARG NO-FRAME-ARG <>  f sb ONE-SUCC-IN? or if exit then
    id i SUCC-ORD {: b:n :}
+   sb FRAME-ARG NO-FRAME-ARG <>  f sb b SYNTH-FRAME-ARG? or if exit then
    b F-ORDER-SET? 0= if TOK b F-ORDER! exit then
    b F-ORDER-SAME? 0= if E-A64SPILL-SHAPE throw then ;
 
@@ -642,7 +666,8 @@ create NAMEBUF NAME-CAP allot
    carry  id SUCCS-OF 1 =  and 0= if exit then
    id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
    sb FRAME-ARG NO-FRAME-ARG <> if exit then
-   f sb ONE-SUCC-IN? 0= if exit then
+   id 0 SUCC-ORD {: b:n :}
+   f sb b SYNTH-FRAME-ARG? 0= if exit then
    TOK OPERAND+ ;
 
 : COPY-OP ( IR-ID:ir-fun-id IR-ID:ir-op-id n bool -- )
@@ -674,7 +699,7 @@ create NAMEBUF NAME-CAP allot
          a IR-ID:VALUE-LOCAL fa = if na TOK! then
       then
    loop
-   carry  b 0<> and  fa NO-FRAME-ARG <> f bk ONE-SUCC-IN? or and if
+   carry  b 0<> and  fa NO-FRAME-ARG <> f bk b SYNTH-FRAME-ARG? or and if
       fa NO-FRAME-ARG <> if exit then
       CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG TOK!
       exit
