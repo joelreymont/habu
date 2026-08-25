@@ -151,6 +151,13 @@ private
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
+: HABU-FRAMED ( n n -- A64EFF:routine )
+   {: n:n size:n :}
+   A64EFF-CONV:DSTACK A64EFF:SEQ-NONE A64EFF:SEQ-NONE n POOL-N
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
+
 \ The same leaf with a frame of its own: a routine that spills has to have
 \ somewhere to spill to, and how deep that is, is the contract's declaration.
 : LEAF-FRAMED ( n n -- A64EFF:routine )
@@ -825,6 +832,9 @@ create TXT
 : M-TOKEN+ ( -- )
    CC BB  CC BB A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
 
+: M-TOKEN-ARG+ ( -- IR-ID:ir-value-id )
+   CC BB  CC BB A64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG ;
+
 : M-FRAME-ATTR ( n -- )
    {: size:n :}
    CC BB  CC BB A64IR:KEY-FRAME  CC BB size A64IR:FRAME-ATTR  IR-BUILD:ADD-ATTR ;
@@ -1359,6 +1369,56 @@ create TXT
    9 M-MOVZ M-RET
    CLOSE-FUN ;
 
+\ Block three only forwards the frame order from block one to the join. The
+\ first lowering creates that lane; the second must reuse it after adding more
+\ frame operations upstream.
+: BUILD-MB-FORWARD-SPILL ( -- )
+   s" MBFORWARD" 0 1 OPEN-FUN
+   0 M-MOVZ 1 2 M-BRZ
+   M-BLOCK+
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
+   a b M-ADD c M-ADD d M-ADD drop
+   3 M-BR0
+   M-BLOCK+
+   $55 M-CONST {: e:IR-ID:ir-value-id :}
+   $66 M-CONST {: f:IR-ID:ir-value-id :}
+   $77 M-CONST {: g:IR-ID:ir-value-id :}
+   $88 M-CONST {: h:IR-ID:ir-value-id :}
+   e f M-ADD g M-ADD h M-ADD drop
+   4 M-BR0
+   M-BLOCK+
+   4 M-BR0
+   M-BLOCK+
+   9 M-MOVZ M-RET
+   CLOSE-FUN ;
+
+\ The middle block forwards two memory orders and does nothing else. One belongs
+\ to the data stack; only the other reaches RELEASE and is the frame lane.
+: BUILD-MB-DUAL-FORWARD-SPILL ( -- )
+   s" MBDUALFORWARD" 0 0 OPEN-FUN
+   16 M-RESERVE {: f0:IR-ID:ir-value-id :}
+   0 M-DTAKE {: d0:IR-ID:ir-value-id :}
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
+   a b M-ADD c M-ADD d M-ADD drop
+   d0 f0 1 M-BR2
+   M-BLOCK+
+   M-TOKEN-ARG+ {: d1:IR-ID:ir-value-id :}
+   M-TOKEN-ARG+ {: f1:IR-ID:ir-value-id :}
+   d1 f1 2 M-BR2
+   M-BLOCK+
+   M-TOKEN-ARG+ {: d2:IR-ID:ir-value-id :}
+   M-TOKEN-ARG+ {: f2:IR-ID:ir-value-id :}
+   d2 0 M-DPUBLISH
+   f2 16 M-RELEASE
+   M-RET0
+   CLOSE-FUN ;
+
 \ A move-wide overwrite inside a branch arm, with the arm arranged so that the
 \ register the tie needs is NOT the lowest free one where the overwrite is
 \ written. Two values reach the arm in the low two registers, the half-built
@@ -1758,6 +1818,50 @@ variable LOWER-TURNS
    s" distinct frame orders meet through a new zero-argument join lane" T-LABEL
    WBND [: MB-DIAMOND-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= TTRUE ;
+
+: MB-FORWARD-TWICE-BODY ( IR-CTX:ctx -- bool n n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-MB-FORWARD-SPILL
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 3 0 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then
+   A64RA:FRAME {: f1:n :}
+   m0 LOWER-ONE {: m1:IR-BUILD:module :}
+   CC m1 2 f1 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then
+   A64RA:FRAME {: f2:n :}
+   m1 LOWER-ONE {: m2:IR-BUILD:module :}
+   CC m2 2 f2 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0<> if E-A64SPILL-PLAN throw then
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m2 2 f2 LEAF-FRAMED A64RAV:ACCEPT
+   A64RAV:ACCEPTED? f1 f2 ;
+
+: MB-FORWARD-TWICE-CASE ( -- )
+   s" a forwarded frame lane survives a second CFG lowering" T-LABEL
+   WBND [: MB-FORWARD-TWICE-BODY ;] IR-CTX:WITH-CONTEXT
+   48 T= 16 T= TTRUE ;
+
+: MB-DUAL-FORWARD-BODY ( IR-CTX:ctx -- bool n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-MB-DUAL-FORWARD-SPILL
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 3 16 HABU-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then
+   A64RA:FRAME {: f:n :}
+   m0 LOWER-ONE {: m1:IR-BUILD:module :}
+   CC m1 3 f HABU-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0<> if E-A64SPILL-PLAN throw then
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m1 3 f HABU-FRAMED A64RAV:ACCEPT
+   A64RAV:ACCEPTED? f ;
+
+: MB-DUAL-FORWARD-CASE ( -- )
+   s" a data order beside a forwarded frame order is left alone" T-LABEL
+   WBND [: MB-DUAL-FORWARD-BODY ;] IR-CTX:WITH-CONTEXT
+   32 T= TTRUE ;
 
 : MB-CARRIED-BODY ( IR-CTX:ctx -- bool n )
    A64-MOD
@@ -3126,6 +3230,8 @@ public
    MB-PLAN-CASE
    MB-LOWER-CASE
    MB-DIAMOND-SPILL-CASE
+   MB-FORWARD-TWICE-CASE
+   MB-DUAL-FORWARD-CASE
    MB-FIXED-CASE
    RESERVED-CASES
    WBND [: GROUP-TWO-ARITIES ;] IR-CTX:WITH-CONTEXT

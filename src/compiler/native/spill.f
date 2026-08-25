@@ -495,20 +495,41 @@ create NAMEBUF NAME-CAP allot
 
 -1 constant NO-FRAME-ARG
 
-: FRAME-ARG? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+: OP-READS? ( IR-ID:ir-op-id IR-ID:ir-value-id -- bool )
+   {: id:IR-ID:ir-op-id a:IR-ID:ir-value-id :}
+   false
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT a SAME-VALUE? if drop true leave then
+   loop ;
+
+: DIRECT-FRAME-ARG? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
    {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id :}
+   a MEM-VALUE? 0= if false exit then
    false
    bk OP-COUNT 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id FRAME-TOUCH? if
-         id OPERANDS-OF 0 ?do
-            id i OPERAND-AT a SAME-VALUE? if drop true leave then
-         loop
+      id FRAME-TOUCH? if id a OP-READS? or then
+   loop ;
+
+: FRAME-ARG-PATH? ( IR-ID:ir-block-id IR-ID:ir-value-id n -- bool )
+   {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id fuel:n :}
+   bk a DIRECT-FRAME-ARG? if true exit then
+   fuel 0= if false exit then
+   bk TERM-AT {: id:IR-ID:ir-op-id :}
+   id SUCCS-OF 1 <> if false exit then
+   id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
+   false
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT a SAME-VALUE?  i sb ARG-COUNT < and if
+         sb sb i ARG-AT fuel 1- recurse or
       then
    loop ;
 
-\ A prior lowering's frame lane is identified by its actual consumer, never by
-\ its position among unrelated data-order and value arguments.
+: FRAME-ARG? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+   BMAX FRAME-ARG-PATH? ;
+
+\ A prior lowering's frame lane is identified by a frame consumer or by the
+\ terminator that forwards it, never by its position among unrelated arguments.
 : FRAME-ARG ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    NO-FRAME-ARG
@@ -554,6 +575,15 @@ create NAMEBUF NAME-CAP allot
 : SPILL-SLOT ( IR-ID:ir-value-id -- n )
    VSLOT A64RA:SLOT@ ;
 
+: FRAME-EDGE-OPERAND? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id i:n :}
+   id SUCCS-OF 1 <> if false exit then
+   id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
+   i sb ARG-COUNT >= if false exit then
+   sb FRAME-ARG {: fa:n :}
+   fa NO-FRAME-ARG = if false exit then
+   sb i ARG-AT IR-ID:VALUE-LOCAL fa = ;
+
 \ A one-successor terminator's operands are only its destination arguments.
 \ A spilled lane already lives in the shared frame slot on every path, so the
 \ rewritten CFG carries neither that operand nor its matching block argument.
@@ -579,7 +609,7 @@ create NAMEBUF NAME-CAP allot
    n 0 ?do
       id i OPERAND-AT {: v:IR-ID:ir-value-id :}
       id i SPILLED-EDGE? 0= if
-         frame v MEM-VALUE? and if
+         frame v MEM-VALUE? and  id i FRAME-EDGE-OPERAND? or if
             TOK OPERAND+
          else
             v pos READ-AS OPERAND+
