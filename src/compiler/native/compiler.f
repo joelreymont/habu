@@ -274,11 +274,28 @@ TRUSTED: CHECK-DOES ( ptr u8 n ptr u8 n -- n )
 : LATEST-NAME$ ( -- ptr u8 n )
    REC-INDEX XREF-REC XREF-NAME$ ;
 
+: QUALIFIED-RECORD-NAME? ( ptr a ptr u8 n n -- bool )
+   {: rec:ptr a:ptr u:n split:n :}
+   rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
+   a split XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if drop false exit then
+   XREF-START  rec XREF-WORDLIST  = ;
+
+: RECORD-NAME? ( ptr a ptr u8 n -- bool )
+   {: rec:ptr a:ptr u:n :}
+   a u XREF-QUAL-INDEX {: split:n :}
+   split 0 < if rec a u XREF-MATCH? exit then
+   rec a u split QUALIFIED-RECORD-NAME? ;
+
 \ The tape chose the pending name before a later tentative record could overwrite
-\ its slot. The record must name that same definition before it can be committed.
+\ its slot. An ordinary record stores a bare tail even when the source token was
+\ qualified, so that spelling also has to name the namespace whose public WID
+\ owns the record. Matching only the tail would let another package impersonate
+\ this definition.
 : RECORD-NAME-CK ( -- )
-   LATEST-NAME$ {: a:ptr u:n :}
-   a u NAME-BUF NAME-U @ STR= 0= if E-NCOMP-NAME throw then ;
+   REC-INDEX XREF-REC  NAME-BUF NAME-U @  RECORD-NAME? 0= if
+      E-NCOMP-NAME throw
+   then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
 \ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes

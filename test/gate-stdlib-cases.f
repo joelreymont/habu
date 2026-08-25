@@ -320,6 +320,10 @@ SUITE compiler-native-chain
    test/compiler/native-chain.f
 ;SUITE
 
+SUITE compiler-native-qualified-name
+   test/compiler/native-qualified-name.f
+;SUITE
+
 SUITE compiler-native-order-exit
    test/compiler/native-order-exit.f
 ;SUITE
