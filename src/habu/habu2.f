@@ -1849,11 +1849,11 @@ variable LDEFHINT
 ;package
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
 
-\ The native compiler seam's label cell holds its qualified spelling; the other
-\ cell holds the capture-only compiler entry.
+\ The native compiler seam's labels hold its qualified spelling, its
+\ boot-integrity diagnostic, and the capture-only compiler entry.
 package NCOMP-EMIT
 public
-variable LWORD  variable LNEUTRAL  variable LENTRY
+variable LWORD  variable LUNSET  variable LNEUTRAL  variable LENTRY
 ;package
 \ ADT lowering keywords (TFAM 10, docs §16): `construct` and MATCH dispatch
 \ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
@@ -1949,7 +1949,7 @@ variable LCOLONNONAME
    LCOLONNONAME LABEL@ LBL, s" hb: : missing definition name after " BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, s" NEUTRAL-PARSE-IMM?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, S\" hb: native compiler dispatch unset\n" BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, s" NEUTRAL-PARSE-IMM?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -2398,8 +2398,21 @@ s" C-FIND-GLOBAL?" s" ptr n n --" TRUST
 
 package NCOMP-EMIT
 public
-: FIND ( -- )
-   LWORD 13 C-FIND-GLOBAL? ;
+
+\ Emit the shared missing-dispatch death. Both readers ask the same integrity
+\ question, so the diagnostic and exit code have one owner too.
+: UNSET ( -- )
+   0 2 MOVZ,  1 LUNSET LABEL@ ADR,  2 35 MOVZ,  NR-WRITE SYS,
+   0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ Load the one compiler entry the AOT seed installed. A zero cell is a broken
+\ boot: after the hard cut there is no second compiler to select, so fail with
+\ the seed-integrity code instead of falling through to LCOMPILE.
+: LOAD ( -- )
+   LBL {: ready:label :}
+   11 DATA NCOMP-DISPATCH:XT-CELL LDR,  11 ready CBNZ,
+      UNSET
+   ready LBL, ;
 ;package
 s" C-FIND-GLOBAL" s" ptr n n --" TRUST
 
@@ -2648,6 +2661,14 @@ package DOESPATCH
 
 public
 
+\ Native defining words pass the measured clause entry and the already parsed
+\ created-word signature. The existing patch routine remains the one owner of
+\ the created record, branch, kind stamp, and checker publication.
+: PRIM ( -- )
+   C G-POP  B G-POP  A G-POP
+   B DATA CRSIG-A-CELL STR,  C DATA CRSIG-U-CELL STR,
+   B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
+
 : EMIT ( -- )
    LBL {: nocr :}
    LDOESPATCH LABEL@ LBL,
@@ -2825,14 +2846,10 @@ public
    10 $1000000A LIT64,  9 9 10 ORR,
    LCEMIT LABEL@ BL, ;
 
-\ The clause's name bytes at CP, then the record that names them, then CP up to
-\ the clause entry. The pad between the two is written zero rather than left:
-\ these bytes are copied into the AOT blob verbatim, so they have to be a value
-\ and not whatever the last abandoned definition put there.
-: MAKE ( -- )
+\ Copy the derived name at CP. NAME$ has already supplied x11..x15 and the
+\ caller owns a write window covering the padded span.
+: COPY-NAME ( -- )
    LBL LBL LBL LBL {: cpy:label cpd:label pad:label pend:label :}
-   NAME$
-   1 15 0 ADDI,  PROT:RESERVE
    10 CP 0 ADDI,                                       \ the write cursor
    12 13 SUF-LEN SUBI,
    cpy LBL,  12 cpd CBZ,
@@ -2847,17 +2864,42 @@ public
    12 15 13 SUB,  9 0 MOVZ,
    pad LBL,  12 pend CBZ,
       9 10 0 STRB,  10 10 1 ADDI,  12 12 1 SUBI,  pad B,
-   pend LBL,
+   pend LBL, ;
+
+\ Write the clause record in the existing pending+1 slot. Entry and length are
+\ runtime registers so the legacy and native compilers share the exact layout.
+: RECORD ( n n -- ) {: entry:n len:n :}
    14 NDICT 1 ADDI,  9 DREC MOVZ,  14 14 9 MUL,  14 DBASE 14 ADD,
    1 14 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,
    9 0 MOVZ,                                           \ a slot an abandoned definition may have written
    9 14 0 STR,  9 14 8 STR,  9 14 16 STR,
    9 14 24 STR,  9 14 32 STR,  9 14 40 STR,
-   9 CP 15 ADD,  9 14 0 STR,                           \ [0] = the clause entry
+   entry 14 0 STR,                                     \ [0] = the clause entry
+   len 14 8 STR,                                       \ [8] = its recorded body length
    9 DNAME-EXT LIT64,  9 13 9 ORR,  9 14 16 STR,       \ [16] = its name length, out of line
    9 CP 0 ADDI,  9 14 24 STR,                          \ [24] = the name bytes
-   11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR,  \ [40] = the parent's wordlist
+   11 DATA PEND-CELL LDR,  9 11 40 LDR,  9 14 40 STR, ; \ [40] = the parent's wordlist
+
+\ The legacy compiler places the clause immediately after the name bytes and
+\ fills its length at `;` as before.
+: MAKE ( -- )
+   NAME$
+   1 15 0 ADDI,  PROT:RESERVE
+   COPY-NAME
+   5 CP 15 ADD,  6 0 MOVZ,  5 6 RECORD
    CP CP 15 ADD, ;
+
+\ Native publication has already emitted the clause. Append only the permanent
+\ derived name and record, using the measured entry and length it supplies.
+: NATIVE-PRIM ( -- )
+   B G-POP  A G-POP
+   5 A 0 ADDI,  6 B 0 ADDI,
+   NAME$
+   1 CP 15 ADD,  PROT:LOPEN LABEL@ BL,
+   COPY-NAME
+   5 6 RECORD
+   CP CP 15 ADD,
+   PROT:LCLOSE LABEL@ BL, ;
 
 \ The clause record's own length, by the parent's rule and inside the parent's
 \ protection span: both bodies end at the shared epilogue. It runs BEFORE the
@@ -3259,17 +3301,12 @@ package INTERP-EMIT
    C-CLEAR-TRUSTED-STATE
    12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
    C-PARSE-TRUST-SIG
-   12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
+   12 0 MOVZ,  12 DATA VSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
    12 DATA QPATCH-CELL STR,
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-   LBL {: native:label :}
-   NCOMP-EMIT:FIND
-   13 native CBNZ,
-      9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
-      9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
-   native LBL,
+   NCOMP-EMIT:LOAD
    done LBL, ;
 
 \ The two ends of every definition's publish, emitted by the `;` tail below and
@@ -5200,6 +5237,22 @@ public
    done LBL, ;
 ;package
 
+\ The one compiler dispatch is installed from the records this seed just
+\ registered. Its qualified name is resolved once at boot; the compile loop
+\ reads only the fixed cell. A miss is the same broken-artifact class as any
+\ other seed resolve and uses the same fail-closed code, with its own diagnostic.
+package NCOMP-DISPATCH
+public
+: INSTALL, ( -- )
+   LBL {: ready:label :}
+   9 NCOMP-EMIT:LWORD LABEL@ ADR,  10 13 MOVZ,  LFIND LABEL@ BL,
+   13 ready CBNZ,
+      NCOMP-EMIT:UNSET
+   ready LBL,
+   LAOTWIDGATE LABEL@ BL,
+   11 DATA XT-CELL STR, ;
+;package
+
 \ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
 \ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
 \ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
@@ -5224,6 +5277,7 @@ public
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
    AOT-SIG:PUBLISH,                                 \ the checker payload's address and length
    AOT-SIG:INSTALL,                                 \ then its type registry, before any user token can declare a family
+   NCOMP-DISPATCH:INSTALL,                          \ one compiler entry, resolved after its record exists
    EM-AOT-BOOTRUN                                   \ install the REPL (no source): LFIND+blr the entry words
    askip B,
    bad LBL,
@@ -6026,6 +6080,7 @@ public
    HOOK-CELL SNAP-RELOC:MARK-CELL
    COMPILE-PREFLIGHT-CELL SNAP-RELOC:MARK-CELL
    TOP-HOOK-CELL SNAP-RELOC:MARK-CELL
+   NCOMP-DISPATCH:XT-CELL SNAP-RELOC:MARK-CELL
    \ Constructor registry starts empty: clear the whole bitmap, then publish the shape
    \ tag. The old count cell made "empty" a single store; a bitmap has to be zeroed in
    \ full, and a cold boot is the only path that may do it (a restored image carries
@@ -6127,6 +6182,18 @@ package NCOMP-EMIT
 
 public
 
+: CAPTURE-DOES ( label -- ) {: notdoes:label :}
+   LBL {: first:label :}
+   9 DATA TKL-CELL LDR,  9 5 CMPI,  C-NE notdoes BCOND,
+   0 LKWDOES LABEL@ ADR,  1 5 MOVZ,  LKWCMP LABEL@ BL,
+   0 notdoes CBZ,
+   9 DATA DOESB-CELL LDR,  9 first CBZ,
+      C-DIE-DOES
+   first LBL,
+   9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   C-PARSE-CREATED-SIG
+   LMAIN LABEL@ B, ;
+
 : CAPTURE-PLAIN-STRING ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -6148,9 +6215,9 @@ public
    LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
 : CAPTURE-IMMEDIATE ( -- )
-   LBL LBL {: done:label notneutral:label :}
+   LBL LBL LBL LBL {: done:label notneutral:label noimm:label maybe-does:label :}
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   14 13 2 ANDI,  14 done CBZ,
+   14 13 2 ANDI,  14 noimm CBZ,
    SP SP 16 SUBI,  11 SP 0 STR,
    PROT:LCLOSE LABEL@ BL,
    LNEUTRAL 18 C-FIND-GLOBAL
@@ -6163,6 +6230,11 @@ public
    notneutral LBL,
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
    SP SP 16 ADDI,
+   maybe-does LBL,
+   done CAPTURE-DOES
+   noimm LBL,
+   13 done CBNZ,
+   maybe-does B,
    done LBL, ;
 s" ncomp-emit:capture-immediate" s" --" TRUST
 
@@ -6174,7 +6246,7 @@ s" ncomp-emit:capture-immediate" s" --" TRUST
       PROT:LCLOSE LABEL@ BL,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
-      FIND
+      LOAD
       C-CALL-X11-SAVED
       C-CLEAR-TRUSTED-STATE
       9 0 MOVZ,  9 DATA PEND-CELL STR,
@@ -6207,8 +6279,7 @@ s" ncomp-emit:em-compile" s" --" TRUST
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
       notcom LBL,
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
-      NCOMP-EMIT:FIND
-      13 LCOMPILE LABEL@ CBZ,
+      NCOMP-EMIT:LOAD
       NCOMP-EMIT:LENTRY LABEL@ B,
       notcompile LBL, ;
 
@@ -6254,17 +6325,12 @@ s" ncomp-emit:em-compile" s" --" TRUST
       C-COLON-MAYBE-SIG
          9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,          \ pass-2 DP watermark
          9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
-         12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
+         12 0 MOVZ,  12 DATA VSP-CELL STR,
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
          12 DATA QPATCH-CELL STR,
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-         LBL {: native:label :}
-         NCOMP-EMIT:FIND
-         13 native CBNZ,
-            9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
-            9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
-         native LBL,
+         NCOMP-EMIT:LOAD
          LMAIN LABEL@ B,
    ktry LBL,
    0 LKWKERNEL LABEL@ ADR,  1 7 MOVZ,  LKWCMP LABEL@ BL,  0 lnotcolon CBZ,
@@ -7764,7 +7830,7 @@ public
    PROT:LCF LABEL@ BL,                                \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
-   12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
+   12 DATA VSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
    12 DATA QPATCH-CELL STR,
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
@@ -8896,7 +8962,7 @@ package LABELS
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
@@ -9164,6 +9230,8 @@ package ENGINE-EMIT
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
+   s" does-patch" ['] DOESPATCH:PRIM FPRIM
+   s" does-record" ['] DOES-REC:NATIVE-PRIM FPRIM
    EMIT-ARITY-GUARD
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM

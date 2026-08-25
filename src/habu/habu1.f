@@ -2070,6 +2070,11 @@ public
    12 12 4 ADDI,
    loop B,
    done LBL, ;
+
+: BCLEAR-MAPS ( -- )
+   A G-POP  B G-POP
+   SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN,
+   SNAP-RELOC:ADDRMAP-OFF SNAP-RELOC:CLEAR-SPAN, ;
 ;package
 
 package NPUBWIN
@@ -2113,12 +2118,9 @@ private
 \ relocate a displacement that is not a call any more. Clearing here is what
 \ makes "the map never describes code that no longer exists" a property of
 \ publication rather than of a later sweep.
-\ It clears the CALL map only, and the address map's half of the same statement
-\ is not made here: this publisher's own chain records go in through
-\ `addrmap-set` after the copy lands, and the code-pointer rewind that can leave
-\ an address record standing under a later publication is the code-arena
-\ reclamation in src/habu/xref.f, whose CODE-RECLAIM watcher contract is written
-\ for exactly this class of address-keyed fact and does not yet carry either map.
+\ It clears the CALL map only: this publisher's own address records go in through
+\ `addrmap-set` after the copy lands. A code-pointer rewind clears both maps over
+\ its whole released span through CODE-RECLAIM in src/habu/xref.f.
 \ Clobbers x6, x7 and x12..x15.
 : CLEAR-CALLMAP-SPAN ( -- )
    SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN, ;
@@ -2928,6 +2930,7 @@ package ENGINE-EMIT
    s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
    s" patch32" ['] BPATCH32 2 GDEREF-F
+   s" reloc-maps-clear" ['] SNAP-RELOC:BCLEAR-MAPS FPRIM-L
    s" code-publish" ['] NPUBWIN:BCODEPUBLISH 3 GDEREF-F
    s" callmap-set" ['] NPUBWIN:BCALLMAPSET 1 GDEREF-F
    s" addrmap-set" ['] NPUBWIN:BADDRMAPSET 1 GDEREF-F

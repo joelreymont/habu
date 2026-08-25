@@ -114,6 +114,7 @@ private
 : ENUM-BUNDLE ( lamp n -- n lamp )
    swap ;
 
+\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
 TRUSTED: TRY ( ptr u8 n -- n )
    [: evaluate ;] catch ;
 

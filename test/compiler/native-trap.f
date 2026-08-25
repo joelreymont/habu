@@ -472,9 +472,6 @@ private
 \ NORET-FRAMED). The victim returns 2*0, control falls into the trap, and the
 \ process ends with the callee's name and ENGINE-ERROR:CODE-CERT.
 
-TRUSTED: INSTALL ( ptr u8 n -- )
-   EV ;
-
 : NORET-RET-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    s" retfam" NTRAP:FAMILY {: k:n :}
@@ -485,7 +482,7 @@ TRUSTED: INSTALL ( ptr u8 n -- )
 : NORET-COMPILED-FORGE ( -- )
    NFIX:BINDING [: NORET-RET-BODY ;] IR-CTX:WITH-CONTEXT
    s" NORET-VICTIM" VICTIM-WID NPUB:REPUBLISH
-   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" INSTALL
+   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" EV
    s" 0 NTM drop" EV ;
 
 \ ---- running the forge in a child --------------------------------------------
@@ -617,11 +614,8 @@ variable CHILD-MODE-N
 \ data-stack pointer still moves, so a routine that emitted nothing at all
 \ would not pass either.
 
-TRUSTED: COMPILE-BYTES ( ptr u8 n -- )
-   EV ;
-
 : COMPILED-DEAD-BYTES-CASE ( -- )
-   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" COMPILE-BYTES
+   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" EV
 
    s" a compiled all-dead routine moves the machine stack pointer nowhere"
    T-LABEL
@@ -643,7 +637,7 @@ TRUSTED: COMPILE-BYTES ( ptr u8 n -- )
 \ `abs` is an external primitive with no recorded body to copy, so this really is
 \ a call.
 : COMPILED-CALL-BYTES-CASE ( -- )
-   s" : NTC ( n -- n ) abs 1 + ;" COMPILE-BYTES
+   s" : NTC ( n -- n ) abs 1 + ;" EV
 
    s" a compiled routine that calls and returns moves it twice" T-LABEL
    SPMOVES-IN-EMISSION 2 T=

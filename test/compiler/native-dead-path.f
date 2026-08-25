@@ -189,30 +189,10 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    [: ALL-DEAD! ;] 0 TTHROWSQ
    [: OUT-DEAD! ;] 0 TTHROWSQ ;
 
-\ ---- 7. the shape that is still refused, and what it is waiting for ----------
-\ A no-return routine that SPILLS. Its frame is not the selector's - the walk
-\ decides the count after selection - so src/compiler/native/spill.f writes the
-\ reserve into the entry block and the release in front of the terminator of the
-\ block control leaves through. There is no such block here, so the release is
-\ never written, and the memory order the reserve minted is passed on nowhere:
-\ E-A64RAV-ORDER, the same refusal every all-dead body used to earn, now narrowed
-\ to the ones that run out of registers.
-\
-\ THE VALIDATOR ALREADY EXPECTS THE SHAPE - regalloc-verify.f VNO-RET-SPILL-CK
-\ measures a routine that takes its frame and does not give it back - so what is
-\ missing is one decision and not a design: either the trap terminator consumes
-\ the frame order as it already consumes the data-stack order (an operand the
-\ a64.trap form does not have), or the lowering writes the release in front of
-\ every terminator that leaves, which is a frame given back that nothing needed
-\ and a contradiction of the bracket rule above. Both belong to the owners of
-\ src/compiler/native/spill.f and the machine dialect, not to this leaf.
-\
-\ IT IS PINNED AS THE REFUSAL IT IS, for the same reason section 5's refusal was
-\ pinned before the form existed. No census body reaches it: nothing in the tree
-\ spills a no-return body at the machine's own pool.
-\ Twenty-eight values every one of which is read after the last of them is
-\ written, against the twenty-five Linux or twenty-four Darwin registers
-\ NABI:SCRATCH leaves a routine, so some of them reach the frame.
+\ ---- 7. a spilled no-return body ---------------------------------------------
+\ Twenty-eight live values exceed NABI:SCRATCH, so this body takes a spill frame
+\ before ending in a trap. A trap with no frame work needs no outgoing frame
+\ order: the routine compiles, then throws its declared error at run time.
 : SPILL-DEAD ( -- )
    s" : DPC-SPILLDEAD ( n -- ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + drop E-A-EMPTY throw ;"
    EV ;
@@ -226,8 +206,10 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    SPILL-LIVE
    s" 0 DPC-SPILLLIVE" EV-N 406 T=
 
-   s" an all-dead spilling body is refused for its frame" T-LABEL
-   [: SPILL-DEAD ;] E-A64RAV-ORDER TTHROWSQ ;
+   s" an all-dead spilling body compiles" T-LABEL
+   [: SPILL-DEAD ;] 0 TTHROWSQ
+   s" and its terminal trap throws the declared error" T-LABEL
+   s" 0 ' DPC-SPILLDEAD catch nip" EV-N E-A-EMPTY T= ;
 public
 
 : RUN ( -- )

@@ -10,6 +10,7 @@ require lib/array.f
 package ARRAY
 : NX-A-SRC ( -- ptr u8 n )
    s" : A-MAPI! ( ptr a len [ idx a -- a ] -- ) {: arr:ptr len q :} len A-CHECK-WHOLE len LEN>N 0 ?do i A-IDX arr len i A-IDX A@ q execute arr len i A-IDX A! loop ;" ;
+\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
 TRUSTED: NX-A-GO ( -- )
    NX-A-SRC evaluate ;
 NX-A-GO

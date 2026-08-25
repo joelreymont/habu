@@ -700,6 +700,18 @@ $200 constant VSP-CELL
 $210 constant VTAG-OFF
 $250 constant VVAL-OFF
 32 constant VSMAX
+
+\ NCOMP-DISPATCH:XT-CELL is the sole runtime compiler dispatch. It reclaims
+\ $358, the legacy jit.f BEGIN-snapshot depth cell: the native product never
+\ loads that file, and its one disposable crossing engine writes this cell only
+\ after the old cold-prefix compile has finished. The AOT seed installs the
+\ NCOMP:COMPILE xt before any source in the hard-cut engine; zero is therefore a
+\ boot-integrity failure, never a request for the legacy compiler.
+package NCOMP-DISPATCH
+public
+$358 constant XT-CELL
+;package
+
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP

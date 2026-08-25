@@ -262,6 +262,7 @@ package NLS-TEST
 
 private
 
+\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
 TRUSTED: DEF-RC ( ptr u8 n -- n )
    [: evaluate ;] catch ;
 

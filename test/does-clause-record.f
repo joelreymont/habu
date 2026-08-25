@@ -19,7 +19,7 @@
 \ "a record with that name exists" cannot pass for "the clause has that record":
 \ what is asserted is that the branch lands on the record the definer made.
 \
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f test/does-clause-record.f
+\ Run: bin/hb --load test/does-clause-record.f
 
 require lib/errors.f
 require lib/string.f
@@ -35,7 +35,12 @@ private
 \ instruction (src/habu/aot-capture.f AOT-N>U8).
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
+TRUSTED: EV-N ( ptr u8 n -- n )
+   evaluate ;
 TRUSTED: N>U8 ( n -- ptr u8 ) ;
+TRUSTED: U8>N ( ptr u8 -- n ) ;
+TRUSTED: MARK-CALL ( n -- ) callmap-set ;
+TRUSTED: MARK-ADDR ( n -- ) addrmap-set ;
 
 $FC000000 constant OPC-MASK
 $14000000 constant OPC-B
@@ -77,6 +82,7 @@ variable WANT-U
 : WANT$ ( -- ptr u8 n ) WANT WANT-U @ ;
 
 variable N0  variable N1  variable N2  variable N3
+variable MK-CP
 
 \ ---- the subjects, compiled through the real interpreter ---------------------
 \ Each definer is entered so a created word exists to carry the planted branch.
@@ -85,6 +91,7 @@ variable N0  variable N1  variable N2  variable N3
    s" : DR-PLAIN ( n -- n ) 3 * ;" EV
    ndict@ N1 !
    s" : DR-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   cp@ MK-CP !
    ndict@ N2 !
    s" 7 DR-MK DR-SEVEN drop" EV
    s" : DR-LONG-DEFINER-NAME ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
@@ -145,6 +152,77 @@ variable REJ0  variable REJ1
    s" the clause record answers a search of its parent's wordlist" T-LABEL
    WANT$ a u IDX WID search-wl  a u CLAUSE START  T= ;
 
+: PAD4 ( n -- n )
+   3 + -4 and ;
+
+: ?NAME-PAD ( -- )
+   s" DR-MK" CLAUSE NAME$ {: a:ptr u:n :}
+   s" the appended clause name starts past both recorded spans" T-LABEL
+   a U8>N  s" DR-MK" IDX END 4 +  T=
+   a U8>N  s" DR-MK" CLAUSE END 4 +  T=
+   s" its padded name is the only code-space tail after the emission" T-LABEL
+   a U8>N u PAD4 + MK-CP @ T=
+   s" and the bytes outside the name are deterministic zero padding" T-LABEL
+   u PAD4 u ?do a i + c@ 0 T= loop ;
+
+variable FAIL-RESTORE-CP
+variable FAIL-CP
+variable FAIL-ND
+variable FORGET-CP
+variable FORGET-ND
+variable FORGET-NAME-A
+
+: MAP-BIT@ ( n n -- n ) {: base:n at:n :}
+   at dbase@ - {: off:n :}
+   data-base base + off 5 rshift + c@
+   off 2 rshift 7 and rshift 1 and ;
+
+: CODE-CEILING ( -- n )
+   dbase@ REGION + $4000 - ;
+
+: DR-MK-SIZE ( -- n )
+   s" DR-MK" IDX LEN 4 + ;
+
+\ Leave exactly enough room for the emitted module, but not for its permanent
+\ clause-name pad. The publisher must refuse before either durable pointer moves.
+: POST-EMIT-ROLLBACK ( -- )
+   cp@ FAIL-RESTORE-CP !
+   CODE-CEILING DR-MK-SIZE - dup FAIL-CP ! cp!
+   ndict@ FAIL-ND !
+   [: s" : DR-PAD-FAIL ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV ;]
+   E-NPUB-ROOM TTHROWSQ
+   s" a refusal after native emission leaves CP and both records unpublished" T-LABEL
+   cp@ FAIL-CP @ T=
+   ndict@ FAIL-ND @ T=
+   s" DR-PAD-FAIL" GLOBAL-WID search-wl 0= TTRUE
+   FAIL-RESTORE-CP @ cp!
+   s" the rejected name and checker signature are reusable" T-LABEL
+   s" : DR-PAD-FAIL ( n -- n ) 1 + ;" EV
+   s" 4 DR-PAD-FAIL" EV-N 5 T= ;
+
+: FORGET-CASE ( -- )
+   cp@ FORGET-CP !  ndict@ FORGET-ND !
+   s" : DR-FORGET-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   s" 17 DR-FORGET-MK DR-FORGET-CELL" EV-N 18 T=
+   s" the definer, hidden clause, and created word add three records" T-LABEL
+   ndict@ FORGET-ND @ 3 + T=
+   s" DR-FORGET-MK;does" IDX NAME$ drop U8>N dup FORGET-NAME-A !
+   dup MARK-CALL 4 + MARK-ADDR
+   s" DR-FORGET-MK" FORGET-DEFS-FROM
+   s" forgetting the parent reclaims its whole module and both later records" T-LABEL
+   ndict@ FORGET-ND @ T=
+   cp@ FORGET-CP @ T=
+   s" DR-FORGET-MK" GLOBAL-WID search-wl 0= TTRUE
+   s" DR-FORGET-MK;does" GLOBAL-WID search-wl 0= TTRUE
+   s" DR-FORGET-CELL" GLOBAL-WID search-wl 0= TTRUE
+   s" the reclaim clears call and address records from the appended name" T-LABEL
+   SNAP-RELOC:CALLMAP-OFF FORGET-NAME-A @ MAP-BIT@ 0 T=
+   SNAP-RELOC:ADDRMAP-OFF FORGET-NAME-A @ 4 + MAP-BIT@ 0 T=
+   s" its name and checker signature are reusable after reclamation" T-LABEL
+   s" : DR-FORGET-MK ( n -- n ) dup create , 1 + does> ( -- n ) @ ;" EV
+   s" 4 DR-FORGET-MK DR-FORGET-CELL" EV-N 5 T=
+   s" DR-FORGET-CELL" EV-N 4 T= ;
+
 public
 
 : RUN ( -- )
@@ -163,6 +241,7 @@ public
    s" DR-MK" ?EXT
    s" DR-MK" ?FINDABLE
    s" DR-MK" s" DR-SEVEN" ?BRANCH
+   ?NAME-PAD
 
    s" DR-LONG-DEFINER-NAME" ?NAME
    s" DR-LONG-DEFINER-NAME" ?SPAN
@@ -192,9 +271,16 @@ public
    s" a refused definition counts neither slot" T-LABEL
    REJ1 @ REJ0 @ T=
 
+   POST-EMIT-ROLLBACK
+   FORGET-CASE
+
    T-REPORT
    s" does-clause-record: ok" type cr ;
 
 ;package
+
+\ Keep the structural test helpers on the already-booted engine, then switch the
+\ definitions SUBJECTS feeds through the interpreter onto the production chain.
+require src/compiler/native/compiler.f
 
 DOESREC-TEST:RUN

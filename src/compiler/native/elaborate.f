@@ -1450,16 +1450,16 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
    r ix DECLARE-LOCAL ;
 
 \ A name still in scope when the body ends is in scope for the whole of it.
-: LOCALS-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
+: LOCALS-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    LRESET
    SS-RESET
-   n 1 ?do
+   hi lo ?do
       r i SCAN-STEP
    loop
    LG-OPEN @ 0 >= if E-NELAB-LOCAL throw then
    LN @ 0 ?do
-      i LEND@ 0 < if n i LEND! then
+      i LEND@ 0 < if hi i LEND! then
    loop ;
 
 \ ---- is this row a particular control word? ----------------------------------
@@ -1653,10 +1653,10 @@ create QSPELL-BUF QSPELL-CAP allot
       ix QCLOSE-ROW
    then ;
 
-: QUOT-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
+: QUOT-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    QUOT-RESET
-   n 1 ?do
+   hi lo ?do
       r i QSCAN-STEP
    loop
    QD @ 0 >= if QD @ QAT@ QUOT-REFUSE then ;
@@ -1901,9 +1901,9 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    r ix MSCAN-CLOSE drop ;
 
 \ Walked once, before anything reads the word model for a body word.
-: MATCH-SCAN ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena n:n :}
+: MATCH-SCAN ( IR-ARENA:arena n n -- ) {: r:IR-ARENA:arena lo:n hi:n :}
    MATCH-RESET
-   n 1 ?do
+   hi lo ?do
       r i MSCAN-STEP
    loop
    MSN @ 0<> if E-NELAB-MATCH throw then
@@ -1920,9 +1920,9 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    VW t NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-DEFER throw then
    t MR-DEFER MROLE! ;
 
-: DEFER-SCAN ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena n:n :}
-   n 1 ?do
-      r n i DSCAN-STEP
+: DEFER-SCAN ( IR-ARENA:arena n n -- ) {: r:IR-ARENA:arena lo:n hi:n :}
+   hi lo ?do
+      r hi i DSCAN-STEP
    loop ;
 
 \ ---- the names the dialect does not model, before anything reads the model ----
@@ -1939,9 +1939,9 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
    CTX BLD r sy HIR-WORD:RESOLVE-CALLABLE drop ;
 
-: RESOLVE-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
-   n 1 ?do
+: RESOLVE-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
+   hi lo ?do
       r i RESOLVE-STEP
    loop ;
 
@@ -2070,10 +2070,10 @@ private
    r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if exit then
    r ix CALLEE-COPY? if ix INL+ then ;
 
-: INLINE-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
+: INLINE-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    INL-RESET
-   n 1 ?do
+   hi lo ?do
       i MOPERAND? 0=  i IN-DECL? 0=  and  i LOCAL-OF 0 <  and if r i INL-STEP then
    loop ;
 
@@ -2096,10 +2096,10 @@ private
    then
    r sy SYM-ORDER? ;
 
-: MEM-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
+: MEM-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    0 TOK-NEED !
-   n 1 ?do
+   hi lo ?do
       i MOPERAND? 0=  i IN-DECL? 0=  and  i LOCAL-OF 0 <  and if
          r i WORD-ORDER? if 1 TOK-NEED ! then
       then
@@ -2190,12 +2190,12 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
    r ix OPENS-LOOP? if LS-PUSH exit then
    r ix CLOSES-LOOP? if LS-POP then ;
 
-: CROSS-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
+: CROSS-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    0 CALL-NEED !
    0 CALL-BARE !
    0 LSN !
-   n 1 ?do
+   hi lo ?do
       r i CROSS-STEP
    loop
    LSN @ 0<> if E-NELAB-CTRL throw then ;
@@ -3331,6 +3331,10 @@ variable IX                          \ the body token the walk stands on
 here CELL 1- and CELL swap - CELL 1- and allot
 create QNAME-BUF QNAME-CAP allot
 variable QNAME-U
+variable FUN-KIND
+0 constant FUN-COLON
+1 constant FUN-DOES-PARENT
+2 constant FUN-DOES-CLAUSE
 
 : QNAME+ ( ptr u8 n -- )
    {: a u:n :}
@@ -3362,8 +3366,15 @@ variable QNAME-P                     \ the place value the digit loop is on
    {: k:n :}
    0 QNAME-U !
    0 QSPELL QNAME+
+   FUN-KIND @ FUN-DOES-CLAUSE = if s" ;does" QNAME+ then
    s" [:" QNAME+
    k QNAME-DIGITS
+   QNAME-BUF QNAME-U @ ;
+
+: DOES-NAME ( -- ptr u8 n )
+   0 QNAME-U !
+   0 QSPELL QNAME+
+   s" ;does" QNAME+
    QNAME-BUF QNAME-U @ ;
 
 : OPEN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
@@ -3376,11 +3387,21 @@ variable QNAME-P                     \ the place value the digit loop is on
    c b IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
    c b  v key 0 NTAPE:SPAN@  IR-BUILD:SET-FUN-SPAN ;
 
-: OPEN-BLOCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
+: OPEN-DOES-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
-      in:n :}
+      at:n in:n out:n :}
+   c b  c b DOES-NAME IR-BUILD:INTERN-SYMBOL  IR-BUILD:BEGIN-FUN
+   c b  c b in out SIGNATURE  IR-BUILD:SET-SIGNATURE
+   c b IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
+   c b IR--FUN-VISIBILITY:HIDDEN IR-BUILD:SET-VISIBILITY
+   c b IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
+   c b  v key at NTAPE:SPAN@  IR-BUILD:SET-FUN-SPAN ;
+
+: OPEN-BLOCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
+      at:n in:n :}
    c b IR-BUILD:BEGIN-BLOCK
-   c b  v key 0 NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN
+   c b  v key at NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN
    VRESET
    LIT-RESET
    in 0 ?do
@@ -3530,29 +3551,29 @@ EXPORT SPLICE-MEANING?
    r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if true exit then
    r  ix WSYM  HIR-WORD:CALLEE-DEAD? 0= ;
 
-: BACK-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
+: BACK-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    0 CALL-BACK !
-   n 1 ?do
+   hi lo ?do
       r i BACK-CALL? if 1 CALL-BACK ! leave then
    loop ;
 
-: TAIL-SCAN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena n:n :}
+: TAIL-SCAN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
    0 TAIL-NEED !
    0 TAIL-ENTRY !
-   r n BACK-SCAN
+   r lo hi BACK-SCAN
    IN-N @ OUT-N @ <> if exit then
    IN-N @ 0= if exit then
    EXIT-USED @ 0<> if exit then
    NB @ 0<> if exit then
-   n 2 < if exit then
-   r n 1- WORD-CALL? 0= if exit then
-   r n 1- TAIL-CALLEE? 0= if exit then
+   hi lo <= if exit then
+   r hi 1- WORD-CALL? 0= if exit then
+   r hi 1- TAIL-CALLEE? 0= if exit then
    1 TAIL-NEED !
-   r  n 1- WSYM  HIR-WORD:ENTRY@ TAIL-ENTRY !
+   r  hi 1- WSYM  HIR-WORD:ENTRY@ TAIL-ENTRY !
    0 CALL-BACK !
-   n 1- 1 ?do
+   hi 1- lo ?do
       r i BACK-CALL? if 1 CALL-BACK ! leave then
    loop ;
 
@@ -3562,64 +3583,150 @@ EXPORT SPLICE-MEANING?
    gin FR-GIN !
    gout FR-GOUT ! ;
 
-: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
-      r:IR-ARENA:arena in:n out:n :}
-   RF-RESET
-   in out ARITY-CK
-   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+private
+
+variable FUN-GIN
+variable FUN-GOUT
+variable DOES-AT
+variable DOES-FUN
+PTR-VARIABLE DOES-SIG
+variable DOES-SIG-U
+variable DOES-PATCH
+
+: UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view :}
    c 0 S-CTX !
    b 0 S-BLD !
    v 0 S-VW !
-   key 0 S-KEY !
+   b IR-BUILD:MODULE-KEY 0 S-KEY !
    v NTAPE:TOKENS {: n:n :}
    n 1 < if E-NELAB-SHAPE throw then
    v NAME-READ
+   n ;
+
+: STAGE-FUN-ADDR ( n n -- )
+   {: ix:n fun:n :}
+   CTX BLD HIR-OPCODE:QUOT HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CTX BLD op RESULTS+
+   CTX BLD  CTX BLD HIR:KEY-FUN
+   CTX BLD fun IR-BUILD:INTERN-INT-ATTR IR-BUILD:ADD-ATTR
+   CTX BLD op CLOSE
+   VQ-NONE VN @ 1- VQ! ;
+
+: STAGE-DOES-PATCH ( -- )
+   DOES-AT @ DOES-FUN @ STAGE-FUN-ADDR
+   DOES-AT @  DOES-SIG @ DOES-SIG-U @ NSTR:INTERN  HIR:ADDR-DATA STAGE-LIT
+   DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
+   DOES-AT @ DOES-PATCH @ 3 0 NDICT:GLUE-NONE STAGE-WCALL
+   1 CALL-NEED ! ;
+
+: BEFORE-RETURN ( -- )
+   FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH then ;
+
+: SCAN-FUN ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena lo:n hi:n :}
+   r lo hi QUOT-SCAN
+   FUN-KIND @ FUN-DOES-PARENT = if QBASE @ QN @ + 1+ DOES-FUN ! then
+   r lo hi LOCALS-SCAN
+   QLOCALS-CK
+   r lo hi MATCH-SCAN
+   r lo hi DEFER-SCAN
+   r lo hi RESOLVE-SCAN
+   r lo hi INLINE-SCAN
+   r lo hi MEM-SCAN
+   r lo hi CROSS-SCAN ;
+
+: OPEN-FUN-BODY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
+      in:n out:n :}
+   FUN-KIND @ FUN-DOES-CLAUSE = if
+      c b v key DOES-AT @ in out OPEN-DOES-FUN
+      c b v key DOES-AT @ in OPEN-BLOCK
+      exit
+   then
+   c b v key in out OPEN-FUN
+   c b v key 0 in OPEN-BLOCK ;
+
+: BUILD-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena lo:n hi:n in:n out:n :}
    TOK-RESET
    in IN-N !
    out OUT-N !
-   FR-GIN @ IN-GLUE !  FR-GOUT @ OUT-GLUE !
-   0 FR-GIN !  0 FR-GOUT !
+   FUN-GIN @ IN-GLUE !  FUN-GOUT @ OUT-GLUE !
    IN-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    OUT-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    b IR-BUILD:FUNS QBASE !
-   r n QUOT-SCAN
-   r n LOCALS-SCAN
-   QLOCALS-CK
-   r n MATCH-SCAN
-   r n DEFER-SCAN
-   r n RESOLVE-SCAN
-   r n INLINE-SCAN
-   r n MEM-SCAN
-   r n CROSS-SCAN
-   r 1 n SKELETON-TRY
+   r lo hi SCAN-FUN
+   r lo hi SKELETON-TRY
    b FUN-STATE!
-   c b v key in out OPEN-FUN
-   c b v key in OPEN-BLOCK
-   TOK-NEED @ 0<> if 0 EMIT-MEM then
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b v key in out OPEN-FUN-BODY
+   TOK-NEED @ 0<> if lo EMIT-MEM then
    PATH-LIVE PATH-END !
-   p r 1 n WALK-TRY
+   p r lo hi WALK-TRY
    CS-N @ 0<> if E-NELAB-CTRL throw then
    PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    PATH-DEAD? {: dead:bool :}
    EXIT-USED @ 0<> if
       dead 0= if
          VN @ out <> if E-NELAB-ARITY throw then
+         BEFORE-RETURN
          0 EXIT-ORD @ 0 0 0 TERM-BR-H
       then
       NB @ EXIT-ORD @ <> if E-NELAB-CTRL throw then
       0 out 0 0 0 OPEN-ARGS-H
    then
    dead  EXIT-USED @ 0=  and 0= if
+      EXIT-USED @ 0= if BEFORE-RETURN then
       out QRET-FILL
       c b v key out EMIT-RETURN
       CLOSE-HELD
    then
-   r n TAIL-SCAN
+   r lo hi TAIL-SCAN
+   FUN-KIND @ FUN-DOES-PARENT = if 0 TAIL-NEED ! 1 CALL-NEED ! then
    QCONSUMED-CK
    c b IR-BUILD:END-FUN {: f:IR-ID:ir-fun-id :}
    c b v key p r QBUILD-ALL
    f ;
+
+public
+
+: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena in:n out:n :}
+   RF-RESET
+   in out ARITY-CK
+   c b v UNIT {: n:n :}
+   FUN-COLON FUN-KIND !
+   FR-GIN @ FUN-GIN !  FR-GOUT @ FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 n in out BUILD-FUN ;
+
+: DOES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n n n n n n ptr u8 n -- IR-ID:ir-fun-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
+      r:IR-ARENA:arena in:n out:n at:n din:n dout:n dgin:n dgout:n sig:ptr sigu:n :}
+   RF-RESET
+   in out ARITY-CK
+   din dout ARITY-CK
+   c b v UNIT {: n:n :}
+   at 1 < at n >= or if E-NELAB-SHAPE throw then
+   s" does-patch" NDICT:CALL-TARGET dup 0= if E-HIR-UNMODELED throw then DOES-PATCH !
+   at DOES-AT !  sig DOES-SIG !  sigu DOES-SIG-U !
+   FUN-DOES-PARENT FUN-KIND !
+   FR-GIN @ FUN-GIN !  FR-GOUT @ FUN-GOUT !
+   0 FR-GIN ! 0 FR-GOUT !
+   c b v p r 1 at in out BUILD-FUN {: f:IR-ID:ir-fun-id :}
+   b IR-BUILD:FUNS DOES-FUN @ <> if E-NELAB-SHAPE throw then
+   FUN-DOES-CLAUSE FUN-KIND !
+   dgin FUN-GIN !  dgout FUN-GOUT !
+   c b v p r at 1+ n din dout BUILD-FUN drop
+   1 CALL-NEED !  0 TAIL-NEED !
+   f ;
+
+: DOES-FUNCTION ( -- n )
+   DOES-FUN @ ;
 
 \ ---- what the last elaboration refused ---------------------------------------
 

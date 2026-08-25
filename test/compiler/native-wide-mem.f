@@ -81,6 +81,7 @@ variable SC                            \ one ordinary cell: the scalar access's 
 
 \ A narrow test boundary that views one physical cell of W2 as a scalar. The
 \ checked wide accessors below remain the production path under test.
+\ Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: W2-SCALAR-AT ( n -- ptr n )
    0 W2-AT swap cells + ;
 
