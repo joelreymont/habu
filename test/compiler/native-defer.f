@@ -1,38 +1,7 @@
 \ native-defer.f - `[: … ;] is FOO` through the whole chain. One concern: what
-\ the native chain compiles the token `is` into, and whether the deferred word
-\ really dispatches to the body afterwards.
-\
-\ WHAT THIS SUITE HAS TO SHOW, AND WHY NOTHING SHORTER WOULD.
-\
-\   1. That the migrated installer BINDS. A migration that returned says nothing:
-\      an installer that stored nowhere returns exactly the same way. So the
-\      deferred word is called afterwards, through the interpreter and through a
-\      compiled caller, and the answer is the body's.
-\   2. That the store went through the engine's own store-and-declare primitive
-\      and not through a store of this chain's own. A cell that holds a
-\      JIT-region address has to be moved when a snapshot image is restored, and
-\      the engine finds those cells from a table filled where the cell's KIND is
-\      decided - so a chain that emitted a bare store would leave a restored
-\      image jumping into the writing run's memory on the defer's first call
-\      (dot habu-relocate-persisted-defer-7aa681c4). The emission is DECODED:
-\      exactly one branch-with-link, and it goes to `xt!`. That derivation is
-\      independent of anything this chain records about itself.
-\   3. That the cell really is declared afterwards, read off the engine's own
-\      relocation table. The decode says which primitive was called; this says
-\      what calling it did. src/core/checker.f's own suite
-\      test/snapshot-xt-cell-decl.f owns the RULE - which stores declare a cell
-\      and which do not - and this owns the one new writer of it.
-\   4. That a target which is not a deferred word is refused BY NAME, and that
-\      the refusal is structural rather than a guess about a number. The hostile
-\      fixture is a `create`d word whose first data cell holds the defer magic
-\      exactly: a reader that looked for the magic anywhere near the record, or
-\      that took the cell after any record for a dispatch cell, would bind to it.
-\   5. That a name which denotes nothing, and a target token which is not a name
-\      at all, are refused by the same name rather than compiled against
-\      whatever the arithmetic landed on.
 
 require lib/test.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 
 package NDEFER-TEST
@@ -158,7 +127,7 @@ variable BLN-AT   variable BLN-SEEN
    s" : ND-ACTION ( n -- n ) ND-HOOK ;" EV ;
 
 : DEF-INSTALL ( -- )
-   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" NMIGRATE:DEFINE ;
+   s" : ND-INSTALL ( -- ) [: ND-IMPL ;] is ND-HOOK ;" EV ;
 
 \ The cell ND-HOOK dispatches through, asked of the same resolver the chain asks.
 : HOOK-CELL ( -- n )

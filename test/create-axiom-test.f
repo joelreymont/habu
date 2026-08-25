@@ -25,14 +25,14 @@
 \      certified against a word the machine leaves nothing behind. A certificate
 \      the machine contradicts is the whole failure this file exists to keep out.
 \   2. src/compiler/native/dict.f NDICT:SPELL-ARITY, which answered 0-in/1-out, so
-\      the native chain refused every definer body - `dup create , 1 +`, the shape
+\      the production compiler refused every definer body - `dup create , 1 +`, the shape
 \      src/core/enums.f ENUM+ ships - as E-NELAB-ARITY.
 \
 \ HOW THIS SUITE WOULD CATCH THE ROW COMING BACK. Restore `PE-PTR-A PE-OUT` on the
 \ row and seven assertions red (re-measured, 2026-08-18): the arity pair reads
 \ 0/1, the inferred effect reads 0/1, the bad caller certifies instead of being
 \ refused, the honest caller is refused instead of certifying, and all three
-\ chain measurements come back E-NELAB-ARITY. It was eight while a fourth chain
+\ compiler measurements come back E-NELAB-ARITY. It was eight while a fourth
 \ case could state a wrong arity by hand; that case is retired below, with its
 \ reason, and the three that remain carry the same discrimination.
 \
@@ -68,7 +68,7 @@
 require lib/test.f
 require src/habu/verify-source.f
 require test/checker-assert.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 
 package CREATE-AXIOM-TEST
 private
@@ -89,7 +89,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
    evaluate ;
 
-\ ---- what the row says, read the way the native chain reads it ----------------
+\ ---- what the row says, read the way the production compiler reads it ----------
 \ NDICT:SPELL-ARITY is the bridge the dot named: it resolves a spelling's active
 \ effect through the checker's effect-read export API and answers the pair in
 \ stack cells. Asking it is asking the row.
@@ -190,29 +190,23 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
    [: INFER-GOOD ;] LOADED TTHROWSQ
    s" CAX-C2 CAX-C2-CELL 8 allot  7 CAX-C2-CELL !  CAX-C2-CELL @" EV-N 7 T= ;
 
-\ ---- the reader the dot named: the native chain compiling a definer body ------
-\ MEASURE-HELD runs every stage a held migration runs and keeps none of it, so a
-\ measurement is the chain's own verdict on whether it could compile the body.
-: MEASURE ( ptr u8 n -- )
-   NMIGRATE:MEASURE-HELD ;
+: COMPILER-ALONE ( -- )
+   s" : CAX-D1 ( -- ) create ;" EV ;
 
-: CHAIN-ALONE ( -- )
-   s" : CAX-D1 ( -- ) create ;" MEASURE ;
-
-: CHAIN-ENUM-HALF ( -- )
-   s" : CAX-D2 ( n -- n ) dup create , 1 + ;" MEASURE ;
+: COMPILER-ENUM-HALF ( -- )
+   s" : CAX-D2 ( n -- n ) dup create , 1 + ;" EV ;
 
 \ `create allot` was lib/string.f BUFFER:'s definer half until that definer was
 \ converted to a generated colon accessor (dot habu-the-reader-re-a65e56e5). The
 \ shape is kept here because the row it measures is about `create` moving no stack
 \ cell, and a body that allots after it is the sharpest form of that question - not
 \ because the tree still ships one.
-: CHAIN-BUFFER-HALF ( -- )
-   s" : CAX-D3 ( n -- ) create allot ;" MEASURE ;
+: COMPILER-BUFFER-HALF ( -- )
+   s" : CAX-D3 ( n -- ) create allot ;" EV ;
 
 \ THE FOURTH CASE HERE WAS A WRONG ARITY AND IT IS RETIRED, because there is no
-\ longer a caller who can state one. It handed the same body as CHAIN-ENUM-HALF
-\ to the migration entry declared `1 2` and pinned E-NELAB-ARITY, which was the
+\ longer a caller who can state one. It handed the same body as COMPILER-ENUM-HALF
+\ to the compilation entry declared `1 2` and pinned E-NELAB-ARITY, which was the
 \ control that said the three above were refused for the arity and not for
 \ something else. The entry takes SOURCE now (dot habu-bind-checker-env-ed4f9f87)
 \ and reads what the definition takes and leaves off the checker's certificate,
@@ -225,15 +219,15 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 \ src/compiler/native/dict.f EFF-CELLS, and a case for it needs a term of a
 \ family more than one cell wide - not a definer body, so not this file.
 
-: CHAIN-CASE ( -- )
-   s" the chain compiles a body that only calls `create`" T-LABEL
+: COMPILER-CASE ( -- )
+   s" the compiler accepts a body that only calls `create`" T-LABEL
    NELAB:REFUSED-RESET
-   [: CHAIN-ALONE ;] LOADED TTHROWSQ
+   [: COMPILER-ALONE ;] LOADED TTHROWSQ
    NELAB:REFUSED-ROW -1 T=
 
    s" the definer half the tree still ships, and the one it used to" T-LABEL
-   [: CHAIN-ENUM-HALF ;] LOADED TTHROWSQ
-   [: CHAIN-BUFFER-HALF ;] LOADED TTHROWSQ ;
+   [: COMPILER-ENUM-HALF ;] LOADED TTHROWSQ
+   [: COMPILER-BUFFER-HALF ;] LOADED TTHROWSQ ;
 
 \ `variable` and `constant` are parser-only defining keywords: the engine cannot
 \ compile either spelling in a colon body. Exercise the production source
@@ -263,7 +257,7 @@ public
    ARITY-CASE
    MADE-CASE
    BODY-CASE
-   CHAIN-CASE
+   COMPILER-CASE
    INFER-CASE
    VC-REJECT-CASE
    T-REPORT ;

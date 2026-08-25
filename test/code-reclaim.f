@@ -147,7 +147,7 @@ variable EM-TU
    EM-NAME$ GLOBAL-WID NPUB:REPUBLISH ;
 
 \ Republish the named word with a routine that doubles. The whole chain runs
-\ inside one context, which is how src/compiler/native/migrate.f drives it.
+\ inside one context, which is how src/compiler/native/compiler.f drives it.
 : REPUBLISH ( ptr u8 n -- )
    EM-NAME!
    EM-TEXT!

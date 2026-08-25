@@ -1,52 +1,4 @@
 \ native-chain.f - SOURCE TEXT TO EXECUTED BYTES: the native chain's first
-\ end-to-end run.
-\
-\ Every other suite in this family tests one leaf against fixtures it builds
-\ itself. This one builds nothing. It hands a colon definition to `evaluate`,
-\ lets the engine compile it the way it compiles every definition, and follows
-\ the ONE artefact that comes back out of that compilation - the sealed source
-\ tape the checker's own reader filled - through every remaining stage of the
-\ native pipeline until the result is machine code, and then it runs that code
-\ and compares its answer with what the interpreted word computes on the same
-\ input.
-\
-\ THE CHAIN, IN THE ORDER IT RUNS:
-\   evaluate                 the engine compiles `: NCH-SQ ( n -- n ) dup * ;`
-\   engine check hook        the checker scans the reconstructed definition
-\   NFEED unit               one row per token, in consumption order, and the
-\                            sealed tape and verdict the unit answers
-\   NELAB:COLON              the tape becomes HIR operations
-\   NFIX:RUN                 select, allocate, accept, emit
-\   NRUN:PUBLISH + EXEC1     the words become a routine this process calls
-\
-\ NOTHING IS HAND-BUILT ANYWHERE IN IT. This suite has no lexer, pushes no tape
-\ row and assembles no instruction - and, unlike every other caller of the shared
-\ chain fixtures, it does not even state the source text as a line the fixture
-\ lexer will re-read: the tape comes off the engine's own compilation. The only
-\ inputs are the definition's source text and the two counts this suite hands
-\ NELAB:COLON directly, which is that word's own interface; everything
-\ else is produced by the stage before it and checked by the stage after it. That
-\ is what makes this case the chain's acceptance rather than another leaf test:
-\ it can only pass if every leaf agrees with its neighbours about the same
-\ definition.
-\
-\ THE BACK HALF IS THE SHARED FIXTURE. Selection, allocation, validation and
-\ emission are driven through test/compiler/native-chain-fixture.f and published
-\ through test/compiler/native-run-fixture.f, the same two files the emission
-\ suite and the code generator comparison drive them through. So the one thing
-\ this suite contributes is the FRONT half - a tape nobody typed - and the rest
-\ of the chain is entered exactly as its own suites enter it.
-\
-\ WHY THE ANSWER IS COMPARED WITH THE INTERPRETED WORD. A table of expected
-\ instruction words can only disagree with an emitter that CHANGED, never with
-\ one that was always wrong. Here the compiled routine's answer is compared with
-\ the answer the engine's own compilation of the same source gives, so the two
-\ paths have to agree about the program.
-\
-\ ONE FIXTURE, ONE CONTEXT. This case builds a source module AND a machine
-\ module, which is already most of the sixty-four live arena slots the registry
-\ holds (see the note in test/compiler/native-emit.f), so it is the only case
-\ that runs in its context.
 
 require lib/test.f
 require lib/prelude.f
@@ -54,7 +6,7 @@ require lib/string.f
 require lib/errors.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require test/compiler/native-chain-fixture.f
 require test/compiler/native-run-fixture.f
 
@@ -170,7 +122,7 @@ create TXT TEXT-CAP allot
 \ THE ONE SEAM WHERE ARITY ENTERS, AND IT IS THIS SUITE'S AND NOT THE ENTRY'S.
 \ `1 1` is the word's declared effect, handed to NELAB:COLON because this suite
 \ drives the elaborator stage by stage and the elaborator takes the counts as
-\ arguments. The PRODUCTION entry states nothing: src/compiler/native/migrate.f
+\ arguments. The PRODUCTION entry states nothing: src/compiler/native/compiler.f
 \ KEEP-ARITY reads what the definition takes and leaves off the checker's
 \ certificate through NDICT:SPELL-ARITY. So these two numbers stay on this line,
 \ and what they are is a fixture's business rather than a compiler's.
@@ -771,76 +723,26 @@ $54000000 constant BCOND-FORM
 \ stands.
 \
 \ SO THE MISS BELONGS TO THE CODEGEN MODEL AND NOT TO THE CHECKER, and that is
-\ why this pair is a differential and not a rejection: a quotation-depth guard on
+\ why this pair is a production test and not a rejection: a quotation-depth guard on
 \ the checker's CF-RECURSE would refuse a program the engine compiles, runs and
 \ answers correctly.
 \
-\ THE TWO CASES ARE THE TWO WAYS IT CAME OUT. When the body's window and the
-\ definition's arity AGREE nothing refused anything - the three numbers still
-\ matched each other, they just all named the quotation - so the published
-\ routine recursed inside the quotation, bottomed out at zero and ran the
-\ definition's tail exactly once: a flat 100 at every depth where the word
-\ answers 100, 200, 300, 400, at exit zero, with no diagnostic anywhere. When
-\ they DISAGREE the chain refused, but with E-A64SEL-CALL, which lib/errors.f
-\ documents as unreachable from any contract src/compiler/native/abi.f builds -
-\ "a defect in the chain rather than a program it cannot compile". So the second
-\ case pins a refusal that was a self-diagnosis rather than a verdict, and both
-\ of them now answer what the interpreted word answers.
-\
-\ AND THE ENTRY IS THE MIGRATION RATHER THAN THIS SUITE'S STAGE FIXTURE. A
-\ quotation makes the emission multi-function and turns its `catch` into a call
-\ to a routine of the engine's, which needs a placement declared before emission
-\ to measure its branch from; the stage fixture declares none and answers
-\ E-A64EMIT-PLACE, so these two go through NMIGRATE:DEFINE - the production
-\ entry the other quotation suites drive.
-
-\ The two the engine compiles, which are the spec.
 : NCH-QWALK ( n -- n )
    [: dup 0 > if 1- RECURSE then ;] catch drop 100 + ;
 
 : NCH-QWIDE ( n -- n n )
    [: dup 0 > if 1- RECURSE drop 10 + then ;] catch ;
 
-\ And the same two texts, character for character but for the suffix on each
-\ name, put through the chain. They are published as the file loads, because a
-\ chain that cannot compile them at all has to say so where it happens.
-: QWALK-DEF ( -- )
-   s" : NCH-QWALK-N ( n -- n ) [: dup 0 > if 1- RECURSE then ;] catch drop 100 + ;"
-   NMIGRATE:DEFINE ;
-
-\ The one whose quotation window is not the definition's arity: the body takes
-\ and leaves one cell, the definition leaves two, and the self-call inside the
-\ body is the site where those two counts meet.
-: QWIDE-DEF ( -- )
-   s" : NCH-QWIDE-N ( n -- n n ) [: dup 0 > if 1- RECURSE drop 10 + then ;] catch ;"
-   NMIGRATE:DEFINE ;
-
-QWALK-DEF
-QWIDE-DEF
-
-\ THE ANSWERS ARE BOUND BEFORE EITHER IS COMPARED for the pair that leaves two
-\ cells: a catch site publishes its window AND its code, so four cells over two
-\ bare comparators would hold each call's answer against its own.
-: QWALK= ( n -- ) {: v:n :}
-   v NCH-QWALK  v NCH-QWALK-N  T= ;
-
-: QWIDE= ( n -- ) {: v:n :}
-   v NCH-QWIDE   v NCH-QWIDE-N
-   {: eu:n er:n cu:n cr:n :}
-   er cr T=  eu cu T= ;
-
-\ FIVE DEPTHS AND NOT ONE. Zero never enters the recursion at all, so it is the
-\ depth a quotation calling itself gets RIGHT; every depth above it is one the
-\ two targets disagree about, and the wrong one answers the same number at all
-\ of them.
 : QWALK-CASE ( -- )
    s" a definition that calls itself from inside a quotation runs" T-LABEL
-   0 QWALK=  1 QWALK=  2 QWALK=  3 QWALK=  7 QWALK= ;
+   0 NCH-QWALK 100 T=
+   3 NCH-QWALK 400 T= ;
 
 : QWIDE-CASE ( -- )
    s" the same call where the body's window is not the definition's arity"
    T-LABEL
-   0 QWIDE=  1 QWIDE=  2 QWIDE=  3 QWIDE= ;
+   0 NCH-QWIDE 0 T= 0 T=
+   2 NCH-QWIDE 0 T= 20 T= ;
 
 \ ---- a definition that does not fit in its registers -------------------------
 \ The same run over a routine of more than one block whose values do not all fit

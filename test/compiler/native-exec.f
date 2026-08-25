@@ -1,34 +1,7 @@
 \ native-exec.f - `execute` through the whole chain. One concern: what the native
-\ chain compiles the token `execute` into, and where the arity it moves comes
-\ from.
-\
-\ WHAT THIS SUITE HAS TO SHOW, AND WHY NOTHING SHORTER WOULD.
-\
-\   1. That the migrated word really ENTERS the quotation. "The migration
-\      returned" says nothing: a word that dropped the token and returned its
-\      argument answers the same way for a body whose arity is symmetric, which
-\      is the trap LESSONS.md records. So every case here executes a quotation
-\      that CHANGES its argument, and reads the answer.
-\   2. That the arity is the CERTIFIED effect and not the site's stack shape.
-\      The two paths a quotation reaches `execute` by are measured separately -
-\      one handed straight over, one bound to a local first - and each computes,
-\      because guessing from the depth would be right for both and wrong for the
-\      one that has no answer at all.
-\   3. That a cell nothing certified as a quotation is REFUSED by name rather
-\      than executed under a guess. A body this definition wrote and no term ever
-\      gave an arity is exactly that cell: the checker admits the program, and
-\      the chain has no published number for it.
-\   4. That a quotation whose effect is not an ordinary routine's - one with a
-\      return-stack clause - is refused too, and by the same name, because the
-\      question is asked of the checker rather than re-derived here.
-\   5. That the emission is a CALL to the engine's own `execute` and not
-\      something this chain invented. The bytes are decoded: the branch is there
-\      and it goes to the address the dictionary answers for `execute`.
-\   6. That the real multishot site in the library migrates and RUNS - the same
-\      body, over a real array, executing the quotation once per element.
 
 require lib/test.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 require lib/array.f
 
@@ -38,7 +11,7 @@ package ARRAY
 : NX-A-SRC ( -- ptr u8 n )
    s" : A-MAPI! ( ptr a len [ idx a -- a ] -- ) {: arr:ptr len q :} len A-CHECK-WHOLE len LEN>N 0 ?do i A-IDX arr len i A-IDX A@ q execute arr len i A-IDX A! loop ;" ;
 : NX-A-GO ( -- )
-   NX-A-SRC NMIGRATE:DEFINE ;
+   NX-A-SRC EV ;
 NX-A-GO
 ;package
 
@@ -126,11 +99,11 @@ $94000000 constant BL-FORM
 \ rather than increments: a routine that never entered the body at all, and
 \ simply handed its argument back, answers correctly for anything symmetric.
 : DEF-APPLY ( -- )
-   s" : NX-APPLY ( [ n -- n ] n -- n ) swap execute ;" NMIGRATE:DEFINE ;
+   s" : NX-APPLY ( [ n -- n ] n -- n ) swap execute ;" EV ;
 
 : DEF-LOCAL ( -- )
    s" : NX-LOCAL ( [ n -- n ] n -- n ) {: q v :} v q execute ;"
-   NMIGRATE:DEFINE ;
+   EV ;
 
 : PARAM-CASE ( -- )
    DEF-APPLY
@@ -172,10 +145,10 @@ $94000000 constant BL-FORM
 \ own EFFECT-QUOT-SIMPLE?, and a declaration carrying a return-stack clause
 \ answers no quotation there - so no row is ever opened for it and the same
 \ refusal would fire. It is asserted at the RESOLVER rather than through a
-\ migration, because a program that executes such a parameter never reaches the
+\ compilation, because a program that executes such a parameter never reaches the
 \ chain at all: the checker refuses the definition itself, measured below.
 : SELF-EXEC ( -- )
-   s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" NMIGRATE:MEASURE-HELD ;
+   s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" EV ;
 
 70 constant CHECK-RC                 \ the engine refusing a definition it cannot certify
 
@@ -209,12 +182,12 @@ $94000000 constant BL-FORM
 \ across every turn - which is what "multishot" costs: the value has to survive
 \ the call it is the argument of, every time round.
 \
-\ THE MIGRATION IS AT FILE LEVEL AND INSIDE `package ARRAY`, which is not a
-\ convenience: the body names ARRAY's private helpers, and the migration entry
+\ THE DEFINITION IS INSIDE `package ARRAY`: the body names ARRAY's private helpers,
+\ and the compilation entry
 \ evaluates the source in whatever scope is open, so the definition only
 \ resolves where the library's own compilation resolved it. `package` is a
 \ parser directive, so no word can open a package from inside itself - and the
-\ migration is its own assertion either way, because NMIGRATE:DEFINE publishes
+\ compilation is its own assertion either way, because EV publishes
 \ or throws.
 
 : BUF! ( -- )
@@ -227,7 +200,7 @@ TRUSTED: BUF@ ( n -- n )
    cells NX-BUF + @ ;
 
 : ARRAY-CASE ( -- )
-   s" the migrated multishot site runs the quotation once per element" T-LABEL
+   s" the compiled multishot site runs the quotation once per element" T-LABEL
    BUF!
    s" : NX-BUMP ( -- ) NX-BUF 4 ARRAY:A-LEN [: swap IDX>N 10 * + ;] ARRAY:A-MAPI! ;"
    EV

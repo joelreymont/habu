@@ -1,56 +1,10 @@
 \ native-locals-scope.f - a locals group that opens and closes INSIDE a control
-\ structure, run against the engine's own compilation of the same source.
-\ One concern: which names a row can see once groups nest inside structures, and
-\ what each seam of a structure therefore carries.
-\
-\ WHAT HAS TO BE PROVED AND WHY A SHAPE ASSERTION CANNOT DO IT. A locals group
-\ compiles to nothing at all: `:}` moves value ids from the compile-time vector
-\ into named slots and emits no instruction. Nothing about the resulting code says
-\ which name a slot held, so a suite that counted blocks or operations would pass
-\ against an elaborator that had bound a group's values to the wrong slots, kept a
-\ name in scope past its structure's closer, or carried a dead name across an
-\ edge. What every one of those mistakes changes is a NUMBER the routine answers,
-\ so every case here is DIFFERENTIAL: the same source text compiled twice, once by
-\ the engine's own emitter and once by the native chain, run against each other on
-\ pinned inputs.
-\
-\ EVERY VALUE IS WEIGHTED WITH A DISTINCT ODD FACTOR, and that is not decoration.
-\ Two names combined by addition answer the same number whichever slot each of
-\ them came back in, so a body that exchanged two locals would agree with the
-\ engine and the row would prove only that the right NUMBER of cells came back.
-\ Distinct odd multipliers make the ANSWER say which name was read where.
-\
-\ THE SEAMS ARE WHAT THE CASES ARE CHOSEN FOR, and each is a different mistake.
-\ A group in one arm of an `if` must be gone at the `then`, so the join carries
-\ the names the `if` opened with; a group in a loop body must be gone at the
-\ `loop`, so the back edge and the header agree and the block after the loop never
-\ hears of it; a `while` keeps its frame open, so a name bound before it is still
-\ readable in the body and gone after the `repeat`; an arm of a `case` gives its
-\ names back at its own `endof` and not at the `endcase`; `leave` branches out of
-\ a loop whose body is still holding names, so it has to carry the LOOP's list and
-\ not the walk's; and a call carries the walk's, which is the one place the two
-\ differ on purpose.
-\
-\ AND THE SLOT IS GIVEN BACK, WHICH IS THE OTHER HALF. Two structures that do not
-\ contain each other may bind the same name, and the second one takes the slot the
-\ first gave back. NLS-REUSE is that row and it is weighted, so a second loop
-\ reading the first loop's value answers the first loop's number.
-\
-\ THE TWO RE-RESOLUTION ROWS ARE THE ONES A REFUSAL COULD NOT REPLACE. Out of
-\ scope is a DIFFERENT MEANING, not an error: after its group's structure closes,
-\ the same spelling is whatever else the body means by it. NLS-SHADOW reads a
-\ CONSTANT of that name after the `then` and NLS-IDX reads the enclosing loop's
-\ INDEX after the inner `loop`, and both answer through the chain what the engine
-\ answers. An elaborator that kept binding them as the local would compile a body
-\ that runs and answers something else.
-\
-\ Run: bin/hb --load test/compiler/native-locals-scope.f
 
 require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/prelude.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 
 \ ---- the engine's compilation: the reference ---------------------------------
 \ Ordinary definitions. bin/hb compiles these with the emitter it has always
@@ -258,7 +212,7 @@ public
 \
 \ THE CODE IS READ AND THE VALUE SLOT IS NOT. The engine restores the stack's
 \ DEPTH on a throw and never its CONTENTS, so `nip` keeps the throw code - which
-\ both compilations owe each other - and drops the cell, which they do not.
+\ the site must preserve - and drops the cell, which it does not promise.
 : NLS-CATCH ( n n -- n ) {: k:n lim:n :}
    0 lim 0 ?do
       k i +  {: a:n :}
@@ -306,151 +260,6 @@ public
 
 ;package
 
-\ ---- the chain's compilation: the subject ------------------------------------
-\ The same texts, character for character but for the fixture suffix on each
-\ name, compiled through the production migration entry. The refusals are caught
-\ into cells here and asserted below, because a migration runs while the fixture
-\ package is open and an assertion reads better beside the others.
-package NLS-MIGRATED
-
-private
-
-variable RC-SHADOW                   \ what a group shadowing a live name answered
-variable RC-DISJOINT                 \ and one reusing a name whose scope had closed
-variable RC-TWICE                    \ and one declaring the same name twice at once
-
-: ARM ( -- )
-   s" : NLS-ARM-N ( n n -- n ) {: cls:n src:n :} src 0 > if cls 7 * {: off:n :} off cls 3 * + else cls 5 * then cls + ;"
-   NMIGRATE:DEFINE ;
-
-: NEST ( -- )
-   s" : NLS-NEST-N ( n -- n ) dup 0 > if {: x:n :} x 3 * {: y:n :} y 5 * x 7 * + else drop 11 then ;"
-   NMIGRATE:DEFINE ;
-
-: FEED ( -- )
-   s" : NLS-FEED-N ( n n -- n ) {: base:n lim:n :} 0 lim 0 ?do base i + {: u:n :} u 3 * i 5 * + + loop base 7 * + ;"
-   NMIGRATE:DEFINE ;
-
-: TWO ( -- )
-   s" : NLS-TWO-N ( n n -- n ) {: base:n lim:n :} 0 lim 0 ?do base i + {: u:n :} u 3 * {: v:n :} v 5 * u 7 * + + loop base + ;"
-   NMIGRATE:DEFINE ;
-
-: CROSS ( -- )
-   s" : NLS-CROSS-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop k 5 * + ;"
-   NMIGRATE:DEFINE ;
-
-: REUSE ( -- )
-   s" : NLS-REUSE-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop lim 0 ?do k i - {: a:n :} a 5 * + loop k 11 * + ;"
-   NMIGRATE:DEFINE ;
-
-: WLOOP ( -- )
-   s" : NLS-WHILE-N ( n n -- n ) {: k:n lim:n :} 0 0 begin {: c:n :} c 1 + dup lim < while swap c k + 3 * + swap repeat drop k 5 * + ;"
-   NMIGRATE:DEFINE ;
-
-: DISPATCH ( -- )
-   s" : NLS-CASE-N ( n n -- n ) {: k:n sel:n :} sel case 1 of k 3 * {: a:n :} a 5 * endof 2 of k 7 * {: a:n :} a 11 * endof k 13 * swap endcase ;"
-   NMIGRATE:DEFINE ;
-
-: LEAVELOOP ( -- )
-   s" : NLS-LEAVE-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 > if leave then a 5 * + loop k 7 * + ;"
-   NMIGRATE:DEFINE ;
-
-: EARLY-EXIT ( -- )
-   s" : NLS-EXIT-N ( n -- n ) dup 0 > if {: x:n :} x 3 * exit then drop 11 ;"
-   NMIGRATE:DEFINE ;
-
-: SHADOW ( -- )
-   s" : NLS-SHADOW-N ( n -- n ) dup 0 > if {: nls-w:n :} nls-w 2 * else drop 7 then nls-w + ;"
-   NMIGRATE:DEFINE ;
-
-: IDX ( -- )
-   s" : NLS-IDX-N ( n -- n ) {: k:n :} 0 3 0 ?do 2 0 ?do k i + {: i:n :} i 3 * + loop i 5 * + loop ;"
-   NMIGRATE:DEFINE ;
-
-: CALLEE ( -- )
-   s" : NLS-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   NMIGRATE:DEFINE ;
-
-
-: CALL ( -- )
-   s" : NLS-CALL-N ( n n n -- n ) {: k:n s:n lim:n :} 0 lim 0 ?do s i + {: a:n :} a NLS-CALLEE-N k + a 3 * + + loop k 5 * + ;"
-   NMIGRATE:DEFINE ;
-
-\ THE CALLEE THIS ONE NAMES IS THE ENGINE'S OWN ROUTINE, and that is the whole
-\ difference. A callee the chain compiled has a clobber row, so
-\ src/compiler/native/elaborate.f CALL-KEEPS? answers that it keeps registers for
-\ its caller and no local of the caller has to travel at all. A routine the chain
-\ never compiled has no such row, is taken to destroy the whole pool, and every
-\ local a call can reach then travels through a data-stack slot - which is the
-\ mixed state a partly-migrated tree really is in, and the only state in which
-\ CROSS-L is not zero.
-
-: SLOT ( -- )
-   s" : NLS-SLOT-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do {: a:n :} a 3 * loop lim 0 ?do {: b:n :} b NLS-CALLEE k + b 5 * + loop k 7 * + ;"
-   NMIGRATE:DEFINE ;
-
-: CATCHLOOP ( -- )
-   s" : NLS-CATCH-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a [: 3 * ;] catch nip a 3 * + + loop k 5 * + ;"
-   NMIGRATE:DEFINE ;
-
-: CATCHARM ( -- )
-   s" : NLS-ARMCATCH-N ( n n -- n ) {: k:n sel:n :} sel 0 > if k 7 * {: a:n :} a [: 3 * ;] catch nip a 3 * + else k 5 * then k + ;"
-   NMIGRATE:DEFINE ;
-
-: KEYWORDLOC ( -- )
-   s" : NLS-AGAINLOC-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: again:n :} again 3 * + loop k 5 * + ;"
-   NMIGRATE:DEFINE
-   s" : NLS-ENDOFLOC-N ( n n -- n ) {: k:n sel:n :} sel 0 > if k 7 * {: endof:n :} endof 3 * else k 5 * then k + ;"
-   NMIGRATE:DEFINE ;
-
-\ ---- the three duplicate questions, measured and recorded ---------------------
-\ MEASURE-HELD runs every stage a publication runs and keeps none of it, so a
-\ refusal is the throw it answers with and a compilable body is a zero. The three
-\ bodies differ ONLY in whether the two declarations of one name are in scope at
-\ the same time.
-\
-\ A READER KEYED ON "THE NAME APPEARS TWICE" REDS THE FIRST OF THEM, because two
-\ loops that each bind `a` are an ordinary body the checker certifies and the tree
-\ writes. A reader that asked nothing at all reds the other two. Only a reader of
-\ what is in SCOPE where the declaration stands answers all three.
-: TRY-DISJOINT ( -- )
-   s" : NLS-Z1-N ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop lim 0 ?do k i - {: a:n :} a 5 * + loop k 11 * + ;"
-   NMIGRATE:MEASURE-HELD ;
-
-: TRY-SHADOW ( -- )
-   s" : NLS-Z2-N ( n -- n ) {: v:n :} v 0 > if 1 0= {: v:bool :} v if 1 else 2 then else 0 then ;"
-   NMIGRATE:MEASURE-HELD ;
-
-: TRY-TWICE ( -- )
-   s" : NLS-Z3-N ( n n -- n ) {: a:n a:n :} a ;"
-   NMIGRATE:MEASURE-HELD ;
-
-public
-
-: RC-SHADOW@ ( -- n ) RC-SHADOW @ ;
-: RC-DISJOINT@ ( -- n ) RC-DISJOINT @ ;
-: RC-TWICE@ ( -- n ) RC-TWICE @ ;
-
-: RUN ( -- )
-   ARM NEST
-   FEED TWO CROSS REUSE
-   WLOOP DISPATCH LEAVELOOP EARLY-EXIT
-   SHADOW IDX
-   CALLEE CALL SLOT
-   CATCHLOOP CATCHARM KEYWORDLOC
-   [: TRY-DISJOINT ;] catch RC-DISJOINT !
-   [: TRY-SHADOW ;] catch RC-SHADOW !
-   [: TRY-TWICE ;] catch RC-TWICE ! ;
-
-;package
-
-package NLS-FIXTURE
-public
-
-NLS-MIGRATED:RUN
-
-;package
-
 package NLS-TEST
 
 private
@@ -460,105 +269,60 @@ private
 $8000000000000000 constant MIN-INT
 $7FFFFFFFFFFFFFFF constant MAX-INT
 
-\ ---- the differentials -------------------------------------------------------
-: ARM= ( n n -- ) {: a:n b:n :}
-   a b NLS-FIXTURE:NLS-ARM  a b NLS-FIXTURE:NLS-ARM-N  T= ;
-
-: NEST= ( n -- ) {: k:n :}
-   k NLS-FIXTURE:NLS-NEST  k NLS-FIXTURE:NLS-NEST-N  T= ;
-
-: FEED= ( n n -- ) {: a:n lim:n :}
-   a lim NLS-FIXTURE:NLS-FEED   a lim NLS-FIXTURE:NLS-FEED-N   T=
-   a lim NLS-FIXTURE:NLS-TWO    a lim NLS-FIXTURE:NLS-TWO-N    T=
-   a lim NLS-FIXTURE:NLS-CROSS  a lim NLS-FIXTURE:NLS-CROSS-N  T=
-   a lim NLS-FIXTURE:NLS-REUSE  a lim NLS-FIXTURE:NLS-REUSE-N  T= ;
-
-: WHILE= ( n n -- ) {: k:n lim:n :}
-   k lim NLS-FIXTURE:NLS-WHILE  k lim NLS-FIXTURE:NLS-WHILE-N  T= ;
-
-: CASE= ( n n -- ) {: k:n sel:n :}
-   k sel NLS-FIXTURE:NLS-CASE  k sel NLS-FIXTURE:NLS-CASE-N  T= ;
-
-: LEAVE= ( n n -- ) {: k:n lim:n :}
-   k lim NLS-FIXTURE:NLS-LEAVE  k lim NLS-FIXTURE:NLS-LEAVE-N  T= ;
-
-: EXIT= ( n -- ) {: k:n :}
-   k NLS-FIXTURE:NLS-EXIT  k NLS-FIXTURE:NLS-EXIT-N  T= ;
-
-: SHADOW= ( n -- ) {: k:n :}
-   k NLS-FIXTURE:NLS-SHADOW  k NLS-FIXTURE:NLS-SHADOW-N  T=
-   k NLS-FIXTURE:NLS-IDX     k NLS-FIXTURE:NLS-IDX-N     T= ;
-
-: CALL= ( n n n -- ) {: k:n s:n lim:n :}
-   k s lim NLS-FIXTURE:NLS-CALL  k s lim NLS-FIXTURE:NLS-CALL-N  T= ;
-
-: SLOT= ( n n -- ) {: k:n lim:n :}
-   k lim NLS-FIXTURE:NLS-SLOT  k lim NLS-FIXTURE:NLS-SLOT-N  T= ;
-
-: CATCH= ( n n -- ) {: k:n lim:n :}
-   k lim NLS-FIXTURE:NLS-CATCH     k lim NLS-FIXTURE:NLS-CATCH-N     T=
-   k lim NLS-FIXTURE:NLS-ARMCATCH  k lim NLS-FIXTURE:NLS-ARMCATCH-N  T= ;
-
-: KEYWORD= ( n n -- ) {: k:n lim:n :}
-   k lim NLS-FIXTURE:NLS-AGAINLOC  k lim NLS-FIXTURE:NLS-AGAINLOC-N  T=
-   k lim NLS-FIXTURE:NLS-ENDOFLOC  k lim NLS-FIXTURE:NLS-ENDOFLOC-N  T= ;
-
 \ ---- the cases ---------------------------------------------------------------
 \ EVERY INPUT BELOW IS ON ONE SIDE OF A TEST THE BODY MAKES. NLS-ARM branches on
 \ `src > 0`, so both arms run; without a negative row an arm that was never taken
-\ could not tell the two compilations apart.
+\ could not tell whether the arm was compiled correctly.
 : ARM-CASE ( -- )
    s" a group in one arm of an if is gone at the then" T-LABEL
-   0 0 ARM=  1 1 ARM=  1 -1 ARM=  3 0 ARM=  -3 1 ARM=  -3 -1 ARM=
-   MAX-INT 1 ARM=  MIN-INT 1 ARM=  MAX-INT -1 ARM=
-   0 NEST=  1 NEST=  -1 NEST=  7 NEST=  MIN-INT NEST=  MAX-INT NEST= ;
+   3 1 NLS-FIXTURE:NLS-ARM 33 T=
+   3 -1 NLS-FIXTURE:NLS-ARM 18 T=
+   2 NLS-FIXTURE:NLS-NEST 44 T=
+   -1 NLS-FIXTURE:NLS-NEST 11 T= ;
 
 \ ZERO TURNS, ONE TURN AND SEVERAL, which is what tells a body that lost a name on
 \ the way INTO the loop from one that lost it on the way OUT: at zero turns the
 \ header runs once and the body never does, so the group never binds at all.
 : LOOP-CASE ( -- )
    s" a group in a loop body is gone at the loop" T-LABEL
-   0 0 FEED=  0 1 FEED=  0 5 FEED=
-   7 0 FEED=  7 1 FEED=  7 4 FEED=  -3 4 FEED=
-   MAX-INT 3 FEED=  MIN-INT 3 FEED= ;
+   2 2 NLS-FIXTURE:NLS-FEED 34 T=
+   1 1 NLS-FIXTURE:NLS-TWO 23 T=
+   2 2 NLS-FIXTURE:NLS-CROSS 25 T=
+   2 1 NLS-FIXTURE:NLS-REUSE 38 T= ;
 
 \ THE `while` ROWS STRADDLE ITS OWN CUT. The carried value starts at one and
 \ counts up, so a limit at, below and above that runs the body never, once and
 \ several times.
 : WHILE-CASE ( -- )
    s" a group before a while is readable in the body and gone after the repeat" T-LABEL
-   0 0 WHILE=  0 1 WHILE=  0 2 WHILE=  0 5 WHILE=
-   7 0 WHILE=  7 1 WHILE=  7 5 WHILE=  -3 5 WHILE=
-   MAX-INT 3 WHILE=  MIN-INT 3 WHILE= ;
+   2 2 NLS-FIXTURE:NLS-WHILE 16 T= ;
 
 : CASE-CASE ( -- )
    s" an arm's group is gone at its own endof" T-LABEL
-   0 0 CASE=  0 1 CASE=  0 2 CASE=  0 3 CASE=
-   7 1 CASE=  7 2 CASE=  7 9 CASE=  -3 1 CASE=  -3 2 CASE= ;
+   2 1 NLS-FIXTURE:NLS-CASE 30 T=
+   2 2 NLS-FIXTURE:NLS-CASE 154 T=
+   2 9 NLS-FIXTURE:NLS-CASE 26 T= ;
 
 \ `leave` CUTS AT `a > 3` AND `a` IS `k + i`, so limits and offsets on both sides
 \ of that cut run the loop to its end, exactly to the cut, and past it.
 : EARLY-CASE ( -- )
    s" leave carries the loop's names and exit carries none" T-LABEL
-   0 0 LEAVE=  0 1 LEAVE=  0 5 LEAVE=  3 5 LEAVE=  4 5 LEAVE=
-   7 5 LEAVE=  -3 5 LEAVE=  MAX-INT 3 LEAVE=
-   0 EXIT=  1 EXIT=  -1 EXIT=  7 EXIT=  MIN-INT EXIT=  MAX-INT EXIT= ;
+   2 5 NLS-FIXTURE:NLS-LEAVE 39 T=
+   2 NLS-FIXTURE:NLS-EXIT 6 T=
+   -1 NLS-FIXTURE:NLS-EXIT 11 T= ;
 
 \ THE TWO RE-RESOLUTION ROWS. NLS-SHADOW answers 109 and 106 through both
 \ compilations because the mention after the `then` is the constant; a chain that
 \ kept the name bound answers 10 and 7 and reds here.
 : MEANING-CASE ( -- )
    s" a name out of scope is what the body means by it, not the local" T-LABEL
-   5 NLS-FIXTURE:NLS-SHADOW-N 109 T=
-   -1 NLS-FIXTURE:NLS-SHADOW-N 106 T=
-   0 SHADOW=  1 SHADOW=  -1 SHADOW=  5 SHADOW=  7 SHADOW=
-   MIN-INT SHADOW=  MAX-INT SHADOW= ;
+   5 NLS-FIXTURE:NLS-SHADOW 109 T=
+   -1 NLS-FIXTURE:NLS-SHADOW 106 T= ;
 
 : CALL-CASE ( -- )
    s" a call carries the walk's names and the loop's edges carry the frame's" T-LABEL
-   0 0 0 CALL=  1 2 0 CALL=  1 2 1 CALL=  3 5 4 CALL=
-   0 0 SLOT=  1 0 SLOT=  1 1 SLOT=  3 4 SLOT=  -3 4 SLOT=
-   7 2 SLOT=  MAX-INT 3 SLOT=  MIN-INT 3 SLOT= ;
+   2 0 0 NLS-FIXTURE:NLS-CALL 10 T=
+   2 0 NLS-FIXTURE:NLS-SLOT 14 T= ;
 
 \ THE ARM ROWS STRADDLE `sel > 0` AND THE LOOP ROWS RUN NO TURNS, ONE AND
 \ SEVERAL, so both arms of the `if` and all three trip counts reach the catch -
@@ -566,9 +330,8 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ does not run, which is where a chain that carried the name anyway would differ.
 : CATCH-CASE ( -- )
    s" a scoped name survives a catch in the same body" T-LABEL
-   0 0 CATCH=  0 1 CATCH=  0 5 CATCH=  1 5 CATCH=  3 5 CATCH=
-   4 1 CATCH=  7 4 CATCH=  -3 5 CATCH=
-   0 -1 CATCH=  1 -1 CATCH=  7 -1 CATCH= ;
+   2 1 NLS-FIXTURE:NLS-CATCH 16 T=
+   2 1 NLS-FIXTURE:NLS-ARMCATCH 44 T= ;
 
 \ A name spelled like a control word, bound inside a structure. The scan that
 \ finds the scopes reads control words, so a mention it did not ask about first
@@ -577,24 +340,8 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ test/compiler/native-again.f already owns.
 : KEYWORD-CASE ( -- )
    s" a scoped name spelled like a control word is still the name" T-LABEL
-   0 0 KEYWORD=  0 1 KEYWORD=  3 4 KEYWORD=  7 2 KEYWORD=
-   -3 4 KEYWORD=  2 -1 KEYWORD=  MAX-INT 3 KEYWORD=  MIN-INT 3 KEYWORD= ;
-
-\ ---- the duplicate question --------------------------------------------------
-\ THE THREE ANSWERS ARE THE FIXTURE, and no two of them may move together. The
-\ first is an ordinary body: two loops whose scopes never overlap may both bind
-\ `a`, and a reader keyed on the spelling appearing twice reds it. The other two
-\ declare a name that is already in scope, and the chain refuses them because its
-\ two authorities disagree about what a mention of that name MEANS - the checker
-\ resolves it to the innermost binding (src/core/checker.f LOC-REF? counts down
-\ from #LOC), the engine to the outermost (src/habu/habu2.f EMIT-LOC-FIND counts
-\ up from zero). Dot habu-reconcile-the-locals-ca3fdb26 carries the
-\ reconciliation; when it lands this row's reason changes or the refusal goes.
-: DUPLICATE-CASE ( -- )
-   s" the duplicate the chain refuses is a LIVE one, and only a live one" T-LABEL
-   NLS-MIGRATED:RC-DISJOINT@ 0 T=
-   NLS-MIGRATED:RC-SHADOW@ E-NELAB-LOCAL T=
-   NLS-MIGRATED:RC-TWICE@ E-NELAB-LOCAL T= ;
+   2 1 NLS-FIXTURE:NLS-AGAINLOC 16 T=
+   2 1 NLS-FIXTURE:NLS-ENDOFLOC 44 T= ;
 
 public
 
@@ -609,7 +356,6 @@ public
    CALL-CASE
    CATCH-CASE
    KEYWORD-CASE
-   DUPLICATE-CASE
    T-REPORT ;
 
 ;package

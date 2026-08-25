@@ -1,52 +1,20 @@
 \ native-dead-path.f - a call control does not come back from, all the way
-\ through the chain and into the running engine.
-\
-\     bin/hb --load test/compiler/native-dead-path.f
-\
-\ WHAT IS UNDER TEST. The checker certifies that a call to `throw`, to `die`, or
-\ to a word whose own paths all end in one has no normal continuation
-\ (src/core/checker.f, CTL-DEAD in the control-flag store). The chain reads that
-\ fact off the same record it reads the callee's arity off
-\ (src/compiler/native/dict.f SPELL-DEAD?, carried on the word-table row by
-\ src/compiler/native/hir-word.f and read back as CALLEE-DEAD?), and
-\ src/compiler/native/elaborate.f ends the block at such a call: the path neither
-\ joins nor states a width, and the block's terminator is the `hir.trap` that
-\ leaves without returning.
-\
-\ THE CALL IS AN ORDINARY CALL, AND THAT IS THE FIRST THING PROVED HERE. Trapping
-\ INSTEAD of calling would turn a catchable throw into a process exit and change
-\ what the program does, so the dead branch of every case below is executed and
-\ the code it throws is compared with the code the source names. The trap sits
-\ AFTER the call, where control never arrives.
-\
-\ NOTHING HERE IS A MODEL OF THE CHAIN. Each case hands source text to
-\ NMIGRATE:DEFINE, which compiles it through every stage and publishes the
-\ routine under its own name, and then CALLS that name. A case that only measured
-\ would not notice a routine that compiled and computed the wrong thing, and a
-\ case that built its own module would not notice the elaborator disagreeing with
-\ the engine about the same definition.
-\
-\ THE HOSTILE FIXTURES ARE THE POINT OF SECTION 3. Deadness is a fact about the
-\ WORD a token resolves to, so a package that defines its own `throw` must get
-\ its own word's answer: the body there goes on after the call and joins like any
-\ other. A chain that matched the spelling would end the block at that call and
-\ refuse the tokens after it, so the case compiles only under the resolver.
 
 require lib/prelude.f
 require lib/errors.f
 require lib/test.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 
 package DEADPATH-CHAIN-TEST
 private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and
-\ every entry below is one call through it: the migration entry takes SOURCE.
-TRUSTED: DEFINE ( ptr u8 n -- )
-   NMIGRATE:DEFINE ;
+\ every entry below is one call through it: the compilation entry takes SOURCE.
+TRUSTED: EV ( ptr u8 n -- )
+   evaluate ;
 
 \ A published routine is called by NAME, and the name does not exist while this
-\ file is being compiled - the migration mints it. So every call below is one
+\ file is being compiled - the compilation mints it. So every call below is one
 \ line of source handed to the same `evaluate` the definition arrived through,
 \ which is also how test/compiler/native-chain.f calls what it published.
 TRUSTED: EV-N ( ptr u8 n -- n )
@@ -58,7 +26,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ the arm ends the path, and the chain would not because the arm left one value
 \ fewer than the fall-through.
 : MK-JT ( -- )
-   s" : DPC-JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;" DEFINE ;
+   s" : DPC-JT ( n n -- n ) 0 = if drop E-A-EMPTY throw then ;" EV ;
 
 : JT-CASE ( -- )
    s" a one-armed if whose arm throws compiles, and its live path returns" T-LABEL
@@ -76,7 +44,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ from the FIRST argument, so an arm that had been confused for the other would
 \ answer differently rather than not at all.
 : MK-DE ( -- )
-   s" : DPC-DE ( n n -- n ) 0 = if drop E-A-EMPTY throw else 1 + then ;" DEFINE ;
+   s" : DPC-DE ( n n -- n ) 0 = if drop E-A-EMPTY throw else 1 + then ;" EV ;
 
 : ELSE-CASE ( -- )
    s" a dead first arm leaves the second arm to state the join" T-LABEL
@@ -91,7 +59,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ A dead SECOND arm, which is the other side of the same rule: the first arm
 \ states the width and the second contributes no edge at all.
 : MK-DS ( -- )
-   s" : DPC-DS ( n n -- n ) 0 = if drop 5 else drop E-A-BOUNDS throw then ;" DEFINE ;
+   s" : DPC-DS ( n n -- n ) 0 = if drop 5 else drop E-A-BOUNDS throw then ;" EV ;
 
 : SECOND-CASE ( -- )
    s" a dead second arm joins the same way round" T-LABEL
@@ -106,7 +74,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ would refuse that token as code after a path that ended (E-NELAB-CTRL). The
 \ case therefore compiles only if the chain resolved the word.
 : MK-SHADOW ( -- )
-   s" : DPC-SHADOW ( n n -- n ) 0 = if drop 5 DPCX:throw 7 then ;" DEFINE ;
+   s" : DPC-SHADOW ( n n -- n ) 0 = if drop 5 DPCX:throw 7 then ;" EV ;
 
 : SHADOW-CASE ( -- )
    s" a word whose name is throw but whose record is not dead still joins" T-LABEL
@@ -120,7 +88,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ And the other direction: a word that is dead by its OWN certified body, whose
 \ name is nothing special. A chain reading a list of names would miss it.
 : MK-OWNDEAD ( -- )
-   s" : DPC-VIA ( n n -- n ) 0 = if drop E-A-EMPTY DPCY:BOOM then ;" DEFINE ;
+   s" : DPC-VIA ( n n -- n ) 0 = if drop E-A-EMPTY DPCY:BOOM then ;" EV ;
 
 : OWNDEAD-CASE ( -- )
    s" a word the checker certified dead from its own body ends the path too" T-LABEL
@@ -133,7 +101,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ The elaborator refuses any token after a path has ended except the closer of
 \ the structure that path was an arm of. That rule cannot be reached from source:
 \ the CHECKER refuses the same bodies first, and refuses them harder, so the
-\ chain never sees them. Measured, both through the migration entry:
+\ chain never sees them. Measured, both through the compilation entry:
 \
 \   : DPC-AFTER ( n n -- n ) 0 = if drop E-A-EMPTY throw 7 then ;
 \       habu: in dpc-after: at '7' after 'throw'
@@ -148,7 +116,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ Such a body leaves through its trap and has no return convention at all: the
 \ elaborator closes the block at each dead call, no return is staged and no block
 \ is left open. It used to be refused by the allocation validator, because the
-\ only routine forms the migration could choose all declared a frame this routine
+\ only routine forms the compilation could choose all declared a frame this routine
 \ has no epilogue to end - it reserved one and saved its link register, and the
 \ memory order those two mint was passed on nowhere (E-A64RAV-ORDER).
 \
@@ -157,7 +125,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ call is real and is what the routine dies in - declares the caller's return
 \ address DESTROYED, and owns no frame: nothing restores an address that is never
 \ read again, and no epilogue gives back a frame control never reaches.
-\ src/compiler/native/migrate.f asks the checker whether THIS definition is one
+\ src/compiler/native/compiler.f asks the checker whether THIS definition is one
 \ that never returns, by the same certificate every other caller of it is
 \ compiled against.
 \
@@ -166,7 +134,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ is that the caller gets the code the source names, out of a call the engine
 \ made, with the data stack where the caller left it.
 : MK-ALLDEAD ( -- )
-   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" DEFINE ;
+   s" : DPC-ALLDEAD ( n -- ) drop E-A-EMPTY throw ;" EV ;
 
 : ALL-DEAD-CASE ( -- )
    s" a body whose every path ends compiles, publishes and throws" T-LABEL
@@ -179,7 +147,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ the two apart proves.
 : MK-BOTH-DEAD ( -- )
    s" : DPC-BOTHDEAD ( n -- ) 0 = if E-A-EMPTY throw else E-A-BOUNDS throw then ;"
-   DEFINE ;
+   EV ;
 
 : BOTH-DEAD-CASE ( -- )
    s" two dead arms leave no return anywhere, and each arm is its own" T-LABEL
@@ -199,32 +167,27 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ computes: an answer equal to the argument would be a routine that returned it,
 \ and an answer equal to the code says the callee really ran.
 : MK-TAIL-SHAPED ( -- )
-   s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" DEFINE ;
+   s" : DPC-TAILDEAD ( n -- n ) DPCY:DEADN ;" EV ;
 
 : TAIL-SHAPED-CASE ( -- )
    s" a dead last call of this definition's own arity still never returns" T-LABEL
    MK-TAIL-SHAPED
    s" 4 ' DPC-TAILDEAD catch nip" EV-N 5 T= ;
 
-\ ---- 6. what the whole chain says about that body, without keeping it ---------
-\ The measured entry runs every stage the published one runs and keeps nothing.
-: MEASURE ( ptr u8 n -- )
-   NMIGRATE:MEASURE-HELD ;
-
-: ALL-DEAD-MEASURED ( -- )
-   s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" MEASURE ;
+: ALL-DEAD! ( -- )
+   s" : DPC-ALLDEADM ( n -- ) drop E-A-EMPTY throw ;" EV ;
 
 \ The same with a declared result. Control never comes back, so the cell the
 \ signature names is never published - and the routine still declares it, because
 \ the convention a Habu word is entered under is what its CALLERS were compiled
 \ against and the module records the same arity.
-: OUT-DEAD-MEASURED ( -- )
-   s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" MEASURE ;
+: OUT-DEAD! ( -- )
+   s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" EV ;
 
-: MEASURED-CASE ( -- )
-   s" the whole chain accepts the shape with nothing published behind it" T-LABEL
-   [: ALL-DEAD-MEASURED ;] 0 TTHROWSQ
-   [: OUT-DEAD-MEASURED ;] 0 TTHROWSQ ;
+: ALL-DEAD-CASE ( -- )
+   s" production compilation accepts the all-dead shape" T-LABEL
+   [: ALL-DEAD! ;] 0 TTHROWSQ
+   [: OUT-DEAD! ;] 0 TTHROWSQ ;
 
 \ ---- 7. the shape that is still refused, and what it is waiting for ----------
 \ A no-return routine that SPILLS. Its frame is not the selector's - the walk
@@ -247,32 +210,24 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 \ IT IS PINNED AS THE REFUSAL IT IS, for the same reason section 5's refusal was
 \ pinned before the form existed. No census body reaches it: nothing in the tree
 \ spills a no-return body at the machine's own pool.
-: MEASURE-AT ( ptr u8 n -- )
-   NMIGRATE:MEASURE-HELD ;
-
 \ Twenty-eight values every one of which is read after the last of them is
 \ written, against the twenty-five Linux or twenty-four Darwin registers
-\ NABI:SCRATCH leaves a routine, so some of them reach the frame. The live twin
-\ below it is the same arithmetic
-\ with the result returned instead of thrown away, and it compiles: what the case
-\ measures is the frame, so the pressure has to be real on both sides of it - and
-\ since no caller states a budget any more, real means bigger than the machine.
+\ NABI:SCRATCH leaves a routine, so some of them reach the frame.
 : SPILL-DEAD ( -- )
    s" : DPC-SPILLDEAD ( n -- ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + drop E-A-EMPTY throw ;"
-   MEASURE-AT ;
+   EV ;
 
 : SPILL-LIVE ( -- )
    s" : DPC-SPILLLIVE ( n -- n ) {: s:n :} s 1+ s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s 11 + s 12 + s 13 + s 14 + s 15 + s 16 + s 17 + s 18 + s 19 + s 20 + s 21 + s 22 + s 23 + s 24 + s 25 + s 26 + s 27 + s 28 + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;"
-   MEASURE-AT ;
+   EV ;
 
 : SPILL-CASE ( -- )
-   s" the same arithmetic spills and compiles when it returns" T-LABEL
-   [: SPILL-LIVE ;] 0 TTHROWSQ
-   NMIGRATE:SPILLS 0 T<>
+   s" spilling live arithmetic compiles, publishes and runs" T-LABEL
+   SPILL-LIVE
+   s" 0 DPC-SPILLLIVE" EV-N 406 T=
 
-   s" and is still refused for its frame when every path ends" T-LABEL
+   s" an all-dead spilling body is refused for its frame" T-LABEL
    [: SPILL-DEAD ;] E-A64RAV-ORDER TTHROWSQ ;
-
 public
 
 : RUN ( -- )
@@ -286,7 +241,7 @@ public
    ALL-DEAD-CASE
    BOTH-DEAD-CASE
    TAIL-SHAPED-CASE
-   MEASURED-CASE
+   ALL-DEAD-CASE
    SPILL-CASE ;
 
 ;package

@@ -236,197 +236,86 @@ SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
 
-\ The publication seam: what a republished dictionary record holds, and what the
-\ seam refuses. It runs before the chain's own end-to-end suite because a
-\ republication it got wrong would show up there as a word that computes the
-\ wrong thing several stages away from the cause.
 SUITE compiler-native-publish
    test/compiler/native-publish.f
 ;SUITE
 
-\ The terminator that does not return: the family table and the one shared
-\ routine a compiled trap branches to, the exit-block rule every pass re-derives,
-\ and the length the seam records for a routine that leaves by branching. It runs
-\ after the publication seam because its last case publishes a trapping routine
-\ over a word and calls it in a child, which is the whole path in one measurement.
 SUITE compiler-native-trap
    test/compiler/native-trap.f
 ;SUITE
 
-\ A quotation, through the whole chain and running: the body compiled as a second
-\ function of the same emission, the Adr that names it decoded out of the
-\ published bytes, and the address executed. It runs after the migration entry
-\ because every case is a definition the migration published.
 SUITE compiler-native-quot
    test/compiler/native-quot.f
 ;SUITE
 
-\ What `is` becomes: the quotation bound to a deferred word through the engine's
-\ own store-and-declare primitive, the branch decoded out of the published
-\ bytes, and the deferred word dispatching to the body afterwards. It runs after
-\ the migration entry for the same reason the quotation suite does.
 SUITE compiler-native-defer
    test/compiler/native-defer.f
 ;SUITE
 
-\ And what `execute` becomes: a call to the engine's own execute with the arity
-\ the quotation's certified effect states, over both paths a quotation reaches
-\ one by, plus the library's own multishot site re-compiled and run.
 SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE
 
-\ What a published routine destroys, and what a call site does with the answer.
-\ It runs after the migration entry because the measurement it makes is over two
-\ words the migration published.
 SUITE compiler-native-clobber
    test/compiler/native-clobber.f
 ;SUITE
 
-\ The body of a small routine, recorded when it is published and copied into
-\ every later caller instead of being called. It runs after the migration entry
-\ for the reason the clobber suite does: what it measures is the code of words
-\ the migration published.
 SUITE compiler-native-inline
    test/compiler/native-inline.f
 ;SUITE
 
-\ Which bytes of the code arena a reclamation may hand back. It runs after the
-\ publication seam and the two address-keyed records because the case that says
-\ a floor is wrong needs a republished routine to be wrong ABOUT, and the case
-\ that says the floor still moves reads the publication log row that goes with
-\ the routine it gives back.
 SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE
 
-\ Reading a published routine's calls and its exit off the emitted code: the
-\ instrument a tail-call lane decides with. It consumes
-\ src/compiler/native/branch.f, the chain's one reader of a branch displacement.
 SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
 ;SUITE
 
-\ The call a routine leaves through while its own names are still standing - the
-\ checked accessor's guard-then-convert shape and the checked constructor's
-\ validate-then-MAKE shape, which between them are most of what the tree writes.
-\ Every case is differential against the engine's own compilation, because what a
-\ tail site leaves unpublished cannot be seen in the shape of the code and only
-\ the ANSWER separates a site that dropped what it needed from one that did not.
-\ It runs beside the tail probe because it uses that instrument to say the branch
-\ is really there.
 SUITE compiler-native-tail
    test/compiler/native-tail.f
 ;SUITE
 
-\ The multiply-add the chain writes, held against the two instructions it
-\ replaces: the same source compiled by the engine's emitter, which never fuses,
-\ and by the chain, which does, run against each other to the ends of the signed
-\ range. It runs beside the chain's own leaves because its fixtures go through
-\ the production migration entry.
 SUITE compiler-native-combine
    test/compiler/native-combine.f
 ;SUITE
 
-\ The counted loops the chain now answers instead of running: the same source
-\ compiled by the engine's emitter, which really runs every turn, and by the
-\ chain, which does not, run against each other - including three trip counts no
-\ loop could be run at. Its other half is the eleven shapes the pass must refuse,
-\ each of which still has to hold its loop in the emitted code. It runs beside
-\ the combine suite because it is the other module-in, module-out rewrite and its
-\ fixtures go through the same production migration entry.
 SUITE compiler-native-loop
    test/compiler/native-loop.f
 ;SUITE
 
-\ The plain `do`, which is `?do` without the test that skips an empty loop. Every
-\ case runs both openers against the engine's own compilation of the same text,
-\ because the one pair that tells them apart is the limit that equals the start -
-\ one turn against none. It runs beside the loop suite because it is the same
-\ counted loop measured through the same migration entry.
 SUITE compiler-native-do
    test/compiler/native-do.f
 ;SUITE
 
-\ `j`, the index of the counted loop one frame further out. It runs beside the
-\ plain `do` because it is the same counted loop measured through the same
-\ migration entry, and every case is differential for a reason of its own: `j`
-\ stages no operation, so a chain that answered with the inner loop's index, the
-\ outermost loop's, or an enclosing `if`'s frame emits exactly the same code and
-\ only the ANSWER tells them apart.
 SUITE compiler-native-j
    test/compiler/native-j.f
 ;SUITE
 
-\ `begin … again`, the third closer of a `begin` loop and the one whose loop has
-\ no exit. Its cases run the loop against the engine's own compilation of the
-\ same text - through an `exit` where the word returns and through the code it
-\ throws where it does not - so the number of turns is compared and not only the
-\ shape. It runs beside the `do` and `j` suites because it is another loop word
-\ the dialect gained and it goes through the same migration entry.
 SUITE compiler-native-again
    test/compiler/native-again.f
 ;SUITE
 
-\ `leave`, which leaves a counted loop from the middle. Every case runs both
-\ openers against the engine, because the pair that tells them apart is the
-\ limit equal to the start - the one turn a `leave` can fire on under `do` and
-\ cannot under `?do`. It runs beside the again suite for the same reason.
 SUITE compiler-native-leave
    test/compiler/native-leave.f
 ;SUITE
 
-\ The return-stack transfers, which compile to nothing at all: `>r` moves a value
-\ id between two COMPILE-TIME vectors and emits no instruction. Every case is
-\ differential against the engine's own compilation, because nothing about the
-\ emitted code says which vector a value came from and only the answer does. It
-\ runs beside the loop suites because its hardest seams are theirs - a parked
-\ value crosses a join, a loop edge and a call by the same machinery the data
-\ values do.
 SUITE compiler-native-rstack
    test/compiler/native-rstack.f
 ;SUITE
 
-\ `catch`, which runs a quotation and comes back either way. Its cases run the
-\ caught bodies against the engine's own compilation of the same text, because
-\ what has to be proved is an ANSWER and not a shape: the engine puts the stack
-\ back to its DEPTH on a throw and never to its CONTENTS, so a chain that kept
-\ the caught window in a register answers the value the site had before and
-\ every block count still agrees. It runs beside the leave suite because it is
-\ the other control word the dialect gained and it goes through the same
-\ migration entry.
 SUITE compiler-native-catch
    test/compiler/native-catch.f
 ;SUITE
 
-\ The locals groups that open and close INSIDE a control structure, which compile
-\ to nothing at all in the same way the return-stack transfers do: `:}` moves
-\ value ids into named slots and emits no instruction, so only the answer says
-\ which name a slot held. Every case is differential against the engine's own
-\ compilation for that reason, and it runs beside the loop and return-stack
-\ suites because its seams are theirs - a name crosses a join, a loop edge, an
-\ arm and a call by the machinery those two already measure, and the two
-\ re-resolution rows prove a name out of scope is the WORD or the loop INDEX the
-\ engine gives it rather than a refusal.
 SUITE compiler-native-locals-scope
    test/compiler/native-locals-scope.f
 ;SUITE
 
-\ The scope a quotation BODY is built in, which is nobody's but its own. It runs
-\ beside the catch and locals suites because it is their intersection: the
-\ production catch shape is a definition with a group around a body that calls,
-\ and until the body stopped inheriting the enclosing routine's local scope that
-\ shape could not be compiled at all. Every case is differential against the
-\ engine's own compilation, and every name is weighted with its own odd factor,
-\ because what a body carried wrongly across its call comes back as a wrong
-\ NUMBER rather than as a wrong shape.
 SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
 ;SUITE
 
-\ The native chain's end-to-end run: source text through the real compile path
-\ to executed machine code. It runs after the leaves it composes, so a red here
-\ with green leaves means the leaves disagree with each other.
 SUITE compiler-native-chain
    test/compiler/native-chain.f
 ;SUITE
@@ -435,46 +324,22 @@ SUITE native-dead-path
    test/compiler/native-dead-path.f
 ;SUITE
 
-\ What the data-stack residency answers when a checked program stores through an
-\ address that lands in the routine's own slots. It runs after the chain leaves
-\ because it executes migrated bodies on a data stack of its own, which is the
-\ end-to-end path those leaves prove one stage at a time.
 SUITE native-dstack-alias
    test/compiler/native-dstack-alias.f
 ;SUITE
 
-\ The three tag-dispatch forms - `MATCH`, `case` and `construct` - from source
-\ text to executed machine code, every case comparing the chain's answer with the
-\ engine's on the same body. It runs after the trap leaf and the dead-path leaf
-\ because it is their first source-level consumer: a dispatch's mismatch edge IS
-\ the trap, and an arm that throws IS a dead path.
 SUITE compiler-native-match
    test/compiler/native-match.f
 ;SUITE
 
-\ A rename is a permutation of the compile-time value vector, and that vector
-\ counts CELLS while the language counts VALUES. This suite is the differential
-\ that holds the two together over a value wider than a cell: every case states
-\ one body twice, once for the engine and once for the chain, and compares what
-\ they leave rather than what anybody expected them to leave.
 SUITE compiler-native-rename-rows
    test/compiler/native-rename-rows.f
 ;SUITE
 
-\ Getting a value wider than a cell ONTO that vector and back into memory, which
-\ is the other half of the same story: `@` through a pointer to a multi-cell
-\ family reads the whole value and `!` writes it, at the width the checker
-\ certified. It runs after the rename leaf because its loads produce exactly the
-\ bundles a rename moves, and after the match leaf because one of its cases feeds
-\ a dispatch out of memory. The cell ORDER is measured by crossing the two
-\ compilers - what one writes, the other reads back.
 SUITE compiler-native-wide-mem
    test/compiler/native-wide-mem.f
 ;SUITE
 
-\ The same end-to-end run over the comparison and bitwise vocabulary, word by
-\ word, each answer compared with the interpreted word's. It runs beside the
-\ chain suite because it is the same path with a wider source vocabulary.
 SUITE compiler-native-vocab
    test/compiler/native-vocab.f
 ;SUITE

@@ -1,32 +1,8 @@
 \ native-string.f - a string literal, compiled by the native chain and run.
-\ One concern: that `s" ..."` in a colon body becomes a routine of the chain's
-\ making which pushes the right bytes and the right length.
-\
-\ WHAT THIS SUITE HAS TO SHOW.
-\
-\   1. That the chain compiles it AT ALL, through the production entry. Every
-\      case here goes through src/compiler/native/migrate.f DEFINE: the engine
-\      compiles the definition, the checker's own reader fills the tape while it
-\      certifies the body, and the chain recompiles that tape and republishes the
-\      record. Before this tranche each of these was E-HIR-UNMODELED on the token
-\      `s"`.
-\   2. That the bytes survive the round trip EXACTLY. The published word is then
-\      entered and what it pushes is compared with the string the source wrote -
-\      including bodies built to fool a reader that re-lexed them, and bodies
-\      whose escapes have to decode.
-\   3. That equal bodies share one address and different bodies do not, because
-\      that is what makes a re-elaborated definition cost nothing and what keeps
-\      the store bounded.
-\   4. That the store's ceiling is a named refusal rather than a reused address.
-\
-\ WHY THE ANSWERS ARE COMPARED BY RUNNING THE WORD. A test that read the tape or
-\ the module would be describing what the compiler intended. Entering the
-\ published record is the only question whose answer is the code that actually
-\ runs.
 
 require lib/test.f
 require lib/string.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require src/compiler/native/string.f
 
 package NSTRING-TEST
@@ -44,11 +20,11 @@ TRUSTED: EV-B ( ptr u8 n -- bool )
    evaluate ;
 
 \ ---- the words the chain compiles --------------------------------------------
-\ Each is migrated through the production entry, which reads what the definition
+\ Each is compiled through the production entry, which reads what the definition
 \ takes and leaves off the checker's certificate: `( -- ptr u8 n )` is TWO, an
 \ address and a length, and nothing here states it.
-: DEF ( ptr u8 n -- )
-   NMIGRATE:DEFINE ;
+TRUSTED: DEF ( ptr u8 n -- )
+   evaluate ;
 
 : PLAIN ( -- )
    S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" DEF ;
@@ -125,12 +101,8 @@ TRUSTED: EV-B ( ptr u8 n -- bool )
    s" NST-SHARED drop NST-PLAIN drop <>" EV-B TTRUE ;
 
 \ ---- interning the same bytes twice costs nothing ------------------------------
-\ WHY A SECOND MIGRATION IS A SECOND NAME AND NOT THE SAME ONE. Re-evaluating a
-\ definition's source is a duplicate definition and the engine refuses it, so the
-\ retry this property exists for - the pipeline re-elaborating a tape it already
-\ elaborated - cannot be staged that way from outside. What CAN be staged is the
-\ question underneath it: a body the store has already seen costs nothing the
-\ next time it is compiled, wherever it is compiled from.
+\ Re-evaluating a definition's source would be a duplicate definition. The
+\ underlying property is that interning bytes already present costs nothing.
 : INTERN-IDEMPOTENT-CASE ( -- )
    LONE
    s" a body already interned adds no row and no bytes" T-LABEL

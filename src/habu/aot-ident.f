@@ -11,7 +11,7 @@
 \ load order, and REQUIRE-N is the cursor into it. So a producer that reads
 \ REQUIRE-N as its capture window opens and again as it closes has bracketed
 \ exactly the files the window compiled — 43 of them for the compiler chain,
-\ starting src/compiler/native/migrate.f and ending src/compiler/native/branch.f —
+\ starting src/compiler/native/compiler.f and ending src/compiler/native/branch.f —
 \ with no second copy of that set to go stale. A hand-written closure list would
 \ agree with the engine only until the first chain file gained a dependency.
 \

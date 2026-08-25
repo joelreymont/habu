@@ -26,14 +26,14 @@
 \
 \ THE DISTINCT-SHAPE COUNT IS THIS FILE'S OWN ANSWER, computed bottom-up from the
 \ stored fields without consulting the checker's interner at all. That makes it a
-\ differential rather than an echo: over the WHOLE store NODES and SHAPES must
+\ independent rather than an echo: over the WHOLE store NODES and SHAPES must
 \ come out equal, because a second copy of a shape is precisely what the interner
 \ exists to prevent. Over a partial window they need not, since a shape the
 \ window reuses may live in a node below its base. Before interning, the whole
 \ store held 84 nodes for every shape.
 \
 \ Run it over a load:
-\   bin/hb-host --load tools/effect-store-census-run.f -- src/compiler/native/migrate.f
+\   bin/hb --load tools/effect-store-census-run.f -- src/compiler/native/compiler.f
 \ or drive it in-process: MARK, load, RUN, then read the counters.
 
 require lib/errors.f

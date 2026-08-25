@@ -1,60 +1,9 @@
 \ native-loop.f - the counted loops the chain now computes instead of running.
-\ One concern: src/compiler/native/loop.f.
-\
-\ WHAT A CLOSED FORM HAS TO BE HELD TO. The pass deletes a loop, so the only
-\ question that matters is whether the routine still answers what the loop
-\ answered - on every input, not on the ones somebody thought of. A byte count
-\ cannot say that and neither can a disassembly: the arithmetic below is five
-\ operations whichever way round its operands go, and three of the wrong ways
-\ agree with the right one on every small positive number. So every case here is
-\ DIFFERENTIAL: the same source text compiled twice, once by the engine's own
-\ emitter, which has no such transform and really runs the loop, and once by the
-\ native chain, which does not, and the two are run against each other.
-\
-\ THE STRUCTURAL ASSERTION IS NOT DECORATION. A differential between two
-\ compilations neither of which folded anything passes and proves nothing, so
-\ every case reads the BACK EDGES out of the chain's emitted code through
-\ tools/codegen-loop-inventory.f: a folded routine has none left, and every
-\ refusal below still has its loop. Without those, deleting the body of the pass
-\ would leave this suite green.
-\
-\ AND THE INPUTS GO PAST WHAT A LOOP CAN RUN. Three of the numbers here are trip
-\ counts no reference can be run at - the largest representable integer, two to
-\ the thirty-third, and two to the sixty-second - and their answers are stated
-\ rather than compared, because the whole point of a closed form is that it
-\ answers where the loop would still be running. Each is derived in the case's own
-\ comment from the identity the pass claims, and each is a number the NAIVE
-\ formula gets wrong: two to the thirty-third is past where the product overflows
-\ sixty-four bits, so a pass that multiplied first and halved afterwards answers
-\ something else there while agreeing everywhere a loop can reach. That mutation
-\ was run: it turns this suite red at exactly that one number and nowhere else.
-\
-\ AND BECAUSE THOSE NUMBERS CANNOT BE RUN, the two cases that use them assert
-\ first that the fold really happened and stop if it did not. A regression that
-\ stopped folding would otherwise ask the machine to run two to the sixty-third
-\ turns and never come back, and a gate that hangs is worse than one that fails.
-\
-\ THE REFUSALS ARE THE OTHER HALF OF THE SUITE, and there are thirteen of them.
-\ Each is a loop that must NOT be folded, and each fails a different clause: a
-\ write in the body, a write beside a read, a read whose address the turn
-\ decides, a call, a second accumulator, a third one, an operation that is not an
-\ addition, an addend on the wrong side, an operation nothing reads, a start that
-\ is not a number, a start at the top of the range, and a loop that is not
-\ counted at all. They are written to look as much like the folded shapes as
-\ their one difference allows.
-\
-\ THE THREE MEMORY ROWS ARE NOT ONE ROW UNDER THREE NAMES, and the difference is
-\ which clause each one lands on. NLPT-LOAD reads a cell no turn can change and
-\ FOLDS, so it stands with the folded shapes. NLPT-VARLOAD reads a cell the turn
-\ chooses, so the address is what keeps it. NLPT-RW reads the same cell every
-\ turn and would move if the address were the only question - a write in the body
-\ is the whole of why it does not, and it answers differently the moment that
-\ rule is removed, where the other two do not.
 
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
 package NLPT-FIXTURE
@@ -247,131 +196,7 @@ public
 
 ;package
 
-\ ---- the chain's compilation: the subject ------------------------------------
-\ The same text, migrated through the production entry, published beside its
-\ reference. No row states a register budget: the entry derives the pool from
-\ NABI:SCRATCH, the same one every migration here runs under.
-
-package NLPT-MIGRATED
-
-private
-
-: SUM ( -- )
-   s" : NLPT-SUM-N ( n -- n ) 0 swap 0 ?do i + loop ;" NMIGRATE:DEFINE ;
-
-: TINY ( -- )
-   s" : NLPT-TINY-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do 1 + 1 + 1 + 1 + loop ;"
-   NMIGRATE:DEFINE ;
-
-: MANY ( -- )
-   s" : NLPT-MANY-N ( n n n n n n n n n -- n ) {: a:n b:n c:n d:n e:n f:n g:n h:n len:n :} 0 len 0 ?do a + b + c + d + e + f + g + h + loop ;"
-   NMIGRATE:DEFINE ;
-
-: MIX ( -- )
-   s" : NLPT-MIX-N ( n n n -- n ) {: a:n seed:n len:n :} seed len 0 ?do a + i + 3 + loop ;"
-   NMIGRATE:DEFINE ;
-
-: TWICE ( -- )
-   s" : NLPT-TWICE-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do i + i + loop ;"
-   NMIGRATE:DEFINE ;
-
-: FROM5 ( -- )
-   s" : NLPT-FROM5-N ( n n -- n ) {: seed:n len:n :} seed len 5 ?do i + loop ;"
-   NMIGRATE:DEFINE ;
-
-: FROMNEG ( -- )
-   s" : NLPT-FROMNEG-N ( n n -- n ) {: seed:n len:n :} seed len -3 ?do i + loop ;"
-   NMIGRATE:DEFINE ;
-
-: AFTER-LOAD ( -- )
-   s" : NLPT-AFTER-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} cell @ len 0 ?do 1 + loop ;"
-   NMIGRATE:DEFINE ;
-
-: RW ( -- )
-   s" : NLPT-RW-N ( ptr n n -- n ) {: cell:ptr len:n :} 0 len 0 ?do cell @ + 5 cell ! loop ;"
-   NMIGRATE:DEFINE ;
-
-: STORE ( -- )
-   s" : NLPT-STORE-N ( ptr n n -- n ) {: cell:ptr len:n :} len 0 ?do cell @ 3 + cell ! loop cell @ ;"
-   NMIGRATE:DEFINE ;
-
-: LOAD ( -- )
-   s" : NLPT-LOAD-N ( ptr n n -- n ) {: cell:ptr len:n :} 0 len 0 ?do cell @ + loop ;"
-   NMIGRATE:DEFINE ;
-
-: FIELDS ( -- )
-   s" : NLPT-FIELDS-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base 16 + @ base 24 + @ base 32 + @ base 40 + @ + + + + loop ;"
-   NMIGRATE:DEFINE ;
-
-: WIDE ( -- )
-   s" : NLPT-WIDE-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base @ base 8 + @ base 16 + @ base 24 + @ base 32 + @ base 40 + @ base 48 + @ base 56 + @ base 64 + @ base 72 + @ base 80 + @ base 88 + @ base 96 + @ base 104 + @ + + + + + + + + + + + + + + loop ;"
-   NMIGRATE:DEFINE ;
-
-: VARLOAD ( -- )
-   s" : NLPT-VARLOAD-N ( ptr n n -- n ) {: base:ptr len:n :} 0 len 0 ?do base i cells + @ + loop ;"
-   NMIGRATE:DEFINE ;
-
-: CALLEE ( -- )
-   s" : NLPT-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   NMIGRATE:DEFINE ;
-
-: CALL ( -- )
-   s" : NLPT-CALL-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NLPT-CALLEE-N loop ;"
-   NMIGRATE:DEFINE ;
-
-: TWO ( -- )
-   s" : NLPT-TWO-N ( n n -- n ) {: seed:n len:n :} seed 1 len 0 ?do 1 + swap 2 + swap loop + ;"
-   NMIGRATE:DEFINE ;
-
-: THREE ( -- )
-   s" : NLPT-THREE-N ( n n -- n ) {: seed:n len:n :} seed 1 2 len 0 ?do 1 + rot 2 + rot 3 + rot loop + + ;"
-   NMIGRATE:DEFINE ;
-
-: MUL ( -- )
-   s" : NLPT-MUL-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do 2 * loop ;"
-   NMIGRATE:DEFINE ;
-
-: SUB ( -- )
-   s" : NLPT-SUB-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do 1 - loop ;"
-   NMIGRATE:DEFINE ;
-
-: SWAPPED ( -- )
-   s" : NLPT-SWAPPED-N ( n -- n ) 0 swap 0 ?do i swap + loop ;"
-   NMIGRATE:DEFINE ;
-
-: DEAD ( -- )
-   s" : NLPT-DEAD-N ( n n -- n ) {: seed:n len:n :} seed len 0 ?do i 7 * drop 1 + loop ;"
-   NMIGRATE:DEFINE ;
-
-: VARSTART ( -- )
-   s" : NLPT-VARSTART-N ( n n n -- n ) {: seed:n st:n len:n :} seed len st ?do i + loop ;"
-   NMIGRATE:DEFINE ;
-
-: MAXSTART ( -- )
-   s" : NLPT-MAXSTART-N ( n n -- n ) {: seed:n len:n :} seed len 9223372036854775807 ?do i + loop ;"
-   NMIGRATE:DEFINE ;
-
-: NOTCOUNTED ( -- )
-   s" : NLPT-UNTIL-N ( n -- n ) begin 1- dup 0 <= until ;"
-   NMIGRATE:DEFINE ;
-
-public
-
-: RUN ( -- )
-   SUM TINY MANY MIX TWICE FROM5 FROMNEG AFTER-LOAD
-   LOAD FIELDS WIDE
-   STORE RW VARLOAD
-   CALLEE CALL
-   TWO THREE MUL SUB SWAPPED DEAD VARSTART MAXSTART NOTCOUNTED ;
-
-;package
-
-package NLPT-FIXTURE
-public
-
-NLPT-MIGRATED:RUN
-
-;package
+\ The production compiler derives the register pool from NABI:SCRATCH.
 
 package NLPT-TEST
 
@@ -404,99 +229,16 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : STILL-A-LOOP? ( ptr u8 n -- bool )
    LOOPS-IN 0<> ;
 
-\ ---- the differentials -------------------------------------------------------
-: SUM= ( n -- ) {: a:n :}
-   a NLPT-FIXTURE:NLPT-SUM  a NLPT-FIXTURE:NLPT-SUM-N  T= ;
-
-: TINY= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-TINY  a b NLPT-FIXTURE:NLPT-TINY-N  T= ;
-
-: MANY= ( n n n n n n n n n -- ) {: a:n b:n c:n d:n e:n f:n g:n h:n l:n :}
-   a b c d e f g h l NLPT-FIXTURE:NLPT-MANY
-   a b c d e f g h l NLPT-FIXTURE:NLPT-MANY-N  T= ;
-
-: MIX= ( n n n -- ) {: a:n b:n c:n :}
-   a b c NLPT-FIXTURE:NLPT-MIX  a b c NLPT-FIXTURE:NLPT-MIX-N  T= ;
-
-: TWICE= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-TWICE  a b NLPT-FIXTURE:NLPT-TWICE-N  T= ;
-
-: FROM5= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-FROM5  a b NLPT-FIXTURE:NLPT-FROM5-N  T= ;
-
-: FROMNEG= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-FROMNEG  a b NLPT-FIXTURE:NLPT-FROMNEG-N  T= ;
-
-: AFTER-LOAD= ( n -- ) {: l:n :}
-   NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-AFTER-LOAD
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-AFTER-LOAD-N  T= ;
-
-: LOAD= ( n -- ) {: l:n :}
-   NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-LOAD
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-LOAD-N  T= ;
-
-: FIELDS= ( n -- ) {: l:n :}
-   NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-FIELDS
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-FIELDS-N  T= ;
-
-: WIDE= ( n -- ) {: l:n :}
-   NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-WIDE
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-WIDE-N  T= ;
-
-: RW= ( n -- ) {: l:n :}
-   NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-RW
-   NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-RW-N  T= ;
-
-: VARLOAD= ( n -- ) {: l:n :}
-   NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-VARLOAD
-   NLPT-FIXTURE:NLPT-AT l NLPT-FIXTURE:NLPT-VARLOAD-N  T= ;
-
-: CALL= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-CALL  a b NLPT-FIXTURE:NLPT-CALL-N  T= ;
-
-: TWO= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-TWO  a b NLPT-FIXTURE:NLPT-TWO-N  T= ;
-
-: THREE= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-THREE  a b NLPT-FIXTURE:NLPT-THREE-N  T= ;
-
-: MUL= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-MUL  a b NLPT-FIXTURE:NLPT-MUL-N  T= ;
-
-: SUB= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-SUB  a b NLPT-FIXTURE:NLPT-SUB-N  T= ;
-
-: SWAPPED= ( n -- ) {: a:n :}
-   a NLPT-FIXTURE:NLPT-SWAPPED  a NLPT-FIXTURE:NLPT-SWAPPED-N  T= ;
-
-: DEAD= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-DEAD  a b NLPT-FIXTURE:NLPT-DEAD-N  T= ;
-
-: VARSTART= ( n n n -- ) {: a:n b:n c:n :}
-   a b c NLPT-FIXTURE:NLPT-VARSTART  a b c NLPT-FIXTURE:NLPT-VARSTART-N  T= ;
-
-: MAXSTART= ( n n -- ) {: a:n b:n :}
-   a b NLPT-FIXTURE:NLPT-MAXSTART  a b NLPT-FIXTURE:NLPT-MAXSTART-N  T= ;
-
-: UNTIL= ( n -- ) {: a:n :}
-   a NLPT-FIXTURE:NLPT-UNTIL  a NLPT-FIXTURE:NLPT-UNTIL-N  T= ;
-
 \ ---- the folded rows ---------------------------------------------------------
 \ Trip counts zero, one, two and small; a negative limit, where `?do` runs ONE
 \ turn rather than none; and a thousand, which is past anything the small cases
 \ could pass by accident.
 : SUM-CASE ( -- )
    s" the sum of a counted loop's indices, against the loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-SUM-N" GONE
-   0 SUM= 1 SUM= 2 SUM= 3 SUM= 16 SUM= 1000 SUM= 100000 SUM=
-   -1 SUM= -5 SUM= MIN-INT SUM= ;
+   s" NLPT-FIXTURE:NLPT-SUM" GONE
+   0 NLPT-FIXTURE:NLPT-SUM 0 T=
+   1 NLPT-FIXTURE:NLPT-SUM 0 T=
+   16 NLPT-FIXTURE:NLPT-SUM 120 T= ;
 
 \ The two trip counts no loop can be run at. The identity is T*(T-1)/2 in
 \ sixty-four bits:
@@ -509,63 +251,62 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \   answers 2^63 - 2^32 instead.
 : SUM-BIG-CASE ( -- )
    s" the sum of the indices past where any loop could be run" T-LABEL
-   s" NLPT-FIXTURE:NLPT-SUM-N" GONE
-   s" NLPT-FIXTURE:NLPT-SUM-N" STILL-A-LOOP? if exit then
-   MAX-INT NLPT-FIXTURE:NLPT-SUM-N   4611686018427387905 T=
-   8589934592 NLPT-FIXTURE:NLPT-SUM-N  -4294967296 T= ;
+   s" NLPT-FIXTURE:NLPT-SUM" GONE
+   s" NLPT-FIXTURE:NLPT-SUM" STILL-A-LOOP? if exit then
+   MAX-INT NLPT-FIXTURE:NLPT-SUM   4611686018427387905 T=
+   8589934592 NLPT-FIXTURE:NLPT-SUM  -4294967296 T= ;
 
 : TINY-CASE ( -- )
    s" four constants added a turn, against the loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-TINY-N" GONE
-   100 0 TINY= 100 1 TINY= 100 3 TINY= 100 -1 TINY= 100 -5 TINY=
-   7 5000 TINY= MIN-INT 9 TINY= MAX-INT 9 TINY= ;
+   s" NLPT-FIXTURE:NLPT-TINY" GONE
+   100 0 NLPT-FIXTURE:NLPT-TINY 100 T=
+   100 1 NLPT-FIXTURE:NLPT-TINY 104 T=
+   100 3 NLPT-FIXTURE:NLPT-TINY 112 T= ;
 
 \ Four times two to the sixty-second is two to the sixty-fourth, which wraps to
 \ nothing: the row that says the multiplication is the loop's wrapping one.
 : TINY-BIG-CASE ( -- )
    s" four constants a turn, at a trip count that wraps the product" T-LABEL
-   s" NLPT-FIXTURE:NLPT-TINY-N" GONE
-   s" NLPT-FIXTURE:NLPT-TINY-N" STILL-A-LOOP? if exit then
-   0 4611686018427387904 NLPT-FIXTURE:NLPT-TINY-N  0 T= ;
+   s" NLPT-FIXTURE:NLPT-TINY" GONE
+   s" NLPT-FIXTURE:NLPT-TINY" STILL-A-LOOP? if exit then
+   0 4611686018427387904 NLPT-FIXTURE:NLPT-TINY  0 T= ;
 
 : MANY-CASE ( -- )
    s" eight values from outside added a turn, against the loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-MANY-N" GONE
-   1 2 3 4 5 6 7 8 0 MANY=
-   1 2 3 4 5 6 7 8 1 MANY=
-   1 2 3 4 5 6 7 8 7 MANY=
-   1 2 3 4 5 6 7 8 -3 MANY=
-   1 2 3 4 5 6 7 8 1000 MANY=
-   -1 -2 -3 -4 -5 -6 -7 -8 900 MANY=
-   MIN-INT MAX-INT 3 -4 5 -6 7 -8 33 MANY= ;
+   s" NLPT-FIXTURE:NLPT-MANY" GONE
+   1 2 3 4 5 6 7 8 0 NLPT-FIXTURE:NLPT-MANY 0 T=
+   1 2 3 4 5 6 7 8 7 NLPT-FIXTURE:NLPT-MANY 252 T= ;
 
 : MIX-CASE ( -- )
    s" a value from outside, the index and a number, all three a turn" T-LABEL
-   s" NLPT-FIXTURE:NLPT-MIX-N" GONE
-   5 100 0 MIX= 5 100 1 MIX= 5 100 2 MIX= 5 100 40 MIX= 5 100 -2 MIX=
-   MIN-INT 0 7 MIX= MAX-INT 0 7 MIX= ;
+   s" NLPT-FIXTURE:NLPT-MIX" GONE
+   5 100 0 NLPT-FIXTURE:NLPT-MIX 100 T=
+   5 100 2 NLPT-FIXTURE:NLPT-MIX 117 T= ;
 
 : TWICE-CASE ( -- )
    s" the index added twice a turn, so the index term is scaled" T-LABEL
-   s" NLPT-FIXTURE:NLPT-TWICE-N" GONE
-   0 0 TWICE= 0 1 TWICE= 0 2 TWICE= 0 9 TWICE= 0 -4 TWICE= 7 500 TWICE= ;
+   s" NLPT-FIXTURE:NLPT-TWICE" GONE
+   0 0 NLPT-FIXTURE:NLPT-TWICE 0 T=
+   0 9 NLPT-FIXTURE:NLPT-TWICE 72 T= ;
 
 : FROM5-CASE ( -- )
    s" a start that is not zero" T-LABEL
-   s" NLPT-FIXTURE:NLPT-FROM5-N" GONE
-   0 5 FROM5= 0 6 FROM5= 0 7 FROM5= 0 40 FROM5= 0 4 FROM5= 0 -3 FROM5=
-   11 200 FROM5= ;
+   s" NLPT-FIXTURE:NLPT-FROM5" GONE
+   0 5 NLPT-FIXTURE:NLPT-FROM5 0 T=
+   0 7 NLPT-FIXTURE:NLPT-FROM5 11 T= ;
 
 : FROMNEG-CASE ( -- )
    s" a start below zero" T-LABEL
-   s" NLPT-FIXTURE:NLPT-FROMNEG-N" GONE
-   0 -3 FROMNEG= 0 -2 FROMNEG= 0 0 FROMNEG= 0 5 FROMNEG= 0 -9 FROMNEG=
-   11 200 FROMNEG= ;
+   s" NLPT-FIXTURE:NLPT-FROMNEG" GONE
+   0 0 NLPT-FIXTURE:NLPT-FROMNEG -6 T=
+   0 5 NLPT-FIXTURE:NLPT-FROMNEG 4 T= ;
 
 : AFTER-LOAD-CASE ( -- )
    s" a memory-free loop after a read, whose counters are no longer last" T-LABEL
-   s" NLPT-FIXTURE:NLPT-AFTER-LOAD-N" GONE
-   0 AFTER-LOAD= 1 AFTER-LOAD= 5 AFTER-LOAD= -2 AFTER-LOAD= ;
+   s" NLPT-FIXTURE:NLPT-AFTER-LOAD" GONE
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT 0 NLPT-FIXTURE:NLPT-AFTER-LOAD 100 T=
+   NLPT-FIXTURE:NLPT-AT 5 NLPT-FIXTURE:NLPT-AFTER-LOAD 105 T= ;
 
 \ ---- what the pre-header takes off the body ----------------------------------
 \ WHY A READ IN THE BODY IS NOT A REFUSAL ANY MORE. A read whose address cannot
@@ -580,24 +321,28 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ record holds the ends of the signed range so a term dropped from the sum shows.
 : LOAD-CASE ( -- )
    s" a loop that reads one cell moves the read and folds" T-LABEL
-   s" NLPT-FIXTURE:NLPT-LOAD-N" GONE
-   0 LOAD= 1 LOAD= 5 LOAD= -2 LOAD= ;
+   s" NLPT-FIXTURE:NLPT-LOAD" GONE
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT 0 NLPT-FIXTURE:NLPT-LOAD 0 T=
+   NLPT-FIXTURE:NLPT-AT 5 NLPT-FIXTURE:NLPT-LOAD 500 T= ;
 
 : FIELDS-CASE ( -- )
    s" four fields read and added a turn, the corpus row's own shape" T-LABEL
-   s" NLPT-FIXTURE:NLPT-FIELDS-N" GONE
-   0 FIELDS= 1 FIELDS= 2 FIELDS= 7 FIELDS= -2 FIELDS= ;
+   s" NLPT-FIXTURE:NLPT-FIELDS" GONE
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT 1 NLPT-FIXTURE:NLPT-FIELDS
+   -4611686018427387902 T= ;
 
 \ The trip counts no loop can be run at, stated rather than run, on the row whose
 \ reads move: the reference is the four fields NLPT-FILL wrote, summed once and
 \ multiplied by the count in wrapping sixty-four-bit arithmetic.
 : FIELDS-BIG-CASE ( -- )
    s" the moved reads answer a trip count no loop could run" T-LABEL
-   s" NLPT-FIXTURE:NLPT-FIELDS-N" STILL-A-LOOP? if exit then
+   s" NLPT-FIXTURE:NLPT-FIELDS" STILL-A-LOOP? if exit then
    NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT MAX-INT NLPT-FIXTURE:NLPT-FIELDS-N
+   NLPT-FIXTURE:NLPT-AT MAX-INT NLPT-FIXTURE:NLPT-FIELDS
    4611686018427387902 T=
-   NLPT-FIXTURE:NLPT-AT 8589934592 NLPT-FIXTURE:NLPT-FIELDS-N
+   NLPT-FIXTURE:NLPT-AT 8589934592 NLPT-FIXTURE:NLPT-FIELDS
    17179869184 T= ;
 
 \ ---- the refusals ------------------------------------------------------------
@@ -607,9 +352,10 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ sum or a product taken in the wrong width shows.
 : WIDE-CASE ( -- )
    s" fourteen fields read a turn: the corpus row, against the loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-WIDE-N" GONE
-   0 WIDE= 1 WIDE= 2 WIDE= 3 WIDE= 8 WIDE= 100 WIDE=
-   -1 WIDE= -2 WIDE= MIN-INT WIDE= ;
+   s" NLPT-FIXTURE:NLPT-WIDE" GONE
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT 1 NLPT-FIXTURE:NLPT-WIDE 5696527234175218563 T=
+   NLPT-FIXTURE:NLPT-AT 2 NLPT-FIXTURE:NLPT-WIDE -7053689605359114490 T= ;
 
 \ And the counts no loop can be run at. The sum of the fourteen cells is
 \ 5696527234175218563 as a signed cell, and the answer is that sum times the trip
@@ -617,77 +363,85 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ what any narrower or unwrapped product would give.
 : WIDE-BIG-CASE ( -- )
    s" the corpus row answers a trip count no loop could run" T-LABEL
-   s" NLPT-FIXTURE:NLPT-WIDE-N" STILL-A-LOOP? if exit then
+   s" NLPT-FIXTURE:NLPT-WIDE" STILL-A-LOOP? if exit then
    NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT MAX-INT NLPT-FIXTURE:NLPT-WIDE-N
+   NLPT-FIXTURE:NLPT-AT MAX-INT NLPT-FIXTURE:NLPT-WIDE
    3526844802679557245 T=
-   NLPT-FIXTURE:NLPT-AT 8589934592 NLPT-FIXTURE:NLPT-WIDE-N
+   NLPT-FIXTURE:NLPT-AT 8589934592 NLPT-FIXTURE:NLPT-WIDE
    915469899730518016 T= ;
 
 : VARLOAD-CASE ( -- )
    s" a read whose address the turn decides keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-VARLOAD-N" KEPT
-   0 VARLOAD= 1 VARLOAD= 2 VARLOAD= 6 VARLOAD= -2 VARLOAD= ;
+   s" NLPT-FIXTURE:NLPT-VARLOAD" KEPT
+   NLPT-FIXTURE:NLPT-FILL
+   NLPT-FIXTURE:NLPT-AT 2 NLPT-FIXTURE:NLPT-VARLOAD 93 T=
+   NLPT-FIXTURE:NLPT-AT 6 NLPT-FIXTURE:NLPT-VARLOAD -4611686018427387809 T= ;
 
 : RW-CASE ( -- )
    s" a body that reads and writes one cell keeps its loop, and its answers" T-LABEL
-   s" NLPT-FIXTURE:NLPT-RW-N" KEPT
-   0 RW= 1 RW= 2 RW= 8 RW= -2 RW=
+   s" NLPT-FIXTURE:NLPT-RW" KEPT
    NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT 8 NLPT-FIXTURE:NLPT-RW-N 135 T=
+   NLPT-FIXTURE:NLPT-AT 8 NLPT-FIXTURE:NLPT-RW 135 T=
    0 NLPT-FIXTURE:NLPT-CELL@ 5 T= ;
 
 : STORE-CASE ( -- )
    s" a loop that writes memory keeps its loop and its cells" T-LABEL
-   s" NLPT-FIXTURE:NLPT-STORE-N" KEPT
+   s" NLPT-FIXTURE:NLPT-STORE" KEPT
    NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT 8 NLPT-FIXTURE:NLPT-STORE-N 124 T=
+   NLPT-FIXTURE:NLPT-AT 8 NLPT-FIXTURE:NLPT-STORE 124 T=
    0 NLPT-FIXTURE:NLPT-CELL@ 124 T=
    1 NLPT-FIXTURE:NLPT-CELL@ -7 T=
    NLPT-FIXTURE:NLPT-FILL
-   NLPT-FIXTURE:NLPT-AT 0 NLPT-FIXTURE:NLPT-STORE-N 100 T=
+   NLPT-FIXTURE:NLPT-AT 0 NLPT-FIXTURE:NLPT-STORE 100 T=
    0 NLPT-FIXTURE:NLPT-CELL@ 100 T= ;
 
 : CALL-CASE ( -- )
    s" a loop with a call in it keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-CALL-N" KEPT
-   3 0 CALL= 3 1 CALL= 3 5 CALL= 3 -2 CALL= ;
+   s" NLPT-FIXTURE:NLPT-CALL" KEPT
+   3 0 NLPT-FIXTURE:NLPT-CALL 3 T=
+   3 1 NLPT-FIXTURE:NLPT-CALL 213 T= ;
 
 : TWO-CASE ( -- )
    s" a loop with two accumulators keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-TWO-N" KEPT
-   0 0 TWO= 0 1 TWO= 0 6 TWO= 0 -3 TWO= ;
+   s" NLPT-FIXTURE:NLPT-TWO" KEPT
+   0 0 NLPT-FIXTURE:NLPT-TWO 1 T=
+   0 6 NLPT-FIXTURE:NLPT-TWO 19 T= ;
 
 : THREE-CASE ( -- )
    s" a loop with three accumulators keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-THREE-N" KEPT
-   0 0 THREE= 0 1 THREE= 0 6 THREE= 0 -3 THREE= ;
+   s" NLPT-FIXTURE:NLPT-THREE" KEPT
+   0 0 NLPT-FIXTURE:NLPT-THREE 3 T=
+   0 6 NLPT-FIXTURE:NLPT-THREE 39 T= ;
 
 : MUL-CASE ( -- )
    s" a loop that multiplies keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-MUL-N" KEPT
-   1 0 MUL= 1 1 MUL= 1 10 MUL= 3 -1 MUL= ;
+   s" NLPT-FIXTURE:NLPT-MUL" KEPT
+   1 0 NLPT-FIXTURE:NLPT-MUL 1 T=
+   1 10 NLPT-FIXTURE:NLPT-MUL 1024 T= ;
 
 : SUB-CASE ( -- )
    s" a loop that subtracts keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-SUB-N" KEPT
-   0 0 SUB= 0 1 SUB= 0 9 SUB= 0 -4 SUB= ;
+   s" NLPT-FIXTURE:NLPT-SUB" KEPT
+   0 0 NLPT-FIXTURE:NLPT-SUB 0 T=
+   0 9 NLPT-FIXTURE:NLPT-SUB -9 T= ;
 
 : SWAPPED-CASE ( -- )
    s" the accumulator on the right of the addition keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-SWAPPED-N" KEPT
-   0 SWAPPED= 1 SWAPPED= 2 SWAPPED= 16 SWAPPED= -3 SWAPPED= ;
+   s" NLPT-FIXTURE:NLPT-SWAPPED" KEPT
+   0 NLPT-FIXTURE:NLPT-SWAPPED 0 T=
+   16 NLPT-FIXTURE:NLPT-SWAPPED 120 T= ;
 
 : DEAD-CASE ( -- )
    s" an operation no rule accounted for keeps the loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-DEAD-N" KEPT
-   0 0 DEAD= 0 1 DEAD= 0 8 DEAD= 0 -2 DEAD= ;
+   s" NLPT-FIXTURE:NLPT-DEAD" KEPT
+   0 0 NLPT-FIXTURE:NLPT-DEAD 0 T=
+   0 8 NLPT-FIXTURE:NLPT-DEAD 8 T= ;
 
 : VARSTART-CASE ( -- )
    s" a start that is not a number until the routine runs keeps the loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-VARSTART-N" KEPT
-   0 0 0 VARSTART= 0 0 1 VARSTART= 0 2 9 VARSTART= 0 -3 4 VARSTART=
-   0 5 2 VARSTART= ;
+   s" NLPT-FIXTURE:NLPT-VARSTART" KEPT
+   0 0 0 NLPT-FIXTURE:NLPT-VARSTART 0 T=
+   0 2 9 NLPT-FIXTURE:NLPT-VARSTART 35 T= ;
 
 \ The start at the top of the range, at the two limits that terminate: the limit
 \ equal to the start, where the guard skips the loop, and the smallest integer,
@@ -696,14 +450,15 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ start is refused.
 : MAXSTART-CASE ( -- )
    s" a start at the top of the range keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-MAXSTART-N" KEPT
-   0 MAX-INT MAXSTART=
-   0 MIN-INT MAXSTART= ;
+   s" NLPT-FIXTURE:NLPT-MAXSTART" KEPT
+   0 MAX-INT NLPT-FIXTURE:NLPT-MAXSTART 0 T=
+   0 MIN-INT NLPT-FIXTURE:NLPT-MAXSTART MAX-INT T= ;
 
 : UNTIL-CASE ( -- )
    s" a loop that is not counted keeps its loop" T-LABEL
-   s" NLPT-FIXTURE:NLPT-UNTIL-N" KEPT
-   0 UNTIL= 1 UNTIL= 5 UNTIL= -7 UNTIL= ;
+   s" NLPT-FIXTURE:NLPT-UNTIL" KEPT
+   5 NLPT-FIXTURE:NLPT-UNTIL 0 T=
+   0 NLPT-FIXTURE:NLPT-UNTIL -1 T= ;
 
 public
 

@@ -1,56 +1,11 @@
-\ native-do.f - the plain `do`, run against the engine's own `do`.
-\ One concern: the counted loop opened by `do` rather than by `?do`.
-\
-\ WHAT HAS TO BE PROVED AND WHY A SHAPE ASSERTION CANNOT DO IT. `do` and `?do`
-\ differ in one place only - `?do` skips the whole loop when the limit equals the
-\ start and `do` runs it once - so a suite that only counted blocks would pass
-\ against an elaborator that had built the guard for both, or for neither, as
-\ long as it built the same number of them. The difference is a NUMBER the loop
-\ answers, so every case here is DIFFERENTIAL: the same source text compiled
-\ twice, once by the engine's own emitter and once by the native chain, run
-\ against each other on pinned inputs. test/compiler/native-elaborate.f
-\ SUMTO-DO-CASE holds the block shape; this file holds the arithmetic.
-\
-\ AND EVERY CASE RUNS BOTH OPENERS, WHICH IS WHAT MAKES THE GUARD FALSIFIABLE.
-\ At a limit that equals the start the two words answer differently - one turn
-\ against none - so each pair of rows below is a fixture that TELLS THEM APART.
-\ A change that gave `do` a guard, or took `?do`'s away, moves exactly one of the
-\ two and the case reds; a fixture that only used unequal pairs would pass under
-\ both and prove nothing about the one rule that separates them.
-\
-\ THE PAIRS ARE CHOSEN, NOT SAMPLED. Equal limit and start is the guard's own
-\ case; adjacent ones on both sides say which way round the test at `loop` goes;
-\ a limit BELOW the start is the case a reader expects to run no turns and which
-\ really runs one, because the test comes after the body and the first increment
-\ is already past; and the ends of the signed range are where the wrapping the
-\ loop does is most likely to disagree with arithmetic that is right for small
-\ numbers.
-\
-\ ONE PAIR IS DELIBERATELY ABSENT: limit and start both the LARGEST integer. The
-\ engine's `?do` skips it, but a `do` runs the body and then wraps `index + 1`
-\ round to the smallest integer, which IS below the limit, so the loop goes round
-\ almost the whole integer range. That is the engine's own behaviour and the
-\ chain agrees with it; what neither can do is finish, so it is written down here
-\ rather than run. Every pair below terminates in at most twenty-five turns.
-\
-\ THE LOOPS ARE STILL THERE, AND THAT IS ASSERTED. src/compiler/native/loop.f
-\ rewrites a counted loop into its closed form, and it refuses any loop whose
-\ pre-header is not entered from a guard testing `limit - start` - which is
-\ exactly what a plain `do` does not have. So a `do` loop keeps its back edge
-\ today, and the rows below say so through tools/codegen-loop-inventory.f. It is
-\ not a requirement that it stay that way: a lane that teaches that pass the
-\ do-while trip count would move these rows, and this is where the move is
-\ recorded.
+\ native-do.f - production plain `do` compilation.
 
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
-\ ---- the engine's compilation: the reference ---------------------------------
-\ Ordinary definitions. bin/hb compiles these with the emitter it has always
-\ used, which really runs every turn of every one of them.
 package NDO-FIXTURE
 
 public
@@ -100,68 +55,6 @@ public
 
 ;package
 
-\ ---- the chain's compilation: the subject ------------------------------------
-\ The same texts, character for character but for the fixture suffix on each
-\ name, compiled through the production migration entry.
-package NDO-MIGRATED
-
-private
-
-: TURNS ( -- )
-   s" : NDO-TURNS-N ( n n -- n ) {: lim:n st:n :} 0 lim st do 1 + loop ;"
-   NMIGRATE:DEFINE ;
-
-: QTURNS ( -- )
-   s" : NDO-QTURNS-N ( n n -- n ) {: lim:n st:n :} 0 lim st ?do 1 + loop ;"
-   NMIGRATE:DEFINE ;
-
-: SUM ( -- )
-   s" : NDO-SUM-N ( n n -- n ) {: lim:n st:n :} 0 lim st do i + loop ;"
-   NMIGRATE:DEFINE ;
-
-: QSUM ( -- )
-   s" : NDO-QSUM-N ( n n -- n ) {: lim:n st:n :} 0 lim st ?do i + loop ;"
-   NMIGRATE:DEFINE ;
-
-: NEST ( -- )
-   s" : NDO-NEST-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 do i + loop loop ;"
-   NMIGRATE:DEFINE ;
-
-: DOQ ( -- )
-   s" : NDO-DOQ-N ( n n -- n ) {: a:n b:n :} 0 a 0 do b 0 ?do i + loop loop ;"
-   NMIGRATE:DEFINE ;
-
-: QDO ( -- )
-   s" : NDO-QDO-N ( n n -- n ) {: a:n b:n :} 0 a 0 ?do b 0 do i + loop loop ;"
-   NMIGRATE:DEFINE ;
-
-: CALLEE ( -- )
-   s" : NDO-CALLEE-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   NMIGRATE:DEFINE ;
-
-: CALL ( -- )
-   s" : NDO-CALL-N ( n n -- n ) {: seed:n len:n :} seed len 0 do NDO-CALLEE-N loop ;"
-   NMIGRATE:DEFINE ;
-
-: LOCAL ( -- )
-   s" : NDO-LOCAL-N ( n n n -- n ) {: k:n seed:n len:n :} seed len 0 do NDO-CALLEE-N k + loop ;"
-   NMIGRATE:DEFINE ;
-
-public
-
-: RUN ( -- )
-   TURNS QTURNS SUM QSUM NEST DOQ QDO
-   CALLEE CALL LOCAL ;
-
-;package
-
-package NDO-FIXTURE
-public
-
-NDO-MIGRATED:RUN
-
-;package
-
 package NDO-TEST
 
 private
@@ -185,76 +78,55 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : KEPT2 ( ptr u8 n -- )
    LOOPS-IN 2 T= ;
 
-\ ---- the differentials -------------------------------------------------------
-: TURNS= ( n n -- ) {: lim:n st:n :}
-   lim st NDO-FIXTURE:NDO-TURNS   lim st NDO-FIXTURE:NDO-TURNS-N   T=
-   lim st NDO-FIXTURE:NDO-QTURNS  lim st NDO-FIXTURE:NDO-QTURNS-N  T= ;
-
-: SUM= ( n n -- ) {: lim:n st:n :}
-   lim st NDO-FIXTURE:NDO-SUM   lim st NDO-FIXTURE:NDO-SUM-N   T=
-   lim st NDO-FIXTURE:NDO-QSUM  lim st NDO-FIXTURE:NDO-QSUM-N  T= ;
-
-: NEST= ( n n -- ) {: a:n b:n :}
-   a b NDO-FIXTURE:NDO-NEST  a b NDO-FIXTURE:NDO-NEST-N  T= ;
-
-: DOQ= ( n n -- ) {: a:n b:n :}
-   a b NDO-FIXTURE:NDO-DOQ  a b NDO-FIXTURE:NDO-DOQ-N  T=
-   a b NDO-FIXTURE:NDO-QDO  a b NDO-FIXTURE:NDO-QDO-N  T= ;
-
-: CALL= ( n n -- ) {: seed:n len:n :}
-   seed len NDO-FIXTURE:NDO-CALL  seed len NDO-FIXTURE:NDO-CALL-N  T= ;
-
-: LOCAL= ( n n n -- ) {: k:n seed:n len:n :}
-   k seed len NDO-FIXTURE:NDO-LOCAL  k seed len NDO-FIXTURE:NDO-LOCAL-N  T= ;
-
-\ THE WRAPPING PAIR STATES ITS OWN PRECONDITION AND STOPS IF IT IS FALSE, which
-\ is not a skip: the precondition IS an assertion and it fails loudly first. At
-\ limit = the smallest integer and start = the largest, the body runs once and
-\ `index + 1` wraps to a value that is not below the limit, so the loop stops
-\ after one turn. A chain that had the index and the limit the other way round
-\ would there ask the machine for two to the sixty-fourth turns, and a gate that
-\ hangs is worse than one that fails - so the two smallest pairs that tell the
-\ counters apart are checked first. Measured: exchanging the two in DO-ENTER
-\ turns this pair into a loop that does not come back.
-: COUNTERS-AGREE? ( -- bool )
-   5 0 NDO-FIXTURE:NDO-TURNS  5 0 NDO-FIXTURE:NDO-TURNS-N  =
-   0 5 NDO-FIXTURE:NDO-TURNS  0 5 NDO-FIXTURE:NDO-TURNS-N  =  and ;
-
 \ ---- the cases ---------------------------------------------------------------
-\ THE EQUAL PAIRS ARE THE POINT OF THIS CASE. At every one of them the `do` row
-\ answers one turn and the `?do` row answers none, and both rows are compared
-\ against the engine, so neither an elaborator that guarded `do` nor one that
-\ stopped guarding `?do` gets through. The unequal pairs say the two agree
-\ everywhere else, which is the other half of "the same loop minus the guard".
 : TURNS-CASE ( -- )
-   s" a plain do runs one turn where ?do runs none, and agrees elsewhere" T-LABEL
-   s" NDO-FIXTURE:NDO-TURNS-N" KEPT
-   s" NDO-FIXTURE:NDO-QTURNS-N" KEPT
-   0 0 TURNS=  5 5 TURNS=  -1 -1 TURNS=  MIN-INT MIN-INT TURNS=
-   1 0 TURNS=  5 0 TURNS=  0 1 TURNS=  0 5 TURNS=
-   -3 -5 TURNS=  5 -5 TURNS=
-   MIN-INT 1+ MIN-INT TURNS=
-   COUNTERS-AGREE? dup TTRUE 0= if exit then
-   MIN-INT MAX-INT TURNS= ;
+   s" plain do runs once at equal bounds while ?do skips" T-LABEL
+   s" NDO-FIXTURE:NDO-TURNS" KEPT
+   s" NDO-FIXTURE:NDO-QTURNS" KEPT
+   0 0 NDO-FIXTURE:NDO-TURNS 1 T=
+   0 0 NDO-FIXTURE:NDO-QTURNS 0 T=
+   5 5 NDO-FIXTURE:NDO-TURNS 1 T=
+   5 5 NDO-FIXTURE:NDO-QTURNS 0 T=
+   -1 -1 NDO-FIXTURE:NDO-TURNS 1 T=
+   -1 -1 NDO-FIXTURE:NDO-QTURNS 0 T=
+
+   s" unequal and signed-wrap bounds keep their exact turn counts" T-LABEL
+   5 0 NDO-FIXTURE:NDO-TURNS 5 T=
+   5 0 NDO-FIXTURE:NDO-QTURNS 5 T=
+   0 1 NDO-FIXTURE:NDO-TURNS 1 T=
+   0 1 NDO-FIXTURE:NDO-QTURNS 1 T=
+   -3 -5 NDO-FIXTURE:NDO-TURNS 2 T=
+   -3 -5 NDO-FIXTURE:NDO-QTURNS 2 T=
+   MIN-INT MAX-INT NDO-FIXTURE:NDO-TURNS 1 T=
+   MIN-INT MAX-INT NDO-FIXTURE:NDO-QTURNS 1 T= ;
 
 \ The same pairs read through the indices the body sees rather than a count, so a
 \ loop that ran the right number of turns from the wrong index would still be
 \ caught: the one-turn cases answer the START, and the engine's `?do` answers
 \ zero where its `do` answers that start.
 : SUM-CASE ( -- )
-   s" the indices a plain do visits are the engine's" T-LABEL
-   s" NDO-FIXTURE:NDO-SUM-N" KEPT
-   s" NDO-FIXTURE:NDO-QSUM-N" KEPT
-   0 0 SUM=  5 5 SUM=  -1 -1 SUM=
-   1 0 SUM=  5 0 SUM=  0 1 SUM=  0 5 SUM=
-   -3 -5 SUM=  5 -5 SUM=
-   COUNTERS-AGREE? dup TTRUE 0= if exit then
-   MIN-INT MAX-INT SUM= ;
+   s" equal-bound loops expose do's single index and ?do's skip" T-LABEL
+   s" NDO-FIXTURE:NDO-SUM" KEPT
+   s" NDO-FIXTURE:NDO-QSUM" KEPT
+   5 5 NDO-FIXTURE:NDO-SUM 5 T=
+   5 5 NDO-FIXTURE:NDO-QSUM 0 T=
+   -1 -1 NDO-FIXTURE:NDO-SUM -1 T=
+   -1 -1 NDO-FIXTURE:NDO-QSUM 0 T=
+
+   s" ordinary and wrap-bound loops expose the exact visited indices" T-LABEL
+   5 0 NDO-FIXTURE:NDO-SUM 10 T=
+   5 0 NDO-FIXTURE:NDO-QSUM 10 T=
+   0 1 NDO-FIXTURE:NDO-SUM 1 T=
+   0 1 NDO-FIXTURE:NDO-QSUM 1 T=
+   -3 -5 NDO-FIXTURE:NDO-SUM -9 T=
+   -3 -5 NDO-FIXTURE:NDO-QSUM -9 T=
+   MIN-INT MAX-INT NDO-FIXTURE:NDO-SUM MAX-INT T=
+   MIN-INT MAX-INT NDO-FIXTURE:NDO-QSUM MAX-INT T= ;
 
 : NEST-CASE ( -- )
    s" two plain do loops nest and the index is the inner one's" T-LABEL
-   s" NDO-FIXTURE:NDO-NEST-N" KEPT2
-   0 0 NEST=  1 1 NEST=  5 5 NEST=  3 4 NEST=  -2 3 NEST=  4 -2 NEST= ;
+   s" NDO-FIXTURE:NDO-NEST" KEPT2
+   2 3 NDO-FIXTURE:NDO-NEST 6 T= ;
 
 \ THE TWO ROWS KEEP DIFFERENT NUMBERS OF LOOPS, AND THE DIFFERENCE IS THE FOLD'S
 \ OWN PRECONDITION. With the `?do` INSIDE, the inner loop still has the guard
@@ -266,9 +138,10 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ sound.
 : DOQ-CASE ( -- )
    s" the two openers nest inside each other" T-LABEL
-   s" NDO-FIXTURE:NDO-DOQ-N" KEPT
-   s" NDO-FIXTURE:NDO-QDO-N" KEPT2
-   0 0 DOQ=  1 1 DOQ=  5 5 DOQ=  3 4 DOQ=  -2 3 DOQ=  4 -2 DOQ= ;
+   s" NDO-FIXTURE:NDO-DOQ" KEPT
+   s" NDO-FIXTURE:NDO-QDO" KEPT2
+   2 3 NDO-FIXTURE:NDO-DOQ 6 T=
+   2 3 NDO-FIXTURE:NDO-QDO 6 T= ;
 
 \ A call in the body makes the loop's two counters travel as operands of every
 \ edge instead of being defined once in the header, which is the seam a plain
@@ -276,14 +149,15 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ block the `do` stands in rather than in a pre-header of its own.
 : CALL-CASE ( -- )
    s" a call in a plain do body carries the counters" T-LABEL
-   s" NDO-FIXTURE:NDO-CALL-N" KEPT
-   0 0 CALL=  0 1 CALL=  7 3 CALL=  -5 4 CALL=  9 -1 CALL= ;
+   s" NDO-FIXTURE:NDO-CALL" KEPT
+   7 3 NDO-FIXTURE:NDO-CALL 823165 T=
+   -5 4 NDO-FIXTURE:NDO-CALL -18880643 T= ;
 
 : LOCAL-CASE ( -- )
    s" a bound local crosses a plain do body beside the counters" T-LABEL
-   s" NDO-FIXTURE:NDO-LOCAL-N" KEPT
-   0 0 0 LOCAL=  3 0 1 LOCAL=  -4 7 3 LOCAL=  11 -5 4 LOCAL=
-   2 9 -1 LOCAL= ;
+   s" NDO-FIXTURE:NDO-LOCAL" KEPT
+   -4 7 3 NDO-FIXTURE:NDO-LOCAL 816105 T=
+   11 -5 4 NDO-FIXTURE:NDO-LOCAL -17555892 T= ;
 
 public
 

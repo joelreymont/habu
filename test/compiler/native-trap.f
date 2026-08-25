@@ -1,23 +1,4 @@
 \ native-trap.f - checked tests for the terminator that does not return.
-\
-\ Proves the contract of src/compiler/native/trap.f and of the hir.trap and
-\ a64.trap forms it exists for: a family name becomes a stable ordinal, that
-\ ordinal becomes the exact diagnostic the engine's own MATCH writes, a block
-\ ending in hir.trap goes through the whole chain, a routine that returns AND
-\ traps is no longer refused, a routine whose every path traps publishes with no
-\ return convention at all, and two trapping routines branch to ONE address.
-\
-\ WHY THE SHAPES ARE BUILT INTO HIR BY HAND. No dialect construct stages a trap
-\ yet - MATCH's mismatch edge is the first consumer and it is a later leaf - so
-\ these build the source module the way test/compiler/native-select.f and
-\ test/compiler/native-regalloc.f build theirs, and run it through the real
-\ A64SEL:SELECT, A64RA:ALLOCATE, A64RAV:ACCEPT and A64EMIT:EMIT by way of the
-\ shared back-half fixture. Nothing here re-implements a stage.
-\
-\ AND WHY THE SHARED-TARGET CASE READS THE EMITTED BYTES. "Emitted once
-\ tree-wide" is a claim about two routines, so it cannot be read off one of them:
-\ the two are compiled separately and the ADDRESS each branch resolves to is
-\ recovered from the instruction, which is the only place the claim is decidable.
 
 require lib/test.f
 require lib/string.f
@@ -26,7 +7,7 @@ require lib/process-argv.f
 require lib/engine-candidate.f
 require test/compiler/native-chain-fixture.f
 require src/compiler/native/publish.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 
 package NTRAP-TEST
 private
@@ -439,7 +420,7 @@ public
    dup + ;
 
 \ A word the CHECKER certifies never returns, because its own body ends in a
-\ throw. The migrated forge below republishes it with a routine that DOES return
+\ throw. The compiled forge below republishes it with a routine that DOES return
 \ and then compiles a caller against the certificate, which is the only way to
 \ make the certificate false: nothing a checked program can write reaches the
 \ instruction after a dead call.
@@ -492,7 +473,7 @@ private
 \ process ends with the callee's name and ENGINE-ERROR:CODE-CERT.
 
 TRUSTED: MIG ( ptr u8 n -- )
-   NMIGRATE:DEFINE ;
+   EV ;
 
 : NORET-RET-BODY ( IR-CTX:ctx -- )
    HIR-MOD
@@ -609,7 +590,7 @@ variable CHILD-MODE-N
 \ message and the status. This proves the SITE, in the shape the elaborator
 \ really builds it - a call the checker certified never returns, with the trap
 \ standing after it - reached because the certificate was made false first. The
-\ caller is compiled by the migration from source, published, and called.
+\ caller is compiled by the compilation from source, published, and called.
 \
 \ THE NAME IN THE MESSAGE IS THE DICTIONARY'S SPELLING AND NOT THE SOURCE'S. A
 \ trap row is keyed on the symbol the tape recorded for the token, and the
@@ -628,21 +609,21 @@ variable CHILD-MODE-N
    s" and it is not the bad-tag diagnostic" T-LABEL
    CHILD-ERR$ s" bad" CONTAINS? TFALSE ;
 
-\ ---- what a migrated all-dead routine is as bytes ----------------------------
+\ ---- what a compiled all-dead routine is as bytes ----------------------------
 \ The contract says no frame and no saved return address; this is that read off
-\ the emission the migration sealed. A routine's own frame costs one instruction
+\ the emission the compilation sealed. A routine's own frame costs one instruction
 \ that moves the machine stack pointer at each end, and this one moves it
 \ nowhere - which is what dropping the reserve and the link save IS - while the
 \ data-stack pointer still moves, so a routine that emitted nothing at all
 \ would not pass either.
 
 TRUSTED: BYTES-MIG ( ptr u8 n -- )
-   NMIGRATE:DEFINE ;
+   EV ;
 
 : MIG-DEAD-BYTES-CASE ( -- )
    s" : NTB ( n -- ) drop E-A-EMPTY throw ;" BYTES-MIG
 
-   s" a migrated all-dead routine moves the machine stack pointer nowhere"
+   s" a compiled all-dead routine moves the machine stack pointer nowhere"
    T-LABEL
    SPMOVES-IN-EMISSION 0 T=
 
@@ -662,11 +643,11 @@ TRUSTED: BYTES-MIG ( ptr u8 n -- )
 \ The callee is a word the ENGINE compiled, so the chain has no recorded body to
 \ copy into this one and the call really is a call - which is what the count is
 \ about, and what would have to be re-chosen if a copied body ever came from
-\ somewhere other than a migration.
+\ somewhere other than a compilation.
 : MIG-CALL-BYTES-CASE ( -- )
    s" : NTC ( n -- n ) NTRAP-TEST:TRAP-VICTIM 1 + ;" BYTES-MIG
 
-   s" a migrated routine that calls and returns moves it twice" T-LABEL
+   s" a compiled routine that calls and returns moves it twice" T-LABEL
    SPMOVES-IN-EMISSION 2 T=
 
    s" and ends in the return the other one has nowhere for" T-LABEL

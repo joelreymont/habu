@@ -20,7 +20,7 @@
 \ and no move-wide chain has to be decoded to learn the address.
 \
 \ Run it in any engine and diff two outputs by name and wid:
-\   printf 'require tools/data-residue-census.f\nrequire src/compiler/native/migrate.f\nDATA-RESIDUE:CENSUS\n' | bin/hb
+\   printf 'require tools/data-residue-census.f\nrequire src/compiler/native/compiler.f\nDATA-RESIDUE:CENSUS\n' | bin/hb
 \   printf 'require tools/data-residue-census.f\nDATA-RESIDUE:CENSUS\n' | <merged-engine>
 \ Each row is three lines: the name, the wordlist, the address modulo eight.
 

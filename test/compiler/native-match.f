@@ -1,47 +1,4 @@
-\ native-match.f - `MATCH`, `case` and `construct` through the whole chain, from
-\ source text to executed machine code.
-\
-\     bin/hb --load test/compiler/native-match.f
-\     bin/hb --load test/compiler/native-match.f -- forge   (the trap's own half)
-\
-\ WHAT IS UNDER TEST. A value of a sum family is W flat cells with its tag on
-\ top, so a dispatch over it is a chain of ordinary comparisons and the chain
-\ already had every operation one needs. src/compiler/native/elaborate.f reads
-\ the family and variant tokens with a pre-pass that mirrors the token machine
-\ the engine and the checker already run, and builds each arm as a test block, a
-\ mismatch edge and a body; the last arm's mismatch edge ends in the trap
-\ terminator, and `construct` is the two constant pushes that turn a payload into
-\ a value of its family.
-\
-\ NOTHING HERE IS A MODEL OF THE CHAIN. Every case states one body TWICE - once
-\ for the ENGINE to compile as an ordinary definition, and once as source handed
-\ to NMIGRATE:DEFINE, which compiles it through every stage and publishes the
-\ chain's code under a second name - and then executes both on the same inputs
-\ and compares what they answer. An expected-value table would have been written
-\ from whichever of the two its author trusted; comparing the two makes the
-\ ENGINE the authority and needs nobody to be right about anything. That is
-\ test/compiler/native-rename-rows.f's discipline and this file keeps it.
-\
-\ WHY THE ADVERSARIAL CASES ASSERT WHOSE REFUSAL IT IS. A non-exhaustive
-\ dispatch, a duplicate variant, a family that is not a family, a variant token
-\ with no `of` after it and a stray `;match` are all refused by the CHECKER,
-\ before the chain is handed anything - so what those cases prove is that the
-\ chain did not quietly accept a body its own front end never saw. Each asserts
-\ the engine's reject status AND that the elaborator recorded no refusal of its
-\ own: a case that only asserted "it did not compile" would pass if the chain
-\ refused every one of them for a reason of its own.
-\
-\ AND WHY TWO OF THEM MUST COMPILE. A pre-pass that read TEXT rather than tokens
-\ would find a family name inside a comment and inside a string literal. The tape
-\ holds what the checker's reader CONSUMED - a comment is not a token at all and
-\ a string literal is one token whose kind says so - so both bodies have to
-\ compile and answer what the engine answers, which is what those two cases are.
-\
-\ THE ARM CEILING IS MEASURED, NOT ASSUMED. Sixteen arms is the largest dispatch
-\ the chain compiles today and seventeen is refused - by the SELECTOR's own
-\ block-queue capacity, which is sized from the block ceiling every native pass
-\ shares (src/compiler/native/frozen.f BMAX). The case names that, so a change
-\ that raises the ceiling has a row to move rather than a surprise.
+\ native-match.f - production MATCH, case, and construct compilation.
 
 require lib/errors.f
 require lib/string.f
@@ -50,8 +7,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
 require lib/adt/option.f
-require src/compiler/native/migrate.f
-require src/compiler/native/publish.f
+require src/compiler/native/compiler.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
 require src/compiler/native/inline.f
@@ -548,126 +504,19 @@ private
       blue OF 3 ENDOF
    ;MATCH ;
 
-\ ---- the source the chain is given --------------------------------------------
-\ Character for character the body above it, so a difference between the two
-\ columns can only come from the two compilers and never from two programs.
-: HUE$ ( -- ptr u8 n )
-   s" : C-HUE ( hue -- n ) MATCH hue red OF 10 ENDOF green OF 20 ENDOF blue OF 30 ENDOF ;MATCH ;" ;
 
-: BOX$ ( -- ptr u8 n )
-   s" : C-BOX ( box -- n ) MATCH box nil OF 0 ENDOF one OF ENDOF two OF + ENDOF ;MATCH ;" ;
+\ ---- production-source boundary cases ----------------------------------------
 
-: UNW$ ( -- ptr u8 n )
-   s" : C-UNW ( n option<n> -- n ) MATCH option none OF ENDOF some OF nip ENDOF ;MATCH ;" ;
+TRUSTED: EV-RC ( ptr u8 n -- n )
+   [: evaluate ;] catch ;
 
-: SWAPPED$ ( -- ptr u8 n )
-   s" : C-SWAPPED ( box -- n ) MATCH box nil OF 0 ENDOF one OF ENDOF two OF swap - ENDOF ;MATCH ;" ;
-
-: HOLD$ ( -- ptr u8 n )
-   s" : C-HOLD ( n holder -- n ) MATCH holder empty OF ENDOF full OF NMX-PT:UNMAKE + + ENDOF ;MATCH ;" ;
-
-: QUAD$ ( -- ptr u8 n )
-   s" : C-QUAD ( quad -- n ) MATCH quad q0 OF 1 ENDOF q1 OF 2 ENDOF q2 OF 3 ENDOF q3 OF 4 ENDOF ;MATCH ;" ;
-
-: STEP$ ( -- ptr u8 n )
-   s" : C-STEP ( step -- n ) MATCH step p0 OF 100 ENDOF p1 OF 101 ENDOF p2 OF 102 ENDOF p3 OF 103 ENDOF p4 OF 104 ENDOF p5 OF 105 ENDOF p6 OF 106 ENDOF ;MATCH ;" ;
-
-: WIDE$ ( -- ptr u8 n )
-   s" : C-WIDE ( wide -- n ) MATCH wide w0 OF 200 ENDOF w1 OF 201 ENDOF w2 OF 202 ENDOF w3 OF 203 ENDOF w4 OF 204 ENDOF w5 OF 205 ENDOF w6 OF 206 ENDOF w7 OF 207 ENDOF w8 OF 208 ENDOF w9 OF 209 ENDOF w10 OF 210 ENDOF w11 OF 211 ENDOF w12 OF 212 ENDOF w13 OF 213 ENDOF w14 OF 214 ENDOF w15 OF 215 ENDOF ;MATCH ;" ;
+: TRY ( ptr u8 n -- n )
+   NELAB:REFUSED-RESET
+   EV-RC ;
 
 : OVER$ ( -- ptr u8 n )
    s" : C-OVER ( over -- n ) MATCH over v0 OF 300 ENDOF v1 OF 301 ENDOF v2 OF 302 ENDOF v3 OF 303 ENDOF v4 OF 304 ENDOF v5 OF 305 ENDOF v6 OF 306 ENDOF v7 OF 307 ENDOF v8 OF 308 ENDOF v9 OF 309 ENDOF v10 OF 310 ENDOF v11 OF 311 ENDOF v12 OF 312 ENDOF v13 OF 313 ENDOF v14 OF 314 ENDOF v15 OF 315 ENDOF v16 OF 316 ENDOF ;MATCH ;" ;
 
-: CASE$ ( -- ptr u8 n )
-   s" : C-CASE ( n -- n ) case 1 of 10 endof 2 of 20 endof 99 swap endcase ;" ;
-
-: INST$ ( -- ptr u8 n )
-   s" : C-INST ( option<pt> -- n ) MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF ;MATCH ;" ;
-
-: INST3$ ( -- ptr u8 n )
-   s" : C-INST3 ( option<pt3> -- n ) MATCH option none OF 0 ENDOF some OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF ;MATCH ;" ;
-
-: TWOW$ ( -- ptr u8 n )
-   s" : C-TWOW ( n -- n ) dup E-MKI3 MATCH option none OF 0 ENDOF some OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF ;MATCH swap E-MKI MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE 7 * swap 13 * + ENDOF ;MATCH + ;" ;
-
-: STRINST$ ( -- ptr u8 n )
-   S\" : C-STRINST ( n -- n ) s\" MATCH option some OF ;MATCH\" 2drop E-MKI MATCH option none OF 0 ENDOF some OF NMX-PT:UNMAKE 7 * swap 11 * + ENDOF ;MATCH ;" ;
-
-: TRIO$ ( -- ptr u8 n )
-   s" : C-TRIO ( trio -- n ) MATCH trio t0 OF 0 ENDOF t1 OF 3 * ENDOF t3 OF 5 * swap 11 * + swap 17 * + ENDOF ;MATCH ;" ;
-
-: ARMIF$ ( -- ptr u8 n )
-   s" : C-ARMIF ( trio -- n ) MATCH trio t0 OF 0 ENDOF t1 OF dup 0 > if 3 * else 5 * then ENDOF t3 OF over 0 > if 7 * else 11 * then swap 13 * + swap 17 * + ENDOF ;MATCH ;" ;
-
-: ARMLOOP$ ( -- ptr u8 n )
-   s" : C-ARMLOOP ( trio -- n ) MATCH trio t0 OF 0 ENDOF t1 OF 3 * ENDOF t3 OF 3 0 ?do over i * + loop nip swap 5 * + ENDOF ;MATCH ;" ;
-
-: HOLD3$ ( -- ptr u8 n )
-   s" : C-HOLD3 ( hold3 -- n ) MATCH hold3 empty3 OF 0 ENDOF full3 OF NMX-PT3:UNMAKE 5 * swap 11 * + swap 17 * + ENDOF ;MATCH ;" ;
-
-\ ---- and the source for the constructions -------------------------------------
-: MKI$ ( -- ptr u8 n )
-   s" : C-MKI ( n -- option<pt> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then ;" ;
-
-: MKI3$ ( -- ptr u8 n )
-   s" : C-MKI3 ( n -- option<pt3> ) dup 0 > if dup 3 * over 5 * rot 7 * NMX-PT3:MAKE OPTION:SOME else drop OPTION:NONE then ;" ;
-
-: MKC$ ( -- ptr u8 n )
-   s" : C-MKC ( n -- opt2<pt> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE construct opt2 s2 else drop construct opt2 n2 then ;" ;
-
-: RELAY$ ( -- ptr u8 n )
-   s" : C-RELAY ( option<pt> -- option<pt3> ) MATCH option none OF OPTION:NONE ENDOF some OF NMX-PT:UNMAKE over 3 * NMX-PT3:MAKE OPTION:SOME ENDOF ;MATCH ;" ;
-
-: LOOPC$ ( -- ptr u8 n )
-   s" : C-LOOPC ( n -- option<pt> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then 3 0 ?do E-INST i + dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then loop ;" ;
-
-: STRCON$ ( -- ptr u8 n )
-   S\" : C-STRCON ( n -- option<pt> ) s\" OPTION:NONE construct opt2 n2\" 2drop dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE OPTION:SOME else drop OPTION:NONE then ;" ;
-
-: TWOC$ ( -- ptr u8 n )
-   s" : C-TWOC ( -- option<pt> opt2<pt3> ) OPTION:NONE construct opt2 n2 ;" ;
-
-: MKG$ ( -- ptr u8 n )
-   s" : C-MKG ( n -- grow<pt> ) dup 3 * swap 5 * NMX-PT:MAKE NMX-GROW:G1 ;" ;
-
-: MKGC$ ( -- ptr u8 n )
-   s" : C-MKGC ( n -- grow<pt> ) dup 3 * swap 5 * NMX-PT:MAKE construct grow g1 ;" ;
-
-: MKP$ ( -- ptr u8 n )
-   s" : C-MKP ( n -- pair<pt,pt3> ) dup 0 > if dup 3 * swap 5 * NMX-PT:MAKE NMX-PAIR:LO else dup 3 * over 5 * rot 7 * NMX-PT3:MAKE NMX-PAIR:HI then ;" ;
-
-: MK$ ( -- ptr u8 n )
-   s" : C-MK ( n -- box ) construct box one ;" ;
-
-: MK2$ ( -- ptr u8 n )
-   s" : C-MK2 ( n n -- box ) construct box two ;" ;
-
-: MK0$ ( -- ptr u8 n )
-   s" : C-MK0 ( -- box ) construct box nil ;" ;
-
-: DEAD$ ( -- ptr u8 n )
-   s" : C-DEAD ( hue -- n ) MATCH hue red OF 1 ENDOF green OF E-A-EMPTY throw ENDOF blue OF 3 ENDOF ;MATCH ;" ;
-
-: CMT$ ( -- ptr u8 n )
-   s" : C-CMT ( hue -- n ) MATCH hue red OF 1 ENDOF green OF ( hue blue OF ENDOF ;MATCH ) 2 ENDOF blue OF 3 ENDOF ;MATCH ;" ;
-
-: STR$ ( -- ptr u8 n )
-   S\" : C-STR ( hue -- n ) MATCH hue red OF s\" MATCH hue blue OF ENDOF ;MATCH\" 2drop 1 ENDOF green OF 2 ENDOF blue OF 3 ENDOF ;MATCH ;" ;
-
-\ ---- the two bodies the CHAIN refuses, and what each one binds -----------------
-\ A rename over an arm's payload is decided by whether that payload's cells are
-\ one VALUE, and the registry answers it by counting: a payload of two fields is
-\ two cells and two values, a payload of one field whose type is a product is two
-\ cells and ONE value. Both bodies below are well typed - the checker moves a
-\ whole bundle for a `drop` exactly as it moves one cell - so the chain is the
-\ only thing that can tell them apart, and it must: dropping one CELL of a
-\ two-cell value leaves half of it on the stack with every count still agreeing.
-: DROPPED$ ( -- ptr u8 n )
-   s" : C-DROPPED ( n holder -- n ) MATCH holder empty OF ENDOF full OF drop ENDOF ;MATCH ;" ;
-
-\ ---- the bodies the CHECKER refuses -------------------------------------------
-\ Every one of these is rejected before the chain is handed anything. They are
-\ written only as source, because a file containing them could not be compiled.
 : NONEXH$ ( -- ptr u8 n )
    s" : C-NONEXH ( hue -- n ) MATCH hue red OF 1 ENDOF green OF 2 ENDOF ;MATCH ;" ;
 
@@ -686,96 +535,58 @@ private
 : STRAY$ ( -- ptr u8 n )
    s" : C-STRAY ( n -- n ) 1 + ;match ;" ;
 
-\ ---- the two sides of the checker's dispatch-row ceiling ---------------------
-\ The checker files one row per `MATCH` family token and one per arm, and it
-\ records that it overflowed rather than dropping rows in silence - a dropped
-\ arm row would be indistinguishable from an arm with nothing to say, and the
-\ chain would then unpack that arm against a pad count nobody proved. So one
-\ overflow makes every query answer absent and the whole body is refused by
-\ name.
-\
-\ TWELVE SINGLE-ARM DISPATCHES IS TWENTY-FOUR ROWS, which is exactly the table,
-\ and thirteen is twenty-six. Both fit the recorder's 512-byte text cap (459 and
-\ 496 bytes) and its 128-token tape, so the pair straddles the ceiling with
-\ nothing else refusing either side: the first compiles and the second is
-\ refused by the table. Fourteen would be 517 bytes and the recorder's own cap
-\ would answer first, which is why the pair is where it is.
 : ROWS24$ ( -- ptr u8 n )
    s" : C-ROWS24 ( -- n ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + MS MATCH sol ov OF 23 ENDOF ;MATCH + ;" ;
 
 : ROWS26$ ( -- ptr u8 n )
    s" : C-ROWS26 ( -- n ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + MS MATCH sol ov OF 23 ENDOF ;MATCH + MS MATCH sol ov OF 25 ENDOF ;MATCH + ;" ;
 
-\ ---- and the two sides of that ceiling for a CONSTRUCTION ---------------------
-\ THE TWO KINDS OF READER MEET THE FULL TABLE DIFFERENTLY, and this pair is what
-\ says so. A dispatch token's reader refuses the body when its row was dropped,
-\ because a token it has already recognised as a dispatch operand must have a
-\ number. A construction files a row only when its instantiation really adds
-\ cells, so ABSENT has to mean "adds nothing" - it is the answer for every
-\ construction of a family that is not parametric and for every call that is not a
-\ construction at all - and a dropped construction row therefore reads as zero and
-\ the site is lowered one bundle short.
-\
-\ THAT IS STILL NOT A WRONG PROGRAM, AND THIS PAIR IS THE PROOF. The missing cells
-\ are CONSERVED: every count the elaborator makes afterwards is against the width
-\ the checker instantiated, so the deficit reaches the definition's own declared
-\ output and is refused there by name. Eleven single-arm dispatches leave room for
-\ the construction's row and the body compiles and answers; twelve fill the table,
-\ the construction's row is dropped, and the body is refused for leaving the wrong
-\ number of cells. Both are inside the recorder's 512-byte text cap (451 and 489
-\ bytes, measured) and its 128-token tape, so nothing else refuses either side.
 : CONFIT$ ( -- ptr u8 n )
    s" : C-CONFIT ( -- option<pt> ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + drop OPTION:NONE ;" ;
 
 : CONOVER$ ( -- ptr u8 n )
    s" : C-CONOVER ( -- option<pt> ) 0 MS MATCH sol ov OF 1 ENDOF ;MATCH + MS MATCH sol ov OF 3 ENDOF ;MATCH + MS MATCH sol ov OF 5 ENDOF ;MATCH + MS MATCH sol ov OF 7 ENDOF ;MATCH + MS MATCH sol ov OF 9 ENDOF ;MATCH + MS MATCH sol ov OF 11 ENDOF ;MATCH + MS MATCH sol ov OF 13 ENDOF ;MATCH + MS MATCH sol ov OF 15 ENDOF ;MATCH + MS MATCH sol ov OF 17 ENDOF ;MATCH + MS MATCH sol ov OF 19 ENDOF ;MATCH + MS MATCH sol ov OF 21 ENDOF ;MATCH + MS MATCH sol ov OF 23 ENDOF ;MATCH + drop OPTION:NONE ;" ;
 
-\ ---- the construction the CHECKER must go on refusing -------------------------
-\ `narrow<pt3>` reserves three payload slots where its declaration reserved two,
-\ and its `p1` variant fills all three - so where the declaration left one pad the
-\ instantiation leaves none, and a lowering that can only ADD cells would emit a
-\ pad the certified width does not have. The checker refuses it for both
-\ spellings, before the chain is handed anything. It is the one sign of the
-\ difference this lane publishes that must never reach an emitter, so both rows
-\ assert the CHECKER's rejection and that the elaborator recorded no refusal of
-\ its own.
 : NARROWC$ ( -- ptr u8 n )
    s" : C-NARROWC ( n n n -- narrow<pt3> ) NMX-PT3:MAKE construct narrow p1 ;" ;
 
 : NARROWK$ ( -- ptr u8 n )
    s" : C-NARROWK ( n n n -- narrow<pt3> ) NMX-PT3:MAKE NMX-NARROW:P1 ;" ;
 
-\ ---- driving one migration where its refusal can be read ----------------------
-\ A checked `catch` takes a stack-neutral quotation and a quotation cannot read
-\ the enclosing word's locals, so what the migration needs is parked first.
-variable M-A   variable M-U
+variable RC-NONEXH  variable ROW-NONEXH
+variable RC-DUPVAR  variable ROW-DUPVAR
+variable RC-NOFAM   variable ROW-NOFAM
+variable RC-NOTSUM
+variable RC-NOOF    variable ROW-NOOF
+variable RC-STRAY   variable ROW-STRAY
+variable RC-OVER
+variable RC-ROWS24  variable RC-ROWS26
+variable RC-CONFIT  variable RC-CONOVER
+variable RC-NARROWC variable ROW-NARROWC
+variable RC-NARROWK variable ROW-NARROWK
 
-: MIGRATE-RC ( -- n )
-   [: M-A @ M-U @ NMIGRATE:DEFINE ;] catch ;
+: RUN-DYNAMIC-CASES ( -- )
+   NONEXH$ TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
+   DUPVAR$ TRY RC-DUPVAR !  NELAB:REFUSED-ROW ROW-DUPVAR !
+   NOFAM$ TRY RC-NOFAM !    NELAB:REFUSED-ROW ROW-NOFAM !
+   NOTSUM$ TRY RC-NOTSUM !
+   NOOF$ TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
+   STRAY$ TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
+   OVER$ TRY RC-OVER !
+   ROWS24$ TRY RC-ROWS24 !
+   ROWS26$ TRY RC-ROWS26 !
+   CONFIT$ TRY RC-CONFIT !
+   CONOVER$ TRY RC-CONOVER !
+   NARROWC$ TRY RC-NARROWC ! NELAB:REFUSED-ROW ROW-NARROWC !
+   NARROWK$ TRY RC-NARROWK ! NELAB:REFUSED-ROW ROW-NARROWK ! ;
 
-: STAGE-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a M-A !  u M-U !
-   NELAB:REFUSED-RESET ;
+RUN-DYNAMIC-CASES
 
-: TRY ( ptr u8 n -- n )
-   STAGE-ONE
-   MIGRATE-RC ;
+\ ---- emitted dispatch shape --------------------------------------------------
 
-
-\ ---- what the chain published, read back off the emission and the seam --------
-\ THE WORDLIST IS THIS PACKAGE'S OWN, taken while it is open. The migration
-\ publishes by evaluating source text in whatever scope is current, so every `C-`
-\ word below lives in this package's private wordlist and the publication seam's
-\ log is keyed by that wordlist - asking it about wordlist zero would be asking
-\ about a word nobody defined.
-variable MY-WID
-NDICT:OPEN-PRI MY-WID !
-
-\ The emission is sealed until the next one is made, so these answer about the
-\ migration that ran last.
 : TRAP-BR? ( n n -- bool ) {: k:n t:n :}
    k A64EMIT:WORD@ NBR:B? 0= if false exit then
-   A64EMIT:PLACEMENT  k INSN-BYTES * +  k A64EMIT:WORD@  NBR:B-TARGET  t = ;
+   A64EMIT:PLACEMENT k INSN-BYTES * + k A64EMIT:WORD@ NBR:B-TARGET t = ;
 
 : TRAP-BRANCHES ( -- n )
    NTRAP:ROUTINE$ NDICT:CALL-TARGET {: t:n :}
@@ -784,558 +595,216 @@ NDICT:OPEN-PRI MY-WID !
       i t TRAP-BR? if 1+ then
    loop ;
 
-: NEW-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u MY-WID @ NPUB:NEW-LEN ;
+variable EMIT-RC
+variable EMIT-SIZE
+variable EMIT-BRANCH
+variable EMIT-RET
+variable EMIT-TRAPS
+variable EMIT-RECORDED
+variable UNW-SIZE
+variable QUAD-SIZE
 
-: NEW-START ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u MY-WID @ NPUB:NEW-START ;
+: PROBE-HUE$ ( -- ptr u8 n )
+   s" : PROBE-HUE ( hue -- n ) MATCH hue red OF 10 ENDOF green OF 20 ENDOF blue OF 30 ENDOF ;MATCH ;" ;
 
-\ ---- the migrations, and what each one answered -------------------------------
-\ They run HERE, inside the package block, for the two reasons
-\ test/compiler/native-rename-rows.f gives: the chain publishes by evaluating the
-\ source text, so a twin migrated after `;package` would land outside the package
-\ and a body naming a package family would not resolve at all; and the twins have
-\ to exist before the comparisons below are compiled against their names.
-variable RC-HUE   variable RC-BOX   variable RC-UNW   variable RC-STEP
-variable RC-WIDE  variable RC-OVER  variable RC-CASE  variable RC-MK
-variable RC-QUAD  variable RC-SWAPPED variable RC-HOLD
-variable RC-DROPPED variable RC-INST variable RC-INST3
-variable RC-TWOW  variable RC-STRINST
-variable RC-TRIO  variable RC-ARMIF variable RC-ARMLOOP variable RC-HOLD3
-variable RC-ROWS24 variable RC-ROWS26
-variable RC-MKI   variable RC-MKI3  variable RC-MKC
-variable RC-RELAY variable RC-LOOPC variable RC-STRCON variable RC-TWOC
-variable RC-CONFIT variable RC-CONOVER variable RC-MKG variable RC-MKGC variable RC-MKP
-variable RC-NARROWC variable RC-NARROWK
-variable ROW-NARROWC variable ROW-NARROWK
-variable RC-MK0   variable RC-MK2   variable RC-DEAD
-variable RC-CMT   variable RC-STR
-variable RC-NONEXH variable RC-DUPVAR variable RC-NOFAM variable RC-NOTSUM
-variable RC-NOOF  variable RC-STRAY
-variable ROW-NONEXH variable ROW-DUPVAR variable ROW-NOFAM
-variable ROW-NOOF variable ROW-STRAY
+: PROBE-UNW$ ( -- ptr u8 n )
+   s" : PROBE-UNW ( n option<n> -- n ) MATCH option none OF ENDOF some OF nip ENDOF ;MATCH ;" ;
 
-\ The two facts the trap loose end needs, taken off the emission of a MATCH the
-\ chain has just compiled from SOURCE - which is the first source form that has
-\ ever produced a trap.
-variable TRAP-N   variable EMIT-SIZE   variable EMIT-BRANCH   variable EMIT-RET
+: PROBE-QUAD$ ( -- ptr u8 n )
+   s" : PROBE-QUAD ( quad -- n ) MATCH quad q0 OF 1 ENDOF q1 OF 2 ENDOF q2 OF 3 ENDOF q3 OF 4 ENDOF ;MATCH ;" ;
 
-: RUN-HUE ( -- )
-   HUE$ TRY RC-HUE !
+: CAPTURE-EMISSION ( -- )
+   PROBE-HUE$ TRY EMIT-RC !
    A64EMIT:SIZE EMIT-SIZE !
    A64EMIT:LEAVES-BY-BRANCH? if 1 else 0 then EMIT-BRANCH !
    A64EMIT:TRAILING-RETURN? if 1 else 0 then EMIT-RET !
-   TRAP-BRANCHES TRAP-N ! ;
+   TRAP-BRANCHES EMIT-TRAPS !
+   s" PROBE-HUE" NDICT:CALL-TARGET NINL:KNOWN? if 1 else 0 then EMIT-RECORDED !
+   PROBE-UNW$ TRY drop A64EMIT:SIZE INSN-BYTES - UNW-SIZE !
+   PROBE-QUAD$ TRY drop A64EMIT:SIZE INSN-BYTES - QUAD-SIZE ! ;
 
-: RUN-THE-MIGRATIONS ( -- )
-   RUN-HUE
-   BOX$ TRY RC-BOX !
-   UNW$ TRY RC-UNW !
-   QUAD$ TRY RC-QUAD !
-   SWAPPED$ TRY RC-SWAPPED !
-   HOLD$ TRY RC-HOLD !
-   STEP$ TRY RC-STEP !
-   WIDE$ TRY RC-WIDE !
-   OVER$ TRY RC-OVER !
-   CASE$ TRY RC-CASE !
-   MK$ TRY RC-MK !
-   MK2$ TRY RC-MK2 !
-   MK0$ TRY RC-MK0 !
-   DEAD$ TRY RC-DEAD !
-   CMT$ TRY RC-CMT !
-   STR$ TRY RC-STR !
-   INST$ TRY RC-INST !
-   INST3$ TRY RC-INST3 !
-   TWOW$ TRY RC-TWOW !
-   STRINST$ TRY RC-STRINST !
-   TRIO$ TRY RC-TRIO !
-   ARMIF$ TRY RC-ARMIF !
-   ARMLOOP$ TRY RC-ARMLOOP !
-   HOLD3$ TRY RC-HOLD3 !
-   ROWS24$ TRY RC-ROWS24 !
-   MKI$ TRY RC-MKI !
-   MKI3$ TRY RC-MKI3 !
-   MKC$ TRY RC-MKC !
-   RELAY$ TRY RC-RELAY !
-   LOOPC$ TRY RC-LOOPC !
-   STRCON$ TRY RC-STRCON !
-   TWOC$ TRY RC-TWOC !
-   MKG$ TRY RC-MKG !
-   MKGC$ TRY RC-MKGC !
-   MKP$ TRY RC-MKP !
-   CONFIT$ TRY RC-CONFIT ! ;
+CAPTURE-EMISSION
 
-: RUN-THE-REFUSALS ( -- )
-   NONEXH$ TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
-   DUPVAR$ TRY RC-DUPVAR !  NELAB:REFUSED-ROW ROW-DUPVAR !
-   NOFAM$ TRY RC-NOFAM !    NELAB:REFUSED-ROW ROW-NOFAM !
-   NOTSUM$ TRY RC-NOTSUM !
-   NOOF$ TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
-   STRAY$ TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
-   DROPPED$ TRY RC-DROPPED !
-   ROWS26$ TRY RC-ROWS26 !
-   CONOVER$ TRY RC-CONOVER !
-   NARROWC$ TRY RC-NARROWC !  NELAB:REFUSED-ROW ROW-NARROWC !
-   NARROWK$ TRY RC-NARROWK !  NELAB:REFUSED-ROW ROW-NARROWK ! ;
+\ ---- behavior ---------------------------------------------------------------
 
-RUN-THE-MIGRATIONS
-RUN-THE-REFUSALS
+: BASIC-CASE ( -- )
+   s" empty and payload arms preserve their declared values" T-LABEL
+   NMX-HUE:RED E-HUE 10 T=
+   NMX-HUE:GREEN E-HUE 20 T=
+   NMX-HUE:BLUE E-HUE 30 T=
+   NMX-BOX:NIL E-BOX 0 T=
+   7 NMX-BOX:ONE E-BOX 7 T=
+   3 4 NMX-BOX:TWO E-BOX 7 T=
+   9 OPTION:NONE E-UNW 9 T=
+   9 42 OPTION:SOME E-UNW 42 T=
 
-\ ---- executing both publications ----------------------------------------------
-\ Every one of these calls the engine's word and the chain's word on the same
-\ input and compares the two answers. Both are ordinary checked calls: the chain
-\ published its word before this file's own definitions were compiled.
-: AGREE-HUE ( -- )
-   s" a payload-free dispatch answers what the engine answers, arm for arm" T-LABEL
-   NMX-HUE:RED E-HUE  NMX-HUE:RED C-HUE  T=
-   NMX-HUE:GREEN E-HUE  NMX-HUE:GREEN C-HUE  T=
-   NMX-HUE:BLUE E-HUE  NMX-HUE:BLUE C-HUE  T=
+   s" four, seven, and sixteen-arm dispatches select every arm" T-LABEL
+   NMX-QUAD:Q0 E-QUAD 1 T=
+   NMX-QUAD:Q1 E-QUAD 2 T=
+   NMX-QUAD:Q2 E-QUAD 3 T=
+   NMX-QUAD:Q3 E-QUAD 4 T=
+   NMX-STEP:P0 E-STEP 100 T=
+   NMX-STEP:P1 E-STEP 101 T=
+   NMX-STEP:P2 E-STEP 102 T=
+   NMX-STEP:P3 E-STEP 103 T=
+   NMX-STEP:P4 E-STEP 104 T=
+   NMX-STEP:P5 E-STEP 105 T=
+   NMX-STEP:P6 E-STEP 106 T=
+   NMX-WIDE:W0 E-WIDE 200 T=
+   NMX-WIDE:W1 E-WIDE 201 T=
+   NMX-WIDE:W2 E-WIDE 202 T=
+   NMX-WIDE:W3 E-WIDE 203 T=
+   NMX-WIDE:W4 E-WIDE 204 T=
+   NMX-WIDE:W5 E-WIDE 205 T=
+   NMX-WIDE:W6 E-WIDE 206 T=
+   NMX-WIDE:W7 E-WIDE 207 T=
+   NMX-WIDE:W8 E-WIDE 208 T=
+   NMX-WIDE:W9 E-WIDE 209 T=
+   NMX-WIDE:W10 E-WIDE 210 T=
+   NMX-WIDE:W11 E-WIDE 211 T=
+   NMX-WIDE:W12 E-WIDE 212 T=
+   NMX-WIDE:W13 E-WIDE 213 T=
+   NMX-WIDE:W14 E-WIDE 214 T=
+   NMX-WIDE:W15 E-WIDE 215 T=
 
-   s" and the answers really are the three the source names" T-LABEL
-   NMX-HUE:RED C-HUE 10 T=
-   NMX-HUE:GREEN C-HUE 20 T=
-   NMX-HUE:BLUE C-HUE 30 T= ;
+   s" case keeps both arms and its default" T-LABEL
+   1 E-CASE 10 T=
+   2 E-CASE 20 T=
+   5 E-CASE 99 T= ;
 
-: AGREE-BOX ( -- )
-   s" a dispatch whose arms keep different payloads agrees with the engine" T-LABEL
-   NMX-BOX:NIL E-BOX  NMX-BOX:NIL C-BOX  T=
-   7 NMX-BOX:ONE E-BOX  7 NMX-BOX:ONE C-BOX  T=
-   3 4 NMX-BOX:TWO E-BOX  3 4 NMX-BOX:TWO C-BOX  T=
+: CONSTRUCTOR-CASE ( -- )
+   s" construct produces every payload width" T-LABEL
+   55 E-MK E-BOX 55 T=
+   3 4 E-MK2 E-BOX 7 T=
+   E-MK0 E-BOX 0 T= ;
 
-   s" and each arm kept the payload its variant declares" T-LABEL
-   NMX-BOX:NIL C-BOX 0 T=
-   7 NMX-BOX:ONE C-BOX 7 T=
-   3 4 NMX-BOX:TWO C-BOX 7 T= ;
+: DEAD-CASE ( -- )
+   s" live arms around a dead arm return normally" T-LABEL
+   NMX-HUE:RED E-DEAD 1 T=
+   NMX-HUE:BLUE E-DEAD 3 T=
+   [: NMX-HUE:GREEN E-DEAD drop ;] E-A-EMPTY TTHROWSQ ;
 
-: AGREE-UNW ( -- )
-   s" the shipped option's eliminator agrees on both of its variants" T-LABEL
-   9 OPTION:NONE E-UNW  9 OPTION:NONE C-UNW  T=
-   9 42 OPTION:SOME E-UNW  9 42 OPTION:SOME C-UNW  T=
+: HIDDEN-CASE ( -- )
+   s" family spellings in comments and strings are not dispatch tokens" T-LABEL
+   NMX-HUE:RED E-CMT 1 T=
+   NMX-HUE:GREEN E-CMT 2 T=
+   NMX-HUE:BLUE E-CMT 3 T=
+   NMX-HUE:RED E-STR 1 T=
+   NMX-HUE:GREEN E-STR 2 T=
+   NMX-HUE:BLUE E-STR 3 T= ;
 
-   s" and each variant answered its own value" T-LABEL
-   9 OPTION:NONE C-UNW 9 T=
-   9 42 OPTION:SOME C-UNW 42 T= ;
+: PAYLOAD-CASE ( -- )
+   s" two independent payload cells and one two-cell value keep distinct glue" T-LABEL
+   3 4 NMX-BOX:TWO E-SWAPPED 1 T=
+   9 NMX-HOLDER:EMPTY E-HOLD 9 T=
+   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL E-HOLD 16 T=
+   9 NMX-HOLDER:EMPTY E-DROPPED 9 T=
+   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL E-DROPPED 9 T=
 
-: AGREE-STEP ( -- )
-   s" four arms agree with the engine, every one of them" T-LABEL
-   NMX-QUAD:Q0 E-QUAD  NMX-QUAD:Q0 C-QUAD  T=
-   NMX-QUAD:Q1 E-QUAD  NMX-QUAD:Q1 C-QUAD  T=
-   NMX-QUAD:Q2 E-QUAD  NMX-QUAD:Q2 C-QUAD  T=
-   NMX-QUAD:Q3 E-QUAD  NMX-QUAD:Q3 C-QUAD  T=
+   s" instantiated payload widths keep cell order" T-LABEL
+   0 E-MKI E-INST 0 T=
+   3 E-MKI E-INST 204 T=
+   5 E-MKI E-INST 340 T=
+   0 E-MKI3 E-INST3 0 T=
+   3 E-MKI3 E-INST3 423 T= ;
 
-   s" seven arms agree with the engine, every one of them" T-LABEL
-   NMX-STEP:P0 E-STEP  NMX-STEP:P0 C-STEP  T=
-   NMX-STEP:P1 E-STEP  NMX-STEP:P1 C-STEP  T=
-   NMX-STEP:P2 E-STEP  NMX-STEP:P2 C-STEP  T=
-   NMX-STEP:P3 E-STEP  NMX-STEP:P3 C-STEP  T=
-   NMX-STEP:P4 E-STEP  NMX-STEP:P4 C-STEP  T=
-   NMX-STEP:P5 E-STEP  NMX-STEP:P5 C-STEP  T=
-   NMX-STEP:P6 E-STEP  NMX-STEP:P6 C-STEP  T= ;
+: ORDINAL-CASE ( -- )
+   s" separate dispatch tokens and a preceding string keep their own width rows" T-LABEL
+   0 E-TWOW 0 T=
+   3 E-TWOW 645 T=
+   0 E-STRINST 0 T=
+   3 E-STRINST 204 T= ;
 
-: AGREE-WIDE-A ( -- )
-   NMX-WIDE:W0 E-WIDE  NMX-WIDE:W0 C-WIDE  T=
-   NMX-WIDE:W1 E-WIDE  NMX-WIDE:W1 C-WIDE  T=
-   NMX-WIDE:W2 E-WIDE  NMX-WIDE:W2 C-WIDE  T=
-   NMX-WIDE:W3 E-WIDE  NMX-WIDE:W3 C-WIDE  T=
-   NMX-WIDE:W4 E-WIDE  NMX-WIDE:W4 C-WIDE  T=
-   NMX-WIDE:W5 E-WIDE  NMX-WIDE:W5 C-WIDE  T=
-   NMX-WIDE:W6 E-WIDE  NMX-WIDE:W6 C-WIDE  T=
-   NMX-WIDE:W7 E-WIDE  NMX-WIDE:W7 C-WIDE  T= ;
+: TRIPLE-CASE ( -- )
+   s" three-cell arms keep count and order across joins" T-LABEL
+   NMX-TRIO:T0 E-TRIO 0 T=
+   7 NMX-TRIO:T1 E-TRIO 21 T=
+   3 5 9 NMX-TRIO:T3 E-TRIO 151 T=
+   9 5 3 NMX-TRIO:T3 E-TRIO 223 T=
 
-: AGREE-WIDE-B ( -- )
-   NMX-WIDE:W8 E-WIDE  NMX-WIDE:W8 C-WIDE  T=
-   NMX-WIDE:W9 E-WIDE  NMX-WIDE:W9 C-WIDE  T=
-   NMX-WIDE:W10 E-WIDE  NMX-WIDE:W10 C-WIDE  T=
-   NMX-WIDE:W11 E-WIDE  NMX-WIDE:W11 C-WIDE  T=
-   NMX-WIDE:W12 E-WIDE  NMX-WIDE:W12 C-WIDE  T=
-   NMX-WIDE:W13 E-WIDE  NMX-WIDE:W13 C-WIDE  T=
-   NMX-WIDE:W14 E-WIDE  NMX-WIDE:W14 C-WIDE  T=
-   NMX-WIDE:W15 E-WIDE  NMX-WIDE:W15 C-WIDE  T= ;
+   s" three cells survive branch and loop control inside an arm" T-LABEL
+   7 NMX-TRIO:T1 E-ARMIF 21 T=
+   -7 NMX-TRIO:T1 E-ARMIF -35 T=
+   3 5 9 NMX-TRIO:T3 E-ARMIF 179 T=
+   3 -5 9 NMX-TRIO:T3 E-ARMIF 85 T=
+   3 0 9 NMX-TRIO:T3 E-ARMIF 150 T=
+   3 5 9 NMX-TRIO:T3 E-ARMLOOP 39 T=
+   NMX-HOLD3:EMPTY3 E-HOLD3 0 T=
+   3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 E-HOLD3 151 T= ;
 
-: AGREE-WIDE ( -- )
-   s" sixteen arms agree with the engine, every one of them" T-LABEL
-   AGREE-WIDE-A
-   AGREE-WIDE-B ;
+: BUILD-CASE ( -- )
+   s" wide constructors preserve empty and payload arms" T-LABEL
+   0 E-MKI E-INST 0 T=
+   3 E-MKI E-INST 204 T=
+   0 E-MKI3 E-INST3 0 T=
+   3 E-MKI3 E-INST3 423 T=
+   0 E-MKC E-RDC 0 T=
+   3 E-MKC E-RDC 204 T=
 
-: AGREE-CASE ( -- )
-   s" a `case` agrees with the engine on both arms and on its default" T-LABEL
-   1 E-CASE  1 C-CASE  T=
-   2 E-CASE  2 C-CASE  T=
-   5 E-CASE  5 C-CASE  T=
+   s" dispatch and loop constructions preserve the widened value" T-LABEL
+   0 E-MKI E-RELAY E-INST3 0 T=
+   3 E-MKI E-RELAY E-INST3 453 T=
+   0 E-LOOPC E-INST 4760 T=
+   1 E-LOOPC E-INST 21386136 T=
+   0 E-STRCON E-INST 0 T=
+   3 E-STRCON E-INST 204 T=
 
-   s" and the default really is the value the source leaves" T-LABEL
-   5 C-CASE 99 T=
-   1 C-CASE 10 T=
-   2 C-CASE 20 T= ;
+   s" distinct construction tokens and payload placements stay independent" T-LABEL
+   E-TWOC E-RDTWO 0 T=
+   3 E-MKG E-RDG 204 T=
+   3 E-MKGC E-RDG 204 T=
+   3 E-MKP E-RDP 204 T=
+   -3 E-MKP E-RDP -423 T= ;
 
-\ A value the CHAIN constructed, eliminated by the ENGINE's own MATCH: the two
-\ compilers have to agree about the cells a value of the family IS, and this is
-\ the only case where one of them makes what the other takes apart.
-: AGREE-CON ( -- )
-   s" a value the chain constructed is what the engine's own MATCH takes apart" T-LABEL
-   55 E-MK E-BOX  55 C-MK E-BOX  T=
-   55 C-MK E-BOX 55 T=
-
-   s" and so is the widest variant, whose payload leaves no pads at all" T-LABEL
-   3 4 E-MK2 E-BOX  3 4 C-MK2 E-BOX  T=
-   3 4 C-MK2 E-BOX 7 T=
-
-   s" and so is the payloadless one, which is all pads and a tag" T-LABEL
-   E-MK0 E-BOX  C-MK0 E-BOX  T=
-   C-MK0 E-BOX 0 T=
-
-   s" and the chain's own eliminator agrees with the engine's on all three" T-LABEL
-   55 C-MK C-BOX  55 E-MK E-BOX  T=
-   3 4 C-MK2 C-BOX  3 4 E-MK2 E-BOX  T=
-   C-MK0 C-BOX  E-MK0 E-BOX  T= ;
-
-: AGREE-DEAD ( -- )
-   s" a dispatch with a dead arm compiles, and its live arms answer" T-LABEL
-   NMX-HUE:RED E-DEAD  NMX-HUE:RED C-DEAD  T=
-   NMX-HUE:BLUE E-DEAD  NMX-HUE:BLUE C-DEAD  T= ;
-
-: AGREE-HIDDEN ( -- )
-   s" a family name inside a comment is not a token of the form" T-LABEL
-   NMX-HUE:RED E-CMT  NMX-HUE:RED C-CMT  T=
-   NMX-HUE:GREEN E-CMT  NMX-HUE:GREEN C-CMT  T=
-   NMX-HUE:BLUE E-CMT  NMX-HUE:BLUE C-CMT  T=
-
-   s" and one inside a string literal is not one either" T-LABEL
-   NMX-HUE:RED E-STR  NMX-HUE:RED C-STR  T=
-   NMX-HUE:GREEN E-STR  NMX-HUE:GREEN C-STR  T=
-   NMX-HUE:BLUE E-STR  NMX-HUE:BLUE C-STR  T= ;
-
-\ The dead arm really throws, and it throws the code the source named: a chain
-\ that trapped INSTEAD of calling would turn a catchable throw into a process
-\ exit and change what the program does.
-: DEAD-THROWS ( -- )
-   s" and its dead arm throws the code the arm named, catchably" T-LABEL
-   [: NMX-HUE:GREEN C-DEAD drop ;] E-A-EMPTY TTHROWSQ ;
-
-: COMPILED-CASE ( -- )
-   s" every form the chain models compiled through the whole chain" T-LABEL
-   RC-HUE @ 0 T=
-   RC-BOX @ 0 T=
-   RC-UNW @ 0 T=
-   RC-QUAD @ 0 T=
-   RC-SWAPPED @ 0 T=
-   RC-HOLD @ 0 T=
-   RC-STEP @ 0 T=
-   RC-WIDE @ 0 T=
-   RC-CASE @ 0 T=
-   RC-MK @ 0 T=
-   RC-MK2 @ 0 T=
-   RC-MK0 @ 0 T=
-   RC-DEAD @ 0 T=
-   RC-CMT @ 0 T=
-   RC-STR @ 0 T= ;
-
-\ ---- what the checker refused, and who refused it -----------------------------
-\ The engine's reject status is 70, and the elaborator's record says it never
-\ reached a body token: these bodies are turned away before the chain sees them.
-70 constant RC-REJECT
+70 constant CHECKER-REJECT
 
 : REFUSED-CASE ( -- )
-   s" a non-exhaustive dispatch is refused before the chain is handed it" T-LABEL
-   RC-NONEXH @ RC-REJECT T=
-   ROW-NONEXH @ -1 T=
+   s" malformed and non-exhaustive dispatches stop before elaboration" T-LABEL
+   RC-NONEXH @ CHECKER-REJECT T=  ROW-NONEXH @ -1 T=
+   RC-DUPVAR @ CHECKER-REJECT T=  ROW-DUPVAR @ -1 T=
+   RC-NOFAM @ CHECKER-REJECT T=   ROW-NOFAM @ -1 T=
+   RC-NOTSUM @ CHECKER-REJECT T=
+   RC-NOOF @ CHECKER-REJECT T=    ROW-NOOF @ -1 T=
+   RC-STRAY @ CHECKER-REJECT T=   ROW-STRAY @ -1 T=
 
-   s" and so is a duplicate variant" T-LABEL
-   RC-DUPVAR @ RC-REJECT T=
-   ROW-DUPVAR @ -1 T=
+   s" narrower construction spellings remain checker refusals" T-LABEL
+   RC-NARROWC @ CHECKER-REJECT T= ROW-NARROWC @ -1 T=
+   RC-NARROWK @ CHECKER-REJECT T= ROW-NARROWK @ -1 T= ;
 
-   s" and a family name that resolves to nothing" T-LABEL
-   RC-NOFAM @ RC-REJECT T=
-   ROW-NOFAM @ -1 T=
+: CEILING-CASE ( -- )
+   s" sixteen dispatch arms fit and seventeen exceed the selector capacity" T-LABEL
+   NMX-WIDE:W15 E-WIDE 215 T=
+   RC-OVER @ E-A64SEL-CAP T=
 
-   s" and a type that is not a sum at all" T-LABEL
-   RC-NOTSUM @ RC-REJECT T=
-
-   s" and a variant token with no `of` after it" T-LABEL
-   RC-NOOF @ RC-REJECT T=
-   ROW-NOOF @ -1 T=
-
-   s" and a `;match` with no dispatch open" T-LABEL
-   RC-STRAY @ RC-REJECT T=
-   ROW-STRAY @ -1 T= ;
-
-\ ---- what an arm's payload IS -------------------------------------------------
-\ THE PAIR THAT BINDS THE GLUE RULE. Both arms keep two cells; one of them is two
-\ values and the other is one, and nothing but the registry's two counts says
-\ which. A rename over the first moves one cell and over the second moves both,
-\ so a rule that marked every payload would move two cells where one was meant
-\ and a rule that marked none would take a `pt` apart - and each case reads the
-\ answer, not merely that something compiled.
-: PAYLOAD-CASE ( -- )
-   s" a rename over two INDEPENDENT payload cells compiles and agrees" T-LABEL
-   RC-SWAPPED @ 0 T=
-   3 4 NMX-BOX:TWO E-SWAPPED  3 4 NMX-BOX:TWO C-SWAPPED  T=
-   3 4 NMX-BOX:TWO C-SWAPPED 1 T=
-
-   s" a payload that is two cells of ONE value is held, and agrees" T-LABEL
-   RC-HOLD @ 0 T=
-   9 NMX-HOLDER:EMPTY E-HOLD  9 NMX-HOLDER:EMPTY C-HOLD  T=
-   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL E-HOLD
-   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL C-HOLD  T=
-
-   s" and a rename reaching into it moves the whole value, and agrees" T-LABEL
-   RC-DROPPED @ 0 T=
-   9 NMX-HOLDER:EMPTY E-DROPPED  9 NMX-HOLDER:EMPTY C-DROPPED  T=
-   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL E-DROPPED
-   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL C-DROPPED  T=
-   9 3 4 NMX-PT:MAKE NMX-HOLDER:FULL C-DROPPED 9 T=
-
-   s" a scrutinee wider than its family declares compiles, and agrees" T-LABEL
-   RC-INST @ 0 T=
-   -1 E-MKI E-INST   -1 E-MKI C-INST   T=
-   0 E-MKI E-INST    0 E-MKI C-INST    T=
-   3 E-MKI E-INST    3 E-MKI C-INST    T=
-   5 E-MKI E-INST    5 E-MKI C-INST    T=
-   3 E-MKI C-INST 204 T=
-   5 E-MKI C-INST 340 T=
-   0 E-MKI C-INST 0 T=
-
-   s" and one cell wider again, where drop and keep are different numbers" T-LABEL
-   RC-INST3 @ 0 T=
-   -1 E-MKI3 E-INST3  -1 E-MKI3 C-INST3  T=
-   0 E-MKI3 E-INST3   0 E-MKI3 C-INST3   T=
-   3 E-MKI3 E-INST3   3 E-MKI3 C-INST3   T=
-   7 E-MKI3 E-INST3   7 E-MKI3 C-INST3   T=
-   3 E-MKI3 C-INST3 423 T=
-   0 E-MKI3 C-INST3 0 T= ;
-
-\ ---- which token a width was filed under -------------------------------------
-\ Both rows here answer the same question from opposite sides: is the number the
-\ chain reads the one THIS token published? The first body holds two dispatches
-\ of different instantiated widths, so a reader keyed on the family, the
-\ definition or the form's position gives one of them the other's width. The
-\ second puts a string literal - one token, reported through its own event, whose
-\ body is dispatch grammar - in front of the form, so a report path that did not
-\ step the ordinal files the width one token early.
-: ORDINAL-CASE ( -- )
-   s" two dispatches of different widths in one body each get their own" T-LABEL
-   RC-TWOW @ 0 T=
-   -1 E-TWOW  -1 C-TWOW  T=
-   0 E-TWOW   0 C-TWOW   T=
-   1 E-TWOW   1 C-TWOW   T=
-   3 E-TWOW   3 C-TWOW   T=
-   9 E-TWOW   9 C-TWOW   T=
-   3 C-TWOW 645 T=
-   0 C-TWOW 0 T=
-
-   s" and a string literal in front of one does not shift the token" T-LABEL
-   RC-STRINST @ 0 T=
-   -1 E-STRINST  -1 C-STRINST  T=
-   0 E-STRINST   0 C-STRINST   T=
-   3 E-STRINST   3 C-STRINST   T=
-   5 E-STRINST   5 C-STRINST   T=
-   3 C-STRINST 204 T= ;
-
-\ ---- three payload cells -----------------------------------------------------
-\ `box` and `holder` stop at two, where an arm that drops one cell too many and
-\ one that keeps one too few answer the same shape. Every row below weights each
-\ cell with a distinct odd factor, so the ANSWER says which cell came back where.
-: TRIPLE-CASE ( -- )
-   s" arms of no, one and three payload cells join and agree" T-LABEL
-   RC-TRIO @ 0 T=
-   NMX-TRIO:T0 E-TRIO  NMX-TRIO:T0 C-TRIO  T=
-   7 NMX-TRIO:T1 E-TRIO  7 NMX-TRIO:T1 C-TRIO  T=
-   3 5 9 NMX-TRIO:T3 E-TRIO  3 5 9 NMX-TRIO:T3 C-TRIO  T=
-   3 5 9 NMX-TRIO:T3 C-TRIO 151 T=
-   9 5 3 NMX-TRIO:T3 C-TRIO 223 T=
-
-   s" a payload crossing a nested if inside its arm agrees on both sides" T-LABEL
-   RC-ARMIF @ 0 T=
-   NMX-TRIO:T0 E-ARMIF  NMX-TRIO:T0 C-ARMIF  T=
-   7 NMX-TRIO:T1 E-ARMIF   7 NMX-TRIO:T1 C-ARMIF   T=
-   -7 NMX-TRIO:T1 E-ARMIF  -7 NMX-TRIO:T1 C-ARMIF  T=
-   3 5 9 NMX-TRIO:T3 E-ARMIF   3 5 9 NMX-TRIO:T3 C-ARMIF   T=
-   3 -5 9 NMX-TRIO:T3 E-ARMIF  3 -5 9 NMX-TRIO:T3 C-ARMIF  T=
-   3 0 9 NMX-TRIO:T3 E-ARMIF   3 0 9 NMX-TRIO:T3 C-ARMIF   T=
-
-   s" and one crossing a counted loop inside its arm" T-LABEL
-   RC-ARMLOOP @ 0 T=
-   NMX-TRIO:T0 E-ARMLOOP  NMX-TRIO:T0 C-ARMLOOP  T=
-   7 NMX-TRIO:T1 E-ARMLOOP  7 NMX-TRIO:T1 C-ARMLOOP  T=
-   3 5 9 NMX-TRIO:T3 E-ARMLOOP  3 5 9 NMX-TRIO:T3 C-ARMLOOP  T=
-   9 5 3 NMX-TRIO:T3 E-ARMLOOP  9 5 3 NMX-TRIO:T3 C-ARMLOOP  T=
-   3 5 9 NMX-TRIO:T3 C-ARMLOOP 39 T=
-
-   s" and three cells that are ONE value are kept as one" T-LABEL
-   RC-HOLD3 @ 0 T=
-   NMX-HOLD3:EMPTY3 E-HOLD3  NMX-HOLD3:EMPTY3 C-HOLD3  T=
-   3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 E-HOLD3
-   3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 C-HOLD3  T=
-   3 5 9 NMX-PT3:MAKE NMX-HOLD3:FULL3 C-HOLD3 151 T= ;
-
-\ ---- building a value of a wide instantiation --------------------------------
-\ Every row here executes both compilations of a MAKER and compares what they
-\ answer through one ENGINE reader, which is the other way round from the cases
-\ above: there the maker was the engine's and the reader was under test, and a
-\ constructor that pushed the wrong number of cells would have been invisible
-\ because nothing in the tree ever compiled one through this chain.
-: BUILD-CASE ( -- )
-   s" a constructor call at a wider instantiation compiles, and agrees" T-LABEL
-   RC-MKI @ 0 T=
-   -1 E-MKI E-INST   -1 C-MKI E-INST   T=
-   0 E-MKI E-INST    0 C-MKI E-INST    T=
-   3 E-MKI E-INST    3 C-MKI E-INST    T=
-   5 E-MKI E-INST    5 C-MKI E-INST    T=
-   3 C-MKI E-INST 204 T=
-   0 C-MKI E-INST 0 T=
-
-   s" and one cell wider again, where its two arms need different numbers" T-LABEL
-   RC-MKI3 @ 0 T=
-   -1 E-MKI3 E-INST3  -1 C-MKI3 E-INST3  T=
-   0 E-MKI3 E-INST3   0 C-MKI3 E-INST3   T=
-   3 E-MKI3 E-INST3   3 C-MKI3 E-INST3   T=
-   7 E-MKI3 E-INST3   7 C-MKI3 E-INST3   T=
-   3 C-MKI3 E-INST3 423 T=
-   0 C-MKI3 E-INST3 0 T=
-
-   s" and the reserved `construct` form of the same construction" T-LABEL
-   RC-MKC @ 0 T=
-   -1 E-MKC E-RDC  -1 C-MKC E-RDC  T=
-   0 E-MKC E-RDC   0 C-MKC E-RDC   T=
-   3 E-MKC E-RDC   3 C-MKC E-RDC   T=
-   5 E-MKC E-RDC   5 C-MKC E-RDC   T=
-   3 C-MKC E-RDC 204 T=
-   0 C-MKC E-RDC 0 T=
-
-   s" a dispatch over one option that builds a wider one in both arms" T-LABEL
-   RC-RELAY @ 0 T=
-   0 E-MKI E-RELAY E-INST3   0 E-MKI C-RELAY E-INST3   T=
-   3 E-MKI E-RELAY E-INST3   3 E-MKI C-RELAY E-INST3   T=
-   5 E-MKI E-RELAY E-INST3   5 E-MKI C-RELAY E-INST3   T=
-   0 E-MKI C-RELAY E-INST3 0 T=
-   3 E-MKI C-RELAY E-INST3 453 T=
-
-   s" and one the back edge of a loop carries round" T-LABEL
-   RC-LOOPC @ 0 T=
-   -1 E-LOOPC E-INST  -1 C-LOOPC E-INST  T=
-   0 E-LOOPC E-INST   0 C-LOOPC E-INST   T=
-   1 E-LOOPC E-INST   1 C-LOOPC E-INST   T=
-   4 E-LOOPC E-INST   4 C-LOOPC E-INST   T=
-
-   s" a string literal in front of a construction does not shift the token" T-LABEL
-   RC-STRCON @ 0 T=
-   0 E-STRCON E-INST  0 C-STRCON E-INST  T=
-   3 E-STRCON E-INST  3 C-STRCON E-INST  T=
-   3 C-STRCON E-INST 204 T=
-
-   s" and two constructions of different widths in one body each get their own" T-LABEL
-   RC-TWOC @ 0 T=
-   E-TWOC E-RDTWO  C-TWOC E-RDTWO  T=
-   C-TWOC E-RDTWO 0 T=
-
-   s" a construction with a payload UNDER the cells it adds, both spellings" T-LABEL
-   RC-MKG @ 0 T=
-   RC-MKGC @ 0 T=
-   -1 E-MKG E-RDG   -1 C-MKG E-RDG   T=
-   3 E-MKG E-RDG    3 C-MKG E-RDG    T=
-   5 E-MKG E-RDG    5 C-MKG E-RDG    T=
-   3 E-MKGC E-RDG   3 C-MKGC E-RDG   T=
-   5 E-MKGC E-RDG   5 C-MKGC E-RDG   T=
-   3 C-MKG E-RDG 204 T=
-   3 C-MKGC E-RDG 204 T=
-
-   s" a two-parameter family whose arms need different numbers" T-LABEL
-   RC-MKP @ 0 T=
-   -1 E-MKP E-RDP  -1 C-MKP E-RDP  T=
-   3 E-MKP E-RDP   3 C-MKP E-RDP   T=
-   7 E-MKP E-RDP   7 C-MKP E-RDP   T=
-   3 C-MKP E-RDP 204 T=
-   -3 C-MKP E-RDP -423 T=
-
-   s" a narrower-than-declared instantiation stays refused by the CHECKER" T-LABEL
-   RC-NARROWC @ RC-REJECT T=
-   ROW-NARROWC @ -1 T=
-   RC-NARROWK @ RC-REJECT T=
-   ROW-NARROWK @ -1 T= ;
-
-\ ---- the construction-row ceiling --------------------------------------------
-\ A construction whose row fits the checker's table compiles and answers; one
-\ whose row the table had no room for reads as "adds nothing", is lowered a
-\ bundle short, and is refused for leaving the wrong number of cells rather than
-\ published. That refusal is the whole reason the reader may answer zero on
-\ absence, so it is asserted by CODE and not merely as "it did not compile".
-: CON-CEILING-CASE ( -- )
-   s" a construction inside the checker's row ceiling compiles and answers" T-LABEL
-   RC-CONFIT @ 0 T=
-   C-CONFIT E-INST 0 T=
-
-   s" and one past it is refused for the cells it left, not published short" T-LABEL
-   RC-CONOVER @ E-NELAB-ARITY T= ;
-
-\ ---- the dispatch-row ceiling ------------------------------------------------
-\ Twenty-four rows in one body is exactly what the checker records and it
-\ compiles; twenty-six overflows the table and is refused by name rather than
-\ compiled against the rows that did fit. Neither side is refused for anything
-\ else: both are inside the recorder's text cap and its tape, and the arms are
-\ one apiece so no block or selector ceiling is anywhere near.
-: ROW-CEILING-CASE ( -- )
-   s" a body at the checker's dispatch-row ceiling compiles" T-LABEL
+   s" the checker accepts exactly twenty-four dispatch rows" T-LABEL
    RC-ROWS24 @ 0 T=
    C-ROWS24 144 T=
+   RC-ROWS26 @ E-NELAB-MATCH T=
 
-   s" and one past it is refused by name, not compiled from the rows that fit" T-LABEL
-   RC-ROWS26 @ E-NELAB-MATCH T= ;
+   s" a construction row at the ceiling fits and the next one is refused" T-LABEL
+   RC-CONFIT @ 0 T=
+   C-CONFIT E-INST 0 T=
+   RC-CONOVER @ E-NELAB-ARITY T= ;
 
-\ ---- the arm ceiling ----------------------------------------------------------
-: CEILING-CASE ( -- )
-   s" sixteen arms compile and seventeen are refused by a named capacity" T-LABEL
-   RC-WIDE @ 0 T=
-   RC-OVER @ E-A64SEL-CAP T= ;
-
-\ ---- what the emission of a compiled dispatch is ------------------------------
-\ THIS IS THE MIGRATE HALF OF THE TRAP'S OWN CONTRACT. Until a source form
-\ produced a trap, nothing reached src/compiler/native/migrate.f's SIZE-CK with a
-\ routine that leaves by branching: the publisher half is pinned in
-\ test/compiler/native-trap.f against hand-built modules, and this is the same
-\ two questions asked of a definition the chain compiled from source text.
-\
-\ A MATCH RETURNS ON ITS ARMS AND TRAPS ON ITS MISMATCH EDGE, so it does BOTH:
-\ it leaves by branching somewhere in the middle of itself, which is what stops
-\ its body from being recorded for copying, AND it ends in the return the
-\ recorded length has to leave out.
 : EMISSION-CASE ( -- )
-   s" a compiled dispatch leaves by branching, so no caller may copy its body" T-LABEL
+   s" a compiled dispatch branches, returns, and uses one shared trap edge" T-LABEL
+   EMIT-RC @ 0 T=
    EMIT-BRANCH @ 1 T=
-
-   s" and it still ends in a return, so its record is the emission without it" T-LABEL
    EMIT-RET @ 1 T=
-   s" C-HUE" NEW-LEN  EMIT-SIZE @ INSN-BYTES -  T=
+   EMIT-TRAPS @ 1 T=
+   EMIT-RECORDED @ 0 T=
 
-   s" and no body was recorded for it" T-LABEL
-   s" C-HUE" NEW-START NINL:KNOWN? TFALSE
+   s" dispatch code stays bounded and grows with its arm count" T-LABEL
+   UNW-SIZE @ 128 < TTRUE
+   QUAD-SIZE @ 184 < TTRUE
+   QUAD-SIZE @ UNW-SIZE @ > TTRUE ;
 
-   s" its mismatch edge branches to the one shared trap routine" T-LABEL
-   TRAP-N @ 1 T= ;
+\ ---- hostile tag ------------------------------------------------------------
 
-\ ---- what a dispatch costs in code bytes --------------------------------------
-\ The two campaign bounds remain useful without retaining an old-emitter
-\ publication: the chain keeps both shapes below them, and grows with the arms
-\ rather than with a copied diagnostic message.
-: COST-CASE ( -- )
-   s" a two-armed dispatch is under the 128-byte campaign bound" T-LABEL
-   s" C-UNW" NEW-LEN 128 < TTRUE
-
-   s" and a four-armed dispatch is under its 184-byte bound" T-LABEL
-   s" C-QUAD" NEW-LEN 184 < TTRUE
-
-   s" and the chain's cost grows with the arms rather than with the message" T-LABEL
-   s" C-QUAD" NEW-LEN  s" C-UNW" NEW-LEN  > TTRUE ;
-
-\ ---- the trap, in a process that dies -----------------------------------------
-\ A checked body cannot produce a tag no variant carries - that is what the
-\ checker's exhaustiveness rule is - so the forge is an unchecked call, which is
-\ the one boundary this file has and is exactly as wide as the death it stages.
-\ The process does not come back from it: the trap routine writes the diagnostic
-\ and exits, which is what the parent measures.
 public
 
 TRUSTED: FORGE ( -- )
-   99 C-HUE drop ;
+   99 E-HUE drop ;
 
 private
 
@@ -1362,7 +831,7 @@ variable CHILD-RC
    OUT-BUF CAP-CAP >LEN
    ERR-BUF CAP-CAP >LEN
    CHILD-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME       \ ( out-len err-len outcome )
+   RUN-ARGV-CAPTURE-OUTCOME
    PROC-OUTCOME>RC RC>N CHILD-RC !
    LEN>N CHILD-ERR-N !
    LEN>N CHILD-OUT-N ! ;
@@ -1372,46 +841,26 @@ variable CHILD-RC
 
 : FORGE-CASE ( -- )
    CHILD-RUN
-
-   s" a tag no variant carries reaches the trap and ends the process" T-LABEL
+   s" a hostile tag reaches the shared trap and exits" T-LABEL
    CHILD-RC @ ENGINE-ERROR:BAD-TAG T=
-
-   s" and the diagnostic names the family the dispatch was over" T-LABEL
    CHILD-ERR$ s" hb: bad hue tag" CONTAINS? TTRUE
-
-   s" and it names no other family" T-LABEL
    CHILD-ERR$ s" hb: bad box tag" CONTAINS? TFALSE ;
 
 public
 
-\ ---- the two ways this file is entered ----------------------------------------
-\ Loaded with no argument it is the suite. Loaded with `forge` it IS the subject
-\ of the suite's last case: it calls a compiled dispatch with a tag no variant
-\ carries, which ends the process - so that half cannot be a word the suite
-\ calls, and the suite runs it as a child of itself.
 : MAIN ( -- )
    T-RESET
-   COMPILED-CASE
-   REFUSED-CASE
-   CEILING-CASE
-   AGREE-HUE
-   AGREE-BOX
+   BASIC-CASE
+   CONSTRUCTOR-CASE
+   DEAD-CASE
+   HIDDEN-CASE
    PAYLOAD-CASE
    ORDINAL-CASE
    TRIPLE-CASE
    BUILD-CASE
-   CON-CEILING-CASE
-   ROW-CEILING-CASE
-   AGREE-UNW
-   AGREE-STEP
-   AGREE-WIDE
-   AGREE-CASE
-   AGREE-CON
-   AGREE-DEAD
-   DEAD-THROWS
-   AGREE-HIDDEN
+   REFUSED-CASE
+   CEILING-CASE
    EMISSION-CASE
-   COST-CASE
    FORGE-CASE
    T-REPORT
    s" native-match: ok" type cr ;

@@ -1,42 +1,7 @@
 \ native-quot.f - a quotation, through the whole chain and running. One concern:
-\ what `[: ... ;]` becomes when the native chain compiles the definition holding
-\ it.
-\
-\ WHAT THIS SUITE HAS TO SHOW, AND WHY NOTHING SHORTER WOULD.
-\
-\   1. That the migrated word IS the chain's code and that the address it leaves
-\      RUNS. A quotation is an address somebody executes, so "the migration
-\      returned" says nothing at all: an emission holding a wrong address returns
-\      exactly the same way and fails when the address is used. So every case
-\      here executes the quotation and reads the answer it computed.
-\   2. That the address is the body's OWN entry. An answer alone cannot say that
-\      either - a routine that fell through into the body would answer the same -
-\      so the emitted instructions are DECODED: exactly one Adr per definition,
-\      and the address it computes is the instruction after the enclosing
-\      routine's return, which is where the second function begins. That
-\      derivation is independent of the emitter's own tables.
-\   3. That a `[:` the source never wrote opens nothing. The reader is the real
-\      one here - the engine compiles the definition and the chain elaborates the
-\      tape the checker filled - so a `[:` inside a comment and a `[:` inside a
-\      string literal are put in front of a real one and the emission still holds
-\      exactly one Adr. test/compiler/native-elaborate.f makes the same claim
-\      about a hand-built tape, where the two tokens can be given the wrong KIND;
-\      this one makes it about text a programmer could really write.
-\   4. That a definition holding one is never RECORDED for copying. A copied body
-\      would carry the Adr into another routine, where it is pc-relative to a
-\      different instruction and names a different address - so the recording has
-\      to decline, and the case beside it records a body of the same size with NO
-\      quotation in it, so the decline is not simply "nothing this small is ever
-\      recorded".
-\   5. That the reach of the address form is bounded and that the bound cannot be
-\      reached. The field holds a signed twenty-one-bit BYTE delta; the emission
-\      is bounded at INSN-MAX instructions; and the second number times four is
-\      less than the first, so no emission this chain can build puts a body out of
-\      reach. Both halves are asserted, because the invariant is what makes
-\      E-A64EMIT-REACH unreachable and a raised INSN-MAX would silently end that.
 
 require lib/test.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 
 package NQUOT-TEST
@@ -156,20 +121,20 @@ $D65F03C0 constant RET-WORD
    a u REC-START  a u RET-AT 1+ INSN-BYTES *  + ;
 
 \ ---- the definitions the chain compiles --------------------------------------
-\ Each is migrated at top level, so the word it publishes is global and the
+\ Each is compiled at top level, so the word it publishes is global and the
 \ callers this suite evaluates afterwards reach it as any program would.
 : DEF-INC ( -- )
-   s" : NQ-INC ( -- [ n -- n ] ) [: 1 + ;] ;" NMIGRATE:DEFINE ;
+   s" : NQ-INC ( -- [ n -- n ] ) [: 1 + ;] ;" EV ;
 
 : DEF-TAKE ( -- )
    s" : NQ-TAKE ( [ n -- n ] n -- n ) swap execute ;" EV ;
 
 : DEF-USE ( -- )
-   s" : NQ-USE ( n -- n ) [: 3 * ;] swap NQ-TAKE ;" NMIGRATE:DEFINE ;
+   s" : NQ-USE ( n -- n ) [: 3 * ;] swap NQ-TAKE ;" EV ;
 
 : DEF-THREE ( -- )
    s" : NQ-THREE ( -- n [ n n -- n ] [ n n n -- n ] ) 0 [: drop ;] [: drop drop ;] ;"
-   NMIGRATE:DEFINE ;
+   EV ;
 
 \ A `[:` inside a parenthesised comment and another inside a string literal,
 \ both in front of the real one. Neither is a token the checker's reader hands
@@ -190,17 +155,17 @@ create HID-TXT
 64 constant HID-N
 
 : DEF-HIDDEN ( -- )
-   HID-TXT HID-N NMIGRATE:DEFINE ;
+   HID-TXT HID-N EV ;
 
 \ The pair the recording case needs: a body of the same shape with no quotation
 \ in it, which the recorder DOES keep, and the quotation-carrying one beside it.
 : DEF-PLAIN ( -- )
-   s" : NQ-PLAIN ( n -- n ) 1 + ;" NMIGRATE:DEFINE ;
+   s" : NQ-PLAIN ( n -- n ) 1 + ;" EV ;
 
 \ ---- the cases ---------------------------------------------------------------
 : RUNS-CASE ( -- )
    DEF-INC
-   s" the address a migrated definition leaves runs its own body" T-LABEL
+   s" the address a compiled definition leaves runs its own body" T-LABEL
    s" NQ-INC" REC-START  s" NQ-INC" GLOBAL-WID NPUB:NEW-START T=
    s" 41 NQ-INC execute" EV-N 42 T=
 
@@ -270,7 +235,7 @@ create HID-TXT
 \ and what a caller may do with its address are both open questions.
 \
 \ The default publication is fail-closed. The independent engine definition is a
-\ control that still runs; the attempted migrated definition never appears.
+\ control that still runs; the attempted compiled definition never appears.
 : DEF-DIE ( -- )
    s" : NQ-DIE ( n -- ) drop E-FS-OPEN throw ;" EV
    s" : NQ-KEEP ( [ n -- ] n -- n ) swap drop ;" EV ;
@@ -279,14 +244,14 @@ create HID-TXT
    s" : NQ-DEAD ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV ;
 
 : DEF-DEAD ( -- )
-   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" NMIGRATE:DEFINE ;
+   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV ;
 
 : DEAD-CASE ( -- )
    DEF-DIE
    DEAD-BEFORE
    s" a quotation body that never comes back is refused by name" T-LABEL
    [: DEF-DEAD ;] E-NELAB-QUOT TTHROWSQ
-   \ Nothing is asserted about the refusal RECORD here. The migration entry
+   \ Nothing is asserted about the refusal RECORD here. The compilation entry
    \ unwinds the chain before it rethrows, so what a caller reads afterwards is
    \ the record of whatever elaborated last; which token each refusal names is
    \ test/compiler/native-elaborate.f's measurement, taken where the record is

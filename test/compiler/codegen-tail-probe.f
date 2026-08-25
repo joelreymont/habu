@@ -1,59 +1,9 @@
 \ codegen-tail-probe.f - reading a routine's calls and its exit off the emitted
-\ code. One concern: tools/codegen-tail-probe.f, and the two mistakes a tool
-\ that answers "does this routine end in a call" is easy to make.
-\
-\ WHY THE TOOL EXISTS AND WHAT WOULD MAKE IT USELESS. A tail-call lane may only
-\ act on routines whose emitted code really ends in a call, and the source token
-\ is no evidence at all: both code generators copy a small callee into its caller
-\ instead of calling it, so a body that WRITES a final call may emit none. The
-\ probe therefore counts branch instructions in the published code. Two ways that
-\ can go wrong, and this suite is built around both:
-\
-\   1. COUNTING A COPIED CALLEE AS A CALL. A body whose final call was inlined
-\      has no branch-with-link in it, and a probe that answered from the source
-\      would report a tail call the lane could then "optimise" into a branch to
-\      nothing. The fixtures below include a caller of a callee small enough to
-\      be copied, and its call count must be zero.
-\
-\   2. READING A LOOP'S BACK EDGE AS A TAIL BRANCH. This is the mistake the
-\      first version of the tool actually made. A routine that returns nothing
-\      and needs no frame can have an empty exit block, and then the instruction
-\      before its trailing return is the PREVIOUS block's terminator - an
-\      unconditional branch, the loop's own back edge. A predicate that asked
-\      only "is the last body instruction a `b`" reported two ordinary loop rows
-\      as leaving by a tail branch. The fixture LOOPY-N below is exactly that
-\      shape, built to fool the tool, and TAIL-BRANCH? must answer false on it:
-\      the question is settled by where the branch GOES, not by its opcode.
-\      LOOPY-N's last body instruction really is a `b` - that is checked by the
-\      shape of the fixture rather than assumed, because a fixture that stopped
-\      reproducing the layout would leave this suite green and proving nothing.
-\
-\ AND ONE OF THEM REALLY DOES LEAVE BY A BRANCH NOW, which is the third thing
-\ this suite has to be able to tell apart. The chain lowers a final call whose
-\ results are already the routine's own results to a plain `b` to the callee, so
-\ TAIL-BRANCH? has a true case as well as the two false ones - and the false case
-\ built to fool it, LOOPY-N's back edge, is still false beside it. Without the
-\ true case the predicate could answer false always and this suite would not
-\ notice; with it, the distinction the tool exists to make is pinned in both
-\ directions by two routines whose LAST BODY INSTRUCTION IS A `b` EITHER WAY.
-\
-\ THE TAIL ROUTINE ALSO HAS NO TRAILING RETURN, and that is the record convention
-\ every reader of a word's code depends on, so it is asserted rather than left to
-\ be discovered: src/compiler/native/publish.f records the WHOLE emission for
-\ such a routine, because there is no return to leave out of it, and TRAILER-RET?
-\ is therefore false where it is true for every other row here.
-\
-\ THE FIXTURES ARE COMPILED BOTH WAYS ON PURPOSE. The copying and call-counting
-\ cases are ordinary definitions the ENGINE compiles, because the copying rule
-\ under test is the engine's. The back-edge case is migrated through the native
-\ CHAIN, because that layout is the chain's and the same body compiled by the
-\ engine does not reproduce it. The probe itself reads a dictionary record and a
-\ code span, which every published word has however it was compiled.
 
 require lib/prelude.f
 require lib/test.f
 require src/compiler/native/dict.f
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 require tools/codegen-tail-probe.f
 
 package NTP-FIXTURE
@@ -82,6 +32,17 @@ public
 : CALLS-BIG ( n -- n )
    BIG ;
 
+: OUTSIDE ( n -- n )
+   abs ;
+
+: TAILED ( n -- n )
+   BIG ;
+
+: EMPTY ( -- ) ;
+
+: LOOPY ( ptr n n -- ) {: base:ptr len:n :}
+   len 0 ?do i base i cells + ! loop ;
+
 ;package
 
 \ ---- the fixture built to fool the tool --------------------------------------
@@ -95,67 +56,8 @@ public
 \ not lay a routine out this way: the same body compiled by it ends its recorded
 \ span on ordinary work. The false positive was found on the chain's columns
 \ (VEC-COPY-CELLS-N and T-SGD!-N of the codegen-compare corpora), so the fixture
-\ is migrated through the real chain rather than written as an ordinary
+\ is compiled through the real chain rather than written as an ordinary
 \ definition that would not reproduce it.
-
-package NTP-MIGRATED
-
-private
-
-\ The callee the tail row leaves through: eleven operations, which is past the
-\ engine's forty bytes of body and past the chain's own bound for a routine of
-\ arity one to one, so neither generator copies it and the caller really does
-\ have a branch in it.
-: BIG ( -- )
-   s" : NTP-BIG-N ( n -- n ) dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;"
-   NMIGRATE:DEFINE ;
-
-\ AND THE CALLER WHOSE CALLEE IS OUTSIDE THE REGION, which is the case the
-\ lowering DECLINES rather than refuses. `abs` is an engine primitive: its code
-\ is in the loaded image's text and not in the JIT region, so a branch to it does
-\ not keep its distance when a snapshot is restored somewhere else, and
-\ src/compiler/native/publish.f has no way to record one (dot
-\ habu-relocate-a-tail-96d571af). The routine is a perfectly ordinary program and
-\ has to stay one: it keeps its call and its return, exactly as it did before
-\ there was a tail lowering at all. An optimisation that turned it into a
-\ compilation failure would not be an optimisation.
-: OUTSIDE ( -- )
-   s" : OUTSIDE-N ( n -- n ) abs ;"
-   NMIGRATE:DEFINE ;
-
-\ And the caller whose whole body is that call. Its emitted code is one
-\ instruction: the branch.
-: TAILED ( -- )
-   s" : TAILED-N ( n -- n ) NTP-BIG-N ;"
-   NMIGRATE:DEFINE ;
-
-\ THE EMPTY ROUTINE, which is where a recorded length is at its most misleading
-\ and why CODE-BYTES exists. Its emission is a return and nothing else, so the
-\ span a caller may copy - everything before the return - is NOTHING, and the
-\ record says zero. A reader that took that for the routine's size would report
-\ a word of no length that a caller nevertheless branches to and comes back
-\ from; the codegen comparison did exactly that, and CODEGEN-CORPUS:NOOP reading
-\ zero bytes in the chain column is what gave it away.
-: EMPTY ( -- )
-   s" : EMPTY-N ( -- ) ;"
-   NMIGRATE:DEFINE ;
-
-public
-
-: RUN ( -- )
-   s" : LOOPY-N ( ptr n n -- ) {: base:ptr len:n :} len 0 ?do i base i cells + ! loop ;"
-   NMIGRATE:DEFINE
-   BIG
-   TAILED
-   OUTSIDE
-   EMPTY ;
-
-;package
-
-package NTP-FIXTURE
-public
-
-NTP-MIGRATED:RUN
 
 create SINK 8 cells allot
 
@@ -190,7 +92,7 @@ public
    s" NTP-FIXTURE:PLAIN" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:COPIES" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:CALLS-BIG" TRAILER-RET? TTRUE
-   s" NTP-FIXTURE:LOOPY-N" TRAILER-RET? TTRUE
+   s" NTP-FIXTURE:LOOPY" TRAILER-RET? TTRUE
 
    \ THE FIXTURE BUILT TO FOOL THIS TOOL IS NO LONGER THE SHAPE THAT FOOLS IT, AND
    \ SAYING SO IS THE POINT OF ASSERTING THE PRECONDITION. The emitter's collapse
@@ -199,37 +101,37 @@ public
    \ block - so the conditional at the bottom of the body now names the header
    \ itself and the loop's back edge is a `b.cc`. No row of any corpus ends its
    \ recorded body on an unconditional branch any more; that was measured across
-   \ all 54 migrated rows, not assumed. So this case asserts what is now true
+   \ all 54 compiled rows, not assumed. So this case asserts what is now true
    \ instead of a hazard that cannot be built, and the hazard itself is carried by
    \ dot habu-hand-built-fixture-a6a4efe7, which assembles the shape by hand
    \ rather than waiting for a code generator to emit one again.
    s" the loop row no longer ends its body on an unconditional branch" T-LABEL
-   s" NTP-FIXTURE:LOOPY-N" LAST-BODY NBR:B? TFALSE
-   s" NTP-FIXTURE:LOOPY-N" LAST-BODY NBR:COND? TTRUE
+   s" NTP-FIXTURE:LOOPY" LAST-BODY NBR:B? TFALSE
+   s" NTP-FIXTURE:LOOPY" LAST-BODY NBR:COND? TTRUE
 
    s" and so does the routine that LEAVES through its callee" T-LABEL
-   s" NTP-FIXTURE:TAILED-N" LAST-BODY NBR:B? TTRUE
+   s" NTP-FIXTURE:TAILED" LAST-BODY NBR:B? TTRUE
 
    s" but only one of the two goes anywhere outside itself" T-LABEL
    s" NTP-FIXTURE:PLAIN" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:COPIES" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:CALLS-BIG" TAIL-BRANCH? TFALSE
-   s" NTP-FIXTURE:LOOPY-N" TAIL-BRANCH? TFALSE
-   s" NTP-FIXTURE:TAILED-N" TAIL-BRANCH? TTRUE
+   s" NTP-FIXTURE:LOOPY" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:TAILED" TAIL-BRANCH? TTRUE
 
    s" and the one that does has no trailing return and makes no call" T-LABEL
-   s" NTP-FIXTURE:TAILED-N" TRAILER-RET? TFALSE
-   s" NTP-FIXTURE:TAILED-N" CALLS 0 T=
-   s" NTP-FIXTURE:TAILED-N" INSNS 1 T=
+   s" NTP-FIXTURE:TAILED" TRAILER-RET? TFALSE
+   s" NTP-FIXTURE:TAILED" CALLS 0 T=
+   s" NTP-FIXTURE:TAILED" INSNS 1 T=
 
    s" while the routine it leaves through is a whole body of its own" T-LABEL
-   s" NTP-FIXTURE:NTP-BIG-N" TAIL-BRANCH? TFALSE
-   s" NTP-FIXTURE:NTP-BIG-N" TRAILER-RET? TTRUE
+   s" NTP-FIXTURE:BIG" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:BIG" TRAILER-RET? TTRUE
 
    s" and a routine whose callee is outside the region keeps its call" T-LABEL
-   s" NTP-FIXTURE:OUTSIDE-N" TAIL-BRANCH? TFALSE
-   s" NTP-FIXTURE:OUTSIDE-N" TRAILER-RET? TTRUE
-   s" NTP-FIXTURE:OUTSIDE-N" CALLS 1 T=
+   s" NTP-FIXTURE:OUTSIDE" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:OUTSIDE" TRAILER-RET? TTRUE
+   s" NTP-FIXTURE:OUTSIDE" CALLS 1 T=
 
    \ ---- and how many bytes of code each of them really is --------------------
    \ The recorded length is the span a CALLER may copy, so for everything that
@@ -242,25 +144,25 @@ public
       s" NTP-FIXTURE:PLAIN" INSNS 1+ NBR:INSN-BYTES * T=
    s" NTP-FIXTURE:CALLS-BIG" CODE-BYTES
       s" NTP-FIXTURE:CALLS-BIG" INSNS 1+ NBR:INSN-BYTES * T=
-   s" NTP-FIXTURE:NTP-BIG-N" CODE-BYTES
-      s" NTP-FIXTURE:NTP-BIG-N" INSNS 1+ NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:BIG" CODE-BYTES
+      s" NTP-FIXTURE:BIG" INSNS 1+ NBR:INSN-BYTES * T=
 
    s" a loop's back edge does not make its routine one that leaves by a branch"
    T-LABEL
-   s" NTP-FIXTURE:LOOPY-N" CODE-BYTES
-      s" NTP-FIXTURE:LOOPY-N" INSNS 1+ NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:LOOPY" CODE-BYTES
+      s" NTP-FIXTURE:LOOPY" INSNS 1+ NBR:INSN-BYTES * T=
 
    s" but a routine that really leaves by one gets nothing added" T-LABEL
-   s" NTP-FIXTURE:TAILED-N" CODE-BYTES
-      s" NTP-FIXTURE:TAILED-N" INSNS NBR:INSN-BYTES * T=
-   s" NTP-FIXTURE:TAILED-N" CODE-BYTES NBR:INSN-BYTES T=
+   s" NTP-FIXTURE:TAILED" CODE-BYTES
+      s" NTP-FIXTURE:TAILED" INSNS NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:TAILED" CODE-BYTES NBR:INSN-BYTES T=
 
    s" an empty routine records no length at all, and is not a word of no size"
    T-LABEL
-   s" NTP-FIXTURE:EMPTY-N" INSNS 0 T=
-   s" NTP-FIXTURE:EMPTY-N" TAIL-BRANCH? TFALSE
-   s" NTP-FIXTURE:EMPTY-N" TRAILER-RET? TTRUE
-   s" NTP-FIXTURE:EMPTY-N" CODE-BYTES NBR:INSN-BYTES T=
+   s" NTP-FIXTURE:EMPTY" INSNS 0 T=
+   s" NTP-FIXTURE:EMPTY" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:EMPTY" TRAILER-RET? TTRUE
+   s" NTP-FIXTURE:EMPTY" CODE-BYTES NBR:INSN-BYTES T=
 
    s" a name nothing published is a refusal and not a quiet zero" T-LABEL
    [: s" NTP-FIXTURE:NO-SUCH-WORD" CALLS drop ;]
