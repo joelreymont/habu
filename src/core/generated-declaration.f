@@ -747,7 +747,7 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
    fam FAM-VAR-COUNT 0 <= IF 0 0= 0= EXIT THEN
    fam FAM-SUM? fam FAM-ENUM? or ;
 
-\ Has this family's set already been generated? TDPLAN-CTOR+ records the
+\ Has this family's set already been generated? Constructor planning records the
 \ constructor symbol on each variant row as it renders, so a non-zero symbol on
 \ the first row means the words are live. This is an EXISTENCE check on the
 \ registry, deliberately not a name lookup, and it is kept out of GEN-OK? so that
