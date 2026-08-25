@@ -353,7 +353,10 @@ variable REC-OK                      \ the body staged so far is still one worth
    CC BB sy SPELL-BUF SPELL-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
    SPELL-BUF u NDICT:CALL-TARGET PRIOR-ENTRY @ <> if exit then
    r sy HIR-WORD:MODELS? if exit then
-   PRIOR-CALLABLE @ 0= if E-HIR-UNMODELED throw then
+   \ Structural operands can have the same spelling as the definition's bare
+   \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
+   \ discard operands, while a genuine word use reaches the ordinary refusal.
+   PRIOR-CALLABLE @ 0= if exit then
    CC BB r sy
    PRIOR-ENTRY @ PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @ PRIOR-DEAD @
    HIR-WORD:DECLARE-BOUND-CALLABLE ;

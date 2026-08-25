@@ -12418,18 +12418,13 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    SGIN @ BROW !  SGOUT @ DCUR !
    SGHASR @ 0 <> IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN ;
 
-\ --- generated-constructor certification (item 8, docs/type-families.md §12).
-\ Hidden physical fields are checker-owned, so no user body can produce a
-\ layout-typed output — that reject IS the anti-forgery rule. The one intro
-\ form is a generated-constructor plan. ;SUMTYPE queues every constructor's
-\ symbol and physical pad+tag cell count from SUMV metadata before evaluating
-\ the complete generated source once. Boundary unification consumes that sealed
-\ queue in source order and verifies each body against its metadata-derived RAW
-\ row — the declared inputs untouched underneath, the counted type-n cells
-\ (zero pads + tag) on top. The declared hidden-field sig is then recorded
-\ through the normal certify path, coercing the raw cells into the layout bundle
-\ by construction. Both rows derive from the same SUMV record, and only the
-\ sumtype declaration path (sealed against user reopening) can arm the queue.
+\ --- generated-product certification (item 15, docs/type-families.md §9.4).
+\ A product bundle is exactly its field cells in slot order, so generated MAKE
+\ and UNMAKE have empty bodies. Their sealed plan queues the two symbols with a
+\ zero-cell delta; boundary unification then records the declared product effect
+\ without letting user source forge a layout bundle. SUM/ENUM constructors do
+\ not use this authority: their generated checked bodies spell the canonical
+\ `construct family variant` form, which owns both certification and lowering.
 4 constant CTOR-PEND-CAP-INIT
 2 cells constant CTOR-PEND-REC
 $7FFFFFFFFFFFFFFF constant CTOR-PEND-BYTE-MAX

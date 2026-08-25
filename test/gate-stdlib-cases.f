@@ -324,6 +324,10 @@ SUITE compiler-native-qualified-name
    test/compiler/native-qualified-name.f
 ;SUITE
 
+SUITE compiler-native-generated-constructor
+   test/compiler/native-generated-constructor.f
+;SUITE
+
 SUITE compiler-native-order-exit
    test/compiler/native-order-exit.f
 ;SUITE

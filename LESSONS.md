@@ -7702,3 +7702,10 @@ and --no-lldbinit.
 - **A code rewind must clear both relocation maps over the whole reclaimed span.**
   Otherwise reused code or name padding inherits stale call/address claims and
   poisons a later snapshot.
+
+## 2026-08-25 - generated constructor operands
+
+- **A name token that resolves in the dictionary is not necessarily a call.**
+  `PRIOR-STEP` mistook the `ok` operand in generated `construct result ok` for
+  the uncallable prior match shadowed by `RESULT:OK`; leave it to NELAB, whose
+  structural scans already distinguish operands from word uses.
