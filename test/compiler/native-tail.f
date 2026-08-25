@@ -1,4 +1,4 @@
-\ native-tail.f - the call a routine leaves through when its own names are still
+\ native-tail.f - production tail calls with live names and wide results.
 
 require lib/errors.f
 require lib/string.f
@@ -103,7 +103,7 @@ public
 \ ---- and the site beside a wide instantiation ---------------------------------
 \ WHAT A CONSTRUCTION PUTS IN A BODY THAT ALSO LEAVES THROUGH A CALL. A parametric
 \ family instantiated with a multi-cell argument reserves more room than its
-\ declaration does, so the chain pushes the missing zero cells at the CALL SITE,
+\ declaration does, so the compiler pushes the missing zero cells at the CALL SITE,
 \ in front of the constructor's own call (src/compiler/native/elaborate.f
 \ CON-PADS-PUSH). Those cells are ordinary vector values that the call it stands
 \ in front of consumes, so nothing of them survives it - but they arrive at a
@@ -131,9 +131,8 @@ PRODUCT pt 0
    FIELD y n
 ;PRODUCT
 
-\ A maker for the wide-bundle rows' input, and its reader. Both are the engine's
-\ on both sides of every production test: what is under test is the routine BETWEEN
-\ them.
+\ A maker for the wide-bundle rows' input, and its reader. What is under test is
+\ the routine between them.
 : NTL-MKO ( n -- option<pt> )
    dup 0 > if  dup 3 *  swap 5 *  NTL--FIXTURE-PT:MAKE OPTION:SOME
          else  drop OPTION:NONE  then ;
@@ -195,20 +194,23 @@ TRUSTED: EV-RC ( ptr u8 n -- n )
 
 : WIDE-CASE ( -- )
    s" wide tail callers preserve every result cell" T-LABEL
-   1 1 1 1 1 NTL-FIXTURE:NTL-WIDE
-   13 T= 11 T= 7 T= 5 T= 3 T=
-   0 0 0 0 0 0 0 0 0 0 NTL-FIXTURE:NTL-TEN
-   0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= ;
+   2 3 5 7 11 NTL-FIXTURE:NTL-WIDE
+   143 T= 77 T= 35 T= 15 T= 6 T=
+   1 2 3 4 5 6 7 8 9 10 NTL-FIXTURE:NTL-TEN
+   310 T= 261 T= 184 T= 133 T= 102 T=
+   65 T= 44 T= 21 T= 10 T= 3 T= ;
 
 : REAL-CASE ( -- )
    s" a tail caller publishes a double result" T-LABEL
-   0 NTL-FIXTURE:NTL-FRESULT 0.25 f= TTRUE
-   0.5 NTL-FIXTURE:NTL-FARG 1.5 f= TTRUE ;
+   0 NTL-FIXTURE:NTL-FRESULT 73.75 f= TTRUE
+   -1 NTL-FIXTURE:NTL-FRESULT -40.25 f= TTRUE
+   0.5 NTL-FIXTURE:NTL-FARG 1.5 f= TTRUE
+   -0.5 NTL-FIXTURE:NTL-FARG -1.5 f= TTRUE ;
 
 \ THE TWO ROWS BESIDE A WIDE INSTANTIATION. The first is a tail site whose cells
 \ are one BUNDLE - three cells that are one value, with the glue a construction
 \ puts on them - and it is where the site's arity is not one. The second holds a
-\ padded construction, whose zero cells the chain pushes at the constructor's own
+\ padded construction, whose zero cells the compiler pushes at the constructor's own
 \ call site: its last call is over the bundle those cells helped build, its arity
 \ is not that callee's, and it returns. Both answer through the ordinary maker
 \ and reader, so a lost or misplaced pad is a wrong number here.

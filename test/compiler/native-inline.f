@@ -1,4 +1,4 @@
-\ native-inline.f - the body of a small routine, recorded when it is published
+\ native-inline.f - recording and copying small published routines.
 
 require lib/test.f
 require src/compiler/native/hir.f
@@ -782,8 +782,8 @@ variable STALE-ENTRY
 \ routine, so what refused it was the capacity and not the rule.
 \
 \ BOTH REFUSALS ARE SOFT, AND THAT IS THE POINT OF ASSERTING WHAT STILL RUNS. A
-\ body this file will not hold is a body its callers call, exactly as they call a
-\ word the engine compiled: F-L4 and F-R3 are published, answer correctly, and
+\ body this file will not hold is a body its callers call: F-L4 and F-R3 are
+\ published, answer correctly, and
 \ their own callers carry one branch each.
 \ THE CHAIN ADDS BEFORE IT MULTIPLIES, AND THAT ORDER IS LOAD-BEARING. What these
 \ links are FOR is the size rule - one link sits inside it and the next sits one
@@ -1303,4 +1303,3 @@ public
 ;package
 
 NINL-TEST:RUN
-

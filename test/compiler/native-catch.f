@@ -16,7 +16,7 @@ TRUSTED: EV ( ptr u8 n -- )
 private
 
 \ ---- reading the windows a recorded definition's catch sites took -------------
-\ The chain's own reader, asked about the tape the compilation above just recorded.
+\ The compiler's reader, asked about the tape the compilation above just recorded.
 \ Reading it after the unit closed is the point: that is when the elaborator reads
 \ it, and the table is kept for exactly that reason.
 : WIN-IN ( n -- n )
@@ -105,9 +105,9 @@ variable CAP-U
 : SRC-CAP ( -- )
    CAP-BUILD NCA-TEST:EV ;
 
-\ Running one fixture and swallowing whatever the chain made of it. The recorded
+\ Running one fixture and swallowing whatever compilation made of it. The recorded
 \ windows are the subject here, and they are recorded by the SCAN - which has
-\ happened either way, because the chain only ever runs after it.
+\ happened either way, because lowering only runs after it.
 : SCANNED ( -- )
    [: SRC-DEAD ;] catch drop ;
 
@@ -154,7 +154,7 @@ public
    16 SITES 2 T= ;
 
 : CAP-CASE ( -- )
-   s" past the ceiling a site is not recorded, and the chain refuses it by name" T-LABEL
+   s" past the ceiling a site is not recorded, and compilation refuses it by name" T-LABEL
    [: SRC-CAP ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED-ROW  CAP-SITES 1 - CAP-SITE-TOK  T=
    NELAB:REFUSED$ s" catch" T$=
@@ -185,7 +185,7 @@ public
 
 ;package
 
-\ ---- the engine's compilation: the reference ---------------------------------
+\ ---- the production programs under test --------------------------------------
 \ Every body here is STRAIGHT-LINE, and that is a ceiling of the quotation path
 \ rather than of `catch`: a quotation body holding any control structure is
 \ refused by the IR verifier (E-IR-VERIFY-SUCCARG), measured on the parent binary
@@ -203,7 +203,7 @@ public
 \ Drops the cell it was handed, puts another in its place and throws. It is the
 \ whole point of the production test: the caller gets the SECOND value back under
 \ the throw code, because a caught throw restores the stack's depth and leaves
-\ its contents alone. A chain that kept the window in a register answers the
+\ its contents alone. A compiler that kept the window in a register answers the
 \ value the site started with.
 : NCA-CLOB ( n -- n )
    drop 5 dup 3 > if 9 throw then ;
@@ -274,10 +274,6 @@ public
    42 >r [: NCA-OK1 ;] catch r> ;
 
 \ ---- quotation-body cases -----------------------------------------------------
-\ The body that never returns is still refused; the other two pin accepted forms.
-: NCA-NR ( n -- n n )
-   [: drop 5 throw ;] catch ;
-
 : NCA-BC ( n -- n n )
    [: dup 3 > if 1+ then ;] catch ;
 
@@ -295,8 +291,8 @@ public
 
 \ THE ONE ANSWER THAT DECIDES THIS WHOLE LANE. `7 NCA-D1` is 9 over 5, not 9 over
 \ 7: the caught body dropped the caller's cell, wrote another in its slot and
-\ threw, and what the engine restores is the DEPTH. The production test holds the
-\ chain to that, and the number a chain that cached the window would answer - 7 -
+\ threw, and what catch restores is the DEPTH. The production test holds the
+\ compiler to that, and the number cached window contents would answer - 7 -
 \ is the value the site started with, which no shape assertion would ever notice.
 : CONTENTS-CASE ( -- )
    s" a caught throw restores the depth and not the contents" T-LABEL
@@ -304,7 +300,7 @@ public
    er 9 T=  eu 5 T= ;
 
 : NORMAL-CASE ( -- )
-   s" the path where nothing throws answers the engine too" T-LABEL
+   s" the path where nothing throws returns the body result" T-LABEL
    7 NCA-FIXTURE:NCA-D2 {: eu:n er:n :}
    er 0 T=  eu 8 T= ;
 
@@ -350,17 +346,9 @@ public
    7 NCA-FIXTURE:NCA-PN {: nu:n nr:n np:n :}
    np 42 T=  nr 0 T=  nu 8 T= ;
 
-\ ---- what the chain still refuses, and whose refusal each one is -------------
-\ Each pair is the same shape twice: the offending one and a twin without the
-\ offence, so what the refusal is about is the shape and not something else in
-\ the line. The engine compiles and runs every one of them, which the first line
-\ of each case measures - so both refusals are the chain's alone.
+\ ---- what production compilation still refuses -------------------------------
 : NORET-BODY-CASE ( -- )
-   s" the engine runs a caught body that never returns" T-LABEL
-   7 NCA-FIXTURE:NCA-NR {: nu:n nr:n :}
-   nr 5 T=  nu 5 T=
-
-   s" and the chain refuses it, while its returning twin compiles" T-LABEL
+   s" a caught body that never returns is refused, while its twin compiles" T-LABEL
    [: s" : NCA-NR1 ( n -- n n ) [: drop 5 throw ;] catch ;" NCA-TEST:EV ;]
    E-NELAB-QUOT TTHROWSQ
    [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" NCA-TEST:EV ;]
@@ -409,11 +397,11 @@ public
 \ test/compiler/native-quot-scope.f on both paths; this case
 \ keeps the acceptance beside the refusal it replaced.
 : BODY-CALL-LOCALS-CASE ( -- )
-   s" the engine runs a caught calling body under a definition with locals" T-LABEL
+   s" a caught calling body runs under a definition with locals" T-LABEL
    7 NCA-FIXTURE:NCA-BL {: bu:n br:n :}
    br 0 T=  bu 8 T=
 
-   s" and the chain compiles it now, with the group and without it" T-LABEL
+   s" and production compilation accepts it with the group and without it" T-LABEL
    [: s" : NCA-BL1 ( n -- n n ) [: NCA-FIXTURE:NCA-OK1 ;] catch {: rc:n :} rc 0 <> if 77 else 0 then ;"
       NCA-TEST:EV ;]
    0 TTHROWSQ

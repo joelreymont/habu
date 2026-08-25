@@ -1,4 +1,4 @@
-\ native-clobber.f - what a published routine destroys, and what a call site does
+\ native-clobber.f - published clobber rows and their call-site effects.
 
 require lib/test.f
 require lib/codegen.f
@@ -194,22 +194,16 @@ $F8400000 constant LDUR-OP
    1 REGS lshift 1 -  invert and  0 T= ;
 
 \ ---- the narrowing, measured -------------------------------------------------
-\ Two callers of one shape. Two values are live across every call in both - the
-\ loop's index and its limit; the accumulator is the call's own argument and goes
-\ out through a slot either way - so the difference between their counts is the
-\ discipline and nothing else, and both counts are measured so that a change in
-\ either is visible rather than only their order.
+\ The loop's index and limit are live across every call. The accumulator is the
+\ call's own argument and goes through a slot, so the counts below pin the saves
+\ left after the callee's published clobber row narrows them.
 \
 \ WHY THE COUNTS ARE SMALL RATHER THAN EIGHT AND EIGHT. The residency pass in
 \ src/compiler/native/select.f writes no store for a value the cell it would
 \ write already holds, and builds no load for a value nothing reads out of a
 \ register. The accumulator is handed in on the caller's stack, handed straight
-\ to the callee and handed straight back, so it crosses either body without ever
-\ reaching a register - which removes the accumulator's own traffic from both
-\ rows. What is left in the wide row is the loop's index and limit going out and
-\ coming back at every call, which is the discipline the narrowing removes, and
-\ the assertions below hold the two rows against each other as well as against
-\ their own numbers.
+\ to the callee and handed straight back, so it crosses the body without ever
+\ reaching a register. What remains is the caller's own entry traffic.
 
 : NARROW! ( -- )
    s" : NCLOB-NARROW ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-STEP NCLOB-STEP loop ;"
@@ -225,15 +219,13 @@ $F8400000 constant LDUR-OP
    s" NCLOB-NARROW" DS-LOADS 1 T= ;
 
 \ ---- the narrowing, measured where it can actually be lost -------------------
-\ The pair above holds two values live across each call while the callee's row
-\ leaves most of the pool free, so the row has slack: delete a register from it
-\ and both callers still spill nothing extra and every count stays where it was.
-\ The pair below holds more live values than the registers the row leaves free,
-\ and then every register the row names is holding one of them - so each moves
-\ exactly one store and one load.
+\ The case above leaves most of the pool free, so its row has slack. The pressure
+\ caller below holds more live values than the row leaves free; every register
+\ the row names then moves exactly one store and one load. Its control has one
+\ fewer live value and fits without those saves.
 \
 \ WHAT MAKES THIS PAIR PRESS, AND WHY IT NEEDS ITS OWN CALLEE. Two things have to
-\ be true at once and neither is true of the callee the pair above uses. The
+\ be true at once and neither is true of the callee the case above uses. The
 \ callee's row has to name SEVERAL registers, or there is nothing for a caller to
 \ save and nothing a deleted register could change; and the caller has to hold
 \ more values across the call than the row leaves free, or the allocator has room
@@ -241,8 +233,8 @@ $F8400000 constant LDUR-OP
 \ constants, and since the selection stage emits the immediate forms
 \ (src/compiler/native/select.f) none of those constants is ever materialised:
 \ its whole emission lives in ONE register, so its row names one and a caller of
-\ it can never save more than one thing. This pair therefore has a callee of its
-\ own, sized for the property rather than for the pair above.
+\ it can never save more than one thing. The pressure case therefore has a callee
+\ of its own, sized for the property.
 \
 \ AND THE CALLEE'S PRESSURE IS OF A KIND NO LATER PASS CAN TAKE AWAY. Its body
 \ interleaves multiplication with xor and and, over five distinct constants each

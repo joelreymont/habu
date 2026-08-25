@@ -18,12 +18,6 @@ private
 
 4 constant INSN-BYTES
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and the
-\ forge below is the only way to compile a caller for a published word from
-\ inside a test.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
 public
 
 \ ---- the families the cases dispatch over -------------------------------------
@@ -142,7 +136,7 @@ SUMTYPE narrow 1
 \ which is the cheapest dispatch there is.
 ENUM sol ov ;ENUM
 
-\ Four arms, which is the shape the engine's own four-armed cost was measured on.
+\ Four arms, which is the shape the four-armed selector cost was measured on.
 ENUM quad
    q0 q1 q2 q3
 ;ENUM
@@ -163,7 +157,7 @@ ENUM over
 
 private
 
-\ ---- the bodies the engine compiles -------------------------------------------
+\ ---- the programs the production compiler compiles ----------------------------
 : E-HUE ( hue -- n )
    MATCH hue
       red OF 10 ENDOF
@@ -200,8 +194,8 @@ private
 \ The same payload, discarded instead of taken apart. It is two cells and ONE
 \ value, so `drop` has to take both - which is a row-wise rename inside an arm
 \ (dot habu-rename-rows-row-143c0331). The chain refused this body while a
-\ rename counted in cells; now it moves the value whole and this compares what
-\ the two compilations answer.
+\ rename counted in cells; now it moves the value whole and this executes the
+\ resulting arm.
 : E-DROPPED ( n holder -- n )
    MATCH holder
       empty OF ENDOF
@@ -380,7 +374,7 @@ private
 \ - so at `option<pt>`, where the instantiation reserves two payload slots and the
 \ declaration reserves one, both spellings are one zero cell short. The checker
 \ files that difference under the construction's own token and the chain adds the
-\ cells at the site, exactly where the engine adds them.
+\ cells at the site, exactly where native lowering adds them.
 \
 \ THE TWO ARMS OF EVERY MAKER BELOW NEED DIFFERENT NUMBERS, which is what makes
 \ them a pair rather than one case written twice. `some` at `option<pt>` carries a
@@ -596,7 +590,6 @@ RUN-DYNAMIC-CASES
    loop ;
 
 variable EMIT-RC
-variable EMIT-SIZE
 variable EMIT-BRANCH
 variable EMIT-RET
 variable EMIT-TRAPS
@@ -615,7 +608,6 @@ variable QUAD-SIZE
 
 : CAPTURE-EMISSION ( -- )
    PROBE-HUE$ TRY EMIT-RC !
-   A64EMIT:SIZE EMIT-SIZE !
    A64EMIT:LEAVES-BY-BRANCH? if 1 else 0 then EMIT-BRANCH !
    A64EMIT:TRAILING-RETURN? if 1 else 0 then EMIT-RET !
    TRAP-BRANCHES EMIT-TRAPS !

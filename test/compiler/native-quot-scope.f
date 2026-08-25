@@ -1,4 +1,4 @@
-\ native-quot-scope.f - a quotation body is a function of its own, and the scope
+\ native-quot-scope.f - quotation bodies, locals, and control-flow scope.
 
 require lib/test.f
 require lib/prelude.f
@@ -6,7 +6,7 @@ require lib/string.f
 require lib/errors.f
 require src/compiler/native/compiler.f
 
-\ ---- the engine's compilation: the reference ---------------------------------
+\ ---- the programs under test --------------------------------------------------
 package QSC-FIXTURE
 
 public
@@ -47,7 +47,7 @@ public
    lim 5 * [: QSC-OK1 ;] catch drop  k 3 * + ;
 
 \ The same shape with the code kept as data, so a caller can measure the
-\ throwing path as well: the value the window holds afterwards is the engine's
+\ throwing path as well: the value the window holds afterwards is the runtime's
 \ answer about a caught throw, and the name added to it is this file's subject.
 : QSC-T ( n n -- n n )
    {: k:n lim:n :}
@@ -213,7 +213,7 @@ public
 \ the six texts that proved it as one refusal prove it here as one acceptance.
 \ They are still MEASURED and not published: what they are for is the compile,
 \ and their answers are the production cases' business.
- \ ---- what the branching bodies\ ---- what the branching bodies ANSWER ----------------------------------------
+\ ---- what the branching bodies answer ----------------------------------------
 \ The acceptances above say the module reached the emitter; these pin the code's
 \ results over inputs that take each arm.
 : CONTROL-BODY-CASE ( -- )

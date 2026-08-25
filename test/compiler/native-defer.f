@@ -1,4 +1,4 @@
-\ native-defer.f - `[: … ;] is FOO` through the whole chain. One concern: what
+\ native-defer.f - production compilation of `[: … ;] is FOO`.
 
 require lib/test.f
 require src/compiler/native/compiler.f

@@ -79,7 +79,18 @@ private
 4 TYPED-BUFFER OP-AT opt2<pt>
 variable SC                            \ one ordinary cell: the scalar access's own home
 
-\ ---- the bodies the engine compiles ------------------------------------------
+\ A narrow test boundary that views one physical cell of W2 as a scalar. The
+\ checked wide accessors below remain the production path under test.
+TRUSTED: W2-SCALAR-AT ( n -- ptr n )
+   0 W2-AT swap cells + ;
+
+: W2-SCALAR! ( n n -- )
+   W2-SCALAR-AT ! ;
+
+: W2-SCALAR@ ( n -- n )
+   W2-SCALAR-AT @ ;
+
+\ ---- the production programs under test --------------------------------------
 : E-L1 ( n -- n )
    W1-AT @ NWM-W1:UNMAKE 3 * ;
 
@@ -213,6 +224,17 @@ TRUSTED: EV-RC ( ptr u8 n -- n )
    9 9 9 0 E-S3
    2 3 4 0 E-S3  0 E-L3 87 T= ;
 
+: PHYSICAL-CASE ( -- )
+   s" scalar-seeded slots are read in declared wide-field order" T-LABEL
+   3 0 W2-SCALAR!
+   4 1 W2-SCALAR!
+   0 E-L2 27 T=
+
+   s" a wide store writes those same physical scalar slots" T-LABEL
+   7 11 0 E-S2
+   0 W2-SCALAR@ 7 T=
+   1 W2-SCALAR@ 11 T= ;
+
 : ROUNDTRIP-CASE ( -- )
    s" store-load and read-change-write-read round trips work" T-LABEL
    3 4 0 E-RT2 27 T=
@@ -261,6 +283,7 @@ public
    T-RESET
    LOAD-CASE
    STORE-CASE
+   PHYSICAL-CASE
    ROUNDTRIP-CASE
    COL-CASE
    DISPATCH-CASE

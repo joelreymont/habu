@@ -1,4 +1,4 @@
-\ native-exec.f - `execute` through the whole chain. One concern: what the native
+\ native-exec.f - production compilation of `execute`.
 
 require lib/test.f
 require src/compiler/native/compiler.f
@@ -10,8 +10,8 @@ require lib/array.f
 package ARRAY
 : NX-A-SRC ( -- ptr u8 n )
    s" : A-MAPI! ( ptr a len [ idx a -- a ] -- ) {: arr:ptr len q :} len A-CHECK-WHOLE len LEN>N 0 ?do i A-IDX arr len i A-IDX A@ q execute arr len i A-IDX A! loop ;" ;
-: NX-A-GO ( -- )
-   NX-A-SRC EV ;
+TRUSTED: NX-A-GO ( -- )
+   NX-A-SRC evaluate ;
 NX-A-GO
 ;package
 

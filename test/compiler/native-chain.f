@@ -1,4 +1,4 @@
-\ native-chain.f - SOURCE TEXT TO EXECUTED BYTES: the native chain's first
+\ native-chain.f - source text through the production compiler to executed bytes.
 
 require lib/test.f
 require lib/prelude.f

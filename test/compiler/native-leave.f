@@ -56,8 +56,8 @@ public
    seed len 0 ?do NLV-CALLEE k + dup 0 < if leave then loop ;
 
 \ A local may be named after a control word, and the declared name wins from its
-\ group's closer onwards - docs/forth.md's local-first rule, measured on this
-\ engine. It is here because it is the one way a body can write `leave` and NOT
+\ group's closer onwards by docs/forth.md's local-first rule. It is here because
+\ it is the one way a body can write `leave` and NOT
 \ mean the loop exit, so a chain that matched the spelling instead of asking the
 \ locals frame would compile something else entirely.
 : NLV-LEAVE-LOCAL ( n -- n )
@@ -91,7 +91,9 @@ TRUSTED: EV-DEF ( ptr u8 n -- n )
    s" NLV-FIXTURE:NLV-FIRST-DO" KEPT
    5 3 NLV-FIXTURE:NLV-FIRST 3 T=
    5 9 NLV-FIXTURE:NLV-FIRST -1 T=
-   5 3 NLV-FIXTURE:NLV-FIRST-DO 3 T= ;
+   5 3 NLV-FIXTURE:NLV-FIRST-DO 3 T=
+   0 0 NLV-FIXTURE:NLV-FIRST -1 T=
+   0 0 NLV-FIXTURE:NLV-FIRST-DO 0 T= ;
 
 : NEST-CASE ( -- )
    s" a leave in the inner loop leaves the inner loop" T-LABEL
@@ -106,12 +108,14 @@ TRUSTED: EV-DEF ( ptr u8 n -- n )
 : CALL-CASE ( -- )
    s" a call in the body carries the counters across the leave's edge" T-LABEL
    s" NLV-FIXTURE:NLV-CALL" KEPT
-   0 7 NLV-FIXTURE:NLV-CALL 7 T= ;
+   0 7 NLV-FIXTURE:NLV-CALL 7 T=
+   3 7 NLV-FIXTURE:NLV-CALL 823165 T= ;
 
 : LOCAL-CASE ( -- )
    s" and a bound local crosses it beside them" T-LABEL
    s" NLV-FIXTURE:NLV-LOCAL" KEPT
-   2 0 7 NLV-FIXTURE:NLV-LOCAL 7 T= ;
+   2 0 7 NLV-FIXTURE:NLV-LOCAL 7 T=
+   2 3 7 NLV-FIXTURE:NLV-LOCAL 828263 T= ;
 
 : LEAVE-LOCAL-CASE ( -- )
    s" a local named leave resolves as the local" T-LABEL

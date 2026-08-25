@@ -1,4 +1,4 @@
-\ codegen-tail-probe.f - reading a routine's calls and its exit off the emitted
+\ codegen-tail-probe.f - reading calls and exits from production emission.
 
 require lib/prelude.f
 require lib/test.f
@@ -10,12 +10,12 @@ package NTP-FIXTURE
 
 public
 
-\ A callee small enough that the engine copies it into any caller.
+\ A callee small enough that the compiler copies it into any caller.
 : TINY ( n -- n )
    1 + ;
 
 \ And one it will not copy: eleven operations, well past the forty body bytes
-\ the engine's INL-MAX allows.
+\ the inliner's size limit allows.
 : BIG ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 
@@ -29,8 +29,8 @@ public
    TINY TINY ;
 
 \ A caller of the sized one. This really does emit a call instruction.
-: CALLS-BIG ( n -- n )
-   BIG ;
+: CALLS-THEN ( n -- n )
+   BIG 1 + ;
 
 : OUTSIDE ( n -- n )
    abs ;
@@ -52,12 +52,8 @@ public
 \ stands alone after it. That is the shape a predicate reading only the opcode
 \ calls a tail branch.
 \
-\ IT HAS TO BE THE CHAIN'S CODE AND NOT THE ENGINE'S. The engine's emitter does
-\ not lay a routine out this way: the same body compiled by it ends its recorded
-\ span on ordinary work. The false positive was found on the chain's columns
-\ (VEC-COPY-CELLS-N and T-SGD!-N of the codegen-compare corpora), so the fixture
-\ is compiled through the real chain rather than written as an ordinary
-\ definition that would not reproduce it.
+\ The ordinary definition below goes through the sole production compiler, so
+\ the case asserts the emitted shape it actually produces.
 
 create SINK 8 cells allot
 
@@ -82,16 +78,17 @@ public
    s" NTP-FIXTURE:COPIES" CALLS 0 T=
 
    s" and a caller of a callee too big to copy reports the call it makes" T-LABEL
-   s" NTP-FIXTURE:CALLS-BIG" CALLS 1 T=
-   s" NTP-FIXTURE:CALLS-BIG" LAST-CALL-IX 0 >= TTRUE
+   s" NTP-FIXTURE:CALLS-THEN" CALLS 1 T=
+   s" NTP-FIXTURE:CALLS-THEN" LAST-CALL-IX 0 >= TTRUE
+   0 NTP-FIXTURE:CALLS-THEN 50 T=
 
    s" what follows the last call is counted, and it is the epilogue" T-LABEL
-   s" NTP-FIXTURE:CALLS-BIG" AFTER-LAST-CALL 0 > TTRUE
+   s" NTP-FIXTURE:CALLS-THEN" AFTER-LAST-CALL 0 > TTRUE
 
    s" every one that returns ends in the trailing return the record promises" T-LABEL
    s" NTP-FIXTURE:PLAIN" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:COPIES" TRAILER-RET? TTRUE
-   s" NTP-FIXTURE:CALLS-BIG" TRAILER-RET? TTRUE
+   s" NTP-FIXTURE:CALLS-THEN" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:LOOPY" TRAILER-RET? TTRUE
 
    \ THE FIXTURE BUILT TO FOOL THIS TOOL IS NO LONGER THE SHAPE THAT FOOLS IT, AND
@@ -115,7 +112,7 @@ public
    s" but only one of the two goes anywhere outside itself" T-LABEL
    s" NTP-FIXTURE:PLAIN" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:COPIES" TAIL-BRANCH? TFALSE
-   s" NTP-FIXTURE:CALLS-BIG" TAIL-BRANCH? TFALSE
+   s" NTP-FIXTURE:CALLS-THEN" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:LOOPY" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:TAILED" TAIL-BRANCH? TTRUE
 
@@ -142,8 +139,8 @@ public
    s" a returning routine is its recorded body and the return after it" T-LABEL
    s" NTP-FIXTURE:PLAIN" CODE-BYTES
       s" NTP-FIXTURE:PLAIN" INSNS 1+ NBR:INSN-BYTES * T=
-   s" NTP-FIXTURE:CALLS-BIG" CODE-BYTES
-      s" NTP-FIXTURE:CALLS-BIG" INSNS 1+ NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:CALLS-THEN" CODE-BYTES
+      s" NTP-FIXTURE:CALLS-THEN" INSNS 1+ NBR:INSN-BYTES * T=
    s" NTP-FIXTURE:BIG" CODE-BYTES
       s" NTP-FIXTURE:BIG" INSNS 1+ NBR:INSN-BYTES * T=
 

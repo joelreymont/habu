@@ -1,4 +1,4 @@
-\ native-rstack.f - `>r`, `r>`, `r@` and their pair forms, run against the
+\ native-rstack.f - production return-stack operations across control-flow seams.
 
 require lib/errors.f
 require lib/string.f
@@ -6,9 +6,7 @@ require lib/test.f
 require lib/prelude.f
 require src/compiler/native/compiler.f
 
-\ ---- the engine's compilation: the reference ---------------------------------
-\ Ordinary definitions. bin/hb compiles these with the emitter it has always
-\ used, whose `>r` really writes a cell into the return-stack region.
+\ ---- the production programs under test --------------------------------------
 package NRS-FIXTURE
 
 public
@@ -28,9 +26,9 @@ public
 : NRS-2FET ( n n -- n ) 2>r 2r@ - 2r> - + ;
 
 \ EACH PARKED VALUE IS WEIGHTED DIFFERENTLY, and that is not decoration. Three
-\ values combined by addition answer the same number in any order, so a chain that
-\ handed them back exchanged would agree with the engine and this row would prove
-\ only that three cells came back. Distinct odd multipliers make the ANSWER say
+\ values combined by addition answer the same number in any order, so code that
+\ handed them back exchanged could still pass an unweighted assertion. Distinct
+\ odd multipliers make the ANSWER say
 \ which cell came back where. The same reason gives NRS-2CALL below its weights,
 \ and the pair forms get it for free from subtracting rather than adding.
 : NRS-DEEP ( n n n -- n ) >r >r >r 1 r> 3 * + r> 5 * + r> 7 * + ;
@@ -73,8 +71,7 @@ public
 
 \ THE TRIP COUNT READS THE PARKED VALUE AND STILL TERMINATES, and both halves of
 \ that are deliberate. A body whose accumulator grows by the parked value itself
-\ runs forever at a negative one - the ENGINE's own compilation of it does, so it
-\ would be a suite that hangs rather than one that fails - while a body that never
+\ runs forever at a negative one, making a suite hang rather than fail, while one that never
 \ read the parked value would pass against a loop that lost it. Adding its low bit
 \ makes each turn advance the accumulator by one or two, so the loop always ends,
 \ and makes the number of turns depend on the value that has to survive the edge.
@@ -162,6 +159,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    7 NRS-FIXTURE:NRS-TOR 12 T=
    7 NRS-FIXTURE:NRS-FET 21 T=
    7 3 NRS-FIXTURE:NRS-PAIR 4 T=
+   7 3 NRS-FIXTURE:NRS-2FET 8 T=
    1 2 3 NRS-FIXTURE:NRS-DEEP 35 T= ;
 
 \ EVERY INPUT BELOW IS ON ONE SIDE OF A TEST THE BODIES MAKE, and the two tests
@@ -169,35 +167,63 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ them a suite could take one arm everywhere and prove nothing about the other.
 : BRANCH-CASE ( -- )
    s" a parked value survives an if, and both arms may pop it" T-LABEL
+   3 NRS-FIXTURE:NRS-BRANCH 2 T=
+   4 NRS-FIXTURE:NRS-BRANCH 9 T=
    5 NRS-FIXTURE:NRS-BRANCH 10 T=
+   3 NRS-FIXTURE:NRS-SPLIT 9 T=
+   4 NRS-FIXTURE:NRS-SPLIT 12 T=
    5 NRS-FIXTURE:NRS-SPLIT 10 T=
+   3 NRS-FIXTURE:NRS-HELD 3 T=
    5 NRS-FIXTURE:NRS-HELD 6 T=
+   1 NRS-FIXTURE:NRS-NEST3 4 T=
+   2 NRS-FIXTURE:NRS-NEST3 4 T=
+   3 NRS-FIXTURE:NRS-NEST3 4 T=
    5 NRS-FIXTURE:NRS-NEST3 6 T=
-   1 2 NRS-FIXTURE:NRS-2HELD 11 T= ;
+   1 2 NRS-FIXTURE:NRS-2HELD 11 T=
+   1 5 NRS-FIXTURE:NRS-2HELD 21 T= ;
 
 \ ZERO TURNS, ONE TURN AND SEVERAL, which is what tells a body that lost the
 \ parked value on the way INTO the loop from one that lost it on the way OUT: at
 \ zero turns the header runs once and the body never does.
 : LOOP-CASE ( -- )
    s" a parked value crosses a loop edge every turn" T-LABEL
+   2 0 NRS-FIXTURE:NRS-QLOOP 2 T=
+   2 1 NRS-FIXTURE:NRS-QLOOP 4 T=
    2 3 NRS-FIXTURE:NRS-QLOOP 11 T=
+   2 0 NRS-FIXTURE:NRS-CARRY 2 T=
+   2 1 NRS-FIXTURE:NRS-CARRY 4 T=
    2 3 NRS-FIXTURE:NRS-CARRY 11 T=
+   2 0 NRS-FIXTURE:NRS-WHILE 2 T=
+   2 1 NRS-FIXTURE:NRS-WHILE 3 T=
    2 3 NRS-FIXTURE:NRS-WHILE 5 T=
+   2 0 NRS-FIXTURE:NRS-NESTLOOP 2 T=
+   2 1 NRS-FIXTURE:NRS-NESTLOOP 11 T=
    2 2 NRS-FIXTURE:NRS-NESTLOOP 20 T=
+   1 2 0 NRS-FIXTURE:NRS-2LOOP 11 T=
+   1 2 1 NRS-FIXTURE:NRS-2LOOP 13 T=
+   1 2 3 NRS-FIXTURE:NRS-2LOOP 20 T=
+   2 1 NRS-FIXTURE:NRS-DLOOP 4 T=
    2 3 NRS-FIXTURE:NRS-DLOOP 11 T= ;
 
 \ THE INPUTS STRADDLE EACH WORD'S OWN CUT. `again` leaves when the accumulator
-\ passes the limit, so a limit at, below and above zero says the exit test is
-\ read the way the engine reads it; `leave` cuts at index two, so limits of nought
+\ passes the limit, so a limit at, below and above zero exercises the exit test;
+\ `leave` cuts at index two, so limits of nought
 \ through five run the loop to its end, exactly to the cut, and past it.
 : EARLY-EXIT-CASE ( -- )
    s" a parked value survives again and leave" T-LABEL
+   2 -1 NRS-FIXTURE:NRS-AGAIN 3 T=
+   2 1 NRS-FIXTURE:NRS-AGAIN 4 T=
    2 3 NRS-FIXTURE:NRS-AGAIN 6 T=
+   2 0 NRS-FIXTURE:NRS-LEAVE 2 T=
+   2 1 NRS-FIXTURE:NRS-LEAVE 4 T=
+   2 3 NRS-FIXTURE:NRS-LEAVE 11 T=
    2 5 NRS-FIXTURE:NRS-LEAVE 11 T= ;
 
 : CASE-CASE ( -- )
    s" a parked value crosses a tag-dispatch form's arms" T-LABEL
-   2 1 NRS-FIXTURE:NRS-CASE 22 T= ;
+   2 1 NRS-FIXTURE:NRS-CASE 22 T=
+   2 2 NRS-FIXTURE:NRS-CASE 42 T=
+   2 9 NRS-FIXTURE:NRS-CASE 32 T= ;
 
 \ THE CALL IS THE ONE SEAM WHERE THE ORDER OF THE OPERANDS DECIDES THE ANSWER.
 \ The callee reads its argument out of the slot one below the pointer it is
@@ -208,7 +234,9 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    s" a parked value survives a call and the arguments stay last" T-LABEL
    2 0 NRS-FIXTURE:NRS-CALL 51 T=
    1 2 0 NRS-FIXTURE:NRS-2CALL 60 T=
-   2 0 0 NRS-FIXTURE:NRS-CALLLOOP 2 T= ;
+   2 0 0 NRS-FIXTURE:NRS-CALLLOOP 2 T=
+   2 0 1 NRS-FIXTURE:NRS-CALLLOOP 53 T=
+   2 0 3 NRS-FIXTURE:NRS-CALLLOOP 120937 T= ;
 
 : CALLEE-CASE ( -- )
    s" neutral return-stack callees compile and a moving callee is refused" T-LABEL

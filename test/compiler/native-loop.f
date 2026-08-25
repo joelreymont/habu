@@ -1,4 +1,4 @@
-\ native-loop.f - the counted loops the chain now computes instead of running.
+\ native-loop.f - production counted-loop folding and execution.
 
 require lib/test.f
 require lib/prelude.f
@@ -40,9 +40,7 @@ public
    -100000 NLPT-CELL 12 cells + !
    $0123456789ABCDEF NLPT-CELL 13 cells + ! ;
 
-\ ---- the engine's compilation: the reference ---------------------------------
-\ Ordinary definitions. bin/hb compiles these with the emitter it has always
-\ used, which runs every one of these loops a turn at a time.
+\ ---- the production programs under test --------------------------------------
 
 \ The index added once a turn and nothing else: the whole of the sum of the
 \ indices, and the one row whose closed form needs the halving.
@@ -314,9 +312,8 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ the same bytes every turn: it is work the loop repeats for no reason, and the
 \ pre-header takes it. What is left is one addition into one accumulator, which
 \ is the shape this pass already folded. NLPT-LOAD was a refusal until the move
-\ landed - its two answers agreed then too, because the engine ran the loop and
-\ so did the chain; what changed is that the chain now computes the answer
-\ instead. NLPT-FIELDS is new, and it is the corpus row's own shape at a width a
+\ landed; what changed is that the compiler now computes the answer instead.
+\ NLPT-FIELDS is the corpus row's own shape at a width a
 \ reader can check: four reads and the additions between them all move, and its
 \ record holds the ends of the signed range so a term dropped from the sum shows.
 : LOAD-CASE ( -- )
@@ -334,7 +331,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    -4611686018427387902 T= ;
 
 \ The trip counts no loop can be run at, stated rather than run, on the row whose
-\ reads move: the reference is the four fields NLPT-FILL wrote, summed once and
+\ reads move: the expected value is the four fields NLPT-FILL wrote, summed once and
 \ multiplied by the count in wrapping sixty-four-bit arithmetic.
 : FIELDS-BIG-CASE ( -- )
    s" the moved reads answer a trip count no loop could run" T-LABEL
@@ -346,7 +343,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    17179869184 T= ;
 
 \ ---- the refusals ------------------------------------------------------------
-\ The corpus row's own width, against the loop the engine really runs. Fourteen
+\ The corpus row's own width through production compilation. Fourteen
 \ reads and thirteen additions move; one addition into one accumulator is left,
 \ and the record holds both ends of the signed range so a term dropped from the
 \ sum or a product taken in the wrong width shows.

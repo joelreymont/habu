@@ -1,4 +1,4 @@
-\ native-combine.f - the multiply-add the chain now writes, against the two
+\ native-combine.f - production combine rewrites and their emitted results.
 
 require lib/test.f
 require lib/prelude.f
@@ -10,9 +10,9 @@ package NCT-FIXTURE
 
 public
 
-\ ---- the engine's compilation: the reference -------------------------------
-\ Ordinary definitions. bin/hb compiles these with the emitter it has always
-\ used, which has no multiply-add in its vocabulary at all.
+\ ---- the programs under test ------------------------------------------------
+\ Ordinary definitions go through the production native compiler. The cases
+\ below inspect their emitted instructions and execute them.
 
 : NCT-SQSUM ( n n -- n )
    dup * swap dup * + ;

@@ -106,12 +106,14 @@ TRUSTED: EV1 ( n ptr u8 n -- n )
 : CALL-CASE ( -- )
    s" a call in the body carries both values round the back edge" T-LABEL
    s" NAG-FIXTURE:NAG-CALL" KEPT
-   1 7 NAG-FIXTURE:NAG-CALL nip 357 T= ;
+   0 7 NAG-FIXTURE:NAG-CALL nip 7 T=
+   1 7 NAG-FIXTURE:NAG-CALL nip 357 T=
+   3 7 NAG-FIXTURE:NAG-CALL nip 823165 T= ;
 
 : LOCAL-CASE ( -- )
    s" and a bound local crosses it beside them" T-LABEL
    s" NAG-FIXTURE:NAG-LOCAL" KEPT
-   1 7 2 NAG-FIXTURE:NAG-LOCAL nip 359 T= ;
+   3 7 2 NAG-FIXTURE:NAG-LOCAL nip 828263 T= ;
 
 : AGAIN-LOCAL-CASE ( -- )
    s" a local named again resolves as the local" T-LABEL

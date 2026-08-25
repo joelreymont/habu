@@ -1,4 +1,4 @@
-\ native-dead-path.f - a call control does not come back from, all the way
+\ native-dead-path.f - production compilation of calls that do not return.
 
 require lib/prelude.f
 require lib/errors.f
@@ -184,7 +184,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 : OUT-DEAD! ( -- )
    s" : DPC-ALLDEADO ( n -- n ) E-A-EMPTY throw ;" EV ;
 
-: ALL-DEAD-CASE ( -- )
+: ALL-DEAD-ACCEPT-CASE ( -- )
    s" production compilation accepts the all-dead shape" T-LABEL
    [: ALL-DEAD! ;] 0 TTHROWSQ
    [: OUT-DEAD! ;] 0 TTHROWSQ ;
@@ -241,7 +241,7 @@ public
    ALL-DEAD-CASE
    BOTH-DEAD-CASE
    TAIL-SHAPED-CASE
-   ALL-DEAD-CASE
+   ALL-DEAD-ACCEPT-CASE
    SPILL-CASE ;
 
 ;package

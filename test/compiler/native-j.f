@@ -1,4 +1,4 @@
-\ native-j.f - `j`, the index of the counted loop one frame further out, run
+\ native-j.f - production compilation of the outer counted-loop index `j`.
 
 require lib/test.f
 require lib/prelude.f
@@ -53,9 +53,8 @@ public
 : NJ-LEAVE ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 ?do j 3 * + i 2 > if leave then loop loop ;
 
-\ A local named `j` is the local, inside two counted loops as anywhere else. Both
-\ authorities say so - docs/forth.md § Naming, measured on this engine - and the
-\ two readings meet here: the engine answers the local and so must the chain.
+\ A local named `j` is the local, inside two counted loops as anywhere else;
+\ docs/forth.md's local-first rule decides the spelling.
 : NJ-JLOCAL ( n n n -- n ) {: j:n a:n b:n :}
    0 a 0 ?do b 0 ?do j 3 * i 5 * + + loop loop ;
 
@@ -113,7 +112,8 @@ TRUSTED: EV-DEF ( ptr u8 n -- n )
 
 : CALL-CASE ( -- )
    s" a call in the inner body carries the outer loop's counter too" T-LABEL
-   7 0 3 NJ-FIXTURE:NJ-CALL 7 T= ;
+   7 0 3 NJ-FIXTURE:NJ-CALL 7 T=
+   7 2 3 NJ-FIXTURE:NJ-CALL 91035498042 T= ;
 
 : LEAVE-CASE ( -- )
    s" the inner loop is left while the outer one goes on turning" T-LABEL

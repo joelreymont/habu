@@ -14,8 +14,8 @@ private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and it
 \ is the only way to compile a caller for the republished word from inside a
-\ test - which is the whole point of the forge: the call has to be one the engine
-\ resolved through the record the seam rewrote.
+\ test - which is the whole point of the forge: the call has to be one the
+\ compiler resolved through the record the seam rewrote.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
 
@@ -151,7 +151,7 @@ create TXT
 
 \ ---- the shapes --------------------------------------------------------------
 \ One argument tested; the zero arm returns twice the argument and the other arm
-\ traps. This is the shape the chain refused before hir.trap existed - a routine
+\ traps. This is the shape the compiler refused before hir.trap existed - a routine
 \ with a second terminator that names no successor - and the whole point of the
 \ exit-block rule is that it now goes through.
 : BUILD-MIXED-NAMED ( ptr u8 n n -- )
@@ -170,7 +170,7 @@ create TXT
    s" TRP" ord BUILD-MIXED-NAMED ;
 
 \ THE SAME TWO ARMS THE OTHER WAY ROUND, which is the shape that says the fix is
-\ a rule and not an ordering. The chain walks blocks in module order, so here the
+\ a rule and not an ordering. The compiler walks blocks in module order, so here the
 \ TRAP is selected first and the RETURN second: whatever the trap block leaves
 \ behind is what the return block would inherit if anything were inherited across
 \ that boundary. Both orders have to go through, and they are the same routine.
@@ -238,9 +238,9 @@ create TXT
    ord CONSTOP 1 TRAP-SUCC
    CLOSE-FUN ;
 
-\ ---- running the chain -------------------------------------------------------
+\ ---- running the production pipeline -----------------------------------------
 \ EVERY RUN HERE DECLARES A PLACEMENT, and a trap-carrying routine is the reason.
-\ The branch reaches the shared routine at an address of the engine's, so its
+\ The branch reaches the shared runtime routine, so its
 \ displacement depends on where this routine's own bytes go - which is what
 \ A64EMIT:PLACE-AT tells the emitter, and what the publication seam holds the
 \ emission to afterwards. The slot named is the one the seam would claim, so the
@@ -403,9 +403,9 @@ variable T-SECOND
 public
 
 \ ---- the word the forge publishes over ---------------------------------------
-\ An ordinary checked word the engine compiled the ordinary way. The forge below
-\ republishes it with a routine that traps, and then CALLS it - so what the child
-\ process runs is a trap the whole chain compiled, reached through the dictionary
+\ An ordinary production word. The forge below republishes it with a routine that
+\ traps, and then CALLS it - so what the child process runs is compiled trap code
+\ reached through the dictionary
 \ record every other call in the image is reached through.
 : TRAP-VICTIM ( n -- n )
    dup + ;
@@ -456,7 +456,7 @@ public
 
 private
 
-\ ---- the same falsehood, reached through a routine the CHAIN compiled --------
+\ ---- the same falsehood, reached through a source-compiled routine ------------
 \ FORGE above publishes a trap the fixtures built by hand. This one publishes a
 \ trap the elaborator built, from source, for the reason it exists: a call to a
 \ word the checker certified never returns ends the block, and the instruction
@@ -472,7 +472,7 @@ private
 \ NORET-FRAMED). The victim returns 2*0, control falls into the trap, and the
 \ process ends with the callee's name and ENGINE-ERROR:CODE-CERT.
 
-TRUSTED: MIG ( ptr u8 n -- )
+TRUSTED: INSTALL ( ptr u8 n -- )
    EV ;
 
 : NORET-RET-BODY ( IR-CTX:ctx -- )
@@ -482,10 +482,10 @@ TRUSTED: MIG ( ptr u8 n -- )
    PLACE
    CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU ;
 
-: NORET-MIG-FORGE ( -- )
+: NORET-COMPILED-FORGE ( -- )
    NFIX:BINDING [: NORET-RET-BODY ;] IR-CTX:WITH-CONTEXT
    s" NORET-VICTIM" VICTIM-WID NPUB:REPUBLISH
-   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" MIG
+   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" INSTALL
    s" 0 NTM drop" EV ;
 
 \ ---- running the forge in a child --------------------------------------------
@@ -535,7 +535,7 @@ variable CHILD-MODE-N
    s" forge" CHILD-MODE!
    CHILD-RUN
 
-   s" a forged bad tag through the chain exits ENGINE-ERROR:BAD-TAG" T-LABEL
+   s" a forged bad tag exits ENGINE-ERROR:BAD-TAG" T-LABEL
    CHILD-RC @ ENGINE-ERROR:BAD-TAG T=
 
    s" and the diagnostic names the family the trap site carried" T-LABEL
@@ -596,10 +596,10 @@ variable CHILD-MODE-N
 \ trap row is keyed on the symbol the tape recorded for the token, and the
 \ engine's dictionary is case-insensitive and keeps the folded form - so the
 \ diagnostic reads the callee's name in lower case however the body wrote it.
-: MIG-FORGE-CASE ( -- )
+: COMPILED-FORGE-CASE ( -- )
    s" a compiled dead call whose callee returns exits ENGINE-ERROR:CODE-CERT"
    T-LABEL
-   s" noretmig" CHILD-MODE!
+   s" noretcompiled" CHILD-MODE!
    CHILD-RUN
    CHILD-RC @ ENGINE-ERROR:CODE-CERT T=
 
@@ -617,11 +617,11 @@ variable CHILD-MODE-N
 \ data-stack pointer still moves, so a routine that emitted nothing at all
 \ would not pass either.
 
-TRUSTED: BYTES-MIG ( ptr u8 n -- )
+TRUSTED: COMPILE-BYTES ( ptr u8 n -- )
    EV ;
 
-: MIG-DEAD-BYTES-CASE ( -- )
-   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" BYTES-MIG
+: COMPILED-DEAD-BYTES-CASE ( -- )
+   s" : NTB ( n -- ) drop E-A-EMPTY throw ;" COMPILE-BYTES
 
    s" a compiled all-dead routine moves the machine stack pointer nowhere"
    T-LABEL
@@ -640,12 +640,10 @@ TRUSTED: BYTES-MIG ( ptr u8 n -- )
 \ The same routine's calling sibling, which is the contrast that makes the case
 \ above say something: a body that calls and DOES come back reserves a frame and
 \ gives it back, so its emission moves the machine stack pointer exactly twice.
-\ The callee is a word the ENGINE compiled, so the chain has no recorded body to
-\ copy into this one and the call really is a call - which is what the count is
-\ about, and what would have to be re-chosen if a copied body ever came from
-\ somewhere other than a compilation.
-: MIG-CALL-BYTES-CASE ( -- )
-   s" : NTC ( n -- n ) NTRAP-TEST:TRAP-VICTIM 1 + ;" BYTES-MIG
+\ `abs` is an external primitive with no recorded body to copy, so this really is
+\ a call.
+: COMPILED-CALL-BYTES-CASE ( -- )
+   s" : NTC ( n -- n ) abs 1 + ;" COMPILE-BYTES
 
    s" a compiled routine that calls and returns moves it twice" T-LABEL
    SPMOVES-IN-EMISSION 2 T=
@@ -681,7 +679,7 @@ TRUSTED: BYTES-MIG ( ptr u8 n -- )
    DMOVES-IN-EMISSION 1 T= ;
 
 \ ---- the length the publication seam records ---------------------------------
-\ The engine's records exclude a word's trailing return, because that span is
+\ Dictionary records exclude a word's trailing return, because that span is
 \ what its inliner copies into a caller. A routine that ENDS in the branch that
 \ leaves has no such instruction, and subtracting one anyway would record a
 \ routine four bytes shorter than it is; a routine that traps in the middle of
@@ -777,8 +775,8 @@ public
    s" a name this table cannot hold is refused rather than truncated" T-LABEL
    [: s" " NTRAP:FAMILY drop ;] E-NTRAP-NAME TTHROWSQ
 
-   \ ---- the terminator through the real chain ----
-   s" a routine that returns AND traps goes through the whole chain" T-LABEL
+   \ ---- the terminator through the production pipeline ----
+   s" a routine that returns AND traps goes through production" T-LABEL
    [: RUN-MIXED ;] 0 TTHROWSQ
 
    s" and the same two arms with the trap block selected first" T-LABEL
@@ -797,13 +795,13 @@ public
    RECORDED-LEN-CASE
 
    \ ---- what a routine compiled from source is as bytes ----
-   MIG-DEAD-BYTES-CASE
-   MIG-CALL-BYTES-CASE
+   COMPILED-DEAD-BYTES-CASE
+   COMPILED-CALL-BYTES-CASE
 
    \ ---- and the whole of it, in a process that dies ----
    FORGE-CASE
    NORET-CASE
-   MIG-FORGE-CASE
+   COMPILED-FORGE-CASE
 
    T-REPORT ;
 
@@ -816,7 +814,7 @@ public
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" forge" STR= if FORGE exit then
       0 SCRIPT-ARGV$ s" noret" STR= if NORET-FORGE then
-      0 SCRIPT-ARGV$ s" noretmig" STR= if NORET-MIG-FORGE exit then
+      0 SCRIPT-ARGV$ s" noretcompiled" STR= if NORET-COMPILED-FORGE exit then
    then
    RUN ;
 

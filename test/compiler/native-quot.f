@@ -1,4 +1,4 @@
-\ native-quot.f - a quotation, through the whole chain and running. One concern:
+\ native-quot.f - production quotation compilation and execution.
 
 require lib/test.f
 require src/compiler/native/compiler.f
@@ -234,21 +234,16 @@ create HID-TXT
 \ the function it would build has no return, so what the emitter writes for it
 \ and what a caller may do with its address are both open questions.
 \
-\ The default publication is fail-closed. The independent engine definition is a
-\ control that still runs; the attempted compiled definition never appears.
+\ Publication is fail-closed: the attempted definition never appears.
 : DEF-DIE ( -- )
    s" : NQ-DIE ( n -- ) drop E-FS-OPEN throw ;" EV
    s" : NQ-KEEP ( [ n -- ] n -- n ) swap drop ;" EV ;
-
-: DEAD-BEFORE ( -- )
-   s" : NQ-DEAD ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV ;
 
 : DEF-DEAD ( -- )
    s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV ;
 
 : DEAD-CASE ( -- )
    DEF-DIE
-   DEAD-BEFORE
    s" a quotation body that never comes back is refused by name" T-LABEL
    [: DEF-DEAD ;] E-NELAB-QUOT TTHROWSQ
    \ Nothing is asserted about the refusal RECORD here. The compilation entry
@@ -256,9 +251,7 @@ create HID-TXT
    \ the record of whatever elaborated last; which token each refusal names is
    \ test/compiler/native-elaborate.f's measurement, taken where the record is
    \ still the one the refusal left.
-   s" and the independent engine word still runs" T-LABEL
-   s" 7 NQ-DEAD" EV-N 7 T=
-   s" while the refused default definition never appears" T-LABEL
+   s" and the refused definition never appears" T-LABEL
    s" NQ-DEAD2" DEFINED? TFALSE
    s" NQ-DEAD2" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
 

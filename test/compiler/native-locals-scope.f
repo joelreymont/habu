@@ -1,4 +1,4 @@
-\ native-locals-scope.f - a locals group that opens and closes INSIDE a control
+\ native-locals-scope.f - locals that open and close inside control structures.
 
 require lib/errors.f
 require lib/string.f
@@ -6,9 +6,7 @@ require lib/test.f
 require lib/prelude.f
 require src/compiler/native/compiler.f
 
-\ ---- the engine's compilation: the reference ---------------------------------
-\ Ordinary definitions. bin/hb compiles these with the emitter it has always
-\ used, whose locals frame really carves cells and really gives them back.
+\ ---- the production programs under test --------------------------------------
 package NLS-FIXTURE
 
 public
@@ -180,7 +178,7 @@ public
 
 \ ---- a catch under a scoped name ---------------------------------------------
 \ THE COMBINED SHAPE THE TWO LANDINGS MAKE, and neither suite alone reaches it.
-\ `catch` stages ONE call to the engine's own routine (elaborate.f DO-CATCH,
+\ `catch` stages ONE call to the runtime primitive (elaborate.f DO-CATCH,
 \ through STAGE-WCALL), so every live local of the site is an operand of it and a
 \ result of it - through the carrier this file's other rows measure. A name bound
 \ inside a loop body or an arm therefore has to survive a `catch` in that same
@@ -203,14 +201,14 @@ public
 \ The FIRST has been lifted too: a body's successors are named in the module's
 \ own block table and every machine pass now subtracts the base its function's
 \ blocks start at, so a body holding control flow compiles and answers what the
-\ engine's compilation of it answers (measured in the same file). The third is
+\ production code answers (measured in the same file). The third is
 \ DO-CATCH's own documented refusal of a body that never returns, dot
 \ habu-compile-a-quotation-7efa798e. What is left, and what these two measure, is
 \ the intersection this landing really does own: a name bound INSIDE a structure
 \ is live across the call `catch` stages, travels as its operand and comes back as
 \ its result, and is gone at the structure's closer all the same.
 \
-\ THE CODE IS READ AND THE VALUE SLOT IS NOT. The engine restores the stack's
+\ THE CODE IS READ AND THE VALUE SLOT IS NOT. `catch` restores the stack's
 \ DEPTH on a throw and never its CONTENTS, so `nip` keeps the throw code - which
 \ the site must preserve - and drops the cell, which it does not promise.
 : NLS-CATCH ( n n -- n ) {: k:n lim:n :}
@@ -264,6 +262,9 @@ package NLS-TEST
 
 private
 
+TRUSTED: DEF-RC ( ptr u8 n -- n )
+   [: evaluate ;] catch ;
+
 \ The ends of the signed range, where arithmetic that is right for small numbers
 \ is most likely to disagree.
 $8000000000000000 constant MIN-INT
@@ -285,17 +286,27 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 \ header runs once and the body never does, so the group never binds at all.
 : LOOP-CASE ( -- )
    s" a group in a loop body is gone at the loop" T-LABEL
+   2 0 NLS-FIXTURE:NLS-FEED 14 T=
+   2 1 NLS-FIXTURE:NLS-FEED 20 T=
    2 2 NLS-FIXTURE:NLS-FEED 34 T=
+   1 0 NLS-FIXTURE:NLS-TWO 1 T=
    1 1 NLS-FIXTURE:NLS-TWO 23 T=
+   1 3 NLS-FIXTURE:NLS-TWO 133 T=
+   2 0 NLS-FIXTURE:NLS-CROSS 10 T=
+   2 1 NLS-FIXTURE:NLS-CROSS 16 T=
    2 2 NLS-FIXTURE:NLS-CROSS 25 T=
-   2 1 NLS-FIXTURE:NLS-REUSE 38 T= ;
+   2 0 NLS-FIXTURE:NLS-REUSE 22 T=
+   2 1 NLS-FIXTURE:NLS-REUSE 38 T=
+   2 2 NLS-FIXTURE:NLS-REUSE 52 T= ;
 
 \ THE `while` ROWS STRADDLE ITS OWN CUT. The carried value starts at one and
 \ counts up, so a limit at, below and above that runs the body never, once and
 \ several times.
 : WHILE-CASE ( -- )
    s" a group before a while is readable in the body and gone after the repeat" T-LABEL
-   2 2 NLS-FIXTURE:NLS-WHILE 16 T= ;
+   2 1 NLS-FIXTURE:NLS-WHILE 10 T=
+   2 2 NLS-FIXTURE:NLS-WHILE 16 T=
+   2 4 NLS-FIXTURE:NLS-WHILE 37 T= ;
 
 : CASE-CASE ( -- )
    s" an arm's group is gone at its own endof" T-LABEL
@@ -312,7 +323,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    -1 NLS-FIXTURE:NLS-EXIT 11 T= ;
 
 \ THE TWO RE-RESOLUTION ROWS. NLS-SHADOW answers 109 and 106 through both
-\ compilations because the mention after the `then` is the constant; a chain that
+\ paths because the mention after the `then` is the constant; code that
 \ kept the name bound answers 10 and 7 and reds here.
 : MEANING-CASE ( -- )
    s" a name out of scope is what the body means by it, not the local" T-LABEL
@@ -322,16 +333,34 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
 : CALL-CASE ( -- )
    s" a call carries the walk's names and the loop's edges carry the frame's" T-LABEL
    2 0 0 NLS-FIXTURE:NLS-CALL 10 T=
-   2 0 NLS-FIXTURE:NLS-SLOT 14 T= ;
+   2 0 1 NLS-FIXTURE:NLS-CALL 61 T=
+   2 0 3 NLS-FIXTURE:NLS-CALL 368 T=
+   2 0 NLS-FIXTURE:NLS-SLOT 14 T=
+   2 1 NLS-FIXTURE:NLS-SLOT 65 T=
+   2 3 NLS-FIXTURE:NLS-SLOT 147079 T= ;
 
 \ THE ARM ROWS STRADDLE `sel > 0` AND THE LOOP ROWS RUN NO TURNS, ONE AND
 \ SEVERAL, so both arms of the `if` and all three trip counts reach the catch -
 \ and the negative-limit rows prove the group never binds at all on a loop that
-\ does not run, which is where a chain that carried the name anyway would differ.
+\ does not run, which is where code that carried the name anyway would differ.
 : CATCH-CASE ( -- )
    s" a scoped name survives a catch in the same body" T-LABEL
+   2 0 NLS-FIXTURE:NLS-CATCH 10 T=
    2 1 NLS-FIXTURE:NLS-CATCH 16 T=
+   2 3 NLS-FIXTURE:NLS-CATCH 37 T=
+   2 -1 NLS-FIXTURE:NLS-ARMCATCH 12 T=
    2 1 NLS-FIXTURE:NLS-ARMCATCH 44 T= ;
+
+: DUPLICATE-CASE ( -- )
+   s" disjoint scopes may reuse a local name" T-LABEL
+   s" : NLS-Z1 ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop lim 0 ?do k i - {: a:n :} a 5 * + loop k 11 * + ;"
+   DEF-RC 0 T=
+
+   s" a live shadow and a duplicate in one group remain named refusals" T-LABEL
+   s" : NLS-Z2 ( n -- n ) {: v:n :} v 0 > if 1 0= {: v:bool :} v if 1 else 2 then else 0 then ;"
+   DEF-RC E-NELAB-LOCAL T=
+   s" : NLS-Z3 ( n n -- n ) {: a:n a:n :} a ;"
+   DEF-RC E-NELAB-LOCAL T= ;
 
 \ A name spelled like a control word, bound inside a structure. The scan that
 \ finds the scopes reads control words, so a mention it did not ask about first
@@ -356,6 +385,7 @@ public
    CALL-CASE
    CATCH-CASE
    KEYWORD-CASE
+   DUPLICATE-CASE
    T-REPORT ;
 
 ;package
