@@ -1,0 +1,9 @@
+---
+title: catch-frame drift assertions go vacuous at the cut
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-13T16:53:18.743669+02:00"
+---
+
+Full context: minted by the return-stack design lane (habu-lower-native-return-92993f27). test/catch-frame.f RSP-DRIFT and NESTED-RSP-DRIFT assert that a caught throw leaves the user return-stack depth unmoved, and they measure it by reading the engine's own counter: 'data-base RSP-CELL + @' at lines 40/42 and 61/64. Those are ENGINE-PATH assertions. The native chain's return-stack lowering keeps parked values in the compile-time value vector and emits nothing at all, so a chain-compiled definition NEVER moves RSP-CELL - the drift is then trivially zero and the assertion stops constraining anything. Today the file is compiled by the engine's own emitter so the assertions are live; when the cut routes EM-COMPILE through the chain they become vacuous, silently, with no red to announce it. This is the 'could a plausible change falsify it' test failing after the cut, not before. Work: decide what the post-cut form of the guarantee is and assert THAT. Options to weigh: keep these two on the engine path deliberately and say so in the file (the engine's >r is still the recovery host's and the bootstrap path's); or replace the counter read with an observation that survives both lowerings (the caller's own parked VALUE coming back, which CALLER-RSTK-PRESERVED already does and which the lane re-measured as 42 with two items of litter thrown over it); or assert the chain emits no RSP-CELL access at all for such a body, which is a codegen-inventory question rather than a runtime one. Note lib/task.f:237 also zeroes RSP-CELL per task and is the only other non-engine writer. Acceptance: no assertion in the tree about return-stack drift is one that both lowerings satisfy trivially. Files: test/catch-frame.f. Depends: habu-thread-parked-values-3cabd3aa.

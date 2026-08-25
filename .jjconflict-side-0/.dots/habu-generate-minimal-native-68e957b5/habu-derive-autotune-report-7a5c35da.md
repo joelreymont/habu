@@ -1,0 +1,13 @@
+---
+title: Derive autotune report provenance
+status: open
+priority: 1
+issue-type: task
+blocks:
+  - habu-lowering-hash-unified-586f7881
+created-at: "2026-07-19T22:19:34.531926+02:00"
+---
+
+Current master data-integrity defect in new tools/ptx/autotune-sweep.f: SW-EMIT-ROW at 244-264 hardcodes device spark-gb10-sm121a and date 2026-07-19 although the public manual tool can run on another CUDA device or later date. It hand-renders a review-ready 12-field perf row from ambient globals, labels the target without querying selected device/compute capability or binding the resolved ptxas identity, and computes n*n plus 2*n*n*n*iters with unchecked signed multiplication. A valid run can therefore emit false provenance; a large raw input can emit wrapped work/GFLOPS. Construct the canonical profile-row STRUCTURE/codec owned by habu-structure-performance-registry-0c011333 from a typed measurement sample: derive current UTC date through the checked date owner; selected CUDA device UUID/model/compute capability through the driver; target/PTX ISA and exact resolved ptxas path+digest+version through the pinned toolchain descriptor; checked grid/block/iteration/work/FLOP arithmetic; config identity; clock/exclusivity evidence; measured interval and result. Reject missing, conflicting, stale, overflowed, or hardcoded provenance before rendering. The report renderer consumes only this immutable row and uses the same canonical TSV codec as the registry; no ambient globals or manual field separators. Add mocked two-device/date/toolchain cases, day rollover, device-selection mismatch, tool replacement, every arithmetic boundary, malformed identity, and exact valid TSV round trip. A live run must report the queried GB10/date rather than a constant and registry ingestion must preserve every field. Measure source/JIT/CODELEN and report overhead outside the timed interval. Coordinate exclusivity with habu-prove-autotune-gpu-04cb6af5 and config/sample typing with habu-structure-mma-autotune-e02d3197.
+
+The advertised stdout report is not a report stream: SW-WAIT-SOLO, SW-CANDIDATE, and SW-XCL-REPORT interleave human diagnostics beginning with `--` among nominal perf-rows.tsv records. Redirected stdout is neither canonical TSV nor one consistently parseable comment grammar. Emit only canonical typed rows and explicitly defined comments on stdout; route progress, waits, probe failures, and exclusions to stderr or a separate structured evidence stream. Test byte-exact redirected stdout and stderr independently for success, inexact candidates, instability, contention, and infrastructure failures.

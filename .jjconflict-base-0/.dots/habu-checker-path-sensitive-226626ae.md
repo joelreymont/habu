@@ -1,0 +1,9 @@
+---
+title: "Checker: path-sensitive linear-local tracking (consume-exactly-once)"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-04T10:39:47.401395+02:00"
+---
+
+Follow-up to habu-checker-linear-values-a5745699, which closed the scalar-linear-locals hole with option (b): binding any value that resolves to a linear (deflinear) con into a {: :} local is rejected outright (LIN-LOCAL-BIND-CHECK in LOC-BIND, LINLOCBAD flag -> E-LINEAR-LOCAL / factor_linear_local), plus LIN-LOCAL-REF-TAINT taints poly local refs so deferred laundering is caught by LIN-TAINT-SCAN. Option (a) — the strictly more expressive discipline where a linear local MAY be referenced exactly once on every live path (each reference is the single consumption; zero references = leak reject; two+ = duplication reject; if/else arms must agree; a reference inside a loop body must reject because the back edge re-consumes; exit/dead paths reconciled) — was deferred because the checker's control-flow frames (CFS-REC in src/core/checker.f, fields CF.SA/SB/RA/RB/DED/... snapshot only DCUR/RCUR/DEADP, not per-local reference state). Sound (a) requires adding per-local live/consumed state to the CF frame, saving/restoring it across every join kind (1 if, 2 if+else, 3 begin, 4 begin+while, 5 do, 6 quotation) and reconciling equality at joins, plus loop-backedge and exit-accumulator handling. This is item-12 locals-width-awareness territory (PLAN.md:773-775) and composes with layout/bundle linear locals (item 11). Deliverable: extend LOC-BIND/LOC-REF? to per-local ref counting integrated with the CF stack; flip the CBAD-OWN-LOCAL-ONCE fixture (currently rejects under b) to certify, keep CBAD-OWN-LOCAL-DUP/LEAK/DOUBLE-FREE/BRANCH/POLY-DUP rejecting; add branch-disagreement and loop-body negative regressions. Files: src/core/checker.f (LOC-BIND, LOC-REF?, CFS-REC + CF save/restore/join), test/engine-suite.f. Blocked-by/coordinate-with item-12.

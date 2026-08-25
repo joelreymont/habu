@@ -1,0 +1,163 @@
+\ saxpy-v4-tail-device-test.f - Orin device proof for v4 scalar residual lanes.
+\
+\ Emits the checked v4 SAXPY kernel, assembles it with ptxas, then launches
+\ n=4,5,7,1000003. The output buffer has one sentinel element beyond n; the test
+\ proves active lanes write 6.0f and the first inactive lane remains 1.0f.
+\ Run: bin/hb --load tools/ptx/saxpy-v4-tail-device-test.f
+\ Requires a CUDA device and ptxas.
+
+require lib/test.f
+require lib/fs.f
+require lib/process-argv.f
+require lib/ptx/toolchain.f
+require lib/ptx/sentinel.f
+require lib/ptx/cuda-scope.f
+require tools/ptx/bench.f
+require maki/eval/active-target.f
+
+package PTXV4TAIL
+
+$8000 constant OUT-CAP
+$1000 constant ERR-CAP
+256 constant V4-BLOCK
+1024 constant V4-ELEMS-PER-BLOCK
+$40000000 constant X-BITS
+$3F800000 constant SENTINEL-BITS
+$40400000 constant A-BITS
+$40C00000 constant Y-BITS
+
+create EMIT-OUT OUT-CAP allot
+create EMIT-ERR ERR-CAP allot
+create PTXAS-OUT ERR-CAP allot
+create PTXAS-ERR ERR-CAP allot
+create RB 4 allot
+
+variable DX
+variable DY
+variable A
+variable NVAR
+variable CN-N                                     \ current CHECK-N element count, read by the inner-scope body
+
+: U32@ ( ptr u8 -- n )
+   dup c@
+   over 1 BYTE+ c@ 8 lshift or
+   over 2 BYTE+ c@ 16 lshift or
+   swap 3 BYTE+ c@ 24 lshift or ;
+
+: EMIT-PRELUDE ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" lib/errors.f" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+
+   s" lib/float.f" >LEN PROC-ARGV+
+   s" lib/fmt.f" >LEN PROC-ARGV+
+   s" src/arch/ptx/emit.f" >LEN PROC-ARGV+
+   s" lib/ptx/cg.f" >LEN PROC-ARGV+
+   s" lib/ptx/header.f" >LEN PROC-ARGV+
+   s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
+   s" lib/ptx/cg-vec.f" >LEN PROC-ARGV+
+   s" lib/ptx/tile.f" >LEN PROC-ARGV+
+   s" lib/ptx/tile-v4.f" >LEN PROC-ARGV+ ;
+
+: RUN-EMIT ( -- result<pcap:captured,pcap:failed> )
+   s" bin/hb" >LEN
+   EMIT-OUT OUT-CAP >LEN
+   EMIT-ERR ERR-CAP >LEN
+   30000 >MS RUN-ARGV-CAPTURE ;
+
+: EMIT-WRITE ( len len rc -- n n ) {: o:len e:len c:rc :}   \ err-len unused; write PTX, return out-bytes + code
+   PTXTC:PTX$ EMIT-OUT o LEN>N WRITE-ALL
+   o LEN>N c RC>N ;
+: EMIT-V4-SAXPY ( -- n n )
+   EMIT-PRELUDE
+   s" tools/ptx/saxpy-v4-cg.f" >LEN PROC-ARGV+
+   RUN-EMIT MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE 0 >RC EMIT-WRITE ENDOF
+     err OF PCAP-FAILED:UNMAKE EMIT-WRITE ENDOF
+   ;MATCH ;
+
+: RUN-PTXAS ( -- n )
+   ATGT:LABEL$ PTXTC:TC-ARCH!                        \ assembler arch from the probed active target
+   PTXAS-OUT ERR-CAP >LEN PTXAS-ERR ERR-CAP >LEN PTXTC:ASSEMBLE ;
+
+: PTXAS-V4-SAXPY ( -- n )
+   RUN-PTXAS ;
+
+: GRID-FOR ( n -- n )
+   V4-ELEMS-PER-BLOCK 1- + V4-ELEMS-PER-BLOCK / ;
+
+: BYTES-FOR ( n -- n )
+   1+ 4 * ;
+
+: SETUP ( -- )
+   PTXBENCH:RESET
+   PTXTC:CUBIN$ PTXBENCH:CUBIN!
+   s" SAXPY" PTXBENCH:KERNEL!
+   s" SAXPY-V4-TAIL" PTXBENCH:LABEL!
+   V4-BLOCK PTXBENCH:BLOCK!
+   24 PTXBENCH:PARAM-BYTES!
+   PTXBENCH:OPEN  PTXBENCH:OWN-CTX                   \ run scope owns ctx + module (loaded once, reused)
+   PTXBENCH:LOAD  PTXBENCH:OWN-MOD ;
+
+: ALLOC-N ( n -- )
+   {: n:n :}
+   n BYTES-FOR {: bytes:n :}
+   bytes DX PTXBENCH:DEVICE-ALLOC  DX PTXBENCH:OWN-DEV   \ owned by the per-CHECK-N inner scope
+   bytes DY PTXBENCH:DEVICE-ALLOC  DY PTXBENCH:OWN-DEV
+   DX @ X-BITS n 1+ PTXBENCH:DEVICE-MEMSET32
+   DY @ SENTINEL-BITS n 1+ PTXBENCH:DEVICE-MEMSET32
+   DY @ 0 n PTXBENCH:DEVICE-MEMSET32 ;
+
+: PARAMS-N ( n -- )
+   {: n:n :}
+   n NVAR !
+   A-BITS A !
+   n GRID-FOR PTXBENCH:GRID!
+   PTXBENCH:PREPARE-LAUNCH
+   0 DX PTXBENCH:PARAM-PTR!
+   8 DY PTXBENCH:PARAM-PTR!
+   16 A PTXBENCH:PARAM-U32!
+   20 NVAR PTXBENCH:PARAM-U32! ;
+
+: CHECK-ELEM ( n n -- )
+   {: idx:n want:n :}
+   RB 4 PTXSENT:FILL                              \ poison readback: dropped copy-back fails closed
+   RB DY @ idx 4 * + 4 PTXBENCH:DTOH
+   RB U32@ PTXSENT:GUARD want T= ;
+
+\ inner-scope body: per-CHECK-N device buffers are owned by the frame this runs under,
+\ so each check's DX/DY unwind on return or throw (no open-coded FREE-N list).
+: CHECK-N-BODY ( -- )
+   CN-N @ ALLOC-N
+   CN-N @ PARAMS-N
+   PTXBENCH:LAUNCH
+   PTXBENCH:SYNC
+   0 Y-BITS CHECK-ELEM
+   CN-N @ 1- Y-BITS CHECK-ELEM
+   CN-N @ SENTINEL-BITS CHECK-ELEM ;
+
+: CHECK-N ( n -- )
+   CN-N !  [: CHECK-N-BODY ;] CUDA-SCOPE:SCOPE ;
+
+: MAIN ( -- )
+   T-RESET
+   CUDA:OPEN? 0= if
+      s" saxpy-v4-tail-device-test: CUDA device is required" 74 die
+   then
+   s" habu-ptx-v4-tail" PTXTC:PREPARE
+   EMIT-V4-SAXPY {: outn:n erc:n :}
+   erc 0 T=
+   outn 0 > TTRUE
+   PTXAS-V4-SAXPY 0 T=
+   [: SETUP                            \ run scope owns ctx + module across the four checks
+      4 CHECK-N
+      5 CHECK-N
+      7 CHECK-N
+      1000003 CHECK-N ;] CUDA-SCOPE:SCOPE
+   PTXTC:CLEAN
+   s" device: SAXPY-V4 scalar residual tail verified for n=4,5,7,1000003" type cr
+   T-REPORT ;
+
+MAIN
+
+;package

@@ -1,0 +1,437 @@
+---
+title: Cut colon compilation onto the checked chain
+status: active
+priority: 2
+issue-type: task
+created-at: "\"2026-08-05T10:36:19.611694+02:00\""
+---
+
+CG-01, phase 4 of the hard cut: make checked HIR plus the native pipeline the sole compiler for normal colon definitions. habu2.f:7020 COMPILE-EMIT:EM-COMPILE is the single production entry (verified, no drift); route it and bootstrap through the chain, prove self-hosting to a byte-identical fixpoint, run every gate on the sole path, then delete the old emitter and bridges (habu-delete-the-old-679cfd35). An opt-in hook is not completion. Reconcile with habu-cut-over-staged-070d68c8 / habu-self-host-staged-520ab588.
+
+Claim: unassigned (RELEASED 2026-08-22: workspace gone, no live lane - the 2026-08-21 gc keyed on dot-id workspaces and missed the shared habu-thecut/habu-trusted names)
+
+PREREQUISITES (scout-verified 2026-08-05/06):
+1. Data-word addresses (habu-resolve-a-data-a1c8067f) — the one hard capability blocker; lane in flight.
+2. Spill rewrite loop into production: migrate-era EMITTED never rewrites (fits-or-refuses; survivable only while the old emitter is the fallback). The pipeline runs allocate -> if spills planned, A64SPILL:REWRITE -> re-validate -> emit. This is CG-28's requirement concretely.
+3. Pressure retry: attempt normally; on E-A64RA-SPILL re-elaborate with the CROSS-L split flag (proven one-liner; evidence in habu-split-call-crossed-6eda1613) and re-run. The publisher's VALIDATE/COMMIT split already gives refusal-moves-nothing; the pipeline must keep compile-attempt separate from publish so retries are free.
+4. Two whole-tree probes before finalizing order: any definition certified under CNUM-OVERFLOW:TRAP reaching hir arithmetic (E-A64SEL-TRAP refuses it today), and any use of to/^ on typed locals (dialect refuses; corpus-based verdicts do not cover the tree).
+5. Seed: derive by transitive closure from the chain's entry (ir/* before native/*; NREACH is not in the closure — decide the seed by closure, not directory).
+
+The dispatch path that reads routine records concurrently must acquire START (LDAR) — the publisher writes with release; the acquire half is unexercised until this lands (noted in habu-re-express-the-13d7558c).
+
+PROBED 2026-08-06 (agent=spillwire, dot habu-wire-the-spill-ca604d57). Prerequisite 4's two
+whole-tree probes, measured. Both verdicts: the cut is NOT blocked by either capability.
+
+(a) TRAPPING ARITHMETIC — the trapping set is EMPTY in production, and unreachable from the
+migration entry by construction. The overflow policy is a field of the compilation unit's
+binding and of nothing else: there is no per-definition and no per-file pragma, and
+src/compiler/native/hir.f:200-207 states that nothing re-derives it or carries a default.
+The tree has exactly ONE production binding constructor, src/compiler/native/abi.f:57-63
+NABI:BINDING, and it passes CNUM-OVERFLOW:WRAP (abi.f:61). The only other CNUM-OVERFLOW:TRAP
+mentions under src/ are two wire-code decoders (src/compiler/ir/context.f:234,
+src/compiler/ir/attr.f:344) and one equality test (src/compiler/native/hir.f:395 TRAPS?).
+Every TRAP-constructing call site in the tree is a test fixture (22 files).
+COUNT OF PRODUCTION DEFINITIONS CERTIFIED UNDER CNUM-OVERFLOW:TRAP THAT REACH hir.add/sub/mul:
+ZERO. No definitions to name, because there are none.
+Migrating one through the chain to watch E-A64SEL-TRAP fire is NOT POSSIBLE and that is the
+finding, not a gap in the probe: src/compiler/native/migrate.f IN-CONTEXT opens every
+migration with NABI:BINDING, so no migration can be TRAP-certified at all. The refusal is
+proved where it can be reached — at the selector, test/compiler/native-select.f:1724-1726
+TRAP-REFUSE-CASES, which builds a TRAP binding (TBND, :59-70), runs a hir.add through
+selection and pins E-A64SEL-TRAP.
+Mechanism, for the record: src/compiler/native/select.f:1935-1940 TRAP-CK throws when the
+op's schema says may-trap and TRAP-PRESERVED? (select.f:1888) says the lowering loses it.
+Only div, call and wordcall answer true; add, sub and mul answer false. The check is PER OP
+(select.f:2676 in RULE, and select.f:2030 in FUSE-INDEX), not once per unit, so a TRAP unit
+with no integer arithmetic would select fine today.
+VERDICT: the cut does NOT need habu-lower-trapping-arithmetic-5f514ffe. The trapping set is
+empty and cannot be non-empty while the migration entry hardcodes the wrapping binding.
+Leave that dot open as the capability it is; it orders after the cut, not before it.
+
+(b) to/^ ON TYPED LOCALS — ZERO occurrences in any chain-compiled source. Whole-tree scan of
+all 1407 .f files (comment- and string-stripped, then every surviving candidate read):
+  `^` as a standalone token: 0 hits in .f, tree-wide. Every one of the 551 raw `^` characters
+  is exponent prose, transpose notation, `^=`, or the char literal, all inside comments or
+  strings.
+  `to` as a rebind: 0 hits in .f, tree-wide. 204 candidates survived comment-stripping; all
+  204 are either inside s" " literals or are a READ of a local literally NAMED `to`.
+Classified: production (src/, lib/, maki/, tools/) 0 and 0; test/ 0 and 0; docs/example 0
+and 0.
+The only real rebinds in the tree are 17 in bootstrap/*.fs (Gforth-hosted host code, outside
+the chain: bootstrap/cg/{asm,exec,icode,install,link,walk}.fs, bootstrap/src/sigparse.fs),
+all on BARE locals, several using Gforth's `{: … | … :}` uninitialized form. None is a typed
+local, and none is compiled by the chain.
+Why the count is zero rather than merely low: neither word exists in the dialect's
+vocabulary, so both are already refused as E-HIR-UNMODELED — stated at
+src/compiler/native/elaborate.f:228-232, which also names the two dots.
+VERDICT: the cut is NOT blocked by habu-rebind-a-typed-b2a3e369 or habu-take-the-addr-18a38b4f.
+There is not one call site in src/, lib/, maki/, tools/, test/ or docs/ to fix.
+Two residual risks, neither blocking: (1) 13 locals in .f files are literally NAMED `to`
+(12 production, 1 test) — if `to` ever becomes a dialect word, src/core/checker.f:46,53 and
+src/core/declaration-transaction.f:215 and tools/lint/diff-frame-write.f:100 become
+ambiguous; (2) if bootstrap/cg/*.fs is ever ported onto the chain, those 17 rebinds become
+17 blockers, concentrated in loop-carried accumulators — which is exactly the nested case
+habu-rebind-a-typed-b2a3e369 says to refuse in its first pass.
+
+PREREQUISITE 2 IS UNDERSTATED, measured the same day on the same tree. Wiring the four
+stages into src/compiler/native/migrate.f EMITTED is necessary but NOT sufficient, and the
+missing half is the routine's FRAME.
+  - Today a spilling body never produces a plan at all. migrate.f ROUTINE builds NABI:LEAF /
+    NABI:CALL, which are `0 LEAF-FRAMED` / `0 CALL-FRAMED` (src/compiler/native/abi.f:107,
+    :126) — a ZERO-slot frame. So A64RA:NEW-SLOT (regalloc.f:641-646) has no room for the
+    first slot and throws E-A64RA-PRESSURE before any spill is decided. Measured through the
+    real NMIGRATE:DEFINE entry: a straight-line body holding 8 values at 4 registers returns
+    -8329; the same body at 18 registers returns 0.
+  - The loop itself WORKS once the frame is non-zero. With the four stages wired and a frame
+    declared, that same 8-value body compiled end-to-end through NMIGRATE:DEFINE and returned
+    0. So the wiring is not the hard part.
+  - The hard part is that the frame must be declared BEFORE the allocator can be asked how
+    much of it is needed, and the chain gives exactly one chance to ask. Three structural
+    facts, each measured: (1) A64SEL:SELECT ends with IR-BUILD:FREEZE on the a64 builder
+    (select.f:3787), so the selected module can be allocated ONCE — re-binding A64RA to that
+    builder returns -8061 E-IR-BUILD-FROZEN; (2) A64SEL:BIND-SOURCE needs the HIR builder
+    live (select.f:3668-3674) and the first selection freezes it, so selection cannot be
+    repeated either; (3) A64SPILL:REWRITE sizes its reserve from A64RA:FRAME (spill.f:1035),
+    i.e. the contract of that one allowed walk. Together: the frame the emitted routine
+    reserves is the one declared before the allocator was consulted.
+  - Declaring a ceiling frame compiles but is wrong to land — it reserves NFROZEN:VMAX slots
+    for every spilling routine, which is not "exactly the frame its reserve takes", the thing
+    A64RAV is documented to check and habu-derive-a-routine-84ed36b6 owns.
+  - So PREREQUISITE 2 cannot close on its own: it needs habu-derive-a-routine-84ed36b6
+    landed with it, in one of two shapes — A64SPILL sizing its reserve from A64RA:FRAME-USED
+    rather than A64RA:FRAME, or A64RA recording the demand instead of refusing at NEW-SLOT so
+    a single walk under today's contract answers how many slots the program needs. The second
+    is the one habu-derive-a-routine-84ed36b6 already describes as "a contract whose frame
+    field is filled in by the allocator", and it is the only one that keeps the non-spilling
+    path to a single walk and therefore bit-identical.
+  - Also found, not blocking but real: wider spilling bodies (12 and 20 live values) reach
+    E-IR-CTX-SCRATCH -6644 after the rewrite — the migration's context mapping does not fit
+    the arenas a rewritten module needs. Needs its own dot before the cut relies on spills.
+  - A routine that CALLS is a separate case and stays refused: the selector builds its frame
+    (select.f:905-909 PROLOGUE) and the lowering pass keeps that prologue rather than
+    resizing it (spill.f ONCE-CK), so nothing after selection may widen it. That is
+    habu-exercise-a-call-dda45093, and it starts at the selector.
+
+STOPPED 2026-08-06 (agent=thecut, workspace .jj-ws/habu-cut-colon-compilation-a5aa3f1f,
+tree at master 09a6bceb, engine refreshed to fixpoint aaa8882b). NO CUT WAS ATTEMPTED AND
+NONE SHOULD BE UNTIL THE THREE BLOCKERS BELOW ARE CLOSED. The leaf's premise — "every
+prerequisite is closed; route the entry through the chain" — is false. The prerequisite
+list above is not wrong about what it lists; it is incomplete, and what it omits is larger
+than everything it names. Measured, not argued:
+
+BLOCKER 1 — THE CHAIN IS A POST-PASS OVER THE OLD EMITTER, NOT AN ALTERNATIVE TO IT.
+The chain's only front end is NMIGRATE (src/compiler/native/migrate.f:692 DEFINE). Its
+input is the token TAPE, and the tape has exactly one producer: src/compiler/native/feed.f
+hangs on the checker's own reader, src/core/checker.f:10231 CHECK-SCAN, which the engine
+runs from its check hook AT EVERY `;` — that is, after COMPILE-EMIT:EM-COMPILE has already
+emitted the whole body. migrate.f reaches that reader by calling `evaluate`
+(migrate.f:88-89 TRUSTED: EV, reached from RECORD -> SCAN at :278-296), which re-enters the
+engine's ordinary interpret and compile path. So a migration REQUIRES a successful old-emitter
+compile and publication before it can begin, and migrate.f enforces exactly that by name:
+PUBLISHED-ONE (:301) refuses unless the dictionary grew by one record, and E-NMIGRATE-VERDICT
+(:297) refuses unless the engine's own check certified the definition.
+Consequence: "route COMPILE-EMIT:EM-COMPILE through the chain" is circular as written —
+EM-COMPILE would call a chain whose entry calls `evaluate`, which re-enters EM-COMPILE.
+There is no seam to flip and no flag to add. Making the chain the sole compiler needs a
+compile mode that PARSES AND CHECKS WITHOUT EMITTING, so the tape exists before any code
+does; the engine has no such mode, and building one is a habu2.f change of the same order as
+the emitter it would replace. Nothing in the tree stages this, and no dot owns it. FILE ONE.
+
+BLOCKER 2 — THE CHAIN COMPILES ABOUT A THIRD OF THE DIALECT, AND THAT IS THE WHOLE OF THE
+REMAINING WORK. Counted from the tables, not estimated. The chain's modeled vocabulary is
+61 spellings, committed as a constant at src/compiler/native/hir-word.f:938 (`61 constant
+WORDS`) and registered by HIR-WORD:REGISTER-WORDS (hir-word.f:1184): 4 arithmetic, 6
+compare, 6 bitwise, 4 const-op, 4 memory, 9 float, 5 float-compare, 13 control, 2 locals
+markers, 8 renames. The engine's compile path carries 70 keyword/op rows (habu2.f:6274,
+6291, 6300, 6315, 6370-6417) over 174 primitives (habu1.f FPRIM/FPRIM-L/GDEREF sites, plus
+habu2.f and prof.f). Anything not in the 61 is E-HIR-UNMODELED at hir-word.f:815.
+REFUSED TODAY, each verified absent from the tables: string literals and char literals
+(hir-word.f:922-927 ADMIT-TOKEN throws E-HIR-KIND on any tape kind that is not int literal,
+real literal or name); `case`/`of`/`endof`/`endcase`; ADT `match`/`;match`/`construct`;
+quotations `[: ;]`; `does>`; `do`/`loop` (only `?do` is modeled), `+loop`, `leave`, `j`,
+`again`; the return-stack words `>r`/`r>`/`r@`; `execute`; `['`]/`postpone`/`[char]`/`is`;
+and the ordinary primitives `negate 0< mod /mod abs min max tuck -rot ?dup 2swap 2over +!
+cell+ char+ chars count type`. The type substrate models two value types — signed 64-bit
+integer (elaborate.f:344) and IEEE754 double (hir.f:535) — over 8 flat kinds
+(src/compiler/ir/type.f:196-203: int, float, pointer, quotation, code-ref, memory-token,
+mask, opaque). There is NO struct, NO array, NO aggregate, NO tagged-union kind anywhere in
+the IR, so ADTs, products, structures and value-records are not "unimplemented rows" — they
+have no representation to be implemented into. The stdlib is written in the dialect the
+ENGINE accepts. It cannot compile through the chain today and the gap is not vocabulary
+rows; it is a type substrate plus a dozen control forms.
+
+BLOCKER 3 — THE ENTRY'S FACTS ARE THE CALLER'S, AND ONE OF THEM IS MUTATION-PROVED UNSOUND.
+migrate.f's own header (:44-72) names four open dots as the distance between this harness
+and a compiler, and ALL FOUR ARE OPEN: habu-bind-checker-env-ed4f9f87 (the declared arity is
+restated by the caller, not read off the unit the checker certified),
+habu-choose-the-register-a95390ac (the register budget is a hand-chosen number),
+habu-resolve-a-callee-0340dfde (a callee's address AND declared effect are the caller's
+word), habu-parse-a-migrated-b38a83d9 (the definition arrives as an s" literal, not from the
+input stream). None of the four appears in the prerequisite list above.
+habu-resolve-a-callee-0340dfde carries a mutation proof dated 2026-08-02: a body
+`: LIE-W ( n n -- n n ) LIE-DBL ;` whose callee really takes and leaves one value but is
+DECLARED as taking and leaving two selects, allocates, passes the register-allocation
+validator, emits and publishes with NO THROW — because the selector builds both the
+store/load runs and the two byte counts from the same stated arity, so the two derivations
+it holds against each other always agree. Routing production compilation through an entry
+whose callee facts are unchecked caller assertions would make every miscount a silently
+wrong program. That dot is a hard prerequisite of the cut and is not listed as one.
+
+HARD CAPS, measured through the real entry on this tree (not read off constants):
+`: CP-A ( n -- n ) dup + ;` migrates, rc=0. A 559-byte source refuses rc=-8571
+E-NMIGRATE-TEXT (TEXT-CAP 512, migrate.f:96). Also: TAPE-CAP 128 tokens (:97), NAME-CAP 64
+(:103), CALLEES-MAX 4 (:122) — a definition may declare at most FOUR called words — and
+exactly one `create`d data word per migration (DEFINE-DATA, :744; M-DATA-U is a single
+slot). These are buffer sizes and are the least interesting of the blockers; they are
+recorded so a later reader does not mistake them for the reason.
+
+WHAT THIS MEANS FOR THE ORDER. The cut is not phase 4 of a campaign whose earlier phases
+are done; it is the LAST step after the chain becomes a compiler for the language. Ordering
+that follows from the above, none of it started: (1) a no-emit compile mode in the engine so
+a tape exists without the old emitter (unowned — file it); (2) the type substrate for
+aggregates and tagged unions (unowned — file it); (3) the refused control forms and literal
+kinds (unowned — file it); (4) habu-resolve-a-callee-0340dfde, habu-bind-checker-env-ed4f9f87,
+habu-choose-the-register-a95390ac, which together make the entry state nothing the engine
+already knows. Only then does routing EM-COMPILE mean anything, and only then can the
+stdlib-compiles proof, the fixpoint and the sole-path gates be attempted.
+habu-delete-the-old-679cfd35 stays blocked behind all of it.
+
+RECONCILIATION with the two staged-cutover dots, as this leaf asked for.
+habu-cut-over-staged-070d68c8 ("Cut over staged native compiler") and
+habu-self-host-staged-520ab588 ("Self-host staged compiler") are BOTH SUBSUMED BY THIS LEAF
+and should be closed as such rather than extended: each states the same deliverable in the
+older design-document vocabulary (make the staged compiler default; prove a byte-identical
+fixpoint; delete the old direct paths; update the size baseline), each carries acceptance
+criteria phrased against `docs/compiler-ir-design.md` sections rather than against the
+tree, and neither adds a requirement this leaf does not already carry. Keeping three open
+dots for one cut is how the prerequisite list came to be believed complete. They are left
+open here only because closing another lane's dots is not this claim's to do; the
+recommendation is recorded and the merge review should act on it.
+
+ALSO FOUND, not blocking, worth a dot each: docs/compiler-ir-design.md:809-860 ("As
+implemented: the straight-line subset") is badly stale — it says "Five opcodes" where
+hir.f:247-292 now defines 44, and "a source word means one of four things" where hir.f:364-376
+defines 11. src/compiler/native/elaborate.f:10-14 says "the two cell-width memory words"
+where the table has four, and omits floats and calls entirely. A stale statement of what the
+chain compiles is precisely what let this leaf's premise stand unchallenged, and correcting
+it is worth more than it looks.
+
+TWO MORE MEASUREMENTS from the same session, both bearing on the plan above.
+
+PREREQUISITE 5 IS NOT A REORDERING, IT IS AN ADDITION. The leaf says to derive the seed by
+transitive closure from the chain's entry, "ir/* before native/*". Measured: NEITHER
+src/compiler/ir/* NOR src/compiler/native/* appears anywhere in tools/srclist.f or in
+tools/bootstrap.sh's SRC_COMMON. The chain is not in the engine seed at all today - it is
+ordinary runtime-loaded source, reached by `require`. So seeding it is not a matter of
+ordering ir/* ahead of native/*; it is putting roughly 35,000 lines of compiler into the
+image for the first time, with the AOT x9 hazard (ACAP-SCAN-DATA) gating capture exactly as
+this leaf warns. Whoever plans that step should size it as new work, not as a sort.
+
+THE JSON-READ-PERF RATCHET REDS THE GATE AT RANDOM ON THIS HOST, ON EITHER TREE. Measured
+over ten full suite runs, because a first guess at the mechanism was wrong and is corrected
+here rather than left standing.
+The budget is NOT fed by a stored history - `stored=30` is the sample count of the current
+run. Each budget is a hardcoded baseline (lib/json-read-perf-test.f:111-121) plus ten
+percent, scaled by a host calibration factor measured once per run. The factor is a step
+function of the PRE-calibration draw alone, and three draws occur on this host:
+pre=103 gives the raw-decode row budget=130491136, pre=104 gives 131699387, pre=105 gives
+132907638. Nothing else moves it.
+On this host the two production-path rows have no real headroom left after that scaling.
+Ten runs: six on the tree with these two commits (four green, two red) and four on
+unmodified master (four green). Every red is the json-read-perf phase and nothing else. The
+margins are the finding: the worst breach was 0.64%, and the smallest was
+"repeated escape-heavy decode" at fastest=225709500 against budget=225706732 - OVER BY 2768
+NANOSECONDS ON A 225.7 MILLISECOND MEASUREMENT, which is 0.0012%.
+The tree is not the discriminator, and that was checked rather than assumed. This tree drew
+the tight pre=103 budget and PASSED the raw-decode row on it (mine6: fastest=130067375 vs
+130491136); master has simply not drawn the unlucky calibration in four runs. The change in
+these two commits is comments, documentation and one dot leaf; the engine is byte-identical
+across it (aaa8882b before and after a forced fixpoint rebuild), and none of the edited
+files is on the JSON decode path.
+So master is exposed to exactly the same coin flip, and the project's blocking merge gate
+currently reds on measurement noise a fraction of a percent wide. That is worth its own dot
+and is the reason this is written down. It was NOT touched here: retuning a ratchet so that
+one's own change goes green is the move the discipline forbids, and the honest report is
+that this branch is four-green-two-red over six runs for a reason that is not in the diff.
+
+BLOCKED (2026-08-06, structural audit at 04a462e0 — the 'every prerequisite closed' claim above was FALSE and is retracted): the cut waits on (1) habu-give-the-chain-5ed1f7c5 no-emit compile mode — the chain is today a post-pass whose input exists only after the old emitter succeeds, so routing the entry through it is circular; (2) habu-give-the-ir-f0cfa96a aggregate/tagged-union IR kinds; (3) habu-complete-the-chain-5aab8cee dialect completion (61 of 174-primitive surface); (4) habu-resolve-a-callee-0340dfde and the caller-stated-fact family (one mutation-proved unsound). Seeding is not a reorder — src/compiler is ~35k lines never yet in the image. The audit's refusal inventory and gate evidence live in the 04a462e0 commit and this leaf's history.
+
+BLOCKER UPDATE 2026-08-10: of the four blockers in the 2026-08-06 audit, (1)
+no-emit landed (COMMIT-HELD/MEASURE-HELD), (4) callee resolution landed, and
+(2) aggregate IR kinds f0cfa96a is CLOSED AS NOT-NEEDED (ADT values are flat
+cell bundles; MATCH is an elaborator rule - see
+habu-elaborate-match-case-19668b80). (3) dialect completion is the census
+ledger (5aab8cee), now at 2334/3464 compiled. NEW BLOCKER, proved by
+reproducer: habu-rename-over-rows-982167af - the chain silently permutes
+CELLS where the checker permutes ROWS across multi-cell ADT values; the cut
+must not land while that miscompile is open. Also ordered before the cut:
+habu-per-site-relocation-bb9b6d70 (AOT), habu-grow-the-republication-52ef5df0
+(LOG-MAX), seed closure.
+
+PREREQUISITE 5 REPLACED BY MEASUREMENT 2026-08-11 (seed-closure lane): the
+seed is the BOOT PREFIX, not the baked image - the chain arrives as ONE
+require row (~40 bytes of IBUFSZ; 53 flat rows would take the shared buffer
+to 87.5% and force IBUFSZ 4->8MB). Closure measured: 53 files / 50,703
+lines / 2.30MB; NREACH excluded for a derived reason (it serves
+REpublication; the cut compiles at ';' with no callers yet); 15 files
+directory-thinking would miss (5 top-level src/compiler, asm.f, 8 lib/*).
+Impact: +7,464 dict records (40% of cap), +1.2MB code, +1.5MB DATA
+(NSTR = 53%), +1.24s cold boot (gate multiplier UNMEASURED - count cold
+execs before Stage B lands). CONSEQUENCE: a source-prefix seed means the
+old emitter compiles the chain at every boot, so
+habu-delete-the-old-679cfd35 is UNREACHABLE until the baked-code stage
+(Stage F: AOT format change, REC-MAX 256->7500+, BLOB-CAP 64KB->1.1MB+).
+Staged plan A-F on the seed dots minted 2026-08-11.
+
+THE PLAN TO THE CUT (2026-08-12, ordered; each item's design is on its leaf):
+WAVE 1 (in flight): (a) the two corpus spill refusals — split-call-crossed
+6eda1613 (proven one-line CROSS-L fix, allocator hazard already enforced
+twice downstream) and the remat pair cdce9a24 constants-first then 1faad3e1
+loads (PRESSURE-LOOP's 14 live values are pure loop-invariant loads; no
+frame work needed); (b) hex/char/float literals 79c570ed P1 (engine parser
+becomes the one authority — checked prim or literal-value token field,
+design-first); (c) a fresh TREE-WIDE refusal census (tools/chain-census.f)
+classifying every remaining refusal with counts — the cut needs ZERO
+refusals over everything the tree loads, and the corpus's 3-of-46 is not
+that measurement.
+WAVE 2: the bake infrastructure — widen-the-aot 089f5faf (u16 world; the
+name-keyed pre-window CODE row rides in), arm-the-seed 5234727b (user
+ruled: everywhere), pre-window inliner decline (0b01043c implementation,
+needs the small capture-active+d0 compiler state design first).
+WAVE 3: bake the chain; host-side seeding design (stage engines use the
+base prefix which lacks the stdlib the chain needs — unscoped; probe
+whether fixing metabuild-loads-prefix-twice 87a370ae first makes host and
+target layouts identical and the problem smaller); assert-no-held df97f7e9;
+blob-caps re-measure (likely subsumed by widening).
+WAVE 4: THE CUT — route EM-COMPILE through the chain per this leaf's
+design (spill-rewrite loop + CROSS-L pressure retry), self-host byte
+fixpoint, every gate on the sole path. The dialect gaps (>r family, catch,
+[char]/['], leave) are blockers ONLY where the census says the tree uses
+them — the census decides, not memory.
+
+CENSUS 2026-08-12 (tree 1e22998a, full report in the orchestrator session;
+raw /tmp/hb-census-scout/): 3944 examined, 2728 compiled, 1216 refused —
+527 of those are the INSTRUMENT (package-reopen misses using-visible
+callees 258; >512B recorder cap 151 UNMEASURED; unchecked regions 114).
+THE MEASURED REMAINDER AFTER IN-FLIGHT FIXES (~460 rows): POOL 140
+(zero-arity call shapes under caller-save-everything — SEQUENCING
+CONTRADICTION: the named owner da01bd62 is post-cut BY THIS PLAN; the
+pre-cut closer is habu-close-a-routine-4055b7c7, unblocked, must be priced
+against the 140), DKEEP 112 -> 0 (the validator refusing the chain's own
+needless data-stack emissions — owning dot 2fa72257 was scoped at SIX,
+under-scoped 19x, rescoped by this census; CLEARED by the single-writer
+restructure, re-measured on the fix tree), LOCAL 61 (47 = locals named
+i/j vs loop-index modeling, 9f38a8f6), CTRL/do 41 (05b4e523), UNMODELED 38
+(catch 18 / >r 15 / [char] / ['] / leave-masked — owners 6ceb7667,
+92993f27, ca9e5541+0750ac90, 018f3379; usage counts in the report), SEQ 26
+(dbe22efb P3), QUOT 9 (de9829f9), SCAN 9 + TAIL 7 + MATCH 4 + singletons
+(newly dotted), BUNDLE 5 (143c0331).
+COVERAGE BOUND, NOT FOOTNOTE: 4423 sealed-package + 2318 seal-stripped
+definitions are LOADED BY THE TREE but unmeasurable by the census —
+"zero refusals over everything the tree loads" is proven over less than
+half today; the instrument gap is dotted. ALSO A CUT-DESIGN QUESTION the
+census surfaces: unchecked definitions (0 set-check regions, 114 rows
+E-NFEED-STATE) have no tape and cannot chain-compile — the sole-compiler
+design must state who compiles them, before the cut is scheduled.
+
+USER RULING 2026-08-12, SUPERSEDING ALL SEQUENCING ABOVE: THERE ARE NO
+ACCEPTABLE REFUSALS. Every class that refuses tree code is cut-blocking
+and gets fixed - no post-cut deferral exists for anything the census
+measures as refusing, because zero refusals IS the cut's precondition.
+Consequences: the register convention da01bd62 moves PRE-cut if the
+caller-save pricing (4055b7c7) falls short of the 140 POOL rows; the
+dialect classes (catch 6ceb7667, return stack 92993f27, [char]/[']
+ca9e5541+0750ac90, leave/again 018f3379, do 05b4e523, i/j locals
+9f38a8f6) are scheduled work, not backlog; DKEEP 2fa72257 and every
+newly-dotted class (reader-reentry, refused-tails, match-payloads,
+singletons, recorder caps, census reach) land before the cut; unchecked
+definitions get a tape-without-certification capability (the reader
+records tokens; certification stays absent) - dot it when the design
+lane answers the who-compiles-unchecked question. The only sequencing
+that remains is ORDER (dependency and lane capacity), never deferral.
+
+BLOCKER-2 LIST AGED (Wave-0/2 audit 2026-08-14, the leaf-ages
+practice): the refused-word list quoted in BLOCKER 2 is badly
+stale - >r, r>, /mod and depth ALL MIGRATE today (probed through
+the production entry, exit 0). Re-measure the blocker's real
+population from the current census before pricing any cut step
+against this text.
+
+PHASE-1 VERDICTS + RULINGS 2026-08-18 (thecut-1's probe; two
+stale statements corrected: "no-emit landed" is WRONG - what
+landed is no-PUBLISH (EM-COMPILE-HELD? runs the whole old
+emitter and rewinds CP; habu2.f:7644); and the entry is
+COMPILE-EMIT:EM-COMPILE at src/habu/habu2.f:8552 - an emitter-
+GENERATOR laying twelve ENGINE-SIZE-measured slices, not a
+routable word; "route through the chain" = change what the
+engine emits for compile mode + call the chain from the ; tail
+as the check hook is called):
+VERDICTS ADOPTED: (a) data-words LANDED (unlimited undeclared,
+proven by execution); (b) spills landed for leaves, CALLING
+case refused - dda45093 IS CUT-BLOCKING; (c) seed DISSOLVED
+(the chain is baked; the 2026-08-11 unreachability conclusion
+is reversed; docs/bootstrap.md stale - fix rides Phase C);
+(d) the acquire (LDAR on XREF-START) is THE CUT'S, C2;
+(e) a5aa3f1f survives; 520ab588 closes as subsumed AT the
+cut's landing; 679cfd35 stays the payoff.
+ORDER RULED: thecut-1 takes A (A1 budget a95390ac, A2 arity
+ed4f9f87, A3 stream entry b38a83d9) then C; B parallelizes as
+lane capacity frees (review throttle: max 2 code-heavy lanes)
+- B's bag is independent owned dots.
+RISK RULINGS: (1) NO-EMIT LANDS INSIDE PHASE C - "sole path"
+cannot mean running the old emitter to discard its bytes;
+suppress the slices, never rewind-and-waste. (2) 859ea853 is a
+HARD prerequisite of declaring zero refusals - B includes it.
+(3) unchecked 0-set-check spans: PROBE DOT minted (census the
+41 files: which capability gap each span names; the cut's
+prerequisite is shrinking the set to chain-expressible or
+named engine-resident exceptions - the Habu-Only rule applied).
+(4) every chain edit seed-affecting: standing, install --force
+before every gate. (5) json-read-perf: re-measure before C
+(part of C's gate prep). (6) SCOPE: the cut = every colon
+definition compiles through the chain; THE PREFIX BAKE IS A
+PREREQUISITE OF E (the deletion), not of C - boot must not pay
+chain-compile for the prefix, and nothing may need the old
+emitter when it deletes. The spine's prefix-bake item slots
+between D and E.
+
+A1 RULINGS 2026-08-18 (the contiguous-pool defect: 18 of 24
+registers reachable because NABI:POOL builds a run and the
+admissible set is not contiguous - six registers idle while six
+values spill, correspondence exact; safety of x21-x25/x29
+verified structurally - layout.f:28 sole authority, the
+engine's own JIT pool uses them, LVSPILL materializes the
+engine's stack before any call):
+(1) HALF 2 NOW, not A3 - the lane's reading is adopted: once
+the pool derives, regs selects nothing, and a dead parameter on
+the entry Phase C calls is an interface lie. 440 sites / 42
+files / 47 REGS constants is mechanical (one-token deletions);
+land as its own commit(s) beside the derived pool, rg-proof of
+zero remaining regs arguments.
+(2) JUDGE: 46/46 identical expected (nothing reaches 18) -
+VERIFY before/after, hard gate. The comparison harness's
+PRESSURE subjects keep their subject by moving to the explicit-
+pool path (NABI:POOL stays public; NFIX takes the pool) - a
+pressure test's identity is driving pressure, not the entry it
+drives it through. Baselines that then move, move WITH
+attribution; identical-or-attributed covers the old harness.
+(3) THE CAPACITY-CEILING CLASS IS MINTED as its own B dot -
+40 rows, the largest remaining compiler class, one coherent
+fix: size the chain's per-function tables from the function
+(the campaign's derived-caps discipline applied to the chain's
+own maps). B lane owns it.
+CENSUS NOTE for the record: 473 raw refusals = 75 compiler +
+284 census-instrument (package reopen - 859ea853's territory) +
+114 unchecked spans (335547df's set). The plan's B scales to
+75, not 473.
+
+
+A1+A2 LANDED (master b4329129, 2026-08-18): A1 39668bcd - the register pool is
+derived from A64EFF:GPR-ALL via NABI:SCRATCH (24 regs), the regs parameter is
+gone from every entry, and tools/codegen-spill-probe.f pins the two interleaved
+walls per count with its code (register band 22-24 on the loads shape; the
+512K context bites at 21 and 25+). A2 b4329129 - NMIGRATE:DEFINE takes source
+only; arity reads off the checker's certificate (NDICT:SPELL-ARITY), the same
+reader every callee uses. E-NMIGRATE-ARITY reach-or-retire is 360162f5; the
+judge's own column parse is 20f3ac27. NEXT: A3, the stream-driven entry
+(b38a83d9).

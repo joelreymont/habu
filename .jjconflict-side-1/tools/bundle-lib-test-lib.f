@@ -1,0 +1,226 @@
+\ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/cli-run.f
+\ tools/bundle-lib-core.f tools/bundle-lib-test.f
+
+8192 constant BLTT-BUF-CAP
+$20000 constant BLTT-BUNDLE-CAP
+10000 constant BLTT-TIMEOUT-MS
+
+variable BLTT-ROOT-U
+variable BLTT-DRIVER-U
+variable BLTT-BUNDLE-U
+variable BLTT-MISSING-U
+
+create BLTT-ROOT-BUF FS-PATH-CAP allot
+create BLTT-DRIVER-BUF FS-PATH-CAP allot
+create BLTT-BUNDLE-BUF FS-PATH-CAP allot
+create BLTT-MISSING-BUF FS-PATH-CAP allot
+create BLTT-OUT BLTT-BUF-CAP allot
+create BLTT-ERR BLTT-BUF-CAP allot
+create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
+
+: BLTT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+   a dst u BYTE-COPY
+   u lenp ! ;
+
+: BLTT-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
+   pa pu na nu dst JOIN-PATH lenp ! ;
+
+: BLTT-ROOT ( -- ptr u8 n )
+   BLTT-ROOT-BUF BLTT-ROOT-U @ ;
+
+: BLTT-DRIVER ( -- ptr u8 n )
+   BLTT-DRIVER-BUF BLTT-DRIVER-U @ ;
+
+: BLTT-BUNDLE ( -- ptr u8 n )
+   BLTT-BUNDLE-BUF BLTT-BUNDLE-U @ ;
+
+: BLTT-MISSING ( -- ptr u8 n )
+   BLTT-MISSING-BUF BLTT-MISSING-U @ ;
+
+: BLTT-LF ( -- )
+   10 SB-APPEND-C ;
+
+: BLTT-DQ ( -- )
+   34 SB-APPEND-C ;
+
+: BLTT-EMPTY$ ( -- ptr u8 n )
+   SB-RESET
+   SB$ ;
+
+: BLTT-OK$ ( -- ptr u8 n )
+   s" bundle-lib-test: ok" ;
+
+: BLTT-DRIVER$ ( -- ptr u8 n )
+   SB-RESET
+   92 SB-APPEND-C s"  bundle-lib smoke driver; loaded after errors and array." SB-APPEND BLTT-LF
+   BLTT-LF
+   s" 100 constant BLT-FAIL" SB-APPEND BLTT-LF
+   BLTT-LF
+   s" create BLT-DATA 3 , 1 , 4 ," SB-APPEND BLTT-LF
+   BLTT-LF
+   s" : BLT= ( n n -- ) {: got want :}" SB-APPEND BLTT-LF
+   s"    got want <> if s" SB-APPEND BLTT-DQ s"  bundle-lib-test: mismatch" SB-APPEND BLTT-DQ
+   s"  BLT-FAIL die then ;" SB-APPEND BLTT-LF
+   BLTT-LF
+   s" : BLT-SUM ( -- n )" SB-APPEND BLTT-LF
+   s"    BLT-DATA 3 >LEN ARRAY:A-SUM ;" SB-APPEND BLTT-LF
+   BLTT-LF
+   s" : BLT-ERROR-CODE ( -- n )" SB-APPEND BLTT-LF
+   s"    E-A-BOUNDS ;" SB-APPEND BLTT-LF
+   BLTT-LF
+   s" : BLT-MAIN ( -- )" SB-APPEND BLTT-LF
+   s"    BLT-SUM 8 BLT=" SB-APPEND BLTT-LF
+   s"    BLT-ERROR-CODE E-A-BOUNDS BLT=" SB-APPEND BLTT-LF
+   s"    s" SB-APPEND BLTT-DQ s"  bundle-lib-test: ok" SB-APPEND BLTT-DQ
+   s"  type cr ;" SB-APPEND BLTT-LF
+   BLTT-LF
+   s" BLT-MAIN" SB-APPEND BLTT-LF
+   SB$ ;
+
+: BLTT-PREPARE ( -- )
+   CLEANUP-RESET
+   s" hb-bundle-lib" TMPDIR-MKDIR {: a:ptr u:n :}
+   a u BLTT-ROOT-BUF BLTT-ROOT-U BLTT-COPY!
+   BLTT-ROOT CLEANUP-DIR+
+   BLTT-ROOT s" driver.f" BLTT-DRIVER-BUF BLTT-DRIVER-U BLTT-PATH!
+   BLTT-ROOT s" bundle.f" BLTT-BUNDLE-BUF BLTT-BUNDLE-U BLTT-PATH!
+   BLTT-ROOT s" no-such-script.f" BLTT-MISSING-BUF BLTT-MISSING-U BLTT-PATH!
+   BLTT-DRIVER CLEANUP+
+   BLTT-BUNDLE CLEANUP+
+   BLTT-DRIVER BLTT-DRIVER$ WRITE-ALL ;
+
+: BLTT-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: BLTT-ARGV-TOOL ( -- )
+   PROC-ARGV-RESET
+   s" tools/bundle-lib-core.f" s" tools/bundle-lib.f" CLI-TOOLS-LOAD2 if exit then
+   s" --load" BLTT-ARG+
+   s" lib/errors.f" BLTT-ARG+
+   s" lib/string.f" BLTT-ARG+
+   s" lib/fs.f" BLTT-ARG+
+   s" lib/fs-mutate.f" BLTT-ARG+
+   s" tools/bundle-lib-core.f" BLTT-ARG+
+   s" tools/bundle-lib.f" BLTT-ARG+
+   s" --" BLTT-ARG+ ;
+
+: BLTT-ARGV-BASE ( -- )
+   BLTT-ARGV-TOOL
+   s" -o" BLTT-ARG+
+   BLTT-BUNDLE BLTT-ARG+ ;
+
+: BLTT-ARGV-ERRORS ( -- )
+   BLTT-ARGV-BASE
+   s" errors"  >LEN PROC-ARGV+ ;
+
+: BLTT-HB-CAPTURE ( -- len len outcome )
+   s" bin/hb"  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
+   BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME ;
+
+: BLTT-TOOL-CAPTURE ( -- len len outcome )
+   CLI-TOOLS$  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
+   BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME ;
+
+: BLTT-RUN-MISSING-MODULE ( -- len len outcome )
+   BLTT-ARGV-ERRORS
+   s" missing-module" BLTT-ARG+
+   s" --" BLTT-ARG+
+   BLTT-DRIVER BLTT-ARG+
+   BLTT-TOOL-CAPTURE ;
+
+: BLTT-RUN-MISSING-SCRIPT ( -- len len outcome )
+   BLTT-ARGV-ERRORS
+   s" array" BLTT-ARG+
+   s" --" BLTT-ARG+
+   BLTT-MISSING BLTT-ARG+
+   BLTT-TOOL-CAPTURE ;
+
+: BLTT-RUN-BUNDLE-LIB ( -- len len outcome )
+   BL-RESET
+   BLTT-BUNDLE BL-OUT!
+   s" errors" BL-MOD+
+   s" array" BL-MOD+
+   BLTT-DRIVER BL-SCRIPT!
+   BL-VERIFY
+   BL-EMIT-BUNDLE
+   0 >LEN 0 >LEN 0 OUTCOME:EXITED ;
+
+: BLTT-RUN-BUNDLE ( -- len len outcome )
+   PROC-ARGV-RESET
+   s" --load" BLTT-ARG+
+   BLTT-BUNDLE BLTT-ARG+
+   s" --" BLTT-ARG+
+   s" unused" BLTT-ARG+
+   s" args" BLTT-ARG+
+   BLTT-HB-CAPTURE ;
+
+: BLTT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
+   expect T-OUTCOME-EXITED=
+   LEN>N swap LEN>N swap ;
+
+: BLTT-EXPECT-EXIT-NZ ( len len outcome -- n n )
+   MATCH outcome
+     exited OF 0 T<> ENDOF
+     signaled OF drop 1 0 T= ENDOF
+     timeout OF 1 0 T= ENDOF
+   ;MATCH
+   LEN>N swap LEN>N swap ;
+
+: BLTT-TEST-MISSING-MODULE ( -- )
+   BLTT-RUN-MISSING-MODULE BLTT-EXPECT-EXIT-NZ {: outu:n erru:n :}
+   outu 0 T=
+   BLTT-ERR erru s" missing module" CONTAINS? TTRUE ;
+
+: BLTT-TEST-MISSING-SCRIPT ( -- )
+   BLTT-RUN-MISSING-SCRIPT BLTT-EXPECT-EXIT-NZ {: outu:n erru:n :}
+   outu 0 T=
+   BLTT-ERR erru s" missing script" CONTAINS? TTRUE ;
+
+\ What a bundle carries changed when the engine started carrying part of the
+\ stdlib itself (dot habu-seed-the-stdlib-d8e3a757). lib/errors.f is in the boot
+\ prefix, so copying its text into the bundle redefined every word in it the
+\ moment the bundle ran; the builder now ASSUMES such a module and carries the
+\ rest. These assertions moved with that meaning, and they check the bundle's
+\ STRUCTURE rather than searching it for a path: every path here appears in the
+\ file either way, on an assume row or a provided row, so a substring test
+\ cannot tell a carried module from an assumed one. The body markers are what
+\ separates them - E-A-FIRST is defined in lib/errors.f and A-LEN in
+\ lib/array.f, so their presence is the presence of the module's text.
+: BLTT-TEST-BUILD-BUNDLE ( -- )
+   BLTT-RUN-BUNDLE-LIB 0 BLTT-EXPECT-EXIT {: outu:n erru:n :}
+   outu 0 T=
+   BLTT-ERR erru BLTT-EMPTY$ T$=
+   BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP READ-ALL {: bundleu:n :}
+   s" an engine-provided module is stated, not copied" T-LABEL
+   BLTT-BUNDLE-READ bundleu s\" s\q lib/errors.f\q ?ENGINE-PROVIDES" CONTAINS? TTRUE
+   s" an engine-provided module's body is absent" T-LABEL
+   BLTT-BUNDLE-READ bundleu s" E-A-FIRST" CONTAINS? TFALSE
+   s" a module the engine lacks is carried, and marked provided" T-LABEL
+   BLTT-BUNDLE-READ bundleu s\" s\q lib/array.f\q provided" CONTAINS? TTRUE
+   s" a carried module's body is present" T-LABEL
+   BLTT-BUNDLE-READ bundleu s" A-LEN" CONTAINS? TTRUE
+   s" a module nobody asked for is neither stated nor carried" T-LABEL
+   BLTT-BUNDLE-READ bundleu s" src/core/combinators.f" CONTAINS? TFALSE
+   s" the script is carried" T-LABEL
+   BLTT-BUNDLE-READ bundleu s" BLT-MAIN" CONTAINS? TTRUE ;
+
+: BLTT-TEST-RUN-BUNDLE ( -- )
+   BLTT-RUN-BUNDLE 0 BLTT-EXPECT-EXIT {: outu:n erru:n :}
+   BLTT-ERR erru BLTT-EMPTY$ T$=
+   BLTT-OUT outu BLTT-OK$ CONTAINS? TTRUE ;
+
+: BLTT-MAIN ( -- )
+   T-RESET
+   BLTT-PREPARE
+   BLTT-TEST-MISSING-MODULE
+   BLTT-TEST-MISSING-SCRIPT
+   BLTT-TEST-BUILD-BUNDLE
+   BLTT-TEST-RUN-BUNDLE
+   CLEANUP-RUN
+   BLTT-ROOT EXISTS? TFALSE
+   T-REPORT
+   BLTT-OK$ type cr ;

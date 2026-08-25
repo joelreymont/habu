@@ -1,0 +1,11 @@
+---
+title: Unify MMA checker host buffers
+status: open
+priority: 1
+issue-type: task
+blocks:
+  - habu-lowering-hash-unified-586f7881
+created-at: "2026-07-19T21:52:50.653520+02:00"
+---
+
+Current master defect/bloat: tools/ptx/mma-gemm-check.f:61-80 represents seven host buffers as seven raw pointer variables, seven trivial accessors, and seven separate fallible mmap-backed allocations. MGC-BUF-INIT treats only MGC-HA-P != 0 as the initialized latch. If the first allocation succeeds and any later allocation throws, retry exits immediately with remaining pointers zero; no matching MEM-FREE exists, so partial mappings leak. New tools/ptx/autotune-sweep.f:27-105 copies the same seven-pointer/first-latch design at 512 capacity and duplicates the integer fill, reference, pack, unpack, and compare proof because the checker is not import-safe. Its first successful allocation likewise poisons retry after any later throw. Extract one import-safe package-owned exactness library with a checked-capacity owned arena: allocate one aligned backing region after checked total-size arithmetic, define STRUCTURE host-buffers with seven named typed spans, and store payload ENUM init-state = uninitialized | ready(host-buffers) in TYPED-VARIABLE. Parameterize requested bounded capacity so the checker keeps 1024-square coverage and the sweep does not overallocate; share one fill/reference/compare implementation. Publish ready only after every offset, size, alignment, and end check succeeds. This removes twelve mmap calls across the two tools, fourteen pointer globals/accessors, duplicated proof code, and partial initialization. Prove injected allocation failure at each old allocation position followed by successful retry in both callers; compile-negative zero/foreign/cross-buffer span use; exact requested span sizes, non-overlap, alignment, end canary, 512^2/1024^2 boundaries, mapped-byte cleanup/deinit, and all existing element-exact/device suites. Measure allocation/syscall count, mapped bytes, source/JIT/DATA/CODELEN, initialization, and checker/sweep runtime. Import/CLI separation is owned by habu-make-autotune-tools-0d96c09b; CUDA device-resource dots retain device handle ownership; this dot owns shared host exactness buffers and mechanics.

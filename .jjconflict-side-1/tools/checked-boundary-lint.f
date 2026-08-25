@@ -1,0 +1,35 @@
+\ checked-boundary-lint.f - CLI wrapper for unchecked-boundary lint.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ tools/lint/json-writer.f, tools/checked-boundary-lint-core.f, and
+\ lib/argv.f.
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/json-writer.f
+require tools/checked-boundary-lint-core.f
+require lib/argv.f
+
+package BOUNDARY-LINT-CLI
+
+: ARGV-FILE ( n -- )
+   ARGV:POS$ CHECKED-BOUNDARY-LINT:FILE ;
+
+: RUN ( -- )
+   s" tools/checked-boundary-lint.f file ..." ARGV:USAGE!
+   ARGV:PARSE
+   1 -1 ARGV:EXPECT-POS
+   CHECKED-BOUNDARY-LINT:RESET
+   ARGV:JSON? CHECKED-BOUNDARY-LINT:JSON!
+   ARGV:STRICT-BOUNDARY? CHECKED-BOUNDARY-LINT:STRICT!
+   0 begin dup ARGV:POS# < while
+      dup ARGV-FILE
+      1+
+   repeat drop
+   CHECKED-BOUNDARY-LINT:FINISH ;
+
+RUN
+
+;package

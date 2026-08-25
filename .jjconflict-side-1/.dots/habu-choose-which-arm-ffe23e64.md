@@ -1,0 +1,9 @@
+---
+title: Choose which arm of a fused branch is the taken one
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-04T19:49:05.172199+02:00"
+---
+
+Follow-on to habu-order-blocks-to-f6d89653, which chose the emission order of a routine's blocks and left the other half of that dot's ambition undone: deciding which arm of a two-way branch is the taken one. src/compiler/native/select.f wires a fused compare-and-branch with the condition-holds arm as the FIRST successor, so for a loop written 'begin <comparison> while ... repeat' the trailing unconditional half names the EXIT STUB and not the loop body. The order pass then lays the stub next and elides that branch, which is one branch - but the body still needs one and so does the back edge, so the loop keeps two where one would do. Laying the BODY next instead needs the conditional's condition inverted (b.gt becomes b.le), which is a selection/encoding change and not an ordering one, so it was deliberately out of scope. Measured now: a migration of ': F ( n -- n ) begin dup 0 > while 1- repeat ;' emits 13 instructions with 2 unconditional branches (test/compiler/native-migrate.f ORDER-CASE, NMG-WGT); with the condition inverted and the body laid next it is 12 with 1. The unfused shape - a while whose test is a call, NMG-WCALL in the same case - already reaches 1, which is what says the remaining cost is the fusion's arm order and nothing else. Whoever takes this has to decide where the inversion lives: a negated condition in the selected a64.cmpbr (so the module says which arm is taken and the emitter still only lays blocks out), or an emitter that may flip the form. The first keeps the emitter's one rule; the second puts a second decision in the layout. Acceptance: the loop rows of tools/codegen-compare.f improve or hold, answers identical, 0 findings, and a case in ORDER-CASE pinning one unconditional branch for the FUSED loop as well.

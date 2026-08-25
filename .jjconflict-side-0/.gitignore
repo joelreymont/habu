@@ -1,0 +1,59 @@
+# Gforth saved images / build scratch
+*.fi
+*.o
+/tmp/
+
+# regenerable paper PDF (build locally: `tectonic habu.tex` in docs/paper/)
+docs/paper/*.pdf
+
+# archived task state
+.dots/archive/
+bin/
+
+# jj workspace checkouts (never snapshot or track these)
+.jj-ws/
+
+# local agent chat
+.blackboard/
+
+# python bytecode cache
+__pycache__/
+*.pyc
+
+# generated test scratch
+test/*.tmp
+
+# runtime-fetched GPT-2 vocab artifacts (fetch-gpt2-vocab.sh; never committed)
+gpt2-vocab/
+
+# local GPT-2 model assets (never committed)
+gpt2-model/
+
+# Rocq proof build outputs (rebuild locally with `make -C formal`).
+# Scoped to formal/ so these extensions stay meaningful everywhere else.
+formal/**/*.vo
+formal/**/*.vok
+formal/**/*.vos
+formal/**/*.glob
+formal/**/*.aux
+# The generated makefile's `cleanall` also removes these: per-file timing
+# reports and the native-compilation output directory.
+formal/**/*.timing
+formal/**/*.timing.diff
+formal/**/*.before-timing
+formal/**/*.after-timing
+formal/**/.coq-native/
+formal/.lia.cache
+# `lia` writes its cache into the working directory; the parity gate in
+# test/compiler/ir-id-proof.f compiles the proofs from the repository root.
+/.lia.cache
+formal/Makefile.rocq
+formal/Makefile.rocq.conf
+formal/.Makefile.rocq.d
+
+# generated benchmark evidence and reports stay outside git
+bench/llm/RESULTS*.md
+bench/llm/*.json
+bench/llm/*.jsonl
+bench/llm/*.log
+bench/llm/results/

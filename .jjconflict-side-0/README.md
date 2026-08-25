@@ -1,0 +1,87 @@
+# Habu — Checked Forth
+
+Habu is a self-hosted Forth with a static stack-effect checker. Every checked
+word declares the values it consumes and produces, and the checker verifies that
+the implementation matches that contract before the word can run.
+
+```forth
+: SQUARE ( i64 -- i64 ) dup * ;   \ accepted
+: BAD    ( i64 -- i64 ) dup ;     \ rejected: leaves an extra i64
+```
+
+The native `bin/hb` engine provides the REPL, checker, ARM64 JIT and AOT
+compiler, debugger, profiler, source loader, and image builder. The repository
+also contains a checked PTX vocabulary and CUDA Driver API bindings for writing
+and running GPU kernels in Habu.
+
+Loom, the ML framework and model-CAD layer formerly kept in this tree, now lives
+in the sibling [`loom`](../loom/README.md) repository. Loom depends on Habu.
+Habu's language, compiler, runtime, standard libraries, numeric types, FFI, and
+PTX backend remain here.
+
+## Quick start
+
+Start the checked REPL:
+
+```sh
+bin/hb
+```
+
+Load a source file or run the native suite from the repository root:
+
+```sh
+bin/hb --load path/to/program.f
+bin/hb --load test/run.f
+```
+
+If `bin/hb` is missing or broken, read the current recovery status and procedure
+in [docs/bootstrap.md](docs/bootstrap.md). The build and
+gate recipes live in [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md)
+and [`skills/habu-gate/SKILL.md`](skills/habu-gate/SKILL.md).
+
+## What the checker covers
+
+Checked definitions use ordinary Forth with typed stack comments. The checker
+supports concrete and nominal types, row-polymorphic effects, quotations,
+locals, control flow, loops, recursion, return-stack effects, packages, and
+algebraic data types. Explicit `TRUSTED:` and `TRUST` sites mark the small set of
+compiler or runtime boundaries the checker cannot express directly.
+
+The PTX vocabulary extends those effects with GPU facts such as address space,
+extent, lane mask, and uniformity. This keeps the backend general-purpose: model
+and tensor policy belongs in Loom, while kernel representation, emission,
+assembly, driver interaction, and numeric support belong in Habu.
+
+## Repository layout
+
+```text
+src/core/         checker, type families, source loading, core words
+src/compiler/     compiler policy and shared compiler support
+src/arch/arm64/   ARM64 assembler and native code generation
+src/arch/ptx/     PTX emitter and backend support
+src/habu/         native engine, JIT, AOT, debugger, profiler, image tools
+src/os/           Linux and macOS target seams
+lib/              checked standard, numeric, FFI, and runtime libraries
+lib/ptx/          checked GPU-kernel vocabulary and PTX code generation
+tools/            build, lint, inspection, and PTX/device tools
+test/             native Habu suite and focused compiler/runtime tests
+bench/            benchmarks
+docs/             language, compiler, runtime, and backend documentation
+skills/           operational recipes
+```
+
+Some optional PTX device tools still name Loom reference implementations after
+the repository split. They are not part of the Habu core or native suite and
+need an explicit multi-repository load-root design before they can run from the
+separate checkouts.
+
+## Documentation
+
+- [`docs/forth.md`](docs/forth.md) — Forth conventions and checker rules.
+- [`docs/type-system.md`](docs/type-system.md) — the checked effect system.
+- [`docs/type-families.md`](docs/type-families.md) — nominal and algebraic types.
+- [`docs/bootstrap.md`](docs/bootstrap.md) — bootstrap and self-hosting.
+- [`docs/debugging.md`](docs/debugging.md) — debugger and inspection tools.
+- [`docs/ptx.md`](docs/ptx.md) — the checked PTX backend.
+- [`docs/stdlib.md`](docs/stdlib.md) — standard library reference.
+- [`LESSONS.md`](LESSONS.md) — concise project memory.

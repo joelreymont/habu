@@ -1,0 +1,1085 @@
+# Forth Standards (habu)
+
+How we write Forth in this repo. Target is the native `bin/hb` engine.
+Use these conventions to keep code readable and correctly checked; choose the
+development workflow and verification effort to suit the actual change.
+
+Durable Forth language guidance belongs here, not in `LESSONS.md`. Lessons may
+record the incident that taught a rule, but the reusable rule itself lives in this
+file.
+
+## Naming
+
+- **Our words UPPER-CASE; built-in Forth words as-is.** Words we define
+  (`RESOLVE`, `MK-CON`, `APPLY-EFFECT`) are UPPER-CASE; core Forth words stay
+  lower-case (`and`, `cells`, `allot`, `: ;`, `?do`). Never upper-case a built-in.
+- **Block/definer pairs prefer `FOO … ;FOO`.** New project-defined block or
+  definer pairs open with `FOO` and close with `;FOO` — the shipped type-family
+  DSL follows it: `SUMTYPE … ;SUMTYPE`, `PRODUCT … ;PRODUCT`, `ENUM … ;ENUM`,
+  `VARIANT … ;VARIANT`, `MATCH … ;MATCH`, and `package … ;package` (keyword case
+  follows the opener). Two shipped definers use the `END-NAME` / `BEGIN-NAME`
+  spelling instead and are the sanctioned exceptions, not bugs: the
+  project-defined `VALUE-RECORD … END-VALUE-RECORD` and the inherited Forth-2012
+  `BEGIN-STRUCTURE … END-STRUCTURE` low-level definer. Do not coin *new*
+  `END-FOO`, `FOO-END`, or `ENDFOO` pairs; prefer `;FOO`. ANS core control words
+  (`begin … until`, `case … endcase`, `do … loop`, `of … endof`) stay as-is.
+  See **Structures And Enums**.
+- **Hyphens, never underscores — in word names *and* file names.** `T-CON`,
+  `TV-RESET`, `MAX-TV` — not `T_CON`. Source files too: `camera-tracker.f`,
+  `latency-xcorr.f`, `timestamp-metrics.f` — not `camera_tracker.f`. Underscores
+  are not idiomatic Forth, even when the file ports an underscore-named source from
+  another language; name the Habu file in Habu style.
+- **Conventional suffixes/prefixes**: predicates end `?` (`TYVAR?`); conversions
+  `>X` (`TERM>TAG`, `S>NUMBER?`); fetch/store `X@` / `X!` (`TV@` / `TV!`);
+  allocate/reset `X-ALLOC` / `X-RESET`.
+- **New scope pairs are `FOO` … `;FOO`** (decision 2026-07-04). Every new word
+  pair that opens and closes a scope/region uses the opener's name with a `;`
+  prefix as the closer: `SUMTYPE … ;SUMTYPE`, `package … ;package`. New scope
+  words follow this from birth (type families, kernels, suites); the shipped
+  `END-VALUE-RECORD` and `END-STRUCTURE` terminators are the sanctioned
+  exceptions above, not templates for new pairs. The bare `;` (definition
+  closer) and non-scope `;`-words are unaffected; only paired scope delimiters
+  follow the rule.
+- Short names per the global naming rules: abbreviate common terms (`buf`, `ctx`,
+  `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
+  they remain readable. Locals are lexical and local-first: a declared local
+  named `i`, `count`, or `dup` must resolve to that local inside its scope.
+  Prefer clearer names (`idx`, `len`, `value`) when they improve readability,
+  but do not encode global dictionary collision workarounds into local names.
+  Local-first is measured on the engine, not assumed: `{: i:n :} 0 3 0 ?do i +
+  loop` answers three turns of the LOCAL, and the same body without the
+  declaration answers the loop index. It holds from the group's closer onwards
+  and byte for byte — mentions before the closer, and mentions in another case,
+  are still whatever else the name means. The quotation's two tokens are the
+  exception, because the native chain finds a body's quotation spans before it
+  knows what the body's locals are: a local named `;]` is refused
+  (`E-NELAB-LOCAL`), and a group that writes `[:` is refused as the quotation's
+  own (`E-NELAB-QUOT`).
+- **Check for collisions with built-ins** before naming — Forth dictionaries are
+  case-insensitive here, so `CON?`/`VAR?` clash with existing words. Prefix to
+  disambiguate (`TYCON?`, `TYVAR?`). When in doubt, `' NAME` in a REPL: if it
+  resolves, the name is taken.
+- **Do not shadow native primitive names.** Later dictionary entries can replace
+  primitive signatures and codegen hooks; `shadow-lint` gates this class of bug.
+- **Do not define parser/control reserved words.** `I`, `J`, `DO`, `LOOP`,
+  `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`, `REPEAT`, `TRUST`,
+  `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`, `PUBLIC`,
+  `PRIVATE`, `UNDEFINE`, and the other
+  compiler-dispatch/lifecycle tokens are not ordinary global names even though the dictionary is
+  case-insensitive. A generated converter that strips prefixes must run
+  `tools/reserved-name-lint.f` after naturalization so `CC-I` becomes `IX`, not
+  bare `I`; `CC-J` becomes `JX`, not bare `J`. `tools/check.f` runs this lint
+  before spawning the checker child, so reserved-name failures must report
+  `E-RESERVED-DEFINITION` with file/line/token instead of a silent rc 70. This
+  rule applies to published definition names (`:`, `TRUSTED:`, `KERNEL:`,
+  `create`, `variable`, `constant`); lexical locals such as `{: i:n :}` remain
+  legal and resolve local-first inside their definition.
+- **Do not define number-shaped words.** hb parses numeric literals BEFORE
+  dictionary lookup (pinned by `test/gate-dictionary-lib.f` GD-LITERAL-FIRST),
+  so a definition named like a literal — all digits (`42`), a float (`.0`,
+  `1.5`, `-.5`), or `$hex` (`$FF`) — is unreachable: every call site gets the
+  number. Names with a dot-digit tail (`U.0`) are also forbidden: one inserted
+  space silently turns the tail into a float literal, and generators misread
+  them as float spellings (the lib/fmt.f `.0`/`U.0` incident — since renamed to
+  `.INT`/`.U`). `tools/reserved-name-lint.f` rejects both classes as
+  `E-NUMERIC-DEFINITION`. Dot-letter printers (`.U`, `.INT`, `F.N`) and
+  digit-leading names that cannot parse as a number (`1STNZ`, `0<>`, `2DUP`)
+  remain legal. The literal grammar is ONE grammar in every context —
+  interpret, colon-compile, `evaluate`, and the checker: int `-?d+ | -?$h+`,
+  float shape `-?d*.d+` (exactly one dot, at least one digit after it, digits
+  before it optional — so dot-leading `.5`/`-.5`/`.0` ARE float literals,
+  while `5.` and `..5` are ordinary words). A shaped decimal is admitted only
+  while its integer magnitude, fractional numerator, and power-of-ten scale
+  fit their signed-cell accumulators. An over-bound shape stays claimed and is
+  rejected before dictionary lookup; it never becomes a callable name. The
+  checker's literal claim
+  (`LITERAL-TOK?`/`ALLDIG?`/`FLODIG?` in `src/core/checker.f`) mirrors the
+  engine number parser (`EMIT-NUM` in `src/habu/habu1.f`) token for token;
+  `test/gate-dictionary-lib.f` GD-LITERAL-FLOAT-FIRST pins the whole matrix,
+  including that a call to a number-shaped word is rejected by the checker
+  instead of certifying an effect the runtime never executes.
+- **Prefer hex for numeric literals.** Use `$...` for byte values, masks,
+  addresses, offsets, syscall/exit constants, instruction encodings, and other
+  machine-adjacent numbers. Decimal is acceptable for small counts and ordinary
+  human quantities where base 10 is clearer.
+- **Use wordlist namespaces for global collisions.** Qualified names use one
+  colon: `HB:COUNT`, `PTX:COUNT`, `MAKI:COUNT`. The qualifier names a wordlist
+  namespace; the dictionary record stores the tail (`COUNT`) in that wordlist.
+  Maki is the worked adoption: each maki file is wrapped in a `package MAKI` block
+  (see Packages below), so its words live in the `MAKI` wordlist and a bare reference
+  does not resolve from habu core. External callers use
+  `MAKI:WORD`; maki-internal cross-file calls reopen `package MAKI` and use bare names.
+  Match qualifier case to the word vocabulary: project-defined namespaces and
+  words are uppercase (`HB:COUNT`); lowercase built-in namespaces keep lowercase
+  qualifiers and lowercase names (`forth:count`). Do not mix cases across the
+  qualifier and word (`hb:COUNT`, `HB:count`); write matching-case forms such
+  as all-project uppercase (`HB:COUNT`) or lowercase built-in vocabulary
+  (`forth:count`). Use `hb:count` only for an intentionally lowercase
+  vocabulary.
+  Qualification is only a token with exactly one non-edge colon; names that
+  start or end with `:` are ordinary Forth words. Do not fake namespaces with
+  raw global prefixes when the runtime supports a real wordlist-qualified name.
+- **Use packages for module namespaces.** New library, tool, test-support, and
+  subsystem code belongs in `package NAME` unless it is a documented core
+  language/prelude file. `package NAME` opens NAME's private wordlist, `public`
+  switches definitions to NAME's exported wordlist, `private` switches back to
+  internal definitions, and `;package` restores the previous current
+  wordlist. The exported API is the words defined in the `public` section and
+  called as `NAME:WORD`; private helpers are visible only while the package is
+  open, including reopened package blocks. Do not fake a namespace by prefixing
+  every public word (`TASK-KILL`, `TASK-DONE?`) when the package can export the
+  real interface (`TASK:KILL`, `TASK:DONE?`). Keep qualifier and word case
+  matched as above (`HB:COUNT` or `hb:count`, not `hb:COUNT`).
+
+### Packages
+
+Packages are real wordlist namespaces for file/module scope and are the default
+shape for new modules. Use the lowercase keywords because they are language
+words; keep package names and project-defined words uppercase unless the package
+intentionally belongs to a lowercase vocabulary. Define implementation helpers
+before `public` or after `private`; define the public interface only in the
+`public` section.
+
+```forth
+package HB
+
+: HELPER ( n -- n )
+   2 * ;
+
+public
+
+: COUNT ( -- n )
+   5 HELPER ;
+
+private
+
+: INTERNAL ( -- n )
+   COUNT 1 + ;
+
+;package
+```
+
+- `package NAME` consumes the next token, rejects a missing name, rejects names
+  containing `:`, rejects nesting, opens NAME's private wordlist, and saves the
+  caller's current wordlist. Definitions are private by default.
+- `public` is valid only inside a package and switches new definitions to the
+  package public/export wordlist. Public words are called from outside as
+  `NAME:WORD`; unqualified global lookup must not find them.
+- The public section is the module boundary. Export short domain words there:
+  `TASK:KILL`, `TASK:DONE?`, `PTX:BROADCAST`, `MAP:GET`. Avoid repeating the
+  package name in the public tail unless the domain spelling itself requires it.
+  Prefix-style global APIs are legacy debt, not a pattern for new code.
+- `private` is valid only inside a package and switches new definitions back to
+  the package private wordlist. Private words are visible by unqualified name
+  only while that package is open; `NAME:PRIVATE-WORD` must not resolve.
+- `;package` is valid only inside a package. It restores the saved current
+  wordlist and clears both runtime and checker package scope.
+- Reopening the same package with `package NAME` resumes the same public
+  wordlist and the same private wordlist; it does not create a new module scope.
+  Later package blocks loaded after earlier ones can call earlier private
+  helpers, call earlier public words unqualified while the package is open, and
+  add more public exports. Load order is still the dependency order: reopening a
+  package does not load any source file by itself.
+- Multi-file packages are split by reopening the package in each file. If the
+  loader already supplies every package file in dependency order, do not add an
+  include just to repeat that fact: `bin/hb --load app/core.f app/api.f` is
+  sufficient, and `tools/check.f --source-list app/core.f app/api.f` is the
+  checker-only form. Use include only when a source file or entry file should
+  own loading its dependencies.
+- The purpose of include/require is source composition, not namespace sharing.
+  User entry files, tool entry files, and test files own their setup with
+  `require` for dependencies and `include` only for deliberately repeated
+  source composition. Callers should not have to know that `A.f` must be loaded
+  before `B.f` just to run `B-test.f`. If many files need a small primitive
+  helper, factor that helper into a narrow `src/core/*.f` prelude file loaded
+  before stdlib/tool sources instead of depending on a broad library order such
+  as `lib/string.f` before `lib/ffi-abi.f`.
+- Use include when a file should be self-sufficient or when a top-level entry
+  file should assemble a package from submodules:
+
+```forth
+\ app/core.f
+package APP
+
+: HELPER ( -- n )
+   9 ;
+
+public
+
+: CORE ( -- n )
+   HELPER ;
+
+;package
+```
+
+```forth
+\ app/api.f
+include app/core.f
+
+package APP
+
+public
+
+: RUN ( -- n )
+   CORE ;
+
+;package
+```
+
+  `include path/to/file.f` parses the next whitespace-delimited filename and
+  loads that source immediately every time. `s" path/to/file.f" included` is the
+  lower-level string form. `require path/to/file.f` and `s" path/to/file.f"
+  required` are include-once forms keyed by the exact path string in the current
+  image; use them for normal dependencies so a shared setup phase and a test
+  entry can both name the same support file without duplicate definitions. The
+  native engine marks its baked prefix files as `provided` before user/test
+  source runs, so `require src/core/sha256.f` skips the prefix-owned copy instead
+  of reloading it. Snapshot images preserve the `require` registry because it
+  describes which modules are already compiled into the live dictionary. Do not
+  include a file merely so two files can see the same private helpers; reopening
+  the package provides that shared package scope after both files have been
+  loaded. Test suites load self-contained test/tool entry files plus any script
+  args only; the test file requires its setup and owns its assertions. Gate
+  source lists stay for explicit cross-file integration subjects and generated
+  build-stage source, not for ordinary unit-test dependency plumbing.
+- A package public or private wordlist is a no-duplicate set. Publishing a word
+  whose folded tail already exists in the active target wordlist is an error,
+  including across reopened package blocks and across `:`, `create`, `variable`,
+  `constant`, and `TRUSTED:` publishing paths. This is case-insensitive:
+  `RESET` and `reset` are the same tail.
+- Redefinition is explicit only. To replace a word, write `undefine NAME` first;
+  this retires the exact active wordlist entry and clears checker-side
+  signature, defer-target, and control metadata. A later definition may then
+  reuse the same name. Silent last-definition-wins shadowing is always an error.
+- Shadowing an outer/global/built-in word from inside a package remains legal
+  because it publishes into a different wordlist. The same tail may also appear
+  in different packages (`APP:RESET` and `MK:RESET`); only duplicates in the
+  same package public/private wordlist are rejected.
+- While a package is open, unqualified lookup tries the package private wordlist,
+  then the package public wordlist, then the saved/global lookup path. This lets
+  public words call private helpers without qualification and lets later private
+  helpers call earlier public words.
+- `EXPORT NAME` inside an open package re-exports an EXISTING word into the
+  current section wordlist under its own tail: same execution token, same
+  checked stack effect (a fresh alpha-equivalent scheme copy), defer and
+  control-effect flags carried, immediate/wide name bits copied — no
+  forwarding body and zero runtime cost, one word under two names.
+  `EXPORT EVAL:RUN` in `package MAKI public` publishes `MAKI:RUN`; a bare
+  `EXPORT HELPER` in the public section promotes the package's private
+  `HELPER` to public. Fail-closed rejects: an undefined source, a private
+  word behind a CLOSED package (qualified lookup is public-only), a source
+  qualified into a sealed system package, a primitive source (prims may be
+  overloaded; aliasing one row would narrow the effect), and a duplicate
+  tail in the target section. Re-exporting a generated constructor word
+  (closed-but-callable) under a second name is allowed; adding tails INTO a
+  generated constructor package stays rejected. AOT tree-shake keeps one
+  body, and the alias rows roll back atomically with checker scope frames.
+  At TOP LEVEL (outside any package) `EXPORT name…` is the pre-existing
+  hb-build `--repl` export directive: the build strips it before compiling
+  and a plain load consumes the name as a no-op, so directive-carrying
+  programs stay directly loadable.
+- Qualified names use the existing single-colon wordlist syntax. The qualifier
+  selects the package public wordlist and the dictionary record stores the tail,
+  so `HB:COUNT` resolves public `COUNT` in package `HB`.
+- **Qualify only across package boundaries.** `NAME:WORD` is for callers *outside*
+  `NAME`. A file that belongs to package `NAME` reopens it with `package NAME` and
+  calls `NAME`'s words by their bare names — writing `NAME:WORD` inside `NAME`'s own
+  files is redundant noise. A call into a *different* package either qualifies
+  (`OTHER:WORD`) or reopens that package. Structure a subsystem as a small set of
+  internal module packages plus one public-interface package the outside world
+  qualifies against; the internal packages call each other across boundaries, the
+  public package composes them, and only truly external code writes the qualifier.
+- Package scope is mirrored into the checker. Certified definitions recorded
+  inside `private` are visible only to later checked code in the same open
+  package; certified definitions recorded inside `public` are visible as
+  `NAME:WORD`. The checker must reject duplicate certified definitions in the
+  same active package wordlist before runtime.
+- Every package feature must have native gate coverage for runtime lookup,
+  checker certification, private isolation, public export, reopen behavior,
+  case-insensitive lookup, and fail-closed misuse (`public`/`private`/
+  `;package` outside a package, nested packages, missing package names, and
+  qualified package names).
+
+#### Importing a package's public words with `using`
+
+`using NAME` is the consumer-side import: it makes package `NAME`'s **public**
+wordlist visible to bare, unqualified lookup in the current scope, without
+opening or reopening `NAME`. `require` loads the package source; it does not
+import that namespace or justify repeating `NAME:WORD`. Every new or changed
+consumer that calls two or more public words from one required package MUST
+import it once with `using NAME ... ;using` and call them bare. This includes
+`/tmp` scratch files, reproducers, performance scripts, generated files, and
+committed files; scratch files are not exempt.
+Untouched legacy consumers remain explicit debt until owner-scoped migration;
+this staged rule does not claim they are already converted. PREFER `NAME:WORD`
+for a one-off call or when qualification is needed to escape a collision or
+ambiguity.
+
+- `using NAME` consumes the next token, rejects a missing name and a name
+  containing `:`, and rejects a name that is not a known package. It is valid at
+  top level and inside an open package. Only `NAME`'s public wordlist joins the
+  search — its private words stay invisible, and no definition can ever land in
+  `NAME` through a `using` (definitions still target the current scope's
+  wordlist, exactly as without the `using`). Required files may open or reopen
+  `NAME`; when the require returns, the consumer remains in its original,
+  normally global, definition scope.
+- The scope of a `using` ends at the matching `;using` (the `FOO … ;FOO`
+  block-pair convention), at the enclosing `;package` when the `using` was opened
+  inside a package, or at the end of the load file — whichever comes first.
+  `;using` closes the most recent `using`; a `;using` with no open `using` is an
+  error. Multiple concurrent usings are allowed up to a small fixed capacity
+  (`USE-MAX`, 16); a further `using` past the limit is rejected. Consumer-only
+  files covered by the rule above close the scope explicitly with `;using`;
+  end-of-file closure remains a language boundary, not the preferred source
+  form for those files.
+- Lookup order for a bare tail is the open-package scope (private then own
+  public) FIRST, then the global wordlist, then each used package's public
+  wordlist. A tail found in the OPEN-PACKAGE scope silently wins over a used
+  public with no error (inner scope wins): defining your own tail while a package
+  is open is deliberate local shadowing. A bare tail resolving in MORE THAN ONE
+  used public wordlist is a hard error (`E-USING-AMBIGUOUS`, fail closed, matching
+  the no-duplicate wordlist discipline); the same package named by two usings is
+  not ambiguous. `using` never silently changes an existing binding: it is either
+  the sole resolver of an otherwise-unresolved name, or the collision is a hard
+  error.
+- A bare tail that resolves to a GLOBAL while a used package ALSO exports the
+  same tail is a hard error at the reference site (`E-USING-SHADOW-GLOBAL`,
+  checker code 7141). This extends the two-used-package ambiguity rule to the
+  global-vs-used collision. Without it the global-first order made the `using`
+  import silently dead: the reference bound the global with the global's effect,
+  so the mismatch either surfaced far from the cause or — when the two effects
+  coincided — bound the wrong word and certified with no diagnostic at all (the
+  data-loader incident, dot `habu-err-on-global-e62f806c`, where a kernel `LOAD`
+  shadowed a loader's public `LOAD`). The diagnostic names both candidates
+  (`global TOK` and `PKG:TOK`) with their effect arity. Escape hatches: to mean
+  the package word, qualify it as `PKG:WORD` (always certifies); to mean the
+  global there is no bare qualifier for the global "" wordlist, so RENAME the
+  collision — a uniquely named package public is the sanctioned fix (this is why
+  public surfaces must be uniquely named). The rule is enforced by the checker at
+  the reference site, so it holds for every checked body; the engine's raw
+  interpret / `0 set-check` resolution keeps the global-first order as the
+  explicit unchecked boundary.
+- The colliding global does NOT have to be one the checker knows. Every
+  engine-prefix colon word with no signature and no primitive axiom is a global
+  the checker has no symbol for, and a `0 set-check` definition adds more. The
+  reference site asks the ENGINE's wordlists — `search-wl`, the same scan and
+  case fold the engine's own lookup uses — before a used public may bind, so the
+  refusal covers signed and unsigned globals alike (dot
+  `habu-reject-a-bare-1f43a9a6`, where a package public `FRESH` bound the
+  checker's internal global `FRESH` and ran it: exit 0, wrong values). The same
+  question decides the open-package leg: a word in the open package's own
+  wordlist wins over a used public even when the checker never recorded it, and
+  because it has no signature the reference is then uncheckable
+  (`E-UNDEFINED`) rather than certified against the used public's effect.
+- Qualified `NAME:WORD` lookup is unchanged and always available regardless of
+  any `using`.
+- Resolution happens at compile/certify time: a call compiled inside a `using`
+  scope keeps resolving after `;using`, and the AOT/baked image needs no runtime
+  using-state. Which scope claims a bare tail has ONE authority, the engine's
+  wordlists; the checker's symbol table answers only what a word's effect is. So
+  a checked body that reads a used public certifies, a used private or an
+  ambiguous tail is rejected before runtime, and certification and execution
+  always name the same word. A global that appears AFTER a reference was
+  certified does not change what that reference runs — it was resolved when the
+  body was compiled — while the next reference to the same tail is refused.
+- `using` state is file-local: it is snapshotted per eval frame and per REPL
+  line and rolled back with the open-package scope, so a `using` left open in an
+  included file (or aborted by a throw) never leaks to the caller.
+
+### Structures And Enums
+
+Habu's live composite-type declaration surface is the typed-family DSL in
+`src/core/sumtype.f` (`NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`) plus the
+value-record (`src/core/roles.f`), low-level structure (`src/core/structures.f`),
+and counter-enum (`src/core/enums.f`) definers. Each block opener parses its own
+body up to a `;NAME`/`END-NAME` closer and registers the family whole; the
+`sumtype.f` openers and `VALUE-RECORD` mutate the type registry, so they are
+top-level-interpret-only and reject inside checked bodies.
+
+```forth
+NEWTYPE index 0                     \ opaque nominal cell family, no closer
+
+PRODUCT point 0                     \ single-shape record, no tag
+   FIELD x n
+   FIELD y n
+;PRODUCT
+
+SUMTYPE message 0                   \ tagged union; positional variant payloads
+   VARIANT quit ;VARIANT
+   VARIANT move n n ;VARIANT
+;SUMTYPE
+
+ENUM color red green blue ;ENUM     \ payloadless tag-only sum
+```
+
+- `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`) with no
+  closer: arity `0` is an opaque scalar newtype (see `lib/cad-num-types.f`),
+  arity `N` binds positional params.
+- Type-family identity is the exact `(package, tail)` pair. A package-owned
+  family may share a tail with a global family or a family in another package,
+  even when their arities differ. A qualified token resolves only that exact
+  package row. A bare token resolves the open package's own row first (private
+  or public), then the global row, then the sole eligible public row from other
+  packages. Two eligible non-lexical package-public rows remain an error. This
+  ordering means adding `MEM:span` cannot change what an existing top-level
+  `span` means. Exact same-package duplicates, reserved grammar names, and
+  foreign private rows still reject.
+- `SUMTYPE name arity [ DERIVE … ] VARIANT v payload… ;VARIANT … ;SUMTYPE`
+  registers a tagged union (`TK-SUM`, tag = declaration order). **Variant
+  payloads are positional type tokens** — letter params, concrete cell types,
+  `ptr T`, or closed arity-0 families; a named `FIELD` inside a variant rejects
+  (`E-TDECL-SYNTAX`, 7107). Generates constructors and drives exhaustive
+  `MATCH … ;MATCH`.
+- `PRODUCT name arity [ DERIVE … ] FIELD f type … ;PRODUCT` registers a
+  single-shape record (`TK-PRODUCT`, no tag) whose members are **named**
+  `FIELD f type`. A public product generates sealed `FAMILY:MAKE`/`FAMILY:UNMAKE`
+  plus typed field accessors.
+- `ENUM name header… v0 v1 … ;ENUM` registers a payloadless tag-only sum
+  (`TK-ENUM`) from **bare variant names only** — it takes no arity token and no
+  `VARIANT` keyword (either rejects, throw 7101). Optional `POLICY` and `DERIVE`
+  headers must precede the first variant. Use `SUMTYPE` for payloads.
+- `DERIVE eq` / `DERIVE hash` on a public arity-0 family generates the
+  corresponding operations; clauses follow the family name on `ENUM` and the
+  arity on `SUMTYPE`/`PRODUCT`. Distinct features may use one or several clauses;
+  repeating a feature rejects.
+- `VALUE-RECORD name field type … END-VALUE-RECORD` declares a checked value
+  record; `END-VALUE-RECORD` is its terminator.
+- `BEGIN-STRUCTURE NAME … END-STRUCTURE` is the low-level Forth-2012
+  offset-threading form: `size +FIELD f`, `PTR-FIELD: p`, and `CFIELD: c` thread
+  byte offsets and `NAME` becomes a byte-size constant. `structures.f` loads
+  after the checker hook, so these definitions publish their checked effects
+  directly; no boot path loads the retained pre-hook effect mirror. Prefer the
+  typed families above and reserve this form for raw layout (e.g. `lib/vector.f`).
+- `CAST: NAME ( source -- destination )` declares a checked retype. It is an
+  engine reader keyword, not a word: it takes **no body and no `;`**, and it
+  publishes `NAME` as an identity word whose call sites emit zero instructions.
+  A conversion that needs to refuse a value is two things — a checked word that
+  throws, then the cast — because a cast carries no code. The declaration may
+  introduce a resolved scalar-cell family destination, including a parametric
+  `NEWTYPE` instance, only while the engine's live namespace record and actual
+  public/private definition wordlist identify that family's declaring package.
+  Mutable `CHECKER-PACKAGE-*` parser mirror state is not authority. Projection
+  casts from such a family remain unrestricted.
+- `ENUM+` / `ENUM4+` are the legacy numeric counter definers: `n ENUM+ NAME`
+  defines `NAME = n` and leaves `n+1` (`ENUM4+` leaves `n+4`).
+- Type, field, and variant names are lowercase; generated and project-defined
+  words are uppercase.
+
+The unified `STRUCTURE … ;STRUCTURE` and `ENUM … ;ENUM` openers **do ship**
+(`src/core/structure-decl.f`, `src/core/enum-decl.f`), and the tree uses them
+widely — around 71 `STRUCTURE` and 207 `ENUM` declaration sites. A declaration
+such as `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE` loads clean. The older words
+above also remain supported: `E-REMOVED-TYPE-SYNTAX` exists nowhere in the
+engine, and none of those forms are removed.
+
+- `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
+  `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
+  for global pointer slots.
+
+SwiftForth-style relocatable linked-list words (`@REL`, `!REL`, `,REL`,
+`>LINK`, `<LINK`, `CALLS`) are not part of Habu's checked surface. They encode
+dictionary-relative pointer arithmetic and executable list traversal, which is
+the wrong abstraction for Habu snapshots and the checker. Use structures for
+typed node layout, arrays/maps for runtime collections, `case/of/endof/endcase`
+for selector dispatch, and checked execution vectors for late binding. Any
+future list DSL must expose typed node/link effects and forbid raw relative
+address arithmetic at the public boundary.
+
+## Words & factoring
+
+- **Strictly typed Habu, everywhere you can (BLOCKING).** The default is not
+  "checked when convenient" — it is checked/typed, and unchecked is only a named,
+  tested boundary the checker genuinely cannot express (see *Unchecked code is a
+  named boundary*). Think in small, typed words: factor aggressively, give each a
+  real `( in -- out )` effect, and compose them into **nice-reading checked DSLs**
+  that read as the domain, not as stack plumbing. The three detailed rules below —
+  typed by default, small factored words, DSL-first vocabulary — are this one
+  principle expanded; if you reach for a giant word, deep juggling, or a raw `s"`
+  blob, stop and build the typed words first.
+- **Default new public/library Forth to checked typed definitions.** If the
+  checker can express the layer, write an explicit typed effect and let `hb`
+  verify it, e.g. `: SQUARE ( i64 -- i64 ) dup * ;`.
+- **Keep control flow and multi-step computation out of argument lists.** The
+  checker *does* accept `if/else` (and comparisons like `f> 0=`) producing a value
+  mid-arg-list — e.g. `s" k" 1 0 > if 5 else 6 then 2.0 L-OF` type-checks and runs,
+  so this is a readability/safety rule, not a checker limit. Prefer extracting the
+  value into a named word with a real effect (`: DET-MINRATE ( -- r ) ... ;`) or a
+  pre-bound local, then pass the simple word. Dense arg lists that splice `if/else`,
+  comparisons, and several `@`/`F@` reads are where a wrong cell *type* (a `bool`
+  from `0 >` where the callee wants `n`) hides — it surfaces at a *later* call as a
+  confusing "expected n actual bool", not at the offending column. One value per
+  concept; let each line read as the field it emits.
+- **Check every source you can — byte emitters included.** Raw byte/layout
+  emitters, ELF/Mach-O writers, tooling, tests, and build helpers are checkable
+  unless a specific primitive boundary proves otherwise. Verify with the owning
+  `bin/hb --load ...` or `tools/check.f --source-list` path before claiming the
+  checker cannot express a layer.
+- **Unchecked code is a named boundary, not a habit.** Use `0 set-check`,
+  raw emitter words, or `TRUST` only for layers the checker cannot express:
+  metaprogramming, source-string generators, primitive emitters, snapshot/build
+  drivers, and similarly low-level support. Keep the boundary obvious in the
+  file and add focused tests for the contract it asserts.
+- **Do not stub real facts with `TRUSTED:`.** A predicate, target selector, or
+  runtime fact named with `?` must execute a real body that pushes a boolean.
+  `TRUSTED:` may assert nominal identity casts or primitive boundaries, but it is
+  not a signature-only forward declaration for words owned by another file.
+- **Factor reusable helpers back into checked Forth.** If an unchecked harness or
+  tool grows a helper that can be typed, move that helper to checked code instead
+  of letting unchecked scaffolding become the library surface.
+- **Try the checked factor before adding trust.** If existing primitive effects
+  can express the operation, define a small typed word and use it from callers;
+  add a primitive model or `TRUSTED:` shim only after proving the checker cannot
+  certify that helper.
+- **Trust the uncheckable operation, not the dispatcher.** For indirect emitter
+  callbacks, keep the row/dispatch word checked and isolate only the raw
+  `execute` in a tiny `TRUSTED:` shim. Do not convert a whole factored dispatcher
+  to trusted just because one leaf operation is higher-order.
+- **Build checked task vocabulary before fighting syntax.** If a test, tool, or
+  benchmark needs structured rows, JSON/TSV fragments, generated source,
+  diagnostics, packets, or repeated assertions, factor domain words or a focused
+  checked DSL first. Giant `s"` literals, fragile escaping, and private byte
+  emitters are bugs unless they are the tested boundary of that DSL.
+- **Readable DSLs execute the body they name.** Prefer forms such as
+  `[: ITEM ;] NAME-FILES` or `TEST:SUITE name ... TEST:;SUITE` over generic
+  list wrappers. A generic `execute` layer needs higher-order effects the checker
+  may not model; direct row/body words keep the effect visible.
+- **Classification tables beat token ladders.** When a word becomes a long
+  `dup`/`over` chain over token classes, move the classes into row/table data and
+  factor named transition helpers. The tests should describe the table policy,
+  not reconstruct a branch ladder.
+- **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
+  without you tracking more than a few stack items.
+- **Multi-pass words must be split into named passes.** A word that scans input,
+  validates rows, mutates aggregate state, and renders output in one body is not
+  reviewable even if its definition-line effect is correct. Factor cursor
+  movement, row classification, validation, state updates, and render emission
+  into named checked words with their own stack effects, then compose them with
+  a small orchestration word.
+- **No dense single-line control words.** A one-line definition is only for a
+  trivial straight-line wrapper. Any word with `IF`, `BEGIN`, `WHILE`, `REPEAT`,
+  `UNTIL`, `case`, locals, multiple stack transitions, or more than one semantic
+  step must be split across lines. Add line stack effects only where they clarify
+  non-obvious stack motion; if formatting the word makes it look noisy, factor it.
+- **Raw compiler/emitter code is not exempt.** Unchecked words, register-level
+  emitters, and bootstrap/compiler helpers still need exact stack-effect comments
+  and small factored helper words. If review requires reconstructing stack state
+  from surrounding code or register side effects, factor first; do not rely on
+  hand-tracked effects.
+- **Factor when the stack gets unreadable.** If you reach for `ROT -ROT PICK
+  ROLL`, stop and either factor a helper or use locals. Deep juggling is exactly
+  what this project forbids in *user* code — hold our own code to it.
+- **Locals `{: a:type b:type :}`** are encouraged where they remove juggling.
+  They bind inputs only; do not put `-- outputs` inside the locals form. Keep
+  the effect in the stack comment. Binding is left-to-right from the deepest
+  stack item: the first local names the first value pushed, so
+  `1 2 {: a:n b:n :}` gives `a`=1, `b`=2. New locals are typed by default when the
+  concrete checker type is known; a bare local name is allowed only when the
+  entry stack effect intentionally preserves richer role detail that the local
+  annotation cannot express, or when the missing typed capability is documented.
+- **Local type annotations can erase role detail.** A local such as `a:ptr`
+  records only a pointer cell; it does not preserve `ptr u8`. If the body uses
+  byte operations such as `c@`/`c!`, keep the detailed type in the stack effect
+  and bind an untyped local name, or factor a helper whose entry effect carries
+  `( ptr u8 ... -- ... )`.
+- **Name same-type numeric slots before reordering them.** Effects such as
+  `( cap used add -- )` are all `n`; a stray `swap` type-checks but changes the
+  meaning. Bind names at the helper entry or factor role-specific helpers before
+  doing capacity, offset, or decoder arithmetic.
+- **Locals are block-scoped.** A `{:` group may appear on any live path, including
+  inside `if`/`else`, `case` arms, and loop bodies. The names are visible until
+  that block arm closes, then the checker and compiler restore the prior local
+  scope and frame depth. A branch-local name must not be referenced after
+  `then`/`endof`/`endcase`/`loop`/`repeat`; bind before the control word if the
+  value must survive the join.
+- **Dead code still cannot bind locals.** A later `{:` group is valid after a
+  closed early-exit guard such as `dup 0 < if exit then`, because the fall-through
+  path is live. A group immediately after an unconditional `exit`, `leave`,
+  `throw`, `die`, or `again` remains a checker error.
+- **Do not build deep locals stacks.** Habu locals are reliable for shallow
+  factoring; nested helper calls from loop/callback bodies should use stack-based
+  leaf helpers or explicitly separate scratch variables so inner helpers cannot
+  clobber caller indexes.
+
+## Files
+
+- **One concern per file.** Do not bundle unrelated responsibilities: parser,
+  renderer, DB, data table, and driver code belong in separate files. Split at
+  responsibility boundaries so review stays focused and files can be built in
+  parallel.
+- **Reusable helpers belong in libraries, not pasted drivers.** Run multi-file
+  tools as `hb --load lib/a.f lib/b.f tool.f -- args...`; the native loader
+  appends the source files before `--`, `SCRIPT-ARGV$` starts after it, and fd 0
+  remains available as tool data even when stdin is non-tty. Shared behavior
+  still lives in one owned source file.
+- **Keep physical source lines short.** Long `--load` builders and check source
+  appenders must be factored into helper words or split across lines. Do not let
+  load-list lines approach the interpreter input buffer; source truncation can
+  surface later as unrelated top-level words.
+- **Keep script argv explicit.** `hb tool.f arg...` preserves single-script
+  compatibility and treats `arg...` as script arguments. Use `--load` only when
+  the command line contains more than one source file.
+
+## Stack comments
+
+- **The stack effect is the contract; prose is not.** A source file is not a
+  design document. Keep every `( before -- after )` and maintain it carefully.
+  Write a comment only for a constraint the code cannot state — a units,
+  ownership or ordering invariant, a hardware encoding fact, a checker
+  boundary — and keep it to one or two lines. No design essays, no narrated
+  rationale, no refutation history: that belongs in technical documentation and in
+  `LESSONS.md`. Meaning lives in word names and factoring.
+- **Every definition** carries `( before -- after )`.
+- **Multi-line definitions use line effects where they clarify.** The
+  definition line carries the word effect `( before -- after )`. Add trailing
+  `\ ( before -- after )` comments only on body lines where the stack state is
+  not obvious and the comment improves review. Do not add empty/no-op stack
+  comments; if many line comments are needed, factor the word.
+- **Checked definitions use type tokens only.** The checker reads the stack
+  comment as the signature, so write `( n n -- )`, `( bool -- )`, or
+  `( ptr u8 n -- )`, not arbitrary role names such as `( got want -- )`. Standard
+  nominal role tokens such as `idx`, `len`, `count`, `fd`, `rc`, `reg`, `label`,
+  `va`, `symidx`, `asm`, `img`, and `snap` are real checker types; informal
+  names still belong in locals (`{: got want :}`), helper names, or nearby prose.
+- **Use real types, not reflexive `n`.** A string is `ptr u8 n`; a dereferenced
+  cell address is `ptr a`; a pointer-valued cell should preserve its nested
+  pointer role. `n` is only for genuine scalar cells.
+- **Same-cell values need nominal roles.** Values with the same runtime
+  representation but different contracts (`reg`, `label`, `va`, `symidx`, `fd`,
+  `count`, `asm`, `img`, `snap`) get distinct type tokens and negative checker
+  fixtures. A raw `( n n -- )` signature hides swaps the checker should reject.
+- **Declare application value nominals with `DEFTYPE`.** For a package's own
+  distinct integer type — a camera serial, a frame index, an exposure time, or any
+  project-specific same-cell role — use top-level `DEFTYPE NAME`
+  (`require lib/type/deftype.f`). One readable line mints a package-scoped type and
+  derives its explicit converter pair `>NAME ( n -- name )` / `NAME>N ( name -- n )`;
+  the checker keeps it apart from a plain `n` and from every other nominal, and the
+  converters are the only crossing. Unknown type tokens stay errors, so a misspelling
+  never becomes a fresh type. The type tail is the lowercase fold of the name
+  (`SERIAL` → `serial`), so a signature reads `( serial -- n )`. It is package-scoped:
+  `DEFTYPE SERIAL` in package CAMERA and in package FRAME are distinct types.
+  Substrate and the rejected global-table alternative: `docs/value-nominal-substrate.md`.
+- **Use `DEFLINEAR` for owner/lifetime tokens.** A linear token is nominal and
+  noncopyable: generic `dup`/`over`/`2dup`, `drop`, `@`, `!`, and by-value record
+  duplication reject when they would duplicate, discard, load, or store it. Only
+  words whose own effect explicitly mentions the linear type may create or
+  consume it, so allocation/free boundaries stay audited.
+- **Raw role casts are not validators.** Cast words such as `>LEN`, `>IDX`,
+  `>COUNT`, `>OFF`, `>ASM`, `>IMG`, and `>SNAP` are trusted identity boundaries.
+  Public libraries should expose checked constructors and role-specific helpers
+  so length/count/offset/phase swaps fail under `CHECK!`.
+- **Unchecked/prose-only comments may name roles** when no checker hook consumes
+  the comment, but keep the type shape obvious.
+- Add inline `( … )` at non-obvious points inside a longer word so the reader can
+  re-anchor mid-definition.
+- Use standard notation: `x` cell, `n`/`u` signed/unsigned, `d` double, `c-addr u`
+  string, `xt` execution token, `nt` name token, `f`/`bool` flag, `?` for
+  maybe-present.
+
+## Checker & type model
+
+- **`CHECK!` is the user contract.** Inference (`CHECK`) proves internal
+  consistency; user builds verify the body against the declared `( in -- out )`
+  and make rejection fatal. Tests for bad programs must assert build rejection,
+  not just runtime failure.
+- **Every `TRUST` has source-local rationale and proof.** Document why the
+  checker cannot express the boundary, name its retirement owner, and exercise
+  its asserted effect through a focused production-path test in the same change.
+- **Typed booleans are real `bool` values.** Produce true/false with typed
+  producers such as `0 0=` and `0 0= 0=` or domain helpers. Do not store raw
+  `0`/`-1` into a `ptr bool` cell, and do not compare bools with numeric `=`.
+- **Structural integers widen, roles do not.** The checker models structural
+  integer tokens with width/sign metadata: `u8 -> u16 -> u32 -> n/cell/i64`
+  widening is implicit when lossless, but narrowing and same-width sign changes
+  require an explicit conversion. Nominal roles (`idx`, `len`, `fd`, `rc`, `pid`,
+  `asm`, `img`, `snap`, etc.) never widen to each other or to bare integers.
+- **Pointer-valued cells use cell-indexed `ptr-field`.** When a typed DATA cell
+  or record field stores a pointer, compute the cell slot with `ptr-field` so
+  `@`/`!` preserve nested pointer types. The index is a cell slot, not a byte
+  offset. Raw fixed-header byte offsets need an explicit trusted boundary or a
+  modeled byte-offset primitive.
+- **Byte pointers are not cell pointers.** `ptr u8` is a byte span and must use
+  `c@`/`c!` for byte access. Cell `@`/`!` over a concrete `ptr u8` is a checker
+  error; if a cell stores a byte pointer, model the address as `ptr ptr u8`
+  through `ptr-field` and then use `@`/`!` on that cell address.
+- **Raw state cells still need typed public effects.** Variables used from
+  checked code need explicit `TRUST` rows such as `-- ptr n`, `-- ptr bool`, or
+  `-- ptr ptr u8`. Boolean state cells are `ptr bool`, and string-pointer state
+  should remain `ptr ptr u8` plus a separate length cell.
+- **Path-sensitive control is a checker invariant.** `LEAVE`, `EXIT`, `throw`,
+  `die`, and `again` must fold or kill paths according to their declared control
+  effect. Divergent path arities are soundness bugs; after a dead path, only
+  structural closers (`else`, `then`, `loop`, `+loop`, `repeat`, `again`, `;]`)
+  may appear.
+- **`RECURSE` uses the declared effect.** Recursive calls apply a fresh copy of
+  the current definition's declared signature; keep the raw declared signature
+  stable after `CHECK!` so rendered/mutated terms cannot corrupt the scheme.
+- **Quotations are xts, not closures.** `[: ... ;]` may not read surrounding
+  locals until real closures exist. The checker and compiler must reject local
+  references while a quotation is open.
+- **Checked `catch` is quotation catch.** Consume success outputs inside the
+  quotation (`[: WORD drop ;] catch`) and preserve the exact throw code as data at
+  an explicit recovery boundary. Do not widen checked code to arbitrary xt catch.
+- **A caught quotation must be stack-preserving, and that is how a value crosses
+  the boundary.** `catch` unifies the live stack with the quotation's inputs AND
+  its outputs, so `[: … ;]` may consume items only if it returns the same shape:
+  `( n -- n )` is accepted, `( n -- )` is rejected. Because a quotation cannot
+  read the enclosing word's locals, a value that the caught code needs travels on
+  the data stack through the quotation and comes back out on every branch —
+  `: W ( n -- n ) [: dup USE … ;] catch {: rc:n :} CLEANUP rc 0 <> IF rc throw THEN ;`.
+  Do not invent a staging variable for it.
+- **Higher-order signatures publish themselves.** If a checked word with
+  quotation effects (`DIP`, `KEEP`, row callbacks) passes `CHECK!`, let it render
+  into public signatures; do not keep a `TRUST` row just to pin its scheme.
+- **Default new higher-order words to CHECKED — function-passing is a checked
+  capability.** The checker verifies a quotation parameter (`[ a a -- bool ]`,
+  `[ a -- a ]`, …) executed through a call chain AND inside a `?do`/`begin` loop:
+  bind the quotation as an ordinary local, thread it to helpers, and `execute` it.
+  A comparator heapsort, map, fold, and filter all check this way. Do NOT reach
+  for `0 set-check`/`TRUST` for function-passing by precedent — the older
+  `src/core/combinators.f` (MAP/FOLD/EACH) is an unchecked boundary that predates
+  this and is *not* a model to copy. Only drop to an unchecked boundary after a
+  minimal reproducer proves the checker rejects the specific higher-order shape,
+  and file a checker-capability gap (per the Checker-Miss RCA below).
+- **Execution vectors are typed `defer` words, not raw xt cells.**
+  `defer ACTION ( in -- out )` declares the vector's public effect, and checked
+  code installs an implementation with a typed quotation:
+  `: INIT ( -- ) [: IMPL ;] is ACTION ;`. The checker must prove the quotation
+  effect exactly matches the deferred word's declared effect. Do not write
+  `variable ACTION`/`@ execute` dispatch tables or `['] IMPL is ACTION`; raw xt
+  storage loses the effect. Calling an unset deferred word fails closed with the
+  execution-vector error. If native engine state needs one fixed callback cell,
+  store a checked vector bridge there once (`[: ACTION ;] CELL !`) and change the
+  implementation only through `[: IMPL ;] is ACTION`; do not store raw
+  implementations into the engine cell. `@EXECUTE` is not a general replacement
+  for `defer` until its zero no-op behavior has a checked stack-effect model.
+- **New type tokens need a checker-only bootstrap stage.** Old `bin/hb` rejects
+  unknown stack-comment tokens before checked source can use them. Add parser,
+  renderer, and `CC-*` checker support, refresh the native binary, then use the
+  role in `TRUST` rows and checked definitions.
+- **Phase tokens must reach the side effect they order.** `asm`, `img`, and
+  `snap` phase cells should flow through the final sign/write/header operation,
+  not just an early wrapper, so callers cannot skip required build stages.
+- **Seal the implicit row under declared inputs.** Row polymorphism must not let a
+  body borrow below declared inputs. A stack-preserving trusted effect such as
+  `img -- img` or `fd -- fd` must not satisfy final output by binding an implicit
+  base row that hides underflow.
+
+## Errors
+
+- Engine process failures use only the sealed `ENGINE-ERROR` package ABI:
+  `SEAL-VIOLATION` 83, `SEAL-PACKAGE` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
+  `CATCH-STACK` 87, and `CODE-CERT` 88. Global `E-*` aliases are forbidden;
+  native and no-binary recovery consume the same qualified names and values.
+- **Fallible words `throw` a named code** (defined in `src/config.fs`,
+  e.g. `E-MISMATCH`); they never fail silently or return an out-of-band flag in
+  place of an error.
+- **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
+  assertions, and stack-preserving outcome adapters that return the exact throw
+  code as data. No `… catch drop`, broad `catch 2drop`, or other masking.
+- `unreachable`-style `abort"` only for proven-impossible states, with a message.
+- **Interactive/REPL support recovers; builders may exit.** Recoverable
+  interactive failures should `throw` into REPL recovery (`?`, rollback, reread).
+  Use process exits such as `die` for build-time makers and CLI boundaries where
+  terminating the process is the contract.
+- **`throw` and `die` are different control effects.** `throw` is catchable and
+  belongs to the checker exception edge; `die` terminates the process and belongs
+  to no-return metadata. Do not add dummy output values after `throw` to balance
+  a branch. If the checker cannot accept a real throw guard, fix the exception
+  model or track that capability gap.
+- **`die` consumes a real message and code.** Its effect is
+  `( ptr u8 n n -- )`: pass an actual byte string and exit code, not `0 0` as a
+  fake string. Model process exits as no-return control flow only at certified
+  wrappers.
+
+## Constants
+
+- **Named constants, no magic numbers.** Limits and codes live in `src/config.fs`.
+  A literal in code is only acceptable for true primitives of the encoding
+  (e.g. the `3`/`7` of the 3-bit tag, and even those get a comment).
+- **Default to `$hex` literals.** Bit masks, instruction encodings, ASCII codes,
+  memory/struct/byte offsets, and field strides are always hex (`$FF and`,
+  `$D10043FF`, `$200`, `$40`). Only genuine small decimal *counts* stay decimal:
+  loop bounds, arities, shift amounts, and register indices. When in doubt,
+  prefer hex. Cryptographic/format constants should follow the conventional hex
+  spelling from the spec, not decimal transcriptions. The standalone parses
+  `$hex` (case-insensitive, optional leading `-`).
+
+## Testing
+
+- Exercise changed behavior through checked assertions, including meaningful
+  errors and edges. Test compositions through their public entry points rather
+  than requiring a separate test for every trivial helper. Use `T=` / `T<>` for
+  scalars, `T$=` for strings, `TTRUE` / `TFALSE` for flags, `TTHROWS` for error
+  codes, and `SNAP=` (two equal-shape quotations) for multi-value stack snapshots.
+  A regression must distinguish the defect it is intended to prevent.
+- Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
+  fixtures, and source-specific checks wired through `test/run.f`.
+- Test orchestration uses `lib/test.f`. The framework vocabulary is test
+  suite / test group / test; old gate/row wording is legacy only. Project
+  adapters provide setup/teardown, argv/env policy, filters, and process
+  execution; test files require their own dependencies. Test groups are named
+  and either parallel or sequential, and reports print the group/test name,
+  pass/fail state, and timing.
+- Test-suite runners must not keep suite iteration state on the return stack
+  while executing a test. Tests may use `catch`/`throw` for negative assertions;
+  runner loops need explicit index/count cells so a caught throw inside one test
+  cannot truncate the remaining suite.
+- Put fixture helpers in a private package instead of global stems. A test file
+  may define a private package, install package-local helpers into `TEST:*`
+  hooks, define groups/tests, run once, assert counters, and close the package:
+
+```forth
+require lib/test.f
+
+package FEATURE-TEST
+
+variable RUN-N
+
+: RUNNER ( ptr u8 n -- )
+   2drop
+   1 RUN-N +! ;
+
+: INSTALL ( -- )
+   [: RUNNER ;] TEST:RUNNER! ;
+
+T-RESET
+INSTALL
+TEST:RESET
+
+TEST:GROUP SEQ smoke
+TEST:SUITE sample
+   feature-test.f -- arg
+TEST:;SUITE
+TEST:;GROUP
+
+TEST:RUN
+RUN-N @ 1 T=
+T-REPORT
+
+;package
+```
+
+  `lib/test.f` is the public framework interface: `T*` words are assertions,
+  `TEST:SETUP!`/`TEST:TEARDOWN!`/`TEST:DRAIN!`/`TEST:ARGS-BEGIN!`/
+  `TEST:ARG+!`/`TEST:RUNNER!`/`TEST:STDIN-RUNNER!` install
+  typed hooks, `TEST:GROUP SEQ|PARA name` opens a named group (mode is a
+  mandatory positional token — `SEQ` sequential, `PARA` parallel — before the
+  name), and `TEST:;GROUP`, `TEST:SUITE`, `TEST:SUITE-STDIN`, `TEST:;SUITE`, and
+  `TEST:RUN` define and execute the suite. Do not publish helper globals like
+  `FOO-TEST-SETUP-N`; package scope is the namespace.
+- Assert the **specific** outcome: inside checked definitions use
+  `[: WORD ;] TTHROWSQ` or another stack-preserving quotation `catch` and check
+  the exact THROW code; top-level scripts that cannot push quotations may use
+  `' WORD TTHROWS`. For diagnostics, capture text and match a substring.
+- Run focused fixtures during development with their owning `tools/*-test.f`.
+  Run the full native suite for changes whose impact warrants it; see below.
+- **False-reject claims need execution proof.** Count a checker limitation only
+  after running an unchecked copy and proving the measured stack behavior matches
+  the declared effect. Generator bugs become rejections, not false certifications.
+- **Signature-token changes need direct smoke probes.** Before rebuilding around a
+  new token, test the atom parser/type mapper directly (`ATOM-TOK?`, `TOK-TYPE`,
+  renderer output) so prefix/length mistakes fail small.
+
+### Diagnosing a checker miss
+
+Reduce the failing checked program and identify the contract that was violated.
+Check whether the defect is in a declaration, the checker, generated code or
+runtime behavior. Fix the responsible layer and add a regression through the
+actual load path. If the desired property is outside the type system's contract,
+state that limitation and check it at the appropriate runtime or analysis layer.
+No prescribed response template or task record is required.
+
+## Verification before committing
+
+Run focused tests for changed behavior. For compiler, runtime or broad library
+changes, rebuild the native engine and run the full native suite from the repo:
+
+```sh
+bin/hb --load tools/build-fixpoint-refresh.f -- install --force
+bin/hb --load test/run.f
+```
+
+Run relevant lints when their inputs change. Documentation-only edits and file
+moves do not require an engine rebuild. Loom's model tests belong to its own repo.
+Report failed or unrun checks plainly; never represent them as a passing suite.
+
+## Comments & hygiene
+
+- `\` line comments, terse. No restating what the code obviously does.
+- Remove scratch/debug prints before commit.
+- If a definition fails to compile in raw engine mode, Habu reports the undefined
+  word on stderr and then may spill the rest of that definition through the
+  interpreter. The native `tools/check.f` runner with `--json-errors
+  --all-errors` wraps matched undefined tokens in schema-1 JSON diagnostics.
+
+## Habu Native Tooling Gotchas
+
+- **Use the native debugger stack before print-marker probes.** Runtime and
+  codegen RCA starts with `docs/debugging.md`: `.s`, `BPW+` watch cells, REPL
+  `step`, compiled-word breakpoints (`BP+`, `BP*`, `BPN`), `tools/jitdump.f`,
+  and `tools/imgdump.f`. Extend those tools when they cannot expose the needed
+  state; do not hide a missing debug surface behind ad hoc prints.
+- **Semantic xref is an in-image responsibility.** Dictionary ownership,
+  word-reference, and call/reference RCA should use Forth words in the live
+  image (`XREF`/`SEE`/`USES`/`USED-BY` or their current equivalents), with any
+  CLI as a thin wrapper. Use source search where it answers the question, and
+  native inspection where runtime dictionary or generated-code state matters.
+- **Boundary spawns must attribute failures.** Gate/test/tool boundaries that
+  spawn `hb` or another child use outcome capture for expected timeouts and
+  failures, not throw-only capture that collapses into a shell rc. The failure
+  report must include the suite/case label, phase, executable and argv/load list,
+  outcome kind/code, named rc when known, capture bytes/capacity, and captured
+  stdout/stderr. Use throw-on-timeout capture only inside a focused unit test
+  whose assertion is the named throw itself.
+- **Large native tool bundles are supported.** Do not split tools merely to dodge
+  DATA pressure. `create ... allot` is for dictionary-sized static storage; large
+  runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or
+  `MEM-ALLOC-64K-BUFFERS`) so composition scales with OS-backed mappings rather
+  than `DATA-SIZE`. Tools may keep as many 64K buffers and live spans as their
+  workload needs, either as one contiguous `MEM-ALLOC-64K-BUFFERS` span or as
+  many independent spans. The only accepted limits are cell-size overflow checks
+  and an explicit OS allocation failure. If ordinary composition still hits
+  capacity, fix the shared memory model and add a regression for the composed
+  load.
+- **Missing convenience words are not bugs in the standard.** Core lacks `pick`
+  and `within`; use variables, explicit increments, or explicit comparisons. `0<>`
+  and the boolean/float conveniences (`true`, `false`, `fdup`, `fover`, `fdrop`,
+  `f<=`, `f>=`) are not in core either — `require lib/prelude.f` for them instead
+  of re-deriving `0 0=` / `0 0= 0=` by hand.
+- **Trust is asserted, not proved — it is explicit, tested debt.** `TRUST` records
+  asserted effects so callers can be checked; the assertion is the boundary's own
+  contract, and the file that declares it is where the reason for it is written.
+  Each site needs source-local rationale, a retirement owner, and a focused
+  production-path test.
+- **Typed pointer fields use cell indexes.** When a variable or record cell
+  stores a pointer, construct a `ptr ptr x` field with `ptr-field`, then use
+  normal `@`/`!`. Do not multiply indexes by cell size before `ptr-field`; use a
+  named trusted boundary for raw byte-offset header cells.
+- **Keep `TRUSTED:` bodies syntax-simple.** Do not use locals inside a trusted
+  body. Factor checked helper words for real work, then keep the trusted body to
+  the minimal operation that the checker cannot express.
+- **Checked tool libraries restore checking.** A shared lint/check/tool library
+  must not leave callers in unchecked mode. Declare and test any boundary
+  locally, then reinstall `CHECK!` immediately after the raw declarations.
+- **Generated unchecked spans are split at the first checkable file.** When a
+  build tool emits `0 set-check`, prove the shortest source span empirically,
+  reinstall the hook as soon as the next file checks, and pin the cut with a
+  source-shape regression.
+- **Generated checker preludes must rebind the existing hook.** If generated
+  source emits `0 set-check` for an audited unchecked span after loading
+  `src/core/check-hook.f`, it must reinstall that existing `HOOK` immediately
+  afterward with `' HOOK set-check`. Do not define a second hook name in baked
+  tty/stdin bundles; explicit duplicate-definition enforcement makes that fail
+  closed on startup. Snapshot/AOT stages that install a different hook keep that
+  hook local to the stage and must not leak a duplicate REPL hook into `bin/hb`.
+- **Bootstrap/fixpoint temp roots are explicit script args.** Stage2/fixpoint
+  sources must not depend on stale seed envp capture. Pass the temp root after
+  `--`, keep all generated paths under that root, and let the build driver own
+  path construction.
+- **Use SwiftForth-style escaped literals for readable snapshots.** `S\"`,
+  `C\"`, and `.\"` accept C-style escapes (`\\`, `\"`/`\q`, `\n`, `\r`,
+  `\t`, `\xNN`, `\z`, etc.). Use them for direct JSON/source expected strings
+  when a literal is clearer than a builder. When code generates syntax from
+  fields, keep using checked byte/field helpers or `lib/json-write.f`.
+- **Generated fixtures use unique test-owned names.** Strict duplicate rejection
+  is a feature, so fixture generators must publish names with a tool/test prefix
+  and a unique suffix (`CAE-CAP-OK-0`, `GDX-AE-BAD1`, etc.). Do not reuse baked
+  generic names such as `OK`, `BAD`, `FOLD`, `RESET`, or a repeated generated
+  stem unless the fixture is specifically testing duplicate rejection.
+- **Source-use guards match tokens, not substrings.** Required-word checks and
+  boundary scans must lex whole tokens and skip comments/strings; substring
+  matches create false positives (`FOO` matching `FOO-BAR`) and hide policy bugs.
+- **Preflight unchecked native emitters.** Raw image/primitive emitters still
+  need checked shape tests before `BUILD-IMAGE`: no mid-control locals, no second
+  locals groups, no hand-balanced descriptor math. Use named scratch cells and
+  small helpers, then gate the forbidden source shapes in `tools/build-fixpoint.f`
+  so bad emitters fail before a snapshot or `bin/hb` candidate is written.
+- **Fixed DATA header cells need a layout audit.** Before adding a new native
+  runtime cell in `src/habu/layout.f`, check the reserved JIT/runtime ranges:
+  virtual stack tags/values (`VTAG-OFF`, `VVAL-OFF`), snapshot stack
+  (`SNAPSTK-OFF`), body buffer, return stack, locals table, register tables,
+  breakpoints, and snapshot cells. A cell inside a scratch range will be
+  overwritten by ordinary compiled source; add a focused regression for the
+  exact overlap class.
+- **Snapshot builders retire the baked tail instead of replaying core sources.**
+  When a snapshot entry needs to replace a baked tail word such as `SNAP-OUT`,
+  use the explicit definition-lifecycle path (`undefine NAME` for one word,
+  `HIDE-DEFS-FROM` only for refresh tail truncation) and append the actual
+  snapshot entry file. Do not replay already-baked core, target, or image files
+  just to mask duplicate definitions; that hides stale process state and makes
+  strict duplicate checks look like the problem.
+- **Snapshot builders reset process-local pointers.** Restored DATA cells are
+  persistent, but mmap-backed image/include pointers and cursors (`MBUF-A`, `MP`,
+  `MLEN@`/`MLEN!`, `INCLUDE-BUFS-A`, include depth/read/path cells, etc.) are valid only
+  in the process that created them. Clear those transient cells in a named reset
+  word before `BUILD-SNAP-HDR` or fresh image emission; never rely on source
+  replay or variable redefinition to zero them.
+- **Emitter punctuation is semantic.** Words such as `BL,`, `LBL,`, `ADR,`, and
+  `ZBYTES,` are distinct from punctuation-less names; source-shape regressions
+  should assert exact emitted tokens. Emitter stack comments describe the
+  host/build-time stack (`( -- )`, `( n -- )`); document emitted runtime effects
+  in nearby prose or in the generated word's own contract.
+
+## Native Forth Gotchas That Shape How We Write Code
+
+(Build/environment findings are in `../LESSONS.md`; these are the ones that affect
+*coding*.)
+
+- **Case-insensitive** dictionary -> name-collision risk (see Naming).
+- **`[']` is compile-only.** In interpreted tests, use `'` (tick) to get an xt,
+  e.g. `' WORD catch`.
+- **Control words and ticks are compile-only** — `if`/`else`/`then`,
+  `begin`/`while`/`repeat`, `[']`, `i`, `?do`, and `;` must live inside a
+  `:` definition, never at the top level.
+- **A `begin <cond> while <body> repeat` condition may only *add* a flag.** The
+  stack below the flag at `while` must equal the stack at `begin`; a condition
+  that net-produces carry values (e.g. `a u NEXT-TOKEN` leaving a token span
+  under the flag) is rejected at `repeat`. Establish loop-carried values *before*
+  `begin` (they thread through unchanged), or move the production into the body —
+  a peek-only flag condition plus an extract-in-body step.
+- **A no-`else` `if` must be stack-neutral.** If the true branch changes stack
+  depth the merge at `then` fails (`expected: … actual:`). Bind the consumed
+  value into a local *before* the `if` so both paths balance, or add `else drop`.
+- **Malformed control syntax is a rejection, not `uncheckable`.** Orphan closers,
+  unterminated control frames, `i`/`j` outside enough loops, and `leave` outside a
+  loop must make `CHECK!` return `0`; `uncheckable` is reserved for modeled-word
+  gaps, not parser/control imbalance.
+- **`case/of/endof/endcase` is standard selector control flow.** Write the
+  selector before `case`, each key before `of`, each matched arm before `endof`,
+  and optional default code before `endcase`. `of` compares the key with the
+  preserved selector; matched arms consume the selector, while the fall-through
+  default path keeps it until `endcase` drops it. Therefore a default arm that
+  produces a value must leave the selector on top for `endcase` to remove, e.g.
+  `30 swap endcase`. The checker requires integer keys/selectors and unifies
+  every live arm plus the default to one data/return-stack effect.
+- **A local may be bound after a closed early-exit guard.** The checker tracks the
+  live fall-through path, so `dup 0 < if exit then {: x:n :}` is valid. A local
+  after an unconditional dead path is still rejected.
+- **`parse-name` returns a transient `( c-addr u )`** that the next
+  `s"`/`."`/`refill` invalidates — `move` the bytes into your own buffer
+  immediately; never hold the pointer across another parsing word.
+- **`s>number? ( c-addr u -- d flag )` returns a double** — narrow with `d>s`.
+- **`s" "` is empty, not a one-space string.** The parser consumes the delimiter
+  after `s"`, so generated-source builders that need a literal space should emit
+  byte `32` or use an existing `*-SP` byte helper.
+- **"is it a defined word?"** → `find-name ( c-addr u -- nt|0 )`, not `find`.
+- **`catch` preserves the pre-call args** under the throw code: `nv ' WORD catch`
+  on a throw leaves `( nv code )` — `nip`/adjust in tests accordingly.
+- **Emitted primitive leafness follows emitted control flow.** Use `FPRIM-L`
+  only when the complete primitive body emits no `BL` or `BLR`; otherwise use
+  `FPRIM` so its frame preserves the caller return address in `x30`.
+- Run tests through the owning gate script so assertion failures control the
+  process exit code.
+- **Fallible value-returning scanners should validate first.** Put range/schema
+  checks that can `throw` in a `--` helper, then make the value-returning word's
+  remaining path structurally return its declared outputs. A final throw-only
+  fallback in a word declared as `-- value...` can confuse path-effect merging.
+
+## ptr locals and cell access
+
+A `{: p:ptr ... :}` local supports BYTE access only; cell-width `@`/`!`
+through a bare `ptr` local does not certify. Consequence: a generic
+word parameterized over "some cell buffer base" cannot be written
+checked (e.g. a shared canonical-set sort over caller buffers); the
+blessed pattern is CONCRETE per-buffer words sharing only scalar
+cursor/index helpers. Factor the arithmetic and duplicate the buffer touch.

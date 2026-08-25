@@ -1,0 +1,235 @@
+\ json-write-test.f - focused tests for checked JSON writer.
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/json-write.f lib/json-write-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/json-write.f
+require lib/test/mapped.f
+require test/checker-assert.f
+
+\ White-box test: reopen the module's package so the fixtures reach json-write's
+\ private byte/buffer plumbing (JW-C, JW-BUF/-BUF@/-BUF!/-BUF-FIELD, JW-CAP,
+\ JW-LEN, JW-CHECK-ROOM, JW-RAW-LEN) and its private byte constants, and call the
+\ public emitters by their bare package-local tails.
+package JSON-WRITE
+
+create JWT-ESC-IN
+   65 c, JW-DQ c, JW-BACKSLASH c, JW-LF c, 1 c, 66 c,
+
+create JWT-ESC-WANT
+   JW-DQ c, 65 c, JW-BACKSLASH c, JW-DQ c, JW-BACKSLASH c, JW-BACKSLASH c,
+   JW-BACKSLASH c, 110 c, JW-BACKSLASH c, 117 c, JW-ZERO c, JW-ZERO c,
+   JW-ZERO c, 49 c, 66 c, JW-DQ c,
+
+create JWT-NAME
+   65 c, JW-DQ c, 66 c,
+
+MEM-64K 17 + constant JWT-LARGE-N
+
+: JWT-ESC-IN$ ( -- ptr u8 n )
+   JWT-ESC-IN 6 ;
+
+: JWT-ESC-WANT$ ( -- ptr u8 n )
+   JWT-ESC-WANT 16 ;
+
+: JWT-NAME$ ( -- ptr u8 n )
+   JWT-NAME 3 ;
+
+: JWT-TRUE ( -- bool )
+   0 0= ;
+
+: JWT-FALSE ( -- bool )
+   JWT-TRUE 0= ;
+
+: JWT-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: JWT-EXPECTED-OBJECT$ ( -- ptr u8 n )
+   SB-RESET
+   JW-LBRACE SB-APPEND-C
+   JW-DQ SB-APPEND-C s" name" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   JW-DQ SB-APPEND-C 65 SB-APPEND-C JW-BACKSLASH SB-APPEND-C JW-DQ SB-APPEND-C
+   66 SB-APPEND-C JW-DQ SB-APPEND-C
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C s" count" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   s" 42" SB-APPEND
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C s" ok" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   s" true" SB-APPEND
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C s" none" SB-APPEND JW-DQ SB-APPEND-C JW-COLON-C SB-APPEND-C
+   s" null" SB-APPEND
+   JW-RBRACE SB-APPEND-C
+   SB$ ;
+
+: JWT-EXPECTED-ARRAY$ ( -- ptr u8 n )
+   SB-RESET
+   JW-LBRACK SB-APPEND-C
+   s" 1" SB-APPEND
+   JW-COMMA-C SB-APPEND-C
+   JW-DQ SB-APPEND-C 120 SB-APPEND-C JW-DQ SB-APPEND-C
+   JW-COMMA-C SB-APPEND-C
+   s" false" SB-APPEND
+   JW-RBRACK SB-APPEND-C
+   SB$ ;
+
+: JWT-BUILD-OBJECT ( -- )
+   RESET
+   OBJECT-START
+   s" name" JWT-NAME$ FIELD-S
+   COMMA
+   s" count" 42 FIELD-U
+   COMMA
+   s" ok" JWT-TRUE FIELD-BOOL
+   COMMA
+   s" none" FIELD-NULL
+   OBJECT-END ;
+
+: JWT-BUILD-ARRAY ( -- )
+   RESET
+   ARRAY-START
+   1 U
+   COMMA
+   s" x" STRING
+   COMMA
+   JWT-FALSE BOOL
+   ARRAY-END ;
+
+: JWT-TEST-STRING-ESCAPE ( -- )
+   RESET
+   JWT-ESC-IN$ STRING
+   $ JWT-ESC-WANT$ T$= ;
+
+: JWT-TEST-OBJECT ( -- )
+   JWT-BUILD-OBJECT
+   $ JWT-EXPECTED-OBJECT$ T$= ;
+
+: JWT-TEST-ARRAY ( -- )
+   JWT-BUILD-ARRAY
+   $ JWT-EXPECTED-ARRAY$ T$= ;
+
+: JWT-TEST-BUF-ACCESSORS ( -- )
+   RESET
+   s" a" RAW
+   JW-BUF-FIELD @ c@ 97 T=
+   JW-BUF@ c@ 97 T=
+   JW-BUF c@ 97 T=
+   JW-BUF@ JW-BUF!
+   JW-BUF@ c@ 97 T= ;
+
+: JWT-RAW-NEG ( -- )
+   s" x" drop -1 RAW ;
+
+: JWT-LEN-NEG ( -- )
+   -1 JW-LEN drop ;
+
+: JWT-LEN-HIGH ( -- )
+   MEM-MAX-N 1 + JW-LEN drop ;
+
+: JWT-C-NEG ( -- )
+   -1 JW-C ;
+
+: JWT-C-HIGH ( -- )
+   256 JW-C ;
+
+: JWT-U-NEG ( -- )
+   -1 U ;
+
+: JWT-HUGE-ROOM ( -- )
+   RESET
+   MEM-MAX-N JW-CHECK-ROOM ;
+
+: JWT-BUILD-LARGE ( -- )
+   RESET
+   JWT-LARGE-N 0 ?do 65 JW-C loop ;
+
+: JWT-TEST-GROWTH ( -- )
+   JWT-BUILD-LARGE
+   JW-CAP JWT-LARGE-N < TFALSE
+   $ {: a:ptr u:n :}
+   u JWT-LARGE-N T=
+   a c@ 65 T=
+   a u 1 - + c@ 65 T= ;
+
+\ The capacity setup is white-box, but each failure path below feeds the public
+\ span returned by $ directly to a public writer entry.
+: JWT-FILL-CAP ( -- n )
+   RESET
+   JW-CAP {: cap:n :}
+   cap 0 ?do s" a" RAW loop
+   cap ;
+
+: JWT-TEST-SELF-RAW ( -- )
+   JWT-FILL-CAP {: cap:n :}
+   $ RAW
+   $ {: a:ptr u:n :}
+   u cap 2 * T=
+   a c@ 97 T=
+   a cap + c@ 97 T=
+   a u 1 - + c@ 97 T= ;
+
+: JWT-TEST-SELF-STRING ( -- )
+   JWT-FILL-CAP {: cap:n :}
+   $ STRING
+   $ {: a:ptr u:n :}
+   u cap 2 * 2 + T=
+   a c@ 97 T=
+   a cap 1 - + c@ 97 T=
+   a cap + c@ JW-DQ T=
+   a cap 1+ + c@ 97 T=
+   a u 1 - + c@ JW-DQ T= ;
+
+\ Append one byte at a time until the writer takes a new span: one growth step,
+\ whatever capacity the cases above left behind.
+: JWT-GROW-ONCE ( -- )
+   JW-CAP {: cap:n :}
+   begin JW-CAP cap = while 65 JW-C repeat ;
+
+\ Every grow leaves exactly ONE live span. Two growth steps abandon two spans;
+\ both must be unmapped and the buffer in hand must still be live. The witness is
+\ structural (lib/test/mapped.f), so a release that never happens cannot pass by
+\ staying inside a tolerance.
+: JWT-TEST-GROWTH-RELEASE ( -- )
+   RESET
+   $ drop {: p0:ptr :}
+   JWT-GROW-ONCE
+   $ drop {: p1:ptr :}
+   p0 p1 <> TTRUE
+   p0 MAPPED:LIVE? TFALSE
+   p1 MAPPED:LIVE? TTRUE
+   JWT-GROW-ONCE
+   $ drop {: p2:ptr :}
+   p1 p2 <> TTRUE
+   p1 MAPPED:LIVE? TFALSE
+   p2 MAPPED:LIVE? TTRUE ;
+
+: JWT-TEST-ERRORS ( -- )
+   [: JWT-RAW-NEG ;] E-JW-CAPACITY TTHROWSQ
+   [: JWT-C-NEG ;] E-JW-BYTE TTHROWSQ
+   [: JWT-C-HIGH ;] E-JW-BYTE TTHROWSQ
+   [: JWT-U-NEG ;] E-JW-BYTE TTHROWSQ
+   [: JWT-HUGE-ROOM ;] E-JW-CAPACITY TTHROWSQ
+   [: JWT-LEN-NEG ;] E-JW-CAPACITY TTHROWSQ
+   [: JWT-LEN-HIGH ;] E-JW-CAPACITY TTHROWSQ
+   s" BAD-JW-RAW-LEN ( ptr u8 off -- ) JW-RAW-LEN" JWT-CHECK-REJECTS ;
+
+: JWT-MAIN ( -- )
+   T-RESET
+   JWT-TEST-STRING-ESCAPE
+   JWT-TEST-OBJECT
+   JWT-TEST-ARRAY
+   JWT-TEST-BUF-ACCESSORS
+   JWT-TEST-SELF-RAW
+   JWT-TEST-SELF-STRING
+   JWT-TEST-GROWTH
+   JWT-TEST-GROWTH-RELEASE
+   JWT-TEST-ERRORS
+   T-REPORT
+   s" json-write-test: ok" type cr ;
+
+JWT-MAIN
+
+;package

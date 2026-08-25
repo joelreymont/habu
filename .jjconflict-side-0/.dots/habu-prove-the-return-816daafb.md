@@ -1,0 +1,9 @@
+---
+title: "Prove the return stack's static depth in formal/"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-13T16:53:08.353663+02:00"
+---
+
+Full context: minted by the return-stack design lane (habu-lower-native-return-92993f27). The native chain's return-stack lowering rests on a THEOREM: in any definition the checker certifies, the return stack's depth at every program point is a compile-time constant. The lane established it by REFUSAL over every construct that could break it, each measured on the real load path with exit 70 and a named site: branch join (push in one arm only, and push-in-one-pop-in-the-other, both refused at 'then'), loop join (drain across turns and grow across turns, both at 'loop'; an unbalanced 'until' at 'until'), exit inside an open window (at 'r>'), leave with an item parked (at 'leave'), recursion leaking one cell per level (at 'RECURSE'), a bare r> (at 'r>'), a leak (end of body), an opaque xt executed with an item parked (at 'execute'), and - the sharpest - two quotations with DIFFERENT return effects meeting at a join, refused at 'then' with the return rows printed in the diagnostic. What does NOT exist is a proof over the checker's ROW ALGEBRA: the argument is 'every construct I could reach refuses', not 'row unification at joins plus the per-definition balance check imply a static depth'. That belongs in formal/ beside the other Common models. Note the one subtlety a proof must handle: named row variables ARE spellable in a return clause - ( n | R -- n | R ) certifies - so the statement is about certified definitions, not about signatures in general; the lane measured that stacking pushes through a row-variable-declared word is itself refused. Acceptance: a Coq statement in formal/ with the counterexamples the tree already has as negative results. Files: formal/.

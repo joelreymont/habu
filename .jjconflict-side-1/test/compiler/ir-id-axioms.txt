@@ -1,0 +1,266 @@
+# What the compiler identity proofs state, and what they rest on.
+#
+# One `theorem` row per proved statement in formal/Common/Ids.v, IdAllocator.v,
+# IdLaws.v and IdAllocatorLaws.v, in the order those files declare them and in
+# the order formal/_CoqProject builds them. Every `theorem` row is followed by
+# exactly one `type` row, and then by its assumption rows: `closed` is Rocq
+# reporting "Closed under the global context", and an `axiom` row is one
+# external assumption, written exactly as Rocq prints it.
+#
+# A `type` row is this file's copy of what that theorem states, written as Rocq
+# prints the statement in the environment the generated obligations file sets
+# up: Stdlib Bool, Lia, ZArith, List and Sorting.Sorted imported, the four Habu
+# identity modules imported, list notations imported, and Z and bool scopes
+# open. The parity gate turns each row into
+# `Definition pinned_statement_<k> : <type row> := <theorem name>.` in the file
+# it asks Rocq to compile, so Rocq's own type checker decides whether the
+# statement in the proof file still is the statement written here. It decides
+# that up to conversion, so renaming a bound variable is not a change but
+# weakening, strengthening, or trivialising a statement is. These rows are the
+# authority: the generated file is a build output and never reads a statement
+# out of the proof sources, so changing a proof file alone cannot move the
+# target it is checked against.
+#
+# The parity gate in test/compiler/ir-id-proof.f uses this file three times. It
+# reads the theorem names out of it and asks Rocq for the assumptions of each,
+# then compares what Rocq answered against the `theorem`, `closed` and `axiom`
+# rows as a whole - not as a subset, and in this order. It pins each statement
+# with the `type` row beside it. And it walks the four proof sources
+# structurally and requires the statements declared there to be exactly these
+# names, so a new theorem cannot arrive unbound and a removed one cannot go
+# unnoticed.
+#
+# Lines starting with `#`, and blank lines, are commentary. A `type` row is
+# handed to Rocq. Every other row is compared byte for byte.
+
+theorem Habu.Common.Ids.cell_bounds_decide
+type cell_validb cell_min = true /\ cell_validb cell_max = true /\ cell_validb (cell_min - 1) = false /\ cell_validb (cell_max + 1) = false
+closed
+theorem Habu.Common.Ids.serial_bounds_decide
+type serial_validb serial_min = true /\ serial_validb serial_max = true /\ serial_validb 0 = false /\ serial_validb (serial_max + 1) = false
+closed
+theorem Habu.Common.Ids.local_bounds_decide
+type local_validb local_min = true /\ local_validb local_max = true /\ local_validb (-1) = false /\ local_validb (local_max + 1) = false
+closed
+theorem Habu.Common.Ids.scalar_constructors_decide
+type make_count 0 = Some {| count_raw := 0 |} /\ make_count cell_max = Some {| count_raw := cell_max |} /\ make_count (-1) = None /\ make_pool_offset 0 = Some {| pool_offset_raw := 0 |} /\ make_pool_offset cell_max = Some {| pool_offset_raw := cell_max |} /\ make_pool_offset (cell_max + 1) = None
+closed
+theorem Habu.Common.Ids.pack_word_bounds
+type pack serial_min local_min = 4294967296 /\ pack serial_max local_max = cell_max
+closed
+theorem Habu.Common.Ids.pack_inputs_decide
+type try_pack serial_min local_min = Some 4294967296 /\ try_pack serial_max local_max = Some cell_max /\ try_pack 0 0 = None /\ try_pack (serial_max + 1) 0 = None /\ try_pack serial_min (-1) = None /\ try_pack serial_min (local_max + 1) = None
+closed
+theorem Habu.Common.Ids.projections_decide
+type owner (pack 7 42) = 7 /\ local (pack 7 42) = 42 /\ owner cell_max = serial_max /\ local cell_max = local_max
+closed
+theorem Habu.Common.Ids.packed_values_decide
+type packed_validb (pack serial_min local_min) = true /\ packed_validb (pack serial_max local_max) = true /\ packed_validb 0 = false /\ packed_validb (-1) = false /\ packed_validb (cell_max + 1) = false
+closed
+theorem Habu.Common.Ids.checks_decide
+type checkb 7 43 (pack 7 42) = true /\ checkb 7 42 (pack 7 42) = false /\ checkb 8 43 (pack 7 42) = false /\ checkb 7 43 (pack 0 42) = false
+closed
+theorem Habu.Common.Ids.typed_source_decide
+type pack_source {| module_key_raw := 7 |} 42 = Some {| source_id_raw := pack 7 42 |} /\ source_owner {| source_id_raw := pack 7 42 |} = {| module_id_raw := 7 |} /\ source_local {| source_id_raw := pack 7 42 |} = 42 /\ source_checkb {| module_key_raw := 7 |} {| count_raw := 43 |} {| source_id_raw := pack 7 42 |} = true
+closed
+theorem Habu.Common.IdAllocator.bad_cells_reject
+type cell_ok {| slot := 0; cur := -1 |} = false /\ cell_ok {| slot := 0; cur := serial_max + 1 |} = false
+closed
+theorem Habu.Common.IdAllocator.stale_interleaving
+type pure_run {| shared := {| slot := 3; cur := 0 |}; observed := [] |} two_threads = ({| shared := {| slot := 3; cur := 2 |}; observed := [] |}, [Saw 0%nat 0; Saw 1%nat 0; Tried 0%nat (Issued 1); Tried 1%nat (Retry 0 1); Saw 1%nat 1; Tried 1%nat (Issued 2)])
+closed
+theorem Habu.Common.IdLaws.serial_valid_bounds
+type forall serial : Z, serial_validb serial = true -> 1 <= serial <= 2147483647
+closed
+theorem Habu.Common.IdLaws.local_valid_bounds
+type forall idx : Z, local_validb idx = true -> 0 <= idx < 4294967296
+closed
+theorem Habu.Common.IdLaws.scalar_in_range
+type forall raw : Z, 0 <= raw <= cell_max -> scalar_validb raw = true
+closed
+theorem Habu.Common.IdLaws.count_scalar_id
+type forall raw : Z, 0 <= raw <= cell_max -> make_count raw = Some {| count_raw := raw |} /\ count_raw {| count_raw := raw |} = raw
+closed
+theorem Habu.Common.IdLaws.pool_off_scalar_id
+type forall raw : Z, 0 <= raw <= cell_max -> make_pool_offset raw = Some {| pool_offset_raw := raw |} /\ pool_offset_raw {| pool_offset_raw := raw |} = raw
+closed
+theorem Habu.Common.IdLaws.count_roundtrip
+type forall count : ir_count, count_validb count = true -> make_count (count_raw count) = Some count
+closed
+theorem Habu.Common.IdLaws.pool_off_roundtrip
+type forall offset : ir_pool_offset, pool_offset_validb offset = true -> make_pool_offset (pool_offset_raw offset) = Some offset
+closed
+theorem Habu.Common.IdLaws.local_mask_identity
+type forall idx : Z, local_validb idx = true -> Z.land idx local_mask = idx
+closed
+theorem Habu.Common.IdLaws.shifted_local_mask_zero
+type forall serial : Z, Z.land (Z.shiftl serial local_shift) local_mask = 0
+closed
+theorem Habu.Common.IdLaws.shifted_local_disjoint
+type forall serial idx : Z, local_validb idx = true -> Z.land (Z.shiftl serial local_shift) idx = 0
+closed
+theorem Habu.Common.IdLaws.pack_as_sum
+type forall serial idx : Z, local_validb idx = true -> pack serial idx = serial * 4294967296 + idx
+closed
+theorem Habu.Common.IdLaws.pack_within_signed_cell
+type forall serial idx : Z, serial_validb serial = true -> local_validb idx = true -> 0 <= pack serial idx <= cell_max
+closed
+theorem Habu.Common.IdLaws.owner_pack
+type forall serial idx : Z, local_validb idx = true -> owner (pack serial idx) = serial
+closed
+theorem Habu.Common.IdLaws.local_pack
+type forall serial idx : Z, local_validb idx = true -> local (pack serial idx) = idx
+closed
+theorem Habu.Common.IdLaws.pack_injective
+type forall serial_a serial_b idx_a idx_b : Z, local_validb idx_a = true -> local_validb idx_b = true -> pack serial_a idx_a = pack serial_b idx_b -> serial_a = serial_b /\ idx_a = idx_b
+closed
+theorem Habu.Common.IdLaws.pack_projection_roundtrip
+type forall serial idx : Z, local_validb idx = true -> pack (owner (pack serial idx)) (local (pack serial idx)) = pack serial idx
+closed
+theorem Habu.Common.IdLaws.owner_as_div
+type forall raw : Z, owner raw = raw / 4294967296
+closed
+theorem Habu.Common.IdLaws.local_as_mod
+type forall raw : Z, local raw = raw mod 4294967296
+closed
+theorem Habu.Common.IdLaws.projection_pack_roundtrip
+type forall raw : Z, packed_validb raw = true -> pack (owner raw) (local raw) = raw
+closed
+theorem Habu.Common.IdLaws.distinct_valid_owners_separate
+type forall serial_a serial_b idx_a idx_b : Z, serial_validb serial_a = true -> serial_validb serial_b = true -> local_validb idx_a = true -> local_validb idx_b = true -> serial_a <> serial_b -> pack serial_a idx_a <> pack serial_b idx_b
+closed
+theorem Habu.Common.IdLaws.try_pack_rejects_negative
+type forall serial idx : Z, idx < 0 -> try_pack serial idx = None
+closed
+theorem Habu.Common.IdLaws.try_pack_rejects_overflow
+type forall serial idx : Z, local_max < idx -> try_pack serial idx = None
+closed
+theorem Habu.Common.IdLaws.check_rejects_equal_bound
+type forall serial bound : Z, serial_validb serial = true -> local_validb bound = true -> checkb serial bound (pack serial bound) = false
+closed
+theorem Habu.Common.IdLaws.check_rejects_foreign_owner
+type forall expected actual bound idx : Z, serial_validb expected = true -> serial_validb actual = true -> scalar_validb bound = true -> local_validb idx = true -> idx < bound -> expected <> actual -> checkb expected bound (pack actual idx) = false
+closed
+theorem Habu.Common.IdLaws.mutation_cell_width_falsifies_max_pack_fit
+type cell_fits_at_widthb cell_bits (pack serial_max local_max) = true /\ cell_fits_at_widthb 63 (pack serial_max local_max) = false
+closed
+theorem Habu.Common.IdLaws.mutation_serial_width_falsifies_max_serial_fit
+type serial_fits_at_widthb serial_bits serial_max = true /\ serial_fits_at_widthb 30 serial_max = false
+closed
+theorem Habu.Common.IdLaws.mutation_local_width_falsifies_max_local_fit
+type local_fits_at_widthb local_bits local_max = true /\ local_fits_at_widthb 31 local_max = false
+closed
+theorem Habu.Common.IdLaws.mutation_shift_falsifies_owner_projection
+type owner_projection_expectedb local_shift = true /\ owner_projection_expectedb 31 = false
+closed
+theorem Habu.Common.IdLaws.mutation_mask_falsifies_local_projection
+type local_projection_expectedb local_mask = true /\ local_projection_expectedb 2147483647 = false
+closed
+theorem Habu.Common.IdLaws.mutation_owner_eq_falsifies_foreign_rejection
+type foreign_owner_rejectedb checkb = true /\ foreign_owner_rejectedb check_without_owner_eq = false
+closed
+theorem Habu.Common.IdLaws.mutation_strict_bound_falsifies_equal_rejection
+type equal_bound_rejectedb checkb = true /\ equal_bound_rejectedb check_with_nonstrict_bound = false
+closed
+theorem Habu.Common.IdLaws.count_trunc_fails
+type make_count 4294967296 = Some {| count_raw := 4294967296 |} /\ make_trunc MkCount 4294967296 = Some {| count_raw := 0 |}
+closed
+theorem Habu.Common.IdLaws.pool_off_trunc_fails
+type make_pool_offset 4294967296 = Some {| pool_offset_raw := 4294967296 |} /\ make_trunc MkPoolOffset 4294967296 = Some {| pool_offset_raw := 0 |}
+closed
+theorem Habu.Common.IdAllocatorLaws.serial_ok_spec
+type forall serial : Z, serial_ok serial = true <-> serial_min <= serial <= serial_max
+closed
+theorem Habu.Common.IdAllocatorLaws.next_serial_some
+type forall seen fresh : Z, next_serial seen = Some fresh -> fresh = seen + 1 /\ serial_min <= fresh <= serial_max
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_transition
+type forall (c : cell) (seen : Z) (c' : cell) (out : try_out), pure_attempt c seen = (c', out) -> match out with | Issued serial => cur c < serial /\ cur c' = serial /\ serial_ok serial = true | Retry want actual => c' = c /\ want = seen /\ actual = cur c /\ seen <> cur c | Exhausted stopped => c' = c /\ stopped = seen /\ next_serial seen = None end
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_success_strict
+type forall (c : cell) (seen : Z) (c' : cell) (serial : Z), pure_attempt c seen = (c', Issued serial) -> cur c < serial /\ cur c' = serial
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_issued_in_domain
+type forall (c : cell) (seen : Z) (c' : cell) (serial : Z), pure_attempt c seen = (c', Issued serial) -> serial <> 0 /\ serial_ok serial = true
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_retry_preserved
+type forall (c : cell) (seen : Z) (c' : cell) (want actual : Z), pure_attempt c seen = (c', Retry want actual) -> c' = c /\ want = seen /\ actual = cur c /\ seen <> cur c
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_exhausted_unchanged
+type forall (c : cell) (seen : Z), next_serial seen = None -> pure_attempt c seen = (c, Exhausted seen)
+closed
+theorem Habu.Common.IdAllocatorLaws.exhaustion_before_addition
+type next_serial serial_max = None
+closed
+theorem Habu.Common.IdAllocatorLaws.exhaustion_preserves_max_state
+type forall slot_id : nat, pure_attempt {| slot := slot_id; cur := serial_max |} serial_max = ({| slot := slot_id; cur := serial_max |}, Exhausted serial_max)
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_step_transition
+type forall (w : world) (a : action) (w' : world) (e : event), pure_step w a = (w', e) -> event_serial e = None /\ cur (shared w') = cur (shared w) \/ (exists serial : Z, event_serial e = Some serial /\ cur (shared w) < serial /\ cur (shared w') = serial /\ serial_ok serial = true)
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_step_success_strict
+type forall (w : world) (a : action) (w' : world) (e : event) (serial : Z), pure_step w a = (w', e) -> event_serial e = Some serial -> cur (shared w) < serial /\ cur (shared w') = serial /\ serial_ok serial = true
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_trace_laws
+type forall (w : world) (actions : list action) (w' : world) (es : list event), pure_run w actions = (w', es) -> trace_laws (cur (shared w)) es
+closed
+theorem Habu.Common.IdAllocatorLaws.strictly_sorted_no_duplicates
+type forall serials : list Z, StronglySorted Z.lt serials -> NoDup serials
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_issues_strictly_increase
+type forall (w : world) (actions : list action) (w' : world) (es : list event), pure_run w actions = (w', es) -> StronglySorted Z.lt (issued_serials es)
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_every_issue_in_domain
+type forall (w : world) (actions : list action) (w' : world) (es : list event), pure_run w actions = (w', es) -> Forall (fun serial : Z => serial <> 0 /\ serial_ok serial = true) (issued_serials es)
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_unique
+type forall (w : world) (actions : list action) (w' : world) (es : list event), pure_run w actions = (w', es) -> NoDup (issued_serials es)
+closed
+theorem Habu.Common.IdAllocatorLaws.host_attempt_refines
+type forall (c : cell) (seen : Z), host_attempt c seen = pure_attempt c seen
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_step_refines
+type forall (w : world) (a : action), host_step w a = pure_step w a
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_run_refines
+type forall (w : world) (actions : list action), host_run w actions = pure_run w actions
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_attempt_success_strict
+type forall (c : cell) (seen : Z) (c' : cell) (serial : Z), host_attempt c seen = (c', Issued serial) -> cur c < serial /\ cur c' = serial /\ serial <> 0 /\ serial_ok serial = true
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_attempt_retry_preserved
+type forall (c : cell) (seen : Z) (c' : cell) (want actual : Z), host_attempt c seen = (c', Retry want actual) -> c' = c /\ want = seen /\ actual = cur c /\ seen <> cur c
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_step_success_strict
+type forall (w : world) (a : action) (w' : world) (e : event) (serial : Z), host_step w a = (w', e) -> event_serial e = Some serial -> cur (shared w) < serial /\ cur (shared w') = serial /\ serial_ok serial = true
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_run_unique
+type forall (w : world) (actions : list action) (w' : world) (es : list event), host_run w actions = (w', es) -> NoDup (issued_serials es)
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_run_every_issue_in_domain
+type forall (w : world) (actions : list action) (w' : world) (es : list event), host_run w actions = (w', es) -> Forall (fun serial : Z => serial <> 0 /\ serial_ok serial = true) (issued_serials es)
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_exhaustion_preserves_max_state
+type forall slot_id : nat, host_attempt {| slot := slot_id; cur := serial_max |} serial_max = ({| slot := slot_id; cur := serial_max |}, Exhausted serial_max)
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.weakened_domain_mutation_counterexample
+type next_serial_weak_domain (-1) = Some 0 /\ serial_ok 0 = false
+closed
+theorem Habu.Common.IdAllocatorLaws.success_transition_mutation_counterexample
+type stuck_success_attempt {| slot := 3; cur := 0 |} 0 = ({| slot := 3; cur := 0 |}, Issued 1) /\ cur (fst (stuck_success_attempt {| slot := 3; cur := 0 |} 0)) = 0
+closed
+theorem Habu.Common.IdAllocatorLaws.retry_preservation_mutation_counterexample
+type pure_attempt {| slot := 3; cur := 1 |} 0 = ({| slot := 3; cur := 1 |}, Retry 0 1) /\ lost_retry_attempt {| slot := 3; cur := 1 |} 0 = ({| slot := 3; cur := 1 |}, Retry 0 0)
+closed
+theorem Habu.Common.IdAllocatorLaws.exhaustion_guard_mutation_counterexample
+type wrap_attempt {| slot := 3; cur := serial_max |} serial_max = ({| slot := 3; cur := 0 |}, Issued 0)
+closed

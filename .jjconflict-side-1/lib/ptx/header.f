@@ -1,0 +1,74 @@
+\ ptx.f - checked PTX kernel-header vocabulary.
+
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
+
+32 constant PTX-WARP
+1024 constant PTX-MAX-BLOCK
+
+variable PTX-BLOCK-N
+
+: PTX-BLOCK-LEGAL? ( n -- bool ) {: n :}
+   n 0 > n PTX-MAX-BLOCK <= and n PTX-WARP mod 0= and ;
+
+: PTX-BLOCK-CHECK ( n -- )
+   PTX-BLOCK-LEGAL? 0= if E-PTX-BLOCK throw then ;
+
+: %BLOCK ( n -- )
+   dup PTX-BLOCK-CHECK PTX-BLOCK-N ! ;
+
+: PTX-BLOCK@ ( -- n )
+   PTX-BLOCK-N @ ;
+
+: PTX-PARSE-REQ ( -- ptr u8 n )
+   parse-name dup 0= if E-PTX-SYNTAX throw then ;
+
+: PTX-EXTENT? ( ptr u8 n -- bool )
+   s" extent-" STARTS-WITH? ;
+
+: PTX-BLOCK-NAME>N ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" block-" STARTS-WITH? 0= if E-PTX-SYNTAX throw then
+   a 6 + u 6 - STR>NUMBER? MATCH option
+     none OF E-PTX-SYNTAX throw ENDOF
+     some OF ENDOF
+   ;MATCH
+   dup PTX-BLOCK-CHECK ;
+
+: PTX-WHERE-CHECK ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: lhs:ptr lhsu:n op:ptr opu:n rhs:ptr rhsu:n :}
+   lhs lhsu PTX-EXTENT? 0= if E-PTX-SYNTAX throw then
+   op opu s" <=" STR= 0= if E-PTX-SYNTAX throw then
+   rhs rhsu PTX-BLOCK-NAME>N PTX-BLOCK@ <> if E-PTX-BLOCK throw then ;
+
+$40 constant PTX-GRID-CAP
+
+create PTX-GRID-BUF PTX-GRID-CAP allot
+variable PTX-GRID-U
+
+: PTX-GRID! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u PTX-GRID-CAP > if E-PTX-SYNTAX throw then
+   a PTX-GRID-BUF u BYTE-COPY
+   u PTX-GRID-U ! ;
+
+\ grid-derivation token of the LAST parsed kernel header (empty before any)
+: PTX-GRID$ ( -- ptr u8 n )
+   PTX-GRID-BUF PTX-GRID-U @ ;
+
+: GRID: ( -- )
+   PTX-PARSE-REQ PTX-GRID! ; immediate
+
+: WHERE ( -- )
+   PTX-PARSE-REQ {: lhs:ptr lhsu:n :}
+   PTX-PARSE-REQ {: op:ptr opu:n :}
+   PTX-PARSE-REQ {: rhs:ptr rhsu:n :}
+   lhs lhsu op opu rhs rhsu PTX-WHERE-CHECK ; immediate
+
+\ GRID:/WHERE are parsing immediates: their header payload is consumed at
+\ COMPILE time (one token / three tokens) and contributes nothing at runtime,
+\ so their ( -- ) certificates are true of the empty runtime step. Declare the
+\ payload counts to the checker so KERNEL: bodies skip the header tokens and
+\ the immediate wrong-certificate reject (p5, habu-checker-fitting-arity-
+\ 70dc94e4) exempts them. AUDITED COUNTS: a wrong count would skip live body
+\ code or eat real tokens - keep in lockstep with GRID:'s single PTX-GRID!
+\ token and PTX-WHERE-CHECK's three.
+s" GRID:" 1 parse-imm
+s" WHERE" 3 parse-imm

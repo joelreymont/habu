@@ -1,0 +1,9 @@
+---
+title: "GPT-2 composition: real owner, full acceptance"
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-07-20T22:41:31.046131+02:00"
+---
+
+Created from the 2026-07-20 destruction audit of closed habu-gpt-2-block-a9039501 (audited at master 6d306744, all four block suites test: ok). Audit verdict, recorded here because the closed dot's file is untracked archive: the closed composition is a B=1, untied, single-head, host-only GPT-2-SHAPED block proven against an INTERNAL hand-written golden (GBR-FWD, built to mirror the engine's contraction order) - a composition ORACLE, not the GPT-2 milestone; its close reason's 'FULL attention-bearing GPT-2 block trains end-to-end' overstates dimensions: shared wte/LM-head (GAP - wte slot 0 and wlm slot 12 are independent buffers, separately Adam-updated; tying existed only as a standalone trainer test, recovered and merged 482af1a6), B>1 (GAP - 2D TxC throughout, B=1 by construction), host/device (GAP - never lowers), external golden (GAP), dependency honesty (GAP - closed while batched-pos open, consuming the B=1 toy embedding and single-head attn-eq.f instead of the landed batched mha.f), N-blocks (BOUNDARY - trains to 2 blocks, 12-block is capture+sampled-gradcheck only), causal isolation (BOUNDARY - within-sequence proven, cross-batch not exercised). This dot is the real composition owner: acceptance = one shared wte/LM-head parameter with summed gradients inside the block, B>1 AND T>1, N repeated blocks TRAINED with loss reduction, every parameter/input gradient exhaustively enumerated, causal + cross-batch sequence isolation, host/device lowering parity, external deterministic golden, and an exact dependency gate - no closed prototype accepted as completion proof. Blocked on the five corrective sub-dots created alongside (tie-in-block, batched-B, batched-MHA-composition, external-golden, device-parity, N-block-training).

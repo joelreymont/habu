@@ -1,0 +1,9 @@
+---
+title: Throw on generated-name collision
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-07-26T09:00:21.554998+02:00"
+---
+
+Problem: a user-reachable generated-constructor name collision kills the process instead of raising a catchable declaration error. src/core/sumtype.f dies with code 76 at the duplicate-generated-name check (line 1087, sumtype: duplicate generated declaration name) and at the already-defined check (line 1114, sumtype: generated declaration already defined); src/core/generated-declaration.f lines 742-750 document that TDPLAN-NAME+ answers a second plan row for a live constructor with 76 die - no throw, no unwind, no rollback. Legacy and unified paths die identically today, so this is exact parity, but a USER error must be a catchable declaration-time throw that the generated-declaration transaction rolls back. Exact behavior: replace the user-reachable die sites with a named error code thrown through the declaration reject path so the transaction rolls back all published state; internal cannot-happen capacity dies stay dies. Acceptance: a duplicate-name declaration under catch leaves no callable constructor, signature, seal, dictionary row, or registry residue and the process alive; when this lands, promote the reviewer M8b post-generation-failure probe as the forced-failure pending-constructor-authority-clear regression (forcing a generation failure and asserting pending count 0 plus snapshot ok, closing the open queue item that deleting CTOR-PEND-CLEAR survives all nine declaration suites), and flip the KNOWN-FAIL-HARD duplicate-name fixture to assert the rollback instead of expecting process death. Files: src/core/sumtype.f, src/core/generated-declaration.f, test/enum-decl-suite.f and the generated-declaration transaction suite. Verify: constructor, type-declaration, and generated-transaction suites plus fixpoint. Depends: none. Ownership: generated-name collision handling only. Claim: unassigned.

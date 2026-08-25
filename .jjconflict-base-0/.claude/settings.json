@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bin/hb *)",
+      "Bash(./bin/hb *)",
+      "Bash(jj *)",
+      "Bash(dot *)",
+      "Bash(rg *)",
+      "Bash(ast-grep *)",
+      "Bash(tail *)",
+      "Bash(head *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(wc *)",
+      "Bash(sed -n *)",
+      "Bash(echo *)",
+      "Bash(printf *)",
+      "Bash(shasum *)",
+      "Bash(diff *)",
+      "Bash(readlink *)",
+      "Bash(which *)",
+      "Bash(uptime)",
+      "Bash(cd *)",
+      "Bash(mkdir -p *)",
+      "Bash(cp bin/hb *)",
+      "Bash(cp ~/Work/habu/.jj-ws/merge-gate/bin/hb *)",
+      "Bash(cp /Users/joel/Work/habu/.jj-ws/merge-gate/bin/hb *)",
+      "Bash(zsh /private/tmp/claude-501/*)",
+      "Read(//Users/joel/Work/habu-fable/**)"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+---
+title: "Index def.f's defining-form table"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-08-04T16:43:06.960331+02:00"
+---
+
+tools/lint/def.f:113 DIRECT-KIND answers 'is this token a defining word?' for every word token in every scanned file by looping over all 57 forms, and each iteration re-derives BOTH operands: FORM$ (def.f:46) is a `case` chain, so reading form k costs k comparisons, and TOK=CI re-reads the token through LINT-LEX:KIND@ and LINT-LEX:TOKEN, which are bounds-checked vector reads. Over the 1.14M word tokens in maki/ lib/ src/ tools/ test/ that is ~57 case walks and up to 114 checked vector reads per token. This is the same accidental quadratic that made tools/refine-lint.f a 7.7x outlier (dot habu-un-flake-lint-2535cef6), in a module shared by every lint that classifies definitions. Measured 2026-08-04 with the engine sampling profiler after the refine-lint index landed: FORM$ alone is 242 of refine-lint's 3035 samples (8%), and the LINT-LEX vector-read cluster it drives is a further large share; refine-lint costs 3.5s against error-code-lint's 2.1s over the same 1419 files, and error-code-lint does not load def.f. Fix: cache the form names in a flat array once and reach them through an ordered lookup, so the cost is log(forms) per token instead of forms x case-depth; tools/lint/text.f LINT-ORDER:CMP-CI (case-folded three-way order) already exists for exactly this and is what refine-lint's token-seed index uses. Files: tools/lint/def.f (FORM$, TOK=CI, DIRECT-KIND, CLOSE$, EXPORT?), tools/lint/def-test.f. Verify: def-test.f green; every lint that requires def.f reports the SAME finding count on the same tree before and after; refine-lint and the other def.f consumers timed before and after. Depends: none. Ownership: tools/lint/def.f. Claim: unassigned.

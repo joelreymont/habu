@@ -1,0 +1,1013 @@
+\ check-all-errors-test.f - checked fixtures for tools/check-all-errors.f.
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\ tools/lint/json-writer.f tools/lint/source-lex.f
+\ tools/check-all-errors-core.f lib/argv.f
+\ tools/check-all-errors-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/json-writer.f
+require tools/lint/source-lex.f
+require tools/check-all-errors-core.f
+require lib/argv.f
+
+package CHECK-ALL-ERRORS-TEST
+
+private
+
+4096 constant CAE-BUF-CAP
+1400 constant CAE-LARGE-LINES
+530 constant CAE-MANY-DEFS
+530 constant CAE-MANY-SUPPORT
+32 constant CAE-NUM-CAP
+
+variable CAE-ROOT-U
+variable CAE-IN-U
+variable CAE-LARGE-U
+variable CAE-XSUP-PATH-U
+variable CAE-NUM-I
+variable CAE-RUN-A
+variable CAE-RUN-U
+variable CAE-RC
+variable CAE-CASE-A
+variable CAE-CASE-U
+variable CAE-BUF-SRC-A
+variable CAE-BUF-SRC-U
+variable CAE-START-NS
+
+create CAE-ROOT-BUF FS-PATH-CAP allot
+create CAE-IN-BUF FS-PATH-CAP allot
+create CAE-LARGE-BUF FS-PATH-CAP allot
+create CAE-XSUP-PATH-BUF FS-PATH-CAP allot
+create CAE-OUT CAE-BUF-CAP allot
+create CAE-ERR CAE-BUF-CAP allot
+create CAE-NUM CAE-NUM-CAP allot
+create CAE-LF-BYTE 10 c,
+
+: CAE-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+   a dst u BYTE-COPY
+   u lenp ! ;
+
+: CAE-ROOT ( -- ptr u8 n )
+   CAE-ROOT-BUF CAE-ROOT-U @ ;
+
+: CAE-IN ( -- ptr u8 n )
+   CAE-IN-BUF CAE-IN-U @ ;
+
+: CAE-LARGE ( -- ptr u8 n )
+   CAE-LARGE-BUF CAE-LARGE-U @ ;
+
+: CAE-XSUP ( -- ptr u8 n )
+   CAE-XSUP-PATH-BUF CAE-XSUP-PATH-U @ ;
+
+: CAE-RUN-A-FIELD ( -- ptr ptr u8 )
+   CAE-RUN-A 0 ptr-field ;
+
+: CAE-RUN-A@ ( -- ptr u8 )
+   CAE-RUN-A-FIELD @ ;
+
+: CAE-RUN-A! ( ptr u8 -- )
+   CAE-RUN-A-FIELD ! ;
+
+: CAE-RUN! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CAE-RUN-U !
+   a CAE-RUN-A! ;
+
+: CAE-RUN$ ( -- ptr u8 n )
+   CAE-RUN-A@ CAE-RUN-U @ ;
+
+: CAE-CASE-A-FIELD ( -- ptr ptr u8 )
+   CAE-CASE-A 0 ptr-field ;
+
+: CAE-CASE-A@ ( -- ptr u8 )
+   CAE-CASE-A-FIELD @ ;
+
+: CAE-CASE-A! ( ptr u8 -- )
+   CAE-CASE-A-FIELD ! ;
+
+: CAE-CASE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CAE-CASE-A!
+   u CAE-CASE-U ! ;
+
+: CAE-CASE$ ( -- ptr u8 n )
+   CAE-CASE-A@ CAE-CASE-U @ ;
+
+: CAE-BUF-SRC-A-FIELD ( -- ptr ptr u8 )
+   CAE-BUF-SRC-A 0 ptr-field ;
+
+: CAE-BUF-SRC-A@ ( -- ptr u8 )
+   CAE-BUF-SRC-A-FIELD @ ;
+
+: CAE-BUF-SRC-A! ( ptr u8 -- )
+   CAE-BUF-SRC-A-FIELD ! ;
+
+: CAE-BUF-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CAE-BUF-SRC-A!
+   u CAE-BUF-SRC-U ! ;
+
+: CAE-BUF-SRC$ ( -- ptr u8 n )
+   CAE-BUF-SRC-A@ CAE-BUF-SRC-U @ ;
+
+: CAE-LF ( -- )
+   $0a SB-APPEND-C ;
+
+: CAE-U$ ( n -- ptr u8 n ) {: u:n :}
+   CAE-NUM-CAP CAE-NUM-I !
+   u 0= if
+      CAE-NUM-I @ 1- CAE-NUM-I !
+      48 CAE-NUM CAE-NUM-I @ + c!
+      CAE-NUM CAE-NUM-I @ + 1
+      exit
+   then
+   u begin dup 0 > while
+      dup 10 mod 48 +
+      CAE-NUM-I @ 1- CAE-NUM-I !
+      CAE-NUM CAE-NUM-I @ + c!
+      10 /
+   repeat drop
+   CAE-NUM CAE-NUM-I @ + CAE-NUM-CAP CAE-NUM-I @ - ;
+
+: CAE-U-TYPE ( n -- ) {: n:n :}
+   n 0 < if E-STR-BOUNDS throw then
+   n 10 >= if n 10 / RECURSE then
+   n 10 mod STR-ZERO + emit ;
+
+: CAE-DQ ( -- )
+   $22 SB-APPEND-C ;
+
+: CAE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-OK ( i64 -- i64 ) dup * ;" SB-APPEND CAE-LF
+   s" : CAE-SEMI ( -- i64 ) [char] ; ;" SB-APPEND CAE-LF
+   s" : CAE-BAD1 ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" : CAE-BAD2 ( i64 -- ) >r ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Three faults, two of them in ENUM declarations. The global ENUM keyword is the
+\ unified front end, whose reporter is DECL-REJECT:GUARD; the third fault is an
+\ ordinary definition reject, so one source exercises both reporters in one pass.
+\ Under a multi-error load every one of them must be reported and the pass must
+\ continue: before GUARD grew its multi-error branch the first bad declaration
+\ ended the run and the other two faults were never seen, even though sumtype.f's
+\ TDECL-RUN had answered that way for the legacy definers all along. The good
+\ declaration first proves the arm does not swallow accepted declarations.
+: CAE-DECL-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" ENUM cae-dgood red green ;ENUM" SB-APPEND CAE-LF
+   s" ENUM cae-dbad1 if ;ENUM" SB-APPEND CAE-LF
+   s" ENUM cae-dbad2 red red ;ENUM" SB-APPEND CAE-LF
+   s" : CAE-DBAD3 ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-SUPPORT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 7 constant CAE-SUP-K" SB-APPEND CAE-LF
+   s" variable CAE-SUP-V" SB-APPEND CAE-LF
+   s" create CAE-SUP-B 1 cells allot" SB-APPEND CAE-LF
+   s" defer CAE-SUP-XV ( i64 -- i64 )" SB-APPEND CAE-LF
+   s" TRUSTED: CAE-SUP-T ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" : CAE-OK-XV ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" : CAE-OK-SUP ( i64 -- i64 ) [: CAE-OK-XV ;] is CAE-SUP-XV CAE-SUP-XV CAE-SUP-T CAE-SUP-K + ;" SB-APPEND CAE-LF
+   s" : CAE-BAD-SUP ( i64 -- i64 ) CAE-SUP-T CAE-SUP-K + CAE-SUP-V @ drop CAE-SUP-B drop dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-UNDEF-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-UDEF ( i64 -- i64 ) dup NOPE ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ A `PRIM:` primitive-axiom row whose closer never arrives. The lexer stops there,
+\ so this source reaches the checker's lexer-defect handler rather than the
+\ definition scan. The opener sits at byte 34, line 2, column 1.
+: CAE-BAD-ROW-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-ROW-OK ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" PRIM: CAE-ROW-BAD PE-N PE-IN" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-DUP-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-DUP ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" : CAE-DUP ( i64 -- i64 ) 2 + ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-AS-LEAK-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0 constant CAE-BM-T-ID" SB-APPEND CAE-LF
+   s" variable CAE-AS-COUNT" SB-APPEND CAE-LF
+   s" TRUSTED: CAE-AS-LINE$ ( -- ptr u8 n ) s" SB-APPEND
+   CAE-DQ 32 SB-APPEND-C s" 1	SQUARE	(i64 -- i64)" SB-APPEND CAE-DQ
+   s"  ;" SB-APPEND CAE-LF
+   s" : CAE-BM-TASK-FIELD$ ( ptr u8 n n -- ptr u8 n ) drop ;" SB-APPEND CAE-LF
+   s" : CAE-AS-REQUIRE-NEW-ID ( ptr u8 n -- ) 2drop ;" SB-APPEND CAE-LF
+   s" : CAE-AS-ADD-TASK ( -- )" SB-APPEND CAE-LF
+   s"    CAE-AS-LINE$ CAE-BM-T-ID CAE-BM-TASK-FIELD$ CAE-AS-REQUIRE-NEW-ID" SB-APPEND CAE-LF
+   s"    CAE-AS-COUNT @" SB-APPEND CAE-LF
+   s"    CAE-AS-COUNT @ 1+ CAE-AS-COUNT ! ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-LARGE-START$ ( -- ptr u8 n )
+   s" : CAE-LARGE-BAD ( i64 -- i64 ) ( " ;
+
+: CAE-LARGE-LINE$ ( -- ptr u8 n )
+   s" check all errors generated program padding 0123456789 abcdefghijklmnopqrstuvwxyz" ;
+
+: CAE-LARGE-END$ ( -- ptr u8 n )
+   s" ) dup ;" ;
+
+: CAE-EMPTY$ ( -- ptr u8 n )
+   SB-RESET
+   SB$ ;
+
+: CAE-WORD-LARGE$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" cae-large-bad" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-WORD-BAD1$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" cae-bad1" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-WORD-BAD2$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" cae-bad2" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-WORD-BADSUP$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" cae-bad-sup" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-SUPK$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" CAE-SUP-K" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-WORD-ASADD$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" cae-as-add-task" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-WORD-CAPSUPBAD$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" cae-cap-sup-bad" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-CODE-UNDEFINED$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" code" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" E-UNDEFINED" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-NOPE$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" NOPE" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-CAPSUP$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" CAE-CAP-SUP" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-BMTID$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" CAE-BM-T-ID" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-CODE-BAD-ROW$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" code" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" E-MALFORMED-REGISTRY-ROW" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-CODE-UNTERM$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" code" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" E-UNTERMINATED-STRING" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-PRIM$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" PRIM:" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-ROW-SITE$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" byte_start" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   s" 34" SB-APPEND
+   SB$ ;
+
+: CAE-ROW-LINE$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" line" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   s" 2" SB-APPEND
+   SB$ ;
+
+: CAE-PROSE-BAD-ROW$ ( -- ptr u8 n )
+   SB-RESET
+   s" E-MALFORMED-REGISTRY-ROW" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-PREPARE ( -- )
+   CLEANUP-RESET
+   s" habu-check-all" TMPDIR-MKDIR {: a:ptr u :}
+   a u CAE-ROOT-BUF CAE-ROOT-U CAE-COPY!
+   CAE-ROOT CLEANUP-DIR+
+   CAE-ROOT s" input.f" CAE-IN-BUF JOIN-PATH CAE-IN-U !
+   CAE-ROOT s" large.f" CAE-LARGE-BUF JOIN-PATH CAE-LARGE-U !
+   CAE-ROOT s" xsup-a.f" CAE-XSUP-PATH-BUF JOIN-PATH CAE-XSUP-PATH-U !
+   CAE-IN CLEANUP+
+   CAE-LARGE CLEANUP+
+   CAE-XSUP CLEANUP+
+   CAE-IN CAE-SOURCE$ WRITE-ALL ;
+
+: CAE-APPEND-LF ( ptr u8 n -- )
+   CAE-LF-BYTE 1 APPEND-FILE ;
+
+: CAE-WRITE-LARGE ( -- )
+   CAE-LARGE CAE-LARGE-START$ WRITE-ALL
+   CAE-LARGE CAE-APPEND-LF
+   CAE-LARGE-LINES 0 ?do
+      CAE-LARGE CAE-LARGE-LINE$ APPEND-FILE
+      CAE-LARGE CAE-APPEND-LF
+   loop
+   CAE-LARGE CAE-LARGE-END$ APPEND-FILE
+   CAE-LARGE CAE-APPEND-LF ;
+
+: CAE-WRITE-MANY-DEFS-OK ( -- )
+   CAE-LARGE CAE-EMPTY$ WRITE-ALL
+   CAE-MANY-DEFS 0 ?do
+      CAE-LARGE s" : CAE-CAP-OK-" APPEND-FILE
+      CAE-LARGE i CAE-U$ APPEND-FILE
+      CAE-LARGE s"  ( i64 -- i64 ) 1 + ;" APPEND-FILE
+      CAE-LARGE CAE-APPEND-LF
+   loop ;
+
+: CAE-WRITE-MANY-SUPPORT ( -- )
+   CAE-LARGE CAE-EMPTY$ WRITE-ALL
+   CAE-MANY-SUPPORT 0 ?do
+      CAE-LARGE s" 7 constant CAE-CAP-SUP-" APPEND-FILE
+      CAE-LARGE i CAE-U$ APPEND-FILE
+      CAE-LARGE CAE-APPEND-LF
+   loop
+   CAE-LARGE s" : CAE-CAP-SUP-BAD ( i64 -- i64 ) CAE-CAP-SUP-0 + dup ;" APPEND-FILE
+   CAE-LARGE CAE-APPEND-LF ;
+
+: CAE-RUN-CORE-ACT ( -- )
+   CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS:FILE ;
+
+: CAE-RUN-BUF-ACT ( -- )
+   CAE-RUN$ CAE-BUF-SRC$ CHECK-ALL-ERRORS:BUF ;
+
+: CAE-CORE-CAPTURE ( ptr u8 n -- n n n )
+   CAE-RUN!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= CHECK-ALL-ERRORS:JSON!
+   [: CAE-RUN-CORE-ACT ;] catch CAE-RC !
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
+
+: CAE-BUF-CAPTURE ( ptr u8 n -- n n n )
+   CAE-BUF-SRC!
+   CAE-IN CAE-RUN!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= CHECK-ALL-ERRORS:JSON!
+   [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
+
+\ Same capture without JSON, so the prose arm of a diagnostic can be pinned too.
+: CAE-BUF-CAPTURE-PROSE ( ptr u8 n -- n n n )
+   CAE-BUF-SRC!
+   CAE-IN CAE-RUN!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 1 = CHECK-ALL-ERRORS:JSON!
+   [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
+
+: CAE-ARGV-CHECK ( ptr u8 n -- ) {: file:ptr fileu :}
+   ARGV:MOCK-CLEAR
+   s" --json-errors" ARGV:MOCK+
+   s" --label" ARGV:MOCK+
+   file fileu ARGV:MOCK+
+   file fileu ARGV:MOCK+ ;
+
+: CAE-RUN-ARGV-ACT ( -- )
+   s" tools/check-all-errors.f [--json-errors] --label name source" ARGV:USAGE!
+   ARGV:PARSE
+   ARGV:REQUIRE-LABEL
+   1 ARGV:EXPECT-POS-EXACT
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   ARGV:JSON? CHECK-ALL-ERRORS:JSON!
+   ARGV:LABEL$ 0 ARGV:POS$ CHECK-ALL-ERRORS:FILE ;
+
+: CAE-RUN ( -- n n n )
+   CAE-IN CAE-CORE-CAPTURE ;
+
+: CAE-RUN-LARGE ( -- n n n )
+   CAE-LARGE CAE-CORE-CAPTURE ;
+
+: CAE-RUN-CLI ( -- n n n )
+   CAE-IN CAE-ARGV-CHECK
+   [: CAE-RUN-ARGV-ACT ;] catch CAE-RC !
+   ARGV:USE-SCRIPT
+   ARGV:RESET
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
+
+: CAE-DUMP-CAPTURE ( n n n n -- )
+   {: outu:n erru:n code:n expect:n :}
+   s" check-all-errors-test failure" type cr
+   s" case: " type CAE-CASE$ type cr
+   s" source: " type CAE-RUN$ type cr
+   s" expected exit: " type expect . cr
+   s" code: " type code . cr
+   s" stdout bytes: " type outu . s" / " type CAE-BUF-CAP . cr
+   s" stderr bytes: " type erru . s" / " type CAE-BUF-CAP . cr
+   s" stdout:" type cr
+   CAE-OUT outu type
+   s" stderr:" type cr
+   CAE-ERR erru type ;
+
+: CAE-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
+   code expect <> if outu erru code expect CAE-DUMP-CAPTURE then
+   CAE-CASE$ T-LABEL
+   code expect T=
+   outu erru ;
+
+: CAE-TEST-SUPPORT-SOURCE ( -- )
+   s" support-source" CAE-CASE!
+   CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" support-source stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" support-source word" T-LABEL
+   CAE-ERR erru CAE-WORD-BADSUP$ CONTAINS? TTRUE
+   s" support-source support token" T-LABEL
+   CAE-ERR erru CAE-TOKEN-SUPK$ CONTAINS? TFALSE
+   s" support-source diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-AS-ADD-TASK-LEAK ( -- )
+   s" as-add-task-leak" CAE-CASE!
+   CAE-IN CAE-AS-LEAK-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" as-add-task stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" as-add-task word" T-LABEL
+   CAE-ERR erru CAE-WORD-ASADD$ CONTAINS? TTRUE
+   s" as-add-task private token" T-LABEL
+   CAE-ERR erru CAE-TOKEN-BMTID$ CONTAINS? TFALSE
+   s" as-add-task diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-MANY-DEFS-OK ( -- )
+   s" many-defs-ok" CAE-CASE!
+   CAE-WRITE-MANY-DEFS-OK
+   CAE-RUN-LARGE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" many-defs stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" many-defs stderr" T-LABEL
+   CAE-ERR erru CAE-EMPTY$ T$= ;
+
+: CAE-TEST-MANY-SUPPORT ( -- )
+   s" many-support" CAE-CASE!
+   CAE-WRITE-MANY-SUPPORT
+   CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" many-support stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" many-support word" T-LABEL
+   CAE-ERR erru CAE-WORD-CAPSUPBAD$ CONTAINS? TTRUE
+   s" many-support private token" T-LABEL
+   CAE-ERR erru CAE-TOKEN-CAPSUP$ CONTAINS? TFALSE
+   s" many-support diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-UNDEFINED-JSON ( -- )
+   s" undefined-json" CAE-CASE!
+   CAE-IN CAE-UNDEF-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" undefined-json stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" undefined-json code" T-LABEL
+   CAE-ERR erru CAE-CODE-UNDEFINED$ CONTAINS? TTRUE
+   s" undefined-json token" T-LABEL
+   CAE-ERR erru CAE-TOKEN-NOPE$ CONTAINS? TTRUE
+   s" undefined-json diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-BUF-CORE ( -- )
+   s" buffer-core" CAE-CASE!
+   CAE-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" buffer-core stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" buffer-core bad1" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
+   s" buffer-core bad2" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
+   s" buffer-core diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-TEST-DUP-BUF ( -- )
+   s" duplicate-buffer" CAE-CASE!
+   CAE-DUP-SOURCE$ CAE-BUF-CAPTURE CHECK-ALL-ERRORS:DUP-RC CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" duplicate-buffer stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" duplicate-buffer code" T-LABEL
+   CAE-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
+   s" duplicate-buffer text" T-LABEL
+   CAE-ERR erru s" duplicate-definition" CONTAINS? TTRUE
+   s" duplicate-buffer diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+\ The lexer has two fail-closed diagnostics and they need different repairs, so a
+\ malformed primitive-axiom row must report its own code, its own opener token and
+\ its own site - never the unterminated-string diagnostic, which would send the
+\ caller hunting for a quote the source does not contain.
+: CAE-TEST-BAD-ROW-JSON ( -- )
+   s" bad-registry-row-json" CAE-CASE!
+   CAE-BAD-ROW-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" bad-registry-row stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" bad-registry-row code" T-LABEL
+   CAE-ERR erru CAE-CODE-BAD-ROW$ CONTAINS? TTRUE
+   s" bad-registry-row is not an open string" T-LABEL
+   CAE-ERR erru CAE-CODE-UNTERM$ CONTAINS? TFALSE
+   s" bad-registry-row token is the opener" T-LABEL
+   CAE-ERR erru CAE-TOKEN-PRIM$ CONTAINS? TTRUE
+   s" bad-registry-row opener byte" T-LABEL
+   CAE-ERR erru CAE-ROW-SITE$ CONTAINS? TTRUE
+   s" bad-registry-row opener line" T-LABEL
+   CAE-ERR erru CAE-ROW-LINE$ CONTAINS? TTRUE
+   s" bad-registry-row diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-BAD-ROW-PROSE ( -- )
+   s" bad-registry-row-prose" CAE-CASE!
+   CAE-BAD-ROW-SOURCE$ CAE-BUF-CAPTURE-PROSE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" bad-registry-row prose stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" bad-registry-row prose code" T-LABEL
+   CAE-ERR erru CAE-PROSE-BAD-ROW$ T$= ;
+
+: CAE-TEST-CLI-SMOKE ( -- )
+   s" cli-smoke" CAE-CASE!
+   CAE-IN CAE-SOURCE$ WRITE-ALL
+   CAE-RUN-CLI 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" cli-smoke stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" cli-smoke bad1" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
+   s" cli-smoke bad2" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
+   s" cli-smoke diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+   mono-ns CAE-START-NS !
+   q execute
+   s" PASS: " type label labelu type
+   s"  (" type mono-ns CAE-START-NS @ - PROC-NS-PER-MS / CAE-U-TYPE s" ms)" type cr ;
+
+: CAE-CASCADE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-CBADA ( n -- n ) drop ;" SB-APPEND CAE-LF
+   s" : CAE-CBADB ( a -- ) dup ;" SB-APPEND CAE-LF
+   s" : CAE-CGOOD ( n -- n ) CAE-CBADA ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Option-A no-cascade contract (ruling recorded on
+\ habu-multi-err-checking-42db26f4): a definition calling an earlier REJECTED
+\ definition certifies against its trusted declared signature - exactly the
+\ two real errors report, with no phantom E-UNDEFINED cascade entry.
+: CAE-TEST-CASCADE ( -- )
+   s" cascade-no-phantom" CAE-CASE!
+   CAE-IN CAE-CASCADE-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" cascade stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" cascade bada" T-LABEL
+   CAE-ERR erru s" cae-cbada" CONTAINS? TTRUE
+   s" cascade badb" T-LABEL
+   CAE-ERR erru s" cae-cbadb" CONTAINS? TTRUE
+   s" cascade no phantom" T-LABEL
+   CAE-ERR erru s" cae-cgood" CONTAINS? TFALSE
+   s" cascade diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-UNCHK-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-UNCHK ( n -- n ) ?dup drop ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Fail-closed negative: uncheckable definitions are not counted by the
+\ multi-error reject counter, so a file whose only definition is uncheckable
+\ must still exit nonzero (verdict 1 aborts the scan; continuing past it
+\ would let an all-uncheckable file read as clean).
+: CAE-TEST-UNCHECKABLE-FAILS ( -- )
+   s" all-uncheckable" CAE-CASE!
+   CAE-IN CAE-UNCHK-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" uncheckable stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" uncheckable reported" T-LABEL
+   erru 0 > TTRUE ;
+
+: CAE-TEST-BASE ( -- )
+   s" base-two-errors" CAE-CASE!
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" base stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" base bad1" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
+   s" base bad2" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
+   s" base diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-TEST-DECL-MULTI ( -- )
+   s" declaration-multi" CAE-CASE!
+   CAE-DECL-SOURCE$ CAE-BUF-CAPTURE-PROSE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" declaration-multi stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" declaration-multi first declaration reject" T-LABEL
+   CAE-ERR erru
+   s" habu: bad enum declaration 'cae-dbad1': name is reserved or already taken at 'if'"
+   CONTAINS? TTRUE
+   s" declaration-multi second declaration reject" T-LABEL
+   CAE-ERR erru
+   s" habu: bad enum declaration 'cae-dbad2': duplicate variant at 'red'"
+   CONTAINS? TTRUE
+   s" declaration-multi definition reject still reached" T-LABEL
+   CAE-ERR erru s" cae-dbad3" CONTAINS? TTRUE
+   s" declaration-multi accepted declaration silent" T-LABEL
+   CAE-ERR erru s" cae-dgood" CONTAINS? TFALSE
+   s" declaration-multi diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 3 T= ;
+
+: CAE-TEST-LARGE ( -- )
+   CAE-WRITE-LARGE
+   s" large-source" CAE-CASE!
+   CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: loutu lerru :}
+   s" large stdout" T-LABEL
+   CAE-OUT loutu CAE-EMPTY$ T$=
+   s" large word" T-LABEL
+   CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
+
+\ ---- TFAM 5: all-errors support-parity fixtures (census gap4) ----------------
+\ verify-source's full re-drive replays deftype/deflinear/value-record before
+\ later definitions; per-def all-errors redrive must collect the same support
+\ or a good definition whose signature references the declared type is spuriously
+\ rejected. Each fixture pairs a good type-using def with a genuinely-bad def:
+\ the bad def forces per-def mode; before the fix the good def is ALSO reported.
+
+: CAE-NOMINAL-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" DEFTYPE CAE-DT" SB-APPEND CAE-LF
+   s" : CAE-DT-USE ( cae-dt -- cae-dt ) ;" SB-APPEND CAE-LF
+   s" : CAE-DT-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-PKG-NOMINAL-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CAE-DTP" SB-APPEND CAE-LF
+   s" DEFTYPE CAE-PKG-ID" SB-APPEND CAE-LF
+   s" : CAE-PKG-GOOD ( n -- n ) >CAE-PKG-ID CAE-PKG-ID>N ;" SB-APPEND CAE-LF
+   s" : CAE-PKG-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-DEFLINEAR-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" deflinear cae-lin" SB-APPEND CAE-LF
+   s" : CAE-LIN-USE ( cae-lin -- cae-lin ) ;" SB-APPEND CAE-LF
+   s" : CAE-LIN-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-VREC-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" value-record cae-vr x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
+   s" : CAE-VR-USE ( cae-vr -- cae-vr ) ;" SB-APPEND CAE-LF
+   s" : CAE-VR-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ ---- layout-constant one-cell contract parity (TFAM 5 + TFAM 12 verdict) -----
+\ `constant` bakes exactly one physical cell, so its recorded effect is the
+\ one-cell `-- a` model in EVERY path (native C-CONSTANT, verify-source
+\ RECORD-DEFINER?, this all-errors funnel, and public-signatures). This is the
+\ PERMANENT contract, not a pending narrowing (TFAM 12 verdict 2026-07-09,
+\ habu-tfam-12-layout): the interpret stack is untyped by design, so no path
+\ has a sound shape source — an adjacent-producer heuristic mis-carries
+\ (`MK 5 constant K`), and carrying the producer's multi-cell type would
+\ certify USE words that push fewer cells than the constant holds. A
+\ wider-than-cell layout value cannot even LAND on the interpret stack
+\ (DNAME-WIDE dispatch gate, habu-tfam-12-interpret), and a checked-body pop
+\ rejects (TD12-CONST), so every layout mis-use of a constant is fail-closed
+\ at USE — which this fixture proves end-to-end.
+: CAE-CONST-LAYOUT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
+   s" TRUSTED: CAE-CV-MK ( -- cae-cv ) 0 ;" SB-APPEND CAE-LF
+   s" CAE-CV-MK constant CAE-CV-K" SB-APPEND CAE-LF
+   s" : CAE-CV-USE ( -- cae-cv ) CAE-CV-K ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-TFAM-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" NEWTYPE cae-tf 1" SB-APPEND CAE-LF
+   s" SUMTYPE cae-rs 2" SB-APPEND CAE-LF
+   s"   VARIANT ok  a ;VARIANT" SB-APPEND CAE-LF
+   s"   VARIANT err b ;VARIANT" SB-APPEND CAE-LF
+   s" ;SUMTYPE" SB-APPEND CAE-LF
+   s" : CAE-TF-USE ( cae-tf<n> cae-rs<n,f> -- cae-tf<n> cae-rs<n,f> ) ;" SB-APPEND CAE-LF
+   s" : CAE-TF-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-WORD-JSON$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ a u SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-CHECK-SUPPORT-PARITY ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n good:ptr goodu:n bad:ptr badu:n :}
+   src srcu CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru bad badu CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru good goodu CAE-WORD-JSON$ CONTAINS? TFALSE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-NOMINAL-SUPPORT ( -- )
+   s" nominal-support" CAE-CASE!
+   CAE-NOMINAL-SOURCE$ s" cae-dt-use" s" cae-dt-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+: CAE-TEST-PACKAGE-NOMINAL-SUPPORT ( -- )
+   s" package-nominal-support" CAE-CASE!
+   CAE-PKG-NOMINAL-SOURCE$
+   s" cae-pkg-good" s" cae-pkg-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+: CAE-TEST-DEFLINEAR-SUPPORT ( -- )
+   s" deflinear-support" CAE-CASE!
+   CAE-DEFLINEAR-SOURCE$ s" cae-lin-use" s" cae-lin-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+: CAE-TEST-VREC-SUPPORT ( -- )
+   s" value-record-support" CAE-CASE!
+   CAE-VREC-SOURCE$ s" cae-vr-use" s" cae-vr-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+\ The layout constant is narrowed to one-cell `-- a`, so `CAE-CV-USE` (which
+\ declares the 2-field `cae-cv` layout) is fail-closed rejected: the inferred
+\ effect is `-- a`, the declared effect is `-- field<cae-cv,x,i64> ...`.
+: CAE-TEST-CONST-LAYOUT ( -- )
+   s" const-layout-narrow" CAE-CASE!
+   CAE-CONST-LAYOUT-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-cv-use" CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" field<cae-cv" CONTAINS? TTRUE ;
+
+: CAE-TEST-TFAM-SUPPORT ( -- )
+   s" type-family-support" CAE-CASE!
+   CAE-TFAM-SOURCE$ s" cae-tf-use" s" cae-tf-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+\ ---- TFAM 5: verify-source top-level TRUST replay (census gap5) ---------------
+\ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
+\ through verify-source before later definitions. verify-source's RECORD-DEFINER?
+\ must dispatch that TRUST so a definition using the trusted word passes. A clean
+\ fixture (no genuinely-bad def) exits 0 only when the TRUST replay works.
+
+: CAE-SQ-LIT ( ptr u8 n -- ) {: a:ptr u:n :}
+   115 SB-APPEND-C
+   CAE-DQ
+   32 SB-APPEND-C
+   a u SB-APPEND
+   CAE-DQ
+   32 SB-APPEND-C ;
+
+: CAE-TRUST-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" CAE-TRO-HELP" CAE-SQ-LIT
+   s" i64 -- i64" CAE-SQ-LIT
+   s" TRUST" SB-APPEND CAE-LF
+   s" : CAE-TRO-USE ( i64 -- i64 ) CAE-TRO-HELP ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-IMMEDIATE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-IM ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" immediate" SB-APPEND CAE-LF
+   s" : CAE-IM-USE ( i64 -- i64 ) CAE-IM ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Top-level EXPORT is the hb-build --repl directive: replay consumes the name
+\ and records nothing, so the source stays clean.
+: CAE-EXPORT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-EX ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" EXPORT CAE-EX" SB-APPEND CAE-LF
+   s" : CAE-EX-USE ( i64 -- i64 ) CAE-EX ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ In-package EXPORT is the re-export declaration: the alias really aliases —
+\ a caller through the alias name checks clean, and a wrong effect through
+\ the alias rejects naming the caller (no trivial pass).
+: CAE-EXPORT-ALIAS-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CAEXA" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" : AW ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" ;PaCkAgE" SB-APPEND CAE-LF
+   s" package CAEXB" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" EXPORT CAEXA:AW" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
+   s" : CAE-AL-USE ( i64 -- i64 ) CAEXB:AW ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-EXPORT-ALIAS-BAD-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CAEXC" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" : CW ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
+   s" package CAEXD" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" EXPORT CAEXC:CW" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
+   s" : CAE-AL-BAD ( -- i64 ) CAEXD:CW ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-CHECK-CLEAN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru CAE-EMPTY$ T$= ;
+
+: CAE-TEST-TRUST-SUPPORT ( -- )
+   s" trust-support" CAE-CASE!
+   CAE-TRUST-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-IMMEDIATE-SUPPORT ( -- )
+   s" immediate-support" CAE-CASE!
+   CAE-IMMEDIATE-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-EXPORT-SUPPORT ( -- )
+   s" export-support" CAE-CASE!
+   CAE-EXPORT-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-EXPORT-ALIAS ( -- )
+   s" export-alias" CAE-CASE!
+   CAE-EXPORT-ALIAS-SOURCE$ CAE-CHECK-CLEAN
+   CAE-EXPORT-ALIAS-BAD-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-al-bad" CAE-WORD-JSON$ CONTAINS? TTRUE ;
+
+\ A caller that is itself inside a package is the shape that exposed the
+\ checker package-scope leak. The rollback frame the core opens SAVED the
+\ caller's checker package but left it active, so a replayed top-level EXPORT
+\ directive read as an in-package re-export and the clean source below exited
+\ CHECK-ALL-ERRORS:DUP-RC instead of 0. This whole file is package
+\ CHECK-ALL-ERRORS-TEST, so the two runs below are made HERE, in the package
+\ body, where the checker's package mode really is this package's. Calling them
+\ from a case word instead would run them with no package open and could not
+\ reproduce the defect; the case word only reports what they recorded.
+variable CAE-PKG-CLEAN-RC
+variable CAE-PKG-CLEAN-U
+variable CAE-PKG-REJECT-RC
+
+: CAE-PKG-RUN-CLEAN ( -- )
+   CAE-EXPORT-SOURCE$ CAE-BUF-CAPTURE rot drop {: diagu:n rc:n :}
+   diagu CAE-PKG-CLEAN-U !
+   rc CAE-PKG-CLEAN-RC ! ;
+
+: CAE-PKG-RUN-REJECT ( -- )
+   CAE-EXPORT-ALIAS-BAD-SOURCE$ CAE-BUF-CAPTURE rot drop {: diagu:n rc:n :}
+   rc CAE-PKG-REJECT-RC ! ;
+
+CAE-PKG-RUN-CLEAN
+CAE-PKG-RUN-REJECT
+
+: CAE-TEST-PKG-EXPORT ( -- )
+   s" package-caller-export" CAE-CASE!
+   CAE-CASE$ T-LABEL
+   CAE-PKG-CLEAN-RC @ 0 T=
+   CAE-CASE$ T-LABEL
+   CAE-PKG-CLEAN-U @ 0 T=
+   CAE-CASE$ T-LABEL
+   CAE-PKG-REJECT-RC @ 70 T= ;
+
+\ Cross-file support: a prior source-list file's type and word are in scope
+\ for the checked buffer only when its path is registered through
+\ CHECK-ALL-ERRORS:SUPPORT+; the same buffer without registration fail-closed
+\ rejects. This is the hook the check source-list redrive drives per file.
+: CAE-XSUP-SUP$ ( -- ptr u8 n )
+   SB-RESET
+   s" DEFTYPE CAE-XT" SB-APPEND CAE-LF
+   s" : CAE-XT-ID ( cae-xt -- cae-xt ) ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-XSUP-USE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-XT-USE ( cae-xt -- cae-xt ) CAE-XT-ID ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-TEST-XSUP-REPLAY ( -- )
+   s" xsup-replay" CAE-CASE!
+   CAE-XSUP CAE-XSUP-SUP$ WRITE-ALL
+   CHECK-ALL-ERRORS:SUPPORT-RESET
+   CAE-XSUP-USE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-xt-use" CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-XSUP CHECK-ALL-ERRORS:SUPPORT+
+   CAE-XSUP-USE$ CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu2:n erru2:n :}
+   CAE-CASE$ T-LABEL
+   outu2 0 T=
+   CAE-CASE$ T-LABEL
+   erru2 0 T=
+   CHECK-ALL-ERRORS:SUPPORT-RESET ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   CAE-PREPARE
+   s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
+   s" declaration-multi" [: CAE-TEST-DECL-MULTI ;] CAE-CASE-RUN
+   s" cascade-no-phantom" [: CAE-TEST-CASCADE ;] CAE-CASE-RUN
+   s" all-uncheckable" [: CAE-TEST-UNCHECKABLE-FAILS ;] CAE-CASE-RUN
+   s" nominal-support" [: CAE-TEST-NOMINAL-SUPPORT ;] CAE-CASE-RUN
+   s" package-nominal-support" [: CAE-TEST-PACKAGE-NOMINAL-SUPPORT ;] CAE-CASE-RUN
+   s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
+   s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
+   s" const-layout-narrow" [: CAE-TEST-CONST-LAYOUT ;] CAE-CASE-RUN
+   s" type-family-support" [: CAE-TEST-TFAM-SUPPORT ;] CAE-CASE-RUN
+   s" trust-support" [: CAE-TEST-TRUST-SUPPORT ;] CAE-CASE-RUN
+   s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
+   s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
+   s" export-alias" [: CAE-TEST-EXPORT-ALIAS ;] CAE-CASE-RUN
+   s" package-caller-export" [: CAE-TEST-PKG-EXPORT ;] CAE-CASE-RUN
+   s" xsup-replay" [: CAE-TEST-XSUP-REPLAY ;] CAE-CASE-RUN
+   s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
+   s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
+   s" as-add-task-leak" [: CAE-TEST-AS-ADD-TASK-LEAK ;] CAE-CASE-RUN
+   s" many-defs-ok" [: CAE-TEST-MANY-DEFS-OK ;] CAE-CASE-RUN
+   s" many-support" [: CAE-TEST-MANY-SUPPORT ;] CAE-CASE-RUN
+   s" undefined-json" [: CAE-TEST-UNDEFINED-JSON ;] CAE-CASE-RUN
+   s" buffer-core" [: CAE-TEST-BUF-CORE ;] CAE-CASE-RUN
+   s" duplicate-buffer" [: CAE-TEST-DUP-BUF ;] CAE-CASE-RUN
+   s" bad-registry-row-json" [: CAE-TEST-BAD-ROW-JSON ;] CAE-CASE-RUN
+   s" bad-registry-row-prose" [: CAE-TEST-BAD-ROW-PROSE ;] CAE-CASE-RUN
+   s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
+   CLEANUP-RUN
+   s" cleanup root removed" T-LABEL
+   CAE-ROOT EXISTS? TFALSE
+   T-REPORT
+   s" check-all-errors-test: ok" type cr ;
+
+;package
+
+CHECK-ALL-ERRORS-TEST:RUN

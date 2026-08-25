@@ -1,0 +1,45 @@
+\ tile-acc.f - checked register-accumulator vocabulary for tile-DSL kernel bodies.
+\
+\ Capability (c) of the typed-kernel gap (habu-checker-capability-typed): the
+\ register-resident accumulator the flagship GEMM (the C micro-tile) and fused attention
+\ (the running max/sum) thread across the K-reduction.
+\
+\ An accumulator has its own type `acc<t,b,m>`, a NEW parametric constructor distinct from
+\ a register `tile<t,b,m>` and a `span<...>`. The distinction is the soundness payload:
+\ because STORE wants a `tile`, an `acc` CANNOT be stored to global directly - the program
+\ must finalize it through ACC-TILE first. So "accidentally storing an unfinished
+\ accumulator" is a TYPE ERROR caught before runtime (proven by tile-acc-neg-test.f). `acc`
+\ is a recognised type family via the checker's TFAM registry (src/core/type-family.f,
+\ `s" acc" 3 TFAM-REG-CELL`) - a purely-additive row shipped via a validated fixpoint rebuild.
+\
+\   ACC-ZERO  gridctx -> acc            : a fresh zeroed register accumulator.
+\   ACC-FMA   acc tile tile -> acc      : fused multiply-add of two operand tiles into acc
+\                                         (one K-step of the reduction).
+\   ACC-TILE  acc -> tile               : finalize the accumulator to a storable tile.
+\   ACC-LOOP  n acc [ acc -- acc ] -> acc : the accumulator-typed counted loop (the
+\                                         K-reduction), enforcing an acc-preserving body.
+\
+\ ACC-ZERO / ACC-TILE MINT a phantom (acc / tile) and ACC-LOOP is the acc-preserving
+\ counted loop, so they stay TRUSTED: boundaries whose declared effect is the contract;
+\ ACC-FMA PRESERVES its FIRST operand's accumulator phantom, so it is a
+\ CHECKED caller of PTXREP:REPMIX3 (lib/ptx/rep.f). The emit lowers to PTX (mov.f32
+\ 0f0; fma.rn.f32; the loop unroll) the checker cannot infer; the bodies emit via the
+\ cg.f helpers, so a checked KERNEL: using these LOWERS to PTX. Host emission and ABI
+\ assertions live in lib/ptx/tile-acc-test.f; tools/ptx/acc-device-test.f is the
+\ explicit manual device leaf. Load after lib/ptx/cg.f and lib/ptx/tile.f.
+\ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
+
+require lib/ptx/rep.f
+
+TRUSTED: ACC-ZERO ( gridctx<b,e,m> -- acc<t,b,m> )
+   EMIT-ACC-ZERO ;
+
+: ACC-FMA ( acc<t,b,m> tile<t,b,m> tile<t,b,m> -- acc<t,b,m> )
+   [: EMIT-ACC-FMA ;] PTXREP:REPMIX3 ;
+
+TRUSTED: ACC-TILE ( acc<t,b,m> -- tile<t,b,m> )
+   EMIT-ACC-TILE ;
+
+TRUSTED: ACC-LOOP ( n acc<t,b,m> [ acc<t,b,m> -- acc<t,b,m> ] -- acc<t,b,m> )
+   {: cnt acc body :}
+   acc  cnt 0 ?do  body execute  loop ;
