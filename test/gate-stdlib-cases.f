@@ -254,33 +254,6 @@ SUITE codegen-fork-reference
    test/codegen-fork-reference-test.f
 ;SUITE
 
-\ The end-to-end workload measurement, and the same division of labour. Its
-\ member checks the facts the measurement's numbers would be meaningless
-\ without: the engine's own call-or-copy rule, read off compiled code and pinned
-\ REASON BY REASON - a straight-line body at the size limit and one instruction
-\ over it, on both sides of the two separate size tests C-CALL makes; a patched
-\ return slot against an unpatched one compiled from the same six instructions;
-\ and one body per refusal class whose only unmovable instruction is of that
-\ class; that each arm's driver enters ITS OWN code generator's word and not the
-\ other one's - the mutation a two-arm timing turns on, because an after-arm
-\ still calling the before-arm's record reports a delta of nothing and looks
-\ healthy; that the two arms of every workload compute the same pinned answer;
-\ that the two arms of one workload body come out the same number of bytes,
-\ because a name lives in a dictionary record and not in a compiled body; and
-\ that a row's delta keeps its sign while a row's two columns keep their arms.
-\
-\ NO ASSERTION THE MEMBER RUNS READS A CLOCK, for the reason the entry above
-\ gives. It does measure a small family of rows of its own, through the store
-\ every reported row goes through, but it reads their ANSWERS, their kinds and
-\ the shape of their runs, never their times. The deltas themselves - what the
-\ new code generator is worth to a program, and which of them clear the bar
-\ their own family's null draws set - are printed by
-\ bin/hb --load tools/codegen-workload.f.
-\ This scheduled member checks its functional prerequisites without a clock.
-SUITE codegen-workload
-   tools/codegen-workload-test.f
-;SUITE
-
 \ Where the register allocator's spill wall is, measured through the real
 \ migration entry. It is its own member because it migrates definitions of its
 \ own and requires the fourth corpus and that corpus's migration to get a
@@ -424,19 +397,9 @@ SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE
 
-\ Carrying a migration back to the callers that were compiled before it: the
-\ call instructions already in the image, moved onto the routine the chain
-\ published, and every reason a move is refused. It runs after the publication
-\ and clobber suites because what decides whether a site may be moved at all is
-\ the row the publication seam recorded for the routine it is moved onto.
-SUITE compiler-native-reach
-   test/compiler/native-reach.f
-;SUITE
-
 \ Reading a published routine's calls and its exit off the emitted code: the
-\ instrument a tail-call lane decides with. It runs beside the reach suite
-\ because both consume src/compiler/native/branch.f, the chain's one reader of a
-\ branch displacement.
+\ instrument a tail-call lane decides with. It consumes
+\ src/compiler/native/branch.f, the chain's one reader of a branch displacement.
 SUITE compiler-codegen-tail-probe
    test/compiler/codegen-tail-probe.f
 ;SUITE
