@@ -23,6 +23,10 @@ private
    1 +
    does> ( n -- n ) @ + ;
 
+: MAKE-ADDRESS ( n -- )
+   create ,
+   does> ( -- ptr a ) ;
+
 TRUSTED: TRUSTED-MAKE ( n -- )
    drop dbase@ drop
    create 55 ,
@@ -36,6 +40,7 @@ TRUSTED: TRUSTED-MAKE ( n -- )
 41 MAKE-CELL CREATED-CELL 42 T=
 50 MAKE-INERT-CELL INERT-CELL 51 T=
 5 MAKE-ADDER ADD5 6 T=
+73 MAKE-ADDRESS CREATED-ADDRESS
 9 TRUSTED-MAKE TRUSTED-CELL
 0 0= MAYBE-PATCH UNPATCHED
 1 0= MAYBE-PATCH PATCHED
@@ -49,6 +54,9 @@ public
 
    s" the clause consumes the created word's declared input" T-LABEL
    7 ADD5 12 T=
+
+   s" an empty does> clause remains an address identity" T-LABEL
+   CREATED-ADDRESS @ 73 T=
 
    s" does> inside a string is not the defining-word split" T-LABEL
    INERT-CELL 50 T=

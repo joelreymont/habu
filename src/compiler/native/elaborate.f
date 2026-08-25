@@ -840,6 +840,19 @@ create SB-BUF SB-CAP allot
    out VDROP
    c b IR-BUILD:END-OP drop ;
 
+\ An empty, physically arity-preserving colon body is an identity over its
+\ cells.  The checker still owns whether that identity may change their logical
+\ grouping; ordinary empty retypes are rejected before NELAB runs.  A generated
+\ product MAKE/UNMAKE is the one current certified consumer: its input and
+\ output rows describe the same cells with opposite glue.  Keep every nonempty
+\ body on the ordinary strict return check at the frame return.
+: EMPTY-FRAME-RESHAPE ( n n n n -- )
+   {: lo:n hi:n in:n out:n :}
+   lo hi <> if exit then
+   in out <> if exit then
+   VGLUE @ in VGLUE-LOW IN-GLUE @ <> if E-NELAB-JOIN throw then
+   OUT-GLUE @ VGLUE ! ;
+
 \ ---- the open control structures ----------------------------------------------
 \ Structures one definition may nest.
 32 constant CMAX
@@ -3666,6 +3679,7 @@ variable DOES-PATCH
    TOK-NEED @ 0<> if lo EMIT-MEM then
    PATH-LIVE PATH-END !
    p r lo hi WALK-TRY
+   FUN-KIND @ FUN-COLON = if lo hi in out EMPTY-FRAME-RESHAPE then
    CS-N @ 0<> if E-NELAB-CTRL throw then
    PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    PATH-DEAD? {: dead:bool :}

@@ -7709,3 +7709,8 @@ and --no-lldbinit.
   `PRIOR-STEP` mistook the `ok` operand in generated `construct result ok` for
   the uncallable prior match shadowed by `RESULT:OK`; leave it to NELAB, whose
   structural scans already distinguish operands from word uses.
+- **A certified physical identity can still change a value boundary.** Wide
+  product `MAKE`/`UNMAKE` move no cells, but their empty bodies reverse scalar
+  and bundle glue. Let only a checker-certified, syntactically empty,
+  equal-arity frame adopt its declared output glue; nonempty bodies stay under
+  the ordinary strict return check.
