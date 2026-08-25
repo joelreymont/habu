@@ -39,9 +39,8 @@ public
 : NDO-QDO ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 do i + loop loop ;
 
-\ The callee is long enough that neither generator copies it, so what crosses
-\ this loop's body really is a call - and a call is the one thing that makes the
-\ loop's counters travel as operands of every edge.
+\ Calls stay calls in the native compiler. This one makes the loop's counters
+\ travel as operands of every edge.
 : NDO-CALLEE ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 

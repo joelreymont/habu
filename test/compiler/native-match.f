@@ -10,7 +10,6 @@ require lib/adt/option.f
 require src/compiler/native/compiler.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
-require src/compiler/native/inline.f
 require src/compiler/native/trap.f
 
 package NMX
@@ -593,7 +592,6 @@ variable EMIT-RC
 variable EMIT-BRANCH
 variable EMIT-RET
 variable EMIT-TRAPS
-variable EMIT-RECORDED
 variable UNW-SIZE
 variable QUAD-SIZE
 
@@ -611,7 +609,6 @@ variable QUAD-SIZE
    A64EMIT:LEAVES-BY-BRANCH? if 1 else 0 then EMIT-BRANCH !
    A64EMIT:TRAILING-RETURN? if 1 else 0 then EMIT-RET !
    TRAP-BRANCHES EMIT-TRAPS !
-   s" PROBE-HUE" NDICT:CALL-TARGET NINL:KNOWN? if 1 else 0 then EMIT-RECORDED !
    PROBE-UNW$ TRY drop A64EMIT:SIZE INSN-BYTES - UNW-SIZE !
    PROBE-QUAD$ TRY drop A64EMIT:SIZE INSN-BYTES - QUAD-SIZE ! ;
 
@@ -784,7 +781,6 @@ CAPTURE-EMISSION
    EMIT-BRANCH @ 1 T=
    EMIT-RET @ 1 T=
    EMIT-TRAPS @ 1 T=
-   EMIT-RECORDED @ 0 T=
 
    s" dispatch code stays bounded and grows with its arm count" T-LABEL
    UNW-SIZE @ 128 < TTRUE

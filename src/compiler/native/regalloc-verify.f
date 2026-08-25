@@ -455,23 +455,20 @@ variable FLOW-S
    id VCALL-ENTRY NOSLOT = if false exit then
    id DBACK-OF NOSLOT = ;
 
-: VCALL-BITS ( IR-ID:ir-op-id n -- n )
-   {: id:IR-ID:ir-op-id fl:n :}
-   id VCALL-ENTRY {: e:n :}
+: VCALL-BITS ( n -- n )
+   {: fl:n :}
    fl F-FPR = if
-      e NOSLOT = if 0 V-FPOOL @ A64EFF:FPRS-N exit then
-      e 0 V-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N exit
+      0 V-FPOOL @ A64EFF:FPRS-N exit
    then
    fl F-GPR = 0= if E-A64RAV-CLASS throw then
-   e NOSLOT = if 0 V-POOL @ A64EFF:GPRS-N exit then
-   e 0 V-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N ;
+   0 V-POOL @ A64EFF:GPRS-N ;
 
 : CLOB-AT ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id p:n :}
    id DCALL? 0= if exit then
    N-VALS @ 0 ?do
       i REGGED?  i DEF-AT p <  and  i LAST-AT p >  and if
-         id i FILE-AT VCALL-BITS  1 i A64RA:CLAIM@ lshift  and
+         i FILE-AT VCALL-BITS  1 i A64RA:CLAIM@ lshift  and
          0<> if E-A64RAV-CLOBBER throw then
       then
    loop ;

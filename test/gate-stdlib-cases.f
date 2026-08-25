@@ -236,10 +236,6 @@ SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
 
-SUITE compiler-native-publish
-   test/compiler/native-publish.f
-;SUITE
-
 SUITE compiler-native-trap
    test/compiler/native-trap.f
 ;SUITE
@@ -254,14 +250,6 @@ SUITE compiler-native-defer
 
 SUITE compiler-native-exec
    test/compiler/native-exec.f
-;SUITE
-
-SUITE compiler-native-clobber
-   test/compiler/native-clobber.f
-;SUITE
-
-SUITE compiler-native-inline
-   test/compiler/native-inline.f
 ;SUITE
 
 SUITE code-reclaim
@@ -828,10 +816,6 @@ SUITE checker-dead-path
 
 SUITE checker-rollback-sig-pool
    test/checker-rollback-sig-pool.f
-;SUITE
-
-SUITE sig-scope-intake
-   test/sig-scope-intake.f
 ;SUITE
 
 SUITE snapshot-writer

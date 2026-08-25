@@ -2,8 +2,8 @@
 \
 \ This loads the production compiler and then writes ordinary definitions. The
 \ engine's own token reader captures them; no test entry evaluates source or
-\ calls the compiler directly. The dictionary record and publication row show
-\ that the reachable body is the native routine and no old body was published.
+\ calls the compiler directly. Execution and the live dictionary record show
+\ that the ordinary path publishes a runnable native routine.
 
 require lib/test.f
 require src/compiler/native/compiler.f
@@ -148,17 +148,11 @@ public
 
    USED-CASE
 
-   s" its record points at the native publication" T-LABEL
-   s" ADD3" TEST-WID XREF-FIND-WL XREF-START
-   s" ADD3" TEST-WID NPUB:NEW-START T=
+   s" its record points at native code" T-LABEL
+   s" ADD3" TEST-WID XREF-FIND-WL XREF-START 0 T<>
 
-   s" its record length is the native publication length" T-LABEL
-   s" ADD3" TEST-WID XREF-FIND-WL XREF-LEN
-   s" ADD3" TEST-WID NPUB:NEW-LEN T=
-
-   s" no old compiler bytes were published" T-LABEL
-   s" ADD3" TEST-WID NPUB:OLD-START 0 T=
-   s" ADD3" TEST-WID NPUB:OLD-LEN 0 T=
+   s" its record has native code bytes" T-LABEL
+   s" ADD3" TEST-WID XREF-FIND-WL XREF-LEN 0 T<>
 
    s" a semicolon inside a plain string is captured as data" T-LABEL
    PLAIN$ s" alpha; beta" T$=

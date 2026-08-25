@@ -22,7 +22,6 @@ require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
-require src/compiler/native/clobber.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 
@@ -332,18 +331,6 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ The trap form carries its target under a key of its own.
 : TRAP-AT? ( IR-ID:ir-op-id -- bool )
    0 BND-TRAP @ ATTR-INT-OF NOATTR <> ;
-
-\ Named per file with no default arm: a file this word does not know would be
-\ held against the wrong pool.
-: CALL-BITS ( IR-ID:ir-op-id n -- n )
-   {: id:IR-ID:ir-op-id fl:n :}
-   id 0 BND-ENTRY @ ATTR-INT-OF {: e:n :}
-   e NOATTR = if fl POOL-BITS exit then
-   fl F-FPR = if
-      e 0 S-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N exit
-   then
-   fl F-GPR = 0= if E-A64RA-CLASS throw then
-   e 0 S-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N ;
 
 : FORBIDDEN? ( n n -- bool )
    {: forbid:n r:n :}
@@ -1150,7 +1137,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
       i POS-OP? if
          f i POS-OP CALL-AT? if
             r i MB-CROSSES? if
-               f i POS-OP fl CALL-BITS or
+               fl POOL-BITS or
             then
          then
       then

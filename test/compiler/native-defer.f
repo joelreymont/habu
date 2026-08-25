@@ -10,10 +10,8 @@ private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and it
 \ is how this suite compiles a caller for a word that did not exist when the
-\ suite was compiled. Every execution below goes through it rather than through
-\ a compiled call site, for the reason LESSONS.md records: a call site can be
-\ copied by the inliner, and a test written as one then proves nothing about the
-\ record it meant to test.
+\ suite was compiled. Every execution below goes through it so the caller is
+\ compiled only after that new dictionary record exists.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
@@ -28,7 +26,7 @@ TRUSTED: DBASE-N ( -- n ) data-base ;
 
 : REC ( ptr u8 n -- ptr a )
    GLOBAL-WID XREF-FIND-WL
-   dup XREF-FOUND? 0= if E-NPUB-NAME throw then ;
+   dup XREF-FOUND? 0= if s" native-defer: record not found" 76 die then ;
 
 : REC-START ( ptr u8 n -- n )   REC XREF-START ;
 : REC-LEN ( ptr u8 n -- n )     REC XREF-LEN ;
@@ -137,7 +135,7 @@ variable BLN-AT   variable BLN-SEEN
    SETUP
    DEF-INSTALL
    s" the installer is the chain's code" T-LABEL
-   s" ND-INSTALL" REC-START  s" ND-INSTALL" GLOBAL-WID NPUB:NEW-START T=
+   s" ND-INSTALL" REC-START 0 T<>
    s" and running it binds the deferred word to the body" T-LABEL
    s" ND-INSTALL" EV
    s" 41 ND-HOOK" EV-N 42 T=

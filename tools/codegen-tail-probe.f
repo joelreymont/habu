@@ -2,19 +2,17 @@
 \ return, read off the emitted code rather than off the source.
 \ One concern: the last two instructions of a word's compiled code.
 \
-\ WHY IT READS THE CODE AND NOT THE BODY. A Habu body that ends in a call does
-\ not necessarily emit one: both code generators copy a small callee into its
-\ caller instead of calling it, so a source token is no evidence at all about
-\ whether the emitted routine ends `bl; ret`. The question a tail-call lane may
-\ act on is the machine's - is the instruction before the trailing return a
-\ branch-with-link - and this tool is where that question is asked.
+\ WHY IT READS THE CODE AND NOT THE BODY. Source tokens are not machine
+\ instructions: lowering can add, remove or turn a call into a tail branch. The
+\ question a tail-call lane may act on is the machine's - is the instruction
+\ before the trailing return a branch-with-link - and this tool is where that
+\ question is asked.
 \
 \ WHERE THE TRAILING RETURN IS. A word's recorded code length EXCLUDES its
-\ trailing return: the engine stores the span its inliner may copy, and
-\ src/habu/habu2.f's C-CALL-REQUIRE-RET-SLOT reads the return at entry+length to
-\ confirm the record still ends in one. So the last instruction of the BODY is at
-\ entry+length-4 and the return itself is at entry+length, and both are read here
-\ the way that inliner reads them.
+\ trailing return, and src/habu/habu2.f's C-CALL-REQUIRE-RET-SLOT reads the
+\ return at entry+length to confirm the record still ends in one. So the last
+\ instruction of the BODY is at entry+length-4 and the return itself is at
+\ entry+length, and both are read here through the record's own bounds.
 \
 \ WHY IT DOES NOT WALK TO THE FIRST RETURN. JITDUMP:JD (tools/jitdump-core.f) does, which
 \ is right for a routine somebody is reading and wrong for this question twice
@@ -116,9 +114,7 @@ public
 : INSN@ ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    a u START k INSN-BYTES * + W@ ;
 
-\ How many calls the routine really makes. A body whose final call was copied
-\ into it answers zero, which is the whole reason the count is taken from the
-\ code.
+\ How many calls the routine really makes, counted from code rather than source.
 : CALLS ( ptr u8 n -- n ) {: a:ptr u:n :}
    0
    a u INSNS 0 ?do  a u i INSN@ BL? if 1+ then  loop ;
@@ -152,10 +148,9 @@ public
    t a u START a u LEN + > ;
 
 \ ---- and how many bytes of code the word really is ---------------------------
-\ THE RECORDED LENGTH IS NOT THE ROUTINE. It is the span a caller may copy, and
-\ the engine defines that as everything before the trailing return, because
-\ copying the return would return from the caller. So a word that runs four
-\ instructions and returns records twelve bytes, and an empty word - which is a
+\ THE RECORDED LENGTH IS NOT THE ROUTINE. It is everything before the trailing
+\ return. So a word that runs four instructions and returns records twelve
+\ bytes, and an empty word - which is a
 \ return and nothing else - records NONE. Anything comparing a habu word's size
 \ with a size that came from somewhere else, and a C symbol's size is the whole
 \ function, is comparing two different things until the return is put back.

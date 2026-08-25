@@ -129,13 +129,13 @@ TRUSTED: DEF ( ptr u8 n -- )
    S\" : NST-COST-SHORT ( -- ptr u8 n ) s\" hi\" ;" DEF
    S\" : NST-COST-LONG ( -- ptr u8 n ) s\" 12345678901234567890123456789012\" ;" DEF ;
 
-: NEW ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u 0 NPUB:NEW-LEN ;
+: CODE-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u XREF-FIND XREF-LEN ;
 
 : BYTE-COST-CASE ( -- )
    COST-PAIR
    s" the chain's code does not grow with the string at all" T-LABEL
-   s" NST-COST-LONG" NEW  s" NST-COST-SHORT" NEW T= ;
+   s" NST-COST-LONG" CODE-LEN  s" NST-COST-SHORT" CODE-LEN T= ;
 
 \ ---- the store's ceiling ------------------------------------------------------
 \ THIS CASE RUNS LAST AND EXHAUSTS THE STORE, so nothing after it can intern.

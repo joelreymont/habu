@@ -11,11 +11,8 @@ package QSC-FIXTURE
 
 public
 
-\ A callee that keeps nothing for its caller, which is the half of "does this
-\ local travel" that is about the CALLEE: a local a call can reach travels only
-\ when one of the body's calls keeps no register, and a staged callee with no
-\ clobber record is that call. So every name mentioned after one of these really
-\ is carried, and a fixture whose callee kept registers would measure nothing.
+\ A callee reached through the conservative calling convention. Every live name
+\ mentioned after the call must therefore travel across it.
 : QSC-OK1 ( n -- n )
    1+ ;
 

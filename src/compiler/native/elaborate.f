@@ -22,11 +22,9 @@ require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/ir/source.f
 require src/compiler/native/tape.f
-require src/compiler/native/clobber.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/string.f
-require src/compiler/native/inline.f
 require src/compiler/native/frozen.f
 require src/compiler/native/trap.f
 require src/compiler/native/family.f
@@ -467,14 +465,10 @@ create LBUF LNAME-CAP allot
 : LG-F@ ( n -- n )
    LGAT cells LG-F + @ ;
 
-\ Whether ONE of this body's calls keeps no register for the caller.
-variable CALL-BARE
-
 \ Whether this local's value has to TRAVEL - be handed over at every call and
 \ taken back - which is what a call inside its scope makes true.
 : LCROSS? ( n -- bool )
-   LAT cells LCROSS + @ 0<>
-   CALL-BARE @ 0<> and ;
+   LAT cells LCROSS + @ 0<> ;
 
 : LCROSS+ ( n -- )
    LAT cells LCROSS +  1 swap ! ;
@@ -1958,80 +1952,6 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
       r i RESOLVE-STEP
    loop ;
 
-\ ---- which calls are COPIED instead of made ----------------------------------
-here CELL 1- and CELL swap - CELL 1- and allot
-create INL-TAB TMAX cells allot      \ whether the call on this body token is copied
-
-: INL-RESET ( -- )
-   TMAX 0 ?do
-      0 i cells INL-TAB + !
-   loop ;
-
-: INL-AT? ( n -- bool )
-   TOK-CK cells INL-TAB + @ 0<> ;
-
-: INL+ ( n -- )
-   1 swap TOK-CK cells INL-TAB + ! ;
-
-: INL-SYM ( n n -- IR-ID:ir-symbol-id )
-   {: entry:n k:n :}
-   CTX BLD  entry k NINL:SPELL$  HIR-WORD:KEY-SPELL ;
-
-public
-
-\ What a copy stages for a token of one meaning.
-ENUM staging DERIVE eq
-   call
-   op
-   const-op
-   fixed
-   rename
-;ENUM
-
-private
-
-\ The one table: every meaning is answered here and nowhere else.
-: SPLICE-STAGING ( HIR:meaning -- staging )
-   MATCH HIR:meaning
-      literal      OF NELAB-STAGING:CALL ENDOF
-      real-literal OF NELAB-STAGING:CALL ENDOF
-      string-literal OF NELAB-STAGING:CALL ENDOF
-      op           OF NELAB-STAGING:OP ENDOF
-      const-op     OF NELAB-STAGING:CONST-OP ENDOF
-      fixed        OF NELAB-STAGING:FIXED ENDOF
-      rename       OF NELAB-STAGING:RENAME ENDOF
-      rstack       OF NELAB-STAGING:CALL ENDOF
-      callable     OF NELAB-STAGING:CALL ENDOF
-      control      OF NELAB-STAGING:CALL ENDOF
-      open-locals  OF NELAB-STAGING:CALL ENDOF
-      close-locals OF NELAB-STAGING:CALL ENDOF
-      unmodeled    OF NELAB-STAGING:CALL ENDOF
-   ;MATCH ;
-
-: SPLICE-MEANING? ( HIR:meaning -- bool )
-   SPLICE-STAGING NELAB-STAGING:CALL NELAB-STAGING:EQ 0= ;
-
-: REC-NAME? ( n n -- bool )
-   {: entry:n k:n :}
-   entry k NINL:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ ;
-
-: REC-TOKEN? ( IR-ARENA:arena n n -- bool )
-   {: r:IR-ARENA:arena entry:n k:n :}
-   entry k NINL:KIND@ {: kd:NTAPE:kind :}
-   kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if true exit then
-   kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if true exit then
-   kd NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   entry k INL-SYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MODELS? 0= if false exit then
-   r sy HIR-WORD:MEANING@ SPLICE-MEANING? ;
-
-: REC-BODY? ( IR-ARENA:arena n -- bool )
-   {: r:IR-ARENA:arena entry:n :}
-   true
-   entry NINL:TOKENS 0 ?do
-      r entry i REC-TOKEN? 0= if drop false leave then
-   loop ;
-
 \ ---- which control actions stage a call, and which call ----------------------
 : CTRL-CALL? ( HIR:ctrl -- HIR:opcode bool )
    {: k:HIR:ctrl :}
@@ -2055,41 +1975,6 @@ private
    then
    false ;
 
-: REC-TOKEN-ORDER? ( IR-ARENA:arena n n -- bool )
-   {: r:IR-ARENA:arena entry:n k:n :}
-   entry k REC-NAME? 0= if false exit then
-   r  entry k INL-SYM  SYM-ORDER? ;
-
-: REC-BODY-ORDER? ( IR-ARENA:arena n -- bool )
-   {: r:IR-ARENA:arena entry:n :}
-   false
-   entry NINL:TOKENS 0 ?do
-      r entry i REC-TOKEN-ORDER? or
-   loop ;
-
-\ Whether the callee named on this token has a body that may be copied here.
-: CALLEE-COPY? ( IR-ARENA:arena n -- bool )
-   {: r:IR-ARENA:arena ix:n :}
-   ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:CALLEE-DEAD? if false exit then
-   r sy HIR-WORD:ENTRY@ {: entry:n :}
-   entry NINL:KNOWN? 0= if false exit then
-   entry NINL:IN@  r sy HIR-WORD:CALLEE-IN@  <> if E-NELAB-INLINE throw then
-   entry NINL:OUT@ r sy HIR-WORD:CALLEE-OUT@ <> if E-NELAB-INLINE throw then
-   r entry REC-BODY? ;
-
-: INL-STEP ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
-   r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if exit then
-   r ix CALLEE-COPY? if ix INL+ then ;
-
-: INLINE-SCAN ( IR-ARENA:arena n n -- )
-   {: r:IR-ARENA:arena lo:n hi:n :}
-   INL-RESET
-   hi lo ?do
-      i MOPERAND? 0=  i IN-DECL? 0=  and  i LOCAL-OF 0 <  and if r i INL-STEP then
-   loop ;
-
 \ ---- does this definition touch memory at all? -------------------------------
 : WORD-ORDER? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
@@ -2098,7 +1983,6 @@ private
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if
-      ix INL-AT? if r  r sy HIR-WORD:ENTRY@  REC-BODY-ORDER? exit then
       CTX BLD  CTX BLD  HIR-OPCODE:WORDCALL HIR:OPCODE  TOKEN-OPERANDS
       0<> exit
    then
@@ -2125,20 +2009,12 @@ private
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
-   m HIR-MEANING:CALLABLE HIR-MEANING:EQ if ix INL-AT? 0= exit then
+   m HIR-MEANING:CALLABLE HIR-MEANING:EQ if true exit then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
       r sy HIR-WORD:CTRL@ CTRL-CALL? {: op:HIR:opcode calls:bool :}
       calls exit
    then
    false ;
-
-\ ---- and does the call leave the caller anything? ----------------------------
-\ Whether the call keeps any register for the caller.
-: CALL-KEEPS? ( IR-ARENA:arena n -- bool )
-   {: r:IR-ARENA:arena ix:n :}
-   ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:MEANING@ HIR-MEANING:CALLABLE HIR-MEANING:EQ 0= if false exit then
-   r sy HIR-WORD:ENTRY@ NCLOB:KNOWN? ;
 
 \ ---- which locals a call can reach -------------------------------------------
 32 constant LSMAX                    \ loops one definition may nest, as CMAX does
@@ -2197,7 +2073,6 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
    then
    r ix WORD-CALL? if
       1 CALL-NEED !
-      r ix CALL-KEEPS? 0= if 1 CALL-BARE ! then
       LS-CALL+ exit
    then
    r ix OPENS-LOOP? if LS-PUSH exit then
@@ -2206,7 +2081,6 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
 : CROSS-SCAN ( IR-ARENA:arena n n -- )
    {: r:IR-ARENA:arena lo:n hi:n :}
    0 CALL-NEED !
-   0 CALL-BARE !
    0 LSN !
    hi lo ?do
       r i CROSS-STEP
@@ -2350,7 +2224,6 @@ create JOIN-TAB TMAX cells allot
 : SK-DEAD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if false exit then
-   ix INL-AT? if false exit then
    r  ix WSYM  HIR-WORD:CALLEE-DEAD? ;
 
 : SK-AFTER-END-CK ( IR-ARENA:arena n -- )
@@ -2985,48 +2858,6 @@ create DN-BUF DN-CAP allot
    r sy HIR-WORD:OUT-GLUE@  STAGE-WCALL
    r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
 
-\ ---- copying a callee's body in instead of calling it ------------------------
-\ A copied call leaves the same values a made one would.
-: INLINE-NAME ( IR-ARENA:arena IR-ARENA:arena n IR-ID:ir-symbol-id -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:ADMIT SPLICE-STAGING
-   MATCH staging
-      call     OF E-NELAB-INLINE throw ENDOF
-      op       OF r ix sy EMIT-OP-SYM ENDOF
-      const-op OF r ix sy EMIT-CONST-OP-SYM ENDOF
-      fixed    OF r ix sy EMIT-FIXED-SYM ENDOF
-      rename   OF p r sy RENAME ENDOF
-   ;MATCH ;
-
-: INLINE-TOKEN ( IR-ARENA:arena IR-ARENA:arena n n n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n entry:n k:n :}
-   entry k NINL:KIND@
-   MATCH NTAPE:kind
-      name           OF p r ix  entry k INL-SYM  INLINE-NAME ENDOF
-      int-literal    OF ix  entry k NINL:LIT@  EMIT-LIT ENDOF
-      real-literal   OF ix  entry k NINL:LIT@  EMIT-FLIT ENDOF
-      char-literal   OF E-NELAB-INLINE throw ENDOF
-      string-literal OF E-NELAB-INLINE throw ENDOF
-   ;MATCH ;
-
-: DO-INLINE ( IR-ARENA:arena IR-ARENA:arena n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
-   ix WSYM {: sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:ENTRY@ {: entry:n :}
-   entry NINL:IN@ {: a:n :}
-   entry NINL:OUT@ {: o:n :}
-   VN @ a < if E-NELAB-UNDER throw then
-   VN @ a - {: base:n :}
-   base o + VMAX > if E-NELAB-CAP throw then
-   ix base a CELL-CROSS-RUN
-   entry NINL:TOKENS 0 ?do
-      p r ix entry i INLINE-TOKEN
-      VN @ base < if E-NELAB-INLINE throw then
-   loop
-   VN @ base o + <> if E-NELAB-INLINE throw then
-   ix base o CELL-CROSS-RUN
-   base  r sy HIR-WORD:OUT-GLUE@  VGLUE-RUN ;
-
 \ ---- what `[:` stages ---------------------------------------------------------
 : DO-QUOT ( n -- )
    {: ix:n :}
@@ -3096,12 +2927,12 @@ create DN-BUF DN-CAP allot
    w VN @ > if E-NELAB-UNDER throw then
    VN @ w -  w  VGLUE-GROW ;
 
-: DO-CALL ( IR-ARENA:arena IR-ARENA:arena n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
+: DO-CALL ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
    ix  r  ix WSYM  HIR-WORD:CALLEE-IN@  QCALL-FILL
    ix NDICT:CON-PADS {: x:n :}
    ix x CON-PADS-PUSH
-   ix INL-AT? if p r ix DO-INLINE else r ix DO-WORD-CALL then
+   r ix DO-WORD-CALL
    x 0= if exit then
    r  ix WSYM  HIR-WORD:CALLEE-OUT@  x +  CON-BUNDLE-GLUE ;
 
@@ -3279,7 +3110,7 @@ variable IX                          \ the body token the walk stands on
       op           OF r ix DO-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF
-      callable     OF p r ix DO-CALL ENDOF
+      callable     OF r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
       rename       OF p r  ix WSYM  RENAME ENDOF
       rstack       OF r  ix WSYM  RSTACK-STEP ENDOF
@@ -3511,31 +3342,6 @@ variable QNAME-P                     \ the place value the digit loop is on
 
 public
 
-EXPORT SPLICE-STAGING
-EXPORT SPLICE-MEANING?
-
-\ The rule a caller asks before it copies a token, read off the one table.
-: SPLICEABLE? ( IR-ARENA:view IR-ARENA:arena n IR-ID:ir-symbol-id -- bool )
-   {: v:IR-ARENA:view r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
-   v ix NTAPE:KIND@ {: kd:NTAPE:kind :}
-   kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if true exit then
-   kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if true exit then
-   kd NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   r sy HIR-WORD:MODELS? 0= if false exit then
-   v ix TOK-CELLS 1 <> if false exit then
-   r sy HIR-WORD:MEANING@ SPLICE-MEANING? ;
-
-\ ---- what a recorder has to be told about a call -----------------------------
-
-: COPIED? ( n -- bool )
-   INL-AT? ;
-
-\ The address the row it was copied from is keyed by.
-: COPIED-ENTRY ( IR-ARENA:arena n -- n )
-   {: r:IR-ARENA:arena ix:n :}
-   ix INL-AT? 0= if E-NELAB-INLINE throw then
-   r  ix WSYM  HIR-WORD:ENTRY@ ;
-
 : CALLED? ( -- bool )
    CALL-NEED @ 0<> ;
 
@@ -3646,7 +3452,6 @@ variable DOES-PATCH
    r lo hi MATCH-SCAN
    r lo hi DEFER-SCAN
    r lo hi RESOLVE-SCAN
-   r lo hi INLINE-SCAN
    r lo hi MEM-SCAN
    r lo hi CROSS-SCAN ;
 

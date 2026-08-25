@@ -971,37 +971,17 @@ public
 -8554 constant E-HIR-CALLEE     \ a callable-word declaration this dialect cannot hold: an entry address that is negative or not instruction aligned, or an argument or result count that is negative
 -8555 constant E-A64IR-ENTRY    \ a callee entry address the branch-with-link form cannot name: negative, or not the address of a whole instruction
 -8556 constant E-A64EMIT-PLACE  \ an emission that names a callee and was told no address of its own to measure the branch from, a placement that is negative or not instruction aligned, or a second placement declared over a live one
--8557 constant E-A64RAV-CLOBBER \ a value the caller keeps in a register across a call to a routine that destroys that register: an assignment the callee's recorded clobber set says the call site cannot make
--8558 constant E-A64EMIT-CLOBBER \ an emission that writes a general or floating register the accepted allocation claimed for no value, so what the routine destroys cannot be published from the allocation
--8559 constant E-NELAB-INLINE   \ a callee's recorded body the elaborator cannot splice into its caller: a recorded arity that is not the effect the caller declared for that callee, a token the caller's own word model admits with a meaning the splice has no rule for, a spliced body that reaches below the values its caller was holding, or one that does not leave the vector as the callee's declared effect says
+-8557 constant E-A64RAV-CLOBBER \ a value live across a call assigned a register in the caller's allocatable pool, all of which the callee may destroy
+-8558 constant E-A64EMIT-CLOBBER \ an emission that writes a general or floating register the accepted allocation claimed for no value
 
 \ Native publication: -8560..-8579
 \
-\ An emission becomes a word the engine's callers can reach by taking a slice of
-\ the engine's own code arena and pointing an existing dictionary record at it.
-\ Two owners add facts here: the publication seam, which claims the code space
-\ and rewrites the record, and the compiler entry, which runs the chain for one
-\ pending definition. A refusal another authority already owns keeps that
-\ authority's name: an emission that no accepted allocation stands behind is
-\ still A64EMIT's E-A64EMIT-ALLOC, a reader before the seal is E-A64EMIT-STATE,
-\ a body the dialect cannot compile is E-HIR-UNMODELED, and a code address the
-\ engine will not write to is the engine's own sealed exit rather than a throw.
--8560 constant E-NPUB-NAME    \ a name this seam cannot republish: no such word, a retired record, a package or namespace record, an engine-internal word, or an immediate word whose callers are the compiler rather than the running program
+\ An accepted emission becomes one pending colon definition's routine. A refusal
+\ another authority already owns keeps that authority's name.
 -8561 constant E-NPUB-ROOM    \ the emission does not fit in what is left of the code arena under the engine's own end reserve
 -8562 constant E-NPUB-SIZE    \ an emission that cannot be a word body: no instructions at all, or a byte size that is not a whole number of instructions
 -8563 constant E-NPUB-OFFSET  \ an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned
--8564 constant E-NPUB-CAP     \ more republished words than the seam's replacement log holds
--8565 constant E-NPUB-LOG     \ a replacement asked about a word the log has no row for
 -8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
--8567 constant E-NCLOB-WIDEN  \ a second record of what the routine at one code address destroys that names a register the first record did not: every call site compiled against the first one skipped saving exactly that register
--8568 constant E-NCLOB-CAP    \ more published routines than the clobber record's table holds
--8569 constant E-NPUB-CLOBBER \ an emission that branches to a routine destroying a register the set about to be published for it does not name: what a routine destroys has to cover what everything it calls destroys
--8578 constant E-NPUB-SLOT    \ the code slot this publication is claiming lies below the end of the routine the seam published last: code space was reclaimed without the notice everything keyed to a code address is dropped by, so a slot would be claimed twice
-
--8574 constant E-NINL-STATE    \ the recorded-body staging used out of order: a body staged while another one is open, a token staged with none open, or a commit with nothing staged
--8575 constant E-NINL-CAP      \ more tokens in one recorded body than a row holds, or a spelling longer than a token slot holds: a table with no room for another body declines the row instead, because a full table is no reason to refuse a word the chain compiled
--8576 constant E-NINL-DUP      \ a second recorded body for one code address: the code at an address is written once and a caller compiled against the first body would have been given another one
--8577 constant E-NINL-BOUND    \ a recorded body asked about an address it has no row for, or about a token outside the body that row holds
 
 -8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open
 -8571 constant E-NCOMP-TEXT    \ definition source or name longer than the engine capture can hold

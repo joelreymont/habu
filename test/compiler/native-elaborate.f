@@ -2829,12 +2829,10 @@ create TW-BUF TW-CAP allot
 \ case that says which entry of the compile-time vector a body's row rides on.
 \ A made call hands the WHOLE vector over as operands and takes it back as the
 \ operation's results, so every value that merely survives it comes back a
-\ different value - while a call the inliner copied leaves them alone. A row
-\ carried on the VALUE would therefore be known after one call and lost after the
-\ other, and this definition would compile or not depending on whether an
-\ optimisation fired. It is carried on the vector ENTRY, which a call puts back
-\ where it found it, so the second `QP-TAKE` still names body zero and states the
-\ same arity the first one did.
+\ different value. A row carried on the VALUE would therefore be known before
+\ the call and lost after it. It is carried on the vector ENTRY, which a call
+\ puts back where it found it, so the second `QP-TAKE` still names body zero and
+\ states the same arity the first one did.
 : QUOT-TWICE-BODY ( IR-CTX:ctx -- n n n n n )
    {: c:IR-CTX:ctx :}
    QP-TAKE!

@@ -492,12 +492,11 @@ create PRB PRB-CAP allot   variable PRB-U
 \ sealed package is what checked source does every day - EMIT-STORE-DEF-NAME
 \ refuses DEFINING into a sealed wid and C-PACKAGE-SEAL-GUARD refuses OPENING one,
 \ and neither forbids the call - so a gate that rejected here would refuse
-\ legitimate work, and did: the compiler chain's own CODE-RECLAIM:WATCH sites and
-\ its A64RAV:DKEEP-HOOK-DEFAULT boot-run entry all died at this routine before the
-\ layers landed.
+\ legitimate work: the compiler chain's A64RAV:DKEEP-HOOK-DEFAULT boot-run entry
+\ died at this routine before the layers landed.
 \
 \ WHAT SEPARATES THE TWO IS THE MUTATION THEY SURVIVE. Delete the public-slot
-\ admit and mode 1 dies 84 naming WATCHERS while mode 2, whose callee's package
+\ admit and mode 1 dies 84 naming FLOOR-FROM while mode 2, whose callee's package
 \ seals nothing, still boots. That contrast is what attributes mode 1's verdict to
 \ the bitmap rather than to a name that merely failed to resolve, and the builder
 \ asserts both packages' seal status on the live host before it builds either, so

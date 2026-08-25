@@ -2791,8 +2791,8 @@ public
 \ IT OVERLAPS ITS PARENT AND TRIMS NOTHING. The defining word's length is
 \ written at `;`, past the clause body, so the parent's span already covers the
 \ clause. Overlapping spans are ordinary here — EXPORT publishes a second record
-\ over one body and CODE-RECLAIM republishes — and trimming the parent would
-\ move a span the inliner, the snapshot and the size census all read.
+\ over one body — and trimming the parent would move a span the compile-mode
+\ inliner, the snapshot and the size census all read.
 \
 \ THE NAME IS THE PARENT'S PLUS `;does`, derived and not invented, because the
 \ seed looks it up in ANOTHER engine and the only identity two engines spell the
@@ -5750,9 +5750,8 @@ public
 \ into a protected wid and C-PACKAGE-SEAL-GUARD refuses OPENING one, while
 \ CALLING a public word of a sealed package is what checked source does every
 \ day. A gate stated more broadly than the invariant it protects refuses
-\ legitimate work the first time a real workload arrives, and one did: the
-\ chain's 3 CODE-RECLAIM:WATCH sites and its A64RAV:DKEEP-HOOK-DEFAULT boot-run
-\ entry are all public words of sealed packages, and all four died here.
+\ legitimate work the first time a real workload arrives: the chain's
+\ A64RAV:DKEEP-HOOK-DEFAULT boot-run entry is a public word of a sealed package.
 \ A package's PUBLIC wordlist is its record's [0] and its PRIVATE one is [8], so
 \ the question is answered by asking the namespace rows rather than by any
 \ property of the number. The scan reaches only a wid that survived the three

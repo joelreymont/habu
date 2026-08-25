@@ -23,7 +23,6 @@ require src/compiler/native/frame.f
 require src/compiler/native/dict.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
-require src/compiler/native/inline.f
 require src/compiler/native/loop.f
 require src/compiler/native/select.f
 require src/compiler/native/spill.f
@@ -327,18 +326,10 @@ TRUSTED: CHECK-DOES ( ptr u8 n ptr u8 n -- n )
    din NDICT:ARITY-NONE = if E-NCOMP-ARITY throw then
    din M-IN !  dout M-OUT ! ;
 
-\ ---- recording this definition's body for its callers ------------------------
-\ Which body qualifies is the ELABORATOR's rule, asked token by token through
-\ NELAB:SPLICEABLE?. What is written down is what the ROUTINE has: a call the
-\ elaboration COPIED is staged as the row it was copied from, not as a call.
-\ Tokens are staged while the module is alive, claimed while a refusal is still
-\ free, and committed only after the seam wrote the routine at the claimed address.
-64 constant SPELL-CAP                \ the longest spelling one staged token may have
+\ ---- binding an earlier definition shadowed by the pending record -------------
+64 constant SPELL-CAP                \ the longest prior spelling this lookup accepts
 
 create SPELL-BUF SPELL-CAP allot
-
-here CELL 1- and CELL swap - CELL 1- and allot
-variable REC-OK                      \ the body staged so far is still one worth keeping
 
 \ Match by the dictionary entry, not by bytes: folding and a qualified spelling
 \ can both name the same prior word.  `recurse` has no callable dictionary
@@ -366,65 +357,6 @@ variable REC-OK                      \ the body staged so far is still one worth
    TAPE NTAPE:TOKENS 1 ?do
       r i PRIOR-STEP
    loop ;
-
-\ The row is already flat - no row holds a call - so this adds operations only.
-: REC-CALL ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
-   r ix NELAB:COPIED-ENTRY {: entry:n :}
-   entry NINL:TOKENS NINL:STAGE-FITS? 0= if 0 REC-OK ! exit then
-   entry NINL:STAGE-RECORD ;
-
-\ The copied call is asked about FIRST, because SPLICEABLE? answers about the
-\ token as written and every call is written as a call.
-: REC-TOKEN ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
-   REC-OK @ 0= if exit then
-   ix NELAB:COPIED? if r ix REC-CALL exit then
-   1 NINL:STAGE-FITS? 0= if 0 REC-OK ! exit then
-   TAPE r ix  CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM
-   NELAB:SPLICEABLE? 0= if 0 REC-OK ! exit then
-   TAPE ix NTAPE:KIND@ {: kd:NTAPE:kind :}
-   kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if
-      TAPE ix NTAPE:LIT@ NINL:STAGE-INT exit
-   then
-   kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if
-      TAPE ix NTAPE:LIT@ NINL:STAGE-REAL exit
-   then
-   CC BB  TAPE MKEY ix NTAPE:SPELL@  SPELL-BUF SPELL-CAP IR-BUILD:SYMBOL-COPY
-   {: u:n :}
-   u NINL:SPELL-FITS? 0= if 0 REC-OK ! exit then
-   SPELL-BUF u NINL:STAGE-NAME ;
-
-\ Runs while the module is still being built. The ceiling is asked at each step,
-\ because a copied call stages a whole row rather than one token.
-: STAGE-BODY ( IR-ARENA:arena -- )
-   {: r:IR-ARENA:arena :}
-   TAPE NTAPE:TOKENS {: n:n :}
-   M-IN @ M-OUT @ NINL:STAGE-BEGIN
-   1 REC-OK !
-   n 1 ?do
-      r i REC-TOKEN
-   loop
-   REC-OK @ 0= if NINL:STAGE-CLEAR then ;
-
-\ Asked of the BODY and not the whole emission, because the body is what a
-\ caller copying this routine would write; the emitter measured it as it wrote.
-: SIZE-CK ( -- )
-   NINL:STAGED? 0= if exit then
-   A64EMIT:LEAVES-BY-BRANCH? if NINL:STAGE-CLEAR exit then
-   M-IN @ M-OUT @ A64EMIT:BODY-INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
-
-\ The last moment a refusal is free. A record with no room declines the row
-\ instead: the word publishes and its callers call it. A measured run claims nothing.
-: CLAIM-ROW ( -- )
-   NINL:STAGED? 0= if exit then
-   A64EMIT:PLACEMENT NINL:CLAIM ;
-
-\ A staging that was declined a row left no claim, so this is the same question
-\ as "is there still a body to keep".
-: KEEP-BODY ( -- )
-   NINL:CLAIMED? 0= if exit then
-   NINL:COMMIT ;
 
 \ ---- the chain ---------------------------------------------------------------
 \ Asked of the checker by name, because every OTHER caller in the tree was
@@ -601,12 +533,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    r BIND-PRIOR
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
-   M-DOES @ 0= if r STAGE-BODY then
    EMITTED
-   SIZE-CK
-   CLAIM-ROW
-   PUBLISH-IT
-   KEEP-BODY ;
+   PUBLISH-IT ;
 
 \ Caught INSIDE the context so it always leaves the ordinary way and gives its
 \ arenas back. Each pass is asked about ITSELF, so this cannot get out of step.
@@ -652,7 +580,6 @@ variable REC-OK                      \ the body staged so far is still one worth
    0 M-RC !
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
-   NINL:STAGED? if NINL:STAGE-CLEAR then
    entry-rc 0<> if entry-rc throw then
    M-RC @ {: rc:n :}
    rc 0 <> if RETRACT rc throw then ;

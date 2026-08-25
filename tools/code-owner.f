@@ -10,12 +10,12 @@
 \ contains it. This asks that, and it runs INSIDE the engine under study, which is
 \ the only process where those records exist.
 \
-\ IT REPORTS EVERY OWNER, NOT THE FIRST. `EXPORT` publishes a second record over
-\ one routine's code and a republication leaves an early record pointing at late
-\ code, so an address can legitimately sit inside more than one span - and which
-\ of them a reader wants is the reader's business, not this tool's. A single
-\ answer would have to pick, and picking is how the sealed-WID gate's own
-\ predecessor got the wrong wordlist (src/habu/habu2.f EM-AOTWIDGATE).
+\ IT REPORTS EVERY OWNER, NOT THE FIRST. An `EXPORT` alias or a `;does` companion
+\ can put a second record over one routine's code, so an address can legitimately
+\ sit inside more than one span - and which of them a reader wants is the
+\ reader's business, not this tool's. A single answer would have to pick, and
+\ picking is how the sealed-WID gate's own predecessor got the wrong wordlist
+\ (src/habu/habu2.f EM-AOTWIDGATE).
 \
 \ THE OFFSET IS WHAT MAKES IT USABLE ACROSS RUNS. ASLR moves the region every
 \ boot, so an address caught in one process means nothing in the next; `off=` is

@@ -1333,11 +1333,11 @@ public
 \ fewer rows than this counts has an installer it has not declared.
 \
 \ IT ANSWERS THE CELL'S CONTENT, NOT ITS KIND, which is what makes it total: the
-\ engine registers a row wherever an execution token is STORED - `is` into a
-\ `defer` and CODE-RECLAIM's watcher table alike - so an installer of a kind
-\ nobody has written yet is counted the same way. A cell whose value points
-\ somewhere else is somebody else's business and is not counted, so an install
-\ made after the window closes cannot be mistaken for one the window made.
+\ engine registers a row wherever an execution token is stored into a `defer`,
+\ so an installer of a kind nobody has written yet is counted the same way. A
+\ cell whose value points somewhere else is somebody else's business and is not
+\ counted, so an install made after the window closes cannot be mistaken for one
+\ the window made.
 : TRAPPED-BELOW ( n n n -- n ) {: b0:n b1:n d0:n :}
    d0 AOT-DATA-N - {: d0off:n :}
    0

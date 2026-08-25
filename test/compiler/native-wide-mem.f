@@ -5,8 +5,6 @@ require lib/string.f
 require lib/test.f
 require lib/adt/option.f
 require src/compiler/native/compiler.f
-require src/compiler/native/dict.f
-require src/compiler/native/inline.f
 
 package NWM
 private
@@ -199,18 +197,9 @@ TRUSTED: W2-SCALAR-AT ( n -- ptr n )
    W2-AT @ NWM-W2:UNMAKE 3 * swap 5 * + ;
 
 
-\ Direct accessors for the inliner-width pair.
-: E-ACC1 ( ptr w1 -- w1 ) @ ;
-: E-ACC2 ( ptr w2 -- w2 ) @ ;
-
 \ Dynamic compilation is needed only for the checker-refusal probe.
 TRUSTED: EV-RC ( ptr u8 n -- n )
    [: evaluate ;] catch ;
-
-: RECORDED? ( ptr u8 n -- n )
-   NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if 0 exit then
-   entry NINL:KNOWN? if 1 else 0 then ;
 
 : LOAD-CASE ( -- )
    s" one-, two- and three-cell loads preserve cell order" T-LABEL
@@ -273,11 +262,6 @@ TRUSTED: EV-RC ( ptr u8 n -- n )
    s" : NWM-BYTEP ( ptr u8 n -- n ) drop @ ;" EV-RC 70 T=
    NELAB:REFUSED-ROW -1 T= ;
 
-: RECORD-CASE ( -- )
-   s" a scalar accessor is spliceable and a wide accessor is not" T-LABEL
-   s" NWM:E-ACC1" RECORDED? 1 T=
-   s" NWM:E-ACC2" RECORDED? 0 T= ;
-
 public
 
 : MAIN ( -- )
@@ -291,7 +275,6 @@ public
    WIDE-INST-CASE
    OFFSET-CASE
    REFUSED-CASE
-   RECORD-CASE
    T-REPORT
    s" native-wide-mem: ok" type cr ;
 

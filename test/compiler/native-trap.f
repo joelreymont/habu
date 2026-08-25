@@ -12,12 +12,14 @@ require src/compiler/native/compiler.f
 package NTRAP-TEST
 private
 
-\ `evaluate` is the metaprogramming boundary the checker does not model, and it
-\ is the only way to compile a caller for the republished word from inside a
-\ test - which is the whole point of the forge: the call has to be one the
-\ compiler resolved through the record the seam rewrote.
+\ `evaluate` is the metaprogramming boundary the checker does not model.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
+
+: REC-LEN ( ptr u8 n -- n )
+   XREF-FIND
+   dup XREF-FOUND? 0= if s" native-trap: record not found" 76 die then
+   XREF-LEN ;
 
 \ ---- the module a shape is built into ----------------------------------------
 create TXT
@@ -400,91 +402,6 @@ variable T-SECOND
 : RUN-SUCC ( -- )
    NFIX:BINDING [: RUN-SUCC-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-public
-
-\ ---- the word the forge publishes over ---------------------------------------
-\ An ordinary production word. The forge below republishes it with a routine that
-\ traps, and then CALLS it - so what the child process runs is compiled trap code
-\ reached through the dictionary
-\ record every other call in the image is reached through.
-: TRAP-VICTIM ( n -- n )
-   dup + ;
-
-\ Two more of the same, for the length the seam records rather than for the exit
-\ the forge produces. They are republished with a routine that traps and never
-\ called: what is measured is the record, not the run.
-: LEN-VICTIM-A ( n -- n )
-   dup + ;
-
-: LEN-VICTIM-B ( n -- n )
-   dup + ;
-
-\ A word the CHECKER certifies never returns, because its own body ends in a
-\ throw. The compiled forge below republishes it with a routine that DOES return
-\ and then compiles a caller against the certificate, which is the only way to
-\ make the certificate false: nothing a checked program can write reaches the
-\ instruction after a dead call.
-: NORET-VICTIM ( n -- n )
-   dup throw ;
-
-get-current constant VICTIM-WID
-
-private
-
-\ ---- the forge, which is what the child process does -------------------------
-\ Register a family, compile a routine that traps on its ordinal, publish it over
-\ TRAP-VICTIM, and call it. The process does not come back from that call: it
-\ writes the diagnostic and exits ENGINE-ERROR:BAD-TAG, which is what the parent
-\ measures. Nothing here checks the exit - a word cannot check its own process's
-\ death - so the assertion lives in FORGE-CASE and this is the subject.
-: FORGE-FAMILY$ ( -- ptr u8 n )
-   s" ntrapx" ;
-
-: FORGE-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   FORGE-FAMILY$ NTRAP:FAMILY {: k:n :}
-   s" TRAP-VICTIM" k BUILD-TRAP-ONLY
-   PLACE
-   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU ;
-
-public
-
-: FORGE ( -- )
-   NFIX:BINDING [: FORGE-BODY ;] IR-CTX:WITH-CONTEXT
-   s" TRAP-VICTIM" VICTIM-WID NPUB:REPUBLISH
-   s" 5 NTRAP-TEST:TRAP-VICTIM drop" EV ;
-
-private
-
-\ ---- the same falsehood, reached through a source-compiled routine ------------
-\ FORGE above publishes a trap the fixtures built by hand. This one publishes a
-\ trap the elaborator built, from source, for the reason it exists: a call to a
-\ word the checker certified never returns ends the block, and the instruction
-\ after it is the trap that says the certificate was false if control ever
-\ arrives. Getting there needs the certificate to BE false, and nothing a
-\ checked program can write makes it so - so the callee's record is pointed at a
-\ routine that returns first, and the caller is compiled afterwards, against the
-\ certificate the checker still holds.
-\
-\ WHAT THE CALLER IS. `: NTM ( n -- n ) NORET-VICTIM ;` is an all-dead body: its
-\ one call ends its only path, so it is published under the no-return contract
-\ with no frame and no saved return address (src/compiler/native/abi.f
-\ NORET-FRAMED). The victim returns 2*0, control falls into the trap, and the
-\ process ends with the callee's name and ENGINE-ERROR:CODE-CERT.
-
-: NORET-RET-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   s" retfam" NTRAP:FAMILY {: k:n :}
-   s" NORET-VICTIM" k BUILD-MIXED-NAMED
-   PLACE
-   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU ;
-
-: NORET-COMPILED-FORGE ( -- )
-   NFIX:BINDING [: NORET-RET-BODY ;] IR-CTX:WITH-CONTEXT
-   s" NORET-VICTIM" VICTIM-WID NPUB:REPUBLISH
-   s" : NTM ( n -- n ) NTRAP-TEST:NORET-VICTIM ;" EV
-   s" 0 NTM drop" EV ;
-
 \ ---- running the forge in a child --------------------------------------------
 \ The forge ends its process, so it cannot be run in this one. The child is this
 \ same file under the argument the tail dispatches on, run through the engine
@@ -528,19 +445,6 @@ variable CHILD-MODE-N
 : CHILD-ERR$ ( -- ptr u8 n )
    ERR-BUF CHILD-ERR-N @ ;
 
-: FORGE-CASE ( -- )
-   s" forge" CHILD-MODE!
-   CHILD-RUN
-
-   s" a forged bad tag exits ENGINE-ERROR:BAD-TAG" T-LABEL
-   CHILD-RC @ ENGINE-ERROR:BAD-TAG T=
-
-   s" and the diagnostic names the family the trap site carried" T-LABEL
-   CHILD-ERR$ s" hb: bad ntrapx tag" CONTAINS? TTRUE
-
-   s" and it names no other family" T-LABEL
-   CHILD-ERR$ s" hb: bad alpha tag" CONTAINS? TFALSE ;
-
 \ ---- the other kind of row, and the other exit -------------------------------
 \ A trap site the ELABORATOR builds after a call that does not come back carries
 \ a row of the second kind, and reaching it would mean the certificate the caller
@@ -582,30 +486,6 @@ variable CHILD-MODE-N
    s" and says nothing about a tag" T-LABEL
    CHILD-ERR$ s" tag" CONTAINS? TFALSE ;
 
-\ ---- the same exit, through a routine compiled from source -------------------
-\ NORET-CASE above proves the ROUTINE this compiler branches to: the ordinal, the
-\ message and the status. This proves the SITE, in the shape the elaborator
-\ really builds it - a call the checker certified never returns, with the trap
-\ standing after it - reached because the certificate was made false first. The
-\ caller is compiled by the compilation from source, published, and called.
-\
-\ THE NAME IN THE MESSAGE IS THE DICTIONARY'S SPELLING AND NOT THE SOURCE'S. A
-\ trap row is keyed on the symbol the tape recorded for the token, and the
-\ engine's dictionary is case-insensitive and keeps the folded form - so the
-\ diagnostic reads the callee's name in lower case however the body wrote it.
-: COMPILED-FORGE-CASE ( -- )
-   s" a compiled dead call whose callee returns exits ENGINE-ERROR:CODE-CERT"
-   T-LABEL
-   s" noretcompiled" CHILD-MODE!
-   CHILD-RUN
-   CHILD-RC @ ENGINE-ERROR:CODE-CERT T=
-
-   s" and the diagnostic names the callee the body wrote" T-LABEL
-   CHILD-ERR$ s" hb: ntrap-test:noret-victim returned" CONTAINS? TTRUE
-
-   s" and it is not the bad-tag diagnostic" T-LABEL
-   CHILD-ERR$ s" bad" CONTAINS? TFALSE ;
-
 \ ---- what a compiled all-dead routine is as bytes ----------------------------
 \ The contract says no frame and no saved return address; this is that read off
 \ the emission the compilation sealed. A routine's own frame costs one instruction
@@ -616,6 +496,7 @@ variable CHILD-MODE-N
 
 : COMPILED-DEAD-BYTES-CASE ( -- )
    s" : NTB ( n -- ) drop E-A-EMPTY throw ;" EV
+   A64EMIT:SIZE {: size:n :}
 
    s" a compiled all-dead routine moves the machine stack pointer nowhere"
    T-LABEL
@@ -629,21 +510,27 @@ variable CHILD-MODE-N
 
    s" and it leaves by branching to the shared trap routine" T-LABEL
    LAST-IS-BRANCH? TTRUE
-   LAST-TARGET  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T= ;
+   LAST-TARGET  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T=
+
+   s" and its record covers the whole emission" T-LABEL
+   s" NTB" REC-LEN size T= ;
 
 \ The same routine's calling sibling, which is the contrast that makes the case
 \ above say something: a body that calls and DOES come back reserves a frame and
 \ gives it back, so its emission moves the machine stack pointer exactly twice.
-\ `abs` is an external primitive with no recorded body to copy, so this really is
-\ a call.
+\ `abs` is an external primitive, so this really is a call.
 : COMPILED-CALL-BYTES-CASE ( -- )
    s" : NTC ( n -- n ) abs 1 + ;" EV
+   A64EMIT:SIZE {: size:n :}
 
    s" a compiled routine that calls and returns moves it twice" T-LABEL
    SPMOVES-IN-EMISSION 2 T=
 
    s" and ends in the return the other one has nowhere for" T-LABEL
-   RETS-IN-EMISSION 0 T<> ;
+   RETS-IN-EMISSION 0 T<>
+
+   s" and its record omits that trailing return" T-LABEL
+   s" NTC" REC-LEN  size INSN-BYTES -  T= ;
 
 \ The two claims about a routine with no return: the emission ends in the branch
 \ that leaves, and there is no return instruction ANYWHERE in it. The second is
@@ -671,65 +558,6 @@ variable CHILD-MODE-N
    s" a routine of two trap sites pays one pointer adjustment, not two" T-LABEL
    [: RUN-VOID ;] 0 TTHROWSQ
    DMOVES-IN-EMISSION 1 T= ;
-
-\ ---- the length the publication seam records ---------------------------------
-\ Dictionary records exclude a word's trailing return, because that span is
-\ what its inliner copies into a caller. A routine that ENDS in the branch that
-\ leaves has no such instruction, and subtracting one anyway would record a
-\ routine four bytes shorter than it is; a routine that traps in the middle of
-\ itself and returns at the end DOES have one, and not subtracting it would
-\ record a span whose last instruction returns from whatever copied it. The two
-\ shapes are published and their records read out of the dictionary.
-: REC ( ptr u8 n -- ptr a )
-   VICTIM-WID XREF-FIND-WL
-   dup XREF-FOUND? 0= if E-NPUB-NAME throw then ;
-
-: REC-LEN ( ptr u8 n -- n )
-   REC XREF-LEN ;
-
-variable EM-SIZE
-
-: LEN-A-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   s" afam" NTRAP:FAMILY {: k:n :}
-   s" LEN-VICTIM-A" k BUILD-TRAP-ONLY
-   PLACE
-   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU
-   A64EMIT:SIZE EM-SIZE ! ;
-
-: LEN-B-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   s" bfam" NTRAP:FAMILY {: k:n :}
-   s" LEN-VICTIM-B" k BUILD-MIXED-NAMED
-   PLACE
-   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU
-   A64EMIT:SIZE EM-SIZE ! ;
-
-: RECORDED-LEN-CASE ( -- )
-   NFIX:BINDING [: LEN-A-BODY ;] IR-CTX:WITH-CONTEXT
-
-   s" a routine with no return anywhere does not end in one" T-LABEL
-   A64EMIT:TRAILING-RETURN? TFALSE
-
-   s" and it leaves by branching, so no caller may copy its body" T-LABEL
-   A64EMIT:LEAVES-BY-BRANCH? TTRUE
-
-   s" LEN-VICTIM-A" VICTIM-WID NPUB:REPUBLISH
-   s" so the record the seam wrote is the whole emission" T-LABEL
-   s" LEN-VICTIM-A" REC-LEN  EM-SIZE @  T=
-
-   NFIX:BINDING [: LEN-B-BODY ;] IR-CTX:WITH-CONTEXT
-
-   s" a routine that traps in the middle and returns at the end ends in one"
-   T-LABEL
-   A64EMIT:TRAILING-RETURN? TTRUE
-
-   s" and it still leaves by branching, so no caller may copy it either" T-LABEL
-   A64EMIT:LEAVES-BY-BRANCH? TTRUE
-
-   s" LEN-VICTIM-B" VICTIM-WID NPUB:REPUBLISH
-   s" so its record is the emission without that return" T-LABEL
-   s" LEN-VICTIM-B" REC-LEN  EM-SIZE @ INSN-BYTES -  T= ;
 
 : SHARED-TARGET-CASE ( -- )
    RUN-TWO-TRAPS
@@ -786,29 +614,22 @@ public
    DEAD-BYTES-CASE
    VOID-PLACE-CASE
    SHARED-TARGET-CASE
-   RECORDED-LEN-CASE
 
    \ ---- what a routine compiled from source is as bytes ----
    COMPILED-DEAD-BYTES-CASE
    COMPILED-CALL-BYTES-CASE
 
    \ ---- and the whole of it, in a process that dies ----
-   FORGE-CASE
    NORET-CASE
-   COMPILED-FORGE-CASE
 
    T-REPORT ;
 
 \ ---- the two ways this file is entered ---------------------------------------
-\ Loaded with no argument it is the suite. Loaded with `forge` it IS the subject
-\ of the suite's last case: it publishes a trapping routine over a word and calls
-\ it, which ends the process - so that half cannot be a word the suite calls, and
-\ the suite runs it as a child of itself.
+\ Loaded with no argument it is the suite. The no-return trap is exercised in a
+\ child because it ends the process.
 : ENTRY ( -- )
    SCRIPT-ARGC 0 > if
-      0 SCRIPT-ARGV$ s" forge" STR= if FORGE exit then
       0 SCRIPT-ARGV$ s" noret" STR= if NORET-FORGE then
-      0 SCRIPT-ARGV$ s" noretcompiled" STR= if NORET-COMPILED-FORGE exit then
    then
    RUN ;
 

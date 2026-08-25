@@ -107,18 +107,6 @@ variable EM-WGPR
 0 EM-WGPR !
 variable EM-WFPR
 0 EM-WFPR !
-variable EM-CGPR
-0 EM-CGPR !
-variable EM-CFPR
-0 EM-CFPR !
-
-\ A routine destroys what its own instructions write AND everything the routines
-\ it calls write; this is the second half, and it is not something these
-\ instructions did.
-variable EM-KGPR
-0 EM-KGPR !
-variable EM-KFPR
-0 EM-KFPR !
 
 \ The interface total is read off the cursor's own difference, so it is the same
 \ number by construction whatever elisions apply.
@@ -1024,15 +1012,6 @@ variable CH-AT
    d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
    d ENC-BL ;
 
-\ A self-call adds nothing, and does not stop adding nothing inside a quotation:
-\ the callee is a function of THIS emission, whose registers this same set is
-\ being collected over. A word with no recorded row adds the whole register file,
-\ because nothing is known about it.
-: NOTE-CALLEE ( n -- )
-   {: e:n :}
-   e A64EFF:GPR-ALL NCLOB:GPR-CLOB A64EFF:GPRS-N  EM-KGPR @ or  EM-KGPR !
-   e A64EFF:FPR-ALL NCLOB:FPR-CLOB A64EFF:FPRS-N  EM-KFPR @ or  EM-KFPR ! ;
-
 : PUT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE
@@ -1052,7 +1031,6 @@ variable CH-AT
 
 : PUT-WORD-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id ENTRY-ADDR NOTE-CALLEE
    id  id DBYTES-SIZE  PUT-DMOVE
    id  id WORD-DELTA BL-WORD  APPEND
    id  id DBACK-SIZE negate  PUT-DMOVE ;
@@ -1077,7 +1055,6 @@ variable CH-AT
 \ already stands at the callee's entry base.
 : PUT-TAILCALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id ENTRY-ADDR NOTE-CALLEE
    id  id WORD-DELTA B-WORD  APPEND ;
 
 \ ---- leaving through the routine that ends the process -----------------------
@@ -1305,16 +1282,13 @@ variable CH-AT
 : SEAL-CK ( -- )
    ST @ ST-SEALED <> if E-A64EMIT-STATE throw then ;
 
-\ The allocation's answer is what may be published; this run's answer is what
-\ proves it is not too narrow. An emission that wrote a register no value
-\ claimed means the two disagree about what the routine is.
-: CLOBBER-SEAL ( -- )
+\ The allocation bounds which registers this run may write. An emission that
+\ wrote a register no value claimed means the two disagree.
+: WRITES-CK ( -- )
    A64RAV:GPR-WRITTEN A64EFF:GPRS-N {: g:n :}
    A64RAV:FPR-WRITTEN A64EFF:FPRS-N {: f:n :}
    EM-WGPR @ g invert and 0<> if E-A64EMIT-CLOBBER throw then
-   EM-WFPR @ f invert and 0<> if E-A64EMIT-CLOBBER throw then
-   g EM-KGPR @ or EM-CGPR !
-   f EM-KFPR @ or EM-CFPR ! ;
+   EM-WFPR @ f invert and 0<> if E-A64EMIT-CLOBBER throw then ;
 
 : ORD-CK ( n -- n )
    dup 0 < over N-INS @ >= or if E-A64EMIT-BOUND throw then ;
@@ -1451,8 +1425,6 @@ variable SCAN-K
    0 N-INS !
    0 EM-WGPR !
    0 EM-WFPR !
-   0 EM-KGPR !
-   0 EM-KFPR !
    0 EM-IFACE !
    0 EM-NCALL !
    0 EM-TAIL !
@@ -1465,21 +1437,13 @@ variable SCAN-K
    m ALLOC-CK
    MEASURE
    WRITE-ALL
-   CLOBBER-SEAL
+   WRITES-CK
    SCAN-ADDR-SITES
    ST-SEALED ST ! ;
 
 \ ---- the sealed emission -----------------------------------------------------
 : SEALED? ( -- bool )
    ST @ ST-SEALED = ;
-
-\ Read off the SEALED run, so an answer was reached under the allocation this
-\ emission was made against.
-: GPR-CLOBBER ( -- A64EFF:gprs )
-   SEAL-CK EM-CGPR @ A64EFF:GPR-SET ;
-
-: FPR-CLOBBER ( -- A64EFF:fprs )
-   SEAL-CK EM-CFPR @ A64EFF:FPR-SET ;
 
 \ A routine that returns on one path and traps on another does both: it may not
 \ be copied, AND its emission ends in the return the recorded length leaves out.

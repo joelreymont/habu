@@ -40,8 +40,7 @@ public
       dup 7 > if leave then
    loop ;
 
-\ The callee is long enough that neither generator copies it, so what crosses
-\ this loop's body really is a call.
+\ Calls stay calls in the native compiler, so this crosses the loop body.
 : NLV-CALLEE ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 

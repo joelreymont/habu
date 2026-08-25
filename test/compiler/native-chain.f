@@ -1352,7 +1352,7 @@ $54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused 
    [: LEAF-FACT ;] E-A64SEL-CALL TTHROWSQ ;
 
 \ ---- CG-13's crash shape is unrepresentable ----------------------------------
-\ The reviewed defect: a select -> allocate -> emit -> republish probe whose pool
+\ The reviewed defect: a select -> allocate -> emit -> publish probe whose pool
 \ was based at x20 replaced the engine's DATA/RBASE value and the process died
 \ 134. The production convention builder is the only way the chain states a
 \ pool, so the regression is that NABI cannot build such a contract at all: the

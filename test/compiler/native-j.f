@@ -38,9 +38,8 @@ public
 : NJ-TRIPLE ( n n n -- n ) {: a:n b:n c:n :}
    0 a 0 ?do b 0 ?do c 0 ?do i 3 * j 5 * + + loop loop loop ;
 
-\ The callee is long enough that neither generator copies it, so what crosses
-\ this loop's body really is a call - and a call is the one thing that renames
-\ every open loop's counters, the outer loop's included.
+\ Calls stay calls in the native compiler. This one renames every open loop's
+\ counters, the outer loop's included.
 : NJ-CALLEE ( n -- n )
    dup 3 * over 5 xor + swap 7 and + dup 11 * + 13 xor ;
 

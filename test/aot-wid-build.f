@@ -692,7 +692,7 @@ create DRV-CH 1 allot
 \ WHY THERE IS A CONTROL MODE. Mode 1's callee is sealed and mode 2's is not, and
 \ BOTH must boot: calling a public word of a sealed package is what checked source
 \ does every day. What separates them is the mutation - delete the gate's
-\ public-slot admit and mode 1 dies 84 naming WATCHERS while mode 2 still boots.
+\ public-slot admit and mode 1 dies 84 naming FLOOR-FROM while mode 2 still boots.
 \ Without mode 2 that exit would prove nothing about the bitmap, since a qualified
 \ name that simply failed to resolve would look much the same from outside.
 : GATE-SEAL-CHECK-LINES ( -- )
@@ -716,7 +716,7 @@ create DRV-CH 1 allot
    s" package AWBGATE" DRV-LINE
    s" public" DRV-LINE
    mode mu s" 1" STR= if
-      s" : AWB-GATE-CALL ( -- ) CODE-RECLAIM:WATCHERS drop ;" DRV-LINE
+      s" : AWB-GATE-CALL ( -- ) ndict@ CODE-RECLAIM:FLOOR-FROM drop ;" DRV-LINE
    else
       s" : AWB-GATE-CALL ( -- ) CHECKER-TAPE:HOLD-DISARM ;" DRV-LINE
    then

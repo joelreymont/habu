@@ -420,35 +420,10 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
    XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict! ;
 
-\ ---- the notice a code reclamation owes whatever is keyed to code -------------
-\ WHY THERE IS AN EVENT HERE AT ALL. The engine compiles every definition into
-\ one bump pointer, and a FORGET moves that pointer BACK: the bytes above it are
-\ free again and the next definition the engine compiles is written over them.
-\ Anything that wrote a fact down against a CODE ADDRESS - what the routine
-\ there destroys, what its body is - is then describing bytes that stopped being
-\ its routine's, and the address itself will never say so. The bytes may even be
-\ rewritten to a different routine at exactly the same address, which is why "a
-\ later publication would notice the collision" is not a defence either.
-\ src/compiler/native/clobber.f and src/compiler/native/inline.f keep exactly
-\ such facts, and src/compiler/native/publish.f decides where a routine lands
-\ from the same pointer.
-\
-\ SO LOWERING THE CODE POINTER IS AN EVENT AND NOT A STORE. Every checked word
-\ that reclaims code space does it through TRUNCATE below. Address-keyed owners
-\ are told the floor, and the two relocation maps are cleared over the exact
-\ released span, BEFORE the space is released. That makes every fact's lifetime
-\ a consequence of the code it describes rather than of a pointer moving.
-\
-\ THE WATCHERS RUN FIRST AND THE POINTER MOVES AFTER, so there is no instant at
-\ which the pointer says a slot is free while a live row still claims to
-\ describe what used to be there.
-\
-\ AND A WATCHER MUST BE TOTAL. It is told in the middle of a FORGET - the
-\ dictionary records are already retired and the checker's signatures already
-\ truncated - so there is nothing to roll back to and nothing it could
-\ meaningfully refuse. It may only drop what it holds. That is the contract
-\ src/core/declaration-transaction.f states for its own release phase, for the
-\ same reason.
+\ ---- reclaiming the code arena ------------------------------------------------
+\ FORGET retires a suffix of dictionary records and gives back the corresponding
+\ code. Live XREF records decide the safe floor; relocation metadata over the
+\ released span is cleared before the code pointer moves.
 package CODE-RECLAIM
 
 private
@@ -458,54 +433,21 @@ private
 TRUSTED: CLEAR-MAPS ( n n -- )
    reloc-maps-clear ;
 
-\ One slot per file that keeps an address-keyed fact. Three files do today -
-\ src/compiler/native/publish.f, which remembers where the routine it published
-\ last ends, and the two records a call site reads, clobber.f and inline.f - and
-\ the table is fixed because this runs while the engine is compiling and has
-\ nowhere to allocate from. A fourth registration would be a source change, so a
-\ fifth is a defect in that change rather than a condition a program can reach:
-\ it dies here instead of being refused into a caller that has no answer for it.
-4 constant WATCH-MAX
-
-create WATCH-TBL WATCH-MAX cells allot
-variable WATCH-N
-0 WATCH-N !
-
-\ A watcher cell holds an execution token, so the store has to be `xt!` rather
-\ than `!`: the cell address is computed at run time, and a snapshot image that
-\ kept a raw token would dispatch into the writing run's JIT region. This is the
-\ same declaration src/core/declaration-transaction.f's callback stores make.
-TRUSTED: WATCH-AT ( n -- ptr [ n -- ] )
-   cells WATCH-TBL + ;
-
 \ ---- which bytes a reclamation is allowed to be about ------------------------
 \ A FLOOR IS A STATEMENT ABOUT CODE ORDER. The bytes from it upwards are handed
 \ back and rewritten, so no routine a surviving record still points at may begin
-\ there. The record array, though, is in DEFINITION order, and the two orders
-\ agree only while every routine is written in the order its record was made.
-\ Two things in this system separate them, and both are ordinary:
-\
-\   - a republication (src/compiler/native/publish.f) writes a word's new
-\     routine at the top of the arena and leaves its record where it was, so an
-\     EARLY record can point at LATE code;
-\   - an `EXPORT` alias publishes a second record for a word that already
-\     exists, so a LATE record can point at EARLY code - the alias record's
-\     start is the original's routine, which everything defined between them
-\     sits above.
+\ there. The record array, though, is in DEFINITION order. An `EXPORT` alias can
+\ publish a late record for an earlier routine, so those orders need not agree.
 \
 \ So a floor read off ONE record's start is reading the wrong order, and the
-\ answer is wrong in both directions: too high and retired routines are never
-\ given back, too low and a surviving word's routine is. FORGET-DEFS-FROM read
-\ exactly that, and forgetting an alias handed back the code of the two live
-\ words underneath it - the address-keyed records then correctly dropped their
-\ rows, and calling either word ran whatever was compiled next.
+\ answer can be too low and give back a surviving word's routine.
 \
 \ THE FLOOR IS THEREFORE A ROUTINE'S OWN START, CHOSEN BY ADDRESS. Below it must
 \ lie every surviving routine; at it must begin a routine the sweep retires. A
 \ retired routine's start is the one address that can be named without knowing
-\ how long the routine below it is - the recorded length is the span the inliner
-\ copies and not the whole emission, so measuring the last survivor's END would
-\ be measuring the wrong number. What that costs is a routine's worth of space
+\ how long the routine below it is - the recorded length excludes a trailing
+\ return, so measuring the last survivor's END would be measuring the wrong
+\ number. What that costs is a routine's worth of space
 \ when the sweep's lowest retirement is not the first thing above the survivors:
 \ the bytes stay claimed, which is the harmless direction.
 
@@ -557,19 +499,9 @@ public
 
 \ A floor with a surviving routine at or above it. The bytes from a floor
 \ upwards are given back, so this is a caller asking for code that is still
-\ somebody's to be rewritten. It is refused before any watcher is told and
-\ before the pointer moves, so a caller that gets it has lost nothing.
+\ somebody's to be rewritten. It is refused before the pointer moves, so a
+\ caller that gets it has lost nothing.
 7179 constant E-LIVE
-
-\ Be told the floor of every code reclamation from here on. Registration is
-\ one-way and unordered: a watcher only drops what it holds, so no watcher can
-\ observe another one's work and none of them can disagree.
-: WATCH ( [ n -- ] -- )
-   WATCH-N @ WATCH-MAX >= if
-      s" code-reclaim: more watchers than the table holds" 76 die
-   then
-   WATCH-N @ WATCH-AT xt!
-   WATCH-N @ 1+ WATCH-N ! ;
 
 \ The floor of a sweep that retires every record from CUT upwards: the lowest
 \ address a retired routine begins at that is above every surviving routine's
@@ -583,9 +515,8 @@ public
    loop
    FLOOR-A @ ;
 
-\ Reclaim the code space above this address. Every watcher is told the floor,
-\ both relocation maps are cleared over [floor,old CP), and only then is the
-\ pointer moved, so the bytes are released with nothing left describing them.
+\ Reclaim the code space above this address. Both relocation maps are cleared
+\ over [floor,old CP), then the pointer moves.
 \
 \ AND THE FLOOR IS HELD AGAINST THE RECORDS THAT SURVIVE IT rather than taken on
 \ the caller's word. Every caller computes its floor from something else - this
@@ -593,22 +524,14 @@ public
 \ dictionary.f from the free slot its transaction saved - and a floor is only
 \ ever correct relative to what the dictionary still points at, which is a
 \ question this word can ask and they cannot answer for each other. The scan
-\ runs before the watchers, so a refusal here leaves the arena exactly as it was.
+\ runs before mutation, so a refusal here leaves the arena exactly as it was.
 : TRUNCATE ( n -- )
    {: floor:n :}
    floor cp@ > if E-FLOOR throw then
    ndict@ LIVE-SCAN
    floor LIVE-HI @ <= if E-LIVE throw then
-   WATCH-N @ 0 ?do
-      floor i WATCH-AT @ execute
-   loop
    floor cp@ over - CLEAR-MAPS
    floor cp! ;
-
-\ How many watchers are registered, which is what a test measures a registration
-\ against.
-: WATCHERS ( -- n )
-   WATCH-N @ ;
 
 private
 

@@ -10,10 +10,8 @@ private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and it
 \ is how this suite compiles a caller for a word that did not exist when the
-\ suite was compiled. Every execution below goes through it rather than through a
-\ compiled call site, for the reason LESSONS.md records: a call site can be
-\ copied by the inliner, and a test written as one then proves nothing about the
-\ record it meant to test.
+\ suite was compiled. Every execution below goes through it so the caller is
+\ compiled only after that new dictionary record exists.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
 
@@ -24,7 +22,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 
 : REC ( ptr u8 n -- ptr a )
    GLOBAL-WID XREF-FIND-WL
-   dup XREF-FOUND? 0= if E-NPUB-NAME throw then ;
+   dup XREF-FOUND? 0= if s" native-quot: record not found" 76 die then ;
 
 : REC-START ( ptr u8 n -- n )
    REC XREF-START ;
@@ -157,26 +155,21 @@ create HID-TXT
 : DEF-HIDDEN ( -- )
    HID-TXT HID-N EV ;
 
-\ The pair the recording case needs: a body of the same shape with no quotation
-\ in it, which the recorder DOES keep, and the quotation-carrying one beside it.
-: DEF-PLAIN ( -- )
-   s" : NQ-PLAIN ( n -- n ) 1 + ;" EV ;
-
 \ ---- the cases ---------------------------------------------------------------
 : RUNS-CASE ( -- )
    DEF-INC
    s" the address a compiled definition leaves runs its own body" T-LABEL
-   s" NQ-INC" REC-START  s" NQ-INC" GLOBAL-WID NPUB:NEW-START T=
+   s" NQ-INC" REC-START 0 T<>
    s" 41 NQ-INC execute" EV-N 42 T=
 
    DEF-TAKE DEF-USE
    s" a quotation handed to a callee across a made call still runs" T-LABEL
-   s" NQ-USE" REC-START  s" NQ-USE" GLOBAL-WID NPUB:NEW-START T=
+   s" NQ-USE" REC-START 0 T<>
    s" 14 NQ-USE" EV-N 42 T=
 
    DEF-THREE
    s" three bodies in one definition are three routines, each its own" T-LABEL
-   s" NQ-THREE" REC-START  s" NQ-THREE" GLOBAL-WID NPUB:NEW-START T=
+   s" NQ-THREE" REC-START 0 T<>
    s" : NQ-T2 ( -- n ) NQ-THREE {: z q2 q3 :} 2 3 q2 execute ;" EV
    s" : NQ-T3 ( -- n ) NQ-THREE {: z q2 q3 :} 4 5 6 q3 execute ;" EV
    s" NQ-T2" EV-N 2 T=
@@ -203,21 +196,6 @@ create HID-TXT
    s" NQ-HID" ADRS 1 T=
    s" NQ-HID" ADR-TARGET  s" NQ-HID" BODY-START  T=
    s" 41 NQ-HID execute" EV-N 42 T= ;
-
-\ WHAT DECLINES IT, so a reader does not go looking for a quotation-shaped rule.
-\ `[:` and `;]` are CONTROL tokens, and the elaborator's one staging table
-\ (SPLICE-STAGING) says a copy has nothing to stage for a control token - the
-\ same answer it gives `if`. So the recording stops at the opener and the row is
-\ never claimed. What makes that the RIGHT answer rather than a coincidence is
-\ the Adr: it is pc-relative, so the same instruction copied into another routine
-\ names another address, and there is no rewriting step in a splice that could
-\ correct it.
-: RECORD-CASE ( -- )
-   DEF-PLAIN
-   s" a body with no quotation in it IS recorded for copying" T-LABEL
-   s" NQ-PLAIN" REC-START NINL:KNOWN? TTRUE
-   s" a body holding a quotation is NOT" T-LABEL
-   s" NQ-INC" REC-START NINL:KNOWN? TFALSE ;
 
 \ ---- the one body shape the tree writes and this leaf declines ----------------
 \ A BODY THAT NEVER COMES BACK. `NQ-DIE` throws, so the fall-through of the body
@@ -252,8 +230,7 @@ create HID-TXT
    \ test/compiler/native-elaborate.f's measurement, taken where the record is
    \ still the one the refusal left.
    s" and the refused definition never appears" T-LABEL
-   s" NQ-DEAD2" DEFINED? TFALSE
-   s" NQ-DEAD2" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
+   s" NQ-DEAD2" DEFINED? TFALSE ;
 
 \ ---- the reach of the address form -------------------------------------------
 \ The field's own boundary, asked of the dialect's reader, and the standing
@@ -279,7 +256,6 @@ public
    RUNS-CASE
    DECODE-CASE
    HIDDEN-CASE
-   RECORD-CASE
    DEAD-CASE
    REACH-CASE
    T-REPORT ;

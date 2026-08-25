@@ -92,7 +92,7 @@ carries its routine's start and length.
 The argument is a **region offset**, not an address — ASLR moves the region every
 boot, so an absolute address caught in one process means nothing in the next, and
 `region-off=` is what one run can hand another. It prints every record whose span
-contains the address (an `EXPORT` alias and a republication both make that more
+contains the address (an `EXPORT` alias or `;does` companion can make that more
 than one) with the offset into each, or says plainly that no record owns it.
 `CODE-OWNER:AT.` takes a live address for use inside a larger probe, and
 `CODE-OWNER:AT` answers the count so a caller can tell "no owner" from silence.

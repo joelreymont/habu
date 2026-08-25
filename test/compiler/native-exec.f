@@ -26,9 +26,8 @@ private
 
 \ `evaluate` is the metaprogramming boundary the checker does not model, and it
 \ is how this suite compiles a caller for a word that did not exist when the
-\ suite was compiled. Every execution below goes through it rather than through
-\ a compiled call site, for the reason LESSONS.md records: a call site can be
-\ copied by the inliner, and a test written as one then proves nothing.
+\ suite was compiled. Every execution below goes through it so the caller is
+\ compiled only after that new dictionary record exists.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
@@ -37,7 +36,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 : REC ( ptr u8 n -- ptr a )
    GLOBAL-WID XREF-FIND-WL
-   dup XREF-FOUND? 0= if E-NPUB-NAME throw then ;
+   dup XREF-FOUND? 0= if s" native-exec: record not found" 76 die then ;
 
 : REC-START ( ptr u8 n -- n )   REC XREF-START ;
 : REC-LEN ( ptr u8 n -- n )     REC XREF-LEN ;
@@ -109,7 +108,7 @@ $94000000 constant BL-FORM
 : PARAM-CASE ( -- )
    DEF-APPLY
    s" a quotation handed straight over is entered and computes" T-LABEL
-   s" NX-APPLY" REC-START  s" NX-APPLY" GLOBAL-WID NPUB:NEW-START T=
+   s" NX-APPLY" REC-START 0 T<>
    s" : NX-U1 ( n -- n ) [: 3 * ;] swap NX-APPLY ;" EV
    s" 14 NX-U1" EV-N 42 T=
    s" and a different body through the same routine computes differently" T-LABEL
@@ -118,7 +117,7 @@ $94000000 constant BL-FORM
 
    DEF-LOCAL
    s" a quotation bound to a local first is entered and computes" T-LABEL
-   s" NX-LOCAL" REC-START  s" NX-LOCAL" GLOBAL-WID NPUB:NEW-START T=
+   s" NX-LOCAL" REC-START 0 T<>
    s" : NX-U3 ( n -- n ) [: 3 * ;] swap NX-LOCAL ;" EV
    s" 14 NX-U3" EV-N 42 T= ;
 

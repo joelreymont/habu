@@ -165,18 +165,14 @@ create HEX 64 allot
 \   A64RAV:DKEEP-HOOK is the one - the `defer` regalloc-verify.f opens for a reader
 \   of its refusals - and without its installer the first refusal the verifier
 \   reaches dies "defer: unset execution vector". ?XTOFF holds that count.
-\   Below the window: three CHECKER-TAPE observer cells and three CODE-RECLAIM
-\   watcher slots, six in all, planted by four load-time installers. Without them
-\   a seeded engine dies "checker: no source-tape observer to arm" on the first
-\   definition - and the three watcher rows fail SILENTLY, leaving inline and
-\   publish rows pointing at code a reclamation already took back. ?TRAPPED holds
-\   that count, measured against the engine's own registry rather than read off
-\   this list.
+\   Below the window: three CHECKER-TAPE observer cells planted by NFEED. Without
+\   them a seeded engine dies "checker: no source-tape observer to arm" on the
+\   first definition. ?TRAPPED holds that count against the engine's registry.
 \
 \ So each row below carries the number of pre-window cells its installer refills,
-\ and the two numbers are checked against what the process measures. A fifth
-\ installer nobody declared moves the measurement and not the list, and the
-\ capture stops.
+\ and the two numbers are checked against what the process measures. An
+\ undeclared installer moves the measurement and not the list, and the capture
+\ stops.
 variable CELLS-OWED           \ pre-window cells the declared installers refill
 
 : RESOLVE-BAD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n r:ptr ru:n :}
@@ -204,10 +200,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 : DECLARE-ALL ( -- )
    0 CELLS-OWED !
    s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE   \ its cell is in the window: see ?XTOFF
-   s" NFEED:INSTALL"             3 DECLARE   \ CHECKER-TAPE scan, token, verdict
-   s" NCLOB:WATCH-INSTALL"       1 DECLARE   \ CODE-RECLAIM watcher slots, one each
-   s" NINL:WATCH-INSTALL"        1 DECLARE
-   s" NPUB:WATCH-INSTALL"        1 DECLARE ;
+   s" NFEED:INSTALL"             3 DECLARE ; \ CHECKER-TAPE scan, token, verdict
 
 : ?XTOFF ( -- )
    AOT-WINDOW:XTOFF-N @ 1 = if exit then
@@ -305,8 +298,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 \
 \ THE POISON is what makes the round trip adversarial. Zeroing the buffers would
 \ let a reader that skips a section pass whenever the section happened to be zero
-\ - the window's boot-run list and named code sites are empty today, and its
-\ address-cell table holds one row. $A5 is a byte no captured section can be
+\ - captured sections can be empty. $A5 is a byte no captured section can be
 \ mistaken for, and it goes over each section's own extent plus a margin past it,
 \ so a read that stops short leaves poison inside the span it claimed to fill.
 

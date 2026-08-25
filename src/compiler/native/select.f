@@ -26,7 +26,6 @@ require src/compiler/ir/build.f
 require src/compiler/a64-effect.f
 require src/compiler/native/hir.f
 require src/compiler/native/a64ir.f
-require src/compiler/native/clobber.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 require src/compiler/native/dict.f
@@ -662,39 +661,6 @@ variable D-RETS                                    \ returns seen while surveyin
       v 1 i lshift and 0<> if 1+ then
    loop ;
 
-: GPR-ROOM ( n -- n )
-   {: e:n :}
-   0 S-POOL @ A64EFF:GPRS-N {: p:n :}
-   e 0 S-POOL @ NCLOB:GPR-CLOB A64EFF:GPRS-N {: c:n :}
-   p c invert and BITS-N ;
-
-: FPR-ROOM ( n -- n )
-   {: e:n :}
-   0 S-FPOOL @ A64EFF:FPRS-N {: p:n :}
-   e 0 S-FPOOL @ NCLOB:FPR-CLOB A64EFF:FPRS-N {: c:n :}
-   p c invert and BITS-N ;
-
-variable KEPT-G
-variable KEPT-F
-
-: KEEP-N ( IR-ID:ir-op-id n n -- n )
-   {: id:IR-ID:ir-op-id e:n k:n :}
-   e GPR-ROOM {: groom:n :}
-   e FPR-ROOM {: froom:n :}
-   0 KEPT-G !
-   0 KEPT-F !
-   0
-   k 0 ?do
-      id k i - OPERAND-AT REAL? if
-         KEPT-F @ 1+ froom > if leave then
-         KEPT-F @ 1+ KEPT-F !
-      else
-         KEPT-G @ 1+ groom > if leave then
-         KEPT-G @ 1+ KEPT-G !
-      then
-      1+
-   loop ;
-
 \ ---- what a call site publishes, and what it takes back ----------------------
 \ Which value goes into which slot is written down once; three readers stand on it.
 : DSAVE-VAL ( IR-ID:ir-op-id n n n -- IR-ID:ir-value-id )
@@ -786,8 +752,7 @@ variable KEPT-F
    id 0 BND-IN @ ATTR-INT-OF {: a:n :}
    id 0 BND-OUT @ ATTR-INT-OF {: r:n :}
    id a r CALL-LIVE {: k:n :}
-   id  id WORD-ENTRY  k KEEP-N {: m:n :}
-   a r  k m -  m ;
+   a r k 0 ;
 
 \ The shape of the SITE is not the shape of the operation at the one operation a
 \ routine leaves through.

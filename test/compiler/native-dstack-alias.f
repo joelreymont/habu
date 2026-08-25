@@ -51,12 +51,13 @@ variable ANS                         \ where a body leaves its answer
 package NDSA-TEST
 private
 
-\ `evaluate` enters RESULT by name, avoiding a test call site the inliner could
-\ replace with a copy.
+\ `evaluate` enters RESULT by name on a fresh data stack.
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 : ENTRY-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u XREF-FIND dup XREF-FOUND? 0= if drop E-NPUB-NAME throw then
+   a u XREF-FIND dup XREF-FOUND? 0= if
+      drop s" native-dstack-alias: record not found" 76 die
+   then
    XREF-START ;
 
 \ One direct XT run on a fresh data stack. The buffer is re-taken per run so no
@@ -71,10 +72,9 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
    s" abs" NDICT:CALL-TARGET ;
 
 : CALL-PRECONDITION ( -- )
-   s" abs remains an external call with no native clobber row" T-LABEL
+   s" abs remains an external call" T-LABEL
    ABS-ENTRY 0 > TTRUE
    ABS-ENTRY s" DKA:POKED" ENTRY-OF < TTRUE
-   ABS-ENTRY NCLOB:KNOWN? TFALSE
    s" DKA:POKED" NTAILPROBE:CALLS 1 T= ;
 
 \ ---- 1. the witness ----------------------------------------------------------
