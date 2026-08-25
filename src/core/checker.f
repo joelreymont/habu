@@ -87,10 +87,10 @@ create EI-TV-BOOT MAXTV-INIT cells allot      create EI-RV-BOOT MAXTV-INIT cells
 \ fresh var id indexes it too, is zeroed (ANY) on grow/reset/trial-rollback, and
 \ persists on stored effect records (EN.B on var nodes) across snapshot/AOT.
 create TVK-BOOT MAXTV-INIT cells allot
-variable TVT-P     variable RVT-P
-variable VRC-TV-P  variable VRC-RV-P   variable VRI-TV-P  variable VRI-RV-P
-variable EC-TV-P   variable EC-RV-P    variable EI-TV-P   variable EI-RV-P
-variable TVK-P
+PERSISTED-PTR-VARIABLE TVT-P     PERSISTED-PTR-VARIABLE RVT-P
+PERSISTED-PTR-VARIABLE VRC-TV-P  PERSISTED-PTR-VARIABLE VRC-RV-P   PERSISTED-PTR-VARIABLE VRI-TV-P  PERSISTED-PTR-VARIABLE VRI-RV-P
+PERSISTED-PTR-VARIABLE EC-TV-P   PERSISTED-PTR-VARIABLE EC-RV-P    PERSISTED-PTR-VARIABLE EI-TV-P   PERSISTED-PTR-VARIABLE EI-RV-P
+PERSISTED-PTR-VARIABLE TVK-P
 
 : TV-ARENA-BOOT ( -- )         \ point every var-id store at its boot buffer
    TVT-BOOT TVT-P !            RVT-BOOT RVT-P !
@@ -166,7 +166,7 @@ TVINIT
 
 1024 constant MAXPTR-INIT       \ ptr terms (grows on demand)
 create PTRA-BOOT MAXPTR-INIT cells allot   variable PTRN
-variable PTRA-P   variable PTR-CAP
+PERSISTED-PTR-VARIABLE PTRA-P   variable PTR-CAP
 PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 : PTRA ( -- ptr a ) PTRA-P @ ;
 
@@ -191,7 +191,7 @@ PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 \ at snapshot (per-definition scratch, no live content across a snapshot).
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
 create TRAIL-BOOT TRAIL-INIT cells allot
-variable TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
+PERSISTED-PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
 TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
 : TRAIL ( -- ptr a ) TRAIL-P @ ;
 : TRAIL-RESET ( -- ) 0 TRAIL-N ! ;
@@ -244,7 +244,7 @@ variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in s
 \ id. Reset per definition (NEW). Scanned after each token (LIN-TAINT-SCAN).
 4096 constant LTNT-INIT
 create LTNT-BOOT LTNT-INIT cells allot
-variable LTNT-P   variable LTNT-CAP   variable LTNT-N
+PERSISTED-PTR-VARIABLE LTNT-P   variable LTNT-CAP   variable LTNT-N
 LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   0 LTNT-N !
 : LTNT ( -- ptr a ) LTNT-P @ ;
 : LIN-TAINT-RESET ( -- ) 0 LTNT-N ! ;
@@ -277,7 +277,7 @@ variable TCMP                            \ path-compression walk cursor
 create QEA-BOOT MAXQE-INIT 32 * allot
 create QXDA-BOOT MAXQE-INIT cells allot   create QXRA-BOOT MAXQE-INIT cells allot
 create QXHA-BOOT MAXQE-INIT cells allot   create QXNA-BOOT MAXQE-INIT cells allot   variable QEN
-variable QEA-P   variable QXDA-P   variable QXRA-P   variable QXHA-P   variable QXNA-P
+PERSISTED-PTR-VARIABLE QEA-P   PERSISTED-PTR-VARIABLE QXDA-P   PERSISTED-PTR-VARIABLE QXRA-P   PERSISTED-PTR-VARIABLE QXHA-P   PERSISTED-PTR-VARIABLE QXNA-P
 variable QE-CAP
 QEA-BOOT QEA-P !   QXDA-BOOT QXDA-P !   QXRA-BOOT QXRA-P !
 QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
@@ -336,7 +336,7 @@ variable RIGID-N
 7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
 variable RGN-N   variable EXT-N   variable GEN-N
 variable RIGID-MAX   $4000000000000000 RIGID-MAX !
-variable ATOMA-P   variable ATOMU-P   variable ATOMK-P   variable ATOM-CAP
+PERSISTED-PTR-VARIABLE ATOMA-P   PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
 ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
 : ATOMA ( -- ptr a ) ATOMA-P @ ;
 : ATOMU ( -- ptr a ) ATOMU-P @ ;
@@ -413,9 +413,9 @@ create PARAM-SCR-BOOT PARAM-SCR-INIT cells allot
 variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
-variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMFAM-P
-variable PARAMOFF-P   variable PARAMHID-P   variable PARGP-P   variable PARG-N   variable PARG-CAP-V
-variable PARAM-SCR-P
+PERSISTED-PTR-VARIABLE PARAMA-P   PERSISTED-PTR-VARIABLE PARAMU-P   PERSISTED-PTR-VARIABLE PARAMC-P   PERSISTED-PTR-VARIABLE PARAMFAM-P
+PERSISTED-PTR-VARIABLE PARAMOFF-P   PERSISTED-PTR-VARIABLE PARAMHID-P   PERSISTED-PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
+PERSISTED-PTR-VARIABLE PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
 PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
 PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
@@ -816,7 +816,7 @@ UK-EXACT UNIFY-KIND !
 
 4096 constant MAXPUSH-INIT     \ push records (engine-sized bodies need hundreds; grows on demand)
 create SPA-BOOT MAXPUSH-INIT 16 * allot   variable SPN
-variable SPA-P   variable SPA-CAP
+PERSISTED-PTR-VARIABLE SPA-P   variable SPA-CAP
 SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 : SPA ( -- ptr a ) SPA-P @ ;
 : SPA-ENSURE ( n -- ) {: need:n :}
@@ -1155,8 +1155,8 @@ create CT-CLASS-BOOT CT-CAP-INIT cells allot
 create CT-WIDTH-BOOT CT-CAP-INIT cells allot
 create CT-SIGN-BOOT CT-CAP-INIT cells allot
 create CT-STR-BOOT CT-STR-INIT allot
-variable CT-NAME-A-P   variable CT-NAME-U-P   variable CT-CLASS-P
-variable CT-WIDTH-P    variable CT-SIGN-P     variable CT-STR-P
+PERSISTED-PTR-VARIABLE CT-NAME-A-P   PERSISTED-PTR-VARIABLE CT-NAME-U-P   PERSISTED-PTR-VARIABLE CT-CLASS-P
+PERSISTED-PTR-VARIABLE CT-WIDTH-P    PERSISTED-PTR-VARIABLE CT-SIGN-P     PERSISTED-PTR-VARIABLE CT-STR-P
 variable CTN
 variable CT-STR-U
 variable CT-I
@@ -1970,7 +1970,7 @@ create NMB-BOOT TOKBUF-INIT-CAP allot
 \ separate ceiling here and no separate refusal — a body this cannot hold is a
 \ body the scan itself could not hold.
 create SDEC-BOOT TOKBUF-INIT-CAP allot
-variable FAILTK-P   variable TKF-P   variable NMB-P   variable SDEC-P   variable TOKBUF-CAP-U
+PERSISTED-PTR-VARIABLE FAILTK-P   PERSISTED-PTR-VARIABLE TKF-P   PERSISTED-PTR-VARIABLE NMB-P   PERSISTED-PTR-VARIABLE SDEC-P   variable TOKBUF-CAP-U
 variable FAILTU
 FAILTK-BOOT FAILTK-P !   TKF-BOOT TKF-P !   NMB-BOOT NMB-P !   SDEC-BOOT SDEC-P !
 TOKBUF-INIT-CAP TOKBUF-CAP-U !
@@ -2396,12 +2396,12 @@ create VRN-F-BOOT VREC-NODE-INIT cells allot
 create VRN-G-BOOT VREC-NODE-INIT cells allot
 create VRN-H-BOOT VREC-NODE-INIT cells allot
 create VREC-STR-BOOT VREC-STR-INIT allot
-variable VREC-NAME-A-P   variable VREC-NAME-U-P   variable VREC-START-P
-variable VREC-COUNT-P    variable VREC-TVN-P      variable VREC-RVN-P
-variable VREC-FIELDS-P
-variable VRN-TAG-P   variable VRN-A-P   variable VRN-B-P   variable VRN-C-P
-variable VRN-D-P     variable VRN-E-P   variable VRN-F-P   variable VRN-G-P
-variable VRN-H-P     variable VREC-STR-P
+PERSISTED-PTR-VARIABLE VREC-NAME-A-P   PERSISTED-PTR-VARIABLE VREC-NAME-U-P   PERSISTED-PTR-VARIABLE VREC-START-P
+PERSISTED-PTR-VARIABLE VREC-COUNT-P    PERSISTED-PTR-VARIABLE VREC-TVN-P      PERSISTED-PTR-VARIABLE VREC-RVN-P
+PERSISTED-PTR-VARIABLE VREC-FIELDS-P
+PERSISTED-PTR-VARIABLE VRN-TAG-P   PERSISTED-PTR-VARIABLE VRN-A-P   PERSISTED-PTR-VARIABLE VRN-B-P   PERSISTED-PTR-VARIABLE VRN-C-P
+PERSISTED-PTR-VARIABLE VRN-D-P     PERSISTED-PTR-VARIABLE VRN-E-P   PERSISTED-PTR-VARIABLE VRN-F-P   PERSISTED-PTR-VARIABLE VRN-G-P
+PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VREC-STR-P
 
 : VREC-ARENA-BOOT ( -- )        \ point every VREC store at its boot buffer
    VREC-NAME-A-BOOT VREC-NAME-A-P !   VREC-NAME-U-BOOT VREC-NAME-U-P !
@@ -2431,7 +2431,7 @@ VREC-ARENA-BOOT
 variable VRI-AK-CAP-V   VRI-AK-INIT VRI-AK-CAP-V !
 : VRI-AK-CAP ( -- n ) VRI-AK-CAP-V @ ;
 create VRI-AK-BOOT VRI-AK-INIT cells allot
-variable VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
+PERSISTED-PTR-VARIABLE VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 : VRI-AK ( -- ptr a ) VRI-AK-P @ ;
 
 \ VNARG: flat per-node arg pool for persisted VR-PARAM nodes (uncapped arity).
@@ -2445,7 +2445,7 @@ variable VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 \ rewinding both retires a rejected scope's runs without dangling a survivor.
 $4000 constant VNARG-INIT
 create VNARG-BOOT VNARG-INIT cells allot
-variable VNARG-P   VNARG-BOOT VNARG-P !
+PERSISTED-PTR-VARIABLE VNARG-P   VNARG-BOOT VNARG-P !
 variable VNARG-CAP-V   VNARG-INIT VNARG-CAP-V !
 variable VNARG-N   0 VNARG-N !
 : VNARG ( -- ptr a ) VNARG-P @ ;
@@ -2920,8 +2920,9 @@ variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family 
 
 \ SIG-RAW-MODE: while set, every type var minted by the signature parser is
 \ TVK-RAW. verify-source (and the two-stage native definer hook) bracket the
-\ effect string of a raw storage definer -- create/variable/constant/PTR-VARIABLE
-\ -- with SIG-RAW-DEFINER! so the created word's stored effect carries RAW vars,
+\ effect string of a raw storage definer -- create/variable/constant,
+\ PTR-VARIABLE or PERSISTED-PTR-VARIABLE -- with SIG-RAW-DEFINER! so the created
+\ word's stored effect carries RAW vars,
 \ closing the VALUE-side mint that raw dictionary storage would otherwise publish
 \ as an unrestricted polymorphic effect. Off for ordinary sigs, prim builds, and
 \ user TRUST rows, so nothing else is affected.
@@ -3601,11 +3602,11 @@ $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 $1002 constant USIGS-MAP-ANON
 -1 constant USIGS-ANON-FD
 0 constant USIGS-OFF-ZERO
-variable USIGS-P   variable USIGS-CAP-U   variable UEND
+PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-USER-OFF
 variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
 variable CHK-CAND
-PTR-VARIABLE USIGS-SNAP-P
+PERSISTED-PTR-VARIABLE USIGS-SNAP-P
 
 \ Per-symbol effect-record index state. The index itself lives in the symbol
 \ hash mapping (HT-USX, below); these are the three things it depends on.
@@ -3616,12 +3617,12 @@ PTR-VARIABLE USIGS-SNAP-P
 \ arena swap is detected as identity change. Declared here because USIGS-CLEAR —
 \ far below the index words — has to be able to drop the index.
 variable USX-GEN   variable USX-HI
-PTR-VARIABLE USX-BASE
+PERSISTED-PTR-VARIABLE USX-BASE
 0 USX-GEN !   0 USX-HI !
 
 \ The same three for the no-return/control-flag store (NORETS, far below).
 variable NRX-GEN   variable NRX-HI
-PTR-VARIABLE NRX-BASE
+PERSISTED-PTR-VARIABLE NRX-BASE
 0 NRX-GEN !   0 NRX-HI !
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
@@ -3875,8 +3876,8 @@ SYM-LAYOUT-ASSERT
 
 create SYMS-BOOT SYM-CAP-INIT SYM-REC * allot
 create SYM-STR-BOOT SYM-STR-INIT allot
-variable SYMS-P     SYMS-BOOT SYMS-P !
-variable SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
+PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
+PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
 variable SYM-N
 variable SYM-STR-U
 variable SYM-I
@@ -3996,7 +3997,7 @@ variable SYM-ID
 13 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
-variable HIDX-MEM
+PERSISTED-PTR-VARIABLE HIDX-MEM
 variable HIDX-VALID
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. HIDX-EPOCH
 \ above invalidates the memoized ANSWERS in it; HIDX-GEN invalidates the tables
@@ -4006,7 +4007,7 @@ variable HIDX-VALID
 variable HIDX-GEN
 variable HIDX-EPOCH
 variable HIDX-EFF-HI
-variable HIDX-EFF-BASE
+PERSISTED-PTR-VARIABLE HIDX-EFF-BASE
 variable HIDX-CTL-HI
 variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollback sync)
 variable HIDX-H
@@ -4578,11 +4579,11 @@ $400 constant UIX-ENT-INIT        \ entries; grows geometrically
 0 constant UIX-E-OFF              \ the interned node's store offset
 1 constant UIX-E-BKT              \ the bucket it is chained in
 2 constant UIX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
-variable UIX-BKT-P   variable UIX-ENT-P
+PERSISTED-PTR-VARIABLE UIX-BKT-P   PERSISTED-PTR-VARIABLE UIX-ENT-P
 variable UIX-BKT-CAP variable UIX-ENT-CAP
 variable UIX-N       variable UIX-HI
 variable UIX-I       variable UIX-J   variable UIX-H
-PTR-VARIABLE UIX-BASE
+PERSISTED-PTR-VARIABLE UIX-BASE
 
 \ UIX-BASE holds the store the entry offsets were taken against, read through a
 \ cell-indexed ptr-field view so the nested pointer role survives the fetch —
@@ -6071,6 +6072,7 @@ PRIM: !          PE-A PE-IN PE-PTR-A PE-IN PRIM;
 \ of a quotation into a persisted cell a reject, are dotted as
 \ habu-add-a-quotation-1610f30c.
 PRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN PRIM;
+PRIM: ptr-cell-mark PE-PTR-A PE-IN PRIM;
 PRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT PRIM;
 PRIM: +!         PE-N PE-IN PE-PTR-N PE-IN PRIM;
 PRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT PRIM;
@@ -8061,7 +8063,7 @@ $8 constant NORET-ENTRY-ALIGN
 NORET-LAYOUT-ASSERT
 
 create NORET-BOOT NORET-INIT-CAP allot
-variable NORET-P   variable NORET-CAP-U   variable NORET-END
+PERSISTED-PTR-VARIABLE NORET-P   variable NORET-CAP-U   variable NORET-END
 NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
 variable NORET-FLAG
 variable NORET-GROW-CAP   variable NORET-GROW-NEXT
@@ -8231,11 +8233,13 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
    PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-   PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   MAXPARAM-INIT PARAM-CAP !
+   PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
+   MAXPARAM-INIT PARAM-CAP !
    PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
    PARAM-SCR-BOOT PARAM-SCR-P !   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
    VRI-AK-BOOT VRI-AK-P !   VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
-   TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET ; \ unification trail
+   TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET
+   LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   LIN-TAINT-RESET ;
 
 \ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS) must
 \ survive into a built image (later checked loads reference persisted signatures).
@@ -8276,6 +8280,9 @@ variable REG-PERSIST-DELTA
       REG-PERSIST-DELTA @ CT-STR-REBASE
    THEN ;
 
+: CT-SNAPSHOT-MARK-POINTERS ( -- )
+   CTN @ 1 ?do CT-NAME-A i cells + ptr-cell-mark loop ;
+
 : VREC-SNAPSHOT-PERSIST ( -- )
    VREC-CAP-V @ cells {: rb:n :}
    VREC-NAME-A-P VREC-NAME-A-BOOT rb REG-PERSIST-BUF drop
@@ -8301,12 +8308,21 @@ variable REG-PERSIST-DELTA
       REG-PERSIST-DELTA @ VREC-STR-REBASE
    THEN ;
 
+: VREC-SNAPSHOT-MARK-POINTERS ( -- )
+   VREC-N @ 0 ?do VREC-NAME-A i cells + ptr-cell-mark loop ;
+
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
    SYMS-P SYMS-BOOT SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
    SYM-STR-P SYM-STR-BOOT SYM-STR-U @ REG-PERSIST-BUF IF
       SYM-STR-U @ SYM-STR-CAP-V !
       REG-PERSIST-DELTA @ SYM-STR-REBASE
    THEN ;
+
+: SYM-SNAPSHOT-MARK-POINTERS ( -- )
+   SYM-N @ 1 ?do
+      i SYM-PKG-A-FIELD ptr-cell-mark
+      i SYM-NAME-A-FIELD ptr-cell-mark
+   loop ;
 
 \ Friend-only extension hook: the package-scoped TFAM/SCHEMA registries live in
 \ files loaded after checker.f (src/core/type-schema.f, src/core/type-family.f),
@@ -8382,12 +8398,17 @@ REG-EXT-AOT-DEFAULTS
    TV-SNAP-RESET
    DECOUPLED-ARENA-SNAP-RESET
    CT-SNAPSHOT-PERSIST
+   CT-SNAPSHOT-MARK-POINTERS
    VREC-SNAPSHOT-PERSIST
+   VREC-SNAPSHOT-MARK-POINTERS
    SYM-SNAPSHOT-PERSIST
+   SYM-SNAPSHOT-MARK-POINTERS
    USIGS-SNAPSHOT-PERSIST
+   USX-STAMP
    UIX-RESET                            \ process-local mmap: never bake its address
    HIDX-EFF-BASE-CLEAR
    NORET-SNAPSHOT-PERSIST
+   NRX-STAMP
    REG-EXT-PERSIST-XT
    REG-SCRATCH-SNAP-XT
    REG-LATE-SCRATCH-SNAP-XT ;
@@ -8947,7 +8968,7 @@ WF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 WF.FLAGS WF.FLAGS-OFF CHECKER-LAYOUT=
 $80 constant WF-INIT
 create WFS-BOOT WF-INIT WF-REC * allot
-PTR-VARIABLE WFS-P   WFS-BOOT WFS-P !
+PERSISTED-PTR-VARIABLE WFS-P   WFS-BOOT WFS-P !
 variable WF-CAP  WF-INIT WF-CAP !
 variable WF-N
 variable WF-CURROW   variable WF-POS-I
@@ -10263,7 +10284,7 @@ MF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 8 constant MF-CAP-INIT
 variable MF-CAP-V   MF-CAP-INIT MF-CAP-V !
 create MF-A-BOOT   MF-CAP-INIT MF-REC * allot
-variable MF-A-P    MF-A-BOOT MF-A-P !
+PERSISTED-PTR-VARIABLE MF-A-P    MF-A-BOOT MF-A-P !
 : MF-ARENA ( -- ptr a ) MF-A-P @ ;
 variable MF-DEPTH   0 MF-DEPTH !
 
@@ -10282,7 +10303,7 @@ variable MF-DEPTH   0 MF-DEPTH !
 8 constant MSEEN-CAP-INIT
 variable MSEEN-CAP-V   MSEEN-CAP-INIT MSEEN-CAP-V !
 create MSEEN-BOOT   MSEEN-CAP-INIT cells allot
-variable MSEEN-P   MSEEN-BOOT MSEEN-P !
+PERSISTED-PTR-VARIABLE MSEEN-P   MSEEN-BOOT MSEEN-P !
 : MSEEN-POOL ( -- ptr a ) MSEEN-P @ ;
 variable MSEEN-N   0 MSEEN-N !
 variable MSEEN-I
@@ -12430,7 +12451,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 $7FFFFFFFFFFFFFFF constant CTOR-PEND-BYTE-MAX
 CTOR-PEND-BYTE-MAX CTOR-PEND-REC / constant CTOR-PEND-ROW-MAX
 create CTOR-PEND-BOOT CTOR-PEND-CAP-INIT CTOR-PEND-REC * allot
-PTR-VARIABLE CTOR-PEND-P   CTOR-PEND-BOOT CTOR-PEND-P !
+PERSISTED-PTR-VARIABLE CTOR-PEND-P   CTOR-PEND-BOOT CTOR-PEND-P !
 variable CTOR-PEND-CAP     CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
 variable CTOR-PEND-COUNT
 variable CTOR-PEND-POS
@@ -12807,10 +12828,10 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
-variable RBF-A-P       RBF-A-BOOT RBF-A-P !
+PERSISTED-PTR-VARIABLE RBF-A-P       RBF-A-BOOT RBF-A-P !
 : RBF-BASE ( -- ptr a ) RBF-A-P @ ;
 create RBF-NAME-BOOT   RBF-CAP-INIT CHECKER-PACKAGE-CAP * allot
-variable RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
+PERSISTED-PTR-VARIABLE RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
 : RBF-NAME-BASE ( -- ptr a ) RBF-NAME-P @ ;
 variable RBF-DEPTH   0 RBF-DEPTH !
 

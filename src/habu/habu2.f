@@ -143,9 +143,12 @@ variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOV
 34 constant ADDRMSG-LEN   \ byte length of "hb: snapshot address map mismatch\n" (LADDRMSG)
 variable LXTBANDMSG \ a declared address cell is not a cell-aligned address inside DATA (XTBAND-RC)
 39 constant XTBANDMSG-LEN \ byte length of "hb: snapshot address cell out of range\n" (LXTBANDMSG)
+variable LXTKINDMSG \ one cell was declared as both an XT and a DATA pointer (XTKIND-RC)
+40 constant XTKINDMSG-LEN \ byte length of "hb: snapshot address cell kind mismatch\n" (LXTKINDMSG)
 variable LCALLS     \ region-to-text call relocation routine (snapshot write + restore)
 variable LXT        \ declared-address-cell relocation routine (snapshot restore)
 variable LMARK      \ declare one DATA cell as holding a region address
+variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
 variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
 variable LADDRSITE  \ record the chain about to be emitted at CP as an address literal
 \ The six opcode bits of an AArch64 BL, i.e. $94000000 >> 26. The call relocation
@@ -153,10 +156,10 @@ variable LADDRSITE  \ record the chain about to be emitted at CP as an address l
 \ literal.
 $25 constant BL-OP-HI
 
-\ Emit "declare the engine cell at OFFSET as holding a region address". The three
-\ engine hook cells are named this way at cold boot; the dispatch cell of a
-\ deferred word is declared from a register instead, because its address is only
-\ known while `defer` or `is` is running. Defined here beside the labels so the
+\ Emit "declare the engine cell at OFFSET as holding a region address". The fixed
+\ engine hook and compiler-dispatch cells are named this way at cold boot; a
+\ deferred word's dispatch cell is declared from a register instead, because its
+\ address is only known while `defer` or `is` is running. Defined here beside the labels so the
 \ compile handlers further down this file can already use it.
 : MARK-CELL ( n -- ) {: cell:n :}
    9 cell LIT64,  9 DATA 9 ADD,  LMARK LABEL@ BL, ;
@@ -634,6 +637,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    SNAP-RELOC:LXTMSG LABEL@ LBL, s" hb: snapshot address table full" BYTES,  NL-KW 1 BYTES,      \ SNAP-RELOC:XTMSG-LEN bytes incl. newline
    SNAP-RELOC:LADDRMSG LABEL@ LBL, s" hb: snapshot address map mismatch" BYTES,  NL-KW 1 BYTES,   \ SNAP-RELOC:ADDRMSG-LEN bytes incl. newline
    SNAP-RELOC:LXTBANDMSG LABEL@ LBL, s" hb: snapshot address cell out of range" BYTES,  NL-KW 1 BYTES,  \ SNAP-RELOC:XTBANDMSG-LEN bytes incl. newline
+   SNAP-RELOC:LXTKINDMSG LABEL@ LBL, s" hb: snapshot address cell kind mismatch" BYTES,  NL-KW 1 BYTES,  \ SNAP-RELOC:XTKINDMSG-LEN bytes incl. newline
    LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
@@ -4978,45 +4982,38 @@ public
       21 21 8 ADDI,  22 22 1 ADDI,  rloop B,
    rdone LBL, ;
 
-\ Put the trap xt into every declared address cell the window carried.
-\ WHAT THE RUNS COULD NOT SAY. The capture keeps these cells out of every run
-\ because the value they held was a code address in the BUILDING host, which must
-\ not enter the image (aot-capture.f ACAP-BAKE-DATA states the invariant: a
-\ declared address cell's value is owned by whatever declares it, never by the
-\ window's content).
-\ Zero is not what "no implementation yet" means here, though - a dispatch cell is
-\ read and branched to (`ldr x16,[x9]; blr x16`), so a zero cell is a jump to
-\ address 0. What it means is the xt of `defer-unset`, which is exactly what a
-\ freshly declared cell holds, and it is found the same way C-DEFER-FIND-UNSET
-\ finds it at compile time: LFIND on the keyword this engine already carries. One
-\ authority for what unset means, resolved in the engine being booted.
-\ The boot-run list installs the real vectors immediately after the seed and that
-\ is what owns them; this is the value a cell keeps if the boot-run has no entry
-\ for it, and then the first call dies "defer: unset execution vector" instead of
-\ branching into whatever the bytes happened to hold.
-\ Runs after the runs are laid down and the DP advance, so the window base is
-\ DP - span. LFIND clobbers x3-x16, hence the reload.
-28 constant TRAP-MSG-LEN   \ byte length of "hb: AOT defer-unset missing\n"
-
-: TRAP-XTCELLS ( -- )
-   LBL LBL LBL LBL {: xloop:label xdone:label xbad:label msg:label :}
+\ Restore every declared address cell from structural coordinates. The cell
+\ location is DATA-relative even when it lies below the captured heap window;
+\ the target is null or relative to the captured CODE/DATA window according to
+\ its tag. Re-registering the kind makes a later snapshot or AOT capture total.
+: RESTORE-ADDRESS-CELLS ( -- )
+   LBL LBL LBL LBL LBL {: xloop:label xdata:label xnull:label
+                          xstore:label xdone:label :}
    23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,         \ x23 = declared-cell count
    23 xdone CBZ,
-   9 LKWDEFERUNSET LABEL@ ADR,  10 11 MOVZ,  LFIND LABEL@ BL,   \ x11 = trap xt, x13 = found?
-   13 xbad CBZ,
    3 DATA DP-CELL LDR,                              \ x3 = DP, now past the window
-   5 10 LAOTDATASIZE LABEL@ TADR,  5 5 0 LDR,  3 3 5 SUB,   \ x3 = window base
+   5 10 LAOTDATASIZE LABEL@ TADR,  5 5 0 LDR,  25 3 5 SUB,  \ x25 = seeded DATA-window base
    21 10 LXTOFFS LABEL@ TADR,
    23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,
    22 0 MOVZ,
    xloop LBL,  22 23 CMP,  C-GE xdone BCOND,
-      24 21 0 LDRW,                                 \ x24 = window offset u32
-      9 3 24 ADD,  11 9 0 STR,                      \ the cell traps until the boot-run installs it
-      21 21 4 ADDI,  22 22 1 ADDI,  xloop B,
-   xbad LBL,
-      1 msg ADR,  0 2 MOVZ,  2 TRAP-MSG-LEN MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: AOT defer-unset missing" BYTES,  NL-KW 1 BYTES,
+      24 21 0 LDRW,                                 \ x24 = cell offset from DATA
+      15 21 4 LDRW,                                 \ x15 = kind plus target offset+1
+      9 DATA 24 ADD,                                \ x9 = target cell
+      5 AOT-WINDOW:XTOFF-DATA-TAG LIT64,
+      6 15 5 AND,  6 xdata CBNZ,
+         SNAP-RELOC:LMARK LABEL@ BL,
+         5 AOT-WINDOW:XTOFF-VALUE-MASK LIT64,  15 15 5 AND,
+         15 xnull CBZ,
+         15 15 1 SUBI,  5 CP 15 ADD,  xstore B,
+      xdata LBL,
+         SNAP-RELOC:LPTRMARK LABEL@ BL,
+         5 AOT-WINDOW:XTOFF-VALUE-MASK LIT64,  15 15 5 AND,
+         15 xnull CBZ,
+         15 15 1 SUBI,  5 25 15 ADD,  xstore B,
+      xnull LBL,  5 0 MOVZ,
+      xstore LBL,  5 9 0 STR,
+      21 21 AOT-WINDOW:XTOFF-ROW ADDI,  22 22 1 ADDI,  xloop B,
    xdone LBL, ;
 ;package
 
@@ -5063,7 +5060,7 @@ public
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
       21 21 4 ADDI,  22 22 1 ADDI,  dloop B,
    drdone LBL,
-   AOT-WINDOW:TRAP-XTCELLS ;
+   AOT-WINDOW:RESTORE-ADDRESS-CELLS ;
 
 \ CODE-literal relocation (fourth relocation class): rebase every captured movz/movk
 \ x9 literal whose value pointed into the capture-time code blob [B0,B1) (anonymous
@@ -5452,22 +5449,34 @@ public
 \ sites are in the middle of a handler with its own live values and the `xt!` call
 \ site is in the middle of a running checked word.
 : EMIT-MARK ( -- )
-   LBL LBL LBL LBL LBL {: scan:label add:label full:label band:label ret:label :}
+   LBL LBL LBL LBL LBL LBL LBL {: common:label scan:label add:label full:label
+                               band:label kind:label ret:label :}
    LMARK LABEL@ LBL,
-   SP SP 48 SUBI,
-   5 SP 0 STR,  6 SP 8 STR,  12 SP 16 STR,  13 SP 24 STR,  14 SP 32 STR,
+   SP SP 64 SUBI,
+   5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  12 SP 24 STR,
+   13 SP 32 STR,  14 SP 40 STR,  15 SP 48 STR,
+   15 0 MOVZ,  common B,
+   LPTRMARK LABEL@ LBL,
+   SP SP 64 SUBI,
+   5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  12 SP 24 STR,
+   13 SP 32 STR,  14 SP 40 STR,  15 SP 48 STR,
+   15 XTCELL-DATA-TAG LIT64,
+   common LBL,
    12 9 DATA SUB,                                   \ x12 = the cell's offset within DATA
    6 XTCELL-OFF-MAX LIT64,  12 6 CMP,  C-HI band BCOND,   \ unsigned: the cell would run past DATA, or start below it
    5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,          \ x5 = row base
    6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,   \ x13 = rows in use
+   6 XTCELL-CAP MOVZ,  13 6 CMP,  C-HI full BCOND,  \ corrupted count is already over capacity
    14 0 MOVZ,                                       \ x14 = row index
    scan LBL,  14 13 CMP,  C-GE add BCOND,
       6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,
-      6 12 CMP,  C-EQ ret BCOND,                    \ already declared: nothing to do
+      7 12 15 ORR,  6 7 CMP,  C-EQ ret BCOND,       \ identical declaration: nothing to do
+      7 XTCELL-OFF-MASK LIT64,  6 6 7 AND,
+      6 12 CMP,  C-EQ kind BCOND,                   \ same cell, contradictory kind
       14 14 1 ADDI,  scan B,
    add LBL,
       6 XTCELL-CAP MOVZ,  13 6 CMP,  C-GE full BCOND,
-      6 13 3 LSLI,  6 5 6 ADD,  12 6 0 STR,
+      6 13 3 LSLI,  6 5 6 ADD,  7 12 15 ORR,  7 6 0 STR,
       13 13 1 ADDI,
       6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 STR,
       ret B,
@@ -5477,9 +5486,17 @@ public
    band LBL,
       1 LXTBANDMSG LABEL@ ADR,  0 2 MOVZ,  2 XTBANDMSG-LEN MOVZ,  NR-WRITE SYS,
       0 XTBAND-RC MOVZ,  NR-EXIT-GROUP SYS,
+   kind LBL,
+      1 LXTKINDMSG LABEL@ ADR,  0 2 MOVZ,  2 XTKINDMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 XTKIND-RC MOVZ,  NR-EXIT-GROUP SYS,
    ret LBL,
-   5 SP 0 LDR,  6 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,  14 SP 32 LDR,
-   SP SP 48 ADDI,  RET, ;
+   5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  12 SP 24 LDR,
+   13 SP 32 LDR,  14 SP 40 LDR,  15 SP 48 LDR,
+   SP SP 64 ADDI,  RET, ;
+
+: BPTRCELLMARK ( -- )
+   A G-POP
+   LPTRMARK LABEL@ BL, ;
 
 \ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare
 \ that cell to the table above, in one step.
@@ -5529,8 +5546,11 @@ public
    6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,
    14 0 MOVZ,
    loop LBL,  14 13 CMP,  C-GE done BCOND,
-      6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,          \ x6 = the cell's offset within DATA
+      6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,          \ x6 = tagged DATA offset
+      12 XTCELL-DATA-TAG LIT64,  9 6 12 AND,         \ x9 = relocation kind
+      12 XTCELL-OFF-MASK LIT64,  6 6 12 AND,         \ x6 = the cell's offset within DATA
       12 XTCELL-OFF-MAX LIT64,  6 12 CMP,  C-HI band BCOND,  \ unsigned: the cell would run past DATA, or start below it
+      9 skip CBNZ,                                   \ DATA pointers do not move on snapshot restore
       6 DATA 6 ADD,
       9 6 0 LDR,  9 skip CBZ,
          9 9 10 ADD,  9 6 0 STR,
@@ -6071,7 +6091,7 @@ public
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,
-   \ The three engine hook cells hold execution tokens once something installs
+   \ The three hooks and the compiler-dispatch cell hold execution tokens once something installs
    \ them, so they are address cells like a deferred word's dispatch cell. They are
    \ declared here, by name, on the cold path only: a restored image already
    \ carries the declarations the writing run made, and re-declaring is not the
@@ -8935,7 +8955,7 @@ package LABELS
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX:LREBUILD !  LBL HIDX:LFULL !  LBL WLFIND:LENTRY !
-   LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !
+   LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !  LBL SNAP-RELOC:LPTRMARK !
    LBL SNAP-RELOC:LADDRS !  LBL SNAP-RELOC:LADDRSITE !
    LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !  LBL LDEFKWGUARD !  LBL LDEFKWFAIL !
    LBL LAOTWIDGATE !  LBL AOT-WINDOW:LOUTSIDE !
@@ -8991,7 +9011,7 @@ package LABELS
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL SNAP-RELOC:LCALLMSG !  LBL SNAP-RELOC:LXTMSG !  LBL SNAP-RELOC:LADDRMSG !
-   LBL SNAP-RELOC:LXTBANDMSG !
+   LBL SNAP-RELOC:LXTBANDMSG !  LBL SNAP-RELOC:LXTKINDMSG !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !
@@ -9094,8 +9114,8 @@ public
    RUN-N @ 0 > IF RUN-BUF@ RUN-N @ 8 * BYTES, THEN ;
 : EMIT-RBYTES ( -- )   \ the run bytes, concatenated in row order
    RBYTES-LEN @ 0 > IF RBYTES-BUF@ RBYTES-LEN @ BYTES, THEN ;
-: EMIT-XTOFFS ( -- )   \ packed u32 window offsets of the declared address cells
-   XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ 4 * BYTES, THEN ;
+: EMIT-XTOFFS ( -- )   \ packed (cell offset, typed target) u32 rows
+   XTOFF-N @ 0 > IF XTOFF-BUF@ XTOFF-N @ XTOFF-ROW * BYTES, THEN ;
 : EMIT-PWIN ( -- )   \ packed u32 window-relative protected WIDs
    AOT-PWIN-N @ 0 > IF AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * BYTES, THEN ;
 ;package
@@ -9236,6 +9256,7 @@ package ENGINE-EMIT
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
    s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
    s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F
+   s" ptr-cell-mark" ['] SNAP-RELOC:BPTRCELLMARK 1 GDEREF-F
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    EMIT-CEMIT

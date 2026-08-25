@@ -157,15 +157,13 @@ variable AOT-WID-W0    variable AOT-WID-SPAN
 \ zeros. So the content travels, but as RUNS rather than as the span (AOT-WINDOW
 \ below); AOT-DATA-SIZE is the span itself and, with a sparse payload, the only
 \ authority for it.
-\ A DECLARED ADDRESS CELL IS THE ONE THING THE CONTENT MAY NOT CARRY. `defer` in
-\ the window allots a dispatch cell and registers it (SNAP-RELOC's XTCELL table),
-\ and what it holds is a code address in the BUILDING host - ASLR-varying on
-\ macOS. Baking that would make the image depend on the run that built it and the
-\ byte fixpoint would never close, which is the same reason the code literals are
-\ stored b0-relative. Those cells are therefore excluded from every run and their
-\ offsets listed here; EM-AOT-RELOC-DATA stores the seeded engine's own
-\ `defer-unset` trap xt into each one at boot. The offsets are u32, so the window
-\ they index is bounded by AOT-WINDOW:SPAN-CAP alone.
+\ A DECLARED ADDRESS CELL IS THE ONE THING THE CONTENT MAY NOT CARRY RAW. An XT
+\ cell holds a code address in the BUILDING host; a DATA-pointer cell can hold an
+\ address in that host's captured window. Neither address is valid after seeding.
+\ Both cells are therefore excluded from every run and listed with their kind.
+\ The seed reconstructs either kind as null or as an address relative to its
+\ captured target window.  A row's first u32 is the cell location relative to
+\ engine DATA; its second u32 is a typed CODE/DATA-window target offset.
 
 ;package
 
@@ -201,7 +199,14 @@ create RBYTES-BUF RBYTES-CAP allot    variable RBYTES-LEN
 \ once. Taken from that cap rather than measured (the metabuild REPL window holds
 \ one), so the two cannot drift apart.
 SNAP-RELOC:XTCELL-CAP constant XTOFF-MAX
-create XTOFF-BUF XTOFF-MAX 4 * allot    variable XTOFF-N   \ packed u32 window offsets
+8 constant XTOFF-ROW
+$80000000 constant XTOFF-DATA-TAG
+$7FFFFFFF constant XTOFF-VALUE-MASK
+create XTOFF-BUF XTOFF-MAX XTOFF-ROW * allot    variable XTOFF-N
+\ Each row is (cell-DATA-offset u32, kind/target u32). The high bit of the target
+\ marks a DATA pointer; its low bits are zero for null or target-window-offset+1.
+\ An untagged target is an XT with the same null/offset+1 rule. The cell location
+\ is not window-relative: fixed hooks below the captured heap window travel too.
 ;package
 
 package AOT-BUF
@@ -396,7 +401,7 @@ AOT-SITE-MAX SITE-ROW * +                          \ call-site rows
 AOT-NAMES-CAP +                                    \ deduped name pool
 AOT-DSITE-MAX 4 * +                                \ DATA-literal sites
 AOT-DSITE-MAX 4 * +                                \ CODE-literal sites (same buffer's tail)
-AOT-WINDOW:XTOFF-MAX 4 * +                         \ declared address cells in the window
+AOT-WINDOW:XTOFF-MAX AOT-WINDOW:XTOFF-ROW * +      \ declared address cells in the window
 AOT-WINDOW:RUN-MAX 8 * +                           \ the captured DATA window's non-zero extents
 AOT-WINDOW:RBYTES-CAP +                            \ ... and their bytes
 AOT-XTSITE:MAX 8 * +                               \ named code-literal rows

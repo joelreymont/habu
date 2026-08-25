@@ -82,7 +82,12 @@ $48425350414E5321 constant SNAP-MAGIC
 \ the writing run's own absolute addresses, so a version 5 engine and a version 6
 \ image disagree about what the chain bytes mean in both directions and each must
 \ fail closed rc 80 rather than execute the other's literals.
-6 constant SNAP-FORMAT-VERSION
+\ Version 7 tags each row of the existing address-cell table as either an XT or
+\ a DATA pointer. The snapshot pass relocates only XT values; AOT capture uses
+\ the same declaration to rebase self-window DATA pointers. A version 6 engine
+\ would interpret the tag as part of an offset, so the hard version equality is
+\ required in both directions.
+7 constant SNAP-FORMAT-VERSION
 
 \ --- snapshot trailer geometry: the single owner ----------------------------
 \ The trailer is the last thing in the authenticated text extent, so its base is
@@ -952,6 +957,10 @@ public
 \ the cell anyone meant, so it is refused where it is first seen instead of being
 \ carried into an image.
 98 constant XTBAND-RC
+\ Exit status for one address cell declared with both relocation kinds. Treating
+\ either declaration as the winner would make one of snapshot or AOT relocation
+\ silently wrong, so the common declaration point refuses the conflict.
+99 constant XTKIND-RC
 
 \ Call-site map: one bit per four-byte word of the JIT region, recording every
 \ call site whose callee lives in the engine's loaded __text instead of inside the
@@ -1040,23 +1049,27 @@ REGION 32 / constant ADDRMAP-BYTES        \ one bit per region word (REGION / 4 
 CALLMAP-END constant ADDRMAP-OFF
 ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 
-\ Address-cell table: the DATA offset of every persisted cell that was DECLARED to
-\ hold a JIT-region address. Region code moves between the run that writes an
-\ image and the run that restores it, but DATA is mapped at a fixed address, so a
-\ cell in DATA that points into the region is stale the moment the image is
-\ restored somewhere else -- the crash is an immediate jump to the writing run's
-\ address on the first deferred call.
+\ Address-cell table: the DATA offset and kind of every persisted cell that was
+\ DECLARED to hold an address. XT cells hold JIT-region addresses; DATA-pointer
+\ cells hold addresses in the DATA heap. Region code moves on snapshot restore,
+\ while DATA stays fixed, so only XT values need snapshot canonicalisation. Both
+\ kinds need the declaration for AOT capture, where the captured DATA window does
+\ move and a raw pointer into that window would otherwise escape in sparse bytes.
 \ Membership is recorded where the cell's kind is decided, never inferred from
-\ what the cell happens to contain: the `defer` handler registers a dispatch cell
-\ when it allocates it, the `is` handler registers the cell it is about to store
-\ into, and the three engine hook cells are registered by name at cold boot
-\ (habu2.f). Scanning DATA for values that fall in some address band would be a
-\ guess -- an ordinary integer can hold any value at all -- and is deliberately
-\ not what this does.
-\ Layout: a count cell followed by XTCELL-CAP offset cells. The engine appends
-\ only offsets that are not already present, so a cell registered by both `defer`
-\ and `is` is listed once and is relocated once.
+\ what the cell happens to contain: PERSISTED-PTR-VARIABLE registers its
+\ DATA-pointer cell,
+\ the `defer`/`is` handlers register dispatch cells, and the engine hook cells are
+\ registered by name at cold boot (habu2.f). Scanning DATA for values that fall
+\ in some address band would be a guess -- an ordinary integer can hold any value
+\ at all -- and is deliberately not what this does.
+\ Layout: a count cell followed by XTCELL-CAP tagged offset cells. Bit 63 is the
+\ DATA-pointer kind and the remaining bits are the DATA offset. Keeping the kind
+\ in the existing row avoids a second registry and does not move DATA-START. The
+\ engine appends only an identical declaration once and refuses one cell declared
+\ with both kinds.
 4096 constant XTCELL-CAP                  \ declared address cells one image may carry
+$8000000000000000 constant XTCELL-DATA-TAG
+$7FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK
 ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END

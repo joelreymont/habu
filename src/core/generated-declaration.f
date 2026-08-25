@@ -690,7 +690,7 @@ package GENERATED-DECL-CTOR
 \ what lets RELEASE stay total. Same shape as DECL-EVENT's DEV-PART-* slots.
 4 constant CAP-INIT
 create ARM-BOOT CAP-INIT cells allot
-PTR-VARIABLE ARM-P   ARM-BOOT ARM-P !
+PERSISTED-PTR-VARIABLE ARM-P   ARM-BOOT ARM-P !
 variable ARM-CAP     CAP-INIT ARM-CAP !
 
 \ Trusted forwarders to the pre-hook registry and generator words. sumtype.f and

@@ -1171,29 +1171,52 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ to deliver four cells (dot habu-census-the-captured-fe5f7c49). What travels now
 \ is the NON-ZERO EXTENTS, and the seed zeroes the span before it lays them in.
 \
-\ AND WHY ONE KIND OF BYTE MAY NOT. A `defer` compiled inside the window allots a
-\ dispatch cell and registers it in the declared-address-cell table
-\ (src/habu/layout.f SNAP-RELOC:XTCELL-*), and that cell holds a code address in
-\ the BUILDING host. On macOS the JIT region is __text-relative and ASLR-varying,
-\ so baking one would make the image depend on the run that produced it and the
-\ byte fixpoint would never close - the same defect the code literals avoid by
-\ being stored b0-relative. THE INVARIANT: a declared address cell's value is
-\ owned by whatever declares it, never by the window's bytes. So those cells are
-\ excluded from every run here and their offsets recorded, and the seed puts the
-\ `defer-unset` trap xt of the engine it is booting into each one - the same value
-\ a freshly declared cell holds, found through the same keyword lookup the
-\ compiler uses.
-\ The boot-run list then installs the real vectors, which is what owns them; a
-\ cell the boot-run misses dies "defer: unset execution vector" at first use
-\ instead of branching to whatever the bytes held.
+\ AND WHY ONE KIND OF BYTE MAY NOT. A declared address cell holds either an XT in
+\ the BUILDING host's JIT window or a pointer in that host's captured DATA
+\ window. Neither raw address belongs to the seeded engine. THE INVARIANT: a
+\ declared address cell's value is owned by its declaration, never by the
+\ window's bytes. Every declared row is therefore captured structurally, whether
+\ the cell itself lies inside the DATA window or in fixed engine state below it.
+\ The seed recreates the exact null or window-relative target and re-registers
+\ the cell's kind. A non-null target outside its declared window is refused.
 \ The set is taken from the table and never from what a cell contains: the table
 \ is written where a cell's kind is decided, which is the only place it is known.
-: ACAP-ADD-XTOFF ( n -- ) {: woff:n :}
+: ACAP-ADD-XTOFF ( n n -- ) {: celloff:n meta:n :}
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-MAX >= if s" aot-capture: too many declared address cells" 74 die then
-   woff  AOT-WINDOW:XTOFF-N @ 4 * AOT-WINDOW:XTOFF-BUF@ +  AOT-P32!
+   AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + {: row:ptr :}
+   celloff row AOT-P32!
+   meta row 4 + AOT-P32!
    AOT-WINDOW:XTOFF-N @ 1+ AOT-WINDOW:XTOFF-N ! ;
 
-: ACAP-XTOFF@ ( n -- n ) {: k:n :}   k 4 * AOT-WINDOW:XTOFF-BUF@ + ACAP-W32@ ;
+: ACAP-XTOFF@ ( n -- n ) {: k:n :}
+   k AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + ACAP-W32@ ;
+
+: ACAP-XTMETA@ ( n -- n ) {: k:n :}
+   k AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + 4 + ACAP-W32@ ;
+
+: ACAP-XTCELL-ROWS ( -- n )
+   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@
+   dup 0 < over SNAP-RELOC:XTCELL-CAP > or if
+      s" aot-capture: declared address cell count out of range" 74 die
+   then ;
+
+: ACAP-XTCELL-RAW ( n -- n ) {: k:n :}
+   AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + k cells + AOT-CELL@ ;
+
+: ACAP-XTCELL-OFF ( n -- n ) ACAP-XTCELL-RAW SNAP-RELOC:XTCELL-OFF-MASK and ;
+
+: ACAP-XTCELL-DATA? ( n -- bool )
+   ACAP-XTCELL-RAW SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
+
+: ACAP-XTCELL-AT ( n -- ptr a ) {: k:n :}
+   AOT-LIVE-DATA k ACAP-XTCELL-OFF + ;
+
+: ACAP-XTCELL-CELL-REFUSE ( n -- ) {: off:n :}
+   s" aot-capture: declared address cell outside DATA: " type off . cr
+   s" aot-capture: declared address cell is outside DATA" 74 die ;
+
+: ACAP-XTCELL-CELL-CHECK ( n -- ) {: off:n :}
+   off SNAP-RELOC:XTCELL-OFF-MAX > if off ACAP-XTCELL-CELL-REFUSE then ;
 
 \ A row that overlaps the window without lying wholly inside it would leave half a
 \ host address in the baked bytes, so it ends the build rather than being skipped.
@@ -1201,9 +1224,27 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    s" aot-capture: declared address cell straddles the window edge at offset " type woff . cr
    s" aot-capture: declared address cell straddles the window edge" 74 die ;
 
-: ACAP-MASK-XTCELL ( n n -- ) {: woff:n len:n :}
-   woff 8 + len <= if woff ACAP-ADD-XTOFF exit then
-   woff ACAP-XTCELL-STRADDLES ;
+: ACAP-CLASSIFY-XTCELL ( n n -- ) {: woff:n len:n :}
+   woff 8 + 0 <= if exit then                         \ wholly below the window
+   woff len >= if exit then                          \ wholly above the window
+   woff 0 >= woff 8 + len <= and if exit then        \ wholly inside; run scan masks it
+   woff ACAP-XTCELL-STRADDLES ;                       \ either edge overlaps a partial cell
+
+: ACAP-TARGET-REFUSE ( n -- ) {: v:n :}
+   s" aot-capture: declared address target outside its capture window: " type v . cr
+   s" aot-capture: declared address target is not self-contained" 74 die ;
+
+: ACAP-TARGET-OFFSET ( n n n -- n ) {: v:n lo:n hi:n :}
+   v 0= if 0 exit then
+   v lo >= v hi < and 0= if v ACAP-TARGET-REFUSE then
+   v lo - 1+ dup AOT-WINDOW:XTOFF-VALUE-MASK > if v ACAP-TARGET-REFUSE then ;
+
+: ACAP-XTCELL-META ( n n n n n -- n ) {: k:n b0:n b1:n d0:n d1:n :}
+   k ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
+   k ACAP-XTCELL-DATA?
+   if v d0 d1 ACAP-TARGET-OFFSET AOT-WINDOW:XTOFF-DATA-TAG or
+   else v b0 b1 ACAP-TARGET-OFFSET
+   then ;
 
 \ --- the window's non-zero extents --------------------------------------------
 \ ONE ROW AND ITS BYTES, APPENDED TOGETHER. The bytes go into their own section in
@@ -1215,6 +1256,7 @@ variable ACAP-RP      \ the scan cursor inside one segment
 variable ACAP-RQ      \ the segment cursor across the window
 variable ACAP-RN      \ the next declared cell at or above ACAP-RQ
 variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
+variable ACAP-D0OFF   \ captured DATA-window base as an offset from DATA
 
 : ACAP-ADD-RUN ( n n n -- ) {: d0:n off:n rl:n :}
    AOT-WINDOW:RUN-N @ AOT-WINDOW:RUN-MAX >= if
@@ -1261,7 +1303,7 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
 : ACAP-NEXT-CELL ( n n -- n ) {: p:n len:n :}
    len ACAP-RC !
    AOT-WINDOW:XTOFF-N @ 0 ?do
-      i ACAP-XTOFF@ {: off:n :}
+      i ACAP-XTOFF@ ACAP-D0OFF @ - {: off:n :}
       off p >= off ACAP-RC @ < and if off ACAP-RC ! then
    loop
    ACAP-RC @ ;
@@ -1274,27 +1316,21 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
       ACAP-RN @ 8 + ACAP-RQ !
    repeat ;
 
-\ The declared-address-cell table, read where it lives. A row is the cell's own
-\ address counted from the DATA base, which is the form the engine stores and the
-\ form both readers below want; ACAP-XTCELL-AT hands back the cell itself.
-: ACAP-XTCELL-ROWS ( -- n )
-   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@ ;
-
-: ACAP-XTCELL-OFF ( n -- n ) {: k:n :}
-   AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + k cells + AOT-CELL@ ;
-
-: ACAP-XTCELL-AT ( n -- ptr a ) {: k:n :}
-   AOT-LIVE-DATA k ACAP-XTCELL-OFF + ;
-
-\ The cells are collected BEFORE the runs, because a cell is what a run stops at.
-: ACAP-BAKE-DATA ( n n -- ) {: d0:n d1:n :}
+\ Every declared cell is recorded structurally. A cell inside the captured DATA
+\ span is additionally excluded from sparse byte runs.
+: ACAP-BAKE-DATA ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
    d1 d0 - {: len:n :}
    len AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
    d0 AOT-DATA-N - {: d0off:n :}
+   d0off ACAP-D0OFF !
    ACAP-XTCELL-ROWS 0 ?do
-      i ACAP-XTCELL-OFF d0off - {: woff:n :}
-      woff 0 >= woff len < and if woff len ACAP-MASK-XTCELL then
+      i ACAP-XTCELL-OFF {: celloff:n :}
+      celloff ACAP-XTCELL-CELL-CHECK
+      celloff d0off - {: woff:n :}
+      woff len ACAP-CLASSIFY-XTCELL
+      i b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
+      celloff meta ACAP-ADD-XTOFF
    loop
    d0 len ACAP-SCAN-RUNS ;
 
@@ -1322,9 +1358,9 @@ public
 \ How many declared address cells BELOW the window hold an address inside it.
 \
 \ THIS IS THE OTHER HALF OF THE BOOT-RUN CONTRACT, and the half nothing measured
-\ until now. A declared cell INSIDE the window is zeroed and re-trapped by the
-\ seed (ACAP-MASK-XTCELL above), so the window's own cells are accounted for by
-\ XTOFF. A cell below the window is not captured at all - it belongs to the
+\ until now. A declared cell wholly INSIDE the window is excluded from the
+\ sparse DATA runs by ACAP-CLASSIFY-XTCELL, so its relocated value comes only
+\ from XTOFF. A cell below the window is not captured at all - it belongs to the
 \ engine the window was loaded into - and if the window's load PLANTED a window
 \ address in it, then that write is a load-time effect no captured byte carries.
 \ In a seeded engine the cell holds whatever the target's own prefix put there,
@@ -1343,7 +1379,7 @@ public
    0
    ACAP-XTCELL-ROWS 0 ?do
       i ACAP-XTCELL-OFF {: off:n :}
-      off d0off < if
+      i ACAP-XTCELL-DATA? 0= off d0off < and if
          i ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
          v b0 >= v b1 < and if 1+ then
       then
@@ -1521,7 +1557,7 @@ public
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
    bstart bend ACAP-SCAN-CSITES
-   d0 d1 ACAP-BAKE-DATA                         \ the window's own DATA bytes, declared cells trapped
+   bstart bend d0 d1 ACAP-BAKE-DATA            \ DATA bytes plus every declared address cell
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry

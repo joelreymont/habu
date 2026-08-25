@@ -209,23 +209,27 @@ public
 \ through the shared source lexer, rather than executed. Every other half of
 \ this contract is run for real.
 
-4 constant WBODY-COUNT
+6 constant WBODY-COUNT
 
 : WBODY-NAME$ ( n -- ptr u8 n )
    case
       0 of s" SND-XT-ROW" endof
-      1 of s" SND-XT-CELL-OK?" endof
-      2 of s" SND-CANON-XT-CELL" endof
-      3 of s" SND-CANON-XT-CELLS" endof
+      1 of s" SND-XT-OFF" endof
+      2 of s" SND-XT-DATA?" endof
+      3 of s" SND-XT-CELL-OK?" endof
+      4 of s" SND-CANON-XT-CELL" endof
+      5 of s" SND-CANON-XT-CELLS" endof
       E-CRL-ROW throw
    endcase ;
 
 : WBODY-RUN$ ( n -- ptr u8 n )
    case
       0 of s" {: row:n :} SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@" endof
-      1 of s" {: cell:n :} cell 0 < if 0 0= 0= exit then cell SNAP-RELOC:XTCELL-OFF-MAX > 0=" endof
-      2 of s" {: cell:n :} cell SND-XT-CELL-OK? 0= if SND-XT-CELL-REFUSE then cell SND-XT-CELL@ {: xt:n :} xt 0= if exit then xt dbase@ - RBASE-VA + cell SND-XT-CELL!" endof
-      3 of s" SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do i SND-XT-ROW SND-CANON-XT-CELL loop" endof
+      1 of s" SNAP-RELOC:XTCELL-OFF-MASK and" endof
+      2 of s" SNAP-RELOC:XTCELL-DATA-TAG and 0 <>" endof
+      3 of s" {: cell:n :} cell 0 < if 0 0= 0= exit then cell SNAP-RELOC:XTCELL-OFF-MAX > 0=" endof
+      4 of s" {: row:n :} row SND-XT-OFF {: cell:n :} cell SND-XT-CELL-OK? 0= if SND-XT-CELL-REFUSE then row SND-XT-DATA? if exit then cell SND-XT-CELL@ {: xt:n :} xt 0= if exit then xt dbase@ - RBASE-VA + cell SND-XT-CELL!" endof
+      5 of s" SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do i SND-XT-ROW SND-CANON-XT-CELL loop" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -242,7 +246,7 @@ public
 \ Rocq error rather than an omission; this table is what holds that vocabulary
 \ to the one the shipped emitter actually has.
 
-14 constant PROD-COUNT
+15 constant PROD-COUNT
 
 : PROD-NAME$ ( n -- ptr u8 n )
    case
@@ -260,6 +264,7 @@ public
       11 of s" PATCH-CHAINS" endof
       12 of s" EM-AOT-RELOC-DATA" endof
       13 of s" EMIT-MARK" endof
+      14 of s" BPTRCELLMARK" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -279,6 +284,7 @@ public
       11 of s" P_aot_xt_patch" endof
       12 of s" P_aot_data_reloc" endof
       13 of s" P_defer_cell" endof
+      14 of s" P_data_pointer_cell" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -298,6 +304,7 @@ public
       11 of s" Recorded R_addrmap" endof
       12 of s" Fixed_mapping" endof
       13 of s" Recorded R_xtcell" endof
+      14 of s" Recorded R_xtcell" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -345,7 +352,7 @@ public
 \ change too. `CORE` and `JIT` appear in several of them because those two
 \ emission phases are where the label variables are declared.
 
-14 constant CLOSURE-COUNT
+16 constant CLOSURE-COUNT
 
 : CLOSURE-TOKEN$ ( n -- ptr u8 n )
    case
@@ -363,6 +370,8 @@ public
       11 of s" SNAP-RELOC:LADDRS" endof
       12 of s" LMARK" endof
       13 of s" SNAP-RELOC:LMARK" endof
+      14 of s" LPTRMARK" endof
+      15 of s" SNAP-RELOC:LPTRMARK" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -381,7 +390,9 @@ public
       10 of s" EM-AOT-RELOC-CODE PATCH-CHAINS EMIT-OUTSIDE EM-P2-START" endof
       11 of s" BSNAPREBASE EM-SNAPSHOT-RESTORE CORE" endof
       12 of s" MARK-CELL EMIT-MARK BXTSTORE" endof
-      13 of s" C-DEFER-CELL J-IS CORE" endof
+      13 of s" C-DEFER-CELL J-IS RESTORE-ADDRESS-CELLS CORE" endof
+      14 of s" EMIT-MARK BPTRCELLMARK" endof
+      15 of s" RESTORE-ADDRESS-CELLS CORE" endof
       E-CRL-ROW throw
    endcase ;
 

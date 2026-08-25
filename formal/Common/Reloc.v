@@ -14,8 +14,9 @@
        decoding region bytes, because a compiled word may carry inline data
        that looks exactly like an instruction.
      - every persisted DATA cell that was DECLARED to hold a region address:
-       a deferred word's dispatch cell, and the three engine hook cells.  The
-       declared set is the address-cell table in the same band.
+       a deferred word's dispatch cell, the three engine hooks, and the native
+       compiler dispatch cell.  The declared set is the address-cell table in
+       the same band.
      - every ADDRESS LITERAL the compiler bakes into region code as the fixed
        four-instruction MOVZ/MOVK chain: a quotation's entry address, and the
        target of a `[']`.  The word such a chain names lives
@@ -1362,6 +1363,7 @@ Inductive producer : Type :=
                            EM-AOT-RELOC-CODE does. *)
   | P_aot_data_reloc    (* EM-AOT-RELOC-DATA: rebases seeded DATA chains *)
   | P_defer_cell        (* SNAP-RELOC:EMIT-MARK: declares a persisted cell *)
+  | P_data_pointer_cell (* SNAP-RELOC:BPTRCELLMARK: declares a DATA pointer *)
   .
 
 (* The tables that name a site so a later pass can rewrite it. *)
@@ -1421,6 +1423,7 @@ Definition classify (p : producer) : klass :=
   | P_aot_xt_patch => Recorded R_addrmap
   | P_aot_data_reloc => Fixed_mapping
   | P_defer_cell => Recorded R_xtcell
+  | P_data_pointer_cell => Recorded R_xtcell
   end.
 
 (* Does the value this producer bakes change when the JIT region moves?  The
@@ -1442,6 +1445,8 @@ Definition region_dependent (p : producer) : bool :=
   | P_aot_xt_patch => true
   | P_aot_data_reloc => false
   | P_defer_cell => true
+  | P_data_pointer_cell => false (* snapshot keeps DATA fixed; the separate AOT
+                                     window consumer still rebases this row *)
   end.
 
 (* Which recorders a snapshot RESTORE actually replays.  The AOT code-literal

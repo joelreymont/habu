@@ -145,7 +145,7 @@ TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
 8 constant DEV-CAP-INIT           \ small seed; grows geometrically (doubles) on demand
 variable DEV-CAP-V   DEV-CAP-INIT DEV-CAP-V !
 create DEV-A-BOOT   DEV-CAP-INIT DEV-REC * allot
-variable DEV-A-P    DEV-A-BOOT DEV-A-P !
+PERSISTED-PTR-VARIABLE DEV-A-P    DEV-A-BOOT DEV-A-P !
 : DEV-BASE ( -- ptr a ) DEV-A-P @ ;
 
 variable DEV-N        \ provisional event high-water (arena end, in records)
@@ -211,7 +211,7 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
 4 constant DEV-TX-CAP-INIT
 variable DEV-TX-CAP-V   DEV-TX-CAP-INIT DEV-TX-CAP-V !
 create DEV-TX-BOOT   DEV-TX-CAP-INIT DEV-TX-REC * allot
-variable DEV-TX-P    DEV-TX-BOOT DEV-TX-P !
+PERSISTED-PTR-VARIABLE DEV-TX-P    DEV-TX-BOOT DEV-TX-P !
 variable DEV-TX-DEPTH
 variable DEV-TX-SERIAL
 
@@ -602,7 +602,7 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
 2 constant DEV-PART-REC          \ cells per depth: event token, then field token
 0 constant DEV-NO-TOKEN          \ slot sentinel; DEV-OPEN never mints a token <= 0
 create DEV-PART-BASE-BOOT DEV-PART-CAP-INIT DEV-PART-REC * cells allot
-PTR-VARIABLE DEV-PART-BASE-P   DEV-PART-BASE-BOOT DEV-PART-BASE-P !
+PERSISTED-PTR-VARIABLE DEV-PART-BASE-P   DEV-PART-BASE-BOOT DEV-PART-BASE-P !
 variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 
 : DEV-PART-BASE ( -- ptr a ) DEV-PART-BASE-P @ ;

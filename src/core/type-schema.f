@@ -116,7 +116,7 @@ private
 
 : SCH-CAP ( -- n ) SCH-CAP-V @ ;
 create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot   REG-PROTECT
-variable SCH-A-P    SCH-A-BOOT SCH-A-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE SCH-A-P    SCH-A-BOOT SCH-A-P !   REG-PROTECT
 
 public
 
@@ -128,7 +128,7 @@ private
 
 : SCH-ROOT-CAP ( -- n ) SCH-ROOT-CAP-V @ ;
 create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot   REG-PROTECT
-variable SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !   REG-PROTECT
 
 public
 
@@ -324,7 +324,7 @@ SCH-RBF-REC-PTR-MASK 0 SCH-LAYOUT=
 16 constant SCH-RBF-CAP-INIT
 variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
 create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
-variable SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
+PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
 : SCH-RBF-BASE ( -- ptr a ) SCH-RBF-P @ ;
 
 \ The frame depth is the one rollback cell with a reader outside this file

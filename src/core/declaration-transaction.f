@@ -159,6 +159,7 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 : INIT-STATE ( ptr a ptr a n [ n n -- ] -- )
    {: state:ptr table:ptr cap:n diagnostic :}
    cap 1 < cap MAX-ROWS > or if E-PARTICIPANT-CAPACITY throw then
+   state ST.TABLE ptr-cell-mark
    table state ST.TABLE !
    cap state ST.CAP !
    0 state ST.N !

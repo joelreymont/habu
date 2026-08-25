@@ -375,7 +375,8 @@ TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
 
 \ RAW-TRUST-NEXT: like TRUST-NEXT, but registers the created word's effect with
 \ TVK-RAW type vars (SIG-RAW-MODE! brackets the checker's signature parse).
-\ Used for the raw storage definers create/variable/constant/PTR-VARIABLE so a
+\ Used for the raw storage definers create/variable/constant/PTR-VARIABLE and
+\ PERSISTED-PTR-VARIABLE so a
 \ fetch from their raw cell yields a RAW value that cannot launder into a nominal
 \ atom or family (habu-nominal-storage-raw, VALUE side).
 : RAW-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
@@ -803,6 +804,7 @@ variable STG-START
    a u s" create" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PERSISTED-PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN

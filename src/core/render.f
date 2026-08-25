@@ -62,7 +62,7 @@ variable RDIAG-I
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
 create SEEN-BOOT MAXTV-INIT cells allot
-PTR-VARIABLE SEEN-P   SEEN-BOOT SEEN-P !
+PERSISTED-PTR-VARIABLE SEEN-P   SEEN-BOOT SEEN-P !
 variable SEEN-CAP   MAXTV-INIT SEEN-CAP !
 variable NLET                                      \ SEEN is indexed by typevar (PAY)
 64 constant RATOM-CAP
