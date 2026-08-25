@@ -2410,7 +2410,7 @@ public
 \ the seed-integrity code instead of falling through to LCOMPILE.
 : LOAD ( -- )
    LBL {: ready:label :}
-   13 DATA NCOMP-DISPATCH:XT-CELL LDR,  13 ready CBNZ,
+   11 DATA NCOMP-DISPATCH:XT-CELL LDR,  11 ready CBNZ,
       UNSET
    ready LBL, ;
 ;package
