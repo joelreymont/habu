@@ -531,9 +531,7 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 \ engine can name and the checker can size becomes a CALL. `negate` and `mod`,
 \ which these fixtures used to be written with, compile that way now, and so does
 \ a named CONSTANT: dot habu-export-the-checker-2bbc831c gave the checker's
-\ stored effects a per-cell width, so `-- a` sizes at one cell. That capability
-\ is asserted where both halves of it are live, in test/compiler/native-migrate.f
-\ CONST-CALL-CASE, which migrates a body naming a constant and then runs it.
+\ stored effects a per-cell width, so `-- a` sizes at one cell.
 \
 \ What is left, and what these two are, is a spelling that resolves NOWHERE the
 \ chain looks. src/compiler/native/dict.f walks the open package's two wordlists
@@ -1002,11 +1000,8 @@ private
    NELAB:REFUSED-ROW -1 T=
    NELAB:REFUSED$ nip 0 T= ;
 
-\ The clear a driver calls itself. What it is FOR cannot be shown from here - it
-\ matters when a definition is refused before any elaboration begins, which needs
-\ the engine and lives in test/compiler/native-migrate.f - so what this case
-\ states is the one thing this suite owns: the word really does throw a record
-\ away, so a driver that calls it before each attempt starts from nothing.
+\ The clear a driver calls itself. This case states that it really does throw a
+\ record away, so a driver that calls it before each attempt starts from nothing.
 : REFUSED-RESET-CASE ( -- )
    s" a caller can throw the record away itself" T-LABEL
    BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
@@ -1895,10 +1890,8 @@ variable LK-N
 \ CHOICE. `: T ( n -- n ) {: i:n :} 0 3 0 ?do i + loop ;` answers 15 for 5 -
 \ three turns of the LOCAL - while the same body without the declaration answers
 \ 3, the loop INDEX; `{: dup:n :} dup dup +` doubles; `{: if:n :} if if +`
-\ doubles. test/compiler/native-migrate.f holds each of those answers against
-\ the engine's own compilation of the same text. What is measured HERE is the
-\ module, because an answer cannot say which of two readings produced it when
-\ both readings are legal programs.
+\ doubles. What is measured here is the module, because an answer cannot say
+\ which of two readings produced it when both readings are legal programs.
 \
 \ THE FOUR BODIES ASK FOUR DIFFERENT READERS. A primitive's name asks the walk;
 \ the loop index's name asks the block builder as well, since a mention read as

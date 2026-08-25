@@ -1241,9 +1241,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ WHAT THE CONVERSION IS, MEASURED. The four-block shape becomes TWO blocks: the
 \ entry, which now holds the machine select, the copy that carries its answer
 \ across the one edge left, and that edge's branch; and the join, unchanged. The
-\ two arms are gone, and with them the two-way branch - which is the whole point
-\ of the transform and the thing the placement measurement asked for
-\ (docs/codegen-placement.md).
+\ two arms are gone, and with them the two-way branch.
 \
 \ THE OPERANDS SAY THE POLARITY IS RIGHT, and they are why this case reads four
 \ of them rather than counting instructions. A source `<` answers a flag that is
@@ -1446,8 +1444,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ condition called less-than is `lt`, which is TRUE when an Fcmp raises the
 \ unordered flag; the table gives `mi`, which is false there. The two agree on
 \ every ordered pair, so this assertion is the ONLY thing in the structural
-\ suite that separates them, and it is what the NaN rows of
-\ tools/codegen-compare-corpus3.f measure end to end.
+\ suite that separates them.
 : FSEL-REAL-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool bool bool n )
    HIR-MOD
    BUILD-FSEL-REAL

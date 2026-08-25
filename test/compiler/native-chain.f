@@ -275,12 +275,8 @@ create TXT TEXT-CAP allot
 \ is TWO blocks - the entry, which computes and chooses, and the join, which
 \ publishes and returns - where the branching shape had four.
 \
-\ WHY THAT IS THE SHAPE WORTH PINNING HERE. docs/codegen-placement.md measured
-\ this chain's branch-around idiom costing twenty-eight per cent at matched
-\ placement against the engine on data no predictor can learn, and being twice as
-\ sensitive to where the routine lands. A select removes the branch rather than
-\ moving it, which is the only change that improves every placement at once, and
-\ this case is the end-to-end evidence that the whole chain really emits one:
+\ A select removes the branch rather than moving it, and this case is the
+\ end-to-end evidence that the whole chain really emits one:
 \ no conditional branch anywhere in the routine, and the answers unchanged.
 \
 \ THE ANSWERS ARE WHAT HOLD THE POLARITY. A Csel writes its FIRST source when

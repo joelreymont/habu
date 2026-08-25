@@ -89,11 +89,7 @@ public
 : FRM ( n -- n ) {: w:n :}
    w 16 rshift REG-MASK and ;
 
-\ The two immediate fields, public for the same reason the three registers are.
-\ The call-site inventory (tools/codegen-callsite-inventory.f) has to re-encode
-\ an add-immediate and an unscaled load to recognise them, and re-encoding needs
-\ the immediate the word carries; decoding it there would be the second copy this
-\ file's header argues against.
+\ The immediate field.
 : FI12 ( n -- n ) {: w:n :}
    w 10 rshift IMM12-MASK and ;
 

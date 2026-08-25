@@ -22,8 +22,7 @@
 \ WHY THE ANSWERS ARE COMPARED BY RUNNING THE WORD. A test that read the tape or
 \ the module would be describing what the compiler intended. Entering the
 \ published record is the only question whose answer is the code that actually
-\ runs, and the record has been retargeted at the chain's emission by then -
-\ test/compiler/native-migrate.f pins that retarget, so it is not restated here.
+\ runs.
 
 require lib/test.f
 require lib/string.f

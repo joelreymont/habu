@@ -10,12 +10,6 @@
 \ has no multiply-add and never fuses anything, and once by the native chain,
 \ which does - and the two are run against each other on the same inputs.
 \
-\ WHY THE ENGINE IS THE REFERENCE. It is the uncombined compilation of the
-\ identical text, produced by a generator this pass cannot reach, and it is
-\ already what bin/hb --load tools/judge.f adjudicates every corpus row against. A
-\ reference built by switching the pass off would be a second configuration of
-\ the thing under test; this one is a different compiler.
-\
 \ AND WHY THE INPUTS GO TO THE ENDS OF THE RANGE. A multiply-add computes the
 \ low sixty-four bits of the product and adds the addend, all of it wrapping, and
 \ so does a multiply followed by an addition - so the two agree on every input or
@@ -567,10 +561,7 @@ public
    s" NCT-FIXTURE:NCT-CSHARED-N" CMPIS-IN 0 T=
    s" NCT-FIXTURE:NCT-CSHARED-N" CMPS-IN 1 T= ;
 
-\ A Habu flag as the number a measured row records for one, so that two flags
-\ can be compared with the same assertion every other row uses. It is
-\ tools/judge/cost.f's FLAG-BITS written here rather than reached for, because
-\ this suite loads none of the judge.
+\ A Habu flag as a number, so two flags can use the same assertion as other rows.
 : FLAG>N ( bool -- n )
    if 1 else 0 then ;
 

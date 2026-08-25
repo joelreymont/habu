@@ -523,8 +523,7 @@ private
 
 \ Float division does not trap under either policy, which is where this dialect's
 \ float rules and its integer rules part company on purpose: dividing by zero
-\ answers an infinity and zero by zero answers the default NaN, both measured on
-\ this engine in the survey at the head of tools/codegen-compare-corpus3.f. A
+\ answers an infinity and zero by zero answers the default NaN. A
 \ schema that copied `hir.div`'s flag would oblige the machine stage to
 \ reproduce a trap the hardware does not raise.
 : FDIV-TRAP-BODY ( IR-CTX:ctx -- bool bool bool )

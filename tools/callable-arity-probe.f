@@ -47,8 +47,7 @@ variable N-START-BOTH  \ the looser pair dict.f's header quotes: SPELL-START and
 variable N-NO-EFFECT
 variable N-UNSIZEABLE
 
-\ One boundary, the shape src/compiler/native/reach.f and the census both use:
-\ the checker's effect readers are name-stripped past the seal, so a checked
+\ The checker's effect readers are name-stripped past the seal, so a checked
 \ caller reaches them only as compiled calls behind a declared signature.
 TRUSTED: HAS-EFFECT? ( ptr u8 n -- bool )
    EFFECT-QUERY ;

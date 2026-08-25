@@ -77,7 +77,7 @@ variable CODE-AT
 \ refusal rather than a row of zeroes, because a silent miss would read as "this
 \ routine does not end in a call" and that is the answer the lane acts on.
 : REC ( ptr u8 n -- ptr a ) {: a:ptr u:n :}
-   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-COMPARE-SUBJECT throw then ;
+   a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-PROBE-SUBJECT throw then ;
 
 : START ( ptr u8 n -- n )
    REC XREF-START ;
@@ -178,7 +178,7 @@ public
 \ trust.
 : CODE-BYTES ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u TAIL-BRANCH? if a u LEN exit then
-   a u TRAILER-RET? 0= if E-CODEGEN-COMPARE-EXTENT throw then
+   a u TRAILER-RET? 0= if E-CODEGEN-PROBE-EXTENT throw then
    a u LEN INSN-BYTES + ;
 
 \ One line per word: its recorded length, the calls it makes, what follows the

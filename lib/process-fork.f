@@ -3,7 +3,6 @@
 \ The module lives in `package PROC-FORK` (the same PROC-* family as PROC-CWD /
 \ PROC-CMD). External callers use the qualified public API:
 \   PROC-FORK:RAW      raw fork wrapper (pid, negative on failure)
-\   PROC-FORK:CHILD?   was this image entered by fork rather than by exec
 \   PROC-FORK:CHECKED  fork that throws E-PROC-SPAWN on primitive failure
 \   PROC-FORK:SET-PGID place a pid into a process group
 \   PROC-FORK:KILL-GROUP signal a whole process group
@@ -28,20 +27,6 @@ package PROC-FORK
 
 private
 
-\ Set in the child of every fork this module performs, and never cleared: it
-\ records a fact about the process, not a phase of it. A child that goes on to
-\ exec becomes a different image and the cell goes with the old one, so the
-\ flag means exactly "this running image was entered by fork and not by exec".
-\
-\ Some libraries need that fact. dyld is not fork-safe: asking it to load an
-\ image that is not already mapped faults inside dyld itself in a forked child
-\ rather than returning an error (tools/codegen-compare-cabi.f OPEN is the
-\ live consumer, and tools/codegen-compare-cc.f documents the measurement).
-\ There is no way to ask the OS this question portably after the fact -- a
-\ pid captured at load time only answers it for code loaded before the fork --
-\ so the fork wrapper, which is the one place that knows, records it.
-variable CHILD-FLAG
-
 \ Everything a new process entered through RAW owes itself, run on the child's
 \ very first instruction after the fork and before any caller code.
 \
@@ -55,14 +40,9 @@ variable CHILD-FLAG
 \ own cleanups also ran the driver's `GT-ROOT CLEANUP-TREE+` and removed the
 \ whole capture root out from under its live siblings.)
 : ENTER-CHILD ( -- )
-   -1 CHILD-FLAG !
    CLEANUP-RESET ;
 
 public
-
-\ Was this image entered by fork rather than by exec? See CHILD-FLAG.
-: CHILD? ( -- bool )
-   CHILD-FLAG @ 0= 0= ;
 
 : RAW ( -- pid )
    fork >PID {: pid:pid :}

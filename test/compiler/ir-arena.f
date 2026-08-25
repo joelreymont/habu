@@ -118,8 +118,7 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 \ three hundred and eighty-four bytes for a row that ends up in two hundred and
 \ fifty-six. Reserving the twenty-four first computes the same thirty-two and
 \ takes it once. That third of the mapping, saved on every row wider than its
-\ arena's current span, is what moved the upper scratch wall in
-\ tools/codegen-spill-probe.f out by one read.
+\ arena's current span, is why wide rows reserve before they append.
 : SPAN-COST ( IR-CTX:ctx bool -- n n bool )
    {: c:IR-CTX:ctx reserve:bool :}
    c 64 IR-ARENA:NEW {: a:IR-ARENA:arena :}

@@ -735,8 +735,7 @@ create UTXT-TINY TINY-CAP allot
    BND [: NEG-ZERO-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= -0.0 REAL-CELL T= ;
 
-\ The three spellings the survey at the head of tools/codegen-compare-corpus3.f
-\ measures as the engine's own answers, including two where the engine's route
+\ Three awkward spellings, including two where the engine's route
 \ lands one bit off the nearest double and the last fractional scale that fits
 \ its signed-cell accumulator. A reader that used the stdlib's float parser
 \ instead would agree on ordinary literals and can disagree on these, so this is

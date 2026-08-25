@@ -665,47 +665,14 @@ public
 \ so nothing could throw them. What checked source may compile a word into is
 \ E-HIR-UNMODELED's to refuse.
 
-\ Measuring emitted machine code - the codegen probes, the judge's timing, the
-\ clang reference column - and the native chain fixtures those share with the
-\ compiler suites (package NSRC): -8260..-8279
-\
-\ These are the conditions that stop a measurement outright instead of being
-\ reported as one of its findings, so that one run names every disagreement
-\ rather than halting at the first. The old-versus-new comparison harness that
-\ minted this block is gone; what is left is owned by the probes and by the
-\ judge, and the codes its measurement store needed went with it.
--8260 constant E-CODEGEN-COMPARE-CAP      \ generated source is longer than the buffer that holds it
--8261 constant E-CODEGEN-COMPARE-SUBJECT  \ a named subject word is not in the live dictionary
-\ -8262 and -8265 are retired and must not be reused: they were the comparison
-\ harness's row-or-output index bound and its check that the new column named a
-\ corpus word the old column had measured. The store they were about, and the
-\ two columns, went with the harness.
--8263 constant E-CODEGEN-COMPARE-CLOCK    \ the monotonic clock reported no elapsed time across a whole timing run
--8264 constant E-CODEGEN-COMPARE-STAGE    \ a measurement step ran where it cannot produce one: out of order, or in the wrong process
-\ -8266 is retired and must not be reused: it was the comparison harness's check
-\ that an emitted routine's returned value sat in the register the C-ABI call
-\ reads one from, and the harness now compiles its routines under the data-stack
-\ convention, where a result is a store into a slot and the validator re-derives
-\ every one of those stores against the contract.
+\ Native source fixtures and code probes: -8260..-8279
+-8261 constant E-CODEGEN-PROBE-SUBJECT    \ a named subject word is not in the live dictionary
 -8267 constant E-NSRC-CAP                 \ source text longer than the chain fixture's text buffer
-\ The comparison's third column is a clang -O2 build of a C twin of every corpus
-\ row: a measured reference the two habu code generators are read against. Three
-\ conditions stop it outright. A missing compiler is NOT one of them - the column
-\ is then absent and says so - but a compiler that was there and refused, a twin
-\ the comparison names that the reference object does not carry, a symbol table
-\ whose sizes do not add up to the text section it came out of, and text the
-\ reader cannot attribute to any twin at all, all mean the reference is not what
-\ the harness thinks it is, and a wrong reference is worse than none.
--8268 constant E-CODEGEN-CLANG-TOOL       \ the host C toolchain was present and a tool refused
--8269 constant E-CODEGEN-CLANG-SYMBOL     \ a C twin the comparison names is not in the reference object
--8270 constant E-CODEGEN-CLANG-SIZE       \ the reference object's per-symbol sizes do not account for its text section
--8271 constant E-CODEGEN-CLANG-FORK       \ a forked child asked dyld to map the reference library, which only the process that built it may do
--8272 constant E-CODEGEN-CLANG-LOCAL      \ a non-external symbol starts a stretch of __text, so the reference object holds code no twin can be named for
 \ A word's dictionary record states the span its callers may copy, which is
 \ everything before its trailing return - or, for a routine that leaves by a
 \ branch, the whole of it. A reader that wants the code's real extent has to put
 \ the return back, and it is only entitled to do that when the return is there.
--8273 constant E-CODEGEN-COMPARE-EXTENT   \ a word's record neither ends in a tail branch nor is followed by the return the engine's record convention puts after it
+-8273 constant E-CODEGEN-PROBE-EXTENT     \ a word's record neither ends in a tail branch nor is followed by the return the engine's record convention puts after it
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
 \
@@ -1191,77 +1158,3 @@ public
 -8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin (dot habu-publish-the-payload-eb4ae38a)
-
-\ The code generator judge's source reader: -8700..-8719
-\
-\ tools/judge/src.f reads ONE canonical corpus source file and answers, per
-\ definition, the exact body text, the arity its own stack comment declares, and
-\ the definitions of that file its body calls. Both code generators are then
-\ handed the same text, which is what the reader exists for: the comparison used
-\ to keep a second, hand-retyped copy of every subject, and two texts that are
-\ supposed to be one program is a claim nothing checked.
-\
-\ Every code here is the reader refusing to guess. A source it cannot lex, a
-\ definition that never closes, a signature it cannot count, a name the file
-\ defines twice and an index outside what it recorded are all questions with no
-\ answer, and answering one of them wrongly would put a different program in one
-\ of the two columns and report the difference as a code generator result.
--8700 constant E-JUDGE-SRC-CAP  \ a source, definition, name, callee list or derived text larger than this reader's store: the store is what one corpus file fits in, and a truncated program would be measured as if it were the whole one
--8701 constant E-JUDGE-SRC-LEX  \ source the shared lexer refused - an unterminated string literal or a malformed primitive-axiom row - so no token stream exists to read definitions out of
--8702 constant E-JUDGE-SRC-DEF  \ a `:` with no name after it, an empty name, or a definition the file never closes with a bare `;`: a reader that ran such a definition to end of file would compile the rest of the corpus as one body
--8703 constant E-JUDGE-SRC-SIG  \ a definition whose stack comment is missing, holds no `--`, holds two, leaves a pointer without its element type, or is written in a shape this counter cannot count: the arity is what the migration entry is told, and guessing it would invent the fact the reader exists to read
--8704 constant E-JUDGE-SRC-ROW  \ a definition or callee index outside the recorded count
--8705 constant E-JUDGE-SRC-DUP  \ a name this source defines twice: a caller asking for it would be answered about one of two programs, and which one is not a question a measurement should have
-
-\ The code generator judge's chain column: -8706..-8709 (same sub-block)
-\
-\ tools/judge/chain.f hands one canonical definition to the native chain's
-\ migration entry and records what the chain did with it. A refusal BY THE CHAIN
-\ is not an error here - it is the measurement, answered to the caller as the
-\ code the chain used - so the codes below are only this file failing to ask the
-\ question at all.
--8706 constant E-JUDGE-CHAIN-CAP    \ a derived word name or a suffix longer than this file's store holds
--8707 constant E-JUDGE-CHAIN-SUFFIX \ a derived word asked about before a suffix was set: the judge measures one corpus at a time and their derived words share one dictionary, so the suffix is what keeps two corpora that spell a subject the same way from publishing over each other, and there is no default that would hide the choice
--8708 constant E-JUDGE-CHAIN-NAME   \ a derived name that already denotes a routine a call may branch to: publishing over it would leave the size reader answering about whichever of the two the dictionary reached first
-
-\ The code generator judge's table: -8710..-8713 (same sub-block)
-\
-\ tools/judge/row.f holds one row per corpus subject - three columns of bytes
-\ and cost, and the verdict the row comes to. Its refusals are the table being
-\ asked something it does not hold.
--8710 constant E-JUDGE-ROW-CAP    \ more rows than the table holds, or a subject name longer than one row's name
--8711 constant E-JUDGE-ROW-INDEX  \ a row index outside the recorded count
--8712 constant E-JUDGE-ROW-STATE  \ a refusal recorded as the code zero, which is what a compiled row answers, or a verdict ordinal no verdict goes by
--8709 constant E-JUDGE-CHAIN-ORDER  \ a corpus definition that calls one defined at or after it: the engine compiled that file top to bottom, so no order exists in which both the callee and the caller could have been published, and publishing them in the wrong one would measure a body whose call resolved to nothing
--8713 constant E-JUDGE-CHAIN-DEP    \ the chain refused a definition a subject CALLS. Answering it as the subject's own refusal would record the compiler declining a callee as the compiler declining the subject, which is a different fact about a different body
--8714 constant E-JUDGE-REPORT-CAP   \ a rendered artifact longer than the report's text buffer
-
-\ The code generator judge's generated bodies: -8715..-8717 (same sub-block)
-\
-\ tools/judge/cost.f builds a timed or valued body out of a row's pinned input
-\ text and one column's word, and hands it to the checker and then to the
-\ compiler. A body the checker declines is not a measurement, and neither is one
-\ that will not compile.
--8715 constant E-JUDGE-COST-CHECK    \ a generated body the checker declined: the text is printed with it, because what it says about the row's pinned input or the column's spelling is the finding
--8716 constant E-JUDGE-COST-COMPILE  \ a generated body the checker certified and the compiler then refused
--8717 constant E-JUDGE-COST-DISAGREE \ two columns computed different answers from the same generated shape on the same pinned input: one of the two bodies is not the program the row is about, so neither one's time means anything
--8719 constant E-JUDGE-COST-COLUMN  \ a generated body whose call text does not resolve to the routine of the column it was built for: it computes the right answer in the wrong column, which no comparison of answers can see, so the address is held against the column instead
-\ The code generator judge's second block: -8720..-8739
-\
-\ Taken when -8700..-8719 filled. The codes below are about a fact the judge
-\ cannot obtain rather than a measurement it took: what storage a body reaches,
-\ where a derived word was published, what a row said about itself, and how a
-\ generated body is supposed to account for what its subject left.
--8720 constant E-JUDGE-CHAIN-DATA      \ a body naming two of its file's storage words: the migration entry takes ONE spelling, and handing it the first of two would compile a body whose other storage word resolved to whatever the scope held
--8721 constant E-JUDGE-CHAIN-QUALIFIER \ a derived word's record asked for before the package it is published in was named: the record reader resolves a spelling as written rather than through the open package, so an absent qualifier would answer about some other word or about none
--8722 constant E-JUDGE-PASS-CAP        \ a generated body's part, a C call shape, or the refusal ledger larger than the shared pass's store holds
--8723 constant E-JUDGE-PASS-ROW        \ a pass reached before its row was stated, a corpus whose package was never named, a refusal asked for under a name no publication recorded, or one name claimed by two rows
--8724 constant E-JUDGE-PASS-SHAPE      \ a C call shape whose last character is neither the `D` of a double answer nor the `I` or digit of an integer one: what a twin answers decides whether a reference value is projected to its bits, and a shape nobody can read that off is refused rather than guessed at
--8725 constant E-JUDGE-COST-FOLD       \ a subject leaving more than one value where one of them is a double or a flag, or a projection no generated body knows: a body folds what a subject left into one cell with `xor`, and reaching past the top of that stack to project a value under it is a shape no corpus has and none is invented for it
--8726 constant E-JUDGE-COST-WITNESS    \ a memory witness asked for with no reader to read it back: the witness IS the reader's answer, so an empty one would record the subject's own value under a second name and read as a second observation
--8727 constant E-JUDGE-FUZZ-CAP        \ a generated program, name or input text larger than the differential oracle's store holds
--8728 constant E-JUDGE-FUZZ-SOURCE     \ a text handed to the oracle that does not hold exactly one definition: the two columns compile one program each, and a text with none or with several has no single program to be the subject
--8729 constant E-JUDGE-FUZZ-REFUSED    \ the chain declined a generated body. Unlike a corpus row this is a failure: the generator emits straight-line integer programs inside the dialect the chain compiles, so a refusal means the generator left the dialect or the chain lost a capability
--8730 constant E-JUDGE-FUZZ-COLUMN     \ the oracle's two derived words do not resolve to two different non-zero routines: a pair of names reaching one routine would agree about every input and prove nothing at all
--8731 constant E-JUDGE-FUZZ-INDEX      \ a generated driver reaching outside the oracle's input or answer table: the body is generated, so an index it never had would be this file writing over its own storage rather than a program answering wrongly
--8734 constant E-JUDGE-PASS-INPUTS     \ a row stating more pinned inputs than the shared pass holds tuples for: the inputs past the first are the arms the timed one does not take, and a store that silently kept the first eight would drop the ninth arm without saying so

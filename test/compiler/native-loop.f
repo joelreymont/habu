@@ -11,12 +11,6 @@
 \ emitter, which has no such transform and really runs the loop, and once by the
 \ native chain, which does not, and the two are run against each other.
 \
-\ WHY THE ENGINE IS THE REFERENCE. It is the same text compiled by a generator
-\ this pass cannot reach, and it is what bin/hb --load tools/judge.f already
-\ adjudicates every corpus row against. A reference built by switching the pass
-\ off would be a second configuration of the thing under test; this one is a
-\ different compiler running a real loop.
-\
 \ THE STRUCTURAL ASSERTION IS NOT DECORATION. A differential between two
 \ compilations neither of which folded anything passes and proves nothing, so
 \ every case reads the BACK EDGES out of the chain's emitted code through

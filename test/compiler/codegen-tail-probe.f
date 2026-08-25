@@ -60,9 +60,7 @@ package NTP-FIXTURE
 
 public
 
-\ A callee small enough that the engine copies it into any caller: one literal
-\ and one binary operation, the shape tools/codegen-compare-corpus4.f measures
-\ the copying rule with.
+\ A callee small enough that the engine copies it into any caller.
 : TINY ( n -- n )
    1 + ;
 
@@ -266,9 +264,9 @@ public
 
    s" a name nothing published is a refusal and not a quiet zero" T-LABEL
    [: s" NTP-FIXTURE:NO-SUCH-WORD" CALLS drop ;]
-      E-CODEGEN-COMPARE-SUBJECT TTHROWSQ
+      E-CODEGEN-PROBE-SUBJECT TTHROWSQ
    [: s" NTP-FIXTURE:NO-SUCH-WORD" CODE-BYTES drop ;]
-      E-CODEGEN-COMPARE-SUBJECT TTHROWSQ ;
+      E-CODEGEN-PROBE-SUBJECT TTHROWSQ ;
 
 ;using
 

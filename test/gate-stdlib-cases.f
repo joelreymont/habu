@@ -56,10 +56,8 @@ SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE
 
-\ These two reports share their common load path.
 SUITE tool-boundary-aot-call
    tools/aot-call-report-test.f
-   tools/chain-census-test.f
 ;SUITE
 
 SUITE tool-boundary-check-repair
@@ -194,77 +192,6 @@ SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
 
-\ The reader that makes the comparison's two columns compile ONE text. The
-\ comparison used to keep every subject twice - a real definition in the corpus
-\ file and a hand-retyped string literal beside it - and two texts that are
-\ supposed to be the same program is a claim nothing checked. Its fixtures are
-\ sources built to fool a reader that searched for text: the definition hidden
-\ in a comment, in a string, the `;]` that closes a quotation rather than the
-\ definition, the corpus name written in the signature instead of the body, and
-\ the name defined twice. The last group runs the shipped file entry over a real
-\ corpus in this repository and pins the derived text against the program the
-\ retyped column carried. Nothing it asserts reads a clock.
-SUITE judge-src
-   tools/judge/src-test.f
-;SUITE
-
-\ The reference column's symbol reader, which is where every `clang` cell of the
-\ judged artifact comes from. It is driven through CODEGEN-MACHO:LOAD-FROM - the
-\ word the judge's own pass calls, with the two listings as parameters - over
-\ listings built to fool it: a non-external symbol whose linkage word ENDS in
-\ the word a substring match would find, a symbol whose NAME is that word, a
-\ symbol in another section of the same segment, symbols in nm's name order
-\ rather than address order, and a section line naming __text in the wrong
-\ segment. Then the real object is read and its symbol sizes are required to
-\ tile its text section exactly. A reader fooled by one line would report a
-\ wrong number for every row and nothing else would notice, because the judge
-\ would commit that column and then agree with itself about it. A host with no C
-\ compiler runs the fixtures and says so about the object; it does not fail.
-\ Nothing it asserts reads a clock.
-SUITE judge-ref
-   tools/judge/ref-test.f
-;SUITE
-
-\ The judged table compiles every subject through both code generators from
-\ one text, with clang beside them. Every
-\ subject the chain declines is checked against the CODE the compiler refused it
-\ with, measured this run, rather than against a list of their names, and a
-\ refusal for a reason nobody has named fails the member. Nothing it asserts
-\ reads a clock.
-SUITE judge
-   tools/judge-test.f
-;SUITE
-
-\ And the differential oracle beside it: straight-line integer programs nobody
-\ wrote, generated from a CONSTANT seed, compiled by both code generators from
-\ one text and required to answer the same cell on the ends of the signed range
-\ and on generated inputs. It runs a small fixed number of the same programs the
-\ hand-run sweep `bin/hb --load tools/judge-fuzz.f` runs, in the same order, so
-\ this member is a prefix of that sweep. It also proves the comparison can SEE a
-\ difference, by handing the two columns two texts that differ by one literal.
-\ The seed is a constant and no assertion is a duration, so it reads no clock.
-SUITE judge-fuzz
-   tools/judge-fuzz-test.f
-;SUITE
-
-\ The fork question is its own registration because its first claim is that
-\ PROC-FORK:CHILD? is false in the process that maps the reference column. The
-\ suite runner starts a fresh process for the file, which is the shape it asks for.
-SUITE codegen-fork-reference
-   test/codegen-fork-reference-test.f
-;SUITE
-
-\ Where the register allocator's spill wall is, measured through the real
-\ migration entry. It is its own member because it migrates definitions of its
-\ own and requires the fourth corpus and that corpus's migration to get a
-\ callee - CODEGEN-CORPUS4:C-LONG for the engine's arm and C-LONG-N for the
-\ chain's. No assertion it makes reads a clock - every one of them is a throw
-\ code from the chain - so scheduling it schedules no flake. At 58s through the
-\ real runner it is a minute-scale member.
-SUITE codegen-spill-probe
-   tools/codegen-spill-probe.f
-;SUITE
-
 SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
@@ -324,30 +251,6 @@ SUITE compiler-native-publish
 \ over a word and calls it in a child, which is the whole path in one measurement.
 SUITE compiler-native-trap
    test/compiler/native-trap.f
-;SUITE
-
-\ The production entry: a definition the engine compiles, recompiled by the
-\ chain and republished under its own name, plus what happens to a word the
-\ chain cannot compile.
-SUITE compiler-native-migrate
-   test/compiler/native-migrate.f
-;SUITE
-
-\ The same entry taking its definition off the input stream instead of out of a
-\ string: where the engine's own reader says the definition ended, and the byte
-\ the interpreter is put back at. It runs beside the migration entry because the
-\ tape, the elaboration and the publication below it are the same ones.
-SUITE compiler-native-stream
-   test/compiler/native-stream.f
-;SUITE
-
-\ The two ceilings that entry opens a recording unit with, neither of which is a
-\ number this tree picks any more: the byte ceiling is the engine's own body
-\ capture and the tape is sized from the source. It runs beside the migration
-\ entry because both cases go through it, and it ends with the 851-byte
-\ definition the old 512-byte ceiling refused, run against the engine.
-SUITE compiler-native-recorder
-   test/compiler/native-recorder.f
 ;SUITE
 
 \ A quotation, through the whole chain and running: the body compiled as a second
@@ -519,52 +422,6 @@ SUITE compiler-native-locals-scope
 \ NUMBER rather than as a wrong shape.
 SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
-;SUITE
-
-\ Counting the instruction PAIRS one three-source instruction would replace,
-\ which is the measurement the combining lane decides what to build from. It
-\ runs beside the tail probe because it reads emitted code through that tool's
-\ walk, and its classifiers are held against the shipped encoders in
-\ src/arch/arm64/asm.f - including the multiply-add alias that makes MUL and
-\ MADD the same word.
-SUITE compiler-codegen-combine-inventory
-   test/compiler/codegen-combine-inventory.f
-;SUITE
-
-\ Counting the LOOPS the chain's compilations hold and the work inside them that
-\ does not depend on the turn, which is the measurement the hoisting lane decides
-\ what to build from. It runs beside the combining inventory because it reads
-\ emitted code through the same walk and borrows that tool's register-field
-\ decoders. Its structural cases are built from the routine that caught the bug
-\ the first version had - a return block laid out inside a loop's span, whose
-\ backward branch is an ordinary forward edge.
-SUITE compiler-codegen-loop-inventory
-   test/compiler/codegen-loop-inventory.f
-;SUITE
-
-\ Counting the branches that go to another branch, which is what the collapse
-\ lane removes, and the branches that reach the instruction already after them,
-\ which is what the fall-through rule still misses across a block that emits
-\ nothing. The suite is built around the four ways such a reader answers
-\ confidently and wrongly - a call read as a branch, a walk past the end of a
-\ routine that leaves by one, a branch followed out of the routine, and a
-\ conditional target called a chain - each pinned by a row that really is that
-\ shape and asserts it before asking for the count.
-SUITE compiler-codegen-branch-inventory
-   test/compiler/codegen-branch-inventory.f
-;SUITE
-
-\ Counting the instructions that exist only to move arguments and results through
-\ the caller's data stack, split by WHERE they sit: beside a call, which a
-\ register calling convention could remove, against the routine's own entry and
-\ exit, which it could not while every published routine is a dictionary record
-\ the engine can enter. It runs beside the other two inventories because it reads
-\ emitted code through the same walk and borrows the same register and immediate
-\ decoders. Its near-miss cases are the ones that matter: the frame's own
-\ adjustment is the same instruction form over register 31, and the scaled load
-\ sits at the same registers and offset as the unscaled one.
-SUITE compiler-codegen-callsite-inventory
-   test/compiler/codegen-callsite-inventory.f
 ;SUITE
 
 \ The native chain's end-to-end run: source text through the real compile path

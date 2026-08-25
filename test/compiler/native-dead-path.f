@@ -207,10 +207,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
    s" 4 ' DPC-TAILDEAD catch nip" EV-N 5 T= ;
 
 \ ---- 6. what the whole chain says about that body, without keeping it ---------
-\ The measured entry runs every stage the published one runs and keeps nothing,
-\ so a shape that compiles only because something earlier in this file published
-\ it would fail here. It is also the entry tools/chain-census.f asks with, which
-\ is what makes the census's answer about these bodies this file's subject too.
+\ The measured entry runs every stage the published one runs and keeps nothing.
 : MEASURE ( ptr u8 n -- )
    NMIGRATE:MEASURE-HELD ;
 
