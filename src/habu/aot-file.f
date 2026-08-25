@@ -286,6 +286,17 @@ variable CUR
 \ How much of each buffer there is. The CODE-literal sites share the DATA-site
 \ buffer, so both name the whole of it and their BASEs are what keeps them apart
 \ - which is also what makes the room check `base + length` rather than length.
+: SEC-CAP-TAIL ( n -- n ) {: k:n :}
+   k S-WRUNS   = if AOT-WINDOW:RBYTES-CAP exit then
+   k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
+   k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
+   k S-PWID    = if PROT-BITS-BYTES exit then
+   k S-PWIN    = if AOT-PWIN-MAX 4 * exit then
+   k S-SIGS    = if AOT-SIG-MAX SIG-ROW * exit then
+   k S-SIGSTR  = if AOT-SIG-STR-CAP exit then
+   k S-REG     = if AOT-REG-CAP exit then
+   CLOSURE-CAP ;
+
 : SEC-CAP ( n -- n ) {: k:n :}
    k S-SCALARS = if SCAL-BYTES exit then
    k S-BLOB    = if AOT-BLOB-CAP exit then
@@ -296,15 +307,18 @@ variable CUR
    k S-CSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-XTOFFS  = if AOT-WINDOW:XTOFF-MAX 4 * exit then
    k S-WDATA   = if AOT-WINDOW:RUN-MAX 8 * exit then
-   k S-WRUNS   = if AOT-WINDOW:RBYTES-CAP exit then
-   k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
-   k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
-   k S-PWID    = if PROT-BITS-BYTES exit then
-   k S-PWIN    = if AOT-PWIN-MAX 4 * exit then
-   k S-SIGS    = if AOT-SIG-MAX SIG-ROW * exit then
-   k S-SIGSTR  = if AOT-SIG-STR-CAP exit then
-   k S-REG     = if AOT-REG-CAP exit then
-   CLOSURE-CAP ;
+   k SEC-CAP-TAIL ;
+
+: SEC-NAME-TAIL ( n -- ptr u8 n ) {: k:n :}
+   k S-WRUNS   = if s" window DATA run bytes" exit then
+   k S-XTSITES = if s" named code sites" exit then
+   k S-BOOTRUN = if s" boot-run list" exit then
+   k S-PWID    = if s" protected-WID bitmap" exit then
+   k S-PWIN    = if s" protected window WIDs" exit then
+   k S-SIGS    = if s" signature rows" exit then
+   k S-SIGSTR  = if s" signature strings" exit then
+   k S-REG     = if s" type registry" exit then
+   s" closure list" ;
 
 : SEC-NAME ( n -- ptr u8 n ) {: k:n :}
    k S-SCALARS = if s" scalars" exit then
@@ -316,15 +330,7 @@ variable CUR
    k S-CSITES  = if s" CODE sites" exit then
    k S-XTOFFS  = if s" address cells" exit then
    k S-WDATA   = if s" window DATA runs" exit then
-   k S-WRUNS   = if s" window DATA run bytes" exit then
-   k S-XTSITES = if s" named code sites" exit then
-   k S-BOOTRUN = if s" boot-run list" exit then
-   k S-PWID    = if s" protected-WID bitmap" exit then
-   k S-PWIN    = if s" protected window WIDs" exit then
-   k S-SIGS    = if s" signature rows" exit then
-   k S-SIGSTR  = if s" signature strings" exit then
-   k S-REG     = if s" type registry" exit then
-   s" closure list" ;
+   k SEC-NAME-TAIL ;
 
 \ A refusal that names a section has to arrive on ONE stream. `type` writes to
 \ stdout and `die`'s message to stderr, so a caller keeping only stderr read
