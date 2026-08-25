@@ -694,14 +694,6 @@ variable LIT-N
    m LIT-N @ > if exit then
    m LIT-N ! ;
 
-\ ---- and what a call does to it ----------------------------------------------
-\ A call may destroy the register a memo row's value lives in, so the memo is
-\ emptied at every call.
-: LIT-CALL-BARRIER ( n -- )
-   {: entry:n :}
-   entry NCLOB:KNOWN? if exit then
-   LIT-RESET ;
-
 : LIT-FIND ( n n -- n )
    {: kind:n val:n :}
    -1
@@ -2965,7 +2957,7 @@ create DN-BUF DN-CAP allot
    back CALL-RESULTS+
    entry a o WCALL-ATTRS+
    back o oglue CALL-CLOSE
-   entry LIT-CALL-BARRIER ;
+   LIT-RESET ;
 
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}

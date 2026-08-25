@@ -1618,7 +1618,7 @@ variable BF-DRV-R
 \ ---------------------------------------------------------------------------
 \ TWO ENGINES, ONE PREFIX.
 \
-\ Once the compiler chain is baked, `require src/compiler/native/migrate.f` is a
+\ Once the compiler chain is baked, `require src/compiler/native/compiler.f` is a
 \ registry no-op in the product and src/core/include.f dies on duplicates, so the
 \ product can never capture its own chain. The build therefore emits the same
 \ prefix twice and the two emissions differ by ONE parameter - the artifact the

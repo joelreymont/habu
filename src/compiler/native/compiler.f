@@ -1,29 +1,27 @@
-\ migrate.f - the production entry: one checked colon definition, compiled by
-\ the engine and then recompiled by the native chain, published as an ordinary
-\ word. One concern: driving the whole chain for one definition.
+\ compiler.f - compile one pending colon definition through the native chain.
 \
-\ The caller states the definition's SOURCE. The engine compiles it the ordinary
-\ way, and the checker's own reader fills the tape while it consumes the tokens,
-\ so the chain elaborates what the checker certified and not a second reading.
+\ The engine supplies the body captured by its one token reader. The checker's
+\ own observer fills the tape while it certifies those bytes, and the compiler
+\ commits the pending dictionary record only after native emission validates.
 \
 \ The NAME is not a parameter: it is read off the recorded tape and checked
-\ against the held record, and a source that published none or several is
+\ against the pending record, and a source that published none or several is
 \ refused. Neither is the ARITY -
 \ dict.f answers what the checker certified this definition takes and leaves, the
 \ same reader that answers for every callee, so the routine's contract and the
 \ calls to it come from one authority instead of agreeing by luck. Nothing about
 \ a callee is a parameter either.
 \
-\ The engine withholds the definition. Only a chain emission that passes every
-\ stage is published, so a refusal leaves no word behind.
+\ The engine leaves the definition pending. Only a chain emission that passes
+\ every stage publishes it, so a refusal leaves no word behind.
 
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require src/compiler/native/abi.f
+require src/compiler/native/frame.f
 require src/compiler/native/dict.f
 require src/compiler/native/feed.f
-require src/compiler/native/input.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/inline.f
 require src/compiler/native/loop.f
@@ -33,20 +31,14 @@ require src/compiler/native/combine.f
 require src/compiler/native/emit.f
 require src/compiler/native/publish.f
 
-package NMIGRATE
+package NCOMP
 
 private
 
-\ ---- the one boundary this file needs ---------------------------------------
-\ `evaluate` compiles whatever text it is handed, so it may never become a
-\ `PRIM:` row: that would hand every checked body the arbitrary-source door.
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
 \ ---- what a recording unit is opened with ------------------------------------
 \ The unit's text ceiling is the ENGINE's own body capture, which overflows with
-\ an exit rather than a throw - so a longer source is refused before `evaluate`
-\ sees it. The capture is at least three bytes shorter than its source.
+\ an exit rather than a throw. The capture is at least three bytes shorter than
+\ its source.
 BODYBUF-CAP constant TEXT-CAP
 
 \ A name past it is refused rather than truncated into one that denotes another word.
@@ -56,7 +48,6 @@ create TXT TEXT-CAP allot
 create NAME-BUF NAME-CAP allot
 PTR-VARIABLE NAME-A
 variable NAME-U
-variable NAME-WID
 
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER M-CTX IR-CTX:ctx
@@ -67,22 +58,15 @@ here CELL 1- and CELL swap - CELL 1- and allot
 \ locals and the whole run is one quotation.
 PTR-VARIABLE M-SRC
 variable M-SRC-U
-PTR-VARIABLE M-DATA
-variable M-DATA-U
 variable M-IN
 variable M-OUT
-variable M-STREAM                    \ the source is the interpreter's own input stream
-variable M-OPEN                      \ a migration is running
+variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
-variable M-SPILLS                    \ frame slots this definition proved it needs
-variable M-REMATS                    \ values it writes again instead of putting away
-
-\ ---- compiling without publishing --------------------------------------------
-\ The engine certifies and publishes NOTHING; the chain's publisher commits the
-\ record `:` built only after validation. A MEASURED migration never commits.
-variable M-HELD-PENDING              \ a held record is waiting to be committed or retracted
-variable M-MEASURE                   \ this migration proves the publication instead of making it
+variable M-SPILLS                    \ padded spill slots that define the cumulative frame
+variable TRUST-VERDICT
+PTR-VARIABLE TRUST-SRC-A
+variable TRUST-SRC-U
 
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
@@ -92,14 +76,17 @@ variable M-MEASURE                   \ this migration proves the publication ins
 : SRC$ ( -- ptr u8 n )
    M-SRC @ M-SRC-U @ ;
 
-: DATA$ ( -- ptr u8 n )
-   M-DATA @ M-DATA-U @ ;
+: TRUSTED? ( -- bool )
+   data-base TRUSTED-CELL + @ 0<> ;
 
-\ From the recorder's accepted definition until the commit, a held record exists
-\ that nothing else will publish. RUN's failure path is what settles it.
-: HELD-TAKEN ( -- )
-   1 M-HELD-PENDING ! ;
+: TRUST-SIG-A-FIELD ( -- ptr ptr u8 )
+   data-base TSIG-A-CELL CELL / ptr-field ;
 
+: TRUST-SIG$ ( -- ptr u8 n )
+   TRUST-SIG-A-FIELD @  data-base TSIG-U-CELL + @ ;
+
+: PENDING-NAME$ ( -- ptr u8 n )
+   ndict@ XREF-REC XREF-NAME$ ;
 
 \ ---- the module the definition is compiled into ------------------------------
 : HIR-MOD ( IR-CTX:ctx -- IR-BUILD:builder )
@@ -110,25 +97,15 @@ variable M-MEASURE                   \ this migration proves the publication ins
    c b HIR:REGISTER
    b ;
 
-\ Which data words a program names is the program's and not the dialect's, and
-\ the row's contents are the engine's answer rather than the caller's.
-: EXTRA-ROWS ( -- n )
-   M-DATA-U @ 0<> if 1 else 0 then ;
-
 \ Read off the TAPE: the elaborator adds a row per name the body writes that the
 \ dialect does not model, and which names those are is not known until it is read.
 : MODEL-ROWS ( -- n )
-   HIR-WORD:WORDS EXTRA-ROWS + TAPE NTAPE:TOKENS + ;
-
-: DECLARE-DATA ( IR-ARENA:arena -- ) {: r:IR-ARENA:arena :}
-   M-DATA-U @ 0= if exit then
-   CC BB r  CC BB DATA$ IR-BUILD:INTERN-SYMBOL  HIR-WORD:DECLARE-FIXED ;
+   HIR-WORD:WORDS TAPE NTAPE:TOKENS + ;
 
 : MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
    CC BB IR-BUILD:MODULE-KEY MODEL-ROWS HIR-WORD:PICK-CELLS HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB p r HIR-WORD:REGISTER-WORDS
-   r DECLARE-DATA
    p r ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
@@ -149,43 +126,42 @@ variable M-MEASURE                   \ this migration proves the publication ins
 : KEEP-TAPE-NAME ( -- )
    TAPE-NAME$ {: a:ptr u:n :}
    a NAME-A !  u NAME-U !
-   u NAME-CAP > if E-NMIGRATE-TEXT throw then
+   u NAME-CAP > if E-NCOMP-TEXT throw then
    a NAME-BUF u STR-LEN BYTE-COPY-LEN ;
 
-: KEEP-TAPE-NAME-RC ( n -- n ) {: end-rc:n :}
-   end-rc 0<> if 0 exit then
-   M-HELD-PENDING @ 0= if 0 exit then
-   [: KEEP-TAPE-NAME ;] catch ;
+: CHECK-TRUSTED-BODY ( -- )
+   TRUST-SRC-A @ TRUST-SRC-U @ CHECK! TRUST-VERDICT ! ;
+
+\ TRUST-DECL is deliberately unavailable to checked code. Keep that authority
+\ at this one-line boundary; scanning, recovery, and quiet-state ownership stay
+\ checked like the ordinary compiler path.
+TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
+   TRUST-DECL ;
+
+TRUSTED: QUIET+ ( n -- )
+   DIAG-QUIET +! ;
+
+: CHECK-TRUSTED ( ptr u8 n ptr u8 n ptr u8 n -- n )
+   {: na:ptr nu:n sa:ptr su:n ba:ptr bu:n :}
+   ba TRUST-SRC-A !  bu TRUST-SRC-U !
+   1 QUIET+
+   [: CHECK-TRUSTED-BODY ;] catch {: rc:n :}
+   -1 QUIET+
+   rc 0<> if rc throw then
+   na nu sa su REGISTER-TRUST
+   TRUST-VERDICT @ ;
+
+: CHECK-SOURCE ( -- n )
+   TRUSTED? if PENDING-NAME$ TRUST-SIG$ SRC$ CHECK-TRUSTED exit then
+   SRC$ LOWER-CERT-HOOK:HOOK ;
 
 : SCAN ( -- )
-   [: SRC$ EV ;] catch {: src-rc:n :}
-   CHECKER-TAPE:HOLD-TAKEN? if HELD-TAKEN then
+   [: CHECK-SOURCE M-VERDICT ! ;] catch {: src-rc:n :}
    [: END-RECORDED ;] catch {: end-rc:n :}
-   end-rc KEEP-TAPE-NAME-RC {: name-rc:n :}
+   end-rc 0= if [: KEEP-TAPE-NAME ;] catch else 0 then {: name-rc:n :}
    src-rc 0<> if src-rc throw then
    end-rc 0<> if end-rc throw then
    name-rc 0<> if name-rc throw then ;
-
-\ A failure between open and close leaves the producer holding a half-recorded
-\ unit, so it is caught only to release the recorder and rethrown unchanged.
-\ The hold is closed on every path: left armed it would withhold the NEXT definition.
-: HOLD-OPEN ( -- )
-   CHECKER-TAPE:HOLD-ARM ;
-
-: HOLD-CLOSE ( -- )
-   CHECKER-TAPE:HOLD-DISARM ;
-
-\ The stream entry's source is everything the interpreter has left to read, and
-\ the reader's own close is what says where in it the definition ended. Opened
-\ and closed with the hold, around the same catch and for the same reason: an
-\ armed stream left armed would end the NEXT definition's stream.
-: STREAM-OPEN ( -- )
-   M-STREAM @ 0= if exit then
-   NINP:ARM ;
-
-: STREAM-CLOSE ( -- )
-   M-STREAM @ 0= if exit then
-   NINP:RELEASE ;
 
 \ Read off the SOURCE: a token costs at least two bytes of capture, so n bytes
 \ can never produce more than n/2 rows. A tape is a span of the shared mapping.
@@ -198,14 +174,10 @@ variable M-MEASURE                   \ this migration proves the publication ins
 : RECORD ( -- n )
    CC BB IR-BUILD:MODULE-KEY TAPE-ROOM NTAPE:NEW {: tp:IR-ARENA:arena :}
    CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
-   HOLD-OPEN
-   STREAM-OPEN
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
-   STREAM-CLOSE
-   HOLD-CLOSE
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
-   M-VERDICT @ -1 <> if E-NMIGRATE-VERDICT throw then
+   TRUSTED? 0= if M-VERDICT @ -1 <> if E-NCOMP-VERDICT throw then then
    before ;
 
 \ Read off the live builder because selection takes its binding before the
@@ -215,15 +187,14 @@ variable M-MEASURE                   \ this migration proves the publication ins
    IR-BUILD:SOURCE-LEN ;
 
 \ ---- which word the source published -----------------------------------------
-\ Anything published under a hold means the record this migration is about is
-\ not the one the count points at, so the count must not move.
+\ The compiler owns one pending record, so the dictionary count must not move.
 : PUBLISHED-NONE ( n -- ) {: before:n :}
-   ndict@ before <> if E-NMIGRATE-NAME throw then ;
+   ndict@ before <> if E-NCOMP-NAME throw then ;
 
 : SOURCE-PUBLICATION-CK ( n -- ) {: before:n :}
    before PUBLISHED-NONE ;
 
-\ The held record is the unpublished slot the count still points at, which is
+\ The pending record is the unpublished slot the count still points at, which is
 \ exactly the slot publish.f will commit.
 : REC-INDEX ( -- n )
    ndict@ ;
@@ -231,16 +202,11 @@ variable M-MEASURE                   \ this migration proves the publication ins
 : LATEST-NAME$ ( -- ptr u8 n )
    REC-INDEX XREF-REC XREF-NAME$ ;
 
-\ Where a definition lands is decided by the package scope open when the source
-\ is evaluated, so the wordlist is read off the record rather than assumed.
-: LATEST-WID ( -- n )
-   REC-INDEX XREF-REC XREF-WORDLIST ;
-
-\ The tape chose the held name before a later tentative record could overwrite
+\ The tape chose the pending name before a later tentative record could overwrite
 \ its slot. The record must name that same definition before it can be committed.
 : RECORD-NAME-CK ( -- )
    LATEST-NAME$ {: a:ptr u:n :}
-   a u NAME-BUF NAME-U @ STR= 0= if E-NMIGRATE-NAME throw then ;
+   a u NAME-BUF NAME-U @ STR= 0= if E-NCOMP-NAME throw then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
 \ THE CHECKER'S ANSWER AND NOT THE CALLER'S. Every callee's arity already comes
@@ -251,7 +217,7 @@ variable M-MEASURE                   \ this migration proves the publication ins
 \ vector against; a term of a family more than one cell wide makes the two
 \ counts differ, and dict.f EFF-CELLS is where that choice is stated.
 \
-\ ASKED WITH THE BARE NAME, in the scope the source was evaluated in, which is
+\ ASKED WITH THE BARE NAME, in the scope the source was compiled in, which is
 \ the one form that answers for a private definition as well as a public one.
 \ KEEP-TAPE-NAME has copied that name out of the tape, which is what makes it
 \ askable while the record's own name span is about to move.
@@ -261,15 +227,15 @@ variable M-MEASURE                   \ this migration proves the publication ins
 \ ARITY-NONE for a name the checker holds no effect for, so the code below is the
 \ reader's own contract handled rather than a -1 let through to NELAB:COLON,
 \ which would refuse it as E-NELAB-ARITY and name the wrong thing. No shape
-\ reaches it: E-NMIGRATE-VERDICT already refuses anything the engine's check did
+\ reaches it: E-NCOMP-VERDICT already refuses anything the engine's check did
 \ not certify, and this asks about a record published one step earlier in the
-\ scope that published it. Measured through MEASURE-HELD - a package opened and
-\ closed by the source is E-NMIGRATE-NAME, a `TRUSTED:` body is E-NFEED-STATE,
+\ scope that published it. A package opened and closed by the source is
+\ E-NCOMP-NAME, a `TRUSTED:` body is E-NFEED-STATE,
 \ an unsigned body answers its inferred effect. Dot
 \ habu-reach-the-absent-360162f5 owns finding one or retiring the code.
 : KEEP-ARITY ( -- )
    NAME-BUF NAME-U @ NDICT:SPELL-ARITY {: din:n dout:n :}
-   din NDICT:ARITY-NONE = if E-NMIGRATE-ARITY throw then
+   din NDICT:ARITY-NONE = if E-NCOMP-ARITY throw then
    din M-IN !  dout M-OUT ! ;
 
 \ ---- recording this definition's body for its callers ------------------------
@@ -336,7 +302,6 @@ variable REC-OK                      \ the body staged so far is still one worth
 \ instead: the word publishes and its callers call it. A measured run claims nothing.
 : CLAIM-ROW ( -- )
    NINL:STAGED? 0= if exit then
-   M-MEASURE @ 0<> if exit then
    A64EMIT:PLACEMENT NINL:CLAIM ;
 
 \ A staging that was declined a row left no claim, so this is the same question
@@ -408,7 +373,9 @@ variable REC-OK                      \ the body staged so far is still one worth
    CC ab A64EMIT:BIND-DIALECT
    CC ab A64SPILL:BIND-DIALECT
    CC ab A64COMB:BIND-DIALECT
-   CC m ab TXT len ROUTINE A64SEL:SELECT ;
+   CC m ab TXT len ROUTINE A64SEL:SELECT {: selected:IR-BUILD:module :}
+   m IR-BUILD:RETIRE
+   selected ;
 
 \ A module with no such pair is handed back UNTOUCHED: rebuilding renumbers
 \ values and the allocator breaks ties on those numbers.
@@ -429,8 +396,8 @@ variable REC-OK                      \ the body staged so far is still one worth
    m IR-BUILD:RETIRE
    m1 ;
 
-\ Declared for EVERY migration, not only one that calls, so the seam can hold it
-\ against the slot it really claims.
+\ Declared for every definition, not only one that calls, so the seam can place
+\ it at the slot it really claims.
 : EMIT-AT ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    m ROUTINE A64RAV:ACCEPT
@@ -448,6 +415,38 @@ variable REC-OK                      \ the body staged so far is still one worth
    CC nb A64EMIT:BIND-DIALECT
    CC m nb TXT len A64SPILL:REWRITE ;
 
+\ Turn the allocator's absolute frame high-water back into the ABI's slot count.
+\ Alignment holes stay counted, so a later allocation starts after this frame
+\ rather than reusing padding as though it were unowned.
+: KEEP-FRAME ( A64EFF:routine -- )
+   {: r :}
+   r A64EFF:TRAITS@  r A64EFF:LINK@  A64FRAME:SPILL-BASE {: base:n :}
+   A64RA:FRAME base - {: bytes:n :}
+   bytes 0 <  bytes A64IR:SLOT-WIDTH mod 0<> or if E-A64RA-FRAME throw then
+   bytes A64IR:SLOT-WIDTH / M-SPILLS ! ;
+
+: NEEDS-LOWERING? ( IR-BUILD:module -- bool )
+   {: m:IR-BUILD:module :}
+   ROUTINE {: r :}
+   CC m r A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if false exit then
+   A64RA:SPILLS A64RA:REMATS + A64RA:MOVES +
+   0= if E-A64SPILL-PLAN throw then
+   r KEEP-FRAME
+   true ;
+
+\ Each turn consumes a non-empty sealed plan and rewrites all of its decisions.
+\ The next allocation either seals an empty plan or contributes another class.
+: LOWER-FIXPOINT ( IR-BUILD:module n -- IR-BUILD:module )
+   begin
+      over NEEDS-LOWERING?
+   while
+      2dup LOWERED
+      rot IR-BUILD:RETIRE
+      swap
+   repeat
+   drop ;
+
 \ ---- the two stages, or the four ---------------------------------------------
 \ Frame slots and DECISIONS are different counts: a value re-emitted where it is
 \ read takes no slot, so a walk asked through the slot count looks like one that
@@ -455,24 +454,12 @@ variable REC-OK                      \ the body staged so far is still one worth
 : EMITTED ( -- )
    TEXT-LEN {: len:n :}
    len SELECTED len COMBINED {: m:IR-BUILD:module :}
-   CC m ROUTINE A64RA:ALLOCATE
-   A64RA:SPILLS M-SPILLS !
-   A64RA:REMATS M-REMATS !
-   A64RA:PLAN-N 0= if
-      A64SPILL:RELEASE
-      m EMIT-AT
-      exit
-   then
-   m len LOWERED {: m1:IR-BUILD:module :}
-   m IR-BUILD:RETIRE
-   CC m1 ROUTINE A64RA:ALLOCATE
-   m1 EMIT-AT ;
+   m len LOWER-FIXPOINT {: ready:IR-BUILD:module :}
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   ready EMIT-AT ;
 
-\ ---- one migration -----------------------------------------------------------
 : PUBLISH-IT ( -- )
-   M-MEASURE @ 0<> if NPUB:VALIDATE-HELD exit then
-   NPUB:COMMIT-HELD
-   0 M-HELD-PENDING ! ;
+   NPUB:PUBLISH-PENDING ;
 
 \ The model is built AFTER the tape, because the table has to be sized from the
 \ body and the body is the tape.
@@ -481,9 +468,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    RECORD {: before:n :}
    MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    before SOURCE-PUBLICATION-CK
-   LATEST-WID {: wid:n :}
    RECORD-NAME-CK
-   wid NAME-WID !
    KEEP-ARITY
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
@@ -510,36 +495,27 @@ variable REC-OK                      \ the body staged so far is still one worth
    [: WORK ;] catch M-RC !
    M-RC @ 0 <> if RETURN-BINDINGS then ;
 
-\ A migration inside a migration would record one definition's tokens onto the
-\ other's tape. The failure is rethrown unchanged with its own code.
+\ A recursive compiler call would record one definition onto another's tape.
 : IN-CONTEXT ( -- )
    NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ ---- what a refused migration owes -------------------------------------------
-\ The engine gives the count and the code space back by itself; the certified
-\ signature has no owner that does. Use the stable tape spelling whenever
-\ END-UNIT produced it; only an END-UNIT failure before that span exists falls
-\ back to the still-current held record.
-: HELD-RETRACT ( -- )
-   M-HELD-PENDING @ 0= if exit then
-   0 M-HELD-PENDING !
-   NAME-U @ 0<> if
-      NAME-A @ NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+\ A refusal after a certified, sealed scan owns the checker signature it just
+\ recorded. Before then the checker either published no signature or already
+\ rolled its own failed scan back.
+: RETRACT ( -- )
+   TRUSTED? if
+      LATEST-NAME$ CHECKER-USIGS-TRUNCATE-FROM-RAW
       exit
    then
-   LATEST-NAME$ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+   M-VERDICT @ -1 <> if exit then
+   NAME-U @ 0= if exit then
+   NAME-A @ NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
-\ The length refusal comes first because a source past the engine's body capture
-\ ends the process rather than throwing. It is about a source a CALLER states: the
-\ stream entry hands over a file tail whose length says nothing about the
-\ definition in it, and an over-long definition there ends the process exactly as
-\ it does for a definition no migration ever touched.
 : LENGTH-CK ( -- )
-   M-STREAM @ 0<> if exit then
-   M-SRC-U @ TEXT-CAP > if E-NMIGRATE-TEXT throw then ;
+   M-SRC-U @ TEXT-CAP > if E-NCOMP-TEXT throw then ;
 
 : IDLE-CK ( -- )
-   M-OPEN @ 0<> if E-NMIGRATE-STATE throw then ;
+   M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
 
 : RUN ( -- )
    LENGTH-CK
@@ -550,72 +526,23 @@ variable REC-OK                      \ the body staged so far is still one worth
    NINL:STAGED? if NINL:STAGE-CLEAR then
    entry-rc 0<> if entry-rc throw then
    M-RC @ {: rc:n :}
-   rc 0 <> if HELD-RETRACT rc throw then
-   M-MEASURE @ 0<> if HELD-RETRACT then ;
+   rc 0 <> if RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
    IDLE-CK
    sa M-SRC ! su M-SRC-U !
    0 M-IN ! 0 M-OUT !
-   0 M-DATA-U ! 0 M-SPILLS ! 0 M-REMATS !
-   0 M-STREAM !
-   0 NAME-U ! 0 M-HELD-PENDING ! 0 M-MEASURE ! ;
+   0 M-VERDICT !
+   0 M-SPILLS !
+   0 NAME-U ! ;
 
 public
 
-\ The source is the whole of what the caller says. What the definition takes and
-\ leaves is the checker's, and the scratch pool is NABI:SCRATCH - the machine's.
-: DEFINE ( ptr u8 n -- )
+\ The engine has already parsed this definition and built its pending record.
+\ Compile the captured body directly.
+: COMPILE ( ptr u8 n -- )
    STAGE RUN ;
-
-\ The same migration over the definition WRITTEN AFTER IT, at top level, instead
-\ of inside a string: `NMIGRATE:NEXT : NAME ( .. ) body ;`. It states nothing at
-\ all - not the text, not the name, not what the definition takes and leaves.
-\
-\ THE ENGINE'S OWN PARSER IS WHAT CONSUMES THE DEFINITION. What is handed to
-\ `evaluate` is the whole tail of the stream; the reader stops that stream where
-\ it finished the definition (src/compiler/native/input.f), so the extent is the
-\ engine's answer and not a second lexer's - `;` inside a string body, a `;]`
-\ closing a quotation and a `:` inside a comment are the reader's business, as
-\ they are for every other definition in the file.
-: NEXT ( -- )
-   IDLE-CK
-   NINP:DEF$ STAGE
-   1 M-STREAM !
-   RUN ;
-
-\ Stops one step short of every write, because a publication is permanent and
-\ the two address-keyed records may not drop a row to make space.
-: MEASURE-HELD ( ptr u8 n -- )
-   STAGE
-   1 M-MEASURE !
-   RUN ;
-
-\ The spelling is the whole of what the caller says: the address that word
-\ pushes is the engine's to answer.
-: DEFINE-DATA ( ptr u8 n ptr u8 n -- )
-   {: sa su:n da du:n :}
-   sa su STAGE
-   da M-DATA ! du M-DATA-U !
-   RUN ;
-
-\ The name of the word the last migration published, and the wordlist it landed
-\ in - the pair that names a record.
-: NAME$ ( -- ptr u8 n )
-   NAME-BUF NAME-U @ ;
-
-: WID ( -- n )
-   NAME-WID @ ;
-
-\ Both counts are published because a lowered definition and a fitting one
-\ publish code that looks the same, so a test could not tell the routes apart.
-: SPILLS ( -- n )
-   M-SPILLS @ ;
-
-\ How many values it re-emitted where they are read instead of putting them away.
-: REMATS ( -- n )
-   M-REMATS @ ;
 
 private
 

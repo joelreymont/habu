@@ -64,6 +64,7 @@ A64IR-OPCODE:TRAP     A64IR:ORD constant O-TRAP
 
 0 constant BOUND-NO
 1 constant BOUND-YES
+-1 constant NO-SLOT
 
 \ A name is copied out of the old module's interner and interned into the new
 \ one, because the two modules number their symbols separately.
@@ -80,6 +81,8 @@ variable N-RES                       \ frame reserves, releases, link saves and
 variable N-REL                       \ link restores the old module already holds
 variable N-SAV
 variable N-LDL
+variable OLD-BBASE
+variable CUR-B
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
@@ -92,6 +95,10 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
+BMAX TYPED-BUFFER F-ORDER IR-ID:ir-value-id
+create F-ORDER-SET BMAX cells allot
+variable PRED-SEEN
+variable PRED-ONE
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 VMAX TYPED-BUFFER RMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
@@ -99,6 +106,7 @@ create VSET VMAX cells allot
 \ defining operation's own immediate, so the pass has to reach it from the value.
 VMAX TYPED-BUFFER DOP IR-ID:ir-op-id
 create RPOS VMAX cells allot
+create RBLK VMAX cells allot
 create NAMEBUF NAME-CAP allot
 
 \ ---- the slots, read back ----------------------------------------------------
@@ -107,6 +115,23 @@ create NAMEBUF NAME-CAP allot
 : SID ( -- IR-ID:ir-source-id )      0 S-SID @ ;
 : TOK ( -- IR-ID:ir-value-id )       0 S-TOK @ ;
 : TOK! ( IR-ID:ir-value-id -- )      0 S-TOK ! ;
+
+: F-ORDER-CLEAR ( -- )
+   BMAX 0 ?do 0 i cells F-ORDER-SET + ! loop ;
+
+: F-ORDER@ ( n -- IR-ID:ir-value-id )
+   dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then
+   F-ORDER @ ;
+
+: F-ORDER! ( IR-ID:ir-value-id n -- )
+   dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then
+   {: v:IR-ID:ir-value-id b:n :}
+   v b F-ORDER !
+   1 b cells F-ORDER-SET + ! ;
+
+: F-ORDER-SET? ( n -- bool )
+   dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then
+   cells F-ORDER-SET + @ 0<> ;
 
 \ ---- the machine operation family --------------------------------------------
 \ An operation of a form outside the family has no rule here and is refused
@@ -148,6 +173,7 @@ create NAMEBUF NAME-CAP allot
    VMAX 0 ?do
       0 i cells VSET + !
       -1 i cells RPOS + !
+      -1 i cells RBLK + !
    loop ;
 
 : VSLOT ( IR-ID:ir-value-id -- n )
@@ -170,12 +196,14 @@ create NAMEBUF NAME-CAP allot
 : RBIND ( n n IR-ID:ir-value-id -- )
    {: k:n pos:n new:IR-ID:ir-value-id :}
    new k RMAP !
-   pos k cells RPOS + ! ;
+   pos k cells RPOS + !
+   CUR-B @ k cells RBLK + ! ;
 
 : READ-AS ( IR-ID:ir-value-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-value-id pos:n :}
    id VSLOT {: k:n :}
-   k cells RPOS + @ pos = if k RMAP @ exit then
+   k cells RBLK + @ CUR-B @ =
+   k cells RPOS + @ pos <= and if k RMAP @ exit then
    id VOF ;
 
 \ ---- reading the frozen module -----------------------------------------------
@@ -339,7 +367,7 @@ create NAMEBUF NAME-CAP allot
          IR-BUILD:ADD-ATTR
       then
       k K-SLOT = if v SLOT-ATTR+ then
-      k K-FRAME = if v FRAME-ATTR+ then
+      k K-FRAME = if FRAME-N @ FRAME-ATTR+ then
       k K-DSLOT = if v DSLOT-ATTR+ then
       k K-DBYTES = if v DBYTES-ATTR+ then
       k K-COND = if v COND-ATTR+ then
@@ -439,14 +467,109 @@ create NAMEBUF NAME-CAP allot
    repeat ;
 
 \ ---- copying one operation of the old block ----------------------------------
-: COPY-SUCCS ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: SUCC-ORD ( IR-ID:ir-op-id n -- n )
+   SUCC-AT IR-ID:BLOCK-LOCAL  OLD-BBASE @ -
+   dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then ;
+
+: TARGETS? ( IR-ID:ir-op-id IR-ID:ir-block-id -- bool )
+   {: id:IR-ID:ir-op-id want:IR-ID:ir-block-id :}
+   false
+   id SUCCS-OF 0 ?do
+      id i SUCC-AT IR-ID:BLOCK-LOCAL
+      want IR-ID:BLOCK-LOCAL = if drop true leave then
+   loop ;
+
+\ A single-successor edge can carry an order value as a block argument. A
+\ multi-successor edge cannot, so its destination must use the side-table order.
+: ONE-SUCC-IN? ( IR-ID:ir-fun-id IR-ID:ir-block-id -- bool )
+   {: f:IR-ID:ir-fun-id want:IR-ID:ir-block-id :}
+   0 PRED-SEEN ! 1 PRED-ONE !
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT TERM-AT {: id:IR-ID:ir-op-id :}
+      id want TARGETS? if
+         1 PRED-SEEN !
+         id SUCCS-OF 1 <> if 0 PRED-ONE ! then
+      then
+   loop
+   PRED-SEEN @ 0<> PRED-ONE @ 0<> and ;
+
+-1 constant NO-FRAME-ARG
+
+: FRAME-ARG? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
+   {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id :}
+   false
+   bk OP-COUNT 0 ?do
+      bk i OP-AT {: id:IR-ID:ir-op-id :}
+      id FRAME-TOUCH? if
+         id OPERANDS-OF 0 ?do
+            id i OPERAND-AT a SAME-VALUE? if drop true leave then
+         loop
+      then
+   loop ;
+
+\ A prior lowering's frame lane is identified by its actual consumer, never by
+\ its position among unrelated data-order and value arguments.
+: FRAME-ARG ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   NO-FRAME-ARG
+   bk ARG-COUNT 0 ?do
+      bk i ARG-AT {: a:IR-ID:ir-value-id :}
+      bk a FRAME-ARG? if
+         a IR-ID:VALUE-LOCAL {: x:n :}
+         dup NO-FRAME-ARG <> over x <> and if E-A64SPILL-SHAPE throw then
+         drop x
+      then
+   loop ;
+
+: F-ORDER-SAME? ( n -- bool )
+   F-ORDER@ IR-ID:VALUE-LOCAL  TOK IR-ID:VALUE-LOCAL = ;
+
+: F-ORDER-EDGE! ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- )
+   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id i:n :}
+   id i SUCC-AT {: sb:IR-ID:ir-block-id :}
+   sb FRAME-ARG NO-FRAME-ARG <>  f sb ONE-SUCC-IN? or if exit then
+   id i SUCC-ORD {: b:n :}
+   b F-ORDER-SET? 0= if TOK b F-ORDER! exit then
+   b F-ORDER-SAME? 0= if E-A64SPILL-SHAPE throw then ;
+
+: F-ORDER-ENTER ( n -- )
+   {: b:n :}
+   b 0= if exit then
+   b F-ORDER-SET? 0= if E-A64SPILL-SHAPE throw then
+   b F-ORDER@ TOK! ;
+
+: COPY-SUCCS ( IR-ID:ir-fun-id IR-ID:ir-op-id bool -- )
+   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id carry:bool :}
    id SUCCS-OF {: n:n :}
    n 0 ?do
+      carry if f id i F-ORDER-EDGE! then
       CTX BLD
       BLD IR-BUILD:MODULE-KEY  id i SUCC-AT IR-ID:BLOCK-LOCAL  IR-ID:PACK-BLOCK
       IR-BUILD:ADD-SUCCESSOR
    loop ;
+
+: SPILLED? ( IR-ID:ir-value-id -- bool )
+   VSLOT A64RA:SLOT@ NO-SLOT <> ;
+
+: SPILL-SLOT ( IR-ID:ir-value-id -- n )
+   VSLOT A64RA:SLOT@ ;
+
+\ A one-successor terminator's operands are only its destination arguments.
+\ A spilled lane already lives in the shared frame slot on every path, so the
+\ rewritten CFG carries neither that operand nor its matching block argument.
+: SPILLED-EDGE? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id i:n :}
+   id SUCCS-OF 1 <> if false exit then
+   id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
+   i sb ARG-COUNT >= if false exit then
+   sb i ARG-AT SPILL-SLOT {: as:n :}
+   id i OPERAND-AT SPILL-SLOT {: os:n :}
+   as NO-SLOT = if
+      os NO-SLOT <> if E-A64SPILL-SHAPE throw then
+      false exit
+   then
+   os NO-SLOT =  os as <> or if E-A64SPILL-SHAPE throw then
+   true ;
 
 : COPY-OPERANDS ( IR-ID:ir-op-id n bool -- )
 \ An operand that is the frame's own memory order is replaced by the order as it
@@ -455,10 +578,12 @@ create NAMEBUF NAME-CAP allot
    id OPERANDS-OF {: n:n :}
    n 0 ?do
       id i OPERAND-AT {: v:IR-ID:ir-value-id :}
-      frame  v MEM-VALUE?  and if
-         TOK OPERAND+
-      else
-         v pos READ-AS OPERAND+
+      id i SPILLED-EDGE? 0= if
+         frame v MEM-VALUE? and if
+            TOK OPERAND+
+         else
+            v pos READ-AS OPERAND+
+         then
       then
    loop ;
 
@@ -482,31 +607,49 @@ create NAMEBUF NAME-CAP allot
       frame  v MEM-VALUE?  and if nv TOK! then
    loop ;
 
-: COPY-OP ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
+: FRAME-EDGE+ ( IR-ID:ir-fun-id IR-ID:ir-op-id bool -- )
+   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id carry:bool :}
+   carry  id SUCCS-OF 1 =  and 0= if exit then
+   id 0 SUCC-AT {: sb:IR-ID:ir-block-id :}
+   sb FRAME-ARG NO-FRAME-ARG <> if exit then
+   f sb ONE-SUCC-IN? 0= if exit then
+   TOK OPERAND+ ;
+
+: COPY-OP ( IR-ID:ir-fun-id IR-ID:ir-op-id n bool -- )
+   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id pos:n carry:bool :}
    id OPCODE-AT OPCODE-SLOT A64IR:NTH {: o:A64IR:opcode :}
    id FRAME-TOUCH? {: frame:bool :}
    id o OPEN
    id pos frame COPY-OPERANDS
+   f id carry FRAME-EDGE+
    id COPY-RESULTS
-   id COPY-SUCCS
+   f id carry COPY-SUCCS
    id COPY-ATTRS
    id  CLOSE  frame BIND-RESULTS ;
 
 \ ---- the block ---------------------------------------------------------------
 \ The value map is NOT cleared here: a value defined in one block is read in the
 \ blocks it dominates, so the map belongs to the function.
-: OPEN-BLOCK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+: OPEN-BLOCK ( IR-ID:ir-fun-id IR-ID:ir-block-id n bool -- )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id b:n carry:bool :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
    bk ARG-COUNT {: n:n :}
+   bk FRAME-ARG {: fa:n :}
    n 0 ?do
       bk i ARG-AT {: a:IR-ID:ir-value-id :}
-      a
-      CTX BLD  a TYPE-OF  IR-BUILD:ADD-BLOCK-ARG
-      VBIND
-   loop ;
+      a SPILLED? 0= if
+         CTX BLD  a TYPE-OF  IR-BUILD:ADD-BLOCK-ARG {: na:IR-ID:ir-value-id :}
+         a na VBIND
+         a IR-ID:VALUE-LOCAL fa = if na TOK! then
+      then
+   loop
+   carry  b 0<> and  fa NO-FRAME-ARG <> f bk ONE-SUCC-IN? or and if
+      fa NO-FRAME-ARG <> if exit then
+      CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG TOK!
+      exit
+   then
+   carry if b F-ORDER-ENTER then ;
 
 : FRAMES? ( n -- bool )
 \ Only when the plan really needs a slot AND the module did not arrive with a
@@ -515,20 +658,25 @@ create NAMEBUF NAME-CAP allot
    k 0<> if false exit then
    A64RA:SPILLS 0<> PRO-N @ 0= and ;
 
+: CARRY-FRAME? ( n -- bool )
+   0= A64RA:SPILLS 0<> and ;
+
 : WALK-BLOCK ( IR-ID:ir-fun-id n n n -- )
 \ The reserve opens the ENTRY block and the release stands in front of the
 \ terminator control leaves through - the only pair passed once, in that order.
    {: f:IR-ID:ir-fun-id k:n b:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
+   k CARRY-FRAME? {: carry:bool :}
+   b CUR-B !
    n 1 < if E-A64SPILL-SHAPE throw then
-   bk OPEN-BLOCK
+   f bk b carry OPEN-BLOCK
    b 0= k FRAMES? and if bk 0 OP-AT EMIT-RESERVE then
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id b i G-AT @ INSERT-AT
       i n 1- =  b rb =  and  k FRAMES?  and if id EMIT-RELEASE then
-      id G-AT @ COPY-OP
+      f id G-AT @ carry COPY-OP
       G-AT @ 1+ G-AT !
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;
@@ -577,6 +725,8 @@ create NAMEBUF NAME-CAP allot
    CTX BLD f FUN-SPAN IR-BUILD:SET-FUN-SPAN
    f RET-ORD {: rb:n :}
    VCLEAR
+   F-ORDER-CLEAR
+   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL OLD-BBASE !
    0 G-AT !
    f BLOCK-COUNT 0 ?do f k i rb WALK-BLOCK loop
    CTX BLD IR-BUILD:END-FUN drop ;
@@ -614,7 +764,8 @@ create NAMEBUF NAME-CAP allot
 \ Two lowerable shapes, told apart by counting the four frame forms by NAME: none
 \ at all, or exactly a selector's prologue with its reserve opening the entry block.
 : COUNT-FRAME-OP ( IR-ID:ir-op-id -- )
-   OPCODE-AT OPCODE-SLOT {: k:n :}
+   {: id:IR-ID:ir-op-id :}
+   id OPCODE-AT OPCODE-SLOT {: k:n :}
    k O-RESERVE  = if N-RES @ 1+ N-RES ! then
    k O-RELEASE  = if N-REL @ 1+ N-REL ! then
    k O-LINKSAVE = if N-SAV @ 1+ N-SAV ! then
@@ -628,28 +779,32 @@ create NAMEBUF NAME-CAP allot
       bk OP-COUNT 0 ?do bk i OP-AT COUNT-FRAME-OP loop
    loop ;
 
-: NO-FRAME-CK ( -- )
-   N-RES @ N-REL @ or  N-SAV @ or  N-LDL @ or
-   0<> if E-A64SPILL-SHAPE throw then ;
-
-: PROLOGUE-CK ( IR-ID:ir-fun-id -- )
+: FRAME-PAIR-CK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   N-RES @ 1 <>  N-REL @ 1 <> or  N-SAV @ 1 <> or  N-LDL @ 1 <> or
-   if E-A64SPILL-SHAPE throw then
+   N-RES @ 1 <> N-REL @ 1 <> or if E-A64SPILL-SHAPE throw then
    f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
    if E-A64SPILL-SHAPE throw then ;
 
+: FRAMELESS? ( -- bool )
+   N-RES @ N-REL @ or N-SAV @ or N-LDL @ or 0= ;
+
+: LEAF-FRAME? ( -- bool )
+   N-RES @ 1 = N-REL @ 1 = and N-SAV @ 0= and N-LDL @ 0= and ;
+
+: CALL-FRAME? ( -- bool )
+   N-RES @ 1 = N-REL @ 1 = and N-SAV @ 1 = and N-LDL @ 1 = and ;
+
 : ONCE-CK ( IR-ID:ir-fun-id n -- )
-\ Every function is held to the frame rule, because lowering any of them twice
-\ builds a second frame inside the first. PRO-N is the FIRST function's answer.
+\ Every function is held to the one-frame shape. PRO-N is the first function's
+\ answer and says whether its reserve/release pair must be resized.
    {: f:IR-ID:ir-fun-id k:n :}
    f COUNT-FRAME
-   N-SAV @ 0= if
-      NO-FRAME-CK
+   FRAMELESS? if
       k 0= if 0 PRO-N ! then
       exit
    then
-   f PROLOGUE-CK
+   LEAF-FRAME? CALL-FRAME? or 0= if E-A64SPILL-SHAPE throw then
+   f FRAME-PAIR-CK
    k 0= if 1 PRO-N ! then ;
 
 : SHAPE-CK ( -- n )
@@ -699,13 +854,12 @@ public
    c b A64IR:FPR-TYPE 0 BND-FPR !
    BOUND-YES BND-MODE ! ;
 
-\ Whether a binding is live, for a caller cleaning up after a refused run. See
+\ Whether a binding is live, for a caller cleaning up after a refused run.
 \ Each pass answers for itself; this one needs it because whether its binding was
 \ spent depends on whether the walk decided a spill.
 : BOUND? ( -- bool )
    BND-MODE @ BOUND-YES = ;
 
-\ Give up a binding without rewriting against it.
 \ Give up a binding without rewriting against it.
 : RELEASE ( -- )
    BND-TAKE ;
@@ -728,6 +882,7 @@ public
    SHAPE-CK {: nf:n :}
    nf 0 ?do MKEY i IR-ID:PACK-FUN i WALK-FUN loop
    N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
+   c b BIND-DIALECT
    c b IR-BUILD:FREEZE ;
 
 private

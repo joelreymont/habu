@@ -107,11 +107,21 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
 \ which is the only sense in which a value has a function at all.
 create F-VB NFROZEN:FMAX 1 + cells allot
 create C-AT VMAX cells allot         \ which class the module gives each value
-create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 create U-AT VMAX cells allot         \ how many operands of the function name each value
 create UB VMAX cells allot           \ which blocks name each value, one bit per block
 create DB VMAX cells allot           \ which block defines each value, or -1
 create RCH BMAX cells allot          \ blocks one reachability question has reached
+
+0 constant FLOW-UNDEF
+1 constant FLOW-DEF
+2 constant FLOW-TOP
+create FLOW-IN BMAX cells allot
+create FLOW-OUT BMAX cells allot
+variable FLOW-CHANGED
+variable FLOW-SEEN
+variable FLOW-MEET-V
+variable FLOW-STATE
+variable FLOW-S
 
 : DEF-AT ( n -- n )                  cells D-AT + @ ;
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
@@ -136,12 +146,8 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       C-GPR i CLS!
    loop ;
 
-: SLOTS-CLEAR ( -- )
-   SLOTS-MAX 0 ?do -1 i cells W-AT + ! loop ;
-
 : TABLES-CLEAR ( -- )
-   VALUES-CLEAR
-   SLOTS-CLEAR ;
+   VALUES-CLEAR ;
 
 \ ---- reading the frozen module -----------------------------------------------
 : SLOT ( IR-ID:ir-value-id -- n )
@@ -332,10 +338,38 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       i u <>  k i UB-HAS?  and  i RCH?  and if E-A64RAV-ORDER throw then
    loop ;
 
+: FRAME-TOKEN ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   -1
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT {: v:n :}
+      v CLS-AT C-TOKEN = if drop v then
+   loop ;
+
+: LAST-FRAME-TOKEN ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   -1
+   bk OP-COUNT 0 ?do
+      bk i OP-AT {: id:IR-ID:ir-op-id :}
+      id FRAME-TOUCH? if drop id FRAME-TOKEN then
+   loop ;
+
+\ A trap ends the process, so the final frame order on that path has no consumer.
+\ This admits exactly that one last frame token; every other orphan remains an
+\ order failure.
+: TRAP-FRAME-END? ( n -- bool )
+   {: k:n :}
+   k DB-AT {: b:n :}
+   b 0 < if false exit then
+   FUN b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0<> t TRAP-AT? 0= or if false exit then
+   bk LAST-FRAME-TOKEN k = ;
+
 : ORDER-VALUE-CK ( n -- )
    {: k:n :}
-   k USES-AT 1 < if E-A64RAV-ORDER throw then
-   k USES-AT  k UB-BLOCKS  <> if E-A64RAV-ORDER throw then
+   k USES-AT 1 < if k TRAP-FRAME-END? if exit then E-A64RAV-ORDER throw then
+   k USES-AT k UB-BLOCKS <> if E-A64RAV-ORDER throw then
    k DB-AT 0 < if E-A64RAV-ORDER throw then
    NB-N @ 0 ?do
       k i UB-HAS? if k i ORDER-FROM-CK then
@@ -398,9 +432,13 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       i REGGED? 0= if
          r 0 >= r A64EFF:FILE-SIZE < and if E-A64RAV-CLASS throw then
       else
-         r 0 < r A64EFF:FILE-SIZE >= or if E-A64RAV-REGISTER throw then
+         r 0 < r A64EFF:FILE-SIZE >= or if
+            E-A64RAV-REGISTER throw
+         then
          i FILE-AT pool fpool FILE-POOL
-         1 r lshift and 0= if E-A64RAV-REGISTER throw then
+         1 r lshift and 0= if
+            E-A64RAV-REGISTER throw
+         then
       then
    loop ;
 
@@ -541,21 +579,123 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
    id DBYTES-OF want <> if E-A64RAV-DSTACK throw then ;
 
-: FLOW-CK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+: FLOW-IN@ ( n -- n )
+   cells FLOW-IN + @ ;
+
+: FLOW-IN! ( n n -- )
+   cells FLOW-IN + ! ;
+
+: FLOW-OUT@ ( n -- n )
+   cells FLOW-OUT + @ ;
+
+: FLOW-OUT! ( n n -- )
+   cells FLOW-OUT + ! ;
+
+: FLOW-CLEAR ( -- )
+   BMAX 0 ?do
+      FLOW-TOP i FLOW-IN!
+      FLOW-TOP i FLOW-OUT!
+   loop ;
+
+: FLOW-MEET ( n n -- n )
+   {: a:n b:n :}
+   a FLOW-TOP = if b exit then
+   b FLOW-TOP = if a exit then
+   a b = if a exit then
+   FLOW-UNDEF ;
+
+: FLOW-SUCC-ORD ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- n )
+   {: f:IR-ID:ir-fun-id t:IR-ID:ir-op-id i:n :}
+   t i SUCC-AT IR-ID:BLOCK-LOCAL
+   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL -
+   dup 0 < over f BLOCK-COUNT >= or if E-A64RAV-SHAPE throw then ;
+
+: FLOW-EDGE? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id p:n b:n :}
+   f p BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   false
+   t SUCCS-OF 0 ?do
+      f t i FLOW-SUCC-ORD b = if drop true leave then
+   loop ;
+
+: FLOW-IN-CALC ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b 0= if FLOW-UNDEF exit then
+   0 FLOW-SEEN ! FLOW-TOP FLOW-MEET-V !
+   f BLOCK-COUNT 0 ?do
+      f i b FLOW-EDGE? if
+         1 FLOW-SEEN !
+         FLOW-MEET-V @ i FLOW-OUT@ FLOW-MEET FLOW-MEET-V !
+      then
+   loop
+   FLOW-SEEN @ 0= if FLOW-UNDEF exit then
+   FLOW-MEET-V @ ;
+
+: FLOW-SLOT ( IR-ID:ir-op-id -- n )
+   SLOT-OF {: off:n :}
+   off NOSLOT = if NOSLOT exit then
+   off A64IR:SLOT-WIDTH / {: s:n :}
+   s 0 < s SLOTS-MAX >= or if E-A64RAV-SLOT throw then
+   s ;
+
+: FLOW-OUT-CALC ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b FLOW-IN@ FLOW-STATE !
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id SLOT-OF {: off:n :}
-      off NOSLOT <> if
-         off A64IR:SLOT-WIDTH / {: s:n :}
-         s 0 < s SLOTS-MAX >= or if E-A64RAV-SLOT throw then
-         id STORES? if
-            s cells W-AT + @ 0 >= if E-A64RAV-SHARE throw then
-            i s cells W-AT + !
-         else
-            s cells W-AT + @ 0 < if E-A64RAV-RELOAD throw then
-         then
-      then
+      id FLOW-SLOT FLOW-S @ =  id STORES? and if FLOW-DEF FLOW-STATE ! then
+   loop
+   FLOW-STATE @ ;
+
+: FLOW-CELL ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b FLOW-IN-CALC {: vin:n :}
+   vin b FLOW-IN@ <> if vin b FLOW-IN! 1 FLOW-CHANGED ! then
+   f b FLOW-OUT-CALC {: vout:n :}
+   vout b FLOW-OUT@ <> if vout b FLOW-OUT! 1 FLOW-CHANGED ! then ;
+
+: FLOW-FIXPOINT ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   FLOW-CLEAR
+   begin
+      0 FLOW-CHANGED !
+      f BLOCK-COUNT 0 ?do f i FLOW-CELL loop
+      FLOW-CHANGED @ 0=
+   until ;
+
+: FLOW-CUR-IN ( n -- )
+   FLOW-IN@ FLOW-STATE ! ;
+
+: FLOW-OP-CK ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id FLOW-SLOT {: s:n :}
+   s FLOW-S @ <> if exit then
+   id STORES? if FLOW-DEF FLOW-STATE ! exit then
+   FLOW-STATE @ FLOW-DEF <> if E-A64RAV-RELOAD throw then ;
+
+: FLOW-BLOCK-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b FLOW-CUR-IN
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do bk i OP-AT FLOW-OP-CK loop ;
+
+: FLOW-HIGH ( IR-ID:ir-fun-id -- n )
+   {: f:IR-ID:ir-fun-id :}
+   0
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk OP-COUNT 0 ?do
+         bk i OP-AT FLOW-SLOT dup NOSLOT <> if 1+ max else drop then
+      loop
+   loop ;
+
+: FLOW-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f FLOW-HIGH 0 ?do
+      i FLOW-S !
+      f FLOW-FIXPOINT
+      f BLOCK-COUNT 0 ?do f i FLOW-BLOCK-CK loop
    loop ;
 
 : SLOT-CK ( IR-ID:ir-fun-id A64EFF:routine -- )
@@ -811,8 +951,8 @@ create V-TMP SETC cells allot
    V-BLKS @ 0 ?do f i VEDGE-OF loop ;
 
 \ ---- the frame of a routine with control flow --------------------------------
-\ A routine of more than one block reaches its frame in exactly TWO blocks: the
-\ one that takes it and the one that gives it back.
+\ A routine takes and gives back its frame in the two boundary blocks. Slot
+\ accesses may stand inside that bracket; the memory-order proof checks them.
 : VNO-FRAME ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do
@@ -836,11 +976,17 @@ create V-TMP SETC cells allot
    then
    id STORES? if E-A64RAV-CALL throw then ;
 
+: VFRAME-INNER-CK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT FRAME-OF NOSLOT <> if E-A64RAV-FRAME throw then
+   loop ;
+
 : VFRAME-BLOCKS-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id rb:n :}
    V-BLKS @ 0 ?do
       i 0 <> i rb <> and if
-         f i BLOCK-AT FRAMES? if E-A64RAV-FRAME throw then
+         f i BLOCK-AT VFRAME-INNER-CK
       then
    loop ;
 
@@ -1650,10 +1796,8 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
 \ ---- the whole re-derivation -------------------------------------------------
 : VBLOCK-CKS ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   V-BLKS @ 0 ?do
-      f i BLOCK-AT TIE-CK
-      f i BLOCK-AT FLOW-CK
-   loop ;
+   V-BLKS @ 0 ?do f i BLOCK-AT TIE-CK loop
+   f FLOW-CK ;
 
 : VCLOB-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
@@ -1676,7 +1820,6 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
 : VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n n n -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n
       lo:n hi:n :}
-   SLOTS-CLEAR
    f VANY-FRAME
    f lo hi ORDER-CK
    f VEDGE-CK

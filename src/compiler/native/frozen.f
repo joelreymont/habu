@@ -22,9 +22,10 @@ VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
 
 public
 
-\ ---- how much of one block a native pass holds -------------------------------
-\ One ceiling for every pass, so a block one pass produced always fits the next.
-256 constant VMAX
+\ ---- how many values one function of the native chain holds ------------------
+\ The selector's map spans blocks because SSA values do too. The largest
+\ shipping compiler routine currently needs 423 entries.
+512 constant VMAX
 
 \ ---- how many blocks one routine of the native chain has ---------------------
 \ One ceiling for every pass, for the same reason VMAX is one.

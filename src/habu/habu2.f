@@ -1395,7 +1395,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
 \
 \ Baking the chain puts its 43 files' definitions in the engine and tells
 \ src/core/include.f nothing, so a program's `require
-\ src/compiler/native/migrate.f` would read the file a second time and die on a
+\ src/compiler/native/compiler.f` would read the file a second time and die on a
 \ duplicate definition - the seeded engine would be WORSE for the chain's own
 \ consumers than the source one. These rows are what make that require the
 \ registry no-op it already is for src/core/checker.f.
@@ -1832,8 +1832,8 @@ create ENDLOC-KW 58 c, 125 c,
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 \ The defer/is misuse diagnostics own one concern between them - telling the
 \ source what it got wrong with `defer` or `is` - so they live in their own
-\ package, on the HOLD-EMIT model below, rather than joining the global emitter
-\ surface around them. The label cells are public because KWDATA:EMIT bakes
+\ package rather than joining the global emitter surface around them. The label
+\ cells are public because KWDATA:EMIT bakes
 \ their strings and the LABELS allocator mints their ids; each message's byte
 \ length is private, stated once beside the string it measures. The emitters
 \ that write them reopen this package further down, next to the defer rows.
@@ -1849,14 +1849,11 @@ variable LDEFHINT
 ;package
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2DOESW
 
-\ The held-publication seam's own two names: the label cell holding the spelling
-\ the publish tail looks up, and the emitter that asks the question. They own one
-\ concern between them - withholding a certified definition for the native chain
-\ - so they live in their own package rather than joining the global emitter
-\ surface around them, which is pre-existing debt and not a pattern to extend.
-package HOLD-EMIT
+\ The native compiler seam's label cell holds its qualified spelling; the other
+\ cell holds the capture-only compiler entry.
+package NCOMP-EMIT
 public
-variable LHOLDQ
+variable LWORD  variable LENTRY
 ;package
 \ ADT lowering keywords (TFAM 10, docs §16): `construct` and MATCH dispatch
 \ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
@@ -1953,7 +1950,7 @@ variable LCOLONNONAME
    LCOLONNONAME LABEL@ LBL, s" hb: : missing definition name after " BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  HOLD-EMIT:LHOLDQ LABEL@ LBL, s" checker-hold?" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, s" hb: is: missing target word after " BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, s" hb: is: no deferred word named " BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, s" hb: is: not a deferred word: " BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, S\" hb: is: parsing words resolve outside using-imports; qualify the target\n" BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, s" hb: defer: missing name after " BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -2399,6 +2396,12 @@ s" C-FIND-GLOBAL?" s" ptr n n --" TRUST
       0 2 MOVZ,  1 name LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+package NCOMP-EMIT
+public
+: FIND ( -- )
+   LWORD 13 C-FIND-GLOBAL? ;
+;package
 s" C-FIND-GLOBAL" s" ptr n n --" TRUST
 
 : C-FIND-CHECKER ( ptr n n label -- ) {: name:ptr len:n done:label :}
@@ -3262,8 +3265,12 @@ package INTERP-EMIT
    12 DATA QPATCH-CELL STR,
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
-   9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
+   LBL {: native:label :}
+   NCOMP-EMIT:FIND
+   13 native CBNZ,
+      9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
+      9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
+   native LBL,
    done LBL, ;
 
 \ The two ends of every definition's publish, emitted by the `;` tail below and
@@ -6114,8 +6121,53 @@ public
          C-CALL-X11-SAVED
    nosync LBL, ;
 
+package NCOMP-EMIT
+
+public
+
+: CAPTURE-PLAIN-STRING ( -- )
+   C-QUOTE-START
+   C-QUOTE-SCAN
+   C-QUOTE-CONSUME
+   11 16 0 ADDI,  12 10 1 ADDI,  LBCS LABEL@ BL, ;
+
+: CAPTURE-ESCAPED-STRING ( -- )
+   C-QUOTE-START
+   C-ESC-QUOTE-SCAN
+   C-ESC-QUOTE-CONSUME
+   11 16 0 ADDI,  12 15 1 ADDI,  LBCS LABEL@ BL, ;
+
+: CAPTURE-STRING ( -- )
+   LMAIN LABEL@ LKWSQ     2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
+   LMAIN LABEL@ LKWCQ     2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
+   LMAIN LABEL@ LKWDOTQ   2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
+   LMAIN LABEL@ LKWESQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
+   LMAIN LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
+   LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
+
+: EM-COMPILE ( -- )
+   LBL {: notsemi:label :}
+   LENTRY LABEL@ LBL,
+   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
+      PROT:LCLOSE LABEL@ BL,
+      10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+      10 DATA BODYLEN-CELL LDR,  10 G-PUSH
+      FIND
+      C-CALL-X11-SAVED
+      C-CLEAR-TRUSTED-STATE
+      9 0 MOVZ,  9 DATA PEND-CELL STR,
+      LMAIN LABEL@ B,
+   notsemi LBL,
+   LBCAP LABEL@ BL,
+   CAPTURE-STRING
+   LMAIN LABEL@ B, ;
+s" ncomp-emit:em-compile" s" --" TRUST
+
+;package
+
 : EM-COMMENT ( -- )
-   LBL LBL LBL {: notcom skln skpar :}
+   LBL LBL LBL LBL {: notcom skln skpar notcompile :}
    LMAIN LABEL@ LBL,
       EM-PKG-RESYNC
       \ depth-floor guard: the just-interpreted top-level word must never leave
@@ -6132,7 +6184,11 @@ public
       skln LBL,   11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,  11 12 CMP,  C-GE LMAIN LABEL@ BCOND,
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
       notcom LBL,
-      9 DATA PEND-CELL LDR,  9 LCOMPILE LABEL@ CBNZ, ;
+      9 DATA PEND-CELL LDR,  9 notcompile CBZ,
+      NCOMP-EMIT:FIND
+      13 LCOMPILE LABEL@ CBZ,
+      NCOMP-EMIT:LENTRY LABEL@ B,
+      notcompile LBL, ;
 
 \ EM-INTERPRET-COLON and the checker-callback rows bridge token dispatch to
 \ dynamically found checker package words.
@@ -6181,8 +6237,12 @@ public
          12 DATA QPATCH-CELL STR,
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-         9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
-         9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
+         LBL {: native:label :}
+         NCOMP-EMIT:FIND
+         13 native CBNZ,
+            9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
+            9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
+         native LBL,
          LMAIN LABEL@ B,
    ktry LBL,
    0 LKWKERNEL LABEL@ ADR,  1 7 MOVZ,  LKWCMP LABEL@ BL,  0 lnotcolon CBZ,
@@ -7770,46 +7830,8 @@ s" em-p2-finish" s" --" TRUST
    publish B, ;
 s" em-compile-publish-trusted" s" label --" TRUST
 
-\ The hook's answer is a SIGN and not a set of codes. Zero has always meant
-\ "refused, unpublish it"; every non-zero value has always meant "certified,
-\ publish it". The third outcome splits that second half rather than adding a
-\ magic number the engine and src/core/check-hook.f would both have to spell:
-\ NEGATIVE certifies and publishes, POSITIVE certifies and HOLDS. The engine
-\ therefore asks a structural question about the answer - which side of zero is
-\ it on - and never has to know which hold code the checked world chose, so
-\ there is no constant here that a second file has to keep in step.
-\
-\ WHAT HOLDING IS FOR. A definition the native chain is about to recompile from
-\ the tape the checker just filled (src/compiler/native/migrate.f). Everything
-\ the publication does is exactly what must NOT happen yet: the count must not
-\ move, the record must not enter the name index, and the checker's width and
-\ minimum-arity facts must not be poked into a record no caller can reach. The
-\ chain's own publisher does all four, after its emission has been validated,
-\ so that nothing is reachable under this name until code the chain accepted is
-\ what stands behind it.
-\
-\ AND HOLDING IS NOT REJECTING, WHICH IS THE TRAP IN THIS BLOCK. Both skip the
-\ publish label and both give the emission's code space back, so the two legs
-\ look interchangeable. They are not. A name longer than DNAME-INL is not stored
-\ in the record: C-STORE-NAME writes those bytes into CODE space and keeps the
-\ PRE-NAME code pointer at record offset 24. Rejecting rewinds to that pre-name
-\ pointer, which is right when the whole record is being thrown away and fatal
-\ when it is being kept - the chain would emit its routine straight over the
-\ bytes that spell the held word's own name. So the held leg rewinds to the
-\ COLON ENTRY, record cell 0, for inline and ext names alike, with no DNAME-EXT
-\ test. That erases every instruction the old emitter wrote and stops one byte
-\ above the name.
-\
-\ WHICH ALSO LEAVES THE RECORD POINTING AT ITS OWN NEXT CODE. After the rewind
-\ the code pointer IS the record's start cell, so the slot the chain is handed
-\ (src/compiler/native/publish.f NEXT-SLOT) is the slot the record already
-\ names, and the commit has no start cell to invent.
-\
-\ THE TEST SITS BEFORE THE PASS-2 DISPATCH DELIBERATELY. A held definition never
-\ enters the width-aware re-run: its emission is being discarded, so re-emitting
-\ it more carefully is work for nobody. Skipping the freeze strands nothing -
-\ TXN-ACTIVE-CELL is set in exactly one place and the trigger follows it in the
-\ same instruction stream, so it is never left set across definitions.
+\ A zero hook verdict rejects the pending definition. Any non-zero verdict
+\ certifies it and reaches the ordinary publication tail.
 : EM-COMPILE-PUBLISH-HOOKED ( label label -- )
    {: publish:label finish:label :}
    LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
@@ -7831,49 +7853,6 @@ s" em-compile-publish-trusted" s" label --" TRUST
    finish B, ;
 s" em-compile-publish-hooked" s" label label --" TRUST
 
-\ Ask, at the one point both publish tails reach, whether this certified
-\ definition is being withheld for the native chain (src/core/checker.f
-\ CHECKER-HOLD?). A non-zero answer takes the held exit: no count, no name
-\ index, no record facts, and the code pointer back to the colon entry.
-\
-\ IT IS ASKED HERE AND NOT IN EITHER TAIL. Only the sig-less tail has a hook
-\ return value; a definition WITH a declared signature publishes through
-\ EM-COMPILE-PUBLISH-TRUSTED, which calls the checker directly and never reads a
-\ verdict. Anything carried on the hook's answer would therefore have reached
-\ half the definitions in the system and silently missed the half that matter.
-\ Both tails converge on `publish`, so one question here is one mechanism for
-\ every definition, whichever route certified it.
-\
-\ ABSENT MEANS NOT HELD. The lookup is the non-fatal form, so the cold prefix -
-\ every definition compiled before checker.f exists - takes exactly the path it
-\ took before this question was asked.
-\
-\ AND THE HELD EXIT REWINDS TO THE COLON ENTRY, NEVER THE WAY THE REJECT LEG
-\ DOES. A name longer than DNAME-INL is not stored in the record: C-STORE-NAME
-\ writes those bytes into CODE space and keeps the PRE-NAME code pointer at
-\ record offset 24. Rejecting rewinds to that pre-name pointer, which is right
-\ when the record is being thrown away and fatal when it is being KEPT - the
-\ chain would emit its routine straight over the bytes that spell the held
-\ word's own name. Rewinding to record cell 0 instead erases every instruction
-\ the old emitter wrote and stops one byte above the name, which also leaves the
-\ record already pointing at the slot the chain is about to fill.
-package HOLD-EMIT
-public
-
-: EM-COMPILE-HELD? ( label -- ) {: finish:label :}
-   LBL {: nohold:label :}
-   LHOLDQ 13 C-FIND-GLOBAL?
-   13 nohold CBZ,
-   C-CALL-X11-SAVED
-   10 G-POP
-   10 nohold CBZ,
-      11 DATA PEND-CELL LDR,  CP 11 0 LDR,             \ CP := colon entry, above the name
-      finish B,
-   nohold LBL, ;
-s" HOLD-EMIT:EM-COMPILE-HELD?" s" label --" TRUST
-
-;package
-
 : EM-COMPILE-PUBLISH ( -- )
    LBL LBL LBL {: hooked:label publish:label finish:label :}
    9 DATA HOOK-CELL LDR,  9 hooked CBZ,
@@ -7882,7 +7861,6 @@ s" HOLD-EMIT:EM-COMPILE-HELD?" s" label --" TRUST
    hooked LBL,
    publish finish EM-COMPILE-PUBLISH-HOOKED
    publish LBL,
-   finish HOLD-EMIT:EM-COMPILE-HELD?
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    DOES-REC:PUBLISH
@@ -8812,6 +8790,7 @@ package ENGINE-EMIT
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
    EM-STARTUP
+   NCOMP-EMIT:EM-COMPILE
    EM-COMMENT
    INTERP-EMIT:EM-INTERPRET
    COMPILE-EMIT:EM-COMPILE
@@ -8910,7 +8889,7 @@ package LABELS
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL HOLD-EMIT:LHOLDQ !  LBL LP2DOESW !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LENTRY !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !

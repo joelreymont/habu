@@ -14,19 +14,15 @@
 \ the two that do not fit go. Three things are asserted about that, each
 \ falsifiable on its own: the plan - which values lose their register, in front of
 \ which operation, and into which slot - because that is the cost rule and nothing
-\ else measures it; the exact registers of the lowered module, because a lowering
-\ that put a store or a load anywhere else moves them; and that the lowered module
-\ needs no further spill, because the walk that planned it claimed the operations
-\ it would contain. A cost rule that chose the nearest next use instead of the
-\ furthest reddens the first two: the plan names other values, and the registers
-\ move with them.
+\ else measures it; and the accepted fixed-point module, because a lowering that
+\ put a store or load on the wrong path fails validation. A cost rule that chose
+\ the nearest next use instead of the furthest changes the exact plan.
 \
-\ WHY THE FRAME REFUSALS ARE BUILT BY HAND. A slot outside the declared frame,
-\ two values in one slot, a reload of a slot nothing wrote, and a frame that is
-\ not the contract's are shapes the lowering pass never produces. They are built
-\ straight into the machine dialect, one wrong thing each, so what is measured is
-\ the validator's own judgement about the module in front of it and not the
-\ allocator's agreement with itself.
+\ WHY THE FRAME CASES ARE BUILT BY HAND. A slot outside the declared frame, a
+\ reload of a slot nothing initialized, and a frame that is not the contract's
+\ are shapes the lowering pass never produces. A sequential second store to one
+\ slot is the positive mutable-slot counterpart. These measure the validator's
+\ judgement rather than the allocator's agreement with itself.
 \
 \ WHAT THE FIXED-REGISTER FIXTURES MEASURE. A routine contract can say which
 \ register each argument arrives in and each returned value leaves in, and three
@@ -80,7 +76,7 @@
 \ two halves separately: the plan - which value goes into the frame, and the
 \ BLOCK as well as the position of the store and of the load, because a row that
 \ named the position alone would put one of them in the wrong block - and the
-\ lowered module, which needs no further spill and is accepted. A declared result
+\ lowered fixed-point module, which is accepted. A declared result
 \ register is delivered here too, which is the capability that let the second
 \ allocator be retired. The refusals left are the two shapes this pass will not
 \ put in a frame, a routine with no frame to put anything in, the class the edge
@@ -1044,25 +1040,6 @@ create TXT
    s1 s2 M-ADD M-RET
    CLOSE-FUN ;
 
-\ A module that already reserves a frame and still cannot fit its values in the
-\ pool, so a second lowering is something a caller could really ask for. Lowering
-\ it would build a second frame inside the first, and the slots the allocator
-\ hands out start at the top of a frame it does not know is already in use.
-: BUILD-FRAMED ( -- )
-   s" FRAMED" 0 1 OPEN-FUN
-   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
-   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
-   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
-   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
-   a tok 0 M-STORE {: t1:IR-ID:ir-value-id :}
-   t1 0 M-LOAD {: w:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
-   a b M-ADD {: s1:IR-ID:ir-value-id :}
-   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
-   s2 w M-ADD {: s3:IR-ID:ir-value-id :}
-   t2 16 M-RELEASE
-   s3 M-RET
-   CLOSE-FUN ;
-
 \ The same shape with the store past the end of the frame the contract declares.
 : BUILD-FAR-SLOT ( -- )
    s" FAR" 0 1 OPEN-FUN
@@ -1266,6 +1243,12 @@ create TXT
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
    CC BB IR-BUILD:END-OP drop ;
 
+: M-BR0 ( n -- )
+   {: t:n :}
+   A64IR-OPCODE:BR M-OPEN
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
 : M-BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id t:n :}
    A64IR-OPCODE:BR M-OPEN
@@ -1351,6 +1334,29 @@ create TXT
    acc n M-ADD {: acc2:IR-ID:ir-value-id :}
    n one M-SUB {: n2:IR-ID:ir-value-id :}
    acc2 n2 1 M-BR2
+   CLOSE-FUN ;
+
+\ Both arms need spill stores and meet at an old zero-argument join. Their frame
+\ orders differ, so the rewrite has to add a new order argument to the join.
+: BUILD-MB-DIAMOND-SPILL ( -- )
+   s" MBDIAMOND" 0 1 OPEN-FUN
+   0 M-MOVZ 1 2 M-BRZ
+   M-BLOCK+
+   $11 M-CONST {: a:IR-ID:ir-value-id :}
+   $22 M-CONST {: b:IR-ID:ir-value-id :}
+   $33 M-CONST {: c:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
+   a b M-ADD c M-ADD d M-ADD drop
+   3 M-BR0
+   M-BLOCK+
+   $55 M-CONST {: e:IR-ID:ir-value-id :}
+   $66 M-CONST {: f:IR-ID:ir-value-id :}
+   $77 M-CONST {: g:IR-ID:ir-value-id :}
+   $88 M-CONST {: h:IR-ID:ir-value-id :}
+   e f M-ADD g M-ADD h M-ADD drop
+   3 M-BR0
+   M-BLOCK+
+   9 M-MOVZ M-RET
    CLOSE-FUN ;
 
 \ A move-wide overwrite inside a branch arm, with the arm arranged so that the
@@ -1631,7 +1637,7 @@ create TXT
    s" a spill decision in a routine that branches names the block it belongs in"
    T-LABEL
    WBND [: MB-PLAN-BODY ;] IR-CTX:WITH-CONTEXT
-   4 T= 1 T= 1 T= 2 T= 0 T= 1 T= 2 T= 1 T= ;
+   7 T= 0 T= 6 T= 2 T= 0 T= 1 T= 3 T= 1 T= ;
 
 \ ---- the multi-block refusals ------------------------------------------------
 : MB-EDGE-CLASH-BODY ( IR-CTX:ctx -- )
@@ -1661,16 +1667,6 @@ create TXT
    BUILD-CHAIN
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 4 16 LEAF-FRAMED A64RA:ALLOCATE ;
-
-\ The same pressure over a loop, where every class holding a register is one an
-\ edge forced: the loop-carried accumulator and count each hold three values, so
-\ neither can go into a slot - one value per slot is what makes a reload's value
-\ decidable from the module alone. Nothing here can be put away, and that is the
-\ refusal E-A64RA-SPILL has narrowed to.
-: MB-CARRIED-BODY ( IR-CTX:ctx -- )
-   A64-MOD
-   BUILD-MB-LOOP
-   1 M-ALLOCATE drop ;
 
 \ A convention that names a register for the value this routine returns, on a
 \ routine that branches. It used to be refused, because pre-colouring an argument
@@ -1720,17 +1716,56 @@ create TXT
 : SPILL-BIND ( -- )
    CC BB A64SPILL:BIND-DIALECT ;
 
-: LOWERED ( n n -- IR-BUILD:module )
-   {: n:n f:n :}
-   M-FREEZE {: m0:IR-BUILD:module :}
-   CC m0 n f LEAF-FRAMED A64RA:ALLOCATE
+variable LOWER-TURNS
+
+: LOWER-ONE ( IR-BUILD:module -- IR-BUILD:module )
+   {: m0:IR-BUILD:module :}
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
-   CC m1 n f LEAF-FRAMED A64RA:ALLOCATE
-   m1 n f LEAF-FRAMED A64RAV:ACCEPT
+   m0 IR-BUILD:RETIRE
    m1 ;
+
+: LOWER-MORE ( IR-BUILD:module n n -- IR-BUILD:module n )
+   {: m0:IR-BUILD:module n:n f:n :}
+   CC m0 n f LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if
+      A64SPILL:BOUND? if A64SPILL:RELEASE then
+      m0 f exit
+   then
+   LOWER-TURNS @ 1+ LOWER-TURNS !
+   A64RA:FRAME {: nf:n :}
+   m0 LOWER-ONE {: m1:IR-BUILD:module :}
+   m1 n nf recurse ;
+
+: LOWERED ( n n -- IR-BUILD:module )
+   {: n:n f:n :}
+   0 LOWER-TURNS !
+   M-FREEZE n f LOWER-MORE {: m1:IR-BUILD:module nf:n :}
+   m1 n nf LEAF-FRAMED A64RAV:ACCEPT
+   m1 ;
+
+: MB-DIAMOND-SPILL-BODY ( IR-CTX:ctx -- bool n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-MB-DIAMOND-SPILL
+   3 0 LOWERED drop
+   A64RAV:ACCEPTED?
+   LOWER-TURNS @ ;
+
+: MB-DIAMOND-SPILL-CASE ( -- )
+   s" distinct frame orders meet through a new zero-argument join lane" T-LABEL
+   WBND [: MB-DIAMOND-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= TTRUE ;
+
+: MB-CARRIED-BODY ( IR-CTX:ctx -- bool n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-MB-LOOP
+   2 0 LOWERED drop
+   A64RAV:ACCEPTED?
+   LOWER-TURNS @ ;
 
 \ What the walk decided, before anything was lowered. Five values are live where
 \ the fifth is made and three registers hold them, so two have to go into the
@@ -1763,7 +1798,7 @@ create TXT
 : PLAN-CASE ( -- )
    s" the values read furthest away are the ones that lose their register" T-LABEL
    WBND [: PLAN-BODY ;] IR-CTX:WITH-CONTEXT
-   8 T= 0 T= 12 T= 7 T= 11 T= 5 T= 8 T= 7 T= 6 T= 5 T= 4 T= 2 T= ;
+   8 T= 0 T= 9 T= 8 T= 8 T= 7 T= 7 T= 6 T= 6 T= 5 T= 6 T= 2 T= ;
 
 \ The lowered module allocates with no spill left, and every value of it is
 \ accepted. The exact registers are asserted, so a cost rule that chose another
@@ -1786,7 +1821,7 @@ create TXT
 : LOWER-CASE ( -- )
    s" a block that does not fit is lowered and then allocates" T-LABEL
    WBND [: LOWER-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= TTRUE 1 T= 0 T= 0 T= TFALSE TTRUE 21 T= 0 T= ;
+   2 T= TTRUE 1 T= 0 T= 0 T= TFALSE TTRUE 23 T= 0 T= ;
 
 \ The same program through the whole route: lower the store and the load into
 \ operations of the blocks they belong to, allocate the module that holds them,
@@ -1811,7 +1846,7 @@ create TXT
    s" a routine that branches and does not fit is lowered and then allocates"
    T-LABEL
    WBND [: MB-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 0 T= TFALSE TTRUE 19 T= 0 T= ;
+   2 T= 0 T= TFALSE TTRUE 21 T= 0 T= ;
 
 \ ---- the same shape, written again instead of put away -----------------------
 \ THE FIVE VALUES AS PLAIN MOVE-WIDES, which is the only difference from the two
@@ -1905,7 +1940,7 @@ create TXT
 : DOUBLE-CASE ( -- )
    s" one reload serves both reads of a value by one operation" T-LABEL
    WBND [: DOUBLE-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 1 T= 2 T= 1 T= ;
+   2 T= 1 T= 3 T= 1 T= ;
 
 \ ---- a returned value that has to be moved -----------------------------------
 \ The value the return carries is an argument, pinned where the caller put it, and
@@ -1944,6 +1979,7 @@ create TXT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-KEEP A64RA:ALLOCATE
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 DECL-KEEP A64RAV:ACCEPT
    A64RA:MOVES
    A64RA:SPILLS
@@ -2052,6 +2088,7 @@ create TXT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-SPILL-CONTRACT A64RA:ALLOCATE
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 DECL-SPILL-CONTRACT A64RAV:ACCEPT
    A64RA:SPILLS
    A64RA:MOVES
@@ -2061,7 +2098,7 @@ create TXT
 : DECL-SPILL-CASE ( -- )
    s" a program that spills still leaves its result where it is declared" T-LABEL
    WBND [: DECL-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 21 T= 0 T= 0 T= ;
+   1 T= 23 T= 0 T= 0 T= ;
 
 \ Two returned values whose declared registers cross. The first literal is still
 \ live when the second is written, so the value that has to leave in x0 cannot
@@ -2125,18 +2162,6 @@ create TXT
    M-FREEZE {: m:IR-BUILD:module :}
    CC m  4 POOL-N  A64EFF-CONV:DSTACK 0 DSLOT-Q  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
 
-\ Two registers cannot hold three arguments at once, and a block argument is one
-\ of the things this pass may not put in a frame: the values feeding it across
-\ every edge would have to move with it, and the caller has already put it where
-\ it is. So the refusal is not the frame at all - the routine declares none, and
-\ the walk never gets as far as asking for a slot - but "nothing here may be
-\ taken", which is E-A64RA-SPILL. The frame's own wall is SMALL-FRAME below.
-: PRESSURE-BODY ( IR-CTX:ctx -- )
-   HIR-MOD
-   BUILD-SUM3
-   SELECTED {: m:IR-BUILD:module :}
-   CC m 2 LEAF-N A64RA:ALLOCATE ;
-
 \ The same chain in two registers, which needs three slots, against a frame that
 \ holds two. A frame is a multiple of the stack alignment and a slot is half of
 \ one, so "one slot short" is a frame of sixteen bytes and a program that wants
@@ -2147,16 +2172,28 @@ create TXT
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 2 16 LEAF-FRAMED A64RA:ALLOCATE ;
 
-\ Lowering a module that already reserves a frame: it has been through the pass
-\ once, and a second frame inside the first is not a thing this pass builds.
-: TWICE-LOWER-BODY ( IR-CTX:ctx -- )
+\ An existing frame is resized in place across every lowering turn.
+: TWICE-LOWER-BODY ( IR-CTX:ctx -- bool n n n )
    A64-MOD
    SPILL-BIND
-   BUILD-FRAMED
+   BUILD-CHAIN
    M-FREEZE {: m0:IR-BUILD:module :}
-   CC m0 2 48 LEAF-FRAMED A64RA:ALLOCATE
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb TXT TXT-N A64SPILL:REWRITE drop ;
+   CC m0 4 0 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then
+   A64RA:FRAME {: f1:n :}
+   m0 LOWER-ONE {: m1:IR-BUILD:module :}
+   CC m1 3 f1 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then
+   A64RA:FRAME {: f2:n :}
+   m1 LOWER-ONE {: m2:IR-BUILD:module :}
+   CC m2 3 f2 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:PLAN-N 0<> if E-A64SPILL-PLAN throw then
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
+   m2 3 f2 LEAF-FRAMED A64RAV:ACCEPT
+   A64RAV:ACCEPTED?
+   f1
+   f2
+   2 ;
 
 \ Lowering a module whose walk decided no spill at all.
 : NO-SPILL-LOWER-BODY ( IR-CTX:ctx -- )
@@ -2358,7 +2395,6 @@ create TXT
 : WRONG-CLASS ( -- )      WBND [: WRONG-CLASS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EXTRA-LIVE-TIE ( -- )   WBND [: EXTRA-LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PAIR-SHARED ( -- )      WBND [: PAIR-SHARED-BODY ;] IR-CTX:WITH-CONTEXT ;
-: PRESSURE ( -- )         WBND [: PRESSURE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ARG-OUT-OF-POOL ( -- )  WBND [: ARG-OUT-OF-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : CROSS ( -- )            WBND [: CROSS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : OVER-ARG ( -- )         WBND [: OVER-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2370,7 +2406,8 @@ create TXT
 : ACCEPT-OVER-ARG ( -- )
    WBND [: ACCEPT-OVER-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SMALL-FRAME ( -- )      WBND [: SMALL-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
-: TWICE-LOWER ( -- )      WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TWICE-LOWER ( -- bool n n n )
+   WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : FAR-SLOT ( -- )         WBND [: FAR-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2394,7 +2431,8 @@ create TXT
 : MB-EDGE-CLASH ( -- )    WBND [: MB-EDGE-CLASH-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-SPILL ( -- )         WBND [: MB-SPILL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : ROUND-FRAME ( -- )      WBND [: ROUND-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
-: MB-CARRIED ( -- )       WBND [: MB-CARRIED-BODY ;] IR-CTX:WITH-CONTEXT ;
+: MB-CARRIED ( -- bool n )
+   WBND [: MB-CARRIED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-MULTI-ARG ( -- )     WBND [: MB-MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : DROP-BINDING ( -- )
@@ -2411,13 +2449,6 @@ create TXT
    [: EXTRA-LIVE-TIE ;] E-A64RA-TIE TTHROWSQ
    s" one value as two tied operands of one operation is refused" T-LABEL
    [: PAIR-SHARED ;] E-A64RA-TIE TTHROWSQ ;
-
-: PRESSURE-REFUSE-CASES ( -- )
-   s" more arguments live at once than the pool holds, and none may be put away" T-LABEL
-   [: PRESSURE ;] E-A64RA-SPILL TTHROWSQ
-   \ The refusal just above left no sealed walk, so there is no claim to read.
-   s" a refused allocation leaves no claim behind" T-LABEL
-   [: 0 A64RA:CLAIM@ drop ;] E-A64RA-STATE TTHROWSQ ;
 
 \ ---- the frame the walk derives ----------------------------------------------
 \ A contract's frame used to be a wall the walk was held to: a routine whose
@@ -2476,9 +2507,10 @@ create TXT
 \ Its own group for the reason CROSS-REFUSE-CASE below has one: every refusing
 \ body abandons a context, and the live-arena registry gives those slots back
 \ only when the enclosing context leaves.
-: MB-CARRIED-REFUSE-CASE ( -- )
-   s" a routine whose only held classes are loop-carried is refused" T-LABEL
-   [: MB-CARRIED ;] E-A64RA-SPILL TTHROWSQ ;
+: MB-CARRIED-CASE ( -- )
+   s" a loop-carried class may be assigned one shared spill slot" T-LABEL
+   MB-CARRIED
+   1 T= TTRUE ;
 
 \ Its own group: each refusing body above abandons a context, and the live-arena
 \ registry gives those slots back only when the enclosing context leaves.
@@ -2496,8 +2528,9 @@ create TXT
    [: ACCEPT-OVER-ARG ;] E-A64RAV-FIXED TTHROWSQ ;
 
 : LOWER-TWICE-CASE ( -- )
-   s" lowering a module that already reserves a frame is refused" T-LABEL
-   [: TWICE-LOWER ;] E-A64SPILL-SHAPE TTHROWSQ ;
+   s" repeated lowering resizes one existing frame and validates" T-LABEL
+   TWICE-LOWER
+   2 T= 32 T= 16 T= TTRUE ;
 
 : LOWER-NONE-CASE ( -- )
    s" lowering a module whose walk decided no spill is refused" T-LABEL
@@ -2506,14 +2539,14 @@ create TXT
 : SLOT-REFUSE-CASES ( -- )
    s" a slot outside the declared frame is refused" T-LABEL
    [: FAR-SLOT ;] E-A64EFF-SLOT TTHROWSQ
-   s" two values in one slot are refused" T-LABEL
-   [: SHARED-SLOT ;] E-A64RAV-SHARE TTHROWSQ ;
+   s" a later store initializes the shared slot's later value" T-LABEL
+   SHARED-SLOT ;
 
 : RELOAD-REFUSE-CASES ( -- )
    s" a reload of a slot nothing stored to is refused" T-LABEL
    [: EMPTY-SLOT ;] E-A64RAV-RELOAD TTHROWSQ
    s" a frame that is not the one the contract declares is refused" T-LABEL
-   [: WRONG-FRAME ;] E-A64RAV-FRAME TTHROWSQ ;
+   [: WRONG-FRAME ;] E-A64RA-FRAME TTHROWSQ ;
 
 : ORDER-REFUSE-CASES ( -- )
    s" a memory order the module mints and nothing reads is refused" T-LABEL
@@ -2929,7 +2962,7 @@ create TXT
 : FSPILL-PLAN-CASE ( -- )
    s" a double that does not fit is planned into the frame" T-LABEL
    WBND [: FSPILL-PLAN-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE 2 T= 1 T= ;
+   TTRUE 4 T= 2 T= ;
 
 : FSPILL-LOWER-BODY ( IR-CTX:ctx -- n n bool )
    A64-MOD
@@ -2942,6 +2975,7 @@ create TXT
    CC nb A64RAV:BIND-DIALECT
    CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 FSPILL-CONTRACT A64RA:ALLOCATE
+   A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 FSPILL-CONTRACT A64RAV:ACCEPT
    A64RA:SPILLS
    A64RA:VALUES
@@ -2950,7 +2984,7 @@ create TXT
 : FSPILL-LOWER-CASE ( -- )
    s" a lowered double spill allocates and is accepted" T-LABEL
    WBND [: FSPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE 13 T= 0 T= ;
+   TTRUE 16 T= 0 T= ;
 
 \ ---- an emission whose two functions have two arities -------------------------
 \ THE SHAPE A QUOTATION MAKES, judged by the validator rather than by the
@@ -3029,7 +3063,6 @@ create TXT
 : GROUP-CALL-PLACE-BAD ( IR-CTX:ctx -- ) drop CALL-PLACE-REFUSE-CASE ;
 : GROUP-SHAPE ( IR-CTX:ctx -- )     drop SHAPE-REFUSE-CASES ;
 : GROUP-TIE ( IR-CTX:ctx -- )       drop TIE-REFUSE-CASES ;
-: GROUP-PRESSURE ( IR-CTX:ctx -- )  drop PRESSURE-REFUSE-CASES ;
 : GROUP-DERIVE ( IR-CTX:ctx -- )    drop DERIVE-FRAME-CASES ;
 : GROUP-POOL ( IR-CTX:ctx -- )      drop POOL-REFUSE-CASES ;
 : GROUP-FIXED ( IR-CTX:ctx -- )     drop FIXED-REFUSE-CASES ;
@@ -3049,7 +3082,7 @@ create TXT
 : GROUP-STATE ( IR-CTX:ctx -- )     drop STATE-REFUSE-CASES ;
 : GROUP-MB ( IR-CTX:ctx -- )        drop MB-REFUSE-CASES ;
 : GROUP-ROUND ( IR-CTX:ctx -- )     drop ROUND-FRAME-CASES ;
-: GROUP-MB-CARRIED ( IR-CTX:ctx -- ) drop MB-CARRIED-REFUSE-CASE ;
+: GROUP-MB-CARRIED ( IR-CTX:ctx -- ) drop MB-CARRIED-CASE ;
 : GROUP-MB-ACCEPT ( IR-CTX:ctx -- ) drop MB-ACCEPT-REFUSE-CASES ;
 
 public
@@ -3092,6 +3125,7 @@ public
    MB-LIVE-COPY-CASE
    MB-PLAN-CASE
    MB-LOWER-CASE
+   MB-DIAMOND-SPILL-CASE
    MB-FIXED-CASE
    RESERVED-CASES
    WBND [: GROUP-TWO-ARITIES ;] IR-CTX:WITH-CONTEXT
@@ -3102,7 +3136,6 @@ public
    WBND [: GROUP-CALL-PLACE-BAD ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-PRESSURE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-DERIVE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-ROUND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-POOL ;] IR-CTX:WITH-CONTEXT

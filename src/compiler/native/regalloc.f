@@ -104,6 +104,8 @@ variable N-SLOTS
 0 N-SLOTS !
 variable BASE-N                      \ the first frame byte this walk may use
 0 BASE-N !
+variable SEEN-FRAME                  \ the one frame size the module already owns
+NOATTR SEEN-FRAME !
 variable ARGS-N
 0 ARGS-N !
 variable OUTS-N
@@ -114,6 +116,7 @@ variable OUTS-N
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MOVZ IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
@@ -251,19 +254,6 @@ variable SHORT-FUN                           \ the function whose scan ran short
    {: id:IR-ID:ir-op-id i:n :}
    V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FTIE-OPERAND@ ;
 
-\ ---- what an operation says about the caller's data stack --------------------
-\ A routine reaches the caller's stack in fixed sequences, recognised by the
-\ ATTRIBUTE KEYS an operation carries and never by its opcode.
-: DSTACK-TOUCH? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   false
-   id ATTRS-OF 0 ?do
-      id i ATTR-KEY-AT {: key:IR-ID:ir-symbol-id :}
-      DKEYS-N 0 ?do
-         key i BND-DKEY @ SAME-SYM? if drop true leave then
-      loop
-   loop ;
-
 \ ---- what a call site destroys -----------------------------------------------
 : ATTR-INT-OF ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
@@ -275,6 +265,58 @@ variable SHORT-FUN                           \ the function whose scan ran short
          leave
       then
    loop ;
+
+: DSTORE? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id DK-SLOT BND-DKEY @ ATTR-INT-OF NOATTR = if false exit then
+   V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
+   IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
+
+: DLOAD? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id DK-SLOT BND-DKEY @ ATTR-INT-OF NOATTR = if false exit then
+   V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
+   IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ ;
+
+: FRAME-ATTR ( IR-ID:ir-op-id -- n )
+   0 BND-FRAME @ ATTR-INT-OF ;
+
+: FRAME-TOUCH? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-FRAME @ ATTR-INT-OF NOATTR <>
+   id 0 BND-SLOT @ ATTR-INT-OF NOATTR <> or ;
+
+: FRAME-SEEN+ ( n -- )
+   {: frame:n :}
+   frame NOATTR = if exit then
+   SEEN-FRAME @ NOATTR = if frame SEEN-FRAME ! exit then
+   frame SEEN-FRAME @ <> if E-A64RA-FRAME throw then ;
+
+: BLOCK-FRAME ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT FRAME-ATTR FRAME-SEEN+
+   loop ;
+
+: FUN-FRAME ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT BLOCK-FRAME
+   loop ;
+
+: MODULE-FRAME ( -- n )
+   NOATTR SEEN-FRAME !
+   FUN-COUNT 0 ?do
+      MKEY i IR-ID:PACK-FUN FUN-FRAME
+   loop
+   SEEN-FRAME @ ;
+
+: BASE! ( A64EFF:traits A64EFF:link n -- )
+   {: traits:A64EFF:traits link:A64EFF:link size:n :}
+   MODULE-FRAME {: frame:n :}
+   frame NOATTR = if traits link A64FRAME:SPILL-BASE BASE-N ! exit then
+   frame size <> if E-A64RA-FRAME throw then
+   frame BASE-N ! ;
 
 \ Asked by the attribute a call carries and no other operation does.
 : CALL-AT? ( IR-ID:ir-op-id -- bool )
@@ -434,6 +476,8 @@ variable SHORT-AT                    \ the position the scan ran short at, or -1
 -1 SHORT-AT !
 variable SHORT-FILE                  \ and which register file it ran short of
 0 SHORT-FILE !
+variable SHORT-ROOT                  \ the unplaced class, or NOBODY for pressure
+NOBODY SHORT-ROOT !
 variable RET-B                       \ the block control leaves the routine through
 0 RET-B !
 
@@ -450,6 +494,7 @@ create CL-DEF VMAX cells allot       \ where a spilled class is written
 create CL-ANCH VMAX cells allot      \ where the store that puts it away stands
 create CL-SIZE VMAX cells allot      \ how many values one class holds
 create CL-KEEP VMAX cells allot      \ whether this class must stay in a register
+create CL-FRAME VMAX cells allot     \ whether lowering already put this class on a frame operation
 create CL-FIX VMAX cells allot       \ the register the contract pins this class to
 create CL-WANT VMAX cells allot      \ the register the contract wants it to leave in
 
@@ -847,6 +892,12 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 : KEEP? ( n -- bool )
    cells CL-KEEP + @ 0<> ;
 
+: FRAME-KEEP! ( n -- )
+   UF-FIND cells CL-FRAME + 1 swap ! ;
+
+: FRAME-KEPT? ( n -- bool )
+   UF-FIND cells CL-FRAME + @ 0<> ;
+
 \ ---- what "this class lost its register" means -------------------------------
 \ A class the fit evicted and a class in a slot are two answers, not one.
 : CL-EVICTED? ( n -- bool )
@@ -862,6 +913,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
       NOPOS i cells CL-ANCH + !
       0 i cells CL-SIZE + !
       0 i cells CL-KEEP + !
+      0 i cells CL-FRAME + !
       NOBODY i cells CL-FIX + !
       NOBODY i cells CL-WANT + !
    loop ;
@@ -874,33 +926,21 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 
 : MB-KEEP-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id OPERANDS-OF 0 ?do id i OPERAND-AT SLOT KEEP! loop
-   id RESULTS-OF 0 ?do  id i RESULT-AT  SLOT KEEP! loop ;
-
-: MB-KEEP-READS ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id OPERANDS-OF 0 ?do id i OPERAND-AT SLOT KEEP! loop ;
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT dup KEEP! FRAME-KEEP!
+   loop
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT dup KEEP! FRAME-KEEP!
+   loop ;
 
 : MB-KEEP-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk ARG-COUNT 0 ?do bk i ARG-AT SLOT KEEP! loop
-   b 0= b RET-B @ = or 0= if
-      bk OP-COUNT 0 ?do bk i OP-AT MB-KEEP-OP loop
-      exit
-   then
+   b 0= if bk ARG-COUNT 0 ?do bk i ARG-AT SLOT KEEP! loop then
    bk OP-COUNT 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id DSTACK-TOUCH? if id MB-KEEP-READS then
+      id FRAME-TOUCH? if id MB-KEEP-OP then
    loop ;
-
-: MB-SPILLABLE? ( n -- bool )
-   {: r:n :}
-   r CL-EVICTED? if false exit then
-   r cells CL-SIZE + @ 1 <> if false exit then
-   r KEEP? if false exit then
-   r CLS-AT C-TOKEN = if false exit then
-   true ;
 
 \ ---- reading the linear order backwards --------------------------------------
 : POS-BLOCK ( n -- n )
@@ -919,6 +959,20 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    {: f:IR-ID:ir-fun-id p:n :}
    p POS-BLOCK {: b:n :}
    f b BLOCK-AT  p  b cells B-ST + @ -  1-  OP-AT ;
+
+: MB-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
+   nip {: r:n :}
+   r CL-EVICTED? if false exit then
+   r KEEP? if false exit then
+   r CLS-AT C-TOKEN = if false exit then
+   true ;
+
+: MB-INCOMING-SPILLABLE? ( IR-ID:ir-fun-id n -- bool )
+   nip {: r:n :}
+   r CL-EVICTED? if false exit then
+   r FRAME-KEPT? if false exit then
+   r CLS-AT C-TOKEN = if false exit then
+   true ;
 
 : MB-READS? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
@@ -952,14 +1006,34 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
       f r i MB-READS? if drop i leave then
    loop ;
 
-\ The first operation after the definition that is not part of the same run.
+\ A value defined outside the data stack can be stored immediately. A data-stack
+\ load run stays contiguous, so a value one of its loads defines is stored after
+\ that run and before the next call group.
 : MB-ANCHOR ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk OP-COUNT {: n:n :}
+   bk at OP-AT DLOAD? 0= if at 1+ n min exit then
+   n
+   n at 1+ ?do
+      bk i OP-AT DLOAD? 0= if drop i leave then
+   loop ;
+
+\ A call group begins with the stores that publish its arguments. Reloads may
+\ stand before that run, but not inside it; adjacent data-stack groups are not
+\ one indivisible run.
+: MB-DSTORE-END ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id at:n :}
    bk OP-COUNT {: n:n :}
    n
    n at 1+ ?do
-      bk i OP-AT DSTACK-TOUCH? 0= if drop i leave then
+      bk i OP-AT DSTORE? 0= if drop i leave then
    loop ;
+
+: MB-DSTORE-HEAD? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT DSTORE? 0= if false exit then
+   at 0= if true exit then
+   bk at 1- OP-AT DSTORE? 0= ;
 
 : MB-DEF-POS ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id r:n :}
@@ -973,6 +1047,22 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    p POS-BLOCK {: b:n :}
    f b BLOCK-AT  p  b cells B-ST + @ -  1-  MB-ANCHOR {: k:n :}
    b k OP-POS ;
+
+\ Reloads stand before one call's store run, so their temporary registers are
+\ live only until their last consuming store in that group.
+: MB-RUN-READS? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   p POS-OP? 0= if false exit then
+   f p POS-OP {: id:IR-ID:ir-op-id :}
+   id SUCCS-OF 1 = if false exit then
+   id DSTORE? 0= if f r p MB-READS? exit then
+   p POS-BLOCK {: b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   p b cells B-ST + @ - 1- {: at:n :}
+   false
+   bk at MB-DSTORE-END at ?do
+      f r b i OP-POS MB-READS? or
+   loop ;
 
 \ ---- the scan ----------------------------------------------------------------
 : MB-EXPIRE1 ( n n n -- )
@@ -1017,7 +1107,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    0
    N-VALS @ 0 ?do
       i fl MB-FRAMED? if
-         i p MB-ACROSS?  f i p MB-READS? or if 1+ then
+         i p MB-ACROSS?  f i p MB-RUN-READS? or if 1+ then
       then
    loop ;
 
@@ -1032,7 +1122,13 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 
 : MB-SHORT! ( n n -- )
    {: p:n fl:n :}
-   SHORT-AT @ 0 < if p SHORT-AT !  fl SHORT-FILE ! then ;
+   SHORT-AT @ 0 < if
+      p SHORT-AT !  fl SHORT-FILE !  NOBODY SHORT-ROOT !
+   then ;
+
+: MB-SHORT-ROOT! ( n n n -- )
+   {: p:n fl:n r:n :}
+   SHORT-AT @ 0 < if p SHORT-AT !  fl SHORT-FILE !  r SHORT-ROOT ! then ;
 
 \ ---- which registers one class may not have ----------------------------------
 : MB-CROSSES? ( n n -- bool )
@@ -1096,7 +1192,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    f r forbid MB-WANTED {: w:n :}
    w 0 >= if r w TAKE exit then
    r FILE-AT forbid FREE-REG {: g:n :}
-   g 0 < if pos r FILE-AT MB-SHORT! exit then
+   g 0 < if pos r FILE-AT r MB-SHORT-ROOT! exit then
    r g TAKE ;
 
 : MB-READ-PRESSURE ( IR-ID:ir-fun-id n n -- )
@@ -1186,7 +1282,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    {: f:IR-ID:ir-fun-id r:n p:n :}
    r MB-HELD? 0= if false exit then
    f r p MB-TOUCHES? if false exit then
-   r MB-SPILLABLE? if true exit then
+   f r MB-SPILLABLE? if true exit then
    f r MB-REMATABLE? ;
 
 \ A position with no spare class is register pressure no spill can serve.
@@ -1234,13 +1330,22 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    dup 0 < if E-A64RA-SPILL throw then ;
 
 \ A class that can be written again is marked and given no slot.
-: MB-EVICT ( IR-ID:ir-fun-id n n -- )
-   {: f:IR-ID:ir-fun-id p:n fl:n :}
-   f p fl MB-VICTIM {: r:n :}
+: MB-EVICT1 ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id r:n :}
    f r MB-REMATABLE? if 1 r cells CL-REMAT + ! else NEW-SLOT r cells CL-SLOT + ! then
    f r MB-DEF-POS {: d:n :}
    d r cells CL-DEF + !
    f d MB-ANCH-POS  r cells CL-ANCH + ! ;
+
+: MB-EVICT ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id p:n fl:n :}
+   SHORT-ROOT @ {: incoming:n :}
+   incoming NOBODY <> if
+      f incoming MB-INCOMING-SPILLABLE?  f incoming MB-REMATABLE?  or if
+         f incoming MB-EVICT1 exit
+      then
+   then
+   f  f p fl MB-VICTIM  MB-EVICT1 ;
 
 
 : MB-FINISH ( -- )
@@ -1275,9 +1380,10 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    loop ;
 
 \ HOW it comes back is the eviction's own answer: out of its slot, or written again.
-: MB-PLAN-LOADS ( IR-ID:ir-block-id n n -- )
-   {: bk:IR-ID:ir-block-id b:n at:n :}
-   bk at OP-AT {: id:IR-ID:ir-op-id :}
+: MB-PLAN-LOADS1 ( IR-ID:ir-block-id n n n -- )
+   {: bk:IR-ID:ir-block-id b:n at:n use:n :}
+   bk use OP-AT {: id:IR-ID:ir-op-id :}
+   id SUCCS-OF 1 = if exit then
    id OPERANDS-OF 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
       b k at RELOADED? 0= if
@@ -1285,6 +1391,12 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
          k REMAT-AT if b P-REMAT at k PLAN+ then
       then
    loop ;
+
+: MB-PLAN-LOADS ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id b:n at:n :}
+   bk at OP-AT DSTORE? 0= if bk b at at MB-PLAN-LOADS1 exit then
+   bk at MB-DSTORE-HEAD? 0= if exit then
+   bk at MB-DSTORE-END at ?do bk b at i MB-PLAN-LOADS1 loop ;
 
 : MB-PLAN-TAIL-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -1417,6 +1529,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
    begin
       -1 SHORT-AT !
       F-GPR SHORT-FILE !
+      NOBODY SHORT-ROOT !
       HOLDERS-CLEAR
       N-FUNS @ 0 ?do
          SHORT-AT @ 0 < if
@@ -1502,6 +1615,7 @@ public
    c b A64IR:FPR-TYPE 0 BND-FPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:KEY-SLOT 0 BND-SLOT !
+   c b A64IR:KEY-FRAME 0 BND-FRAME !
    c b A64IR:KEY-DSLOT  DK-SLOT BND-DKEY !
    c b A64IR:KEY-DBYTES DK-BYTES BND-DKEY !
    c b A64IR:KEY-DBACK  DK-BACK BND-DKEY !
@@ -1518,19 +1632,19 @@ public
    BND-TAKE ;
 
 \ ---- the pass ----------------------------------------------------------------
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:traits A64EFF:link -- )
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:conv A64EFF:placeseq A64EFF:placeseq A64EFF:traits A64EFF:link n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
       cv:A64EFF:conv args:A64EFF:placeseq outs:A64EFF:placeseq
-      traits:A64EFF:traits link:A64EFF:link :}
+      traits:A64EFF:traits link:A64EFF:link size:n :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
    c TARGET-CK
    pool 0 S-POOL !
    fpool 0 S-FPOOL !
-   traits link A64FRAME:SPILL-BASE BASE-N !
    m VIEWS!
    m IR-BUILD:FMODULE 0 S-MOD !
+   traits link size BASE!
    TABLES-CLEAR
    args outs FIXED!
    FIXED-POOL-CK
@@ -1559,7 +1673,7 @@ public
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
-   pool fpool cv gi gr t l WALK
+   pool fpool cv gi gr t l size WALK
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;

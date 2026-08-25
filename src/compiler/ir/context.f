@@ -70,38 +70,9 @@ $7FFFFFFF constant SERIAL-CEILING    \ production per-context module ceiling; th
                                      \ full IR-ID module serial range
 $7FFFFFFF constant GEN-MAX           \ context generation ceiling
 64 constant DEPTH-MAX                \ live + retired registry slots
-$80000 constant MAP-BYTES            \ one 512K mapping per context. It was 64K
-                                     \ while one module of the machine dialect
-                                     \ cost about seventeen kilobytes; the
-                                     \ dialect's byte-width memory forms tipped
-                                     \ a geometrically grown table over its next
-                                     \ doubling and took registration past
-                                     \ twenty-seven, and the spill lowering
-                                     \ holds TWO modules of that dialect in one
-                                     \ context - the old module it reads and the
-                                     \ rewritten one it builds. That took it to
-                                     \ 128K. Compiling a real definition that
-                                     \ spills holds THREE: the source module the
-                                     \ elaborator filled is still live when the
-                                     \ machine module is rewritten, because the
-                                     \ whole run is one context. Each time it is
-                                     \ a real pass of the compiler rather than a
-                                     \ fixture, so the mapping is what gives.
-                                     \ Instruction combining
-                                     \ (src/compiler/native/combine.f) makes it
-                                     \ FOUR for a definition that both combines
-                                     \ and spills - the source module, the
-                                     \ selected one, the combined one it writes
-                                     \ from that, and the spill lowering's - so
-                                     \ 256K refused with E-IR-CTX-SCRATCH the
-                                     \ first time the pass ran over the whole
-                                     \ comparison corpus, and this is 512K for
-                                     \ the same reason the last two doublings
-                                     \ were. A pass that holds one more module
-                                     \ at once is what moves this number; a
-                                     \ pass that hands its input straight back,
-                                     \ as combining does for a routine with no
-                                     \ pair in it, holds none and does not.
+$100000 constant MAP-BYTES           \ the largest shipping compiler routine
+                                     \ reaches about 547K, so the next
+                                     \ power-of-two mapping is 1M
 
 \ Header slots inside the mapping, one CDIGEST slot each.
 0 constant HF-MINTED                 \ modules minted by this context

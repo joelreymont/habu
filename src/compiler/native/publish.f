@@ -395,50 +395,49 @@ public
    idx fn size COMMIT
    a u wid os ol fn  size RECORDED-LEN  LOG+ ;
 
-\ ---- committing a publication the engine withheld ----------------------------
-: HELD-IDX ( -- n )
+\ ---- publishing the pending record -------------------------------------------
+: PENDING-IDX ( -- n )
    ndict@ ;
 
-\ A lower index is a word that IS published and a higher one is a slot no `:`
-\ has written.
-: HELD-CK ( n -- ) {: idx:n :}
-   idx HELD-IDX <> if E-NPUB-HELD throw then
+\ A lower index is already published and a higher one is a slot no `:` wrote.
+: PENDING-CK ( n -- ) {: idx:n :}
+   idx PENDING-IDX <> if E-NPUB-PENDING throw then
    idx WORDLIST-CK
    idx FLAGS-CK ;
 
 \ The two the engine's publish tail applies after ndict++ (EM-REC-WIDE-PUBLISH),
 \ read from the same two latches.
-: HELD-FACTS ( n -- ) {: idx:n :}
+: PENDING-FACTS ( n -- ) {: idx:n :}
    REC-WIDE-PUBLISH
    REC-MIN-IN@ {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;
 
 \ `:` is the sole constructor of a dictionary record in this system, so the
-\ chain COMMITS the record the engine already built rather than building one.
-\ The held record is always the slot the count points at, so this takes no index.
-: HELD-PROVE ( -- n n n )
+\ compiler commits the record the engine already built rather than building one.
+\ The pending record is the slot the count points at, so this takes no index.
+: PENDING-PROVE ( -- n n n )
    SIZE-CK {: size:n :}
    size MAP-CK
-   HELD-IDX {: idx:n :}
-   idx HELD-CK
+   PENDING-IDX {: idx:n :}
+   idx PENDING-CK
    idx XREF-REC XREF-NAME$ nip {: u:n :}
    size VALIDATE-EMISSION {: fn:n :}
    u LOG-CK
    idx fn size ;
 
-: COMMIT-HELD ( -- )
-   HELD-PROVE {: idx:n fn:n size:n :}
+: PUBLISH-PENDING ( -- )
+   PENDING-PROVE {: idx:n fn:n size:n :}
    idx XREF-REC XREF-NAME$ {: a:ptr u:n :}
    idx XREF-REC XREF-WORDLIST {: wid:n :}
    idx fn size COMMIT
    ndict@ 1+ ndict!
-   idx HELD-FACTS
+   idx PENDING-FACTS
    a u wid 0 0 fn  size RECORDED-LEN  LOG+ ;
 
 \ One word and not a copy of one, so the two answers cannot drift apart; a
 \ committed question would cost a code slot and a row that may not be evicted.
-: VALIDATE-HELD ( -- )
-   HELD-PROVE 2drop drop ;
+: VALIDATE-PENDING ( -- )
+   PENDING-PROVE 2drop drop ;
 
 \ The engine's own free code slot, which is what REPUBLISH claims. Asking is
 \ free: a caller that asks and never publishes has moved no pointer.

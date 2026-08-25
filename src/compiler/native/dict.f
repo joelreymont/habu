@@ -2,9 +2,8 @@
 \ concern: turning a name a program wrote into the fact the chain needs about it.
 \
 \ The lookup order is the engine's own (habu1.f EMIT-FIND): the open package's
-\ private wordlist, then its public one, then the global one, then a NAME:tail
-\ through the namespace record. The used-publics leg is deliberately NOT walked:
-\ a name reached through a `using` answers absent (habu-walk-the-used-96694010).
+\ private wordlist, then its public one, then the global one, then the live used
+\ publics, plus a NAME:tail through the namespace record.
 \
 \ No record slot holds what a `create`d or `constant` word pushes and decoding
 \ its body is forbidden, so the only honest answer is to ENTER the word - and
@@ -33,23 +32,38 @@ private
 
 \ `search-wl` is the engine's own scan and case fold, and zero is its absent
 \ answer; no word's code starts there.
-: OPEN-START ( ptr u8 n -- n )
-   {: a u:n :}
-   OPEN-PRI 0= if 0 exit then
-   a u OPEN-PRI search-wl {: pri:n :}
-   pri 0<> if pri exit then
-   a u OPEN-PUB search-wl ;
+: USE-DEPTH ( -- n )
+   data-base USE-DEPTH-CELL + @ ;
 
-: BARE-START ( ptr u8 n -- n )
-   {: a u:n :}
-   a u OPEN-START {: open:n :}
-   open 0<> if open exit then
-   a u 0 search-wl ;
+: USE-WID ( n -- n )
+   cells data-base USE-WIDS-OFF + + @ ;
 
-: QUAL-START ( ptr u8 n n -- n )
-   XREF-FIND-QUALIFIED
-   dup XREF-FOUND? 0= if drop 0 exit then
-   XREF-START ;
+\ `search-wl` decides whether the engine sees the name; XREF supplies the record
+\ that lookup does not return. A disagreement is a miss, never a guessed record.
+: WL-CANDIDATE ( ptr u8 n n -- ptr a )
+   {: a:ptr u:n wid:n :}
+   a u wid search-wl {: start:n :}
+   start 0= if XREF-NULL exit then
+   a u wid XREF-FIND-WL
+   dup XREF-FOUND? 0= if exit then
+   dup XREF-START start <> if drop XREF-NULL then ;
+
+\ Duplicate `using` of one package is one binding. Two distinct records are the
+\ same ambiguity the engine refuses before it executes or compiles the token.
+: USED-REC ( ptr u8 n -- ptr a )
+   {: a:ptr u:n :}
+   XREF-NULL
+   USE-DEPTH 0 ?do
+      a u i USE-WID WL-CANDIDATE
+      dup XREF-FOUND? if
+         over XREF-FOUND? if
+            2dup <> if E-USING-AMBIGUOUS throw then
+         then
+         nip
+      else
+         drop
+      then
+   loop ;
 
 \ ---- the same walk, answering the record rather than the code start ----------
 \ `search-wl` stays the authority on whether and where. This walk supplies only
@@ -57,15 +71,17 @@ private
 : OPEN-REC ( ptr u8 n -- ptr a )
    {: a u:n :}
    OPEN-PRI 0= if XREF-NULL exit then
-   a u OPEN-PRI XREF-FIND-WL {: pri:ptr :}
+   a u OPEN-PRI WL-CANDIDATE {: pri:ptr :}
    pri XREF-FOUND? if pri exit then
-   a u OPEN-PUB XREF-FIND-WL ;
+   a u OPEN-PUB WL-CANDIDATE ;
 
 : BARE-REC ( ptr u8 n -- ptr a )
    {: a u:n :}
    a u OPEN-REC {: open:ptr :}
    open XREF-FOUND? if open exit then
-   a u 0 XREF-FIND-WL ;
+   a u 0 WL-CANDIDATE {: global:ptr :}
+   global XREF-FOUND? if global exit then
+   a u USED-REC ;
 
 : SPELL-REC ( ptr u8 n -- ptr a )
    {: a u:n :}
@@ -88,10 +104,8 @@ public
 
 : SPELL-START ( ptr u8 n -- n )
    {: a u:n :}
-   a u XREF-QUAL-INDEX {: q:n :}
-   q QUAL-BAD = if 0 exit then
-   q 0 >= if a u q QUAL-START exit then
-   a u BARE-START ;
+   a u SPELL-REC dup XREF-FOUND? 0= if drop 0 exit then
+   XREF-START ;
 
 \ ---- which definer made the record a spelling denotes -------------------------
 \ A `create`d or `variable` address moves with the DATA region on a snapshot, so

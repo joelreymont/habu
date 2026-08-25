@@ -766,7 +766,7 @@ public
 \ ties in its own operation schema and the allocator reads them, so nothing is
 \ left to recognise; the number is reused below for a refusal of this same
 \ package rather than left as a hole.
--8324 constant E-A64RA-FRAME     \ a function after the first needs spill slots, and a module holds one frame. A module's first function is the definition's own routine and the rest are its quotation bodies; the frame, its base and its slot count are one per module (N-SLOTS, BASE-N, and the reserve src/compiler/native/migrate.f LOWERED sizes from A64RA:FRAME), so a body that will not fit its values in registers has nowhere to put them. Every quotation body in the tree is one word call and spills nothing, which is why this is a refusal and not a second frame; dot habu-give-each-fn-c1fd7c5a is the capability that gives each function its own
+-8324 constant E-A64RA-FRAME     \ a function after the first needs spill slots, and a module holds one frame. A module's first function is the definition's own routine and the rest are its quotation bodies; the frame, its base and its slot count are one per module (N-SLOTS, BASE-N, and the reserve src/compiler/native/compiler.f LOWERED sizes from A64RA:FRAME), so a body that will not fit its values in registers has nowhere to put them. Every quotation body in the tree is one word call and spills nothing, which is why this is a refusal and not a second frame; dot habu-give-each-fn-c1fd7c5a is the capability that gives each function its own
 -8325 constant E-A64RA-CLASS     \ a value whose type is not the dialect's general-register type, so no general register can hold it
 -8326 constant E-A64RA-TARGET    \ a context bound to a target these registers do not belong to
 -8327 constant E-A64RA-CAP       \ a value, block or plan ordinal outside the allocator's tables: more of them in one routine than the tables hold, or a read past the count the sealed walk recorded
@@ -1013,8 +1013,8 @@ public
 \ An emission becomes a word the engine's callers can reach by taking a slice of
 \ the engine's own code arena and pointing an existing dictionary record at it.
 \ Two owners add facts here: the publication seam, which claims the code space
-\ and rewrites the record, and the migration entry, which is what runs the chain
-\ for one named definition. A refusal another authority already owns keeps that
+\ and rewrites the record, and the compiler entry, which runs the chain for one
+\ pending definition. A refusal another authority already owns keeps that
 \ authority's name: an emission that no accepted allocation stands behind is
 \ still A64EMIT's E-A64EMIT-ALLOC, a reader before the seal is E-A64EMIT-STATE,
 \ a body the dialect cannot compile is E-HIR-UNMODELED, and a code address the
@@ -1036,11 +1036,11 @@ public
 -8576 constant E-NINL-DUP      \ a second recorded body for one code address: the code at an address is written once and a caller compiled against the first body would have been given another one
 -8577 constant E-NINL-BOUND    \ a recorded body asked about an address it has no row for, or about a token outside the body that row holds
 
--8570 constant E-NMIGRATE-STATE   \ a migration reached while another one is open: the recorder takes one definition at a time
--8571 constant E-NMIGRATE-TEXT    \ definition source longer than the engine's own body capture, whose overflow ends the process instead of throwing, or a name longer than the log holds
--8572 constant E-NMIGRATE-VERDICT \ the engine's own check did not certify the definition, so there is no checked word to migrate
--8573 constant E-NMIGRATE-NAME    \ the definition the source published is not the name the caller asked to migrate: the newest dictionary record carries another name
--8579 constant E-NMIGRATE-ARITY   \ the checker holds no declared effect for the definition the source published, so there is no arity to compile it against
+-8570 constant E-NCOMP-STATE   \ a compiler entry reached while another one is open
+-8571 constant E-NCOMP-TEXT    \ definition source or name longer than the engine capture can hold
+-8572 constant E-NCOMP-VERDICT \ the engine's own check did not certify the pending definition
+-8573 constant E-NCOMP-NAME    \ the pending record and the checker's tape name different definitions
+-8579 constant E-NCOMP-ARITY   \ the checker holds no declared effect for the pending definition
 
 \ The float subset: -8580..-8589
 \
@@ -1095,8 +1095,8 @@ public
 \ program wrote, and for a data word or a constant it enters the record it found
 \ and takes what that word leaves. Both refusals are the question having no
 \ answer, and neither is a statement about the chain's own state, so neither
-\ borrows the migration entry's or the word model's name.
--8600 constant E-NDICT-NAME     \ a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist and the namespace record for a qualified token all answer absent
+\ borrows the compiler entry's or the word model's name.
+-8600 constant E-NDICT-NAME     \ a spelling that denotes no word where the definition naming it is compiled: the open package's two wordlists, the global wordlist, the used publics and the namespace record for a qualified token all answer absent
 -8601 constant E-NDICT-VALUE    \ the word a spelling denoted did not leave exactly one value where it was entered, so it is not a word whose whole meaning is the value it pushes and what it left is not its answer
 -8602 constant E-NDICT-KIND     \ the record a spelling denoted carries no definer kind: it was not made by `constant`, `create` or `variable`, or a `does>` clause took that kind away from it, so entering it would run a body rather than collect a decided value
 
@@ -1117,7 +1117,7 @@ public
 \ whose contract disagree.
 -8620 constant E-A64SEL-TAIL    \ a call the selector was told to leave through that it cannot: a value live across it, a callee whose arity is not this routine's own, a data-stack adjustment the branch would have had to carry, or a contract declaring a tail call over a module with no such site in it - and the other way round, a site built under a contract that declares an ordinary return
 -8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement
--8622 constant E-NPUB-HELD    \ a held publication that is not the one the engine is holding: the record the engine withheld is always the unpublished slot the dictionary count points at, so an index anywhere else names a record no hold created and committing it would publish whatever happened to be there
+-8622 constant E-NPUB-PENDING \ the pending record is not the unpublished slot the dictionary count points at
 
 \ Combining two machine operations into one: -8630..-8639
 \
@@ -1283,12 +1283,3 @@ public
 -8730 constant E-JUDGE-FUZZ-COLUMN     \ the oracle's two derived words do not resolve to two different non-zero routines: a pair of names reaching one routine would agree about every input and prove nothing at all
 -8731 constant E-JUDGE-FUZZ-INDEX      \ a generated driver reaching outside the oracle's input or answer table: the body is generated, so an index it never had would be this file writing over its own storage rather than a program answering wrongly
 -8734 constant E-JUDGE-PASS-INPUTS     \ a row stating more pinned inputs than the shared pass holds tuples for: the inputs past the first are the arms the timed one does not take, and a store that silently kept the first eight would drop the ninth arm without saying so
-
-\ The interpreter's own input stream, as a migration reads it: -8740..-8749
-\
-\ src/compiler/native/input.f hands the tail of the stream the engine is reading
-\ to a migration and puts the interpreter back after the definition that
-\ migration consumed. Both codes below are about the STREAM and not about the
-\ definition in it: what the chain makes of the definition is NMIGRATE's to say.
--8740 constant E-NINP-STATE     \ a second migration arming one stream: one stream is read by one migration, the same statement E-NMIGRATE-STATE makes about the recorder
--8741 constant E-NINP-DEF       \ the stream does not continue with a definition: the entry that takes its source from the stream is written before `:` and nothing else, and the token after it is read with the engine's own reader rather than guessed at

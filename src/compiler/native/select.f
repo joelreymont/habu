@@ -155,6 +155,8 @@ variable R-S0                        \ the successors of the branch being select
 variable R-S1
 variable R-BASE                      \ where this function's blocks start in the module
 variable R-NEWBASE                   \ and where they start in the module being built
+variable V-BASE                      \ first value owned by the function being selected
+variable V-LIMIT                     \ one past its last value
 NFROZEN:BMAX SEL-WIDTH-MAX * TYPED-BUFFER RSEL IR-ID:ir-value-id
 1 TYPED-BUFFER R-JB IR-ID:ir-block-id
 
@@ -221,6 +223,28 @@ variable D-RETS                                    \ returns seen while surveyin
 
 \ ---- the value map -----------------------------------------------------------
 \ Which value of the NEW module a value of the source module selected to.
+: V-RANGE1 ( IR-ID:ir-value-id -- )
+   IR-ID:VALUE-LOCAL {: k:n :}
+   k V-BASE @ min V-BASE !
+   k 1+ V-LIMIT @ max V-LIMIT ! ;
+
+: V-RANGE-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id RESULTS-OF 0 ?do id i RESULT-AT V-RANGE1 loop ;
+
+: V-RANGE-BLOCK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do bk i ARG-AT V-RANGE1 loop
+   bk OP-COUNT 0 ?do bk i OP-AT V-RANGE-OP loop ;
+
+: V-RANGE! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   $7FFFFFFF V-BASE !
+   -1 V-LIMIT !
+   f BLOCK-COUNT 0 ?do f i BLOCK-AT V-RANGE-BLOCK loop
+   V-LIMIT @ 0< if 0 V-BASE ! 0 V-LIMIT ! exit then
+   V-LIMIT @ V-BASE @ - VMAX > if E-A64SEL-CAP throw then ;
+
 : VCLEAR ( -- )
    VMAX 0 ?do
       0 i cells VSET + !
@@ -228,7 +252,7 @@ variable D-RETS                                    \ returns seen while surveyin
    loop ;
 
 : VSLOT ( IR-ID:ir-value-id -- n )
-   IR-ID:VALUE-LOCAL
+   IR-ID:VALUE-LOCAL V-BASE @ -
    dup 0 < over VMAX >= or if E-A64SEL-CAP throw then ;
 
 : VBIND ( IR-ID:ir-value-id IR-ID:ir-value-id -- )
@@ -711,7 +735,8 @@ variable KEPT-F
       then
    loop
    m 0 ?do
-      id kk i + 1+ RESULT-AT   id kk i + 1+ OPERAND   VBIND
+      id kk i + 1+ RESULT-AT {: v:IR-ID:ir-value-id :}
+      v DNEED? if v  id kk i + 1+ OPERAND  VBIND then
    loop
    id 0 RESULT-AT  TOK  VBIND
    N-CALLS @ 1+ N-CALLS ! ;
@@ -1919,25 +1944,12 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    bk at OP-AT OP-SLOT O-WORDCALL <> if false exit then
    bk n 1- OP-AT OP-SLOT O-RETURN = ;
 
-: VALUE-READ? ( IR-ID:ir-fun-id IR-ID:ir-value-id -- bool )
-   {: f:IR-ID:ir-fun-id v:IR-ID:ir-value-id :}
-   false
-   f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-      bk OP-COUNT 0 ?do
-         bk i OP-AT {: id:IR-ID:ir-op-id :}
-         id OPERANDS-OF 0 ?do
-            id i OPERAND-AT v SAME-VALUE? if drop true then
-         loop
-      loop
-   loop ;
-
 \ Nothing the site would carry is read again, which is the one thing a tail
 \ branch needs that the source operation does not say.
-: TAIL-DEAD-CK ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- )
-   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id k:n :}
+: TAIL-DEAD-CK ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id k:n :}
    k 0 ?do
-      f  id i 1+ RESULT-AT  VALUE-READ? if E-A64SEL-TAIL throw then
+      id i 1+ RESULT-AT USES-OF 0<> if E-A64SEL-TAIL throw then
    loop ;
 
 : TAIL-POS ( IR-ID:ir-block-id -- n )
@@ -1960,7 +1972,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    TAIL-SITE @ 0 >= if E-A64SEL-TAIL throw then
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id IR-ID:OP-LOCAL TAIL-SITE !
-   f id  id SITE-CROSSED  TAIL-DEAD-CK ;
+   id  id SITE-CROSSED  TAIL-DEAD-CK ;
 
 \ One derivation per function, because four passes ask the same question.
 : TAIL-SITE! ( IR-ID:ir-fun-id n -- )
@@ -2315,8 +2327,8 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: id:IR-ID:ir-op-id :}
    id OPERANDS-OF 0 ?do id i OPERAND-AT DNEED+ loop ;
 
-\ A value the site writes down needs a register to be written out of; one it
-\ KEEPS needs one to stay in across the branch.
+\ A value the site writes down needs a register to be written out of. A kept
+\ value needs one only when its post-call result reaches a machine operand.
 : DNEED-CALL ( IR-ID:ir-op-id n n n n n -- )
    {: id:IR-ID:ir-op-id mask:n a:n r:n kk:n m:n :}
    id 0 OPERAND-AT DNEED+
@@ -2324,7 +2336,11 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
       mask i DBIT? 0= if id kk m i DSAVE-VAL DNEED+ then
    loop
    id TAIL-OP? if exit then
-   m 0 ?do id kk i + 1+ OPERAND-AT DNEED+ loop ;
+   m 0 ?do
+      id kk i + 1+ RESULT-AT DNEED? if
+         id kk i + 1+ OPERAND-AT DNEED+
+      then
+   loop ;
 
 : DNEED-EXIT ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
@@ -2369,9 +2385,9 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: f:IR-ID:ir-fun-id :}
    DNEED-CLEAR
    f DNEED-ENTRY
-   f BLOCK-COUNT 0 ?do f i DNEED-BLOCK loop
    begin
       0 D-MOVED !
+      f BLOCK-COUNT 0 ?do f i DNEED-BLOCK loop
       f DNEED-EDGES
       D-MOVED @ 0=
    until ;
@@ -2792,6 +2808,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    f ord TAIL-SITE!
    f 0 S-FUN !
    f OPEN-FUN
+   f V-RANGE!
    VCLEAR
    ORDER-CLEAR
    RLIT-CLOSE

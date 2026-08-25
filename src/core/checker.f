@@ -6442,17 +6442,6 @@ PPRIM: CHECKER-TAPE INSTALL
 PPRIM;
 PPRIM: CHECKER-TAPE ARM PPRIM;
 PPRIM: CHECKER-TAPE DISARM PPRIM;
-\ The hold's arming surface, admitted on the same terms as the two above and for
-\ a narrower reason. Holding cannot make the checker accept anything: it runs
-\ after a definition has already been certified or refused, and all it changes is
-\ whether the ENGINE publishes the record. The two ways it can be misused are
-\ liveness rather than soundness - a hold with no recording unit behind it, which
-\ HOLD-ARM refuses outright, and a held record nobody commits, which the caller
-\ that opened the hold is responsible for retracting
-\ (src/compiler/native/migrate.f HELD-RETRACT).
-PPRIM: CHECKER-TAPE HOLD-ARM PPRIM;
-PPRIM: CHECKER-TAPE HOLD-DISARM PPRIM;
-PPRIM: CHECKER-TAPE HOLD-TAKEN? PE-F PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
@@ -6591,6 +6580,7 @@ PPRIM: TFAM TFL-VPADS PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM SUMV-PAYCELLS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM SUMV-PAY-N PE-N PE-IN  PE-N PE-OUT PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: E-USING-AMBIGUOUS  PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
 PRIM: EFFECT-DOUT-N      PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-CELLS   PE-N PE-OUT PRIM;
@@ -7553,7 +7543,7 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ be argued from the RECORDER's caps: a tape of 128 tokens is 31 catch sites at
 \ four tokens each, so a ceiling of 32 would have been answered by the tape's
 \ refusal every time and this one would never have fired. That argument is gone.
-\ src/compiler/native/migrate.f now sizes a unit's tape from the source it was
+\ src/compiler/native/compiler.f now sizes a unit's tape from the source it was
 \ handed and takes its byte ceiling from the engine's own body capture, so a
 \ recorded definition may hold as many catch sites as the engine can compile, and
 \ nothing upstream answers before this table does.
@@ -7686,7 +7676,7 @@ create CWIN-TAB CWIN-MAX CW-ROW * cells allot
 \ already refuses what the flag would have refused.
 \
 \ THE CEILING IS REACHABLE, AND IT NO LONGER RESTS ON THE CONSUMER'S CAPS. It
-\ used to: a recorded definition is one src/compiler/native/migrate.f is
+\ used to: a recorded definition is one src/compiler/native/compiler.f is
 \ recording, that unit held 512 source bytes and 128 tokens, a `MATCH` form with
 \ A arms is 3 + 3A tokens and files 1 + A rows, so the tape alone capped a
 \ definition at 42 rows and the byte count capped it lower - the densest body
@@ -11923,41 +11913,6 @@ variable ARMED   0 ARMED !
    0 ARMED !
    REC-OFF ;
 
-\ ---- withholding the definition this tape is being recorded for -------------
-\ A definition whose tape is being recorded is one the native chain is about to
-\ recompile, and the chain cannot be a compiler at all while the engine has
-\ already published the word: publication is what makes the old emitter's output
-\ the definition rather than a draft. So the recording unit may also ask the
-\ engine to CERTIFY the definition and publish nothing - no count, no name-index
-\ entry, no record facts - leaving the chain's own publisher to commit the
-\ record once it has an emission the validator accepted.
-\
-\ IT LIVES BESIDE ARMED BECAUSE IT IS THE SAME UNIT'S DECISION. The tape and the
-\ hold are opened and closed by one word around one definition
-\ (src/compiler/native/migrate.f), and the engine reads this flag through the
-\ check hook at the publish tail the way it reads ARMED through the reader.
-\
-\ AND A HOLD WITHOUT A RECORDER IS REFUSED. Withholding a definition nobody is
-\ recording would leave a certified word that never publishes and never gets
-\ compiled by anything - the engine gave up its emission and no chain is waiting
-\ for the tape. Requiring the unit to be armed first makes "somebody is going to
-\ publish this" a property of the state machine instead of a promise.
-\ Zero is idle, positive is armed, and negative records that the engine consumed
-\ this hold at its publish tail. One existing cell therefore carries both sides
-\ of the hand-off without a second owner flag.
-variable HOLD-ARMED   0 HOLD-ARMED !
-
-: HOLD-ARM ( -- )
-   ARMED @ 0= if s" checker: hold without a recording unit" 76 die then
-   HOLD-ARMED @ 0 <> if s" checker: publication already held" 76 die then
-   1 HOLD-ARMED ! ;
-
-: HOLD-DISARM ( -- )
-   0 HOLD-ARMED ! ;
-
-: HOLD-TAKEN? ( -- bool )
-   HOLD-ARMED @ 0 < ;
-
 private
 
 \ Which of the reader's three token classes this token is. It asks the two
@@ -12006,30 +11961,6 @@ public
    a u verdict DONE-XT ;
 
 ;package
-
-\ What the engine's publish tail asks before it publishes a definition it has
-\ just certified: is the unit that recorded this definition going to publish it
-\ itself? A non-zero answer withholds the record - no count, no name index, no
-\ record facts - and the code pointer returns to the colon entry, leaving the
-\ native chain's publisher to commit it (src/compiler/native/publish.f
-\ COMMIT-HELD).
-\
-\ IT IS A GLOBAL BECAUSE THE ENGINE ASKS BY NAME. The publish tail reaches the
-\ checked world through C-FIND-GLOBAL? on a bare spelling, which is the same way
-\ it already asks `rec-wide-publish` and `rec-min-in@` for this definition's
-\ width and arity facts a few instructions later (src/habu/habu2.f
-\ EM-REC-WIDE-PUBLISH). One more question at the same seam, asked the same way.
-\
-\ AND IT IS ONE QUESTION FOR BOTH PUBLISH TAILS. A definition WITH a declared
-\ signature publishes through EM-COMPILE-PUBLISH-TRUSTED and one without through
-\ EM-COMPILE-PUBLISH-HOOKED; only the second has a hook return value at all, so a
-\ verdict-carried answer could never have reached the first. The two tails
-\ converge on one publish label, and that is where this is asked - once, for
-\ every definition, whichever route certified it.
-: CHECKER-HOLD? ( -- n )
-   CHECKER-TAPE:HOLD-ARMED @ 0= if 0 exit then
-   -1 CHECKER-TAPE:HOLD-ARMED !
-   -1 ;
 
 \ ---- the baked signature pool, and the lazy intake that reads it -------------
 \

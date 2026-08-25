@@ -84,7 +84,7 @@ variable Q0  variable Q1      \ its require-registry span: the closure it loaded
 ;package
 
 AOT-CHAIN:OPEN
-require src/compiler/native/migrate.f
+require src/compiler/native/compiler.f
 AOT-CHAIN:CLOSE
 
 \ The capture's own tooling, all of it above the window's last record and past its
