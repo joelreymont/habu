@@ -8,7 +8,7 @@
 \ require/provided registry, driving the instrumented core loader words
 \ (included/required/provided) in record-only discovery mode so the ordered
 \ event log (src/core/include.f) captures include multiplicity and
-\ require/provided exact-string registry state without loading or compiling
+\ require/provided canonical registry state without loading or compiling
 \ anything. A guarded loader inside a colon body is recorded unconditionally,
 \ so the event closure over-approximates (superset of the runtime closure)
 \ and can never under-approximate a statically-visible loader call.
@@ -29,6 +29,7 @@ require tools/dynamic-tail-manifest.f
 
 package DISCOVER
 using SOURCE                             \ the shared source-string emitters
+using SOURCE-ROOT
 
 $80000 constant SD-SRC-CAP
 $400 constant SD-PATH-CAP
@@ -48,6 +49,10 @@ $20 constant SD-SP
 2 constant SD-PEND-OTHER
 
 create SD-PATH SD-PATH-CAP allot
+create SD-ROOT SD-PATH-CAP 1+ allot
+create SD-ENTRY SD-PATH-CAP 1+ allot
+variable SD-ROOT-U
+variable SD-ENTRY-U
 
 variable SD-BUF-A
 variable SD-U
@@ -350,18 +355,27 @@ variable SD-SCOPES
    ix EVENT-PATH@ >LEN dst cap lenp SOURCE-APPEND-QPATH
    SD-LF dst cap lenp SOURCE-APPEND-C ;
 
+: SD-WALK-IN ( -- )
+   SD-ROOT SD-ROOT-U @ [: SD-WALK ;] WITH ;
+
 public
 
-: RUN ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu SD-READ-ENTRY
-   pa pu DTM:KNOWN? SD-LENIENT !
+: RUN-IN ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n root:ptr rootu:n :}
+   pu SD-PATH-CAP > rootu SD-PATH-CAP > or if E-DISC-CAPACITY throw then
+   pa SD-ENTRY pu BYTE-COPY pu SD-ENTRY-U !
+   root SD-ROOT rootu BYTE-COPY rootu SD-ROOT-U !
+   SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY
+   SD-ENTRY SD-ENTRY-U @ DTM:KNOWN? SD-LENIENT !
    REQUIRE-SNAPSHOT
    EVENTS-RESET EVENT-ON DISCOVERY-ON
-   [: SD-WALK ;] catch {: rc:n :}
+   [: SD-WALK-IN ;] catch {: rc:n :}
    DISCOVERY-OFF EVENT-OFF
    REQUIRE-RESTORE
    SD-LOCALS-RELEASE
    rc 0= 0= if rc throw then ;
+
+: RUN ( ptr u8 n -- )
+   ENTRY-RESOLVE drop RESOLVED-ROOT$ RUN-IN ;
 
 : EMIT ( ptr u8 n -- n ) {: dst:ptr cap:n :}
    0 >LEN SD-EMIT-LEN !
@@ -372,5 +386,6 @@ public
    repeat drop
    SD-EMIT-LEN @ LEN>N ;
 
+;using
 ;using
 ;package

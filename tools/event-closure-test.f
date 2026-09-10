@@ -4,7 +4,7 @@
 \ tools/event-closure-lib.f tools/event-closure-test.f
 \
 \ Proves the ordered transitive closure list (require/included followed, provided
-\ and require-known not, exact-string dedup, missing files skipped, transitive
+\ and require-known not, canonical-path dedup, missing files skipped, transitive
 \ descent) and the property the hb-build cache key relies on: a content edit to
 \ any closure file changes the closure key, while an untouched closure or an edit
 \ to a non-closure file leaves it stable.
@@ -30,6 +30,7 @@ create ECT-DA ECT-PC allot
 create ECT-DB ECT-PC allot
 create ECT-DC ECT-PC allot
 create ECT-UN ECT-PC allot
+create ECT-ALIAS ECT-PC allot
 create ECT-KEY-A 80 allot
 create ECT-KEY-B 80 allot
 variable ECT-ROOT-U
@@ -38,6 +39,7 @@ variable ECT-DA-U
 variable ECT-DB-U
 variable ECT-DC-U
 variable ECT-UN-U
+variable ECT-ALIAS-U
 variable ECT-I
 
 : ECT-ROOT$ ( -- ptr u8 n )   ECT-ROOT ECT-ROOT-U @ ;
@@ -47,7 +49,7 @@ variable ECT-I
 : ECT-DC$ ( -- ptr u8 n )     ECT-DC ECT-DC-U @ ;
 : ECT-UN$ ( -- ptr u8 n )     ECT-UN ECT-UN-U @ ;
 
-: ECT-MK ( ptr u8 n ptr u8 ptr a -- ) {: na:ptr nu:n dst:ptr up:ptr :}
+: ECT-MK ( ptr u8 n ptr u8 ptr n -- ) {: na:ptr nu:n dst:ptr up:ptr :}
    ECT-ROOT$ na nu dst JOIN-PATH up ! ;
 
 : ECT-DQ ( -- )   34 SB-APPEND-C ;
@@ -72,25 +74,29 @@ variable ECT-I
 
 : ECT-PREP ( -- )
    CLEANUP-RESET
-   s" habu-event-closure-test" TMPDIR-MKDIR {: a:ptr u:n :}
+   s" habu-event-closure-test" TMPDIR-MKDIR SOURCE-ROOT:CANONICAL TTRUE {: a:ptr u:n :}
    a ECT-ROOT u BYTE-COPY  u ECT-ROOT-U !
    ECT-ROOT$ CLEANUP-TREE+
    s" entry.f" ECT-ENTRY ECT-ENTRY-U ECT-MK
    s" dep-a.f" ECT-DA ECT-DA-U ECT-MK
    s" dep-b.f" ECT-DB ECT-DB-U ECT-MK
    s" dep-c.f" ECT-DC ECT-DC-U ECT-MK
-   s" unrelated.f" ECT-UN ECT-UN-U ECT-MK ;
+   s" unrelated.f" ECT-UN ECT-UN-U ECT-MK
+   s" alias.f" ECT-ALIAS ECT-ALIAS-U ECT-MK ;
 
-: ECT-CLOSURE-KEY ( ptr u8 -- ) {: dst:ptr :}
+: ECT-KEY-FOR ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
    CONTENT-KEY:OPEN
    s" ect-closure-v1" CONTENT-KEY:TEXT+
-   ECT-ENTRY$ EC:BUILD
+   a u EC:BUILD
    0 ECT-I !
    begin ECT-I @ EC:COUNT < while
       ECT-I @ EC:PATH$ CONTENT-KEY:FILE+
       ECT-I @ 1+ ECT-I !
    repeat
    dst CONTENT-KEY:FINAL-HEX ;
+
+: ECT-CLOSURE-KEY ( ptr u8 -- )
+   ECT-ENTRY$ rot ECT-KEY-FOR ;
 
 \ --- ordering / dedup ---------------------------------------------------------
 : ECT-MIXED-ENTRY$ ( -- ptr u8 n )
@@ -153,6 +159,12 @@ variable ECT-I
    ECT-KEY-B ECT-CLOSURE-KEY
    ECT-KEY-A 64 ECT-KEY-B 64 STR= TTRUE ;
 
+: ECT-TEST-KEY-ALIAS ( -- )
+   ECT-ENTRY$ ECT-ALIAS ECT-ALIAS-U @ MAKE-SYMLINK
+   ECT-KEY-A ECT-CLOSURE-KEY
+   ECT-ALIAS ECT-ALIAS-U @ ECT-KEY-B ECT-KEY-FOR
+   ECT-KEY-A 64 ECT-KEY-B 64 STR= TTRUE ;
+
 : ECT-TEST-KEY-NONCLOSURE-EDIT ( -- )
    ECT-DA$ s\" \\ a base\n" ECT-WRITE
    ECT-UN$ s\" \\ unrelated v1\n" ECT-WRITE
@@ -201,6 +213,7 @@ variable ECT-I
    ECT-TEST-MISSING
    ECT-TEST-KEY-CLOSURE-EDIT
    ECT-TEST-KEY-STABLE
+   ECT-TEST-KEY-ALIAS
    ECT-TEST-KEY-NONCLOSURE-EDIT
    ECT-TEST-COLON-WRAPPED
    ECT-TEST-KEY-COLON-DEP-EDIT

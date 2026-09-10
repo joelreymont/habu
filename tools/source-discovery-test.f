@@ -3,7 +3,7 @@
 \ lib/fs-mutate.f lib/source.f tools/source-discovery.f tools/source-discovery-test.f
 \
 \ Proves the ordered event artifact for include/require/provided mixes (include
-\ replay-every-occurrence vs require dedup), exact-string registry (no spelling
+\ replay-every-occurrence vs require dedup), canonical registry (equivalent spelling
 \ collapse), tool-preloaded require paths not hiding a later user require,
 \ colon-body loader capture with byte-exact token spans, the shared checked
 \ path emitter, fail-closed rejection when the artifact cannot be produced
@@ -21,6 +21,7 @@ require lib/source.f
 require tools/source-discovery.f
 
 package SD-TEST
+using SOURCE-ROOT
 
 FS-PATH-CAP constant SDT-PC
 $1000 constant SDT-SRC-CAP
@@ -50,6 +51,9 @@ variable SDT-SRC-U
    SDT-ROOT$ name nameu SDT-ENTRY JOIN-PATH SDT-ENTRY-U !
    SDT-ENTRY$ content contentu WRITE-ALL ;
 
+: SDT-PATH ( ptr u8 n -- ptr u8 n )
+   SDT-ROOT$ 2swap JOIN CANONICAL drop ;
+
 : SDT-DISCOVER ( -- )  SDT-ENTRY$ DISCOVER:RUN ;
 
 : SDT-MIXED$ ( -- ptr u8 n )
@@ -63,13 +67,13 @@ variable SDT-SRC-U
    0 EVENT-STATE@ EV-STATE-FRESH T=
    1 EVENT-KIND@ EV-INCLUDED T=
    2 EVENT-KIND@ EV-INCLUDED T=
-   1 EVENT-PATH@ s" sd-b.f" T$=
+   1 EVENT-PATH@ s" sd-b.f" SDT-PATH T$=
    3 EVENT-KIND@ EV-REQUIRED T=
    3 EVENT-STATE@ EV-STATE-FRESH T=
    4 EVENT-STATE@ EV-STATE-KNOWN T=
    5 EVENT-KIND@ EV-PROVIDED T=
    6 EVENT-KIND@ EV-REQUIRED T=
-   6 EVENT-PATH@ s" sd-e.f" T$= ;
+   6 EVENT-PATH@ s" sd-e.f" SDT-PATH T$= ;
 
 : SDT-SPELLING$ ( -- ptr u8 n )
    S\" s\" ./sd-f.f\" required\ns\" sd-f.f\" required\n" ;
@@ -79,22 +83,22 @@ variable SDT-SRC-U
    SDT-DISCOVER
    EVENT-COUNT 2 T=
    0 EVENT-STATE@ EV-STATE-FRESH T=
-   1 EVENT-STATE@ EV-STATE-FRESH T=
-   0 EVENT-PATH@ s" ./sd-f.f" T$=
-   1 EVENT-PATH@ s" sd-f.f" T$= ;
+   1 EVENT-STATE@ EV-STATE-KNOWN T=
+   0 EVENT-PATH@ s" sd-f.f" SDT-PATH T$=
+   1 EVENT-PATH@ s" sd-f.f" SDT-PATH T$= ;
 
 : SDT-FRESH$ ( -- ptr u8 n )
    S\" s\" sd-tool.f\" required\ns\" sd-user.f\" required\n" ;
 
 : SDT-TEST-FRESH ( -- )
    REQUIRE-N @ {: save-n:n :}
-   s" sd-tool.f" provided
+   s" sd-tool.f" SDT-PATH provided
    s" fresh.f" SDT-FRESH$ SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 2 T=
    0 EVENT-KIND@ EV-REQUIRED T=
    0 EVENT-STATE@ EV-STATE-FRESH T=
-   0 EVENT-PATH@ s" sd-tool.f" T$=
+   0 EVENT-PATH@ s" sd-tool.f" SDT-PATH T$=
    1 EVENT-STATE@ EV-STATE-FRESH T=
    save-n REQUIRE-N ! ;
 
@@ -102,7 +106,13 @@ variable SDT-SRC-U
    s" emit.f" S\" require sd-x.f\ns\" sd-y.f\" provided\n" SDT-WRITE-ENTRY
    SDT-DISCOVER
    SDT-OUT $2000 DISCOVER:EMIT {: elen:n :}
-   SDT-OUT elen S\" required 0 s\" sd-x.f\"\nprovided 0 s\" sd-y.f\"\n" T$= ;
+   SB-RESET
+   S\" required 0 s\" " SB-APPEND
+   s" sd-x.f" SDT-PATH SB-APPEND
+   S\" \"\nprovided 0 s\" " SB-APPEND
+   s" sd-y.f" SDT-PATH SB-APPEND
+   S\" \"\n" SB-APPEND
+   SDT-OUT elen SB$ T$= ;
 
 : SDT-RUN-ENTRY ( -- )   SDT-DISCOVER ;
 
@@ -133,7 +143,7 @@ variable SDT-SRC-U
    EVENT-COUNT 1 T=
    0 EVENT-KIND@ EV-REQUIRED T=
    0 EVENT-STATE@ EV-STATE-FRESH T=
-   0 EVENT-PATH@ s" sd-h.f" T$= ;
+   0 EVENT-PATH@ s" sd-h.f" SDT-PATH T$= ;
 
 : SDT-EVENT-TOK$ ( n -- ptr u8 n ) {: ix:n :}
    ix EVENT-TOK@ {: off:n len:n :}
@@ -214,7 +224,7 @@ variable SDT-SRC-U
    SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-after.f" T$= ;
+   0 EVENT-PATH@ s" sd-after.f" SDT-PATH T$= ;
 
 
 : SDT-TEST-LOCAL-SCOPES ( -- )
@@ -223,9 +233,9 @@ variable SDT-SRC-U
    SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 3 T=
-   0 EVENT-PATH@ s" sd-else.f" T$=
-   1 EVENT-PATH@ s" sd-loop.f" T$=
-   2 EVENT-PATH@ s" sd-case.f" T$= ;
+   0 EVENT-PATH@ s" sd-else.f" SDT-PATH T$=
+   1 EVENT-PATH@ s" sd-loop.f" SDT-PATH T$=
+   2 EVENT-PATH@ s" sd-case.f" SDT-PATH T$= ;
 
 
 : SDT-TEST-LOCAL-QUOTATION ( -- )
@@ -234,7 +244,7 @@ variable SDT-SRC-U
    SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-quote.f" T$= ;
+   0 EVENT-PATH@ s" sd-quote.f" SDT-PATH T$= ;
 
 
 : SDT-TEST-LOCAL-CASE ( -- )
@@ -243,7 +253,7 @@ variable SDT-SRC-U
    SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-uppercase.f" T$= ;
+   0 EVENT-PATH@ s" sd-uppercase.f" SDT-PATH T$= ;
 
 
 : SDT-TEST-LOCAL-LIFETIME ( -- )
@@ -263,7 +273,7 @@ variable SDT-SRC-U
    SDT-WRITE-ENTRY
    SDT-DISCOVER
    EVENT-COUNT 1 T=
-   0 EVENT-PATH@ s" sd-control.f" T$= ;
+   0 EVENT-PATH@ s" sd-control.f" SDT-PATH T$= ;
 
 
 : SDT-MAIN ( -- )
@@ -302,4 +312,5 @@ variable SDT-SRC-U
 
 SDT-MAIN
 
+;using
 ;package

@@ -16,8 +16,10 @@ typed increment, rejects a mismatched stack effect with exit 70, and passes
 claim a successful self-refresh or a green full native suite.
 
 External applications can launch from the Habu checkout with an absolute
-entry path: `bin/hb --load /absolute/path/to/app.f`. Includes resolve from the
-working directory. With terminal stdin, the loaded program continues into the
+entry path: `bin/hb --load /absolute/path/to/app.f`. Relative dependencies search
+that entry's directory, then the invocation working directory. Nested dependencies
+keep the root that resolved their parent, including Habu library fallback loads.
+With terminal stdin, the loaded program continues into the
 REPL; with piped stdin, EOF exits. `bye` is not defined in this engine.
 
 `bin/hb` is generated and ignored. It is the only installed native build output.

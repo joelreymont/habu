@@ -1111,6 +1111,14 @@ SUITE include-events
    tools/include-events-test.f
 ;SUITE
 
+SUITE realpath
+   test/realpath-test.f
+;SUITE
+
+SUITE source-root
+   test/source-root-test.f
+;SUITE
+
 SUITE json
    tools/json-test.f
 ;SUITE

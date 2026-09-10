@@ -28,6 +28,7 @@ s" CHECKER-SCOPE-DONE" s" --" TRUST
 
 package CHECK
 using SOURCE                             \ the shared source-string emitters
+using SOURCE-ROOT
 
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
@@ -68,6 +69,8 @@ create CHK-POS-BUF CHK-MAX-POS FS-PATH-CAP * allot
 create CHK-POS-U CHK-MAX-POS cells allot
 create CHK-DEP-PATHS CHK-DEP-MAX FS-PATH-CAP * allot
 create CHK-DEP-US CHK-DEP-MAX cells allot
+create CHK-DEP-ROOTS CHK-DEP-MAX FS-PATH-CAP * allot
+create CHK-DEP-ROOT-US CHK-DEP-MAX cells allot
 create CHK-DEP-STATES CHK-DEP-MAX cells allot
 create CHK-DIR-IDS CHK-DEP-MAX cells allot
 create CHK-DEP-ORDER CHK-DEP-MAX cells allot
@@ -453,6 +456,11 @@ private
    id CHK-DEP-PATH
    id CHK-DEP-U @ ;
 
+: CHK-DEP-ROOT$ ( n -- ptr u8 n ) {: id:n :}
+   id CHK-DEP-CHECK
+   CHK-DEP-ROOTS id FS-PATH-CAP * +
+   CHK-DEP-ROOT-US id cells + @ ;
+
 : CHK-DEP-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    a u id CHK-DEP$ LINT-STR= ;
 
@@ -462,19 +470,21 @@ private
       1+
    repeat drop -1 ;
 
-: CHK-DEP-NEW ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+: CHK-DEP-NEW ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n root:ptr rootu:n :}
+   u FS-PATH-CAP > rootu FS-PATH-CAP > or if E-FS-CAPACITY throw then
    CHK-DEP-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
    CHK-DEP-N @ {: id:n :}
    a id CHK-DEP-PATH u BYTE-COPY
    u id CHK-DEP-U !
+   root CHK-DEP-ROOTS id FS-PATH-CAP * + rootu BYTE-COPY
+   rootu CHK-DEP-ROOT-US id cells + !
    0 id CHK-DEP-STATE !
    id 1+ CHK-DEP-N !
    id ;
 
-: CHK-DEP-ID ( ptr u8 n -- n ) {: a:ptr u:n :}
+: CHK-DEP-ID ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n root:ptr rootu:n :}
    a u CHK-DEP-FIND dup 0 >= if exit then
-   drop a u CHK-DEP-NEW ;
+   drop a u root rootu CHK-DEP-NEW ;
 
 : CHK-DIR-PUSH ( n -- ) {: id:n :}
    CHK-DIR-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
@@ -486,7 +496,7 @@ private
    id CHK-DEP-ORDER CHK-DEP-ORDER-N @ cells + !
    CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N ! ;
 
-: CHK-DEP-DIRECT+ ( ptr u8 n -- )
+: CHK-DEP-DIRECT+ ( ptr u8 n ptr u8 n -- )
    CHK-DEP-ID CHK-DIR-PUSH ;
 
 \ Dependency closure: the shared whole-file ordered-event producer
@@ -511,7 +521,7 @@ private
    CHK-DISC-MSG$ CHK-E-CHECK CHK-FAIL ;
 
 : CHK-DISCOVER-ACT ( -- )
-   CHK-DISC-ID @ CHK-DEP$ DISCOVER:RUN ;
+   CHK-DISC-ID @ CHK-DEP$ CHK-DISC-ID @ CHK-DEP-ROOT$ DISCOVER:RUN-IN ;
 
 : CHK-EXPAND-SCAN ( n -- ) {: id:n :}
    id CHK-DISC-ID !
@@ -521,7 +531,7 @@ private
    rc throw ;
 
 : CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
-   ix EVENT-PATH@ CHK-DEP-DIRECT+ ;
+   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ CHK-DEP-DIRECT+ ;
 
 : CHK-EVENTS>DEPS ( -- )
    0 begin dup EVENT-COUNT < while
@@ -548,7 +558,7 @@ private
    2 id CHK-DEP-STATE ! ;
 
 : CHK-EXPAND-PATH ( ptr u8 n -- )
-   CHK-DEP-ID CHK-EXPAND-ID ;
+   ENTRY-RESOLVE drop RESOLVED-ROOT$ CHK-DEP-ID CHK-EXPAND-ID ;
 
 : CHK-EXPAND-RESET ( -- )
    0 CHK-EXP-OUT-U !
@@ -1040,7 +1050,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    path pathu CHK-RUN-NOMINAL-FILE ;
 
 : CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
-   id CHK-DEP$ REQUIRE-KNOWN? 0= ;
+   id CHK-DEP$ RESOLVE nip nip 0= ;
 
 : CHK-RUN-NOMINAL-ID ( n -- ) {: id:n :}
    id CHK-DEP-PRELOAD? 0= if exit then
@@ -1397,5 +1407,6 @@ public
    CHK-PARSE
    RUN dup 0 <> if throw then drop ;
 
+;using
 ;using
 ;package

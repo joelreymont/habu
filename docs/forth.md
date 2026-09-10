@@ -229,13 +229,33 @@ public
   `include path/to/file.f` parses the next whitespace-delimited filename and
   loads that source immediately every time. `s" path/to/file.f" included` is the
   lower-level string form. `require path/to/file.f` and `s" path/to/file.f"
-  required` are include-once forms keyed by the exact path string in the current
-  image; use them for normal dependencies so a shared setup phase and a test
-  entry can both name the same support file without duplicate definitions. The
+  required` are include-once forms keyed by canonical absolute pathname in the
+  current image. Equivalent absolute, relative, `.`/`..`, and symlink spellings
+  share one identity; `include` still replays every occurrence. Use `require`
+  for normal dependencies so shared setup and test entries can name the same
+  support file without duplicate definitions.
+
+  A named `--load` entry uses its canonical directory as the primary source root.
+  Relative dependencies search that root, then the invocation working directory;
+  a dependency keeps the root that resolved it for its own nested loads. Absolute
+  paths bypass the search. Thus `/work/app/main.f` can require `src/model.f`, and
+  `/work/app/src/model.f` can require `src/math.f`; Habu libraries found through
+  the working-directory fallback keep that fallback root for their dependencies.
+  The process working directory never changes. `SOURCE-ROOT:WITH`
+  `( ptr u8 n [ -- ] -- )` supplies an explicit scoped root and restores the
+  caller's root when the quotation returns or throws. Discovery, checker
+  dependency collection, and content closures retain the same canonical paths
+  and owner roots as loading.
+
+  The
   native engine marks its baked prefix files as `provided` before user/test
   source runs, so `require src/core/sha256.f` skips the prefix-owned copy instead
-  of reloading it. Snapshot images preserve the `require` registry because it
-  describes which modules are already compiled into the live dictionary. Do not
+  of reloading it. Frozen engine facts also retain root-relative names, allowing
+  the engine to run from another checkout or without its compiled source files.
+  `provided` facts are honored before a missing file is opened. Snapshot images
+  preserve these compiled facts while clearing process-local source roots and
+  resolver scratch. This does not promise relocated relative reloading of an
+  application's deleted source tree. Do not
   include a file merely so two files can see the same private helpers; reopening
   the package provides that shared package scope after both files have been
   loaded. Test suites load self-contained test/tool entry files plus any script

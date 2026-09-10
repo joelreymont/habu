@@ -14,6 +14,10 @@ require lib/errors.f
 require lib/string.f
 
 package DTM
+using SOURCE-ROOT
+
+create CANON-PATH $401 allot
+variable CANON-U
 
 public
 
@@ -29,10 +33,14 @@ public
    i 1 = if s" the discovery walker itself drives loader words with scanned path strings in record-only mode (SD-CALL-LOADER)" exit then
    E-TBL-BOUNDS throw ;
 
-: KNOWN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: KNOWN? ( ptr u8 n -- bool )
+   CANONICAL drop {: a:ptr u:n :}
+   a CANON-PATH u BYTE-COPY u CANON-U !
    0 begin dup COUNT < while
-      dup PATH$ a u STR= if drop STR-TRUE exit then
+      dup PATH$ CANONICAL drop
+      CANON-PATH CANON-U @ STR= if drop STR-TRUE exit then
       1+
    repeat drop STR-FALSE ;
 
+;using
 ;package

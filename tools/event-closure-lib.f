@@ -10,7 +10,7 @@
 \ occurrence) and a fresh (first-seen) `required` are followed; a `required`
 \ already known through an earlier `provided`/`require` is not re-loaded, and a
 \ bare `provided` registers a path without loading it, so neither adds content.
-\ Distinct entries are deduplicated by exact path string. Discovery itself
+\ Distinct entries are deduplicated by canonical absolute pathname. Discovery itself
 \ rejects fail-closed (shadowed/undefined loader word, dynamic path, unsupported
 \ opener); this file propagates that so a broken closure cannot be keyed.
 \
@@ -28,6 +28,7 @@ require lib/source.f
 require tools/source-discovery.f
 
 package EC
+using SOURCE-ROOT
 
 $400 constant EC-MAX
 $40000 constant EC-POOL-CAP
@@ -35,6 +36,8 @@ $40000 constant EC-POOL-CAP
 create EC-POOL EC-POOL-CAP allot
 create EC-OFF EC-MAX cells allot
 create EC-LEN EC-MAX cells allot
+create EC-ROOT-OFF EC-MAX cells allot
+create EC-ROOT-LEN EC-MAX cells allot
 create EC-STATE EC-MAX cells allot
 create EC-DIR EC-MAX cells allot
 create EC-ORDER EC-MAX cells allot
@@ -54,6 +57,10 @@ variable EC-ORD-N
 : EC-PATH$ ( n -- ptr u8 n ) {: i:n :}
    i EC-OFF@ EC-POOL + i EC-LEN@ ;
 
+: EC-ROOT$ ( n -- ptr u8 n ) {: idx:n :}
+   idx cells EC-ROOT-OFF + @ EC-POOL +
+   idx cells EC-ROOT-LEN + @ ;
+
 : EC-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup EC-N @ < while
       dup EC-PATH$ a u STR= if drop EC-TRUE exit then
@@ -64,14 +71,17 @@ variable EC-ORD-N
    EC-N @ EC-MAX >= if E-DISC-CAPACITY throw then
    EC-POOL-N @ u + EC-POOL-CAP > if E-DISC-CAPACITY throw then ;
 
-: EC-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+: EC-ADD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
    a u EC-SEEN? if exit then
-   u EC-ROOM
+   u rootu + EC-ROOM
    EC-POOL-N @ {: off:n :}
    a off EC-POOL + u BYTE-COPY
    off EC-N @ cells EC-OFF + !
    u   EC-N @ cells EC-LEN + !
-   off u + EC-POOL-N !
+   root off u + EC-POOL + rootu BYTE-COPY
+   off u + EC-N @ cells EC-ROOT-OFF + !
+   rootu EC-N @ cells EC-ROOT-LEN + !
+   off u + rootu + EC-POOL-N !
    EC-N @ 1+ EC-N ! ;
 
 : EC-LOADS? ( n -- bool ) {: i:n :}
@@ -80,14 +90,14 @@ variable EC-ORD-N
    k EV-REQUIRED = i EVENT-STATE@ EV-STATE-FRESH = and if EC-TRUE exit then
    EC-FALSE ;
 
-: EC-ENQUEUE ( ptr u8 n -- ) {: a:ptr u:n :}
+: EC-ENQUEUE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
    a u FILE? 0= if exit then
-   a u EC-ADD ;
+   a u root rootu EC-ADD ;
 
 : EC-SCAN-EVENTS ( -- )
    0 EC-I !
    begin EC-I @ EVENT-COUNT < while
-      EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-ENQUEUE then
+      EC-I @ EC-LOADS? if EC-I @ EVENT-PATH@ EC-I @ SOURCE-EVENT:ROOT@ EC-ENQUEUE then
       EC-I @ 1+ EC-I !
    repeat ;
 
@@ -112,11 +122,11 @@ variable EC-ORD-N
 : EC-STATE@ ( n -- n )   cells EC-STATE + @ ;
 : EC-STATE! ( n n -- ) {: v:n id:n :}   v id cells EC-STATE + ! ;
 
-: EC-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+: EC-INTERN ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n root:ptr rootu:n :}
    a u EC-FIND dup 0 >= if exit then
    drop
    EC-N @ {: id:n :}
-   a u EC-ADD
+   a u root rootu EC-ADD
    0 id EC-STATE!
    id ;
 
@@ -130,13 +140,13 @@ variable EC-ORD-N
    id EC-ORDER EC-ORD-N @ cells + !
    EC-ORD-N @ 1+ EC-ORD-N ! ;
 
-: EC-DIR-QUEUE ( ptr u8 n -- ) {: a:ptr u:n :}
+: EC-DIR-QUEUE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n root:ptr rootu:n :}
    a u FILE? 0= if exit then
-   a u EC-INTERN EC-DIR-PUSH ;
+   a u root rootu EC-INTERN EC-DIR-PUSH ;
 
 : EC-EVENT-DIR+ ( n -- ) {: ix:n :}
    ix EC-LOADS? 0= if exit then
-   ix EVENT-PATH@ EC-DIR-QUEUE ;
+   ix EVENT-PATH@ ix SOURCE-EVENT:ROOT@ EC-DIR-QUEUE ;
 
 : EC-COLLECT-DEPS ( -- )
    0 begin dup EVENT-COUNT < while
@@ -148,7 +158,7 @@ variable EC-ORD-N
    id EC-STATE@ 0= 0= if exit then
    1 id EC-STATE!
    EC-DIR-N @ {: mark:n :}
-   id EC-PATH$ DISCOVER:RUN
+   id EC-PATH$ id EC-ROOT$ DISCOVER:RUN-IN
    EC-COLLECT-DEPS
    mark begin dup EC-DIR-N @ < while
       dup cells EC-DIR + @ RECURSE
@@ -174,9 +184,9 @@ public
 
 : BUILD ( ptr u8 n -- ) {: a:ptr u:n :}
    RESET
-   a u EC-ADD
+   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-ADD
    begin EC-HEAD @ EC-N @ < while
-      EC-HEAD @ EC-PATH$ DISCOVER:RUN
+      EC-HEAD @ EC-PATH$ EC-HEAD @ EC-ROOT$ DISCOVER:RUN-IN
       EC-SCAN-EVENTS
       EC-HEAD @ 1+ EC-HEAD !
    repeat ;
@@ -187,10 +197,11 @@ public
 \ (the deps in load order) and scan the entry file separately.
 : LOAD-ORDER ( ptr u8 n -- ) {: a:ptr u:n :}
    EC-ORD-RESET
-   a u EC-INTERN EC-EXPAND ;
+   a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-INTERN EC-EXPAND ;
 
 : ORDER-COUNT ( -- n )   EC-ORD-N @ ;
 
 : ORDER-PATH$ ( n -- ptr u8 n )   cells EC-ORDER + @ EC-PATH$ ;
 
+;using
 ;package

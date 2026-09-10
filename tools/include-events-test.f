@@ -3,8 +3,8 @@
 \
 \ Drives the core loader words (included/required/provided) in discovery mode
 \ (record-only, no file load) and asserts the ordered event log records include
-\ multiplicity, require/provided exact-string registry state, loader-token span,
-\ and exact path bytes.
+\ multiplicity, require/provided canonical registry state, loader-token span,
+\ and canonical path bytes.
 
 require lib/errors.f
 require lib/string.f
@@ -31,7 +31,7 @@ variable IE-SAVE-N
    1 EVENT-KIND@ EV-INCLUDED T=
    0 EVENT-STATE@ EV-STATE-FRESH T=
    1 EVENT-STATE@ EV-STATE-FRESH T=
-   0 EVENT-PATH@ s" tfam5-ie-a.f" T$=
+   0 EVENT-PATH@ s" tfam5-ie-a.f" SOURCE-ROOT:RESOLVE drop T$=
    IE-END ;
 
 : IE-TEST-REQUIRE-DEDUP ( -- )
@@ -55,13 +55,13 @@ variable IE-SAVE-N
    1 EVENT-STATE@ EV-STATE-KNOWN T=
    IE-END ;
 
-: IE-TEST-EXACT-SPELLING ( -- )
+: IE-TEST-CANONICAL-SPELLING ( -- )
    IE-BEGIN
    s" ./tfam5-ie-d.f" required
    s" tfam5-ie-d.f" required
    EVENT-COUNT 2 T=
    0 EVENT-STATE@ EV-STATE-FRESH T=
-   1 EVENT-STATE@ EV-STATE-FRESH T=
+   1 EVENT-STATE@ EV-STATE-KNOWN T=
    IE-END ;
 
 : IE-TEST-SPAN ( -- )
@@ -86,7 +86,7 @@ variable IE-SAVE-N
    IE-TEST-MULTIPLICITY
    IE-TEST-REQUIRE-DEDUP
    IE-TEST-PROVIDED-DEDUP
-   IE-TEST-EXACT-SPELLING
+   IE-TEST-CANONICAL-SPELLING
    IE-TEST-SPAN
    IE-TEST-DISABLED-NO-RECORD
    EVENT-OFF DISCOVERY-OFF EVENTS-RESET

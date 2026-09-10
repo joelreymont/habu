@@ -42,6 +42,277 @@ variable REQUIRE-SAVE-BASE
 : INCLUDE-TRUE ( -- bool )
    0 0= ;
 
+\ Canonical source paths and a dynamically scoped owner root. This bootstrap
+\ layer uses only core bytes, mappings and the bounded realpath OS primitive.
+package SOURCE-ROOT
+private
+
+7134 constant PATH-RC  \ PATHZ range refusal; util.f precedes checker registration.
+
+INCLUDE-PATH-CAP 1+ constant PATH-BYTES
+PATH-BYTES 2 * constant WORK-BYTES
+create CWD-BUF PATH-BYTES allot
+create CANON-BUF PATH-BYTES allot
+create NORMAL-BUF PATH-BYTES allot
+create JOIN-BUF WORK-BYTES allot
+create WORK-BUF WORK-BYTES allot
+create ZBUF WORK-BYTES allot
+create OWNER-BUF PATH-BYTES allot
+create REQUEST-BUF WORK-BYTES allot
+variable REQUEST-U
+variable CWD-U
+variable CANON-U
+variable NORMAL-U
+variable JOIN-U
+variable OWNER-U
+variable CURRENT-A
+variable CURRENT-U
+variable SCOPES
+
+
+: CURRENT-PTR ( -- ptr u8 ) CURRENT-A 0 ptr-field @ ;
+
+
+: CURRENT! ( ptr u8 n -- )
+   CURRENT-U ! CURRENT-A 0 ptr-field ! ;
+
+
+: CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= u WORK-BYTES >= or if PATH-RC throw then
+   u 0 ?do a i + c@ 0= if PATH-RC throw then loop ;
+
+
+: COPY-Z ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
+   a u CHECK
+   a dst u BYTE-COPY 0 dst u + c! ;
+
+
+: TRY-CANON ( ptr u8 n -- bool )
+   ZBUF COPY-Z
+   ZBUF CANON-BUF PATH-BYTES realpath {: n:n :}
+   n -2 = if PATH-RC throw then
+   n 0 < if 0 CANON-U ! INCLUDE-FALSE exit then
+   n CANON-U ! INCLUDE-TRUE ;
+
+
+: CANON$ ( -- ptr u8 n ) CANON-BUF CANON-U @ ;
+
+
+: CWD-INIT ( -- )
+   CWD-U @ 0= 0= if exit then
+   s" ." TRY-CANON 0= if INCLUDE-IO-RC throw then
+   CANON-BUF CWD-BUF CANON-U @ 1+ BYTE-COPY
+   CANON-U @ CWD-U ! ;
+
+public
+
+: CWD$ ( -- ptr u8 n ) CWD-INIT CWD-BUF CWD-U @ ;
+
+
+: CURRENT$ ( -- ptr u8 n )
+   CURRENT-U @ 0 > if CURRENT-PTR CURRENT-U @ exit then
+   CWD$ ;
+
+private
+
+: JOIN! ( ptr u8 n ptr u8 n -- ) {: root:ptr rootu:n a:ptr u:n :}
+   rootu u + 1+ WORK-BYTES >= if PATH-RC throw then
+   root WORK-BUF rootu BYTE-COPY
+   47 WORK-BUF rootu + c!
+   a WORK-BUF rootu 1+ + u BYTE-COPY
+   rootu u + 1+ JOIN-U !
+   WORK-BUF JOIN-BUF JOIN-U @ BYTE-COPY ;
+
+
+: ABSOLUTE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECK
+   a c@ 47 = if
+      a JOIN-BUF u BYTE-COPY u JOIN-U ! exit
+   then
+   CWD$ a u JOIN! ;
+
+
+: PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u
+   begin dup 1 > while
+      1- dup a + c@ 47 = if exit then
+   repeat ;
+
+
+: NORMAL-ROOM ( n -- )
+   NORMAL-U @ + INCLUDE-PATH-CAP > if PATH-RC throw then ;
+
+
+: NORMAL-SEG ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   a u s" ." CORE-STR= if exit then
+   a u s" .." CORE-STR= if
+      NORMAL-BUF NORMAL-U @ PARENT-U NORMAL-U ! exit
+   then
+   NORMAL-U @ 1 > if
+      1 NORMAL-ROOM
+      47 NORMAL-BUF NORMAL-U @ + c!
+      1 NORMAL-U +!
+   then
+   u NORMAL-ROOM
+   a NORMAL-BUF NORMAL-U @ + u BYTE-COPY
+   u NORMAL-U +! ;
+
+
+: SEG-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
+   start
+   begin dup u < while
+      dup a + c@ 47 = if exit then
+      1+
+   repeat ;
+
+
+: NORMALIZE ( ptr u8 n -- ) {: a:ptr u:n :}
+   47 NORMAL-BUF c! 1 NORMAL-U !
+   0 begin dup u < while
+      dup a u rot SEG-END {: end:n :}
+      a over + end rot - NORMAL-SEG
+      end 1+
+   repeat drop
+   0 NORMAL-BUF NORMAL-U @ + c! ;
+
+
+: EXISTING-PARENT ( -- n )
+   JOIN-U @ begin
+      JOIN-BUF swap PARENT-U
+      dup JOIN-BUF swap TRY-CANON if exit then
+      dup 1 <= if drop INCLUDE-IO-RC throw then
+   again ;
+
+
+: MISSING-NORMALIZE ( -- )
+   EXISTING-PARENT {: cut:n :}
+   CANON-U @ JOIN-U @ cut - + {: total:n :}
+   total WORK-BYTES >= if PATH-RC throw then
+   CANON-BUF WORK-BUF CANON-U @ BYTE-COPY
+   JOIN-BUF cut + WORK-BUF CANON-U @ + JOIN-U @ cut - BYTE-COPY
+   WORK-BUF total NORMALIZE ;
+
+public
+
+\ The pathname is canonical even for a missing leaf: resolve its existing
+\ prefix physically, then normalize only the absent suffix for provided facts.
+\ The flag says whether the complete pathname existed. Result storage lasts
+\ until the next CANONICAL call.
+: CANONICAL ( ptr u8 n -- ptr u8 n bool )
+   ABSOLUTE!
+   JOIN-BUF JOIN-U @ TRY-CANON if
+      CANON-BUF NORMAL-BUF CANON-U @ 1+ BYTE-COPY
+      CANON-U @ NORMAL-U !
+      NORMAL-BUF NORMAL-U @ INCLUDE-TRUE exit
+   then
+   MISSING-NORMALIZE
+   NORMAL-BUF NORMAL-U @ INCLUDE-FALSE ;
+
+
+: DIRNAME ( ptr u8 n -- ptr u8 n )
+   over swap PARENT-U ;
+
+
+: JOIN ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u CHECK
+   a c@ 47 = if 2drop a u exit then
+   a u JOIN!
+   JOIN-BUF JOIN-U @ ;
+
+
+: BELOW? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n root:ptr rootu:n :}
+   u rootu < if INCLUDE-FALSE exit then
+   a rootu root rootu CORE-STR= 0= if INCLUDE-FALSE exit then
+   u rootu = if INCLUDE-TRUE exit then
+   rootu 1 = root c@ 47 = and if INCLUDE-TRUE exit then
+   a rootu + c@ 47 = ;
+
+
+: RELATIVE ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n root:ptr rootu:n :}
+   a u root rootu BELOW? 0= if a u exit then
+   u rootu = if s" ." exit then
+   rootu 1 = if a 1+ u 1- exit then
+   a rootu 1+ + u rootu 1+ - ;
+
+
+: RESOLVED-ROOT$ ( -- ptr u8 n ) OWNER-BUF OWNER-U @ ;
+
+private
+
+: OWNER! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u INCLUDE-PATH-CAP > if PATH-RC throw then
+   a OWNER-BUF u BYTE-COPY u OWNER-U ! ;
+
+
+: ROOT-CANON ( ptr u8 n -- )
+   ABSOLUTE!
+   JOIN-U @ 2 + WORK-BYTES >= if PATH-RC throw then
+   47 JOIN-BUF JOIN-U @ + c!
+   46 JOIN-BUF JOIN-U @ 1+ + c!
+   JOIN-BUF JOIN-U @ 2 + TRY-CANON 0= if INCLUDE-IO-RC throw then ;
+
+public
+
+\ Each scope owns a mapping sized to its root string. There is no additional
+\ root-count/depth limit, and a throw restores the caller before releasing it.
+: WITH ( ptr u8 n [ -- ] -- ) {: q :}
+   ROOT-CANON
+   CANON-U @ {: u:n :}
+   u 1+ map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: fresh:ptr :}
+   CANON-BUF fresh u 1+ BYTE-COPY
+   CURRENT$ {: old:ptr oldu:n :}
+   fresh u CURRENT!
+   1 SCOPES +!
+   q catch {: rc:n :}
+   -1 SCOPES +!
+   old oldu CURRENT!
+   fresh u 1+ munmap {: release:n :}
+   rc 0= 0= if rc throw then
+   release 0 < if INCLUDE-IO-RC throw then ;
+
+private
+
+: CLEAR-BYTES ( ptr u8 n -- )
+   0 ?do 0 over i + c! loop drop ;
+
+public
+
+: RESET ( -- )
+   SCOPES @ 0= 0= if INCLUDE-IO-RC throw then
+   CWD-BUF PATH-BYTES CLEAR-BYTES
+   CANON-BUF PATH-BYTES CLEAR-BYTES
+   NORMAL-BUF PATH-BYTES CLEAR-BYTES
+   OWNER-BUF PATH-BYTES CLEAR-BYTES
+   JOIN-BUF WORK-BYTES CLEAR-BYTES
+   WORK-BUF WORK-BYTES CLEAR-BYTES
+   ZBUF WORK-BYTES CLEAR-BYTES
+   REQUEST-BUF WORK-BYTES CLEAR-BYTES
+   0 REQUEST-U !
+   0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 JOIN-U ! 0 OWNER-U !
+   NULL$ CURRENT! ;
+
+private
+
+create ALIAS-PATHS REQUIRE-MAX REQUIRE-SLOT-BYTES * allot
+create ALIAS-LENS REQUIRE-MAX cells allot
+
+: ALIAS-SLOT ( n -- ptr u8 ) REQUIRE-SLOT-BYTES * ALIAS-PATHS + ;
+
+: ALIAS= ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
+   a u idx ALIAS-SLOT idx cells ALIAS-LENS + @ CORE-STR= ;
+
+public
+
+: REMEMBER ( ptr u8 n n -- ) {: idx:n :}
+   RESOLVED-ROOT$ RELATIVE {: a:ptr u:n :}
+   a idx ALIAS-SLOT u BYTE-COPY
+   u idx cells ALIAS-LENS + ! ;
+
+;package
+
+using SOURCE-ROOT
+
 \ INCLUDE-MMAP-PTR refines the checked file mapping; INCLUDE-EVALUATE executes
 \ its validated mapped bytes. Syscall-result provenance and evaluate are primitive
 \ boundaries. Retirement: habu-primitive-effect-axiom-1119f176.
@@ -111,7 +382,80 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    REQUIRE-N @ {: idx:n :}
    a idx REQUIRE-SLOT u BYTE-COPY
    u idx REQUIRE-LEN!
+   a u idx REMEMBER
    idx 1 + REQUIRE-N ! ;
+
+package SOURCE-ROOT
+private
+
+
+: REQUEST! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECK
+   a REQUEST-BUF u BYTE-COPY u REQUEST-U ! ;
+
+: REQUEST$ ( -- ptr u8 n ) REQUEST-BUF REQUEST-U @ ;
+
+\ Portable names describe only frozen engine facts. Ordinary application facts
+\ retain their canonical identity so identical names in distinct roots coexist.
+: BOOT-KNOWN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   REQUIRE-BASE @ begin dup REQUIRE-BOOT-N @ < while
+      dup a u rot ALIAS= if drop INCLUDE-TRUE exit then
+      1+
+   repeat drop INCLUDE-FALSE ;
+
+: CANDIDATE ( ptr u8 n bool -- ptr u8 n bool bool ) {: fallback:bool :}
+   2dup OWNER!
+   REQUEST$ JOIN CANONICAL {: exists:bool :}
+   2dup REQUIRE-KNOWN? {: known:bool :}
+   fallback if
+      2dup CWD$ RELATIVE BOOT-KNOWN? known or
+   else known then
+   dup exists or ;
+
+: ABS-OWNER ( ptr u8 n -- )
+   2dup CURRENT$ BELOW? if 2drop CURRENT$ OWNER! exit then
+   2dup CWD$ BELOW? if 2drop CWD$ OWNER! exit then
+   DIRNAME OWNER! ;
+
+public
+
+: RESOLVE ( ptr u8 n -- ptr u8 n bool )
+   REQUEST!
+   REQUEST-BUF c@ $2F = if
+      REQUEST$ CANONICAL drop
+      2dup ABS-OWNER
+      2dup REQUIRE-KNOWN? {: known:bool :}
+      2dup CWD$ BELOW? if
+         2dup CWD$ RELATIVE BOOT-KNOWN? known or
+      else known then
+      exit
+   then
+   CURRENT$ CWD$ CORE-STR= if
+      CWD$ INCLUDE-TRUE CANDIDATE drop exit
+   then
+   CURRENT$ INCLUDE-FALSE CANDIDATE if exit then drop 2drop
+   CWD$ INCLUDE-TRUE CANDIDATE if exit then drop 2drop
+   CURRENT$ INCLUDE-FALSE CANDIDATE drop ;
+
+\ Command-line entries are relative to the invocation directory; dependencies
+\ beneath them inherit the entry directory as their primary root.
+: ENTRY-RESOLVE ( ptr u8 n -- ptr u8 n bool )
+   REQUEST!
+   CWD$ INCLUDE-TRUE CANDIDATE drop
+   {: known:bool :}
+   2dup DIRNAME OWNER!
+   known ;
+
+: ENGINE-KNOWN? ( ptr u8 n -- bool )
+   CANONICAL drop {: a:ptr u:n :}
+   a u CWD$ RELATIVE {: relative:ptr relativeu:n :}
+   0 begin dup REQUIRE-BOOT-N @ < while
+      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
+      dup relative relativeu rot ALIAS= if drop INCLUDE-TRUE exit then
+      1+
+   repeat drop INCLUDE-FALSE ;
+
+;package
 
 \ One scratch line for diagnostics that have to name a path. Sized so the
 \ longest accepted path plus the longest prefix below always fits, and the
@@ -245,14 +589,14 @@ TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
 \ ---- Ordered source-composition event log (TFAM 5, item 5) --------------
 \ The loader words append one event per source-composition act so a restricted
 \ discovery pass can reconstruct include multiplicity and require/provided
-\ exact-string registry state in order. Recording is gated by EVENT-ON? so a
+\ canonical registry state in order. Recording is gated by EVENT-ON? so a
 \ normal boot/gate records nothing (no overhead, no overflow). During discovery
 \ the walker sets DISCOVERY and supplies the loader-token byte span in
 \ DISC-TOK-A/DISC-TOK-U; a real load reads the live token span from the
 \ interpreter TKA/TKL cells instead.
 
 $100 constant EVENT-MAX
-6 constant EVENT-FIELDS
+8 constant EVENT-FIELDS
 $8000 constant EVENT-POOL-CAP
 $4D constant INCLUDE-EVENT-RC
 
@@ -309,6 +653,33 @@ variable DISC-TOK-U
    off u + EVENT-POOL-N !
    off u ;
 
+package SOURCE-EVENT
+public
+
+: ROOT@ ( n -- ptr u8 n ) {: ix:n :}
+   ix 6 EVENT-FIELD@ EVENT-POOL-AT ix 7 EVENT-FIELD@ ;
+
+private
+
+: COPY-ROOT ( -- n n )
+   RESOLVED-ROOT$ {: a:ptr u:n :}
+   0 begin dup EVENT-N @ < while
+      dup ROOT@ a u CORE-STR= if
+         dup 6 EVENT-FIELD@ swap 7 EVENT-FIELD@ exit
+      then
+      1+
+   repeat drop
+   a u EVENT-COPY-PATH ;
+
+public
+
+: STORE-ROOT ( n -- ) {: ix:n :}
+   COPY-ROOT {: off:n len:n :}
+   off ix 6 EVENT-FIELD!
+   len ix 7 EVENT-FIELD! ;
+
+;package
+
 : EVENT-RECORD ( ptr u8 n n n -- ) {: kd:n st:n :}
    EVENT-ON? 0= if 2drop exit then
    EVENT-RECS-ROOM
@@ -321,6 +692,7 @@ variable DISC-TOK-U
    toka  ix 3 EVENT-FIELD!
    toku  ix 4 EVENT-FIELD!
    st    ix 5 EVENT-FIELD!
+   ix SOURCE-EVENT:STORE-ROOT
    ix 1 + EVENT-N ! ;
 
 : REQUIRE-STATE ( bool -- n )
@@ -335,13 +707,27 @@ variable DISC-TOK-U
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
 
-: INCLUDE-LOAD ( ptr u8 n -- )
+package SOURCE-ROOT
+
+: LOAD-CURRENT ( -- )
    INCLUDE-PUSH
-   INCLUDE-READ-ALL INCLUDE-EVALUATE
+   [: INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-READ-ALL INCLUDE-EVALUATE ;] catch
    INCLUDE-POP
+   dup 0= 0= if throw then drop
    INCLUDE-EVALERR? if s" include: evaluation failed" INCLUDE-EVAL-DIE then ;
 
+public
+
+: LOAD ( ptr u8 n -- )
+   INCLUDE-PATH0 drop
+   RESOLVED-ROOT$ [: LOAD-CURRENT ;] WITH ;
+
+;package
+
+: INCLUDE-LOAD ( ptr u8 n -- ) LOAD ;
+
 : included ( ptr u8 n -- )
+   RESOLVE drop
    2dup EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
    DISCOVERY? if 2drop exit then
    INCLUDE-LOAD ;
@@ -349,9 +735,7 @@ variable DISC-TOK-U
 \ One body for both spellings. A path the registry already holds is skipped, so
 \ the pending flag has to be cleared on every exit or it would leak into the
 \ next unrelated load.
-: REQUIRE-BODY ( ptr u8 n -- )
-   INCLUDE-CHECK-PATH
-   2dup REQUIRE-KNOWN? {: known:bool :}
+: REQUIRE-BODY ( ptr u8 n bool -- ) {: known:bool :}
    2dup EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
    known if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    2dup REQUIRE-STORE
@@ -360,13 +744,13 @@ variable DISC-TOK-U
 
 : required ( ptr u8 n -- )
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   REQUIRE-BODY ;
+   RESOLVE REQUIRE-BODY ;
 
 \ The `--load` argv row. Same load, and it records that the command line is
 \ what asked for it.
 : script-required ( ptr u8 n -- )
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
-   REQUIRE-BODY ;
+   ENTRY-RESOLVE REQUIRE-BODY ;
 
 \ Is the file being loaded right now one the command line named?
 : SCRIPT-NAMED-LOAD? ( -- bool )
@@ -374,8 +758,7 @@ variable DISC-TOK-U
    INCLUDE-DEPTH @ 1 - SCRIPT-NAMED-SLOT @ 0= 0= ;
 
 : provided ( ptr u8 n -- )
-   INCLUDE-CHECK-PATH
-   2dup REQUIRE-KNOWN? {: known:bool :}
+   RESOLVE {: known:bool :}
    2dup EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
    known if 2drop exit then
    REQUIRE-STORE ;
@@ -475,6 +858,7 @@ public
       s" include: snapshot prepare under an open load" INCLUDE-DIE
    then
    INCLUDE-RESET-SCRATCH
+   RESET
    0 INCLUDE-BUFS-A ! ;
 
 \ ---- what the ENGINE provides, as opposed to what this process has loaded ---
@@ -490,11 +874,8 @@ public
 : REQUIRE-BOOT-FREEZE ( -- )
    REQUIRE-N @ REQUIRE-BOOT-N ! ;
 
-: ENGINE-PROVIDES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup REQUIRE-BOOT-N @ < while
-      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
-      1+
-   repeat drop INCLUDE-FALSE ;
+: ENGINE-PROVIDES? ( ptr u8 n -- bool )
+   ENGINE-KNOWN? ;
 
 \ A bundle (tools/bundle-lib.f) carries the modules this engine does NOT have
 \ and states the ones it assumes. Stating the assumption is the bundle's half;
@@ -527,4 +908,6 @@ INSTALL
 ;package
 
 -1 TDECL-EVAL-ARMED !
+;using
+
 ;using

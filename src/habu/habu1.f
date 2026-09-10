@@ -1979,6 +1979,70 @@ variable SZA-I
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
 
+package PATH-OS
+
+\ Read this process's loader slot, as src/os/*/layout.f DLSYM-SLOT does.
+\ Neither a library handle nor a resolved function survives this call.
+: DLSYM ( -- )
+   16 DATA RBASE-CELL LDR,  15 CODE-OFF LIT64,  16 16 15 SUB,
+   17 16 IMAGE-TEXT-SIZE-OFF LDR,
+   HB-TARGET-LINUX? if
+      16 16 17 ADD,  16 16 $B8 LDR,
+   else
+      15 CODE-OFF LIT64,  17 17 15 ADD,  15 $3FFF LIT64,
+      17 17 15 ADD,  15 $3FFF invert LIT64,  17 17 15 AND,
+      16 16 17 ADD,  16 16 8 LDR,
+   then
+   HB-TARGET-LINUX? if 0 0 MOVZ, else 0 1 MOVN, then
+   16 BLR, ;
+
+public
+
+\ ( pathz dst capacity -- length | -1 | -2 )
+\ libc allocates its realpath result. Only a fitting result, including its NUL,
+\ reaches dst; free runs after both success and insufficient capacity.
+\ -1 = resolution/loader failure, -2 = no room for the complete C string.
+: EMIT ( -- )
+   LBL LBL LBL LBL {: badcap:label failed:label short:label done:label :}
+   LBL LBL LBL LBL {: count:label counted:label copy:label release:label :}
+   2 G-POP  1 G-POP  0 G-POP
+   SP SP 80 SUBI,
+   0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,
+   2 0 CMPI,  C-LE badcap BCOND,
+   1 2 PROT-GUARD:CALL
+   9 $65657266 LIT64,  9 SP 56 STR,
+   9 $687461706C616572 LIT64,  9 SP 64 STR,
+   9 0 MOVZ,  9 SP 72 STR,
+   1 SP 56 ADDI,  DLSYM
+   0 failed CBZ,  0 SP 24 STR,
+   1 SP 64 ADDI,  DLSYM
+   0 failed CBZ,  16 0 0 ADDI,
+   0 SP 0 LDR,  1 0 MOVZ,  16 BLR,
+   0 failed CBZ,  0 SP 40 STR,
+   9 0 0 ADDI,  10 0 MOVZ,
+   count LBL,
+      11 9 0 LDRB,  11 counted CBZ,
+      9 9 1 ADDI,  10 10 1 ADDI,  count B,
+   counted LBL,
+   10 SP 48 STR,  12 SP 16 LDR,
+   10 12 CMP,  C-CS short BCOND,
+   9 SP 40 LDR,  11 10 1 ADDI,  10 SP 8 LDR,
+   copy LBL,
+      12 9 0 LDRB,  12 10 0 STRB,
+      9 9 1 ADDI,  10 10 1 ADDI,  11 11 1 SUBI,
+      11 copy CBNZ,
+   release LBL,
+   0 SP 40 LDR,  16 SP 24 LDR,  16 BLR,
+   0 SP 48 LDR,  done B,
+   short LBL,
+   9 1 MOVN,  9 SP 48 STR,  release B,
+   badcap LBL,  0 1 MOVN,  done B,
+   failed LBL,  0 0 MOVN,
+   done LBL,
+   SP SP 80 ADDI,  0 G-PUSH ;
+
+;package
+
 : BMKDIR ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
@@ -2984,6 +3048,7 @@ package ENGINE-EMIT
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
    s" symlink" ['] BSYMLINK FPRIM-L   s" readlink" ['] BREADLINK FPRIM
+   s" realpath" ['] PATH-OS:EMIT 3 GDEREF-F
    s" mkdir" ['] BMKDIR FPRIM-L     s" rmdir" ['] BRMDIR FPRIM-L
    s" stat64" ['] BSTAT64 FPRIM   s" lstat64" ['] BLSTAT64 FPRIM
    s" getdirentries64" ['] BGETDIRENTRIES64 FPRIM
