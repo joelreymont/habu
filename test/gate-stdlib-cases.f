@@ -545,6 +545,10 @@ SUITE float-parse
    lib/fmath-test.f
 ;SUITE
 
+SUITE finite-float-text
+   lib/f64-text-test.f
+;SUITE
+
 SUITE ieee-float32
    lib/ieee754-test.f
    lib/float32-test.f
