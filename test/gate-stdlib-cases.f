@@ -744,6 +744,7 @@ SUITE tail-pure-fixtures
    lib/memory-test.f
    lib/vector-test.f
    lib/byte-buffer-test.f
+   lib/elf32-test.f
    lib/layout/box-test.f
    lib/fs-test.f
    tools/bootstrap-codegen-test.f

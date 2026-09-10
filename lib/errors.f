@@ -546,7 +546,10 @@ public
 \   -8720..-8739  the judge's second block, taken when the first filled: the
 \                 storage a corpus declares, and the package a derived word is
 \                 published in (package JUDGE-CHAIN)
-\   -8420..-8439, -8487..-8499, -8520..-8599, -8666..-8699, -8740..-8999
+\   -8840..-8859  ARM32/Thumb instruction construction (package A32ASM)
+\   -8860..-8879  C66x instruction construction (package C6XASM)
+\   -8420..-8439, -8487..-8499, -8520..-8599, -8666..-8699, -8740..-8839,
+\   -8880..-8999
 \                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
 \                 ends take sub-blocks from here, each named above its codes.
@@ -1152,3 +1155,14 @@ public
 -8652 constant E-NELAB-QUOT-CAP \ more quotation bodies in one definition than a module of the native chain holds functions for
 
 -8650 constant E-NELAB-MATCH    \ a tag-dispatch form this elaborator cannot shape: a family or variant token the registry declines, a form whose operand token is missing or is not a name, an `of`, `endof`, `endcase` or `;match` with no such form open, an arm reached with fewer values on the compile-time vector than the form consumes, a scrutinee whose bundle on that vector does not begin, hold together and end where its family's width says - which is what an instantiation wider than the declared one looks like from here - or an arm whose payload has several FIELDS in more CELLS, where no per-field width says where its values begin (dot habu-publish-the-payload-eb4ae38a)
+
+\ Embedded instruction constructors (compiler growth region).
+-8840 constant E-A32ASM-OPERAND
+-8860 constant E-C6XASM-OPERAND
+
+\ ELF32 bounded binary reader: -9000..-9019.
+-9000 constant E-ELF32-FIRST
+-9019 constant E-ELF32-LAST
+-9000 constant E-ELF32-FORMAT
+-9001 constant E-ELF32-BOUNDS
+-9002 constant E-ELF32-UNSUPPORTED
