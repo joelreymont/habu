@@ -1174,3 +1174,11 @@ public
 -9101 constant E-UDP4-PLATFORM
 -9102 constant E-UDP4-SYMBOL
 -9103 constant E-UDP4-RESULT
+
+\ Raw serial host library: -9110..-9119.
+-9110 constant E-SERIAL-FIRST
+-9119 constant E-SERIAL-LAST
+-9110 constant E-SERIAL-OPERAND
+-9111 constant E-SERIAL-PLATFORM
+-9112 constant E-SERIAL-SYMBOL
+-9113 constant E-SERIAL-RESULT
