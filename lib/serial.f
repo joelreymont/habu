@@ -4,6 +4,7 @@ require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/cad-num-types.f
 require lib/task.f
+require lib/image-lifecycle.f
 require lib/memory.f
 
 package SERIAL
@@ -46,7 +47,6 @@ $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
 
-variable LIBC
 variable FN-OPEN
 variable FN-IOCTL
 variable FN-READ
@@ -56,6 +56,7 @@ variable FN-CLOSE
 variable FN-ERRNO
 here FFI:>CELL 7 and 8 swap - 7 and allot
 variable READY
+variable REGISTERED
 create SYMBOL-NAME $20 allot
 
 \ No per-operation buffer is process-global; independent tasks may use ports.
@@ -99,16 +100,32 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
 
+\ Image capture is quiescent. These are borrowed process addresses; clearing
+\ them needs no foreign call. Caller-owned descriptors must already be closed.
+: RESET-SYMBOLS ( -- )
+   0 FN-OPEN ! 0 FN-IOCTL ! 0 FN-READ !
+   0 FN-WRITE ! 0 FN-POLL ! 0 FN-CLOSE !
+   0 FN-ERRNO !
+   0 REGISTERED ! 0 READY atomic! ;
+
+
+\ INIT holds this module's READY lock. The shared registry must support
+\ concurrent registration by different resource owners.
+: REGISTER-CLEANUP ( -- )
+   REGISTERED @ 0= if
+      [: RESET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER
+      1 REGISTERED !
+   then ;
+
+
+\ RTLD_DEFAULT borrows process symbols; the native executable already needs
+\ libc.so.6. No library reference is acquired or retained by this module.
 : SYMBOL ( ptr u8 n -- n )
-   SYMBOL-NAME FFI:CSTR LIBC @ SYMBOL-NAME FFI:DLSYM
+   SYMBOL-NAME FFI:CSTR 0 SYMBOL-NAME FFI:DLSYM
    dup 0= if E-SYMBOL throw then ;
 
 
 : LOAD-SYMBOLS ( -- )
-   LIBC @ 0= if
-      s" libc.so.6" SYMBOL-NAME FFI:CSTR
-      SYMBOL-NAME FFI:NOW FFI:DLOPEN dup 0= if E-SYMBOL throw then LIBC !
-   then
    s" open" SYMBOL FN-OPEN ! s" ioctl" SYMBOL FN-IOCTL !
    s" read" SYMBOL FN-READ ! s" write" SYMBOL FN-WRITE !
    s" poll" SYMBOL FN-POLL ! s" close" SYMBOL FN-CLOSE !
@@ -120,7 +137,7 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    begin
       READY atomic@ 2 = if exit then
       0 1 READY atomic-cas 0= if
-         [: LOAD-SYMBOLS ;] catch dup 0 <> if 0 READY atomic! throw then drop
+         [: REGISTER-CLEANUP LOAD-SYMBOLS ;] catch dup 0 <> if 0 READY atomic! throw then drop
          2 READY atomic! exit
       then TASK:PAUSE
    again ;
