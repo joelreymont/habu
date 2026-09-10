@@ -147,6 +147,7 @@ variable RX  variable RACC
    a u s" Lloc-find" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
+   a u s" Lreplroute" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lfindused" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
@@ -163,7 +164,7 @@ variable RX  variable RACC
    a u s" Lvswapx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvnipx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvcopy" LINT-STR=CI if 0 13 CL-ADD exit then
-   a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD exit then
+   a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD 11 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
@@ -187,13 +188,15 @@ variable RX  variable RACC
 \ A wrapped emitter call is an UPPER-CASE `PKG:CALL` word that expands, at emit
 \ time, to a register-move prelude plus a branch-with-link to a shared engine
 \ helper. It is neither a bare mnemonic nor a `LABEL@ BL,` triple, so the plain
-\ scan would miss its emitted clobbers. The only modeled member today is
-\ PROT-GUARD:CALL (src/habu/habu1.f): it moves the caller's (addr,len) register
+\ scan would miss its emitted clobbers. PROT-GUARD:CALL (src/habu/habu1.f)
+\ moves the caller's (addr,len) register
 \ pair into the x10/x11 ABI the resident LPROTSPAN span guard reads, then
 \ branches to it. The guard body reads x10/x11 and touches only x12/x13, so the
 \ addr/len registers survive as x10=addr, x11=len; the branch additionally
 \ clobbers x30. Any other `:CALL` shape, or a call whose operands do not resolve
-\ to registers, fails closed via E-CLOBBER-WRAP-UNRESOLVED.
+\ to registers, fails closed via E-CLOBBER-WRAP-UNRESOLVED. C-FIND-GLOBAL is
+\ also modeled: its literal label/count arguments feed LFIND and its returned
+\ registers follow that helper's ABI.
 package CLOBBER-WRAP
 
 0 12 CL-ADD 13 CL-ADD constant GUARD-BODY   \ registers the LPROTSPAN body clobbers
@@ -203,11 +206,19 @@ package CLOBBER-WRAP
 
 public
 
+: GLOBAL-FIND? ( ptr u8 n -- bool ) s" C-FIND-GLOBAL" LINT-STR= ;
+
+
 : WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ shape of a wrapped emitter call
+   a u GLOBAL-FIND? if LINT-TRUE exit then
    u 6 < if LINT-FALSE exit then
    a u s" :CALL" LINT-SUFFIX? ;
 
 : MASK  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ clobbered registers
+   \ C-FIND-GLOBAL loads a literal name, calls LFIND, then restores package
+   \ state through x14. Its successful path preserves x0/x1 and clobbers
+   \ x2..x17 and x30. A missing name exits the process.
+   a u GLOBAL-FIND? if $3FFFC 30 CL-ADD exit then
    a u PROT? if
       GUARD-BODY
       addr 10 <> if 10 CL-ADD then
@@ -217,10 +228,12 @@ public
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
+   a u GLOBAL-FIND? if 0 exit then
    a u PROT? if 0 addr CL-ADD len CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : RETURNS  ( ptr u8 n -- n ) {: a:ptr u:n :}   \ registers the call redefines
+   a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u PROT? if GUARD-ABI exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
@@ -399,6 +412,9 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 \ starting at OPLO. Resolve them, failing closed if they are missing or are not
 \ registers, so the modeled contract never runs on an operand it cannot read.
 : WRAP-REGS  ( -- n n )   \ addr len
+   \ The global lookup's arguments are an emitter label and byte count, not
+   \ target registers. No caller register is read to construct its arguments.
+   DI @ TOK CLOBBER-WRAP:GLOBAL-FIND? if 0 0 exit then
    DI @ OPLO @ - 2 < if E-CLOBBER-WRAP-UNRESOLVED throw then
    DI @ 2 - TOK REG-OF  DI @ 1 - TOK REG-OF
    2dup 0 < swap 0 < or if E-CLOBBER-WRAP-UNRESOLVED throw then ;
