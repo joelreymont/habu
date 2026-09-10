@@ -1,6 +1,8 @@
 \ zip-test.f - public lifecycle and independent archive-preservation checks.
 require lib/zip.f
 require lib/zip-test-fixture.f
+require lib/zip-framing-fixture.f
+require lib/zip-count-fixture.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
@@ -164,10 +166,90 @@ create PAYLOAD $20 allot
    archive member ZIP:READ s" changed" T$=
    archive ZIP:CLOSE ;
 
+: SAVE-INPUT ( -- )
+   INPUT$ {: path:ptr len:n :}
+   path RAW len BYTE-COPY RAW len s" saved.zip" PATH$ RENAME-FILE
+   INPUT$ MAKE-DIR ;
+
+: RESTORE-INPUT ( -- )
+   INPUT$ REMOVE-DIR s" saved.zip" PATH$ {: path:ptr len:n :}
+   path RAW len BYTE-COPY RAW len INPUT$ RENAME-FILE ;
+
+: NO-TEMP ( ptr u8 n -- )
+   BASENAME s" .habu-zip-" CONTAINS? TFALSE ;
+
+: INSTALL-FAILURE ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL INPUT$ EDIT {: archive:ZIP:archive :}
+   archive 0 ENTRY archive swap s" pending" REPLACE SAVE-INPUT
+   archive [: TRY-COMMIT ;] catch E-COMMIT T= drop
+   archive 0 s" pending" MEMBER= archive 3 s" first" MEMBER=
+   BASE$ [: NO-TEMP ;] WALK-FILES
+   RESTORE-INPUT archive COMMIT
+   INPUT$ ZIP:OPEN {: result:ZIP:archive :}
+   result 0 s" pending" MEMBER= result ZIP:CLOSE ;
+
+: READONLY-COMMIT ( -- )
+   INPUT$ ORIGINAL$ WRITE-ALL INPUT$ ZIP:OPEN COMMIT
+   INPUT$ RAW RAW-CAP READ-ALL RAW swap ORIGINAL$ T$= ;
+
 : MANY-HANDLES ( -- )
    INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
    257 0 ?do archive 0 ENTRY archive swap NAME$ 2drop loop
    archive ZIP:CLOSE ;
+
+: REPLACE-FIRST ( -- )
+   INPUT$ EDIT {: archive:ZIP:archive :}
+   archive 1 ENTRY archive swap NAME$ s" raw.txt" T$=
+   archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT ;
+
+: FRAMING-CASE ( ptr u8 n ptr u8 n -- ) {: before:ptr before-len:n after:ptr after-len:n :}
+   INPUT$ before before-len WRITE-ALL REPLACE-FIRST
+   INPUT$ RAW RAW-CAP READ-ALL {: len:n :}
+   RAW len after after-len T$=
+   INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
+   archive 0 s" replacement text" MEMBER= archive 1 s" keep" MEMBER=
+   archive ZIP:CLOSE ;
+
+: RAW-FRAMING ( -- )
+   FRAMED-BEFORE$ FRAMED-AFTER$ FRAMING-CASE
+   WIDE-BEFORE$ WIDE-AFTER$ FRAMING-CASE
+   PREFIX-BEFORE$ PREFIX-AFTER$ FRAMING-CASE ;
+
+$10000 constant WIDE-COUNT
+
+: COUNT-OFFSET! ( n ptr u8 -- ) {: value:n data:ptr :}
+   4 0 ?do value i 8 * rshift data i + c! loop ;
+
+: COUNT-FIXTURE ( ptr u8 -- n ) {: data:ptr :}
+   COUNT-LOCAL$ {: local:ptr local-len:n :}
+   COUNT-CENTRAL$ {: central:ptr central-len:n :}
+   WIDE-COUNT 0 ?do local data i local-len * + local-len BYTE-COPY loop
+   data WIDE-COUNT local-len * + {: directory:ptr :}
+   WIDE-COUNT 0 ?do
+      directory i central-len * + {: dest:ptr :}
+      central dest central-len BYTE-COPY i local-len * dest $2A + COUNT-OFFSET!
+   loop
+   WIDE-COUNT local-len central-len + * {: end-off:n :}
+   COUNT-END-BEFORE$ {: tail:ptr len:n :}
+   tail data end-off + len BYTE-COPY end-off len + ;
+
+: COUNT-CONTENT ( -- )
+   INPUT$ ZIP:OPEN {: archive:ZIP:archive :}
+   archive ZIP:COUNT WIDE-COUNT T=
+   archive 0 s" replacement text" MEMBER=
+   archive WIDE-COUNT 1- s" " MEMBER= archive ZIP:CLOSE ;
+
+: ZIP64-COUNT ( -- )
+   COUNT-LOCAL$ nip COUNT-CENTRAL$ nip + WIDE-COUNT * $100 +
+   MEM-ALLOC-BYTES {: data:ptr cap:n :}
+   INPUT$ data data COUNT-FIXTURE WRITE-ALL
+   INPUT$ EDIT {: archive:ZIP:archive :}
+   archive ZIP:COUNT WIDE-COUNT T=
+   archive 0 ENTRY archive swap s" replacement text" REPLACE archive COMMIT
+   INPUT$ data cap READ-ALL {: len:n :}
+   COUNT-END-AFTER$ {: expected:ptr size:n :}
+   data len size - + size expected size T$=
+   data cap BYTES-ALLOC-LEN RELEASE-BYTES COUNT-CONTENT ;
 
 : TYPE-REJECTIONS ( -- )
    s" WRONG-HANDLE ( ZIP:entry -- n ) ZIP:COUNT" CHECK! 0 T=
@@ -178,10 +260,12 @@ create PAYLOAD $20 allot
    T-RESET CLEANUP-RESET SETUP
    READ-MEMBERS DUP-NAMES REJECT-INDICES REJECT-HANDLES BAD-PATHS
    REPLACE-MEMBERS READ-REPLACED PRESERVED DISCARD-CHANGES
-   COMMIT-FAILURE CRC-FAILURE MANY-HANDLES TYPE-REJECTIONS
+   COMMIT-FAILURE INSTALL-FAILURE READONLY-COMMIT CRC-FAILURE MANY-HANDLES RAW-FRAMING ZIP64-COUNT TYPE-REJECTIONS
    CLEANUP-RUN T-REPORT ;
 
 RUN
 ;using
 ;using
 ;package
+
+require lib/zip-offset-test.f

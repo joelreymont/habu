@@ -388,8 +388,8 @@ FFI:DLSYM         ( n ptr u8 -- n )
 
 ## ZIP Archives
 
-`require lib/zip.f` loads indexed ZIP reading and replacement through
-`libzip.so.5` on Linux. It requires libzip to be installed. The public `ZIP`
+`require lib/zip.f` loads indexed ZIP reading and replacement.
+It uses `libzip.so.5` for decompression on Linux, so libzip must be installed. The public `ZIP`
 package uses distinct opaque `archive` and `entry` identities; each operation
 checks that the archive is live and the entry belongs to it. Entries are selected
 by their zero-based index, so duplicate filenames remain distinct.
@@ -412,10 +412,15 @@ name bytes, and `READ` returns uncompressed bytes. Both return archive-owned
 copies that stay valid until successful `COMMIT` or `CLOSE`, including across
 later reads and replacements. `REPLACE` immediately copies its input, including
 an empty member, and changes only the selected index. `READ` sees a pending
-replacement. The untouched members retain their compressed bytes and metadata;
-libzip may update metadata of a replaced member, including its extra fields.
+replacement. Untouched local records remain byte-for-byte intact; central records change
+only where their relocated offsets require it. Replacements use STORE with a
+fresh CRC and sizes, retaining their names, comments, attributes and non-ZIP64
+extra fields. ZIP64 size and offset fields are rebuilt as needed.
 
-`COMMIT` writes changes and invalidates the archive and its entries on success.
+`COMMIT` builds a compact archive and atomically renames a temporary file in
+the destination directory, preserving file permissions. It invalidates the
+archive and its entries on success. A commit with no replacements only closes
+the archive.
 If it throws `ZIP:E-COMMIT`, the archive stays live and the caller must retry or
 `CLOSE`. `CLOSE` discards pending changes and releases all owned buffers. Repeated
 close and other stale-handle use throw `ZIP:E-HANDLE`. A foreign entry, negative
@@ -424,7 +429,7 @@ index or out-of-range index throws `ZIP:E-ENTRY`. Other failures use the named
 records grow with the workload and have no fixed entry count limit.
 
 The package uses checked Habu for storage, validation and lifetime management.
-Its only asserted boundaries are exact private libzip calls. Focused verification:
+Its only asserted boundaries are exact private libzip and libc calls. Focused verification:
 `bin/hb --load lib/zip-test.f`.
 
 ## IEEE-754 Scalar Conversion

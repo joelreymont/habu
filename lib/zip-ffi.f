@@ -1,4 +1,4 @@
-\ zip-ffi.f - exact libzip ABI bindings, private to ZIP.
+\ zip-ffi.f - exact libzip/libc ABI bindings, private to ZIP.
 require lib/ffi-abi.f
 require lib/zip-types.f
 
@@ -7,7 +7,6 @@ using FFI
 
 $40 constant SYMBOL-BYTES
 $40 constant STAT-BYTES
-$40 constant NAME-RAW-FLAG
 create SYMBOL SYMBOL-BYTES allot
 variable LIBRARY
 
@@ -42,13 +41,6 @@ TRUSTED: COUNT-CALL ( -- n )
    RESET archive 0 READABLE! 0 1 VALUE!
    COUNT-CALL ;
 
-s" zip_get_name" SYMBOL-FIND constant NAME-FN
-TRUSTED: NAME-CALL ( -- ptr u8 )
-   ARGS REG-LENS 3 NAME-FN ffi-call-bounded ;
-: C-NAME ( ptr u8 n -- ptr u8 ) {: archive:ptr idx:n :}
-   RESET archive 0 READABLE! idx 1 VALUE! NAME-RAW-FLAG 2 VALUE!
-   NAME-CALL ;
-
 s" zip_stat_index" SYMBOL-FIND constant STAT-FN
 TRUSTED: STAT-CALL ( -- n )
    ARGS REG-LENS 4 STAT-FN ffi-call-bounded ;
@@ -77,40 +69,24 @@ TRUSTED: FCLOSE-CALL ( -- n )
    RESET file 0 READABLE!
    FCLOSE-CALL ;
 
-s" zip_source_buffer" SYMBOL-FIND constant SOURCE-FN
-TRUSTED: SOURCE-CALL ( -- ptr u8 )
-   ARGS REG-LENS 4 SOURCE-FN ffi-call-bounded ;
-: C-SOURCE ( ptr u8 ptr u8 n -- ptr u8 ) {: archive:ptr buf:ptr len:n :}
-   RESET archive 0 READABLE! buf 1 READABLE! len 2 VALUE! 0 3 VALUE!
-   SOURCE-CALL ;
-
-s" zip_file_replace" SYMBOL-FIND constant REPLACE-FN
-TRUSTED: REPLACE-CALL ( -- n )
-   ARGS REG-LENS 4 REPLACE-FN ffi-call-bounded ;
-: C-REPLACE ( ptr u8 n ptr u8 -- n ) {: archive:ptr idx:n source:ptr :}
-   RESET archive 0 READABLE! idx 1 VALUE! source 2 READABLE! 0 3 VALUE!
-   REPLACE-CALL ;
-
-s" zip_source_free" SYMBOL-FIND constant SOURCE-FREE-FN
-TRUSTED: SOURCE-FREE-CALL ( -- )
-   ARGS REG-LENS 1 SOURCE-FREE-FN ffi-call-bounded drop ;
-: C-SOURCE-FREE ( ptr u8 -- ) {: source:ptr :}
-   RESET source 0 READABLE!
-   SOURCE-FREE-CALL ;
-
-s" zip_close" SYMBOL-FIND constant COMMIT-FN
-TRUSTED: COMMIT-CALL ( -- n )
-   ARGS REG-LENS 1 COMMIT-FN ffi-call-bounded ;
-: C-COMMIT ( ptr u8 -- n ) {: archive:ptr :}
-   RESET archive 0 READABLE!
-   COMMIT-CALL ;
-
 s" zip_discard" SYMBOL-FIND constant DISCARD-FN
 TRUSTED: DISCARD-CALL ( -- )
    ARGS REG-LENS 1 DISCARD-FN ffi-call-bounded drop ;
 : C-DISCARD ( ptr u8 -- ) {: archive:ptr :}
    RESET archive 0 READABLE!
    DISCARD-CALL ;
+
+s" mkstemp" SYMBOL-FIND constant MKSTEMP-FN
+TRUSTED: MKSTEMP-CALL ( -- n )
+   ARGS REG-LENS 1 MKSTEMP-FN ffi-call-bounded ;
+: C-MKSTEMP ( ptr u8 n -- n ) {: path:ptr len:n :}
+   RESET path len 0 WRITABLE! MKSTEMP-CALL ;
+
+s" close" SYMBOL-FIND constant CLOSE-FD-FN
+TRUSTED: CLOSE-FD-CALL ( -- n )
+   ARGS REG-LENS 1 CLOSE-FD-FN ffi-call-bounded ;
+: C-CLOSE-FD ( n -- n )
+   RESET 0 VALUE! CLOSE-FD-CALL ;
 
 ;using
 ;package
