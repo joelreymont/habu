@@ -70,13 +70,15 @@ normalized from 32 bits; `ssize_t` results retain the host's 64 bits. The
 come from this platform's libc headers, not an application wire format.
 
 Temporary endpoint/poll storage is task-local, as are the existing FFI argument
-tables. A synchronized first call resolves process-owned libc symbols and
-publishes them for other callers. Separate tasks may use separate sockets and
-buffers concurrently; calls must not nest within one task. Sharing a socket
+tables. A synchronized first call resolves libc symbols through
+[`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html) and publishes
+them for other callers. The native executable already depends on libc; these
+addresses are borrowed from the process, without acquiring a library reference.
+Separate tasks may use separate sockets and buffers concurrently; calls must not nest within one task. Sharing a socket
 between receivers requires the application's own coordination. Input/output
 storage must remain valid for each call. Loading the module opens no sockets.
 
-Invalid operands throw `E-OPERAND` (`-9100`). Unsupported OS, failed library or
+Invalid operands throw `E-OPERAND` (`-9100`). Unsupported OS, failed
 symbol resolution, and an unexpected foreign result throw `E-PLATFORM`
 (`-9101`), `E-SYMBOL` (`-9102`), and `E-RESULT` (`-9103`). Ordinary OS operation
 failures are result variants, not those exceptions.

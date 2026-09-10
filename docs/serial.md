@@ -90,11 +90,12 @@ Other operating systems are rejected. Supporting another host ABI requires its
 own bindings and tests.
 
 Termios and poll scratch storage is task-local. Each open allocates and releases
-its own NUL-terminated path. A synchronized first call publishes immutable
-process-owned libc symbols. Separate tasks may use separate ports and buffers
-concurrently; calls must not nest within one task.
+its own NUL-terminated path. A synchronized first call publishes libc symbols
+borrowed through [`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html).
+The native executable already depends on libc; this module acquires no library
+reference. Separate tasks may use separate ports and buffers concurrently; calls must not nest within one task.
 
-Invalid operands throw `E-OPERAND` (`-9110`); unsupported OS, missing library or
+Invalid operands throw `E-OPERAND` (`-9110`); unsupported OS, missing
 symbol, and impossible foreign results throw `E-PLATFORM` (`-9111`), `E-SYMBOL`
 (`-9112`), and `E-RESULT` (`-9113`). Ordinary OS failures use result variants.
 

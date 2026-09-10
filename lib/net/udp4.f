@@ -50,7 +50,6 @@ $80802 constant SOCKET-FLAGS       \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
 
-variable LIBC
 variable FN-SOCKET
 variable FN-BIND
 variable FN-SENDTO
@@ -143,16 +142,14 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
+\ RTLD_DEFAULT borrows process symbols; the native executable already needs
+\ libc.so.6. No library reference is acquired or retained by this module.
 : SYMBOL ( ptr u8 n -- n )
-   SYMBOL-NAME FFI:CSTR LIBC @ SYMBOL-NAME FFI:DLSYM
+   SYMBOL-NAME FFI:CSTR 0 SYMBOL-NAME FFI:DLSYM
    dup 0= if E-SYMBOL throw then ;
 
 
 : LOAD-SYMBOLS ( -- )
-   LIBC @ 0= if
-      s" libc.so.6" SYMBOL-NAME FFI:CSTR
-      SYMBOL-NAME FFI:NOW FFI:DLOPEN dup 0= if E-SYMBOL throw then LIBC !
-   then
    s" socket" SYMBOL FN-SOCKET !
    s" bind" SYMBOL FN-BIND !
    s" sendto" SYMBOL FN-SENDTO !

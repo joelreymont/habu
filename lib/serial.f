@@ -46,7 +46,6 @@ $100F100F constant BAUD-MASK
 $100018B0 constant RAW-CONTROL   \ BOTHER both ways, CS8 | CREAD | CLOCAL.
 1000000 constant NS-PER-MS
 
-variable LIBC
 variable FN-OPEN
 variable FN-IOCTL
 variable FN-READ
@@ -99,16 +98,14 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
 
+\ RTLD_DEFAULT borrows process symbols; the native executable already needs
+\ libc.so.6. No library reference is acquired or retained by this module.
 : SYMBOL ( ptr u8 n -- n )
-   SYMBOL-NAME FFI:CSTR LIBC @ SYMBOL-NAME FFI:DLSYM
+   SYMBOL-NAME FFI:CSTR 0 SYMBOL-NAME FFI:DLSYM
    dup 0= if E-SYMBOL throw then ;
 
 
 : LOAD-SYMBOLS ( -- )
-   LIBC @ 0= if
-      s" libc.so.6" SYMBOL-NAME FFI:CSTR
-      SYMBOL-NAME FFI:NOW FFI:DLOPEN dup 0= if E-SYMBOL throw then LIBC !
-   then
    s" open" SYMBOL FN-OPEN ! s" ioctl" SYMBOL FN-IOCTL !
    s" read" SYMBOL FN-READ ! s" write" SYMBOL FN-WRITE !
    s" poll" SYMBOL FN-POLL ! s" close" SYMBOL FN-CLOSE !
