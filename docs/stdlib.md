@@ -20,6 +20,7 @@ Planned module files:
 - `lib/memory.f`
 - `lib/ffi-abi.f`
 - `lib/net/udp4.f`
+- `lib/serial.f`
 - `lib/fs.f`
 - `lib/fs-root.f`
 - `lib/build-cache.f`
@@ -1941,3 +1942,11 @@ in Habu scripts and libraries. Habu build helpers are responsible for validating
 user source, proving checked definitions, detecting missing artifacts, and
 reporting named failures. Shell may allocate private temporary space and pass it
 to Habu; Habu decides what work happens inside that space.
+
+## Raw serial streams
+
+`lib/serial.f` owns generic Linux AArch64 serial I/O in `SERIAL`: numeric-baud
+raw 8N1 setup, partial reads/writes with finite waits, and explicit close.
+Applications own their protocols and handle lifetimes. See [serial streams](serial.md)
+for effects, configuration and timeout semantics, foreign boundaries, and the
+kernel pseudoterminal checks.
