@@ -487,6 +487,10 @@ address arithmetic at the public boundary.
 
 ## Words & factoring
 
+- Separate multiline word definitions with two blank lines. Related one-line
+  definitions may remain together. Keep a word's introductory comment attached
+  to that word, after the separating blank lines.
+
 - **Strictly typed Habu, everywhere you can (BLOCKING).** The default is not
   "checked when convenient" — it is checked/typed, and unchecked is only a named,
   tested boundary the checker genuinely cannot express (see *Unchecked code is a
