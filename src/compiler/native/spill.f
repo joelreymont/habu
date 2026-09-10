@@ -557,18 +557,22 @@ create NAMEBUF NAME-CAP allot
       id i OPERAND-AT a SAME-VALUE? if drop true leave then
    loop ;
 
-: DIRECT-FRAME-ARG? ( IR-ID:ir-block-id IR-ID:ir-value-id -- bool )
-   {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id :}
+\ An argument may dominate a frame access after a conditional edge without
+\ being forwarded as another block argument. Value identities are module-wide,
+\ so inspect every original operation for a direct consumer of this order.
+: DIRECT-FRAME-ARG? ( IR-ID:ir-value-id -- bool )
+   {: a:IR-ID:ir-value-id :}
    a MEM-VALUE? 0= if false exit then
-   false
-   bk OP-COUNT 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id FRAME-TOUCH? if id a OP-READS? or then
-   loop ;
+   TOTAL-OPS 0 ?do
+      MKEY i IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
+      id FRAME-TOUCH? if
+         id a OP-READS? if true unloop exit then
+      then
+   loop false ;
 
 : FRAME-ARG-PATH? ( IR-ID:ir-block-id IR-ID:ir-value-id n -- bool )
    {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id fuel:n :}
-   bk a DIRECT-FRAME-ARG? if true exit then
+   a DIRECT-FRAME-ARG? if true exit then
    fuel 0= if false exit then
    bk TERM-AT {: id:IR-ID:ir-op-id :}
    id SUCCS-OF 1 <> if false exit then

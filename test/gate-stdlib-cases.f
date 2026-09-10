@@ -236,6 +236,10 @@ SUITE compiler-native-address-spill
    test/compiler/native-address-spill.f
 ;SUITE
 
+SUITE compiler-native-loop-frame-order
+   test/compiler/native-loop-frame-order.f
+;SUITE
+
 SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
