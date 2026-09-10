@@ -532,6 +532,10 @@ SUITE ffi-abi
    lib/ffi-abi-test.f
 ;SUITE
 
+SUITE zip
+   lib/zip-test.f
+;SUITE
+
 SUITE ffi-cabi
    lib/ffi-test.f
 ;SUITE
