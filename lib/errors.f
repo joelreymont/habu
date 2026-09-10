@@ -1197,3 +1197,9 @@ public
 -9126 constant E-SXMODEM-CANCELLED
 -9127 constant E-SXMODEM-RETRIES
 -9128 constant E-SXMODEM-CAPACITY
+
+\ Pseudoterminal pairs for test peers: -9140..-9149.
+-9140 constant E-PTY-OPEN
+-9141 constant E-PTY-IOCTL
+-9142 constant E-PTY-IO
+-9143 constant E-PTY-CAPACITY
