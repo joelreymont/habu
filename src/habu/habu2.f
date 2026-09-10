@@ -2251,6 +2251,41 @@ package LOOP-EMIT
    11 BLR,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
+\ The active native compiler retains its checker even while a build replaces
+\ the source dictionary. The record's fields are the actual checker operations;
+\ publishing into a distinct target checker remains the named path below.
+package DECL-OWNER
+public
+
+: FIND ( n -- ) {: off:n :}
+   LBL {: done:label :}
+   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
+   11 11 off LDR,
+   done LBL, ;
+
+: SKIP-SAME ( n label -- ) {: off:n same:label :}
+   LBL {: different:label :}
+   12 DATA NCOMP-DISPATCH:DECL-CELL LDR,  12 different CBZ,
+   12 12 off LDR,  11 12 CMP,  C-EQ same BCOND,
+   different LBL, ;
+
+: SIGNATURE ( n n n -- ) {: off:n aoff:n uoff:n :}
+   LBL {: done:label :}
+   off FIND  11 done CBZ,
+   C-PUSH-DREC-NAME
+   aoff uoff C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED
+   done LBL, ;
+
+: NAME ( n -- ) {: off:n :}
+   LBL {: done:label :}
+   off FIND  11 done CBZ,
+   C-PUSH-DREC-NAME
+   C-CALL-X11-SAVED
+   done LBL, ;
+
+;package
+
 \ ---- reaching the checker's definer-facing registrar --------------------------
 \ One concern: how the engine hands the checker a signature a DEFINER just
 \ declared. It is the sibling of LASTC-TRUST below, which does the same job for
@@ -2287,10 +2322,14 @@ public
 \ PROT-GUARD:CALL) and fails closed on any other, which is the right refusal
 \ and not a model to widen.
 : REGISTER ( -- )
+   LBL {: done:label :}
+   NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
    FIND
+   NCOMP-DISPATCH:DECL-EFFECT-OFF done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
-   C-CALL-X11-SAVED ;
+   C-CALL-X11-SAVED
+   done LBL, ;
 
 \ The cast declarer's registrar, same seam and same push sequence as REGISTER
 \ above, reaching `checker-defcast` instead of `trust-decl`. The two are one
@@ -2307,10 +2346,14 @@ public
    ok LBL, ;
 
 : REGISTER-CAST ( -- )
+   LBL {: done:label :}
+   NCOMP-DISPATCH:DECL-CAST-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
    FIND-CAST
+   NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
-   C-CALL-X11-SAVED ;
+   C-CALL-X11-SAVED
+   done LBL, ;
 
 ;package
 
@@ -2347,14 +2390,24 @@ public
 
 : FIND-ACTIVE ( label -- ) {: absent:label :}
    LBL {: ready:label :}
-   11 DATA NCOMP-DISPATCH:RAW-XT-CELL LDR,  11 ready CBNZ,
+   NCOMP-DISPATCH:DECL-RAW-OFF DECL-OWNER:FIND  11 ready CBNZ,
    9 DATA HOOK-CELL LDR,  9 absent CBZ,
    FIND-RAW
    ready LBL, ;
 
+: FIND-TARGET ( label -- ) {: absent:label :}
+   11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
+   9 KWDATA:LKWTRUSTRAW LABEL@ ADR,  10 9 MOVZ,  LFIND LABEL@ BL,
+   13 absent CBZ,
+   NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:SKIP-SAME ;
+
 : PUBLISH ( -- )
    LBL {: nohook:label :}
    nohook FIND-ACTIVE
+   C-PUSH-DREC-NAME
+   CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED
+   nohook FIND-TARGET
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -2367,11 +2420,21 @@ public
    9 LSIGPTRA LABEL@ ADR,  9 G-PUSH
    9 8 MOVZ,  9 G-PUSH
    C-CALL-X11-SAVED
+   nohook FIND-TARGET
+   C-PUSH-DREC-NAME
+   9 LSIGPTRA LABEL@ ADR,  9 G-PUSH
+   9 8 MOVZ,  9 G-PUSH
+   C-CALL-X11-SAVED
    nohook LBL, ;
 
 : PUBLISH-A ( -- )
    LBL {: nohook:label :}
    nohook FIND-ACTIVE
+   C-PUSH-DREC-NAME
+   9 LSIGA LABEL@ ADR,  9 G-PUSH
+   9 4 MOVZ,  9 G-PUSH
+   C-CALL-X11-SAVED
+   nohook FIND-TARGET
    C-PUSH-DREC-NAME
    9 LSIGA LABEL@ ADR,  9 G-PUSH
    9 4 MOVZ,  9 G-PUSH
@@ -2427,9 +2490,13 @@ public
    ready LBL, ;
 
 : C-CALL-CHECKER-DEFER ( -- )
+   LBL {: done:label :}
+   NCOMP-DISPATCH:DECL-DEFER-OFF DECL-OWNER:NAME
    LCHKDEFER 13 C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
-   C-CALL-X11-SAVED ;
+   C-CALL-X11-SAVED
+   done LBL, ;
 
 \ Interpret-gate marking (habu-tfam-12-interpret checker half): after ndict++
 \ the checker's rec-wide-publish consumes the RECW latch its record choke
@@ -3599,7 +3666,9 @@ public
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LBL LBL {: ready pdone :}
    C-PRETRUST-READY?  13 ready CBNZ,
-      C-PD-CAPTURE  pdone B,                          \ trust/checker-defer absent: record into the pending table
+      NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
+      NCOMP-DISPATCH:DECL-DEFER-OFF DECL-OWNER:NAME
+      C-PD-CAPTURE  pdone B,                          \ retain the target checker's later registration
    ready LBL,
       DEF-TRUST:REGISTER
       C-CALL-CHECKER-DEFER
@@ -5986,7 +6055,7 @@ public
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA APP-ENTRY:XT-CELL STR,
-   9 DATA NCOMP-DISPATCH:RAW-XT-CELL STR,
+   9 DATA NCOMP-DISPATCH:DECL-CELL STR,
    9 DATA REPLH-CELL STR,  9 DATA BPWBASE-CELL STR,  9 DATA BPWN-CELL STR,
    10 SNAP-RELOC:XTCELL-N-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    \ The three hooks and the compiler-dispatch cell hold execution tokens once something installs
@@ -5999,7 +6068,7 @@ public
    TOP-HOOK-CELL SNAP-RELOC:MARK-CELL
    NCOMP-DISPATCH:XT-CELL SNAP-RELOC:MARK-CELL
    APP-ENTRY:XT-CELL SNAP-RELOC:MARK-CELL
-   NCOMP-DISPATCH:RAW-XT-CELL SNAP-RELOC:MARK-CELL
+   9 DATA NCOMP-DISPATCH:DECL-CELL ADDI,  SNAP-RELOC:LPTRMARK LABEL@ BL,
    \ Constructor registry starts empty: clear the whole bitmap, then publish the shape
    \ tag. The old count cell made "empty" a single store; a bitmap has to be zeroed in
    \ full, and a cold boot is the only path that may do it (a restored image carries

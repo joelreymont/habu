@@ -697,10 +697,16 @@ $250 constant VVAL-OFF
 package NCOMP-DISPATCH
 public
 $358 constant XT-CELL
-\ Raw-storage declarations must reach the checker owned by this compiler even
-\ while the source hook is disabled for prefix replay. Like XT-CELL, this slot
-\ belonged to the discarded legacy JIT BEGIN stack and is installed last.
-$360 constant RAW-XT-CELL
+\ One owner record keeps every engine declaration registrar paired with the
+\ active compiler, including while the source dictionary/checker is replaced.
+\ The record is DATA; its four fields are execution tokens of existing private
+\ checker operations, with no new checked-callable trust alias.
+$360 constant DECL-CELL
+0 constant DECL-RAW-OFF
+8 constant DECL-EFFECT-OFF
+16 constant DECL-DEFER-OFF
+24 constant DECL-CAST-OFF
+32 constant DECL-BYTES
 ;package
 
 $600 constant LOOP-STK-OFF

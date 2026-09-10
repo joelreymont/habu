@@ -103,14 +103,10 @@ variable HIT
 \ lands on the next definition's instructions - a perfectly ordinary integer -
 \ and it answers absent for the same reason.
 \
-\ AND THE RESOLVER IS WHAT IS ASKED HERE, NOT THE CHAIN, because a program that
-\ writes `is` on a non-defer never reaches the chain at all: the engine's own
-\ `is` handler refuses the target before the definition is certified, so the
-\ source dies with the engine's code and the elaborator is never entered. That
-\ is measured below, and it is why the elaborator's own refusal is exercised on
-\ a hand-built tape in test/compiler/native-elaborate.f - a shape the engine
-\ never produces, and the only way to reach a backstop that exists because this
-\ pass reads a tape rather than source.
+\ The native checker refuses these source programs before elaboration. The
+\ resolver assertions separately prove why forged data and ordinary code are
+\ not defer targets; the elaborator's own backstop is exercised on a hand-built
+\ tape in test/compiler/native-elaborate.f.
 : SETUP-BAD ( -- )
    s" create ND-DATA  $4842444546455201 ,  0 ," EV
    s" : ND-PLAIN ( n -- n ) 2 * ;" EV ;
@@ -124,8 +120,7 @@ variable HIT
 : BAD-ABSENT ( -- )
    s" : ND-BAD3 ( -- ) [: ND-IMPL ;] is ND-NOWHERE ;" EV ;
 
-76 constant DIE-RC                   \ the engine's `is` refusing its target
-70 constant NAME-RC                  \ the engine refusing a name that denotes nothing
+70 constant CHECK-RC                 \ the native checker refuses every invalid target
 
 : REFUSE-CASE ( -- )
    SETUP-BAD
@@ -139,10 +134,10 @@ variable HIT
    s" ND-NOWHERE" NDICT:SPELL-DEFER-CELL 0 T=
    s" while the real deferred word answers one" T-LABEL
    s" ND-HOOK" NDICT:SPELL-DEFER-CELL 0<> TTRUE
-   s" and such a program never reaches the chain: the engine refuses it first" T-LABEL
-   [: BAD-DATA ;] DIE-RC TTHROWSQ
-   [: BAD-COLON ;] DIE-RC TTHROWSQ
-   [: BAD-ABSENT ;] NAME-RC TTHROWSQ ;
+   s" the native checker refuses non-deferred or absent targets before emission" T-LABEL
+   [: BAD-DATA ;] CHECK-RC TTHROWSQ
+   [: BAD-COLON ;] CHECK-RC TTHROWSQ
+   [: BAD-ABSENT ;] CHECK-RC TTHROWSQ ;
 
 public
 

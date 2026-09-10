@@ -122,9 +122,15 @@ private
    CAPTURE-PREPARE
    SEAL-CAPTURE ;
 
-\ Keep the registrar paired with this compiler without adding a checked-callable
-\ alias for an unsafe declaration operation.
-' TRUST-RAW data-base NCOMP-DISPATCH:RAW-XT-CELL + xt!
+\ Install one private owner record after every operation it names is compiled.
+\ The record keeps existing XTs; it adds no callable trust wrapper.
+create DECLARATIONS NCOMP-DISPATCH:DECL-BYTES allot
+' TRUST-RAW DECLARATIONS NCOMP-DISPATCH:DECL-RAW-OFF + xt!
+' TRUST-DECL DECLARATIONS NCOMP-DISPATCH:DECL-EFFECT-OFF + xt!
+' CHECKER-DEFER DECLARATIONS NCOMP-DISPATCH:DECL-DEFER-OFF + xt!
+' CHECKER-DEFCAST DECLARATIONS NCOMP-DISPATCH:DECL-CAST-OFF + xt!
+data-base NCOMP-DISPATCH:DECL-CELL + ptr-cell-mark
+DECLARATIONS data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field !
 ' SEAL
 ;package
 execute
