@@ -348,9 +348,41 @@ $14 constant LOCATOR-BYTES
       node start member ZIP64-OFFSET @ + member CENTRAL-OFF @ - OUT-AT U64!
    else member NEW-LOCAL @ node start OUT-AT $2A + U32! then ;
 
+: OFFSET-INSERTION ( ptr u8 ptr u8 -- n ) {: central:ptr extra:ptr :}
+   extra central - 4 +
+   central $18 + U32@ U32-MAX = if 8 + then
+   central $14 + U32@ U32-MAX = if 8 + then ;
+
+: PROMOTE-EXISTING ( ptr n ptr n ptr u8 -- n ) {: node:ptr member:ptr extra:ptr :}
+   node member CENTRAL-PTR {: central:ptr :}
+   central extra OFFSET-INSERTION {: split:n :}
+   node OUT-LEN @ extra central - + {: extra-out:n :}
+   node member CENTRAL-OFF @ split EMIT-RAW
+   node member NEW-LOCAL @ EMIT-U64
+   node member CENTRAL-OFF @ split + member CENTRAL-LEN @ split - EMIT-RAW
+   extra 2 + U16@ 8 + node extra-out OUT-AT 2 + U16! 8 ;
+
+: PROMOTE-NEW ( ptr n ptr n -- n ) {: node:ptr member:ptr :}
+   node member CENTRAL-PTR {: central:ptr :}
+   CENTRAL-BYTES central $1C + U16@ + central $1E + U16@ + {: split:n :}
+   node member CENTRAL-OFF @ split EMIT-RAW
+   node 1 EMIT-U16 node 8 EMIT-U16 node member NEW-LOCAL @ EMIT-U64
+   node member CENTRAL-OFF @ split + member CENTRAL-LEN @ split - EMIT-RAW $C ;
+
+: PROMOTE-CENTRAL ( ptr n ptr n -- ) {: node:ptr member:ptr :}
+   node OUT-LEN @ {: start:n :}
+   node member EXTRA-SPAN 1 EXTRA-FIND {: extra:ptr len:n :}
+   len 0= if node member PROMOTE-NEW else node member extra PROMOTE-EXISTING then
+   {: added:n :}
+   node start OUT-AT {: header:ptr :}
+   header $1E + U16@ added + dup U16-MAX > if E-SIZE throw then header $1E + U16!
+   header 6 + U16@ $2D max header 6 + U16! U32-MAX header $2A + U32! ;
+
 : WRITE-CENTRAL ( ptr n ptr n -- ) {: node:ptr member:ptr :}
-   member REPLACED? member OFFSET64? member ZIP64-OFFSET @ 0= and or
-   if node member REBUILD-CENTRAL else node member COPY-CENTRAL then ;
+   member REPLACED? if node member REBUILD-CENTRAL exit then
+   member OFFSET64? member ZIP64-OFFSET @ 0= and if
+      node member PROMOTE-CENTRAL
+   else node member COPY-CENTRAL then ;
 
 : WRITE-MEMBERS ( ptr n -- ) {: node:ptr :}
    node 0 node PREFIX-SIZE @ EMIT-RAW
