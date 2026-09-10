@@ -71,8 +71,10 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
 
 CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
+
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
+
 
 : LENGTH ( n -- CAD-NUM:byte-len )
    CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
@@ -85,33 +87,43 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
       misaligned OF E-OPERAND throw ENDOF
    ;MATCH ;
 
+
 : CHECK-SOCKET ( socket -- )
    SOCKET>N 0 $7FFFFFFF WITHIN-RANGE ;
+
 
 : C-INT ( n -- n )
    MAX-ADDRESS and dup $80000000 and 0 <> if $100000000 - then ;
 
+
 : LE32! ( n ptr u8 -- ) {: value:n target :}
    4 0 do value i 8 * rshift $FF and target i + c! loop ;
+
 
 : LE32@ ( ptr u8 -- n ) {: source :}
    source c@ source $01 + c@ 8 lshift or
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
+
 : BE16! ( n ptr u8 -- ) {: value:n target :}
    value 8 rshift $FF and target c! value $FF and target $01 + c! ;
+
 
 : BE16@ ( ptr u8 -- n ) {: source :}
    source c@ 8 lshift source $01 + c@ or ;
 
+
 : BE32! ( n ptr u8 -- ) {: value:n target :}
    value 16 rshift target BE16! value target $02 + BE16! ;
+
 
 : BE32@ ( ptr u8 -- n ) {: source :}
    source BE16@ 16 lshift source $02 + BE16@ or ;
 
+
 : CLEAR-ENDPOINT ( -- )
    SOCKADDR-BYTES 0 do 0 SOCKADDR i + c! loop ;
+
 
 : ENDPOINT! ( address port -- ) {: address:address port:port :}
    address ADDRESS>N 0 MAX-ADDRESS WITHIN-RANGE
@@ -120,17 +132,21 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    2 SOCKADDR c! port PORT>N SOCKADDR $02 + BE16!
    address ADDRESS>N SOCKADDR $04 + BE32! ;
 
+
 : ENDPOINT-OUTPUT ( -- )
    CLEAR-ENDPOINT SOCKADDR-BYTES ADDRLEN LE32! ;
+
 
 : ENDPOINT@ ( -- address port )
    ADDRLEN LE32@ SOCKADDR-BYTES <> if E-RESULT throw then
    SOCKADDR c@ 2 <> SOCKADDR $01 + c@ 0 <> or if E-RESULT throw then
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
+
 : SYMBOL ( ptr u8 n -- n )
    SYMBOL-NAME FFI:CSTR LIBC @ SYMBOL-NAME FFI:DLSYM
    dup 0= if E-SYMBOL throw then ;
+
 
 : LOAD-SYMBOLS ( -- )
    LIBC @ 0= if
@@ -146,6 +162,7 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    s" poll" SYMBOL FN-POLL !
    s" __errno_location" SYMBOL FN-ERRNO ! ;
 
+
 \ Publish process-owned immutable symbols once; readers acquire READY=2.
 : INIT ( -- )
    HB-TARGET-LINUX? 0= if E-PLATFORM throw then
@@ -158,63 +175,104 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
       TASK:PAUSE
    again ;
 
+
 \ These are exact Linux AArch64 libc schemas. The checker cannot infer a C
 \ function's effect from dlsym; pointer extents are supplied to bounded FFI.
 \ errno's pointer is libc-owned, thread-local, and read as a four-byte C int.
 \ Retirement owner: Habu's checked foreign-binding implementation. Coverage:
 \ test/net/udp4.py exercises every binding with an independent Python UDP peer.
 TRUSTED: ERRNO-POINTER ( -- ptr u8 )
-   FFI:RESET FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;
+
 
 : LAST-ERROR ( -- errno )
-   ERRNO-POINTER LE32@ >ERRNO ;
+   FFI:RESET ERRNO-POINTER LE32@ >ERRNO ;
 
-TRUSTED: SOCKET-RAW ( -- n )
+
+TRUSTED: SOCKET-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 3 FN-SOCKET @ ffi-call-bounded ;
+
+
+: SOCKET-RAW ( -- n )
    FFI:RESET 2 0 FFI:VALUE! SOCKET-FLAGS 1 FFI:VALUE! 0 2 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 3 FN-SOCKET @ ffi-call-bounded C-INT ;
+   SOCKET-CALL C-INT ;
 
-TRUSTED: BIND-RAW ( socket -- n ) {: socket:socket :}
+
+TRUSTED: BIND-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 3 FN-BIND @ ffi-call-bounded ;
+
+
+: BIND-RAW ( socket -- n ) {: socket:socket :}
    FFI:RESET socket SOCKET>N 0 FFI:VALUE! SOCKADDR 1 FFI:READABLE!
    SOCKADDR-BYTES 2 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 3 FN-BIND @ ffi-call-bounded C-INT ;
+   BIND-CALL C-INT ;
 
-TRUSTED: CLOSE-RAW ( socket -- n ) {: socket:socket :}
+
+TRUSTED: CLOSE-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 1 FN-CLOSE @ ffi-call-bounded ;
+
+
+: CLOSE-RAW ( socket -- n ) {: socket:socket :}
    FFI:RESET socket SOCKET>N 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 FN-CLOSE @ ffi-call-bounded C-INT ;
+   CLOSE-CALL C-INT ;
 
-TRUSTED: LOCAL-RAW ( socket -- n ) {: socket:socket :}
+
+TRUSTED: LOCAL-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 3 FN-GETSOCKNAME @ ffi-call-bounded ;
+
+
+: LOCAL-RAW ( socket -- n ) {: socket:socket :}
    FFI:RESET socket SOCKET>N 0 FFI:VALUE!
    SOCKADDR SOCKADDR-BYTES 1 FFI:WRITABLE! ADDRLEN $04 2 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 3 FN-GETSOCKNAME @ ffi-call-bounded C-INT ;
+   LOCAL-CALL C-INT ;
 
-TRUSTED: SEND-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
+
+TRUSTED: SEND-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 6 FN-SENDTO @ ffi-call-bounded ;
+
+
+: SEND-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
    {: socket:socket bytes size:CAD-NUM:byte-len :}
    FFI:RESET socket SOCKET>N 0 FFI:VALUE! bytes 1 FFI:READABLE!
    size BLEN>N 2 FFI:VALUE! 0 3 FFI:VALUE!
    SOCKADDR 4 FFI:READABLE! SOCKADDR-BYTES 5 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 6 FN-SENDTO @ ffi-call-bounded ;
+   SEND-CALL ;
 
-TRUSTED: RECEIVE-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
+
+TRUSTED: RECEIVE-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 6 FN-RECVFROM @ ffi-call-bounded ;
+
+
+: RECEIVE-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
    {: socket:socket bytes capacity:CAD-NUM:byte-len :}
    FFI:RESET socket SOCKET>N 0 FFI:VALUE! bytes capacity BLEN>N 1 FFI:WRITABLE!
    capacity BLEN>N 2 FFI:VALUE! MSG-TRUNC 3 FFI:VALUE!
    SOCKADDR SOCKADDR-BYTES 4 FFI:WRITABLE! ADDRLEN $04 5 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 6 FN-RECVFROM @ ffi-call-bounded ;
+   RECEIVE-CALL ;
 
-TRUSTED: POLL-RAW ( ms -- n ) {: timeout:ms :}
+
+TRUSTED: POLL-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 3 FN-POLL @ ffi-call-bounded ;
+
+
+: POLL-RAW ( ms -- n ) {: timeout:ms :}
    FFI:RESET POLLFD $08 0 FFI:WRITABLE! 1 1 FFI:VALUE!
    timeout MS>N 2 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 3 FN-POLL @ ffi-call-bounded C-INT ;
+   POLL-CALL C-INT ;
+
 
 : POLL! ( socket -- )
    SOCKET>N POLLFD LE32! 1 POLLFD $04 + LE32! ;
+
 
 : REMAINING ( ns -- ms )
    NS>N mono-ns - dup 0 <= if drop 0 >MS exit then
    NS-PER-MS 1 - + NS-PER-MS / >MS ;
 
+
 : RETRY? ( errno -- bool )
    ERRNO>N dup 4 = swap 11 = or ;
+
 
 : RECEIVED ( n CAD-NUM:byte-len -- receive-result ) {: actual:n capacity:CAD-NUM:byte-len :}
    actual 0 MAX-PAYLOAD WITHIN-RANGE
@@ -224,10 +282,12 @@ TRUSTED: POLL-RAW ( ms -- n ) {: timeout:ms :}
       actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:packet
    then ;
 
+
 : OCTET-LENGTH ( ptr u8 n -- n ) {: text size:n :}
    0 begin dup size < while
       dup text + c@ $2E = if exit then 1 +
    repeat ;
+
 
 : OCTET-VALUE ( ptr u8 n -- n ) {: text size:n :}
    size 1 3 WITHIN-RANGE
@@ -236,9 +296,11 @@ TRUSTED: POLL-RAW ( ms -- n ) {: timeout:ms :}
       text i + c@ $30 - dup 0 9 WITHIN-RANGE swap 10 * +
    loop dup 0 $FF WITHIN-RANGE ;
 
+
 : OCTET ( ptr u8 n -- ptr u8 n n ) {: text size:n :}
    text size OCTET-LENGTH {: length:n :}
    text length + size length - text length OCTET-VALUE ;
+
 
 : FOLLOWING-OCTET ( n ptr u8 n -- n ptr u8 n ) {: address:n text size:n :}
    size 1 < if E-OPERAND throw then
@@ -246,10 +308,13 @@ TRUSTED: POLL-RAW ( ms -- n ) {: timeout:ms :}
    text $01 + size 1 - OCTET {: next remaining:n octet:n :}
    address 8 lshift octet or next remaining ;
 
+
 public
+
 
 : ADDRESS ( n -- address )
    dup 0 MAX-ADDRESS WITHIN-RANGE >ADDRESS ;
+
 
 \ Strict dotted decimal: four octets, no signs, padding, or leading zeros.
 : ADDRESS$ ( ptr u8 n -- address ) {: text size:n :}
@@ -259,11 +324,14 @@ public
    {: value:n tail rest:n :}
    rest 0 <> if E-OPERAND throw then value >ADDRESS ;
 
+
 : PORT ( n -- port )
    dup 0 MAX-PORT WITHIN-RANGE >PORT ;
 
+
 : PAYLOAD-BYTES ( n -- CAD-NUM:byte-len )
    dup 0 MAX-PAYLOAD WITHIN-RANGE LENGTH ;
+
 
 \ BIND returns an owned nonblocking socket; the caller closes it exactly once.
 \ Address is a numeric IPv4 address (e.g. $7F000001); port zero asks the OS.
@@ -274,10 +342,12 @@ public
       LAST-ERROR socket CLOSE-RAW drop UDP4-OPEN--RESULT:failed
    else socket UDP4-OPEN--RESULT:opened then ;
 
+
 : LOCAL ( socket -- endpoint-result ) {: socket:socket :}
    socket CHECK-SOCKET INIT ENDPOINT-OUTPUT
    socket LOCAL-RAW 0 < if LAST-ERROR UDP4-ENDPOINT--RESULT:failed
    else ENDPOINT@ UDP4-ENDPOINT--RESULT:endpoint then ;
+
 
 \ The input is borrowed for this call. Success means the OS accepted the whole
 \ datagram, not that it arrived. Interrupted/would-block errors reach the caller.
@@ -287,6 +357,7 @@ public
    INIT address port ENDPOINT!
    socket bytes size SEND-RAW dup 0 < if drop LAST-ERROR UDP4-STATUS:failed exit then
    size BLEN>N <> if E-RESULT throw then UDP4-STATUS:ok ;
+
 
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
@@ -308,8 +379,10 @@ public
       then
    again ;
 
+
 \ On Linux, close consumes the descriptor even if interrupted. Never retry it.
 : CLOSE ( socket -- status )
    dup CHECK-SOCKET INIT CLOSE-RAW 0 < if LAST-ERROR UDP4-STATUS:failed else UDP4-STATUS:ok then ;
+
 
 ;package
