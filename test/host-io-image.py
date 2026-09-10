@@ -120,8 +120,8 @@ def literal(path):
     return f's" {value}"'
 
 
-def serial_peer(master, rounds, stopped):
-    deadline = time.monotonic() + 45
+def serial_peer(master, rounds, stopped, timeout):
+    deadline = time.monotonic() + timeout
     for _ in range(rounds):
         while not select.select([master], [], [], 0.1)[0]:
             if stopped.is_set():
@@ -132,8 +132,8 @@ def serial_peer(master, rounds, stopped):
     return True
 
 
-def udp_peer(peer, rounds, stopped):
-    deadline = time.monotonic() + 45
+def udp_peer(peer, rounds, stopped, timeout):
+    deadline = time.monotonic() + timeout
     for _ in range(rounds):
         while True:
             try:
@@ -167,16 +167,19 @@ def exercise(executable, cwd, subject=None, destination=None, *, reset=True):
             if destination is not None:
                 # SAVE must run from the outer input stream, after loads return.
                 script += f'{literal(destination)} APP-IMAGE:SAVE\n'
+            # The first process compiles the libraries and subject before I/O.
+            # Transport operations retain their independent 2000 ms bounds.
+            timeout = 600 if subject is not None else 60
             with ThreadPoolExecutor(max_workers=2) as pool:
                 stopped = Event()
-                serial = pool.submit(serial_peer, master, rounds, stopped)
-                udp = pool.submit(udp_peer, peer, rounds, stopped)
+                serial = pool.submit(serial_peer, master, rounds, stopped, timeout)
+                udp = pool.submit(udp_peer, peer, rounds, stopped, timeout)
                 started = time.monotonic()
                 with subprocess.Popen(command, cwd=cwd, stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                       text=True) as process:
                     try:
-                        stdout, stderr = process.communicate(script, timeout=60)
+                        stdout, stderr = process.communicate(script, timeout=timeout)
                     except subprocess.TimeoutExpired:
                         process.kill()
                         stdout, stderr = process.communicate()
