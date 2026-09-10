@@ -90,6 +90,8 @@ public
 
 : OPEN ( ptr u8 n -- archive ) READONLY-FLAG OPEN-CHECKED ;
 : EDIT ( ptr u8 n -- archive ) 0 OPEN-CHECKED ;
+: SOURCE$ ( archive -- ptr u8 n )
+   ARCHIVE-NODE dup RAW-PTR @ swap RAW-LEN @ ;
 : COUNT ( archive -- n ) ARCHIVE-NODE COUNT-NODE ;
 : ENTRY ( archive n -- entry ) swap ARCHIVE-NODE swap NEW-ENTRY ;
 

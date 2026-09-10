@@ -397,6 +397,7 @@ by their zero-based index, so duplicate filenames remain distinct.
 ```forth
 ZIP:OPEN    ( ptr u8 n -- ZIP:archive )
 ZIP:EDIT    ( ptr u8 n -- ZIP:archive )
+ZIP:SOURCE$ ( ZIP:archive -- ptr u8 n )
 ZIP:COUNT   ( ZIP:archive -- n )
 ZIP:ENTRY   ( ZIP:archive n -- ZIP:entry )
 ZIP:NAME$   ( ZIP:archive ZIP:entry -- ptr u8 n )
@@ -407,7 +408,10 @@ ZIP:CLOSE   ( ZIP:archive -- )
 ```
 
 `OPEN` is read-only. `EDIT` opens an existing archive; callers that need a new
-output file first copy their input to that path. `NAME$` returns the original
+output file first copy their input to that path. `SOURCE$` returns the original
+archive snapshot; pending replacements do not change it. Its borrowed bytes stay
+valid until successful `COMMIT` or `CLOSE` and must not be modified.
+`NAME$` returns the original
 name bytes, and `READ` returns uncompressed bytes. Both return archive-owned
 copies that stay valid until successful `COMMIT` or `CLOSE`, including across
 later reads and replacements. `REPLACE` immediately copies its input, including
