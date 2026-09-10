@@ -4,22 +4,23 @@ require lib/utf8-scalar.f
 
 package XML
 public
--9100 constant E-STORAGE
--9101 constant E-CAPACITY
--9102 constant E-RANGE
--9103 constant E-MALFORMED
--9104 constant E-TRUNCATED
--9105 constant E-UTF8
--9106 constant E-SCALAR
--9107 constant E-ENTITY
--9108 constant E-NAMESPACE
--9109 constant E-DEPTH
--9110 constant E-ATTRIBUTES
--9111 constant E-NAMESPACES
--9112 constant E-STATE
--9113 constant E-DTD
--9114 constant E-ENCODING
--9115 constant E-ALIAS
+\ XML scalar/parser errors: -9200..-9215.
+-9200 constant E-STORAGE
+-9201 constant E-CAPACITY
+-9202 constant E-RANGE
+-9203 constant E-MALFORMED
+-9204 constant E-TRUNCATED
+-9205 constant E-UTF8
+-9206 constant E-SCALAR
+-9207 constant E-ENTITY
+-9208 constant E-NAMESPACE
+-9209 constant E-DEPTH
+-9210 constant E-ATTRIBUTES
+-9211 constant E-NAMESPACES
+-9212 constant E-STATE
+-9213 constant E-DTD
+-9214 constant E-ENCODING
+-9215 constant E-ALIAS
 
 private
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
