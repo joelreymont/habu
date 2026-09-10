@@ -205,24 +205,92 @@ private
    state BYTE-VIEW state STORAGE-LEN + @
    destination cap OVERLAP? if E-ALIAS throw then ;
 
+\ Keep the reader below throwing workers' arguments. Native catch restores
+\ stack depth, so public locals could overwrite the reader's saved stack cell.
+: RAW-STATE ( ptr n -- off len )
+   {: state :}
+   state LIVE
+   state RAW-OFF + @ >OFF state RAW-LEN + @ >LEN ;
+
+: RAW$-STATE ( ptr n -- ptr u8 n )
+   {: state :}
+   state LIVE
+   state state RAW-OFF + @ state RAW-LEN + @ SPAN$ ;
+
+: NAME$-STATE ( ptr n -- ptr u8 n )
+   {: state :}
+   state NAMED
+   state state NAME-OFF + @ state NAME-LEN + @ SPAN$ ;
+
+: DECODE-ARGS ( XML:reader ptr u8 n -- XML:reader ptr n ptr u8 n )
+   {: destination cap:n :}
+   STATE destination cap ;
+
+: URI-STATE ( ptr n ptr u8 n -- n )
+   {: state destination cap:n :}
+   state NAMED
+   state destination cap OUTPUT-CHECK
+   state state URI-OFF + @ state URI-LEN + @ URI$
+   DECODE-ATTR destination cap DECODE-INTO ;
+
+: ATTR-RESET-STATE ( ptr n -- )
+   {: state :}
+   state LIVE
+   state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
+   -1 state ATTR-INDEX + ! ;
+
+: ATTR-NEXT-STATE ( ptr n -- bool )
+   {: state :}
+   state LIVE
+   state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
+   state ATTR-INDEX + @ state ATTR-COUNT + @ >= if false exit then
+   1 state ATTR-INDEX + +!
+   state ATTR-INDEX + @ state ATTR-COUNT + @ < ;
+
+: ATTR-RAW-STATE ( ptr n -- off len )
+   ACTIVE-ATTRIBUTE {: attr :}
+   attr 4 cells + @ >OFF attr 5 cells + @ >LEN ;
+
+: ATTR-NAME$-STATE ( ptr n -- ptr u8 n )
+   {: state :}
+   state ACTIVE-ATTRIBUTE {: attr :}
+   state attr @ attr CELL + @ SPAN$ ;
+
+: ATTR-VALUE$-STATE ( ptr n -- ptr u8 n )
+   {: state :}
+   state ACTIVE-ATTRIBUTE {: attr :}
+   state attr 2 cells + @ attr 3 cells + @ SPAN$ ;
+
+: ATTR-VALUE-STATE ( ptr n -- off len )
+   ACTIVE-ATTRIBUTE {: attr :}
+   attr 2 cells + @ >OFF attr 3 cells + @ >LEN ;
+
+: ATTR-URI-STATE ( ptr n ptr u8 n -- n )
+   {: state destination cap:n :}
+   state ACTIVE-ATTRIBUTE {: attr :}
+   state destination cap OUTPUT-CHECK
+   state attr 6 cells + @ attr 7 cells + @ URI$
+   DECODE-ATTR destination cap DECODE-INTO ;
+
+: ATTR-TEXT-STATE ( ptr n ptr u8 n -- n )
+   {: state destination cap:n :}
+   state ACTIVE-ATTRIBUTE {: attr :}
+   state destination cap OUTPUT-CHECK
+   state attr 2 cells + @ attr 3 cells + @ SPAN$
+   DECODE-ATTR destination cap DECODE-INTO ;
+
 public
 : KIND ( XML:reader -- XML:reader kind )
    STATE dup LIVE TOKEN-KIND + @ >KIND ;
 
 : RAW ( XML:reader -- XML:reader off len )
-   STATE {: state :}
-   state LIVE
-   state RAW-OFF + @ >OFF state RAW-LEN + @ >LEN ;
+   STATE RAW-STATE ;
 
 : RAW$ ( XML:reader -- XML:reader ptr u8 n )
-   STATE {: state :}
-   state LIVE
-   state state RAW-OFF + @ state RAW-LEN + @ SPAN$ ;
+   STATE RAW$-STATE ;
 
 : NAME$ ( XML:reader -- XML:reader ptr u8 n )
-   STATE {: state :}
-   state NAMED
-   state state NAME-OFF + @ state NAME-LEN + @ SPAN$ ;
+   STATE NAME$-STATE ;
 
 : LOCAL$ ( XML:reader -- XML:reader ptr u8 n )
    NAME$ LOCAL-SPAN ;
@@ -231,62 +299,33 @@ public
    STATE dup LIVE OPEN-DEPTH + @ ;
 
 : URI ( XML:reader ptr u8 n -- XML:reader n )
-   {: destination cap:n :}
-   STATE {: state :}
-   state NAMED
-   state destination cap OUTPUT-CHECK
-   state state URI-OFF + @ state URI-LEN + @ URI$
-   DECODE-ATTR destination cap DECODE-INTO ;
+   DECODE-ARGS URI-STATE ;
 
 : ATTR-RESET ( XML:reader -- XML:reader )
-   STATE {: state :}
-   state LIVE
-   state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
-   -1 state ATTR-INDEX + ! ;
+   STATE ATTR-RESET-STATE ;
 
 : ATTR-NEXT ( XML:reader -- XML:reader bool )
-   STATE {: state :}
-   state LIVE
-   state TOKEN-KIND + @ XML-KIND:START KIND>N <> if E-STATE throw then
-   state ATTR-INDEX + @ state ATTR-COUNT + @ >= if false exit then
-   1 state ATTR-INDEX + +!
-   state ATTR-INDEX + @ state ATTR-COUNT + @ < ;
+   STATE ATTR-NEXT-STATE ;
 
 : ATTR-RAW ( XML:reader -- XML:reader off len )
-   STATE ACTIVE-ATTRIBUTE {: attr :}
-   attr 4 cells + @ >OFF attr 5 cells + @ >LEN ;
+   STATE ATTR-RAW-STATE ;
 
 : ATTR-NAME$ ( XML:reader -- XML:reader ptr u8 n )
-   STATE {: state :}
-   state ACTIVE-ATTRIBUTE {: attr :}
-   state attr @ attr CELL + @ SPAN$ ;
+   STATE ATTR-NAME$-STATE ;
 
 : ATTR-LOCAL$ ( XML:reader -- XML:reader ptr u8 n )
    ATTR-NAME$ LOCAL-SPAN ;
 
 : ATTR-VALUE$ ( XML:reader -- XML:reader ptr u8 n )
-   STATE {: state :}
-   state ACTIVE-ATTRIBUTE {: attr :}
-   state attr 2 cells + @ attr 3 cells + @ SPAN$ ;
+   STATE ATTR-VALUE$-STATE ;
 
 : ATTR-VALUE ( XML:reader -- XML:reader off len )
-   STATE ACTIVE-ATTRIBUTE {: attr :}
-   attr 2 cells + @ >OFF attr 3 cells + @ >LEN ;
+   STATE ATTR-VALUE-STATE ;
 
 : ATTR-URI ( XML:reader ptr u8 n -- XML:reader n )
-   {: destination cap:n :}
-   STATE {: state :}
-   state ACTIVE-ATTRIBUTE {: attr :}
-   state destination cap OUTPUT-CHECK
-   state attr 6 cells + @ attr 7 cells + @ URI$
-   DECODE-ATTR destination cap DECODE-INTO ;
+   DECODE-ARGS ATTR-URI-STATE ;
 
 : ATTR-TEXT ( XML:reader ptr u8 n -- XML:reader n )
-   {: destination cap:n :}
-   STATE {: state :}
-   state ACTIVE-ATTRIBUTE {: attr :}
-   state destination cap OUTPUT-CHECK
-   state attr 2 cells + @ attr 3 cells + @ SPAN$
-   DECODE-ATTR destination cap DECODE-INTO ;
+   DECODE-ARGS ATTR-TEXT-STATE ;
 
 ;package

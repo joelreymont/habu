@@ -282,16 +282,14 @@ private
    state EOF? if state READ-EOF exit then
    state PEEK $3C = if state READ-MARKUP else state READ-TEXT then ;
 
-public
-: NEXT ( XML:reader -- XML:reader kind )
-   STATE {: state :}
+: NEXT-STATE ( ptr n -- kind )
+   {: state :}
    state LIVE
    1 state FAILED + !
    state READ-EVENT
    0 state FAILED + !
    state TOKEN-KIND + @ >KIND ;
 
-private
 : TEXT-MODE ( ptr n -- n )
    TOKEN-KIND + @ >KIND MATCH kind
       start OF E-STATE throw ENDOF
@@ -303,20 +301,28 @@ private
       eof OF E-STATE throw ENDOF
    ;MATCH ;
 
-public
-: CONTENT ( XML:reader -- XML:reader off len )
-   STATE {: state :}
+: CONTENT-STATE ( ptr n -- off len )
+   {: state :}
    state LIVE
    state TEXT-MODE drop
    state VALUE-OFF + @ >OFF state VALUE-LEN + @ >LEN ;
 
-: TEXT ( XML:reader ptr u8 n -- XML:reader n )
-   {: destination cap:n :}
-   STATE {: state :}
+: TEXT-STATE ( ptr n ptr u8 n -- n )
+   {: state destination cap:n :}
    state LIVE
    state TEXT-MODE {: mode:n :}
    state destination cap OUTPUT-CHECK
    state state VALUE-OFF + @ state VALUE-LEN + @ SPAN$
    mode destination cap DECODE-INTO ;
+
+public
+: NEXT ( XML:reader -- XML:reader kind )
+   STATE NEXT-STATE ;
+
+: CONTENT ( XML:reader -- XML:reader off len )
+   STATE CONTENT-STATE ;
+
+: TEXT ( XML:reader ptr u8 n -- XML:reader n )
+   DECODE-ARGS TEXT-STATE ;
 
 ;package

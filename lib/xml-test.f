@@ -221,7 +221,15 @@ CAST: TOKEN>N ( XML:kind -- n )
    s" <a xmlns:p='u' xmlns:q='v'><b xmlns:r='w'/></a>" OPEN DRAIN XML:CLOSE
    s" <a q='x'/>" OPEN
    [: ATTR-NEXT drop ;] catch E-STATE T=
+   [: ATTR-RESET ;] catch E-STATE T=
+   [: NAME$ 2drop ;] catch E-STATE T=
+   [: ATTR-RAW 2drop ;] catch E-STATE T=
+   [: ATTR-VALUE 2drop ;] catch E-STATE T=
+   [: ATTR-VALUE$ 2drop ;] catch E-STATE T=
    XML-KIND:START NEXT=
+   [: CONTENT 2drop ;] catch E-STATE T=
+   [: TEXT-BUF TEXT-CAP TEXT drop ;] catch E-STATE T=
+   s" a" NAME=
    [: ATTR-NAME$ 2drop ;] catch E-STATE T=
    ATTR-NEXT TTRUE s" q" ATTR-NAME=
    ATTR-NEXT TFALSE
@@ -248,7 +256,36 @@ CAST: TOKEN>N ( XML:kind -- n )
    TEXT-BUF c@ $5A T=
    s" long&text" TEXT=
    [: STORAGE BYTE-VIEW TEXT-CAP TEXT drop ;] catch E-ALIAS T=
-   XML:CLOSE ;
+   s" long&text" TEXT=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: URI-CAPACITY-RECOVERY ( -- )
+   $5A TEXT-BUF c!
+   s" <p:a xmlns:p='urn:&#97;'/>" OPEN NEXT drop
+   [: TEXT-BUF 4 URI drop ;] catch E-CAPACITY T=
+   TEXT-BUF c@ $5A T=
+   s" p:a" NAME= s" urn:a" URI=
+   [: STORAGE BYTE-VIEW TEXT-CAP URI drop ;] catch E-ALIAS T=
+   s" urn:a" URI=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
+
+: ATTRIBUTE-CAPACITY-RECOVERY ( -- )
+   s" <p:a xmlns:p='urn:&#97;' p:q='long&amp;text'/>" OPEN NEXT drop
+   ATTR-NEXT TTRUE ATTR-NEXT TTRUE
+   $5A TEXT-BUF c!
+   [: TEXT-BUF 4 ATTR-URI drop ;] catch E-CAPACITY T=
+   TEXT-BUF c@ $5A T=
+   s" p:q" ATTR-NAME= s" urn:a" ATTR-URI=
+   [: STORAGE BYTE-VIEW TEXT-CAP ATTR-URI drop ;] catch E-ALIAS T=
+   s" urn:a" ATTR-URI=
+   $5A TEXT-BUF c!
+   [: TEXT-BUF 1 ATTR-TEXT drop ;] catch E-CAPACITY T=
+   TEXT-BUF c@ $5A T=
+   s" p:q" ATTR-NAME= s" long&text" ATTR-TEXT=
+   [: STORAGE BYTE-VIEW TEXT-CAP ATTR-TEXT drop ;] catch E-ALIAS T=
+   s" long&text" ATTR-TEXT=
+   ATTR-VALUE$ s" long&amp;text" T$=
+   XML-KIND:END NEXT= XML-KIND:EOF NEXT= XML:CLOSE ;
 
 : ESCAPING ( -- )
    s\" A<&>\r\n\q'😀" TEXT-BUF TEXT-CAP ESCAPE-TEXT
@@ -279,6 +316,8 @@ BAD-ENCODINGS
 CAPACITY-AND-STATE
 CALLER-SIZED-STORAGE
 NO-PARTIAL-DECODE
+URI-CAPACITY-RECOVERY
+ATTRIBUTE-CAPACITY-RECOVERY
 ESCAPING
 CHECKED-OWNERSHIP
 BEFORE @ CANARY T=
