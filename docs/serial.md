@@ -66,13 +66,21 @@ Scheduling delays and driver behavior can extend elapsed time; this is not a
 real-time bound. Calls that assemble several chunks should use one overall
 deadline if they require a bounded transaction.
 
+The source-loaded host path is tested. Saving an application image after using
+this library is not yet supported: cached libc addresses belong to the writing
+process and need reset through the shared image lifecycle. That integration
+and a fresh-process image regression remain required before shipping saved
+applications containing this library. Live descriptors also remain process
+resources; they are not serializable handles.
+
 ## Implementation and checks
 
 Eight small private `TRUSTED:` bindings describe exact libc calls through
 Habu's bounded FFI: `open`, two typed `ioctl` operations, `read`, `write`, `poll`,
 `close`, and `__errno_location`. C `int` returns are normalized from 32 bits;
 `ssize_t` retains 64 bits. Writable extents are explicit. All configuration,
-validation and control flow is checked Habu.
+validation, argument preparation and result normalization is checked Habu.
+The trusted bodies contain only fixed foreign calls and have no locals.
 
 The configuration boundary uses Linux's 44-byte kernel `termios2` and
 [`TCGETS2`/`TCSETS2` with `BOTHER`](https://man7.org/linux/man-pages/man2/TCSETS.2const.html).

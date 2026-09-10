@@ -63,7 +63,8 @@ Handle lifetime is a caller obligation, not a linear ownership proof.
 The API and control flow are checked Habu. Eight small private `TRUSTED:`
 definitions describe exact libc schemas through the existing bounded FFI:
 `socket`, `bind`, `getsockname`, `sendto`, `recvfrom`, `poll`, `close`, and
-`__errno_location`. Writable extents are explicit. C `int` returns are
+`__errno_location`. Argument preparation and result normalization are checked helpers; each trusted
+body contains only its fixed foreign call. Writable extents are explicit. C `int` returns are
 normalized from 32 bits; `ssize_t` results retain the host's 64 bits. The
 16-byte `sockaddr_in`, four-byte `socklen_t`, and eight-byte `pollfd` layouts
 come from this platform's libc headers, not an application wire format.
@@ -79,6 +80,13 @@ Invalid operands throw `E-OPERAND` (`-9100`). Unsupported OS, failed library or
 symbol resolution, and an unexpected foreign result throw `E-PLATFORM`
 (`-9101`), `E-SYMBOL` (`-9102`), and `E-RESULT` (`-9103`). Ordinary OS operation
 failures are result variants, not those exceptions.
+
+The source-loaded host path is tested. Saving an application image after using
+this library is not yet supported: cached libc addresses belong to the writing
+process and need reset through the shared image lifecycle. That integration
+and a fresh-process image regression remain required before shipping saved
+applications containing this library. Live descriptors also remain process
+resources; they are not serializable handles.
 
 ## Checks
 

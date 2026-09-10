@@ -66,6 +66,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $60 TASK:+USER IO-STORAGE drop
 
 CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
+
 : RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
 
@@ -130,52 +131,80 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 \ libc-owned, thread-local C int. Retirement owner: checked foreign bindings.
 \ test/serial.py covers these boundaries through real kernel pseudoterminals.
 TRUSTED: ERRNO-POINTER ( -- ptr u8 )
-   FFI:RESET FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;
 
 
-: LAST-ERROR ( -- errno ) ERRNO-POINTER LE32@ >ERRNO ;
+: LAST-ERROR ( -- errno ) FFI:RESET ERRNO-POINTER LE32@ >ERRNO ;
 
 
-TRUSTED: OPEN-RAW ( ptr u8 -- n ) {: path :}
+TRUSTED: OPEN-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 2 FN-OPEN @ ffi-call-bounded ;
+
+
+: OPEN-RAW ( ptr u8 -- n ) {: path :}
    FFI:RESET path 0 FFI:READABLE! OPEN-FLAGS 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 FN-OPEN @ ffi-call-bounded C-INT ;
+   OPEN-CALL C-INT ;
 
 
-TRUSTED: GET-RAW ( handle ptr u8 -- n ) {: handle:handle target :}
+TRUSTED: GET-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded ;
+
+
+: GET-RAW ( handle ptr u8 -- n ) {: handle:handle target :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE! GET-TERM 1 FFI:VALUE!
    target TERM-BYTES 2 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded C-INT ;
+   GET-CALL C-INT ;
 
 
-TRUSTED: SET-RAW ( handle ptr u8 -- n ) {: handle:handle source :}
+TRUSTED: SET-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded ;
+
+
+: SET-RAW ( handle ptr u8 -- n ) {: handle:handle source :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE! SET-TERM 1 FFI:VALUE!
    source 2 FFI:READABLE!
-   FFI:ARGS FFI:REG-LENS 3 FN-IOCTL @ ffi-call-bounded C-INT ;
+   SET-CALL C-INT ;
 
 
-TRUSTED: READ-RAW ( handle ptr u8 CAD-NUM:byte-len -- n )
-   {: handle:handle bytes capacity:CAD-NUM:byte-len :}
-   FFI:RESET handle HANDLE>N 0 FFI:VALUE!
-   bytes capacity BLEN>N 1 FFI:WRITABLE! capacity BLEN>N 2 FFI:VALUE!
+TRUSTED: READ-CALL ( -- n )
    FFI:ARGS FFI:REG-LENS 3 FN-READ @ ffi-call-bounded ;
 
 
-TRUSTED: WRITE-RAW ( handle ptr u8 CAD-NUM:byte-len -- n )
-   {: handle:handle bytes size:CAD-NUM:byte-len :}
+: READ-RAW ( handle ptr u8 CAD-NUM:byte-len -- n )
+   {: handle:handle bytes capacity:CAD-NUM:byte-len :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE!
-   bytes 1 FFI:READABLE! size BLEN>N 2 FFI:VALUE!
+   bytes capacity BLEN>N 1 FFI:WRITABLE! capacity BLEN>N 2 FFI:VALUE!
+   READ-CALL ;
+
+
+TRUSTED: WRITE-CALL ( -- n )
    FFI:ARGS FFI:REG-LENS 3 FN-WRITE @ ffi-call-bounded ;
 
 
-TRUSTED: POLL-RAW ( ms -- n ) {: timeout:ms :}
+: WRITE-RAW ( handle ptr u8 CAD-NUM:byte-len -- n )
+   {: handle:handle bytes size:CAD-NUM:byte-len :}
+   FFI:RESET handle HANDLE>N 0 FFI:VALUE!
+   bytes 1 FFI:READABLE! size BLEN>N 2 FFI:VALUE!
+   WRITE-CALL ;
+
+
+TRUSTED: POLL-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 3 FN-POLL @ ffi-call-bounded ;
+
+
+: POLL-RAW ( ms -- n ) {: timeout:ms :}
    FFI:RESET POLLFD $08 0 FFI:WRITABLE! 1 1 FFI:VALUE!
    timeout MS>N 2 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 3 FN-POLL @ ffi-call-bounded C-INT ;
+   POLL-CALL C-INT ;
 
 
-TRUSTED: CLOSE-RAW ( handle -- n ) {: handle:handle :}
+TRUSTED: CLOSE-CALL ( -- n )
+   FFI:ARGS FFI:REG-LENS 1 FN-CLOSE @ ffi-call-bounded ;
+
+
+: CLOSE-RAW ( handle -- n ) {: handle:handle :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 FN-CLOSE @ ffi-call-bounded C-INT ;
+   CLOSE-CALL C-INT ;
 
 
 : PATH-OPEN ( ptr u8 n -- n ) {: text size:n :}
@@ -228,6 +257,7 @@ TRUSTED: CLOSE-RAW ( handle -- n ) {: handle:handle :}
 
 
 : RETRY? ( errno -- bool ) ERRNO>N dup 4 = swap 11 = or ;
+
 
 \ Positive poll event bits, zero timeout, or negative errno. EINTR keeps the
 \ original deadline. Each operation can always make one immediate poll.
