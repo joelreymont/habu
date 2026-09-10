@@ -22,6 +22,7 @@ $DFFF constant SURROGATE-LAST
 2 constant NUMBER-BIT
 4 constant SPACE-BIT
 8 constant ALPHABETIC-BIT
+16 constant UPPERCASE-BIT
 10 constant LINE-FEED
 59 constant SEMICOLON
 35 constant HASH
@@ -88,7 +89,7 @@ create OUTPUT-LOCK 65 allot
    u 2 <> if E-MISMATCH throw then
    a c@ 76 = if
       a 1+ c@ s" ultmo" CATEGORY-SECOND? 0= if E-MISMATCH throw then
-      LETTER-BIT ALPHABETIC-BIT or exit
+      LETTER-BIT ALPHABETIC-BIT or a 1+ c@ 117 = if UPPERCASE-BIT or then exit
    then
    a c@ 78 = if
       a 1+ c@ s" dlo" CATEGORY-SECOND? 0= if E-MISMATCH throw then
@@ -180,7 +181,9 @@ create OUTPUT-LOCK 65 allot
    row rowu 0 NEXT-FIELD {: range:ptr rangeu:n next:n :}
    row next + rowu next - TRIM {: name:ptr nameu:n :}
    name nameu s" White_Space" STR= if SPACE-BIT else
-      name nameu s" Other_Alphabetic" STR= if ALPHABETIC-BIT else exit then
+      name nameu s" Other_Alphabetic" STR= if ALPHABETIC-BIT else
+         name nameu s" Other_Uppercase" STR= if UPPERCASE-BIT else exit then
+      then
    then {: bit:n :}
    range rangeu TRIM RANGE-PART bit MARK-RANGE ;
 
@@ -240,7 +243,11 @@ create OUTPUT-LOCK 65 allot
    UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE-COUNT
    [: UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE@ ;] CHECK-TABLE
    UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE@ ;] CHECK-TABLE ;
+   [: UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE@ ;] CHECK-TABLE
+   UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE-COUNT
+   [: UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE@ ;] CHECK-TABLE
+   UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE-COUNT
+   [: UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE@ ;] CHECK-TABLE ;
 
 : TRUTH-BIT? ( n n -- bool ) {: cp:n bit:n :}
    TRUTH 0 ptr-field @ cp + c@ bit and 0= 0= ;
@@ -252,7 +259,8 @@ create OUTPUT-LOCK 65 allot
    cp LETTER-BIT TRUTH-BIT? cp UNICODE-CLASS:LETTER? SAME-BOOL? 0= if E-MISMATCH throw then
    cp NUMBER-BIT TRUTH-BIT? cp UNICODE-CLASS:NUMBER? SAME-BOOL? 0= if E-MISMATCH throw then
    cp SPACE-BIT TRUTH-BIT? cp UNICODE-CLASS:WHITE-SPACE? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp ALPHABETIC-BIT TRUTH-BIT? cp UNICODE-CLASS:ALPHABETIC? SAME-BOOL? 0= if E-MISMATCH throw then ;
+   cp ALPHABETIC-BIT TRUTH-BIT? cp UNICODE-CLASS:ALPHABETIC? SAME-BOOL? 0= if E-MISMATCH throw then
+   cp UPPERCASE-BIT TRUTH-BIT? cp UNICODE-CLASS:UPPERCASE? SAME-BOOL? 0= if E-MISMATCH throw then ;
 
 : CHECK-ALL-SCALARS ( -- )
    0 begin dup SCALAR-MAX <= while

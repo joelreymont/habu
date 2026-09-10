@@ -52,6 +52,24 @@ $DFFF constant SURROGATE-LAST
    cp last > if cp mid 1+ hi recurse exit then
    0 0= ;
 
+
+: UPPERCASE-LETTER-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
+   lo hi >= if FALSE-VALUE exit then
+   lo hi + 2 / {: mid:n :}
+   mid UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE@ {: first:n last:n :}
+   cp first < if cp lo mid recurse exit then
+   cp last > if cp mid 1+ hi recurse exit then
+   0 0= ;
+
+
+: OTHER-UPPERCASE-SEARCH ( n n n -- bool ) {: cp:n lo:n hi:n :}
+   lo hi >= if FALSE-VALUE exit then
+   lo hi + 2 / {: mid:n :}
+   mid UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE@ {: first:n last:n :}
+   cp first < if cp lo mid recurse exit then
+   cp last > if cp mid 1+ hi recurse exit then
+   0 0= ;
+
 public
 
 : SCALAR? ( n -- bool ) {: cp:n :}
@@ -77,6 +95,14 @@ public
    cp 0 UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE-COUNT LETTER-NUMBER-SEARCH
    if 0 0= exit then
    cp 0 UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE-COUNT OTHER-ALPHABETIC-SEARCH ;
+
+\ Unicode Uppercase = Lu + Other_Uppercase, including Roman/circled capitals.
+: UPPERCASE? ( n -- bool ) {: cp:n :}
+   cp SCALAR? 0= if FALSE-VALUE exit then
+   cp 0 UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGE-COUNT UPPERCASE-LETTER-SEARCH
+   if 0 0= exit then
+   cp 0 UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGE-COUNT OTHER-UPPERCASE-SEARCH ;
+
 
 : VERSION$ ( -- ptr u8 n )
    UNICODE-CLASS-DATA:VERSION$ ;
