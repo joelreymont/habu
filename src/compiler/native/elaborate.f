@@ -1599,7 +1599,7 @@ create QSPELL-BUF QSPELL-CAP allot
       k QIN@ QNONE <> if exit then
       k QAT@ QUOT-REFUSE
    then
-   k qi qo QFILL ;
+   k qi qo 0 max QFILL ;
 
 : QCALL-FILL ( n n -- )
    {: ix:n a:n :}
@@ -2965,18 +2965,18 @@ create DN-BUF DN-CAP allot
    {: r:IR-ARENA:arena ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   k 0 < if ix QUOT-REFUSE then
-   ix NDICT:EXEC-CELLS {: in:n out:n :}
-   k QIN@ QNONE = if
-      in 0 < if ix QUOT-REFUSE then
-      k in out 0 max QFILL
+   ix NDICT:EXEC-CELLS {: cin:n cout:n :}
+   cin 0 < if
+      k 0 < if ix QUOT-REFUSE then
+      k QIN@ k QOUT@
+   else cin cout then {: in:n out:n :}
+   in 0 < if ix QUOT-REFUSE then
+   k 0 >= if
+      k QIN@ QNONE = if k in out 0 max QFILL then
    then
-   k QIN@ {: qin:n :}
-   k QOUT@ {: qout:n :}
-   qin QNONE = if ix QUOT-REFUSE then
    s" execute" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   ix entry  qin 1+  qout  NDICT:GLUE-NONE  STAGE-WCALL
+   ix entry  in 1+  out 0 max  NDICT:GLUE-NONE  STAGE-WCALL
    in 0 >= out NDICT:ARITY-NONE = and if r ix DEAD-END then ;
 
 \ ---- running a quotation and coming back either way --------------------------
@@ -2985,14 +2985,13 @@ create DN-BUF DN-CAP allot
    {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   k 0 < if ix QUOT-REFUSE then
    ix NDICT:CATCH-CELLS {: win:n back:n :}
    win NDICT:CATCH-NONE = if ix QUOT-REFUSE then
    back NDICT:CATCH-NONE <> if back win <> if ix QUOT-REFUSE then then
    VN @ 1- win < if E-NELAB-UNDER throw then
    s" catch" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   k win win QFILL
+   k 0 >= if k win win QFILL then
    ix entry  win 1+  win 1+  NDICT:GLUE-NONE  STAGE-WCALL ;
 
 \ ---- a call that BUILDS a value of a wide instantiation ------------------------
@@ -3053,6 +3052,8 @@ create DN-BUF DN-CAP allot
 
 : DO-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
+   ix NDICT:CALL-CELLS drop {: a:n :}
+   a 0 >= if ix a QCALL-FILL then
    VW ix TOK-CELLS {: w:n :}
    w 1 = if r ix EMIT-OP exit then
    w 1 < if E-NELAB-BUNDLE throw then

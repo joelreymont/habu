@@ -8,8 +8,8 @@ PTR-VARIABLE SOURCE
 variable LENGTH
 
 
-TRUSTED: EVALUATE-SOURCE ( -- )
-   SOURCE @ LENGTH @ evaluate ;
+: EVALUATE-SOURCE ( -- )
+   SOURCE @ LENGTH @ INCLUDE-EVALUATE ;
 
 public
 

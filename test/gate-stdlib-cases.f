@@ -256,6 +256,14 @@ SUITE compiler-native-generic-calls
    test/compiler/native-generic-calls.f
 ;SUITE
 
+SUITE compiler-native-stored-quot
+   test/compiler/native-stored-quot.f
+;SUITE
+
+SUITE image-lifecycle
+   test/image-lifecycle.f
+;SUITE
+
 SUITE compiler-native-many-locals
    test/compiler/native-many-locals.f
 ;SUITE

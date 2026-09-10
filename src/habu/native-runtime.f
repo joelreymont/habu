@@ -63,6 +63,7 @@ s" src/core/lower-cert-seal.f" required
 s" lib/prelude.f" required
 s" lib/errors.f" required
 s" src/core/dynamic-storage.f" required
+s" lib/image-lifecycle.f" required
 s" lib/adt/option.f" required
 s" lib/cad-num-types.f" required
 s" lib/cad-num-arithmetic.f" required
@@ -97,12 +98,12 @@ s" src/core/top-row.f" required
 
 package NATIVE-RUNTIME
 
-\ The manifest leaves this private xt across ;package and executes it as its
-\ final token.  The checker observes execute before the body runs, so
-\ CHECKER-CAPTURE-PREPARE remains the last checker operation before the
-\ non-querying seal primitive captures the runtime.
-\ Installs the compiler hook and seals the engine dictionary.
-TRUSTED: PREPARE ( -- )
+public
+
+\ Run outside an open source load. The checker reset must be the last
+\ checker operation before copying the image.
+: CAPTURE-PREPARE ( -- )
+   IMAGE-LIFECYCLE:PREPARE
    REQUIRE-BOOT-FREEZE
    INCLUDE-SNAPSHOT-PREPARE
    LBUF-CAPTURE-PREPARE
@@ -110,10 +111,17 @@ TRUSTED: PREPARE ( -- )
    NCOMP:CAPTURE-PREPARE
    SHA256-SNAPSHOT-PREPARE
    ENV-SNAPSHOT-PREPARE
+   CHECKER-CAPTURE-PREPARE ;
+
+private
+
+
+\ The final token executes this after the checker observes its call.
+: SEAL ( -- )
    ['] NCOMP:COMPILE data-base NCOMP-DISPATCH:XT-CELL + xt!
-   CHECKER-CAPTURE-PREPARE
+   CAPTURE-PREPARE
    SEAL-CAPTURE ;
 
-' PREPARE
+' SEAL
 ;package
 execute

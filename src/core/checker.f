@@ -2203,6 +2203,17 @@ variable CDT-ROW
    dout DCUR !
    OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
 
+
+\ Record a complete token effect while its input row is unified. Memory
+\ tokens construct these rows directly instead of instantiating a named word.
+: RECORDED-STEP ( n n -- )
+   0 CALL-HIT !
+   2dup CALL-DOUT ! CALL-DIN !
+   REC-ON @ CALL-ARMED !
+   CHECKER-STEP
+   0 CALL-ARMED ! ;
+
+
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
 \ balance check rejects net growth or borrowing; loop joins unify RCUR too.
@@ -3614,13 +3625,13 @@ variable LBI-BAD
    FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
    t MK-PTR rest MK-PUSH
    t rest MK-PUSH
-   CHECKER-STEP ;
+   RECORDED-STEP ;
 
 : STEP-STORE ( -- )
    FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
    t rest MK-PUSH
    t MK-PTR swap MK-PUSH
-   rest CHECKER-STEP ;
+   rest RECORDED-STEP ;
 
 variable FP
 \ user sigs: certified words recorded as effect records after the structural
@@ -5781,11 +5792,9 @@ variable LMI
 : EFF-APPLY ( ptr a -- ) {: h:ptr :}
    0 CALL-HIT !
    h E-INST-RESET
-   h ER.DIN @ E-INST dup CALL-DIN !
-   h ER.DOUT @ E-INST dup CALL-DOUT !
-   REC-ON @ CALL-ARMED !
-   CHECKER-STEP
-   0 CALL-ARMED !
+   h ER.DIN @ E-INST
+   h ER.DOUT @ E-INST
+   RECORDED-STEP
    h ER.HASR @ 0 <> if
       RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
       h ER.ROUT @ E-INST RCUR !
@@ -9197,7 +9206,7 @@ variable WF-I
    FRESH MK-ROW {: rest:n :}
    t MK-PTR rest MK-PUSH
    t rest PUSH-LOGICAL
-   CHECKER-STEP ;
+   RECORDED-STEP ;
 
 : LAYOUT-STORE-STEP ( n -- ) {: t:n :}   \ ( fam ptr fam -- ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
@@ -9205,7 +9214,7 @@ variable WF-I
    FRESH MK-ROW {: rest:n :}
    t rest PUSH-LOGICAL
    t MK-PTR swap MK-PUSH
-   rest CHECKER-STEP ;
+   rest RECORDED-STEP ;
 
 \ Byte-pointer cell-op reject (dot habu-checker-diag-for-4c443fcf). `!`/`@` need
 \ a cell-width `ptr a`, but ROW-TOP-BYTE-PTR? found a `ptr u8`. STEP-STORE/
