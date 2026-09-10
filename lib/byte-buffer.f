@@ -141,15 +141,14 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    cap buf CAP-RAW!
    0 buf SET-LEN ;
 
-\ ---- consume-on-release DISPOSE: void the ownership cell BEFORE the release, so a
-\ second dispose observes cap==0 and returns, and a release that throws cannot
-\ double-free on retry. A dead header (cap==0) is the proved no-op.
+\ Clear the entire header before release; dead headers retain no process address.
 : DISPOSE-RAW ( ptr a -- ) {: buf:ptr :}
    buf CAP-RAW@ {: cap:n :}
-   cap 0= if exit then
    buf DATA@ {: d:ptr :}
+   NULL-PTR buf DATA!
    0 buf CAP-RAW!
    0 buf LEN-FIELD !
+   cap 0= if exit then
    d cap STORAGE-RELEASE ;
 
 : CLEAR-RAW ( ptr a -- ) {: buf:ptr :}

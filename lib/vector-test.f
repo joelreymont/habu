@@ -94,7 +94,15 @@ variable VECT-IDX-SUM
    2 VECT-REL-INIT
    VECT-REL-VEC VEC-DISPOSE
    VECT-REL-VEC VEC-DISPOSE
-   VECT-REL-VEC VEC-CAP-FIELD @ 0 T= ;                  \ stays dead; reaching here proves no throw
+   VECT-REL-VEC VEC-CAP-FIELD @ 0 T=
+   VECT-REL-VEC VEC-LEN-FIELD @ 0 T=
+   VECT-REL-VEC VEC-DATA@ 0= TTRUE
+   \ A dead header from an earlier image can still hold its old data address.
+   VECT-REL-VEC VECT-REL-VEC VEC-DATA!
+   7 VECT-REL-VEC VEC-LEN-FIELD !
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC VEC-DATA@ 0= TTRUE
+   VECT-REL-VEC VEC-LEN-FIELD @ 0 T= ;
 
 : VECT-DISPOSE-CYCLE-BOUNDED ( -- )                    \ init/dispose cycles keep ONE resident mapping
    2 VECT-REL-INIT

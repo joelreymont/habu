@@ -169,18 +169,15 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    vec cap VEC-CHECK-RESIZE-CAP
    vec cap cap VEC-ALLOC-CELLS VEC-INSTALL-RESIZE ;
 
-\ Release the owned mapping and void ownership. Following the cuda-scope
-\ consume-on-release discipline (a ledger row is zeroed before its release, so a
-\ repeated unwind is a proved no-op), DISPOSE clears the capacity-ownership cell
-\ BEFORE the munmap: a second DISPOSE observes cap==0 and returns without a second
-\ release, and a release that throws cannot double-free on retry. A dead header
-\ (cap==0, fresh or already disposed) is the proved no-op.
+\ Clear the entire header before release, so retries cannot free the mapping
+\ twice and a captured dead header cannot retain its former process address.
 : VEC-DISPOSE ( ptr a -- ) {: vec:ptr :}
    vec VEC-CAP-FIELD @ {: cap :}
-   cap 0= if exit then
    vec VEC-DATA@ {: data:ptr :}
+   NULL-PTR vec VEC-DATA!
    0 vec VEC-CAP-FIELD !
    0 vec VEC-LEN-FIELD !
+   cap 0= if exit then
    data cap >COUNT VEC-RELEASE-STORAGE ;
 
 : VEC-GROW-CAP ( ptr a count -- count ) {: vec:ptr need :}

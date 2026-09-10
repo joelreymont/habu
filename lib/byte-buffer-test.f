@@ -24,6 +24,14 @@ package BUF
 public
 : BUFT-DATA@ ( ptr a -- ptr u8 ) DATA@ ;
 : BUFT-CAP-RAW@ ( ptr a -- n ) CAP-RAW@ ;
+
+
+: BUFT-STALE! ( ptr a -- ) {: buf:ptr :}
+   s" stale" drop buf DATA!
+   7 buf LEN-FIELD ! ;
+
+
+: BUFT-LEN-RAW@ ( ptr a -- n ) LEN-FIELD @ ;
 ;package
 
 \ ---- byte-len role builders/readers for scalar assertions ----------------------
@@ -123,7 +131,13 @@ public
    BUFT-CAP0 BUFT-REL-INIT
    BUFT-REL-BUF BUF:DISPOSE
    BUFT-REL-BUF BUF:DISPOSE
-   BUFT-REL-BUF BUF:BUFT-CAP-RAW@ 0 T= ;              \ stays dead; reaching here proves no throw
+   BUFT-REL-BUF BUF:BUFT-CAP-RAW@ 0 T=
+   BUFT-REL-BUF BUF:BUFT-LEN-RAW@ 0 T=
+   BUFT-REL-BUF BUF:BUFT-DATA@ 0= TTRUE
+   BUFT-REL-BUF BUF:BUFT-STALE!
+   BUFT-REL-BUF BUF:DISPOSE
+   BUFT-REL-BUF BUF:BUFT-DATA@ 0= TTRUE
+   BUFT-REL-BUF BUF:BUFT-LEN-RAW@ 0 T= ;
 
 : BUFT-DISPOSE-CYCLE-BOUNDED ( -- )               \ init/dispose cycles keep ONE resident mapping
    BUFT-CAP0 BUFT-REL-INIT
