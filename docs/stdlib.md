@@ -606,11 +606,13 @@ unescape path as `STR`, so valid key length is not bounded by reader storage.
 
 ## Unicode comparison
 
-`require lib/unicode.f` provides two operations:
+`require lib/unicode.f` provides Unicode whitespace and case folding:
 
 ```forth
 UNICODE:WHITE-SPACE? ( n -- bool )
 UNICODE:CASEFOLD=    ( ptr u8 n ptr u8 n -- bool )
+UNICODE:FOLDED-BYTES ( ptr u8 n -- n )
+UNICODE:FOLD         ( ptr u8 n ptr u8 n -- n )
 ```
 
 `WHITE-SPACE?` re-exports the existing `UNICODE-CLASS` predicate and its pinned
@@ -624,6 +626,12 @@ Both inputs are validated before comparison. Negative lengths and malformed
 UTF-8 throw `UNICODE:E-UTF8`; foreign comparison failures throw `E-CASEFOLD`.
 The caller supplies live readable spans; they must not point into transient FFI
 scratch. Comparison does not modify them or depend on the current locale.
+
+`FOLDED-BYTES` gives the required UTF-8 output byte count. `FOLD` copies the full
+casefold into the caller's output span and returns that count. It validates UTF-8
+and preflights capacity before writing; insufficient or negative capacity throws
+`E-CAPACITY` without changing output. Both words release the private temporary
+foreign allocation on success and on failure, including a rejected output write.
 
 Case folding uses GNU libunistring's
 [`u8_casecmp`](https://www.gnu.org/software/libunistring/manual/html_node/Case-insensitive-comparison.html)

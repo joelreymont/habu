@@ -1,8 +1,56 @@
 require lib/test.f
+require lib/property.f
 require lib/unicode.f
 
 package UNICODE-TEST
 using UNICODE
+using PROP
+256 constant CAPACITY
+create OUTPUT CAPACITY allot
+create SECOND-BUF CAPACITY allot
+
+: FOLDED= ( ptr u8 n ptr u8 n -- )
+   {: expected:ptr expected-size:n :}
+   2dup FOLDED-BYTES expected-size T=
+   OUTPUT CAPACITY UNICODE:FOLD
+   OUTPUT swap expected expected-size T$= ;
+
+: CANARY! ( -- )
+   CAPACITY 0 ?do $55 OUTPUT i + c! loop ;
+
+: CANARY= ( -- )
+   CAPACITY 0 ?do OUTPUT i + c@ $55 T= loop ;
+
+: FOLD-PREFLIGHT ( -- )
+   CANARY!
+   [: s" İ" OUTPUT 2 UNICODE:FOLD drop ;] E-CAPACITY TTHROWSQ CANARY=
+   [: s" x" OUTPUT -1 UNICODE:FOLD drop ;] E-CAPACITY TTHROWSQ CANARY=
+   [: s\" x\xFF" OUTPUT CAPACITY UNICODE:FOLD drop ;] E-UTF8 TTHROWSQ CANARY=
+   [: s\" \xC0\xAF" FOLDED-BYTES drop ;] E-UTF8 TTHROWSQ
+   s" Straße" s" strasse" FOLDED= ;
+
+: CHUNK$ ( -- ptr u8 n )
+   8 RND% case
+      0 of s" ẞ" endof
+      1 of s" İ" endof
+      2 of s" УКРАЇНА" endof
+      3 of s" ﬃ" endof
+      4 of s" Σςσ" endof
+      5 of s" é😀" endof
+      6 of s\" A\zB" endof
+      s" abc 019" rot
+   endcase ;
+
+: RANDOM-FOLDS ( -- )
+   913 2048 RUN-RESET
+   COUNT@ 0 ?do
+      PROP:BUF-RESET 16 RND% 0 ?do CHUNK$ BUF+ loop
+      BUF$ OUTPUT CAPACITY UNICODE:FOLD {: size:n :}
+      BUF$ FOLDED-BYTES size T=
+      BUF$ OUTPUT size CASEFOLD= TTRUE
+      OUTPUT size SECOND-BUF CAPACITY UNICODE:FOLD {: repeated:n :}
+      OUTPUT size SECOND-BUF repeated T$=
+   loop ;
 
 : EQUAL ( ptr u8 n ptr u8 n -- )
    2over 2over CASEFOLD= TTRUE
@@ -56,6 +104,15 @@ $200B WHITE-SPACE? TFALSE
 $FEFF WHITE-SPACE? TFALSE
 $D800 WHITE-SPACE? TFALSE
 BAD-UTF8
+s" " s" " FOLDED=
+s" STRAẞE" s" strasse" FOLDED=
+s" İ" s" i̇" FOLDED=
+s" ẞ" s" ss" FOLDED=
+s" УКРАЇНА" s" україна" FOLDED=
+s\" A\zB" s\" a\zb" FOLDED=
+FOLD-PREFLIGHT
+RANDOM-FOLDS
 T-REPORT
+;using
 ;using
 ;package
