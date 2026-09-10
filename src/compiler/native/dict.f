@@ -38,12 +38,20 @@ private
 : USE-WID ( n -- n )
    cells data-base USE-WIDS-OFF + + @ ;
 
-\ `search-wl` decides whether the engine sees the name; XREF supplies the record
-\ that lookup does not return. A disagreement is a miss, never a guessed record.
+\ The public search primitive hides internal words even while compiling an
+\ authorized engine body. Resolve those only under the existing compile flag.
+: INTERNAL-CANDIDATE ( ptr u8 n n -- ptr a )
+   data-base TRUSTED-CELL + @ 0= if 2drop drop XREF-NULL exit then
+   XREF-FIND-WL
+   dup XREF-FOUND? 0= if exit then
+   dup XREF-FLAGS DNAME-INT and 0= if drop XREF-NULL then ;
+
+
+\ Public lookup stays authoritative; XREF supplies its matching record.
 : WL-CANDIDATE ( ptr u8 n n -- ptr a )
    {: a:ptr u:n wid:n :}
    a u wid search-wl {: start:n :}
-   start 0= if XREF-NULL exit then
+   start 0= if a u wid INTERNAL-CANDIDATE exit then
    a u wid XREF-FIND-WL
    dup XREF-FOUND? 0= if exit then
    dup XREF-START start <> if drop XREF-NULL then ;

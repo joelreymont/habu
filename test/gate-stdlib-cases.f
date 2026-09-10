@@ -256,6 +256,10 @@ SUITE compiler-native-generic-calls
    test/compiler/native-generic-calls.f
 ;SUITE
 
+SUITE compiler-native-internal-call
+   test/compiler/native-internal-call.f
+;SUITE
+
 SUITE compiler-native-stored-quot
    test/compiler/native-stored-quot.f
 ;SUITE
