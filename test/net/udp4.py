@@ -241,6 +241,20 @@ RUN
             future.result(timeout=6)
 
 
+def address_strings(habu, output):
+    checks = 0
+    for address, expected in [('0.0.0.0', 0), ('255.255.255.255', 0xFFFFFFFF),
+                              ('127.0.0.1', 0x7F000001), ('192.0.2.37', 0xC0000225)]:
+        assert native(habu, output, f': RUN ( -- ) s" {address}" UDP4:ADDRESS$ ADDRESS>N . ; RUN') == [str(expected)]
+        checks += 1
+    for address in ('', '127.1', '1.2.3.4.5', '.1.2.3', '1..2.3', '1.2.3.',
+                    '1.2.3.256', '1.2.3.-1', '+1.2.3.4', '01.2.3.4',
+                    '1.2.3.04', ' 1.2.3.4', '1.2.3.4 ', '1.2.3.a', '1000.2.3.4'):
+        assert native(habu, output, f': RUN ( -- ) [: s" {address}" UDP4:ADDRESS$ drop ;] catch . ; RUN') == ['-9100']
+        checks += 1
+    return checks
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--habu', type=Path, default=ROOT / 'bin/hb')
@@ -250,7 +264,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     exchange(habu, output)
     concurrent(habu, output)
-    checks = 3
+    checks = 3 + address_strings(habu, output)
     for expression in ('-1 UDP4:ADDRESS', '$100000000 UDP4:ADDRESS',
                        '-1 UDP4:PORT', '65536 UDP4:PORT',
                        '-1 PAYLOAD-BYTES', '65508 PAYLOAD-BYTES'):

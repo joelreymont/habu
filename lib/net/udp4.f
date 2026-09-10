@@ -224,10 +224,40 @@ TRUSTED: POLL-RAW ( ms -- n ) {: timeout:ms :}
       actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:packet
    then ;
 
+: OCTET-LENGTH ( ptr u8 n -- n ) {: text size:n :}
+   0 begin dup size < while
+      dup text + c@ $2E = if exit then 1 +
+   repeat ;
+
+: OCTET-VALUE ( ptr u8 n -- n ) {: text size:n :}
+   size 1 3 WITHIN-RANGE
+   size 1 > text c@ $30 = and if E-OPERAND throw then
+   0 size 0 do
+      text i + c@ $30 - dup 0 9 WITHIN-RANGE swap 10 * +
+   loop dup 0 $FF WITHIN-RANGE ;
+
+: OCTET ( ptr u8 n -- ptr u8 n n ) {: text size:n :}
+   text size OCTET-LENGTH {: length:n :}
+   text length + size length - text length OCTET-VALUE ;
+
+: FOLLOWING-OCTET ( n ptr u8 n -- n ptr u8 n ) {: address:n text size:n :}
+   size 1 < if E-OPERAND throw then
+   text c@ $2E <> if E-OPERAND throw then
+   text $01 + size 1 - OCTET {: next remaining:n octet:n :}
+   address 8 lshift octet or next remaining ;
+
 public
 
 : ADDRESS ( n -- address )
    dup 0 MAX-ADDRESS WITHIN-RANGE >ADDRESS ;
+
+\ Strict dotted decimal: four octets, no signs, padding, or leading zeros.
+: ADDRESS$ ( ptr u8 n -- address ) {: text size:n :}
+   size 7 15 WITHIN-RANGE
+   text size OCTET {: next remaining:n first:n :}
+   first next remaining FOLLOWING-OCTET FOLLOWING-OCTET FOLLOWING-OCTET
+   {: value:n tail rest:n :}
+   rest 0 <> if E-OPERAND throw then value >ADDRESS ;
 
 : PORT ( n -- port )
    dup 0 MAX-PORT WITHIN-RANGE >PORT ;

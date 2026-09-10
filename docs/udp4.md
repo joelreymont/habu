@@ -9,7 +9,10 @@ capture policy. Other operating systems are rejected before opening a socket.
 
 `UDP4:ADDRESS` validates a numeric IPv4 address in `0..0xFFFFFFFF` and returns
 the nominal `UDP4:address`; for example, `$7F000001 UDP4:ADDRESS` represents
-`127.0.0.1`. `UDP4:PORT` validates `0..65535` and returns `UDP4:port`.
+`127.0.0.1`. `UDP4:ADDRESS$` parses a borrowed `ptr u8 n` string in strict
+dotted-decimal form: exactly four decimal octets, without signs, surrounding
+whitespace, or redundant leading zeros. It returns the same address type.
+`UDP4:PORT` validates `0..65535` and returns `UDP4:port`.
 `PAYLOAD-BYTES` validates `0..65507` and returns `CAD-NUM:byte-len`.
 Addresses and ports are converted to network byte order only at the foreign
 boundary. A `UDP4:socket` is a distinct handle type; `UDP4:errno` preserves
@@ -84,11 +87,11 @@ python3 test/net/udp4.py
 ```
 
 The harness runs Habu's supported source-list loader and an independent Python
-UDP peer on localhost. Its 17 native cases cover empty and maximum-size
+UDP peer on localhost. Its 36 native cases cover empty and maximum-size
 datagrams in both directions, exact source endpoints and lengths, truncation
 with buffer guards, immediate and timed empty receives, nonblocking/close-on-exec
 flags, failed bind cleanup/error reporting, operations after close, numeric
-limits, concurrent first use and reception on separate sockets, and rejected
+limits, strict dotted-decimal parsing, concurrent first use and reception on separate sockets, and rejected
 nominal substitutions. It needs neither external network
 access nor root. Scratch files stay under ignored `tmp/test-udp4/`.
 
