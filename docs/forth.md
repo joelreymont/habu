@@ -900,7 +900,7 @@ bin/hb --load test/run.f
 ```
 
 Run relevant lints when their inputs change. Documentation-only edits and file
-moves do not require an engine rebuild. Maki's tests belong to its own repo.
+moves do not require an engine rebuild. Loom's model tests belong to its own repo.
 Report failed or unrun checks plainly; never represent them as a passing suite.
 
 ## Comments & hygiene

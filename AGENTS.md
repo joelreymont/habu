@@ -1,8 +1,9 @@
 # Habu — checked Forth
 
 Habu is a general-purpose Forth with a native compiler and a stack-effect type
-checker. [Maki](../maki) is a separate application. Application-specific policy
-and model workflows do not belong in the language core.
+checker. [Loom](../loom) is GPU model CAD; [Maki](../maki) is PCB CAD. Both are
+separate applications. Application-specific policy and model workflows do not
+belong in the language core.
 
 ## Working
 

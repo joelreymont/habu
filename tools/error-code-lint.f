@@ -1,8 +1,8 @@
 \ error-code-lint.f - CLI entrypoint for the global E- throw-code uniqueness lint.
 \ Run: bin/hb --load tools/error-code-lint.f
 \ Enforcing: prints the collision ledger and THROWS on any finding. A negative
-\ code claimed by two different E- names anywhere under src/ lib/ tools/ test/
-\ maki/ fails the gate.
+\ code claimed by two different E- names anywhere under the Habu source roots
+\ src/ lib/ tools/ test/ fails the gate.
 \ Load after tools/error-code-lint-core.f.
 
 require lib/errors.f

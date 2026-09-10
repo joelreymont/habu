@@ -4,7 +4,7 @@
 \ ambiguous the moment two different E- names claim it. Three live collisions
 \ motivated this lint (E-CUDA/E-FUSE at -5002, E-PTX-READBACK/E-MK-EVAL at
 \ -5003, E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211). The scan
-\ walks tracked .f/.fs sources under src/, lib/, tools/, test/, and maki/ for
+\ walks tracked .f/.fs sources under src/, lib/, tools/, and test/ for
 \ `-NNNN constant E-*` claims and flags any numeric code owned by two
 \ different E- names.
 \
@@ -418,7 +418,6 @@ variable JX
    s" lib/" ROOT
    s" tools/" ROOT
    s" test/" ROOT
-   s" maki/" ROOT
    FINDINGS RES-FINDINGS ;
 
 : SUMMARY ( -- )
