@@ -1076,6 +1076,10 @@ SUITE cast-negative
    test/cast-negative-suite.f
 ;SUITE
 
+SUITE nominal-pointer
+   test/nominal-pointer.f
+;SUITE
+
 SUITE cast
    test/cast-suite.f
 ;SUITE

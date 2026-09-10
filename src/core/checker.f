@@ -9249,11 +9249,46 @@ variable WF-I
    a u s" !" CORE-STR= IF CELL-STORE-TOK RES-TRUE EXIT THEN
    RES-FALSE ;
 
+\ Arithmetic preserves an existing nominal pointee. Build its concrete row
+\ instead of asking a fresh primitive variable to introduce that identity.
+: ROW-NOM-PTR ( n -- n )
+   R-RES dup TAG S-PUSH <> IF drop 0 EXIT THEN
+   P>TYPE T-RES dup TAG T-PTR <> IF drop 0 EXIT THEN
+   dup PTR>INNER NOM-SCALAR? 0= IF drop 0 THEN ;
+
+: NOM-PTR-BINARY-STEP ( n n n -- ) {: lhs:n rhs:n out:n :}
+   FRESH MK-ROW {: rest:n :}
+   rhs lhs rest MK-PUSH MK-PUSH
+   out rest MK-PUSH RECORDED-STEP ;
+
+: NOM-PTR-ARITH-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   DCUR @ ROW-NOM-PTR {: top:n :}
+   a u s" cell+" CORE-STR= a u s" char+" CORE-STR= or
+   a u s" 1+" CORE-STR= or a u s" 1-" CORE-STR= or IF
+      top 0= IF RES-FALSE EXIT THEN
+      top FRESH MK-ROW MK-PUSH dup RECORDED-STEP
+      RES-TRUE EXIT
+   THEN
+   a u s" +" CORE-STR= {: add:bool :}
+   a u s" -" CORE-STR= {: sub:bool :}
+   add sub or 0= IF RES-FALSE EXIT THEN
+   DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
+   P>REST ROW-NOM-PTR {: below:n :}
+   add IF
+      top 0 <> IF PE-N top top NOM-PTR-BINARY-STEP RES-TRUE EXIT THEN
+      below 0 <> IF below PE-N below NOM-PTR-BINARY-STEP RES-TRUE EXIT THEN
+   ELSE
+      top 0 <> IF top top PE-N NOM-PTR-BINARY-STEP RES-TRUE EXIT THEN
+      below 0 <> IF below PE-N below NOM-PTR-BINARY-STEP RES-TRUE EXIT THEN
+   THEN
+   RES-FALSE ;
+
 : DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
    a u DEFINER-TOK IF EXIT THEN
    a u LITERAL-TOK? IF EXIT THEN
    a u CELL-MEMORY-TOK? IF EXIT THEN
+   a u NOM-PTR-ARITH-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
