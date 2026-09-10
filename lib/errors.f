@@ -217,6 +217,20 @@ public
 -4006 constant E-ZED-TIMEOUT     \ remote command exceeded the timeout
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
+\ Floating mathematics: -9020..-9029
+\ Reserved as a small shared range because application error blocks begin nearby.
+-9020 constant E-FMATH-FIRST
+-9029 constant E-FMATH-LAST
+
+package FMATH
+
+public
+
+-9020 constant E-DOMAIN       \ input is outside the public word's mathematical domain
+-9021 constant E-OUTPUT       \ result is outside the declared output type's range
+
+;package
+
 \ Source-composition discovery: -4100..-4199 (merge renumber from -3800; E-ENGINE owns -3800)
 -4100 constant E-DISC-FIRST
 -4199 constant E-DISC-LAST
