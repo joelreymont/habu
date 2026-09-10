@@ -123,12 +123,20 @@ private
    state RESULT-LEN + @ removed - added + state RESULT-LEN + !
    1 state USED + +! ;
 
-public
-: REPLACE ( EDIT:editor off len ptr u8 n -- EDIT:editor )
+: REPLACE-ARGS ( EDIT:editor off len ptr u8 n -- EDIT:editor ptr n n n ptr u8 n )
    {: start:off removed:len replacement added:n :}
-   STATE {: state :}
-   state start OFF>N removed LEN>N replacement added EDIT-CHECK
-   state start OFF>N removed LEN>N replacement added SAVE-EDIT ;
+   STATE start OFF>N removed LEN>N replacement added ;
+
+: APPLY-EDIT ( ptr n n n ptr u8 n -- )
+   {: state start:n removed:n replacement added:n :}
+   state start removed replacement added EDIT-CHECK
+   state start removed replacement added SAVE-EDIT ;
+
+public
+\ Keep the editor below every throwing call. catch restores stack depth, so
+\ binding the other arguments to locals here could overwrite its saved slot.
+: REPLACE ( EDIT:editor off len ptr u8 n -- EDIT:editor )
+   REPLACE-ARGS APPLY-EDIT ;
 
 private
 : DESTINATION-CHECK ( ptr n ptr u8 n -- )
@@ -166,13 +174,19 @@ private
    state SOURCE-IDX ptr-field @ prior +
    state SOURCE-LEN + @ prior - next COPY-SPAN drop ;
 
-public
-: WRITE ( EDIT:editor ptr u8 n -- EDIT:editor n )
+: WRITE-ARGS ( EDIT:editor ptr u8 n -- EDIT:editor ptr n ptr u8 n )
    {: destination cap:n :}
-   STATE {: state :}
+   STATE destination cap ;
+
+: WRITE-STATE ( ptr n ptr u8 n -- n )
+   {: state destination cap:n :}
    state destination cap DESTINATION-CHECK
    state destination WRITE-EDITS
    state RESULT-LEN + @ ;
+
+public
+: WRITE ( EDIT:editor ptr u8 n -- EDIT:editor n )
+   WRITE-ARGS WRITE-STATE ;
 
 private
 get-current prot-wid-add
