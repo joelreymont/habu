@@ -19,6 +19,7 @@ Planned module files:
 - `lib/map.f`
 - `lib/memory.f`
 - `lib/ffi-abi.f`
+- `lib/zip.f`
 - `lib/fs.f`
 - `lib/fs-root.f`
 - `lib/build-cache.f`
@@ -384,6 +385,47 @@ FFI:NOW           ( -- n )
 FFI:DLOPEN        ( ptr u8 n -- n )
 FFI:DLSYM         ( n ptr u8 -- n )
 ```
+
+## ZIP Archives
+
+`require lib/zip.f` loads indexed ZIP reading and replacement through
+`libzip.so.5` on Linux. It requires libzip to be installed. The public `ZIP`
+package uses distinct opaque `archive` and `entry` identities; each operation
+checks that the archive is live and the entry belongs to it. Entries are selected
+by their zero-based index, so duplicate filenames remain distinct.
+
+```forth
+ZIP:OPEN    ( ptr u8 n -- ZIP:archive )
+ZIP:EDIT    ( ptr u8 n -- ZIP:archive )
+ZIP:COUNT   ( ZIP:archive -- n )
+ZIP:ENTRY   ( ZIP:archive n -- ZIP:entry )
+ZIP:NAME$   ( ZIP:archive ZIP:entry -- ptr u8 n )
+ZIP:READ    ( ZIP:archive ZIP:entry -- ptr u8 n )
+ZIP:REPLACE ( ZIP:archive ZIP:entry ptr u8 n -- )
+ZIP:COMMIT  ( ZIP:archive -- )
+ZIP:CLOSE   ( ZIP:archive -- )
+```
+
+`OPEN` is read-only. `EDIT` opens an existing archive; callers that need a new
+output file first copy their input to that path. `NAME$` returns the original
+name bytes, and `READ` returns uncompressed bytes. Both return archive-owned
+copies that stay valid until successful `COMMIT` or `CLOSE`, including across
+later reads and replacements. `REPLACE` immediately copies its input, including
+an empty member, and changes only the selected index. `READ` sees a pending
+replacement. The untouched members retain their compressed bytes and metadata;
+libzip may update metadata of a replaced member, including its extra fields.
+
+`COMMIT` writes changes and invalidates the archive and its entries on success.
+If it throws `ZIP:E-COMMIT`, the archive stays live and the caller must retry or
+`CLOSE`. `CLOSE` discards pending changes and releases all owned buffers. Repeated
+close and other stale-handle use throw `ZIP:E-HANDLE`. A foreign entry, negative
+index or out-of-range index throws `ZIP:E-ENTRY`. Other failures use the named
+`ZIP:E-*` codes; diagnostics contain no member contents. Buffers and identity
+records grow with the workload and have no fixed entry count limit.
+
+The package uses checked Habu for storage, validation and lifetime management.
+Its only asserted boundaries are exact private libzip calls. Focused verification:
+`bin/hb --load lib/zip-test.f`.
 
 ## IEEE-754 Scalar Conversion
 
