@@ -788,6 +788,12 @@ SUITE tail-pure-fixtures
    tools/image-bytes-test.f
 ;SUITE
 
+SUITE xml-byte-edits
+   lib/xml-test.f
+   lib/byte-edit-test.f
+   lib/xml-roundtrip-test.f
+;SUITE
+
 SUITE stdlib-source-default
    lib/source-test.f
 ;SUITE

@@ -604,6 +604,100 @@ at the matching object close; array, top-level scalar, and after-key phases
 throw `E-JR-STATE`. Key comparison streams decoded bytes through the same
 unescape path as `STR`, so valid key length is not bounded by reader storage.
 
+## XML and byte edits
+
+`lib/xml.f` reads UTF-8 XML 1.0 without changing the source bytes. Each cursor
+is an explicit linear `XML:reader`; separate cursors have independent state.
+Allocate cell-aligned storage with `capacity XML:STORAGE-BYTES`, then call
+`XML:INIT ( ptr n n ptr u8 n -- XML:reader )` with storage, storage byte size,
+source and source byte size. Keep both spans live and exclusive until
+`XML:CLOSE ( XML:reader -- )`. Raw pointers do not prove those caller promises;
+the private mint, projection and address-view leaves are the representation
+boundary. No parser allocation or process-global cursor state is involved.
+The assembled packages are sealed so callers cannot reopen their private
+representation helpers.
+
+Capacity sizes the element stack, active namespace declarations and attributes
+on one start tag. `E-DEPTH`, `E-NAMESPACES` and `E-ATTRIBUTES` identify exhaustion;
+close the failed cursor and restart with larger storage. There is no fixed
+document-depth limit. A failed `NEXT` poisons that cursor: later reads throw
+`E-STATE`, while `CLOSE` still consumes it.
+
+```forth
+XML:NEXT          ( XML:reader -- XML:reader XML:kind )
+XML:KIND          ( XML:reader -- XML:reader XML:kind )
+XML:RAW           ( XML:reader -- XML:reader off len )
+XML:RAW$          ( XML:reader -- XML:reader ptr u8 n )
+XML:NAME$         ( XML:reader -- XML:reader ptr u8 n )
+XML:LOCAL$        ( XML:reader -- XML:reader ptr u8 n )
+XML:DEPTH         ( XML:reader -- XML:reader n )
+XML:URI           ( XML:reader ptr u8 n -- XML:reader n )
+XML:CONTENT       ( XML:reader -- XML:reader off len )
+XML:TEXT          ( XML:reader ptr u8 n -- XML:reader n )
+XML:ATTR-RESET    ( XML:reader -- XML:reader )
+XML:ATTR-NEXT     ( XML:reader -- XML:reader bool )
+XML:ATTR-RAW      ( XML:reader -- XML:reader off len )
+XML:ATTR-VALUE    ( XML:reader -- XML:reader off len )
+XML:ATTR-NAME$    ( XML:reader -- XML:reader ptr u8 n )
+XML:ATTR-LOCAL$   ( XML:reader -- XML:reader ptr u8 n )
+XML:ATTR-VALUE$   ( XML:reader -- XML:reader ptr u8 n )
+XML:ATTR-URI      ( XML:reader ptr u8 n -- XML:reader n )
+XML:ATTR-TEXT     ( XML:reader ptr u8 n -- XML:reader n )
+```
+
+Kinds are `XML-KIND:START`, `END`, `TEXT`, `COMMENT`, `PI`, `CDATA` and `EOF`.
+`RAW` includes lexical delimiters; all offsets are zero-based byte offsets in
+the original source, including a UTF-8 BOM. `<a/>` produces a start with its
+complete tag span, then an end with zero length at the byte after the tag.
+End events retain the element's depth and namespace scope until the next
+advance. Empty CDATA is emitted. `CONTENT` selects text inside CDATA/comment/PI
+delimiters, or the complete ordinary text span.
+
+Attribute iteration is available only on a start event. `ATTR-NEXT` selects an
+attribute; access before selection or after exhaustion throws `E-STATE`.
+Declarations such as `xmlns:p` are included. `ATTR-RAW` covers the attribute
+name, equals sign, whitespace and quoted value; `ATTR-VALUE` excludes quotes.
+Name spans preserve prefixes, while `URI` and `ATTR-URI` return the resolved,
+decoded namespace URI. Default namespaces apply to elements, not unprefixed
+attributes. Duplicate expanded attribute names and invalid namespace bindings
+are rejected before the start event is returned.
+
+Decode words take an output buffer and capacity and return the bytes written.
+They validate the entire result before writing and reject overlap with source
+or parser storage. Entity references, XML scalar restrictions, UTF-8 and XML
+newline/attribute normalization follow [XML 1.0](https://www.w3.org/TR/xml/) and
+[Namespaces in XML](https://www.w3.org/TR/xml-names/). DTDs are explicitly
+rejected with `E-DTD`; other encodings, including UTF-16 BOMs/declarations,
+throw `E-ENCODING`. This is not a validating DTD processor.
+
+`XML:ESCAPE-TEXT` and `XML:ESCAPE-ATTR` both have effect
+`( ptr u8 n ptr u8 n -- n )`: source, source length, destination, capacity,
+then bytes written. They validate XML scalars and preserve literal carriage
+returns with references; attribute escaping also preserves tabs and newlines.
+
+`lib/byte-edit.f` applies ordered replacement spans to arbitrary bytes:
+
+```forth
+EDIT:STORAGE-BYTES ( n -- n )
+EDIT:INIT          ( ptr n n ptr u8 n -- EDIT:editor )
+EDIT:REPLACE       ( EDIT:editor off len ptr u8 n -- EDIT:editor )
+EDIT:WRITE         ( EDIT:editor ptr u8 n -- EDIT:editor n )
+EDIT:CLOSE         ( EDIT:editor -- )
+```
+
+The storage capacity is the maximum number of edits. `REPLACE` records source
+offset, removed length and borrowed replacement bytes; source, replacements
+and storage must stay live until `CLOSE`. Edits must be sorted and nonoverlapping;
+insertions at the same offset retain call order. `WRITE` preflights output
+capacity and rejects overlap with every borrowed input or the editor storage,
+then copies all untouched bytes exactly. Failed edits leave the plan unchanged,
+and output-capacity failure leaves the destination unchanged. Qualify
+`XML:CLOSE`, `XML:DEPTH`, `EDIT:CLOSE` and `EDIT:WRITE` when using their packages
+because those tails also exist in the global Forth vocabulary.
+
+The native `xml-byte-edits` suite covers both libraries and composed
+parse/escape/edit/readback round trips.
+
 ## Regex
 
 `lib/regex.f` exposes a bounded capture-free regex scanner and matcher for LLM
