@@ -525,24 +525,36 @@ create FIX-NAME FIX-NAME-CAP allot
       id:IR-ID:ir-symbol-id m:HIR:meaning :}
    c r  c b id BKEY-CK  m PLAIN-ROW ;
 
+\ A package may bind the same spelling to another word. Only the engine's
+\ global binding has this intrinsic meaning; scoped words use ordinary
+\ dictionary resolution and their own checked effects.
+: INTRINSIC-BOUND? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   FIX-NAME u NDICT:SPELL-START FIX-NAME u 0 search-wl = ;
+
 : BDECLARE-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode :}
+   c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  o OP-ROW ;
 
 : BDECLARE-CONST-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode v:n :}
+   c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  o v CONST-OP-ROW ;
 
 : BDECLARE-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:ctrl -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:ctrl :}
+   c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  k CONTROL-ROW ;
 
 : BDECLARE-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:rmove n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:rmove cells:n :}
+   c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  k cells RSTACK-ROW ;
 
 public
@@ -690,6 +702,7 @@ create STG-PICK PICK-MAX cells allot
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
    STG-TAKE
+   c b id INTRINSIC-BOUND? 0= if exit then
    c p r  c b id BKEY-CK  RENAME-ROW ;
 
 public

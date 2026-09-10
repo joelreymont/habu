@@ -344,6 +344,10 @@ SUITE compiler-native-product-locals
    test/compiler/native-product-locals.f
 ;SUITE
 
+SUITE compiler-native-word-binding
+   test/compiler/native-word-binding.f
+;SUITE
+
 SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
 ;SUITE
