@@ -1166,3 +1166,11 @@ public
 -9000 constant E-ELF32-FORMAT
 -9001 constant E-ELF32-BOUNDS
 -9002 constant E-ELF32-UNSUPPORTED
+
+\ IPv4 UDP host library: -9100..-9109.
+-9100 constant E-UDP4-FIRST
+-9109 constant E-UDP4-LAST
+-9100 constant E-UDP4-OPERAND
+-9101 constant E-UDP4-PLATFORM
+-9102 constant E-UDP4-SYMBOL
+-9103 constant E-UDP4-RESULT
