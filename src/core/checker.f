@@ -6233,6 +6233,7 @@ PRIM: .            PE-N PE-IN PRIM;
 PRIM: .s           PRIM;
 PRIM: depth        PE-N PE-OUT PRIM;
 PRIM: here         PE-PTR-A-RAW PE-OUT PRIM;
+PRIM: tok-imm?     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PRIM;
 PRIM: allot        PE-N PE-IN PRIM;
 PRIM: ,            PE-N PE-IN PRIM;
 PRIM: c,           PE-N PE-IN PRIM;
@@ -11381,7 +11382,6 @@ variable RTL-I                        \ retired-token local scan index
 \ fail-closed reject (the design doc's interim, mirroring the opener
 \ treatment). Modeled parsing immediates ([char]/char via PARSE-LIT?) stay
 \ green; engine prims are modeled by TRY-PRIMS and carry no usig row.
-s" tok-imm?" s" ptr u8 n -- n" TRUST
 
 variable IMMERR
 

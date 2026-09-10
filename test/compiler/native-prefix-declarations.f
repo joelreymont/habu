@@ -16,7 +16,7 @@ TRUSTED: RESET ( -- )
    s" src/core/exec-vector.f" included ;
 
 TRUSTED: REPLAY ( -- n )
-   s" variable V 40 constant BASE create ROW 2 cells allot : PF-OLD-SIGNATURE ( -- n ) 2 ; : PF-STORE ( -- ) BASE V ! PF-OLD-SIGNATURE V +! V @ ROW ! ; : PF-READ ( -- n ) ROW @ ; PF-STORE PF-READ" evaluate ;
+   s" variable V 40 constant BASE create ROW 2 cells allot : PF-OLD-SIGNATURE ( -- n ) 2 ; : PF-STORE ( -- ) BASE V ! PF-OLD-SIGNATURE V +! V @ ROW ! ; : PF-READ ( -- n ) ROW @ ; : PF-IMM? ( ptr u8 n -- n ) tok-imm? ; PF-STORE PF-READ" evaluate ;
 
 TRUSTED: REPLAY-DEFER ( -- n )
    s" defer PF-DEFER ( -- n ) : PF-SET ( -- ) [: 42 ;] is PF-DEFER ; PF-SET PF-DEFER" evaluate ;
