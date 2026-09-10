@@ -252,6 +252,10 @@ SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE
 
+SUITE compiler-native-tail-owner
+   test/compiler/native-tail-owner.f
+;SUITE
+
 SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE
