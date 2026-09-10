@@ -21,6 +21,7 @@ $DFFF constant SURROGATE-LAST
 1 constant LETTER-BIT
 2 constant NUMBER-BIT
 4 constant SPACE-BIT
+8 constant ALPHABETIC-BIT
 10 constant LINE-FEED
 59 constant SEMICOLON
 35 constant HASH
@@ -87,11 +88,11 @@ create OUTPUT-LOCK 65 allot
    u 2 <> if E-MISMATCH throw then
    a c@ 76 = if
       a 1+ c@ s" ultmo" CATEGORY-SECOND? 0= if E-MISMATCH throw then
-      LETTER-BIT exit
+      LETTER-BIT ALPHABETIC-BIT or exit
    then
    a c@ 78 = if
       a 1+ c@ s" dlo" CATEGORY-SECOND? 0= if E-MISMATCH throw then
-      NUMBER-BIT exit
+      a 1+ c@ 108 = if NUMBER-BIT ALPHABETIC-BIT or else NUMBER-BIT then exit
    then
    a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
@@ -177,8 +178,11 @@ create OUTPUT-LOCK 65 allot
    line comment TRIM {: row:ptr rowu:n :}
    rowu 0= if exit then
    row rowu 0 NEXT-FIELD {: range:ptr rangeu:n next:n :}
-   row next + rowu next - TRIM s" White_Space" STR= 0= if exit then
-   range rangeu TRIM RANGE-PART SPACE-BIT MARK-RANGE ;
+   row next + rowu next - TRIM {: name:ptr nameu:n :}
+   name nameu s" White_Space" STR= if SPACE-BIT else
+      name nameu s" Other_Alphabetic" STR= if ALPHABETIC-BIT else exit then
+   then {: bit:n :}
+   range rangeu TRIM RANGE-PART bit MARK-RANGE ;
 
 : VERIFY-PROPS-BYTES ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u <= while
@@ -232,7 +236,11 @@ create OUTPUT-LOCK 65 allot
    UNICODE-CLASS-DATA:NUMBER-RANGE-COUNT
    [: UNICODE-CLASS-DATA:NUMBER-RANGE@ ;] CHECK-TABLE
    UNICODE-CLASS-DATA:WHITE-SPACE-RANGE-COUNT
-   [: UNICODE-CLASS-DATA:WHITE-SPACE-RANGE@ ;] CHECK-TABLE ;
+   [: UNICODE-CLASS-DATA:WHITE-SPACE-RANGE@ ;] CHECK-TABLE
+   UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE-COUNT
+   [: UNICODE-CLASS-DATA:LETTER-NUMBER-RANGE@ ;] CHECK-TABLE
+   UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE-COUNT
+   [: UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGE@ ;] CHECK-TABLE ;
 
 : TRUTH-BIT? ( n n -- bool ) {: cp:n bit:n :}
    TRUTH 0 ptr-field @ cp + c@ bit and 0= 0= ;
@@ -243,7 +251,8 @@ create OUTPUT-LOCK 65 allot
 : CHECK-SCALAR ( n -- ) {: cp:n :}
    cp LETTER-BIT TRUTH-BIT? cp UNICODE-CLASS:LETTER? SAME-BOOL? 0= if E-MISMATCH throw then
    cp NUMBER-BIT TRUTH-BIT? cp UNICODE-CLASS:NUMBER? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp SPACE-BIT TRUTH-BIT? cp UNICODE-CLASS:WHITE-SPACE? SAME-BOOL? 0= if E-MISMATCH throw then ;
+   cp SPACE-BIT TRUTH-BIT? cp UNICODE-CLASS:WHITE-SPACE? SAME-BOOL? 0= if E-MISMATCH throw then
+   cp ALPHABETIC-BIT TRUTH-BIT? cp UNICODE-CLASS:ALPHABETIC? SAME-BOOL? 0= if E-MISMATCH throw then ;
 
 : CHECK-ALL-SCALARS ( -- )
    0 begin dup SCALAR-MAX <= while

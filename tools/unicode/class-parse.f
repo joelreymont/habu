@@ -25,6 +25,7 @@ $DFFF constant SURROGATE-LAST
 46 constant DOT
 1 constant CLASS-LETTER
 2 constant CLASS-NUMBER
+3 constant CLASS-LETTER-NUMBER
 
 create STAGE-LETTER-LO RANGE-CAPACITY cells allot
 create STAGE-LETTER-HI RANGE-CAPACITY cells allot
@@ -35,6 +36,12 @@ create STAGE-SPACE-HI RANGE-CAPACITY cells allot
 variable STAGE-LETTER-N
 variable STAGE-NUMBER-N
 variable STAGE-SPACE-N
+create STAGE-NL-LO RANGE-CAPACITY cells allot
+create STAGE-NL-HI RANGE-CAPACITY cells allot
+create STAGE-OTHER-LO RANGE-CAPACITY cells allot
+create STAGE-OTHER-HI RANGE-CAPACITY cells allot
+variable STAGE-NL-N
+variable STAGE-OTHER-N
 
 create LETTER-LO RANGE-CAPACITY cells allot
 create LETTER-HI RANGE-CAPACITY cells allot
@@ -45,6 +52,12 @@ create SPACE-HI RANGE-CAPACITY cells allot
 variable LETTER-N
 variable NUMBER-N
 variable SPACE-N
+create NL-LO RANGE-CAPACITY cells allot
+create NL-HI RANGE-CAPACITY cells allot
+create OTHER-LO RANGE-CAPACITY cells allot
+create OTHER-HI RANGE-CAPACITY cells allot
+variable NL-N
+variable OTHER-N
 variable UNICODE-READY
 variable SPACE-READY
 
@@ -104,7 +117,7 @@ variable PENDING-NAME-U
    then
    a c@ 78 = if
       a 1+ c@ s" dlo" CATEGORY-SECOND? 0= if E-SYNTAX throw then
-      CLASS-NUMBER exit
+      a 1+ c@ 108 = if CLASS-LETTER-NUMBER else CLASS-NUMBER then exit
    then
    a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
@@ -144,7 +157,10 @@ variable PENDING-NAME-U
       lo hi STAGE-LETTER-LO STAGE-LETTER-HI STAGE-LETTER-N STAGE-APPEND
       exit
    then
-   class CLASS-NUMBER = if
+   class CLASS-LETTER-NUMBER = if
+      lo hi STAGE-NL-LO STAGE-NL-HI STAGE-NL-N STAGE-APPEND
+   then
+   class CLASS-NUMBER = class CLASS-LETTER-NUMBER = or if
       lo hi STAGE-NUMBER-LO STAGE-NUMBER-HI STAGE-NUMBER-N STAGE-APPEND
    then ;
 
@@ -197,6 +213,7 @@ variable PENDING-NAME-U
 : STAGE-UNICODE-RESET ( -- )
    0 STAGE-LETTER-N !
    0 STAGE-NUMBER-N !
+   0 STAGE-NL-N !
    -1 SOURCE-PREV !
    FALSE-VALUE PENDING ! ;
 
@@ -223,6 +240,8 @@ variable PENDING-NAME-U
    STAGE-NUMBER-LO STAGE-NUMBER-HI STAGE-NUMBER-N @ NUMBER-LO NUMBER-HI COPY-RANGES
    STAGE-LETTER-N @ LETTER-N !
    STAGE-NUMBER-N @ NUMBER-N !
+   STAGE-NL-LO STAGE-NL-HI STAGE-NL-N @ NL-LO NL-HI COPY-RANGES
+   STAGE-NL-N @ NL-N !
    TRUE-VALUE UNICODE-READY ! ;
 
 : RANGE-PART ( ptr u8 n -- n n ) {: a:ptr u:n :}
@@ -243,11 +262,14 @@ variable PENDING-NAME-U
    row rowu 0 NEXT-FIELD {: range:ptr rangeu:n next:n :}
    row next + rowu next - TRIM {: prop:ptr propu:n :}
    range rangeu TRIM RANGE-PART {: lo:n hi:n :}
+   prop propu s" Other_Alphabetic" STR= if
+      lo hi STAGE-OTHER-LO STAGE-OTHER-HI STAGE-OTHER-N STAGE-APPEND exit
+   then
    prop propu SPACE-PROPERTY? 0= if lo hi SCALAR-RANGE exit then
    lo hi STAGE-SPACE-LO STAGE-SPACE-HI STAGE-SPACE-N STAGE-APPEND ;
 
 : STAGE-SPACE-RESET ( -- )
-   0 STAGE-SPACE-N ! ;
+   0 STAGE-SPACE-N ! 0 STAGE-OTHER-N ! ;
 
 : SCAN-PROPS ( ptr u8 n -- ) {: a:ptr u:n :}
    0 begin dup u <= while
@@ -261,6 +283,8 @@ variable PENDING-NAME-U
 : COMMIT-SPACE ( -- )
    STAGE-SPACE-LO STAGE-SPACE-HI STAGE-SPACE-N @ SPACE-LO SPACE-HI COPY-RANGES
    STAGE-SPACE-N @ SPACE-N !
+   STAGE-OTHER-LO STAGE-OTHER-HI STAGE-OTHER-N @ OTHER-LO OTHER-HI COPY-RANGES
+   STAGE-OTHER-N @ OTHER-N !
    TRUE-VALUE SPACE-READY ! ;
 
 : VALID-INDEX ( n n -- n ) {: idx:n count:n :}
@@ -278,7 +302,7 @@ public
    FALSE-VALUE SPACE-READY !
    0 LETTER-N !
    0 NUMBER-N !
-   0 SPACE-N ! ;
+   0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! ;
 
 : PARSE-UNICODE ( ptr u8 n -- )
    STAGE-UNICODE-RESET
@@ -296,6 +320,8 @@ public
 : LETTER-COUNT ( -- n )   LETTER-N @ ;
 : NUMBER-COUNT ( -- n )   NUMBER-N @ ;
 : SPACE-COUNT ( -- n )    SPACE-N @ ;
+: LETTER-NUMBER-COUNT ( -- n ) NL-N @ ;
+: OTHER-ALPHABETIC-COUNT ( -- n ) OTHER-N @ ;
 
 : LETTER-RANGE@ ( n -- n n )
    LETTER-LO LETTER-HI LETTER-N @ RANGE@ ;
@@ -305,5 +331,11 @@ public
 
 : SPACE-RANGE@ ( n -- n n )
    SPACE-LO SPACE-HI SPACE-N @ RANGE@ ;
+
+: LETTER-NUMBER-RANGE@ ( n -- n n )
+   NL-LO NL-HI NL-N @ RANGE@ ;
+
+: OTHER-ALPHABETIC-RANGE@ ( n -- n n )
+   OTHER-LO OTHER-HI OTHER-N @ RANGE@ ;
 
 ;package
