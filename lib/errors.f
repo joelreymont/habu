@@ -1182,3 +1182,16 @@ public
 -9111 constant E-SERIAL-PLATFORM
 -9112 constant E-SERIAL-SYMBOL
 -9113 constant E-SERIAL-RESULT
+
+\ XMODEM packet codec and serial transfer: -9120..-9139.
+-9120 constant E-XMODEM-FIRST
+-9139 constant E-XMODEM-LAST
+-9120 constant E-XMODEM-OPERAND
+-9121 constant E-XMODEM-FRAME
+-9122 constant E-SXMODEM-OPERAND
+-9123 constant E-SXMODEM-TIMEOUT
+-9124 constant E-SXMODEM-CLOSED
+-9125 constant E-SXMODEM-IO
+-9126 constant E-SXMODEM-CANCELLED
+-9127 constant E-SXMODEM-RETRIES
+-9128 constant E-SXMODEM-CAPACITY

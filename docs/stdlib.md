@@ -21,6 +21,8 @@ Planned module files:
 - `lib/ffi-abi.f`
 - `lib/net/udp4.f`
 - `lib/serial.f`
+- `lib/xmodem.f`
+- `lib/serial-xmodem.f`
 - `lib/fs.f`
 - `lib/fs-root.f`
 - `lib/build-cache.f`
@@ -1950,3 +1952,11 @@ raw 8N1 setup, partial reads/writes with finite waits, and explicit close.
 Applications own their protocols and handle lifetimes. See [serial streams](serial.md)
 for effects, configuration and timeout semantics, foreign boundaries, and the
 kernel pseudoterminal checks.
+
+## XMODEM
+
+`lib/xmodem.f` owns transport-independent checked packet framing in `XMODEM`.
+`lib/serial-xmodem.f` owns bounded transfers on borrowed serial handles in
+`SERIAL-XMODEM`. Applications own binary lengths, file handling, command
+responses, and device policy. See [XMODEM](xmodem.md) for typed interfaces,
+session ownership, retransmission and deadline behavior, and validation.
