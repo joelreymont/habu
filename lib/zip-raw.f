@@ -101,10 +101,30 @@ $14 constant LOCATOR-BYTES
    node off 4 + 8 RAW-SPAN 8 LE@
    node END-OFF @ LOCATOR-BYTES - off - $C - = ;
 
+: LOCATOR-OFFSET ( ptr n -- n )
+   dup END-OFF @ LOCATOR-BYTES - 8 + RAW-U64 ;
+
+: DIRECT-END64? ( ptr n n -- bool ) {: node:ptr off:n :}
+   off node END-OFF @ LOCATOR-BYTES - END64-BYTES - > if false exit then
+   node off END64-MATCH? ;
+
+: PREFIX-END64? ( ptr n n -- bool ) {: node:ptr off:n :}
+   node off END64-MATCH? 0= if false exit then
+   node LOCATOR-OFFSET {: located:n :}
+   off located < if false exit then
+   node off $28 + 8 RAW-SPAN 8 LE@ {: size:n :}
+   size 0 < size located > or if false exit then
+   node off $30 + 8 RAW-SPAN 8 LE@ located size - <> if false exit then
+   node off $20 + 8 RAW-SPAN 8 LE@ node OBJECT @ C-COUNT <> if false exit then
+   size 0= if true exit then
+   size CENTRAL-BYTES < if false exit then
+   node off size - RAW-U32 CENTRAL-SIG = ;
+
 : FIND-END64 ( ptr n -- n ) {: node:ptr :}
+   node LOCATOR-OFFSET dup node swap DIRECT-END64? if exit then drop
    node END-OFF @ LOCATOR-BYTES - END64-BYTES -
    begin dup 0 >= while
-      node over END64-MATCH? if exit then 1-
+      node over PREFIX-END64? if exit then 1-
    repeat E-READ throw ;
 
 : END-CLASSIC ( ptr n -- ) {: node:ptr :}
