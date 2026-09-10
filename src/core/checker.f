@@ -87,10 +87,10 @@ create EI-TV-BOOT MAXTV-INIT cells allot      create EI-RV-BOOT MAXTV-INIT cells
 \ fresh var id indexes it too, is zeroed (ANY) on grow/reset/trial-rollback, and
 \ persists on stored effect records (EN.B on var nodes) across snapshot/AOT.
 create TVK-BOOT MAXTV-INIT cells allot
-variable TVT-P     variable RVT-P
-variable VRC-TV-P  variable VRC-RV-P   variable VRI-TV-P  variable VRI-RV-P
-variable EC-TV-P   variable EC-RV-P    variable EI-TV-P   variable EI-RV-P
-variable TVK-P
+PERSISTED-PTR-VARIABLE TVT-P     PERSISTED-PTR-VARIABLE RVT-P
+PERSISTED-PTR-VARIABLE VRC-TV-P  PERSISTED-PTR-VARIABLE VRC-RV-P   PERSISTED-PTR-VARIABLE VRI-TV-P  PERSISTED-PTR-VARIABLE VRI-RV-P
+PERSISTED-PTR-VARIABLE EC-TV-P   PERSISTED-PTR-VARIABLE EC-RV-P    PERSISTED-PTR-VARIABLE EI-TV-P   PERSISTED-PTR-VARIABLE EI-RV-P
+PERSISTED-PTR-VARIABLE TVK-P
 
 : TV-ARENA-BOOT ( -- )         \ point every var-id store at its boot buffer
    TVT-BOOT TVT-P !            RVT-BOOT RVT-P !
@@ -148,6 +148,7 @@ TVINIT
 
 0 constant TVK-ANY   \ ordinary polymorphic type var
 1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
+2 constant RVK-QUOT  \ implicit callback tail: fixed window when compared as a value
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 \ permanent (untrailed) RAW mark for build-time contexts (prim/signature build,
@@ -164,9 +165,18 @@ TVINIT
 
 : MK-ROW 3 lshift S-ROW or ;
 
+
+: RVK-QUOT? ( n -- bool ) TVK@ RVK-QUOT = ;
+
+
+: RVK-QUOT! ( n -- ) RVK-QUOT swap cells TVK + ! ;
+
+
+: MK-QROW ( n -- n ) dup RVK-QUOT! MK-ROW ;
+
 1024 constant MAXPTR-INIT       \ ptr terms (grows on demand)
 create PTRA-BOOT MAXPTR-INIT cells allot   variable PTRN
-variable PTRA-P   variable PTR-CAP
+PERSISTED-PTR-VARIABLE PTRA-P   variable PTR-CAP
 PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 : PTRA ( -- ptr a ) PTRA-P @ ;
 
@@ -191,7 +201,7 @@ PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 \ at snapshot (per-definition scratch, no live content across a snapshot).
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
 create TRAIL-BOOT TRAIL-INIT cells allot
-variable TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
+PERSISTED-PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
 TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
 : TRAIL ( -- ptr a ) TRAIL-P @ ;
 : TRAIL-RESET ( -- ) 0 TRAIL-N ! ;
@@ -221,6 +231,12 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    dup 2 TRAIL-PUSH
    TVK-RAW! ;
 
+
+: RVK-RAISE ( n -- )
+   dup RVK-QUOT? IF drop EXIT THEN
+   dup 2 TRAIL-PUSH
+   RVK-QUOT! ;
+
 \ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
 \ Concrete-count conservation only sees linear CONS on the stack. It is defeated
 \ by polymorphic laundering: a value copied/dropped while its type is still a VAR
@@ -244,7 +260,7 @@ variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in s
 \ id. Reset per definition (NEW). Scanned after each token (LIN-TAINT-SCAN).
 4096 constant LTNT-INIT
 create LTNT-BOOT LTNT-INIT cells allot
-variable LTNT-P   variable LTNT-CAP   variable LTNT-N
+PERSISTED-PTR-VARIABLE LTNT-P   variable LTNT-CAP   variable LTNT-N
 LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   0 LTNT-N !
 : LTNT ( -- ptr a ) LTNT-P @ ;
 : LIN-TAINT-RESET ( -- ) 0 LTNT-N ! ;
@@ -277,7 +293,7 @@ variable TCMP                            \ path-compression walk cursor
 create QEA-BOOT MAXQE-INIT 32 * allot
 create QXDA-BOOT MAXQE-INIT cells allot   create QXRA-BOOT MAXQE-INIT cells allot
 create QXHA-BOOT MAXQE-INIT cells allot   create QXNA-BOOT MAXQE-INIT cells allot   variable QEN
-variable QEA-P   variable QXDA-P   variable QXRA-P   variable QXHA-P   variable QXNA-P
+PERSISTED-PTR-VARIABLE QEA-P   PERSISTED-PTR-VARIABLE QXDA-P   PERSISTED-PTR-VARIABLE QXRA-P   PERSISTED-PTR-VARIABLE QXHA-P   PERSISTED-PTR-VARIABLE QXNA-P
 variable QE-CAP
 QEA-BOOT QEA-P !   QXDA-BOOT QXDA-P !   QXRA-BOOT QXRA-P !
 QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
@@ -336,7 +352,7 @@ variable RIGID-N
 7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
 variable RGN-N   variable EXT-N   variable GEN-N
 variable RIGID-MAX   $4000000000000000 RIGID-MAX !
-variable ATOMA-P   variable ATOMU-P   variable ATOMK-P   variable ATOM-CAP
+PERSISTED-PTR-VARIABLE ATOMA-P   PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
 ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
 : ATOMA ( -- ptr a ) ATOMA-P @ ;
 : ATOMU ( -- ptr a ) ATOMU-P @ ;
@@ -413,9 +429,9 @@ create PARAM-SCR-BOOT PARAM-SCR-INIT cells allot
 variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
-variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMFAM-P
-variable PARAMOFF-P   variable PARAMHID-P   variable PARGP-P   variable PARG-N   variable PARG-CAP-V
-variable PARAM-SCR-P
+PERSISTED-PTR-VARIABLE PARAMA-P   PERSISTED-PTR-VARIABLE PARAMU-P   PERSISTED-PTR-VARIABLE PARAMC-P   PERSISTED-PTR-VARIABLE PARAMFAM-P
+PERSISTED-PTR-VARIABLE PARAMOFF-P   PERSISTED-PTR-VARIABLE PARAMHID-P   PERSISTED-PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
+PERSISTED-PTR-VARIABLE PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
 PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
 PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
@@ -734,8 +750,8 @@ CHECKER-PKG-LIVE-DEFAULT
    miru 0 <> IF E-PKG-CONTEXT throw THEN ;
 
 \ These two names stay checker-internal: verify-source and the check driver's
-\ fixed scanners compile direct calls from named TRUSTED boundaries. Checked
-\ user code has no effect row with which to activate the mirror provider.
+\ fixed scanners compile direct calls from named TRUSTED boundaries. Their
+\ effect rows are trusted-only, so checked code cannot activate the provider.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
    PKG-LIVE-XT 0= IF E-PKG-CONTEXT throw THEN
@@ -816,7 +832,7 @@ UK-EXACT UNIFY-KIND !
 
 4096 constant MAXPUSH-INIT     \ push records (engine-sized bodies need hundreds; grows on demand)
 create SPA-BOOT MAXPUSH-INIT 16 * allot   variable SPN
-variable SPA-P   variable SPA-CAP
+PERSISTED-PTR-VARIABLE SPA-P   variable SPA-CAP
 SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 : SPA ( -- ptr a ) SPA-P @ ;
 : SPA-ENSURE ( n -- ) {: need:n :}
@@ -990,6 +1006,18 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
 create UWL-POS MAXUWL cells allot   variable CUR-UPOS
 variable UF-POSN
 
+\ A recorded call freezes its specialized rows when the input spine reaches
+\ its open tail, before that tail is bound to the caller's untouched stack.
+\ Keep this bit separate from diagnostic positions: layout expansion may lose
+\ a source slot while still descending the same input spine.
+create UWL-CALL MAXUWL cells allot   variable CUR-CALL
+create UWL-QUOT MAXUWL cells allot   variable CUR-QUOT
+variable CALL-ARMED
+variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
+variable REC-ON
+defer CALL-FREEZE-XT ( -- )
+defer CWIN-STATE ( -- ptr n )
+
 : U-PUSH ( n -- )
    USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
    USP @ cells UWL + !
@@ -1000,17 +1028,29 @@ variable UF-POSN
 : PAIR ( n n -- )    \ inherit the enclosing pair's strictness and position
    CUR-STRICT @ USP @ cells UWL-STR + !
    CUR-UPOS @ USP @ cells UWL-POS + !
+   CUR-CALL @ USP @ cells UWL-CALL + !
+   CUR-QUOT @ USP @ cells UWL-QUOT + !
    swap U-PUSH U-PUSH ;
 
 : PAIR-STRICT ( n n -- )    \ force a strict (no-widen) subterm unification
    -1 USP @ cells UWL-STR + !
    CUR-UPOS @ USP @ cells UWL-POS + !
+   0 USP @ cells UWL-CALL + !
+   CUR-QUOT @ USP @ cells UWL-QUOT + !
    swap U-PUSH U-PUSH ;
+
+
+: PAIR-QUOT ( n n -- )
+   CUR-QUOT @ >r
+   -1 CUR-QUOT ! PAIR
+   r> CUR-QUOT ! ;
 
 : UNPAIR ( -- n n )    \ pop a pair; restore its strictness and position
    U-POP U-POP swap
    USP @ cells UWL-STR + @ CUR-STRICT !
-   USP @ cells UWL-POS + @ CUR-UPOS ! ;
+   USP @ cells UWL-POS + @ CUR-UPOS !
+   USP @ cells UWL-CALL + @ CUR-CALL !
+   USP @ cells UWL-QUOT + @ CUR-QUOT ! ;
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
    UF-SET @ 0= IF
@@ -1155,8 +1195,8 @@ create CT-CLASS-BOOT CT-CAP-INIT cells allot
 create CT-WIDTH-BOOT CT-CAP-INIT cells allot
 create CT-SIGN-BOOT CT-CAP-INIT cells allot
 create CT-STR-BOOT CT-STR-INIT allot
-variable CT-NAME-A-P   variable CT-NAME-U-P   variable CT-CLASS-P
-variable CT-WIDTH-P    variable CT-SIGN-P     variable CT-STR-P
+PERSISTED-PTR-VARIABLE CT-NAME-A-P   PERSISTED-PTR-VARIABLE CT-NAME-U-P   PERSISTED-PTR-VARIABLE CT-CLASS-P
+PERSISTED-PTR-VARIABLE CT-WIDTH-P    PERSISTED-PTR-VARIABLE CT-SIGN-P     PERSISTED-PTR-VARIABLE CT-STR-P
 variable CTN
 variable CT-STR-U
 variable CT-I
@@ -1705,19 +1745,20 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
       a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
 
-\ Nominal-scalar pointee governance (mirror of the layout pointee-bind rule):
-\ inside a pointee (CUR-STRICT), a type variable may not absorb a nominal-scalar
-\ family — a raw pointer (variable/create/data-base) would acquire the family
-\ identity by ordinary unification, bypassing the LAYOUT-BUFFER introduction
-\ form. Only the armed generated-accessor window (LAYOUT-INTRO) may form that
-\ bind; nominal scalars are structurally non-linear W=1, so no mem-ok analog is
-\ needed. Value-position binds (CUR-STRICT 0) stay ordinary: a nominal scalar is
-\ a plain one-cell value everywhere else.
-: NOMPTR-BLOCK? ( n n -- bool ) {: a:n b:n :}
+\ A call may instantiate its generic pointee from an existing nominal input.
+\ The reverse direction would introduce an identity through an untyped pointer,
+\ and output coercion is never an input. RAW variables remain fenced here and
+\ by RAW-BLOCK?; declared variables must also pass the parametricity check.
+: NOMPTR-BLOCK? ( n n -- bool ) {: actual:n expected:n :}
    CUR-STRICT @ 0= IF RES-FALSE EXIT THEN
    LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN
-   a NOM-SCALAR? b ISVAR and IF RES-TRUE EXIT THEN
-   b NOM-SCALAR? a ISVAR and ;
+   actual NOM-SCALAR? expected ISVAR and IF
+      UNIFY-KIND @ UK-INPUT = IF
+         expected PAY TVK-RAW? 0= IF RES-FALSE EXIT THEN
+      THEN
+      RES-TRUE EXIT
+   THEN
+   expected NOM-SCALAR? actual ISVAR and ;
 
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
    a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
@@ -1808,10 +1849,10 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    T-RES swap T-RES swap
    2dup = IF 2drop ELSE
    over TAG T-QUOT =  over TAG T-QUOT =  and IF
-     2dup Q>DIN swap Q>DIN swap PAIR
-     2dup Q>DOUT swap Q>DOUT swap PAIR
-     2dup Q>RIN swap Q>RIN swap PAIR
-     Q>ROUT swap Q>ROUT swap PAIR ELSE
+     2dup Q>DIN swap Q>DIN swap PAIR-QUOT
+     2dup Q>DOUT swap Q>DOUT swap PAIR-QUOT
+     2dup Q>RIN swap Q>RIN swap PAIR-QUOT
+     Q>ROUT swap Q>ROUT swap PAIR-QUOT ELSE
    over TAG T-PTR =  over TAG T-PTR =  and IF
      over PTR>INNER over PTR>INNER PAIR-STRICT 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
@@ -1869,20 +1910,39 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 : U-ROW-DESCEND ( n n -- ) {: r1:n r2:n :}
    CUR-UPOS @ {: e:n :}
    e UPOS-REST CUR-UPOS !  r1 P>REST r2 P>REST PAIR
+   0 CUR-CALL !
    e UPOS-TYPE CUR-UPOS !  r1 P>TYPE r2 P>TYPE PAIR ;
+
+: U-CALL-TAIL ( n n -- ) {: r1:n r2:n :}
+   CALL-ARMED @ CUR-CALL @ and 0= IF EXIT THEN
+   r1 r2 = r1 ISROW or r2 ISROW or IF
+      0 CALL-ARMED !
+      CALL-FREEZE-XT
+   THEN ;
 
 \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells, so the
 \ spine cursor is no longer slot-aligned past it: drop to no-position (fail
 \ safe, positions before the expansion were already latched exactly).
-: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
-   over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
-   dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
+\ Implicit callback tails describe a fixed window. During quotation comparison
+\ they may share another tail, but may not absorb a visible input or output.
+\ Executing the quotation still instantiates its tail against the caller stack.
+: QUOT-ROW-BLOCK? ( n n -- bool ) {: v:n row:n :}
+   CUR-QUOT @ 0= IF RES-FALSE EXIT THEN
+   v PAY RVK-QUOT? 0= IF RES-FALSE EXIT THEN
+   row ISROW IF row PAY RVK-RAISE RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+
+: U-ROW R-RES swap R-RES swap 2dup U-CALL-TAIL 2dup = IF 2drop ELSE
+   over ISROW IF 2dup QUOT-ROW-BLOCK? IF U-FAIL ELSE 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN THEN ELSE
+   dup ISROW IF 2dup swap QUOT-ROW-BLOCK? IF U-FAIL ELSE 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN THEN ELSE
    2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND ELSE
    2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND ELSE
    U-ROW-DESCEND THEN THEN THEN THEN THEN ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
-   0 USP !  RES-TRUE UOK !  0 CUR-STRICT !
+   0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  0 CUR-QUOT !
+   CALL-ARMED @ CUR-CALL !
    0 UF-ACT !  0 UF-EXP !  0 UF-SET !
    -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
    PAIR
@@ -1928,6 +1988,7 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
 variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW ( -- )
+   0 CALL-ARMED !  0 CALL-HIT !
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
    0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
@@ -1970,7 +2031,7 @@ create NMB-BOOT TOKBUF-INIT-CAP allot
 \ separate ceiling here and no separate refusal — a body this cannot hold is a
 \ body the scan itself could not hold.
 create SDEC-BOOT TOKBUF-INIT-CAP allot
-variable FAILTK-P   variable TKF-P   variable NMB-P   variable SDEC-P   variable TOKBUF-CAP-U
+PERSISTED-PTR-VARIABLE FAILTK-P   PERSISTED-PTR-VARIABLE TKF-P   PERSISTED-PTR-VARIABLE NMB-P   PERSISTED-PTR-VARIABLE SDEC-P   variable TOKBUF-CAP-U
 variable FAILTU
 FAILTK-BOOT FAILTK-P !   TKF-BOOT TKF-P !   NMB-BOOT NMB-P !   SDEC-BOOT SDEC-P !
 TOKBUF-INIT-CAP TOKBUF-CAP-U !
@@ -2179,6 +2240,17 @@ variable CDT-ROW
    dout DCUR !
    OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
 
+
+\ Record a complete token effect while its input row is unified. Memory
+\ tokens construct these rows directly instead of instantiating a named word.
+: RECORDED-STEP ( n n -- )
+   0 CALL-HIT !
+   2dup CALL-DOUT ! CALL-DIN !
+   REC-ON @ CALL-ARMED !
+   CHECKER-STEP
+   0 CALL-ARMED ! ;
+
+
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
 \ balance check rejects net growth or borrowing; loop joins unify RCUR too.
@@ -2244,13 +2316,34 @@ variable RSEXEC-EXP    \ quot explicitly names a linear? (captured before unify 
 variable EXEC-OPAQUE   \ RSEXEC rejected an execute of an opaque (untyped-memory) xt this token; DO-TOK1 latches the reason (the reject machinery lives far below RSEXEC)
 variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) xt this token; latched the same way so the prose names 'catch' not 'execute'
 
+\ The native compiler consumes the effect of the quotation at each call site.
+variable CWIN-HIT
+variable CWIN-IN
+variable CWIN-OUT
+variable CWIN-KIND                  \ 0 catch, 1 execute, -1 finally
+variable FINALLY-CLEANUP-OUT
+
+: QUOT-WINDOW ( n -- ) {: kind:n :}
+   kind CWIN-KIND !
+   QTT @ Q>DIN ROW-CELLS CWIN-IN !
+   QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
+   \ Preserve execute's value boundaries before unification extends the rows.
+   \ Final call metadata resolves the copied terms to their concrete widths.
+   kind 1 = REC-ON @ and IF
+      QTT @ Q>DIN CALL-DIN !  QTT @ Q>DOUT CALL-DOUT !
+      CALL-FREEZE-XT
+   THEN
+   -1 CWIN-HIT ! ;
+
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
+   0 CWIN-HIT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
    LIN-SNAPSHOT                          \ linears on the post-pop stack (pre-apply)
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
+     1 QUOT-WINDOW
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
      QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
@@ -2301,9 +2394,6 @@ variable RSRET
 \ the dout of a quotation whose fall-through is dead, so there is no instantiated
 \ output row to measure and CELLS-NONE is what is recorded - not a zero, which is
 \ a real width a window-0 body has.
-variable CWIN-HIT     \ this token was a catch of a quotation the checker modeled
-variable CWIN-IN      \ the window the caught body takes, in stack cells
-variable CWIN-OUT     \ what it leaves, or CELLS-NONE when it never returns
 
 : RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
    \ Catchable `throw` is not process no-return. The checker tracks throw paths
@@ -2315,9 +2405,7 @@ variable CWIN-OUT     \ what it leaves, or CELLS-NONE when it never returns
    rest DCUR !
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
-     QTT @ Q>DIN ROW-CELLS CWIN-IN !          \ the window, while the tails are still open
-     QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
-     -1 CWIN-HIT !
+     0 QUOT-WINDOW
      DCUR @ QTT @ Q>DIN   UNIFY-IN OK @ and OK !
      RCUR @ QTT @ Q>RIN   UNIFY-IN OK @ and OK !
      QTT @ Q>XDEAD IF
@@ -2340,6 +2428,32 @@ variable CWIN-OUT     \ what it leaves, or CELLS-NONE when it never returns
    ELSE 0 OK ! THEN THEN
    RSRET @ IF 1 MK-CON DCUR @ MK-PUSH DCUR ! THEN ;
 
+\ Cleanup cannot borrow from either the body's input or its result row. Its
+\ own data/return windows must be empty and neutral, unless it never returns.
+: CLEANUP-QUOT? ( n -- bool ) {: q:n :}
+   q TAG T-QUOT <> IF RES-FALSE EXIT THEN
+   q Q>DIN ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
+   q Q>RIN ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
+   q Q>XDEAD IF RES-TRUE EXIT THEN
+   q Q>DOUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
+   q Q>ROUT ROW-CELLS 0 <> IF RES-FALSE EXIT THEN
+   q Q>DIN R-RES q Q>DOUT R-RES =
+   q Q>RIN R-RES q Q>ROUT R-RES = and ;
+
+: RSFINALLY ( -- )
+   FRESH MK-VAR FRESH MK-ROW {: tv rest :}
+   DCUR @ tv rest MK-PUSH UNIFY OK @ and OK !
+   rest DCUR !
+   tv T-RES {: cleanup:n :}
+   cleanup CLEANUP-QUOT? 0= IF 0 OK ! EXIT THEN
+   cleanup Q>XDEAD IF CELLS-NONE ELSE 0 THEN FINALLY-CLEANUP-OUT !
+   RSEXEC
+   -1 CWIN-KIND !
+   OK @ 0= IF EXIT THEN
+   QTT @ Q>XDEAD QTT @ Q>XHAS 0= and IF EXIT THEN
+   cleanup Q>XHAS IF THROW-EDGE THEN
+   cleanup Q>XDEAD IF -1 DEADP ! THEN ;
+
 variable RSH
 
 : RS-TOK? {: a u :}
@@ -2352,7 +2466,8 @@ variable RSH
    a u s" 2r@" CORE-STR= IF RS2R@ ELSE
    a u s" execute" CORE-STR= IF RSEXEC ELSE
    a u s" catch" CORE-STR= IF RSCATCH ELSE
-   0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN
+   a u s" finally" CORE-STR= IF RSFINALLY ELSE
+   0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN
    RSH @ ;
 
 0 constant VR-CON
@@ -2396,12 +2511,12 @@ create VRN-F-BOOT VREC-NODE-INIT cells allot
 create VRN-G-BOOT VREC-NODE-INIT cells allot
 create VRN-H-BOOT VREC-NODE-INIT cells allot
 create VREC-STR-BOOT VREC-STR-INIT allot
-variable VREC-NAME-A-P   variable VREC-NAME-U-P   variable VREC-START-P
-variable VREC-COUNT-P    variable VREC-TVN-P      variable VREC-RVN-P
-variable VREC-FIELDS-P
-variable VRN-TAG-P   variable VRN-A-P   variable VRN-B-P   variable VRN-C-P
-variable VRN-D-P     variable VRN-E-P   variable VRN-F-P   variable VRN-G-P
-variable VRN-H-P     variable VREC-STR-P
+PERSISTED-PTR-VARIABLE VREC-NAME-A-P   PERSISTED-PTR-VARIABLE VREC-NAME-U-P   PERSISTED-PTR-VARIABLE VREC-START-P
+PERSISTED-PTR-VARIABLE VREC-COUNT-P    PERSISTED-PTR-VARIABLE VREC-TVN-P      PERSISTED-PTR-VARIABLE VREC-RVN-P
+PERSISTED-PTR-VARIABLE VREC-FIELDS-P
+PERSISTED-PTR-VARIABLE VRN-TAG-P   PERSISTED-PTR-VARIABLE VRN-A-P   PERSISTED-PTR-VARIABLE VRN-B-P   PERSISTED-PTR-VARIABLE VRN-C-P
+PERSISTED-PTR-VARIABLE VRN-D-P     PERSISTED-PTR-VARIABLE VRN-E-P   PERSISTED-PTR-VARIABLE VRN-F-P   PERSISTED-PTR-VARIABLE VRN-G-P
+PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VREC-STR-P
 
 : VREC-ARENA-BOOT ( -- )        \ point every VREC store at its boot buffer
    VREC-NAME-A-BOOT VREC-NAME-A-P !   VREC-NAME-U-BOOT VREC-NAME-U-P !
@@ -2431,7 +2546,7 @@ VREC-ARENA-BOOT
 variable VRI-AK-CAP-V   VRI-AK-INIT VRI-AK-CAP-V !
 : VRI-AK-CAP ( -- n ) VRI-AK-CAP-V @ ;
 create VRI-AK-BOOT VRI-AK-INIT cells allot
-variable VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
+PERSISTED-PTR-VARIABLE VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 : VRI-AK ( -- ptr a ) VRI-AK-P @ ;
 
 \ VNARG: flat per-node arg pool for persisted VR-PARAM nodes (uncapped arity).
@@ -2445,7 +2560,7 @@ variable VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 \ rewinding both retires a rejected scope's runs without dangling a survivor.
 $4000 constant VNARG-INIT
 create VNARG-BOOT VNARG-INIT cells allot
-variable VNARG-P   VNARG-BOOT VNARG-P !
+PERSISTED-PTR-VARIABLE VNARG-P   VNARG-BOOT VNARG-P !
 variable VNARG-CAP-V   VNARG-INIT VNARG-CAP-V !
 variable VNARG-N   0 VNARG-N !
 : VNARG ( -- ptr a ) VNARG-P @ ;
@@ -2681,6 +2796,7 @@ variable VREC-RB-I
       S-ROW of
          VR-ROW VREC-NODE-NEW {: node:n :}
          x VREC-RES PAY VREC-RV-ID node VN.A!
+         x VREC-RES PAY TVK@ node VN.B!
          node
       endof
       T-PTR of
@@ -2786,7 +2902,10 @@ variable VREC-RB-I
    node VN.TAG@ case
       VR-CON of node VN.A@ MK-CON endof
       VR-VAR of node VN.A@ VREC-I-TV endof
-      VR-ROW of node VN.A@ VREC-I-RV endof
+      VR-ROW of
+         node VN.A@ VREC-I-RV
+         node VN.B@ RVK-QUOT = IF dup PAY RVK-QUOT! THEN
+      endof
       VR-PTR of node VN.A@ RECURSE MK-PTR endof
       VR-PUSH of node VN.A@ RECURSE node VN.B@ RECURSE MK-PUSH endof
       VR-QUOT of
@@ -2899,7 +3018,7 @@ variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen 
 \ definition whose body specialized a declared quantifier to a sealed nominal/layout
 \ family, or unified two declared quantifiers together. Set by NP-CHECK post-body.
 variable NPBAD               \ non-parametric declared effect detected?
-variable NPBAD-KIND          \ 0 = quantifier specialized to a sealed family; 1 = aliasing
+variable NPBAD-KIND          \ 0 = concrete specialization; 1 = alias; 2 = phantom mint; 3 = kind refinement
 variable NPBAD-Q1            \ offending quantifier's source letter (char code)
 variable NPBAD-Q2            \ aliasing partner's letter (char code); 0 when kind 0
 variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family naming
@@ -2920,8 +3039,9 @@ variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family 
 
 \ SIG-RAW-MODE: while set, every type var minted by the signature parser is
 \ TVK-RAW. verify-source (and the two-stage native definer hook) bracket the
-\ effect string of a raw storage definer -- create/variable/constant/PTR-VARIABLE
-\ -- with SIG-RAW-DEFINER! so the created word's stored effect carries RAW vars,
+\ effect string of a raw storage definer -- create/variable/constant,
+\ PTR-VARIABLE or PERSISTED-PTR-VARIABLE -- with SIG-RAW-DEFINER! so the created
+\ word's stored effect carries RAW vars,
 \ closing the VALUE-side mint that raw dictionary storage would otherwise publish
 \ as an unrestricted polymorphic effect. Off for ordinary sigs, prim builds, and
 \ user TRUST rows, so nothing else is affected.
@@ -3273,8 +3393,8 @@ create ROWMAP 26 cells allot
      NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN        \ ( row a u )->PK!->( row ), return
      2dup s" [" CORE-STR= IF
         2drop
-        FRESH MK-ROW                                  \ q data row
-        FRESH MK-ROW                                  \ q return row
+        FRESH MK-QROW                                 \ q data row
+        FRESH MK-QROW                                 \ q return row
         over RECURSE                                  \ row qd qr qin
         s" --" EXPECT-SIG
         >r >r                                         \ park qin qr
@@ -3315,8 +3435,8 @@ create ROWMAP 26 cells allot
 \ '--' or ']') set SGBAD-SYNTAX! through EXPECT-SIG so the whole signature rejects.
 \ Installed into SIG-QUOT-XT so SIG-TYPE (defined above PSTACK) can reach it.
 : SIG-PARSE-QUOT ( -- n )
-   FRESH MK-ROW {: qdbase:n :}
-   FRESH MK-ROW {: qrbase:n :}
+   FRESH MK-QROW {: qdbase:n :}
+   FRESH MK-QROW {: qrbase:n :}
    qdbase PSTACK {: qin:n :}                 \ data-in row (stops at '--')
    s" --" EXPECT-SIG
    qdbase PSTACK {: qout:n :}                \ data-out row (same base tail)
@@ -3580,13 +3700,13 @@ variable LBI-BAD
    FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
    t MK-PTR rest MK-PUSH
    t rest MK-PUSH
-   CHECKER-STEP ;
+   RECORDED-STEP ;
 
 : STEP-STORE ( -- )
    FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
    t rest MK-PUSH
    t MK-PTR swap MK-PUSH
-   rest CHECKER-STEP ;
+   rest RECORDED-STEP ;
 
 variable FP
 \ user sigs: certified words recorded as effect records after the structural
@@ -3601,11 +3721,10 @@ $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 $1002 constant USIGS-MAP-ANON
 -1 constant USIGS-ANON-FD
 0 constant USIGS-OFF-ZERO
-variable USIGS-P   variable USIGS-CAP-U   variable UEND
+PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-USER-OFF
 variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
 variable CHK-CAND
-PTR-VARIABLE USIGS-SNAP-P
 
 \ Per-symbol effect-record index state. The index itself lives in the symbol
 \ hash mapping (HT-USX, below); these are the three things it depends on.
@@ -3707,16 +3826,13 @@ USIGS-RUNTIME-INIT
    USIGS-CLEAR
    0 USIGS-USER-OFF ! ;
 
-: USIGS-SNAP@ ( -- ptr u8 )
-   USIGS-SNAP-P @ ;
-
 : USIGS-SNAPSHOT-SIZE ( -- n )
    UEND @ CELL + ;
 
 : USIGS-SNAPSHOT-ALLOC ( n -- ptr u8 ) {: n:n :}
-   here USIGS-SNAP-P !
+   here {: dst:ptr :}
    n allot
-   USIGS-SNAP@ ;
+   dst ;
 
 \ USIGS-POW2-CAP ( n -- n ) : smallest power-of-2 multiple of the grain >= n,
 \ so a restored snapshot has append headroom instead of cap == size.
@@ -3875,8 +3991,8 @@ SYM-LAYOUT-ASSERT
 
 create SYMS-BOOT SYM-CAP-INIT SYM-REC * allot
 create SYM-STR-BOOT SYM-STR-INIT allot
-variable SYMS-P     SYMS-BOOT SYMS-P !
-variable SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
+PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
+PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
 variable SYM-N
 variable SYM-STR-U
 variable SYM-I
@@ -3996,7 +4112,7 @@ variable SYM-ID
 13 constant HIDX-TABLES
 $CBF29CE484222325 constant HIDX-FNV-BASIS
 $100000001B3 constant HIDX-FNV-PRIME
-variable HIDX-MEM
+PTR-VARIABLE HIDX-MEM
 variable HIDX-VALID
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. HIDX-EPOCH
 \ above invalidates the memoized ANSWERS in it; HIDX-GEN invalidates the tables
@@ -4006,7 +4122,7 @@ variable HIDX-VALID
 variable HIDX-GEN
 variable HIDX-EPOCH
 variable HIDX-EFF-HI
-variable HIDX-EFF-BASE
+PTR-VARIABLE HIDX-EFF-BASE
 variable HIDX-CTL-HI
 variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollback sync)
 variable HIDX-H
@@ -4025,11 +4141,6 @@ variable HIDX-CUR
 : HIDX-MEM! ( ptr a -- )
    HIDX-MEM-FIELD ! ;
 
-\ HIDX-MEM-NULL: the unallocated-cache sentinel is a null pointer; the checker
-\ cannot type a literal 0 as ptr a, so this one-line refinement asserts it.
-TRUSTED: HIDX-MEM-NULL ( -- ptr a )
-   0 ;
-
 1 HIDX-GEN !
 
 : HIDX-GEN+ ( -- )
@@ -4042,7 +4153,7 @@ TRUSTED: HIDX-MEM-NULL ( -- ptr a )
 \ (SYM-GROW) reaches it too, and HIDX-BUILD only ever runs after it.
 : HIDX-MEM-CLEAR ( -- )
    HIDX-GEN+
-   HIDX-MEM-NULL HIDX-MEM! ;
+   NULL-PTR HIDX-MEM! ;
 
 : HIDX-MEM-READY? ( -- bool )
    HIDX-MEM@ 0= 0= ;
@@ -4057,7 +4168,7 @@ TRUSTED: HIDX-MEM-NULL ( -- ptr a )
    HIDX-EFF-BASE-FIELD ! ;
 
 : HIDX-EFF-BASE-CLEAR ( -- )
-   USIGS HIDX-EFF-BASE! ;
+   NULL-PTR HIDX-EFF-BASE! ;
 
 HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 0 HIDX-EFF-HI !   HIDX-EFF-BASE-CLEAR   0 HIDX-CTL-HI !   0 HIDX-DFR-HI !
@@ -4578,7 +4689,7 @@ $400 constant UIX-ENT-INIT        \ entries; grows geometrically
 0 constant UIX-E-OFF              \ the interned node's store offset
 1 constant UIX-E-BKT              \ the bucket it is chained in
 2 constant UIX-E-NEXT             \ the next entry in that bucket, +1; 0 ends it
-variable UIX-BKT-P   variable UIX-ENT-P
+PTR-VARIABLE UIX-BKT-P   PTR-VARIABLE UIX-ENT-P
 variable UIX-BKT-CAP variable UIX-ENT-CAP
 variable UIX-N       variable UIX-HI
 variable UIX-I       variable UIX-J   variable UIX-H
@@ -4630,10 +4741,11 @@ PTR-VARIABLE UIX-BASE
 \ so a baked image must carry no address for it; the next append re-allocates.
 \ Mirrors HIDX-RESET.
 : UIX-RESET ( -- )
-   HIDX-MEM-NULL UIX-BKT-P !
-   HIDX-MEM-NULL UIX-ENT-P !
+   NULL-PTR UIX-BKT-P !
+   NULL-PTR UIX-ENT-P !
+   NULL-PTR UIX-BASE!
    0 UIX-BKT-CAP !  0 UIX-ENT-CAP !  0 UIX-N !
-   UIX-STAMP ;
+   0 UIX-HI ! ;
 
 UIX-RESET
 
@@ -4658,7 +4770,7 @@ UIX-RESET
    p E-NODE-TAG {: tg:n :}
    tg EN-CON = IF 1 EXIT THEN
    tg EN-VAR = IF 2 EXIT THEN
-   tg EN-ROW = IF 1 EXIT THEN
+   tg EN-ROW = IF 2 EXIT THEN
    tg EN-PTR = IF 1 EXIT THEN
    tg EN-PUSH = IF 3 EXIT THEN
    tg EN-QUOT = IF 8 EXIT THEN
@@ -4839,6 +4951,7 @@ variable UIX-C
       S-ROW of
          EN-ROW E-NODE-NEW E-OFF >r
          x E-RES PAY E-RV-ID r@ E-PTR EN.A !
+         x E-RES PAY TVK@ r@ E-PTR EN.B !
          r>
       endof
       T-PTR of
@@ -4992,6 +5105,11 @@ USIGS USX-BASE!
    UEND @ USX-HI !
    USIGS USX-BASE! ;
 
+: USX-RESET ( -- )
+   0 USX-GEN !
+   0 USX-HI !
+   NULL-PTR USX-BASE! ;
+
 : USX-SYNC ( -- )
    UEND @ USX-HI @ <
    USIGS USX-BASE@ <> or IF 0 USX-GEN ! THEN ;
@@ -5043,6 +5161,13 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
    dup USX-TRUNCATE
    UEND !
    UTERM! ;
+
+\ Paired with the native builder's dictionary reset: keep primitive effects and
+\ retire user definitions through the same indexed truncation seam as rollback.
+\ This bounded state transition is callable only from an engine trust boundary.
+: CHECKER-RESET-SOURCE ( -- )
+   USIGS-USER-OFF @ USIGS-RESTORE-END ;
+REG-PROTECT
 
 \ USIG-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what USX answers — the
 \ newest user record for a symbol, offset+1, by walking every record the way the
@@ -5542,6 +5667,8 @@ variable ASIG-MISS-K
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
    MULTI-ERR? 0= IF
+      2 na nu write drop
+      2 s" : " write drop
       2 sa su write drop                 \ name the offending stored sig text
       s" : checker: bad stored signature" 76 die
    THEN
@@ -5636,7 +5763,11 @@ variable FMEND
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
          r> drop
       endof
-      EN-ROW of r@ EN.A @ E-I-RV r> drop endof
+      EN-ROW of
+         r@ EN.A @ E-I-RV
+         r@ EN.B @ RVK-QUOT = IF dup PAY RVK-QUOT! THEN
+         r> drop
+      endof
       EN-PTR of r@ EN.A @ RECURSE MK-PTR r> drop endof
       EN-PUSH of r@ EN.A @ RECURSE r@ EN.B @ RECURSE MK-PUSH r> drop endof
       EN-QUOT of
@@ -5746,10 +5877,11 @@ variable LMI
    REPEAT ;
 
 : EFF-APPLY ( ptr a -- ) {: h:ptr :}
+   0 CALL-HIT !
    h E-INST-RESET
    h ER.DIN @ E-INST
    h ER.DOUT @ E-INST
-   CHECKER-STEP
+   RECORDED-STEP
    h ER.HASR @ 0 <> if
       RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
       h ER.ROUT @ E-INST RCUR !
@@ -5967,7 +6099,7 @@ variable PE-QDIN
 variable PE-QDOUT
 
 : PE-Q ( -- )
-   FRESH MK-ROW dup PE-QDIN ! PE-QDOUT ! ;
+   FRESH MK-QROW dup PE-QDIN ! PE-QDOUT ! ;
 
 : PE-QIN ( n -- )
    PE-QDIN @ MK-PUSH PE-QDIN ! ;
@@ -5976,8 +6108,16 @@ variable PE-QDOUT
    PE-QDOUT @ MK-PUSH PE-QDOUT ! ;
 
 : ;PE-Q ( -- n )
-   FRESH MK-ROW {: rbase:n :}
+   FRESH MK-QROW {: rbase:n :}
    PE-QDIN @ PE-QDOUT @ rbase rbase MK-QUOT ;
+
+
+\ finally's body may change the entire data row; cleanup has no fixed window.
+: PE-FINALLY ( -- )
+   PE-BASE @ PE-QDIN !
+   FRESH MK-ROW dup PE-DOUT ! PE-QDOUT !
+   ;PE-Q PE-IN
+   PE-Q ;PE-Q PE-IN ;
 
 : PTABLE-START ( -- )
    0 #PE !
@@ -5993,6 +6133,8 @@ variable PE-QDOUT
    UTERM! ;
 
 PTABLE-START
+
+PRIM: finally PE-FINALLY PRIM;
 
 PRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT PRIM;
 PRIM: drop  PE-A PE-IN PRIM;
@@ -6071,9 +6213,11 @@ PRIM: !          PE-A PE-IN PE-PTR-A PE-IN PRIM;
 \ of a quotation into a persisted cell a reject, are dotted as
 \ habu-add-a-quotation-1610f30c.
 PRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN PRIM;
+PRIM: ptr-cell-mark PE-PTR-A PE-IN PRIM;
 PRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT PRIM;
-PRIM: BYTE-VIEW  PE-PTR-A PE-IN  PE-PTR-U8 PE-OUT PRIM;
-PRIM: CELL-VIEW  PE-PTR-U8 PE-IN  PE-PTR-A-RAW PE-OUT PRIM;
+\ Explicit memory views preserve address bits while changing the access type.
+PRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT PRIM;
+PRIM: cell-view  PE-PTR-U8 PE-IN PE-PTR-N PE-OUT PRIM;
 PRIM: +!         PE-N PE-IN PE-PTR-N PE-IN PRIM;
 PRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT PRIM;
 PRIM: c!         PE-U8 PE-IN PE-PTR-U8 PE-IN PRIM;
@@ -6082,7 +6226,7 @@ PRIM: atomic!    PE-A PE-IN PE-PTR-A PE-IN PRIM;
 PRIM: atomic-add PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: atomic-cas PE-A PE-IN PE-A PE-IN PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
 PRIM: fence      PRIM;
-PRIM: run-in-stack PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: run-in-stack PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 
 PRIM: .            PE-N PE-IN PRIM;
@@ -6101,6 +6245,7 @@ PRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: open     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: read     PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: ioctl    PE-N PE-IN PE-N PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
+PRIM: map-anon PE-N PE-IN  PE-PTR-A PE-OUT PE-N PE-OUT PRIM;
 PRIM: mmap     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: path0    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
 PRIM: open-rd  PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
@@ -6165,9 +6310,19 @@ PRIM: cp@            PE-N PE-OUT PRIM;
 PRIM: cp!            PE-N PE-IN PRIM;
 PRIM: dbase@         PE-N PE-OUT PRIM;
 PRIM: check@         PE-N PE-OUT PRIM;
+\ Compiler hook installation is an explicit engine boundary.
+PRIM: set-check     PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: set-preflight PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: set-top-check PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!
 PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
+PRIM: seed-ndict!    PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ explicit trusted reset boundary
 PRIM: SEAL-CAPTURE   PRIM;
+PRIM: seal-captured? PE-F PE-OUT PRIM;
 PRIM: SEAL-FRIEND    PRIM;
 PRIM: DRAIN-PRETRUST PRIM;   \ dot habu-engine-pre-trust-77410827: drains the pending pre-trust defer table
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
@@ -6216,8 +6371,16 @@ PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-START PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
+\ The source verifier's existing private engine boundary. The native compiler
+\ needs these zero-cell call windows even when compiling its TRUSTED caller.
+PRIM: CHECKER-VERIFY-PKG-START PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: CHECKER-VERIFY-PKG-DONE PRIM;
+PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-RESET-SOURCE PRIM;
+PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-EXPORT PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -6460,6 +6623,7 @@ PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-STRING PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-TAPE K-CHAR PE-N PE-OUT PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -6541,7 +6705,7 @@ PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
 PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
 PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
 PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
-PRIM: munmap   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
+PRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
 \ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
 \ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
 \ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Its
@@ -6607,6 +6771,8 @@ PRIM: EFFECT-QUOT-SIMPLE? PE-F PE-OUT PRIM;
 PRIM: EFFECT-QUOT-UP      PE-F PE-OUT PRIM;
 PRIM: EFFECT-RET-NEUTRAL? PE-F PE-OUT PRIM;
 PRIM: EFFECT-CATCH-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: EFFECT-EXEC-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: EFFECT-FINALLY-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-MATCH-CELLS PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
@@ -6999,7 +7165,6 @@ public
    CHECKER-TA-FIELD ! ;
 
 variable CHECKER-QBAD-TOK
-$20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 
 \ engine FIND parity (habu1.f FIND-QHAS/FIND-QBAD): a leading or trailing first
 \ colon keeps the token an ordinary name; a non-edge first colon with a second
@@ -7035,7 +7200,7 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 : CHECKER-LBUF-NAME-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   data-base CK-SEAL-LATCH-OFF + @ 0 <> IF
+   seal-captured? IF
       a u CHECKER-QUALIFIED? IF
          CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-CHECKER-LAYOUT-BUFFER throw THEN
       THEN
@@ -7195,13 +7360,12 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 
 \ TFAM 2b-iii: a direct post-seal user call would forget the checker's signature
 \ for an engine word so it could be redefined (spoof). Reject it fail-closed; the
-\ friend/engine load path (latch 0) and the guarded FORGET/HIDE wrappers (which
+\ open engine namespace (watermark 0) and the guarded FORGET/HIDE wrappers (which
 \ call -RAW only after the ndict-watermark guard passes) reach -RAW unchanged.
-\ checker.f loads before layout.f, so the friend-arena latch offset is mirrored
-\ here. The failure ABI comes from the earlier engine-error.f package.
+\ The failure ABI comes from the earlier engine-error.f package.
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
-   data-base CK-SEAL-LATCH-OFF + @ 0= 0= IF
+   seal-captured? IF
       2drop s" seal: cannot truncate sealed checker signatures" ENGINE-ERROR:SEAL-VIOLATION die
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
@@ -7507,115 +7671,165 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    q EFF-E@ 0= 0= if 0 0= 0= exit then
    q EFF-F@ 0= ;
 
-\ ---- HOW WIDE THE WINDOW A CATCH SITE INSTANTIATED IS -------------------------
-\ WHAT THE QUESTION IS AND WHY NO READER ABOVE ANSWERS IT. `catch` runs a
-\ quotation and, when that quotation throws, the engine puts the data stack back
-\ to the DEPTH it had when the call was made and never to its CONTENTS: the cells
-\ the body may have written are still whatever it left there. So a compiler that
-\ makes a catch site into a call has to know exactly how many cells the body may
-\ disturb, and it has to have every one of them in its data-stack home across the
-\ call - anything it kept in a register would answer the value the site had
-\ BEFORE, which is the one answer the engine never gives. That number is the
-\ caught quotation's own input row measured in cells. The readers above cannot
-\ answer it: they answer about a NAME's declared effect, and `catch` has no
-\ declared effect at all - its rows are built per site by RSCATCH, out of the
-\ quotation in hand and the live stack under it.
-\
-\ THE ANSWER IS KEYED BY THE TOKEN, AND THE TOKEN IS A COORDINATE BOTH SIDES
-\ ALREADY SHARE. A definition may hold several catch sites with different window
-\ widths, so a single latch holding the last one would answer every site with
-\ some other site's number - quietly, and only in bodies with more than one
-\ catch. What identifies a site exactly is the token it stands on: the reader
-\ below reports each token it consumes to the source-tape observer, in
-\ consumption order and exactly once, and the tape producer appends one row per
-\ report and refuses any other order (src/compiler/native/feed.f ORDER-CK). So
-\ report ordinal k IS tape ordinal k, and a consumer elaborating tape row k asks
-\ about row k. The two alternatives were both rejected: taking the width from the
-\ compile-time stack DEPTH at the site is the guess src/compiler/native/elaborate.f
-\ already refuses to make about a quotation's arity, and numbering the catch
-\ sites, or the quotations, within the definition makes two counters that have to
-\ agree about one fact.
-\
-\ IT RECORDS ONLY WHILE A UNIT IS RECORDING, AND IT IS RESET WHEN ONE OPENS. The
-\ ordinal means nothing outside an armed window - there is no tape for it to be
-\ an ordinal INTO - so a certification nobody is recording pays one flag test per
-\ catch and stores nothing, which is every certification the engine does for
-\ itself. One unit is one certification (a second scan inside an open unit is
-\ refused by name), so clearing the table when the observer is armed makes the
-\ table's contents always the definition the consumer is about to elaborate.
-\
-\ ABSENT IS THE FAIL-CLOSED ANSWER, exactly as it is for EFFECT-RET-NEUTRAL?
-\ with no name resolved: a token that is not a catch site, a site recorded past
-\ this table's ceiling, and a query outside any recording all answer no width,
-\ and a consumer that cannot get a width refuses the body by name instead of
-\ compiling it against a number nobody proved. The ceiling is a count of catch
-\ SITES in one definition, which is a small number: most bodies in the tree hold
-\ one or two.
-\
-\ THE CEILING IS REACHABLE, AND WHAT MAKES IT REACHABLE CHANGED UNDER IT. A
-\ ceiling no source can get to is a branch no test can take, and this one used to
-\ be argued from the RECORDER's caps: a tape of 128 tokens is 31 catch sites at
-\ four tokens each, so a ceiling of 32 would have been answered by the tape's
-\ refusal every time and this one would never have fired. That argument is gone.
-\ src/compiler/native/compiler.f now sizes a unit's tape from the source it was
-\ handed and takes its byte ceiling from the engine's own body capture, so a
-\ recorded definition may hold as many catch sites as the engine can compile, and
-\ nothing upstream answers before this table does.
-\
-\ WHICH LEAVES THE MEASUREMENT AS THE WHOLE ARGUMENT, AND THE MEASUREMENT HAS
-\ MOVED TOO. The densest body in src and lib writes SEVENTEEN catch sites in one
-\ definition (lib/array-test.f AT-TEST-CHECKS, counted 2026-08-14), one past this
-\ ceiling - and while the recorder's byte cap was 512 a body that long was
-\ refused for its length before any of this was consulted. A body of that many
-\ sites is now refused by name here instead, which is the fail-closed answer and
-\ not a wrong window, and which test/compiler/native-catch.f CAP-CASE measures at
-\ exactly seventeen. Raising this number is a capability with its own derivation
-\ and its own two-sided fixture, not a widening to do in passing.
-
-\ ---- the recording unit both tables below are filed against -------------------
-\ ONE UNIT, ONE ORDINAL, AND THAT IS THE WHOLE REASON THESE TWO CELLS ARE NOT
-\ EACH TABLE'S OWN. The paragraphs above rejected numbering catch sites within
-\ the definition because it makes "two counters that have to agree about one
-\ fact"; a second table filed under a second counter would be the same mistake
-\ one level up. The reported-token ordinal is the coordinate, both tables are
-\ filed against it, and it is stepped in one place.
-variable REC-ON                      \ a recording unit is open
+\ Quotation call metadata is recorded at the token the checker consumed.
+\ Its input width is measured before unification binds the quotation's open
+\ row to the caller's stack. The table grows with the recorded definition;
+\ missing sites remain absent, and a no-return output is CELLS-NONE.
 variable REC-IX                      \ the ordinal the next reported token takes
 
 : REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
    REC-ON @ 0= IF EXIT THEN
    REC-IX @ 1 + REC-IX ! ;
 
-16 constant CWIN-MAX                 \ catch sites one recorded definition may hold
+16 constant CWIN-INIT
+$7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 0 constant CW-ORD                    \ the token ordinal the site stands on
 1 constant CW-IN                     \ its window in cells
 2 constant CW-OUT                    \ what the body leaves, or CELLS-NONE for one that never returns
-3 constant CW-ROW                    \ cells one recorded site occupies
+3 constant CW-KIND
+4 constant CW-ROW                    \ cells one recorded site occupies
+-3 constant CW-MATCH-PAYLOAD         \ instantiated payload cells and value boundaries
+2 constant CW-CALL-RAW               \ frozen row spines with live type terms
+3 constant CW-CALL
+4 constant CW-GLUE
+5 constant CW-QUOT-IN                \ + twice the input cell index from the top
+6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
 
-variable CWIN-N                      \ sites recorded for the open unit
-create CWIN-TAB CWIN-MAX CW-ROW * cells allot
+\ cell-effects.f owns the checked storage after the bootstrap checker starts.
+: CWIN-P ( -- ptr ptr n ) CWIN-STATE 0 ptr-field ;
+: CWIN-N ( -- ptr n ) CWIN-STATE CELL + ;
+: CWIN-CAP ( -- ptr n ) CWIN-STATE 2 cells + ;
 
 : CWIN-AT ( n n -- ptr a )           \ field f of row i
    {: i:n f:n :}
-   CWIN-TAB  i CW-ROW * f + cells + ;
+   CWIN-P @ i CW-ROW * f + cells + ;
 
 : CWIN-RESET ( -- )
    0 CWIN-N !
-   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT ! ;
+   0 CALL-HIT !  0 CALL-ARMED !
+   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !  0 CWIN-KIND ! ;
 
-\ Write down what the catch on the token now being reported instantiated. It runs
-\ from the report itself, so the row and the ordinal it is filed under are made in
-\ one step and cannot drift; a token that was not a catch has nothing latched and
-\ writes nothing.
-: CWIN-COMMIT ( -- )
-   CWIN-HIT @ 0= IF EXIT THEN
-   0 CWIN-HIT !
-   CWIN-N @ CWIN-MAX >= IF EXIT THEN
+: CWIN-ENSURE ( -- )
+   CWIN-N @ CWIN-CAP @ < IF EXIT THEN
+   CWIN-N @ CWIN-ROW-MAX >= IF s" checker: quotation site capacity overflow" 76 die THEN
+   CWIN-N @ 1 + CWIN-INIT max
+   CWIN-CAP @ CWIN-ROW-MAX 2 / <= IF CWIN-CAP @ 2 * max THEN
+   {: cap:n :}
+   CWIN-P @ CWIN-N @ CW-ROW * cells cap CW-ROW * cells
+   ARENA-BYTES-GROW CWIN-P !
+   cap CWIN-CAP ! ;
+
+: CWIN-ADD ( n n n n -- ) {: ord:n in:n out:n kind:n :}
+   CWIN-ENSURE
    CWIN-N @ {: i:n :}
-   REC-IX @    i CW-ORD CWIN-AT !
-   CWIN-IN @   i CW-IN CWIN-AT !
-   CWIN-OUT @  i CW-OUT CWIN-AT !
+   ord  i CW-ORD CWIN-AT !
+   in   i CW-IN CWIN-AT !
+   out  i CW-OUT CWIN-AT !
+   kind i CW-KIND CWIN-AT !
    i 1 + CWIN-N ! ;
+
+\ Copy only the fixed row spine. Its fresh tail never participates in
+\ unification; the shared type terms can still acquire their final widths.
+: CALL-SPINE-COPY ( n -- n )
+   FRESH MK-ROW swap
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE rot MK-PUSH swap P>REST
+   REPEAT drop
+   FRESH MK-ROW swap
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE rot MK-PUSH swap P>REST
+   REPEAT drop ;
+
+: CALL-QUOT-COPY ( n -- n ) {: t:n :}
+   t T-RES dup TAG T-QUOT <> IF drop t EXIT THEN {: q:n :}
+   q Q>DIN CALL-SPINE-COPY q Q>DOUT CALL-SPINE-COPY
+   q Q>RIN q Q>ROUT MK-QUOT {: copy:n :}
+   copy q Q>XHAS q Q>XDEAD q Q>XDOUT q Q>XROUT QX!
+   copy ;
+
+: CALL-ROW-COPY ( n -- n )
+   CALL-SPINE-COPY dup
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE CALL-QUOT-COPY over PAY 2 * cells SPA + !
+      P>REST
+   REPEAT drop ;
+
+: CALL-FREEZE ( -- )
+   CALL-DIN @ CALL-ROW-COPY CALL-DIN !
+   CALL-DOUT @ CALL-ROW-COPY CALL-DOUT !
+   -1 CALL-HIT ! ;
+: CALL-FREEZE-INSTALL ( -- ) [: CALL-FREEZE ;] is CALL-FREEZE-XT ;
+CALL-FREEZE-INSTALL
+
+: CWIN-COMMIT ( -- )
+   CWIN-HIT @ IF
+      0 CWIN-HIT !
+      REC-IX @ CWIN-IN @ CWIN-OUT @ CWIN-KIND @ CWIN-ADD
+      CWIN-KIND @ -1 = IF
+         REC-IX @ 0 FINALLY-CLEANUP-OUT @ -2 CWIN-ADD
+      THEN
+   THEN
+   CALL-HIT @ IF
+      0 CALL-HIT !
+      REC-IX @ CALL-DIN @ CALL-DOUT @ CW-CALL-RAW CWIN-ADD
+   THEN ;
+
+: CALL-ROW-GLUE ( n -- n ) {: row:n :}
+   row ROW-CELLS {: width:n :}
+   width CELL 8 * > IF -1 EXIT THEN
+   0 0 row
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE {: t:n :}
+      t ROW-TERM-CELLS {: w:n :}
+      rot rot {: mask:n top:n :}
+      t HIDDEN-PARAM? IF
+         t HIDDEN-SLOT@ 0 > IF mask 1 width 1 - top - lshift or ELSE mask THEN
+      ELSE
+         mask w 1 - 0 ?do 1 width 1 - top i + - lshift or loop
+      THEN
+      top w + rot P>REST
+   REPEAT drop drop ;
+
+\ The payload occupies the top of the arm's row; its prefix belongs to the
+\ enclosing control frame. Publish the same instantiated value boundaries used
+\ for calls, shifted past that prefix, while the arm's types are still live.
+: MATCH-PAYLOAD-RECORD ( n n -- ) {: row:n base:n :}
+   REC-ON @ 0= IF EXIT THEN
+   base ROW-CELLS {: prefix:n :}
+   row ROW-CELLS prefix - {: width:n :}
+   width 0= IF 0 ELSE
+      row CALL-ROW-GLUE dup -1 <> IF prefix rshift THEN
+   THEN {: glue:n :}
+   REC-IX @ width glue CW-MATCH-PAYLOAD CWIN-ADD ;
+
+: CALL-ROW-QUOTS ( n n n -- ) {: ord:n row:n kind:n :}
+   0 row
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE T-RES {: t:n :}
+      t TAG T-QUOT = IF
+         over 2 * kind + {: k:n :}
+         ord t Q>DIN ROW-CELLS
+         t Q>XDEAD IF CELLS-NONE ELSE t Q>DOUT ROW-CELLS THEN
+         k CWIN-ADD
+      THEN
+      swap t ROW-TERM-CELLS + swap P>REST
+   REPEAT 2drop ;
+
+: CALL-FINALIZE ( -- )
+   REC-ON @ 0= IF EXIT THEN
+   CWIN-N @ 0 ?do
+      i CW-KIND CWIN-AT @ CW-CALL-RAW = IF
+         i CW-ORD CWIN-AT @ {: ord:n :}
+         i CW-IN CWIN-AT @ {: din:n :}
+         i CW-OUT CWIN-AT @ {: dout:n :}
+         din ROW-CELLS i CW-IN CWIN-AT !
+         dout ROW-CELLS i CW-OUT CWIN-AT !
+         CW-CALL i CW-KIND CWIN-AT !
+         ord din CALL-ROW-GLUE dout CALL-ROW-GLUE CW-GLUE CWIN-ADD
+         ord din CW-QUOT-IN CALL-ROW-QUOTS
+         ord dout CW-QUOT-OUT CALL-ROW-QUOTS
+      THEN
+   loop ;
 
 \ ---- the cells a recorded definition's layout forms really occupy -------------
 \ WHY A SECOND TABLE AND NOT A SECOND READING OF THE REGISTRY. A value of a
@@ -7769,15 +7983,25 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 \ A recorded site whose body never returns answers its real input width and
 \ CELLS-NONE for the output, which is the difference between "no catch here" and
 \ "this catch's body never comes back" without a second sentinel to know.
-: EFFECT-CATCH-CELLS ( n -- n n )
-   {: ix:n :}
+: EFFECT-QUOT-CALL-CELLS ( n n -- n n )
+   {: ix:n kind:n :}
    0 BEGIN dup CWIN-N @ < WHILE
-      dup CW-ORD CWIN-AT @ ix = IF
+      dup CW-ORD CWIN-AT @ ix = over CW-KIND CWIN-AT @ kind = and IF
          dup CW-IN CWIN-AT @  swap CW-OUT CWIN-AT @  EXIT
       THEN
       1 +
    REPEAT drop
    CELLS-NONE CELLS-NONE ;
+
+: EFFECT-CATCH-CELLS ( n -- n n )
+   0 EFFECT-QUOT-CALL-CELLS ;
+
+: EFFECT-EXEC-CELLS ( n -- n n )
+   1 EFFECT-QUOT-CALL-CELLS ;
+
+: EFFECT-FINALLY-CELLS ( n -- n n n ) {: ix:n :}
+   ix -1 EFFECT-QUOT-CALL-CELLS
+   ix -2 EFFECT-QUOT-CALL-CELLS nip ;
 
 \ How many cells the layout token `ix` really moves: a `MATCH` family token's
 \ instantiated bundle width, an arm's `of` token's instantiated pad count, or a
@@ -7935,6 +8159,15 @@ variable DFER-POS
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
 
+\ The successful CHECK still owns width facts referring to its type terms.
+\ Publish its verified rows without resetting and reparsing that live arena.
+: CHECKER-USIG-CERT-PARSED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
+   na nu CHECKER-REC-NAME!
+   CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ E-ADD-EFFECT
+   sa su CHECKER-ASIG-CAPTURE ;
+
 $1000 constant LBUF-SIG-CAP
 $7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
 create LBUF-SIG-BUF LBUF-SIG-CAP allot
@@ -8063,7 +8296,7 @@ $8 constant NORET-ENTRY-ALIGN
 NORET-LAYOUT-ASSERT
 
 create NORET-BOOT NORET-INIT-CAP allot
-variable NORET-P   variable NORET-CAP-U   variable NORET-END
+PERSISTED-PTR-VARIABLE NORET-P   variable NORET-CAP-U   variable NORET-END
 NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
 variable NORET-FLAG
 variable NORET-GROW-CAP   variable NORET-GROW-NEXT
@@ -8105,6 +8338,11 @@ NORETS NRX-BASE!
 : NRX-STAMP ( -- )
    NORET-END @ NRX-HI !
    NORETS NRX-BASE! ;
+
+: NRX-RESET ( -- )
+   0 NRX-GEN !
+   0 NRX-HI !
+   NULL-PTR NRX-BASE! ;
 
 : NRX-SYNC ( -- )
    NORET-END @ NRX-HI @ <
@@ -8180,17 +8418,15 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
-: NORET-BOOT? ( -- bool )
-   NORETS NORET-BOOT = ;
-
-: NORET-SNAPSHOT-CAP ( -- )
-   NORET-END @ CELL + NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
-
+\ The table can outgrow its initial buffer. Persist the complete live prefix
+\ in image DATA, just like stored signatures, and retain geometric headroom.
 : NORET-SNAPSHOT-PERSIST ( -- )
-   NORET-SNAPSHOT-CAP
-   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ CELL + USIGS-COPY THEN
-   NORET-BOOT NORET-P !
-   NORET-INIT-CAP NORET-CAP-U !
+   NORET-END @ CELL + {: n:n :}
+   n USIGS-POW2-CAP {: cap:n :}
+   cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
+   NORETS dst n USIGS-COPY
+   dst NORET-P !
+   cap NORET-CAP-U !
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
@@ -8233,11 +8469,13 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
    PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-   PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   MAXPARAM-INIT PARAM-CAP !
+   PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
+   MAXPARAM-INIT PARAM-CAP !
    PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
    PARAM-SCR-BOOT PARAM-SCR-P !   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
    VRI-AK-BOOT VRI-AK-P !   VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
-   TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET ; \ unification trail
+   TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET
+   LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   LIN-TAINT-RESET ;
 
 \ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS) must
 \ survive into a built image (later checked loads reference persisted signatures).
@@ -8278,6 +8516,9 @@ variable REG-PERSIST-DELTA
       REG-PERSIST-DELTA @ CT-STR-REBASE
    THEN ;
 
+: CT-SNAPSHOT-MARK-POINTERS ( -- )
+   CTN @ 1 ?do CT-NAME-A i cells + ptr-cell-mark loop ;
+
 : VREC-SNAPSHOT-PERSIST ( -- )
    VREC-CAP-V @ cells {: rb:n :}
    VREC-NAME-A-P VREC-NAME-A-BOOT rb REG-PERSIST-BUF drop
@@ -8303,12 +8544,21 @@ variable REG-PERSIST-DELTA
       REG-PERSIST-DELTA @ VREC-STR-REBASE
    THEN ;
 
+: VREC-SNAPSHOT-MARK-POINTERS ( -- )
+   VREC-N @ 0 ?do VREC-NAME-A i cells + ptr-cell-mark loop ;
+
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
    SYMS-P SYMS-BOOT SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
    SYM-STR-P SYM-STR-BOOT SYM-STR-U @ REG-PERSIST-BUF IF
       SYM-STR-U @ SYM-STR-CAP-V !
       REG-PERSIST-DELTA @ SYM-STR-REBASE
    THEN ;
+
+: SYM-SNAPSHOT-MARK-POINTERS ( -- )
+   SYM-N @ 1 ?do
+      i SYM-PKG-A-FIELD ptr-cell-mark
+      i SYM-NAME-A-FIELD ptr-cell-mark
+   loop ;
 
 \ Friend-only extension hook: the package-scoped TFAM/SCHEMA registries live in
 \ files loaded after checker.f (src/core/type-schema.f, src/core/type-family.f),
@@ -8378,21 +8628,44 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-CLOSE ( -- ) REG-EXT-AOT-CLOSE-XT ;
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
-: CHECKER-SNAPSHOT-PREPARE ( -- )
-   TOKBUF-RESET
-   HIDX-RESET
-   TV-SNAP-RESET
-   DECOUPLED-ARENA-SNAP-RESET
-   CT-SNAPSHOT-PERSIST
-   VREC-SNAPSHOT-PERSIST
-   SYM-SNAPSHOT-PERSIST
-   USIGS-SNAPSHOT-PERSIST
-   UIX-RESET                            \ process-local mmap: never bake its address
-   HIDX-EFF-BASE-CLEAR
-   NORET-SNAPSHOT-PERSIST
-   REG-EXT-PERSIST-XT
-   REG-SCRATCH-SNAP-XT
-   REG-LATE-SCRATCH-SNAP-XT ;
+: CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
+   CWIN-RESET
+   NULL-PTR CWIN-P !  0 CWIN-CAP !
+   CHECKER-ASIG-DISARM
+   0 ASIG-MAPPED !
+   NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
+   NULL-PTR ASIG-STR-P !  0 ASIG-STR-U !  0 ASIG-STR-CAP-V !
+   NULL-PTR ASIG-DIST-P !  0 ASIG-DIST-N !  0 ASIG-DIST-CAP-V !
+   NULL-PTR ASIG-LAST-P !  0 ASIG-LAST-CAP-V !
+   NULL-PTR SIGSCOPE-P !  0 SIGSCOPE-U !  0 SIGSCOPE-ON !
+   NULL-PTR PE-NA !  0 PE-NU !  NULL-PTR PE-PKG-A !  0 PE-PKG-U !
+
+   NULL-PTR CT-DST !
+   NULL-PTR TBASE !  0 TBLEN !  0 TI !  0 TSTART !
+   SGBAD-CLEAR
+   NULL-PTR SB !  0 SL !  0 SI !  NULL-PTR SS !
+   NULL-PTR PKA !  0 PKU !  PKRESET
+   NULL-PTR SYM-DST !
+   NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U !
+   NULL-PTR DEADTA !  0 DEADTU !
+   NULL-PTR SGA !  0 SGU !
+   NULL-PTR NMA !  0 NMU !
+   NULL-PTR CHECKER-REC-A !  0 CHECKER-REC-U !
+   NULL-PTR CHECKER-QA !  0 CHECKER-QU !
+   NULL-PTR CHECKER-TA !  0 CHECKER-TU !
+   NULL-PTR FEP !  0 FEP-OFF !
+   NULL-PTR FP !  NULL-PTR USX-P !
+
+   ATOMA-BOOT 0 MAXATOM-INIT ARENA-CELLS-ZERO
+   PARAMA-BOOT 0 MAXPARAM-INIT ARENA-CELLS-ZERO
+   FAM-A 0 FAM-CAP ARENA-CELLS-ZERO
+   0 ATOMN !  0 PARAMN !  0 PARAM-SCR-N !  0 PARG-N !  0 FAM-N !
+   CT-NAME-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO
+   VREC-NAME-A VREC-N @ VREC-CAP-V @ ARENA-CELLS-ZERO
+   SYM-CAP-V @ SYM-N @ ?do
+      NULL-PTR i SYM-PKG-A-FIELD !
+      NULL-PTR i SYM-NAME-A-FIELD !
+   loop ;
 
 : NORET-REC ( -- ptr a )
    NORET-END @ NORET-CELL ;
@@ -8564,6 +8837,7 @@ variable CURSYM
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" dynamic-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -8671,6 +8945,7 @@ variable UNSAFE-SYM-N
    s" layout-buffer" UNSAFE-NAME-ADD
    s" defer-layout-buffer" UNSAFE-NAME-ADD
    s" typed-buffer"  UNSAFE-NAME-ADD
+   s" dynamic-buffer" UNSAFE-NAME-ADD
    s" typed-variable" UNSAFE-NAME-ADD ;
 
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
@@ -8719,9 +8994,9 @@ variable UNSAFE-SYM-N
 7137 constant E-CAST-LINEAR   \ in/out transitively contains linear ownership
 
 \ sealed system-package names: checker mirror of the native RESTAB table
-\ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
+\ (src/habu/habu2.f) — foundational and stable.
 : EXPORT-SEAL-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
-   data-base CK-SEAL-LATCH-OFF + @ 0= IF EXIT THEN
+   seal-captured? 0= IF EXIT THEN
    a u CHECKER-QUALIFIED? 0= IF EXIT THEN
    CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
 
@@ -8949,7 +9224,7 @@ WF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 WF.FLAGS WF.FLAGS-OFF CHECKER-LAYOUT=
 $80 constant WF-INIT
 create WFS-BOOT WF-INIT WF-REC * allot
-PTR-VARIABLE WFS-P   WFS-BOOT WFS-P !
+PERSISTED-PTR-VARIABLE WFS-P   WFS-BOOT WFS-P !
 variable WF-CAP  WF-INIT WF-CAP !
 variable WF-N
 variable WF-CURROW   variable WF-POS-I
@@ -9044,7 +9319,7 @@ variable WF-I
 \ before CHECKER-STEP mutates the row. The effect rows push the family's hidden
 \ expansion, so the value side pairs hidden-to-hidden like every checked row.
 \ A nominal-scalar pointee (arity-0 TK-CELL param) takes the same arm with
-\ param-to-param rows — NOMPTR-BLOCK? forbids the generic var route — but
+\ param-to-param rows, but
 \ records no width fact: every raw cell is a valid value of the family, so it
 \ lowers as a plain scalar with no fetch-validation program.
 : LAYOUT-MEM-INNER ( -- n bool )   \ resolved DCUR top `ptr fam<..>` -> logical pointee
@@ -9063,7 +9338,7 @@ variable WF-I
    FRESH MK-ROW {: rest:n :}
    t MK-PTR rest MK-PUSH
    t rest PUSH-LOGICAL
-   CHECKER-STEP ;
+   RECORDED-STEP ;
 
 : LAYOUT-STORE-STEP ( n -- ) {: t:n :}   \ ( fam ptr fam -- ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
@@ -9071,7 +9346,7 @@ variable WF-I
    FRESH MK-ROW {: rest:n :}
    t rest PUSH-LOGICAL
    t MK-PTR swap MK-PUSH
-   rest CHECKER-STEP ;
+   rest RECORDED-STEP ;
 
 \ Byte-pointer cell-op reject (dot habu-checker-diag-for-4c443fcf). `!`/`@` need
 \ a cell-width `ptr a`, but ROW-TOP-BYTE-PTR? found a `ptr u8`. STEP-STORE/
@@ -10265,7 +10540,7 @@ MF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 8 constant MF-CAP-INIT
 variable MF-CAP-V   MF-CAP-INIT MF-CAP-V !
 create MF-A-BOOT   MF-CAP-INIT MF-REC * allot
-variable MF-A-P    MF-A-BOOT MF-A-P !
+PERSISTED-PTR-VARIABLE MF-A-P    MF-A-BOOT MF-A-P !
 : MF-ARENA ( -- ptr a ) MF-A-P @ ;
 variable MF-DEPTH   0 MF-DEPTH !
 
@@ -10284,7 +10559,7 @@ variable MF-DEPTH   0 MF-DEPTH !
 8 constant MSEEN-CAP-INIT
 variable MSEEN-CAP-V   MSEEN-CAP-INIT MSEEN-CAP-V !
 create MSEEN-BOOT   MSEEN-CAP-INIT cells allot
-variable MSEEN-P   MSEEN-BOOT MSEEN-P !
+PERSISTED-PTR-VARIABLE MSEEN-P   MSEEN-BOOT MSEEN-P !
 : MSEEN-POOL ( -- ptr a ) MSEEN-P @ ;
 variable MSEEN-N   0 MSEEN-N !
 variable MSEEN-I
@@ -10528,6 +10803,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    r MF.RBASE @ RCUR !
    MPEND @ 0 < 0= IF
       MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT DCUR !
+      DCUR @ r MF.BASE @ MATCH-PAYLOAD-RECORD
    THEN
    10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
    0 DEADP !
@@ -10817,14 +11093,20 @@ variable SDI          \ decode cursor, a byte offset into the scan text
    SKIP-STRING-PAYLOAD
    SKF @ IF before 0 SPAY-RECORD THEN ;
 
+variable CPAY-B
+variable CPAY-U
+variable CPAY-ON
+
 : SKIP-PARSE-LIT-PAYLOAD ( -- )
    BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 <= ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
    REPEAT
+   TI @ CPAY-B !  0 CPAY-U !
    TI @ TBLEN @ >= IF 0 OK ! exit THEN
    BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 > ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
-   REPEAT ;
+   REPEAT
+   TI @ CPAY-B @ - CPAY-U ! ;
 
 : DEAD-OWNER! ( ptr u8 n -- )
    DEADTU !  DEADTA ! ;
@@ -11251,12 +11533,7 @@ variable IS-TU
 \ It is the same shape a string literal's payload already uses: the judgement
 \ spends the bytes and reports what it spent, because only the judgement knows.
 \
-\ IT IS ARMED WHERE THE TOKEN IS CONSUMED AND NOWHERE ELSE. IS-NEXT-TOKEN is
-\ also used to PEEK - BTICK-NEXT-CONSUMES-XT? reads the token after the tick and
-\ puts TI back - and a peek consumes nothing, so arming happens in
-\ IS-TARGET-TOK?, which is the one word both keywords consume through. The peek
-\ overwrites the scratch below and cannot disturb an armed row, because arming
-\ copies.
+\ IS-TARGET-TOK? records each consumed target for the source tape.
 variable IS-TOFF                     \ where the token IS-NEXT-TOKEN last read starts
 variable IS-PEND                     \ a swallowed token is waiting to be reported
 variable IS-PEND-OFF                 \ its offset in the scanned text
@@ -11330,73 +11607,16 @@ variable IS-PEND-U                   \ and its length
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
 
-\ `['] W` (compile-mode tick) retypes from a plain n (`PRIM: [']  PE-N PE-OUT`)
-\ to xt<effect(W)>: a T-QUOT of W's certified effect that execute/catch/is
-\ fit-check by the existing RSEXEC/RSCATCH/IS-APPLY quotation unification (docs
-\ typed-top-level.md §3). Two gates keep this precise-yet-safe:
-\  (1) W's identity is only in the checked text on the CANDIDATE/raw-source path
-\      (PIMM-STREAM 0, CHECK-CANDIDATE!/CHECK!/stage certify). The engine
-\      -reconstructed --load body drops the tick target (C-BTICK consumes it with
-\      no LBCAP), so there BTICK-TOK never fires and `[']` keeps its sound
-\      over-strict PE-N model (execute rejects, probe p8).
-\  (2) the xt<effect> is only materialised when the VERY NEXT token is an
-\      xt-effect consumer; otherwise `['] W` yields a plain n exactly as today, so
-\      the store-consumer sites (`['] B+ FPRIM-L`, `['] C-PACKAGE CF-ENTRY`, ...)
-\      that hand the raw xt cell to a ( .. n .. ) prim are byte-unchanged. A
-\      T-QUOT does not unify with a scalar n (sound: no arithmetic on code cells),
-\      so this look-ahead is what lets the effect ride only into the fit-check.
-\ A sig-less / prim / undefined W pushes a plain n so execute still rejects (over
-\ -strict but sound, never a pure-xt launder); an unsafe definer W rejects,
-\ closing DIRECT-tick laundering (the stored-xt `@ execute` residual stays dot
-\ habu-checker-exec-of-5923c543).
-: BTICK-CAND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [']" CORE-STR= 0= IF RES-FALSE EXIT THEN
-   PIMM-STREAM @ 0 = ;
+\ A tick retains the target effect through calls, locals and typed storage.
+: BTICK-CAND? ( ptr u8 n -- bool )
+   s" [']" CORE-STR= ;
 
 : BTICK-PUSH ( n -- )                    \ push one row term (xt<effect> quot or plain n)
    DCUR @ MK-PUSH DCUR ! ;
 
-\ execute/catch/is unify the carried effect against the LIVE row (RSEXEC/RSCATCH/
-\ IS-APPLY), so a T-QUOT operand fit-checks directly. run-in-stack is deliberately
-\ excluded: its xt runs in an ISOLATED frame buffer, so the fit is "frame cells >=
-\ e's din arity", not current-row unification - a distinct check left as residual
-\ (dot habu-typed-top-xt-096a8f1b follow-up), and it keeps its raw-xt PE-N operand
-\ here so `['] W run-in-stack` stays sound rather than falsely rejecting.
-: BTICK-XT-CONSUMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" execute" CORE-STR=
-   a u s" catch" CORE-STR= or
-   a u s" is" CORE-STR= or ;
-
-\ A typed xt<effect> storage cell accessor (TYPED-VARIABLE / TYPED-BUFFER, dot
-\ habu-typed-xt-storage-ddad4af8) certifies with a top output of `ptr xt<...>`.
-\ Recognising it as an xt sink lets `['] W  HK !` retype the tick so the store
-\ fit-checks W's certified effect against the cell's declared effect, instead of
-\ erasing the tick to a plain n and rejecting on `actual: n` (dot
-\ habu-typed-xt-cells-08e1dc2c). Only the immediately-following variable accessor
-\ is caught; a buffer slot store (`['] W idx BUF !`) puts the index between the
-\ tick and the accessor and stays on the quotation-store surface (docs/effects.md).
-: BTICK-XT-CELL-PTR? ( n -- bool )       \ term is `ptr xt<...>` : pointer to a typed xt<effect> cell
-   T-RES dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
-   PTR>INNER T-RES TAG T-QUOT = ;
-: BTICK-DOUT-XT-CELL? ( ptr a -- bool )  \ effect record's top output term is a typed xt cell pointer
-   EFF-QUOT Q>DOUT R-RES dup TAG S-PUSH = IF P>TYPE BTICK-XT-CELL-PTR? EXIT THEN
-   drop RES-FALSE ;
-: BTICK-STORE-CELL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ next token is a typed-xt-cell store accessor
-   a u CHECKER-FIND-ACTIVE-SIG FEP-HIT? 0= IF RES-FALSE EXIT THEN
-   FEP @ BTICK-DOUT-XT-CELL? ;
-
-: BTICK-NEXT-CONSUMES-XT? ( -- bool )    \ peek (no consume): is the post-target token an xt sink?
-   TI @ >r
-   IS-NEXT-TOKEN {: a:ptr u:n ok:bool :}
-   r> TI !
-   ok 0= IF RES-FALSE EXIT THEN
-   a u BTICK-XT-CONSUMER? IF RES-TRUE EXIT THEN
-   a u BTICK-STORE-CELL? ;
-
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
-   BTICK-NEXT-CONSUMES-XT? 0= IF PE-N BTICK-PUSH EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? IF FEP @ EFF-QUOT BTICK-PUSH ELSE PE-N BTICK-PUSH THEN ;
 
@@ -11528,6 +11748,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    FIELD-PROJ-STEP RES-TRUE ;
 
 : DO-TOK1 {: a u :}
+   0 CALL-HIT !
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
@@ -11537,6 +11758,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
    MM @ 0 <> IF TKF TKFU @ MATCH-TOK ELSE
+   TKF TKFU @ LOC-REF? IF ELSE
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
@@ -11547,7 +11769,6 @@ variable CONFAM    \ resolved family id while CONM = 2
    OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
-   TKF TKFU @ LOC-REF? 0= IF
    TKF TKFU @ CF-TOK? 0= IF
    TKF TKFU @ QDUP-STEP? 0= IF
    LAYOUT-XPORT @ IF TKF TKFU @ WF-XPORT-RECORD THEN   \ width facts from the pre-op row
@@ -11563,7 +11784,10 @@ variable CONFAM    \ resolved family id while CONM = 2
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
    STRING-PAYLOAD-STEP
-   TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
+   TKF TKFU @ PARSE-LIT? IF
+      SKIP-PARSE-LIT-PAYLOAD
+      CPAY-U @ 0 > CPAY-ON !
+   THEN
    \ declared parsing immediate: skip its payload tokens - raw-text scans only
    \ (engine-reconstructed load buffers already lack the payload, PIMM-STREAM).
    PIMM-STREAM @ 0 = IF
@@ -11600,51 +11824,65 @@ variable MEO-NAMEC    \ absolute addr of the compiler's def name-token cell
 variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/col/byte
 0 MEO-ON !
 
-: MULTI-ERR-BEGIN ( -- ) -1 MULTI-ERR !  0 MULTI-ERR-N !  0 MEO-ON ! ;
-: MULTI-ERR-END ( -- n ) MULTI-ERR-N @  0 MULTI-ERR !  0 MEO-ON ! ;   \ reject count; clears mode
 : MULTI-ERR-ORIGIN! {: base:ptr namec:n bl:n bc:n bb:n :}
    base MEO-BASE !  namec MEO-NAMEC !
    bl MEO-BL !  bc MEO-BC !  bb MEO-BB !  -1 MEO-ON ! ;
 : MEO-APPLY ( -- )    \ set DIAG-ORIGIN! to the current def's file position
    MEO-BASE @  MEO-NAMEC @ @  MEO-BL @ MEO-BC @ MEO-BB @  DIAG-ORIGIN-SPAN! ;
 
-\ --- declared-effect parametricity seal (habu-nominal-storage-effect-a60ba885).
-\ After a definition's body checks against its declared ( in -- out ), every
-\ declared type-variable quantifier must still resolve to a DISTINCT variable.
-\ Two ways a body can launder a specialization behind a generic declared face:
-\   (1) SPECIALIZATION — the quantifier resolves to a sealed identity-bearing
-\       family (arity-0 nominal-scalar or a layout family: the validated CAD-KIND
-\       identities and layout bundles). A body that forges such a family behind a
-\       declared `a`/`ptr a` is rejected; plain-scalar widening (a := n/u8) stays
-\       legal, so the pervasive `( ptr a -- n )` fetch corpus is untouched.
-\   (2) ALIASING — two DISTINCT declared quantifiers unify into one variable,
-\       breaking injectivity of the quantifier map.
-\ It runs ONLY when the body otherwise certified (CHECK OK true), so the pointee
-\ NOMPTR-BLOCK mismatch path (which fails unification first, OK 0) is untouched.
-\ No new bindings are made — the check only resolves and compares — so the trail
-\ that already rolls back the body's speculative binds needs no new discipline;
-\ the next definition's NEW/TV-RESET clears every specialization record.
+\ A declared type variable must remain a distinct variable after checking the
+\ body. Specializing it to any concrete type would publish a more general
+\ effect than the implementation supports. This includes variables nested in
+\ pointers, quotation effects, and type-family arguments. A variable must also
+\ retain its declared kind: raw storage cannot narrow an unrestricted generic.
 32 constant NP-CAP                                   \ >= 26 single-letter quantifiers
 create NP-ORIG NP-CAP cells allot   variable NP-ORIG-N   \ distinct declared quantifier ids
+create NP-ORIG-KIND NP-CAP cells allot               \ initial kind of each declared quantifier
 create NP-ROOT NP-CAP cells allot                    \ resolved root id of each seen quantifier
 create NP-ROOT-OID NP-CAP cells allot                \ origin quantifier id that first reached a root
 variable NP-SEEN-N
 
-: NP-ORIG+ ( n -- )   \ record a distinct declared quantifier original id
+: NP-LETTER ( n -- n )   \ generic effect source letter, else '?'; not a declaration position
    {: id:n :}
+   0 BEGIN dup 26 < WHILE
+      dup cells NMAP + @ id = IF 97 + EXIT THEN
+      1 +
+   REPEAT drop 63 ;
+
+: NP-ORIG+ ( n -- )   \ explicit source quantifiers, excluding schema-local variables
+   {: id:n :}
+   id NP-LETTER 63 = IF EXIT THEN
    0 BEGIN dup NP-ORIG-N @ < WHILE
       dup cells NP-ORIG + @ id = IF drop EXIT THEN   \ already collected
       1 +
    REPEAT drop
    NP-ORIG-N @ NP-CAP < IF
       id NP-ORIG-N @ cells NP-ORIG + !
+      id TVK@ NP-ORIG-N @ cells NP-ORIG-KIND + !
       NP-ORIG-N @ 1 + NP-ORIG-N !
    THEN ;
 
-: NP-COLLECT-TERM ( n -- )   \ collect quantifier ids in one declared type term (self + ptr pointee)
-   dup ISVAR IF PAY NP-ORIG+ EXIT THEN
-   dup TAG T-PTR = IF PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
-   drop ;
+: NP-COLLECT-TERM ( n -- ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t ISVAR IF t PAY NP-ORIG+ EXIT THEN
+   t TAG T-PTR = IF t PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t Q>DIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      t Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      t Q>RIN  TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      t Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t TAG T-PARAM = IF
+      0 BEGIN dup t PARAM>ARGC < WHILE
+         t over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
 
 : NP-COLLECT-ROW ( n -- )   \ collect quantifier ids across one declared stack row
    R-RES
@@ -11659,24 +11897,18 @@ variable NP-SEEN-N
    SGOUT @ NP-COLLECT-ROW
    SGHASR @ IF SGRIN @ NP-COLLECT-ROW  SGROUT @ NP-COLLECT-ROW THEN ;
 
-: NP-LETTER ( n -- n )   \ generic effect source letter, else '?'; not a declaration position
-   {: id:n :}
-   0 BEGIN dup 26 < WHILE
-      dup cells NMAP + @ id = IF 97 + EXIT THEN
-      1 +
-   REPEAT drop 63 ;
-
 : NP-FAM ( n -- n )   \ resolved family id of a T-PARAM term, else -1
    T-RES dup TAG T-PARAM = IF PARAM>FAM ELSE drop -1 THEN ;
 
-: NP-SEALED? ( n -- bool )   \ resolved term is an identity-bearing sealed family?
-   dup NOM-SCALAR? IF drop RES-TRUE EXIT THEN
-   LAYOUT-PARAM? ;
-
-: NP-FAIL-SPEC ( n n -- )   \ quantifier id specialized to sealed family term (first-wins)
+: NP-FAIL-SPEC ( n n -- )   \ quantifier id specialized to a concrete term (first-wins)
    {: oid:n rt:n :}
    NPBAD @ IF EXIT THEN
    -1 NPBAD !  0 NPBAD-KIND !
+   oid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  rt NPBAD-TERM ! ;
+
+: NP-FAIL-KIND ( n n -- ) {: oid:n rt:n :}
+   NPBAD @ IF EXIT THEN
+   -1 NPBAD !  3 NPBAD-KIND !
    oid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  rt NPBAD-TERM ! ;
 
 : NP-FAIL-ALIAS ( n n -- )   \ two declared quantifiers unified (first-wins)
@@ -11700,12 +11932,15 @@ variable NP-SEEN-N
       NP-SEEN-N @ 1 + NP-SEEN-N !
    THEN ;
 
-: NP-CHECK-ONE ( n -- )   \ verify one declared quantifier stays a distinct, unspecialized var
-   {: oid:n :}
+: NP-CHECK-ONE ( n n -- )   \ preserve the declared quantifier and its kind
+   {: oid:n kind:n :}
    oid MK-VAR T-RES {: rt:n :}
    rt ISVAR 0= IF
-      rt NP-SEALED? IF oid rt NP-FAIL-SPEC THEN
+      oid rt NP-FAIL-SPEC
       EXIT
+   THEN
+   rt PAY TVK@ kind <> IF
+      oid rt NP-FAIL-KIND EXIT
    THEN
    rt PAY NP-SEEN-FIND dup 0 < IF
       drop rt PAY oid NP-SEEN-ADD                     \ first sighting of this root
@@ -11722,8 +11957,7 @@ variable NP-SEEN-N
 \ mint (GRID-CTX minting a fresh block, MK-SPAN minting a span) stays legal there;
 \ a `:` wrapper that forges a free-typed phantom through a mint combinator
 \ (`( span<..,t,..> gridctx<b,e,m> -- tile<u,b,m> )`, u free) rejects here.
-\ Complements NP-CHECK's top-level parametricity seal, which does NOT descend into
-\ family arguments. Raw declared identity (PAY, no T-RES): the body's speculative
+\ Complements NP-CHECK's specialization and alias checks on all declared types. Raw declared identity (PAY, no T-RES): the body's speculative
 \ binds (a laundering combinator that unified u:=t) do not hide a var whose
 \ declared occurrences are all outputs.
 create NP-INVARS NP-CAP cells allot   variable NP-INVARS-N   \ declared input var ids (dedup)
@@ -11845,11 +12079,11 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    SGOUT @ NP-OUT-ROW
    NPBAD @ 0=  SGHASR @  and IF SGROUT @ NP-OUT-ROW THEN ;
 
-: NP-CHECK ( -- )   \ post-body parametricity seal; sets NPBAD on the first violation
-   NP-COLLECT
+: NP-CHECK ( -- )   \ check the quantifiers captured before the body ran
    0 NP-SEEN-N !
    0 BEGIN dup NP-ORIG-N @ < WHILE
-      dup cells NP-ORIG + @ NP-CHECK-ONE
+      dup cells NP-ORIG + @
+      over cells NP-ORIG-KIND + @ NP-CHECK-ONE
       NPBAD @ IF drop EXIT THEN
       1 +
    REPEAT drop
@@ -11891,6 +12125,7 @@ public
 1 constant K-INT
 2 constant K-REAL
 3 constant K-STRING
+4 constant K-CHAR
 
 private
 
@@ -11977,6 +12212,10 @@ public
    a u off ru K-STRING 0 TOKEN-XT
    REC-STEP ;
 
+: CHARACTER ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
+   a u off ru K-CHAR 0 TOKEN-XT
+   REC-STEP ;
+
 \ The verdict that scan reached, with the text it reached it over.
 : DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    a u verdict DONE-XT ;
@@ -11997,12 +12236,8 @@ public
 \ taking one row costs 12.5 us and a boot that never names a seeded word pays
 \ nothing at all.
 \
-\ THE TWO CELLS ARE MIRRORED, not imported: this file loads BEFORE
-\ src/habu/layout.f in every host that has both - the engine's own cold prefix
-\ (habu2.f PFX-PATH-CHECKER-FILES ahead of PFX-PATH-CORE-FILES) and the metabuild
-\ host (tools/build-fixpoint.f BF-APPEND-RUN-PRELUDE ahead of BF-APPEND-COMMON) -
-\ which is the same reason CK-SEAL-LATCH-OFF above is mirrored. The agreement is
-\ EXECUTED rather than commented: test/aot-sig-pool-suite.f reads AOT-SIG:POOL-CELL
+\ The legacy signature sidecar still mirrors these two fixed cells until that
+\ sidecar is deleted. The agreement is executable: test/aot-sig-pool-suite.f reads AOT-SIG:POOL-CELL
 \ and these two constants out of a booted engine, where all three are live names,
 \ and refuses a disagreement.
 $47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-SIG:POOL-CELL
@@ -12281,6 +12516,7 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   0 NP-ORIG-N !
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !
@@ -12338,6 +12574,16 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 \ about is the one the observer has not yet advanced.
 : SCAN-REPORT ( -- )
    REC-COMMIT
+   RESCAN @ IF
+      REC-STEP
+      IS-PEND @ IF 0 IS-PEND ! REC-STEP THEN
+      EXIT
+   THEN
+   CPAY-ON @ IF
+      CPAY-B @ TADDR CPAY-U @ TSTART @ TI @ TSTART @ -
+      CHECKER-TAPE:CHARACTER
+      SCAN-PEND-REPORT EXIT
+   THEN
    SPAY-ON @ IF
       SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
@@ -12371,19 +12617,20 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
            ELSE
              2drop  SGOUT !  dup SGIN !  DCUR !
            THEN  -1 SGSEEN !
+           NP-COLLECT
            SIG-EFF-CACHE!
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
-         TAPE-FEED? IF
-            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !
+         CHECKER-TAPE:ARMED @ IF
+            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
             0 IS-PEND !
          THEN
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          SCAN-TOKS @ 1 + SCAN-TOKS !
-         TAPE-FEED? IF SCAN-REPORT THEN
+         CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
        THEN
      THEN
    REPEAT ;
@@ -12400,25 +12647,15 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : CHECK-SIG? ( -- bool )
    VSIG-ON? SGSEEN? and ;
 
+: CHECK-RETURNS? ( -- bool )
+   DEADP @ 0= XSET @ 0 <> or ;
+
 : CHECK-RET-SIG? ( -- bool )
-   CHECK-SIG? SGHASR? and ;
+   CHECK-SIG? SGHASR? and CHECK-RETURNS? and ;
 
 : CHECK-VERDICT ( -- n )
    SGBAD @ UNSAFE @ or  RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
-
-\ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
-\ CHECKER-USIG-CERT-ADD -> USIG-ADD runs NEW, which re-initializes BROW/DCUR
-\ (and RBROW/RCUR) to a fresh empty pair, wiping the verified declared effect
-\ recorded just above — so every certified word rendered bare `--` and the
-\ prop-test round-trip amplifier was dead since introduction (dot
-\ habu-rend-sig-blanked-b269786b). USIG-ADD's own PARSE-SIG-RAW leaves the
-\ re-parsed declared rows in SGIN/SGOUT (SGRIN/SGROUT with a return clause),
-\ live until the next CHECK — re-point the render rows at them.
-: CERT-REPOINT-ROWS ( -- )
-   SGBAD @ 0 <> IF EXIT THEN
-   SGIN @ BROW !  SGOUT @ DCUR !
-   SGHASR @ 0 <> IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN ;
 
 \ --- generated-product certification (item 15, docs/type-families.md §9.4).
 \ A product bundle is exactly its field cells in slot order, so generated MAKE
@@ -12432,7 +12669,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 $7FFFFFFFFFFFFFFF constant CTOR-PEND-BYTE-MAX
 CTOR-PEND-BYTE-MAX CTOR-PEND-REC / constant CTOR-PEND-ROW-MAX
 create CTOR-PEND-BOOT CTOR-PEND-CAP-INIT CTOR-PEND-REC * allot
-PTR-VARIABLE CTOR-PEND-P   CTOR-PEND-BOOT CTOR-PEND-P !
+PERSISTED-PTR-VARIABLE CTOR-PEND-P   CTOR-PEND-BOOT CTOR-PEND-P !
 variable CTOR-PEND-CAP     CTOR-PEND-CAP-INIT CTOR-PEND-CAP !
 variable CTOR-PEND-COUNT
 variable CTOR-PEND-POS
@@ -12612,7 +12849,8 @@ variable CTOR-PEND-I
 \ one-shot boundary.
 : LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
-: LBUF-PEND-CLEAR ( -- ) 0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
+: LBUF-PEND-CLEAR ( -- )
+   NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
 : LBUF-PEND-MATCH? ( -- bool )
    LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
    LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
@@ -12626,7 +12864,7 @@ variable CTOR-PEND-I
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-SIG? IF CHECK-NO-BORROW THEN
-   CHECK-SIG? IF
+   CHECK-SIG? CHECK-RETURNS? and IF
       CTOR-PEND-MATCH? IF
          \ Matching consumes exactly one row from the sealed constructor plan.
          \ TDECL-GEN-EVAL's catch boundary clears it on every exit.
@@ -12643,7 +12881,7 @@ variable CTOR-PEND-I
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
-   SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
+   SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
@@ -12659,6 +12897,7 @@ variable CTOR-PEND-I
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
    dup -1 = NMU @ 0 > and IF
+      CALL-FINALIZE
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
@@ -12666,8 +12905,7 @@ variable CTOR-PEND-I
          NMA @ NMU @ CTLNEW @ NORET-ADD
       THEN
       CHECK-SIG? IF
-         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
-         CERT-REPOINT-ROWS
+         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-PARSED
       ELSE
          NMA @ NMU @ RECXT
       THEN
@@ -12809,10 +13047,10 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
-variable RBF-A-P       RBF-A-BOOT RBF-A-P !
+PERSISTED-PTR-VARIABLE RBF-A-P       RBF-A-BOOT RBF-A-P !
 : RBF-BASE ( -- ptr a ) RBF-A-P @ ;
 create RBF-NAME-BOOT   RBF-CAP-INIT CHECKER-PACKAGE-CAP * allot
-variable RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
+PERSISTED-PTR-VARIABLE RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
 : RBF-NAME-BASE ( -- ptr a ) RBF-NAME-P @ ;
 variable RBF-DEPTH   0 RBF-DEPTH !
 
@@ -13153,6 +13391,9 @@ variable CK-RETRY-TOKS
    76 die ;
 
 : CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   REC-IX @ {: ix0:n :}
+   REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
+   MWIN-N @ {: mw0:n :}
    0 RESCAN !
    -1 CK-AOT-RETRY-ARMED !
    a u CHECK CK-RETRY-V !
@@ -13165,6 +13406,7 @@ variable CK-RETRY-TOKS
          s" checker: a held diagnostic had no seeded signature to take after all" 76 die
       THEN
       -1 RESCAN !
+      REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! mw0 MWIN-N ! THEN
       a u CHECK CK-RETRY-V !
       CK-RETRY-STREAM-CK
    REPEAT
@@ -13220,6 +13462,11 @@ package CHECKER-PREFLIGHT
 : RUN ( -- )
    BODY-A@ BODY-U @ CHECK! VERDICT ! ;
 
+: RESET ( -- )
+   0 ACTIVE !
+   NULL-PTR BODY-A!  0 BODY-U !
+   NULL-PTR TARGET-A!  0 TARGET-U ! ;
+
 public
 
 : CHECK! ( ptr u8 n ptr u8 n -- n )
@@ -13227,7 +13474,7 @@ public
    ba BODY-A!  bu BODY-U !  ta TARGET-A!  tu TARGET-U !
    -1 ACTIVE !
    [: RUN ;] catch {: rc:n :}
-   0 ACTIVE !
+   RESET
    rc 0 <> IF rc throw THEN
    VERDICT @ ;
 
@@ -13306,7 +13553,42 @@ variable CD-WIDE
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
-   SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
+   SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD !
+   dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;
+
+\ The final checker declarations below the registry code also retain token
+\ spans.  They are inactive at the capture seam and must not carry the last
+\ checked source mapping into the engine.
+: CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ( -- )
+   NULL-PTR SV-SGBAD-A !  0 SV-SGBAD-U !
+   NULL-PTR IS-TA !  0 IS-TU !
+   NULL-PTR CAND-A !  0 CAND-U ! ;
+
+\ One capture seam owns the order: scrub transient stores before persistence
+\ copies any grown registry, persist and mark the live rows, then clear the
+\ later checker scopes that are declared below the registry implementation.
+: CHECKER-CAPTURE-PREPARE ( -- )
+   TOKBUF-RESET
+   HIDX-RESET
+   TV-SNAP-RESET
+   DECOUPLED-ARENA-SNAP-RESET
+   CHECKER-CAPTURE-SCRATCH-PREPARE
+   CT-SNAPSHOT-PERSIST
+   CT-SNAPSHOT-MARK-POINTERS
+   VREC-SNAPSHOT-PERSIST
+   VREC-SNAPSHOT-MARK-POINTERS
+   SYM-SNAPSHOT-PERSIST
+   SYM-SNAPSHOT-MARK-POINTERS
+   USIGS-SNAPSHOT-PERSIST
+   USX-RESET
+   UIX-RESET                            \ process-local mmap: never bake its address
+   HIDX-EFF-BASE-CLEAR
+   NORET-SNAPSHOT-PERSIST
+   NRX-RESET
+   REG-EXT-PERSIST-XT
+   REG-SCRATCH-SNAP-XT
+   REG-LATE-SCRATCH-SNAP-XT
+   CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ;

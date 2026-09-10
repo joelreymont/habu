@@ -68,7 +68,7 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
-   LBL LBL LBL {: noappend nocreat notrunc :}
+   LBL LBL LBL LBL {: noappend nocreat notrunc noctty :}
    7 3 MOVZ,  6 1 7 AND,
    7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
       7 $400 MOVZ,  6 6 7 ORR,
@@ -79,6 +79,9 @@ $D4000001 constant SYS-EMIT-SVC                          \ svc #0
    7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
       7 $200 MOVZ,  6 6 7 ORR,
    notrunc LBL,
+   7 $20000 LIT64,  7 1 7 AND,  7 noctty CBZ,
+      7 $100 MOVZ,  6 6 7 ORR,
+   noctty LBL,
    2 6 0 ADDI, ;
 
 : OS-MMAP-FLAGS ( -- )

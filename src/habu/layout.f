@@ -82,7 +82,13 @@ $48425350414E5321 constant SNAP-MAGIC
 \ the writing run's own absolute addresses, so a version 5 engine and a version 6
 \ image disagree about what the chain bytes mean in both directions and each must
 \ fail closed rc 80 rather than execute the other's literals.
-6 constant SNAP-FORMAT-VERSION
+\ Version 7 tags each row of the existing address-cell table as either an XT or
+\ a DATA pointer. The snapshot pass relocates only XT values; AOT capture uses
+\ the same declaration to rebase self-window DATA pointers. A version 6 engine
+\ would interpret the tag as part of an offset, so the hard version equality is
+\ required in both directions.
+\ Version 8 adds the persisted application startup execution token.
+8 constant SNAP-FORMAT-VERSION
 
 \ --- snapshot trailer geometry: the single owner ----------------------------
 \ The trailer is the last thing in the authenticated text extent, so its base is
@@ -413,11 +419,6 @@ $3668 constant RRECP-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
-\ Fixed startup DATA offsets for the native argc and vector pointers.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
-s" ARGC-CELL" s" -- n" TRUST
-s" ARGV-CELL" s" -- n" TRUST
-s" ENVP-CELL" s" -- n" TRUST
 $3688 constant PEND-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL
@@ -627,17 +628,6 @@ $3CB0 constant USER-END
 \ until the AOT window cells took its top three cells (AOT-WINDOW:T0-CELL below);
 \ it is still contiguous from $40C8, which is what a bitmap needs.
 \
-\ TRANSITION: the tag cell ($3CB8) and the band base ($3CC0) are DELIBERATELY
-\ UNCHANGED, because aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild host
-\ registry at these offsets (via data-base) during the self-hosting build -- the host
-\ is the PREVIOUS engine, so during the changeover a bitmap-era binary is built by a
-\ table-era one. The cell that held the table's count now holds PROT-REG-TAG when the
-\ band is a bitmap; a table-era engine leaves a count there, which is 0..256 and can
-\ never collide with the tag. The capture reads the tag, takes the bitmap path on a
-\ match and the legacy table path otherwise, and dies loudly on any third shape, so
-\ the changeover cannot silently misread either lineage. The legacy reader retires
-\ once the seed has rolled past the transition (dot habu-retire-the-legacy-31ad57bc).
-\
 \ The band stays engine-reserved -- no compiled source writes it, the DP heap is
 \ bounded >= DATA-START (above it) and snapshot saves it. [PROT-REG-OFF,
 \ +PROT-REG-LEN) is a SECOND range checked by PROT-GUARD, rejecting user data stores
@@ -645,19 +635,14 @@ $3CB0 constant USER-END
 \ cp!/ndict! (habu1.f BCPSET/BNDSET) ARE range-guarded too: each PROT-GUARDs the
 \ address it redirects a write to, so a post-seal cp!/ndict! into either band fails
 \ closed at the sink. ---
-$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; UNCHANGED offset (aot-capture reads it live at build time)
-$50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band; unreachable as a legacy count
-$3CC0 constant PROT-BITS-OFF            \ protected-WID bitmap base; UNCHANGED offset (aot-capture reads it live)
+$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; capture requires this exact runtime shape
+$50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band
+$3CC0 constant PROT-BITS-OFF            \ protected-WID bitmap base
 8192 constant PROT-WID-MAX              \ WID bound: bits 0..8191 span $3CC0..$40C0, the exact band the 256-slot table held
 PROT-WID-MAX 8 / constant PROT-BITS-BYTES
 PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
 PROT-REG-TAG-CELL constant PROT-REG-OFF \ second PROT-GUARD band base (= tag cell)
 PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitmap + UNCGH-CELL = $3CB8..$40C8
-\ Legacy aliases: ONLY the transitional capture path may use these, to read a
-\ table-era host's registry. Nothing in the running engine reads the band this way.
-PROT-REG-TAG-CELL constant PROT-WID-LEGACY-N-CELL
-PROT-BITS-OFF constant PROT-WID-LEGACY-OFF
-256 constant PROT-WID-LEGACY-MAX
 \ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
 \ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
 \ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw
@@ -671,7 +656,9 @@ $40C0 constant UNCGH-CELL
 \ pool can outgrow 64 KiB with the captured window; the compiler chain needs ~51 KiB
 \ of names where the metabuild REPL window needs 953 bytes.
 20 constant AOT-CREC-ROW
-$20000 constant AOT-NAMES-CAP
+\ The deduplicated pool admits at most DICT-CAP entries, each containing a
+\ one-byte length and at most 255 name bytes. Storage grows to the used size.
+DICT-CAP 256 * constant AOT-NAMES-CAP
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 32768: HIDX-SLOTS $10000
@@ -710,6 +697,10 @@ $250 constant VVAL-OFF
 package NCOMP-DISPATCH
 public
 $358 constant XT-CELL
+\ Raw-storage declarations must reach the checker owned by this compiler even
+\ while the source hook is disabled for prefix replay. Like XT-CELL, this slot
+\ belonged to the discarded legacy JIT BEGIN stack and is installed last.
+$360 constant RAW-XT-CELL
 ;package
 
 $600 constant LOOP-STK-OFF
@@ -952,6 +943,10 @@ public
 \ the cell anyone meant, so it is refused where it is first seen instead of being
 \ carried into an image.
 98 constant XTBAND-RC
+\ Exit status for one address cell declared with both relocation kinds. Treating
+\ either declaration as the winner would make one of snapshot or AOT relocation
+\ silently wrong, so the common declaration point refuses the conflict.
+99 constant XTKIND-RC
 
 \ Call-site map: one bit per four-byte word of the JIT region, recording every
 \ call site whose callee lives in the engine's loaded __text instead of inside the
@@ -1040,23 +1035,27 @@ REGION 32 / constant ADDRMAP-BYTES        \ one bit per region word (REGION / 4 
 CALLMAP-END constant ADDRMAP-OFF
 ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 
-\ Address-cell table: the DATA offset of every persisted cell that was DECLARED to
-\ hold a JIT-region address. Region code moves between the run that writes an
-\ image and the run that restores it, but DATA is mapped at a fixed address, so a
-\ cell in DATA that points into the region is stale the moment the image is
-\ restored somewhere else -- the crash is an immediate jump to the writing run's
-\ address on the first deferred call.
+\ Address-cell table: the DATA offset and kind of every persisted cell that was
+\ DECLARED to hold an address. XT cells hold JIT-region addresses; DATA-pointer
+\ cells hold addresses in the DATA heap. Region code moves on snapshot restore,
+\ while DATA stays fixed, so only XT values need snapshot canonicalisation. Both
+\ kinds need the declaration for AOT capture, where the captured DATA window does
+\ move and a raw pointer into that window would otherwise escape in sparse bytes.
 \ Membership is recorded where the cell's kind is decided, never inferred from
-\ what the cell happens to contain: the `defer` handler registers a dispatch cell
-\ when it allocates it, the `is` handler registers the cell it is about to store
-\ into, and the three engine hook cells are registered by name at cold boot
-\ (habu2.f). Scanning DATA for values that fall in some address band would be a
-\ guess -- an ordinary integer can hold any value at all -- and is deliberately
-\ not what this does.
-\ Layout: a count cell followed by XTCELL-CAP offset cells. The engine appends
-\ only offsets that are not already present, so a cell registered by both `defer`
-\ and `is` is listed once and is relocated once.
-4096 constant XTCELL-CAP                  \ declared address cells one image may carry
+\ what the cell happens to contain: PERSISTED-PTR-VARIABLE registers its
+\ DATA-pointer cell,
+\ the `defer`/`is` handlers register dispatch cells, and the engine hook cells are
+\ registered by name at cold boot (habu2.f). Scanning DATA for values that fall
+\ in some address band would be a guess -- an ordinary integer can hold any value
+\ at all -- and is deliberately not what this does.
+\ Layout: a count cell followed by XTCELL-CAP tagged offset cells. Bit 63 is the
+\ DATA-pointer kind and the remaining bits are the DATA offset. Keeping the kind
+\ in the existing row avoids a second registry and does not move DATA-START. The
+\ engine appends only an identical declaration once and refuses one cell declared
+\ with both kinds.
+32768 constant XTCELL-CAP                 \ measured full-runtime closure: 19088 rows
+$8000000000000000 constant XTCELL-DATA-TAG
+$7FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK
 ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
@@ -1123,7 +1122,7 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 \ and moves nothing else - puts the offset near $91C00 and assembles as
 \ "asm: 12-bit immediate out of range", stopping the build. So these two take the
 \ TOP cells of the gap that ran $40C8..$43C0, between the protected-WID guard
-\ band and the evaluator frames. What is left, $40C8..$43A8, is still ONE
+\ band and the evaluator frames. What is left, $40C8..$43A0, is still ONE
 \ CONTIGUOUS run, which is what the growth that gap is reserved for needs: widening
 \ the protected-WID bitmap upward, a band that cannot be split.
 \
@@ -1143,6 +1142,15 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 \ third, which is the implicit-ordering trap this file's neighbours keep naming.
 \ Zero until a seed runs, which reads as an empty window: `wid - 0` is below a
 \ zero span for no wid at all, so a boot with nothing captured admits nothing here.
+\ The application entry occupies the last free cell immediately below the AOT
+\ window cells. It is outside the virtual stack, body/return-stack buffers,
+\ protected-WID bitmap and evaluator frames. Zero preserves ordinary hb CLI
+\ routing; a saved application calls the registered entry before reading input.
+package APP-ENTRY
+public
+$43A0 constant XT-CELL
+;package
+
 package AOT-WINDOW
 public
 $43A8 constant T0-CELL           \ first wordlist id the seed allocated for the window

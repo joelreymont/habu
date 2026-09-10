@@ -3,8 +3,9 @@
 \ equal bodies into the SAME permanent address.
 \
 \ The bytes live in DATA because a DATA address means the same thing after a
-\ snapshot restore and an mmap one does not. The store has no reset: every
-\ address it has handed out is already compiled into a published routine.
+\ snapshot restore and an mmap one does not. Each pool is reserved before
+\ evaluation can rewind DATA; published literal addresses remain valid when an
+\ evaluation fails. A retained compiler opens a fresh pool inside each capture.
 
 require lib/prelude.f
 require lib/errors.f
@@ -18,7 +19,10 @@ $80000 constant ARENA-CAP            \ 512 KB of bodies
 8192 constant ROWS-MAX               \ distinct bodies
 16384 constant SLOTS                 \ a power of two, twice ROWS-MAX
 
-create ARENA ARENA-CAP allot
+create BOOT-ARENA ARENA-CAP allot
+PERSISTED-PTR-VARIABLE ARENA-P
+BOOT-ARENA ARENA-P !
+: ARENA ( -- ptr u8 ) ARENA-P @ ;
 create R-OFF ROWS-MAX cells allot    \ each row's offset into the arena
 create R-LEN ROWS-MAX cells allot    \ and its length
 create SLOT SLOTS cells allot        \ hash slot: row index plus one, zero is empty
@@ -99,6 +103,15 @@ TRUSTED: PTR>N ( ptr a -- n ) ;
    ROWS @ 1- ;
 
 public
+
+\ The capture driver calls this after latching D0, before evaluating source.
+\ Old pools stay allocated because published routines still hold their bytes.
+\ Only the lookup table starts over in the newly reserved capture domain.
+: WINDOW-OPEN ( -- )
+   here ARENA-P !
+   ARENA-CAP allot
+   0 USED !  0 ROWS !
+   SLOTS 0 ?do 0 i cells SLOT + ! loop ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
 : INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}

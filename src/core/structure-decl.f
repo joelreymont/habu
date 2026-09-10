@@ -146,7 +146,7 @@ variable SEEN-END   \ this declaration's ;STRUCTURE has been consumed
 variable SD-SI         \ private digit-scan index
 
 : SD-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   0 PEND-U !   0 TOK !   0 SEEN-FIELD !   0 SEEN-END ! ;
+   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-FIELD !   0 SEEN-END ! ;
 SD-RESET
 
 \ Tokens come from the live input source, or — when a tool is replaying a
@@ -419,8 +419,9 @@ SD-RESET
 \ a replayed declaration reports through exactly the same renderer.
 : SD-DRIVE ( -- )                      \ body, then resynchronize before reporting
    [: SD-BODY ;] catch {: rc:n :}
-   rc 0= IF EXIT THEN
+   rc 0= IF SD-RESET EXIT THEN
    SD-RESYNC
+   SD-RESET
    rc throw ;
 : SD-GUARDED ( -- )
    [: SD-DRIVE ;] DECL-REJECT:GUARD ;

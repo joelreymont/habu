@@ -320,6 +320,31 @@ LOWER-CERT-HOOK:INSTALL
    ERR$ s" expected: ptr a" CONTAINS? TTRUE
    ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
 
+: PARAMETRIC-REJECT ( ptr u8 n -- )
+   BODY$ 2swap WRITE-ALL
+   BODY$ RUN
+   s" E-NONPARAMETRIC-EFFECT" ASSERT-NAMED ;
+
+: TEST-PARAMETRIC ( -- )
+   s" generic output cannot forge a pointer through an integer" T-LABEL
+   s" : LRD-MINT ( -- a ) 123 ; : LRD-PTR ( -- ptr u8 ) LRD-MINT ;" PARAMETRIC-REJECT
+   s" numeric fetch requires a numeric pointee" T-LABEL
+   s" : LRD-FETCH ( ptr a -- n ) @ ;" PARAMETRIC-REJECT
+   s" quotation output cannot specialize a declared variable" T-LABEL
+   s" : LRD-QUOT ( [ -- a ] -- n ) execute ;" PARAMETRIC-REJECT
+   s" family argument cannot specialize a declared variable" T-LABEL
+   s" NEWTYPE lrd-box 1 CAST: LRD-CONCRETE ( n -- lrd-box<n> ) : LRD-PARAM ( n -- lrd-box<a> ) LRD-CONCRETE ;" PARAMETRIC-REJECT
+   s" raw storage cannot restrict a declared generic input" T-LABEL
+   s" create LRD-RAW 1 cells allot : LRD-RAW-PUT ( a -- ) LRD-RAW ! ;" PARAMETRIC-REJECT
+   ERR$ s" restricted by raw storage" CONTAINS? TTRUE
+   s" raw storage cannot restrict a quotation output variable" T-LABEL
+   s" create LRD-RAW 1 cells allot : LRD-RAW-QUOT ( [ -- a ] -- ) execute LRD-RAW ! ;" PARAMETRIC-REJECT
+   s" concrete storage and generic transport retain their declared effects" T-LABEL
+   BODY$ s" create LRD-RAW 1 cells allot : LRD-RAW-N ( n -- ) LRD-RAW ! ; : LRD-ID ( a -- a ) ; : LRD-ROUNDTRIP ( n -- n ) LRD-ID dup LRD-RAW-N ; 41 LRD-ROUNDTRIP . cr" WRITE-ALL
+   BODY$ RUN s" 41" ASSERT-OK-OUT
+   s" family arguments keep distinct declared variables" T-LABEL
+   s" NEWTYPE lrd-pair 2 : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -373,6 +398,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-STORE-TIMEOUT
    TEST-UNDEF
    TEST-BODY
+   TEST-PARAMETRIC
    TEST-BYTE-PTR-STORE
    TEST-BYTE-PTR-FETCH
    TEST-REQUIRE-CHAIN

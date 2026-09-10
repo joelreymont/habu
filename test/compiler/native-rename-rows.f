@@ -1,5 +1,6 @@
 \ native-rename-rows.f - whole-value stack renames through production code.
 
+require test/compiler/native-eval-fixture.f
 require lib/test.f
 require lib/adt/option.f
 require src/compiler/native/compiler.f
@@ -84,7 +85,7 @@ private
 : PASS-BUNDLE ( option<n> -- option<n> ) ;
 : MADE-BUNDLE ( n -- option<n> )   OPTION:SOME ;
 : LOOP-BUNDLE ( option<n> n n -- option<n> )   ?do loop ;
-: INDEPENDENT-VARS ( a b n -- n a b )   swap ;
+: INDEPENDENT-VARS ( a b n -- a n b )   swap ;
 : PLAIN-CELLS ( n n -- n n )   swap ;
 
 public
@@ -115,8 +116,8 @@ private
    swap ;
 
 \ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
-TRUSTED: TRY ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+: TRY ( ptr u8 n -- n )
+   NATIVE-EVAL:DEFINE-RC ;
 
 variable TORB-RC
 variable MIXHI-RC

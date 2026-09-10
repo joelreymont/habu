@@ -42,7 +42,7 @@ VNDIAG-BUF 8192 DIAG-BUFFER!
 
 \ whitebox shim (dot habu-hb-crash-bare pattern): the checker-internal snapshot
 \ bake reached through a named trusted shim, exactly like test/type-family-suite.f.
-TRUSTED: TWX-SNAP-PREP ( -- ) CHECKER-SNAPSHOT-PREPARE ;
+TRUSTED: TWX-SNAP-PREP ( -- ) CHECKER-CAPTURE-PREPARE ;
 
 \ ---------------------------------------------------------------------------
 \ 1. a declared value nominal, checked inside its own package.
@@ -101,7 +101,7 @@ s" VN-UNDECL ( never-declared -- never-declared )" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 4. persistence: a declared nominal survives a snapshot-persist of the growable
-\    type-family store. CHECKER-SNAPSHOT-PREPARE bakes the grown store and rebases
+\    type-family store. CHECKER-CAPTURE-PREPARE bakes the grown store and rebases
 \    its pointers, so the family - and thus the nominal's checked contract - must
 \    read back identically. (Ported from the retired test/type-nominal-suite.f,
 \    re-expressed for the value-nominal family substrate.)

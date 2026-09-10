@@ -24,7 +24,7 @@ variable STRUCT-GEN-U
 variable STRUCT-GEN-I
 
 : STRUCT-BYTE+ ( ptr a n -- ptr u8 )
-   + ;
+   swap BYTE-VIEW swap + ;
 
 : STRUCT-REQUIRE-CLOSED ( -- )
    STRUCT-ACTIVE @ if s" structure: nested begin" STRUCT-RC die then ;
@@ -86,7 +86,7 @@ using TYPE-DECL
 \ better answer, since the size is a compile-time constant by then, but it narrows
 \ the three definers' `( ptr a n )` threading effects to `( n )`. Both are open
 \ design, not something this conversion may decide on its own.
-: BEGIN-STRUCTURE ( -- ptr a n )
+: BEGIN-STRUCTURE ( -- ptr n n )
    STRUCT-REQUIRE-CLOSED
    -1 STRUCT-ACTIVE !
    create here 0 , 0 does> ( -- n ) @ ;
@@ -131,7 +131,7 @@ using TYPE-DECL
    dup STRUCT-BYTE-FIELD
    1 + ;
 
-: END-STRUCTURE ( ptr a n -- )
+: END-STRUCTURE ( ptr n n -- )
    STRUCT-REQUIRE-OPEN
    0 STRUCT-ACTIVE !
    swap ! ;

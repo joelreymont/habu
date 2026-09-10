@@ -62,7 +62,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
 \ One direct XT run on a fresh data stack. The buffer is re-taken per run so no
 \ answer can survive into the next one.
-: RUN-XT ( n -- n ) {: xt:n :}
+: RUN-XT ( [ -- ] -- n ) {: xt :}
    DKA:ALLOC
    0 DKA:ANS !
    xt DKA:BASE DKA:SIZE run-in-stack
@@ -71,11 +71,23 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 : ABS-ENTRY ( -- n )
    s" abs" NDICT:CALL-TARGET ;
 
+\ Other checked helpers remain ordinary calls; this precondition names abs.
+: ABS-CALLS ( -- n )
+   s" DKA:POKED" ENTRY-OF {: base:n :}
+   0
+   s" DKA:POKED" NTAILPROBE:INSNS 0 ?do
+      s" DKA:POKED" i NTAILPROBE:INSN@ dup NBR:BL? if
+         base i NBR:INSN-BYTES * + swap NBR:BL-TARGET
+         ABS-ENTRY = if 1+ then
+      else drop then
+   loop ;
+
+
 : CALL-PRECONDITION ( -- )
    s" abs remains an external call" T-LABEL
    ABS-ENTRY 0 > TTRUE
    ABS-ENTRY s" DKA:POKED" ENTRY-OF < TTRUE
-   s" DKA:POKED" NTAILPROBE:CALLS 1 T= ;
+   ABS-CALLS 1 T= ;
 
 \ ---- 1. the witness ----------------------------------------------------------
 : ALIAS-CASE ( -- )

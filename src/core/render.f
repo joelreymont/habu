@@ -62,7 +62,7 @@ variable RDIAG-I
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
 create SEEN-BOOT MAXTV-INIT cells allot
-PTR-VARIABLE SEEN-P   SEEN-BOOT SEEN-P !
+PERSISTED-PTR-VARIABLE SEEN-P   SEEN-BOOT SEEN-P !
 variable SEEN-CAP   MAXTV-INIT SEEN-CAP !
 variable NLET                                      \ SEEN is indexed by typevar (PAY)
 64 constant RATOM-CAP
@@ -630,6 +630,9 @@ variable MDV-I   variable MDV-F
 : SUGGEST-TEXT ( -- a u )
    IMMERR @ if IMM-SUGGEST$ exit then
    NPBAD @ IF
+      NPBAD-KIND @ 3 = IF
+         s" Declare the concrete storage type, or keep the body polymorphic over the type variable." EXIT
+      THEN
       NPBAD-KIND @ 0= IF
          s" Declare the concrete family in the signature, or keep the body polymorphic over the type variable."
       ELSE NPBAD-KIND @ 1 = IF
@@ -697,6 +700,10 @@ variable JPOS  variable JLINE  variable JCOL
    then
    NPBAD @ IF
      s" E-NONPARAMETRIC-EFFECT habu: in " DTXT  NMA @ NMU @ DTXT
+     NPBAD-KIND @ 3 = IF
+       s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
+       s" ' is restricted by raw storage; its declared kind must stay unchanged" DTXT EXIT
+     THEN
      NPBAD-KIND @ 0= IF
        s" : declared type variable '" DTXT  NPBAD-Q1 @ EMIT1
        s" ' is specialized to " DTXT  NP-FAM-REND

@@ -18,8 +18,8 @@ private
 
 create STAGE-BOOT CAP-INIT cells allot
 create BASE-BOOT CAP-INIT cells allot
-PTR-VARIABLE STAGE-P   STAGE-BOOT STAGE-P !
-PTR-VARIABLE BASE-P    BASE-BOOT BASE-P !
+PERSISTED-PTR-VARIABLE STAGE-P   STAGE-BOOT STAGE-P !
+PERSISTED-PTR-VARIABLE BASE-P    BASE-BOOT BASE-P !
 variable STAGE-N
 variable STAGE-CAP
 variable BASE-CAP
@@ -131,7 +131,7 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 \ participant order: protection (this file), then dictionary, then the event
 \ transaction. This word is the chain's anchor because this file is the last
 \ participant to load and therefore the one that owns TDECL-OWNER-SNAPSHOT-XT,
-\ the hook CHECKER-SNAPSHOT-PREPARE reaches all of them through; an earlier
+\ the hook CHECKER-CAPTURE-PREPARE reaches all of them through; an earlier
 \ participant cannot name a later one, so the tail is a call and not a hook.
 \ Each link drops its own grown, process-local buffers back to their baked boot
 \ stores - a persisted host address is a wild pointer in the process that

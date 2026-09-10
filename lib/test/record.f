@@ -1,6 +1,6 @@
 \ record.f - machine-readable test failure records.
 \ One TSV line per failing case: TFAIL <layer> <case-id> <label>.
-\ Shared by lib/test/assert.f, lib/test/snap.f, and lib/test/runner.f so gate
+\ Shared by lib/test/assert.f and lib/test/runner.f so gate
 \ logs and repair loops parse one record shape across all test layers.
 
 require lib/errors.f

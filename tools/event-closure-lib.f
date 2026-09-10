@@ -48,10 +48,10 @@ variable EC-ORD-N
 : EC-TRUE ( -- bool )   0 0= ;
 : EC-FALSE ( -- bool )  EC-TRUE 0= ;
 
-: EC-OFF@ ( i -- n )   cells EC-OFF + @ ;
-: EC-LEN@ ( i -- n )   cells EC-LEN + @ ;
+: EC-OFF@ ( n -- n )   cells EC-OFF + @ ;
+: EC-LEN@ ( n -- n )   cells EC-LEN + @ ;
 
-: EC-PATH$ ( i -- ptr u8 n ) {: i:n :}
+: EC-PATH$ ( n -- ptr u8 n ) {: i:n :}
    i EC-OFF@ EC-POOL + i EC-LEN@ ;
 
 : EC-SEEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -74,7 +74,7 @@ variable EC-ORD-N
    off u + EC-POOL-N !
    EC-N @ 1+ EC-N ! ;
 
-: EC-LOADS? ( i -- bool ) {: i:n :}
+: EC-LOADS? ( n -- bool ) {: i:n :}
    i EVENT-KIND@ {: k:n :}
    k EV-INCLUDED = if EC-TRUE exit then
    k EV-REQUIRED = i EVENT-STATE@ EV-STATE-FRESH = and if EC-TRUE exit then
@@ -170,7 +170,7 @@ public
 
 : COUNT ( -- n )   EC-N @ ;
 
-: PATH$ ( i -- ptr u8 n )   EC-PATH$ ;
+: PATH$ ( n -- ptr u8 n )   EC-PATH$ ;
 
 : BUILD ( ptr u8 n -- ) {: a:ptr u:n :}
    RESET
@@ -191,6 +191,6 @@ public
 
 : ORDER-COUNT ( -- n )   EC-ORD-N @ ;
 
-: ORDER-PATH$ ( i -- ptr u8 n )   cells EC-ORDER + @ EC-PATH$ ;
+: ORDER-PATH$ ( n -- ptr u8 n )   cells EC-ORDER + @ EC-PATH$ ;
 
 ;package

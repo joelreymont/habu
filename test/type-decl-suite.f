@@ -743,8 +743,9 @@ s" TD12-EXEC-Q ( tdres<n,n> [ a -- a ] -- a ) execute" CHECK-QUIET-CANDIDATE! 0 
 s" TD12-EVAL ( tdres<n,n> ptr u8 n -- tdres<n,n> ) evaluate" CHECK-QUIET-CANDIDATE! 0 T=
 \ run-in-stack consumes its three frame args; a layout value below them flows,
 \ a layout value in a consumed arg position rejects.
-s" TD12-RIS ( tdres<n,n> n ptr u8 n -- tdres<n,n> ) run-in-stack" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-RIS-BAD ( n ptr u8 tdres<n,n> -- ) run-in-stack" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-RIS ( tdres<n,n> [ -- ] ptr u8 n -- tdres<n,n> ) run-in-stack" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-RIS-BAD ( [ -- ] ptr u8 tdres<n,n> -- ) run-in-stack" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-RIS-RAW ( n ptr u8 n -- ) run-in-stack" CHECK-QUIET-CANDIDATE! 0 T=
 \ throw takes an n code: a layout value is not a throw code.
 s" TD12-THROW ( tdres<n,n> -- ) throw" CHECK-QUIET-CANDIDATE! 0 T=
 

@@ -4,6 +4,7 @@ require lib/test.f
 require lib/string.f
 require src/compiler/native/compiler.f
 require src/compiler/native/string.f
+require src/habu/aot-arm.f
 
 package NSTRING-TEST
 
@@ -121,6 +122,47 @@ TRUSTED: DEF ( ptr u8 n -- )
    S\" NST-LONE2 s\q lone-body\q STR=" EV-B TTRUE
    s" NST-LONE drop NST-LONE2 drop =" EV-B TTRUE ;
 
+\ A failed evaluate rewinds DATA but keeps the compiler's literal table.
+\ Reclaim that DATA and verify the cached bytes still belong to its pool.
+public
+variable SAVED-LITERAL
+private
+create ROLLBACK-BYTES 101 c, 112 c, 104 c, 101 c, 109 c, 101 c, 114 c, 97 c, 108 c,
+TRUSTED: PTR>N ( ptr a -- n ) ;
+TRUSTED: N>BYTES ( n -- ptr u8 ) ;
+
+: FAILED-INTERN ( -- )
+   S\" s\q ephemeral\q NSTR:INTERN NSTRING-TEST:SAVED-LITERAL ! 77 throw" DEF ;
+
+: ROLLBACK-CASE ( -- )
+   s" literals survive DATA rollback after failed evaluation" T-LABEL
+   here PTR>N {: before:n :}
+   [: FAILED-INTERN ;] 77 TTHROWSQ
+   SAVED-LITERAL @ before < TTRUE
+   here {: reclaimed:ptr :}
+   128 allot
+   128 0 ?do 88 reclaimed i + c! loop
+   S\" : NST-ROLLBACK ( -- ptr u8 n ) s\q ephemeral\q ;" DEF
+   SAVED-LITERAL @ N>BYTES 9 ROLLBACK-BYTES 9 STR= TTRUE
+   s" NST-ROLLBACK drop" EV-N SAVED-LITERAL @ T= ;
+
+: WINDOW-CASE ( -- )
+   s" lone-body" NSTR:INTERN {: old:n :}
+   data-base AOT-WINDOW:B0-CELL + @ {: b0:n :}
+   data-base AOT-WINDOW:D0-CELL + @ {: d0:n :}
+   AOT-ARM:WINDOW-OPEN
+   NSTR:WINDOW-OPEN
+   s" lone-body" NSTR:INTERN {: fresh:n :}
+   s" lone-body" NSTR:INTERN {: again:n :}
+   b0 d0 AOT-ARM:OPEN
+   s" a retained compiler copies cached literals into the new AOT window" T-LABEL
+   fresh AOT-ARM:D0 @ >= TTRUE
+   fresh old T<>
+   old N>BYTES 9 s" lone-body" STR= TTRUE
+   fresh again T=
+   s" lone-body" NSTR:INTERN {: newest:n :}
+   newest fresh T= ;
+
 \ ---- what a literal costs in code bytes ---------------------------------------
 \ The payload lives in DATA space, so the two chain emissions have the same code
 \ length even though one string is much longer. Address materialization depends
@@ -169,6 +211,8 @@ public
    ROUND-TRIP-CASE
    SHARING-CASE
    INTERN-IDEMPOTENT-CASE
+   WINDOW-CASE
+   ROLLBACK-CASE
    BYTE-COST-CASE
    CAP-CASE
    T-REPORT ;

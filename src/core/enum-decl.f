@@ -176,7 +176,7 @@ variable SEEN-END     \ this declaration's ;ENUM has been consumed
 variable ED-SI         \ private digit-scan index
 
 : ED-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   0 PEND-U !   0 TOK !   0 SEEN-VARIANT !   0 SEEN-END ! ;
+   NULL-PTR 0 PEND!   0 TOK !   0 SEEN-VARIANT !   0 SEEN-END ! ;
 ED-RESET
 
 \ Tokens come from the live input source, or — when a tool is replaying a
@@ -580,8 +580,9 @@ ED-RESET
 \ a replayed declaration reports through exactly the same renderer.
 : ED-DRIVE ( -- )                      \ body, then resynchronize before reporting
    [: ED-BODY ;] catch {: rc:n :}
-   rc 0= IF EXIT THEN
+   rc 0= IF ED-RESET EXIT THEN
    ED-RESYNC
+   ED-RESET
    rc throw ;
 : ED-GUARDED ( -- )
    [: ED-DRIVE ;] DECL-REJECT:GUARD ;

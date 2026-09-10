@@ -210,6 +210,8 @@ create PATCHED-BUF FS-PATH-CAP allot
    LOAD-IMAGE
    SCAN-NAME
    PATCH-IMAGE
+   s" checking-off permits a pre-checker package reload" T-LABEL
+   PATCHED$ s" 0 set-check package CHECK-OFF public : W ( -- n ) 1 ; ;package" RUN-SOURCE 0 T=
    s" post-seal missing checker fails closed" T-LABEL
    MISSING-CHECKER-RC 70 T=
    \ The exit status alone cannot tell a named refusal from a lucky one: 70 is

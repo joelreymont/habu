@@ -1,5 +1,6 @@
 \ native-match.f - production MATCH, case, and construct compilation.
 
+require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -500,8 +501,8 @@ private
 
 \ ---- production-source boundary cases ----------------------------------------
 
-TRUSTED: EV-RC ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+: EV-RC ( ptr u8 n -- n )
+   NATIVE-EVAL:DEFINE-RC ;
 
 : TRY ( ptr u8 n -- n )
    NELAB:REFUSED-RESET

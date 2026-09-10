@@ -1259,6 +1259,17 @@ create TXT
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
    CC BB IR-BUILD:END-OP drop ;
 
+\ An unused frame order is not terminal if a backedge revisits its store.
+: BUILD-LOOSE-ORDER-LOOP ( -- )
+   s" LOOSE-LOOP" 0 0 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   7 M-MOVZ tok 0 M-STORE drop
+   1 M-BR0
+   M-BLOCK+
+   0 M-BR0
+   CLOSE-FUN ;
+
+
 : M-BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id t:n :}
    A64IR-OPCODE:BR M-OPEN
@@ -2345,6 +2356,12 @@ variable LOWER-TURNS
    BUILD-LOOSE-ORDER
    16 FRAME-REFUSE ;
 
+: LOOSE-ORDER-LOOP-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-LOOSE-ORDER-LOOP
+   16 FRAME-REFUSE ;
+
+
 : EMPTY-POOL-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-PLAIN
@@ -2518,6 +2535,9 @@ variable LOWER-TURNS
 : EMPTY-SLOT ( -- )       WBND [: EMPTY-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-FRAME ( -- )      WBND [: WRONG-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : LOOSE-ORDER ( -- )     WBND [: LOOSE-ORDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+
+: LOOSE-ORDER-LOOP ( -- ) WBND [: LOOSE-ORDER-LOOP-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-POOL ( -- )       WBND [: EMPTY-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )     WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-BIND ( -- )          WBND [: NO-BIND-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2654,7 +2674,9 @@ variable LOWER-TURNS
 
 : ORDER-REFUSE-CASES ( -- )
    s" a memory order the module mints and nothing reads is refused" T-LABEL
-   [: LOOSE-ORDER ;] E-A64RAV-ORDER TTHROWSQ ;
+   [: LOOSE-ORDER ;] E-A64RAV-ORDER TTHROWSQ
+   s" an unused frame order with a backedge to its store is refused" T-LABEL
+   [: LOOSE-ORDER-LOOP ;] E-A64RAV-ORDER TTHROWSQ ;
 
 : BIND-REFUSE-CASES ( -- )
    s" allocating without a binding is refused" T-LABEL

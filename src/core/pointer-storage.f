@@ -3,11 +3,15 @@
 : PTR-VARIABLE ( -- )
    create 0 , does> ( -- ptr ptr a ) 0 ptr-field ;
 
-\ Byte access views the representation of a pointer's storage. This identity
-\ retype is part of the raw-memory boundary; its effect is asserted with PRIM
-\ when the checker loads. Buffer algorithms using the view are checked.
-: BYTE-VIEW ( ptr a -- ptr u8 ) ;
+\ Typed reset code needs a null value without pretending numeric zero inhabits
+\ every pointer family.
+create NULL-PTR-CELL 0 ,
+REG-PROTECT
+: NULL-PTR ( -- ptr a )
+   NULL-PTR-CELL 0 ptr-field @ ;
 
-\ A cell view admits raw scalar, pointer, and quotation storage. The PRIM row
-\ gives its pointee the raw kind, which cannot manufacture nominal values.
-: CELL-VIEW ( ptr u8 -- ptr a ) ;
+\ Persistence is explicit: scratch pointer slots use PTR-VARIABLE and never join
+\ the relocation table; only a slot whose value must survive an image/capture uses
+\ this definer.
+: PERSISTED-PTR-VARIABLE ( -- )
+   create here ptr-cell-mark 0 , does> ( -- ptr ptr a ) 0 ptr-field ;

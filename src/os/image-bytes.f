@@ -2,65 +2,12 @@
 \ MBUF-RC>PTR refines the successful anonymous mapping into the image byte buffer.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 
-\ MSIZE must cover the largest image any writer can emit: __text up to MPAGE
-\ (the assembler's code window plus its header page, both targets' loud 73-die
-\ code-window guard) plus the largest non-text tail (Mach-O: DATA-CONST-SIZE +
-\ MACHO-FIXUPS-SIZE + the ad-hoc signature; ELF: ELF-RW-SZ). This file is
-\ target-neutral and loads before either writer, so it cannot see those tails and
-\ cannot compute the sum; the writers assert it at load time instead
-\ (MACHO-MSIZE-CHECK / ELF-MSIZE-CHECK) so the code-window guard is always the
-\ binding constraint - an M-BOUNDS-RC throw here means a writer bug, not a
-\ program-size limit.
-\
-\ Derived 2026-08-14 for the $500000 code window (dot
-\ habu-lift-the-image-42b2b9f4): MPAGE is $501000, the Mach-O tail at that window
-\ is $4000 + 104 + a $A16C signature bound, and the whole image is $50F1D4.
-\ Rounding that to $510000 and keeping the same $10000 of margin the old
-\ $220000/$210000 pair carried gives $520000.
-\
-\ RE-DERIVED 2026-08-14 for the $900000 code window (dot
-\ habu-reach-the-seed-d1326596, which gave the window its third term - the AOT
-\ payload section, now emitted last and addressed without any PC-relative
-\ reach). By the same method and the same margin: MPAGE is $901000, the Mach-O
-\ tail is $4000 + 104 + a $1216C signature bound (the bound is a function of the
-\ window, so it grew with it), the whole image is $9171D4, rounding gives
-\ $920000 and the margin gives $930000. The ELF side at this window is
-\ $901000 + $C0, far below it. Both writers still assert their own sum at load.
-\
-\ RE-DERIVED 2026-08-15 for the $A00000 code window (dot
-\ habu-seed-the-chain-e98b03d4, which lifted AOT-WINDOW:DATA-CAP to $200000 so
-\ the compiler chain's 1,531,272 DATA bytes fit; AOT-SECTION-CAP and
-\ CODE-CAP-BYTES move with it, and src/habu/aot-decl.f AGREE executes that).
-\ Third time by the same method and the same margin: MPAGE is $A01000, the
-\ Mach-O tail is $4000 + 104 + a $1416C signature bound (again a function of the
-\ window), the whole image is $A191D4, rounding gives $A20000 and the margin
-\ gives $A30000. The ELF side at this window is $A01000 + $C0, far below it.
-\ Both writers still assert their own sum at load, so this line is a claim the
-\ build checks rather than one it takes.
-\ RE-DERIVED 2026-08-16 for the $A20000 code window (dot
-\ habu-seed-call-site-9d7d8e72, which widened an AOT call-site row to carry the
-\ callee's wordlist, lifting AOT-SECTION-CAP by $20000 and CODE-CAP-BYTES with
-\ it). Fourth time by the same method and the same margin: MPAGE is $A21000, the
-\ Mach-O tail is $4000 + 104 + a $1456C signature bound, the whole image is
-\ $A395D4, rounding gives $A40000 and the margin gives $A50000. The ELF side at
-\ this window is $A21000 + $C0, far below it.
-\ RE-DERIVED 2026-08-17 for the $AC0000 code window (dot
-\ habu-seeded-words-invisible-c7505a49, which gave the AOT payload the window's
-\ checker signatures and the type registry its own buffers, lifting
-\ AOT-SECTION-CAP by $A0000 and CODE-CAP-BYTES with it). Fifth time by the same
-\ method and the same margin: MPAGE is $AC1000, the Mach-O tail is $4000 + 104 +
-\ a $1596C signature bound, the whole image is $ADA9D4, rounding gives $AE0000
-\ and the margin gives $AF0000. The ELF side at this window is $AC1000 + $C0, far
-\ below it.
-\ RE-DERIVED 2026-08-17 for the $EC0000 code window (same dot, second move: the
-\ boot source arena went $400000 -> $800000 because a `--build` holds the cold
-\ prefix and the stage2 source together and their sum outgrew 25% headroom, and
-\ CODE-CAP-BYTES carries IBUFSZ as one of its three terms). Sixth time by the
-\ same method and the same margin: MPAGE is $EC1000, the Mach-O tail is $4000 +
-\ 104 + a $1D96C signature bound, the whole image is $EE29D4, rounding gives
-\ $EF0000 and the margin gives $F00000. The ELF side at this window is $EC1000 +
-\ $C0, far below it.
-$F00000 constant MSIZE
+\ Reserve the assembler window plus the larger supported image tail: a 64 KiB
+\ header/page boundary, Mach-O DATA_CONST and fixups, and one SHA-256 digest per
+\ 4 KiB code-signing page. Both target writers check their exact maximum at load.
+CODE-CAP-BYTES $10000 + $4000 + 104 +
+dup $FFF + $1000 / $20 * $14 + $58 + $40 + +
+$FFFF + $10000 / $10000 * constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 variable MBUF-A

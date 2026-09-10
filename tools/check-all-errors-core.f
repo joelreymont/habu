@@ -23,16 +23,6 @@ $4E constant DUP-RC
 
 private
 
-\ Checker-internal multi-error mode control; the checker registry does not
-\ publish these to later checked loads (same boundary class as verify-source's
-\ CHECK-BODY / MULTI-ERR-MODE?). CA-MULTI-BEGIN arms the whole-buffer pass;
-\ CA-MULTI-END reads its reject count and clears it for fail-closed exit.
-\ Retire both with habu-multi-err-checking-42db26f4.
-TRUSTED: CA-MULTI-BEGIN ( -- )
-   MULTI-ERR-BEGIN ;
-TRUSTED: CA-MULTI-END ( -- n )
-   MULTI-ERR-END ;
-
 10 constant CA-LF
 123 constant CA-LBRACE
 
@@ -489,9 +479,9 @@ variable CA-XSUP-BUF-CAP
 \ all-uncheckable file read as clean.
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
-   CA-MULTI-BEGIN
+   MULTI-ERR-BEGIN
    CA-CHECK-FULL-SCOPE {: rc:n :}
-   CA-MULTI-END {: rejects:n :}
+   MULTI-ERR-END {: rejects:n :}
    CA-XSUP-RC @ 0 <> IF CA-XSUP-RC @ throw THEN
    rc DUP-RC = IF CA-HANDLE-DUP exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;

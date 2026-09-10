@@ -48,7 +48,7 @@ defer REPL-READ ( -- ptr u8 n )
 : TIO-LFLAG-U8 ( -- ptr u8 )
    TIOB HBR-LFLAG-OFF + ;
 
-: TIO-LFLAG-CELL ( -- ptr a )
+: TIO-LFLAG-CELL ( -- ptr n )
    TIOB HBR-LFLAG-OFF + ;
 
 : TIO-LFLAG@ ( -- n )
@@ -70,11 +70,11 @@ defer REPL-READ ( -- ptr u8 n )
 
 : EMITS ( ptr u8 n -- ) {: a u :}  1 a u write drop ;
 
-: REPL-EMIT1 ( c -- )
+: REPL-EMIT1 ( n -- )
    KB c!
    1 KB 1 write drop ;
 
-: KEY1 ( -- c )  0 KB 1 read drop  KB c@ ;
+: KEY1 ( -- n )  0 KB 1 read drop  KB c@ ;
 
 \ full-line redraw: CR, clear-to-eol, prompt, line, cursor back to LPOS
 : REDRAW ( -- )
@@ -99,7 +99,7 @@ defer REPL-READ ( -- ptr u8 n )
       LLEN @ 1 - LLEN !  LPOS @ 1 - LPOS ! THEN ;
 
 \ ---- history ring ----
-: HSLOT ( n -- a )  15 and 256 * HIST + ;
+: HSLOT ( n -- ptr u8 )  15 and 256 * HIST + ;
 
 : HSAVE ( -- )
    LLEN @ 0 > IF
@@ -144,6 +144,8 @@ defer REPL-READ ( -- ptr u8 n )
    c 31 >  c 127 < and IF c INSCH REDRAW THEN ;
 
 : RD-LINE ( -- ptr u8 n )
+   TTY? 0= IF NULL$ exit THEN
+   0 HBR-TIO-GET TIOB0 ioctl drop
    RAW-ON  CLEARLN  HN @ HV !  0 DONE !  REDRAW
    begin KEY1 DOKEY DONE @ 0 = 0= until
    RAW-OFF
@@ -153,14 +155,12 @@ defer REPL-READ ( -- ptr u8 n )
    DATAB REPLH-CELL + ;
 
 : REPLH! ( [ -- ptr u8 n ] -- )
-   REPLH-PTR ! ;
+   REPLH-PTR xt! ;
 
 : REPL-ENABLE ( -- )
    [: REPL-READ ;] REPLH! ;
 
 : INSTALL ( -- )
-   TTY? IF
-      0 HBR-TIO-GET TIOB0 ioctl drop
-      [: RD-LINE ;] is REPL-READ
-      REPL-ENABLE THEN ;
+   [: RD-LINE ;] is REPL-READ
+   REPL-ENABLE ;
 INSTALL

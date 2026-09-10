@@ -155,7 +155,7 @@ variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (S
    rc 0 <> if E-PROC-OUTPUT throw then
    r >FD w >FD ;
 
-: PROC-PFD-SLOT ( idx -- ptr a ) {: idx :}
+: PROC-PFD-SLOT ( idx -- ptr n ) {: idx :}
    idx IDX>N 8 * PROC-PFD + ;
 
 : PROC-PFD-AT! ( fd n idx -- ) {: fd events idx :}
@@ -279,13 +279,13 @@ PROC-REAP-ARM-DEFAULT
    PROC-CLOSE-ALL-CAPTURE-FDS
    code throw ;
 
-: PROC-OPEN-PIPE ( ptr a ptr a -- ) {: rp:ptr wp:ptr :}
+: PROC-OPEN-PIPE ( ptr fd ptr fd -- ) {: rp:ptr wp:ptr :}
    pipe {: r w rc :}
    rc 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    r >FD rp !
    w >FD wp ! ;
 
-: PROC-CLOEXEC-CELL ( ptr a -- ) {: p:ptr :}
+: PROC-CLOEXEC-CELL ( ptr fd -- ) {: p:ptr :}
    p @ FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
 
 : PROC-NONBLOCK! ( fd -- ) {: fd :}

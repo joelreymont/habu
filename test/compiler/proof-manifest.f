@@ -88,13 +88,13 @@ variable ALLOW-AX
 
 \ ---- byte buffers ------------------------------------------------------------
 
-: SINK+ ( ptr u8 n ptr u8 n ptr a -- )
+: SINK+ ( ptr u8 n ptr u8 n ptr n -- )
    {: src:ptr srcu:n dst:ptr cap:n lenv:ptr :}
    lenv @ srcu + cap > if E-STR-CAPACITY throw then
    src dst lenv @ + srcu BYTE-COPY
    lenv @ srcu + lenv ! ;
 
-: SINK-C+ ( n ptr u8 n ptr a -- ) {: c:n dst:ptr cap:n lenv:ptr :}
+: SINK-C+ ( n ptr u8 n ptr n -- ) {: c:n dst:ptr cap:n lenv:ptr :}
    lenv @ 1+ cap > if E-STR-CAPACITY throw then
    c dst lenv @ + c!
    lenv @ 1+ lenv ! ;

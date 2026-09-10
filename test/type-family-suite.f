@@ -57,7 +57,7 @@ variable NQDIN   variable NQDOUT  variable NQRIN   variable NQROUT
 variable NQEMP   variable NQMUL variable NQST
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
-TRUSTED: TWX-CHECKER-SNAPSHOT-PREPARE ( -- ) CHECKER-SNAPSHOT-PREPARE ;
+TRUSTED: TWX-CHECKER-CAPTURE-PREPARE ( -- ) CHECKER-CAPTURE-PREPARE ;
 TRUSTED: TWX-FRESH ( -- n ) FRESH ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
 TRUSTED: TWX-LAY-ALIGN@ ( n -- n ) LAY-ALIGN@ ;
@@ -897,7 +897,7 @@ s" pkgd" s" tree" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
 TFAM-N@ 11 T=                           \ includes the two unified-payload fixtures
 
 \ ---------------------------------------------------------------------------
-\ 14. snapshot persist/restore: run the exact words TWX-CHECKER-SNAPSHOT-PREPARE
+\ 14. snapshot persist/restore: run the exact words TWX-CHECKER-CAPTURE-PREPARE
 \    invokes and prove every store reads back identically after the bake.
 \ ---------------------------------------------------------------------------
 TWX-TFAM-SNAPSHOT-PERSIST

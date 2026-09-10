@@ -77,7 +77,7 @@ variable REPL-ROOT-U
 : REPL-EM-DASH ( -- )
    $E2 REPL-C $80 REPL-C $94 REPL-C ;
 
-: REPL-U  ( u -- )
+: REPL-U  ( n -- )
    0 REPL-NUM-L !
    dup 0 = if drop 48 REPL-C exit then
    begin dup 0 > while

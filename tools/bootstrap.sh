@@ -247,7 +247,6 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/cell-effects.f >> "$out"
   printf '\n' >> "$out"
-  cat src/core/pointer-storage-effects.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/declaration-transaction.f >> "$out"
   printf '\n' >> "$out"

@@ -98,7 +98,9 @@ $53524331 constant SRC-MAGIC         \ "SRC1": the registry header format tag
 5 constant OFF-ORG
 6 constant ROW-CELLS
 0 constant ORG-NONE                  \ origin cell of a root source
+public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
+private
 
 \ ---- cell access -------------------------------------------------------------
 : LCELL@ ( IR-ARENA:arena n -- n )

@@ -220,7 +220,8 @@ public
 \ A small enumeration rather than a flag, so the CODE kind is a new member.
 0 constant ADDR-NONE
 1 constant ADDR-DATA
-ADDR-DATA constant ADDR-KIND-MAX
+2 constant ADDR-CODE
+ADDR-CODE constant ADDR-KIND-MAX
 
 private
 
@@ -1356,7 +1357,7 @@ private
 
 \ Its own form and not the tail branch with another target: a tail branch is how
 \ a routine RETURNS, and this publishes nothing and comes back from nowhere. It
-\ carries an adjustment, over the one cell the trap routine takes.
+\ carries an adjustment over the diagnostic address, length and exit code.
 : DEF-TRAP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:TRAP OPCODE IR-SCHEMA:BEGIN-OP

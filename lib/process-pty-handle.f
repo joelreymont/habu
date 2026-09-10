@@ -396,7 +396,7 @@ CAST: SUP-WATCH>FD ( sup-watch -- fd )
 : TEARDOWN-TARGET@ ( process-pty-teardown -- process-pty-teardown target-pid )
    TEARDOWN-IDX TARGET@ ;
 
-: TEARDOWN-FD-TAKE ( process-pty-teardown ptr a -- process-pty-teardown fd )
+: TEARDOWN-FD-TAKE ( process-pty-teardown ptr n -- process-pty-teardown fd )
    {: slot:ptr :}
    OPEN-TEARDOWN {: raw:n :}
    raw N>TEARDOWN

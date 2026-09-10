@@ -19,8 +19,13 @@
 
 package SNAP
 
-\ output path — the single knob; build-fixpoint owns/moves the artifact
+create OUTPUT FS-PATH-CAP allot
+variable OUTPUT-U
+
+\ Refresh builds keep their existing temporary artifact name. Applications
+\ select a path before capture, copied into DATA rather than retained in argv.
 : OUT-PATH ( -- ptr u8 n )
+   OUTPUT-U @ if OUTPUT OUTPUT-U @ exit then
    s" hb-snap0" TMP-PATH ;
 
 \ Snapshot trailer format version (item 12 slice 3b, dot
@@ -167,7 +172,6 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 
 : SND-ZERO-LIVE ( -- )
    RBASE-CELL SND-ZERO-CELL   S0-CELL SND-ZERO-CELL
-   REPLH-CELL SND-ZERO-CELL
    ARGC-CELL SND-ZERO-CELL    ARGV-CELL SND-ZERO-CELL
    ENVP-CELL SND-ZERO-CELL    SNAP-CELL SND-ZERO-CELL
    HND-CELL SND-ZERO-CELL     PEND-CELL SND-ZERO-CELL
@@ -185,12 +189,6 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
    TKA-CELL SND-ZERO-CELL     TKL-CELL SND-ZERO-CELL
    DEF-TKA-CELL SND-ZERO-CELL
    ENGINE-SNAP-XT-CELL SND-ZERO-CELL
-   \ Disarm the top-row token hook in the image: a captured-armed tracker fires
-   \ on the warm boot's `provided` re-establishment rows and its sig-store scan
-   \ derefs an un-rebased engine-text pointer (SIGSEGV; dot
-   \ habu-typed-top-snapshot-daa8989a owns tracker-on re-arm; the pointer defect
-   \ is habu-snapshot-rebase-persisted-4bd33351).
-   TOP-HOOK-CELL SND-ZERO-CELL
    AOT-SEED-DONE-CELL SND-ZERO-CELL
    BOOT-SRC:USER-END SND-ZERO-CELL
    SND-ZERO-EVAL-FRAMES
@@ -240,7 +238,8 @@ TRUSTED: SND-DEAD-HEAP-END ( -- n )
 \ Everything inside the region copy is already canonicalised: pointers into the
 \ region are folded to the RBASE-VA sentinel and call displacements to the
 \ canonical REGION-OFF distance. Some cells in DATA hold region addresses too --
-\ every deferred word's dispatch cell, and the three engine hook cells -- and DATA
+\ every deferred word's dispatch cell, the three engine hooks and the compiler
+\ dispatch cell -- and DATA
 \ is copied verbatim, so before this they arrived at a restoring run still
 \ pointing at the writing run's region.
 \ That was survivable only while the region had a fixed address. It is not now:
@@ -254,7 +253,7 @@ TRUSTED: SND-DEAD-HEAP-END ( -- n )
 \ integer may hold any value, including one that looks exactly like a region
 \ address. The engine declares each cell where its kind is decided -- `defer` when
 \ it allocates a dispatch cell, `is` when it stores into one, and cold boot for
-\ the three hook cells -- and records the DATA offset in the table this pass
+\ the fixed hook/dispatch cells -- and records the DATA offset in the table this pass
 \ walks. The loader (habu2.f EM-SNAPSHOT-RESTORE) inverts exactly this list from
 \ exactly the same table.
 \ These four words belong to this package, the snapshot writer, rather than to
@@ -266,6 +265,10 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 
 : SND-XT-ROW ( n -- n ) {: row:n :}
    SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@ ;
+
+: SND-XT-OFF ( n -- n ) SNAP-RELOC:XTCELL-OFF-MASK and ;
+
+: SND-XT-DATA? ( n -- bool ) SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
 
 \ The offset is about to index this writer's scratch copy of DATA, so it has to
 \ name a whole cell inside DATA before it is used for anything. The same band the
@@ -283,8 +286,10 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 : SND-XT-CELL-REFUSE ( -- )
    s" snap: declared address cell outside DATA" SNAP-RELOC:XTBAND-RC die ;
 
-: SND-CANON-XT-CELL ( n -- ) {: cell:n :}
+: SND-CANON-XT-CELL ( n -- ) {: row:n :}
+   row SND-XT-OFF {: cell:n :}
    cell SND-XT-CELL-OK? 0= if SND-XT-CELL-REFUSE then
+   row SND-XT-DATA? if exit then
    cell SND-XT-CELL@ {: xt:n :}
    xt 0= if exit then
    xt dbase@ - RBASE-VA +  cell SND-XT-CELL! ;
@@ -294,11 +299,22 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
       i SND-XT-ROW SND-CANON-XT-CELL
    loop ;
 
+: SND-ZERO-WRITER ( -- )
+   SNC-N data-base - SND-ZERO-CELL
+   SND-N data-base - SND-ZERO-CELL
+   MBUF-A data-base - SND-ZERO-CELL
+   MP data-base - SND-ZERO-CELL
+   MLEN data-base - SND-ZERO-CELL
+   STB data-base - SND-ZERO-CELL
+   SDB data-base - SND-ZERO-CELL
+   SFD data-base - SND-ZERO-CELL ;
+
 : CANON-DATA ( -- )
    SND-ALLOC
    SND-COPY
    SND-ZERO-LIVE
    SND-ZERO-DEAD-HEAP
+   SND-ZERO-WRITER
    SND-CANON-XT-CELLS ;
 
 : CANON-REGION ( -- )
@@ -377,11 +393,19 @@ TRUSTED: CHECK-HOOK ( ptr u8 n -- n )
 
 public
 
+: PATH! ( ptr u8 n -- ) {: path:ptr size:n :}
+   size 0 <= size FS-PATH-CAP >= or if
+      s" snap: invalid output path length" 74 die
+   then
+   path OUTPUT size BYTE-COPY
+   size OUTPUT-U ! ;
+
 : PERSIST ( -- )
    HDR
    CANON-REGION
    CANON-DATA
    WRITE-IMAGE
+   OUT-PATH CODESIGN:ENSURE
    DRV-EXIT-OK ;
 
 TRUSTED: INSTALL-HOOK ( -- )

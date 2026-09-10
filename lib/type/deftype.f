@@ -38,15 +38,9 @@
 \ a built-in family, a CT-role, or an already-declared nominal in the same package
 \ (E-TFAM-DUP / reserved-name throw), so no silent shadowing or rename.
 \
-\ TRUSTED BOUNDARY. The single static trusted site is NG-EVAL, the audited
-\ `evaluate` that compiles each generated converter (the maki/extent.f XG-EVAL /
-\ maki/cad.f CAP-COMPILE-RUN pattern): `evaluate` cannot be checker-typed, and the
-\ per-nominal `n <-> family-scalar` retype is the sanctioned nominal-cast the
-\ checker cannot yet express (the roles.f role-cast gap, tracked project-wide by
-\ the retire-TRUSTED epic habu-epic-type-habu-a34713f0). Each generated body is a
-\ no-op identity cast, correct by construction and built from string literals, so
-\ no static trust site is added per declaration and every generated pair is
-\ certified through the check hook by NG-EVAL. Tested by test/deftype-suite.f.
+\ Generated converters use CAST:, which checks representation, ownership and
+\ linearity. NG-EVAL is the source-evaluation boundary; it does not exempt a
+\ generated declaration from those checks.
 
 require lib/string.f                 \ ASCII-LOWER: fold the surface name to the family tail
 require lib/codegen.f                \ CODEGEN:BUFFER-E: the shared generated-source byte buffer
@@ -58,7 +52,7 @@ private
 -6001 constant E-VNOM-NAME     \ DEFTYPE given an empty name
 -6002 constant E-VNOM-CAP      \ generated-source or mangle buffer capacity exceeded
 
-\ ---- generated-source codegen buffer (build the "TRUSTED: ... ;" converter text
+\ ---- generated-source codegen buffer (build the "CAST: ..." converter text
 \ each declaration evaluates). The append mechanics live in package CODEGEN
 \ (lib/codegen.f); these thin words bind them to this file's NG-BUFFER instance,
 \ minted with the E-VNOM-CAP throw code its callers already expect. ------------
@@ -68,11 +62,7 @@ NG-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NG-BUFFER
 : NG+ ( ptr u8 n -- )  NG-BUFFER CODEGEN:APPEND-STRING ;   \ append a string
 : NG$ ( -- ptr u8 n )  NG-BUFFER CODEGEN:CONTENTS ;
 
-\ the one metaprogramming boundary: `evaluate` cannot be checker-typed, so this
-\ audited TRUSTED wrapper compiles the constructed converter text with the check
-\ hook active. Every generated body is a proven no-op identity cast, so this one
-\ boundary covers every declaration-derived converter pair (dot
-\ habu-epic-type-habu-a34713f0).
+\ Evaluate declaration text with the checker active.
 TRUSTED: NG-EVAL ( -- )  NG$ evaluate ;
 
 \ ---- surface NAME (UPPER-CASE) -> lowercase family tail -----------------------
@@ -86,15 +76,14 @@ NM-CAP E-VNOM-CAP E-VNOM-CAP CODEGEN:BUFFER-E NM-BUFFER
    u 0 ?do  a i + c@ ASCII-LOWER NM-BUFFER CODEGEN:APPEND-BYTE  loop
    NM-BUFFER CODEGEN:CONTENTS ;
 
-\ ---- converter emitters: `TRUSTED: >NAME ( n -- tail ) ;` (inject) and
-\ `TRUSTED: NAME>N ( tail -- n ) ;` (project), both no-op identity casts. --------
+\ Converter declarations have no body; CAST: validates the retype.
 : EMIT-IN ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n :}
    NG-RESET
-   s" TRUSTED: >" NG+  sa su NG+  s"  ( n -- " NG+  ta tu NG+  s"  ) ; " NG+
+   s" CAST: >" NG+  sa su NG+  s"  ( n -- " NG+  ta tu NG+  s"  ) " NG+
    NG-EVAL ;
 : EMIT-OUT ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n :}
    NG-RESET
-   s" TRUSTED: " NG+  sa su NG+  s" >N ( " NG+  ta tu NG+  s"  -- n ) ; " NG+
+   s" CAST: " NG+  sa su NG+  s" >N ( " NG+  ta tu NG+  s"  -- n ) " NG+
    NG-EVAL ;
 
 public

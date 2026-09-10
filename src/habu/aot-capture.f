@@ -29,14 +29,13 @@ using AOT-BUF
 \ the dictionary record region; live engine registries are under AOT-LIVE-DATA. ---
 \ The casts expose record addresses, byte views, and record cells for reverse lookup.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: AOT-DBASE ( -- ptr a ) dbase@ ;
+TRUSTED: AOT-DBASE ( -- ptr n ) dbase@ ;
 TRUSTED: AOT-DBASE-N ( -- n ) dbase@ ;
 TRUSTED: AOT-DATA-N ( -- n ) data-base ;
-TRUSTED: AOT-A>U8 ( ptr a -- ptr u8 ) ;
+TRUSTED: AOT-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
-: AOT-LIVE-DATA ( -- ptr a ) data-base ;
-: AOT-CELL@ ( ptr a -- n ) @ ;
-s" AOT-CELL@" s" ptr a -- n" TRUST
+: AOT-LIVE-DATA ( -- ptr n ) data-base ;
+: AOT-CELL@ ( ptr n -- n ) @ ;
 : AOT-N-C! ( n ptr u8 -- ) {: v:n p:ptr :}         \ store a full cell as 8 LE bytes
    v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c!
    v 32 rshift p 4 + c!  v 40 rshift p 5 + c!  v 48 rshift p 6 + c!  v 56 rshift p 7 + c! ;
@@ -44,15 +43,15 @@ s" AOT-CELL@" s" ptr a -- n" TRUST
    v p c!  v 8 rshift p 1+ c!  v 16 rshift p 2 + c!  v 24 rshift p 3 + c! ;
 
 \ --- host dictionary record k (48 bytes): field readers (ptr-first byte offsets) ---
-: AOT-REC ( n -- ptr a ) 48 * AOT-DBASE swap + ;
-: AOT-RXT ( ptr a -- n ) AOT-CELL@ ;                          \ [0] code entry (xt)
-: AOT-RLEN ( ptr a -- n ) 8 + AOT-CELL@ ;                     \ [8] code LENGTH (habu2.f EM-AOT-REGISTER-RECS) or package private WID
-: AOT-RFLAGS ( ptr a -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
-: AOT-RNLEN ( ptr a -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
-: AOT-REXT? ( ptr a -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
-: AOT-RNPTR ( ptr a -- ptr u8 )
+: AOT-REC ( n -- ptr n ) 48 * AOT-DBASE swap + ;
+: AOT-RXT ( ptr n -- n ) AOT-CELL@ ;                          \ [0] code entry (xt)
+: AOT-RLEN ( ptr n -- n ) 8 + AOT-CELL@ ;                     \ [8] code LENGTH (habu2.f EM-AOT-REGISTER-RECS) or package private WID
+: AOT-RFLAGS ( ptr n -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
+: AOT-RNLEN ( ptr n -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
+: AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
+: AOT-RNPTR ( ptr n -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else AOT-A>U8 24 + then ;
-: AOT-RWID ( ptr a -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
+: AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
 
 \ --- 32-bit little-endian code word; direct `BL imm26` call recognise + decode.
 \ Every statically known native call is now one BL (habu2.f LCEMITBL); the callee's
@@ -168,21 +167,6 @@ variable ACAP-TS                               \ probe cursor
    ndict@ 0 ?do i ACAP-TIDX-INS loop
    ndict@ ACAP-TIDX-ND ! ;
 
-\ THE TIE-BREAK NEEDS A DUPLICATE TO BE TESTED, AND THE DICTIONARY DOES NOT
-\ SUPPLY ONE. Measured on this build: the metabuild host holds ZERO records
-\ sharing an entry at the REPL window every `install --force` captures, and two
-\ once the compiler chain is inside the window. So a mutation making the LAST
-\ index win instead of the first passed the whole battery - the branch is correct
-\ and, today, unreachable. EXPORT is the only producer of two records for one
-\ body, so the pair below is one, made deliberately and by that same production
-\ keyword. ACAP-TIDX-PROVE refuses an index built over a dictionary with no
-\ duplicate at all, which is what stops this pair from being deleted as unused
-\ and what will tell the next author why it is here.
-: ACAP-ALIAS-SEED ( -- n ) 0 ;
-public
-export ACAP-ALIAS-SEED                         \ a second record, same entry, second wordlist
-private
-
 variable ACAP-TIDX-MM                          \ index/scan disagreement count
 \ A value no record carries must answer -1, and the witness's own absence is
 \ established by the linear scan rather than assumed.
@@ -222,9 +206,6 @@ variable ACAP-TIDX-MM                          \ index/scan disagreement count
    loop
    AOT-DATA-N ACAP-TIDX-ABSENT                          \ far: no code entry is a DATA address
    ACAP-TIDX-CODE-XT 2 + ACAP-TIDX-ABSENT               \ near: a real entry, off alignment
-   ndict@ ACAP-TIDX-N @ - 0= if                         \ records inserted minus slots taken
-      s" aot-capture: no two records share an entry, so the tie-break above is untested" 74 die
-   then
    ACAP-TIDX-MM @ 0= 0= if
       s" aot-capture: TARGET INDEX MISMATCH count=" type ACAP-TIDX-MM @ . cr
       s" aot-capture: target index disagrees with the dictionary scan" 74 die
@@ -346,6 +327,7 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
    u 255 > if s" aot-capture: name too long for pool" 74 die then
    a u ACAP-POOL-FIND dup 0 >= if exit then drop
    AOT-NAMES-LEN @ 1+ u + AOT-NAMES-CAP > if s" aot-capture: name pool overflow" 74 die then
+   AOT-NAMES-LEN @ 1+ u + AOT-NAMES-RESERVE
    AOT-NAMES-LEN @ {: off:n :}
    u  AOT-NAMES-BUF@ off + c!                                \ [len]
    u 0 ?do a i + c@  AOT-NAMES-BUF@ off 1+ + i + c!  loop    \ [bytes]
@@ -373,13 +355,13 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
 
 \ --- records: copy host record (48 bytes), rebase ordinary [0] xt to blob offset ---
 : ACAP-REC-DST ( n -- ptr u8 ) 48 * AOT-REC-BUF@ swap + ;
-variable AOT-UNRES-N                          \ kept-source counter: unresolved call sites
 : ACAP-ADD-REC ( n n -- ) {: k:n bstart:n :}
+   k AOT-REC AOT-RWID DICT-WL:RETIRED = if exit then
    AOT-REC-N @ AOT-REC-MAX >= if s" aot-capture: too many records" 74 die then
    k AOT-REC AOT-A>U8 {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
    48 0 ?do src i + c@  d i + c!  loop                        \ verbatim 48-byte copy
-   src AOT-RWID -1 <> if
+   k AOT-REC AOT-RWID -1 <> if
       k AOT-REC AOT-RXT bstart -  d AOT-N-C!                  \ ordinary [0] = xt - blob-start
    then                                                        \ package [0]/[8] are raw u32 WID roles
    AOT-REC-N @ 1+ AOT-REC-N ! ;
@@ -438,7 +420,7 @@ variable AOT-UNRES-N                          \ kept-source counter: unresolved 
 : ACAP-AUDIT-WIDS ( -- )
    AOT-REC-N @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}
-      v AOT-RWID -1 = if
+      v CELL-VIEW AOT-RWID -1 = if
          v v ACAP-W32@ ACAP-?WID
          v v 8 + ACAP-W32@ ACAP-?WID
       else
@@ -449,7 +431,7 @@ variable AOT-UNRES-N                          \ kept-source counter: unresolved 
 : ACAP-COMPACT-RECS ( -- )
    AOT-REC-N @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
-      v AOT-RWID -1 = {: pkg:bool :}
+      v CELL-VIEW AOT-RWID -1 = {: pkg:bool :}
       v 4 + ACAP-W32@ 0= 0= if s" aot-capture: rec blob-off exceeds u32" 74 die then
       v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
       pkg 0= if
@@ -519,7 +501,14 @@ variable ACAP-RECMM                                           \ record-proof mis
       v ACAP-REC-EXT? {: ext:bool :}
       48 0 ?do
          ext  i 24 >= and  i 32 < and  0= if                  \ EXT: [24..32) is the out-of-line pointer
-            s i + c@  v i + c@  = 0= if 1 ACAP-RECMM +! then
+            s i + c@  v i + c@  = 0= if
+               ACAP-RECMM @ 12 < if
+                  s" record " type j . s"  byte " type i .
+                  s"  expected " type s i + c@ . s"  actual " type v i + c@ .
+                  s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
+               then
+               1 ACAP-RECMM +!
+            then
          then
       loop
       ext if c v ACAP-PROVE-NAME then                         \ ... and the name stands in for it
@@ -880,20 +869,12 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ wordlist that the seed's own routine does search, so a site there is required to
 \ name a PRE-WINDOW record - one of the engine's own baked helpers - whose wid is
 \ a layout constant and therefore the same number in the target.
-: ACAP-QUAL-SPLIT ( ptr u8 n -- n ) {: a:ptr u:n :}   \ separator index, or -1
-   u 0 ?do a i + c@ ACAP-QUAL-SEP = if i unloop exit then loop
-   -1 ;
-
-: ACAP-QUAL-XT ( ptr u8 n -- n ) {: a:ptr u:n :}      \ what a qualified name resolves to, or 0
-   a u ACAP-QUAL-SPLIT {: c:n :}
-   c 0 < if 0 exit then
-   a c DICT-WL:NAMESPACE search-wl {: pub:n :}        \ the package row's [0] is its public wid
-   pub 0= if 0 exit then
-   a c + 1+  u c - 1-  pub search-wl ;
+: ACAP-XREF-XT ( ptr n -- n )
+   dup XREF-FOUND? if XREF-START exit then drop 0 ;
 
 : ACAP-SITE-XT ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
-   w WID-QUAL = if a u ACAP-QUAL-XT exit then
-   a u w search-wl ;
+   w WID-QUAL = if a u XREF-FIND ACAP-XREF-XT exit then
+   a u w XREF-FIND-WL ACAP-XREF-XT ;
 
 : ACAP-REFUSE-SITE ( n n ptr u8 n n -- ) {: s:n k:n a:ptr u:n w:n :}
    s" aot-capture: call site " type s .
@@ -938,8 +919,12 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    AOT-SITE-N @ 1- k ACAP-?SITE
    AOT-BLOB-BUF@ ACAP-P @ +        ACAP-ZERO-IMM ;     \ one 4-byte site
 : ACAP-SITE-HERE ( -- )
-   AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT ACAP-TGT>REC {: k:n :}
-   k 0 < if 1 AOT-UNRES-N +! exit then                \ call to no dict word -> word kept-source (counted)
+   AOT-BLOB-BUF@ ACAP-P @ + ACAP-TGT {: t:n :}
+   t ACAP-IN-CODE? if exit then
+   t ACAP-TGT>REC {: k:n :}
+   k 0 < if
+      s" aot-capture: call target has no dictionary record" 74 die
+   then
    k ACAP-SITE-ADD ;
 : ACAP-REFUSE-BRANCH ( n -- ) {: t:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
@@ -1129,6 +1114,33 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 
+\ A deferred word's trailer contains the same DATA address as its dispatch
+\ code. Its magic identifies the metadata field; aliases must relocate it once.
+: ACAP-DSITE-HELD? ( n -- bool ) {: site:n :}
+   AOT-DSITE-N @ 0 ?do
+      AOT-DSITE-BUF@ i 4 * + ACAP-W32@ site = if true unloop exit then
+   loop
+   false ;
+
+: ACAP-DEFER-SITE ( n n n n n -- )
+   {: k:n bstart:n bend:n d0:n d1:n :}
+   k AOT-REC {: rec:ptr :}
+   rec AOT-RXT rec AOT-RLEN + {: meta:n :}
+   meta bstart < meta 16 + bend > or if exit then
+   meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if exit then
+   meta 8 + AOT-N>U8 CELL-VIEW AOT-CELL@ {: cell:n :}
+   cell d0 < cell CELL + d1 > or if
+      s" aot-capture: defer metadata outside DATA window" 74 die
+   then
+   meta 8 + bstart - AOT-DSITE-CELL or {: site:n :}
+   site ACAP-DSITE-HELD? 0= if site ACAP-ADD-DSITE then ;
+
+: ACAP-SCAN-DEFER-SITES ( n n n n -- )
+   {: bstart:n bend:n d0:n d1:n :}
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i bstart bend d0 d1 ACAP-DEFER-SITE
+   loop ;
+
 \ The CODE half. Its sites are the anonymous quotation entry addresses, and each
 \ is canonicalized into a b0-relative offset with captureB0 = 0. The boot pass
 \ rebases every recorded literal by the code delta (seedCP - captureB0), so the
@@ -1171,29 +1183,52 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ to deliver four cells (dot habu-census-the-captured-fe5f7c49). What travels now
 \ is the NON-ZERO EXTENTS, and the seed zeroes the span before it lays them in.
 \
-\ AND WHY ONE KIND OF BYTE MAY NOT. A `defer` compiled inside the window allots a
-\ dispatch cell and registers it in the declared-address-cell table
-\ (src/habu/layout.f SNAP-RELOC:XTCELL-*), and that cell holds a code address in
-\ the BUILDING host. On macOS the JIT region is __text-relative and ASLR-varying,
-\ so baking one would make the image depend on the run that produced it and the
-\ byte fixpoint would never close - the same defect the code literals avoid by
-\ being stored b0-relative. THE INVARIANT: a declared address cell's value is
-\ owned by whatever declares it, never by the window's bytes. So those cells are
-\ excluded from every run here and their offsets recorded, and the seed puts the
-\ `defer-unset` trap xt of the engine it is booting into each one - the same value
-\ a freshly declared cell holds, found through the same keyword lookup the
-\ compiler uses.
-\ The boot-run list then installs the real vectors, which is what owns them; a
-\ cell the boot-run misses dies "defer: unset execution vector" at first use
-\ instead of branching to whatever the bytes held.
+\ AND WHY ONE KIND OF BYTE MAY NOT. A declared address cell holds either an XT in
+\ the BUILDING host's JIT window or a pointer in that host's captured DATA
+\ window. Neither raw address belongs to the seeded engine. THE INVARIANT: a
+\ declared address cell's value is owned by its declaration, never by the
+\ window's bytes. Every declared row is therefore captured structurally, whether
+\ the cell itself lies inside the DATA window or in fixed engine state below it.
+\ The seed recreates the exact null or window-relative target and re-registers
+\ the cell's kind. A non-null target outside its declared window is refused.
 \ The set is taken from the table and never from what a cell contains: the table
 \ is written where a cell's kind is decided, which is the only place it is known.
-: ACAP-ADD-XTOFF ( n -- ) {: woff:n :}
+: ACAP-ADD-XTOFF ( n n -- ) {: celloff:n meta:n :}
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-MAX >= if s" aot-capture: too many declared address cells" 74 die then
-   woff  AOT-WINDOW:XTOFF-N @ 4 * AOT-WINDOW:XTOFF-BUF@ +  AOT-P32!
+   AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + {: row:ptr :}
+   celloff row AOT-P32!
+   meta row 4 + AOT-P32!
    AOT-WINDOW:XTOFF-N @ 1+ AOT-WINDOW:XTOFF-N ! ;
 
-: ACAP-XTOFF@ ( n -- n ) {: k:n :}   k 4 * AOT-WINDOW:XTOFF-BUF@ + ACAP-W32@ ;
+: ACAP-XTOFF@ ( n -- n ) {: k:n :}
+   k AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + ACAP-W32@ ;
+
+: ACAP-XTMETA@ ( n -- n ) {: k:n :}
+   k AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + 4 + ACAP-W32@ ;
+
+: ACAP-XTCELL-ROWS ( -- n )
+   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@
+   dup 0 < over SNAP-RELOC:XTCELL-CAP > or if
+      s" aot-capture: declared address cell count out of range" 74 die
+   then ;
+
+: ACAP-XTCELL-RAW ( n -- n ) {: k:n :}
+   AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + k cells + AOT-CELL@ ;
+
+: ACAP-XTCELL-OFF ( n -- n ) ACAP-XTCELL-RAW SNAP-RELOC:XTCELL-OFF-MASK and ;
+
+: ACAP-XTCELL-DATA? ( n -- bool )
+   ACAP-XTCELL-RAW SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
+
+: ACAP-XTCELL-AT ( n -- ptr n ) {: k:n :}
+   AOT-LIVE-DATA k ACAP-XTCELL-OFF + ;
+
+: ACAP-XTCELL-CELL-REFUSE ( n -- ) {: off:n :}
+   s" aot-capture: declared address cell outside DATA: " type off . cr
+   s" aot-capture: declared address cell is outside DATA" 74 die ;
+
+: ACAP-XTCELL-CELL-CHECK ( n -- ) {: off:n :}
+   off SNAP-RELOC:XTCELL-OFF-MAX > if off ACAP-XTCELL-CELL-REFUSE then ;
 
 \ A row that overlaps the window without lying wholly inside it would leave half a
 \ host address in the baked bytes, so it ends the build rather than being skipped.
@@ -1201,9 +1236,31 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    s" aot-capture: declared address cell straddles the window edge at offset " type woff . cr
    s" aot-capture: declared address cell straddles the window edge" 74 die ;
 
-: ACAP-MASK-XTCELL ( n n -- ) {: woff:n len:n :}
-   woff 8 + len <= if woff ACAP-ADD-XTOFF exit then
-   woff ACAP-XTCELL-STRADDLES ;
+: ACAP-CLASSIFY-XTCELL ( n n -- ) {: woff:n len:n :}
+   woff 8 + 0 <= if exit then                         \ wholly below the window
+   woff len >= if exit then                          \ wholly above the window
+   woff 0 >= woff 8 + len <= and if exit then        \ wholly inside; run scan masks it
+   woff ACAP-XTCELL-STRADDLES ;                       \ either edge overlaps a partial cell
+
+: ACAP-TARGET-REFUSE ( n -- ) {: v:n :}
+   s" aot-capture: declared address target outside its capture window: " type v . cr
+   s" aot-capture: declared address target is not self-contained" 74 die ;
+
+: ACAP-TARGET-OFFSET ( n n n -- n ) {: v:n lo:n hi:n :}
+   v 0= if 0 exit then
+   v lo >= v hi < and 0= if v ACAP-TARGET-REFUSE then
+   v lo - 1+ dup AOT-WINDOW:XTOFF-VALUE-MASK > if v ACAP-TARGET-REFUSE then ;
+
+: ACAP-XTCELL-META ( n n n n n -- n ) {: k:n b0:n b1:n d0:n d1:n :}
+   k ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
+   k ACAP-XTCELL-DATA? if d0 d1 else b0 b1 then {: lo:n hi:n :}
+   v 0<> v lo < v hi >= or and if
+      s" aot-capture: address row " type k .
+      s"  cell DATA+" type k ACAP-XTCELL-OFF .
+      s"  expected range " type lo . hi . cr
+   then
+   v lo hi ACAP-TARGET-OFFSET
+   k ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
 
 \ --- the window's non-zero extents --------------------------------------------
 \ ONE ROW AND ITS BYTES, APPENDED TOGETHER. The bytes go into their own section in
@@ -1255,14 +1312,17 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
 \ order the engine registered it - so the scan needs no ordering the engine does
 \ not promise. That costs a pass per gap, and the gaps are the cells plus one, so
 \ the whole walk is the window's length plus the square of its declared-cell
-\ count. The count is bounded by SNAP-RELOC:XTCELL-CAP (4096) and the compiler
-\ chain's window declares ONE; a window that ever approached the cap would want
-\ the table ordered instead, which is a change to where the engine writes it.
+\ count. The count is bounded by SNAP-RELOC:XTCELL-CAP (4096); a runtime that
+\ approached the cap would want the table ordered instead, which is a change to
+\ where the engine writes it.
 : ACAP-NEXT-CELL ( n n -- n ) {: p:n len:n :}
    len ACAP-RC !
    AOT-WINDOW:XTOFF-N @ 0 ?do
-      i ACAP-XTOFF@ {: off:n :}
-      off p >= off ACAP-RC @ < and if off ACAP-RC ! then
+      i ACAP-XTOFF@ {: loc:n :}
+      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
+         loc AOT-WINDOW:XTOFF-VALUE-MASK and {: off:n :}
+         off p >= off ACAP-RC @ < and if off ACAP-RC ! then
+      then
    loop
    ACAP-RC @ ;
 
@@ -1274,27 +1334,25 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
       ACAP-RN @ 8 + ACAP-RQ !
    repeat ;
 
-\ The declared-address-cell table, read where it lives. A row is the cell's own
-\ address counted from the DATA base, which is the form the engine stores and the
-\ form both readers below want; ACAP-XTCELL-AT hands back the cell itself.
-: ACAP-XTCELL-ROWS ( -- n )
-   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@ ;
-
-: ACAP-XTCELL-OFF ( n -- n ) {: k:n :}
-   AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + k cells + AOT-CELL@ ;
-
-: ACAP-XTCELL-AT ( n -- ptr a ) {: k:n :}
-   AOT-LIVE-DATA k ACAP-XTCELL-OFF + ;
-
-\ The cells are collected BEFORE the runs, because a cell is what a run stops at.
-: ACAP-BAKE-DATA ( n n -- ) {: d0:n d1:n :}
+\ Every declared cell is recorded structurally. A cell inside the captured DATA
+\ span is additionally excluded from sparse byte runs.
+: ACAP-BAKE-DATA ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
    d1 d0 - {: len:n :}
    len AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
    d0 AOT-DATA-N - {: d0off:n :}
    ACAP-XTCELL-ROWS 0 ?do
-      i ACAP-XTCELL-OFF d0off - {: woff:n :}
-      woff 0 >= woff len < and if woff len ACAP-MASK-XTCELL then
+      i ACAP-XTCELL-OFF {: celloff:n :}
+      celloff ACAP-XTCELL-CELL-CHECK
+      celloff d0off - {: woff:n :}
+      woff len ACAP-CLASSIFY-XTCELL
+      i b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
+      woff 0 >= woff len < and if
+         woff AOT-WINDOW:XTOFF-WINDOW-TAG or
+      else
+         celloff
+      then
+      meta ACAP-ADD-XTOFF
    loop
    d0 len ACAP-SCAN-RUNS ;
 
@@ -1322,9 +1380,9 @@ public
 \ How many declared address cells BELOW the window hold an address inside it.
 \
 \ THIS IS THE OTHER HALF OF THE BOOT-RUN CONTRACT, and the half nothing measured
-\ until now. A declared cell INSIDE the window is zeroed and re-trapped by the
-\ seed (ACAP-MASK-XTCELL above), so the window's own cells are accounted for by
-\ XTOFF. A cell below the window is not captured at all - it belongs to the
+\ until now. A declared cell wholly INSIDE the window is excluded from the
+\ sparse DATA runs by ACAP-CLASSIFY-XTCELL, so its relocated value comes only
+\ from XTOFF. A cell below the window is not captured at all - it belongs to the
 \ engine the window was loaded into - and if the window's load PLANTED a window
 \ address in it, then that write is a load-time effect no captured byte carries.
 \ In a seeded engine the cell holds whatever the target's own prefix put there,
@@ -1343,7 +1401,7 @@ public
    0
    ACAP-XTCELL-ROWS 0 ?do
       i ACAP-XTCELL-OFF {: off:n :}
-      off d0off < if
+      i ACAP-XTCELL-DATA? 0= off d0off < and if
          i ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
          v b0 >= v b1 < and if 1+ then
       then
@@ -1359,109 +1417,38 @@ public
 
 private
 
-\ --- protected-WID registry capture (TFAM 2b-v): serialize the live friend-arena
-\ band into AOT-PWID-BUF so EMIT-AOT-SEED bakes it and EMIT-AOT-PROT-RESTORE
-\ restores it at boot. The band is a WID-indexed bitmap and the buffer is a
-\ bit-for-bit image of it, so the bake is canonical: one protected SET always
-\ produces one byte string, whatever order the host happened to protect them in.
-\ That is what lets install --force converge byte-identically across the changeover.
-\
-\ SHAPE DETECTION -- this is the transitional-build hazard layout.f documents. The
-\ capture runs on the METABUILD HOST, which during the changeover is the PREVIOUS,
-\ table-era engine, read at the offsets the NEW layout names. The tag cell reads
-\ PROT-REG-TAG on a bitmap-era host and a row count (0..PROT-WID-LEGACY-MAX) on a
-\ table-era one; the two cannot be confused, because a legacy count is bounded far
-\ below the tag and a table-era engine has no way to write the tag. Any third value
-\ is an unknown lineage and dies rather than being guessed at. The legacy leg
-\ retires once the seed has rolled past the transition (dot
-\ habu-retire-the-legacy-31ad57bc). ---
+\ --- protected WIDs owned by this window --------------------------------------
 : ACAP-PWID-IN-RANGE? ( n -- bool ) {: wid:n :}
    wid 0 < 0=  wid PROT-WID-MAX <  and ;
-: ACAP-PWID-BYTE ( n -- ptr u8 ) 3 rshift AOT-PWID-BUF@ + ;
-: ACAP-PWID-SET ( n -- ) {: wid:n :}
-   wid ACAP-PWID-IN-RANGE? 0= if
-      s" aot-capture: protected WID above the bitmap bound" 74 die
-   then
-   wid ACAP-PWID-BYTE dup c@  1 wid 7 and lshift or  swap c! ;
-: ACAP-PWID-BIT? ( n -- bool ) {: wid:n :}
+: ACAP-LIVE-PWID? ( n -- bool ) {: wid:n :}
    wid ACAP-PWID-IN-RANGE? 0= if 0 0= 0= exit then
-   wid ACAP-PWID-BYTE c@  wid 7 and rshift  1 and 0= 0= ;
-: ACAP-PWID-BIT-CLR ( n -- ) {: wid:n :}
-   wid ACAP-PWID-IN-RANGE? 0= if exit then
-   wid ACAP-PWID-BYTE dup c@  1 wid 7 and lshift $FF xor and  swap c! ;
-: ACAP-PWID-CLEAR ( -- )
-   PROT-BITS-BYTES 0 ?do 0 AOT-PWID-BUF@ i + c! loop ;
-: ACAP-PWID-TAG@ ( -- n ) AOT-LIVE-DATA PROT-REG-TAG-CELL + atomic@ ;
-: ACAP-PWID-SAME-SHAPE ( -- )                                  \ bitmap-era host: copy the band
-   PROT-BITS-BYTES 0 ?do
-      AOT-LIVE-DATA PROT-BITS-OFF + i + AOT-A>U8 c@  AOT-PWID-BUF@ i + c!
-   loop ;
-: ACAP-PWID-LEGACY ( n -- ) {: n:n :}                          \ table-era host: rows -> bits
-   n 0 < n PROT-WID-LEGACY-MAX > or if
-      s" aot-capture: unrecognised protected-WID registry shape" 74 die
-   then
-   n 0 ?do
-      AOT-LIVE-DATA PROT-WID-LEGACY-OFF + i 4 * + AOT-A>U8 ACAP-W32@ ACAP-PWID-SET
-   loop ;
-\ The live-band reads below are the only place this file still reads engine DATA,
-\ so the guard that they are reading DATA and not the dictionary belongs here: if
-\ data-base and dbase@ ever named one region the band read would silently return
-\ dictionary bytes and bake them as a protected set.
-: ACAP-PWID-CAPTURE ( -- )                                     \ live band -> AOT-PWID-BUF
-   AOT-LIVE-DATA AOT-DBASE = if
-      s" aot-capture: live DATA aliases dictionary base" 74 die
-   then
-   ACAP-PWID-CLEAR
-   ACAP-PWID-TAG@ {: tag:n :}
-   tag PROT-REG-TAG = if ACAP-PWID-SAME-SHAPE exit then
-   tag ACAP-PWID-LEGACY ;
-\ No overflow refusal: the table is AOT-PWIN-MAX = PROT-WID-MAX rows and its one
-\ caller below zeroes the count, then offers each WID of the window once and only
-\ where a bitmap bit answers - and no WID at or above the bound has one.
+   AOT-LIVE-DATA PROT-BITS-OFF + wid 3 rshift + AOT-A>U8 c@
+   wid 7 and rshift 1 and 0= 0= ;
 : ACAP-PWIN-ADD ( n -- ) {: rel:n :}
    rel AOT-PWIN-N @ 4 * AOT-PWIN-BUF@ + AOT-P32!
    AOT-PWIN-N @ 1+ AOT-PWIN-N ! ;
 
-\ Move the window's own protected WIDs out of the bitmap and into the
-\ window-relative table. The bitmap is restored before the cold prefix, when the
-\ target has no wid base yet, so a window bit left in it seals whatever number the
-\ target happens to keep there instead of the wordlist that was sealed here.
-: ACAP-PWID-SPLIT ( -- )
+\ Capture only WIDs created in the runtime window.  Absolute build-host bits are
+\ deliberately ignored: replaying them would resurrect the discarded namespace.
+: ACAP-PWIN-CAPTURE ( -- )
+   AOT-LIVE-DATA AOT-DBASE = if
+      s" aot-capture: live DATA aliases dictionary base" 74 die
+   then
+   0 ACAP-LIVE-PWID? if
+      s" aot-capture: protected-WID registry marks WID 0" 74 die
+   then
    0 AOT-PWIN-N !
    AOT-WID-W0 @ AOT-WID-SPAN @ + {: w1:n :}
    w1 AOT-WID-W0 @ ?do
-      i ACAP-PWID-BIT? if
-         i AOT-WID-W0 @ - ACAP-PWIN-ADD
-         i ACAP-PWID-BIT-CLR
-      then
+      i ACAP-LIVE-PWID? if i AOT-WID-W0 @ - ACAP-PWIN-ADD then
    loop ;
-
-variable ACAP-PWID-N                                           \ population accumulator
-: ACAP-PWID-COUNT ( -- n )                                     \ how many WIDs are protected
-   0 ACAP-PWID-N !
-   PROT-WID-MAX 0 ?do i ACAP-PWID-BIT? if ACAP-PWID-N @ 1 + ACAP-PWID-N ! then loop
-   ACAP-PWID-N @ ;
-\ The bitmap makes the row scan's three facts structural: a bit has exactly one
-\ index, the index cannot leave the band, and ACAP-PWID-SET already refused any
-\ out-of-range WID a legacy host offered. The one fact left to check is that WID 0
-\ is not a wordlist, and it is one bit.
-: ACAP-PWID-CHECK ( -- )
-   0 ACAP-PWID-BIT? if
-      s" aot-capture: protected-WID registry marks WID 0" 74 die
-   then ;
-
-variable ACAP-PWID-MX                                          \ max-WID accumulator
-: ACAP-PWID-MAXWID ( -- n )                                    \ largest protected WID (0 if none)
-   0 ACAP-PWID-MX !
-   PROT-WID-MAX 0 ?do i ACAP-PWID-BIT? if i ACAP-PWID-MX ! then loop
-   ACAP-PWID-MX @ ;
 
 \ Capture the words in dict[rec-start, rec-end) compiled contiguously into the host
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
 : ACAP-RESET ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  ACAP-POOL-RESET
-   0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
-   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !  ACAP-PWID-CLEAR
+   0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
+   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-WINDOW:XTOFF-N !
    0 AOT-WINDOW:RUN-N !  0 AOT-WINDOW:RBYTES-LEN !
    0 AOT-XTSITE:N !  0 AOT-PWIN-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
@@ -1520,15 +1507,13 @@ public
    ACAP-AUDIT-WIDS
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
+   bstart bend d0 d1 ACAP-SCAN-DEFER-SITES
    bstart bend ACAP-SCAN-CSITES
-   d0 d1 ACAP-BAKE-DATA                         \ the window's own DATA bytes, declared cells trapped
+   bstart bend d0 d1 ACAP-BAKE-DATA            \ DATA bytes plus every declared address cell
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
-   ACAP-PWID-CAPTURE                            \ serialize the protected-WID bitmap
-   ACAP-PWID-SPLIT                              \ the window's own seals travel relative
-   ACAP-PWID-CHECK                              \ WID 0 is never a wordlist
-   ACAP-AUDIT-SIGS ;                            \ ... and every checked word's signature travels
+   ACAP-PWIN-CAPTURE ;                          \ only the window's own seals travel
 
 private
 
@@ -1674,31 +1659,5 @@ variable ACAP-NIDX-XM                                \ pool scan disagrees with 
    ACAP-POOL-RESET ;
 ACAP-NIDX-SELFTEST
 ACAP-WID-SELFTEST
-
-\ --- build-time regression (TFAM 2b-v): the protected-WID bitmap must round-trip a
-\ WID above 255 through the AOT serialize/deserialize with no truncation, must not
-\ answer for a WID it never set, and must report an exact maximum (the boot restore
-\ uses it to advance WIDN past every restored WID). Runs in the live metabuild
-\ BEFORE stdin.f's real AOT-CAPTURE:CAPTURE and clears the buffer afterwards, so the
-\ capture is unaffected. ACAP-PWID-SET is the exact serialize the capture uses and
-\ ACAP-PWID-BIT? reads the same bits EMIT-AOT-PROT-RESTORE copies at boot, so
-\ this guards both directions. Fail-closed via die. ---
-: ACAP-PWID-SELFTEST ( -- )
-   ACAP-PWID-CLEAR
-   42 ACAP-PWID-SET
-   1000 ACAP-PWID-SET                                \ > 255: the truncation this must not do
-   300 ACAP-PWID-SET                                 \ > 255, and in a different byte
-   42 ACAP-PWID-BIT? 0= if s" aot-capture: pwid self-test: wid 42 lost" 74 die then
-   1000 ACAP-PWID-BIT? 0= if s" aot-capture: pwid self-test: wid 1000 (>255) truncated" 74 die then
-   300 ACAP-PWID-BIT? 0= if s" aot-capture: pwid self-test: wid 300 (>255) truncated" 74 die then
-   43 ACAP-PWID-BIT? if s" aot-capture: pwid self-test: neighbour bit set" 74 die then
-   1000 8 - ACAP-PWID-BIT? if s" aot-capture: pwid self-test: wrong byte set" 74 die then
-   PROT-WID-MAX ACAP-PWID-BIT? if s" aot-capture: pwid self-test: bound not refused" 74 die then
-   ACAP-PWID-COUNT 3 <> if s" aot-capture: pwid self-test: population wrong" 74 die then
-   ACAP-PWID-MAXWID 1000 <> if s" aot-capture: pwid self-test: max-WID for WIDN advance wrong" 74 die then
-   ACAP-PWID-CLEAR
-   0 ACAP-PWID-COUNT <> if s" aot-capture: pwid self-test: clear left bits set" 74 die then ;
-ACAP-PWID-SELFTEST
-
 
 ;package

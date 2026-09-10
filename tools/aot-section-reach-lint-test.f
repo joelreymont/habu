@@ -126,16 +126,11 @@ using AOT-REACH-LINT
    FINDINGS-RESET
    s" src/habu/habu2.f" SCAN-FILE
    FINDINGS 0 T=
-   \ 28 before the checker payload (dot habu-seeded-words-invisible-c7505a49)
-   \ bound two more: AOT-SIG:LLEN, the payload's byte length, and AOT-SIG:LSPAN,
-   \ the span itself. The eager registry install added AOT-SIG:LNAME, the name
-   \ the seed LFINDs to call the checker's install at the seed point. Making the
-   \ window's DATA sparse (dot habu-census-the-captured-fe5f7c49) retired
-   \ AOT-WINDOW:LDATA, the verbatim span, and bound three in its place:
-   \ AOT-WINDOW:LNRUN, LRUNS and LRBYTES - the extent count, the rows and their
-   \ bytes. All of them are addressed with TADR, like every other row of the
-   \ section, which is the rule this count is the coverage of.
-   LABELS-FOUND 33 T= ;
+   \ Full runtime capture retired LAOTNPWID/LAOTPWID and the separate checker
+   \ payload's AOT-SIG:LLEN/LNAME/LSPAN bindings. The current section binds 27
+   \ labels, including the sparse DATA runs and window-relative WID records;
+   \ the following LIMGEND is the final protected address.
+   LABELS-FOUND 28 T= ;
 
 : MAIN ( -- )
    T-RESET

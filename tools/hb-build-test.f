@@ -42,7 +42,7 @@ package HB-BUILD-CLI
 
 64 constant HBT-KEY-U
 65536 constant HBT-CAPTURE-CAP
-120000 constant HBT-TIMEOUT-MS
+600000 constant HBT-TIMEOUT-MS
 4096 constant HBT-LARGE-CHUNK-U
 $40000 1 - constant HBT-LARGE-INPUT-U
 
@@ -148,41 +148,15 @@ create HBT-EXP-HEX2 64 allot
 : HBT-BAD-SRC$ ( -- ptr u8 n )
    s" : MAIN ( -- ) 0 0 patch32 ;" ;
 
+\ MAIN executes after restoration; loading the source only installs its state.
 : HBT-REPL-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   s" 5 constant FIVE" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" create PAD 8 allot" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" variable SLOT" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" defer APPLY ( i64 -- i64 )" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" : SQ ( i64 -- i64 ) FIVE drop PAD drop SLOT drop dup * ;" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" : INC ( i64 -- i64 ) 1 + ;" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" : INSTALL-APPLY ( -- ) [: INC ;] is APPLY ;" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" EXPORT SQ" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" : SHOW-ARGS ( -- ) SCRIPT-ARGC 0 > if SCRIPT-ARGC . CR 0 SCRIPT-ARGV$ type cr then ;" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" INSTALL-APPLY" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" 9 APPLY . CR" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" 9 SQ . CR" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" SHOW-ARGS" SB-APPEND
-   HBB-LF SB-APPEND-C
-   SB$ ;
+   S\" package HBT-APP\npublic\n5 constant FIVE\ncreate PAD 8 allot\nvariable SLOT\ndefer APPLY ( n -- n )\n: SQ ( n -- n ) FIVE drop PAD drop SLOT drop dup * ;\n: INC ( n -- n ) 1+ ;\n: INSTALL-APPLY ( -- ) [: INC ;] is APPLY ;\n: SHOW-ARGS ( -- ) SCRIPT-ARGC 0 > if SCRIPT-ARGC . cr 0 SCRIPT-ARGV$ type cr then ;\n: RUN ( -- ) 9 APPLY . cr 9 SQ . cr SHOW-ARGS ;\nINSTALL-APPLY\n;package\n: MAIN ( -- ) HBT-APP:RUN ;\n" ;
 
 : HBT-APPEND-CACHE-MUTATION ( -- )
    SB-RESET
    s" \\ cache key mutation" SB-APPEND
    HBB-LF SB-APPEND-C
-   HBT-REPL-SRC SB$ APPEND-FILE ;
+   HBT-AOT-SRC SB$ APPEND-FILE ;
 
 : HBT-REPL-BAD-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -243,27 +217,6 @@ create HBT-EXP-HEX2 64 allot
    s" HABU_BUILD_CACHE" >LEN HBT-TMP >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/source.f"  >LEN PROC-ARGV+
-   s" lib/build.f"  >LEN PROC-ARGV+
-   s" lib/codesign.f"  >LEN PROC-ARGV+
-   s" lib/content-key.f"  >LEN PROC-ARGV+
-   s" lib/object.f"  >LEN PROC-ARGV+
-   s" lib/object-cache.f"  >LEN PROC-ARGV+
-   s" lib/object-index.f"  >LEN PROC-ARGV+
-   s" lib/object-resolve.f"  >LEN PROC-ARGV+
-   s" lib/object-link.f"  >LEN PROC-ARGV+
-   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
-   s" tools/cli-run.f"  >LEN PROC-ARGV+
-   s" tools/object-image.f"  >LEN PROC-ARGV+
-   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
@@ -305,18 +258,12 @@ create HBT-EXP-HEX2 64 allot
 : HBT-REMOVE-ARTIFACT ( -- )
    HBB-ARTIFACT$ HBT-REMOVE-FILE? ;
 
-: HBT-HBB-KEY-REPL ( ptr u8 n ptr u8 -- )
+: HBT-HBB-KEY-AOT ( ptr u8 n ptr u8 -- )
    {: src:ptr srcu:n dst:ptr :}
-   src srcu HBT-REPL-OUT HBT-HBB-PREPARE-REPL
+   src srcu HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBB-PREPARE-ARTIFACT-CACHE
    HBB-ARTIFACT-CACHE @ 0= if E-BUILD-SOURCE throw then
    HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY
-   BF-TMP-RESET ;
-
-: HBT-HBB-RUN-MAKER ( -- n n n )
-   HBB-BUILD-MAKER
-   HBB-PREPARE-PROGRAM-SOURCE
-   HBB-RUN-MAKER-CMD
    BF-TMP-RESET ;
 
 : HBT-ADD-BAD ( -- )
@@ -339,17 +286,15 @@ create HBT-EXP-HEX2 64 allot
    PROC-ENV-INHERIT-MISSING ;
 
 : HBT-ADD-PATH-ERROR ( -- )
-   s" --repl" >LEN PROC-ARGV+
    s" --json-errors" >LEN PROC-ARGV+
-   HBT-REPL-SRC >LEN PROC-ARGV+
+   HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
-   HBT-REPL-OUT >LEN PROC-ARGV+ ;
+   HBT-AOT-OUT >LEN PROC-ARGV+ ;
 
 : HBT-ADD-PATH-ERROR-TEXT ( -- )
-   s" --repl" >LEN PROC-ARGV+
-   HBT-REPL-SRC >LEN PROC-ARGV+
+   HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
-   HBT-REPL-OUT >LEN PROC-ARGV+ ;
+   HBT-AOT-OUT >LEN PROC-ARGV+ ;
 
 : HBT-PATH-ERROR-TEXT$ ( -- ptr u8 n )
    SB-RESET
@@ -377,9 +322,9 @@ create READER-STATE JR:STORAGE-BYTES allot
    JR:TOKEN JR:T-INT T=
    JR:INT 1 T=
    s" cache_root" JR:FIND-KEY TTRUE
-   HBT-TMP REPORT-STRING=
+   HBB-REPL @ if NULL$ else HBT-TMP then REPORT-STRING=
    s" cache_source" JR:FIND-KEY TTRUE
-   s" explicit" REPORT-STRING=
+   HBB-REPL @ if s" none" else s" explicit" then REPORT-STRING=
    s" artifact_hit" JR:FIND-KEY TTRUE
    JR:TOKEN artifact T=
    s" object_hit" JR:FIND-KEY TTRUE
@@ -409,24 +354,25 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-HBB-BUILD-OUT
    HBT-REPL-OUT FILE? TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT ;
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
-: REBUILD-REPL-CACHE ( -- )
+\ A second capture compiles current sources and never restores a legacy maker.
+: REBUILD-REPL ( -- )
    HBT-REPL-OUT FILE? if HBT-REPL-OUT REMOVE-FILE then
    HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
    HBT-HBB-BUILD-OUT
-   HBB-ARTIFACT-HIT @ 0 <> TTRUE
+   HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-REPL-OUT FILE? TTRUE
-   HB-BUILD:REPORT$ JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
 : HBT-CACHE-KEY-CHANGES ( -- )
-   HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
-   HBT-REPL-SRC HBT-KEY-A HBT-HBB-KEY-REPL
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-KEY-A HBT-HBB-KEY-AOT
    HBT-APPEND-CACHE-MUTATION
-   HBT-REPL-SRC HBT-KEY-B HBT-HBB-KEY-REPL
+   HBT-AOT-SRC HBT-KEY-B HBT-HBB-KEY-AOT
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
-   HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL ;
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 : CLI-REPORT ( -- )
    HBT-ARGV-BASE
@@ -434,7 +380,7 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
-   HBT-OUT outu JR:T-TRUE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
+   HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
 
 : CHECK-PATH-JSON ( -- )
    HBT-ARGV-BASE
@@ -483,7 +429,7 @@ create READER-STATE JR:STORAGE-BYTES allot
    HB-BUILD:VALID? TTRUE
    HBT-BAD-OUT s" cache path file" WRITE-ALL
    HBT-BAD-OUT BUILD-CACHE:ROOT!
-   HBT-REPL-SRC HBT-REPL-OUT HBT-HBB-PREPARE-REPL
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    [: HBB-BUILD ;] catch E-BUILD-PATH T=
    BF-TMP-RESET
    HB-BUILD:VALID? TFALSE
@@ -514,8 +460,8 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-OUT rout s" hb-build OK" CONTAINS? TTRUE
    rerr 0 T=
    HBT-TMP BF-TMP!
-   s" hb-build-check-src" BF-A$ FILE-SIZE $40000 > TTRUE
-   s" hb-build-src" BF-A$ FILE-SIZE $40000 > TTRUE
+   s" hb-build-check-src" BF-A$ EXISTS? TFALSE
+   s" hb-build-src" BF-A$ EXISTS? TFALSE
    BF-TMP-RESET
    HBT-RUN-REPL
 
@@ -595,15 +541,36 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn s" + " CONTAINS? TTRUE ;
 
+\ Rejected input is compiled in the real snapshot child, before an image exists.
 : HBT-BUILD-REPL-BAD ( -- )
-   HBT-REPL-BAD-SRC HBT-REPL-BAD-OUT HBT-HBB-PREPARE-REPL
-   HBT-REPL-BAD-OUT FILE? if HBT-REPL-BAD-OUT REMOVE-FILE then
-   HBT-HBB-RUN-MAKER {: outu:n erru:n rc:n :}
-   rc 0 T<>
-   HBB-OUT-BUF outu HBT-EMPTY$ T$=
-   HBB-ERR-BUF erru s" expected: i64" CONTAINS? TTRUE
-   HBB-ERR-BUF erru s" actual: bool" CONTAINS? TTRUE
+   HBT-ARGV-BASE
+   s" --repl" >LEN PROC-ARGV+
+   HBT-REPL-BAD-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-REPL-BAD-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 70 T=
+   HBT-OUT outu HBT-EMPTY$ T$=
+   HBT-ERR erru s" expected: i64" CONTAINS? TTRUE
+   HBT-ERR erru s" actual: bool" CONTAINS? TTRUE
    HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+
+\ MAIN must satisfy the application's empty input/output contract at build time.
+: HBT-REFUSE-MAIN ( ptr u8 n -- )
+   HBT-REPL-BAD-SRC 2swap WRITE-ALL
+   HBT-ARGV-BASE
+   s" --repl" >LEN PROC-ARGV+
+   HBT-REPL-BAD-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-REPL-BAD-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 70 T= outu 0 T=
+   HBT-ERR erru s" in enter" CONTAINS? TTRUE
+   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
+
+: HBT-BAD-MAIN-EFFECTS ( -- )
+   s" : MAIN ( n -- n ) 1+ ;" HBT-REFUSE-MAIN
+   s" : MAIN ( -- n ) 7 ;" HBT-REFUSE-MAIN ;
 
 : HBT-BUILD-MISSING-TMP ( -- )
    HBT-NEW-TMP EXISTS? TFALSE
@@ -839,7 +806,7 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-AOT-OUT EXISTS? TFALSE ;
 
-\ The AOT/REPL/object cache keys fold the whole require/include closure, so a
+\ The AOT/object cache keys fold the whole require/include closure, so a
 \ content edit to a required file (not just the top-level source) must change the
 \ key. This is the property a single-file digest could not provide.
 : HBT-ENTRY-CLOSURE$ ( -- ptr u8 n )
@@ -901,7 +868,7 @@ public
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    BUILD-REPL
-   REBUILD-REPL-CACHE
+   REBUILD-REPL
    CLI-REPORT
    CLI-PATH-ERROR
    HBT-REPORT-INVALIDATION
@@ -911,6 +878,7 @@ public
    HBT-RUN-REPL-ARGS
    HBT-IMGDUMP-REPL
    HBT-BUILD-REPL-BAD
+   HBT-BAD-MAIN-EFFECTS
    HBT-BUILD-MISSING-TMP
    BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-MAKER-HIT

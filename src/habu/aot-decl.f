@@ -110,7 +110,7 @@ public
 package AOT-BUF
 public
 
-$200000 constant AOT-BLOB-CAP     \ 2 MiB: the chain's 1.15 MiB of code with room to grow
+$300000 constant AOT-BLOB-CAP     \ 3 MiB: the 2.15 MiB full runtime with room to grow
 create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
 \ 16384: the chain needs ~6554 records, and DICT-CAP (32768) is the absolute
 \ ceiling a capture window can reach, since the window is a dictionary subrange.
@@ -134,12 +134,14 @@ $FFFFFFFE constant WID-QUAL
 \ so the chain's 1.15 MiB projects to ~14k sites.
 32768 constant AOT-SITE-MAX
 create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ packed rows: blob-off u32 + name-off u32 + callee scope u32
-create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
-\ DATA-literal relocation table (third relocation class): blob offsets of the
-\ movz/movk x9 DATA-address literals (create/variable buffer refs). AOT-DATA-D0 =
-\ the capture engine's REPL-DATA base (abs); AOT-DATA-SIZE = the REPL DATA span
-\ (all allot/variable => zero content). EM-SEED-AOT reserves DATA and rebases each
-\ literal by (seed-DP - AOT-DATA-D0).
+DYNAMIC-BUFFER AOT-NAMES-STORAGE n
+variable AOT-NAMES-LEN
+: AOT-NAMES-RESERVE ( n -- ) CELL 1- + CELL / AOT-NAMES-STORAGE-RESERVE ;
+\ DATA relocation rows contain a blob offset. Bit 31 selects a raw address
+\ cell in a recognised metadata trailer; otherwise it names an address chain.
+\ Both move by (seed-DP - AOT-DATA-D0), preserving their window coordinate.
+$80000000 constant AOT-DSITE-CELL
+$7FFFFFFF constant AOT-DSITE-OFF-MASK
 \ 16384 shared rows: the metabuild window records one address chain per 127 blob
 \ bytes, so the chain's 1.15 MiB projects to ~9k DATA plus CODE sites together.
 16384 constant AOT-DSITE-MAX
@@ -157,15 +159,13 @@ variable AOT-WID-W0    variable AOT-WID-SPAN
 \ zeros. So the content travels, but as RUNS rather than as the span (AOT-WINDOW
 \ below); AOT-DATA-SIZE is the span itself and, with a sparse payload, the only
 \ authority for it.
-\ A DECLARED ADDRESS CELL IS THE ONE THING THE CONTENT MAY NOT CARRY. `defer` in
-\ the window allots a dispatch cell and registers it (SNAP-RELOC's XTCELL table),
-\ and what it holds is a code address in the BUILDING host - ASLR-varying on
-\ macOS. Baking that would make the image depend on the run that built it and the
-\ byte fixpoint would never close, which is the same reason the code literals are
-\ stored b0-relative. Those cells are therefore excluded from every run and their
-\ offsets listed here; EM-AOT-RELOC-DATA stores the seeded engine's own
-\ `defer-unset` trap xt into each one at boot. The offsets are u32, so the window
-\ they index is bounded by AOT-WINDOW:SPAN-CAP alone.
+\ A DECLARED ADDRESS CELL IS THE ONE THING THE CONTENT MAY NOT CARRY RAW. An XT
+\ cell holds a code address in the BUILDING host; a DATA-pointer cell can hold an
+\ address in that host's captured window. Neither address is valid after seeding.
+\ Both cells are therefore excluded from every run and listed with their kind.
+\ The seed reconstructs either kind as null or as an address relative to its
+\ captured target window.  A row's first u32 is the cell location relative to
+\ engine DATA; its second u32 is a typed CODE/DATA-window target offset.
 
 ;package
 
@@ -184,24 +184,32 @@ public
 \ genuine scalar in the artifact rather than a section's length. SPAN-CAP bounds
 \ it, and it bounds nothing else: the window costs no buffer here now, so the cap
 \ exists only to keep the u32 offsets in the two tables below honest and to fail
-\ closed on a span no engine could reserve. 8 MiB against the chain's measured
-\ 1,531,045 leaves the chain room to grow five-fold at no storage cost.
-$800000 constant SPAN-CAP
-\ 16384 rows against the chain's measured FOUR. A run is a maximal non-zero
+\ closed on a span no engine could reserve. 16 MiB against the full runtime's
+\ measured 8,310,765 bytes leaves honest headroom at no storage cost.
+$1000000 constant SPAN-CAP
+\ 262144 rows against the full runtime's measured 180710. A run is a maximal non-zero
 \ extent, so the count is a property of the window's content and not of its size,
 \ and a window that outgrew this is refused by name rather than truncated.
-16384 constant RUN-MAX
+262144 constant RUN-MAX
 create RUN-BUF RUN-MAX 8 * allot    variable RUN-N
-\ $40000 against the chain's measured 32 bytes. Overflow is refused by name.
-$40000 constant RBYTES-CAP
+\ $100000 against the full runtime's measured 540739 bytes. Overflow is refused by name.
+$100000 constant RBYTES-CAP
 create RBYTES-BUF RBYTES-CAP allot    variable RBYTES-LEN
-\ One row per declared address cell that lies in the window, so the engine's own
-\ table bounds it: habu2.f EMIT-MARK is the single producer of a row, it dedupes
-\ and exits XTCELL-RC at the cap, and ACAP-BAKE-DATA offers each row here at most
-\ once. Taken from that cap rather than measured (the metabuild REPL window holds
-\ one), so the two cannot drift apart.
+\ One row per declared address cell, including fixed cells below the captured
+\ DATA window. The engine's own table bounds it: habu2.f EMIT-MARK is the single
+\ producer of a row, it dedupes and exits XTCELL-RC at the cap, and capture offers
+\ each row here at most once. Taking the bound from that cap keeps the two owners
+\ from drifting apart.
 SNAP-RELOC:XTCELL-CAP constant XTOFF-MAX
-create XTOFF-BUF XTOFF-MAX 4 * allot    variable XTOFF-N   \ packed u32 window offsets
+8 constant XTOFF-ROW
+$80000000 constant XTOFF-WINDOW-TAG
+$80000000 constant XTOFF-DATA-TAG
+$7FFFFFFF constant XTOFF-VALUE-MASK
+create XTOFF-BUF XTOFF-MAX XTOFF-ROW * allot    variable XTOFF-N
+\ Each row is (cell-DATA-offset u32, kind/target u32). The high bit of the target
+\ marks a DATA pointer; its low bits are zero for null or target-window-offset+1.
+\ An untagged target is an XT with the same null/offset+1 rule. The cell location
+\ is not window-relative: fixed hooks below the captured heap window travel too.
 ;package
 
 package AOT-BUF
@@ -259,23 +267,11 @@ public
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
-\ protected-WID registry AOT image (TFAM 2b-v): a bit-for-bit image of the live
-\ friend-arena bitmap, baked so EMIT-AOT-PROT-RESTORE can restore it at boot --
-\ advancing WIDN past the highest restored WID so a post-restore wordlist alloc
-\ cannot collide with a protected one. The blob is a fixed PROT-BITS-BYTES image of
-\ a SET, so it does not depend on the order the writing run protected its WIDs. It
-\ is always emitted at full width, which is what lets the shape tag in front of it
-\ be the frame's version.
-create AOT-PWID-BUF PROT-BITS-BYTES allot
-
-\ The window's own protected WIDs, window-relative, kept OUT of the bitmap above.
-\ EMIT-AOT-PROT-RESTORE runs before the cold prefix and so before the target's wid
-\ base exists; only these rows can carry a window wordlist's seal across, and the
-\ seed sets each bit after rebasing it. The chain's window seals 125.
-\ One row per SET BIT of the bitmap above, so the bitmap's own bound is how many
-\ rows can ever exist: ACAP-PWID-SPLIT visits each WID of the window once and adds
-\ a row only where a bit answers, which no WID at or above PROT-WID-MAX has. At the
-\ bound the table cannot overflow, which is why nothing refuses a row.
+\ Protected WIDs owned by the captured runtime, window-relative.  The cold
+\ baseline starts with an empty bitmap; the seed rebases these rows after it has
+\ registered the window's wordlists.  No build-host WID survives the cut.
+\ One row can exist per protected WID below PROT-WID-MAX, so the bitmap's own
+\ bound is also a fixed sufficient row bound.
 PROT-WID-MAX constant AOT-PWIN-MAX
 create AOT-PWIN-BUF AOT-PWIN-MAX 4 * allot    variable AOT-PWIN-N   \ packed u32
 
@@ -313,54 +309,36 @@ create AOT-SIG-STR-BUF AOT-SIG-STR-CAP allot    variable AOT-SIG-STR-LEN
 $20000 constant AOT-REG-CAP
 create AOT-REG-BUF AOT-REG-CAP allot    variable AOT-REG-LEN
 
-\ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
-\ buffers as `ptr` for the checked copy/BYTES, sites below.
+\ Expose the build-scratch buffers for the checked copy/BYTES, sites below.
 \ The blob, record, site, name, relocation, and boot-run accessors refine their
 \ respective scratch buffers.
 : AOT-BLOB-BUF@ ( -- ptr u8 ) AOT-BLOB-BUF ;
-s" AOT-BUF:AOT-BLOB-BUF@" s" -- ptr u8" TRUST
-: AOT-REC-BUF@ ( -- ptr a ) AOT-REC-BUF ;
-s" AOT-BUF:AOT-REC-BUF@" s" -- ptr a" TRUST
+: AOT-REC-BUF@ ( -- ptr u8 ) AOT-REC-BUF ;
 : AOT-SITE-BUF@ ( -- ptr u8 ) AOT-SITE-BUF ;
-s" AOT-BUF:AOT-SITE-BUF@" s" -- ptr u8" TRUST
-: AOT-NAMES-BUF@ ( -- ptr u8 ) AOT-NAMES-BUF ;
-s" AOT-BUF:AOT-NAMES-BUF@" s" -- ptr u8" TRUST
+: AOT-NAMES-BUF@ ( -- ptr u8 ) 0 AOT-NAMES-STORAGE BYTE-VIEW ;
 : AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
-s" AOT-BUF:AOT-DSITE-BUF@" s" -- ptr u8" TRUST
 : AOT-SIG-BUF@ ( -- ptr u8 ) AOT-SIG-BUF ;
-s" AOT-BUF:AOT-SIG-BUF@" s" -- ptr u8" TRUST
 : AOT-SIG-STR-BUF@ ( -- ptr u8 ) AOT-SIG-STR-BUF ;
-s" AOT-BUF:AOT-SIG-STR-BUF@" s" -- ptr u8" TRUST
 : AOT-REG-BUF@ ( -- ptr u8 ) AOT-REG-BUF ;
-s" AOT-BUF:AOT-REG-BUF@" s" -- ptr u8" TRUST
 
 ;package
 
 package AOT-XTSITE
 public
 : BUF@ ( -- ptr u8 ) BUF ;
-s" AOT-XTSITE:BUF@" s" -- ptr u8" TRUST
 ;package
 package AOT-WINDOW
 public
 : RUN-BUF@ ( -- ptr u8 ) RUN-BUF ;
-s" AOT-WINDOW:RUN-BUF@" s" -- ptr u8" TRUST
 : RBYTES-BUF@ ( -- ptr u8 ) RBYTES-BUF ;
-s" AOT-WINDOW:RBYTES-BUF@" s" -- ptr u8" TRUST
 : XTOFF-BUF@ ( -- ptr u8 ) XTOFF-BUF ;
-s" AOT-WINDOW:XTOFF-BUF@" s" -- ptr u8" TRUST
 ;package
 
 package AOT-BUF
 public
 
 : AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
-s" AOT-BUF:AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
-\ Retirement for the six accessors above: habu-builder-trust-rows-c5d41af6.
-: AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
-s" AOT-BUF:AOT-PWID-BUF@" s" -- ptr u8" TRUST
 : AOT-PWIN-BUF@ ( -- ptr u8 ) AOT-PWIN-BUF ;
-s" AOT-BUF:AOT-PWIN-BUF@" s" -- ptr u8" TRUST
 
 ;package
 
@@ -377,8 +355,8 @@ s" AOT-BUF:AOT-PWIN-BUF@" s" -- ptr u8" TRUST
 \ layout.f's ENGINE-GPR:DSTACK.
 \ The rounding is the section's headroom for what is not a buffer: the twelve
 \ count cells that head the tables and the pad each BYTES, run takes to the next
-\ 4-byte boundary, at most a couple of hundred bytes against the $37FF the grain
-\ rounding leaves at this cap set ($51C801 of buffers under $520000). It
+\ 4-byte boundary. The current buffer sum rounds to exactly $530000 at this
+\ grain; the agreement below is the executable owner of that arithmetic. It
 \ is a belt in any case -- a section that outgrew this would be refused by the
 \ emitter's own `icode: code buffer overflow`, and each buffer refuses on its own
 \ overflow long before that.
@@ -396,12 +374,11 @@ AOT-SITE-MAX SITE-ROW * +                          \ call-site rows
 AOT-NAMES-CAP +                                    \ deduped name pool
 AOT-DSITE-MAX 4 * +                                \ DATA-literal sites
 AOT-DSITE-MAX 4 * +                                \ CODE-literal sites (same buffer's tail)
-AOT-WINDOW:XTOFF-MAX 4 * +                         \ declared address cells in the window
+AOT-WINDOW:XTOFF-MAX AOT-WINDOW:XTOFF-ROW * +      \ declared address cells in the window
 AOT-WINDOW:RUN-MAX 8 * +                           \ the captured DATA window's non-zero extents
 AOT-WINDOW:RBYTES-CAP +                            \ ... and their bytes
 AOT-XTSITE:MAX 8 * +                               \ named code-literal rows
 AOT-BOOTRUN-CAP 1 + +                              \ +1 = the live 0 terminator
-PROT-BITS-BYTES +                                  \ protected-WID bitmap image
 AOT-PWIN-MAX 4 * +                                 \ the window's own protected WIDs
 AOT-SIG-MAX SIG-ROW * +                            \ one signature row per window word
 AOT-SIG-STR-CAP +                                  \ the pool strings those rows name
@@ -413,7 +390,11 @@ private
 
 : AGREE ( -- )
    BYTES AOT-SECTION-CAP <>
-   if s" habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree" ICODE-EXIT-RC die then ;
+   if
+      s" aot: required section bytes " type BYTES .
+      s" , assembler capacity " type AOT-SECTION-CAP . cr
+      s" habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree" ICODE-EXIT-RC die
+   then ;
 AGREE
 
 ;package

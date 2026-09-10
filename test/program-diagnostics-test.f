@@ -36,8 +36,16 @@ package PROGRAM-DIAGNOSTICS
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
 : NEGATIVES ( -- )
+   s" test/address-cell-kind-bad.f" 99
+      s" ADDRESS-CELL-KIND-ARMED" s" hb: snapshot address cell kind mismatch" NEGATIVE
+   s" test/address-cell-cap-bad.f" 96
+      s" ADDRESS-CELL-CAP-ARMED" s" hb: snapshot address table full" NEGATIVE
    s" test/xt-cell-band-bad.f" 98
       s" XT-CELL-BAND-ARMED" s" hb: snapshot address cell out of range" NEGATIVE
+   s" test/aot-address-cell-lower-straddle-bad.f" 74
+      s" AOT-XTCELL-LOWER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE
+   s" test/aot-address-cell-upper-straddle-bad.f" 74
+      s" AOT-XTCELL-UPPER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE
    s" test/checker-decl-nested-bad.f" 76
       s" CHECKER-DECL-NESTED-ARMED" s" checker: declaration rollback frame mismatch" NEGATIVE
    s" test/checker-decl-depth0-bad.f" 76

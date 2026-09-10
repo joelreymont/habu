@@ -217,6 +217,20 @@ public
 -4006 constant E-ZED-TIMEOUT     \ remote command exceeded the timeout
 -4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
 
+\ Floating mathematics: -9020..-9029
+\ Reserved as a small shared range because application error blocks begin nearby.
+-9020 constant E-FMATH-FIRST
+-9029 constant E-FMATH-LAST
+
+package FMATH
+
+public
+
+-9020 constant E-DOMAIN       \ input is outside the public word's mathematical domain
+-9021 constant E-OUTPUT       \ result is outside the declared output type's range
+
+;package
+
 \ Source-composition discovery: -4100..-4199 (merge renumber from -3800; E-ENGINE owns -3800)
 -4100 constant E-DISC-FIRST
 -4199 constant E-DISC-LAST
@@ -315,7 +329,7 @@ public
 -6641 constant E-IR-CTX-DEPTH     \ context nesting exceeded the registry capacity
 -6642 constant E-IR-CTX-UNBOUND   \ a context slot whose owning module has not landed was used
 -6643 constant E-IR-CTX-SERIALS   \ serial allocation reached its committed ceiling
--6644 constant E-IR-CTX-SCRATCH   \ a scratch request does not fit the context mapping
+-6644 constant E-IR-CTX-SCRATCH   \ scratch size or total exceeds the addressable range
 -6645 constant E-IR-CTX-CEILING   \ a context-creation serial ceiling outside the accepted range
 -6646 constant E-IR-CTX-SIZE      \ a scratch request of zero or negative bytes
 -6647 constant E-IR-CTX-STATE     \ persisted context state failed its consistency recheck

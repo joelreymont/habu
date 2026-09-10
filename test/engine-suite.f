@@ -622,11 +622,8 @@ s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
 s" CBAD-SIG-MID ( n -- n ) dup ( n -- n ) dup" T-CHECK-REJECTS
 s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
 \ REND-SIG contract: a certified word's declared effect renders after CHECK!.
-\ The certify epilogue persists the usig via USIG-ADD, whose NEW re-initialized
-\ BROW/DCUR and blanked every render to '--' (dot habu-rend-sig-blanked-b269786b);
-\ CERT-REPOINT-ROWS re-points the render rows at USIG-ADD's re-parsed sig. The
-\ prop-test round-trip amplifier (serial run NRT>0, 0 inconsistencies) is the
-\ second half of this regression.
+\ Persisting the signature must retain the verified rows used by the renderer
+\ and lowering certificates. The prop-test round-trip amplifier also checks it.
 TRUSTED: ES-REND-SIG$ ( -- ptr u8 n ) REND-SIG ;   \ whitebox render-probe boundary
 s" COK-REND-SIG ( i64 -- i64 ) 1-" T-CHECK-PASSES
 ES-REND-SIG$ s" i64 -- i64" T$=
@@ -652,7 +649,7 @@ s" COK-PTR-DIFF ( ptr a ptr a -- n ) -" T-CHECK-PASSES
 s" COK-PTR-CELLPLUS ( ptr a -- ptr a ) cell+" T-CHECK-PASSES
 s" COK-PTR-CHARPLUS ( ptr a -- ptr a ) char+" T-CHECK-PASSES
 s" COK-PTR-BYTEADD ( ptr u8 n -- ptr u8 ) +" T-CHECK-PASSES
-s" COK-PTR-VIEW ( ptr a -- ptr u8 )" T-CHECK-PASSES
+s" COK-PTR-VIEW ( ptr a -- ptr u8 ) BYTE-VIEW" T-CHECK-PASSES
 s" COK-PTR-SAME-EQ ( ptr u8 ptr u8 -- bool ) =" T-CHECK-PASSES
 s" COK-PTR-SCALAR-WIDEN ( u8 -- cell )" T-CHECK-PASSES
 s" CBAD-PTR-ADD-PP ( ptr a ptr a -- ptr a ) +" T-CHECK-REJECTS
@@ -667,7 +664,7 @@ s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
 \ habu-fix-0-usigs): a head accessor declared ( -- ptr u8 ) whose caller stores a
 \ cell with `0 WORD !` must reject, because `!` requires a ptr a target.
 s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
-s" COK-PTR-CELL-STORE ( ptr a -- ) 0 swap !" T-CHECK-PASSES
+s" COK-PTR-CELL-STORE ( ptr n -- ) 0 swap !" T-CHECK-PASSES
 variable ESB-BYTE-P
 : ESB-BYTE-HEAD ( -- ptr u8 ) ESB-BYTE-P @ ;
 s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
@@ -1016,7 +1013,7 @@ variable TR-S-LC variable TR-S-STRLC
    HIDX-MEM-READY? -1 T=
    s" hidx snapshot reset retains the live effect owner" T-LABEL
    HIDX-EFF-BASE@ USIGS = -1 T=
-   CHECKER-SNAPSHOT-PREPARE
+   CHECKER-CAPTURE-PREPARE
    s" checker snapshot prepare clears mmap owner" T-LABEL
    HIDX-MEM-READY? 0= -1 T=
    s" checker snapshot prepare invalidates cache" T-LABEL
@@ -2047,9 +2044,8 @@ s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
 
 \ --- declared-effect parametricity seal (dot habu-nominal-storage-effect-a60ba885).
 \ After body checking, every declared type-variable quantifier must still resolve
-\ to a DISTINCT variable. Specializing a quantifier to a sealed nominal/layout
-\ family, and unifying two declared quantifiers, both reject E-NONPARAMETRIC-EFFECT
-\ (fix_parametric_effect). Plain-scalar widening and genuine generics still certify.
+\ to a DISTINCT variable. Any concrete specialization or alias between two
+\ declared quantifiers rejects E-NONPARAMETRIC-EFFECT.
 \ Verdict 0 = rejected, -1 = certified. `esnp` is an arity-0 nominal-scalar family;
 \ ESNP-AT is its generated LAYOUT-BUFFER pointee accessor (the only checked source
 \ of `ptr esnp`). All scaffolding is checked Habu — no trust surface is added.
@@ -2066,13 +2062,15 @@ s" ESNP-PSPEC ( -- ptr a ) 0 ESNP-AT" CHECK-QUIET-CANDIDATE! 0 T=
 s" aliasing two declared quantifiers rejects" T-LABEL
 s" ESNP-ALIAS ( a b -- a ) ESNP-MERGE" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ positives — genuine polymorphism and plain-scalar widening still certify
+\ Genuine polymorphism and concrete scalar signatures certify.
 s" generic ID wrapper certifies" T-LABEL
 s" ESNP-GEN-ID ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
 s" generic LOAD wrapper certifies" T-LABEL
 s" ESNP-GEN-LOAD ( ptr a -- a ) @" CHECK-QUIET-CANDIDATE! -1 T=
-s" plain-scalar pointee fetch stays generic (no false positive)" T-LABEL
-s" ESNP-FETCH-N ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" generic pointee cannot be specialized to n" T-LABEL
+s" ESNP-FETCH-N ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" concrete numeric pointee fetch certifies" T-LABEL
+s" ESNP-FETCH-N-OK ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ specialization diagnostic: E-NONPARAMETRIC-EFFECT, offending quantifier + family
 RSD-BUF RSD-CAP DIAG-BUFFER!
@@ -2110,7 +2108,7 @@ s" ESNP-SPEC-2 ( a -- a ) ESNP-ID" CHECK-QUIET-CANDIDATE! 0 T=
 s" clean generic check after a reject certifies (state rolled back)" T-LABEL
 s" ESNP-GEN-ID-2 ( a -- a )" CHECK-QUIET-CANDIDATE! -1 T=
 s" plain-scalar fetch after a reject certifies" T-LABEL
-s" ESNP-FETCH-N-2 ( ptr a -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" ESNP-FETCH-N-2 ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ x18 Darwin-reserved regressions (dot habu-rca-engine-sigsegv-ba81a08c):
 \ XNU zeroes x18 on any trap return; pre-fix, interpret-mode escaped

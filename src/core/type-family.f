@@ -167,7 +167,7 @@ private
 variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !   REG-PROTECT
 : TF-STR-CAP ( -- n ) TF-STR-CAP-V @ ;
 create TF-STR-BOOT   TF-STR-INIT allot   REG-PROTECT
-variable TF-STR-P   TF-STR-BOOT TF-STR-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE TF-STR-P   TF-STR-BOOT TF-STR-P !   REG-PROTECT
 : TF-STR ( -- ptr u8 ) TF-STR-P @ ;
 
 public
@@ -258,7 +258,7 @@ private
 variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !   REG-PROTECT
 : TF-PK-CAP ( -- n ) TF-PK-CAP-V @ ;
 create TF-PK-BOOT   TF-PK-INIT cells allot   REG-PROTECT
-variable TF-PK-P   TF-PK-BOOT TF-PK-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE TF-PK-P   TF-PK-BOOT TF-PK-P !   REG-PROTECT
 : TF-PK-BASE ( -- ptr a ) TF-PK-P @ ;
 
 public
@@ -395,7 +395,7 @@ TF-REC-PTR-MASK 0 TF-LAYOUT=
 variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !   REG-PROTECT
 : TF-CAP ( -- n ) TF-CAP-V @ ;
 create TF-A-BOOT   TF-CAP-INIT TF-REC * allot   REG-PROTECT
-variable TF-A-P   TF-A-BOOT TF-A-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE TF-A-P   TF-A-BOOT TF-A-P !   REG-PROTECT
 : TF-BASE ( -- ptr a ) TF-A-P @ ;
 
 public
@@ -565,7 +565,7 @@ public
 private
 
 create TFX-A-BOOT   TFX-SLOTS-INIT cells allot   REG-PROTECT
-variable TFX-A-P   TFX-A-BOOT TFX-A-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE TFX-A-P   TFX-A-BOOT TFX-A-P !   REG-PROTECT
 : TFX-BASE ( -- ptr a ) TFX-A-P @ ;
 variable TFX-READY   0 TFX-READY !   REG-PROTECT
 
@@ -856,7 +856,7 @@ SUMV-REC-PTR-MASK 0 TF-LAYOUT=
 variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !   REG-PROTECT
 : SUMV-CAP ( -- n ) SUMV-CAP-V @ ;
 create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot   REG-PROTECT
-variable SUMV-A-P   SUMV-A-BOOT SUMV-A-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE SUMV-A-P   SUMV-A-BOOT SUMV-A-P !   REG-PROTECT
 : SUMV-BASE ( -- ptr a ) SUMV-A-P @ ;
 
 public
@@ -1333,7 +1333,7 @@ public
 private
 
 create PF-A-BOOT   PF-CAP-INIT PF-REC * allot   REG-PROTECT
-variable PF-A-P   PF-A-BOOT PF-A-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE PF-A-P   PF-A-BOOT PF-A-P !   REG-PROTECT
 
 public
 
@@ -1642,7 +1642,7 @@ create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot   REG-PROTECT
 
 public
 
-variable PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
 variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
 variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 
@@ -2341,7 +2341,7 @@ LAY-REC-PTR-MASK 0 TF-LAYOUT=
 variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !   REG-PROTECT
 : LAY-CAP ( -- n ) LAY-CAP-V @ ;
 create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot   REG-PROTECT
-variable LAY-A-P   LAY-A-BOOT LAY-A-P !   REG-PROTECT
+PERSISTED-PTR-VARIABLE LAY-A-P   LAY-A-BOOT LAY-A-P !   REG-PROTECT
 : LAY-BASE ( -- ptr a ) LAY-A-P @ ;
 
 public
@@ -2557,7 +2557,7 @@ private
 16 constant TF-RBF-CAP-INIT
 variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
 create TF-RBF-BOOT   TF-RBF-CAP-INIT TF-RBF-REC * allot
-variable TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
+PERSISTED-PTR-VARIABLE TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
 : TF-RBF-BASE ( -- ptr a ) TF-RBF-P @ ;
 
 public
@@ -2779,7 +2779,7 @@ package TFAM
 \ ---------------------------------------------------------------------------
 \ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores
 \ into image DATA. All record fields are integers or interned offsets, so nothing
-\ rebases. Wired into CHECKER-SNAPSHOT-PREPARE through the REG-EXT-PERSIST-XT hook.
+\ rebases. Wired into CHECKER-CAPTURE-PREPARE through the REG-EXT-PERSIST-XT hook.
 \ ---------------------------------------------------------------------------
 
 public
@@ -2809,18 +2809,6 @@ private
    0 TFX-CAP !
    0 TFX-READY !
    0 TFX-HI ! ;
-
-\ install the friend-only registry persist hook read by CHECKER-SNAPSHOT-PREPARE.
-: REG-EXT-PERSIST ( -- )
-   TFAM-SNAPSHOT-PERSIST
-   SCHEMA-SNAPSHOT-PERSIST
-   TFX-SNAP-RESET              \ tail-index buckets are process-local
-   PF-TX-SNAP-RESET            \ field transactions are process-local
-   RBF-SNAP-RESET               \ core rollback frames are process-local
-   TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
-   SCHEMA-RBF-SNAP-RESET ;      \ SCHEMA registry rollback frames
-: REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
-REG-EXT-PERSIST-INSTALL
 
 \ ---------------------------------------------------------------------------
 \ AOT capture: the registry delta a captured window declared, and putting it
@@ -3268,6 +3256,28 @@ public
    rc 0= IF TFSR-ID @ TFSR-FLAG @ EXIT THEN   \ ( id flag ) from the resolver
    rc E-TFAM-AMBIG = IF 0 RES-FALSE EXIT THEN
    rc throw ;
+
+\ Install the checker registry's persist hook only after this module's final
+\ signature-resolution scratch has been declared, so the same owner clears the
+\ raw token spans before DATA is baked.
+private
+
+: REG-EXT-PERSIST ( -- )
+   TFAM-SNAPSHOT-PERSIST
+   SCHEMA-SNAPSHOT-PERSIST
+   TFX-SNAP-RESET              \ tail-index buckets are process-local
+   PF-TX-SNAP-RESET            \ field transactions are process-local
+   RBF-SNAP-RESET               \ core rollback frames are process-local
+   TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
+   SCHEMA-RBF-SNAP-RESET       \ SCHEMA registry rollback frames
+   NULL-PTR TFQ-TA !  0 TFQ-TU !
+   NULL-PTR TFSR-PA !  0 TFSR-PU !
+   NULL-PTR TFSR-NA !  0 TFSR-NU ! ;
+
+: REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
+REG-EXT-PERSIST-INSTALL
+
+public
 
 \ ---------------------------------------------------------------------------
 \ construct form (item 9, docs §12): resolution + step effect for the checker's

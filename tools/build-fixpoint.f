@@ -363,13 +363,13 @@ variable BF-CERT-PATH-U
    PROC-CAPTURE-FINISH-OUTCOME             \ ( len len outcome )
    rot drop ;                              \ the sunk stdout length is nobody's business
 
-: BF-PREPARE-STAGE-ARGV ( ptr u8 n -- ptr u8 ptr a )
+: BF-PREPARE-STAGE-ARGV ( ptr u8 n -- ptr u8 ptr ptr u8 )
    PROC-ARGV-RESET
    s" --" >LEN PROC-ARGV+
    BF-TMP$ >LEN PROC-ARGV+
    >LEN PROC-ARGV-PREPARE ;
 
-: BF-PREPARE-LOAD-STAGE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n src:ptr srcu:n :}
+: BF-PREPARE-LOAD-STAGE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr ptr u8 ) {: exe:ptr exeu:n src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    src srcu >LEN PROC-ARGV+
@@ -452,7 +452,7 @@ private
 package COMPILER-BUILD
 using BUILD-FIXPOINT
 
-: ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n src:ptr srcu:n :}
+: ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr ptr u8 ) {: exe:ptr exeu:n src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" --build" >LEN PROC-ARGV+
    src srcu >LEN PROC-ARGV+
@@ -610,10 +610,10 @@ TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
 : BF-PIN-OFF! ( -- )
    BF-FALSE BF-PIN-ON ! ;
 
-: BF-PIN-KEY@ ( n -- ptr a )
+: BF-PIN-KEY@ ( n -- ptr u8 )
    BF-STAMP-DG-U * BF-PIN-KEYS + ;
 
-: BF-PIN-DIG@ ( n -- ptr a )
+: BF-PIN-DIG@ ( n -- ptr u8 )
    BF-STAMP-DG-U * BF-PIN-DIGS + ;
 
 : BF-PIN-COMPUTE ( ptr u8 n -- )
@@ -1490,7 +1490,7 @@ variable BF-DRV-R
 : BF-CAPTURE-TOOL$ ( -- ptr u8 n )
    s" tools/aot-chain-capture.f" ;
 
-: BF-PREPARE-CAPTURE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n art:ptr artu:n :}
+: BF-PREPARE-CAPTURE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr ptr u8 ) {: exe:ptr exeu:n art:ptr artu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    BF-CAPTURE-TOOL$ >LEN PROC-ARGV+

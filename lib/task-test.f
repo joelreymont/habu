@@ -7,6 +7,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/task.f
 require lib/test/outcome.f
+require test/checker-assert.f
 
 package TASK-TEST
 
@@ -36,7 +37,7 @@ TASK:FACILITY TASK-LOCK
 TASK:FACILITY APP-LOCK
 
 $4000 constant TASK-CAP
-$1388 constant TASK-CAPTURE-MS
+60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
 $4F constant TASK-LIVE-RC
 $62 constant TASK-DIE-RC
 E-TASK-STATE $FF and constant TASK-THROW-RC
@@ -123,10 +124,10 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;
 
-: APP-WAIT-CELL ( ptr a n -- ) {: cell:ptr want:n :}
+: APP-WAIT-CELL ( ptr n n -- ) {: cell:ptr want:n :}
    begin cell atomic@ want < while TASK:PAUSE repeat ;
 
-: APP-WAIT-DONE ( ptr a -- ) {: tcb:ptr :}
+: APP-WAIT-DONE ( ptr n -- ) {: tcb:ptr :}
    begin tcb TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 : APP-SHARED+ ( n -- ) {: v:n :}
@@ -283,8 +284,19 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 : TASK-TEST-WORKER-THROW ( -- )
    TASK-THROW$ TASK-THROW-RC s" task: unhandled throw" TASK-EXPECT-FAIL ;
 
+: TASK-TEST-CALLBACK-TYPES ( -- )
+   s" TASK-CB-GOOD ( [ -- ] ptr n -- ) TASK:ACTIVATE"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-CB-RAW ( n ptr n -- ) TASK:ACTIVATE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-CB-INPUT ( [ n -- n ] ptr n -- ) TASK:ACTIVATE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-CB-OUTPUT ( [ -- n ] ptr n -- ) TASK:ACTIVATE"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
+   TASK-TEST-CALLBACK-TYPES
    0 TASK-COUNT !
    0 TASK-READY-CELL !
    0 TASK-SELF-A !

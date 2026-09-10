@@ -267,7 +267,7 @@ variable DO-OUT-BUF?
    DO-OUT-X @ pos DO-EMIT-RANGE
    pos DO-OUT-X ! ;
 
-: DO-EMIT-NUM ( u -- )
+: DO-EMIT-NUM ( n -- )
    DO-U$ DO-OUT ;
 
 : DO-EMIT-MARKER ( n n n n -- ) {: line col byte pos :}

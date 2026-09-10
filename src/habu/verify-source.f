@@ -280,11 +280,7 @@ create BODY-BUF BODYBUF-CAP allot
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
    CHECK! dup 1 = JSON-DIAGS @ 0= and DIAG-QUIET @ 0= and IF DIAGXT THEN ;
 
-\ Checker-internal mode flag read; the checker registry does not publish
-\ MULTI-ERR? to later checked loads, so this rides the same trusted boundary
-\ class as CHECK-BODY above.
-TRUSTED: MULTI-ERR-MODE? ( -- bool )
-   MULTI-ERR? ;
+: MULTI-ERR-MODE? ( -- bool ) MULTI-ERR @ 0<> ;
 
 \ In MULTI-ERR mode a verdict-0 reject RETURNS instead of throwing: CHECK has
 \ already emitted the diagnostic, counted MULTI-ERR-N, and recorded the
@@ -369,13 +365,12 @@ TRUSTED: DEFCAST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
    sig sigu DECL-SIGNATURE ;
 
-\ SIG-RAW-DEFINER! is a checker-internal word (no charted effect), so it rides a
-\ TRUSTED: boundary here exactly like MULTI-ERR-MODE? above.
-TRUSTED: SIG-RAW-MODE! ( n -- ) SIG-RAW-DEFINER! ;
+: SIG-RAW-MODE! ( n -- ) SIG-RAW-MODE ! ;
 
 \ RAW-TRUST-NEXT: like TRUST-NEXT, but registers the created word's effect with
 \ TVK-RAW type vars (SIG-RAW-MODE! brackets the checker's signature parse).
-\ Used for the raw storage definers create/variable/constant/PTR-VARIABLE so a
+\ Used for the raw storage definers create/variable/constant/PTR-VARIABLE and
+\ PERSISTED-PTR-VARIABLE so a
 \ fetch from their raw cell yields a RAW value that cannot launder into a nominal
 \ atom or family (habu-nominal-storage-raw, VALUE side).
 : RAW-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
@@ -803,6 +798,7 @@ variable STG-START
    a u s" create" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
+   a u s" PERSISTED-PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN

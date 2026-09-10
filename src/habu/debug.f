@@ -34,8 +34,8 @@ TRUSTED: BP-SLOT-HITS ( n -- ptr n )
 TRUSTED: BP-SLOT-CTRL ( n -- ptr n )
    SLOT-OFF 24 + DATAB + ;
 
-TRUSTED: BP-NULL ( -- ptr u8 )
-   0 ;
+: BP-NULL ( -- ptr u8 )
+   NULL-PTR ;
 
 TRUSTED: BP-PRINT-ADDR ( ptr u8 -- )
    . ;

@@ -453,14 +453,8 @@ HBB-INSTALL-CHILD-LINT
    HBB-DIAG-SRC$ BF-READ-SOURCE
    HBB-DIAG-NAME$ BF-REMOVE-TMP ;
 
-: HBB-DRIVER$ ( -- ptr u8 n )
-   HBB-REPL @ if s" src/habu/build.f" else s" src/habu/aot.f" then ;
-
 : HBB-SRC-NAME$ ( -- ptr u8 n )
-   HBB-REPL @ if s" hb-build-src" else s" hb-aot-src" then ;
-
-: HBB-CHECK-NAME$ ( -- ptr u8 n )
-   s" hb-build-check-src" ;
+   s" hb-aot-src" ;
 
 : HBB-GOT-NAME$ ( -- ptr u8 n )
    HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
@@ -469,7 +463,7 @@ HBB-INSTALL-CHILD-LINT
    s" hb-aot-obj" ;
 
 : HBB-MK-NAME$ ( -- ptr u8 n )
-   HBB-REPL @ if s" hb-build-mk" else s" hb-aot-mk" then ;
+   s" hb-aot-mk" ;
 
 : HBB-MAKER-NAME$ ( -- ptr u8 n )
    HBB-MAKER-NAME-BUF HBB-MAKER-NAME-U @ ;
@@ -529,7 +523,6 @@ HBB-INSTALL-CHILD-LINT
    s" src/core/layout-valid.f" HBB-KEY-FILE+
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/cell-effects.f" HBB-KEY-FILE+
-   s" src/core/pointer-storage-effects.f" HBB-KEY-FILE+
    s" src/core/declaration-transaction.f" HBB-KEY-FILE+
    s" src/core/generated-declaration.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+
@@ -593,12 +586,6 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" src/habu/maker-source.f" HBB-KEY-FILE+
-   HBB-REPL @ if
-      s" maker-mode:repl" CONTENT-KEY:TEXT+
-      s" src/habu/verify-source.f" HBB-KEY-FILE+
-      s" src/habu/build.f" HBB-KEY-FILE+
-      exit
-   then
    s" maker-mode:aot" CONTENT-KEY:TEXT+
    s" src/habu/aot-closure.f" HBB-KEY-FILE+
    s" src/habu/aot-lib.f" HBB-KEY-FILE+
@@ -643,10 +630,9 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-APPEND-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/maker-source.f" BF-APPEND-SOURCE
-   HBB-REPL @ if out outu s" src/habu/verify-source.f" BF-APPEND-SOURCE then
-   HBB-REPL @ 0= if out outu s" src/habu/aot-closure.f" BF-APPEND-SOURCE then
-   HBB-REPL @ 0= if out outu s" src/habu/aot-lib.f" BF-APPEND-SOURCE then
-   out outu HBB-DRIVER$ BF-APPEND-SOURCE ;
+   out outu s" src/habu/aot-closure.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot-lib.f" BF-APPEND-SOURCE
+   out outu s" src/habu/aot.f" BF-APPEND-SOURCE ;
 
 : HBB-MAKER-SOURCE ( -- )
    HBB-MAKER-SRC-NAME$ BF-RESET-OUT
@@ -736,10 +722,6 @@ HBB-INSTALL-CHILD-LINT
 : HBB-COMMENT-SOURCE ( -- )
    BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN COMMENT-EXPORTS$ HBB-COMMENTED! ;
 
-: HBB-READ-COMMENTED-SOURCE ( -- )
-   HBB-SRC$ BF-READ-SOURCE
-   HBB-COMMENT-SOURCE ;
-
 : HBB-READ-ORIGIN-COMMENTED-SOURCE ( -- )
    HBB-DIAG-ORIGIN-SOURCE
    HBB-COMMENT-SOURCE ;
@@ -750,44 +732,9 @@ HBB-INSTALL-CHILD-LINT
 : HBB-TARGET-UNKNOWN ( -- )
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
-: HBB-APPEND-TARGET-REPL-TERM ( -- )
-   HB-TARGET-LINUX? if
-      HBB-SRC-NAME$ s" src/os/linux/repl-term.f" BF-APPEND-SOURCE
-      exit
-   then
-   HB-TARGET-MACOS? if
-      HBB-SRC-NAME$ s" src/os/macos/repl-term.f" BF-APPEND-SOURCE
-      exit
-   then
-   HBB-TARGET-UNKNOWN ;
-
-: HBB-RESET-RUNTIME-SOURCE ( -- )
-   HBB-SRC-NAME$ BF-RESET-OUT
-   HBB-SRC-NAME$ s" 0 set-check" BF-APPEND-LINE
-   HBB-SRC-NAME$ s" src/habu/bundle-argv.f" BF-APPEND-SOURCE ;
-
-: HBB-APPEND-REPL-TARGET ( -- )
-   HBB-APPEND-TARGET-REPL-TERM ;
-
-: HBB-APPEND-COMMENTED-SOURCE ( -- )
-   HBB-SRC-NAME$ HBB-COMMENTED$ BF-APPEND-BYTES ;
-
 : HBB-PREPARE-AOT-SOURCE ( -- )
    HBB-READ-ORIGIN-COMMENTED-SOURCE
    HBB-SRC-NAME$ HBB-WRITE-COMMENTED-SOURCE ;
-
-: HBB-PREPARE-REPL-SOURCE ( -- )
-   HBB-READ-ORIGIN-COMMENTED-SOURCE
-   HBB-CHECK-NAME$ HBB-WRITE-COMMENTED-SOURCE
-   HBB-READ-COMMENTED-SOURCE
-   HBB-RESET-RUNTIME-SOURCE
-   HBB-APPEND-COMMENTED-SOURCE
-   HBB-SRC-NAME$ BF-APPEND-LF
-   HBB-APPEND-REPL-TARGET
-   HBB-SRC-NAME$ s" src/habu/repl.f" BF-APPEND-SOURCE ;
-
-: HBB-PREPARE-PROGRAM-SOURCE ( -- )
-   HBB-REPL @ if HBB-PREPARE-REPL-SOURCE else HBB-PREPARE-AOT-SOURCE then ;
 
 : HBB-JSON-FLAG$ ( -- ptr u8 n )
    HBB-JSON @ if s" 1" exit then
@@ -972,7 +919,6 @@ HBB-INSTALL-CHILD-LINT
    OBJLINK:APPLY ;
 
 : HBB-STORE-OBJECT ( -- )
-   HBB-REPL @ if exit then
    BUILD-CACHE:ROOT$ OBJRES:ROOT!
    HBB-SRC-CLOSURE-HEX!
    HBB-READ-OBJECT-TEXT HBB-BUILD-OBJECT-RECORD
@@ -988,7 +934,6 @@ HBB-INSTALL-CHILD-LINT
    -1 HBB-OBJECT-HIT ! ;
 
 : HBB-OBJECT-HIT? ( -- bool )
-   HBB-REPL @ if HBB-FALSE exit then
    HBB-OBJECT-LOAD? 0= if HBB-FALSE exit then
    HBB-WRITE-OBJECT
    HBB-TRUE ;
@@ -1032,14 +977,18 @@ HBB-INSTALL-CHILD-LINT
    s" hb-build OK: " type
    HBB-OUT$ type
    HBB-REPL @ if
-      s"  (engine+REPL bundle)"
+      s"  (native application + REPL)"
    else
       s"  (AOT, engine stripped)"
    then type
    cr ;
 
 : HBB-CAPTURE-REPORT ( -- )
-   BUILD-CACHE:ROOT$ BUILD-CACHE:SOURCE
+   HBB-REPL @ if
+      NULL$ BUILD--CACHE-SOURCE:NONE
+   else
+      BUILD-CACHE:ROOT$ BUILD-CACHE:SOURCE
+   then
    HBB-ARTIFACT-HIT @ 0 <>
    HBB-OBJECT-HIT @ 0 <>
    HBB-MAKER-HIT @ 0 <>
@@ -1067,7 +1016,7 @@ HBB-INSTALL-CHILD-LINT
 : HBB-BUILD-REST ( -- )
    HBB-RESTORE-ARTIFACT? if HBB-FINISH exit then
    HBB-OBJECT-HIT? if HBB-INSTALL-ARTIFACT HBB-FINISH exit then
-   HBB-PREPARE-PROGRAM-SOURCE
+   HBB-PREPARE-AOT-SOURCE
    HBB-BUILD-MAKER
    HBB-RUN-MAKER
    HBB-STORE-OBJECT
@@ -1075,8 +1024,29 @@ HBB-INSTALL-CHILD-LINT
    HBB-INSTALL-ARTIFACT
    HBB-FINISH ;
 
+\ A REPL application is the complete running native image. Its child loads
+\ the writer and application once, then captures from the outer stdin stream
+\ after include frames have returned. Paths travel as argv, never source text.
+: HBB-BUILD-REPL ( -- )
+   HBB-PRESEED? if
+      s" hb-build: --preseed-entry requires an AOT build" HBB-USAGE-RC die
+   then
+   HBB-CMD-RESET
+   s" --" >LEN PROC-ARGV+
+   HBB-SRC$ >LEN PROC-ARGV+
+   HBB-GOT-NAME$ BF-A$ >LEN PROC-ARGV+
+   BF-ENGINE$ >LEN
+   S\" require src/habu/app-image.f\n0 SCRIPT-ARGV$ required\npackage HB-BUILD-STARTUP\n: ENTER ( -- ) MAIN ;\n' ENTER\n;package\nAPP-IMAGE:START!\n1 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   HBB-OUT-BUF HBB-CAPTURE-CAP >LEN
+   HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   600000 >MS RUN-ARGV-ENV-STDIN-CAPTURE
+   HBB-CAPTURE>N HBB-FINISH-MAKER
+   HBB-INSTALL-OUT
+   HBB-FINISH ;
+
 : HBB-BUILD ( -- )
    HBB-BUILD-BEGIN
+   HBB-REPL @ if HBB-BUILD-REPL exit then
    HBB-PREPARE-ARTIFACT-CACHE
    HBB-BUILD-REST ;
 
@@ -1092,6 +1062,7 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-BUILD-CLI ( -- )
    HBB-BUILD-BEGIN
+   HBB-REPL @ if HBB-BUILD-REPL exit then
    HBB-PREPARE-CACHE-CLI
    HBB-BUILD-REST ;
 

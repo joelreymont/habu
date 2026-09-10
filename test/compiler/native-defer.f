@@ -18,12 +18,12 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 \ reads of memory the dictionary named, which is the one thing checked Habu has
 \ no type for; the deciding above them is ordinary checked Habu.
 TRUSTED: CELL@ ( n -- n ) @ ;
-TRUSTED: PCELL@ ( ptr a -- n ) @ ;
+TRUSTED: PCELL@ ( ptr n -- n ) @ ;
 TRUSTED: DBASE-N ( -- n ) data-base ;
 
 0 constant GLOBAL-WID
 
-: REC ( ptr u8 n -- ptr a )
+: REC ( ptr u8 n -- ptr n )
    GLOBAL-WID XREF-FIND-WL
    dup XREF-FOUND? 0= if s" native-defer: record not found" 76 die then ;
 

@@ -38,19 +38,27 @@ private
 : USE-WID ( n -- n )
    cells data-base USE-WIDS-OFF + + @ ;
 
-\ `search-wl` decides whether the engine sees the name; XREF supplies the record
-\ that lookup does not return. A disagreement is a miss, never a guessed record.
-: WL-CANDIDATE ( ptr u8 n n -- ptr a )
+\ The public search primitive hides internal words even while compiling an
+\ authorized engine body. Resolve those only under the existing compile flag.
+: INTERNAL-CANDIDATE ( ptr u8 n n -- ptr n )
+   data-base TRUSTED-CELL + @ 0= if 2drop drop XREF-NULL exit then
+   XREF-FIND-WL
+   dup XREF-FOUND? 0= if exit then
+   dup XREF-FLAGS DNAME-INT and 0= if drop XREF-NULL then ;
+
+
+\ Public lookup stays authoritative; XREF supplies its matching record.
+: WL-CANDIDATE ( ptr u8 n n -- ptr n )
    {: a:ptr u:n wid:n :}
    a u wid search-wl {: start:n :}
-   start 0= if XREF-NULL exit then
+   start 0= if a u wid INTERNAL-CANDIDATE exit then
    a u wid XREF-FIND-WL
    dup XREF-FOUND? 0= if exit then
    dup XREF-START start <> if drop XREF-NULL then ;
 
 \ Duplicate `using` of one package is one binding. Two distinct records are the
 \ same ambiguity the engine refuses before it executes or compiles the token.
-: USED-REC ( ptr u8 n -- ptr a )
+: USED-REC ( ptr u8 n -- ptr n )
    {: a:ptr u:n :}
    XREF-NULL
    USE-DEPTH 0 ?do
@@ -68,14 +76,14 @@ private
 \ ---- the same walk, answering the record rather than the code start ----------
 \ `search-wl` stays the authority on whether and where. This walk supplies only
 \ the slots a start does not carry, and is REFUSED unless the two starts agree.
-: OPEN-REC ( ptr u8 n -- ptr a )
+: OPEN-REC ( ptr u8 n -- ptr n )
    {: a u:n :}
    OPEN-PRI 0= if XREF-NULL exit then
    a u OPEN-PRI WL-CANDIDATE {: pri:ptr :}
    pri XREF-FOUND? if pri exit then
    a u OPEN-PUB WL-CANDIDATE ;
 
-: BARE-REC ( ptr u8 n -- ptr a )
+: BARE-REC ( ptr u8 n -- ptr n )
    {: a u:n :}
    a u OPEN-REC {: open:ptr :}
    open XREF-FOUND? if open exit then
@@ -83,7 +91,7 @@ private
    global XREF-FOUND? if global exit then
    a u USED-REC ;
 
-: SPELL-REC ( ptr u8 n -- ptr a )
+: SPELL-REC ( ptr u8 n -- ptr n )
    {: a u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q QUAL-BAD = if XREF-NULL exit then
@@ -217,8 +225,10 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
 public
 
 \ Where a compiled CALL may branch to, or zero when it may not branch there at
-\ all: an IMMEDIATE word runs at compile time, an ENGINE-INTERNAL word has no
-\ name past the seal, and a RETIRED record's start is code nothing can reach.
+\ all. An IMMEDIATE word runs at compile time, and a RETIRED record's start is
+\ code nothing can reach. A DNAME-INT call is resolved only while the existing
+\ TRUSTED: compilation cell is armed; checked bodies cannot branch to internal
+\ engine code even if a trusted-only primitive row supplies its real arity.
 : CALL-TARGET ( ptr u8 n -- n )
    {: a u:n :}
    a u SPELL-START {: start:n :}
@@ -228,7 +238,9 @@ public
    rec XREF-START start <> if 0 exit then
    rec XREF-RETIRED? if 0 exit then
    rec XREF-FLAGS {: f:n :}
-   f DNAME-INT and 0<> if 0 exit then
+   f DNAME-INT and 0<> if
+      data-base TRUSTED-CELL + @ 0= if 0 exit then
+   then
    f DNAME-IMM and 0<> if 0 exit then
    start ;
 
@@ -304,6 +316,19 @@ public
    in 0 < if CATCH-NONE CATCH-NONE exit then
    out 0 < if in CATCH-NONE exit then
    in out ;
+
+: EXEC-CELLS ( n -- n n )
+   EFFECT-EXEC-CELLS ;
+
+
+: FINALLY-CELLS ( n -- n n n )
+   EFFECT-FINALLY-CELLS ;
+
+: CALL-CELLS ( n -- n n ) CHECKER-CALLS:CELLS ;
+: CALL-GLUE ( n -- n n ) CHECKER-CALLS:GLUE ;
+: MATCH-PAYLOAD ( n -- n n ) CHECKER-CALLS:MATCH-PAYLOAD ;
+: CALL-QUOT-IN ( n n -- n n ) CHECKER-CALLS:QUOT-IN ;
+: CALL-QUOT-OUT ( n n -- n n ) CHECKER-CALLS:QUOT-OUT ;
 
 \ ---- and how many cells a layout token really moves ---------------------------
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token

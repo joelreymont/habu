@@ -133,40 +133,40 @@ variable JSON-PARSE-TRY-ROOT
 : JSONL-LA@ ( -- ptr u8 ) JSONL-LA JSON-PTR-U8@ ;
 : JSONL-LA! ( ptr u8 -- ) JSONL-LA JSON-PTR-U8! ;
 : JSON-STR-P! ( ptr u8 -- ) JSON-STR-P JSON-PTR-U8! ;
-: JSON-TAB-A@ ( -- ptr a ) JSON-TAB-A JSON-PTR-A@ ;
-: JSON-TAB-A! ( ptr a -- ) JSON-TAB-A JSON-PTR-A! ;
+: JSON-TAB-A@ ( -- ptr n ) JSON-TAB-A JSON-PTR-A@ ;
+: JSON-TAB-A! ( ptr n -- ) JSON-TAB-A JSON-PTR-A! ;
 : JSON-OUT-A! ( ptr u8 -- ) JSON-OUT-A JSON-PTR-U8! ;
 : JSON-ERR-A! ( ptr u8 -- ) JSON-ERR-A JSON-PTR-U8! ;
 
 : JSON-ENSURE-TABLES ( -- )
    JSON-TAB-A @ 0= IF JSON-TABLE-CELLS >COUNT MEM-ALLOC-CELLS JSON-TAB-A! THEN ;
 
-: JSON-TAB-BASE ( -- ptr a )
+: JSON-TAB-BASE ( -- ptr n )
    JSON-ENSURE-TABLES
    JSON-TAB-A@ ;
 
-: JSON-NODE-TABLE ( n -- ptr a )
+: JSON-NODE-TABLE ( n -- ptr n )
    JSON-TAB-BASE swap JSON-MAX-NODES * cells + ;
 
-: JSON-ITEM-TABLE ( n -- ptr a )
+: JSON-ITEM-TABLE ( n -- ptr n )
    JSON-TAB-BASE JSON-NODE-CELLS cells + swap JSON-MAX-ITEMS * cells + ;
 
-: JSON-PAIR-TABLE ( n -- ptr a )
+: JSON-PAIR-TABLE ( n -- ptr n )
    JSON-TAB-BASE JSON-PAIR-OFF-CELLS cells + swap JSON-MAX-PAIRS * cells + ;
 
-: J-KINDS ( -- ptr a ) 0 JSON-NODE-TABLE ;
-: J-VALS ( -- ptr a ) 1 JSON-NODE-TABLE ;
-: J-OFFS ( -- ptr a ) 2 JSON-NODE-TABLE ;
-: J-LENS ( -- ptr a ) 3 JSON-NODE-TABLE ;
-: J-START ( -- ptr a ) 4 JSON-NODE-TABLE ;
-: J-COUNT ( -- ptr a ) 5 JSON-NODE-TABLE ;
+: J-KINDS ( -- ptr n ) 0 JSON-NODE-TABLE ;
+: J-VALS ( -- ptr n ) 1 JSON-NODE-TABLE ;
+: J-OFFS ( -- ptr n ) 2 JSON-NODE-TABLE ;
+: J-LENS ( -- ptr n ) 3 JSON-NODE-TABLE ;
+: J-START ( -- ptr n ) 4 JSON-NODE-TABLE ;
+: J-COUNT ( -- ptr n ) 5 JSON-NODE-TABLE ;
 
-: J-ITEMS ( -- ptr a ) 0 JSON-ITEM-TABLE ;
-: J-ITEM-NEXT ( -- ptr a ) 1 JSON-ITEM-TABLE ;
-: J-KEY-OFF ( -- ptr a ) 0 JSON-PAIR-TABLE ;
-: J-KEY-LEN ( -- ptr a ) 1 JSON-PAIR-TABLE ;
-: J-PAIR-VAL ( -- ptr a ) 2 JSON-PAIR-TABLE ;
-: J-PAIR-NEXT ( -- ptr a ) 3 JSON-PAIR-TABLE ;
+: J-ITEMS ( -- ptr n ) 0 JSON-ITEM-TABLE ;
+: J-ITEM-NEXT ( -- ptr n ) 1 JSON-ITEM-TABLE ;
+: J-KEY-OFF ( -- ptr n ) 0 JSON-PAIR-TABLE ;
+: J-KEY-LEN ( -- ptr n ) 1 JSON-PAIR-TABLE ;
+: J-PAIR-VAL ( -- ptr n ) 2 JSON-PAIR-TABLE ;
+: J-PAIR-NEXT ( -- ptr n ) 3 JSON-PAIR-TABLE ;
 
 : JSON-ENSURE-STR-BOOT ( -- )
    JSON-STR-P @ 0= IF
@@ -273,11 +273,11 @@ variable JSON-PARSE-TRY-ROOT
    0 JSON-ERR-POS !
    0 JSON-DEPTH ! ;
 
-: J-CELL@ ( i64 ptr a -- i64 )
+: J-CELL@ ( i64 ptr n -- i64 )
    {: n base:ptr :}
    base n cells + @ ;
 
-: J-CELL! ( i64 i64 ptr a -- )
+: J-CELL! ( i64 i64 ptr n -- )
    {: x n base:ptr :}
    x base n cells + ! ;
 

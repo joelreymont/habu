@@ -31,18 +31,18 @@ package GENERATED-DECL-DICTIONARY
 $7FFFFFFFFFFFFFFF constant FRAME-BYTE-MAX
 FRAME-BYTE-MAX ROW-REC / constant FRAME-ROW-MAX
 create FRAME-BOOT CAP-INIT ROW-REC * allot
-PTR-VARIABLE FRAME-P FRAME-BOOT FRAME-P !
+PERSISTED-PTR-VARIABLE FRAME-P FRAME-BOOT FRAME-P !
 variable FRAME-CAP CAP-INIT FRAME-CAP !
 
-: FRAME-BASE ( -- ptr a ) FRAME-P @ ;
-: FRAME-ROW ( n -- ptr a )
+: FRAME-BASE ( -- ptr n ) FRAME-P @ ;
+: FRAME-ROW ( n -- ptr n )
    dup 0 < over FRAME-CAP @ >= or IF E-DICTIONARY-CAP throw THEN
    ROW-REC * FRAME-BASE + ;
 : ROW.NDICT ( ptr a -- ptr a ) ROW.NDICT-OFF + ;
 : ROW.CP ( ptr a -- ptr a ) ROW.CP-OFF + ;
 : ROW.DP ( ptr a -- ptr ptr a ) ROW.DP-OFF CELL / ptr-field ;
 
-TRUSTED: FRAME-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
+TRUSTED: FRAME-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
 TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
 
 : CHECK-DEPTH ( n -- )
@@ -102,6 +102,12 @@ public
 
 : SNAPSHOT-RESET ( -- )
    GENERATED-DECL:DEPTH 0 <> IF E-DICTIONARY-TX throw THEN
+   CAP-INIT 0 ?do
+      FRAME-BOOT i ROW-REC * + {: row:ptr :}
+      0 row ROW.NDICT !
+      0 row ROW.CP !
+      NULL-PTR row ROW.DP !
+   loop
    FRAME-BOOT FRAME-P !
    CAP-INIT FRAME-CAP ! ;
 

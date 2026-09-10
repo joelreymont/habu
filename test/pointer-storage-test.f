@@ -1,4 +1,4 @@
-\ pointer-storage-test.f - focused PTR-VARIABLE ownership and effect regression.
+\ pointer-storage-test.f - focused pointer-slot ownership and effect regression.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \   src/habu/verify-source.f test/pointer-storage-test.f
 
@@ -18,11 +18,12 @@ variable SOURCE-U
 create ZERO-CELL 0 ,
 create TARGET 0 ,
 PTR-VARIABLE SLOT
+PERSISTED-PTR-VARIABLE PERSISTED-SLOT
 
-: ZERO-PTR ( -- ptr a )
+: ZERO-PTR ( -- ptr n )
    ZERO-CELL 0 ptr-field @ ;
 
-: ADDRESS ( -- ptr ptr a )
+: ADDRESS ( -- ptr ptr n )
    SLOT ;
 
 : LOAD-SOURCE ( -- )
@@ -43,7 +44,9 @@ PTR-VARIABLE SLOT
    ADDRESS @ TARGET = TTRUE ;
 
 : VERIFY-EFFECT ( -- )
-   [: s" PTR-VARIABLE VS-PTR : VS-ADDR ( -- ptr ptr a ) VS-PTR ;" VERIFY:SOURCE-BUF ;]
+   [: s" PTR-VARIABLE VS-PTR : VS-ADDR ( -- ptr ptr n ) VS-PTR ;" VERIFY:SOURCE-BUF ;]
+   catch 0 T=
+   [: s" PERSISTED-PTR-VARIABLE VPS-PTR : VPS-ADDR ( -- ptr ptr n ) VPS-PTR ;" VERIFY:SOURCE-BUF ;]
    catch 0 T= ;
 
 \ Raw-definer VALUE-side mint (habu-nominal-storage-raw): create/variable/constant
@@ -66,6 +69,7 @@ PTR-VARIABLE SLOT
 : ISOLATION ( -- )
    LOAD-SOURCE
    s" PTR-VARIABLE" MUST-HAVE
+   s" PERSISTED-PTR-VARIABLE" MUST-HAVE
    s" +FIELD" MUST-LACK
    s" CFIELD:" MUST-LACK
    s" STRUCT-BYTE+" MUST-LACK

@@ -22,14 +22,16 @@
 \ asm.f. 98 of 18602 call sites, refused by name (first: the chain's MASK calling
 \ A64ASM's LIMM?). Chain first, tooling after: 0.
 \
-\ WHAT MAY THEREFORE LOAD BEFORE THE WINDOW: src/habu/layout.f and
-\ src/habu/aot-arm.f, which exists precisely so that arming the window does not
+\ The window prelude loads src/habu/layout.f and src/habu/aot-arm.f.
+\ The latter exists precisely so that arming the window does not
 \ drag aot-capture.f in ahead of the chain. The two are cheap for different
 \ reasons, both measured in a booted bin/hb: layout.f is already registered
 \ there, so its `require` adds 0 records and 0 DATA bytes and is kept only as the
 \ dependency statement; aot-arm.f adds 4. asm.f, by contrast, is NOT registered —
 \ requiring it in a booted engine compiles 178 records — which is the whole reason
-\ it must be the chain that brings it in.
+\ it must be the chain that brings it in. The native runtime already carries
+\ NSTR; requiring it here adds no source, and opening its literal pool after
+\ the window starts keeps retained-compiler literals inside the capture.
 \
 \ THE PRELUDE MARKS ARE THE FIRST THING THIS PROCESS DOES, before it defines a
 \ variable of its own, because they bound the band the capture refuses to call
@@ -63,6 +65,7 @@ BOOT-REQ !  PRE-REQ !  PRE-D !  PRE-R !
 
 require src/habu/layout.f
 require src/habu/aot-arm.f
+require src/compiler/native/string.f
 
 package AOT-CHAIN
 public
@@ -74,6 +77,7 @@ variable Q0  variable Q1      \ its require-registry span: the closure it loaded
 \ fifth axis, because it is the only process with a window to bracket it across.
 : OPEN ( -- )
    AOT-ARM:WINDOW-OPEN
+   NSTR:WINDOW-OPEN
    REQUIRE-N @ Q0 ! ;
 
 : CLOSE ( -- )

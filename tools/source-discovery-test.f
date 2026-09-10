@@ -208,6 +208,64 @@ variable SDT-SRC-U
    s" emitcap.f" S\" require sd-z.f\n" SDT-WRITE-ENTRY
    [: SDT-RUN-EMIT-SMALL ;] E-FS-CAPACITY TTHROWSQ ;
 
+: SDT-TEST-LOCALS ( -- )
+   s" locals.f"
+   S\" : EXAMPLE ( n n n n n -- n n n n n ) {: include:n included:n require:n required:n provided:n :} include included require required provided ;\nrequire sd-after.f\n"
+   SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" sd-after.f" T$= ;
+
+
+: SDT-TEST-LOCAL-SCOPES ( -- )
+   s" local-scopes.f"
+   S\" : EXAMPLE ( n -- ) dup if {: required:n :} required drop else drop s\" sd-else.f\" required then 1 0 ?do 1 {: required:n :} required drop loop s\" sd-loop.f\" required 1 case 1 of 2 {: required:n :} required drop endof endcase s\" sd-case.f\" required ;\n"
+   SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 3 T=
+   0 EVENT-PATH@ s" sd-else.f" T$=
+   1 EVENT-PATH@ s" sd-loop.f" T$=
+   2 EVENT-PATH@ s" sd-case.f" T$= ;
+
+
+: SDT-TEST-LOCAL-QUOTATION ( -- )
+   s" local-quotation.f"
+   S\" : EXAMPLE ( n -- n ) {: required:n :} [: s\" sd-quote.f\" required ;] execute required ;\n"
+   SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" sd-quote.f" T$= ;
+
+
+: SDT-TEST-LOCAL-CASE ( -- )
+   s" local-case.f"
+   S\" : EXAMPLE ( n -- n ) {: required:n :} s\" sd-uppercase.f\" REQUIRED required ;\n"
+   SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" sd-uppercase.f" T$= ;
+
+
+: SDT-TEST-LOCAL-LIFETIME ( -- )
+   s" before-local.f"
+   S\" : EXAMPLE ( n -- n ) required {: required:n :} required ;\n"
+   SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ
+   s" after-local.f"
+   S\" : EXAMPLE ( n -- ) if 1 {: required:n :} required drop then required ;\n"
+   SDT-WRITE-ENTRY
+   [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ ;
+
+
+: SDT-TEST-LOCAL-CONTROL ( -- )
+   s" local-control.f"
+   S\" : EXAMPLE ( n -- n ) {: then:n :} 1 if 1 {: required:n :} required drop then drop ELSE s\" sd-control.f\" required THEN then ;\n"
+   SDT-WRITE-ENTRY
+   SDT-DISCOVER
+   EVENT-COUNT 1 T=
+   0 EVENT-PATH@ s" sd-control.f" T$= ;
+
+
 : SDT-MAIN ( -- )
    T-RESET
    SDT-PREP
@@ -231,6 +289,12 @@ variable SDT-SRC-U
    SDT-TEST-BIG-STRING-LOADER
    SDT-TEST-MANIFEST-DRIVER
    SDT-TEST-EMIT-CAP
+   SDT-TEST-LOCALS
+   SDT-TEST-LOCAL-SCOPES
+   SDT-TEST-LOCAL-QUOTATION
+   SDT-TEST-LOCAL-CASE
+   SDT-TEST-LOCAL-LIFETIME
+   SDT-TEST-LOCAL-CONTROL
    EVENT-OFF DISCOVERY-OFF EVENTS-RESET
    CLEANUP-RUN
    T-REPORT

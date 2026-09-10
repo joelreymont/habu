@@ -58,6 +58,16 @@ variable SD-PEND
 variable SD-LENIENT
 variable SD-EMIT-LEN
 
+\ Local spellings are byte-exact and become visible after their group's closer.
+\ Keep source offsets so discovery need not copy names or impose a locals cap.
+DYNAMIC-BUFFER SD-LOCAL-OFF n
+DYNAMIC-BUFFER SD-LOCAL-LEN n
+DYNAMIC-BUFFER SD-SCOPE-N n
+DYNAMIC-BUFFER SD-SCOPE-BASE n
+variable SD-LOCALS
+variable SD-LOCAL-BASE
+variable SD-SCOPES
+
 : SD-BUF ( -- ptr u8 )
    SD-BUF-A @ 0= if SD-SRC-CAP SOURCE-ALLOC-BUF SD-BUF-A SOURCE-PTR-U8! then
    SD-BUF-A SOURCE-PTR-U8@ ;
@@ -200,24 +210,124 @@ variable SD-EMIT-LEN
    poff plen SD-COPY-PATH
    toff tlen kind SD-CALL-LOADER ;
 
+
+: SD-LOCALS-RESET ( -- )
+   0 SD-LOCALS !
+   0 SD-LOCAL-BASE !
+   0 SD-SCOPES ! ;
+
+
+: SD-LOCALS-RELEASE ( -- )
+   SD-LOCAL-OFF-RELEASE SD-LOCAL-LEN-RELEASE
+   SD-SCOPE-N-RELEASE SD-SCOPE-BASE-RELEASE
+   SD-LOCALS-RESET ;
+
+
+: SD-LOCAL? ( n n -- bool ) {: off:n len:n :}
+   SD-LOCALS @ SD-LOCAL-BASE @ ?do
+      off len SD-TOK$
+      i SD-LOCAL-OFF @ i SD-LOCAL-LEN @ SD-TOK$ STR= if true unloop exit then
+   loop
+   false ;
+
+
+: SD-LOCAL-NAME-LEN ( n n -- n ) {: off:n len:n :}
+   len 0 ?do
+      off i + SD-BYTE $3A = if i unloop exit then
+   loop
+   len ;
+
+
+: SD-LOCAL+ ( n n -- ) {: off:n len:n :}
+   SD-LOCALS @ 1+ dup SD-LOCAL-OFF-RESERVE SD-LOCAL-LEN-RESERVE
+   off SD-LOCALS @ SD-LOCAL-OFF !
+   off len SD-LOCAL-NAME-LEN SD-LOCALS @ SD-LOCAL-LEN !
+   SD-LOCALS @ 1+ SD-LOCALS ! ;
+
+
+: SD-LOCAL-GROUP ( -- )
+   begin
+      SD-RAW {: off:n len:n :}
+      len 0= if E-DISC-UNTERM throw then
+      off len SD-TOK$ s" :}" STR= if exit then
+      off len SD-LOCAL+
+   again ;
+
+
+: SD-SCOPE-OPEN ( -- )
+   SD-SCOPES @ 1+ dup SD-SCOPE-N-RESERVE SD-SCOPE-BASE-RESERVE
+   SD-LOCALS @ SD-SCOPES @ SD-SCOPE-N !
+   SD-LOCAL-BASE @ SD-SCOPES @ SD-SCOPE-BASE !
+   SD-SCOPES @ 1+ SD-SCOPES ! ;
+
+
+: SD-SCOPE-RESTORE ( -- )
+   SD-SCOPES @ 0= if exit then
+   SD-SCOPES @ 1- SD-SCOPE-N @ SD-LOCALS !
+   SD-SCOPES @ 1- SD-SCOPE-BASE @ SD-LOCAL-BASE ! ;
+
+
+: SD-SCOPE-CLOSE ( -- )
+   SD-SCOPE-RESTORE
+   SD-SCOPES @ 0 > if SD-SCOPES @ 1- SD-SCOPES ! then ;
+
+
+: SD-SCOPE-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" STR=CI if true exit then
+   a u s" begin" STR=CI if true exit then
+   a u s" do" STR=CI if true exit then
+   a u s" ?do" STR=CI if true exit then
+   a u s" case" STR=CI if true exit then
+   a u s" MATCH" STR=CI if true exit then
+   a u s" of" STR=CI ;
+
+
+: SD-SCOPE-CLOSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" then" STR=CI if true exit then
+   a u s" until" STR=CI if true exit then
+   a u s" repeat" STR=CI if true exit then
+   a u s" again" STR=CI if true exit then
+   a u s" loop" STR=CI if true exit then
+   a u s" +loop" STR=CI if true exit then
+   a u s" endcase" STR=CI if true exit then
+   a u s" ;MATCH" STR=CI if true exit then
+   a u s" endof" STR=CI ;
+
+
+: SD-SCOPE-STEP ( n n -- ) {: off:n len:n :}
+   off len SD-TOK$ s" ;" STR= if SD-LOCALS-RESET exit then
+   off len SD-TOK$ s" else" STR=CI if SD-SCOPE-RESTORE exit then
+   off len SD-TOK$ SD-SCOPE-OPENER? if SD-SCOPE-OPEN exit then
+   off len SD-TOK$ SD-SCOPE-CLOSER? if SD-SCOPE-CLOSE then ;
+
+
 : SD-STEP ( n n -- ) {: off:n len:n :}
    SD-PEND @ {: pend:n :}
    0 SD-PEND !
    len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE exit then
    len 1 = off SD-BYTE SD-LPAREN = and if SD-SKIP-PAREN exit then
+   off len SD-TOK$ s" [:" STR= if
+      SD-SCOPE-OPEN SD-LOCALS @ SD-LOCAL-BASE ! exit
+   then
+   off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
+   off len SD-LOCAL? if exit then
+   off len SD-TOK$ s" {:" STR= if SD-LOCAL-GROUP exit then
    off len SD-OPENER-KIND {: opener:n :}
    opener 0= 0= if len 3 = SD-SCAN-STRING opener SD-PEND ! exit then
    off len SD-LOADER-KIND {: lkind:n :}
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
-   off len SD-TOK$ s" :" STR= if SD-CHECK-NAME exit then
+   off len SD-TOK$ s" :" STR= if SD-LOCALS-RESET SD-CHECK-NAME exit then
+   off len SD-TOK$ s" TRUSTED:" STR=CI if SD-LOCALS-RESET SD-CHECK-NAME exit then
    off len SD-TOK$ s" undefine" STR=CI if SD-CHECK-NAME exit then
    off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI if pend SD-RETIRE exit then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
-   off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then ;
+   off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then
+   off len SD-SCOPE-STEP ;
 
 : SD-WALK ( -- )
    0 SD-I !
    0 SD-PEND !
+   SD-LOCALS-RESET
    begin
       SD-RAW {: off:n len:n :}
       len 0= if exit then
@@ -250,6 +360,7 @@ public
    [: SD-WALK ;] catch {: rc:n :}
    DISCOVERY-OFF EVENT-OFF
    REQUIRE-RESTORE
+   SD-LOCALS-RELEASE
    rc 0= 0= if rc throw then ;
 
 : EMIT ( ptr u8 n -- n ) {: dst:ptr cap:n :}

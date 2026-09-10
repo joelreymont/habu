@@ -20,7 +20,9 @@ TRUSTED: BPW-DATA-CELL ( n -- ptr n )
    DATAB + ;
 
 : BPW-BASE! ( -- )
-   BPW-TAB DATAB BPWBASE-CELL + ! ;
+   DATAB BPWBASE-CELL + {: cell:ptr :}
+   cell ptr-cell-mark
+   BPW-TAB cell ! ;
 
 : BPW-N@ ( -- n )
    DATAB BPWN-CELL + @ ;

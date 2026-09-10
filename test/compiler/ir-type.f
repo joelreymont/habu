@@ -24,7 +24,6 @@
 require lib/test.f
 require lib/string.f
 require test/checker-assert.f
-require test/compiler/ir-starve.f
 require src/compiler/ir/type.f
 
 package IR-TYPE-TEST
@@ -741,55 +740,29 @@ create CBUF 64 allot
    s" live readers reject the retired builder handle; the views read" T-LABEL
    [: FZ-READ ;] E-IR-ARENA-FROZEN TTHROWSQ ;
 
-\ ---- an intern is one commit, at the scratch edge ------------------------------
-\ A type row is four appends, and an append grows the row arena by taking a
-\ span from the context mapping. Interning at the edge of that mapping used to
-\ stop part way through the four - a row-cell count four does not divide - and
-\ every later read of the table failed its shape check. The row's storage is
-\ now reserved before its first cell.
-\
-\ THE ARITHMETIC THIS CASE RESTS ON. An arena is seeded at eight cells. The row
-\ table spends three on its header and four on the first type, so the second
-\ type is the one that needs a doubled span - and after the starve there is no
-\ span to be had. If that ever stops being true the intern below succeeds, its
-\ code is zero, and this case fails rather than quietly proving nothing.
-3 constant T-HDR-CELLS
-4 constant T-ROW-CELLS
-
-: TORN-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
-   c a r key
-   c a r key I32 drop ;
-
-\ Everything the refusal must have left alone: the table reads, holds exactly
-\ the one type that landed, still answers its fields, and neither store has
-\ advanced a cell.
-: TORN-INTACT ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-type-id -- IR-ARENA:arena IR-ARENA:arena IR-ID:ir-type-id )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena t0:IR-ID:ir-type-id :}
-   a r t0
-   r IR-TYPE:TYPES 1 <> if E-IR-TYPE-STATE throw then
-   r t0 IR-TYPE:KIND@ IR--TYPE-KIND:INT IR--TYPE-KIND:EQ
-   0= if E-IR-TYPE-STATE throw then
-   r t0 IR-TYPE:INT@ {: w:IR-TYPE:width sg:IR-TYPE:sign :}
-   w IR--TYPE-WIDTH:W64 IR--TYPE-WIDTH:EQ 0= if E-IR-TYPE-STATE throw then
-   sg IR--TYPE-SIGN:SIGNED IR--TYPE-SIGN:EQ 0= if E-IR-TYPE-STATE throw then
-   a IR-ARENA:USED T-HDR-CELLS <> if E-IR-TYPE-STATE throw then
-   r IR-ARENA:USED T-HDR-CELLS T-ROW-CELLS + <> if E-IR-TYPE-STATE throw then ;
-
-: TORN-BODY ( IR-CTX:ctx -- n n )
+\ ---- arena growth preserves interned types -----------------------------------
+\ Three header cells and the first four-cell type fit the seed. The second
+\ type grows the row arena even after scratch passes its former $80000 mapping.
+: GROW-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 64 64 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
    c a r key I64 {: t0:IR-ID:ir-type-id :}
-   c IR-STARVE:EDGE
-   c a r key [: TORN-ADD ;] catch
-   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key rc:n :}
-   rc
-   a2 r2 t0 [: TORN-INTACT ;] catch nip nip nip ;
+   c $80000 IR-CTX:SCRATCH-TAKE 2drop
+   c a r key I32 {: t1:IR-ID:ir-type-id :}
+   r IR-TYPE:TYPES 2 T=
+   r t0 IR-TYPE:INT@ {: w0:IR-TYPE:width sg0:IR-TYPE:sign :}
+   w0 IR--TYPE-WIDTH:W64 IR--TYPE-WIDTH:EQ TTRUE
+   sg0 IR--TYPE-SIGN:SIGNED IR--TYPE-SIGN:EQ TTRUE
+   r t1 IR-TYPE:INT@ {: w1:IR-TYPE:width sg1:IR-TYPE:sign :}
+   w1 IR--TYPE-WIDTH:W32 IR--TYPE-WIDTH:EQ TTRUE
+   sg1 IR--TYPE-SIGN:SIGNED IR--TYPE-SIGN:EQ TTRUE
+   c a r key I64 IR-ID:TYPE-LOCAL t0 IR-ID:TYPE-LOCAL T=
+   a IR-ARENA:USED 3 T=
+   r IR-ARENA:USED 3 2 4 * + T= ;
 
-: TORN-CASE ( -- )
-   s" an intern refused mid-row leaves the table whole and readable" T-LABEL
-   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= E-IR-CTX-SCRATCH T= ;
+: GROW-CASE ( -- )
+   s" growing the type table preserves identities and fields" T-LABEL
+   BND [: GROW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- teardown releases everything --------------------------------------------
 : TD-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:arena IR-ID:ir-type-id )
@@ -858,7 +831,7 @@ public
 : RUN ( -- )
    T-RESET
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
-   TORN-CASE
+   GROW-CASE
    TD-FRESH-CASE
    CHECKER-CASES
    T-REPORT ;

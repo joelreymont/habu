@@ -20,10 +20,10 @@ DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 \ Xref casts expose mixed dictionary records and their inline/long name bytes.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: XREF-N>REC ( n -- ptr a ) ;
-TRUSTED: XREF-A>U8 ( ptr a -- ptr u8 ) ;
+TRUSTED: XREF-N>REC ( n -- ptr n ) ;
+: XREF-A>U8 ( ptr n -- ptr u8 ) BYTE-VIEW ;
 TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
-: XREF-REC+ ( ptr a n -- ptr a )
+: XREF-REC+ ( ptr n n -- ptr n )
    + ;
 
 : XREF-TRUE ( -- bool )
@@ -32,47 +32,47 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-FALSE ( -- bool )
    XREF-TRUE 0= ;
 
-: XREF-NULL ( -- ptr a )
-   0 XREF-N>REC ;
+: XREF-NULL ( -- ptr n )
+   NULL-PTR ;
 
 : XREF-REC-ADDR ( n -- n )
    DREC * dbase@ + ;
 
-: XREF-REC ( n -- ptr a )
+: XREF-REC ( n -- ptr n )
    XREF-REC-ADDR XREF-N>REC ;
 
-: LATEST ( -- ptr a )
+: LATEST ( -- ptr n )
    ndict@ dup 0 <= if drop XREF-NULL exit then
    1- XREF-REC ;
 
-: XREF-FOUND? ( ptr a -- bool )
+: XREF-FOUND? ( ptr n -- bool )
    XREF-NULL <> ;
 
-: XREF-CELL@ ( ptr a n -- n )
+: XREF-CELL@ ( ptr n n -- n )
    cells + @ ;
 
-: XREF-PTR@ ( ptr a n -- ptr u8 )
+: XREF-PTR@ ( ptr n n -- ptr u8 )
    XREF-CELL@ XREF-N>U8 ;
 
-: XREF-START ( ptr a -- n )
+: XREF-START ( ptr n -- n )
    XREF-START-SLOT XREF-CELL@ ;
 
-: XREF-LEN ( ptr a -- n )
+: XREF-LEN ( ptr n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
 
-: XREF-FLAGS ( ptr a -- n )
+: XREF-FLAGS ( ptr n -- n )
    XREF-FLAGS-SLOT XREF-CELL@ ;
 
-: XREF-WORDLIST ( ptr a -- n )
+: XREF-WORDLIST ( ptr n -- n )
    XREF-WORDLIST-SLOT XREF-CELL@ ;
 
-: XREF-RETIRED? ( ptr a -- bool )
+: XREF-RETIRED? ( ptr n -- bool )
    XREF-WORDLIST XREF-RETIRED-WL = ;
 
-: XREF-NAME-LEN ( ptr a -- n )
+: XREF-NAME-LEN ( ptr n -- n )
    XREF-FLAGS DNAME-LEN-MASK and ;
 
-: XREF-EXT? ( ptr a -- bool )
+: XREF-EXT? ( ptr n -- bool )
    XREF-FLAGS DNAME-EXT and 0= 0= ;
 
 \ DNAME-WIDE (dot habu-tfam-12-interpret-10b385b1): the record's recorded stack
@@ -82,17 +82,17 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 \ is the engine prim `wide-mark` (habu1.f BWIDEMARK - the dict region is
 \ read-only at runtime, so the write needs the engine's mprotect bracket);
 \ monotonic, no unmark. This is the read-side introspection query.
-: XREF-WIDE? ( ptr a -- bool )
+: XREF-WIDE? ( ptr n -- bool )
    XREF-FLAGS DNAME-WIDE and 0= 0= ;
 
-: XREF-INLINE-NAME ( ptr a -- ptr u8 )
+: XREF-INLINE-NAME ( ptr n -- ptr u8 )
    $18 XREF-REC+ XREF-A>U8 ;
 
-: XREF-NAME-A ( ptr a -- ptr u8 )
+: XREF-NAME-A ( ptr n -- ptr u8 )
    dup XREF-EXT? if XREF-NAME-SLOT XREF-PTR@ exit then
    XREF-INLINE-NAME ;
 
-: XREF-NAME$ ( ptr a -- ptr u8 n )
+: XREF-NAME$ ( ptr n -- ptr u8 n )
    dup XREF-NAME-A swap XREF-NAME-LEN ;
 
 : XREF-FOLD-C ( n -- n )
@@ -108,6 +108,11 @@ PTR-VARIABLE XREF-SN
 variable XREF-SU
 PTR-VARIABLE XREF-FN
 variable XREF-FU
+
+: XREF-SNAPSHOT-PREPARE ( -- )
+   NULL-PTR XREF-A !  NULL-PTR XREF-B !  0 XREF-U !  0 XREF-V !
+   NULL-PTR XREF-SN !  0 XREF-SU !
+   NULL-PTR XREF-FN !  0 XREF-FU ! ;
 variable XREF-WID
 variable XREF-IDX
 variable XREF-NV
@@ -146,7 +151,7 @@ variable XREF-NV
    repeat drop
    XREF-TRUE ;
 
-: XREF-MATCH? ( ptr a ptr u8 n -- bool )
+: XREF-MATCH? ( ptr n ptr u8 n -- bool )
    XREF-U ! XREF-A!
    XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
 
@@ -157,7 +162,7 @@ private
 1 constant MODE-PRI
 2 constant MODE-PUB
 
-: NAME-OUT ( ptr a n -- ptr u8 n n bool ) {: rec:ptr mode:n :}
+: NAME-OUT ( ptr n n -- ptr u8 n n bool ) {: rec:ptr mode:n :}
    rec XREF-NAME$ dup 0= if
       2drop s" " MODE-NONE XREF-FALSE exit
    then
@@ -218,7 +223,7 @@ INSTALL
 
 ;package
 
-: XREF-FIND-WL ( ptr u8 n n -- ptr a )
+: XREF-FIND-WL ( ptr u8 n n -- ptr n )
    XREF-WID ! XREF-FU ! XREF-FN!
    ndict@ 1-
    begin dup 0 >= while
@@ -257,7 +262,7 @@ variable XREF-QWID
    dup 0= if drop -1 exit then
    dup XREF-SU @ 1- = if drop -1 exit then ;
 
-: XREF-FIND-QUALIFIED ( ptr u8 n n -- ptr a )
+: XREF-FIND-QUALIFIED ( ptr u8 n n -- ptr n )
    XREF-IDX ! XREF-SU ! XREF-SN!
    XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
@@ -271,7 +276,7 @@ variable XREF-QWID
    XREF-START XREF-QWID !
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  XREF-QWID @  XREF-FIND-WL-INDEX ;
 
-: XREF-FIND ( ptr u8 n -- ptr a )
+: XREF-FIND ( ptr u8 n -- ptr n )
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
@@ -356,10 +361,10 @@ get-current prot-wid-add
 
 \ Explicit undefine patches raw wordlist/status cells in a live dictionary record.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: XREF-PATCH32 ( n ptr a -- )
+TRUSTED: XREF-PATCH32 ( n ptr n -- )
    patch32 ;
 
-: XREF-RETIRE ( ptr a -- )
+: XREF-RETIRE ( ptr n -- )
    dup XREF-WORDLIST-SLOT cells XREF-REC+
    dup XREF-RETIRED-WL swap XREF-PATCH32
    $4 XREF-REC+ -1 swap XREF-PATCH32
@@ -399,18 +404,18 @@ TRUSTED: XREF-PATCH32 ( n ptr a -- )
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
 
-\ Sealed-dictionary truncation guard (TFAM 2b-iii). Once the friend latch is
-\ sealed (SEAL-FRIEND, end of cold prefix), a dictionary FORGET/HIDE that lowers
+\ Sealed-dictionary truncation guard (TFAM 2b-iii). Once the namespace watermark
+\ is set, a dictionary FORGET/HIDE that lowers
 \ ndict below the seal-time watermark would retire engine definitions and (FORGET)
 \ rewind CP into engine code. Reject it fail-closed with ENGINE-ERROR:SEAL-VIOLATION. The
-\ latch and watermark live in the sealed friend band; friend/cold-load (latch 0)
-\ and post-seal user marks (index >= watermark) pass unchanged.
-TRUSTED: SEAL-LATCH@ ( -- n ) data-base FRIEND-LATCH-CELL + @ ;
+\ zero watermark is the open build namespace; post-seal user marks at or above
+\ the watermark pass unchanged.
 TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 
 : SEAL-DICT-GUARD ( n -- n )
-   SEAL-LATCH@ 0= if exit then
-   dup SEAL-NDICT@ < if
+   SEAL-NDICT@ {: floor:n :}
+   floor 0= if exit then
+   dup floor < if
       s" seal: cannot FORGET/HIDE sealed engine definitions" ENGINE-ERROR:SEAL-VIOLATION die
    then ;
 
@@ -552,7 +557,7 @@ variable XREF-FORGET-CP
    idx ndict!
    XREF-FORGET-CP @ CODE-RECLAIM:TRUNCATE ;
 
-: XREF-NAME. ( ptr a -- )
+: XREF-NAME. ( ptr n -- )
    XREF-NAME$ type ;
 
 : XREF-N. ( ptr u8 n n -- )
@@ -561,7 +566,7 @@ variable XREF-FORGET-CP
    XREF-SP emit
    XREF-NV @ . ;
 
-: XREF. ( ptr a -- )
+: XREF. ( ptr n -- )
    dup XREF-FOUND? 0= if drop s" xref: not found" type cr exit then
    s" name " type dup XREF-NAME. cr
    dup s" start" rot XREF-START XREF-N.
@@ -588,6 +593,9 @@ variable XREF-FORGET-CP
 \ The installed provider holds direct code references. Retire every source-level
 \ rebinding seam and mutable provider cell before the engine-prefix seal.
 undefine PKG-LIVE-XT
+undefine CWIN-STATE
+undefine CALL-FREEZE-XT
+undefine CALL-FREEZE-INSTALL
 undefine CHECKER-PKG-LIVE-DEFAULT
 undefine CHECKER-PKG-BOOT-LIVE
 undefine CHECKER-PKG-MIRROR
@@ -615,12 +623,3 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 ;package
-
-\ TFAM 2b-iii: freeze the dictionary-truncation watermark (baseline capture).
-\ xref.f is the last BASE prefix file, but src/os/script-argv.f still loads
-\ after it, so the cold-prefix assembler appends a second SEAL-CAPTURE token at
-\ the true engine-prefix end (habu2.f EMIT-SEAL-CAPTURE-TOKEN) - re-running the
-\ capture is monotonic and only ever raises the watermark. This baseline keeps
-\ contexts that load the base files without the cold-prefix assembler sealed up
-\ to here. The FORGET/HIDE guards above reject truncation below the watermark.
-SEAL-CAPTURE

@@ -14,6 +14,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/core/quotation-storage.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -361,8 +362,9 @@ variable VRW-N                       \ values still to find
    ;MATCH ;
 
 \ ---- the names a `{: … :}` group binds ---------------------------------------
-\ Locals, and groups, one definition may declare.
-16 constant LMAX                     \ locals, and groups, one definition may declare
+\ A local or group occupies a source token. Reserve from that count.
+variable LMAX
+variable LVMAX                       \ physical cells reserved for live locals
 64 constant LNAME-CAP                \ bytes one declaration spelling may hold
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -371,22 +373,44 @@ variable LG-N                        \ how many groups the pre-pass found
 variable LG-OPEN                     \ the group the pre-pass is reading, or -1
 variable LG-K0                       \ the first name index of that open group
 variable LGB                         \ how many groups the walk has bound
-variable LBN                         \ how many slots are live where the walk stands
-LMAX TYPED-BUFFER LNAME IR-ID:ir-symbol-id
-LMAX TYPED-BUFFER LVAL IR-ID:ir-value-id
-create LCROSS LMAX cells allot       \ whether a call can reach a mention of this local
-\ The quotation row a local's value names is carried on the NAME and not on the
-\ value, because a value may be renamed and a name may not.
-create LQ LMAX cells allot           \ the quotation row this slot's value names, or VQ-NONE
-create LROW LMAX cells allot         \ the row the group declaring this local closes on
-create LEND LMAX cells allot         \ and the row it goes out of scope on
-create LSLOT LMAX cells allot        \ the slot it takes while it is in scope, or -1
-create LOWN LMAX cells allot         \ which declaration is in this slot
-create LSX LMAX cells allot          \ and whether that one has to travel
-create LG-A LMAX cells allot         \ the row each group's `{:` is on
-create LG-B LMAX cells allot         \ the row its `:}` is on, or -1 while it is open
-create LG-K LMAX cells allot         \ how many names it declares
-create LG-F LMAX cells allot         \ the first declaration index it declares
+variable LBN                         \ physical local cells live where the walk stands
+DYNAMIC-BUFFER LNAME IR-ID:ir-symbol-id
+DYNAMIC-BUFFER LVAL IR-ID:ir-value-id
+DYNAMIC-BUFFER LQ n
+DYNAMIC-BUFFER LOWN n
+DYNAMIC-BUFFER LSX n
+DYNAMIC-BUFFER LOCAL-TABLES n
+11 constant LOCAL-FIELDS
+
+: LOCAL-VALUES-ROOM ( n -- ) {: n:n :}
+   n LVMAX @ <= if exit then
+   n IR-CTX:SCRATCH-LIMIT 4 cells / > if E-IR-CTX-SCRATCH throw then
+   n LVAL-RESERVE
+   n LQ-RESERVE
+   n LOWN-RESERVE
+   n LSX-RESERVE
+   n LVMAX ! ;
+
+
+: LOCALS-ROOM ( n -- ) {: n:n :}
+   n IR-CTX:SCRATCH-LIMIT LOCAL-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
+   n LNAME-RESERVE
+   n LOCAL-VALUES-ROOM
+   n LOCAL-FIELDS * LOCAL-TABLES-RESERVE
+   n LMAX ! ;
+
+: LOCAL-FIELD ( n -- ptr n ) LMAX @ * LOCAL-TABLES ;
+: LCROSS ( -- ptr n ) 0 LOCAL-FIELD ;
+: LROW ( -- ptr n ) 1 LOCAL-FIELD ;
+: LEND ( -- ptr n ) 2 LOCAL-FIELD ;
+: LSLOT ( -- ptr n ) 3 LOCAL-FIELD ;  \ lexical name slot, used by the scope scan
+: LG-A ( -- ptr n ) 4 LOCAL-FIELD ;
+: LG-B ( -- ptr n ) 5 LOCAL-FIELD ;
+: LG-K ( -- ptr n ) 6 LOCAL-FIELD ;
+: LG-F ( -- ptr n ) 7 LOCAL-FIELD ;
+: LPEND ( -- ptr n ) 8 LOCAL-FIELD ;
+: LBASE ( -- ptr n ) 9 LOCAL-FIELD ;
+: LWIDTH ( -- ptr n ) 10 LOCAL-FIELD ;
 create LBUF LNAME-CAP allot
 
 : LRESET ( -- )
@@ -396,29 +420,27 @@ create LBUF LNAME-CAP allot
    0 LG-K0 !
    0 LGB !
    0 LBN !
-   LMAX 0 ?do
+   LMAX @ 0 ?do
       0 i cells LCROSS + !
-      VQ-NONE i cells LQ + !
-      -1 i cells LOWN + !
-      0 i cells LSX + !
+      0 i cells LPEND + !
    loop ;
 
 : LAT ( n -- n )
    dup 0 < over LN @ >= or if E-NELAB-LOCAL throw then ;
 
 : LSAT ( n -- n )
-   dup 0 < over LMAX >= or if E-NELAB-LOCAL throw then ;
+   dup 0 < over LVMAX @ >= or if E-NELAB-LOCAL throw then ;
 
-: LQ@ ( n -- n )     LSAT cells LQ + @ ;
-: LQ! ( n n -- )     {: k:n i:n :}  k i LSAT cells LQ + ! ;
+: LQ@ ( n -- n )     LSAT LQ @ ;
+: LQ! ( n n -- )     {: k:n i:n :}  k i LSAT LQ ! ;
 
-: LOWN@ ( n -- n )   LSAT cells LOWN + @ ;
-: LOWN! ( n n -- )   {: k:n i:n :}  k i LSAT cells LOWN + ! ;
+: LOWN@ ( n -- n )   LSAT LOWN @ ;
+: LOWN! ( n n -- )   {: k:n i:n :}  k i LSAT LOWN ! ;
 
-: LSX@ ( n -- bool ) LSAT cells LSX + @ 0<> ;
+: LSX@ ( n -- bool ) LSAT LSX @ 0<> ;
 : LSX! ( bool n -- )
    {: f:bool i:n :}
-   f if 1 else 0 then  i LSAT cells LSX + ! ;
+   f if 1 else 0 then  i LSAT LSX ! ;
 
 : LROW@ ( n -- n )
    LAT cells LROW + @ ;
@@ -487,7 +509,7 @@ create LBUF LNAME-CAP allot
    VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
    -1
    LN @ 0 ?do
-      sy i LNAME @ NFROZEN:SAME-SYM?  i ix LIVE-AT?  and if drop i leave then
+      sy i LNAME @ NFROZEN:SAME-SYM?  i ix LIVE-AT?  and if drop i then
    loop ;
 
 \ ---- the definition's memory order -------------------------------------------
@@ -1096,7 +1118,6 @@ variable EXIT-ORD                    \ the block every `exit` and the fall-throu
 
 \ ---- a path that has already ended -------------------------------------------
 0 constant PATH-LIVE                 \ the walk is on a path that goes on
-1 constant PATH-EXIT                 \ an `exit` closed the arm; only its `then` may follow
 2 constant PATH-DEAD                 \ a call that does not come back closed it
 variable PATH-END
 
@@ -1111,10 +1132,12 @@ variable PATH-END
    -1 EXIT-ORD !
    PATH-LIVE PATH-END ! ;
 
+variable BLOCK-LIMIT
+
 \ This walk's own ordinal, raised into the module's.
 : BLOCK-ORD ( n -- IR-ID:ir-block-id )
    {: k:n :}
-   k 0 < k NFROZEN:BMAX >= or if E-NELAB-BLOCK throw then
+   k 0 < k BLOCK-LIMIT @ >= or if E-NELAB-BLOCK throw then
    MKEY  BBASE @ k +  IR-ID:PACK-BLOCK ;
 
 \ The base is held against the module at every block, so a drift is a refusal.
@@ -1125,27 +1148,39 @@ variable PATH-END
 : CLOSE-BLOCK ( -- )
    CLOSE-HELD
    NB @ 1+ {: k:n :}
-   k NFROZEN:BMAX > if E-NELAB-BLOCK throw then
+   k BLOCK-LIMIT @ > if E-NELAB-BLOCK throw then
    k NB ! ;
 
 \ ---- what type each block argument has ---------------------------------------
 \ Block argument positions across the whole function.
-NFROZEN:BMAX VMAX * constant ARG-CAP
+: ARG-CAP ( -- n ) BLOCK-LIMIT @ VMAX * ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create ARG-N NFROZEN:BMAX cells allot   \ vector positions stated for this block, or -1
-create ARG-G NFROZEN:BMAX cells allot   \ where the values in those positions begin, as the boundary mask above
-create ARG-R NFROZEN:BMAX cells allot   \ how many of the TOP positions are parked return values
-ARG-CAP TYPED-BUFFER ARG-T IR-ID:ir-type-id  \ the type each of those positions has
+DYNAMIC-BUFFER ARG-N-BUF n
+: ARG-N ( -- ptr n ) 0 ARG-N-BUF ;
+DYNAMIC-BUFFER ARG-G-BUF n
+: ARG-G ( -- ptr n ) 0 ARG-G-BUF ;
+DYNAMIC-BUFFER ARG-R-BUF n
+: ARG-R ( -- ptr n ) 0 ARG-R-BUF ;
+DYNAMIC-BUFFER ARG-T IR-ID:ir-type-id
 VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
 
+\ SKELETON has counted the function before any argument rows are written.
+: BLOCK-ROOM ( n -- )
+   1 max BLOCK-LIMIT !
+   BLOCK-LIMIT @ ARG-N-BUF-RESERVE
+   BLOCK-LIMIT @ ARG-G-BUF-RESERVE
+   BLOCK-LIMIT @ ARG-R-BUF-RESERVE
+   ARG-CAP ARG-T-RESERVE
+   ;
+
 : ARG-RESET ( -- )
-   NFROZEN:BMAX 0 ?do
+   BLOCK-LIMIT @ 0 ?do
       -1 i cells ARG-N + !  0 i cells ARG-G + !  0 i cells ARG-R + !
    loop ;
 
 : ARG-BLOCK-CK ( n -- n )
-   dup 0 < over NFROZEN:BMAX >= or if E-NELAB-BLOCK throw then ;
+   dup 0 < over BLOCK-LIMIT @ >= or if E-NELAB-BLOCK throw then ;
 
 : ARG-STATED? ( n -- bool )
    ARG-BLOCK-CK cells ARG-N + @ 0 >= ;
@@ -1302,20 +1337,6 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ m HIR-MEANING:EQ ;
 
-: IN-SCOPE-NOW? ( n -- bool )
-   {: k:n :}
-   k LG-K0 @ >= if true exit then
-   k LROW@ 0 < if false exit then
-   k LEND@ 0 < ;
-
-\ The duplicate this file refuses is a LIVE one, and only a live one.
-: DUP-LOCAL? ( IR-ID:ir-symbol-id -- bool )
-   {: sy:IR-ID:ir-symbol-id :}
-   false
-   LN @ 0 ?do
-      i IN-SCOPE-NOW? if  sy i LNAME @ NFROZEN:SAME-SYM? or  then
-   loop ;
-
 \ ---- the one name a local may not take ----------------------------------------
 : PRE-FRAME? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: r:IR-ARENA:arena sy:IR-ID:ir-symbol-id :}
@@ -1326,13 +1347,12 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ The bare name, interned into this module so every mention reaches one symbol.
 : DECLARE-LOCAL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   LN @ LMAX >= if E-NELAB-LOCAL-CAP throw then
+   LN @ LMAX @ >= if E-NELAB-LOCAL-CAP throw then
    CTX BLD  VW MKEY ix NTAPE:SPELL@  LBUF LNAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
    LBUF u HIR-WORD:LOCAL-NAME-LEN {: nu:n :}
    nu 1 < if E-NELAB-LOCAL throw then
    CTX BLD LBUF nu IR-BUILD:INTERN-SYMBOL {: sy:IR-ID:ir-symbol-id :}
    r  CTX BLD sy HIR-WORD:KEY-SYM  PRE-FRAME? if E-NELAB-LOCAL throw then
-   sy DUP-LOCAL? if E-NELAB-LOCAL throw then
    sy LN @ LNAME !
    -1 LN @ LROW!
    -1 LN @ LEND!
@@ -1417,11 +1437,14 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
       bind-defer   OF ENDOF
       exec         OF ENDOF
       catch        OF ENDOF
+      finally      OF ENDOF
+      tick         OF ENDOF
+      eval         OF ENDOF
    ;MATCH ;
 
 : GROUP-OPEN ( n -- )
    {: ix:n :}
-   LG-N @ LMAX >= if E-NELAB-LOCAL-CAP throw then
+   LG-N @ LMAX @ >= if E-NELAB-LOCAL-CAP throw then
    LG-N @ {: g:n :}
    g 1+ LG-N !
    ix g cells LG-A + !
@@ -1480,15 +1503,25 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
 
 \ ---- how far a body token may be from the definition's first ------------------
 \ Body tokens one definition may have.
-256 constant TMAX                    \ body tokens one definition may have
+variable TMAX                       \ token count of the current unit
+PTR-VARIABLE TOK-TABLES
+16 constant TOK-FIELDS
+
+: TOK-ROOM ( n -- ) {: n:n :}
+   n IR-CTX:SCRATCH-LIMIT TOK-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
+   n TMAX !
+   CTX n TOK-FIELDS * cells IR-CTX:SCRATCH-TAKE drop TOK-TABLES ! ;
+
+: TOK-FIELD ( n -- ptr n )
+   TMAX @ * cells TOK-TABLES @ + ;
 
 : TOK-CK ( n -- n )
-   dup 0 < over TMAX >= or if E-NELAB-BLOCK throw then ;
+   dup 0 < over TMAX @ >= or if E-NELAB-BLOCK throw then ;
 
 \ ---- the bodies this definition defers ---------------------------------------
 \ Quotation bodies one definition may hold; the definition's own function is
 \ not one of them.
-NFROZEN:FMAX 1- constant QMAX        \ quotation bodies one definition may hold
+: QMAX ( -- n ) TMAX @ ;
 
 -1 constant QNONE                    \ no consumer has said what this body takes and leaves
 
@@ -1496,26 +1529,26 @@ here CELL 1- and CELL swap - CELL 1- and allot
 variable QN                          \ how many bodies this definition holds
 variable QD                          \ the row of the body the pre-scan has open, or -1
 variable QBASE                       \ the ordinal of the function the definition itself is
-create QAT   QMAX cells allot        \ the `[:` each body was opened at
-create QLO   QMAX cells allot        \ its first body token
-create QHI   QMAX cells allot        \ its `;]`, which is one past its last body token
-create QIN   QMAX cells allot        \ what the body takes, in cells, or QNONE
-create QOUT  QMAX cells allot        \ and what it leaves
-create QOPENED TMAX cells allot      \ this token opens body k, or -1
+: QAT ( -- ptr n ) 10 TOK-FIELD ;
+: QLO ( -- ptr n ) 11 TOK-FIELD ;
+: QHI ( -- ptr n ) 12 TOK-FIELD ;
+: QIN ( -- ptr n ) 13 TOK-FIELD ;
+: QOUT ( -- ptr n ) 14 TOK-FIELD ;
+: QOPENED ( -- ptr n ) 0 TOK-FIELD ;
 \ This row's quotation is no body of this emission - it is a parameter.
 -1 constant QPARAM                   \ this row's quotation is no body of this emission
-create QFUN  QMAX cells allot        \ the function of this emission a row's body is
+: QFUN ( -- ptr n ) 15 TOK-FIELD ;
 
 \ ---- which body each token belongs to, and which body is being walked ---------
 -1 constant QOWNER-DEF               \ the definition's own function, which is no body
-create QOWN TMAX cells allot         \ the body each token belongs to, or QOWNER-DEF
+: QOWN ( -- ptr n ) 1 TOK-FIELD ;
 variable QCUR                        \ the body being walked, or QOWNER-DEF
 
 : QUOT-RESET ( -- )
    0 QN !
    -1 QD !
    QOWNER-DEF QCUR !
-   TMAX 0 ?do
+   TMAX @ 0 ?do
       -1 i cells QOPENED + !
       QOWNER-DEF i cells QOWN + !
    loop ;
@@ -1571,9 +1604,14 @@ create QSPELL-BUF QSPELL-CAP allot
    {: ix:n j:n :}
    VN @ 1- j -  VQ@ {: k:n :}
    k 0 < if exit then
-   ix QSPELL j NDICT:SPELL-QUOT-DIN {: qi:n qo:n :}
-   qi NDICT:QUOT-NONE = if k QAT@ QUOT-REFUSE then
-   k qi qo QFILL ;
+   ix j NDICT:CALL-QUOT-IN {: qi:n qo:n :}
+   qi NDICT:QUOT-NONE = if
+      \ A polymorphic consumer can store or forward a quotation whose
+      \ calling convention is already known from the checked parameter.
+      k QIN@ QNONE <> if exit then
+      k QAT@ QUOT-REFUSE
+   then
+   k qi qo 0 max QFILL ;
 
 : QCALL-FILL ( n n -- )
    {: ix:n a:n :}
@@ -1616,14 +1654,13 @@ create QSPELL-BUF QSPELL-CAP allot
    k QD !
    k 1+ QN ! ;
 
-\ ---- a quotation this definition was HANDED ----------------------------------
-: QOPEN-PARAM ( n n -- )
-   {: j:n cellix:n :}
-   0 QSPELL j NDICT:SPELL-QUOT-DIN {: qi:n qo:n :}
-   qi NDICT:QUOT-NONE = if exit then
+\ A quotation supplied by a parameter, a called word, or a named tick has no
+\ body in this emission, but retains the same known calling convention.
+: QKNOWN ( n n n n -- )
+   {: ix:n qi:n qo:n cellix:n :}
    QN @ QMAX >= if E-NELAB-QUOT-CAP throw then
    QN @ {: k:n :}
-   0 k cells QAT + !
+   ix k cells QAT + !
    0 k cells QLO + !
    0 k cells QHI + !
    qi k cells QIN + !
@@ -1631,6 +1668,18 @@ create QSPELL-BUF QSPELL-CAP allot
    QPARAM k cells QFUN + !
    k 1+ QN !
    k cellix VQ! ;
+
+: QOPEN-PARAM ( n n -- )
+   {: j:n cellix:n :}
+   0 QSPELL j NDICT:SPELL-QUOT-DIN {: qi:n qo:n :}
+   qi NDICT:QUOT-NONE = if exit then
+   0 qi qo cellix QKNOWN ;
+
+: QRESULTS-FILL ( n n -- ) {: ix:n out:n :}
+   out 0 ?do
+      ix i NDICT:CALL-QUOT-OUT {: qi:n qo:n :}
+      qi NDICT:QUOT-NONE <> if ix qi qo VN @ 1- i - QKNOWN then
+   loop ;
 
 : QPARAMS-OPEN ( n -- )
    {: in:n :}
@@ -1674,6 +1723,7 @@ create QSPELL-BUF QSPELL-CAP allot
 1 constant MR-FAMILY                 \ the family operand of a `MATCH` or a `construct`
 2 constant MR-VARIANT                \ the variant operand of one
 3 constant MR-DEFER                  \ the deferred word `is` binds to
+4 constant MR-TICK                   \ the word named by compile-time tick
 
 0 constant MM-OFF                    \ no operand token is expected
 1 constant MM-CON-FAM                \ `construct` has been read; its family is next
@@ -1688,13 +1738,13 @@ create QSPELL-BUF QSPELL-CAP allot
 128 constant MTOK-CAP                \ bytes of one operand token this pass can read
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create MROLE TMAX cells allot        \ which operand, if any, this row is
-create MTAG TMAX cells allot         \ an arm's variant tag, a `MATCH` row's trap ordinal, a `construct` row's tag
-create MPAD TMAX cells allot         \ the zero pads an arm drops, or a `construct` pushes
-create MPAY TMAX cells allot         \ the payload CELLS an arm keeps or a `construct` consumes - and, on a variant row, its payload FIELDS, which is the count the arm's `of` holds those cells against
-create MWID TMAX cells allot         \ a `MATCH` row's bundle width in cells, as the instantiation really occupies it
-create MFLD TMAX cells allot         \ how many FIELDS an arm's payload has, beside the CELLS it keeps
-create MEND TMAX cells allot         \ whether this `of` opens the LAST arm of its `MATCH`
+: MROLE ( -- ptr n ) 2 TOK-FIELD ;
+: MTAG ( -- ptr n ) 3 TOK-FIELD ;
+: MPAD ( -- ptr n ) 4 TOK-FIELD ;
+: MPAY ( -- ptr n ) 5 TOK-FIELD ;
+: MWID ( -- ptr n ) 6 TOK-FIELD ;
+: MGLUE ( -- ptr n ) 7 TOK-FIELD ;
+: MEND ( -- ptr n ) 8 TOK-FIELD ;
 create MTOK MTOK-CAP allot
 
 CMAX constant MSMAX                  \ open tag-dispatch forms, as the control stack's own ceiling
@@ -1714,7 +1764,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    0 MSN !
    -1 CB-ROW !
    -1 MV-ROW !
-   TMAX 0 ?do
+   TMAX @ 0 ?do
       MR-NONE i cells MROLE + !
       0 i cells MEND + !
    loop ;
@@ -1724,7 +1774,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : MPAD@ ( n -- n )    TOK-CK cells MPAD + @ ;
 : MPAY@ ( n -- n )    TOK-CK cells MPAY + @ ;
 : MWID@ ( n -- n )    TOK-CK cells MWID + @ ;
-: MFLD@ ( n -- n )    TOK-CK cells MFLD + @ ;
+: MGLUE@ ( n -- n )   TOK-CK cells MGLUE + @ ;
 : MEND@ ( n -- bool ) TOK-CK cells MEND + @ 0<> ;
 
 : MOPERAND? ( n -- bool )
@@ -1733,9 +1783,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 : MROLE! ( n n -- ) {: ix:n r:n :}
    r ix TOK-CK cells MROLE + ! ;
 
-: MVAR! ( n n n -- ) {: ix:n tag:n terms:n :}
-   tag ix TOK-CK cells MTAG + !
-   terms ix TOK-CK cells MPAY + ! ;
+: MVAR! ( n n -- ) {: ix:n tag:n :}
+   tag ix TOK-CK cells MTAG + ! ;
 
 : MARM! ( n n n n -- ) {: ix:n tag:n pads:n pay:n :}
    tag ix TOK-CK cells MTAG + !
@@ -1746,8 +1795,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    w ix TOK-CK cells MWID + !
    ord ix TOK-CK cells MTAG + ! ;
 
-: MFLD! ( n n -- ) {: ix:n fields:n :}
-   fields ix TOK-CK cells MFLD + ! ;
+: MGLUE! ( n n -- ) {: ix:n glue:n :}
+   glue ix TOK-CK cells MGLUE + ! ;
 
 : MEND! ( n -- ) {: ix:n :}
    1 ix TOK-CK cells MEND + ! ;
@@ -1807,7 +1856,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix MTOK$ t MS-FAM@ NFAM:VARIANT {: vid:n ok:bool :}
    ok 0= if E-NELAB-MATCH throw then
    ix MR-VARIANT MROLE!
-   ix  vid NFAM:TAG  vid NFAM:PAY-TERMS  MVAR!
+   ix  vid NFAM:TAG  MVAR!
    ix MV-ROW !
    MM-OF MM ! ;
 
@@ -1820,8 +1869,10 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    pads NDICT:MATCH-NONE = if E-NELAB-MATCH throw then
    t MS-WID@ 1- pads - {: pay:n :}
    pay 0 < if E-NELAB-MATCH throw then
+   ix NDICT:MATCH-PAYLOAD {: cells:n glue:n :}
+   cells pay <> glue NDICT:GLUE-UNKNOWN = or if E-NELAB-MATCH throw then
    ix  vix MTAG@  pads  pay  MARM!
-   ix  vix MPAY@  MFLD!
+   ix glue MGLUE!
    t ix MS-ARM!
    -1 MV-ROW !
    MM-OFF MM ! ;
@@ -1921,11 +1972,13 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    {: r:IR-ARENA:arena n:n ix:n :}
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
-   r ix HIR-CTRL:BIND-DEFER ROW-CTRL? 0= if exit then
+   r ix HIR-CTRL:BIND-DEFER ROW-CTRL?
+   r ix HIR-CTRL:TICK ROW-CTRL? or 0= if exit then
    ix 1+ {: t:n :}
    t n >= if E-NELAB-DEFER throw then
    VW t NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-DEFER throw then
-   t MR-DEFER MROLE! ;
+   r ix HIR-CTRL:TICK ROW-CTRL? if t MR-TICK MROLE!
+   else t MR-DEFER MROLE! then ;
 
 : DEFER-SCAN ( IR-ARENA:arena n n -- ) {: r:IR-ARENA:arena lo:n hi:n :}
    hi lo ?do
@@ -1959,6 +2012,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    k HIR-CTRL:BIND-DEFER HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    k HIR-CTRL:EXEC HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    k HIR-CTRL:CATCH HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
+   k HIR-CTRL:FINALLY HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
+   k HIR-CTRL:EVAL HIR-CTRL:EQ if HIR-OPCODE:WORDCALL true exit then
    HIR-OPCODE:CALL false ;
 
 : SYM-ORDER? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
@@ -2003,6 +2058,10 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    loop ;
 
 \ ---- does this definition CALL at all? ---------------------------------------
+: QUOTATION-STORE? ( IR-ARENA:arena n -- bool ) {: r:IR-ARENA:arena ix:n :}
+   r ix WSYM HIR-WORD:OPCODE@ HIR-OPCODE:STORE HIR-OPCODE:EQ 0= if false exit then
+   ix 1 NDICT:CALL-QUOT-IN drop NDICT:QUOT-NONE <> ;
+
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
@@ -2010,6 +2069,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:OP HIR-MEANING:EQ if r ix QUOTATION-STORE? exit then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
       r sy HIR-WORD:CTRL@ CTRL-CALL? {: op:HIR:opcode calls:bool :}
       calls exit
@@ -2017,12 +2077,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    false ;
 
 \ ---- which locals a call can reach -------------------------------------------
-32 constant LSMAX                    \ loops one definition may nest, as CMAX does
-
-here CELL 1- and CELL swap - CELL 1- and allot
 variable LSN                         \ loops the scan is inside
-create LS-CALL LSMAX cells allot     \ whether a call has been met inside this loop
-create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call was met
+variable LS-SEQ                      \ identity of the current outer loop
 
 : OPENS-LOOP? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
@@ -2038,28 +2094,26 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
    r ix HIR-CTRL:CLOSE-LOOP ROW-CTRL? or ;
 
 : LS-PUSH ( -- )
-   LSN @ LSMAX >= if E-NELAB-BLOCK throw then
-   0 LSN @ cells LS-CALL + !
-   0 LSN @ cells LS-PEND + !
+   LSN @ 0= if 1 LS-SEQ +! then
    LSN @ 1+ LSN ! ;
 
 : LS-POP ( -- )
    LSN @ 1 < if E-NELAB-CTRL throw then
-   LSN @ 1- LSN !
-   LSN @ cells LS-CALL + @ 0= if exit then
-   LSN @ cells LS-PEND + @ {: m:n :}
-   LN @ 0 ?do
-      m 1 i lshift and 0<> if i LCROSS+ then
-   loop ;
+   LSN @ 1- LSN ! ;
 
+\ Before the first call, retain locals read in the current outer loop. A call
+\ in that loop can precede those reads on its next iteration. Later reads are
+\ already covered by CALL-NEED, so neither loop bitsets nor local masks help.
 : LS-CALL+ ( -- )
-   LSN @ 0 ?do  1 i cells LS-CALL + !  loop ;
+   LSN @ 0= if exit then
+   LN @ 0 ?do
+      i cells LPEND + @ LS-SEQ @ = if i LCROSS+ then
+   loop ;
 
 : LS-PEND+ ( n -- )
    {: k:n :}
-   LSN @ 0 ?do
-      i cells LS-PEND + @  1 k lshift or  i cells LS-PEND + !
-   loop ;
+   LSN @ 0= if exit then
+   LS-SEQ @ k cells LPEND + ! ;
 
 \ A call marks the whole definition and every loop it is inside.
 : CROSS-STEP ( IR-ARENA:arena n -- )
@@ -2082,6 +2136,7 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
    {: r:IR-ARENA:arena lo:n hi:n :}
    0 CALL-NEED !
    0 LSN !
+   0 LS-SEQ !
    hi lo ?do
       r i CROSS-STEP
    loop
@@ -2089,10 +2144,10 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
 
 \ ---- the block skeleton ------------------------------------------------------
 here CELL 1- and CELL swap - CELL 1- and allot
-create JOIN-TAB TMAX cells allot
+: JOIN-TAB ( -- ptr n ) 9 TOK-FIELD ;
 
 : JOIN-RESET ( -- )
-   TMAX 0 ?do
+   TMAX @ 0 ?do
       -1 i cells JOIN-TAB + !
    loop ;
 
@@ -2115,7 +2170,6 @@ create JOIN-TAB TMAX cells allot
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-ELSE? if E-NELAB-CTRL throw then
-   PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    PATH-DEAD? if -1 t CS-END! else NB @ 1+ NB ! then
    PATH-LIVE PATH-END !
    t CS-JOIN@ NB @ JOIN!
@@ -2269,7 +2323,7 @@ create JOIN-TAB TMAX cells allot
       outer-index  OF ENDOF
       drop-loop    OF ENDOF
       early-leave  OF SK-LEAVE ENDOF
-      early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  PATH-EXIT PATH-END ! ENDOF
+      early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  PATH-DEAD PATH-END ! ENDOF
       self-call    OF ENDOF
       open-match   OF HIR-CTRL:OPEN-MATCH ix SK-PUSH ENDOF
       match-arm    OF ix SK-ARM ENDOF
@@ -2283,12 +2337,15 @@ create JOIN-TAB TMAX cells allot
       bind-defer   OF ENDOF
       exec         OF ENDOF
       catch        OF ENDOF
+      finally      OF ENDOF
+      tick         OF ENDOF
+      eval         OF ENDOF
    ;MATCH ;
 
 \ A structure left open at the end of the body is a refusal.
 : SKELETON ( IR-ARENA:arena n n -- )
    {: r:IR-ARENA:arena lo:n hi:n :}
-   hi TMAX > if E-NELAB-BLOCK throw then
+   hi TMAX @ > if E-NELAB-BLOCK throw then
    0 NB !
    JOIN-RESET
    CS-RESET
@@ -2297,13 +2354,12 @@ create JOIN-TAB TMAX cells allot
       r i SK-STEP
    loop
    CS-N @ 0<> if E-NELAB-CTRL throw then
-   PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    PATH-DEAD? {: dead:bool :}
    EXIT-USED @ 0<> if
       dead if NB @ else NB @ 1+ then EXIT-ORD !
    then
    EXIT-USED @ 0<> if EXIT-ORD @ 1+ else NB @ then
-   NFROZEN:BMAX > if E-NELAB-BLOCK throw then
+   1+ BLOCK-ROOM
    0 NB !
    PATH-LIVE PATH-END !
    CS-RESET ;
@@ -2596,28 +2652,30 @@ create JOIN-TAB TMAX cells allot
    then
    ix HIR-OPCODE:EQUAL EMIT-OPCODE ;
 
-\ A `MATCH` arm drops the tag and this many pads, which leaves the payload.
-: ARM-GLUE ( n n n -- ) {: base:n k:n fields:n :}
-   base k VGLUE-CLEAR
-   k 2 < if exit then
-   fields k = if exit then
-   fields 1 = if base k VGLUE-GROW exit then
-   E-NELAB-MATCH throw ;
-
+\ Drop the tag and pads, then restore the instantiated payload's value groups.
 : ARM-RESHAPE ( n n -- ) {: ix:n t:n :}
    t CS-MATCH? 0= if 1 VDROP exit then
    ix MPAD@ 1+ {: d:n :}
    d VN @ > if E-NELAB-UNDER throw then
    d VDROP
    t CS-DEPTH@ {: base:n :}
-   base  VN @ base -  ix MFLD@  ARM-GLUE ;
+   base VN @ base - VGLUE-CLEAR
+   base ix MGLUE@ VGLUE-RUN ;
+
+\ Copy the diagnostic through the same owned literal path as source strings;
+\ no emitted trap depends on the build host's ordinal table or helper code.
+: TRAP-ARGS ( n n -- ) {: ix:n ord:n :}
+   ord NTRAP:MESSAGE {: a:ptr u:n rc:n :}
+   ix a u NSTR:INTERN HIR:ADDR-DATA STAGE-LIT
+   ix u HIR:ADDR-NONE STAGE-LIT
+   ix rc HIR:ADDR-NONE STAGE-LIT ;
 
 \ The block a tag that matched no variant runs into, which is the last arm's
 \ mismatch edge.
 : MATCH-TRAP ( n n -- ) {: ix:n ord:n :}
    LIT-MARK {: m:n :}
    ix OPEN-PLAIN
-   ix ord HIR:ADDR-NONE STAGE-LIT
+   ix ord TRAP-ARGS
    ix HIR-OPCODE:TRAP EMIT-OPCODE
    CLOSE-BLOCK
    m LIT-RELEASE ;
@@ -2812,7 +2870,7 @@ create DN-BUF DN-CAP allot
 \ The ordinal is staged FRESH and not taken off the literal memo.
 : DEAD-END ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix  ix WSYM DEAD-ORD  HIR:ADDR-NONE STAGE-LIT
+   ix  ix WSYM DEAD-ORD TRAP-ARGS
    ix HIR-OPCODE:TRAP EMIT-OPCODE
    CLOSE-BLOCK
    PATH-DEAD PATH-END ! ;
@@ -2853,10 +2911,34 @@ create DN-BUF DN-CAP allot
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   ix NDICT:CALL-CELLS {: a:n o:n :}
+   a 0 < if
+      r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
+      r sy HIR-WORD:OUT-GLUE@
+   else
+      a o ix NDICT:CALL-GLUE nip
+   then {: in:n out:n glue:n :}
    ix  r sy HIR-WORD:ENTRY@
-   r sy HIR-WORD:CALLEE-IN@  r sy HIR-WORD:CALLEE-OUT@
-   r sy HIR-WORD:OUT-GLUE@  STAGE-WCALL
+   in out glue STAGE-WCALL
+   ix out QRESULTS-FILL
    r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
+
+\ Source evaluation has a dynamic stack effect. Only an explicit TRUSTED:
+\ boundary can assert its result row; checked callers still reject evaluate.
+\ Publish this boundary's live row and receive its declared results through the
+\ ordinary native call path, including its register saves and relocations.
+: DO-EVAL ( n -- ) {: ix:n :}
+   data-base TRUSTED-CELL + @ 0= if E-HIR-UNMODELED throw then
+   VN @ 2 < if E-NELAB-UNDER throw then
+   QCUR @ QOWNER-DEF = if
+      OUT-N @ OUT-GLUE @
+   else
+      QCUR @ QOUT@ NDICT:GLUE-NONE
+   then {: out:n glue:n :}
+   out 0 < if ix QUOT-REFUSE then
+   s" evaluate" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-HIR-UNMODELED throw then
+   ix entry VN @ out glue STAGE-WCALL ;
 
 \ ---- what `[:` stages ---------------------------------------------------------
 : DO-QUOT ( n -- )
@@ -2870,6 +2952,18 @@ create DN-BUF DN-CAP allot
    CTX BLD  k QFUN@  IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
    CTX BLD op CLOSE
    k  VN @ 1-  VQ! ;
+
+\ A tick carries a real code address, so snapshot/AOT relocation records it.
+\ If the target has a known effect, preserve its quotation calling convention.
+: DO-TICK ( n -- ) {: ix:n :}
+   ix 1+ QSPELL {: a:ptr u:n :}
+   a u NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if ix QUOT-REFUSE then
+   ix entry HIR:ADDR-CODE EMIT-KIND-LIT
+   a u NDICT:SPELL-ARITY {: qi:n qo:n :}
+   qi NDICT:ARITY-NONE = if exit then
+   qo NDICT:ARITY-NONE = if exit then
+   ix qi qo VN @ 1- QKNOWN ;
 
 \ ---- binding a quotation to a deferred word -----------------------------------
 : DO-IS ( n -- )
@@ -2889,17 +2983,26 @@ create DN-BUF DN-CAP allot
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- entering the routine a quotation names ----------------------------------
-: DO-EXEC ( n -- )
-   {: ix:n :}
+: DO-EXEC ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   k 0 < if ix QUOT-REFUSE then
-   k QIN@ {: qin:n :}
-   k QOUT@ {: qout:n :}
-   qin QNONE = if ix QUOT-REFUSE then
+   ix NDICT:EXEC-CELLS {: cin:n cout:n :}
+   cin 0 < if
+      k 0 < if ix QUOT-REFUSE then
+      k QIN@ k QOUT@
+   else cin cout then {: in:n out:n :}
+   in 0 < if ix QUOT-REFUSE then
+   k 0 >= if
+      k QIN@ QNONE = if k in out 0 max QFILL then
+   then
    s" execute" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   ix entry  qin 1+  qout  NDICT:GLUE-NONE  STAGE-WCALL ;
+   ix NDICT:CALL-CELLS drop 0 < if NDICT:GLUE-NONE
+   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+   ix entry  in 1+  out 0 max  glue  STAGE-WCALL
+   in 0 >= out NDICT:ARITY-NONE = and if r ix DEAD-END then ;
 
 \ ---- running a quotation and coming back either way --------------------------
 \ `catch` stages ONE call and opens no scope of its own.
@@ -2907,16 +3010,30 @@ create DN-BUF DN-CAP allot
    {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    VN @ 1- VQ@ {: k:n :}
-   k 0 < if ix QUOT-REFUSE then
    ix NDICT:CATCH-CELLS {: win:n back:n :}
    win NDICT:CATCH-NONE = if ix QUOT-REFUSE then
-   back NDICT:CATCH-NONE = if ix QUOT-REFUSE then
-   back win <> if ix QUOT-REFUSE then
+   back NDICT:CATCH-NONE <> if back win <> if ix QUOT-REFUSE then then
    VN @ 1- win < if E-NELAB-UNDER throw then
    s" catch" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   k win win QFILL
+   k 0 >= if k win win QFILL then
    ix entry  win 1+  win 1+  NDICT:GLUE-NONE  STAGE-WCALL ;
+
+
+\ Both quotations are native calls. The cleanup has a certified empty window;
+\ the body window and its outputs come from the same per-site checker table.
+: DO-FINALLY ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena ix:n :}
+   VN @ 2 < if E-NELAB-UNDER throw then
+   ix NDICT:FINALLY-CELLS {: in:n out:n cleanup-out:n :}
+   in 0 < if ix QUOT-REFUSE then
+   VN @ 2 - VQ@ {: body:n :}
+   VN @ 1- VQ@ {: cleanup:n :}
+   body 0 >= if body in out 0 max QFILL then
+   cleanup 0 >= if cleanup 0 0 QFILL then
+   s" finally" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if ix QUOT-REFUSE then
+   ix entry in 2 + out 0 max NDICT:GLUE-NONE STAGE-WCALL
+   out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
 \ ---- a call that BUILDS a value of a wide instantiation ------------------------
 : CON-PADS-PUSH ( n n -- ) {: ix:n x:n :}
@@ -2929,7 +3046,9 @@ create DN-BUF DN-CAP allot
 
 : DO-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix  r  ix WSYM  HIR-WORD:CALLEE-IN@  QCALL-FILL
+   ix NDICT:CALL-CELLS drop {: in:n :}
+   in 0 < if r ix WSYM HIR-WORD:CALLEE-IN@ else in then
+   ix swap QCALL-FILL
    ix NDICT:CON-PADS {: x:n :}
    ix x CON-PADS-PUSH
    r ix DO-WORD-CALL
@@ -2972,10 +3091,20 @@ create DN-BUF DN-CAP allot
    VN @ bot w + <> if E-NELAB-BUNDLE throw then
    w VDROP ;
 
+: DO-QUOTATION-STORE ( n -- ) {: ix:n :}
+   s" QUOTATION-STORAGE:STORE" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-HIR-UNMODELED throw then
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+
 : DO-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
+   ix NDICT:CALL-CELLS drop {: a:n :}
+   a 0 >= if ix a QCALL-FILL then
    VW ix TOK-CELLS {: w:n :}
-   w 1 = if r ix EMIT-OP exit then
+   w 1 = if
+      r ix QUOTATION-STORE? if ix DO-QUOTATION-STORE else r ix EMIT-OP then
+      exit
+   then
    w 1 < if E-NELAB-BUNDLE throw then
    r  ix WSYM  HIR-WORD:OPCODE@ {: k:HIR:opcode :}
    k HIR-OPCODE:LOAD HIR-OPCODE:EQ if ix w WIDE-LOAD exit then
@@ -2988,12 +3117,10 @@ create DN-BUF DN-CAP allot
 \ The vector has to hold exactly the values the definition declares it leaves.
 : DO-EXIT ( n -- )
    {: ix:n :}
-   CS-N @ 1 < if E-NELAB-CTRL throw then
-   CS-TOP CS-KIND @ HIR-CTRL:OPEN-IF HIR-CTRL:EQ 0= if E-NELAB-CTRL throw then
    VN @ OUT-N @ <> if E-NELAB-ARITY throw then
    EXIT-ORD @ 0 < if E-NELAB-CTRL throw then
    ix EXIT-ORD @ 0 0 0 TERM-BR-H
-   PATH-EXIT PATH-END ! ;
+   PATH-DEAD PATH-END ! ;
 
 \ ---- binding and reading the locals ------------------------------------------
 : BIND-CROSS-ONE ( n n -- )
@@ -3011,11 +3138,23 @@ create DN-BUF DN-CAP allot
 \ The value, the quotation row it names, and which declaration owns the slot.
 : BIND-ONE ( n n n -- )
    {: base:n d:n s:n :}
-   d LSLOT@ s <> if E-NELAB-LOCAL throw then
    base VAT  s LVAL !
    base VQ@  s LQ!
    d s LOWN!
    d LCROSS?  s LSX! ;
+
+
+\ Lexical slots count names; the live vector holds every cell of each name.
+: BIND-VALUE ( n n n -- n n )
+   {: base:n d:n s:n :}
+   base 1+
+   begin dup VN @ < if dup VGLUE-BIT? else false then while 1+ repeat
+   base - {: w:n :}
+   s d cells LBASE + !
+   w d cells LWIDTH + !
+   w 0 ?do  base i + d s i + BIND-ONE  loop
+   base w + s w + ;
+
 
 : DO-CLOSE-LOCALS ( n -- )
    {: ix:n :}
@@ -3024,26 +3163,34 @@ create DN-BUF DN-CAP allot
    LGB @ LG-K@ {: k:n :}
    LGB @ LG-F@ {: d0:n :}
    LBN @ {: from:n :}
-   from k +  LMAX > if E-NELAB-LOCAL-CAP throw then
-   k VN @ > if E-NELAB-UNDER throw then
-   VN @ k - {: base:n :}
+   k VROWS-CELLS {: w:n :}
+   w 0 < if E-NELAB-UNDER throw then
+   from w + LOCAL-VALUES-ROOM
+   VN @ w - from
    k 0 ?do
-      base i +  d0 i +  from i +  BIND-ONE
+      d0 i + swap BIND-VALUE
    loop
-   k VDROP
-   ix from k LOCAL-BIND-CROSS
-   from k + LBN !
+   2drop
+   w VDROP
+   ix from w LOCAL-BIND-CROSS
+   from w + LBN !
    LGB @ 1+ LGB ! ;
 
 : LOCAL-READ? ( n -- bool )
    {: ix:n :}
    ix LOCAL-OF {: k:n :}
    k 0 < if false exit then
-   k LSLOT@ {: s:n :}
-   s 0 <  s LBN @ >=  or if E-NELAB-LOCAL throw then
-   s LOWN@ k <> if E-NELAB-LOCAL throw then
-   s LSAT LVAL @ VPUSH
-   s LQ@  VN @ 1-  VQ!
+   k cells LBASE + @ {: s:n :}
+   k cells LWIDTH + @ {: w:n :}
+   s 0 <  s w + LBN @ >  or if E-NELAB-LOCAL throw then
+   VN @ {: base:n :}
+   w 0 ?do
+      s i + {: at:n :}
+      at LOWN@ k <> if E-NELAB-LOCAL throw then
+      at LSAT LVAL @ VPUSH
+      at LQ@ VN @ 1- VQ!
+   loop
+   base w VGLUE-GROW
    true ;
 
 : DO-CONTROL ( IR-ARENA:arena n -- )
@@ -3077,8 +3224,11 @@ create DN-BUF DN-CAP allot
       open-quot    OF ix DO-QUOT ENDOF
       close-quot   OF ix QUOT-REFUSE ENDOF
       bind-defer   OF ix DO-IS ENDOF
-      exec         OF ix DO-EXEC ENDOF
+      exec         OF r ix DO-EXEC ENDOF
       catch        OF ix DO-CATCH ENDOF
+      finally      OF r ix DO-FINALLY ENDOF
+      tick         OF ix DO-TICK ENDOF
+      eval         OF ix DO-EVAL ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------
@@ -3313,11 +3463,11 @@ variable QNAME-P                     \ the place value the digit loop is on
    PATH-LIVE PATH-END !
    p r lo hi WALK-TRY
    CS-N @ 0<> if E-NELAB-CTRL throw then
-   PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    EXIT-USED @ 0<> if k QAT@ QUOT-REFUSE then
-   PATH-DEAD? if k QAT@ QUOT-REFUSE then
-   c b v key k QEMIT-RETURN
-   CLOSE-HELD
+   PATH-DEAD? 0= if
+      c b v key k QEMIT-RETURN
+      CLOSE-HELD
+   then
    c b IR-BUILD:END-FUN drop
    lb LBN !
    QOWNER-DEF QCUR ! ;
@@ -3341,6 +3491,10 @@ variable QNAME-P                     \ the place value the digit loop is on
    v 0 NTAPE-MODE:INTERPRETING MODE-CK ;
 
 public
+
+: HAS-QUOTATIONS? ( -- bool )
+   QN @ 0<> ;
+
 
 : CALLED? ( -- bool )
    CALL-NEED @ 0<> ;
@@ -3412,6 +3566,25 @@ PTR-VARIABLE DOES-SIG
 variable DOES-SIG-U
 variable DOES-PATCH
 
+public
+
+: CAPTURE-PREPARE ( -- )
+   LNAME-RELEASE LVAL-RELEASE LOCAL-TABLES-RELEASE
+   LQ-RELEASE LOWN-RELEASE LSX-RELEASE
+   0 LMAX !
+   0 LVMAX !
+   ARG-N-BUF-RELEASE
+   ARG-G-BUF-RELEASE
+   ARG-R-BUF-RELEASE
+   ARG-T-RELEASE
+   0 BLOCK-LIMIT !
+   NULL-PTR TOK-TABLES ! 0 TMAX !
+   NULL-PTR DOES-SIG !  0 DOES-SIG-U !
+   0 TAIL-ENTRY !
+   0 DOES-PATCH ! ;
+
+private
+
 : UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view :}
    c 0 S-CTX !
@@ -3420,6 +3593,8 @@ variable DOES-PATCH
    b IR-BUILD:MODULE-KEY 0 S-KEY !
    v NTAPE:TOKENS {: n:n :}
    n 1 < if E-NELAB-SHAPE throw then
+   n TOK-ROOM
+   n LOCALS-ROOM
    v NAME-READ
    n ;
 
@@ -3486,7 +3661,6 @@ variable DOES-PATCH
    p r lo hi WALK-TRY
    FUN-KIND @ FUN-COLON = if lo hi in out EMPTY-FRAME-RESHAPE then
    CS-N @ 0<> if E-NELAB-CTRL throw then
-   PATH-END @ PATH-EXIT = if E-NELAB-CTRL throw then
    PATH-DEAD? {: dead:bool :}
    EXIT-USED @ 0<> if
       dead 0= if

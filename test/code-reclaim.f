@@ -15,7 +15,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 
 4 constant INSN-BYTES
 
-: REC ( ptr u8 n -- ptr a )
+: REC ( ptr u8 n -- ptr n )
    XREF-FIND
    dup XREF-FOUND? 0= if s" code-reclaim: subject not found" 76 die then ;
 

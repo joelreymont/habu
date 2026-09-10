@@ -232,6 +232,10 @@ SUITE compiler-native-regalloc
    test/compiler/native-regalloc.f
 ;SUITE
 
+SUITE compiler-native-address-spill
+   test/compiler/native-address-spill.f
+;SUITE
+
 SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
@@ -250,6 +254,34 @@ SUITE compiler-native-defer
 
 SUITE compiler-native-exec
    test/compiler/native-exec.f
+;SUITE
+
+SUITE compiler-native-generic-calls
+   test/compiler/native-generic-calls.f
+;SUITE
+
+SUITE compiler-native-internal-call
+   test/compiler/native-internal-call.f
+;SUITE
+
+SUITE compiler-native-stored-quot
+   test/compiler/native-stored-quot.f
+;SUITE
+
+SUITE image-lifecycle
+   test/image-lifecycle.f
+;SUITE
+
+SUITE image-lifecycle-tasks
+   test/image-lifecycle-tasks.f
+;SUITE
+
+SUITE app-image
+   test/app-image.f
+;SUITE
+
+SUITE compiler-native-many-locals
+   test/compiler/native-many-locals.f
 ;SUITE
 
 SUITE compiler-native-tail-owner
@@ -300,8 +332,16 @@ SUITE compiler-native-catch
    test/compiler/native-catch.f
 ;SUITE
 
+SUITE finally
+   test/finally.f
+;SUITE
+
 SUITE compiler-native-locals-scope
    test/compiler/native-locals-scope.f
+;SUITE
+
+SUITE compiler-native-product-locals
+   test/compiler/native-product-locals.f
 ;SUITE
 
 SUITE compiler-native-quot-scope
@@ -324,12 +364,32 @@ SUITE compiler-native-order-exit
    test/compiler/native-order-exit.f
 ;SUITE
 
+SUITE compiler-native-exit
+   test/compiler/native-exit.f
+;SUITE
+
+SUITE compiler-native-tick
+   test/compiler/native-tick.f
+;SUITE
+
+SUITE compiler-native-literals
+   test/compiler/native-literals.f
+;SUITE
+
+SUITE compiler-native-eval
+   test/compiler/native-eval.f
+;SUITE
+
 SUITE native-dead-path
    test/compiler/native-dead-path.f
 ;SUITE
 
 SUITE native-dstack-alias
    test/compiler/native-dstack-alias.f
+;SUITE
+
+SUITE native-tail-placement
+   test/compiler/native-tail-placement.f
 ;SUITE
 
 SUITE compiler-native-match
@@ -342,6 +402,10 @@ SUITE compiler-native-rename-rows
 
 SUITE compiler-native-wide-mem
    test/compiler/native-wide-mem.f
+;SUITE
+
+SUITE compiler-native-fetch-terms
+   test/compiler/native-fetch-terms.f
 ;SUITE
 
 SUITE compiler-native-vocab
@@ -661,7 +725,6 @@ SUITE argv-stdlib-script-args
 SUITE test-stdlib
    lib/test/assert-test.f
    lib/test/suite-test.f
-   lib/test/snap-test.f
    lib/test/record-test.f
    lib/test/src-shape-test.f
    lib/test/mapped-test.f
@@ -886,6 +949,10 @@ SUITE catch-frame
    test/catch-frame.f
 ;SUITE
 
+SUITE combinators
+   test/combinators.f
+;SUITE
+
 SUITE export-keyword-package
    test/export-package.f
 ;SUITE
@@ -1045,6 +1112,14 @@ SUITE cast-negative
    test/cast-negative-suite.f
 ;SUITE
 
+SUITE nominal-pointer
+   test/nominal-pointer.f
+;SUITE
+
+SUITE pointer-view
+   test/pointer-view.f
+;SUITE
+
 SUITE cast
    test/cast-suite.f
 ;SUITE
@@ -1117,12 +1192,20 @@ SUITE layout-buffer
    test/layout-buffer.f
 ;SUITE
 
+SUITE dynamic-buffer
+   test/dynamic-buffer.f
+;SUITE
+
 SUITE layout-defer
    test/layout-defer.f
 ;SUITE
 
 SUITE lower-cert
    test/lower-cert.f
+;SUITE
+
+SUITE multi-error-api
+   test/multi-error-api.f
 ;SUITE
 
 SUITE layout-buffer-depth

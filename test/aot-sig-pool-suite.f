@@ -122,7 +122,7 @@ variable VALUE                     \ the number the first one carried
    LOAD-CHECKER
    s" CK-AOT-SIG-POOL-OFF" AOT-SIG:POOL-CELL ?MIRROR
    s" CK-AOT-SIG-LEN-OFF"  AOT-SIG:LEN-CELL  ?MIRROR
-   s" CK-SEAL-LATCH-OFF"   FRIEND-LATCH-CELL ?MIRROR
+   s" CK-SEAL-NDICT-OFF"   SEAL-NDICT-CELL ?MIRROR
    s" CK-USE-DEPTH-OFF"    USE-DEPTH-CELL    ?MIRROR ;
 
 \ ---- case two: the reader cannot be fooled -----------------------------------

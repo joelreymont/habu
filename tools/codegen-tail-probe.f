@@ -74,7 +74,7 @@ variable CODE-AT
 \ The record of a word this tool was asked about. A name nothing published is a
 \ refusal rather than a row of zeroes, because a silent miss would read as "this
 \ routine does not end in a call" and that is the answer the lane acts on.
-: REC ( ptr u8 n -- ptr a ) {: a:ptr u:n :}
+: REC ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
    a u XREF-FIND dup XREF-FOUND? 0= if drop E-CODEGEN-PROBE-SUBJECT throw then ;
 
 : START ( ptr u8 n -- n )

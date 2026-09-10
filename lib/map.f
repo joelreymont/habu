@@ -72,32 +72,35 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
      occupied OF 0 0= ENDOF
    ;MATCH ;
 
+: MAP-HEADER-FIELD ( ptr a n -- ptr n )
+   cells + BYTE-VIEW CELL-VIEW ;
+
 : MAP-CAP@ ( ptr a -- count )
-   MAP-CAP-OFF cells + @ >COUNT ;
+   MAP-CAP-OFF MAP-HEADER-FIELD @ >COUNT ;
 
 : MAP-CAP! ( count ptr a -- ) {: cap m:ptr :}
    cap MAP-CHECK-CAP
-   cap COUNT>N m MAP-CAP-OFF cells + ! ;
+   cap COUNT>N m MAP-CAP-OFF MAP-HEADER-FIELD ! ;
 
 : MAP-CHECK-HANDLE ( ptr a count -- ) {: m:ptr cap :}
    cap MAP-CHECK-CAP
    m MAP-CAP@ COUNT>N cap COUNT>N <> if E-MAP-BAD-CAP throw then ;
 
 : MAP-COUNT@ ( ptr a -- count )
-   MAP-COUNT-OFF cells + @ >COUNT ;
+   MAP-COUNT-OFF MAP-HEADER-FIELD @ >COUNT ;
 
 : MAP-DELETED@ ( ptr a -- count )
-   MAP-DELETED-OFF cells + @ >COUNT ;
+   MAP-DELETED-OFF MAP-HEADER-FIELD @ >COUNT ;
 
 : MAP-COUNT! ( count ptr a -- ) {: count m:ptr :}
    count COUNT>N 0 < if E-MAP-BAD-CAP throw then
    count COUNT>N m MAP-CAP@ COUNT>N m MAP-DELETED@ COUNT>N - > if E-MAP-FULL throw then
-   count COUNT>N m MAP-COUNT-OFF cells + ! ;
+   count COUNT>N m MAP-COUNT-OFF MAP-HEADER-FIELD ! ;
 
 : MAP-DELETED! ( count ptr a -- ) {: deleted m:ptr :}
    deleted COUNT>N 0 < if E-MAP-BAD-CAP throw then
    deleted COUNT>N m MAP-CAP@ COUNT>N m MAP-COUNT@ COUNT>N - > if E-MAP-FULL throw then
-   deleted COUNT>N m MAP-DELETED-OFF cells + ! ;
+   deleted COUNT>N m MAP-DELETED-OFF MAP-HEADER-FIELD ! ;
 
 : MAP-SLOTS ( ptr a -- ptr a )
    MAP-HEADER-CELLS cells + ;
@@ -115,8 +118,11 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    off OFF>N MAP-SLOT-CELLS >= if E-MAP-BAD-CAP throw then
    m ix MAP-SLOT off OFF>N cells + ;
 
+: MAP-NUM-FIELD ( ptr a idx off -- ptr n )
+   MAP-SLOT-FIELD BYTE-VIEW CELL-VIEW ;
+
 : MAP-SLOT-STATE@ ( ptr a idx -- slot-state )
-   MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD @ case
+   MAP-SLOT-STATE-OFF >OFF MAP-NUM-FIELD @ case
       0 of SLOT--STATE:EMPTY endof
       1 of SLOT--STATE:DELETED endof
       2 of SLOT--STATE:OCCUPIED endof
@@ -129,27 +135,27 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
      deleted OF 1 ENDOF
      occupied OF 2 ENDOF
    ;MATCH
-   m ix MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD ! ;
+   m ix MAP-SLOT-STATE-OFF >OFF MAP-NUM-FIELD ! ;
 
 : MAP-SLOT-HASH@ ( ptr a idx -- n )
-   MAP-SLOT-HASH-OFF >OFF MAP-SLOT-FIELD @ ;
+   MAP-SLOT-HASH-OFF >OFF MAP-NUM-FIELD @ ;
 
 : MAP-SLOT-HASH! ( n ptr a idx -- ) {: hash m:ptr ix :}
    hash 0 < if E-MAP-BAD-CAP throw then
-   hash m ix MAP-SLOT-HASH-OFF >OFF MAP-SLOT-FIELD ! ;
+   hash m ix MAP-SLOT-HASH-OFF >OFF MAP-NUM-FIELD ! ;
 
 : MAP-SLOT-KEY-A@ ( ptr a idx -- ptr u8 )
-   MAP-SLOT-KEY-A-OFF >OFF MAP-SLOT-FIELD @ ;
+   MAP-SLOT-KEY-A-OFF >OFF MAP-SLOT-FIELD 0 ptr-field @ ;
 
 : MAP-SLOT-KEY-A! ( ptr u8 ptr a idx -- ) {: key:ptr m:ptr ix :}
-   key m ix MAP-SLOT-KEY-A-OFF >OFF MAP-SLOT-FIELD ! ;
+   key m ix MAP-SLOT-KEY-A-OFF >OFF MAP-SLOT-FIELD 0 ptr-field ! ;
 
 : MAP-SLOT-KEY-U@ ( ptr a idx -- len )
-   MAP-SLOT-KEY-U-OFF >OFF MAP-SLOT-FIELD @ >LEN ;
+   MAP-SLOT-KEY-U-OFF >OFF MAP-NUM-FIELD @ >LEN ;
 
 : MAP-SLOT-KEY-U! ( len ptr a idx -- ) {: len m:ptr ix :}
    len LEN>N 0 < if E-MAP-BAD-CAP throw then
-   len LEN>N m ix MAP-SLOT-KEY-U-OFF >OFF MAP-SLOT-FIELD ! ;
+   len LEN>N m ix MAP-SLOT-KEY-U-OFF >OFF MAP-NUM-FIELD ! ;
 
 : MAP-SLOT-VALUE@ ( ptr a idx -- a )
    MAP-SLOT-VALUE-OFF >OFF MAP-SLOT-FIELD @ ;
@@ -161,13 +167,13 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    0 m ix MAP-SLOT-HASH!
    NULL$ drop m ix MAP-SLOT-KEY-A!
    0 >LEN m ix MAP-SLOT-KEY-U!
-   0 m ix MAP-SLOT-VALUE!
+   0 m ix MAP-SLOT-VALUE-OFF >OFF MAP-NUM-FIELD !
    SLOT--STATE:EMPTY m ix MAP-SLOT-STATE! ;
 
 : MAP-CLEAR ( ptr a -- ) {: m:ptr :}
    m MAP-CAP@ dup MAP-CHECK-CAP {: cap :}
-   0 m MAP-COUNT-OFF cells + !
-   0 m MAP-DELETED-OFF cells + !
+   0 m MAP-COUNT-OFF MAP-HEADER-FIELD !
+   0 m MAP-DELETED-OFF MAP-HEADER-FIELD !
    cap COUNT>N 0 ?do
       m i >IDX MAP-SLOT-CLEAR
    loop ;
@@ -249,20 +255,20 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    value m ix MAP-SLOT-VALUE!
    SLOT--STATE:OCCUPIED m ix MAP-SLOT-STATE! ;
 
-: MAP-GET ( ptr a count ptr u8 len -- option<n> ) {: m:ptr cap:count key:ptr len:len :}   \ SOME value if the key is present, else NONE
+: MAP-GET ( ptr n count ptr u8 len -- option<n> ) {: m:ptr cap:count key:ptr len:len :}   \ SOME value if the key is present, else NONE
    m cap key len MAP-LOCATE drop MATCH map-loc
      full OF OPTION:NONE ENDOF
      free OF drop OPTION:NONE ENDOF
      found OF m swap MAP-SLOT-VALUE@ OPTION:SOME ENDOF
    ;MATCH ;
 
-: MAP-HAS? ( ptr a count ptr u8 len -- bool )
+: MAP-HAS? ( ptr n count ptr u8 len -- bool )
    MAP-GET MATCH option
      none OF 0 0= 0= ENDOF
      some OF drop 0 0= ENDOF
    ;MATCH ;
 
-: MAP-SET ( n ptr a count ptr u8 len -- ) {: value:n m:ptr cap:count key:ptr len:len :}
+: MAP-SET ( n ptr n count ptr u8 len -- ) {: value:n m:ptr cap:count key:ptr len:len :}
    m cap key len MAP-LOCATE {: hash:n :}
    MATCH map-loc
      full OF E-MAP-FULL throw ENDOF
@@ -271,7 +277,7 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    ;MATCH ;
 
 \ Visit occupied entries in ascending storage-slot order.
-: MAP-EACH ( ptr a count [ ptr u8 len n -- ] -- ) {: m:ptr cap q :}
+: MAP-EACH ( ptr n count [ ptr u8 len n -- ] -- ) {: m:ptr cap q :}
    m cap MAP-CHECK-HANDLE
    cap COUNT>N 0 ?do
       m i >IDX MAP-SLOT-STATE@ MAP-OCCUPIED? if

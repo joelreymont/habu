@@ -101,16 +101,19 @@ create TXT
    CC BB IR-BUILD:BEGIN-BLOCK
    CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
 
-: CONSTOP ( n -- IR-ID:ir-value-id )
-   {: v:n :}
+: KINDOP ( n n -- IR-ID:ir-value-id )
+   {: v:n kind:n :}
    HIR-OPCODE:CONST BODY-ST BODY-LN OPEN-OP
    CC BB CELLT IR-BUILD:ADD-RESULT
    CC BB  CC BB HIR:KEY-VALUE  CC BB v IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
-   CC BB  CC BB HIR:KEY-ADDR  CC BB HIR:ADDR-NONE HIR:ADDR-ATTR
+   CC BB  CC BB HIR:KEY-ADDR  CC BB kind HIR:ADDR-ATTR
    IR-BUILD:ADD-ATTR
    CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CC BB id 0 IR-BUILD:OP-RESULT@ ;
+
+: CONSTOP ( n -- IR-ID:ir-value-id )
+   HIR:ADDR-NONE KINDOP ;
 
 : DOUBLED ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    {: a:IR-ID:ir-value-id :}
@@ -135,19 +138,31 @@ create TXT
    CC BB v IR-BUILD:ADD-OPERAND
    CC BB IR-BUILD:END-OP drop ;
 
-\ The terminator under test: one operand, the family ordinal, and no successor.
-: TRAP1 ( IR-ID:ir-value-id -- )
-   {: v:IR-ID:ir-value-id :}
+: TRAP-VALUES ( n -- IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id )
+   NTRAP:MESSAGE {: a:ptr u:n rc:n :}
+   a u NSTR:INTERN HIR:ADDR-DATA KINDOP
+   u CONSTOP rc CONSTOP ;
+
+: TRAP-OPERANDS ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- )
+   {: a:IR-ID:ir-value-id u:IR-ID:ir-value-id rc:IR-ID:ir-value-id :}
+   CC BB a IR-BUILD:ADD-OPERAND
+   CC BB u IR-BUILD:ADD-OPERAND
+   CC BB rc IR-BUILD:ADD-OPERAND ;
+
+\ The terminator carries the diagnostic address, length and code; no successor.
+: TRAP1 ( n -- )
+   TRAP-VALUES
    HIR-OPCODE:TRAP CLOSE-ST CLOSE-LN OPEN-OP
-   CC BB v IR-BUILD:ADD-OPERAND
+   TRAP-OPERANDS
    CC BB IR-BUILD:END-OP drop ;
 
 \ The same with a successor named, which the closed operation model has to refuse
 \ because the schema declares none.
-: TRAP-SUCC ( IR-ID:ir-value-id n -- )
-   {: v:IR-ID:ir-value-id t:n :}
+: TRAP-SUCC ( n n -- )
+   {: ord:n t:n :}
+   ord TRAP-VALUES
    HIR-OPCODE:TRAP CLOSE-ST CLOSE-LN OPEN-OP
-   CC BB v IR-BUILD:ADD-OPERAND
+   TRAP-OPERANDS
    CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
    CC BB IR-BUILD:END-OP drop ;
 
@@ -164,7 +179,7 @@ create TXT
    BLOCK+
    a DOUBLED RET1
    BLOCK+
-   ord CONSTOP TRAP1
+   ord TRAP1
    CLOSE-FUN ;
 
 : BUILD-MIXED ( n -- )
@@ -182,7 +197,7 @@ create TXT
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
    BLOCK+
-   ord CONSTOP TRAP1
+   ord TRAP1
    BLOCK+
    a DOUBLED RET1
    CLOSE-FUN ;
@@ -196,9 +211,9 @@ create TXT
    ARG+ {: a:IR-ID:ir-value-id :}
    a 1 2 BRZ2
    BLOCK+
-   ord CONSTOP TRAP1
+   ord TRAP1
    BLOCK+
-   ord CONSTOP TRAP1
+   ord TRAP1
    CLOSE-FUN ;
 
 \ The smallest routine that never returns: one block, one terminator, and it is
@@ -209,7 +224,7 @@ create TXT
    {: p u:n ord:n :}
    p u 1 1 OPEN-FUN
    ARG+ drop
-   ord CONSTOP TRAP1
+   ord TRAP1
    CLOSE-FUN ;
 
 \ A routine of no arguments and no results whose two arms both trap. It is here
@@ -224,9 +239,9 @@ create TXT
    s" TRV" 0 0 OPEN-FUN
    0 CONSTOP 1 2 BRZ2
    BLOCK+
-   ord CONSTOP TRAP1
+   ord TRAP1
    BLOCK+
-   ord CONSTOP TRAP1
+   ord TRAP1
    CLOSE-FUN ;
 
 : BUILD-TRAP-SUCC ( n -- )
@@ -237,7 +252,7 @@ create TXT
    BLOCK+
    a DOUBLED RET1
    BLOCK+
-   ord CONSTOP 1 TRAP-SUCC
+   ord 1 TRAP-SUCC
    CLOSE-FUN ;
 
 \ ---- running the production pipeline -----------------------------------------
@@ -292,6 +307,31 @@ create TXT
 \ shape check in front of it is what keeps that honest - a word that is not a `b`
 \ is not asked for its displacement, so a routine that ended in something else
 \ fails as that rather than as a wrong address.
+\ Native compilation retires its temporary emission. Read the published record
+\ for source cases; hand-built IR cases still read their sealed emission.
+variable CODE-BASE
+variable CODE-LEN
+
+: RECORD-CODE ( ptr u8 n -- )
+   XREF-FIND {: rec:ptr :}
+   rec XREF-FOUND? 0= if s" native-trap: missing code record" 76 die then
+   rec XREF-START CODE-BASE !
+   rec XREF-LEN CODE-LEN ! ;
+
+: EMISSION-CODE ( -- ) 0 CODE-BASE ! ;
+
+: CODE-PLACEMENT ( -- n )
+   CODE-BASE @ dup 0<> if exit then drop A64EMIT:PLACEMENT ;
+
+: CODE-INSNS ( -- n )
+   CODE-BASE @ 0<> if CODE-LEN @ 4 / exit then A64EMIT:INSNS ;
+
+TRUSTED: RECORD-WORD@ ( n -- n )
+   4 * CODE-BASE @ + @ $FFFFFFFF and ;
+
+: CODE-WORD@ ( n -- n )
+   CODE-BASE @ 0<> if RECORD-WORD@ exit then A64EMIT:WORD@ ;
+
 4 constant INSN-BYTES
 $FC000000 constant B-MASK
 $14000000 constant B-OP
@@ -301,7 +341,7 @@ $4000000 constant B-SPAN
 $D65F03C0 constant RET-WORD
 
 : B-WORD? ( n -- bool )
-   B-MASK and B-OP = ;
+   $7C000000 and B-OP = ;
 
 : B-DISP ( n -- n )
    {: w:n :}
@@ -315,17 +355,17 @@ $D65F03C0 constant RET-WORD
 \ reaches that plus its displacement. This is the only reading in the suite that
 \ can decide whether two separately compiled routines go to ONE routine.
 : LAST-TARGET ( -- n )
-   A64EMIT:INSNS 1- {: k:n :}
-   k A64EMIT:WORD@ B-DISP {: d:n :}
-   A64EMIT:PLACEMENT  k d + INSN-BYTES *  + ;
+   CODE-INSNS 1- {: k:n :}
+   k CODE-WORD@ B-DISP {: d:n :}
+   CODE-PLACEMENT  k d + INSN-BYTES *  + ;
 
 : LAST-IS-BRANCH? ( -- bool )
-   A64EMIT:INSNS 1- A64EMIT:WORD@ B-WORD? ;
+   CODE-INSNS 1- CODE-WORD@ B-WORD? ;
 
 : RETS-IN-EMISSION ( -- n )
    0
-   A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ RET-WORD = if 1+ then
+   CODE-INSNS 0 ?do
+      i CODE-WORD@ RET-WORD = if 1+ then
    loop ;
 
 \ How many instructions of the emission move the data-stack pointer. Both forms
@@ -344,8 +384,8 @@ $1F constant REG-MASK
 
 : DMOVES-IN-EMISSION ( -- n )
    0
-   A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ DMOVE-WORD? if 1+ then
+   CODE-INSNS 0 ?do
+      i CODE-WORD@ DMOVE-WORD? if 1+ then
    loop ;
 
 \ And how many move the MACHINE stack pointer, which is what a routine's own
@@ -361,8 +401,8 @@ $1F constant REG-MASK
 
 : SPMOVES-IN-EMISSION ( -- n )
    0
-   A64EMIT:INSNS 0 ?do
-      i A64EMIT:WORD@ SPMOVE-WORD? if 1+ then
+   CODE-INSNS 0 ?do
+      i CODE-WORD@ SPMOVE-WORD? if 1+ then
    loop ;
 
 \ ---- two routines, one target ------------------------------------------------
@@ -417,19 +457,10 @@ variable CHILD-OUT-N
 variable CHILD-ERR-N
 variable CHILD-RC
 
-create CHILD-MODE 16 allot
-variable CHILD-MODE-N
-
-: CHILD-MODE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CHILD-MODE u BYTE-COPY
-   u CHILD-MODE-N ! ;
-
 : CHILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" test/compiler/native-trap.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   CHILD-MODE CHILD-MODE-N @ >LEN PROC-ARGV+ ;
+   s" test/compiler/native-trap-noret.f" >LEN PROC-ARGV+ ;
 
 : CHILD-RUN ( -- )
    CHILD-ARGV
@@ -452,12 +483,6 @@ variable CHILD-MODE-N
 \ status - the diagnostic of a scrutinee whose tag matched no arm would be a lie
 \ about a word that returned - so the two are proved to differ in BOTH, in a
 \ process that dies of it.
-: NORET-NAME$ ( -- ptr u8 n )
-   s" ntrapy" ;
-
-: NORET-FORGE ( -- )
-   NORET-NAME$ NTRAP:NO-RETURN NTRAP:TRAP ;
-
 : NORET-CASE ( -- )
    s" the two kinds are two rows even under one name" T-LABEL
    s" ntrapz" NTRAP:FAMILY {: f:n :}
@@ -476,7 +501,6 @@ variable CHILD-MODE-N
    [: s" " NTRAP:NO-RETURN drop ;] E-NTRAP-NAME TTHROWSQ
 
    s" the no-return exit is ENGINE-ERROR:CODE-CERT, not the bad-tag one" T-LABEL
-   s" noret" CHILD-MODE!
    CHILD-RUN
    CHILD-RC @ ENGINE-ERROR:CODE-CERT T=
 
@@ -496,7 +520,7 @@ variable CHILD-MODE-N
 
 : COMPILED-DEAD-BYTES-CASE ( -- )
    s" : NTB ( n -- ) drop E-A-EMPTY throw ;" EV
-   A64EMIT:SIZE {: size:n :}
+   s" NTB" RECORD-CODE
 
    s" a compiled all-dead routine moves the machine stack pointer nowhere"
    T-LABEL
@@ -512,8 +536,7 @@ variable CHILD-MODE-N
    LAST-IS-BRANCH? TTRUE
    LAST-TARGET  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T=
 
-   s" and its record covers the whole emission" T-LABEL
-   s" NTB" REC-LEN size T= ;
+   EMISSION-CODE ;
 
 \ The same routine's calling sibling, which is the contrast that makes the case
 \ above say something: a body that calls and DOES come back reserves a frame and
@@ -521,7 +544,10 @@ variable CHILD-MODE-N
 \ `abs` is an external primitive, so this really is a call.
 : COMPILED-CALL-BYTES-CASE ( -- )
    s" : NTC ( n -- n ) abs 1 + ;" EV
-   A64EMIT:SIZE {: size:n :}
+   s" NTC" RECORD-CODE
+   s" its recorded span ends immediately before the trailing return" T-LABEL
+   CODE-LEN @ INSN-BYTES / CODE-WORD@ RET-WORD T=
+   INSN-BYTES CODE-LEN +!
 
    s" a compiled routine that calls and returns moves it twice" T-LABEL
    SPMOVES-IN-EMISSION 2 T=
@@ -529,8 +555,7 @@ variable CHILD-MODE-N
    s" and ends in the return the other one has nowhere for" T-LABEL
    RETS-IN-EMISSION 0 T<>
 
-   s" and its record omits that trailing return" T-LABEL
-   s" NTC" REC-LEN  size INSN-BYTES -  T= ;
+   EMISSION-CODE ;
 
 \ The two claims about a routine with no return: the emission ends in the branch
 \ that leaves, and there is no return instruction ANYWHERE in it. The second is
@@ -570,7 +595,7 @@ variable CHILD-MODE-N
    T-FIRST @  NTRAP:ROUTINE$ NDICT:CALL-TARGET  T=
 
    s" which the two reached from two different placements" T-LABEL
-   A64EMIT:PLACEMENT  NPUB:NEXT-SLOT  T<> ;
+   CODE-PLACEMENT  NPUB:NEXT-SLOT  T<> ;
 
 public
 
@@ -624,15 +649,6 @@ public
 
    T-REPORT ;
 
-\ ---- the two ways this file is entered ---------------------------------------
-\ Loaded with no argument it is the suite. The no-return trap is exercised in a
-\ child because it ends the process.
-: ENTRY ( -- )
-   SCRIPT-ARGC 0 > if
-      0 SCRIPT-ARGV$ s" noret" STR= if NORET-FORGE then
-   then
-   RUN ;
-
 ;package
 
-NTRAP-TEST:ENTRY
+NTRAP-TEST:RUN

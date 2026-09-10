@@ -90,9 +90,10 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 : TR-POP ( -- )                         \ drop the top cell (never below base)
    TR-N @ dup 0 > if 1 - TR-N ! else drop then ;
 
-\ ---- tier mode: warn (tier 1) vs reject (tier 2) -----------------------------
-\ dot habu-typed-top-tier-589c550f (sub-dot 7). The mode cell defaults to tier-1
-\ (warn, rc unchanged); HABU_TOP_TIER=2 stages tier-2, where every tier-1 warning
+\ ---- tier selection: warn (tier 1) vs reject (tier 2) ------------------------
+\ dot habu-typed-top-tier-589c550f (sub-dot 7). By default warnings leave the
+\ rc unchanged; HABU_TOP_TIER=2 selects tier-2 at the warning/reject edge, where
+\ every tier-1 warning
 \ site instead REJECTS pre-execution with a catchable rc-70 throw (TR-REJECT-RC,
 \ the same RC-REJECT the native DNAME-MIN-IN underdepth reject uses). The reject
 \ fires from the WORD event, which the engine emits PRE-BLR (habu2.f
@@ -100,18 +101,13 @@ variable TR-LASTZERO                    \ previous event was the literal 0 (0 se
 \ REPL/evaluate recovery reseeds the row from live depth at the next event (docs
 \ §2.3). The 0 set-check window (TR-SUSP) still suspends ALL enforcement - inside
 \ the audited escape window tier-2 degrades to silence (docs §2.4), never a reject.
-\ Snapshot boots keep the hook disarmed (snap-lib.f SND-ZERO-LIVE), so tier-2, like
-\ tier-1, is cold-boot only until the snapshot re-arm lands (habu-snapshot-rebase-
-\ persisted-4bd33351 / docs §5.6); a re-armed snapshot must re-read TR-STAGED-TIER.
 \ Trusted sites are the raw effect query and dynamic top-row hook install described
 \ below. Retirement: habu-checker-self-typing-9ff8ba86 and
 \ cap:checker-hook-identity, respectively.
-1 constant TR-TIER1                      \ warn only, rc unchanged (default)
 2 constant TR-TIER2                      \ reject pre-execution (rc 70 diagnostic)
 70 constant TR-REJECT-RC                 \ RC-REJECT: catchable, rc 70 uncaught
-variable TR-MODE                         \ TR-TIER1/TR-TIER2, staged at TR-INSTALL
-
-: TR-TIER2? ( -- bool ) TR-MODE @ TR-TIER2 = ;
+: TR-TIER2? ( -- bool )
+   s" HABU_TOP_TIER" GETENV s" 2" CORE-STR= ;
 : TR-REJECT ( -- )                       \ tier-2: reject pre-execution after the diagnostic
    TR-TIER2? if TR-REJECT-RC throw then ;
 
@@ -256,9 +252,6 @@ TRUSTED: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing n
    cls TR-EV-NUM = a u s" 0" CORE-STR= and TR-LASTZERO !
    a u cls flg live lz TR-EVENT ;
 
-: TR-STAGED-TIER ( -- n )               \ HABU_TOP_TIER=2 stages tier 2, else tier 1
-   s" HABU_TOP_TIER" GETENV s" 2" CORE-STR= if TR-TIER2 else TR-TIER1 then ;
-
 \ set-top-check is a guarded-deref trust-boundary prim (mirrors check-hook.f's
 \ TRUSTED: INSTALL owning ' HOOK set-check); the one-line install is the named,
 \ tested boundary the checker cannot express. The audited escape window is the
@@ -266,7 +259,6 @@ TRUSTED: TR-CERT-DOUT-EMPTY? ( ptr u8 n -- bool )   \ certified word producing n
 \ lint UB-TOP-HOOK-ALLOWED? audit row).
 TRUSTED: TR-INSTALL ( -- )
    0 TR-N !  0 TR-DIRTY !  0 TR-SUSP !  0 TR-LASTZERO !
-   TR-STAGED-TIER TR-MODE !
    ['] TR-HOOK set-top-check ;
 
 TR-INSTALL

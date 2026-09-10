@@ -7,32 +7,13 @@
 \ exist from birth but stay in an explicit unbound state that rejects use until
 \ those modules land; nothing is stubbed silently.
 \
-\ OWNERSHIP SHAPE. A context can only be obtained inside a quotation passed to
-\ WITH-CONTEXT, which is built over MEM:WITH-BYTES, so the mapping that backs
-\ every context-owned allocation is released on both the normal path and the
-\ throw path by construction. This file adds no MEM:RELEASE-BYTES call site of
-\ its own. Habu's linear type facilities should ultimately enforce this
-\ ownership; until then the design-sanctioned mechanism is the explicit
-\ generation token below with fail-closed lifecycle checks.
-\
-\ STALE HANDLES. A handle is the context's generation: a nonzero, monotonic,
-\ never-reused serial taken from this package's atomic counter. A registry keeps
-\ (generation, mapping base) for the contexts that are live right now; every
-\ operation resolves its handle against that registry and a miss throws
-\ E-IR-CTX-STALE. Checked code cannot keep a handle across a throw - the throw
-\ truncates the data stack to the catch point, and re-minting a stored raw cell
-\ back into the handle family is sealed to this package - so a context abandoned
-\ by a throw leaves no reachable handle. Its registry slots are reclaimed when
-\ the nearest enclosing live context leaves normally: leaving truncates the
-\ registry back to the depth saved at entry, which releases every live child in
-\ one step. A throw caught outside every context can therefore retire registry
-\ slots for the rest of the process; the capacity below bounds that, the
-\ exhaustion error is named, and the linear-ownership work removes the whole
-\ mechanism.
+\ Each context owns a header mapping and a chain of scratch chunks. Growth
+\ adds a chunk without moving earlier spans. WITH-CONTEXT releases every chunk
+\ on return and throw, and a generation registry rejects stale handles.
 \
 \ PERSISTED STATE. All per-context state lives in the context's own mapping as
 \ eight-byte little-endian slots written with the canonical CDIGEST slot words:
-\ the module-mint count and ceiling, the scratch cursor, the unbound module
+\ the module-mint count and ceiling, scratch usage, the unbound module
 \ slots, and the bound target/policy pair. The pair is persisted as the stable
 \ wire codes read straight out of the components' canonical preimages
 \ (CTARGET:ENCODE / CNUM:ENCODE), and reading it back reconstructs the value
@@ -70,21 +51,22 @@ $7FFFFFFF constant SERIAL-CEILING    \ production per-context module ceiling; th
                                      \ full IR-ID module serial range
 $7FFFFFFF constant GEN-MAX           \ context generation ceiling
 64 constant DEPTH-MAX                \ live + retired registry slots
-$100000 constant MAP-BYTES           \ the largest shipping compiler routine
-                                     \ reaches about 547K, so the next
-                                     \ power-of-two mapping is 1M
+$10000 constant INITIAL-SCRATCH
+$7FFFFFFFFFFFFFE0 constant SCRATCH-CAP \ leaves room for chunk header and alignment
+3 cells constant CHUNK-HDR-BYTES      \ previous pointer, payload capacity, cursor
 
 \ Header slots inside the mapping, one CDIGEST slot each.
 0 constant HF-MINTED                 \ modules minted by this context
 1 constant HF-CEIL                   \ this context's module ceiling
-2 constant HF-OFF                    \ scratch cursor, bytes from the base
+2 constant HF-USED                   \ aligned bytes handed to scratch callers
 3 constant HF-CODE0                  \ first of the ten binding wire-code slots
 13 constant HF-SOURCES               \ source registry slot (unbound)
 14 constant HF-DIAG                  \ diagnostic sink slot (unbound)
 15 constant HF-WITNESS               \ witness allocator slot (unbound)
-16 constant HDR-SLOTS
+16 constant HF-CHUNK                 \ current scratch chunk pointer
+17 constant HDR-SLOTS
 HDR-SLOTS CDIGEST:SLOT-BYTES * constant HDR-BYTES
-MAP-BYTES HDR-BYTES - constant SCRATCH-CAP
+HDR-BYTES CHUNK-HDR-BYTES + INITIAL-SCRATCH + constant MAP-BYTES
 0 constant SLOT-UNBOUND
 
 \ Wire-code slots relative to a ten-slot code window: five target fields then
@@ -112,7 +94,6 @@ variable DEPTH
 0 DEPTH !
 create GENS DEPTH-MAX cells allot
 create BASES DEPTH-MAX cells allot
-create BODIES DEPTH-MAX cells allot
 create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
 : GEN@ ( n -- n )
@@ -120,19 +101,6 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
 : GEN! ( n n -- )
    cells GENS + ! ;
-
-\ The quotation the context at this depth is running. It is parked beside that
-\ context's generation, in the registry's own stack, because the entry below has
-\ to catch the body and a checked catch takes a stack-neutral quotation while
-\ this body consumes the minted handle and leaves the caller's own result row.
-\ Parking it per depth rather than in one cell is what makes nesting need no
-\ save-and-restore ceremony: each level's body is written before the depth
-\ reaches it, exactly as its generation is.
-: BODY@ ( n -- n )
-   cells BODIES + @ ;
-
-: BODY! ( n n -- )
-   cells BODIES + ! ;
 
 : BASE-FIELD ( n -- ptr ptr u8 )
    cells BASES + 0 ptr-field ;
@@ -147,8 +115,23 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 : CNT-OK ( n -- n )
    dup 0 < if E-IR-CTX-STATE throw then ;
 
-: OFF-OK ( n -- n )
-   dup HDR-BYTES < over MAP-BYTES > or if E-IR-CTX-STATE throw then ;
+: CHUNK-FIELD ( ptr u8 -- ptr ptr u8 ) HF-CHUNK ptr-field ;
+: PREVIOUS-FIELD ( ptr u8 -- ptr ptr u8 ) 0 ptr-field ;
+: CHUNK-CAP ( ptr u8 -- n ) 1 HDR@ ;
+: CHUNK-OFF ( ptr u8 -- n ) 2 HDR@ ;
+
+: CHUNK-INIT ( ptr u8 ptr u8 n -- ) {: previous:ptr chunk:ptr cap:n :}
+   previous chunk PREVIOUS-FIELD !
+   cap chunk 1 HDR!
+   0 chunk 2 HDR! ;
+
+\ The first chunk belongs to the header mapping released by WITH-BYTES.
+\ Return an unmap error only after attempting every separately owned chunk.
+: CHUNKS-FREE ( ptr u8 ptr u8 -- n ) {: chunk:ptr first:ptr :}
+   chunk first = if 0 exit then
+   chunk PREVIOUS-FIELD @ first recurse
+   chunk dup CHUNK-CAP CHUNK-HDR-BYTES + munmap 0<
+   if drop E-MEM-UNMAP then ;
 
 \ ---- generation serials ------------------------------------------------------
 : GEN-NEXT-N ( n -- n )
@@ -325,63 +308,26 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    dup slot BASE-FIELD !
    swap over HF-CEIL HDR!
    0 over HF-MINTED HDR!
-   HDR-BYTES over HF-OFF HDR!
+   0 over HF-USED HDR!
+   dup HDR-BYTES + {: first:ptr :}
+   NULL-PTR first INITIAL-SCRATCH CHUNK-INIT
+   first over CHUNK-FIELD !
    SLOT-UNBOUND over HF-SOURCES HDR!
    SLOT-UNBOUND over HF-DIAG HDR!
    SLOT-UNBOUND over HF-WITNESS HDR!
    STAGE>HDR ;
 
 \ ---- leaving, on both paths ---------------------------------------------------
-\ RETIREMENT IS UNCONDITIONAL, AND THAT IS THE WHOLE OF THIS SECTION. These two
-\ writes used to sit after the body with nothing catching it, so a body that
-\ threw skipped both: MEM:WITH-BYTES released the mapping on its way out, and
-\ the registry went on reporting that serial LIVE over storage that was gone.
-\ IR-ARENA and IR-BUILD both decide whether their own handles are usable by
-\ asking IR-CTX:SERIAL-LIVE?, so that answer was the difference between a
-\ refusal and a read through a dangling pointer. The depth never came back
-\ either, so sixty-five caught failures filled the registry and every later
-\ entry answered E-IR-CTX-DEPTH instead of doing its work - the body's own error
-\ replaced by a capacity error about the previous sixty-five.
-\
-\ TRUNCATING THE DEPTH IS WHAT RELEASES THE CHILDREN. FIND-SLOT scans only below
-\ DEPTH, so putting it back to the entry depth stops every slot at or above it
-\ from resolving, in one step; the next install rewrites the slot it lands in
-\ before the depth reaches it again. That is why this is the same pair of writes
-\ the normal path always made, and not a second, larger cleanup.
 : CTX-RETIRE ( n -- ) {: at:n :}
+   at BASE-FIELD @ {: base:ptr :}
+   base CHUNK-FIELD @ base HDR-BYTES + CHUNKS-FREE {: rc:n :}
    0 at GEN!
-   at DEPTH ! ;
+   at DEPTH !
+   rc 0<> if rc throw then ;
 
-\ Run the body of the context at the current depth, which is this scope's own
-\ frame: CTX-ENTER writes the depth one above the frame it installed and then
-\ calls CE-SCOPE, which calls this as the first thing inside the catch, so
-\ nothing runs in between that could have pushed another. The handle is minted
-\ here, out of the generation the registry already holds, so no sealed handle
-\ has to travel through the parking. Note that the RETIREMENT does not read the
-\ depth - CE-SCOPE holds its frame in a local - so a body that somehow left the
-\ depth elsewhere cannot make this word retire somebody else's frame.
-\
-\ Trusted for one reason: it executes a fetched execution token whose effect -
-\ the caller's own result row - the checker cannot state.
-\ Retirement owner: habu-epic-type-habu-a34713f0.
-TRUSTED: CE-RUN ( -- )
-   DEPTH @ 1- dup GEN@ MINT-CTX swap BODY@ execute ;
+: CE-CLEANUP ( -- )
+   DEPTH @ 1- CTX-RETIRE ;
 
-\ Run it, retire this context whatever became of it, and then let the body's
-\ error out. Trusted for the catch alone: a checked catch takes a stack-neutral
-\ quotation and this one leaves the caller's result row. The retirement above it
-\ is ordinary checked code, and `at` is a local because a local is the only
-\ storage that survives both paths out of one frame - on the throw path the data
-\ stack is truncated to the catch point, and on the normal path the body's
-\ result row is sitting on top of anything that was left there.
-\ effect is the row-polymorphic one this word's own signature carries.
-TRUSTED: CE-SCOPE ( R [ R IR-CTX:ctx -- S ] n -- S )
-   {: at:n :}
-   at BODY!
-   [: CE-RUN ;] catch
-   at CTX-RETIRE
-   dup 0 <> if throw then
-   drop ;
 
 \ The WITH-BYTES body: build the context in the fresh mapping, run the caller's
 \ quotation with the minted handle, then retire this slot and every deeper one
@@ -393,7 +339,7 @@ TRUSTED: CE-SCOPE ( R [ R IR-CTX:ctx -- S ] n -- S )
    at CTX-INSTALL
    g at GEN!
    at 1+ DEPTH !
-   at CE-SCOPE ;
+   g MINT-CTX swap [: CE-CLEANUP ;] finally ;
 
 public
 
@@ -460,26 +406,41 @@ public
 \ ---- scratch -----------------------------------------------------------------
 private
 
-: ALIGN8 ( n -- n )
-   7 + 8 / 8 * ;
+: ALIGN8 ( n -- n ) 7 + 8 / 8 * ;
+
+: NEXT-CAP ( n n -- n ) {: need:n old:n :}
+   old SCRATCH-CAP 2 / > if need exit then
+   need old 2 * max ;
+
+: CHUNK-ROOM ( ptr u8 n -- ptr u8 ) {: base:ptr step:n :}
+   base CHUNK-FIELD @ {: previous:ptr :}
+   previous CHUNK-CAP previous CHUNK-OFF - step >= if previous exit then
+   step previous CHUNK-CAP NEXT-CAP {: cap:n :}
+   cap CHUNK-HDR-BYTES + map-anon 0< if drop E-MEM-MAP throw then {: fresh:ptr :}
+   previous fresh cap CHUNK-INIT
+   fresh base CHUNK-FIELD !
+   fresh ;
 
 public
 
-\ Bump-allocate a byte span from the context's mapping. The span dies with the
-\ context; exhaustion and bad sizes are named errors, never a wrap.
-: SCRATCH-TAKE ( IR-CTX:ctx n -- ptr u8 n )
-   {: need:n :}
+\ Every returned span stays at the same address until the context ends.
+: SCRATCH-TAKE ( IR-CTX:ctx n -- ptr u8 n ) {: c:IR-CTX:ctx need:n :}
    need 1 < if E-IR-CTX-SIZE throw then
    need SCRATCH-CAP > if E-IR-CTX-SCRATCH throw then
-   RESOLVE
-   dup HF-OFF HDR@ OFF-OK {: off:n :}
+   c RESOLVE {: base:ptr :}
    need ALIGN8 {: step:n :}
-   off step + MAP-BYTES > if E-IR-CTX-SCRATCH throw then
-   off step + over HF-OFF HDR!
-   off + need ;
+   base HF-USED HDR@ CNT-OK {: used:n :}
+   step SCRATCH-CAP used - > if E-IR-CTX-SCRATCH throw then
+   base step CHUNK-ROOM {: chunk:ptr :}
+   chunk CHUNK-OFF {: off:n :}
+   off step + chunk 2 HDR!
+   used step + base HF-USED HDR!
+   chunk CHUNK-HDR-BYTES + off + need ;
 
 : SCRATCH-USED ( IR-CTX:ctx -- n )
-   RESOLVE HF-OFF HDR@ OFF-OK HDR-BYTES - ;
+   RESOLVE HF-USED HDR@ CNT-OK ;
+
+: SCRATCH-LIMIT ( -- n ) SCRATCH-CAP ;
 
 \ ---- not-yet-landed module slots ---------------------------------------------
 private
@@ -500,6 +461,17 @@ public
 
 : WITNESSES@ ( IR-CTX:ctx -- )
    RESOLVE HF-WITNESS SLOT-CHECK ;
+
+public
+
+\ No compilation context survives into a captured runtime.  The registry depth
+\ is the lifecycle authority; once it is empty, clear the retired mapping
+\ cells so the DATA image carries no host mapping pointers.
+: CAPTURE-PREPARE ( -- )
+   DEPTH @ 0<> if E-IR-CTX-STATE throw then
+   DEPTH-MAX 0 ?do
+      NULL-PTR i BASE-FIELD !
+   loop ;
 
 private
 get-current prot-wid-add

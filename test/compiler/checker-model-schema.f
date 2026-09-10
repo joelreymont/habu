@@ -176,11 +176,11 @@ variable FRK-N
 variable RGD-N
 variable VEC-N
 
-: COL! ( n ptr a n -- ) {: v:n col:ptr i:n :}
+: COL! ( n ptr n n -- ) {: v:n col:ptr i:n :}
    i ROW-MAX >= if E-CMP-POOL throw then
    v col i cells + ! ;
 
-: COL@ ( ptr a n n -- n ) {: col:ptr i:n cnt:n :}
+: COL@ ( ptr n n n -- n ) {: col:ptr i:n cnt:n :}
    i 0 < i cnt >= or if E-CMP-ROW throw then
    col i cells + @ ;
 

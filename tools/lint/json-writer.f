@@ -37,7 +37,7 @@ variable LJW-NUM-I
    a LJW-BUF LJW-LEN @ + u LINT-BMOVE
    LJW-LEN @ u + LJW-LEN ! ;
 
-: LJW-HEX ( n -- c )
+: LJW-HEX ( n -- u8 )
    dup 10 < IF LJW-ZERO + ELSE 55 + THEN ;
 
 : LJW-U00 ( n -- )

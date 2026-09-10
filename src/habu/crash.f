@@ -5,13 +5,11 @@ variable LCRASHH   variable LHEX   variable LHDR
 create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER
-\ Crash trust rows cover the raw output buffer and ARM64 signal-entry,
-\ mcontext/register, and guarded saved-PC instruction accesses.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
+\ The crash helpers emit ARM64 signal entry, mcontext/register reads, and
+\ guarded saved-PC instruction accesses.
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 
-s" CRH" s" -- ptr u8" TRUST
 : CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
 : CRH-INIT ( -- )
@@ -70,12 +68,10 @@ $110 constant MACOS-MCTX-PC-OFF
    THEN
    20 2 0 ADDI,
    19 4 0 ADDI, ;
-s" c-crash-entry" s" --" TRUST
 
 : C-CRASH-MCTX>R21 ( -- )
    HB-TARGET-LINUX? IF 21 19 LINUX-UC-MCTX-OFF ADDI, exit THEN
    21 19 MCTX-OFF LDR, ;
-s" c-crash-mctx>r21" s" --" TRUST
 
 : C-CRASH-XREG>R9 ( -- )
    22 20 3 LSLI,
@@ -85,12 +81,10 @@ s" c-crash-mctx>r21" s" --" TRUST
       22 22 SS-OFF ADDI,
    THEN
    22 21 22 ADD,  9 22 0 LDR, ;
-s" c-crash-xreg>r9" s" --" TRUST
 
 : C-CRASH-PC>R9 ( -- )
    HB-TARGET-LINUX? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
    9 21 MACOS-MCTX-PC-OFF LDR, ;
-s" c-crash-pc>r9" s" --" TRUST
 
 : C-CRASH-PRINT-REGS ( -- )
    HB-TARGET-LINUX? IF
@@ -104,7 +98,6 @@ s" c-crash-pc>r9" s" --" TRUST
    9 21 MACOS-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
    9 21 MACOS-MCTX-SP-OFF LDR,  LHEX LABEL@ BL,
    C-CRASH-PC>R9  LHEX LABEL@ BL, ;
-s" c-crash-print-regs" s" --" TRUST
 
 : C-CRASH-PC-WORD ( n -- )
    CR-OFF !
@@ -122,23 +115,18 @@ s" c-crash-print-regs" s" --" TRUST
    9 9 0 LDRW,  LHEX LABEL@ BL,  CR-L2 LABEL@ B,
    CR-L1 LABEL@ LBL,  9 0 MOVZ,  LHEX LABEL@ BL,
    CR-L2 LABEL@ LBL, ;
-s" c-crash-pc-word" s" n --" TRUST
 
 : C-CRASH-PC-8 ( -- )
    -8 C-CRASH-PC-WORD ;
-s" c-crash-pc-8" s" --" TRUST
 
 : C-CRASH-PC-4 ( -- )
    -4 C-CRASH-PC-WORD ;
-s" c-crash-pc-4" s" --" TRUST
 
 : C-CRASH-PC0 ( -- )
    0 C-CRASH-PC-WORD ;
-s" c-crash-pc0" s" --" TRUST
 
 : C-CRASH-PC+4 ( -- )
    4 C-CRASH-PC-WORD ;
-s" c-crash-pc+4" s" --" TRUST
 
 : EMIT-CRASH-HANDLER ( -- )
    LCRASHH LABEL@ LBL,

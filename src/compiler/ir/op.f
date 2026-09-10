@@ -218,9 +218,11 @@ $4F505231 constant OPR-MAGIC         \ "OPR1": the operation-table header format
 3 constant OFF-VPOS                  \ design line 436: where in that definition
 4 constant VROW-CELLS
 
+public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant ROW-CAP-MAX
 $FFFFFFFF HDR-CELLS - VROW-CELLS / constant VAL-CAP-MAX
 $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
+private
 64 constant ARITY-MAX                \ committed staged entries per list
 
 \ ---- stable wire codes -------------------------------------------------------

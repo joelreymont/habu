@@ -497,7 +497,10 @@ public
 \ the accepting and the rejecting path, so a rejected replay cannot leave the
 \ next live declaration reading a spent buffer.
 : RP-RELEASE ( -- )
-   0 RP-OPEN? !  0 RP-HEAD? !  0 RP-HEAD-U !  0 RP-BODY-U !  0 RP-SCAN-I ! ;
+   0 RP-OPEN? !  0 RP-HEAD? !
+   NULL-PTR 0 RP-HEAD!
+   NULL-PTR 0 RP-BODY!
+   0 RP-SCAN-I ! ;
 
 \ RP-NEXT ( -- token ) : the family name once, then the body tokens in order, then
 \ zero-length forever — the same end-of-input signal `parse-name` gives the
@@ -540,7 +543,7 @@ package CHECKER-DECL-FRAME
 
 public
 
-: INSTALL ( ptr a -- )
+: INSTALL ( ptr n -- )
    PARTICIPANT ORDER
    [: PART-SNAPSHOT ;]
    [: PART-PREPARE ;]
@@ -690,14 +693,14 @@ package GENERATED-DECL-CTOR
 \ what lets RELEASE stay total. Same shape as DECL-EVENT's DEV-PART-* slots.
 4 constant CAP-INIT
 create ARM-BOOT CAP-INIT cells allot
-PTR-VARIABLE ARM-P   ARM-BOOT ARM-P !
+PERSISTED-PTR-VARIABLE ARM-P   ARM-BOOT ARM-P !
 variable ARM-CAP     CAP-INIT ARM-CAP !
 
 \ Trusted forwarders to the pre-hook registry and generator words. sumtype.f and
 \ type-family.f load before the checker hook, so a post-hook checked body reaches
 \ them exactly the way enum-decl.f and structure-decl.f reach their registry
 \ seams.
-TRUSTED: ARM-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
+TRUSTED: ARM-GROW ( ptr n n n -- ptr n ) ARENA-BYTES-GROW ;
 TRUSTED: FAM-PUBLIC? ( n -- bool ) TFAM-PUBLIC? ;
 TRUSTED: FAM-SUM? ( n -- bool ) TFAM-SUM? ;
 TRUSTED: FAM-ENUM? ( n -- bool ) TFAM-ENUM? ;
@@ -713,8 +716,8 @@ TRUSTED: CTOR-GEN ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
 TRUSTED: PEND-CLEAR ( -- ) CTOR-PEND-CLEAR ;
 TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 
-: ARM-BASE ( -- ptr a ) ARM-P @ ;
-: ARM-SLOT ( -- ptr a )                    \ this nesting level's armed-family cell
+: ARM-BASE ( -- ptr n ) ARM-P @ ;
+: ARM-SLOT ( -- ptr n )                    \ this nesting level's armed-family cell
    GENERATED-DECL:DEPTH 1 - cells ARM-BASE + ;
 : ARM-GROW1 ( -- )
    ARM-CAP @ 2 * {: nc:n :}

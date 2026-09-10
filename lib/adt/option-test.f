@@ -27,7 +27,7 @@ private
 variable NONE#
 variable SOME#
 
-: NOTE ( ptr a -- )
+: NOTE ( ptr n -- )
    XREF-NAME$
    2dup s" NONE" XREF-STR=CI if 2drop 1 NONE# +! exit then
    2dup s" SOME" XREF-STR=CI if 2drop 1 SOME# +! exit then

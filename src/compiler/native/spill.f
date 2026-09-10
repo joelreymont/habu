@@ -38,6 +38,21 @@ package A64SPILL
 using NFROZEN
 private
 
+\ Each pass retains its own dimensions while later passes read its results.
+variable SCRATCH-VALUES
+variable SCRATCH-BLOCKS
+variable SCRATCH-FUNS
+variable SCRATCH-OPS
+: VMAX ( -- n ) SCRATCH-VALUES @ ;
+: BMAX ( -- n ) SCRATCH-BLOCKS @ ;
+: FMAX ( -- n ) SCRATCH-FUNS @ ;
+: OMAX ( -- n ) SCRATCH-OPS @ ;
+: SCRATCH-SIZES! ( -- )
+   NFROZEN:VALUE-COUNT 1 max SCRATCH-VALUES !
+   NFROZEN:TOTAL-BLOCKS 1 max SCRATCH-BLOCKS !
+   NFROZEN:TOTAL-FUNS 1 max SCRATCH-FUNS !
+   NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
+
 \ ---- the bound dialect -------------------------------------------------------
 A64IR-OPCODE:RESERVE  A64IR:ORD constant O-RESERVE
 A64IR-OPCODE:RELEASE  A64IR:ORD constant O-RELEASE
@@ -95,18 +110,34 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
-BMAX TYPED-BUFFER F-ORDER IR-ID:ir-value-id
-create F-ORDER-SET BMAX cells allot
+DYNAMIC-BUFFER F-ORDER IR-ID:ir-value-id
+DYNAMIC-BUFFER F-ORDER-SET-BUF n
+: F-ORDER-SET ( -- ptr n ) 0 F-ORDER-SET-BUF ;
 variable PRED-SEEN
 variable PRED-ONE
-VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
-VMAX TYPED-BUFFER RMAP IR-ID:ir-value-id
-create VSET VMAX cells allot
+DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
+DYNAMIC-BUFFER RMAP IR-ID:ir-value-id
+DYNAMIC-BUFFER VSET-BUF n
+: VSET ( -- ptr n ) 0 VSET-BUF ;
 \ A value marked for re-emission is written again where it is read, out of its
 \ defining operation's own immediate, so the pass has to reach it from the value.
-VMAX TYPED-BUFFER DOP IR-ID:ir-op-id
-create RPOS VMAX cells allot
-create RBLK VMAX cells allot
+DYNAMIC-BUFFER DOP IR-ID:ir-op-id
+DYNAMIC-BUFFER RPOS-BUF n
+: RPOS ( -- ptr n ) 0 RPOS-BUF ;
+DYNAMIC-BUFFER RBLK-BUF n
+: RBLK ( -- ptr n ) 0 RBLK-BUF ;
+
+: RESERVE-SCRATCH ( -- )
+   SCRATCH-SIZES!
+   BMAX F-ORDER-RESERVE
+   BMAX F-ORDER-SET-BUF-RESERVE
+   VMAX VMAP-RESERVE
+   VMAX RMAP-RESERVE
+   VMAX VSET-BUF-RESERVE
+   VMAX DOP-RESERVE
+   VMAX RPOS-BUF-RESERVE
+   VMAX RBLK-BUF-RESERVE
+   ;
 create NAMEBUF NAME-CAP allot
 
 \ ---- the slots, read back ----------------------------------------------------
@@ -866,7 +897,7 @@ create NAMEBUF NAME-CAP allot
 \ A module with no function is not a routine at all.
    FUN-COUNT {: n:n :}
    n 1 < if E-A64SPILL-SHAPE throw then
-   n NFROZEN:FMAX > if E-A64SPILL-CAP throw then
+   n FMAX > if E-A64SPILL-CAP throw then
    n 0 ?do MKEY i IR-ID:PACK-FUN i ONCE-CK loop
    n ;
 
@@ -933,12 +964,25 @@ public
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!
+   RESERVE-SCRATCH
    c b p u SOURCE!
    SHAPE-CK {: nf:n :}
    nf 0 ?do MKEY i IR-ID:PACK-FUN i WALK-FUN loop
    N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
    c b BIND-DIALECT
    c b IR-BUILD:FREEZE ;
+
+public
+: RELEASE-SCRATCH ( -- )
+   F-ORDER-RELEASE
+   F-ORDER-SET-BUF-RELEASE
+   VMAP-RELEASE
+   RMAP-RELEASE
+   VSET-BUF-RELEASE
+   DOP-RELEASE
+   RPOS-BUF-RELEASE
+   RBLK-BUF-RELEASE
+   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

@@ -9,8 +9,8 @@
 \ BUILD:STEP-NAME! / STEP-COMMAND! / STEP-ARGV! / STEP-TMP! / STEP-ARTIFACT!
 \ setters, the matching STEP-NAME$ / STEP-COMMAND$ / STEP-ARGV$ / STEP-TMP$ /
 \ STEP-ARTIFACT$ readers, STEP-RC@ / STEP-RC!, BUILD:STEP-VALIDATE, and
-\ BUILD:STEP-RUN. The source scanner, the record cell plumbing, the CHECK! trust
-\ boundary (BUILD-CHECK-RAW), and every buffer and state variable are
+\ BUILD:STEP-RUN. The source scanner, the record cell plumbing, and every
+\ buffer and state variable are
 \ package-private.
 \
 require lib/errors.f
@@ -64,32 +64,32 @@ variable BUILD-END
    off 0 < if E-BUILD-PATH throw then
    off BUILD-STEP-CELLS >= if E-BUILD-PATH throw then ;
 
-: BUILD-STEP-FIELD ( ptr a n -- ptr a ) {: rec:ptr off :}
+: BUILD-STEP-FIELD ( ptr n n -- ptr n ) {: rec:ptr off :}
    off BUILD-STEP-CHECK-OFF
    rec off cells + ;
 
-: BUILD-STEP-A! ( ptr u8 ptr a n -- ) {: a:ptr rec:ptr off :}
-   a rec off BUILD-STEP-FIELD ! ;
+: BUILD-STEP-A! ( ptr u8 ptr n n -- ) {: a:ptr rec:ptr off :}
+   a rec off BUILD-STEP-FIELD 0 ptr-field ! ;
 
-: BUILD-STEP-N! ( n ptr a n -- ) {: n rec:ptr off :}
+: BUILD-STEP-N! ( n ptr n n -- ) {: n rec:ptr off :}
    n rec off BUILD-STEP-FIELD ! ;
 
-: BUILD-STEP-A@ ( ptr a n -- ptr u8 )
+: BUILD-STEP-A@ ( ptr n n -- ptr u8 )
+   BUILD-STEP-FIELD 0 ptr-field @ ;
+
+: BUILD-STEP-N@ ( ptr n n -- n )
    BUILD-STEP-FIELD @ ;
 
-: BUILD-STEP-N@ ( ptr a n -- n )
-   BUILD-STEP-FIELD @ ;
-
-: BUILD-STEP-PAIR! ( ptr u8 n ptr a n -- ) {: a:ptr u rec:ptr off :}
+: BUILD-STEP-PAIR! ( ptr u8 n ptr n n -- ) {: a:ptr u rec:ptr off :}
    u 0 < if E-BUILD-PATH throw then
    a rec off BUILD-STEP-A!
    u rec off 1 + BUILD-STEP-N! ;
 
-: BUILD-STEP-PAIR$ ( ptr a n -- ptr u8 n ) {: rec:ptr off :}
+: BUILD-STEP-PAIR$ ( ptr n n -- ptr u8 n ) {: rec:ptr off :}
    rec off BUILD-STEP-A@
    rec off 1 + BUILD-STEP-N@ ;
 
-: BUILD-STEP-EMPTY! ( ptr a n -- ) {: rec:ptr off :}
+: BUILD-STEP-EMPTY! ( ptr n n -- ) {: rec:ptr off :}
    BUILD-SOURCE-BUF 0 rec off BUILD-STEP-PAIR! ;
 
 public
@@ -99,7 +99,7 @@ public
 : STEP-CELLS ( -- n )
    BUILD-STEP-CELLS ;
 
-: STEP-CLEAR ( ptr a -- ) {: rec:ptr :}
+: STEP-CLEAR ( ptr n -- ) {: rec:ptr :}
    rec BUILD-STEP-NAME-A BUILD-STEP-EMPTY!
    rec BUILD-STEP-CMD-A BUILD-STEP-EMPTY!
    rec BUILD-STEP-ARGV-A BUILD-STEP-EMPTY!
@@ -107,44 +107,44 @@ public
    rec BUILD-STEP-ART-A BUILD-STEP-EMPTY!
    -1 rec BUILD-STEP-RC-OFF BUILD-STEP-FIELD ! ;
 
-: STEP-NAME! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
+: STEP-NAME! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-COMMAND throw then
    a u rec BUILD-STEP-NAME-A BUILD-STEP-PAIR! ;
 
-: STEP-COMMAND! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
+: STEP-COMMAND! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-COMMAND throw then
    a u rec BUILD-STEP-CMD-A BUILD-STEP-PAIR! ;
 
-: STEP-ARGV! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
+: STEP-ARGV! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    a u rec BUILD-STEP-ARGV-A BUILD-STEP-PAIR! ;
 
-: STEP-TMP! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
+: STEP-TMP! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-PATH throw then
    a u rec BUILD-STEP-TMP-A BUILD-STEP-PAIR! ;
 
-: STEP-ARTIFACT! ( ptr u8 n ptr a -- ) {: a:ptr u:n rec:ptr :}
+: STEP-ARTIFACT! ( ptr u8 n ptr n -- ) {: a:ptr u:n rec:ptr :}
    u 0 <= if E-BUILD-PATH throw then
    a u rec BUILD-STEP-ART-A BUILD-STEP-PAIR! ;
 
-: STEP-NAME$ ( ptr a -- ptr u8 n )
+: STEP-NAME$ ( ptr n -- ptr u8 n )
    BUILD-STEP-NAME-A BUILD-STEP-PAIR$ ;
 
-: STEP-COMMAND$ ( ptr a -- ptr u8 n )
+: STEP-COMMAND$ ( ptr n -- ptr u8 n )
    BUILD-STEP-CMD-A BUILD-STEP-PAIR$ ;
 
-: STEP-ARGV$ ( ptr a -- ptr u8 n )
+: STEP-ARGV$ ( ptr n -- ptr u8 n )
    BUILD-STEP-ARGV-A BUILD-STEP-PAIR$ ;
 
-: STEP-TMP$ ( ptr a -- ptr u8 n )
+: STEP-TMP$ ( ptr n -- ptr u8 n )
    BUILD-STEP-TMP-A BUILD-STEP-PAIR$ ;
 
-: STEP-ARTIFACT$ ( ptr a -- ptr u8 n )
+: STEP-ARTIFACT$ ( ptr n -- ptr u8 n )
    BUILD-STEP-ART-A BUILD-STEP-PAIR$ ;
 
-: STEP-RC@ ( ptr a -- n )
+: STEP-RC@ ( ptr n -- n )
    BUILD-STEP-RC-OFF BUILD-STEP-FIELD @ ;
 
-: STEP-RC! ( n ptr a -- ) {: rc:n rec:ptr :}
+: STEP-RC! ( n ptr n -- ) {: rc:n rec:ptr :}
    rc rec BUILD-STEP-RC-OFF BUILD-STEP-N! ;
 
 private
@@ -164,14 +164,9 @@ private
       then
    repeat ;
 
-\ CHECK! cannot recursively certify the definition that invokes it.
-\ Retirement owner: habu-primitive-effect-axiom-1119f176.
-TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
-   CHECK! ;
-
 : BUILD-CHECK-ONE ( n n -- ) {: start finish :}
    finish start <= if E-BUILD-SOURCE throw then
-   BUILD-SOURCE-BUF start + finish start - BUILD-CHECK-RAW -1 <> if
+   BUILD-SOURCE-BUF start + finish start - CHECK! -1 <> if
       E-BUILD-SOURCE throw
    then ;
 
@@ -250,13 +245,13 @@ public
    artifact artifactu BUILD-EXPECT
    rc ;
 
-: STEP-VALIDATE ( ptr a -- ) {: rec:ptr :}
+: STEP-VALIDATE ( ptr n -- ) {: rec:ptr :}
    rec STEP-NAME$ nip 0 <= if E-BUILD-COMMAND throw then
    rec STEP-COMMAND$ FILE? 0= if E-BUILD-COMMAND throw then
    rec STEP-TMP$ DIR? 0= if E-BUILD-PATH throw then
    rec STEP-ARTIFACT$ nip 0 <= if E-BUILD-PATH throw then ;
 
-: STEP-RUN ( ptr a -- n ) {: rec:ptr :}
+: STEP-RUN ( ptr n -- n ) {: rec:ptr :}
    rec STEP-VALIDATE
    rec STEP-COMMAND$ rec STEP-ARTIFACT$ RUN {: rc:n :}
    rc rec STEP-RC!

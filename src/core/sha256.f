@@ -295,3 +295,14 @@ create PBLK $80 allot
    drop
    SHA-DIGEST r> SHA256>HEX
    0 ;
+
+\ SHA is process-wide scratch.  A completed operation owns no caller buffer;
+\ capture therefore retires the descriptor value and clears every pointer-bearing
+\ cursor rather than baking the last hash caller's addresses.
+: SHA256-SNAPSHOT-PREPARE ( -- )
+   -1 SHA-FD !
+   NULL-PTR SHA-A!  NULL-PTR SHA-P!  NULL-PTR SHA-SRC!
+   NULL-PTR SHA-DST!  NULL-PTR SHA-OUT!  NULL-PTR SHA-BLOCK-A!
+   0 SHA-U !  0 SHA-NEED !  0 SHA-NBLK !  0 SHA-RD !
+   0 SHA-BLEN !  0 SHA-W !  0 SHA-N !  0 SHA-TL !  0 SHA-UB !
+   SHA256-RESET ;

@@ -46,6 +46,21 @@ ENUM cmpkind DERIVE eq
 
 private
 
+\ Each pass retains its own dimensions while later passes read its results.
+variable SCRATCH-VALUES
+variable SCRATCH-BLOCKS
+variable SCRATCH-FUNS
+variable SCRATCH-OPS
+: VMAX ( -- n ) SCRATCH-VALUES @ ;
+: BMAX ( -- n ) SCRATCH-BLOCKS @ ;
+: FMAX ( -- n ) SCRATCH-FUNS @ ;
+: OMAX ( -- n ) SCRATCH-OPS @ ;
+: SCRATCH-SIZES! ( -- )
+   NFROZEN:VALUE-COUNT 1 max SCRATCH-VALUES !
+   NFROZEN:TOTAL-BLOCKS 1 max SCRATCH-BLOCKS !
+   NFROZEN:TOTAL-FUNS 1 max SCRATCH-FUNS !
+   NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
+
 \ ---- the bound source dialect ------------------------------------------------
 HIR-OPCODE:CONST    HIR:ORD constant O-CONST
 HIR-OPCODE:RETURN   HIR:ORD constant O-RETURN
@@ -113,9 +128,11 @@ variable S-TAIL                      \ whether the contract says control leaves 
 variable S-DSTACK                    \ whether the contract declares the data-stack convention
 variable S-LSAVE                     \ whether the contract's prologue keeps the caller's return address
 variable FUSE-AT                     \ where in this block the fused comparison is, or -1
-VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
-create VSET VMAX cells allot
-create VREAL VMAX cells allot                      \ this cell was placed in the D file
+DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
+DYNAMIC-BUFFER VSET-BUF n
+: VSET ( -- ptr n ) 0 VSET-BUF ;
+DYNAMIC-BUFFER VREAL-BUF n
+: VREAL ( -- ptr n ) 0 VREAL-BUF ;
 create NAMEBUF NAME-CAP allot
 
 \ ---- what the if-conversion below is working on ------------------------------
@@ -125,17 +142,28 @@ create NAMEBUF NAME-CAP allot
 4 constant SEL-CARRY-MAX             \ values it may still hold where its selects are made
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create R-PRED NFROZEN:BMAX cells allot     \ predecessors this block has
-create R-FROM NFROZEN:BMAX cells allot     \ and the last one seen, which is the only
-create R-ABSORB NFROZEN:BMAX cells allot   \ this block is inside a converted region
-create R-OWNER NFROZEN:BMAX cells allot    \ and this is the head that absorbed it
-create R-HEAD NFROZEN:BMAX cells allot     \ this block heads a converted region
-create R-EXIT NFROZEN:BMAX cells allot     \ and the region leaves through this block
-create R-ORD NFROZEN:BMAX cells allot      \ the machine block this source block became
-create R-MARK NFROZEN:BMAX cells allot     \ membership while one region is being tried
-create R-QB NFROZEN:BMAX cells allot       \ blocks still to classify
-create R-QP NFROZEN:BMAX cells allot       \ and the block each was reached from
-create R-LIST NFROZEN:BMAX cells allot     \ the members the current try has taken
+DYNAMIC-BUFFER R-PRED-BUF n
+: R-PRED ( -- ptr n ) 0 R-PRED-BUF ;
+DYNAMIC-BUFFER R-FROM-BUF n
+: R-FROM ( -- ptr n ) 0 R-FROM-BUF ;
+DYNAMIC-BUFFER R-ABSORB-BUF n
+: R-ABSORB ( -- ptr n ) 0 R-ABSORB-BUF ;
+DYNAMIC-BUFFER R-OWNER-BUF n
+: R-OWNER ( -- ptr n ) 0 R-OWNER-BUF ;
+DYNAMIC-BUFFER R-HEAD-BUF n
+: R-HEAD ( -- ptr n ) 0 R-HEAD-BUF ;
+DYNAMIC-BUFFER R-EXIT-BUF n
+: R-EXIT ( -- ptr n ) 0 R-EXIT-BUF ;
+DYNAMIC-BUFFER R-ORD-BUF n
+: R-ORD ( -- ptr n ) 0 R-ORD-BUF ;
+DYNAMIC-BUFFER R-MARK-BUF n
+: R-MARK ( -- ptr n ) 0 R-MARK-BUF ;
+DYNAMIC-BUFFER R-QB-BUF n
+: R-QB ( -- ptr n ) 0 R-QB-BUF ;
+DYNAMIC-BUFFER R-QP-BUF n
+: R-QP ( -- ptr n ) 0 R-QP-BUF ;
+DYNAMIC-BUFFER R-LIST-BUF n
+: R-LIST ( -- ptr n ) 0 R-LIST-BUF ;
 variable R-QN
 variable R-QI
 variable R-LIST-N
@@ -156,7 +184,7 @@ variable R-BASE                      \ where this function's blocks start in the
 variable R-NEWBASE                   \ and where they start in the module being built
 variable V-BASE                      \ first value owned by the function being selected
 variable V-LIMIT                     \ one past its last value
-NFROZEN:BMAX SEL-WIDTH-MAX * TYPED-BUFFER RSEL IR-ID:ir-value-id
+DYNAMIC-BUFFER RSEL IR-ID:ir-value-id
 1 TYPED-BUFFER R-JB IR-ID:ir-block-id
 
 \ ---- what the data-stack residency pass answers ------------------------------
@@ -168,13 +196,41 @@ NFROZEN:BMAX SEL-WIDTH-MAX * TYPED-BUFFER RSEL IR-ID:ir-value-id
 63 constant DELIDE-MAX               \ store positions one run's elision mask holds
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create D-IN NFROZEN:BMAX DSLOT-MAX * cells allot   \ what each slot holds at a block's head
-create D-OUT NFROZEN:BMAX DSLOT-MAX * cells allot  \ and at its end
+DYNAMIC-BUFFER D-IN-BUF n
+: D-IN ( -- ptr n ) 0 D-IN-BUF ;
+DYNAMIC-BUFFER D-OUT-BUF n
+: D-OUT ( -- ptr n ) 0 D-OUT-BUF ;
 create D-CUR DSLOT-MAX cells allot                 \ the running answer inside one block
-create D-NEED VMAX cells allot                     \ this value reaches a register
-create D-ORDER-SET NFROZEN:BMAX cells allot        \ an edge has said which order this block is entered with
+DYNAMIC-BUFFER D-NEED-BUF n
+: D-NEED ( -- ptr n ) 0 D-NEED-BUF ;
+DYNAMIC-BUFFER D-ORDER-SET-BUF n
+: D-ORDER-SET ( -- ptr n ) 0 D-ORDER-SET-BUF ;
 variable D-MOVED                                   \ a fixpoint round changed something
-NFROZEN:BMAX TYPED-BUFFER D-ORDER IR-ID:ir-value-id  \ and that order
+DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
+
+: RESERVE-SCRATCH ( -- )
+   SCRATCH-SIZES!
+   VMAX VMAP-RESERVE
+   VMAX VSET-BUF-RESERVE
+   VMAX VREAL-BUF-RESERVE
+   BMAX R-PRED-BUF-RESERVE
+   BMAX R-FROM-BUF-RESERVE
+   BMAX R-ABSORB-BUF-RESERVE
+   BMAX R-OWNER-BUF-RESERVE
+   BMAX R-HEAD-BUF-RESERVE
+   BMAX R-EXIT-BUF-RESERVE
+   BMAX R-ORD-BUF-RESERVE
+   BMAX R-MARK-BUF-RESERVE
+   BMAX R-QB-BUF-RESERVE
+   BMAX R-QP-BUF-RESERVE
+   BMAX R-LIST-BUF-RESERVE
+   BMAX SEL-WIDTH-MAX * RSEL-RESERVE
+   BMAX DSLOT-MAX * D-IN-BUF-RESERVE
+   BMAX DSLOT-MAX * D-OUT-BUF-RESERVE
+   VMAX D-NEED-BUF-RESERVE
+   BMAX D-ORDER-SET-BUF-RESERVE
+   BMAX D-ORDER-RESERVE
+   ;
 
 \ ---- where the routine's data-stack pointer stands ---------------------------
 \ The pointer is a register, so it stands at ONE place for the whole body and
@@ -411,9 +467,7 @@ variable D-RETS                                    \ returns seen while surveyin
 \ The CONTRACT describes the published word and the MODULE describes every
 \ function, so only function zero is held against the contract.
 : FUN-SLOTS ( n -- A64EFF:placeseq )
-   {: k:n :}
-   A64EFF:SEQ-NONE
-   k 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+   A64EFF:SEQ-DSTACK ;
 
 : DECL-CK ( n n -- )
    {: in:n out:n :}
@@ -1195,7 +1249,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ A successor names a block of the source module and this pass rebuilds them one
 \ for one, so the ordinal carries across.
 : BLOCK-ORD-CK ( n -- n )
-   dup 0 < over NFROZEN:BMAX >= or if E-A64SEL-CAP throw then ;
+   dup 0 < over BMAX >= or if E-A64SEL-CAP throw then ;
 
 : R-ORD-OF ( n -- n )
    BLOCK-ORD-CK cells R-ORD + @
@@ -1253,7 +1307,7 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    ORDER@ IR-ID:VALUE-LOCAL  TOK IR-ID:VALUE-LOCAL  = ;
 
 : ORDER-CLEAR ( -- )
-   NFROZEN:BMAX 0 ?do
+   BMAX 0 ?do
       0 i cells D-ORDER-SET + !
    loop ;
 
@@ -1668,7 +1722,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    0 b cells R-MARK + ! ;
 
 : R-RESET ( -- )
-   NFROZEN:BMAX 0 ?do i R-RESET1 loop ;
+   BMAX 0 ?do i R-RESET1 loop ;
 
 \ ---- counting the predecessors -----------------------------------------------
 : PRED-NOTE ( n n -- )
@@ -1699,18 +1753,20 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    0 R-LOCAL-D !
    -1 R-JOIN !
    0 R-WIDTH-D !
-   NFROZEN:BMAX 0 ?do 0 i cells R-MARK + ! loop ;
+   BMAX 0 ?do 0 i cells R-MARK + ! loop ;
 
 : R-PUSH ( n n -- )
    {: p:n b:n :}
-   R-QN @ NFROZEN:BMAX >= if E-A64SEL-CAP throw then
+   \ The work queue holds incoming edges, so a join can occur more than once.
+   R-QN @ 1+ R-QB-BUF-RESERVE
+   R-QN @ 1+ R-QP-BUF-RESERVE
    b R-QB R-QN @ cells + !
    p R-QP R-QN @ cells + !
    R-QN @ 1+ R-QN ! ;
 
 : R-TAKE ( n -- )
    {: b:n :}
-   R-LIST-N @ NFROZEN:BMAX >= if E-A64SEL-CAP throw then
+   R-LIST-N @ BMAX >= if E-A64SEL-CAP throw then
    1 b BLOCK-ORD-CK cells R-MARK + !
    b R-LIST R-LIST-N @ cells + !
    R-LIST-N @ 1+ R-LIST-N ! ;
@@ -1978,7 +2034,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
 
 \ ---- leaving through the routine that ends the process -----------------------
-\ src/compiler/native/trap.f owns ONE routine tree-wide, resolved by name.
+\ The trap registry resolves diagnostics at compile time; only die is needed
+\ in the target dictionary, even during the first source-prefix definitions.
 : TRAP-ENTRY ( -- n )
    NTRAP:ROUTINE$ NDICT:CALL-TARGET {: e:n :}
    e 0= if E-A64SEL-TRAP throw then
@@ -1991,14 +2048,16 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    TOK OPERAND+
    CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR
-   A64IR:SLOT-WIDTH DBYTES-ATTR+
+   3 A64IR:SLOT-WIDTH * DBYTES-ATTR+
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ A call site with nothing to save and nothing to take back.
 : EMIT-TRAP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    DSTACK? 0= if E-A64SEL-TRAP throw then
-   id  id 0 OPERAND  0  false DSTORE-FORM  EMIT-DSTORE
+   3 0 ?do
+      id  id i OPERAND  i A64IR:SLOT-WIDTH *  false DSTORE-FORM  EMIT-DSTORE
+   loop
    id TRAP-ENTRY EMIT-TRAP-BR
    N-TRAPS @ 1+ N-TRAPS ! ;
 
@@ -2260,7 +2319,7 @@ create D-MEET DSLOT-MAX cells allot
 
 \ Every cell starts at "nothing said", may name one value, and may then fall to
 \ "nothing", so the descent has a bounded number of rounds.
-NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
+: DRES-ROUNDS ( -- n ) BMAX DSLOT-MAX * 2 * 2 + ;
 
 : DRES-FIX ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
@@ -2379,9 +2438,9 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    kk a + A64IR:SLOT-WIDTH * DREQ+
    kk r + A64IR:SLOT-WIDTH * DREQ+ ;
 
-\ A trap requires ONE place, the shared routine's.
+\ A trap places the diagnostic address, length and exit code for die.
 : DPLACE-TRAP ( -- )
-   A64IR:SLOT-WIDTH DREQ+ ;
+   3 A64IR:SLOT-WIDTH * DREQ+ ;
 
 \ A routine with two returns would publish twice.
 : DPLACE-RETURN ( -- )
@@ -2768,7 +2827,7 @@ NFROZEN:BMAX DSLOT-MAX * 2 * 2 + constant DRES-ROUNDS
    {: f:IR-ID:ir-fun-id ord:n :}
    f BLOCK-COUNT {: n:n :}
    n 1 < if E-A64SEL-SHAPE throw then
-   n NFROZEN:BMAX > if E-A64SEL-CAP throw then
+   n BMAX > if E-A64SEL-CAP throw then
    f 0 S-FUN !
    f ord FUN-PLACES!
    f ord TAIL-SITE!
@@ -2878,6 +2937,7 @@ public
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!
+   RESERVE-SCRATCH
    c b p u SOURCE!
    FUN-COUNT {: n:n :}
    n 0 ?do
@@ -2886,6 +2946,30 @@ public
    CALLED-CK
    TAILED-CK
    c b IR-BUILD:FREEZE ;
+
+public
+: RELEASE-SCRATCH ( -- )
+   VMAP-RELEASE
+   VSET-BUF-RELEASE
+   VREAL-BUF-RELEASE
+   R-PRED-BUF-RELEASE
+   R-FROM-BUF-RELEASE
+   R-ABSORB-BUF-RELEASE
+   R-OWNER-BUF-RELEASE
+   R-HEAD-BUF-RELEASE
+   R-EXIT-BUF-RELEASE
+   R-ORD-BUF-RELEASE
+   R-MARK-BUF-RELEASE
+   R-QB-BUF-RELEASE
+   R-QP-BUF-RELEASE
+   R-LIST-BUF-RELEASE
+   RSEL-RELEASE
+   D-IN-BUF-RELEASE
+   D-OUT-BUF-RELEASE
+   D-NEED-BUF-RELEASE
+   D-ORDER-SET-BUF-RELEASE
+   D-ORDER-RELEASE
+   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

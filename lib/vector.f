@@ -65,14 +65,14 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 : VEC-DATA! ( ptr a ptr a -- ) {: data:ptr vec:ptr :}
    data vec VEC-DATA-FIELD ! ;
 
-: VEC-LEN-FIELD ( ptr a -- ptr a )
-   VEC.LEN ;
+: VEC-LEN-FIELD ( ptr a -- ptr n )
+   VEC.LEN BYTE-VIEW CELL-VIEW ;
 
 : VEC-LEN@ ( ptr a -- len )
    VEC-LEN-FIELD @ VEC-LEN ;
 
-: VEC-CAP-FIELD ( ptr a -- ptr a )
-   VEC.CAP ;
+: VEC-CAP-FIELD ( ptr a -- ptr n )
+   VEC.CAP BYTE-VIEW CELL-VIEW ;
 
 : VEC-CAP@ ( ptr a -- count )
    VEC-CAP-FIELD @ VEC-COUNT ;
@@ -124,16 +124,16 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    vec ix VEC-CHECK-INDEX
    value vec VEC-DATA@ ix IDX>N VEC-CELL-FIELD ! ;
 
-: VEC-N@ ( ptr a idx -- n )
+: VEC-N@ ( ptr n idx -- n )
    VEC@ ;
 
-: VEC-N! ( n ptr a idx -- )
+: VEC-N! ( n ptr n idx -- )
    VEC! ;
 
-: VEC-A@ ( ptr a idx -- ptr u8 )
+: VEC-A@ ( ptr ptr u8 idx -- ptr u8 )
    VEC@ ;
 
-: VEC-A! ( ptr u8 ptr a idx -- )
+: VEC-A! ( ptr u8 ptr ptr u8 idx -- )
    VEC! ;
 
 : VEC-COPY-CELLS ( ptr a ptr a len -- ) {: src:ptr dst:ptr len :}
@@ -147,7 +147,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 \ MEM-CELLS>BYTES projects it to the exact byte extent MEM-ALLOC-CELLS minted and
 \ MEM:BYTES-ALLOC-LEN narrows that to the alloc-byte-len MEM:RELEASE-BYTES demands.
 : VEC-RELEASE-STORAGE ( ptr a count -- ) {: data:ptr cap :}
-   data  cap MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
+   data BYTE-VIEW  cap MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
 
 \ Copy into the new mapping, install it, then release the prior one. The release is
 \ LAST and the caller allocates BEFORE this word runs, so a failed grow (the alloc
@@ -169,18 +169,15 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    vec cap VEC-CHECK-RESIZE-CAP
    vec cap cap VEC-ALLOC-CELLS VEC-INSTALL-RESIZE ;
 
-\ Release the owned mapping and void ownership. Following the cuda-scope
-\ consume-on-release discipline (a ledger row is zeroed before its release, so a
-\ repeated unwind is a proved no-op), DISPOSE clears the capacity-ownership cell
-\ BEFORE the munmap: a second DISPOSE observes cap==0 and returns without a second
-\ release, and a release that throws cannot double-free on retry. A dead header
-\ (cap==0, fresh or already disposed) is the proved no-op.
+\ Clear the entire header before release, so retries cannot free the mapping
+\ twice and a captured dead header cannot retain its former process address.
 : VEC-DISPOSE ( ptr a -- ) {: vec:ptr :}
    vec VEC-CAP-FIELD @ {: cap :}
-   cap 0= if exit then
    vec VEC-DATA@ {: data:ptr :}
+   NULL-PTR vec VEC-DATA!
    0 vec VEC-CAP-FIELD !
    0 vec VEC-LEN-FIELD !
+   cap 0= if exit then
    data cap >COUNT VEC-RELEASE-STORAGE ;
 
 : VEC-GROW-CAP ( ptr a count -- count ) {: vec:ptr need :}
@@ -210,10 +207,10 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 : VEC-PUSH ( a ptr a -- idx ) {: value vec:ptr :}
    value vec vec VEC-LEN@ LEN>N VEC-PUSH-AT ;
 
-: VEC-PUSH-N ( n ptr a -- idx )
+: VEC-PUSH-N ( n ptr n -- idx )
    VEC-PUSH ;
 
-: VEC-PUSH-A ( ptr u8 ptr a -- idx )
+: VEC-PUSH-A ( ptr u8 ptr ptr u8 -- idx )
    VEC-PUSH ;
 
 : VEC-EACH ( R ptr a [ R idx a -- R ] -- R ) {: vec:ptr q :}

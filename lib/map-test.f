@@ -157,16 +157,16 @@ create MT-KEY-Z 122 c,
 : MT-MAP-SLOT-INSERT ( a ptr a n n ptr u8 n -- ) {: value m:ptr ix hash key:ptr len :}
    value m ix >IDX hash key len >LEN MAP-SLOT-INSERT ;
 
-: MT-MAP-GET ( ptr a n ptr u8 n -- option<n> ) {: m:ptr cap:n key:ptr len:n :}
+: MT-MAP-GET ( ptr n n ptr u8 n -- option<n> ) {: m:ptr cap:n key:ptr len:n :}
    m cap >COUNT key len >LEN MAP-GET ;
 
-: MT-MAP-HAS? ( ptr a n ptr u8 n -- bool ) {: m:ptr cap key:ptr len :}
+: MT-MAP-HAS? ( ptr n n ptr u8 n -- bool ) {: m:ptr cap key:ptr len :}
    m cap >COUNT key len >LEN MAP-HAS? ;
 
-: MT-MAP-SET ( n ptr a n ptr u8 n -- ) {: value m:ptr cap key:ptr len :}
+: MT-MAP-SET ( n ptr n n ptr u8 n -- ) {: value m:ptr cap key:ptr len :}
    value m cap >COUNT key len >LEN MAP-SET ;
 
-: MT-MAP-EACH ( ptr a n [ ptr u8 len n -- ] -- ) {: m:ptr cap q :}
+: MT-MAP-EACH ( ptr n n [ ptr u8 len n -- ] -- ) {: m:ptr cap q :}
    m cap >COUNT q MAP-EACH ;
 
 : MT-FILL-STORAGE ( -- )
@@ -174,7 +174,7 @@ create MT-KEY-Z 122 c,
       777 MT-MAP i cells + !
    loop ;
 
-: MT-EACH-CLEAR-CELLS ( ptr a -- ) {: a:ptr :}
+: MT-EACH-CLEAR-CELLS ( ptr n -- ) {: a:ptr :}
    MT-CAP 0 ?do
       0 a i cells + !
    loop ;
@@ -371,14 +371,14 @@ create MT-KEY-Z 122 c,
 : MT-PROBE-RANGE ( ptr u8 n n n -- ) {: a:ptr u step cap :}
    a u MT-MAP-HASH step cap MT-MAP-PROBE cap MT-RANGE ;
 
-: MT-ASSERT-HIT ( ptr a n ptr u8 n n -- ) {: m:ptr cap:n key:ptr len:n want:n :}
+: MT-ASSERT-HIT ( ptr n n ptr u8 n n -- ) {: m:ptr cap:n key:ptr len:n want:n :}
    m cap key len MT-MAP-HAS? MT-ASSERT                  \ present -> HAS? true
    m cap key len MT-MAP-GET MATCH option
      none OF 0 0= 0= MT-ASSERT ENDOF                    \ hit expected, got NONE -> fail
      some OF want MT= ENDOF                             \ SOME -> value must equal want
    ;MATCH ;
 
-: MT-ASSERT-MISS ( ptr a n ptr u8 n -- ) {: m:ptr cap:n key:ptr len:n :}
+: MT-ASSERT-MISS ( ptr n n ptr u8 n -- ) {: m:ptr cap:n key:ptr len:n :}
    m cap key len MT-MAP-HAS? 0= MT-ASSERT               \ absent -> HAS? false
    m cap key len MT-MAP-GET MATCH option
      none OF ENDOF                                      \ absent -> NONE, ok

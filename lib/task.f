@@ -5,8 +5,6 @@ s" lib/memory.f" required
 s" lib/ffi-abi.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 
-using TYPE-DECL
-
 package TASK
 
 $8 constant TASK-CELL
@@ -41,7 +39,7 @@ $70 constant TASK-TCB-BYTES
 
 BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.SIZE
-   CELL +FIELD TCB.XT
+   CELL +FIELD TCB.XT-CELL
    CELL +FIELD TCB.THREAD
    PTR-FIELD: TCB.STACK
    CELL +FIELD TCB.STACK-U
@@ -53,7 +51,7 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.STATUS
    CELL +FIELD TCB.STOP
    CELL +FIELD TCB.RET
-   CELL +FIELD TCB.USER-XT
+   CELL +FIELD TCB.USER-XT-CELL
 END-STRUCTURE
 
 : TASK-TCB-LAYOUT-CHECK ( -- )
@@ -99,14 +97,25 @@ variable TASK-USER-NEXT
 FFI:SCRATCH-END constant TASK-USER-BASE
 TASK-USER-BASE TASK-USER-NEXT !
 
-: TASK-NULL ( -- ptr a )
-   NULL$ drop ;
+: TASK-NULL ( -- ptr n )
+   NULL$ drop CELL-VIEW ;
 
 \ TCB raw-cell pointer refinement and pointer-slot reinterpretation are outside
 \ checker inference. Retirement owner: habu-typed-defining-words-aa224eb5.
-TRUSTED: TASK-N>PTR ( n -- ptr a ) ;
+TRUSTED: TASK-N>PTR ( n -- ptr n ) ;
 
-TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
+TRUSTED: TASK-CELL>PTR-SLOT ( ptr n -- ptr ptr n ) ;
+
+\ These two cells are quotation slots in the fixed pthread entry ABI. The
+\ low-level structure definer describes offsets; every callback store and load
+\ below uses its declared empty stack effect.
+TRUSTED: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] ) ;
+
+: TCB.XT ( ptr n -- ptr [ -- ] )
+   TCB.XT-CELL TASK-CELL>XT-SLOT ;
+
+: TCB.USER-XT ( ptr n -- ptr [ -- ] )
+   TCB.USER-XT-CELL TASK-CELL>XT-SLOT ;
 
 : TASK-ALIGN8 ( -- )
    here FFI:>CELL 7 and dup 0= if drop exit then
@@ -136,13 +145,13 @@ TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM constant MUTEX-UNLOCK-XT
 
 \ Exact task-internal C bindings fix every pointer extent and scalar role before
 \ entering the bounded FFI trampoline. Retirement owner: habu-ptx-m1-c-1df1d6e7.
-TRUSTED: MUNMAP-CALL ( ptr a n -- n ) {: a:ptr len:n :}
+TRUSTED: MUNMAP-CALL ( ptr n n -- n ) {: a:ptr len:n :}
    FFI:RESET
    a 0 FFI:READABLE!
    len 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 MUNMAP-XT ffi-call-bounded ;
 
-TRUSTED: PTHREAD-CREATE-CALL ( ptr a n n ptr a -- n )
+TRUSTED: PTHREAD-CREATE-CALL ( ptr n n n ptr n -- n )
    {: thread:ptr attr:n entry:n arg:ptr :}
    FFI:RESET
    thread 8 0 FFI:WRITABLE!
@@ -151,7 +160,7 @@ TRUSTED: PTHREAD-CREATE-CALL ( ptr a n n ptr a -- n )
    arg 3 FFI:READABLE!
    FFI:ARGS FFI:REG-LENS 4 PTHREAD-CREATE-XT ffi-call-bounded ;
 
-TRUSTED: PTHREAD-JOIN-CALL ( n ptr a -- n ) {: thread:n out:ptr :}
+TRUSTED: PTHREAD-JOIN-CALL ( n ptr n -- n ) {: thread:n out:ptr :}
    FFI:RESET
    thread 0 FFI:VALUE!
    out 8 1 FFI:WRITABLE!
@@ -166,18 +175,18 @@ TRUSTED: SCHED-YIELD-CALL ( -- n )
    FFI:RESET
    FFI:ARGS FFI:REG-LENS 0 SCHED-YIELD-XT ffi-call-bounded ;
 
-TRUSTED: MUTEX-INIT-CALL ( ptr a n -- n ) {: mutex:ptr attr:n :}
+TRUSTED: MUTEX-INIT-CALL ( ptr n n -- n ) {: mutex:ptr attr:n :}
    FFI:RESET
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
    attr 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 MUTEX-INIT-XT ffi-call-bounded ;
 
-TRUSTED: MUTEX-LOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
+TRUSTED: MUTEX-LOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
    FFI:RESET
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
    FFI:ARGS FFI:REG-LENS 1 MUTEX-LOCK-XT ffi-call-bounded ;
 
-TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
+TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
    FFI:RESET
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
    FFI:ARGS FFI:REG-LENS 1 MUTEX-UNLOCK-XT ffi-call-bounded ;
@@ -190,10 +199,10 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
    dup TASK-MIN-STACK < if E-TASK-SIZE throw then
    drop ;
 
-: TASK-STATE@ ( ptr a -- n )
+: TASK-STATE@ ( ptr n -- n )
    TCB.STATUS @ ;
 
-: TASK-STATE! ( n ptr a -- )
+: TASK-STATE! ( n ptr n -- )
    TCB.STATUS ! ;
 
 : TASK-LIVE+ ( -- )
@@ -202,10 +211,10 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
 : TASK-LIVE- ( -- )
    data-base TASKS-LIVE-CELL + dup @ 1 - dup 0 < if drop 0 then swap ! ;
 
-: TASK-MUNMAP-SPAN ( ptr a n -- )
+: TASK-MUNMAP-SPAN ( ptr n n -- )
    MUNMAP-CALL TASK-RC0 ;
 
-: TASK-RELEASE-MEM ( ptr a -- ) {: tcb:ptr :}
+: TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.STACK-U @ 0 <> if
       tcb TCB.STACK @ tcb TCB.STACK-U @ TASK-MUNMAP-SPAN
       TASK-NULL tcb TCB.STACK !
@@ -217,20 +226,20 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
       0 tcb TCB.REGION-U !
    then ;
 
-: TASK-COPY-CELL ( ptr a ptr a n -- )
+: TASK-COPY-CELL ( ptr n ptr n n -- )
    {: src:ptr dst:ptr off:n :}
    src off + @ dst off + ! ;
 
-: TASK-PTR-SLOT ( ptr a n -- ptr ptr a )
+: TASK-PTR-SLOT ( ptr n n -- ptr ptr n )
    + TASK-CELL>PTR-SLOT ;
 
-: TASK-PTR! ( ptr a ptr a n -- )
+: TASK-PTR! ( ptr n ptr n n -- )
    TASK-PTR-SLOT ! ;
 
-: TASK-PTR@ ( ptr a n -- ptr a )
+: TASK-PTR@ ( ptr n n -- ptr n )
    TASK-PTR-SLOT @ ;
 
-: TASK-REGION-INIT ( ptr a -- ) {: tcb:ptr :}
+: TASK-REGION-INIT ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.REGION @ {: reg:ptr :}
    data-base reg ARGC-CELL TASK-COPY-CELL
    data-base reg ARGV-CELL TASK-COPY-CELL
@@ -246,10 +255,10 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
    tcb reg TASK-TCB-CELL TASK-PTR!
    1 reg TASKS-LIVE-CELL + ! ;
 
-: TASK-CONSTRUCTED? ( ptr a -- bool )
+: TASK-CONSTRUCTED? ( ptr n -- bool )
    TASK-STATE@ TASK-EMPTY <> ;
 
-: PREPARE ( ptr a -- ) {: tcb:ptr :}
+: PREPARE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-CONSTRUCTED? if exit then
    tcb TCB.SIZE @ TASK-CHECK-SIZE
    tcb TCB.SIZE @ MEM-ALLOC-64K-SPAN tcb TCB.STACK-U ! tcb TCB.STACK !
@@ -263,10 +272,10 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
    tcb TASK-REGION-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
-: TASK-PTHREAD-CREATE-RC ( ptr a -- n ) {: tcb:ptr :}
+: TASK-PTHREAD-CREATE-RC ( ptr n -- n ) {: tcb:ptr :}
    tcb TCB.THREAD 0 TASK-ENTRY @ tcb PTHREAD-CREATE-CALL ;
 
-: TASK-PTHREAD-JOIN-CALL ( ptr a -- ) {: tcb:ptr :}
+: TASK-PTHREAD-JOIN-CALL ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.THREAD @ tcb TCB.RET PTHREAD-JOIN-CALL TASK-RC0 ;
 
 : TASK-ENTRY-NEEDED? ( -- bool )
@@ -320,13 +329,13 @@ TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
 : TASK-READY ( -- )
    TASK-ENTRY-BUILD ;
 
-: TASK-JOIN-RELEASE ( ptr a -- ) {: tcb:ptr :}
+: TASK-JOIN-RELEASE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PTHREAD-JOIN-CALL
    TASK-LIVE-
    tcb TASK-RELEASE-MEM
    TASK-EMPTY tcb TASK-STATE! ;
 
-: TASK-SELF ( -- ptr a )
+: TASK-SELF ( -- ptr n )
    data-base TASK-TCB-CELL + @ TASK-N>PTR ;
 
 : TASK-SELF-N ( -- n )
@@ -335,22 +344,14 @@ TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
 : TASK-RC>EXIT ( n -- n )
    $FF and ;
 
-\ The scheduler runs an arbitrary per-task body under catch for error recovery.
-\ The body is a ( -- ) xt supplied to ACTIVATE and stored in the task control
-\ block's USER-XT field, so its effect is not statically known at the catch site
-\ (a structure field cannot be a typed xt cell, and one body is polymorphic
-\ across tasks). Catching such an opaque xt is rejected in checked code
-\ (E-EXEC-OPAQUE-XT, dot habu-flip-rscatch-opaque-5da02bd5), so this dynamic
-\ dispatch is confined to a named TRUSTED: boundary, like the file's other
-\ task-runtime boundaries; a task body must be ( -- ).
-\ Retirement owner: habu-ptx-m1-c-1df1d6e7.
-TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
+: TASK-RUN-USER ( -- n )
+   TASK-SELF TCB.USER-XT @ catch ;
 
 : TASK-RUNNER ( -- )
    TASK-RUN-USER dup 0= if drop exit then
    TASK-RC>EXIT s" task: unhandled throw" rot die ;
 
-: ACTIVATE ( n ptr a -- ) {: xt:n tcb:ptr :}
+: ACTIVATE ( [ -- ] ptr n -- ) {: xt tcb:ptr :}
    TASK-READY
    tcb TASK-STATE@ TASK-RUNNING = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-HALT-REQ = if E-TASK-STATE throw then
@@ -368,10 +369,10 @@ TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
    then
    drop ;
 
-: TASK-STOP@ ( ptr a -- n )
+: TASK-STOP@ ( ptr n -- n )
    TCB.STOP @ ;
 
-: TASK-STOP! ( n ptr a -- )
+: TASK-STOP! ( n ptr n -- )
    TCB.STOP ! ;
 
 : PAUSE ( -- )
@@ -383,11 +384,11 @@ TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
    drop
    SCHED-YIELD-CALL TASK-RC0 ;
 
-: HALT ( ptr a -- )
+: HALT ( ptr n -- )
    TASK-HALT-REQ over TASK-STATE!
    1 swap TASK-STOP! ;
 
-: TASK-KILL ( ptr a -- ) {: tcb:ptr :}
+: TASK-KILL ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-STATE@ TASK-EMPTY = if exit then
    tcb TASK-STATE@ TASK-CONSTRUCTED = if
       tcb TASK-RELEASE-MEM
@@ -403,12 +404,12 @@ TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
       tcb TASK-JOIN-RELEASE
    then ;
 
-: TASK-DONE? ( ptr a -- bool )
+: TASK-DONE? ( ptr n -- bool )
    TASK-STATE@ TASK-DONE = ;
 
 \ ---- the three storage definers, and why only one converted -------------------
 \ TWO ADDRESS KINDS LIVE HERE, and only one of them is expressible as generated
-\ source today. A `create ... does> ( -- ptr a ) ;` word pushes the ABSOLUTE
+\ source today. A `create ... does> ( -- ptr n ) ;` word pushes the ABSOLUTE
 \ address of its dictionary storage, which is the same address in every thread.
 \ A generated `data-base <off> +` word resolves against the CALLING thread's data
 \ region - register 20, which the thread entry below points at the task's own
@@ -421,7 +422,7 @@ TRUSTED: TASK-RUN-USER ( -- n ) TASK-SELF TCB.USER-XT @ catch ;
 \ pointer cast). Measured, not assumed: converting FACILITY makes each task lock
 \ its own uninitialised copy - lib/task-test.f dies E-TASK-THREAD (rc 237) - and
 \ converting TASK faults reading a TCB at region-base + dictionary-offset. The
-\ missing piece is one thread-invariant `( -- ptr a )` origin; until it exists,
+\ missing piece is one thread-invariant `( -- ptr n )` origin; until it exists,
 \ generated `data-base` accessors are for region-local storage only.
 \
 \ +USER is the other kind and converts cleanly: its storage IS a task-local slot,
@@ -435,7 +436,7 @@ TRUSTED: TASK ( n -- )
    TASK-ALIGN8
    create
       , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
-   does> ( -- ptr a ) ;
+   does> ( -- ptr n ) ;
 
 : #USER ( -- n )
    TASK-USER-NEXT @ dup 0= if drop TASK-USER-BASE then ;
@@ -469,13 +470,13 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
    SLOT-GEN CODEGEN:RESET
    s" : " SLOT-GEN CODEGEN:APPEND-STRING
    name nameu SLOT-GEN CODEGEN:APPEND-STRING
-   s"  ( -- ptr a ) data-base " SLOT-GEN CODEGEN:APPEND-STRING
+   s"  ( -- ptr n ) data-base " SLOT-GEN CODEGEN:APPEND-STRING
    off SLOT-GEN CODEGEN:APPEND-DECIMAL
    s"  + ;" SLOT-GEN CODEGEN:APPEND-STRING
-   SLOT-GEN CODEGEN:CONTENTS TDECL-EVAL-XT
+   SLOT-GEN CODEGEN:CONTENTS INCLUDE-EVALUATE
    next ;
 
-: HIS ( ptr a ptr a -- ptr a ) {: tcb:ptr cur:ptr :}
+: HIS ( ptr n ptr n -- ptr n ) {: tcb:ptr cur:ptr :}
    cur data-base - tcb TCB.REGION @ + ;
 
 \ CREATE/DOES> publishes owner-tracked pthread mutex storage, shared by every
@@ -484,34 +485,34 @@ SLOT-GEN-CAP CODEGEN:BUFFER SLOT-GEN
 TRUSTED: FACILITY ( -- )
    TASK-ALIGN8
    create TASK-FACILITY-BYTES allot
-   does> ( -- ptr a ) ;
+   does> ( -- ptr n ) ;
 
-: FACILITY-OWNER ( ptr a -- ptr a )
+: FACILITY-OWNER ( ptr n -- ptr n )
    TASK-FACILITY-OWNER-OFF + ;
 
-: FACILITY-MUTEX ( ptr a -- ptr a )
+: FACILITY-MUTEX ( ptr n -- ptr n )
    TASK-FACILITY-MUTEX-OFF + ;
 
 : TASK-OWNER ( -- n )
    TASK-SELF-N dup 0= if drop data-base FFI:>CELL then ;
 
-: FACILITY-OWNER@ ( ptr a -- n )
+: FACILITY-OWNER@ ( ptr n -- n )
    FACILITY-OWNER atomic@ ;
 
-: FACILITY-OWNER! ( n ptr a -- )
+: FACILITY-OWNER! ( n ptr n -- )
    FACILITY-OWNER atomic! ;
 
-: FACILITY-INIT ( ptr a -- )
+: FACILITY-INIT ( ptr n -- )
    0 over FACILITY-OWNER!
    FACILITY-MUTEX 0 MUTEX-INIT-CALL TASK-RC0 ;
 
-: GET ( ptr a -- ) {: f:ptr :}
+: GET ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner = if exit then
    f FACILITY-MUTEX MUTEX-LOCK-CALL TASK-RC0
    owner f FACILITY-OWNER! ;
 
-: RELEASE ( ptr a -- ) {: f:ptr :}
+: RELEASE ( ptr n -- ) {: f:ptr :}
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner <> if exit then
    0 f FACILITY-OWNER!
@@ -524,13 +525,13 @@ TASK-MIN-STACK constant MIN-STACK
 : TASK ( n -- )
    TASK ;
 
-: PREPARE ( ptr a -- )
+: PREPARE ( ptr n -- )
    PREPARE ;
 
-: ACTIVATE ( n ptr a -- )
+: ACTIVATE ( [ -- ] ptr n -- )
    ACTIVATE ;
 
-: SELF ( -- ptr a )
+: SELF ( -- ptr n )
    TASK-SELF ;
 
 : SELF-N ( -- n )
@@ -539,13 +540,13 @@ TASK-MIN-STACK constant MIN-STACK
 : PAUSE ( -- )
    PAUSE ;
 
-: HALT ( ptr a -- )
+: HALT ( ptr n -- )
    HALT ;
 
-: KILL ( ptr a -- )
+: KILL ( ptr n -- )
    TASK-KILL ;
 
-: DONE? ( ptr a -- bool )
+: DONE? ( ptr n -- bool )
    TASK-DONE? ;
 
 : #USER ( -- n )
@@ -554,19 +555,19 @@ TASK-MIN-STACK constant MIN-STACK
 : +USER ( n n -- n )
    +USER ;
 
-: HIS ( ptr a ptr a -- ptr a )
+: HIS ( ptr n ptr n -- ptr n )
    HIS ;
 
 : FACILITY ( -- )
    FACILITY ;
 
-: FACILITY-INIT ( ptr a -- )
+: FACILITY-INIT ( ptr n -- )
    FACILITY-INIT ;
 
-: GET ( ptr a -- )
+: GET ( ptr n -- )
    GET ;
 
-: RELEASE ( ptr a -- )
+: RELEASE ( ptr n -- )
    RELEASE ;
 
 private
@@ -578,5 +579,3 @@ public
 get-current prot-wid-add
 
 ;package
-
-;using

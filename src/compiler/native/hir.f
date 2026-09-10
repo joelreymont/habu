@@ -135,6 +135,9 @@ ENUM ctrl DERIVE eq
    bind-defer
    exec
    catch
+   tick
+   eval
+   finally
 ;ENUM
 
 \ Three actions and not two, because a peek is not a pop: `fetch-r` copies the
@@ -377,7 +380,8 @@ public
 \ a second attribute.
 0 constant ADDR-NONE
 1 constant ADDR-DATA
-ADDR-DATA constant ADDR-KIND-MAX
+2 constant ADDR-CODE
+ADDR-CODE constant ADDR-KIND-MAX
 
 \ Refused where the attribute is BUILT rather than where it is read.
 : ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
@@ -715,12 +719,13 @@ private
    c b HIR-OPCODE:RETURN NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Its one operand is the family ORDINAL, because a name cannot be a pointer -
-\ the type-family string pool is grown by doubling and moves. It carries no
-\ address, because there is exactly one trap routine tree-wide.
+\ The diagnostic is an ordinary owned string literal plus an exit code. The
+\ source compiler resolves its registry ordinal before constructing this op.
 : DEF-TRAP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b HIR-OPCODE:TRAP OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-OPERAND
    true 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE

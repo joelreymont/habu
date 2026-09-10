@@ -31,16 +31,16 @@ create TBLT-TABLE 12 cells allot
 : TBLT-CELL! ( a ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
    value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:CELL! ;
 
-: TBLT-N@ ( ptr a n n n n -- n ) {: tbl:ptr rows fields row field :}
+: TBLT-N@ ( ptr n n n n n -- n ) {: tbl:ptr rows fields row field :}
    tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:N@ ;
 
-: TBLT-N! ( n ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
+: TBLT-N! ( n ptr n n n n n -- ) {: value tbl:ptr rows fields row field :}
    value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:N! ;
 
-: TBLT-BOOL@ ( ptr a n n n n -- bool ) {: tbl:ptr rows fields row field :}
+: TBLT-BOOL@ ( ptr bool n n n n -- bool ) {: tbl:ptr rows fields row field :}
    tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:BOOL@ ;
 
-: TBLT-BOOL! ( bool ptr a n n n n -- ) {: value tbl:ptr rows fields row field :}
+: TBLT-BOOL! ( bool ptr bool n n n n -- ) {: value tbl:ptr rows fields row field :}
    value tbl rows >COUNT fields >COUNT row >IDX field >IDX TBL:BOOL! ;
 
 : TBLT-PAIR! ( ptr u8 n ptr a n n n n -- ) {: a:ptr u tbl:ptr rows fields row field :}

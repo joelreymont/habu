@@ -51,7 +51,7 @@ TRUSTED: RETIRE-AND-PERSIST ( -- )
    data-base ENGINE-SNAP-XT-CELL + @ dup 0= if
       s" snap: engine snapshot hook missing" E-SNAP-HOOK die
    then execute
-   CHECKER-SNAPSHOT-PREPARE
+   CHECKER-CAPTURE-PREPARE
    INCLUDE-SNAPSHOT-PREPARE
    PERSIST ;
 

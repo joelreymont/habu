@@ -50,25 +50,25 @@ public
 : CELL! ( a ptr a count count idx idx -- )
    FIELD ! ;
 
-: N@ ( ptr a count count idx idx -- n )
-   CELL@ ;
+: N@ ( ptr n count count idx idx -- n )
+   FIELD @ ;
 
-: N! ( n ptr a count count idx idx -- )
-   CELL! ;
+: N! ( n ptr n count count idx idx -- )
+   FIELD ! ;
 
-: BOOL@ ( ptr a count count idx idx -- bool )
-   CELL@ ;
+: BOOL@ ( ptr bool count count idx idx -- bool )
+   FIELD @ ;
 
-: BOOL! ( bool ptr a count count idx idx -- )
-   CELL! ;
+: BOOL! ( bool ptr bool count count idx idx -- )
+   FIELD ! ;
 
 private
 
 : TBL-A@ ( ptr a count count idx idx -- ptr u8 )
-   CELL@ ;
+   FIELD 0 ptr-field @ ;
 
 : TBL-A! ( ptr u8 ptr a count count idx idx -- )
-   CELL! ;
+   FIELD 0 ptr-field ! ;
 
 public
 
@@ -77,12 +77,12 @@ public
    rows row TBL-CHECK-ROW
    fields field TBL-CHECK-PAIR
    a tbl rows fields row field TBL-A!
-   u LEN>N tbl rows fields row field IDX>N 1 + >IDX N! ;
+   u LEN>N tbl BYTE-VIEW CELL-VIEW rows fields row field IDX>N 1 + >IDX N! ;
 
 : PAIR$ ( ptr a count count idx idx -- ptr u8 len ) {: tbl:ptr rows:count fields:count row:idx field:idx :}
    rows row TBL-CHECK-ROW
    fields field TBL-CHECK-PAIR
    tbl rows fields row field TBL-A@
-   tbl rows fields row field IDX>N 1 + >IDX N@ >LEN ;
+   tbl BYTE-VIEW CELL-VIEW rows fields row field IDX>N 1 + >IDX N@ >LEN ;
 
 ;package

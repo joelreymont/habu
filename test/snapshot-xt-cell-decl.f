@@ -6,7 +6,7 @@
 \ token has to be moved with the region when the image is restored. The engine
 \ finds those cells from a table it fills in where each cell's kind is DECIDED --
 \ `defer` when it allocates a dispatch cell, `is` when it stores an execution
-\ token into one, and cold boot for the three engine hook cells -- and never by
+\ token into one, and cold boot for the fixed engine hook/dispatch cells -- and never by
 \ looking at what a cell contains. This suite pins that rule against the live
 \ engine, through the real `defer` and `is` handlers, by watching the table itself
 \ (src/habu/layout.f SNAP-RELOC:XTCELL-*).
@@ -35,6 +35,7 @@ private
 
 variable N0   variable N1   variable N2   variable N3   variable N4
 variable N5   variable N6   variable N7   variable N8   variable N9
+variable P0   variable P1   variable P2
 variable FORGED-A
 variable RAW-XT
 variable HIT
@@ -50,6 +51,15 @@ variable HIT
    0 HIT !
    COUNT@ 0 ?do
       i ROW@ off = if 1 HIT ! then
+   loop
+   HIT @ 0 <> ;
+
+: PTR-LISTED? ( n -- bool ) {: off:n :}
+   0 HIT !
+   COUNT@ 0 ?do
+      i ROW@ {: row:n :}
+      row SNAP-RELOC:XTCELL-DATA-TAG and 0 <>
+      row SNAP-RELOC:XTCELL-OFF-MASK and off = and if 1 HIT ! then
    loop
    HIT @ 0 <> ;
 
@@ -77,6 +87,12 @@ variable HIT
 : TAKE7 ( -- ) COUNT@ N7 ! ;
 : TAKE8 ( -- ) COUNT@ N8 ! ;
 : TAKE9 ( -- ) COUNT@ N9 ! ;
+
+COUNT@ P0 !
+PTR-VARIABLE SCRATCH-PTR-SLOT
+COUNT@ P1 !
+PERSISTED-PTR-VARIABLE PTR-SLOT
+COUNT@ P2 !
 
 TAKE0
 
@@ -293,6 +309,14 @@ public
 
 : RUN ( -- )
    T-RESET
+   s" ordinary PTR-VARIABLE declares no relocation row" T-LABEL
+   P1 @ P0 @ T=
+   s" PERSISTED-PTR-VARIABLE declares exactly one DATA-pointer cell" T-LABEL
+   P2 @ P1 @ 1+ T=
+   s" that cell is tagged as a DATA pointer in the shared table" T-LABEL
+   PTR-SLOT data-base - PTR-LISTED? TTRUE
+   s" the structural declaration does not change its initial null value" T-LABEL
+   PTR-SLOT @ 0= TTRUE
    s" defer declares exactly one new address cell" T-LABEL
    N1 @ N0 @ 1+ T=
    s" is on an already declared cell adds no second row" T-LABEL
@@ -321,8 +345,10 @@ public
    RAW-OFF LISTED? 0= TTRUE
    s" that cell really does hold the token that was stored" T-LABEL
    RAW-XT @  ['] RAW-TARGET  T=
-   s" initialising a coordinator declares its diagnostic callback cell" T-LABEL
-   T1 @ T0 @ 1+ T=
+   s" initialising a coordinator declares its table pointer and diagnostic callback" T-LABEL
+   T1 @ T0 @ 2 + T=
+   s" the coordinator's table owner cell is tagged as a DATA pointer" T-LABEL
+   TAB-STATE data-base - PTR-LISTED? TTRUE
    s" registering a participant declares its five callback cells" T-LABEL
    T2 @ T1 @ 5 + T=
    s" a second participant declares its own row's five" T-LABEL

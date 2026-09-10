@@ -107,7 +107,7 @@ private
 : PROC-REAP-KILL-GROUP ( -- )
    0 >PID SIGKILL PROC-KILL-RAW drop ;
 
-: PROC-REAP-PFD-SLOT ( idx -- ptr a ) {: idx:idx :}
+: PROC-REAP-PFD-SLOT ( idx -- ptr n ) {: idx:idx :}
    idx IDX>N 8 * PROC-REAP-PFD + ;
 
 : PROC-REAP-PFD! ( fd n idx -- ) {: fd:fd events:n idx:idx :}

@@ -44,7 +44,7 @@ CAST: REAL-CELL ( r -- n )
 \ value the engine leaves, and one that catches whatever the compile threw.
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
-TRUSTED: EV-CATCH ( ptr u8 n -- n ) ['] EV catch ;
+: EV-CATCH ( ptr u8 n -- n ) [: 2dup EV ;] catch nip nip ;
 
 \ ---- the units under test ----------------------------------------------------
 \ Two slots, because every digest question is a question about a pair: what two

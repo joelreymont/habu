@@ -231,6 +231,17 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" SCRIPT-ARGV$\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
+\ Public ndict! may forget user definitions, but it cannot retire the sealed
+\ engine. The attack continues from already compiled code and would evaluate a
+\ reserved-package publication attempt if the dictionary sink failed open.
+: SLV-NDICT-CONTINUATION-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: SLF-NDICT-ATTACK ( -- )" SB-APPEND SLV-LF
+   s"    0 set-check 0 ndict!" SB-APPEND SLV-LF
+   S\"    s\" package TFAM public : SLF-PWN ( -- ) ; ;package\" evaluate ;" SB-APPEND SLV-LF
+   s" SLF-NDICT-ATTACK" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Direct checker signature-registry truncation (bypasses the FORGET/HIDE index
 \ guard, but forgets an engine word's checker signature so it can be redefined =
 \ spoof). The public CHECKER-USIGS-TRUNCATE-FROM rejects any post-seal call.
@@ -658,7 +669,9 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
    s" FORGET-DEFS-FROM of the script-argv tail traps" T-LABEL
    SLV-FORGET-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
    s" HIDE-DEFS-FROM of the script-argv tail traps" T-LABEL
-   SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
+   SLV-HIDE-TAIL-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL
+   s" public ndict! continuation cannot cross the engine watermark" T-LABEL
+   SLV-NDICT-CONTINUATION-FORGE$ SLV-SUBJECT SLV-ASSERT-SEAL ;
 
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL

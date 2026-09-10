@@ -1,5 +1,6 @@
 \ native-locals-scope.f - locals that open and close inside control structures.
 
+require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -262,9 +263,8 @@ package NLS-TEST
 
 private
 
-\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
-TRUSTED: DEF-RC ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+: DEF-RC ( ptr u8 n -- n )
+   NATIVE-EVAL:DEFINE-RC ;
 
 \ The ends of the signed range, where arithmetic that is right for small numbers
 \ is most likely to disagree.

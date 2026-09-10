@@ -58,18 +58,15 @@ public
 
 private
 
-\ Profiler trust rows emit ARM64 signal-context, sigaction/timer-frame, syscall,
+\ Profiler helpers emit ARM64 signal-context, sigaction/timer-frame, syscall,
 \ sampling, and primitive-publication code.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-PROF-MCTX>R21 ( -- )
    HB-TARGET-LINUX? IF 21 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
    21 4 MCTX-OFF LDR, ;
-s" c-prof-mctx>r21" s" --" TRUST
 
 : C-PROF-PC>R9 ( -- )
    HB-TARGET-LINUX? IF 9 21 LINUX-MCTX-PC-OFF LDR, exit THEN
    9 21 MACOS-MCTX-PC-OFF LDR, ;
-s" c-prof-pc>r9" s" --" TRUST
 
 \ Attribute the interrupted pc FIRST (a dict word's counter or PROF-OTHER), THEN
 \ bump PROF-TOT once and test the limit, so every delivered sample is counted:
@@ -110,31 +107,25 @@ private
    THEN
    9 SP 8 STR,
    10 MACOS-SA-PROF-FLAGS MOVZ,  10 10 32 LSLI,  10 SP 16 STR, ;
-s" c-prof-sigaction-frame" s" --" TRUST
 
 : C-PROF-SIGACTION ( -- )
    0 SIGALRM MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,
    HB-TARGET-LINUX? IF 3 LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
-s" c-prof-sigaction" s" --" TRUST
 
 : C-PROF-SIGACTION-DONE ( -- )
    SP SP 32 ADDI, ;
-s" c-prof-sigaction-done" s" --" TRUST
 
 : C-PROF-TIMER-FRAME ( -- )
    SP SP 32 SUBI,
    9 0 MOVZ,   9 SP 0 STR,  10 1000 MOVZ,  10 SP 8 STR,
    9 SP 16 STR,  10 SP 24 STR, ;
-s" c-prof-timer-frame" s" --" TRUST
 
 : C-PROF-TIMER ( -- )
    0 0 MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,  NR-SETITIMER SYS, ;
-s" c-prof-timer" s" --" TRUST
 
 : C-PROF-TIMER-DONE ( -- )
    SP SP 32 ADDI, ;
-s" c-prof-timer-done" s" --" TRUST
 
 : BPROF-ON ( -- )
    LBL LBL {: zl zd :}
@@ -157,7 +148,6 @@ public
 
 : EMIT-PROF-PRIMS ( -- )
    s" prof-on" ['] BPROF-ON FPRIM-L  s" prof-report" ['] BPROF-REPORT FPRIM-L ;
-s" emit-prof-prims" s" --" TRUST
 
 ;using
 

@@ -79,7 +79,6 @@ variable SLEN  variable SPOS  variable STEPPING
 : SRD-LINE ( -- ptr u8 n )  STEPPING @ IF S-NEXT-TOK ELSE RD-LINE THEN ;
 
 : S-INSTALL ( -- )
-   TTY? IF
-      [: SRD-LINE ;] is REPL-READ
-      REPL-ENABLE THEN ;
+   [: SRD-LINE ;] is REPL-READ
+   REPL-ENABLE ;
 S-INSTALL

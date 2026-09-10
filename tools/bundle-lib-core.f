@@ -76,13 +76,13 @@ variable BL-RD-N
       1+
    repeat drop BL-TRUE ;
 
-: BL-BUF+ ( ptr u8 n ptr u8 n ptr a -- ) {: src:ptr u:n dst:ptr cap:n lenp:ptr :}
+: BL-BUF+ ( ptr u8 n ptr u8 n ptr n -- ) {: src:ptr u:n dst:ptr cap:n lenp:ptr :}
    u 0 < if s" bundle-lib: negative length" BL-INTERNAL-RC BL-DIE then
    lenp @ u + cap > if s" bundle-lib: path too long" BL-INTERNAL-RC BL-DIE then
    src dst lenp @ + u BL-BYTE-COPY
    lenp @ u + lenp ! ;
 
-: BL-BUF-C+ ( n ptr u8 n ptr a -- ) {: c:n dst:ptr cap:n lenp:ptr :}
+: BL-BUF-C+ ( n ptr u8 n ptr n -- ) {: c:n dst:ptr cap:n lenp:ptr :}
    lenp @ 1 + cap > if s" bundle-lib: path too long" BL-INTERNAL-RC BL-DIE then
    c dst lenp @ + c!
    lenp @ 1+ lenp ! ;

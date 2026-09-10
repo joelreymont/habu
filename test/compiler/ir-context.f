@@ -16,8 +16,7 @@ require src/compiler/ir/context.f
 package IR-CTX-TEST
 private
 
-$80000 constant TMAP-BYTES           \ pins the context mapping size
-$80000 128 - constant TSCR-CAP       \ pins the scratch capacity behind the header
+$80000 constant TMAP-BYTES           \ independent allocation probe size
 64 constant TDEPTH-MAX               \ pins the registry capacity
 
 \ ---- fixtures ----------------------------------------------------------------
@@ -218,19 +217,19 @@ $80000 128 - constant TSCR-CAP       \ pins the scratch capacity behind the head
    BND [: SCR-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 24 T= TTRUE TTRUE ;
 
-: SCR-CAP-BODY ( IR-CTX:ctx -- n )
-   dup TSCR-CAP IR-CTX:SCRATCH-TAKE 2drop
-   IR-CTX:SCRATCH-USED ;
-
-: SCR-OVER-BODY ( IR-CTX:ctx -- )
-   dup TSCR-CAP 8 - IR-CTX:SCRATCH-TAKE 2drop
-   16 IR-CTX:SCRATCH-TAKE 2drop ;
-
-: SCR-OVER ( -- )
-   BND [: SCR-OVER-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SCR-GROW-BODY ( IR-CTX:ctx -- bool n ) {: c:IR-CTX:ctx :}
+   c 5 IR-CTX:SCRATCH-TAKE drop {: a:ptr :}
+   $5A a c!
+   c $200000 IR-CTX:SCRATCH-TAKE drop {: b:ptr :}
+   $6B b c! $7C b $1FFFFF + c!
+   c $300000 IR-CTX:SCRATCH-TAKE drop {: d:ptr :}
+   $8D d c! $9E d $2FFFFF + c!
+   a c@ $5A = b c@ $6B = and b $1FFFFF + c@ $7C = and
+   d c@ $8D = and d $2FFFFF + c@ $9E = and
+   c IR-CTX:SCRATCH-USED ;
 
 : SCR-HUGE-BODY ( IR-CTX:ctx -- )
-   TMAP-BYTES IR-CTX:SCRATCH-TAKE 2drop ;
+   $7FFFFFFFFFFFFFFF IR-CTX:SCRATCH-TAKE 2drop ;
 
 : SCR-HUGE ( -- )
    BND [: SCR-HUGE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -248,11 +247,9 @@ $80000 128 - constant TSCR-CAP       \ pins the scratch capacity behind the head
    BND [: SCR-NEG-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : SCR-LIMIT-CASES ( -- )
-   s" scratch fills exactly to the mapping capacity" T-LABEL
-   BND [: SCR-CAP-BODY ;] IR-CTX:WITH-CONTEXT TSCR-CAP T=
-   s" a request past the remaining capacity rejects" T-LABEL
-   [: SCR-OVER ;] E-IR-CTX-SCRATCH TTHROWSQ
-   s" a request past the whole mapping rejects" T-LABEL
+   s" scratch growth preserves earlier spans and meters every allocation" T-LABEL
+   BND [: SCR-GROW-BODY ;] IR-CTX:WITH-CONTEXT $500008 T= TTRUE
+   s" a request that cannot include alignment and a header rejects" T-LABEL
    [: SCR-HUGE ;] E-IR-CTX-SCRATCH TTHROWSQ
    s" a zero-byte request rejects" T-LABEL
    [: SCR-ZERO ;] E-IR-CTX-SIZE TTHROWSQ
@@ -389,6 +386,8 @@ variable ABANDONED
 
 : THROW-BODY ( IR-CTX:ctx -- )
    dup IR-CTX:SERIAL ABANDONED !
+   dup $200000 IR-CTX:SCRATCH-TAKE drop $5A swap c!
+   dup $300000 IR-CTX:SCRATCH-TAKE drop $6B swap c!
    IR-CTX:SOURCES@ ;
 
 : THROW-RUN ( -- )

@@ -3,50 +3,43 @@
 \ typed empty result, and bounded temporary-path scratch.
 \ Retirement: habu-raw-self-path-4514ffd3.
 
-data-base constant ENV-DATA
+PTR-VARIABLE ENV-DATA-PTR
+data-base ENV-DATA-PTR !
+: ENV-DATA ( -- ptr n ) ENV-DATA-PTR @ ;
 $2D constant ENV-DASH
-s" ENV-DATA" s" -- ptr n" TRUST
-s" ENV-DASH" s" -- n" TRUST
 
 : ARGC ( -- n )
    ENV-DATA ARGC-CELL + @ ;
-s" ARGC" s" -- n" TRUST
 
-TRUSTED: ARGV-BASE ( -- ptr ptr u8 )
-   ENV-DATA ARGV-CELL + @ ;
+: ARGV-BASE ( -- ptr ptr u8 )
+   ENV-DATA ARGV-CELL CELL / ptr-field @ ;
 
 : ARGV ( n -- ptr u8 )
    ARGV-BASE swap ptr-field @ ;
 
-TRUSTED: ENVP-BASE ( -- ptr ptr u8 )
-   ENV-DATA ENVP-CELL + @ ;
+: ENVP-BASE ( -- ptr ptr u8 )
+   ENV-DATA ENVP-CELL CELL / ptr-field @ ;
 
 : ENVP ( n -- ptr u8 )
    ENVP-BASE swap ptr-field @ ;
 
 : ZBYTE@ ( ptr u8 n -- u8 )
    + c@ ;
-s" ZBYTE@" s" ptr u8 n -- u8" TRUST
 
 : ZBYTE! ( u8 ptr u8 n -- )
    + c! ;
-s" ZBYTE!" s" u8 ptr u8 n --" TRUST
 
 : ZPTR+ ( ptr u8 n -- ptr u8 )
    + ;
-s" ZPTR+" s" ptr u8 n -- ptr u8" TRUST
 
 : ZLEN ( ptr u8 -- n )
    0 begin 2dup ZBYTE@ 0= 0= while 1 + repeat swap drop ;
-s" ZLEN" s" ptr u8 -- n" TRUST
 
-: ARGV$ ( i -- a u )
+: ARGV$ ( n -- ptr u8 n )
    ARGV dup ZLEN ;
-s" ARGV$" s" n -- ptr u8 n" TRUST
 
 : ENV-FALSE ( -- bool )
    0 0= 0= ;
-s" ENV-FALSE" s" -- bool" TRUST
 
 variable ENV-Z
 variable ENV-A
@@ -74,7 +67,6 @@ variable ENV-U
    ENV-U ! ENV-A! ENV-Z!
    ENV-U @ 0 ?do ENV-Z@ i ZBYTE@ ENV-A@ i ZBYTE@ = 0= if unloop ENV-FALSE exit then loop
    ENV-Z@ ENV-U @ ZBYTE@ $3D = ;
-s" ENV=?" s" ptr u8 ptr u8 n -- bool" TRUST
 
 TRUSTED: NULL$ ( -- ptr u8 n )
    0 0 ;
@@ -99,10 +91,8 @@ variable ENV-QU
       1 +
    repeat
    drop NULL$ ;
-s" GETENV" s" ptr u8 n -- ptr u8 n" TRUST
 
 $100 constant TMP-PATH-CAP
-s" TMP-PATH-CAP" s" -- n" TRUST
 create TPB TMP-PATH-CAP allot
 variable TPP
 variable TPQ
@@ -111,7 +101,6 @@ variable TPU
 
 : TPP@ ( -- ptr u8 )
    TPP @ ;
-s" TPP@" s" -- ptr u8" TRUST
 
 : TPS-FIELD ( -- ptr ptr u8 )
    TPS 0 ptr-field ;
@@ -124,11 +113,9 @@ s" TPP@" s" -- ptr u8" TRUST
 
 : TMP-PATH-CHECK ( n -- )
    TMP-PATH-CAP > if s" env: TMP-PATH exceeds buffer" 76 die then ;
-s" TMP-PATH-CHECK" s" n --" TRUST
 
 : TMP-PATH-COPY-SRC ( ptr u8 n -- )
    0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;
-s" TMP-PATH-COPY-SRC" s" ptr u8 n --" TRUST
 
 : TMP-PATH ( ptr u8 n -- ptr u8 n )
    TPU ! TPS!
@@ -138,4 +125,9 @@ s" TMP-PATH-COPY-SRC" s" ptr u8 n --" TRUST
    $2F TPB TPQ @ ZBYTE!
    TPS@ TPU @ TMP-PATH-COPY-SRC
    TPB TPQ @ 1 + TPU @ + ;
-s" TMP-PATH" s" ptr u8 n -- ptr u8 n" TRUST
+
+\ Clear transient environment and path cursors before capturing an image.
+: ENV-SNAPSHOT-PREPARE ( -- )
+   NULL$ drop ENV-Z!  NULL$ drop ENV-A!  0 ENV-U !
+   NULL$ drop ENV-QA!  0 ENV-QU !
+   NULL$ drop TPP !  0 TPQ !  NULL$ drop TPS!  0 TPU ! ;

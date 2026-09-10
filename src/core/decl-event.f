@@ -145,8 +145,8 @@ TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
 8 constant DEV-CAP-INIT           \ small seed; grows geometrically (doubles) on demand
 variable DEV-CAP-V   DEV-CAP-INIT DEV-CAP-V !
 create DEV-A-BOOT   DEV-CAP-INIT DEV-REC * allot
-variable DEV-A-P    DEV-A-BOOT DEV-A-P !
-: DEV-BASE ( -- ptr a ) DEV-A-P @ ;
+PERSISTED-PTR-VARIABLE DEV-A-P    DEV-A-BOOT DEV-A-P !
+: DEV-BASE ( -- ptr n ) DEV-A-P @ ;
 
 variable DEV-N        \ provisional event high-water (arena end, in records)
 variable DEV-PUB-N    \ published event count; reflection reads [0, DEV-PUB-N)
@@ -169,11 +169,11 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
    DEV-N @ DEV-CAP-V @ < IF exit THEN
    DEV-N @ 1 + DEV-GROW ;
 
-: DEV-ROW ( n -- ptr a ) {: id:n :}     \ address of provisional event `id`
+: DEV-ROW ( n -- ptr n ) {: id:n :}     \ address of provisional event `id`
    id 0 < IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-N @ >= IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-REC * DEV-BASE + ;
-: DEV-REC@ ( n -- ptr a ) {: id:n :}    \ address of PUBLISHED event `id` (reflection)
+: DEV-REC@ ( n -- ptr n ) {: id:n :}    \ address of PUBLISHED event `id` (reflection)
    id 0 < IF s" decl-event: bad published event id" DEV-BUG-RC die THEN
    id DEV-PUB-N @ >= IF s" decl-event: bad published event id" DEV-BUG-RC die THEN
    id DEV-REC * DEV-BASE + ;
@@ -211,14 +211,14 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
 4 constant DEV-TX-CAP-INIT
 variable DEV-TX-CAP-V   DEV-TX-CAP-INIT DEV-TX-CAP-V !
 create DEV-TX-BOOT   DEV-TX-CAP-INIT DEV-TX-REC * allot
-variable DEV-TX-P    DEV-TX-BOOT DEV-TX-P !
+PERSISTED-PTR-VARIABLE DEV-TX-P    DEV-TX-BOOT DEV-TX-P !
 variable DEV-TX-DEPTH
 variable DEV-TX-SERIAL
 
 0 constant DEV-TX-OPEN
 1 constant DEV-TX-PUBLISHED
 
-: DEV-TX-BASE ( -- ptr a ) DEV-TX-P @ ;
+: DEV-TX-BASE ( -- ptr n ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
    DEV-TX-CAP-V @ 2 * {: nc:n :}
    DEV-TX-P  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  DEV-REG-GROW1
@@ -226,8 +226,8 @@ variable DEV-TX-SERIAL
 : DEV-TX-ENSURE ( -- )
    DEV-TX-DEPTH @ DEV-TX-CAP-V @ < IF exit THEN
    DEV-TX-GROW ;
-: DEV-TX-AT ( n -- ptr a ) DEV-TX-REC * DEV-TX-BASE + ;
-: DEV-TX-TOP ( -- ptr a )
+: DEV-TX-AT ( n -- ptr n ) DEV-TX-REC * DEV-TX-BASE + ;
+: DEV-TX-TOP ( -- ptr n )
    DEV-TX-DEPTH @ 0= IF E-DEV-TX throw THEN
    DEV-TX-DEPTH @ 1 - DEV-TX-AT ;
 : DEV-TX-REQUIRE ( n -- ) DEV-TX-TOP DEVTX.TOK @ <> IF E-DEV-TX throw THEN ;
@@ -523,7 +523,7 @@ variable DEV-TX-SERIAL
 \ A live frame is always either open or reversibly committed — the only two
 \ states DEV-OPEN and DEV-COMMIT set — and both roll back the same way, so there
 \ is no third value to reject here.
-: DEV-FRAME-RESTORE ( ptr a -- ) {: r:ptr :}   \ every watermark one frame owns
+: DEV-FRAME-RESTORE ( ptr n -- ) {: r:ptr :}   \ every watermark one frame owns
    r DEVTX.EVN @ DEV-N !
    r DEVTX.FLDORD @ DEV-FLD-ORD !
    r DEVTX.VARORD @ DEV-VAR-ORD !
@@ -602,10 +602,10 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
 2 constant DEV-PART-REC          \ cells per depth: event token, then field token
 0 constant DEV-NO-TOKEN          \ slot sentinel; DEV-OPEN never mints a token <= 0
 create DEV-PART-BASE-BOOT DEV-PART-CAP-INIT DEV-PART-REC * cells allot
-PTR-VARIABLE DEV-PART-BASE-P   DEV-PART-BASE-BOOT DEV-PART-BASE-P !
+PERSISTED-PTR-VARIABLE DEV-PART-BASE-P   DEV-PART-BASE-BOOT DEV-PART-BASE-P !
 variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 
-: DEV-PART-BASE ( -- ptr a ) DEV-PART-BASE-P @ ;
+: DEV-PART-BASE ( -- ptr n ) DEV-PART-BASE-P @ ;
 
 : DEV-PART-GROW ( -- )
    DEV-PART-CAP @ 2 * {: nc:n :}
@@ -618,10 +618,10 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
    GENERATED-DECL:DEPTH DEV-PART-CAP @ <= IF EXIT THEN
    DEV-PART-GROW ;
 
-: DEV-PART-SLOT ( -- ptr a )
+: DEV-PART-SLOT ( -- ptr n )
    GENERATED-DECL:DEPTH 1 - DEV-PART-REC * cells DEV-PART-BASE + ;
-: DEV-PART-TOK-SLOT ( -- ptr a ) DEV-PART-SLOT ;
-: DEV-PART-FLD-SLOT ( -- ptr a ) DEV-PART-SLOT 1 cells + ;
+: DEV-PART-TOK-SLOT ( -- ptr n ) DEV-PART-SLOT ;
+: DEV-PART-FLD-SLOT ( -- ptr n ) DEV-PART-SLOT 1 cells + ;
 
 : DEV-PART-CLEAR ( -- )
    DEV-NO-TOKEN DEV-PART-TOK-SLOT !

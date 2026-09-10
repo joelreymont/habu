@@ -40,10 +40,10 @@ variable PROC-ARGV-BUF-A
    0 >COUNT PROC-ARGV-N !
    0 >OFF PROC-ARGV-OFF ! ;
 
-: PROC-ARGV-SLOT ( idx -- ptr a ) {: idx :}
+: PROC-ARGV-SLOT ( idx -- ptr ptr u8 ) {: idx :}
    idx IDX>N 0 < if E-PROC-OUTPUT throw then
    idx IDX>N PROC-ARGV-MAX > if E-PROC-OUTPUT throw then
-   idx IDX>N cells PROC-ARGV-TABLE + ;
+   PROC-ARGV-TABLE idx IDX>N ptr-field ;
 
 : PROC-ARGV-CHECK-EXTRA ( -- )
    PROC-ARGV-N @ COUNT>N PROC-ARGV-MAX 1- >= if E-PROC-OUTPUT throw then ;
@@ -62,12 +62,12 @@ variable PROC-ARGV-BUF-A
    PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    PROC-ARGV-N @ COUNT>N 1+ >COUNT PROC-ARGV-N ! ;
 
-: PROC-ARGV-PREPARE ( ptr u8 len -- ptr u8 ptr a ) {: path:ptr pathu :}
+: PROC-ARGV-PREPARE ( ptr u8 len -- ptr u8 ptr ptr u8 ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then
    path pathu PROC-PATHZ {: pathz:ptr :}
    pathz 0 >IDX PROC-ARGV-SLOT !
-   0 PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
-   pathz PROC-ARGV-TABLE ;
+   NULL$ drop PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
+   pathz PROC-ARGV-TABLE 0 ptr-field ;
 
 : PROC-SPAWN-ARGV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
    a u PROC-ARGV-PREPARE infd outfd errfd PROC-SPAWN-ARGV-RAW {: pid :}

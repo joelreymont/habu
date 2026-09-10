@@ -23,7 +23,6 @@
 
 require lib/test.f
 require test/checker-assert.f
-require test/compiler/ir-starve.f
 require src/compiler/ir/fun.f
 
 package IR-FUN-TEST
@@ -953,18 +952,10 @@ private
    c ap ar key 43 IR-ATTR:INT IR-FUN:ADD-FUN-ATTR
    c key sa fp fr br sr tr ar FUN-CLOSE drop ;
 
-\ ---- ending a function is one commit, at the scratch edge ----------------------
-\ Ending a function writes its attribute window into the pool and then its
-\ twelve-cell row into the function table. Each append grows its arena by
-\ taking a span from the context mapping, so ending a function at the edge of
-\ that mapping used to leave the row half written - a cell count twelve does
-\ not divide - and the function table unreadable. Both arenas are now reserved
-\ before either is touched.
-\
-\ One function already sits in the table, at fifteen of sixteen cells, so the
-\ second needs a doubled span and cannot have one. If that stops being true the
-\ close succeeds, its code is zero, and this case fails.
-: TORN-BODY ( IR-CTX:ctx -- n n n )
+\ ---- arena growth preserves committed functions -------------------------------
+\ More than the former $80000 scratch mapping can be consumed before another
+\ row grows its arena. The first function must still describe the same block.
+: GROW-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 8 8 32 RIG
    {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
@@ -972,17 +963,23 @@ private
    c key sp sr br N-HELP FUN-OPEN
    c tp tr key L-IMP V-EXPORT C-HABU FUN-DECL
    c sa key A-SPAN IR-FUN:SET-FUN-SPAN
-   c IR-STARVE:EDGE
-   c fp fr br key sr tr ar sa [: OVF-TRY ;] catch
-   {: c2:IR-CTX:ctx fp2:IR-ARENA:arena fr2:IR-ARENA:arena br2:IR-ARENA:arena key2:IR-ID:ir-module-key sr2:IR-ARENA:arena tr2:IR-ARENA:arena ar2:IR-ARENA:arena sa2:IR-ARENA:arena rc:n :}
-   rc
-   fr2 IR-FUN:FUNS
-   br2 IR-FUN:BLOCKS ;
+   c $80000 IR-CTX:SCRATCH-TAKE 2drop
+   c fp fr br key sr tr ar sa IR-FUN:END-FUN {: f1:IR-ID:ir-fun-id :}
+   key 0 IR-ID:PACK-FUN {: f0:IR-ID:ir-fun-id :}
+   fr IR-FUN:FUNS 2 T=
+   br IR-FUN:BLOCKS 1 T=
+   fr f0 IR-FUN:BLOCK-COUNT 1 T=
+   fr br key f0 0 IR-FUN:BLOCK@ IR-ID:BLOCK-LOCAL 0 T=
+   fr key f0 IR-FUN:SYMBOL@ IR-ID:SYMBOL-LOCAL
+      c sp sr key N-MAIN FN-SYM IR-ID:SYMBOL-LOCAL T=
+   fr key f1 IR-FUN:SYMBOL@ IR-ID:SYMBOL-LOCAL
+      c sp sr key N-HELP FN-SYM IR-ID:SYMBOL-LOCAL T=
+   fr f1 IR-FUN:LINKAGE@ IR--FUN-LINKAGE:IMPORTED IR--FUN-LINKAGE:EQ TTRUE
+   fr f1 IR-FUN:BLOCK-COUNT 0 T= ;
 
-: TORN-CASE ( -- )
-   s" a close refused for want of scratch leaves the function store whole" T-LABEL
-   BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= E-IR-CTX-SCRATCH T= ;
+: GROW-CASE ( -- )
+   s" growing the function store preserves old and new rows" T-LABEL
+   BND [: GROW-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : OVF-BLK-RUN ( -- )   BND [: OVF-BLK-BODY ;] IR-CTX:WITH-CONTEXT ;
 : OVF-ATT-RUN ( -- )   BND [: OVF-ATT-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1203,7 +1200,7 @@ public
    BND [: HARNESS-OWNER-C ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-CAP ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-OVF ;] IR-CTX:WITH-CONTEXT
-   TORN-CASE
+   GROW-CASE
    BND [: HARNESS-FROZEN ;] IR-CTX:WITH-CONTEXT
    TD-FRESH-CASE
    CHECKER-CASES

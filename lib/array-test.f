@@ -50,7 +50,7 @@ create AT-WORK 5 cells allot
 : AT-A! ( a ptr a n n -- ) {: value arr:ptr len ix :}
    value arr len A-LEN ix A-IDX A! ;
 
-: AT-A+! ( n ptr a n n -- ) {: delta arr:ptr len ix :}
+: AT-A+! ( n ptr n n n -- ) {: delta arr:ptr len ix :}
    delta arr len A-LEN ix A-IDX A+! ;
 
 : AT-A-SWAP ( ptr a n n n -- ) {: arr:ptr len ix jx :}
@@ -381,7 +381,7 @@ create AT-WORK 5 cells allot
    AT-WORK 1 0 AT-A@ 14 T=
    1 -2 3 0 5 AT-WORK5
    AT-WORK 5 [: dup * ;] AT-A-MAP!
-   [: AT-WORK5@ ;] [: 1 4 9 0 25 ;] SNAP=
+   AT-WORK5@ 25 T= 0 T= 9 T= 4 T= 1 T=
    [: AT-AMAP-NEG ;] catch E-A-BOUNDS T=
    44 AT-WORK1
    AT-WORK 0 [: swap IDX>N + ;] AT-A-MAPI!
@@ -391,7 +391,7 @@ create AT-WORK 5 cells allot
    AT-WORK 1 0 AT-A@ 7 T=
    10 10 10 10 10 AT-WORK5
    AT-WORK 5 [: swap IDX>N + ;] AT-A-MAPI!
-   [: AT-WORK5@ ;] [: 10 11 12 13 14 ;] SNAP=
+   AT-WORK5@ 14 T= 13 T= 12 T= 11 T= 10 T=
    [: AT-AMAPI-NEG ;] catch E-A-BOUNDS T= ;
 
 : AT-TEST-FOLD-COMBINATORS ( -- )
@@ -413,7 +413,7 @@ create AT-WORK 5 cells allot
    AT-WORK 1 0 AT-A@ 14 T=
    3 1 4 1 5 AT-WORK5
    AT-WORK 5 0 [: + ;] AT-A-SCAN!
-   [: AT-WORK5@ ;] [: 3 4 8 9 14 ;] SNAP=
+   AT-WORK5@ 14 T= 9 T= 8 T= 4 T= 3 T=
    [: AT-ASCAN-NEG ;] catch E-A-BOUNDS T=
    91 AT-WORK1
    AT-WORK 0 [: + ;] AT-A-SCAN1!
@@ -423,17 +423,18 @@ create AT-WORK 5 cells allot
    AT-WORK 1 0 AT-A@ 4 T=
    3 1 4 1 5 AT-WORK5
    AT-WORK 5 [: + ;] AT-A-SCAN1!
-   [: AT-WORK5@ ;] [: 3 4 8 9 14 ;] SNAP=
+   AT-WORK5@ 14 T= 9 T= 8 T= 4 T= 3 T=
    [: AT-ASCAN1-NEG ;] catch E-A-BOUNDS T= ;
 
 : AT-TEST-INDEX-COMBINATORS ( -- )
    1 2 3 4 5 AT-WORK5
    AT-WORK 5 0 0 AT-A-REVERSE-RANGE!
-   [: AT-WORK 5 0 AT-A@ AT-WORK 5 4 AT-A@ ;] [: 1 5 ;] SNAP=
+   AT-WORK 5 0 AT-A@ 1 T=
+   AT-WORK 5 4 AT-A@ 5 T=
    AT-WORK 5 2 1 AT-A-REVERSE-RANGE!
-   [: AT-WORK5@ ;] [: 1 2 3 4 5 ;] SNAP=
+   AT-WORK5@ 5 T= 4 T= 3 T= 2 T= 1 T=
    AT-WORK 5 1 3 AT-A-REVERSE-RANGE!
-   [: AT-WORK5@ ;] [: 1 4 3 2 5 ;] SNAP=
+   AT-WORK5@ 5 T= 2 T= 3 T= 4 T= 1 T=
    [: AT-AREVERSE-RANGE-OVERRUN ;] catch E-A-BOUNDS T=
    AT-EMPTY 0 [: 4 = ;] AT-A-FIND-INDEX -1 T=
    AT-ONE 1 [: 42 = ;] AT-A-FIND-INDEX 0 T=

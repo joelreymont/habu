@@ -37,20 +37,3 @@ TRUSTED: LINUX-VA>PTR ( va -- ptr n ) ;
 
 : DLSYM-SLOT ( -- ptr n )
    DLSYM-SLOT-VA LINUX-VA>PTR ;
-
-s" IMAGE-TEXT-SIZE-OFF" s" -- n" TRUST
-s" IMAGE-TEXT-CONTENT-ADJ" s" -- n" TRUST
-s" IMAGE-TEXT-TRAILER-ADJ" s" -- n" TRUST
-s" DATA-VA" s" -- va" TRUST
-s" DATA-SIZE" s" -- n" TRUST
-s" CODE-OFF" s" -- n" TRUST
-s" LINUX-DLOPEN-SLOT-OFF" s" -- n" TRUST
-s" LINUX-DLSYM-SLOT-OFF" s" -- n" TRUST
-s" LINUX-IMAGE-BASE" s" -- n" TRUST
-s" LINUX-TEXT-CELL" s" -- ptr n" TRUST
-s" LINUX-TEXT-SIZE" s" -- n" TRUST
-s" LINUX-RW-VA" s" -- va" TRUST
-s" DLOPEN-SLOT-VA" s" -- va" TRUST
-s" DLSYM-SLOT-VA" s" -- va" TRUST
-s" DLOPEN-SLOT" s" -- ptr n" TRUST
-s" DLSYM-SLOT" s" -- ptr n" TRUST

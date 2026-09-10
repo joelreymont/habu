@@ -47,12 +47,12 @@ package CODEGEN
 private
 
 \ header cell layout: [cap][cap-err][val-err][len] then cap raw bytes.
-: CB-CAP@  ( ptr a -- n )  @ ;
-: CB-CERR@ ( ptr a -- n )  cell+ @ ;
-: CB-VERR@ ( ptr a -- n )  2 cells + @ ;
-: CB-LEN@  ( ptr a -- n )  3 cells + @ ;
-: CB-LEN!  ( n ptr a -- )  3 cells + ! ;
-: CB-DATA  ( ptr a -- ptr u8 )  4 cells + BYTE-VIEW ;   \ byte storage past the header
+: CB-CAP@  ( ptr n -- n )  @ ;
+: CB-CERR@ ( ptr n -- n )  cell+ @ ;
+: CB-VERR@ ( ptr n -- n )  2 cells + @ ;
+: CB-LEN@  ( ptr n -- n )  3 cells + @ ;
+: CB-LEN!  ( n ptr n -- )  3 cells + ! ;
+: CB-DATA  ( ptr n -- ptr u8 )  4 cells + BYTE-VIEW ;   \ byte storage past the header
 
 \ Compile the four header cells and leave cap for the trailing `allot`. A `{: :}`
 \ locals group inside a `create ... does>` definer body wedges the definer, so the
@@ -67,7 +67,7 @@ public
 \ word pushing the buffer descriptor. Use this only to preserve a legacy caller's
 \ existing throw code while migrating an existing buffer onto this module.
 : BUFFER-E ( n n n -- )   \ cap cap-err val-err --
-   create CB-HEADER, allot  does> ( -- ptr a ) ;
+   create CB-HEADER, allot  does> ( -- ptr n ) ;
 
 \ Mint a codegen buffer using the module's own named error codes (E-CG-CAP on an
 \ overflowing append, E-CG-VALUE on a negative decimal). The form new code should use.
@@ -75,25 +75,25 @@ public
    E-CG-CAP E-CG-VALUE BUFFER-E ;
 
 \ Discard a buffer's contents, keeping its capacity.
-: RESET ( ptr a -- )  0 swap CB-LEN! ;
+: RESET ( ptr n -- )  0 swap CB-LEN! ;
 
 \ Append one byte; overflow throws the buffer's capacity error code.
-: APPEND-BYTE ( n ptr a -- ) {: c:n d:ptr :}
+: APPEND-BYTE ( n ptr n -- ) {: c:n d:ptr :}
    d CB-LEN@ 1 + d CB-CAP@ > if d CB-CERR@ throw then
    c  d CB-DATA d CB-LEN@ +  c!
    d CB-LEN@ 1 + d CB-LEN! ;
 
 \ Append a counted byte string.
-: APPEND-STRING ( ptr u8 n ptr a -- ) {: a:ptr u:n d:ptr :}
+: APPEND-STRING ( ptr u8 n ptr n -- ) {: a:ptr u:n d:ptr :}
    0 begin dup u < while  dup a + c@ d APPEND-BYTE  1 +  repeat drop ;
 
 \ Append a non-negative decimal; a negative value throws the buffer's value error
 \ code (fail closed - never emit garbage digits for a negative).
-: APPEND-DECIMAL ( n ptr a -- ) {: v:n d:ptr :}
+: APPEND-DECIMAL ( n ptr n -- ) {: v:n d:ptr :}
    v 0 < if d CB-VERR@ throw then
    v 10 >= if v 10 / d recurse then  v 10 mod [char] 0 + d APPEND-BYTE ;
 
 \ The buffer's current contents as a counted byte string.
-: CONTENTS ( ptr a -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;
+: CONTENTS ( ptr n -- ptr u8 n ) {: d:ptr :}  d CB-DATA d CB-LEN@ ;
 
 ;package

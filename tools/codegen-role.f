@@ -3,7 +3,7 @@
 \ Replaces the last BF-PREFLIGHT textual asserts (dot habu-preflight-codegen-role):
 \ same-type codegen roles the checker cannot express are proven against the REAL
 \ emitters instead of by source substring match. The word under check is
-\ extracted from the actual stage source, certified with CHECK!, compiled
+\ extracted from the actual stage source, checked as a candidate, compiled
 \ against the live arm64 emitter primitives (asm.f/icode.f/mnem.f - the trio
 \ the object-image writer drives), executed, and the emitted machine words plus
 \ fixup records are decoded and asserted:
@@ -19,10 +19,7 @@
 \
 \ Each check region compiles its extracted definitions under generation-suffixed
 \ names (SZA-I-A, CLOC-MAIN-B, ...) so repeated checks in one session never
-\ redefine a name. Dictionary rollback (test/prop-test-core.f CHK-MARK) is NOT
-\ used here: a CHECK!-certified definition that references a region variable
-\ poisons later CHECK! calls after rollback re-defines that variable (stale
-\ registry record; dot habu-check-records-go-4f62cd2e).
+\ redefine a name or reuse an earlier region's checker records.
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f.
 \ Exercised by tools/codegen-role-test.f (gate suite codegen-role).
@@ -64,26 +61,26 @@ variable CGR-WP
 : CGR-WP@ ( -- ptr u8 )
    CGR-WP 0 ptr-field @ ;
 
-: CGR-WORD@ ( n -- w )
+: CGR-WORD@ ( n -- n )
    CW@ CGR-WP 0 ptr-field !
    CGR-WP@ 0 CODE-BYTE+ c@
    CGR-WP@ 1 CODE-BYTE+ c@ 8 lshift or
    CGR-WP@ 2 CODE-BYTE+ c@ 16 lshift or
    CGR-WP@ 3 CODE-BYTE+ c@ 24 lshift or ;
 
-: CGR-STR? ( w -- bool )
+: CGR-STR? ( n -- bool )
    CGR-STR-MASK and CGR-STR-BASE = ;
 
-: CGR-STR-RT ( w -- n )
+: CGR-STR-RT ( n -- n )
    $1F and ;
 
-: CGR-STR-RN ( w -- n )
+: CGR-STR-RN ( n -- n )
    5 rshift $1F and ;
 
-: CGR-STR-OFF ( w -- n )
+: CGR-STR-OFF ( n -- n )
    10 rshift $FFF and 8 * ;
 
-: CGR-MOVZ-0? ( w -- bool )
+: CGR-MOVZ-0? ( n -- bool )
    CGR-MOVZ-0-MASK and CGR-MOVZ-0-BASE = ;
 
 \ typed STR:FIND-SUB / STR:INDEX-OF boundary: route byte-lengths through the STR:
@@ -134,7 +131,7 @@ public
      some OF IDX>N ENDOF
    ;MATCH ;
 
-: CGR-WS? ( c -- bool )
+: CGR-WS? ( n -- bool )
    dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or ;
 
 : CGR-SKIP-WS ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
@@ -174,7 +171,7 @@ variable CGR-GEN
    then
    CGR-GEN ! ;
 
-: CGR-GEN-C ( -- c )
+: CGR-GEN-C ( -- n )
    CGR-GEN @ CGR-GEN-BASE + ;
 
 \ ---- scratch buffers ----
@@ -195,7 +192,7 @@ variable CGR-SB-LEN
 : CGR-SB+ ( ptr u8 n -- )
    STR:LENGTH CGR-SB-BUF CGR-SB-CAP STR:LENGTH CGR-SB-LEN STR:BUF-APPEND ;
 
-: CGR-SB-C+ ( c -- )
+: CGR-SB-C+ ( n -- )
    CGR-SB-BUF CGR-SB-CAP STR:LENGTH CGR-SB-LEN STR:BUF-APPEND-C ;
 
 : CGR-SB$ ( -- ptr u8 n )
@@ -216,13 +213,13 @@ variable CGR-NI
    then
    CGR-NB-A 0 ptr-field @ ;
 
-: CGR-NB-C+ ( c -- )
+: CGR-NB-C+ ( n -- )
    CGR-NB-BUF CGR-NB-CAP STR:LENGTH CGR-NB-LEN STR:BUF-APPEND-C ;
 
 : CGR-NB$ ( -- ptr u8 n )
    CGR-NB-BUF CGR-NB-LEN @ LEN>N ;
 
-\ CHECK! is line-oriented: a multi-line body is rejected outright, so extracted
+\ Candidate checks are line-oriented, so extracted
 \ definitions are whitespace-normalized to one line first. Extracted emitter
 \ definitions and use-site fragments carry no `\` comments; a future one would
 \ fail the check closed, not silently pass.
@@ -246,13 +243,13 @@ variable CGR-RN3-A  variable CGR-RN3-U
 : CGR-RN-RESET ( -- )
    0 CGR-RN-N ! ;
 
-: CGR-RN-SLOT-A ( n -- ptr a )
+: CGR-RN-SLOT-A ( n -- ptr n )
    dup 0 = if drop CGR-RN0-A exit then
    dup 1 = if drop CGR-RN1-A exit then
    dup 2 = if drop CGR-RN2-A exit then
    drop CGR-RN3-A ;
 
-: CGR-RN-SLOT-U ( n -- ptr a )
+: CGR-RN-SLOT-U ( n -- ptr n )
    dup 0 = if drop CGR-RN0-U exit then
    dup 1 = if drop CGR-RN1-U exit then
    dup 2 = if drop CGR-RN2-U exit then
@@ -310,33 +307,10 @@ variable CGR-RTE
    CGR-NORM 2drop CGR-RENAME$ ;
 
 \ ---- dynamic-compile boundaries ----
-\ The checker intentionally rejects `evaluate` inside checked definitions
-\ (INCLUDE-EVALUATE precedent); extracted real-source text crosses here and any
-\ failure is renamed E-CGR-EVAL by the wrappers below. CGR-EVALUATE and
-\ CGR-CHECK! retire with habu-primitive-effect-axiom-1119f176.
-TRUSTED: CGR-EVALUATE ( ptr u8 n -- ) evaluate ;
-
-\ Checker boundary: certify an extracted definition before compiling it, the
-\ test/prop-test-core.f CHK pattern. This keeps corrupted definitions on the
-\ catchable CHECK! verdict path instead of the evaluate compile-error path
-\ (an undefined word thrown inside evaluate under catch crashes the engine
-\ natively today - dot habu-undefined-word-in-d9dc3452).
-TRUSTED: CGR-CHECK! ( ptr u8 n -- n ) CHECK! ;
-
-\ Post-certification compile: CHECK! has already registered the definition
-\ record and a checked re-compile hits strict duplicate rejection, so the
-\ certified text compiles with the hook off and the hook is reinstalled right
-\ after (test/prop-test-core.f CHK-COMPILE-CERT precedent). Leaving the hook
-\ off would compile later eval'd support definitions untyped and poison later
-\ CHECK! calls. CGR-HOOK mirrors the image's frozen session hook
-\ (src/habu/snap-lib.f SNAP-CHECK-HOOK) byte for byte.
-\ The literal `0 set-check` and hook rearm retire under TYPE-FIXES-PLAN item 26's
-\ `NO-TYPE-CHECK ... ;NO-TYPE-CHECK` block.
-TRUSTED: CGR-EVALUATE-UNCHECKED ( ptr u8 n -- ) 0 set-check evaluate ;
-TRUSTED: CGR-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> IF 70 throw THEN ;
-TRUSTED: CGR-HOOK! ( -- )
-   LOWER-CERT-HOOK:INSTALL
-   ['] CGR-HOOK set-check ;
+\ Extracted real-source text crosses this evaluation boundary; each generated
+\ definition still compiles through the normal checker hook. Failures are
+\ renamed E-CGR-EVAL by the wrapper below.
+: CGR-EVALUATE ( ptr u8 n -- ) INCLUDE-EVALUATE ;
 
 variable CGR-EV-A
 variable CGR-EV-U
@@ -356,29 +330,16 @@ variable CGR-EV-U
       E-CGR-EVAL throw
    then drop ;
 
-: CGR-EVAL-CERT-GO ( -- )
-   CGR-EV$ CGR-EVALUATE-UNCHECKED ;
-
-: CGR-EVAL-CERT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a CGR-EV-A 0 ptr-field !  u CGR-EV-U !
-   [: CGR-EVAL-CERT-GO ;] catch
-   CGR-HOOK!
-   dup 0 <> if
-      drop
-      s" codegen-role: certified definition failed to compile:" type cr
-      CGR-EV$ type cr
-      E-CGR-EVAL throw
-   then drop ;
-
-\ Definition text is `: NAME ( sig ) body ;`; CHECK! takes it without the
-\ leading `: ` and trailing ` ;` (test/prop-test-core.f CHK-BODY$ shape).
+\ Reject corrupt fixtures without publishing a checker row. The actual checked
+\ definition then produces the certificate the native compiler consumes.
+\ Candidate text omits the leading `: ` and trailing ` ;`.
 : CGR-EVAL-DEF ( ptr u8 n -- ) {: a:ptr u:n :}
-   a 2 + u 4 - CGR-CHECK! -1 <> if
+   a 2 + u 4 - CHECK-CANDIDATE! -1 <> if
       s" codegen-role: extracted definition failed the checker:" type cr
       a u type cr
       E-CGR-EVAL throw
    then
-   a u CGR-EVAL-CERT ;
+   a u CGR-EVAL ;
 
 \ ---- shared check state ----
 variable CGR-TXT-A

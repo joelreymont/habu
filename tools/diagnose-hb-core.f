@@ -82,7 +82,6 @@ variable CHECKED
    s" src/core/layout-valid.f" PREFIX-FILE
    s" src/core/check-hook.f" PREFIX-FILE
    s" src/core/cell-effects.f" PREFIX-FILE
-   s" src/core/pointer-storage-effects.f" PREFIX-FILE
    s" src/core/structures.f" PREFIX-FILE
    s" src/core/roles.f" PREFIX-FILE
    s" src/core/bytes.f" PREFIX-FILE

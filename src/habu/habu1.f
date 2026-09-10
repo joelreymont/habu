@@ -38,17 +38,15 @@ create PWID PRIM-CAP cells allot
 create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
 variable PR-A  variable PR-U  variable PR-L  variable PR-E
-variable FP-A  variable FP-U  variable FP-XT
-\ FP-XT holds the per-primitive body-emitter xt (passed as data through FP-ARGS)
-\ that FPRIM/FPRIM-L/FPRIM-WID run while assembling a primitive's machine-code
-\ body. habu1.f IS certified by the build's static scan, and executing a
-\ data-driven xt fetched from this variable is exactly the opaque-xt shape the
-\ checker now rejects (dot habu-checker-exec-of-5923c543, RSEXEC T-VAR ->
-\ E-EXEC-OPAQUE-XT). It cannot become a defer (the emitter varies per call) or a
-\ typed xt<effect> cell (this is the metabuild assembler emitting raw machine
-\ code, not typed Habu). So the one execute is confined to the named FP-EMIT
-\ boundary below: a TRUSTED: metabuild machine-code emitter, the sole standing
-\ boundary for the stored-xt-launder flip.
+variable FP-A  variable FP-U
+
+\ A primitive whose dictionary record is globally searchable but cannot be
+\ executed or ticked by ordinary source.  The sentinel lives only in this
+\ build-side registry; the emitted record carries WID 0 and DNAME-INT.
+-1 constant PRIM-GLOBAL-INT-WID
+\ Every primitive body emitter has the same Habu effect. Keep that type when
+\ selecting a different emitter for each registry row.
+defer FP-EMIT ( -- )
 : RPD@ ( -- ptr u8 ) RPD 0 ptr-field @ ;
 : PR-A@ ( -- ptr u8 ) PR-A 0 ptr-field @ ;
 : FP-A@ ( -- ptr u8 ) FP-A 0 ptr-field @ ;
@@ -94,14 +92,18 @@ public
 
 : DNAME ( n -- n ) {: idx:n :}
    idx cells PLEN + @
-   idx cells PWID + @ OWNER-API-PRI-WID = if DNAME-INT or then ;
+   idx cells PWID + @ {: wid:n :}
+   wid OWNER-API-PRI-WID =  wid PRIM-GLOBAL-INT-WID = or if DNAME-INT or then ;
+
+: WID ( n -- n )
+   cells PWID + @ dup PRIM-GLOBAL-INT-WID = if drop 0 then ;
 
 ;package
 
 variable FPL  variable FPE
 
-: FP-ARGS ( ptr u8 n n -- )
-   FP-XT !  FP-U !  FP-A ! ;
+: FP-ARGS ( ptr u8 n [ -- ] -- )
+   is FP-EMIT  FP-U !  FP-A ! ;
 
 : FP-KEEP? ( -- bool )
    FP-A@ FP-U @ KEEP? ;
@@ -109,12 +111,7 @@ variable FPL  variable FPE
 : FP-REG ( -- )
    FP-A@ FP-U @ FPL @ FPE @ REG-PRIM ;
 
-\ The sole standing boundary for the opaque-xt-execute flip: run the per-prim
-\ body emitter (a data-driven xt) to lay down raw machine code. TRUSTED: because
-\ the emitted body is not typed Habu and the emitter cannot carry a static effect.
-TRUSTED: FP-EMIT ( -- ) FP-XT @ execute ;
-
-: FPRIM ( ptr u8 n n -- )
+: FPRIM ( ptr u8 n [ -- ] -- )
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
@@ -122,7 +119,7 @@ TRUSTED: FP-EMIT ( -- ) FP-XT @ execute ;
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
-: FPRIM-L ( ptr u8 n n -- )           \ LEAF prim: no BL/BLR in body -> no x30 frame
+: FPRIM-L ( ptr u8 n [ -- ] -- )      \ LEAF prim: no BL/BLR in body -> no x30 frame
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
@@ -131,7 +128,7 @@ TRUSTED: FP-EMIT ( -- ) FP-XT @ execute ;
 
 variable FP-WID
 
-: FPRIM-WID ( ptr u8 n n n -- )
+: FPRIM-WID ( ptr u8 n [ -- ] n -- )
    FP-WID !
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
@@ -167,21 +164,18 @@ variable GD-MIN
 : GD-RECORD ( -- )                    \ record ( FPL, GD-MIN ) iff the just-registered prim was kept
    FP-KEEP? IF FPL @ GD-MIN @ GUARD-ADD THEN ;
 
-: GDEREF-L ( ptr u8 n n n -- )        \ leaf deref prim: name xt min-in
+: GDEREF-L ( ptr u8 n [ -- ] n -- )   \ leaf deref prim: name emitter min-in
    GD-MIN !  FPRIM-L  GD-RECORD ;
 
-: GDEREF-F ( ptr u8 n n n -- )        \ framed deref prim: name xt min-in
+: GDEREF-F ( ptr u8 n [ -- ] n -- )   \ framed deref prim: name emitter min-in
    GD-MIN !  FPRIM  GD-RECORD ;
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
-\ The region's write bands: open the code band over the addresses a bracket is
-\ about to write, declare each dictionary-record span and the control-flow band it
-\ also writes, close all three together, and grow the code band when emission runs
-\ past its end. The bodies are EMIT-PROT-WINDOW below; the callers are the
-\ definition, publication and patch brackets in this file and in habu2.f. The
-\ grandfathered LPROT/LPROTREC/LPROTSPAN ids stay above with the other label ids —
-\ this file's packaging debt is not something to grow, and these five are new.
+variable LREPLROUTE
+\ The region's write bands track dictionary-record, control-flow and code spans.
+\ EMIT-PROT-WINDOW supplies the bodies; definition, publication and patch
+\ brackets in this file and habu2.f are their callers.
 package PROT
 public
 variable LOPEN   variable LCLOSE   variable LGROW   variable LSPAN   variable LCF
@@ -223,7 +217,6 @@ package AOT-SIG
 public
 variable LLEN  variable LSPAN  variable LNAME
 ;package
-variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LPROTWIDQ
 variable LDPBAD   \ DP-CHECK out-of-range die target (defined in habu2.f EM-COMPILE-DIE; dot habu-dictionary-allot-past-4e5c3c2b)
 \ dict hash-index label ids: the in-place compaction BNDSET's raise leg BLs,
@@ -515,6 +508,7 @@ variable STAT-OK
 variable STAT-DONE
 variable CATCH-RES
 variable CATCH-PUSH
+variable FINALLY-DONE
 variable THROW-NOH
 variable THROW-NOREC
 variable THROW-NOREC-FB
@@ -1290,8 +1284,12 @@ variable SZA-I
 \ (HIDX:LREBUILD), so the index stays authoritative instead of being silently
 \ dropped for the rest of the process (CG-25).
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
-   LBL LBL {: keep:label done:label :}
+   LBL LBL LBL {: floor-ok:label keep:label done:label :}
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
+   14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
+   A 14 CMP,  C-CS floor-ok BCOND,
+      0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   floor-ok LBL,
    A NDICT CMP,  C-LE keep BCOND,
       NDICT A 0 ADDI,                     \ raise first: the rebuild reads the new NDICT
       HIDX:LREBUILD LABEL@ BL,
@@ -1299,6 +1297,21 @@ variable SZA-I
    keep LBL,
    NDICT A 0 ADDI,
    done LBL, ;
+
+\ Lower the dictionary and open the namespace as one engine operation. Its
+\ global DNAME-INT record is hidden from interpretation, tick, and BSWL; the
+\ real `( n -- )` checker row admits it only inside an explicit TRUSTED:
+\ boundary. TRUSTED: is authority by design (docs/registry-band.md), and the
+\ native builder keeps this reset inside one named boundary.
+: BSEEDNDICTSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                         \ ( n -- )
+   LBL {: lower:label :}
+   A NDICT CMP,  C-LT lower BCOND,
+      0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   lower LBL,
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
+   NDICT A 0 ADDI,
+   HIDX:LREBUILD LABEL@ BL,
+   9 0 MOVZ,  9 DATA SEAL-NDICT-CELL STR, ;
 
 : BEPOCHSECONDS ( -- )
    LBL TIME-OK !
@@ -1556,6 +1569,9 @@ variable SZA-I
 
 : BCHARS ( -- ) ;
 
+\ Memory views change only the checked pointee; the machine address is unchanged.
+: BADDRESSVIEW ( -- ) ;
+
 : BCHARPLUS ( -- )
    A G-POP  A A 1 ADDI, A G-PUSH ;
 
@@ -1677,6 +1693,19 @@ variable SZA-I
    notfixed LBL,
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
+
+\ Fresh anonymous storage has no prior element type. The caller chooses the
+\ pointee type; the OS boundary returns a null pointer and -1 on failure.
+: BMAPANON ( -- )                      \ ( bytes -- ptr a ior )
+   LBL {: failed:label :}
+   LBL {: done:label :}
+   1 G-POP
+   0 0 MOVZ,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,
+   4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,  C-CS failed BCOND,
+   1 0 MOVZ,  done B,
+   failed LBL,  0 0 MOVZ,  1 0 MOVN,
+   done LBL,  0 G-PUSH  1 G-PUSH ;
 
 : BMUNMAP ( -- )                   \ ( addr len -- 0|-1 ) release a mapping; span-guard the extent
    1 G-POP  0 G-POP
@@ -2392,9 +2421,10 @@ public
    10 DATA EVALREC-CELL LDR,  10 BR,                   \ x15 = code → LEVALREC (habu2.f)
    THROW-NOH LABEL@ LBL,
    LBL THROW-NOREC !  LBL THROW-NOREC-FB !  LBL THROW-NOREC-FB2 !
-   10 DATA REPLH-CELL LDR,  10 THROW-NOREC LABEL@ CBZ,   \ tty REPL: recover instead of exiting
+   LREPLROUTE LABEL@ BL,  9 THROW-NOREC LABEL@ CBZ,      \ only a live bare tty REPL may recover
    10 DATA RRECP-CELL LDR,  10 BR,
-   THROW-NOREC LABEL@ LBL,                                \ x9 = code; no handler, no REPL
+   THROW-NOREC LABEL@ LBL,
+   9 15 0 ADDI,                                           \ restore the throw code after the route's ioctl
    10 DATA UNCGH-CELL LDR,  10 THROW-NOREC-FB LABEL@ CBZ, \ reporter installed? branch with x9 = code
    10 BR,                                                 \ LUNCAUGHT (habu2.f): rc-map + report out-of-range codes
    THROW-NOREC-FB LABEL@ LBL,                             \ pre-install boot fallback: silent but never masked
@@ -2407,6 +2437,20 @@ public
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
+
+\ finally ( body cleanup -- ): preserve the body's result row on success;
+\ cleanup runs outside the body's handler so its throw supersedes that body's.
+: BFINALLY ( -- )
+   LBL FINALLY-DONE !
+   A G-POP
+   SP SP $10 SUBI,  9 SP 0 STR,
+   BCATCH
+   A G-POP  9 SP 8 STR,
+   9 SP 0 LDR,  9 BLR,
+   9 SP 8 LDR,  SP SP $10 ADDI,
+   9 FINALLY-DONE LABEL@ CBZ,
+   9 G-PUSH  BTHROW
+   FINALLY-DONE LABEL@ LBL, ;
 
 : BWORDLIST ( -- )
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
@@ -2515,6 +2559,11 @@ public
 \ on fd 2 and exit 73. Loop state stays off the write-clobbered x0-x2/x9 and
 \ re-derives the band base each iteration.
 package ENGINE-EMIT
+
+\ Read-only engine state needed while the checker is bootstrapping.
+: BSEALCAPQ ( -- )
+   9 DATA SEAL-NDICT-CELL LDR,  9 0 CMPI,
+   9 C-NE CSET,  9 31 9 SUB,  9 G-PUSH ;
 
 : BSEALCAP ( -- )
    LBL LBL LBL {: pdok pdloop pdexit :}
@@ -2771,19 +2820,21 @@ public
    SWL-END LABEL@ LBL,  RET, ;
 ;package
 
-\ `search-wl ( ptr u8 n n -- n )`: the routine above, minus one wordlist. WID
-\ OWNER-API-PRI-WID carries the registered engine-helper records ((PROT-SPAN),
-\ (LP2VEXEC)) and is never raw-searchable - test/engine-suite.f pins that no
-\ checked program can name one. The refusal belongs to the PRIMITIVE and not to
-\ the routine: the AOT seed relocates calls to those helpers by name and must
-\ search that wordlist, and it is not a checked program.
+\ `search-wl ( ptr u8 n n -- n )`: the routine above, minus one wordlist.
+\ Engine-helper WID records and DNAME-INT records are never raw-searchable: the
+\ first are private implementation entries, and the second would otherwise let
+\ `search-wl execute` bypass the interpreter/tick internal-word gate. The refusal
+\ belongs to the primitive, not WLFIND; the AOT relocator uses WLFIND directly.
 : BSWL ( -- )
-   LBL {: absent:label :}
+   LBL {: done:label :}
    2 G-POP  1 G-POP  0 G-POP
    11 0 MOVZ,
-   2 OWNER-API-PRI-WID CMPI,  C-EQ absent BCOND,
+   2 OWNER-API-PRI-WID CMPI,  C-EQ done BCOND,
    WLFIND:LENTRY LABEL@ BL,
-   absent LBL,  11 G-PUSH ;
+   12 done CBZ,
+   9 12 16 LDR,  9 9 DNAME-INT ANDI,  9 done CBZ,
+   11 0 MOVZ,
+   done LBL,  11 G-PUSH ;
 
 : BPARSE-NAME ( -- )
    LBL PARSE-NONE !
@@ -2850,6 +2901,8 @@ public
 
 : EMIT-MEMORY-PRIMS ( -- )
    s" @"    ['] BFETCH 1 GDEREF-L   s" !"    ['] BSTORE 2 GDEREF-F   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" byte-view" ['] BADDRESSVIEW 1 GDEREF-L
+   s" cell-view" ['] BADDRESSVIEW 1 GDEREF-L
    s" +!" ['] BPLUSSTORE 2 GDEREF-F
    s" c@"   ['] BCFETCH 1 GDEREF-L  s" c!"   ['] BCSTORE 2 GDEREF-F
    s" atomic@" ['] BATFETCH 1 GDEREF-L  s" atomic!" ['] BATSTORE 2 GDEREF-F
@@ -2898,7 +2951,11 @@ package ENGINE-EMIT
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-F
+   1 GD-MIN !
+   s" seed-ndict!" ['] BSEEDNDICTSET PRIM-GLOBAL-INT-WID FPRIM-WID
+   GD-RECORD
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
+   s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" int-mark" ['] BINTMARK 1 GDEREF-F
@@ -2913,6 +2970,7 @@ package ENGINE-EMIT
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
+   s" map-anon" ['] BMAPANON FPRIM
    s" mmap" ['] BMMAP FPRIM
    s" munmap" ['] BMUNMAP FPRIM
    s" ffi-call" ['] BFFI-CALL 3 GDEREF-F
@@ -2941,6 +2999,7 @@ package ENGINE-EMIT
 
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH 1 GDEREF-F   s" throw" ['] BTHROW FPRIM-L
+   s" finally" ['] BFINALLY 2 GDEREF-F
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-F
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
@@ -4031,7 +4090,7 @@ package ENGINE-EMIT
          dup cells PNAM + @  over cells PLEN + @  BYTES,
          16  over cells PLEN + @  3 + -4 and  -  dup 0 > IF PNPOOL swap BYTES, ELSE drop THEN
       THEN
-      dup cells PWID + @ DCQ,
+      dup ENGINE-HELPER:WID DCQ,
       1 + REPEAT drop ;
 
 ;package

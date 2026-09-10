@@ -33,7 +33,7 @@ public
 : HASH64 ( n -- n ) {: x:n :} x  x 33 rshift xor ;
 
 \ slot where key already lives, or the first empty slot for insertion
-: PROBE ( ptr a ptr a n n -- n ) {: keys:ptr used:ptr cap:n key:n :}
+: PROBE ( ptr n ptr n n n -- n ) {: keys:ptr used:ptr cap:n key:n :}
    cap CAP-OK
    key HASH64 cap 1- and SLOT !
    0 DONE !  0 TRIES !
@@ -49,7 +49,7 @@ public
    SLOT @ ;
 
 \ zero a used[] array (mark all slots empty)
-: CLEAR ( ptr a n -- ) {: used:ptr cap:n :}
+: CLEAR ( ptr n n -- ) {: used:ptr cap:n :}
    cap CAP-OK
    0 IX !
    begin IX @ cap < while  0 used IX @ cells + !  IX @ 1+ IX !  repeat ;

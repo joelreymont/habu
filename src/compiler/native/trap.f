@@ -128,24 +128,27 @@ KIND-NORET constant NO-RET
 : COUNT ( -- n )
    ROWS @ ;
 
-\ A spelling and not an address: select.f resolves it through NDICT:CALL-TARGET
-\ like any other callee, which is what makes the target one routine tree-wide.
+\ Trap messages are resolved while compiling. The target needs only the engine
+\ primitive, including while the source runtime itself is being rebuilt.
 : ROUTINE$ ( -- ptr u8 n )
-   s" NTRAP:TRAP" ;
+   s" die" ;
 
 \ ---- the routine every trap site branches to ----------------------------------
 \ Entered with the ordinal and does not come back. A tag matching no arm exits
 \ BAD-TAG; a callee that returned exits CODE-CERT - its certificate was false.
-: TRAP ( n -- )
+: MESSAGE ( n -- ptr u8 n n )
    ROW-CK {: k:n :}
    k ROW-KIND {: kind:n :}
    kind KIND-TAG = if
-      MSG  k TAG-MSG  ENGINE-ERROR:BAD-TAG die
+      MSG  k TAG-MSG  ENGINE-ERROR:BAD-TAG exit
    then
    kind KIND-NORET = if
-      MSG  k NORET-MSG  ENGINE-ERROR:CODE-CERT die
+      MSG  k NORET-MSG  ENGINE-ERROR:CODE-CERT exit
    then
-   s" hb: trap row of no kind" ENGINE-ERROR:CODE-CERT die ;
+   s" hb: trap row of no kind" ENGINE-ERROR:CODE-CERT ;
+
+: TRAP ( n -- )
+   MESSAGE die ;
 
 private
 get-current prot-wid-add

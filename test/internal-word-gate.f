@@ -81,6 +81,9 @@ create EMPTY 1 allot            \ zero-length stdin
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
 
+: OUT$ ( -- ptr u8 n )
+   OUT OUT-U @ ;
+
 \ Resolve the child engine: gate default env HABU_UNDER_TEST -> the candidate;
 \ standalone runs fall back to bin/hb.
 : HB$ ( -- ptr u8 n )
@@ -149,6 +152,11 @@ create EMPTY 1 allot            \ zero-length stdin
    a u TOKEN$ RUN-SUBJECT
    a u ASSERT-INTERNAL ;
 
+: ASSERT-DIAG ( ptr u8 n -- ) {: a:ptr u:n :}   \ child rejected rc 70 with the given diagnostic
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   ERR$ a u CONTAINS? TTRUE ;
+
 \ --- negatives: internal checker words fail closed before their body runs ---
 
 : NEG-BARE ( -- )
@@ -191,12 +199,103 @@ create EMPTY 1 allot            \ zero-length stdin
    PRIM-FORGE$ RUN-SUBJECT
    s" int-mark" ASSERT-INTERNAL ;
 
-\ --- positives: the public top-level surface is untouched -------------------
+: SEED-RESET-TICK$ ( -- ptr u8 n )
+   SB-RESET
+   s" ' seed-ndict!" SB-APPEND LF
+   SB$ ;
 
-: ASSERT-DIAG ( ptr u8 n -- ) {: a:ptr u:n :}   \ child rejected rc 70 with the given diagnostic
+: SEED-RESET-CHECKED$ ( -- ptr u8 n )
+   SB-RESET
+   s" : IWG-SEED-RESET ( n -- ) seed-ndict! ;" SB-APPEND LF
+   SB$ ;
+
+: SEED-RESET-SEARCH$ ( -- ptr u8 n )
+   SB-RESET
+   S\" s\" seed-ndict!\" 0 search-wl 0<> if 99 throw then" SB-APPEND LF
+   SB$ ;
+
+: SEED-RESET-EQUAL$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: IWG-SEED-EQUAL ( -- ) ndict@ seed-ndict! ;" SB-APPEND LF
+   s" IWG-SEED-EQUAL" SB-APPEND LF
+   SB$ ;
+
+TRUSTED: NULL-PTR-FIXED-MUTATE ( -- )
+   1 NULL-PTR-CELL ! ;
+
+TRUSTED: NULL-PTR-FIXED@ ( -- n )
+   NULL-PTR-CELL @ ;
+
+: NULL-PTR-BARE$ ( -- ptr u8 n )
+   SB-RESET
+   s" 1 NULL-PTR-CELL !" SB-APPEND LF
+   SB$ ;
+
+: NULL-PTR-TICK$ ( -- ptr u8 n )
+   SB-RESET
+   s" 1 ' NULL-PTR-CELL !" SB-APPEND LF
+   SB$ ;
+
+: NULL-PTR-SEARCH$ ( -- ptr u8 n )
+   SB-RESET
+   s" : IWG-NULL-PTR-SEARCH ( -- )" SB-APPEND LF
+   S\"    s\" NULL-PTR-CELL\" 0 search-wl dup 0= if drop 0 . cr exit then" SB-APPEND LF
+   s"    1 swap ! ;" SB-APPEND LF
+   s" IWG-NULL-PTR-SEARCH" SB-APPEND LF
+   SB$ ;
+
+: NULL-PTR-FIXED-MUTATE$ ( -- ptr u8 n )
+   SB-RESET
+   s" INTERNAL-WORD-GATE:NULL-PTR-FIXED-MUTATE" SB-APPEND LF
+   SB$ ;
+
+: NULL-PTR-FIXED@$ ( -- ptr u8 n )
+   SB-RESET
+   s" INTERNAL-WORD-GATE:NULL-PTR-FIXED@ . cr" SB-APPEND LF
+   SB$ ;
+
+: NULL-PTR-CELL-CASES ( -- )
+   s" a bare NULL-PTR-CELL store is engine-internal" T-LABEL
+   NULL-PTR-BARE$ RUN-SUBJECT
+   s" NULL-PTR-CELL" ASSERT-INTERNAL
+   s" a tick-derived NULL-PTR-CELL store is engine-internal" T-LABEL
+   NULL-PTR-TICK$ RUN-SUBJECT
+   s" NULL-PTR-CELL" ASSERT-INTERNAL
+   s" search-wl cannot launder a NULL-PTR-CELL store" T-LABEL
+   NULL-PTR-SEARCH$ RUN-SUBJECT
+   ASSERT-OK
+   OUT$ s" 0 " CONTAINS? TTRUE
+   s" a compiled fixed-address store cannot mutate NULL-PTR-CELL" T-LABEL
+   NULL-PTR-FIXED-MUTATE$ RUN-SUBJECT
    EXITED @ TTRUE
-   RC @ REJECT-RC T=
-   ERR$ a u CONTAINS? TTRUE ;
+   RC @ ENGINE-ERROR:SEAL-VIOLATION T=
+   s" NULL-PTR-CELL remains numeric zero" T-LABEL
+   NULL-PTR-FIXED@$ RUN-SUBJECT
+   ASSERT-OK
+   OUT$ s" 0 " CONTAINS? TTRUE ;
+
+\ seed-ndict! has a global record so the native compiler can resolve the direct
+\ call in a TRUSTED reset. Its DNAME-INT record and BSWL refusal close ordinary
+\ interpretation, tick, checked-source, and dynamic-lookup routes. TRUSTED:
+\ remains authority by the documented design.
+: SEED-RESET-CASES ( -- )
+   s" bare seed-ndict! is engine-internal" T-LABEL
+   s" seed-ndict!" NEG
+   s" tick of seed-ndict! is engine-internal" T-LABEL
+   SEED-RESET-TICK$ RUN-SUBJECT
+   s" seed-ndict!" ASSERT-INTERNAL
+   s" checked source cannot compile seed-ndict!" T-LABEL
+   SEED-RESET-CHECKED$ RUN-SUBJECT
+   s" E-CAP-TRUSTED" ASSERT-DIAG
+   s" search-wl cannot launder seed-ndict! to execute" T-LABEL
+   SEED-RESET-SEARCH$ RUN-SUBJECT
+   ASSERT-OK
+   s" trusted seed-ndict! refuses an equal dictionary count" T-LABEL
+   SEED-RESET-EQUAL$ RUN-SUBJECT
+   EXITED @ TTRUE
+   RC @ 74 T= ;
+
+\ --- positives: the public top-level surface is untouched -------------------
 
 : UNDEF-FORGE$ ( -- ptr u8 n )
    SB-RESET
@@ -1244,6 +1343,8 @@ create QNAME QNAME-CAP allot
    TFAM-SEAL-CASES
    TYPE-DECL-SEAL-CASES
    NEG-SHAPES
+   SEED-RESET-CASES
+   NULL-PTR-CELL-CASES
    POSITIVES
    OPENER-CASES
    DEFER-CASES

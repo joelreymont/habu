@@ -4,7 +4,7 @@
 \ this file only gives source files a checked way to load dependencies.
 
 $400 constant INCLUDE-PATH-CAP
-$80000 constant INCLUDE-BUF-CAP
+$100000 constant INCLUDE-BUF-CAP  \ checker.f crossed the old 512 KiB slot
 $10 constant INCLUDE-MAX-DEPTH  \ typed-lib require chains outgrew 8 (2026-07-15)
 $200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
 $1002 constant INCLUDE-MAP-PRIVATE-ANON
@@ -166,7 +166,7 @@ $0A INCLUDE-LF 0 ZBYTE!
 create SCRIPT-NAMED-FRAME INCLUDE-MAX-DEPTH cells allot
 variable SCRIPT-NAMED-PEND              \ the next INCLUDE-PUSH opens a named frame
 
-: SCRIPT-NAMED-SLOT ( n -- ptr a )
+: SCRIPT-NAMED-SLOT ( n -- ptr n )
    cells SCRIPT-NAMED-FRAME + ;
 
 : SCRIPT-NAMED-PEND! ( bool -- )
@@ -277,22 +277,22 @@ variable DISC-TOK-U
 : EVENT-OFF ( -- )        0 EVENT-ON-V ! ;
 : DISCOVERY-ON ( -- )     1 EVENT-DISC-V ! ;
 : DISCOVERY-OFF ( -- )    0 EVENT-DISC-V ! ;
-: DISC-TOK! ( a n -- )    DISC-TOK-U ! DISC-TOK-A ! ;
+: DISC-TOK! ( n n -- )    DISC-TOK-U ! DISC-TOK-A ! ;
 : EVENTS-RESET ( -- )     0 EVENT-N !  0 EVENT-POOL-N ! ;
 
-: LOADER-TOK-A ( -- a )   data-base TKA-CELL + @ ;
-: LOADER-TOK-U ( -- a )   data-base TKL-CELL + @ ;
-: LOADER-TOKEN-SPAN ( -- a a )  LOADER-TOK-A LOADER-TOK-U ;
+: LOADER-TOK-A ( -- n )   data-base TKA-CELL + @ ;
+: LOADER-TOK-U ( -- n )   data-base TKL-CELL + @ ;
+: LOADER-TOKEN-SPAN ( -- n n )  LOADER-TOK-A LOADER-TOK-U ;
 
-: EVENT-SPAN ( -- a a )
+: EVENT-SPAN ( -- n n )
    DISCOVERY? if DISC-TOK-A @ DISC-TOK-U @ exit then
    LOADER-TOKEN-SPAN ;
 
-: EVENT-SLOT ( n n -- ptr a )
+: EVENT-SLOT ( n n -- ptr n )
    swap EVENT-FIELDS * + cells EVENT-RECS + ;
 
-: EVENT-FIELD@ ( n n -- a )  EVENT-SLOT @ ;
-: EVENT-FIELD! ( a n n -- )  EVENT-SLOT ! ;
+: EVENT-FIELD@ ( n n -- n )  EVENT-SLOT @ ;
+: EVENT-FIELD! ( n n n -- )  EVENT-SLOT ! ;
 
 : EVENT-POOL-AT ( n -- ptr u8 )  EVENT-POOL + ;
 
@@ -332,7 +332,7 @@ variable DISC-TOK-U
 : EVENT-PATH@ ( n -- ptr u8 n ) {: ix:n :}
    ix 1 EVENT-FIELD@ EVENT-POOL-AT
    ix 2 EVENT-FIELD@ ;
-: EVENT-TOK@ ( n -- a a ) {: ix:n :}
+: EVENT-TOK@ ( n -- n n ) {: ix:n :}
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
 
 : INCLUDE-LOAD ( ptr u8 n -- )
@@ -452,7 +452,7 @@ public
    INCLUDE-CLOSE
    0 INCLUDE-U !
    0 INCLUDE-RD !
-   0 INCLUDE-PATH-U !
+   NULL$ INCLUDE-PATH-U ! INCLUDE-PATH-A!
    0 REQUIRE-BASE !
    EVENT-OFF
    DISCOVERY-OFF

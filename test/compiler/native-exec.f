@@ -34,7 +34,7 @@ TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 4 constant REGS
 0 constant GLOBAL-WID
 
-: REC ( ptr u8 n -- ptr a )
+: REC ( ptr u8 n -- ptr n )
    GLOBAL-WID XREF-FIND-WL
    dup XREF-FOUND? 0= if s" native-exec: record not found" 76 die then ;
 
@@ -132,21 +132,9 @@ $94000000 constant BL-FORM
    s" and it goes to the engine's own execute" T-LABEL
    s" NX-APPLY" BL-TARGET  s" execute" NDICT:CALL-TARGET  T= ;
 
-\ ---- the cells that have no certified arity ----------------------------------
-\ A BODY THIS DEFINITION WROTE AND NOTHING CONSUMED. The checker admits
-\ `[: 1 + ;] execute` - it unifies the quotation against the live row at the
-\ `execute` itself - but that unification is a fact about the SITE and the
-\ checker publishes effects by NAME, so there is no published number the chain
-\ could read. Guessing it from the depth of the compile-time vector would be a
-\ value heuristic exactly where a structural fact is missing, so it is refused.
-\
-\ A QUOTATION WHOSE EFFECT IS NOT AN ORDINARY ROUTINE'S is the second, and the
-\ question is not re-derived here: src/compiler/native/dict.f asks the checker's
-\ own EFFECT-QUOT-SIMPLE?, and a declaration carrying a return-stack clause
-\ answers no quotation there - so no row is ever opened for it and the same
-\ refusal would fire. It is asserted at the RESOLVER rather than through a
-\ compilation, because a program that executes such a parameter never reaches the
-\ chain at all: the checker refuses the definition itself, measured below.
+\ The checker certifies an inline quotation's calling convention at execute.
+\ An untyped stored xt has no such effect; a quotation with a return-stack
+\ clause also remains outside the native calling convention.
 : SELF-EXEC ( -- )
    s" : NX-SELF ( n -- n ) [: 1 + ;] execute ;" EV ;
 
@@ -155,12 +143,21 @@ $94000000 constant BL-FORM
 : RSTACK-EXEC ( -- )
    s" : NX-RS ( [ n -- n | a -- a ] n -- n ) swap execute ;" EV ;
 
-: REFUSE-CASE ( -- )
-   s" a body this definition wrote that nothing gave an arity is refused by name"
-   T-LABEL
-   [: SELF-EXEC ;] E-NELAB-QUOT TTHROWSQ
-   s" and the refusal names the `execute` that had no answer" T-LABEL
-   NELAB:REFUSED$ s" execute" T$=
+create DIAG-BUF 8192 allot
+
+: OPAQUE-CASE ( -- )
+   s" an untyped stored xt rejects with its named diagnostic" T-LABEL
+   DIAG-BUF 8192 DIAG-BUFFER! true DIAG-JSON!
+   [: s" : NX-OPAQUE ( -- ) NX-BUF @ execute ;" EV ;] CHECK-RC TTHROWSQ
+   DIAG-BUFFER$ s\" \"code\":\"E-EXEC-OPAQUE-XT\"" CONTAINS? TTRUE
+   false DIAG-JSON! DIAG-BUFFER-OFF ;
+
+: SITE-CASE ( -- )
+   s" an inline quotation compiles with its certified site arity" T-LABEL
+   SELF-EXEC
+   s" NX-SELF" REC-START 0 T<>
+   s" the inline quotation executes and computes" T-LABEL
+   s" 41 NX-SELF" EV-N 42 T=
    \ Terms are counted from the TOP of the row and cells from the bottom, so the
    \ quotation of `( [ n -- n ] n -- n )` is term ONE - which is the same index
    \ the parameter rows are opened by, and asking term zero here would answer
@@ -174,7 +171,8 @@ $94000000 constant BL-FORM
    NDICT:QUOT-NONE T= NDICT:QUOT-NONE T=
    s" and executing one never reaches the chain: the checker refuses it first"
    T-LABEL
-   [: RSTACK-EXEC ;] CHECK-RC TTHROWSQ ;
+   [: RSTACK-EXEC ;] CHECK-RC TTHROWSQ
+   OPAQUE-CASE ;
 
 \ ---- the real multishot site --------------------------------------------------
 \ THE LIBRARY'S OWN BODY, RE-COMPILED IN ITS OWN PACKAGE. `A-MAPI!` executes its
@@ -216,7 +214,7 @@ public
    T-RESET
    PARAM-CASE
    DECODE-CASE
-   REFUSE-CASE
+   SITE-CASE
    ARRAY-CASE
    T-REPORT ;
 

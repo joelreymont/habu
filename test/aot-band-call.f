@@ -7,8 +7,10 @@
 \ NAMER - the two words are otherwise the same shape and sit in the same window.
 
 require test/aot-band-lib.f
+require src/compiler/native/string.f
 
 AOT-ARM:WINDOW-OPEN
+NSTR:WINDOW-OPEN
 
 package AOT-BAND-CALL
 public

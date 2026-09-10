@@ -32,6 +32,21 @@ package A64COMB
 using NFROZEN
 private
 
+\ Each pass retains its own dimensions while later passes read its results.
+variable SCRATCH-VALUES
+variable SCRATCH-BLOCKS
+variable SCRATCH-FUNS
+variable SCRATCH-OPS
+: VMAX ( -- n ) SCRATCH-VALUES @ ;
+: BMAX ( -- n ) SCRATCH-BLOCKS @ ;
+: FMAX ( -- n ) SCRATCH-FUNS @ ;
+: OMAX ( -- n ) SCRATCH-OPS @ ;
+: SCRATCH-SIZES! ( -- )
+   NFROZEN:VALUE-COUNT 1 max SCRATCH-VALUES !
+   NFROZEN:TOTAL-BLOCKS 1 max SCRATCH-BLOCKS !
+   NFROZEN:TOTAL-FUNS 1 max SCRATCH-FUNS !
+   NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
+
 \ ---- the bound dialect -------------------------------------------------------
 A64IR-OPCODE:MOVZ  A64IR:ORD constant O-MOVZ
 A64IR-OPCODE:ADD   A64IR:ORD constant O-ADD
@@ -70,13 +85,13 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 
 \ Values in one function, and operations in one block. Both are the ceilings the
 \ neighbouring passes keep, for the same reason.
-NFROZEN:VMAX constant VMAX
-1024 constant OPS-MAX
+: OPS-MAX ( -- n ) OMAX ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable BND-MODE
 BOUND-NO BND-MODE !
 variable N-FUSED                     \ pairs this rewrite folded, counted as it goes
+variable N-REMOVED                   \ unused data-stack reads removed
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
@@ -88,17 +103,37 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
-VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
-create VSET VMAX cells allot
+DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
+DYNAMIC-BUFFER VSET-BUF n
+: VSET ( -- ptr n ) 0 VSET-BUF ;
+
+: RESERVE-SCRATCH ( -- )
+   SCRATCH-SIZES!
+   VMAX VMAP-RESERVE
+   VMAX VSET-BUF-RESERVE
+   ;
 create NAMEBUF NAME-CAP allot
 
 \ One cell per operation: which operation of this block folds into the one at
 \ this position, or -1. A multiply named here is not copied.
-create FOLD-AT OPS-MAX cells allot
-create FOLDED OPS-MAX cells allot
-create IMM-AT OPS-MAX cells allot
-create MASK-AT OPS-MAX cells allot
-create CMP-AT OPS-MAX cells allot
+DYNAMIC-BUFFER FOLD-AT-BUF n
+: FOLD-AT ( -- ptr n ) 0 FOLD-AT-BUF ;
+DYNAMIC-BUFFER FOLDED-BUF n
+: FOLDED ( -- ptr n ) 0 FOLDED-BUF ;
+DYNAMIC-BUFFER IMM-AT-BUF n
+: IMM-AT ( -- ptr n ) 0 IMM-AT-BUF ;
+DYNAMIC-BUFFER MASK-AT-BUF n
+: MASK-AT ( -- ptr n ) 0 MASK-AT-BUF ;
+DYNAMIC-BUFFER CMP-AT-BUF n
+: CMP-AT ( -- ptr n ) 0 CMP-AT-BUF ;
+
+: RESERVE-FOLDS ( -- )
+   OPS-MAX FOLD-AT-BUF-RESERVE
+   OPS-MAX FOLDED-BUF-RESERVE
+   OPS-MAX IMM-AT-BUF-RESERVE
+   OPS-MAX MASK-AT-BUF-RESERVE
+   OPS-MAX CMP-AT-BUF-RESERVE
+   ;
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -641,6 +676,20 @@ create CMP-AT OPS-MAX cells allot
    cm  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
+\ Selection can eliminate every use of a branch condition. Data-stack reads
+\ are total, nonvolatile operations; an unread value needs no load. Forward its
+\ memory-order result to the input order so later operations remain ordered.
+: UNUSED-DLOAD? ( IR-ID:ir-fun-id IR-ID:ir-op-id -- bool )
+   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s A64IR-OPCODE:DLOAD A64IR:ORD =
+   s A64IR-OPCODE:FDLOAD A64IR:ORD = or 0= if false exit then
+   f id 0 RESULT-AT USES-OF 0= ;
+
+: REMOVE-DLOAD ( IR-ID:ir-op-id -- ) {: id:IR-ID:ir-op-id :}
+   id 1 RESULT-AT id 0 OPERAND-AT VOF VBIND
+   1 N-REMOVED +! ;
+
 \ ---- the block ---------------------------------------------------------------
 \ The value map is NOT cleared here: a value defined in one block is read in the
 \ blocks it dominates, so the map belongs to the function.
@@ -666,7 +715,9 @@ create CMP-AT OPS-MAX cells allot
    f bk PLAN-BLOCK
    bk OPEN-BLOCK
    n 0 ?do
-      i FOLDED? 0= if
+      f bk i OP-AT UNUSED-DLOAD? if
+         bk i OP-AT REMOVE-DLOAD
+      else i FOLDED? 0= if
          i FOLD-OF {: d:n :}
          i IMM-OF {: e:n :}
          i MASK-OF {: g:n :}
@@ -677,7 +728,7 @@ create CMP-AT OPS-MAX cells allot
          h 0 >= if bk h OP-AT  bk i OP-AT  EMIT-CMPI else
                    bk i OP-AT COPY-OP
          then then then then
-      then
+      then then
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;
 
@@ -786,6 +837,7 @@ public
    BOUND? 0= if E-A64COMB-BIND throw then
    m BND-MODULE-CK
    m VIEWS!
+   RESERVE-SCRATCH RESERVE-FOLDS
    0
    FUN-COUNT 0 ?do
       MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
@@ -800,6 +852,18 @@ public
       loop
    loop ;
 
+: REWRITES ( IR-BUILD:module -- n )
+   FUSIONS
+   FUN-COUNT 0 ?do
+      MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
+      f BLOCK-COUNT 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         bk OP-COUNT 0 ?do
+            f bk i OP-AT UNUSED-DLOAD? if 1+ then
+         loop
+      loop
+   loop ;
+
 \ ---- the pass ----------------------------------------------------------------
 \ The bytes are the source text the old module was compiled from, proved by
 \ digest before any span is carried across.
@@ -807,11 +871,12 @@ public
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
    BND-TAKE
    m BND-MODULE-CK
-   0 N-FUSED !
+   0 N-FUSED ! 0 N-REMOVED !
    c b A64IR:REGISTER
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!
+   RESERVE-SCRATCH RESERVE-FOLDS
    c b p u SOURCE!
    FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    c b IR-BUILD:FREEZE ;
@@ -820,6 +885,20 @@ public
 \ different number is a refusal rather than a module nobody checked.
 : FUSED ( -- n )
    N-FUSED @ ;
+
+: REWRITTEN ( -- n )
+   N-FUSED @ N-REMOVED @ + ;
+
+public
+: RELEASE-SCRATCH ( -- )
+   FOLD-AT-BUF-RELEASE
+   FOLDED-BUF-RELEASE
+   IMM-AT-BUF-RELEASE
+   MASK-AT-BUF-RELEASE
+   CMP-AT-BUF-RELEASE
+   VMAP-RELEASE
+   VSET-BUF-RELEASE
+   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

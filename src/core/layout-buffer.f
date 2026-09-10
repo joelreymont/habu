@@ -160,6 +160,13 @@ variable LBUF-BYTES
 
 PTR-VARIABLE LBUF-EVAL-A
 variable LBUF-EVAL-U
+variable STGT-A
+variable STGT-U
+variable STGT-START
+
+: LBUF-CAPTURE-PREPARE ( -- )
+   LBUF-EVAL-U @ 0 > LBUF-PEND-U @ 0 > or if E-LAYOUT-BUFFER throw then
+   NULL-PTR STGT-A !  0 STGT-U !  0 STGT-START ! ;
 
 : LBUF-EVAL-RUN ( -- )
    LBUF-EVAL-A 0 ptr-field @ LBUF-EVAL-U @ TDECL-EVAL-XT ;
@@ -170,6 +177,7 @@ variable LBUF-EVAL-U
    name nameu LBUF-PEND!
    src LBUF-EVAL-A 0 ptr-field !  srcu LBUF-EVAL-U !
    [: LBUF-EVAL-RUN ;] catch
+   NULL-PTR LBUF-EVAL-A !  0 LBUF-EVAL-U !
    LBUF-PEND-CLEAR ;
 
 : LBUF-EVAL! ( ptr u8 n ptr u8 n -- )
@@ -383,10 +391,6 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 \ single-cell `( -- ptr type )` accessor. Both parse a `ptr* base` stored type so
 \ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) are expressible.
 
-variable STGT-A
-variable STGT-U
-variable STGT-START
-
 : STORAGE-PTR-TOK? ( ptr u8 n -- bool )   \ token is the pointer constructor `ptr`
    s" ptr" CORE-STR= ;
 
@@ -466,5 +470,51 @@ variable STGT-START
 \ accessor source), so the axioms add no checked-code capability.
 PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
 PRIM: TYPED-VARIABLE PRIM;
+
+\ ---- transient typed buffers -------------------------------------------------
+\ The control cells own an OS mapping and its byte capacity. The generated
+\ accessor is the same checked storage introduction as TYPED-BUFFER. A reserve
+\ preserves old cells and may move the mapping; callers retain indices across it.
+: DBUF-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
+   {: name:ptr nameu:n type:ptr typeu:n :}
+   LBUF-CLEAR
+   s" create " LBUF-APP name nameu LBUF-BASE,
+   s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
+   s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
+   s"  ) {: i:n :} i 0 < if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
+   s"  throw then i " LBUF-APP name nameu LBUF-BASE,
+   s"  cell+ @ " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  / >= if " LBUF-APP E-LAYOUT-BOUNDS LBUF-DEC,
+   s"  throw then " LBUF-APP name nameu LBUF-BASE,
+   s"  0 ptr-field @ i " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  * + ; : " LBUF-APP name nameu LBUF-APP
+   s" -RESERVE ( n -- ) " LBUF-APP name nameu LBUF-BASE,
+   s"  " LBUF-APP LBUF-W @ cells LBUF-DEC,
+   s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP
+   s" -RELEASE ( -- ) " LBUF-APP name nameu LBUF-BASE,
+   s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
+   LBUF-GEN LBUF-GEN-U @ pna pnu ;
+
+: DBUF-SUFFIX-GUARD ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n suffix:ptr su:n :}
+   LBUF-CLEAR name nu LBUF-APP suffix su LBUF-APP
+   LBUF-GEN LBUF-GEN-U @ LBUF-NAME-GUARD ;
+
+: DYNAMIC-BUFFER ( -- )
+   parse-name {: name:ptr nameu:n :}
+   STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
+   nameu 0= if E-LAYOUT-BUFFER throw then
+   TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
+   name nameu LBUF-NAME-GUARD
+   name nameu LBUF-BASE-GUARD
+   name nameu s" -RESERVE" DBUF-SUFFIX-GUARD
+   name nameu s" -RELEASE" DBUF-SUFFIX-GUARD
+   1 type typeu STORAGE-VALIDATE
+   2 cells LBUF-BYTES !
+   here {: base:ptr :}
+   name nameu type typeu DBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
+   src srcu pna pnu LBUF-EVAL!
+   base LBUF-ALLOT ;
+
+PRIM: DYNAMIC-BUFFER PRIM;
 
 ;using

@@ -273,14 +273,14 @@ TRUSTED: CHECK-DOES ( ptr u8 n ptr u8 n -- n )
 : LATEST-NAME$ ( -- ptr u8 n )
    REC-INDEX XREF-REC XREF-NAME$ ;
 
-: QUALIFIED-RECORD-NAME? ( ptr a ptr u8 n n -- bool )
+: QUALIFIED-RECORD-NAME? ( ptr n ptr u8 n n -- bool )
    {: rec:ptr a:ptr u:n split:n :}
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
    a split XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop false exit then
    XREF-START  rec XREF-WORDLIST  = ;
 
-: RECORD-NAME? ( ptr a ptr u8 n -- bool )
+: RECORD-NAME? ( ptr n ptr u8 n -- bool )
    {: rec:ptr a:ptr u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
    split 0 < if rec a u XREF-MATCH? exit then
@@ -366,9 +366,10 @@ create SPELL-BUF SPELL-CAP allot
    NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
 
 \ The no-return arm comes first: the three below are shapes of a routine that
-\ HAS a return, and a body whose every path ends has none.
+\ HAS a return, and a body whose every path ends has none. Quotation siblings
+\ share this ABI, so a mixed module must still preserve their return addresses.
 : ROUTINE ( -- A64EFF:routine )
-   NO-RETURN? if
+   NO-RETURN? NELAB:HAS-QUOTATIONS? 0= and if
       NELAB:CALLED? if
          NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
       then
@@ -429,7 +430,7 @@ create SPELL-BUF SPELL-CAP allot
 \ values and the allocator breaks ties on those numbers.
 : COMBINED ( IR-BUILD:module n -- IR-BUILD:module )
    {: m:IR-BUILD:module len:n :}
-   m A64COMB:FUSIONS {: n:n :}
+   m A64COMB:REWRITES {: n:n :}
    n 0= if A64COMB:RELEASE m exit then
    A64RA:RELEASE
    A64EMIT:RELEASE
@@ -440,7 +441,7 @@ create SPELL-BUF SPELL-CAP allot
    CC nb A64EMIT:BIND-DIALECT
    CC nb A64SPILL:BIND-DIALECT
    CC m nb TXT len A64COMB:REWRITE {: m1:IR-BUILD:module :}
-   A64COMB:FUSED n <> if E-A64COMB-SHAPE throw then
+   A64COMB:REWRITTEN n <> if E-A64COMB-SHAPE throw then
    m IR-BUILD:RETIRE
    m1 ;
 
@@ -546,11 +547,15 @@ create SPELL-BUF SPELL-CAP allot
    A64COMB:BOUND? if A64COMB:RELEASE then
    A64EMIT:BOUND? if A64EMIT:RELEASE then ;
 
+: RETIRE-BODY ( -- )
+   M-RC @ 0<> if RETURN-BINDINGS then
+   A64EMIT:RETIRE ;
+
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
    [: WORK ;] catch M-RC !
-   M-RC @ 0 <> if RETURN-BINDINGS then ;
+   RETIRE-BODY ;
 
 \ A recursive compiler call would record one definition onto another's tape.
 : IN-CONTEXT ( -- )
@@ -574,6 +579,16 @@ create SPELL-BUF SPELL-CAP allot
 : IDLE-CK ( -- )
    M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
 
+: ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   2 a u write drop ;
+
+: REPORT-FAILURE ( -- )
+   s" ncomp: cannot compile " ERROR-TEXT
+   NAME-BUF NAME-U @ ERROR-TEXT
+   NELAB:REFUSED$ {: a:ptr u:n :}
+   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
+   S\" \n" ERROR-TEXT ;
+
 : RUN ( -- )
    LENGTH-CK
    1 M-OPEN !
@@ -582,7 +597,7 @@ create SPELL-BUF SPELL-CAP allot
    0 M-OPEN !
    entry-rc 0<> if entry-rc throw then
    M-RC @ {: rc:n :}
-   rc 0 <> if RETRACT rc throw then ;
+   rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
@@ -606,6 +621,26 @@ public
 \ Compile the captured body directly.
 : COMPILE ( ptr u8 n -- )
    STAGE RUN ;
+
+: CAPTURE-PREPARE ( -- )
+   IDLE-CK
+   NULL-PTR NAME-A !  0 NAME-U !
+   NULL-PTR M-SRC !  0 M-SRC-U !
+   NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !
+   NULL-PTR TRUST-SRC-A !  0 TRUST-SRC-U !
+   0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
+   0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CALLABLE !
+   A64EMIT:CAPTURE-PREPARE
+   A64EMIT:RELEASE-SCRATCH
+   A64SPILL:RELEASE-SCRATCH
+   A64RAV:RELEASE-SCRATCH
+   A64RA:RELEASE-SCRATCH
+   A64COMB:RELEASE-SCRATCH
+   A64SEL:RELEASE-SCRATCH
+   NLOOP:RELEASE-SCRATCH
+   NFEED:CAPTURE-PREPARE
+   IR-BUILD:CAPTURE-PREPARE
+   NELAB:CAPTURE-PREPARE ;
 
 private
 

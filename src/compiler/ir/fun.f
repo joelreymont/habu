@@ -241,9 +241,11 @@ $424C5231 constant BLR-MAGIC         \ "BLR1": the block-table header tag
 8 constant OFF-BLEN
 9 constant BROW-CELLS
 
+public
 $FFFFFFFF HDR-CELLS - FNROW-CELLS / constant FNROW-CAP-MAX
 $FFFFFFFF HDR-CELLS - BROW-CELLS / constant BLK-CAP-MAX
 $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
+private
 32 constant ATTR-MAX                 \ committed staged attributes per function
 
 \ ---- stable wire codes -------------------------------------------------------

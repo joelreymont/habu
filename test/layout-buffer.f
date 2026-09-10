@@ -151,7 +151,8 @@ s" LBTK-VAR-P ( -- ptr lbtk ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-VAR-P2 ( -- ptr lbtk2 ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-DATA-P ( -- ptr lbtk ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBTK-CAST ( ptr a -- ptr lbtk )" CHECK-QUIET-CANDIDATE! 0 T=
-s" LBTK-CELL+ ( ptr lbtk -- ptr lbtk ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
+\ Arithmetic transports an existing nominal pointer; it does not introduce one.
+s" LBTK-CELL+ ( ptr lbtk -- ptr lbtk ) cell+" CHECK-QUIET-CANDIDATE! -1 T=
 \ value laundering through the typed cell rejects (typed-storage ST2 pin)
 s" LBTK-LAUNDER ( n -- lbtk ) 0 LBTK-AT ! 0 LBTK-AT @" CHECK-QUIET-CANDIDATE! 0 T=
 \ raw-definer VALUE mint (habu-nominal-storage-raw): a fetch from a raw `here`

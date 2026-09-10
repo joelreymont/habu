@@ -51,10 +51,11 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    bytes MEM-CHECK-SIZE
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
 
-\ Refines a validated successful mmap result to a byte pointer; syscall-result
-\ refinement is not expressible. Retirement owner: habu-typed-defining-words-aa224eb5.
-TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
-   MEM-MMAP-RC dup 0 < if E-MEM-MAP throw then ;
+\ Fresh storage gets its element type from the caller. The engine owns only
+\ the OS mapping and its pointer/error result; sizing and failure policy are checked.
+: MEM-ALLOC-PTR ( n -- ptr a )
+   dup MEM-CHECK-SIZE
+   map-anon 0<> if drop E-MEM-MAP throw then ;
 
 : MEM-ALLOC-BYTES ( n -- ptr u8 n ) {: bytes :}
    bytes MEM-CHECK-SIZE
@@ -222,32 +223,49 @@ public
    CAD-NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
 
 \ ---- quotation-scoped owned mapping --------------------------------------------
-\ The private trusted word parks the body and mapping off-stack because checked
-\ catch cannot carry an arbitrary result row through a fetched execution token.
-\ Release is fatal on failure, so the outer frame is restored only after success.
-\ Retirement owner: habu-epic-type-habu-a34713f0.
+\ Each scope records a typed pointer and validated extent. The null pointer is
+\ its pending state until allocation succeeds. Grow before entering the scope;
+\ the outer cleanup also releases storage after a partial reserve failure.
 private
-PTR-VARIABLE WB-CUR-BUF
-variable WB-CUR-LEN
-variable WB-CUR-BODY
 
-TRUSTED: WB-RUN-CUR ( -- )
-   WB-CUR-BUF @ WB-CUR-LEN @ WB-CUR-BODY @ execute ;
-TRUSTED: WB-REL-CUR ( -- )
-   WB-CUR-BUF @ WB-CUR-LEN @ RELEASE-BYTES
-   NULL$ drop WB-CUR-BUF !  0 WB-CUR-LEN ! ;
+DYNAMIC-BUFFER WB-BUFFERS ptr u8
+DYNAMIC-BUFFER WB-LENGTHS CAD-NUM:alloc-byte-len
+variable WB-DEPTH
 
-\ effect [ R ptr u8 CAD-NUM:alloc-byte-len -- S ], which a local annotation cannot express.
-TRUSTED: WB-SCOPE ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+
+: WB-RESERVE ( -- )
+   WB-DEPTH @ 1+ dup WB-BUFFERS-RESERVE WB-LENGTHS-RESERVE ;
+
+
+: WB-CACHE-RELEASE ( -- )
+   WB-DEPTH @ 0= if WB-BUFFERS-RELEASE WB-LENGTHS-RELEASE then ;
+
+
+: WB-LEAVE ( -- )
+   WB-DEPTH @ 1- {: at:n :}
+   at WB-BUFFERS @ dup 0= if drop else
+      at WB-LENGTHS @ RELEASE-BYTES
+   then
+   at WB-DEPTH ! ;
+
+
+: WB-ALLOC-RUN ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
    {: body :}
-   WB-CUR-BUF @ {: sb:ptr :} WB-CUR-LEN @ {: sl:n :} WB-CUR-BODY @ {: sbody:n :}
-   ALLOC-BYTES {: fbuf:ptr flen :}
-   fbuf WB-CUR-BUF ! flen WB-CUR-LEN ! body WB-CUR-BODY !
-   [: WB-RUN-CUR ;] catch
-   WB-REL-CUR
-   sb WB-CUR-BUF ! sl WB-CUR-LEN ! sbody WB-CUR-BODY !
-   dup 0 <> if throw then
-   drop ;
+   ALLOC-BYTES
+   over WB-DEPTH @ 1- WB-BUFFERS !
+   body execute ;
+
+
+: WB-RUN ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+   {: body :}
+   dup WB-DEPTH @ WB-LENGTHS !
+   NULL-PTR WB-DEPTH @ WB-BUFFERS !
+   1 WB-DEPTH +!
+   body [: WB-ALLOC-RUN ;] [: WB-LEAVE ;] finally ;
+
+
+: WB-SCOPE ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+   [: WB-RESERVE WB-RUN ;] [: WB-CACHE-RELEASE ;] finally ;
 
 public
 
