@@ -61,9 +61,9 @@ create SYMBOL-NAME $20 allot
 
 \ No per-operation buffer is process-global; independent tasks may use ports.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $60 TASK:+USER IO-STORAGE drop
-: TERM ( -- ptr u8 ) IO-STORAGE ;
-: SAVED ( -- ptr u8 ) IO-STORAGE $2C + ;
-: POLLFD ( -- ptr u8 ) IO-STORAGE $58 + ;
+: TERM ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
+: SAVED ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $2C + ;
+: POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $58 + ;
 
 CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 

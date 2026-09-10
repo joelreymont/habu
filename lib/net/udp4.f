@@ -66,9 +66,9 @@ create SYMBOL-NAME $20 allot
 
 \ Endpoint/poll storage is per task, matching FFI's argument/extent tables.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
-: SOCKADDR ( -- ptr u8 ) IO-STORAGE ;
-: ADDRLEN ( -- ptr u8 ) IO-STORAGE $10 + ;
-: POLLFD ( -- ptr u8 ) IO-STORAGE $18 + ;
+: SOCKADDR ( -- ptr u8 ) IO-STORAGE BYTE-VIEW ;
+: ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
+: POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
 
 CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
