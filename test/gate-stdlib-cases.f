@@ -603,6 +603,10 @@ SUITE unicode-class-runtime
    lib/unicode/class-test.f
 ;SUITE
 
+SUITE unicode-casefold
+   lib/unicode-test.f
+;SUITE
+
 SUITE unicode-class-tools
    tools/unicode/class-tool-test.f
 ;SUITE

@@ -604,6 +604,37 @@ at the matching object close; array, top-level scalar, and after-key phases
 throw `E-JR-STATE`. Key comparison streams decoded bytes through the same
 unescape path as `STR`, so valid key length is not bounded by reader storage.
 
+## Unicode comparison
+
+`require lib/unicode.f` provides two operations:
+
+```forth
+UNICODE:WHITE-SPACE? ( n -- bool )
+UNICODE:CASEFOLD=    ( ptr u8 n ptr u8 n -- bool )
+```
+
+`WHITE-SPACE?` re-exports the existing `UNICODE-CLASS` predicate and its pinned
+Unicode 16.0.0 data. `CASEFOLD=` compares complete counted UTF-8 strings using
+full, locale-independent case folding. Ukrainian case pairs and expanding
+mappings such as `Straße` / `STRASSE` compare equal. Embedded NUL bytes remain
+part of each span. No normalization is applied: precomposed `é` and `e` followed
+by a combining acute accent remain different.
+
+Both inputs are validated before comparison. Negative lengths and malformed
+UTF-8 throw `UNICODE:E-UTF8`; foreign comparison failures throw `E-CASEFOLD`.
+The caller supplies live readable spans; they must not point into transient FFI
+scratch. Comparison does not modify them or depend on the current locale.
+
+Case folding uses GNU libunistring's
+[`u8_casecmp`](https://www.gnu.org/software/libunistring/manual/html_node/Case-insensitive-comparison.html)
+with NULL language and normalization parameters. It requires `libunistring.so.5`
+on Linux or `libunistring.5.dylib` on macOS; Unicode casefold data follows that
+installed library. The exact symbol resolves when source loads, with `E-LIBRARY`
+or `E-SYMBOL` on failure. Its process-local address must be resolved again if
+building a restored image in another process. The sealed binding uses per-task
+FFI scratch and exposes only the comparison operation. The `unicode-casefold`
+suite exercises the native library and strict UTF-8 boundary.
+
 ## XML and byte edits
 
 `lib/xml.f` reads UTF-8 XML 1.0 without changing the source bytes. Each cursor
