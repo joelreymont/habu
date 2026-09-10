@@ -252,6 +252,14 @@ SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE
 
+SUITE compiler-native-generic-calls
+   test/compiler/native-generic-calls.f
+;SUITE
+
+SUITE compiler-native-many-locals
+   test/compiler/native-many-locals.f
+;SUITE
+
 SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE

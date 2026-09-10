@@ -262,9 +262,18 @@ package NLS-TEST
 
 private
 
-\ Retirement owner: habu-type-isolated-dynamic-244c0e2c.
-TRUSTED: DEF-RC ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+PTR-VARIABLE DEF-SOURCE
+variable DEF-LENGTH
+
+
+\ The fixture source contains definitions, so evaluation leaves no values.
+TRUSTED: DEF-EVAL ( -- )
+   DEF-SOURCE @ DEF-LENGTH @ evaluate ;
+
+
+: DEF-RC ( ptr u8 n -- n )
+   DEF-LENGTH ! DEF-SOURCE !
+   [: DEF-EVAL ;] catch ;
 
 \ The ends of the signed range, where arithmetic that is right for small numbers
 \ is most likely to disagree.

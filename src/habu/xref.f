@@ -593,6 +593,9 @@ variable XREF-FORGET-CP
 \ The installed provider holds direct code references. Retire every source-level
 \ rebinding seam and mutable provider cell before the engine-prefix seal.
 undefine PKG-LIVE-XT
+undefine CWIN-STATE
+undefine CALL-FREEZE-XT
+undefine CALL-FREEZE-INSTALL
 undefine CHECKER-PKG-LIVE-DEFAULT
 undefine CHECKER-PKG-BOOT-LIVE
 undefine CHECKER-PKG-MIRROR

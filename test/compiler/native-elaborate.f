@@ -2036,10 +2036,7 @@ variable LK-N
 : LONE-CLOSE ( -- )
    BND [: LONE-CLOSE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ More groups than the tables hold. A group that declares no name is legal
-\ source - the engine parses `{: :}` and binds nothing (measured) - so the group
-\ ceiling is reachable without reaching the name ceiling, and it is a table
-\ bound rather than a shape rule: seventeen groups is one past LMAX.
+\ Empty groups are legal. Seventeen groups exceed the former fixed table.
 : GROUP-CAP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    s" GCAP {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} {: :} 0" TEXT!
@@ -2183,8 +2180,8 @@ variable LK-N
    [: LONE-CLOSE ;] E-NELAB-LOCAL TTHROWSQ ;
 
 : GROUP-CAP-CASE ( -- )
-   s" more groups than the tables hold is refused as a ceiling, by its own code" T-LABEL
-   [: GROUP-CAP ;] E-NELAB-LOCAL-CAP TTHROWSQ ;
+   s" local groups reserve storage from the source token count" T-LABEL
+   GROUP-CAP ;
 
 : OPEN-GROUP-CASE ( -- )
    s" a locals group the body never closes is refused" T-LABEL

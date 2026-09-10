@@ -312,6 +312,11 @@ public
 : EXEC-CELLS ( n -- n n )
    EFFECT-EXEC-CELLS ;
 
+: CALL-CELLS ( n -- n n ) CHECKER-CALLS:CELLS ;
+: CALL-GLUE ( n -- n n ) CHECKER-CALLS:GLUE ;
+: CALL-QUOT-IN ( n n -- n n ) CHECKER-CALLS:QUOT-IN ;
+: CALL-QUOT-OUT ( n n -- n n ) CHECKER-CALLS:QUOT-OUT ;
+
 \ ---- and how many cells a layout token really moves ---------------------------
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token
 

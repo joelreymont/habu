@@ -990,6 +990,17 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
 create UWL-POS MAXUWL cells allot   variable CUR-UPOS
 variable UF-POSN
 
+\ A recorded call freezes its specialized rows when the input spine reaches
+\ its open tail, before that tail is bound to the caller's untouched stack.
+\ Keep this bit separate from diagnostic positions: layout expansion may lose
+\ a source slot while still descending the same input spine.
+create UWL-CALL MAXUWL cells allot   variable CUR-CALL
+variable CALL-ARMED
+variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
+variable REC-ON
+defer CALL-FREEZE-XT ( -- )
+defer CWIN-STATE ( -- ptr n )
+
 : U-PUSH ( n -- )
    USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
    USP @ cells UWL + !
@@ -1000,17 +1011,20 @@ variable UF-POSN
 : PAIR ( n n -- )    \ inherit the enclosing pair's strictness and position
    CUR-STRICT @ USP @ cells UWL-STR + !
    CUR-UPOS @ USP @ cells UWL-POS + !
+   CUR-CALL @ USP @ cells UWL-CALL + !
    swap U-PUSH U-PUSH ;
 
 : PAIR-STRICT ( n n -- )    \ force a strict (no-widen) subterm unification
    -1 USP @ cells UWL-STR + !
    CUR-UPOS @ USP @ cells UWL-POS + !
+   0 USP @ cells UWL-CALL + !
    swap U-PUSH U-PUSH ;
 
 : UNPAIR ( -- n n )    \ pop a pair; restore its strictness and position
    U-POP U-POP swap
    USP @ cells UWL-STR + @ CUR-STRICT !
-   USP @ cells UWL-POS + @ CUR-UPOS ! ;
+   USP @ cells UWL-POS + @ CUR-UPOS !
+   USP @ cells UWL-CALL + @ CUR-CALL ! ;
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
    UF-SET @ 0= IF
@@ -1869,12 +1883,20 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 : U-ROW-DESCEND ( n n -- ) {: r1:n r2:n :}
    CUR-UPOS @ {: e:n :}
    e UPOS-REST CUR-UPOS !  r1 P>REST r2 P>REST PAIR
+   0 CUR-CALL !
    e UPOS-TYPE CUR-UPOS !  r1 P>TYPE r2 P>TYPE PAIR ;
+
+: U-CALL-TAIL ( n n -- ) {: r1:n r2:n :}
+   CALL-ARMED @ CUR-CALL @ and 0= IF EXIT THEN
+   r1 r2 = r1 ISROW or r2 ISROW or IF
+      0 CALL-ARMED !
+      CALL-FREEZE-XT
+   THEN ;
 
 \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells, so the
 \ spine cursor is no longer slot-aligned past it: drop to no-position (fail
 \ safe, positions before the expansion were already latched exactly).
-: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
+: U-ROW R-RES swap R-RES swap 2dup U-CALL-TAIL 2dup = IF 2drop ELSE
    over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
    dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
    2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND ELSE
@@ -1883,6 +1905,7 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !
+   CALL-ARMED @ CUR-CALL !
    0 UF-ACT !  0 UF-EXP !  0 UF-SET !
    -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
    PAIR
@@ -1928,6 +1951,7 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
 variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW ( -- )
+   0 CALL-ARMED !  0 CALL-HIT !
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
    0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
@@ -5755,10 +5779,13 @@ variable LMI
    REPEAT ;
 
 : EFF-APPLY ( ptr a -- ) {: h:ptr :}
+   0 CALL-HIT !
    h E-INST-RESET
-   h ER.DIN @ E-INST
-   h ER.DOUT @ E-INST
+   h ER.DIN @ E-INST dup CALL-DIN !
+   h ER.DOUT @ E-INST dup CALL-DOUT !
+   REC-ON @ CALL-ARMED !
    CHECKER-STEP
+   0 CALL-ARMED !
    h ER.HASR @ 0 <> if
       RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
       h ER.ROUT @ E-INST RCUR !
@@ -7530,7 +7557,6 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 \ Its input width is measured before unification binds the quotation's open
 \ row to the caller's stack. The table grows with the recorded definition;
 \ missing sites remain absent, and a no-return output is CELLS-NONE.
-variable REC-ON                      \ a recording unit is open
 variable REC-IX                      \ the ordinal the next reported token takes
 
 : REC-STEP ( -- )                    \ one token reported, so the next takes the next ordinal
@@ -7544,10 +7570,16 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 2 constant CW-OUT                    \ what the body leaves, or CELLS-NONE for one that never returns
 3 constant CW-KIND
 4 constant CW-ROW                    \ cells one recorded site occupies
+2 constant CW-CALL-RAW               \ frozen row spines with live type terms
+3 constant CW-CALL
+4 constant CW-GLUE
+5 constant CW-QUOT-IN                \ + twice the input cell index from the top
+6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
 
-variable CWIN-N                      \ sites recorded for the open unit
-PTR-VARIABLE CWIN-P
-variable CWIN-CAP
+\ cell-effects.f owns the checked storage after the bootstrap checker starts.
+: CWIN-P ( -- ptr ptr n ) CWIN-STATE 0 ptr-field ;
+: CWIN-N ( -- ptr n ) CWIN-STATE CELL + ;
+: CWIN-CAP ( -- ptr n ) CWIN-STATE 2 cells + ;
 
 : CWIN-AT ( n n -- ptr a )           \ field f of row i
    {: i:n f:n :}
@@ -7555,6 +7587,7 @@ variable CWIN-CAP
 
 : CWIN-RESET ( -- )
    0 CWIN-N !
+   0 CALL-HIT !  0 CALL-ARMED !
    0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !  0 CWIN-KIND ! ;
 
 : CWIN-ENSURE ( -- )
@@ -7567,18 +7600,102 @@ variable CWIN-CAP
    ARENA-BYTES-GROW CWIN-P !
    cap CWIN-CAP ! ;
 
-\ Commit the quotation call at its reported token ordinal. Other tokens have
-\ no latched call metadata.
-: CWIN-COMMIT ( -- )
-   CWIN-HIT @ 0= IF EXIT THEN
-   0 CWIN-HIT !
+: CWIN-ADD ( n n n n -- ) {: ord:n in:n out:n kind:n :}
    CWIN-ENSURE
    CWIN-N @ {: i:n :}
-   REC-IX @    i CW-ORD CWIN-AT !
-   CWIN-IN @   i CW-IN CWIN-AT !
-   CWIN-OUT @  i CW-OUT CWIN-AT !
-   CWIN-KIND @ i CW-KIND CWIN-AT !
+   ord  i CW-ORD CWIN-AT !
+   in   i CW-IN CWIN-AT !
+   out  i CW-OUT CWIN-AT !
+   kind i CW-KIND CWIN-AT !
    i 1 + CWIN-N ! ;
+
+\ Copy only the fixed row spine. Its fresh tail never participates in
+\ unification; the shared type terms can still acquire their final widths.
+: CALL-SPINE-COPY ( n -- n )
+   FRESH MK-ROW swap
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE rot MK-PUSH swap P>REST
+   REPEAT drop
+   FRESH MK-ROW swap
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE rot MK-PUSH swap P>REST
+   REPEAT drop ;
+
+: CALL-QUOT-COPY ( n -- n ) {: t:n :}
+   t T-RES dup TAG T-QUOT <> IF drop t EXIT THEN {: q:n :}
+   q Q>DIN CALL-SPINE-COPY q Q>DOUT CALL-SPINE-COPY
+   q Q>RIN q Q>ROUT MK-QUOT {: copy:n :}
+   copy q Q>XHAS q Q>XDEAD q Q>XDOUT q Q>XROUT QX!
+   copy ;
+
+: CALL-ROW-COPY ( n -- n )
+   CALL-SPINE-COPY dup
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE CALL-QUOT-COPY over PAY 2 * cells SPA + !
+      P>REST
+   REPEAT drop ;
+
+: CALL-FREEZE ( -- )
+   CALL-DIN @ CALL-ROW-COPY CALL-DIN !
+   CALL-DOUT @ CALL-ROW-COPY CALL-DOUT !
+   -1 CALL-HIT ! ;
+: CALL-FREEZE-INSTALL ( -- ) [: CALL-FREEZE ;] is CALL-FREEZE-XT ;
+CALL-FREEZE-INSTALL
+
+: CWIN-COMMIT ( -- )
+   CWIN-HIT @ IF
+      0 CWIN-HIT !
+      REC-IX @ CWIN-IN @ CWIN-OUT @ CWIN-KIND @ CWIN-ADD
+   THEN
+   CALL-HIT @ IF
+      0 CALL-HIT !
+      REC-IX @ CALL-DIN @ CALL-DOUT @ CW-CALL-RAW CWIN-ADD
+   THEN ;
+
+: CALL-ROW-GLUE ( n -- n ) {: row:n :}
+   row ROW-CELLS {: width:n :}
+   width CELL 8 * > IF -1 EXIT THEN
+   0 0 row
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE {: t:n :}
+      t ROW-TERM-CELLS {: w:n :}
+      rot rot {: mask:n top:n :}
+      t HIDDEN-PARAM? IF
+         t HIDDEN-SLOT@ 0 > IF mask 1 width 1 - top - lshift or ELSE mask THEN
+      ELSE
+         mask w 1 - 0 ?do 1 width 1 - top i + - lshift or loop
+      THEN
+      top w + rot P>REST
+   REPEAT drop drop ;
+
+: CALL-ROW-QUOTS ( n n n -- ) {: ord:n row:n kind:n :}
+   0 row
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE T-RES {: t:n :}
+      t TAG T-QUOT = IF
+         over 2 * kind + {: k:n :}
+         ord t Q>DIN ROW-CELLS
+         t Q>XDEAD IF CELLS-NONE ELSE t Q>DOUT ROW-CELLS THEN
+         k CWIN-ADD
+      THEN
+      swap t ROW-TERM-CELLS + swap P>REST
+   REPEAT 2drop ;
+
+: CALL-FINALIZE ( -- )
+   REC-ON @ 0= IF EXIT THEN
+   CWIN-N @ 0 ?do
+      i CW-KIND CWIN-AT @ CW-CALL-RAW = IF
+         i CW-ORD CWIN-AT @ {: ord:n :}
+         i CW-IN CWIN-AT @ {: din:n :}
+         i CW-OUT CWIN-AT @ {: dout:n :}
+         din ROW-CELLS i CW-IN CWIN-AT !
+         dout ROW-CELLS i CW-OUT CWIN-AT !
+         CW-CALL i CW-KIND CWIN-AT !
+         ord din CALL-ROW-GLUE dout CALL-ROW-GLUE CW-GLUE CWIN-ADD
+         ord din CW-QUOT-IN CALL-ROW-QUOTS
+         ord dout CW-QUOT-OUT CALL-ROW-QUOTS
+      THEN
+   loop ;
 
 \ ---- the cells a recorded definition's layout forms really occupy -------------
 \ WHY A SECOND TABLE AND NOT A SECOND READING OF THE REGISTRY. A value of a
@@ -11483,6 +11600,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    FIELD-PROJ-STEP RES-TRUE ;
 
 : DO-TOK1 {: a u :}
+   0 CALL-HIT !
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
@@ -12297,6 +12415,11 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 \ about is the one the observer has not yet advanced.
 : SCAN-REPORT ( -- )
    REC-COMMIT
+   RESCAN @ IF
+      REC-STEP
+      IS-PEND @ IF 0 IS-PEND ! REC-STEP THEN
+      EXIT
+   THEN
    CPAY-ON @ IF
       CPAY-B @ TADDR CPAY-U @ TSTART @ TI @ TSTART @ -
       CHECKER-TAPE:CHARACTER
@@ -12341,13 +12464,13 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
-         TAPE-FEED? IF
+         CHECKER-TAPE:ARMED @ IF
             TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
             0 IS-PEND !
          THEN
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
          SCAN-TOKS @ 1 + SCAN-TOKS !
-         TAPE-FEED? IF SCAN-REPORT THEN
+         CHECKER-TAPE:ARMED @ IF SCAN-REPORT THEN
        THEN
      THEN
    REPEAT ;
@@ -12627,6 +12750,7 @@ variable CTOR-PEND-I
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
    dup -1 = NMU @ 0 > and IF
+      CALL-FINALIZE
       0 CTLNEW !
       DEADP @ XSET @ 0= and IF CTLNEW @ CTL-DEAD or CTLNEW ! THEN
       THSET @ IF CTLNEW @ CTL-THROW or CTLNEW ! THEN
@@ -13121,6 +13245,9 @@ variable CK-RETRY-TOKS
    76 die ;
 
 : CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
+   REC-IX @ {: ix0:n :}
+   REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
+   MWIN-N @ {: mw0:n :}
    0 RESCAN !
    -1 CK-AOT-RETRY-ARMED !
    a u CHECK CK-RETRY-V !
@@ -13133,6 +13260,7 @@ variable CK-RETRY-TOKS
          s" checker: a held diagnostic had no seeded signature to take after all" 76 die
       THEN
       -1 RESCAN !
+      REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! mw0 MWIN-N ! THEN
       a u CHECK CK-RETRY-V !
       CK-RETRY-STREAM-CK
    REPEAT
@@ -13282,6 +13410,7 @@ variable CD-WIDE
    SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD !
+   dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;
 
 \ The final checker declarations below the registry code also retain token

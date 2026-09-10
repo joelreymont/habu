@@ -361,8 +361,8 @@ variable VRW-N                       \ values still to find
    ;MATCH ;
 
 \ ---- the names a `{: … :}` group binds ---------------------------------------
-\ Locals, and groups, one definition may declare.
-16 constant LMAX                     \ locals, and groups, one definition may declare
+\ A local or group occupies a source token. Reserve from that count.
+variable LMAX
 64 constant LNAME-CAP                \ bytes one declaration spelling may hold
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -372,21 +372,31 @@ variable LG-OPEN                     \ the group the pre-pass is reading, or -1
 variable LG-K0                       \ the first name index of that open group
 variable LGB                         \ how many groups the walk has bound
 variable LBN                         \ how many slots are live where the walk stands
-LMAX TYPED-BUFFER LNAME IR-ID:ir-symbol-id
-LMAX TYPED-BUFFER LVAL IR-ID:ir-value-id
-create LCROSS LMAX cells allot       \ whether a call can reach a mention of this local
-\ The quotation row a local's value names is carried on the NAME and not on the
-\ value, because a value may be renamed and a name may not.
-create LQ LMAX cells allot           \ the quotation row this slot's value names, or VQ-NONE
-create LROW LMAX cells allot         \ the row the group declaring this local closes on
-create LEND LMAX cells allot         \ and the row it goes out of scope on
-create LSLOT LMAX cells allot        \ the slot it takes while it is in scope, or -1
-create LOWN LMAX cells allot         \ which declaration is in this slot
-create LSX LMAX cells allot          \ and whether that one has to travel
-create LG-A LMAX cells allot         \ the row each group's `{:` is on
-create LG-B LMAX cells allot         \ the row its `:}` is on, or -1 while it is open
-create LG-K LMAX cells allot         \ how many names it declares
-create LG-F LMAX cells allot         \ the first declaration index it declares
+DYNAMIC-BUFFER LNAME IR-ID:ir-symbol-id
+DYNAMIC-BUFFER LVAL IR-ID:ir-value-id
+DYNAMIC-BUFFER LOCAL-TABLES n
+12 constant LOCAL-FIELDS
+
+: LOCALS-ROOM ( n -- ) {: n:n :}
+   n IR-CTX:SCRATCH-LIMIT LOCAL-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
+   n LNAME-RESERVE
+   n LVAL-RESERVE
+   n LOCAL-FIELDS * LOCAL-TABLES-RESERVE
+   n LMAX ! ;
+
+: LOCAL-FIELD ( n -- ptr n ) LMAX @ * LOCAL-TABLES ;
+: LCROSS ( -- ptr n ) 0 LOCAL-FIELD ;
+: LQ ( -- ptr n ) 1 LOCAL-FIELD ;
+: LROW ( -- ptr n ) 2 LOCAL-FIELD ;
+: LEND ( -- ptr n ) 3 LOCAL-FIELD ;
+: LSLOT ( -- ptr n ) 4 LOCAL-FIELD ;
+: LOWN ( -- ptr n ) 5 LOCAL-FIELD ;
+: LSX ( -- ptr n ) 6 LOCAL-FIELD ;
+: LG-A ( -- ptr n ) 7 LOCAL-FIELD ;
+: LG-B ( -- ptr n ) 8 LOCAL-FIELD ;
+: LG-K ( -- ptr n ) 9 LOCAL-FIELD ;
+: LG-F ( -- ptr n ) 10 LOCAL-FIELD ;
+: LPEND ( -- ptr n ) 11 LOCAL-FIELD ;
 create LBUF LNAME-CAP allot
 
 : LRESET ( -- )
@@ -396,18 +406,19 @@ create LBUF LNAME-CAP allot
    0 LG-K0 !
    0 LGB !
    0 LBN !
-   LMAX 0 ?do
+   LMAX @ 0 ?do
       0 i cells LCROSS + !
       VQ-NONE i cells LQ + !
       -1 i cells LOWN + !
       0 i cells LSX + !
+      0 i cells LPEND + !
    loop ;
 
 : LAT ( n -- n )
    dup 0 < over LN @ >= or if E-NELAB-LOCAL throw then ;
 
 : LSAT ( n -- n )
-   dup 0 < over LMAX >= or if E-NELAB-LOCAL throw then ;
+   dup 0 < over LMAX @ >= or if E-NELAB-LOCAL throw then ;
 
 : LQ@ ( n -- n )     LSAT cells LQ + @ ;
 : LQ! ( n n -- )     {: k:n i:n :}  k i LSAT cells LQ + ! ;
@@ -1325,7 +1336,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ The bare name, interned into this module so every mention reaches one symbol.
 : DECLARE-LOCAL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   LN @ LMAX >= if E-NELAB-LOCAL-CAP throw then
+   LN @ LMAX @ >= if E-NELAB-LOCAL-CAP throw then
    CTX BLD  VW MKEY ix NTAPE:SPELL@  LBUF LNAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
    LBUF u HIR-WORD:LOCAL-NAME-LEN {: nu:n :}
    nu 1 < if E-NELAB-LOCAL throw then
@@ -1421,7 +1432,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
 
 : GROUP-OPEN ( n -- )
    {: ix:n :}
-   LG-N @ LMAX >= if E-NELAB-LOCAL-CAP throw then
+   LG-N @ LMAX @ >= if E-NELAB-LOCAL-CAP throw then
    LG-N @ {: g:n :}
    g 1+ LG-N !
    ix g cells LG-A + !
@@ -1581,7 +1592,7 @@ create QSPELL-BUF QSPELL-CAP allot
    {: ix:n j:n :}
    VN @ 1- j -  VQ@ {: k:n :}
    k 0 < if exit then
-   ix QSPELL j NDICT:SPELL-QUOT-DIN {: qi:n qo:n :}
+   ix j NDICT:CALL-QUOT-IN {: qi:n qo:n :}
    qi NDICT:QUOT-NONE = if
       \ A polymorphic consumer can store or forward a quotation whose
       \ calling convention is already known from the checked parameter.
@@ -1654,7 +1665,7 @@ create QSPELL-BUF QSPELL-CAP allot
 
 : QRESULTS-FILL ( n n -- ) {: ix:n out:n :}
    out 0 ?do
-      ix QSPELL i NDICT:SPELL-QUOT-DOUT {: qi:n qo:n :}
+      ix i NDICT:CALL-QUOT-OUT {: qi:n qo:n :}
       qi NDICT:QUOT-NONE <> if ix qi qo VN @ 1- i - QKNOWN then
    loop ;
 
@@ -2047,12 +2058,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    false ;
 
 \ ---- which locals a call can reach -------------------------------------------
-32 constant LSMAX                    \ loops one definition may nest, as CMAX does
-
-here CELL 1- and CELL swap - CELL 1- and allot
 variable LSN                         \ loops the scan is inside
-create LS-CALL LSMAX cells allot     \ whether a call has been met inside this loop
-create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call was met
+variable LS-SEQ                      \ identity of the current outer loop
 
 : OPENS-LOOP? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
@@ -2068,28 +2075,26 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
    r ix HIR-CTRL:CLOSE-LOOP ROW-CTRL? or ;
 
 : LS-PUSH ( -- )
-   LSN @ LSMAX >= if E-NELAB-BLOCK throw then
-   0 LSN @ cells LS-CALL + !
-   0 LSN @ cells LS-PEND + !
+   LSN @ 0= if 1 LS-SEQ +! then
    LSN @ 1+ LSN ! ;
 
 : LS-POP ( -- )
    LSN @ 1 < if E-NELAB-CTRL throw then
-   LSN @ 1- LSN !
-   LSN @ cells LS-CALL + @ 0= if exit then
-   LSN @ cells LS-PEND + @ {: m:n :}
-   LN @ 0 ?do
-      m 1 i lshift and 0<> if i LCROSS+ then
-   loop ;
+   LSN @ 1- LSN ! ;
 
+\ Before the first call, retain locals read in the current outer loop. A call
+\ in that loop can precede those reads on its next iteration. Later reads are
+\ already covered by CALL-NEED, so neither loop bitsets nor local masks help.
 : LS-CALL+ ( -- )
-   LSN @ 0 ?do  1 i cells LS-CALL + !  loop ;
+   LSN @ 0= if exit then
+   LN @ 0 ?do
+      i cells LPEND + @ LS-SEQ @ = if i LCROSS+ then
+   loop ;
 
 : LS-PEND+ ( n -- )
    {: k:n :}
-   LSN @ 0 ?do
-      i cells LS-PEND + @  1 k lshift or  i cells LS-PEND + !
-   loop ;
+   LSN @ 0= if exit then
+   LS-SEQ @ k cells LPEND + ! ;
 
 \ A call marks the whole definition and every loop it is inside.
 : CROSS-STEP ( IR-ARENA:arena n -- )
@@ -2112,6 +2117,7 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
    {: r:IR-ARENA:arena lo:n hi:n :}
    0 CALL-NEED !
    0 LSN !
+   0 LS-SEQ !
    hi lo ?do
       r i CROSS-STEP
    loop
@@ -2883,10 +2889,16 @@ create DN-BUF DN-CAP allot
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   ix NDICT:CALL-CELLS {: a:n o:n :}
+   a 0 < if
+      r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
+      r sy HIR-WORD:OUT-GLUE@
+   else
+      a o ix NDICT:CALL-GLUE nip
+   then {: in:n out:n glue:n :}
    ix  r sy HIR-WORD:ENTRY@
-   r sy HIR-WORD:CALLEE-IN@  r sy HIR-WORD:CALLEE-OUT@
-   r sy HIR-WORD:OUT-GLUE@  STAGE-WCALL
-   ix r sy HIR-WORD:CALLEE-OUT@ QRESULTS-FILL
+   in out glue STAGE-WCALL
+   ix out QRESULTS-FILL
    r sy HIR-WORD:CALLEE-DEAD? if r ix DEAD-END then ;
 
 \ Source evaluation has a dynamic stack effect. Only an explicit TRUSTED:
@@ -2994,7 +3006,9 @@ create DN-BUF DN-CAP allot
 
 : DO-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix  r  ix WSYM  HIR-WORD:CALLEE-IN@  QCALL-FILL
+   ix NDICT:CALL-CELLS drop {: in:n :}
+   in 0 < if r ix WSYM HIR-WORD:CALLEE-IN@ else in then
+   ix swap QCALL-FILL
    ix NDICT:CON-PADS {: x:n :}
    ix x CON-PADS-PUSH
    r ix DO-WORD-CALL
@@ -3087,7 +3101,7 @@ create DN-BUF DN-CAP allot
    LGB @ LG-K@ {: k:n :}
    LGB @ LG-F@ {: d0:n :}
    LBN @ {: from:n :}
-   from k +  LMAX > if E-NELAB-LOCAL-CAP throw then
+   from k +  LMAX @ > if E-NELAB-LOCAL-CAP throw then
    k VN @ > if E-NELAB-UNDER throw then
    VN @ k - {: base:n :}
    k 0 ?do
@@ -3480,6 +3494,8 @@ variable DOES-PATCH
 public
 
 : CAPTURE-PREPARE ( -- )
+   LNAME-RELEASE LVAL-RELEASE LOCAL-TABLES-RELEASE
+   0 LMAX !
    ARG-N-BUF-RELEASE
    ARG-G-BUF-RELEASE
    ARG-R-BUF-RELEASE
@@ -3501,6 +3517,7 @@ private
    v NTAPE:TOKENS {: n:n :}
    n 1 < if E-NELAB-SHAPE throw then
    n TOK-ROOM
+   n LOCALS-ROOM
    v NAME-READ
    n ;
 
