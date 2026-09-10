@@ -123,12 +123,12 @@ variable TORB-RC
 variable MIXHI-RC
 variable MIXLO-RC
 
-: CAPTURE-REFUSALS ( -- )
+: CAPTURE-DYNAMIC-CASES ( -- )
    s" : C-TORB ( option<n> -- option<n> ) >r r> ;" TRY TORB-RC !
    s" : C-MIXHI ( mixhi -- n ) MATCH mixhi nohi OF 0 ENDOF hi OF drop NRR-PT:UNMAKE + ENDOF ;MATCH ;" TRY MIXHI-RC !
    s" : C-MIXLO ( mixlo -- n ) MATCH mixlo nolo OF 0 ENDOF lo OF NRR-PT:UNMAKE + + ENDOF ;MATCH ;" TRY MIXLO-RC ! ;
 
-CAPTURE-REFUSALS
+CAPTURE-DYNAMIC-CASES
 
 : PRIMARY-RENAMES ( -- )
    s" swap and rot move a two-cell value whole" T-LABEL
@@ -189,15 +189,19 @@ CAPTURE-REFUSALS
    1 2 PLAIN-CELLS 1 T= 2 T=
 
    s" a one-cell enum is not segmented as a bundle" T-LABEL
-   NRR-LAMP:BRIGHT 9 ENUM-BUNDLE NRR-LAMP:BRIGHT T= 9 T= ;
+   NRR-LAMP:BRIGHT 9 ENUM-BUNDLE NRR-LAMP:BRIGHT NRR-LAMP:EQ TTRUE 9 T= ;
+
+: MIXED-PAYLOADS ( -- )
+   s" instantiated mixed-width payload boundaries support both field orders" T-LABEL
+   MIXHI-RC @ 0 T= MIXLO-RC @ 0 T=
+   NRR-MIXHI:NOHI C-MIXHI 0 T=
+   3 5 NRR-PT:MAKE 11 NRR-MIXHI:HI C-MIXHI 8 T=
+   NRR-MIXLO:NOLO C-MIXLO 0 T=
+   11 3 5 NRR-PT:MAKE NRR-MIXLO:LO C-MIXLO 19 T= ;
 
 : REFUSALS ( -- )
    s" parking one cell of a bundle remains a named refusal" T-LABEL
-   TORB-RC @ E-NELAB-BUNDLE T=
-
-   s" unplaceable mixed-width MATCH payloads remain named refusals" T-LABEL
-   MIXHI-RC @ E-NELAB-MATCH T=
-   MIXLO-RC @ E-NELAB-MATCH T= ;
+   TORB-RC @ E-NELAB-BUNDLE T= ;
 
 public
 
@@ -207,6 +211,7 @@ public
    SEAM-RENAMES
    DISPATCH-SEAMS
    UNCHANGED-SHAPES
+   MIXED-PAYLOADS
    REFUSALS ;
 
 ;package

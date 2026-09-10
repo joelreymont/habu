@@ -141,7 +141,7 @@ ENUM quad
    q0 q1 q2 q3
 ;ENUM
 
-\ Seven arms, and sixteen, which is the largest the chain compiles today.
+\ Seven arms, and sixteen, the selector's former arm ceiling.
 ENUM step
    p0 p1 p2 p3 p4 p5 p6
 ;ENUM
@@ -150,7 +150,7 @@ ENUM wide
    w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
 ;ENUM
 
-\ And seventeen, which is one past it.
+\ Seventeen arms exercise growth beyond that former ceiling.
 ENUM over
    v0 v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 v16
 ;ENUM
@@ -578,14 +578,35 @@ RUN-DYNAMIC-CASES
 
 \ ---- emitted dispatch shape --------------------------------------------------
 
+\ Source compilation retires its temporary emission. Inspect the code committed
+\ to the dictionary; its recorded length omits a trailing return instruction.
+variable CODE-BASE
+variable CODE-LEN
+
+: CODE! ( ptr u8 n -- )
+   get-current XREF-FIND-WL {: rec:ptr :}
+   rec XREF-FOUND? 0= if s" native-match: missing published code" 76 die then
+   rec XREF-START CODE-BASE !
+   rec XREF-LEN CODE-LEN ! ;
+
+TRUSTED: CODE-WORD@ ( n -- n )
+   INSN-BYTES * CODE-BASE @ + @ $FFFFFFFF and ;
+
+: CODE-INSNS ( -- n ) CODE-LEN @ INSN-BYTES / ;
+
+: CODE-BRANCHES? ( -- bool )
+   CODE-INSNS 0 ?do
+      i CODE-WORD@ NBR:COND? if true unloop exit then
+   loop false ;
+
 : TRAP-BR? ( n n -- bool ) {: k:n t:n :}
-   k A64EMIT:WORD@ NBR:B? 0= if false exit then
-   A64EMIT:PLACEMENT k INSN-BYTES * + k A64EMIT:WORD@ NBR:B-TARGET t = ;
+   k CODE-WORD@ NBR:BL? 0= if false exit then
+   CODE-BASE @ k INSN-BYTES * + k CODE-WORD@ NBR:BL-TARGET t = ;
 
 : TRAP-BRANCHES ( -- n )
    NTRAP:ROUTINE$ NDICT:CALL-TARGET {: t:n :}
    0
-   A64EMIT:INSNS 0 ?do
+   CODE-INSNS 0 ?do
       i t TRAP-BR? if 1+ then
    loop ;
 
@@ -607,11 +628,12 @@ variable QUAD-SIZE
 
 : CAPTURE-EMISSION ( -- )
    PROBE-HUE$ TRY EMIT-RC !
-   A64EMIT:LEAVES-BY-BRANCH? if 1 else 0 then EMIT-BRANCH !
-   A64EMIT:TRAILING-RETURN? if 1 else 0 then EMIT-RET !
+   s" PROBE-HUE" CODE!
+   CODE-BRANCHES? if 1 else 0 then EMIT-BRANCH !
+   CODE-INSNS CODE-WORD@ NBR:RET? if 1 else 0 then EMIT-RET !
    TRAP-BRANCHES EMIT-TRAPS !
-   PROBE-UNW$ TRY drop A64EMIT:SIZE INSN-BYTES - UNW-SIZE !
-   PROBE-QUAD$ TRY drop A64EMIT:SIZE INSN-BYTES - QUAD-SIZE ! ;
+   PROBE-UNW$ TRY drop s" PROBE-UNW" CODE! CODE-LEN @ UNW-SIZE !
+   PROBE-QUAD$ TRY drop s" PROBE-QUAD" CODE! CODE-LEN @ QUAD-SIZE ! ;
 
 CAPTURE-EMISSION
 
@@ -762,9 +784,26 @@ CAPTURE-EMISSION
    RC-NARROWK @ CHECKER-REJECT T= ROW-NARROWK @ -1 T= ;
 
 : CEILING-CASE ( -- )
-   s" sixteen dispatch arms fit and seventeen exceed the selector capacity" T-LABEL
+   s" dispatch beyond the former sixteen-arm selector ceiling remains executable" T-LABEL
    NMX-WIDE:W15 E-WIDE 215 T=
-   RC-OVER @ E-A64SEL-CAP T=
+   RC-OVER @ 0 T=
+   NMX-OVER:V0 C-OVER 300 T=
+   NMX-OVER:V1 C-OVER 301 T=
+   NMX-OVER:V2 C-OVER 302 T=
+   NMX-OVER:V3 C-OVER 303 T=
+   NMX-OVER:V4 C-OVER 304 T=
+   NMX-OVER:V5 C-OVER 305 T=
+   NMX-OVER:V6 C-OVER 306 T=
+   NMX-OVER:V7 C-OVER 307 T=
+   NMX-OVER:V8 C-OVER 308 T=
+   NMX-OVER:V9 C-OVER 309 T=
+   NMX-OVER:V10 C-OVER 310 T=
+   NMX-OVER:V11 C-OVER 311 T=
+   NMX-OVER:V12 C-OVER 312 T=
+   NMX-OVER:V13 C-OVER 313 T=
+   NMX-OVER:V14 C-OVER 314 T=
+   NMX-OVER:V15 C-OVER 315 T=
+   NMX-OVER:V16 C-OVER 316 T=
 
    s" the checker accepts exactly twenty-four dispatch rows" T-LABEL
    RC-ROWS24 @ 0 T=
@@ -790,13 +829,6 @@ CAPTURE-EMISSION
 
 \ ---- hostile tag ------------------------------------------------------------
 
-public
-
-TRUSTED: FORGE ( -- )
-   99 E-HUE drop ;
-
-private
-
 $4000 constant CAP-CAP
 30000 constant CHILD-MS
 
@@ -810,9 +842,7 @@ variable CHILD-RC
 : CHILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" test/compiler/native-match.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" forge" >LEN PROC-ARGV+ ;
+   s" test/compiler/native-match-forge.f" >LEN PROC-ARGV+ ;
 
 : CHILD-RUN ( -- )
    CHILD-ARGV
@@ -854,12 +884,6 @@ public
    T-REPORT
    s" native-match: ok" type cr ;
 
-: ENTRY ( -- )
-   SCRIPT-ARGC 0 > if
-      0 SCRIPT-ARGV$ s" forge" STR= if FORGE exit then
-   then
-   MAIN ;
-
 ;package
 
-NMX:ENTRY
+NMX:MAIN
