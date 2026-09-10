@@ -66,12 +66,21 @@ Scheduling delays and driver behavior can extend elapsed time; this is not a
 real-time bound. Calls that assemble several chunks should use one overall
 deadline if they require a bounded transaction.
 
-The source-loaded host path is tested. Saving an application image after using
-this library is not yet supported: cached libc addresses belong to the writing
-process and need reset through the shared image lifecycle. That integration
-and a fresh-process image regression remain required before shipping saved
-applications containing this library. Live descriptors also remain process
-resources; they are not serializable handles.
+First use registers cache cleanup with
+[`IMAGE-LIFECYCLE`](../lib/image-lifecycle.f) before resolving any libc symbol.
+A failed resolution retains that registration for cleanup or a later retry.
+Quiescent image preparation clears all cached function addresses and the
+initialization/registration flags, so the next call resolves and registers them
+again. The module acquires no dynamic-library reference to release. Callers must
+close their descriptors and stop concurrent use before capture; live descriptors
+are process resources, not serializable handles.
+
+This handoff's lifecycle integration is pending native validation. The current
+compiler fails while loading the required `TASK` library, and shared registration
+must support concurrent initialization by different resource owners. A
+fresh-process image regression remains required before shipping saved
+applications containing this library. The earlier source-loaded host behavior
+is covered by the existing transport tests; it does not prove this integration.
 
 ## Implementation and checks
 

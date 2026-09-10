@@ -4,6 +4,7 @@ require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/cad-num-types.f
 require lib/task.f
+require lib/image-lifecycle.f
 require lib/memory.f
 
 package SERIAL
@@ -55,6 +56,7 @@ variable FN-CLOSE
 variable FN-ERRNO
 here FFI:>CELL 7 and 8 swap - 7 and allot
 variable READY
+variable REGISTERED
 create SYMBOL-NAME $20 allot
 
 \ No per-operation buffer is process-global; independent tasks may use ports.
@@ -98,6 +100,24 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    source $02 + c@ 16 lshift or source $03 + c@ 24 lshift or ;
 
 
+\ Image capture is quiescent. These are borrowed process addresses; clearing
+\ them needs no foreign call. Caller-owned descriptors must already be closed.
+: RESET-SYMBOLS ( -- )
+   0 FN-OPEN ! 0 FN-IOCTL ! 0 FN-READ !
+   0 FN-WRITE ! 0 FN-POLL ! 0 FN-CLOSE !
+   0 FN-ERRNO !
+   0 REGISTERED ! 0 READY atomic! ;
+
+
+\ INIT holds this module's READY lock. The shared registry must support
+\ concurrent registration by different resource owners.
+: REGISTER-CLEANUP ( -- )
+   REGISTERED @ 0= if
+      [: RESET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER
+      1 REGISTERED !
+   then ;
+
+
 \ RTLD_DEFAULT borrows process symbols; the native executable already needs
 \ libc.so.6. No library reference is acquired or retained by this module.
 : SYMBOL ( ptr u8 n -- n )
@@ -117,7 +137,7 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    begin
       READY atomic@ 2 = if exit then
       0 1 READY atomic-cas 0= if
-         [: LOAD-SYMBOLS ;] catch dup 0 <> if 0 READY atomic! throw then drop
+         [: REGISTER-CLEANUP LOAD-SYMBOLS ;] catch dup 0 <> if 0 READY atomic! throw then drop
          2 READY atomic! exit
       then TASK:PAUSE
    again ;
