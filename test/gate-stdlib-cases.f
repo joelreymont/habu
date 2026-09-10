@@ -1306,6 +1306,10 @@ SUITE fs-mutate
    lib/fs-mutate-test.f
 ;SUITE
 
+SUITE fs-list
+   lib/fs-list-test.f
+;SUITE
+
 SUITE process-argv
    lib/process-argv-test.f
 ;SUITE

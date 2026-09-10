@@ -1203,3 +1203,9 @@ public
 -9141 constant E-PTY-IOCTL
 -9142 constant E-PTY-IO
 -9143 constant E-PTY-CAPACITY
+
+\ Directory listings: -9150..-9159.
+-9150 constant E-FS-LIST-OPEN
+-9151 constant E-FS-LIST-READ
+-9152 constant E-FS-LIST-ENTRY
+-9153 constant E-FS-LIST-CAPACITY
