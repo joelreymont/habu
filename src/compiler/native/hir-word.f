@@ -145,6 +145,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       early-leave  OF 26 ENDOF
       catch        OF 27 ENDOF
       outer-index  OF 28 ENDOF
+      tick         OF 29 ENDOF
+      eval         OF 30 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -178,6 +180,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       26 of HIR-CTRL:EARLY-LEAVE endof
       27 of HIR-CTRL:CATCH endof
       28 of HIR-CTRL:OUTER-INDEX endof
+      29 of HIR-CTRL:TICK endof
+      30 of HIR-CTRL:EVAL endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -914,6 +918,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    {: v:IR-ARENA:view r:IR-ARENA:arena i:n sy:IR-ID:ir-symbol-id :}
    v i NTAPE:KIND@ {: k:NTAPE:kind :}
    k NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if HIR-MEANING:LITERAL exit then
+   k NTAPE-KIND:CHAR-LITERAL NTAPE-KIND:EQ if HIR-MEANING:LITERAL exit then
    k NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if HIR-MEANING:REAL-LITERAL exit then
    k NTAPE-KIND:STRING-LITERAL NTAPE-KIND:EQ if HIR-MEANING:STRING-LITERAL exit then
    k NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-HIR-KIND throw then
@@ -922,7 +927,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The exact ceilings this registration writes, so a caller commits a table to
 \ them rather than to a guess. Only the eight renames contribute pick cells.
-83 constant WORDS
+84 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1055,7 +1060,8 @@ private
 : DEF-QUOT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" [:" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-QUOT BDECLARE-CONTROL
-   c b r c b s" ;]" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-QUOT BDECLARE-CONTROL ;
+   c b r c b s" ;]" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-QUOT BDECLARE-CONTROL
+   c b r c b s" [']" IR-BUILD:INTERN-SYMBOL HIR-CTRL:TICK BDECLARE-CONTROL ;
 
 \ None carries a payload: `is` moves what the DEFERRED word declares, `execute`
 \ moves one cell more than the quotation reaching it, and `catch` moves the
@@ -1074,7 +1080,8 @@ private
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" is" IR-BUILD:INTERN-SYMBOL HIR-CTRL:BIND-DEFER BDECLARE-CONTROL
    c b r c b s" execute" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EXEC BDECLARE-CONTROL
-   c b r c b s" catch" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CATCH BDECLARE-CONTROL ;
+   c b r c b s" catch" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CATCH BDECLARE-CONTROL
+   c b r c b s" evaluate" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EVAL BDECLARE-CONTROL ;
 
 \ Neither stages an operation and neither carries a payload: the work is the
 \ elaborator's over the tape rows between them.

@@ -40,6 +40,21 @@ using A64ASM
 using NFROZEN
 private
 
+\ Each pass retains its own dimensions while later passes read its results.
+variable SCRATCH-VALUES
+variable SCRATCH-BLOCKS
+variable SCRATCH-FUNS
+variable SCRATCH-OPS
+: VMAX ( -- n ) SCRATCH-VALUES @ ;
+: BMAX ( -- n ) SCRATCH-BLOCKS @ ;
+: FMAX ( -- n ) SCRATCH-FUNS @ ;
+: OMAX ( -- n ) SCRATCH-OPS @ ;
+: SCRATCH-SIZES! ( -- )
+   NFROZEN:VALUE-COUNT 1 max SCRATCH-VALUES !
+   NFROZEN:TOTAL-BLOCKS 1 max SCRATCH-BLOCKS !
+   NFROZEN:TOTAL-FUNS 1 max SCRATCH-FUNS !
+   NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
+
 \ ---- the bound dialect -------------------------------------------------------
 A64IR-OPCODE:MOV       A64IR:ORD constant O-MOV
 A64IR-OPCODE:DTAKE     A64IR:ORD constant O-DTAKE
@@ -81,7 +96,7 @@ A64IR-OPCODE:CMPBRI    A64IR:ORD constant O-CMPBRI
 \ Three per operation is the ceiling: five forms emit more than one and none
 \ emits more than three.
 3 constant INSN-PER-OP
-INSN-PER-OP VMAX BMAX 3 * + * constant INSN-CAP
+: INSN-CAP ( -- n ) INSN-PER-OP OMAX BMAX 3 * + * ;
 
 4 constant INSN-BYTES
 
@@ -150,33 +165,62 @@ A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OFF IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MASK IR-ID:ir-symbol-id
 
-create CODE INSN-CAP INSN-BYTES * allot
+DYNAMIC-BUFFER CODE-BUF n
+: CODE ( -- ptr u8 ) 0 CODE-BUF BYTE-VIEW ;
 \ A relocation pass may not recognise an address chain by decoding region bytes,
 \ so the kind travels from the elaborator and is recorded per INSTRUCTION.
-create M-ADDR INSN-CAP cells allot
-create M-ARD INSN-CAP cells allot
-create M-OFF INSN-CAP cells allot
-create M-ST INSN-CAP cells allot
-create M-LN INSN-CAP cells allot
-INSN-CAP TYPED-BUFFER M-SRC IR-ID:ir-source-id
+DYNAMIC-BUFFER M-ADDR-BUF n
+: M-ADDR ( -- ptr n ) 0 M-ADDR-BUF ;
+DYNAMIC-BUFFER M-ARD-BUF n
+: M-ARD ( -- ptr n ) 0 M-ARD-BUF ;
+DYNAMIC-BUFFER M-OFF-BUF n
+: M-OFF ( -- ptr n ) 0 M-OFF-BUF ;
+DYNAMIC-BUFFER M-ST-BUF n
+: M-ST ( -- ptr n ) 0 M-ST-BUF ;
+DYNAMIC-BUFFER M-LN-BUF n
+: M-LN ( -- ptr n ) 0 M-LN-BUF ;
+DYNAMIC-BUFFER M-SRC IR-ID:ir-source-id
 
 \ Keyed by ORDINAL, because a branch names an ordinal.
-create B-START BMAX cells allot
+DYNAMIC-BUFFER B-START-BUF n
+: B-START ( -- ptr n ) 0 B-START-BUF ;
 
 \ One permutation held twice, because both directions are asked in an inner loop.
-create B-ORDER BMAX cells allot        \ position -> block ordinal
-create B-PLACE BMAX cells allot        \ block ordinal -> position
+DYNAMIC-BUFFER B-ORDER-BUF n
+: B-ORDER ( -- ptr n ) 0 B-ORDER-BUF ;
+DYNAMIC-BUFFER B-PLACE-BUF n
+: B-PLACE ( -- ptr n ) 0 B-PLACE-BUF ;
 
 \ A block whose whole content is an unconditional branch is passed through, so a
 \ branch to it can name the far end and the block itself becomes unreachable.
-create B-GOTO BMAX cells allot         \ block ordinal -> the block a branch to it should name
-create B-KEEP BMAX cells allot         \ block ordinal -> is it still reachable
+DYNAMIC-BUFFER B-GOTO-BUF n
+: B-GOTO ( -- ptr n ) 0 B-GOTO-BUF ;
+DYNAMIC-BUFFER B-KEEP-BUF n
+: B-KEEP ( -- ptr n ) 0 B-KEEP-BUF ;
 variable N-LAID                        \ how many blocks the order actually holds
 
 \ A function's start has to outlive the per-function tables, because an
 \ a64.codeaddr in an EARLIER function names a LATER one's entry. So EMIT lays
 \ every function out once to fill this, then lays each out again to write it.
-create F-START FMAX cells allot        \ function ordinal -> its first instruction
+DYNAMIC-BUFFER F-START-BUF n
+: F-START ( -- ptr n ) 0 F-START-BUF ;
+
+: RESERVE-SCRATCH ( -- )
+   SCRATCH-SIZES!
+   INSN-CAP INSN-BYTES * CELL 1- + CELL / CODE-BUF-RESERVE
+   INSN-CAP M-ADDR-BUF-RESERVE
+   INSN-CAP M-ARD-BUF-RESERVE
+   INSN-CAP M-OFF-BUF-RESERVE
+   INSN-CAP M-ST-BUF-RESERVE
+   INSN-CAP M-LN-BUF-RESERVE
+   INSN-CAP M-SRC-RESERVE
+   BMAX B-START-BUF-RESERVE
+   BMAX B-ORDER-BUF-RESERVE
+   BMAX B-PLACE-BUF-RESERVE
+   BMAX B-GOTO-BUF-RESERVE
+   BMAX B-KEEP-BUF-RESERVE
+   FMAX F-START-BUF-RESERVE
+   ;
 variable N-FUNS                        \ how many functions the emission holds
 
 \ ---- the dialect's operation family ------------------------------------------
@@ -1404,8 +1448,9 @@ public
 \ A site is admitted only for four consecutive lanes of one kind writing the
 \ same register. Scanning one carrier at a time keeps two adjacent chains
 \ distinct even when the allocator reuses their register.
-INSN-CAP A64IR:HALVES / constant SITE-CEIL
-create SITES SITE-CEIL cells allot
+: SITE-CEIL ( -- n ) INSN-CAP A64IR:HALVES / ;
+DYNAMIC-BUFFER SITES-BUF n
+: SITES ( -- ptr n ) 0 SITES-BUF ;
 variable N-SITES
 
 : ADDR-LANE? ( n n n -- bool )
@@ -1431,6 +1476,7 @@ variable N-SITES
 variable SCAN-K
 
 : SCAN-ADDR-SITES ( -- )
+   SITE-CEIL 1 max SITES-BUF-RESERVE
    0 N-SITES !
    0 SCAN-K !
    begin SCAN-K @ N-INS @ < while
@@ -1458,6 +1504,7 @@ variable SCAN-K
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
+   RESERVE-SCRATCH
    FUNS-CK
    SHAPES-CK
    m ALLOC-CK
@@ -1562,6 +1609,24 @@ variable SCAN-K
 : MAP-SPAN@ ( n -- IR-SOURCE:span )
    SEAL-CK ORD-CK {: k:n :}
    k M-SRC @  k cells M-ST + @  k cells M-LN + @  IR--SOURCE-SPAN:MAKE ;
+
+public
+: RELEASE-SCRATCH ( -- )
+   SITES-BUF-RELEASE
+   CODE-BUF-RELEASE
+   M-ADDR-BUF-RELEASE
+   M-ARD-BUF-RELEASE
+   M-OFF-BUF-RELEASE
+   M-ST-BUF-RELEASE
+   M-LN-BUF-RELEASE
+   M-SRC-RELEASE
+   B-START-BUF-RELEASE
+   B-ORDER-BUF-RELEASE
+   B-PLACE-BUF-RELEASE
+   B-GOTO-BUF-RELEASE
+   B-KEEP-BUF-RELEASE
+   F-START-BUF-RELEASE
+   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

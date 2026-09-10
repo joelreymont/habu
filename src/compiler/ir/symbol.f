@@ -109,9 +109,11 @@ $53594D31 constant SYM-MAGIC         \ "SYM1": the row-table header format tag
 3 constant ROW-CELLS
 8 constant CELL-BYTES
 $FFFF constant FILTER-MASK
+public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 $FFFFFFFF HDR-CELLS - constant POOL-CELL-MAX
 POOL-CELL-MAX CELL-BYTES * constant BYTE-MAX
+private
 
 : BYTES>CELLS ( n -- n )
    CELL-BYTES 1- + CELL-BYTES / ;

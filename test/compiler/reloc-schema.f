@@ -246,7 +246,7 @@ public
 \ Rocq error rather than an omission; this table is what holds that vocabulary
 \ to the one the shipped emitter actually has.
 
-15 constant PROD-COUNT
+16 constant PROD-COUNT
 
 : PROD-NAME$ ( n -- ptr u8 n )
    case
@@ -265,6 +265,7 @@ public
       12 of s" EM-AOT-RELOC-DATA" endof
       13 of s" EMIT-MARK" endof
       14 of s" BPTRCELLMARK" endof
+      15 of s" C-DEFER-META-WRITE" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -285,6 +286,7 @@ public
       12 of s" P_aot_data_reloc" endof
       13 of s" P_defer_cell" endof
       14 of s" P_data_pointer_cell" endof
+      15 of s" P_defer_metadata" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -305,6 +307,7 @@ public
       12 of s" Fixed_mapping" endof
       13 of s" Recorded R_xtcell" endof
       14 of s" Recorded R_xtcell" endof
+      15 of s" Fixed_mapping" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -381,7 +384,7 @@ public
       1 of s" C-DATA-ADDR C-CODE-ADDR" endof
       2 of s" C-ADDR-RAW EMIT-ADDRS" endof
       3 of s" EMIT-CREATE" endof
-      4 of s" C-DEFER-EMIT-CODE J-IS" endof
+      4 of s" C-EMIT-CRSIG-A! C-DEFER-EMIT-CODE J-IS" endof
       5 of s" J-SEMIQUOT C-BTICK" endof
       6 of s" C-SDQ C-CQ C-ESDQ C-ECQ" endof
       7 of s" C-CALL EMIT-CEMITBL EMIT-P2-VALID-EMIT EMIT-P2-STORE CORE" endof

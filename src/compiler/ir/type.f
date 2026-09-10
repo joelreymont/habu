@@ -186,8 +186,10 @@ $54595231 constant TYR-MAGIC         \ "TYR1": the row-table header format tag
 2 constant OFF-B
 3 constant OFF-C
 4 constant ROW-CELLS
+public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 $FFFFFFFF HDR-CELLS - constant LIST-MAX
+private
 32 constant ARITY-MAX                \ committed per-list stage ceiling
 
 \ ---- stable wire codes -------------------------------------------------------

@@ -22,20 +22,6 @@ VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
 
 public
 
-\ ---- how many values one function of the native chain holds ------------------
-\ The selector's map spans blocks because SSA values do too. The largest
-\ shipping compiler routine currently needs 423 entries.
-512 constant VMAX
-
-\ ---- how many blocks one routine of the native chain has ---------------------
-\ One ceiling for every pass, for the same reason VMAX is one.
-64 constant BMAX
-
-\ ---- how many functions one module of the native chain has -------------------
-\ One ceiling for every pass. Raising it is a capability and not a number: every
-\ function of a module spends one shared value budget (E-A64RA-CAP, regalloc.f).
-64 constant FMAX
-
 \ ---- the frozen tables of the module being read ------------------------------
 0 constant V-SYMP                    \ symbol pool
 1 constant V-SYMR                    \ symbol rows
@@ -53,6 +39,12 @@ public
 \ ---- the cursor --------------------------------------------------------------
 : MKEY ( -- IR-ID:ir-module-key )    0 S-KEY @ ;
 : VW ( n -- IR-ARENA:view )          S-VIEW @ ;
+
+: VALUE-COUNT ( -- n ) V-VALR VW IR-OP:FVALUES ;
+: TOTAL-BLOCKS ( -- n ) V-BLKR VW IR-FUN:FBLOCKS ;
+: TOTAL-FUNS ( -- n ) V-FUNR VW IR-FUN:FFUNS ;
+: TOTAL-OPS ( -- n ) V-OPR VW IR-OP:FOPS ;
+
 
 \ A pass calls this once at the start of its own run, before it reads a row.
 : VIEWS! ( IR-BUILD:module -- )

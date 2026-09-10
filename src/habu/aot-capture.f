@@ -328,6 +328,7 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
    u 255 > if s" aot-capture: name too long for pool" 74 die then
    a u ACAP-POOL-FIND dup 0 >= if exit then drop
    AOT-NAMES-LEN @ 1+ u + AOT-NAMES-CAP > if s" aot-capture: name pool overflow" 74 die then
+   AOT-NAMES-LEN @ 1+ u + AOT-NAMES-RESERVE
    AOT-NAMES-LEN @ {: off:n :}
    u  AOT-NAMES-BUF@ off + c!                                \ [len]
    u 0 ?do a i + c@  AOT-NAMES-BUF@ off 1+ + i + c!  loop    \ [bytes]
@@ -501,7 +502,14 @@ variable ACAP-RECMM                                           \ record-proof mis
       v ACAP-REC-EXT? {: ext:bool :}
       48 0 ?do
          ext  i 24 >= and  i 32 < and  0= if                  \ EXT: [24..32) is the out-of-line pointer
-            s i + c@  v i + c@  = 0= if 1 ACAP-RECMM +! then
+            s i + c@  v i + c@  = 0= if
+               ACAP-RECMM @ 12 < if
+                  s" record " type j . s"  byte " type i .
+                  s"  expected " type s i + c@ . s"  actual " type v i + c@ .
+                  s"  name " type v ext ACAP-REC-NAME v 16 + ACAP-W32@ type cr
+               then
+               1 ACAP-RECMM +!
+            then
          then
       loop
       ext if c v ACAP-PROVE-NAME then                         \ ... and the name stands in for it
@@ -1107,6 +1115,33 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 
+\ A deferred word's trailer contains the same DATA address as its dispatch
+\ code. Its magic identifies the metadata field; aliases must relocate it once.
+: ACAP-DSITE-HELD? ( n -- bool ) {: site:n :}
+   AOT-DSITE-N @ 0 ?do
+      AOT-DSITE-BUF@ i 4 * + ACAP-W32@ site = if true unloop exit then
+   loop
+   false ;
+
+: ACAP-DEFER-SITE ( n n n n n -- )
+   {: k:n bstart:n bend:n d0:n d1:n :}
+   k AOT-REC {: rec:ptr :}
+   rec AOT-RXT rec AOT-RLEN + {: meta:n :}
+   meta bstart < meta 16 + bend > or if exit then
+   meta AOT-N>U8 AOT-CELL@ DEFER-MAGIC <> if exit then
+   meta 8 + AOT-N>U8 AOT-CELL@ {: cell:n :}
+   cell d0 < cell CELL + d1 > or if
+      s" aot-capture: defer metadata outside DATA window" 74 die
+   then
+   meta 8 + bstart - AOT-DSITE-CELL or {: site:n :}
+   site ACAP-DSITE-HELD? 0= if site ACAP-ADD-DSITE then ;
+
+: ACAP-SCAN-DEFER-SITES ( n n n n -- )
+   {: bstart:n bend:n d0:n d1:n :}
+   ACAP-W-R1 @ ACAP-W-R0 @ ?do
+      i bstart bend d0 d1 ACAP-DEFER-SITE
+   loop ;
+
 \ The CODE half. Its sites are the anonymous quotation entry addresses, and each
 \ is canonicalized into a b0-relative offset with captureB0 = 0. The boot pass
 \ rebases every recorded literal by the code delta (seedCP - captureB0), so the
@@ -1219,10 +1254,14 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 : ACAP-XTCELL-META ( n n n n n -- n ) {: k:n b0:n b1:n d0:n d1:n :}
    k ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
-   k ACAP-XTCELL-DATA?
-   if v d0 d1 ACAP-TARGET-OFFSET AOT-WINDOW:XTOFF-DATA-TAG or
-   else v b0 b1 ACAP-TARGET-OFFSET
-   then ;
+   k ACAP-XTCELL-DATA? if d0 d1 else b0 b1 then {: lo:n hi:n :}
+   v 0<> v lo < v hi >= or and if
+      s" aot-capture: address row " type k .
+      s"  cell DATA+" type k ACAP-XTCELL-OFF .
+      s"  expected range " type lo . hi . cr
+   then
+   v lo hi ACAP-TARGET-OFFSET
+   k ACAP-XTCELL-DATA? if AOT-WINDOW:XTOFF-DATA-TAG or then ;
 
 \ --- the window's non-zero extents --------------------------------------------
 \ ONE ROW AND ITS BYTES, APPENDED TOGETHER. The bytes go into their own section in
@@ -1234,7 +1273,6 @@ variable ACAP-RP      \ the scan cursor inside one segment
 variable ACAP-RQ      \ the segment cursor across the window
 variable ACAP-RN      \ the next declared cell at or above ACAP-RQ
 variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
-variable ACAP-D0OFF   \ captured DATA-window base as an offset from DATA
 
 : ACAP-ADD-RUN ( n n n -- ) {: d0:n off:n rl:n :}
    AOT-WINDOW:RUN-N @ AOT-WINDOW:RUN-MAX >= if
@@ -1281,8 +1319,11 @@ variable ACAP-D0OFF   \ captured DATA-window base as an offset from DATA
 : ACAP-NEXT-CELL ( n n -- n ) {: p:n len:n :}
    len ACAP-RC !
    AOT-WINDOW:XTOFF-N @ 0 ?do
-      i ACAP-XTOFF@ ACAP-D0OFF @ - {: off:n :}
-      off p >= off ACAP-RC @ < and if off ACAP-RC ! then
+      i ACAP-XTOFF@ {: loc:n :}
+      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
+         loc AOT-WINDOW:XTOFF-VALUE-MASK and {: off:n :}
+         off p >= off ACAP-RC @ < and if off ACAP-RC ! then
+      then
    loop
    ACAP-RC @ ;
 
@@ -1301,14 +1342,18 @@ variable ACAP-D0OFF   \ captured DATA-window base as an offset from DATA
    len AOT-WINDOW:SPAN-CAP > if
       s" aot-capture: DATA window exceeds the AOT window span cap" 74 die then
    d0 AOT-DATA-N - {: d0off:n :}
-   d0off ACAP-D0OFF !
    ACAP-XTCELL-ROWS 0 ?do
       i ACAP-XTCELL-OFF {: celloff:n :}
       celloff ACAP-XTCELL-CELL-CHECK
       celloff d0off - {: woff:n :}
       woff len ACAP-CLASSIFY-XTCELL
       i b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
-      celloff meta ACAP-ADD-XTOFF
+      woff 0 >= woff len < and if
+         woff AOT-WINDOW:XTOFF-WINDOW-TAG or
+      else
+         celloff
+      then
+      meta ACAP-ADD-XTOFF
    loop
    d0 len ACAP-SCAN-RUNS ;
 
@@ -1463,6 +1508,7 @@ public
    ACAP-AUDIT-WIDS
    ACAP-SCAN-CALLS
    bstart bend d0 d1 ACAP-SCAN-DSITES
+   bstart bend d0 d1 ACAP-SCAN-DEFER-SITES
    bstart bend ACAP-SCAN-CSITES
    bstart bend d0 d1 ACAP-BAKE-DATA            \ DATA bytes plus every declared address cell
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool

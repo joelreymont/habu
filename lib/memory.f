@@ -51,10 +51,11 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    bytes MEM-CHECK-SIZE
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
 
-\ Refines a validated successful mmap result to a byte pointer; syscall-result
-\ refinement is not expressible. Retirement owner: habu-typed-defining-words-aa224eb5.
-TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
-   MEM-MMAP-RC dup 0 < if E-MEM-MAP throw then ;
+\ Fresh storage gets its element type from the caller. The engine owns only
+\ the OS mapping and its pointer/error result; sizing and failure policy are checked.
+: MEM-ALLOC-PTR ( n -- ptr a )
+   dup MEM-CHECK-SIZE
+   map-anon 0<> if drop E-MEM-MAP throw then ;
 
 : MEM-ALLOC-BYTES ( n -- ptr u8 n ) {: bytes :}
    bytes MEM-CHECK-SIZE

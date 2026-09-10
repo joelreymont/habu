@@ -61,9 +61,7 @@ public
 \ At n of zero the list is empty and an empty list is silent, so every constructor
 \ below declares A64EFF-CONV:DSTACK rather than leaving the list to say it.
 : SLOT-SEQ ( n -- A64EFF:placeseq )
-   {: n:n :}
-   A64EFF:SEQ-NONE
-   n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+   A64EFF:SEQ-DSTACK ;
 
 \ Prologue slots plus the allocator's, rounded to the stack alignment. It takes
 \ the link declaration as well as the trait, because A64FRAME reads both.

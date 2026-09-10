@@ -1,54 +1,9 @@
-\ internal-mark.f - seal-time internal-word + min-in marking pass (dots
-\ habu-hb-crash-bare-c5be6634, habu-habu-certified-words-84e84eaf).
-\
-\ Loaded as the LAST cold-prefix source (after script-argv.f, before the
-\ SEAL-CAPTURE watermark token). Walks every dictionary record the engine
-\ prefix defined - from the util.f IMK-NDICT0 prim-boundary watermark to the
-\ current ndict - and classifies each COLON record (body entry = the
-\ C-CALL-PROLOGUE-INSTR frame setup) that has a top-level spelling: a global
-\ one under its bare name, a package PUBLIC one under its qualified PKG:TAIL
-\ name (dot habu-pkg-publics-escape-41532ee7; package privates have no
-\ top-level spelling at all - see IMK-WALK-PACKAGES below):
-\ - no checker-known effect (no certified or trusted signature and no
-\   primitive axiom; SIG-MIN-IN misses): set DNAME-INT (flags bit 63). The
-\   interpret dispatch and interpret-mode tick (habu2.f EM-INTERPRET-FIND /
-\   C-TICK) fail closed on the folded flag with
-\   `hb: internal engine word: <token>` + rc 70 / catchable RC-REJECT inside
-\   evaluate, so the executable top-level name universe equals the checker's:
-\   a colon word the checker reports E-UNDEFINED inside checked code cannot be
-\   executed or ticked bare at top level either.
-\ - checker-known effect with din > 0: poke DNAME-MIN-IN (flags bits 52-59)
-\   with the effect's declared input cell count, so EM-INTERPRET-FIND fails
-\   closed (`hb: interpret stack underdepth: <token>` + rc 70) on a bare call
-\   with fewer interpret-stack cells - closing the same below-base read for
-\   the axiom'd/signed engine-prefix words (CHECK, CORE-STR=, ...) that stay
-\   top-level executable by design, and re-poking the records certified in the
-\   hook window before this file loads (idempotent: the publish tail already
-\   OR'd the same byte).
-\ Compiled references from explicitly unchecked user code and TRUSTED: bodies
-\ are untouched: those are declared trusted boundaries.
-\
-\ Data records (create/variable/constant and does>-instances; entry is a
-\ literal push, not the colon prologue) are exempt: their bodies push an
-\ address or value and cannot consume interpret-stack garbage, and the engine
-\ auto-trusts exactly this class whenever a check hook is installed
-\ (habu2.f C-CALL-TRUST-LASTC-*), so the checker-boot ones are unknown only
-\ because they load before the hook exists. The truly dangerous engine cells
-\ are owned by the PROT-GUARD friend bands, not by name visibility.
-\
-\ The flag stores go through the `int-mark` / `min-in-mark` prims (habu1.f
-\ BINTMARK / BMININMARK): the dict region is read-only at runtime, so each prim
-\ brackets its store with the LPROT RW/RX toggle. Marking is monotonic - no
-\ clearing primitive exists - and the pass finishes by marking both prims' own
-\ records, so user source can never re-drive or extend the marking.
-\
-\ Unchecked boundary (whole file): the pass reads raw dictionary-record cells,
-\ and its own words must stay checker-unknown so the pass marks THEM internal
-\ too - self-sealing, nothing here remains callable from user source once
-\ IMK-PASS has run. The check hook is reinstalled (LOWER-CERT-HOOK:INSTALL)
-\ before the pass executes.
-\ Regression: test/internal-word-gate.f.
-0 set-check
+\ internal-mark.f - hide unchecked engine entries and record call arity.
+\ Dictionary reads use XREF; private engine boundaries apply the flags and
+\ read checker registries before the runtime is sealed.
+
+package ENGINE-INTERNAL
+
 
 variable IMK-I
 
@@ -57,23 +12,23 @@ variable IMK-I
 \ start with their literal push instead.
 $D10043FF constant IMK-PROLOGUE
 
-: IMK-REC ( n -- a )
-   DREC * dbase@ + ;
+: IMK-REC ( n -- ptr a )
+   XREF-REC ;
 
 : IMK-FLAGS@ ( n -- n )
-   IMK-REC 16 + @ ;
+   IMK-REC XREF-FLAGS ;
 
 : IMK-WID ( n -- n )
-   IMK-REC 40 + @ ;
+   IMK-REC XREF-WORDLIST ;
 
-: IMK-NAME-A ( n -- a )   \ inline names live at +24; DNAME-EXT names point out of line
-   IMK-REC dup 16 + @ DNAME-EXT and 0 <> IF 24 + @ ELSE 24 + THEN ;
+: IMK-NAME-A ( n -- ptr u8 )
+   IMK-REC XREF-NAME-A ;
 
 : IMK-NAME-U ( n -- n )
    IMK-FLAGS@ DNAME-LEN-MASK and ;
 
 : IMK-INSN0 ( n -- n )    \ first instruction word of the record body
-   IMK-REC @ {: b:n :}
+   IMK-REC XREF-START XREF-N>U8 {: b:ptr :}
    b c@
    b 1 + c@ 8 lshift or
    b 2 + c@ 16 lshift or
@@ -89,19 +44,26 @@ $D10043FF constant IMK-PROLOGUE
 : IMK-GLOBAL-COLON? ( n -- bool )
    dup IMK-WID 0 = IF IMK-COLON? ELSE drop 0 0= 0= THEN ;
 
-: IMK-MIN-IN ( n -- n )      \ din cell width of the record's checker effect; -1 unknown
-   dup IMK-NAME-A swap IMK-NAME-U SIG-MIN-IN ;
+TRUSTED: FIRST-CORE ( -- n ) IMK-NDICT0 @ ;
+TRUSTED: KNOWN-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
+TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
+TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
+TRUSTED: PROTECTED-COUNT ( -- n ) REG-PROT-N @ ;
+TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
+
+: IMK-MIN-IN ( n -- n )
+   dup IMK-NAME-A swap IMK-NAME-U KNOWN-MIN-IN ;
 
 : IMK-MARK ( n n -- ) {: i:n m:n :}   \ unknown -> DNAME-INT; known din>0 -> DNAME-MIN-IN
-   m 0 < IF i int-mark EXIT THEN
-   m 0 > IF i m min-in-mark THEN ;
+   m 0 < IF i MARK-INTERNAL EXIT THEN
+   m 0 > IF i m MARK-MIN-IN THEN ;
 
 : IMK-CLASSIFY ( n -- ) {: i:n :}   \ a global record, under its bare name
    i IMK-GLOBAL-COLON? 0= IF EXIT THEN
    i i IMK-MIN-IN IMK-MARK ;
 
 : IMK-WALK ( -- )            \ classify every record in [IMK-NDICT0, ndict)
-   IMK-NDICT0 @ IMK-I !
+   FIRST-CORE IMK-I !
    BEGIN IMK-I @ ndict@ < WHILE
       IMK-I @ IMK-CLASSIFY
       IMK-I @ 1 + IMK-I !
@@ -169,11 +131,11 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 
 : IMK-CLASSIFY-PUB ( n n -- ) {: p:n i:n :}
    i IMK-COLON? 0= IF EXIT THEN
-   i p i IMK-QUAL SIG-MIN-IN IMK-MARK ;
+   i p i IMK-QUAL KNOWN-MIN-IN IMK-MARK ;
 
 : IMK-PKG-PUBLICS ( n -- ) {: p:n :}   \ every public colon record of package row p
-   p IMK-REC @ {: pub:n :}
-   p 1 + IMK-NDICT0 @ max IMK-I !
+   p IMK-REC XREF-START {: pub:n :}
+   p 1 + FIRST-CORE max IMK-I !
    BEGIN IMK-I @ ndict@ < WHILE
       IMK-I @ IMK-WID pub = IF p IMK-I @ IMK-CLASSIFY-PUB THEN
       IMK-I @ 1 + IMK-I !
@@ -195,8 +157,8 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 
 : IMK-SEAL-PRIM ( -- )       \ close the loop: the marking prims are themselves internal
    0 IMK-I !
-   BEGIN IMK-I @ IMK-NDICT0 @ < WHILE
-      IMK-I @ IMK-PRIM? IF IMK-I @ int-mark THEN
+   BEGIN IMK-I @ FIRST-CORE < WHILE
+      IMK-I @ IMK-PRIM? IF IMK-I @ MARK-INTERNAL THEN
       IMK-I @ 1 + IMK-I !
    REPEAT ;
 
@@ -209,8 +171,8 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
 \ core compiled callers (resolved before this pass) keep working.
 : IMK-SEAL-REGISTRY ( -- )
    0 IMK-I !
-   BEGIN IMK-I @ REG-PROT-N @ < WHILE
-      REG-PROT-IDX IMK-I @ cells + @ int-mark
+   BEGIN IMK-I @ PROTECTED-COUNT < WHILE
+      IMK-I @ PROTECTED-RECORD MARK-INTERNAL
       IMK-I @ 1 + IMK-I !
    REPEAT ;
 
@@ -220,5 +182,7 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
    IMK-SEAL-REGISTRY
    IMK-SEAL-PRIM ;
 
-LOWER-CERT-HOOK:INSTALL
-IMK-PASS
+get-current prot-wid-add
+' IMK-PASS
+;package
+execute

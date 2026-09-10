@@ -210,8 +210,10 @@ $41545231 constant ATR-MAGIC         \ "ATR1": the row-table header format tag
 4 constant OFF-D
 5 constant ROW-CELLS
 8 constant CELL-BYTES
+public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 $FFFFFFFF HDR-CELLS - constant POOL-MAX
+private
 32 constant STAGE-MAX                \ committed per-list stage ceiling
 $8000000000000000 constant INT-MIN
 

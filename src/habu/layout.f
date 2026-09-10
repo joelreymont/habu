@@ -655,7 +655,9 @@ $40C0 constant UNCGH-CELL
 \ pool can outgrow 64 KiB with the captured window; the compiler chain needs ~51 KiB
 \ of names where the metabuild REPL window needs 953 bytes.
 20 constant AOT-CREC-ROW
-$20000 constant AOT-NAMES-CAP
+\ The deduplicated pool admits at most DICT-CAP entries, each containing a
+\ one-byte length and at most 255 name bytes. Storage grows to the used size.
+DICT-CAP 256 * constant AOT-NAMES-CAP
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 32768: HIDX-SLOTS $10000

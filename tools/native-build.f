@@ -58,7 +58,9 @@ require src/os/image-bytes.f
 
 NATIVE-BUILD:LOAD-HOST-IMAGE
 
+require src/habu/regalloc.f
 require src/habu/habu1.f
+require src/habu/jit.f
 require src/habu/prof.f
 require src/habu/fdio.f
 require src/habu/aot-decl.f
@@ -91,26 +93,18 @@ TRUSTED: LOGICAL-RESET ( -- )
 : LOAD-TARGET ( -- )
    s" src/core/util.f" included
    s" src/core/cell.f" included
-   HB-TARGET-LINUX? if
-      s" src/os/linux/target.f" included
-      s" src/os/linux/layout.f" included
-   else HB-TARGET-MACOS? if
-      s" src/os/macos/target.f" included
-      s" src/os/macos/layout.f" included
-   else
-      s" native-build: unknown target" 76 die
-   then then
-   s" src/habu/layout.f" included
    s" src/core/pointer-storage.f" included
    s" src/core/engine-error.f" included
    s" src/core/exec-vector.f" included
    s" src/core/checker.f" included
    s" src/core/engine-error-effects.f" included
+   s" src/core/lower-cert-base.f" included
    s" src/core/type-schema.f" included
    s" src/core/type-family.f" included
    s" src/core/render.f" included
    s" src/core/sumtype.f" included
    s" src/core/layout-buffer.f" included
+   s" src/core/layout-valid.f" included
    s" src/core/check-hook.f" included
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
@@ -122,6 +116,16 @@ TRUSTED: LOGICAL-RESET ( -- )
    s" src/core/enum-decl.f" included
    s" src/core/structures.f" included
    s" src/core/bytes.f" included
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" included
+      s" src/os/linux/layout.f" included
+   else HB-TARGET-MACOS? if
+      s" src/os/macos/target.f" included
+      s" src/os/macos/layout.f" included
+   else
+      s" native-build: unknown target" 76 die
+   then then
+   s" src/habu/layout.f" included
    s" src/os/env-base.f" included
    s" src/core/include.f" included
    s" src/habu/native-runtime.f" included ;
@@ -160,7 +164,7 @@ TRUSTED: LOGICAL-RESET ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" ./.hb-native-build.tmp" >LEN
    s" bin" >LEN
-   S" : X ( -- n ) 42 ; X . cr\n" >LEN
+   S\" : X ( -- n ) 42 ; X . cr\n" >LEN
    SMOKE-OUT SMOKE-CAP >LEN SMOKE-ERR SMOKE-CAP >LEN SMOKE-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE SMOKE-RESULT {: outu:n erru:n rc:n :}
    rc 0<> if
@@ -171,7 +175,7 @@ TRUSTED: LOGICAL-RESET ( -- )
       SMOKE-ERR erru type
       BUILD-RC throw
    then
-   SMOKE-OUT outu S" 42 \n\n" STR= 0= if
+   SMOKE-OUT outu S\" 42\n\n" STR= 0= if
       BUILD-RC throw
    then ;
 

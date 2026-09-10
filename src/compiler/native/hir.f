@@ -135,6 +135,8 @@ ENUM ctrl DERIVE eq
    bind-defer
    exec
    catch
+   tick
+   eval
 ;ENUM
 
 \ Three actions and not two, because a peek is not a pop: `fetch-r` copies the
@@ -377,7 +379,8 @@ public
 \ a second attribute.
 0 constant ADDR-NONE
 1 constant ADDR-DATA
-ADDR-DATA constant ADDR-KIND-MAX
+2 constant ADDR-CODE
+ADDR-CODE constant ADDR-KIND-MAX
 
 \ Refused where the attribute is BUILT rather than where it is read.
 : ADDR-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )

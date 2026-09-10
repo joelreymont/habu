@@ -35,6 +35,21 @@ defer DKEEP-HOOK ( -- )
 
 private
 
+\ Each pass retains its own dimensions while later passes read its results.
+variable SCRATCH-VALUES
+variable SCRATCH-BLOCKS
+variable SCRATCH-FUNS
+variable SCRATCH-OPS
+: VMAX ( -- n ) SCRATCH-VALUES @ ;
+: BMAX ( -- n ) SCRATCH-BLOCKS @ ;
+: FMAX ( -- n ) SCRATCH-FUNS @ ;
+: OMAX ( -- n ) SCRATCH-OPS @ ;
+: SCRATCH-SIZES! ( -- )
+   NFROZEN:VALUE-COUNT 1 max SCRATCH-VALUES !
+   NFROZEN:TOTAL-BLOCKS 1 max SCRATCH-BLOCKS !
+   NFROZEN:TOTAL-FUNS 1 max SCRATCH-FUNS !
+   NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
+
 -1 constant NOPOS
 
 0 constant ST-NONE
@@ -63,7 +78,7 @@ private
 
 -1 constant NOSLOT
 
-VMAX constant SLOTS-MAX
+: SLOTS-MAX ( -- n ) VMAX ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable ST
@@ -99,24 +114,35 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 1 TYPED-BUFFER V-POOL A64EFF:gprs
 1 TYPED-BUFFER V-FPOOL A64EFF:fprs
 
-create D-AT VMAX cells allot         \ where the module says each value is written
-create L-AT VMAX cells allot         \ where the module says each value is last read
-create S-AT VMAX cells allot         \ whether the block defines this value at all
+DYNAMIC-BUFFER D-AT-BUF n
+: D-AT ( -- ptr n ) 0 D-AT-BUF ;
+DYNAMIC-BUFFER L-AT-BUF n
+: L-AT ( -- ptr n ) 0 L-AT-BUF ;
+DYNAMIC-BUFFER S-AT-BUF n
+: S-AT ( -- ptr n ) 0 S-AT-BUF ;
 
 \ A value belongs to the function whose window its definition position falls in,
 \ which is the only sense in which a value has a function at all.
-create F-VB NFROZEN:FMAX 1 + cells allot
-create C-AT VMAX cells allot         \ which class the module gives each value
-create U-AT VMAX cells allot         \ how many operands of the function name each value
-create UB VMAX cells allot           \ which blocks name each value, one bit per block
-create DB VMAX cells allot           \ which block defines each value, or -1
-create RCH BMAX cells allot          \ blocks one reachability question has reached
+DYNAMIC-BUFFER F-VB-BUF n
+: F-VB ( -- ptr n ) 0 F-VB-BUF ;
+DYNAMIC-BUFFER C-AT-BUF n
+: C-AT ( -- ptr n ) 0 C-AT-BUF ;
+DYNAMIC-BUFFER U-AT-BUF n
+: U-AT ( -- ptr n ) 0 U-AT-BUF ;
+DYNAMIC-BUFFER UB-BUF n
+: UB ( -- ptr n ) 0 UB-BUF ;
+DYNAMIC-BUFFER DB-BUF n
+: DB ( -- ptr n ) 0 DB-BUF ;
+DYNAMIC-BUFFER RCH-BUF n
+: RCH ( -- ptr n ) 0 RCH-BUF ;
 
 0 constant FLOW-UNDEF
 1 constant FLOW-DEF
 2 constant FLOW-TOP
-create FLOW-IN BMAX cells allot
-create FLOW-OUT BMAX cells allot
+DYNAMIC-BUFFER FLOW-IN-BUF n
+: FLOW-IN ( -- ptr n ) 0 FLOW-IN-BUF ;
+DYNAMIC-BUFFER FLOW-OUT-BUF n
+: FLOW-OUT ( -- ptr n ) 0 FLOW-OUT-BUF ;
 variable FLOW-CHANGED
 variable FLOW-SEEN
 variable FLOW-MEET-V
@@ -200,7 +226,7 @@ variable FLOW-S
 : FUNS-CK ( -- n )
    FUN-COUNT {: n:n :}
    n 1 < if E-A64RAV-SHAPE throw then
-   n NFROZEN:FMAX > if E-A64RAV-COVER throw then
+   n FMAX > if E-A64RAV-COVER throw then
    n ;
 
 \ The block the routine's RESULTS leave through, and NO-RET when there is none;
@@ -281,18 +307,20 @@ variable FLOW-S
    FILE-AT NOFILE <> ;
 
 \ ---- the memory order --------------------------------------------------------
-: UB-AT ( n -- n )                   cells UB + @ ;
-: UB! ( n n -- )                     {: v:n k:n :} v k cells UB + ! ;
+\ One bit set per value, with enough cells for every block in the module.
+: UB-CELLS ( -- n ) BMAX 63 + 64 / ;
+: UB-CELL ( n n -- ptr n ) {: k:n b:n :}
+   k UB-CELLS * b 64 / + cells UB + ;
 : DB-AT ( n -- n )                   cells DB + @ ;
 : DB! ( n n -- )                     {: v:n k:n :} v k cells DB + ! ;
 
 : UB-HAS? ( n n -- bool )
    {: k:n b:n :}
-   k UB-AT  1 b lshift  and 0<> ;
+   k b UB-CELL @  1 b 64 mod lshift  and 0<> ;
 
 : UB-ADD ( n n -- )
    {: k:n b:n :}
-   k UB-AT  1 b lshift or  k UB! ;
+   k b UB-CELL dup @  1 b 64 mod lshift or swap ! ;
 
 : UB-BLOCKS ( n -- n )
    {: k:n :}
@@ -412,7 +440,8 @@ variable FLOW-S
    f BLOCK-COUNT NB-N !
    NB-N @ BMAX > if E-A64RAV-SHAPE throw then
    f VB-BASE!
-   N-VALS @ 0 ?do 0 i USES! 0 i UB! -1 i DB! loop
+   VMAX UB-CELLS * 0 ?do 0 i cells UB + ! loop
+   N-VALS @ 0 ?do 0 i USES! -1 i DB! loop
    NB-N @ 0 ?do f i COUNT-BLOCK loop
    N-VALS @ 0 ?do
       i CLS-AT C-TOKEN =  i lo hi IN-WINDOW?  and if i ORDER-VALUE-CK then
@@ -717,7 +746,7 @@ variable FLOW-S
 \ ---- re-deriving the allocation ----------------------------------------------
 \ Live ranges are held as bit sets over positions of one number line.
 64 constant SET-BITS
-VMAX SET-BITS / constant SETC
+: SETC ( -- n ) VMAX SET-BITS 1- + SET-BITS / ;
 0 constant P-IN
 1 constant P-OUT
 2 constant P-USE
@@ -744,10 +773,14 @@ variable V-BASE                      \ the first frame byte the allocator's slot
 variable VD-AT                       \ the position the data-stack scan stands on
 0 VD-AT !
 
-create VB-ST BMAX cells allot
-create VB-EN BMAX cells allot
-create V-SETS PLANES BMAX * SETC * cells allot
-create V-TMP SETC cells allot
+DYNAMIC-BUFFER VB-ST-BUF n
+: VB-ST ( -- ptr n ) 0 VB-ST-BUF ;
+DYNAMIC-BUFFER VB-EN-BUF n
+: VB-EN ( -- ptr n ) 0 VB-EN-BUF ;
+DYNAMIC-BUFFER V-SETS-BUF n
+: V-SETS ( -- ptr n ) 0 V-SETS-BUF ;
+DYNAMIC-BUFFER V-TMP-BUF n
+: V-TMP ( -- ptr n ) 0 V-TMP-BUF ;
 
 : VBIT-CELL ( n -- n )   SET-BITS / ;
 : VBIT-MASK ( n -- n )   SET-BITS mod 1 swap lshift ;
@@ -1122,10 +1155,37 @@ create V-TMP SETC cells allot
 1 constant VD-DEF
 
 here CELL 1- and CELL swap - CELL 1- and allot
-create VD-VIN BMAX VDSLOTS * cells allot    \ the value each slot holds at a block's head
-create VD-VOUT BMAX VDSLOTS * cells allot   \ and at its end
-create VD-DIN BMAX VDSLOTS * cells allot    \ whether each slot is defined there
-create VD-DOUT BMAX VDSLOTS * cells allot
+DYNAMIC-BUFFER VD-VIN-BUF n
+: VD-VIN ( -- ptr n ) 0 VD-VIN-BUF ;
+DYNAMIC-BUFFER VD-VOUT-BUF n
+: VD-VOUT ( -- ptr n ) 0 VD-VOUT-BUF ;
+DYNAMIC-BUFFER VD-DIN-BUF n
+: VD-DIN ( -- ptr n ) 0 VD-DIN-BUF ;
+DYNAMIC-BUFFER VD-DOUT-BUF n
+: VD-DOUT ( -- ptr n ) 0 VD-DOUT-BUF ;
+
+: RESERVE-SCRATCH ( -- )
+   SCRATCH-SIZES!
+   VMAX D-AT-BUF-RESERVE
+   VMAX L-AT-BUF-RESERVE
+   VMAX S-AT-BUF-RESERVE
+   FMAX 1 + F-VB-BUF-RESERVE
+   VMAX C-AT-BUF-RESERVE
+   VMAX U-AT-BUF-RESERVE
+   VMAX BMAX 63 + 64 / * UB-BUF-RESERVE
+   VMAX DB-BUF-RESERVE
+   BMAX RCH-BUF-RESERVE
+   BMAX FLOW-IN-BUF-RESERVE
+   BMAX FLOW-OUT-BUF-RESERVE
+   BMAX VB-ST-BUF-RESERVE
+   BMAX VB-EN-BUF-RESERVE
+   PLANES BMAX * SETC * V-SETS-BUF-RESERVE
+   SETC V-TMP-BUF-RESERVE
+   BMAX VDSLOTS * VD-VIN-BUF-RESERVE
+   BMAX VDSLOTS * VD-VOUT-BUF-RESERVE
+   BMAX VDSLOTS * VD-DIN-BUF-RESERVE
+   BMAX VDSLOTS * VD-DOUT-BUF-RESERVE
+   ;
 create VD-VCUR VDSLOTS cells allot
 create VD-DCUR VDSLOTS cells allot
 create VD-VMEET VDSLOTS cells allot
@@ -1451,7 +1511,7 @@ DKEEP-HOOK-DEFAULT
       VD-TOP b i VDD-IN!
    loop ;
 
-BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
+: VD-ROUNDS ( -- n ) BMAX VDSLOTS * 4 * 2 + ;
 
 : VDRES-FIX ( IR-ID:ir-fun-id n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id a:n args:A64EFF:placeseq :}
@@ -1864,9 +1924,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
 
 \ ---- which places one FUNCTION's boundary uses -------------------------------
 : FUN-SLOTS ( n -- A64EFF:placeseq )
-   {: k:n :}
-   A64EFF:SEQ-NONE
-   k 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+   A64EFF:SEQ-DSTACK ;
 
 : DECL-CK ( n n n n -- )
    {: in:n out:n din:n dout:n :}
@@ -1901,6 +1959,7 @@ BMAX VDSLOTS * 4 * 2 + constant VD-ROUNDS
    pool fpool CONTRACT-CK
    outs A64EFF:SEQ-SLOTS  args A64EFF:SEQ-SLOTS -  A64IR:SLOT-WIDTH *  VD-SELF !
    m VIEWS!
+   RESERVE-SCRATCH
    VALS-N!
    TABLES-CLEAR
    FUNS-CK {: nf:n :}
@@ -2029,6 +2088,29 @@ public
    c DKEEP-DEAD = if s" load whose result nothing reads" exit then
    c DKEEP-SAME = if s" store of the value the slot already holds" exit then
    s" none" ;
+
+public
+: RELEASE-SCRATCH ( -- )
+   D-AT-BUF-RELEASE
+   L-AT-BUF-RELEASE
+   S-AT-BUF-RELEASE
+   F-VB-BUF-RELEASE
+   C-AT-BUF-RELEASE
+   U-AT-BUF-RELEASE
+   UB-BUF-RELEASE
+   DB-BUF-RELEASE
+   RCH-BUF-RELEASE
+   FLOW-IN-BUF-RELEASE
+   FLOW-OUT-BUF-RELEASE
+   VB-ST-BUF-RELEASE
+   VB-EN-BUF-RELEASE
+   V-SETS-BUF-RELEASE
+   V-TMP-BUF-RELEASE
+   VD-VIN-BUF-RELEASE
+   VD-VOUT-BUF-RELEASE
+   VD-DIN-BUF-RELEASE
+   VD-DOUT-BUF-RELEASE
+   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

@@ -197,40 +197,26 @@ create HID-TXT
    s" NQ-HID" ADR-TARGET  s" NQ-HID" BODY-START  T=
    s" 41 NQ-HID execute" EV-N 42 T= ;
 
-\ ---- the one body shape the tree writes and this leaf declines ----------------
-\ A BODY THAT NEVER COMES BACK. `NQ-DIE` throws, so the fall-through of the body
-\ that calls it is dead: there is no return to stage, and a caller reaching that
-\ routine with an ordinary call would be handed one that leaves by a path its own
-\ control flow does not have. The consumer's DECLARED effect says the quotation
-\ returns - src/compiler/native/dict.f's three-clause question is about the
-\ declaration and passes - so the disagreement is only visible once the body
-\ itself has been walked, which is where it is refused.
-\
-\ IT IS THE LAST `[:` REFUSAL IN THE TREE. The census over src and lib answers
-\ one, and it is lib/test/suite.f DEFAULTS, which writes `[: RUN-MISSING ;]`.
-\ Compiling a body that never returns is a capability this leaf does not have:
-\ the function it would build has no return, so what the emitter writes for it
-\ and what a caller may do with its address are both open questions.
-\
-\ Publication is fail-closed: the attempted definition never appears.
+\ A throwing quotation can be passed without executing it, or executed under
+\ catch. Its dead fall-through needs no synthetic return.
 : DEF-DIE ( -- )
    s" : NQ-DIE ( n -- ) drop E-FS-OPEN throw ;" EV
    s" : NQ-KEEP ( [ n -- ] n -- n ) swap drop ;" EV ;
 
 : DEF-DEAD ( -- )
-   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV ;
+   s" : NQ-DEAD2 ( n -- n ) [: NQ-DIE ;] swap NQ-KEEP ;" EV
+   s" : NQ-THROW ( n -- ) [: NQ-DIE ;] execute ;" EV ;
+
+: RUN-DEAD ( -- )
+   s" 4 NQ-THROW" EV ;
 
 : DEAD-CASE ( -- )
-   DEF-DIE
-   s" a quotation body that never comes back is refused by name" T-LABEL
-   [: DEF-DEAD ;] E-NELAB-QUOT TTHROWSQ
-   \ Nothing is asserted about the refusal RECORD here. The compilation entry
-   \ unwinds the chain before it rethrows, so what a caller reads afterwards is
-   \ the record of whatever elaborated last; which token each refusal names is
-   \ test/compiler/native-elaborate.f's measurement, taken where the record is
-   \ still the one the refusal left.
-   s" and the refused definition never appears" T-LABEL
-   s" NQ-DEAD2" DEFINED? TFALSE ;
+   DEF-DIE DEF-DEAD
+   s" a throwing quotation is compiled and can be passed without running" T-LABEL
+   s" NQ-DEAD2" DEFINED? TTRUE
+   s" 42 NQ-DEAD2" EV-N 42 T=
+   s" executing a throwing quotation preserves the exception" T-LABEL
+   [: RUN-DEAD ;] E-FS-OPEN TTHROWSQ ;
 
 \ ---- the reach of the address form -------------------------------------------
 \ The field's own boundary, asked of the dialect's reader, and the standing

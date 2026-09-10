@@ -320,6 +320,22 @@ SUITE compiler-native-order-exit
    test/compiler/native-order-exit.f
 ;SUITE
 
+SUITE compiler-native-exit
+   test/compiler/native-exit.f
+;SUITE
+
+SUITE compiler-native-tick
+   test/compiler/native-tick.f
+;SUITE
+
+SUITE compiler-native-literals
+   test/compiler/native-literals.f
+;SUITE
+
+SUITE compiler-native-eval
+   test/compiler/native-eval.f
+;SUITE
+
 SUITE native-dead-path
    test/compiler/native-dead-path.f
 ;SUITE
@@ -657,7 +673,6 @@ SUITE argv-stdlib-script-args
 SUITE test-stdlib
    lib/test/assert-test.f
    lib/test/suite-test.f
-   lib/test/snap-test.f
    lib/test/record-test.f
    lib/test/src-shape-test.f
    lib/test/mapped-test.f
@@ -1111,6 +1126,10 @@ SUITE type-layout-lower-pending
 
 SUITE layout-buffer
    test/layout-buffer.f
+;SUITE
+
+SUITE dynamic-buffer
+   test/dynamic-buffer.f
 ;SUITE
 
 SUITE layout-defer

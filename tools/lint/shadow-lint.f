@@ -84,6 +84,7 @@ variable SI
 -4802 constant E-SHADOW-REGISTRY
 
 variable BAD  variable LI  variable IN-PACKAGE
+variable IN-DEFINITION
 
 \ Lexed token k equals word a/u, case-insensitively; comment tokens never match.
 : LEX-WORD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
@@ -93,6 +94,7 @@ variable BAD  variable LI  variable IN-PACKAGE
 \ Offset from a definer token to the name it defines, 0 when k is not a definer.
 : DEF-NAME-OFFSET ( n -- n )
    dup s" :" LEX-WORD= IF drop 1 exit THEN
+   dup s" TRUSTED:" LEX-WORD= IF drop 1 exit THEN
    dup s" constant" LEX-WORD= IF drop 1 exit THEN
    dup s" variable" LEX-WORD= IF drop 1 exit THEN
    dup s" create" LEX-WORD= IF drop 1 exit THEN
@@ -110,6 +112,13 @@ variable BAD  variable LI  variable IN-PACKAGE
 \ package/;package toggle scope; the language rejects nesting, so one flag is
 \ enough. Only global-scope tokens reach the prim-shadow check.
 : LINT-TOKEN ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
+   IN-DEFINITION @ IF
+      k s" ;" LEX-WORD= IF LINT-FALSE IN-DEFINITION ! THEN
+      exit
+   THEN
+   k s" :" LEX-WORD= k s" TRUSTED:" LEX-WORD= or IF
+      LINT-TRUE IN-DEFINITION !
+   THEN
    k s" package" LEX-WORD= IF LINT-TRUE IN-PACKAGE ! exit THEN
    k s" ;package" LEX-WORD= IF LINT-FALSE IN-PACKAGE ! exit THEN
    IN-PACKAGE @ LINT-NOT IF pa pu k LINT-DEFINITION THEN ;
@@ -142,7 +151,7 @@ variable BAD  variable LI  variable IN-PACKAGE
 : LINT-SCAN ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    a u LINT-LEX:SOURCE
    LINT-LEX:ERROR? IF pa pu SL-LEX-FAIL THEN
-   LINT-FALSE IN-PACKAGE !
+   LINT-FALSE IN-PACKAGE !  LINT-FALSE IN-DEFINITION !
    0 LI !
    begin LI @ LINT-LEX:COUNT < while
       pa pu LI @ LINT-TOKEN

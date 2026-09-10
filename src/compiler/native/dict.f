@@ -309,6 +309,9 @@ public
    out 0 < if in CATCH-NONE exit then
    in out ;
 
+: EXEC-CELLS ( n -- n n )
+   EFFECT-EXEC-CELLS ;
+
 \ ---- and how many cells a layout token really moves ---------------------------
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token
 

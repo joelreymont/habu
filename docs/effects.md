@@ -679,42 +679,26 @@ behavioral gates exercise the rebuilt primitives through real programs.
 Trusted readers or representation casts around the table carry source-local
 rationale, a retirement owner, and focused production-path tests.
 
-## Typed depth introspection
+## Checked assertions
 
-Stack-snapshot assertions historically could not be typed: `T{ code -> expected
-}T` captured an arbitrary-length stack tail whose size is a runtime `depth`
-value, so `T{`/`->`/`}T` were trusted words with no checked contract on the
-asserted computation or its shape. That migration has landed — those three words
-no longer exist in `bin/hb`, and naming one is `E-UNDEFINED`.
+Use ordinary assertions inside a checked test word. For several results, consume
+and compare the top result first; the word's effect ensures every result is used.
 
-The checked replacement expresses the actual and expected computations as two
-quotations that must leave the **same row shape**. It lives in
-`lib/test/snap.f`, so a file that uses it must `require lib/test/snap.f` first:
+```forth
+require lib/test.f
 
-```
-SNAP= ( [ R -- S ] [ R -- S ] -- )
-```
-
-The checker types this signature directly: each quotation argument carries its
-own inferred effect, and the shared output row `S` forces both to leave an
-identical stack shape. A mismatch is a `CHECK`-time type error, not a runtime
-surprise:
-
-```
-: CASES ( -- )
-   [: 1 2 + ;] [: 3 ;]  SNAP=   \ certifies: both leave one cell
-   [: 1 2 ;]   [: 3 ;]  SNAP=   \ rejected: [ -- n n ] vs [ -- n ]
+package PAIR-TEST
+: PAIR ( -- n n ) 3 4 ;
+: RUN ( -- )
+   T-RESET
+   PAIR 4 T= 3 T=
+   T-REPORT ;
+RUN
+;package
 ```
 
-Because a quotation is compile-only, `SNAP=` assertions live inside a checked
-test word — which is exactly what subjects the asserted code and its shape to the
-checker. At runtime `SNAP=` executes each quotation and compares the produced
-cells through the same judge path the old `T{ }T` used. Only the depth-marked
-drain of each quotation's output row stays trusted, so the comparator adds no new
-drain primitive while making every asserted computation and its shape checkable.
-
-Every snapshot assertion is therefore shape-checked rather than runtime-only
-(the migration was tracked as habu-shared-t-t-470833e6).
+The compiler checks the computation and each assertion through the normal load
+path. No runtime stack-depth calculation is needed.
 
 ## Notes
 

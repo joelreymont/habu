@@ -7,26 +7,36 @@
 
 s" src/core/util.f" provided
 s" src/core/cell.f" provided
-HB-TARGET-LINUX? if
-   s" src/os/linux/target.f" provided
-   s" src/os/linux/layout.f" provided
-else HB-TARGET-MACOS? if
-   s" src/os/macos/target.f" provided
-   s" src/os/macos/layout.f" provided
-else
-   s" native-runtime: unknown target" 76 die
-then then
+package NATIVE-RUNTIME
+
+: PROVIDE-TARGET ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" provided
+      s" src/os/linux/layout.f" provided
+   else HB-TARGET-MACOS? if
+      s" src/os/macos/target.f" provided
+      s" src/os/macos/layout.f" provided
+   else
+      s" native-runtime: unknown target" 76 die
+   then then
+;
+
+' PROVIDE-TARGET
+;package
+execute
 s" src/habu/layout.f" provided
 s" src/core/pointer-storage.f" provided
 s" src/core/engine-error.f" provided
 s" src/core/exec-vector.f" provided
 s" src/core/checker.f" provided
 s" src/core/engine-error-effects.f" provided
+s" src/core/lower-cert-base.f" provided
 s" src/core/type-schema.f" provided
 s" src/core/type-family.f" provided
 s" src/core/render.f" provided
 s" src/core/sumtype.f" provided
 s" src/core/layout-buffer.f" provided
+s" src/core/layout-valid.f" provided
 s" src/core/check-hook.f" provided
 s" src/core/roles.f" provided
 s" src/core/cell-effects.f" provided
@@ -49,8 +59,10 @@ s" src/habu/xref.f" required
 s" src/core/generated-declaration-dictionary.f" required
 s" src/core/generated-declaration-protection.f" required
 s" src/core/layout-buffer-seal.f" required
+s" src/core/lower-cert-seal.f" required
 s" lib/prelude.f" required
 s" lib/errors.f" required
+s" src/core/dynamic-storage.f" required
 s" lib/adt/option.f" required
 s" lib/cad-num-types.f" required
 s" lib/cad-num-arithmetic.f" required
@@ -58,19 +70,29 @@ s" lib/string.f" required
 s" lib/memory.f" required
 s" lib/vector.f" required
 s" src/os/script-argv.f" required
+\ Seal the pre-checker definitions before compiling the checked toolchain.
+\ Later checked publications record their own visibility and minimum arity.
+s" src/core/internal-mark.f" required
 s" src/compiler/native/compiler.f" required
-HB-TARGET-LINUX? if
-   s" src/os/linux/repl-term.f" required
-else HB-TARGET-MACOS? if
-   s" src/os/macos/repl-term.f" required
-else
-   s" native-runtime: unknown target" 76 die
-then then
+package NATIVE-RUNTIME
+
+: LOAD-REPL-TERM ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/repl-term.f" required
+   else HB-TARGET-MACOS? if
+      s" src/os/macos/repl-term.f" required
+   else
+      s" native-runtime: unknown target" 76 die
+   then then
+;
+
+' LOAD-REPL-TERM
+;package
+execute
 s" src/habu/repl.f" required
 s" src/habu/debug-watch.f" required
 s" src/habu/stepper.f" required
 s" src/habu/debug.f" required
-s" src/core/internal-mark.f" required
 s" src/core/top-row.f" required
 
 package NATIVE-RUNTIME
@@ -79,7 +101,8 @@ package NATIVE-RUNTIME
 \ final token.  The checker observes execute before the body runs, so
 \ CHECKER-CAPTURE-PREPARE remains the last checker operation before the
 \ non-querying seal primitive captures the runtime.
-: PREPARE ( -- )
+\ Installs the compiler hook and seals the engine dictionary.
+TRUSTED: PREPARE ( -- )
    REQUIRE-BOOT-FREEZE
    INCLUDE-SNAPSHOT-PREPARE
    LBUF-CAPTURE-PREPARE

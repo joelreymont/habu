@@ -29,12 +29,26 @@ package A64RA
 using NFROZEN
 private
 
+\ Each pass retains its own dimensions while later passes read its results.
+variable SCRATCH-VALUES
+variable SCRATCH-BLOCKS
+variable SCRATCH-FUNS
+variable SCRATCH-OPS
+: VMAX ( -- n ) SCRATCH-VALUES @ ;
+: BMAX ( -- n ) SCRATCH-BLOCKS @ ;
+: FMAX ( -- n ) SCRATCH-FUNS @ ;
+: OMAX ( -- n ) SCRATCH-OPS @ ;
+: SCRATCH-SIZES! ( -- )
+   NFROZEN:VALUE-COUNT 1 max SCRATCH-VALUES !
+   NFROZEN:TOTAL-BLOCKS 1 max SCRATCH-BLOCKS !
+   NFROZEN:TOTAL-FUNS 1 max SCRATCH-FUNS !
+   NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
+
 \ ---- the bound dialect -------------------------------------------------------
 0 constant BOUND-NO
 1 constant BOUND-YES
 
 \ ---- how much of one routine this pass holds ---------------------------------
-1024 constant PLMAX
 
 0 constant P-STORE
 1 constant P-RELOAD
@@ -126,26 +140,47 @@ DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-POOL A64EFF:gprs
 1 TYPED-BUFFER S-FPOOL A64EFF:fprs
 
-create V-DEF VMAX cells allot
-create V-LAST VMAX cells allot
-create V-REG VMAX cells allot
-create V-SET VMAX cells allot
-create V-CLS VMAX cells allot
-create V-SLOT VMAX cells allot
-create V-REMAT VMAX cells allot
-create V-DECL DECLS-N VMAX * cells allot
+DYNAMIC-BUFFER V-DEF-BUF n
+: V-DEF ( -- ptr n ) 0 V-DEF-BUF ;
+DYNAMIC-BUFFER V-LAST-BUF n
+: V-LAST ( -- ptr n ) 0 V-LAST-BUF ;
+DYNAMIC-BUFFER V-REG-BUF n
+: V-REG ( -- ptr n ) 0 V-REG-BUF ;
+DYNAMIC-BUFFER V-SET-BUF n
+: V-SET ( -- ptr n ) 0 V-SET-BUF ;
+DYNAMIC-BUFFER V-CLS-BUF n
+: V-CLS ( -- ptr n ) 0 V-CLS-BUF ;
+DYNAMIC-BUFFER V-SLOT-BUF n
+: V-SLOT ( -- ptr n ) 0 V-SLOT-BUF ;
+DYNAMIC-BUFFER V-REMAT-BUF n
+: V-REMAT ( -- ptr n ) 0 V-REMAT-BUF ;
+DYNAMIC-BUFFER V-DECL-BUF n
+: V-DECL ( -- ptr n ) 0 V-DECL-BUF ;
 create A-REG FIXED-MAX cells allot
 create O-REG FIXED-MAX cells allot
 create R-HOLD FILES-N REGS-N * cells allot
-create PL-BLK PLMAX cells allot
-create PL-POS PLMAX cells allot
-create PL-KIND PLMAX cells allot
-create PL-VAL PLMAX cells allot
+DYNAMIC-BUFFER PL-BLK-BUF n
+: PL-BLK ( -- ptr n ) 0 PL-BLK-BUF ;
+DYNAMIC-BUFFER PL-POS-BUF n
+: PL-POS ( -- ptr n ) 0 PL-POS-BUF ;
+DYNAMIC-BUFFER PL-KIND-BUF n
+: PL-KIND ( -- ptr n ) 0 PL-KIND-BUF ;
+DYNAMIC-BUFFER PL-VAL-BUF n
+: PL-VAL ( -- ptr n ) 0 PL-VAL-BUF ;
+
+: PLAN-ROOM ( n -- ) {: n:n :}
+   n PL-BLK-BUF-RESERVE
+   n PL-POS-BUF-RESERVE
+   n PL-KIND-BUF-RESERVE
+   n PL-VAL-BUF-RESERVE
+   ;
 
 \ ---- where each function sits on the module's one number line ----------------
 \ Function ordinal to its first position; positions run end to end.
-create F-BASE NFROZEN:FMAX 1 + cells allot   \ function ordinal -> its first position
-create F-RET NFROZEN:FMAX cells allot        \ function ordinal -> its return-block ordinal
+DYNAMIC-BUFFER F-BASE-BUF n
+: F-BASE ( -- ptr n ) 0 F-BASE-BUF ;
+DYNAMIC-BUFFER F-RET-BUF n
+: F-RET ( -- ptr n ) 0 F-RET-BUF ;
 variable F-LO                                \ the base of the function laid out now
 variable N-FUNS                              \ how many functions the module holds
 variable SHORT-FUN                           \ the function whose scan ran short
@@ -219,7 +254,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
 : PLAN+ ( n n n n -- )
    {: blk:n kind:n pos:n k:n :}
    N-PLAN @ {: j:n :}
-   j PLMAX >= if E-A64RA-CAP throw then
+   j 1+ PLAN-ROOM
    blk j cells PL-BLK + !
    pos j cells PL-POS + !
    kind j cells PL-KIND + !
@@ -422,7 +457,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ ---- taking a register away --------------------------------------------------
 \ Slots are handed out in order and never given back.
 : FRAME-CEIL ( -- n )
-   NFROZEN:VMAX A64IR:SLOT-WIDTH *  A64EFF:FRAME-MAX min ;
+   VMAX A64IR:SLOT-WIDTH *  A64EFF:FRAME-MAX min ;
 
 : NEW-SLOT ( -- n )
    BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + {: off:n :}
@@ -441,7 +476,7 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ ---- the sets ----------------------------------------------------------------
 \ Live ranges are bit sets over positions of one number line.
 64 constant SET-BITS
-VMAX SET-BITS / constant SETC
+: SETC ( -- n ) VMAX SET-BITS 1- + SET-BITS / ;
 0 constant P-IN
 1 constant P-OUT
 2 constant P-USE
@@ -468,22 +503,68 @@ NOBODY SHORT-ROOT !
 variable RET-B                       \ the block control leaves the routine through
 0 RET-B !
 
-create B-ST BMAX cells allot
-create B-EN BMAX cells allot
-create L-SETS PLANES BMAX * SETC * cells allot
-create TMPSET SETC cells allot
-create UF VMAX cells allot
-create CL-LO VMAX cells allot
-create CL-HI VMAX cells allot
-create CL-SLOT VMAX cells allot      \ the frame slot a spilled class went into
-create CL-REMAT VMAX cells allot     \ or, instead of a slot, that it is re-emitted at its reads
-create CL-DEF VMAX cells allot       \ where a spilled class is written
-create CL-ANCH VMAX cells allot      \ where the store that puts it away stands
-create CL-SIZE VMAX cells allot      \ how many values one class holds
-create CL-KEEP VMAX cells allot      \ whether this class must stay in a register
-create CL-FRAME VMAX cells allot     \ whether lowering already put this class on a frame operation
-create CL-FIX VMAX cells allot       \ the register the contract pins this class to
-create CL-WANT VMAX cells allot      \ the register the contract wants it to leave in
+DYNAMIC-BUFFER B-ST-BUF n
+: B-ST ( -- ptr n ) 0 B-ST-BUF ;
+DYNAMIC-BUFFER B-EN-BUF n
+: B-EN ( -- ptr n ) 0 B-EN-BUF ;
+DYNAMIC-BUFFER L-SETS-BUF n
+: L-SETS ( -- ptr n ) 0 L-SETS-BUF ;
+DYNAMIC-BUFFER TMPSET-BUF n
+: TMPSET ( -- ptr n ) 0 TMPSET-BUF ;
+DYNAMIC-BUFFER UF-BUF n
+: UF ( -- ptr n ) 0 UF-BUF ;
+DYNAMIC-BUFFER CL-LO-BUF n
+: CL-LO ( -- ptr n ) 0 CL-LO-BUF ;
+DYNAMIC-BUFFER CL-HI-BUF n
+: CL-HI ( -- ptr n ) 0 CL-HI-BUF ;
+DYNAMIC-BUFFER CL-SLOT-BUF n
+: CL-SLOT ( -- ptr n ) 0 CL-SLOT-BUF ;
+DYNAMIC-BUFFER CL-REMAT-BUF n
+: CL-REMAT ( -- ptr n ) 0 CL-REMAT-BUF ;
+DYNAMIC-BUFFER CL-DEF-BUF n
+: CL-DEF ( -- ptr n ) 0 CL-DEF-BUF ;
+DYNAMIC-BUFFER CL-ANCH-BUF n
+: CL-ANCH ( -- ptr n ) 0 CL-ANCH-BUF ;
+DYNAMIC-BUFFER CL-SIZE-BUF n
+: CL-SIZE ( -- ptr n ) 0 CL-SIZE-BUF ;
+DYNAMIC-BUFFER CL-KEEP-BUF n
+: CL-KEEP ( -- ptr n ) 0 CL-KEEP-BUF ;
+DYNAMIC-BUFFER CL-FRAME-BUF n
+: CL-FRAME ( -- ptr n ) 0 CL-FRAME-BUF ;
+DYNAMIC-BUFFER CL-FIX-BUF n
+: CL-FIX ( -- ptr n ) 0 CL-FIX-BUF ;
+DYNAMIC-BUFFER CL-WANT-BUF n
+: CL-WANT ( -- ptr n ) 0 CL-WANT-BUF ;
+
+: RESERVE-SCRATCH ( -- )
+   SCRATCH-SIZES!
+   VMAX V-DEF-BUF-RESERVE
+   VMAX V-LAST-BUF-RESERVE
+   VMAX V-REG-BUF-RESERVE
+   VMAX V-SET-BUF-RESERVE
+   VMAX V-CLS-BUF-RESERVE
+   VMAX V-SLOT-BUF-RESERVE
+   VMAX V-REMAT-BUF-RESERVE
+   DECLS-N VMAX * V-DECL-BUF-RESERVE
+   FMAX 1 + F-BASE-BUF-RESERVE
+   FMAX F-RET-BUF-RESERVE
+   BMAX B-ST-BUF-RESERVE
+   BMAX B-EN-BUF-RESERVE
+   PLANES BMAX * SETC * L-SETS-BUF-RESERVE
+   SETC TMPSET-BUF-RESERVE
+   VMAX UF-BUF-RESERVE
+   VMAX CL-LO-BUF-RESERVE
+   VMAX CL-HI-BUF-RESERVE
+   VMAX CL-SLOT-BUF-RESERVE
+   VMAX CL-REMAT-BUF-RESERVE
+   VMAX CL-DEF-BUF-RESERVE
+   VMAX CL-ANCH-BUF-RESERVE
+   VMAX CL-SIZE-BUF-RESERVE
+   VMAX CL-KEEP-BUF-RESERVE
+   VMAX CL-FRAME-BUF-RESERVE
+   VMAX CL-FIX-BUF-RESERVE
+   VMAX CL-WANT-BUF-RESERVE
+   ;
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
 : BIT-MASK ( n -- n )    SET-BITS mod 1 swap lshift ;
@@ -1473,7 +1554,7 @@ create CL-WANT VMAX cells allot      \ the register the contract wants it to lea
 : FUNS-CK ( -- n )
    FUN-COUNT {: n:n :}
    n 1 < if E-A64RA-SHAPE throw then
-   n NFROZEN:FMAX > if E-A64RA-CAP throw then
+   n FMAX > if E-A64RA-CAP throw then
    n ;
 
 \ The block tables are rewritten for every function measured, so they are put
@@ -1630,6 +1711,7 @@ public
    pool 0 S-POOL !
    fpool 0 S-FPOOL !
    m VIEWS!
+   RESERVE-SCRATCH
    m IR-BUILD:FMODULE 0 S-MOD !
    traits link size BASE!
    TABLES-CLEAR
@@ -1746,6 +1828,40 @@ public
    N-PLAN @ 0 ?do
       i cells PL-KIND + @ P-REMAT = if 1+ then
    loop ;
+
+public
+: RELEASE-SCRATCH ( -- )
+   V-DEF-BUF-RELEASE
+   V-LAST-BUF-RELEASE
+   V-REG-BUF-RELEASE
+   V-SET-BUF-RELEASE
+   V-CLS-BUF-RELEASE
+   V-SLOT-BUF-RELEASE
+   V-REMAT-BUF-RELEASE
+   V-DECL-BUF-RELEASE
+   PL-BLK-BUF-RELEASE
+   PL-POS-BUF-RELEASE
+   PL-KIND-BUF-RELEASE
+   PL-VAL-BUF-RELEASE
+   F-BASE-BUF-RELEASE
+   F-RET-BUF-RELEASE
+   B-ST-BUF-RELEASE
+   B-EN-BUF-RELEASE
+   L-SETS-BUF-RELEASE
+   TMPSET-BUF-RELEASE
+   UF-BUF-RELEASE
+   CL-LO-BUF-RELEASE
+   CL-HI-BUF-RELEASE
+   CL-SLOT-BUF-RELEASE
+   CL-REMAT-BUF-RELEASE
+   CL-DEF-BUF-RELEASE
+   CL-ANCH-BUF-RELEASE
+   CL-SIZE-BUF-RELEASE
+   CL-KEEP-BUF-RELEASE
+   CL-FRAME-BUF-RELEASE
+   CL-FIX-BUF-RELEASE
+   CL-WANT-BUF-RELEASE
+   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

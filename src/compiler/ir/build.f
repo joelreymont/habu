@@ -166,33 +166,23 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 15 constant PLAN#
 -1 constant UNSET
 
-\ The production plan. Ceilings are commitments, not allocations: IR-ARENA
-\ seeds every table small and grows it geometrically only as far as it is used,
-\ so a generous ceiling costs nothing until the module needs it. The real limit
-\ is the owning context's mapping, which every table shares.
-\ D-SYMS was 256, and 256 was the number a 17-arm MATCH reached the moment the
-\ HIR dialect grew its second `hir.const` attribute key: the symbol table filled
-\ one row before the SELECTOR's value map did, so the ceiling a caller was told
-\ about changed from E-A64SEL-CAP - the modelled bound on how many arms one
-\ dispatch may have - to E-IR-SYM-CAP, which is this table running out. A
-\ ceiling here is a commitment and not an allocation, so the fix is to put this
-\ table back out of the way of the bounds that mean something, and the arm count
-\ stays bounded where it is modelled.
-512 constant D-SYMS
-4096 constant D-SBYTES
-128 constant D-TYPES
-1024 constant D-TPOOL
-128 constant D-ATTRS
-1024 constant D-APOOL
-64 constant D-SRCS
-128 constant D-SCHEMAS
-1024 constant D-QPOOL
-512 constant D-OPS
-512 constant D-VALS
-4096 constant D-OPOOL
-64 constant D-FUNS
-256 constant D-BLKS
-1024 constant D-FPOOL
+\ Default ceilings are the table formats' representable ranges. Arenas grow
+\ from small seeds; explicit plans may impose smaller limits for their callers.
+IR-SYM:CAP-MAX constant D-SYMS
+IR-SYM:BYTE-MAX constant D-SBYTES
+IR-TYPE:CAP-MAX constant D-TYPES
+IR-TYPE:LIST-MAX constant D-TPOOL
+IR-ATTR:CAP-MAX constant D-ATTRS
+IR-ATTR:POOL-MAX constant D-APOOL
+IR-SOURCE:CAP-MAX constant D-SRCS
+IR-SCHEMA:CAP-MAX constant D-SCHEMAS
+IR-SCHEMA:POOL-MAX constant D-QPOOL
+IR-OP:ROW-CAP-MAX constant D-OPS
+IR-OP:VAL-CAP-MAX constant D-VALS
+IR-OP:POOL-CAP-MAX constant D-OPOOL
+IR-FUN:FNROW-CAP-MAX constant D-FUNS
+IR-FUN:BLK-CAP-MAX constant D-BLKS
+IR-FUN:POOL-CAP-MAX constant D-FPOOL
 
 \ ---- registry storage --------------------------------------------------------
 here CELL 1- and CELL swap - CELL 1- and allot

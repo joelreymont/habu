@@ -1,0 +1,62 @@
+\ Dynamic typed storage uses the real compiler, allocator and accessor.
+require lib/test.f
+require lib/adt/option.f
+
+package DYNAMIC-BUFFER-TEST
+
+NEWTYPE token 0
+CAST: TOKEN ( n -- token )
+CAST: TOKEN-N ( token -- n )
+
+DYNAMIC-BUFFER TOKENS token
+DYNAMIC-BUFFER OPTIONS option<n>
+variable RAW
+
+: OPTION-N ( option<n> -- n )
+   MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+: BAD-LOW ( -- ) -1 TOKENS drop ;
+: BAD-HIGH ( -- ) $7FFFFFFFFFFFFFFF TOKENS drop ;
+: BAD-SIZE ( -- ) -1 TOKENS-RESERVE ;
+: BAD-OVERFLOW ( -- ) $7FFFFFFFFFFFFFFF OPTIONS-RESERVE ;
+: AFTER-RELEASE ( -- ) 0 TOKENS drop ;
+
+: RUN ( -- )
+   T-RESET
+   0 map-anon nip 0< TTRUE
+   1 TOKENS-RESERVE
+   42 TOKEN 0 TOKENS !
+   1024 TOKENS-RESERVE
+   0 TOKENS @ TOKEN-N 42 T=
+   99 TOKEN 1023 TOKENS !
+   1 TOKENS-RESERVE
+   1023 TOKENS @ TOKEN-N 99 T=
+   1 OPTIONS-RESERVE
+   123 OPTION:SOME 0 OPTIONS !
+   1024 OPTIONS-RESERVE
+   0 OPTIONS @ OPTION-N 123 T=
+   OPTION:NONE 1023 OPTIONS !
+   1023 OPTIONS @ OPTION-N -1 T=
+   ['] BAD-LOW 7122 TTHROWS
+   ['] BAD-HIGH 7122 TTHROWS
+   ['] BAD-SIZE 7121 TTHROWS
+   ['] BAD-OVERFLOW 7121 TTHROWS
+   0 TOKENS @ TOKEN-N 42 T=
+   s" BAD-TOKEN-STORE ( n -- ) 0 TOKENS !" CHECK! 0 T=
+   s" BAD-TOKEN-POINTER ( -- ptr token ) RAW" CHECK! 0 T=
+   s" BAD-DYNAMIC-DEF ( -- ) DYNAMIC-BUFFER X n" CHECK! 0 T=
+   TOKENS-RELEASE
+   TOKENS-RELEASE
+   ['] AFTER-RELEASE 7122 TTHROWS
+   1 TOKENS-RESERVE
+   7 TOKEN 0 TOKENS !
+   0 TOKENS @ TOKEN-N 7 T=
+   TOKENS-RELEASE
+   OPTIONS-RELEASE
+   T-REPORT ;
+
+RUN
+;package

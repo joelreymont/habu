@@ -134,12 +134,14 @@ $FFFFFFFE constant WID-QUAL
 \ so the chain's 1.15 MiB projects to ~14k sites.
 32768 constant AOT-SITE-MAX
 create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ packed rows: blob-off u32 + name-off u32 + callee scope u32
-create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
-\ DATA-literal relocation table (third relocation class): blob offsets of the
-\ movz/movk x9 DATA-address literals (create/variable buffer refs). AOT-DATA-D0 =
-\ the capture engine's REPL-DATA base (abs); AOT-DATA-SIZE = the REPL DATA span
-\ (all allot/variable => zero content). EM-SEED-AOT reserves DATA and rebases each
-\ literal by (seed-DP - AOT-DATA-D0).
+DYNAMIC-BUFFER AOT-NAMES-STORAGE n
+variable AOT-NAMES-LEN
+: AOT-NAMES-RESERVE ( n -- ) CELL 1- + CELL / AOT-NAMES-STORAGE-RESERVE ;
+\ DATA relocation rows contain a blob offset. Bit 31 selects a raw address
+\ cell in a recognised metadata trailer; otherwise it names an address chain.
+\ Both move by (seed-DP - AOT-DATA-D0), preserving their window coordinate.
+$80000000 constant AOT-DSITE-CELL
+$7FFFFFFF constant AOT-DSITE-OFF-MASK
 \ 16384 shared rows: the metabuild window records one address chain per 127 blob
 \ bytes, so the chain's 1.15 MiB projects to ~9k DATA plus CODE sites together.
 16384 constant AOT-DSITE-MAX
@@ -200,6 +202,7 @@ create RBYTES-BUF RBYTES-CAP allot    variable RBYTES-LEN
 \ from drifting apart.
 SNAP-RELOC:XTCELL-CAP constant XTOFF-MAX
 8 constant XTOFF-ROW
+$80000000 constant XTOFF-WINDOW-TAG
 $80000000 constant XTOFF-DATA-TAG
 $7FFFFFFF constant XTOFF-VALUE-MASK
 create XTOFF-BUF XTOFF-MAX XTOFF-ROW * allot    variable XTOFF-N
@@ -316,8 +319,7 @@ s" AOT-BUF:AOT-BLOB-BUF@" s" -- ptr u8" TRUST
 s" AOT-BUF:AOT-REC-BUF@" s" -- ptr a" TRUST
 : AOT-SITE-BUF@ ( -- ptr u8 ) AOT-SITE-BUF ;
 s" AOT-BUF:AOT-SITE-BUF@" s" -- ptr u8" TRUST
-: AOT-NAMES-BUF@ ( -- ptr u8 ) AOT-NAMES-BUF ;
-s" AOT-BUF:AOT-NAMES-BUF@" s" -- ptr u8" TRUST
+: AOT-NAMES-BUF@ ( -- ptr u8 ) 0 AOT-NAMES-STORAGE BYTE-VIEW ;
 : AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
 s" AOT-BUF:AOT-DSITE-BUF@" s" -- ptr u8" TRUST
 : AOT-SIG-BUF@ ( -- ptr u8 ) AOT-SIG-BUF ;
@@ -403,7 +405,11 @@ private
 
 : AGREE ( -- )
    BYTES AOT-SECTION-CAP <>
-   if s" habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree" ICODE-EXIT-RC die then ;
+   if
+      s" aot: required section bytes " type BYTES .
+      s" , assembler capacity " type AOT-SECTION-CAP . cr
+      s" habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree" ICODE-EXIT-RC die
+   then ;
 AGREE
 
 ;package

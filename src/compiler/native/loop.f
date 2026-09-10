@@ -38,6 +38,21 @@ package NLOOP
 using NFROZEN
 private
 
+\ Each pass retains its own dimensions while later passes read its results.
+variable SCRATCH-VALUES
+variable SCRATCH-BLOCKS
+variable SCRATCH-FUNS
+variable SCRATCH-OPS
+: VMAX ( -- n ) SCRATCH-VALUES @ ;
+: BMAX ( -- n ) SCRATCH-BLOCKS @ ;
+: FMAX ( -- n ) SCRATCH-FUNS @ ;
+: OMAX ( -- n ) SCRATCH-OPS @ ;
+: SCRATCH-SIZES! ( -- )
+   NFROZEN:VALUE-COUNT 1 max SCRATCH-VALUES !
+   NFROZEN:TOTAL-BLOCKS 1 max SCRATCH-BLOCKS !
+   NFROZEN:TOTAL-FUNS 1 max SCRATCH-FUNS !
+   NFROZEN:TOTAL-OPS 1 max SCRATCH-OPS ! ;
+
 \ ---- the bound dialect -------------------------------------------------------
 HIR-OPCODE:CONST HIR:ORD constant O-CONST
 HIR-OPCODE:ADD   HIR:ORD constant O-ADD
@@ -63,12 +78,10 @@ HIR-OPCODE:BRZ   HIR:ORD constant O-BRZ
 128 constant NAME-CAP
 
 \ Addends is this pass's own: how many loop-invariant values one turn may add.
-NFROZEN:VMAX constant VMAX
-NFROZEN:BMAX constant BMAX
 32 constant INV-MAX
 
 \ The header's own size, so it is bounded by what fits in a block.
-NFROZEN:VMAX constant COV-MAX
+: COV-MAX ( -- n ) OMAX ;
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable BND-MODE
@@ -85,8 +98,9 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
-VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
-create VSET VMAX cells allot
+DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
+DYNAMIC-BUFFER VSET-BUF n
+: VSET ( -- ptr n ) 0 VSET-BUF ;
 create NAMEBUF NAME-CAP allot
 
 \ ---- the plan one recognised loop is ----------------------------------------
@@ -111,11 +125,27 @@ variable P-MANY                      \ the arm that runs the general form
 variable P-MOV-N                     \ how many operations the pre-header takes off the body
 
 INV-MAX TYPED-BUFFER P-INV IR-ID:ir-value-id
-create P-NEW BMAX cells allot        \ old block ordinal -> new ordinal, or -1 when dropped
-create P-COV COV-MAX cells allot     \ scratch: which operations of the header are accounted for
-create P-FIX COV-MAX cells allot     \ scratch: which of them cannot change with the turn
-create P-MOV COV-MAX cells allot     \ scratch: which of THOSE the pre-header really takes
-create P-THRU COV-MAX cells allot    \ scratch: which carried positions leave as a moved answer
+DYNAMIC-BUFFER P-NEW-BUF n
+: P-NEW ( -- ptr n ) 0 P-NEW-BUF ;
+DYNAMIC-BUFFER P-COV-BUF n
+: P-COV ( -- ptr n ) 0 P-COV-BUF ;
+DYNAMIC-BUFFER P-FIX-BUF n
+: P-FIX ( -- ptr n ) 0 P-FIX-BUF ;
+DYNAMIC-BUFFER P-MOV-BUF n
+: P-MOV ( -- ptr n ) 0 P-MOV-BUF ;
+DYNAMIC-BUFFER P-THRU-BUF n
+: P-THRU ( -- ptr n ) 0 P-THRU-BUF ;
+
+: RESERVE-SCRATCH ( -- )
+   SCRATCH-SIZES!
+   VMAX VMAP-RESERVE
+   VMAX VSET-BUF-RESERVE
+   BMAX P-NEW-BUF-RESERVE
+   COV-MAX P-COV-BUF-RESERVE
+   COV-MAX P-FIX-BUF-RESERVE
+   COV-MAX P-MOV-BUF-RESERVE
+   COV-MAX P-THRU-BUF-RESERVE
+   ;
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -1355,6 +1385,7 @@ public
    BOUND? 0= if E-NLOOP-BIND throw then
    m BND-MODULE-CK
    m VIEWS!
+   RESERVE-SCRATCH
    FUN-COUNT 1 <> if 0 exit then
    MKEY 0 IR-ID:PACK-FUN PLAN-FUN
    P-OK @ 0= if 0 exit then
@@ -1372,6 +1403,7 @@ public
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!
+   RESERVE-SCRATCH
    c b p u SOURCE!
    FUN-COUNT 1 <> if E-NLOOP-PLAN throw then
    MKEY 0 IR-ID:PACK-FUN WALK-FUN
@@ -1381,6 +1413,17 @@ public
 \ different number is a refusal rather than a module nobody checked.
 : FOLDED ( -- n )
    N-FOLDED @ ;
+
+public
+: RELEASE-SCRATCH ( -- )
+   VMAP-RELEASE
+   VSET-BUF-RELEASE
+   P-NEW-BUF-RELEASE
+   P-COV-BUF-RELEASE
+   P-FIX-BUF-RELEASE
+   P-MOV-BUF-RELEASE
+   P-THRU-BUF-RELEASE
+   0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
 get-current prot-wid-add

@@ -220,7 +220,8 @@ public
 \ A small enumeration rather than a flag, so the CODE kind is a new member.
 0 constant ADDR-NONE
 1 constant ADDR-DATA
-ADDR-DATA constant ADDR-KIND-MAX
+2 constant ADDR-CODE
+ADDR-CODE constant ADDR-KIND-MAX
 
 private
 

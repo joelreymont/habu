@@ -395,10 +395,10 @@ variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
-variable LPBYTES        variable LPCHECKER      variable LPRENDER
+variable LPDYNAMIC      variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
-variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
+variable LPHOOK         variable LPCELLEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
@@ -882,7 +882,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-LOAD-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-LOAD-ROW ;
 
@@ -953,6 +952,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : PFX-LOAD-STDLIB-FILES ( -- )
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
+   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-LOAD-ROW
    PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-LOAD-ROW
    PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-LOAD-ROW
@@ -1023,7 +1023,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PATH-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PATH-ROW ;
 
@@ -1037,6 +1036,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
+   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
@@ -1119,6 +1119,23 @@ s" c-bp-watch-dump" s" label label --" TRUST
    2 DATA BODYBUF-OFF ADDI,
    NR-IOCTL SYS, ;
 s" c-emit-tty-probe" s" --" TRUST
+
+\ Return x9=true only for the live interactive route.  A writable REPL hook is
+\ not authority to recover: batch source can name its installer, and --load may
+\ inherit a tty on fd 0.  ARGC==1 plus a successful fd-0 terminal probe is the
+\ existing process state that distinguishes the bare REPL from both cases.
+: EMIT-REPL-ROUTE ( -- )
+   LBL {: no:label :}
+   LREPLROUTE LABEL@ LBL,
+   9 DATA REPLH-CELL LDR,  9 no CBZ,
+   9 DATA ARGC-CELL LDR,  9 1 CMPI,  C-NE no BCOND,
+   C-EMIT-TTY-PROBE
+   0 0 CMPI,  9 C-EQ CSET,
+   RET,
+   no LBL,
+   9 0 MOVZ,
+   RET, ;
+s" emit-repl-route" s" --" TRUST
 
 variable SRC-TTY  variable SRC-FILE
 variable SRC-RL   variable SRC-RD    variable SRC-PIPEOK
@@ -1333,7 +1350,6 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PROVIDE-ROW ;
 
@@ -1347,6 +1363,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
+   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PROVIDE-ROW
@@ -1485,6 +1502,7 @@ public
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG LABEL@ LBL,
+   9 0 MOVZ,  9 DATA REPLH-CELL STR,                    \ pipe/stdin program: failures are batch-fatal
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
    LCOLDPFX LABEL@ BL,
@@ -1610,6 +1628,7 @@ public
 
 : C-SOURCE-FILE-LIST ( -- )
    9 DATA ARGC-CELL LDR,  9 1 CMPI,  C-LE SRC-REPL LABEL@ BCOND,
+   9 0 MOVZ,  9 DATA REPLH-CELL STR,                    \ file/--load routes are batch, even from a tty
    C-SOURCE-FILE-MAP
    SRC-FILE LABEL@ LBL,
    C-SOURCE-FILE-INIT
@@ -1632,10 +1651,10 @@ public
    C-SOURCE-FILE-LIST ;
 
 : C-SOURCE-BAKED ( -- )
+   9 0 MOVZ,  9 DATA REPLH-CELL STR,                    \ baked source is never an interactive recovery route
    SRC-BFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
-   EMIT-COLD-PREFIX
-   SRC-BFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN         \ seal after the cold prefix, before baked user source
+   SRC-BFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN         \ seeded runtime is complete; seal before baked user source
    17 9 0 ADDI,
    9 DATA INE-CELL STR,                            \ the prefix is this boot's first stream and it ends here
    12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
@@ -1685,18 +1704,8 @@ public
       SP SP 16 SUBI,  30 SP 0 STR,
       12 1 MOVZ,  12 SP 8 STR,
    body LBL,
-      EMIT-COLD-PREFIX
-      PFX-LOAD-STDLIB-COLD                         \ the checked stdlib, after the core files
-      PFX-APPEND-ENGINE-SNAP-HOOK-BUILD
-      PFX-LOAD-SCRIPT-ARGV-COLD
-      PFX-PROVIDE-FILES
-      PFX-LOAD-INTMARK-COLD                        \ LAST prefix definition/marking pass
-      PFX-LOAD-TOPROW-COLD                         \ tier-1 top-row tracker: armed on the first user token
-      PFX-CHAIN:ROWS                               \ the merged chain's files, ahead of the freeze
-      EMIT-REQUIRE-FREEZE-TOKEN                    \ engine-provided path count, same boundary
-      EMIT-SEAL-CAPTURE-TOKEN                      \ watermark token at the true engine-prefix end
       12 SP 8 LDR,  12 noseal CBNZ,
-      SRC-SFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN      \ seal before any appended user source
+      SRC-SFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN      \ seal the restored runtime before user source
    noseal LBL,
       9 DATA INE-CELL STR,                         \ the prefix is the boot's FIRST stream and it ends here
       30 SP 0 LDR,  SP SP 16 ADDI,  RET,
@@ -1961,7 +1970,7 @@ variable LCOLONNONAME
    LTFLMATCHFAM LABEL@ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME LABEL@ LBL, s" tfam-name$" BYTES,
    LBADTAGPFX LABEL@ LBL, s" hb: bad " BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW 5 BYTES,
    LCHKSNAPTOKEN LABEL@ LBL,
-   s" ' CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
+   s" ' CHECKER-CAPTURE-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
    NL-KW 1 BYTES,
    PFX-PATH-FILES
    PFX-CHAIN:TABLE ;
@@ -2424,6 +2433,7 @@ s" C-FIND-GLOBAL" s" ptr n n --" TRUST
    LBL {: ready:label :}
    name len C-FIND-GLOBAL?
    13 ready CBNZ,
+   9 DATA HOOK-CELL LDR,  9 done CBZ,
    9 DATA FRIEND-LATCH-CELL LDR,  9 done CBZ,
    name len C-FIND-GLOBAL
    ready LBL, ;
@@ -2508,15 +2518,13 @@ s" c-call-checker-defer" s" --" TRUST
 : C-EMIT-DATA-X16! ( n -- ) {: off :}
    16 20 off W-STRX C-EMITW ;
 
-: C-EMIT-CRSIG-PART! ( n n -- ) {: src dst :}
-   11 DATA src LDR,  C-RAW-LIT
-   dst C-EMIT-DATA-X16! ;
-
 : C-EMIT-CRSIG-A! ( -- )
-   TCSIG-A-CELL CRSIG-A-CELL C-EMIT-CRSIG-PART! ;
+   11 DATA TCSIG-A-CELL LDR,  C-DATA-ADDR-RAW
+   9 20 CRSIG-A-CELL W-STRX C-EMITW ;
 
 : C-EMIT-CRSIG-U! ( -- )
-   TCSIG-U-CELL CRSIG-U-CELL C-EMIT-CRSIG-PART! ;
+   11 DATA TCSIG-U-CELL LDR,  C-RAW-LIT
+   CRSIG-U-CELL C-EMIT-DATA-X16! ;
 
 : C-EMIT-CRSIG-SET ( -- )
    LBL {: none :}
@@ -2716,6 +2724,7 @@ public
 
 : C-STORE-NAME ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
+   14 0 MOVZ,  14 9 24 STR,  14 9 32 STR,             \ canonical name/padding before either form
    12 DATA TKL-CELL LDR,
    13 12 0 ADDI,
    12 DNAME-INL CMPI,  C-LE short BCOND,
@@ -3026,7 +3035,7 @@ s" c-seal-match" s" --" TRUST
 
 : C-QUALIFY-SEAL-GUARD ( -- )   \ reject `NAME:tail` defs into a sealed system package
    LBL LBL LBL {: scan:label have:label ok:label :}
-   9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,             \ friend/open -> no guard
+   9 DATA SEAL-NDICT-CELL LDR,  9 ok CBZ,               \ namespace open -> no guard
    \ Only a NAME:tail token (first ':' not at an edge, matching CHECKER-QUALIFIED?)
    \ can name a package; a leading/trailing ':' (e.g. `PRIM:`) is an ordinary name.
    \ The whole check is native (RESTAB + fold), so it is safe during the sealed
@@ -3151,9 +3160,9 @@ s" c-qualify-def" s" --" TRUST
 \ LSTOREDEFNAME and reached by branch-with-link.
 \ Publish guard (TFAM 2b-v): a new record's WID is DEF-WL-CELL (from CUR-CELL, which
 \ a user can redirect with `set-current`, or a resolved package WID). Reject
-\ publishing into a protected WID once the friend latch is sealed -- so user source
+\ publishing into a protected WID once the namespace watermark is sealed -- so user source
 \ cannot `<protected-wid> set-current : FOO ;` or `: RESULT:BOGUS ;` into a sealed
-\ system / generated constructor package. Friend/cold-load (latch 0) is exempt.
+\ system / generated constructor package. An open namespace watermark is exempt.
 \ Register ABI: x9 = record pointer, live in AND out — the body saves it across
 \ the internal LPROTWIDQ call (SP-relative) and restores it, then uses it for the
 \ [40] wid store; every caller reads x9 after the call, so the save/restore is the
@@ -3165,7 +3174,7 @@ s" c-qualify-def" s" --" TRUST
    LSTOREDEFNAME LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                          \ save link register across the internal LPROTWIDQ BL
    LBL {: pgok:label :}
-   14 DATA FRIEND-LATCH-CELL LDR,  14 pgok CBZ,          \ open -> no guard
+   14 DATA SEAL-NDICT-CELL LDR,  14 pgok CBZ,            \ namespace open -> no guard
    SP SP 16 SUBI,  9 SP 0 STR,                           \ save record ptr
    9 DATA DEF-WL-CELL LDR,  LPROTWIDQ LABEL@ BL,         \ x9 = target wid; x13 = protected?
    9 SP 0 LDR,  SP SP 16 ADDI,                           \ restore record ptr
@@ -3804,7 +3813,7 @@ s" bdrainpretrust" s" --" TRUST
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
 variable LSNAPRBD
 variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
-variable LAOTPROT      \ cold-start baked protected-WID restore
+variable LAOTPROT      \ cold-start window-relative protected-WID restore
 
 \ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
 \ copy loops; entries clobber only x9/x10 (and LR). LESCDEC: x9 escape char ->
@@ -4035,6 +4044,7 @@ variable LTOPHOOK
 : C-BTICK ( -- )
    LBL {: bk :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
+   LBCAP LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
 
@@ -4407,26 +4417,23 @@ variable CF-DEF-GUARD
    0 LDEFKWFAIL LABEL@ CBNZ, ;
 s" cf-def-guard-row" s" ptr a n --" TRUST
 
-TRUSTED: EM-HXT-EXECUTE ( n -- )
-   execute ;
-
-: CF-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
+: CF-ENTRY ( label ptr a n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
    LVSPILL LABEL@ BL,
-   hxt EM-HXT-EXECUTE  lmainlbl B,
+   hxt execute  lmainlbl B,
    CFSK LABEL@ LBL, ;
 
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
-: CFN-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt:n :}
+: CFN-ENTRY ( label ptr a n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxt :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 CFSK LABEL@ CBZ,
-   hxt EM-HXT-EXECUTE  lmainlbl B,
+   hxt execute  lmainlbl B,
    CFSK LABEL@ LBL, ;
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
@@ -4443,7 +4450,7 @@ variable CFSK2
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
-: CFB-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
+: CFB-ENTRY ( label ptr a n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm hxtr :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
@@ -4455,18 +4462,18 @@ variable CFSK2
    SP SP 16 SUBI,  14 SP 8 STR,
    LVDROP LABEL@ BL,  LVSPILL LABEL@ BL,
    14 SP 8 LDR,  SP SP 16 ADDI,
-   hxtr EM-HXT-EXECUTE
+   hxtr execute
    lmainlbl B,
    CFSK2 LABEL@ LBL,
    LVSPILL LABEL@ BL,
-   hxtm EM-HXT-EXECUTE
+   hxtm execute
    lmainlbl B,
    CFSK LABEL@ LBL, ;
 
 \ cfbn-entry: like CFB-ENTRY but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
-: CFBN-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm:n hxtr:n :}
+: CFBN-ENTRY ( label ptr a n [ -- ] [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n hxtm hxtr :}
    CF-DEF-GUARD @ IF kwvar kwlen CF-DEF-GUARD-ROW exit THEN
    LBL CFSK !  LBL CFSK2 !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
@@ -4476,11 +4483,11 @@ variable CFSK2
    7 CFSK2 LABEL@ CBNZ,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
    LVDROP LABEL@ BL,
-   hxtr EM-HXT-EXECUTE
+   hxtr execute
    lmainlbl B,
    CFSK2 LABEL@ LBL,
    LVSPILL LABEL@ BL,
-   hxtm EM-HXT-EXECUTE
+   hxtm execute
    lmainlbl B,
    CFSK LABEL@ LBL, ;
 
@@ -4658,8 +4665,7 @@ public
    zero LBL, ;
 
 \ Seal the wordlists the window sealed, now that the rebase has said where they
-\ landed. EMIT-AOT-PROT-RESTORE cannot carry these: it runs before the cold prefix
-\ and so before the base they are relative to exists.
+\ landed. These are the only protected WIDs the full-runtime seed carries.
 : SEAL-WIDS, ( label -- ) {: bad:label :}
    LBL LBL {: ploop:label pdone:label :}
    3 4 LNPWIN LABEL@ TADR,  3 3 0 LDR,          \ x3 = row count
@@ -4675,6 +4681,19 @@ public
    pdone LBL, ;
 
 ;package
+
+\ Restore the captured window's protected WIDs after the cold baseline has
+\ established WIDN and cleared the live bitmap.  Records are not registered yet,
+\ so the window base is still exactly the WIDN that SEAL-WIDS, rebases against.
+: EMIT-AOT-PROT-RESTORE ( -- )
+   LBL LBL {: bad:label msg:label :}
+   LAOTPROT LABEL@ LBL,
+   bad AOT-WINDOW:SEAL-WIDS,
+   RET,
+   bad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 39 MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT wid outside the capture window" BYTES,  NL-KW 1 BYTES, ;
 
 : EM-AOT-REGISTER-RECS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
@@ -4745,7 +4764,6 @@ public
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
       9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  rloop B,
    rdone LBL,
-   bad AOT-WINDOW:SEAL-WIDS,                          \ still WIDN = the target's base
    \ WIDN = base + span, once. The span and not the highest wid registered: a
    \ window may allocate a wordlist no record names, and a later allocation must
    \ not be handed one of those either.
@@ -4757,68 +4775,6 @@ public
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" hb: AOT wid outside the capture window" BYTES,  NL-KW 1 BYTES,
    done LBL, ;
-
-\ Validate and restore the baked protected-WID bitmap (TFAM 2b-v) immediately
-\ after cold startup clears the live band, before the cold prefix can register its
-\ constructor families. Warm snapshot startup skips both clear and restore.
-\ Validation is two facts, because the bitmap shape carries the rest: the baked
-\ frame must be tagged a bitmap, and bit 0 must be clear, since WID 0 is not a
-\ wordlist. The row array this replaced needed a bound check and an O(rows^2)
-\ duplicate scan -- a bit has one index and the index cannot leave
-\ [0, PROT-WID-MAX).
-\ Then copy the fixed PROT-BITS-BYTES blob into the friend-arena band (direct STR
-\ into the sealed band -- the AOT seed pass is trusted boot machinery), advance
-\ WIDN past the highest protected WID so a post-restore wordlist/package
-\ allocation cannot reuse one, and release-publish PROT-REG-TAG last so nothing
-\ observes a half-copied band as a bitmap. The blob is a fixed-size image of a
-\ SET, so the restored bytes do not depend on the order the writing run protected
-\ its WIDs -- which is what lets install --force reach a byte-identical fixpoint
-\ across the table-era/bitmap-era changeover.
-: EMIT-AOT-PROT-RESTORE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: cloop:label cdone:label sloop:label sdone:label shi:label
-      bloop:label bdone:label tagpub:label bad:label msg:label :}
-   LAOTPROT LABEL@ LBL,
-   11 5 LAOTNPWID LABEL@ TADR,  11 11 0 LDR,
-   5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND,  \ the baked frame must be a bitmap
-   9 5 LAOTPWID LABEL@ TADR,                        \ x9  = baked bitmap src
-   2 9 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,             \ WID 0 is never a wordlist
-   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,          \ x10 = &band[0] (offset > imm12: materialize + add)
-   11 PROT-BITS-BYTES MOVZ,                         \ x11 = bytes left
-   cloop LBL,  11 cdone CBZ,
-      3 9 0 LDR,  3 10 0 STR,
-      9 9 8 ADDI,  10 10 8 ADDI,  11 11 8 SUBI,  cloop B,
-   cdone LBL,
-   \ WIDN = max(WIDN, highest protected WID + 1). Scan words downward for the top
-   \ non-zero one, then shift its bits out to find the highest index within it.
-   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
-   11 PROT-BITS-BYTES MOVZ,
-   sloop LBL,  11 sdone CBZ,
-      11 11 8 SUBI,
-      3 10 11 ADD,  3 3 0 LDR,
-      3 shi CBNZ,
-      sloop B,
-   sdone LBL,  tagpub B,                            \ nothing protected: leave WIDN alone
-   shi LBL,
-      4 11 3 LSLI,                                  \ x4 = WID of bit 0 of that word
-      5 0 MOVZ,
-      bloop LBL,  3 bdone CBZ,
-         3 3 1 LSRI,  5 5 1 ADDI,  bloop B,
-      bdone LBL,                                    \ x5 = highest set bit index + 1
-      4 4 5 ADD,                                    \ x4 = highest protected WID + 1
-      5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LS tagpub BCOND,
-         4 DATA WIDN-CELL STR,
-   tagpub LBL,
-   5 PROT-REG-TAG-CELL MOVZ,  5 DATA 5 ADD,
-   4 PROT-REG-TAG LIT64,
-   4 5 STLR,                                        \ release-publish the shape tag last
-   RET,
-   bad LBL,
-      1 msg ADR,  0 2 MOVZ,  2 30 MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,
-      s" hb: AOT protected-WID co" BYTES,
-      $00000A7470757272 DCQ, ;                      \ "rrupt\n" + two unwritten pad bytes
 
 \ Validate the baked name pool before the AOT seed reads it.
 : EM-AOT-VALIDATE ( label -- ) {: bad:label :}
@@ -4982,13 +4938,11 @@ public
       21 21 8 ADDI,  22 22 1 ADDI,  rloop B,
    rdone LBL, ;
 
-\ Restore every declared address cell from structural coordinates. The cell
-\ location is DATA-relative even when it lies below the captured heap window;
-\ the target is null or relative to the captured CODE/DATA window according to
-\ its tag. Re-registering the kind makes a later snapshot or AOT capture total.
+\ Heap cell locations move with the captured window; fixed engine cells remain
+\ DATA-relative. The value has a separate null/CODE/DATA coordinate.
 : RESTORE-ADDRESS-CELLS ( -- )
-   LBL LBL LBL LBL LBL {: xloop:label xdata:label xnull:label
-                          xstore:label xdone:label :}
+   LBL LBL LBL LBL LBL LBL {: xloop:label xdata:label xnull:label
+                             xstore:label xdone:label xcell:label :}
    23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,         \ x23 = declared-cell count
    23 xdone CBZ,
    3 DATA DP-CELL LDR,                              \ x3 = DP, now past the window
@@ -4997,9 +4951,14 @@ public
    23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,
    22 0 MOVZ,
    xloop LBL,  22 23 CMP,  C-GE xdone BCOND,
-      24 21 0 LDRW,                                 \ x24 = cell offset from DATA
+      24 21 0 LDRW,                                 \ cell location plus window tag
       15 21 4 LDRW,                                 \ x15 = kind plus target offset+1
-      9 DATA 24 ADD,                                \ x9 = target cell
+      5 XTOFF-WINDOW-TAG LIT64,  6 24 5 AND,
+      5 XTOFF-VALUE-MASK LIT64,  24 24 5 AND,
+      9 DATA 24 ADD,                                \ fixed engine cell
+      6 xcell CBZ,
+         9 25 24 ADD,                               \ cell in the rebased heap window
+      xcell LBL,
       5 AOT-WINDOW:XTOFF-DATA-TAG LIT64,
       6 15 5 AND,  6 xdata CBNZ,
          SNAP-RELOC:LMARK LABEL@ BL,
@@ -5028,7 +4987,8 @@ public
 \ window arrives with every cell exactly as aligned as it was captured. It costs
 \ at most seven bytes of DATA once per boot.
 : EM-AOT-RELOC-DATA ( -- )
-   LBL LBL LBL LBL {: dloop:label drdone:label ok:label msg:label :}
+   LBL LBL LBL LBL LBL LBL
+   {: dloop:label drdone:label ok:label msg:label chain:label next:label :}
    3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
    5 10 LAOTDATAD0 LABEL@ TADR,  5 5 0 LDR,         \ x5 = capture-time REPL DATA base
    6 5 3 SUB,  6 6 7 ANDI,  3 3 6 ADD,              \ ... and DP up to that base's own 8-residue
@@ -5047,8 +5007,13 @@ public
    23 10 LAOTNDSITE LABEL@ TADR,  23 23 0 LDR,      \ x23 = DATA-site count
    22 0 MOVZ,
    dloop LBL,  22 23 CMP,  C-GE drdone BCOND,
-      24 21 0 LDRW,                                 \ x24 = blob offset u32
-      9 CP 24 ADD,                                  \ x9 = literal addr = CP + blob offset
+      24 21 0 LDRW,                                 \ kind plus blob offset
+      5 AOT-DSITE-CELL LIT64,  7 24 5 AND,
+      5 AOT-DSITE-OFF-MASK LIT64,  24 24 5 AND,
+      9 CP 24 ADD,
+      7 chain CBZ,
+         11 9 0 LDR,  11 11 6 ADD,  11 9 0 STR,  next B,
+      chain LBL,
       10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 0 ADDI,
       10 9 4 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
       10 9 8 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  11 11 10 ORR,
@@ -5058,6 +5023,7 @@ public
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      next LBL,
       21 21 4 ADDI,  22 22 1 ADDI,  dloop B,
    drdone LBL,
    AOT-WINDOW:RESTORE-ADDRESS-CELLS ;
@@ -5234,22 +5200,6 @@ public
    done LBL, ;
 ;package
 
-\ The one compiler dispatch is installed from the records this seed just
-\ registered. Its qualified name is resolved once at boot; the compile loop
-\ reads only the fixed cell. A miss is the same broken-artifact class as any
-\ other seed resolve and uses the same fail-closed code, with its own diagnostic.
-package NCOMP-DISPATCH
-public
-: INSTALL, ( -- )
-   LBL {: ready:label :}
-   9 NCOMP-EMIT:LWORD LABEL@ ADR,  10 13 MOVZ,  LFIND LABEL@ BL,
-   13 ready CBNZ,
-      NCOMP-EMIT:UNSET
-   ready LBL,
-   LAOTWIDGATE LABEL@ BL,
-   11 DATA XT-CELL STR, ;
-;package
-
 \ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
 \ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
 \ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
@@ -5257,7 +5207,7 @@ public
 : EM-SEED-AOT ( -- )
    LBL LBL LBL {: askip:label bad:label msg:label :}
    11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,        \ x11 = N
-   11 askip CBZ,                                    \ nothing captured -> skip
+   11 bad CBZ,                                      \ a native runtime seed is mandatory
    bad EM-AOT-VALIDATE
    11 5 LAOTCODELEN LABEL@ TADR,  11 11 0 LDR,     \ x11 = blob length, read before the flip
    1 CP 11 ADD,  PROT:LOPEN LABEL@ BL,              \ region -> RW over the blob's landing span
@@ -5272,10 +5222,6 @@ public
    CP CP 11 ADD,                                    \ code area top past the blob
    PROT:LCLOSE LABEL@ BL,                           \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
-   AOT-SIG:PUBLISH,                                 \ the checker payload's address and length
-   AOT-SIG:INSTALL,                                 \ then its type registry, before any user token can declare a family
-   NCOMP-DISPATCH:INSTALL,                          \ one compiler entry, resolved after its record exists
-   EM-AOT-BOOTRUN                                   \ install the REPL (no source): LFIND+blr the entry words
    askip B,
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 25 MOVZ,  NR-WRITE SYS,
@@ -6081,16 +6027,14 @@ public
    24 DATA SNAP-CELL STR,
    snomag LBL, ;
 
-: EM-STARTUP-RUNTIME-STATE ( -- )
-   LBL LBL LBL {: cwok:label pwclr:label pwclrd:label :}
-   9 0 MOVZ,  9 DATA HND-CELL STR,
-   9 DATA SNAP-CELL LDR,
-   9 cwok CBNZ,
-
+: EM-STARTUP-COLD-BASELINE ( -- )
+   LBL LBL {: pwclr:label pwclrd:label :}
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
-   9 DATA TOP-HOOK-CELL STR,
+   9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
+   9 DATA REPLH-CELL STR,  9 DATA BPWBASE-CELL STR,  9 DATA BPWN-CELL STR,
+   10 SNAP-RELOC:XTCELL-N-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    \ The three hooks and the compiler-dispatch cell hold execution tokens once something installs
    \ them, so they are address cells like a deferred word's dispatch cell. They are
    \ declared here, by name, on the cold path only: a restored image already
@@ -6111,12 +6055,14 @@ public
       9 10 0 STR,  10 10 8 ADDI,  11 11 8 SUBI,  pwclr B,
    pwclrd LBL,
    9 PROT-REG-TAG LIT64,  9 DATA PROT-REG-TAG-CELL STR,
-   LAOTPROT LABEL@ BL,                       \ baked entries precede cold-prefix registrations
-   cwok LBL,  9 0 MOVZ,
+   ;
+
+: EM-STARTUP-RUNTIME-STATE ( -- )
+   9 0 MOVZ,  9 DATA HND-CELL STR,
    9 DATA ENGINE-SNAP-XT-CELL STR,
-   9 DATA REPLH-CELL STR,
    9 DATA AOT-SEED-DONE-CELL STR,
    9 DATA BOOT-SRC:USER-END STR,
+   9 DATA BPWN-CELL STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA PKGRESYNC-CELL STR,                            \ checker resync latch clear at boot (dot habu-recovery-pkg-scope)
    9 DATA P2-CELL STR,  9 DATA P2BODY0-CELL STR,
@@ -6144,16 +6090,25 @@ public
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
+\ The mandatory seed has installed the complete cold runtime. Seal that target
+\ dictionary before any user token; a warm snapshot restore may then replace
+\ both cells with the floor and latch persisted by that snapshot.
+: EM-SEAL-SEEDED-RUNTIME ( -- )
+   NDICT DATA SEAL-NDICT-CELL STR,
+   9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
+
 : EM-STARTUP ( -- )
    LANCHOR LABEL@ LBL,
    EM-ENTRY-ARGS
    EM-RUNTIME-STACK
    EM-MMAP-CODE-REGION
    EM-SEED-DICT
-   \ EM-SEED-AOT moved to EM-COMPILE-EXIT (LEXIT): the AOT words are seeded
-   \ post-cold-prefix so name-relocated calls (M2) can resolve cold-prefix words.
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
+   EM-STARTUP-COLD-BASELINE
+   LAOTPROT LABEL@ BL,
+   EM-SEED-AOT
+   EM-SEAL-SEEDED-RUNTIME
    EM-SNAPSHOT-RESTORE
    EM-STARTUP-RUNTIME-STATE
    EM-SNAPSHOT-RX-FLUSH ;                \ the region at rest: whole region RX, no window open
@@ -6514,7 +6469,7 @@ s" c-package-prot-guard" s" --" TRUST
 
 : C-PACKAGE-SEAL-GUARD ( -- )   \ reject `package NAME` open/reopen of a sealed system package
    LBL {: ok:label :}
-   9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,             \ friend/open -> allow (engine cold load)
+   9 DATA SEAL-NDICT-CELL LDR,  9 ok CBZ,               \ namespace open -> allow
    24 DATA TKL-CELL LDR,  C-SEAL-MATCH                  \ candidate len = TKL; fail if reserved
    C-PACKAGE-PROT-GUARD
    ok LBL, ;
@@ -7355,28 +7310,26 @@ public
 \ and emit the control, literal, operator, call, and reset paths.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 variable P2SK
-: P2W-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext:n :}
+: P2W-ENTRY ( label ptr a n n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext :}
    LBL P2SK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 P2SK LABEL@ CBZ,
    k EM-P2-QUERY-WIDTHS
    13 P2SK LABEL@ CBZ,                                \ all-scalar: normal lowering
    LVSPILL LABEL@ BL,
-   ext JIT-XT-EXECUTE
+   ext execute
    lmainlbl B,
    P2SK LABEL@ LBL, ;
-s" p2w-entry" s" label ptr a n n n --" TRUST
 
-: P2F-ENTRY ( label ptr a n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n ext:n :}
+: P2F-ENTRY ( label ptr a n [ -- ] -- ) {: lmainlbl:label kwvar:ptr kwlen:n ext :}
    LBL P2SK !
    0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 P2SK LABEL@ CBZ,
    1 EM-P2-QUERY-WIDTHS
    LVSPILL LABEL@ BL,
-   ext JIT-XT-EXECUTE
+   ext execute
    lmainlbl B,
    P2SK LABEL@ LBL, ;
-s" p2f-entry" s" label ptr a n n --" TRUST
 
 \ op bodies: read the operand widths (P2W cells, pos 0 = stack top), compose
 \ sums into the helper args, BL the emit helper(s).
@@ -8061,6 +8014,8 @@ package COMPILE-EMIT
    LOOP-EMIT:EM-COMPILE-LOOP-KEYWORDS ;
 s" em-compile-keywords" s" --" TRUST
 
+public
+
 : EMIT-DEF-KW-GUARD ( -- )
    LDEFKWGUARD LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ LKWCMP is BL-called by every row
@@ -8267,7 +8222,7 @@ s" em-reset-compile-state" s" --" TRUST
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
    LEVLN LABEL@ LBL,
-   10 DATA REPLH-CELL LDR,  10 LEVLR LABEL@ CBZ,
+   LREPLROUTE LABEL@ BL,  9 LEVLR LABEL@ CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,
    \ No handler and no REPL: fall into the shared uncaught-throw exit (x9 = code).
    \ LEVLR (eval-frame path) and LUNCAUGHT (BTHROW THROW-NOREC path, reached via
@@ -8282,6 +8237,7 @@ s" em-reset-compile-state" s" --" TRUST
    \ the message write (the kernel preserves x2-x15, as EMIT-SOURCE-READ's open-error
    \ path relies on for x12). Never returns - no RET, keeps FPRIM-L throw leaf-safe.
    LEVLR LABEL@ LBL,  LUNCAUGHT LABEL@ LBL,
+   9 15 0 ADDI,                                        \ restore code after the route's ioctl
    LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
    15 9 0 ADDI,                                        \ x15 = code (survives writes; x9-x14 are itoa scratch)
    0 9 0 ADDI,                                         \ x0 = code for the passthrough exit
@@ -8366,7 +8322,7 @@ s" em-repl-recover" s" --" TRUST
       15 RC-REJECT MOVZ,                                    \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (frame unwind + deliver)
    LUN0 LABEL@ LBL,
-   9 DATA REPLH-CELL LDR,  9 LRDIE LABEL@ CBZ,
+   LREPLROUTE LABEL@ BL,  9 LRDIE LABEL@ CBZ,
    \ Restore RX before re-entering the REPL read/handler code (dot habu-recovery-pkg-scope-e0bd98e2):
    \ an undefined word (LUNDEF), orphan closer (LORPHAN), or cf-cap (LCFCAP) that aborts a `:`-body
    \ at the tty REPL leaves the JIT code region RW; EM-REPL-RECOVER -> LREAD -> RD-LINE then executes
@@ -8432,11 +8388,12 @@ s" em-compile-undef" s" --" TRUST
       PROT:LCLOSE LABEL@ BL,                           \ region -> RX
       10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
    ldie LBL,
-   9 DATA REPLH-CELL LDR,  9 rdie CBZ,                      \ tty-REPL parity (dot habu-convert-residual-compile-f460b9f2): REPLH!=0 -> recover the interactive session exactly like LUNDEF/LDIAGRET's LUN0 leg instead of exiting; REPLH==0 (script/--load/stdin) -> fail-closed exit byte-identically
+   LREPLROUTE LABEL@ BL,  9 rdie CBZ,
       PROT:LCLOSE LABEL@ BL,                           \ region -> RX (idempotent) before re-entering REPL read/handler code: a compile die mid-:-body leaves the region RW
       LRREC LABEL@ B,                                       \ -> EM-REPL-RECOVER: roll back to the REPL line-start snapshot (same CP/NDICT/DP/XDS/compile-state surface + HIDX stale-skip as the eval-frame recovery) and re-read
    rdie LBL,
-   NR-EXIT-GROUP SYS,                                       \ x0 still = code (REPLH==0): fail-closed exit unchanged
+   0 15 0 ADDI,                                             \ restore code after the route's ioctl
+   NR-EXIT-GROUP SYS,
    \ Counted-string-too-long diagnostic (dot habu-recovery-pkg-scope-e0bd98e2). The
    \ four c"/c\" cap sites (C-ICQ/C-EICQ/C-CQ/C-ECQ) used a bare `0 76 MOVZ,
    \ LCOMPILEDIE B,` that was byte-identically SILENT and overloaded with C-SIG-BAD's
@@ -8521,22 +8478,18 @@ s" em-repl-read" s" --" TRUST
 \ the old one ended (INE), and re-entering LMAIN is a branch. The cell is cleared
 \ as it is consumed, so nothing can install it twice.
 : EM-COMPILE-EXIT ( -- )
-   LBL LBL {: aoskip:label nousrc:label :}
+   LBL {: nousrc:label :}
    LEXIT LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 LABEL@ CBZ,
       EM-EVAL-CLEAN-EXIT
    LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
-   9 DATA AOT-SEED-DONE-CELL LDR,  9 aoskip CBNZ,            \ already seeded -> skip
-      EM-SEED-AOT                                            \ seed the baked words once, post-cold-prefix
-      9 1 MOVZ,  9 DATA AOT-SEED-DONE-CELL STR,
-   aoskip LBL,
    9 DATA BOOT-SRC:USER-END LDR,  9 nousrc CBZ,                  \ no second stream -> repl or exit
       10 0 MOVZ,  10 DATA BOOT-SRC:USER-END STR,                 \ one-shot: consume it before installing
       10 DATA INE-CELL LDR,  10 DATA INP-CELL STR,           \ the user stream begins where the prefix ended
       9 DATA INE-CELL STR,
       LMAIN LABEL@ B,
    nousrc LBL,
-   9 DATA REPLH-CELL LDR,  9 LRBYE LABEL@ CBZ,
+   LREPLROUTE LABEL@ BL,  9 LRBYE LABEL@ CBZ,
    0 1 MOVZ,  1 LOKS LABEL@ ADR,  2 4 MOVZ,  NR-WRITE SYS,
    EM-REPL-READ
    LRBYE LABEL@ LBL,
@@ -8565,7 +8518,7 @@ s" em-compile-exit" s" --" TRUST
       15 RC-REJECT MOVZ,                                \ x15 = throw code
       10 DATA EVALREC-CELL LDR,  10 BR,                 \ -> LEVALREC (frame unwind + deliver)
    uf0 LBL,
-   9 DATA REPLH-CELL LDR,  9 ufdie CBZ,
+   LREPLROUTE LABEL@ BL,  9 ufdie CBZ,
    LRREC LABEL@ B,
    ufdie LBL,
    0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -8883,9 +8836,12 @@ package ENGINE-EMIT
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
    EM-STARTUP
    NCOMP-EMIT:EM-COMPILE
+   EM-COMPILE-UNDEF
+   EM-COMPILE-DIE
+   EM-COMPILE-EXIT
+   EM-EVAL-THROW-RECOVER
    EM-COMMENT
    INTERP-EMIT:EM-INTERPRET
-   COMPILE-EMIT:EM-COMPILE
    EM-INTERPRET-UNDERFLOW ;
 s" emit-main" s" --" TRUST
 
@@ -8950,7 +8906,8 @@ package LABELS
    LBL AOT-XTSITE:LCOUNT !  LBL AOT-XTSITE:LROWS !
    LBL LAOTBOOTRUN !
    LBL AOT-SIG:LLEN !  LBL AOT-SIG:LSPAN !  LBL AOT-SIG:LNAME !
-   LBL LAOTNPWID !  LBL LAOTPWID !  LBL LAOTPROT !  LBL LPROTWIDQ !
+   LBL LPROTWIDQ !
+   LBL LAOTPROT !
    LBL AOT-WINDOW:LWIDW0 !  LBL AOT-WINDOW:LWIDSPAN !  LBL AOT-WINDOW:LNPWIN !  LBL AOT-WINDOW:LPWIN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
@@ -8993,7 +8950,7 @@ package LABELS
    LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
 : RUNTIME ( -- )
-   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
+   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LREPLROUTE !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
@@ -9022,9 +8979,9 @@ package LABELS
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
-   LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
+   LBL LPSTRUCTURES !  LBL LPBYTES ! LBL LPDYNAMIC !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
-   LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
+   LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
@@ -9217,17 +9174,10 @@ s" AOT-SIG-PAYLOAD:BUF@" s" -- ptr u8" TRUST
    AOT-XTSITE:LCOUNT LABEL@ LBL,  AOT-XTSITE:N @ DCQ,
    AOT-XTSITE:LROWS LABEL@ LBL,  AOT-XTSITE:EMIT-ROWS
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
-   LAOTNPWID LABEL@ LBL,  PROT-REG-TAG DCQ,                                  \ protected-WID frame: shape tag
-   LAOTPWID LABEL@ LBL,                                                      \ then the fixed-width bitmap (TFAM 2b-v)
-   AOT-PWID-BUF@ PROT-BITS-BYTES BYTES,
    AOT-WINDOW:LWIDW0 LABEL@ LBL,  AOT-WID-W0 @ DCQ,
    AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,
    AOT-WINDOW:LNPWIN LABEL@ LBL,  AOT-PWIN-N @ DCQ,
-   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN
-   AOT-SIG-PAYLOAD:BUILD                          \ before the length label reads it
-   AOT-SIG:LLEN LABEL@ LBL,  AOT-SIG-PAYLOAD:LEN @ DCQ,
-   AOT-SIG:LNAME LABEL@ LBL,  AOT-SIG:INSTALL-NAME$ BYTES,
-   AOT-SIG:LSPAN LABEL@ LBL,  AOT-SIG-PAYLOAD:EMIT ;
+   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
 \ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same
@@ -9278,7 +9228,8 @@ package ENGINE-EMIT
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
    DOESPATCH:EMIT
-   EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
+   EMIT-CF-HELPERS  COMPILE-EMIT:EMIT-DEF-KW-GUARD
+   EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
    EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE  AOT-WINDOW:EMIT-OUTSIDE  EMIT-AOT-PROT-RESTORE
    SNAP-RELOC:EMIT-CALLS  SNAP-RELOC:EMIT-MARK  SNAP-RELOC:EMIT-XT
    SNAP-RELOC:EMIT-ADDR-SITE  SNAP-RELOC:EMIT-ADDRS
@@ -9291,6 +9242,7 @@ package ENGINE-EMIT
    EMIT-P2KW ;
 
 : EMIT-RUNTIME-SECTIONS ( -- )
+   EMIT-REPL-ROUTE
    EMIT-CRASH-HANDLER
    EMIT-TRAPH
    EMIT-HEX

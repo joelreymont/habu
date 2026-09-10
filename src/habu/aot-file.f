@@ -584,6 +584,7 @@ private
 : LOAD-SECTION ( n -- ) {: k:n :}
    k ?ROOM
    k ROW-LEN@ 0= if exit then
+   k S-NAMES = if k BASE@ k ROW-LEN@ + AOT-NAMES-RESERVE then
    k SEC-PTR k BASE@ + k ROW-LEN@ GET
    k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-UPDATE ;
 

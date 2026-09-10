@@ -334,6 +334,10 @@ SEQ-LEN-SHIFT PLACE-BITS / constant SEQ-MAX-N   \ positions one cell holds
 1 REG-BITS lshift constant KIND-BIT      \ set on a data-stack slot, clear on a register
 1 PLACE-BITS lshift 1 - constant PLACE-MASK
 1 SEQ-LEN-BITS lshift 1 - constant SEQ-LEN-MASK
+\ A contiguous data-stack interface needs only its length. The reserved length
+\ tag distinguishes that range from an explicitly ordered register/slot list.
+SEQ-LEN-MASK SEQ-LEN-SHIFT lshift constant SEQ-RANGE-TAG
+$FFFFFFFF constant SEQ-RANGE-MASK       \ u32 count; the remaining payload bits are reserved
 
 \ The unsigned-offset load and store field: twelve bits, scaled by the access
 \ width. The widest access moves eight bytes, so the deepest byte a slot can sit
@@ -421,7 +425,11 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 \ Reading one packed list. Nothing below is public: a caller reaches a position
 \ through the readers further down, which validate the whole list first, so there
 \ is no route to an element of a list that was never checked.
+: SEQ-RANGE? ( n -- bool )
+   SEQ-RANGE-TAG and SEQ-RANGE-TAG = ;
+
 : SEQ-LEN-OF ( n -- n )
+   dup SEQ-RANGE? if SEQ-RANGE-MASK and exit then
    SEQ-LEN-SHIFT rshift SEQ-LEN-MASK and ;
 
 \ The whole element at one position - kind bit and payload together - which is
@@ -468,6 +476,11 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : SEQ-CK ( n -- n )
    dup {: w:n :}
    w SEQ-LEN-OF {: len:n :}
+   w SEQ-RANGE? if
+      w SEQ-RANGE-TAG invert and SEQ-RANGE-MASK > if E-A64EFF-SEQ throw then
+      len SEQ-MAX-N <= if E-A64EFF-SEQ throw then
+      exit
+   then
    len SEQ-MAX-N > if E-A64EFF-SEQ throw then
    len 0 ?do
       w i SEQ-AT SEQ-PLACE-CK
@@ -482,6 +495,7 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 \ nothing: a routine whose whole interface is data-stack slots reads, returns and
 \ destroys no register on account of its convention.
 : SEQ-MASK ( n -- n )
+   dup SEQ-RANGE? if drop 0 exit then
    dup SEQ-LEN-OF {: w:n len:n :}
    0
    len 0 ?do
@@ -493,6 +507,7 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 \ the list mixes the two kinds - which is a convention this file can describe and
 \ no pass of the chain has a rule for yet.
 : SEQ-SLOTS-OF ( n -- n )
+   dup SEQ-RANGE? if SEQ-LEN-OF exit then
    dup SEQ-LEN-OF {: w:n len:n :}
    0
    len 0 ?do
@@ -756,16 +771,24 @@ public
    dup 0 < over PAY-MASK > or if E-A64EFF-SEQ throw then
    KIND-BIT or SEQ-PUT ;
 
+\ Positions 0..n-1 on the Forth data stack. Small sequences keep the existing
+\ canonical packed representation; larger ones store the same range directly.
+: SEQ-DSTACK ( n -- A64EFF:placeseq ) {: n:n :}
+   n 0 < n SEQ-RANGE-MASK > or if E-A64EFF-SEQ throw then
+   n SEQ-MAX-N > if n SEQ-RANGE-TAG or MK-S exit then
+   SEQ-NONE
+   n 0 ?do i SEQ-WITH-SLOT loop ;
+
 : SEQ-LEN ( A64EFF:placeseq -- n )
    S-BITS SEQ-CK SEQ-LEN-OF ;
 
 private
 
-: SEQ-ELEM ( A64EFF:placeseq n -- n )
+: SEQ-POSITION ( A64EFF:placeseq n -- n n )
    {: s:placeseq p:n :}
    s S-BITS SEQ-CK {: w:n :}
    p 0 < p w SEQ-LEN-OF >= or if E-A64EFF-SEQ throw then
-   w p SEQ-AT ;
+   w p ;
 
 public
 
@@ -774,16 +797,22 @@ public
 \ it is, so a pass that treated a slot index as a register number would have had
 \ to ask for the register of a slot and be told no.
 : SEQ-KIND@ ( A64EFF:placeseq n -- A64EFF:pkind )
-   SEQ-ELEM PLACE-SLOT? if A64EFF-PKIND:DSLOT exit then A64EFF-PKIND:GPR ;
+   SEQ-POSITION {: w:n p:n :}
+   w SEQ-RANGE? if A64EFF-PKIND:DSLOT exit then
+   w p SEQ-AT PLACE-SLOT? if A64EFF-PKIND:DSLOT exit then A64EFF-PKIND:GPR ;
 
 \ The register at one position. A position holding a data-stack slot is refused
 \ rather than answered with an index that would read as a register number.
 : SEQ-REG@ ( A64EFF:placeseq n -- n )
-   SEQ-ELEM dup PLACE-SLOT? if E-A64EFF-KIND throw then PLACE-PAY ;
+   SEQ-POSITION {: w:n p:n :}
+   w SEQ-RANGE? if E-A64EFF-KIND throw then
+   w p SEQ-AT dup PLACE-SLOT? if E-A64EFF-KIND throw then PLACE-PAY ;
 
 \ The data-stack slot index at one position, refused the same way in reverse.
 : SEQ-SLOT@ ( A64EFF:placeseq n -- n )
-   SEQ-ELEM dup PLACE-SLOT? 0= if E-A64EFF-KIND throw then PLACE-PAY ;
+   SEQ-POSITION {: w:n p:n :}
+   w SEQ-RANGE? if p exit then
+   w p SEQ-AT dup PLACE-SLOT? 0= if E-A64EFF-KIND throw then PLACE-PAY ;
 
 \ How many positions of the list are data-stack slots. Zero and the whole length
 \ are the two homogeneous conventions; anything between mixes the kinds, which is

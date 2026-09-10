@@ -38,6 +38,13 @@ package SHADOW-LINT-TOOL
    s" [global-shadow]" s" : DUP ( n -- n n ) ;" LINT-SCAN
    BAD @ 1 T= ;
 
+: SLT-DEFINER-BODY ( -- )
+   0 BAD !
+   s" [definer-body]" s" : MAKE-SLOT create here ptr-cell-mark 0 , ;" LINT-SCAN
+   BAD @ 0 T=
+   s" [after-definer]" s" : MAKE-SLOT create here ; variable DUP" LINT-SCAN
+   BAD @ 1 T= ;
+
 create SLT-UB 2 allot
 
 \ A bare `s"` opener with no closing quote: the lexer marks it unterminated.
@@ -65,6 +72,7 @@ create SLT-UB 2 allot
    SLT-STRING-LITERAL
    SLT-CROSS-PACKAGE
    SLT-GLOBAL-SHADOW
+   SLT-DEFINER-BODY
    SLT-UNTERM
    SLT-MALFORMED-ROW
    T-REPORT

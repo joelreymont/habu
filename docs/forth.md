@@ -810,7 +810,7 @@ address arithmetic at the public boundary.
   errors and edges. Test compositions through their public entry points rather
   than requiring a separate test for every trivial helper. Use `T=` / `T<>` for
   scalars, `T$=` for strings, `TTRUE` / `TFALSE` for flags, `TTHROWS` for error
-  codes, and `SNAP=` (two equal-shape quotations) for multi-value stack snapshots.
+  codes. Compare multiple results from the top down with one assertion per result.
   A regression must distinguish the defect it is intended to prevent.
 - Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
   fixtures, and source-specific checks wired through `test/run.f`.
@@ -931,6 +931,15 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
   outcome kind/code, named rc when known, capture bytes/capacity, and captured
   stdout/stderr. Use throw-on-timeout capture only inside a focused unit test
   whose assertion is the named throw itself.
+- **Use `DYNAMIC-BUFFER NAME Type` for growing typed tables.** It accepts the
+  same stored types as `TYPED-BUFFER`, including closed non-linear layouts.
+  `count NAME-RESERVE` allocates at least that many elements and preserves
+  existing contents. `index NAME` returns `ptr Type`; negative indices and
+  indices beyond the allocated capacity reject. A smaller reserve keeps the
+  allocation. Growth can move it, so retain indices and reacquire pointers
+  afterwards. `NAME-RELEASE` frees the mapping and can be called again safely.
+  These mappings are transient: release them before saving an image; use
+  dictionary storage for values that the image must retain.
 - **Large native tool bundles are supported.** Do not split tools merely to dodge
   DATA pressure. `create ... allot` is for dictionary-sized static storage; large
   runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or

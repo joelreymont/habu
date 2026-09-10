@@ -366,9 +366,8 @@ public
 
 \ ---- append ------------------------------------------------------------------
 \ A ROW IS SEVERAL PUSHES AND A PUSH CAN FAIL. Growth takes a span from the
-\ owning context's mapping, and that mapping runs out - E-IR-CTX-SCRATCH is a
-\ failure real compilations reach, which is why context.f's MAP-BYTES has been
-\ doubled three times. A caller that writes a six-cell row as six PUSH calls
+\ owning context's scratch storage, and allocation can fail. A caller that
+\ writes a six-cell row as six PUSH calls
 \ therefore has five places where the row can stop half written, and the tables
 \ built on this arena read their rows by position: five cells of a six-cell row
 \ leaves a count no row width divides, and every later read of that table fails
@@ -494,11 +493,7 @@ public
 : FROZEN-NTH ( IR-ARENA:view n -- IR-ARENA:cell-id )
    swap FROZEN-SLOT swap NTH-RAW ;
 
-private
-get-current prot-wid-add
-
 public
-get-current prot-wid-add
 
 \ All arena spans belong to compilation contexts.  With no live context the
 \ sweep retires every slot; only then may their now-unmapped DATA pointers be
@@ -509,5 +504,11 @@ get-current prot-wid-add
       i AGEN@ 0<> if E-IR-ARENA-STATE throw then
       NULL-PTR i ADATA-FIELD !
    loop ;
+
+private
+get-current prot-wid-add
+
+public
+get-current prot-wid-add
 
 ;package

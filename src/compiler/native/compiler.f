@@ -429,7 +429,7 @@ create SPELL-BUF SPELL-CAP allot
 \ values and the allocator breaks ties on those numbers.
 : COMBINED ( IR-BUILD:module n -- IR-BUILD:module )
    {: m:IR-BUILD:module len:n :}
-   m A64COMB:FUSIONS {: n:n :}
+   m A64COMB:REWRITES {: n:n :}
    n 0= if A64COMB:RELEASE m exit then
    A64RA:RELEASE
    A64EMIT:RELEASE
@@ -440,7 +440,7 @@ create SPELL-BUF SPELL-CAP allot
    CC nb A64EMIT:BIND-DIALECT
    CC nb A64SPILL:BIND-DIALECT
    CC m nb TXT len A64COMB:REWRITE {: m1:IR-BUILD:module :}
-   A64COMB:FUSED n <> if E-A64COMB-SHAPE throw then
+   A64COMB:REWRITTEN n <> if E-A64COMB-SHAPE throw then
    m IR-BUILD:RETIRE
    m1 ;
 
@@ -578,6 +578,16 @@ create SPELL-BUF SPELL-CAP allot
 : IDLE-CK ( -- )
    M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
 
+: ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   2 a u write drop ;
+
+: REPORT-FAILURE ( -- )
+   s" ncomp: cannot compile " ERROR-TEXT
+   NAME-BUF NAME-U @ ERROR-TEXT
+   NELAB:REFUSED$ {: a:ptr u:n :}
+   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
+   S\" \n" ERROR-TEXT ;
+
 : RUN ( -- )
    LENGTH-CK
    1 M-OPEN !
@@ -586,7 +596,7 @@ create SPELL-BUF SPELL-CAP allot
    0 M-OPEN !
    entry-rc 0<> if entry-rc throw then
    M-RC @ {: rc:n :}
-   rc 0 <> if RETRACT rc throw then ;
+   rc 0 <> if REPORT-FAILURE RETRACT rc throw then ;
 
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
@@ -620,6 +630,13 @@ public
    0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
    0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CALLABLE !
    A64EMIT:CAPTURE-PREPARE
+   A64EMIT:RELEASE-SCRATCH
+   A64SPILL:RELEASE-SCRATCH
+   A64RAV:RELEASE-SCRATCH
+   A64RA:RELEASE-SCRATCH
+   A64COMB:RELEASE-SCRATCH
+   A64SEL:RELEASE-SCRATCH
+   NLOOP:RELEASE-SCRATCH
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE
    NELAB:CAPTURE-PREPARE ;

@@ -2244,13 +2244,27 @@ variable RSEXEC-EXP    \ quot explicitly names a linear? (captured before unify 
 variable EXEC-OPAQUE   \ RSEXEC rejected an execute of an opaque (untyped-memory) xt this token; DO-TOK1 latches the reason (the reject machinery lives far below RSEXEC)
 variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) xt this token; latched the same way so the prose names 'catch' not 'execute'
 
+\ The native compiler consumes the effect of the quotation at each call site.
+variable CWIN-HIT
+variable CWIN-IN
+variable CWIN-OUT
+variable CWIN-KIND                  \ 0 catch, 1 execute
+
+: QUOT-WINDOW ( n -- ) {: kind:n :}
+   kind CWIN-KIND !
+   QTT @ Q>DIN ROW-CELLS CWIN-IN !
+   QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
+   -1 CWIN-HIT ! ;
+
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
+   0 CWIN-HIT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
    LIN-SNAPSHOT                          \ linears on the post-pop stack (pre-apply)
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
+     1 QUOT-WINDOW
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
      QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
@@ -2301,9 +2315,6 @@ variable RSRET
 \ the dout of a quotation whose fall-through is dead, so there is no instantiated
 \ output row to measure and CELLS-NONE is what is recorded - not a zero, which is
 \ a real width a window-0 body has.
-variable CWIN-HIT     \ this token was a catch of a quotation the checker modeled
-variable CWIN-IN      \ the window the caught body takes, in stack cells
-variable CWIN-OUT     \ what it leaves, or CELLS-NONE when it never returns
 
 : RSCATCH   \ catch: stack-preserving quotation -> same stack plus throw code
    \ Catchable `throw` is not process no-return. The checker tracks throw paths
@@ -2315,9 +2326,7 @@ variable CWIN-OUT     \ what it leaves, or CELLS-NONE when it never returns
    rest DCUR !
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
-     QTT @ Q>DIN ROW-CELLS CWIN-IN !          \ the window, while the tails are still open
-     QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
-     -1 CWIN-HIT !
+     0 QUOT-WINDOW
      DCUR @ QTT @ Q>DIN   UNIFY-IN OK @ and OK !
      RCUR @ QTT @ Q>RIN   UNIFY-IN OK @ and OK !
      QTT @ Q>XDEAD IF
@@ -5540,6 +5549,8 @@ variable ASIG-MISS-K
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
    MULTI-ERR? 0= IF
+      2 na nu write drop
+      2 s" : " write drop
       2 sa su write drop                 \ name the offending stored sig text
       s" : checker: bad stored signature" 76 die
    THEN
@@ -6098,6 +6109,7 @@ PRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: open     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: read     PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: ioctl    PE-N PE-IN PE-N PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
+PRIM: map-anon PE-N PE-IN  PE-PTR-A PE-OUT PE-N PE-OUT PRIM;
 PRIM: mmap     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: path0    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
 PRIM: open-rd  PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
@@ -6162,11 +6174,19 @@ PRIM: cp@            PE-N PE-OUT PRIM;
 PRIM: cp!            PE-N PE-IN PRIM;
 PRIM: dbase@         PE-N PE-OUT PRIM;
 PRIM: check@         PE-N PE-OUT PRIM;
+\ Compiler hook installation is an explicit engine boundary.
+PRIM: set-check     PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: set-preflight PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: set-top-check PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!
 PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
 PRIM: seed-ndict!    PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ explicit trusted reset boundary
 PRIM: SEAL-CAPTURE   PRIM;
+PRIM: seal-captured? PE-F PE-OUT PRIM;
 PRIM: SEAL-FRIEND    PRIM;
 PRIM: DRAIN-PRETRUST PRIM;   \ dot habu-engine-pre-trust-77410827: drains the pending pre-trust defer table
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
@@ -6459,6 +6479,7 @@ PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-STRING PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-TAPE K-CHAR PE-N PE-OUT PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -6540,7 +6561,7 @@ PRIM: getpid   PE-N PE-OUT PRIM;   \ ( -- pid ) process-identity syscall
 PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-lifetime watch
 PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
 PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
-PRIM: munmap   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
+PRIM: munmap   PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
 \ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
 \ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
 \ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Its
@@ -6606,6 +6627,7 @@ PRIM: EFFECT-QUOT-SIMPLE? PE-F PE-OUT PRIM;
 PRIM: EFFECT-QUOT-UP      PE-F PE-OUT PRIM;
 PRIM: EFFECT-RET-NEUTRAL? PE-F PE-OUT PRIM;
 PRIM: EFFECT-CATCH-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: EFFECT-EXEC-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-MATCH-CELLS PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
@@ -7033,7 +7055,7 @@ variable CHECKER-QBAD-TOK
 : CHECKER-LBUF-NAME-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   data-base SEAL-NDICT-CELL + @ 0 <> IF
+   seal-captured? IF
       a u CHECKER-QUALIFIED? IF
          CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-CHECKER-LAYOUT-BUFFER throw THEN
       THEN
@@ -7198,7 +7220,7 @@ variable CHECKER-QBAD-TOK
 \ The failure ABI comes from the earlier engine-error.f package.
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
-   data-base SEAL-NDICT-CELL + @ 0= 0= IF
+   seal-captured? IF
       2drop s" seal: cannot truncate sealed checker signatures" ENGINE-ERROR:SEAL-VIOLATION die
    THEN
    CHECKER-USIGS-TRUNCATE-FROM-RAW ;
@@ -7504,78 +7526,10 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    q EFF-E@ 0= 0= if 0 0= 0= exit then
    q EFF-F@ 0= ;
 
-\ ---- HOW WIDE THE WINDOW A CATCH SITE INSTANTIATED IS -------------------------
-\ WHAT THE QUESTION IS AND WHY NO READER ABOVE ANSWERS IT. `catch` runs a
-\ quotation and, when that quotation throws, the engine puts the data stack back
-\ to the DEPTH it had when the call was made and never to its CONTENTS: the cells
-\ the body may have written are still whatever it left there. So a compiler that
-\ makes a catch site into a call has to know exactly how many cells the body may
-\ disturb, and it has to have every one of them in its data-stack home across the
-\ call - anything it kept in a register would answer the value the site had
-\ BEFORE, which is the one answer the engine never gives. That number is the
-\ caught quotation's own input row measured in cells. The readers above cannot
-\ answer it: they answer about a NAME's declared effect, and `catch` has no
-\ declared effect at all - its rows are built per site by RSCATCH, out of the
-\ quotation in hand and the live stack under it.
-\
-\ THE ANSWER IS KEYED BY THE TOKEN, AND THE TOKEN IS A COORDINATE BOTH SIDES
-\ ALREADY SHARE. A definition may hold several catch sites with different window
-\ widths, so a single latch holding the last one would answer every site with
-\ some other site's number - quietly, and only in bodies with more than one
-\ catch. What identifies a site exactly is the token it stands on: the reader
-\ below reports each token it consumes to the source-tape observer, in
-\ consumption order and exactly once, and the tape producer appends one row per
-\ report and refuses any other order (src/compiler/native/feed.f ORDER-CK). So
-\ report ordinal k IS tape ordinal k, and a consumer elaborating tape row k asks
-\ about row k. The two alternatives were both rejected: taking the width from the
-\ compile-time stack DEPTH at the site is the guess src/compiler/native/elaborate.f
-\ already refuses to make about a quotation's arity, and numbering the catch
-\ sites, or the quotations, within the definition makes two counters that have to
-\ agree about one fact.
-\
-\ IT RECORDS ONLY WHILE A UNIT IS RECORDING, AND IT IS RESET WHEN ONE OPENS. The
-\ ordinal means nothing outside an armed window - there is no tape for it to be
-\ an ordinal INTO - so a certification nobody is recording pays one flag test per
-\ catch and stores nothing, which is every certification the engine does for
-\ itself. One unit is one certification (a second scan inside an open unit is
-\ refused by name), so clearing the table when the observer is armed makes the
-\ table's contents always the definition the consumer is about to elaborate.
-\
-\ ABSENT IS THE FAIL-CLOSED ANSWER, exactly as it is for EFFECT-RET-NEUTRAL?
-\ with no name resolved: a token that is not a catch site, a site recorded past
-\ this table's ceiling, and a query outside any recording all answer no width,
-\ and a consumer that cannot get a width refuses the body by name instead of
-\ compiling it against a number nobody proved. The ceiling is a count of catch
-\ SITES in one definition, which is a small number: most bodies in the tree hold
-\ one or two.
-\
-\ THE CEILING IS REACHABLE, AND WHAT MAKES IT REACHABLE CHANGED UNDER IT. A
-\ ceiling no source can get to is a branch no test can take, and this one used to
-\ be argued from the RECORDER's caps: a tape of 128 tokens is 31 catch sites at
-\ four tokens each, so a ceiling of 32 would have been answered by the tape's
-\ refusal every time and this one would never have fired. That argument is gone.
-\ src/compiler/native/compiler.f now sizes a unit's tape from the source it was
-\ handed and takes its byte ceiling from the engine's own body capture, so a
-\ recorded definition may hold as many catch sites as the engine can compile, and
-\ nothing upstream answers before this table does.
-\
-\ WHICH LEAVES THE MEASUREMENT AS THE WHOLE ARGUMENT, AND THE MEASUREMENT HAS
-\ MOVED TOO. The densest body in src and lib writes SEVENTEEN catch sites in one
-\ definition (lib/array-test.f AT-TEST-CHECKS, counted 2026-08-14), one past this
-\ ceiling - and while the recorder's byte cap was 512 a body that long was
-\ refused for its length before any of this was consulted. A body of that many
-\ sites is now refused by name here instead, which is the fail-closed answer and
-\ not a wrong window, and which test/compiler/native-catch.f CAP-CASE measures at
-\ exactly seventeen. Raising this number is a capability with its own derivation
-\ and its own two-sided fixture, not a widening to do in passing.
-
-\ ---- the recording unit both tables below are filed against -------------------
-\ ONE UNIT, ONE ORDINAL, AND THAT IS THE WHOLE REASON THESE TWO CELLS ARE NOT
-\ EACH TABLE'S OWN. The paragraphs above rejected numbering catch sites within
-\ the definition because it makes "two counters that have to agree about one
-\ fact"; a second table filed under a second counter would be the same mistake
-\ one level up. The reported-token ordinal is the coordinate, both tables are
-\ filed against it, and it is stepped in one place.
+\ Quotation call metadata is recorded at the token the checker consumed.
+\ Its input width is measured before unification binds the quotation's open
+\ row to the caller's stack. The table grows with the recorded definition;
+\ missing sites remain absent, and a no-return output is CELLS-NONE.
 variable REC-ON                      \ a recording unit is open
 variable REC-IX                      \ the ordinal the next reported token takes
 
@@ -7583,35 +7537,47 @@ variable REC-IX                      \ the ordinal the next reported token takes
    REC-ON @ 0= IF EXIT THEN
    REC-IX @ 1 + REC-IX ! ;
 
-16 constant CWIN-MAX                 \ catch sites one recorded definition may hold
+16 constant CWIN-INIT
+$7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 0 constant CW-ORD                    \ the token ordinal the site stands on
 1 constant CW-IN                     \ its window in cells
 2 constant CW-OUT                    \ what the body leaves, or CELLS-NONE for one that never returns
-3 constant CW-ROW                    \ cells one recorded site occupies
+3 constant CW-KIND
+4 constant CW-ROW                    \ cells one recorded site occupies
 
 variable CWIN-N                      \ sites recorded for the open unit
-create CWIN-TAB CWIN-MAX CW-ROW * cells allot
+PTR-VARIABLE CWIN-P
+variable CWIN-CAP
 
 : CWIN-AT ( n n -- ptr a )           \ field f of row i
    {: i:n f:n :}
-   CWIN-TAB  i CW-ROW * f + cells + ;
+   CWIN-P @ i CW-ROW * f + cells + ;
 
 : CWIN-RESET ( -- )
    0 CWIN-N !
-   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT ! ;
+   0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !  0 CWIN-KIND ! ;
 
-\ Write down what the catch on the token now being reported instantiated. It runs
-\ from the report itself, so the row and the ordinal it is filed under are made in
-\ one step and cannot drift; a token that was not a catch has nothing latched and
-\ writes nothing.
+: CWIN-ENSURE ( -- )
+   CWIN-N @ CWIN-CAP @ < IF EXIT THEN
+   CWIN-N @ CWIN-ROW-MAX >= IF s" checker: quotation site capacity overflow" 76 die THEN
+   CWIN-N @ 1 + CWIN-INIT max
+   CWIN-CAP @ CWIN-ROW-MAX 2 / <= IF CWIN-CAP @ 2 * max THEN
+   {: cap:n :}
+   CWIN-P @ CWIN-N @ CW-ROW * cells cap CW-ROW * cells
+   ARENA-BYTES-GROW CWIN-P !
+   cap CWIN-CAP ! ;
+
+\ Commit the quotation call at its reported token ordinal. Other tokens have
+\ no latched call metadata.
 : CWIN-COMMIT ( -- )
    CWIN-HIT @ 0= IF EXIT THEN
    0 CWIN-HIT !
-   CWIN-N @ CWIN-MAX >= IF EXIT THEN
+   CWIN-ENSURE
    CWIN-N @ {: i:n :}
    REC-IX @    i CW-ORD CWIN-AT !
    CWIN-IN @   i CW-IN CWIN-AT !
    CWIN-OUT @  i CW-OUT CWIN-AT !
+   CWIN-KIND @ i CW-KIND CWIN-AT !
    i 1 + CWIN-N ! ;
 
 \ ---- the cells a recorded definition's layout forms really occupy -------------
@@ -7766,15 +7732,21 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 \ A recorded site whose body never returns answers its real input width and
 \ CELLS-NONE for the output, which is the difference between "no catch here" and
 \ "this catch's body never comes back" without a second sentinel to know.
-: EFFECT-CATCH-CELLS ( n -- n n )
-   {: ix:n :}
+: EFFECT-QUOT-CALL-CELLS ( n n -- n n )
+   {: ix:n kind:n :}
    0 BEGIN dup CWIN-N @ < WHILE
-      dup CW-ORD CWIN-AT @ ix = IF
+      dup CW-ORD CWIN-AT @ ix = over CW-KIND CWIN-AT @ kind = and IF
          dup CW-IN CWIN-AT @  swap CW-OUT CWIN-AT @  EXIT
       THEN
       1 +
    REPEAT drop
    CELLS-NONE CELLS-NONE ;
+
+: EFFECT-CATCH-CELLS ( n -- n n )
+   0 EFFECT-QUOT-CALL-CELLS ;
+
+: EFFECT-EXEC-CELLS ( n -- n n )
+   1 EFFECT-QUOT-CALL-CELLS ;
 
 \ How many cells the layout token `ix` really moves: a `MATCH` family token's
 \ instantiated bundle width, an arm's `of` token's instantiated pad count, or a
@@ -8182,17 +8154,15 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
-: NORET-BOOT? ( -- bool )
-   NORETS NORET-BOOT = ;
-
-: NORET-SNAPSHOT-CAP ( -- )
-   NORET-END @ CELL + NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
-
+\ The table can outgrow its initial buffer. Persist the complete live prefix
+\ in image DATA, just like stored signatures, and retain geometric headroom.
 : NORET-SNAPSHOT-PERSIST ( -- )
-   NORET-SNAPSHOT-CAP
-   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ CELL + USIGS-COPY THEN
-   NORET-BOOT NORET-P !
-   NORET-INIT-CAP NORET-CAP-U !
+   NORET-END @ CELL + {: n:n :}
+   n USIGS-POW2-CAP {: cap:n :}
+   cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
+   NORETS dst n USIGS-COPY
+   dst NORET-P !
+   cap NORET-CAP-U !
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
@@ -8395,6 +8365,8 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
+   CWIN-RESET
+   NULL-PTR CWIN-P !  0 CWIN-CAP !
    CHECKER-ASIG-DISARM
    0 ASIG-MAPPED !
    NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
@@ -8601,6 +8573,7 @@ variable CURSYM
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" dynamic-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -8708,6 +8681,7 @@ variable UNSAFE-SYM-N
    s" layout-buffer" UNSAFE-NAME-ADD
    s" defer-layout-buffer" UNSAFE-NAME-ADD
    s" typed-buffer"  UNSAFE-NAME-ADD
+   s" dynamic-buffer" UNSAFE-NAME-ADD
    s" typed-variable" UNSAFE-NAME-ADD ;
 
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
@@ -8758,7 +8732,7 @@ variable UNSAFE-SYM-N
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable.
 : EXPORT-SEAL-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
-   data-base SEAL-NDICT-CELL + @ 0= IF EXIT THEN
+   seal-captured? 0= IF EXIT THEN
    a u CHECKER-QUALIFIED? 0= IF EXIT THEN
    CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
 
@@ -10854,14 +10828,20 @@ variable SDI          \ decode cursor, a byte offset into the scan text
    SKIP-STRING-PAYLOAD
    SKF @ IF before 0 SPAY-RECORD THEN ;
 
+variable CPAY-B
+variable CPAY-U
+variable CPAY-ON
+
 : SKIP-PARSE-LIT-PAYLOAD ( -- )
    BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 <= ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
    REPEAT
+   TI @ CPAY-B !  0 CPAY-U !
    TI @ TBLEN @ >= IF 0 OK ! exit THEN
    BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 > ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
-   REPEAT ;
+   REPEAT
+   TI @ CPAY-B @ - CPAY-U ! ;
 
 : DEAD-OWNER! ( ptr u8 n -- )
    DEADTU !  DEADTA ! ;
@@ -11288,12 +11268,7 @@ variable IS-TU
 \ It is the same shape a string literal's payload already uses: the judgement
 \ spends the bytes and reports what it spent, because only the judgement knows.
 \
-\ IT IS ARMED WHERE THE TOKEN IS CONSUMED AND NOWHERE ELSE. IS-NEXT-TOKEN is
-\ also used to PEEK - BTICK-NEXT-CONSUMES-XT? reads the token after the tick and
-\ puts TI back - and a peek consumes nothing, so arming happens in
-\ IS-TARGET-TOK?, which is the one word both keywords consume through. The peek
-\ overwrites the scratch below and cannot disturb an armed row, because arming
-\ copies.
+\ IS-TARGET-TOK? records each consumed target for the source tape.
 variable IS-TOFF                     \ where the token IS-NEXT-TOKEN last read starts
 variable IS-PEND                     \ a swallowed token is waiting to be reported
 variable IS-PEND-OFF                 \ its offset in the scanned text
@@ -11367,73 +11342,16 @@ variable IS-PEND-U                   \ and its length
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
 
-\ `['] W` (compile-mode tick) retypes from a plain n (`PRIM: [']  PE-N PE-OUT`)
-\ to xt<effect(W)>: a T-QUOT of W's certified effect that execute/catch/is
-\ fit-check by the existing RSEXEC/RSCATCH/IS-APPLY quotation unification (docs
-\ typed-top-level.md §3). Two gates keep this precise-yet-safe:
-\  (1) W's identity is only in the checked text on the CANDIDATE/raw-source path
-\      (PIMM-STREAM 0, CHECK-CANDIDATE!/CHECK!/stage certify). The engine
-\      -reconstructed --load body drops the tick target (C-BTICK consumes it with
-\      no LBCAP), so there BTICK-TOK never fires and `[']` keeps its sound
-\      over-strict PE-N model (execute rejects, probe p8).
-\  (2) the xt<effect> is only materialised when the VERY NEXT token is an
-\      xt-effect consumer; otherwise `['] W` yields a plain n exactly as today, so
-\      the store-consumer sites (`['] B+ FPRIM-L`, `['] C-PACKAGE CF-ENTRY`, ...)
-\      that hand the raw xt cell to a ( .. n .. ) prim are byte-unchanged. A
-\      T-QUOT does not unify with a scalar n (sound: no arithmetic on code cells),
-\      so this look-ahead is what lets the effect ride only into the fit-check.
-\ A sig-less / prim / undefined W pushes a plain n so execute still rejects (over
-\ -strict but sound, never a pure-xt launder); an unsafe definer W rejects,
-\ closing DIRECT-tick laundering (the stored-xt `@ execute` residual stays dot
-\ habu-checker-exec-of-5923c543).
-: BTICK-CAND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [']" CORE-STR= 0= IF RES-FALSE EXIT THEN
-   PIMM-STREAM @ 0 = ;
+\ A tick retains the target effect through calls, locals and typed storage.
+: BTICK-CAND? ( ptr u8 n -- bool )
+   s" [']" CORE-STR= ;
 
 : BTICK-PUSH ( n -- )                    \ push one row term (xt<effect> quot or plain n)
    DCUR @ MK-PUSH DCUR ! ;
 
-\ execute/catch/is unify the carried effect against the LIVE row (RSEXEC/RSCATCH/
-\ IS-APPLY), so a T-QUOT operand fit-checks directly. run-in-stack is deliberately
-\ excluded: its xt runs in an ISOLATED frame buffer, so the fit is "frame cells >=
-\ e's din arity", not current-row unification - a distinct check left as residual
-\ (dot habu-typed-top-xt-096a8f1b follow-up), and it keeps its raw-xt PE-N operand
-\ here so `['] W run-in-stack` stays sound rather than falsely rejecting.
-: BTICK-XT-CONSUMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" execute" CORE-STR=
-   a u s" catch" CORE-STR= or
-   a u s" is" CORE-STR= or ;
-
-\ A typed xt<effect> storage cell accessor (TYPED-VARIABLE / TYPED-BUFFER, dot
-\ habu-typed-xt-storage-ddad4af8) certifies with a top output of `ptr xt<...>`.
-\ Recognising it as an xt sink lets `['] W  HK !` retype the tick so the store
-\ fit-checks W's certified effect against the cell's declared effect, instead of
-\ erasing the tick to a plain n and rejecting on `actual: n` (dot
-\ habu-typed-xt-cells-08e1dc2c). Only the immediately-following variable accessor
-\ is caught; a buffer slot store (`['] W idx BUF !`) puts the index between the
-\ tick and the accessor and stays on the quotation-store surface (docs/effects.md).
-: BTICK-XT-CELL-PTR? ( n -- bool )       \ term is `ptr xt<...>` : pointer to a typed xt<effect> cell
-   T-RES dup TAG T-PTR <> IF drop RES-FALSE EXIT THEN
-   PTR>INNER T-RES TAG T-QUOT = ;
-: BTICK-DOUT-XT-CELL? ( ptr a -- bool )  \ effect record's top output term is a typed xt cell pointer
-   EFF-QUOT Q>DOUT R-RES dup TAG S-PUSH = IF P>TYPE BTICK-XT-CELL-PTR? EXIT THEN
-   drop RES-FALSE ;
-: BTICK-STORE-CELL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ next token is a typed-xt-cell store accessor
-   a u CHECKER-FIND-ACTIVE-SIG FEP-HIT? 0= IF RES-FALSE EXIT THEN
-   FEP @ BTICK-DOUT-XT-CELL? ;
-
-: BTICK-NEXT-CONSUMES-XT? ( -- bool )    \ peek (no consume): is the post-target token an xt sink?
-   TI @ >r
-   IS-NEXT-TOKEN {: a:ptr u:n ok:bool :}
-   r> TI !
-   ok 0= IF RES-FALSE EXIT THEN
-   a u BTICK-XT-CONSUMER? IF RES-TRUE EXIT THEN
-   a u BTICK-STORE-CELL? ;
-
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push xt<effect(W)> or a plain n
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
-   BTICK-NEXT-CONSUMES-XT? 0= IF PE-N BTICK-PUSH EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? IF FEP @ EFF-QUOT BTICK-PUSH ELSE PE-N BTICK-PUSH THEN ;
 
@@ -11574,6 +11492,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
    MM @ 0 <> IF TKF TKFU @ MATCH-TOK ELSE
+   TKF TKFU @ LOC-REF? IF ELSE
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
@@ -11584,7 +11503,6 @@ variable CONFAM    \ resolved family id while CONM = 2
    OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
-   TKF TKFU @ LOC-REF? 0= IF
    TKF TKFU @ CF-TOK? 0= IF
    TKF TKFU @ QDUP-STEP? 0= IF
    LAYOUT-XPORT @ IF TKF TKFU @ WF-XPORT-RECORD THEN   \ width facts from the pre-op row
@@ -11600,7 +11518,10 @@ variable CONFAM    \ resolved family id while CONM = 2
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF a u REJECT-DIVBAR THEN THEN THEN
    STRING-PAYLOAD-STEP
-   TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
+   TKF TKFU @ PARSE-LIT? IF
+      SKIP-PARSE-LIT-PAYLOAD
+      CPAY-U @ 0 > CPAY-ON !
+   THEN
    \ declared parsing immediate: skip its payload tokens - raw-text scans only
    \ (engine-reconstructed load buffers already lack the payload, PIMM-STREAM).
    PIMM-STREAM @ 0 = IF
@@ -11928,6 +11849,7 @@ public
 1 constant K-INT
 2 constant K-REAL
 3 constant K-STRING
+4 constant K-CHAR
 
 private
 
@@ -12012,6 +11934,10 @@ public
 \ question this event can be asked.
 : STRING ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
    a u off ru K-STRING 0 TOKEN-XT
+   REC-STEP ;
+
+: CHARACTER ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
+   a u off ru K-CHAR 0 TOKEN-XT
    REC-STEP ;
 
 \ The verdict that scan reached, with the text it reached it over.
@@ -12371,6 +12297,11 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 \ about is the one the observer has not yet advanced.
 : SCAN-REPORT ( -- )
    REC-COMMIT
+   CPAY-ON @ IF
+      CPAY-B @ TADDR CPAY-U @ TSTART @ TI @ TSTART @ -
+      CHECKER-TAPE:CHARACTER
+      SCAN-PEND-REPORT EXIT
+   THEN
    SPAY-ON @ IF
       SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
@@ -12411,7 +12342,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
          TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
          TAPE-FEED? IF
-            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !
+            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
             0 IS-PEND !
          THEN
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
@@ -12433,8 +12364,11 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : CHECK-SIG? ( -- bool )
    VSIG-ON? SGSEEN? and ;
 
+: CHECK-RETURNS? ( -- bool )
+   DEADP @ 0= XSET @ 0 <> or ;
+
 : CHECK-RET-SIG? ( -- bool )
-   CHECK-SIG? SGHASR? and ;
+   CHECK-SIG? SGHASR? and CHECK-RETURNS? and ;
 
 : CHECK-VERDICT ( -- n )
    SGBAD @ UNSAFE @ or  RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
@@ -12660,7 +12594,7 @@ variable CTOR-PEND-I
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
    MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-SIG? IF CHECK-NO-BORROW THEN
-   CHECK-SIG? IF
+   CHECK-SIG? CHECK-RETURNS? and IF
       CTOR-PEND-MATCH? IF
          \ Matching consumes exactly one row from the sealed constructor plan.
          \ TDECL-GEN-EVAL's catch boundary clears it on every exit.
@@ -12677,7 +12611,7 @@ variable CTOR-PEND-I
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
-   SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
+   SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
@@ -13345,7 +13279,7 @@ variable CD-WIDE
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
-   SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
+   SGHASR @ 0= CHECK-RETURNS? and IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD !
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;

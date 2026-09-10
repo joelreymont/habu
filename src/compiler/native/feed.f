@@ -149,6 +149,13 @@ variable F-BASE                        \ start of the scan now being recorded
    BLD SID off ru IR-BUILD:ADD-SPAN  sym  NTAPE-MODE:COMPILING  NTAPE:STRING-TOKEN
    NTAPE:PUSH-INTO ;
 
+: APPEND-CHAR ( ptr u8 n n n -- n ) {: a:ptr u:n off:n ru:n :}
+   u 1 < if E-NFEED-KIND throw then
+   CTX BLD a u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   CTX BLD TAPE
+   BLD SID off ru IR-BUILD:ADD-SPAN sym NTAPE-MODE:COMPILING a c@ NTAPE:CHAR-TOKEN
+   NTAPE:PUSH-INTO ;
+
 \ A literal class this stage has no tape kind for is refused: recording it as a
 \ name would say the elaborator may resolve it, which is false.
 : APPEND ( ptr u8 n n n n n -- n ) {: a:ptr u:n off:n ru:n kind:n first:n :}
@@ -156,6 +163,7 @@ variable F-BASE                        \ start of the scan now being recorded
    kind CHECKER-TAPE:K-INT = if a u off first APPEND-INT exit then
    kind CHECKER-TAPE:K-REAL = if a u off first APPEND-REAL exit then
    kind CHECKER-TAPE:K-STRING = if a u off ru APPEND-STRING exit then
+   kind CHECKER-TAPE:K-CHAR = if a u off ru APPEND-CHAR exit then
    E-NFEED-KIND throw ;
 
 \ They differ only if the tape gained a row this producer did not write.
@@ -180,7 +188,8 @@ variable F-BASE                        \ start of the scan now being recorded
 : ON-TOKEN ( ptr u8 n n n n n -- ) {: a:ptr u:n off:n ru:n kind:n first:n :}
    ST-SCANNING STATE-CK
    off F-BASE @ + {: goff:n :}
-   kind CHECKER-TAPE:K-STRING = if u goff ru SPAN-CK else a u goff BYTES-CK then
+   kind CHECKER-TAPE:K-STRING = kind CHECKER-TAPE:K-CHAR = or
+   if u goff ru SPAN-CK else a u goff BYTES-CK then
    a u goff ru kind first APPEND ORDER-CK
    F-N @ 1+ F-N ! ;
 

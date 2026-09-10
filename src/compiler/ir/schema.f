@@ -272,8 +272,10 @@ $53435231 constant SCR-MAGIC         \ "SCR1": the row-table header format tag
 : TIE-CELLS ( n -- n )
    TIE-PAIR * ;
 
+public
 256 constant CAP-MAX                 \ committed opcodes per dialect table
 $FFFFFFFF PHDR-CELLS - constant POOL-MAX
+private
 32 constant ARITY-MAX                \ committed per-list stage ceiling
 32 constant SUCC-MAX                 \ committed successors per terminator
 8 constant REGION-MAX                \ committed regions per operation

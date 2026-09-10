@@ -62,20 +62,8 @@ private
    s" : NCA-WW ( n n -- n n n ) [: 1+ swap 1+ swap ;] catch drop [: 1+ ;] catch ;"
    NCA-TEST:EV ;
 
-\ ---- a definition with more catch sites than the checker records --------------
-\ The ceiling is the checker's (CWIN-MAX beside RSCATCH). This fixture has to
-\ EXCEED it, so the count is one more than that constant: if the ceiling moves,
-\ the last site starts being recorded and the case below goes red, which is the
-\ signal to move this number too. It is built rather than written out because
-\ seventeen copies of one phrase is a line no reader can count.
-\
-\ AND THE CEILING IS REACHABLE THROUGH THE REAL ENTRY, which is why the case can
-\ measure the refusal rather than assert it in prose: seventeen sites is
-\ sixty-nine tokens in about three hundred and thirty bytes, and the recorder
-\ sizes a unit's tape from those bytes (src/compiler/native/compiler.f TAPE-ROOM,
-\ one row per two source bytes), so the tape has room to spare and what answers
-\ first is the checker's table and not a capacity of the recorder's.
-17 constant CAP-SITES                \ one more than the checker's CWIN-MAX
+\ A definition crossing the initial metadata allocation must record every site.
+17 constant CAP-SITES
 4 constant SITE-TOKENS               \ [: ;] catch drop
 512 constant CAP-BUF-CAP
 
@@ -109,7 +97,7 @@ variable CAP-U
 \ windows are the subject here, and they are recorded by the SCAN - which has
 \ happened either way, because lowering only runs after it.
 : SCANNED ( -- )
-   [: SRC-DEAD ;] catch drop ;
+   [: SRC-DEAD ;] 0 TTHROWSQ ;
 
 public
 
@@ -123,21 +111,21 @@ public
 
 : LIVE-CASE ( -- )
    s" a caught body that returns publishes both, and they are the same width" T-LABEL
-   [: SRC-LIVE ;] catch drop
+   [: SRC-LIVE ;] 0 TTHROWSQ
    4 WIN-IN 1 T=
    4 WIN-OUT 1 T=
    8 SITES 1 T= ;
 
 : EMPTY-CASE ( -- )
    s" a body that takes nothing has a window of zero, not of the stack under it" T-LABEL
-   [: SRC-EMPTY ;] catch drop
+   [: SRC-EMPTY ;] 0 TTHROWSQ
    7 WIN-IN 0 T=
    7 WIN-OUT NDICT:CATCH-NONE T=
    9 SITES 1 T= ;
 
 : STRING-CASE ( -- )
    s" a string literal before the catch is one row, so the site keeps its ordinal" T-LABEL
-   [: SRC-STRING ;] catch drop
+   [: SRC-STRING ;] 0 TTHROWSQ
    6 WIN-IN 1 T=
    6 WIN-OUT 1 T=
    \ and nothing was recorded on the rows a payload-counting producer would have
@@ -148,27 +136,23 @@ public
 
 : TWO-CASE ( -- )
    s" two catches in one definition keep their own windows" T-LABEL
-   [: SRC-TWO ;] catch drop
+   [: SRC-TWO ;] 0 TTHROWSQ
    7 WIN-IN 2 T=
    12 WIN-IN 1 T=
    16 SITES 2 T= ;
 
 : CAP-CASE ( -- )
-   s" past the ceiling a site is not recorded, and compilation refuses it by name" T-LABEL
-   [: SRC-CAP ;] E-NELAB-QUOT TTHROWSQ
-   NELAB:REFUSED-ROW  CAP-SITES 1 - CAP-SITE-TOK  T=
-   NELAB:REFUSED$ s" catch" T$=
-
-   s" and every site below the ceiling was recorded" T-LABEL
-   0 CAP-SITE-TOK WIN-IN 0 T=
-   CAP-SITES 2 - CAP-SITE-TOK WIN-IN 0 T=
-   CAP-SITES 1 - CAP-SITE-TOK WIN-IN NDICT:CATCH-NONE T=
-   CAP-SITES 1 - CAP-SITE-TOK WIN-OUT NDICT:CATCH-NONE T=
-   CAP-SITES SITE-TOKENS * 4 + SITES  CAP-SITES 1 -  T= ;
+   s" quotation metadata grows with the definition" T-LABEL
+   [: SRC-CAP ;] 0 TTHROWSQ
+   CAP-SITES 0 ?do
+      i CAP-SITE-TOK WIN-IN 0 T=
+      i CAP-SITE-TOK WIN-OUT 0 T=
+   loop
+   CAP-SITES SITE-TOKENS * 4 + SITES CAP-SITES T= ;
 
 : NO-UNIT-CASE ( -- )
    s" a token of no recorded definition answers absent, in both halves" T-LABEL
-   [: SRC-LIVE ;] catch drop
+   [: s" : NCA-NONE ( n -- n ) 1+ ;" NCA-TEST:EV ;] 0 TTHROWSQ
    0 WIN-IN NDICT:CATCH-NONE T=
    1 WIN-IN NDICT:CATCH-NONE T=
    99 WIN-IN NDICT:CATCH-NONE T=
@@ -348,9 +332,9 @@ public
 
 \ ---- what production compilation still refuses -------------------------------
 : NORET-BODY-CASE ( -- )
-   s" a caught body that never returns is refused, while its twin compiles" T-LABEL
+   s" catch compiles both throwing and returning bodies" T-LABEL
    [: s" : NCA-NR1 ( n -- n n ) [: drop 5 throw ;] catch ;" NCA-TEST:EV ;]
-   E-NELAB-QUOT TTHROWSQ
+   0 TTHROWSQ
    [: s" : NCA-NR2 ( n -- n n ) [: 1+ ;] catch ;" NCA-TEST:EV ;]
    0 TTHROWSQ ;
 

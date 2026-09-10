@@ -1364,6 +1364,7 @@ Inductive producer : Type :=
   | P_aot_data_reloc    (* EM-AOT-RELOC-DATA: rebases seeded DATA chains *)
   | P_defer_cell        (* SNAP-RELOC:EMIT-MARK: declares a persisted cell *)
   | P_data_pointer_cell (* SNAP-RELOC:BPTRCELLMARK: declares a DATA pointer *)
+  | P_defer_metadata    (* C-DEFER-META-WRITE: raw DATA dispatch-cell address *)
   .
 
 (* The tables that name a site so a later pass can rewrite it. *)
@@ -1424,6 +1425,7 @@ Definition classify (p : producer) : klass :=
   | P_aot_data_reloc => Fixed_mapping
   | P_defer_cell => Recorded R_xtcell
   | P_data_pointer_cell => Recorded R_xtcell
+  | P_defer_metadata => Fixed_mapping
   end.
 
 (* Does the value this producer bakes change when the JIT region moves?  The
@@ -1447,6 +1449,8 @@ Definition region_dependent (p : producer) : bool :=
   | P_defer_cell => true
   | P_data_pointer_cell => false (* snapshot keeps DATA fixed; the separate AOT
                                      window consumer still rebases this row *)
+  | P_defer_metadata => false (* capture records this trailer field in the AOT
+                                 DATA-site table; snapshots retain fixed DATA *)
   end.
 
 (* Which recorders a snapshot RESTORE actually replays.  The AOT code-literal
