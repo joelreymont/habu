@@ -1,5 +1,6 @@
 \ native-locals-scope.f - locals that open and close inside control structures.
 
+require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -262,18 +263,8 @@ package NLS-TEST
 
 private
 
-PTR-VARIABLE DEF-SOURCE
-variable DEF-LENGTH
-
-
-\ The fixture source contains definitions, so evaluation leaves no values.
-TRUSTED: DEF-EVAL ( -- )
-   DEF-SOURCE @ DEF-LENGTH @ evaluate ;
-
-
 : DEF-RC ( ptr u8 n -- n )
-   DEF-LENGTH ! DEF-SOURCE !
-   [: DEF-EVAL ;] catch ;
+   NATIVE-EVAL:DEFINE-RC ;
 
 \ The ends of the signed range, where arithmetic that is right for small numbers
 \ is most likely to disagree.

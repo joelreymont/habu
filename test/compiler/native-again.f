@@ -1,5 +1,6 @@
 \ native-again.f - production `begin ... again` compilation.
 
+require test/compiler/native-eval-fixture.f
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
@@ -78,8 +79,8 @@ private
    LOOPS-IN 1 T= ;
 
 \ One dynamically defined source line, caught so refusal can be asserted.
-TRUSTED: EV-DEF ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+: EV-DEF ( ptr u8 n -- n )
+   NATIVE-EVAL:DEFINE-RC ;
 
 TRUSTED: EV-N ( ptr u8 n -- n )
    evaluate ;

@@ -1,5 +1,6 @@
 \ native-tail.f - production tail calls with live names and wide results.
 
+require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -169,8 +170,8 @@ package NTL-TEST
 
 private
 
-TRUSTED: EV-RC ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+: EV-RC ( ptr u8 n -- n )
+   NATIVE-EVAL:DEFINE-RC ;
 
 \ ---- what the published code says --------------------------------------------
 : BRANCHES? ( ptr u8 n -- bool )

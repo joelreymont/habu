@@ -1,5 +1,6 @@
 \ native-wide-mem.f - production multi-cell typed loads and stores.
 
+require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -198,8 +199,8 @@ TRUSTED: W2-SCALAR-AT ( n -- ptr n )
 
 
 \ Dynamic compilation is needed only for the checker-refusal probe.
-TRUSTED: EV-RC ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+: EV-RC ( ptr u8 n -- n )
+   NATIVE-EVAL:DEFINE-RC ;
 
 : LOAD-CASE ( -- )
    s" one-, two- and three-cell loads preserve cell order" T-LABEL

@@ -734,8 +734,8 @@ CHECKER-PKG-LIVE-DEFAULT
    miru 0 <> IF E-PKG-CONTEXT throw THEN ;
 
 \ These two names stay checker-internal: verify-source and the check driver's
-\ fixed scanners compile direct calls from named TRUSTED boundaries. Checked
-\ user code has no effect row with which to activate the mirror provider.
+\ fixed scanners compile direct calls from named TRUSTED boundaries. Their
+\ effect rows are trusted-only, so checked code cannot activate the provider.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
    PKG-LIVE-XT 0= IF E-PKG-CONTEXT throw THEN
@@ -6262,6 +6262,12 @@ PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-START PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
+\ The source verifier's existing private engine boundary. The native compiler
+\ needs these zero-cell call windows even when compiling its TRUSTED caller.
+PRIM: CHECKER-VERIFY-PKG-START PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: CHECKER-VERIFY-PKG-DONE PRIM;
+PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;

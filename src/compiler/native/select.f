@@ -2825,9 +2825,9 @@ create D-MEET DSLOT-MAX cells allot
    f BLOCK-COUNT {: n:n :}
    n 1 < if E-A64SEL-SHAPE throw then
    n BMAX > if E-A64SEL-CAP throw then
+   f 0 S-FUN !
    f ord FUN-PLACES!
    f ord TAIL-SITE!
-   f 0 S-FUN !
    f OPEN-FUN
    f V-RANGE!
    VCLEAR

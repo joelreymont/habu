@@ -9,6 +9,11 @@ s" PERSISTED-PTR-VARIABLE" s" --" TRUST
 s" NULL-PTR" s" -- ptr a" TRUST
 s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 
+\ These two cells are declared by variable before checking starts. Export
+\ their concrete storage type so source-verifier accessors are checked.
+s" MULTI-ERR" s" -- ptr n" TRUST
+s" SIG-RAW-MODE" s" -- ptr n" TRUST
+
 \ Read finalized numeric call facts without exposing the unification graph.
 package CHECKER-CALLS
 

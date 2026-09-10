@@ -260,6 +260,10 @@ SUITE compiler-native-many-locals
    test/compiler/native-many-locals.f
 ;SUITE
 
+SUITE compiler-native-tail-owner
+   test/compiler/native-tail-owner.f
+;SUITE
+
 SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE

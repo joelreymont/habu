@@ -147,6 +147,7 @@ variable RX  variable RACC
    a u s" Lloc-find" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
+   a u s" Lreplroute" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lfind" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lfindused" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
@@ -163,7 +164,7 @@ variable RX  variable RACC
    a u s" Lvswapx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvnipx" LINT-STR=CI if 0 13 CL-ADD exit then
    a u s" Lvcopy" LINT-STR=CI if 0 13 CL-ADD exit then
-   a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD exit then
+   a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD 11 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
    a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
@@ -203,11 +204,19 @@ package CLOBBER-WRAP
 
 public
 
+: GLOBAL-FIND? ( ptr u8 n -- bool ) s" C-FIND-GLOBAL" LINT-STR= ;
+
+
 : WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ shape of a wrapped emitter call
+   a u GLOBAL-FIND? if LINT-TRUE exit then
    u 6 < if LINT-FALSE exit then
    a u s" :CALL" LINT-SUFFIX? ;
 
 : MASK  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ clobbered registers
+   \ C-FIND-GLOBAL loads a literal name, calls LFIND, then restores package
+   \ state through x14. Its successful path preserves x0/x1 and clobbers
+   \ x2..x17 and x30. A missing name exits the process.
+   a u GLOBAL-FIND? if $3FFFC 30 CL-ADD exit then
    a u PROT? if
       GUARD-BODY
       addr 10 <> if 10 CL-ADD then
@@ -217,10 +226,12 @@ public
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
+   a u GLOBAL-FIND? if 0 exit then
    a u PROT? if 0 addr CL-ADD len CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : RETURNS  ( ptr u8 n -- n ) {: a:ptr u:n :}   \ registers the call redefines
+   a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u PROT? if GUARD-ABI exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
@@ -399,6 +410,9 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 \ starting at OPLO. Resolve them, failing closed if they are missing or are not
 \ registers, so the modeled contract never runs on an operand it cannot read.
 : WRAP-REGS  ( -- n n )   \ addr len
+   \ The global lookup's arguments are an emitter label and byte count, not
+   \ target registers. No caller register is read to construct its arguments.
+   DI @ TOK CLOBBER-WRAP:GLOBAL-FIND? if 0 0 exit then
    DI @ OPLO @ - 2 < if E-CLOBBER-WRAP-UNRESOLVED throw then
    DI @ 2 - TOK REG-OF  DI @ 1 - TOK REG-OF
    2dup 0 < swap 0 < or if E-CLOBBER-WRAP-UNRESOLVED throw then ;

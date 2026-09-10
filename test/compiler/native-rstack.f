@@ -1,5 +1,6 @@
 \ native-rstack.f - production return-stack operations across control-flow seams.
 
+require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -145,8 +146,8 @@ package NRS-TEST
 
 private
 
-TRUSTED: EV-RC ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+: EV-RC ( ptr u8 n -- n )
+   NATIVE-EVAL:DEFINE-RC ;
 
 \ The ends of the signed range, where arithmetic that is right for small numbers
 \ is most likely to disagree.

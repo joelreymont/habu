@@ -29,7 +29,8 @@ require tools/lint/clobber-lint.f
    s" LABEL" LABEL-ACCESS? 0= CLT-ASSERT ;
 
 : CLT-MACHINE-CONTRACTS ( -- )
-   s" LP2CWAT" RETURNS-MASK 0 10 CL-ADD = CLT-ASSERT
+   s" LREPLROUTE" RETURNS-MASK 0 9 CL-ADD = CLT-ASSERT
+   s" LP2CWAT" RETURNS-MASK 0 10 CL-ADD 11 CL-ADD = CLT-ASSERT
    s" LCEMIT" PRESERVE-MASK 0 12 CL-ADD 13 CL-ADD = CLT-ASSERT
    s" LAOTWIDGATE" PRESERVE-MASK 0 11 CL-ADD = CLT-ASSERT
    s" LPROTWIDQ" PRESERVE-MASK 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD = CLT-ASSERT
@@ -46,10 +47,10 @@ require tools/lint/clobber-lint.f
    BAD @ ;
 
 : CLT-WRAPPED-CALLS ( -- )
-   CLT-WRAP-BAD# 2 = CLT-ASSERT               \ positive + transitive flag; negatives clean
+   CLT-WRAP-BAD# 3 = CLT-ASSERT               \ two guards and a stale global-lookup input
    CLOBBER-CENSUS:COUNTS {: routines:n calls:n :}
    routines 2 = CLT-ASSERT
-   calls 4 = CLT-ASSERT ;
+   calls 6 = CLT-ASSERT ;
 
 : CLT-WRAP-CONTRACTS ( -- )
    s" PROT-GUARD:CALL" CLOBBER-WRAP:WRAP? CLT-ASSERT

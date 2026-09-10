@@ -37,6 +37,22 @@ variable LWRAP-CALLER
    30 SP 0 LDR,  SP SP 16 ADDI,
    RET, ;
 
+
+\ Literal lookup arguments end at the macro. The following x9 load defines
+\ a fresh value; the name length 18 must not become that instruction's dst.
+: EMIT-GLOBAL-FIND-RELOAD ( -- )
+   9 DATA TKA-CELL LDR,
+   LNAME 18 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   11 BLR, ;
+
+
+\ Reading the original x9 after lookup still reports a real stale value.
+: EMIT-GLOBAL-FIND-STALE ( -- )
+   9 DATA TKA-CELL LDR,
+   LNAME 18 C-FIND-GLOBAL
+   9 G-PUSH ;
+
 : EMIT-TWRAP-CALLER-BAD ( -- )
    LWRAP-CALLER LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
