@@ -20,6 +20,7 @@ Planned module files:
 - `lib/memory.f`
 - `lib/ffi-abi.f`
 - `lib/zip.f`
+- `lib/net/udp4.f`
 - `lib/fs.f`
 - `lib/fs-root.f`
 - `lib/build-cache.f`
@@ -999,6 +1000,16 @@ and the OS mapping result.
 `MEM-ALLOC-64K-SPAN` takes a minimum byte need, rounds it up to the smallest
 whole number of 64K buffers, and returns the pointer plus rounded capacity. Use
 it for source/report buffers whose exact required size is known only at runtime.
+
+## IPv4 UDP
+
+`lib/net/udp4.f` owns the generic `UDP4` package on Linux AArch64/glibc.
+`ADDRESS`, `PORT`, and `PAYLOAD-BYTES` validate its inputs; `BIND`, `LOCAL`,
+`SEND`, `RECEIVE`, and `CLOSE` return typed outcomes. Received packets retain
+their source endpoint, with distinct complete, truncated, timeout, and OS-error
+variants. See [UDP4](udp4.md) for exact effects, buffer and socket lifetime
+contracts, the bounded foreign interface, and independent localhost checks.
+Application protocol framing and retry/ordering policy belong above this module.
 
 ## Files
 
