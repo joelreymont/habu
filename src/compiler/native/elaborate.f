@@ -3074,9 +3074,8 @@ create DN-BUF DN-CAP allot
 
 \ Source stores use the engine's protected-span boundary. A raw HIR store
 \ alone cannot enforce the same sealed-memory rule as interpreted ! and c!.
-: DO-STORE ( n HIR:opcode -- ) {: ix:n k:HIR:opcode :}
-   k HIR-OPCODE:BSTORE HIR-OPCODE:EQ if s" c!" else s" !" then
-   NDICT:CALL-TARGET {: entry:n :}
+: DO-STORE ( n -- ) {: ix:n :}
+   ix QSPELL NDICT:CALL-TARGET {: entry:n :}
    entry 0= if E-HIR-UNMODELED throw then
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
@@ -3109,7 +3108,7 @@ create DN-BUF DN-CAP allot
    w 0 ?do
       bot i + VAT VPUSH
       ix bot w + VAT i WIDE-ADDR
-      ix HIR-OPCODE:STORE DO-STORE
+      ix DO-STORE
    loop
    VN @ bot w + 1+ <> if E-NELAB-BUNDLE throw then
    w 1+ VDROP ;
@@ -3127,7 +3126,7 @@ create DN-BUF DN-CAP allot
    w 1 = if
       r ix QUOTATION-STORE? if ix DO-QUOTATION-STORE exit then
       r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
-      k GUARDED-STORE? if ix k DO-STORE else r ix EMIT-OP then
+      k GUARDED-STORE? if ix DO-STORE else r ix EMIT-OP then
       exit
    then
    w 1 < if E-NELAB-BUNDLE throw then

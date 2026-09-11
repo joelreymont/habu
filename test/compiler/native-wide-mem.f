@@ -298,3 +298,20 @@ public
 ;package
 
 NWM:MAIN
+
+\ Scoped store names remain ordinary calls; an earlier primitive call keeps
+\ its original binding after the package introduces a same-spelled word.
+package NWM-SHADOW
+variable CELL-SLOT
+create BYTE-SLOT 1 allot
+: CELL! ( n -- ) CELL-SLOT ! ;
+: BYTE! ( u8 -- ) BYTE-SLOT c! ;
+: ! ( n ptr n -- ) 2drop ;
+: c! ( u8 ptr u8 -- ) 2drop ;
+public
+: CHECK ( -- )
+   7 CELL! 99 CELL-SLOT ! CELL-SLOT @ 7 T=
+   $AB BYTE! $CD BYTE-SLOT c! BYTE-SLOT c@ $AB T= ;
+;package
+NWM-SHADOW:CHECK
+T-REPORT
