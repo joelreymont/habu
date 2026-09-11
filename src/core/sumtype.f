@@ -1195,7 +1195,7 @@ private
    REPEAT
    need TDPLAN-U ! ;
 
-: TDPLAN-ROW ( n -- ptr a )
+: TDPLAN-ROW ( n -- ptr n )
    dup 0 < over TDPLAN-ROW-CAP @ >= or IF
       s" sumtype: generated declaration row capacity overflow" 76 die
    THEN
