@@ -61,18 +61,18 @@ variable FIELD-I
 1 constant GUARD-TASK
 2 constant UNGUARD-TASK
 
-: DATA ( -- ptr a ) DATA-P @ ;
-: ENV ( -- ptr a ) ENV-P @ ;
-: GUARD-OFF ( -- ptr a ) GUARD-OFF-P @ ;
-: GUARD-TAG ( -- ptr a ) GUARD-TAG-P @ ;
-: GUARD-LIM ( -- ptr a ) GUARD-LIM-P @ ;
-: TASK-KIND ( -- ptr a ) TASK-KIND-P @ ;
-: TASK-A ( -- ptr a ) TASK-A-P @ ;
-: TASK-B ( -- ptr a ) TASK-B-P @ ;
-: TASK-C ( -- ptr a ) TASK-C-P @ ;
-: FETCH-KEY ( -- ptr a ) FETCH-KEY-P @ ;
-: FETCH-OFF ( -- ptr a ) FETCH-OFF-P @ ;
-: FETCH-LEN ( -- ptr a ) FETCH-LEN-P @ ;
+: DATA ( -- ptr n ) DATA-P @ ;
+: ENV ( -- ptr n ) ENV-P @ ;
+: GUARD-OFF ( -- ptr n ) GUARD-OFF-P @ ;
+: GUARD-TAG ( -- ptr n ) GUARD-TAG-P @ ;
+: GUARD-LIM ( -- ptr n ) GUARD-LIM-P @ ;
+: TASK-KIND ( -- ptr n ) TASK-KIND-P @ ;
+: TASK-A ( -- ptr n ) TASK-A-P @ ;
+: TASK-B ( -- ptr n ) TASK-B-P @ ;
+: TASK-C ( -- ptr n ) TASK-C-P @ ;
+: FETCH-KEY ( -- ptr n ) FETCH-KEY-P @ ;
+: FETCH-OFF ( -- ptr n ) FETCH-OFF-P @ ;
+: FETCH-LEN ( -- ptr n ) FETCH-LEN-P @ ;
 : DATA-ENSURE ( n -- ) {: need:n :}
    need DATA-CAP @ <= if exit then
    need DATA-CAP @ GROW-CAP {: cap:n :}
