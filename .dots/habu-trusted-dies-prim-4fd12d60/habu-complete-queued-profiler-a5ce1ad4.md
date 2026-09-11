@@ -1,9 +1,11 @@
 ---
 title: Complete queued profiler and debugger fixes
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-10T18:03:13.402262+03:00"
+created-at: "\"2026-09-10T18:03:13.402262+03:00\""
+closed-at: "2026-09-12T00:23:54.336929+03:00"
+close-reason: crash fixed and landed on the root as cb4fece2 by rowan after independent review (handler off the interrupted registers, own band, alternate stack; regressions GDB-PROFILER-FOREIGN and GDB-PROFILER-CLOCK fail on the previous engine); the queued tooling asks (package-qualified names, caller chains, a stop command, breakpoint-target validation) are reopened as habu-finish-profiler-tooling below
 ---
 
 Owner: Cedar; accepted requests relayed by Tender remain pending. Implement package-qualified profiling names, caller-chain visibility and a stop command; reject unsupported breakpoint targets before patching code. Diagnose/fix the profiling crash during XLSX/libc inflate, preserving the foreign calling-convention/register evidence rather than adding a wrapper that hides it. Use docs/debugging.md and native inspection. Coordinate test input/reproducer with Tender. Acceptance: the original crash path runs with profiling, names distinguish package words, callers and stop work, invalid breakpoint targets fail before code mutation. This is queued tooling work, separate from the minimum checked-Forth migration.
