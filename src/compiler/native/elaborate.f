@@ -1612,7 +1612,12 @@ create QSPELL-BUF QSPELL-CAP allot
    {: ix:n j:n :}
    VN @ 1- j -  VQ@ {: k:n :}
    k 0 < if exit then
-   ix j NDICT:CALL-QUOT-IN {: qi:n qo:n :}
+   ix j NDICT:CALL-QUOT-IN
+   over NDICT:QUOT-NONE = if
+      \ A trusted mint can stop the checker's walk before this call. The
+      \ callee's declared simple callback still supplies its ordinary ABI.
+      2drop ix QSPELL j NDICT:SPELL-QUOT-DIN
+   then {: qi:n qo:n :}
    qi NDICT:QUOT-NONE = if
       \ A polymorphic consumer can store or forward a quotation whose
       \ calling convention is already known from the checked parameter.

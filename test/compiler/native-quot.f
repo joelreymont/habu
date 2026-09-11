@@ -275,6 +275,30 @@ private
    S\" BAD-POLY ( [ a -- a ] -- ) {: q :} 1 q execute drop s\" x\" drop q execute drop"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ The trusted body mints a nominal token from its runtime cell representation.
+\ Its mismatch stops checker site recording, but CONSUME declares the literal
+\ callback's real ABI and the deferred call preserves the nominal contract.
+public
+NEWTYPE phantom 0
+variable MINT-CALLS
+variable OPAQUE-CALLBACK
+: CONSUME ( [ -- ] -- ) execute ;
+defer MINT-CALLBACK ( phantom -- )
+: OBSERVE-MINT ( phantom -- ) drop 1 MINT-CALLS +! ;
+TRUSTED: MINT-ADAPT ( [ phantom -- ] -- )
+   is MINT-CALLBACK [: 0 MINT-CALLBACK ;] CONSUME ;
+private
+
+: OPAQUE-MINT ( -- )
+   s" TRUSTED: NQ-OPAQUE-MINT ( [ NQUOT-TEST:phantom -- ] -- ) NQUOT-TEST:OPAQUE-CALLBACK ! [: 0 NQUOT-TEST:OPAQUE-CALLBACK @ execute ;] NQUOT-TEST:CONSUME ;" EV ;
+
+: MINT-CASE ( -- )
+   s" a declared callback ABI survives a trusted nominal mint" T-LABEL
+   0 MINT-CALLS ! [: OBSERVE-MINT ;] MINT-ADAPT
+   MINT-CALLS @ 1 T=
+   s" opaque callback execution still has no native calling convention" T-LABEL
+   [: OPAQUE-MINT ;] E-NELAB-QUOT TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -285,6 +309,7 @@ public
    DEAD-CASE
    REACH-CASE
    CALLBACK-CASE
+   MINT-CASE
    T-REPORT ;
 
 ;package

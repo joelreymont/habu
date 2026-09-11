@@ -56,7 +56,8 @@
 
 require lib/ptx/cg-matmul-emit.f
 
-variable PIPE-XT   \ pipeline compute-slot body xt (set by PIPE-LOOP, run inline in its quotation)
+\ Keep the compute callback's nominal contract through its stored binding.
+defer PIPE-COMPUTE ( mmstage<f32,block-256,geom-as64x32-bs32x64,w,p> mmracc<f32,block-256,g,w> -- mmracc<f32,block-256,g,w> )
 
 \ Retirement owner for every typed pipeline mint/transition below:
 \ habu-ptx-phantom-preserving-3df9db92.
@@ -77,9 +78,9 @@ TRUSTED: PIPE-ACC-ZERO ( mmctx<m,k,q> -- mmctx<m,k,q> mmracc<f32,block-256,geom-
 \ in the slot where the staged tile is READY (post wait_group + bar.sync); it mints
 \ the current-iteration mmstage token, threads the mmracc token through the stored
 \ body, and discards the resulting token (the accumulator registers ARE the carried
-\ state). The mmstage mint + raw xt execute are the audited boundary.
+\ state). The mmstage mint remains the audited boundary.
 TRUSTED: PIPE-LOOP ( mmctx<m,k,q> mmracc<f32,block-256,g,w> [ mmstage<f32,block-256,geom-as64x32-bs32x64,w,p> mmracc<f32,block-256,g,w> -- mmracc<f32,block-256,g,w> ] -- mmctx<m,k,q> mmracc<f32,block-256,g,w> )
-   PIPE-XT !  [: 0 0 PIPE-XT @ execute drop ;] MM-PIPE-KLOOP-WITH ;
+   is PIPE-COMPUTE  [: 0 0 PIPE-COMPUTE drop ;] MM-PIPE-KLOOP-WITH ;
 
 \ capability (4): the blocked 2-D layout, split into its two differently-shaped
 \ slices - strided A (scalar-only) and contiguous 16B-aligned B (v4-legal)
