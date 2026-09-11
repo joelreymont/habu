@@ -795,8 +795,10 @@ variable GE-CF-BODY-U
 \ --- dot habu-convert-residual-compile-f460b9f2: residual compile-die conversions ---
 \ The out-of-inventory recoverable die sites (J-DOES/J-QUOT/J-SEMIQUOT 75,
 \ C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74, counted-string 76,
-\ C-LBRACE-STORE-ONE 75 and export-undefined 70) now route through the same
-\ LCOMPILEDIE tail: catchable inside evaluate, byte-identical fail-closed at top level.
+\ and export-undefined 70) now route through the same LCOMPILEDIE tail: catchable
+\ inside evaluate, byte-identical fail-closed at top level. C-LBRACE-STORE-ONE's
+\ 65th-local refusal is a rejected definition since dot
+\ habu-report-the-local-d20f243a: a named label plus the token, rc 70 on both legs.
 
 create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
 
@@ -814,6 +816,50 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
 
 : GE-RXE-ESC-OPEN ( -- )                               \ append the `s\" ` escaped-string opener + delimiter space
    [char] s GE-SRC-C  GE-RXE-BS  GE-DQ GE-SRC-C  GE-SRC-SP ;
+
+\ --- dot habu-report-the-local-d20f243a: a bare local name wider than the 16-byte
+\ name field of a LOC-REC is refused by name before it is stored. The store used
+\ to copy the whole name over the following record, so a second local overwrote
+\ byte 17 and the engine reported the FIRST local as E-UNDEFINED; a long name in
+\ the last of the 64 records wrote past LOCNAMES. The refusal is a rejected
+\ definition (rc 70, catchable inside evaluate), never a crash or an undefined word.
+: GE-LOC-WIDE-TOP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   70 label labelu GE-EXPECT-RC
+   s" hb: local name over 16 bytes: abcdefghijklmnopq:n" label labelu GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED" label labelu GE-EXPECT-ERR-LACKS
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
+
+: GE-LOC-LAST-BUILD ( -- )   \ ": RXLL ( -- ) {: t0 ... t62 abcdefghijklmnopq:n :} ;" the wide name in the last record
+   GE-SRC-RESET
+   s" : RXLL ( -- ) {:" GE-SRC+
+   63 0 ?do  GE-SRC-SP  s" t" GE-SRC+  i GE-SRC-U+  loop
+   s"  abcdefghijklmnopq:n :} ;" GE-SRC+
+   GE-SRC-U @ GE-LOC-LAST-U !
+   GE-SRC-BUF GE-LOC-LAST-BUF GE-LOC-LAST-U @ BYTE-COPY ;
+
+: GE-LOCAL-NAME-WIDTH ( -- )
+   s" : RXLW ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq ;"
+      s" hb local-width top-level" GE-LOC-WIDE-TOP
+   s" : RXLW2 ( n n -- n ) {: abcdefghijklmnopq:n b:n :} abcdefghijklmnopq b + ;"
+      s" hb local-width first-of-two" GE-LOC-WIDE-TOP
+   GE-LOC-LAST-BUILD
+   GE-LOC-LAST-BUF GE-LOC-LAST-U @ s" hb local-width last-record" GE-LOC-WIDE-TOP
+   s" : RXLW ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq ;" s" 70"
+      s" local name over 16 bytes: abcdefghijklmnopq:n" GE-RXE-CATCH-USABLE
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : RXL16 ( n -- n ) {: abcdefghijklmnop:n :} abcdefghijklmnop ;" GE-SRC-LINE
+   s" 3 RXL16 . cr" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" hb local-width 16-byte control" GE-EXPECT-OK
+   s" 3" s" hb local-width 16-byte control output" GE-EXPECT-OUT-HAS
+   s" PASS: local name over 16 bytes refused by name (rc 70, catchable, no E-UNDEFINED relabel, no crash)" type cr ;
 
 \ counted-string >255 (C-ICQ/C-EICQ/C-CQ/C-ECQ). This cap now carries a named fd-2
 \ label ("hb: counted string too long (max 255)", dot habu-recovery-pkg-scope-e0bd98e2)
@@ -890,8 +936,8 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
    s" package RXPKG public export RXNOEXPORT ;package" s" 70" s" RXNOEXPORT" GE-RXE-CATCH-USABLE
    s" package RXPKG public export RXNOEXPORT ;package" 70 s" RXNOEXPORT" GE-RXE-TOP
    GE-RXE-TML-BUILD
-   GE-RXE-TML$ s" 75" s" t64" GE-RXE-CATCH-USABLE
-   GE-RXE-TML$ 75 s" t64" GE-RXE-TOP
+   GE-RXE-TML$ s" 70" s" hb: more than 64 locals in one definition: t64" GE-RXE-CATCH-USABLE
+   GE-RXE-TML$ 70 s" hb: more than 64 locals in one definition: t64" GE-RXE-TOP
    GE-RXE-QEOF-CATCH
    GE-RXE-QEOF-TOP
    GE-RXE-CSTR-CATCH
@@ -996,6 +1042,7 @@ public
    GE-CF-DEPTH-CAP
    GE-RAWEXIT-RECOVER
    GE-RAWEXIT-RESIDUAL
+   GE-LOCAL-NAME-WIDTH
    GE-PKGSCOPE-RECOVERY
    GE-SET-CHECK-NEG ;
 

@@ -181,6 +181,8 @@ create DIAG-BUF FS-PATH-CAP allot
    s" trusted_boundary_required" NEED-CLASS
    s" model_compile_immediate" NEED-CLASS
    s" factor_local_shape" NEED-CLASS
+   s" shorten_local_name" NEED-CLASS
+   s" reduce_local_count" NEED-CLASS
    s" factor_linear_local" NEED-CLASS
    s" remove_dead_code" NEED-CLASS
    s" fix_qualified_name" NEED-CLASS

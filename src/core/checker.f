@@ -3113,6 +3113,8 @@ variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 variable UNSAFE
 variable RETIRED             \ a permanently retired token was named in a checked body
 variable LOCALBAD
+variable LOCALBAD-KIND       \ 0 = locals opened inside a quotation or on a dead path; 1 = more than LOC-CAP locals; 2 = a name over LOC-NAME-W
+variable LOCALBAD-LEN        \ kind 2: the rejected local's bare-name width in bytes
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
 variable QUALBAD
@@ -9858,7 +9860,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
       1 +
    REPEAT drop ;
 64 constant LOC-CAP            \ max locals per definition (matches compiler frame)
-16 constant LOC-NAME-W         \ max local-name bytes (matches compiler LOCN-CELL)
+16 constant LOC-NAME-W         \ max local-name bytes (the name field of a compiler LOC-REC, src/habu/layout.f LOC-NAME-CAP)
 create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
 create LOCSHOW LOC-CAP cells allot
 \ LOCW: logical width of each local's binding. 1 = scalar (LOCTV holds the type
@@ -9981,12 +9983,20 @@ variable LCO
 \ Over-cap locals fail CLOSED (reject) rather than silently uncheckable: a
 \ definition whose local count or name width exceeds the compiler-matched frame
 \ was previously skipped by the checker (-1 UNCK !), hiding every stack error in
-\ it. LOCALBAD forces verdict 0 so the definition is rejected with a diagnostic.
+\ it. LOCALBAD forces verdict 0 so the definition is rejected with a diagnostic
+\ that names the exceeded limit (LOCALBAD-KIND selects the text in render.f).
+\ The kind and width are recorded only for the FIRST failure of the definition,
+\ the one whose token CAP-FAIL pinned: a later local fault must not relabel that
+\ token, and a local fault after an unrelated failure leaves that failure's
+\ diagnostic in charge. The verdict is forced either way.
+: LOC-REJECT ( n n -- ) {: len:n kind:n :}
+   FAILSET @ 0= IF kind LOCALBAD-KIND !  len LOCALBAD-LEN !  -1 LOCALBAD ! THEN
+   0 OK !  -1 FAILSET ! ;
+
 : LOC-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LCOLON
-   #LOC @ LOC-CAP 1 - >  LCO @ LOC-NAME-W >  or IF
-     0 OK !  -1 FAILSET !  -1 LOCALBAD !
-   ELSE
+   #LOC @ LOC-CAP 1 - > IF 0 1 LOC-REJECT ELSE
+   LCO @ LOC-NAME-W > IF LCO @ 2 LOC-REJECT ELSE
      LOCSEQ @ 1 + LOC-HW-ENSURE
      #LOC @ LOC-SHOW-OFF!
      a  LOCNB #LOC @ LOC-NAME-W * +  LCO @ CCOPY
@@ -9999,7 +10009,7 @@ variable LCO
      LCO @ u < IF
       a u #LOC @ LOC-ANN
      THEN
-     #LOC @ 1 + #LOC ! THEN ;
+     #LOC @ 1 + #LOC ! THEN THEN ;
 
 \ Linear values may not launder through locals. A local reference re-pushes its
 \ binding without a LIN-SNAPSHOT/LIN-CHECK-covered step, so the concrete-count
@@ -10090,11 +10100,8 @@ variable LCO
    a u s" --" CORE-STR= IF -1 UNCK ! ELSE
    a u LOC-ADD THEN THEN ;
 
-: LOC-REJECT ( -- )
-   0 OK !  -1 FAILSET !  -1 LOCALBAD ! ;
-
 : LOC-BEGIN ( -- )
-   QDEPTH @ 0 >  DEADP @ or IF LOC-REJECT ELSE
+   QDEPTH @ 0 >  DEADP @ or IF 0 0 LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
 \ LOC-PUSH-REF ( n -- ) : push local idx's binding. A bundle local (LOCW > 1)
@@ -10120,7 +10127,7 @@ variable LCO
      LI @ 1 - LI !
      a u  LOCNB LI @ LOC-NAME-W * +  LI @ cells LOCLN + @  CORE-STR= IF
        QDEPTH @ 0 > IF
-          LOC-REJECT
+          0 0 LOC-REJECT
        ELSE
           LI @ LOC-PUSH-REF
        THEN
@@ -12670,7 +12677,7 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NP-ORIG-N !
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !

@@ -111,6 +111,10 @@ variable LPREFMISS   variable LPREFMISSMSG   \ armed checker without its compile
 variable LORPHAN   variable LORPHANMSG   \ orphan control-flow closer reject (empty CFSTK pop) + its message
 40 constant ORPHANMSG-LEN  \ byte length of "hb: control-flow closer without opener: " (LORPHANMSG)
 variable LCFCAP   variable LCFCAPMSG   \ control-flow stack overflow reject (LCFPUSH at CFSTK-DEPTH-MAX) + its message
+variable LLOCWIDE   variable LLOCWIDEMSG   \ local name wider than LOC-NAME-CAP reject (C-LBRACE-STORE-ONE) + its message
+30 constant LOCWIDEMSG-LEN   \ byte length of "hb: local name over 16 bytes: " (LLOCWIDEMSG)
+variable LLOCMANY   variable LLOCMANYMSG   \ more than LOC-RECS locals in one definition reject (C-LBRACE-STORE-ONE) + its message
+43 constant LOCMANYMSG-LEN   \ byte length of "hb: more than 64 locals in one definition: " (LLOCMANYMSG)
 35 constant CFCAPMSG-LEN   \ byte length of "hb: control-flow nesting too deep: " (LCFCAPMSG)
 variable LCSTR   variable LCSTRMSG   \ counted-string >255 reject (C-ICQ/C-EICQ/C-CQ/C-ECQ) + its fd-2 message (dot habu-recovery-pkg-scope-e0bd98e2)
 37 constant CSTRMSG-LEN    \ byte length of "hb: counted string too long (max 255)" (LCSTRMSG); previously a bare silent 76 shared with C-SIG-BAD
@@ -614,6 +618,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LDEFKWMSG LABEL@ LBL, s" hb: compile keyword cannot be a definition name: " BYTES, \ DEFKWMSG-LEN bytes
    LORPHANMSG LABEL@ LBL, s" hb: control-flow closer without opener: " BYTES,   \ ORPHANMSG-LEN bytes; LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, s" hb: control-flow nesting too deep: " BYTES,          \ CFCAPMSG-LEN bytes; LCFCAP appends the opener token + newline
+   LLOCWIDEMSG LABEL@ LBL, s" hb: local name over 16 bytes: " BYTES,             \ LOCWIDEMSG-LEN bytes; LLOCWIDE appends the declaration token + newline
+   LLOCMANYMSG LABEL@ LBL, s" hb: more than 64 locals in one definition: " BYTES, \ LOCMANYMSG-LEN bytes; LLOCMANY appends the declaration token + newline
    LCSTRMSG LABEL@ LBL, s" hb: counted string too long (max 255)" BYTES,        \ CSTRMSG-LEN bytes; LCSTR appends a newline (fixed label: names the constraint at a glance)
    LDPBADMSG LABEL@ LBL, s" hb: data space out of range" BYTES,                 \ DPBADMSG-LEN bytes; LDPBAD appends a newline (DP-heap allot bound)
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
@@ -4266,17 +4272,15 @@ variable VDESC  variable DRIFT-FAIL
    qlok LBL, ;
 
 : C-LBRACE-STORE-ONE ( -- )
-   LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
-   11 DATA LOCN-CELL LDR,  11 $40 CMPI,  C-LT nlok BCOND,   \ more than 64 locals in one definition: recoverable inside evaluate (rc $4B), fail-closed exit $4B at top level. Only LOCN/LOCNAMES compile-state mutated (EM-RESET-COMPILE-STATE zeroes LOCN) -> clean rollback
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4B MOVZ,  LCOMPILEDIE LABEL@ B,
-   nlok LBL,
+   LBL LBL LBL LBL {: ncp ncd tsl tsd :}
+   11 DATA LOCN-CELL LDR,  11 LOC-RECS CMPI,  C-GE LLOCMANY LABEL@ BCOND,   \ a LOC-RECS+1th local has no record: named refusal (rc 70, catchable inside evaluate), nothing stored. Only LOCN/LOCNAMES compile-state mutated (EM-RESET-COMPILE-STATE zeroes LOCN) -> clean rollback
    11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
    14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
    tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
       15 10 14 ADD,  15 15 0 LDRB,  15 58 CMPI,  C-EQ tsd BCOND,
       14 14 1 ADDI,  tsl B,
    tsd LBL,
+   14 LOC-NAME-CAP CMPI,  C-GT LLOCWIDE LABEL@ BCOND,          \ a bare name wider than the record's name field would run into the next record (or past LOCNAMES from the last slot): named refusal, nothing stored
    14 11 0 STR,
    12 11 8 ADDI,  13 DATA TKA-CELL LDR,
    ncp LBL,  14 ncd CBZ,  15 13 0 LDRB, 15 12 0 STRB, 12 12 1 ADDI, 13 13 1 ADDI, 14 14 1 SUBI, ncp B,
@@ -8374,6 +8378,16 @@ public
    0 2 MOVZ,  1 LCFCAPMSG LABEL@ ADR,  2 CFCAPMSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LLOCWIDE LABEL@ LBL,                               \ branch target from C-LBRACE-STORE-ONE: bare local name wider than LOC-NAME-CAP (TKA/TKL hold the declaration token); rejected definition, rc 70 like an undefined word
+   0 2 MOVZ,  1 LLOCWIDEMSG LABEL@ ADR,  2 LOCWIDEMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B,
+   LLOCMANY LABEL@ LBL,                               \ branch target from C-LBRACE-STORE-ONE: a LOC-RECS+1th local (TKA/TKL hold the declaration token); the same rejected-definition tail
+   0 2 MOVZ,  1 LLOCMANYMSG LABEL@ ADR,  2 LOCMANYMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    LDIAGRET LABEL@ B, ;
 
 \ Shared recoverable compile-error tail (dot habu-raw-exit-compile). The
@@ -8972,6 +8986,7 @@ package LABELS
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !
+   LBL LLOCWIDE !  LBL LLOCWIDEMSG !  LBL LLOCMANY !  LBL LLOCMANYMSG !
    LBL LCSTR !  LBL LCSTRMSG !
    LBL LDPBAD !  LBL LDPBADMSG !
    LBL LCOMPILEDIE !

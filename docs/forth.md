@@ -614,6 +614,14 @@ address arithmetic at the public boundary.
   concrete checker type is known; a bare local name is allowed only when the
   entry stack effect intentionally preserves richer role detail that the local
   annotation cannot express, or when the missing typed capability is documented.
+- **Local names are at most 16 bytes, and a definition binds at most 64.** The
+  bare name (the part before `:type`) must fit the compiler's fixed local
+  record. Either limit rejects the definition, exit 70, and names the token:
+  the compiler refuses before anything is stored (`hb: local name over 16
+  bytes: <token>`, `hb: more than 64 locals in one definition: <token>`), and
+  when the checker sees the definition first (tier 1, the check tool) it reports
+  `E-LOCAL-NAME-TOO-LONG` or `E-TOO-MANY-LOCALS` with the width and the limit.
+  Shorten the name or factor a helper.
 - **Local type annotations can erase role detail.** A local such as `a:ptr`
   records only a pointer cell; it does not preserve `ptr u8`. If the body uses
   byte operations such as `c@`/`c!`, keep the detailed type in the stack effect

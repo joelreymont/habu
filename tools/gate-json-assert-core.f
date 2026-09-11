@@ -323,6 +323,10 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" factor_local_shape" s" Move locals to a live top-level path or factor a helper."
    GJA-SUGGEST-ROW IF exit THEN
+   s" shorten_local_name" s" Shorten the local name to at most 16 bytes."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" reduce_local_count" s" Bind at most 64 locals in one definition, or factor a helper."
+   GJA-SUGGEST-ROW IF exit THEN
    s" factor_linear_local" s" Keep the linear value on the stack; do not bind it to a local."
    GJA-SUGGEST-ROW IF exit THEN
    s" remove_dead_code" s" Remove tokens after the terminating control word, or move the work before it."

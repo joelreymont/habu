@@ -1258,6 +1258,89 @@ s" COK-POSTDEC ( a -- a ) dup drop" T-CHECK-PASSES
 \ --- locals over the compiler-matched cap fail CLOSED, not silently uncheckable
 s" COK-LOC16 ( n -- n ) {: xxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxx" T-CHECK-PASSES
 s" CBAD-LOC17 ( n -- n ) {: xxxxxxxxxxxxxxxxx :} xxxxxxxxxxxxxxxxx" T-CHECK-REJECTS
+\ Each over-cap reject names the limit it exceeded (dot
+\ habu-report-the-local-d20f243a). The declaration token is pinned by the first
+\ failure, so the body's later reference to the rejected name must not relabel
+\ the reject as an undefined word, and the group's shape reject keeps its own
+\ code. LOCG-BUILD writes "<name> ( n ... n -- ) {: t00 t01 ... :}" binding n locals.
+512 constant LOCG-CAP
+create LOCG-BUF LOCG-CAP allot
+variable LOCG-U
+: LOCG-C ( n -- )
+   LOCG-U @ LOCG-CAP >= if s" engine-suite: locals group too long" 1 die then
+   LOCG-BUF LOCG-U @ + c!  LOCG-U @ 1 + LOCG-U ! ;
+: LOCG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 begin dup u < while  dup a + c@ LOCG-C  1 + repeat drop ;
+: LOCG-BUILD ( ptr u8 n n -- ) {: name:ptr nameu:n count:n :}
+   0 LOCG-U !
+   name nameu LOCG+  s"  (" LOCG+
+   count 0 ?do  s"  n" LOCG+  loop
+   s"  -- ) {:" LOCG+
+   count 0 ?do  32 LOCG-C  [char] t LOCG-C  i 10 / 48 + LOCG-C  i 10 mod 48 + LOCG-C  loop
+   s"  :}" LOCG+ ;
+: LOCG$ ( -- ptr u8 n ) LOCG-BUF LOCG-U @ ;
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" over-width local rejects" T-LABEL
+s" CBAD-LOC17-DIAG ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
+s" over-width local names E-LOCAL-NAME-TOO-LONG" T-LABEL
+DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG" T-HAS? -1 T=
+s" over-width local states the width and the limit" T-LABEL
+DIAG-BUFFER$ s" local 'abcdefghijklmnopq:n' has a 17-byte name; the limit is 16 bytes" T-HAS? -1 T=
+s" over-width local is not reported as an undefined word" T-LABEL
+DIAG-BUFFER$ s" E-UNDEFINED" T-HAS? 0 T=
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" 64 locals certify" T-LABEL
+s" COK-LOC64" 64 LOCG-BUILD  LOCG$ CHECK-CANDIDATE! -1 T=
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" 65 locals reject" T-LABEL
+s" CBAD-LOC65" 65 LOCG-BUILD  LOCG$ CHECK-CANDIDATE! 0 T=
+s" 65th local names E-TOO-MANY-LOCALS and the cap" T-LABEL
+DIAG-BUFFER$ s" E-TOO-MANY-LOCALS" T-HAS? -1 T=
+DIAG-BUFFER$ s" local 't64' is one over the 64 locals a definition may bind" T-HAS? -1 T=
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" locals inside a quotation reject" T-LABEL
+s" CBAD-LOC-QUOTE ( -- n ) [: 1 {: x:n :} x ;] execute" CHECK-CANDIDATE! 0 T=
+s" quotation locals keep E-BAD-LOCAL-SHAPE" T-LABEL
+DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE" T-HAS? -1 T=
+DIAG-BUFFER$ s" a local cannot be bound or referenced inside a quotation, or bound on a dead path" T-HAS? -1 T=
+\ Only the FIRST fault's kind is recorded, the one whose token is pinned: a
+\ later local fault of another kind, or a local fault after an unrelated
+\ failure, must not relabel the pinned token.
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" quotation local before a wide local rejects" T-LABEL
+s" CBAD-LOC-SHAPE-THEN-WIDE ( n -- n ) [: {: y:n :} ;] drop {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
+s" quotation local before a wide local keeps the shape code on '{:'" T-LABEL
+DIAG-BUFFER$ s" E-BAD-LOCAL-SHAPE habu: in cbad-loc-shape-then-wide: at '{:'" T-HAS? -1 T=
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" wide local before a quotation local rejects" T-LABEL
+s" CBAD-LOC-WIDE-THEN-SHAPE ( n -- n ) {: abcdefghijklmnopq:n :} [: {: y:n :} ;] drop 1" CHECK-CANDIDATE! 0 T=
+s" wide local before a quotation local keeps the width code on its token" T-LABEL
+DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG habu: in cbad-loc-wide-then-shape: local 'abcdefghijklmnopq:n' has a 17-byte name" T-HAS? -1 T=
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" type fault before a wide local rejects" T-LABEL
+s" CBAD-LOC-AFTER-MISMATCH ( n -- n ) dup c@ {: abcdefghijklmnopq:n :} 1" CHECK-CANDIDATE! 0 T=
+s" type fault before a wide local keeps the first fault's diagnostic" T-LABEL
+DIAG-BUFFER$ s" at 'c@'" T-HAS? -1 T=
+DIAG-BUFFER$ s" E-LOCAL-NAME-TOO-LONG" T-HAS? 0 T=
+\ The JSON packet carries the same distinction: code, repair class and suggestion.
+8192 constant LOCJ-CAP
+create LOCJ-BUF LOCJ-CAP allot
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!  -1 DIAG-JSON!
+s" over-width local JSON packet" T-LABEL
+s" CBAD-LOC17-JSON ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq" CHECK-CANDIDATE! 0 T=
+s" over-width local JSON code" T-LABEL
+DIAG-BUFFER$ s\" \"code\":\"E-LOCAL-NAME-TOO-LONG\"" T-HAS? -1 T=
+s" over-width local JSON repair class" T-LABEL
+DIAG-BUFFER$ s\" \"repair_class\":\"shorten_local_name\"" T-HAS? -1 T=
+s" over-width local JSON suggestion" T-LABEL
+DIAG-BUFFER$ s" Shorten the local name to at most 16 bytes." T-HAS? -1 T=
+LOCJ-BUF LOCJ-CAP DIAG-BUFFER!
+s" 65th local JSON packet" T-LABEL
+LOCG$ CHECK-CANDIDATE! 0 T=
+s" 65th local JSON code and class" T-LABEL
+DIAG-BUFFER$ s\" \"code\":\"E-TOO-MANY-LOCALS\"" T-HAS? -1 T=
+DIAG-BUFFER$ s\" \"repair_class\":\"reduce_local_count\"" T-HAS? -1 T=
+DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ --- multi-error load mode: rejects do not abort the load; the declared sig is
 \ trusted so later definitions keep checking, and the count drives a fail-closed
 \ exit. MEA3 calls the rejected MEA1 and certifies against its trusted n->n sig.

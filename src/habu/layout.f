@@ -307,6 +307,11 @@ SOURCE-ARENA-CAP constant IBUFSZ
 24 constant LOCF-CELL
 $3000 constant LOCNAMES
 24 constant LOC-REC
+\ A LOC-REC is an 8-byte bare-name length followed by the name bytes; a bare
+\ name wider than the field is refused by C-LBRACE-STORE-ONE (habu2.f) before
+\ it is stored. checker.f LOC-NAME-W and the LLOCWIDEMSG text state the same 16.
+LOC-REC 8 - constant LOC-NAME-CAP
+64 constant LOC-RECS          \ LOCNAMES holds this many LOC-RECs ($600 bytes); checker.f LOC-CAP states the same 64
 \ --- Friend arena (TFAM 2b-i): one contiguous write-protected band
 \ [FRIEND-ARENA, FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch plus
 \ every checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:

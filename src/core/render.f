@@ -574,12 +574,46 @@ variable MDV-I   variable MDV-F
 : IMM-SUGGEST$ ( -- ptr u8 n )
    s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body." ;
 
+\ The three LOCALBAD kinds (checker.f LOC-REJECT) carry their own code, class
+\ and text: an over-wide name and an over-count group name the exceeded limit,
+\ the shape reject keeps its placement text.
+: LOCALBAD-CODE$ ( -- ptr u8 n )
+   LOCALBAD-KIND @ 2 = IF s" E-LOCAL-NAME-TOO-LONG" EXIT THEN
+   LOCALBAD-KIND @ 1 = IF s" E-TOO-MANY-LOCALS" EXIT THEN
+   s" E-BAD-LOCAL-SHAPE" ;
+
+: LOCALBAD-CLASS$ ( -- ptr u8 n )
+   LOCALBAD-KIND @ 2 = IF s" shorten_local_name" EXIT THEN
+   LOCALBAD-KIND @ 1 = IF s" reduce_local_count" EXIT THEN
+   s" factor_local_shape" ;
+
+: LOCALBAD-SUGGEST$ ( -- ptr u8 n )
+   LOCALBAD-KIND @ 2 = IF s" Shorten the local name to at most 16 bytes." EXIT THEN
+   LOCALBAD-KIND @ 1 = IF s" Bind at most 64 locals in one definition, or factor a helper." EXIT THEN
+   s" Move locals to a live top-level path or factor a helper." ;
+
+\ One diagnostic line for a LOCALBAD reject; FAILTK is the declaration token
+\ pinned by the first failure, so a later body reference to the rejected name
+\ cannot relabel the reject as an undefined word.
+: LOCALBAD-PROSE ( -- )
+   LOCALBAD-CODE$ DTXT  s"  habu: in " DTXT  NMA @ NMU @ DTXT
+   LOCALBAD-KIND @ 2 = IF
+     s" : local '" DTXT  FAILTK FAILTU @ DTXT  s" ' has a " DTXT  LOCALBAD-LEN @ JNUM
+     s" -byte name; the limit is " DTXT  LOC-NAME-W JNUM  s"  bytes" DTXT EXIT
+   THEN
+   LOCALBAD-KIND @ 1 = IF
+     s" : local '" DTXT  FAILTK FAILTU @ DTXT  s" ' is one over the " DTXT  LOC-CAP JNUM
+     s"  locals a definition may bind" DTXT EXIT
+   THEN
+   s" : at '" DTXT  FAILTK FAILTU @ DTXT
+   s" ': a local cannot be bound or referenced inside a quotation, or bound on a dead path" DTXT ;
+
 : DCODE
    IMMERR @ if IMM-CODE$ exit then
    NPBAD @ IF s" E-NONPARAMETRIC-EFFECT" ELSE
    CAPREQ @ IF s" E-CAP-TRUSTED" ELSE
    UNSAFE @ IF s" E-UNSAFE" ELSE
-   LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
+   LOCALBAD @ IF LOCALBAD-CODE$ ELSE
    LINLOCBAD @ IF s" E-LINEAR-LOCAL" ELSE
    MDIAG @ 0 <> IF MDIAG-CODE$ ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
@@ -605,7 +639,7 @@ variable MDV-I   variable MDV-F
    NPBAD @ IF s" fix_parametric_effect" EXIT THEN
    CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
-   LOCALBAD @ IF s" factor_local_shape" EXIT THEN
+   LOCALBAD @ IF LOCALBAD-CLASS$ EXIT THEN
    LINLOCBAD @ IF s" factor_linear_local" EXIT THEN
    MDIAG @ 0 <> IF MDIAG-CLASS$ EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
@@ -643,7 +677,7 @@ variable MDV-I   variable MDV-F
    THEN
    CAPREQ @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
-   LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
+   LOCALBAD @ IF LOCALBAD-SUGGEST$ EXIT THEN
    LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
    MDIAG @ 0 <> IF MDIAG-SUGGEST$ EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
@@ -735,6 +769,7 @@ variable JPOS  variable JLINE  variable JCOL
      s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : wrong arity for type family '" DTXT
      FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
+   LOCALBAD @ IF LOCALBAD-PROSE EXIT THEN
    QUALBAD @ IF
      s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT

@@ -18,7 +18,7 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-UNMODELED-IMMEDIATE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-UNMODELED-IMMEDIATE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LOCAL-NAME-TOO-LONG`, `E-TOO-MANY-LOCALS`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
@@ -136,6 +136,11 @@ Current checker classes:
 - `factor_local_shape`: locals were introduced inside active control flow, inside
   a quotation, or after a dead `exit` path; factor a helper or move locals before
   control opens.
+- `shorten_local_name`: a local's bare name is wider than the 16 bytes the
+  compiler's local record holds; the diagnostic states the name's width and the
+  limit. Shorten the name.
+- `reduce_local_count`: a `{: :}` group bound a 65th local; a definition binds
+  at most 64. Bind fewer locals or factor a helper.
 - `factor_linear_local`: a linear-counting value (a `deflinear` type) was bound to
   a `{: :}` local, where a reference could duplicate it and an unreferenced local
   could drop it; keep the linear value on the stack and factor instead.
@@ -172,6 +177,8 @@ The checker `suggestion` field is stable short text derived only from
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
 | `model_compile_immediate` | `Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
+| `shorten_local_name` | `Shorten the local name to at most 16 bytes.` |
+| `reduce_local_count` | `Bind at most 64 locals in one definition, or factor a helper.` |
 | `factor_linear_local` | `Keep the linear value on the stack; do not bind it to a local.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |
 | `fix_qualified_name` | `Use one ':' qualifier, e.g. PKG:WORD.` |
