@@ -95,12 +95,28 @@ create SMOKE-ERR SMOKE-CAP allot
    repeat
    data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
 
+defer RESET-SOURCE ( -- )
+defer IMPORT-CHECKED ( -- )
+
+\ These execution tokens belong to the retained/target private checker owners.
+TRUSTED: RESET-CHECKER ( -- )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr u8 :}
+   owner 0= if exit then
+   owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ is RESET-SOURCE
+   RESET-SOURCE ;
+
+TRUSTED: TRANSFER-CHECKER ( -- )
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ {: owner:ptr u8 :}
+   owner 0= if s" native-build: target checker owner missing" 76 die then
+   owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ is IMPORT-CHECKED
+   IMPORT-CHECKED ;
+
 \ The discarded build host remains callable through this compiled continuation,
 \ but none of its dictionary records or address declarations enters the window.
 TRUSTED: LOGICAL-RESET ( -- )
    0 set-check
    0 set-top-check
-   CHECKER-RESET-SOURCE
+   RESET-CHECKER
    IMK-NDICT0 @ 1 - seed-ndict!
    RESET-ADDRESS-ROWS ;
 
@@ -119,6 +135,7 @@ TRUSTED: LOGICAL-RESET ( -- )
    s" src/core/sumtype.f" included
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
+   TRANSFER-CHECKER
    s" src/core/check-hook.f" included
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included

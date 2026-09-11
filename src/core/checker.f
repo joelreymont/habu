@@ -2,7 +2,7 @@
 \ Like CK-PKG-*-OFF below, these fields are needed before layout.f is loaded.
 package CHECKER-REG
 $368 constant TARGET-CELL
-$48 constant OWNER-BYTES
+$80 constant OWNER-BYTES
 $00 constant RAW-OFF
 $08 constant EFFECT-OFF
 $10 constant DEFER-OFF
@@ -12,7 +12,14 @@ $28 constant PACKAGE-OFF
 $30 constant PUBLIC-OFF
 $38 constant PRIVATE-OFF
 $40 constant END-PACKAGE-OFF
-create DECLARATIONS 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+$48 constant TRANSFER-OFF
+$50 constant SOURCE-ROW-OFF
+$58 constant SOURCE-CON-OFF
+$60 constant EXPORT-OFF
+$68 constant WIDE-OFF
+$70 constant RESET-OFF
+$78 constant CAPTURE-OFF
+create DECLARATIONS 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
 data-base TARGET-CELL + ptr-cell-mark
 DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 ;package
@@ -5266,6 +5273,9 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
    USIGS-USER-OFF @ USIGS-RESTORE-END
    0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL, compiler owner retained
 REG-PROTECT
+package CHECKER-REG
+' CHECKER-RESET-SOURCE DECLARATIONS RESET-OFF + xt!
+;package
 
 \ USIG-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what USX answers — the
 \ newest user record for a symbol, offset+1, by walking every record the way the
@@ -5848,14 +5858,17 @@ variable FMEND
    {: id:n :}
    a u id ;
 
-: E-I-STR ( ptr u8 -- ptr u8 n )
-   dup EN.A @ E-PTR swap EN.B @ ;
+: E-I-STR ( ptr u8 ptr u8 -- ptr u8 n ) {: node:ptr pool:ptr :}
+   pool node EN.A @ + node EN.B @ ;
 
-: E-INST ( n -- n ) {: off:n :}
+\ Cross-owner instantiation resolves constructors by their declared names.
+defer E-I-FOREIGN-CON ( n -- n )
+
+: E-INST-FROM ( n ptr u8 -- n ) {: off:n pool:ptr :}
    off 0= if 0 exit then
-   off E-PTR >r
+   pool off + >r
    r@ EN.TAG @ case
-      EN-CON of r@ EN.A @ MK-CON r> drop endof
+      EN-CON of r@ EN.A @ pool USIGS <> if E-I-FOREIGN-CON then MK-CON r> drop endof
       EN-VAR of
          r@ EN.A @ E-I-TV                                  \ fresh var term
          r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
@@ -5867,33 +5880,38 @@ variable FMEND
          r@ EN.B @ RVK-INFERRED = IF dup PAY RVK-INFERRED! THEN
          r> drop
       endof
-      EN-PTR of r@ EN.A @ RECURSE MK-PTR r> drop endof
-      EN-PUSH of r@ EN.A @ RECURSE r@ EN.B @ RECURSE MK-PUSH r> drop endof
+      EN-PTR of r@ EN.A @ pool RECURSE MK-PTR r> drop endof
+      EN-PUSH of r@ EN.A @ pool RECURSE r@ EN.B @ pool RECURSE MK-PUSH r> drop endof
       EN-QUOT of
-         r@ EN.A @ RECURSE
-         r@ EN.B @ RECURSE
-         r@ EN.C @ RECURSE
-         r@ EN.D @ RECURSE
+         r@ EN.A @ pool RECURSE
+         r@ EN.B @ pool RECURSE
+         r@ EN.C @ pool RECURSE
+         r@ EN.D @ pool RECURSE
          MK-QUOT
          dup r@ EN.E @ 0 <> r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
          r> drop
       endof
-      EN-ATOM of r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
+      EN-ATOM of
+         pool USIGS <> if s" checker: unsupported transferred atom" 76 die then
+         r@ pool E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
       EN-PARAM of
+         pool USIGS <> if s" checker: unsupported transferred family" 76 die then
          r@ {: np:ptr :}                           \ node ptr (parked value)
          np EN.C @ {: argc:n :}
          np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
          PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
          0 BEGIN dup argc < WHILE                   \ data-stack index (RECURSE-safe)
-            dup cells run + E-PTR CELL-VIEW @ RECURSE PARAM-SCR+
+            dup cells run + pool + CELL-VIEW @ pool RECURSE PARAM-SCR+
             1 +
          REPEAT drop
-         np E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
+         np pool E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
          dup np EN.E @ swap PAY cells PARAMHID + !  \ restore hidden slot+1 (0 in pre-3a snapshots)
          r> drop
       endof
       r> drop 0 swap
    endcase ;
+
+: E-INST ( n -- n ) USIGS E-INST-FROM ;
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
 \ EN-MULT tallies occurrences of canonical var LMV in the stored effect subgraph
@@ -8165,10 +8183,9 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 \ exists precisely for that), so the deferred-target cache cannot assume later-wins
 \ permanence: HIDX-DFR-SYNC / HIDX-DFR-DEP+ record the DFER-END a cached answer
 \ depends on and flush it (epoch bump) when a rollback rewinds below that mark.
-: DFER-ADD-FLAG ( ptr u8 n bool -- ) {: a:ptr u:n flag:bool :}
+: DFER-ADD-SYM ( n bool -- ) {: sym:n flag:bool :}
    HIDX-DFR-SYNC
    DFER-NEED DFER-ENSURE
-   a u CHECKER-RECORD-SYM {: sym:n :}
    sym DFER-CUR DFER.SYM !
    flag IF -1 ELSE 0 THEN DFER-CUR DFER.FLAG !
    DFER-END @ DFER-REC + DFER-END !
@@ -8177,6 +8194,9 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
       flag sym HIDX-DFR!
       DFER-END @ HIDX-DFR-DEP+
    THEN ;
+
+: DFER-ADD-FLAG ( ptr u8 n bool -- ) {: a:ptr u:n flag:bool :}
+   a u CHECKER-RECORD-SYM flag DFER-ADD-SYM ;
 
 : DFER-ADD ( ptr u8 n -- )
    RES-TRUE DFER-ADD-FLAG ;
@@ -13708,6 +13728,74 @@ package CHECKER-REG
    dup -1 = IF CALL-FINALIZE THEN
    CHECKER-TAPE:ARMED @ IF ba bu DVERD @ CHECKER-TAPE:DONE THEN ;
 
+\ The retained compiler checked the replacement prefix before its new hooks
+\ existed. Transfer those actual graphs into the new owner before enabling
+\ the hooks. Symbols and constructors cross by semantic name, never by ID.
+package CHECKER-REG
+
+$10000 constant TRANSFER-DEFER
+
+: CHECKED-ROW ( n -- ptr u8 ptr u8 ptr u8 n bool ) {: id:n :}
+   id SYM-N @ >= if NULL-PTR NULL-PTR NULL-PTR 0 RES-FALSE exit then
+   id USIG-NEWEST {: off:n :}
+   off 0= if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
+   off 1- E-PTR {: rec:ptr :}
+   rec ER.ACTIVE @ 0= if NULL-PTR NULL-PTR NULL-PTR 0 RES-TRUE exit then
+   id CTL-FLAGS-SYM
+   id DFER-FIND-SYM if TRANSFER-DEFER or then {: flags:n :}
+   USIGS rec id SYM-ROW flags RES-TRUE ;
+
+: CON-NAME ( n -- ptr u8 n ) CT-NAME$ ;
+
+' CHECKED-ROW DECLARATIONS SOURCE-ROW-OFF + xt!
+' CON-NAME DECLARATIONS SOURCE-CON-OFF + xt!
+
+defer SOURCE-ROW ( n -- ptr u8 ptr u8 ptr u8 n bool )
+defer SOURCE-CON-NAME ( n -- ptr u8 n )
+
+: FOREIGN-CON ( n -- n )
+   SOURCE-CON-NAME CT-FIND
+   dup 0= if s" checker: transferred constructor is absent" 76 die then ;
+
+\ Binding a private owner callback is the only raw execution-token boundary.
+TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
+   ['] FOREIGN-CON is E-I-FOREIGN-CON
+   owner SOURCE-ROW-OFF + CELL-VIEW @ is SOURCE-ROW
+   owner SOURCE-CON-OFF + CELL-VIEW @ is SOURCE-CON-NAME ;
+
+: TRANSFER-SYMBOL ( ptr u8 -- n ) {: sym:ptr :}
+   sym SYM.PKG-A @ sym SYM.PKG-U @ sym SYM.VIS @
+   sym SYM.NAME-A @ sym SYM.NAME-U @ SYM-INTERN ;
+
+: TRANSFER-ROW ( ptr u8 ptr u8 ptr u8 n -- )
+   {: pool:ptr rec:ptr name:ptr flags:n :}
+   rec 0= if exit then
+   name TRANSFER-SYMBOL {: sym:n :}
+   sym USIG-NEWEST 0= 0= if exit then
+   NEW rec E-INST-RESET
+   rec ER.DIN @ pool E-INST-FROM
+   rec ER.DOUT @ pool E-INST-FROM
+   rec ER.RIN @ pool E-INST-FROM
+   rec ER.ROUT @ pool E-INST-FROM
+   sym CHECKER-REC-SYM !
+   rec ER.HASR @ 0= 0= E-ADD-EFFECT
+   sym flags TRANSFER-DEFER invert and NORET-ADD-SYM
+   sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM ;
+
+: TRANSFER-CHECKED ( -- )
+   data-base $360 + 0 ptr-field @ {: owner:ptr u8 :}
+   owner 0= if exit then                 \ cold seed has no retained checker
+   owner DECLARATIONS = if exit then
+   owner BIND-SOURCE
+   CHECKER-REC-SYM @ {: saved:n :}
+   1 begin
+      dup SOURCE-ROW
+      if TRANSFER-ROW 1+ else 2drop 2drop drop saved CHECKER-REC-SYM ! exit then
+   again ;
+
+' TRANSFER-CHECKED DECLARATIONS TRANSFER-OFF + xt!
+;package
+
 \ The final checker declarations below the registry code also retain token
 \ spans.  They are inactive at the capture seam and must not carry the last
 \ checked source mapping into the engine.
@@ -13742,3 +13830,7 @@ package CHECKER-REG
    REG-SCRATCH-SNAP-XT
    REG-LATE-SCRATCH-SNAP-XT
    CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ;
+
+package CHECKER-REG
+' CHECKER-CAPTURE-PREPARE DECLARATIONS CAPTURE-OFF + xt!
+;package
