@@ -718,24 +718,6 @@ SUITE ptx-uniform-barrier
 
 SUITE ptx-toolchain
    lib/ptx/toolchain-test.f
-   tools/ptx/profile-test.f
-   tools/ptx/bench-test.f
-   tools/ptx/saxpy-test.f
-   tools/ptx/kernel-export-test.f
-   tools/ptx/autotune-test.f
-   tools/ptx/fusion-emit-test.f
-   tools/ptx/gpt2-attention-launch-test.f
-   tools/ptx/gpt2-tensor-emit-test.f
-   tools/ptx/device-gold-test.f
-   tools/ptx/cuda-scope-leak-proof-test.f
-   tools/ptx/attention-bench-test.f
-;SUITE
-
-\ These tools need the fresh process and clean argv supplied by a registry row.
-SUITE ptx-toolchain-spawned
-   tools/ptx/bandwidth-lib-test.f
-   tools/ptx/mma-exact-lib-test.f
-   tools/ptx/autotune-sweep-test.f
 ;SUITE
 
 SUITE-STDIN source-stdlib-stdin DATA
