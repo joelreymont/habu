@@ -49,4 +49,25 @@ s" abc" ' SCAN catch CHECK
 CHECK-RETURNS
 3 ' CHOOSE catch CHECK-TRAP
 
+\ The zero-trip and exhausted edges have different frame histories; the trap
+\ consumes neither. The early returning arm must still release its frame.
+: EXHAUST ( n n -- ) {: k:n lim:n :}
+   lim 0 ?do k MIX 109 = if unloop exit then loop -7192 throw ;
+
+: CHECK-EXHAUST ( n n n -- )
+   >r 2drop r> -7192 <> if -2 throw then ;
+
+1 1 EXHAUST
+2 0 ' EXHAUST catch CHECK-EXHAUST
+2 3 ' EXHAUST catch CHECK-EXHAUST
+
+\ A trap that reads the saved local still requires the incoming frame order.
+: EXHAUST-READ ( n n -- ) {: k:n lim:n :}
+   lim 0 ?do k MIX 109 = if unloop exit then loop
+   k MIX drop -7192 throw ;
+
+1 1 EXHAUST-READ
+2 0 ' EXHAUST-READ catch CHECK-EXHAUST
+2 3 ' EXHAUST-READ catch CHECK-EXHAUST
+
 ;package

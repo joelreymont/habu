@@ -543,10 +543,18 @@ create NAMEBUF NAME-CAP allot
    TERM-AT {: t:IR-ID:ir-op-id :}
    t SUCCS-OF 0=  t OPCODE-AT OPCODE-SLOT O-TRAP =  and ;
 
-\ A trap block needs no new frame lane when this rewrite does no frame work there.
+\ A terminal trap with no original or inserted frame access consumes no order.
+: TRAP-ORDER-UNUSED? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id b:n :}
+   bk TRAP-END? 0= if false exit then
+   b PLAN-FRAME-IN? if false exit then
+   bk OP-COUNT 0 ?do
+      bk i OP-AT FRAME-TOUCH? if false unloop exit then
+   loop true ;
+
 : SYNTH-FRAME-ARG? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id b:n :}
-   bk TRAP-END? if b PLAN-FRAME-IN? 0= if false exit then then
+   bk b TRAP-ORDER-UNUSED? if false exit then
    f bk ONE-SUCC-IN? ;
 
 -1 constant NO-FRAME-ARG
@@ -610,6 +618,7 @@ create NAMEBUF NAME-CAP allot
    id i SUCC-AT {: sb:IR-ID:ir-block-id :}
    id i SUCC-ORD {: b:n :}
    sb FRAME-ARG NO-FRAME-ARG <>  f sb b SYNTH-FRAME-ARG? or if exit then
+   sb b TRAP-ORDER-UNUSED? if exit then
    b F-ORDER-SET? 0= if TOK b F-ORDER! exit then
    b F-ORDER-SAME? 0= if E-A64SPILL-SHAPE throw then ;
 
@@ -740,7 +749,10 @@ create NAMEBUF NAME-CAP allot
       CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG TOK!
       exit
    then
-   carry if b F-ORDER-ENTER then ;
+   carry if
+      b 0<> if bk b TRAP-ORDER-UNUSED? if exit then then
+      b F-ORDER-ENTER
+   then ;
 
 : FRAMES? ( -- bool )
    A64RA:SPILLS 0<> PRO-N @ 0= and ;
