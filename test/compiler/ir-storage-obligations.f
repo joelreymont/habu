@@ -1,52 +1,7 @@
-\ ir-storage-obligations.f - the Rocq obligation text the storage gate proves.
-\
-\ The module lives in `package COMPILER-STORE-ROCQ`. It writes one Rocq source
-\ out of live state: the pinned capacity constants and the arena and context
-\ vector rows frozen in `package COMPILER-STORE-PROOF`, and the theorem names and
-\ statements in the committed manifest. Nothing in it is transcribed.
-\
-\ Why the obligations are generated rather than written by hand. A hand-written
-\ Rocq companion would be a second copy of the vector rows, and two copies drift.
-\ Here the Habu side and the Rocq side read the one artifact:
-\ `test/compiler/ir-storage-cases.f` runs each row through the real `IR-CTX` and
-\ `IR-ARENA` words, and the very same row is turned into a Rocq obligation about
-\ `Habu.Common.Storage`. Delete a row, weaken a step, or move a ceiling and the
-\ two sides are asked different questions, so one refuses.
-\
-\ How a row becomes an obligation. The file emits a small machine per table. The
-\ arena machine holds the two arenas a row addresses, the
-\ kept index and the frozen view - the same pieces of state the Habu runner
-\ keeps in typed variables - and answers each step with a number or `None`, which
-\ is the model's whole vocabulary for a refusal while Habu names a throw code.
-\ The row carries the throw code, so the two sides stay bound at the step rather
-\ than only agreeing that something failed. A refused step carries the UNCHANGED
-\ machine forward, which is the model's `arena_push_failure_atomic`, and is what
-\ lets one row show a full arena refusing a cell and still reading its contents.
-\
-\ The machine starts every handle slot holding a handle of a third, frozen
-\ placeholder arena, exactly as the Habu runner does, so the two sides agree even
-\ on a row that reads a slot it never set. The table shape check in the cases
-\ file makes that unreachable; this makes the two sides agree about it anyway.
-\
-\ The context machine is the same idea for the scratch cursor and the module
-\ budget: a byte cursor that starts just past the header and a spent count
-\ against the row's ceiling.
-\
-\ Statements, not just names. Asking Rocq what a theorem assumes says nothing
-\ about what it says, so every theorem the manifest binds is also written out as
-\ `Definition pinned_statement_<k> : <manifest type row> := @<theorem name>.` The
-\ ascribed type is the manifest's copy of the statement, so a proof rewritten to
-\ state something weaker no longer type-checks at the type the committed manifest
-\ asks for, and Rocq refuses the generated file. The type comes from the manifest
-\ and never from the proof file, so editing the proof file alone cannot also move
-\ the target.
-\
-\ The pinned capacity constants are proved by conversion rather than by
-\ `vm_compute`: the generation ceiling is two billion and forcing it into unary
-\ form would not finish, while unfolding the definition and comparing the two
-\ literals is immediate.
-\
-\ Consumer: `test/compiler/ir-storage-proof.f`.
+\ Generate Rocq examples from the shared operation rows and check the existing
+\ manifest's theorem statements and assumptions. These obligations concern
+\ Storage.v's abstract state, not dynamic chunk allocation or finally cleanup.
+\ Only the retained small scratch examples are shared with the native runtime.
 
 require lib/prelude.f
 require lib/errors.f
@@ -97,16 +52,6 @@ variable PIN-N
    s" Import ListNotations." +$ +NL
    s" From Habu.Common Require Import Storage." +$ +NL
    s" Set Printing Width 200." +$ +NL ;
-
-\ ---- the pinned capacity constants -------------------------------------------
-
-: EMIT-PIN ( n -- ) {: row:n :}
-   s" Example pinned_capacity_" +$ row +N s"  : " +$
-   row PIN-MODEL$ +$ s"  = " +$ row PIN-VALUE +N s" ." +$ +NL
-   s" Proof. reflexivity. Qed." +$ +NL ;
-
-: EMIT-PINS ( -- )
-   PIN-COUNT 0 ?do i EMIT-PIN loop ;
 
 \ ---- the arena machine -------------------------------------------------------
 \ Six pieces of state and one owner serial, stepped by the operation codes the
@@ -283,8 +228,7 @@ variable PIN-N
 \ generation ceiling is two billion, so any tactic that forces the ceiling into
 \ constructor form takes over a minute per row. The theorem keeps the ceiling
 \ symbolic, which is why it also carries `depth_max < gen_max` - stated on the
-\ row as well, and recorded as MODEL GAP 11 in the model itself. Both numbers
-\ are pinned to the shipped source by the capacity rows above.
+\ row as well. This is a model hypothesis, not a runtime parameter binding.
 \
 \ The tactic never decides the answer: it rewrites the row's left side into
 \ `Some (Nat.ltb <depth> depth_max)` and then the comparison with what the row
@@ -312,7 +256,6 @@ public
    0 V-U !
    0 PIN-N !
    EMIT-HEAD
-   EMIT-PINS
    EMIT-ARENA-MACHINE
    EMIT-ARENA-STEP
    EMIT-ARENA-INIT

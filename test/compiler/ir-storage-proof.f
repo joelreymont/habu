@@ -1,44 +1,10 @@
-\ ir-storage-proof.f - the compiler storage and lifetime parity gate.
-\
-\ `formal/Common/Storage.v` proves what the whole compiler IR rests on: an arena
-\ is append-only under a committed ceiling, growth is invisible to a reader, a
-\ ceiling hit mutates nothing, a frozen
-\ view answers what the live arena answered and refuses every mutation, an index
-\ minted by one arena is refused by another, context generations are nonzero and
-\ never reused, leaving a context retires it and every child in one step, and
-\ bump allocation never overlaps and never leaves the mapping. Until this gate
-\ exists those are theorems about a model, and
-\ `src/compiler/ir/{arena,context}.f` is a separate description of the same
-\ design, with nothing stopping the two drifting apart.
-\
-\ One artifact, two readers. `test/compiler/ir-storage-schema.f` holds the pinned
-\ capacities, the frozen structures and the vector rows.
-\ `test/compiler/ir-storage-cases.f` asks the shipped compiler about them and
-\ `test/compiler/ir-storage-obligations.f` asks Rocq about the same rows. Neither
-\ side carries a copy.
-\
-\ What the gate refuses:
-\
-\   - a renumbered capacity, a check that moved after the write it protects, a
-\     changed lifetime guard body, or a context teardown that stopped truncating
-\     the registry, through the structural reader in the cases file;
-\   - a step of any arena or context row, through the Habu run and the generated
-\     Rocq obligation built from the same row;
-\   - a rewritten theorem statement, through the statement each manifest row
-\     pins. The row's type is ascribed to a generated definition whose body is
-\     the theorem, so Rocq itself has to accept the proved statement as the one
-\     the committed manifest wrote down;
-\   - an unbound theorem, a manifest row for a theorem that no longer exists, a
-\     published result the file forgets to query, or an `Admitted`, through the
-\     structural inventory of what `Storage.v` declares and what it queries;
-\   - ANY assumption at all. The storage proofs rest on nothing, so this gate
-\     refuses an assumption twice over: the manifest is read with assumption rows
-\     forbidden, so one cannot be written down, and every statement must
-\     additionally report "Closed under the global context" with no `Axioms:`
-\     header anywhere in what Rocq printed.
-\
-\ Focused command: `bin/hb --load test/compiler/ir-storage-proof.f`. The gate
-\ compiles the model itself, so nothing has to be built first.
+\ Run native storage examples and check Storage.v's abstract model with Rocq.
+\ The shared rows compare selected operations; they do not prove implementation
+\ refinement. Storage.v's fixed mapping, registry and exception model do not
+\ represent today's dynamic chunks, slot lookup or finally cleanup. Those
+\ runtime behaviors are tested in ir-context.f and ir-arena.f.
+\ The existing theorem manifest still checks statements and assumptions.
+\ Run: bin/hb --load test/compiler/ir-storage-proof.f
 
 require lib/prelude.f
 require lib/errors.f
@@ -49,6 +15,7 @@ require lib/test.f
 require lib/test/outcome.f
 require test/compiler/proof-manifest.f
 require test/compiler/rocq-run.f
+require test/compiler/ir-id-source.f
 require test/compiler/ir-storage-cases.f
 require test/compiler/ir-storage-obligations.f
 

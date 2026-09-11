@@ -15,3 +15,13 @@ Rules for published results, models, manifests, and parity gates.
   documented; never weaken it silently until it passes.
 - Tests, proofs and measurements establish different properties. Describe what
   was actually checked without mandatory mutation campaigns or extra ledgers.
+
+`formal/Common/Storage.v` is an abstract, finite storage model. Its fixed scratch
+mapping and older registry/exception descriptions do not model the runtime's
+dynamic chunks, direct slot lookup, OS resource release or `finally` cleanup.
+The storage proof entry checks that model's statements and assumptions and
+compares selected operation examples with the runtime; it does not establish
+parameter parity or implementation refinement. Dynamic growth, normal and
+exceptional lifetime, owner/stale rejection and state after refusals are tested
+through the native paths in `test/compiler/ir-context.f`, `ir-arena.f` and
+`ir-storage-manifest.f`.
