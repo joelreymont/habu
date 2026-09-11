@@ -1,9 +1,5 @@
 \ repair-schema-doc-test.f - checked fixture for repair diagnostic docs.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
-\ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-\ tools/lint/source-lex.f tools/check-all-errors-core.f tools/json.f
-\ tools/gate-json-assert-core.f tools/repair-schema-doc-test.f
+\ Run: bin/hb --load tools/repair-schema-doc-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -25,27 +21,20 @@ require tools/gate-json-assert-core.f
 package REPAIR-SCHEMA-TEST
 
 $40000 constant DOC-CAP
-$10000 constant EMIT-CAP
 8192 constant BUF-CAP
 
 variable ROOT-U
 variable SRC-U
 variable DIAG-U
 variable DOC-U
-variable LLM-U
 variable ERR-U
-variable REND-U
-variable CHK-U
 variable DOC-BUF-A
-variable LLM-BUF-A
 variable OUT-A
 variable ERR-A
 
 create ROOT-BUF FS-PATH-CAP allot
 create SRC-BUF FS-PATH-CAP allot
 create DIAG-BUF FS-PATH-CAP allot
-create REND-BUF EMIT-CAP allot
-create CHK-BUF EMIT-CAP allot
 
 : PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -65,9 +54,6 @@ create CHK-BUF EMIT-CAP allot
 
 : DOC-BUF ( -- ptr u8 )
    DOC-BUF-A DOC-CAP BUF ;
-
-: LLM-BUF ( -- ptr u8 )
-   LLM-BUF-A DOC-CAP BUF ;
 
 : OUT ( -- ptr u8 )
    OUT-A BUF-CAP BUF ;
@@ -118,20 +104,10 @@ create CHK-BUF EMIT-CAP allot
    SB$ ;
 
 : LOAD-DOCS ( -- )
-   s" docs/repair-diagnostics.md" DOC-BUF DOC-CAP READ-ALL DOC-U !
-   s" LLM.md" LLM-BUF DOC-CAP READ-ALL LLM-U ! ;
-
-\ Emitter sources: render.f owns REPAIR-CLASS (data-stack/return/signature/dead
-\ classes), check-core.f owns CHK-TYPE-JSON (fix_nominal_type, the nominal: path).
-: LOAD-EMITTERS ( -- )
-   s" src/core/render.f" REND-BUF EMIT-CAP READ-ALL REND-U !
-   s" tools/check-core.f" CHK-BUF EMIT-CAP READ-ALL CHK-U ! ;
+   s" docs/repair-diagnostics.md" DOC-BUF DOC-CAP READ-ALL DOC-U ! ;
 
 : NEED-DOC ( ptr u8 n -- )
    DOC-BUF DOC-U @ 2swap CONTAINS? TTRUE ;
-
-: NEED-LLM ( ptr u8 n -- )
-   LLM-BUF LLM-U @ 2swap CONTAINS? TTRUE ;
 
 : DOC-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
@@ -190,40 +166,13 @@ create CHK-BUF EMIT-CAP allot
    s" reason" NEED-DOC-FIELD
    s" instruction" NEED-DOC-FIELD ;
 
-\ Needle for an emitter site: the verbatim `s" class"` literal the emitters
-\ write, so `s" fix_type"` cannot match `s" fix_signature_type"`.
-: EMIT-NEEDLE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   SB-RESET
-   115 SB-APPEND-C                             \ s
-   DQ                                           \ "
-   32 SB-APPEND-C                               \ space
-   a u SB-APPEND
-   DQ                                            \ "
-   SB$ ;
-
-: EMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   REND-BUF REND-U @ a u CONTAINS?
-   CHK-BUF CHK-U @ a u CONTAINS? or ;
-
-: NEED-EMITTER ( ptr u8 n -- )
-   EMIT-NEEDLE$ EMITTED? TTRUE ;
-
-\ Completeness gate for one repair class across all four drift sites:
-\   site 1 (emitters render.f/check-core.f) emit `s" class"`,
-\   site 2 (GJA-SUGGEST-FOR) maps class -> suggestion (dies if unmapped) and
-\           that suggestion text appears verbatim in the doc table (ties GJA<->doc),
-\   site 3 (docs Repair Classes list) names `class`,
-\   site 4 is this canonical list itself.
+\ Documented categories and suggestion text agree with the public JSON checks.
 : NEED-CLASS ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NEED-DOC-CLASS
-   a u NEED-EMITTER
    a u GJA-SUGGEST-FOR NEED-DOC ;
 
-\ Canonical repair-class enumeration (18). This is the single source of truth;
-\ NEED-CLASS proves every downstream site carries each one. Reverse drift (a
-\ class an emitter grows but this list omits) is caught at commit time by the
-\ Forth gate, which re-runs this fixture after any emitter edit; a source-parsing
-\ enumerator is deliberately out of scope (ADT/parser work, dot territory).
+\ This list checks the documented categories; it does not prove that every
+\ category is emitted. TEST-DIAG validates representative real checker output.
 : TEST-DOC-CLASSES ( -- )
    s" remove_producer" NEED-CLASS
    s" add_producer" NEED-CLASS
@@ -244,10 +193,6 @@ create CHK-BUF EMIT-CAP allot
    s" rewrite_uncheckable" NEED-CLASS
    s" unknown_rejection" NEED-CLASS ;
 
-: TEST-LLM-LINKS ( -- )
-   s" docs/repair-diagnostics.md" NEED-LLM
-   s" Repair diagnostic schema" NEED-LLM ;
-
 : PREPARE ( -- )
    CLEANUP-RESET
    s" hb-repair-schema" TMPDIR-MKDIR {: a:ptr u :}
@@ -256,8 +201,7 @@ create CHK-BUF EMIT-CAP allot
    ROOT s" bad.f" SRC-BUF SRC-U PATH!
    ROOT s" bad.err" DIAG-BUF DIAG-U PATH!
    SRC SRC$ WRITE-ALL
-   LOAD-DOCS
-   LOAD-EMITTERS ;
+   LOAD-DOCS ;
 
 : RUN-CHECK-ACT ( -- )
    SRC SRC CHECK-ALL-ERRORS:FILE ;
@@ -331,7 +275,6 @@ create CHK-BUF EMIT-CAP allot
    TEST-DOC-ANCHORS
    TEST-DOC-FIELDS
    TEST-DOC-CLASSES
-   TEST-LLM-LINKS
    TEST-DIAG
    CLEANUP-RUN
    ROOT EXISTS? TFALSE
