@@ -734,10 +734,9 @@ public
    c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
    FIX-NAME u NDICT:CALL-TARGET {: entry:n :}
    entry 0= if false exit then
-   FIX-NAME u NDICT:SPELL-ARITY {: in:n out:n :}
+   FIX-NAME u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
    in NDICT:ARITY-NONE = if false exit then
-   FIX-NAME u NDICT:SPELL-RET-NEUTRAL? 0= if false exit then
-   FIX-NAME u NDICT:SPELL-GLUE nip {: glue:n :}   \ the callee's RESULT cells are the caller's concern
+   neutral 0= if false exit then
    glue NDICT:GLUE-UNKNOWN = if false exit then   \ a result shape nothing can state is not a call this builds
    FIX-NAME u NDICT:SPELL-DEAD? {: dead:bool :}
    c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW

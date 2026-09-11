@@ -114,10 +114,9 @@ variable TRUST-SRC-U
    a u NDICT:CALL-TARGET {: entry:n :}
    entry PRIOR-ENTRY !
    entry 0= if exit then
-   a u NDICT:SPELL-ARITY {: in:n out:n :}
+   a u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
    in NDICT:ARITY-NONE = if exit then
-   a u NDICT:SPELL-RET-NEUTRAL? 0= if exit then
-   a u NDICT:SPELL-GLUE nip {: glue:n :}
+   neutral 0= if exit then
    glue NDICT:GLUE-UNKNOWN = if exit then
    a u NDICT:SPELL-DEAD? {: dead:bool :}
    in PRIOR-IN !  out PRIOR-OUT !  glue PRIOR-GLUE !  dead PRIOR-DEAD !
