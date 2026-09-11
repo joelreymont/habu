@@ -576,6 +576,17 @@ address arithmetic at the public boundary.
   not reconstruct a branch ladder.
 - **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
   without you tracking more than a few stack items.
+- **Keep argument lists manageable.** As a rule of thumb, aim for no more than
+  five or six input stack values. This is a readability guideline, not a hard
+  limit: a longer stack effect can be clearer than artificial factoring. Count
+  values, not annotation tokens: `ptr u8` is one pointer, while a pointer and
+  length are two values. Consider factoring when unrelated inputs obscure the
+  job, even in a shorter list. Preparation, allocation, traversal and consumption
+  often make useful separate words. Derive metadata from its owner where useful,
+  and pass each stage's result instead of carrying every earlier argument along.
+  Apply the same judgment to allocation callbacks and low-level helpers. Prefer
+  records that model real domain values; hiding arguments in a context bag,
+  globals or the return stack does not by itself improve readability.
 - **Multi-pass words must be split into named passes.** A word that scans input,
   validates rows, mutates aggregate state, and renders output in one body is not
   reviewable even if its definition-line effect is correct. Factor cursor
