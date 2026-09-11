@@ -1303,6 +1303,12 @@ leave no published word
 
 ### 7.13 JIT and AOT modes
 
+REPL definitions and `hb --load` use the low-latency JIT. Every executable build
+uses the optimizing AOT compiler, including Habu itself and its build tools.
+An executable with a REPL has an optimized saved vocabulary; definitions entered
+after startup use the JIT. Both modes retain the same language checks.
+Cold AOT compilation of the current applications must complete in seconds.
+
 #### JIT O0
 
 - build one definition;
