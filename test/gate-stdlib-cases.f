@@ -769,6 +769,10 @@ SUITE compiler-dispatch-shape
    tools/compiler-dispatch-test.f
 ;SUITE
 
+SUITE compiler-compile-floor
+   test/compiler/compile-floor.f
+;SUITE
+
 SUITE codegen-role
    tools/codegen-role-test.f
 ;SUITE
