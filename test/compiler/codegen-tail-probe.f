@@ -47,6 +47,20 @@ package NTP-TEST
 
 using NTAILPROBE
 
+private
+
+: COND-BACKEDGE? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u INSNS 0 ?do
+      a u i INSN@ {: word:n :}
+      word NBR:COND? if
+         i NBR:INSN-BYTES * {: at:n :}
+         at word NBR:COND-TARGET {: target:n :}
+         target 0 >= target at < and if true unloop exit then
+      then
+   loop
+   false ;
+
 public
 
 : CASES ( -- )
@@ -72,12 +86,11 @@ public
    s" NTP-FIXTURE:CALLS-THEN" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:LOOPY" TRAILER-RET? TTRUE
 
-   \ The counted loop ends on a conditional back edge within its own body.
-   s" the loop row no longer ends its body on an unconditional branch" T-LABEL
-   s" NTP-FIXTURE:LOOPY" LAST-BODY NBR:B? TFALSE
-   s" NTP-FIXTURE:LOOPY" LAST-BODY NBR:COND? TTRUE
+   \ The guarded store call needs an epilogue after the loop's back edge.
+   s" the counted loop has a conditional back edge within its own body" T-LABEL
+   s" NTP-FIXTURE:LOOPY" COND-BACKEDGE? TTRUE
 
-   s" and so does the routine that LEAVES through its callee" T-LABEL
+   s" the tail caller ends in a branch to its callee" T-LABEL
    s" NTP-FIXTURE:TAILED" LAST-BODY NBR:B? TTRUE
 
    s" but only one of the two goes anywhere outside itself" T-LABEL

@@ -294,13 +294,9 @@ using NSRC
 \ word the model names and the engine answers for. What this case measures is the two
 \ things the printed operation list cannot show on its own.
 \
-\ THE OPERAND ORDER OF A STORE. Forth writes `value address !`, so the value is
-\ the deeper of the two and therefore the store's FIRST operand and the address
-\ its second. The two are both cells, so an elaborator that exchanged them would
-\ build a module that verifies, allocates and emits - and writes the cell's
-\ address into whatever the value happens to point at. Here each one is compared
-\ against the value it has to be: the block argument, and the constant the data
-\ word became.
+\ Source stores call the guarded engine primitive. Its HIR call carries the
+\ memory token first, then the value and address in Forth stack order. Both
+\ calls must target !, and the stored value/address must retain their identities.
 \
 \ THE ORDER ITSELF, LINK BY LINK. `hir.mem` is the FIRST operation of the entry
 \ block, because a definition that touches memory mints its order where every
@@ -331,7 +327,7 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    c LEX
    b p r  tp NTAPE:SEAL ;
 
-: BUMP-BODY ( IR-CTX:ctx -- n n n n bool bool bool bool bool bool )
+: BUMP-BODY ( IR-CTX:ctx -- n n n n bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    s" BUMP CELL-A ! CELL-A @ 1+ dup CELL-A !" TEXT!
    c SEALED-DATA
@@ -340,24 +336,26 @@ TRUSTED: EV ( ptr u8 n -- ) evaluate ;
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m f F-BLK {: blk:IR-ID:ir-block-id :}
    m blk s" hir.mem" 0 F-OPC-AT {: mem:IR-ID:ir-op-id :}
-   m blk s" hir.store" 0 F-OPC-AT {: st0:IR-ID:ir-op-id :}
+   m blk s" hir.wordcall" 0 F-OPC-AT {: st0:IR-ID:ir-op-id :}
    m blk s" hir.load" 0 F-OPC-AT {: ld:IR-ID:ir-op-id :}
-   m blk s" hir.store" 1 F-OPC-AT {: st1:IR-ID:ir-op-id :}
+   m blk s" hir.wordcall" 1 F-OPC-AT {: st1:IR-ID:ir-op-id :}
    m blk s" hir.mem" F-OPC-N
-   m blk s" hir.store" F-OPC-N
+   m blk s" hir.wordcall" F-OPC-N
    m blk s" hir.load" F-OPC-N
    m blk s" hir.add" F-OPC-N
-   m st0 0 F-IN  m blk 0 F-ARG SAME?
-   m st0 2 F-IN  m mem 0 F-OUT SAME?
+   m st0 1 F-IN  m blk 0 F-ARG SAME?
+   m st0 0 F-IN  m mem 0 F-OUT SAME?
    m ld 1 F-IN  m st0 0 F-OUT SAME?
-   m st1 2 F-IN  m ld 1 F-OUT SAME?
-   m blk  m st0 1 F-IN  s" hir.const" F-FROM?
-   m blk  m ld 0 F-IN   s" hir.const" F-FROM? ;
+   m st1 0 F-IN  m ld 1 F-OUT SAME?
+   m blk  m st0 2 F-IN  s" hir.const" F-FROM?
+   m blk  m ld 0 F-IN   s" hir.const" F-FROM?
+   m st0 0 F-ATTR s" !" NDICT:CALL-TARGET =
+   m st1 0 F-ATTR s" !" NDICT:CALL-TARGET = ;
 
 : BUMP-CASE ( -- )
    s" a store and a load compile to one order, threaded link by link" T-LABEL
    BND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    1 T= 1 T= 2 T= 1 T= ;
 
 \ ---- a word with two outputs -------------------------------------------------
