@@ -127,6 +127,16 @@ public
 : NRS-2CALL ( n n n -- n ) {: a:n b:n s:n :}
    a >r b >r s NRS-CALLEE r> 3 * + r> 5 * + ;
 
+\ Arithmetic produces an actual REAL SSA value, unlike cell-typed inputs.
+: NRS-REAL-CALL ( r n -- n r )
+   swap 2.0 f* >r NRS-CALLEE r> ;
+
+: NRS-REAL-LOCAL ( r n -- n r )
+   swap 2.0 f* {: d:r :} NRS-CALLEE d ;
+
+: NRS-REAL-EXEC ( r n [ n -- n ] -- n r ) {: q :}
+   swap 2.0 f* >r q execute r> ;
+
 \ Calls preserve the loop counters, the bound local and the parked value.
 : NRS-CALLLOOP ( n n n -- n ) {: k:n s:n lim:n :}
    k >r s lim 0 ?do NRS-CALLEE k + loop r> + ;
@@ -267,6 +277,13 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    2 0 1 NRS-FIXTURE:NRS-CALLLOOP 53 T=
    2 0 3 NRS-FIXTURE:NRS-CALLLOOP 120937 T= ;
 
+: REAL-CALL-CASE ( -- )
+   s" computed real values survive direct and indirect calls" T-LABEL
+   1.25 1 NRS-FIXTURE:NRS-REAL-CALL 2.5 f= TTRUE 109 T=
+   -1.25 2 NRS-FIXTURE:NRS-REAL-LOCAL -2.5 f= TTRUE 185 T=
+   1.25 1 [: NRS-FIXTURE:NRS-CALLEE ;] NRS-FIXTURE:NRS-REAL-EXEC
+   2.5 f= TTRUE 109 T= ;
+
 : CALLEE-CASE ( -- )
    s" neutral return-stack callees compile and a moving callee is refused" T-LABEL
    s" : NRS-Z1 ( n -- n ) NRS-FIXTURE:NRS-BAL 1 + ;" EV-RC 0 T=
@@ -320,6 +337,7 @@ public
    EARLY-EXIT-CASE
    CASE-CASE
    CALL-CASE
+   REAL-CALL-CASE
    CALLEE-CASE
    CEILING-CASE
    PARKED-QUOT-CASE ;

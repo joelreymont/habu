@@ -578,13 +578,11 @@ variable OPJ                         \ general operands taken so far by the open
 : REAL-VALUE? ( IR-ID:ir-value-id -- bool )
    VTYPE-OF REAL-T? ;
 
-\ No double anywhere on the vector where a value leaves as a cell.
+\ Only data-stack values leave as cell call operands. Hidden values remain
+\ typed SSA values and may keep their real type across the call.
 : NO-REAL-CK ( -- )
    VN @ 0 ?do
       i VAT REAL-VALUE? if E-NELAB-TYPE throw then
-   loop
-   RN @ 0 ?do
-      i RAT REAL-VALUE? if E-NELAB-TYPE throw then
    loop ;
 
 : TOKEN-OPERANDS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
