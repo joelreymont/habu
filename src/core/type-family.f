@@ -259,7 +259,7 @@ variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !   REG-PROTECT
 : TF-PK-CAP ( -- n ) TF-PK-CAP-V @ ;
 create TF-PK-BOOT   TF-PK-INIT cells allot   REG-PROTECT
 PERSISTED-PTR-VARIABLE TF-PK-P   TF-PK-BOOT TF-PK-P !   REG-PROTECT
-: TF-PK-BASE ( -- ptr a ) TF-PK-P @ ;
+: TF-PK-BASE ( -- ptr n ) TF-PK-P @ ;
 
 public
 
@@ -396,7 +396,7 @@ variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !   REG-PROTECT
 : TF-CAP ( -- n ) TF-CAP-V @ ;
 create TF-A-BOOT   TF-CAP-INIT TF-REC * allot   REG-PROTECT
 PERSISTED-PTR-VARIABLE TF-A-P   TF-A-BOOT TF-A-P !   REG-PROTECT
-: TF-BASE ( -- ptr a ) TF-A-P @ ;
+: TF-BASE ( -- ptr n ) TF-A-P @ ;
 
 public
 
@@ -414,7 +414,7 @@ private
 
 public
 
-: TF-REC@ ( n -- ptr a ) {: id:n :}      \ address of family record `id`
+: TF-REC@ ( n -- ptr n ) {: id:n :}      \ address of family record `id`
    id 0 < IF s" tfam: bad family id" 76 die THEN
    id TFAM-N @ >= IF s" tfam: bad family id" 76 die THEN
    id TF-REC * TF-BASE + ;
@@ -566,7 +566,7 @@ private
 
 create TFX-A-BOOT   TFX-SLOTS-INIT cells allot   REG-PROTECT
 PERSISTED-PTR-VARIABLE TFX-A-P   TFX-A-BOOT TFX-A-P !   REG-PROTECT
-: TFX-BASE ( -- ptr a ) TFX-A-P @ ;
+: TFX-BASE ( -- ptr n ) TFX-A-P @ ;
 variable TFX-READY   0 TFX-READY !   REG-PROTECT
 
 public
@@ -580,7 +580,7 @@ variable TFX-H                \ private hash accumulator
 variable TFX-I                \ private build/retire index
 variable TFX-CUR              \ private bucket-walk cursor
 
-: TFX-BKT ( n -- ptr a ) {: slot:n :}
+: TFX-BKT ( n -- ptr n ) {: slot:n :}
    slot cells TFX-BASE + ;
 
 : TFX-H+ ( n -- )
@@ -597,7 +597,7 @@ variable TFX-CUR              \ private bucket-walk cursor
    REPEAT drop
    TFX-H @ TFX-SLOTS 1 - and ;
 
-: TFX-ROW-BKT ( n -- ptr a ) {: id:n :}
+: TFX-ROW-BKT ( n -- ptr n ) {: id:n :}
    id TFAM-NAME$ TFX-HASH TFX-BKT ;
 
 : TFX-PUSH ( n -- ) {: id:n :}
@@ -857,7 +857,7 @@ variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !   REG-PROTECT
 : SUMV-CAP ( -- n ) SUMV-CAP-V @ ;
 create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot   REG-PROTECT
 PERSISTED-PTR-VARIABLE SUMV-A-P   SUMV-A-BOOT SUMV-A-P !   REG-PROTECT
-: SUMV-BASE ( -- ptr a ) SUMV-A-P @ ;
+: SUMV-BASE ( -- ptr n ) SUMV-A-P @ ;
 
 public
 
@@ -872,7 +872,7 @@ private
 : SUMV-ENSURE ( -- )
    SUMV-N @ SUMV-CAP-V @ < IF exit THEN
    SUMV-N @ 1 + SUMV-GROW ;
-: SUMV-REC@ ( n -- ptr a ) {: id:n :}
+: SUMV-REC@ ( n -- ptr n ) {: id:n :}
    id 0 < IF s" tfam: bad variant id" 76 die THEN
    id SUMV-N @ >= IF s" tfam: bad variant id" 76 die THEN
    id SUMV-REC * SUMV-BASE + ;
@@ -1337,7 +1337,7 @@ PERSISTED-PTR-VARIABLE PF-A-P   PF-A-BOOT PF-A-P !   REG-PROTECT
 
 public
 
-: PF-BASE ( -- ptr a ) PF-A-P @ ;
+: PF-BASE ( -- ptr n ) PF-A-P @ ;
 variable PF-N   0 PF-N !   REG-PROTECT
 variable PF-COMMIT-N   0 PF-COMMIT-N !   REG-PROTECT
 
@@ -1375,14 +1375,14 @@ public
 \ an engine assert. PF-ROW admits provisional rows (bound PF-N) for in-transaction
 \ machinery; PF-REC@ is the committed reflection reader (bound PF-COMMIT-N), so a
 \ guessed provisional id (>= PF-COMMIT-N) rejects here before it can be read.
-: PF-ROW ( n -- ptr a ) {: id:n :}
+: PF-ROW ( n -- ptr n ) {: id:n :}
    id 0 < IF E-PF-ID throw THEN
    id PF-N @ >= IF E-PF-ID throw THEN
    id PF-REC * PF-BASE + ;
 
 private
 
-: PF-REC@ ( n -- ptr a ) {: id:n :}
+: PF-REC@ ( n -- ptr n ) {: id:n :}
    id 0 < IF E-PF-ID throw THEN
    id PF-COMMIT-N @ >= IF E-PF-ID throw THEN
    id PF-REC * PF-BASE + ;
@@ -1563,7 +1563,7 @@ private
    fam TFAM-SUM? fam TFAM-ENUM? or IF term SUM-IWIDTH EXIT THEN
    1 ;
 
-: PF-ROW-OWNER? ( n n ptr a -- bool ) {: fam:n var:n r:ptr :}
+: PF-ROW-OWNER? ( n n ptr n -- bool ) {: fam:n var:n r:ptr :}
    r PF.FAM @ fam = r PF.VAR @ var = and ;
 : PF-MATCH? ( n n ptr u8 n n -- bool ) {: fam:n var:n na:ptr nu:n id:n :}
    id PF-REC@ {: r:ptr :}
@@ -1676,7 +1676,7 @@ package TYPE-FIELD-OWNER
 0 constant STATE-OPEN
 1 constant STATE-COMMITTED
 
-: TX-BASE ( -- ptr a ) PF-TX-P @ ;
+: TX-BASE ( -- ptr n ) PF-TX-P @ ;
 : TX-GROW ( -- )
    PF-TX-CAP-V @ 2 * {: nc:n :}
    PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * REG-GROW1
@@ -1684,8 +1684,8 @@ package TYPE-FIELD-OWNER
 : TX-ENSURE ( -- )
    PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
    TX-GROW ;
-: TX-AT ( n -- ptr a ) PF-TX-REC * TX-BASE + ;
-: TX-TOP ( -- ptr a )
+: TX-AT ( n -- ptr n ) PF-TX-REC * TX-BASE + ;
+: TX-TOP ( -- ptr n )
    PF-TX-DEPTH @ 0= IF E-PF-TX throw THEN
    PF-TX-DEPTH @ 1 - TX-AT ;
 : TX-REQUIRE ( n -- ) TX-TOP PFTX.TOK @ <> IF E-PF-TX throw THEN ;
@@ -2342,7 +2342,7 @@ variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !   REG-PROTECT
 : LAY-CAP ( -- n ) LAY-CAP-V @ ;
 create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot   REG-PROTECT
 PERSISTED-PTR-VARIABLE LAY-A-P   LAY-A-BOOT LAY-A-P !   REG-PROTECT
-: LAY-BASE ( -- ptr a ) LAY-A-P @ ;
+: LAY-BASE ( -- ptr n ) LAY-A-P @ ;
 
 public
 
@@ -2357,7 +2357,7 @@ private
 : LAY-ENSURE ( -- )
    LAY-N @ LAY-CAP-V @ < IF exit THEN
    LAY-N @ 1 + LAY-GROW ;
-: LAY-REC@ ( n -- ptr a ) {: id:n :}
+: LAY-REC@ ( n -- ptr n ) {: id:n :}
    id 0 < IF s" tfam: bad layout id" 76 die THEN
    id LAY-N @ >= IF s" tfam: bad layout id" 76 die THEN
    id LAY-REC * LAY-BASE + ;
@@ -2558,7 +2558,7 @@ private
 variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
 create TF-RBF-BOOT   TF-RBF-CAP-INIT TF-RBF-REC * allot
 PERSISTED-PTR-VARIABLE TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
-: TF-RBF-BASE ( -- ptr a ) TF-RBF-P @ ;
+: TF-RBF-BASE ( -- ptr n ) TF-RBF-P @ ;
 
 public
 
@@ -2576,8 +2576,8 @@ public
 : TF-RBF-ENSURE ( -- )
    TF-RBF-DEPTH @ TF-RBF-CAP-V @ < IF exit THEN
    TF-RBF-GROW ;
-: TF-RBF-CUR ( -- ptr a ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
-: TF-RBF-TOP ( -- ptr a )
+: TF-RBF-CUR ( -- ptr n ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
+: TF-RBF-TOP ( -- ptr n )
    TF-RBF-DEPTH @ 0= IF E-PF-TX throw THEN
    TF-RBF-DEPTH @ 1 - TF-RBF-REC * TF-RBF-BASE + ;
 
@@ -2585,7 +2585,7 @@ public
 
 package CHECKER-DECL-FRAME
 
-: PF-DEPTH= ( ptr a -- )
+: PF-DEPTH= ( ptr n -- )
    TFRB.PFTXDEPTH @ PF-TX-DEPTH @ <> IF E-PF-TX throw THEN ;
 
 : TF-RELEASE ( -- )
@@ -2604,7 +2604,7 @@ package CHECKER-DECL-FRAME
    PF-TX-DEPTH @ r TFRB.PFTXDEPTH !
    TF-RBF-DEPTH @ 1 + TF-RBF-DEPTH ! ;
 
-: TF-RESTORE-TOP ( ptr a -- )
+: TF-RESTORE-TOP ( ptr n -- )
    TF-RELEASE
    {: r:ptr :}
    r TFRB.TFAMN @  r TFRB.STRU @  r TFRB.PKN @  r TFRB.SUMVN @  r TFRB.LAYN @
@@ -2873,15 +2873,15 @@ create REG-AOT-END-A REG-AOT-N cells allot
    k 6 = IF SCH-N @ EXIT THEN
    SCH-ROOT-N @ ;
 
-: REG-AOT-BASE-PTR ( n -- ptr a ) {: k:n :}
-   k 0 = IF TF-BASE EXIT THEN
-   k 1 = IF TF-PK-BASE EXIT THEN
-   k 2 = IF SUMV-BASE EXIT THEN
-   k 3 = IF PF-BASE EXIT THEN
-   k 4 = IF LAY-BASE EXIT THEN
+: REG-AOT-BASE-PTR ( n -- ptr u8 ) {: k:n :}
+   k 0 = IF TF-BASE BYTE-VIEW EXIT THEN
+   k 1 = IF TF-PK-BASE BYTE-VIEW EXIT THEN
+   k 2 = IF SUMV-BASE BYTE-VIEW EXIT THEN
+   k 3 = IF PF-BASE BYTE-VIEW EXIT THEN
+   k 4 = IF LAY-BASE BYTE-VIEW EXIT THEN
    k 5 = IF TF-STR EXIT THEN
-   k 6 = IF SCH-BASE EXIT THEN
-   SCH-ROOT-BASE ;
+   k 6 = IF SCH-BASE BYTE-VIEW EXIT THEN
+   SCH-ROOT-BASE BYTE-VIEW ;
 
 : REG-AOT-NAME ( n -- ptr u8 n ) {: k:n :}
    k 0 = IF s" families" EXIT THEN
