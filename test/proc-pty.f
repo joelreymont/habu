@@ -126,7 +126,7 @@ variable PTYNUM
    repeat drop
    0 0= 0= ;
 
-: SEND-C {: c :} ( c -- )
+: SEND-C ( n -- ) {: c:n :}
    c CH c!
    MFD @ >FD CH 1 FD-WRITE ;
 
@@ -136,7 +136,7 @@ variable PTYNUM
 : SEND-LN {: a:ptr u :} ( ptr u8 n -- )
    MFD @ >FD a u FD-WRITE-LN ;
 
-: SEND-ESC ( c -- )
+: SEND-ESC ( n -- )
    27 SEND-C
    91 SEND-C
    SEND-C ;

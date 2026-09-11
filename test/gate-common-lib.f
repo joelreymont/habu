@@ -18,9 +18,6 @@ $40000 constant GE-SRC-CAP
 1 constant GE-STDOUT-FD
 2 constant GE-STDERR-FD
 
-s" UEND" s" -- ptr n" TRUST
-s" USIGS-RESTORE-END" s" n --" TRUST
-s" UTERM!" s" --" TRUST
 s" JSON-DIAGS" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
@@ -37,7 +34,6 @@ variable GE-ARGV-U
 variable GE-HB-U
 variable GE-EVAL-CP
 variable GE-EVAL-NDICT
-variable GE-EVAL-UEND
 variable GE-EVAL-CURRENT
 variable GE-EVAL-JSON-DIAGS
 variable GE-EVAL-OUT-SAVE
@@ -344,13 +340,13 @@ variable GE-EVAL-SRC-U
    a dst u BYTE-COPY
    u up ! ;
 
-: GE-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
+: GE-FILES-WALK ( ptr u8 [ ptr u8 n -- ] -- ) {: p:ptr q :}
    p begin dup c@ 0= 0= while
       dup 1+ over c@ q execute
       dup c@ 1 + +
    repeat drop ;
 
-: GE-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
+: GE-FILES-RUN ( [ ptr u8 n -- ] ptr u8 -- )
    swap GE-FILES-WALK ;
 
 : GE-FILES-END? ( ptr u8 n -- bool )
@@ -444,19 +440,18 @@ variable GE-EVAL-SRC-U
    label labelu GT-PROGRESS-PASS ;
 
 : GE-EVAL-MARK ( -- )
+   CHECKER-SCOPE-START
    cp@ GE-EVAL-CP !
    ndict@ GE-EVAL-NDICT !
-   UEND @ GE-EVAL-UEND !
    get-current GE-EVAL-CURRENT !
    JSON-DIAGS @ GE-EVAL-JSON-DIAGS ! ;
 
 : GE-EVAL-FORGET ( -- )
+   CHECKER-SCOPE-DONE
    GE-EVAL-NDICT @ ndict!
    GE-EVAL-CP @ cp!
-   GE-EVAL-UEND @ USIGS-RESTORE-END
    GE-EVAL-CURRENT @ set-current
-   GE-EVAL-JSON-DIAGS @ JSON-DIAGS !
-   UTERM! ;
+   GE-EVAL-JSON-DIAGS @ JSON-DIAGS ! ;
 
 : GE-EVAL-DUP-FD ( n -- n ) {: fd:n :}
    fd GE-F-DUPFD GE-FD-SAVE-MIN fcntl dup 0 < if E-PROC-OUTPUT throw then ;
