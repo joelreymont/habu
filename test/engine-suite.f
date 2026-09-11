@@ -747,9 +747,10 @@ variable TG-SMALL-CAP
 \ directly readable: data records are exempt).
 TRUSTED: TG-RESET ( -- ) USIGS-RESET ;
 TRUSTED: TG-USIGS ( -- ptr a ) USIGS ;
-TRUSTED: TG-POW2 ( n -- n ) USIGS-POW2-CAP ;
+TRUSTED: TG-ROUND ( n -- n ) USIGS-ROUND-CAP ;
 TRUSTED: TG-COPY ( ptr u8 ptr u8 n -- ) USIGS-COPY ;
 TRUSTED: TG-RESTORE-END ( n -- ) USIGS-RESTORE-END ;
+TRUSTED: TG-PERSIST ( -- ) USIGS-SNAPSHOT-PERSIST ;
 TRUSTED: TG-TV-RESET ( -- ) TV-SNAP-RESET ;
 TRUSTED: TG-ARENA-RESET ( -- ) DECOUPLED-ARENA-SNAP-RESET ;
 TRUSTED: TG-TVT ( -- ptr a ) TVT ;
@@ -778,6 +779,13 @@ USIGS-P @ = 0 T=
 USIGS-CAP-U @ USIGS-INIT-CAP T=
 UEND @ 0 T=
 TG-USIGS @ 0 T=
+\ the baked store is the smallest grain multiple that holds its content: two
+\ grains of content persist as three grains of cap, never a power of two.
+USIGS-GRAIN 2 * TG-RESTORE-END
+TG-PERSIST
+s" grain-cap persisted store" T-LABEL
+USIGS-CAP-U @ USIGS-GRAIN 3 * T=
+TG-RESET
 UEND @ 128 + USIGS-CAP-U !
 USIGS-CAP-U @ TG-SMALL-CAP !
 TRUSTED: T-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) drop drop drop drop 0 0 ;
@@ -791,15 +799,16 @@ TG-GROW-CAP @ USIGS-GROW-CAP !
 TG-GROW-NEXT @ USIGS-GROW-NEXT !
 TG-UOFF @ USIGS-USER-OFF !
 TG-UEND @ TG-RESTORE-END
-\ snapshot cap policy: smallest power-of-2 grain multiple >= size
-s" pow2-cap floor" T-LABEL
-1 TG-POW2 USIGS-GRAIN T=
-s" pow2-cap exact grain" T-LABEL
-USIGS-GRAIN TG-POW2 USIGS-GRAIN T=
-s" pow2-cap rounds up" T-LABEL
-USIGS-GRAIN 1 + TG-POW2 USIGS-GRAIN 2 * T=
-s" pow2-cap next power" T-LABEL
-USIGS-GRAIN 3 * TG-POW2 USIGS-GRAIN 4 * T=
+\ snapshot cap policy: the smallest grain multiple >= size, and nothing above
+\ it -- a power-of-two cap baked megabytes of zero padding into every image.
+s" grain-cap floor" T-LABEL
+1 TG-ROUND USIGS-GRAIN T=
+s" grain-cap exact grain" T-LABEL
+USIGS-GRAIN TG-ROUND USIGS-GRAIN T=
+s" grain-cap rounds up" T-LABEL
+USIGS-GRAIN 1 + TG-ROUND USIGS-GRAIN 2 * T=
+s" grain-cap no pow2 jump" T-LABEL
+USIGS-GRAIN 3 * TG-ROUND USIGS-GRAIN 3 * T=
 \ cell-wise USIGS-COPY preserves odd-length byte spans (body + tail)
 create TG-CPY-SRC
    $11 c, $22 c, $33 c, $44 c, $55 c, $66 c, $77 c, $88 c,

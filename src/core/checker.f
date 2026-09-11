@@ -3944,16 +3944,11 @@ USIGS-RUNTIME-INIT
    n allot
    dst ;
 
-\ USIGS-POW2-CAP ( n -- n ) : smallest power-of-2 multiple of the grain >= n,
-\ so a restored snapshot has append headroom instead of cap == size.
-: USIGS-POW2-CAP {: need:n :}
-   need USIGS-ROUND-CAP drop                 \ range check only
-   USIGS-GRAIN
-   begin dup need < while 2 * repeat ;
-
+\ Bake the store at the grain above its content. A power-of-two cap shipped up
+\ to 2 MB of zero padding per image; USIGS-GROW still doubles at runtime.
 : USIGS-SNAPSHOT-PERSIST ( -- )
    USIGS-SNAPSHOT-SIZE {: n:n :}
-   n USIGS-POW2-CAP {: cap:n :}
+   n USIGS-ROUND-CAP {: cap:n :}
    cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
    USIGS dst n USIGS-COPY
    dst USIGS-P !
@@ -8573,10 +8568,10 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    0 NORET-GROW-NEXT ! ;
 
 \ The table can outgrow its initial buffer. Persist the complete live prefix
-\ in image DATA, just like stored signatures, and retain geometric headroom.
+\ in image DATA at the grain, just like stored signatures; NORET-GROW doubles.
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORET-END @ CELL + {: n:n :}
-   n USIGS-POW2-CAP {: cap:n :}
+   n USIGS-ROUND-CAP {: cap:n :}
    cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
    NORETS dst n USIGS-COPY
    dst NORET-P !
