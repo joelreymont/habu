@@ -1,6 +1,7 @@
 \ native-quot-scope.f - quotation bodies, locals, and control-flow scope.
 
 require lib/test.f
+require test/checker-assert.f
 require lib/prelude.f
 require lib/string.f
 require lib/errors.f
@@ -126,6 +127,23 @@ public
    {: k:n lim:n :}
    [: dup 3 > if 3 * else 5 * then ;] lim QSC-APPLY  k 7 * + ;
 
+\ EXIT belongs to the quotation, and its return row differs from the parent.
+: QSC-EARLY ( n -- n n )
+   [: dup 3 > if 1+ exit then 2 + ;] catch ;
+
+: QSC-EARLY-CONTINUE ( n -- n )
+   [: dup 3 > if 1+ exit then 2 + ;] execute 100 + ;
+
+: QSC-EARLY-ALL ( n -- n n )
+   [: dup 0 < if negate exit else 2 * exit then ;] catch ;
+
+: QSC-EARLY-TWICE ( n -- n )
+   [: dup 3 > if 1+ exit then 2 + ;] execute
+   [: dup 10 > if 3 * exit then 4 + ;] execute ;
+
+: QSC-EARLY-DO ( n -- n n )
+   [: 4 0 ?do dup 5 > if unloop exit then 2 + loop ;] catch ;
+
 : QSC-THROW ( n -- n n )
    [: dup 3 > if 9 throw else 5 throw then ;] catch ;
 
@@ -188,16 +206,31 @@ public
    [: s" : QSC-B6 ( n n -- n n n ) 2dup > if 1+ then [: dup 3 > if 1+ then ;] catch ;" EV ;]
    0 TTHROWSQ ;
 
-: STILL-REFUSED-CASE ( -- )
+: THROW-BODY-CASE ( -- )
    s" catch runs a quotation whose every path throws" T-LABEL
    7 QSC-FIXTURE:QSC-THROW 9 T= 7 T=
    2 QSC-FIXTURE:QSC-THROW 5 T= 2 T=
    [: s" : QSC-R2 ( n -- n n ) [: dup 3 > if 9 throw else 1+ then ;] catch ;" EV ;]
-   0 TTHROWSQ
+   0 TTHROWSQ ;
 
-   s" exit inside a quotation arm remains an arity refusal" T-LABEL
-   [: s" : QSC-R3 ( n -- n n ) [: dup 3 > if 1+ exit then 2 + ;] catch ;" EV ;]
-   E-NELAB-ARITY TTHROWSQ ;
+: EARLY-RETURN-CASE ( -- )
+   s" quotation exits join their own return row" T-LABEL
+   2 QSC-FIXTURE:QSC-EARLY 0 T= 4 T=
+   7 QSC-FIXTURE:QSC-EARLY 0 T= 8 T=
+   2 QSC-FIXTURE:QSC-EARLY-CONTINUE 104 T=
+   7 QSC-FIXTURE:QSC-EARLY-CONTINUE 108 T=
+   -3 QSC-FIXTURE:QSC-EARLY-ALL 0 T= 3 T=
+   7 QSC-FIXTURE:QSC-EARLY-ALL 0 T= 14 T=
+   2 QSC-FIXTURE:QSC-EARLY-TWICE 8 T=
+   20 QSC-FIXTURE:QSC-EARLY-TWICE 63 T=
+   -5 QSC-FIXTURE:QSC-EARLY-DO 0 T= 3 T=
+   1 QSC-FIXTURE:QSC-EARLY-DO 0 T= 7 T=
+   9 QSC-FIXTURE:QSC-EARLY-DO 0 T= 9 T=
+   s" quotation exits still reject captured locals and incompatible rows" T-LABEL
+   s" BAD-QCAPTURE ( n -- n ) {: x:n :} [: x exit ;] execute"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-QEXIT ( n -- n n ) [: dup 3 > if dup exit then 1+ ;] catch"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ THE CEILING THAT WAS HERE, MEASURED FROM THE OTHER SIDE. A body holding a
 \ control structure used to be refused, and before the elaborator's half of the
@@ -251,7 +284,8 @@ public
 
 : RUN ( -- )
    ENCLOSING-SHAPE-CASE
-   STILL-REFUSED-CASE
+   THROW-BODY-CASE
+   EARLY-RETURN-CASE
    CONTROL-BODY-CASE
    BRANCHING-PRODUCTION-CASE
    TWO-BODY-CASE

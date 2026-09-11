@@ -3153,10 +3153,11 @@ create DN-BUF DN-CAP allot
 : DO-UNLOOP ( -- )
    DO-FRAME drop ;
 
-\ The vector has to hold exactly the values the definition declares it leaves.
+\ EXIT returns from the current function, including a quotation sibling.
 : DO-EXIT ( n -- )
    {: ix:n :}
-   VN @ OUT-N @ <> if E-NELAB-ARITY throw then
+   QCUR @ QOWNER-DEF = if OUT-N @ else QCUR @ QOUT@ then
+   VN @ <> if E-NELAB-ARITY throw then
    EXIT-ORD @ 0 < if E-NELAB-CTRL throw then
    ix EXIT-ORD @ 0 0 0 TERM-BR-H
    PATH-DEAD PATH-END ! ;
@@ -3502,8 +3503,16 @@ variable QNAME-P                     \ the place value the digit loop is on
    PATH-LIVE PATH-END !
    p r lo hi WALK-TRY
    CS-N @ 0<> if E-NELAB-CTRL throw then
-   EXIT-USED @ 0<> if k QAT@ QUOT-REFUSE then
-   PATH-DEAD? 0= if
+   PATH-DEAD? {: dead:bool :}
+   EXIT-USED @ 0<> if
+      dead 0= if
+         VN @ k QOUT@ <> if k QAT@ QUOT-REFUSE then
+         k QHI@ EXIT-ORD @ 0 0 0 TERM-BR-H
+      then
+      NB @ EXIT-ORD @ <> if E-NELAB-CTRL throw then
+      k QHI@ k QOUT@ 0 0 0 OPEN-ARGS-H
+   then
+   dead EXIT-USED @ 0= and 0= if
       c b v key k QEMIT-RETURN
       CLOSE-HELD
    then
