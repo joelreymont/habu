@@ -14,10 +14,10 @@
 \ Refresh casts expose mixed dictionary records, inline/long names, the signature
 \ terminator, and the raw cursors truncated before reload.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: BFR-N>REC ( n -- ptr a ) ;
-TRUSTED: BFR-A>U8 ( ptr a -- ptr u8 ) ;
+TRUSTED: BFR-N>REC ( n -- ptr n ) ;
+TRUSTED: BFR-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
-TRUSTED: BFR-USIG-END-PTR ( -- ptr a ) USIGS UEND @ + ;
+TRUSTED: BFR-USIG-END-PTR ( -- ptr n ) USIGS UEND @ + ;
 TRUSTED: BFR-UEND! ( n -- ) UEND ! ;
 TRUSTED: BFR-NDICT! ( n -- ) ndict! ;
 \ Named refresh-prelude boundary (staged fixpoint source checking,
@@ -31,35 +31,35 @@ TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 : BFR-REC-ADDR ( n -- n )
    DREC * dbase@ + ;
 
-: BFR-REC ( n -- ptr a )
+: BFR-REC ( n -- ptr n )
    BFR-REC-ADDR BFR-N>REC ;
 
-: BFR-CELL@ ( ptr a n -- n )
+: BFR-CELL@ ( ptr n n -- n )
    cells + @ ;
 
-: BFR-PTR@ ( ptr a n -- ptr u8 )
+: BFR-PTR@ ( ptr n n -- ptr u8 )
    BFR-CELL@ BFR-N>U8 ;
 
-: BFR-START ( ptr a -- n )
+: BFR-START ( ptr n -- n )
    BFR-START-SLOT BFR-CELL@ ;
 
-: BFR-FLAGS ( ptr a -- n )
+: BFR-FLAGS ( ptr n -- n )
    BFR-FLAGS-SLOT BFR-CELL@ ;
 
-: BFR-NAME-LEN ( ptr a -- n )
+: BFR-NAME-LEN ( ptr n -- n )
    BFR-FLAGS DNAME-LEN-MASK and ;
 
-: BFR-EXT? ( ptr a -- bool )
+: BFR-EXT? ( ptr n -- bool )
    BFR-FLAGS DNAME-EXT and 0= 0= ;
 
-: BFR-INLINE-NAME ( ptr a -- ptr u8 )
+: BFR-INLINE-NAME ( ptr n -- ptr u8 )
    BFR-INLINE-OFF + BFR-A>U8 ;
 
-: BFR-NAME-A ( ptr a -- ptr u8 )
+: BFR-NAME-A ( ptr n -- ptr u8 )
    dup BFR-EXT? if BFR-NAME-SLOT BFR-PTR@ exit then
    BFR-INLINE-NAME ;
 
-: BFR-NAME$ ( ptr a -- ptr u8 n )
+: BFR-NAME$ ( ptr n -- ptr u8 n )
    dup BFR-NAME-A swap BFR-NAME-LEN ;
 
 : BFR-FOLD-C ( n -- n )
@@ -108,7 +108,7 @@ TRUSTED: BFR-SN! ( ptr u8 -- )
    repeat drop
    0 0= ;
 
-: BFR-MATCH? ( ptr a ptr u8 n -- bool )
+: BFR-MATCH? ( ptr n ptr u8 n -- bool )
    BFR-U ! BFR-A!
    BFR-NAME$ BFR-A@ BFR-U @ BFR-STR=CI ;
 
