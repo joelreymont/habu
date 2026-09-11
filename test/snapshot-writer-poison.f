@@ -1,13 +1,5 @@
-\ snapshot-writer-poison.f - plant return-stack canaries before a snapshot.
-\
-\ Builder-only fixture: the snapshot suite injects this source ahead of the snap
-\ driver (BF-EMIT-SNAP-RUN-SOURCE-WITH), so it loads while the live data region is
-\ still the one SNAP:PERSIST copies. It writes a fixed non-zero canary into the low
-\ high ends of the return-stack window inside the DATA region. SNAP-CANON-DATA's
-\ SND-ZERO-RSTK must zero that whole window in the persisted copy, so the built
-\ image reads back all zeros there. The paired assertion lives in
-\ test/snapshot-writer.f POISON-CASE (RSTK-NONZERO 0 T=): a surviving canary
-\ would prove a stale return-stack frame leaked into the snapshot.
+\ Plant and verify canaries in the live return-stack band before APP-IMAGE:SAVE.
+\ The parent reads the saved DATA bytes and requires the entire band to be zero.
 
 package SNAP-WRITER-POISON
 

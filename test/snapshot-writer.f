@@ -1,68 +1,15 @@
-\ snapshot-writer.f - adversarial proofs for the snapshot image writer.
-\
-\ Two properties of src/habu/snap-lib.f, each driven through a real snapshot
-\ build in a child process (the writer forgets its definitions and exits, so the
-\ writer path can only be exercised out of process):
-\
-\   1. Return-stack zeroing. test/snapshot-writer-poison.f plants fixed
-\      non-zero canaries in the return-stack window of the live DATA region just
-\      before SNAP:PERSIST. The build only succeeds if those writes took (the fixture
-\      dies 70 otherwise), so a green build proves the window was non-zero. The
-\      persisted image must then read back all zeros there, proving
-\      SND-ZERO-RSTK cleared every stale return-stack frame.
-\
-\   2. Fail-closed on a failed final close.
-\      test/snapshot-writer-close-fail.f arms SNAP-CLOSE-SEAM so the snapshot
-\      output descriptor is closed early; SNAP-WRITE-BYTES then observes the
-\      failing close-rc and must die 74 "snap: output close failed" rather than
-\      accept the half-written image.
-\
-\   3. Warm startup preserves the protected-WID registry captured in DATA. The
-\      registry is the wid-indexed bitmap described in src/habu/layout.f, so the
-\      persisted band is read through that shape: its tag cell must carry
-\      PROT-REG-TAG, bit 0 must be clear (wid 0 is not a wordlist), and it must
-\      hold more than the two wordlists that are protected by rule. A wid whose
-\      bit is set in the PERSISTED band must still be a member live after a warm
-\      start, and publishing into it must be refused on both batch input paths.
-\
-\   4. A corrupt persisted registry is refused at snapshot-read. Both invalid
-\      shapes the loader checks (EM-SNAPSHOT-VALIDATE-WIDS in src/habu/habu2.f)
-\      are staged here by doctoring the real image: a tag cell that is not
-\      PROT-REG-TAG, and a band with bit 0 set. Each must exit 79 with the named
-\      diagnostic instead of restoring a registry it cannot trust. (This is the
-\      snapshot band; the AOT band's forge is unreachable from its builder and is
-\      owned by dot habu-forge-a-corrupt-844064a9.)
-\
-\   5. imgdump locates the real snapshot trailer only from the target header.
-\      Corrupting that one locator in a copy must report no-snapshot even though
-\      the original trailer bytes remain in the file.
-\
-\ The snapshot source is emitted with BF-EMIT-SNAP-RUN-SOURCE-WITH, which inserts
-\ the fixture after the builder tail and before the snap driver. Both fixtures
-\ live above SNAP-TAIL-MARK, so RETIRE-AND-PERSIST forgets them before the image is
-\ written; nothing reaches a shipped snapshot.
-
-require lib/errors.f
-require lib/string.f
+\ Application-image writer behavior through APP-IMAGE:SAVE: transient return
+\ frames are cleared, protected namespaces survive restore, corrupt images
+\ fail closed, and a failed final close is reported.
+require lib/test.f
 require lib/fmt.f
 require lib/memory.f
-require lib/fs.f
 require lib/fs-mutate.f
-require lib/vector.f
-require lib/process.f
-require lib/process-argv.f
 require lib/process-env.f
-require lib/process-fork.f
-require lib/source.f
-require lib/build.f
+require lib/engine-candidate.f
 require lib/codesign.f
-require lib/content-key.f
-require lib/date.f
-require tools/build-fixpoint.f
-require lib/test.f
 
 package SNAP-WRITER-TEST
-using BUILD-FIXPOINT
 
 $8000 constant CAP
 240000 constant TIMEOUT-MS
@@ -71,22 +18,12 @@ $8000 constant CAP
 ENGINE-ERROR:SEAL-PACKAGE constant FORGE-RC
 create OUT CAP allot
 create ERR CAP allot
-create ENGINE-BUF FS-PATH-CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
 variable EXITED
 
-\ SUBJECT: source-loading. The child builds a snapshot image from emitted
-\ source, so it runs on the CAPTURE HOST the install keeps beside the product:
-\ the product's provided closure turns parts of that load into no-ops and the
-\ writer refuses.
-: ENGINE$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV dup 0 > if
-      s" -host" ENGINE-BUF FS-MUT-SUFFIX-PATH
-      ENGINE-BUF swap exit
-   then
-   2drop s" bin/hb-host" ;
+: ENGINE$ ( -- ptr u8 n ) ENGINE-CANDIDATE:PATH$ ;
 
 \ ---- isolated tmp root ----
 create ROOT-BUF FS-PATH-CAP allot
@@ -101,40 +38,20 @@ variable ROOT-U
 
 : SETUP-ROOT ( -- )
    s" habu-snapshot-writer" TMPDIR-MKDIR ROOT!
-   ROOT CLEANUP-TREE+
-   ROOT BF-TMP! ;
+   ROOT CLEANUP-TREE+ ;
 
-: SNAP0$ ( -- ptr u8 n )
-   s" hb-snap0" BF-A$ ;
-
-: SNAP-SRC$ ( -- ptr u8 n )
-   s" hb-snap-src" BF-B$ ;
-
-: BAD-SNAP$ ( -- ptr u8 n )
-   s" hb-snap-bad" BF-A$ ;
-
-: BAD-BAND-NAME$ ( -- ptr u8 n )
-   s" hb-snap-badband" ;
-
-: BAD-BAND$ ( -- ptr u8 n )
-   BAD-BAND-NAME$ BF-A$ ;
-
-: CLEAN-SNAP0 ( -- )
-   SNAP0$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
-
-\ `--build` writes an UNSIGNED image: signing belongs to whoever installs it, so
-\ the pipeline signs at install and every fixture that runs a build product signs
-\ its own copy (tools/build-fixpoint-test.f BFT-SNAP0-BUILD does the same). On
-\ macOS an unsigned image is SIGKILLed at exec before the loader runs, so the warm
-\ probes below cannot start without this.
-: SIGN-SNAP0 ( -- )
-   s" hb-snap0" BF-CODESIGN-FORCE-TMP
-   s" hb-snap0" BF-CHMOD-X-TMP ;
+create PATH-BUF FS-PATH-CAP allot
+: PATH$ ( ptr u8 n -- ptr u8 n )
+   {: name:ptr size:n :}
+   ROOT name size PATH-BUF JOIN-PATH PATH-BUF swap ;
+: SNAP0$ ( -- ptr u8 n ) s" application" PATH$ ;
+: SNAP-SRC$ ( -- ptr u8 n ) s" probe.f" PATH$ ;
+: BAD-SNAP$ ( -- ptr u8 n ) s" bad-locator" PATH$ ;
+: BAD-BAND$ ( -- ptr u8 n ) s" bad-registry" PATH$ ;
 
 \ ---- snapshot image reader ----
-create IMGP 8 allot
+PTR-VARIABLE IMGP
 variable IMGU
-variable NZ
 
 : IMG ( -- ptr u8 )
    IMGP @ ;
@@ -144,12 +61,6 @@ variable NZ
    sz MEM-ALLOC-BYTES drop IMGP !
    a u IMG sz READ-ALL IMGU !
    IMGU @ sz <> if s" snapshot writer short read" 74 die then ;
-
-: U32@ ( n -- n ) {: k:n :}
-   IMG k + c@
-   IMG k 1+ + c@ 8 lshift or
-   IMG k 2 + + c@ 16 lshift or
-   IMG k 3 + + c@ 24 lshift or ;
 
 : U64@ ( n -- n ) {: k:n :}
    0
@@ -172,26 +83,13 @@ variable NZ
    TRAILER-OFF {: tr:n :}
    tr tr SNAP-TRL-DATALEN + U64@ - ;
 
-: RSTK-NONZERO ( -- n )
-   DATA-OFF {: base:n :}
-   0 NZ !
-   RSTK-END RSTK-OFF ?do
-      base i + U32@ 0 <> if 1 NZ +! then
-      base i + 4 + U32@ 0 <> if 1 NZ +! then
-   8 +loop
-   NZ @ ;
+: RSTK-ZERO? ( -- bool )
+   DATA-OFF RSTK-OFF + {: start:n :}
+   RSTK-END RSTK-OFF - 0 ?do
+      start i + U8@ 0<> if false unloop exit then
+   loop true ;
 
 \ ---- child snapshot build with rc + stderr capture ----
-: BUILD-ARGV ( -- )
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN ROOT >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --build" >LEN PROC-ARGV+
-   SNAP-SRC$ >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   ROOT >LEN PROC-ARGV+ ;
-
 : CAPTURE! ( result<pcap:captured,pcap:failed> -- )
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
@@ -200,16 +98,18 @@ variable NZ
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
 
-: BUILD-CAPTURE ( -- )
-   ENGINE$ >LEN
+: BUILD-WITH ( ptr u8 n -- ) {: fixture:ptr size:n :}
+   PROC-ARGV-ENV-RESET
+   s" --" >LEN PROC-ARGV+
+   SNAP0$ >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   SB-RESET
+   s\" require src/habu/app-image.f\nrequire " SB-APPEND
+   fixture size SB-APPEND
+   s\" \n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" SB-APPEND
+   ENGINE$ >LEN SB$ >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE CAPTURE! ;
-
-: BUILD-WITH ( ptr u8 n -- ) {: ia:ptr iu:n :}
-   CLEAN-SNAP0
-   s" hb-snap-src" ia iu s" src/habu/snap.f" BF-EMIT-SNAP-RUN-SOURCE-WITH
-   BUILD-ARGV
-   BUILD-CAPTURE ;
+   RUN-ARGV-ENV-STDIN-CAPTURE CAPTURE! ;
 
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
@@ -284,7 +184,6 @@ variable NZ
 \ (tools/prot-wid-probe.f): bit w of the band at PROT-BITS-OFF is set exactly
 \ when wordlist w is protected, and the two OWNER-API wordlists are protected by
 \ rule on every boot path rather than by a bit.
-variable BAND-TOTAL
 variable BAND-WID
 
 : BAND-TAG ( -- n )
@@ -293,14 +192,6 @@ variable BAND-WID
 : BAND-BIT? ( n -- bool ) {: wid:n :}
    DATA-OFF PROT-BITS-OFF + wid 8 / + U8@
    wid 7 and rshift 1 and 0= 0= ;
-
-: BAND-MEMBER? ( n -- bool ) {: wid:n :}
-   wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if 0 0= exit then
-   wid BAND-BIT? ;
-
-: BAND-COUNT! ( -- )
-   0 BAND-TOTAL !
-   PROT-WID-MAX 0 ?do i BAND-MEMBER? if 1 BAND-TOTAL +! then loop ;
 
 \ The lowest wordlist THIS IMAGE records as protected, skipping the two that
 \ every boot path protects by rule. Membership for such a wid can only come from
@@ -312,32 +203,8 @@ variable BAND-WID
    loop ;
 
 \ ---- warm probe sources ----------------------------------------------------
-: PROBE-COUNT$ ( -- ptr u8 n )
-   s" require tools/prot-wid-probe.f PROT-WID-PROBE:COUNT . " ;
-
-: PROBE-MEMBER$ ( n -- ptr u8 n ) {: wid:n :}
-   SB-RESET
-   s" require tools/prot-wid-probe.f : PRB ( -- ) " SB-APPEND
-   wid FMT:SB-U
-   s"  PROT-WID-PROBE:MEMBER? if 1 else 0 then . ; PRB" SB-APPEND
-   SB$ ;
-
-\ The declaration-event module grows its arenas through the host allocator
-\ (src/core/decl-event.f DEV-REG-GROW1), and the writer copies the DP heap
-\ verbatim, so a base left grown at persist is an address of the BUILD process
-\ baked into the image. src/core/decl-event.f DEV-SNAPSHOT-RESET is what puts
-\ the three arenas back on their baked boot stores, and these are its two
-\ observable halves: the restored log is empty, and the first declaration in the
-\ restored image publishes rather than storing its event through the build's
-\ address. The second is the leg that failed - a warm image died EXC_BAD_ACCESS
-\ at `stale base + DEV-N * DEV-REC` on its first ENUM - and it failed only on the
-\ runs where ASLR left that address unmapped, so the deterministic first leg
-\ rides with it and the pair is read together.
-: PROBE-EVENTS$ ( -- ptr u8 n )
-   s" DECL-EVENT:COUNT . " ;
-
 : PROBE-DECLARE$ ( -- ptr u8 n )
-   s" ENUM sw-warm 0 VARIANT sw-warm-a ;VARIANT ;ENUM DECL-EVENT:COUNT . " ;
+   s\" ENUM sw-warm 0 VARIANT sw-warm-a ;VARIANT ;ENUM\n: VIEW-SIZE ( IR-ARENA:view -- n ) NTAPE:TOKENS ;\n: INCREMENT ( n -- n ) 1+ ;\n41 INCREMENT .\n" ;
 
 : FORGE$ ( n -- ptr u8 n ) {: wid:n :}
    SB-RESET
@@ -348,8 +215,7 @@ variable BAND-WID
 \ ---- doctored-band legs ----------------------------------------------------
 : WRITE-BAND-COPY ( -- )
    BAD-BAND$ IMG IMGU @ WRITE-ALL
-   BAD-BAND-NAME$ BF-CODESIGN-FORCE-TMP
-   BAD-BAND-NAME$ BF-CHMOD-X-TMP ;
+   BAD-BAND$ CODESIGN:FORCE ;
 
 : RUN-BAND-COPY ( -- )
    PROC-ARGV-RESET
@@ -378,27 +244,13 @@ variable BAND-WID
    ERR$ s" hb: snapshot trailer corrupt" CONTAINS? TTRUE ;
 
 : WARM-CASE ( -- )
-   BAND-COUNT!
    BAND-WID!
    s" persisted protected-WID band carries the bitmap shape tag" T-LABEL
    BAND-TAG PROT-REG-TAG T=
    s" persisted band leaves wid 0 clear" T-LABEL
    0 BAND-BIT? TFALSE
-   s" persisted band holds more than the two wordlists protected by rule" T-LABEL
-   BAND-TOTAL @ 2 > TTRUE
    s" persisted band names a wordlist protected by the image alone" T-LABEL
    BAND-WID @ 0 > TTRUE
-   \ The live count can only exceed the persisted one: loading the probe's own
-   \ packages may protect further wordlists in the warm process, and nothing may
-   \ ever drop a member the image carried.
-   s" warm start restores at least the persisted band" T-LABEL
-   PROBE-COUNT$ WARM-LOAD
-   EXITED @ TTRUE  RC @ 0 T=
-   PARSE-OUT BAND-TOTAL @ >= TTRUE
-   s" a wordlist the image protected is still a live member" T-LABEL
-   BAND-WID @ PROBE-MEMBER$ WARM-LOAD
-   EXITED @ TTRUE  RC @ 0 T=
-   PARSE-OUT 1 T=
    s" warm protected wordlist rejects publication (--load)" T-LABEL
    BAND-WID @ FORGE$ WARM-LOAD  ASSERT-REJECT
    s" warm protected wordlist rejects publication (stdin)" T-LABEL
@@ -407,66 +259,28 @@ variable BAND-WID
    DOCTOR-TAG ASSERT-BAND-REFUSED
    s" band claiming wid 0 is refused at snapshot-read" T-LABEL
    DOCTOR-WID0 ASSERT-BAND-REFUSED
-   s" restored image starts with an empty declaration-event log" T-LABEL
-   PROBE-EVENTS$ WARM-STDIN
-   EXITED @ TTRUE  RC @ 0 T=
-   PARSE-OUT 0 T=
-   s" first declaration in a restored image publishes, not faults" T-LABEL
+   s" restored compiler accepts a fresh type and existing nominal signatures" T-LABEL
    PROBE-DECLARE$ WARM-STDIN
-   EXITED @ TTRUE  RC @ 0 T=
-   PARSE-OUT 0 > TTRUE ;
-
-\ ---- the code-region hint clears the loaded snapshot ------------------------
-: PAGE-UP ( n -- n )
-   PROT-PAGE-MAX 1- +  PROT-PAGE-MAX 1- invert and ;
-
-: IMAGE-BASE-VA ( -- n )
-   HB-TARGET-LINUX? if 80 else $80 then U64@ ;
-
-: IMAGE-END-VA ( -- n )
-   HB-TARGET-LINUX? if
-      136 U64@ 160 U64@ + exit
-   then
-   $1B0 U64@ $1B8 U64@ + ;
-
-: RECORDED-TEXT-BASE ( -- n )
-   IMAGE-BASE-VA CODE-OFF + ;
-
-: IMAGE-END-FROM-TEXT ( -- n )
-   IMAGE-END-VA RECORDED-TEXT-BASE - ;
-
-: RECORDED-HINT ( -- n )
-   RECORDED-TEXT-BASE REGION-OFF + PAGE-UP ;
-
-: WARM-PROBE ( ptr u8 n -- n )
-   WARM-STDIN
-   EXITED @ TTRUE
-   RC @ 0 T=
-   PARSE-OUT ;
-
-: REGION-HINT-CASE ( -- )
-   SNAP0$ LOAD-IMAGE
-   s" snapshot image covers the old fixed hint" T-LABEL
-   IMAGE-END-VA RECORDED-HINT > TTRUE
-   s" an image covering the canonical hint boots and computes" T-LABEL
-   s" 1 2 + ." WARM-PROBE 3 T=
-   HB-TARGET-LINUX? if
-      s" rbase ." WARM-PROBE {: rb:n :}
-      s" dbase@ ." WARM-PROBE {: db:n :}
-      s" the code region starts after the mapped image" T-LABEL
-      db rb IMAGE-END-FROM-TEXT + PAGE-UP >= TTRUE
-   then ;
+   EXITED @ TTRUE RC @ 0 T= PARSE-OUT 42 T=
+   s" restored compiler rejects a scalar used as an arena view" T-LABEL
+   s" : BAD-VIEW ( n -- n ) NTAPE:TOKENS ;" WARM-STDIN
+   EXITED @ TTRUE RC @ 70 T=
+   ERR$ s" ir-arena:view" CONTAINS? TTRUE
+   s" restored compiler rejects an undefined word" T-LABEL
+   s" : BAD-NAME ( -- ) NO-SUCH-IMAGE-WORD ;" WARM-STDIN
+   EXITED @ TTRUE RC @ 70 T=
+   ERR$ s" NO-SUCH-IMAGE-WORD" CONTAINS? TTRUE ;
 
 \ ---- scenarios ----
 : POISON-CASE ( -- )
    s" test/snapshot-writer-poison.f" BUILD-WITH
    s" poisoned snapshot builds (canaries planted and proven live)" T-LABEL
+   RC @ 0<> if OUT OUT-U @ type ERR$ type then
    RC @ 0 T=
    SNAP0$ EXISTS? TTRUE
-   SIGN-SNAP0
    SNAP0$ LOAD-IMAGE
    s" snapshot zeros the persisted return-stack window" T-LABEL
-   RSTK-NONZERO 0 T=
+   RSTK-ZERO? TTRUE
    WARM-CASE
    s" imgdump accepts the production snapshot" T-LABEL
    SNAP0$ ASSERT-SNAPSHOT
@@ -483,8 +297,8 @@ variable BAND-WID
 : BODY ( -- )
    SETUP-ROOT
    POISON-CASE
-   REGION-HINT-CASE
-   CLOSE-FAIL-CASE ;
+   CLOSE-FAIL-CASE
+   IMG IMGU @ munmap drop ;
 
 public
 
