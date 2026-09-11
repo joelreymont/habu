@@ -37,6 +37,7 @@ require lib/memory.f
 require src/compiler/digest.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
+require lib/image-lifecycle.f
 
 package IR-CTX
 public
@@ -101,6 +102,9 @@ create HANDLES DEPTH-MAX cells allot
    DEPTH-MAX 0 ?do 0 HANDLES i cells + ! loop ;
 HANDLES-CLEAR
 create BASES DEPTH-MAX cells allot
+create ENTERED DEPTH-MAX cells allot   \ scope depth -> the slot that scope took
+variable ENTERED-N
+0 ENTERED-N !
 create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
 : HANDLE! ( n n -- )
@@ -375,29 +379,68 @@ private
    STAGE>HDR ;
 
 \ ---- leaving, on both paths ---------------------------------------------------
+\ Retire ONE named slot: announce its dying serial to the child registries, free
+\ the chunks it added, and clear its row. The slot is the one its owner took and
+\ never "the deepest one" - a row taken outside a scope is retired by whoever
+\ took it, so the deepest row is not always the row the leaving scope owns.
+\
+\ DEPTH IS THE TOP OF THE SLOT STACK, so it falls back to this slot only when
+\ this slot IS the top. A row retired below the top leaves its slot spent rather
+\ than handing it out again, because rows above it are still live and name the
+\ storage they were given: dropping DEPTH past them would call a live row free.
 : CTX-RETIRE ( n -- ) {: at:n :}
    at cells HANDLES + @ RETIRE-CHILDREN
    at BASE-FIELD @ {: base:ptr :}
    base CHUNK-FIELD @ base HDR-BYTES + CHUNKS-FREE {: rc:n :}
    0 at HANDLE!
-   at DEPTH !
+   at DEPTH @ 1- = if at DEPTH ! then
    rc 0<> if rc throw then ;
 
+\ ---- which slot a scope took --------------------------------------------------
+\ A cleanup quotation cannot read its word's locals, so a scope that must give
+\ back the slot it took records it here and the cleanup reads it back. The stack
+\ is the SCOPES', not the registry's: `finally` nests them strictly, while the
+\ registry also holds the session's row, which no scope will ever leave.
+\
+\ Both bounds are rechecks and not checks. DEPTH-ROOM refuses an entry past the
+\ registry before a slot is taken, so this stack is never deeper than that one;
+\ and a cleanup runs only for an entry that pushed. They are here so a violation
+\ of either is a named refusal rather than a write outside the array.
+: ENTERED-PUSH ( n -- )
+   ENTERED-N @ dup DEPTH-MAX >= if E-IR-CTX-DEPTH throw then
+   {: at:n k:n :}
+   at k cells ENTERED + !
+   k 1+ ENTERED-N ! ;
+
+: ENTERED-POP ( -- n )
+   ENTERED-N @ 1- {: k:n :}
+   k 0 < if E-IR-CTX-STATE throw then
+   k ENTERED-N !
+   k cells ENTERED + @ ;
+
 : CE-CLEANUP ( -- )
-   DEPTH @ 1- CTX-RETIRE ;
+   ENTERED-POP CTX-RETIRE ;
 
 
-\ The WITH-BYTES body: build the context in the fresh mapping, run the caller's
-\ quotation with the minted handle, then retire this slot and every deeper one
-\ before the mapping is released.
-: CTX-ENTER ( R [ R IR-CTX:ctx -- S ] n ptr u8 CAD-NUM:alloc-byte-len -- S )
-   drop
+\ Install one context into the registry over an ALREADY MAPPED span and answer
+\ its handle and the slot it took. Entering a context is this and nothing else;
+\ the two callers differ only in who owns the mapping and when it goes back, so
+\ this is the one place that takes a registry slot and CTX-RETIRE is the one
+\ place that gives it up - and each caller retires the slot it was handed here.
+: CTX-TAKE ( n ptr u8 -- IR-CTX:ctx n )
    DEPTH-ROOM
    DEPTH @ TAKE-GEN {: at:n g:n :}
    at CTX-INSTALL
    g at PACK-HANDLE at HANDLE!
    at 1+ DEPTH !
-   g at PACK-HANDLE MINT-CTX swap [: CE-CLEANUP ;] finally ;
+   g at PACK-HANDLE MINT-CTX at ;
+
+\ The WITH-BYTES body: build the context in the fresh mapping, run the caller's
+\ quotation with the minted handle, then retire the slot this entry took before
+\ the mapping is released.
+: CTX-ENTER ( R [ R IR-CTX:ctx -- S ] n ptr u8 CAD-NUM:alloc-byte-len -- S )
+   drop
+   CTX-TAKE ENTERED-PUSH swap [: CE-CLEANUP ;] finally ;
 
 public
 
@@ -537,6 +580,150 @@ public
    DEPTH-MAX 0 ?do
       NULL-PTR i BASE-FIELD !
    loop ;
+
+\ ---- the compilation session -------------------------------------------------
+\ A context is scoped because a compilation is: WITH-CONTEXT maps one, runs the
+\ work, and gives it back. One SOURCE LOAD is not that shape. Everything a
+\ definition builds - its modules, its tape, its builders - dies when the
+\ definition ends, while the things a load builds once and every definition
+\ only reads - the dialect's interned opcode identities, the source-word model,
+\ the interner those spellings live in - have to outlive each definition and
+\ die with the load. A scoped context cannot hold the second kind, so the
+\ load-lived half was rebuilt for all 3,079 definitions.
+\
+\ A SESSION IS AN UNSCOPED CONTEXT. SESSION-OPEN takes the mapping with the
+\ unscoped MEM:ALLOC-BYTES and installs it through the same CTX-TAKE that
+\ WITH-CONTEXT uses; SESSION-CLOSE runs the same CTX-RETIRE over the slot
+\ CTX-TAKE answered and gives the mapping back with MEM:RELEASE-BYTES. Mapping
+\ and teardown keep one implementation each, with WITH-CONTEXT and this pair as
+\ their two callers, and each of the two retires the slot it was handed.
+\
+\ A DEFINITION IS AN ORDINARY WITH-CONTEXT NESTED IN THE SESSION, not a
+\ watermark inside it. A definition's builders live in a process-wide registry
+\ whose rows are freed only when their owning context tears down, so the thing
+\ that ends a definition has to be a context teardown: a mark inside one
+\ context cannot reach them. The child costs one mapping per definition and
+\ gives back everything the definition took, on the ordinary path and on a
+\ throw alike.
+\
+\ WHAT LIVES IN THE SESSION is whatever its owner builds in the session context
+\ before the first definition and only reads afterwards. A module minted there
+\ carries the session's serial, so the owner check every child performs against
+\ it holds for the whole load, and the storage behind it stays live because the
+\ session context stays live.
+\
+\ THE SESSION LIVES UNTIL CAPTURE OR PROCESS EXIT. There is no load-end hook
+\ and none is needed: each definition's own context is what bounds the memory,
+\ so an idle session costs one header mapping and whatever its owner built once.
+\
+\ A SECOND SESSION IS REFUSED, so is a session opened while ANY context is
+\ already open - a session that a scope encloses would die with that scope while
+\ still answering as live - and so is a close taken while a context is open
+\ inside the session; all three are E-IR-CTX-STATE.
+private
+
+1 TYPED-BUFFER SESSION-CTX IR-CTX:ctx
+PTR-VARIABLE SESSION-BASE
+variable SESSION-SLOT
+
+: SESSION-FORGET ( -- )
+   NULL-PTR SESSION-BASE !
+   -1 SESSION-SLOT ! ;
+SESSION-FORGET
+
+: SESSION-CK ( -- )
+   SESSION-SLOT @ 0 < if E-IR-CTX-STATE throw then ;
+
+\ The slot is recorded from what CTX-TAKE answers, not from DEPTH read a second
+\ time: the row the session gives back is the row it took.
+: SESSION-INSTALL ( -- )
+   SERIAL-CEILING SESSION-BASE @ CTX-TAKE SESSION-SLOT !
+   0 SESSION-CTX ! ;
+
+: SESSION-UNMAP ( -- )
+   SESSION-BASE @ CTX-ALLOC-LEN MEM:RELEASE-BYTES
+   SESSION-FORGET ;
+
+: SESSION-RETIRE ( -- )
+   SESSION-SLOT @ CTX-RETIRE ;
+
+\ A session outlives every scope, so it is the BOTTOM row of the registry or it
+\ is nothing: one opened inside a scope would be a row that scope encloses and
+\ outlives at the same time, and the close that the scope's exit is not would
+\ never come.
+: REGISTRY-EMPTY-CK ( -- )
+   DEPTH @ 0<> if E-IR-CTX-STATE throw then ;
+
+\ The session must be the deepest context there is when it goes, because a
+\ context open inside it is reading what the session holds - its interner, its
+\ modules, whatever its owner built there - and the storage behind those dies
+\ with this row. A definition's context is deeper, so this is how a close taken
+\ inside a definition is refused.
+: SESSION-DEEPEST-CK ( -- )
+   DEPTH @ 1- SESSION-SLOT @ <> if E-IR-CTX-STATE throw then ;
+
+public
+
+: SESSION-LIVE? ( -- bool )
+   SESSION-SLOT @ 0 < 0= ;
+
+\ Give the load's context back: the row this session took, and then its mapping.
+\ The mapping is released whatever the teardown did, so a throw from the
+\ retirement cannot strand it.
+: SESSION-CLOSE ( -- )
+   SESSION-CK
+   SESSION-DEEPEST-CK
+   [: SESSION-RETIRE ;] catch {: rc:n :}
+   SESSION-UNMAP
+   rc 0<> if rc throw then ;
+
+private
+
+variable HOOKED
+0 HOOKED !
+
+\ No session survives into a captured image: this runs before the capture
+\ machinery asks IR-CTX to clear its registry, so an idle session is closed in
+\ time for that check to pass, and a capture taken while a definition's context
+\ is open is refused here first, by the session's own name. The flag is cleared
+\ only when the close succeeded, because a callback that throws stays
+\ registered for the retry.
+: SESSION-AT-CAPTURE ( -- )
+   SESSION-LIVE? if SESSION-CLOSE then
+   0 HOOKED ! ;
+
+\ Registered when a session is TAKEN and not when this file is loaded, the way
+\ every other owner of process-local state registers its cleanup. A captured
+\ image carries this flag but not the registry - PREPARE removes every callback
+\ it runs - so a load-time registration would never happen again in an engine
+\ built from an image, and the first capture after the first tier-1 definition
+\ would find a live context and refuse.
+: HOOK-CAPTURE ( -- )
+   HOOKED @ 0<> if exit then
+   1 HOOKED !
+   [: SESSION-AT-CAPTURE ;] IMAGE-LIFECYCLE:REGISTER ;
+
+public
+
+\ Open the load's context. The binding is revalidated and staged exactly as
+\ WITH-CONTEXT-BOUND does, and the ceiling is the production one: a session is
+\ the production spelling and has no test-only narrowing.
+\
+\ THE REGISTRY MUST BE EMPTY, which REGISTRY-EMPTY-CK states. A definition
+\ compiled inside a caller's own context - which is how the first tier-1
+\ definition of a load reaches here - is therefore refused by name rather than
+\ served a session that dies with the caller's scope.
+: SESSION-OPEN ( CBIND:binding -- IR-CTX:ctx )
+   SESSION-LIVE? if E-IR-CTX-STATE throw then
+   REGISTRY-EMPTY-CK
+   SERIAL-CEILING CEIL-OK
+   DEPTH-ROOM
+   HOOK-CAPTURE
+   CBIND:VALIDATE STAGE-BINDING
+   CTX-ALLOC-LEN MEM:ALLOC-BYTES drop SESSION-BASE !
+   [: SESSION-INSTALL ;] catch {: rc:n :}
+   rc 0<> if SESSION-UNMAP rc throw then
+   0 SESSION-CTX @ ;
 
 private
 get-current prot-wid-add

@@ -11,7 +11,9 @@
 require lib/test.f
 require lib/memory.f
 require test/checker-assert.f
+require lib/image-lifecycle.f
 require src/compiler/ir/context.f
+require src/compiler/ir/arena.f
 
 package IR-CTX-TEST
 private
@@ -480,10 +482,154 @@ variable ABANDONED
    CTARGET-ARCH:THUMB2 CTARGET-ABI:AAPCS32 EMBED-CASE
    CTARGET-ARCH:C66X CTARGET-ABI:C6000-EABI EMBED-CASE ;
 
+\ ---- a session and the definitions inside it ---------------------------------
+\ A session is an unscoped context that outlives each definition, and a
+\ definition is an ordinary child context nested inside it: everything the
+\ definition takes goes back when it ends, on the ordinary path and on a throw,
+\ while everything the session took before its first definition stays readable
+\ for the whole load.
+1 TYPED-BUFFER SESS-CTX IR-CTX:ctx
+1 TYPED-BUFFER SESS-KEEP IR-ARENA:arena
+1 TYPED-BUFFER SESS-INNER IR-ARENA:arena
+variable SESS-USED
+
+: SESS-C ( -- IR-CTX:ctx ) 0 SESS-CTX @ ;
+
+: CTX-TAKE-ARENA ( IR-CTX:ctx n -- IR-ARENA:arena )
+   {: c:IR-CTX:ctx v:n :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a v IR-ARENA:PUSH drop
+   a ;
+
+: DEF-TAKE ( IR-CTX:ctx -- )
+   33 CTX-TAKE-ARENA 0 SESS-INNER ! ;
+
+: SESS-STEP ( -- )
+   BND [: DEF-TAKE ;] IR-CTX:WITH-CONTEXT ;
+
+: SESS-READ-INNER ( -- ) 0 SESS-INNER @ 0 IR-ARENA:READ drop ;
+: SESS-READ-KEEP ( -- n ) 0 SESS-KEEP @ 0 IR-ARENA:READ ;
+
+: DEF-THROWER ( IR-CTX:ctx -- )
+   DEF-TAKE
+   E-IR-CTX-STATE throw ;
+
+: SESS-THROW-STEP ( -- )
+   BND [: DEF-THROWER ;] IR-CTX:WITH-CONTEXT ;
+
+: SESS-CLOSE-NOW ( -- ) IR-CTX:SESSION-CLOSE ;
+: DEF-CLOSER ( IR-CTX:ctx -- ) drop SESS-CLOSE-NOW ;
+: SESS-CLOSE-STEP ( -- )
+   BND [: DEF-CLOSER ;] IR-CTX:WITH-CONTEXT ;
+
+: SESS-REOPEN ( -- ) BND IR-CTX:SESSION-OPEN drop ;
+
+\ ---- a session belongs at the bottom of the registry -------------------------
+\ A session outlives every scope, so it is the bottom row of the registry or it
+\ is nothing. Opening one INSIDE a scope is what the first tier-1 definition of
+\ a load asks for when its caller already holds a context of its own, and being
+\ served it was the bug: the session took the row above the caller's, the
+\ caller's own exit then retired the DEEPEST row - the session's - and what was
+\ left was the caller's row live over a mapping that had been released (reading
+\ an arena of it died of SIGSEGV), a session answering live with its context
+\ retired, and E-IR-CTX-STATE from the next definition and from the next capture
+\ ever after.
+\
+\ It is refused by name instead, and the scope that was refused keeps its OWN
+\ row: what it took still reads inside it, and goes stale when IT exits, because
+\ its exit retires the slot it took rather than whichever row is deepest.
+1 TYPED-BUFFER INSIDE-KEEP IR-ARENA:arena
+
+: OPEN-INSIDE ( -- ) BND IR-CTX:SESSION-OPEN drop ;
+
+: READ-INSIDE ( -- n ) 0 INSIDE-KEEP @ 0 IR-ARENA:READ ;
+
+: INSIDE-BODY ( IR-CTX:ctx -- )
+   55 CTX-TAKE-ARENA 0 INSIDE-KEEP !
+   s" a session opened inside a context is refused" T-LABEL
+   [: OPEN-INSIDE ;] E-IR-CTX-STATE TTHROWSQ
+   s" and no session stands afterwards" T-LABEL
+   IR-CTX:SESSION-LIVE? TFALSE
+   s" while the refused scope still reads what it took" T-LABEL
+   READ-INSIDE 55 T= ;
+
+: INSIDE-CASES ( -- )
+   BND [: INSIDE-BODY ;] IR-CTX:WITH-CONTEXT
+   s" and its exit retires the slot IT took, so that arena is stale" T-LABEL
+   [: READ-INSIDE drop ;] E-IR-ARENA-STALE TTHROWSQ ;
+
+: SESSION-CASES ( -- )
+   s" no session is open before one is" T-LABEL
+   IR-CTX:SESSION-LIVE? TFALSE
+
+   BND IR-CTX:SESSION-OPEN 0 SESS-CTX !
+   s" the session is live once opened" T-LABEL
+   IR-CTX:SESSION-LIVE? TTRUE
+
+   s" a second session is refused while one is open" T-LABEL
+   [: SESS-REOPEN ;] E-IR-CTX-STATE TTHROWSQ
+
+   SESS-C 99 CTX-TAKE-ARENA 0 SESS-KEEP !
+   SESS-C IR-CTX:SCRATCH-USED SESS-USED !
+
+   s" closing the session inside a definition is refused" T-LABEL
+   [: SESS-CLOSE-STEP ;] E-IR-CTX-STATE TTHROWSQ
+   IR-CTX:SESSION-LIVE? TTRUE
+
+   s" an arena taken inside a definition is stale after it" T-LABEL
+   SESS-STEP
+   [: SESS-READ-INNER ;] E-IR-ARENA-STALE TTHROWSQ
+
+   s" a definition that throws leaves nothing behind either" T-LABEL
+   [: SESS-THROW-STEP ;] E-IR-CTX-STATE TTHROWSQ
+   [: SESS-READ-INNER ;] E-IR-ARENA-STALE TTHROWSQ
+   SESS-C IR-CTX:SCRATCH-USED SESS-USED @ T=
+
+   s" ten definitions leave the session's scratch where it started" T-LABEL
+   10 0 ?do SESS-STEP loop
+   SESS-C IR-CTX:SCRATCH-USED SESS-USED @ T=
+
+   s" what the session took before its first definition still reads" T-LABEL
+   SESS-READ-KEEP 99 T=
+
+   IR-CTX:SESSION-CLOSE
+   s" the session is gone once closed" T-LABEL
+   IR-CTX:SESSION-LIVE? TFALSE
+   s" closing a session that is not open is refused" T-LABEL
+   [: SESS-CLOSE-NOW ;] E-IR-CTX-STATE TTHROWSQ
+   s" what the session held is stale once it is closed" T-LABEL
+   [: SESS-READ-KEEP drop ;] E-IR-ARENA-STALE TTHROWSQ
+
+   INSIDE-CASES ;
+
+\ ---- a capture takes the session with it -------------------------------------
+\ The registry must be empty before an image is captured, and a session is a
+\ registry row that no scope will ever leave. It is given back by an image
+\ lifecycle callback the session itself registers when it is taken, so a
+\ capture closes an idle session and refuses one with a definition running.
+: DEF-PREPARE ( IR-CTX:ctx -- ) drop IMAGE-LIFECYCLE:PREPARE ;
+
+: SESS-PREPARE-INSIDE ( -- )
+   BND [: DEF-PREPARE ;] IR-CTX:WITH-CONTEXT ;
+
+: CAPTURE-CASES ( -- )
+   s" a capture closes an idle session" T-LABEL
+   BND IR-CTX:SESSION-OPEN drop
+   IMAGE-LIFECYCLE:PREPARE
+   IR-CTX:SESSION-LIVE? TFALSE
+
+   s" a capture taken inside a definition is refused" T-LABEL
+   BND IR-CTX:SESSION-OPEN drop
+   [: SESS-PREPARE-INSIDE ;] E-IR-CTX-STATE TTHROWSQ
+   s" and leaves the session standing" T-LABEL
+   IR-CTX:SESSION-LIVE? TTRUE
+   IR-CTX:SESSION-CLOSE ;
 public
 
 : RUN ( -- )
    T-RESET
+   SESSION-CASES
+   CAPTURE-CASES
    EMBEDDED
    DEEP-INSTALL
    BND [: CASES-BODY ;] IR-CTX:WITH-CONTEXT
