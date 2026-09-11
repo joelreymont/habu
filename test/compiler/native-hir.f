@@ -18,6 +18,7 @@
 require lib/test.f
 require test/checker-assert.f
 require src/compiler/native/hir-word.f
+require src/compiler/native/feed.f
 
 package HIR-TEST
 private
@@ -2320,10 +2321,56 @@ variable MEMO-IDX
    BND [: LAZY-BODY ;] IR-CTX:WITH-CONTEXT
    [: LAZY-FOREIGN ;] E-HIR-DIALECT TTHROWSQ ;
 
+\ ---- filtered registration interns nothing for an unused word ---------------
+\ REGISTER-TAPE-WORDS models only the words the body wrote, and a word the body
+\ never wrote must cost this module NOTHING: no row, and no SYMBOL either. The
+\ declarers used to intern all 86 spellings and reject them afterwards, so a
+\ five-token body carried 86 symbols it could never reach - and every later
+\ intern, including every dialect opcode, scanned past all of them.
+\
+\ Both counts come off the SAME builder, so their difference is exactly what
+\ registration interned. The body's names are already their own fold, so the
+\ tape-name folding this registration does first interns nothing either, and
+\ the expected difference is zero rather than "small".
+256 constant FW-CAP
+create FW-TXT FW-CAP allot
+
+: FW-SRC$ ( -- ptr u8 n ) s" zh-grid ( n -- n ) dup * 3 +" ;
+
+: FW-BLD ( IR-CTX:ctx -- IR-BUILD:builder )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c s" habu" 1 0 IR-BUILD:NEW-BUILDER ;
+
+: FW-BODY ( IR-CTX:ctx -- n n bool bool )
+   {: c:IR-CTX:ctx :}
+   c FW-BLD {: b:IR-BUILD:builder :}
+   c b IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   c b tp FW-TXT FW-CAP NFEED:BEGIN-UNIT
+   FW-SRC$ CHECK! drop
+   NFEED:END-UNIT {: v:IR-ARENA:view recorded:n :}
+   b IR-BUILD:SYMBOLS {: before:n :}
+   c b HIR-WORD:WORDS HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r v HIR-WORD:REGISTER-TAPE-WORDS
+   before
+   b IR-BUILD:SYMBOLS
+   r  c b s" dup" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS?
+   r  c b s" xor" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS? ;
+
+: FW-CASE ( -- )
+   s" filtered registration interns no symbol for a word the body never wrote" T-LABEL
+   BND [: FW-BODY ;] IR-CTX:WITH-CONTEXT
+   {: before:n after:n used:bool unused:bool :}
+   unused TFALSE
+   used TTRUE
+   after before T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   FW-CASE
    MEMO-CASE
    LAZY-CASE
    OPCODE-ORDINAL-CASE

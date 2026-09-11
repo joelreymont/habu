@@ -332,7 +332,114 @@ variable SYMBOL-LIMIT
 : SELECTED-SYMBOL? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
    SYMBOL-LIMIT @ 0 < if true exit then
-   c b id KEY-SYM IR-ID:SYMBOL-LOCAL SYMBOL-LIMIT @ < ;
+   id IR-ID:SYMBOL-LOCAL SYMBOL-LIMIT @ < ;
+
+\ ---- the spellings this module already holds ---------------------------------
+\ A declarer's spelling is modeled only if this module's interner has ALREADY
+\ answered for it: the filtered registration folds every name the body wrote
+\ into the interner before the walk, so "already interned" is exactly "the body
+\ wrote it". The walk used to establish that by INTERNING all 86 spellings and
+\ rejecting the ones whose ordinal landed at or above the pre-walk count, which
+\ left 84 symbols in a five-token module that nothing could ever reach - and
+\ every later intern, every dialect opcode among them, scanned past them.
+\
+\ This index answers the same question by reading instead of writing. It is
+\ built once per registration from the symbols the module already has; a slot
+\ holds one ordinal, IX-EMPTY, or IX-AMBIGUOUS when two spellings hash
+\ together. A probe that lands on an ordinal is confirmed with SYMBOL-IS?,
+\ which is the substrate's own non-interning identity check, so a hash
+\ coincidence answers absent rather than wrong; a probe that lands on
+\ IX-AMBIGUOUS falls back to the scan the index exists to avoid, which is why
+\ that scan is still here and still correct on its own. Only a spelling no
+\ longer than IX-CAP can be a declarer's, so a longer symbol is never indexed
+\ and is never asked about.
+512 constant IX-SLOTS
+IX-SLOTS 1- constant IX-MASK
+16 constant IX-CAP                   \ `construct`, the longest modeled spelling, is nine
+0 constant IX-EMPTY
+-1 constant IX-AMBIGUOUS
+-1 constant IX-ABSENT
+
+create IX-SLOT IX-SLOTS cells allot
+create IX-BUF IX-CAP allot
+variable IX-H
+
+: IX-HASH ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u 17 * IX-H !
+   u 0 ?do
+      IX-H @ 31 *  a i + c@ +  $3FFFFFF and  IX-H !
+   loop
+   IX-H @ IX-MASK and ;
+
+: IX-SLOT@ ( n -- n ) cells IX-SLOT + @ ;
+: IX-SLOT! ( n n -- ) cells IX-SLOT + ! ;
+
+: IX-CLEAR ( -- )
+   IX-SLOTS 0 ?do IX-EMPTY i IX-SLOT! loop ;
+
+\ An ordinal is stored one higher, so IX-EMPTY stays distinguishable from the
+\ module's first symbol.
+: IX-PUT ( n n -- )
+   {: h:n ord:n :}
+   h IX-SLOT@ {: cur:n :}
+   cur IX-EMPTY = if ord 1+ h IX-SLOT! exit then
+   cur IX-AMBIGUOUS = if exit then
+   IX-AMBIGUOUS h IX-SLOT! ;
+
+: IX-ORD-SYM ( IR-BUILD:builder n -- IR-ID:ir-symbol-id )
+   {: b:IR-BUILD:builder ord:n :}
+   b IR-BUILD:MODULE-KEY ord IR-ID:PACK-SYMBOL ;
+
+: IX-ADD ( IR-CTX:ctx IR-BUILD:builder n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder ord:n :}
+   b ord IX-ORD-SYM {: id:IR-ID:ir-symbol-id :}
+   c b id IR-BUILD:SYMBOL-LEN {: u:n :}
+   u IX-CAP > if exit then
+   c b id IX-BUF IX-CAP IR-BUILD:SYMBOL-COPY drop
+   IX-BUF u IX-HASH ord IX-PUT ;
+
+: IX-BUILD ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   IX-CLEAR
+   SYMBOL-LIMIT @ 0 ?do c b i IX-ADD loop ;
+
+: IX-SCAN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
+   SYMBOL-LIMIT @ 0 ?do
+      c b  b i IX-ORD-SYM  a u IR-BUILD:SYMBOL-IS? if i unloop exit then
+   loop
+   IX-ABSENT ;
+
+: IX-FIND ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
+   u IX-CAP > if IX-ABSENT exit then
+   a u IX-HASH IX-SLOT@ {: cur:n :}
+   cur IX-EMPTY = if IX-ABSENT exit then
+   cur IX-AMBIGUOUS = if c b a u IX-SCAN exit then
+   cur 1- {: ord:n :}
+   c b  b ord IX-ORD-SYM  a u IR-BUILD:SYMBOL-IS? if ord else IX-ABSENT then ;
+
+\ The declarer's own spelling as its own fold, which is the form every row is
+\ keyed by and the form the tape's names were interned under.
+: FOLD$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   a u FOLDED? if a u exit then
+   a u FOLD-INTO KEY-BUF u ;
+
+\ The identity a declarer's spelling has in THIS module. The filtered
+\ registration reads and never writes: a spelling the module does not already
+\ hold answers the ordinal SELECTED-SYMBOL? rejects, so the declarer writes no
+\ row and the module gains no symbol. The unfiltered registration still
+\ interns, because REGISTER-WORDS declares the complete vocabulary into a
+\ module that has no body to have written anything.
+: MODEL-SYM ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
+   SYMBOL-LIMIT @ 0 < if c b a u IR-BUILD:INTERN-SYMBOL exit then
+   a u FOLD$ {: p:ptr pu:n :}
+   c b p pu IX-FIND {: ord:n :}
+   ord IX-ABSENT = if b SYMBOL-LIMIT @ IX-ORD-SYM exit then
+   b ord IX-ORD-SYM ;
 
 \ This door states its key rather than computing it: reading a spelling back
 \ needs the byte pool and this is handed only the rows. A row written here under
@@ -967,80 +1074,80 @@ private
 \ The four arithmetic words this dialect has operations for.
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD BDECLARE-OP
-   c b r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB BDECLARE-OP
-   c b r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL BDECLARE-OP
-   c b r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:DIV BDECLARE-OP ;
+   c b r c b s" +" MODEL-SYM HIR-OPCODE:ADD BDECLARE-OP
+   c b r c b s" -" MODEL-SYM HIR-OPCODE:SUB BDECLARE-OP
+   c b r c b s" *" MODEL-SYM HIR-OPCODE:MUL BDECLARE-OP
+   c b r c b s" /" MODEL-SYM HIR-OPCODE:DIV BDECLARE-OP ;
 
 \ The six comparisons, each bound to the opcode that names its own relation.
 \ A row says which opcode a word means and nothing else, so a relation the
 \ dialect has no opcode for could not be written down here at all.
 : DEF-COMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LT BDECLARE-OP
-   c b r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LE BDECLARE-OP
-   c b r c b s" >" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:GT BDECLARE-OP
-   c b r c b s" >=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:GE BDECLARE-OP
-   c b r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:EQUAL BDECLARE-OP
-   c b r c b s" <>" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:NE BDECLARE-OP ;
+   c b r c b s" <" MODEL-SYM HIR-OPCODE:LT BDECLARE-OP
+   c b r c b s" <=" MODEL-SYM HIR-OPCODE:LE BDECLARE-OP
+   c b r c b s" >" MODEL-SYM HIR-OPCODE:GT BDECLARE-OP
+   c b r c b s" >=" MODEL-SYM HIR-OPCODE:GE BDECLARE-OP
+   c b r c b s" =" MODEL-SYM HIR-OPCODE:EQUAL BDECLARE-OP
+   c b r c b s" <>" MODEL-SYM HIR-OPCODE:NE BDECLARE-OP ;
 
 \ `lshift` and `rshift` take a count the program computed, so they are two
 \ operand words here and not a value and a field.
 \ The bitwise words. `and`, `or` and `xor` combine two values bit for bit;
 : DEF-BITWISE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" and" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:AND BDECLARE-OP
-   c b r c b s" or" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:OR BDECLARE-OP
-   c b r c b s" xor" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:XOR BDECLARE-OP
-   c b r c b s" lshift" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LSHIFT BDECLARE-OP
-   c b r c b s" rshift" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:RSHIFT BDECLARE-OP
-   c b r c b s" invert" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:INVERT BDECLARE-OP ;
+   c b r c b s" and" MODEL-SYM HIR-OPCODE:AND BDECLARE-OP
+   c b r c b s" or" MODEL-SYM HIR-OPCODE:OR BDECLARE-OP
+   c b r c b s" xor" MODEL-SYM HIR-OPCODE:XOR BDECLARE-OP
+   c b r c b s" lshift" MODEL-SYM HIR-OPCODE:LSHIFT BDECLARE-OP
+   c b r c b s" rshift" MODEL-SYM HIR-OPCODE:RSHIFT BDECLARE-OP
+   c b r c b s" invert" MODEL-SYM HIR-OPCODE:INVERT BDECLARE-OP ;
 
 \ `0=` is `0` then `=`, which answers false for EVERY nonzero value; `cells` is
 \ `8` then `*`, the same function on every bit pattern as the engine's shift.
 \ `1-` ( n -- n ) and `1+` ( n -- n ): subtract or add one. Each is one token of
 : DEF-STEP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" 1-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
-   c b r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD 1 BDECLARE-CONST-OP
-   c b r c b s" 0=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:EQUAL 0 BDECLARE-CONST-OP
-   c b r c b s" cells" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL 8 BDECLARE-CONST-OP ;
+   c b r c b s" 1-" MODEL-SYM HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
+   c b r c b s" 1+" MODEL-SYM HIR-OPCODE:ADD 1 BDECLARE-CONST-OP
+   c b r c b s" 0=" MODEL-SYM HIR-OPCODE:EQUAL 0 BDECLARE-CONST-OP
+   c b r c b s" cells" MODEL-SYM HIR-OPCODE:MUL 8 BDECLARE-CONST-OP ;
 
 \ The width is not stored: it is which opcode the row names, because hir.f makes
 \ the width a form. The memory order is the dialect's own token.
 \ The four memory words, two per width. `@` ( ptr -- n ) reads the cell an
 : DEF-MEMORY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" @" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LOAD BDECLARE-OP
-   c b r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:STORE BDECLARE-OP
-   c b r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BLOAD BDECLARE-OP
-   c b r c b s" c!" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BSTORE BDECLARE-OP ;
+   c b r c b s" @" MODEL-SYM HIR-OPCODE:LOAD BDECLARE-OP
+   c b r c b s" !" MODEL-SYM HIR-OPCODE:STORE BDECLARE-OP
+   c b r c b s" c@" MODEL-SYM HIR-OPCODE:BLOAD BDECLARE-OP
+   c b r c b s" c!" MODEL-SYM HIR-OPCODE:BSTORE BDECLARE-OP ;
 
 \ `s>f` rounds to nearest with ties to even; `f>s` truncates toward zero,
 \ saturates at the ends and answers zero for a NaN - two roundings, two rows.
 \ The nine float words of the engine's vocabulary that compute rather than
 : DEF-FLOAT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" f+" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FADD BDECLARE-OP
-   c b r c b s" f-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FSUB BDECLARE-OP
-   c b r c b s" f*" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FMUL BDECLARE-OP
-   c b r c b s" f/" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FDIV BDECLARE-OP
-   c b r c b s" fnegate" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FNEG BDECLARE-OP
-   c b r c b s" fabs" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FABS BDECLARE-OP
-   c b r c b s" fsqrt" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FSQRT BDECLARE-OP
-   c b r c b s" s>f" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:INTREAL BDECLARE-OP
-   c b r c b s" f>s" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:REALINT BDECLARE-OP ;
+   c b r c b s" f+" MODEL-SYM HIR-OPCODE:FADD BDECLARE-OP
+   c b r c b s" f-" MODEL-SYM HIR-OPCODE:FSUB BDECLARE-OP
+   c b r c b s" f*" MODEL-SYM HIR-OPCODE:FMUL BDECLARE-OP
+   c b r c b s" f/" MODEL-SYM HIR-OPCODE:FDIV BDECLARE-OP
+   c b r c b s" fnegate" MODEL-SYM HIR-OPCODE:FNEG BDECLARE-OP
+   c b r c b s" fabs" MODEL-SYM HIR-OPCODE:FABS BDECLARE-OP
+   c b r c b s" fsqrt" MODEL-SYM HIR-OPCODE:FSQRT BDECLARE-OP
+   c b r c b s" s>f" MODEL-SYM HIR-OPCODE:INTREAL BDECLARE-OP
+   c b r c b s" f>s" MODEL-SYM HIR-OPCODE:REALINT BDECLARE-OP ;
 
 \ Five, which is the whole of the engine's vocabulary. The two against zero are
 \ two OPERATIONS: FCMP against the immediate zero takes no second register.
 \ The five float comparisons, which are the whole of what the engine has: three
 : DEF-FCOMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" f<" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FLT BDECLARE-OP
-   c b r c b s" f>" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FGT BDECLARE-OP
-   c b r c b s" f=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FEQ BDECLARE-OP
-   c b r c b s" f0<" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FLTZ BDECLARE-OP
-   c b r c b s" f0=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FEQZ BDECLARE-OP ;
+   c b r c b s" f<" MODEL-SYM HIR-OPCODE:FLT BDECLARE-OP
+   c b r c b s" f>" MODEL-SYM HIR-OPCODE:FGT BDECLARE-OP
+   c b r c b s" f=" MODEL-SYM HIR-OPCODE:FEQ BDECLARE-OP
+   c b r c b s" f0<" MODEL-SYM HIR-OPCODE:FLTZ BDECLARE-OP
+   c b r c b s" f0=" MODEL-SYM HIR-OPCODE:FEQZ BDECLARE-OP ;
 
 \ `begin` has three closers and the counted loop two openers with one closer, so
 \ a row says which word it is and the elaborator's control stack learns the rest.
@@ -1049,36 +1156,36 @@ private
 \ The structured control words. Three structures, the two words that stand in
 : DEF-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" if" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-IF BDECLARE-CONTROL
-   c b r c b s" else" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MID-ELSE BDECLARE-CONTROL
-   c b r c b s" then" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-IF BDECLARE-CONTROL
-   c b r c b s" begin" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-BEGIN BDECLARE-CONTROL
-   c b r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MID-WHILE BDECLARE-CONTROL
-   c b r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-UNTIL BDECLARE-CONTROL
-   c b r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-REPEAT BDECLARE-CONTROL
-   c b r c b s" again" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-AGAIN BDECLARE-CONTROL
-   c b r c b s" do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
-   c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO-SKIP BDECLARE-CONTROL
-   c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
-   c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL
-   c b r c b s" j" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OUTER-INDEX BDECLARE-CONTROL
-   c b r c b s" unloop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:DROP-LOOP BDECLARE-CONTROL
-   c b r c b s" leave" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-LEAVE BDECLARE-CONTROL
-   c b r c b s" exit" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL
-   c b r c b s" RECURSE" IR-BUILD:INTERN-SYMBOL HIR-CTRL:SELF-CALL BDECLARE-CONTROL ;
+   c b r c b s" if" MODEL-SYM HIR-CTRL:OPEN-IF BDECLARE-CONTROL
+   c b r c b s" else" MODEL-SYM HIR-CTRL:MID-ELSE BDECLARE-CONTROL
+   c b r c b s" then" MODEL-SYM HIR-CTRL:CLOSE-IF BDECLARE-CONTROL
+   c b r c b s" begin" MODEL-SYM HIR-CTRL:OPEN-BEGIN BDECLARE-CONTROL
+   c b r c b s" while" MODEL-SYM HIR-CTRL:MID-WHILE BDECLARE-CONTROL
+   c b r c b s" until" MODEL-SYM HIR-CTRL:CLOSE-UNTIL BDECLARE-CONTROL
+   c b r c b s" repeat" MODEL-SYM HIR-CTRL:CLOSE-REPEAT BDECLARE-CONTROL
+   c b r c b s" again" MODEL-SYM HIR-CTRL:CLOSE-AGAIN BDECLARE-CONTROL
+   c b r c b s" do" MODEL-SYM HIR-CTRL:OPEN-DO BDECLARE-CONTROL
+   c b r c b s" ?do" MODEL-SYM HIR-CTRL:OPEN-DO-SKIP BDECLARE-CONTROL
+   c b r c b s" loop" MODEL-SYM HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
+   c b r c b s" i" MODEL-SYM HIR-CTRL:INDEX BDECLARE-CONTROL
+   c b r c b s" j" MODEL-SYM HIR-CTRL:OUTER-INDEX BDECLARE-CONTROL
+   c b r c b s" unloop" MODEL-SYM HIR-CTRL:DROP-LOOP BDECLARE-CONTROL
+   c b r c b s" leave" MODEL-SYM HIR-CTRL:EARLY-LEAVE BDECLARE-CONTROL
+   c b r c b s" exit" MODEL-SYM HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL
+   c b r c b s" RECURSE" MODEL-SYM HIR-CTRL:SELF-CALL BDECLARE-CONTROL ;
 
 \ `of` and `endof` are ONE row each and serve both `MATCH` and `case`; which
 \ form an arm belongs to is decided by the structure the elaborator has open.
 \ The three tag-dispatch forms, seven words. `of` and `endof` are ONE row each
 : DEF-ADT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" match" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-MATCH BDECLARE-CONTROL
-   c b r c b s" of" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MATCH-ARM BDECLARE-CONTROL
-   c b r c b s" endof" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-ARM BDECLARE-CONTROL
-   c b r c b s" ;match" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-MATCH BDECLARE-CONTROL
-   c b r c b s" case" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-CASE BDECLARE-CONTROL
-   c b r c b s" endcase" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-CASE BDECLARE-CONTROL
-   c b r c b s" construct" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MAKE-BUNDLE BDECLARE-CONTROL ;
+   c b r c b s" match" MODEL-SYM HIR-CTRL:OPEN-MATCH BDECLARE-CONTROL
+   c b r c b s" of" MODEL-SYM HIR-CTRL:MATCH-ARM BDECLARE-CONTROL
+   c b r c b s" endof" MODEL-SYM HIR-CTRL:CLOSE-ARM BDECLARE-CONTROL
+   c b r c b s" ;match" MODEL-SYM HIR-CTRL:CLOSE-MATCH BDECLARE-CONTROL
+   c b r c b s" case" MODEL-SYM HIR-CTRL:OPEN-CASE BDECLARE-CONTROL
+   c b r c b s" endcase" MODEL-SYM HIR-CTRL:CLOSE-CASE BDECLARE-CONTROL
+   c b r c b s" construct" MODEL-SYM HIR-CTRL:MAKE-BUNDLE BDECLARE-CONTROL ;
 
 \ Control actions, because what stands between them is a second FUNCTION of the
 \ module. Neither row carries a payload.
@@ -1091,9 +1198,9 @@ private
 \ value, neither of which is a fact about the dialect.
 : DEF-QUOT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" [:" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-QUOT BDECLARE-CONTROL
-   c b r c b s" ;]" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-QUOT BDECLARE-CONTROL
-   c b r c b s" [']" IR-BUILD:INTERN-SYMBOL HIR-CTRL:TICK BDECLARE-CONTROL ;
+   c b r c b s" [:" MODEL-SYM HIR-CTRL:OPEN-QUOT BDECLARE-CONTROL
+   c b r c b s" ;]" MODEL-SYM HIR-CTRL:CLOSE-QUOT BDECLARE-CONTROL
+   c b r c b s" [']" MODEL-SYM HIR-CTRL:TICK BDECLARE-CONTROL ;
 
 \ None carries a payload: `is` moves what the DEFERRED word declares, `execute`
 \ moves one cell more than the quotation reaching it, and `catch` moves the
@@ -1110,11 +1217,11 @@ private
 \ is, so no address is recorded here either.
 : DEF-QUOT-USE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" is" IR-BUILD:INTERN-SYMBOL HIR-CTRL:BIND-DEFER BDECLARE-CONTROL
-   c b r c b s" execute" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EXEC BDECLARE-CONTROL
-   c b r c b s" catch" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CATCH BDECLARE-CONTROL
-   c b r c b s" evaluate" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EVAL BDECLARE-CONTROL
-   c b r c b s" finally" IR-BUILD:INTERN-SYMBOL HIR-CTRL:FINALLY BDECLARE-CONTROL ;
+   c b r c b s" is" MODEL-SYM HIR-CTRL:BIND-DEFER BDECLARE-CONTROL
+   c b r c b s" execute" MODEL-SYM HIR-CTRL:EXEC BDECLARE-CONTROL
+   c b r c b s" catch" MODEL-SYM HIR-CTRL:CATCH BDECLARE-CONTROL
+   c b r c b s" evaluate" MODEL-SYM HIR-CTRL:EVAL BDECLARE-CONTROL
+   c b r c b s" finally" MODEL-SYM HIR-CTRL:FINALLY BDECLARE-CONTROL ;
 
 \ Neither stages an operation and neither carries a payload: the work is the
 \ elaborator's over the tape rows between them.
@@ -1125,8 +1232,8 @@ private
 \ the meaning and nothing else.
 : DEF-LOCALS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-MEANING:OPEN-LOCALS BDECLARE-PLAIN
-   c b r c b s" :}" IR-BUILD:INTERN-SYMBOL HIR-MEANING:CLOSE-LOCALS BDECLARE-PLAIN ;
+   c b r c b s" {:" MODEL-SYM HIR-MEANING:OPEN-LOCALS BDECLARE-PLAIN
+   c b r c b s" :}" MODEL-SYM HIR-MEANING:CLOSE-LOCALS BDECLARE-PLAIN ;
 
 \ dup ( a -- a a ): consume the top value and put it back twice.
 : DEF-DUP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -1134,13 +1241,13 @@ private
    1 BEGIN-RENAME
    0 ADD-PICK
    0 ADD-PICK
-   c b p r c b s" dup" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" dup" MODEL-SYM BDECLARE-RENAME ;
 
 \ drop ( a -- ): consume the top value and put nothing back.
 : DEF-DROP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
-   c b p r c b s" drop" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" drop" MODEL-SYM BDECLARE-RENAME ;
 
 \ swap ( a b -- b a ): consume two and put them back the other way round.
 : DEF-SWAP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -1148,7 +1255,7 @@ private
    2 BEGIN-RENAME
    0 ADD-PICK
    1 ADD-PICK
-   c b p r c b s" swap" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" swap" MODEL-SYM BDECLARE-RENAME ;
 
 \ over ( a b -- a b a ): consume two and put back three, the lower one twice.
 : DEF-OVER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -1157,14 +1264,14 @@ private
    1 ADD-PICK
    0 ADD-PICK
    1 ADD-PICK
-   c b p r c b s" over" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" over" MODEL-SYM BDECLARE-RENAME ;
 
 \ nip ( a b -- b ): consume two and put back only the one that was on top.
 : DEF-NIP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
    0 ADD-PICK
-   c b p r c b s" nip" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" nip" MODEL-SYM BDECLARE-RENAME ;
 
 \ `over over` written once.
 \ 2dup ( a b -- a b a b ): consume two and put both back twice, in order. It is
@@ -1175,7 +1282,7 @@ private
    0 ADD-PICK
    1 ADD-PICK
    0 ADD-PICK
-   c b p r c b s" 2dup" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" 2dup" MODEL-SYM BDECLARE-RENAME ;
 
 \ `drop drop` written once: the two values leave the compile-time vector and no
 \ instruction is needed to make them go.
@@ -1183,7 +1290,7 @@ private
 : DEF-2DROP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    2 BEGIN-RENAME
-   c b p r c b s" 2drop" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" 2drop" MODEL-SYM BDECLARE-RENAME ;
 
 \ Bottom first that is b, then c, then a - depths 1, 0 and 2.
 \ rot ( a b c -- b c a ): consume three and put all three back rotated, so the
@@ -1193,7 +1300,7 @@ private
    1 ADD-PICK
    0 ADD-PICK
    2 ADD-PICK
-   c b p r c b s" rot" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+   c b p r c b s" rot" MODEL-SYM BDECLARE-RENAME ;
 
 \ Six rows over three actions and two widths; the widths are declared because
 \ `2>r` is its own source word. `2>r` keeps the LOWER cell lower on the return
@@ -1201,12 +1308,12 @@ private
 \ ---- the return-stack words --------------------------------------------------
 : DEF-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" >r"  IR-BUILD:INTERN-SYMBOL HIR-RMOVE:TO-R    1 BDECLARE-RSTACK
-   c b r c b s" r>"  IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FROM-R  1 BDECLARE-RSTACK
-   c b r c b s" r@"  IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FETCH-R 1 BDECLARE-RSTACK
-   c b r c b s" 2>r" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:TO-R    2 BDECLARE-RSTACK
-   c b r c b s" 2r>" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FROM-R  2 BDECLARE-RSTACK
-   c b r c b s" 2r@" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FETCH-R 2 BDECLARE-RSTACK ;
+   c b r c b s" >r"  MODEL-SYM HIR-RMOVE:TO-R    1 BDECLARE-RSTACK
+   c b r c b s" r>"  MODEL-SYM HIR-RMOVE:FROM-R  1 BDECLARE-RSTACK
+   c b r c b s" r@"  MODEL-SYM HIR-RMOVE:FETCH-R 1 BDECLARE-RSTACK
+   c b r c b s" 2>r" MODEL-SYM HIR-RMOVE:TO-R    2 BDECLARE-RSTACK
+   c b r c b s" 2r>" MODEL-SYM HIR-RMOVE:FROM-R  2 BDECLARE-RSTACK
+   c b r c b s" 2r@" MODEL-SYM HIR-RMOVE:FETCH-R 2 BDECLARE-RSTACK ;
 
 private
 
@@ -1258,6 +1365,7 @@ public
       v:IR-ARENA:view :}
    c b v FOLD-TAPE-NAMES
    b IR-BUILD:SYMBOLS SYMBOL-LIMIT !
+   c b IX-BUILD
    c b p r [: REGISTER-ALL ;] [: ALL-SYMBOLS ;] finally ;
 
 private
