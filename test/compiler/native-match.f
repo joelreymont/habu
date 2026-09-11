@@ -842,6 +842,7 @@ variable CHILD-RC
 : CHILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
+   s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
    s" test/compiler/native-match-forge.f" >LEN PROC-ARGV+ ;
 
 : CHILD-RUN ( -- )

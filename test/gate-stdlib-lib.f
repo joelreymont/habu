@@ -47,8 +47,16 @@ package STDLIB-GATE
 : SUITE-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GT-RC@ 0 <> if label labelu SUITE-FAIL then ;
 
-: SUITE-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
+: SUITE-AOT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" test/compiler/codegen-tail-probe.f" STR= if true exit then
+   a u s" test/compiler/native-" STARTS-WITH?
+   a u s" .f" ENDS-WITH? and ;
+
+: SUITE-ARG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SUITE-AOT? if
+      s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
+   then
+   a u >LEN PROC-ARGV+ ;
 
 : SUITE-HB ( -- )
    PROC-ARGV-RESET
