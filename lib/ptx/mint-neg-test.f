@@ -1,5 +1,5 @@
-\ mint-neg-test.f - committed negative regressions for the checked-mint
-\ output-provenance capability (src/core/checker.f NP-MINT-CHECK) and the MINTING
+\ mint-neg-test.f - negative regressions for declared family parameter
+\ preservation (src/core/checker.f NP-CHECK) and the MINTING
 \ combinators (lib/ptx/rep.f: PTXREP:MINT-LOAD / MINT-ROW-SPAN / MINT-ROW-LOAD).
 \
 \ A MINTING wrapper REPACKAGES register operands into a NEW register-phantom
@@ -9,10 +9,10 @@
 \
 \   M1 free element (mint forge) - a wrapper that declares an output element var
 \                                  unbound in its inputs (`tile<u,b,m>`) mints a
-\                                  phantom of input-unrelated type: NP-MINT-CHECK
-\                                  rejects (E-NONPARAMETRIC-EFFECT, "minted into").
+\                                  phantom of input-unrelated type. NP-CHECK rejects
+\                                  the u/t alias with E-NONPARAMETRIC-EFFECT.
 \   M2 free block  (mint forge)  - as M1 for the block position (`tile<t,c,m>`).
-\   M3 free elem via ROW-SPAN    - the span-minting combinator obeys the same seal
+\   M3 free elem via ROW-SPAN    - the span-minting combinator preserves its element
 \                                  (`span<u,k>` with u unbound rejects).
 \   M4 free elem via ROW-LOAD    - the row-load combinator likewise.
 \   M5 wrong family              - MINT-LOAD's declared `tile` output pins the
@@ -35,19 +35,19 @@ require lib/ptx/neg-test-lib.f
    256 %BLOCK
 
    s" MLDF ( span<space-global,t,e> gridctx<b,e,m> -- tile<u,b,m> ) [: EMIT-LOAD ;] PTXREP:MINT-LOAD"
-   s" minted into" s" MINT-LOAD free output element reject" PTXN-REJECTS
+   s" E-NONPARAMETRIC-EFFECT" s" MINT-LOAD free output element reject" PTXN-REJECTS
    s" NEG: MINT-LOAD cannot mint a free-typed element (mint forge)" type cr
 
    s" MLDB ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,c,m> ) [: EMIT-LOAD ;] PTXREP:MINT-LOAD"
-   s" minted into" s" MINT-LOAD free output block reject" PTXN-REJECTS
+   s" E-NONPARAMETRIC-EFFECT" s" MINT-LOAD free output block reject" PTXN-REJECTS
    s" NEG: MINT-LOAD cannot mint a free-typed block (mint forge)" type cr
 
    s" MRSF ( matrix<space-global,t,e,k> rowidx<e> -- span<space-global,u,k> ) [: EMIT-ROW-SPAN ;] PTXREP:MINT-ROW-SPAN"
-   s" minted into" s" MINT-ROW-SPAN free output element reject" PTXN-REJECTS
+   s" E-NONPARAMETRIC-EFFECT" s" MINT-ROW-SPAN free output element reject" PTXN-REJECTS
    s" NEG: MINT-ROW-SPAN cannot mint a free-typed element (mint forge)" type cr
 
    s" MRLF ( span<space-global,t,k> rowctx<b,k,m> -- tile<u,b,m> ) [: EMIT-ROW-LOAD ;] PTXREP:MINT-ROW-LOAD"
-   s" minted into" s" MINT-ROW-LOAD free output element reject" PTXN-REJECTS
+   s" E-NONPARAMETRIC-EFFECT" s" MINT-ROW-LOAD free output element reject" PTXN-REJECTS
    s" NEG: MINT-ROW-LOAD cannot mint a free-typed element (mint forge)" type cr
 
    s" MLDA ( span<space-global,t,e> gridctx<b,e,m> -- acc<t,b,m> ) [: EMIT-LOAD ;] PTXREP:MINT-LOAD"
