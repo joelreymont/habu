@@ -13792,9 +13792,11 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
    owner DECLARATIONS = if exit then
    owner BIND-SOURCE
-   CHECKER-REC-SYM @
-   [: TRANSFER-ROWS ;]
-   [: DECLARATIONS BIND-SOURCE CHECKER-REC-SYM ! ;] finally ;
+   CHECKER-REC-SYM @ {: saved:n :}
+   [: TRANSFER-ROWS ;] catch {: rc:n :}
+   saved CHECKER-REC-SYM !
+   DECLARATIONS BIND-SOURCE
+   rc 0<> if rc throw then ;
 
 ' TRANSFER-CHECKED DECLARATIONS TRANSFER-OFF + xt!
 ;package
