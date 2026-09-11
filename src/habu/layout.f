@@ -699,14 +699,15 @@ public
 $358 constant XT-CELL
 \ One owner record keeps every engine declaration registrar paired with the
 \ active compiler, including while the source dictionary/checker is replaced.
-\ The record is DATA; its four fields are execution tokens of existing private
+\ The record is DATA; its fields are execution tokens of existing private
 \ checker operations, with no new checked-callable trust alias.
 $360 constant DECL-CELL
 0 constant DECL-RAW-OFF
 8 constant DECL-EFFECT-OFF
 16 constant DECL-DEFER-OFF
 24 constant DECL-CAST-OFF
-32 constant DECL-BYTES
+32 constant DECL-USING-OFF
+40 constant DECL-BYTES
 ;package
 
 $600 constant LOOP-STK-OFF

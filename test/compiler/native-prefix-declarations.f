@@ -21,8 +21,11 @@ TRUSTED: REPLAY ( -- n )
 TRUSTED: REPLAY-DEFER ( -- n )
    s" defer PF-DEFER ( -- n ) : PF-SET ( -- ) [: 42 ;] is PF-DEFER ; PF-SET PF-DEFER" evaluate ;
 
-TRUSTED: REPLAY-TARGET ( -- n n n n )
-   s" variable PF-EFFECTS variable PF-DEFERS variable PF-RAWS : TRUST-RAW ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 PF-RAWS +! ; variable PF-RAW-TARGET : TRUST-DECL ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 PF-EFFECTS +! ; : CHECKER-DEFER ( ptr u8 n -- ) 2drop 1 PF-DEFERS +! ; defer PF-LATE ( -- n ) : PF-LATE-SET ( -- ) [: 43 ;] is PF-LATE ; PF-LATE-SET PF-LATE PF-EFFECTS @ PF-DEFERS @ PF-RAWS @" evaluate ;
+TRUSTED: REPLAY-USING ( -- n )
+   s" package PF-LIB public : ANSWER ( -- n ) 44 ; ;package using PF-LIB : PF-CALL-ANSWER ( -- n ) ANSWER ; PF-CALL-ANSWER ;using" evaluate ;
+
+TRUSTED: REPLAY-TARGET ( -- n n n n n )
+   s" variable PF-EFFECTS variable PF-DEFERS variable PF-RAWS variable PF-USINGS : TRUST-RAW ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 PF-RAWS +! ; variable PF-RAW-TARGET : TRUST-DECL ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 PF-EFFECTS +! ; : CHECKER-DEFER ( ptr u8 n -- ) 2drop 1 PF-DEFERS +! ; : CHECKER-USING ( ptr u8 n -- ) 2drop 1 PF-USINGS +! ; using PF-LIB ;using defer PF-LATE ( -- n ) : PF-LATE-SET ( -- ) [: 43 ;] is PF-LATE ; PF-LATE-SET PF-LATE PF-EFFECTS @ PF-DEFERS @ PF-RAWS @ PF-USINGS @" evaluate ;
 
 : RUN ( -- )
    s" CHECKER-RESET-SOURCE" 0 search-wl 0<> if
@@ -38,8 +41,9 @@ TRUSTED: REPLAY-TARGET ( -- n n n n )
    s" PF-BAD-DEFER ( -- ) [: 0 0= ;] is PF-DEFER" CHECK-CANDIDATE! 0<> if
       s" pending defer accepted a mismatched quotation" 76 die
    then
-   REPLAY-TARGET {: value:n effects:n defers:n raws:n :}
-   value 43 <> effects 1 <> or defers 1 <> or raws 1 <> or if
+   REPLAY-USING 44 <> if s" using context missed the active compiler" 76 die then
+   REPLAY-TARGET {: value:n effects:n defers:n raws:n usings:n :}
+   value 43 <> effects 1 <> or defers 1 <> or raws 1 <> or usings 1 <> or if
       s" declaration metadata missed the target checker" 76 die
    then ;
 

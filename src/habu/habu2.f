@@ -6366,16 +6366,20 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ Mirror `using NAME` into the checker so its resolution (checker.f
-\ CHECKER-FIND-ACTIVE-SYM) sees the same used publics as the engine. Passes the
-\ package name token (TKA/TKL); checker-using records it into CHK-USE-NAMES at the
-\ current shared USE-DEPTH. Skips (no-op) when the checker word is absent, exactly
-\ like the package hooks — the engine still owns USE-DEPTH / USE-WIDS.
+\ The engine owns the using depth; each checker owns the names at those slots.
+\ Notify the active compiler before any distinct target checker, as with the
+\ declaration registrars. Dictionary replacement must not retire the compiler's
+\ import context while that compiler still resolves source bodies.
 : C-CALL-CHECKER-USING ( -- )
-   LBL {: done:label :}
-   LCHKUSING 13 done C-FIND-CHECKER               \ 13 = len "checker-using"
-   9 DATA TKA-CELL LDR,  9 G-PUSH
-   9 DATA TKL-CELL LDR,  9 G-PUSH
+   LBL LBL {: target:label done:label :}
+   NCOMP-DISPATCH:DECL-USING-OFF DECL-OWNER:FIND
+   11 target CBZ,
+   TKA-CELL TKL-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED
+   target LBL,
+   LCHKUSING 13 done C-FIND-CHECKER
+   NCOMP-DISPATCH:DECL-USING-OFF done DECL-OWNER:SKIP-SAME
+   TKA-CELL TKL-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
    done LBL, ;
 
