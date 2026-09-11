@@ -122,6 +122,7 @@ create VQSAV VMAX cells allot        \ and for the entries a call hands over and
 16 constant RMAX                     \ measured: the tree's deepest nest is ten
 variable RN                          \ how many values the return vector holds
 RMAX TYPED-BUFFER RSTK IR-ID:ir-value-id
+create RQ RMAX cells allot
 
 : VRESET ( -- )
    0 VN !
@@ -222,10 +223,15 @@ variable OUT-GLUE
    i 0 < i RN @ >= or if E-NELAB-UNDER throw then
    i RSTK @ ;
 
-: RPUSH ( IR-ID:ir-value-id -- )
-   {: val:IR-ID:ir-value-id :}
+: RQ@ ( n -- n )
+   dup 0 < over RN @ >= or if E-NELAB-UNDER throw then
+   cells RQ + @ ;
+
+: RPUSH ( IR-ID:ir-value-id n -- )
+   {: val:IR-ID:ir-value-id q:n :}
    RN @ RMAX >= if E-NELAB-CAP throw then
    val RN @ RSTK !
+   q RN @ cells RQ + !
    RN @ 1+ RN ! ;
 
 : RDROP ( n -- )
@@ -235,14 +241,18 @@ variable OUT-GLUE
 
 \ SPILL COPIES the parked values onto the top of the data vector rather than
 \ moving them, because a seam has to leave the return row as it found it.
+: R-VPUSH ( n -- ) {: i:n :}
+   i RAT VPUSH
+   i RQ@ VN @ 1- VQ! ;
+
 : R-SPILL ( -- )
-   RN @ 0 ?do  i RAT VPUSH  loop ;
+   RN @ 0 ?do i R-VPUSH loop ;
 
 : R-FILL ( n -- )
    {: k:n :}
    VN @ k < if E-NELAB-UNDER throw then
    0 RN !
-   k 0 ?do  VN @ k - i + VAT RPUSH  loop
+   k 0 ?do  VN @ k - i + dup VAT swap VQ@ RPUSH  loop
    k VDROP ;
 
 \ ---- compile-time stack renames ----------------------------------------------
@@ -322,8 +332,7 @@ variable VRW-N                       \ values still to find
 \ the depth is a compile-time number.
 : RSTACK-CK ( n -- )
    {: base:n :}
-   base VGLUE-ABOVE? if E-NELAB-BUNDLE throw then
-   VN @ base ?do  i VQ@ VQ-NONE <> if E-NELAB-BUNDLE throw then  loop ;
+   base VGLUE-ABOVE? if E-NELAB-BUNDLE throw then ;
 
 : TO-R ( n -- )
    {: cells:n :}
@@ -331,7 +340,7 @@ variable VRW-N                       \ values still to find
    VN @ cells - {: base:n :}
    base RSTACK-CK
    RN @ cells + RMAX > if E-NELAB-CAP throw then
-   cells 0 ?do  base i + VAT RPUSH  loop
+   cells 0 ?do  base i + dup VAT swap VQ@ RPUSH  loop
    cells VDROP ;
 
 : FROM-R ( n -- )
@@ -339,7 +348,7 @@ variable VRW-N                       \ values still to find
    cells RN @ > if E-NELAB-UNDER throw then
    VN @ cells + VMAX > if E-NELAB-CAP throw then
    RN @ cells - {: base:n :}
-   cells 0 ?do  base i + RAT VPUSH  loop
+   cells 0 ?do  base i + R-VPUSH  loop
    cells RDROP ;
 
 \ A peek is a pop that does not take: the same cells arrive and the return row
@@ -349,7 +358,7 @@ variable VRW-N                       \ values still to find
    cells RN @ > if E-NELAB-UNDER throw then
    VN @ cells + VMAX > if E-NELAB-CAP throw then
    RN @ cells - {: base:n :}
-   cells 0 ?do  base i + RAT VPUSH  loop ;
+   cells 0 ?do  base i + R-VPUSH  loop ;
 
 : RSTACK-STEP ( IR-ARENA:arena IR-ID:ir-symbol-id -- )
    {: r:IR-ARENA:arena sym:IR-ID:ir-symbol-id :}
@@ -1156,6 +1165,81 @@ variable BLOCK-LIMIT
    k BLOCK-LIMIT @ > if E-NELAB-BLOCK throw then
    k NB ! ;
 
+\ ---- the bodies this definition defers ---------------------------------------
+\ Signature parameters and callback-valued results also need rows, so their
+\ storage grows independently of the number of source tokens.
+7 constant QUOT-FIELDS
+DYNAMIC-BUFFER QAT-BUF n
+DYNAMIC-BUFFER QLO-BUF n
+DYNAMIC-BUFFER QHI-BUF n
+DYNAMIC-BUFFER QIN-BUF n
+DYNAMIC-BUFFER QOUT-BUF n
+DYNAMIC-BUFFER QFUN-BUF n
+DYNAMIC-BUFFER QPARENT n
+
+: QUOT-ROOM ( n -- ) {: n:n :}
+   n IR-CTX:SCRATCH-LIMIT QUOT-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
+   n QAT-BUF-RESERVE
+   n QLO-BUF-RESERVE
+   n QHI-BUF-RESERVE
+   n QIN-BUF-RESERVE
+   n QOUT-BUF-RESERVE
+   n QFUN-BUF-RESERVE
+   n QPARENT-RESERVE ;
+
+-1 constant QNONE                    \ no consumer has said what this body takes and leaves
+
+here CELL 1- and CELL swap - CELL 1- and allot
+variable QN                          \ quotation metadata rows in this definition
+variable QD                          \ the row of the body the pre-scan has open, or -1
+variable QBASE                       \ the ordinal of the function the definition itself is
+: QAT ( -- ptr n ) 0 QAT-BUF ;
+: QLO ( -- ptr n ) 0 QLO-BUF ;
+: QHI ( -- ptr n ) 0 QHI-BUF ;
+: QIN ( -- ptr n ) 0 QIN-BUF ;
+: QOUT ( -- ptr n ) 0 QOUT-BUF ;
+\ This row's quotation is no body of this emission - it is a parameter.
+-1 constant QPARAM                   \ this row's quotation is no body of this emission
+: QFUN ( -- ptr n ) 0 QFUN-BUF ;
+
+\ ---- which body each token belongs to, and which body is being walked ---------
+-1 constant QOWNER-DEF               \ the definition's own function, which is no body
+variable QCUR                        \ the body being walked, or QOWNER-DEF
+
+: QROW-CK ( n -- n )
+   dup 0 < over QN @ >= or if E-NELAB-QUOT-CAP throw then ;
+
+\ Joined values share an ABI, while each literal retains its own body row.
+: QROOT ( n -- n )
+   QROW-CK
+   begin dup QPARENT @ over <> while QPARENT @ repeat ;
+
+: QAT@ ( n -- n )    QROW-CK cells QAT + @ ;
+: QLO@ ( n -- n )    QROW-CK cells QLO + @ ;
+: QHI@ ( n -- n )    QROW-CK cells QHI + @ ;
+: QFUN@ ( n -- n )   QROW-CK cells QFUN + @ ;
+: QIN@ ( n -- n )    QROOT cells QIN + @ ;
+: QOUT@ ( n -- n )   QROOT cells QOUT + @ ;
+
+: QFILL ( n n n -- )
+   {: k:n in:n out:n :}
+   k QIN@ QNONE <> if
+      k QIN@ in <>  k QOUT@ out <>  or if k QAT@ QUOT-REFUSE then
+      exit
+   then
+   k QROOT {: root:n :}
+   in root cells QIN + !
+   out root cells QOUT + ! ;
+
+
+: QMERGE ( n n -- ) {: a:n b:n :}
+   a b = if exit then
+   a 0 < b 0 < or if E-NELAB-JOIN throw then
+   a QROOT {: ra:n :} b QROOT {: rb:n :}
+   ra rb = if exit then
+   rb QIN@ QNONE <> if ra rb QIN@ rb QOUT@ QFILL then
+   ra rb QPARENT ! ;
+
 \ ---- what type each block argument has ---------------------------------------
 \ Block argument positions across the whole function.
 : ARG-CAP ( -- n ) BLOCK-LIMIT @ VMAX * ;
@@ -1168,6 +1252,7 @@ DYNAMIC-BUFFER ARG-G-BUF n
 DYNAMIC-BUFFER ARG-R-BUF n
 : ARG-R ( -- ptr n ) 0 ARG-R-BUF ;
 DYNAMIC-BUFFER ARG-T IR-ID:ir-type-id
+DYNAMIC-BUFFER ARG-Q n
 VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
 
 \ SKELETON has counted the function before any argument rows are written.
@@ -1177,6 +1262,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    BLOCK-LIMIT @ ARG-G-BUF-RESERVE
    BLOCK-LIMIT @ ARG-R-BUF-RESERVE
    ARG-CAP ARG-T-RESERVE
+   ARG-CAP ARG-Q-RESERVE
    ;
 
 : ARG-RESET ( -- )
@@ -1212,6 +1298,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    n 0 < n VMAX > or if E-NELAB-CAP throw then
    n 0 ?do
       i VAT VTYPE-OF  t VMAX * i +  ARG-T !
+      i VQ@ t VMAX * i + ARG-Q !
    loop
    VGLUE @  n VGLUE-LOW  t ARG-BLOCK-CK cells ARG-G + !
    RN @ t ARG-BLOCK-CK cells ARG-R + !
@@ -1236,6 +1323,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    LIT-RESET
    n 0 ?do
       CTX BLD  NB @ i ARG-T@  IR-BUILD:ADD-BLOCK-ARG VPUSH
+      NB @ VMAX * i + ARG-Q @ i VQ!
    loop
    0 NB @ ARG-G@ VGLUE-RUN
    NB @ ARG-R@ R-FILL
@@ -1278,6 +1366,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    t ARG-R@ RN @ <> if E-NELAB-JOIN throw then
    t ARG-G@  VGLUE @ VN @ VGLUE-LOW  <> if E-NELAB-JOIN throw then
    VN @ 0 ?do
+      t VMAX * i + ARG-Q @ i VQ@ QMERGE
       ix i  t i ARG-T@  EDGE-VALUE  i XV !
    loop ;
 
@@ -1523,46 +1612,8 @@ PTR-VARIABLE TOK-TABLES
 : TOK-CK ( n -- n )
    dup 0 < over TMAX @ >= or if E-NELAB-BLOCK throw then ;
 
-\ ---- the bodies this definition defers ---------------------------------------
-\ Signature parameters and callback-valued results also need rows, so their
-\ storage grows independently of the number of source tokens.
-6 constant QUOT-FIELDS
-DYNAMIC-BUFFER QAT-BUF n
-DYNAMIC-BUFFER QLO-BUF n
-DYNAMIC-BUFFER QHI-BUF n
-DYNAMIC-BUFFER QIN-BUF n
-DYNAMIC-BUFFER QOUT-BUF n
-DYNAMIC-BUFFER QFUN-BUF n
-
-: QUOT-ROOM ( n -- ) {: n:n :}
-   n IR-CTX:SCRATCH-LIMIT QUOT-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
-   n QAT-BUF-RESERVE
-   n QLO-BUF-RESERVE
-   n QHI-BUF-RESERVE
-   n QIN-BUF-RESERVE
-   n QOUT-BUF-RESERVE
-   n QFUN-BUF-RESERVE ;
-
--1 constant QNONE                    \ no consumer has said what this body takes and leaves
-
-here CELL 1- and CELL swap - CELL 1- and allot
-variable QN                          \ quotation metadata rows in this definition
-variable QD                          \ the row of the body the pre-scan has open, or -1
-variable QBASE                       \ the ordinal of the function the definition itself is
-: QAT ( -- ptr n ) 0 QAT-BUF ;
-: QLO ( -- ptr n ) 0 QLO-BUF ;
-: QHI ( -- ptr n ) 0 QHI-BUF ;
-: QIN ( -- ptr n ) 0 QIN-BUF ;
-: QOUT ( -- ptr n ) 0 QOUT-BUF ;
 : QOPENED ( -- ptr n ) 0 TOK-FIELD ;
-\ This row's quotation is no body of this emission - it is a parameter.
--1 constant QPARAM                   \ this row's quotation is no body of this emission
-: QFUN ( -- ptr n ) 0 QFUN-BUF ;
-
-\ ---- which body each token belongs to, and which body is being walked ---------
--1 constant QOWNER-DEF               \ the definition's own function, which is no body
 : QOWN ( -- ptr n ) 1 TOK-FIELD ;
-variable QCUR                        \ the body being walked, or QOWNER-DEF
 
 : QUOT-RESET ( -- )
    0 QN !
@@ -1573,16 +1624,6 @@ variable QCUR                        \ the body being walked, or QOWNER-DEF
       QOWNER-DEF i cells QOWN + !
    loop ;
 
-: QROW-CK ( n -- n )
-   dup 0 < over QN @ >= or if E-NELAB-QUOT-CAP throw then ;
-
-: QAT@ ( n -- n )    QROW-CK cells QAT + @ ;
-: QLO@ ( n -- n )    QROW-CK cells QLO + @ ;
-: QHI@ ( n -- n )    QROW-CK cells QHI + @ ;
-: QFUN@ ( n -- n )   QROW-CK cells QFUN + @ ;
-: QIN@ ( n -- n )    QROW-CK cells QIN + @ ;
-: QOUT@ ( n -- n )   QROW-CK cells QOUT + @ ;
-
 : QOPENED@ ( n -- n )
    TOK-CK cells QOPENED + @ ;
 
@@ -1591,15 +1632,6 @@ variable QCUR                        \ the body being walked, or QOWNER-DEF
 
 : QINSIDE? ( n -- bool )
    QOWN@ QOWNER-DEF <> ;
-
-: QFILL ( n n n -- )
-   {: k:n in:n out:n :}
-   k QIN@ QNONE <> if
-      k QIN@ in <>  k QOUT@ out <>  or if k QAT@ QUOT-REFUSE then
-      exit
-   then
-   in k cells QIN + !
-   out k cells QOUT + ! ;
 
 128 constant QSPELL-CAP
 
@@ -1673,6 +1705,7 @@ create QSPELL-BUF QSPELL-CAP allot
    {: ix:n :}
    QN @ 1+ QUOT-ROOM
    QN @ {: k:n :}
+   k k QPARENT !
    ix k cells QAT + !
    ix 1+ k cells QLO + !
    QNONE k cells QIN + !
@@ -1688,6 +1721,7 @@ create QSPELL-BUF QSPELL-CAP allot
    {: ix:n qi:n qo:n cellix:n :}
    QN @ 1+ QUOT-ROOM
    QN @ {: k:n :}
+   k k QPARENT !
    ix k cells QAT + !
    0 k cells QLO + !
    0 k cells QHI + !
@@ -3619,6 +3653,7 @@ public
 : CAPTURE-PREPARE ( -- )
    QAT-BUF-RELEASE QLO-BUF-RELEASE QHI-BUF-RELEASE
    QIN-BUF-RELEASE QOUT-BUF-RELEASE QFUN-BUF-RELEASE
+   QPARENT-RELEASE
    0 QN !
    LNAME-RELEASE LVAL-RELEASE LOCAL-TABLES-RELEASE
    LQ-RELEASE LOWN-RELEASE LSX-RELEASE
@@ -3627,7 +3662,7 @@ public
    ARG-N-BUF-RELEASE
    ARG-G-BUF-RELEASE
    ARG-R-BUF-RELEASE
-   ARG-T-RELEASE
+   ARG-T-RELEASE ARG-Q-RELEASE
    0 BLOCK-LIMIT !
    NULL-PTR TOK-TABLES ! 0 TMAX !
    NULL-PTR DOES-SIG !  0 DOES-SIG-U !

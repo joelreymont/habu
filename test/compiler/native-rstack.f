@@ -4,6 +4,7 @@ require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require test/checker-assert.f
 require lib/prelude.f
 require src/compiler/native/compiler.f
 
@@ -141,6 +142,29 @@ public
 defer NRS-PUSH ( n | -- | n )
 defer NRS-POP ( | n -- n | )
 
+: NRS-QCALL ( n [ n -- n ] -- n ) >r 2 * r> execute ;
+: NRS-QPEEK ( n [ n -- n ] -- n ) >r r@ execute r> execute ;
+
+: NRS-QBRANCH ( n bool -- n )
+   if [: 1+ ;] >r else [: 2 + ;] >r then r> execute ;
+
+: NRS-QUOT-LOOP ( n n [ n -- n ] -- n )
+   >r 0 ?do r@ execute loop r> drop ;
+
+: NRS-QCHANGE ( n n -- n )
+   [: 1+ ;] >r
+   0 ?do r> drop [: 2 + ;] >r r@ execute loop
+   r> execute ;
+
+: NRS-QPAIR ( n [ n -- n ] [ n -- n ] -- n )
+   2>r 2r@ swap >r execute r> execute 2r> 2drop ;
+
+variable NRS-THROW-CODE
+: NRS-THROW ( -- ) NRS-THROW-CODE @ throw ;
+: NRS-QUOTE-BEFORE-IF ( bool -- ) {: choose:bool :}
+   choose if 7191 else 7192 then NRS-THROW-CODE !
+   [: NRS-THROW ;] choose if 7191 else 7192 then TTHROWSQ ;
+
 ;package
 
 package NRS-TEST
@@ -255,11 +279,24 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    EV-RC E-NELAB-CAP T= ;
 
 : PARKED-QUOT-CASE ( -- )
-   s" a quotation mark cannot be parked, while its neighboring cell can" T-LABEL
+   s" quotation marks travel with parked values" T-LABEL
    s" : NRS-ZQ ( n [ n -- n ] -- n ) >r r> execute ;"
-   EV-RC E-NELAB-BUNDLE T=
+   EV-RC 0 T=
    s" : NRS-ZC ( n [ n -- n ] -- n ) swap >r r> swap execute ;"
-   EV-RC 0 T= ;
+   EV-RC 0 T=
+   3 [: 1+ ;] NRS-FIXTURE:NRS-QCALL 7 T=
+   3 [: 2 + ;] NRS-FIXTURE:NRS-QPEEK 7 T=
+   3 true NRS-FIXTURE:NRS-QBRANCH 4 T=
+   3 false NRS-FIXTURE:NRS-QBRANCH 5 T=
+   3 0 [: 2 + ;] NRS-FIXTURE:NRS-QUOT-LOOP 3 T=
+   3 3 [: 2 + ;] NRS-FIXTURE:NRS-QUOT-LOOP 9 T=
+   3 0 NRS-FIXTURE:NRS-QCHANGE 4 T=
+   3 2 NRS-FIXTURE:NRS-QCHANGE 9 T=
+   3 [: 1+ ;] [: 2 * ;] NRS-FIXTURE:NRS-QPAIR 7 T=
+   true NRS-FIXTURE:NRS-QUOTE-BEFORE-IF
+   false NRS-FIXTURE:NRS-QUOTE-BEFORE-IF
+   s" BAD-RQ-ROW ( n bool -- n ) if [: 1+ ;] >r else [: dup ;] >r then r> execute"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
 
 public
 
