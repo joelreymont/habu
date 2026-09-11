@@ -320,6 +320,10 @@ SUITE compiler-native-loop
    test/compiler/native-loop.f
 ;SUITE
 
+SUITE compiler-native-switch
+   test/compiler/native-switch.f
+;SUITE
+
 SUITE compiler-native-do
    test/compiler/native-do.f
 ;SUITE

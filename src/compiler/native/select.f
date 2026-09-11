@@ -2292,7 +2292,12 @@ create D-MEET DSLOT-MAX cells allot
 : DMEET-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    DSLOT-MAX 0 ?do DANY i cells D-MEET + ! loop
-   f BLOCK-COUNT 0 ?do  f i b DMEET-FROM  loop
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   f BLOCK-COUNT {: n:n :}
+   bk PRED-COUNT 0 ?do
+      bk i PRED-AT IR-ID:BLOCK-LOCAL R-BASE @ - {: p:n :}
+      p 0 >= p n < and if f p b DMEET-FROM then
+   loop
    DSLOT-MAX 0 ?do
       i cells D-MEET + @  b i DIN-SET? if 1 D-MOVED ! then
    loop ;

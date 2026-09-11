@@ -9,12 +9,13 @@ require src/compiler/ir/source.f
 require src/compiler/ir/type.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
+require src/compiler/ir/verify.f
 require src/compiler/ir/build.f
 
 package NFROZEN
 private
 
-12 constant VIEWS-N
+14 constant VIEWS-N
 
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
@@ -35,6 +36,8 @@ public
 9 constant V-VALR                    \ value rows
 10 constant V-FUNR                   \ function rows
 11 constant V-BLKR                   \ block rows
+12 constant V-EDGEP                  \ frozen predecessor pool
+13 constant V-EDGER                  \ frozen edge rows
 
 \ ---- the cursor --------------------------------------------------------------
 : MKEY ( -- IR-ID:ir-module-key )    0 S-KEY @ ;
@@ -61,7 +64,9 @@ public
    m IR-BUILD:FOP-ROWS     V-OPR  S-VIEW !
    m IR-BUILD:FVALUE-ROWS  V-VALR S-VIEW !
    m IR-BUILD:FFUN-ROWS    V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS  V-BLKR S-VIEW ! ;
+   m IR-BUILD:FBLOCK-ROWS  V-BLKR S-VIEW !
+   m IR-BUILD:FEDGE-POOL   V-EDGEP S-VIEW !
+   m IR-BUILD:FEDGE-ROWS   V-EDGER S-VIEW ! ;
 
 \ ---- identity ----------------------------------------------------------------
 \ Same ordinal of the same module. Nothing here compares spellings.
@@ -115,6 +120,15 @@ public
 : TERM-AT ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
    {: bk:IR-ID:ir-block-id :}
    V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ ;
+
+\ Freeze derives these rows from the checked terminators. Repeated edges may
+\ repeat a predecessor; a dataflow meet is idempotent over those entries.
+: PRED-COUNT ( IR-ID:ir-block-id -- n )
+   V-EDGER VW swap IR-VERIFY:FPRED-COUNT ;
+
+: PRED-AT ( IR-ID:ir-block-id n -- IR-ID:ir-block-id )
+   {: bk:IR-ID:ir-block-id i:n :}
+   V-EDGEP VW V-EDGER VW MKEY bk i IR-VERIFY:FPRED@ ;
 
 \ ---- one operation's own rows ------------------------------------------------
 : OPCODE-AT ( IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
