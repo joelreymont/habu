@@ -251,6 +251,18 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    fresh IR-ARENA:LIVE?
    old IR-ARENA:LIVE? ;
 
+: AB-REUSE-INDEX-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: old:IR-ARENA:arena :}
+   c old 7 IR-ARENA:PUSH {: x:IR-ARENA:cell-id :}
+   old IR-ARENA:ABORT
+   c 8 IR-ARENA:NEW {: fresh:IR-ARENA:arena :}
+   c fresh 9 IR-ARENA:PUSH drop
+   fresh x IR-ARENA:PEEK drop ;
+
+: AB-REUSE-INDEX ( -- )
+   BND [: AB-REUSE-INDEX-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : AB-CASES ( -- )
    s" reading an aborted arena rejects" T-LABEL
    [: AB-USED ;] E-IR-ARENA-STALE TTHROWSQ
@@ -262,7 +274,9 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    [: AB-TWICE ;] E-IR-ARENA-STALE TTHROWSQ
    s" a reused registry slot does not revive an aborted handle" T-LABEL
    BND [: AB-REUSE-BODY ;] IR-CTX:WITH-CONTEXT
-   TFALSE TTRUE ;
+   TFALSE TTRUE
+   s" an index from an aborted arena rejects after its slot is reused" T-LABEL
+   [: AB-REUSE-INDEX ;] E-IR-ARENA-OWNER TTHROWSQ ;
 
 \ ---- freeze publishes an immutable view --------------------------------------
 : FZ-BODY ( IR-CTX:ctx -- n n n )
@@ -384,7 +398,10 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : SL-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
    TSLOTS 0 ?do
-      c 1 IR-ARENA:NEW drop
+      c 1 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+      c a i IR-ARENA:PUSH {: x:IR-ARENA:cell-id :}
+      a x IR-ARENA:PEEK i T=
+      a IR-ARENA:FREEZE x IR-ARENA:AT i T=
    loop
    c [: SL-65TH ;] catch nip ;
 

@@ -9,7 +9,8 @@
 \
 \ Each context owns a header mapping and a chain of scratch chunks. Growth
 \ adds a chunk without moving earlier spans. WITH-CONTEXT releases every chunk
-\ on return and throw, and a generation registry rejects stale handles.
+\ on return and throw. Handles pack a generation and registry slot so direct
+\ lookup can reject stale handles before touching their mappings.
 \
 \ PERSISTED STATE. All per-context state lives in the context's own mapping as
 \ eight-byte little-endian slots written with the canonical CDIGEST slot words:
@@ -51,6 +52,8 @@ $7FFFFFFF constant SERIAL-CEILING    \ production per-context module ceiling; th
                                      \ full IR-ID module serial range
 $7FFFFFFF constant GEN-MAX           \ context generation ceiling
 64 constant DEPTH-MAX                \ live + retired registry slots
+6 constant SLOT-BITS
+DEPTH-MAX 1- constant SLOT-MASK
 $10000 constant INITIAL-SCRATCH
 $7FFFFFFFFFFFFFE0 constant SCRATCH-CAP \ leaves room for chunk header and alignment
 3 cells constant CHUNK-HDR-BYTES      \ previous pointer, payload capacity, cursor
@@ -153,12 +156,14 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    drop ;
 
 \ ---- handle resolution -------------------------------------------------------
+: PACK-HANDLE ( n n -- n )
+   swap SLOT-BITS lshift or ;
+
 : FIND-SLOT ( n -- n )
-   {: g:n :}
-   -1
-   DEPTH @ 0 ?do
-      g i GEN@ = if drop i leave then
-   loop ;
+   dup SLOT-BITS rshift {: g:n :}
+   SLOT-MASK and {: slot:n :}
+   g 0= slot DEPTH @ >= or if -1 exit then
+   g slot GEN@ = if slot else -1 then ;
 
 : RESOLVE ( IR-CTX:ctx -- ptr u8 )
    CTX>N FIND-SLOT
@@ -339,7 +344,7 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    at CTX-INSTALL
    g at GEN!
    at 1+ DEPTH !
-   g MINT-CTX swap [: CE-CLEANUP ;] finally ;
+   g at PACK-HANDLE MINT-CTX swap [: CE-CLEANUP ;] finally ;
 
 public
 

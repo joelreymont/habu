@@ -18,8 +18,8 @@
 \ handle into an immutable view; ABORT consumes it without publishing.
 \
 \ STALE HANDLES. The same fail-closed generation discipline as IR-CTX: a
-\ handle is a nonzero, monotonic, never-reused serial from this package's
-\ atomic counter, resolved against a bounded registry of live arenas. The
+\ handle packs a never-reused generation from this package's atomic counter
+\ with its registry slot. Resolution checks that slot's generation. The
 \ registry persists each arena's owner as the context serial - the only
 \ storable form, since handles are sealed nominals a raw cell cannot re-mint -
 \ and every resolution probes IR-CTX:SERIAL-LIVE? so an arena whose context
@@ -60,6 +60,8 @@ CAST: IDX>N ( IR-ARENA:cell-id -- n )
 
 \ ---- capacities and packing --------------------------------------------------
 64 constant SLOT-MAX                \ live + frozen registry slots
+6 constant SLOT-BITS
+SLOT-MAX 1- constant SLOT-MASK
 8 constant SEED-CELLS                \ first data span, before any doubling
 $7FFFFFFF constant AGEN-MAX          \ arena generation ceiling
 32 constant LOCAL-BITS
@@ -157,14 +159,17 @@ SLOTS-CLEAR
    drop ;
 
 \ ---- handle resolution -------------------------------------------------------
-: FIND-A ( n -- n )
-   {: g:n :}
-   -1
-   SLOT-MAX 0 ?do
-      g i AGEN@ = if drop i leave then
-   loop ;
+\ The slot stays outside the generation used by cell-id packing.
+: PACK-HANDLE ( n n -- n )
+   swap SLOT-BITS lshift or ;
 
-\ Resolve a generation to its registry slot, fail closed on both a consumed
+: FIND-A ( n -- n )
+   dup SLOT-BITS rshift {: g:n :}
+   SLOT-MASK and {: slot:n :}
+   g 0= if -1 exit then
+   g slot AGEN@ = if slot else -1 then ;
+
+\ Resolve a handle to its registry slot, fail closed on both a consumed
 \ handle and a dead owner: a slot whose context tore down is retired on touch,
 \ before its dangling data pointer can be read.
 : RESOLVE ( n -- n )
@@ -362,7 +367,7 @@ public
    ST-LIVE slot ASTATE!
    g slot AGEN!
    slot SCOPE-RECORD
-   g MINT-ARENA ;
+   g slot PACK-HANDLE MINT-ARENA ;
 
 \ ---- append ------------------------------------------------------------------
 \ A ROW IS SEVERAL PUSHES AND A PUSH CAN FAIL. Growth takes a span from the
@@ -447,7 +452,7 @@ public
 : FREEZE ( IR-ARENA:arena -- IR-ARENA:view )
    LIVE-SLOT {: slot:n :}
    ST-FROZEN slot ASTATE!
-   slot AGEN@ MINT-VIEW ;
+   slot AGEN@ slot PACK-HANDLE MINT-VIEW ;
 
 \ ABORT consumes the builder without publishing: the registry slot is retired
 \ at once, so the handle and every index it minted are stale; the

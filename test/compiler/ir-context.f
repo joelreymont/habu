@@ -108,6 +108,13 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
    b 0 > TTRUE
    a b <> TTRUE ;
 
+: INVALID-SERIAL-CASES ( -- )
+   s" generation-zero and out-of-range serials are not live" T-LABEL
+   0 IR-CTX:SERIAL-LIVE? TFALSE
+   TDEPTH-MAX 1- IR-CTX:SERIAL-LIVE? TFALSE
+   -1 IR-CTX:SERIAL-LIVE? TFALSE
+   $7FFFFFFFFFFFFFFF IR-CTX:SERIAL-LIVE? TFALSE ;
+
 \ ---- serial exhaustion through the production ceiling parameter --------------
 : EX-OK-BODY ( IR-CTX:ctx -- n )
    dup IR-CTX:NEW-MODULE 2drop
@@ -177,6 +184,8 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
 \ generation, not the registry position, is the identity.
 : REUSE-INNER ( IR-CTX:ctx IR-CTX:ctx -- IR-CTX:ctx bool )
    {: old:IR-CTX:ctx fresh:IR-CTX:ctx :}
+   old IR-CTX:SERIAL IR-CTX:SERIAL-LIVE? TFALSE
+   fresh IR-CTX:MINTED 0 T=
    fresh IR-CTX:LIVE?
    old IR-CTX:LIVE? 0= and
    old swap ;
@@ -327,9 +336,14 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
 defer DEEP-STEP ( n IR-CTX:ctx -- n )
 
 : DEEP-IMPL ( n IR-CTX:ctx -- n )
-   drop 1 -
+   {: c:IR-CTX:ctx :}
+   1 -
    dup 0 > if
       BND [: DEEP-STEP ;] IR-CTX:WITH-CONTEXT
+   else
+      c IR-CTX:LIVE? TTRUE
+      c IR-CTX:SERIAL IR-CTX:SERIAL-LIVE? TTRUE
+      c IR-CTX:MINTED 0 T=
    then ;
 
 : DEEP-INSTALL ( -- )
@@ -436,6 +450,7 @@ variable ABANDONED
    WITHIN-DISTINCT
    SIBLING-DISTINCT
    CTX-SERIAL-DISTINCT
+   INVALID-SERIAL-CASES
    EXHAUST-CASES
    STALE-CASES
    SLOT-REUSE-CASE
