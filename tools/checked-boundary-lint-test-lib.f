@@ -540,33 +540,24 @@ variable TP-PRIV-WID
    UB-MAPPED-SPANS-CLEAR? TTRUE
    RESET ;
 
-\ Checked catch requires a stack-preserving quotation, but UB-MAPPED-FILE
-\ consumes the linear mapping extent. This private test boundary catches that
-\ exact production helper and checks its state before WITH-BYTES can release
-\ the mapping or any outer cleanup can clear it. It retires when catch can type
-\ a quotation that consumes a linear mapping row; owner
-\ habu-prove-catch-restores-2f368434.
-TRUSTED: TP-MAP-THROW-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
-   TP-OUT 1 LINT-OUT-BUFFER!
-   [: UB-MAPPED-FILE ;] catch
-   dup 0= if
-      LINT-OUT-BUFFER-OFF
-      drop
-      LINT-FALSE TTRUE
-      exit
-   then
-   {: rc:n :}
-   drop 2drop
+\ Run this cleanup inside the mapping callback, before WITH-BYTES releases it.
+: TP-MAP-THROW-CLEANUP ( -- )
    LINT-OUT-BUFFER-OFF
-   rc E-STR-CAPACITY T=
    UB-MAPPED-SPANS-CLEAR? TTRUE ;
+
+: TP-MAP-THROW-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
+   TP-OUT 1 LINT-OUT-BUFFER!
+   [: UB-MAPPED-FILE ;] [: TP-MAP-THROW-CLEANUP ;] finally ;
+
+: TP-MAP-THROW-RUN ( -- )
+   TP-BAD 2dup TP-FILE! FILE-SIZE {: bytes:n :}
+   bytes bytes MEM:BYTES-ALLOC-LEN
+   [: TP-MAP-THROW-ACT ;] MEM:WITH-BYTES ;
 
 : TP-MAP-THROW-TEST ( -- )
    RESET
    LINT-FALSE STRICT!
-   TP-BAD 2dup TP-FILE! FILE-SIZE {: bytes:n :}
-   bytes bytes MEM:BYTES-ALLOC-LEN
-   [: TP-MAP-THROW-ACT ;] MEM:WITH-BYTES
+   [: TP-MAP-THROW-RUN ;] E-STR-CAPACITY TTHROWSQ
    UB-MAPPED-SPANS-CLEAR? TTRUE
    RESET ;
 
