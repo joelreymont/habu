@@ -1,11 +1,8 @@
 \ diag-origin-test.f - checked fixtures for tools/diag-origin.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/lint/text.f
-\ tools/lint/token.f tools/lint/lib.f tools/diag-origin-core.f
-\ tools/cli-run.f tools/diag-origin-test.f
+\ Run: bin/hb --load tools/diag-origin-test.f
 
 4096 constant DGT-BUF-CAP
-10000 constant DGT-TIMEOUT-MS
+180000 constant DGT-TIMEOUT-MS       \ includes checked compilation of the CLI
 
 variable DGT-ROOT-U
 variable DGT-IN-U
@@ -83,20 +80,11 @@ create DGT-ERR DGT-BUF-CAP allot
 
 : DGT-RUN ( -- len len outcome )
    PROC-ARGV-RESET
-   s" tools/diag-origin.f" CLI-TOOLS-LOAD if DGT-IN DGT-ARG+ else
    s" --load" DGT-ARG+
-   s" lib/errors.f" DGT-ARG+
-   s" lib/string.f" DGT-ARG+
-   s" lib/memory.f" DGT-ARG+
-   s" tools/lint/text.f" DGT-ARG+
-   s" tools/lint/token.f" DGT-ARG+
-   s" tools/lint/lib.f" DGT-ARG+
-   s" tools/diag-origin-core.f" DGT-ARG+
    s" tools/diag-origin.f" DGT-ARG+
    s" --" DGT-ARG+
    DGT-IN DGT-ARG+
-   then
-   CLI-TOOLS$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN
    DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : DGT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}

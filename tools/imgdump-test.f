@@ -1,7 +1,5 @@
 \ imgdump-test.f - checked fixture coverage for tools/imgdump.f compare mode.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f
-\ tools/imgdump-test.f
+\ Run: bin/hb --load tools/imgdump-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -16,7 +14,7 @@ require tools/imgdump.f
 package IMAGE-DUMP-TEST
 
 $4000 constant IDT-CAP
-5000 constant IDT-TIMEOUT-MS
+60000 constant IDT-TIMEOUT-MS       \ includes checked compilation of imgdump
 
 create IDT-OUT IDT-CAP allot
 create IDT-ERR IDT-CAP allot

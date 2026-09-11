@@ -1,10 +1,5 @@
 \ repair-packet-test.f - checked fixture for repair packet generation.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/cli-run.f
-\ lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/json-writer.f tools/lint/source-lex.f
-\ tools/check-all-errors-core.f tools/json.f tools/gate-json-assert-core.f
-\ lib/argv.f tools/repair-packet-core.f tools/repair-packet-test.f
+\ Run: bin/hb --load tools/repair-packet-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -15,7 +10,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/test/outcome.f
 require lib/process-argv.f
-require tools/cli-run.f
+require lib/engine-candidate.f
 require lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
@@ -34,7 +29,7 @@ package REPAIR-PACKET-TEST
 private
 
 $20000 constant CAPTURE-CAP
-10000 constant TIMEOUT-MS
+180000 constant TIMEOUT-MS           \ includes checked compilation of the CLI
 
 variable ROOT-U
 variable SRC-U
@@ -151,7 +146,7 @@ create PACKET-BUF FS-PATH-CAP allot
    SRC a u SOURCE$ WRITE-ALL ;
 
 : HB-CAPTURE ( -- len len outcome )
-   CLI-TOOLS$  >LEN OUT CAPTURE-CAP >LEN
+   ENGINE-CANDIDATE:PATH$  >LEN OUT CAPTURE-CAP >LEN
    ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME ;
 
@@ -356,16 +351,10 @@ create PACKET-BUF FS-PATH-CAP allot
 : TEST-DECL ( -- )
    s" declaration" s" fix_family_declaration" DECL-DIAG$ DIAG-CASE ;
 
-\ Keep one warm-aware CLI no-argument smoke; packet semantics run in-process.
+\ Exercise the self-contained CLI entry; packet semantics run in-process.
 : ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
-   s" tools/repair-packet-core.f" s" tools/repair-packet.f" CLI-TOOLS-LOAD2 if exit then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/argv.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/repair-packet-core.f"  >LEN PROC-ARGV+
+   s" --load" >LEN PROC-ARGV+
    s" tools/repair-packet.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
