@@ -1084,6 +1084,23 @@ create TXT
    w M-RET
    CLOSE-FUN ;
 
+\ A slot above the sixty-fourth. The validator carries one bit per slot, so a
+\ frame reaching this far up is the case whose slot vector takes a second word.
+\ The pair pins that word: stored, the reload is accepted; unstored, refused.
+: BUILD-WIDE-SLOT ( bool -- )
+   {: stored:bool :}
+   s" WIDESLOT" 0 1 OPEN-FUN
+   576 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   \ The slot table is as wide as the MODULE has values, so a module has to
+   \ hold more values than the slot names before that slot can be addressed.
+   80 0 ?do i M-MOVZ drop loop
+   stored if 7 M-MOVZ tok 560 M-STORE else tok then
+   {: t1:IR-ID:ir-value-id :}
+   t1 560 M-LOAD {: w:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 576 M-RELEASE
+   w M-RET
+   CLOSE-FUN ;
+
 \ A reload of a slot nothing ever stored to.
 : BUILD-EMPTY-SLOT ( -- )
    s" EMPTY" 0 1 OPEN-FUN
@@ -1329,6 +1346,28 @@ create TXT
    CC BB y IR-BUILD:ADD-OPERAND
    M-RESULT+
    CLOSE-VALUE ;
+
+\ A frame slot stored on ONE arm of a branch. The join's incoming state is the
+\ meet of a DEF and an UNDEF, which is UNDEF, so the reload there reads a slot
+\ no store on every path to it wrote. With `both` the same slot is stored on
+\ each arm, the meet is DEF, and that very reload is accepted - so the pair
+\ measures the meet itself and not merely that something was refused.
+: BUILD-ARM-SLOT ( bool -- )
+   {: both:bool :}
+   s" ARMSLOT" 0 1 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   7 M-MOVZ {: v:IR-ID:ir-value-id :}
+   v 1 2 M-BRZ
+   M-BLOCK+                             \ block one: the storing arm
+   v tok 0 M-STORE 3 M-BR1
+   M-BLOCK+                             \ block two: the other arm
+   both if v tok 0 M-STORE else tok then 3 M-BR1
+   M-BLOCK+                             \ block three: the join, and the reload
+   M-TOKEN-ARG+ {: tj:IR-ID:ir-value-id :}
+   tj 0 M-LOAD {: w:IR-ID:ir-value-id t3:IR-ID:ir-value-id :}
+   t3 16 M-RELEASE
+   w M-RET
+   CLOSE-FUN ;
 
 \ Two blocks and one edge that carries a value. The branch moves nothing, so its
 \ operand and the argument it lands in are one class and one register - and the
@@ -2449,6 +2488,26 @@ using A64RA
    BUILD-EMPTY-SLOT
    16 FRAME-REFUSE ;
 
+: WIDE-SLOT-STORED-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   true BUILD-WIDE-SLOT
+   576 FRAME-REFUSE ;
+
+: WIDE-SLOT-EMPTY-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   false BUILD-WIDE-SLOT
+   576 FRAME-REFUSE ;
+
+: ARM-SLOT-SPLIT-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   false BUILD-ARM-SLOT
+   16 FRAME-REFUSE ;
+
+: ARM-SLOT-BOTH-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   true BUILD-ARM-SLOT
+   16 FRAME-REFUSE ;
+
 : WRONG-FRAME-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-WRONG-FRAME
@@ -2646,6 +2705,10 @@ using A64RA
 : FAR-SLOT ( -- )         WBND [: FAR-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-SLOT ( -- )       WBND [: EMPTY-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: WIDE-SLOT-STORED ( -- ) WBND [: WIDE-SLOT-STORED-BODY ;] IR-CTX:WITH-CONTEXT ;
+: WIDE-SLOT-EMPTY ( -- )  WBND [: WIDE-SLOT-EMPTY-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ARM-SLOT-SPLIT ( -- )   WBND [: ARM-SLOT-SPLIT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ARM-SLOT-BOTH ( -- )    WBND [: ARM-SLOT-BOTH-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-FRAME ( -- )      WBND [: WRONG-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : LOOSE-ORDER ( -- )     WBND [: LOOSE-ORDER-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -2784,6 +2847,14 @@ using A64RA
 : RELOAD-REFUSE-CASES ( -- )
    s" a reload of a slot nothing stored to is refused" T-LABEL
    [: EMPTY-SLOT ;] E-A64RAV-RELOAD TTHROWSQ
+   s" a reload of a slot only one arm stored to is refused" T-LABEL
+   [: ARM-SLOT-SPLIT ;] E-A64RAV-RELOAD TTHROWSQ
+   s" the same reload is accepted when both arms store" T-LABEL
+   ARM-SLOT-BOTH
+   s" a reload above the sixty-fourth slot is accepted when stored" T-LABEL
+   WIDE-SLOT-STORED
+   s" and refused when nothing stored there" T-LABEL
+   [: WIDE-SLOT-EMPTY ;] E-A64RAV-RELOAD TTHROWSQ
    s" a frame that is not the one the contract declares is refused" T-LABEL
    [: WRONG-FRAME ;] E-A64RA-FRAME TTHROWSQ ;
 

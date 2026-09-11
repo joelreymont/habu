@@ -136,18 +136,36 @@ DYNAMIC-BUFFER DB-BUF n
 DYNAMIC-BUFFER RCH-BUF n
 : RCH ( -- ptr n ) 0 RCH-BUF ;
 
-0 constant FLOW-UNDEF
-1 constant FLOW-DEF
-2 constant FLOW-TOP
-DYNAMIC-BUFFER FLOW-IN-BUF n
-: FLOW-IN ( -- ptr n ) 0 FLOW-IN-BUF ;
-DYNAMIC-BUFFER FLOW-OUT-BUF n
-: FLOW-OUT ( -- ptr n ) 0 FLOW-OUT-BUF ;
+\ One frame slot's state is three-valued - TOP, DEF, UNDEF - and no slot's
+\ state depends on another's, so every slot's bit rides in the same word: a
+\ slot is TOP where its TOP bit is set, DEF where its DEF bit is, and UNDEF
+\ where neither is.
+64 constant FBITS
+0 constant FP-IN-T                   \ the four bit planes one block carries
+1 constant FP-IN-D
+2 constant FP-OUT-T
+3 constant FP-OUT-D
+4 constant FPLANES
+DYNAMIC-BUFFER FLOW-BUF n
+: FLOW-V ( -- ptr n ) 0 FLOW-BUF ;
+DYNAMIC-BUFFER FST-BUF n             \ slots each block stores to
+: FSTV ( -- ptr n ) 0 FST-BUF ;
+DYNAMIC-BUFFER FCUR-BUF n            \ DEF bits the block walk stands on
+: FCURV ( -- ptr n ) 0 FCUR-BUF ;
+DYNAMIC-BUFFER FOP-BUF n             \ one cell per operation of the function
+: FOPV ( -- ptr n ) 0 FOP-BUF ;
+DYNAMIC-BUFFER FPO-BUF n             \ end of each block's predecessor run
+: FPOV ( -- ptr n ) 0 FPO-BUF ;
+DYNAMIC-BUFFER FPE-BUF n             \ the predecessor runs themselves
+: FPEV ( -- ptr n ) 0 FPE-BUF ;
 variable FLOW-CHANGED
-variable FLOW-SEEN
-variable FLOW-MEET-V
-variable FLOW-STATE
-variable FLOW-S
+variable FLOW-W                      \ words one block's slot vector takes
+variable FLOW-NB                     \ blocks in the function being checked
+variable FLOW-AT                     \ the operation one of the walks stands on
+variable FLOW-HI                     \ slots the function's operations name
+variable FM-T                        \ the running meet, TOP bits
+variable FM-D                        \ the running meet, DEF bits
+variable FPO-RUN                     \ where the next predecessor run starts
 
 : DEF-AT ( n -- n )                  cells D-AT + @ ;
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
@@ -621,57 +639,30 @@ variable FLOW-S
    id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
    id DBYTES-OF want <> if E-A64RAV-DSTACK throw then ;
 
-: FLOW-IN@ ( n -- n )
-   cells FLOW-IN + @ ;
+: FW-IX ( n n n -- n )
+   {: pl:n b:n w:n :}
+   pl BMAX * b + FLOW-W @ * w + ;
 
-: FLOW-IN! ( n n -- )
-   cells FLOW-IN + ! ;
+: FW@ ( n n n -- n )                 FW-IX cells FLOW-V + @ ;
+: FW! ( n n n n -- )
+   {: val:n pl:n b:n w:n :}
+   val  pl b w FW-IX cells FLOW-V + ! ;
 
-: FLOW-OUT@ ( n -- n )
-   cells FLOW-OUT + @ ;
+: FST@ ( n n -- n )
+   {: b:n w:n :}
+   b FLOW-W @ * w + cells FSTV + @ ;
+: FST! ( n n n -- )
+   {: val:n b:n w:n :}
+   val  b FLOW-W @ * w + cells FSTV + ! ;
 
-: FLOW-OUT! ( n n -- )
-   cells FLOW-OUT + ! ;
-
-: FLOW-CLEAR ( -- )
-   BMAX 0 ?do
-      FLOW-TOP i FLOW-IN!
-      FLOW-TOP i FLOW-OUT!
-   loop ;
-
-: FLOW-MEET ( n n -- n )
-   {: a:n b:n :}
-   a FLOW-TOP = if b exit then
-   b FLOW-TOP = if a exit then
-   a b = if a exit then
-   FLOW-UNDEF ;
-
-: FLOW-SUCC-ORD ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- n )
-   {: f:IR-ID:ir-fun-id t:IR-ID:ir-op-id i:n :}
-   t i SUCC-AT IR-ID:BLOCK-LOCAL
-   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL -
-   dup 0 < over f BLOCK-COUNT >= or if E-A64RAV-SHAPE throw then ;
-
-: FLOW-EDGE? ( IR-ID:ir-fun-id n n -- bool )
-   {: f:IR-ID:ir-fun-id p:n b:n :}
-   f p BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
-   false
-   t SUCCS-OF 0 ?do
-      f t i FLOW-SUCC-ORD b = if drop true leave then
-   loop ;
-
-: FLOW-IN-CALC ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id b:n :}
-   b 0= if FLOW-UNDEF exit then
-   0 FLOW-SEEN ! FLOW-TOP FLOW-MEET-V !
-   f BLOCK-COUNT 0 ?do
-      f i b FLOW-EDGE? if
-         1 FLOW-SEEN !
-         FLOW-MEET-V @ i FLOW-OUT@ FLOW-MEET FLOW-MEET-V !
-      then
-   loop
-   FLOW-SEEN @ 0= if FLOW-UNDEF exit then
-   FLOW-MEET-V @ ;
+: FCUR@ ( n -- n )                   cells FCURV + @ ;
+: FCUR! ( n n -- )                   {: val:n w:n :} val w cells FCURV + ! ;
+: FOP-AT ( n -- n )                  cells FOPV + @ ;
+: FOP! ( n n -- )                    {: val:n at:n :} val at cells FOPV + ! ;
+: FPO-AT ( n -- n )                  cells FPOV + @ ;
+: FPO! ( n n -- )                    {: val:n b:n :} val b cells FPOV + ! ;
+: FPE-AT ( n -- n )                  cells FPEV + @ ;
+: FPE! ( n n -- )                    {: val:n at:n :} val at cells FPEV + ! ;
 
 : FLOW-SLOT ( IR-ID:ir-op-id -- n )
    SLOT-OF {: off:n :}
@@ -680,65 +671,227 @@ variable FLOW-S
    s 0 < s SLOTS-MAX >= or if E-A64RAV-SLOT throw then
    s ;
 
-: FLOW-OUT-CALC ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id b:n :}
-   b FLOW-IN@ FLOW-STATE !
-   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id FLOW-SLOT FLOW-S @ =  id STORES? and if FLOW-DEF FLOW-STATE ! then
-   loop
-   FLOW-STATE @ ;
+\ ---- what each operation says about the frame, read once ---------------------
+\ An operation's cell is NOSLOT when it names no frame slot, and otherwise the
+\ slot doubled, with the low bit set when the operation stores to it. The
+\ per-slot passes re-read these two answers off the module once for every slot;
+\ every walk below reads this cell instead.
+: FOP-SLOT ( n -- n )                2 / ;
+: FOP-STORE? ( n -- bool )           1 and 0<> ;
 
-: FLOW-CELL ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id b:n :}
-   f b FLOW-IN-CALC {: vin:n :}
-   vin b FLOW-IN@ <> if vin b FLOW-IN! 1 FLOW-CHANGED ! then
-   f b FLOW-OUT-CALC {: vout:n :}
-   vout b FLOW-OUT@ <> if vout b FLOW-OUT! 1 FLOW-CHANGED ! then ;
-
-: FLOW-FIXPOINT ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   FLOW-CLEAR
-   begin
-      0 FLOW-CHANGED !
-      f BLOCK-COUNT 0 ?do f i FLOW-CELL loop
-      FLOW-CHANGED @ 0=
-   until ;
-
-: FLOW-CUR-IN ( n -- )
-   FLOW-IN@ FLOW-STATE ! ;
-
-: FLOW-OP-CK ( IR-ID:ir-op-id -- )
+: FOP-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id FLOW-SLOT {: s:n :}
-   s FLOW-S @ <> if exit then
-   id STORES? if FLOW-DEF FLOW-STATE ! exit then
-   FLOW-STATE @ FLOW-DEF <> if E-A64RAV-RELOAD throw then ;
+   s NOSLOT = if
+      NOSLOT FLOW-AT @ FOP!
+   else
+      s 2 *  id STORES? if 1+ then  FLOW-AT @ FOP!
+      s 1+ FLOW-HI @ max FLOW-HI !
+   then
+   FLOW-AT @ 1+ FLOW-AT ! ;
 
-: FLOW-BLOCK-CK ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id b:n :}
-   b FLOW-CUR-IN
-   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 0 ?do bk i OP-AT FLOW-OP-CK loop ;
+\ The same walk over every operation the per-slot scan opened with, made once:
+\ it asks FLOW-SLOT of the same operations in the same order, so a slot the
+\ routine cannot address is refused where it was refused before.
+: FOP-FILL ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   0 FLOW-AT !  0 FLOW-HI !
+   FLOW-NB @ 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk OP-COUNT 0 ?do bk i OP-AT FOP-OP loop
+   loop ;
 
-: FLOW-HIGH ( IR-ID:ir-fun-id -- n )
+: FOP-RESERVE ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    0
-   f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-      bk OP-COUNT 0 ?do
-         bk i OP-AT FLOW-SLOT dup NOSLOT <> if 1+ max else drop then
+   FLOW-NB @ 0 ?do f i BLOCK-AT OP-COUNT + loop
+   1 max FOP-BUF-RESERVE ;
+
+\ ---- which blocks reach which, read off the terminators ----------------------
+\ The predecessors are collected from the successors every terminator carries,
+\ which is what the scan this replaces read: a block's predecessor list is not
+\ consulted, so nothing new is trusted. A block reaching another twice enters
+\ its run twice, and the meet is idempotent.
+: FLOW-SUCC-ORD ( IR-ID:ir-fun-id IR-ID:ir-op-id n -- n )
+   {: f:IR-ID:ir-fun-id t:IR-ID:ir-op-id i:n :}
+   t i SUCC-AT IR-ID:BLOCK-LOCAL
+   f 0 BLOCK-AT IR-ID:BLOCK-LOCAL -
+   dup 0 < over f BLOCK-COUNT >= or if E-A64RAV-SHAPE throw then ;
+
+: FPRED-COUNT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id p:n :}
+   f p BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      f t i FLOW-SUCC-ORD {: b:n :}
+      b FPO-AT 1+ b FPO!
+   loop ;
+
+\ The counts become run starts, and the placing pass leaves each cell holding
+\ the END of that block's run - so block zero's run starts at zero and every
+\ other block's starts where the block below it ended.
+: FPO-SCAN ( -- )
+   0 FPO-RUN !
+   FLOW-NB @ 0 ?do
+      i FPO-AT {: c:n :}
+      FPO-RUN @ i FPO!
+      FPO-RUN @ c + FPO-RUN !
+   loop ;
+
+: FPRED-PLACE ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id p:n :}
+   f p BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      f t i FLOW-SUCC-ORD {: b:n :}
+      b FPO-AT {: at:n :}
+      p at FPE!
+      at 1+ b FPO!
+   loop ;
+
+: FPRED-START ( n -- n )             {: b:n :} b 0= if 0 exit then b 1- FPO-AT ;
+: FPRED-END ( n -- n )               FPO-AT ;
+
+: FPRED-BUILD ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   FLOW-NB @ 0 ?do 0 i FPO! loop
+   FLOW-NB @ 0 ?do f i FPRED-COUNT loop
+   FPO-SCAN
+   FPO-RUN @ 1 max FPE-BUF-RESERVE
+   FLOW-NB @ 0 ?do f i FPRED-PLACE loop ;
+
+\ ---- the slots a block stores to --------------------------------------------
+: FST-ADD ( n n -- )
+   {: b:n s:n :}
+   s FBITS / {: w:n :}
+   b w FST@  1 s FBITS mod lshift or  b w FST! ;
+
+: FST-BLOCK ( n n -- )
+   {: b:n n:n :}
+   n 0 ?do
+      FLOW-AT @ FOP-AT {: c:n :}
+      c NOSLOT <> if
+         c FOP-STORE? if b c FOP-SLOT FST-ADD then
+      then
+      FLOW-AT @ 1+ FLOW-AT !
+   loop ;
+
+: FST-FILL ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   FLOW-NB @ FLOW-W @ * 0 ?do 0 i cells FSTV + ! loop
+   0 FLOW-AT !
+   FLOW-NB @ 0 ?do i  f i BLOCK-AT OP-COUNT  FST-BLOCK loop ;
+
+\ ---- the fixpoint, every slot at once ----------------------------------------
+\ TOP is the identity of the meet, so two TOPs meet to TOP and a TOP meets a
+\ DEF to that DEF; every other pair falls to UNDEF. Bit for bit, that is the
+\ answer FLOW-MEET gave one slot at a time.
+: FMEET1 ( n n -- )
+   {: p:n w:n :}
+   FP-OUT-T p w FW@ {: t2:n :}
+   FP-OUT-D p w FW@ {: d2:n :}
+   FM-T @ {: t1:n :}
+   FM-D @ {: d1:n :}
+   t1 t2 and FM-T !
+   d1 d2 and  d1 t2 and or  t1 d2 and or  FM-D ! ;
+
+: FIN-UNDEF ( -- )                   0 FM-T ! 0 FM-D ! ;
+
+\ IN is the meet of every predecessor's OUT. The entry block takes UNDEF however
+\ it is reached, and so does a block no edge reaches.
+: FIN-WORD ( n n -- )
+   {: b:n w:n :}
+   -1 FM-T !  0 FM-D !
+   b 0= if
+      FIN-UNDEF
+   else
+      b FPRED-START {: p0:n :}
+      b FPRED-END {: p1:n :}
+      p0 p1 = if FIN-UNDEF else
+         p1 p0 ?do i FPE-AT w FMEET1 loop
+      then
+   then
+   FM-T @ FP-IN-T b w FW@ <> if FM-T @ FP-IN-T b w FW! 1 FLOW-CHANGED ! then
+   FM-D @ FP-IN-D b w FW@ <> if FM-D @ FP-IN-D b w FW! 1 FLOW-CHANGED ! then ;
+
+\ A block leaves DEF every slot it stores to and passes the rest through.
+: FOUT-WORD ( n n -- )
+   {: b:n w:n :}
+   b w FST@ {: sv:n :}
+   FP-IN-D b w FW@ sv or {: dw:n :}
+   FP-IN-T b w FW@ sv invert and {: tw:n :}
+   tw FP-OUT-T b w FW@ <> if tw FP-OUT-T b w FW! 1 FLOW-CHANGED ! then
+   dw FP-OUT-D b w FW@ <> if dw FP-OUT-D b w FW! 1 FLOW-CHANGED ! then ;
+
+: FCELL ( n -- )
+   {: b:n :}
+   FLOW-W @ 0 ?do b i FIN-WORD loop
+   FLOW-W @ 0 ?do b i FOUT-WORD loop ;
+
+: FCLEAR ( -- )
+   FLOW-NB @ 0 ?do
+      FLOW-W @ 0 ?do
+         -1 FP-IN-T  j i FW!    0 FP-IN-D  j i FW!
+         -1 FP-OUT-T j i FW!    0 FP-OUT-D j i FW!
       loop
    loop ;
 
+\ The block order is the one the per-slot fixpoint ran in, and a slot's states
+\ never depend on another slot's, so each slot's sequence of values here is the
+\ sequence it had alone. The rounds are those of the slot that settles last.
+: FFIXPOINT ( -- )
+   FCLEAR
+   begin
+      0 FLOW-CHANGED !
+      FLOW-NB @ 0 ?do i FCELL loop
+      FLOW-CHANGED @ 0=
+   until ;
+
+\ ---- the checked walk --------------------------------------------------------
+\ A slot the walk stands on is DEF or it is not: TOP and UNDEF are both refused,
+\ which is what the three-valued compare against FLOW-DEF refused.
+: FCUR-DEF? ( n -- bool )
+   {: s:n :}
+   s FBITS / FCUR@  1 s FBITS mod lshift and 0<> ;
+
+: FCUR-SET ( n -- )
+   {: s:n :}
+   s FBITS / {: w:n :}
+   w FCUR@  1 s FBITS mod lshift or  w FCUR! ;
+
+: FCUR<IN ( n -- )
+   {: b:n :}
+   FLOW-W @ 0 ?do FP-IN-D b i FW@ i FCUR! loop ;
+
+: FCK-OP ( n -- )
+   {: at:n :}
+   at FOP-AT {: c:n :}
+   c NOSLOT = if exit then
+   c FOP-STORE? if c FOP-SLOT FCUR-SET exit then
+   c FOP-SLOT FCUR-DEF? 0= if E-A64RAV-RELOAD throw then ;
+
+: FCK-BLOCK ( n n -- )
+   {: b:n n:n :}
+   b FCUR<IN
+   n 0 ?do FLOW-AT @ FCK-OP  FLOW-AT @ 1+ FLOW-AT ! loop ;
+
+: FCK-WALK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   0 FLOW-AT !
+   FLOW-NB @ 0 ?do i  f i BLOCK-AT OP-COUNT  FCK-BLOCK loop ;
+
+\ Every reload reads a slot a store on every path to it already wrote. A module
+\ naming no frame slot is answered by the operation walk alone, exactly as a
+\ zero slot count left the per-slot loop with no body to run.
 : FLOW-CK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   f FLOW-HIGH 0 ?do
-      i FLOW-S !
-      f FLOW-FIXPOINT
-      f BLOCK-COUNT 0 ?do f i FLOW-BLOCK-CK loop
-   loop ;
+   f BLOCK-COUNT FLOW-NB !
+   f FOP-RESERVE
+   f FOP-FILL
+   FLOW-HI @ 0= if exit then
+   FLOW-HI @ FBITS 1- + FBITS / FLOW-W !
+   f FPRED-BUILD
+   f FST-FILL
+   FFIXPOINT
+   f FCK-WALK ;
 
 : SLOT-CK ( IR-ID:ir-fun-id A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
@@ -1191,8 +1344,10 @@ DYNAMIC-BUFFER VD-DOUT-BUF n
    VMAX BMAX 63 + 64 / * UB-BUF-RESERVE
    VMAX DB-BUF-RESERVE
    BMAX RCH-BUF-RESERVE
-   BMAX FLOW-IN-BUF-RESERVE
-   BMAX FLOW-OUT-BUF-RESERVE
+   FPLANES BMAX * SETC * FLOW-BUF-RESERVE
+   BMAX SETC * FST-BUF-RESERVE
+   SETC FCUR-BUF-RESERVE
+   BMAX FPO-BUF-RESERVE
    BMAX VB-ST-BUF-RESERVE
    BMAX VB-EN-BUF-RESERVE
    PLANES BMAX * SETC * V-SETS-BUF-RESERVE
@@ -2128,8 +2283,12 @@ public
    UB-BUF-RELEASE
    DB-BUF-RELEASE
    RCH-BUF-RELEASE
-   FLOW-IN-BUF-RELEASE
-   FLOW-OUT-BUF-RELEASE
+   FLOW-BUF-RELEASE
+   FST-BUF-RELEASE
+   FCUR-BUF-RELEASE
+   FOP-BUF-RELEASE
+   FPO-BUF-RELEASE
+   FPE-BUF-RELEASE
    VB-ST-BUF-RELEASE
    VB-EN-BUF-RELEASE
    V-SETS-BUF-RELEASE
