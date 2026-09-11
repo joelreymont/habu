@@ -14,7 +14,7 @@
 \    compare equal and digest equal, at every level including the binding.
 \
 \ 3. EVERY SEMANTIC FIELD CHANGES IDENTITY. The suite enumerates the ENTIRE legal
-\    domain - 352 target contracts, 60 numerical policies - and shows the digests
+\    domain - 484 target contracts, 60 numerical policies - and shows the digests
 \    are pairwise distinct, and that digest equality holds exactly where the
 \    structural comparison holds. Enumerating everything is what makes this a
 \    proof over the domain rather than a sample: it covers every field, every
@@ -36,13 +36,13 @@ private
 \ Target contracts: architecture x ABI x byte order x pointer width x every
 \ feature mask over the nine defined bits. A single flat index keeps the sweep to
 \ one loop; the projections below take it apart.
-2 constant ARCH#
-3 constant ABI#
+5 constant ARCH#
+5 constant ABI#
 2 constant END#
 2 constant PTR#
 $200 constant RAW#
 ARCH# ABI# * END# * PTR# * RAW# * constant COMBO#
-352 constant LEGAL-CONTRACTS
+484 constant LEGAL-CONTRACTS
 
 \ Numerical policies: the full product of the five families.
 2 constant OVF#
@@ -115,13 +115,18 @@ variable N
 \ Total by construction: the last alternative is the fall-through, and every
 \ caller drives these from a loop bounded by the family size.
 : N>ARCH ( n -- CTARGET:arch )
-   0= if CTARGET-ARCH:AARCH64 exit then
-   CTARGET-ARCH:PTX ;
+   dup 0= if drop CTARGET-ARCH:AARCH64 exit then
+   dup 1 = if drop CTARGET-ARCH:PTX exit then
+   dup 2 = if drop CTARGET-ARCH:A32 exit then
+   3 = if CTARGET-ARCH:THUMB2 exit then
+   CTARGET-ARCH:C66X ;
 
 : N>ABI ( n -- CTARGET:abi )
    dup 0= if drop CTARGET-ABI:AAPCS64-DARWIN exit then
-   1 = if CTARGET-ABI:AAPCS64-LINUX exit then
-   CTARGET-ABI:PTX-KERNEL ;
+   dup 1 = if drop CTARGET-ABI:AAPCS64-LINUX exit then
+   dup 2 = if drop CTARGET-ABI:PTX-KERNEL exit then
+   3 = if CTARGET-ABI:AAPCS32 exit then
+   CTARGET-ABI:C6000-EABI ;
 
 : N>ENDIAN ( n -- CTARGET:endian )
    0= if CTARGET-ENDIAN:LITTLE exit then
@@ -166,20 +171,23 @@ variable N
 : P-OVF ( n -- n )   CMP# FM# * CON# * FLT# * / ;
 
 \ ---- this suite's own legality rules -----------------------------------------
-\ An ABI belongs to one architecture; big-endian storage is defined only for the
-\ Linux AArch64 ABI; 32-bit addresses only for the PTX kernel ABI.
+\ AAPCS32 covers two instruction states. Embedded ABIs require 32-bit
+\ pointers and support either data byte order; PTX permits either width.
 : OK-ABI? ( n n -- bool )
    {: arch:n abi:n :}
    arch 0= if abi 2 < exit then
-   abi 2 = ;
+   arch 1 = if abi 2 = exit then
+   arch 4 = if abi 4 = exit then
+   abi 3 = ;
 
 : OK-ENDIAN? ( n n -- bool )
    {: abi:n endian:n :}
    endian 0= if true exit then
-   abi 1 = ;
+   abi 1 = abi 3 >= or ;
 
 : OK-PTR? ( n n -- bool )
    {: abi:n ptr:n :}
+   abi 3 >= if ptr 0= exit then
    ptr 1 = if true exit then
    abi 2 = ;
 
@@ -303,6 +311,32 @@ variable N
    [: CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-LINUX CTARGET-ENDIAN:LITTLE
       CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE TRY-CONTRACT ;]
       E-CTGT-PTR TTHROWSQ ;
+
+: EMBEDDED ( -- )
+   [: CTARGET-ARCH:A32 CTARGET-ABI:AAPCS32 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE TRY-CONTRACT ;]
+      E-CTGT-PTR TTHROWSQ
+   [: CTARGET-ARCH:C66X CTARGET-ABI:C6000-EABI CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS64 CTARGET:F-BASE TRY-CONTRACT ;]
+      E-CTGT-PTR TTHROWSQ
+   [: CTARGET-ARCH:C66X CTARGET-ABI:AAPCS32 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE TRY-CONTRACT ;]
+      E-CTGT-ABI TTHROWSQ
+   [: CTARGET-ARCH:C66X CTARGET-ABI:C6000-EABI CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
+      TRY-CONTRACT ;] E-CTGT-FEATURE TTHROWSQ
+   CTARGET-ARCH:A32 CTARGET-ABI:AAPCS32 CTARGET-ENDIAN:BIG
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT
+      CTARGET:ENCODE drop {: a:ptr :}
+   a 2 CDIGEST:SLOT@ 2 T= a 3 CDIGEST:SLOT@ 3 T=
+   a 4 CDIGEST:SLOT@ 1 T= a 5 CDIGEST:SLOT@ 0 T=
+   CTARGET-ARCH:THUMB2 CTARGET-ABI:AAPCS32 CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT
+      CTARGET:ENCODE drop 2 CDIGEST:SLOT@ 3 T=
+   CTARGET-ARCH:C66X CTARGET-ABI:C6000-EABI CTARGET-ENDIAN:LITTLE
+      CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT
+      CTARGET:ENCODE drop {: c:ptr :}
+   c 2 CDIGEST:SLOT@ 4 T= c 3 CDIGEST:SLOT@ 4 T= ;
 
 : BAD-FEATURES ( -- )
    [: $200 CTARGET:FEATURE-SET CTARGET-FEATURES:UNMAKE drop ;]
@@ -441,8 +475,8 @@ variable N
    DIGEST$ REFLECT:FAMS 1 T=
    DIGEST$ REFLECT:FLDS 4 T=
    DIGEST$ REFLECT:WIDTH 4 T=
-   s" arch" s" CTARGET-ARCH" REFLECT:VARS 2 T=
-   s" abi" s" CTARGET-ABI" REFLECT:VARS 3 T=
+   s" arch" s" CTARGET-ARCH" REFLECT:VARS 5 T=
+   s" abi" s" CTARGET-ABI" REFLECT:VARS 5 T=
    s" endian" s" CTARGET-ENDIAN" REFLECT:VARS 2 T=
    s" ptr-width" s" CTARGET-PTR--WIDTH" REFLECT:VARS 2 T=
    s" overflow" s" CNUM-OVERFLOW" REFLECT:VARS 2 T=
@@ -592,6 +626,7 @@ public
    BAD-ABI
    BAD-ENDIAN
    BAD-PTR
+   EMBEDDED
    BAD-FEATURES
    BAD-POLICY
    BAD-BINDING

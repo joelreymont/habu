@@ -310,6 +310,9 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 
 0 constant AR-AARCH64
 1 constant AR-PTX
+2 constant AR-A32
+3 constant AR-THUMB2
+4 constant AR-C66X
 
 : EFF-CODE ( IR-SCHEMA:effect -- n )
    MATCH effect
@@ -350,6 +353,9 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
    MATCH CTARGET:arch
       aarch64 OF AR-AARCH64 ENDOF
       ptx     OF AR-PTX ENDOF
+      a32     OF AR-A32 ENDOF
+      thumb2  OF AR-THUMB2 ENDOF
+      c66x    OF AR-C66X ENDOF
    ;MATCH ;
 
 \ ---- wire-code decoders ------------------------------------------------------
@@ -399,6 +405,9 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
    case
       AR-AARCH64 of CTARGET-ARCH:AARCH64 endof
       AR-PTX     of CTARGET-ARCH:PTX endof
+      AR-A32     of CTARGET-ARCH:A32 endof
+      AR-THUMB2  of CTARGET-ARCH:THUMB2 endof
+      AR-C66X    of CTARGET-ARCH:C66X endof
       E-IR-SCHEMA-STATE throw
    endcase ;
 

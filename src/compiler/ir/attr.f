@@ -316,6 +316,9 @@ $8000000000000000 constant INT-MIN
    MATCH CTARGET:arch
       aarch64 OF 0 ENDOF
       ptx     OF 1 ENDOF
+      a32     OF 2 ENDOF
+      thumb2  OF 3 ENDOF
+      c66x    OF 4 ENDOF
    ;MATCH ;
 
 : ABI-CODE ( CTARGET:abi -- n )
@@ -323,6 +326,8 @@ $8000000000000000 constant INT-MIN
       aapcs64-darwin OF 0 ENDOF
       aapcs64-linux  OF 1 ENDOF
       ptx-kernel     OF 2 ENDOF
+      aapcs32       OF 3 ENDOF
+      c6000-eabi    OF 4 ENDOF
    ;MATCH ;
 
 : ENDN-CODE ( CTARGET:endian -- n )
@@ -381,6 +386,9 @@ $8000000000000000 constant INT-MIN
    case
       0 of CTARGET-ARCH:AARCH64 endof
       1 of CTARGET-ARCH:PTX endof
+      2 of CTARGET-ARCH:A32 endof
+      3 of CTARGET-ARCH:THUMB2 endof
+      4 of CTARGET-ARCH:C66X endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -389,6 +397,8 @@ $8000000000000000 constant INT-MIN
       0 of CTARGET-ABI:AAPCS64-DARWIN endof
       1 of CTARGET-ABI:AAPCS64-LINUX endof
       2 of CTARGET-ABI:PTX-KERNEL endof
+      3 of CTARGET-ABI:AAPCS32 endof
+      4 of CTARGET-ABI:C6000-EABI endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -415,8 +425,8 @@ $8000000000000000 constant INT-MIN
       F-CON  of 2 endof
       F-FAS  of 3 endof
       F-CMP  of 3 endof
-      F-ARCH of 2 endof
-      F-ABI  of 3 endof
+      F-ARCH of 5 endof
+      F-ABI  of 5 endof
       F-END  of 2 endof
       F-PTRW of 2 endof
       E-IR-ATTR-STATE throw
@@ -1372,6 +1382,9 @@ create DBUF 24 allot
    case
       0 of s" aarch64" endof
       1 of s" ptx" endof
+      2 of s" a32" endof
+      3 of s" thumb2" endof
+      4 of s" c66x" endof
       E-IR-ATTR-STATE throw
    endcase ;
 
@@ -1380,6 +1393,8 @@ create DBUF 24 allot
       0 of s" aapcs64-darwin" endof
       1 of s" aapcs64-linux" endof
       2 of s" ptx-kernel" endof
+      3 of s" aapcs32" endof
+      4 of s" c6000-eabi" endof
       E-IR-ATTR-STATE throw
    endcase ;
 

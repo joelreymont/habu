@@ -177,6 +177,9 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    case
       0 of CTARGET-ARCH:AARCH64 endof
       1 of CTARGET-ARCH:PTX endof
+      2 of CTARGET-ARCH:A32 endof
+      3 of CTARGET-ARCH:THUMB2 endof
+      4 of CTARGET-ARCH:C66X endof
       E-IR-CTX-STATE throw
    endcase ;
 
@@ -185,6 +188,8 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
       0 of CTARGET-ABI:AAPCS64-DARWIN endof
       1 of CTARGET-ABI:AAPCS64-LINUX endof
       2 of CTARGET-ABI:PTX-KERNEL endof
+      3 of CTARGET-ABI:AAPCS32 endof
+      4 of CTARGET-ABI:C6000-EABI endof
       E-IR-CTX-STATE throw
    endcase ;
 

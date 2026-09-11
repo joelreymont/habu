@@ -52,15 +52,19 @@ public
 ENUM arch DERIVE eq
    aarch64
    ptx
+   a32
+   thumb2
+   c66x
 ;ENUM
 
-\ The calling and object convention. Each ABI belongs to exactly one
-\ architecture; ABI-ARCH below is that fact, and it is what rejects a
-\ cross-architecture pairing.
+\ The calling and object convention. AAPCS32 base PCS covers both ARM and
+\ Thumb code; a floating-point register-argument PCS would be a distinct ABI.
 ENUM abi DERIVE eq
    aapcs64-darwin
    aapcs64-linux
    ptx-kernel
+   aapcs32
+   c6000-eabi
 ;ENUM
 
 \ Byte order of stored multi-byte values.
@@ -122,6 +126,15 @@ constant MASK-AARCH64
 BIT-BASE BIT-FP or BIT-FP16 or BIT-BF16 or BIT-TF32 or BIT-ATOMIC or
 BIT-MMA or BIT-ASYNC or constant MASK-PTX
 
+\ A32 and Thumb-2 describe instruction states, not one core's optional units.
+\ A concrete core declares only the features it actually implements.
+BIT-BASE BIT-FP or BIT-SIMD or BIT-FP16 or BIT-BF16 or BIT-ATOMIC or
+constant MASK-ARM32
+
+\ C66x has packed arithmetic. F-FP includes fused multiply-add, so its
+\ non-fused floating-point instructions do not satisfy that feature.
+BIT-BASE BIT-SIMD or constant MASK-C66X
+
 : MK ( n -- CTARGET:features )
    CTARGET-FEATURES:MAKE ;
 
@@ -134,6 +147,9 @@ BIT-MMA or BIT-ASYNC or constant MASK-PTX
    MATCH arch
       aarch64 OF 0 ENDOF
       ptx     OF 1 ENDOF
+      a32     OF 2 ENDOF
+      thumb2  OF 3 ENDOF
+      c66x    OF 4 ENDOF
    ;MATCH ;
 
 : ABI-CODE ( CTARGET:abi -- n )
@@ -141,6 +157,8 @@ BIT-MMA or BIT-ASYNC or constant MASK-PTX
       aapcs64-darwin OF 0 ENDOF
       aapcs64-linux  OF 1 ENDOF
       ptx-kernel     OF 2 ENDOF
+      aapcs32       OF 3 ENDOF
+      c6000-eabi    OF 4 ENDOF
    ;MATCH ;
 
 : ENDIAN-CODE ( CTARGET:endian -- n )
@@ -156,13 +174,15 @@ BIT-MMA or BIT-ASYNC or constant MASK-PTX
    ;MATCH ;
 
 \ ---- coherence rules ---------------------------------------------------------
-\ The architecture an ABI is defined for. An ABI names one architecture; that is
-\ what makes a cross pairing incoherent rather than merely unsupported.
-: ABI-ARCH ( CTARGET:abi -- CTARGET:arch )
-   MATCH abi
-      aapcs64-darwin OF CTARGET-ARCH:AARCH64 ENDOF
-      aapcs64-linux  OF CTARGET-ARCH:AARCH64 ENDOF
-      ptx-kernel     OF CTARGET-ARCH:PTX ENDOF
+: ABI-ARCH? ( CTARGET:arch CTARGET:abi -- bool )
+   {: a:arch b:abi :}
+   b MATCH abi
+      aapcs64-darwin OF a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ ENDOF
+      aapcs64-linux  OF a CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ ENDOF
+      ptx-kernel     OF a CTARGET-ARCH:PTX CTARGET-ARCH:EQ ENDOF
+      aapcs32       OF a CTARGET-ARCH:A32 CTARGET-ARCH:EQ
+                       a CTARGET-ARCH:THUMB2 CTARGET-ARCH:EQ or ENDOF
+      c6000-eabi    OF a CTARGET-ARCH:C66X CTARGET-ARCH:EQ ENDOF
    ;MATCH ;
 
 \ Is the ABI defined for big-endian storage? Darwin's arm64 ABI is little-endian
@@ -173,6 +193,8 @@ BIT-MMA or BIT-ASYNC or constant MASK-PTX
       aapcs64-darwin OF false ENDOF
       aapcs64-linux  OF true ENDOF
       ptx-kernel     OF false ENDOF
+      aapcs32       OF true ENDOF
+      c6000-eabi    OF true ENDOF
    ;MATCH ;
 
 \ Is the ABI defined for 32-bit addresses? Both AArch64 ABIs named here are
@@ -183,17 +205,31 @@ BIT-MMA or BIT-ASYNC or constant MASK-PTX
       aapcs64-darwin OF false ENDOF
       aapcs64-linux  OF false ENDOF
       ptx-kernel     OF true ENDOF
+      aapcs32       OF true ENDOF
+      c6000-eabi    OF true ENDOF
+   ;MATCH ;
+
+: PTR64-OK? ( CTARGET:abi -- bool )
+   MATCH abi
+      aapcs64-darwin OF true ENDOF
+      aapcs64-linux  OF true ENDOF
+      ptx-kernel     OF true ENDOF
+      aapcs32       OF false ENDOF
+      c6000-eabi    OF false ENDOF
    ;MATCH ;
 
 : MASK-N ( CTARGET:arch -- n )
    MATCH arch
       aarch64 OF MASK-AARCH64 ENDOF
       ptx     OF MASK-PTX ENDOF
+      a32     OF MASK-ARM32 ENDOF
+      thumb2  OF MASK-ARM32 ENDOF
+      c66x    OF MASK-C66X ENDOF
    ;MATCH ;
 
 : ABI-CK ( CTARGET:arch CTARGET:abi -- )
    {: a:arch b:abi :}
-   b ABI-ARCH a CTARGET-ARCH:EQ 0= if E-CTGT-ABI throw then ;
+   a b ABI-ARCH? 0= if E-CTGT-ABI throw then ;
 
 : ENDIAN-CK ( CTARGET:abi CTARGET:endian -- )
    {: b:abi e:endian :}
@@ -202,8 +238,10 @@ BIT-MMA or BIT-ASYNC or constant MASK-PTX
 
 : PTR-CK ( CTARGET:abi CTARGET:ptr-width -- )
    {: b:abi p:ptr-width :}
-   p CTARGET-PTR--WIDTH:BITS32 CTARGET-PTR--WIDTH:EQ 0= if exit then
-   b PTR32-OK? 0= if E-CTGT-PTR throw then ;
+   p MATCH ptr-width
+      bits32 OF b PTR32-OK? ENDOF
+      bits64 OF b PTR64-OK? ENDOF
+   ;MATCH 0= if E-CTGT-PTR throw then ;
 
 : FEATURE-CK ( CTARGET:arch CTARGET:features -- )
    {: a:arch f:features :}

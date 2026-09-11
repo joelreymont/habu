@@ -344,13 +344,15 @@ private
       E-IR-TYPE-TARGET throw
    then ;
 
-\ Which address spaces an architecture's memory model defines: AArch64 has
-\ one flat generic space; PTX defines the full six-space model.
+\ CPU targets use one flat generic space; PTX defines the full six-space model.
 : SPACE-LEGAL? ( CTARGET:arch IR-TYPE:space -- bool )
    {: k:CTARGET:arch s:space :}
    k MATCH CTARGET:arch
       aarch64 OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
       ptx     OF true ENDOF
+      a32     OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
+      thumb2  OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
+      c66x    OF s IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ ENDOF
    ;MATCH ;
 
 : SPACE-CK ( IR-CTX:ctx IR-TYPE:space -- )

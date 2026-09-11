@@ -1423,6 +1423,42 @@ private
    FZ-REJECT-CASES
    TD-STALE-CASE ;
 
+\ Embedded bindings survive the same public table and ownership paths.
+
+: EMBED-BND ( CTARGET:arch CTARGET:abi -- CBIND:binding )
+   CTARGET-ENDIAN:LITTLE CTARGET-PTR--WIDTH:BITS32 CTARGET:F-BASE CTARGET:CONTRACT
+   CNUM-OVERFLOW:TRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
+   CBIND:BIND ;
+
+: EMBED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@ {: arch:CTARGET:arch :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr key 4 MISS-STAGE
+   arch CTARGET:F-BASE IR-SCHEMA:SET-TARGET
+   c a r key sr tr IR-SCHEMA:DEFINE
+   c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
+   r op IR-SCHEMA:ARCH@ arch CTARGET-ARCH:EQ TTRUE
+   a r op IR-SCHEMA:DIGEST CDIGEST-DIGEST:UNMAKE
+      {: w0:n w1:n w2:n w3:n :}
+   a IR-ARENA:FREEZE {: av:IR-ARENA:view :}
+   r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
+   rv op IR-SCHEMA:FARCH@ arch CTARGET-ARCH:EQ TTRUE
+   av rv op IR-SCHEMA:FDIGEST
+      w0 w1 w2 w3 CDIGEST-DIGEST:MAKE CDIGEST-DIGEST:EQ TTRUE ;
+
+: EMBED-CASE ( CTARGET:arch CTARGET:abi -- )
+   EMBED-BND [: EMBED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: EMBEDDED ( -- )
+   CTARGET-ARCH:A32 CTARGET-ABI:AAPCS32 EMBED-CASE
+   CTARGET-ARCH:THUMB2 CTARGET-ABI:AAPCS32 EMBED-CASE
+   CTARGET-ARCH:C66X CTARGET-ABI:C6000-EABI EMBED-CASE ;
+
 public
 
 \ Throw-through fixtures run inside an outermost harness context, so a context
@@ -1431,6 +1467,7 @@ public
 \ one harness accumulates more leaked slots than the registry holds.
 : RUN ( -- )
    T-RESET
+   EMBEDDED
    BND [: HARNESS-READ ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-OPCODE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-STAGE ;] IR-CTX:WITH-CONTEXT
