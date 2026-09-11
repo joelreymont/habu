@@ -320,6 +320,10 @@ SUITE compiler-native-loop
    test/compiler/native-loop.f
 ;SUITE
 
+SUITE compiler-native-edge-permutation
+   test/compiler/native-edge-permutation.f
+;SUITE
+
 SUITE compiler-native-switch
    test/compiler/native-switch.f
 ;SUITE

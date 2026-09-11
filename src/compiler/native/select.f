@@ -1343,8 +1343,9 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
    id i SUCC-IDX SUCCESSOR-ORD+ ;
 
 \ ---- splitting the edges that carry values -----------------------------------
-\ A block argument and every value handed to it must end in one register, so
-\ every argument-carrying edge is split into one copy per argument.
+\ Edge destinations must share the successor arguments' registers. Snapshot
+\ all sources before those destination copies: a backedge can permute live
+\ header values, and writing one destination must not destroy a later source.
 64 constant EDGE-MAX
 EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
@@ -1369,6 +1370,12 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    id i OPERAND-AT TOKEN? if id i OPERAND exit then
    id  id i OPERAND  id i OPERAND-AT REAL?  EMIT-COPY ;
 
+\ Only this second copy is tied to the successor argument by the branch.
+: EDGE-DESTINATION ( IR-ID:ir-op-id n n -- )
+   {: id:IR-ID:ir-op-id i:n at:n :}
+   id i OPERAND-AT TOKEN? if exit then
+   id at EDGE-V @ id i OPERAND-AT REAL? EMIT-COPY at EDGE-V ! ;
+
 : BR-TARGET ( IR-ID:ir-op-id -- n )
    0 SUCC-IDX ;
 
@@ -1385,6 +1392,14 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       then
    loop
    {: n:n :}
+   0
+   k 0 ?do
+      tb i DDROP? 0= if
+         dup id i rot EDGE-DESTINATION
+         1+
+      then
+   loop
+   drop
    id A64IR-OPCODE:BR OPEN
    n 0 ?do
       CTX BLD  i EDGE-V @  IR-BUILD:ADD-OPERAND
