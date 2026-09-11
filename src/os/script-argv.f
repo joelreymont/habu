@@ -1,6 +1,8 @@
 \ script-argv.f - bin/hb source-list script argument convention.
 \ Checked C-string readers locate the source-list separator and argument slice.
 
+7180 constant E-SCRIPT-ARGV-RANGE   \ logical index outside [0, SCRIPT-ARGC)
+
 : SCRIPT-LOAD-Z? ( ptr u8 -- bool )
    dup 0 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then
    dup 1 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then
@@ -49,8 +51,14 @@
 : SCRIPT-ARGC ( -- n )
    ARGC SCRIPT-ARG-START - dup 0 < if drop 0 then ;
 
+
+\ ARGV stays the raw process vector, including its C sentinel convention.
+\ SCRIPT-ARGV owns bounds before translating a logical index into that vector.
 : SCRIPT-ARGV ( n -- ptr u8 )
+   dup 0 < if E-SCRIPT-ARGV-RANGE throw then
+   dup SCRIPT-ARGC >= if E-SCRIPT-ARGV-RANGE throw then
    SCRIPT-ARG-START + ARGV ;
+
 
 : SCRIPT-ARGV$ ( n -- ptr u8 n )
    SCRIPT-ARGV dup ZLEN ;

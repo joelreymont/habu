@@ -72,6 +72,43 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" beta" SB-APPEND HCT-LF
    SB$ ;
 
+
+: HCT-ARGV$ ( -- ptr u8 n )
+   SB-RESET
+   s" : HCT-ARGV-NEG ( -- ) [: -1 SCRIPT-ARGV$ 2drop ;] catch . ;" SB-APPEND HCT-LF
+   s" : HCT-ARGV-ZERO ( -- ) [: 0 SCRIPT-ARGV$ 2drop ;] catch . ;" SB-APPEND HCT-LF
+   s" : HCT-ARGV-PAST ( -- ) [: 3 SCRIPT-ARGV$ 2drop ;] catch . ;" SB-APPEND HCT-LF
+   s" : HCT-ARGV-SHOW ( -- )" SB-APPEND HCT-LF
+   s"    SCRIPT-ARGC ." SB-APPEND HCT-LF
+   s"    HCT-ARGV-NEG" SB-APPEND HCT-LF
+   s"    SCRIPT-ARGC 0= if HCT-ARGV-ZERO exit then" SB-APPEND HCT-LF
+   s"    0 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
+   s"    1 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
+   s"    2 SCRIPT-ARGV$ type cr" SB-APPEND HCT-LF
+   s"    HCT-ARGV-PAST ;" SB-APPEND HCT-LF
+   s" HCT-ARGV-SHOW" SB-APPEND HCT-LF
+   SB$ ;
+
+
+: HCT-ARGV-NONE-WANT$ ( -- ptr u8 n )
+   SB-RESET
+   s" 0" SB-APPEND HCT-LF
+   s" 7180" SB-APPEND HCT-LF
+   s" 7180" SB-APPEND HCT-LF
+   SB$ ;
+
+
+: HCT-ARGV-VALUES-WANT$ ( -- ptr u8 n )
+   SB-RESET
+   s" 3" SB-APPEND HCT-LF
+   s" 7180" SB-APPEND HCT-LF
+   s" alpha" SB-APPEND HCT-LF
+   HCT-LF
+   s" omega" SB-APPEND HCT-LF
+   s" 7180" SB-APPEND HCT-LF
+   SB$ ;
+
+
 : HCT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-cli-contracts" TMPDIR-MKDIR {: a:ptr u :}
@@ -156,6 +193,38 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-ERR-U @ 0 T=
    HCT-OUT HCT-OUT-U @ HCT-BUILD-WANT$ T$= ;
 
+
+: HCT-ARGV-LOAD ( -- )
+   HCT-CHILD HCT-ARGV$ WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   HCT-CHILD >LEN PROC-ARGV+ ;
+
+
+: HCT-EXPECT-ARGV-NONE ( -- )
+   HCT-ARGV-LOAD
+   s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   s" zero script args reject negative and zero indexes" T-LABEL
+   HCT-EXITED @ TTRUE HCT-RC @ 0 T=
+   HCT-ERR-U @ 0 T=
+   HCT-OUT HCT-OUT-U @ HCT-ARGV-NONE-WANT$ T$= ;
+
+
+: HCT-EXPECT-ARGV-VALUES ( -- )
+   HCT-ARGV-LOAD
+   s" --" >LEN PROC-ARGV+
+   s" alpha" >LEN PROC-ARGV+
+   s" " >LEN PROC-ARGV+
+   s" omega" >LEN PROC-ARGV+
+   s" bin/hb" >LEN HCT-EMPTY 0 >LEN HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   s" script argv preserves first, last, and empty values and rejects bounds" T-LABEL
+   HCT-EXITED @ TTRUE HCT-RC @ 0 T=
+   HCT-ERR-U @ 0 T=
+   HCT-OUT HCT-OUT-U @ HCT-ARGV-VALUES-WANT$ T$= ;
+
+
 : HCT-MAIN ( -- )
    T-RESET
    HCT-PREPARE
@@ -164,6 +233,8 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-EXPECT-FLAG-BEFORE-STDIN
    HCT-EXPECT-LOAD-EMPTY-FILE
    HCT-EXPECT-BUILD-ARGV
+   HCT-EXPECT-ARGV-NONE
+   HCT-EXPECT-ARGV-VALUES
    CLEANUP-RUN
    HCT-ROOT EXISTS? TFALSE
    T-REPORT
