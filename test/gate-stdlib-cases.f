@@ -654,17 +654,9 @@ SUITE ptx-stdlib
    lib/ptx/collective-test.f
    lib/ptx/cg-collective-test.f
    lib/ptx/cg-activation-test.f
-   lib/ptx/autograd-test.f
-   lib/ptx/ir-test.f
-   lib/ptx/ad-test.f
-   lib/ptx/ad-dag-test.f
-   lib/ptx/ad-dag-eval-test.f
-   lib/ptx/ad-saved-test.f
    lib/ptx/sentinel-test.f
    lib/ptx/cuda-driver-test.f
    lib/ptx/cuda-scope-test.f
-   lib/ptx/ad-gen-test.f
-   src/arch/ptx/vjp-test.f
 ;SUITE
 
 SUITE ptx-rep-neg
@@ -706,10 +698,6 @@ SUITE ptx-gemm-checked-neg
 
 SUITE ptx-attention-checked-neg
    lib/ptx/attention-checked-neg-test.f
-;SUITE
-
-SUITE ptx-autograd-neg
-   lib/ptx/autograd-neg-test.f
 ;SUITE
 
 SUITE ptx-uniform-barrier

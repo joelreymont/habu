@@ -63,17 +63,17 @@ src/habu/         native engine, JIT, AOT, debugger, profiler, image tools
 src/os/           Linux and macOS target seams
 lib/              checked standard, numeric, FFI, and runtime libraries
 lib/ptx/          checked GPU-kernel vocabulary and PTX code generation
-tools/            build, lint, inspection, and PTX/device tools
+tools/            build, lint, inspection, and backend smoke tools
 test/             native Habu suite and focused compiler/runtime tests
 bench/            benchmarks
 docs/             language, compiler, runtime, and backend documentation
 skills/           operational recipes
 ```
 
-Some optional PTX device tools still name Loom reference implementations after
-the repository split. They are not part of the Habu core or native suite and
-need an explicit multi-repository load-root design before they can run from the
-separate checkouts.
+Application PTX producers, benchmarking, autotuning, device goldens, and
+PTX differentiation/ML expression IR live in the sibling Loom repository.
+Habu retains the generic PTX emitter, typed kernel vocabulary, and CUDA bindings.
+Loom's README documents native scoped-root loading against these shared libraries.
 
 ## Documentation
 

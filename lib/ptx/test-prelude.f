@@ -18,7 +18,3 @@ require lib/ptx/tile-acc.f
 require lib/ptx/tile-v4.f
 require lib/ptx/tile-v4a.f
 require lib/ptx/collective.f
-require lib/ptx/ir.f
-require lib/ptx/ad.f
-require lib/ptx/ad-dag.f
-require lib/ptx/ad-saved.f
