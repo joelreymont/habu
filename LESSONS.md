@@ -1716,7 +1716,7 @@ fits.
   a smoke fail `EFAULT`, hiding whether the ABI or fixture glue is wrong); same-typed `ptr u8 n` pairs
   (path vs stdin bytes) need an order test — the checker can't distinguish them.
 
-## FFI, GPU & PTX
+## FFI & CUDA
 
 - **Build IEEE subnormal tie fixtures from the mathematical value, then verify the
   binary64 bits independently.** `3 * 2^-25` normalizes to `1.5 * 2^-24`, so its
@@ -1758,119 +1758,7 @@ fits.
   transient buffer at `cp@`, so a top-level `cp@ patch32` clobbers the executing line (`SIGILL`); write
   a runtime stub at `cp@` via `patch32` from inside `: WORD ;`. Verify emitted primitive bytes
   statically (compute the exact ARM64 encodings, `grep` the on-disk `bin/hb` for the contiguous stream
-  — ASLR slides the xt but file bytes are fixed). Real Triton runs on the Orin (BSP-pinned CUDA 12.6):
-  `torch-2.9.1+cu126` matches the 12.6 driver, the generic SBSA wheel has no sm_87 ATen cubins
-  (`cudaErrorNoKernelImageForDevice` — Triton JIT-compiles each kernel for sm_87, but pass a custom
-  CUDA-event `do_bench=` since autotune's `tensor.zero_()` calls a torch GPU kernel), keep torch to
-  alloc + memcpy. Triton catches name/type errors at compile but the stack-discipline class only at
-  runtime (a missing store → silent 0.0), where Habu-PTX's checker rejects at author time — that is the
-  thesis mechanism, now backed by real-target pass@k data (SAXPY 5/5 both; softmax Triton 5/5, Habu
-  3/5→5/5 after diagnostic-guided repair). Triton `tl.dot` on fp32 silently runs TF32 tensor cores on
-  sm_87 (`rel_err ~8e-4` fingerprint) — record the arithmetic class next to any GEMM number.
-- **v4 vectorization is a pure codegen rep, not a type change — 63 GB/s is the MEMORY ceiling.**
-  Scalar `ld.global.f32` (1 elem/thread) → 42.5 GB/s; v4 (`ld.global.v4.f32`, same parametric tile
-  types so the SAME SAXPY body certifies) → 63, matching Triton; unrolled grid-strided v4 stays FLAT
-  (occupancy 40× saturated, EMC maxed) — you cannot beat the memory system on a memory-bound kernel, so
-  "faster than Triton" needs LESS traffic (fusion) or a compute-bound kernel. v4 emit-helper stack sigs
-  must use the generic-int token `n` (role names bind as fresh type vars → rejected at `!`). A typed
-  vec4 layer can be added ADDITIVELY: register arity-3 `vspan`/`vtile` TFAM rows (like `acc`; needs one
-  `install --force` rebuild), `V4-ALIGN ( span -- vspan )` the sole trusted route, put the vspan
-  obligation on `LOAD.V4`/`STORE.V4` (where memory is touched) not the ctx — the TRUSTED bodies reuse
-  the existing `-V4` emit words verbatim so the typed kernel lowers to BYTE-IDENTICAL PTX (inherits the
-  passing device golden for free). Automatic-fusion device win is LATENCY (fewer global round-trips),
-  not peak GB/s — report the sum-of-kernel-ns ratio, not a bandwidth delta; the fusion mode must ride
-  in the model SOURCE STRING (`; FP-FUSE-OFF!`), not just a parent toggle (the device emit child
-  re-plans in a fresh process). A reduction-dominated fusion win is bounded well below the equal-cost-op
-  Nx model (layernorm fused-vs-ablated 1.41× not ~3×: the block-per-row reduction dominates, the EW
-  epilogue folds in at ~zero marginal cost) — report the honest measured ratio with root cause.
-- **TF32 mma.sync: prove the fragment layout element-EXACT in isolation FIRST** (the #1
-  "correct in NumPy, garbage on device" bug source). The m16n8k8 tf32 layout (gid=lane>>2, t=lane&3:
-  A a0=A[gid][t]…; B b0=B[t][gid] b1=B[t+4][gid]; D d0=D[gid][2t]…) is verified BIT-EXACT vs a host
-  matmul with small INTEGER operands (exact in tf32's 10-bit mantissa, sums <2^24 exact in the f32
-  accumulator) — any permutation mismatches (`tools/ptx/mma-probe.f` then `mma-gemm-check.f`). tf32
-  fragments ride ldmatrix.b16 as half-pairs — a tf32 is 2 adjacent b16 halves, so an 8×8 b16 tile IS
-  one 8×8 ldmatrix tile; `ldmatrix.trans` is NOT an option (it transposes at b16 granularity, splitting
-  every tf32 — the transpose lives in the STAGING, a scalar coalesced global read + strided shared
-  write, since cp.async can't scatter a transpose). mma.sync.tf32 reads the TOP bits of the raw f32
-  register, so `ld.shared.b32` with NO cvt is a valid feed (<1 ulp tf32, inside licensed rtol; keep
-  cvt.rna where the golden must stay bit-identical). Emit the kernel IN-PROCESS when a runtime `PREC!`
-  request must reach the emitter (a child re-builds IR fresh and DROPS the request); share the cp.async
-  scaffold via a compute QUOTATION (`MM-PIPE-KLOOP-WITH ( [ -- ] -- )`), not a copy.
-- **A transposed-staging ldmatrix lives or dies on its READ bank stride — measure it, and measure an
-  optimization AT the layout it needs.** The prior "MMA is not fragment-feed-bound" verdict measured
-  the UNPADDED ldmatrix, whose As row stride 128B=32 words aliases bank 0 (16-way conflict) and hides
-  the tensor-core win; padding As to a bank-spread stride (`MMA-PAD=8` floats, a multiple of 4 so
-  cp.async's 16B chunks stay aligned) made mode-2 ldmatrix jump +54.8% (the swizzle is the lever, BK the
-  garnish). bpad sets the ldmatrix read start-bank stride: bpad=4 (stride 36=4 mod 32, conflict-free) =
-  3026.6; bpad=0 (all 8 rows alias one window, 8-way conflict) = 1318.5, WORSE than the scalar baseline
-  it replaced; bpad must keep the BT row stride a multiple of 16B (ldmatrix.m8n8.b16), and a misaligned
-  stride FAULTS the GPU (sm machine-check, not a wrong result) — the emitter enforces it fail-closed
-  (`MMA-CHECK-BLDM → E-MMA-BLDM`). B-side ldmatrix over a TRANSPOSED staging cut the residual B-feed
-  27%→7% (+11.9%). Element-exactness is the safety net that lets a padded-address rewrite be trusted.
-- **A wider M register tile amortizes the B-side feed and re-weights the roofline; re-run the
-  attribution after every tile change.** The TF32 mma.sync GEMM was FEED-BOUND on un-amortized B-side
-  scalar shared loads (~40%), not mma-issue-bound (the earlier dependency-bound hypothesis overturned by
-  DCE-safe ablation — nsys GPU-metrics is unsupported on the Orin iGPU, so ablated kernel variants are
-  the profiling method). Each warp owning MFRAGS stacked 16-row M-fragments reuses each B fragment
-  MFRAGS times and halves global B staging → past Triton parity (2133.9 GFLOP/s = 1.13×), then B-side
-  ldmatrix on the wide tile +11.9%. `num_stages` is tile-size AND occupancy dependent: stages=2 flipped
-  from flat (narrow tile) to +2.4% (wide tile), then at MFRAGS=4 single-buffer STATIC (48KiB cap) beat
-  double-buffer DYNAMIC by +11.6% (occupancy beats overlap once the feed is amortized) — never assume a
-  stages setting carries across a tile resize. Gate every new behavior behind `MFRAGS>1`/`BK>32`/knob so
-  all pinned configs stay BYTE-IDENTICAL (capture goldens + cmp before/after twice; the wider tile
-  reused the device-proven fragment layout at offset, so only a full-kernel element-exact golden was
-  needed); parameterize a shared emitter word (reused verbatim by the FENCED `maki/lower/mm.f`) with a
-  byte-identical DEFAULT, don't fork — and emit `shl` when a stride is a power of two, `mul.lo`
-  otherwise. The harness must be block-M-aware (a 64^3 check on a 128-row block launches ZERO blocks and
-  silently "passes" all-zero).
-- **A perf program closes on a ROOFLINE + LEVER-INVENTORY argument, not on hitting 100% of a peak.**
-  Derive the iGPU tensor peak from the GPU-ONLY sparse-INT8 TOPS (never the marketing "100 TOPS" =
-  GPU+NVDLA), cross-check by reproducing NVIDIA-published FP32 roofs and by a measured kernel rate
-  FALSIFYING a candidate peak (a kernel can't beat its roof); the honest verdict when the roofline shows
-  headroom but the lever inventory is empty and the instruction shape is maxed (no m16n8k16 for tf32) is
-  a documented CLOSE with a user-gated numerics question, not another kernel rung. Build the cheap
-  single-variable ablation BEFORE the big rewrite (a negative measured result that redirects two dots is
-  a deliverable). A GPU devfreq min=max pin reproduces the shipped 918 MHz within 0.15% (GPU-only blast
-  radius, exact restore) to make cross-session rows comparable — the shipped perf row tracks the scalar
-  default until the emitted default flips to pad=8 ldmatrix. A whole-model device corruption probe must
-  be MAGNITUDE-INDEPENDENT (an activation swap converges to identity for large-positive
-  pre-activations — vacuously passes) — use a PTX mutation (operand-base redirect / fma(a,b,c)→fma(a,a,c))
-  on a matmul region, and keep the COMMITTED e2e proof the clean PASS (demonstrate corruption in a temp
-  copy). A sibling kernel's corruption-probe predicate name does NOT transfer — dump the actual PTX (the
-  predicate numbering shifts with region input count). The block reduction is warp-shfl now
-  (`shfl.sync.down.b32` takes `%f` regs directly, membermask -1 well-formed since blocks are warp
-  multiples).
-- **ncu on the Orin NX likely HARD-HUNG the box on first attach — treat Nsight Compute as a
-  device-risk operation.** One `sudo ncu -k … --launch-count 1` printed "Connected to process" and never
-  produced a section; within minutes zed dropped off the tailnet (18+ min, physical power cycle required).
-  Prefer `nsys` GPU-metrics sampling or variant-kernel timing decomposition; if retrying ncu, use a
-  minimal single section, a tiny shape, and expect to lose the box.
-- **PTX collectives / adjoints need op-local inactive identity and address-space tokens.**
-  `cg-collective.f` writes `active ? tile : identity(op)` before the shared fold (`BLOCK-MAX` -inf,
-  `BLOCK-SUM` 0) regardless of how `ROW-LOAD` seeded inactive lanes — direct row-sum/backward can't rely
-  on softmax's accidental `EXP(-inf)=0`. Read-once is a distinct address-space token (`space-global-once`
-  + `LOAD-ONCE`/`STORE-ONCE`), never a cast from ordinary `span<space-global>`; LOAD adjoints default to
-  `SCATTER-ADD` (plain store is gated by an affine/read-once proof); indexed memory carries two extents +
-  a uniqueness token (`idxctx` → `INDEX-SCATTER-ADD`; plain `INDEX-STORE` needs `uniqidxctx`). Relaxing a
-  fail-closed class re-audits every site that leaned on the old rejection (unlocking BC-COL needed a NEW
-  input-0-must-be-FULL guard and exposed BC-ROW/BC-SCALAR already silently mis-loadable) — grep every
-  consumer of a classification for positional/shape assumptions the old set masked. Generated
-  multi-input elementwise kernels reset CG counters from the input COUNT (`CG-NRD=K+2`), not `CG-RESET`
-  (which presets the 2-span SAXPY ABI). A composed-Gemm DEVICE golden must pick a form whose matmul
-  epilogue is empty or a unary activation: transB becomes a standalone materialized transpose region
-  (device-emittable), but OP-SCALE/OP-BIAS fuse as epilogue nodes and `LMM-EPI-OP?` accepts ONLY
-  relu/gelu/silu (alpha≠1 or a separate bias rejects fail-closed `E-LMM-OP`). Kernel benchmarks need a
-  generic launch layer + device elapsed time (`cuEventElapsedTime` `gpu_elapsed_ns`), not host-loop
-  timing called a GPU profile. `.f` emit-driver signatures use checker type tokens (`n`/`ptr`/`bool`),
-  never descriptive names (`node`/`rid`).
-- **Device-vs-host GOLDEN compares device f32 against the f32-NARROWED host, not the raw f64.** The
-  host runs f64, the device f32 — round the host elem onto the f32 grid first (`F32:NARROW F32:WIDEN`) then
-  `|dev - host_f32| ≤ atol + rtol*|host_f32|`, else the dtype step folds into the error budget and blows
-  the tol. Since no onnxruntime exists for a composed Gemm, the committed host-executor result (validated
-  ==ort at 1e-5 on the pure-matmul fixture) is the oracle — device-vs-host discipline, ort leg a
-  documented residual. Device goldens for hand-built (non-capturable) IR feed the child driver via a
-  shared checked source-text builder the parent also EVALUATEs (one source of truth; the off-device load
-  already validates the child text).
+  — ASLR slides the xt but file bytes are fixed).
 
 ## Linux AOT / ELF
 

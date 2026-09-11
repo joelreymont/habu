@@ -361,7 +361,7 @@ Rationale for defer:
    `arena-owner<region>` / `arena-ref<region,t>` / `arena-mut<region,t>`
    make reference *introduction* checker-generated and scope-governed
    (transaction/borrow), with escape and aliasing acceptance criteria
-   (MODEL-CAD-V2-PLAN §R6). A per-kind `NOM-SCALAR?` widening would be a
+   (the retired MODEL-CAD-V2 plan, §R6; that plan is in neither tree now). A per-kind `NOM-SCALAR?` widening would be a
    second, weaker introduction authority over raw `ptr` that R6 then has
    to dismantle — the same class of interim guard the Correct Fixes rule
    tells us not to normalize.

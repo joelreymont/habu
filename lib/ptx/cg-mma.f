@@ -6,7 +6,7 @@
 \ `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32` tensor-core tile. The FP32 CUDA-core
 \ roof (~940 GFLOP/s) caps the fma path; TF32 tensor cores sit on a HIGHER roof (Triton
 \ measured 1474), so matching/beating Triton on compute needs MMA, not just better tiling
-\ (docs/kernel-principles.md roofline).
+\ (../loom/docs/kernel-principles.md roofline).
 \
 \ WARP TILING (8 warps = 256 threads over a 64x64 output tile):
 \   warp w (= tid_lin>>5) owns warp_row=w>>1 (0..3), warp_col=w&1 (0..1):
@@ -96,7 +96,7 @@ require lib/ptx/cpp-slot.f
 \    64    4    |  16 acc   32 acc    64 acc          all feasible (legacy family)
 \   128    8    |  32 acc   64 acc    128 acc (~160)  all feasible
 \   256   16    |  64 acc   128 acc   256 acc (~288)  MFRAGS=4 INFEASIBLE -> E-MMA-REGS
-\ Triton's BN256 winner is 8-warp MFRAGS=2 NTILES=16 = 128 acc ~158 regs, 0 spills (docs/eval-triton.md GB10
+\ Triton's BN256 winner is 8-warp MFRAGS=2 NTILES=16 = 128 acc ~158 regs, 0 spills (../loom/docs/eval-triton.md GB10
 \ sweep: 2048 winner BM64xBN128, 4096 winner BM128xBN256); the MFRAGS=4 BN=256 corner (256 acc) cannot even
 \ hold its accumulators under the 255 ceiling, so it fails closed at emit time (MGC-REGS-NEG).
 variable MMA-BN      64 MMA-BN !               \ output tile cols KNOB (64 default / 128 / 256; power of two, >= 64)
@@ -136,7 +136,7 @@ variable MMA-MFRAGS   1 MMA-MFRAGS !          \ M-fragments (16-row units) per w
 \ (warp_row, f) at row-block base warp_row*(16*MFRAGS)+f*16 - only the NUMBER of warp-rows and the
 \ thread count change, so the fragment->lane map, the 16*MFRAGS accumulator layout, and the
 \ D-fragment store map are shared verbatim with the 8-warp family (Triton's per-shape tf32 winners
-\ run this narrower 4-warp / BM128xBN64 blocking, docs/eval-triton.md GB10). The 4-warp grid needs
+\ run this narrower 4-warp / BM128xBN64 blocking, ../loom/docs/eval-triton.md GB10). The 4-warp grid needs
 \ the WIDE (MFRAGS>1) staging: its per-block M is WROWS*16*MFRAGS = 32*MFRAGS, and the cp.async
 \ chunk partition divides by MMA-NTHREADS = WARPS*32 (128 here, not 256). At WARPS=8 every derived
 \ count is unchanged, so all pinned 8-warp configs stay byte-identical.
@@ -392,7 +392,7 @@ variable MMA-GROUP   0 MMA-GROUP !            \ 0 = OFF (byte-identical); positi
 \       congruous 8x8 b16 tiles = one ldmatrix.x4 (mapping proven element-exact by
 \       tools/ptx/mma-probe.f MP-LDM-ALL, and the full K-loop by mma-gemm-check all 3 modes).
 \
-\ MEASURED (docs/eval-triton.md step 3c, Orin sm_87): dropping cvt (mode 1) is FLAT vs baseline
+\ MEASURED (../loom/docs/eval-triton.md step 3c, Orin sm_87): dropping cvt (mode 1) is FLAT vs baseline
 \ and ldmatrix (mode 2) is ~1% SLOWER (370/389/394 vs 376/394/399 GFLOP/s at 512/1024/2048),
 \ ptxas 38 -> 43 reg (ldmatrix needs more, not fewer), 0 spill both. So at THIS rung (16x32 warp
 \ tile, 4x A-reuse) the tensor cores are NOT fragment-feed-bound: the scalar-load bank conflicts
@@ -1210,7 +1210,7 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \ and kept in flight by wait_group(1). Deferring the issue to after the compute burst would force
 \ wait_group(0) at the next loop top (at N=2 only one group can be in flight), fully EXPOSING the
 \ cp.async load latency and collapsing the overlap - measured a -12%..-34% regression across every
-\ stages=2 tf32 config (docs/eval-triton.md Round 9, in-session base-vs-branch best-of-3). The deferral
+\ stages=2 tf32 config (../loom/docs/eval-triton.md Round 9, in-session base-vs-branch best-of-3). The deferral
 \ only pays when N-2>=1 groups stay in flight (N>=3), so it lives in MMA-PIPE-KLOOP-MULTI alone.
 : MMA-PIPE-KLOOP-WITH ( [ -- ] -- )
    CPP-KT-INIT  CPP-PARITY-INIT
@@ -1257,7 +1257,7 @@ TRUSTED: MMA-STAGE-ISSUE ( n n -- cpp-pending<p> )   MMA-CP-STAGE 0 ;
 \              write buffer + commit, then advance both ring bases and kt. DEFERRED cp.async issue (dot
 \              habu-reorder-cp-async): the prefetch fires AFTER the mma burst, not before, so ptxas
 \              hoists the LDGSTS into the tensor-core stall shadow (the scout's 3.44 -> 1.28 cyc/HMMA
-\              exposed-head verdict; docs/eval-triton.md Round 9). Accounting for the deferred issue:
+\              exposed-head verdict; ../loom/docs/eval-triton.md Round 9). Accounting for the deferred issue:
 \              at the loop top the prefetch of THIS iteration's tile has not fired yet, so only N-2
 \              groups are in flight (one fewer than the issue-first form's N-1); the sum of committed
 \              groups at the wait is C=(N-1)+kt_cmp_index, and cp.async.wait_group(n) guarantees the

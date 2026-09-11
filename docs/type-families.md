@@ -5,7 +5,7 @@
 **Primary goal:** implement generic, efficient, checked algebraic data types in Habu without turning `Result` into a one-off special case.
 
 > **This document is a design specification that the shipped engine has only
-> partly caught up with.** It describes the MODEL-CAD-V2 unified
+> partly caught up with.** It describes the unified
 > `STRUCTURE … ;STRUCTURE` / `ENUM … ;ENUM` grammar and its
 > `E-REMOVED-TYPE-SYNTAX` tombstones.
 >

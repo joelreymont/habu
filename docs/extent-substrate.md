@@ -1,7 +1,7 @@
 # Extent nominal substrate — decision record
 
 Decision for dot `habu-choose-extent-nominal-f61dac3e`. Which substrate does
-`EXTENT:` / candidate-B `idx<#extent>` (`docs/golden-syntax.md` §B) mint on?
+`EXTENT:` / candidate-B `idx<#extent>` (`../loom/docs/golden-syntax.md` §B) mint on?
 
 ## Decision
 
@@ -47,7 +47,7 @@ Family argument slots are **substrate-agnostic and kind-unenforced**: `span`,
 CT-role, a TFAM nominal, or even a bare `n` in an extent slot — all distinct, no
 cross-substrate aliasing (`matrix<…,extent-r,extent-c>` ≠ `matrix<…,role,role2>`).
 So "one declaration feeds both the golden and the device plan"
-(`docs/golden-syntax.md:70-71`) holds for **any** substrate; the device families
+(`../loom/docs/golden-syntax.md:70-71`) holds for **any** substrate; the device families
 are not tied to atoms. The `extent-*` atom is consumed **only** by identity
 unification (`ATOM-OK?`, `checker.f:1012`); there is no downstream
 `extent-`-prefix pass — `extent-relative bounds` is enforced by family-identity

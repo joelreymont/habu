@@ -138,8 +138,8 @@ This is a workaround, not architecture — construction control faked with a
 magic field because generated constructors are always public — and it is
 scheduled to be deleted: the `CONSTRUCT owner` flag (TYPE-FIXES-PLAN.md)
 controls construction directly and every proof token evaporates with it.
-`GPT2:cfg-proof` in `maki/infer/gpt2-config.f` and `GPT2:layer-proof`
-in `maki/infer/gpt2-tensor.f` are the two live examples. Both files are honest
+`GPT2:cfg-proof` in Loom's `maki/infer/gpt2-config.f` and `GPT2:layer-proof`
+in its `maki/infer/gpt2-tensor.f` are the two live examples. Both files are honest
 in their own headers about the limit of that evidence, and § 9 explains it.
 
 ## 5. Families: records, alternatives, and generics
@@ -167,7 +167,7 @@ several declaring words.
   eleven semantic fields plus its temporary construction proof.
 - **`ENUM name … ;ENUM`** declares a set of alternatives. In its short form the
   body is bare variant names and nothing else, which gives you a plain tag set:
-  `MAKI:datatype` (`maki/tensor.f:123`) is five names, `df32` through `di32`, and
+  `MAKI:datatype` (Loom's `maki/tensor.f`) is five names, `df32` through `di32`, and
   is the single authority on element datatypes for the whole tensor layer. In
   its full form, with an arity token and `VARIANT … ;VARIANT` clauses, each
   alternative may carry named fields — `SAFET:map-take` is `moved` carrying a
@@ -230,7 +230,7 @@ a mapped file, an allocated buffer, an open transaction — this turns leaks and
 double frees into load-time errors. Dropping one is rejected at the `drop`,
 exit 70.
 
-The worked example is the checkpoint loader, `maki/infer/safetensors.f`. It
+The worked example is Loom's checkpoint loader, `maki/infer/safetensors.f`. It
 declares three owners and a chain of transitions between them:
 
 - **`SAFET:session`** — one open, unpublished load transaction. `OPEN` creates
@@ -394,14 +394,14 @@ another small word whose entry consumes the bundle.
 - `docs/type-families.md` — the full family design and its history.
 - `docs/value-nominal-substrate.md` — why nominal cell families are shaped the
   way they are.
-- `docs/extent-substrate.md` — the shape and extent layer used by the tensor
-  and PTX code.
+- `docs/extent-substrate.md` — the extent nominal substrate that Loom's tensor
+  and kernel code builds on.
 - `docs/effects.md` — the effect language itself.
 - `docs/typed-top-level.md` — what may and may not run at the interpreter.
 The best worked examples in the tree, if you would rather read code:
 `lib/cad-num-types.f` for nominals, `lib/adt/option.f` and `lib/adt/result.f`
-for generics, `maki/infer/safetensors.f` for linear owners and transition
-chains, `maki/infer/gpt2-config.f` for a validating constructor and a proof
-token, and `maki/infer/gpt2-pin.f` for the smallest possible authority — a
+for generics, and in Loom (`../loom/maki/`) `infer/safetensors.f` for linear owners
+and transition chains, `infer/gpt2-config.f` for a validating constructor and a
+proof token, and `infer/gpt2-pin.f` for the smallest possible authority — a
 package of constants and three typed facts that a configuration file leaves
 unsaid.

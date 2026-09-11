@@ -1,6 +1,6 @@
 \ extent-product-test.f — BTC-7 permanent regression for the checker half of the
 \ extent-role product/factorization capability (dot habu-extent-role-product-
-\ 8e364885, docs/batch-sequence-design.md §5 BTC-7, docs/extent-substrate.md).
+\ 8e364885, ../loom/docs/batch-sequence-design.md §5 BTC-7, docs/extent-substrate.md).
 \ This routes the permanent gate regression over the real built-in
 \ `extprod`/`redx` families and the free-vs-inner
 \ contraction rule. The candidate-B SURFACE half (EXTPROD:/>RED, the generated

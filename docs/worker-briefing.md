@@ -41,14 +41,7 @@ the gate files are the source of truth.
 - All Forth runs through `bin/hb`. gforth exists only for no-binary seed
   recovery. If Habu lacks a capability you need, ADD it properly — no
   shell-script workaround for core logic. (Process-spawn idiom:
-  `maki/cross-seq-contraction-test.f`.)
-
-## New-op discipline (op-adding lanes)
-
-Follow the dropout/SwiGLU template end to end: `maki/op-kind.f` enum +
-OPKIND>N, `maki/op-registry.f`, `maki/adjoint.f`, `maki/executor.f`,
-`maki/cad.f` token + shape rule, `maki/backward.f`, `maki/move-facts.f`,
-and the device kernel under `tools/ptx/`.
+  Loom's `maki/cross-seq-contraction-test.f`.)
 
 ## Diff hygiene
 
