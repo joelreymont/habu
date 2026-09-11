@@ -1243,7 +1243,8 @@ DYNAMIC-BUFFER ANCH-NEXT-BUF n
       i POS-OP? if
          f i POS-OP CALL-AT? if
             r i MB-CROSSES? if
-               fl POOL-BITS or
+               \ One crossing call forbids the whole file's writable pool.
+               fl POOL-BITS or unloop exit
             then
          then
       then

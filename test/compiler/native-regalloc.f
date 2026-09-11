@@ -3261,10 +3261,42 @@ using A64RA
 : GROUP-MB-CARRIED ( IR-CTX:ctx -- ) drop MB-CARRIED-CASE ;
 : GROUP-MB-ACCEPT ( IR-CTX:ctx -- ) drop MB-ACCEPT-REFUSE-CASES ;
 
+\ Many immutable inputs stay live across every call and the loop backedge.
+: WIDE-CALL-SUM ( n n n n n n n n n n n n -- n )
+   + + + + + + + + + + + ;
+
+: WIDE-CALL-LOOP ( n n n n n n n n n n n n n -- n )
+   {: a:n b:n c:n d:n e:n f:n g:n h:n x:n y:n z:n w:n limit:n :}
+   0 limit 0 ?do
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+      a b c d e f g h x y z w WIDE-CALL-SUM +
+   loop ;
+
+: WIDE-CALL-CASE ( -- )
+   s" immutable inputs survive repeated calls and loop turns" T-LABEL
+   1 2 3 4 5 6 7 8 9 10 11 12 0 WIDE-CALL-LOOP 0 T=
+   1 2 3 4 5 6 7 8 9 10 11 12 1 WIDE-CALL-LOOP 1248 T=
+   1 2 3 4 5 6 7 8 9 10 11 12 2 WIDE-CALL-LOOP 2496 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   WIDE-CALL-CASE
    SQUARE-CASE
    MOVE-PLAN-CASE
    MOVE-LOWER-CASE
