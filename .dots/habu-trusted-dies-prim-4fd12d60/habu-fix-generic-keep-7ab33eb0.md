@@ -28,3 +28,6 @@ A separate exploratory elaboration rejection is recorded as habu-diagnose-lexica
 
 
 Update 2026-09-11 13:59 UTC: All three additional Rowan review blockers now have independently reviewed fixes combined in 92ef13f0, alongside the earlier 80716458/cfcf1baf repairs. A current-layout bootstrap checkpoint built in 21.150 s, SHA256 114c1c09c9c729c052fcc7a84763dbed2ecce424051857ecff04305dc675289b. This is a temporary bootstrap intermediate, not all-AOT acceptance. A fresh process selecting tier 1 before loading tools/native-build.f is now running the actual optimizing selfbuild. Nested-quotation follow-up remains separately assigned.
+
+
+Combined c0bd71d4 checkpoint SHA2563e40801b9e492da4af82f8e80f414a00fdef7be85220e7e4514f821e4f60dccf passes explicit-tier1 native-rstack4.469s, native-quot4.719s and native-regalloc11.682s. These exercise all three KEEP repairs together with lexical nesting, trap-join repair and allocator optimizations. Actual optimizing selfbuild is still running; no all-AOT compiler output claimed.
