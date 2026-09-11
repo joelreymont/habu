@@ -1252,6 +1252,26 @@ create CBUF 256 allot
    s" an attribute table is dead after its context ends" T-LABEL
    [: TD-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ A frozen view that outlives its context. The frozen readers resolve the
+\ registry once per call now, so the resolution itself has to refuse a row the
+\ context's teardown retired - the reader grants no read the view had lost.
+: TD-VIEW-ESC-BODY ( IR-CTX:ctx -- IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c 8 16 TAB-NEW {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key 1 IR-ATTR:INT drop
+   a IR-ARENA:FREEZE drop
+   r IR-ARENA:FREEZE ;
+
+: TD-DEAD-VIEW ( -- IR-ARENA:view )
+   BND [: TD-VIEW-ESC-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TD-VIEW-READ ( -- )
+   TD-DEAD-VIEW IR-ATTR:FATTRS drop ;
+
+: TD-VIEW-STALE-CASE ( -- )
+   s" a frozen view is dead after its context ends" T-LABEL
+   [: TD-VIEW-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 : TD-FRESH-CASE ( -- )
    s" fresh contexts and tables succeed after teardown" T-LABEL
    4 0 ?do
@@ -1324,7 +1344,8 @@ create CBUF 256 allot
    RNR-CASE
    STATE-CASES
    FZ-REJECT-CASES
-   TD-STALE-CASE ;
+   TD-STALE-CASE
+   TD-VIEW-STALE-CASE ;
 
 \ Embedded bindings survive the same public table and ownership paths.
 
