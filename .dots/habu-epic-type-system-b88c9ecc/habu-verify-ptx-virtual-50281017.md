@@ -5,10 +5,12 @@ priority: 1
 issue-type: task
 created-at: "2026-07-13T17:09:10.200654+02:00"
 blocks:
-  - habu-ptx-phantom-preserving-3df9db92
-  - habu-freeze-compiler-baseline-b9777eee
   - habu-type-dsl-prove-93da83c4
 ---
+
+Blocker moved to Loom's tracker on 2026-09-11: habu-freeze-compiler-baseline-b9777eee.
+
+Blocker moved to Loom's tracker on 2026-09-11: habu-ptx-phantom-preserving-3df9db92.
 
 Edge note 2026-07-17: blocker habu-ptx-m5-mask-eb0716f1 SATISFIED and removed
 - the M5 uniformity/divergent-barrier model landed (commit e87cb494:

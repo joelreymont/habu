@@ -6,9 +6,10 @@ issue-type: task
 created-at: "2026-07-21T22:40:43.846755+02:00"
 blocks:
   - habu-add-nested-pkg-d602c8f1
-  - habu-pkg-ptx-compiler-db8cfa46
   - habu-pkg-maki-stores-8fc7f77b
 ---
+
+Blocker moved to Loom's tracker on 2026-09-11: habu-pkg-ptx-compiler-db8cfa46.
 
 Invariant: a subsystem package and its physical directory express the same ownership boundary; broad flat directories do not mix unrelated GPU, CUDA, store, autodiff, optimizer, and model concerns. Current flat roots contain more than two hundred Maki Forth modules and eighty-five PTX modules, including coherent clusters that already have or need distinct package owners.
 

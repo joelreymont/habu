@@ -6,9 +6,10 @@ issue-type: task
 created-at: "2026-07-13T16:46:53.544223+02:00"
 blocks:
   - habu-migration-tests-and-51d00332
-  - habu-migration-maki-models-c965e65d
   - habu-delete-legacy-type-36040d18
 ---
+
+Blocker moved to Loom's tracker on 2026-09-11: habu-migration-maki-models-c965e65d.
 
 Hard-delete TYPEFAMILY, PRODUCT, ;PRODUCT, SUMTYPE, ;SUMTYPE, VALUE-RECORD,
 END-VALUE-RECORD, BEGIN-STRUCTURE, END-STRUCTURE, +FIELD, PTR-FIELD:, CFIELD:,

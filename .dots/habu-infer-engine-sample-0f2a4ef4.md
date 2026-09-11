@@ -5,8 +5,9 @@ priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.412930+02:00"
 blocks:
-  - habu-infer-engine-prefill-558f9003
 ---
+
+Blocker moved to Loom's tracker on 2026-09-11: habu-infer-engine-prefill-558f9003.
 
 Why this exists:
 token selection must respect the active model's valid identifier domain and ordered bounded stop set while consuming sequence-owned logits without global random state or advancement after failure.
