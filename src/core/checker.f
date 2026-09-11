@@ -13796,7 +13796,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    [: TRANSFER-ROWS ;] catch {: rc:n :}
    saved CHECKER-REC-SYM !
    DECLARATIONS BIND-SOURCE
-   rc 0<> if rc throw then ;
+   rc 0 <> if rc throw then ;
 
 ' TRANSFER-CHECKED DECLARATIONS TRANSFER-OFF + xt!
 ;package
