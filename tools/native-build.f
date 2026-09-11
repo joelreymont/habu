@@ -96,31 +96,35 @@ create SMOKE-ERR SMOKE-CAP allot
    data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
 
 defer RESET-SOURCE ( -- )
-defer IMPORT-CHECKED ( -- )
+defer IMPORT-CHECKED ( ptr u8 -- )
+
+\ Resolve the current source owner in its own package. The cold seed uses the
+\ native dispatch header cells for its old compiler's temporary stack.
+TRUSTED: CHECKER-OWNER ( -- ptr u8 )
+   s" package CHECKER-REG DECLARATIONS ;package" evaluate ;
 
 \ These execution tokens belong to the retained/target private checker owners.
-TRUSTED: RESET-CHECKER ( -- )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
+TRUSTED: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
    owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ is RESET-SOURCE
    RESET-SOURCE ;
 
-TRUSTED: TRANSFER-CHECKER ( -- )
-   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ {: owner:ptr :}
+TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
+   CHECKER-OWNER {: owner:ptr :}
    owner 0= if s" native-build: target checker owner missing" 76 die then
    owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ is IMPORT-CHECKED
-   IMPORT-CHECKED ;
+   source IMPORT-CHECKED ;
 
 \ The discarded build host remains callable through this compiled continuation,
 \ but none of its dictionary records or address declarations enters the window.
-TRUSTED: LOGICAL-RESET ( -- )
+TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    0 set-check
    0 set-top-check
    RESET-CHECKER
    IMK-NDICT0 @ 1 - seed-ndict!
    RESET-ADDRESS-ROWS ;
 
-: LOAD-TARGET ( -- )
+: LOAD-TARGET ( ptr u8 -- ) {: source:ptr :}
    s" src/core/util.f" included
    s" src/core/cell.f" included
    s" src/core/pointer-storage.f" included
@@ -135,7 +139,7 @@ TRUSTED: LOGICAL-RESET ( -- )
    s" src/core/sumtype.f" included
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
-   TRANSFER-CHECKER
+   source TRANSFER-CHECKER
    s" src/core/check-hook.f" included
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
@@ -161,7 +165,7 @@ TRUSTED: LOGICAL-RESET ( -- )
    s" src/core/include.f" included
    s" src/habu/native-runtime.f" included ;
 
-: OPEN-AND-COMPILE ( -- )
+: OPEN-AND-COMPILE ( ptr u8 -- )
    AOT-ARM:WINDOW-OPEN
    NSTR:WINDOW-OPEN
    LOAD-TARGET
@@ -225,8 +229,9 @@ TRUSTED: LOGICAL-RESET ( -- )
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
 : DRIVE ( -- )
-   LOGICAL-RESET
-   OPEN-AND-COMPILE
+   CHECKER-OWNER {: source:ptr :}
+   source LOGICAL-RESET
+   source OPEN-AND-COMPILE
    CAPTURE
    EMIT-TEMP
    SIGN-TEMP
