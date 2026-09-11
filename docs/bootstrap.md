@@ -51,7 +51,7 @@ artifacts under `HB_TMP`; those artifacts exist only to produce `bin/hb`.
   resolved assembler hashes to the pinned SHA-256 and reports version ≥ 13.3 — the
   older system CUDA 13.0 assembler (which costs ~27% GEMM throughput) is refused,
   not merely warned. Provisioning recipe (archive, sha256, install):
-  `../loom/docs/codegen-verdict.md` "Pinned ptxas toolchain" (moved to Loom).
+  `../loom/docs/ptx.md` "Pinned ptxas toolchain" (the PTX backend and its recipe live in Loom).
 
 Verify the Gforth requirement:
 
