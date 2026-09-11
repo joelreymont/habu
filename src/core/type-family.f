@@ -16,7 +16,7 @@
 \ they were all swept: the 46 consumer files elsewhere in the tree, the checker's
 \ own PRIM: axiom rows (24 of them moved to `PPRIM: TFAM`), and the five inner
 \ packages this file itself opens — TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER,
-\ CHECKER-DECL-FRAME and PREFIX-BOUND. Packages do not nest (habu2.f C-PACKAGE
+\ CHECKER-DECL-FRAME and SCHEMA-REG. Packages do not nest (habu2.f C-PACKAGE
 \ exits $4B on an open-inside-open), so each inner block closes TFAM and reopens
 \ it afterwards, and each reads what it needs through the file's own `using TFAM`
 \ — which reaches publics only, exactly like any other consumer.
@@ -2666,7 +2666,7 @@ package TFAM
 
 ;package
 
-package PREFIX-BOUND
+package SCHEMA-REG
 
 private
 
@@ -2690,11 +2690,11 @@ variable BPF    variable BPFC   variable BSCH  variable BSCHR
    LAY-N @ BLAY !
    PF-N @ BPF !
    PF-COMMIT-N @ BPFC !
-   SCHEMA-REG:COUNTS BSCHR ! BSCH ! ;
+   COUNTS BSCHR ! BSCH ! ;
 
 : PFX-REWIND ( -- )
    AT-REST
-   BSCH @ BSCHR @ SCHEMA-REG:REWIND
+   BSCH @ BSCHR @ REWIND
    BTFAM @ BSTRU @ BPK @ BSUMV @ BLAY @ TFAM-REWIND
    BPF @ PF-N @ PF-SCRUB
    BPF @ PF-N !

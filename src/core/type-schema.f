@@ -328,7 +328,7 @@ PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
 : SCH-RBF-BASE ( -- ptr a ) SCH-RBF-P @ ;
 
 \ The frame depth is the one rollback cell with a reader outside this file
-\ (type-family.f PREFIX-BOUND:AT-REST and CHECKER-DECL-FRAME:TYPES-READY both ask
+\ (type-family.f SCHEMA-REG:AT-REST and CHECKER-DECL-FRAME:TYPES-READY both ask
 \ whether the schema half is at rest), so it is public and its raw cell is
 \ REG-PROTECTed like every other exported control cell here — the compiled
 \ readers resolve before the marking pass, while `SCHEMA-REG:SCH-RBF-DEPTH !`
@@ -374,10 +374,12 @@ public
 \ recorded pair instead of the frame stack, for the same reason those two words
 \ restore only counters: the node and root fields are pointer-free, so putting
 \ the counts back retires every entry above them.
-\ The one caller is src/core/type-family.f PREFIX-BOUND:PFX-MARK/PFX-REWIND,
+\ The one caller is the SCHEMA-REG prefix-boundary block in src/core/type-family.f,
 \ which carries this pair alongside the family registry's own counters so the
 \ two halves of a declaration frame move together here exactly as they do
 \ through CHECKER-DECL-FRAME:EXT-SAVE/EXT-RESTORE.
+private
+
 : COUNTS ( -- n n )
    SCH-N @ SCH-ROOT-N @ ;
 
@@ -387,6 +389,8 @@ public
    THEN
    n SCH-N !
    rootn SCH-ROOT-N ! ;
+
+public
 
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.

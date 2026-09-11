@@ -915,9 +915,8 @@ create QNAME QNAME-CAP allot
 
 \ --- the sealed schema registry (dot habu-seal-type-schema-c65f76cc). This
 \ group proves the package-public/private answer for a file that BECAME a package:
-\ src/core/type-schema.f used to
-\ define 98 globals and now defines 61 publics and 37 privates under
-\ package SCHEMA-REG, with nothing renamed.
+\ src/core/type-schema.f keeps its schema implementation in SCHEMA-REG;
+\ private storage and rewind operations have no external spelling.
 \
 \ THE MEASURABLE DIFFERENCE IS THE BARE NAME. Before the seal, `SCHEMA-A@` was a
 \ global the marking pass reached, so it answered `internal engine word` — the
@@ -956,13 +955,13 @@ create QNAME QNAME-CAP allot
    s" 0 SCH-RBF-P !" SB-APPEND LF
    SB$ ;
 
-: QUAL-USING-FORGE$ ( -- ptr u8 n )   \ a used package public reaches the marked record
+: QUAL-USING-FORGE$ ( -- ptr u8 n )   \ a using cannot reach the private rewind
    SB-RESET
    s" using SCHEMA-REG" SB-APPEND LF
    s" 0 0 REWIND" SB-APPEND LF
    SB$ ;
 
-: QUAL-REWIND-FORGE$ ( -- ptr u8 n )  \ the qualified package public on the load path
+: QUAL-REWIND-FORGE$ ( -- ptr u8 n )  \ the private rewind has no qualified spelling
    SB-RESET
    s" 0 0 SCHEMA-REG:REWIND" SB-APPEND LF
    SB$ ;
@@ -985,12 +984,12 @@ create QNAME QNAME-CAP allot
    s" E-UNDEFINED: SCHEMA-A@" ASSERT-DIAG
    s" and its qualified spelling is a marked public instead" T-LABEL
    s" SCHEMA-REG:SCHEMA-A@" NEG
-   s" the used-publics bare tail reaches the same record and fails closed" T-LABEL
+   s" using cannot expose the private schema rewind" T-LABEL
    QUAL-USING-FORGE$ RUN-SUBJECT
-   s" REWIND" ASSERT-INTERNAL
+   s" REWIND" ASSERT-UNDEF
    s" 0 0 SCHEMA-REG:REWIND no longer wipes the schema registry" T-LABEL
    QUAL-REWIND-FORGE$ RUN-LOAD
-   s" SCHEMA-REG:REWIND" ASSERT-INTERNAL
+   s" SCHEMA-REG:REWIND" ASSERT-UNDEF
    s" a sealed private has no qualified spelling either" T-LABEL
    s" SCHEMA-REG:SCH-RBF-P" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: SCHEMA-REG:SCH-RBF-P" ASSERT-DIAG
