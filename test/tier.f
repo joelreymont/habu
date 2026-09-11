@@ -50,6 +50,11 @@ require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
+require lib/memory.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
 
 package TIER-TEST
 
@@ -78,6 +83,22 @@ variable RC     variable EXITED
 
 : RUN ( ptr u8 n -- ) {: src:ptr u:n :}
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN STORE! ;
+
+\ The SAME program through a real `bin/hb` process, stdin-piped.
+\ SUBJECT:RUN forks in-process and never reaches the CLI's own eval boundary, so
+\ the recovery cases below -- which crashed exactly there -- have to exec.
+: HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
+   2drop
+   s" HABU_UNDER_TEST" GETENV dup 0= if
+      2drop s" bin/hb" exit
+   then ;
+
+: EXEC ( ptr u8 n -- ) {: src:ptr u:n :}
+   PROC-ARGV-RESET
+   HB$ >LEN  src u >LEN  OUT CAP >LEN
+   ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   STORE! ;
 
 \ ---- the two shapes every case asserts ---------------------------------------
 \ OK means: the child exited 0 and its stdout contains what the definition
@@ -210,14 +231,55 @@ variable RC     variable EXITED
    s" 1 set-tier : N4 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N4 . cr"
    RUN  s" 5" ASSERT-OK ;
 
-\ ---- 6. the nesting bound is a bound, not a corruption -----------------------
-\ Past the frame area the emitter must refuse deterministically. This also pins
-\ the frame count: the relocated band is sized JIT-SNAP:FRAMES * FRAME-BYTES, and
-\ a band that silently aliased its neighbour would run PAST this without failing.
+\ ---- 6. the nesting bound is a bound, not a corruption ----------------------
+\ 28 frames fit; the 29th must refuse deterministically rather than run off the
+\ end of the relocated band into whatever follows it. Built rather than spelled
+\ out, so the depths track JIT-SNAP:FRAMES instead of a typist.
+: NEST-SRC$ ( n -- ptr u8 n ) {: depth:n :}
+   SB-RESET
+   s" : ZN ( -- n ) 0 " SB-APPEND
+   depth 0 ?do s" begin 1 + dup 2 < while " SB-APPEND loop
+   depth 0 ?do s" repeat " SB-APPEND loop
+   s" ; ZN . cr" SB-APPEND
+   SB$ ;
+
 : TEST-NESTING-BOUND ( -- )
-   s" BEGIN nesting inside the bound compiles" T-LABEL
-   s" : D26 ( -- n ) 0 begin 1 + dup 2 < while 0 drop repeat ; D26 . cr" RUN
-   s" 2" ASSERT-OK ;
+   s" BEGIN nested to the frame bound compiles and runs" T-LABEL
+   28 NEST-SRC$ EXEC  s" 3" ASSERT-OK
+
+   s" one BEGIN past the bound refuses" T-LABEL
+   29 NEST-SRC$ EXEC  NEST-RC ASSERT-RC ;
+
+\ ---- 7. a failed definition under a top-level catch is recoverable ----------
+\ THE CRASH. `' evaluate catch` at top level installs its handler at exactly the
+\ SP that B-EVAL later records as the eval-frame boundary. The recovery treated
+\ equal as "handler inside the frame", never popped the frame, and left CP and
+\ the protection band at the abandoned definition -- so the next token was
+\ emitted into a re-protected band and the process died of SIGSEGV (rc 134)
+\ AFTER printing a correct rejection. These run as real processes because the
+\ in-process fork does not reach that boundary.
+: TEST-EVAL-RECOVERY ( -- )
+   s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
+   S\" s\q : RVND ( n -- n ) dup ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
+
+   s" tier 0 recovers from an undefined word under a top-level catch" T-LABEL
+   S\" s\q : RVU ( -- ) MISSINGW ;\q ' evaluate catch . cr\n" EXEC  s" 70" ASSERT-OK
+
+   s" tier 1 recovers from the same rejection" T-LABEL
+   S\" 1 set-tier s\q : RVND ( n -- n ) dup ;\q ' evaluate catch . cr\n" EXEC
+   s" 70" ASSERT-OK
+
+   s" the session keeps compiling after the recovery" T-LABEL
+   S\" s\q : RVND ( n -- n ) dup ;\q ' evaluate catch drop\n: ZKOK ( -- n ) 9 ;\nZKOK . cr\n"
+   EXEC  s" 9" ASSERT-OK
+
+   s" three recoveries in a row still leave a usable session" T-LABEL
+   S\" s\q : RA ( n -- n ) dup ;\q ' evaluate catch drop\ns\q : RB ( n -- n ) dup ;\q ' evaluate catch drop\ns\q : RC ( n -- n ) dup ;\q ' evaluate catch drop\n: ZKOK2 ( -- n ) 7 ;\nZKOK2 . cr\n"
+   EXEC  s" 7" ASSERT-OK
+
+   s" the quotation form still recovers" T-LABEL
+   S\" TRUSTED: EV ( ptr u8 n -- n ) [: evaluate ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n"
+   EXEC  s" 70" ASSERT-OK ;
 
 public
 
@@ -230,6 +292,7 @@ public
    TEST-SNAPSHOT-OWNERSHIP
    TEST-NESTED-QUOTATIONS
    TEST-NESTING-BOUND
+   TEST-EVAL-RECOVERY
    T-REPORT
    s" tier: ok" type cr ;
 

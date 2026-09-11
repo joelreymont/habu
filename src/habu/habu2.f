@@ -8194,7 +8194,14 @@ public
       13 DATA EVAL-TOP-CELL LDR,                     \ x13 = current frame
       14 13 24 LDR,                                   \ x14 = eval-entry SP (boundary); x13 stays &frame
       11 LEVLP LABEL@ CBZ,                            \ no handler → pop (escape)
-      11 14 CMP,  C-LS LEVLD LABEL@ BCOND,            \ handler inside this frame → unwind to it
+      \ Handler STRICTLY inside this frame -> unwind to it. The boundary SP is
+      \ not itself inside the frame it bounds: B-EVAL stores the PRE-frame SP
+      \ here and BCATCH records exactly that SP for a handler installed just
+      \ outside, so `' evaluate catch` at top level makes the two equal. Treating
+      \ equal as "inside" left the eval frame unpopped, CP and the protection
+      \ band stayed at the abandoned definition's, and the next token was emitted
+      \ into a band already re-protected: SIGSEGV after a correct reject message.
+      11 14 CMP,  C-CC LEVLD LABEL@ BCOND,
    LEVLP LABEL@ LBL,
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
