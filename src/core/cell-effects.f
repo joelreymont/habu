@@ -35,7 +35,7 @@ create STATE 0 , 0 , 0 ,
 INSTALL
 
 : FIELD ( n n -- ptr n ) {: row:n field:n :}
-   STATE 0 ptr-field @ row 4 * field + cells + ;
+   STATE 0 ptr-field @ row 4 * field + CELL * + CELL-VIEW ;
 
 : FIND ( n n -- n n ) {: ord:n kind:n :}
    STATE CELL + @ 0 ?do

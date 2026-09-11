@@ -938,7 +938,6 @@ package BUILD-FIXPOINT
    out outu s" src/core/layout-valid.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/cell-effects.f" BF-APPEND-SOURCE
-   out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE
    out outu s" src/core/declaration-transaction.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration.f" BF-APPEND-SOURCE ;
 
