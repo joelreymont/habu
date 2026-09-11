@@ -26,6 +26,7 @@
 
 require lib/test.f
 require src/compiler/a64-effect.f
+require src/compiler/ir/symbol.f
 require src/compiler/native/a64ir.f
 require src/arch/arm64/asm.f
 
@@ -1864,10 +1865,81 @@ variable MEMO-IDX
    BND [: LAZY-BODY ;] IR-CTX:WITH-CONTEXT
    [: LAZY-FOREIGN ;] E-A64IR-DIALECT TTHROWSQ ;
 
+\ ---- the memo a session prototype fills --------------------------------------
+\ Two definitions of one session, each lowering into a module cloned from the
+\ session's prototype interner. The second must bind every opcode and ask for
+\ every attribute key WITHOUT interning anything: its misses are none, and
+\ interning nothing is observable from outside as a module symbol count the
+\ binding does not move. A spelling missing from the prototype shows up in the
+\ count even though the identity it answers is still correct.
+: PROTO-BUILD ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: k:IR-ID:ir-module-key :}
+   c k IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW
+   {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r k A64IR:PROTOTYPE ;
+
+: BIND-KEYS ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b A64IR:KEY-IMM drop
+   c b A64IR:KEY-SHIFT drop
+   c b A64IR:KEY-ADDR drop
+   c b A64IR:KEY-SLOT drop
+   c b A64IR:KEY-FRAME drop
+   c b A64IR:KEY-OFF drop
+   c b A64IR:KEY-MASK drop
+   c b A64IR:KEY-DSLOT drop
+   c b A64IR:KEY-DBYTES drop
+   c b A64IR:KEY-DBACK drop
+   c b A64IR:KEY-ENTRY drop
+   c b A64IR:KEY-TRAP-ENTRY drop
+   c b A64IR:KEY-FUN drop
+   c b A64IR:KEY-COND drop ;
+
+: BIND-ALL ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   A64IR:OPCODES 0 ?do c b i A64IR:BIND drop loop
+   c b A64IR-OPCODE:MOV A64IR:OPCODE drop
+   c b BIND-KEYS ;
+
+: DEF-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c MOD-NEW {: b:IR-BUILD:builder :}
+   A64IR:MISSES-CLEAR
+   b IR-BUILD:SYMBOLS {: before:n :}
+   c b BIND-ALL
+   A64IR:MISSES  b IR-BUILD:SYMBOLS  before ;
+
+\ A session may already be open: under the AOT mode this suite runs in, the
+\ compiler opened one for the load that is reading this very file, and its
+\ prototype is the production one. Borrow that session when it is there and open
+\ a private one only when it is not, because a second session is refused by name
+\ and borrowing measures the real thing.
+: SESSION-MINE ( -- )
+   BND IR-CTX:SESSION-OPEN PROTO-BUILD ;
+
+: SESSION-DROP-MINE ( -- )
+   A64IR:PROTOTYPE-CLEAR
+   IR-CTX:SESSION-CLOSE ;
+
+: SESSION-MEMO-CASE ( -- )
+   IR-CTX:SESSION-LIVE? 0= {: own:bool :}
+   own if SESSION-MINE then
+   BND [: DEF-BODY ;] IR-CTX:WITH-CONTEXT drop drop drop
+   BND [: DEF-BODY ;] IR-CTX:WITH-CONTEXT
+   {: misses:n after:n before:n :}
+   own if SESSION-DROP-MINE then
+
+   s" the second definition of a session binds without interning" T-LABEL
+   misses 0 T=
+   s" and its module's symbol count is unchanged by binding" T-LABEL
+   after before T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   SESSION-MEMO-CASE
    MEMO-CASE
    LAZY-CASE
    OPCODE-ORDINAL-CASE

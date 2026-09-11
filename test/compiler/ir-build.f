@@ -18,6 +18,7 @@
 \ sealed and that no mutation can be spelled against a frozen module.
 
 require lib/test.f
+require lib/image-lifecycle.f
 require test/checker-assert.f
 require src/compiler/ir/build.f
 
@@ -1396,10 +1397,23 @@ variable PART-FREE
    drop
    LIVE-REFUSE-CASES-G ;
 
+\ ---- the process holds no compiler session -----------------------------------
+\ TARENA-SLOTS and TSLOTS pin the WHOLE arena and builder registries, and those
+\ registries are process-wide: a tier-1 load opens the compiler's own session
+\ and keeps its module, its interner and its vocabulary table in them until the
+\ image is captured, which is two to four arenas and a builder this file's
+\ arithmetic does not know about. Standing that session down is exactly what a
+\ capture does, and the compiler opens a fresh one for its next definition, so
+\ the measurements below are taken against a registry this file owns.
+: STAND-DOWN ( -- )
+   IR-CTX:SESSION-LIVE? 0= if exit then
+   IMAGE-LIFECYCLE:PREPARE ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   STAND-DOWN
    BND [: HARNESS-CREATE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-APPEND ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-FREEZE ;] IR-CTX:WITH-CONTEXT

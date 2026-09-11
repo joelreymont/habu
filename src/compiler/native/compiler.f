@@ -18,6 +18,7 @@
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
+require src/compiler/ir/symbol.f
 require src/compiler/native/abi.f
 require src/compiler/native/frame.f
 require src/compiler/native/dict.f
@@ -557,8 +558,62 @@ create SPELL-BUF SPELL-CAP allot
    [: WORK ;] catch M-RC !
    RETIRE-BODY ;
 
+\ ---- the load's session ------------------------------------------------------
+\ WHAT THE SESSION IS. IR-CTX:SESSION-OPEN answers an unscoped context that
+\ outlives every definition and dies with the image; a definition is still an
+\ ordinary IR-CTX:WITH-CONTEXT, nested inside it, and still owns its own module
+\ identities, its own builders and its own arenas. The session exists to hold
+\ the things that are the same for every definition of a load.
+\
+\ WHAT IT HOLDS. One module of its own, holding nothing but an interner into
+\ which both dialects intern their whole vocabulary once. Each dialect keeps
+\ that pair and starts every module it builds as a copy of it, so a definition's
+\ modules are born already holding the dialect's spellings.
+\
+\ WHAT A DIALECT ASKS OF IT. PROTOTYPE, with the session's context, interner
+\ pair and module key, to intern its vocabulary and adopt the pair;
+\ PROTOTYPE-CLEAR to give it up. Nothing else: the session hands out no builder,
+\ mints no identity a definition uses, and is never the context a definition
+\ compiles into.
+\
+\ WHEN IT OPENS AND CLOSES. The first definition that needs one opens it and it
+\ stands until the image is captured, which is where it and everything it holds
+\ are given back. Liveness is read off the context itself, so a session that has
+\ gone answers as gone and the next definition opens a fresh one.
+1 TYPED-BUFFER S-CTX IR-CTX:ctx
+
+: SC ( -- IR-CTX:ctx ) 0 S-CTX @ ;
+
+\ The ceilings are the ones the default plan gives any module, so a module that
+\ starts as a copy of this one can grow exactly as far as one that does not.
+: SESSION-VOCABULARY ( -- )
+   SC IR-CTX:NEW-MODULE drop {: k:IR-ID:ir-module-key :}
+   SC k IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW
+   {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   SC a r k HIR:PROTOTYPE
+   SC a r k A64IR:PROTOTYPE ;
+
+\ The dialects go first, while the interner they name is still mapped.
+: SESSION-DROP ( -- )
+   HIR:PROTOTYPE-CLEAR
+   A64IR:PROTOTYPE-CLEAR
+   IR-CTX:SESSION-CLOSE ;
+
+\ A vocabulary that fails to build takes the session with it, so the next
+\ definition is the first one again rather than the first one with half a
+\ prototype.
+: SESSION-START ( -- )
+   NABI:BINDING IR-CTX:SESSION-OPEN 0 S-CTX !
+   [: SESSION-VOCABULARY ;] catch {: rc:n :}
+   rc 0<> if SESSION-DROP rc throw then ;
+
+: SESSION-READY ( -- )
+   SC IR-CTX:LIVE? if exit then
+   SESSION-START ;
+
 \ A recursive compiler call would record one definition onto another's tape.
 : IN-CONTEXT ( -- )
+   SESSION-READY
    NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ A refusal after a certified, sealed scan owns the checker signature it just
@@ -622,8 +677,13 @@ public
 : COMPILE ( ptr u8 n -- )
    STAGE RUN ;
 
+\ IMAGE-LIFECYCLE:PREPARE has already run, so IR-CTX's own hook has closed the
+\ session and unmapped the interner the dialects were reading; forgetting it is
+\ all that is left to do.
 : CAPTURE-PREPARE ( -- )
    IDLE-CK
+   HIR:PROTOTYPE-CLEAR
+   A64IR:PROTOTYPE-CLEAR
    NULL-PTR NAME-A !  0 NAME-U !
    NULL-PTR M-SRC !  0 M-SRC-U !
    NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !

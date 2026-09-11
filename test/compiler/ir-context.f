@@ -558,7 +558,17 @@ variable SESS-USED
    s" and its exit retires the slot IT took, so that arena is stale" T-LABEL
    [: READ-INSIDE drop ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ A session is process-wide and cannot be nested, and a tier-1 load opens the
+\ compiler's own and keeps it until the image is captured - so this process may
+\ already hold one before the first case here runs. Standing it down is exactly
+\ what a capture does, and the compiler opens a fresh one for its next
+\ definition; the cases below are about the session THIS file takes.
+: SESS-STAND-DOWN ( -- )
+   IR-CTX:SESSION-LIVE? 0= if exit then
+   IMAGE-LIFECYCLE:PREPARE ;
+
 : SESSION-CASES ( -- )
+   SESS-STAND-DOWN
    s" no session is open before one is" T-LABEL
    IR-CTX:SESSION-LIVE? TFALSE
 

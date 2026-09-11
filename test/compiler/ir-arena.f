@@ -11,6 +11,7 @@
 \ the private cast window is sealed.
 
 require lib/test.f
+require lib/image-lifecycle.f
 require lib/memory.f
 require test/checker-assert.f
 require src/compiler/ir/arena.f
@@ -807,10 +808,22 @@ variable AS-K
    0 8 AS-STAGE E-IR-ARENA-FULL AS-REFUSES
    small IR-ARENA:USED 0 T= ;
 
+\ ---- the process holds no compiler session ------------------------------------
+\ The capacity cases below count the WHOLE arena registry, and that registry is
+\ process-wide: a tier-1 load opens the compiler's own session and keeps its
+\ interner and its vocabulary table in it until the image is captured, which is
+\ slots this file's arithmetic does not know about. Standing that session down is
+\ exactly what a capture does, and the compiler opens a fresh one for its next
+\ definition, so the registry these cases exhaust is one this file owns.
+: STAND-DOWN ( -- )
+   IR-CTX:SESSION-LIVE? 0= if exit then
+   IMAGE-LIFECYCLE:PREPARE ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   STAND-DOWN
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
    BND [: AS-BODY ;] IR-CTX:WITH-CONTEXT
    SPAN-CASES

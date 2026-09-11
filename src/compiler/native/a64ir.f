@@ -27,6 +27,7 @@ require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/type.f
 require src/compiler/ir/schema.f
+require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/arch/arm64/asm.f
 
@@ -320,8 +321,13 @@ public
 \ bound at MASK is what makes a pass that forgot fail loudly.
 : MASK-IMM? ( n -- bool )   A64ASM:LIMM? ;
 
+private
+
 \ ---- the opcode names --------------------------------------------------------
-: OPCODE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
+\ One table and not a literal at each use, because a session interns this
+\ dialect's whole vocabulary by walking it: a spelling the walk cannot reach is
+\ a spelling every module interns again.
+: OP-NAME ( A64IR:opcode -- ptr u8 n )
    MATCH opcode
       movz    OF s" a64.movz"    ENDOF
       movk    OF s" a64.movk"    ENDOF
@@ -399,8 +405,9 @@ public
       flagi     OF s" a64.flagi"    ENDOF
       cmpbri    OF s" a64.cmpbri"   ENDOF
       codeaddr  OF s" a64.codeaddr" ENDOF
-   ;MATCH
-   IR-BUILD:INTERN-SYMBOL ;
+   ;MATCH ;
+
+public
 
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These ordinals predate the enum declaration order and are kept stable for the
@@ -570,32 +577,150 @@ public
 
 private
 
-\ Each opcode keeps its last interned symbol. The symbol carries its module
-\ generation; a hit still validates the live builder and its owning context.
-OPCODES TYPED-BUFFER BIND-SYMBOL IR-ID:ir-symbol-id
-OPCODES TYPED-BUFFER BIND-SEEN bool
+\ ---- the dialect's fixed attribute keys --------------------------------------
+\ Enumerable for the same reason the opcode names are: a session prototype
+\ interns this vocabulary by walking it.
+0 constant K-IMM
+1 constant K-SHIFT
+2 constant K-ADDR
+3 constant K-SLOT
+4 constant K-FRAME
+5 constant K-OFF
+6 constant K-MASK
+7 constant K-DSLOT
+8 constant K-DBYTES
+9 constant K-DBACK
+10 constant K-ENTRY
+11 constant K-TRAP-ENTRY
+12 constant K-FUN
+13 constant K-COND
+14 constant KEYS
 
-: BIND-INIT ( -- )
-   OPCODES 0 ?do false i BIND-SEEN ! loop ;
-BIND-INIT
+: KEY-NAME ( n -- ptr u8 n )
+   case
+      K-IMM        of s" a64.imm" endof
+      K-SHIFT      of s" a64.shift" endof
+      K-ADDR       of s" a64.addr" endof
+      K-SLOT       of s" a64.slot" endof
+      K-FRAME      of s" a64.frame" endof
+      K-OFF        of s" a64.off" endof
+      K-MASK       of s" a64.mask" endof
+      K-DSLOT      of s" a64.dslot" endof
+      K-DBYTES     of s" a64.dbytes" endof
+      K-DBACK      of s" a64.dback" endof
+      K-ENTRY      of s" a64.entry" endof
+      K-TRAP-ENTRY of s" a64.trap-entry" endof
+      K-FUN        of s" a64.fun" endof
+      K-COND       of s" a64.cond" endof
+      E-A64IR-DIALECT throw
+   endcase ;
+
+\ ---- the vocabulary memo -----------------------------------------------------
+\ A symbol identity is a (module, ordinal) pair and the module half changes with
+\ every definition, so the ordinal is the only half worth remembering. The memo
+\ holds one ordinal per vocabulary entry - every opcode name and every attribute
+\ key, which is the whole of what this dialect spells - together with the module
+\ they belong to; a hit mints the identity with IR-ID:PACK-SYMBOL against that
+\ module's own key and still puts it through IR-BUILD:SYMBOL-CK, so a stale
+\ builder, a frozen one, a
+\ foreign context and a row the table does not hold are refused exactly as they
+\ were when the memo held whole identities.
+\
+\ A MODULE CLONED FROM THE SESSION PROTOTYPE ADOPTS THE WHOLE MEMO AT BIRTH,
+\ because a clone holds the prototype's spellings at the prototype's ordinals -
+\ which is what makes the second definition of a load bind without interning
+\ anything at all. A module that is not a clone starts with an empty memo and
+\ fills it one intern at a time, the way this always did within a module.
+\
+\ THE KEYS ARE IN IT FOR THE SAME REASON THE OPCODES ARE. An attribute key is
+\ interned once per attribute written, which is several times per node, and
+\ re-resolving the same six or fourteen spellings against a module's interner
+\ was the largest single cost of building one definition's IR. The entries are
+\ the opcodes first and the keys after them, so one ordinal space, one owner
+\ check and one adoption cover both.
+OPCODES KEYS + constant VOCAB        \ memo entries: the opcodes, then the keys
+VOCAB TYPED-BUFFER PROTO-ORD n       \ ordinals in the session prototype
+VOCAB TYPED-BUFFER MEMO-ORD n        \ ordinals in the module the memo names
+VOCAB TYPED-BUFFER MEMO-SEEN bool
+1 TYPED-BUFFER MEMO-MOD IR-ID:ir-module-id
+variable MEMO-OWNED                  \ MEMO-MOD names a module
+variable MISS-COUNT
+
+: MEMO-FORGET ( -- )
+   0 MEMO-OWNED !
+   VOCAB 0 ?do false i MEMO-SEEN ! loop ;
+MEMO-FORGET
+0 MISS-COUNT !
+
+\ Whose ordinals the memo holds. Answering no is the per-hit owner check: the
+\ ordinals of another module name other spellings, or nothing at all.
+: MEMO-MINE? ( IR-ID:ir-module-id -- bool )
+   MEMO-OWNED @ 0= if drop false exit then
+   0 MEMO-MOD @ IR-ID:MODULE-SAME? ;
+
+: MEMO-START ( IR-ID:ir-module-id -- )
+   0 MEMO-MOD !
+   1 MEMO-OWNED !
+   VOCAB 0 ?do false i MEMO-SEEN ! loop ;
+
+\ Adopt the prototype's ordinals for a module that was cloned from it.
+: MEMO-ADOPT ( IR-BUILD:builder -- )
+   IR-BUILD:MODULE@ 0 MEMO-MOD !
+   1 MEMO-OWNED !
+   VOCAB 0 ?do
+      i PROTO-ORD @ i MEMO-ORD !
+      true i MEMO-SEEN !
+   loop ;
+
+\ The spelling a memo entry names, in the order PROTOTYPE walked and recorded.
+: VOCAB-NAME ( n -- ptr u8 n )
+   {: i:n :}
+   i OPCODES < if i NTH OP-NAME exit then
+   i OPCODES - KEY-NAME ;
+
+\ One entry of the memo, read or filled. A hit mints the identity against this
+\ module's own key and still puts it through IR-BUILD:SYMBOL-CK; a miss interns
+\ the spelling exactly as the unmemoised reader did and records where it landed.
+: MEMO-BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder idx:n :}
+   b IR-BUILD:MODULE@ {: owner:IR-ID:ir-module-id :}
+   owner MEMO-MINE? 0= if owner MEMO-START then
+   idx MEMO-SEEN @ if
+      b IR-BUILD:MODULE-KEY idx MEMO-ORD @ IR-ID:PACK-SYMBOL
+      {: prior:IR-ID:ir-symbol-id :}
+      c b prior IR-BUILD:SYMBOL-CK
+      prior exit
+   then
+   1 MISS-COUNT +!
+   c b idx VOCAB-NAME IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   sym IR-ID:SYMBOL-LOCAL idx MEMO-ORD !
+   true idx MEMO-SEEN !
+   sym ;
+
+\ The keys sit above the opcodes in the one ordinal space.
+: KEY-BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:n :}
+   c b OPCODES k + MEMO-BIND ;
 
 public
 
+\ Vocabulary bindings this dialect had to intern instead of mint. Every module
+\ of a session is a clone, so a load past its first definition should report
+\ none.
+: MISSES ( -- n ) MISS-COUNT @ ;
+
+: MISSES-CLEAR ( -- ) 0 MISS-COUNT ! ;
+
 : BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder idx:n :}
-   idx NTH {: o:A64IR:opcode :}
-   b IR-BUILD:MODULE@ {: owner:IR-ID:ir-module-id :}
-   idx BIND-SEEN @ if
-      idx BIND-SYMBOL @ {: prior:IR-ID:ir-symbol-id :}
-      prior IR-ID:SYMBOL-OWNER owner IR-ID:MODULE-SAME? if
-         c b prior IR-BUILD:SYMBOL-CK
-         prior exit
-      then
-   then
-   c b o OPCODE {: sym:IR-ID:ir-symbol-id :}
-   sym idx BIND-SYMBOL !
-   true idx BIND-SEEN !
-   sym ;
+   idx NTH drop                       \ an ordinal this dialect has an opcode for
+   c b idx MEMO-BIND ;
+
+\ Interning deduplicates, so asking twice answers the same identity - and the
+\ memo above answers most of them without interning at all, which is why the
+\ two entry points are one word deep.
+: OPCODE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
+   ORD BIND ;
 
 \ ---- the condition a comparison is made under --------------------------------
 : COND-CODE ( A64IR:cond -- n )
@@ -629,16 +754,16 @@ public
 : ADR-FITS? ( n -- bool )    ADR-BITS FITS? ;
 
 : KEY-IMM ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.imm" IR-BUILD:INTERN-SYMBOL ;
+   K-IMM KEY-BIND ;
 
 : KEY-SHIFT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.shift" IR-BUILD:INTERN-SYMBOL ;
+   K-SHIFT KEY-BIND ;
 
 \ A move-wide starting an address chain has to be found again after
 \ publication, and a relocation pass may not decode region bytes. It is a
 \ REQUIRED key, so a rewrite that drops it stops the compilation.
 : KEY-ADDR ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.addr" IR-BUILD:INTERN-SYMBOL ;
+   K-ADDR KEY-BIND ;
 
 : IMM-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    IMM16 IR-BUILD:INTERN-INT-ATTR ;
@@ -650,10 +775,10 @@ public
    ADDR-KIND IR-BUILD:INTERN-INT-ATTR ;
 
 : KEY-SLOT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.slot" IR-BUILD:INTERN-SYMBOL ;
+   K-SLOT KEY-BIND ;
 
 : KEY-FRAME ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.frame" IR-BUILD:INTERN-SYMBOL ;
+   K-FRAME KEY-BIND ;
 
 : SLOT-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    SLOT IR-BUILD:INTERN-INT-ATTR ;
@@ -664,7 +789,7 @@ public
 \ Its own key and not the move-wide's, because the fields have different widths.
 \ One key serves four forms because all four share one twelve-bit field.
 : KEY-OFF ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.off" IR-BUILD:INTERN-SYMBOL ;
+   K-OFF KEY-BIND ;
 
 : OFF-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    OFF IR-BUILD:INTERN-INT-ATTR ;
@@ -672,38 +797,38 @@ public
 \ Its own key because the two fields admit different values: the logical one
 \ carries the mask -2, which the arithmetic field cannot hold at all.
 : KEY-MASK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.mask" IR-BUILD:INTERN-SYMBOL ;
+   K-MASK KEY-BIND ;
 
 : MASK-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    MASK IR-BUILD:INTERN-INT-ATTR ;
 
 : KEY-DSLOT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.dslot" IR-BUILD:INTERN-SYMBOL ;
+   K-DSLOT KEY-BIND ;
 
 : KEY-DBYTES ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.dbytes" IR-BUILD:INTERN-SYMBOL ;
+   K-DBYTES KEY-BIND ;
 
 : KEY-DBACK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.dback" IR-BUILD:INTERN-SYMBOL ;
+   K-DBACK KEY-BIND ;
 
 : KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.entry" IR-BUILD:INTERN-SYMBOL ;
+   K-ENTRY KEY-BIND ;
 
 \ Its own key, because two passes recognise a tail branch by its ATTRIBUTES and
 \ a trap under `a64.entry` would BE one to both of them.
 : KEY-TRAP-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.trap-entry" IR-BUILD:INTERN-SYMBOL ;
+   K-TRAP-ENTRY KEY-BIND ;
 
 \ An ordinal and not an address: there is no address until the emitter has laid
 \ the emission out. How many functions there are is the emitter's fact.
 : KEY-FUN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.fun" IR-BUILD:INTERN-SYMBOL ;
+   K-FUN KEY-BIND ;
 
 : FUN-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    FUN-ORD IR-BUILD:INTERN-INT-ATTR ;
 
 : KEY-COND ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" a64.cond" IR-BUILD:INTERN-SYMBOL ;
+   K-COND KEY-BIND ;
 
 : COND-ATTR ( IR-CTX:ctx IR-BUILD:builder A64IR:cond -- IR-ID:ir-attr-id )
    COND-CODE COND IR-BUILD:INTERN-INT-ATTR ;
@@ -1610,11 +1735,63 @@ private
    c b IR-BUILD:SCHEMA-MAJOR@ MAJOR <> if E-A64IR-DIALECT throw then
    c b IR-BUILD:SCHEMA-MINOR@ MINOR <> if E-A64IR-DIALECT throw then ;
 
+private
+
+\ ---- the session prototype ---------------------------------------------------
+\ Every module a definition builds interns this dialect's whole vocabulary
+\ again, because a module's symbols are its own ordinals. A LOAD interns it
+\ once instead, into an interner of the session's own, and every module built
+\ while that prototype stands starts as a copy of it: the spellings are already
+\ there, at the same ordinals, so the module holds them without a scan.
+\
+\ The pair is the session's and is only read here. PROTOTYPE-CLEAR gives it up
+\ when the session does, and an interner that outlives its context is stale by
+\ the arena's own seal, so a forgotten clear cannot read freed storage.
+2 TYPED-BUFFER PROTO IR-ARENA:arena
+variable PROTO-ON
+0 PROTO-ON !
+
+: PRE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-symbol-id )
+   IR-SYM:INTERN ;
+
+\ The ordinal an opcode landed on is the whole point of the prototype: a module
+\ cloned from it holds that spelling at that ordinal, so the ordinal is what a
+\ clone's memo adopts.
+: PRE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key i:n :}
+   c a r k i NTH OP-NAME PRE IR-ID:SYMBOL-LOCAL i PROTO-ORD ! ;
+
+\ And where each attribute key landed, above the opcodes.
+: PRE-KEY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key i:n :}
+   c a r k i KEY-NAME PRE IR-ID:SYMBOL-LOCAL  OPCODES i + PROTO-ORD ! ;
+
 public
 
+\ Intern this dialect's whole vocabulary into a session-lived interner and keep
+\ it: the dialect name IR-BUILD interns for every module, every opcode name and
+\ every attribute key. Walked, not listed, so the prototype cannot fall behind
+\ the tables above.
+: PROTOTYPE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena k:IR-ID:ir-module-key :}
+   c a r k NAME PRE drop
+   OPCODES 0 ?do c a r k i PRE-OP loop
+   KEYS 0 ?do c a r k i PRE-KEY loop
+   a 0 PROTO !
+   r 1 PROTO !
+   1 PROTO-ON ! ;
+
+: PROTOTYPE-CLEAR ( -- )
+   0 PROTO-ON !
+   MEMO-FORGET ;
+
 \ ---- creation and registration -----------------------------------------------
+\ While a session prototype stands, the module's interner starts as a copy of
+\ it; the module identity, the plan and every check are the ordinary ones.
 : NEW-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
-   NAME MAJOR MINOR IR-BUILD:NEW-BUILDER ;
+   PROTO-ON @ 0= if NAME MAJOR MINOR IR-BUILD:NEW-BUILDER exit then
+   NAME MAJOR MINOR 0 PROTO @ 1 PROTO @ IR-BUILD:NEW-BUILDER-FROM
+   dup MEMO-ADOPT ;
 
 \ Definition is one opcode at a time, so a refusal leaves the opcodes already
 \ defined and defines no more.
@@ -1791,7 +1968,7 @@ public
 : ENSURE-OP ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
    c b DIALECT-CK
-   c b o OPCODE {: op:IR-ID:ir-symbol-id :}
+   c b o ORD MEMO-BIND {: op:IR-ID:ir-symbol-id :}
    c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o DEFINE-ONE then
    op ;
 
