@@ -10,6 +10,9 @@ docs/paper/*.pdf
 .dots/archive/
 bin/
 
+# engine rebuild scratch and fixpoint stamp (HB_TMP / HABU_FIXPOINT_STAMP)
+build/
+
 # jj workspace checkouts (never snapshot or track these)
 .jj-ws/
 

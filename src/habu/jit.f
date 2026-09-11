@@ -656,8 +656,18 @@ variable FESK5
    LKWFSTAR LABEL@ LBL,  s" f*" BYTES,   LKWFSLASH LABEL@ LBL,  s" f/" BYTES, ;
 
 variable LVSNAP  variable LVRECON
-$358 constant SNAPSP-CELL       \ BEGIN snapshot stack depth
-$360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $600)
+
+\ The depth cell and the frame area live in JIT-SNAP (src/habu/layout.f), an
+\ appended band above DATA-START's old edge. They used to be $358 and $360; both
+\ addresses now belong to NCOMP-DISPATCH, and the frame area's old extent
+\ ($360..$600) had grown over LASTC/RSP/EXITH/LVD/LVH besides.
+\
+\ The band is above every 12-bit immediate form, so neither `DATA <off> LDR` nor
+\ `ADDI` reaches it. SNAP-ADDR, is what both routines use instead: load the
+\ offset as a 64-bit literal and add it to DATA. Two extra instructions per
+\ BEGIN and per back edge, at compile time.
+: SNAP-ADDR, ( n n -- ) {: r:n off:n :}          \ x<r> := DATA + off
+   r off LIT64,  r DATA r ADD, ;
 
 \ LVSNAP ( -- ) : BEGIN. VSP<=13: force every VS entry into a register (movz
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
@@ -665,7 +675,8 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
 : EMIT-SNAP-NEST-CHECK ( label -- ) {: snok:label :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   6 DATA SNAPSP-CELL LDR,  6 28 CMPI,  C-LT snok BCOND,
+   7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 LDR,
+   6 JIT-SNAP:FRAMES CMPI,  C-LT snok BCOND,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,              \ BEGIN nesting past the frame area
    snok LBL, ;
 
@@ -701,10 +712,11 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
    spush B, ;
 
 : EMIT-SNAP-PUSH-FRAME ( -- )
-   6 DATA SNAPSP-CELL LDR,
-   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
+   7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 LDR,
+   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,
+   8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD,
    13 7 0 STR,  12 7 8 STR,  10 7 16 STR,
-   6 6 1 ADDI,  6 DATA SNAPSP-CELL STR,
+   6 6 1 ADDI,  7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 : EMIT-VSNAP ( -- )
@@ -729,8 +741,9 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 \ BEGIN registers across iterations either way.
 : EMIT-RECON-LOAD-FRAME ( -- )
    SP SP 32 SUBI,  30 SP 0 STR,
-   6 DATA SNAPSP-CELL LDR,  6 6 1 SUBI,  6 DATA SNAPSP-CELL STR,
-   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,  7 7 SNAPSTK-OFF ADDI,  7 DATA 7 ADD,
+   7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 LDR,  6 6 1 SUBI,  6 7 0 STR,
+   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,
+   8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD,
    13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR, ;          \ x13=k x12=p0 x14=p1
 
 : EMIT-RECON-CHECK-LOOP ( label label label label label -- ) {: cl:label cd:label rel:label chi:label cnx:label :}

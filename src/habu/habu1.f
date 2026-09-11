@@ -2532,6 +2532,37 @@ public
    msg LBL,  s" set-check: invalid checker xt" BYTES,
    done LBL, ;
 
+\ set-tier ( n -- ): select which compiler the `:` handlers dispatch to.
+\ 0 = tier 0, the legacy JIT; 1 = tier 1, the IR pipeline behind
+\ NCOMP-DISPATCH:XT-CELL. See layout.f NCOMP-DISPATCH:TIER-CELL for the rule.
+\
+\ IT IS A PRIMITIVE FOR BSETCHECK'S REASON. The cell lives in the engine header,
+\ inside the band a checked DATA store would have to open the protection window
+\ for, and the callers that need it are build drivers selecting a tier BEFORE any
+\ of their own definitions exist -- `1 set-tier` has to work on the first line of
+\ a source file, the way `0 set-check` does.
+\
+\ ANYTHING BUT 0 OR 1 DIES. A tier is not a flag to be truthy-tested: folding 2
+\ or -1 onto a tier would pick a compiler the caller did not ask for, and the
+\ whole point of the cell is that the choice is deliberate. One unsigned compare
+\ rejects every value above 1 and, because a negative is an enormous unsigned,
+\ every negative too.
+: BSETTIER ( -- )
+   LBL LBL LBL {: bad:label done:label msg:label :}
+   A G-POP                               \ x9 = requested tier
+   9 1 CMPI,  C-HI bad BCOND,            \ unsigned > 1: rejects 2.. and every negative
+      A DATA NCOMP-DISPATCH:TIER-CELL STR,
+      done B,
+   bad LBL,
+      0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-tier: tier must be 0 or 1" BYTES,
+   done LBL, ;
+
+\ tier@ ( -- n ): the live tier, for a driver that wants to assert its own
+\ selection and for test/tier.f.
+: BTIERFETCH ( -- ) 9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  A G-PUSH ;
+
 \ set-preflight ( xt -- ): single-assignment installer for the
 \ checker-owned immediate preflight. `0 set-check` clears the paired protected
 \ cell while reloading the canonical prefix; the checker may then install one live
@@ -3051,6 +3082,7 @@ package ENGINE-EMIT
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-F
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
+   s" set-tier" ['] BSETTIER 1 GDEREF-L     s" tier@" ['] BTIERFETCH FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 

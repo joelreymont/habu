@@ -690,15 +690,39 @@ $250 constant VVAL-OFF
 32 constant VSMAX
 
 
-\ NCOMP-DISPATCH:XT-CELL is the sole runtime compiler dispatch. It reclaims
-\ $358, the legacy jit.f BEGIN-snapshot depth cell: the native product never
-\ loads that file, and its one disposable crossing engine writes this cell only
-\ after the old cold-prefix compile has finished. The AOT seed installs the
-\ NCOMP:COMPILE xt before any source in the hard-cut engine; zero is therefore a
-\ boot-integrity failure, never a request for the legacy compiler.
+\ NCOMP-DISPATCH:XT-CELL is the OPTIMIZING compiler's dispatch, read only when
+\ TIER-CELL selects tier 1. It sits at $358, which was the legacy jit.f
+\ BEGIN-snapshot depth cell until that storage moved to JIT-SNAP (further down
+\ this file). The two cannot share the address now that the legacy compiler is
+\ reachable again: the first `BEGIN` in a tier-0 definition wrote this cell and
+\ the two declaration-owner cells above it.
+\
+\ Tier 1 still has no fallback: an unset XT-CELL dies at NCOMP-EMIT:LOAD with the
+\ seed-integrity code. TIER-CELL selects which compiler runs; it never rescues a
+\ broken one.
 package NCOMP-DISPATCH
 public
 $358 constant XT-CELL
+
+\ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
+\
+\   0 = tier 0, the legacy JIT `:`/`;` compiler (LCOMPILE and its closure).
+\       Every `--load` and the REPL. It is the value a fresh DATA page starts
+\       at, so an engine that selects nothing runs the JIT.
+\   1 = tier 1, the IR pipeline reached through XT-CELL (NCOMP:COMPILE).
+\       Selected deliberately with `1 set-tier` by the paths that construct an
+\       executable -- an executable carries only optimised code.
+\
+\ Tier 1 must be selected BEFORE the first definition on such a path is
+\ evaluated: NCOMP's READ-PRIOR exits on GLUE-UNKNOWN when it meets a body the
+\ JIT compiled, so a tier-1 build has to be a fresh load and never an image laid
+\ over a tier-0-loaded prefix. Selecting it at the top of the path, ahead of any
+\ source, makes that hold by construction rather than by review.
+\
+\ Read by emitted code as `DATA TIER-CELL LDR` (12-bit scaled immediate), so it
+\ stays 8-aligned and below $7FF8 -- see the measurement recorded at the AOT
+\ window cells further down this file.
+$370 constant TIER-CELL
 \ One owner record keeps every engine declaration registrar paired with the
 \ active compiler, including while the source dictionary/checker is replaced.
 \ The record is DATA; its fields are execution tokens of existing private
@@ -1165,10 +1189,44 @@ $43B0 constant D0-CELL           \ first address of the open window's DATA span
 $43B8 constant B0-CELL           \ first address of its code span
 ;package
 
+\ --- tier 0's BEGIN-snapshot storage -------------------------------------------
+\
+\ The legacy JIT snapshots its virtual stack at BEGIN and reconciles to it at the
+\ back edge (src/habu/jit.f LVSNAP/LVRECON). That storage used to sit at $358 for
+\ the depth and $360..$600 for 28 twenty-four-byte frames. The hard cut handed
+\ $358/$360/$368 to NCOMP-DISPATCH while the legacy compiler was unreachable, and
+\ the frame area had ALREADY grown over LASTC/RSP/EXITH/LVD/LVH ($560..$580) --
+\ frames 22 and up landed on live cells. Both faults are latent only while
+\ nothing branches to LCOMPILE; selecting tier 0 makes them immediate.
+\
+\ So the whole thing moves here, an appended band that bumps DATA-START and moves
+\ no existing offset -- the growth precedent the pre-trust defer table, the
+\ package-scope band and the `using` band all followed.
+\
+\ THE PRICE OF BEING UP HERE, AND WHY IT IS PAID IN jit.f. This band is far above
+\ $7FF8, so an emitted routine can neither name the depth cell with
+\ `DATA <off> LDR` (12-bit scaled) nor reach the frames with `ADDI` (12-bit
+\ unscaled, max $FFF) -- the two forms jit.f used while the band was low. Both
+\ now load the offset with LIT64 and add, which is what habu2.f already does for
+\ CFSTK-OFF. It costs two instructions inside LVSNAP and LVRECON, which run once
+\ per BEGIN and once per back edge AT COMPILE TIME, and buys a band that no
+\ future header growth can collide with.
+\
+\ Snapshot-carried like every other sub-DATA-START band, which is correct and
+\ uninteresting: the frames are live only inside one definition's compile.
+package JIT-SNAP
+public
+28 constant FRAMES                                  \ EMIT-SNAP-NEST-CHECK's bound
+24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
+SNAP-RELOC:XTCELL-END constant STK-OFF              \ base of the frame area
+STK-OFF FRAMES FRAME-BYTES * + constant SP-CELL     \ depth cell, above the frames
+SP-CELL 8 + constant END
+;package
+
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-TOP-CELL. Its reserved band
 \ ends at $47C0, with PROT:RHI/PROT:CF taking the two cells directly
 \ above them. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
-SNAP-RELOC:XTCELL-END constant DATA-START
+JIT-SNAP:END constant DATA-START

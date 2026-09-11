@@ -360,22 +360,26 @@ $D63F0200 constant C-CALL-BLR-X16     \ blr x16: kept for the deferred-word indi
       SNAP-RELOC:CARRY-SITE
       9 15 0 LDRW,  15 15 4 ADDI,  LCEMIT LABEL@ BL,  linl B, ;
 
+\ THE INLINE ARM IS OFF, AND TIER 0 ALWAYS CALLS.
+\
+\ C-CALL-SCAN-SAFE reads the callee's raw machine words and C-CALL-COPY-INLINE
+\ copies them into the caller when none of them is a BL/B.cond/CBZ/TBZ/BLR/BR/
+\ RET/ADR. That test was written when one compiler emitted every body, so "what
+\ the words can be" was a closed question. With two tiers it is not: a tier-0
+\ body may call a word the IR pipeline compiled, whose prologue, frame and
+\ literal pools this scan has never been validated against, and a wrong `safe`
+\ answer copies a fragment of someone else's frame into the caller.
+\
+\ So the emitter takes the call arm unconditionally -- one BL imm26 to the
+\ statically known target in x11, which is correct for every callee on either
+\ tier, and is what every rejection in the scan already fell back to.
+\
+\ The scan and copy emitters are RETAINED, uncalled, deliberately: re-enabling
+\ the inliner is a question about cross-tier body shape, not about rewriting
+\ this. What has to be established first is that the scan's instruction set
+\ covers everything src/compiler/native/a64emit.f can emit into a body.
 : C-CALL ( -- )
-   LBL LBL LBL LBL LBL LBL LBL
-   {: lcall:label lcopy:label lscan:label lsbody:label lnopro:label
-      linl:label ldone:label :}
-   lnopro C-CALL-BRANCH-NO-PROLOGUE
-      lcall C-CALL-PROLOGUE-SPAN
-      lscan B,
-   lnopro LBL,
-      lcall C-CALL-PLAIN-SPAN
-   lscan LBL,
-      lcopy lcall lsbody C-CALL-SCAN-SAFE
-   lcopy LBL,
-      linl ldone C-CALL-COPY-INLINE
-   lcall LBL,
-      LCEMITBL LABEL@ BL,       \ one direct BL imm26 to the statically known target in x11
-   ldone LBL, ;
+   LCEMITBL LABEL@ BL, ;
 
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
 30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)
@@ -2470,14 +2474,36 @@ public
    0 2 MOVZ,  1 LUNSET LABEL@ ADR,  2 35 MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ Load the one compiler entry the AOT seed installed. A zero cell is a broken
-\ boot: after the hard cut there is no second compiler to select, so fail with
-\ the seed-integrity code instead of falling through to LCOMPILE.
+\ Load the optimizing compiler entry the AOT seed installed. A zero cell is a
+\ broken boot and dies with the seed-integrity code. THIS IS NOT A TIER TEST:
+\ it runs only after TIER-CELL has already selected tier 1, so an unset entry
+\ still fails closed exactly as it did before tiers existed. There is no silent
+\ fall-through to the JIT.
 : LOAD ( -- )
    LBL {: ready:label :}
    11 DATA NCOMP-DISPATCH:XT-CELL LDR,  11 ready CBNZ,
       UNSET
    ready LBL, ;
+
+\ The tier fork the two `:` handlers share (the plain `:` in EM-INTERPRET-COLON
+\ and `:trusted` in C-TRUSTED). Both reach it having reset every legacy cell the
+\ JIT's closure reads, so the only thing left to decide is who compiles the body.
+\
+\ Tier 0 emits the legacy prologue into the body about to be compiled -- `sub
+\ sp,sp,#16` then `str x30,[sp]`, the frame LCOMPILE's closure expects to find
+\ and that EM-COMPILE-RET unwinds. Tier 1 emits nothing here and loads the
+\ optimizing entry instead. This is the fork 04187fff removed when it made the
+\ IR pipeline the only compiler; the shape is the same, with the cell deciding
+\ instead of a dictionary lookup.
+: TIER-COLON-DISPATCH ( -- )
+   LBL LBL {: jit:label done:label :}
+   9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  9 jit CBZ,
+      LOAD
+      done B,
+   jit LBL,
+      9 $D10043FF LIT64,  LCEMIT LABEL@ BL,        \ sub sp, sp, #16
+      9 $F90003FE LIT64,  LCEMIT LABEL@ BL,        \ str x30, [sp]
+   done LBL, ;
 ;package
 
 : C-CALL-CHECKER-DEFER ( -- )
@@ -3352,7 +3378,7 @@ package INTERP-EMIT
    12 DATA QPATCH-CELL STR,
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-   NCOMP-EMIT:LOAD
+   NCOMP-EMIT:TIER-COLON-DISPATCH
    done LBL, ;
 
 \ The two ends of every definition's publish, emitted by the `;` tail below and
@@ -6046,6 +6072,10 @@ public
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
+   \ Tier 0 is the cold default: a session that selects nothing runs the JIT.
+   \ Stored rather than left to the zeroed DATA page, so the default is a line
+   \ someone can find and change, next to the dispatch it selects.
+   9 DATA NCOMP-DISPATCH:TIER-CELL STR,
    9 DATA APP-ENTRY:XT-CELL STR,
    9 DATA NCOMP-DISPATCH:DECL-CELL STR,
    9 DATA NCOMP-DISPATCH:TARGET-DECL-CELL STR,
@@ -6240,6 +6270,16 @@ public
 : EM-COMPILE ( -- )
    LBL {: notsemi:label :}
    LENTRY LABEL@ LBL,
+   \ Tier 1's body loop. THE TIER IS NOT RE-TESTED HERE, and the reason is a
+   \ boot-path fact rather than a preference: EM-STARTUP ends without a branch,
+   \ so cold boot FALLS THROUGH into whatever EMIT-MAIN emits next, which is
+   \ this label. A tier test at this head therefore runs once at boot with
+   \ TKL = 0, and on tier 0 it dispatched that empty token into LCOMPILE, which
+   \ walked the legacy loop to its undefined-word tail and exited 70 with
+   \ "E-UNDEFINED: " and a blank name before any input was read.
+   \ EM-COMMENT is the routing site; this is tier 1's loop body, entered only
+   \ from there. EMIT-MAIN now branches boot to LMAIN explicitly so the
+   \ fall-through is no longer load-bearing either way.
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       PROT:LCLOSE LABEL@ BL,
@@ -6277,6 +6317,11 @@ public
          9 11 0 LDRB,  11 11 1 ADDI,  11 DATA INP-CELL STR,  9 10 CMPI,  C-NE skln BCOND,  LMAIN LABEL@ B,
       notcom LBL,
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
+      \ A body token, so hand it to the selected compiler's loop: tier 0's
+      \ LCOMPILE head, or tier 1's LENTRY with the optimizing entry loaded.
+      \ This is the site 04187fff replaced with an unconditional LOAD; before
+      \ it, a missing native compiler fell through to LCOMPILE here.
+      9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  9 LCOMPILE LABEL@ CBZ,
       NCOMP-EMIT:LOAD
       NCOMP-EMIT:LENTRY LABEL@ B,
       notcompile LBL, ;
@@ -6327,7 +6372,7 @@ public
          12 DATA QPATCH-CELL STR,
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-         NCOMP-EMIT:LOAD
+         NCOMP-EMIT:TIER-COLON-DISPATCH
          LMAIN LABEL@ B,
    ktry LBL,
    0 LKWKERNEL LABEL@ ADR,  1 7 MOVZ,  LKWCMP LABEL@ BL,  0 lnotcolon CBZ,
@@ -8748,9 +8793,22 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 package COMPILE-EMIT
 public
 
-: EM-COMPILE ( -- )
+\ Tier 0's compile loop, from the LCOMPILE head to the call dispatch. EMIT-MAIN
+\ emits it directly after the tier-1 loop and directly before the tails both
+\ tiers share, which is why the shared tails are NOT here: EM-COMPILE-UNDEF,
+\ EM-COMPILE-DIE, EM-COMPILE-EXIT and EM-EVAL-THROW-RECOVER each bind a label
+\ (LUNDEF, LEX0/LEXIT, LEVALREC ...), and binding one twice is `icode: label
+\ redefined`. EMIT-DEF-KW-GUARD is left out for the same reason: EMIT-DICTIONARY-
+\ SECTIONS already emits the LDEFKWGUARD routine, and this loop needs the keyword
+\ rows with CF-DEF-GUARD CLEAR (handler bodies emitted inline), which is exactly
+\ what EM-COMPILE-KEYWORDS below does when the guard flag is 0.
+\
+\ Neither end falls through by accident: NCOMP-EMIT:EM-COMPILE ends on an
+\ unconditional `B LMAIN`, and EM-COMPILE-CALL's last instruction is `found B,`
+\ with its undefined-word exit taken through `LUNDEF CBZ` -- so this block is
+\ entered only by a branch to LCOMPILE, never by falling into it.
+: EM-COMPILE-LEGACY ( -- )
    LBL {: lnotsemi :}
-   EMIT-DEF-KW-GUARD
    LCOMPILE LABEL@ LBL,
    EM-COMPILE-ADT-MODE
    lnotsemi EM-COMPILE-SEMI
@@ -8759,11 +8817,7 @@ public
    EM-COMPILE-KEYWORDS
    EM-COMPILE-LITERAL
    ENGINE-EMIT:EM-COMPILE-OPS
-   EM-COMPILE-CALL
-   EM-COMPILE-UNDEF
-   EM-COMPILE-DIE
-   EM-COMPILE-EXIT
-   EM-EVAL-THROW-RECOVER ;
+   EM-COMPILE-CALL ;
 
 ;package
 
@@ -8775,7 +8829,16 @@ package ENGINE-EMIT
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
    EM-STARTUP
+   \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
+   \ at SRC-DONE with no branch, so before this line cold boot fell into the
+   \ code that happened to be emitted next -- tier 1's LENTRY, which survived it
+   \ only because TKL is 0 at boot and the not-a-semicolon path happens to end
+   \ at LMAIN. That made the emission ORDER of the two compile loops part of the
+   \ boot contract; with a second loop to place, it stops being a coincidence
+   \ worth relying on.
+   LMAIN LABEL@ B,
    NCOMP-EMIT:EM-COMPILE
+   COMPILE-EMIT:EM-COMPILE-LEGACY
    EM-COMPILE-UNDEF
    EM-COMPILE-DIE
    EM-COMPILE-EXIT
