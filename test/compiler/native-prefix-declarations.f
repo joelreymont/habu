@@ -28,7 +28,7 @@ variable EFFECTS
 variable DEFERS
 variable RAWS
 variable USINGS
-create TARGET-OWNER NCOMP-DISPATCH:DECL-BYTES allot
+create TARGET-OWNER 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
 
 : RECORD-EFFECT ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 EFFECTS +! ;
 : RECORD-DEFER ( ptr u8 n -- ) 2drop 1 DEFERS +! ;

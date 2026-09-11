@@ -12,7 +12,7 @@ $28 constant PACKAGE-OFF
 $30 constant PUBLIC-OFF
 $38 constant PRIVATE-OFF
 $40 constant END-PACKAGE-OFF
-create DECLARATIONS OWNER-BYTES allot
+create DECLARATIONS 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
 data-base TARGET-CELL + ptr-cell-mark
 DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 ;package
