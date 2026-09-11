@@ -7611,3 +7611,18 @@ and --no-lldbinit.
   through a stale address (silent corruption for about thirty functions, then
   SIGSEGV; found while adding F-NEED-BUF to spill.f, 2026-09-11). Nothing lints
   the pairing; check it by hand when adding scratch.
+
+## 2026-09-12 - the profiler landing announced before the suite (campaign)
+
+- **A tip moves only after `test/run.f` on the engine rebuilt from it shows
+  the known red set and nothing else.** The profiler candidate cb4fece2 was
+  landed and announced after its two owning cases passed on the rebuilt root
+  engine; the full suite that was still running then reported the clobber
+  lint red on the new handler (`emit-prof: x16 written, clobbered by sys,
+  then read`, a real defect on the macOS syscall convention) and the tip had
+  to be backed out. The owning suite is evidence for the change; the full
+  suite is the evidence for the landing, and the announcement waits for it.
+- **A red that appears only in the pooled run is re-run alone before it is
+  blamed.** `tool-boundary-aot-call` exited 67 with rc -2502 in the same
+  pooled run at load 12 and passed alone on both engines; the box under nine
+  building lanes, not the commit, was the cause.
