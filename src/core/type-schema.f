@@ -120,7 +120,7 @@ PERSISTED-PTR-VARIABLE SCH-A-P    SCH-A-BOOT SCH-A-P !   REG-PROTECT
 
 public
 
-: SCH-BASE ( -- ptr a ) SCH-A-P @ ;
+: SCH-BASE ( -- ptr n ) SCH-A-P @ ;
 
 variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !   REG-PROTECT
 
@@ -132,7 +132,7 @@ PERSISTED-PTR-VARIABLE SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !   REG-PROTECT
 
 public
 
-: SCH-ROOT-BASE ( -- ptr a ) SCH-ROOT-P @ ;
+: SCH-ROOT-BASE ( -- ptr n ) SCH-ROOT-P @ ;
 
 variable SCH-N   REG-PROTECT        \ next node id; 1 leaves node 0 as the nil sentinel
 variable SCH-ROOT-N   REG-PROTECT   \ next schema-root index
@@ -174,7 +174,7 @@ private
    SCH-ROOT-N @ SCH-ROOT-CAP-V @ < IF exit THEN
    SCH-ROOT-N @ 1 + SCH-ROOT-GROW ;
 
-: SCH-REC@ ( n -- ptr a ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
+: SCH-REC@ ( n -- ptr n ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
    id 0 <= IF s" tfam: bad schema node" 76 die THEN
    id SCH-N @ >= IF s" tfam: bad schema node" 76 die THEN
    id SCH-REC * SCH-BASE + ;
@@ -325,7 +325,7 @@ SCH-RBF-REC-PTR-MASK 0 SCH-LAYOUT=
 variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
 create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
 PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
-: SCH-RBF-BASE ( -- ptr a ) SCH-RBF-P @ ;
+: SCH-RBF-BASE ( -- ptr n ) SCH-RBF-P @ ;
 
 \ The frame depth is the one rollback cell with a reader outside this file
 \ (type-family.f SCHEMA-REG:AT-REST and CHECKER-DECL-FRAME:TYPES-READY both ask
@@ -347,7 +347,7 @@ private
 : SCH-RBF-ENSURE ( -- )
    SCH-RBF-DEPTH @ SCH-RBF-CAP-V @ < IF exit THEN
    SCH-RBF-GROW ;
-: SCH-RBF-CUR ( -- ptr a ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
+: SCH-RBF-CUR ( -- ptr n ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
 
 public
 
