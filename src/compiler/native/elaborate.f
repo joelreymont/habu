@@ -770,6 +770,11 @@ variable LIT-N
    {: ix:n k:HIR:opcode :}
    CTX BLD k HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    op TOKEN-READY
+   \ STORE writes a cell's bits; a real value crosses only its value operand.
+   k HIR-OPCODE:STORE HIR-OPCODE:EQ if
+      VN @ 2 < if E-NELAB-UNDER throw then
+      ix VN @ 2 - 1 CELL-CROSS-RUN
+   then
    CTX BLD op ix COERCE-OPERANDS
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
