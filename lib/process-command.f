@@ -71,10 +71,10 @@ public
 
 private
 
-: PROC-CMD-ARG-SLOT ( idx -- ptr a ) {: idx :}
+: PROC-CMD-ARG-SLOT ( idx -- ptr ptr u8 ) {: idx :}
    idx IDX>N 0 < if E-PROC-OUTPUT throw then
    idx IDX>N ARG-MAX >= if E-PROC-OUTPUT throw then
-   idx IDX>N cells PROC-CMD-ARG-TABLE + ;
+   PROC-CMD-ARG-TABLE idx IDX>N ptr-field ;
 
 : PROC-CMD-CHECK-ARG-EXTRA ( -- )
    PROC-CMD-ARG-N @ COUNT>N ARG-MAX >= if E-PROC-OUTPUT throw then ;
@@ -100,10 +100,10 @@ public
 
 private
 
-: PROC-CMD-ENV-SLOT ( idx -- ptr a ) {: idx :}
+: PROC-CMD-ENV-SLOT ( idx -- ptr ptr u8 ) {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
    idx IDX>N PROC-CMD-ENV-MAX >= if E-PROC-ENV throw then
-   idx IDX>N cells PROC-CMD-ENV-TABLE + ;
+   PROC-CMD-ENV-TABLE idx IDX>N ptr-field ;
 
 : PROC-CMD-CHECK-ENV-EXTRA ( -- )
    PROC-CMD-ENV-N @ COUNT>N PROC-CMD-ENV-MAX >= if E-PROC-ENV throw then ;

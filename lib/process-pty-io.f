@@ -62,14 +62,14 @@ variable IO-SOUT-W   variable IO-SIN-R                           \ child-side st
 variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side helper/gate read ends
 
 \ ---- per-slot release-gate storage ------------------------------------------
-: IO-GO-SLOT ( idx -- ptr a )
-   IDX>N cells IO-GO + ;
+: IO-GO-SLOT ( idx -- ptr n )
+   IDX>N cells IO-GO + cell-view ;
 
 : IO-GO@ ( idx -- fd )
    IO-GO-SLOT @ >FD ;
 
-: IO-GO! ( fd idx -- )
-   IO-GO-SLOT ! ;
+: IO-GO! ( fd idx -- ) {: f:fd idx:idx :}
+   f FD>N idx IO-GO-SLOT ! ;
 
 \ ---- small fd / pid helpers -------------------------------------------------
 : IO-CLOSE-FD ( fd -- ) {: f:fd :}

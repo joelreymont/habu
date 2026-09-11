@@ -43,15 +43,22 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-ERR-LEN ( -- n )
    PROC-CMD:ERR$ {: a:ptr u:n :} u ;
 
-: PCMDT-INHERIT-EXPECTED$ ( -- ptr u8 n )
-   SB-RESET
-   s" alpha" SB-APPEND
-   10 SB-APPEND-C
-   s" HOME" GETENV SB-APPEND
-   10 SB-APPEND-C
-   s" PATH" GETENV SB-APPEND
-   10 SB-APPEND-C
-   SB$ ;
+: PCMDT-CHECK-LINE ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: out:ptr outu:n expected:ptr expectedu:n :}
+   outu expectedu 1+ < if
+      outu expectedu 1+ T=
+      out outu exit
+   then
+   out expectedu expected expectedu T$=
+   out expectedu + c@ 10 T=
+   out expectedu 1+ + outu expectedu 1+ - ;
+
+: PCMDT-CHECK-INHERITED-ENV ( -- )
+   PROC-CMD:OUT$
+   s" alpha" PCMDT-CHECK-LINE
+   s" HOME" GETENV PCMDT-CHECK-LINE
+   s" PATH" GETENV PCMDT-CHECK-LINE
+   nip 0 T= ;
 
 : PCMDT-RUN-PRINTF ( -- )
    PROC-CMD:RESET
@@ -94,7 +101,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" test/process-env-child.f" >LEN PROC-CMD:ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
    s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
-   PROC-CMD:OUT$ PCMDT-INHERIT-EXPECTED$ T$= ;
+   PCMDT-CHECK-INHERITED-ENV ;
 
 : PCMDT-RUN-TIMEOUT-OUTCOME ( -- )
    PROC-CMD:RESET
