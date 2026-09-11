@@ -103,11 +103,12 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 private
 
 \ ---- cell access -------------------------------------------------------------
-: LCELL@ ( IR-ARENA:arena n -- n )
-   IR-ARENA:READ ;
-
-: FCELL@ ( IR-ARENA:view n -- n )
-   IR-ARENA:FREAD ;
+\ Every read below goes through an IR-ARENA reader: the registry is resolved
+\ ONCE, at the public word, and the helpers take the resolved reader. The
+\ live/frozen twins that used to run down this file collapse into one set,
+\ because a reader carries the state it was opened against and refuses the
+\ other with the error the handle would have given - the only thing the two
+\ entry points still differ in is OPEN-LIVE against OPEN.
 
 \ ---- header and shape --------------------------------------------------------
 : SHAPE-CK ( n -- )
@@ -117,38 +118,25 @@ private
 : MAGIC-CK ( n -- )
    SRC-MAGIC <> if E-IR-SRC-STATE throw then ;
 
-: HDR-CK ( IR-ARENA:arena -- )
-   {: a:IR-ARENA:arena :}
-   a IR-ARENA:USED SHAPE-CK
-   a HC-MAGIC LCELL@ MAGIC-CK ;
-
-: FHDR-CK ( IR-ARENA:view -- )
-   {: v:IR-ARENA:view :}
-   v IR-ARENA:SIZE SHAPE-CK
-   v HC-MAGIC FCELL@ MAGIC-CK ;
+: HDR-CK ( IR-ARENA:reader -- )
+   {: r:IR-ARENA:reader :}
+   r IR-ARENA:RD-SIZE SHAPE-CK
+   r HC-MAGIC IR-ARENA:RD@ MAGIC-CK ;
 
 : USED>CNT ( n -- n )
    HDR-CELLS - ROW-CELLS / ;
 
-: CNT ( IR-ARENA:arena -- n )
-   IR-ARENA:USED USED>CNT ;
-
-: FCNT ( IR-ARENA:view -- n )
-   IR-ARENA:SIZE USED>CNT ;
+: CNT ( IR-ARENA:reader -- n )
+   IR-ARENA:RD-SIZE USED>CNT ;
 
 \ ---- ownership ---------------------------------------------------------------
 : SERIAL-CK ( n n -- )
    <> if E-IR-SRC-OWNER throw then ;
 
-: KEY-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
-   {: a:IR-ARENA:arena key:IR-ID:ir-module-key :}
-   a HDR-CK
-   a HC-SERIAL LCELL@ key KEY-SERIAL SERIAL-CK ;
-
-: FKEY-CK ( IR-ARENA:view IR-ID:ir-module-key -- )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key :}
-   v FHDR-CK
-   v HC-SERIAL FCELL@ key KEY-SERIAL SERIAL-CK ;
+: KEY-CK ( IR-ARENA:reader IR-ID:ir-module-key -- )
+   {: r:IR-ARENA:reader key:IR-ID:ir-module-key :}
+   r HDR-CK
+   r HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
 : ID-OWNER-SERIAL ( IR-ID:ir-source-id -- n )
    IR-ID:SOURCE-OWNER MID-SERIAL ;
@@ -161,25 +149,17 @@ private
    id IR-ID:SOURCE-LOCAL
    dup cnt >= if E-IR-SRC-BOUND throw then ;
 
-: ID-CK ( IR-ARENA:arena IR-ID:ir-source-id -- n )
-   {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a HDR-CK
-   a HC-SERIAL LCELL@ a CNT id ID-CK-N ;
-
-: FID-CK ( IR-ARENA:view IR-ID:ir-source-id -- n )
-   {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
-   v FHDR-CK
-   v HC-SERIAL FCELL@ v FCNT id ID-CK-N ;
+: ID-CK ( IR-ARENA:reader IR-ID:ir-source-id -- n )
+   {: r:IR-ARENA:reader id:IR-ID:ir-source-id :}
+   r HDR-CK
+   r HC-SERIAL IR-ARENA:RD@ r CNT id ID-CK-N ;
 
 \ ---- row addressing ----------------------------------------------------------
 : ROW-CELL ( n n -- n )
    swap ROW-CELLS * HDR-CELLS + + ;
 
-: RC@ ( IR-ARENA:arena n n -- n )
-   ROW-CELL LCELL@ ;
-
-: FRC@ ( IR-ARENA:view n n -- n )
-   ROW-CELL FCELL@ ;
+: RC@ ( IR-ARENA:reader n n -- n )
+   ROW-CELL IR-ARENA:RD@ ;
 
 \ ---- creation ----------------------------------------------------------------
 : CAP-OK ( n -- )
@@ -205,9 +185,9 @@ public
 \ ---- registration ------------------------------------------------------------
 private
 
-: ROOM-CK ( IR-ARENA:arena -- )
-   {: a:IR-ARENA:arena :}
-   a CNT a HC-CAP LCELL@ >= if E-IR-SRC-CAP throw then ;
+: ROOM-CK ( IR-ARENA:reader -- )
+   {: r:IR-ARENA:reader :}
+   r CNT r HC-CAP IR-ARENA:RD@ >= if E-IR-SRC-CAP throw then ;
 
 \ Append one validated row and report its module-local ordinal. The capacity
 \ check comes first, so a full registry still answers its own named error; the
@@ -215,13 +195,16 @@ private
 \ appends can allocate. The digest is taken before the reservation as well, so
 \ between the first cell of the row and the last there is nothing left that can
 \ fail - which is what makes the six appends one commit.
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena ptr u8 n n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n org:n :}
+\ The reader is opened once and outlives the appends: a PUSH changes neither
+\ the registry generation nor the state, and the reader re-reads the row's
+\ pointer and count on every call, so it follows the reservation's new span.
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader ptr u8 n n -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:reader p u:n org:n :}
    u 0 < if E-IR-SRC-LEN throw then
-   a ROOM-CK
+   r ROOM-CK
    p u CDIGEST:COMPUTE CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
    c a ROW-CELLS IR-ARENA:RESERVE
-   a CNT {: l:n :}
+   r CNT {: l:n :}
    c a u IR-ARENA:PUSH drop
    c a w0 IR-ARENA:PUSH drop
    c a w1 IR-ARENA:PUSH drop
@@ -234,11 +217,11 @@ private
 \ parent ordinal is strictly below its child's and no chain can close: a self
 \ cycle or any multi-node cycle presents a not-yet-registered ordinal and
 \ dies here with a named error.
-: ORIGIN-CK ( IR-ARENA:arena IR-ID:ir-source-id -- n )
-   {: a:IR-ARENA:arena parent:IR-ID:ir-source-id :}
-   a HC-SERIAL LCELL@ parent ID-OWNER-SERIAL SERIAL-CK
+: ORIGIN-CK ( IR-ARENA:reader IR-ID:ir-source-id -- n )
+   {: r:IR-ARENA:reader parent:IR-ID:ir-source-id :}
+   r HC-SERIAL IR-ARENA:RD@ parent ID-OWNER-SERIAL SERIAL-CK
    parent IR-ID:SOURCE-LOCAL
-   dup a CNT >= if E-IR-SRC-ORIGIN throw then
+   dup r CNT >= if E-IR-SRC-ORIGIN throw then
    1+ ;
 
 public
@@ -247,38 +230,45 @@ public
 \ module-local identity under key. The bytes are not retained.
 : REGISTER ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-source-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :}
-   a key KEY-CK
-   c a p u ORG-NONE ROW-ADD
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   c a r p u ORG-NONE ROW-ADD
    key swap IR-ID:PACK-SOURCE ;
 
 \ Register a source whose origin - its include or expansion parent - is an
 \ already registered source of this registry.
 : REGISTER-FROM ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-source-id ptr u8 n -- IR-ID:ir-source-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key parent:IR-ID:ir-source-id p u:n :}
-   a key KEY-CK
-   a parent ORIGIN-CK {: org:n :}
-   c a p u org ROW-ADD
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   r parent ORIGIN-CK {: org:n :}
+   c a r p u org ROW-ADD
    key swap IR-ID:PACK-SOURCE ;
 
 \ ---- live readers ------------------------------------------------------------
 : SOURCES ( IR-ARENA:arena -- n )
-   dup HDR-CK CNT ;
+   IR-ARENA:OPEN-LIVE dup HDR-CK CNT ;
 
 : LEN@ ( IR-ARENA:arena IR-ID:ir-source-id -- n )
    {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a id ID-CK {: l:n :}
-   a l OFF-LEN RC@ ;
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r id ID-CK {: l:n :}
+   r l OFF-LEN RC@ ;
 
+\ FOUR DIGEST WORDS OFF ONE RESOLUTION. This is the shape the reader exists
+\ for: the row is validated once and its four cells are then four loads.
 : DIGEST@ ( IR-ARENA:arena IR-ID:ir-source-id -- CDIGEST:digest )
    {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a id ID-CK {: l:n :}
-   a l OFF-DW0 RC@ a l OFF-DW1 RC@ a l OFF-DW2 RC@ a l OFF-DW3 RC@
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r id ID-CK {: l:n :}
+   r l OFF-DW0 RC@ r l OFF-DW1 RC@ r l OFF-DW2 RC@ r l OFF-DW3 RC@
    CDIGEST-DIGEST:MAKE ;
 
 : ROOT? ( IR-ARENA:arena IR-ID:ir-source-id -- bool )
    {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a id ID-CK {: l:n :}
-   a l OFF-ORG RC@ ORG-NONE = ;
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r id ID-CK {: l:n :}
+   r l OFF-ORG RC@ ORG-NONE = ;
 
 private
 
@@ -296,20 +286,25 @@ public
 \ reading a root's origin throws E-IR-SRC-ROOT.
 : ORIGIN@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-source-id -- IR-ID:ir-source-id )
    {: a:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-source-id :}
-   a key KEY-CK
-   a id ID-CK {: l:n :}
-   key l a l OFF-ORG RC@ ORG-LOCAL IR-ID:PACK-SOURCE ;
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   r id ID-CK {: l:n :}
+   key l r l OFF-ORG RC@ ORG-LOCAL IR-ID:PACK-SOURCE ;
 
 \ The origin-chain length down to the root. Each step re-verifies the strict
 \ ordinal decrease, so the walk terminates on any registry state.
+\ ONE RESOLUTION FOR THE WHOLE WALK. The chain re-verifies the strict ordinal
+\ decrease at every step, so the walk still terminates on any registry state;
+\ what it no longer does is re-resolve the registry once per step.
 : DEPTH ( IR-ARENA:arena IR-ID:ir-source-id -- n )
    {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a id ID-CK
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r id ID-CK
    0 swap
    begin
-      a over OFF-ORG RC@ ORG-NONE <>
+      r over OFF-ORG RC@ ORG-NONE <>
    while
-      a over OFF-ORG RC@ ORG-LOCAL
+      r over OFF-ORG RC@ ORG-LOCAL
       swap 1+ swap
    repeat
    drop ;
@@ -318,38 +313,43 @@ public
 \ A frozen module reads its rows through the arena view; the retired builder
 \ handle rejects every mutation with E-IR-ARENA-FROZEN.
 : FSOURCES ( IR-ARENA:view -- n )
-   dup FHDR-CK FCNT ;
+   IR-ARENA:OPEN dup HDR-CK CNT ;
 
 : FLEN@ ( IR-ARENA:view IR-ID:ir-source-id -- n )
    {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
-   v id FID-CK {: l:n :}
-   v l OFF-LEN FRC@ ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r id ID-CK {: l:n :}
+   r l OFF-LEN RC@ ;
 
 : FDIGEST@ ( IR-ARENA:view IR-ID:ir-source-id -- CDIGEST:digest )
    {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
-   v id FID-CK {: l:n :}
-   v l OFF-DW0 FRC@ v l OFF-DW1 FRC@ v l OFF-DW2 FRC@ v l OFF-DW3 FRC@
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r id ID-CK {: l:n :}
+   r l OFF-DW0 RC@ r l OFF-DW1 RC@ r l OFF-DW2 RC@ r l OFF-DW3 RC@
    CDIGEST-DIGEST:MAKE ;
 
 : FROOT? ( IR-ARENA:view IR-ID:ir-source-id -- bool )
    {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
-   v id FID-CK {: l:n :}
-   v l OFF-ORG FRC@ ORG-NONE = ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r id ID-CK {: l:n :}
+   r l OFF-ORG RC@ ORG-NONE = ;
 
 : FORIGIN@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-source-id -- IR-ID:ir-source-id )
    {: v:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-source-id :}
-   v key FKEY-CK
-   v id FID-CK {: l:n :}
-   key l v l OFF-ORG FRC@ ORG-LOCAL IR-ID:PACK-SOURCE ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   r id ID-CK {: l:n :}
+   key l r l OFF-ORG RC@ ORG-LOCAL IR-ID:PACK-SOURCE ;
 
 : FDEPTH ( IR-ARENA:view IR-ID:ir-source-id -- n )
    {: v:IR-ARENA:view id:IR-ID:ir-source-id :}
-   v id FID-CK
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r id ID-CK
    0 swap
    begin
-      v over OFF-ORG FRC@ ORG-NONE <>
+      r over OFF-ORG RC@ ORG-NONE <>
    while
-      v over OFF-ORG FRC@ ORG-LOCAL
+      r over OFF-ORG RC@ ORG-LOCAL
       swap 1+ swap
    repeat
    drop ;
