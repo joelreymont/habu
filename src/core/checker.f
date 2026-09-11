@@ -6421,12 +6421,20 @@ PRIM: cp@            PE-N PE-OUT PRIM;
 PRIM: cp!            PE-N PE-IN PRIM;
 PRIM: dbase@         PE-N PE-OUT PRIM;
 PRIM: check@         PE-N PE-OUT PRIM;
+\ Reading the selected compiler tier decides nothing and mutates nothing, so it
+\ is an ordinary reader like check@ beside it.
+PRIM: tier@          PE-N PE-OUT PRIM;
 \ Compiler hook installation is an explicit engine boundary.
 PRIM: set-check     PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: set-preflight PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: set-top-check PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!
+\ Choosing the compiler is the same class of boundary as installing the hook and
+\ takes the same restriction. Its callers are build drivers, which already reach
+\ it from top level or from a TRUSTED: word, exactly as they reach set-check.
+PRIM: set-tier      PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;

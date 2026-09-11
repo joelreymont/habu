@@ -134,6 +134,31 @@ variable RC     variable EXITED
    s" -1 set-tier" RUN  REJECT-RC ASSERT-RC
    ERR$ s" set-tier" CONTAINS? TTRUE ;
 
+\ ---- 2b. the two primitives are callable from CHECKED code -------------------
+\ Registering a primitive in the engine dictionary is only half of it. Without a
+\ checker effect row the word is E-UNDEFINED inside every checked body, so
+\ `: R ( -- n ) tier@ ;` rejected and no checked build driver could select a
+\ tier at all. The rows follow the policy their neighbours already carry: tier@
+\ is an ordinary reader like check@, set-tier is a trust boundary like
+\ set-check. BOTH halves are asserted, because a set-tier any checked body could
+\ call would let checked code swap the compiler out from under itself.
+: TEST-CHECKER-ROWS ( -- )
+   s" tier@ is callable from a checked body on tier 0" T-LABEL
+   s" : R ( -- n ) tier@ ; R . cr" RUN  s" 0" ASSERT-OK
+
+   s" tier@ is callable from a checked body on tier 1" T-LABEL
+   s" 1 set-tier : R ( -- n ) tier@ ; R . cr" RUN  s" 1" ASSERT-OK
+
+   s" set-tier is callable from a TRUSTED: body on tier 0" T-LABEL
+   s" TRUSTED: ST ( n -- ) set-tier ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
+
+   s" set-tier is callable from a TRUSTED: body on tier 1" T-LABEL
+   s" 1 set-tier TRUSTED: ST ( n -- ) set-tier ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
+
+   s" set-tier is refused in a plain checked body" T-LABEL
+   s" : S ( -- ) 1 set-tier ;" RUN  REJECT-RC ASSERT-RC
+   ERR$ s" trust-boundary primitive" CONTAINS? TTRUE ;
+
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
 : TEST-TIER0-CONSTRUCTS ( -- )
    s" tier 0 compiles a quotation" T-LABEL
@@ -200,6 +225,7 @@ public
    T-RESET
    TEST-BOTH-TIERS
    TEST-SELECTION
+   TEST-CHECKER-ROWS
    TEST-TIER0-CONSTRUCTS
    TEST-SNAPSHOT-OWNERSHIP
    TEST-NESTED-QUOTATIONS
