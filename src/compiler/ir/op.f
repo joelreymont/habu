@@ -115,8 +115,8 @@
 \ store their length in POOL CELLS, so the tiling below is the same arithmetic
 \ it always was and the stride shows up only where an entry is addressed. Every
 \ row's windows therefore continue exactly where the row before it
-\ ended, with no gap and no overlap, and that tiling is what every window read
-\ revalidates: the first window must start where the previous row finished, each
+\ ended, with no gap and no overlap. Readers validate that tiling before use
+\ (and may retain it for a frozen row): the first window must start where the previous row finished, each
 \ following window must start where the previous one finished, and the last must
 \ end inside the live pool. Non-overlap becomes a constant-cost check on the row
 \ itself instead of a search over every other row, and a row appended past this
@@ -127,7 +127,7 @@
 \ pool, the value row table, and the operation row table. Each carries the usual
 \ three-cell header - format tag, owning module serial, committed capacity - so
 \ presenting one store where another belongs is a format-tag reject rather than a
-\ misread, and every access rechecks shape, window, and stored ordinals
+\ misread, and readers check shape, window, and stored ordinals
 \ fail-closed with E-IR-OP-STATE.
 \
 \ CEILINGS AND THE CONTEXT MAPPING. Capacities are creation parameters bounded
@@ -488,17 +488,33 @@ private
    a3 r l OFF-ATST RC@ STEP-CK
    a3 r l OFF-ATN RC@ LEN-OK + p PCELLS > if E-IR-OP-STATE throw then ;
 
+\ Frozen contents cannot change through the arena API. Reuse one validated
+\ row's windows, keyed by both exact view identities and the operation owner.
+\ This assumes valid pointer use; it does not detect arbitrary memory corruption.
+\ No mapping pointer is retained. Every hit resolves both views again, so
+\ retirement, context teardown and slot reuse still reject before a pool read.
+2 TYPED-BUFFER FROW-VIEWS IR-ARENA:view
+8 TYPED-BUFFER FROW-FIELDS n
+1 TYPED-BUFFER FROW-READY bool
+false 0 FROW-READY !
+variable FROW-KEY
+variable FROW-LOCAL
+
+: FROW-FIELD ( n -- n )
+   OFF-OPST - FROW-FIELDS @ ;
+
 : FTILE-CK ( IR-ARENA:view IR-ARENA:view n -- )
    {: p:IR-ARENA:view r:IR-ARENA:view l:n :}
+   8 0 ?do r l i OFF-OPST + FRC@ i FROW-FIELDS ! loop
    l 0= if 0 else r l 1- FROW-END then {: at:n :}
-   at r l OFF-OPST FRC@ STEP-CK
-   at r l OFF-OPN FRC@ LEN-OK + {: a1:n :}
-   a1 r l OFF-RSST FRC@ STEP-CK
-   a1 r l OFF-RSN FRC@ LEN-OK + {: a2:n :}
-   a2 r l OFF-SCST FRC@ STEP-CK
-   a2 r l OFF-SCN FRC@ LEN-OK + {: a3:n :}
-   a3 r l OFF-ATST FRC@ STEP-CK
-   a3 r l OFF-ATN FRC@ LEN-OK + p FPCELLS > if E-IR-OP-STATE throw then ;
+   at OFF-OPST FROW-FIELD STEP-CK
+   at OFF-OPN FROW-FIELD LEN-OK + {: a1:n :}
+   a1 OFF-RSST FROW-FIELD STEP-CK
+   a1 OFF-RSN FROW-FIELD LEN-OK + {: a2:n :}
+   a2 OFF-SCST FROW-FIELD STEP-CK
+   a2 OFF-SCN FROW-FIELD LEN-OK + {: a3:n :}
+   a3 OFF-ATST FROW-FIELD STEP-CK
+   a3 OFF-ATN FROW-FIELD LEN-OK + p FPCELLS > if E-IR-OP-STATE throw then ;
 
 \ One element of a stored window, read only after the row's tiling holds.
 : WIN@ ( IR-ARENA:arena IR-ARENA:arena n n n n -- n )
@@ -508,12 +524,34 @@ private
    i 0 < i ln >= or if E-IR-OP-BOUND throw then
    p  r l stoff RC@ i +  PC@ ORD-OK ;
 
-: FWIN@ ( IR-ARENA:view IR-ARENA:view n n n n -- n )
-   {: p:IR-ARENA:view r:IR-ARENA:view l:n stoff:n lenoff:n i:n :}
+: FROW-HIT? ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id -- bool )
+   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   0 FROW-READY @ 0= if false exit then
+   p 0 FROW-VIEWS @ IR-ARENA:VIEW-SAME? 0= if false exit then
+   r 1 FROW-VIEWS @ IR-ARENA:VIEW-SAME? 0= if false exit then
+   key KEY-SERIAL FROW-KEY @ <> if false exit then
+   id IR-ID:OP-OWNER MID-SERIAL FROW-KEY @ <> if false exit then
+   id IR-ID:OP-LOCAL FROW-LOCAL @ = ;
+
+: FROW-USE ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id -- )
+   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   p r key id FROW-HIT? if
+      p IR-ARENA:SIZE drop r IR-ARENA:SIZE drop exit
+   then
+   p r key FPR-CK
+   r id FROW-AT {: l:n :}
+   false 0 FROW-READY !
    p r l FTILE-CK
-   r l lenoff FRC@ {: ln:n :}
+   p 0 FROW-VIEWS ! r 1 FROW-VIEWS !
+   key KEY-SERIAL FROW-KEY !
+   id IR-ID:OP-LOCAL FROW-LOCAL !
+   true 0 FROW-READY ! ;
+
+: FWIN@ ( IR-ARENA:view n n n -- n )
+   {: p:IR-ARENA:view stoff:n lenoff:n i:n :}
+   lenoff FROW-FIELD {: ln:n :}
    i 0 < i ln >= or if E-IR-OP-BOUND throw then
-   p  r l stoff FRC@ i +  FPC@ ORD-OK ;
+   p stoff FROW-FIELD i + FPC@ ORD-OK ;
 
 \ How many attributes a stored cell length holds. A length that is not a whole
 \ number of entries is a forged or corrupted row, so it is refused rather than
@@ -532,12 +570,11 @@ private
    i 0 < i n >= or if E-IR-OP-BOUND throw then
    p  r l OFF-ATST RC@ i AT-CELLS * + k +  PC@ ORD-OK ;
 
-: FATWIN@ ( IR-ARENA:view IR-ARENA:view n n n -- n )
-   {: p:IR-ARENA:view r:IR-ARENA:view l:n i:n k:n :}
-   p r l FTILE-CK
-   r l OFF-ATN FRC@ LEN-OK AT-N {: n:n :}
+: FATWIN@ ( IR-ARENA:view n n -- n )
+   {: p:IR-ARENA:view i:n k:n :}
+   OFF-ATN FROW-FIELD AT-N {: n:n :}
    i 0 < i n >= or if E-IR-OP-BOUND throw then
-   p  r l OFF-ATST FRC@ i AT-CELLS * + k +  FPC@ ORD-OK ;
+   p OFF-ATST FROW-FIELD i AT-CELLS * + k + FPC@ ORD-OK ;
 
 \ ---- the staged operation ----------------------------------------------------
 \ One package-owned stage under the single-task compilation discipline, in the
@@ -1109,28 +1146,28 @@ public
 
 : FOPERAND@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key FPR-CK
-   key p r  r id FROW-AT  OFF-OPST OFF-OPN i FWIN@ IR-ID:PACK-VALUE ;
+   p r key id FROW-USE
+   key p OFF-OPST OFF-OPN i FWIN@ IR-ID:PACK-VALUE ;
 
 : FRESULT@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key FPR-CK
-   key p r  r id FROW-AT  OFF-RSST OFF-RSN i FWIN@ IR-ID:PACK-VALUE ;
+   p r key id FROW-USE
+   key p OFF-RSST OFF-RSN i FWIN@ IR-ID:PACK-VALUE ;
 
 : FSUCCESSOR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-block-id )
    {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key FPR-CK
-   key p r  r id FROW-AT  OFF-SCST OFF-SCN i FWIN@ IR-ID:PACK-BLOCK ;
+   p r key id FROW-USE
+   key p OFF-SCST OFF-SCN i FWIN@ IR-ID:PACK-BLOCK ;
 
 : FATTR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-attr-id )
    {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key FPR-CK
-   key p r  r id FROW-AT  i AT-VAL FATWIN@ IR-ID:PACK-ATTR ;
+   p r key id FROW-USE
+   key p i AT-VAL FATWIN@ IR-ID:PACK-ATTR ;
 
 : FATTR-KEY@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
    {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key FPR-CK
-   key p r  r id FROW-AT  i AT-KEY FATWIN@ IR-ID:PACK-SYMBOL ;
+   p r key id FROW-USE
+   key p i AT-KEY FATWIN@ IR-ID:PACK-SYMBOL ;
 
 : FVALUE-KIND@ ( IR-ARENA:view IR-ID:ir-value-id -- IR-OP:def-kind )
    OFF-VKIND FVFLD N>KIND ;

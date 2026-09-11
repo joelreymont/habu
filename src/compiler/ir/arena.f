@@ -512,6 +512,11 @@ public
 : SIZE ( IR-ARENA:view -- n )
    FROZEN-SLOT ACOUNT@ ;
 
+\ Identity comparison grants no read authority; readers still check liveness.
+: VIEW-SAME? ( IR-ARENA:view IR-ARENA:view -- bool )
+   {: a:IR-ARENA:view b:IR-ARENA:view :}
+   a VIEW>N b VIEW>N = ;
+
 : FROZEN-NTH ( IR-ARENA:view n -- IR-ARENA:cell-id )
    swap FROZEN-SLOT swap NTH-RAW ;
 

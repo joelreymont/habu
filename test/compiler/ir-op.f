@@ -5,7 +5,7 @@
 \ result value knows its type, its defining operation, and its position; an
 \ operand may only name a value the module has already defined; operand, result,
 \ and successor counts must agree with the opcode's schema, including the
-\ variadic-tail rule; a window read revalidates the row's exact tiling of the
+\ variadic-tail rule; a window read validates the row's exact tiling of the
 \ pool, so a row appended past this package's constructors can neither overlap
 \ another operation's window, leave a gap, nor reach past the cells the pool
 \ holds; indices past a count or a window length reject; module keys and
@@ -971,6 +971,78 @@ private
    BND [: FZ3-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 0 T= ;
 
+\ A frozen row memo must distinguish tables sharing one module key and must
+\ never turn a retired view or a failed validation into a successful read.
+1 TYPED-BUFFER MEMO-P IR-ARENA:view
+1 TYPED-BUFFER MEMO-R IR-ARENA:view
+1 TYPED-BUFFER MEMO-K IR-ID:ir-module-key
+
+: MEMO-ROW-CELL ( n n n -- n ) {: off:n count:n start:n :}
+   off F-OPST = if start exit then
+   off F-OPN = if count exit then
+   off F-RSST = off F-SCST = or off F-ATST = or if start count + exit then
+   0 ;
+
+: MEMO-TABLE ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:view IR-ARENA:view )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key count:n start:n :}
+   c key 2 2 8 IR-OP:NEW
+   {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   v IR-ARENA:ABORT
+   count 0 ?do c p i 17 + IR-ARENA:PUSH drop loop
+   ROW-CELLS 0 ?do c r i count start MEMO-ROW-CELL IR-ARENA:PUSH drop loop
+   p IR-ARENA:FREEZE r IR-ARENA:FREEZE ;
+
+: MEMO-SET ( IR-ARENA:view IR-ARENA:view -- )
+   0 MEMO-R ! 0 MEMO-P ! ;
+
+: MEMO-READ ( n -- n ) {: idx:n :}
+   0 MEMO-P @ 0 MEMO-R @ 0 MEMO-K @
+   0 MEMO-K @ 0 IR-ID:PACK-OP idx IR-OP:FOPERAND@ IR-ID:VALUE-LOCAL ;
+
+: MEMO-READ0 ( -- ) 0 MEMO-READ drop ;
+: MEMO-BELOW ( -- ) -1 MEMO-READ drop ;
+: MEMO-PAST ( -- ) 1 MEMO-READ drop ;
+
+: MEMO-ALTERNATE ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   key 0 MEMO-K !
+   c key 1 0 MEMO-TABLE {: p:IR-ARENA:view r:IR-ARENA:view :}
+   p r MEMO-SET 0 MEMO-READ 17 T=
+   [: MEMO-BELOW ;] E-IR-OP-BOUND TTHROWSQ
+   [: MEMO-PAST ;] E-IR-OP-BOUND TTHROWSQ
+   c key 2 0 MEMO-TABLE MEMO-SET 1 MEMO-READ 18 T=
+   p r MEMO-SET 0 MEMO-READ 17 T=
+   c key 1 1 MEMO-TABLE MEMO-SET
+   [: MEMO-READ0 ;] E-IR-OP-WINDOW TTHROWSQ
+   p r MEMO-SET 0 MEMO-READ 17 T= ;
+
+: MEMO-LIFETIME ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   key 0 MEMO-K !
+   c key 1 0 MEMO-TABLE MEMO-SET 0 MEMO-READ 17 T=
+   0 MEMO-P @ IR-ARENA:RETIRE
+   [: MEMO-READ0 ;] E-IR-ARENA-STALE TTHROWSQ
+   0 MEMO-R @ IR-ARENA:RETIRE
+   c key 2 0 MEMO-TABLE {: p:IR-ARENA:view r:IR-ARENA:view :}
+   [: MEMO-READ0 ;] E-IR-ARENA-STALE TTHROWSQ
+   p r MEMO-SET 1 MEMO-READ 18 T=
+   r IR-ARENA:RETIRE
+   [: MEMO-READ0 ;] E-IR-ARENA-STALE TTHROWSQ ;
+
+: MEMO-ESCAPE ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   key 0 MEMO-K !
+   c key 1 0 MEMO-TABLE MEMO-SET 0 MEMO-READ 17 T= ;
+
+: MEMO-CASES ( -- )
+   s" frozen row reuse keeps bounds, table identity and failed-miss recovery" T-LABEL
+   BND [: MEMO-ALTERNATE ;] IR-CTX:WITH-CONTEXT
+   s" cached rows reject retired and reused views" T-LABEL
+   BND [: MEMO-LIFETIME ;] IR-CTX:WITH-CONTEXT
+   s" a cached row cannot outlive its context" T-LABEL
+   BND [: MEMO-ESCAPE ;] IR-CTX:WITH-CONTEXT
+   [: MEMO-READ0 ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 \ The retired builder handles reject every touch once the module is frozen, so
 \ there is no public mutation left for a freeze to retract.
 : FZ-RETIRED-BODY ( n IR-CTX:ctx -- )
@@ -1079,6 +1151,7 @@ public
    FZ-CASE
    FZ2-CASE
    FZ3-CASE
+   MEMO-CASES
    OVF-CASES
    BND [: HARNESS-ARITY-A ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-ARITY-B ;] IR-CTX:WITH-CONTEXT
