@@ -1,6 +1,9 @@
 \ Private view of the native declaration-owner ABI (layout.f NCOMP-DISPATCH).
 \ Like CK-PKG-*-OFF below, these fields are needed before layout.f is loaded.
 package CHECKER-REG
+\ SOURCE-CELL (DECL-CELL) is the record the engine certifies through;
+\ TARGET-CELL is the one a replacement checker publishes itself into.
+$360 constant SOURCE-CELL
 $368 constant TARGET-CELL
 $80 constant OWNER-BYTES
 $00 constant RAW-OFF
@@ -21,6 +24,7 @@ $70 constant RESET-OFF
 $78 constant CAPTURE-OFF
 create DECLARATIONS 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
 data-base TARGET-CELL + ptr-cell-mark
+data-base SOURCE-CELL + ptr-cell-mark
 DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 ;package
 
@@ -13788,6 +13792,11 @@ defer SOURCE-CON-NAME ( n -- ptr u8 n )
    SOURCE-CON-NAME CT-FIND
    dup 0= if s" checker: transferred constructor is absent" 76 die then ;
 
+\ The handover: the retained checker certifies the window only up to the
+\ transfer, and from here the window is the sole certifier for its own source.
+TRUSTED: CLAIM-SOURCE-OWNER ( -- )
+   DECLARATIONS data-base SOURCE-CELL + 0 ptr-field ! ;
+
 \ Binding a private owner callback is the only raw execution-token boundary.
 TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    ['] FOREIGN-CON is E-I-FOREIGN-CON
@@ -13827,7 +13836,8 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    [: TRANSFER-ROWS ;] catch {: rc:n :}
    saved CHECKER-REC-SYM !
    DECLARATIONS BIND-SOURCE
-   rc 0 <> if rc throw then ;
+   rc 0 <> if rc throw then
+   CLAIM-SOURCE-OWNER ;
 
 ' TRANSFER-CHECKED DECLARATIONS TRANSFER-OFF + xt!
 ;package

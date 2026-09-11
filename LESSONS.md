@@ -7626,3 +7626,17 @@ and --no-lldbinit.
   blamed.** `tool-boundary-aot-call` exited 67 with rc -2502 in the same
   pooled run at load 12 and passed alone on both engines; the box under nine
   building lanes, not the commit, was the cause.
+
+## 2026-09-12 - native-build window checker ownership
+
+- **The window's checker is the sole certifier for window source, and the
+  handover is a store the window must make.** After `LOGICAL-RESET` /
+  `TRANSFER-CHECKER`, `CHECKER-REG:TRANSFER-CHECKED` has to publish the window's
+  own `DECLARATIONS` into `NCOMP-DISPATCH:DECL-CELL` (`CLAIM-SOURCE-OWNER`).
+  Without it the retained checker keeps answering: a family the window declares
+  is invisible to a later `CAST:` in the same window (`E-CAST-FAM` 7131) while a
+  host-only family still resolves (`E-CAST-OWNER` 7135) — exactly backwards. A
+  bootstrap seed hides the whole defect, because its dispatch predates the owner
+  record and falls back to the live dictionary, so this only appears once a
+  product engine hosts the build. Never teach the retained checker window
+  families instead. Regression: `test/native-window-owner.f`.

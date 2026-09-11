@@ -259,6 +259,10 @@ SUITE compiler-native-prefix-declarations
    test/compiler/native-prefix-declarations.f
 ;SUITE
 
+SUITE native-window-owner
+   test/native-window-owner.f
+;SUITE
+
 SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE
