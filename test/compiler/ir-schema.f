@@ -1341,6 +1341,25 @@ private
    s" a schema table is dead after its context ends" T-LABEL
    [: TD-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ A frozen view that outlives its context. Every reader below resolves the view
+\ once and then loads from that resolution, so this is the case the one-shot
+\ resolution has to fail closed on: nothing touches the table between the
+\ context dying and the read, and the read still refuses.
+: TD-VIEW-BODY ( IR-CTX:ctx -- IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   r IR-ARENA:FREEZE ;
+
+: TD-VIEW-READ ( -- )
+   BND [: TD-VIEW-BODY ;] IR-CTX:WITH-CONTEXT
+   IR-SCHEMA:FSCHEMAS drop ;
+
+: TD-VIEW-CASE ( -- )
+   s" a frozen table reads stale after its context ends" T-LABEL
+   [: TD-VIEW-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 : TD-FRESH-CASE ( -- )
    s" fresh contexts and tables succeed after teardown" T-LABEL
    4 0 ?do
@@ -1421,7 +1440,8 @@ private
 : HARNESS-FROZEN ( IR-CTX:ctx -- )
    drop
    FZ-REJECT-CASES
-   TD-STALE-CASE ;
+   TD-STALE-CASE
+   TD-VIEW-CASE ;
 
 \ Embedded bindings survive the same public table and ownership paths.
 
