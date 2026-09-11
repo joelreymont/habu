@@ -938,6 +938,70 @@ public
    c b f t HIR-OPCODE:REALBITS DEF-CROSS ;
 
 private
+
+: DEFINE-ONE ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder o:HIR:opcode :}
+   o MATCH opcode
+      const     OF c b c b CELL-TYPE DEF-CONST ENDOF
+      add       OF c b c b CELL-TYPE HIR-OPCODE:ADD DEF-BINARY ENDOF
+      sub       OF c b c b CELL-TYPE HIR-OPCODE:SUB DEF-BINARY ENDOF
+      mul       OF c b c b CELL-TYPE HIR-OPCODE:MUL DEF-BINARY ENDOF
+      div       OF c b c b CELL-TYPE DEF-DIV ENDOF
+      lt        OF c b c b CELL-TYPE HIR-OPCODE:LT DEF-TOTAL ENDOF
+      le        OF c b c b CELL-TYPE HIR-OPCODE:LE DEF-TOTAL ENDOF
+      gt        OF c b c b CELL-TYPE HIR-OPCODE:GT DEF-TOTAL ENDOF
+      ge        OF c b c b CELL-TYPE HIR-OPCODE:GE DEF-TOTAL ENDOF
+      equal     OF c b c b CELL-TYPE HIR-OPCODE:EQUAL DEF-TOTAL ENDOF
+      ne        OF c b c b CELL-TYPE HIR-OPCODE:NE DEF-TOTAL ENDOF
+      and       OF c b c b CELL-TYPE HIR-OPCODE:AND DEF-TOTAL ENDOF
+      or        OF c b c b CELL-TYPE HIR-OPCODE:OR DEF-TOTAL ENDOF
+      xor       OF c b c b CELL-TYPE HIR-OPCODE:XOR DEF-TOTAL ENDOF
+      lshift    OF c b c b CELL-TYPE HIR-OPCODE:LSHIFT DEF-TOTAL ENDOF
+      rshift    OF c b c b CELL-TYPE HIR-OPCODE:RSHIFT DEF-TOTAL ENDOF
+      invert    OF c b c b CELL-TYPE HIR-OPCODE:INVERT DEF-UNARY ENDOF
+      mem       OF c b c b MEM-TYPE DEF-MEM ENDOF
+      load      OF c b c b CELL-TYPE c b MEM-TYPE DEF-LOAD ENDOF
+      store     OF c b c b CELL-TYPE c b MEM-TYPE DEF-STORE ENDOF
+      bload     OF c b c b CELL-TYPE c b MEM-TYPE DEF-BLOAD ENDOF
+      bstore    OF c b c b CELL-TYPE c b MEM-TYPE DEF-BSTORE ENDOF
+      br        OF c b c b CELL-TYPE DEF-BR ENDOF
+      brz       OF c b c b CELL-TYPE DEF-BRZ ENDOF
+      call      OF c b c b CELL-TYPE c b MEM-TYPE DEF-CALL ENDOF
+      wordcall  OF c b c b CELL-TYPE c b MEM-TYPE DEF-WORDCALL ENDOF
+      quot      OF c b c b CELL-TYPE DEF-QUOT ENDOF
+      return    OF c b c b CELL-TYPE DEF-RETURN ENDOF
+      trap      OF c b c b CELL-TYPE DEF-TRAP ENDOF
+      fconst    OF c b c b REAL-TYPE DEF-FCONST ENDOF
+      fadd      OF c b c b REAL-TYPE HIR-OPCODE:FADD DEF-FBINARY ENDOF
+      fsub      OF c b c b REAL-TYPE HIR-OPCODE:FSUB DEF-FBINARY ENDOF
+      fmul      OF c b c b REAL-TYPE HIR-OPCODE:FMUL DEF-FBINARY ENDOF
+      fdiv      OF c b c b REAL-TYPE HIR-OPCODE:FDIV DEF-FBINARY ENDOF
+      fneg      OF c b c b REAL-TYPE HIR-OPCODE:FNEG DEF-FUNARY ENDOF
+      fabs      OF c b c b REAL-TYPE HIR-OPCODE:FABS DEF-FUNARY ENDOF
+      fsqrt     OF c b c b REAL-TYPE HIR-OPCODE:FSQRT DEF-FUNARY ENDOF
+      flt       OF c b c b REAL-TYPE c b CELL-TYPE HIR-OPCODE:FLT DEF-FCOMPARE ENDOF
+      fgt       OF c b c b REAL-TYPE c b CELL-TYPE HIR-OPCODE:FGT DEF-FCOMPARE ENDOF
+      feq       OF c b c b REAL-TYPE c b CELL-TYPE HIR-OPCODE:FEQ DEF-FCOMPARE ENDOF
+      fltz      OF c b c b REAL-TYPE c b CELL-TYPE HIR-OPCODE:FLTZ DEF-FCOMPARE0 ENDOF
+      feqz      OF c b c b REAL-TYPE c b CELL-TYPE HIR-OPCODE:FEQZ DEF-FCOMPARE0 ENDOF
+      intreal   OF c b c b CELL-TYPE c b REAL-TYPE HIR-OPCODE:INTREAL DEF-CROSS ENDOF
+      realint   OF c b c b REAL-TYPE c b CELL-TYPE HIR-OPCODE:REALINT DEF-CROSS ENDOF
+      bitsreal  OF c b c b CELL-TYPE c b REAL-TYPE HIR-OPCODE:BITSREAL DEF-CROSS ENDOF
+      realbits  OF c b c b REAL-TYPE c b CELL-TYPE HIR-OPCODE:REALBITS DEF-CROSS ENDOF
+   ;MATCH ;
+
+public
+
+\ Materialize only a requested opcode, retaining the module's schema as the
+\ sole presence authority. OPCODE and BIND remain pure symbol interning.
+: ENSURE-OP ( IR-CTX:ctx IR-BUILD:builder HIR:opcode -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder o:HIR:opcode :}
+   c b DIALECT-CK
+   c b o OPCODE {: op:IR-ID:ir-symbol-id :}
+   c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o DEFINE-ONE then
+   op ;
+
+private
 get-current prot-wid-add
 
 public

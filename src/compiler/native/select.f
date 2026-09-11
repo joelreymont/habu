@@ -408,7 +408,7 @@ variable D-RETS                                    \ returns seen while surveyin
 \ from, so a diagnostic points at the source and not at the machine.
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:A64IR:opcode :}
-   CTX BLD  CTX BLD o A64IR:OPCODE  IR-BUILD:BEGIN-OP
+   CTX BLD  CTX BLD o A64IR:ENSURE-OP  IR-BUILD:BEGIN-OP
    CTX BLD  id OP-SPAN  IR-BUILD:SET-OP-SPAN ;
 
 : RESULT+ ( -- )
@@ -2933,7 +2933,6 @@ public
    0 N-TRAPS !
    0 R-NEWBASE !
    CONTRACT-CK
-   c b A64IR:REGISTER
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!

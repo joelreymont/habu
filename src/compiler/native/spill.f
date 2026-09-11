@@ -292,7 +292,7 @@ create NAMEBUF NAME-CAP allot
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:A64IR:opcode :}
-   CTX BLD  CTX BLD o A64IR:OPCODE  IR-BUILD:BEGIN-OP
+   CTX BLD  CTX BLD o A64IR:ENSURE-OP  IR-BUILD:BEGIN-OP
    CTX BLD  id OP-SPAN  IR-BUILD:SET-OP-SPAN ;
 
 : OPERAND+ ( IR-ID:ir-value-id -- )
@@ -964,7 +964,6 @@ public
    m PLAN-CK
    A64RA:FRAME FRAME-N !
    0 N-CUR !
-   c b A64IR:REGISTER
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!

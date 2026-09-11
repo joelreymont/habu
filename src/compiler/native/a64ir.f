@@ -1676,6 +1676,100 @@ public
    c b t f k A64IR-OPCODE:FASTORE DEF-ASTR ;
 
 private
+
+: DEFINE-ONE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
+   o MATCH opcode
+      movz      OF c b c b GPR-TYPE DEF-MOVZ ENDOF
+      movk      OF c b c b GPR-TYPE DEF-MOVK ENDOF
+      movn      OF c b c b GPR-TYPE DEF-MOVN ENDOF
+      mov       OF c b c b GPR-TYPE DEF-MOV ENDOF
+      add       OF c b c b GPR-TYPE A64IR-OPCODE:ADD DEF-BINARY ENDOF
+      sub       OF c b c b GPR-TYPE A64IR-OPCODE:SUB DEF-BINARY ENDOF
+      addi      OF c b c b GPR-TYPE A64IR-OPCODE:ADDI DEF-BINARY-IMM ENDOF
+      subi      OF c b c b GPR-TYPE A64IR-OPCODE:SUBI DEF-BINARY-IMM ENDOF
+      andi      OF c b c b GPR-TYPE A64IR-OPCODE:ANDI DEF-LOGICAL-IMM ENDOF
+      orri      OF c b c b GPR-TYPE A64IR-OPCODE:ORRI DEF-LOGICAL-IMM ENDOF
+      eori      OF c b c b GPR-TYPE A64IR-OPCODE:EORI DEF-LOGICAL-IMM ENDOF
+      mul       OF c b c b GPR-TYPE A64IR-OPCODE:MUL DEF-BINARY ENDOF
+      madd      OF c b c b GPR-TYPE DEF-MADD ENDOF
+      sdiv      OF c b c b GPR-TYPE DEF-SDIV ENDOF
+      and       OF c b c b GPR-TYPE A64IR-OPCODE:AND DEF-BINARY ENDOF
+      orr       OF c b c b GPR-TYPE A64IR-OPCODE:ORR DEF-BINARY ENDOF
+      eor       OF c b c b GPR-TYPE A64IR-OPCODE:EOR DEF-BINARY ENDOF
+      lslv      OF c b c b GPR-TYPE A64IR-OPCODE:LSLV DEF-BINARY ENDOF
+      lsrv      OF c b c b GPR-TYPE A64IR-OPCODE:LSRV DEF-BINARY ENDOF
+      mvn       OF c b c b GPR-TYPE DEF-MVN ENDOF
+      store     OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:STORE DEF-STR ENDOF
+      load      OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:LOAD DEF-LDR ENDOF
+      reserve   OF c b c b MEM-TYPE DEF-RESERVE ENDOF
+      release   OF c b c b MEM-TYPE DEF-RELEASE ENDOF
+      dtake     OF c b c b MEM-TYPE DEF-DTAKE ENDOF
+      dload     OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:DLOAD DEF-DLOAD ENDOF
+      dstore    OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:DSTORE DEF-DSTORE ENDOF
+      dpublish  OF c b c b MEM-TYPE DEF-DPUBLISH ENDOF
+      aload     OF c b c b GPR-TYPE c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:ALOAD DEF-ALDR ENDOF
+      astore    OF c b c b GPR-TYPE c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:ASTORE DEF-ASTR ENDOF
+      abload    OF c b c b GPR-TYPE c b MEM-TYPE DEF-ALDRB ENDOF
+      abstore   OF c b c b GPR-TYPE c b MEM-TYPE DEF-ASTRB ENDOF
+      flag      OF c b c b GPR-TYPE DEF-FLAG ENDOF
+      flagi     OF c b c b GPR-TYPE DEF-FLAG-IMM ENDOF
+      selz      OF c b c b GPR-TYPE DEF-SELZ ENDOF
+      cmpsel    OF c b c b GPR-TYPE DEF-CMPSEL ENDOF
+      br        OF c b c b GPR-TYPE DEF-BR ENDOF
+      brz       OF c b c b GPR-TYPE DEF-BRZ ENDOF
+      cmpbr     OF c b c b GPR-TYPE DEF-CMPBR ENDOF
+      cmpbri    OF c b c b GPR-TYPE DEF-CMPBR-IMM ENDOF
+      call      OF c b c b MEM-TYPE DEF-CALL ENDOF
+      wordcall  OF c b c b MEM-TYPE DEF-WORDCALL ENDOF
+      tailcall  OF c b c b MEM-TYPE DEF-TAILCALL ENDOF
+      trap      OF c b c b MEM-TYPE DEF-TRAP ENDOF
+      linksave  OF c b c b MEM-TYPE DEF-LNKSTR ENDOF
+      linkload  OF c b c b MEM-TYPE DEF-LNKLDR ENDOF
+      ret       OF c b c b GPR-TYPE DEF-RET ENDOF
+      codeaddr  OF c b c b GPR-TYPE DEF-CODEADDR ENDOF
+      fadd      OF c b c b FPR-TYPE A64IR-OPCODE:FADD DEF-FBINARY ENDOF
+      fsub      OF c b c b FPR-TYPE A64IR-OPCODE:FSUB DEF-FBINARY ENDOF
+      fmul      OF c b c b FPR-TYPE A64IR-OPCODE:FMUL DEF-FBINARY ENDOF
+      fdiv      OF c b c b FPR-TYPE A64IR-OPCODE:FDIV DEF-FBINARY ENDOF
+      fneg      OF c b c b FPR-TYPE c b FPR-TYPE A64IR-OPCODE:FNEG DEF-FCROSS ENDOF
+      fabs      OF c b c b FPR-TYPE c b FPR-TYPE A64IR-OPCODE:FABS DEF-FCROSS ENDOF
+      fsqrt     OF c b c b FPR-TYPE c b FPR-TYPE A64IR-OPCODE:FSQRT DEF-FCROSS ENDOF
+      scvtf     OF c b c b GPR-TYPE c b FPR-TYPE A64IR-OPCODE:SCVTF DEF-FCROSS ENDOF
+      fcvtzs    OF c b c b FPR-TYPE c b GPR-TYPE A64IR-OPCODE:FCVTZS DEF-FCROSS ENDOF
+      fmovxd    OF c b c b GPR-TYPE c b FPR-TYPE A64IR-OPCODE:FMOVXD DEF-FCROSS ENDOF
+      fmovdx    OF c b c b FPR-TYPE c b GPR-TYPE A64IR-OPCODE:FMOVDX DEF-FCROSS ENDOF
+      fmovdd    OF c b c b FPR-TYPE c b FPR-TYPE A64IR-OPCODE:FMOVDD DEF-FCROSS ENDOF
+      fflag     OF c b c b FPR-TYPE c b GPR-TYPE DEF-FFLAG ENDOF
+      fflagz    OF c b c b FPR-TYPE c b GPR-TYPE DEF-FFLAGZ ENDOF
+      fcmpbr    OF c b c b FPR-TYPE DEF-FCMPBR ENDOF
+      fcmpbrz   OF c b c b FPR-TYPE DEF-FCMPBRZ ENDOF
+      selzd     OF c b c b GPR-TYPE c b FPR-TYPE DEF-SELZD ENDOF
+      cmpseld   OF c b c b GPR-TYPE c b FPR-TYPE DEF-CMPSELD ENDOF
+      fcmpsel   OF c b c b GPR-TYPE c b FPR-TYPE DEF-FCMPSEL ENDOF
+      fcmpselz  OF c b c b GPR-TYPE c b FPR-TYPE DEF-FCMPSELZ ENDOF
+      fcmpseld  OF c b c b FPR-TYPE DEF-FCMPSELD ENDOF
+      fcmpselzd OF c b c b FPR-TYPE DEF-FCMPSELZD ENDOF
+      fstore    OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FSTORE DEF-STR ENDOF
+      fload     OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FLOAD DEF-LDR ENDOF
+      fdload    OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FDLOAD DEF-DLOAD ENDOF
+      fdstore   OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FDSTORE DEF-DSTORE ENDOF
+      faload    OF c b c b GPR-TYPE c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FALOAD DEF-ALDR ENDOF
+      fastore   OF c b c b GPR-TYPE c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FASTORE DEF-ASTR ENDOF
+   ;MATCH ;
+
+public
+
+\ Materialize only a requested opcode, retaining the module's schema as the
+\ sole presence authority. OPCODE and BIND remain pure symbol interning.
+: ENSURE-OP ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
+   c b DIALECT-CK
+   c b o OPCODE {: op:IR-ID:ir-symbol-id :}
+   c b op IR-BUILD:SCHEMA-DEFINED? 0= if c b o DEFINE-ONE then
+   op ;
+
+private
 get-current prot-wid-add
 
 public

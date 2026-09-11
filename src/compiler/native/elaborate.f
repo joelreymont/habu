@@ -637,7 +637,7 @@ variable OPJ                         \ general operands taken so far by the open
 \ A crossing computes nothing: the same eight bytes read as the other type.
 : CROSS-VALUE ( n IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
    {: ix:n v:IR-ID:ir-value-id kop:HIR:opcode :}
-   CTX BLD kop HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD kop HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD v IR-BUILD:ADD-OPERAND
    CTX BLD  CTX BLD op 0 IR-BUILD:SCHEMA-RESULT@  IR-BUILD:ADD-RESULT
@@ -729,7 +729,7 @@ variable LIT-N
 \ ---- the things a body token becomes -----------------------------------------
 : STAGE-LIT ( n n n -- )
    {: ix:n val:n kind:n :}
-   CTX BLD HIR-OPCODE:CONST HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD HIR-OPCODE:CONST HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
@@ -753,7 +753,7 @@ variable LIT-N
 \ The memory the definition is entered with, staged at the token's span.
 : EMIT-MEM ( n -- )
    {: ix:n :}
-   CTX BLD HIR-OPCODE:MEM HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD HIR-OPCODE:MEM HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
@@ -768,7 +768,7 @@ variable LIT-N
 
 : EMIT-OPCODE ( n HIR:opcode -- )
    {: ix:n k:HIR:opcode :}
-   CTX BLD k HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD k HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    op TOKEN-READY
    \ STORE writes a cell's bits; a real value crosses only its value operand.
    k HIR-OPCODE:STORE HIR-OPCODE:EQ if
@@ -787,7 +787,7 @@ variable LIT-N
 
 : EMIT-FLIT ( n n -- )
    {: ix:n val:n :}
-   CTX BLD HIR-OPCODE:FCONST HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD HIR-OPCODE:FCONST HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD op ix COERCE-OPERANDS
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
@@ -853,7 +853,7 @@ create SB-BUF SB-CAP allot
    RN @ 0<> if E-NELAB-JOIN throw then
    VGLUE @ out VGLUE-LOW  OUT-GLUE @ <> if E-NELAB-JOIN throw then
    out RETURN-CROSS
-   c b HIR-OPCODE:RETURN HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:RETURN HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    c b v key 0 op OPEN
    out 0 ?do
       c b  i VAT  IR-BUILD:ADD-OPERAND
@@ -1285,7 +1285,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    {: ix:n t:n lo:n h:n l:n :}
    R-SPILL
    ix t EDGE-STAGE
-   CTX BLD  CTX BLD HIR-OPCODE:BR HIR:OPCODE  IR-BUILD:BEGIN-OP
+   CTX BLD  CTX BLD HIR-OPCODE:BR HIR:ENSURE-OP  IR-BUILD:BEGIN-OP
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN
    VN @ 0 ?do
       CTX BLD  i XV @  IR-BUILD:ADD-OPERAND
@@ -1307,7 +1307,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    {: ix:n z:n o:n :}
    VN @ 1- VAT {: f:IR-ID:ir-value-id :}
    1 VDROP
-   CTX BLD  CTX BLD HIR-OPCODE:BRZ HIR:OPCODE  IR-BUILD:BEGIN-OP
+   CTX BLD  CTX BLD HIR-OPCODE:BRZ HIR:ENSURE-OP  IR-BUILD:BEGIN-OP
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN
    CTX BLD f IR-BUILD:ADD-OPERAND
    CTX BLD  z BLOCK-ORD  IR-BUILD:ADD-SUCCESSOR
@@ -2034,11 +2034,11 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:OP HIR-MEANING:EQ if
-      CTX BLD  CTX BLD  r sy HIR-WORD:OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
+      CTX BLD  CTX BLD  r sy HIR-WORD:OPCODE@  HIR:ENSURE-OP  TOKEN-OPERANDS
       0<> exit
    then
    m HIR-MEANING:CONST-OP HIR-MEANING:EQ if
-      CTX BLD  CTX BLD  r sy HIR-WORD:CONST-OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
+      CTX BLD  CTX BLD  r sy HIR-WORD:CONST-OPCODE@  HIR:ENSURE-OP  TOKEN-OPERANDS
       0<> exit
    then
    false ;
@@ -2051,13 +2051,13 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if
-      CTX BLD  CTX BLD  HIR-OPCODE:WORDCALL HIR:OPCODE  TOKEN-OPERANDS
+      CTX BLD  CTX BLD  HIR-OPCODE:WORDCALL HIR:ENSURE-OP  TOKEN-OPERANDS
       0<> exit
    then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
       r sy HIR-WORD:CTRL@ CTRL-CALL? {: op:HIR:opcode calls:bool :}
       calls 0= if false exit then
-      CTX BLD  CTX BLD  op HIR:OPCODE  TOKEN-OPERANDS 0<> exit
+      CTX BLD  CTX BLD  op HIR:ENSURE-OP  TOKEN-OPERANDS 0<> exit
    then
    r sy SYM-ORDER? ;
 
@@ -2897,7 +2897,7 @@ create DN-BUF DN-CAP allot
    {: ix:n :}
    IN-N @ OUT-N @ CALL-LIVE  OUT-N @ + {: back:n :}
    ix CALL-CROSS
-   CTX BLD HIR-OPCODE:CALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD HIR-OPCODE:CALL HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
    back CALL-RESULTS+
@@ -2917,7 +2917,7 @@ create DN-BUF DN-CAP allot
    {: ix:n entry:n a:n o:n oglue:n :}
    a o CALL-LIVE o + {: back:n :}
    ix CALL-CROSS
-   CTX BLD HIR-OPCODE:WORDCALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD HIR-OPCODE:WORDCALL HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
    back CALL-RESULTS+
@@ -2962,7 +2962,7 @@ create DN-BUF DN-CAP allot
    {: ix:n :}
    ix QOPENED@ {: k:n :}
    k 0 < if ix QUOT-REFUSE then
-   CTX BLD HIR-OPCODE:QUOT HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD HIR-OPCODE:QUOT HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op RESULTS+
    CTX BLD  CTX BLD HIR:KEY-FUN
@@ -3461,7 +3461,7 @@ variable QNAME-P                     \ the place value the digit loop is on
    VN @ out <> if k QAT@ QUOT-REFUSE then
    RN @ 0<> if k QAT@ QUOT-REFUSE then
    out RETURN-CROSS
-   c b HIR-OPCODE:RETURN HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:RETURN HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    c b v key  k QHI@  op OPEN
    out 0 ?do
       c b  VN @ out - i + VAT  IR-BUILD:ADD-OPERAND
@@ -3624,7 +3624,7 @@ private
 
 : STAGE-FUN-ADDR ( n n -- )
    {: ix:n fun:n :}
-   CTX BLD HIR-OPCODE:QUOT HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD HIR-OPCODE:QUOT HIR:ENSURE-OP {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op RESULTS+
    CTX BLD  CTX BLD HIR:KEY-FUN

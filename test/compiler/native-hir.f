@@ -2241,10 +2241,44 @@ variable BC-OUT
    drop
    JOINED-CASE ;
 
+\ An unused opcode can be bound without registering a schema. The first
+\ use adds exactly one row; repeated use reads the same row.
+: LAZY-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b 0 HIR:BIND {: op:IR-ID:ir-symbol-id :}
+   b IR-BUILD:SCHEMAS 0 T=
+   c b op IR-BUILD:SCHEMA-DEFINED? TFALSE
+   c b HIR-OPCODE:CONST HIR:ENSURE-OP IR-ID:SYMBOL-LOCAL
+      op IR-ID:SYMBOL-LOCAL T=
+   b IR-BUILD:SCHEMAS 1 T=
+   c b HIR-OPCODE:CONST HIR:ENSURE-OP drop
+   b IR-BUILD:SCHEMAS 1 T=
+   HIR:OPCODES 0 ?do
+      c b i HIR:NTH HIR:ENSURE-OP {: named:IR-ID:ir-symbol-id :}
+      c b named IR-BUILD:SCHEMA-DEFINED? TTRUE
+   loop
+   b IR-BUILD:SCHEMAS HIR:OPCODES T= ;
+
+: LAZY-FOREIGN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c s" other" 0 0 IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b HIR-OPCODE:CONST HIR:ENSURE-OP drop ;
+
+: LAZY-FOREIGN ( -- )
+   BND [: LAZY-FOREIGN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LAZY-CASE ( -- )
+   BND [: LAZY-BODY ;] IR-CTX:WITH-CONTEXT
+   [: LAZY-FOREIGN ;] E-HIR-DIALECT TTHROWSQ ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   LAZY-CASE
    OPCODE-ORDINAL-CASE
    BND [: GROUP-DIALECT ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT

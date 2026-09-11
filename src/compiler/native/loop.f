@@ -975,7 +975,7 @@ $7FFFFFFFFFFFFFFF constant MAX-START
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id HIR:opcode -- )
    {: id:IR-ID:ir-op-id o:HIR:opcode :}
-   CTX BLD  CTX BLD o HIR:OPCODE  IR-BUILD:BEGIN-OP
+   CTX BLD  CTX BLD o HIR:ENSURE-OP  IR-BUILD:BEGIN-OP
    CTX BLD  id OP-SPAN  IR-BUILD:SET-OP-SPAN ;
 
 : OPERAND+ ( IR-ID:ir-value-id -- )
@@ -1399,7 +1399,6 @@ public
    BND-TAKE
    m BND-MODULE-CK
    0 N-FOLDED !
-   c b HIR:REGISTER
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!

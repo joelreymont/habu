@@ -922,6 +922,10 @@ public
 \ The staged opcode schema is closed against this builder's own tables. The
 \ IR-SCHEMA staging words (BEGIN-OP, ADD-OPERAND, SET-PURE and the rest) take
 \ identities only and need no table, so they stay where they are defined.
+: SCHEMA-DEFINED? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
+   c b USE T-QR TAB@ op IR-SCHEMA:DEFINED? ;
+
 : DEFINE-OP ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b USE {: slot:n :}

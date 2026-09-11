@@ -1785,10 +1785,44 @@ private
    drop
    TARGET-REFUSE-CASES ;
 
+\ An unused opcode can be bound without registering a schema. The first
+\ use adds exactly one row; repeated use reads the same row.
+: LAZY-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c A64IR:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b 0 A64IR:BIND {: op:IR-ID:ir-symbol-id :}
+   b IR-BUILD:SCHEMAS 0 T=
+   c b op IR-BUILD:SCHEMA-DEFINED? TFALSE
+   c b A64IR-OPCODE:MOVZ A64IR:ENSURE-OP IR-ID:SYMBOL-LOCAL
+      op IR-ID:SYMBOL-LOCAL T=
+   b IR-BUILD:SCHEMAS 1 T=
+   c b A64IR-OPCODE:MOVZ A64IR:ENSURE-OP drop
+   b IR-BUILD:SCHEMAS 1 T=
+   A64IR:OPCODES 0 ?do
+      c b i A64IR:NTH A64IR:ENSURE-OP {: named:IR-ID:ir-symbol-id :}
+      c b named IR-BUILD:SCHEMA-DEFINED? TTRUE
+   loop
+   b IR-BUILD:SCHEMAS A64IR:OPCODES T= ;
+
+: LAZY-FOREIGN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c s" other" 0 0 IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:MOVZ A64IR:ENSURE-OP drop ;
+
+: LAZY-FOREIGN ( -- )
+   BND [: LAZY-FOREIGN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LAZY-CASE ( -- )
+   BND [: LAZY-BODY ;] IR-CTX:WITH-CONTEXT
+   [: LAZY-FOREIGN ;] E-A64IR-DIALECT TTHROWSQ ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   LAZY-CASE
    OPCODE-ORDINAL-CASE
    BOUND-CASE
    FRAME-BOUND-CASE
