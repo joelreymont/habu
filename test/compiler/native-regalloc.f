@@ -1285,6 +1285,23 @@ create TXT
    0 M-BR0
    CLOSE-FUN ;
 
+\ A discarded final order is not terminal when a later block returns, even
+\ without a frame access there. Nor may a non-returning region start another
+\ frame chain: its later accesses still need the order the first store minted.
+: BUILD-LOOSE-ORDER-END ( bool -- ) {: later-frame:bool :}
+   s" LOOSE-END" 0 0 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   7 M-MOVZ tok 0 M-STORE drop
+   1 M-BR0
+   M-BLOCK+
+   later-frame if
+      16 M-RESERVE 16 M-RELEASE
+      1 M-BR0
+   else
+      M-RET0
+   then
+   CLOSE-FUN ;
+
 
 : M-BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id t:n :}
@@ -2411,6 +2428,16 @@ using A64RA
    BUILD-LOOSE-ORDER-LOOP
    16 FRAME-REFUSE ;
 
+: LOOSE-ORDER-RETURN-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   false BUILD-LOOSE-ORDER-END
+   16 FRAME-REFUSE ;
+
+: LOOSE-ORDER-FRAME-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   true BUILD-LOOSE-ORDER-END
+   16 FRAME-REFUSE ;
+
 
 : EMPTY-POOL-BODY ( IR-CTX:ctx -- )
    A64-MOD
@@ -2588,6 +2615,8 @@ using A64RA
 
 
 : LOOSE-ORDER-LOOP ( -- ) WBND [: LOOSE-ORDER-LOOP-BODY ;] IR-CTX:WITH-CONTEXT ;
+: LOOSE-ORDER-RETURN ( -- ) WBND [: LOOSE-ORDER-RETURN-BODY ;] IR-CTX:WITH-CONTEXT ;
+: LOOSE-ORDER-FRAME ( -- ) WBND [: LOOSE-ORDER-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-POOL ( -- )       WBND [: EMPTY-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )     WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-BIND ( -- )          WBND [: NO-BIND-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2726,7 +2755,11 @@ using A64RA
    s" a memory order the module mints and nothing reads is refused" T-LABEL
    [: LOOSE-ORDER ;] E-A64RAV-ORDER TTHROWSQ
    s" an unused frame order with a backedge to its store is refused" T-LABEL
-   [: LOOSE-ORDER-LOOP ;] E-A64RAV-ORDER TTHROWSQ ;
+   [: LOOSE-ORDER-LOOP ;] E-A64RAV-ORDER TTHROWSQ
+   s" an unused frame order before a reachable return is refused" T-LABEL
+   [: LOOSE-ORDER-RETURN ;] E-A64RAV-ORDER TTHROWSQ
+   s" an unused frame order before a later frame access is refused" T-LABEL
+   [: LOOSE-ORDER-FRAME ;] E-A64RAV-ORDER TTHROWSQ ;
 
 : BIND-REFUSE-CASES ( -- )
    s" allocating without a binding is refused" T-LABEL

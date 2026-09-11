@@ -384,7 +384,8 @@ variable FLOW-S
 
 \ A final frame order needs no consumer after control has permanently left
 \ the function. The defining block may branch before reaching its trap exits;
-\ no reachable block may perform another frame access without that order.
+\ no reachable block may return or perform another frame access without that
+\ order. A return on a different CFG arm does not make this order observable.
 : FRAME-QUIET? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do
@@ -399,13 +400,13 @@ variable FLOW-S
    b 0 < if false exit then
    FUN b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk LAST-FRAME-TOKEN k <> if false exit then
-   FUN RET-ORD NO-RET <> if
-      bk TERM-AT {: t:IR-ID:ir-op-id :}
-      t SUCCS-OF 0= t TRAP-AT? and exit
-   then
+   FUN RET-ORD {: rb:n :}
+   b rb = if false exit then
    b -1 REACH-FILL
    NB-N @ 0 ?do
-      i RCH? if FUN i BLOCK-AT FRAME-QUIET? 0= if false unloop exit then then
+      i RCH? if
+         i rb =  FUN i BLOCK-AT FRAME-QUIET? 0= or if false unloop exit then
+      then
    loop
    true ;
 
