@@ -4,8 +4,9 @@
 \ nonfinite values and trailing bytes, and preserves subnormals and signed zero.
 \ FORMAT writes a shortest round-trip plain decimal without a terminator;
 \ equally close shortest decimals resolve away from zero, as Rust Display does.
-\ The immutable C numeric locale lives for the module's process lifetime.
+\ The immutable C numeric locale lives until the process image is prepared.
 require lib/ffi-abi.f
+require lib/image-lifecycle.f
 require lib/ieee754.f
 require lib/memory.f
 require lib/string.f
@@ -28,44 +29,116 @@ $7FF0000000000000 constant EXPONENT-MASK
 64 constant NATIVE-BYTES
 create SYMBOL 64 allot
 variable LIBRARY
+variable INITIALIZED
+variable REGISTERED
+variable C-LOCALE
+variable DLCLOSE-FN
+variable FREE-FN
+variable NEWLOCALE-FN
+variable USELOCALE-FN
+variable STRTOD-FN
+variable STRFROM-FN
+variable GETROUND-FN
+variable SETROUND-FN
 
 : CSTRING ( ptr u8 n -- ptr u8 ) SYMBOL CSTR SYMBOL ;
-s" libm.so.6" CSTRING NOW DLOPEN LIBRARY !
-: CHECK-LIBRARY ( -- ) LIBRARY @ 0= if E-NATIVE throw then ;
-CHECK-LIBRARY
+
+
+: LIBRARY-OPEN ( -- )
+   s" libm.so.6" CSTRING NOW DLOPEN
+   dup 0= if E-NATIVE throw then LIBRARY ! ;
+
+
 : SYMBOL-FIND ( ptr u8 n -- n )
    CSTRING LIBRARY @ swap DLSYM dup 0= if E-NATIVE throw then ;
 
-s" newlocale" SYMBOL-FIND constant NEWLOCALE-FN
-s" uselocale" SYMBOL-FIND constant USELOCALE-FN
-s" strtod_l" SYMBOL-FIND constant STRTOD-FN
-s" strfromd" SYMBOL-FIND constant STRFROM-FN
-s" fegetround" SYMBOL-FIND constant GETROUND-FN
-s" fesetround" SYMBOL-FIND constant SETROUND-FN
+
+: GLOBAL-SYMBOL-FIND ( ptr u8 n -- n )
+   CSTRING 0 swap DLSYM dup 0= if E-NATIVE throw then ;
+
+
+TRUSTED: DLCLOSE-CALL ( -- n )
+   ARGS REG-LENS 1 DLCLOSE-FN @ ffi-call-bounded ;
+
+
+TRUSTED: FREE-CALL ( -- )
+   ARGS REG-LENS 1 FREE-FN @ ffi-call-bounded drop ;
+
+
+: FREE-C-LOCALE ( -- )
+   C-LOCALE @ 0= if exit then
+   RESET C-LOCALE @ 0 VALUE! FREE-CALL
+   0 C-LOCALE ! ;
+
+
+: LIBRARY-CLOSE ( -- )
+   LIBRARY @ 0= if exit then
+   RESET LIBRARY @ 0 VALUE!
+   DLCLOSE-CALL 0<> if E-NATIVE throw then
+   0 LIBRARY ! ;
+
+
+: CLEAR-NATIVE ( -- )
+   0 C-LOCALE ! 0 LIBRARY !
+   0 FREE-FN ! 0 NEWLOCALE-FN ! 0 USELOCALE-FN !
+   0 STRTOD-FN ! 0 STRFROM-FN ! 0 GETROUND-FN ! 0 SETROUND-FN !
+   0 DLCLOSE-FN ! 0 INITIALIZED ! 0 REGISTERED ! ;
+
+
+: CLEANUP-NATIVE ( -- )
+   0 INITIALIZED !
+   FREE-C-LOCALE
+   LIBRARY-CLOSE
+   CLEAR-NATIVE ;
+
+
+: REGISTER-CLEANUP ( -- )
+   REGISTERED @ 0= if
+      [: CLEANUP-NATIVE ;] IMAGE-LIFECYCLE:REGISTER
+      1 REGISTERED !
+   then ;
 
 \ Exact native C ABI effects; no application-specific foreign policy.
-TRUSTED: NEWLOCALE-CALL ( -- n ) ARGS REG-LENS 3 NEWLOCALE-FN ffi-call-bounded ;
+TRUSTED: NEWLOCALE-CALL ( -- n ) ARGS REG-LENS 3 NEWLOCALE-FN @ ffi-call-bounded ;
 : NEW-LOCALE ( -- n )
    s" C" CSTRING {: name:ptr :}
    RESET 2 0 VALUE! name 1 READABLE! 0 2 VALUE! NEWLOCALE-CALL ;
-NEW-LOCALE constant C-LOCALE
-: CHECK-LOCALE ( -- ) C-LOCALE 0= if E-NATIVE throw then ;
-CHECK-LOCALE
 
-TRUSTED: USELOCALE-CALL ( -- n ) ARGS REG-LENS 1 USELOCALE-FN ffi-call-bounded ;
+TRUSTED: USELOCALE-CALL ( -- n ) ARGS REG-LENS 1 USELOCALE-FN @ ffi-call-bounded ;
 : USE-LOCALE ( n -- n ) RESET 0 VALUE! USELOCALE-CALL ;
-TRUSTED: GETROUND-CALL ( -- n ) ARGS REG-LENS 0 GETROUND-FN ffi-call-bounded ;
+TRUSTED: GETROUND-CALL ( -- n ) ARGS REG-LENS 0 GETROUND-FN @ ffi-call-bounded ;
 : GET-ROUND ( -- n ) RESET GETROUND-CALL ;
-TRUSTED: SETROUND-CALL ( -- n ) ARGS REG-LENS 1 SETROUND-FN ffi-call-bounded ;
+TRUSTED: SETROUND-CALL ( -- n ) ARGS REG-LENS 1 SETROUND-FN @ ffi-call-bounded ;
 : SET-ROUND ( n -- n ) RESET 0 VALUE! SETROUND-CALL ;
 
+
+: INITIALIZE ( -- )
+   INITIALIZED @ 0<> if exit then
+   REGISTER-CLEANUP
+   DLCLOSE-FN @ 0= if s" dlclose" GLOBAL-SYMBOL-FIND DLCLOSE-FN ! then
+   LIBRARY @ 0= if LIBRARY-OPEN then
+   s" freelocale" SYMBOL-FIND FREE-FN !
+   s" newlocale" SYMBOL-FIND NEWLOCALE-FN !
+   s" uselocale" SYMBOL-FIND USELOCALE-FN !
+   s" strtod_l" SYMBOL-FIND STRTOD-FN !
+   s" strfromd" SYMBOL-FIND STRFROM-FN !
+   s" fegetround" SYMBOL-FIND GETROUND-FN !
+   s" fesetround" SYMBOL-FIND SETROUND-FN !
+   C-LOCALE @ 0= if
+      NEW-LOCALE dup 0= if drop E-NATIVE throw then C-LOCALE !
+   then
+   1 INITIALIZED ! ;
+
+
+: NATIVE-READY? ( -- bool ) [: INITIALIZE ;] catch 0= ;
+
 TRUSTED: STRTOD-CALL ( -- r )
-   ARGS FLOATS STACK REG-LENS STACK-LENS 0 STRTOD-FN ffi-call-abi-r-bounded ;
+   ARGS FLOATS STACK REG-LENS STACK-LENS 0 STRTOD-FN @ ffi-call-abi-r-bounded ;
 : C-PARSE ( ptr u8 -- r )
-   RESET 0 READABLE! 0 1 VALUE! C-LOCALE 2 VALUE! STRTOD-CALL ;
+   RESET 0 READABLE! 0 1 VALUE! C-LOCALE @ 2 VALUE! STRTOD-CALL ;
 
 TRUSTED: STRFROM-CALL ( -- n )
-   ARGS FLOATS STACK REG-LENS STACK-LENS 0 STRFROM-FN ffi-call-abi-bounded ;
+   ARGS FLOATS STACK REG-LENS STACK-LENS 0 STRFROM-FN @ ffi-call-abi-bounded ;
 : C-FORMAT ( r ptr u8 ptr u8 -- n ) {: value:r out:ptr format:ptr :}
    RESET out NATIVE-BYTES 0 WRITABLE! NATIVE-BYTES 1 VALUE!
    format 2 READABLE! value 0 FLOAT! STRFROM-CALL ;
@@ -126,6 +199,7 @@ public
    code 1 = if F64--TEXT-FAULT:MALFORMED RESULT:ERR exit then
    code 2 = if F64--TEXT-FAULT:TRAILING RESULT:ERR exit then
    len MAGNITUDE-MASK 1- > if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
+   NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
    len 1+ 8 max MEM-ALLOC-BYTES {: work:ptr size:n :}
    text work len BYTE-COPY 0 work len + c!
    work size PARSE-WORK ;
@@ -259,7 +333,7 @@ private
 : FORMAT-SCOPED ( n ptr u8 -- n ptr u8 ) {: bits:n work:ptr :}
    GET-ROUND {: prior-round:n :}
    prior-round 0 < if E-NATIVE throw then
-   C-LOCALE USE-LOCALE {: prior-locale:n :}
+   C-LOCALE @ USE-LOCALE {: prior-locale:n :}
    prior-locale 0= if E-NATIVE throw then
    0 SET-ROUND 0 <> if prior-locale USE-LOCALE drop E-NATIVE throw then
    bits work [: FORMAT-WORK ;] catch >r 2drop r> {: code:n :}
@@ -272,6 +346,7 @@ public
 : FORMAT ( r ptr u8 n -- result<n,fault> ) {: value:r out:ptr capacity:n :}
    value FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
+   NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
    WORK-BYTES MEM-ALLOC-BYTES {: work:ptr size:n :}
    value IEEE754:F64>BITS work [: FORMAT-SCOPED ;] catch >r 2drop r> {: code:n :}
    code 0 <> if work size FREE-WORK F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then

@@ -1,8 +1,9 @@
 \ zip-state.f - checked archive identities and owned storage.
 \ Copies returned by NAME$/READ, and copied replacement inputs, remain owned by
-\ the archive until successful COMMIT or CLOSE. COMMIT failure leaves it live.
+\ the archive until COMMIT, CLOSE, or image preparation. Failed COMMIT stays live.
 \ Handles are inspectable identities, validated on every operation, not pointers.
-require lib/zip-ffi.f
+require lib/ffi-abi.f
+require lib/zip-types.f
 require lib/memory.f
 
 package ZIP
@@ -11,6 +12,7 @@ using MEM
 
 $7FFFFFFFFFFFFFFF constant MAX-SIZE
 32 constant NODE-CELLS
+$40 constant STAT-BYTES
 $10 constant READONLY-FLAG
 $4 constant STAT-SIZE-VALID
 \ LP64 zip_stat_t begins with valid, name, index, size (eight bytes each).
@@ -91,10 +93,6 @@ variable SERIAL
    dup UNREGISTER
    dup ENTRIES @ FREE-ENTRIES
    dup BUFFERS @ FREE-BUFFERS NODE-FREE ;
-
-: DISCARD-NODE ( ptr n -- )
-   dup OBJECT @ dup NULL? if drop else C-DISCARD then
-   FORGET-ARCHIVE ;
 
 : BUFFER-ALLOC ( ptr n n -- ptr u8 ) {: archive:ptr len:n :}
    len SIZE-CHECK NODE-ALLOC {: node:ptr :}

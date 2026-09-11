@@ -1,5 +1,5 @@
 \ zip-raw.f - byte-preserving ZIP framing; libzip only decompresses members.
-require lib/zip-state.f
+require lib/zip-ffi.f
 require lib/fs.f
 require lib/fs-mutate.f
 
