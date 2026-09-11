@@ -43,23 +43,6 @@ public
 
 ;package
 
-\ ---- the fixture built to fool the tool --------------------------------------
-\ A counted loop that returns nothing. Its exit block has nothing to do - no
-\ result to store, no frame to release - so the last instruction of the recorded
-\ body is the LOOP'S BACK EDGE, an unconditional branch, and the trailing return
-\ stands alone after it. That is the shape a predicate reading only the opcode
-\ calls a tail branch.
-\
-\ The ordinary definition below goes through the sole production compiler, so
-\ the case asserts the emitted shape it actually produces.
-
-create SINK 8 cells allot
-
-: SINK-AT ( -- ptr n )
-   SINK ;
-
-;package
-
 package NTP-TEST
 
 using NTAILPROBE
@@ -89,17 +72,7 @@ public
    s" NTP-FIXTURE:CALLS-THEN" TRAILER-RET? TTRUE
    s" NTP-FIXTURE:LOOPY" TRAILER-RET? TTRUE
 
-   \ THE FIXTURE BUILT TO FOOL THIS TOOL IS NO LONGER THE SHAPE THAT FOOLS IT, AND
-   \ SAYING SO IS THE POINT OF ASSERTING THE PRECONDITION. The emitter's collapse
-   \ (src/compiler/native/emit.f, ORDER-BLOCKS) branches past any block that emits
-   \ nothing before its terminator, and a counted loop's latch is exactly such a
-   \ block - so the conditional at the bottom of the body now names the header
-   \ itself and the loop's back edge is a `b.cc`. No row of any corpus ends its
-   \ recorded body on an unconditional branch any more; that was measured across
-   \ all 54 compiled rows, not assumed. So this case asserts what is now true
-   \ instead of a hazard that cannot be built, and the hazard itself is carried by
-   \ dot habu-hand-built-fixture-a6a4efe7, which assembles the shape by hand
-   \ rather than waiting for a code generator to emit one again.
+   \ The counted loop ends on a conditional back edge within its own body.
    s" the loop row no longer ends its body on an unconditional branch" T-LABEL
    s" NTP-FIXTURE:LOOPY" LAST-BODY NBR:B? TFALSE
    s" NTP-FIXTURE:LOOPY" LAST-BODY NBR:COND? TTRUE
@@ -114,8 +87,9 @@ public
    s" NTP-FIXTURE:LOOPY" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:TAILED" TAIL-BRANCH? TTRUE
 
-   s" and the one that does has no trailing return and makes no call" T-LABEL
-   s" NTP-FIXTURE:TAILED" TRAILER-RET? TFALSE
+   \ Bytes after this complete tail routine belong to the next definition.
+   \ TRAILER-RET? can see EMPTY's return there, so it cannot prove ownership.
+   s" the tail routine consists of one branch and makes no call" T-LABEL
    s" NTP-FIXTURE:TAILED" CALLS 0 T=
    s" NTP-FIXTURE:TAILED" INSNS 1 T=
 

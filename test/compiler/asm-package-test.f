@@ -51,7 +51,6 @@ variable AP-A   variable AP-U
 : AP-EVAL ( ptr u8 n -- n )  AP-U ! AP-A !  [: AP-GO ;] catch ;
 
 70   constant E-REJECT      \ E-UNDEFINED, or a body the checker refuses
-94   constant E-AMBIGUOUS   \ the tail resolves in more than one used package
 
 \ The unconditional branch with a zero displacement: what the assembler's ENC-B
 \ answers, and nothing a byte appender could produce.
@@ -74,7 +73,7 @@ $14000000 constant B-ZERO
    \ checker refuses it as a genuine ambiguity rather than picking one. This is
    \ what proves the two cases above were not both answered by one word.
    s" using A64ASM using COLLIDER : APT-BOTH ( n -- ) ENC-B ; ;using ;using"
-      AP-EVAL E-AMBIGUOUS T=
+      AP-EVAL E-USING-AMBIGUOUS T=
    \ Qualified names always work and never collide, in one body, in either order.
    s" : APT-QUAL ( n n -- n ) A64ASM:ENC-B swap COLLIDER:ENC-B ;" AP-EVAL 0 T= ;
 
