@@ -147,7 +147,7 @@ variable TRUST-SRC-U
 : MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
    CC BB IR-BUILD:MODULE-KEY MODEL-ROWS HIR-WORD:PICK-CELLS HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   CC BB p r HIR-WORD:REGISTER-WORDS
+   CC BB p r TAPE HIR-WORD:REGISTER-TAPE-WORDS
    p r ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------

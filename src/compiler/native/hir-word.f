@@ -323,6 +323,18 @@ public
 
 private
 
+\ Negative means the complete vocabulary. Filtered registration keeps symbols
+\ already present after folding the recorded names, including schema symbols.
+variable SYMBOL-LIMIT
+-1 SYMBOL-LIMIT !
+
+: ALL-SYMBOLS ( -- ) -1 SYMBOL-LIMIT ! ;
+
+: SELECTED-SYMBOL? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+   SYMBOL-LIMIT @ 0 < if true exit then
+   c b id KEY-SYM IR-ID:SYMBOL-LOCAL SYMBOL-LIMIT @ < ;
+
 \ This door states its key rather than computing it: reading a spelling back
 \ needs the byte pool and this is handed only the rows. A row written here under
 \ an unfolded spelling is unreachable, and fails closed as unmodeled.
@@ -523,6 +535,7 @@ create FIX-NAME FIX-NAME-CAP allot
 : BDECLARE-PLAIN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id m:HIR:meaning :}
+   c b id SELECTED-SYMBOL? 0= if exit then
    c r  c b id BKEY-CK  m PLAIN-ROW ;
 
 \ A package may bind the same spelling to another word. Only the engine's
@@ -536,24 +549,28 @@ create FIX-NAME FIX-NAME-CAP allot
 : BDECLARE-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode :}
+   c b id SELECTED-SYMBOL? 0= if exit then
    c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  o OP-ROW ;
 
 : BDECLARE-CONST-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode v:n :}
+   c b id SELECTED-SYMBOL? 0= if exit then
    c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  o v CONST-OP-ROW ;
 
 : BDECLARE-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:ctrl -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:ctrl :}
+   c b id SELECTED-SYMBOL? 0= if exit then
    c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  k CONTROL-ROW ;
 
 : BDECLARE-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:rmove n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:rmove cells:n :}
+   c b id SELECTED-SYMBOL? 0= if exit then
    c b id INTRINSIC-BOUND? 0= if exit then
    c r  c b id BKEY-CK  k cells RSTACK-ROW ;
 
@@ -702,6 +719,7 @@ create STG-PICK PICK-MAX cells allot
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
    STG-TAKE
+   c b id SELECTED-SYMBOL? 0= if exit then
    c b id INTRINSIC-BOUND? 0= if exit then
    c p r  c b id BKEY-CK  RENAME-ROW ;
 
@@ -1191,12 +1209,12 @@ private
    c b r c b s" 2r>" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FROM-R  2 BDECLARE-RSTACK
    c b r c b s" 2r@" IR-BUILD:INTERN-SYMBOL HIR-RMOVE:FETCH-R 2 BDECLARE-RSTACK ;
 
-public
+private
 
 \ A `create`d data word and a called word are NOT here: which of those a program
 \ has is a fact about the program, declared by its own caller.
 \ Declare the whole straight-line source vocabulary into one word model: the
-: REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+: REGISTER-ALL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b r DEF-ARITH
    c b r DEF-COMPARE
@@ -1219,6 +1237,29 @@ public
    c b p r DEF-ROT
    c b p r DEF-2DROP
    c b r DEF-RSTACK ;
+
+: FOLD-TAPE-NAMES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   v NTAPE:TOKENS 0 ?do
+      v i NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ if
+         c b v key i NTAPE:SPELL@ KEY-SYM drop
+      then
+   loop ;
+
+public
+
+: REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   ALL-SYMBOLS REGISTER-ALL ;
+
+\ Model names already interned by this compilation unit. Unused vocabulary
+\ rows need neither scoped dictionary lookup nor arena construction.
+: REGISTER-TAPE-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      v:IR-ARENA:view :}
+   c b v FOLD-TAPE-NAMES
+   b IR-BUILD:SYMBOLS SYMBOL-LIMIT !
+   c b p r [: REGISTER-ALL ;] [: ALL-SYMBOLS ;] finally ;
 
 private
 get-current prot-wid-add
