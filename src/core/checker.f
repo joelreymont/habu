@@ -4025,6 +4025,7 @@ variable SYM-STR-CAP-V   SYM-STR-INIT SYM-STR-CAP-V !
 0 constant SYM-GLOBAL
 1 constant SYM-PRIVATE
 2 constant SYM-PUBLIC
+-1 constant SYM-RETIRED
 
 0 constant SYM-PKG-A-CELL
 1 constant SYM-PKG-U-CELL
@@ -4099,6 +4100,7 @@ PERSISTED-PTR-VARIABLE SYMS-P     SYMS-BOOT SYMS-P !
 PERSISTED-PTR-VARIABLE SYM-STR-P  SYM-STR-BOOT SYM-STR-P !
 variable SYM-N
 variable SYM-STR-U
+variable SYM-PRIM-END
 variable SYM-I
 variable SYM-DST
 variable SYM-ID
@@ -5266,17 +5268,6 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
    UEND !
    UTERM! ;
 
-\ Paired with the native builder's dictionary reset: keep primitive effects and
-\ retire user definitions through the same indexed truncation seam as rollback.
-\ This bounded state transition is callable only from an engine trust boundary.
-: CHECKER-RESET-SOURCE ( -- )
-   USIGS-USER-OFF @ USIGS-RESTORE-END
-   0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL, compiler owner retained
-REG-PROTECT
-package CHECKER-REG
-' CHECKER-RESET-SOURCE DECLARATIONS RESET-OFF + xt!
-;package
-
 \ USIG-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what USX answers — the
 \ newest user record for a symbol, offset+1, by walking every record the way the
 \ store is ordered. test/checker-scan-index-suite.f differentials the indexed
@@ -6246,6 +6237,7 @@ variable PE-QDOUT
 \ the new boundary states that, instead of leaving prim-region heads behind.
 : PTABLE-END ( -- )
    UEND @ USIGS-USER-OFF !
+   SYM-N @ SYM-PRIM-END !
    0 USX-GEN !
    UTERM! ;
 
@@ -8867,6 +8859,7 @@ REG-EXT-AOT-DEFAULTS
    s" die" CTL-DEAD NORET-ADD ;
 
 NORET-AXIOMS
+NORET-END @ constant NORET-PRIM-END
 
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
@@ -13297,6 +13290,29 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGUSE @ CHECKER-USE-OWNED-N !
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
+
+\ Source replay discards the dictionary tail but retains the compiler's type
+\ graph. Its constructor/defer/control metadata names symbol IDs, so retired
+\ source names must not donate those IDs to the replacement definitions.
+: SYMS-RETIRE-SOURCE ( -- )
+   SYM-N @ SYM-PRIM-END @ ?do
+      SYM-RETIRED i SYM-ROW SYM.VIS !
+   loop
+   0 HIDX-VALID ! ;
+
+\ Primitive symbols survive, but user overrides of their effects, control
+\ flags, defer flags and capture signatures belong to the discarded source.
+: CHECKER-RESET-SOURCE ( -- )
+   USIGS-USER-OFF @ USIGS-RESTORE-END
+   NORET-PRIM-END NORET-RESTORE-END
+   0 DFER-END ! DFER-TERM
+   CHECKER-ASIG-RESET
+   SYMS-RETIRE-SOURCE
+   0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL
+REG-PROTECT
+package CHECKER-REG
+' CHECKER-RESET-SOURCE DECLARATIONS RESET-OFF + xt!
+;package
 
 : RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
    RBF-ENSURE

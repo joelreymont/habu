@@ -1,13 +1,43 @@
 \ Standalone process: retain the compiler while replacing its dictionary prefix.
 : PF-OLD-SIGNATURE ( -- bool ) 0 0= ;
 
+\ The retained checker must not resolve this discarded package shadow while
+\ compiling the replacement package's reference to the global primitive.
+package PF-SHADOW
+public
+: CELLS ( n -- n n ) dup ;
+;package
+
 package PREFIX-DECLARATIONS-TEST
 private
+
+\ Exercise overrides on primitive IDs, which survive source-name retirement.
+TRUSTED: OVERRIDE-PRIMITIVES ( -- )
+   CHECKER-ASIG-ARM
+   s" dup" s" a -- a a" TRUST
+   s" throw" CHECKER-UNDEFINE
+   s" dup" CHECKER-DEFER
+   CHECKER-ASIG-N 0= if s" signature override was not recorded" 76 die then
+   s" throw" CTL-DEAD? if s" control override was not recorded" 76 die then
+   s" PF-PRIM-DEFER ( -- ) [: dup ;] is dup" CHECK-CANDIDATE! -1 <> if
+      s" primitive defer override was not recorded" 76 die
+   then ;
+
+TRUSTED: CHECK-PRIMITIVES ( -- )
+   CHECKER-ASIG-N 0<> if s" source signature override survived reset" 76 die then
+   s" throw" CTL-DEAD? 0= if s" primitive throw lost its control effect" 76 die then
+   s" PF-PRIM-DEFER ( -- ) [: dup ;] is dup" CHECK-CANDIDATE! 0<> if
+      s" primitive inherited a source defer flag" 76 die
+   then ;
 
 TRUSTED: RESET ( -- )
    0 set-check
    0 set-top-check
+   OVERRIDE-PRIMITIVES
    CHECKER-RESET-SOURCE
+   CHECK-PRIMITIVES
+   CHECKER-RESET-SOURCE
+   CHECK-PRIMITIVES
    IMK-NDICT0 @ 1 - seed-ndict! ;
 
 : LOAD-CORE ( -- )
@@ -17,6 +47,9 @@ TRUSTED: RESET ( -- )
 
 TRUSTED: REPLAY ( -- n )
    s" variable V 40 constant BASE create ROW 2 cells allot : PF-OLD-SIGNATURE ( -- n ) 2 ; : PF-STORE ( -- ) BASE V ! PF-OLD-SIGNATURE V +! V @ ROW ! ; : PF-READ ( -- n ) ROW @ ; : PF-IMM? ( ptr u8 n -- n ) tok-imm? ; PF-STORE PF-READ" evaluate ;
+
+TRUSTED: REPLAY-SHADOW ( -- n )
+   s" package PF-SHADOW public : OFFSET ( n -- n ) cells ; ;package 3 PF-SHADOW:OFFSET" evaluate ;
 
 TRUSTED: REPLAY-DEFER ( -- n )
    s" defer PF-DEFER ( -- n ) : PF-SET ( -- ) [: 42 ;] is PF-DEFER ; PF-SET PF-DEFER" evaluate ;
@@ -55,6 +88,7 @@ TRUSTED: REPLAY-TARGET ( -- n )
    then
    RESET
    LOAD-CORE
+   REPLAY-SHADOW 24 <> if s" discarded package shadow hid primitive cells" 76 die then
    REPLAY 42 <> if s" native prefix declarations failed" 76 die then
    REPLAY-DEFER 42 <> if s" pending defer metadata missed the compiler" 76 die then
    s" PF-BAD-DEFER ( -- ) [: 0 0= ;] is PF-DEFER" CHECK-CANDIDATE! 0<> if
