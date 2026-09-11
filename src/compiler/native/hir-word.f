@@ -207,8 +207,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 
 \ ---- cell access -------------------------------------------------------------
 : LCELL@ ( IR-ARENA:arena n -- n )
-   {: a:IR-ARENA:arena k:n :}
-   a a k IR-ARENA:NTH IR-ARENA:PEEK ;
+   IR-ARENA:READ ;
 
 \ ---- headers and shape -------------------------------------------------------
 : RSHAPE-CK ( n -- )

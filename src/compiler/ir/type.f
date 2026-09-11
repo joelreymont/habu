@@ -363,12 +363,10 @@ private
 
 \ ---- cell access -------------------------------------------------------------
 : LCELL@ ( IR-ARENA:arena n -- n )
-   {: a:IR-ARENA:arena k:n :}
-   a a k IR-ARENA:NTH IR-ARENA:PEEK ;
+   IR-ARENA:READ ;
 
 : FCELL@ ( IR-ARENA:view n -- n )
-   {: v:IR-ARENA:view k:n :}
-   v v k IR-ARENA:FROZEN-NTH IR-ARENA:AT ;
+   IR-ARENA:FREAD ;
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )

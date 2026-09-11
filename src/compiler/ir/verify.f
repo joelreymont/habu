@@ -813,8 +813,7 @@ variable MOVED                       \ did any set change this round
    IR-ARENA:PUSH drop ;
 
 : LCELL@ ( IR-ARENA:arena n -- n )
-   {: a:IR-ARENA:arena k:n :}
-   a a k IR-ARENA:NTH IR-ARENA:PEEK ;
+   IR-ARENA:READ ;
 
 \ The pool cells the publication below writes: one per predecessor edge, over
 \ every block. The ceiling check and the reservation both count them here, so
@@ -911,8 +910,7 @@ private
 
 \ ---- frozen readers -----------------------------------------------------------
 : FCELL@ ( IR-ARENA:view n -- n )
-   {: v:IR-ARENA:view k:n :}
-   v v k IR-ARENA:FROZEN-NTH IR-ARENA:AT ;
+   IR-ARENA:FREAD ;
 
 : FPSHAPE-CK ( n -- )
    HDR-CELLS < if E-IR-VERIFY-STATE throw then ;

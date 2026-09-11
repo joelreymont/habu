@@ -136,7 +136,6 @@ variable TRUST-SRC-U
    IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b HIR:REGISTER
    b ;
 
 \ Read off the TAPE: the elaborator adds a row per name the body writes that the
