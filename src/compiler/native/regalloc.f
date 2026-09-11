@@ -1227,8 +1227,13 @@ DYNAMIC-BUFFER CL-WANT-BUF n
 : MB-FORBID ( IR-ID:ir-fun-id n -- n )
    {: f:IR-ID:ir-fun-id r:n :}
    r FILE-AT {: fl:n :}
+   \ No member can cross outside this class's hull. Gaps inside it still need
+   \ MB-CROSSES?, because coalesced members need not cover every position.
+   F-LO @ r cells CL-LO + @ 1+ max {: first:n :}
+   MB-AT @ r cells CL-HI + @ min {: limit:n :}
+   first limit >= if 0 exit then
    0
-   MB-AT @ F-LO @ ?do
+   limit first ?do
       i POS-OP? if
          f i POS-OP CALL-AT? if
             r i MB-CROSSES? if
