@@ -46,7 +46,11 @@ file.
   named `i`, `count`, or `dup` must resolve to that local inside its scope.
   Prefer clearer names (`idx`, `len`, `value`) when they improve readability,
   but do not encode global dictionary collision workarounds into local names.
-  Local-first is measured on the engine, not assumed: `{: i:n :} 0 3 0 ?do i +
+  A local deliberately shadows a visible word of the same name; the cost is
+  that a body which also needs that word must give the local another name,
+  because lookup is case-insensitive and the checker reports the damage at the
+  next word, not at the local: `{: address ... :} state i ADDRESS` bound the
+  local. Local-first is measured on the engine, not assumed: `{: i:n :} 0 3 0 ?do i +
   loop` answers three turns of the LOCAL, and the same body without the
   declaration answers the loop index. It holds from the group's closer onwards
   and byte for byte — mentions before the closer, and mentions in another case,
@@ -243,7 +247,9 @@ public
   the working-directory fallback keep that fallback root for their dependencies.
   The process working directory never changes. `SOURCE-ROOT:WITH`
   `( ptr u8 n [ -- ] -- )` supplies an explicit scoped root and restores the
-  caller's root when the quotation returns or throws. Nested loads keep each
+  caller's root when the quotation returns or throws. Test fixtures resolve
+  against `SOURCE-ROOT:CURRENT$ ( -- ptr u8 n )`, the current source root,
+  never against a script argument. Nested loads keep each
   parent's source bytes alive until it returns and release the buffers on normal
   return or throw; the loader and evaluator impose no fixed nesting count.
   Discovery, checker dependency collection, and content closures retain the same
@@ -662,7 +668,9 @@ address arithmetic at the public boundary.
   load-list lines approach the interpreter input buffer; source truncation can
   surface later as unrelated top-level words.
 - **Keep script argv explicit.** `hb tool.f arg...` preserves single-script
-  compatibility and treats `arg...` as script arguments. Use `--load` only when
+  compatibility and treats `arg...` as script arguments. Read them only after
+  `SCRIPT-ARGC`: `SCRIPT-ARGV$` for an argument that was not given faults today
+  instead of throwing (dotted). Use `--load` only when
   the command line contains more than one source file.
 
 ## Stack comments
@@ -688,7 +696,15 @@ address arithmetic at the public boundary.
   names still belong in locals (`{: got want :}`), helper names, or nearby prose.
 - **Use real types, not reflexive `n`.** A string is `ptr u8 n`; a dereferenced
   cell address is `ptr a`; a pointer-valued cell should preserve its nested
-  pointer role. `n` is only for genuine scalar cells.
+  pointer role. `n` is only for genuine scalar cells. A pointer effect stays
+  `ptr a` only while the body keeps the pointee parametric; a body that reads
+  the cell as a number declares `ptr n`.
+- **Compare an enum value with its family's derived `EQ`**, never a raw `=`.
+- **Reserved names cover constants and variants.** `MATCH` cannot name a
+  package constant, even inside `package ... public`, and an enum `VARIANT`
+  whose name is a reserved word or already taken fails with "name is reserved
+  or already taken" (`VARIANT x`); pick variant names that collide with nothing
+  visible, as `horizontal` and `vertical` do.
 - **Same-cell values need nominal roles.** Values with the same runtime
   representation but different contracts (`reg`, `label`, `va`, `symidx`, `fd`,
   `count`, `asm`, `img`, `snap`) get distinct type tokens and negative checker
@@ -760,7 +776,10 @@ address arithmetic at the public boundary.
   the current definition's declared signature; keep the raw declared signature
   stable after `CHECK!` so rendered/mutated terms cannot corrupt the scheme.
 - **Quotations are xts, not closures.** `[: ... ;]` may not read surrounding
-  locals until real closures exist. The checker and compiler must reject local
+  locals until real closures exist. On the JIT tier a `{:` group inside
+  `[: ;]` is refused, and until nested quotations land only one `[:` may be
+  open at a time; a body that needs locals inside a quotation becomes a named
+  private word. The checker and compiler must reject local
   references while a quotation is open.
 - **Checked `catch` is quotation catch.** Consume success outputs inside the
   quotation (`[: WORD drop ;] catch`) and preserve the exact throw code as data at
@@ -944,6 +963,10 @@ No prescribed response template or task record is required.
 
 ## Verification before committing
 
+- **A timing counts only on a quiet box.** The 1-minute load must be under 4
+  with no competing engine; a measurement script refuses when the box never
+  quiets rather than degrading the number.
+
 Run focused tests for changed behavior. For compiler, runtime or broad library
 changes, rebuild the native engine and run the full native suite from the repo:
 
@@ -990,14 +1013,21 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
   existing contents. `index NAME` returns `ptr Type`; negative indices and
   indices beyond the allocated capacity reject. A smaller reserve keeps the
   allocation. Growth can move it, so retain indices and reacquire pointers
-  afterwards. `NAME-RELEASE` frees the mapping and can be called again safely.
+  afterwards; a growing reserve copies the whole old capacity, so stale cells
+  beyond the old count survive, and the accessor bounds by capacity, not by the
+  requested count: a column whose zero is a semantic default is cleared over
+  the newly exposed range by the reserving word. `NAME-RELEASE` frees the
+  mapping and can be called again safely.
   These mappings are transient: release them before saving an image; use
   dictionary storage for values that the image must retain.
 - **Large native tool bundles are supported.** Do not split tools merely to dodge
   DATA pressure. `create ... allot` is for dictionary-sized static storage; large
   runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or
   `MEM-ALLOC-64K-BUFFERS`) so composition scales with OS-backed mappings rather
-  than `DATA-SIZE`. Tools may keep as many 64K buffers and live spans as their
+  than `DATA-SIZE`. A cell-typed reader such as `lib/json-read.f` `INIT`
+  accepts `MEM-ALLOC-BYTES` memory and refuses a `create ... allot` block
+  (`E-STORAGE`); whether `create` should align its data space is open in dot
+  habu-decide-whether-create-18781792. Tools may keep as many 64K buffers and live spans as their
   workload needs, either as one contiguous `MEM-ALLOC-64K-BUFFERS` span or as
   many independent spans. The only accepted limits are cell-size overflow checks
   and an explicit OS allocation failure. If ordinary composition still hits
@@ -1125,8 +1155,14 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
   after `s"`, so generated-source builders that need a literal space should emit
   byte `32` or use an existing `*-SP` byte helper.
 - **"is it a defined word?"** → `find-name ( c-addr u -- nt|0 )`, not `find`.
-- **`catch` preserves the pre-call args** under the throw code: `nv ' WORD catch`
-  on a throw leaves `( nv code )` — `nip`/adjust in tests accordingly.
+- **`catch` restores the stack depth, not the values.** On a throw
+  `nv ' WORD catch` leaves `( x code )` where `x` is whatever the callee left in
+  that cell: if `WORD`'s locals consumed `nv` and later pushes overwrote the
+  cell, `x` is garbage. A caller keeps every handle it must release in its own
+  locals and reads only the code after `catch`; `state doc 0 [: WORK ;] catch
+  CLOSE` closed a garbage handle after `WORK` threw.
+- **A `SORT:SORT!` comparator receives raw cells.** Nominal pointer views held
+  in the index are re-cast on both arguments inside the comparator.
 - **Emitted primitive leafness follows emitted control flow.** Use `FPRIM-L`
   only when the complete primitive body emits no `BL` or `BLR`; otherwise use
   `FPRIM` so its frame preserves the caller return address in `x30`.
