@@ -38,8 +38,9 @@
 \ the shape of a definition, the parser mode of a token, the declared arity, and
 \ the two ends of the value vector. Every other refusal here is another
 \ authority's and keeps that authority's name: a body word the dialect cannot
-\ compile is E-HIR-UNMODELED, a token kind the subset does not model is
-\ E-HIR-KIND, and a tape of another module is E-NTAPE-OWNER.
+\ compile is E-HIR-UNMODELED, and a tape of another module is E-NTAPE-OWNER.
+\ Character literals, live else-after-exit and local shadowing have production
+\ coverage in native-literals.f, native-exit.f and native-locals-scope.f.
 
 require lib/errors.f
 require lib/test.f
@@ -666,17 +667,17 @@ private
    BND [: FOREIGN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- refusals a lexer would never produce ------------------------------------
-\ A CHARACTER literal in the body: the token kind the straight-line subset still
-\ does not model, refused as such rather than resolved as a name. It took over
-\ this role from the string literal, which the subset now compiles.
-: CHARTOK-BODY ( IR-CTX:ctx -- )
+\ A character literal becomes an integer constant carrying its character code.
+: CHARTOK-BODY ( IR-CTX:ctx -- n )
    {: c:IR-CTX:ctx :}
    s" BAD x" TEXT!
    c RIG
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena tp:IR-ARENA:arena :}
    c 0 3 NTAPE-MODE:INTERPRETING NAME,
    c 4 1 NTAPE-MODE:COMPILING $78 CHAR,
-   c b  tp NTAPE:SEAL  p r 1 1 NELAB:COLON drop ;
+   c b  tp NTAPE:SEAL  p r 0 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m m m f F-BLK s" hir.const" 0 F-OPC-AT 0 F-ATTR ;
 
 \ And the same tape with a STRING literal in it, which the subset does compile:
 \ the body leaves an address and a length, so the definition declares two
@@ -692,7 +693,7 @@ private
    c 4 1 NTAPE-MODE:COMPILING STR,
    c b  tp NTAPE:SEAL  p r 0 2 NELAB:COLON drop ;
 
-: CHARTOK ( -- )
+: CHARTOK ( -- n )
    BND [: CHARTOK-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : STRTOK ( -- )
@@ -774,8 +775,8 @@ private
    [: UNDEC ;] E-HIR-UNMODELED TTHROWSQ ;
 
 : CHARTOK-CASE ( -- )
-   s" a character literal in the body is refused as a kind the subset has no model for" T-LABEL
-   [: CHARTOK ;] E-HIR-KIND TTHROWSQ ;
+   s" a character literal compiles to its integer value" T-LABEL
+   CHARTOK $78 T= ;
 
 : STRTOK-CASE ( -- )
    s" a string literal in the body is a kind the subset does model" T-LABEL
@@ -931,8 +932,8 @@ private
 : K-THROWS ( -- )
    [: KTOK ;] E-HIR-UNMODELED TTHROWSQ ;
 
-: CHAR-THROWS ( -- )
-   [: CHARTOK ;] E-HIR-KIND TTHROWSQ ;
+: LATE-THROWS ( -- )
+   [: LATE ;] E-HIR-UNMODELED TTHROWSQ ;
 
 : FIT-THROWS ( -- )
    [: FITNAME ;] E-HIR-UNMODELED TTHROWSQ ;
@@ -961,22 +962,14 @@ private
    NELAB:REFUSED$ s" WIDGET" T$=
    NELAB:REFUSED-ROW 3 T= ;
 
-: REFUSED-KIND-CASE ( -- )
-   s" a token kind the subset does not model is answered as that kind, not as a name" T-LABEL
-   CHAR-THROWS
-   NTAPE-KIND:CHAR-LITERAL NELAB:REFUSED-KIND? TTRUE
-   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE
-   NELAB:REFUSED$ s" x" T$=
-   NELAB:REFUSED-ROW 1 T= ;
-
 : REFUSED-STALE-CASE ( -- )
    s" a later refusal never answers an earlier refusal's word" T-LABEL
    BND [: drop K-THROWS ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED$ s" K5" T$=
-   BND [: drop CHAR-THROWS ;] IR-CTX:WITH-CONTEXT
+   BND [: drop LATE-THROWS ;] IR-CTX:WITH-CONTEXT
    NELAB:REFUSED$ s" K5" T$<>
-   NELAB:REFUSED$ s" x" T$=
-   NTAPE-KIND:NAME NELAB:REFUSED-KIND? TFALSE ;
+   NELAB:REFUSED$ s" WIDGET" T$=
+   NELAB:REFUSED-ROW 3 T= ;
 
 : REFUSED-CLEARED-CASE ( -- )
    s" and a definition that compiles leaves no word for a caller to read" T-LABEL
@@ -1627,19 +1620,6 @@ variable LK-N
 : ELOPSIDED ( -- )
    BND [: ELOPSIDED-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ `exit` ends the block it stands in, so an `else` after one would close a block
-\ that is not open. It is refused by name; dot habu-let-exit-stand-d74f14ec
-\ carries the capability.
-: EXITELSE-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" EXITELSE dup if drop 1 exit else 2 then" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON drop ;
-
-: EXITELSE ( -- )
-   BND [: EXITELSE-BODY ;] IR-CTX:WITH-CONTEXT ;
-
 \ ---- what a plain `do` still refuses -----------------------------------------
 \ `do` takes the same pair `?do` takes, so it refuses the same two things about
 \ it, and the four cases below are what says the new opener kept them.
@@ -1785,10 +1765,6 @@ variable LK-N
 : ELOPSIDED-CASE ( -- )
    s" two arms that leave different depths are refused" T-LABEL
    [: ELOPSIDED ;] E-NELAB-JOIN TTHROWSQ ;
-
-: EXITELSE-CASE ( -- )
-   s" an else after an exit is refused" T-LABEL
-   [: EXITELSE ;] E-NELAB-CTRL TTHROWSQ ;
 
 \ ---- a typed locals frame ----------------------------------------------------
 \ The corpus's LERP, written as the tape carries it: `{:`, one `name:type` token
@@ -2096,17 +2072,7 @@ variable LK-N
 : QOPEN-NAME ( -- )
    BND [: QOPEN-NAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-: TWICE-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" TWICE {: a:n a:n :} a" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 2 1 NELAB:COLON drop ;
-
-: TWICE ( -- )
-   BND [: TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-\ ---- a group inside a control structure, and the refusal that is left ---------
+\ ---- a group inside a control structure --------------------------------------
 \ A GROUP INSIDE A BRANCH IS AN ORDINARY GROUP NOW, which is what dot
 \ habu-scope-a-locals-2faa3d7a landed: its names come into scope at its own
 \ closer and go out again at the structure's, which is the checker's own rule
@@ -2117,13 +2083,6 @@ variable LK-N
 \ stages nothing at all - no operation for the declaration, none for the closer
 \ and none for a mention.
 \
-\ THE TWO FIXTURES ARE ONE BYTE APART, and that is the point of the pair. Both
-\ open a group inside the arm of an `if` while a group at the top of the body is
-\ still in scope; the first names it `b` and the second names it `a`, which is
-\ the name already in scope. So a reader keyed on "a group closed while a
-\ structure was open" refuses both and reds the first, a reader keyed on "the
-\ spelling appears twice in the body" refuses both as well, and only a reader of
-\ what is in SCOPE where the declaration stands answers the two differently.
 \ WHAT THE MODULE HAS TO SHOW, AND IT IS NOT "it compiled". Four blocks - the
 \ entry, the `if`'s false stub, the arm and the join - and three operations in the
 \ entry block, which are the literal, the comparison and the two-way branch:
@@ -2149,23 +2108,6 @@ variable LK-N
    m jn F-ARGS
    m entry s" hir.gt" 0 F-OPC-AT {: gt:IR-ID:ir-op-id :}
    m gt 0 F-IN  m entry 0 F-ARG SAME? ;
-
-\ The same body with the arm's group naming what the outer group already named.
-\ The two authorities that decide what a mention of a live duplicate MEANS do not
-\ agree - src/core/checker.f LOC-REF? counts down from #LOC and takes the
-\ innermost, src/habu/habu2.f EMIT-LOC-FIND counts up from zero and takes the
-\ outermost - so this chain refuses the declaration that creates the ambiguity
-\ rather than compiling against one of the two readings. Dot
-\ habu-reconcile-the-locals-ca3fdb26 carries the reconciliation.
-: NESTED-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" NESTG {: a:n :} a a 0 > if {: a:n :} a 3 * then" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON drop ;
-
-: NESTED ( -- )
-   BND [: NESTED-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : NESTED-GROUP-CASE ( -- )
    s" a group opened inside an open group is refused" T-LABEL
@@ -2194,14 +2136,6 @@ variable LK-N
 : QOPEN-NAME-CASE ( -- )
    s" and a group that writes the opener is refused as the quotation's" T-LABEL
    [: QOPEN-NAME ;] E-NELAB-QUOT TTHROWSQ ;
-
-: TWICE-CASE ( -- )
-   s" the same local declared twice is refused" T-LABEL
-   [: TWICE ;] E-NELAB-LOCAL TTHROWSQ ;
-
-: NESTED-CASE ( -- )
-   s" a group naming what is already in scope is refused, and only that" T-LABEL
-   [: NESTED ;] E-NELAB-LOCAL TTHROWSQ ;
 
 : BRANCHG-CASE ( -- )
    s" a locals group inside a control structure stages nothing and compiles" T-LABEL
@@ -2689,10 +2623,9 @@ create TW-BUF TW-CAP allot
 \ every case below reads the module back - how many functions it holds, what each
 \ one's recorded signature says, and what the `hir.quot` in the first one names.
 \
-\ THE SUBJECT WORDS ARE DEFINED THROUGH THE ENGINE FIRST, because the arity comes
-\ from the CHECKER's accepted effect for the name and there is no other place it
-\ could come from. The tape is then lexed from the same body, so what is
-\ elaborated is the definition the checker certified.
+\ The subject is checked immediately before its tape is elaborated. Calls use
+\ the checker's facts for each source token, including quotation operand arity;
+\ registering only the callee leaves facts from a different definition.
 : QDEF ( ptr u8 n ptr u8 n -- )
    {: na nu:n sa su:n :}
    na nu 0 search-wl 0<> if exit then
@@ -2706,6 +2639,11 @@ create TW-BUF TW-CAP allot
 
 : QP-USE! ( -- )
    s" QP-USE" s" : QP-USE ( n -- n ) [: 1 + ;] swap QP-TAKE ;" QDEF ;
+
+: QP-TWICE! ( -- )
+   s" QTWICE"
+   s" : QTWICE ( -- n ) [: 1 + ;] dup 2 QP-TAKE drop 3 QP-TAKE ;"
+   QDEF ;
 
 : QP-TAKE2! ( -- )
    s" QP-TAKE2" s" : QP-TAKE2 ( [ n n -- n ] n -- n ) swap drop ;" QDEF ;
@@ -2832,7 +2770,7 @@ create TW-BUF TW-CAP allot
 \ states the same arity the first one did.
 : QUOT-TWICE-BODY ( IR-CTX:ctx -- n n n n n )
    {: c:IR-CTX:ctx :}
-   QP-TAKE!
+   QP-TAKE! QP-TWICE!
    s" QTWICE [: 1 + ;] dup 2 QP-TAKE drop 3 QP-TAKE" TEXT!
    c 1 SEALED-ROOM
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
@@ -3147,8 +3085,6 @@ public
    BND [: drop OPEN-GROUP-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop QCLOSE-NAME-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop QOPEN-NAME-CASE ;] IR-CTX:WITH-CONTEXT
-   BND [: drop TWICE-CASE ;] IR-CTX:WITH-CONTEXT
-   BND [: drop NESTED-CASE ;] IR-CTX:WITH-CONTEXT
    BRANCHG-CASE
    COUNTDOWN-CASE
    SUMTO-CASE
@@ -3176,7 +3112,6 @@ public
    BND [: drop STRAYE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop TWOE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop ELOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
-   BND [: drop EXITELSE-CASE ;] IR-CTX:WITH-CONTEXT
    SQUARE-CASE
    INC-CASE
    BUMP-CASE
@@ -3204,7 +3139,6 @@ public
    BND [: drop REFUSED-WORD-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop REFUSED-OTHER-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop REFUSED-LATE-CASE ;] IR-CTX:WITH-CONTEXT
-   BND [: drop REFUSED-KIND-CASE ;] IR-CTX:WITH-CONTEXT
    REFUSED-STALE-CASE
    REFUSED-CLEARED-CASE
    REFUSED-NONE-CASE
