@@ -8490,6 +8490,7 @@ variable REG-PERSIST-DELTA
 
 \ Registry persistence copies bytes through the byte-pool view of each slot.
 : REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
+   from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
 
 : REG-PERSIST-BUF ( ptr ptr u8 ptr u8 n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
