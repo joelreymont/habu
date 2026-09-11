@@ -389,6 +389,82 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    s" a frozen view is dead after its context ends" T-LABEL
    [: ST-VIEW ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ ---- resolution order: a consumed handle and a dead owner beat the state -----
+\ LIVE-SLOT and FROZEN-SLOT are twins and both ask their questions in one
+\ order: consumed handle, then dead owner, then state. The order is not
+\ cosmetic. Every case below leaves a registry row whose STATE would answer
+\ first and answer WRONG - a torn-down arena reported as merely frozen, a slot
+\ that now belongs to somebody else reported as a state mismatch - and each of
+\ those answers tells the caller its handle still names something.
+\
+\ FROZEN-SLOT's dead-owner half is not constructible from the public API: a
+\ published slot is only reachable through a view and a view's row is always
+\ ST-FROZEN, so the state test would pass either way and could not be caught
+\ jumping the queue. The consumed-handle case is what pins that twin's order.
+: OD-FROZEN-BODY ( IR-CTX:ctx -- IR-ARENA:arena )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a 1 IR-ARENA:PUSH drop
+   a IR-ARENA:FREEZE drop
+   a ;
+
+\ A frozen arena whose context then tore down. The row is still ST-FROZEN, so a
+\ state test that ran first would call unmapped storage merely frozen.
+: OD-FROZEN-DEAD ( -- )
+   BND [: OD-FROZEN-BODY ;] IR-CTX:WITH-CONTEXT
+   IR-ARENA:USED drop ;
+
+\ The same handle in the same state inside a LIVE context, where frozen IS the
+\ right answer. Without this half the case above would pass on a resolver that
+\ had simply lost the state check.
+: OD-FROZEN-LIVE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   a IR-ARENA:FREEZE drop
+   a IR-ARENA:USED drop ;
+
+: OD-FROZEN-LIVE ( -- )
+   BND [: OD-FROZEN-LIVE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ An aborted builder handle whose slot is taken again and frozen: the row is
+\ ST-FROZEN under a generation this handle never carried, so a state test that
+\ ran first would answer frozen for somebody else's arena.
+: OD-REUSED-FROZEN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: old:IR-ARENA:arena :}
+   old IR-ARENA:ABORT
+   c 8 IR-ARENA:NEW {: fresh:IR-ARENA:arena :}
+   fresh IR-ARENA:FREEZE drop
+   old IR-ARENA:USED drop ;
+
+: OD-REUSED-FROZEN ( -- )
+   BND [: OD-REUSED-FROZEN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A retired view whose slot is taken again by a live builder: the row is
+\ ST-LIVE, which is the one state FROZEN-SLOT rejects, so a state test that ran
+\ first would answer E-IR-ARENA-STATE instead of naming the consumed handle.
+: OD-REUSED-LIVE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a 1 IR-ARENA:PUSH drop
+   a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
+   v IR-ARENA:RETIRE
+   c 8 IR-ARENA:NEW drop
+   v IR-ARENA:SIZE drop ;
+
+: OD-REUSED-LIVE ( -- )
+   BND [: OD-REUSED-LIVE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: OD-CASES ( -- )
+   s" a frozen arena whose context died is stale, not frozen" T-LABEL
+   [: OD-FROZEN-DEAD ;] E-IR-ARENA-STALE TTHROWSQ
+   s" the same frozen arena in a live context is still frozen" T-LABEL
+   [: OD-FROZEN-LIVE ;] E-IR-ARENA-FROZEN TTHROWSQ
+   s" an aborted handle whose slot was reused and frozen is stale" T-LABEL
+   [: OD-REUSED-FROZEN ;] E-IR-ARENA-STALE TTHROWSQ
+   s" a retired view whose slot was reused live is stale, not a state" T-LABEL
+   [: OD-REUSED-LIVE ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 \ ---- ordinal reads share bounds and handle lifetime -------------------------
 : READ-REFUSES ( IR-ARENA:arena n n -- )
    {: a:IR-ARENA:arena k:n expected:n :}
@@ -525,6 +601,7 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    FZ-CASE
    FZ-REJECT-CASES
    ST-CASES
+   OD-CASES
    READ-CASE ;
 
 public

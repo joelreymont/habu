@@ -103,9 +103,6 @@ HANDLES-CLEAR
 create BASES DEPTH-MAX cells allot
 create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
-: HANDLE@ ( n -- n )
-   cells HANDLES + @ ;
-
 : HANDLE! ( n n -- )
    cells HANDLES + ! ;
 
@@ -163,9 +160,14 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 : PACK-HANDLE ( n n -- n )
    swap SLOT-BITS lshift or ;
 
+\ A handle carries its own registry slot in its low bits and the row holds the
+\ complete handle, so a lookup is one indexed load and one compare. The load is
+\ spelled here rather than called: SERIAL-LIVE? below runs it once per IR arena
+\ resolution - millions of times in one compilation - and a call frame around
+\ three instructions was most of what the probe cost.
 : FIND-SLOT ( n -- n )
    dup 0= if drop -1 exit then
-   dup SLOT-MASK and tuck HANDLE@ = if else drop -1 then ;
+   dup SLOT-MASK and tuck cells HANDLES + @ = if else drop -1 then ;
 
 : RESOLVE ( IR-CTX:ctx -- ptr u8 )
    CTX>N FIND-SLOT
@@ -384,8 +386,15 @@ public
 \ still must observe owner teardown fail-closed before touching context-owned
 \ storage. A boolean probe mints no handle and exposes no pointer, so it adds
 \ no forging or access power beyond what LIVE? already publishes.
+\
+\ LIVENESS IS THE REGISTRY COMPARE. The serial a child stored is a whole handle,
+\ and it is live exactly while the row it names still holds it, so this answers
+\ without building a slot number for FIND-SLOT to hand back and throw away. Zero
+\ is still tested first and is still not live: it masks to slot 0, and a retired
+\ row holds zero, so the bare compare would call an empty row 0 a live context.
 : SERIAL-LIVE? ( n -- bool )
-   FIND-SLOT 0 < 0= ;
+   dup 0= if drop 0 0 <> exit then
+   dup SLOT-MASK and cells HANDLES + @ = ;
 
 \ ---- bound target and policy -------------------------------------------------
 : BINDING@ ( IR-CTX:ctx -- CBIND:binding )

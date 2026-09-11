@@ -94,11 +94,12 @@ create ACAPS SLOT-MAX cells allot
 create ACEILS SLOT-MAX cells allot
 create ASTATES SLOT-MAX cells allot
 
-: AHANDLE@ ( n -- n )
-   cells AHANDLES + @ ;
-
+\ Registry rows are plain indexed loads. The hot ones - the stored handle, the
+\ owner serial, the state and the cell count - are spelled at each reader below
+\ instead of being called, because a public read runs all four and a call frame
+\ around a shift, an add and a load was most of what they cost.
 : AGEN@ ( n -- n )
-   AHANDLE@ SLOT-BITS rshift ;
+   cells AHANDLES + @ SLOT-BITS rshift ;
 
 : AGEN! ( n n -- ) {: g:n slot:n :}
    g 0= if 0 else g SLOT-BITS lshift slot or then
@@ -169,32 +170,62 @@ SLOTS-CLEAR
 
 : FIND-A ( n -- n )
    dup 0= if drop -1 exit then
-   dup SLOT-MASK and tuck AHANDLE@ = if else drop -1 then ;
+   dup SLOT-MASK and tuck cells AHANDLES + @ = if else drop -1 then ;
 
-\ Resolve a handle to its registry slot, fail closed on both a consumed
-\ handle and a dead owner: a slot whose context tore down is retired on touch,
-\ before its dangling data pointer can be read.
-: RESOLVE ( n -- n )
-   FIND-A
-   dup 0 < if E-IR-ARENA-STALE throw then
-   dup AOWNER@ IR-CTX:SERIAL-LIVE? 0= if
-      0 over AGEN! E-IR-ARENA-STALE throw
-   then ;
-
+\ Resolve a builder handle to its registry slot and fail closed on a consumed
+\ handle, a dead owner and a published arena - in ONE definition, not a chain.
+\ A handle names its own slot, the row holds the complete handle, and the three
+\ registry reads are indexed loads, so the whole resolution is straight-line
+\ code with one cross-package call for owner liveness. A slot whose context tore
+\ down is retired on touch, before its dangling data pointer can be read.
+\
+\ FROZEN-SLOT below is this word's twin for published views. THE TWO MUST KEEP
+\ THE SAME CHECKS IN THE SAME ORDER: consumed handle, then dead owner, then
+\ state. A state test that ran first would answer E-IR-ARENA-FROZEN for a handle
+\ whose context is gone, reading a retired row to do it.
 : LIVE-SLOT ( IR-ARENA:arena -- n )
-   ARENA>N RESOLVE
-   dup ASTATE@ ST-LIVE <> if E-IR-ARENA-FROZEN throw then ;
+   ARENA>N dup 0= if E-IR-ARENA-STALE throw then
+   dup SLOT-MASK and tuck cells AHANDLES + @ <>
+   if E-IR-ARENA-STALE throw then
+   dup cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
+      0 over AGEN! E-IR-ARENA-STALE throw
+   then
+   dup cells ASTATES + @ ST-LIVE <> if E-IR-ARENA-FROZEN throw then ;
 
+\ LIVE-SLOT's twin for a published view; see the order note there.
 : FROZEN-SLOT ( IR-ARENA:view -- n )
-   VIEW>N RESOLVE
-   dup ASTATE@ ST-FROZEN <> if E-IR-ARENA-STATE throw then ;
+   VIEW>N dup 0= if E-IR-ARENA-STALE throw then
+   dup SLOT-MASK and tuck cells AHANDLES + @ <>
+   if E-IR-ARENA-STALE throw then
+   dup cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
+      0 over AGEN! E-IR-ARENA-STALE throw
+   then
+   dup cells ASTATES + @ ST-FROZEN <> if E-IR-ARENA-STATE throw then ;
 
 \ ---- cell access -------------------------------------------------------------
-\ Cells are eight-byte little-endian slots in the current data span, read and
-\ written with the canonical CDIGEST slot words, like the context header.
+\ Cells are eight-byte little-endian slots in the current data span, written
+\ with the canonical CDIGEST slot words like the context header.
+\
+\ READING THEM IS A NATIVE CELL LOAD ON THIS HOST, AND THE ALIGNMENT IS BY
+\ CONSTRUCTION. Every span comes from IR-CTX:SCRATCH-TAKE, which returns
+\ `chunk CHUNK-HDR-BYTES + off +`: a chunk is either the header mapping plus
+\ HDR-BYTES (HDR-SLOTS whole slots) or a fresh map-anon page, CHUNK-HDR-BYTES is
+\ three cells, and the cursor only ever advances by ALIGN8 steps - so a span
+\ address is always a multiple of CDIGEST:SLOT-BYTES and so is every cell in it.
+\ That leaves only the host: a canonical slot IS a native cell exactly on an
+\ eight-byte little-endian machine. NATIVE-CELLS? asks CDIGEST itself rather
+\ than re-deriving the answer - it writes one canonical slot and checks whether
+\ the host's own cell load reads it back - so CDIGEST stays the authority, and
+\ anywhere it says no, the canonical slot words do the reading.
+here CELL 1- and CELL swap - CELL 1- and allot
+create NATIVE-PROBE CDIGEST:SLOT-BYTES allot
+$0123456789ABCDEF NATIVE-PROBE 0 CDIGEST:SLOT!
+NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
+
 : CELL-AT ( n n -- n )
-   {: slot:n l:n :}
-   slot ADATA-FIELD @ l CDIGEST:SLOT@ ;
+   swap cells ADATAS + 0 ptr-field @ swap
+   NATIVE-CELLS? if CDIGEST:SLOT-BYTES * + CELL-VIEW @ exit then
+   CDIGEST:SLOT@ ;
 
 \ Validate a raw packed index against one resolved slot: minted by this arena,
 \ ordinal inside the readable count.
@@ -207,9 +238,6 @@ SLOTS-CLEAR
 : ORDINAL-CHECK ( n n -- )
    {: slot:n k:n :}
    k 0 < k slot ACOUNT@ >= or if E-IR-ARENA-BOUND throw then ;
-
-: READ-SLOT ( n n -- n )
-   2dup ORDINAL-CHECK CELL-AT ;
 
 : NTH-RAW ( n n -- IR-ARENA:cell-id )
    {: slot:n k:n :}
@@ -429,9 +457,15 @@ public
    c slot slot ACOUNT@ k + GROW-TO ;
 
 \ ---- live readers ------------------------------------------------------------
-\ Equivalent to NTH followed by PEEK, resolving the live handle once.
+\ Equivalent to NTH followed by PEEK, resolving the live handle once. The
+\ resolution, the bound check and the cell load are one definition: a dialect
+\ row reader calls this once per FIELD, so every call frame between the handle
+\ and the cell is paid per field of per row of the whole IR.
 : READ ( IR-ARENA:arena n -- n )
-   swap LIVE-SLOT swap READ-SLOT ;
+   {: a:IR-ARENA:arena k:n :}
+   a LIVE-SLOT dup cells ACOUNTS + @
+   k swap >= k 0 < or if E-IR-ARENA-BOUND throw then
+   k CELL-AT ;
 
 : PEEK ( IR-ARENA:arena IR-ARENA:cell-id -- n )
    {: a:IR-ARENA:arena x:IR-ARENA:cell-id :}
@@ -440,7 +474,7 @@ public
    slot swap CELL-AT ;
 
 : USED ( IR-ARENA:arena -- n )
-   LIVE-SLOT ACOUNT@ ;
+   LIVE-SLOT cells ACOUNTS + @ ;
 
 \ Mint the nominal index of an existing ordinal - the one sanctioned raw-to-
 \ index crossing, validating bounds and stamping this arena's own generation.
@@ -499,9 +533,13 @@ public
    0 slot AGEN! ;
 
 \ ---- frozen readers ----------------------------------------------------------
-\ Equivalent to FROZEN-NTH followed by AT, resolving the frozen view once.
+\ Equivalent to FROZEN-NTH followed by AT, resolving the frozen view once, and
+\ flat for the same reason READ is.
 : FREAD ( IR-ARENA:view n -- n )
-   swap FROZEN-SLOT swap READ-SLOT ;
+   {: f:IR-ARENA:view k:n :}
+   f FROZEN-SLOT dup cells ACOUNTS + @
+   k swap >= k 0 < or if E-IR-ARENA-BOUND throw then
+   k CELL-AT ;
 
 : AT ( IR-ARENA:view IR-ARENA:cell-id -- n )
    {: f:IR-ARENA:view x:IR-ARENA:cell-id :}
@@ -510,7 +548,7 @@ public
    slot swap CELL-AT ;
 
 : SIZE ( IR-ARENA:view -- n )
-   FROZEN-SLOT ACOUNT@ ;
+   FROZEN-SLOT cells ACOUNTS + @ ;
 
 \ Identity comparison grants no read authority; readers still check liveness.
 : VIEW-SAME? ( IR-ARENA:view IR-ARENA:view -- bool )
