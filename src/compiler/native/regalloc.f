@@ -1181,8 +1181,8 @@ DYNAMIC-BUFFER CL-WANT-BUF n
 
 : MB-FRAMED? ( n n -- bool )
    {: r:n fl:n :}
-   r UF-FIND r =  r FILE-AT fl =  and
-   r CL-EVICTED?  and ;
+   r CL-EVICTED? 0= if false exit then
+   r UF-FIND r =  r FILE-AT fl =  and ;
 
 : MB-LOAD-N ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
@@ -1303,13 +1303,17 @@ DYNAMIC-BUFFER CL-WANT-BUF n
 : MB-PLACE-PINNED ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
    N-VALS @ 0 ?do
-      i UF-FIND i =  i cells CL-FIX + @ NOBODY <> and if f i pos MB-PLACE1 then
+      i cells CL-LO + @ pos = if
+         i UF-FIND i =  i cells CL-FIX + @ NOBODY <> and if f i pos MB-PLACE1 then
+      then
    loop ;
 
 : MB-PLACE-REST ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
    N-VALS @ 0 ?do
-      i UF-FIND i =  i cells CL-FIX + @ NOBODY = and if f i pos MB-PLACE1 then
+      i cells CL-LO + @ pos = if
+         i UF-FIND i =  i cells CL-FIX + @ NOBODY = and if f i pos MB-PLACE1 then
+      then
    loop ;
 
 \ A class whose last read is HERE still holds its register while this operation
