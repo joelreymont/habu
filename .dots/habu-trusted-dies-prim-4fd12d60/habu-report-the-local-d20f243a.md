@@ -1,9 +1,11 @@
 ---
 title: Report the local-name length limit accurately
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-11T16:07:57.885292+03:00"
+created-at: "\"2026-09-11T16:07:57.885292+03:00\""
+closed-at: "2026-09-11T19:13:11.185291+03:00"
+close-reason: landed on the root as e259542a by rowan after independent review (bound on the one LOC-REC writer, refusal before any byte is written, LOC-NAME-CAP derived from LOC-REC, both tiers consistent inside and outside evaluate, LOCALBAD precedence ahead of E-UNDEFINED, real-child tests that fail on the pre-fix engine); evidence in the dot body
 ---
 
 Owner: unassigned; reported by Rowan on BB20260911-125858.119-rowan-0ae4. `: T17 ( n -- n ) {: abcdefghijklmnopq:n :} abcdefghijklmnopq ;` reports E-UNDEFINED for abcdefghijklmnopq:n then ncomp cannot compile T17. Sixteen-byte spelling works; source LOC-NAME-W is16 and checker.f documents that internal limit, public docs/forth.md does not. Maki shortened its name; no Habu fix yet.
