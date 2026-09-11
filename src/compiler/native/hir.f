@@ -363,8 +363,34 @@ public
       E-HIR-OPCODE throw
    endcase ;
 
+private
+
+\ Each opcode keeps its last interned symbol. The symbol carries its module
+\ generation; a hit still validates the live builder and its owning context.
+OPCODES TYPED-BUFFER BIND-SYMBOL IR-ID:ir-symbol-id
+OPCODES TYPED-BUFFER BIND-SEEN bool
+
+: BIND-INIT ( -- )
+   OPCODES 0 ?do false i BIND-SEEN ! loop ;
+BIND-INIT
+
+public
+
 : BIND ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
-   NTH OPCODE ;
+   {: c:IR-CTX:ctx b:IR-BUILD:builder idx:n :}
+   idx NTH {: o:HIR:opcode :}
+   b IR-BUILD:MODULE@ {: owner:IR-ID:ir-module-id :}
+   idx BIND-SEEN @ if
+      idx BIND-SYMBOL @ {: prior:IR-ID:ir-symbol-id :}
+      prior IR-ID:SYMBOL-OWNER owner IR-ID:MODULE-SAME? if
+         c b prior IR-BUILD:SYMBOL-CK
+         prior exit
+      then
+   then
+   c b o OPCODE {: sym:IR-ID:ir-symbol-id :}
+   sym idx BIND-SYMBOL !
+   true idx BIND-SEEN !
+   sym ;
 
 \ The literal's value is the whole content of a constant.
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )

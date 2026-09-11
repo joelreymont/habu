@@ -1785,6 +1785,50 @@ private
    drop
    TARGET-REFUSE-CASES ;
 
+\ Cached bindings remain owned by their live builder, including on a hit.
+1 TYPED-BUFFER MEMO-CTX IR-CTX:ctx
+1 TYPED-BUFFER MEMO-BLD IR-BUILD:builder
+variable MEMO-IDX
+
+: MEMO-BIND ( -- )
+   0 MEMO-CTX @ 0 MEMO-BLD @ MEMO-IDX @ A64IR:BIND drop ;
+
+: MEMO-OTHER-CONTEXT ( IR-CTX:ctx -- )
+   0 MEMO-CTX !
+   [: MEMO-BIND ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
+: MEMO-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 0 MEMO-CTX ! 0 MEMO-IDX !
+   c MOD-NEW {: b:IR-BUILD:builder :}
+   b 0 MEMO-BLD !
+   c b 0 A64IR:BIND {: first:IR-ID:ir-symbol-id :}
+   c MOD-NEW {: other:IR-BUILD:builder :}
+   c other s" padding" IR-BUILD:INTERN-SYMBOL drop
+   c other 0 A64IR:BIND {: second:IR-ID:ir-symbol-id :}
+   first IR-ID:SYMBOL-OWNER second IR-ID:SYMBOL-OWNER
+      IR-ID:MODULE-SAME? TFALSE
+   c b 0 A64IR:BIND IR-ID:SYMBOL-LOCAL first IR-ID:SYMBOL-LOCAL T=
+   c b 0 A64IR:BIND IR-ID:SYMBOL-LOCAL first IR-ID:SYMBOL-LOCAL T=
+   BND [: MEMO-OTHER-CONTEXT ;] IR-CTX:WITH-CONTEXT
+   c 0 MEMO-CTX !
+   other IR-BUILD:ABORT
+   b IR-BUILD:ABORT
+   [: MEMO-BIND ;] E-IR-BUILD-ABORTED TTHROWSQ
+   -1 MEMO-IDX ! [: MEMO-BIND ;] E-A64IR-OPCODE TTHROWSQ
+   A64IR:OPCODES MEMO-IDX ! [: MEMO-BIND ;] E-A64IR-OPCODE TTHROWSQ
+   0 MEMO-IDX !
+   c MOD-NEW {: fresh:IR-BUILD:builder :}
+   fresh 0 MEMO-BLD !
+   c fresh 0 A64IR:BIND IR-ID:SYMBOL-OWNER
+      fresh IR-BUILD:MODULE@ IR-ID:MODULE-SAME? TTRUE
+   c fresh IR-BUILD:FREEZE drop
+   [: MEMO-BIND ;] E-IR-BUILD-FROZEN TTHROWSQ ;
+
+: MEMO-CASE ( -- )
+   BND [: MEMO-BODY ;] IR-CTX:WITH-CONTEXT
+   [: MEMO-BIND ;] E-IR-BUILD-STALE TTHROWSQ ;
+
 \ An unused opcode can be bound without registering a schema. The first
 \ use adds exactly one row; repeated use reads the same row.
 : LAZY-BODY ( IR-CTX:ctx -- )
@@ -1802,6 +1846,8 @@ private
    A64IR:OPCODES 0 ?do
       c b i A64IR:NTH A64IR:ENSURE-OP {: named:IR-ID:ir-symbol-id :}
       c b named IR-BUILD:SCHEMA-DEFINED? TTRUE
+      c b i A64IR:BIND IR-ID:SYMBOL-LOCAL named IR-ID:SYMBOL-LOCAL T=
+      c b i A64IR:BIND IR-ID:SYMBOL-LOCAL named IR-ID:SYMBOL-LOCAL T=
    loop
    b IR-BUILD:SCHEMAS A64IR:OPCODES T= ;
 
@@ -1822,6 +1868,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   MEMO-CASE
    LAZY-CASE
    OPCODE-ORDINAL-CASE
    BOUND-CASE
