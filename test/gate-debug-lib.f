@@ -87,6 +87,40 @@ variable GDB-LS
 : GDB-PROF-RUN ( -- )   \ run the accumulated GE-SRC through the candidate over stdin
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN ;
 
+\ --- dot habu-complete-queued-profiler-a5ce1ad4: the SIGALRM handler reads nothing
+\ from the interrupted context's live registers. A tick inside a foreign callee
+\ (libc's dlsym here; libzip's inflate for Tender) used to walk the callee's
+\ reuse of x20/x26/x27 and die SIGSEGV with x0 = SIGALRM; now such a sample is
+\ counted as "(foreign)". And the profiler's total and limit no longer share
+\ $1E0/$1E8 with GTOD-SCRATCH, so a clock query after prof-on cannot turn the
+\ next tick into an early dump + exit 99.
+: GDB-PROFILER-FOREIGN ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" require lib/ffi-abi.f" GE-SRC-LINE
+   s" create GDB-SYM 16 allot" GE-SRC-LINE
+   s" : GDB-SYM-LOOP ( n -- n ) {: reps:n :} 0 begin 0 GDB-SYM FFI:DLSYM drop 1+ dup reps >= until ;" GE-SRC-LINE
+   S\" s\" strlen\" GDB-SYM FFI:CSTR" GE-SRC-LINE
+   s" 100000 prof-on 3000000 GDB-SYM-LOOP . cr prof-report" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler foreign-context ticks" GE-EXPECT-OK
+   s" 3000000" s" profiler foreign loop completes" GE-EXPECT-OUT-HAS
+   s" (foreign)" s" profiler foreign bucket reported" GE-EXPECT-OUT-HAS
+   s" habu-crash" s" profiler foreign no-crash" GE-EXPECT-ERR-LACKS
+   s" PASS: profiler counts ticks inside foreign code as (foreign) instead of dying" type cr ;
+
+: GDB-PROFILER-CLOCK ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDB-BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
+   s" 100000 prof-on epoch-seconds drop GDB-BUSY prof-report" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler clock query" GE-EXPECT-OK
+   GT-OUT$ s" GDB-BUSY " STARTS-WITH? 0= if
+      s" profiler output after a clock query" GE-FAIL
+   then
+   s" PASS: profiler state survives a clock query" type cr ;
+
 : GDB-PROFILER-BAND ( -- )   \ counter band must hold >= DICT-CAP counters (bound dot)
    GE-HB-RESET
    GE-SRC-RESET
@@ -137,6 +171,8 @@ variable GDB-LS
    GDB-PROP
    GDB-PROFILER
    GDB-PROFILER-BAND
+   GDB-PROFILER-FOREIGN
+   GDB-PROFILER-CLOCK
    GDB-PROFILER-LIMIT1
    GDB-PROFILER-EXACT-ALL
    GDB-JITDUMP

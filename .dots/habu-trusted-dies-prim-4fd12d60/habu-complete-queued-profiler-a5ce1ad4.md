@@ -1,6 +1,6 @@
 ---
 title: Complete queued profiler and debugger fixes
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-10T18:03:13.402262+03:00"
@@ -14,3 +14,7 @@ Reduction update from Rowan13:15UTC: profiler crash occurs with counting XT wrap
 
 
 Update 2026-09-11 13:59 UTC: Rowan corrected the wrapper-only hypothesis: four long profiled runs include crashes at 47 s with wrapper and 60 s without wrapper, plus clean runs without wrapper. Intermittent SIGSEGV in SIGALRM handler, signal 0x0b and x0 0x0e, independent of wrapper. Do not describe the wrapper as the confirmed cause.
+
+Claim: agent=hazel workspace=.jj-ws/habu-complete-queued-profiler-a5ce1ad4
+
+Crash result 2026-09-11 (hazel, lane .jj-ws/habu-complete-queued-profiler-a5ce1ad4): reproduced deterministically without Tender: `100000 prof-on` then a loop of `FFI:DLSYM` calls dies within a second with sig 0x0b and x0 = 0x0e, pc in the engine text; the dump shows x20 = a libc stack address where the handler expected DATA. Root cause: prof.f EMIT-PROF read DATA (x20), DBASE (x26) and NDICT (x27) from the interrupted context's live registers; the optimizer never allocates them (ENGINE-GPR:MASK) so Habu code is safe, but a foreign callee (libc dlsym, libzip inflate, the XLSX case) reuses those callee-saved registers and a tick inside it walked garbage. Two more defects fixed on the way: PROF-TOT/PROF-LIM sat at $1E0/$1E8 inside GTOD-SCRATCH, so `epoch-seconds` after prof-on turned the next tick into an early dump and exit 99 (reproduced on the root engine); and the handler ran on the interrupted stack with no sigaltstack. Fix: the handler takes DATA from the fixed DATA-VA, the dictionary base from a band cell prof-on records, validates the context's x20 and x26 from the signal frame against those before walking (else a new "(foreign)" bucket), clamps the count to DICT-CAP, dumps only from a validated sample; the profiler's state cells live in their own band below the counters (layout.f PROF-STATE-BYTES, one-line change to PROF-CNT-BYTES); the handler runs on a 64 KiB alternate stack mapped once per process (NR-SIGALTSTACK added to both sys.f). Regressions in test/gate-debug-lib.f: GDB-PROFILER-FOREIGN (dlsym loop under prof-on completes, "(foreign)" reported) and GDB-PROFILER-CLOCK (a clock query after prof-on); both fail against the root binary, all profiler cases pass on the rebuilt engine (long names, band, limit 1, exact accounting at 1/2/5). docs/debugging.md gains the profiler section. The queued tooling asks (package-qualified names, caller chains, a stop command, breakpoint-target validation) remain open in this dot. layout.f is rowan-owned: the commit goes to rowan as a candidate.

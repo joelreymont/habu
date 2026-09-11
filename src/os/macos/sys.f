@@ -31,6 +31,7 @@ $49  constant NR-MUNMAP
 $5A  constant NR-DUP2
 $5C  constant NR-FCNTL
 $53  constant NR-SETITIMER
+$35  constant NR-SIGALTSTACK
 $74  constant NR-GETTIMEOFDAY
 $C5  constant NR-MMAP
 $E6  constant NR-POLL

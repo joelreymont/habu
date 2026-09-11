@@ -27,6 +27,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 24  constant NR-DUP2
 25  constant NR-FCNTL
 103 constant NR-SETITIMER
+132 constant NR-SIGALTSTACK
 169 constant NR-GETTIMEOFDAY
 222 constant NR-MMAP
 73  constant NR-POLL

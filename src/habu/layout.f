@@ -292,10 +292,14 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 170 = min
 \ Profiler counter band: one 64-bit sample counter per dictionary slot, reserved
 \ at the very top of the DATA region [DATA-SIZE - PROF-CNT-BYTES, DATA-SIZE).
 \ Sized from DICT-CAP so it always covers every slot BPROF-ON zeroes and EMIT-PROF
-\ indexes (NDICT never exceeds DICT-CAP); src/habu/prof.f derives PROF-CNT (the band
-\ base offset) as DATA-SIZE - PROF-CNT-BYTES. Grows in step with DICT-CAP with no
-\ magic byte count, so the band can never fall short of the slots it serves.
-DICT-CAP cells constant PROF-CNT-BYTES
+\ indexes (NDICT never exceeds DICT-CAP); src/habu/prof.f derives the band base
+\ offset as DATA-SIZE - PROF-CNT-BYTES. The band opens with PROF-STATE-BYTES of
+\ the profiler's own cells (sample total and limit, the two buckets, the
+\ dictionary base recorded by prof-on, its alternate stack, the dump count) and
+\ the counters follow. Grows in step with DICT-CAP with no magic byte count, so
+\ the band can never fall short of the slots it serves.
+64 constant PROF-STATE-BYTES
+DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ

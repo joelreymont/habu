@@ -458,3 +458,24 @@ simply be asserting a code the tree stopped producing.
   child fork-vs-exec by image path and argv (fork children keep the
   parent's argv). Start here for any "how many engines does this run actually
   start" question.
+
+## Sampling profiler
+
+`n prof-on` starts a 1 ms SIGALRM timer and counts each tick against the
+dictionary word whose code holds the interrupted pc; at `n` samples it prints
+one `name count` line per counted word and exits 99. `prof-report` prints the
+same table on demand. Two extra rows can appear: `(other)` for ticks in Habu
+code that belongs to no word (the main loop, engine helpers) and `(foreign)`
+for ticks whose context does not hold the engine's DATA and dictionary base
+registers, which is what a foreign callee reached through the FFI (libc,
+libzip, the CUDA driver) leaves behind. `(foreign)` is a lower bound on
+foreign time: a foreign leaf that keeps those two registers intact is walked
+like Habu code and lands in `(other)`. The sum of every row equals the sample
+total. When the `n`-th sample is foreign the dump waits for the next Habu
+sample, so a program that exits or stays blocked in a foreign call from that
+point on never dumps; call `prof-report` yourself in that case. Profiling a
+foreign call is safe: the handler never reads the interrupted registers and
+keeps its state in the band above the data heap, so a clock query during a
+tick changes nothing. The handler runs on an alternate stack registered for
+the thread that called `prof-on`; a tick delivered to a `lib/task.f` thread
+runs on that thread's own stack.

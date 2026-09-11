@@ -105,8 +105,8 @@ Cedar's workspaces `.jj-ws/cedar-*` are reference material; do not edit them.
 - `tools/xref-test.f:33` and `test/drec-shape-test.f:18-28` still declare
   `ptr a` after the hide.f migration; `test/gate-dictionary.f` dies
   `E-TRUST-UNRESOLVED` on `USIGS-RESTORE-END`.
-- The sampling profiler (`prof-on`) dies intermittently on long tier-1 loads
-  (SIGSEGV in the SIGALRM handler); dotted.
+- The sampling profiler's crash (SIGSEGV in the SIGALRM handler on ticks inside
+  foreign code) is fixed by the candidate on habu-complete-queued-profiler-a5ce1ad4.
 - A script reading an argument it was not given segfaults; dotted. The
   over-wide local name defect (unbounded copy into LOC-REC) is fixed on the
   root by e259542a (hazel); engine and checker now refuse it by name.
