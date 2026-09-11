@@ -1,6 +1,7 @@
 \ native-build.f - rebuild the complete native runtime in one AOT window.
 
 require lib/errors.f
+require src/core/prefix-boundary.f
 require lib/string.f
 require lib/memory.f
 require lib/fs.f
@@ -121,7 +122,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    0 set-check
    0 set-top-check
    RESET-CHECKER
-   IMK-NDICT0 @ 1 - seed-ndict!
+   CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
 : LOAD-TARGET ( ptr u8 -- ) {: source:ptr :}

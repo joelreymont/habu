@@ -1,14 +1,11 @@
 \ util.fs — shared in-subset helpers for the selfhost layer. Load FIRST (before
 \ walk.fs / checker.fs / vs.fs, which all use CORE-STR=).
 
-\ Prim-boundary dictionary watermark for the seal-time internal-word marking
-\ pass (src/core/internal-mark.f, dot habu-hb-crash-bare-c5be6634). util.f is
-\ the first prefix source file, so ndict here = the baked primitive record
-\ count; the pass walks [IMK-NDICT0, ndict). Defined FIRST so the refresh
-\ truncation (tools/build-fixpoint.f BF-STAGE2-HIDE-DEFS) can retire and
-\ replay it with the rest of the file.
+\ First source-prefix record and heap cell. Its dictionary index is resolved
+\ by CORE-PREFIX in the running engine: a captured ndict value would describe
+\ the build host, whose primitive/helper record count can differ from ours.
+\ Its storage address also marks the live heap boundary for snapshots.
 variable IMK-NDICT0
-ndict@ IMK-NDICT0 !
 
 variable SEQ
 

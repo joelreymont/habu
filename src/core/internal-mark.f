@@ -1,11 +1,13 @@
 \ internal-mark.f - hide unchecked engine entries and record call arity.
 \ Dictionary reads use XREF; private engine boundaries apply the flags and
 \ read checker registries before the runtime is sealed.
+require src/core/prefix-boundary.f
 
 package ENGINE-INTERNAL
 
 
 variable IMK-I
+variable IMK-FIRST
 
 \ compiled-word entry frame setup (= habu2.f C-CALL-PROLOGUE-INSTR): every
 \ colon body starts with it; create/variable/constant/does>-instance bodies
@@ -44,7 +46,7 @@ $D10043FF constant IMK-PROLOGUE
 : IMK-GLOBAL-COLON? ( n -- bool )
    dup IMK-WID 0 = IF IMK-COLON? ELSE drop 0 0= 0= THEN ;
 
-TRUSTED: FIRST-CORE ( -- n ) IMK-NDICT0 @ ;
+: FIRST-CORE ( -- n ) IMK-FIRST @ ;
 TRUSTED: KNOWN-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
 TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
@@ -62,7 +64,7 @@ TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
    i IMK-GLOBAL-COLON? 0= IF EXIT THEN
    i i IMK-MIN-IN IMK-MARK ;
 
-: IMK-WALK ( -- )            \ classify every record in [IMK-NDICT0, ndict)
+: IMK-WALK ( -- )            \ classify every source-prefix record
    FIRST-CORE IMK-I !
    BEGIN IMK-I @ ndict@ < WHILE
       IMK-I @ IMK-CLASSIFY
@@ -177,6 +179,7 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
    REPEAT ;
 
 : IMK-PASS ( -- )
+   CORE-PREFIX:FIRST-RECORD IMK-FIRST !
    IMK-WALK
    IMK-WALK-PACKAGES
    IMK-SEAL-REGISTRY

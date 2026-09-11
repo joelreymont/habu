@@ -1,6 +1,7 @@
 \ Standalone process: compile the checker source with the retained native checker.
+require src/core/prefix-boundary.f
 package CHECKER-PREFIX-TEST
-TRUSTED: RESET ( -- ) 0 set-check 0 set-top-check CHECKER-RESET-SOURCE IMK-NDICT0 @ 1 - seed-ndict! ;
+TRUSTED: RESET ( -- ) 0 set-check 0 set-top-check CHECKER-RESET-SOURCE CORE-PREFIX:FIRST-RECORD seed-ndict! ;
 : LOAD ( -- )
    s" src/core/util.f" included
    s" src/core/cell.f" included

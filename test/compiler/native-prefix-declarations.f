@@ -1,4 +1,5 @@
 \ Standalone process: retain the compiler while replacing its dictionary prefix.
+require src/core/prefix-boundary.f
 : PF-OLD-SIGNATURE ( -- bool ) 0 0= ;
 
 \ The retained checker must not resolve this discarded package shadow while
@@ -10,6 +11,31 @@ public
 
 package PREFIX-DECLARATIONS-TEST
 private
+
+variable PREFIX-END
+variable PROT-XT
+variable LAYOUT-XT
+
+: HELPER-XT ( ptr u8 n -- n )
+   OWNER-API-PRI-WID XREF-FIND-WL
+   dup XREF-FOUND? 0= if s" resident helper is missing" 76 die then
+   XREF-START ;
+
+: SAVE-BOUNDARY ( -- )
+   CORE-PREFIX:FIRST-RECORD PREFIX-END !
+   s" (PROT-SPAN)" HELPER-XT PROT-XT !
+   s" (LP2VEXEC)" HELPER-XT LAYOUT-XT ! ;
+
+: CHECK-BOUNDARY ( -- )
+   ndict@ PREFIX-END @ <> if s" reset kept the wrong dictionary prefix" 76 die then
+   s" (PROT-SPAN)" HELPER-XT PROT-XT @ <>
+   s" (LP2VEXEC)" HELPER-XT LAYOUT-XT @ <> or if
+      s" reset changed a resident helper" 76 die
+   then
+   s" IMK-NDICT0" 0 XREF-FIND-WL-INDEX -1 <>
+   s" SEQ" 0 XREF-FIND-WL-INDEX -1 <> or if
+      s" reset retained source-prefix records" 76 die
+   then ;
 
 \ Exercise overrides on primitive IDs, which survive source-name retirement.
 TRUSTED: OVERRIDE-PRIMITIVES ( -- )
@@ -31,6 +57,7 @@ TRUSTED: CHECK-PRIMITIVES ( -- )
    then ;
 
 TRUSTED: RESET ( -- )
+   SAVE-BOUNDARY
    0 set-check
    0 set-top-check
    OVERRIDE-PRIMITIVES
@@ -38,7 +65,8 @@ TRUSTED: RESET ( -- )
    CHECK-PRIMITIVES
    CHECKER-RESET-SOURCE
    CHECK-PRIMITIVES
-   IMK-NDICT0 @ 1 - seed-ndict! ;
+   CORE-PREFIX:FIRST-RECORD seed-ndict!
+   CHECK-BOUNDARY ;
 
 : LOAD-CORE ( -- )
    s" src/core/util.f" included
