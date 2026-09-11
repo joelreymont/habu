@@ -48,6 +48,7 @@ public
 NEWTYPE arena 0
 NEWTYPE view 0
 NEWTYPE cell-id 0
+NEWTYPE reader 0
 
 private
 
@@ -57,6 +58,8 @@ CAST: MINT-VIEW ( n -- IR-ARENA:view )
 CAST: VIEW>N ( IR-ARENA:view -- n )
 CAST: MINT-IDX ( n -- IR-ARENA:cell-id )
 CAST: IDX>N ( IR-ARENA:cell-id -- n )
+CAST: MINT-READER ( n -- IR-ARENA:reader )
+CAST: READER>N ( IR-ARENA:reader -- n )
 
 \ ---- capacities and packing --------------------------------------------------
 64 constant SLOT-MAX                \ live + frozen registry slots
@@ -69,6 +72,14 @@ $FFFFFFFF constant LOCAL-MAX         \ ordinal range inside one arena
 LOCAL-MAX constant CEIL-MAX          \ a ceiling may commit the full ordinal range
 1 constant ST-LIVE
 2 constant ST-FROZEN
+
+\ A reader token packs (generation, state, slot): the slot in the low bits like
+\ a handle, the state above it, the generation above that. The state is IN the
+\ token because a reader is opened against one state and must refuse the other
+\ with the error that state's handle would have given.
+2 constant STATE-BITS
+3 constant STATE-MASK
+SLOT-BITS STATE-BITS + constant RGEN-SHIFT
 
 \ An index packs (generation << 32 | ordinal), mirroring IR-ID PACK-N,
 \ so every minted value names the arena that minted it.
@@ -143,6 +154,24 @@ create ASTATES SLOT-MAX cells allot
       0 i AGEN!
    loop ;
 SLOTS-CLEAR
+
+\ Retire every row this serial owns, called by the owning context from its own
+\ teardown. SWEEP below does the same thing lazily, at the next creation, and
+\ that is late for a scoped reader: a reader resolves once and has no later
+\ probe, so between the context dying and somebody's next NEW its row would
+\ still read live over a mapping that is gone. Here the row is zeroed while the
+\ context is still tearing down, so the reader's next read is a dead generation.
+\ SWEEP stays as the backstop for any owner that dies without running teardown.
+: RETIRE-OWNED ( n -- ) {: serial:n :}
+   SLOT-MAX 0 ?do
+      i cells AHANDLES + @ 0<> if
+         i cells AOWNERS + @ serial = if 0 i AGEN! then
+      then
+   loop ;
+
+: INSTALL-RETIRE ( -- )
+   [: RETIRE-OWNED ;] IR-CTX:RETIRE-CHILDREN! ;
+INSTALL-RETIRE
 
 \ ---- generation serials ------------------------------------------------------
 : AGEN-NEXT-N ( n -- n )
@@ -557,6 +586,74 @@ public
 
 : FROZEN-NTH ( IR-ARENA:view n -- IR-ARENA:cell-id )
    swap FROZEN-SLOT swap NTH-RAW ;
+
+\ ---- scoped readers ----------------------------------------------------------
+\ A DIALECT ROW READER RESOLVES THE SAME VIEW ONCE PER FIELD. Reading one field
+\ costs a row lookup and a cell read, and both are whole resolutions, so walking
+\ a row of six fields resolves the same handle twelve times and asks the same
+\ four registry rows the same questions twelve times. A reader is that
+\ resolution done once and kept.
+\
+\ IT IS NOT A POINTER AND CANNOT BECOME ONE. The token carries the registry
+\ slot, the generation the row held when it was opened, and the state it was
+\ opened against - no address and no count. Every read fetches the data pointer
+\ and the count from the row, and refuses BEFORE touching either unless the
+\ row's generation and state still match the token. So a reader is exactly as
+\ stale-safe as the handle it came from: ABORT, RETIRE, a reused slot and the
+\ owning context's teardown all change the generation, and FREEZE changes the
+\ state, and each of those refuses with the error the handle would have given.
+\
+\ WHY REVALIDATION AND NOT A SCOPING QUOTATION. A quotation scope would bound
+\ the reader's lifetime syntactically and, under the single-task compilation
+\ discipline, would be sound. It would also force every caller that walks a row
+\ into a nested body, and the dialect readers that need this most read fields
+\ from SEVERAL arenas inside one expression - the shape a scope cannot hold.
+\ Revalidation costs two loads and two compares, which is less than the handle
+\ path pays for its owner probe alone; the chain of accessors was the expense,
+\ never the checking.
+: OPEN ( IR-ARENA:view -- IR-ARENA:reader )
+   FROZEN-SLOT
+   dup cells AHANDLES + @ SLOT-BITS rshift RGEN-SHIFT lshift
+   ST-FROZEN SLOT-BITS lshift or
+   or MINT-READER ;
+
+: OPEN-LIVE ( IR-ARENA:arena -- IR-ARENA:reader )
+   LIVE-SLOT
+   dup cells AHANDLES + @ SLOT-BITS rshift RGEN-SHIFT lshift
+   ST-LIVE SLOT-BITS lshift or
+   or MINT-READER ;
+
+\ Read one ordinal. Straight-line by construction: the generation, the state,
+\ the bound and the cell are four registry loads and no call, which is the whole
+\ point of having resolved once. RD-SIZE below repeats the two token checks
+\ rather than calling a shared one, for the same reason; THE TWO MUST KEEP THE
+\ SAME ORDER - generation before state, so a retired row never reports a state.
+: RD@ ( IR-ARENA:reader n -- n )
+   {: r:IR-ARENA:reader k:n :}
+   r READER>N dup SLOT-MASK and {: t:n slot:n :}
+   slot cells AHANDLES + @ SLOT-BITS rshift t RGEN-SHIFT rshift <>
+   if E-IR-ARENA-STALE throw then
+   t SLOT-BITS rshift STATE-MASK and {: want:n :}
+   slot cells ASTATES + @ want <> if
+      want ST-LIVE = if E-IR-ARENA-FROZEN throw then
+      E-IR-ARENA-STATE throw
+   then
+   k 0 < k slot cells ACOUNTS + @ >= or if E-IR-ARENA-BOUND throw then
+   slot cells ADATAS + 0 ptr-field @
+   NATIVE-CELLS? if k CDIGEST:SLOT-BYTES * + CELL-VIEW @ exit then
+   k CDIGEST:SLOT@ ;
+
+\ The readable count through the same token, checked the same way; see RD@.
+: RD-SIZE ( IR-ARENA:reader -- n )
+   READER>N dup SLOT-MASK and {: t:n slot:n :}
+   slot cells AHANDLES + @ SLOT-BITS rshift t RGEN-SHIFT rshift <>
+   if E-IR-ARENA-STALE throw then
+   t SLOT-BITS rshift STATE-MASK and {: want:n :}
+   slot cells ASTATES + @ want <> if
+      want ST-LIVE = if E-IR-ARENA-FROZEN throw then
+      E-IR-ARENA-STATE throw
+   then
+   slot cells ACOUNTS + @ ;
 
 public
 

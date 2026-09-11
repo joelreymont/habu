@@ -304,6 +304,49 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    loop
    drop ;
 
+\ ---- child registries --------------------------------------------------------
+\ A context owns storage that OTHER packages hand out under its serial: the IR
+\ arena registry keeps a row per arena whose owner cell is this context. Those
+\ registries are built ON this one and cannot be named from here, so teardown
+\ announces the dying serial and each owner retires its own rows.
+\
+\ WHY EAGERLY, WHEN A STALE PROBE ALREADY EXISTS. A child that revalidates its
+\ owner on every touch is safe without this and pays for the probe on every
+\ touch. A child that resolves ONCE and then reads many times - the arena's
+\ scoped reader - has no later touch to probe on, so the only thing that can
+\ tell it its storage is gone is its own registry row, and that row has to be
+\ retired while this context is dying rather than at somebody's next allocation.
+\ Retirement therefore runs BEFORE the chunks are unmapped: there is no instant
+\ at which a row still looks live over storage that is already gone.
+\
+\ ONE VECTOR, INSTALLED ONCE. There is one child registry today. A second one
+\ installing over the first would silently stop the first being retired, so a
+\ second install is a named refusal and not a replacement: the next package that
+\ needs this has to generalise it on purpose.
+defer RETIRE-CHILDREN ( n -- )
+
+variable CHILDREN-SET
+0 CHILDREN-SET !
+
+: KEEP-CHILDREN ( n -- )
+   drop ;
+
+: CHILDREN-RESET ( -- )
+   [: KEEP-CHILDREN ;] is RETIRE-CHILDREN ;
+CHILDREN-RESET
+
+public
+
+\ Install the child registry's teardown retirement. Takes the retirement itself,
+\ so the installing package keeps its own word private and nothing outside it
+\ can retire another context's rows by naming a serial.
+: RETIRE-CHILDREN! ( [ n -- ] -- )
+   CHILDREN-SET @ 0<> if E-IR-CTX-STATE throw then
+   1 CHILDREN-SET !
+   is RETIRE-CHILDREN ;
+
+private
+
 \ ---- context entry and teardown ----------------------------------------------
 : CEIL-OK ( n -- )
    dup 1 < over SERIAL-CEILING > or if E-IR-CTX-CEILING throw then
@@ -333,6 +376,7 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
 \ ---- leaving, on both paths ---------------------------------------------------
 : CTX-RETIRE ( n -- ) {: at:n :}
+   at cells HANDLES + @ RETIRE-CHILDREN
    at BASE-FIELD @ {: base:ptr :}
    base CHUNK-FIELD @ base HDR-BYTES + CHUNKS-FREE {: rc:n :}
    0 at HANDLE!

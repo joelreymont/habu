@@ -512,6 +512,133 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    s" ordinal reads preserve bounds, frozen state, and stale handle refusal" T-LABEL
    BND [: READ-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ ---- scoped readers ----------------------------------------------------------
+\ A reader is one resolution kept, so what has to be proven is that keeping it
+\ grants nothing: it still refuses every way the handle it came from refuses,
+\ and it still sees the storage move under it because it holds no pointer.
+: RD-REFUSES ( IR-ARENA:reader n n -- )
+   {: r:IR-ARENA:reader k:n expected:n :}
+   r k [: 2dup IR-ARENA:RD@ drop ;] catch
+   {: held:IR-ARENA:reader ordinal:n actual:n :}
+   actual expected T= ;
+
+: RD-SIZE-REFUSES ( IR-ARENA:reader n -- )
+   {: r:IR-ARENA:reader expected:n :}
+   r [: dup IR-ARENA:RD-SIZE drop ;] catch
+   {: held:IR-ARENA:reader actual:n :}
+   actual expected T= ;
+
+: RD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 64 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   8 0 ?do c a i 100 * IR-ARENA:PUSH drop loop
+   a IR-ARENA:OPEN-LIVE {: lr:IR-ARENA:reader :}
+   lr IR-ARENA:RD-SIZE 8 T=
+   lr 0 IR-ARENA:RD@ 0 T=
+   lr 7 IR-ARENA:RD@ 700 T=
+   lr -1 E-IR-ARENA-BOUND RD-REFUSES
+   lr 8 E-IR-ARENA-BOUND RD-REFUSES
+
+   \ THE SPAN MOVES UNDER THE READER. A reservation past the seed capacity takes
+   \ a doubled span and copies, so a reader holding an address would now be
+   \ reading the abandoned one. It fetches the row's pointer per read instead.
+   \
+   \ THE COPIED CELLS ARE NOT THE PROOF. Growth copies them, so the abandoned
+   \ span still holds the same eight values and a reader that had cached the old
+   \ pointer would answer every one of them correctly. The cell appended AFTER
+   \ the move exists in the new span and NOWHERE else, so reading it - and
+   \ seeing the count that goes with it - is what proves the pointer and the
+   \ count are both fetched per read.
+   c a 32 IR-ARENA:RESERVE
+   lr 0 IR-ARENA:RD@ 0 T=
+   lr 7 IR-ARENA:RD@ 700 T=
+   lr IR-ARENA:RD-SIZE 8 T=
+   c a 999 IR-ARENA:PUSH drop
+   lr IR-ARENA:RD-SIZE 9 T=
+   lr 8 IR-ARENA:RD@ 999 T=
+
+   \ Freezing changes the state under a live reader, and the live reader gets
+   \ the same refusal its builder handle would have got.
+   a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
+   lr 0 E-IR-ARENA-FROZEN RD-REFUSES
+   v IR-ARENA:OPEN {: fr:IR-ARENA:reader :}
+   fr 0 IR-ARENA:RD@ 0 T=
+   fr 7 IR-ARENA:RD@ 700 T=
+   fr 8 IR-ARENA:RD@ 999 T=
+   fr IR-ARENA:RD-SIZE 9 T=
+
+   \ Retiring the view frees the row under the frozen reader.
+   v IR-ARENA:RETIRE
+   fr 0 E-IR-ARENA-STALE RD-REFUSES
+   fr E-IR-ARENA-STALE RD-SIZE-REFUSES
+
+   \ The next arena takes that freed row; the old reader's generation is gone.
+   c 8 IR-ARENA:NEW {: b:IR-ARENA:arena :}
+   c b 42 IR-ARENA:PUSH drop
+   fr 0 E-IR-ARENA-STALE RD-REFUSES
+   b IR-ARENA:OPEN-LIVE {: br:IR-ARENA:reader :}
+   br 0 IR-ARENA:RD@ 42 T=
+   b IR-ARENA:ABORT
+   br 0 E-IR-ARENA-STALE RD-REFUSES ;
+
+\ A reader that outlives its owning context. THIS IS THE CASE THE EAGER
+\ RETIREMENT EXISTS FOR: nothing here touches the arena between the context
+\ dying and the read, so the lazy sweep at the next creation would be far too
+\ late and the read would land in an unmapped span.
+: ESC-READER-BODY ( IR-CTX:ctx -- IR-ARENA:reader )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   c a 5 IR-ARENA:PUSH drop
+   a IR-ARENA:FREEZE IR-ARENA:OPEN ;
+
+: DEAD-READER ( -- IR-ARENA:reader )
+   BND [: ESC-READER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: RD-DEAD ( -- )
+   DEAD-READER 0 IR-ARENA:RD@ drop ;
+
+: RD-DEAD-SIZE ( -- )
+   DEAD-READER IR-ARENA:RD-SIZE drop ;
+
+: RD-OPEN-FROZEN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   a IR-ARENA:FREEZE drop
+   a IR-ARENA:OPEN-LIVE drop ;
+
+: RD-OPEN-FROZEN ( -- )
+   BND [: RD-OPEN-FROZEN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: RD-OPEN-RETIRED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
+   v IR-ARENA:RETIRE
+   v IR-ARENA:OPEN drop ;
+
+: RD-OPEN-RETIRED ( -- )
+   BND [: RD-OPEN-RETIRED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ One child registry, installed once. A second install would silently stop the
+\ arena registry being retired at teardown, which is the one thing the reader
+\ depends on, so it is a named refusal.
+: RD-DOUBLE-INSTALL ( -- )
+   [: drop ;] IR-CTX:RETIRE-CHILDREN! ;
+
+: RD-CASES ( -- )
+   s" a reader reads, sizes and bounds-checks like the view it came from" T-LABEL
+   BND [: RD-BODY ;] IR-CTX:WITH-CONTEXT
+   s" a reader whose context tore down is stale on the next read" T-LABEL
+   [: RD-DEAD ;] E-IR-ARENA-STALE TTHROWSQ
+   s" a reader whose context tore down is stale when asked its size" T-LABEL
+   [: RD-DEAD-SIZE ;] E-IR-ARENA-STALE TTHROWSQ
+   s" opening a live reader on a frozen arena refuses" T-LABEL
+   [: RD-OPEN-FROZEN ;] E-IR-ARENA-FROZEN TTHROWSQ
+   s" opening a reader on a retired view refuses" T-LABEL
+   [: RD-OPEN-RETIRED ;] E-IR-ARENA-STALE TTHROWSQ
+   s" the child-retirement vector is installed once" T-LABEL
+   [: RD-DOUBLE-INSTALL ;] E-IR-CTX-STATE TTHROWSQ ;
+
 \ ---- registry capacity and whole-range release -------------------------------
 \ The one-past-capacity reject is caught inside the live context, so the
 \ context exits normally and its 64 arenas are reclaimed by the next sweep
@@ -581,6 +708,14 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    s" IRA-FREAD-ARENA ( IR-ARENA:arena n -- n ) IR-ARENA:FREAD"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" IRA-CTXLESS ( IR-ARENA:arena n -- IR-ARENA:cell-id ) IR-ARENA:PUSH"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRA-READER-FORGE ( n -- IR-ARENA:reader )"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRA-READER-ERASE ( IR-ARENA:reader -- n )"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRA-RD-VIEW ( IR-ARENA:view n -- n ) IR-ARENA:RD@"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRA-OPEN-ARENA ( IR-ARENA:arena -- IR-ARENA:reader ) IR-ARENA:OPEN"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- run ---------------------------------------------------------------------
@@ -602,7 +737,8 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    FZ-REJECT-CASES
    ST-CASES
    OD-CASES
-   READ-CASE ;
+   READ-CASE
+   RD-CASES ;
 
 public
 
