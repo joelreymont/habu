@@ -596,6 +596,15 @@ variable CHECKER-PACKAGE-NEUTRAL
 variable CHECKER-USE-OWNED-N
 0 CHECKER-USE-OWNED-N !
 
+\ Import row storage is shared by the live compiler and verifier mirror.
+\ Savepoints must preserve the names and lengths as well as their depth.
+16 constant CK-USE-MAX                     \ = layout.f USE-MAX (concurrent usings)
+create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
+create CK-USE-LENS  CK-USE-MAX cells allot
+CHECKER-PACKAGE-CAP CELL + constant CK-USE-SNAP-ROW
+CELL CK-USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
+create VPKG-IMPORTS CK-USE-SNAP-BYTES allot
+
 \ The mirror above records parser state and is rollback-aware. It is authority
 \ only while the private verifier scope is active. Normal checking reads the
 \ engine's protected package record/WIDs/current target through PKG-LIVE-XT.
@@ -635,17 +644,36 @@ variable VPKG-I
       VPKG-I @ 1 + VPKG-I !
    REPEAT ;
 
+: CK-USE-SAVE ( ptr u8 n -- ) {: dst:ptr u:n :}
+   u dst cell-view !
+   u 0 ?DO
+      dst CELL + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      CK-USE-LENS i cells + @ {: len:n :}
+      len row cell-view !
+      CK-USE-NAMES i CHECKER-PACKAGE-CAP * + row CELL + len VPKG-COPY
+   LOOP ;
+
+: CK-USE-RESTORE ( ptr u8 -- ) {: src:ptr :}
+   src cell-view @ 0 ?DO
+      src CELL + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      row cell-view @ {: len:n :}
+      len CK-USE-LENS i cells + !
+      row CELL + CK-USE-NAMES i CHECKER-PACKAGE-CAP * + len VPKG-COPY
+   LOOP ;
+
 : VPKG-SAVE ( ptr u8 n n -- ) {: a:ptr u:n mode:n :}
    a VPKG-NAME u VPKG-COPY
    u VPKG-U !
    mode VPKG-MODE !
-   CHECKER-USE-OWNED-N @ VPKG-USE-N ! ;
+   CHECKER-USE-OWNED-N @ VPKG-USE-N !
+   VPKG-IMPORTS CK-USE-MAX CK-USE-SAVE ;
 
 : VPKG-RESTORE ( -- )
    VPKG-NAME CHECKER-PACKAGE-NAME VPKG-U @ VPKG-COPY
    VPKG-U @ CHECKER-PACKAGE-U !
    VPKG-MODE @ CHECKER-PACKAGE-MODE !
-   VPKG-USE-N @ CHECKER-USE-OWNED-N ! ;
+   VPKG-USE-N @ CHECKER-USE-OWNED-N !
+   VPKG-IMPORTS CK-USE-RESTORE ;
 
 : CHECKER-PKG-MIRROR ( -- ptr u8 n n bool )
    CHECKER-PACKAGE-MODE @ {: mode:n :}
@@ -6912,19 +6940,15 @@ variable DFER-END
 \ engine depth and the checker automatically follows. CHECKER-USING (called by the engine
 \ C-USING before it increments the shared depth, and by verify-source likewise) records the
 \ name into the slot at the current depth; resolution reads names[0..depth).
-16 constant CK-USE-MAX                     \ = layout.f USE-MAX (concurrent usings)
-create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
-create CK-USE-LENS  CK-USE-MAX cells allot
 7140 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
 variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
 
 \ The depth every read of the mirror is bounded by, from whichever authority owns
 \ the current scope: the replay's own count while the mirror is authority, and
-\ the engine's live cell otherwise. Both are counts into the SAME name table --
-\ a replay writes its imports into the slots above the depth it inherited and
-\ restores the depth on the way out, so the caller's rows are never overwritten
-\ while they are still reachable.
+\ the engine's live cell otherwise. Both index the same name table. Neutral
+\ replay starts at zero and may overwrite caller rows, so verifier and rollback
+\ savepoints preserve the row bytes and lengths alongside the depth.
 : CK-USE-DEPTH ( -- n )
    CHECKER-PKG-MIRROR-AUTHORITY? IF CHECKER-USE-OWNED-N @ EXIT THEN
    CK-USE-ENGINE-DEPTH ;
@@ -13159,7 +13183,8 @@ variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
 PERSISTED-PTR-VARIABLE RBF-A-P       RBF-A-BOOT RBF-A-P !
 : RBF-BASE ( -- ptr n ) RBF-A-P @ ;
-create RBF-NAME-BOOT   RBF-CAP-INIT CHECKER-PACKAGE-CAP * allot
+CHECKER-PACKAGE-CAP CK-USE-SNAP-BYTES + constant RBF-NAME-REC
+create RBF-NAME-BOOT   RBF-CAP-INIT RBF-NAME-REC * allot
 PERSISTED-PTR-VARIABLE RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
 : RBF-NAME-BASE ( -- ptr u8 ) RBF-NAME-P @ ;
 variable RBF-DEPTH   0 RBF-DEPTH !
@@ -13167,13 +13192,23 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-GROW ( -- )
    RBF-CAP-V @ 2 * {: nc:n :}
    RBF-A-P    RBF-CAP-V @ RBF-REC *              nc RBF-REC *              REG-GROW1
-   RBF-NAME-P RBF-CAP-V @ CHECKER-PACKAGE-CAP *  nc CHECKER-PACKAGE-CAP *  REG-GROW1
+   RBF-NAME-P RBF-CAP-V @ RBF-NAME-REC *  nc RBF-NAME-REC *  REG-GROW1
    nc RBF-CAP-V ! ;
 : RBF-ENSURE ( -- )
    RBF-DEPTH @ RBF-CAP-V @ < IF exit THEN
    RBF-GROW ;
 : RBF-CUR ( -- ptr n )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
-: RBF-NAME-CUR ( -- ptr u8 )  RBF-DEPTH @ CHECKER-PACKAGE-CAP * RBF-NAME-BASE + ;
+: RBF-NAME-CUR ( -- ptr u8 )  RBF-DEPTH @ RBF-NAME-REC * RBF-NAME-BASE + ;
+
+\ The byte half of each scope owns the package name and reachable import rows.
+\ Nested neutral scopes may overwrite any prefix, not just append imports.
+: RBF-NAME-SAVE ( ptr u8 -- ) {: dst:ptr :}
+   CHECKER-PACKAGE-NAME dst CHECKER-PACKAGE-U @ USIGS-COPY
+   dst CHECKER-PACKAGE-CAP + CK-USE-SCAN-N CK-USE-SAVE ;
+
+: RBF-NAME-RESTORE ( ptr u8 n -- ) {: src:ptr u:n :}
+   src CHECKER-PACKAGE-NAME u USIGS-COPY
+   src CHECKER-PACKAGE-CAP + CK-USE-RESTORE ;
 
 \ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
 \ snapshot), so drop any grown arena buffer back to the baked boot store; the
@@ -13246,7 +13281,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
    RBF-ENSURE
    RBF-CUR RBF-SAVE-INTO
-   CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
+   RBF-NAME-CUR RBF-NAME-SAVE
    RBF-DEPTH @ 1 + RBF-DEPTH !
    REG-EXT-RB-SAVE-XT ;
 
@@ -13259,7 +13294,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-POP-WITH ( [ -- ] -- )
    execute                 \ registry restore for the frame this pop retires
    RBF-DEPTH @ 1 - RBF-DEPTH !
-   RBF-NAME-CUR CHECKER-PACKAGE-NAME RBF-CUR RBF.PKGU @ USIGS-COPY
+   RBF-NAME-CUR RBF-CUR RBF.PKGU @ RBF-NAME-RESTORE
    RBF-CUR RBF-RESTORE-FROM ;
 
 : RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
@@ -13291,7 +13326,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 \ The extension registries ride the same way they do for a scope, through hooks
 \ their owners install (src/core/type-family.f), so they cannot drift either.
 create RBF-BND-REC    RBF-REC allot
-create RBF-BND-NAME   CHECKER-PACKAGE-CAP allot
+create RBF-BND-NAME   RBF-NAME-REC allot
 variable RBF-BND-N   0 RBF-BND-N !
 
 package CHECKER-BOUND
@@ -13308,7 +13343,7 @@ public
 : MARK ( -- )
    RBF-DEPTH @ IF s" checker: prefix boundary inside rollback scope" 76 die THEN
    RBF-BND-REC RBF-SAVE-INTO
-   CHECKER-PACKAGE-NAME RBF-BND-NAME CHECKER-PACKAGE-U @ USIGS-COPY
+   RBF-BND-NAME RBF-NAME-SAVE
    REG-EXT-BND-SAVE-XT
    RBF-REC CELL / RBF-BND-N ! ;
 
@@ -13316,7 +13351,7 @@ public
    RBF-BND-N @ 0= IF s" checker: no recorded prefix boundary" 76 die THEN
    RBF-DEPTH @ IF s" checker: prefix boundary inside rollback scope" 76 die THEN
    REG-EXT-BND-RESTORE-XT
-   RBF-BND-NAME CHECKER-PACKAGE-NAME RBF-BND-REC RBF.PKGU @ USIGS-COPY
+   RBF-BND-NAME RBF-BND-REC RBF.PKGU @ RBF-NAME-RESTORE
    RBF-BND-REC RBF-RESTORE-FROM ;
 
 ;package

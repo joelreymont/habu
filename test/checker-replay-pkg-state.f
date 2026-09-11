@@ -85,6 +85,23 @@ public
    DIAG-BUFFER-OFF
    rc ;
 
+\ Exercise nested neutral scopes while the verifier owns the import mirror.
+\ Each scope replaces slot zero with a different real supplier.
+TRUSTED: NESTED-IMPORTS ( -- bool bool )
+   CHECKER-SCOPE-START-NEUTRAL
+   CHECKER-VERIFY-PKG-START
+   s" CRPS-SUPPLIER" CHECKER-USING-PUSH
+   CHECKER-SCOPE-START-NEUTRAL
+   s" CRPS-OTHER" CHECKER-USING-PUSH
+   CHECKER-SCOPE-START-NEUTRAL
+   s" CRPS-SUPPLIER" CHECKER-USING-PUSH
+   CHECKER-SCOPE-DONE
+   s" CRPS-INNER ( -- n ) SPROCKET" CHECK! -1 =
+   CHECKER-SCOPE-DONE
+   s" CRPS-OUTER ( -- n ) WIDGET" CHECK! -1 =
+   CHECKER-VERIFY-PKG-DONE
+   CHECKER-SCOPE-DONE ;
+
 ;package
 
 T-RESET
@@ -138,6 +155,18 @@ s" ;using" CRPS:REPLAY CRPS:E-UNBALANCED T=
 \ package record and refuses with E-PKG-CONTEXT if it does not.
 s" a replay still certifies after the rejecting cases" T-LABEL
 s" : CRPS-R6 ( n -- n n ) dup ;" CRPS:REPLAY 0 T=
+\ Fresh compilation is required: an earlier compiled caller retains its target
+\ even if replay corrupts the import mirror. Use the other package in slot zero.
+s" using CRPS-OTHER : CRPS-R7 ( -- n ) SPROCKET ; ;using" CRPS:REPLAY 0 T=
+: AFTER-ACCEPT ( -- n ) WIDGET ;
+AFTER-ACCEPT 77 T=
+s" using CRPS-OTHER : CRPS-RBAD ( -- n ) ;" CRPS:REPLAY 0 <> TTRUE
+: AFTER-REJECT ( -- n ) WIDGET ;
+AFTER-REJECT 77 T=
+CRPS:NESTED-IMPORTS TTRUE TTRUE
+: AFTER-NESTED ( -- n ) WIDGET SPROCKET + ;
+AFTER-NESTED 176 T=
+
 s" the caller's own imports still resolve after the replays" T-LABEL
 OWN-IMPORT-USE 77 T=
 OTHER-IMPORT-USE 99 T=
