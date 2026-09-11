@@ -275,6 +275,17 @@ private
    S\" BAD-POLY ( [ a -- a ] -- ) {: q :} 1 q execute drop s\" x\" drop q execute drop"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ The parent ends with a call, while its literal quotation returns normally.
+variable LITERAL-RESULT
+: CALLBACK-ID ( [ -- n ] -- [ -- n ] ) ;
+: LITERAL-FORWARD ( [ -- n ] -- [ -- n ] )
+   0 [: 1+ ;] execute LITERAL-RESULT ! CALLBACK-ID ;
+
+: LITERAL-TAIL-CASE ( -- )
+   s" quotation siblings retain their return contract beside a final call" T-LABEL
+   42 [: 37 ;] LITERAL-FORWARD execute 37 T= 42 T=
+   LITERAL-RESULT @ 1 T= ;
+
 \ Callback metadata counts signature entries and returned values, not tokens.
 : MANY-CALLBACKS
    ( [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] -- [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] ) ;
@@ -324,6 +335,7 @@ public
    DEAD-CASE
    REACH-CASE
    CALLBACK-CASE
+   LITERAL-TAIL-CASE
    MANY-CALLBACKS-CASE
    MINT-CASE
    T-REPORT ;

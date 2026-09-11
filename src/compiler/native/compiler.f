@@ -69,6 +69,7 @@ variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
 variable M-SPILLS                    \ padded spill slots that define the cumulative frame
+variable M-FUNS                      \ functions sharing the emitted routine contract
 variable M-DOES                      \ byte split after `does> `, or zero
 variable M-DOES-ROW                  \ the tape row that carries `does>`
 PTR-VARIABLE M-DOES-SIG
@@ -364,17 +365,17 @@ create SPELL-BUF SPELL-CAP allot
 : NO-RETURN? ( -- bool )
    NAME-BUF NAME-U @ NDICT:SPELL-DEAD? ;
 
-\ The no-return arm comes first: the three below are shapes of a routine that
-\ HAS a return, and a body whose every path ends has none. Quotation siblings
-\ share this ABI, so a mixed module must still preserve their return addresses.
+\ All functions share this ABI. No-return and tail-call control describe a
+\ single function; quotation siblings must retain their ordinary returns.
 : ROUTINE ( -- A64EFF:routine )
-   NO-RETURN? NELAB:HAS-QUOTATIONS? 0= and if
+   NO-RETURN? M-FUNS @ 1 = and if
       NELAB:CALLED? if
          NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-FRAMED exit
       then
       NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:NORET-LEAF-FRAMED exit
    then
-   NELAB:TAIL-CALLED?  NELAB:TAIL-ENTRY@ NPUB:IN-REGION?  and if
+   NELAB:TAIL-CALLED? NELAB:TAIL-ENTRY@ NPUB:IN-REGION? and
+   M-FUNS @ 1 = and if
       NELAB:CALLS-BACK? if
          NABI:SCRATCH M-IN @ M-OUT @ M-SPILLS @ NABI:TAIL-CALLING-FRAMED exit
       then
@@ -413,6 +414,7 @@ create SPELL-BUF SPELL-CAP allot
    {: len:n :}
    CC BB NLOOP:BIND-DIALECT
    CC BB A64SEL:BIND-SOURCE
+   BB IR-BUILD:FUNS M-FUNS !
    CC BB IR-BUILD:FREEZE {: m0:IR-BUILD:module :}
    m0 len CLOSED {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}

@@ -1,6 +1,5 @@
 \ native-tail.f - production tail calls with live names and wide results.
 
-require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -63,6 +62,14 @@ public
 \ whose own last operation is a call.
 : NTL-TAKE ( [ n -- n ] n -- n )
    swap execute ;
+
+\ A callback parameter adds no sibling function and still permits a tail call.
+: NTL-CALLBACK-ID ( [ -- n ] -- [ -- n ] ) ;
+: NTL-CALLBACK-FORWARD ( [ -- n ] -- [ -- n ] ) NTL-CALLBACK-ID ;
+
+\ This parent and the literal callback share a returning module contract.
+: NTL-QUOT ( n -- n )
+   dup [: NTL-ROLE ;] swap NTL-TAKE drop NTL-ROLE ;
 
 \ ---- the bodies --------------------------------------------------------------
 \ lib/byte-buffer.f LEN@ reduced to its shape: a local, a guard the local
@@ -170,9 +177,6 @@ package NTL-TEST
 
 private
 
-: EV-RC ( ptr u8 n -- n )
-   NATIVE-EVAL:DEFINE-RC ;
-
 \ ---- what the published code says --------------------------------------------
 : BRANCHES? ( ptr u8 n -- bool )
    NTAILPROBE:TAIL-BRANCH? ;
@@ -251,8 +255,10 @@ private
 
 : QUOT-CASE ( -- )
    s" a quotation's last call is not the enclosing emission's tail site" T-LABEL
-   s" : NTL-QUOT ( n -- n ) dup [: NTL-FIXTURE:NTL-ROLE ;] swap NTL-FIXTURE:NTL-TAKE drop NTL-FIXTURE:NTL-ROLE ;"
-   EV-RC E-A64RAV-SHAPE T= ;
+   0 NTL-FIXTURE:NTL-QUOT 549 T=
+   [: 17 ;] NTL-FIXTURE:NTL-CALLBACK-FORWARD execute 17 T=
+   s" NTL-FIXTURE:NTL-CALLBACK-FORWARD" BRANCHES? TTRUE
+   s" NTL-FIXTURE:NTL-CALLBACK-FORWARD" RETURNS? TFALSE ;
 
 public
 
