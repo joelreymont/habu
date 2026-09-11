@@ -9,7 +9,7 @@
 \ src/habu/layout.f - and the machine-checked model of that arithmetic in
 \ `formal/Common/Reloc.v`.
 \
-\ It holds data and nothing else. Five tables:
+\ It holds the model constants, producer classes and relocation vector rows:
 \
 \   1. The pinned band constants. The model states REGION-OFF, RBASE-VA,
 \      BL-REACH, REGION, CALLMAP-RC and BL-OP-HI as numbers. Each is frozen here
@@ -18,12 +18,8 @@
 \      `test/compiler/reloc-obligations.f` can ask Rocq whether the model still
 \      holds the same number.
 \
-\   2. The frozen writer bodies. The loader's two passes are emitted assembly
-\      and the cases file RUNS them, decoded out of habu2.f. The writer's
-\      address-cell half is ordinary checked Habu inside the builder-only
-\      src/habu/snap-lib.f, which no test can load, so its three words are
-\      frozen here as exact token runs instead. A changed body fails the run
-\      comparison rather than drifting away from the model.
+\   2. The producer classes declared by the model, without claiming an inventory
+\      of the implementation's address-producing helpers.
 \
 \   3. The call vector rows. A row names the region offset the writing run got,
 \      the region offset the restoring run got, and every word of a small
@@ -87,9 +83,6 @@ public
 
 : LAYOUT-FILE$ ( -- ptr u8 n )
    s" src/habu/layout.f" ;
-
-: WRITER-FILE$ ( -- ptr u8 n )
-   s" src/habu/snap-lib.f" ;
 
 \ The condition-code names live beside the four-bit field `?COND` bounds, in the
 \ encoder itself. src/arch/arm64/mnem.f carried a second copy until the compare
@@ -202,72 +195,8 @@ public
       E-CRL-ROW throw
    endcase ;
 
-\ ---- 2. the frozen writer bodies ---------------------------------------------
-\ src/habu/snap-lib.f is builder-only: RETIRE-AND-PERSIST forgets the whole writer
-\ before an image is written, and nothing in the test tree can load it. Its
-\ three address-cell words are therefore frozen as exact token runs, read back
-\ through the shared source lexer, rather than executed. Every other half of
-\ this contract is run for real.
-
-6 constant WBODY-COUNT
-
-: WBODY-NAME$ ( n -- ptr u8 n )
-   case
-      0 of s" SND-XT-ROW" endof
-      1 of s" SND-XT-OFF" endof
-      2 of s" SND-XT-DATA?" endof
-      3 of s" SND-XT-CELL-OK?" endof
-      4 of s" SND-CANON-XT-CELL" endof
-      5 of s" SND-CANON-XT-CELLS" endof
-      E-CRL-ROW throw
-   endcase ;
-
-: WBODY-RUN$ ( n -- ptr u8 n )
-   case
-      0 of s" {: row:n :} SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@" endof
-      1 of s" SNAP-RELOC:XTCELL-OFF-MASK and" endof
-      2 of s" SNAP-RELOC:XTCELL-DATA-TAG and 0 <>" endof
-      3 of s" {: cell:n :} cell 0 < if 0 0= 0= exit then cell SNAP-RELOC:XTCELL-OFF-MAX > 0=" endof
-      4 of s" {: row:n :} row SND-XT-OFF {: cell:n :} cell SND-XT-CELL-OK? 0= if SND-XT-CELL-REFUSE then row SND-XT-DATA? if exit then cell SND-XT-CELL@ {: xt:n :} xt 0= if exit then xt dbase@ - RBASE-VA + cell SND-XT-CELL!" endof
-      5 of s" SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do i SND-XT-ROW SND-CANON-XT-CELL loop" endof
-      E-CRL-ROW throw
-   endcase ;
-
-\ ---- 3. the emit vocabulary and its classification ---------------------------
-\ The round-trip rows below say that every RECORDED site survives. That is worth
-\ nothing on its own, because it is vacuously true of an address class nobody
-\ ever recorded - which is how a literal address baked into region code as a
-\ MOVZ/MOVK chain came to crash a restored image.
-\
-\ So this table enumerates every word in src/habu/habu2.f that can put an
-\ address-bearing value into region bytes, or declare a persisted cell that
-\ holds one, and names the class the model gives it. The model's `classify` is a
-\ match over an inductive type, so a producer added there without a class is a
-\ Rocq error rather than an omission; this table is what holds that vocabulary
-\ to the one the shipped emitter actually has.
-
+\ Producer classes are model data, not a census of the emitter's helper names.
 16 constant PROD-COUNT
-
-: PROD-NAME$ ( n -- ptr u8 n )
-   case
-      0 of s" C-LIT" endof
-      1 of s" C-RAW-LIT" endof
-      2 of s" C-ADDR-RAW" endof
-      3 of s" C-ADDR-PUSH" endof
-      4 of s" C-DATA-ADDR" endof
-      5 of s" C-DATA-ADDR-RAW" endof
-      6 of s" C-CODE-ADDR" endof
-      7 of s" C-ADR" endof
-      8 of s" EMIT-CEMITBL" endof
-      9 of s" EM-AOT-PATCH-SITES" endof
-      10 of s" EM-AOT-RELOC-CODE" endof
-      11 of s" PATCH-CHAINS" endof
-      12 of s" EM-AOT-RELOC-DATA" endof
-      13 of s" EMIT-MARK" endof
-      14 of s" BPTRCELLMARK" endof
-      15 of s" C-DEFER-META-WRITE" endof
-      E-CRL-ROW throw
-   endcase ;
 
 : PROD-MODEL$ ( n -- ptr u8 n )
    case
@@ -308,94 +237,6 @@ public
       13 of s" Recorded R_xtcell" endof
       14 of s" Recorded R_xtcell" endof
       15 of s" Fixed_mapping" endof
-      E-CRL-ROW throw
-   endcase ;
-
-\ ---- 4. the closure rows that make the vocabulary complete -------------------
-\ A table of names is a comment unless something holds it to the source. Each
-\ row below names a token and the exact, ordered set of definitions in
-\ src/habu/habu2.f whose body carries it. The cases file walks every definition
-\ in the file and rebuilds each set, so:
-\
-\   - a new word that calls the shared MOVZ/MOVK carrier appears in row 0 or 1
-\     and fails until it is added to the vocabulary above and classified in the
-\     model;
-\   - a second, hand-built copy of that chain appears in row 2, because the
-\     chain's scaffold constant may occur in exactly one definition;
-\   - a new place that bakes a DATA or a CODE address, or emits a direct call,
-\     or declares a persisted address cell, appears in rows 3 to 8 and fails
-\     until someone has looked at it;
-\   - row 10 gained a READER rather than a producer when the pre-window
-\     elimination landed (dot habu-aot-pre-window-0b01043c):
-\     AOT-WINDOW:EMIT-OUTSIDE asks the address-literal map whether one body word
-\     starts a chain, and decodes that chain's value to decide whether an open AOT
-\     capture window could describe it - so the compile-mode inliner can decline to
-\     copy a body it could not. It bakes nothing and declares nothing, which is why
-\     it joins this closure but not the producer vocabulary above. The row is still
-\     the right tripwire: anything new that names the map is either a producer the
-\     model owes a class or a reader whose reason belongs here.
-\   - row 10 then gained an ERASER, which is the third kind and the one the
-\     tripwire was worth having for (dot habu-clear-the-addr-7595039c):
-\     EM-P2-START rewinds the code pointer to the colon entry so the width-aware
-\     pass can lower the body again, and the records pass 1 wrote at that cursor
-\     describe code pass 2 is about to replace. It clears both maps over
-\     [entry, pass-1 CP) - which is why it names ADDRMAP-OFF and CALLMAP-OFF and
-\     nothing else in the vocabulary. It creates no chain, so the model owes it no
-\     relocation class; what it owes is this sentence, because an eraser with the
-\     wrong span is exactly as wrong as a producer with the wrong kind.
-\   - rows 12 and 13 are the two names the address-cell DECLARER itself goes by
-\     in this file -- bare inside package SNAP-RELOC, qualified outside it -- so
-\     a new caller of that routine shows up whichever side of the package it is
-\     written on. They were added when `xt!` (dot
-\     habu-declare-persisted-cb-b150b5d5) made the declarer reachable at RUN
-\     time as well as from a compile handler; before that, row 8 saw every
-\     declaring site because MARK-CELL was the only way in.
-\
-\ The sets are written in the order the file declares them, so a reordering is a
-\ change too. `CORE` and `JIT` appear in several of them because those two
-\ emission phases are where the label variables are declared.
-
-16 constant CLOSURE-COUNT
-
-: CLOSURE-TOKEN$ ( n -- ptr u8 n )
-   case
-      0 of s" C-ADDR-RAW" endof
-      1 of s" C-ADDR-PUSH" endof
-      2 of s" W-MOVZ0" endof
-      3 of s" C-DATA-ADDR" endof
-      4 of s" C-DATA-ADDR-RAW" endof
-      5 of s" C-CODE-ADDR" endof
-      6 of s" C-ADR" endof
-      7 of s" LCEMITBL" endof
-      8 of s" SNAP-RELOC:MARK-CELL" endof
-      9 of s" SNAP-RELOC:MARK-SITE" endof
-      10 of s" SNAP-RELOC:ADDRMAP-OFF" endof
-      11 of s" SNAP-RELOC:LADDRS" endof
-      12 of s" LMARK" endof
-      13 of s" SNAP-RELOC:LMARK" endof
-      14 of s" LPTRMARK" endof
-      15 of s" SNAP-RELOC:LPTRMARK" endof
-      E-CRL-ROW throw
-   endcase ;
-
-: CLOSURE-SET$ ( n -- ptr u8 n )
-   case
-      0 of s" C-ADDR-PUSH C-DATA-ADDR-RAW" endof
-      1 of s" C-DATA-ADDR C-CODE-ADDR" endof
-      2 of s" C-ADDR-RAW EMIT-ADDRS" endof
-      3 of s" EMIT-CREATE" endof
-      4 of s" C-EMIT-CRSIG-A! C-DEFER-EMIT-CODE J-IS" endof
-      5 of s" J-SEMIQUOT C-BTICK" endof
-      6 of s" C-SDQ C-CQ C-ESDQ C-ECQ" endof
-      7 of s" C-CALL EMIT-CEMITBL EMIT-P2-VALID-EMIT EMIT-P2-STORE CORE" endof
-      8 of s" EM-STARTUP-RUNTIME-STATE" endof
-      9 of s" C-DATA-ADDR C-DATA-ADDR-RAW C-CODE-ADDR" endof
-      10 of s" EM-AOT-RELOC-CODE PATCH-CHAINS EMIT-OUTSIDE EM-P2-START" endof
-      11 of s" BSNAPREBASE EM-SNAPSHOT-RESTORE CORE" endof
-      12 of s" MARK-CELL EMIT-MARK BXTSTORE" endof
-      13 of s" C-DEFER-CELL J-IS RESTORE-ADDRESS-CELLS CORE" endof
-      14 of s" EMIT-MARK BPTRCELLMARK" endof
-      15 of s" RESTORE-ADDRESS-CELLS CORE" endof
       E-CRL-ROW throw
    endcase ;
 

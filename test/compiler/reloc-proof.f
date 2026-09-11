@@ -17,7 +17,7 @@
 \ were each a way of breaking an invariant nobody had written down.
 \
 \ One artifact, two readers. `test/compiler/reloc-schema.f` holds the pinned
-\ band constants, the frozen writer bodies and the vector rows.
+\ band constants, producer classes and vector rows.
 \ `test/compiler/reloc-cases.f` asks the shipped passes about them and
 \ `test/compiler/reloc-obligations.f` asks Rocq about the same rows. Neither
 \ side carries a copy.
@@ -42,8 +42,6 @@
 \   - a renumbered band constant - REGION-OFF, RBASE-VA, BL-REACH, REGION,
 \     CALLMAP-RC or BL-OP-HI - through the pinned literal read out of the
 \     shipped source;
-\   - a changed address-cell body in the builder-only snapshot writer, through
-\     the frozen token runs;
 \   - a step of any call or address-cell row, through the shipped instruction
 \     sequence run on the Habu side and the generated Rocq obligation built from
 \     the same row;
@@ -63,30 +61,11 @@
 \     additionally report "Closed under the global context" with no `Axioms:`
 \     header anywhere in what Rocq printed.
 \
-\ Completeness, which the round trip alone does not give. "Every recorded site
-\ survives" is vacuously true of an address class nobody records, and that is
-\ how a JIT-region address baked into region code as a MOVZ/MOVK chain came to
-\ crash a restored image. So the gate also enumerates the emit vocabulary that
-\ can bake an address into region bytes and classifies every member, with the
-\ classification a total function in the model - a producer added without a
-\ class is a Rocq error - and the vocabulary rebuilt from src/habu/habu2.f
-\ itself, not listed in a comment. Measured: a new word that calls the shared
-\ MOVZ/MOVK carrier, a second hand-built copy of that chain, and C-CODE-ADDR
-\ ceasing to record its site each turn this gate red. The model states, and this
-\ gate holds, that a snapshot restore now replays the table of EVERY producer
-\ whose bytes move with the region; classify one to a table the restore does not
-\ walk and the model stops compiling.
-\
-\ What it does NOT prove. The machine reads mnemonics and operands, not the
-\ encoded instruction words: the encoders in src/arch/arm64 sit between this
-\ source and the bytes a CPU runs, and they have their own tests. So this gate
-\ binds the model to the shipped INSTRUCTION SEQUENCE, one step short of the
-\ shipped bytes. Closing that last step needs a real snapshot write-then-boot
-\ under a skewed constant, and that measurement is still blocked: a restored
-\ image cannot yet compile a definition, for a reason of a different class that
-\ has its own dot, so there is no green write-then-boot baseline to break. The
-\ dot records the measurements that were taken instead, including a full engine
-\ rebuild in both directions around a deliberately skewed address pass.
+\ Limits: the model classifies its declared producers; it does not prove that
+\ every implementation site is recorded. RELOC-VM executes source mnemonics,
+\ not encoded bytes, and the address-cell writer input is constructed from
+\ model arithmetic. test/snapshot-writer.f and test/app-image.f exercise actual
+\ saved-image relocation and fresh compilation after restore.
 \
 \ Focused command: `bin/hb --load test/compiler/reloc-proof.f`. The gate
 \ compiles the model itself, so nothing has to be built first.

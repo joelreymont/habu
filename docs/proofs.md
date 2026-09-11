@@ -25,3 +25,10 @@ parameter parity or implementation refinement. Dynamic growth, normal and
 exceptional lifetime, owner/stale rejection and state after refusals are tested
 through the native paths in `test/compiler/ir-context.f`, `ir-arena.f` and
 `ir-storage-manifest.f`.
+
+`formal/Common/Reloc.v` proves round trips for recorded sites in its model.
+The relocation tests compare selected vectors with the shipped instruction
+sequences using a mnemonic interpreter; they do not prove that every address
+producer records its sites, nor execute the address-cell writer in that model
+comparison. Actual writer and restored-image behavior is tested separately in
+`test/snapshot-writer.f` and `test/app-image.f`.

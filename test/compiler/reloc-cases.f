@@ -1,61 +1,7 @@
-\ reloc-cases.f - the Habu half of the snapshot relocation binding.
-\
-\ The module lives in `package RELOC-CASES`. It takes the frozen rows in
-\ `package RELOC-PROOF` and asks the SHIPPED relocation passes about them, in
-\ seven groups:
-\
-\   - the pinned band constants, read as literals out of src/habu/layout.f and
-\     src/habu/habu2.f. `formal/Common/Reloc.v` states the same numbers, so
-\     renumbering REGION-OFF, RBASE-VA, BL-REACH, REGION, CALLMAP-RC or
-\     BL-OP-HI on either side makes the two sides disagree.
-\
-\   - the writer's address-cell body. src/habu/snap-lib.f is builder-only and no
-\     test can load it, so its three words are compared against the token runs
-\     the schema freezes, read back through the shared source lexer.
-\
-\   - the emit vocabulary that can bake an address into region bytes, rebuilt
-\     from src/habu/habu2.f itself and held to the frozen table. The round-trip
-\     rows are vacuous for an address class nobody records, so this group is
-\     what makes them mean something: a new word that emits the shared MOVZ/MOVK
-\     address chain, a second hand-built copy of that chain, or a new place that
-\     bakes a DATA or CODE address turns up here and fails until it has been
-\     classified.
-\
-\   - the shape of the vector table itself: every role covered, every word of
-\     every region listed exactly once and in order, every displacement inside
-\     BL's reach, and every region base a whole number of instructions away from
-\     the canonical offset. Without those a row could quietly ask nothing.
-\
-\   - every call row, driven through the SHIPPED `SNAP-RELOC:EMIT-CALLS`. Not a
-\     copy of it: `package RELOC-VM` decodes that definition's own instruction
-\     sequence out of habu2.f and runs it over a real region image and a real
-\     call-map band. The row is driven twice, once in the writer's direction and
-\     once in the loader's, and the image is compared word for word after each.
-\
-\   - every address-cell row, driven through the shipped `SNAP-RELOC:EMIT-XT`
-\     the same way, with the writer's half applied first.
-\
-\   - every address-literal chain row, driven through the shipped
-\     `SNAP-RELOC:EMIT-ADDRS` the same way, once per leg: the writer's leg moves
-\     the live band onto the canonical sentinel and the loader's moves the
-\     sentinel onto the band this run got. The four words of every slot are built
-\     from the row's address and the scaffold words read out of
-\     src/habu/habu1.f, so neither this file nor the model carries an instruction
-\     word of its own.
-\
-\ The same rows become Rocq obligations in `test/compiler/reloc-obligations.f`;
-\ this file never restates them.
-\
-\ Why layout.f is required rather than read. The band offsets the passes index
-\ through - CALLMAP-OFF, XTCELL-N-CELL, XTCELL-ROWS-OFF - are derived constants,
-\ not literals, so there is no literal to read: CALLMAP-OFF is the end of the
-\ band before it. Loading the shipped file is therefore the only way to get the
-\ shipped value, and it is a stronger binding than a literal would be, because
-\ it follows the whole derivation. The six constants that ARE literals are
-\ pinned literally by the first group above.
-\
-\ Consumers: `test/compiler/reloc-manifest.f` (these six groups alone) and
-\ `test/compiler/reloc-proof.f` (these six plus the Rocq half).
+\ Relocation vectors run against the shipped emitted instruction sequences.
+\ The same rows also generate the Rocq obligations. These examples do not
+\ establish that every address producer records its sites; real image tests
+\ exercise writer/capture/restore together.
 
 require lib/prelude.f
 require lib/errors.f
@@ -91,8 +37,6 @@ variable BLOP
 variable ROLE-SEEN
 variable IMG-OK
 variable SCAN-AT
-variable FOUND-TOK
-variable SET-N
 variable MOVED-N
 create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of habu1.f
 
@@ -107,62 +51,6 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 
 : PHASE-PINS ( -- )
    PIN-COUNT 0 ?do i PIN-CHECK loop ;
-
-\ ---- 2. the writer's address-cell body ---------------------------------------
-
-: WBODY-CHECK ( n -- ) {: k:n :}
-   s" the snapshot writer defines that address-cell word exactly once" T-LABEL
-   k WBODY-NAME$ COMPILER-ID-SRC:DEFS 1 T=
-   s" the writer's address-cell body is the token run the schema froze" T-LABEL
-   k WBODY-NAME$ COMPILER-ID-SRC:BODY$ k WBODY-RUN$ T$= ;
-
-: PHASE-WRITER ( -- )
-   WRITER-FILE$ COMPILER-ID-SRC:SCAN-FILE
-   WBODY-COUNT 0 ?do i WBODY-CHECK loop ;
-
-\ ---- 3. the emit vocabulary, held to the shipped emitter ---------------------
-\ The round-trip rows say that every recorded site survives, which is vacuously
-\ true of an address class nobody records. This group is the other half: it
-\ rebuilds, from src/habu/habu2.f itself, the exact set of definitions that
-\ carry each address-forming token, and holds each set to what the schema
-\ froze. A new word that bakes an address into region bytes therefore turns up
-\ in one of these sets and fails the gate until it has been added to the
-\ vocabulary and classified in the model.
-
-: BODY-CARRIES? ( n ptr u8 n -- bool ) {: d:n a:ptr u:n :}
-   false FOUND-TOK !
-   d COMPILER-ID-SRC:DEF-SPAN-AT {: b:n e:n :}
-   e b ?do
-      i COMPILER-ID-SRC:TOKEN$ a u STR= if true FOUND-TOK ! then
-   loop
-   FOUND-TOK @ ;
-
-: CARRIER+ ( n n -- ) {: k:n row:n :}
-   k row CLOSURE-TOKEN$ BODY-CARRIES? 0= if exit then
-   SET-N @ 0 > if s"  " SB-APPEND then
-   SET-N @ 1+ SET-N !
-   k COMPILER-ID-SRC:DEF-NAME-AT$ SB-APPEND ;
-
-: CLOSURE-BUILD$ ( n -- ptr u8 n ) {: row:n :}
-   SB-RESET
-   0 SET-N !
-   COMPILER-ID-SRC:TOKENS 0 ?do
-      i COMPILER-ID-SRC:DEF-HEAD? if i row CARRIER+ then
-   loop
-   SB$ ;
-
-: CLOSURE-CHECK ( n -- ) {: row:n :}
-   s" the definitions that carry that address-forming token are the frozen set" T-LABEL
-   row CLOSURE-BUILD$ row CLOSURE-SET$ T$= ;
-
-: PROD-CHECK ( n -- ) {: k:n :}
-   s" the emitter declares that producer exactly once" T-LABEL
-   k PROD-NAME$ COMPILER-ID-SRC:DEFS 1 T= ;
-
-: PHASE-VOCABULARY ( -- )
-   EMIT-FILE$ COMPILER-ID-SRC:SCAN-FILE
-   PROD-COUNT 0 ?do i PROD-CHECK loop
-   CLOSURE-COUNT 0 ?do i CLOSURE-CHECK loop ;
 
 \ ---- 4. the shape of the vector table ----------------------------------------
 
@@ -442,10 +330,9 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    ROWS 0 ?do i CALL-ROW loop ;
 
 \ ---- 5. driving the address-cell rows ----------------------------------------
-\ The writer's half is checked Habu inside the builder-only src/habu/snap-lib.f,
-\ whose body group 2 above holds to its frozen text; this is that same
-\ arithmetic, applied so the loader's shipped pass has a canonical image to
-\ restore. The loader's half below is the shipped `SNAP-RELOC:EMIT-XT` itself.
+\ XT-CANON constructs the loader's input using the model's canonicalization.
+\ This does not execute the writer. test/snapshot-writer.f and test/app-image.f
+\ cover actual writer/restore use; the loader below is shipped EMIT-XT.
 
 : XT-CANON ( n n -- n ) {: c:n db:n :}
    c 0= if 0 exit then
@@ -591,8 +478,6 @@ public
 
 : HABU-SIDE ( -- )
    PHASE-PINS
-   PHASE-WRITER
-   PHASE-VOCABULARY
    PHASE-SHAPE
    TEACH-MACHINE
    PHASE-CALLS
