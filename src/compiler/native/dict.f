@@ -122,26 +122,43 @@ public
 1 constant FIXED-VAL                 \ `constant`: the body pushes a decided number
 2 constant FIXED-ADDR                \ `create`/`variable`: the body pushes a DATA address
 
-: SPELL-FIXED ( ptr u8 n -- n )
-   {: a u:n :}
-   a u SPELL-START {: start:n :}
-   start 0= if FIXED-NONE exit then
-   a u SPELL-REC {: rec:ptr :}
+\ ---- one walk answers both the record and its start --------------------------
+\ SPELL-START IS SPELL-REC PLUS XREF-START, so a reader that wants the record
+\ and the start once walked the scope chain twice and then tested the record's
+\ start against itself. That test could not fail. SPELL-REC reads the dictionary
+\ and mutates nothing, so two calls in a row answer with the same record; and
+\ WL-CANDIDATE has already refused any record whose start disagrees with
+\ `search-wl`, which is the comparison that does carry a fact. The readers below
+\ take the record the one walk produced and read its start off that record.
+private
+
+\ Which definer stamped a record. The spelling-level SPELL-FIXED is this reader
+\ plus the walk that finds the record, so a caller already holding one asks here.
+: REC-FIXED ( ptr n -- n )
+   {: rec:ptr :}
    rec XREF-FOUND? 0= if FIXED-NONE exit then
-   rec XREF-START start <> if FIXED-NONE exit then
+   rec XREF-START 0= if FIXED-NONE exit then
    rec XREF-RETIRED? if FIXED-NONE exit then
    rec XREF-FLAGS {: f:n :}
    f DKIND:VAL and 0<> if FIXED-VAL exit then
    f DKIND:ADDR and 0<> if FIXED-ADDR exit then
    FIXED-NONE ;
 
+public
+
+: SPELL-FIXED ( ptr u8 n -- n )
+   {: a u:n :}
+   a u SPELL-REC REC-FIXED ;
+
 \ A record no definer stamped is refused BEFORE the word is entered. The count
 \ settles the arity but not the TYPE (habu-guard-an-executed-8a0f2f77).
 : FIXED-VALUE ( ptr u8 n -- n )
    {: a u:n :}
-   a u SPELL-START {: start:n :}
+   a u SPELL-REC {: rec:ptr :}
+   rec XREF-FOUND? 0= if E-NDICT-NAME throw then
+   rec XREF-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
-   a u SPELL-FIXED FIXED-NONE = if E-NDICT-KIND throw then
+   rec REC-FIXED FIXED-NONE = if E-NDICT-KIND throw then
    depth FX-BASE !
    start RUN-WORD
    depth FX-BASE @ 1+ <> if E-NDICT-VALUE throw then ;
@@ -231,11 +248,10 @@ public
 \ engine code even if a trusted-only primitive row supplies its real arity.
 : CALL-TARGET ( ptr u8 n -- n )
    {: a u:n :}
-   a u SPELL-START {: start:n :}
-   start 0= if 0 exit then
    a u SPELL-REC {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 exit then
-   rec XREF-START start <> if 0 exit then
+   rec XREF-START {: start:n :}
+   start 0= if 0 exit then
    rec XREF-RETIRED? if 0 exit then
    rec XREF-FLAGS {: f:n :}
    f DNAME-INT and 0<> if
