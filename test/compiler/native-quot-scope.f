@@ -126,6 +126,10 @@ public
    {: k:n lim:n :}
    [: dup 3 > if 3 * else 5 * then ;] lim QSC-APPLY  k 7 * + ;
 
+: QSC-THROW ( n -- n n )
+   [: dup 3 > if 9 throw else 5 throw then ;] catch ;
+
+
 ;package
 
 package QSC-TEST
@@ -185,9 +189,9 @@ public
    0 TTHROWSQ ;
 
 : STILL-REFUSED-CASE ( -- )
-   s" a body whose every path throws remains a named refusal" T-LABEL
-   [: s" : QSC-R1 ( n -- n n ) [: dup 3 > if 9 throw else 5 throw then ;] catch ;" EV ;]
-   E-NELAB-QUOT TTHROWSQ
+   s" catch runs a quotation whose every path throws" T-LABEL
+   7 QSC-FIXTURE:QSC-THROW 9 T= 7 T=
+   2 QSC-FIXTURE:QSC-THROW 5 T= 2 T=
    [: s" : QSC-R2 ( n -- n n ) [: dup 3 > if 9 throw else 1+ then ;] catch ;" EV ;]
    0 TTHROWSQ
 

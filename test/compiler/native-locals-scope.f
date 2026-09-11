@@ -257,6 +257,17 @@ public
    then
    k + ;
 
+: NLS-SHADOW-TYPE ( n -- n ) {: v:n :}
+   v 0 > if
+      false {: v:bool :}
+      v if 1 else 2 then
+   else 0 then ;
+
+
+: NLS-LAST-BINDING ( n n -- n ) {: a:n a:n :}
+   a ;
+
+
 ;package
 
 package NLS-TEST
@@ -357,11 +368,11 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    s" : NLS-Z1 ( n n -- n ) {: k:n lim:n :} 0 lim 0 ?do k i + {: a:n :} a 3 * + loop lim 0 ?do k i - {: a:n :} a 5 * + loop k 11 * + ;"
    DEF-RC 0 T=
 
-   s" a live shadow and a duplicate in one group remain named refusals" T-LABEL
-   s" : NLS-Z2 ( n -- n ) {: v:n :} v 0 > if 1 0= {: v:bool :} v if 1 else 2 then else 0 then ;"
-   DEF-RC E-NELAB-LOCAL T=
-   s" : NLS-Z3 ( n n -- n ) {: a:n a:n :} a ;"
-   DEF-RC E-NELAB-LOCAL T= ;
+   s" inner locals can shadow an outer name with a different type" T-LABEL
+   5 NLS-FIXTURE:NLS-SHADOW-TYPE 2 T=
+   -1 NLS-FIXTURE:NLS-SHADOW-TYPE 0 T=
+   s" the latest binding in a locals group owns its name" T-LABEL
+   3 9 NLS-FIXTURE:NLS-LAST-BINDING 9 T= ;
 
 \ A name spelled like a control word, bound inside a structure. The scan that
 \ finds the scopes reads control words, so a mention it did not ask about first

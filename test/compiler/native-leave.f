@@ -134,8 +134,8 @@ private
    s" : NLV-BAD1 ( n -- n ) dup 3 = if leave then ;" EV-DEF 0 T<>
 
    s" and so is one written inside a quotation" T-LABEL
-   s" : NLV-OK2 ( n -- n ) 3 0 ?do [: 1 ;] drop loop ;" EV-DEF 0 T=
-   s" : NLV-BAD2 ( n -- n ) 3 0 ?do [: 1 leave ;] drop loop ;" EV-DEF 0 T<> ;
+   s" : NLV-OK2 ( n -- n ) 3 0 ?do [: 1 ;] execute drop loop ;" EV-DEF 0 T=
+   s" : NLV-BAD2 ( n -- n ) 3 0 ?do [: 1 leave ;] execute drop loop ;" EV-DEF 0 T<> ;
 
 : DEAD-LATCH-CASE ( -- )
    s" leave as the loop body's final path is refused by name" T-LABEL
