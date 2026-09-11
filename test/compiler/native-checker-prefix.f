@@ -8,8 +8,7 @@ TRUSTED: RESET ( -- ) 0 set-check 0 set-top-check CHECKER-RESET-SOURCE IMK-NDICT
    s" src/core/engine-error.f" included
    s" src/core/exec-vector.f" included
    s" src/core/checker.f" included
-
-;
+   s" test/compiler/native-checker-storage.f" included ;
 : RUN ( -- ) RESET LOAD ;
 ' RUN
 ;package
