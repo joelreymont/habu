@@ -869,32 +869,31 @@ create NAMEBUF NAME-CAP allot
       bk OP-COUNT 0 ?do bk i OP-AT COUNT-FRAME-OP loop
    loop ;
 
-: FRAME-PAIR-CK ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   N-RES @ 1 <> N-REL @ 1 <> or if E-A64SPILL-SHAPE throw then
-   f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
-   if E-A64SPILL-SHAPE throw then ;
-
 : FRAMELESS? ( -- bool )
    N-RES @ N-REL @ or N-SAV @ or N-LDL @ or 0= ;
 
-: LEAF-FRAME? ( -- bool )
-   N-RES @ 1 = N-REL @ 1 = and N-SAV @ 0= and N-LDL @ 0= and ;
+\ A no-return function has the same prologue and no epilogue. This applies to
+\ quotation siblings too, even when the enclosing function returns and spills.
+: FRAME-SHAPE-CK ( IR-ID:ir-fun-id -- ) {: f:IR-ID:ir-fun-id :}
+   N-RES @ 1 <>  N-SAV @ 1 > or if E-A64SPILL-SHAPE throw then
+   f RET-ORD NO-RET = if
+      N-REL @ N-LDL @ or 0<> if E-A64SPILL-SHAPE throw then
+   else
+      N-REL @ 1 <>  N-LDL @ N-SAV @ <> or if E-A64SPILL-SHAPE throw then
+   then
+   f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
+   if E-A64SPILL-SHAPE throw then ;
 
-: CALL-FRAME? ( -- bool )
-   N-RES @ 1 = N-REL @ 1 = and N-SAV @ 1 = and N-LDL @ 1 = and ;
-
-: ONCE-CK ( IR-ID:ir-fun-id n -- )
 \ Every function is held to the one-frame shape. PRO-N is the first function's
-\ answer and says whether its reserve/release pair must be resized.
+\ answer and says whether its existing frame must be resized.
+: ONCE-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id k:n :}
    f COUNT-FRAME
    FRAMELESS? if
       k 0= if 0 PRO-N ! then
       exit
    then
-   LEAF-FRAME? CALL-FRAME? or 0= if E-A64SPILL-SHAPE throw then
-   f FRAME-PAIR-CK
+   f FRAME-SHAPE-CK
    k 0= if 1 PRO-N ! then ;
 
 : SHAPE-CK ( -- n )

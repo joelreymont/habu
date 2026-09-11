@@ -1850,6 +1850,47 @@ variable LOWER-TURNS
    m1 n nf LEAF-FRAMED A64RAV:ACCEPT
    m1 ;
 
+\ Spilling the first function also copies a sibling with an existing frame.
+\ Mode 0 never returns; mode 1 wrongly releases before its endless loop, and
+\ mode 2 returns without the required release.
+: BUILD-SPILL-FRAME-SIBLING ( n -- ) {: mode:n :}
+   BUILD-CHAIN
+   s" FRAME-SIBLING" 0 0 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   mode 1 = if tok 16 M-RELEASE then
+   mode 2 = if M-RET0 else
+      2 M-BR0
+      M-BLOCK+
+      2 M-BR0
+   then
+   CLOSE-FUN ;
+
+: SPILL-FRAME-SIBLING-BODY ( n IR-CTX:ctx -- )
+   A64-MOD
+   SPILL-BIND
+   BUILD-SPILL-FRAME-SIBLING
+   3 16 LOWERED drop
+   LOWER-TURNS @ 0 > TTRUE ;
+
+: SPILL-FRAME-SIBLING ( n -- )
+   WBND [: SPILL-FRAME-SIBLING-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SPILL-FRAME-SIBLING-CASE ( -- )
+   s" a no-return sibling keeps its frame while the first function spills" T-LABEL
+   0 SPILL-FRAME-SIBLING ;
+
+: NORET-EPILOGUE-CASE ( IR-CTX:ctx -- )
+   drop
+   s" a no-return sibling with an epilogue is refused by spill rewriting" T-LABEL
+   [: 1 SPILL-FRAME-SIBLING ;] E-A64SPILL-SHAPE TTHROWSQ
+   A64RA:RELEASE ;                    \ LOWER-ONE bound the refused output builder
+
+: RETURN-EPILOGUE-CASE ( IR-CTX:ctx -- )
+   drop
+   s" a returning sibling without an epilogue is refused by spill rewriting" T-LABEL
+   [: 2 SPILL-FRAME-SIBLING ;] E-A64SPILL-SHAPE TTHROWSQ
+   A64RA:RELEASE ;
+
 : MB-DIAMOND-SPILL-BODY ( IR-CTX:ctx -- bool n )
    A64-MOD
    SPILL-BIND
@@ -3438,6 +3479,9 @@ public
    MB-LIVE-COPY-CASE
    MB-PLAN-CASE
    MB-LOWER-CASE
+   SPILL-FRAME-SIBLING-CASE
+   WBND [: NORET-EPILOGUE-CASE ;] IR-CTX:WITH-CONTEXT
+   WBND [: RETURN-EPILOGUE-CASE ;] IR-CTX:WITH-CONTEXT
    MB-DIAMOND-SPILL-CASE
    MB-FORWARD-TWICE-CASE
    MB-DUAL-FORWARD-CASE
