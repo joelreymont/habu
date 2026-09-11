@@ -550,6 +550,14 @@ DYNAMIC-BUFFER ANCH-HEAD-BUF n
 : ANCH-HEAD ( -- ptr n ) 0 ANCH-HEAD-BUF ;
 DYNAMIC-BUFFER ANCH-NEXT-BUF n
 : ANCH-NEXT ( -- ptr n ) 0 ANCH-NEXT-BUF ;
+DYNAMIC-BUFFER CL-USE-START-BUF n
+: CL-USE-START ( -- ptr n ) 0 CL-USE-START-BUF ;
+DYNAMIC-BUFFER CL-USE-NEXT-BUF n
+: CL-USE-NEXT ( -- ptr n ) 0 CL-USE-NEXT-BUF ;
+DYNAMIC-BUFFER USE-POS-BUF n
+: USE-POS ( -- ptr n ) 0 USE-POS-BUF ;
+DYNAMIC-BUFFER READ-END-BUF n
+: READ-END ( -- ptr n ) 0 READ-END-BUF ;
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -581,6 +589,9 @@ DYNAMIC-BUFFER ANCH-NEXT-BUF n
    VMAX CL-WANT-BUF-RESERVE
    OMAX ANCH-HEAD-BUF-RESERVE
    OMAX ANCH-NEXT-BUF-RESERVE
+   VMAX 1+ CL-USE-START-BUF-RESERVE
+   VMAX CL-USE-NEXT-BUF-RESERVE
+   OMAX BMAX + READ-END-BUF-RESERVE
    ;
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
@@ -1061,14 +1072,25 @@ DYNAMIC-BUFFER ANCH-NEXT-BUF n
    r CLS-AT C-TOKEN = if false exit then
    true ;
 
+\ Each class has a sorted slice of operand positions. A missing use answers
+\ this function's end, as did the forward walk through its operations.
+: MB-USE-FROM ( n n -- n )
+   {: r:n from:n :}
+   r 1+ cells CL-USE-START + @ {: end:n :}
+   r cells CL-USE-START + @ end
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid cells USE-POS + @ from < if mid 1+ hi else lo mid then
+   repeat
+   drop
+   dup end = if drop MB-AT @ exit then
+   cells USE-POS + @ MB-AT @ min ;
+
 : MB-READS? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
    p POS-OP? 0= if false exit then
-   f p POS-OP {: id:IR-ID:ir-op-id :}
-   false
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT SLOT UF-FIND r = if drop true leave then
-   loop ;
+   r p MB-USE-FROM p = ;
 
 : MB-DEFS? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
@@ -1087,11 +1109,7 @@ DYNAMIC-BUFFER ANCH-NEXT-BUF n
 \ A class nothing reads again answers the position past the last one.
 : MB-NEXT-USE ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id r:n from:n :}
-   MB-AT @ {: n:n :}
-   n
-   n from 0 max ?do
-      f r i MB-READS? if drop i leave then
-   loop ;
+   r from 0 max MB-USE-FROM ;
 
 \ Address carriers and data-stack load runs stay contiguous. Store their
 \ results after the run; other definitions can be stored immediately.
@@ -1141,16 +1159,7 @@ DYNAMIC-BUFFER ANCH-NEXT-BUF n
 : MB-RUN-READS? ( IR-ID:ir-fun-id n n -- bool )
    {: f:IR-ID:ir-fun-id r:n p:n :}
    p POS-OP? 0= if false exit then
-   f p POS-OP {: id:IR-ID:ir-op-id :}
-   id SUCCS-OF 1 = if false exit then
-   id DSTORE? 0= if f r p MB-READS? exit then
-   p POS-BLOCK {: b:n :}
-   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   p b cells B-ST + @ - 1- {: at:n :}
-   false
-   bk at MB-DSTORE-END at ?do
-      f r b i OP-POS MB-READS? or
-   loop ;
+   r p MB-USE-FROM p cells READ-END + @ < ;
 
 \ ---- the scan ----------------------------------------------------------------
 : MB-EXPIRE1 ( n n n -- )
@@ -1629,6 +1638,69 @@ DYNAMIC-BUFFER ANCH-NEXT-BUF n
    k FUN-AT  k cells F-BASE + @  MB-LAYOUT
    k cells F-RET + @ RET-B ! ;
 
+\ Coalescing is complete before these slices are built. Count every operand,
+\ including duplicates, then fill in module position order. Allocation retries
+\ change spills and registers but never the classes or these read positions.
+: MB-USE-COUNT-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT UF-FIND cells CL-USE-NEXT +
+      dup @ 1+ swap !
+   loop ;
+
+: MB-USE-FILL-OP ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id p:n :}
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT UF-FIND {: r:n :}
+      p r cells CL-USE-NEXT + @ cells USE-POS + !
+      r cells CL-USE-NEXT + dup @ 1+ swap !
+   loop ;
+
+\ A normal operation reads only itself; a store reads through the end of its
+\ contiguous store group. One-successor branches do not require reloads here.
+: MB-READ-ENDS ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id b:n :}
+   b bk OP-COUNT OP-POS
+   bk OP-COUNT 0 ?do
+      bk OP-COUNT i - 1- {: at:n :}
+      b at OP-POS {: p:n :}
+      bk at OP-AT {: id:IR-ID:ir-op-id :}
+      id DSTORE? if
+         id SUCCS-OF 1 = if p else dup then
+         p cells READ-END + !
+      else
+         p id SUCCS-OF 1 <> if 1+ then p cells READ-END + !
+         drop p
+      then
+   loop
+   drop ;
+
+: MB-USES ( -- )
+   N-VALS @ 0 ?do 0 i cells CL-USE-NEXT + ! loop
+   N-FUNS @ 0 ?do
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      f BLOCK-COUNT 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         bk OP-COUNT 0 ?do bk i OP-AT MB-USE-COUNT-OP loop
+      loop
+   loop
+   0
+   N-VALS @ 0 ?do
+      dup i cells CL-USE-START + !
+      i cells CL-USE-NEXT + @ over i cells CL-USE-NEXT + ! +
+   loop
+   dup N-VALS @ cells CL-USE-START + !
+   1 max USE-POS-BUF-RESERVE
+   N-FUNS @ 0 ?do
+      i MB-RELAY
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      N-BLKS @ 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         bk i MB-READ-ENDS
+         bk OP-COUNT 0 ?do bk i OP-AT j i OP-POS MB-USE-FILL-OP loop
+      loop
+   loop ;
+
 \ ---- the three walks over the module's functions ------------------------------
 \ Every function onto the line, in the module's own order.
 : MEASURE-ALL ( A64EFF:conv -- )
@@ -1790,6 +1862,7 @@ public
    cv MEASURE-ALL
    COVER-CK
    MB-CLASSES
+   MB-USES
    MB-KIND-CLEAR
    MB-SIZES
    MB-DECLS!
@@ -1930,6 +2003,10 @@ public
    CL-WANT-BUF-RELEASE
    ANCH-HEAD-BUF-RELEASE
    ANCH-NEXT-BUF-RELEASE
+   CL-USE-START-BUF-RELEASE
+   CL-USE-NEXT-BUF-RELEASE
+   USE-POS-BUF-RELEASE
+   READ-END-BUF-RELEASE
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
