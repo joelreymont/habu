@@ -113,6 +113,8 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 DYNAMIC-BUFFER F-ORDER IR-ID:ir-value-id
 DYNAMIC-BUFFER F-ORDER-SET-BUF n
 : F-ORDER-SET ( -- ptr n ) 0 F-ORDER-SET-BUF ;
+DYNAMIC-BUFFER F-NEED-BUF n
+: F-NEED ( -- ptr n ) 0 F-NEED-BUF ;
 variable PRED-SEEN
 variable PRED-ONE
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
@@ -131,6 +133,7 @@ DYNAMIC-BUFFER RBLK-BUF n
    SCRATCH-SIZES!
    BMAX F-ORDER-RESERVE
    BMAX F-ORDER-SET-BUF-RESERVE
+   BMAX F-NEED-BUF-RESERVE
    VMAX VMAP-RESERVE
    VMAX RMAP-RESERVE
    VMAX VSET-BUF-RESERVE
@@ -163,6 +166,19 @@ create NAMEBUF NAME-CAP allot
 : F-ORDER-SET? ( n -- bool )
    dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then
    cells F-ORDER-SET + @ 0<> ;
+
+\ One flag per block of the function being rewritten: set when a frame access is
+\ reachable from that block, so an order threaded into it is one somebody reads.
+: F-NEED? ( n -- bool )
+   dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then
+   cells F-NEED + @ 0<> ;
+
+: F-NEED! ( n -- )
+   dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then
+   1 swap cells F-NEED + ! ;
+
+: F-NEED-CLEAR ( -- )
+   BMAX 0 ?do 0 i cells F-NEED + ! loop ;
 
 \ ---- the machine operation family --------------------------------------------
 \ An operation of a form outside the family has no rule here and is refused
@@ -539,22 +555,11 @@ create NAMEBUF NAME-CAP allot
       then
    loop ;
 
-: TRAP-END? ( IR-ID:ir-block-id -- bool )
-   TERM-AT {: t:IR-ID:ir-op-id :}
-   t SUCCS-OF 0=  t OPCODE-AT OPCODE-SLOT O-TRAP =  and ;
-
-\ A terminal trap with no original or inserted frame access consumes no order.
-: TRAP-ORDER-UNUSED? ( IR-ID:ir-block-id n -- bool )
-   {: bk:IR-ID:ir-block-id b:n :}
-   bk TRAP-END? 0= if false exit then
-   b PLAN-FRAME-IN? if false exit then
-   bk OP-COUNT 0 ?do
-      bk i OP-AT FRAME-TOUCH? if false unloop exit then
-   loop true ;
-
+\ A block nothing reaches the frame from carries no order, so none is minted for
+\ it: the lane a no-return arm would be handed is one no operation ever reads.
 : SYNTH-FRAME-ARG? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id b:n :}
-   bk b TRAP-ORDER-UNUSED? if false exit then
+   b F-NEED? 0= if false exit then
    f bk ONE-SUCC-IN? ;
 
 -1 constant NO-FRAME-ARG
@@ -618,7 +623,7 @@ create NAMEBUF NAME-CAP allot
    id i SUCC-AT {: sb:IR-ID:ir-block-id :}
    id i SUCC-ORD {: b:n :}
    sb FRAME-ARG NO-FRAME-ARG <>  f sb b SYNTH-FRAME-ARG? or if exit then
-   sb b TRAP-ORDER-UNUSED? if exit then
+   b F-NEED? 0= if exit then
    b F-ORDER-SET? 0= if TOK b F-ORDER! exit then
    b F-ORDER-SAME? 0= if E-A64SPILL-SHAPE throw then ;
 
@@ -750,7 +755,7 @@ create NAMEBUF NAME-CAP allot
       exit
    then
    carry if
-      b 0<> if bk b TRAP-ORDER-UNUSED? if exit then then
+      b 0<> if b F-NEED? 0= if exit then then
       b F-ORDER-ENTER
    then ;
 
@@ -812,6 +817,41 @@ create NAMEBUF NAME-CAP allot
       then
    loop ;
 
+\ ---- which blocks the frame order has to reach -------------------------------
+\ A block consumes an order when a frame access is reachable from it: one the old
+\ module already holds, a store or reload the walk planned, or the release this
+\ pass puts in front of the return. The need then runs back along the edges.
+: F-NEED-SELF? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id b:n rb:n :}
+   b PLAN-FRAME-IN? if true exit then
+   b rb =  FRAMES? and if true exit then
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT FRAME-TOUCH? if true unloop exit then
+   loop false ;
+
+: F-NEED-SUCC? ( IR-ID:ir-op-id -- bool )
+   {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      t i SUCC-ORD F-NEED? if true unloop exit then
+   loop false ;
+
+: F-NEED-PASS ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id n:n :}
+   false
+   n 0 ?do
+      i F-NEED? 0= if
+         f i BLOCK-AT TERM-AT F-NEED-SUCC? if drop i F-NEED! true then
+      then
+   loop ;
+
+: F-NEED-FILL ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id rb:n :}
+   F-NEED-CLEAR
+   f BLOCK-COUNT {: n:n :}
+   n 0 ?do f i rb F-NEED-SELF? if i F-NEED! then loop
+   begin f n F-NEED-PASS 0= until ;
+
 : WALK-FUN ( IR-ID:ir-fun-id -- )
 \ Both are the FUNCTION's: a value is read in the blocks its definition
 \ dominates and in no other function, and the counter separates two blocks.
@@ -827,6 +867,7 @@ create NAMEBUF NAME-CAP allot
    VCLEAR
    F-ORDER-CLEAR
    f 0 BLOCK-AT IR-ID:BLOCK-LOCAL OLD-BBASE !
+   f rb F-NEED-FILL
    0 G-AT !
    f BLOCK-COUNT 0 ?do f i rb WALK-BLOCK loop
    CTX BLD IR-BUILD:END-FUN drop ;
@@ -983,6 +1024,7 @@ public
 : RELEASE-SCRATCH ( -- )
    F-ORDER-RELEASE
    F-ORDER-SET-BUF-RELEASE
+   F-NEED-BUF-RELEASE
    VMAP-RELEASE
    RMAP-RELEASE
    VSET-BUF-RELEASE

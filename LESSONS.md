@@ -7716,3 +7716,10 @@ and --no-lldbinit.
   and bundle glue. Let only a checker-certified, syntactically empty,
   equal-arity frame adopt its declared output glue; nonempty bodies stay under
   the ordinary strict return check.
+
+- A DYNAMIC-BUFFER reserved in a pass's RESERVE-SCRATCH must have its release in
+  RELEASE-SCRATCH: CAPTURE-PREPARE runs RELEASE-SCRATCH, and an unreleased buffer
+  bakes its mmap pointer into the captured image, so the rebuilt engine writes
+  through a stale address (silent corruption for about thirty functions, then
+  SIGSEGV; found while adding F-NEED-BUF to spill.f, 2026-09-11). Nothing lints
+  the pairing; check it by hand when adding scratch.

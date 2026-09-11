@@ -236,6 +236,10 @@ SUITE compiler-native-loop-frame-order
    test/compiler/native-loop-frame-order.f
 ;SUITE
 
+SUITE compiler-native-arm-frame-order
+   test/compiler/native-arm-frame-order.f
+;SUITE
+
 SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
