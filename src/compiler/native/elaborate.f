@@ -1510,7 +1510,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
 \ Body tokens one definition may have.
 variable TMAX                       \ token count of the current unit
 PTR-VARIABLE TOK-TABLES
-16 constant TOK-FIELDS
+10 constant TOK-FIELDS
 
 : TOK-ROOM ( n -- ) {: n:n :}
    n IR-CTX:SCRATCH-LIMIT TOK-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
@@ -1524,25 +1524,40 @@ PTR-VARIABLE TOK-TABLES
    dup 0 < over TMAX @ >= or if E-NELAB-BLOCK throw then ;
 
 \ ---- the bodies this definition defers ---------------------------------------
-\ Quotation bodies one definition may hold; the definition's own function is
-\ not one of them.
-: QMAX ( -- n ) TMAX @ ;
+\ Signature parameters and callback-valued results also need rows, so their
+\ storage grows independently of the number of source tokens.
+6 constant QUOT-FIELDS
+DYNAMIC-BUFFER QAT-BUF n
+DYNAMIC-BUFFER QLO-BUF n
+DYNAMIC-BUFFER QHI-BUF n
+DYNAMIC-BUFFER QIN-BUF n
+DYNAMIC-BUFFER QOUT-BUF n
+DYNAMIC-BUFFER QFUN-BUF n
+
+: QUOT-ROOM ( n -- ) {: n:n :}
+   n IR-CTX:SCRATCH-LIMIT QUOT-FIELDS cells / > if E-IR-CTX-SCRATCH throw then
+   n QAT-BUF-RESERVE
+   n QLO-BUF-RESERVE
+   n QHI-BUF-RESERVE
+   n QIN-BUF-RESERVE
+   n QOUT-BUF-RESERVE
+   n QFUN-BUF-RESERVE ;
 
 -1 constant QNONE                    \ no consumer has said what this body takes and leaves
 
 here CELL 1- and CELL swap - CELL 1- and allot
-variable QN                          \ how many bodies this definition holds
+variable QN                          \ quotation metadata rows in this definition
 variable QD                          \ the row of the body the pre-scan has open, or -1
 variable QBASE                       \ the ordinal of the function the definition itself is
-: QAT ( -- ptr n ) 10 TOK-FIELD ;
-: QLO ( -- ptr n ) 11 TOK-FIELD ;
-: QHI ( -- ptr n ) 12 TOK-FIELD ;
-: QIN ( -- ptr n ) 13 TOK-FIELD ;
-: QOUT ( -- ptr n ) 14 TOK-FIELD ;
+: QAT ( -- ptr n ) 0 QAT-BUF ;
+: QLO ( -- ptr n ) 0 QLO-BUF ;
+: QHI ( -- ptr n ) 0 QHI-BUF ;
+: QIN ( -- ptr n ) 0 QIN-BUF ;
+: QOUT ( -- ptr n ) 0 QOUT-BUF ;
 : QOPENED ( -- ptr n ) 0 TOK-FIELD ;
 \ This row's quotation is no body of this emission - it is a parameter.
 -1 constant QPARAM                   \ this row's quotation is no body of this emission
-: QFUN ( -- ptr n ) 15 TOK-FIELD ;
+: QFUN ( -- ptr n ) 0 QFUN-BUF ;
 
 \ ---- which body each token belongs to, and which body is being walked ---------
 -1 constant QOWNER-DEF               \ the definition's own function, which is no body
@@ -1656,7 +1671,7 @@ create QSPELL-BUF QSPELL-CAP allot
 
 : QOPEN-ROW ( n -- )
    {: ix:n :}
-   QN @ QMAX >= if E-NELAB-QUOT-CAP throw then
+   QN @ 1+ QUOT-ROOM
    QN @ {: k:n :}
    ix k cells QAT + !
    ix 1+ k cells QLO + !
@@ -1671,7 +1686,7 @@ create QSPELL-BUF QSPELL-CAP allot
 \ body in this emission, but retains the same known calling convention.
 : QKNOWN ( n n n n -- )
    {: ix:n qi:n qo:n cellix:n :}
-   QN @ QMAX >= if E-NELAB-QUOT-CAP throw then
+   QN @ 1+ QUOT-ROOM
    QN @ {: k:n :}
    ix k cells QAT + !
    0 k cells QLO + !
@@ -3593,6 +3608,9 @@ variable DOES-PATCH
 public
 
 : CAPTURE-PREPARE ( -- )
+   QAT-BUF-RELEASE QLO-BUF-RELEASE QHI-BUF-RELEASE
+   QIN-BUF-RELEASE QOUT-BUF-RELEASE QFUN-BUF-RELEASE
+   0 QN !
    LNAME-RELEASE LVAL-RELEASE LOCAL-TABLES-RELEASE
    LQ-RELEASE LOWN-RELEASE LSX-RELEASE
    0 LMAX !

@@ -275,6 +275,21 @@ private
    S\" BAD-POLY ( [ a -- a ] -- ) {: q :} 1 q execute drop s\" x\" drop q execute drop"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ Callback metadata counts signature entries and returned values, not tokens.
+: MANY-CALLBACKS
+   ( [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] -- [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] ) ;
+
+: FORWARD-MANY
+   ( [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] -- [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] [ -- n ] )
+   MANY-CALLBACKS ;
+
+: MANY-CALLBACKS-CASE ( -- )
+   s" callback metadata grows beyond source-token count" T-LABEL
+   42 [: 1 ;] [: 2 ;] [: 3 ;] [: 4 ;] [: 5 ;] [: 6 ;] [: 7 ;] [: 8 ;] [: 9 ;]
+   FORWARD-MANY
+   execute 9 T= execute 8 T= execute 7 T= execute 6 T= execute 5 T=
+   execute 4 T= execute 3 T= execute 2 T= execute 1 T= 42 T= ;
+
 \ The trusted body mints a nominal token from its runtime cell representation.
 \ Its mismatch stops checker site recording, but CONSUME declares the literal
 \ callback's real ABI and the deferred call preserves the nominal contract.
@@ -309,6 +324,7 @@ public
    DEAD-CASE
    REACH-CASE
    CALLBACK-CASE
+   MANY-CALLBACKS-CASE
    MINT-CASE
    T-REPORT ;
 
