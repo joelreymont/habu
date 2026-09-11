@@ -414,6 +414,12 @@ ambiguity.
 - `using` state is file-local: it is snapshotted per eval frame and per REPL
   line and rolled back with the open-package scope, so a `using` left open in an
   included file (or aborted by a throw) never leaks to the caller.
+- **A package word shadows the same-named global or primitive, and nothing
+  reaches past it.** Inside `package TENDER` a bare `open` is `TENDER:OPEN`,
+  not the syscall primitive; under `using DOC` a bare `close` is refused
+  against `DOC:CLOSE` (`E-USING-SHADOW-GLOBAL`). There is no qualifier for the
+  root vocabulary, so either wrap the primitive in a library word with its own
+  name (`OPEN-APPEND-FD`, `close-rc`) or name the package word differently.
 
 ### Structures And Enums
 
@@ -700,6 +706,10 @@ address arithmetic at the public boundary.
   `ptr a` only while the body keeps the pointee parametric; a body that reads
   the cell as a number declares `ptr n`.
 - **Compare an enum value with its family's derived `EQ`**, never a raw `=`.
+- **A foreign nominal is minted only by its owner.** `CAST: >SLOT ( n -- slot )`
+  outside `package DOC` is refused (`E-CAST-OWNER`, checker code 7135);
+  projecting the handle out (`slot -- n`) is allowed anywhere. Store the
+  projected identity and resolve it back through the owner's public words.
 - **Reserved names cover constants and variants.** `MATCH` cannot name a
   package constant, even inside `package ... public`, and an enum `VARIANT`
   whose name is a reserved word or already taken fails with "name is reserved
