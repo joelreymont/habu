@@ -1,7 +1,7 @@
 \ native-a64ir.f - checked ARM64 machine dialect tests.
 \
 \ Proves the contract of src/compiler/native/a64ir.f: registering the dialect
-\ defines exactly eleven opcodes and every declared field of each one reads back
+\ defines the machine opcodes and their declared fields read back
 \ through the frozen schema table; the two move-wide operand bounds and the two
 \ frame-slot bounds are the shipped assembler's own and are asserted against it
 \ rather than restated; a move-wide immediate or shift, a frame slot, or a
@@ -142,7 +142,7 @@ private
 \ D file in D-ADDR-SHAPE-CASE and D-SLOT-SHAPE-CASE, the six bitwise and
 \ shift forms in BITWISE-CASE, and the two comparisons against an immediate in
 \ CMPI-SHAPE-CASE, and the count covers all of them.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -182,53 +182,49 @@ private
    c b A64IR-OPCODE:CODEADDR A64IR:OPCODE {: ca:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:FLAGI A64IR:OPCODE {: gi:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:CMPBRI A64IR:OPCODE {: bi:IR-ID:ir-symbol-id :}
-   b IR-BUILD:SCHEMAS
+   b IR-BUILD:SCHEMAS 76 T=
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   rv z IR-SCHEMA:FDEFINED?
-   rv k IR-SCHEMA:FDEFINED?
-   rv v IR-SCHEMA:FDEFINED?
-   rv a IR-SCHEMA:FDEFINED?
-   rv s IR-SCHEMA:FDEFINED?
-   rv u IR-SCHEMA:FDEFINED?
-   rv y IR-SCHEMA:FDEFINED?
-   rv w IR-SCHEMA:FDEFINED?
-   rv d IR-SCHEMA:FDEFINED?
-   rv p IR-SCHEMA:FDEFINED?
-   rv q IR-SCHEMA:FDEFINED?
-   rv g IR-SCHEMA:FDEFINED?
-   rv j IR-SCHEMA:FDEFINED?
-   rv n IR-SCHEMA:FDEFINED?
-   rv t IR-SCHEMA:FDEFINED?
-   rv cl IR-SCHEMA:FDEFINED?
-   rv ls IR-SCHEMA:FDEFINED?
-   rv ll IR-SCHEMA:FDEFINED?
-   rv cb IR-SCHEMA:FDEFINED?
-   rv wc IR-SCHEMA:FDEFINED?
-   rv tc IR-SCHEMA:FDEFINED?
-   rv md IR-SCHEMA:FDEFINED?
-   rv ai IR-SCHEMA:FDEFINED?
-   rv si IR-SCHEMA:FDEFINED?
-   rv mn IR-SCHEMA:FDEFINED?
-   rv an IR-SCHEMA:FDEFINED?
-   rv oi IR-SCHEMA:FDEFINED?
-   rv ei IR-SCHEMA:FDEFINED?
-   rv xl IR-SCHEMA:FDEFINED?
-   rv xs IR-SCHEMA:FDEFINED?
-   rv xa IR-SCHEMA:FDEFINED?
-   rv xb IR-SCHEMA:FDEFINED?
-   rv xd IR-SCHEMA:FDEFINED?
-   rv xe IR-SCHEMA:FDEFINED?
-   rv ca IR-SCHEMA:FDEFINED?
-   rv gi IR-SCHEMA:FDEFINED?
-   rv bi IR-SCHEMA:FDEFINED? ;
+   rv z IR-SCHEMA:FDEFINED? TTRUE
+   rv k IR-SCHEMA:FDEFINED? TTRUE
+   rv v IR-SCHEMA:FDEFINED? TTRUE
+   rv a IR-SCHEMA:FDEFINED? TTRUE
+   rv s IR-SCHEMA:FDEFINED? TTRUE
+   rv u IR-SCHEMA:FDEFINED? TTRUE
+   rv y IR-SCHEMA:FDEFINED? TTRUE
+   rv w IR-SCHEMA:FDEFINED? TTRUE
+   rv d IR-SCHEMA:FDEFINED? TTRUE
+   rv p IR-SCHEMA:FDEFINED? TTRUE
+   rv q IR-SCHEMA:FDEFINED? TTRUE
+   rv g IR-SCHEMA:FDEFINED? TTRUE
+   rv j IR-SCHEMA:FDEFINED? TTRUE
+   rv n IR-SCHEMA:FDEFINED? TTRUE
+   rv t IR-SCHEMA:FDEFINED? TTRUE
+   rv cl IR-SCHEMA:FDEFINED? TTRUE
+   rv ls IR-SCHEMA:FDEFINED? TTRUE
+   rv ll IR-SCHEMA:FDEFINED? TTRUE
+   rv cb IR-SCHEMA:FDEFINED? TTRUE
+   rv wc IR-SCHEMA:FDEFINED? TTRUE
+   rv tc IR-SCHEMA:FDEFINED? TTRUE
+   rv md IR-SCHEMA:FDEFINED? TTRUE
+   rv ai IR-SCHEMA:FDEFINED? TTRUE
+   rv si IR-SCHEMA:FDEFINED? TTRUE
+   rv mn IR-SCHEMA:FDEFINED? TTRUE
+   rv an IR-SCHEMA:FDEFINED? TTRUE
+   rv oi IR-SCHEMA:FDEFINED? TTRUE
+   rv ei IR-SCHEMA:FDEFINED? TTRUE
+   rv xl IR-SCHEMA:FDEFINED? TTRUE
+   rv xs IR-SCHEMA:FDEFINED? TTRUE
+   rv xa IR-SCHEMA:FDEFINED? TTRUE
+   rv xb IR-SCHEMA:FDEFINED? TTRUE
+   rv xd IR-SCHEMA:FDEFINED? TTRUE
+   rv xe IR-SCHEMA:FDEFINED? TTRUE
+   rv ca IR-SCHEMA:FDEFINED? TTRUE
+   rv gi IR-SCHEMA:FDEFINED? TTRUE
+   rv bi IR-SCHEMA:FDEFINED? TTRUE ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the seventy-six machine opcodes" T-LABEL
-   BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 76 T= ;
+   s" registration defines the machine opcode schemas" T-LABEL
+   BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -604,7 +600,7 @@ private
 \ data-stack slot are counted from two different pointers and a D-file access
 \ under the wrong key would be a routine reading its arguments out of its own
 \ frame.
-: D-SLOT-SHAPE-BODY ( IR-CTX:ctx -- bool bool bool bool n n n bool bool bool n n n bool bool bool n n n bool bool n n n bool bool )
+: D-SLOT-SHAPE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
@@ -620,41 +616,36 @@ private
    m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
    m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
    m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   pv yv fl s" a64.fldr" IR-SYM:FEQ?
-   pv yv fs s" a64.fstr" IR-SYM:FEQ?
-   pv yv dl s" a64.fdload" IR-SYM:FEQ?
-   pv yv ds s" a64.fdstore" IR-SYM:FEQ?
-   rv fl IR-SCHEMA:FOPERANDS
-   rv fl IR-SCHEMA:FRESULTS
-   rv fl IR-SCHEMA:FATTRS
-   qv rv key fl 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key fl 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL lk IR-ID:SYMBOL-LOCAL =
-   rv fl IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
-   rv fs IR-SCHEMA:FOPERANDS
-   rv fs IR-SCHEMA:FRESULTS
-   rv fs IR-SCHEMA:FATTRS
-   qv rv key fs 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key fs 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL lk IR-ID:SYMBOL-LOCAL =
-   rv fs IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
-   rv dl IR-SCHEMA:FOPERANDS
-   rv dl IR-SCHEMA:FRESULTS
-   rv dl IR-SCHEMA:FATTRS
-   qv rv key dl 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key dl 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL dk IR-ID:SYMBOL-LOCAL =
-   rv ds IR-SCHEMA:FOPERANDS
-   rv ds IR-SCHEMA:FRESULTS
-   rv ds IR-SCHEMA:FATTRS
-   qv rv key ds 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key ds 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL dk IR-ID:SYMBOL-LOCAL = ;
+   pv yv fl s" a64.fldr" IR-SYM:FEQ? TTRUE
+   pv yv fs s" a64.fstr" IR-SYM:FEQ? TTRUE
+   pv yv dl s" a64.fdload" IR-SYM:FEQ? TTRUE
+   pv yv ds s" a64.fdstore" IR-SYM:FEQ? TTRUE
+   rv fl IR-SCHEMA:FOPERANDS 1 T=
+   rv fl IR-SCHEMA:FRESULTS 2 T=
+   rv fl IR-SCHEMA:FATTRS 1 T=
+   qv rv key fl 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key fl 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL lk IR-ID:SYMBOL-LOCAL = TTRUE
+   rv fl IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ TTRUE
+   rv fs IR-SCHEMA:FOPERANDS 2 T=
+   rv fs IR-SCHEMA:FRESULTS 1 T=
+   rv fs IR-SCHEMA:FATTRS 1 T=
+   qv rv key fs 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key fs 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL lk IR-ID:SYMBOL-LOCAL = TTRUE
+   rv fs IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ TTRUE
+   rv dl IR-SCHEMA:FOPERANDS 1 T=
+   rv dl IR-SCHEMA:FRESULTS 2 T=
+   rv dl IR-SCHEMA:FATTRS 1 T=
+   qv rv key dl 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key dl 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL dk IR-ID:SYMBOL-LOCAL = TTRUE
+   rv ds IR-SCHEMA:FOPERANDS 2 T=
+   rv ds IR-SCHEMA:FRESULTS 1 T=
+   rv ds IR-SCHEMA:FATTRS 1 T=
+   qv rv key ds 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key ds 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL dk IR-ID:SYMBOL-LOCAL = TTRUE ;
 
 : D-SLOT-SHAPE-CASE ( -- )
    s" the four slot forms of the D file transfer a floating register" T-LABEL
-   BND [: D-SLOT-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE 1 T= 1 T= 2 T=
-   TTRUE TTRUE 1 T= 2 T= 1 T=
-   TTRUE TTRUE TTRUE 1 T= 1 T= 2 T=
-   TTRUE TTRUE TTRUE 1 T= 2 T= 1 T=
-   TTRUE TTRUE TTRUE TTRUE ;
+   BND [: D-SLOT-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the declared shapes of the two addressed BYTE forms ---------------------
 \ A byte access is its own form, so what has to be asserted is that it is one: a
@@ -1141,7 +1132,7 @@ private
 \ the immediate zero is asking about a RELATION - `f0<` or `f0=` - and which one
 \ has to be on the operation. A zero form that carried no condition would make
 \ the two source words one lowering.
-: FFSEL-SHAPE-BODY ( IR-CTX:ctx -- bool bool bool bool n n n n n n n n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: FFSEL-SHAPE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
@@ -1157,44 +1148,38 @@ private
    m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
    m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
    m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
-   pv yv s s" a64.fcmpsel" IR-SYM:FEQ?
-   pv yv sz s" a64.fcmpselz" IR-SYM:FEQ?
-   pv yv p s" a64.fcmpseld" IR-SYM:FEQ?
-   pv yv pz s" a64.fcmpselzd" IR-SYM:FEQ?
-   rv s IR-SCHEMA:FOPERANDS
-   rv sz IR-SCHEMA:FOPERANDS
-   rv p IR-SCHEMA:FOPERANDS
-   rv pz IR-SCHEMA:FOPERANDS
-   rv s IR-SCHEMA:FATTRS
-   rv sz IR-SCHEMA:FATTRS
-   rv p IR-SCHEMA:FATTRS
-   rv pz IR-SCHEMA:FATTRS
-   qv rv key s 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key s 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key s 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
-   qv rv key s 3 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
-   qv rv key s 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
-   qv rv key sz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key sz 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
-   qv rv key sz 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
-   qv rv key p 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key p 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key p 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key pz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key pz 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key pz 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
-   qv rv key s 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL =
-   qv rv key sz 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL = ;
+   pv yv s s" a64.fcmpsel" IR-SYM:FEQ? TTRUE
+   pv yv sz s" a64.fcmpselz" IR-SYM:FEQ? TTRUE
+   pv yv p s" a64.fcmpseld" IR-SYM:FEQ? TTRUE
+   pv yv pz s" a64.fcmpselzd" IR-SYM:FEQ? TTRUE
+   rv s IR-SCHEMA:FOPERANDS 4 T=
+   rv sz IR-SCHEMA:FOPERANDS 3 T=
+   rv p IR-SCHEMA:FOPERANDS 4 T=
+   rv pz IR-SCHEMA:FOPERANDS 3 T=
+   rv s IR-SCHEMA:FATTRS 1 T=
+   rv sz IR-SCHEMA:FATTRS 1 T=
+   rv p IR-SCHEMA:FATTRS 1 T=
+   rv pz IR-SCHEMA:FATTRS 1 T=
+   qv rv key s 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key s 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key s 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key s 3 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key s 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key sz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key sz 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key sz 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key p 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key p 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key p 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key pz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key pz 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key pz 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = TTRUE
+   qv rv key s 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL = TTRUE
+   qv rv key sz 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL = TTRUE ;
 
 : FFSEL-SHAPE-CASE ( -- )
-   s" the four Fcmp-flagged selects compare doubles and each carries a condition"
-   T-LABEL
-   BND [: FFSEL-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   1 T= 1 T= 1 T= 1 T=
-   3 T= 4 T= 3 T= 4 T=
-   TTRUE TTRUE TTRUE TTRUE ;
+   s" the four Fcmp-flagged selects compare doubles and each carries a condition" T-LABEL
+   BND [: FFSEL-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ None of them ends a block and none of them traps, which is what separates a
 \ select from the fused compare-and-BRANCH it shares its first instruction with:

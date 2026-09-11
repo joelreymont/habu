@@ -161,9 +161,6 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    a u NCOMBINV:ROW!
    NCOMBINV:EORI-INSNS ;
 
-TRUSTED: EV ( ptr u8 n -- )
-   evaluate ;
-
 public
 
 : FIRED-CASES ( -- )
@@ -378,12 +375,8 @@ public
    8 3 NCT-FIXTURE:NCT-CSHARED 9 T=
    9 3 NCT-FIXTURE:NCT-CSHARED 3 T= ;
 
-: ADDR-CASES ( -- )
-   s" an address chain keeps its relocation kind across combine" T-LABEL
-   S\" : NCT-ADDR ( -- ptr u8 n ) s\" combine\" ;" EV
-   A64EMIT:ADDR-SITES 1 T=
-   0 A64EMIT:ADDR-SITE-KIND@ A64IR:ADDR-DATA T=
-   0 A64EMIT:ADDR-SITE@ A64IR:HALVES + A64EMIT:INSNS <= TTRUE ;
+\ Relocation after publication is covered by the real saved-image tests in
+\ test/app-image.f; the compiler retires its temporary emission here.
 
 : CASES ( -- )
    FIRED-CASES
@@ -397,8 +390,7 @@ public
    MASK-ANSWER-CASES
    CMP-FIRED-CASES
    CMP-REFUSED-CASES
-   CMP-ANSWER-CASES
-   ADDR-CASES ;
+   CMP-ANSWER-CASES ;
 
 ;using
 
