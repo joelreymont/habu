@@ -867,20 +867,27 @@ $1000 constant BUMP-ADDR
    c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    c m1 3 16 NFIX:LEAF-FRAMED A64RA:ALLOCATE
    m1 3 16 NFIX:LEAF-FRAMED A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT ;
+   c m1 A64EMIT:EMIT
+   A64SPILL:RELEASE ;
 
-: SPILL-BODY ( IR-CTX:ctx -- n n n n n )
+: HAS-WORD? ( n -- bool )
+   {: word:n :}
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ word = if true unloop exit then
+   loop
+   false ;
+
+: SPILL-BODY ( IR-CTX:ctx -- n bool bool n )
    SPILL-EMITTED
-   A64EMIT:INSNS
    0 A64EMIT:WORD@                   \ sub sp, sp, #16 - the routine takes its frame
-   7 A64EMIT:WORD@                   \ str x2, [sp, #0] - the third value is put away
-   14 A64EMIT:WORD@                  \ ldr x1, [sp, #0] - and comes back for the sum
-   NFIX:RESULT-REG ;
+   $F90003E2 HAS-WORD?               \ str x2, [sp, #0] - the third value is put away
+   $F94003E1 HAS-WORD?               \ ldr x1, [sp, #0] - and comes back for the sum
+   A64EMIT:INSNS 2 - A64EMIT:WORD@ ; \ add sp, sp, #16 - the frame is returned
 
 : SPILL-CASE ( -- )
    s" a block that does not fit reserves a frame and spills into it" T-LABEL
    WBND [: SPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= $F94003E1 T= $F90003E2 T= $D10043FF T= 21 T= ;
+   $910043FF T= TTRUE TTRUE $D10043FF T= ;
 
 : RUN-SPILL-BODY ( IR-CTX:ctx -- n n )
    SPILL-EMITTED
@@ -917,7 +924,8 @@ $1000 constant BUMP-ADDR
    c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    c m1 3 0 NFIX:LEAF-FRAMED A64RA:ALLOCATE
    m1 3 0 NFIX:LEAF-FRAMED A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT ;
+   c m1 A64EMIT:EMIT
+   A64SPILL:RELEASE ;
 
 : REMAT-EMIT-BODY ( IR-CTX:ctx -- n n n )
    REMAT-EMITTED
@@ -978,7 +986,8 @@ $1000 constant BUMP-ADDR
    c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    c m1 SECOND-ABI A64RA:ALLOCATE
    m1 SECOND-ABI A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT ;
+   c m1 A64EMIT:EMIT
+   A64SPILL:RELEASE ;
 
 : SECOND-BODY ( IR-CTX:ctx -- n n n )
    SECOND-EMITTED

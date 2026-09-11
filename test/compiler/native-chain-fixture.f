@@ -282,7 +282,8 @@ public
    c m a u LOWER {: m1:IR-BUILD:module :}
    c m1  base n NABI:POOL in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
    m1  base n NABI:POOL in out sp NABI:LEAF-FRAMED  A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT ;
+   c m1 A64EMIT:EMIT
+   A64SPILL:RELEASE ;
 
 \ The same for a routine that calls itself. Its frame already holds the caller's
 \ return address in the slot src/compiler/native/frame.f names, and the
@@ -302,7 +303,8 @@ public
    c m a u LOWER {: m1:IR-BUILD:module :}
    c m1  base n NABI:POOL in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
    m1  base n NABI:POOL in out sp NABI:CALL-FRAMED  A64RAV:ACCEPT
-   c m1 A64EMIT:EMIT ;
+   c m1 A64EMIT:EMIT
+   A64SPILL:RELEASE ;
 
 \ How many values the FIRST walk of the last spilling run put in the frame. A run
 \ that produced the same answer without spilling anything would be measuring
