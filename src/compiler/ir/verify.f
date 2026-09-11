@@ -812,18 +812,19 @@ variable MOVED                       \ did any set change this round
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
    IR-ARENA:PUSH drop ;
 
-: LCELL@ ( IR-ARENA:arena n -- n )
-   IR-ARENA:READ ;
-
 \ The pool cells the publication below writes: one per predecessor edge, over
 \ every block. The ceiling check and the reservation both count them here, so
 \ the number the ceiling was checked against is the number that gets allocated.
 : EDGE-CELLS ( -- n )
    0 BLOCKS 0 ?do i PN@ + loop ;
 
-: ROOM-CK ( -- )
-   T-EDR T@ HC-CAP LCELL@ BLOCKS < if E-IR-VERIFY-CAP throw then
-   T-EDP T@ HC-CAP LCELL@ EDGE-CELLS < if E-IR-VERIFY-CAP throw then ;
+\ One ceiling each, so the caller still opens the row arena, checks it, and only
+\ then opens the pool - the order in which the two were resolved before.
+: ROW-ROOM-CK ( IR-ARENA:reader -- )
+   HC-CAP IR-ARENA:RD@ BLOCKS < if E-IR-VERIFY-CAP throw then ;
+
+: POOL-ROOM-CK ( IR-ARENA:reader -- )
+   HC-CAP IR-ARENA:RD@ EDGE-CELLS < if E-IR-VERIFY-CAP throw then ;
 
 \ The whole derived table is published in one run of appends - every block's
 \ predecessor window, then every block's row - so both arenas are reserved
@@ -838,7 +839,8 @@ variable MOVED                       \ did any set change this round
 
 : EDGES-PUBLISH ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   ROOM-CK
+   T-EDR T@ IR-ARENA:OPEN-LIVE ROW-ROOM-CK
+   T-EDP T@ IR-ARENA:OPEN-LIVE POOL-ROOM-CK
    c ROOM-TAKE
    BLOCKS 0 ?do
       i PN@ 0 ?do
@@ -909,9 +911,8 @@ public
 private
 
 \ ---- frozen readers -----------------------------------------------------------
-: FCELL@ ( IR-ARENA:view n -- n )
-   IR-ARENA:FREAD ;
-
+\ A public reader opens the view once and every helper below takes the reader,
+\ which refuses on the generation and the state exactly where the view would.
 : FPSHAPE-CK ( n -- )
    HDR-CELLS < if E-IR-VERIFY-STATE throw then ;
 
@@ -919,60 +920,66 @@ private
    dup HDR-CELLS < if E-IR-VERIFY-STATE throw then
    HDR-CELLS - EROW-CELLS mod 0 <> if E-IR-VERIFY-STATE throw then ;
 
-: FPHDR-CK ( IR-ARENA:view -- )
-   {: p:IR-ARENA:view :}
-   p IR-ARENA:SIZE FPSHAPE-CK
-   EDP-MAGIC p HC-MAGIC FCELL@ <> if E-IR-VERIFY-STATE throw then ;
+: FPHDR-CK ( IR-ARENA:reader -- )
+   {: p:IR-ARENA:reader :}
+   p IR-ARENA:RD-SIZE FPSHAPE-CK
+   EDP-MAGIC p HC-MAGIC IR-ARENA:RD@ <> if E-IR-VERIFY-STATE throw then ;
 
-: FRHDR-CK ( IR-ARENA:view -- )
-   {: r:IR-ARENA:view :}
-   r IR-ARENA:SIZE FRSHAPE-CK
-   EDR-MAGIC r HC-MAGIC FCELL@ <> if E-IR-VERIFY-STATE throw then ;
+: FRHDR-CK ( IR-ARENA:reader -- )
+   {: r:IR-ARENA:reader :}
+   r IR-ARENA:RD-SIZE FRSHAPE-CK
+   EDR-MAGIC r HC-MAGIC IR-ARENA:RD@ <> if E-IR-VERIFY-STATE throw then ;
 
-: FRKEY-CK ( IR-ARENA:view IR-ID:ir-module-key -- )
-   {: r:IR-ARENA:view key:IR-ID:ir-module-key :}
+: FRKEY-CK ( IR-ARENA:reader IR-ID:ir-module-key -- )
+   {: r:IR-ARENA:reader key:IR-ID:ir-module-key :}
    r FRHDR-CK
-   r HC-SERIAL FCELL@ key KEY-SERIAL <> if E-IR-VERIFY-OWNER throw then ;
+   r HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL <> if E-IR-VERIFY-OWNER throw then ;
 
-: FCNT ( IR-ARENA:view -- n )
-   dup FRHDR-CK IR-ARENA:SIZE HDR-CELLS - EROW-CELLS / ;
+: FCNT ( IR-ARENA:reader -- n )
+   dup FRHDR-CK IR-ARENA:RD-SIZE HDR-CELLS - EROW-CELLS / ;
 
-: FROW-AT ( IR-ARENA:view IR-ID:ir-block-id -- n )
-   {: r:IR-ARENA:view id:IR-ID:ir-block-id :}
+: FROW-AT ( IR-ARENA:reader IR-ID:ir-block-id -- n )
+   {: r:IR-ARENA:reader id:IR-ID:ir-block-id :}
    id IR-ID:BLOCK-LOCAL {: l:n :}
    l 0 < l r FCNT >= or if E-IR-VERIFY-BOUND throw then
    l ;
 
-: FRC@ ( IR-ARENA:view n n -- n )
-   {: r:IR-ARENA:view l:n off:n :}
-   r  l EROW-CELLS * HDR-CELLS + off +  FCELL@ ;
+: FRC@ ( IR-ARENA:reader n n -- n )
+   {: r:IR-ARENA:reader l:n off:n :}
+   r  l EROW-CELLS * HDR-CELLS + off +  IR-ARENA:RD@ ;
 
-: FFLD ( IR-ARENA:view IR-ID:ir-block-id n -- n )
-   {: r:IR-ARENA:view id:IR-ID:ir-block-id off:n :}
+: FFLD ( IR-ARENA:reader IR-ID:ir-block-id n -- n )
+   {: r:IR-ARENA:reader id:IR-ID:ir-block-id off:n :}
    r  r id FROW-AT  off FRC@ ;
 
 public
 
 \ ---- the published derived table ----------------------------------------------
 : FEDGE-BLOCKS ( IR-ARENA:view -- n )
-   FCNT ;
+   IR-ARENA:OPEN FCNT ;
 
 \ Design line 404: how many blocks branch to this one.
 : FPRED-COUNT ( IR-ARENA:view IR-ID:ir-block-id -- n )
-   OFF-PN FFLD ;
+   {: rview:IR-ARENA:view id:IR-ID:ir-block-id :}
+   rview IR-ARENA:OPEN id OFF-PN FFLD ;
 
 \ Design line 405: how many blocks this one branches to.
 : FSUCC-COUNT ( IR-ARENA:view IR-ID:ir-block-id -- n )
-   OFF-SN FFLD ;
+   {: rview:IR-ARENA:view id:IR-ID:ir-block-id :}
+   rview IR-ARENA:OPEN id OFF-SN FFLD ;
 
+\ The row view is opened only once its pool has passed its header, so the two
+\ views still refuse in the order they are checked in.
 : FPRED@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-block-id )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   {: pview:IR-ARENA:view rview:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   pview IR-ARENA:OPEN {: p:IR-ARENA:reader :}
    p FPHDR-CK
+   rview IR-ARENA:OPEN {: r:IR-ARENA:reader :}
    r key FRKEY-CK
    r id FROW-AT {: l:n :}
    r l OFF-PN FRC@ {: n:n :}
    i 0 < i n >= or if E-IR-VERIFY-BOUND throw then
-   p  r l OFF-PST FRC@ i + HDR-CELLS +  FCELL@ {: ord:n :}
+   p  r l OFF-PST FRC@ i + HDR-CELLS +  IR-ARENA:RD@ {: ord:n :}
    ord 0 < if E-IR-VERIFY-STATE throw then
    key ord IR-ID:PACK-BLOCK ;
 

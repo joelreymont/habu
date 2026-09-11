@@ -542,6 +542,19 @@ private
 : PREDIDX-RUN ( -- )
    BND [: PREDIDX-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ ---- a published view whose context is gone ----------------------------------
+\ The reader cases of test/compiler/ir-arena.f, restated through this file's own
+\ published word: the view is resolved once, at the reader, so a view that
+\ outlived the context holding its cells must refuse rather than read them.
+: DEADROW-BODY ( IR-CTX:ctx -- IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b DIAMOND
+   c b IR-BUILD:FREEZE IR-BUILD:FEDGE-ROWS ;
+
+: DEADROW-RUN ( -- )
+   BND [: DEADROW-BODY ;] IR-CTX:WITH-CONTEXT IR-VERIFY:FEDGE-BLOCKS drop ;
+
 \ ---- a refused freeze publishes nothing --------------------------------------
 \ The verifier is a refusal arm in front of the arena freezing, so a module it
 \ rejects leaves the builder live, its tables exactly as they were, and nothing
@@ -645,6 +658,10 @@ private
    s" a predecessor index past the derived count rejects" T-LABEL
    [: PREDIDX-RUN ;] E-IR-VERIFY-BOUND TTHROWSQ ;
 
+: DEADROW-CASE ( -- )
+   s" a derived-table view whose context tore down rejects" T-LABEL
+   [: DEADROW-RUN ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -665,6 +682,7 @@ public
    BND [: drop DOM-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop SCOPE-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop PREDIDX-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop DEADROW-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop REFUSE-CASE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
