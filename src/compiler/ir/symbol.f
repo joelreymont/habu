@@ -121,11 +121,13 @@ private
    CELL-BYTES 1- + CELL-BYTES / ;
 
 \ ---- cell access -------------------------------------------------------------
-: LCELL@ ( IR-ARENA:arena n -- n )
-   IR-ARENA:READ ;
-
-: FCELL@ ( IR-ARENA:view n -- n )
-   IR-ARENA:FREAD ;
+\ Every read below goes through an IR-ARENA reader: a store is resolved ONCE, at
+\ the public word, and the helpers take the resolved readers. The live/frozen
+\ twins that used to run down this file collapse into one set, because a reader
+\ carries the state it was opened against and refuses the other with the error
+\ the handle would have given - the only thing the two entry points still differ
+\ in is OPEN-LIVE against OPEN. THE SCAN IS WHY: INTERN reads three cells of
+\ every row and resolved a store for each one, and now resolves two per intern.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -141,40 +143,24 @@ private
 : RMAGIC-CK ( n -- )
    SYM-MAGIC <> if E-IR-SYM-STATE throw then ;
 
-: PHDR-CK ( IR-ARENA:arena -- )
-   {: a:IR-ARENA:arena :}
-   a IR-ARENA:USED PSHAPE-CK
-   a HC-MAGIC LCELL@ PMAGIC-CK ;
+: PHDR-CK ( IR-ARENA:reader -- )
+   {: pr:IR-ARENA:reader :}
+   pr IR-ARENA:RD-SIZE PSHAPE-CK
+   pr HC-MAGIC IR-ARENA:RD@ PMAGIC-CK ;
 
-: RHDR-CK ( IR-ARENA:arena -- )
-   {: r:IR-ARENA:arena :}
-   r IR-ARENA:USED RSHAPE-CK
-   r HC-MAGIC LCELL@ RMAGIC-CK ;
-
-: FPHDR-CK ( IR-ARENA:view -- )
-   {: v:IR-ARENA:view :}
-   v IR-ARENA:SIZE PSHAPE-CK
-   v HC-MAGIC FCELL@ PMAGIC-CK ;
-
-: FRHDR-CK ( IR-ARENA:view -- )
-   {: v:IR-ARENA:view :}
-   v IR-ARENA:SIZE RSHAPE-CK
-   v HC-MAGIC FCELL@ RMAGIC-CK ;
+: RHDR-CK ( IR-ARENA:reader -- )
+   {: rr:IR-ARENA:reader :}
+   rr IR-ARENA:RD-SIZE RSHAPE-CK
+   rr HC-MAGIC IR-ARENA:RD@ RMAGIC-CK ;
 
 : USED>CNT ( n -- n )
    HDR-CELLS - ROW-CELLS / ;
 
-: CNT ( IR-ARENA:arena -- n )
-   IR-ARENA:USED USED>CNT ;
+: CNT ( IR-ARENA:reader -- n )
+   IR-ARENA:RD-SIZE USED>CNT ;
 
-: FCNT ( IR-ARENA:view -- n )
-   IR-ARENA:SIZE USED>CNT ;
-
-: PCELLS ( IR-ARENA:arena -- n )
-   IR-ARENA:USED HDR-CELLS - ;
-
-: FPCELLS ( IR-ARENA:view -- n )
-   IR-ARENA:SIZE HDR-CELLS - ;
+: PCELLS ( IR-ARENA:reader -- n )
+   IR-ARENA:RD-SIZE HDR-CELLS - ;
 
 \ ---- ownership ---------------------------------------------------------------
 : SERIAL-CK ( n n -- )
@@ -183,22 +169,16 @@ private
 \ The pair coupling: both stores are what their tags claim and both carry the
 \ same owning module serial, so a cross-module pairing rejects before any row
 \ span is trusted against the wrong pool.
-: PAIR-CK ( IR-ARENA:arena IR-ARENA:arena -- )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   a PHDR-CK
-   r RHDR-CK
-   a HC-SERIAL LCELL@ r HC-SERIAL LCELL@ SERIAL-CK ;
+: PAIR-CK ( IR-ARENA:reader IR-ARENA:reader -- )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader :}
+   pr PHDR-CK
+   rr RHDR-CK
+   pr HC-SERIAL IR-ARENA:RD@ rr HC-SERIAL IR-ARENA:RD@ SERIAL-CK ;
 
-: FPAIR-CK ( IR-ARENA:view IR-ARENA:view -- )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view :}
-   pv FPHDR-CK
-   rv FRHDR-CK
-   pv HC-SERIAL FCELL@ rv HC-SERIAL FCELL@ SERIAL-CK ;
-
-: KEY-CK ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
-   a r PAIR-CK
-   r HC-SERIAL LCELL@ key KEY-SERIAL SERIAL-CK ;
+: KEY-CK ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key -- )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader key:IR-ID:ir-module-key :}
+   pr rr PAIR-CK
+   rr HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
 : ID-OWNER-SERIAL ( IR-ID:ir-symbol-id -- n )
    IR-ID:SYMBOL-OWNER MID-SERIAL ;
@@ -211,31 +191,20 @@ private
    id IR-ID:SYMBOL-LOCAL
    dup cnt >= if E-IR-SYM-BOUND throw then ;
 
-: ID-CK ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
-   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r RHDR-CK
-   r HC-SERIAL LCELL@ r CNT id ID-CK-N ;
-
-: FID-CK ( IR-ARENA:view IR-ID:ir-symbol-id -- n )
-   {: v:IR-ARENA:view id:IR-ID:ir-symbol-id :}
-   v FRHDR-CK
-   v HC-SERIAL FCELL@ v FCNT id ID-CK-N ;
+: ID-CK ( IR-ARENA:reader IR-ID:ir-symbol-id -- n )
+   {: rr:IR-ARENA:reader id:IR-ID:ir-symbol-id :}
+   rr RHDR-CK
+   rr HC-SERIAL IR-ARENA:RD@ rr CNT id ID-CK-N ;
 
 \ ---- row addressing ----------------------------------------------------------
 : ROW-CELL ( n n -- n )
    swap ROW-CELLS * HDR-CELLS + + ;
 
-: RC@ ( IR-ARENA:arena n n -- n )
-   ROW-CELL LCELL@ ;
+: RC@ ( IR-ARENA:reader n n -- n )
+   ROW-CELL IR-ARENA:RD@ ;
 
-: FRC@ ( IR-ARENA:view n n -- n )
-   ROW-CELL FCELL@ ;
-
-: DC@ ( IR-ARENA:arena n -- n )
-   HDR-CELLS + LCELL@ ;
-
-: FDC@ ( IR-ARENA:view n -- n )
-   HDR-CELLS + FCELL@ ;
+: DC@ ( IR-ARENA:reader n -- n )
+   HDR-CELLS + IR-ARENA:RD@ ;
 
 \ A row's byte span revalidates against the pool's live cell range on every
 \ access, so a forged or bypass-appended row rejects fail-closed instead of
@@ -245,16 +214,10 @@ private
    st 0 < ln 0 < or if E-IR-SYM-STATE throw then
    st ln BYTES>CELLS + pc > if E-IR-SYM-STATE throw then ;
 
-: ROW-START ( IR-ARENA:arena IR-ARENA:arena n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n :}
-   r l OFF-START RC@ {: st:n :}
-   a PCELLS st r l OFF-LEN RC@ SPAN-CK-N
-   st ;
-
-: FROW-START ( IR-ARENA:view IR-ARENA:view n -- n )
-   {: pv:IR-ARENA:view rv:IR-ARENA:view l:n :}
-   rv l OFF-START FRC@ {: st:n :}
-   pv FPCELLS st rv l OFF-LEN FRC@ SPAN-CK-N
+: ROW-START ( IR-ARENA:reader IR-ARENA:reader n -- n )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n :}
+   rr l OFF-START RC@ {: st:n :}
+   pr PCELLS st rr l OFF-LEN RC@ SPAN-CK-N
    st ;
 
 \ ---- byte packing ------------------------------------------------------------
@@ -273,29 +236,16 @@ private
 : CELL-BYTE ( n n -- n )
    8 * rshift $FF and ;
 
-: PBYTE@ ( IR-ARENA:arena n n -- n )
-   {: a:IR-ARENA:arena st:n i:n :}
-   a st i CELL-BYTES / + DC@  i CELL-BYTES mod CELL-BYTE ;
-
-: FPBYTE@ ( IR-ARENA:view n n -- n )
-   {: pv:IR-ARENA:view st:n i:n :}
-   pv st i CELL-BYTES / + FDC@  i CELL-BYTES mod CELL-BYTE ;
+: PBYTE@ ( IR-ARENA:reader n n -- n )
+   {: pr:IR-ARENA:reader st:n i:n :}
+   pr st i CELL-BYTES / + DC@  i CELL-BYTES mod CELL-BYTE ;
 
 \ The verify step of interning and of every equality probe: compare the
 \ stored packed cells with the presented bytes packed the same way.
-: BYTES-EQ ( IR-ARENA:arena n ptr u8 n -- bool )
-   {: a:IR-ARENA:arena st:n p u:n :}
+: BYTES-EQ ( IR-ARENA:reader n ptr u8 n -- bool )
+   {: pr:IR-ARENA:reader st:n p u:n :}
    u BYTES>CELLS 0 ?do
-      a st i + DC@  p u i CELL-BYTES * PACK-CELL <> if
-         false unloop exit
-      then
-   loop
-   true ;
-
-: FBYTES-EQ ( IR-ARENA:view n ptr u8 n -- bool )
-   {: pv:IR-ARENA:view st:n p u:n :}
-   u BYTES>CELLS 0 ?do
-      pv st i + FDC@  p u i CELL-BYTES * PACK-CELL <> if
+      pr st i + DC@  p u i CELL-BYTES * PACK-CELL <> if
          false unloop exit
       then
    loop
@@ -338,17 +288,17 @@ public
 private
 
 \ ---- scan --------------------------------------------------------------------
-: ROW-MATCH? ( IR-ARENA:arena IR-ARENA:arena n ptr u8 n n -- bool )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n p u:n f:n :}
-   r l OFF-FLT RC@ f <> if false exit then
-   r l OFF-LEN RC@ u <> if false exit then
-   a  a r l ROW-START  p u BYTES-EQ ;
+: ROW-MATCH? ( IR-ARENA:reader IR-ARENA:reader n ptr u8 n n -- bool )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n p u:n f:n :}
+   rr l OFF-FLT RC@ f <> if false exit then
+   rr l OFF-LEN RC@ u <> if false exit then
+   pr  pr rr l ROW-START  p u BYTES-EQ ;
 
-: SCAN ( IR-ARENA:arena IR-ARENA:arena ptr u8 n n -- n )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena p u:n f:n :}
+: SCAN ( IR-ARENA:reader IR-ARENA:reader ptr u8 n n -- n )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader p u:n f:n :}
    -1
-   r CNT 0 ?do
-      a r i p u f ROW-MATCH? if drop i leave then
+   rr CNT 0 ?do
+      pr rr i p u f ROW-MATCH? if drop i leave then
    loop ;
 
 \ ---- creation ----------------------------------------------------------------
@@ -364,10 +314,10 @@ private
 \ Both room checks run before the first cell is written and each arena's
 \ ceiling equals its committed capacity exactly, so an intern either appends
 \ its bytes and its row whole or mutates nothing.
-: ROOM-CK ( IR-ARENA:arena IR-ARENA:arena n -- )
-   {: a:IR-ARENA:arena r:IR-ARENA:arena u:n :}
-   r CNT r HC-CAP LCELL@ >= if E-IR-SYM-CAP throw then
-   a PCELLS u BYTES>CELLS + a HC-CAP LCELL@ > if E-IR-SYM-BYTES throw then ;
+: ROOM-CK ( IR-ARENA:reader IR-ARENA:reader n -- )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader u:n :}
+   rr CNT rr HC-CAP IR-ARENA:RD@ >= if E-IR-SYM-CAP throw then
+   pr PCELLS u BYTES>CELLS + pr HC-CAP IR-ARENA:RD@ > if E-IR-SYM-BYTES throw then ;
 
 \ An intern writes BOTH arenas, so both are reserved here, before either is
 \ touched: a row whose bytes went in and whose row did not is a symbol table
@@ -378,17 +328,20 @@ private
    c a u BYTES>CELLS IR-ARENA:RESERVE
    c r ROW-CELLS IR-ARENA:RESERVE ;
 
-: POOL-ADD ( IR-CTX:ctx IR-ARENA:arena ptr u8 n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena p u:n :}
-   a PCELLS {: st:n :}
+\ The readers are opened before the reservation and outlive it: a RESERVE or a
+\ PUSH changes neither registry generation nor state, and a reader re-reads its
+\ row's pointer and count on every call, so it follows the new span.
+: POOL-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader ptr u8 n -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena pr:IR-ARENA:reader p u:n :}
+   pr PCELLS {: st:n :}
    u BYTES>CELLS 0 ?do
       c a  p u i CELL-BYTES * PACK-CELL  IR-ARENA:PUSH drop
    loop
    st ;
 
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena n n n -- n )
-   {: c:IR-CTX:ctx r:IR-ARENA:arena f:n st:n u:n :}
-   r CNT {: l:n :}
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader n n n -- n )
+   {: c:IR-CTX:ctx r:IR-ARENA:arena rr:IR-ARENA:reader f:n st:n u:n :}
+   rr CNT {: l:n :}
    c r f IR-ARENA:PUSH drop
    c r st IR-ARENA:PUSH drop
    c r u IR-ARENA:PUSH drop
@@ -424,45 +377,52 @@ public
 : INTERN ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key ptr u8 n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key p u:n :}
    u 0 < if E-IR-SYM-LEN throw then
-   a r key KEY-CK
+   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   pr rr key KEY-CK
    p u FILTER {: f:n :}
-   a r p u f SCAN {: hit:n :}
+   pr rr p u f SCAN {: hit:n :}
    hit 0 < 0= if key hit IR-ID:PACK-SYMBOL exit then
-   a r u ROOM-CK
+   pr rr u ROOM-CK
    c a r u ROOM-TAKE
-   c a p u POOL-ADD {: st:n :}
-   c r f st u ROW-ADD
+   c a pr p u POOL-ADD {: st:n :}
+   c r rr f st u ROW-ADD
    key swap IR-ID:PACK-SYMBOL ;
 
 \ ---- live readers ------------------------------------------------------------
 : SYMBOLS ( IR-ARENA:arena -- n )
-   dup RHDR-CK CNT ;
+   IR-ARENA:OPEN-LIVE dup RHDR-CK CNT ;
 
 : LEN@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id ID-CK {: l:n :}
-   r l OFF-LEN RC@ ;
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   rr id ID-CK {: l:n :}
+   rr l OFF-LEN RC@ ;
 
 \ Byte equality between a symbol and a presented span - the observable form
 \ of the interning invariant, with no pointer crossing the boundary.
 : EQ? ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id ptr u8 n -- bool )
    {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id p u:n :}
-   a r PAIR-CK
-   r id ID-CK {: l:n :}
-   r l OFF-LEN RC@ u <> if false exit then
-   a  a r l ROW-START  p u BYTES-EQ ;
+   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   rr id ID-CK {: l:n :}
+   rr l OFF-LEN RC@ u <> if false exit then
+   pr  pr rr l ROW-START  p u BYTES-EQ ;
 
 \ Copy a symbol's bytes into the caller's span and answer the byte length; a
 \ span smaller than the symbol rejects with a named error before any write.
 : COPY ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id ptr u8 n -- n )
    {: a:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id q cap:n :}
-   a r PAIR-CK
-   r id ID-CK {: l:n :}
-   r l OFF-LEN RC@ {: u:n :}
+   a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   rr id ID-CK {: l:n :}
+   rr l OFF-LEN RC@ {: u:n :}
    u cap > if E-IR-SYM-RANGE throw then
-   a r l ROW-START {: st:n :}
+   pr rr l ROW-START {: st:n :}
    u 0 ?do
-      a st i PBYTE@  q i + c!
+      pr st i PBYTE@  q i + c!
    loop
    u ;
 
@@ -470,29 +430,34 @@ public
 \ A frozen module reads its symbols through the two arena views; the retired
 \ builder handles reject every touch with E-IR-ARENA-FROZEN.
 : FSYMBOLS ( IR-ARENA:view -- n )
-   dup FRHDR-CK FCNT ;
+   IR-ARENA:OPEN dup RHDR-CK CNT ;
 
 : FLEN@ ( IR-ARENA:view IR-ID:ir-symbol-id -- n )
    {: rv:IR-ARENA:view id:IR-ID:ir-symbol-id :}
-   rv id FID-CK {: l:n :}
-   rv l OFF-LEN FRC@ ;
+   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+   rr id ID-CK {: l:n :}
+   rr l OFF-LEN RC@ ;
 
 : FEQ? ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id ptr u8 n -- bool )
    {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-symbol-id p u:n :}
-   pv rv FPAIR-CK
-   rv id FID-CK {: l:n :}
-   rv l OFF-LEN FRC@ u <> if false exit then
-   pv  pv rv l FROW-START  p u FBYTES-EQ ;
+   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   rr id ID-CK {: l:n :}
+   rr l OFF-LEN RC@ u <> if false exit then
+   pr  pr rr l ROW-START  p u BYTES-EQ ;
 
 : FCOPY ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id ptr u8 n -- n )
    {: pv:IR-ARENA:view rv:IR-ARENA:view id:IR-ID:ir-symbol-id q cap:n :}
-   pv rv FPAIR-CK
-   rv id FID-CK {: l:n :}
-   rv l OFF-LEN FRC@ {: u:n :}
+   pv IR-ARENA:OPEN {: pr:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+   pr rr PAIR-CK
+   rr id ID-CK {: l:n :}
+   rr l OFF-LEN RC@ {: u:n :}
    u cap > if E-IR-SYM-RANGE throw then
-   pv rv l FROW-START {: st:n :}
+   pr rr l ROW-START {: st:n :}
    u 0 ?do
-      pv st i FPBYTE@  q i + c!
+      pr st i PBYTE@  q i + c!
    loop
    u ;
 

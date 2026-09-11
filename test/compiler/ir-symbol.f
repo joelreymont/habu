@@ -496,6 +496,25 @@ create CBUF 32 allot
    s" an interner is dead after its context ends" T-LABEL
    [: TD-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ A frozen view that outlives its context. Every reader below resolves the view
+\ once and then loads from that resolution, so this is the case the one-shot
+\ resolution has to fail closed on: nothing touches the arena between the
+\ context dying and the read, and the read still refuses.
+: TD-VIEW-BODY ( IR-CTX:ctx -- IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c 4 64 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key s" tdv" IR-SYM:INTERN drop
+   r IR-ARENA:FREEZE ;
+
+: TD-VIEW-READ ( -- )
+   BND [: TD-VIEW-BODY ;] IR-CTX:WITH-CONTEXT
+   IR-SYM:FSYMBOLS drop ;
+
+: TD-VIEW-CASE ( -- )
+   s" a frozen view reads stale after its context ends" T-LABEL
+   [: TD-VIEW-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 : TD-FRESH-CASE ( -- )
    s" fresh contexts and interners succeed after teardown" T-LABEL
    4 0 ?do
@@ -536,7 +555,8 @@ create CBUF 32 allot
    STATE-CASES
    FZ-CASE
    FZ-REJECT-CASES
-   TD-STALE-CASE ;
+   TD-STALE-CASE
+   TD-VIEW-CASE ;
 
 public
 
