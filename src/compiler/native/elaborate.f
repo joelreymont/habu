@@ -668,15 +668,6 @@ variable OPJ                         \ general operands taken so far by the open
    {: ix:n n:n :}
    ix 0 n CELL-CROSS-RUN ;
 
-\ The parked values as cells, for the same reason and by the same route.
-: R-CROSS ( n -- )
-   {: ix:n :}
-   RN @ 0 ?do
-      i RAT REAL-VALUE? if
-         ix  i RAT  HIR-OPCODE:REALBITS CROSS-VALUE  i RSTK !
-      then
-   loop ;
-
 \ Make the value at one vector position answer to the type that position wants.
 : COERCE1 ( n n IR-ID:ir-type-id -- )
    {: ix:n k:n want:IR-ID:ir-type-id :}
@@ -2841,64 +2832,26 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : CALL-CROSS-CK ( -- )
    CALL-NEED @ 0= if E-NELAB-CALL throw then ;
 
-\ Every value this call site hands over goes into a DATA-STACK SLOT.
+\ Only data-stack values use the callee's stack window. Parked values, locals
+\ and loop counters stay live in SSA; allocation spills them across the call.
+\ A callback may replace an independent row, so hidden values cannot be
+\ recovered at fixed offsets below its outputs.
 : CALL-CROSS ( n -- )
-   {: ix:n :}
-   ix VN @ CELL-CROSS
-   ix R-CROSS ;
-
-: R-OPERANDS+ ( -- )
-   RN @ 0 ?do
-      CTX BLD  i RAT  IR-BUILD:ADD-OPERAND
-   loop ;
+   VN @ CELL-CROSS ;
 
 : CALL-OPERANDS+ ( -- )
    CALL-CROSS-CK
    NO-REAL-CK
    CTX BLD TOK IR-BUILD:ADD-OPERAND
-   CROSS-DO LOOP-OPERANDS+
-   CROSS-L LOCAL-OPERANDS+
-   R-OPERANDS+
    VN @ 0 ?do
       CTX BLD  i VAT  IR-BUILD:ADD-OPERAND
    loop ;
 
-: CROSS-RESULTS ( -- n )
-   CROSS-N 2 *  CROSS-L +  RN @ + ;
-
 : CALL-RESULTS+ ( n -- )
    {: n:n :}
    CTX BLD  CTX BLD HIR:MEM-TYPE  IR-BUILD:ADD-RESULT
-   n CROSS-RESULTS +  0 ?do
+   n 0 ?do
       CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-RESULT
-   loop ;
-
-: LOOP-RESULT@ ( IR-ID:ir-op-id n n -- )
-   {: id:IR-ID:ir-op-id k:n t:n :}
-   CTX BLD id  k 2 * 1+   IR-BUILD:OP-RESULT@  t CS-IDX !
-   CTX BLD id  k 2 * 2 +  IR-BUILD:OP-RESULT@  t CS-LIM ! ;
-
-: LOOP-RESULTS@ ( IR-ID:ir-op-id n n -- )
-   {: id:IR-ID:ir-op-id lo:n h:n :}
-   h 0 ?do  id i  lo i + DO-NTH  LOOP-RESULT@  loop ;
-
-variable LRK                         \ crossing locals the walk below has taken back
-
-: R-RESULTS@ ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   RN @ 0 ?do
-      CTX BLD id  CROSS-N 2 * CROSS-L + i + 1+  IR-BUILD:OP-RESULT@  i RSTK !
-   loop ;
-
-: LOCAL-RESULTS@ ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id l:n :}
-   l LOCAL-CK 0= if exit then
-   0 LRK !
-   LBN @ 0 ?do
-      i LSX@ if
-         CTX BLD id  CROSS-N 2 * LRK @ + 1+  IR-BUILD:OP-RESULT@  i LVAL !
-         LRK @ 1+ LRK !
-      then
    loop ;
 
 : CALL-KEPT ( n n n -- n ) {: keep:n k:n had:n :}
@@ -2912,11 +2865,8 @@ variable LRK                         \ crossing locals the walk below has taken 
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    VN @ VDROP
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK!
-   id CROSS-DO LOOP-RESULTS@
-   id CROSS-L LOCAL-RESULTS@
-   id R-RESULTS@
    n 0 ?do
-      CTX BLD id  i 1+ CROSS-RESULTS +  IR-BUILD:OP-RESULT@ VPUSH
+      CTX BLD id  i 1+  IR-BUILD:OP-RESULT@ VPUSH
    loop
    n out - {: k:n :}
    k VQ-KEEP

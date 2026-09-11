@@ -8,6 +8,12 @@ require test/checker-assert.f
 require lib/prelude.f
 require src/compiler/native/compiler.f
 
+\ Replay the real higher-order definitions through the optimizing compiler.
+package NRS-COMBINATORS
+public
+include src/core/combinators.f
+;package
+
 \ ---- the production programs under test --------------------------------------
 package NRS-FIXTURE
 
@@ -121,9 +127,7 @@ public
 : NRS-2CALL ( n n n -- n ) {: a:n b:n s:n :}
    a >r b >r s NRS-CALLEE r> 3 * + r> 5 * + ;
 
-\ A call inside a counted loop with a bound local read after it, so the loop's
-\ counters, the crossing local AND the parked value all travel as operands of
-\ every edge and of the call - which is the one place their order matters.
+\ Calls preserve the loop counters, the bound local and the parked value.
 : NRS-CALLLOOP ( n n n -- n ) {: k:n s:n lim:n :}
    k >r s lim 0 ?do NRS-CALLEE k + loop r> + ;
 
@@ -158,6 +162,9 @@ defer NRS-POP ( | n -- n | )
 
 : NRS-QPAIR ( n [ n -- n ] [ n -- n ] -- n )
    2>r 2r@ swap >r execute r> execute 2r> 2drop ;
+
+: NRS-LOCAL-DIP ( R n [ R -- S ] -- S n )
+   swap {: held:n :} execute held ;
 
 variable NRS-THROW-CODE
 : NRS-THROW ( -- ) NRS-THROW-CODE @ throw ;
@@ -251,11 +258,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    2 2 NRS-FIXTURE:NRS-CASE 42 T=
    2 9 NRS-FIXTURE:NRS-CASE 32 T= ;
 
-\ THE CALL IS THE ONE SEAM WHERE THE ORDER OF THE OPERANDS DECIDES THE ANSWER.
-\ The callee reads its argument out of the slot one below the pointer it is
-\ entered with, so a parked value published AFTER the arguments is the value the
-\ callee computes on. Every row here would still answer for a site that published
-\ them in front, which is where they go, and reds for one that did not.
+\ Calls must preserve hidden state without adding it to the callee stack.
 : CALL-CASE ( -- )
    s" a parked value survives a call and the arguments stay last" T-LABEL
    2 0 NRS-FIXTURE:NRS-CALL 51 T=
@@ -295,6 +298,16 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    3 [: 1+ ;] [: 2 * ;] NRS-FIXTURE:NRS-QPAIR 7 T=
    true NRS-FIXTURE:NRS-QUOTE-BEFORE-IF
    false NRS-FIXTURE:NRS-QUOTE-BEFORE-IF
+   91 3 [: 6 9 ;] NRS-FIXTURE:NRS-LOCAL-DIP 3 T= 9 T= 6 T= 91 T=
+   91 3 [: drop ;] NRS-FIXTURE:NRS-LOCAL-DIP 3 T=
+   91 3 0 [: 2 * ;] NRS-COMBINATORS:TIMES 3 T= 91 T=
+   91 3 3 [: 2 * ;] NRS-COMBINATORS:TIMES 24 T= 91 T=
+   91 3 [: drop ;] NRS-COMBINATORS:KEEP 3 T= 91 T=
+   91 3 [: 2 * ;] NRS-COMBINATORS:KEEP 3 T= 6 T= 91 T=
+   91 3 [: dup 2 * swap 3 * ;] NRS-COMBINATORS:KEEP 3 T= 9 T= 6 T= 91 T=
+   91 3 [: 2 * ;] [: 5 * ;] NRS-COMBINATORS:BI 15 T= 6 T= 91 T=
+   91 3 [: 2 * ;] [: 5 * ;] [: 7 * ;] NRS-COMBINATORS:TRI
+   21 T= 15 T= 6 T= 91 T=
    s" BAD-RQ-ROW ( n bool -- n ) if [: 1+ ;] >r else [: dup ;] >r then r> execute"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
