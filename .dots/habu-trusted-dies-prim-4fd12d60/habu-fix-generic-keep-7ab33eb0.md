@@ -25,3 +25,6 @@ Three additional blockers from Rowan's review now have active, assigned dots:
 - habu-support-spills-inside-11052a3b: nonconstant spills in quotation functions; check_api, candidate 5137130d, independent review by compiler_xhigh_review.
 
 A separate exploratory elaboration rejection is recorded as habu-diagnose-lexically-nested-56aafc89 and remains unassigned. Integration and matched full compiler validation remain pending; do not mark KEEP complete from isolated reducers.
+
+
+Update 2026-09-11 13:59 UTC: All three additional Rowan review blockers now have independently reviewed fixes combined in 92ef13f0, alongside the earlier 80716458/cfcf1baf repairs. A current-layout bootstrap checkpoint built in 21.150 s, SHA256 114c1c09c9c729c052fcc7a84763dbed2ecce424051857ecff04305dc675289b. This is a temporary bootstrap intermediate, not all-AOT acceptance. A fresh process selecting tier 1 before loading tools/native-build.f is now running the actual optimizing selfbuild. Nested-quotation follow-up remains separately assigned.

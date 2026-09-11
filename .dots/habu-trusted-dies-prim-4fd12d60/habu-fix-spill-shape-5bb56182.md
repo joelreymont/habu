@@ -13,3 +13,6 @@ On matched binary SHA d8c3aa00b54b28c16917a1c9e73bb5d686d202bc7585219a056f1d014f
 Acceptance: fix the responsible spill shape/lowering fault, keep valid quotation-before-branch behavior with both branches and caught throw, preserve existing malformed spill/row rejections, pass native-rstack and focused neighbors. Do not rewrite Tender source or weaken spill validation. Root/Rowan review before integration; then real optimizing selfbuild.
 
 Diagnosis: spill.f ONCE-CK at896 rejects before any block copy because it demands1 reserve/1 release and paired link save/load for every sibling function. Embedded never-returning quotation RAISE legitimately has reserve/link-save and no epilogue; selector/validator already support this. Owner is deriving each function epilogue requirements from actual return reachability, retaining entry reserve and returning-path link pairing.
+
+
+Update 2026-09-11 13:59 UTC: Frozen cfcf1baf was independently cleared and is now included in integrated 92ef13f0. Matched binary 5f28af107fbcff650f3cf7335b00a07e672cccbe7553ac6e6fbbb4cb7fe6b464 passed native-rstack (6.273 s), native-regalloc, order-exit, loop-frame-order and quotation neighbors. Separate quotation-spill support is habu-support-spills-inside-11052a3b; do not conflate the two frame defects.

@@ -11,3 +11,6 @@ Owner: Cedar; accepted requests relayed by Tender remain pending. Implement pack
 Current AOT profiling crash (2026-09-11): Rowan independently reproduced SIGSEGV about5s after prof-on over full forced-tier1 Tender load on41df9051 in both rowan-arena and rowan-symbol lanes (x0=0xb,x1=0xe). Arena lane has a trivial-loop reducer tmp/prof-smoke.f. No repair yet. Keep this out of AOT optimization ownership: use existing samples plus focused counters/timing while a separate owner diagnoses using docs/debugging.md. Correlate with earlier requested profiler/foreign-call crash only if evidence supports a shared cause.
 
 Reduction update from Rowan13:15UTC: profiler crash occurs with counting XT wrapper installed on NCOMP-DISPATCH:XT-CELL; without wrapper, same profiling run is clean in both tiers. SIGALRM handler, x0=14, about47s. Count/profiling runs must remain separate while diagnosing. Earlier five-second crash report is superseded by this isolated trigger.
+
+
+Update 2026-09-11 13:59 UTC: Rowan corrected the wrapper-only hypothesis: four long profiled runs include crashes at 47 s with wrapper and 60 s without wrapper, plus clean runs without wrapper. Intermittent SIGSEGV in SIGALRM handler, signal 0x0b and x0 0x0e, independent of wrapper. Do not describe the wrapper as the confirmed cause.
