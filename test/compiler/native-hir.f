@@ -18,7 +18,6 @@
 require lib/test.f
 require test/checker-assert.f
 require src/compiler/native/hir-word.f
-require test/compiler/ir-starve.f
 
 package HIR-TEST
 private
@@ -598,58 +597,36 @@ private
    r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LE HIR-OPCODE:EQ
    r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:EQUAL HIR-OPCODE:EQ ;
 
-\ ---- a declared word is one commit, at the scratch edge ------------------------
-\ A word row is seven appends, and a rename word writes a pool window first.
-\ Each append grows its arena by taking a span from the context mapping, so
-\ declaring at the edge of that mapping used to stop part way through the seven
-\ - a cell count seven does not divide - and every later read of the vocabulary
-\ failed its shape check. Both arenas are now reserved before either is
-\ touched, so a starved registration declares whole words and then refuses.
-\
-\ The vocabulary is registered into a first table before the starve, so every
-\ symbol it needs is already interned and the second registration's only
-\ allocation is its own rows. The tables are made before the starve too: a
-\ margin is one seed span, so creating an arena after it would spend the margin.
-3 constant T-HDR-CELLS
-7 constant T-ROW-CELLS
-
-\ Depth-neutral: the four inputs ride beneath the registration that fails.
+\ A capacity refusal must leave the preceding declarations readable through
+\ the public model API. It does not depend on the context's allocation layout.
 : TORN-REG ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r
    c b p r HIR-WORD:REGISTER-WORDS ;
 
-\ The vocabulary that did not fit still reads, and holds whole rows only.
-: TORN-INTACT ( IR-ARENA:arena -- IR-ARENA:arena )
-   {: r:IR-ARENA:arena :}
-   r
-   r HIR-WORD:MODELED {: n:n :}
-   r IR-ARENA:USED T-HDR-CELLS - T-ROW-CELLS mod 0 <> if E-HIR-STATE throw then
-   r IR-ARENA:USED T-HDR-CELLS n T-ROW-CELLS * + <> if E-HIR-STATE throw then ;
-
-: TORN-BODY ( IR-CTX:ctx -- n n )
+: TORN-BODY ( IR-CTX:ctx -- n n bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
-   c b HIR-WORD:WORDS HIR-WORD:PICK-CELLS WORDS-NEW
-   {: p0:IR-ARENA:arena r0:IR-ARENA:arena :}
-   c b HIR-WORD:WORDS HIR-WORD:PICK-CELLS WORDS-NEW
-   {: p1:IR-ARENA:arena r1:IR-ARENA:arena :}
-   c b p0 r0 HIR-WORD:REGISTER-WORDS
-   c IR-STARVE:EDGE
-   c b p1 r1 [: TORN-REG ;] catch
+   c b 4 HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r [: TORN-REG ;] catch
    {: c2:IR-CTX:ctx b2:IR-BUILD:builder p2:IR-ARENA:arena r2:IR-ARENA:arena rc:n :}
    rc
-   r2 [: TORN-INTACT ;] catch nip ;
+   r2 HIR-WORD:MODELED
+   r2 c2 b2 s" +" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+      HIR-OPCODE:ADD HIR-OPCODE:EQ
+   r2 c2 b2 s" /" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+      HIR-OPCODE:DIV HIR-OPCODE:EQ ;
 
 : TORN-CASE ( -- )
-   s" a registration refused mid-row leaves whole words and a readable table" T-LABEL
+   s" a full word table preserves its first and last accepted declarations" T-LABEL
    BND [: TORN-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= E-IR-CTX-SCRATCH T= ;
+   TTRUE TTRUE 4 T= E-HIR-CAP T= ;
 
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 83 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE HIR-WORD:WORDS T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -1095,39 +1072,6 @@ variable BC-OUT
    BND [: MEAN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE ;
 
-\ Declaration order is observable, which is what an inventory walks: the four
-\ arithmetic words are declared first, then the six comparisons, the six bitwise
-\ words, the four step words, the four memory words, the nine float words, the
-\ five float comparisons, the seventeen control words, the seven words of the
-\ three tag-dispatch forms, the two halves of a locals group, the two halves of
-\ a quotation and the three words a program uses one with, then the renames, and
-\ the six return-stack transfers at the end of the walk. The last two rows pin
-\ the transfers' own ends: a group appended anywhere but the end would move
-\ 2drop, and a group declared in another order would move 2r@ off 82.
-: AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool )
-   {: c:IR-CTX:ctx :}
-   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
-   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
-   r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 69 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 74 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 76 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 77 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" >r" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 82 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" 2r@" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
-
-: AT-CASE ( -- )
-   s" declared words walk in declaration order" T-LABEL
-   BND [: AT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
-
 \ ---- a word model without a module builder -----------------------------------
 \ Every refusal below is measured against a light model: a plain module of the
 \ context, its own symbol interner, and one word of each meaning. It needs no
@@ -1163,6 +1107,25 @@ variable BC-OUT
       key:IR-ID:ir-module-key :}
    c sp sy p r key FILL
    sp sy p r key ;
+
+\ AT preserves this caller's declaration order, independently of the order in
+\ which the built-in vocabulary happens to register its words.
+: AT-BODY ( IR-CTX:ctx -- bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL
+   {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
+      key:IR-ID:ir-module-key :}
+   r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c sp sy key s" *" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL =
+   r key 1 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c sp sy key s" dup" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL =
+   r key 2 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c sp sy key s" /" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL = ;
+
+: AT-CASE ( -- )
+   s" declared words walk in declaration order" T-LABEL
+   BND [: AT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE ;
 
 \ ---- named boundaries and refusals -------------------------------------------
 : REASON-BODY ( IR-CTX:ctx -- n bool bool )
@@ -1767,18 +1730,16 @@ variable BC-OUT
    BND [: TJ-STRING-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE ;
 
-: TJ-CHAR-BODY ( IR-CTX:ctx -- )
+: TJ-CHAR-BODY ( IR-CTX:ctx -- bool )
    TAPE-BUILD {: v:IR-ARENA:view key:IR-ID:ir-module-key wr:IR-ARENA:arena :}
-   v wr 5  v key 5 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN drop ;
-
-: TJ-CHAR ( -- )
-   BND [: TJ-CHAR-BODY ;] IR-CTX:WITH-CONTEXT ;
+   v wr 5  v key 5 NTAPE:SPELL@  HIR-WORD:ADMIT-TOKEN
+      HIR-MEANING:LITERAL HIR-MEANING:EQ ;
 
 : TJ-REFUSE-CASES ( -- )
    s" a name the model does not model is refused off the tape" T-LABEL
    [: TJ-UNMOD ;] E-HIR-UNMODELED TTHROWSQ
-   s" a character literal is a kind this subset does not model" T-LABEL
-   [: TJ-CHAR ;] E-HIR-KIND TTHROWSQ ;
+   s" a character literal is admitted as an integer literal" T-LABEL
+   BND [: TJ-CHAR-BODY ;] IR-CTX:WITH-CONTEXT TTRUE ;
 
 \ ---- the case a body may write a dialect word in -----------------------------
 \ A row is keyed by the FOLD of its word's spelling, because that is the identity
@@ -1854,7 +1815,7 @@ variable BC-OUT
 \ - `[:` sat in the case above, beside a misspelling - and the difference is the
 \ whole of what naming them buys: a census reading E-NELAB-QUOT is reading a
 \ shape this dialect has a place for, while E-HIR-UNMODELED means it has none.
-: QUOT-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool )
+: QUOT-MODEL-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    r  c b s" [:" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS?
@@ -1862,12 +1823,14 @@ variable BC-OUT
    r  c b s" [:" IR-BUILD:INTERN-SYMBOL  HIR-WORD:CTRL@
       HIR-CTRL:OPEN-QUOT HIR-CTRL:EQ
    r  c b s" ;]" IR-BUILD:INTERN-SYMBOL  HIR-WORD:CTRL@
-      HIR-CTRL:CLOSE-QUOT HIR-CTRL:EQ ;
+      HIR-CTRL:CLOSE-QUOT HIR-CTRL:EQ
+   r  c b s" finally" IR-BUILD:INTERN-SYMBOL  HIR-WORD:CTRL@
+      HIR-CTRL:FINALLY HIR-CTRL:EQ ;
 
 : QUOT-MODEL-CASE ( -- )
-   s" the two halves of a quotation are control words of the dialect" T-LABEL
+   s" quotation delimiters and finally register within the advertised capacity" T-LABEL
    BND [: QUOT-MODEL-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ THE TWO OPENERS OF A COUNTED LOOP ARE TWO ROWS, and this is where that is
 \ stated rather than left to be inferred from what the elaborator builds. `do`

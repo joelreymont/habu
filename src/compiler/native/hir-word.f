@@ -927,8 +927,8 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 
 \ ---- the tape join -----------------------------------------------------------
 \ The key is PRESENTED rather than derived, because deriving it needs the
-\ module's interner and this join is also asked of a frozen module. A character
-\ or string literal is a kind this subset does not model and is refused as such.
+\ module's interner and this join is also asked of a frozen module. Literal
+\ token kinds carry their own meaning; only names need word-model lookup.
 : ADMIT-TOKEN ( IR-ARENA:view IR-ARENA:arena n IR-ID:ir-symbol-id -- HIR:meaning )
    {: v:IR-ARENA:view r:IR-ARENA:arena i:n sy:IR-ID:ir-symbol-id :}
    v i NTAPE:KIND@ {: k:NTAPE:kind :}
@@ -942,7 +942,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The exact ceilings this registration writes, so a caller commits a table to
 \ them rather than to a guess. Only the eight renames contribute pick cells.
-85 constant WORDS
+86 constant WORDS
 15 constant PICK-CELLS
 
 private
