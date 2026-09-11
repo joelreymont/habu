@@ -14,3 +14,6 @@ Acceptance: identify and remove remaining measured repeated scans at responsible
 
 
 Update 2026-09-11 13:59 UTC: Owner now /root/compiler_xhigh_review for the next bounded regalloc.f algorithm repair, separate workspace on 92ef13f0. MB-PLACE-PINNED and MB-PLACE-REST scan all module values at every instruction, and read/write pressure repeats all-value scans. Agent investigates class-start scheduling and sparse pressure queries; no verifier edits (Rowan owns regalloc-verify.f). No performance claim yet. Root owns selfbuild; quiet controlled timings follow it.
+
+
+Update2026-09-11 14:15 UTC: Two fixes frozen as e9eb714d and c2c9c85a, independently cleared by check_api, integrated as94ac1ecb/7f4c1f77. Pressure iteration uses a complete/unique/bounded evicted-root list; MB-CROSSES uses existing UF member chains with unchanged strict lifetime endpoints. Matching combined binary8aa44a7c9ce424ccd69b82ca478afac85fa2ea3bdd90e1098ca04fe5c8355a89. Frozen current ANSWER-COUNT7.612s to5.179s (32%), call50/100/150:130/291/494ms to124/267/441ms with correct answers. ForcedAOT native-regalloc/loop pass all rejection controls. No full-app or scaling-target claim. Remaining measured costs: class-start scans~454ms and MB-FORBID position lookup/interval walk~1.17s. Agent now finished; remaining algorithm follow-up needs ownership before edits.
