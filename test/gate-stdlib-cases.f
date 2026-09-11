@@ -875,6 +875,10 @@ SUITE create-axiom
    test/create-axiom-test.f
 ;SUITE
 
+SUITE ndict-spell-call
+   test/ndict-spell-call.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE

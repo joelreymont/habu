@@ -278,6 +278,39 @@ public
    dn dc true ROW-GLUE
    on oc false ROW-GLUE ;
 
+\ ---- the callable facts a call site needs, from ONE resolution ---------------
+\ EVERY READER ABOVE STARTS WITH THE SAME EFFECT-QUERY, and that query is not a
+\ field read: it resolves the spelling to a checker symbol - a hash lookup plus,
+\ inside an open package, up to two `search-wl` probes the checker's own tables
+\ missed - and latches that symbol's rows. A caller deciding whether a name is
+\ a call it can build wants the arity, the result glue and the return-stack
+\ answer together, and asking for them one at a time resolved one name three
+\ times and latched one set of rows three times.
+\
+\ So this asks once and reads the latch three ways. ARITY-NONE in the first
+\ answer is the same refusal SPELL-ARITY gives, so a caller tests that one value
+\ and the rest of the row is meaningless when it fires - which is what the
+\ separate readers already meant by answering ARITY-NONE, GLUE-NONE and false.
+\
+\ IT ANSWERS THE RESULT GLUE ONLY. SPELL-GLUE's first answer is the ARGUMENT
+\ row's glue, and a call site's concern is what the callee LEAVES; the two
+\ consumers of that word that stand at a call site both drop the argument half.
+\ The one consumer that wants both (a definition's own frame) keeps SPELL-GLUE.
+\
+\ DEADNESS IS DELIBERATELY NOT HERE. CTL-DEAD? reads the control-flag table and
+\ not the effect record this latches, so it is a second query no matter where it
+\ is asked from; folding it in would hide that behind a word that looks like one
+\ lookup. What the two share is the name-to-symbol half, and sharing THAT is a
+\ checker-side question, not one this file can answer.
+: SPELL-CALL ( ptr u8 n -- n n n bool )  \ din cells, dout cells, result glue, returns?
+   EFFECT-QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
+   EFFECT-DIN-CELLS {: din:n :}
+   EFFECT-DOUT-CELLS {: dout:n :}
+   din 0 < dout 0 < or if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
+   EFF-COUNTS {: dn:n dc:n on:n oc:n :}
+   on oc false ROW-GLUE {: glue:n :}
+   din dout glue EFFECT-RET-NEUTRAL? ;
+
 \ ---- the quotation a term of one of those rows IS ----------------------------
 public
 -1 constant QUOT-NONE                \ that term is no quotation this chain may compile
