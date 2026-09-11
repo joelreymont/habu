@@ -10,7 +10,8 @@
 \ Each context owns a header mapping and a chain of scratch chunks. Growth
 \ adds a chunk without moving earlier spans. WITH-CONTEXT releases every chunk
 \ on return and throw. Handles pack a generation and registry slot so direct
-\ lookup can reject stale handles before touching their mappings.
+\ lookup can reject stale handles before touching their mappings. The registry
+\ stores complete handles; retirement clears the row.
 \
 \ PERSISTED STATE. All per-context state lives in the context's own mapping as
 \ eight-byte little-endian slots written with the canonical CDIGEST slot words:
@@ -95,15 +96,18 @@ variable GEN-CELL
 0 GEN-CELL !
 variable DEPTH
 0 DEPTH !
-create GENS DEPTH-MAX cells allot
+create HANDLES DEPTH-MAX cells allot
+: HANDLES-CLEAR ( -- )
+   DEPTH-MAX 0 ?do 0 HANDLES i cells + ! loop ;
+HANDLES-CLEAR
 create BASES DEPTH-MAX cells allot
 create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 
-: GEN@ ( n -- n )
-   cells GENS + @ ;
+: HANDLE@ ( n -- n )
+   cells HANDLES + @ ;
 
-: GEN! ( n n -- )
-   cells GENS + ! ;
+: HANDLE! ( n n -- )
+   cells HANDLES + ! ;
 
 : BASE-FIELD ( n -- ptr ptr u8 )
    cells BASES + 0 ptr-field ;
@@ -160,10 +164,8 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    swap SLOT-BITS lshift or ;
 
 : FIND-SLOT ( n -- n )
-   dup SLOT-BITS rshift {: g:n :}
-   SLOT-MASK and {: slot:n :}
-   g 0= slot DEPTH @ >= or if -1 exit then
-   g slot GEN@ = if slot else -1 then ;
+   dup 0= if drop -1 exit then
+   dup SLOT-MASK and tuck HANDLE@ = if else drop -1 then ;
 
 : RESOLVE ( IR-CTX:ctx -- ptr u8 )
    CTX>N FIND-SLOT
@@ -331,7 +333,7 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 : CTX-RETIRE ( n -- ) {: at:n :}
    at BASE-FIELD @ {: base:ptr :}
    base CHUNK-FIELD @ base HDR-BYTES + CHUNKS-FREE {: rc:n :}
-   0 at GEN!
+   0 at HANDLE!
    at DEPTH !
    rc 0<> if rc throw then ;
 
@@ -347,7 +349,7 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
    DEPTH-ROOM
    DEPTH @ TAKE-GEN {: at:n g:n :}
    at CTX-INSTALL
-   g at GEN!
+   g at PACK-HANDLE at HANDLE!
    at 1+ DEPTH !
    g at PACK-HANDLE MINT-CTX swap [: CE-CLEANUP ;] finally ;
 

@@ -19,7 +19,7 @@
 \
 \ STALE HANDLES. The same fail-closed generation discipline as IR-CTX: a
 \ handle packs a never-reused generation from this package's atomic counter
-\ with its registry slot. Resolution checks that slot's generation. The
+\ with its registry slot. Resolution compares that slot's complete handle. The
 \ registry persists each arena's owner as the context serial - the only
 \ storable form, since handles are sealed nominals a raw cell cannot re-mint -
 \ and every resolution probes IR-CTX:SERIAL-LIVE? so an arena whose context
@@ -86,7 +86,7 @@ LOCAL-MAX constant CEIL-MAX          \ a ceiling may commit the full ordinal ran
 here CELL 1- and CELL swap - CELL 1- and allot
 variable AGEN-CELL
 0 AGEN-CELL !
-create AGENS SLOT-MAX cells allot
+create AHANDLES SLOT-MAX cells allot
 create AOWNERS SLOT-MAX cells allot
 create ADATAS SLOT-MAX cells allot
 create ACOUNTS SLOT-MAX cells allot
@@ -94,11 +94,15 @@ create ACAPS SLOT-MAX cells allot
 create ACEILS SLOT-MAX cells allot
 create ASTATES SLOT-MAX cells allot
 
-: AGEN@ ( n -- n )
-   cells AGENS + @ ;
+: AHANDLE@ ( n -- n )
+   cells AHANDLES + @ ;
 
-: AGEN! ( n n -- )
-   cells AGENS + ! ;
+: AGEN@ ( n -- n )
+   AHANDLE@ SLOT-BITS rshift ;
+
+: AGEN! ( n n -- ) {: g:n slot:n :}
+   g 0= if 0 else g SLOT-BITS lshift slot or then
+   slot cells AHANDLES + ! ;
 
 : AOWNER@ ( n -- n )
    cells AOWNERS + @ ;
@@ -164,10 +168,8 @@ SLOTS-CLEAR
    swap SLOT-BITS lshift or ;
 
 : FIND-A ( n -- n )
-   dup SLOT-BITS rshift {: g:n :}
-   SLOT-MASK and {: slot:n :}
-   g 0= if -1 exit then
-   g slot AGEN@ = if slot else -1 then ;
+   dup 0= if drop -1 exit then
+   dup SLOT-MASK and tuck AHANDLE@ = if else drop -1 then ;
 
 \ Resolve a handle to its registry slot, fail closed on both a consumed
 \ handle and a dead owner: a slot whose context tore down is retired on touch,
