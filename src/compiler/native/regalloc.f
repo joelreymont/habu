@@ -524,6 +524,11 @@ DYNAMIC-BUFFER TMPSET-BUF n
 : TMPSET ( -- ptr n ) 0 TMPSET-BUF ;
 DYNAMIC-BUFFER UF-BUF n
 : UF ( -- ptr n ) 0 UF-BUF ;
+\ Each class owns a member list headed by its root. Union splices two lists;
+\ queries then visit that class instead of searching every value in the module.
+DYNAMIC-BUFFER UF-NEXT-BUF n
+DYNAMIC-BUFFER UF-LAST-BUF n
+: UF-NEXT@ ( n -- n ) UF-NEXT-BUF @ ;
 DYNAMIC-BUFFER CL-LO-BUF n
 : CL-LO ( -- ptr n ) 0 CL-LO-BUF ;
 DYNAMIC-BUFFER CL-HI-BUF n
@@ -576,6 +581,8 @@ DYNAMIC-BUFFER READ-END-BUF n
    PLANES BMAX * SETC * L-SETS-BUF-RESERVE
    SETC TMPSET-BUF-RESERVE
    VMAX UF-BUF-RESERVE
+   VMAX UF-NEXT-BUF-RESERVE
+   VMAX UF-LAST-BUF-RESERVE
    VMAX CL-LO-BUF-RESERVE
    VMAX CL-HI-BUF-RESERVE
    VMAX CL-SLOT-BUF-RESERVE
@@ -799,6 +806,8 @@ DYNAMIC-BUFFER READ-END-BUF n
 : UF-INIT ( -- )
    VMAX 0 ?do
       i i cells UF + !
+      NOBODY i UF-NEXT-BUF !
+      i i UF-LAST-BUF !
       POS-INF i cells CL-LO + !
       -1 i cells CL-HI + !
    loop ;
@@ -816,7 +825,11 @@ DYNAMIC-BUFFER READ-END-BUF n
    a UF-FIND {: ra:n :}
    b UF-FIND {: rb:n :}
    ra rb = if exit then
-   ra rb min  ra rb max cells UF + ! ;
+   ra rb min {: head:n :}
+   ra rb max {: tail:n :}
+   tail head UF-LAST-BUF @ UF-NEXT-BUF !
+   tail UF-LAST-BUF @ head UF-LAST-BUF !
+   head tail cells UF + ! ;
 
 : MB-EDGES-OF ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
@@ -867,9 +880,11 @@ DYNAMIC-BUFFER READ-END-BUF n
 : MB-DECL-KIND ( n n -- n )
    {: r:n d:n :}
    NOBODY
-   N-VALS @ 0 ?do
-      i UF-FIND r = if d i DECL-AT MB-ONE-DECL then
-   loop ;
+   r begin dup 0 >= while
+      {: member:n :}
+      d member DECL-AT MB-ONE-DECL
+      member UF-NEXT@
+   repeat drop ;
 
 : MB-DECL-OF ( n -- n )
    {: r:n :}
@@ -888,18 +903,18 @@ DYNAMIC-BUFFER READ-END-BUF n
 \ ---- the same question, asked of two whole classes ---------------------------
 : MB-MEETS? ( n n -- bool )
    {: a:n r:n :}
-   false
-   N-VALS @ 0 ?do
-      i UF-FIND r = if a i OVERLAP? or then
-   loop ;
+   r begin dup 0 >= while
+      dup a swap OVERLAP? if drop true exit then
+      UF-NEXT@
+   repeat drop false ;
 
 \ Asked member against member, which is the same question the class invariant is.
 : MB-CLASH? ( n n -- bool )
    {: ra:n rb:n :}
-   false
-   N-VALS @ 0 ?do
-      i UF-FIND ra = if i rb MB-MEETS? or then
-   loop ;
+   ra begin dup 0 >= while
+      dup rb MB-MEETS? if drop true exit then
+      UF-NEXT@
+   repeat drop false ;
 
 \ ---- the ties, which are must-share constraints too --------------------------
 \ A form that names one register field for a result and an operand is a
@@ -976,9 +991,10 @@ DYNAMIC-BUFFER READ-END-BUF n
 : MB-CLASSES ( -- )
    N-VALS @ 0 ?do i MB-CLASS1 loop
    N-VALS @ 0 ?do
-      N-VALS @ i 1+ ?do
-         j i MB-MEMBER-CK
-      loop
+      i UF-NEXT@ begin dup 0 >= while
+         i over MB-MEMBER-CK
+         UF-NEXT@
+      repeat drop
    loop ;
 
 \ ---- which class may be put in the frame --------------------------------------
@@ -1990,6 +2006,8 @@ public
    L-SETS-BUF-RELEASE
    TMPSET-BUF-RELEASE
    UF-BUF-RELEASE
+   UF-NEXT-BUF-RELEASE
+   UF-LAST-BUF-RELEASE
    CL-LO-BUF-RELEASE
    CL-HI-BUF-RELEASE
    CL-SLOT-BUF-RELEASE
