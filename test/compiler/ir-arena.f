@@ -91,6 +91,7 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    0 0 =
    cnt 0 ?do
       a a i IR-ARENA:NTH IR-ARENA:PEEK i 7 * 1+ = and
+      a i IR-ARENA:READ i 7 * 1+ = and
    loop ;
 
 \ 20 cells across the 8 -> 16 -> 32 doublings; every cell reads back.
@@ -388,6 +389,53 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    s" a frozen view is dead after its context ends" T-LABEL
    [: ST-VIEW ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ ---- ordinal reads share bounds and handle lifetime -------------------------
+: READ-REFUSES ( IR-ARENA:arena n n -- )
+   {: a:IR-ARENA:arena k:n expected:n :}
+   a k [: 2dup IR-ARENA:READ drop ;] catch
+   {: held:IR-ARENA:arena ordinal:n actual:n :}
+   actual expected T= ;
+
+: FREAD-REFUSES ( IR-ARENA:view n n -- )
+   {: v:IR-ARENA:view k:n expected:n :}
+   v k [: 2dup IR-ARENA:FREAD drop ;] catch
+   {: held:IR-ARENA:view ordinal:n actual:n :}
+   actual expected T= ;
+
+: READ-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   a 0 E-IR-ARENA-BOUND READ-REFUSES
+   c a 17 IR-ARENA:PUSH drop
+   c a -9 IR-ARENA:PUSH drop
+   a 0 IR-ARENA:READ 17 T= a 1 IR-ARENA:READ -9 T=
+   a -1 E-IR-ARENA-BOUND READ-REFUSES
+   a 2 E-IR-ARENA-BOUND READ-REFUSES
+   a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
+   v 0 IR-ARENA:FREAD 17 T= v 1 IR-ARENA:FREAD -9 T=
+   v -1 E-IR-ARENA-BOUND FREAD-REFUSES
+   v 2 E-IR-ARENA-BOUND FREAD-REFUSES
+   a 0 E-IR-ARENA-FROZEN READ-REFUSES
+   v IR-ARENA:RETIRE
+   v 0 E-IR-ARENA-STALE FREAD-REFUSES
+   c 8 IR-ARENA:NEW {: fresh:IR-ARENA:arena :}
+   c fresh 99 IR-ARENA:PUSH drop
+   fresh 0 IR-ARENA:READ 99 T=
+   v 0 E-IR-ARENA-STALE FREAD-REFUSES
+   fresh IR-ARENA:ABORT
+   fresh 0 E-IR-ARENA-STALE READ-REFUSES
+   c 8 IR-ARENA:NEW {: reused:IR-ARENA:arena :}
+   c reused 101 IR-ARENA:PUSH drop
+   reused 0 IR-ARENA:READ 101 T=
+   fresh 0 E-IR-ARENA-STALE READ-REFUSES
+   DEAD-ARENA 0 E-IR-ARENA-STALE READ-REFUSES
+   BND [: ESC-VIEW-BODY ;] IR-CTX:WITH-CONTEXT
+   0 E-IR-ARENA-STALE FREAD-REFUSES ;
+
+: READ-CASE ( -- )
+   s" ordinal reads preserve bounds, frozen state, and stale handle refusal" T-LABEL
+   BND [: READ-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- registry capacity and whole-range release -------------------------------
 \ The one-past-capacity reject is caught inside the live context, so the
 \ context exits normally and its 64 arenas are reclaimed by the next sweep
@@ -452,6 +500,10 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
       CHECK-QUIET-CANDIDATE! 0 T=
    s" IRA-VIEWLESS ( IR-ARENA:arena IR-ARENA:cell-id -- n ) IR-ARENA:AT"
       CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRA-READ-VIEW ( IR-ARENA:view n -- n ) IR-ARENA:READ"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRA-FREAD-ARENA ( IR-ARENA:arena n -- n ) IR-ARENA:FREAD"
+      CHECK-QUIET-CANDIDATE! 0 T=
    s" IRA-CTXLESS ( IR-ARENA:arena n -- IR-ARENA:cell-id ) IR-ARENA:PUSH"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
@@ -472,7 +524,8 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    AB-CASES
    FZ-CASE
    FZ-REJECT-CASES
-   ST-CASES ;
+   ST-CASES
+   READ-CASE ;
 
 public
 

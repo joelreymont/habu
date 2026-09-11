@@ -6,7 +6,7 @@
 \ attribute, span) is an instance of this arena, and this package's private
 \ CAST: window is the single raw index conversion authority the design demands
 \ (design line 341): no dialect repeats trusted casts, no raw converter and no
-\ pointer is public, and frozen readers accept nominal indices only.
+\ pointer is public, and readers validate their nominal arena or view.
 \
 \ OWNERSHIP SHAPE. An arena is created against a live IR-CTX context and every
 \ cell it stores lives in spans bump-allocated from that context's mapping by
@@ -202,9 +202,16 @@ SLOTS-CLEAR
    raw PACK-LOCAL
    dup slot ACOUNT@ >= if E-IR-ARENA-BOUND throw then ;
 
+: ORDINAL-CHECK ( n n -- )
+   {: slot:n k:n :}
+   k 0 < k slot ACOUNT@ >= or if E-IR-ARENA-BOUND throw then ;
+
+: READ-SLOT ( n n -- n )
+   2dup ORDINAL-CHECK CELL-AT ;
+
 : NTH-RAW ( n n -- IR-ARENA:cell-id )
    {: slot:n k:n :}
-   k 0 < k slot ACOUNT@ >= or if E-IR-ARENA-BOUND throw then
+   slot k ORDINAL-CHECK
    slot AGEN@ k PACK MINT-IDX ;
 
 \ ---- growth ------------------------------------------------------------------
@@ -420,6 +427,10 @@ public
    c slot slot ACOUNT@ k + GROW-TO ;
 
 \ ---- live readers ------------------------------------------------------------
+\ Equivalent to NTH followed by PEEK, resolving the live handle once.
+: READ ( IR-ARENA:arena n -- n )
+   swap LIVE-SLOT swap READ-SLOT ;
+
 : PEEK ( IR-ARENA:arena IR-ARENA:cell-id -- n )
    {: a:IR-ARENA:arena x:IR-ARENA:cell-id :}
    a LIVE-SLOT {: slot:n :}
@@ -486,6 +497,10 @@ public
    0 slot AGEN! ;
 
 \ ---- frozen readers ----------------------------------------------------------
+\ Equivalent to FROZEN-NTH followed by AT, resolving the frozen view once.
+: FREAD ( IR-ARENA:view n -- n )
+   swap FROZEN-SLOT swap READ-SLOT ;
+
 : AT ( IR-ARENA:view IR-ARENA:cell-id -- n )
    {: f:IR-ARENA:view x:IR-ARENA:cell-id :}
    f FROZEN-SLOT {: slot:n :}
