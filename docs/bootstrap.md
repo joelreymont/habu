@@ -149,6 +149,66 @@ recovery-built engine runs the top-row hook subprocess regression against
 itself; the missing compile-preflight path must exit 70 with empty stdout and
 exactly `hb: compile preflight hook missing` plus one LF on stderr.
 
+## Generation Chain Check
+
+`tools/two-generation-build.f` builds three engine generations from one host —
+the host builds B1, B1 builds B2, B2 builds B3 — each through the production
+entry point `tools/native-build.f`, and prints one line per generation. It is
+the check that the chain converges instead of accreting image DATA: an engine
+that carries more baked DATA than its host boots that DATA into its DP heap and
+then persists a copy of it, so the cost lands twice and a later generation dies
+in `LOAD-TARGET` with `hb: data space out of range`, rc 76, at `DP-CHECK`
+(`src/habu/habu1.f`).
+
+```sh
+HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed-engine>
+```
+
+With no argument the checkout's own `bin/hb` is generation 0. `native-build.f`
+always promotes to `bin/hb`, so the tool moves the checkout's engine to
+`build/twogen/hb-entry` for the run and puts it back; every engine lands under
+the ignored `build/twogen`. It exits nonzero, naming the generation, when a
+generation does not build or when generation 3's image size and shape differ
+from generation 2's. `tools/two-generation-probe.f` is the child fixture that
+reads one engine's shape.
+
+Measured 2026-09-12 on linux-aarch64 from a seed `hb-stdin`, 87 s wall:
+
+```
+two-gen: gen 1 built img 5701824 sym-n 10658 usigs 2086616 cap 2097152 norets 107720 cap 131072 rows 21542 heap 9959356 dp-cap 33030144
+two-gen: gen 2 built img 5308608 sym-n 12345 usigs 2260952 cap 2293760 norets 133424 cap 196608 rows 24916 heap 10221500 dp-cap 33030144
+two-gen: gen 3 built img 5308608 sym-n 12345 usigs 2260952 cap 2293760 norets 133424 cap 196608 rows 24916 heap 10221500 dp-cap 33030144
+two-gen: ok gen 3 matches gen 2
+```
+
+Generation 1 is the deficient seed-lineage engine — the seed's checker records
+nothing across the build window, so B1 bakes a smaller registry — and
+generations 2 and 3 agree field for field, which is what "the chain has stopped
+growing" means. The whole B1-to-B2 boot-heap step, 262,144 bytes, is the two
+persisted checker caps growing (`+196,608` signatures, `+65,536` no-returns);
+nothing else moves, and at generation 3 the caps do not move either. The
+B2-hosted build peaks at `here - data-base` 30,675,584 against the 33,030,144
+DP cap (`DATA-SIZE - PROF-CNT-BYTES`), a 2,354,560-byte margin.
+
+Before the checker stores were baked at the grain (`USIGS-ROUND-CAP`), those
+caps were rounded to a power of two: generation 2 booted at 12,187,580 instead
+of 10,221,500, the same build needed about 34.6 MB, and generation 3 stopped
+with `two-gen: gen 3 stopped rc 76 hb: data space out of range`. Generation 1
+cannot show that difference — its two pool contents round to the same cap under
+either policy — so the check has to reach generation 2 to mean anything.
+
+**The images are not compared byte for byte, and must not be.** Measured the
+same day: two builds by the SAME host differ in 3-4 bytes, and the chain
+reaches its byte fixpoint only at generation 4 (B2 vs B3 differ in 1,129,827
+bytes, B3 vs B4 in 1,015,834, B4 vs B5 in 3). The shape line is the comparison
+that holds today.
+
+The check is deliberately **not** registered in `test/gate-stdlib-cases.f`: the
+three cold builds cost about 87 s, and for the whole of that time the tool owns
+the `bin/hb` slot, while `test/run.f` spawns `./bin/hb` children by relative
+path out of a bounded process pool. Run it by hand after any change to the
+checker's persisted stores, the snapshot writer, or the image layout.
+
 ## DDC Audit (Diverse Double-Compiling)
 
 `tools/ddc-verify.f` is the explicit (never per-commit) trust audit: it builds

@@ -7640,3 +7640,23 @@ and --no-lldbinit.
   record and falls back to the live dictionary, so this only appears once a
   product engine hosts the build. Never teach the retained checker window
   families instead. Regression: `test/native-window-owner.f`.
+
+- **A persisted-store cap policy is invisible at generation 1 — measure it at
+  generation 2.** The seed-built engine's two checker pools (2,086,616 and
+  107,720 bytes) round to the same cap under grain rounding and under the
+  retired power-of-two rounding, so B1's boot heap is identical either way and
+  proves nothing; the policy first bites at B2 (2,293,760 + 196,608 vs
+  4,194,304 + 262,144, i.e. 1,966,080 bytes of baked zero padding). The host
+  pays that twice — once booting its own padded pools, once persisting padded
+  copies — which is how 2 MB of padding cost the third generation its data
+  space. Per-generation boot-heap growth is fully accounted for by those two
+  caps (B1->B2 +262,144 at the grain, +2,228,224 at the power of two; B2->B3
+  zero), so there is no per-generation retired-heap accretion.
+  `tools/two-generation-build.f` is the measurement.
+
+- **Engine images are not byte-reproducible, so a generation check compares
+  shape, not bytes.** Two `tools/native-build.f` builds by the SAME host differ
+  in 3-4 bytes (2026-09-12, linux-aarch64), and the chain reaches its byte
+  fixpoint only at generation 4 (B2 vs B3 1,129,827 differing bytes, B3 vs B4
+  1,015,834, B4 vs B5 3). `install --force` byte-identity is a property of the
+  fixpoint refresh, not of a generation chain.
