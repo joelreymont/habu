@@ -107,5 +107,6 @@ Cedar's workspaces `.jj-ws/cedar-*` are reference material; do not edit them.
   `E-TRUST-UNRESOLVED` on `USIGS-RESTORE-END`.
 - The sampling profiler (`prof-on`) dies intermittently on long tier-1 loads
   (SIGSEGV in the SIGALRM handler); dotted.
-- A local name over 16 bytes is reported as an undefined word (LOC-NAME-W);
-  a script reading an argument it was not given segfaults; both dotted.
+- A script reading an argument it was not given segfaults; dotted. The
+  over-wide local name defect (unbounded copy into LOC-REC) is fixed on the
+  root by e259542a (hazel); engine and checker now refuse it by name.
