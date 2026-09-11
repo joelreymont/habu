@@ -426,10 +426,10 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   group-watch target-watch sup-watch` (9 NEWTYPE to carrier form).
   Closure: generated-name consumers of those nine (rg shows none outside
   the declaring files). blocked-by M1.
-- M4 lib/ptx + ffi: toolchain.f `tcpol` (SUMTYPE), ir.f `ptxir-node`
+- M4 lib/ptx (now Loom's `lib/ptx`, moved 2026-09-11) + ffi: toolchain.f `tcpol` (SUMTYPE), ir.f `ptxir-node`
   (PRODUCT), cuda-driver.f `CUDA-DEV CUDA-CTX CUDA-MOD CUDA-FN
   CUDA-DEVPTR CUDA-EVENT`, ffi-test.f `FFI-DEV FFI-CTX` (8 DEFTYPE to
-  carrier form). Closure: cuda-driver consumers in lib/ptx tests and
+  carrier form). Closure: cuda-driver consumers in Loom's lib/ptx tests and
   maki device files. blocked-by M1. (Renaming tcpol/ptxir-node is wave
   2+; here they migrate grammar-only under their current names.)
 - M5 CAD-NUM: cad-num-types.f ten roles `byte-len item-count cell-count
@@ -543,7 +543,7 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   type-field-owner-suite.f 1 (field-owner checking),
   ptx/rep-neg-test.f 1 (live PTX negatives),
   tools/public-signatures-test.f 3 (signature rendering),
-  tools/ptx/autotune-sweep.f `census` 1 (live tuning tool). DELETE with
+  Loom's tools/ptx/autotune-sweep.f `census` 1 (live tuning tool). DELETE with
   their machinery: promotion-authority-test.f (db, item 37), lower-cert.f (tied to the
   lower-cert-seal census in M13c — lives or dies with its machinery),
   layout-valid-product-bad.f (PRODUCT-specific negative; nothing to

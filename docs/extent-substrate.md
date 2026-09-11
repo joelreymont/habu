@@ -168,7 +168,7 @@ TFAM. Recorded here so the pivot is explicit.
 
 1. **Legacy `extent-*` migration vs coexistence.** Adopt TFAM extents for new
    `EXTENT:` surface and migrate the live atom sigs in `maki/fusion.f`, the eval
-   fixtures, and `docs/ptx.md` examples, or allow atoms (device) + TFAM (golden) to coexist
+   fixtures, and `../loom/docs/ptx.md` examples, or allow atoms (device) + TFAM (golden) to coexist
    during transition? (Capability is unaffected either way; this is a consistency
    call.) Recommend: migrate opportunistically, single substrate as the target.
 2. **`#`→tail mangling scheme.** `TDECL-RESERVED?` (`src/core/sumtype.f:152-160`)

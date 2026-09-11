@@ -16,7 +16,9 @@ Loom, the ML framework and model-CAD layer formerly kept in this tree, now lives
 in the sibling [`loom`](../loom/README.md) repository, together with the PTX
 backend, the checked GPU-kernel vocabulary and the CUDA driver bindings. Loom
 depends on Habu. Habu's language, compiler, runtime, standard libraries, numeric
-types and FFI remain here; nothing GPU-specific does.
+types and FFI remain here, including the substrate the moved code still needs:
+the GPU type families and barrier hooks in the checker, the PTX target row in
+the compiler, and the PTX error codes in `lib/errors.f`.
 
 ## Quick start
 
