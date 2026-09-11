@@ -3,10 +3,9 @@
 5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
 -1 constant UNBOUND
 \ Trusted checker internals below are confined to raw mmap-result refinements,
-\ typed views/nulls over checker arenas, one raw effect query, and the two engine
-\ primitive models tok-imm?/parse-imm.
+\ typed views/nulls over checker arenas, and one raw effect query.
+\ Engine primitive effects, including tok-imm?, live in the primitive table.
 \ Retirement: habu-checker-self-typing-9ff8ba86 for arena/view/query sites;
-\ habu-primitive-effect-axiom-1119f176 for the immediate models.
 \ --- growable checker arenas --------------------------------------------
 \ Shared mmap primitives for the checker's process-local scratch stores. Each
 \ store keeps a baked DATA "boot" buffer (stable address across snapshot) and
@@ -30,10 +29,10 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
 : ARENA-ALLOC ( n -- ptr a )
    ARENA-MMAP-RC ARENA-RC>PTR ;
 
-: ARENA-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
+: ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
    0 ARENA-CP-I !
    begin ARENA-CP-I @ CELL + n <= while
-      src ARENA-CP-I @ + @ dst ARENA-CP-I @ + !
+      src ARENA-CP-I @ + CELL-VIEW @ dst ARENA-CP-I @ + CELL-VIEW !
       ARENA-CP-I @ CELL + ARENA-CP-I !
    repeat
    begin ARENA-CP-I @ n < while
@@ -41,14 +40,14 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
       ARENA-CP-I @ 1 + ARENA-CP-I !
    repeat ;
 
-: ARENA-CELLS-UNBOUND ( ptr a n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) UNBOUND
+: ARENA-CELLS-UNBOUND ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) UNBOUND
    from ARENA-UB-I !
    begin ARENA-UB-I @ to < while
       UNBOUND ARENA-UB-I @ cells base + !
       ARENA-UB-I @ 1 + ARENA-UB-I !
    repeat ;
 
-: ARENA-CELLS-ZERO ( ptr a n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) to 0
+: ARENA-CELLS-ZERO ( ptr n n n -- ) {: base:ptr from:n to:n :}   \ set [from,to) to 0
    from ARENA-UB-I !
    begin ARENA-UB-I @ to < while
       0 ARENA-UB-I @ cells base + !
@@ -60,12 +59,12 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
 \ callers reset counters per definition, so no tail init is needed.
 : ARENA-BYTES-GROW ( ptr a n n -- ptr a ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes ARENA-ALLOC {: nb:ptr :}
-   base nb oldbytes ARENA-COPY
+   base BYTE-VIEW nb BYTE-VIEW oldbytes ARENA-COPY
    nb ;
 
 \ REG-GROW1 ( pvar oldbytes newbytes -- ) : grow the buffer held in pvar in place,
 \ storing the relocated base back. Shared by every parallel-array registry grow.
-: REG-GROW1 ( ptr a n n -- ) {: pv:ptr ob:n nb:n :}
+: REG-GROW1 ( ptr ptr a n n -- ) {: pv:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW pv ! ;
 
 \ TV arena: the typevar pool plus every var-id-indexed map grows in lockstep
@@ -101,24 +100,24 @@ PERSISTED-PTR-VARIABLE TVK-P
    TVK-BOOT TVK-P ! ;
 TV-ARENA-BOOT
 
-: TVT ( -- ptr a ) TVT-P @ ;         : RVT ( -- ptr a ) RVT-P @ ;
-: TVK ( -- ptr a ) TVK-P @ ;
-: VRC-TV ( -- ptr a ) VRC-TV-P @ ;   : VRC-RV ( -- ptr a ) VRC-RV-P @ ;
-: VRI-TV ( -- ptr a ) VRI-TV-P @ ;   : VRI-RV ( -- ptr a ) VRI-RV-P @ ;
-: EC-TV ( -- ptr a ) EC-TV-P @ ;     : EC-RV ( -- ptr a ) EC-RV-P @ ;
-: EI-TV ( -- ptr a ) EI-TV-P @ ;     : EI-RV ( -- ptr a ) EI-RV-P @ ;
+: TVT ( -- ptr n ) TVT-P @ ;         : RVT ( -- ptr n ) RVT-P @ ;
+: TVK ( -- ptr n ) TVK-P @ ;
+: VRC-TV ( -- ptr n ) VRC-TV-P @ ;   : VRC-RV ( -- ptr n ) VRC-RV-P @ ;
+: VRI-TV ( -- ptr n ) VRI-TV-P @ ;   : VRI-RV ( -- ptr n ) VRI-RV-P @ ;
+: EC-TV ( -- ptr n ) EC-TV-P @ ;     : EC-RV ( -- ptr n ) EC-RV-P @ ;
+: EI-TV ( -- ptr n ) EI-TV-P @ ;     : EI-RV ( -- ptr n ) EI-RV-P @ ;
 
-: TV-GROW-ONE ( ptr a n n -- ) {: pv:ptr oc:n nc:n :}   \ pv holds base; grow to nc cells
+: TV-GROW-ONE ( ptr ptr n n n -- ) {: pv:ptr oc:n nc:n :}   \ pv holds base; grow to nc cells
    nc cells ARENA-ALLOC {: nb:ptr :}
-   pv @ nb oc cells ARENA-COPY
+   pv @ BYTE-VIEW nb BYTE-VIEW oc cells ARENA-COPY
    nb oc nc ARENA-CELLS-UNBOUND
    nb pv ! ;
 
 \ TVK grows like TV-GROW-ONE but its fresh tail is TVK-ANY (0), not UNBOUND: an
 \ un-raised var id is always ANY.
-: TVK-GROW-ONE ( ptr a n n -- ) {: pv:ptr oc:n nc:n :}
+: TVK-GROW-ONE ( ptr ptr n n n -- ) {: pv:ptr oc:n nc:n :}
    nc cells ARENA-ALLOC {: nb:ptr :}
-   pv @ nb oc cells ARENA-COPY
+   pv @ BYTE-VIEW nb BYTE-VIEW oc cells ARENA-COPY
    nb oc nc ARENA-CELLS-ZERO
    nb pv ! ;
 
@@ -178,7 +177,7 @@ TVINIT
 create PTRA-BOOT MAXPTR-INIT cells allot   variable PTRN
 PERSISTED-PTR-VARIABLE PTRA-P   variable PTR-CAP
 PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
-: PTRA ( -- ptr a ) PTRA-P @ ;
+: PTRA ( -- ptr n ) PTRA-P @ ;
 
 : PTR-ENSURE ( n -- ) {: need:n :}
    need PTR-CAP @ <= IF exit THEN
@@ -203,7 +202,7 @@ PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 create TRAIL-BOOT TRAIL-INIT cells allot
 PERSISTED-PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
 TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
-: TRAIL ( -- ptr a ) TRAIL-P @ ;
+: TRAIL ( -- ptr n ) TRAIL-P @ ;
 : TRAIL-RESET ( -- ) 0 TRAIL-N ! ;
 : TRAIL-ENSURE ( n -- ) {: need:n :}
    need TRAIL-CAP @ <= IF exit THEN
@@ -262,7 +261,7 @@ variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in s
 create LTNT-BOOT LTNT-INIT cells allot
 PERSISTED-PTR-VARIABLE LTNT-P   variable LTNT-CAP   variable LTNT-N
 LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   0 LTNT-N !
-: LTNT ( -- ptr a ) LTNT-P @ ;
+: LTNT ( -- ptr n ) LTNT-P @ ;
 : LIN-TAINT-RESET ( -- ) 0 LTNT-N ! ;
 : LTNT-ENSURE ( n -- ) {: need:n :}
    need LTNT-CAP @ <= IF exit THEN
@@ -297,9 +296,9 @@ PERSISTED-PTR-VARIABLE QEA-P   PERSISTED-PTR-VARIABLE QXDA-P   PERSISTED-PTR-VAR
 variable QE-CAP
 QEA-BOOT QEA-P !   QXDA-BOOT QXDA-P !   QXRA-BOOT QXRA-P !
 QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
-: QEA ( -- ptr a ) QEA-P @ ;
-: QXDA ( -- ptr a ) QXDA-P @ ;   : QXRA ( -- ptr a ) QXRA-P @ ;
-: QXHA ( -- ptr a ) QXHA-P @ ;   : QXNA ( -- ptr a ) QXNA-P @ ;
+: QEA ( -- ptr n ) QEA-P @ ;
+: QXDA ( -- ptr n ) QXDA-P @ ;   : QXRA ( -- ptr n ) QXRA-P @ ;
+: QXHA ( -- ptr n ) QXHA-P @ ;   : QXNA ( -- ptr n ) QXNA-P @ ;
 
 : QE-ENSURE ( n -- ) {: need:n :}
    need QE-CAP @ <= IF exit THEN
@@ -324,13 +323,14 @@ QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
 : Q>DOUT PAY 32 * QEA + 8 + @ ;
 : Q>RIN  PAY 32 * QEA + 16 + @ ;
 : Q>ROUT PAY 32 * QEA + 24 + @ ;
-: Q>XHAS PAY cells QXHA + @ ;
-: Q>XDEAD PAY cells QXNA + @ ;
+: Q>XHAS ( n -- bool ) PAY cells QXHA + @ 0 <> ;
+: Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 : Q>XDOUT PAY cells QXDA + @ ;
 : Q>XROUT PAY cells QXRA + @ ;
-: QX! {: q xhas xdead xd xr :}
-   xhas q PAY cells QXHA + !
-   xdead q PAY cells QXNA + !
+: Q-FLAG>N ( bool -- n ) IF -1 ELSE 0 THEN ;
+: QX! ( n bool bool n n -- ) {: q:n xhas:bool xdead:bool xd:n xr:n :}
+   xhas Q-FLAG>N q PAY cells QXHA + !
+   xdead Q-FLAG>N q PAY cells QXNA + !
    xd q PAY cells QXDA + !
    xr q PAY cells QXRA + ! ;
 
@@ -354,9 +354,9 @@ variable RGN-N   variable EXT-N   variable GEN-N
 variable RIGID-MAX   $4000000000000000 RIGID-MAX !
 PERSISTED-PTR-VARIABLE ATOMA-P   PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
 ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
-: ATOMA ( -- ptr a ) ATOMA-P @ ;
-: ATOMU ( -- ptr a ) ATOMU-P @ ;
-: ATOMK ( -- ptr a ) ATOMK-P @ ;
+: ATOMA ( -- ptr ptr u8 ) ATOMA-P @ ;
+: ATOMU ( -- ptr n ) ATOMU-P @ ;
+: ATOMK ( -- ptr n ) ATOMK-P @ ;
 : ATOM-ENSURE ( n -- ) {: need:n :}
    need ATOM-CAP @ <= IF exit THEN
    need ATOM-CAP @ 2 * max {: nc:n :}
@@ -438,19 +438,19 @@ PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID
 PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   0 PARG-N !
 MAXPARAM-INIT PARAM-CAP !
 PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
-: PARAMA ( -- ptr a ) PARAMA-P @ ;
-: PARAMU ( -- ptr a ) PARAMU-P @ ;
-: PARAMC ( -- ptr a ) PARAMC-P @ ;
-: PARAMFAM ( -- ptr a ) PARAMFAM-P @ ;
-: PARAMOFF ( -- ptr a ) PARAMOFF-P @ ;
-: PARAMHID ( -- ptr a ) PARAMHID-P @ ;
-: PARGP ( -- ptr a ) PARGP-P @ ;
+: PARAMA ( -- ptr ptr u8 ) PARAMA-P @ ;
+: PARAMU ( -- ptr n ) PARAMU-P @ ;
+: PARAMC ( -- ptr n ) PARAMC-P @ ;
+: PARAMFAM ( -- ptr n ) PARAMFAM-P @ ;
+: PARAMOFF ( -- ptr n ) PARAMOFF-P @ ;
+: PARAMHID ( -- ptr n ) PARAMHID-P @ ;
+: PARGP ( -- ptr n ) PARGP-P @ ;
 : PARG-ENSURE ( n -- ) {: need:n :}    \ room for `need` more arg cells past PARG-N
    PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
    PARG-N @ need + PARG-CAP-V @ 2 * max {: nc:n :}
    PARGP-P @ PARG-CAP-V @ cells nc cells ARENA-BYTES-GROW PARGP-P !
    nc PARG-CAP-V ! ;
-: PARAM-SCR ( -- ptr a ) PARAM-SCR-P @ ;
+: PARAM-SCR ( -- ptr n ) PARAM-SCR-P @ ;
 : PARAM-SCR-ENSURE ( -- )         \ room for one more scratch arg (grows the nesting-peak buffer)
    PARAM-SCR-N @ PARAM-SCR-CAP-V @ < IF exit THEN
    PARAM-SCR-N @ 1 + PARAM-SCR-CAP-V @ 2 * max {: nc:n :}
@@ -834,7 +834,7 @@ UK-EXACT UNIFY-KIND !
 create SPA-BOOT MAXPUSH-INIT 16 * allot   variable SPN
 PERSISTED-PTR-VARIABLE SPA-P   variable SPA-CAP
 SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
-: SPA ( -- ptr a ) SPA-P @ ;
+: SPA ( -- ptr n ) SPA-P @ ;
 : SPA-ENSURE ( n -- ) {: need:n :}
    need SPA-CAP @ <= IF exit THEN
    need SPA-CAP @ 2 * max {: nc:n :}
@@ -1208,11 +1208,11 @@ variable CT-DST
    CT-CLASS-BOOT CT-CLASS-P !     CT-WIDTH-BOOT CT-WIDTH-P !
    CT-SIGN-BOOT CT-SIGN-P !       CT-STR-BOOT CT-STR-P ! ;
 CT-ARENA-BOOT
-: CT-NAME-A ( -- ptr a ) CT-NAME-A-P @ ;
-: CT-NAME-U ( -- ptr a ) CT-NAME-U-P @ ;
-: CT-CLASS ( -- ptr a ) CT-CLASS-P @ ;
-: CT-WIDTH ( -- ptr a ) CT-WIDTH-P @ ;
-: CT-SIGN ( -- ptr a ) CT-SIGN-P @ ;
+: CT-NAME-A ( -- ptr ptr u8 ) CT-NAME-A-P @ ;
+: CT-NAME-U ( -- ptr n ) CT-NAME-U-P @ ;
+: CT-CLASS ( -- ptr n ) CT-CLASS-P @ ;
+: CT-WIDTH ( -- ptr n ) CT-WIDTH-P @ ;
+: CT-SIGN ( -- ptr n ) CT-SIGN-P @ ;
 : CT-STR ( -- ptr u8 ) CT-STR-P @ ;
 
 1 CTN !
@@ -2528,18 +2528,18 @@ PERSISTED-PTR-VARIABLE VRN-H-P     PERSISTED-PTR-VARIABLE VREC-STR-P
    VRN-F-BOOT VRN-F-P !       VRN-G-BOOT VRN-G-P !   VRN-H-BOOT VRN-H-P !
    VREC-STR-BOOT VREC-STR-P ! ;
 VREC-ARENA-BOOT
-: VREC-NAME-A ( -- ptr a ) VREC-NAME-A-P @ ;
-: VREC-NAME-U ( -- ptr a ) VREC-NAME-U-P @ ;
-: VREC-START ( -- ptr a ) VREC-START-P @ ;
-: VREC-COUNT ( -- ptr a ) VREC-COUNT-P @ ;
-: VREC-TVN ( -- ptr a ) VREC-TVN-P @ ;
-: VREC-RVN ( -- ptr a ) VREC-RVN-P @ ;
-: VREC-FIELDS ( -- ptr a ) VREC-FIELDS-P @ ;
-: VRN-TAG ( -- ptr a ) VRN-TAG-P @ ;
-: VRN-A ( -- ptr a ) VRN-A-P @ ;   : VRN-B ( -- ptr a ) VRN-B-P @ ;
-: VRN-C ( -- ptr a ) VRN-C-P @ ;   : VRN-D ( -- ptr a ) VRN-D-P @ ;
-: VRN-E ( -- ptr a ) VRN-E-P @ ;   : VRN-F ( -- ptr a ) VRN-F-P @ ;
-: VRN-G ( -- ptr a ) VRN-G-P @ ;   : VRN-H ( -- ptr a ) VRN-H-P @ ;
+: VREC-NAME-A ( -- ptr ptr u8 ) VREC-NAME-A-P @ ;
+: VREC-NAME-U ( -- ptr n ) VREC-NAME-U-P @ ;
+: VREC-START ( -- ptr n ) VREC-START-P @ ;
+: VREC-COUNT ( -- ptr n ) VREC-COUNT-P @ ;
+: VREC-TVN ( -- ptr n ) VREC-TVN-P @ ;
+: VREC-RVN ( -- ptr n ) VREC-RVN-P @ ;
+: VREC-FIELDS ( -- ptr n ) VREC-FIELDS-P @ ;
+: VRN-TAG ( -- ptr n ) VRN-TAG-P @ ;
+: VRN-A ( -- ptr n ) VRN-A-P @ ;   : VRN-B ( -- ptr n ) VRN-B-P @ ;
+: VRN-C ( -- ptr n ) VRN-C-P @ ;   : VRN-D ( -- ptr n ) VRN-D-P @ ;
+: VRN-E ( -- ptr n ) VRN-E-P @ ;   : VRN-F ( -- ptr n ) VRN-F-P @ ;
+: VRN-G ( -- ptr n ) VRN-G-P @ ;   : VRN-H ( -- ptr n ) VRN-H-P @ ;
 : VREC-STR ( -- ptr u8 ) VREC-STR-P @ ;
 \ VRC-TV/VRC-RV/VRI-TV/VRI-RV are var-id maps in the growable TV arena (top).
 64 constant VRI-AK-INIT
@@ -2547,7 +2547,7 @@ variable VRI-AK-CAP-V   VRI-AK-INIT VRI-AK-CAP-V !
 : VRI-AK-CAP ( -- n ) VRI-AK-CAP-V @ ;
 create VRI-AK-BOOT VRI-AK-INIT cells allot
 PERSISTED-PTR-VARIABLE VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
-: VRI-AK ( -- ptr a ) VRI-AK-P @ ;
+: VRI-AK ( -- ptr n ) VRI-AK-P @ ;
 
 \ VNARG: flat per-node arg pool for persisted VR-PARAM nodes (uncapped arity).
 \ A VR-PARAM node stores argc in VN.C, the arg-run start (into VNARG) in VN.D, and
@@ -2563,7 +2563,7 @@ create VNARG-BOOT VNARG-INIT cells allot
 PERSISTED-PTR-VARIABLE VNARG-P   VNARG-BOOT VNARG-P !
 variable VNARG-CAP-V   VNARG-INIT VNARG-CAP-V !
 variable VNARG-N   0 VNARG-N !
-: VNARG ( -- ptr a ) VNARG-P @ ;
+: VNARG ( -- ptr n ) VNARG-P @ ;
 : VNARG-GROW ( n -- ) {: need:n :}
    need VNARG-CAP-V @ 2 * max {: nc:n :}
    VNARG-P VNARG-CAP-V @ cells nc cells REG-GROW1
@@ -2747,7 +2747,7 @@ variable VREC-RB-I
    node VREC-FIELD-N @ cells VREC-FIELDS + !
    VREC-FIELD-N @ 1 + VREC-FIELD-N ! ;
 
-: VREC-MAP-RESET-ONE ( ptr a -- ) {: p:ptr :}
+: VREC-MAP-RESET-ONE ( ptr n -- ) {: p:ptr :}
    0 BEGIN dup MAXTV < WHILE
       UNBOUND over cells p + !
       1 +
@@ -2816,8 +2816,8 @@ variable VREC-RB-I
          x VREC-RES Q>DOUT RECURSE node VN.B!
          x VREC-RES Q>RIN RECURSE node VN.C!
          x VREC-RES Q>ROUT RECURSE node VN.D!
-         x VREC-RES Q>XHAS node VN.E!
-         x VREC-RES Q>XDEAD node VN.F!
+         x VREC-RES Q>XHAS Q-FLAG>N node VN.E!
+         x VREC-RES Q>XDEAD Q-FLAG>N node VN.F!
          x VREC-RES Q>XDOUT node VN.G!
          x VREC-RES Q>XROUT node VN.H!
          node
@@ -2914,7 +2914,7 @@ variable VREC-RB-I
          node VN.C@ RECURSE
          node VN.D@ RECURSE
          MK-QUOT
-         dup node VN.E@ node VN.F@ node VN.G@ node VN.H@ QX!
+         dup node VN.E@ 0 <> node VN.F@ 0 <> node VN.G@ node VN.H@ QX!
       endof
       VR-ATOM of node VREC-I-STR node VN.C@ VREC-I-AK MK-ATOM-K endof
       VR-PARAM of
@@ -3752,7 +3752,7 @@ PTR-VARIABLE NRX-BASE
 TRUSTED: USIGS-CELL-AT ( n -- ptr a )
    USIGS swap + ;
 
-: USIGS-HEAD ( -- ptr a )
+: USIGS-HEAD ( -- ptr n )
    0 USIGS-CELL-AT ;
 
 0 USIGS-USER-OFF !
@@ -3818,7 +3818,7 @@ TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
 USIGS-RUNTIME-INIT
 
 : USIGS-RUNTIME-SIZED? ( -- bool )
-   USIGS-P @ 0 = 0=
+   USIGS-P @ NULL-PTR <>
    USIGS-CAP-U @ USIGS-INIT-CAP >= and ;
 
 : USIGS-RESET ( -- )
@@ -3891,7 +3891,7 @@ USIGS-RUNTIME-INIT
 \ per-symbol index it has to repair (search USX-TRUNCATE), because the repair
 \ needs the record accessors declared further down this file.
 
-: USIGS-USER ( -- ptr a )
+: USIGS-USER ( -- ptr u8 )
    USIGS USIGS-USER-OFF @ + ;
 
 : SYM-FOLD-C ( n -- n ) {: c:n :}
@@ -3936,20 +3936,20 @@ $28 constant SYM-REC
 $8 constant SYM-REC-ALIGN
 $5 constant SYM-REC-PTR-MASK
 
-: SYM.PKG-A ( ptr a -- ptr ptr a )
+: SYM.PKG-A ( ptr u8 -- ptr ptr u8 )
    SYM-PKG-A-CELL ptr-field ;
 
-: SYM.PKG-U ( ptr a -- ptr a )
-   SYM-PKG-U-OFF + ;
+: SYM.PKG-U ( ptr u8 -- ptr n )
+   SYM-PKG-U-OFF + CELL-VIEW ;
 
-: SYM.NAME-A ( ptr a -- ptr ptr a )
+: SYM.NAME-A ( ptr u8 -- ptr ptr u8 )
    SYM-NAME-A-CELL ptr-field ;
 
-: SYM.NAME-U ( ptr a -- ptr a )
-   SYM-NAME-U-OFF + ;
+: SYM.NAME-U ( ptr u8 -- ptr n )
+   SYM-NAME-U-OFF + CELL-VIEW ;
 
-: SYM.VIS ( ptr a -- ptr a )
-   SYM-VIS-OFF + ;
+: SYM.VIS ( ptr u8 -- ptr n )
+   SYM-VIS-OFF + CELL-VIEW ;
 
 : CHECKER-RECORD-LAYOUT= ( n n -- )
    <> if s" checker: internal record layout mismatch" CORE-LAYOUT-RC die then ;
@@ -3957,8 +3957,8 @@ $5 constant SYM-REC-PTR-MASK
 : CHECKER-RECORD-LAYOUT? ( bool -- )
    0= if s" checker: internal record layout mismatch" CORE-LAYOUT-RC die then ;
 
-: CHECKER-RECORD-FIELD= ( ptr a ptr a n -- )
-   + = CHECKER-RECORD-LAYOUT? ;
+: CHECKER-RECORD-FIELD= ( ptr a ptr b n -- ) {: field:ptr base:ptr off:n :}
+   field BYTE-VIEW base BYTE-VIEW off + = CHECKER-RECORD-LAYOUT? ;
 
 : SYM-LAYOUT-OFFSETS ( -- )
    SYM-PKG-A-CELL cells SYM-PKG-A-OFF CHECKER-RECORD-LAYOUT=
@@ -3999,19 +3999,19 @@ variable SYM-I
 variable SYM-DST
 variable SYM-ID
 
-: SYMS ( -- ptr a ) SYMS-P @ ;
+: SYMS ( -- ptr u8 ) SYMS-P @ ;
 : SYM-STR ( -- ptr u8 ) SYM-STR-P @ ;
 
 1 SYM-N !
 0 SYM-STR-U !
 
-: SYM-ROW ( n -- ptr a )
+: SYM-ROW ( n -- ptr u8 )
    SYM-REC * SYMS + ;
 
-: SYM-PKG-A-FIELD ( n -- ptr ptr a )
+: SYM-PKG-A-FIELD ( n -- ptr ptr u8 )
    SYM-ROW SYM.PKG-A ;
 
-: SYM-NAME-A-FIELD ( n -- ptr ptr a )
+: SYM-NAME-A-FIELD ( n -- ptr ptr u8 )
    SYM-ROW SYM.NAME-A ;
 
 : SYM-DST-FIELD ( -- ptr ptr u8 )
@@ -4132,13 +4132,13 @@ variable HIDX-CUR
 \ HIDX-MEM/HIDX-EFF-BASE hold typed pointers into the mmap cache and USIGS store.
 \ A plain variable @ yields a bare cell value, so the store base is read through a
 \ cell-indexed ptr-field view (ptr ptr a) to preserve the nested pointer role.
-: HIDX-MEM-FIELD ( -- ptr ptr a )
+: HIDX-MEM-FIELD ( -- ptr ptr n )
    HIDX-MEM 0 ptr-field ;
 
-: HIDX-MEM@ ( -- ptr a )
+: HIDX-MEM@ ( -- ptr n )
    HIDX-MEM-FIELD @ ;
 
-: HIDX-MEM! ( ptr a -- )
+: HIDX-MEM! ( ptr n -- )
    HIDX-MEM-FIELD ! ;
 
 1 HIDX-GEN !
@@ -4173,7 +4173,7 @@ variable HIDX-CUR
 HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
 0 HIDX-EFF-HI !   HIDX-EFF-BASE-CLEAR   0 HIDX-CTL-HI !   0 HIDX-DFR-HI !
 
-: HIDX-CELL ( n n -- ptr a ) {: slot:n tbl:n :}
+: HIDX-CELL ( n n -- ptr n ) {: slot:n tbl:n :}
    tbl SYM-CAP * slot + cells HIDX-MEM@ + ;
 
 : HIDX-H+ ( n -- )
@@ -4192,7 +4192,7 @@ HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
    name nameu HIDX-H$
    HIDX-H @ SYM-CAP 1 - and ;
 
-: HIDX-BKT ( n -- ptr a )
+: HIDX-BKT ( n -- ptr n )
    HT-BKT HIDX-CELL ;
 
 : HIDX-ROW-HASH ( n -- n ) {: id:n :}
@@ -4296,7 +4296,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    id vt HIDX-CELL @ 0 <> RES-TRUE ;
 
 : HIDX-B! ( bool n n n -- ) {: v:bool id:n vt:n et:n :}
-   v id vt HIDX-CELL !
+   v IF -1 ELSE 0 THEN id vt HIDX-CELL !
    HIDX-EPOCH @ id et HIDX-CELL ! ;
 
 : HIDX-EFF@ ( n -- n bool ) HT-EFF-V HT-EFF-E HIDX@ ;
@@ -4418,18 +4418,18 @@ $60 constant EFF-REC
 $8 constant EFF-REC-ALIGN
 0 constant EFF-REC-PTR-MASK
 
-: ER.NEXT ( ptr a -- ptr a ) ER-NEXT-OFF + ;
-: ER.ACTIVE ( ptr a -- ptr a ) ER-ACTIVE-OFF + ;
-: ER.DIN ( ptr a -- ptr a ) ER-DIN-OFF + ;
-: ER.DOUT ( ptr a -- ptr a ) ER-DOUT-OFF + ;
-: ER.RIN ( ptr a -- ptr a ) ER-RIN-OFF + ;
-: ER.ROUT ( ptr a -- ptr a ) ER-ROUT-OFF + ;
-: ER.HASR ( ptr a -- ptr a ) ER-HASR-OFF + ;
-: ER.TVN ( ptr a -- ptr a ) ER-TVN-OFF + ;
-: ER.RVN ( ptr a -- ptr a ) ER-RVN-OFF + ;
-: ER.SYM ( ptr a -- ptr a ) ER-SYM-OFF + ;
-: ER.MINI ( ptr a -- ptr a ) ER-MINI-OFF + ;
-: ER.SYMPREV ( ptr a -- ptr a ) ER-SYMPREV-OFF + ;
+: ER.NEXT ( ptr u8 -- ptr n ) ER-NEXT-OFF + CELL-VIEW ;
+: ER.ACTIVE ( ptr u8 -- ptr n ) ER-ACTIVE-OFF + CELL-VIEW ;
+: ER.DIN ( ptr u8 -- ptr n ) ER-DIN-OFF + CELL-VIEW ;
+: ER.DOUT ( ptr u8 -- ptr n ) ER-DOUT-OFF + CELL-VIEW ;
+: ER.RIN ( ptr u8 -- ptr n ) ER-RIN-OFF + CELL-VIEW ;
+: ER.ROUT ( ptr u8 -- ptr n ) ER-ROUT-OFF + CELL-VIEW ;
+: ER.HASR ( ptr u8 -- ptr n ) ER-HASR-OFF + CELL-VIEW ;
+: ER.TVN ( ptr u8 -- ptr n ) ER-TVN-OFF + CELL-VIEW ;
+: ER.RVN ( ptr u8 -- ptr n ) ER-RVN-OFF + CELL-VIEW ;
+: ER.SYM ( ptr u8 -- ptr n ) ER-SYM-OFF + CELL-VIEW ;
+: ER.MINI ( ptr u8 -- ptr n ) ER-MINI-OFF + CELL-VIEW ;
+: ER.SYMPREV ( ptr u8 -- ptr n ) ER-SYMPREV-OFF + CELL-VIEW ;
 
 0 constant EN-TAG-CELL
 1 constant EN-A-CELL
@@ -4453,15 +4453,15 @@ $48 constant EFF-NODE
 $8 constant EFF-NODE-ALIGN
 0 constant EFF-NODE-PTR-MASK
 
-: EN.TAG ( ptr a -- ptr a ) EN-TAG-OFF + ;
-: EN.A ( ptr a -- ptr a ) EN-A-OFF + ;
-: EN.B ( ptr a -- ptr a ) EN-B-OFF + ;
-: EN.C ( ptr a -- ptr a ) EN-C-OFF + ;
-: EN.D ( ptr a -- ptr a ) EN-D-OFF + ;
-: EN.E ( ptr a -- ptr a ) EN-E-OFF + ;
-: EN.F ( ptr a -- ptr a ) EN-F-OFF + ;
-: EN.G ( ptr a -- ptr a ) EN-G-OFF + ;
-: EN.H ( ptr a -- ptr a ) EN-H-OFF + ;
+: EN.TAG ( ptr u8 -- ptr n ) EN-TAG-OFF + CELL-VIEW ;
+: EN.A ( ptr u8 -- ptr n ) EN-A-OFF + CELL-VIEW ;
+: EN.B ( ptr u8 -- ptr n ) EN-B-OFF + CELL-VIEW ;
+: EN.C ( ptr u8 -- ptr n ) EN-C-OFF + CELL-VIEW ;
+: EN.D ( ptr u8 -- ptr n ) EN-D-OFF + CELL-VIEW ;
+: EN.E ( ptr u8 -- ptr n ) EN-E-OFF + CELL-VIEW ;
+: EN.F ( ptr u8 -- ptr n ) EN-F-OFF + CELL-VIEW ;
+: EN.G ( ptr u8 -- ptr n ) EN-G-OFF + CELL-VIEW ;
+: EN.H ( ptr u8 -- ptr n ) EN-H-OFF + CELL-VIEW ;
 
 : ER-LAYOUT-OFFSETS-A ( -- )
    ER-NEXT-CELL cells ER-NEXT-OFF CHECKER-RECORD-LAYOUT=
@@ -4559,7 +4559,7 @@ variable CHECKER-REC-SYM
 variable EC-TV-HW
 variable EC-RV-HW
 
-: E-MAP-CLEAR ( ptr a n -- ) {: p:ptr hw:n :}
+: E-MAP-CLEAR ( ptr n n -- ) {: p:ptr hw:n :}
    0 begin dup hw < while
       UNBOUND over cells p + !
       1 +
@@ -4597,21 +4597,21 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       id 1+ EC-RV-HW @ max EC-RV-HW !
    then @ ;
 
-: E-OFF ( ptr a -- n )
+: E-OFF ( ptr u8 -- n )
    USIGS - ;
 
-: E-PTR ( n -- ptr a )
+: E-PTR ( n -- ptr u8 )
    USIGS + ;
 
 : E-ENSURE-NODE ( -- )
    UEND @ EFF-NODE + CELL + USIGS-ENSURE ;
 
-: E-NODE-INIT ( n ptr a -- ) {: tag:n p :}
+: E-NODE-INIT ( n ptr u8 -- ) {: tag:n p :}
    tag p EN.TAG !
    0 p EN.A !  0 p EN.B !  0 p EN.C !  0 p EN.D !
    0 p EN.E !  0 p EN.F !  0 p EN.G !  0 p EN.H ! ;
 
-: E-NODE-NEW ( n -- ptr a ) {: tag:n :}
+: E-NODE-NEW ( n -- ptr u8 ) {: tag:n :}
    E-ENSURE-NODE
    USIGS UEND @ + {: p:ptr :}
    tag p E-NODE-INIT
@@ -4630,7 +4630,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    UEND @
    dup argc cells + UEND ! ;
 
-: E-COPY-STR ( ptr u8 n ptr a -- ) {: a:ptr u:n p:ptr :}
+: E-COPY-STR ( ptr u8 n ptr u8 -- ) {: a:ptr u:n p:ptr :}
    UEND @ p EN.A !
    u p EN.B !
    UEND @ u + UALIGN CELL + USIGS-ENSURE
@@ -4707,12 +4707,12 @@ PTR-VARIABLE UIX-BASE
 : UIX-BASE! ( ptr u8 -- )
    UIX-BASE-FIELD ! ;
 
-: UIX-BKT ( -- ptr a ) UIX-BKT-P @ ;
-: UIX-ENT ( -- ptr a ) UIX-ENT-P @ ;
+: UIX-BKT ( -- ptr n ) UIX-BKT-P @ ;
+: UIX-ENT ( -- ptr n ) UIX-ENT-P @ ;
 
-: UIX-B ( n -- ptr a ) cells UIX-BKT + ;
+: UIX-B ( n -- ptr n ) cells UIX-BKT + ;
 
-: UIX-E ( n n -- ptr a ) {: i:n f:n :}
+: UIX-E ( n n -- ptr n ) {: i:n f:n :}
    i UIX-ENT-CELLS * f + cells UIX-ENT + ;
 
 : UIX-READY? ( -- bool )
@@ -4785,15 +4785,15 @@ UIX-RESET
 \ offsets — are the remaining key cells.
 : E-KEY ( n n -- n ) {: p:n i:n :}
    p E-NODE-TAG {: tg:n :}
-   tg EN-ATOM = IF p E-PTR i 2 + cells + @ EXIT THEN
+   tg EN-ATOM = IF p E-PTR i 2 + cells + CELL-VIEW @ EXIT THEN
    tg EN-PARAM = IF
       i 0 = IF p E-PTR EN.B @ EXIT THEN
       i 1 = IF p E-PTR EN.C @ EXIT THEN
       i 2 = IF p E-PTR EN.E @ EXIT THEN
       i 3 = IF p E-PTR EN.H @ EXIT THEN
-      p E-PTR EN.D @ i 4 - cells + E-PTR @ EXIT
+      p E-PTR EN.D @ i 4 - cells + E-PTR CELL-VIEW @ EXIT
    THEN
-   p E-PTR i 1 + cells + @ ;
+   p E-PTR i 1 + cells + CELL-VIEW @ ;
 
 \ ATOM and PARAM are the only kinds carrying bytes of their own; EN.A/EN.B is
 \ that span for both.
@@ -4843,7 +4843,7 @@ UIX-RESET
 : UIX-ENT-GROW ( -- )
    UIX-ENT-CAP @ 2 * {: nc:n :}
    nc UIX-ENT-CELLS * cells ARENA-ALLOC {: nb:ptr :}
-   UIX-ENT nb UIX-ENT-CAP @ UIX-ENT-CELLS * cells ARENA-COPY
+   UIX-ENT BYTE-VIEW nb BYTE-VIEW UIX-ENT-CAP @ UIX-ENT-CELLS * cells ARENA-COPY
    nb UIX-ENT-P !
    nc UIX-ENT-CAP ! ;
 
@@ -4981,8 +4981,8 @@ variable UIX-C
          x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
          x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
          x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D !
-         x E-RES Q>XHAS r@ E-PTR EN.E !
-         x E-RES Q>XDEAD r@ E-PTR EN.F !
+         x E-RES Q>XHAS Q-FLAG>N r@ E-PTR EN.E !
+         x E-RES Q>XDEAD Q-FLAG>N r@ E-PTR EN.F !
          x E-RES Q>XDOUT r@ E-PTR EN.G !
          x E-RES Q>XROUT r@ E-PTR EN.H !
          r>
@@ -5005,7 +5005,7 @@ variable UIX-C
             run noff E-PTR EN.D !
             0 BEGIN dup argc < WHILE                 \ data-stack index (RECURSE-safe)
                x E-RES over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER   \ ( i childoff )
-               over cells run + E-PTR !                                     \ ( i )
+               over cells run + E-PTR CELL-VIEW !                                     \ ( i )
                1 +
             REPEAT drop
          THEN
@@ -5016,10 +5016,10 @@ variable UIX-C
    E-INTERN ;                          \ the finished subterm; older twin wins
 : E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
-: USIG-NEXT ( ptr a -- ptr a )
+: USIG-NEXT ( ptr u8 -- ptr u8 )
    ER.NEXT @ E-PTR ;
 
-: USIG-OFF ( ptr a -- n )
+: USIG-OFF ( ptr u8 -- n )
    E-OFF ;
 
 \ FEP holds the found active effect record; FEP-OFF stores its USIGS offset+1 so
@@ -5027,7 +5027,7 @@ variable UIX-C
 : FEP-CLEAR ( -- )
    0 FEP-OFF ! ;
 
-: FEP-SET ( ptr a -- )
+: FEP-SET ( ptr u8 -- )
    dup FEP !
    USIG-OFF 1 + FEP-OFF ! ;
 
@@ -5037,8 +5037,8 @@ variable UIX-C
 : FEP-HIT? ( -- bool )
    FEP-OFF@ 0 <> ;
 
-: USIG-END? ( ptr a -- bool )
-   @ 0= ;
+: USIG-END? ( ptr u8 -- bool )
+   ER.NEXT @ 0= ;
 
 \ --- per-symbol effect-record index (USX) --------------------------------------
 \ What a symbol lookup actually needs from the user region is ONE record: the
@@ -5190,14 +5190,14 @@ REG-PROTECT
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
 \ read-time-only check could be masked by rewind-then-regrow.
-: E-REC-INIT ( ptr a -- ) {: p :}
+: E-REC-INIT ( ptr u8 -- ) {: p :}
    0 p ER.NEXT !  0 p ER.ACTIVE !
    0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
    0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !  0 p ER.MINI !
    0 p ER.SYMPREV !
    CHECKER-REC-SYM @ p ER.SYM ! ;
 
-: E-REC-START ( -- ptr a )
+: E-REC-START ( -- ptr u8 )
    HIDX-EFF-SYNC
    UIX-SYNC                              \ same discipline: UEND is the store's true top
                                          \ HERE, so an entry at or above it is dead and a
@@ -5212,7 +5212,7 @@ REG-PROTECT
    USX-STAMP                             \ USIGS-ENSURE may have moved the store
    p ;
 
-: E-REC-FINISH ( ptr a -- )
+: E-REC-FINISH ( ptr u8 -- )
    UEND @ swap ER.NEXT !
    UTERM! ;
 
@@ -5230,7 +5230,7 @@ REG-PROTECT
       rin E-COPY r@ E-PTR ER.RIN !
       rout E-COPY r@ E-PTR ER.ROUT !
    then
-   hasr r@ E-PTR ER.HASR !
+   hasr IF -1 ELSE 0 THEN r@ E-PTR ER.HASR !
    EC-TVN @ r@ E-PTR ER.TVN !
    EC-RVN @ r@ E-PTR ER.RVN !
    minin r@ E-PTR ER.MINI !
@@ -5687,10 +5687,10 @@ variable ASIG-MISS-K
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
 
-: USIG-SYM@ ( ptr a -- n )
+: USIG-SYM@ ( ptr u8 -- n )
    ER.SYM @ ;
 
-: USIG-MATCH-SYM? ( ptr a n -- bool ) {: rec:ptr sym:n :}
+: USIG-MATCH-SYM? ( ptr u8 n -- bool ) {: rec:ptr sym:n :}
    rec USIG-SYM@ sym = ;
 
 : USIG-FIND-OFF-SYM ( n -- n bool ) {: sym:n :}
@@ -5715,9 +5715,9 @@ variable FMEND
    sym USIG-NEWEST dup 0= if drop exit then
    1 - E-PTR {: rec:ptr :}
    rec ER.NEXT @ FMEND !
-   rec ER.ACTIVE @ if rec FEP-SET then ;
+   rec ER.ACTIVE @ 0 <> if rec FEP-SET then ;
 
-: E-INST-RESET ( ptr a -- ) {: h:ptr :}
+: E-INST-RESET ( ptr u8 -- ) {: h:ptr :}
    E-I-AK-RESET
    0 begin dup h ER.TVN @ < while
       UNBOUND over cells EI-TV + !
@@ -5750,7 +5750,7 @@ variable FMEND
    {: id:n :}
    a u id ;
 
-: E-I-STR ( ptr a -- ptr u8 n )
+: E-I-STR ( ptr u8 -- ptr u8 n )
    dup EN.A @ E-PTR swap EN.B @ ;
 
 : E-INST ( n -- n ) {: off:n :}
@@ -5776,7 +5776,7 @@ variable FMEND
          r@ EN.C @ RECURSE
          r@ EN.D @ RECURSE
          MK-QUOT
-         dup r@ EN.E @ r@ EN.F @ r@ EN.G @ r@ EN.H @ QX!
+         dup r@ EN.E @ 0 <> r@ EN.F @ 0 <> r@ EN.G @ r@ EN.H @ QX!
          r> drop
       endof
       EN-ATOM of r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
@@ -5786,7 +5786,7 @@ variable FMEND
          np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
          PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
          0 BEGIN dup argc < WHILE                   \ data-stack index (RECURSE-safe)
-            dup cells run + E-PTR @ RECURSE PARAM-SCR+
+            dup cells run + E-PTR CELL-VIEW @ RECURSE PARAM-SCR+
             1 +
          REPEAT drop
          np E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
@@ -5833,7 +5833,7 @@ variable LMNEG  variable LMPOS  variable LMV
       EN-PARAM of
          r@ {: np:ptr :}                   \ node ptr (parked value)
          0 BEGIN dup np EN.C @ < WHILE      \ data-stack index (RECURSE-safe)
-            dup cells np EN.D @ + E-PTR @ pol RECURSE
+            dup cells np EN.D @ + E-PTR CELL-VIEW @ pol RECURSE
             1 +
          REPEAT drop
          r> drop
@@ -5841,7 +5841,7 @@ variable LMNEG  variable LMPOS  variable LMV
       r> drop
    endcase ;
 
-: LIN-VAR-MULT ( ptr a n -- n n ) {: h:ptr v:n :}
+: LIN-VAR-MULT ( ptr u8 n -- n n ) {: h:ptr v:n :}
    v LMV !  0 LMNEG !  0 LMPOS !
    h ER.DIN @ RES-FALSE EN-MULT
    h ER.DOUT @ RES-TRUE EN-MULT
@@ -5857,7 +5857,7 @@ variable LMNEG  variable LMPOS  variable LMV
 \ (a). If it is still an unbound var but this effect used it non-linearly (copy
 \ or drop), taint it for the deferred scan (b).
 variable LMI
-: LIN-EFF-PASS ( h -- ) {: h:ptr :}
+: LIN-EFF-PASS ( ptr u8 -- ) {: h:ptr :}
    LIN-ANY? 0= IF exit THEN
    OK @ 0= IF exit THEN
    0 LMI !
@@ -5876,7 +5876,7 @@ variable LMI
       LMI @ 1 + LMI !
    REPEAT ;
 
-: EFF-APPLY ( ptr a -- ) {: h:ptr :}
+: EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
    0 CALL-HIT !
    h E-INST-RESET
    h ER.DIN @ E-INST
@@ -5888,7 +5888,7 @@ variable LMI
    then
    h LIN-EFF-PASS ;
 
-: EFF-QUOT ( ptr a -- n ) {: h:ptr :}
+: EFF-QUOT ( ptr u8 -- n ) {: h:ptr :}
    h E-INST-RESET
    h ER.HASR @ 0 <> if
       h ER.DIN @ E-INST
@@ -5916,9 +5916,9 @@ $18 constant PE-REC
 $8 constant PE-REC-ALIGN
 0 constant PE-REC-PTR-MASK
 
-: PE.SYM ( ptr a -- ptr a ) PE-SYM-OFF + ;
-: PE.EFF ( ptr a -- ptr a ) PE-EFF-OFF + ;
-: PE.FLAGS ( ptr a -- ptr a ) PE-FLAGS-OFF + ;
+: PE.SYM ( ptr n -- ptr n ) PE-SYM-OFF + ;
+: PE.EFF ( ptr n -- ptr n ) PE-EFF-OFF + ;
+: PE.FLAGS ( ptr n -- ptr n ) PE-FLAGS-OFF + ;
 
 : PE-LAYOUT-ASSERT ( -- )
    PE-SYM-CELL cells PE-SYM-OFF CHECKER-RECORD-LAYOUT=
@@ -5938,7 +5938,7 @@ create PES PE-CAP PE-REC * allot
 variable #PE
 variable PE-I
 
-: PE-ROW ( n -- ptr a )
+: PE-ROW ( n -- ptr n )
    PE-REC * PES + ;
 
 : PE-SYM@ ( n -- n )
@@ -7557,12 +7557,12 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
 
 : EFFECT-DIN-N ( -- n )        EFFQ-DIN @ EFF-ROW-N ;      \ fixed din term count
 : EFFECT-DOUT-N ( -- n )       EFFQ-DOUT @ EFF-ROW-N ;     \ fixed dout term count
-: EFFECT-DIN-FAM ( i -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
-: EFFECT-DOUT-FAM ( i -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
+: EFFECT-DIN-FAM ( n -- n )    EFFQ-DIN @ EFF-ROW-FAM ;    \ EFAM-* of din term i (top = 0)
+: EFFECT-DOUT-FAM ( n -- n )   EFFQ-DOUT @ EFF-ROW-FAM ;   \ EFAM-* of dout term i (top = 0)
 : EFFECT-DIN-CELLS ( -- n )    EFFQ-DIN @ EFF-ROW-CELLS ;  \ fixed din width in cells, or CELLS-NONE
 : EFFECT-DOUT-CELLS ( -- n )   EFFQ-DOUT @ EFF-ROW-CELLS ; \ fixed dout width in cells, or CELLS-NONE
-: EFFECT-DIN-SLOT ( i -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
-: EFFECT-DOUT-SLOT ( i -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
+: EFFECT-DIN-SLOT ( n -- n )   EFFQ-DIN @ EFF-ROW-SLOT ;   \ bundle slot+1 of din term i (top = 0), 0 = logical
+: EFFECT-DOUT-SLOT ( n -- n )  EFFQ-DOUT @ EFF-ROW-SLOT ;  \ bundle slot+1 of dout term i (top = 0), 0 = logical
 
 \ ---- the quotation descent ----------------------------------------------------
 \ Move the latch onto the rows of the quotation a term IS, so that every reader
@@ -7582,8 +7582,8 @@ TRUSTED: EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect int
    t EFF-B@ EFFQ-DOUT !
    0 0= ;
 
-: EFFECT-DIN-QUOT ( i -- bool )    EFFQ-DIN @ EFF-ROW-TERM EFF-DESCEND ;
-: EFFECT-DOUT-QUOT ( i -- bool )   EFFQ-DOUT @ EFF-ROW-TERM EFF-DESCEND ;
+: EFFECT-DIN-QUOT ( n -- bool )    EFFQ-DIN @ EFF-ROW-TERM EFF-DESCEND ;
+: EFFECT-DOUT-QUOT ( n -- bool )   EFFQ-DOUT @ EFF-ROW-TERM EFF-DESCEND ;
 
 \ Put the displaced row pair back. False when no descent is open, which is the
 \ same fail-closed answer a descent into a term that is not a quotation gives:
@@ -7702,7 +7702,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 : CWIN-N ( -- ptr n ) CWIN-STATE CELL + ;
 : CWIN-CAP ( -- ptr n ) CWIN-STATE 2 cells + ;
 
-: CWIN-AT ( n n -- ptr a )           \ field f of row i
+: CWIN-AT ( n n -- ptr n )           \ field f of row i
    {: i:n f:n :}
    CWIN-P @ i CW-ROW * f + cells + ;
 
@@ -7939,7 +7939,7 @@ variable MWIN-HIT                    \ the token now being reported published a 
 variable MWIN-VAL                    \ and this is it
 create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 
-: MWIN-AT ( n n -- ptr a )           \ field f of row i
+: MWIN-AT ( n n -- ptr n )           \ field f of row i
    {: i:n f:n :}
    MWIN-TAB  i MW-ROW * f + cells + ;
 
@@ -8030,7 +8030,7 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 : DFER-ENSURE ( n -- )
    DFER-CAP > IF s" checker: defer table full" 76 die THEN ;
 
-: DFER-CUR ( -- ptr a )
+: DFER-CUR ( -- ptr n )
    DFERS DFER-END @ + ;
 
 : DFER-NEED ( -- n )
@@ -8048,7 +8048,7 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
    DFER-NEED DFER-ENSURE
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym DFER-CUR DFER.SYM !
-   flag DFER-CUR DFER.FLAG !
+   flag IF -1 ELSE 0 THEN DFER-CUR DFER.FLAG !
    DFER-END @ DFER-REC + DFER-END !
    DFER-TERM
    sym 0 <> HIDX-VALID @ and IF
@@ -8062,19 +8062,19 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 : DFER-DELETE ( ptr u8 n -- )
    RES-FALSE DFER-ADD-FLAG ;
 
-: DFER-NEXT ( ptr a -- ptr a )
+: DFER-NEXT ( ptr n -- ptr n )
    DFER-REC + ;
 
-: DFER-FLAG@ ( ptr a -- bool )
+: DFER-FLAG@ ( ptr n -- bool )
    DFER.FLAG @ 0 <> ;
 
-: DFER-SYM@ ( ptr a -- n )
+: DFER-SYM@ ( ptr n -- n )
    DFER.SYM @ ;
 
-: DFER-END? ( ptr a -- bool )
+: DFER-END? ( ptr n -- bool )
    @ 0= ;
 
-: DFER-MATCH-SYM? ( ptr a n -- bool ) {: rec:ptr sym:n :}
+: DFER-MATCH-SYM? ( ptr n n -- bool ) {: rec:ptr sym:n :}
    rec DFER-SYM@ sym = ;
 
 variable DFER-HIT
@@ -8305,9 +8305,9 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
 
-: NORET-CELL ( n -- ptr a ) {: off:n :}
+: NORET-CELL ( n -- ptr n ) {: off:n :}
    off NORET-ENTRY-ALIGN 1 - and 0 <> IF s" checker: unaligned no-return cell" 76 die THEN
-   NORETS off + ;
+   NORETS off + CELL-VIEW ;
 
 : NORET-TERM ( -- )
    0 NORET-END @ NORET-CELL ! ;
@@ -8488,21 +8488,17 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ relocation delta rebases those pointers in the just-persisted arrays.
 variable REG-PERSIST-DELTA
 
-\ REG-PVAR@/REG-PVAR! read/write a persisted pointer slot through a cell-indexed
-\ ptr-field view so the stored pointer keeps its nested ptr role.
-: REG-PVAR@ ( ptr a -- ptr a )
-   0 ptr-field @ ;
+\ Registry persistence copies bytes through the byte-pool view of each slot.
+: REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
+   to from ?do NULL-PTR base i cells + ! loop ;
 
-: REG-PVAR! ( ptr a ptr a -- )
-   0 ptr-field ! ;
-
-: REG-PERSIST-BUF ( ptr a ptr a n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
-   pvar REG-PVAR@ boot = IF RES-FALSE EXIT THEN            \ not grown: boot buffer is baked DATA
-   pvar REG-PVAR@ {: old:ptr :}
+: REG-PERSIST-BUF ( ptr ptr u8 ptr u8 n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
+   pvar @ boot = IF RES-FALSE EXIT THEN            \ not grown: boot buffer is baked DATA
+   pvar @ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
    old dst bytes USIGS-COPY
-   dst pvar REG-PVAR!
+   dst pvar !
    dst old - REG-PERSIST-DELTA !
    RES-TRUE ;
 
@@ -8658,21 +8654,21 @@ REG-EXT-AOT-DEFAULTS
    NULL-PTR FEP !  0 FEP-OFF !
    NULL-PTR FP !  NULL-PTR USX-P !
 
-   ATOMA-BOOT 0 MAXATOM-INIT ARENA-CELLS-ZERO
-   PARAMA-BOOT 0 MAXPARAM-INIT ARENA-CELLS-ZERO
-   FAM-A 0 FAM-CAP ARENA-CELLS-ZERO
+   ATOMA-BOOT 0 MAXATOM-INIT REG-POINTERS-CLEAR
+   PARAMA-BOOT 0 MAXPARAM-INIT REG-POINTERS-CLEAR
+   FAM-A 0 FAM-CAP REG-POINTERS-CLEAR
    0 ATOMN !  0 PARAMN !  0 PARAM-SCR-N !  0 PARG-N !  0 FAM-N !
-   CT-NAME-A CTN @ CT-CAP-V @ ARENA-CELLS-ZERO
-   VREC-NAME-A VREC-N @ VREC-CAP-V @ ARENA-CELLS-ZERO
+   CT-NAME-A CTN @ CT-CAP-V @ REG-POINTERS-CLEAR
+   VREC-NAME-A VREC-N @ VREC-CAP-V @ REG-POINTERS-CLEAR
    SYM-CAP-V @ SYM-N @ ?do
       NULL-PTR i SYM-PKG-A-FIELD !
       NULL-PTR i SYM-NAME-A-FIELD !
    loop ;
 
-: NORET-REC ( -- ptr a )
+: NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
 
-: NORET-FLAG@ ( ptr a -- n )
+: NORET-FLAG@ ( ptr n -- n )
    NORET.FLAG @ ;
 
 \ HIDX-CTL-SYNC ( -- ) : flush the cache when NORETS rewound below a cached
@@ -8909,7 +8905,7 @@ create UNSAFE-SYMS UNSAFE-SYM-CAP cells allot
 variable UNSAFE-SYM-N
 0 UNSAFE-SYM-N !
 
-: UNSAFE-SYM-AT ( n -- ptr a ) {: i:n :}
+: UNSAFE-SYM-AT ( n -- ptr n ) {: i:n :}
    UNSAFE-SYMS i cells + ;
 
 : UNSAFE-SYM? ( n -- bool ) {: sym:n :}
@@ -9016,9 +9012,9 @@ variable UNSAFE-SYM-N
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
    E-EXPORT-UNDEFINED throw ;
 
-\ EXPORT-EFF-INST ( ptr a -- n n n n bool ) : instantiate the source record's
+\ EXPORT-EFF-INST ( ptr u8 -- n n n n bool ) : instantiate the source record's
 \ rows into fresh working terms (din dout rin rout hasr, E-ADD-EFFECT intake).
-: EXPORT-EFF-INST ( ptr a -- n n n n bool ) {: h:ptr :}
+: EXPORT-EFF-INST ( ptr u8 -- n n n n bool ) {: h:ptr :}
    h E-INST-RESET
    h ER.DIN @ E-INST
    h ER.DOUT @ E-INST
@@ -9103,7 +9099,7 @@ variable SV-TRAIL
 
 variable TSEEN  variable TSOK  variable TFA
 
-: TRY-EFF ( ptr a -- bool ) {: h:ptr :}
+: TRY-EFF ( ptr u8 -- bool ) {: h:ptr :}
    TRIAL-DEPTH @ 1 + TRIAL-DEPTH !       \ open a trial: disables path compression
    TRIAL-SAVE
    h EFF-APPLY
@@ -9236,7 +9232,7 @@ variable WF-I
 2 constant WF-STORE-FLAG
 4 constant WF-XPAD-FLAG   \ layout-cap slice 4: construct/MATCH extra-pad fact (w = instantiated_pads - declared_pads)
 
-: WFS ( -- ptr a ) WFS-P @ ;
+: WFS ( -- ptr n ) WFS-P @ ;
 
 : WF-GROW-CAP ( n -- n ) {: need:n :}
    $7FFFFFFFFFFFFFFF WF-REC / {: lim:n :}
@@ -9250,8 +9246,8 @@ variable WF-I
    WFS-P @ WF-CAP @ WF-REC * cap WF-REC * ARENA-BYTES-GROW WFS-P !
    cap WF-CAP ! ;
 
-: WF-ROW ( n -- ptr a ) WF-REC * WFS + ;
-: WF-ROW@ ( n -- ptr a ) {: i:n :}
+: WF-ROW ( n -- ptr n ) WF-REC * WFS + ;
+: WF-ROW@ ( n -- ptr n ) {: i:n :}
    i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
    i WF-ROW ;
 : WF-N@ ( -- n ) WF-N @ ;
@@ -9263,7 +9259,7 @@ variable WF-I
 : WF-FLAGS@ ( n -- n ) WF-ROW@ WF.FLAGS @ ;
 
 : WF-ROW-COPY ( n n -- ) {: src:n dst:n :}
-   src WF-ROW dst WF-ROW WF-REC ARENA-COPY ;
+   src WF-ROW BYTE-VIEW dst WF-ROW BYTE-VIEW WF-REC ARENA-COPY ;
 
 : WF-KEY< ( n n n -- bool ) {: off:n pos:n row:n :}
    off row WF-OFF@ < if RES-TRUE exit then
@@ -9738,7 +9734,7 @@ PTR-VARIABLE LOC-HW-P   LOC-HW-BOOT LOC-HW-P !
 variable LOC-HW-CAP     LOC-HW-INIT LOC-HW-CAP !
 create LOCSEQIX LOC-CAP cells allot
 variable LOCSEQ
-: LOC-HW ( -- ptr a ) LOC-HW-P @ ;
+: LOC-HW ( -- ptr n ) LOC-HW-P @ ;
 : LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
    need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" 76 die THEN
    LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max EXIT THEN
@@ -10073,10 +10069,10 @@ variable CTMP  variable RTMP  variable INDO
 \ isn't on the typed rows.)
 variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
-: CF-ROW ( n -- ptr a )
+: CF-ROW ( n -- ptr n )
    CFS-REC * CFS + ;
 
-: CF-TOP ( -- ptr a )
+: CF-TOP ( -- ptr n )
    #CFC @ 1 - CF-ROW ;
 
 : CF@DED ( -- n )
@@ -10223,7 +10219,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    RECEFF-UEND @ USIGS-RESTORE-END
    0 RECEFF-ON ! ;
 
-: CF-RECURSE-EFF ( ptr a -- ) {: h:ptr :}
+: CF-RECURSE-EFF ( ptr u8 -- ) {: h:ptr :}
    h E-INST-RESET
    h ER.HASR @ RHAS !
    h ER.DIN @ E-INST RDIN !
@@ -10543,7 +10539,7 @@ MF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 variable MF-CAP-V   MF-CAP-INIT MF-CAP-V !
 create MF-A-BOOT   MF-CAP-INIT MF-REC * allot
 PERSISTED-PTR-VARIABLE MF-A-P    MF-A-BOOT MF-A-P !
-: MF-ARENA ( -- ptr a ) MF-A-P @ ;
+: MF-ARENA ( -- ptr n ) MF-A-P @ ;
 variable MF-DEPTH   0 MF-DEPTH !
 
 : MF-GROW ( -- )
@@ -10555,14 +10551,14 @@ variable MF-DEPTH   0 MF-DEPTH !
    MF-DEPTH @ MF-CAP-V @ < IF exit THEN
    MF-GROW ;
 
-: MF-CUR ( -- ptr a )
+: MF-CUR ( -- ptr n )
    MF-DEPTH @ 1 - MF-REC * MF-ARENA + ;
 
 8 constant MSEEN-CAP-INIT
 variable MSEEN-CAP-V   MSEEN-CAP-INIT MSEEN-CAP-V !
 create MSEEN-BOOT   MSEEN-CAP-INIT cells allot
 PERSISTED-PTR-VARIABLE MSEEN-P   MSEEN-BOOT MSEEN-P !
-: MSEEN-POOL ( -- ptr a ) MSEEN-P @ ;
+: MSEEN-POOL ( -- ptr n ) MSEEN-P @ ;
 variable MSEEN-N   0 MSEEN-N !
 variable MSEEN-I
 
@@ -10587,7 +10583,7 @@ variable MSEEN-I
    MSEEN-N @ k + MSEEN-N !
    off ;
 
-: MSEEN-CELL ( n n -- ptr a ) {: off:n tag:n :}
+: MSEEN-CELL ( n n -- ptr n ) {: off:n tag:n :}
    MSEEN-POOL  off tag 64 / + cells  + ;
 
 : MSEEN-BIT ( n -- n )
@@ -10741,7 +10737,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 : MATCH-ACCUM ( -- )
    OK @ 0= IF EXIT THEN
    DEADP @ IF EXIT THEN
-   MF-CUR MF.HAS @ IF
+   MF-CUR MF.HAS @ 0 <> IF
       FAILSET @ {: fs0:n :}                   \ SUNI pins the token itself: latch the
       MF-CUR MF.OUT @ SUNI                    \ join reason only when THIS unify failed
       MF-CUR MF.ROUT @ RSUNI
@@ -10773,7 +10769,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
       THEN
       0 OK !  -1 MREJ !
    THEN
-   MF-CUR MF.HAS @ IF
+   MF-CUR MF.HAS @ 0 <> IF
       MF-CUR MF.OUT @ DCUR !
       MF-CUR MF.ROUT @ RCUR !
       0 DEADP !
@@ -12677,16 +12673,16 @@ variable CTOR-PEND-POS
 variable CTOR-PEND-K
 variable CTOR-PEND-I
 
-: CTOR-PEND-ROW ( n -- ptr a )
+: CTOR-PEND-ROW ( n -- ptr n )
    dup 0 < over CTOR-PEND-CAP @ >= or IF
       s" checker: generated constructor plan capacity overflow" 76 die
    THEN
    CTOR-PEND-REC * CTOR-PEND-P @ + ;
 
-: CTOR-PEND-SYM ( n -- ptr a )
+: CTOR-PEND-SYM ( n -- ptr n )
    CTOR-PEND-ROW ;
 
-: CTOR-PEND-CELLS ( n -- ptr a )
+: CTOR-PEND-CELLS ( n -- ptr n )
    CTOR-PEND-ROW CELL + ;
 
 : CTOR-PEND-ROWS>BYTES ( n -- n )
@@ -13049,10 +13045,10 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
 PERSISTED-PTR-VARIABLE RBF-A-P       RBF-A-BOOT RBF-A-P !
-: RBF-BASE ( -- ptr a ) RBF-A-P @ ;
+: RBF-BASE ( -- ptr n ) RBF-A-P @ ;
 create RBF-NAME-BOOT   RBF-CAP-INIT CHECKER-PACKAGE-CAP * allot
 PERSISTED-PTR-VARIABLE RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
-: RBF-NAME-BASE ( -- ptr a ) RBF-NAME-P @ ;
+: RBF-NAME-BASE ( -- ptr u8 ) RBF-NAME-P @ ;
 variable RBF-DEPTH   0 RBF-DEPTH !
 
 : RBF-GROW ( -- )
@@ -13063,8 +13059,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-ENSURE ( -- )
    RBF-DEPTH @ RBF-CAP-V @ < IF exit THEN
    RBF-GROW ;
-: RBF-CUR ( -- ptr a )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
-: RBF-NAME-CUR ( -- ptr a )  RBF-DEPTH @ CHECKER-PACKAGE-CAP * RBF-NAME-BASE + ;
+: RBF-CUR ( -- ptr n )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
+: RBF-NAME-CUR ( -- ptr u8 )  RBF-DEPTH @ CHECKER-PACKAGE-CAP * RBF-NAME-BASE + ;
 
 \ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
 \ snapshot), so drop any grown arena buffer back to the baked boot store; the
@@ -13088,7 +13084,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 \ silently missed by the boundary, which is how the boundary came to restore
 \ four cursor families out of twenty and leave a warm image whose first
 \ declaration stored through a stale pointer.
-: RBF-SAVE-INTO ( ptr a -- ) {: r:ptr :}
+: RBF-SAVE-INTO ( ptr n -- ) {: r:ptr :}
    UEND @ r RBF.UEND !
    NORET-END @ r RBF.NEND !
    SYM-N @ r RBF.SYMN !
@@ -13110,7 +13106,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    DFER-END @ r RBF.DFEREND !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
 
-: RBF-RESTORE-FROM ( ptr a -- ) {: r:ptr :}
+: RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
    r RBF.UEND @ USIGS-RESTORE-END
    r RBF.NEND @ NORET-RESTORE-END
    r RBF.SYMN @ HIDX-SYMS-RETIRE      \ pop retired hash-index rows before SYM-N rewinds
@@ -13237,10 +13233,10 @@ defer TYPES-RELEASE-XT ( -- )
    [: NOOP ;] is TYPES-RELEASE-XT ;
 TYPES-DEFAULTS
 
-: FRAME ( n -- ptr a )       \ rollback frame record at a live depth index
+: FRAME ( n -- ptr n )       \ rollback frame record at a live depth index
    RBF-REC * RBF-BASE + ;
 
-: TOP ( -- ptr a )
+: TOP ( -- ptr n )
    RBF-DEPTH @ 1 - FRAME ;
 
 : ORDINARY? ( n -- bool )    \ index -- frame is an ordinary checker scope?
