@@ -27,7 +27,7 @@ variable SST-PATH-U
 : SST-PATH$ ( -- ptr u8 n )
    SST-PATH-BUF SST-PATH-U @ ;
 
-: SST-STORE ( ptr u8 n ptr u8 ptr a -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+: SST-STORE ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
    u lenp ! ;
 

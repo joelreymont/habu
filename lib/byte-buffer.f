@@ -52,8 +52,8 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 : DATA-FIELD ( ptr a -- ptr ptr u8 )  DATA-OFF ptr-field ;
 : DATA@ ( ptr a -- ptr u8 )  DATA-FIELD @ ;
 : DATA! ( ptr u8 ptr a -- ) {: d:ptr buf:ptr :}  d buf DATA-FIELD ! ;
-: LEN-FIELD ( ptr a -- ptr a )  LEN-OFF + ;
-: CAP-FIELD ( ptr a -- ptr a )  CAP-OFF + ;
+: LEN-FIELD ( ptr a -- ptr n )  BYTE-VIEW LEN-OFF + CELL-VIEW ;
+: CAP-FIELD ( ptr a -- ptr n )  BYTE-VIEW CAP-OFF + CELL-VIEW ;
 : LEN-RAW@ ( ptr a -- n )  LEN-FIELD @ ;
 : CAP-RAW@ ( ptr a -- n )  CAP-FIELD @ ;
 : CAP-RAW! ( n ptr a -- ) {: v:n buf:ptr :}  v buf CAP-FIELD ! ;
