@@ -351,6 +351,41 @@ private
    91 3 7 11 NESTED-FRAMES 22 T= 91 T=
    91 3 7 11 TWO-SPILLING-QUOTS 23 T= 91 T= ;
 
+: LEXICAL-PARKED ( n n n -- n )
+   [: >r [: >r FRAME-CALLEE r> + ;] execute r> + ;] execute ;
+
+: LEXICAL-DEEP ( n -- n )
+   [: [: [: FRAME-CALLEE ;] execute ;] execute ;] execute ;
+
+: LEXICAL-LOOP ( n n -- n )
+   [: 0 ?do [: FRAME-CALLEE ;] execute loop ;] execute ;
+
+: LEXICAL-EXIT ( n -- n )
+   [: [: dup 3 > if 1+ exit then 2 + ;] execute 5 + ;] execute 7 + ;
+
+: LEXICAL-SIBLINGS ( n -- n )
+   [: [: 1+ ;] execute [: 2 * ;] execute ;] execute [: 3 + ;] execute ;
+
+: UNKNOWN-NESTED ( -- )
+   s" : NQ-UNKNOWN-NESTED ( -- ) [: [: 1+ ;] drop ;] execute ;" EV ;
+
+: LEXICAL-CASE ( -- )
+   s" nested quotations use their own inputs and return-stack values" T-LABEL
+   91 3 7 11 LEXICAL-PARKED 22 T= 91 T=
+   91 4 LEXICAL-DEEP 5 T= 91 T=
+   91 3 0 LEXICAL-LOOP 3 T= 91 T=
+   91 3 4 LEXICAL-LOOP 7 T= 91 T=
+   s" a nested EXIT returns to the enclosing quotation" T-LABEL
+   91 2 LEXICAL-EXIT 16 T= 91 T=
+   91 7 LEXICAL-EXIT 20 T= 91 T=
+   91 4 LEXICAL-SIBLINGS 13 T= 91 T=
+   s" nesting grants no local capture or unknown calling convention" T-LABEL
+   s" BAD-LEXICAL-CAPTURE ( n -- n ) {: held:n :} [: [: held ;] execute ;] execute"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-LEXICAL-ROW ( n -- n ) [: [: dup ;] execute ;] execute"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   [: UNKNOWN-NESTED ;] E-NELAB-QUOT TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -365,6 +400,7 @@ public
    MANY-CALLBACKS-CASE
    MINT-CASE
    QUOT-FRAME-CASE
+   LEXICAL-CASE
    T-REPORT ;
 
 ;package

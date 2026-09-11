@@ -1684,11 +1684,9 @@ create QSPELL-BUF QSPELL-CAP allot
       i QRET1-FILL
    loop ;
 
-\ Every body this definition holds has to have been told what it takes.
-: QCONSUMED-CK ( -- )
-   QN @ 0 ?do
-      i QFUN@ QPARAM <>  i QIN@ QNONE =  and if i QAT@ QUOT-REFUSE then
-   loop ;
+\ An enclosing walk supplies the calling convention before its child is built.
+: QCONSUMED-CK ( n -- )
+   dup QIN@ QNONE = if QAT@ QUOT-REFUSE else drop then ;
 
 : QOPEN-ROW ( n -- )
    {: ix:n :}
@@ -1742,16 +1740,14 @@ create QSPELL-BUF QSPELL-CAP allot
    {: ix:n :}
    QD @ QROW-CK {: k:n :}
    ix k cells QHI + !
-   ix  k QLO@  ?do
-      k i TOK-CK cells QOWN + !
-   loop
-   k ix TOK-CK cells QOWN + !
-   -1 QD ! ;
+   k QAT@ QOWN@ QD ! ;
 
 : QSCAN-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
+   \ The opening token belongs to its enclosing body and records where to
+   \ return when this quotation closes. Inner tokens retain their own owner.
+   QD @ ix TOK-CK cells QOWN + !
    r ix HIR-CTRL:OPEN-QUOT ROW-CTRL? if
-      QD @ 0 >= if ix QUOT-REFUSE then
       ix QOPEN-ROW
       exit
    then
@@ -3472,6 +3468,7 @@ variable QNAME-P                     \ the place value the digit loop is on
 : QBUILD ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       p:IR-ARENA:arena r:IR-ARENA:arena k:n :}
+   k QCONSUMED-CK
    b IR-BUILD:FUNS  k QFUN@  <> if k QAT@ QUOT-REFUSE then
    k QLO@ {: lo:n :}
    k QHI@ {: hi:n :}
@@ -3713,7 +3710,6 @@ private
    then
    r lo hi TAIL-SCAN
    FUN-KIND @ FUN-DOES-PARENT = if 0 TAIL-NEED ! 1 CALL-NEED ! then
-   QCONSUMED-CK
    c b IR-BUILD:END-FUN {: f:IR-ID:ir-fun-id :}
    c b v key p r QBUILD-ALL
    f ;
