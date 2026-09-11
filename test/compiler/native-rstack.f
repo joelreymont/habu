@@ -136,9 +136,10 @@ public
 \ refuses a word for how it is spelled.
 : NRS-RVAR ( n | R -- n | R ) ;
 
-\ And the one that really moves a cell, with its mirror.
-: NRS-PUSH ( n | -- | n ) >r ;
-: NRS-POP ( | n -- n | ) r> ;
+\ Declared callees with non-neutral return rows. Their calls must be rejected;
+\ no unsupported native body needs to compile to establish these effects.
+defer NRS-PUSH ( n | -- | n )
+defer NRS-POP ( | n -- n | )
 
 ;package
 

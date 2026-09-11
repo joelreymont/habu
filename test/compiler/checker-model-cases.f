@@ -99,13 +99,10 @@ SUMTYPE cmtwin 0
 : DROP-POLY ( a -- ) drop ;
 : KEEP-POLY ( a -- a ) ;
 
-\ An ORDINARY word that moves its argument to the return row, which `>r` also
-\ does. The two are not interchangeable and that is the point: `>r` is its own
-\ rule and takes ONE linear snapshot around the whole transfer, while a call
-\ runs the conservation check inside the data-row step, before the return rows
-\ move - so at the moment the check runs the value is on neither row. This is
-\ the model's `wToRAsWord`.
-: TO-R-WORD ( a | -- | a ) >r ;
+\ A declared call effect moves its argument to the return row. Unlike the
+\ intrinsic >r rule, a call checks conservation before transferring return rows.
+\ This is the model's wToRAsWord; the model cases never execute the callee.
+defer TO-R-WORD ( a | -- | a )
 
 \ The four words the rigid host-identity vectors need. A `fresh-*` name in a
 \ signature is a TEMPLATE slot the checker mints an identity for at every call
