@@ -1255,12 +1255,10 @@ DYNAMIC-BUFFER READ-END-BUF n
 \ ---- which registers one class may not have ----------------------------------
 : MB-CROSSES? ( n n -- bool )
    {: r:n p:n :}
-   false
-   N-VALS @ 0 ?do
-      i UF-FIND r = if
-         i DEF-AT p <  i LAST-AT p >  and or
-      then
-   loop ;
+   r begin dup 0 >= while
+      dup DEF-AT p <  over LAST-AT p > and if drop true exit then
+      UF-NEXT@
+   repeat drop false ;
 
 \ The positions it walks are THIS function's: a class belongs to one function,
 \ and so do the calls that can destroy its register.
