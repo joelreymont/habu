@@ -70,7 +70,7 @@ create RATOM-KEY RATOM-CAP cells allot
 variable RATOM-N
 variable RATOM-I
 
-: SEEN ( -- ptr a )
+: SEEN ( -- ptr n )
    SEEN-P @ ;
 
 : SEEN-ENSURE ( -- )
@@ -251,7 +251,7 @@ variable HRC  variable HRI  variable HRF
 6 constant QDEPTH-MAX                        \ quotation nesting render budget
 create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
 
-: QRET? ( q -- f ) {: q :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
+: QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
 \ is quot node r already being rendered above depth d (a type-graph cycle)?
 : QANCESTOR? {: r:n d:n :}
@@ -421,7 +421,7 @@ variable DSUGE  variable DSUGA
    u BEGIN dup 0 > WHILE
       a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
    REPEAT drop a 0 ;
-: SIG-TRIM ( a u -- a u )  SIG-LTRIM SIG-RTRIM ;
+: SIG-TRIM ( ptr u8 n -- ptr u8 n )  SIG-LTRIM SIG-RTRIM ;
 : JEFFECT {: din dout rin rout hasr :}
    34 EMIT1
    din DROW  s" -- " DTXT  dout DROW
@@ -600,7 +600,7 @@ variable MDV-I   variable MDV-F
    ELSE
       RCUR @ R-RES  RBROW @ R-RES  <>
    THEN ;
-: REPAIR-CLASS ( -- a u )
+: REPAIR-CLASS ( -- ptr u8 n )
    IMMERR @ if IMM-CLASS$ exit then
    NPBAD @ IF s" fix_parametric_effect" EXIT THEN
    CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
@@ -627,7 +627,7 @@ variable MDV-I   variable MDV-F
    s" fix_type" THEN THEN ;
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
-: SUGGEST-TEXT ( -- a u )
+: SUGGEST-TEXT ( -- ptr u8 n )
    IMMERR @ if IMM-SUGGEST$ exit then
    NPBAD @ IF
       NPBAD-KIND @ 3 = IF
