@@ -148,6 +148,7 @@ TVINIT
 0 constant TVK-ANY   \ ordinary polymorphic type var
 1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
 2 constant RVK-QUOT  \ implicit callback tail: fixed window when compared as a value
+3 constant RVK-INFERRED  \ literal tail: fresh per call, extensible to a declared window
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 \ permanent (untrailed) RAW mark for build-time contexts (prim/signature build,
@@ -170,6 +171,10 @@ TVINIT
 
 : RVK-QUOT! ( n -- ) RVK-QUOT swap cells TVK + ! ;
 
+: RVK-INFERRED! ( n -- ) RVK-INFERRED swap cells TVK + ! ;
+
+: RVK-IMPLICIT? ( n -- bool )
+   dup RVK-QUOT? swap TVK@ RVK-INFERRED = or ;
 
 : MK-QROW ( n -- n ) dup RVK-QUOT! MK-ROW ;
 
@@ -209,7 +214,7 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    need TRAIL-CAP @ 2 * max {: nc:n :}
    TRAIL-P @ TRAIL-CAP @ cells nc cells ARENA-BYTES-GROW TRAIL-P !
    nc TRAIL-CAP ! ;
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ record a mutation to var `id`; tag 0=TVT 1=RVT 2=TVK
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 3=RVK-INFERRED
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 4 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
@@ -220,7 +225,8 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
       e 3 and {: tag:n :}   e 2 rshift {: id:n :}
       tag 0= IF UNBOUND id cells TVT + ! ELSE
       tag 1 = IF UNBOUND id cells RVT + ! ELSE
-      TVK-ANY id cells TVK + ! THEN THEN
+      tag 2 = IF TVK-ANY ELSE RVK-INFERRED THEN
+      id cells TVK + ! THEN THEN
    REPEAT ;
 \ TVK-RAISE ( id -- ) : raise var `id` to TVK-RAW inside unification, trailed so a
 \ failed prim-overload trial (TRIAL-REST) or definition reject restores TVK-ANY.
@@ -233,7 +239,7 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
 
 : RVK-RAISE ( n -- )
    dup RVK-QUOT? IF drop EXIT THEN
-   dup 2 TRAIL-PUSH
+   dup TVK@ RVK-INFERRED = IF dup 3 TRAIL-PUSH ELSE dup 2 TRAIL-PUSH THEN
    RVK-QUOT! ;
 
 \ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
@@ -2335,6 +2341,47 @@ variable FINALLY-CLEANUP-OUT
    THEN
    -1 CWIN-HIT ! ;
 
+\ A callback's implicit tails quantify its untouched stacks. Instantiate those
+\ tails for each application, keeping explicit named rows and value types shared.
+\ Otherwise execute/catch bind the declaration itself to the caller's prefix.
+\ There are four rows in a quotation, hence at most four distinct terminal tails.
+create QAPP-OLD 4 cells allot
+create QAPP-NEW 4 cells allot
+variable QAPP-N
+
+: QAPP-TAIL ( n -- n ) {: row:n :}
+   row PAY RVK-IMPLICIT? 0= IF row EXIT THEN
+   QAPP-N @ 0 ?do
+      i cells QAPP-OLD + @ row = IF
+         i cells QAPP-NEW + @ unloop EXIT
+      THEN
+   loop
+   FRESH MK-QROW {: fresh:n :}
+   row QAPP-N @ cells QAPP-OLD + !
+   fresh QAPP-N @ cells QAPP-NEW + !
+   1 QAPP-N +!
+   fresh ;
+
+: QAPP-ROW ( n -- n )
+   R-RES dup TAG S-PUSH = IF
+      dup P>TYPE swap P>REST RECURSE MK-PUSH
+   ELSE QAPP-TAIL THEN ;
+
+: QUOT-APPLY-INST ( n -- n ) {: q:n :}
+   0 QAPP-N !
+   q Q>DIN QAPP-ROW q Q>DOUT QAPP-ROW
+   q Q>RIN QAPP-ROW q Q>ROUT QAPP-ROW MK-QUOT {: fresh:n :}
+   fresh q Q>XHAS q Q>XDEAD q Q>XDOUT q Q>XROUT QX!
+   fresh ;
+
+: QUOT-TAIL-MARK ( n -- )
+   BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT
+   PAY RVK-INFERRED! ;
+
+: QUOT-ROWS-GENERALIZE ( n -- ) {: q:n :}
+   q Q>DIN QUOT-TAIL-MARK q Q>DOUT QUOT-TAIL-MARK
+   q Q>RIN QUOT-TAIL-MARK q Q>ROUT QUOT-TAIL-MARK ;
+
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
    0 CWIN-HIT !
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
@@ -2343,6 +2390,7 @@ variable FINALLY-CLEANUP-OUT
    LIN-SNAPSHOT                          \ linears on the post-pop stack (pre-apply)
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
+     QTT @ QUOT-APPLY-INST QTT !
      1 QUOT-WINDOW
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
@@ -2405,6 +2453,7 @@ variable RSRET
    rest DCUR !
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
+     QTT @ QUOT-APPLY-INST QTT !
      0 QUOT-WINDOW
      DCUR @ QTT @ Q>DIN   UNIFY-IN OK @ and OK !
      RCUR @ QTT @ Q>RIN   UNIFY-IN OK @ and OK !
@@ -2905,6 +2954,7 @@ variable VREC-RB-I
       VR-ROW of
          node VN.A@ VREC-I-RV
          node VN.B@ RVK-QUOT = IF dup PAY RVK-QUOT! THEN
+         node VN.B@ RVK-INFERRED = IF dup PAY RVK-INFERRED! THEN
       endof
       VR-PTR of node VN.A@ RECURSE MK-PTR endof
       VR-PUSH of node VN.A@ RECURSE node VN.B@ RECURSE MK-PUSH endof
@@ -5766,6 +5816,7 @@ variable FMEND
       EN-ROW of
          r@ EN.A @ E-I-RV
          r@ EN.B @ RVK-QUOT = IF dup PAY RVK-QUOT! THEN
+         r@ EN.B @ RVK-INFERRED = IF dup PAY RVK-INFERRED! THEN
          r> drop
       endof
       EN-PTR of r@ EN.A @ RECURSE MK-PTR r> drop endof
@@ -10456,6 +10507,8 @@ variable QTMP
        ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
      THEN
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
+     \ A literal infers its fixed window before its implicit tails generalize.
+     QTMP @ QUOT-ROWS-GENERALIZE
      QTMP @ THSET @ DEADP @ XSET @ 0= and THDROW @ THRROW @ QX!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !  \ restore outer exit state

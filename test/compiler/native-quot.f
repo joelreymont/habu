@@ -1,6 +1,7 @@
 \ native-quot.f - production quotation compilation and execution.
 
 require lib/test.f
+require test/checker-assert.f
 require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 
@@ -235,6 +236,45 @@ create HID-TXT
    s" and no emission this chain can build reaches it" T-LABEL
    A64EMIT:INSN-MAX INSN-BYTES *  ADR-HI  < TTRUE ;
 
+\ Each callback application preserves its own window while a caller retains
+\ other values beneath it. Forwarding the callback must keep that declaration.
+: WALK ( n [ n -- n n ] -- n ) {: count:n getter :}
+   0 count 0 ?do i getter execute + + loop ;
+
+public
+: FORWARD ( n [ n -- n n ] -- n ) WALK ;
+private
+
+: REUSE ( n [ n -- n ] -- n n ) {: value:n callback :}
+   value callback execute value callback execute ;
+
+: LITERAL-REUSE ( n -- n n ) {: value:n :}
+   [: 1+ ;] {: callback :}
+   value callback execute value callback execute ;
+
+: CAUGHT ( n [ n -- n ] -- n n ) {: value:n callback :}
+   91 value callback catch rot drop ;
+
+: CATCH-FORWARD ( n [ n -- n ] -- n n ) CAUGHT ;
+
+: CALLBACK-CASE ( -- )
+   s" callback windows survive execution, reuse and forwarding" T-LABEL
+   3 [: dup ;] FORWARD 6 T=
+   0 [: dup ;] FORWARD 0 T=
+   4 [: 1+ ;] REUSE 5 T= 5 T=
+   4 LITERAL-REUSE 5 T= 5 T=
+   4 [: 1+ ;] CATCH-FORWARD 0 T= 5 T=
+   s" callback windows still reject missing inputs and extra outputs" T-LABEL
+   s" BAD-IN ( n [ -- n n ] -- n ) NQUOT-TEST:FORWARD"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-OUT ( n [ n -- n n n ] -- n ) NQUOT-TEST:FORWARD"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" explicit row parameters and callback value variables stay shared" T-LABEL
+   s" ROW-EXEC ( R [ R -- S ] -- S ) execute"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   S\" BAD-POLY ( [ a -- a ] -- ) {: q :} 1 q execute drop s\" x\" drop q execute drop"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 public
 
 : RUN ( -- )
@@ -244,6 +284,7 @@ public
    HIDDEN-CASE
    DEAD-CASE
    REACH-CASE
+   CALLBACK-CASE
    T-REPORT ;
 
 ;package
