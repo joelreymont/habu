@@ -106,11 +106,13 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER VSET-BUF n
 : VSET ( -- ptr n ) 0 VSET-BUF ;
+DYNAMIC-BUFFER USE-COUNTS n
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
    VMAX VMAP-RESERVE
    VMAX VSET-BUF-RESERVE
+   VMAX USE-COUNTS-RESERVE
    ;
 create NAMEBUF NAME-CAP allot
 
@@ -223,42 +225,46 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    t 0 BND-MEM @ SAME-TYPE? if CTX BLD A64IR:MEM-TYPE exit then
    E-A64COMB-SHAPE throw ;
 
-\ ---- how many operands of the function name a value --------------------------
-\ Counted per OPERAND and not per operation: an addition whose two operands are
-\ one value uses it twice, and a count saying once would fold a live product.
-: USES-IN-OP ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
-   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
-   0
+\ Count each source operand once. Freeze rejects cross-function references, so
+\ these module-wide value counts are also each value's function-local counts.
+\ Duplicate operands count twice: folding one would leave the producer live.
+: COUNT-OP-USES ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
    id OPERANDS-OF 0 ?do
-      id i OPERAND-AT v SAME-VALUE? if 1+ then
+      1 id i OPERAND-AT VSLOT USE-COUNTS +!
    loop ;
 
-: USES-IN-BLOCK ( IR-ID:ir-value-id IR-ID:ir-block-id -- n )
-   {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id :}
-   0
+: COUNT-BLOCK-USES ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do
-      v  bk i OP-AT  USES-IN-OP  +
+      bk i OP-AT COUNT-OP-USES
    loop ;
 
-: USES-OF ( IR-ID:ir-fun-id IR-ID:ir-value-id -- n )
-   {: f:IR-ID:ir-fun-id v:IR-ID:ir-value-id :}
-   0
+: COUNT-FUN-USES ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT 0 ?do
-      v  f i BLOCK-AT  USES-IN-BLOCK  +
+      f i BLOCK-AT COUNT-BLOCK-USES
    loop ;
+
+: COUNT-USES ( -- )
+   VMAX 0 ?do 0 i USE-COUNTS ! loop
+   FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN COUNT-FUN-USES loop ;
+
+: USES-OF ( IR-ID:ir-value-id -- n ) VSLOT USE-COUNTS @ ;
 
 \ ---- which pairs this block folds --------------------------------------------
 \ Only a definition IN THIS BLOCK may be folded, because the combined form
 \ stands where the reader stands.
 : DEF-INDEX ( IR-ID:ir-block-id IR-ID:ir-value-id -- n )
    {: bk:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
-   -1
-   bk OP-COUNT 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id RESULTS-OF 1 = if
-         id 0 RESULT-AT v SAME-VALUE? if drop i leave then
-      then
-   loop ;
+   V-VALR VW v IR-OP:FVALUE-KIND@ IR--OP-DEF--KIND:OP-RESULT
+   IR--OP-DEF--KIND:EQ 0= if -1 exit then
+   V-VALR VW V-OPR VW MKEY v IR-OP:FVALUE-OP@ {: id:IR-ID:ir-op-id :}
+   id RESULTS-OF 1 <> if -1 exit then
+   bk OP-COUNT {: n:n :}
+   n 0= if -1 exit then
+   id IR-ID:OP-LOCAL bk 0 OP-AT IR-ID:OP-LOCAL - {: at:n :}
+   at 0 < at n >= or if -1 else at then ;
 
 \ A multiply defining one value, that value read by exactly one operand of the
 \ whole function.
@@ -268,7 +274,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    bk k OP-AT {: id:IR-ID:ir-op-id :}
    id OP-SLOT O-MUL <> if false exit then
    id RESULTS-OF 1 <> if false exit then
-   f  id 0 RESULT-AT  USES-OF 1 = ;
+   id 0 RESULT-AT USES-OF 1 = ;
 
 \ The combined form is written where the ADDITION stands, so a multiply below it
 \ would be a computation moved backwards past its own inputs.
@@ -339,7 +345,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    k 0 < if false exit then
    bk k OP-AT {: id:IR-ID:ir-op-id :}
    id WHOLE-IMM 0 < if false exit then
-   f  id 0 RESULT-AT  USES-OF 1 = ;
+   id 0 RESULT-AT USES-OF 1 = ;
 
 : IMM-FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
@@ -371,7 +377,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    k 0 < if false exit then
    bk k OP-AT {: id:IR-ID:ir-op-id :}
    id WHOLE-MASK? 0= if false exit then
-   f  id 0 RESULT-AT  USES-OF 1 = ;
+   id 0 RESULT-AT USES-OF 1 = ;
 
 : MASK-FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
@@ -684,7 +690,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    id OP-SLOT {: s:n :}
    s A64IR-OPCODE:DLOAD A64IR:ORD =
    s A64IR-OPCODE:FDLOAD A64IR:ORD = or 0= if false exit then
-   f id 0 RESULT-AT USES-OF 0= ;
+   id 0 RESULT-AT USES-OF 0= ;
 
 : REMOVE-DLOAD ( IR-ID:ir-op-id -- ) {: id:IR-ID:ir-op-id :}
    id 1 RESULT-AT id 0 OPERAND-AT VOF VBIND
@@ -838,6 +844,7 @@ public
    m BND-MODULE-CK
    m VIEWS!
    RESERVE-SCRATCH RESERVE-FOLDS
+   COUNT-USES
    0
    FUN-COUNT 0 ?do
       MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
@@ -876,6 +883,7 @@ public
    b 0 S-BLD !
    m VIEWS!
    RESERVE-SCRATCH RESERVE-FOLDS
+   COUNT-USES
    c b p u SOURCE!
    FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    c b IR-BUILD:FREEZE ;
@@ -897,6 +905,7 @@ public
    CMP-AT-BUF-RELEASE
    VMAP-RELEASE
    VSET-BUF-RELEASE
+   USE-COUNTS-RELEASE
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
