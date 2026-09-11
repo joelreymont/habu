@@ -14,4 +14,14 @@ Prototype in elaborate.f preserves return/local/loop values as live SSA across c
 
 Frozen candidate: 931a543cc1d392734dc446baee6e1f55fa18ae92; binary cb7547b6ce0d0d5a5d4ee47a5e0f8d41ddf6fd62f94ee949321c22a0396d098c. Real assertions1.171s and floating-value preservation0.319s pass; six broader suites stop at shared MODE-OF -8522. No running tests; Rowan has exact commit for review.
 
-After frame-order correction80716458: KEEP assertions2.067s; native-quot6.195s,quot-scope5.651s,generic-calls3.448s,internal-call4.297s,many-locals3.325s pass. native-rstack now stops later at NRS-QUOTE-BEFORE-IF -8442; separate habu-fix-spill-shape-5bb56182 owns it. KEEP agent is idle after frozen candidate/tests; Rowan review still pending.
+After frame-order correction80716458: KEEP assertions2.067s; native-quot6.195s,quot-scope5.651s,generic-calls3.448s,internal-call4.297s,many-locals3.325s pass. native-rstack now stops later at NRS-QUOTE-BEFORE-IF -8442; separate habu-fix-spill-shape-5bb56182 owns it. Rowan review subsequently completed; see the current handoff below.
+
+
+Current handoff, 2026-09-11: Rowan review is NOT clear. The earlier frame-order (-8522) and sibling frame-shape (-8442) repairs are frozen as 80716458 and cfcf1baf and independently reviewed. A matched cfcf1baf binary (SHA256 5f28af107fbcff650f3cf7335b00a07e672cccbe7553ac6e6fbbb4cb7fe6b464) passes native-rstack (6.273 s) and native-regalloc. Historical KEEP/float assertions on an older baked host are not evidence for all candidate code paths.
+
+Three additional blockers from Rowan's review now have active, assigned dots:
+- habu-preserve-computed-real-32bc30fe: computed real values across calls; cedar, cedar-real-call.
+- habu-preserve-saved-values-efba5b18: hidden values read after BEGIN UNTIL; compiler_xhigh_review, candidate 19d081a6, independent review by check_api.
+- habu-support-spills-inside-11052a3b: nonconstant spills in quotation functions; check_api, candidate 5137130d, independent review by compiler_xhigh_review.
+
+A separate exploratory elaboration rejection is recorded as habu-diagnose-lexically-nested-56aafc89 and remains unassigned. Integration and matched full compiler validation remain pending; do not mark KEEP complete from isolated reducers.
