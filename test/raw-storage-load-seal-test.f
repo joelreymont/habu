@@ -1,8 +1,6 @@
 \ raw-storage-load-seal-test.f - the raw-storage nominal seal on the NATIVE
 \ `bin/hb --load` definer path (dot habu-seal-raw-storage-d5871f3f).
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f
-\   src/core/pointer-storage.f test/checker-assert.f
-\   test/raw-storage-load-seal-test.f
+\ Run: bin/hb --load test/raw-storage-load-seal-test.f
 \
 \ WHY THIS FILE IS SEPARATE FROM test/pointer-storage-test.f. That suite
 \ registers its raw definers by re-driving the source through verify-source,
@@ -78,7 +76,7 @@ CELL-DEFINER DOES-CELL
    s" S3 ( -- n ) CON-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : SCALAR-PTR ( -- )
-   s" S4 ( -- ptr ptr a ) PTR-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" S4 ( -- ptr ptr n ) PTR-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : SCALAR-DOES ( -- )
    s" S5 ( -- n ) DOES-CELL" CHECK-QUIET-CANDIDATE! -1 T= ;
