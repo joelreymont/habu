@@ -200,7 +200,9 @@ public
    a dev >CUDA-DEVPTR u >LEN CUDA:DTOH ;
 
 : PARAM! ( n ptr a n -- )
-   {: off:n addr:ptr bytes:n :}
+   {: bytes:n :}
+   byte-view
+   {: off:n addr:ptr :}
    FUNC @ >CUDA-FN off >IDX addr bytes >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 : PARAM-PTR! ( n ptr a -- )

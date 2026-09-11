@@ -55,9 +55,9 @@ variable PTXIR-N
    dup PTXIR-N @ >= if E-PTX-IR-UNKNOWN throw then
    drop ;
 
-: PTXIR-REC@ ( n -- ptr a ) {: id:n :}
+: PTXIR-REC@ ( n -- ptr n ) {: id:n :}
    id PTXIR-CAP-CHECK
-   PTXIR-NODES id PTXIR-REC * + ;
+   PTXIR-NODES id PTXIR-REC * + cell-view ;
 
 : PTXIR-OP@ ( n -- n ) {: id:n :}
    id PTXIR-ID-CHECK
@@ -77,11 +77,11 @@ variable PTXIR-N
 
 : PTXIR-LIVE@ ( n -- bool ) {: id:n :}
    id PTXIR-ID-CHECK
-   id PTXIR-REC@ PTXIR.LIVE @ ;
+   id PTXIR-REC@ PTXIR.LIVE @ 0<> ;
 
 : PTXIR-LIVE! ( bool n -- ) {: live:bool id:n :}
    id PTXIR-ID-CHECK
-   live id PTXIR-REC@ PTXIR.LIVE ! ;
+   live if 1 else 0 then id PTXIR-REC@ PTXIR.LIVE ! ;
 
 : >PTXIR-NODE ( n n n n n -- ptxir-node )
    PTXIR--NODE:MAKE ;

@@ -34,8 +34,8 @@ create CD-LIB 16 allot
 create CD-SYM 64 allot
 variable CD-H
 
-: OUT ( -- ptr a )
-   FFI:ARGS 15 cells + ;
+: OUT ( -- ptr n )
+   FFI:ARGS 15 cells + cell-view ;
 
 : TRUE ( -- bool )
    0 0= ;
