@@ -7848,3 +7848,49 @@ and --no-lldbinit.
   regression: declare the definer through VERIFY:SOURCE-BUF-IN-SCOPE, certify a
   candidate that calls each generated name, and require a name the definer does
   NOT publish to stay unresolvable so the row cannot pass by prefix match.
+
+## 2026-09-12 - sharing the word model across a load
+
+- **Vocabulary membership is definition-dependent, so a load-lived model table
+  needs the binding asked per definition at READ time.** `INTRINSIC-BOUND?` gated
+  the vocabulary declarers, and a package that binds `+`, `dup` or `xor` to a
+  word of its own moves the answer mid-load: `native-word-binding.f` needs `+`
+  absent from the vocabulary while `NATIVE-BOUND-PUBLIC:FIRST` compiles and
+  present afterwards. Registering once at session open with the gate still on the
+  declarers froze the wrong answer; deleting the gate outright was the
+  falsification that proved it (`FIRST` returned 46 instead of 17). Membership is
+  registered once; the binding is a lazy per-definition check keyed on the
+  overlay's module serial, and a row the check refuses answers as no row, which
+  is what hands a shadowed spelling to the callable path.
+- **A model reader holds an arena and a symbol and no interner, so it can read no
+  spelling.** Any spelling-shaped question - folding, hashing, comparing - has to
+  be answered at registration and left behind as a number. Here the number is the
+  prototype ordinal: a definition's module is cloned from the session prototype,
+  so a vocabulary spelling sits at the same ordinal in every clone and the token's
+  own symbol indexes the shared table with no lookup at all.
+- **The interner's scan is O(rows), and a clone starts it two hundred rows
+  deep.** `IR-SYM:SCAN` walks the row table comparing a content filter, so every
+  miss costs the whole table. Cloning the prototype makes every module of every
+  definition start with about 230 rows, and each name a definition does intern -
+  its own spelling, its callees, its literals - pays for all of them. That is why
+  the passes that used to intern their opcode names per module were the ones that
+  mattered, and why what is left per definition is still about 456 us: the
+  remaining cost is not the vocabulary any more, it is the scan the module's own
+  names pay. A hash side-index over the rows is the next structural move, not a
+  bigger prototype.
+- **A registry whose rows are taken at two different lifetimes cannot be retired
+  by depth.** Context slots were a stack, so teardown retired `DEPTH @ 1-`; the
+  session then took a row that no scope leaves, and a scope that enclosed the
+  first tier-1 definition retired the SESSION's row instead of its own - a live
+  row over a released mapping (SIGSEGV on the next read), a session still
+  answering live, and `E-IR-CTX-STATE` from every later definition and capture.
+  Two fixes, each closing the hole alone: the unscoped row may only be the bottom
+  one (`SESSION-OPEN` refuses a non-empty registry), and every owner retires the
+  slot IT was handed rather than the deepest.
+- **A flag that says session-lived storage is readable must be cleared by the
+  action that ends that storage.** The three prototype flags were cleared by
+  `NCOMP:CAPTURE-PREPARE`, five lines after `IMAGE-LIFECYCLE:PREPARE` had closed
+  the session, so between the two - and after a bare `PREPARE`, forever - an
+  ordinary reader answered `E-IR-ARENA-STALE` from a flag that said yes.
+  `IR-CTX:SESSION-CLOSE` now runs the owner's stand-down itself, so no ordering
+  between two entry points is load-bearing.

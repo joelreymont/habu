@@ -24,6 +24,7 @@ require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
 require src/compiler/ir/build.f
+require src/compiler/ir/symbol.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/dict.f
@@ -49,7 +50,11 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 0 constant HC-MAGIC
 1 constant HC-SERIAL
 2 constant HC-CAP
-3 constant HDR-CELLS
+3 constant HC-LINK                   \ how this table stands to the session
+4 constant HDR-CELLS
+0 constant LINK-NONE                 \ a table of its own module and nothing else
+1 constant LINK-CLONE                \ an overlay whose module is a session clone
+2 constant LINK-SESSION              \ the session's own vocabulary table
 0 constant OFF-SYM                   \ the source word's symbol ordinal
 1 constant OFF-MEAN                  \ the stored meaning code
 2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; rstack: the transfer code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
@@ -322,124 +327,61 @@ public
 
 private
 
-\ Negative means the complete vocabulary. Filtered registration keeps symbols
-\ already present after folding the recorded names, including schema symbols.
-variable SYMBOL-LIMIT
--1 SYMBOL-LIMIT !
-
-: ALL-SYMBOLS ( -- ) -1 SYMBOL-LIMIT ! ;
-
-: SELECTED-SYMBOL? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
-   SYMBOL-LIMIT @ 0 < if true exit then
-   id IR-ID:SYMBOL-LOCAL SYMBOL-LIMIT @ < ;
-
-\ ---- the spellings this module already holds ---------------------------------
-\ A declarer's spelling is modeled only if this module's interner has ALREADY
-\ answered for it: the filtered registration folds every name the body wrote
-\ into the interner before the walk, so "already interned" is exactly "the body
-\ wrote it". The walk used to establish that by INTERNING all 86 spellings and
-\ rejecting the ones whose ordinal landed at or above the pre-walk count, which
-\ left 84 symbols in a five-token module that nothing could ever reach - and
-\ every later intern, every dialect opcode among them, scanned past them.
+\ ---- the session model -------------------------------------------------------
+\ ONE table of this dialect's vocabulary per load, not one per definition. It is
+\ registered once into a session-lived module and read by every definition, and
+\ that is sound because a definition's module is CLONED from the session
+\ prototype: a spelling the prototype holds sits at the same ordinal in every
+\ clone, so a body token's own symbol indexes the vocabulary with no lookup.
 \
-\ This index answers the same question by reading instead of writing. It is
-\ built once per registration from the symbols the module already has; a slot
-\ holds one ordinal, IX-EMPTY, or IX-AMBIGUOUS when two spellings hash
-\ together. A probe that lands on an ordinal is confirmed with SYMBOL-IS?,
-\ which is the substrate's own non-interning identity check, so a hash
-\ coincidence answers absent rather than wrong; a probe that lands on
-\ IX-AMBIGUOUS falls back to the scan the index exists to avoid, which is why
-\ that scan is still here and still correct on its own. Only a spelling no
-\ longer than IX-CAP can be a declarer's, so a longer symbol is never indexed
-\ and is never asked about.
-512 constant IX-SLOTS
-IX-SLOTS 1- constant IX-MASK
-16 constant IX-CAP                   \ `construct`, the longest modeled spelling, is nine
-0 constant IX-EMPTY
--1 constant IX-AMBIGUOUS
--1 constant IX-ABSENT
+\ WHY AN ORDINAL AND NOT A SPELLING. A reader holds a row arena and a symbol and
+\ no interner, so it cannot read a spelling back at all. Every spelling-shaped
+\ question is therefore answered at REGISTRATION: ORD-ROW maps a prototype
+\ ordinal to its session row, and ROW-ORD maps that row back to the ordinal its
+\ spelling has in the prototype, which is where the binding gate reads bytes.
+\ The two ceilings are named against what a load actually holds: the prototype
+\ interns about 230 symbols (two dialect names, 46 HIR and 76 A64 opcodes, their
+\ attribute keys, and the 86 vocabulary spellings this file folds into it), and
+\ this dialect's vocabulary is WORDS rows. Both refuse by name rather than grow.
+512 constant ORD-CAP                 \ prototype ordinals the map can cover
+128 constant SROW-CAP                \ session rows the gate can remember
 
-create IX-SLOT IX-SLOTS cells allot
-create IX-BUF IX-CAP allot
-variable IX-H
+create ORD-ROW ORD-CAP cells allot   \ prototype ordinal -> session row plus one
+create ROW-ORD SROW-CAP cells allot  \ session row -> its prototype ordinal
+create CHK-GEN SROW-CAP cells allot  \ session row -> the definition that asked
+create CHK-BND SROW-CAP cells allot  \ session row -> what that definition got
 
-: IX-HASH ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   u 17 * IX-H !
-   u 0 ?do
-      IX-H @ 31 *  a i + c@ +  $3FFFFFF and  IX-H !
-   loop
-   IX-H @ IX-MASK and ;
+1 TYPED-BUFFER SESS-POOL IR-ARENA:arena   \ the prototype interner's byte pool
+1 TYPED-BUFFER SESS-ROWS IR-ARENA:arena   \ and its rows
+1 TYPED-BUFFER SESS-KEY IR-ID:ir-module-key
+1 TYPED-BUFFER SESS-P IR-ARENA:arena      \ the session table's pick pool
+1 TYPED-BUFFER SESS-R IR-ARENA:arena      \ and its rows
+variable SESS-ON
+variable ORD-N                       \ how many prototype ordinals the map covers
 
-: IX-SLOT@ ( n -- n ) cells IX-SLOT + @ ;
-: IX-SLOT! ( n n -- ) cells IX-SLOT + ! ;
+: ORD-ROW@ ( n -- n ) cells ORD-ROW + @ ;
+: ORD-ROW! ( n n -- ) cells ORD-ROW + ! ;
+: ROW-ORD@ ( n -- n ) cells ROW-ORD + @ ;
+: ROW-ORD! ( n n -- ) cells ROW-ORD + ! ;
 
-: IX-CLEAR ( -- )
-   IX-SLOTS 0 ?do IX-EMPTY i IX-SLOT! loop ;
+: SESS-FORGET ( -- )
+   0 SESS-ON !
+   0 ORD-N ! ;
+SESS-FORGET
 
-\ An ordinal is stored one higher, so IX-EMPTY stays distinguishable from the
-\ module's first symbol.
-: IX-PUT ( n n -- )
-   {: h:n ord:n :}
-   h IX-SLOT@ {: cur:n :}
-   cur IX-EMPTY = if ord 1+ h IX-SLOT! exit then
-   cur IX-AMBIGUOUS = if exit then
-   IX-AMBIGUOUS h IX-SLOT! ;
+\ The session row a prototype ordinal names, or a negative answer. A token the
+\ prototype never held has an ordinal past the map, which is the ordinary case
+\ for every word a body defines or calls.
+: SESS-ROW ( n -- n )
+   {: ord:n :}
+   SESS-ON @ 0= if -1 exit then
+   ord 0 < ord ORD-N @ >= or if -1 exit then
+   ord ORD-ROW@ 1- ;
 
-: IX-ORD-SYM ( IR-BUILD:builder n -- IR-ID:ir-symbol-id )
-   {: b:IR-BUILD:builder ord:n :}
-   b IR-BUILD:MODULE-KEY ord IR-ID:PACK-SYMBOL ;
-
-: IX-ADD ( IR-CTX:ctx IR-BUILD:builder n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder ord:n :}
-   b ord IX-ORD-SYM {: id:IR-ID:ir-symbol-id :}
-   c b id IR-BUILD:SYMBOL-LEN {: u:n :}
-   u IX-CAP > if exit then
-   c b id IX-BUF IX-CAP IR-BUILD:SYMBOL-COPY drop
-   IX-BUF u IX-HASH ord IX-PUT ;
-
-: IX-BUILD ( IR-CTX:ctx IR-BUILD:builder -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   IX-CLEAR
-   SYMBOL-LIMIT @ 0 ?do c b i IX-ADD loop ;
-
-: IX-SCAN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- n )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
-   SYMBOL-LIMIT @ 0 ?do
-      c b  b i IX-ORD-SYM  a u IR-BUILD:SYMBOL-IS? if i unloop exit then
-   loop
-   IX-ABSENT ;
-
-: IX-FIND ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- n )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
-   u IX-CAP > if IX-ABSENT exit then
-   a u IX-HASH IX-SLOT@ {: cur:n :}
-   cur IX-EMPTY = if IX-ABSENT exit then
-   cur IX-AMBIGUOUS = if c b a u IX-SCAN exit then
-   cur 1- {: ord:n :}
-   c b  b ord IX-ORD-SYM  a u IR-BUILD:SYMBOL-IS? if ord else IX-ABSENT then ;
-
-\ The declarer's own spelling as its own fold, which is the form every row is
-\ keyed by and the form the tape's names were interned under.
-: FOLD$ ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
-   a u FOLDED? if a u exit then
-   a u FOLD-INTO KEY-BUF u ;
-
-\ The identity a declarer's spelling has in THIS module. The filtered
-\ registration reads and never writes: a spelling the module does not already
-\ hold answers the ordinal SELECTED-SYMBOL? rejects, so the declarer writes no
-\ row and the module gains no symbol. The unfiltered registration still
-\ interns, because REGISTER-WORDS declares the complete vocabulary into a
-\ module that has no body to have written anything.
+\ The identity a declarer's spelling has in the module being registered. The
+\ registration declares the whole vocabulary, so this is the plain intern.
 : MODEL-SYM ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a:ptr u:n :}
-   SYMBOL-LIMIT @ 0 < if c b a u IR-BUILD:INTERN-SYMBOL exit then
-   a u FOLD$ {: p:ptr pu:n :}
-   c b p pu IX-FIND {: ord:n :}
-   ord IX-ABSENT = if b SYMBOL-LIMIT @ IX-ORD-SYM exit then
-   b ord IX-ORD-SYM ;
+   IR-BUILD:INTERN-SYMBOL ;
 
 \ This door states its key rather than computing it: reading a spelling back
 \ needs the byte pool and this is handed only the rows. A row written here under
@@ -504,8 +446,11 @@ public
 
 \ The two handles plus the key are the table, and it dies with its context.
 \ ---- creation ----------------------------------------------------------------
-: NEW ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
-   {: c:IR-CTX:ctx key:IR-ID:ir-module-key rcap:n pcap:n :}
+\ `link` says the table's module is a clone of the session prototype, which is
+\ what makes a body token's ordinal name a session row. It is a header cell and
+\ not package state, so a table answers for itself and no reader is pinned.
+: NEW-TABLE ( IR-CTX:ctx IR-ID:ir-module-key n n n -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key rcap:n pcap:n link:n :}
    rcap ROW-CAP-OK
    pcap POOL-CAP-OK
    c pcap HDR-CELLS + IR-ARENA:NEW {: p:IR-ARENA:arena :}
@@ -513,12 +458,20 @@ public
    c p WPOOL-MAGIC IR-ARENA:PUSH drop
    c p key KEY-SERIAL IR-ARENA:PUSH drop
    c p pcap IR-ARENA:PUSH drop
+   c p link IR-ARENA:PUSH drop
    c rcap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
    c r HDR-CELLS IR-ARENA:RESERVE
    c r WROW-MAGIC IR-ARENA:PUSH drop
    c r key KEY-SERIAL IR-ARENA:PUSH drop
    c r rcap IR-ARENA:PUSH drop
+   c r link IR-ARENA:PUSH drop
    p r ;
+
+\ A table of its own module, which is what a caller outside a session builds and
+\ what every test builds: it holds whatever is declared into it and consults no
+\ session rows.
+: NEW ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
+   LINK-NONE NEW-TABLE ;
 
 private
 
@@ -641,43 +594,65 @@ create FIX-NAME FIX-NAME-CAP allot
 : BDECLARE-PLAIN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id m:HIR:meaning :}
-   c b id SELECTED-SYMBOL? 0= if exit then
    c r  c b id BKEY-CK  m PLAIN-ROW ;
 
 \ A package may bind the same spelling to another word. Only the engine's
 \ global binding has this intrinsic meaning; scoped words use ordinary
 \ dictionary resolution and their own checked effects.
-: INTRINSIC-BOUND? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+\
+\ It takes the BYTES and not a symbol because one of its two callers is the
+\ reader's binding gate, which holds no interner to read a spelling out of. WHERE
+\ each caller asks it, and why there are two, is the block below.
+: INTRINSIC-BOUND? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u NDICT:SPELL-START a u 0 search-wl = ;
+
+\ ---- where the gate is asked -------------------------------------------------
+\ ONE RULE, ASKED WHERE ITS ANSWER IS STILL TRUE WHEN THE ROW IS READ: a
+\ spelling the engine no longer owns models nothing, so the token falls through
+\ to the callable path and reaches the word the package bound.
+\
+\ THE SESSION'S TABLE is registered once and read by every definition of the
+\ load, and the answer MOVES between them - native-word-binding.f needs `xor`
+\ present, then absent while a package owns it, then present again - so its rows
+\ are all registered and the gate is asked at the reading token, per definition
+\ (ROW-BOUND? below).
+\
+\ ANY OTHER TABLE is registered and read inside ONE definition, and its reader
+\ holds a row arena and a symbol and NO interner: it cannot read a spelling back
+\ at all, so it could not ask this question if it wanted to. The gate is asked
+\ here instead, while the builder that can read the spelling is in hand, and a
+\ refused word gets no row - which is exactly what the declarers did before the
+\ session existed.
+: BVOCAB? ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r HC-LINK LCELL@ LINK-SESSION = if true exit then
+   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
    c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   FIX-NAME u NDICT:SPELL-START FIX-NAME u 0 search-wl = ;
+   FIX-NAME u INTRINSIC-BOUND? ;
 
 : BDECLARE-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode :}
-   c b id SELECTED-SYMBOL? 0= if exit then
-   c b id INTRINSIC-BOUND? 0= if exit then
+   c b r id BVOCAB? 0= if exit then
    c r  c b id BKEY-CK  o OP-ROW ;
 
 : BDECLARE-CONST-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode v:n :}
-   c b id SELECTED-SYMBOL? 0= if exit then
-   c b id INTRINSIC-BOUND? 0= if exit then
+   c b r id BVOCAB? 0= if exit then
    c r  c b id BKEY-CK  o v CONST-OP-ROW ;
 
 : BDECLARE-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:ctrl -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:ctrl :}
-   c b id SELECTED-SYMBOL? 0= if exit then
-   c b id INTRINSIC-BOUND? 0= if exit then
+   c b r id BVOCAB? 0= if exit then
    c r  c b id BKEY-CK  k CONTROL-ROW ;
 
 : BDECLARE-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:rmove n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:rmove cells:n :}
-   c b id SELECTED-SYMBOL? 0= if exit then
-   c b id INTRINSIC-BOUND? 0= if exit then
+   c b r id BVOCAB? 0= if exit then
    c r  c b id BKEY-CK  k cells RSTACK-ROW ;
 
 public
@@ -824,8 +799,7 @@ create STG-PICK PICK-MAX cells allot
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
    STG-TAKE
-   c b id SELECTED-SYMBOL? 0= if exit then
-   c b id INTRINSIC-BOUND? 0= if exit then
+   c b r id BVOCAB? 0= if exit then
    c p r  c b id BKEY-CK  RENAME-ROW ;
 
 public
@@ -869,20 +843,83 @@ public
 
 private
 
-: ROW-OF ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+\ ---- the binding gate --------------------------------------------------------
+\ Membership of the vocabulary is a fact about the DIALECT and is registered
+\ once. Whether the engine still owns the spelling is a fact about the
+\ DICTIONARY, and a package that binds `+` or `dup` to a word of its own moves
+\ it mid-load - so it is asked per definition, at the first token that reads the
+\ row, and remembered for the rest of that definition.
+\
+\ The definition is named by the overlay's own header serial, which is its
+\ module's key serial: a new definition is a new module, so a stale answer can
+\ never be read as a current one and nothing has to be cleared between them.
+64 constant GATE-CAP                 \ the longest vocabulary spelling the gate reads
+
+create GATE-BUF GATE-CAP allot
+
+: CHK-GEN@ ( n -- n ) cells CHK-GEN + @ ;
+: CHK-GEN! ( n n -- ) cells CHK-GEN + ! ;
+: CHK-BND@ ( n -- n ) cells CHK-BND + @ ;
+: CHK-BND! ( n n -- ) cells CHK-BND + ! ;
+
+\ The spelling of a session row, read out of the prototype interner the ordinal
+\ belongs to. This is the whole reason ROW-ORD exists.
+: ROW-SPELL ( n -- ptr u8 n )
+   {: sl:n :}
+   0 SESS-KEY @ sl ROW-ORD@ IR-ID:PACK-SYMBOL {: id:IR-ID:ir-symbol-id :}
+   0 SESS-POOL @ 0 SESS-ROWS @ id GATE-BUF GATE-CAP IR-SYM:COPY
+   GATE-BUF swap ;
+
+\ A plain row is a marker no package can own - `{:` and `:}` are syntax and not
+\ words - so it answers without asking the dictionary at all.
+: GATED? ( n -- bool )
+   {: sl:n :}
+   0 SESS-R @ sl OFF-MEAN RC@ N>MEAN {: m:HIR:meaning :}
+   m HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ if false exit then
+   m HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ if false exit then
+   true ;
+
+: ROW-BOUND? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena sl:n :}
+   sl GATED? 0= if true exit then
+   r HC-SERIAL LCELL@ {: gen:n :}
+   sl CHK-GEN@ gen = if sl CHK-BND@ 0<> exit then
+   sl ROW-SPELL INTRINSIC-BOUND? {: bound:bool :}
+   bound if 1 else 0 then sl CHK-BND!
+   gen sl CHK-GEN!
+   bound ;
+
+\ ---- which table answers ------------------------------------------------------
+\ The one decision point. The overlay is asked first and by the symbol, which is
+\ the ordinary owner-checked lookup this always did; only a table whose header
+\ says its module is a session clone goes on to the vocabulary, and only by the
+\ ordinal, because a clone holds the prototype's spellings at the prototype's
+\ ordinals. A row the gate refuses answers as no row at all, which is what hands
+\ a shadowed spelling to the callable path.
+: LOOKUP ( IR-ARENA:arena IR-ID:ir-symbol-id -- IR-ARENA:arena n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id SYM-OWNER-CK
-   r id IR-ID:SYMBOL-LOCAL FIND
+   id IR-ID:SYMBOL-LOCAL {: so:n :}
+   r so FIND {: l:n :}
+   l 0 >= if r l exit then
+   r HC-LINK LCELL@ LINK-CLONE <> if r -1 exit then
+   so SESS-ROW {: sl:n :}
+   sl 0 < if r -1 exit then
+   r sl ROW-BOUND? 0= if r -1 exit then
+   0 SESS-R @ sl ;
+
+: ROW-OF ( IR-ARENA:arena IR-ID:ir-symbol-id -- IR-ARENA:arena n )
+   LOOKUP
    dup 0 < if E-HIR-UNMODELED throw then ;
 
 \ The row of a word this table models with the meaning the caller is about to
 \ Asking a rename for its opcode is a category error, not a missing value.
-: ROW-AS ( IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- n )
+: ROW-AS ( IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- IR-ARENA:arena n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id want:HIR:meaning :}
-   r id ROW-OF {: l:n :}
-   r l OFF-MEAN RC@ N>MEAN want HIR-MEANING:EQ
+   r id ROW-OF {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-MEAN RC@ N>MEAN want HIR-MEANING:EQ
    0= if E-HIR-CLASS throw then
-   l ;
+   ra l ;
 
 public
 
@@ -890,16 +927,15 @@ public
 \ all, which is the same refusal a declared boundary gets.
 : MEANING@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:meaning )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id ROW-OF {: l:n :}
-   r l OFF-MEAN RC@ N>MEAN ;
+   r id ROW-OF {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-MEAN RC@ N>MEAN ;
 
 \ Whether this table models the word at all, asked without being refused. Every
 \ The elaborator asks whether a name the PROGRAM chose for a local collides with
 \ a word of the dialect, and "no" is the ordinary case rather than a failure.
 : MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id SYM-OWNER-CK
-   r id IR-ID:SYMBOL-LOCAL FIND 0 >= ;
+   r id LOOKUP nip 0 >= ;
 
 \ The bare name inside one typed local's declaration spelling. A declaration
 \ The tape carries `name:type` as one token while the body reads the name alone,
@@ -923,119 +959,129 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 
 : OPCODE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:opcode )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:OP ROW-AS {: l:n :}
-   r l OFF-A RC@ HIR:NTH ;
+   r id HIR-MEANING:OP ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@ HIR:NTH ;
 
 \ The operation a constant-and-operation word applies, and the constant it
 \ Through ROW-AS, so asking a word of another meaning is a category error.
 : CONST-OPCODE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:opcode )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CONST-OP ROW-AS {: l:n :}
-   r l OFF-A RC@ HIR:NTH ;
+   r id HIR-MEANING:CONST-OP ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@ HIR:NTH ;
 
 : CONST-VALUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CONST-OP ROW-AS {: l:n :}
-   r l OFF-IN RC@ ;
+   r id HIR-MEANING:CONST-OP ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-IN RC@ ;
 
 \ The value a word that pushes one fixed value pushes. Asking it about a word of
 \ Through ROW-AS, for the same reason.
 : FIXED-VALUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:FIXED ROW-AS {: l:n :}
-   r l OFF-IN RC@ ;
+   r id HIR-MEANING:FIXED ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-IN RC@ ;
 
 \ And what that value IS, which the site staging it needs before the number is
 \ just a number: an address of the DATA region, or an ordinary integer.
 : FIXED-KIND@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:FIXED ROW-AS {: l:n :}
-   r l OFF-A RC@ ;
+   r id HIR-MEANING:FIXED ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@ ;
 
 \ Where a callable word's code starts, and its declared effect. Each is asked of
 \ Through ROW-AS, for the same reason.
 : ENTRY@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
-   r l OFF-A RC@ ;
+   r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@ ;
 
 : CALLEE-IN@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
-   r l OFF-IN RC@ ;
+   r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-IN RC@ ;
 
 : CALLEE-OUT@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
-   r l OFF-N RC@ ;
+   r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-N RC@ ;
 
 \ Whether control comes back from a call to this callee. The one reader of the
 \ The one reader of the fact RESOLVE-CALLABLE put in the row, so every pass that
 \ needs it asks one question instead of asking the engine again.
 : CALLEE-DEAD? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
-   r l OFF-DEAD RC@ NO-RETURN = ;
+   r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-DEAD RC@ NO-RETURN = ;
 
 \ Which control action a structured control word is.
 : CTRL@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:ctrl )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CONTROL ROW-AS {: l:n :}
-   r l OFF-A RC@ N>CTRL ;
+   r id HIR-MEANING:CONTROL ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@ N>CTRL ;
 
 \ Which way a return-stack word moves cells, and how many. Both go through
 \ Both go through ROW-AS.
 : RSTACK@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:rmove )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:RSTACK ROW-AS {: l:n :}
-   r l OFF-A RC@ N>RSTACK ;
+   r id HIR-MEANING:RSTACK ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@ N>RSTACK ;
 
 : RSTACK-CELLS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:RSTACK ROW-AS {: l:n :}
-   r l OFF-IN RC@ ;
+   r id HIR-MEANING:RSTACK ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-IN RC@ ;
 
 \ Which of a callee's result cells belong to a multi-cell value, as the bitmask
 \ src/compiler/native/dict.f builds: bit i for the i-th cell from the bottom of
 \ the row, which is the order they reach the caller's value vector.
 : OUT-GLUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
-   r l OFF-GLUE RC@ ;
+   r id HIR-MEANING:CALLABLE ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-GLUE RC@ ;
 
 \ How many values a rename consumes off the top of the value vector.
 : INPUTS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:RENAME ROW-AS {: l:n :}
-   r l OFF-IN RC@ ;
+   r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-IN RC@ ;
 
 \ How many values it puts back.
 : PICKS ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   r id HIR-MEANING:RENAME ROW-AS {: l:n :}
-   r l OFF-N RC@ ;
+   r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-N RC@ ;
 
 \ The i-th value it puts back, named by its depth in the consumed window.
 \ Both the window into the pool and the depth are rechecked, so a row written
 \ past this package's declarers cannot read outside the live pool.
+\
+\ The picks belong to the table the ROW came from, so a rename answered by the
+\ session reads the session's pool. The pair the CALLER presented is checked
+\ either way - it is the caller's own table and a mismatched pair is a mistake
+\ whichever table answered - and then the pool that goes with the answering rows
+\ is checked against them.
 : PICK@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- n )
    {: p:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id i:n :}
    p r PAIR-CK
-   r id HIR-MEANING:RENAME ROW-AS {: l:n :}
-   r l OFF-N RC@ {: n:n :}
+   r id HIR-MEANING:RENAME ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra HC-LINK LCELL@ LINK-SESSION =
+   if 0 SESS-P @ else p then
+   {: pa:IR-ARENA:arena :}
+   pa ra PAIR-CK
+   ra l OFF-N RC@ {: n:n :}
    i 0 < i n >= or if E-HIR-BOUND throw then
-   r l OFF-A RC@ {: st:n :}
-   st 0 < st n + p PCELLS > or if E-HIR-STATE throw then
-   p st i + PC@ {: d:n :}
-   d 0 < d r l OFF-IN RC@ >= or if E-HIR-PICK throw then
+   ra l OFF-A RC@ {: st:n :}
+   st 0 < st n + pa PCELLS > or if E-HIR-STATE throw then
+   pa st i + PC@ {: d:n :}
+   d 0 < d ra l OFF-IN RC@ >= or if E-HIR-PICK throw then
    d ;
 
 \ The capability a boundary is waiting for. Only an unmodeled entry names one.
 : REASON@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
    {: r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-symbol-id :}
    r key KEY-CK
-   r id HIR-MEANING:UNMODELED ROW-AS {: l:n :}
-   r l OFF-A RC@
+   r id HIR-MEANING:UNMODELED ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@
    dup UNUSED = if E-HIR-STATE throw then
    1- key swap IR-ID:PACK-SYMBOL ;
 
@@ -1343,29 +1389,83 @@ private
    c b p r DEF-2DROP
    c b r DEF-RSTACK ;
 
-: FOLD-TAPE-NAMES ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view :}
-   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
-   v NTAPE:TOKENS 0 ?do
-      v i NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ if
-         c b v key i NTAPE:SPELL@ KEY-SYM drop
-      then
-   loop ;
+public
+
+\ Declare the whole vocabulary into one table. A definition no longer calls
+\ this: the session registers once per load and every definition reads it.
+: REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   REGISTER-ALL ;
+
+private
+
+\ ---- the session's one table -------------------------------------------------
+\ Whether this module's ordinals ARE the prototype's, which is what makes a body
+\ token's own symbol index the session's vocabulary. It is one structural fact -
+\ IR-BUILD started this module's interner as a copy of the prototype the map
+\ below is keyed against - and IR-BUILD is where it is known, so it is asked
+\ there. Sampling spellings instead answered yes for any module that happened to
+\ hold two of them at two ordinals, and a false yes maps a definition's symbols
+\ onto session rows silently.
+: CLONE? ( IR-BUILD:builder -- bool )
+   {: b:IR-BUILD:builder :}
+   SESS-ON @ 0= if false exit then
+   0 SESS-R @ CNT 0= if false exit then
+   b 0 SESS-ROWS @ IR-BUILD:CLONED-FROM? ;
 
 public
 
-: REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
-   ALL-SYMBOLS REGISTER-ALL ;
+\ The overlay a definition writes its own callable and fixed rows into. It is
+\ keyed by the definition's own module and owner-checked against it exactly as
+\ the one table always was; what is new is only that it may defer to the
+\ session's vocabulary for a spelling it does not hold itself.
+: NEW-LINKED ( IR-CTX:ctx IR-BUILD:builder n n -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder rcap:n pcap:n :}
+   c b IR-BUILD:MODULE-KEY rcap pcap
+   b CLONE? if LINK-CLONE else LINK-NONE then NEW-TABLE ;
 
-\ Model names already interned by this compilation unit. Unused vocabulary
-\ rows need neither scoped dictionary lookup nor arena construction.
-: REGISTER-TAPE-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
-      v:IR-ARENA:view :}
-   c b v FOLD-TAPE-NAMES
-   b IR-BUILD:SYMBOLS SYMBOL-LIMIT !
-   c b IX-BUILD
-   c b p r [: REGISTER-ALL ;] [: ALL-SYMBOLS ;] finally ;
+\ Register the vocabulary once per load, then teach the PROTOTYPE the spellings
+\ those rows are keyed by, so every definition's clone holds them at the ordinals
+\ this map records. The registering module and the prototype are two modules with
+\ two sets of ordinals, which is exactly why the map is keyed by the prototype's:
+\ that is the ordinal a definition's token will present.
+: SESSION-MODEL ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena sr:IR-ARENA:arena
+      k:IR-ID:ir-module-key b:IR-BUILD:builder :}
+   SESS-FORGET
+   c b IR-BUILD:MODULE-KEY WORDS PICK-CELLS LINK-SESSION NEW-TABLE
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r REGISTER-WORDS
+   r CNT SROW-CAP > if E-HIR-CAP throw then
+   ORD-CAP 0 ?do 0 i ORD-ROW! loop
+   SROW-CAP 0 ?do 0 i CHK-GEN! loop
+   r CNT 0 ?do
+      r  b IR-BUILD:MODULE-KEY  i AT {: id:IR-ID:ir-symbol-id :}
+      c b id GATE-BUF GATE-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+      c a sr k GATE-BUF u IR-SYM:INTERN IR-ID:SYMBOL-LOCAL {: ord:n :}
+      ord ORD-CAP >= if E-HIR-CAP throw then
+      ord ORD-ROW@ 0<> if E-HIR-DUP throw then
+      i 1+ ord ORD-ROW!
+      ord i ROW-ORD!
+   loop
+   a 0 SESS-POOL !
+   sr 0 SESS-ROWS !
+   k 0 SESS-KEY !
+   p 0 SESS-P !
+   r 0 SESS-R !
+   sr IR-SYM:SYMBOLS {: ns:n :}
+   ns ORD-CAP > if ORD-CAP else ns then ORD-N !
+   1 SESS-ON ! ;
+
+\ Give the session's table up. The arenas die with the session context; what is
+\ forgotten here is the claim that they are readable.
+: SESSION-MODEL-CLEAR ( -- )
+   SESS-FORGET ;
+
+\ How many rows the session's vocabulary holds, which is what a caller checks
+\ when it wants to know the load registered once and not once per definition.
+: SESSION-ROWS ( -- n )
+   SESS-ON @ 0= if 0 exit then
+   0 SESS-R @ CNT ;
 
 private
 get-current prot-wid-add

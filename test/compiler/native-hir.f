@@ -20,6 +20,53 @@ require test/checker-assert.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/feed.f
+require src/compiler/native/abi.f
+
+\ ---- a table of its own module asks the binding gate too ----------------------
+\ A caller outside a session - every test, every tool - builds its table with
+\ HIR-WORD:NEW, and such a table carries no session link, so nothing consults the
+\ binding gate when one of its rows is READ: a reader holds the rows and a symbol
+\ and no interner, and cannot read a spelling back at all. The gate is therefore
+\ asked while the row is written, which is the only moment the spelling can be
+\ read, and a spelling some package has taken over gets no row - so the token
+\ falls through to the callable path and reaches that package's own word.
+\
+\ This package is the fixture: it owns `xor`, and the registration runs INSIDE
+\ it, so the table it builds must model `and` and not `xor`. Registering all 86
+\ rows unconditionally models both.
+package HIR-BOUND-XOR
+public
+
+: xor ( n n -- n ) drop drop 99 ;
+
+private
+
+variable OWN-AND
+variable OWN-XOR
+
+: OWN-BODY ( IR-CTX:ctx -- bool bool )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c s" habu" 1 0 IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS HIR-WORD:PICK-CELLS HIR-WORD:NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r HIR-WORD:REGISTER-WORDS
+   r  c b s" and" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS?
+   r  c b s" xor" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS? ;
+
+: RECORD ( -- )
+   NABI:BINDING [: OWN-BODY ;] IR-CTX:WITH-CONTEXT
+   {: a:bool x:bool :}
+   x if 1 else 0 then OWN-XOR !
+   a if 1 else 0 then OWN-AND ! ;
+RECORD
+
+public
+
+: AND-MODELED? ( -- bool ) OWN-AND @ 0<> ;
+: XOR-MODELED? ( -- bool ) OWN-XOR @ 0<> ;
+
+;package
 
 package HIR-TEST
 private
@@ -2322,51 +2369,6 @@ variable MEMO-IDX
    BND [: LAZY-BODY ;] IR-CTX:WITH-CONTEXT
    [: LAZY-FOREIGN ;] E-HIR-DIALECT TTHROWSQ ;
 
-\ ---- filtered registration interns nothing for an unused word ---------------
-\ REGISTER-TAPE-WORDS models only the words the body wrote, and a word the body
-\ never wrote must cost this module NOTHING: no row, and no SYMBOL either. The
-\ declarers used to intern all 86 spellings and reject them afterwards, so a
-\ five-token body carried 86 symbols it could never reach - and every later
-\ intern, including every dialect opcode, scanned past all of them.
-\
-\ Both counts come off the SAME builder, so their difference is exactly what
-\ registration interned. The body's names are already their own fold, so the
-\ tape-name folding this registration does first interns nothing either, and
-\ the expected difference is zero rather than "small".
-256 constant FW-CAP
-create FW-TXT FW-CAP allot
-
-: FW-SRC$ ( -- ptr u8 n ) s" zh-grid ( n -- n ) dup * 3 +" ;
-
-: FW-BLD ( IR-CTX:ctx -- IR-BUILD:builder )
-   {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
-   c s" habu" 1 0 IR-BUILD:NEW-BUILDER ;
-
-: FW-BODY ( IR-CTX:ctx -- n n bool bool )
-   {: c:IR-CTX:ctx :}
-   c FW-BLD {: b:IR-BUILD:builder :}
-   c b IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
-   c b tp FW-TXT FW-CAP NFEED:BEGIN-UNIT
-   FW-SRC$ CHECK! drop
-   NFEED:END-UNIT {: v:IR-ARENA:view recorded:n :}
-   b IR-BUILD:SYMBOLS {: before:n :}
-   c b HIR-WORD:WORDS HIR-WORD:PICK-CELLS WORDS-NEW
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b p r v HIR-WORD:REGISTER-TAPE-WORDS
-   before
-   b IR-BUILD:SYMBOLS
-   r  c b s" dup" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS?
-   r  c b s" xor" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS? ;
-
-: FW-CASE ( -- )
-   s" filtered registration interns no symbol for a word the body never wrote" T-LABEL
-   BND [: FW-BODY ;] IR-CTX:WITH-CONTEXT
-   {: before:n after:n used:bool unused:bool :}
-   unused TFALSE
-   used TTRUE
-   after before T= ;
-
 \ ---- the memo a session prototype fills --------------------------------------
 \ Two definitions of one session, each compiling into a module cloned from the
 \ session's prototype interner. The second must bind every opcode and ask for
@@ -2379,7 +2381,10 @@ create FW-TXT FW-CAP allot
    c IR-CTX:NEW-MODULE drop {: k:IR-ID:ir-module-key :}
    c k IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW
    {: a:IR-ARENA:arena r:IR-ARENA:arena :}
-   c a r k HIR:PROTOTYPE ;
+   c a r k HIR:PROTOTYPE
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c HIR:NEW-BUILDER {: mb:IR-BUILD:builder :}
+   c a r k mb HIR-WORD:SESSION-MODEL ;
 
 : BIND-ALL ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -2408,9 +2413,92 @@ create FW-TXT FW-CAP allot
 : SESSION-MINE ( -- )
    BND IR-CTX:SESSION-OPEN PROTO-BUILD ;
 
+\ Closing the session is the whole of it: what a session's owner holds in it -
+\ this dialect's prototype, the registered vocabulary - is stood down by
+\ IR-CTX:SESSION-CLOSE itself, so no caller has to clear the flags in the right
+\ order before it.
 : SESSION-DROP-MINE ( -- )
-   HIR:PROTOTYPE-CLEAR
    IR-CTX:SESSION-CLOSE ;
+
+\ ---- one vocabulary per load, not one per definition -------------------------
+\ The session registers this dialect's vocabulary ONCE and every definition reads
+\ those rows; a definition's own table is an OVERLAY that holds only what that
+\ definition resolves for itself. So a definition must add no vocabulary row and
+\ cost its module no symbol, while still seeing every vocabulary word. The
+\ filtered registration this replaces bought the second half by interning all 86
+\ spellings into every module and rejecting the ones the body had not written.
+: OV-BODY ( IR-CTX:ctx -- n n bool bool )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
+   b IR-BUILD:SYMBOLS {: before:n :}
+   c b 8 0 HIR-WORD:NEW-LINKED {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   b IR-BUILD:SYMBOLS before -
+   r HIR-WORD:MODELED
+   r  c b s" dup" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS?
+   r  c b s" xor" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS? ;
+
+: OV-CASE ( -- )
+   IR-CTX:SESSION-LIVE? 0= {: own:bool :}
+   own if SESSION-MINE then
+   HIR-WORD:SESSION-ROWS {: rows0:n :}
+   BND [: OV-BODY ;] IR-CTX:WITH-CONTEXT drop drop drop drop
+   BND [: OV-BODY ;] IR-CTX:WITH-CONTEXT
+   {: cost:n overlay:n d:bool x:bool :}
+   HIR-WORD:SESSION-ROWS {: rows1:n :}
+   own if SESSION-DROP-MINE then
+
+   s" the session holds the vocabulary once, and a definition adds none" T-LABEL
+   rows0 HIR-WORD:WORDS T=
+   rows1 rows0 T=
+   s" a definition's overlay starts empty and costs its module no symbol" T-LABEL
+   overlay 0 T=
+   cost 0 T=
+   s" and a vocabulary word this definition never wrote still models" T-LABEL
+   d TTRUE
+   x TTRUE ;
+
+\ ---- only a clone of THE prototype reads a session row -----------------------
+\ A table defers to the session's vocabulary because its module's ordinals ARE
+\ the prototype's, which is a fact IR-BUILD recorded when it copied that
+\ interner - see IR-BUILD:CLONED-FROM? and its cases in test/compiler/ir-build.f,
+\ where a copy of the prototype holding every spelling at every one of its
+\ ordinals still answers no. Here is the consumer's half: while a session stands,
+\ a module that interned its own names is not a clone, so its table holds no
+\ vocabulary row and models no vocabulary word - it behaves exactly as it did
+\ before a session existed.
+: PLAIN-BODY ( IR-CTX:ctx -- n bool )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c s" habu" 1 0 IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b 8 0 HIR-WORD:NEW-LINKED {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r HIR-WORD:MODELED
+   r  c b s" dup" IR-BUILD:INTERN-SYMBOL  HIR-WORD:MODELS? ;
+
+: PLAIN-CASE ( -- )
+   IR-CTX:SESSION-LIVE? 0= {: own:bool :}
+   own if SESSION-MINE then
+   HIR-WORD:SESSION-ROWS {: rows:n :}
+   BND [: PLAIN-BODY ;] IR-CTX:WITH-CONTEXT
+   {: overlay:n d:bool :}
+   own if SESSION-DROP-MINE then
+
+   s" a session stands and holds its vocabulary" T-LABEL
+   rows HIR-WORD:WORDS T=
+   s" but a module that interned its own names reads no session row" T-LABEL
+   overlay 0 T=
+   d TFALSE ;
+
+\ ---- a table of its own module asks the binding gate as it writes ------------
+\ The fixture is the package at the top of this file: the registration ran while
+\ that package owned `xor`, into a table of its own module, and such a table is
+\ never asked the gate again - its reader holds no interner and cannot read a
+\ spelling back. So the answer has to be taken while the row is written.
+: OWN-GATE-CASE ( -- )
+   s" a table of its own module models a spelling the engine still owns" T-LABEL
+   HIR-BOUND-XOR:AND-MODELED? TTRUE
+   s" and refuses one the owning package has taken over" T-LABEL
+   HIR-BOUND-XOR:XOR-MODELED? TFALSE ;
 
 : SESSION-MEMO-CASE ( -- )
    IR-CTX:SESSION-LIVE? 0= {: own:bool :}
@@ -2430,7 +2518,9 @@ public
 : RUN ( -- )
    T-RESET
    SESSION-MEMO-CASE
-   FW-CASE
+   OV-CASE
+   PLAIN-CASE
+   OWN-GATE-CASE
    MEMO-CASE
    LAZY-CASE
    OPCODE-ORDINAL-CASE

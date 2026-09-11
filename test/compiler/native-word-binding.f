@@ -26,6 +26,25 @@ public
 
 ;package
 
+\ ---- one spelling, three definitions, one session ----------------------------
+\ The dialect's vocabulary is registered ONCE per load, so whether a spelling is
+\ still the engine's own is asked per DEFINITION, at the moment a token reads the
+\ row. These three pin both directions inside one session: `xor` is the intrinsic
+\ operation, then a package owns it, then it is the intrinsic again. A model that
+\ cached membership for the load would answer one of the three wrongly.
+: XOR-BEFORE ( n n -- n ) xor ;
+
+package NATIVE-BOUND-XOR
+public
+
+: xor ( n n -- n ) drop drop 99 ;
+
+: XOR-INSIDE ( n n -- n ) xor ;
+
+;package
+
+: XOR-AFTER ( n n -- n ) xor ;
+
 package NATIVE-WORD-BINDING-TEST
 private
 
@@ -58,6 +77,10 @@ private
    0 MIXED-SUM 0 T=
    5 MIXED-SUM 10 T=
    9 MIXED-QUOT 18 T=
+   s" one spelling is intrinsic, then a package's, then intrinsic again" T-LABEL
+   6 3 XOR-BEFORE 5 T=
+   6 3 NATIVE-BOUND-XOR:XOR-INSIDE 99 T=
+   6 3 XOR-AFTER 5 T=
    T-REPORT ;
 
 RUN

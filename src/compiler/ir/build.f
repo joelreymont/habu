@@ -192,6 +192,8 @@ create BGENS SLOT-MAX cells allot
 create BOWNERS SLOT-MAX cells allot
 create BSTATES SLOT-MAX cells allot
 create BCEILS SLOT-MAX PLAN# * cells allot
+create BPROTOS SLOT-MAX cells allot  \ the prototype rows this module's interner
+                                     \ was copied from, zero if it interned its own
 SLOT-MAX TABLES# * TYPED-BUFFER BTAB IR-ARENA:arena
 SLOT-MAX TABLES# * TYPED-BUFFER BVIEW IR-ARENA:view
 SLOT-MAX TYPED-BUFFER BKEY IR-ID:ir-module-key
@@ -214,6 +216,15 @@ SLOT-MAX TYPED-BUFFER BMID IR-ID:ir-module-id
 
 : BSTATE! ( n n -- )
    cells BSTATES + ! ;
+
+\ A projection, so the record is an identity and never a way to mint an arena.
+CAST: ARENA>N ( IR-ARENA:arena -- n )
+
+: BPROTO@ ( n -- n )
+   cells BPROTOS + @ ;
+
+: BPROTO! ( n n -- )
+   cells BPROTOS + ! ;
 
 : CEIL-IDX ( n n -- n )
    {: slot:n f:n :}
@@ -645,11 +656,20 @@ variable PROTO-ON
 : PROTO-CLEAR ( -- )
    0 PROTO-ON ! ;
 
+\ WHICH PROTOTYPE, RECORDED. A module whose interner is a copy holds the
+\ prototype's spellings at the prototype's ordinals, and that is the fact a
+\ caller needs before it may read an ordinal recorded against the prototype as
+\ naming a spelling here. It is known exactly here, so it is written down here -
+\ the slot records the prototype's row table, or zero when this module interned
+\ its own names - rather than guessed later from spellings a module happens to
+\ hold. A slot is reused, so the plain path clears it.
 : SYM-NEW ( IR-CTX:ctx n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx slot:n :}
    PROTO-ON @ 0<> if
+      1 PROTO-SYM @ ARENA>N slot BPROTO!
       c slot KEY@ 0 PROTO-SYM @ 1 PROTO-SYM @ IR-SYM:NEW-FROM exit
    then
+   0 slot BPROTO!
    c slot KEY@ slot P-SYMS BCEIL@ slot P-SBYTES BCEIL@ IR-SYM:NEW ;
 
 : SYM-TABLES ( IR-CTX:ctx n -- )
@@ -810,6 +830,18 @@ public
 \ to name the identities they read back; it confers no mutation power on its own.
 : MODULE-KEY ( IR-BUILD:builder -- IR-ID:ir-module-key )
    LIVE-SLOT KEY@ ;
+
+\ Whether this module's interner was started as a copy of the presented
+\ prototype's rows. That is the whole of what lets a caller read an ordinal it
+\ recorded against that prototype as naming the same spelling in this module, so
+\ the question is answered from what NEW-BUILDER-FROM recorded and never from a
+\ sample of the spellings the module holds: a module that interned the same names
+\ itself answers no, and a clone of some OTHER prototype answers no as well.
+: CLONED-FROM? ( IR-BUILD:builder IR-ARENA:arena -- bool )
+   {: b:IR-BUILD:builder pr:IR-ARENA:arena :}
+   b LIVE-SLOT BPROTO@ {: have:n :}
+   have 0= if false exit then
+   have pr ARENA>N = ;
 
 \ ---- interning: symbols, sources, and spans (design lines 517-520) ------------
 : INTERN-SYMBOL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )

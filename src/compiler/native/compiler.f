@@ -141,14 +141,15 @@ variable TRUST-SRC-U
 
 \ Read off the TAPE: the elaborator adds a row per name the body writes that the
 \ dialect does not model, and which names those are is not known until it is read.
+\ The dialect's own vocabulary is NOT among them: the session registered it once
+\ and this definition reads those rows rather than writing them again.
 : MODEL-ROWS ( -- n )
-   HIR-WORD:WORDS TAPE NTAPE:TOKENS + ;
+   TAPE NTAPE:TOKENS ;
 
+\ The overlay holds only what this definition resolves - its callable and fixed
+\ words - and defers every vocabulary spelling to the session's table.
 : MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
-   CC BB IR-BUILD:MODULE-KEY MODEL-ROWS HIR-WORD:PICK-CELLS HIR-WORD:NEW
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   CC BB p r TAPE HIR-WORD:REGISTER-TAPE-WORDS
-   p r ;
+   CC BB MODEL-ROWS 0 HIR-WORD:NEW-LINKED ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
 \ Parked rather than left on the stack, because this runs inside the quotation
@@ -586,18 +587,40 @@ create SPELL-BUF SPELL-CAP allot
 
 \ The ceilings are the ones the default plan gives any module, so a module that
 \ starts as a copy of this one can grow exactly as far as one that does not.
+\
+\ THE REGISTRATION BUILDER IS GIVEN BACK. HIR-WORD:SESSION-MODEL needs a module
+\ to key its 86 rows against and reads nothing from it afterwards - the spellings
+\ those rows are keyed by are interned into the PROTOTYPE, which is what a
+\ reader holds - so the builder is aborted as soon as registration returns. It
+\ is one builder registry slot and seventeen arena slots of the sixty-four, held
+\ for the whole load by a module nothing reads: with it standing, a live session
+\ left 43 of the 64 arena slots free, and without it 60.
 : SESSION-VOCABULARY ( -- )
    SC IR-CTX:NEW-MODULE drop {: k:IR-ID:ir-module-key :}
    SC k IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW
    {: a:IR-ARENA:arena r:IR-ARENA:arena :}
    SC a r k HIR:PROTOTYPE
-   SC a r k A64IR:PROTOTYPE ;
+   SC a r k A64IR:PROTOTYPE
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   SC HIR:NEW-BUILDER {: mb:IR-BUILD:builder :}
+   SC a r k mb HIR-WORD:SESSION-MODEL
+   mb IR-BUILD:ABORT ;
 
-\ The dialects go first, while the interner they name is still mapped.
-: SESSION-DROP ( -- )
+\ What NCOMP holds that lives in the session context and nowhere else: two
+\ dialect prototypes and the registered vocabulary. Each is a flag over storage
+\ the session owns, so the flags go out when the session does - through
+\ IR-CTX:SESSION-CLOSE, which runs this before it retires the row. Nothing else
+\ clears them, so no ordering between a capture's entry points can leave a
+\ reader holding a flag over an arena that is gone.
+: SESSION-FORGET ( -- )
+   HIR-WORD:SESSION-MODEL-CLEAR
    HIR:PROTOTYPE-CLEAR
-   A64IR:PROTOTYPE-CLEAR
-   IR-CTX:SESSION-CLOSE ;
+   A64IR:PROTOTYPE-CLEAR ;
+
+: INSTALL-FORGET ( -- )
+   [: SESSION-FORGET ;] IR-CTX:SESSION-STAND-DOWN! ;
+INSTALL-FORGET
 
 \ A vocabulary that fails to build takes the session with it, so the next
 \ definition is the first one again rather than the first one with half a
@@ -605,7 +628,7 @@ create SPELL-BUF SPELL-CAP allot
 : SESSION-START ( -- )
    NABI:BINDING IR-CTX:SESSION-OPEN 0 S-CTX !
    [: SESSION-VOCABULARY ;] catch {: rc:n :}
-   rc 0<> if SESSION-DROP rc throw then ;
+   rc 0<> if IR-CTX:SESSION-CLOSE rc throw then ;
 
 : SESSION-READY ( -- )
    SC IR-CTX:LIVE? if exit then
@@ -677,13 +700,13 @@ public
 : COMPILE ( ptr u8 n -- )
    STAGE RUN ;
 
-\ IMAGE-LIFECYCLE:PREPARE has already run, so IR-CTX's own hook has closed the
-\ session and unmapped the interner the dialects were reading; forgetting it is
-\ all that is left to do.
+\ The session is already gone by the time this runs, and it took what NCOMP held
+\ in it with it: IMAGE-LIFECYCLE:PREPARE closed the session, and SESSION-FORGET
+\ above is the stand-down that close ran, before the interner the dialects were
+\ reading was unmapped. So there is nothing session-shaped left to clear here,
+\ and no order between the two entry points to get right.
 : CAPTURE-PREPARE ( -- )
    IDLE-CK
-   HIR:PROTOTYPE-CLEAR
-   A64IR:PROTOTYPE-CLEAR
    NULL-PTR NAME-A !  0 NAME-U !
    NULL-PTR M-SRC !  0 M-SRC-U !
    NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !

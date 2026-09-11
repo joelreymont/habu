@@ -616,6 +616,12 @@ public
 \ and none is needed: each definition's own context is what bounds the memory,
 \ so an idle session costs one header mapping and whatever its owner built once.
 \
+\ WHAT THE OWNER HOLDS GOES OUT WITH THE SESSION. An owner that keeps a flag
+\ saying its session-lived state is readable installs its stand-down through
+\ SESSION-STAND-DOWN!, and SESSION-CLOSE runs that before the row is retired -
+\ so no reader can be handed such a flag over storage that is already gone, and
+\ no ordering between a capture's entry points decides it.
+\
 \ A SECOND SESSION IS REFUSED, so is a session opened while ANY context is
 \ already open - a session that a scope encloses would die with that scope while
 \ still answering as live - and so is a close taken while a context is open
@@ -662,18 +668,58 @@ SESSION-FORGET
 : SESSION-DEEPEST-CK ( -- )
    DEPTH @ 1- SESSION-SLOT @ <> if E-IR-CTX-STATE throw then ;
 
+\ ---- what the session's owner stands down ------------------------------------
+\ A session's owner builds state in the session context and holds FLAGS saying
+\ that state is readable: a dialect's interned prototype, a registered
+\ vocabulary. Those flags describe storage that dies with this row, so they have
+\ to go out WITH it and not at some later point in a capture sequence. In between
+\ them a reader answers from a flag that says yes over an arena that is already
+\ gone - E-IR-ARENA-STALE from a reader that asked an ordinary question - and
+\ which of the two runs first becomes load-bearing between two entry points.
+\ SESSION-CLOSE therefore runs the owner's stand-down itself, before the row is
+\ retired, so a capture's close and the owner's own close are one action.
+\
+\ ONE VECTOR, INSTALLED ONCE, for the reason RETIRE-CHILDREN! gives above: a
+\ second install would silently stop the first one from running.
+defer SESSION-STAND-DOWN ( -- )
+
+variable STAND-SET
+0 STAND-SET !
+
+: KEEP-STANDING ( -- ) ;
+
+: STAND-RESET ( -- )
+   [: KEEP-STANDING ;] is SESSION-STAND-DOWN ;
+STAND-RESET
+
+\ The row goes back whatever the stand-down did, so an owner that throws cannot
+\ leave a live row over a mapping this close is about to release; the first
+\ error is the one the caller is told.
+: SESSION-END ( -- )
+   [: SESSION-STAND-DOWN ;] catch {: rc:n :}
+   SESSION-RETIRE
+   rc 0<> if rc throw then ;
+
 public
+
+\ Install the stand-down a session's owner runs when the session closes. Takes
+\ the word itself, so the owner keeps it private and nothing else can stand
+\ another package's state down.
+: SESSION-STAND-DOWN! ( [ -- ] -- )
+   STAND-SET @ 0<> if E-IR-CTX-STATE throw then
+   1 STAND-SET !
+   is SESSION-STAND-DOWN ;
 
 : SESSION-LIVE? ( -- bool )
    SESSION-SLOT @ 0 < 0= ;
 
-\ Give the load's context back: the row this session took, and then its mapping.
-\ The mapping is released whatever the teardown did, so a throw from the
-\ retirement cannot strand it.
+\ Give the load's context back: what its owner holds, then the row this session
+\ took, then its mapping. The mapping is released whatever the teardown did, so
+\ a throw from the retirement cannot strand it.
 : SESSION-CLOSE ( -- )
    SESSION-CK
    SESSION-DEEPEST-CK
-   [: SESSION-RETIRE ;] catch {: rc:n :}
+   [: SESSION-END ;] catch {: rc:n :}
    SESSION-UNMAP
    rc 0<> if rc throw then ;
 

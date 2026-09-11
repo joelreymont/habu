@@ -1397,12 +1397,52 @@ variable PART-FREE
    drop
    LIVE-REFUSE-CASES-G ;
 
+\ ---- which prototype a module's interner was copied from ---------------------
+\ A caller that recorded an ordinal against a prototype may read that ordinal as
+\ naming the same spelling in some module only when the module's interner is a
+\ COPY of that prototype: that is what makes the two sets of ordinals agree. The
+\ builder records which row table it copied, and answers from the record.
+\
+\ THE ADVERSARIAL CASE IS A COPY OF THE PROTOTYPE. It holds every spelling the
+\ prototype holds, at every one of the prototype's ordinals, so no sample of
+\ spellings can tell it from the prototype itself. The record can, because the
+\ question is which table this module was copied from and not which spellings it
+\ turns out to hold.
+: CF-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: k1:IR-ID:ir-module-key :}
+   c k1 16 256 IR-SYM:NEW {: a1:IR-ARENA:arena r1:IR-ARENA:arena :}
+   c a1 r1 k1 s" alpha" IR-SYM:INTERN drop
+   c a1 r1 k1 s" beta" IR-SYM:INTERN drop
+   c IR-CTX:NEW-MODULE drop {: k2:IR-ID:ir-module-key :}
+   c k2 a1 r1 IR-SYM:NEW-FROM {: a2:IR-ARENA:arena r2:IR-ARENA:arena :}
+   PLAN-SMALL
+   c s" hir" 1 0 a1 r1 IR-BUILD:NEW-BUILDER-FROM {: cl:IR-BUILD:builder :}
+   c MK {: plain:IR-BUILD:builder :}
+   cl r1 IR-BUILD:CLONED-FROM?
+   cl r2 IR-BUILD:CLONED-FROM?
+   cl a1 IR-BUILD:CLONED-FROM?
+   plain r1 IR-BUILD:CLONED-FROM? ;
+
+: CF-CASE ( -- )
+   BND [: CF-BODY ;] IR-CTX:WITH-CONTEXT
+   {: from1:bool copy:bool pool:bool plain:bool :}
+   s" a module answers for the prototype its interner was copied from" T-LABEL
+   from1 TTRUE
+   s" a copy of that prototype, spelling for spelling, is not it" T-LABEL
+   copy TFALSE
+   s" nor is that prototype's byte pool" T-LABEL
+   pool TFALSE
+   s" and a module that interned its own names was copied from nothing" T-LABEL
+   plain TFALSE ;
+
 \ ---- the process holds no compiler session -----------------------------------
 \ TARENA-SLOTS and TSLOTS pin the WHOLE arena and builder registries, and those
 \ registries are process-wide: a tier-1 load opens the compiler's own session
-\ and keeps its module, its interner and its vocabulary table in them until the
-\ image is captured, which is two to four arenas and a builder this file's
-\ arithmetic does not know about. Standing that session down is exactly what a
+\ and keeps its interner and its vocabulary table in them until the image is
+\ captured, which is four arenas this file's arithmetic does not know about (two
+\ for the interner, two for the table; the module that registered the table is
+\ given back as soon as it has). Standing that session down is exactly what a
 \ capture does, and the compiler opens a fresh one for its next definition, so
 \ the measurements below are taken against a registry this file owns.
 : STAND-DOWN ( -- )
@@ -1439,6 +1479,7 @@ public
    BND [: HARNESS-LIVE-REFUSE-G ;] IR-CTX:WITH-CONTEXT
    AB-RELEASE-CASE
    PART-CASE
+   CF-CASE
    RT-RELEASE-CASE
    RT-FREE-CASE
    RT-STALE-CASES

@@ -126,6 +126,79 @@ variable RC     variable EXITED
    S\" IR-CTX:SESSION-LIVE? . ZC1 . cr\n" SB-APPEND
    SB$ ;
 
+\ WHAT A LIVE SESSION COSTS THE PROCESS-WIDE REGISTRIES, counted through the real
+\ entry point: one-cell arenas are taken until the registry refuses, first with no
+\ session and then with one standing, and the difference is what the session
+\ holds. It is FOUR - the prototype interner's two arenas and the vocabulary
+\ table's two - because the module that registered that table is given back as
+\ soon as it has registered it. With that module still standing the difference
+\ was twenty-one of the sixty-four slots, held for the whole load by a module
+\ nothing reads again.
+: SLOTS-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" package ZSLOT\n" SB-APPEND
+   S\" public\n" SB-APPEND
+   S\" variable N\n" SB-APPEND
+   S\" : TAKE1 ( IR-CTX:ctx n -- IR-CTX:ctx n ) 2dup IR-ARENA:NEW drop ;\n" SB-APPEND
+   S\" : FREE ( IR-CTX:ctx -- n )\n" SB-APPEND
+   S\"    0 N ! 1\n" SB-APPEND
+   S\"    begin [: TAKE1 ;] catch 0= while N @ 1+ N ! repeat\n" SB-APPEND
+   S\"    2drop N @ ;\n" SB-APPEND
+   S\" : COUNT ( -- n ) NABI:BINDING [: FREE ;] IR-CTX:WITH-CONTEXT ;\n" SB-APPEND
+   S\" ;package\n" SB-APPEND
+   S\" ZSLOT:COUNT\n" SB-APPEND
+   S\" 1 set-tier\n" SB-APPEND
+   S\" : ZL1 ( -- n ) 1 ;\n" SB-APPEND
+   S\" 0 set-tier\n" SB-APPEND
+   S\" ZSLOT:COUNT - . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
+   SB$ ;
+
+\ THE FLAGS GO OUT WITH THE SESSION. IMAGE-LIFECYCLE:PREPARE is one entry point
+\ of a capture and NCOMP:CAPTURE-PREPARE is another, so anything that says "the
+\ session's vocabulary is readable" and is cleared by the second one is still
+\ saying it after the first has unmapped the arena it describes: asking an
+\ ordinary question - how many rows the vocabulary holds - answered
+\ E-IR-ARENA-STALE. The stand-down now belongs to the close itself, so a bare
+\ PREPARE leaves no such claim, and the next definition opens a fresh session.
+: STANDDOWN-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" 1 set-tier\n" SB-APPEND
+   S\" : ZW1 ( -- n ) 1 ;\n" SB-APPEND
+   S\" 0 set-tier\n" SB-APPEND
+   S\" IMAGE-LIFECYCLE:PREPARE\n" SB-APPEND
+   S\" HIR-WORD:SESSION-ROWS . IR-CTX:SESSION-LIVE? . cr\n" SB-APPEND
+   S\" 1 set-tier\n" SB-APPEND
+   S\" : ZW2 ( -- n ) 2 ;\n" SB-APPEND
+   S\" 0 set-tier\n" SB-APPEND
+   S\" HIR-WORD:SESSION-ROWS . ZW2 . cr\n" SB-APPEND
+   SB$ ;
+
+\ A SESSION OPENED INSIDE A CALLER'S OWN CONTEXT IS A NAMED REFUSAL. A session
+\ outlives every scope, so it is the bottom row of the context registry or it is
+\ nothing; served inside a scope, the scope's exit retired the session's row
+\ instead of its own and left a live row over a released mapping, which read as a
+\ SIGSEGV. The definition is refused instead, and the load carries on: no session
+\ stands afterwards and the next definition compiles and runs.
+: NESTED-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" package ZNEST\n" SB-APPEND
+   S\" public\n" SB-APPEND
+   S\" TRUSTED: EVAL$ ( ptr u8 n -- ) evaluate ;\n" SB-APPEND
+   S\" : BODY ( IR-CTX:ctx -- )\n" SB-APPEND
+   S\"    drop [: s\q : ZN1 ( -- n ) 7 ;\q EVAL$ ;] catch\n" SB-APPEND
+   S\"    E-IR-CTX-STATE = if s\q refused\q else s\q served\q then type cr ;\n" SB-APPEND
+   S\" : RUN ( -- ) NABI:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT ;\n" SB-APPEND
+   S\" ;package\n" SB-APPEND
+   S\" 1 set-tier\n" SB-APPEND
+   S\" ZNEST:RUN\n" SB-APPEND
+   S\" 0 set-tier\n" SB-APPEND
+   S\" IR-CTX:SESSION-LIVE? .\n" SB-APPEND
+   S\" 1 set-tier\n" SB-APPEND
+   S\" : ZN2 ( -- n ) 5 ;\n" SB-APPEND
+   S\" 0 set-tier\n" SB-APPEND
+   S\" ZN2 . cr\n" SB-APPEND
+   SB$ ;
+
 : SESSION-CASES ( -- )
    s" thirty definitions in one load compile and run" T-LABEL
    MANY-SRC$ EXEC  s" 29" ASSERT-OK
@@ -140,7 +213,19 @@ variable RC     variable EXITED
    MISSES-SRC$ EXEC  S\" 0\n0\n3\n" ASSERT-OK
 
    s" a capture after a tier-1 definition gives the session back" T-LABEL
-   CAPTURE-SRC$ EXEC  S\" 0\n1\n" ASSERT-OK ;
+   CAPTURE-SRC$ EXEC  S\" 0\n1\n" ASSERT-OK
+
+   s" a live session holds four arena slots of the sixty-four" T-LABEL
+   SLOTS-SRC$ EXEC  S\" 4\n-1\n" ASSERT-OK
+
+   s" a bare PREPARE leaves no claim on the arenas it unmapped" T-LABEL
+   STANDDOWN-SRC$ EXEC  S\" 0\n0\n" ASSERT-OK
+
+   s" and the definition after it opens a fresh session" T-LABEL
+   OUT$ S\" 86\n2\n" CONTAINS? TTRUE
+
+   s" a definition compiled inside a context is refused, not served" T-LABEL
+   NESTED-SRC$ EXEC  S\" refused\n0\n5\n" ASSERT-OK ;
 
 public
 
