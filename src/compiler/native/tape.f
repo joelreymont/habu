@@ -138,11 +138,9 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
    v 0 < if E-NTAPE-LITERAL throw then ;
 
 \ ---- cell access -------------------------------------------------------------
-: LCELL@ ( IR-ARENA:arena n -- n )
-   IR-ARENA:READ ;
-
-: FCELL@ ( IR-ARENA:view n -- n )
-   IR-ARENA:FREAD ;
+\ Every read below goes through an IR-ARENA reader opened once per public word.
+\ A reader carries the state it was opened against and refuses the other with
+\ the error that handle gave, so the live and frozen helpers are one set.
 
 \ ---- header and shape --------------------------------------------------------
 : SHAPE-CK ( n -- )
@@ -152,24 +150,16 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 : MAGIC-CK ( n -- )
    MAGIC <> if E-NTAPE-STATE throw then ;
 
-: HDR-CK ( IR-ARENA:arena -- )
-   {: a:IR-ARENA:arena :}
-   a IR-ARENA:USED SHAPE-CK
-   a HC-MAGIC LCELL@ MAGIC-CK ;
-
-: FHDR-CK ( IR-ARENA:view -- )
-   {: v:IR-ARENA:view :}
-   v IR-ARENA:SIZE SHAPE-CK
-   v HC-MAGIC FCELL@ MAGIC-CK ;
+: HDR-CK ( IR-ARENA:reader -- )
+   {: r:IR-ARENA:reader :}
+   r IR-ARENA:RD-SIZE SHAPE-CK
+   r HC-MAGIC IR-ARENA:RD@ MAGIC-CK ;
 
 : USED>CNT ( n -- n )
    HDR-CELLS - ROW-CELLS / ;
 
-: CNT ( IR-ARENA:arena -- n )
-   IR-ARENA:USED USED>CNT ;
-
-: FCNT ( IR-ARENA:view -- n )
-   IR-ARENA:SIZE USED>CNT ;
+: CNT ( IR-ARENA:reader -- n )
+   IR-ARENA:RD-SIZE USED>CNT ;
 
 \ ---- ownership ---------------------------------------------------------------
 \ Three arenas of the same type meet at the appends and the checker cannot tell
@@ -177,42 +167,34 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 : SERIAL-CK ( n n -- )
    <> if E-NTAPE-OWNER throw then ;
 
-: KEY-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
-   {: a:IR-ARENA:arena key:IR-ID:ir-module-key :}
-   a HDR-CK
-   a HC-SERIAL LCELL@ key KEY-SERIAL SERIAL-CK ;
-
-: FKEY-CK ( IR-ARENA:view IR-ID:ir-module-key -- )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key :}
-   v FHDR-CK
-   v HC-SERIAL FCELL@ key KEY-SERIAL SERIAL-CK ;
+: KEY-CK ( IR-ARENA:reader IR-ID:ir-module-key -- )
+   {: r:IR-ARENA:reader key:IR-ID:ir-module-key :}
+   r HDR-CK
+   r HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
 \ Appending needs no module key: the token's own identities carry their owning
 \ module, which is a check a caller cannot supply the wrong value for.
-: SRC-OWNER-CK ( IR-ARENA:arena IR-ID:ir-source-id -- )
-   {: a:IR-ARENA:arena id:IR-ID:ir-source-id :}
-   a HDR-CK
-   a HC-SERIAL LCELL@ id IR-ID:SOURCE-OWNER MID-SERIAL SERIAL-CK ;
+: SRC-OWNER-CK ( IR-ARENA:reader IR-ID:ir-source-id -- )
+   {: r:IR-ARENA:reader id:IR-ID:ir-source-id :}
+   r HDR-CK
+   r HC-SERIAL IR-ARENA:RD@ id IR-ID:SOURCE-OWNER MID-SERIAL SERIAL-CK ;
 
-: SYM-OWNER-CK ( IR-ARENA:arena IR-ID:ir-symbol-id -- )
-   {: a:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
-   a HC-SERIAL LCELL@ id IR-ID:SYMBOL-OWNER MID-SERIAL SERIAL-CK ;
+: SYM-OWNER-CK ( IR-ARENA:reader IR-ID:ir-symbol-id -- )
+   {: r:IR-ARENA:reader id:IR-ID:ir-symbol-id :}
+   r HC-SERIAL IR-ARENA:RD@ id IR-ID:SYMBOL-OWNER MID-SERIAL SERIAL-CK ;
 
 \ ---- row addressing ----------------------------------------------------------
 : ROW-CELL ( n n -- n )
    swap ROW-CELLS * HDR-CELLS + + ;
 
-: RC@ ( IR-ARENA:arena n n -- n )
-   ROW-CELL LCELL@ ;
+: RC@ ( IR-ARENA:reader n n -- n )
+   ROW-CELL IR-ARENA:RD@ ;
 
-: FRC@ ( IR-ARENA:view n n -- n )
-   ROW-CELL FCELL@ ;
-
-: ORD-CK ( IR-ARENA:view n -- n )
-   {: v:IR-ARENA:view i:n :}
-   v FHDR-CK
+: ORD-CK ( IR-ARENA:reader n -- n )
+   {: r:IR-ARENA:reader i:n :}
+   r HDR-CK
    i 0 < if E-NTAPE-BOUND throw then
-   i v FCNT >= if E-NTAPE-BOUND throw then
+   i r CNT >= if E-NTAPE-BOUND throw then
    i ;
 
 \ ---- creation ----------------------------------------------------------------
@@ -269,36 +251,38 @@ public
 \ ---- appending ---------------------------------------------------------------
 private
 
-: ROOM-CK ( IR-ARENA:arena -- )
-   {: a:IR-ARENA:arena :}
-   a CNT a HC-CAP LCELL@ >= if E-NTAPE-CAP throw then ;
+: ROOM-CK ( IR-ARENA:reader -- )
+   {: r:IR-ARENA:reader :}
+   r CNT r HC-CAP IR-ARENA:RD@ >= if E-NTAPE-CAP throw then ;
 
 \ Stored as the parent's ordinal plus one, so zero means "directly lexed" without
 \ a sentinel inside the ordinal range. A parent must already be on this tape.
-: ORG-CK ( IR-ARENA:arena n -- )
-   {: a:IR-ARENA:arena og:n :}
+: ORG-CK ( IR-ARENA:reader n -- )
+   {: r:IR-ARENA:reader og:n :}
    og ORG-NONE = if exit then
    og 0 < if E-NTAPE-ORIGIN throw then
-   og 1- a CNT >= if E-NTAPE-ORIGIN throw then ;
+   og 1- r CNT >= if E-NTAPE-ORIGIN throw then ;
 
 \ The fields the tape alone can judge, checked before the module's other tables
 \ are consulted, so a non-tape arena dies on its own header tag.
-: FIELD-CK ( IR-ARENA:arena NTAPE:kind IR-ID:ir-symbol-id n IR-ID:ir-source-id n -- )
-   {: a:IR-ARENA:arena k:NTAPE:kind id:IR-ID:ir-symbol-id v:n
+: FIELD-CK ( IR-ARENA:reader NTAPE:kind IR-ID:ir-symbol-id n IR-ID:ir-source-id n -- )
+   {: r:IR-ARENA:reader k:NTAPE:kind id:IR-ID:ir-symbol-id v:n
       sid:IR-ID:ir-source-id og:n :}
-   a sid SRC-OWNER-CK
-   a id SYM-OWNER-CK
-   a og ORG-CK
+   r sid SRC-OWNER-CK
+   r id SYM-OWNER-CK
+   r og ORG-CK
    k v LIT-CK ;
 
 \ The only word here that appends a cell, reached only through the two fronts.
-: WRITE ( IR-CTX:ctx IR-ARENA:arena NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n IR-ID:ir-source-id n n n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena
+\ The reader outlives the reservation deliberately: a RESERVE changes neither
+\ the generation nor the state, and the count comes from the row on every read.
+: WRITE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n IR-ID:ir-source-id n n n -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:reader
       k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
       sid:IR-ID:ir-source-id st:n ln:n og:n :}
-   a ROOM-CK
+   r ROOM-CK
    c a ROW-CELLS IR-ARENA:RESERVE
-   a CNT {: i:n :}
+   r CNT {: i:n :}
    c a k KIND-CODE IR-ARENA:PUSH drop
    c a m MODE-CODE IR-ARENA:PUSH drop
    c a sid IR-ID:SOURCE-LOCAL IR-ARENA:PUSH drop
@@ -316,19 +300,21 @@ private
    {: c:IR-CTX:ctx a:IR-ARENA:arena sr:IR-ARENA:arena sy:IR-ARENA:arena
       k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
       sid:IR-ID:ir-source-id st:n ln:n og:n :}
-   a k id v sid og FIELD-CK
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r k id v sid og FIELD-CK
    sr sid st ln IR--SOURCE-SPAN:MAKE IR-SOURCE:SPAN-CK
    sy id IR-SYM:LEN@ drop
-   c a k m id v sid st ln og WRITE ;
+   c a r k m id v sid st ln og WRITE ;
 
 : LIVE-ADD ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n IR-ID:ir-source-id n n n -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ARENA:arena
       k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
       sid:IR-ID:ir-source-id st:n ln:n og:n :}
-   a k id v sid og FIELD-CK
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r k id v sid og FIELD-CK
    c b  sid st ln IR--SOURCE-SPAN:MAKE  IR-BUILD:SPAN-CK
    c b id IR-BUILD:SYMBOL-CK
-   c a k m id v sid st ln og WRITE ;
+   c a r k m id v sid st ln og WRITE ;
 
 public
 
@@ -352,65 +338,77 @@ public
 
 \ The only live reader; everything else reads the sealed view.
 : PUSHED ( IR-ARENA:arena -- n )
-   dup HDR-CK CNT ;
+   IR-ARENA:OPEN-LIVE dup HDR-CK CNT ;
 
 \ After this the builder handle rejects every append with E-IR-ARENA-FROZEN.
 : SEAL ( IR-ARENA:arena -- IR-ARENA:view )
-   dup HDR-CK IR-ARENA:FREEZE ;
+   dup IR-ARENA:OPEN-LIVE HDR-CK IR-ARENA:FREEZE ;
 
 \ ---- reading a sealed tape ---------------------------------------------------
 : TOKENS ( IR-ARENA:view -- n )
-   dup FHDR-CK FCNT ;
+   IR-ARENA:OPEN dup HDR-CK CNT ;
 
 : KIND@ ( IR-ARENA:view n -- NTAPE:kind )
    {: v:IR-ARENA:view i:n :}
-   v i ORD-CK {: l:n :}
-   v l OFF-KIND FRC@ N>KIND ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r i ORD-CK {: l:n :}
+   r l OFF-KIND RC@ N>KIND ;
 
 : MODE@ ( IR-ARENA:view n -- NTAPE:mode )
    {: v:IR-ARENA:view i:n :}
-   v i ORD-CK {: l:n :}
-   v l OFF-MODE FRC@ N>MODE ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r i ORD-CK {: l:n :}
+   r l OFF-MODE RC@ N>MODE ;
 
 : SPAN@ ( IR-ARENA:view IR-ID:ir-module-key n -- IR-SOURCE:span )
    {: v:IR-ARENA:view key:IR-ID:ir-module-key i:n :}
-   v key FKEY-CK
-   v i ORD-CK {: l:n :}
-   key v l OFF-SRC FRC@ IR-ID:PACK-SOURCE
-   v l OFF-ST FRC@
-   v l OFF-LN FRC@
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   r i ORD-CK {: l:n :}
+   key r l OFF-SRC RC@ IR-ID:PACK-SOURCE
+   r l OFF-ST RC@
+   r l OFF-LN RC@
    IR--SOURCE-SPAN:MAKE ;
 
 : SPELL@ ( IR-ARENA:view IR-ID:ir-module-key n -- IR-ID:ir-symbol-id )
    {: v:IR-ARENA:view key:IR-ID:ir-module-key i:n :}
-   v key FKEY-CK
-   v i ORD-CK {: l:n :}
-   key v l OFF-SYM FRC@ IR-ID:PACK-SYMBOL ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   r i ORD-CK {: l:n :}
+   key r l OFF-SYM RC@ IR-ID:PACK-SYMBOL ;
 
 \ Probe the kind first: a kind carrying no literal throws rather than answering
 \ the zero the row stores, so "no literal" cannot be read as the value zero.
 : LIT@ ( IR-ARENA:view n -- n )
    {: v:IR-ARENA:view i:n :}
-   v i ORD-CK {: l:n :}
-   v l OFF-KIND FRC@ N>KIND LIT-KIND? 0= if E-NTAPE-KIND throw then
-   v l OFF-LIT FRC@ ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r i ORD-CK {: l:n :}
+   r l OFF-KIND RC@ N>KIND LIT-KIND? 0= if E-NTAPE-KIND throw then
+   r l OFF-LIT RC@ ;
 
+\ The whole six-field record off one resolution, so the spelling and the span
+\ are read here rather than through SPELL@ and SPAN@ and their own opens.
 : TOKEN@ ( IR-ARENA:view IR-ID:ir-module-key n -- NTAPE:token )
    {: v:IR-ARENA:view key:IR-ID:ir-module-key i:n :}
-   v key FKEY-CK
-   v i ORD-CK {: l:n :}
-   v l OFF-KIND FRC@ N>KIND
-   v l OFF-MODE FRC@ N>MODE
-   v key i SPELL@
-   v l OFF-LIT FRC@
-   v key i SPAN@
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   r i ORD-CK {: l:n :}
+   r l OFF-KIND RC@ N>KIND
+   r l OFF-MODE RC@ N>MODE
+   key r l OFF-SYM RC@ IR-ID:PACK-SYMBOL
+   r l OFF-LIT RC@
+   key r l OFF-SRC RC@ IR-ID:PACK-SOURCE
+   r l OFF-ST RC@
+   r l OFF-LN RC@
+   IR--SOURCE-SPAN:MAKE
    NTAPE-TOKEN:MAKE ;
 
 \ ---- origin chains -----------------------------------------------------------
 : EXPANDED? ( IR-ARENA:view n -- bool )
    {: v:IR-ARENA:view i:n :}
-   v i ORD-CK {: l:n :}
-   v l OFF-ORG FRC@ ORG-NONE <> ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r i ORD-CK {: l:n :}
+   r l OFF-ORG RC@ ORG-NONE <> ;
 
 private
 
@@ -427,18 +425,21 @@ public
 \ Directly lexed tokens have none: probe with EXPANDED? first.
 : ORIGIN@ ( IR-ARENA:view n -- n )
    {: v:IR-ARENA:view i:n :}
-   v i ORD-CK {: l:n :}
-   l v l OFF-ORG FRC@ ORG-LOCAL ;
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r i ORD-CK {: l:n :}
+   l r l OFF-ORG RC@ ORG-LOCAL ;
 
-\ Each step re-verifies the strict decrease, so the walk terminates on any state.
+\ Each step re-verifies the strict decrease, so the walk terminates on any state;
+\ what it no longer does is resolve the view once per step.
 : DEPTH ( IR-ARENA:view n -- n )
    {: v:IR-ARENA:view i:n :}
-   v i ORD-CK
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r i ORD-CK
    0 swap
    begin
-      v over OFF-ORG FRC@ ORG-NONE <>
+      r over OFF-ORG RC@ ORG-NONE <>
    while
-      v over OFF-ORG FRC@ ORG-LOCAL
+      r over OFF-ORG RC@ ORG-LOCAL
       swap 1+ swap
    repeat
    drop ;
@@ -446,31 +447,34 @@ public
 \ ---- structural check --------------------------------------------------------
 private
 
-: ROW-CK ( IR-ARENA:view IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key n -- )
-   {: v:IR-ARENA:view sv:IR-ARENA:view yv:IR-ARENA:view
+: ROW-CK ( IR-ARENA:reader IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key n -- )
+   {: r:IR-ARENA:reader sv:IR-ARENA:view yv:IR-ARENA:view
       key:IR-ID:ir-module-key l:n :}
-   v l OFF-KIND FRC@ N>KIND {: k:NTAPE:kind :}
-   v l OFF-MODE FRC@ N>MODE drop
+   r l OFF-KIND RC@ N>KIND {: k:NTAPE:kind :}
+   r l OFF-MODE RC@ N>MODE drop
    sv
-      key v l OFF-SRC FRC@ IR-ID:PACK-SOURCE
-      v l OFF-ST FRC@
-      v l OFF-LN FRC@
+      key r l OFF-SRC RC@ IR-ID:PACK-SOURCE
+      r l OFF-ST RC@
+      r l OFF-LN RC@
       IR--SOURCE-SPAN:MAKE
    IR-SOURCE:FSPAN-CK
-   yv key v l OFF-SYM FRC@ IR-ID:PACK-SYMBOL IR-SYM:FLEN@ drop
-   k v l OFF-LIT FRC@ LIT-CK
-   v l OFF-ORG FRC@ ORG-NONE = if exit then
-   l v l OFF-ORG FRC@ ORG-LOCAL drop ;
+   yv key r l OFF-SYM RC@ IR-ID:PACK-SYMBOL IR-SYM:FLEN@ drop
+   k r l OFF-LIT RC@ LIT-CK
+   r l OFF-ORG RC@ ORG-NONE = if exit then
+   l r l OFF-ORG RC@ ORG-LOCAL drop ;
 
 public
 
 \ View order: the tape, the frozen source registry, the frozen symbol rows.
+\ One resolution covers the whole walk; the other two tables keep their views,
+\ because this file reads no cell of either.
 : CHECK ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:view IR-ARENA:view -- )
    {: v:IR-ARENA:view key:IR-ID:ir-module-key
       sv:IR-ARENA:view yv:IR-ARENA:view :}
-   v key FKEY-CK
-   v FCNT 0 ?do
-      v sv yv key i ROW-CK
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   r CNT 0 ?do
+      r sv yv key i ROW-CK
    loop ;
 
 \ ---- the shared digest -------------------------------------------------------
@@ -498,18 +502,18 @@ create DPRE DPRE-BYTES allot
 : DP! ( n n -- )
    DPRE swap CDIGEST:SLOT! ;
 
-: ROW-DIGEST ( IR-ARENA:view n -- CDIGEST:digest )
-   {: v:IR-ARENA:view l:n :}
+: ROW-DIGEST ( IR-ARENA:reader n -- CDIGEST:digest )
+   {: r:IR-ARENA:reader l:n :}
    CDIGEST:TAG-TAPE-TOKEN DS-TAG DP!
    PRE-VER DS-VER DP!
-   v l OFF-KIND FRC@ DS-KIND DP!
-   v l OFF-MODE FRC@ DS-MODE DP!
-   v l OFF-SRC FRC@ DS-SRC DP!
-   v l OFF-ST FRC@ DS-ST DP!
-   v l OFF-LN FRC@ DS-LN DP!
-   v l OFF-SYM FRC@ DS-SYM DP!
-   v l OFF-LIT FRC@ DS-LIT DP!
-   v l OFF-ORG FRC@ DS-ORG DP!
+   r l OFF-KIND RC@ DS-KIND DP!
+   r l OFF-MODE RC@ DS-MODE DP!
+   r l OFF-SRC RC@ DS-SRC DP!
+   r l OFF-ST RC@ DS-ST DP!
+   r l OFF-LN RC@ DS-LN DP!
+   r l OFF-SYM RC@ DS-SYM DP!
+   r l OFF-LIT RC@ DS-LIT DP!
+   r l OFF-ORG RC@ DS-ORG DP!
    DPRE DPRE-BYTES CDIGEST:COMPUTE ;
 
 \ A chain, so no buffer grows with the tape. The module serial is deliberately
@@ -551,10 +555,11 @@ public
 \ spelling; those tables carry their own content digests.
 : DIGEST ( IR-ARENA:view -- CDIGEST:digest )
    {: v:IR-ARENA:view :}
-   v FHDR-CK
-   v FCNT CHAIN-SEED
-   v FCNT 0 ?do
-      v i ROW-DIGEST CHAIN-STEP
+   v IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r HDR-CK
+   r CNT CHAIN-SEED
+   r CNT 0 ?do
+      r i ROW-DIGEST CHAIN-STEP
    loop ;
 
 \ Makes "the checker and the elaborator read the same tape" a checked fact.

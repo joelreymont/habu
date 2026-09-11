@@ -922,6 +922,23 @@ private
    s" a tape is dead after its context ends" T-LABEL
    [: TD ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ The sealed view dies with the context as well, which is the reader cases of
+\ test/compiler/ir-arena.f through this file's own published word: the view is
+\ resolved once, so one that outlived its cells must refuse rather than read.
+: TDV-BODY ( IR-CTX:ctx -- IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c 8 MOD-NEW
+   {: key:IR-ID:ir-module-key sr:IR-ARENA:arena
+      sp:IR-ARENA:arena sy:IR-ARENA:arena tp:IR-ARENA:arena :}
+   tp NTAPE:SEAL ;
+
+: TDV ( -- )
+   BND [: TDV-BODY ;] IR-CTX:WITH-CONTEXT NTAPE:TOKENS drop ;
+
+: TDV-CASE ( -- )
+   s" a sealed tape's view is dead after its context ends" T-LABEL
+   [: TDV ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 \ ---- the checker keeps the identities and the API sealed ---------------------
 : CHECKER-CASES ( -- )
    \ positive control: a well-typed candidate over the same surface certifies,
@@ -1019,6 +1036,7 @@ public
    BND [: GROUP-BUILT-REFUSE-A ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-BUILT-REFUSE-B ;] IR-CTX:WITH-CONTEXT
    TD-CASE
+   TDV-CASE
    CHECKER-CASES
    T-REPORT ;
 
