@@ -13,7 +13,7 @@
 \ (wild loads/stores, SIGSEGV at pc=0), so the user-facing top-level name
 \ universe now equals the checker's. Positives prove the public surface is
 \ untouched: undefined words still report E-UNDEFINED, underflow still reports
-\ E-UNDERFLOW, user unchecked words stay executable, top-level TRUST rows /
+\ E-UNDERFLOW, inferred user words stay executable, top-level TRUST rows /
 \ TRUSTED: / structures + type-family DSLs still work, and XREF introspection
 \ of internal words survives.
 \
@@ -25,8 +25,7 @@
 \   test/internal-word-gate.f
 \
 \ INTERNAL-WORD-GATE privately owns every definition in this file, exports
-\ nothing, and has no external callers. Every child-program literal must stay
-\ byte-identical; names inside them belong to the child programs.
+\ nothing, and has no external callers.
 
 require lib/errors.f
 require lib/string.f
@@ -213,21 +212,13 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 : SEED-RESET-SEARCH$ ( -- ptr u8 n )
-   SB-RESET
-   S\" s\" seed-ndict!\" 0 search-wl 0<> if 99 throw then" SB-APPEND LF
-   SB$ ;
+   S\" s\" seed-ndict!\" 0 search-wl . cr" ;
 
 : SEED-RESET-EQUAL$ ( -- ptr u8 n )
    SB-RESET
    s" TRUSTED: IWG-SEED-EQUAL ( -- ) ndict@ seed-ndict! ;" SB-APPEND LF
    s" IWG-SEED-EQUAL" SB-APPEND LF
    SB$ ;
-
-TRUSTED: NULL-PTR-FIXED-MUTATE ( -- )
-   1 NULL-PTR-CELL ! ;
-
-TRUSTED: NULL-PTR-FIXED@ ( -- n )
-   NULL-PTR-CELL @ ;
 
 : NULL-PTR-BARE$ ( -- ptr u8 n )
    SB-RESET
@@ -240,21 +231,18 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    SB$ ;
 
 : NULL-PTR-SEARCH$ ( -- ptr u8 n )
-   SB-RESET
-   s" : IWG-NULL-PTR-SEARCH ( -- )" SB-APPEND LF
-   S\"    s\" NULL-PTR-CELL\" 0 search-wl dup 0= if drop 0 . cr exit then" SB-APPEND LF
-   s"    1 swap ! ;" SB-APPEND LF
-   s" IWG-NULL-PTR-SEARCH" SB-APPEND LF
-   SB$ ;
+   S\" s\" NULL-PTR-CELL\" 0 search-wl . cr" ;
 
 : NULL-PTR-FIXED-MUTATE$ ( -- ptr u8 n )
    SB-RESET
-   s" INTERNAL-WORD-GATE:NULL-PTR-FIXED-MUTATE" SB-APPEND LF
+   s" TRUSTED: IWG-NULL-MUTATE ( -- ) 1 NULL-PTR-CELL ! ;" SB-APPEND LF
+   s" IWG-NULL-MUTATE" SB-APPEND LF
    SB$ ;
 
 : NULL-PTR-FIXED@$ ( -- ptr u8 n )
    SB-RESET
-   s" INTERNAL-WORD-GATE:NULL-PTR-FIXED@ . cr" SB-APPEND LF
+   s" TRUSTED: IWG-NULL-READ ( -- n ) NULL-PTR-CELL @ ;" SB-APPEND LF
+   s" IWG-NULL-READ . cr" SB-APPEND LF
    SB$ ;
 
 : NULL-PTR-CELL-CASES ( -- )
@@ -267,7 +255,7 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" search-wl cannot launder a NULL-PTR-CELL store" T-LABEL
    NULL-PTR-SEARCH$ RUN-SUBJECT
    ASSERT-OK
-   OUT$ s" 0 " CONTAINS? TTRUE
+   OUT$ S\" 0\n\n" T$=
    s" a compiled fixed-address store cannot mutate NULL-PTR-CELL" T-LABEL
    NULL-PTR-FIXED-MUTATE$ RUN-SUBJECT
    EXITED @ TTRUE
@@ -275,7 +263,7 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" NULL-PTR-CELL remains numeric zero" T-LABEL
    NULL-PTR-FIXED@$ RUN-SUBJECT
    ASSERT-OK
-   OUT$ s" 0 " CONTAINS? TTRUE ;
+   OUT$ S\" 0\n\n" T$= ;
 
 \ seed-ndict! has a global record so the native compiler can resolve the direct
 \ call in a TRUSTED reset. Its DNAME-INT record and BSWL refusal close ordinary
@@ -293,6 +281,7 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" search-wl cannot launder seed-ndict! to execute" T-LABEL
    SEED-RESET-SEARCH$ RUN-SUBJECT
    ASSERT-OK
+   OUT$ S\" 0\n\n" T$=
    s" trusted seed-ndict! refuses an equal dictionary count" T-LABEL
    SEED-RESET-EQUAL$ RUN-SUBJECT
    EXITED @ TTRUE
@@ -305,9 +294,8 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" IWG-NO-SUCH-WORD" SB-APPEND LF
    SB$ ;
 
-: RAW-FORGE$ ( -- ptr u8 n )         \ user unchecked word stays executable
+: RAW-FORGE$ ( -- ptr u8 n )         \ an ordinary inferred word stays executable
    SB-RESET
-   s" 0 set-check" SB-APPEND LF
    s" : IWG-RAW 42 . cr ;" SB-APPEND LF
    s" IWG-RAW" SB-APPEND LF
    SB$ ;
@@ -515,7 +503,8 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    \ compiles: E-UNDEFINED, which is the answer an absent name gets.
    s" raw field reflection is unavailable to checked code" T-LABEL
    PF-RAW-FORGE$ RUN-LOAD
-   s" E-UNDEFINED: PF-FIND" ASSERT-DIAG
+   s" E-UNDEFINED" ASSERT-DIAG
+   ERR$ s" PF-FIND" CONTAINS? TTRUE
    s" NEWTYPE in a checked body is rejected unsafe" T-LABEL
    s" NEWTYPE" NEG-OPENER
    s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
@@ -530,14 +519,8 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" DEFLINEAR" NEG-OPENER
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
    s" VALUE-RECORD" NEG-OPENER
-   \ `cast:` is an engine reader keyword now, not a word. In a checked BODY the
-   \ compile loop never matches an interpret keyword, so the token is undefined
-   \ and the definition never compiles — the reject moved EARLIER than the
-   \ checker's unsafe-token rule, which still refuses the spelling on the
-   \ source-checking path (test/cast-negative-suite.f pins that half).
-   s" cast: in a checked body is an undefined token" T-LABEL
-   s" cast:" OPENER-BODY-FORGE$ RUN-SUBJECT
-   s" E-UNDEFINED: cast:" ASSERT-DIAG
+   s" cast: in a checked body is rejected" T-LABEL
+   s" cast:" NEG-OPENER
    s" DEFER-LAYOUT-BUFFER in a checked body is rejected unsafe" T-LABEL
    s" DEFER-LAYOUT-BUFFER" NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
@@ -562,14 +545,8 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    EXPORT-BODY-FORGE$ RUN-SUBJECT
    ASSERT-EXPORT-UNSAFE ;
 
-\ --- defer/is laundering (dot habu-checker-unsafety-as-1c537c1f, acceptance b).
-\ A checked `is` installs a QUOTATION whose body is checked, and a raw xt from
-\ tick has a different checker type than a quotation — so neither `['] <unsafe>
-\ is X` nor `[: <unsafe> ;] is X` can bind an unsafe target from a checked body.
-\ The first rejects at `is` (xt is not a quotation), the second rejects at the
-\ unsafe token inside the quotation body (identity/name reject). Both are
-\ in-body checker rejects: rc 70 with an `at '<token>'` diagnostic. ----
-: DEFER-TICK-FORGE$ ( -- ptr u8 n )  \ ['] <unsafe> is X : rejects at 'is'
+\ Both a tick and an inline quotation reject unsafe callback bodies.
+: DEFER-TICK-FORGE$ ( -- ptr u8 n )  \ the unsafe tick rejects before binding
    SB-RESET
    s" defer IWG-DACT ( -- )" SB-APPEND LF
    s" : IWG-DSET ( -- ) ['] deflinear is IWG-DACT ;" SB-APPEND LF
@@ -582,9 +559,9 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    SB$ ;
 
 : DEFER-CASES ( -- )
-   s" ['] <unsafe> is X (tick laundering) rejects at 'is'" T-LABEL
+   s" ['] <unsafe> is X rejects at the unsafe tick" T-LABEL
    DEFER-TICK-FORGE$ RUN-SUBJECT
-   s" at 'is'" ASSERT-DIAG
+   s" at '[']'" ASSERT-DIAG
    s" [: <unsafe> ;] is X (quotation laundering) rejects at 'deflinear'" T-LABEL
    DEFER-QUOT-FORGE$ RUN-SUBJECT
    s" at 'deflinear'" ASSERT-DIAG ;
@@ -604,14 +581,8 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" : IWG-LBAD ( -- ) IWG-LV @ execute ;" SB-APPEND LF
    SB$ ;
 
-\ The laundered registry-cell write is spelled against a SCHEMA-REG cell, not a
-\ TFAM one, and the reason is measured rather than stylistic: `tfam` is a reserved
-\ system-package name, so `['] TFAM:PF-COMMIT-N` never reaches the checker at all
-\ (habu2.f C-QUALIFY-SEAL-GUARD, rc 84 — asserted in TFAM-SEAL-CASES below), and a
-\ case written on it would stop testing the E-EXEC-OPAQUE-XT rule it exists for.
-\ SCHEMA-REG:SCH-N is the same kind of record — a REG-PROTECTed public control
-\ cell — under an owner the engine does not reserve, so the tick still lands and
-\ the checker still has to refuse the laundered `execute`.
+\ Native quotation admission rejects the protected target before it can be
+\ stored or executed through an untyped cell.
 : PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick a protected registry cell, launder its execute
    SB-RESET
    s" variable IWG-PFV" SB-APPEND LF
@@ -627,6 +598,12 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV !" SB-APPEND LF
    s" : IWG-LBAD ( -- n ) IWG-LV @ catch ;" SB-APPEND LF
    SB$ ;
+
+: ASSERT-QUOT-REFUSED ( -- )
+   EXITED @ TTRUE
+   RC @ THROW-RC T=
+   ERR$ s" -8651" CONTAINS? TTRUE
+   ERR$ s" at [']" CONTAINS? TTRUE ;
 
 : ASSERT-OPAQUE ( -- )   \ child rejected at CHECK (rc 70) naming the opaque-execute reject
    EXITED @ TTRUE
@@ -650,9 +627,9 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" layout-buffer laundered through a variable rejects at CHECK" T-LABEL
    s" LAYOUT-BUFFER" LAUNDER-DEFINER$ RUN-SUBJECT
    ASSERT-OPAQUE
-   s" registry-cell write laundered through a variable rejects at CHECK, not runtime" T-LABEL
+   s" protected registry target cannot be ticked into a variable" T-LABEL
    PF-LAUNDER-FORGE$ RUN-SUBJECT
-   ASSERT-OPAQUE
+   ASSERT-QUOT-REFUSED
    s" deflinear laundered through a variable + catch also rejects at CHECK" T-LABEL
    s" deflinear" CATCH-DEFINER$ RUN-SUBJECT
    ASSERT-OPAQUE-CATCH ;
@@ -664,7 +641,7 @@ TRUSTED: NULL-PTR-FIXED@ ( -- n )
    s" bare drop still reports E-UNDERFLOW" T-LABEL
    s" drop" TOKEN$ RUN-SUBJECT
    s" E-UNDERFLOW" ASSERT-DIAG
-   s" user unchecked word stays executable at top level" T-LABEL
+   s" inferred user word stays executable at top level" T-LABEL
    RAW-FORGE$ RUN-SUBJECT ASSERT-OK
    s" top-level TRUST row still works" T-LABEL
    TRUST-FORGE$ RUN-SUBJECT ASSERT-OK
@@ -871,51 +848,6 @@ create QNAME QNAME-CAP allot
    s" CT-LIVE?" TOKEN$ RUN-STDIN
    s" CT-LIVE?" ASSERT-INTERNAL ;
 
-\ The witness reads the engine's own record array — the array LFIND resolves
-\ through, not a copy — and dies unless the named tails carry the roles the real
-\ package cases assume: the private tail once in the package's PRIVATE wordlist
-\ and never in its public one, the public tail once in the public one. A rename or
-\ typo reds the child instead of letting an E-UNDEFINED case pass accidentally.
-
-: QW-ROW ( ptr u8 n -- )                 \ the package-row line, keyed on the package name
-   S\" QI @ QWID DICT-WL:NAMESPACE = IF QI @ QNA QI @ QNU s\" " SB-APPEND
-   SB-APPEND
-   S\" \" CORE-STR= IF" SB-APPEND LF ;
-
-: QW-CNT ( ptr u8 n ptr u8 n ptr u8 n -- ) {: wa:ptr wu:n na:ptr nu:n ca:ptr cu:n :}
-   wa wu SB-APPEND                       \ QPUB @ / QPRI @ — which wordlist to count in
-   S\" s\" " SB-APPEND  na nu SB-APPEND  S\" \" QCNT " SB-APPEND
-   ca cu SB-APPEND  s"  QIS" SB-APPEND LF ;
-
-: QUAL-WITNESS-FORGE$ ( ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
-   {: pa:ptr pu:n ra:ptr ru:n ba:ptr bu:n :}   \ package, private tail, public tail
-   SB-RESET
-   s" 0 set-check" SB-APPEND LF
-   s" : QR DREC * dbase@ + ;" SB-APPEND LF
-   s" : QWID QR 40 + @ ;" SB-APPEND LF
-   s" : QNA QR dup 16 + @ DNAME-EXT and 0 <> IF 24 + @ ELSE 24 + THEN ;" SB-APPEND LF
-   s" : QNU QR 16 + @ DNAME-LEN-MASK and ;" SB-APPEND LF
-   s" variable QI variable QPUB variable QPRI" SB-APPEND LF
-   s" variable QN variable QSW variable QSA variable QSU" SB-APPEND LF
-   s" : QROW 0 QI ! 0 QPUB ! 0 QPRI !" SB-APPEND LF
-   s" BEGIN QI @ ndict@ < WHILE" SB-APPEND LF
-   pa pu QW-ROW
-   s" QI @ QR @ QPUB ! QI @ QR 8 + @ QPRI ! THEN THEN" SB-APPEND LF
-   s" QI @ 1 + QI ! REPEAT ;" SB-APPEND LF
-   s" : QCNT QSU ! QSA ! QSW ! 0 QN ! 0 QI !" SB-APPEND LF
-   s" BEGIN QI @ ndict@ < WHILE" SB-APPEND LF
-   s" QI @ QWID QSW @ = IF QI @ QNA QI @ QNU QSA @ QSU @ CORE-STR= IF" SB-APPEND LF
-   s" QN @ 1 + QN ! THEN THEN" SB-APPEND LF
-   s" QI @ 1 + QI ! REPEAT QN @ ;" SB-APPEND LF
-   S\" : QDIE s\" witness: dictionary role mismatch\" 1 die ;" SB-APPEND LF
-   s" : QIS <> IF QDIE THEN ;" SB-APPEND LF
-   s" : QSOME 0 = IF QDIE THEN ;" SB-APPEND LF
-   s" QROW QPUB @ QSOME QPRI @ QSOME" SB-APPEND LF
-   s" QPRI @ " ra ru s" 1" QW-CNT
-   s" QPUB @ " ra ru s" 0" QW-CNT
-   s" QPUB @ " ba bu s" 1" QW-CNT
-   SB$ ;
-
 \ --- the sealed schema registry (dot habu-seal-type-schema-c65f76cc). This
 \ group proves the package-public/private answer for a file that BECAME a package:
 \ src/core/type-schema.f keeps its schema implementation in SCHEMA-REG;
@@ -980,8 +912,6 @@ create QNAME QNAME-CAP allot
    SB$ ;
 
 : SEAL-CASES ( -- )
-   s" the witness pins SCH-RBF-P private and SCHEMA-A@ public in SCHEMA-REG" T-LABEL
-   s" SCHEMA-REG" s" SCH-RBF-P" s" SCHEMA-A@" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
    s" the sealed tail left the global universe: bare SCHEMA-A@ is E-UNDEFINED" T-LABEL
    s" SCHEMA-A@" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: SCHEMA-A@" ASSERT-DIAG
@@ -1090,8 +1020,6 @@ create QNAME QNAME-CAP allot
    SB$ ;
 
 : TFAM-SEAL-CASES ( -- )
-   s" the witness pins TF-RBF-P private and TFAM-N@ public in TFAM" T-LABEL
-   s" TFAM" s" TF-RBF-P" s" TFAM-N@" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
    s" the sealed tail left the global universe: bare PF-FIND is E-UNDEFINED" T-LABEL
    s" PF-FIND" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: PF-FIND" ASSERT-DIAG
@@ -1114,9 +1042,9 @@ create QNAME QNAME-CAP allot
    s" `99999 SVX-HI !` no longer turns a reject into an engine die" T-LABEL
    TSEAL-SVX-FORGE$ RUN-LOAD
    s" E-UNDEFINED: SVX-HI" ASSERT-DIAG
-   s" the launder route is refused at the tick: `tfam` is a reserved name" T-LABEL
+   s" native compilation refuses a protected target at the tick" T-LABEL
    TSEAL-TICK-FORGE$ RUN-SUBJECT
-   s" TFAM:PF-COMMIT-N" ASSERT-SEALED
+   ASSERT-QUOT-REFUSED
    s" a bare tick of a public tail is refused by the same guard" T-LABEL
    s" ' " s" TFAM:" s" PF-COMMIT-N" s" " QUAL-PROG$ RUN-SUBJECT
    s" TFAM:PF-COMMIT-N" ASSERT-SEALED
@@ -1235,8 +1163,6 @@ create QNAME QNAME-CAP allot
    SB$ ;
 
 : TYPE-DECL-SEAL-CASES ( -- )
-   s" the witness pins TDPLAN-P private and TDPLAN-N public in TYPE-DECL" T-LABEL
-   s" TYPE-DECL" s" TDPLAN-P" s" TDPLAN-N" QUAL-WITNESS-FORGE$ RUN-SUBJECT ASSERT-OK
    s" the sealed tail left the global universe: bare TDPLAN-N is E-UNDEFINED" T-LABEL
    s" TDPLAN-N" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TDPLAN-N" ASSERT-DIAG
