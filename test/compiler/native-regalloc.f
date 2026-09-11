@@ -2981,6 +2981,75 @@ using A64RA
    s" a branch taken from anywhere but the callee's base is refused" T-LABEL
    [: SELF-HIGH ;] E-A64RAV-DRES TTHROWSQ ;
 
+\ The join is block three, before the forwarding block four. In a forward
+\ sweep its first predecessor already carries the entry value while the other
+\ still says TOP. The addressed store on that other path eventually makes the
+\ join BOT, so its final data-stack store is necessary. Checking provisional
+\ inputs would reject it as a duplicate before the conflicting path arrives.
+: BUILD-DSTACK-MEET ( bool -- )
+   {: clobber:bool :}
+   s" DSTACK-MEET" 1 1 OPEN-FUN
+   0 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 -8 M-DLOAD {: a:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   1 M-BR0
+   M-BLOCK+
+   a 2 5 M-BRZ
+   M-BLOCK+
+   t1 3 M-BR1
+   M-BLOCK+
+   M-TOKEN-ARG+ {: tj:IR-ID:ir-value-id :}
+   a tj -8 M-DSTORE 0 M-DPUBLISH
+   M-RET0
+   M-BLOCK+
+   M-TOKEN-ARG+ 3 M-BR1
+   M-BLOCK+
+   clobber if
+      A64IR-OPCODE:ASTORE M-OPEN
+      CC BB a IR-BUILD:ADD-OPERAND
+      CC BB a IR-BUILD:ADD-OPERAND
+      CC BB t1 IR-BUILD:ADD-OPERAND
+      M-TOKEN+ CLOSE-VALUE
+   else t1 then
+   4 M-BR1
+   CLOSE-FUN ;
+
+: DSTACK-MEET-BODY ( bool IR-CTX:ctx -- bool )
+   {: clobber:bool c:IR-CTX:ctx :}
+   c A64-MOD
+   clobber BUILD-DSTACK-MEET
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m 4 1 1 HABU-N A64RA:ALLOCATE
+   m 4 1 1 HABU-N A64RAV:ACCEPT
+   A64RAV:ACCEPTED? ;
+
+: DSTACK-MEET ( bool -- bool )
+   WBND [: DSTACK-MEET-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DSTACK-DUPLICATE ( -- ) false DSTACK-MEET drop ;
+
+: DSTACK-MEET-CASES ( -- )
+   s" a join store is checked after both paths settle" T-LABEL
+   true DSTACK-MEET TTRUE
+   s" a store whose value survives both paths is still refused" T-LABEL
+   [: DSTACK-DUPLICATE ;] E-A64RAV-DKEEP TTHROWSQ ;
+
+: DEAD-DLOAD-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   s" DEAD-DLOAD" 1 0 OPEN-FUN
+   8 M-DTAKE 0 M-DLOAD {: unused:IR-ID:ir-value-id tok:IR-ID:ir-value-id :}
+   tok 0 M-DPUBLISH
+   M-RET0
+   CLOSE-FUN
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m 4 1 0 HABU-N A64RA:ALLOCATE
+   m 4 1 0 HABU-N A64RAV:ACCEPT ;
+
+: DEAD-DLOAD ( -- ) WBND [: DEAD-DLOAD-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DEAD-DLOAD-CASE ( -- )
+   s" a load whose result is unused is still refused" T-LABEL
+   [: DEAD-DLOAD ;] E-A64RAV-DKEEP TTHROWSQ ;
+
 \ ---- one routine computing in both register files -----------------------------
 \ WHAT THIS IS FOR. A register is a file and a number, so x0 and d0 are two
 \ registers that are both number zero, and two values holding them are not
@@ -3297,6 +3366,8 @@ public
 : RUN ( -- )
    T-RESET
    WIDE-CALL-CASE
+   DSTACK-MEET-CASES
+   DEAD-DLOAD-CASE
    SQUARE-CASE
    MOVE-PLAN-CASE
    MOVE-LOWER-CASE

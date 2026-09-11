@@ -1395,6 +1395,12 @@ DKEEP-HOOK-DEFAULT
    E-A64RAV-DKEEP throw ;
 
 \ ---- one operation, measured -------------------------------------------------
+: VDSLOT-XFER ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id VDSLOT-CELL {: s:n :}
+   id STORES? if id 0 OPERAND-AT else id 0 RESULT-AT then
+   SLOT VD-DEF s VDPUT ;
+
 : VDLOAD-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id VDSLOT-CELL {: s:n :}
@@ -1402,14 +1408,14 @@ DKEEP-HOOK-DEFAULT
    s VDV@ VD-NAMED? if id DKEEP-NAMED DKEEP! then
    id 0 RESULT-AT SLOT {: k:n :}
    k USES-AT 0= if id DKEEP-DEAD DKEEP! then
-   k VD-DEF s VDPUT ;
+   id VDSLOT-XFER ;
 
 : VDSTORE-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id VDSLOT-CELL {: s:n :}
    id 0 OPERAND-AT SLOT {: k:n :}
    s VDV@ k = if id DKEEP-SAME DKEEP! then
-   k VD-DEF s VDPUT ;
+   id VDSLOT-XFER ;
 
 : VDPUBLISH-CK ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1426,10 +1432,7 @@ DKEEP-HOOK-DEFAULT
 : VDOP-XFER ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id DCALL? if id VDCALL-XFER exit then
-   id DSLOT-OF NOSLOT <> if
-      id STORES? if id VDSTORE-CK exit then
-      id VDLOAD-CK exit
-   then
+   id DSLOT-OF NOSLOT <> if id VDSLOT-XFER exit then
    id VDCLOBBER? if VDCLOBBER-XFER then ;
 
 \ ---- the fixpoint ------------------------------------------------------------
@@ -1541,14 +1544,17 @@ DKEEP-HOOK-DEFAULT
    begin
       dup VD-ROUNDS >= if E-A64RAV-DRES throw then
       0 VD-MOVED !
-      V-BLKS @ 1 ?do  f i VDMEET-BLOCK  loop
-      V-BLKS @ 0 ?do  f i VDXFER-BLOCK  loop
+      \ The entry is fixed; forward edges can use this round's outputs.
+      V-BLKS @ 1 ?do  f i VDMEET-BLOCK  f i VDXFER-BLOCK  loop
       1+
       VD-MOVED @ 0=
    until
    drop ;
 
 \ ---- the checked pass --------------------------------------------------------
+\ A provisional named value may still meet a conflicting path and become BOT.
+\ Check loads and stores only against the settled inputs, in this mandatory
+\ walk over every block. A refusal must not depend on the fixpoint's schedule.
 : VDCK-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id DCALL? if id VDPUBLISH-CK  id VDCALL-XFER exit then

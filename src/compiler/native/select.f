@@ -2340,8 +2340,8 @@ create D-MEET DSLOT-MAX cells allot
 
 : DRES-ROUND ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT 1 ?do  f i DMEET-BLOCK  loop
-   f BLOCK-COUNT 0 ?do  f i DXFER-BLOCK  loop ;
+   \ The entry is fixed. Let later blocks read this round's earlier outputs.
+   f BLOCK-COUNT 1 ?do  f i DMEET-BLOCK  f i DXFER-BLOCK  loop ;
 
 \ Every cell starts at "nothing said", may name one value, and may then fall to
 \ "nothing", so the descent has a bounded number of rounds.
