@@ -416,7 +416,7 @@ public
 
 : GUARD-BODY$ ( n -- ptr u8 n )
    case
-      0 of s" {: r:IR-ARENA:arena id:IR-ID:ir-type-id :} r RHDR-CK r HC-SERIAL LCELL@ r CNT id ID-CK-N" endof
+      0 of s" {: rr:IR-ARENA:reader id:IR-ID:ir-type-id :} rr RHDR-CK rr HC-SERIAL IR-ARENA:RD@ rr CNT id ID-CK-N" endof
       1 of s" {: hs:n cnt:n id:IR-ID:ir-type-id :} hs id ID-OWNER-SERIAL SERIAL-CK id IR-ID:TYPE-LOCAL dup cnt >= if E-IR-TYPE-BOUND throw then" endof
       2 of s" {: hs:n cnt:n os:n loc:n :} os hs <> if E-IR-TYPE-OWNER throw then loc 0 < loc cnt >= or if E-IR-TYPE-BOUND throw then" endof
       3 of s" {: hs:n cnt:n :} STG-PN @ 0 ?do hs cnt i PO@ i PL@ STG-REF-CK loop STG-RN @ 0 ?do hs cnt i RO@ i RL@ STG-REF-CK loop" endof
@@ -426,11 +426,11 @@ public
 \ The pointer constructor checks the pointee it was handed, not some other
 \ identity, and it does so before it interns.
 : PTEE-CHECK$ ( -- ptr u8 n )
-   s" r ptee ID-CK" ;
+   s" rr ptee ID-CK" ;
 
 \ The staged-element check is handed the table's live row count as its bound.
 : STAGE-CHECK$ ( -- ptr u8 n )
-   s" key KEY-SERIAL r CNT STG-VALIDATE" ;
+   s" key KEY-SERIAL rr CNT STG-VALIDATE" ;
 
 : TYPE-FILE$ ( -- ptr u8 n )
    s" src/compiler/ir/type.f" ;
