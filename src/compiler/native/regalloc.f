@@ -546,6 +546,10 @@ DYNAMIC-BUFFER CL-FIX-BUF n
 : CL-FIX ( -- ptr n ) 0 CL-FIX-BUF ;
 DYNAMIC-BUFFER CL-WANT-BUF n
 : CL-WANT ( -- ptr n ) 0 CL-WANT-BUF ;
+DYNAMIC-BUFFER ANCH-HEAD-BUF n
+: ANCH-HEAD ( -- ptr n ) 0 ANCH-HEAD-BUF ;
+DYNAMIC-BUFFER ANCH-NEXT-BUF n
+: ANCH-NEXT ( -- ptr n ) 0 ANCH-NEXT-BUF ;
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -575,6 +579,8 @@ DYNAMIC-BUFFER CL-WANT-BUF n
    VMAX CL-FRAME-BUF-RESERVE
    VMAX CL-FIX-BUF-RESERVE
    VMAX CL-WANT-BUF-RESERVE
+   OMAX ANCH-HEAD-BUF-RESERVE
+   OMAX ANCH-NEXT-BUF-RESERVE
    ;
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
@@ -1517,15 +1523,47 @@ DYNAMIC-BUFFER CL-WANT-BUF n
       then
    loop ;
 
+\ Bucket producers once by the same anchors as MB-ANCHOR. Walking backwards
+\ finds each data-load run's end once and prepends producers in their original
+\ order; anchors themselves need not be monotonic.
+: MB-PLAN-ANCHOR1 ( n IR-ID:ir-block-id n -- n )
+   {: load-end:n bk:IR-ID:ir-block-id d:n :}
+   bk OP-COUNT {: n:n :}
+   bk d OP-AT {: id:IR-ID:ir-op-id :}
+   id DLOAD? {: dload:bool :}
+   id ADDRESS-HALF {: half:n :}
+   half 0 >= if
+      d A64IR:HALVES + half - n min
+   else
+      dload if load-end else d 1+ then
+   then {: at:n :}
+   \ Only later in-block anchors can receive stores; the tail is checked below.
+   at d > at n < and if
+      at cells ANCH-HEAD + @ d cells ANCH-NEXT + !
+      d at cells ANCH-HEAD + !
+   then
+   dload if load-end else d then ;
+
+: MB-PLAN-ANCHORS ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT {: n:n :}
+   n 0 ?do NOPOS i cells ANCH-HEAD + ! loop
+   n
+   n 0 ?do bk n i - 1- MB-PLAN-ANCHOR1 loop
+   drop ;
+
 : MB-PLAN-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk MB-PLAN-ANCHORS
    bk OP-COUNT 0 ?do
-      i {: at:n :}
-      at 0 ?do
-         bk i MB-ANCHOR at = if bk b at i MB-PLAN-STORES then
-      loop
-      bk b at MB-PLAN-LOADS
+      i cells ANCH-HEAD + @
+      begin dup NOPOS <> while
+         {: d:n :}
+         bk b i d MB-PLAN-STORES
+         d cells ANCH-NEXT + @
+      repeat drop
+      bk b i MB-PLAN-LOADS
    loop
    bk MB-PLAN-TAIL-CK
    b RET-B @ = if bk MB-PLAN-MOVES then ;
@@ -1889,6 +1927,8 @@ public
    CL-FRAME-BUF-RELEASE
    CL-FIX-BUF-RELEASE
    CL-WANT-BUF-RELEASE
+   ANCH-HEAD-BUF-RELEASE
+   ANCH-NEXT-BUF-RELEASE
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private

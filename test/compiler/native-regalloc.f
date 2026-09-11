@@ -984,6 +984,22 @@ create TXT
    s3 e M-ADD M-RET
    CLOSE-FUN ;
 
+\ The first two loads are spilled later, but both stores must follow the entire
+\ load run. The first sum also reads the first spilled value at that anchor.
+: BUILD-DLOAD-CHAIN ( -- )
+   s" DLOAD-CHAIN" 3 1 OPEN-FUN
+   0 M-DTAKE {: t0:IR-ID:ir-value-id :}
+   t0 -24 M-DLOAD {: a:IR-ID:ir-value-id t1:IR-ID:ir-value-id :}
+   t1 -16 M-DLOAD {: b:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 -8 M-DLOAD {: c:IR-ID:ir-value-id t3:IR-ID:ir-value-id :}
+   c a M-ADD {: x:IR-ID:ir-value-id :}
+   $44 M-CONST {: d:IR-ID:ir-value-id :}
+   $55 M-CONST {: e:IR-ID:ir-value-id :}
+   x d M-ADD e M-ADD b M-ADD a M-ADD
+   t3 -24 M-DSTORE -16 M-DPUBLISH
+   M-RET0
+   CLOSE-FUN ;
+
 \ The same five values as plain move-wides. Every one of them is then a class the
 \ walk can write again where it is read, so this is the body the RE-EMISSION
 \ fixtures are built on and the one above is the body the frame fixtures are.
@@ -1914,6 +1930,40 @@ variable LOWER-TURNS
    s" the values read furthest away are the ones that lose their register" T-LABEL
    WBND [: PLAN-BODY ;] IR-CTX:WITH-CONTEXT
    8 T= 0 T= 9 T= 8 T= 8 T= 7 T= 7 T= 6 T= 6 T= 5 T= 6 T= 2 T= ;
+
+using A64RA
+
+: DLOAD-PLAN-ROW ( n n n -- )
+   {: row:n value:n pos:n :}
+   row PLAN-VALUE@ value T=
+   row PLAN-POS@ pos T=
+   row PLAN-BLOCK@ 0 T= ;
+
+: DLOAD-PLAN-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-DLOAD-CHAIN
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m 3 3 1 HABU-N ALLOCATE
+   SPILLS 2 T=
+   PLAN-N 7 T=
+   0 1 4 DLOAD-PLAN-ROW
+   1 3 4 DLOAD-PLAN-ROW
+   2 1 4 DLOAD-PLAN-ROW
+   3 8 6 DLOAD-PLAN-ROW
+   4 10 8 DLOAD-PLAN-ROW
+   5 3 11 DLOAD-PLAN-ROW
+   6 1 12 DLOAD-PLAN-ROW
+   PLAN-N 0 ?do
+      i 2 < if i PLAN-STORE? TTRUE else i PLAN-STORE? TFALSE then
+      i 3 >= i 5 < and if i PLAN-REMAT? TTRUE else i PLAN-REMAT? TFALSE then
+      i PLAN-MOVE? TFALSE
+   loop ;
+
+;using
+
+: DLOAD-PLAN-CASE ( -- )
+   s" stores sharing a load-run anchor keep producer order before its reload" T-LABEL
+   WBND [: DLOAD-PLAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ The lowered module allocates with no spill left, and every value of it is
 \ accepted. The exact registers are asserted, so a cost rule that chose another
@@ -3222,6 +3272,7 @@ public
    DECL-DIFF-CASE
    DECL-HIGH-CASE
    PLAN-CASE
+   DLOAD-PLAN-CASE
    TIE-SPILL-CASE
    DOUBLE-CASE
    REMAT-PLAN-CASE
