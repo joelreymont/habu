@@ -558,10 +558,70 @@ create CBUF 32 allot
    TD-STALE-CASE
    TD-VIEW-CASE ;
 
+\ ---- an interner cloned from a prototype -------------------------------------
+\ A clone is the same table under a new key: the spelling at ordinal k in the
+\ prototype is the spelling at ordinal k in the clone, so a caller that recorded
+\ an ordinal against the prototype can mint the identity it names in the new
+\ module with no lookup. The prototype is read and never touched.
+: PROTO-BODY ( IR-CTX:ctx -- n n n n n n n bool bool )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: pk:IR-ID:ir-module-key :}
+   c pk 16 128 IR-SYM:NEW {: pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c pa pr pk s" hir.add" IR-SYM:INTERN {: p0:IR-ID:ir-symbol-id :}
+   c pa pr pk s" hir.sub" IR-SYM:INTERN {: p1:IR-ID:ir-symbol-id :}
+   \ Two spellings one fold maps together, and two the content filter is free to
+   \ collide: both must stay two rows in the clone, exactly as in the prototype.
+   c pa pr pk s" HIR.ADD" IR-SYM:INTERN {: p2:IR-ID:ir-symbol-id :}
+   c pa pr pk s" ba" IR-SYM:INTERN {: p3:IR-ID:ir-symbol-id :}
+   c pa pr pk s" ab" IR-SYM:INTERN {: p4:IR-ID:ir-symbol-id :}
+   pr IR-SYM:SYMBOLS {: before:n :}
+
+   c IR-CTX:NEW-MODULE {: ck:IR-ID:ir-module-key cmid:IR-ID:ir-module-id :}
+   c ck pa pr IR-SYM:NEW-FROM {: ca:IR-ARENA:arena cr:IR-ARENA:arena :}
+
+   \ the same spelling is the same ordinal, and the clone answers it without
+   \ appending anything
+   c ca cr ck s" hir.sub" IR-SYM:INTERN {: c1:IR-ID:ir-symbol-id :}
+   cr IR-SYM:SYMBOLS {: after-hit:n :}
+
+   \ a spelling the prototype never held appends to the clone alone
+   c ca cr ck s" hir.brandnew" IR-SYM:INTERN drop
+   pr IR-SYM:SYMBOLS {: proto-after:n :}
+
+   before
+   cr IR-SYM:SYMBOLS 1-
+   p1 IR-ID:SYMBOL-LOCAL
+   c1 IR-ID:SYMBOL-LOCAL
+   after-hit
+   proto-after
+   p2 IR-ID:SYMBOL-LOCAL p0 IR-ID:SYMBOL-LOCAL -
+   p3 IR-ID:SYMBOL-LOCAL p4 IR-ID:SYMBOL-LOCAL <>
+   c1 IR-ID:SYMBOL-OWNER cmid IR-ID:MODULE-SAME? ;
+
+: PROTO-CASE ( -- )
+   s" a cloned interner holds the prototype's spellings at the same ordinals" T-LABEL
+   BND [: PROTO-BODY ;] IR-CTX:WITH-CONTEXT
+   {: before:n cloned:n pord:n cord:n after-hit:n proto-after:n folded:n
+      distinct:bool owned:bool :}
+   owned TTRUE
+   s" two spellings that fold together stay two rows in the clone" T-LABEL
+   folded 0 <> TTRUE
+   s" two spellings the filter may collide stay distinct in the clone" T-LABEL
+   distinct TTRUE
+   s" the clone starts with exactly the prototype's rows" T-LABEL
+   cloned before T=
+   s" the same spelling is the same ordinal on both sides" T-LABEL
+   cord pord T=
+   s" asking the clone for a spelling it copied appends nothing" T-LABEL
+   after-hit before T=
+   s" interning into the clone leaves the prototype where it was" T-LABEL
+   proto-after before T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   PROTO-CASE
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
    GROW-CASE
    TD-FRESH-CASE

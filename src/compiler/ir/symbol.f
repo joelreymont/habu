@@ -347,6 +347,18 @@ private
    c r u IR-ARENA:PUSH drop
    l ;
 
+\ One store of the interner: its committed span and its three header cells.
+\ NEW and NEW-FROM differ in what goes into the store afterwards, never in how
+\ the store is made or how its header is written.
+: PART-NEW ( IR-CTX:ctx IR-ID:ir-module-key n n n -- IR-ARENA:arena )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key cells:n magic:n cap:n :}
+   c cells HDR-CELLS + IR-ARENA:NEW {: x:IR-ARENA:arena :}
+   c x HDR-CELLS IR-ARENA:RESERVE
+   c x magic IR-ARENA:PUSH drop
+   c x key KEY-SERIAL IR-ARENA:PUSH drop
+   c x cap IR-ARENA:PUSH drop
+   x ;
+
 public
 
 \ Create a module's symbol interner: the byte pool committed to at least bcap
@@ -358,16 +370,52 @@ public
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key scap:n bcap:n :}
    scap SYM-CAP-OK
    bcap BYTE-CAP-OK
-   c bcap BYTES>CELLS HDR-CELLS + IR-ARENA:NEW {: a:IR-ARENA:arena :}
-   c a HDR-CELLS IR-ARENA:RESERVE
-   c a SYB-MAGIC IR-ARENA:PUSH drop
-   c a key KEY-SERIAL IR-ARENA:PUSH drop
-   c a bcap BYTES>CELLS IR-ARENA:PUSH drop
-   c scap ROW-CELLS * HDR-CELLS + IR-ARENA:NEW {: r:IR-ARENA:arena :}
-   c r HDR-CELLS IR-ARENA:RESERVE
-   c r SYM-MAGIC IR-ARENA:PUSH drop
-   c r key KEY-SERIAL IR-ARENA:PUSH drop
-   c r scap IR-ARENA:PUSH drop
+   c key bcap BYTES>CELLS SYB-MAGIC bcap BYTES>CELLS PART-NEW {: a:IR-ARENA:arena :}
+   c key scap ROW-CELLS * SYM-MAGIC scap PART-NEW {: r:IR-ARENA:arena :}
+   a r ;
+
+\ ---- an interner that starts where another one left off ----------------------
+\ A module's symbols are its own ordinals, so a fresh module starts with an
+\ empty interner and every name a dialect needs is interned into it again. For
+\ the dialect's own vocabulary that is the same hundred-odd names every time,
+\ and each one costs a content filter over its bytes, a scan of the rows and an
+\ append - per module, for every module a definition builds.
+\
+\ A CLONE IS THE SAME TABLE UNDER A NEW KEY. Ordinals are positions in the row
+\ table, so copying the prototype's pool bytes and rows verbatim gives the new
+\ module the same spelling at the same ordinal: a caller that recorded an
+\ ordinal against the prototype can mint the identity it names in this module
+\ with IR-ID:PACK-SYMBOL and no lookup at all. The filter value a row stores is
+\ a pure function of the bytes (FILTER above), so it copies verbatim too - no
+\ row is recomputed and nothing here can disagree with what INTERN would have
+\ written.
+\
+\ THE PROTOTYPE IS READ AND NOT TOUCHED. Its own header keeps its own key, so
+\ the clone is not a second name for it: interning into either afterwards
+\ appends to that one alone, and the two agree only about the ordinals that
+\ existed when the copy was taken.
+\
+\ The committed ceilings come from the prototype, so a clone can always hold
+\ what it copied and grows on its own terms afterwards.
+\
+\ THE TWO SPANS ARE COPIED IN BULK. A clone holds every symbol the prototype
+\ holds, so the copy is the whole committed prefix of each arena and never a
+\ row at a time: appending it cell by cell through PUSH resolved both handles,
+\ rechecked ownership and minted an index for each of some hundreds of cells,
+\ per module, for every module a definition builds. IR-ARENA:APPEND-SPAN is
+\ that same append with the per-cell work reduced to the load and the store it
+\ always was.
+: NEW-FROM ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   pa IR-ARENA:OPEN-LIVE {: par:IR-ARENA:reader :}
+   pr IR-ARENA:OPEN-LIVE {: prr:IR-ARENA:reader :}
+   par prr PAIR-CK
+   par HC-CAP IR-ARENA:RD@ {: pcap:n :}
+   prr HC-CAP IR-ARENA:RD@ {: rcap:n :}
+   c key pcap SYB-MAGIC pcap PART-NEW {: a:IR-ARENA:arena :}
+   c key rcap ROW-CELLS * SYM-MAGIC rcap PART-NEW {: r:IR-ARENA:arena :}
+   c a pa HDR-CELLS par PCELLS IR-ARENA:APPEND-SPAN
+   c r pr HDR-CELLS prr CNT ROW-CELLS * IR-ARENA:APPEND-SPAN
    a r ;
 
 \ Intern the presented bytes: equal bytes answer the identity they already

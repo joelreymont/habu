@@ -740,11 +740,79 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    READ-CASE
    RD-CASES ;
 
+\ ---- appending a span of another arena ----------------------------------------
+\ IR-ARENA:APPEND-SPAN is a RESERVE and k PUSH calls in one commit, and what it
+\ owes is exactly what those would have done: the cells land at the end in the
+\ order they were read, the source is only read, and every refusal comes before
+\ any cell of the span is written. The arguments are parked rather than passed,
+\ because a refusal is checked with a quotation and a quotation takes nothing.
+1 TYPED-BUFFER AS-CTX IR-CTX:ctx
+1 TYPED-BUFFER AS-DST IR-ARENA:arena
+1 TYPED-BUFFER AS-SRC IR-ARENA:arena
+variable AS-FROM
+variable AS-K
+
+: AS-DO ( -- )
+   0 AS-CTX @  0 AS-DST @  0 AS-SRC @  AS-FROM @ AS-K @ IR-ARENA:APPEND-SPAN ;
+
+: AS-STAGE ( n n -- )
+   {: from:n k:n :}
+   from AS-FROM !
+   k AS-K ! ;
+
+: AS-REFUSES ( n -- )
+   {: expected:n :}
+   [: AS-DO ;] catch expected T= ;
+
+: AS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 0 AS-CTX !
+   c 64 IR-ARENA:NEW {: s:IR-ARENA:arena :}
+   8 0 ?do c s i 10 * IR-ARENA:PUSH drop loop
+   s 0 AS-SRC !
+   c 64 IR-ARENA:NEW {: d:IR-ARENA:arena :}
+   c d 7 IR-ARENA:PUSH drop
+   d 0 AS-DST !
+
+   s" appending no cells appends nothing" T-LABEL
+   0 0 AS-STAGE AS-DO
+   d IR-ARENA:USED 1 T=
+
+   s" a span lands at the end in order" T-LABEL
+   2 5 AS-STAGE AS-DO
+   d IR-ARENA:USED 6 T=
+   d 0 IR-ARENA:READ 7 T=
+   d 1 IR-ARENA:READ 20 T=
+   d 5 IR-ARENA:READ 60 T=
+
+   s" the source keeps its own cells and its own count" T-LABEL
+   s IR-ARENA:USED 8 T=
+   s 2 IR-ARENA:READ 20 T=
+
+   s" a range past the source's cells is refused, and writes nothing" T-LABEL
+   6 3 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
+   d IR-ARENA:USED 6 T=
+
+   s" a negative start is refused" T-LABEL
+   -1 1 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
+
+   s" a negative count is refused" T-LABEL
+   0 -1 AS-STAGE E-IR-ARENA-CEIL AS-REFUSES
+
+   \ The same refusal the append that overran the ceiling would have given, and
+   \ the destination is left with the cells it already had.
+   s" a span past the destination's committed ceiling is refused" T-LABEL
+   c 4 IR-ARENA:NEW {: small:IR-ARENA:arena :}
+   small 0 AS-DST !
+   0 8 AS-STAGE E-IR-ARENA-FULL AS-REFUSES
+   small IR-ARENA:USED 0 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
+   BND [: AS-BODY ;] IR-CTX:WITH-CONTEXT
    SPAN-CASES
    SL-CASE
    WR-CASES

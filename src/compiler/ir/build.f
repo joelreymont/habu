@@ -628,9 +628,33 @@ private
    loop
    dup 0 < if E-IR-BUILD-SLOTS throw then ;
 
+\ ---- starting a module's interner from a prototype ---------------------------
+\ Every module a definition builds interns the same dialect vocabulary again,
+\ because a module's symbols are its own ordinals. A builder created FROM a
+\ prototype starts with that vocabulary already in place at the same ordinals,
+\ so the dialect binding mints its identities instead of looking them up, and
+\ the module's identity and every owner check are exactly what they were.
+\
+\ The prototype is staged like the plan is: set for one creation and cleared
+\ when that creation is over, whether it succeeded or threw, so an ordinary
+\ NEW-BUILDER can never pick one up by accident.
+2 TYPED-BUFFER PROTO-SYM IR-ARENA:arena
+variable PROTO-ON
+0 PROTO-ON !
+
+: PROTO-CLEAR ( -- )
+   0 PROTO-ON ! ;
+
+: SYM-NEW ( IR-CTX:ctx n -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx slot:n :}
+   PROTO-ON @ 0<> if
+      c slot KEY@ 0 PROTO-SYM @ 1 PROTO-SYM @ IR-SYM:NEW-FROM exit
+   then
+   c slot KEY@ slot P-SYMS BCEIL@ slot P-SBYTES BCEIL@ IR-SYM:NEW ;
+
 : SYM-TABLES ( IR-CTX:ctx n -- )
    {: c:IR-CTX:ctx slot:n :}
-   c slot KEY@ slot P-SYMS BCEIL@ slot P-SBYTES BCEIL@ IR-SYM:NEW
+   c slot SYM-NEW
    {: a:IR-ARENA:arena r:IR-ARENA:arena :}
    a slot T-SP TAB!
    r slot T-SR TAB! ;
@@ -752,6 +776,16 @@ public
    ST-LIVE slot BSTATE!
    g slot BGEN!
    g MINT-B ;
+
+\ The same creation, with this module's interner starting as a copy of the
+\ prototype's. The prototype stays the caller's and is not touched; the plan,
+\ the module serial and every check are the ordinary ones.
+: NEW-BUILDER-FROM ( IR-CTX:ctx ptr u8 n n n IR-ARENA:arena IR-ARENA:arena -- IR-BUILD:builder )
+   {: c:IR-CTX:ctx p u:n major:n minor:n pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   pa 0 PROTO-SYM !
+   pr 1 PROTO-SYM !
+   1 PROTO-ON !
+   c p u major minor [: NEW-BUILDER ;] [: PROTO-CLEAR ;] finally ;
 
 \ ---- identity ----------------------------------------------------------------
 : SERIAL ( IR-BUILD:builder -- n )

@@ -469,6 +469,38 @@ public
    at 1+ slot ACOUNT!
    slot AGEN@ at PACK MINT-IDX ;
 
+\ ---- bulk append -------------------------------------------------------------
+\ Append `k` cells of `src`, from its ordinal `from`, to the end of `dst`, in
+\ one commit. This is RESERVE followed by k PUSH calls and nothing else: the
+\ same growth, the same ownership check on the destination, the same resulting
+\ count and the same published ordinals. What it does not do is resolve two
+\ handles, recheck liveness and ownership and mint an index PER CELL, when the
+\ per-cell work is one load and one store - which is what a caller copying a
+\ whole table into a fresh one was paying, and is why this word exists.
+\
+\ THE SOURCE IS READ AND NOT OWNED. A prototype built in one context is copied
+\ into arenas of another, so only the destination is own-checked; reading a live
+\ arena of another context is what OPEN-LIVE and RD@ already allow.
+\
+\ The destination's data address is read AFTER the growth, because growth is
+\ what moves it.
+: APPEND-SPAN ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n n -- )
+   {: c:IR-CTX:ctx dst:IR-ARENA:arena src:IR-ARENA:arena from:n k:n :}
+   k 0 < k LOCAL-MAX > or if E-IR-ARENA-CEIL throw then
+   dst LIVE-SLOT {: d:n :}
+   src LIVE-SLOT {: s:n :}
+   c d OWN-CHECK
+   from 0 < from k + s ACOUNT@ > or if E-IR-ARENA-BOUND throw then
+   k 0= if exit then
+   c d  d ACOUNT@ k +  GROW-TO
+   d ACOUNT@ {: at:n :}
+   s ADATA-FIELD @ {: sb:ptr :}
+   d ADATA-FIELD @ {: db:ptr :}
+   k 0 ?do
+      sb from i + CDIGEST:SLOT@  db at i + CDIGEST:SLOT!
+   loop
+   at k + d ACOUNT! ;
+
 \ Make the capacity for k more cells real, so the next k PUSH calls to this
 \ arena allocate nothing and therefore cannot fail: after this word returns,
 \ every check a PUSH makes - liveness, ownership, capacity - has already been
