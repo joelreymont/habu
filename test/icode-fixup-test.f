@@ -7,21 +7,12 @@ require lib/test.f
 require lib/test/outcome.f
 require lib/memory.f
 require lib/process.f
-require lib/process-argv.f
+require lib/test/subject.f
 
-\ The three ARM64 encoder sources are `require`d, not probed-and-included.
-\ A probe on ASM-INIT decided whether to load asm.f, but ASM-INIT is defined in
-\ icode.f, so the probe only ever answered "is icode.f loaded" - it reported
-\ asm.f absent whenever the two were not loaded together, and loading asm.f a
-\ second time is a duplicate definition, not a no-op. `require` asks the
-\ registry that actually records what is loaded, which is also the registry the
-\ ten-plus existing `require src/arch/arm64/asm.f` sites already share.
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
-\ layout.f is here for one constant: IBUFSZ, the boot source arena that owns half
-\ of the code window's size. The window cases below hold the window against both
-\ of its owners, and one of them lives in that file.
+\ The standalone encoder window includes the boot source arena.
 require src/habu/layout.f
 
 package ICODE-FIXUP-TEST
@@ -495,10 +486,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    0 WORD@ WINDOW-FILL T=
    CODE-CAP-WORDS 1 - WORD@ WINDOW-FILL T= ;
 
-\ One word past the cap. The refusal is a die, not a throw, so it is measured in
-\ a child the way every other icode refusal in this file is - and the die is why
-\ dot habu-make-the-arm64-fa89e081 exists: it asks whether these guards should be
-\ catchable instead of ending the process. This case says what today's exit is.
+\ One word past the cap refuses in an isolated child.
 : EMIT-WINDOW-OVER ( -- )
    CODE-CAP-WORDS FILL-WINDOW
    WINDOW-FILL EMITW ;
@@ -511,26 +499,10 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    CODE-CAP-WORDS ASM-CP !
    WINDOW-FILL EMITW ;
 
-: CHILD-MODE? ( ptr u8 n -- bool )
-   SCRIPT-ARGC 1 <> if 2drop 0 0= 0= exit then
-   0 SCRIPT-ARGV$ 2swap STR= ;
-
-: ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: HB$ ( -- ptr u8 n )
-   s" HABU_UNDER_TEST" GETENV
-   dup 0= if 2drop s" bin/hb" then ;
-
 : TEST-DIAG ( ptr u8 n ptr u8 n -- )
-   {: mode modeu want wantu :}
-   PROC-ARGV-RESET
-   s" --load" ARG+
-   s" test/icode-fixup-test.f" ARG+
-   s" --" ARG+
-   mode modeu ARG+
-   HB$ >LEN OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME
+   {: source:ptr sourceu:n want:ptr wantu:n :}
+   source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
+   SUBJECT:RUN
    ICODE-EXIT-RC T-OUTCOME-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
@@ -538,35 +510,35 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    ERR erru want wantu T$= ;
 
 : TEST-OVERFLOW ( -- )
-   s" overflow" s" icode: out of fixups" TEST-DIAG ;
+   s" EMIT-OVERFLOW" s" icode: out of fixups" TEST-DIAG ;
 
 : TEST-CORRUPT ( -- )
-   s" corrupt-low" s" icode: fixup free list corrupt" TEST-DIAG
-   s" corrupt-future" s" icode: fixup free list corrupt" TEST-DIAG ;
+   s" EMIT-CORRUPT-LOW" s" icode: fixup free list corrupt" TEST-DIAG
+   s" EMIT-CORRUPT-FUTURE" s" icode: fixup free list corrupt" TEST-DIAG ;
 
 : TEST-REDEFINE ( -- )
    0 0= 0= TEST-REBIND-AT
    0 0= TEST-REBIND-AT
-   s" redefine-same" s" icode: label redefined" TEST-DIAG
-   s" redefine-different" s" icode: label redefined" TEST-DIAG ;
+   s" 0 0<> EMIT-REDEFINE" s" icode: label redefined" TEST-DIAG
+   s" 0 0= EMIT-REDEFINE" s" icode: label redefined" TEST-DIAG ;
 
 : TEST-BADKIND ( -- )
-   s" badkind" s" icode: invalid fixup kind" TEST-DIAG
-   s" badkind-patch" s" icode: invalid fixup kind" TEST-DIAG ;
+   s" EMIT-BADKIND" s" icode: invalid fixup kind" TEST-DIAG
+   s" EMIT-BADKIND-PATCH" s" icode: invalid fixup kind" TEST-DIAG ;
 
 : TEST-WINDOW-REFUSES ( -- )
-   s" window-over"   s" icode: code buffer overflow" TEST-DIAG
-   s" window-parked" s" icode: code buffer overflow" TEST-DIAG ;
+   s" EMIT-WINDOW-OVER"   s" icode: code buffer overflow" TEST-DIAG
+   s" EMIT-WINDOW-PARKED" s" icode: code buffer overflow" TEST-DIAG ;
 
 : TEST-REACH-DIAG ( -- )
-   s" rel19-far-fwd"  s" icode: cond branch out of reach" TEST-DIAG
-   s" rel19-far-back" s" icode: cond branch out of reach" TEST-DIAG
-   s" rel26-far-fwd"  s" icode: branch out of reach" TEST-DIAG
-   s" rel26-far-back" s" icode: branch out of reach" TEST-DIAG
-   s" adr-far-fwd"    s" icode: adr out of reach" TEST-DIAG
-   s" adr-far-back"   s" icode: adr out of reach" TEST-DIAG
-   s" loff-over-fwd"  s" icode: label offset out of reach" TEST-DIAG
-   s" loff-over-back" s" icode: label offset out of reach" TEST-DIAG ;
+   s" EMIT-REL19-FAR-FWD"  s" icode: cond branch out of reach" TEST-DIAG
+   s" EMIT-REL19-FAR-BACK" s" icode: cond branch out of reach" TEST-DIAG
+   s" EMIT-REL26-FAR-FWD"  s" icode: branch out of reach" TEST-DIAG
+   s" EMIT-REL26-FAR-BACK" s" icode: branch out of reach" TEST-DIAG
+   s" EMIT-ADR-FAR-FWD"    s" icode: adr out of reach" TEST-DIAG
+   s" EMIT-ADR-FAR-BACK"   s" icode: adr out of reach" TEST-DIAG
+   s" EMIT-LOFF-OVER-FWD"  s" icode: label offset out of reach" TEST-DIAG
+   s" EMIT-LOFF-OVER-BACK" s" icode: label offset out of reach" TEST-DIAG ;
 
 : MAIN ( -- )
    T-RESET
@@ -591,27 +563,7 @@ $D503201F constant WINDOW-FILL                        \ nop, so the fill is legi
    T-REPORT
    s" icode-fixup-test: ok" type cr ;
 
-: RUN ( -- )
-   s" overflow" CHILD-MODE? if EMIT-OVERFLOW exit then
-   s" corrupt-low" CHILD-MODE? if EMIT-CORRUPT-LOW exit then
-   s" corrupt-future" CHILD-MODE? if EMIT-CORRUPT-FUTURE exit then
-   s" redefine-same" CHILD-MODE? if 0 0= 0= EMIT-REDEFINE exit then
-   s" redefine-different" CHILD-MODE? if 0 0= EMIT-REDEFINE exit then
-   s" badkind" CHILD-MODE? if EMIT-BADKIND exit then
-   s" badkind-patch" CHILD-MODE? if EMIT-BADKIND-PATCH exit then
-   s" rel19-far-fwd" CHILD-MODE? if EMIT-REL19-FAR-FWD exit then
-   s" rel19-far-back" CHILD-MODE? if EMIT-REL19-FAR-BACK exit then
-   s" rel26-far-fwd" CHILD-MODE? if EMIT-REL26-FAR-FWD exit then
-   s" rel26-far-back" CHILD-MODE? if EMIT-REL26-FAR-BACK exit then
-   s" adr-far-fwd" CHILD-MODE? if EMIT-ADR-FAR-FWD exit then
-   s" adr-far-back" CHILD-MODE? if EMIT-ADR-FAR-BACK exit then
-   s" loff-over-fwd" CHILD-MODE? if EMIT-LOFF-OVER-FWD exit then
-   s" loff-over-back" CHILD-MODE? if EMIT-LOFF-OVER-BACK exit then
-   s" window-over" CHILD-MODE? if EMIT-WINDOW-OVER exit then
-   s" window-parked" CHILD-MODE? if EMIT-WINDOW-PARKED exit then
-   MAIN ;
-
-RUN
+MAIN
 
 ;using
 ;package
