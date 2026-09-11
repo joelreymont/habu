@@ -280,6 +280,10 @@ SUITE image-lifecycle-tasks
    test/image-lifecycle-tasks.f
 ;SUITE
 
+SUITE native-resource-image
+   test/native-resource-image.f
+;SUITE
+
 SUITE app-image
    test/app-image.f
 ;SUITE
@@ -514,8 +518,7 @@ SUITE engine-candidate-resolver
    test/engine-candidate-test.f
 ;SUITE
 
-\ CPU tasking over pthread. The suite runner starts it in a fresh process; it does
-\ not survive a fork from an image that already has tasking state.
+\ CPU tasking over pthread, including shared storage and task-local FFI staging.
 SUITE tasking-threads
    lib/task-test.f
 ;SUITE
@@ -534,6 +537,7 @@ SUITE ffi-abi
 
 SUITE zip
    lib/zip-test.f
+   lib/zip-lifecycle-test.f
 ;SUITE
 
 SUITE ffi-cabi
@@ -547,6 +551,7 @@ SUITE float-parse
 
 SUITE finite-float-text
    lib/f64-text-test.f
+   lib/f64-text-lifecycle-test.f
 ;SUITE
 
 SUITE ieee-float32
