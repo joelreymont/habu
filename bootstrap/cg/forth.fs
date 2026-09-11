@@ -175,11 +175,11 @@ $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
-$43C0 constant EVAL-FRAME \ re-entrant evaluate save frames, 8 cells each:
-                          \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
-$40 constant EVAL-FRAME-SIZE
-$6 constant EVAL-FRAME-SHIFT
-$10 constant EVAL-MAX-DEPTH
+$43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at rest
+$80 constant EVAL-FRAME-SIZE
+$40 constant EVAL-PREV
+$48 constant EVAL-PKG
+
 $48 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer (friend arena)
 $50 constant TSIG-U-CELL
 $58 constant TCSIG-A-CELL \ TRUSTED: pending created-word effect pointer
@@ -310,26 +310,24 @@ PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
 TXN-STATE-OFF TXN-STATE-LEN + constant PD-TABLE-OFF   \ band base (= old DATA-START)
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
-PD-TABLE-END constant PKGSNAP-OFF
-$40 constant PKGSNAP-STRIDE
-6 constant PKGSNAP-SHIFT
+\ Package/search snapshots are fields of each native-stack evaluator frame.
 0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
 16 constant PKGSNAP-PRI
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
-40 constant PKGSNAP-USE                   \ in-slot: `using`-scope depth at evaluate entry
-PKGSNAP-OFF EVAL-MAX-DEPTH PKGSNAP-STRIDE * + constant PKGSNAP-END
+40 constant PKGSNAP-USE
+
 \ --- `using`-scope import band. MIRROR of src/habu/layout.f, byte-for-byte: the
 \ checker (src/core/checker.f CK-USE-DEPTH-OFF) hard-codes USE-DEPTH-CELL as a
 \ DATA-relative offset and reads it in whatever engine compiled it, so a stage0
 \ engine whose band sits elsewhere would feed the checker heap bytes instead of a
 \ depth. `using NAME` pushes NAME's public wordlist id here; `;using`, `;package`
 \ and the end of an evaluate frame pop back. The depth is 0 at rest, so the band
-\ is transient like PKGSNAP. Offset +16 is native's REPL-line save slot: stage0
+\ is transient. Offset +16 is native's REPL-line save slot: stage0
 \ takes no REPL package/using snapshot, so it stays reserved and unread here.
 16 constant USE-MAX                       \ concurrent `using` capacity (exit on overflow)
-PKGSNAP-END constant USE-BAND-OFF
+PD-TABLE-END $400 + constant USE-BAND-OFF  \ preserve the checker-owned using offset
 USE-BAND-OFF          constant USE-DEPTH-CELL    \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL \ depth saved at `package` open (`;package` restores)
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF      \ public-wid array base (USE-MAX u64 cells)
@@ -434,6 +432,7 @@ variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 variable LPREFMISS  variable LPREFMISSMSG
+variable LEVALREC
 variable LTHROWDISPATCH
 35 constant PREFMISSMSG-LEN
 variable LDEFKWGUARD variable LDEFKWFAIL variable LDEFKWMSG
@@ -635,29 +634,20 @@ previous definitions
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
 \ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
-\ depth-indexed frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
-: C-EVAL-FRAME-ADDR ( n n n -- ) {: depth dst scratch :}
-   dst EVAL-FRAME LIT64,
-   scratch depth EVAL-FRAME-SHIFT LSLI,
-   dst dst scratch ADD,
-   dst DATA dst ADD, ;
-
+\ linked native-stack frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
 : B-EVAL ( -- )
-   LBL {: ok :}
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   11 DATA EVALD-CELL LDR,
-   12 EVAL-MAX-DEPTH MOVZ,  11 12 CMP,  C-LT ok BCOND,
-      BRK,
-   ok LBL,
-   11 14 15 C-EVAL-FRAME-ADDR                        \ x14 = &frame[EVALD]
+   SP SP EVAL-FRAME-SIZE SUBI,
+   14 SP 0 ADDI,
+   11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
+   14 DATA EVAL-TOP-CELL STR,
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    30 14 16 STR,                                     \ leaf prim: x30 = caller return
-   11 SP 0 ADDI,  11 14 24 STR,
+   11 SP EVAL-FRAME-SIZE ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
-   11 DATA EVALD-CELL LDR,
-   12 PKGSNAP-OFF LIT64,  13 11 PKGSNAP-SHIFT LSLI,  12 12 13 ADD,  12 DATA 12 ADD,
+   12 14 EVAL-PKG ADDI,
    13 DATA CUR-CELL LDR,        13 12 PKGSNAP-CUR STR,
    13 DATA PKG-PUB-CELL LDR,    13 12 PKGSNAP-PUB STR,
    13 DATA PKG-PRI-CELL LDR,    13 12 PKGSNAP-PRI STR,
@@ -969,6 +959,8 @@ previous definitions
 
 : BTHROW ( -- )
    A G-POP                               \ exc -> x9
+   15 9 0 ADDI,
+   12 DATA EVALD-CELL LDR,  12 LEVALREC @ CBNZ,
    LTHROWDISPATCH @ LBL,
    11 DATA 8 LDR,                        \ HND
    LBL {: lnoh :}  11 lnoh CBZ,
@@ -1793,7 +1785,7 @@ variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
-variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
+variable LPHOOK         variable LPCELLEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
 variable LPDECLTXN     variable LPGENDECL     variable LPDECLEVENT    variable LPSTRUCTMAKE
@@ -1974,7 +1966,6 @@ create ZBYTE 0 c,
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-LOAD-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-LOAD-ROW ;
 
@@ -2061,7 +2052,6 @@ create ZBYTE 0 c,
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PATH-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PATH-ROW ;
 
@@ -2300,7 +2290,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PROVIDE-ROW ;
 
@@ -6410,18 +6399,17 @@ variable P2SK
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
 \ Restore the using-scope depth to the entry snapshot of the frame being left
-\ (PKGSNAP[EVALD].PKGSNAP-USE; both callers have already decremented EVALD).
+\ held in the native-stack evaluator frame at x14.
 \ Usings are file-local: leaving an evaluate closes whatever it opened, on the
 \ clean path and on the error path alike. x9/x15 scratch; x14 (frame addr) kept.
 : EMIT-USE-DEPTH-RESTORE ( -- )
-   9 DATA EVALD-CELL LDR,
-   15 PKGSNAP-OFF LIT64,  9 9 PKGSNAP-SHIFT LSLI,  15 15 9 ADD,  15 DATA 15 ADD,
+   15 14 EVAL-PKG ADDI,
    9 15 PKGSNAP-USE LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR, ;
 
 : EMIT-EVAL-UNDEF-ROLLBACK ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
-   9 14 15 C-EVAL-FRAME-ADDR
+   14 DATA EVAL-TOP-CELL LDR,
    CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
    9 14 56 LDR,  9 DATA DP-CELL STR,
    EMIT-RESET-COMPILE-STATE
@@ -6429,6 +6417,7 @@ variable P2SK
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 1 MOVZ,  9 DATA EVALERR-CELL STR,
    EMIT-USE-DEPTH-RESTORE
+   9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
    9 14 24 LDR,  SP 9 0 ADDI,
    9 14 16 LDR,  9 BR, ;
 
@@ -6443,13 +6432,13 @@ variable P2SK
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B, ;
 
-: EMIT-PREFMISS-RECOVER ( -- )
+: EMIT-EVAL-THROW-RECOVER ( -- )
+   LEVALREC @ LBL,
    LBL LBL LBL {: loop pop deliver :}
-   15 70 MOVZ,
    11 DATA HND-CELL LDR,
    loop LBL,
       12 DATA EVALD-CELL LDR,  12 deliver CBZ,
-      12 12 1 SUBI,  12 13 14 C-EVAL-FRAME-ADDR
+      13 DATA EVAL-TOP-CELL LDR,
       14 13 24 LDR,
       11 pop CBZ,
       11 14 CMP,  C-LS deliver BCOND,
@@ -6459,7 +6448,7 @@ variable P2SK
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
       12 13 56 LDR,  12 DATA DP-CELL STR,
       9 DATA EVALD-CELL LDR,  9 9 1 SUBI,
-      10 PKGSNAP-OFF LIT64,  12 9 PKGSNAP-SHIFT LSLI,  10 10 12 ADD,  10 DATA 10 ADD,
+      10 13 EVAL-PKG ADDI,
       12 10 PKGSNAP-CUR LDR,     12 DATA CUR-CELL STR,
       12 10 PKGSNAP-PUB LDR,     12 DATA PKG-PUB-CELL STR,
       12 10 PKGSNAP-PRI LDR,     12 DATA PKG-PRI-CELL STR,
@@ -6468,6 +6457,7 @@ variable P2SK
       12 10 PKGSNAP-USE LDR,                                  \ roll the using-scope depth back too
       10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  12 10 0 STR,
       12 1 MOVZ,  12 DATA PKGRESYNC-CELL STR,
+      12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,
       9 DATA EVALD-CELL STR,
       EMIT-RESET-COMPILE-STATE
@@ -6481,7 +6471,8 @@ variable P2SK
 : EMIT-PREFMISS ( -- )
    LPREFMISS @ LBL,
    0 2 MOVZ,  1 LPREFMISSMSG @ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
-   EMIT-PREFMISS-RECOVER ;
+   15 70 MOVZ,  LEVALREC @ B,
+   EMIT-EVAL-THROW-RECOVER ;
 
 : EMIT-UNDEF ( n -- ) {: lundef :}
    lundef LBL,
@@ -6496,11 +6487,13 @@ variable P2SK
 
 : EMIT-EVAL-CLEAN-EXIT ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
-   9 14 15 C-EVAL-FRAME-ADDR
+   14 DATA EVAL-TOP-CELL LDR,
    9 14 0 LDR,  9 DATA INP-CELL STR,
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
    EMIT-USE-DEPTH-RESTORE                             \ end of load file: usings do not leak to the caller
+   9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
+   9 14 24 LDR,  SP 9 0 ADDI,
    9 14 16 LDR,  9 BR, ;
 
 : EMIT-REPL-READ ( n -- ) {: lmain :}
@@ -6557,6 +6550,7 @@ variable P2SK
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !
+   LBL LEVALREC !
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;
 
@@ -6598,7 +6592,7 @@ variable P2SK
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
-   LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
+   LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !

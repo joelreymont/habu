@@ -2,6 +2,7 @@
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/fmt.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
 
@@ -27,6 +28,7 @@ variable TARGET-U
 variable LINK-U
 variable LOADED
 variable SAVED-DEPTH
+variable SAVED-NAMED
 
 public
 : BUMP ( n -- ) LOADED +! ;
@@ -45,12 +47,14 @@ private
 
 : RESTORED ( -- )
    CURRENT$ SAVED-ROOT SAVED-ROOT-U @ T$=
-   INCLUDE-DEPTH @ SAVED-DEPTH @ T= ;
+   INCLUDE-DEPTH @ SAVED-DEPTH @ T=
+   SCRIPT-NAMED-LOAD? if 1 else 0 then SAVED-NAMED @ T= ;
 
 : PREP ( -- )
    CLEANUP-RESET 0 LOADED !
    CURRENT$ SAVED-ROOT SAVED-ROOT-U COPY!
    INCLUDE-DEPTH @ SAVED-DEPTH !
+   SCRIPT-NAMED-LOAD? if 1 else 0 then SAVED-NAMED !
    s" habu-source-root" TMPDIR-MKDIR CANONICAL TTRUE ROOT ROOT-U COPY!
    ROOT$ CLEANUP-TREE+
    ROOT$ s" a" JOIN APP-A APP-A-U COPY!
@@ -123,9 +127,95 @@ private
    4 PATH$ s" leaf.f" FALLBACK-PATH CANONICAL TTRUE T$=
    RESTORED ;
 
+\ Each file resumes after its child. Distinct entry/exit ordinals expose
+\ overwritten parent source bytes as well as missing or out-of-order loads.
+40 constant DEEP-COUNT
+variable ACTIVE
+variable VISITS
+
+public
+
+: ENTER ( n -- )
+   ACTIVE @ T= 1 ACTIVE +! 1 VISITS +!
+   CURRENT$ A$ T$=
+   SCRIPT-NAMED-LOAD? TFALSE ;
+
+: LEAVE-FRAME ( n -- )
+   -1 ACTIVE +! ACTIVE @ T=
+   CURRENT$ A$ T$= ;
+
+\ Unlike nested loads, these evaluations have no intervening catch: one throw
+\ must unwind every escaped evaluator frame, including changed package/usings.
+: EVAL-DOWN ( n -- n )
+   dup 0= if drop 7 exit then
+   s" 1- SOURCE-ROOT-TEST:EVAL-DOWN 1+" INCLUDE-EVALUATE ;
+
+: EVAL-FAIL ( n -- n )
+   dup 0= if
+      s" ;package package EVAL-ESCAPED using FMT 9133 throw" INCLUDE-EVALUATE
+   then
+   s" 1- SOURCE-ROOT-TEST:EVAL-FAIL" INCLUDE-EVALUATE ;
+
+private
+
+: DEEP-NAME+ ( ptr u8 n n -- ) {: ix:n :}
+   SB-APPEND s" /" SB-APPEND ix FMT:SB-U s" .f" SB-APPEND ;
+
+: DEEP-PATH ( ptr u8 n n -- ptr u8 n )
+   SB-RESET DEEP-NAME+ SB$ A-PATH ;
+
+: DEEP-MAKE ( ptr u8 n bool -- ) {: prefix:ptr prefixu:n fail:bool :}
+   prefix prefixu A-PATH MAKE-DIRS
+   DEEP-COUNT 0 ?do
+      prefix prefixu i DEEP-PATH TARGET TARGET-U COPY!
+      SB-RESET i FMT:SB-U S\"  SOURCE-ROOT-TEST:ENTER\n" SB-APPEND
+      i DEEP-COUNT 1- < if
+         S\" s\" " SB-APPEND prefix prefixu i 1+ DEEP-NAME+
+         fail i 2 mod 0= or if
+            S\" \" included\n" SB-APPEND
+         else
+            S\" \" required\n" SB-APPEND
+         then
+      else
+         fail if S\" 9132 throw\n" SB-APPEND else
+            S\" require shared.f\nrequire ./shared.f\n" SB-APPEND
+         then
+      then
+      i FMT:SB-U S\"  SOURCE-ROOT-TEST:LEAVE-FRAME\n" SB-APPEND
+      TARGET TARGET-U @ SB$ WRITE-ALL
+   loop ;
+
+: DEEP-THROW ( -- )
+   A$ [: s" bad/0.f" included ;] WITH ;
+
+: DEEP-GOOD ( -- )
+   A$ [: s" good/0.f" required ;] WITH ;
+
+: DEEP-EVALS ( -- )
+   40 EVAL-DOWN 47 T=
+   [: 40 EVAL-FAIL drop ;] 9133 TTHROWSQ
+   RESTORED
+   s" public : AFTER-DEEP-EVAL ( -- n ) 17 ;" INCLUDE-EVALUATE
+   s" SOURCE-ROOT-TEST:AFTER-DEEP-EVAL 17 T=" INCLUDE-EVALUATE
+   40 EVAL-DOWN 47 T= ;
+
+: DEEP-LOADS ( -- )
+   s" deeply nested throws restore the caller before another dependency chain" T-LABEL
+   s" shared.f" A-PATH s" 7 SOURCE-ROOT-TEST:BUMP" WRITE-ALL
+   s" bad" true DEEP-MAKE
+   s" good" false DEEP-MAKE
+   0 ACTIVE ! 0 VISITS ! 0 LOADED !
+   [: DEEP-THROW ;] 9132 TTHROWSQ
+   VISITS @ DEEP-COUNT T= RESTORED
+   0 ACTIVE ! 0 VISITS !
+   DEEP-GOOD
+   ACTIVE @ 0 T= VISITS @ DEEP-COUNT T= LOADED @ 7 T= RESTORED
+   DEEP-GOOD
+   VISITS @ DEEP-COUNT T= LOADED @ 7 T= RESTORED ;
+
 : RUN ( -- )
    T-RESET PREP
-   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE
+   LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE DEEP-LOADS DEEP-EVALS
    CLEANUP-RUN T-REPORT ;
 
 RUN

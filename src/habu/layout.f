@@ -428,13 +428,14 @@ $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
-$43C0 constant EVAL-FRAME
-$40 constant EVAL-FRAME-SIZE
-$6 constant EVAL-FRAME-SHIFT
-$10 constant EVAL-MAX-DEPTH
+$43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at rest
+$80 constant EVAL-FRAME-SIZE
+$40 constant EVAL-PREV
+$48 constant EVAL-PKG
+
 \ $2780..$27A8 (TSIG/TCSIG/CRSIG) relocated into the friend arena above.
 \ RPKG-* / PKGRESYNC-CELL (dot habu-recovery-pkg-scope-e0bd98e2): the REPL-line
-\ analogue of the eval-frame PKGSNAP band. EM-REPL-READ (LREAD) snapshots the five
+\ analogue of the evaluator frame’s package snapshot. EM-REPL-READ (LREAD) snapshots the five
 \ live package-scope cells at line-start; EM-REPL-RECOVER (LRREC) restores them so a
 \ compile error typed at the tty REPL rolls the open-package scope back to the
 \ line-start scope, alongside the existing RSAVCP/RSAVND/RSAVDP/RSAVSP rollback.
@@ -523,8 +524,8 @@ $27C8 constant CLAIMS
 \
 \ WHERE THEY HAD TO GO, RE-DERIVED ON THE MERGED LAYOUT. WINDOW/WLO/RLO take the
 \ last three free cells of the reclaimed $27C0..$27E8 band, which then has none
-\ left. RHI and CF go ABOVE THE EVALUATOR FRAMES, at $47C0/$47C8 in the unclaimed
-\ run between the frames' end ($43C0 + EVAL-MAX-DEPTH * EVAL-FRAME-SIZE = $47C0)
+\ left. RHI and CF go ABOVE THE EVALUATOR POINTER BAND, at $47C0/$47C8 in the unclaimed
+\ run above the reserved evaluator-pointer band ($43C0..$47C0)
 \ and the lowering transaction state ($5000) - swept for a claimant across src lib
 \ tools test maki bootstrap before taking them. They are NOT in the $40C8..$43A8
 \ gap: that run is reserved for widening the protected-WID bitmap, which cannot be
@@ -864,46 +865,31 @@ TXN-STATE-OFF TXN-STATE-LEN + constant PD-TABLE-OFF   \ band base (= old DATA-ST
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 
 \ --- Package-scope eval-frame snapshot band (dot habu-recovery-pkg-scope-e0bd98e2) ---
-\ A compile-error recovery must roll the OPEN-PACKAGE scope back to the boundary
-\ scope, exactly as the eval frame rolls back CP/NDICT/DP/XDS: an in-package
-\ definition aborted inside `evaluate` must NOT leave the package dangling open so
-\ that later top-level defines land in it silently. Package scope is five live
-\ cells (CUR/PKG-PUB/PKG-PRI/PKG-PARENT/PKG-REC); WIDN is monotonic and is NOT
-\ rolled back (stale wids are harmless, like NDICT-truncated records). Unlike the
-\ zeroed compile-state (EM-RESET-COMPILE-STATE), package scope can be legitimately
-\ NON-zero across a boundary (a package open before the evaluate/REPL line), so it
-\ is a boundary SNAPSHOT+RESTORE, not a reset. B-EVAL (habu1.f) saves the five
-\ cells into PKGSNAP[EVALD]; the LEVALREC pop loop restores PKGSNAP[EVALD-1] per
-\ escaped frame. Eight-cell power-of-2 stride (five used) so the slot address is a
-\ shift, mirroring EVAL-FRAME-SHIFT. Transient (empty at rest / snapshot time). It
-\ sits at the TOP of the reserved region and bumps DATA-START (PD-table / protected-
-\ WID growth precedent) so no existing engine offset moves.
-PD-TABLE-END constant PKGSNAP-OFF
-$40 constant PKGSNAP-STRIDE              \ 8-cell slot (5 used), power-of-2 for shift addressing
-6 constant PKGSNAP-SHIFT
-0  constant PKGSNAP-CUR                   \ in-slot offsets, matching the C-PACKAGE cells below
+\ Evaluator entry snapshots package/search state in its native stack frame.
+\ Clean exit restores using depth; throw recovery also restores package scope.
+\ Package/search snapshots are fields of each native-stack evaluator frame.
+0  constant PKGSNAP-CUR
 8  constant PKGSNAP-PUB
 16 constant PKGSNAP-PRI
 24 constant PKGSNAP-PARENT
 32 constant PKGSNAP-REC
-40 constant PKGSNAP-USE                   \ in-slot: `using`-scope depth (slot 5 of the 8-cell stride)
-PKGSNAP-OFF EVAL-MAX-DEPTH PKGSNAP-STRIDE * + constant PKGSNAP-END
+40 constant PKGSNAP-USE
+
 
 \ --- `using`-scope import band (dot habu-using-import-pkg-a07dd7ba) ---
 \ Consumer-side namespace import: `using NAME` makes package NAME's PUBLIC wordlist
 \ visible to bare lookup until `;using`, `;package`, or the end of the load file.
 \ Live state is a small fixed-capacity stack of public wordlist IDs plus a depth
-\ counter, all in one DATA band above PKGSNAP (bumping DATA-START, the PKGSNAP /
-\ protected-WID growth precedent, so no existing engine offset moves). The depth
+\ counter in a DATA band whose offset is shared with the checker. The depth
 \ cell is the single source of truth for how many usings are live: engine machine
 \ code owns it (C-USING pushes, C-END-USING pops, `package`/`;package` and the
 \ eval-frame / REPL boundaries save+restore it), and the checker reads the same
 \ cell through `data-base USE-DEPTH-CELL +` so its parallel package-name mirror
 \ (checker.f CHK-USE-NAMES) is bounded by the identical depth with no separate
 \ counter to drift. The depth is always 0 at rest (usings are file-local and closed
-\ before seal/snapshot), so the band is transient like PKGSNAP.
+\ before seal/snapshot), so the band is transient.
 16 constant USE-MAX                       \ concurrent `using` capacity (E-code on overflow)
-PKGSNAP-END constant USE-BAND-OFF
+PD-TABLE-END $400 + constant USE-BAND-OFF  \ preserve the checker-owned using offset
 USE-BAND-OFF          constant USE-DEPTH-CELL      \ live using depth (u64)
 USE-BAND-OFF 8 +      constant USE-PKG-SAVE-CELL   \ depth saved at `package` open (`;package` restores)
 USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ depth saved at REPL line start (recover restores)
@@ -1167,8 +1153,8 @@ $43B8 constant B0-CELL           \ first address of its code span
 
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
-\ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
-\ frames occupy $43C0..$47C0, with PROT:RHI/PROT:CF taking the two cells directly
+\ >= DATA-START; task-user cells stop at EVAL-TOP-CELL. Its reserved band
+\ ends at $47C0, with PROT:RHI/PROT:CF taking the two cells directly
 \ above them. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
 SNAP-RELOC:XTCELL-END constant DATA-START

@@ -1844,11 +1844,9 @@ s" TPNI" 1 parse-imm
 : TPN2 ( -- n ) TPNI beta 7 ;
 TPN2 7 T=
 
-\ evaluate frame storage must not overlap the JIT virtual value stack.
-: TEVAL-FRAME-END ( -- n )
-   EVAL-FRAME EVAL-MAX-DEPTH EVAL-FRAME-SIZE * + ;
-EVAL-FRAME VVAL-OFF VSMAX cells + >= -1 T=
-TEVAL-FRAME-END DATA-START <= -1 T=
+\ The evaluator's stack-frame pointer stays outside the JIT value stack.
+EVAL-TOP-CELL VVAL-OFF VSMAX cells + >= -1 T=
+EVAL-TOP-CELL CELL + DATA-START <= -1 T=
 s" : TEVAL-HI-CALLEE ( n n n n n n n -- ) {: a:n b:n c:n d:n e:n f:n g:n :} a drop b drop c drop d drop e drop f drop g drop ; : TEVAL-HI-CALL ( -- ) 1 2 3 4 5 6 7 TEVAL-HI-CALLEE ;" evaluate
 : TEVAL-PARSE ( -- )
    parse-name 5 T= c@ 103 T= ;

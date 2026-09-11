@@ -8149,7 +8149,7 @@ public
    11 DATA 8 LDR,                                     \ x11 = nearest handler (read once)
    LEVLL LABEL@ LBL,
       12 DATA EVALD-CELL LDR,  12 LEVLD LABEL@ CBZ,   \ no eval frame left → unwind to handler
-      12 12 1 SUBI,  12 13 14 C-EVAL-FRAME-ADDR       \ x13 = &frame[EVALD-1]
+      13 DATA EVAL-TOP-CELL LDR,                     \ x13 = current frame
       14 13 24 LDR,                                   \ x14 = eval-entry SP (boundary); x13 stays &frame
       11 LEVLP LABEL@ CBZ,                            \ no handler → pop (escape)
       11 14 CMP,  C-LS LEVLD LABEL@ BCOND,            \ handler inside this frame → unwind to it
@@ -8158,11 +8158,8 @@ public
       12 13 8 LDR,   12 DATA INE-CELL STR,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
       12 13 56 LDR,  12 DATA DP-CELL STR,
-      \ roll the open-package scope back to this frame's boundary (PKGSNAP[EVALD-1]),
-      \ parallel to CP/NDICT/DP above: an in-package define aborted inside evaluate must
-      \ not leave the package dangling. x11(handler)/x13(&frame)/x15(code) preserved; x9/x10 scratch.
-      9 DATA EVALD-CELL LDR,  9 9 1 SUBI,                    \ x9 = EVALD-1 (pre-decrement index)
-      10 PKGSNAP-OFF LIT64,  9 9 PKGSNAP-SHIFT LSLI,  10 10 9 ADD,  10 DATA 10 ADD,   \ x10 = &PKGSNAP[EVALD-1]
+      \ Restore package/search state from this escaped native-stack frame.
+      10 13 EVAL-PKG ADDI,
       9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
       9 10 PKGSNAP-PUB LDR,     9 DATA PKG-PUB-CELL STR,
       9 10 PKGSNAP-PRI LDR,     9 DATA PKG-PRI-CELL STR,
@@ -8170,6 +8167,7 @@ public
       9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
       9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained at next LMAIN)
+      12 13 EVAL-PREV LDR,  12 DATA EVAL-TOP-CELL STR,
       15 DATA EVALERR-CELL STR,                       \ EVALERR = code
       12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
       EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
@@ -8385,18 +8383,15 @@ public
 
 : EM-EVAL-CLEAN-EXIT ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
-   9 14 15 C-EVAL-FRAME-ADDR
+   14 DATA EVAL-TOP-CELL LDR,
    9 14 0 LDR,  9 DATA INP-CELL STR,
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
-   \ end of load file: restore the using-scope depth to this frame's entry snapshot
-   \ (PKGSNAP[EVALD].PKGSNAP-USE) so usings opened in the evaluated source do not leak
-   \ to the caller. Package scope deliberately persists across a clean include; usings
-   \ are file-local. x15 = &PKGSNAP[idx]; x9 = value.
-   9 DATA EVALD-CELL LDR,
-   15 PKGSNAP-OFF LIT64,  9 9 PKGSNAP-SHIFT LSLI,  15 15 9 ADD,  15 DATA 15 ADD,
+   \ Usings are file-local; package scope persists across a clean include.
+   15 14 EVAL-PKG ADDI,
    9 15 PKGSNAP-USE LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR,
+   9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
    9 14 24 LDR,  SP 9 0 ADDI,
    9 14 16 LDR,  9 BR, ;
 

@@ -5,14 +5,11 @@
 
 $400 constant INCLUDE-PATH-CAP
 $100000 constant INCLUDE-BUF-CAP  \ checker.f crossed the old 512 KiB slot
-$10 constant INCLUDE-MAX-DEPTH  \ typed-lib require chains outgrew 8 (2026-07-15)
 $200 constant REQUIRE-MAX  \ composed maki+stdlib require closure crossed 256 (2026-07-20)
-$1002 constant INCLUDE-MAP-PRIVATE-ANON
 $1 constant INCLUDE-PROBE-CAP
 $4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
 $37D8 constant INCLUDE-EVALERR-CELL
-INCLUDE-MAX-DEPTH INCLUDE-BUF-CAP * constant INCLUDE-BUF-TOTAL
 INCLUDE-PATH-CAP 1 + constant REQUIRE-SLOT-BYTES
 
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
@@ -20,7 +17,6 @@ create INCLUDE-PROBE INCLUDE-PROBE-CAP allot
 create REQUIRE-PATHS REQUIRE-MAX REQUIRE-SLOT-BYTES * allot
 create REQUIRE-LENS REQUIRE-MAX cells allot
 
-variable INCLUDE-BUFS-A
 variable INCLUDE-DEPTH
 variable INCLUDE-FD
 variable INCLUDE-U
@@ -313,11 +309,6 @@ public
 
 using SOURCE-ROOT
 
-\ INCLUDE-MMAP-PTR refines the checked file mapping; INCLUDE-EVALUATE executes
-\ its validated mapped bytes. Syscall-result provenance and evaluate are primitive
-\ boundaries. Retirement: habu-primitive-effect-axiom-1119f176.
-TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
-
 : INCLUDE-DIE ( ptr u8 n -- )
    INCLUDE-IO-RC die ;
 
@@ -492,54 +483,13 @@ $0A INCLUDE-LF 0 ZBYTE!
    0 INCLUDE-PATH INCLUDE-PATH-U @ ZBYTE!
    INCLUDE-PATH ;
 
-: INCLUDE-CHECK-DEPTH ( n -- )
-   dup 0 < if s" include: depth underflow" INCLUDE-DIE then
-   INCLUDE-MAX-DEPTH >= if s" include: nested too deeply" INCLUDE-DIE then ;
-
-\ ---- which loads the command line asked for, by name ---------------------
-\
-\ `bin/hb --load a.f b.f` appends one `s" a.f" script-required` per argv file
-\ (src/habu/habu2.f C-SOURCE-APPEND-ARG), so the loader knows which loads the
-\ user named and which are dependencies pulled in underneath them. A tool that
-\ must act only when it IS the entry point - tools/build-fixpoint.f runs its
-\ CLI verb then, and must stay inert when another tool requires it - used to
-\ read INCLUDE-DEPTH 0 for that, which was true only while `--load` inlined its
-\ argv files into the top-level stream. The depth was a proxy; this is the
-\ fact, and it is recorded per frame so a nested require inside a named file
-\ answers no.
-create SCRIPT-NAMED-FRAME INCLUDE-MAX-DEPTH cells allot
-variable SCRIPT-NAMED-PEND              \ the next INCLUDE-PUSH opens a named frame
-
-: SCRIPT-NAMED-SLOT ( n -- ptr n )
-   cells SCRIPT-NAMED-FRAME + ;
+\ Each active load owns its source bytes until evaluation returns. A linked
+\ mapping keeps parent buffers stable without imposing a nesting limit.
+variable SCRIPT-NAMED-PEND
 
 : SCRIPT-NAMED-PEND! ( bool -- )
    SCRIPT-NAMED-PEND ! ;
 
-: INCLUDE-PUSH ( -- )
-   INCLUDE-DEPTH @ INCLUDE-CHECK-DEPTH
-   SCRIPT-NAMED-PEND @ INCLUDE-DEPTH @ SCRIPT-NAMED-SLOT !
-   INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   INCLUDE-DEPTH @ 1 + INCLUDE-DEPTH ! ;
-
-: INCLUDE-POP ( -- )
-   INCLUDE-DEPTH @ 1 - dup INCLUDE-CHECK-DEPTH
-   INCLUDE-DEPTH ! ;
-
-: INCLUDE-BUFS@ ( -- ptr u8 )
-   INCLUDE-BUFS-A @ INCLUDE-MMAP-PTR ;
-
-: INCLUDE-ALLOC-BUFS ( -- )
-   INCLUDE-BUFS-A @ 0= if
-      0 INCLUDE-BUF-TOTAL 3 INCLUDE-MAP-PRIVATE-ANON -1 0 mmap
-      dup 0 < if s" include: buffer mmap failed" INCLUDE-DIE then
-      INCLUDE-BUFS-A !
-   then ;
-
-: INCLUDE-SLOT ( -- ptr u8 )
-   INCLUDE-ALLOC-BUFS
-   INCLUDE-DEPTH @ 1 - dup INCLUDE-CHECK-DEPTH
-   INCLUDE-BUF-CAP * INCLUDE-BUFS@ + ;
 
 \ A failed open is almost always a typo or a moved file, and the one thing the
 \ reader needs is WHICH path. The message used to drop it even though
@@ -564,21 +514,6 @@ variable SCRIPT-NAMED-PEND              \ the next INCLUDE-PUSH opens a named fr
    INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
    INCLUDE-RD @ 0 > if s" include: file too large" INCLUDE-IO-DIE then
    INCLUDE-TRUE ;
-
-: INCLUDE-READ-DONE? ( -- bool )
-   INCLUDE-U @ INCLUDE-BUF-CAP >= if INCLUDE-PROBE-OVERFLOW exit then
-   INCLUDE-FD @ INCLUDE-SLOT INCLUDE-U @ + INCLUDE-BUF-CAP INCLUDE-U @ - read INCLUDE-RD !
-   INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
-   INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
-   INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
-   INCLUDE-FALSE ;
-
-: INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
-   INCLUDE-OPEN
-   0 INCLUDE-U !
-   begin INCLUDE-READ-DONE? 0= while repeat
-   INCLUDE-CLOSE
-   INCLUDE-SLOT INCLUDE-U @ ;
 
 : INCLUDE-EVALERR? ( -- bool )
    data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
@@ -708,15 +643,65 @@ public
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
 
 package SOURCE-ROOT
+private
+
+2 cells constant HEADER-BYTES
+HEADER-BYTES INCLUDE-BUF-CAP + constant MAP-BYTES
+variable TOP
+
+: TOP@ ( -- ptr u8 ) TOP 0 ptr-field @ ;
+: TOP! ( ptr u8 -- ) TOP 0 ptr-field ! ;
+
+: CHECK-ACTIVE ( -- )
+   INCLUDE-DEPTH @ 0 <= if s" include: depth underflow" INCLUDE-DIE then ;
+
+
+: PUSH ( -- )
+   MAP-BYTES map-anon 0= 0= if drop INCLUDE-IO-RC throw then {: frame:ptr :}
+   TOP@ frame 0 ptr-field !
+   SCRIPT-NAMED-PEND @ frame CELL + c!
+   frame TOP!
+   INCLUDE-FALSE SCRIPT-NAMED-PEND!
+   1 INCLUDE-DEPTH +! ;
+
+: POP ( -- n )
+   CHECK-ACTIVE
+   TOP@ {: frame:ptr :}
+   frame 0 ptr-field @ TOP!
+   -1 INCLUDE-DEPTH +!
+   frame MAP-BYTES munmap ;
+
+: SOURCE ( -- ptr u8 ) CHECK-ACTIVE TOP@ HEADER-BYTES + ;
+
+: INCLUDE-READ-DONE? ( -- bool )
+   INCLUDE-U @ INCLUDE-BUF-CAP >= if INCLUDE-PROBE-OVERFLOW exit then
+   INCLUDE-FD @ SOURCE INCLUDE-U @ + INCLUDE-BUF-CAP INCLUDE-U @ - read INCLUDE-RD !
+   INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
+   INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
+   INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
+   INCLUDE-FALSE ;
+
+: INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
+   INCLUDE-OPEN
+   0 INCLUDE-U !
+   begin INCLUDE-READ-DONE? 0= while repeat
+   INCLUDE-CLOSE
+   SOURCE INCLUDE-U @ ;
 
 : LOAD-CURRENT ( -- )
-   INCLUDE-PUSH
-   [: INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-READ-ALL INCLUDE-EVALUATE ;] catch
-   INCLUDE-POP
-   dup 0= 0= if throw then drop
+   PUSH
+   [: INCLUDE-PATH INCLUDE-PATH-U @ INCLUDE-READ-ALL INCLUDE-EVALUATE ;] catch {: rc:n :}
+   INCLUDE-CLOSE
+   POP {: release:n :}
+   rc 0= 0= if rc throw then
+   release 0 < if INCLUDE-IO-RC throw then
    INCLUDE-EVALERR? if s" include: evaluation failed" INCLUDE-EVAL-DIE then ;
 
 public
+
+: NAMED? ( -- bool )
+   INCLUDE-DEPTH @ 0= if INCLUDE-FALSE exit then
+   TOP@ CELL + c@ 0= 0= ;
 
 : LOAD ( ptr u8 n -- )
    INCLUDE-PATH0 drop
@@ -754,8 +739,7 @@ public
 
 \ Is the file being loaded right now one the command line named?
 : SCRIPT-NAMED-LOAD? ( -- bool )
-   INCLUDE-DEPTH @ 0= if INCLUDE-FALSE exit then
-   INCLUDE-DEPTH @ 1 - SCRIPT-NAMED-SLOT @ 0= 0= ;
+   SOURCE-ROOT:NAMED? ;
 
 : provided ( ptr u8 n -- )
    RESOLVE {: known:bool :}
@@ -841,25 +825,14 @@ public
    DISCOVERY-OFF
    EVENTS-RESET ;
 
-\ Snapshot preparation adds the one thing only a snapshot needs: the mapped
-\ include buffers do not survive the image, so the pointer is dropped and the
-\ restored process maps fresh ones on its next load.
-\
-\ It does NOT touch INCLUDE-DEPTH. The depth counts the loads in flight, which
-\ belong to the caller, and a snapshot is only meaningful when there are none -
-\ so this asks instead of assuming. Zeroing it was the old shape, and it made
-\ the word look like a general "reset the include subsystem": a caller that
-\ used it that way and then returned had its own frame silently erased and
-\ underflowed at INCLUDE-POP (test/compiler/ir-id-replay.f, found when `--load`
-\ started loading its argv files through `required`). Callers that want the
-\ resettable half now say INCLUDE-RESET-SCRATCH and say it at any depth.
+\ Every source mapping is released when its load returns. Snapshot preparation
+\ requires no load in flight and clears only process-local resolver scratch.
 : INCLUDE-SNAPSHOT-PREPARE ( -- )
    INCLUDE-DEPTH @ 0= 0= if
       s" include: snapshot prepare under an open load" INCLUDE-DIE
    then
    INCLUDE-RESET-SCRATCH
-   RESET
-   0 INCLUDE-BUFS-A ! ;
+   RESET ;
 
 \ ---- what the ENGINE provides, as opposed to what this process has loaded ---
 \

@@ -243,8 +243,11 @@ public
   the working-directory fallback keep that fallback root for their dependencies.
   The process working directory never changes. `SOURCE-ROOT:WITH`
   `( ptr u8 n [ -- ] -- )` supplies an explicit scoped root and restores the
-  caller's root when the quotation returns or throws. Discovery, checker
-  dependency collection, and content closures retain the same canonical paths
+  caller's root when the quotation returns or throws. Nested loads keep each
+  parent's source bytes alive until it returns and release the buffers on normal
+  return or throw; the loader and evaluator impose no fixed nesting count.
+  Discovery, checker dependency collection, and content closures retain the same
+  canonical paths
   and owner roots as loading.
 
   The

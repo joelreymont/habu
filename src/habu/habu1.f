@@ -483,10 +483,6 @@ variable LNX-ENV
 variable LNX-IN
 variable LNX-OUT
 variable TIME-OK
-variable EVAL-DEPTH
-variable EVAL-DST
-variable EVAL-SCRATCH
-variable EVAL-OK
 variable PS-LOOP
 variable PS-DONE
 variable CMP-COND
@@ -1338,43 +1334,26 @@ variable SZA-I
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
-\ labels). End-of-buffer (LEXIT), when EVALD>0, restores the depth-indexed frame
+\ labels). End-of-buffer (LEXIT), when EVALD>0, restores the linked native-stack frame
 \ and returns here with EVALERR-CELL 0 (clean). Interpret failures (LUNDEF,
 \ LUNDERFLOW, and every throw) never return here: they unwind through the eval
 \ throw-recovery (LEVALREC), which rolls each escaped frame back, records the
 \ code in EVALERR-CELL, and delivers to the nearest handler / REPL / process exit.
-: C-EVAL-FRAME-ARGS ( n n n -- )
-   EVAL-SCRATCH !
-   EVAL-DST !
-   EVAL-DEPTH ! ;
-
-: C-EVAL-FRAME-ADDR ( n n n -- )
-   C-EVAL-FRAME-ARGS
-   EVAL-DST @ EVAL-FRAME LIT64,
-   EVAL-SCRATCH @ EVAL-DEPTH @ EVAL-FRAME-SHIFT LSLI,
-   EVAL-DST @ EVAL-DST @ EVAL-SCRATCH @ ADD,
-   EVAL-DST @ DATA EVAL-DST @ ADD, ;
-
 : B-EVAL ( -- )
-   LBL EVAL-OK !
    B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   11 DATA EVALD-CELL LDR,
-   12 EVAL-MAX-DEPTH MOVZ,  11 12 CMP,  C-LT EVAL-OK LABEL@ BCOND,
-      BRK,
-   EVAL-OK LABEL@ LBL,
-   11 14 15 C-EVAL-FRAME-ADDR                        \ x14 = &frame[EVALD]
+   SP SP EVAL-FRAME-SIZE SUBI,
+   14 SP 0 ADDI,
+   11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
+   14 DATA EVAL-TOP-CELL STR,
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    30 14 16 STR,                                     \ leaf prim: x30 = caller return
-   11 SP 0 ADDI,  11 14 24 STR,
+   11 SP EVAL-FRAME-SIZE ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
-   \ snapshot the open-package scope for this eval frame (PKGSNAP[EVALD]); the LEVALREC
-   \ pop loop restores it, so an in-package define aborted inside evaluate rolls the
-   \ package scope back to this boundary instead of leaving it dangling open.
-   11 DATA EVALD-CELL LDR,                            \ x11 = EVALD (this frame's depth, pre-bump)
-   12 PKGSNAP-OFF LIT64,  11 11 PKGSNAP-SHIFT LSLI,  12 12 11 ADD,  12 DATA 12 ADD,   \ x12 = &PKGSNAP[EVALD]
+   \ Snapshot package/search state alongside the input and caller frame.
+   12 14 EVAL-PKG ADDI,
    11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
    11 DATA PKG-PUB-CELL LDR,    11 12 PKGSNAP-PUB STR,
    11 DATA PKG-PRI-CELL LDR,    11 12 PKGSNAP-PRI STR,

@@ -153,13 +153,6 @@ TRUSTED: SND-ZERO-CELL ( n -- )
 \ startup-transient input state; every cell is dead after restore).
 TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 
-: SND-ZERO-EVAL-FRAMES ( -- )
-   EVAL-FRAME
-   begin dup EVAL-FRAME EVAL-MAX-DEPTH EVAL-FRAME-SIZE * + < while
-      dup SND-ZERO-SPAN-CELL
-      8 +
-   repeat drop ;
-
 \ The return-stack window is transient machine state; stale slots can hold
 \ dangling arena pointers from the build (proven: two old-USIGS pointers
 \ survived here). Dead after restore - zero the whole window.
@@ -191,7 +184,7 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
    ENGINE-SNAP-XT-CELL SND-ZERO-CELL
    AOT-SEED-DONE-CELL SND-ZERO-CELL
    BOOT-SRC:USER-END SND-ZERO-CELL
-   SND-ZERO-EVAL-FRAMES
+   EVAL-TOP-CELL SND-ZERO-CELL
    SND-ZERO-RSTK ;
 
 : SND-COPY ( -- )
