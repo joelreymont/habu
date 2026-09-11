@@ -3,6 +3,7 @@
 s" lib/errors.f" required
 s" lib/memory.f" required
 s" lib/ffi-abi.f" required
+s" lib/image-lifecycle.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 
 package TASK
@@ -59,12 +60,6 @@ END-STRUCTURE
 
 TASK-TCB-LAYOUT-CHECK
 
-create TASK-LIBC
-   108 c, 105 c, 98 c, 99 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c,
-create TASK-LIBSYSTEM
-   47 c, 117 c, 115 c, 114 c, 47 c, 108 c, 105 c, 98 c, 47 c,
-   108 c, 105 c, 98 c, 83 c, 121 c, 115 c, 116 c, 101 c, 109 c,
-   46 c, 66 c, 46 c, 100 c, 121 c, 108 c, 105 c, 98 c, 0 c,
 create TASK-SYM-PTHREAD-CREATE
    112 c, 116 c, 104 c, 114 c, 101 c, 97 c, 100 c, 95 c, 99 c,
    114 c, 101 c, 97 c, 116 c, 101 c, 0 c,
@@ -90,7 +85,6 @@ create TASK-SYM-PTHREAD-MUTEX-UNLOCK
 create TASK-SYM-MUNMAP
    109 c, 117 c, 110 c, 109 c, 97 c, 112 c, 0 c,
 
-variable TASK-H
 variable TASK-ENTRY
 variable TASK-USER-NEXT
 
@@ -121,75 +115,104 @@ TRUSTED: TASK-CELL>XT-SLOT ( ptr n -- ptr [ -- ] ) ;
    here FFI:>CELL 7 and dup 0= if drop exit then
    8 swap - allot ;
 
-: TASK-LIB-PATH ( -- ptr u8 )
-   HB-TARGET-MACOS? if TASK-LIBSYSTEM exit then
-   TASK-LIBC ;
+variable MUNMAP-XT
+variable PTHREAD-CREATE-XT
+variable PTHREAD-JOIN-XT
+variable PTHREAD-EXIT-XT
+variable SCHED-YIELD-XT
+variable MUTEX-INIT-XT
+variable MUTEX-LOCK-XT
+variable MUTEX-UNLOCK-XT
+variable SYMBOLS-REGISTERED
+TASK-ALIGN8
+variable SYMBOLS-READY
 
-: TASK-OPEN ( -- )
-   TASK-H @ 0 <> if exit then
-   TASK-LIB-PATH FFI:NOW FFI:DLOPEN dup 0= if E-TASK-DLOPEN throw then
-   TASK-H ! ;
-
+\ These symbols are borrowed from the process's libc/libSystem dependency.
+\ RTLD_DEFAULT is zero on Linux and -2 on macOS; no dlopen reference is owned.
 : TASK-SYM ( ptr u8 -- n ) {: name:ptr :}
-   TASK-OPEN
-   TASK-H @ name FFI:DLSYM dup 0= if E-TASK-DLSYM throw then ;
+   HB-TARGET-MACOS? if -2 else 0 then
+   name FFI:DLSYM dup 0= if E-TASK-DLSYM throw then ;
 
-TASK-SYM-MUNMAP TASK-SYM constant MUNMAP-XT
-TASK-SYM-PTHREAD-CREATE TASK-SYM constant PTHREAD-CREATE-XT
-TASK-SYM-PTHREAD-JOIN TASK-SYM constant PTHREAD-JOIN-XT
-TASK-SYM-PTHREAD-EXIT TASK-SYM constant PTHREAD-EXIT-XT
-TASK-SYM-SCHED-YIELD TASK-SYM constant SCHED-YIELD-XT
-TASK-SYM-PTHREAD-MUTEX-INIT TASK-SYM constant MUTEX-INIT-XT
-TASK-SYM-PTHREAD-MUTEX-LOCK TASK-SYM constant MUTEX-LOCK-XT
-TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM constant MUTEX-UNLOCK-XT
+\ Capture is quiescent. Both foreign addresses and the generated pthread entry
+\ belong to this process; the next task operation constructs them afresh.
+: RESET-SYMBOLS ( -- )
+   0 MUNMAP-XT ! 0 PTHREAD-CREATE-XT ! 0 PTHREAD-JOIN-XT !
+   0 PTHREAD-EXIT-XT ! 0 SCHED-YIELD-XT ! 0 MUTEX-INIT-XT !
+   0 MUTEX-LOCK-XT ! 0 MUTEX-UNLOCK-XT ! 0 TASK-ENTRY !
+   0 SYMBOLS-REGISTERED ! 0 SYMBOLS-READY atomic! ;
+
+: LOAD-SYMBOLS ( -- )
+   SYMBOLS-REGISTERED @ 0= if
+      [: RESET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER
+      1 SYMBOLS-REGISTERED !
+   then
+   TASK-SYM-MUNMAP TASK-SYM MUNMAP-XT !
+   TASK-SYM-PTHREAD-CREATE TASK-SYM PTHREAD-CREATE-XT !
+   TASK-SYM-PTHREAD-JOIN TASK-SYM PTHREAD-JOIN-XT !
+   TASK-SYM-PTHREAD-EXIT TASK-SYM PTHREAD-EXIT-XT !
+   TASK-SYM-SCHED-YIELD TASK-SYM SCHED-YIELD-XT !
+   TASK-SYM-PTHREAD-MUTEX-INIT TASK-SYM MUTEX-INIT-XT !
+   TASK-SYM-PTHREAD-MUTEX-LOCK TASK-SYM MUTEX-LOCK-XT !
+   TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM MUTEX-UNLOCK-XT ! ;
+
+: TASK-SYMBOLS ( -- )
+   begin
+      SYMBOLS-READY atomic@ 2 = if exit then
+      0 1 SYMBOLS-READY atomic-cas 0= if
+         [: LOAD-SYMBOLS ;] catch dup 0 <> if
+            0 SYMBOLS-READY atomic! throw
+         then drop
+         2 SYMBOLS-READY atomic! exit
+      then
+   again ;
 
 \ Exact task-internal C bindings fix every pointer extent and scalar role before
 \ entering the bounded FFI trampoline. Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: MUNMAP-CALL ( ptr n n -- n ) {: a:ptr len:n :}
-   FFI:RESET
+   TASK-SYMBOLS FFI:RESET
    a 0 FFI:READABLE!
    len 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 MUNMAP-XT ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 2 MUNMAP-XT @ ffi-call-bounded ;
 
 TRUSTED: PTHREAD-CREATE-CALL ( ptr n n n ptr n -- n )
    {: thread:ptr attr:n entry:n arg:ptr :}
-   FFI:RESET
+   TASK-SYMBOLS FFI:RESET
    thread 8 0 FFI:WRITABLE!
    attr 1 FFI:VALUE!
    entry 2 FFI:VALUE!
    arg 3 FFI:READABLE!
-   FFI:ARGS FFI:REG-LENS 4 PTHREAD-CREATE-XT ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 4 PTHREAD-CREATE-XT @ ffi-call-bounded ;
 
 TRUSTED: PTHREAD-JOIN-CALL ( n ptr n -- n ) {: thread:n out:ptr :}
-   FFI:RESET
+   TASK-SYMBOLS FFI:RESET
    thread 0 FFI:VALUE!
    out 8 1 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 2 PTHREAD-JOIN-XT ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 2 PTHREAD-JOIN-XT @ ffi-call-bounded ;
 
 TRUSTED: PTHREAD-EXIT-CALL ( n -- ) {: value:n :}
-   FFI:RESET
+   TASK-SYMBOLS FFI:RESET
    value 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 PTHREAD-EXIT-XT ffi-call-bounded drop ;
+   FFI:ARGS FFI:REG-LENS 1 PTHREAD-EXIT-XT @ ffi-call-bounded drop ;
 
 TRUSTED: SCHED-YIELD-CALL ( -- n )
-   FFI:RESET
-   FFI:ARGS FFI:REG-LENS 0 SCHED-YIELD-XT ffi-call-bounded ;
+   TASK-SYMBOLS FFI:RESET
+   FFI:ARGS FFI:REG-LENS 0 SCHED-YIELD-XT @ ffi-call-bounded ;
 
 TRUSTED: MUTEX-INIT-CALL ( ptr n n -- n ) {: mutex:ptr attr:n :}
-   FFI:RESET
+   TASK-SYMBOLS FFI:RESET
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
    attr 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 MUTEX-INIT-XT ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 2 MUTEX-INIT-XT @ ffi-call-bounded ;
 
 TRUSTED: MUTEX-LOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
-   FFI:RESET
+   TASK-SYMBOLS FFI:RESET
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 1 MUTEX-LOCK-XT ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 1 MUTEX-LOCK-XT @ ffi-call-bounded ;
 
 TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
-   FFI:RESET
+   TASK-SYMBOLS FFI:RESET
    mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
-   FFI:ARGS FFI:REG-LENS 1 MUTEX-UNLOCK-XT ffi-call-bounded ;
+   FFI:ARGS FFI:REG-LENS 1 MUTEX-UNLOCK-XT @ ffi-call-bounded ;
 
 : TASK-RC0 ( n -- )
    dup 0 <> if E-TASK-THREAD throw then
@@ -327,7 +350,7 @@ TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
    fn $5C + cp! ;
 
 : TASK-READY ( -- )
-   TASK-ENTRY-BUILD ;
+   TASK-SYMBOLS TASK-ENTRY-BUILD ;
 
 : TASK-JOIN-RELEASE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PTHREAD-JOIN-CALL

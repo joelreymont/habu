@@ -93,7 +93,7 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
    1 DONE atomic-add drop ;
 
 
-: WAIT-DONE ( ptr a -- ) {: worker:ptr :}
+: WAIT-DONE ( ptr n -- ) {: worker:ptr :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 
 public
