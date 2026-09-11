@@ -98,6 +98,12 @@ public
 1 constant CTOR-PTR
 
 \ ---- the symbol keys ---------------------------------------------------------
+\ Keys 2 and 3 are the ROLE-COLLISION pair: "jest" and "yank" are different
+\ byte strings of one length that IR-SYM:FILTER's FNV-1a sends to one value,
+\ $615E. They were found by enumerating short words against that function, and
+\ nothing here trusts that - COMPILER-INTERN-CASES:COLLISION-CHECK asks the
+\ production filter whether they still collide, so a changed filter fails the
+\ gate here instead of quietly turning this sequence into an ordinary one.
 
 7 constant SYM-KEYS
 
@@ -105,8 +111,8 @@ public
    case
       0 of s" main" endof
       1 of s" helper" endof
-      2 of s" VGA" endof
-      3 of s" HRA" endof
+      2 of s" jest" endof
+      3 of s" yank" endof
       4 of s" a" endof
       5 of s" b" endof
       6 of s" c" endof

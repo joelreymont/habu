@@ -91,21 +91,24 @@ create CBUF 32 allot
    4 T= 0 T= TTRUE TFALSE TTRUE TFALSE TTRUE TFALSE TTRUE 17 T= TTRUE ;
 
 \ ---- a forced filter collision stays distinct --------------------------------
-\ "VGA" and "HRA" share the sixteen-bit content filter (and the byte length),
-\ so unifying them is exactly what a filter-as-identity bug would do; only
-\ the byte-compare verify step keeps them apart.
+\ "jest" and "yank" share the sixteen-bit content filter (and the byte
+\ length), so unifying them is exactly what a filter-as-identity bug would do;
+\ only the byte-compare verify step keeps them apart. Both hash to $615E under
+\ IR-SYM:FILTER's FNV-1a, found by enumerating short words against that
+\ function and confirmed by the first assertion below, which asks the
+\ production filter rather than trusting this comment.
 : CL-BODY ( IR-CTX:ctx -- bool n n bool bool n )
    {: c:IR-CTX:ctx :}
    c 8 64 TAB-NEW
    {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
-   s" VGA" IR-SYM:FILTER s" HRA" IR-SYM:FILTER =
-   c a r key s" VGA" IR-SYM:INTERN {: sv:IR-ID:ir-symbol-id :}
-   c a r key s" HRA" IR-SYM:INTERN {: sh:IR-ID:ir-symbol-id :}
+   s" jest" IR-SYM:FILTER s" yank" IR-SYM:FILTER =
+   c a r key s" jest" IR-SYM:INTERN {: sv:IR-ID:ir-symbol-id :}
+   c a r key s" yank" IR-SYM:INTERN {: sh:IR-ID:ir-symbol-id :}
    sv IR-ID:SYMBOL-LOCAL
    sh IR-ID:SYMBOL-LOCAL
-   a r sv s" VGA" IR-SYM:EQ?
-   a r sh s" HRA" IR-SYM:EQ?
-   c a r key s" VGA" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
+   a r sv s" jest" IR-SYM:EQ?
+   a r sh s" yank" IR-SYM:EQ?
+   c a r key s" jest" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
 
 : CL-CASE ( -- )
    s" a forced filter collision is split by the byte-compare verify" T-LABEL

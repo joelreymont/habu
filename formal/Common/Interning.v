@@ -13,9 +13,9 @@
    The three tables differ only in what a key is and how two keys are compared:
 
      - IR-SYM compares symbol bytes.  The scan predicate is
-       IR-SYM:ROW-MATCH? (symbol.f:294-298): stored 16-bit content filter
+       IR-SYM:ROW-MATCH? (symbol.f:341-345): stored 16-bit content filter
        against the filter of the presented bytes, stored length against the
-       presented length, then IR-SYM:BYTES-EQ (symbol.f:262-269) cell by cell.
+       presented length, then IR-SYM:BYTES-EQ (symbol.f:286-293) cell by cell.
      - IR-TYPE compares four fixed cells.  The scan predicate is
        IR-TYPE:ROW4-MATCH? (type.f:498-503).
      - IR-ATTR compares five fixed cells.  The scan predicate is
@@ -42,8 +42,8 @@
    what the theorems below do and do not cover.
 
    1. The content filter is not identity-bearing, and that is modelled, not
-      assumed.  IR-SYM:FILTER (symbol.f:287-289) is the low sixteen bits of
-      the bytes' SHA-256 word 0.  This file treats the filter as an ARBITRARY
+      assumed.  IR-SYM:FILTER (symbol.f:328-336) is FNV-1a over the bytes,
+      XOR-folded to sixteen bits.  This file treats the filter as an ARBITRARY
       function of the bytes — no injectivity, no collision resistance, not
       even that it is interesting — and proves two separate facts.
       `sym_row_match_sound` says that whatever value sits in the stored filter
@@ -51,7 +51,7 @@
       behind it; this is the half that survives a bypass-written or corrupted
       filter cell.  `sym_row_match_is_byte_equality` says that when the stored
       cell really is the filter of the stored bytes (which is what
-      IR-SYM:ROW-ADD writes, symbol.f:333-339), the whole three-part predicate
+      IR-SYM:ROW-ADD writes, symbol.f:389-395), the whole three-part predicate
       is EXTENSIONALLY EQUAL to plain byte equality, so the filter changes the
       cost of the scan and nothing else.  `sym_filter_without_verify_merges`
       exhibits a filter under which dropping the byte verify would merge two
@@ -283,7 +283,7 @@ Section Interning.
 
 Context {K : Type}.
 
-(* The scan predicate.  IR-SYM:ROW-MATCH? (symbol.f:294-298),
+(* The scan predicate.  IR-SYM:ROW-MATCH? (symbol.f:341-345),
    IR-TYPE:ROW4-MATCH? (type.f:498-503), IR-ATTR:ROW5-MATCH?
    (attr.f:641-647).  The two hypotheses are exactly what those three
    predicates provide: a match implies the compared content is the same, and
@@ -1249,14 +1249,14 @@ Qed.
 
 (* ---- the content filter ---------------------------------------------- *)
 
-(* IR-SYM:FILTER (symbol.f:287-289): the low sixteen bits of the bytes'
-   SHA-256 word 0.  Modelled as an ARBITRARY function of the bytes.  No
+(* IR-SYM:FILTER (symbol.f:328-336): FNV-1a over the bytes, XOR-folded to
+   sixteen bits.  Modelled as an ARBITRARY function of the bytes.  No
    property of it is assumed anywhere below — not injectivity, not spread. *)
 Section Filter.
 
 Variable filter : bytes -> nat.
 
-(* IR-SYM:ROW-MATCH? (symbol.f:294-298), with the stored filter cell left as
+(* IR-SYM:ROW-MATCH? (symbol.f:341-345), with the stored filter cell left as
    a free parameter so that a corrupted or bypass-written cell is inside the
    statement rather than outside it. *)
 Definition row_match (stored_filter : nat) (stored presented : bytes) : bool :=
@@ -1279,7 +1279,7 @@ Proof.
 Qed.
 
 (* And when the stored cell is the honest filter of the stored bytes — which
-   is what IR-SYM:ROW-ADD writes (symbol.f:333-339, fed by symbol.f:370) —
+   is what IR-SYM:ROW-ADD writes (symbol.f:389-395, fed by symbol.f:434) —
    the three-part predicate is extensionally EQUAL to plain byte equality.
    The filter buys scan cost and nothing else; it is not identity-bearing.
    This is what licenses the rest of the file to instantiate the symbol

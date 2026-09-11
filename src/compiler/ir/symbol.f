@@ -29,12 +29,12 @@
 \
 \ INTERNING IS BYTE EQUALITY. INTERN answers the existing identity when the
 \ presented bytes equal a stored symbol's bytes, and mints the next
-\ module-local ordinal otherwise. The row's filter cell - the low sixteen
-\ bits of the bytes' SHA-256 word 0 (CDIGEST:COMPUTE) - is a cheap reject
-\ filter, never identity: every filter-and-length match is confirmed by
-\ comparing the stored bytes cell by cell, so two different strings sharing a
-\ filter stay distinct. Pointer identity plays no part; equal bytes presented
-\ from different buffers intern to one identity. A duplicate intern allocates
+\ module-local ordinal otherwise. The row's filter cell - FNV-1a over the
+\ bytes, folded to sixteen bits - is a cheap reject filter, never identity:
+\ every filter-and-length match is confirmed by comparing the stored bytes
+\ cell by cell, so two different strings sharing a filter stay distinct.
+\ Pointer identity plays no part; equal bytes presented from different buffers
+\ intern to one identity. A duplicate intern allocates
 \ nothing and therefore does not consult the context: the ctx argument is
 \ allocation authority for the miss path, exactly as the readers below take
 \ no ctx at all.
@@ -82,7 +82,6 @@
 
 require lib/prelude.f
 require lib/errors.f
-require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -109,6 +108,9 @@ $53594D31 constant SYM-MAGIC         \ "SYM1": the row-table header format tag
 3 constant ROW-CELLS
 8 constant CELL-BYTES
 $FFFF constant FILTER-MASK
+\ FNV-1a's 64-bit offset basis and prime, the content filter's hash.
+$CBF29CE484222325 constant FNV-OFFSET
+$100000001B3 constant FNV-PRIME
 public
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
 $FFFFFFFF HDR-CELLS - constant POOL-CELL-MAX
@@ -301,14 +303,37 @@ private
 
 public
 
-\ The deterministic content filter a symbol row stores: the low sixteen bits
-\ of the bytes' SHA-256 word 0. A pure function of the bytes and never
-\ identity - a filter match is always confirmed by comparing bytes - it is
-\ public so fixtures can force two different strings through one filter and
-\ prove the verify step discriminates. It never serializes.
+\ The deterministic content filter a symbol row stores: FNV-1a over the bytes
+\ (64-bit, offset basis FNV-OFFSET, prime FNV-PRIME), the resulting hash
+\ XOR-folded down onto FILTER-MASK bits. It is public so fixtures can force
+\ two different strings through one filter and prove the verify step
+\ discriminates.
+\
+\ WHAT THE VALUE OWES, AND WHAT IT DOES NOT. It is a pure function of the
+\ bytes and nothing else - no address, no ordinal, no interning order - taken
+\ one byte at a time, so it is independent of host word order and identical in
+\ every process and every run. It is never identity: ROW-ADD is the one writer
+\ of the cell and ROW-MATCH? the one reader, and the match ROW-MATCH? allows is
+\ always confirmed behind it by BYTES-EQ, so two different strings that share a
+\ filter stay two symbols.
+\
+\ WHY A NONCRYPTOGRAPHIC HASH IS THE RIGHT ONE. The value never leaves this
+\ file: it does not serialize, no canonical preimage or persisted digest
+\ contains it, and the section 6.6 encoder reaches symbols through
+\ SYMBOLS/FSYMBOLS, LEN@ and COPY (see INSERTION ORDER AND CANONICALIZATION
+\ above). Nothing outside ROW-MATCH? can observe which function produced it, so
+\ changing it moves no digest anyone has stored. All it buys is scan cost, and
+\ a cryptographic digest per intern was a steep price for sixteen bits of
+\ reject power that FNV-1a delivers in a few instructions per byte.
 : FILTER ( ptr u8 n -- n )
-   CDIGEST:COMPUTE CDIGEST-DIGEST:UNMAKE
-   drop drop drop FILTER-MASK and ;
+   {: p u:n :}
+   FNV-OFFSET
+   u 0 ?do
+      p i + c@ xor  FNV-PRIME *
+   loop
+   dup 32 rshift xor
+   dup 16 rshift xor
+   FILTER-MASK and ;
 
 private
 
