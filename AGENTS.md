@@ -21,10 +21,19 @@ belong in the language core.
 
 ## Language and implementation
 
+- Habu tools are written in Habu. Tools, test harnesses and build drivers are
+  checked Habu programs run by `bin/hb`; a shell or Python file may only invoke
+  `bin/hb` and never carries logic, parsing or policy of its own. Two exceptions
+  exist by design: `tools/bootstrap.sh`, the no-binary recovery launcher that
+  runs when `bin/hb` does not exist, and the device-peer scripts under `test/`
+  (serial, XMODEM, UDP and the embedded assembler hosts) that stand in for a
+  foreign machine; `formal/` builds its proofs with rocq's own Makefile.
+  Anything else under `tools/` or `test/` that is not Habu is a defect to
+  convert.
 - Read [docs/forth.md](docs/forth.md) before writing Habu. It documents naming,
   packages, small factored words, typed stack effects and native tooling.
-- Prefer checked Habu for Habu tooling. Every module has a real package; public
-  effects preserve meaningful types instead of reducing everything to `n`.
+- Every module has a real package; public effects preserve meaningful types
+  instead of reducing everything to `n`.
 - Keep necessary unchecked or foreign boundaries explicit, small and tested.
   First check whether the current language can express the operation normally.
 - When checked code behaves incorrectly, reduce the failure and identify whether
