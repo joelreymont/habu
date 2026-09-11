@@ -2233,8 +2233,14 @@ create D-MEET DSLOT-MAX cells allot
    a b = if a exit then
    DNONE ;
 
-\ A NAME may not cross a backward edge unchanged: the value a slot holds on the
-\ second turn is not the value it held on the first.
+\ Function inputs retain their value across every loop turn. Other names need
+\ an edge argument to identify the value carried into the next turn.
+: DENTRY-VALUE? ( n -- bool ) {: v:n :}
+   false
+   ARGS SLOT-POSITIONS 0 ?do
+      0 ARGS i A64EFF:SEQ-SLOT@ DIN-AT v = if drop true leave then
+   loop ;
+
 : DXLATE ( IR-ID:ir-op-id IR-ID:ir-block-id bool n -- n )
    {: t:IR-ID:ir-op-id tb:IR-ID:ir-block-id back:bool v:n :}
    v 0 < if v exit then
@@ -2251,7 +2257,7 @@ create D-MEET DSLOT-MAX cells allot
    then
    dup DANY <> if exit then
    drop
-   back if DNONE exit then
+   back if v DENTRY-VALUE? 0= if DNONE exit then then
    v ;
 
 : DMEET-EDGE ( IR-ID:ir-op-id IR-ID:ir-block-id n n -- )

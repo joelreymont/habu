@@ -456,6 +456,31 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    5 NLPT-FIXTURE:NLPT-UNTIL 0 T=
    0 NLPT-FIXTURE:NLPT-UNTIL -1 T= ;
 
+4 constant INPUT-CAP
+create INPUTS INPUT-CAP cells allot
+variable INPUT-N
+
+\ An unchanged input crosses both the loop backedge and its early exit, then
+\ reaches a guarded store. Losing its residency emitted a duplicate stack store.
+: INPUT-ADD ( n -- ) {: value:n :}
+   0 begin dup INPUT-N @ < while
+      dup cells INPUTS + @ value = if drop exit then 1+
+   repeat drop
+   INPUT-N @ INPUT-CAP < if
+      value INPUT-N @ cells INPUTS + !
+      INPUT-N @ 1+ INPUT-N !
+   then ;
+
+: INPUT-CASE ( -- )
+   s" an unchanged input survives loop search and guarded stores" T-LABEL
+   0 INPUT-N !
+   42 INPUT-ADD 42 INPUT-ADD
+   INPUT-N @ 1 T= INPUTS @ 42 T=
+   7 INPUT-ADD 9 INPUT-ADD 13 INPUT-ADD 21 INPUT-ADD
+   INPUT-N @ INPUT-CAP T=
+   INPUTS cell+ @ 7 T=
+   INPUTS 3 cells + @ 13 T= ;
+
 public
 
 : RUN ( -- )
@@ -486,7 +511,8 @@ public
    DEAD-CASE
    VARSTART-CASE
    MAXSTART-CASE
-   UNTIL-CASE ;
+   UNTIL-CASE
+   INPUT-CASE ;
 
 ;package
 
