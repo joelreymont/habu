@@ -109,6 +109,8 @@ variable ST
 ST-EMPTY ST !
 variable GEN-N
 0 GEN-N !
+variable ALLOC-NS-ACC                \ mono-ns spent inside ALLOCATE since the last reset
+0 ALLOC-NS-ACC !
 variable N-VALS
 0 N-VALS !
 variable N-PLAN
@@ -1885,7 +1887,12 @@ public
    MB-FINISH
    PLAN-ALL ;
 
+\ The pass times itself: no caller can time a pass it does not enter, and a
+\ counter outside the package would have to know bounds only this entry point
+\ knows. A refused allocation throws past the accumulate and is not counted, so
+\ what is read back is time spent on allocations that completed.
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
+   mono-ns {: t0:n :}
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
@@ -1898,7 +1905,8 @@ public
    pool fpool cv gi gr t l size WALK
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
-   ST-SEALED ST ! ;
+   ST-SEALED ST !
+   mono-ns t0 -  ALLOC-NS-ACC @ +  ALLOC-NS-ACC ! ;
 
 \ ---- the sealed allocation ---------------------------------------------------
 : SEALED? ( -- bool )
@@ -1906,6 +1914,15 @@ public
 
 : GEN ( -- n )
    SEAL-CK GEN-N @ ;
+
+\ Nanoseconds spent inside ALLOCATE since the counter was zeroed. Not sealed
+\ state: it answers across allocations, which is the only way to ask what a
+\ whole compile spent here.
+: ALLOC-NS ( -- n )
+   ALLOC-NS-ACC @ ;
+
+: ALLOC-NS-RESET ( -- )
+   0 ALLOC-NS-ACC ! ;
 
 : MODULE@ ( -- IR-ID:ir-module-id )
    SEAL-CK 0 S-MOD @ ;
