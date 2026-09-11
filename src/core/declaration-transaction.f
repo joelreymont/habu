@@ -312,13 +312,14 @@ TRUSTED: ROW.RELEASE ( ptr n -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
       state state N@ 1 - i - RELEASE-ONE
    loop ;
 
-: RUN-DIAGNOSTIC ( n n [ n n -- ] -- n )
-   execute 0 ;
+: RUN-DIAGNOSTIC ( n n [ n n -- ] -- n n [ n n -- ] )
+   {: primary:n cleanup:n diagnostic :}
+   primary cleanup diagnostic execute
+   primary cleanup diagnostic ;
 
-TRUSTED: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
+: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
    [: RUN-DIAGNOSTIC ;] catch
-   dup 0 <> IF 2drop 2drop EXIT THEN
-   2drop ;
+   2drop 2drop ;
 
 : REPORT-FAILURE ( ptr n n n -- ) {: state:ptr primary:n cleanup:n :}
    primary cleanup state DIAGNOSTIC@ CATCH-DIAGNOSTIC ;
