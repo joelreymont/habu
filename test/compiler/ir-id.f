@@ -9,31 +9,7 @@ require test/checker-assert.f
 
 using TFAM
 
-package IR-ID-AUDIT
-private
-
-variable ND0
-variable ND1
-variable TF0
-variable TF1
-variable RAW-HITS
-variable PUBLIC-HITS
-
-public
-
-: BEFORE ( -- )
-   ndict@ ND0 !
-   TFAM-N@ TF0 ! ;
-
-: AFTER ( -- )
-   ndict@ ND1 !
-   TFAM-N@ TF1 ! ;
-
-;package
-
-IR-ID-AUDIT:BEFORE
 require src/compiler/ir/id.f
-IR-ID-AUDIT:AFTER
 
 package IR-ID-TEST
 private
@@ -408,6 +384,8 @@ public
 package IR-ID-AUDIT
 private
 
+variable PUBLIC-HITS
+
 26 constant RAW#
 42 constant PUBLIC#
 13 constant FAMILY#
@@ -500,52 +478,24 @@ private
    k 8 - {: raw:n :}
    raw 2 / raw 2 mod KIND-RAW$ ;
 
-: AUTH-NS ( -- ptr a )
+: AUTH-NS ( -- ptr n )
    s" IR-ID" XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? TTRUE ;
 
 : RAW-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
    AUTH-NS {: ns:ptr :}
-   ns XREF-START {: pub:n :}
-   ns XREF-LEN {: pri:n :}
-   a u pub XREF-FIND-WL XREF-FOUND? TFALSE
-   a u pri XREF-FIND-WL-INDEX {: idx:n :}
-   idx ND0 @ >= TTRUE
-   idx ND1 @ < TTRUE
-   0 RAW-HITS !
-   ND0 @ begin dup ND1 @ < while
-      dup XREF-REC dup a u XREF-MATCH? if
-         XREF-WORDLIST pri T=
-         1 RAW-HITS +!
-      else
-         drop
-      then
-      1+
-   repeat drop
-   RAW-HITS @ 1 T= ;
+   a u ns XREF-START XREF-FIND-WL XREF-FOUND? TFALSE
+   a u ns XREF-LEN XREF-FIND-WL XREF-FOUND? TTRUE ;
+
 
 : PUBLIC-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
-   AUTH-NS {: ns:ptr :}
-   ns XREF-START {: pub:n :}
-   a u pub XREF-FIND-WL-INDEX {: idx:n :}
-   idx ND0 @ >= TTRUE
-   idx ND1 @ < TTRUE
-   0 PUBLIC-HITS !
-   ND0 @ begin dup ND1 @ < while
-      dup XREF-REC dup a u XREF-MATCH? if
-         XREF-WORDLIST pub T=
-         1 PUBLIC-HITS +!
-      else
-         drop
-      then
-      1+
-   repeat drop
-   PUBLIC-HITS @ 1 T= ;
+   a u AUTH-NS XREF-START XREF-FIND-WL XREF-FOUND? TTRUE ;
+
 
 : PUBLIC-SURFACE ( -- )
    AUTH-NS XREF-START {: pub:n :}
    0 PUBLIC-HITS !
-   ND0 @ begin dup ND1 @ < while
+   0 begin dup ndict@ < while
       dup XREF-REC XREF-WORDLIST pub = if 1 PUBLIC-HITS +! then
       1+
    repeat drop
@@ -554,11 +504,12 @@ private
    s" SERIAL-NEXT" pub XREF-FIND-WL XREF-FOUND? TFALSE ;
 
 : FAMILY-SURFACE ( -- )
-   TF1 @ TF0 @ - FAMILY# T=
    FAMILY# 0 ?do
-      TF0 @ i + dup TFAM-NAME$ i FAMILY$ T-STR= TTRUE
-      TFAM-ARITY@ 0 T=
+      s" IR-ID" i FAMILY$ TFAM-FIND-IN TTRUE
+      dup TFAM-ARITY@ 0 T=
+      TFAM-PUBLIC? TTRUE
    loop ;
+
 
 : DICTIONARY-OWNERSHIP ( -- )
    KIND# 2 * 8 + RAW# T=

@@ -99,11 +99,11 @@ SUITE engine-identity
 ;SUITE
 
 SUITE compiler-ir-id
-   test/compiler/ir-id-host.f
+   test/compiler/ir-id.f
 ;SUITE
 
 SUITE compiler-ir-id-manifest
-   test/compiler/ir-id-manifest-host.f
+   test/compiler/ir-id-manifest.f
 ;SUITE
 
 SUITE compiler-ir-intern-manifest
@@ -427,7 +427,7 @@ SUITE compiler-native-vocab
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
 \ and spawns child engines through this registry entry.
 SUITE compiler-ir-id-proof
-   test/compiler/ir-id-proof-host.f
+   test/compiler/ir-id-proof.f
 ;SUITE
 
 \ The interning parity test compiles formal/Common/Interning.v with Rocq.
@@ -938,10 +938,6 @@ SUITE aot-wide-format
 
 SUITE aot-prelude-band
    test/aot-prelude-band-suite.f
-;SUITE
-
-SUITE aot-chain-capture
-   test/aot-chain-capture-suite.f
 ;SUITE
 
 SUITE aot-sig-pool

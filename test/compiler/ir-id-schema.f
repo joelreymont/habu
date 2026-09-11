@@ -6,12 +6,12 @@
 \
 \   1. A canonical byte form of the identity design. It names the schema and its
 \      version, the packing widths and bounds, every identity family in
-\      declaration order, the two projection rules, and every named guard with
+\      canonical order, the two projection rules, and every named guard with
 \      the error code it throws, the word that owns it, and how that guard can
 \      be reached. The family rows are not transcribed: they are read back from
-\      the live checker type-family registry across the one `require` of the
-\      production source below, so renaming, reordering, adding, removing, or
-\      changing the arity, kind, or visibility of a family cannot leave the
+\      the live checker type-family registry by owning package and name, so
+\      renaming, adding, removing, or changing a family's arity, kind or
+\      visibility cannot leave the
 \      canonical bytes untouched.
 \   2. The SHA-256 digest of exactly those bytes (`DIGEST-HEX$`) and the
 \      committed frozen value it must equal (`EXPECTED-DIGEST$`). Changing the
@@ -59,29 +59,7 @@ require lib/memory.f
 
 using TFAM
 
-package COMPILER-ID-PROOF
-private
-
-variable FAM-BASE
-variable FAM-TOP
-
-public
-
-\ Load protocol, not API. The registry does not expose the owning package of a
-\ family, so the only sound way to name exactly the families that the production
-\ source declares is to read the registry high-water mark either side of its one
-\ `require`. Both words run once, at load time, immediately below.
-: FAMILY-MARK-BEFORE ( -- )
-   TFAM-N@ FAM-BASE ! ;
-
-: FAMILY-MARK-AFTER ( -- )
-   TFAM-N@ FAM-TOP ! ;
-
-;package
-
-COMPILER-ID-PROOF:FAMILY-MARK-BEFORE
 require src/compiler/ir/id.f
-COMPILER-ID-PROOF:FAMILY-MARK-AFTER
 
 package COMPILER-ID-PROOF
 private
@@ -167,12 +145,15 @@ private
 
 : FAMILY-ID ( n -- n ) {: idx:n :}
    idx FAMILY-RANGE
-   FAM-BASE @ idx + ;
+   s" IR-ID" idx FAMILY-NAME$ TFAM-FIND-IN 0= if E-CID-FAMILY throw then ;
 
 \ ---- live registry cross-check ----------------------------------------------
 
-: FAMILY-SPAN-CHECK ( -- )
-   FAM-TOP @ FAM-BASE @ - FAMILY-COUNT <> if E-CID-FAMILY throw then ;
+: FAMILY-COUNT-CHECK ( -- )
+   0 TFAM-N@ 0 ?do
+      i TFAM-PKG$ s" IR-ID" STR= if 1+ then
+   loop
+   FAMILY-COUNT <> if E-CID-FAMILY throw then ;
 
 : FAMILY-ROW-CHECK ( n -- ) {: idx:n :}
    idx FAMILY-ID {: id:n :}
@@ -182,7 +163,7 @@ private
    id TFAM-PUBLIC? 0= if E-CID-FAMILY throw then ;
 
 : FAMILY-CHECK ( -- )
-   FAMILY-SPAN-CHECK
+   FAMILY-COUNT-CHECK
    FAMILY-COUNT 0 ?do i FAMILY-ROW-CHECK loop ;
 
 \ ---- vector storage ----------------------------------------------------------
