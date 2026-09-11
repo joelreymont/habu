@@ -1365,15 +1365,22 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    CLOSE-VALUE
    ACC ;
 
+\ An unchanged header argument already occupies its destination. Copying it
+\ would create another value tied to that register while the original can still
+\ be live on the loop's exit path.
+: EDGE-STAYS? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id i:n :}
+   id i OPERAND-AT  id 0 SUCC-AT i ARG-AT  SAME-VALUE? ;
+
 : EDGE-VALUE ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
-   id i OPERAND-AT TOKEN? if id i OPERAND exit then
+   id i OPERAND-AT TOKEN?  id i EDGE-STAYS? or if id i OPERAND exit then
    id  id i OPERAND  id i OPERAND-AT REAL?  EMIT-COPY ;
 
 \ Only this second copy is tied to the successor argument by the branch.
 : EDGE-DESTINATION ( IR-ID:ir-op-id n n -- )
    {: id:IR-ID:ir-op-id i:n at:n :}
-   id i OPERAND-AT TOKEN? if exit then
+   id i OPERAND-AT TOKEN?  id i EDGE-STAYS? or if exit then
    id at EDGE-V @ id i OPERAND-AT REAL? EMIT-COPY at EDGE-V ! ;
 
 : BR-TARGET ( IR-ID:ir-op-id -- n )

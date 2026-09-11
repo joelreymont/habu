@@ -102,4 +102,36 @@ public
    -999 TOTAL !
    1 2 3 1 1 0 1 1 SCAN TOTAL @ -999 T= ;
 ;package
-T-RESET NSP:CASES NATIVE-ORDER-TEST:CASES T-REPORT
+\ An unchanged header argument needs no backedge copy. It can remain live past
+\ that edge in block layout because UNTIL's returning path follows its stub.
+package NATIVE-UNTIL-TEST
+private
+: NEXT ( n -- n ) 1+ ;
+: RETURN-CARRY ( n n -- n )
+   >r begin NEXT dup 1000 > until r> + ;
+: LOCAL-CARRY ( n n -- n )
+   {: kept:n start:n :}
+   start begin NEXT dup 1000 > until kept + ;
+: TWO-CARRIERS ( n n n -- n )
+   >r >r begin NEXT dup 1000 > until r> + r> + ;
+\ The unchanged return-stack carrier and both changing stack lanes share the
+\ same backedge. The latter still need parallel copies before their writes.
+: PERMUTE-CARRY ( n n n n -- n )
+   >r begin NEXT >r swap r> dup 3 >= until drop - r> + ;
+
+public
+: CASES ( -- )
+   s" an unchanged return-stack value survives repeated UNTIL calls" T-LABEL
+   0 42 RETURN-CARRY 1043 T=
+   s" the first UNTIL exit preserves its return-stack value" T-LABEL
+   1000 57 RETURN-CARRY 1058 T=
+   s" an unchanged local survives the UNTIL backedge and call" T-LABEL
+   42 0 LOCAL-CARRY 1043 T=
+   s" distinct unchanged return-stack lanes survive UNTIL" T-LABEL
+   0 31 42 TWO-CARRIERS 1074 T=
+   s" an unchanged lane does not break odd backedge permutations" T-LABEL
+   1 9 0 42 PERMUTE-CARRY 50 T=
+   s" even backedge permutations preserve the original lane order" T-LABEL
+   1 9 1 42 PERMUTE-CARRY 34 T= ;
+;package
+T-RESET NSP:CASES NATIVE-ORDER-TEST:CASES NATIVE-UNTIL-TEST:CASES T-REPORT
