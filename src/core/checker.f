@@ -6953,6 +6953,13 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
    dup 0 < IF drop 0 EXIT THEN
    dup CK-USE-MAX > IF drop CK-USE-MAX THEN ;
 
+: CHECKER-USING-N ( -- n ) CK-USE-SCAN-N ;
+: CHECKER-USING$ ( n -- ptr u8 n ) {: ix:n :}
+   ix 0 < ix CHECKER-USING-N >= or IF
+      s" checker: using index out of range" 76 die
+   THEN
+   ix CK-USE-SLOT ix CK-USE-LEN@ ;
+
 : CHECKER-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    u CHECKER-PACKAGE-CAP >= IF s" checker: using name too long" 76 die THEN
    CK-USE-DEPTH {: d:n :}

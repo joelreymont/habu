@@ -161,6 +161,24 @@ s" package OPKC public : OPK-H ( -- n ) 41 ; ;package" UCE-CATCH 0 T=
 s" package OPKC public : OPKC-R ( -- n ) OPK-H ; ;package" UCE-CATCH 0 T=
 OPKC:OPKC-R 41 T=
 
+\ Type imports use the same explicit package scope. A compiler-owned public
+\ cell-id must not prevent an application from importing its own cell-id.
+package UTA public NEWTYPE cell-id 0 NEWTYPE import-id 0 ;package
+package UTB public NEWTYPE import-id 0 ;package
+package UTP NEWTYPE secret-id 0 public : VISIBLE ( -- ) ; ;package
+s" package UTC using UTA public : CELL ( cell-id -- cell-id ) ; : KEEP ( import-id -- import-id ) ; ;package" UCE-CATCH 0 T=
+\ Compiled effects retain the imported family after its scope closes.
+s" : UT-SAME ( UTA:cell-id -- UTA:cell-id ) UTC:CELL ;" UCE-CATCH 0 T=
+s" : UT-WRONG ( UTB:import-id -- UTB:import-id ) UTC:KEEP ;" UCE-CATCH E-REJECT T=
+s" using UTA using UTA : UT-REPEAT ( import-id -- import-id ) ; ;using ;using" UCE-CATCH 0 T=
+s" using UTA using UTB : UT-TAMB ( import-id -- import-id ) ; ;using ;using" UCE-CATCH E-REJECT T=
+s" using UTP : UT-SECRET ( secret-id -- secret-id ) ; ;using" UCE-CATCH E-REJECT T=
+\ Closing the import restores the ambiguous legacy public fallback.
+s" using UTA ;using : UT-CLOSED ( import-id -- import-id ) ;" UCE-CATCH E-REJECT T=
+\ The current package still wins before imported families.
+s" package UTB using UTA public : OWN ( import-id -- import-id ) ; ;package" UCE-CATCH 0 T=
+s" : UT-OWN ( UTB:import-id -- UTB:import-id ) UTB:OWN ;" UCE-CATCH 0 T=
+
 \ Binding to the package's different effect must reject the mismatched caller.
 s" : OPK-K ( -- n ) 7 ;" UCE-CATCH 0 T=
 s" package OPKD : OPK-K ( n -- n ) drop 41 ; ;package" UCE-CATCH 0 T=

@@ -731,9 +731,29 @@ public
    REPEAT
    TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
 
+private
+
+\ Explicit imports choose a public family before the implicit public fallback.
+\ Repeating an import still names the same family; two distinct matches reject.
+: TFAM-FIND-USED ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
+   -1 TF-PUB !
+   CHECKER-USING-N 0 ?DO
+      i CHECKER-USING$ na nu TFAM-FIND-IN IF
+         {: id:n :}
+         id TFAM-PUBLIC? IF
+            TF-PUB @ 0< IF id TF-PUB !
+            ELSE id TF-PUB @ <> IF E-TFAM-AMBIG throw THEN THEN
+         THEN
+      ELSE drop THEN
+   LOOP
+   TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
+
+public
+
 \ Unqualified lexical order is the active package's exact row (private or
-\ public), the exact global row, then the unique package-public fallback
-\ (E-TFAM-AMBIG if two non-lexical packages tie). At top level the first exact
+\ public), the exact global row, explicit imports, then the unique public
+\ fallback. Multiple eligible families at either import/fallback step throw
+\ E-TFAM-AMBIG. At top level the first exact
 \ lookup is already global. Compaction-hidden `@name` tokens never resolve.
 : TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
@@ -744,6 +764,8 @@ public
       s" " na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
       drop
    THEN
+   na nu TFAM-FIND-USED IF RES-TRUE EXIT THEN
+   drop
    na nu TFAM-FIND-PUBLIC ;
 
 \ --- declaration. Storage only ever sees canonical lowercase tails.

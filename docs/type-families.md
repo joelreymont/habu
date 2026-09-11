@@ -63,8 +63,10 @@ duplicate-family, and both are correct: `ptr` genuinely *is* a registered family
 so redeclaring it is a real same-scope duplicate, not a reserved-name shadow.
 (`test/type-decl-suite.f` pins both codes.) A package family may share a tail
 with a global or foreign package family. A bare tail resolves the active package's
-exact family first, the global exact family second, then one foreign public legacy
-fallback; multiple eligible foreign public families reject `E-TFAM-AMBIG`.
+exact family first, the global exact family second, then public families in
+explicit `using` imports, then one foreign public legacy fallback. Multiple
+eligible families at either import or fallback resolution reject `E-TFAM-AMBIG`;
+repeating the same import is not ambiguous. Imported private families stay hidden.
 A qualified name resolves only its exact package family. Global behavior is
 unchanged: a top-level redeclaration of a global tail is a same-scope duplicate.
 
