@@ -71,12 +71,21 @@ private
 
 create DG OUT-BYTES allot
 
+\ The host memory order is independent of the compilation target. An aligned
+\ native cell is a canonical slot only on an eight-byte little-endian host.
+create HOST-ORDER 1 ,
+HOST-ORDER c@ 1 = CELL SLOT-BYTES = and constant NATIVE-SLOTS?
+
+: NATIVE-SLOT? ( ptr u8 -- bool )
+   NULL-PTR - SLOT-BYTES 1- and 0= NATIVE-SLOTS? and ;
+
 public
 
 \ Write one semantic field code into a preimage slot, little-endian.
 : SLOT! ( n ptr u8 n -- )
    {: v:n base:ptr slot:n :}
    base slot SLOT-BYTES * + {: at:ptr :}
+   at NATIVE-SLOT? if v at CELL-VIEW ! exit then
    SLOT-BYTES 0 ?do
       v i 8 * rshift $FF and  at i + c!
    loop ;
@@ -86,6 +95,7 @@ public
 : SLOT@ ( ptr u8 n -- n )
    {: base:ptr slot:n :}
    base slot SLOT-BYTES * + {: at:ptr :}
+   at NATIVE-SLOT? if at CELL-VIEW @ exit then
    0
    SLOT-BYTES 0 ?do
       at i + c@  i 8 * lshift  or

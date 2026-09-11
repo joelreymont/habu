@@ -485,6 +485,20 @@ variable N
    s" fast-math" s" CNUM-FAST--MATH" REFLECT:VARS 3 T=
    s" compare" s" CNUM-COMPARE" REFLECT:VARS 3 T= ;
 
+\ Every address residue includes the aligned native path and the byte fallback.
+\ Inspect canonical bytes independently of SLOT@ and preserve neighboring bytes.
+: SLOT-AT ( n n -- )
+   {: value:n offset:n :}
+   32 0 ?do $A5 DGA i + c! loop
+   DGA offset + {: base:ptr :}
+   value base 1 CDIGEST:SLOT!
+   base 1 CDIGEST:SLOT@ value T=
+   8 0 ?do
+      base 8 + i + c@ value i 8 * rshift $FF and T=
+   loop
+   base 7 + c@ $A5 T=
+   base 16 + c@ $A5 T= ;
+
 : SLOT-ROUNDTRIP ( -- )
    CDIGEST:SLOT-BYTES 8 T=
    -1 DGA 0 CDIGEST:SLOT!
@@ -492,7 +506,13 @@ variable N
    $0123456789ABCDEF DGA 3 CDIGEST:SLOT!
    DGA 3 CDIGEST:SLOT@ $0123456789ABCDEF T=
    0 DGA 3 CDIGEST:SLOT!
-   DGA 3 CDIGEST:SLOT@ 0 T= ;
+   DGA 3 CDIGEST:SLOT@ 0 T=
+   8 0 ?do
+      0 i SLOT-AT
+      -1 i SLOT-AT
+      $0123456789ABCDEF i SLOT-AT
+      $8000000000000000 i SLOT-AT
+   loop ;
 
 \ ---- 4. equal records digest identically -------------------------------------
 : STABLE ( -- )
