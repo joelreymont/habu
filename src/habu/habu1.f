@@ -2648,8 +2648,8 @@ package ENGINE-EMIT
 \ no checker-known effect, and interpret-mode execute/tick fail closed on the
 \ flag (habu2.f LINTERNAL). LPROT bracket as in BWIDEMARK - the dict region is
 \ read-only at runtime, so a raw store SIGBUSes. Marking is monotonic (no clear
-\ prim exists) and the pass marks int-mark's own record last, so user source
-\ cannot reach it.
+\ prim exists). The seal pass marks its host record last; the primitive
+\ registry also marks the newly emitted record so saved images stay sealed.
 : BINTMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
@@ -3001,8 +3001,12 @@ package ENGINE-EMIT
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
-   s" int-mark" ['] BINTMARK 1 GDEREF-F
-   s" min-in-mark" ['] BMININMARK 2 GDEREF-F
+   1 GD-MIN !
+   s" int-mark" ['] BINTMARK PRIM-GLOBAL-INT-WID FPRIM-WID
+   GD-RECORD
+   2 GD-MIN !
+   s" min-in-mark" ['] BMININMARK PRIM-GLOBAL-INT-WID FPRIM-WID
+   GD-RECORD
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
