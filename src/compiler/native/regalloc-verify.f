@@ -133,6 +133,8 @@ DYNAMIC-BUFFER UB-BUF n
 : UB ( -- ptr n ) 0 UB-BUF ;
 DYNAMIC-BUFFER DB-BUF n
 : DB ( -- ptr n ) 0 DB-BUF ;
+DYNAMIC-BUFFER UBN-BUF n             \ distinct blocks that use each value
+: UBN ( -- ptr n ) 0 UBN-BUF ;
 DYNAMIC-BUFFER RCH-BUF n
 : RCH ( -- ptr n ) 0 RCH-BUF ;
 
@@ -340,10 +342,10 @@ variable FPO-RUN                     \ where the next predecessor run starts
    {: k:n b:n :}
    k b UB-CELL dup @  1 b 64 mod lshift or swap ! ;
 
-: UB-BLOCKS ( n -- n )
-   {: k:n :}
-   0
-   NB-N @ 0 ?do k i UB-HAS? if 1+ then loop ;
+\ How many distinct blocks use a value. The count is kept as the uses are
+\ counted, so asking costs nothing and no value sweeps every block for it.
+: UB-BLOCKS ( n -- n )               cells UBN + @ ;
+: UB-BLOCKS! ( n n -- )              {: v:n k:n :} v k cells UBN + ! ;
 
 \ ---- reachability between blocks, with one block held out --------------------
 : RCH? ( n -- bool )                 cells RCH + @ 0<> ;
@@ -433,6 +435,10 @@ variable FPO-RUN                     \ where the next predecessor run starts
    k USES-AT 1 < if k TRAP-FRAME-END? if exit then E-A64RAV-ORDER throw then
    k USES-AT k UB-BLOCKS <> if E-A64RAV-ORDER throw then
    k DB-AT 0 < if E-A64RAV-ORDER throw then
+   \ What the sweep below refuses is a second block using this order that a
+   \ first reaches without passing the block that mints it. A value used in one
+   \ block has no second block to find, so the sweep cannot refuse it.
+   k UB-BLOCKS 1 = if exit then
    NB-N @ 0 ?do
       k i UB-HAS? if k i ORDER-FROM-CK then
    loop ;
@@ -443,6 +449,7 @@ variable FPO-RUN                     \ where the next predecessor run starts
    id OPERANDS-OF 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
       k USES-AT 1+ k USES!
+      k b UB-HAS? 0= if k UB-BLOCKS 1+ k UB-BLOCKS! then
       k b UB-ADD
    loop
    id RESULTS-OF 0 ?do
@@ -475,7 +482,7 @@ variable FPO-RUN                     \ where the next predecessor run starts
    NB-N @ BMAX > if E-A64RAV-SHAPE throw then
    f VB-BASE!
    VMAX UB-CELLS * 0 ?do 0 i cells UB + ! loop
-   N-VALS @ 0 ?do 0 i USES! -1 i DB! loop
+   N-VALS @ 0 ?do 0 i USES! 0 i UB-BLOCKS! -1 i DB! loop
    NB-N @ 0 ?do f i COUNT-BLOCK loop
    N-VALS @ 0 ?do
       i CLS-AT C-TOKEN =  i lo hi IN-WINDOW?  and if i ORDER-VALUE-CK then
@@ -1343,6 +1350,7 @@ DYNAMIC-BUFFER VD-DOUT-BUF n
    VMAX U-AT-BUF-RESERVE
    VMAX BMAX 63 + 64 / * UB-BUF-RESERVE
    VMAX DB-BUF-RESERVE
+   VMAX UBN-BUF-RESERVE
    BMAX RCH-BUF-RESERVE
    FPLANES BMAX * SETC * FLOW-BUF-RESERVE
    BMAX SETC * FST-BUF-RESERVE
@@ -2282,6 +2290,7 @@ public
    U-AT-BUF-RELEASE
    UB-BUF-RELEASE
    DB-BUF-RELEASE
+   UBN-BUF-RELEASE
    RCH-BUF-RELEASE
    FLOW-BUF-RELEASE
    FST-BUF-RELEASE
