@@ -247,11 +247,12 @@ private
    endcase ;
 
 \ ---- cell access -------------------------------------------------------------
-: LCELL@ ( IR-ARENA:arena n -- n )
-   IR-ARENA:READ ;
-
-: FCELL@ ( IR-ARENA:view n -- n )
-   IR-ARENA:FREAD ;
+\ Every read below goes through an IR-ARENA reader. The three stores are
+\ resolved ONCE, at the public word, and the whole private layer takes the
+\ resolved readers - a row of six fields used to resolve the same store
+\ eighteen times. The live and frozen twins collapse with it: a reader carries
+\ the state it was opened against and refuses the other with the error the
+\ handle gave, so the public L/F pairs differ only in OPEN-LIVE against OPEN.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -268,53 +269,29 @@ private
 : MAGIC-CK ( n n -- )
    <> if E-IR-OP-STATE throw then ;
 
-: PHDR-CK ( IR-ARENA:arena -- )
-   {: p:IR-ARENA:arena :}
-   p IR-ARENA:USED PSHAPE-CK
-   OPL-MAGIC p HC-MAGIC LCELL@ MAGIC-CK ;
+: PHDR-CK ( IR-ARENA:reader -- )
+   {: p:IR-ARENA:reader :}
+   p IR-ARENA:RD-SIZE PSHAPE-CK
+   OPL-MAGIC p HC-MAGIC IR-ARENA:RD@ MAGIC-CK ;
 
-: VHDR-CK ( IR-ARENA:arena -- )
-   {: v:IR-ARENA:arena :}
-   v IR-ARENA:USED VSHAPE-CK
-   OPV-MAGIC v HC-MAGIC LCELL@ MAGIC-CK ;
+: VHDR-CK ( IR-ARENA:reader -- )
+   {: v:IR-ARENA:reader :}
+   v IR-ARENA:RD-SIZE VSHAPE-CK
+   OPV-MAGIC v HC-MAGIC IR-ARENA:RD@ MAGIC-CK ;
 
-: RHDR-CK ( IR-ARENA:arena -- )
-   {: r:IR-ARENA:arena :}
-   r IR-ARENA:USED RSHAPE-CK
-   OPR-MAGIC r HC-MAGIC LCELL@ MAGIC-CK ;
+: RHDR-CK ( IR-ARENA:reader -- )
+   {: r:IR-ARENA:reader :}
+   r IR-ARENA:RD-SIZE RSHAPE-CK
+   OPR-MAGIC r HC-MAGIC IR-ARENA:RD@ MAGIC-CK ;
 
-: FPHDR-CK ( IR-ARENA:view -- )
-   {: p:IR-ARENA:view :}
-   p IR-ARENA:SIZE PSHAPE-CK
-   OPL-MAGIC p HC-MAGIC FCELL@ MAGIC-CK ;
+: CNT ( IR-ARENA:reader -- n )
+   dup RHDR-CK IR-ARENA:RD-SIZE HDR-CELLS - ROW-CELLS / ;
 
-: FVHDR-CK ( IR-ARENA:view -- )
-   {: v:IR-ARENA:view :}
-   v IR-ARENA:SIZE VSHAPE-CK
-   OPV-MAGIC v HC-MAGIC FCELL@ MAGIC-CK ;
+: VCNT ( IR-ARENA:reader -- n )
+   dup VHDR-CK IR-ARENA:RD-SIZE HDR-CELLS - VROW-CELLS / ;
 
-: FRHDR-CK ( IR-ARENA:view -- )
-   {: r:IR-ARENA:view :}
-   r IR-ARENA:SIZE RSHAPE-CK
-   OPR-MAGIC r HC-MAGIC FCELL@ MAGIC-CK ;
-
-: CNT ( IR-ARENA:arena -- n )
-   dup RHDR-CK IR-ARENA:USED HDR-CELLS - ROW-CELLS / ;
-
-: FCNT ( IR-ARENA:view -- n )
-   dup FRHDR-CK IR-ARENA:SIZE HDR-CELLS - ROW-CELLS / ;
-
-: VCNT ( IR-ARENA:arena -- n )
-   dup VHDR-CK IR-ARENA:USED HDR-CELLS - VROW-CELLS / ;
-
-: FVCNT ( IR-ARENA:view -- n )
-   dup FVHDR-CK IR-ARENA:SIZE HDR-CELLS - VROW-CELLS / ;
-
-: PCELLS ( IR-ARENA:arena -- n )
-   dup PHDR-CK IR-ARENA:USED HDR-CELLS - ;
-
-: FPCELLS ( IR-ARENA:view -- n )
-   dup FPHDR-CK IR-ARENA:SIZE HDR-CELLS - ;
+: PCELLS ( IR-ARENA:reader -- n )
+   dup PHDR-CK IR-ARENA:RD-SIZE HDR-CELLS - ;
 
 \ ---- ownership ---------------------------------------------------------------
 : SERIAL-CK ( n n -- )
@@ -323,57 +300,33 @@ private
 \ The three stores are one table only when all three carry the same owning
 \ module serial, so a cross-module trio rejects before a row window is trusted
 \ against the wrong pool.
-: TRIO-CK ( IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
-   {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+: TRIO-CK ( IR-ARENA:reader IR-ARENA:reader IR-ARENA:reader -- )
+   {: p:IR-ARENA:reader v:IR-ARENA:reader r:IR-ARENA:reader :}
    p PHDR-CK
    v VHDR-CK
    r RHDR-CK
-   p HC-SERIAL LCELL@ r HC-SERIAL LCELL@ SERIAL-CK
-   v HC-SERIAL LCELL@ r HC-SERIAL LCELL@ SERIAL-CK ;
+   p HC-SERIAL IR-ARENA:RD@ r HC-SERIAL IR-ARENA:RD@ SERIAL-CK
+   v HC-SERIAL IR-ARENA:RD@ r HC-SERIAL IR-ARENA:RD@ SERIAL-CK ;
 
-: FTRIO-CK ( IR-ARENA:view IR-ARENA:view IR-ARENA:view -- )
-   {: p:IR-ARENA:view v:IR-ARENA:view r:IR-ARENA:view :}
-   p FPHDR-CK
-   v FVHDR-CK
-   r FRHDR-CK
-   p HC-SERIAL FCELL@ r HC-SERIAL FCELL@ SERIAL-CK
-   v HC-SERIAL FCELL@ r HC-SERIAL FCELL@ SERIAL-CK ;
-
-: RKEY-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
-   {: r:IR-ARENA:arena key:IR-ID:ir-module-key :}
+: RKEY-CK ( IR-ARENA:reader IR-ID:ir-module-key -- )
+   {: r:IR-ARENA:reader key:IR-ID:ir-module-key :}
    r RHDR-CK
-   r HC-SERIAL LCELL@ key KEY-SERIAL SERIAL-CK ;
+   r HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
-: VKEY-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
-   {: v:IR-ARENA:arena key:IR-ID:ir-module-key :}
+: VKEY-CK ( IR-ARENA:reader IR-ID:ir-module-key -- )
+   {: v:IR-ARENA:reader key:IR-ID:ir-module-key :}
    v VHDR-CK
-   v HC-SERIAL LCELL@ key KEY-SERIAL SERIAL-CK ;
+   v HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK ;
 
 \ A window reader holds only the pool and the row table, so it checks that
 \ pairing itself: both stores are what their tags claim, both carry the same
 \ owning module serial, and that serial is the presented key's. A pool from
 \ another module can therefore never be read through this module's windows.
-: PR-CK ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
+: PR-CK ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key -- )
+   {: p:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key :}
    p PHDR-CK
    r key RKEY-CK
-   p HC-SERIAL LCELL@ r HC-SERIAL LCELL@ SERIAL-CK ;
-
-: FRKEY-CK ( IR-ARENA:view IR-ID:ir-module-key -- )
-   {: r:IR-ARENA:view key:IR-ID:ir-module-key :}
-   r FRHDR-CK
-   r HC-SERIAL FCELL@ key KEY-SERIAL SERIAL-CK ;
-
-: FVKEY-CK ( IR-ARENA:view IR-ID:ir-module-key -- )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key :}
-   v FVHDR-CK
-   v HC-SERIAL FCELL@ key KEY-SERIAL SERIAL-CK ;
-
-: FPR-CK ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key -- )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key :}
-   p FPHDR-CK
-   r key FRKEY-CK
-   p HC-SERIAL FCELL@ r HC-SERIAL FCELL@ SERIAL-CK ;
+   p HC-SERIAL IR-ARENA:RD@ r HC-SERIAL IR-ARENA:RD@ SERIAL-CK ;
 
 \ ---- identity projections ----------------------------------------------------
 : SYM-ORD ( IR-ID:ir-symbol-id -- n )
@@ -416,21 +369,13 @@ private
    id IR-ID:VALUE-LOCAL
    dup 0 < over cnt >= or if E-IR-OP-BOUND throw then ;
 
-: ROW-AT ( IR-ARENA:arena IR-ID:ir-op-id -- n )
-   {: r:IR-ARENA:arena id:IR-ID:ir-op-id :}
-   r HC-SERIAL LCELL@ r CNT id ROW-ORD ;
+: ROW-AT ( IR-ARENA:reader IR-ID:ir-op-id -- n )
+   {: r:IR-ARENA:reader id:IR-ID:ir-op-id :}
+   r HC-SERIAL IR-ARENA:RD@ r CNT id ROW-ORD ;
 
-: FROW-AT ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   {: r:IR-ARENA:view id:IR-ID:ir-op-id :}
-   r HC-SERIAL FCELL@ r FCNT id ROW-ORD ;
-
-: VAL-AT ( IR-ARENA:arena IR-ID:ir-value-id -- n )
-   {: v:IR-ARENA:arena id:IR-ID:ir-value-id :}
-   v HC-SERIAL LCELL@ v VCNT id VAL-ORD ;
-
-: FVAL-AT ( IR-ARENA:view IR-ID:ir-value-id -- n )
-   {: v:IR-ARENA:view id:IR-ID:ir-value-id :}
-   v HC-SERIAL FCELL@ v FVCNT id VAL-ORD ;
+: VAL-AT ( IR-ARENA:reader IR-ID:ir-value-id -- n )
+   {: v:IR-ARENA:reader id:IR-ID:ir-value-id :}
+   v HC-SERIAL IR-ARENA:RD@ v VCNT id VAL-ORD ;
 
 \ ---- row and pool addressing -------------------------------------------------
 : ROW-CELL ( n n -- n )
@@ -439,23 +384,14 @@ private
 : VROW-CELL ( n n -- n )
    swap VROW-CELLS * HDR-CELLS + + ;
 
-: RC@ ( IR-ARENA:arena n n -- n )
-   ROW-CELL LCELL@ ;
+: RC@ ( IR-ARENA:reader n n -- n )
+   ROW-CELL IR-ARENA:RD@ ;
 
-: FRC@ ( IR-ARENA:view n n -- n )
-   ROW-CELL FCELL@ ;
+: VC@ ( IR-ARENA:reader n n -- n )
+   VROW-CELL IR-ARENA:RD@ ;
 
-: VC@ ( IR-ARENA:arena n n -- n )
-   VROW-CELL LCELL@ ;
-
-: FVC@ ( IR-ARENA:view n n -- n )
-   VROW-CELL FCELL@ ;
-
-: PC@ ( IR-ARENA:arena n -- n )
-   HDR-CELLS + LCELL@ ;
-
-: FPC@ ( IR-ARENA:view n -- n )
-   HDR-CELLS + FCELL@ ;
+: PC@ ( IR-ARENA:reader n -- n )
+   HDR-CELLS + IR-ARENA:RD@ ;
 
 \ ---- the window tiling -------------------------------------------------------
 : LEN-OK ( n -- n )
@@ -464,20 +400,16 @@ private
 : STEP-CK ( n n -- )
    <> if E-IR-OP-WINDOW throw then ;
 
-: ROW-END ( IR-ARENA:arena n -- n )
-   {: r:IR-ARENA:arena l:n :}
+: ROW-END ( IR-ARENA:reader n -- n )
+   {: r:IR-ARENA:reader l:n :}
    r l OFF-ATST RC@ LEN-OK  r l OFF-ATN RC@ LEN-OK + ;
-
-: FROW-END ( IR-ARENA:view n -- n )
-   {: r:IR-ARENA:view l:n :}
-   r l OFF-ATST FRC@ LEN-OK  r l OFF-ATN FRC@ LEN-OK + ;
 
 \ Revalidate one row's four windows as an exact tiling of the pool: the operand
 \ window continues where the row before it ended, each following window
 \ continues where the previous one ended, and the last ends inside the live
 \ cells. Overlap and gaps are both impossible once this holds.
-: TILE-CK ( IR-ARENA:arena IR-ARENA:arena n -- )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena l:n :}
+: TILE-CK ( IR-ARENA:reader IR-ARENA:reader n -- )
+   {: p:IR-ARENA:reader r:IR-ARENA:reader l:n :}
    l 0= if 0 else r l 1- ROW-END then {: at:n :}
    at r l OFF-OPST RC@ STEP-CK
    at r l OFF-OPN RC@ LEN-OK + {: a1:n :}
@@ -488,6 +420,9 @@ private
    a3 r l OFF-ATST RC@ STEP-CK
    a3 r l OFF-ATN RC@ LEN-OK + p PCELLS > if E-IR-OP-STATE throw then ;
 
+\ THE MEMO STAYS AS IT WAS, on purpose. It caches the eight-field tiling check,
+\ not just the resolution, so whether a reader makes it redundant is a separate
+\ measured question; only its two revalidating reads move onto the readers.
 \ Frozen contents cannot change through the arena API. Reuse one validated
 \ row's windows, keyed by both exact view identities and the operation owner.
 \ This assumes valid pointer use; it does not detect arbitrary memory corruption.
@@ -503,10 +438,10 @@ variable FROW-LOCAL
 : FROW-FIELD ( n -- n )
    OFF-OPST - FROW-FIELDS @ ;
 
-: FTILE-CK ( IR-ARENA:view IR-ARENA:view n -- )
-   {: p:IR-ARENA:view r:IR-ARENA:view l:n :}
-   8 0 ?do r l i OFF-OPST + FRC@ i FROW-FIELDS ! loop
-   l 0= if 0 else r l 1- FROW-END then {: at:n :}
+: FTILE-CK ( IR-ARENA:reader IR-ARENA:reader n -- )
+   {: p:IR-ARENA:reader r:IR-ARENA:reader l:n :}
+   8 0 ?do r l i OFF-OPST + RC@ i FROW-FIELDS ! loop
+   l 0= if 0 else r l 1- ROW-END then {: at:n :}
    at OFF-OPST FROW-FIELD STEP-CK
    at OFF-OPN FROW-FIELD LEN-OK + {: a1:n :}
    a1 OFF-RSST FROW-FIELD STEP-CK
@@ -514,11 +449,11 @@ variable FROW-LOCAL
    a2 OFF-SCST FROW-FIELD STEP-CK
    a2 OFF-SCN FROW-FIELD LEN-OK + {: a3:n :}
    a3 OFF-ATST FROW-FIELD STEP-CK
-   a3 OFF-ATN FROW-FIELD LEN-OK + p FPCELLS > if E-IR-OP-STATE throw then ;
+   a3 OFF-ATN FROW-FIELD LEN-OK + p PCELLS > if E-IR-OP-STATE throw then ;
 
 \ One element of a stored window, read only after the row's tiling holds.
-: WIN@ ( IR-ARENA:arena IR-ARENA:arena n n n n -- n )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena l:n stoff:n lenoff:n i:n :}
+: WIN@ ( IR-ARENA:reader IR-ARENA:reader n n n n -- n )
+   {: p:IR-ARENA:reader r:IR-ARENA:reader l:n stoff:n lenoff:n i:n :}
    p r l TILE-CK
    r l lenoff RC@ {: ln:n :}
    i 0 < i ln >= or if E-IR-OP-BOUND throw then
@@ -533,25 +468,27 @@ variable FROW-LOCAL
    id IR-ID:OP-OWNER MID-SERIAL FROW-KEY @ <> if false exit then
    id IR-ID:OP-LOCAL FROW-LOCAL @ = ;
 
-: FROW-USE ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id -- )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
-   p r key id FROW-HIT? if
-      p IR-ARENA:SIZE drop r IR-ARENA:SIZE drop exit
+\ The views are the memo's key and the readers are how it reads; a hit still
+\ revalidates both stores before it trusts the cached tiling.
+: FROW-USE ( IR-ARENA:view IR-ARENA:view IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-op-id -- )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view p:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   pv rv key id FROW-HIT? if
+      p IR-ARENA:RD-SIZE drop r IR-ARENA:RD-SIZE drop exit
    then
-   p r key FPR-CK
-   r id FROW-AT {: l:n :}
+   p r key PR-CK
+   r id ROW-AT {: l:n :}
    false 0 FROW-READY !
    p r l FTILE-CK
-   p 0 FROW-VIEWS ! r 1 FROW-VIEWS !
+   pv 0 FROW-VIEWS ! rv 1 FROW-VIEWS !
    key KEY-SERIAL FROW-KEY !
    id IR-ID:OP-LOCAL FROW-LOCAL !
    true 0 FROW-READY ! ;
 
-: FWIN@ ( IR-ARENA:view n n n -- n )
-   {: p:IR-ARENA:view stoff:n lenoff:n i:n :}
+: FWIN@ ( IR-ARENA:reader n n n -- n )
+   {: p:IR-ARENA:reader stoff:n lenoff:n i:n :}
    lenoff FROW-FIELD {: ln:n :}
    i 0 < i ln >= or if E-IR-OP-BOUND throw then
-   p stoff FROW-FIELD i + FPC@ ORD-OK ;
+   p stoff FROW-FIELD i + PC@ ORD-OK ;
 
 \ How many attributes a stored cell length holds. A length that is not a whole
 \ number of entries is a forged or corrupted row, so it is refused rather than
@@ -563,18 +500,18 @@ variable FROW-LOCAL
 \ One cell of the i-th attribute entry: k is AT-KEY or AT-VAL. The bound is the
 \ entry count, so a caller cannot address the far cell of an entry past the
 \ window by doubling its own index.
-: ATWIN@ ( IR-ARENA:arena IR-ARENA:arena n n n -- n )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena l:n i:n k:n :}
+: ATWIN@ ( IR-ARENA:reader IR-ARENA:reader n n n -- n )
+   {: p:IR-ARENA:reader r:IR-ARENA:reader l:n i:n k:n :}
    p r l TILE-CK
    r l OFF-ATN RC@ LEN-OK AT-N {: n:n :}
    i 0 < i n >= or if E-IR-OP-BOUND throw then
    p  r l OFF-ATST RC@ i AT-CELLS * + k +  PC@ ORD-OK ;
 
-: FATWIN@ ( IR-ARENA:view n n -- n )
-   {: p:IR-ARENA:view i:n k:n :}
+: FATWIN@ ( IR-ARENA:reader n n -- n )
+   {: p:IR-ARENA:reader i:n k:n :}
    OFF-ATN FROW-FIELD AT-N {: n:n :}
    i 0 < i n >= or if E-IR-OP-BOUND throw then
-   p OFF-ATST FROW-FIELD i AT-CELLS * + k + FPC@ ORD-OK ;
+   p OFF-ATST FROW-FIELD i AT-CELLS * + k + PC@ ORD-OK ;
 
 \ ---- the staged operation ----------------------------------------------------
 \ One package-owned stage under the single-task compilation discipline, in the
@@ -734,11 +671,11 @@ create STG-N LIST# cells allot
 : STAGED-CELLS ( -- n )
    L-OP SN@ L-RS SN@ + L-SC SN@ + L-AT SN@ AT-CELLS * + ;
 
-: ROOM-CK ( IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
-   {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
-   r CNT r HC-CAP LCELL@ >= if E-IR-OP-CAP throw then
-   v VCNT L-RS SN@ + v HC-CAP LCELL@ > if E-IR-OP-CAP throw then
-   p PCELLS STAGED-CELLS + p HC-CAP LCELL@ > if E-IR-OP-CAP throw then ;
+: ROOM-CK ( IR-ARENA:reader IR-ARENA:reader IR-ARENA:reader -- )
+   {: p:IR-ARENA:reader v:IR-ARENA:reader r:IR-ARENA:reader :}
+   r CNT r HC-CAP IR-ARENA:RD@ >= if E-IR-OP-CAP throw then
+   v VCNT L-RS SN@ + v HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then
+   p PCELLS STAGED-CELLS + p HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then ;
 
 \ One append writes all THREE arenas: the pool windows, then the operation row,
 \ then one value row per result. All three are reserved here, before the first
@@ -915,8 +852,11 @@ public
 \ every check runs before the first cell is written, so an append either lands
 \ whole or changes nothing.
 : END-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- IR-ID:ir-op-id )
-   {: c:IR-CTX:ctx p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key sr:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena :}
+   {: c:IR-CTX:ctx pa:IR-ARENA:arena va:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key sr:IR-ARENA:arena tr:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena :}
    STG-TAKE
+   pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
+   va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    p v r TRIO-CK
    r key RKEY-CK
    FIELDS-CK
@@ -928,16 +868,16 @@ public
    key KEY-SERIAL SUCCS-CK
    sa key SPAN-CK
    p v r ROOM-CK
-   c p v r ROOM-TAKE
+   c pa va ra ROOM-TAKE
    p PCELLS {: st:n :}
    r CNT {: l:n :}
    v VCNT {: base:n :}
-   c p L-OP LIST-ADD
-   c p base RESULTS-ADD
-   c p L-SC LIST-ADD
-   c p ATTRS-ADD
-   c r st ROW-ADD
-   c v l VROWS-ADD
+   c pa L-OP LIST-ADD
+   c pa base RESULTS-ADD
+   c pa L-SC LIST-ADD
+   c pa ATTRS-ADD
+   c ra st ROW-ADD
+   c va l VROWS-ADD
    key l IR-ID:PACK-OP ;
 
 \ ---- block arguments ---------------------------------------------------------
@@ -949,73 +889,72 @@ public
 \ runs before the first cell is written, so this append also lands whole or
 \ changes nothing.
 : MINT-ARG ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id IR-ID:ir-type-id n -- IR-ID:ir-value-id )
-   {: c:IR-CTX:ctx v:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key blk:IR-ID:ir-block-id t:IR-ID:ir-type-id pos:n :}
+   {: c:IR-CTX:ctx va:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key blk:IR-ID:ir-block-id t:IR-ID:ir-type-id pos:n :}
+   va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
    v key VKEY-CK
    key KEY-SERIAL blk BLK-OWNER OWNED-CK
    key KEY-SERIAL t TYP-OWNER OWNED-CK
    tr t IR-TYPE:KIND@ drop
    pos 0 < if E-IR-OP-BOUND throw then
-   v VCNT v HC-CAP LCELL@ >= if E-IR-OP-CAP throw then
+   v VCNT v HC-CAP IR-ARENA:RD@ >= if E-IR-OP-CAP throw then
    v VCNT {: l:n :}
-   c v t IR-ID:TYPE-LOCAL CELL+
-   c v IR--OP-DEF--KIND:BLK-ARG KIND-CODE CELL+
-   c v blk IR-ID:BLOCK-LOCAL CELL+
-   c v pos CELL+
+   c va t IR-ID:TYPE-LOCAL CELL+
+   c va IR--OP-DEF--KIND:BLK-ARG KIND-CODE CELL+
+   c va blk IR-ID:BLOCK-LOCAL CELL+
+   c va pos CELL+
    key l IR-ID:PACK-VALUE ;
 
 \ ---- table readers -----------------------------------------------------------
 : OPS ( IR-ARENA:arena -- n )
-   CNT ;
+   IR-ARENA:OPEN-LIVE CNT ;
 
 : VALUES ( IR-ARENA:arena -- n )
-   VCNT ;
+   IR-ARENA:OPEN-LIVE VCNT ;
 
 : POOL-CELLS ( IR-ARENA:arena -- n )
-   PCELLS ;
+   IR-ARENA:OPEN-LIVE PCELLS ;
 
 private
 
-: FLD ( IR-ARENA:arena IR-ID:ir-op-id n -- n )
-   {: r:IR-ARENA:arena id:IR-ID:ir-op-id off:n :}
+: FLD ( IR-ARENA:reader IR-ID:ir-op-id n -- n )
+   {: r:IR-ARENA:reader id:IR-ID:ir-op-id off:n :}
    r  r id ROW-AT  off RC@ ;
 
-: FFLD ( IR-ARENA:view IR-ID:ir-op-id n -- n )
-   {: r:IR-ARENA:view id:IR-ID:ir-op-id off:n :}
-   r  r id FROW-AT  off FRC@ ;
-
-: VFLD ( IR-ARENA:arena IR-ID:ir-value-id n -- n )
-   {: v:IR-ARENA:arena id:IR-ID:ir-value-id off:n :}
+: VFLD ( IR-ARENA:reader IR-ID:ir-value-id n -- n )
+   {: v:IR-ARENA:reader id:IR-ID:ir-value-id off:n :}
    v  v id VAL-AT  off VC@ ;
-
-: FVFLD ( IR-ARENA:view IR-ID:ir-value-id n -- n )
-   {: v:IR-ARENA:view id:IR-ID:ir-value-id off:n :}
-   v  v id FVAL-AT  off FVC@ ;
 
 public
 
 \ ---- operation readers -------------------------------------------------------
 : OPCODE@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
-   {: r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   {: ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    r key RKEY-CK
    key r id OFF-OPC FLD ORD-OK IR-ID:PACK-SYMBOL ;
 
 : OPERANDS ( IR-ARENA:arena IR-ID:ir-op-id -- n )
-   OFF-OPN FLD LEN-OK ;
+   {: ra:IR-ARENA:arena id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN-LIVE id OFF-OPN FLD LEN-OK ;
 
 : RESULTS ( IR-ARENA:arena IR-ID:ir-op-id -- n )
-   OFF-RSN FLD LEN-OK ;
+   {: ra:IR-ARENA:arena id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN-LIVE id OFF-RSN FLD LEN-OK ;
 
 : SUCCESSORS ( IR-ARENA:arena IR-ID:ir-op-id -- n )
-   OFF-SCN FLD LEN-OK ;
+   {: ra:IR-ARENA:arena id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN-LIVE id OFF-SCN FLD LEN-OK ;
 
 : ATTRS ( IR-ARENA:arena IR-ID:ir-op-id -- n )
-   OFF-ATN FLD LEN-OK AT-N ;
+   {: ra:IR-ARENA:arena id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN-LIVE id OFF-ATN FLD LEN-OK AT-N ;
 
 \ The span this operation came from. A span is a value, so the consumer
 \ revalidates it against the registry it names with IR-SOURCE:SPAN-CK, exactly
 \ as IR-SOURCE requires of every holder.
 : SPAN@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id -- IR-SOURCE:span )
-   {: r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   {: ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    r key RKEY-CK
    r id ROW-AT {: l:n :}
    key r l OFF-SRC RC@ ORD-OK IR-ID:PACK-SOURCE
@@ -1024,38 +963,50 @@ public
    IR--SOURCE-SPAN:MAKE ;
 
 : OPERAND@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   {: pa:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    p r key PR-CK
    key p r  r id ROW-AT  OFF-OPST OFF-OPN i WIN@ IR-ID:PACK-VALUE ;
 
 : RESULT@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   {: pa:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    p r key PR-CK
    key p r  r id ROW-AT  OFF-RSST OFF-RSN i WIN@ IR-ID:PACK-VALUE ;
 
 : SUCCESSOR@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-block-id )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   {: pa:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    p r key PR-CK
    key p r  r id ROW-AT  OFF-SCST OFF-SCN i WIN@ IR-ID:PACK-BLOCK ;
 
 : ATTR@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-attr-id )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   {: pa:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    p r key PR-CK
    key p r  r id ROW-AT  i AT-VAL ATWIN@ IR-ID:PACK-ATTR ;
 
 \ The key this attribute answers. Whether the opcode declares it is the freeze
 \ verifier's question; this reader only says which key was recorded.
 : ATTR-KEY@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
-   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   {: pa:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pa IR-ARENA:OPEN-LIVE {: p:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    p r key PR-CK
    key p r  r id ROW-AT  i AT-KEY ATWIN@ IR-ID:PACK-SYMBOL ;
 
 \ ---- value readers -----------------------------------------------------------
 : VALUE-KIND@ ( IR-ARENA:arena IR-ID:ir-value-id -- IR-OP:def-kind )
-   OFF-VKIND VFLD N>KIND ;
+   {: va:IR-ARENA:arena id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN-LIVE id OFF-VKIND VFLD N>KIND ;
 
 : VALUE-TYPE@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-type-id )
-   {: v:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   {: va:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
    v key VKEY-CK
    key v id OFF-VTYP VFLD ORD-OK IR-ID:PACK-TYPE ;
 
@@ -1078,7 +1029,9 @@ public
 \ The operation that defined this value, checked against the operation table
 \ that owns the reference.
 : VALUE-OP@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-op-id )
-   {: v:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   {: va:IR-ARENA:arena ra:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
    v key VKEY-CK
    r key RKEY-CK
    v id OFF-VKIND VFLD RESULT-KIND-CK
@@ -1088,21 +1041,24 @@ public
 
 \ Which result of that operation this value is.
 : VALUE-POS@ ( IR-ARENA:arena IR-ID:ir-value-id -- n )
-   {: v:IR-ARENA:arena id:IR-ID:ir-value-id :}
+   {: va:IR-ARENA:arena id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
    v id OFF-VKIND VFLD RESULT-KIND-CK
    v id OFF-VPOS VFLD LEN-OK ;
 
 \ The block that defined this value. The identity is owner-checked here and
 \ bound-checked by the block table that owns it, exactly as for a successor.
 : VALUE-BLOCK@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-block-id )
-   {: v:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   {: va:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
    v key VKEY-CK
    v id OFF-VKIND VFLD ARG-KIND-CK
    key v id OFF-VDEF VFLD ORD-OK IR-ID:PACK-BLOCK ;
 
 \ Which argument of that block this value is.
 : VALUE-ARG@ ( IR-ARENA:arena IR-ID:ir-value-id -- n )
-   {: v:IR-ARENA:arena id:IR-ID:ir-value-id :}
+   {: va:IR-ARENA:arena id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN-LIVE {: v:IR-ARENA:reader :}
    v id OFF-VKIND VFLD ARG-KIND-CK
    v id OFF-VPOS VFLD LEN-OK ;
 
@@ -1110,97 +1066,120 @@ public
 \ A frozen module reads its operations and values through the three arena views;
 \ the retired builder handles reject every touch with E-IR-ARENA-FROZEN.
 : FOPS ( IR-ARENA:view -- n )
-   FCNT ;
+   IR-ARENA:OPEN CNT ;
 
 : FVALUES ( IR-ARENA:view -- n )
-   FVCNT ;
+   IR-ARENA:OPEN VCNT ;
 
 : FPOOL-CELLS ( IR-ARENA:view -- n )
-   FPCELLS ;
+   IR-ARENA:OPEN PCELLS ;
 
 : FOPCODE@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
-   {: r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
-   r key FRKEY-CK
-   key r id OFF-OPC FFLD ORD-OK IR-ID:PACK-SYMBOL ;
+   {: ra:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r key RKEY-CK
+   key r id OFF-OPC FLD ORD-OK IR-ID:PACK-SYMBOL ;
 
 : FOPERANDS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   OFF-OPN FFLD LEN-OK ;
+   {: ra:IR-ARENA:view id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN id OFF-OPN FLD LEN-OK ;
 
 : FRESULTS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   OFF-RSN FFLD LEN-OK ;
+   {: ra:IR-ARENA:view id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN id OFF-RSN FLD LEN-OK ;
 
 : FSUCCESSORS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   OFF-SCN FFLD LEN-OK ;
+   {: ra:IR-ARENA:view id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN id OFF-SCN FLD LEN-OK ;
 
 : FATTRS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   OFF-ATN FFLD LEN-OK AT-N ;
+   {: ra:IR-ARENA:view id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN id OFF-ATN FLD LEN-OK AT-N ;
 
 : FSPAN@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id -- IR-SOURCE:span )
-   {: r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
-   r key FRKEY-CK
-   r id FROW-AT {: l:n :}
-   key r l OFF-SRC FRC@ ORD-OK IR-ID:PACK-SOURCE
-   r l OFF-SBEG FRC@ LEN-OK
-   r l OFF-SLEN FRC@ LEN-OK
+   {: ra:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
+   ra IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   r key RKEY-CK
+   r id ROW-AT {: l:n :}
+   key r l OFF-SRC RC@ ORD-OK IR-ID:PACK-SOURCE
+   r l OFF-SBEG RC@ LEN-OK
+   r l OFF-SLEN RC@ LEN-OK
    IR--SOURCE-SPAN:MAKE ;
 
 : FOPERAND@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key id FROW-USE
+   {: pv:IR-ARENA:view rv:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pv IR-ARENA:OPEN {: p:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   pv rv p r key id FROW-USE
    key p OFF-OPST OFF-OPN i FWIN@ IR-ID:PACK-VALUE ;
 
 : FRESULT@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key id FROW-USE
+   {: pv:IR-ARENA:view rv:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pv IR-ARENA:OPEN {: p:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   pv rv p r key id FROW-USE
    key p OFF-RSST OFF-RSN i FWIN@ IR-ID:PACK-VALUE ;
 
 : FSUCCESSOR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-block-id )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key id FROW-USE
+   {: pv:IR-ARENA:view rv:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pv IR-ARENA:OPEN {: p:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   pv rv p r key id FROW-USE
    key p OFF-SCST OFF-SCN i FWIN@ IR-ID:PACK-BLOCK ;
 
 : FATTR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-attr-id )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key id FROW-USE
+   {: pv:IR-ARENA:view rv:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pv IR-ARENA:OPEN {: p:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   pv rv p r key id FROW-USE
    key p i AT-VAL FATWIN@ IR-ID:PACK-ATTR ;
 
 : FATTR-KEY@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
-   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
-   p r key id FROW-USE
+   {: pv:IR-ARENA:view rv:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   pv IR-ARENA:OPEN {: p:IR-ARENA:reader :}
+   rv IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   pv rv p r key id FROW-USE
    key p i AT-KEY FATWIN@ IR-ID:PACK-SYMBOL ;
 
 : FVALUE-KIND@ ( IR-ARENA:view IR-ID:ir-value-id -- IR-OP:def-kind )
-   OFF-VKIND FVFLD N>KIND ;
+   {: va:IR-ARENA:view id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN id OFF-VKIND VFLD N>KIND ;
 
 : FVALUE-TYPE@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-type-id )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
-   v key FVKEY-CK
-   key v id OFF-VTYP FVFLD ORD-OK IR-ID:PACK-TYPE ;
+   {: va:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN {: v:IR-ARENA:reader :}
+   v key VKEY-CK
+   key v id OFF-VTYP VFLD ORD-OK IR-ID:PACK-TYPE ;
 
 : FVALUE-OP@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-op-id )
-   {: v:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
-   v key FVKEY-CK
-   r key FRKEY-CK
-   v id OFF-VKIND FVFLD RESULT-KIND-CK
-   v id OFF-VDEF FVFLD ORD-OK
-   dup r FCNT >= if E-IR-OP-BOUND throw then
+   {: va:IR-ARENA:view ra:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN {: v:IR-ARENA:reader :}
+   ra IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+   v key VKEY-CK
+   r key RKEY-CK
+   v id OFF-VKIND VFLD RESULT-KIND-CK
+   v id OFF-VDEF VFLD ORD-OK
+   dup r CNT >= if E-IR-OP-BOUND throw then
    key swap IR-ID:PACK-OP ;
 
 : FVALUE-POS@ ( IR-ARENA:view IR-ID:ir-value-id -- n )
-   {: v:IR-ARENA:view id:IR-ID:ir-value-id :}
-   v id OFF-VKIND FVFLD RESULT-KIND-CK
-   v id OFF-VPOS FVFLD LEN-OK ;
+   {: va:IR-ARENA:view id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN {: v:IR-ARENA:reader :}
+   v id OFF-VKIND VFLD RESULT-KIND-CK
+   v id OFF-VPOS VFLD LEN-OK ;
 
 : FVALUE-BLOCK@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-block-id )
-   {: v:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
-   v key FVKEY-CK
-   v id OFF-VKIND FVFLD ARG-KIND-CK
-   key v id OFF-VDEF FVFLD ORD-OK IR-ID:PACK-BLOCK ;
+   {: va:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN {: v:IR-ARENA:reader :}
+   v key VKEY-CK
+   v id OFF-VKIND VFLD ARG-KIND-CK
+   key v id OFF-VDEF VFLD ORD-OK IR-ID:PACK-BLOCK ;
 
 : FVALUE-ARG@ ( IR-ARENA:view IR-ID:ir-value-id -- n )
-   {: v:IR-ARENA:view id:IR-ID:ir-value-id :}
-   v id OFF-VKIND FVFLD ARG-KIND-CK
-   v id OFF-VPOS FVFLD LEN-OK ;
+   {: va:IR-ARENA:view id:IR-ID:ir-value-id :}
+   va IR-ARENA:OPEN {: v:IR-ARENA:reader :}
+   v id OFF-VKIND VFLD ARG-KIND-CK
+   v id OFF-VPOS VFLD LEN-OK ;
 
 private
 get-current prot-wid-add
