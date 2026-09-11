@@ -10,14 +10,13 @@ the implementation matches that contract before the word can run.
 ```
 
 The native `bin/hb` engine provides the REPL, checker, ARM64 JIT and AOT
-compiler, debugger, profiler, source loader, and image builder. The repository
-also contains a checked PTX vocabulary and CUDA Driver API bindings for writing
-and running GPU kernels in Habu.
+compiler, debugger, profiler, source loader, and image builder.
 
 Loom, the ML framework and model-CAD layer formerly kept in this tree, now lives
-in the sibling [`loom`](../loom/README.md) repository. Loom depends on Habu.
-Habu's language, compiler, runtime, standard libraries, numeric types, FFI, and
-PTX backend remain here.
+in the sibling [`loom`](../loom/README.md) repository, together with the PTX
+backend, the checked GPU-kernel vocabulary and the CUDA driver bindings. Loom
+depends on Habu. Habu's language, compiler, runtime, standard libraries, numeric
+types and FFI remain here; nothing GPU-specific does.
 
 ## Quick start
 
@@ -47,22 +46,15 @@ locals, control flow, loops, recursion, return-stack effects, packages, and
 algebraic data types. Explicit `TRUSTED:` and `TRUST` sites mark the small set of
 compiler or runtime boundaries the checker cannot express directly.
 
-The PTX vocabulary extends those effects with GPU facts such as address space,
-extent, lane mask, and uniformity. This keeps the backend general-purpose: model
-and tensor policy belongs in Loom, while kernel representation, emission,
-assembly, driver interaction, and numeric support belong in Habu.
-
 ## Repository layout
 
 ```text
 src/core/         checker, type families, source loading, core words
 src/compiler/     compiler policy and shared compiler support
 src/arch/arm64/   ARM64 assembler and native code generation
-src/arch/ptx/     PTX emitter and backend support
 src/habu/         native engine, JIT, AOT, debugger, profiler, image tools
 src/os/           Linux and macOS target seams
 lib/              checked standard, numeric, FFI, and runtime libraries
-lib/ptx/          checked GPU-kernel vocabulary and PTX code generation
 tools/            build, lint, inspection, and backend smoke tools
 test/             native Habu suite and focused compiler/runtime tests
 bench/            benchmarks
@@ -70,10 +62,10 @@ docs/             language, compiler, runtime, and backend documentation
 skills/           operational recipes
 ```
 
-Application PTX producers, benchmarking, autotuning, device goldens, and
-PTX differentiation/ML expression IR live in the sibling Loom repository.
-Habu retains the generic PTX emitter, typed kernel vocabulary, and CUDA bindings.
-Loom's README documents native scoped-root loading against these shared libraries.
+Everything PTX and GPU lives in the sibling Loom repository: the emitter, the
+typed kernel vocabulary, the CUDA bindings, application kernel producers,
+benchmarking, autotuning, device goldens and the ML expression IR. Loom's README
+documents native scoped-root loading against Habu's shared libraries.
 
 ## Documentation
 
@@ -82,6 +74,5 @@ Loom's README documents native scoped-root loading against these shared librarie
 - [`docs/type-families.md`](docs/type-families.md) — nominal and algebraic types.
 - [`docs/bootstrap.md`](docs/bootstrap.md) — bootstrap and self-hosting.
 - [`docs/debugging.md`](docs/debugging.md) — debugger and inspection tools.
-- [`docs/ptx.md`](docs/ptx.md) — the checked PTX backend.
 - [`docs/stdlib.md`](docs/stdlib.md) — standard library reference.
 - [`LESSONS.md`](LESSONS.md) — concise project memory.

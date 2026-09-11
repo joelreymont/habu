@@ -96,25 +96,6 @@ forbidden. Regex prose may call values `rx`, but source signatures remain typed
 as `ptr u8 n`; map prose may call values `map`, but source signatures remain
 typed as `ptr a n` for storage and `ptr u8 n` for keys.
 
-## PTX
-
-`lib/ptx/` is a separate research sub-library with its own source consumers and
-tests.
-`lib/ptx/header.f` provides the checked PTX kernel header vocabulary used by
-`docs/ptx-sketch.md`. `KERNEL:` is a compiler keyword alias for `:`; load
-`lib/errors.f lib/ptx/header.f` before kernel sources. `%BLOCK` validates legal
-CUDA block sizes (multiple of 32 and `1 <= n <= 1024`). `GRID:` and `WHERE` are
-compile-time header markers consumed before the checked kernel body. `lib/ptx/launch.f`
-provides checked host launch guards such as `PTX-ROW-LAUNCH-CHECK ( rows cols block -- )`
-so CUDA launch code rejects invalid row dimensions before calling the driver.
-
-`lib/ptx/cg-attention.f` publishes package `ATTN`. `ATTN:CHECKED` relates Q,
-K, V, and O as `[Q,D]` matrices and threads a nominal phase token through
-`ATTN:STAGE-Q`, `ATTN:SCORE`, `ATTN:SOFTMAX`, `ATTN:OUTPUT`, and
-`ATTN:FINISH`. Skipped or reordered phases and mismatched matrix shapes are
-checker errors. `ATTN:EMIT` runs that same checked body to produce the fused
-sm_87 PTX module.
-
 ## Array
 
 `lib/array.f` provides checked helpers for cell arrays in `package ARRAY`. Call
@@ -332,14 +313,14 @@ calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
 `__DATA_CONST,__got` page and `LC_DYLD_CHAINED_FIXUPS` imports for libSystem
 `_dlopen` and `_dlsym`; the same checked `FFI:DLOPEN`/`FFI:DLSYM` words read those
 resolved slots. The exact package bindings are `FFI:DLOPEN` and `FFI:DLSYM`.
-No global loader or marshalling aliases exist. `FFI`, `CUDA`, and `TASK` seal
+No global loader or marshalling aliases exist. `FFI` and `TASK` seal
 both wordlists after definition, so later source cannot reopen them, add a call,
 or redirect a symbol.
 
 `FFI:DLSYM` uses a dedicated task-DATA loader block, so it cannot overwrite a
 staged call. Wrappers still resolve before staging to keep the foreign-call
 transaction linear. Long-lived libraries such as `TASK` resolve required symbols at load and
-store them as private constants. Optional libraries such as CUDA resolve inside
+store them as private constants. Optional libraries resolve their symbols inside
 each explicit wrapper before `FFI:RESET`, then stage and call without exporting a
 mutable function-pointer cell.
 

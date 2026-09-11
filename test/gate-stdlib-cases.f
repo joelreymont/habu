@@ -15,11 +15,6 @@ SUITE clobber-lint-fixtures
    tools/lint/clobber-lint-test.f
 ;SUITE
 
-SUITE ptx-emitter-lint
-   tools/lint/ptx-emitter-lint.f
-   tools/lint/ptx-emitter-lint-test.f
-;SUITE
-
 SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
 ;SUITE
@@ -646,82 +641,6 @@ SUITE unicode-class-tools
 
 SUITE unicode-class-exhaustive
    tools/unicode/class-verify-main.f
-;SUITE
-
-SUITE ptx-stdlib
-   lib/ptx/header-test.f
-   lib/ptx/kernel-abi-test.f
-   lib/ptx/kernel-manifest-test.f
-   lib/ptx/launch-test.f
-   lib/ptx/rep-test.f
-   lib/ptx/mint-test.f
-   lib/ptx/tile-test.f
-   lib/ptx/tile-loop-test.f
-   lib/ptx/tile-smem-test.f
-   lib/ptx/tile-acc-test.f
-   lib/ptx/gemm-checked-test.f
-   lib/ptx/attention-checked-test.f
-   lib/ptx/attention-roles-test.f
-   lib/ptx/tile-v4-test.f
-   lib/ptx/tile-v4a-test.f
-   lib/ptx/tile-pipe-test.f
-   lib/ptx/cpp-pipe-step-test.f
-   lib/ptx/cpp-slot-test.f
-   lib/ptx/collective-test.f
-   lib/ptx/cg-collective-test.f
-   lib/ptx/cg-activation-test.f
-   lib/ptx/sentinel-test.f
-   lib/ptx/cuda-driver-test.f
-   lib/ptx/cuda-scope-test.f
-;SUITE
-
-SUITE ptx-rep-neg
-   lib/ptx/rep-neg-test.f
-;SUITE
-
-SUITE ptx-mint-neg
-   lib/ptx/mint-neg-test.f
-;SUITE
-
-SUITE ptx-tile-loop-neg
-   lib/ptx/tile-loop-neg-test.f
-;SUITE
-
-SUITE ptx-tile-smem-neg
-   lib/ptx/tile-smem-neg-test.f
-;SUITE
-
-SUITE ptx-tile-acc-neg
-   lib/ptx/tile-acc-neg-test.f
-;SUITE
-
-SUITE ptx-tile-v4a-neg
-   lib/ptx/tile-v4a-neg-test.f
-;SUITE
-
-SUITE ptx-tile-pipe-neg
-   lib/ptx/tile-pipe-neg-test.f
-;SUITE
-
-SUITE ptx-cpp-slot-neg
-   lib/ptx/cpp-slot-neg-test.f
-   lib/ptx/cg-mma-slot-neg-test.f
-;SUITE
-
-SUITE ptx-gemm-checked-neg
-   lib/ptx/gemm-checked-neg-test.f
-;SUITE
-
-SUITE ptx-attention-checked-neg
-   lib/ptx/attention-checked-neg-test.f
-;SUITE
-
-SUITE ptx-uniform-barrier
-   lib/ptx/uniform-barrier-test.f
-;SUITE
-
-SUITE ptx-toolchain
-   lib/ptx/toolchain-test.f
 ;SUITE
 
 SUITE-STDIN source-stdlib-stdin DATA

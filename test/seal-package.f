@@ -142,19 +142,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" : FFI:EVIL ( -- n ) 0 ;" SPK-LINE
    SB$ ;
 
-: SPK-CUDA-REOPEN$ ( -- ptr u8 n )
-   SB-RESET
-   s" require lib/ptx/cuda-driver.f" SPK-LINE
-   s" package CUDA" SPK-LINE
-   s" ;package" SPK-LINE
-   SB$ ;
-
-: SPK-CUDA-REDIRECT$ ( -- ptr u8 n )
-   SB-RESET
-   s" require lib/ptx/cuda-driver.f" SPK-LINE
-   s" : CUDA:EVIL ( -- n ) 0 ;" SPK-LINE
-   SB$ ;
-
 : SPK-TASK-REOPEN$ ( -- ptr u8 n )
    SB-RESET
    s" require lib/task.f" SPK-LINE
@@ -371,10 +358,6 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-FFI-REOPEN$ SPK-SUBJECT SPK-ASSERT-SEAL
    s" sealed FFI rejects redirect" T-LABEL
    SPK-FFI-REDIRECT$ SPK-SUBJECT SPK-ASSERT-SEAL
-   s" sealed CUDA rejects reopen" T-LABEL
-   SPK-CUDA-REOPEN$ SPK-SUBJECT SPK-ASSERT-SEAL
-   s" sealed CUDA rejects redirect" T-LABEL
-   SPK-CUDA-REDIRECT$ SPK-SUBJECT SPK-ASSERT-SEAL
    s" sealed TASK rejects reopen" T-LABEL
    SPK-TASK-REOPEN$ SPK-SUBJECT SPK-ASSERT-SEAL
    s" sealed TASK rejects redirect" T-LABEL
