@@ -74,7 +74,7 @@ variable LBUF-BYTES
    name nameu CHECKER-DEFINED-HERE? if E-DUP-DEFINITION throw then
    name nameu get-current search-wl 0 <> if E-DUP-DEFINITION throw then ;
 
-: LBUF-ZERO ( ptr a n -- ) {: base:ptr bytes:n :}
+: LBUF-ZERO ( ptr n n -- ) {: base:ptr bytes:n :}
    0 LBUF-I !
    begin LBUF-I @ bytes < while
       0 base LBUF-I @ + !
@@ -190,7 +190,7 @@ variable STGT-START
 \ the storage would name different places, so this refuses rather than allot
 \ into the gap. Nothing is allotted before the eval, so a rejected accessor
 \ leaves DP exactly where it found it and needs no rewind.
-: LBUF-ALLOT ( ptr a -- ) {: base:ptr :}
+: LBUF-ALLOT ( ptr n -- ) {: base:ptr :}
    here base <> if E-LAYOUT-BUFFER throw then
    LBUF-BYTES @ allot
    base LBUF-BYTES @ LBUF-ZERO ;
@@ -262,7 +262,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ so it means the same thing wherever the pair ends up. It carries a certified
 \ signature, so the seal-time internal-word pass leaves it executable for the
 \ generated NAME-BIND callers.
-: LDEFER-BIND ( n ptr a n -- )   \ count cbase wc
+: LDEFER-BIND ( n ptr n n -- )   \ count cbase wc
    {: count:n cb:ptr wc:n :}
    count 0 < if E-LAYOUT-BUFFER throw then
    count wc * {: need:n :}
@@ -281,7 +281,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 \ checker-known and top-level executable (LAYOUT-BUFFER parity); it is not a
 \ source-evaluating opener, so it is not UNSAFE-TOK? (raw-memory surface, like
 \ allot/!). Effect: ( count cbase wc -- ).
-PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-A PE-IN PE-N PE-IN PRIM;
+PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
 \ Copy-on-grow binder: extends a column already bound by LDEFER-BIND to `count`
 \ live cells, PRESERVING the cells written so far. Growing unbound (cnt-cell 0)
@@ -294,7 +294,7 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-A PE-IN PE-N PE-IN PRIM;
 \ newly exposed [old-live, count) slots — a prior shrink may have left them dirty).
 \ Like LDEFER-BIND it dies NAMED past LDEFER-CELL-MAX BEFORE any allot or store,
 \ so a too-big grow leaves the prior region and its live data intact.
-: LDEFER-GROW ( n ptr a n -- )   \ count cbase wc
+: LDEFER-GROW ( n ptr n n -- )   \ count cbase wc
    {: count:n cb:ptr wc:n :}
    count 0 < if E-LAYOUT-BUFFER throw then
    cb 2 CELL * + @ 0= if E-LAYOUT-UNBOUND throw then        \ grow requires a prior BIND
@@ -322,7 +322,7 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-A PE-IN PE-N PE-IN PRIM;
 \ checker-known and top-level executable for the generated NAME-GROW callers; it
 \ is a raw-memory surface (allot/!), not a source-evaluating opener, so it is not
 \ UNSAFE-TOK?. Effect: ( count cbase wc -- ).
-PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-A PE-IN PE-N PE-IN PRIM;
+PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
 \ Generate the deferred accessor plus its NAME-BIND and NAME-GROW into one source.
 \ The `create` comes first so the accessor and both binders can name the control
