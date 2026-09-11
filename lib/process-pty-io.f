@@ -16,9 +16,17 @@
 \ lifetime-watch descriptors, so the supervisor runs the target inside a small
 \ supervised set: the target plus two lifecycle-helper processes that occupy the
 \ registry's `group` (pgrp) and `sup` slots and stay alive until teardown. A
-\ genuine controlling-terminal / job-control PTY device layer (open /dev/ptmx,
-\ grant/unlock, per-OS slave naming) is a separate, per-OS concern and is left to
-\ a follow-up slice; nothing here opens a PTY device.
+\ SPAWN-TTY is the second mode: the target's standard descriptors are the slave
+\ side of a fresh pseudo-terminal (Linux /dev/ptmx + TIOCSPTLCK/TIOCGPTN and
+\ /dev/pts/<n>; Darwin /dev/ptmx + TIOCPTYGRANT/TIOCPTYUNLK/TIOCPTYGNAME), so a
+\ child engine sees a terminal on fd 0, installs its line editor and recovers
+\ from a refused definition instead of stopping at it; the handle's `master`
+\ slot is the PTY master and `done` a duplicate of it for the write side. The
+\ slave is opened O_NOCTTY: a session-leading supervisor without a terminal
+\ (setsid, a service, a container init) would otherwise adopt it and be hung up
+\ at teardown. Nobody acquires the terminal as controlling (TIOCSCTTY is an
+\ unencoded request the engine's ioctl guard refuses), so job control is not
+\ part of this slice. WRITE-LINE and AWAIT-BYTES drive either mode.
 \
 \ Spawn is gated: SPAWN forks the child but leaves it blocked before exec, opens
 \ its lifetime watch descriptor while it is guaranteed alive, and only LAUNCH
@@ -38,6 +46,17 @@ package PROCESS-PTY
 1 constant EPERM#                  \ "operation not permitted" (process exists, denied)
 $400 constant IO-PATH-CAP          \ maximum supervised executable path length + NUL
 $7F constant IO-EXEC-FAIL          \ child exit code when execve never replaces the image
+2 constant IO-O-RDWR               \ open(2) flags for the master
+$20000 constant IO-O-NOCTTY        \ the engine's portable O_NOCTTY bit (src/os/linux/sys.f OS-OPEN-FLAGS; native on Darwin)
+IO-O-RDWR IO-O-NOCTTY or constant IO-O-SLAVE   \ the slave must never become this process's controlling terminal
+0 constant F-DUPFD                 \ fcntl: duplicate to the lowest descriptor at or above the argument
+$40045431 constant TIOCSPTLCK-LINUX
+$80045430 constant TIOCGPTN-LINUX
+$20007454 constant TIOCPTYGRANT-MACOS
+$20007452 constant TIOCPTYUNLK-MACOS
+$40807453 constant TIOCPTYGNAME-MACOS
+$80 constant IO-PTY-NAME-CAP       \ slave path bytes + NUL (Darwin fills it; Linux builds /dev/pts/<n>)
+10 constant IO-LF
 
 \ Load-time scratch shared by the parent build path and by each forked child (a
 \ fork copies this memory, so a child reads the same values the parent stored).
@@ -46,9 +65,13 @@ create IO-ENVP 1 cells allot           \ single NULL slot: the empty child envir
 create IO-POLL 1 cells allot           \ one pollfd for AWAIT
 create IO-GOBYTE 1 allot               \ the one-byte release token written by LAUNCH
 create IO-GO SLOT-CAP cells allot       \ per-slot release-gate write end, indexed by slot
+create IO-PTY-NAME IO-PTY-NAME-CAP allot \ slave path (NUL-terminated)
+create IO-PTY-NUM 1 cells allot         \ TIOCGPTN answer
+create IO-LFBYTE 1 allot                \ the line terminator WRITE-LINE appends
 
 variable IO-PATH-LEN                    \ supervised path length (n)
 variable IO-RAW                         \ raw handle number carried across the spawn catch
+variable IO-TTY                         \ spawn mode: 0 pipes, -1 a pseudo-terminal
 
 \ In-flight spawn state. One spawn runs to completion before the next, so a single
 \ set of cells is enough; every cell holds -1 until the build assigns it, which
@@ -137,11 +160,20 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 \ standard descriptors, drops every other inherited descriptor, and execs. execve
 \ only returns on failure, so reaching the tail means exec failed and the child
 \ exits with IO-EXEC-FAIL; the supervisor still observes the exit through the watch.
-: IO-TARGET-CHILD ( -- )
-   IO-GO-R @ >FD FD>N IO-GOBYTE 1 read drop
+: IO-TARGET-STDIO ( -- )
    IO-SIN-R @ >FD FD>N 0 dup2 drop
    IO-SOUT-W @ >FD FD>N 1 dup2 drop
-   IO-SOUT-W @ >FD FD>N 2 dup2 drop
+   IO-SOUT-W @ >FD FD>N 2 dup2 drop ;
+
+\ The slave is the child's whole terminal: input, output and diagnostics.
+: IO-TARGET-TTY ( -- )
+   IO-SIN-R @ >FD FD>N 0 dup2 drop
+   IO-SIN-R @ >FD FD>N 1 dup2 drop
+   IO-SIN-R @ >FD FD>N 2 dup2 drop ;
+
+: IO-TARGET-CHILD ( -- )
+   IO-GO-R @ >FD FD>N IO-GOBYTE 1 read drop
+   IO-TTY @ if IO-TARGET-TTY else IO-TARGET-STDIO then
    IO-CLOSE-HIGH
    IO-PATH-BUF IO-PATH-LEN @ >LEN PROC-ARGV-PREPARE IO-ENVP execve drop
    s" " IO-EXEC-FAIL die ;
@@ -162,6 +194,55 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 : IO-MK-STDIO ( -- )
    PIPE-PAIR IO-SOUT-W ! IO-MASTER !      \ stdout: owner reads master, child writes
    PIPE-PAIR IO-DONE ! IO-SIN-R ! ;       \ stdin: owner writes done, child reads
+
+\ ---- the pseudo-terminal pair ----------------------------------------------
+: IO-PTY-DIGIT ( n -- )
+   48 + IO-PTY-NAME IO-PTY-NUM @ + c!  IO-PTY-NUM @ 1 + IO-PTY-NUM ! ;
+
+\ "/dev/pts/<n>" + NUL; IO-PTY-NUM is reused as the write cursor once the
+\ number has been read out of it. Up to six decimal digits; the kernel's pty
+\ limit is far below that.
+: IO-PTY-DIGITS ( n n -- ) {: n:n d:n :}          \ the digit of n at divisor d, once a digit has started or d is 1
+   n d / 10 mod {: k:n :}
+   k 0 <> d 1 = or IO-PTY-NUM @ 9 <> or if k IO-PTY-DIGIT then ;
+
+: IO-PTY-PATH! ( n -- ) {: n:n :}
+   n 1000000 >= if E-PROC-OUTPUT throw then
+   s" /dev/pts/" >LEN IO-PTY-NAME IO-PTY-NAME-CAP >LEN PROC-ZCOPY drop
+   9 IO-PTY-NUM !
+   n 100000 IO-PTY-DIGITS  n 10000 IO-PTY-DIGITS  n 1000 IO-PTY-DIGITS
+   n 100 IO-PTY-DIGITS  n 10 IO-PTY-DIGITS  n 1 IO-PTY-DIGITS
+   0 IO-PTY-NAME IO-PTY-NUM @ + c! ;
+
+: IO-OPEN-CK ( n -- n ) {: f:n :}
+   f 0 < if E-PROC-OUTPUT throw then f ;
+
+: IO-IOCTL-CK ( n -- )
+   0 <> if E-PROC-OUTPUT throw then ;
+
+: IO-OPEN-PTY-LINUX ( -- )
+   s" /dev/ptmx" >LEN PROC-PATHZ IO-O-RDWR 0 open IO-OPEN-CK {: m:n :}
+   m >FD IO-MASTER !
+   0 IO-PTY-NUM !
+   m TIOCSPTLCK-LINUX IO-PTY-NUM ioctl IO-IOCTL-CK
+   m TIOCGPTN-LINUX IO-PTY-NUM ioctl IO-IOCTL-CK
+   IO-PTY-NUM @ IO-PTY-PATH!
+   IO-PTY-NAME IO-O-SLAVE 0 open IO-OPEN-CK >FD IO-SIN-R ! ;
+
+: IO-OPEN-PTY-MACOS ( -- )
+   s" /dev/ptmx" >LEN PROC-PATHZ IO-O-RDWR 0 open IO-OPEN-CK {: m:n :}
+   m >FD IO-MASTER !
+   m TIOCPTYGRANT-MACOS NULL$ drop ioctl IO-IOCTL-CK
+   m TIOCPTYUNLK-MACOS NULL$ drop ioctl IO-IOCTL-CK
+   m TIOCPTYGNAME-MACOS IO-PTY-NAME ioctl IO-IOCTL-CK
+   IO-PTY-NAME IO-O-SLAVE 0 open IO-OPEN-CK >FD IO-SIN-R ! ;
+
+\ master -> IO-MASTER (owner reads), a duplicate of it -> IO-DONE (owner
+\ writes), slave -> IO-SIN-R (the child's terminal); IO-SOUT-W stays unused.
+: IO-MK-TTY ( -- )
+   HB-TARGET-LINUX? if IO-OPEN-PTY-LINUX else
+   HB-TARGET-MACOS? if IO-OPEN-PTY-MACOS else E-PROC-HOST throw then then
+   IO-MASTER @ >FD FD>N F-DUPFD 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
 
 : IO-MK-HOLDS ( -- )
    PIPE-PAIR IO-ANCHOR-W ! IO-AH-R !      \ anchor keepalive: owner write, child read
@@ -198,7 +279,7 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 \ Forks come before the watches so the children never inherit a lifetime-watch
 \ descriptor; child-only pipe ends close in the parent right after.
 : IO-BUILD ( -- )
-   IO-MK-STDIO
+   IO-TTY @ if IO-MK-TTY else IO-MK-STDIO then
    IO-MK-HOLDS
    IO-FORK-ANCHOR
    IO-FORK-TARGET
@@ -257,20 +338,68 @@ variable IO-AH-R     variable IO-MH-R     variable IO-GO-R       \ child-side he
 : IO-TARGET-WATCH ( process-pty-handle -- process-pty-handle target-watch )
    HANDLE-IDX TARGET-WATCH@ ;
 
+: IO-SPAWN-MODE ( ptr u8 len bool -- process-pty-handle ) {: path:ptr pathu:len tty:bool :}
+   ROOM? 0= if E-PROC-PTY-CAPACITY throw then
+   IO-RESET-STX
+   tty IO-TTY !
+   path pathu IO-STORE-PATH
+   [: IO-TXN-SAVE ;] catch dup 0 <> if
+      0 IO-TTY !
+      IO-SPAWN-CLEAN throw
+   then
+   drop
+   0 IO-TTY !
+   IO-RAW @ N>HANDLE ;
+
 public
 
 \ Spawn the supervised set and return a live handle. The target is forked but
 \ blocked before exec; its lifetime watch is already open, so LAUNCH can release
 \ it and the exit stays observable.
-: SPAWN ( ptr u8 len -- process-pty-handle ) {: path:ptr pathu:len :}
-   ROOM? 0= if E-PROC-PTY-CAPACITY throw then
-   IO-RESET-STX
-   path pathu IO-STORE-PATH
-   [: IO-TXN-SAVE ;] catch dup 0 <> if
-      IO-SPAWN-CLEAN throw
+: SPAWN ( ptr u8 len -- process-pty-handle )
+   false IO-SPAWN-MODE ;
+
+\ The same lifecycle with the target's standard descriptors on the slave side
+\ of a fresh pseudo-terminal; the handle's master is the terminal.
+: SPAWN-TTY ( ptr u8 len -- process-pty-handle )
+   true IO-SPAWN-MODE ;
+
+\ Send one line to the target's input: the bytes then a line feed. A short write
+\ is an error, never a silent truncation.
+: WRITE-LINE ( process-pty-handle ptr u8 n -- process-pty-handle ) {: a:ptr u:n :}
+   HANDLE-IDX DONE@ {: w:fd :}
+   u 0 > if w FD>N a u write u <> if E-PROC-OUTPUT throw then then
+   IO-LF IO-LFBYTE c!
+   w FD>N IO-LFBYTE 1 write 1 <> if E-PROC-OUTPUT throw then ;
+
+\ Close the target's input so a batch reader sees end of file; the slot is
+\ cleared so teardown does not close it again. Under SPAWN-TTY the terminal
+\ stays open (a PTY master has no end of file to give); send the child's own
+\ end-of-input convention with WRITE-LINE instead.
+: END-INPUT ( process-pty-handle -- process-pty-handle )
+   HANDLE-IDX {: idx:idx :}
+   idx DONE@ IO-CLOSE-FD
+   -1 >FD idx DONE! ;
+
+\ Wait up to ms for the target's output and read what is there into the buffer:
+\ the byte count, 0 when nothing arrived in time, -1 once the target's side is
+\ gone (hang-up or end of file). A broken descriptor throws, and so does an
+\ empty buffer, which could otherwise only masquerade as a hang-up.
+: AWAIT-BYTES ( process-pty-handle ptr u8 n n -- process-pty-handle n ) {: buf:ptr cap:n ms:n :}
+   cap 0 <= if E-PROC-OUTPUT throw then
+   HANDLE-MASTER@ {: m:fd :}
+   m POLLIN IO-PFD!
+   IO-POLL 1 ms poll {: rc:n :}
+   rc 0 < if E-PROC-OUTPUT throw then
+   rc 0= if 0 exit then
+   IO-PFD-REVENTS {: ev:n :}
+   ev POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
+   ev POLLIN and 0 <> if
+      m FD>N buf cap read {: got:n :}
+      got 0 > if got exit then
+      -1 exit
    then
-   drop
-   IO-RAW @ N>HANDLE ;
+   -1 ;
 
 \ Release the target to exec. Idempotent once the gate is spent.
 : LAUNCH ( process-pty-handle -- process-pty-handle )

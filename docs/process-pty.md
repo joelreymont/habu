@@ -62,3 +62,24 @@ gate hosts must provide `/dev/ptmx` and a mounted `/dev/pts`.
 The PTY gate is the native compatibility baseline for process capture, PTY
 startup, line editing, history, breakpoints, stepper recovery, Ctrl-C, Ctrl-D,
 and async exit.
+
+## Supervised sessions (`lib/process-pty-io.f`)
+
+`PROCESS-PTY:SPAWN` runs a target over pipes; `PROCESS-PTY:SPAWN-TTY` runs it
+with the slave side of a fresh pseudo-terminal on fds 0, 1 and 2, so a child
+engine sees a terminal, installs its line editor and recovers from a refused
+definition instead of stopping at it (the batch contract of the pipe mode).
+Both modes share the handle lifecycle (`LAUNCH`, `ALIVE?`, `AWAIT`, `SIGNAL`,
+`TEARDOWN`) and the two I/O words:
+
+- `WRITE-LINE ( handle ptr u8 n -- handle )` sends the bytes and a line feed to
+  the target's input; a short write throws `E-PROC-OUTPUT`.
+- `AWAIT-BYTES ( handle ptr u8 n ms -- handle n )` waits up to `ms` for output
+  and reads what is there: the byte count, `0` when nothing arrived in time,
+  `-1` once the target's side is gone; a broken descriptor throws.
+
+The slave is opened `O_NOCTTY`, so a session-leading supervisor without a
+terminal never adopts it, and nobody takes it as a controlling terminal (that
+ioctl is an unencoded request the engine's ioctl guard refuses); job control is
+outside this layer. `test/process-pty-tty-smoke.f` proves both modes against
+`bin/hb`.

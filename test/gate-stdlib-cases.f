@@ -533,6 +533,10 @@ SUITE proc-pty-io-supervisor-smoke
    test/process-pty-io-smoke.f
 ;SUITE
 
+SUITE proc-pty-tty-smoke
+   test/process-pty-tty-smoke.f
+;SUITE
+
 SUITE engine-candidate-resolver
    test/engine-candidate-test.f
 ;SUITE
