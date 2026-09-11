@@ -1593,6 +1593,9 @@ create QSPELL-BUF QSPELL-CAP allot
 
 : PARSE-IMM-TOKEN? ( n -- bool ) {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   \ Leave oversized names to normal admission, which records their refusal.
+   CTX BLD VW MKEY ix NTAPE:SPELL@ IR-BUILD:SYMBOL-LEN
+   QSPELL-CAP > if false exit then
    ix QSPELL NEUTRAL-PARSE-IMM? ;
 
 : WALK-SKIP? ( n -- bool )
