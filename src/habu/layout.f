@@ -1214,13 +1214,23 @@ $43B8 constant B0-CELL           \ first address of its code span
 \
 \ Snapshot-carried like every other sub-DATA-START band, which is correct and
 \ uninteresting: the frames are live only inside one definition's compile.
+\ THE DEPTH CELL STAYS LOW, AND THAT IS NOT AN OPTIMISATION. It is
+\ definition-scoped state exactly like VSP-CELL, LVD-CELL and EXITH-CELL, so the
+\ colon handlers and EM-RESET-COMPILE-STATE have to zero it in the same breath as
+\ those -- a run of `9 DATA <off> STR,` sharing one already-zeroed register. Up in
+\ the frame band it would need its own 64-bit literal and a second register,
+\ inside a routine documented to clobber x9 only.
+\
+\ Leaving it out of that run is what leaked: a definition that failed after its
+\ BEGIN left the depth raised, 28 such failures walked it to the nesting bound,
+\ and the 29th `begin` in the session exited 75 with nothing wrong with it.
 package JIT-SNAP
 public
 28 constant FRAMES                                  \ EMIT-SNAP-NEST-CHECK's bound
 24 constant FRAME-BYTES                             \ one frame is (k, p0, p1)
+$378 constant SP-CELL                               \ depth; low, beside TIER-CELL
 SNAP-RELOC:XTCELL-END constant STK-OFF              \ base of the frame area
-STK-OFF FRAMES FRAME-BYTES * + constant SP-CELL     \ depth cell, above the frames
-SP-CELL 8 + constant END
+STK-OFF FRAMES FRAME-BYTES * + constant END
 ;package
 
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is

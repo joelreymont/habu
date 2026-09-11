@@ -662,12 +662,17 @@ variable LVSNAP  variable LVRECON
 \ addresses now belong to NCOMP-DISPATCH, and the frame area's old extent
 \ ($360..$600) had grown over LASTC/RSP/EXITH/LVD/LVH besides.
 \
-\ The band is above every 12-bit immediate form, so neither `DATA <off> LDR` nor
-\ `ADDI` reaches it. SNAP-ADDR, is what both routines use instead: load the
-\ offset as a 64-bit literal and add it to DATA. Two extra instructions per
-\ BEGIN and per back edge, at compile time.
-: SNAP-ADDR, ( n n -- ) {: r:n off:n :}          \ x<r> := DATA + off
-   r off LIT64,  r DATA r ADD, ;
+\ The FRAME AREA is above every 12-bit immediate form, so `ADDI` no longer
+\ reaches it: SNAP-FRAME, loads the base as a 64-bit literal instead. Two extra
+\ instructions per BEGIN and per back edge, at compile time.
+\
+\ The DEPTH CELL is deliberately still low, so it keeps the plain
+\ `DATA <off> LDR/STR` form here and -- the part that matters -- can be zeroed
+\ by the definition-scoped reset runs in habu2.f that already clear VSP, LVD
+\ and EXITH. It is per-definition state and has to die with the definition.
+: SNAP-FRAME, ( -- )              \ x7 := DATA + STK-OFF + FRAME-BYTES*x6; x8 scratch
+   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,                       \ 16*sp + 8*sp = 24*sp
+   8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD, ;
 
 \ LVSNAP ( -- ) : BEGIN. VSP<=13: force every VS entry into a register (movz
 \ chains for cons emitted HERE, before the loop top) and push (k, packed regs —
@@ -675,8 +680,7 @@ variable LVSNAP  variable LVRECON
 \ force: spill-all and push (0,0) — that loop runs memory-resident as before.
 : EMIT-SNAP-NEST-CHECK ( label -- ) {: snok:label :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 LDR,
-   6 JIT-SNAP:FRAMES CMPI,  C-LT snok BCOND,
+   6 DATA JIT-SNAP:SP-CELL LDR,  6 JIT-SNAP:FRAMES CMPI,  C-LT snok BCOND,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,              \ BEGIN nesting past the frame area
    snok LBL, ;
 
@@ -712,11 +716,10 @@ variable LVSNAP  variable LVRECON
    spush B, ;
 
 : EMIT-SNAP-PUSH-FRAME ( -- )
-   7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 LDR,
-   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,
-   8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD,
+   6 DATA JIT-SNAP:SP-CELL LDR,
+   SNAP-FRAME,
    13 7 0 STR,  12 7 8 STR,  10 7 16 STR,
-   6 6 1 ADDI,  7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 STR,
+   6 6 1 ADDI,  6 DATA JIT-SNAP:SP-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 : EMIT-VSNAP ( -- )
@@ -741,9 +744,8 @@ variable LVSNAP  variable LVRECON
 \ BEGIN registers across iterations either way.
 : EMIT-RECON-LOAD-FRAME ( -- )
    SP SP 32 SUBI,  30 SP 0 STR,
-   7 JIT-SNAP:SP-CELL SNAP-ADDR,  6 7 0 LDR,  6 6 1 SUBI,  6 7 0 STR,
-   7 6 4 LSLI,  8 6 3 LSLI,  7 7 8 ADD,
-   8 JIT-SNAP:STK-OFF LIT64,  7 7 8 ADD,  7 DATA 7 ADD,
+   6 DATA JIT-SNAP:SP-CELL LDR,  6 6 1 SUBI,  6 DATA JIT-SNAP:SP-CELL STR,
+   SNAP-FRAME,
    13 7 0 LDR,  12 7 8 LDR,  14 7 16 LDR, ;          \ x13=k x12=p0 x14=p1
 
 : EMIT-RECON-CHECK-LOOP ( label label label label label -- ) {: cl:label cd:label rel:label chi:label cnx:label :}
