@@ -1016,14 +1016,8 @@ create TXT
    s3 e M-ADD M-RET
    CLOSE-FUN ;
 
-\ THE SHAPE S1 REFUSES: a module whose SECOND function is the one that cannot fit.
-\ The first function is a literal and a return, so nothing about it needs a slot;
-\ the second is the five-literal chain above, which needs one. A module has one
-\ frame and its first function owns it, so a slot handed to the second would be
-\ addressed from a stack pointer that function never moved - and the walk refuses
-\ by name instead. dot habu-give-each-fn-c1fd7c5a is what inverts this into a
-\ publication; until then this is the boundary and this fixture is where it is
-\ written down.
+\ Only the second function spills; its block zero must not be confused with
+\ the first function's block zero when applying the plan.
 : BUILD-SECOND-SPILLS ( -- )
    s" FIRST" 0 1 OPEN-FUN
    $77 M-MOVZ M-RET
@@ -2262,9 +2256,10 @@ using A64RA
 \ only because ONE's values are all dead by then.
 : SECOND-SPILLS-BODY ( IR-CTX:ctx -- )
    A64-MOD
+   SPILL-BIND
    BUILD-SECOND-SPILLS
-   M-FREEZE {: m:IR-BUILD:module :}
-   CC m 3 16 LEAF-FRAMED A64RA:ALLOCATE ;
+   3 16 LOWERED drop
+   LOWER-TURNS @ 0 > TTRUE ;
 
 : SECOND-SPILLS ( -- )
    WBND [: SECOND-SPILLS-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2278,8 +2273,8 @@ using A64RA
    0 T=   1 T=   0 T=                   \ ONE's registers
    8 T=                                 \ every value of the module was measured
 
-   s" a function after the first that needs a frame slot is refused by name" T-LABEL
-   [: SECOND-SPILLS ;] E-A64RA-FRAME TTHROWSQ ;
+   s" a sibling spill gets its own frame and plan sites" T-LABEL
+   SECOND-SPILLS ;
 
 : EXTRA-LIVE-TIE-BODY ( IR-CTX:ctx -- )
    A64-MOD

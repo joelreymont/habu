@@ -325,6 +325,32 @@ private
    s" opaque callback execution still has no native calling convention" T-LABEL
    [: OPAQUE-MINT ;] E-NELAB-QUOT TTHROWSQ ;
 
+\ Inputs remain unknown while these bodies compile, so allocation must save
+\ them across calls instead of rematerializing constants.
+: FRAME-CALLEE ( n -- n ) 1+ ;
+
+: SAVED-IN-QUOT ( n n -- n )
+   [: >r FRAME-CALLEE r> + ;] execute ;
+
+: LOOP-IN-QUOT ( n n -- n )
+   [: 0 ?do FRAME-CALLEE loop ;] execute ;
+
+: NESTED-FRAMES ( n n n -- n )
+   [: >r SAVED-IN-QUOT r> + ;] execute ;
+
+: TWO-SPILLING-QUOTS ( n n n -- n )
+   >r [: >r FRAME-CALLEE r> + ;] execute
+   r> [: >r FRAME-CALLEE r> + ;] execute ;
+
+: QUOT-FRAME-CASE ( -- )
+   s" quotations preserve hidden values in separate invocation frames" T-LABEL
+   91 3 7 SAVED-IN-QUOT 11 T= 91 T=
+   91 3 0 LOOP-IN-QUOT 3 T= 91 T=
+   91 3 1 LOOP-IN-QUOT 4 T= 91 T=
+   91 3 4 LOOP-IN-QUOT 7 T= 91 T=
+   91 3 7 11 NESTED-FRAMES 22 T= 91 T=
+   91 3 7 11 TWO-SPILLING-QUOTS 23 T= 91 T= ;
+
 public
 
 : RUN ( -- )
@@ -338,6 +364,7 @@ public
    LITERAL-TAIL-CASE
    MANY-CALLBACKS-CASE
    MINT-CASE
+   QUOT-FRAME-CASE
    T-REPORT ;
 
 ;package

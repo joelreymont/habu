@@ -8,7 +8,7 @@
 \ Positions run END TO END across the module's functions on one number line, so
 \ a class belongs to the function whose window its definition falls in.
 \
-\ A module has ONE frame and the first function owns it.
+\ Functions share the frame-size contract, with a separate frame per invocation.
 
 require lib/prelude.f
 require lib/errors.f
@@ -252,7 +252,8 @@ variable SHORT-FUN                           \ the function whose scan ran short
    0 N-SLOTS ! ;
 
 \ ---- the spill plan ----------------------------------------------------------
-\ One row per operation the lowering pass has to insert, in walk order.
+\ One row per insertion, in walk order. Blocks use module ordinals so plans
+\ for different functions cannot name the same insertion site.
 : PLAN+ ( n n n n -- )
    {: blk:n kind:n pos:n k:n :}
    N-PLAN @ {: j:n :}
@@ -1545,7 +1546,7 @@ DYNAMIC-BUFFER READ-END-BUF n
    OUTS-N @ 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
       k REG-AT  i cells O-REG + @  <> if
-         RET-B @ P-MOVE at k PLAN+
+         rb IR-ID:BLOCK-LOCAL P-MOVE at k PLAN+
       then
    loop ;
 
@@ -1586,10 +1587,10 @@ DYNAMIC-BUFFER READ-END-BUF n
       i cells ANCH-HEAD + @
       begin dup NOPOS <> while
          {: d:n :}
-         bk b i d MB-PLAN-STORES
+         bk bk IR-ID:BLOCK-LOCAL i d MB-PLAN-STORES
          d cells ANCH-NEXT + @
       repeat drop
-      bk b i MB-PLAN-LOADS
+      bk bk IR-ID:BLOCK-LOCAL i MB-PLAN-LOADS
    loop
    bk MB-PLAN-TAIL-CK
    b RET-B @ = if bk MB-PLAN-MOVES then ;
@@ -1767,17 +1768,6 @@ DYNAMIC-BUFFER READ-END-BUF n
       then
    until ;
 
-\ A module has ONE frame and the first function owns it, so a later function
-\ that needs a slot is refused by name.
-: FRAME-ONCE-CK ( -- )
-   1 cells F-BASE + @ {: after0:n :}
-   N-VALS @ 0 ?do
-      i UF-FIND i =
-      i cells CL-SLOT + @ NOSLOT <> and
-      i cells CL-DEF + @ after0 >= and
-      if E-A64RA-FRAME throw then
-   loop ;
-
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
 \ bound to a local, so it is unmade at entry.
@@ -1885,7 +1875,6 @@ public
    KEEP-ALL
    MB-FIT
    MB-FINISH
-   FRAME-ONCE-CK
    PLAN-ALL ;
 
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
@@ -1951,6 +1940,7 @@ public
 : PLAN-ORD-CK ( n -- n )
    dup 0 < over N-PLAN @ >= or if E-A64RA-CAP throw then ;
 
+\ The module block ordinal, shared with the frozen IR rather than local to a function.
 : PLAN-BLOCK@ ( n -- n )
    SEAL-CK PLAN-ORD-CK cells PL-BLK + @ ;
 

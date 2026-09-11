@@ -6,9 +6,9 @@
 \ the emitter materialising the stores out of the allocator's claims - would
 \ leave the validator checking the allocator's belief against itself.
 \
-\ A routine that CALLS arrives with a frame the selector reserved, so it gets no
-\ second reserve; a module with neither shape has been through this pass already
-\ and is refused. There is one frame per module and it is the first function's.
+\ Each function keeps its own invocation frame. An existing frame is resized;
+\ a frameless function gains a reserve and, when it returns, a release. The
+\ frame-size contract remains common to all functions in the module.
 \
 \ The dialect's frame forms carry a memory token, and an operation of the OLD
 \ module that reaches the frame is re-threaded onto the order as it stands here.
@@ -91,7 +91,7 @@ BOUND-NO BND-MODE !
 variable N-CUR                       \ how far through the plan the walk has read
 variable FRAME-N
 variable G-AT                        \ operations of the whole function copied so far
-variable PRO-N                       \ 1 when the module arrived with its own prologue
+variable PRO-N                       \ nonzero when this function has a prologue
 variable N-RES                       \ frame reserves, releases, link saves and
 variable N-REL                       \ link restores the old module already holds
 variable N-SAV
@@ -480,12 +480,13 @@ create NAMEBUF NAME-CAP allot
 
 \ Both the block and the index have to agree; matching the index alone would put
 \ one block's store in front of another block's operation of the same number.
-\ The function is not carried, which holds only while no function after the
-\ first contributes a row (habu-give-each-fn-c1fd7c5a).
+\ Plan blocks are module ordinals; the walk uses function-local block numbers.
 : HERE? ( n n -- bool )
    {: b:n at:n :}
    N-CUR @ A64RA:PLAN-N >= if false exit then
-   N-CUR @ A64RA:PLAN-BLOCK@ b = if N-CUR @ A64RA:PLAN-POS@ at = else false then ;
+   N-CUR @ A64RA:PLAN-BLOCK@ b OLD-BBASE @ + = if
+      N-CUR @ A64RA:PLAN-POS@ at =
+   else false then ;
 
 : INSERT-AT ( IR-ID:ir-op-id n n n -- )
    {: at:IR-ID:ir-op-id b:n ord:n g:n :}
@@ -533,7 +534,7 @@ create NAMEBUF NAME-CAP allot
    {: b:n :}
    false
    A64RA:PLAN-N 0 ?do
-      i A64RA:PLAN-BLOCK@ b = if
+      i A64RA:PLAN-BLOCK@ b OLD-BBASE @ + = if
          i PLAN-FRAME? if drop true leave then
       then
    loop ;
@@ -741,31 +742,27 @@ create NAMEBUF NAME-CAP allot
    then
    carry if b F-ORDER-ENTER then ;
 
-: FRAMES? ( n -- bool )
-\ Only when the plan really needs a slot AND the module did not arrive with a
-\ frame of its own; and only in the first function, because there is one frame.
-   {: k:n :}
-   k 0<> if false exit then
+: FRAMES? ( -- bool )
    A64RA:SPILLS 0<> PRO-N @ 0= and ;
 
-: CARRY-FRAME? ( n -- bool )
-   0= A64RA:SPILLS 0<> and ;
+: CARRY-FRAME? ( -- bool )
+   A64RA:SPILLS 0<> ;
 
-: WALK-BLOCK ( IR-ID:ir-fun-id n n n -- )
+: WALK-BLOCK ( IR-ID:ir-fun-id n n -- )
 \ The reserve opens the ENTRY block and the release stands in front of the
 \ terminator control leaves through - the only pair passed once, in that order.
-   {: f:IR-ID:ir-fun-id k:n b:n rb:n :}
+   {: f:IR-ID:ir-fun-id b:n rb:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
-   k CARRY-FRAME? {: carry:bool :}
+   CARRY-FRAME? {: carry:bool :}
    b CUR-B !
    n 1 < if E-A64SPILL-SHAPE throw then
    f bk b carry OPEN-BLOCK
-   b 0= k FRAMES? and if bk 0 OP-AT EMIT-RESERVE then
+   b 0= FRAMES? and if bk 0 OP-AT EMIT-RESERVE then
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id b i G-AT @ INSERT-AT
-      i n 1- =  b rb =  and  k FRAMES?  and if id EMIT-RELEASE then
+      i n 1- =  b rb =  and  FRAMES?  and if id EMIT-RELEASE then
       f id G-AT @ carry COPY-OP
       G-AT @ 1+ G-AT !
    loop
@@ -803,10 +800,10 @@ create NAMEBUF NAME-CAP allot
       then
    loop ;
 
-: WALK-FUN ( IR-ID:ir-fun-id n -- )
+: WALK-FUN ( IR-ID:ir-fun-id -- )
 \ Both are the FUNCTION's: a value is read in the blocks its definition
 \ dominates and in no other function, and the counter separates two blocks.
-   {: f:IR-ID:ir-fun-id k:n :}
+   {: f:IR-ID:ir-fun-id :}
    CTX BLD f FUN-NAME IR-BUILD:BEGIN-FUN
    CTX BLD f FUN-SIG IR-BUILD:SET-SIGNATURE
    CTX BLD  V-FUNR VW f IR-FUN:FLINKAGE@  IR-BUILD:SET-LINKAGE
@@ -814,11 +811,12 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  V-FUNR VW f IR-FUN:FCONVENTION@  IR-BUILD:SET-CONVENTION
    CTX BLD f FUN-SPAN IR-BUILD:SET-FUN-SPAN
    f RET-ORD {: rb:n :}
+   f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE = PRO-N !
    VCLEAR
    F-ORDER-CLEAR
    f 0 BLOCK-AT IR-ID:BLOCK-LOCAL OLD-BBASE !
    0 G-AT !
-   f BLOCK-COUNT 0 ?do f k i rb WALK-BLOCK loop
+   f BLOCK-COUNT 0 ?do f i rb WALK-BLOCK loop
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one rewrite is told ------------------------------------------------
@@ -884,24 +882,19 @@ create NAMEBUF NAME-CAP allot
    f 0 BLOCK-AT 0 OP-AT OPCODE-AT OPCODE-SLOT O-RESERVE <>
    if E-A64SPILL-SHAPE throw then ;
 
-\ Every function is held to the one-frame shape. PRO-N is the first function's
-\ answer and says whether its existing frame must be resized.
-: ONCE-CK ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id k:n :}
+\ The common frame size describes a separate frame in every invocation.
+: ONCE-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
    f COUNT-FRAME
-   FRAMELESS? if
-      k 0= if 0 PRO-N ! then
-      exit
-   then
-   f FRAME-SHAPE-CK
-   k 0= if 1 PRO-N ! then ;
+   FRAMELESS? if exit then
+   f FRAME-SHAPE-CK ;
 
 : SHAPE-CK ( -- n )
 \ A module with no function is not a routine at all.
    FUN-COUNT {: n:n :}
    n 1 < if E-A64SPILL-SHAPE throw then
    n FMAX > if E-A64SPILL-CAP throw then
-   n 0 ?do MKEY i IR-ID:PACK-FUN i ONCE-CK loop
+   n 0 ?do MKEY i IR-ID:PACK-FUN ONCE-CK loop
    n ;
 
 : DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
@@ -969,7 +962,7 @@ public
    RESERVE-SCRATCH
    c b p u SOURCE!
    SHAPE-CK {: nf:n :}
-   nf 0 ?do MKEY i IR-ID:PACK-FUN i WALK-FUN loop
+   nf 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
    c b BIND-DIALECT
    c b IR-BUILD:FREEZE ;
