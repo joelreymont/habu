@@ -947,10 +947,12 @@ DYNAMIC-BUFFER CL-WANT-BUF n
    k DEF-AT   r cells CL-LO + @ min  r cells CL-LO + !
    k LAST-AT  r cells CL-HI + @ max  r cells CL-HI + ! ;
 
-\ No two members of one class are live at the same instant, which is the reason
-\ the edge splitting exists.
+\ Register-bearing members of one class cannot overlap. Memory orders have no
+\ register: mutually exclusive paths can overlap in block-layout hulls while
+\ joining the same order class. A64RAV checks their uses along actual CFG paths.
 : MB-MEMBER-CK ( n n -- )
    {: a:n b:n :}
+   a CLS-AT C-TOKEN = if exit then
    a UF-FIND b UF-FIND <> if exit then
    a b OVERLAP? if E-A64RA-EDGE throw then ;
 

@@ -56,4 +56,50 @@ public
    66667 5 4 3 2 2 NSP-SHAPE:CORE SHAPED-PAIR
    NSP-VERDICT:CLEAR NSP-VERDICT:EQ TTRUE ;
 ;package
-T-RESET NSP:CASES T-REPORT
+
+\ The early return and loop body share a frame-order class after spilling.
+\ Their tokens overlap in linear block order but occur on exclusive CFG paths.
+package NATIVE-ORDER-TEST
+private
+variable TOTAL
+: AR-HEAD ( n n -- n ) + ;
+: AR-ROW ( n n -- n ) + ;
+: AR-COUNT ( n -- n ) 3 and ;
+: AR-COLUMN ( n -- n ) 7 and ;
+: AR-SPAN ( n -- n ) 1 and 1+ ;
+: AR-SAVE ( n n n n n n n n -- ) + + + + + + + TOTAL ! ;
+: SCAN ( n n n n n n n n -- )
+   {: found:n pattern:n panel:n heading:n first:n at:n column:n given:n :}
+   heading first column + AR-HEAD {: title:n :}
+   panel at AR-ROW {: native:n :}
+   given {: height:n :}
+   height 0= if exit then
+   height 1 = if
+      native AR-COUNT 0 ?do
+         native i + {: entry:n :}
+         entry AR-COLUMN title AR-COLUMN = entry AR-SPAN title AR-SPAN = and if
+            unloop exit
+         then
+      loop
+   then
+   found pattern panel heading first at title height AR-SAVE ;
+
+public
+: CASES ( -- )
+   s" scalar values survive the conditional loop and calls" T-LABEL
+   -999 TOTAL !
+   1 2 3 4 5 0 1 1 SCAN TOTAL @ 26 T=
+   s" the guarded path skips the loop and keeps all values" T-LABEL
+   -999 TOTAL !
+   1 2 3 4 5 0 1 2 SCAN TOTAL @ 27 T=
+   s" zero iterations preserve the outgoing values" T-LABEL
+   -999 TOTAL !
+   1 2 4 4 5 0 1 1 SCAN TOTAL @ 27 T=
+   s" early exit before the loop leaves the result untouched" T-LABEL
+   -999 TOTAL !
+   1 2 3 4 5 0 1 0 SCAN TOTAL @ -999 T=
+   s" early exit inside the loop leaves the result untouched" T-LABEL
+   -999 TOTAL !
+   1 2 3 1 1 0 1 1 SCAN TOTAL @ -999 T= ;
+;package
+T-RESET NSP:CASES NATIVE-ORDER-TEST:CASES T-REPORT
