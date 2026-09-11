@@ -30,7 +30,7 @@ require lib/string.f
 require lib/fmt.f
 require lib/test.f
 require lib/test/outcome.f
-require lib/process-command.f
+require lib/test/subject.f
 require test/compiler/insn-schema.f
 
 package COMPILER-INSN-CASES
@@ -344,32 +344,28 @@ private
 \ ---- the rows that end the process -------------------------------------------
 \ `XREG?` and `>LIMM` refuse by calling `die`, which writes a diagnostic and
 \ exits 72. A refusal therefore cannot be observed from inside the engine that
-\ triggered it, so each of these rows runs in a child engine and is judged by
-\ its exit status.
+\ triggered it. SUBJECT:RUN forks the loaded fixture and evaluates only the
+\ selected row, preserving process isolation without compiling this module
+\ again for every refusal. Each child is judged by its exit status.
 
 600000 constant CHILD-MS
+4096 constant CAPTURE-CAP
+create CHILD-OUT CAPTURE-CAP allot
+create CHILD-ERR CAPTURE-CAP allot
 
-: FIXTURE$ ( -- ptr u8 n )
-   s" test/compiler/insn-refusal.f" ;
+: OPERAND+ ( n -- )
+   FMT:SB-INT STR-SPACE SB-APPEND-C ;
 
-: ROW-ENV$ ( -- ptr u8 n )
-   s" HABU_INSN_RESERVED_ROW" ;
+: EMIT-SOURCE$ ( n n n n n n -- ptr u8 n )
+   {: form:n a:n b:n c:n d:n mask:n :}
+   SB-RESET
+   form OPERAND+ a OPERAND+ b OPERAND+ c OPERAND+ d OPERAND+ mask OPERAND+
+   s" COMPILER-INSN-CASES:EMIT-ROW drop" SB-APPEND
+   SB$ ;
 
-: RANGE-ENV$ ( -- ptr u8 n )
-   s" HABU_INSN_RANGE_ROW" ;
-
-: LIMM-ENV$ ( -- ptr u8 n )
-   s" HABU_INSN_LIMM_ROW" ;
-
-: INDEX$ ( n -- ptr u8 n ) {: k:n :}
-   SB-RESET k FMT:SB-INT SB$ ;
-
-: CHILD-OUTCOME ( ptr u8 n n -- outcome ) {: name:ptr nameu:n k:n :}
-   PROC-CMD:RESET
-   name nameu >LEN k INDEX$ >LEN PROC-CMD:ENV+
-   s" --load" >LEN PROC-CMD:ARG+
-   FIXTURE$ >LEN PROC-CMD:ARG+
-   s" bin/hb" >LEN CHILD-MS >MS PROC-CMD:RUN-OUTCOME ;
+: CHILD-EXITED= ( ptr u8 n n -- ) {: src:ptr srcu:n rc:n :}
+   src srcu CHILD-OUT CAPTURE-CAP >LEN CHILD-ERR CAPTURE-CAP >LEN CHILD-MS >MS
+   SUBJECT:RUN rc T-OUTCOME-EXITED= 2drop ;
 
 : RESERVED-REFUSED-ROW ( n -- ) {: r:n :}
    HB-TARGET-KNOWN? 0= if E-CTGT-ABI throw then
@@ -380,8 +376,8 @@ private
    r RES-FORM@ FORM-NAME$ SB-APPEND
    s"  is refused before a word is emitted" SB-APPEND
    SB$ T-LABEL
-   ROW-ENV$ r CHILD-OUTCOME
-   r RES-RC@ T-OUTCOME-EXITED= ;
+   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-D@ r RES-MASK@
+   EMIT-SOURCE$ r RES-RC@ CHILD-EXITED= ;
 
 : OUT-OF-RANGE-ROW ( n -- ) {: r:n :}
    SB-RESET
@@ -389,13 +385,14 @@ private
    r OOR-FORM@ FORM-NAME$ SB-APPEND
    s"  is refused before a word is emitted" SB-APPEND
    SB$ T-LABEL
-   RANGE-ENV$ r CHILD-OUTCOME
-   RESERVED-RC T-OUTCOME-EXITED= ;
+   r OOR-FORM@ r OOR-A@ r OOR-B@ r OOR-C@ r OOR-D@ 0
+   EMIT-SOURCE$ RESERVED-RC CHILD-EXITED= ;
 
 : LIMM-BAD-ROW ( n -- ) {: r:n :}
    s" >LIMM refuses a mask that is not a rotated run of ones" T-LABEL
-   LIMM-ENV$ r CHILD-OUTCOME
-   RESERVED-RC T-OUTCOME-EXITED= ;
+   SB-RESET r LIMM-BAD-MASK OPERAND+
+   s" A64ASM:>LIMM drop" SB-APPEND
+   SB$ RESERVED-RC CHILD-EXITED= ;
 
 public
 

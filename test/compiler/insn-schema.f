@@ -111,7 +111,7 @@
 \     carry, so the rows land before the pass that will use them.
 \
 \ Consumers: `test/compiler/insn-cases.f`,
-\ `test/compiler/insn-obligations.f`, `test/compiler/insn-refusal.f`.
+\ `test/compiler/insn-obligations.f`.
 
 require lib/errors.f
 require lib/string.f
