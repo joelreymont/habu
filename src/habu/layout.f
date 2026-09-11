@@ -689,6 +689,7 @@ $210 constant VTAG-OFF
 $250 constant VVAL-OFF
 32 constant VSMAX
 
+
 \ NCOMP-DISPATCH:XT-CELL is the sole runtime compiler dispatch. It reclaims
 \ $358, the legacy jit.f BEGIN-snapshot depth cell: the native product never
 \ loads that file, and its one disposable crossing engine writes this cell only
@@ -703,13 +704,19 @@ $358 constant XT-CELL
 \ The record is DATA; its fields are execution tokens of existing private
 \ checker operations, with no new checked-callable trust alias.
 $360 constant DECL-CELL
+$368 constant TARGET-DECL-CELL
 0 constant DECL-RAW-OFF
 8 constant DECL-EFFECT-OFF
 16 constant DECL-DEFER-OFF
 24 constant DECL-CAST-OFF
 32 constant DECL-USING-OFF
-40 constant DECL-BYTES
+40 constant DECL-PACKAGE-OFF
+48 constant DECL-PUBLIC-OFF
+56 constant DECL-PRIVATE-OFF
+64 constant DECL-END-PACKAGE-OFF
+72 constant DECL-BYTES
 ;package
+
 
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF

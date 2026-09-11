@@ -113,25 +113,24 @@ public
    ENV-SNAPSHOT-PREPARE
    CHECKER-CAPTURE-PREPARE ;
 
-private
+;package
 
+package CHECKER-REG
 
-\ The final token executes this after the checker observes its call.
+\ Bind this compiler's fixed engine cells to its private declaration record.
+\ The entry runs again in each emitted process; capture-time stores alone do
+\ not initialize the engine header copied outside the AOT DATA window.
+TRUSTED: BIND-OWNER ( -- )
+   DECLARATIONS data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field !
+   DECLARATIONS data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ! ;
+
 : SEAL ( -- )
    ['] NCOMP:COMPILE data-base NCOMP-DISPATCH:XT-CELL + xt!
-   CAPTURE-PREPARE
+   BIND-OWNER
+   NATIVE-RUNTIME:CAPTURE-PREPARE
    SEAL-CAPTURE ;
 
-\ Install one private owner record after every operation it names is compiled.
-\ The record keeps existing XTs; it adds no callable trust wrapper.
-create DECLARATIONS NCOMP-DISPATCH:DECL-BYTES allot
-' TRUST-RAW DECLARATIONS NCOMP-DISPATCH:DECL-RAW-OFF + xt!
-' TRUST-DECL DECLARATIONS NCOMP-DISPATCH:DECL-EFFECT-OFF + xt!
-' CHECKER-DEFER DECLARATIONS NCOMP-DISPATCH:DECL-DEFER-OFF + xt!
-' CHECKER-DEFCAST DECLARATIONS NCOMP-DISPATCH:DECL-CAST-OFF + xt!
-' CHECKER-USING DECLARATIONS NCOMP-DISPATCH:DECL-USING-OFF + xt!
 data-base NCOMP-DISPATCH:DECL-CELL + ptr-cell-mark
-DECLARATIONS data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field !
 ' SEAL
 ;package
 execute

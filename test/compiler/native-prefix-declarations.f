@@ -24,8 +24,27 @@ TRUSTED: REPLAY-DEFER ( -- n )
 TRUSTED: REPLAY-USING ( -- n )
    s" package PF-LIB public : ANSWER ( -- n ) 44 ; ;package using PF-LIB : PF-CALL-ANSWER ( -- n ) ANSWER ; PF-CALL-ANSWER ;using" evaluate ;
 
-TRUSTED: REPLAY-TARGET ( -- n n n n n )
-   s" variable PF-EFFECTS variable PF-DEFERS variable PF-RAWS variable PF-USINGS : TRUST-RAW ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 PF-RAWS +! ; variable PF-RAW-TARGET : TRUST-DECL ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 PF-EFFECTS +! ; : CHECKER-DEFER ( ptr u8 n -- ) 2drop 1 PF-DEFERS +! ; : CHECKER-USING ( ptr u8 n -- ) 2drop 1 PF-USINGS +! ; using PF-LIB ;using defer PF-LATE ( -- n ) : PF-LATE-SET ( -- ) [: 43 ;] is PF-LATE ; PF-LATE-SET PF-LATE PF-EFFECTS @ PF-DEFERS @ PF-RAWS @ PF-USINGS @" evaluate ;
+variable EFFECTS
+variable DEFERS
+variable RAWS
+variable USINGS
+create TARGET-OWNER NCOMP-DISPATCH:DECL-BYTES allot
+
+: RECORD-EFFECT ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 EFFECTS +! ;
+: RECORD-DEFER ( ptr u8 n -- ) 2drop 1 DEFERS +! ;
+: RECORD-RAW ( ptr u8 n ptr u8 n -- ) 2drop 2drop 1 RAWS +! ;
+: RECORD-USING ( ptr u8 n -- ) 2drop 1 USINGS +! ;
+
+\ Test-owned target uses actual compiled callbacks, hidden with its package.
+TRUSTED: INSTALL-TARGET ( -- )
+   ['] RECORD-EFFECT TARGET-OWNER NCOMP-DISPATCH:DECL-EFFECT-OFF + xt!
+   ['] RECORD-DEFER TARGET-OWNER NCOMP-DISPATCH:DECL-DEFER-OFF + xt!
+   ['] RECORD-RAW TARGET-OWNER NCOMP-DISPATCH:DECL-RAW-OFF + xt!
+   ['] RECORD-USING TARGET-OWNER NCOMP-DISPATCH:DECL-USING-OFF + xt!
+   TARGET-OWNER data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field ! ;
+
+TRUSTED: REPLAY-TARGET ( -- n )
+   s" variable PF-RAW-TARGET using PF-LIB ;using defer PF-LATE ( -- n ) : PF-LATE-SET ( -- ) [: 43 ;] is PF-LATE ; PF-LATE-SET PF-LATE" evaluate ;
 
 : RUN ( -- )
    s" CHECKER-RESET-SOURCE" 0 search-wl 0<> if
@@ -42,8 +61,9 @@ TRUSTED: REPLAY-TARGET ( -- n n n n n )
       s" pending defer accepted a mismatched quotation" 76 die
    then
    REPLAY-USING 44 <> if s" using context missed the active compiler" 76 die then
-   REPLAY-TARGET {: value:n effects:n defers:n raws:n usings:n :}
-   value 43 <> effects 1 <> or defers 1 <> or raws 1 <> or usings 1 <> or if
+   INSTALL-TARGET
+   REPLAY-TARGET 43 <>
+   EFFECTS @ 1 <> or DEFERS @ 1 <> or RAWS @ 1 <> or USINGS @ 1 <> or if
       s" declaration metadata missed the target checker" 76 die
    then ;
 

@@ -1896,16 +1896,16 @@ public
 \ Label cell for the baked `trust-raw` keyword string. Declared here rather
 \ than in the habu1.f global label chain because the raw-storage seal is a
 \ habu2.f concern: the keyword row below bakes the string, LASTC-TRUST:FIND-RAW
-\ resolves it, and the LABELS allocator mints its id.
+\ uses it for diagnostics, and the LABELS allocator mints its id.
 variable LKWTRUSTRAW
 
 \ The same, for the baked `trust-decl` keyword string: which registrar the
 \ engine's publish tail reaches is a habu2.f concern too, DEF-TRUST:FIND
-\ resolves it, and the row below bakes it.
+\ uses it for diagnostics, and the row below bakes it.
 variable LKWTRUSTDECL
 
 \ The `cast:` declarer's three baked strings: the keyword the interpret dispatch
-\ matches, the checker registrar C-CAST reaches by name (DEF-TRUST:FIND-CAST),
+\ matches, the checker registrar diagnostic spelling,
 \ and the one thing that can go wrong before the signature parser takes over.
 \ Same reasoning as the two above - the spellings are a habu2.f concern - and
 \ the length sits beside the string it measures, as DEFER-DIAG's do.
@@ -2253,7 +2253,7 @@ package LOOP-EMIT
 
 \ The active native compiler retains its checker even while a build replaces
 \ the source dictionary. The record's fields are the actual checker operations;
-\ publishing into a distinct target checker remains the named path below.
+\ a distinct target checker owns a second record during source replacement.
 package DECL-OWNER
 public
 
@@ -2262,6 +2262,10 @@ public
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 done CBZ,
    11 11 off LDR,
    done LBL, ;
+
+: TARGET ( n label -- ) {: off:n absent:label :}
+   11 DATA NCOMP-DISPATCH:TARGET-DECL-CELL LDR,  11 absent CBZ,
+   11 11 off LDR,  11 absent CBZ, ;
 
 : SKIP-SAME ( n label -- ) {: off:n same:label :}
    LBL {: different:label :}
@@ -2308,12 +2312,14 @@ public
 \ as LASTC-TRUST:FIND-RAW: a missing registrar names itself on fd 2 and exits 70
 \ rather than publishing a definition whose effect nothing recorded. Public
 \ because BDRAINPRETRUST needs the XT for its own push sequence.
-: FIND ( -- )  LBL {: ok:label :}
-   9 KWDATA:LKWTRUSTDECL LABEL@ ADR,  10 10 MOVZ,  LFIND LABEL@ BL,
-   13 ok CBNZ,
-      0 2 MOVZ,  1 KWDATA:LKWTRUSTDECL LABEL@ ADR,  2 10 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
+: FIND ( -- )
+   LBL LBL {: absent:label ready:label :}
+   NCOMP-DISPATCH:DECL-EFFECT-OFF absent DECL-OWNER:TARGET
+   ready B,
+   absent LBL,
+   0 2 MOVZ, 1 KWDATA:LKWTRUSTDECL LABEL@ ADR, 2 10 MOVZ, NR-WRITE SYS,
+   0 70 MOVZ, NR-EXIT-GROUP SYS,
+   ready LBL, ;
 
 \ Register the pending definition's declared signature: name from the body
 \ buffer, signature from the TSIG cells. NOT named `CALL`: an upper-case
@@ -2324,7 +2330,7 @@ public
 : REGISTER ( -- )
    LBL {: done:label :}
    NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
-   FIND
+   NCOMP-DISPATCH:DECL-EFFECT-OFF done DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-EFFECT-OFF done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
@@ -2338,17 +2344,10 @@ public
 \ `trust-decl` records it, `checker-defcast` must first prove the declared
 \ retype legal (checker.f CAST-CERTIFY's five refusals) and refuses by throwing,
 \ which is why C-CAST calls this BEFORE it counts the record into NDICT.
-: FIND-CAST ( -- )  LBL {: ok:label :}
-   9 KWDATA:LKWDEFCAST LABEL@ ADR,  10 15 MOVZ,  LFIND LABEL@ BL,
-   13 ok CBNZ,
-      0 2 MOVZ,  1 KWDATA:LKWDEFCAST LABEL@ ADR,  2 15 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
-
 : REGISTER-CAST ( -- )
    LBL {: done:label :}
    NCOMP-DISPATCH:DECL-CAST-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
-   FIND-CAST
+   NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
@@ -2379,12 +2378,14 @@ package LASTC-TRUST
 \ route here instead of at `trust-decl`. Same shape as DEF-TRUST:FIND: a
 \ missing registrar names itself on fd 2 and exits 70 rather than publishing
 \ the word unsealed.
-: FIND-RAW ( -- )  LBL {: ok:label :}
-   9 KWDATA:LKWTRUSTRAW LABEL@ ADR,  10 9 MOVZ,  LFIND LABEL@ BL,
-   13 ok CBNZ,
-      0 2 MOVZ,  1 KWDATA:LKWTRUSTRAW LABEL@ ADR,  2 9 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
+: FIND-RAW ( -- )
+   LBL LBL {: absent:label ready:label :}
+   NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
+   ready B,
+   absent LBL,
+   0 2 MOVZ, 1 KWDATA:LKWTRUSTRAW LABEL@ ADR, 2 9 MOVZ, NR-WRITE SYS,
+   0 70 MOVZ, NR-EXIT-GROUP SYS,
+   ready LBL, ;
 
 public
 
@@ -2397,8 +2398,7 @@ public
 
 : FIND-TARGET ( label -- ) {: absent:label :}
    11 DATA NCOMP-DISPATCH:DECL-CELL LDR,  11 absent CBZ,
-   9 KWDATA:LKWTRUSTRAW LABEL@ ADR,  10 9 MOVZ,  LFIND LABEL@ BL,
-   13 absent CBZ,
+   NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-RAW-OFF absent DECL-OWNER:SKIP-SAME ;
 
 : PUBLISH ( -- )
@@ -2480,19 +2480,10 @@ public
    ready LBL, ;
 ;package
 
-: C-FIND-CHECKER ( ptr n n label -- ) {: name:ptr len:n done:label :}
-   LBL {: ready:label :}
-   name len C-FIND-GLOBAL?
-   13 ready CBNZ,
-   9 DATA HOOK-CELL LDR,  9 done CBZ,
-   9 DATA FRIEND-LATCH-CELL LDR,  9 done CBZ,
-   name len C-FIND-GLOBAL
-   ready LBL, ;
-
 : C-CALL-CHECKER-DEFER ( -- )
    LBL {: done:label :}
    NCOMP-DISPATCH:DECL-DEFER-OFF DECL-OWNER:NAME
-   LCHKDEFER 13 C-FIND-GLOBAL
+   NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-OWNER:SKIP-SAME
    C-PUSH-DREC-NAME
    C-CALL-X11-SAVED
@@ -3632,11 +3623,12 @@ public
    12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,           \ reload &band (C-PUSH-DREC-NAME clobbered x12)
    13 12 0 LDR,  13 13 1 ADDI,  13 12 0 STR, ;       \ count++
 
-: C-PRETRUST-READY? ( -- )                           \ x13 <- both `trust-decl` and `checker-defer` are defined (non-dying)
-   LBL {: done :}
-   9 KWDATA:LKWTRUSTDECL LABEL@ ADR,  10 10 MOVZ,  LFIND LABEL@ BL,
-   13 done CBZ,                                      \ trust-decl absent -> x13=0
-   LCHKDEFER 13 C-FIND-GLOBAL?                       \ x13 = checker-defer found? (global scope)
+: C-PRETRUST-READY? ( -- )
+   LBL {: done:label :}
+   13 0 MOVZ,
+   NCOMP-DISPATCH:DECL-EFFECT-OFF done DECL-OWNER:TARGET
+   NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-OWNER:TARGET
+   13 1 MOVZ,
    done LBL, ;
 
 : C-DEFER ( -- )
@@ -3728,7 +3720,7 @@ public
       9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
       9 14 PD-SIG-OFF ADDI,   9 G-PUSH   9 14 PD-SLEN-OFF LDR,  9 G-PUSH        \ push sig addr,len
       C-CALL-X11-SAVED                                \ trust-decl( na nu sa su )
-      LCHKDEFER 13 C-FIND-GLOBAL                      \ x11 = checker-defer XT (clobbers x12-x16)
+      NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-OWNER:TARGET  \ x11 = target defer XT
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,
       15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,
       9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
@@ -6056,6 +6048,7 @@ public
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA APP-ENTRY:XT-CELL STR,
    9 DATA NCOMP-DISPATCH:DECL-CELL STR,
+   9 DATA NCOMP-DISPATCH:TARGET-DECL-CELL STR,
    9 DATA REPLH-CELL STR,  9 DATA BPWBASE-CELL STR,  9 DATA BPWN-CELL STR,
    10 SNAP-RELOC:XTCELL-N-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    \ The three hooks and the compiler-dispatch cell hold execution tokens once something installs
@@ -6069,6 +6062,7 @@ public
    NCOMP-DISPATCH:XT-CELL SNAP-RELOC:MARK-CELL
    APP-ENTRY:XT-CELL SNAP-RELOC:MARK-CELL
    9 DATA NCOMP-DISPATCH:DECL-CELL ADDI,  SNAP-RELOC:LPTRMARK LABEL@ BL,
+   9 DATA NCOMP-DISPATCH:TARGET-DECL-CELL ADDI,  SNAP-RELOC:LPTRMARK LABEL@ BL,
    \ Constructor registry starts empty: clear the whole bitmap, then publish the shape
    \ tag. The old count cell made "empty" a single store; a bitmap has to be zeroed in
    \ full, and a cold boot is the only path that may do it (a restored image carries
@@ -6162,7 +6156,7 @@ public
    9 DATA PKGRESYNC-CELL LDR,  9 nosync CBZ,
       9 0 MOVZ,  9 DATA PKGRESYNC-CELL STR,
       9 DATA PKG-PUB-CELL LDR,  9 nosync CBNZ,        \ engine scope non-global -> leave the checker as is
-         LCHKENDPKG 19 nosync C-FIND-CHECKER          \ x11 = checker-end-package XT (nosync if absent: cold load / no checker)
+         NCOMP-DISPATCH:DECL-END-PACKAGE-OFF nosync DECL-OWNER:TARGET          \ x11 = checker-end-package XT (nosync if absent: cold load / no checker)
          C-CALL-X11-SAVED
    nosync LBL, ;
 
@@ -6342,7 +6336,7 @@ public
 
 : C-CALL-CHECKER-PACKAGE ( -- )
    LBL {: done:label :}
-   LCHKPACKAGE 15 done C-FIND-CHECKER
+   NCOMP-DISPATCH:DECL-PACKAGE-OFF done DECL-OWNER:TARGET
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
@@ -6350,19 +6344,19 @@ public
 
 : C-CALL-CHECKER-PUBLIC ( -- )
    LBL {: done:label :}
-   LCHKPUB 14 done C-FIND-CHECKER
+   NCOMP-DISPATCH:DECL-PUBLIC-OFF done DECL-OWNER:TARGET
    C-CALL-X11-SAVED
    done LBL, ;
 
 : C-CALL-CHECKER-PRIVATE ( -- )
    LBL {: done:label :}
-   LCHKPRI 15 done C-FIND-CHECKER
+   NCOMP-DISPATCH:DECL-PRIVATE-OFF done DECL-OWNER:TARGET
    C-CALL-X11-SAVED
    done LBL, ;
 
 : C-CALL-CHECKER-END-PACKAGE ( -- )
    LBL {: done:label :}
-   LCHKENDPKG 19 done C-FIND-CHECKER
+   NCOMP-DISPATCH:DECL-END-PACKAGE-OFF done DECL-OWNER:TARGET
    C-CALL-X11-SAVED
    done LBL, ;
 
@@ -6377,7 +6371,7 @@ public
    TKA-CELL TKL-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
    target LBL,
-   LCHKUSING 13 done C-FIND-CHECKER
+   NCOMP-DISPATCH:DECL-USING-OFF done DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-USING-OFF done DECL-OWNER:SKIP-SAME
    TKA-CELL TKL-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED

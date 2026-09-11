@@ -1,3 +1,22 @@
+\ Private view of the native declaration-owner ABI (layout.f NCOMP-DISPATCH).
+\ Like CK-PKG-*-OFF below, these fields are needed before layout.f is loaded.
+package CHECKER-REG
+$368 constant TARGET-CELL
+$48 constant OWNER-BYTES
+$00 constant RAW-OFF
+$08 constant EFFECT-OFF
+$10 constant DEFER-OFF
+$18 constant CAST-OFF
+$20 constant USING-OFF
+$28 constant PACKAGE-OFF
+$30 constant PUBLIC-OFF
+$38 constant PRIVATE-OFF
+$40 constant END-PACKAGE-OFF
+create DECLARATIONS OWNER-BYTES allot
+data-base TARGET-CELL + ptr-cell-mark
+DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
+;package
+
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
 3 constant S-ROW   4 constant S-PUSH
 5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
@@ -5216,7 +5235,8 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 \ retire user definitions through the same indexed truncation seam as rollback.
 \ This bounded state transition is callable only from an engine trust boundary.
 : CHECKER-RESET-SOURCE ( -- )
-   USIGS-USER-OFF @ USIGS-RESTORE-END ;
+   USIGS-USER-OFF @ USIGS-RESTORE-END
+   0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL, compiler owner retained
 REG-PROTECT
 
 \ USIG-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what USX answers — the
@@ -6943,6 +6963,10 @@ variable CK-USED-SLOT                      \ used-scan slot of that first match 
       1 +
    REPEAT drop
    u d cells CK-USE-LENS + ! ;
+package CHECKER-REG
+' CHECKER-USING DECLARATIONS USING-OFF + xt!
+;package
+
 
 \ --- the replay's own `using` boundary --------------------------------------
 \ Live compilation splits these two steps between the engine and the checker: the
@@ -7142,16 +7166,32 @@ CTOR-PROT-DEFAULTS
    2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
+package CHECKER-REG
+' CHECKER-PACKAGE DECLARATIONS PACKAGE-OFF + xt!
+;package
+
 
 : CHECKER-PUBLIC ( -- )
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PUBLIC CHECKER-PACKAGE-MODE ! THEN ;
+package CHECKER-REG
+' CHECKER-PUBLIC DECLARATIONS PUBLIC-OFF + xt!
+;package
+
 
 : CHECKER-PRIVATE ( -- )
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! THEN ;
+package CHECKER-REG
+' CHECKER-PRIVATE DECLARATIONS PRIVATE-OFF + xt!
+;package
+
 
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U ! ;
+package CHECKER-REG
+' CHECKER-END-PACKAGE DECLARATIONS END-PACKAGE-OFF + xt!
+;package
+
 
 package CHECKER-CERT
 
@@ -8165,6 +8205,10 @@ variable DFER-POS
 
 : CHECKER-DEFER ( ptr u8 n -- )
    CHECKER-RECORD-NAME DFER-ADD ;
+package CHECKER-REG
+' CHECKER-DEFER DECLARATIONS DEFER-OFF + xt!
+;package
+
 
 : CHECKER-USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu CHECKER-RECORD-NAME USIG-ADD ;
@@ -11270,6 +11314,10 @@ s" <input>" DIAG-FILE!
 \ ahead of the check on TRUST.
 : TRUST-DECL {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su TRUST-USIG! ;
+package CHECKER-REG
+' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
+;package
+
 
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
@@ -11346,6 +11394,10 @@ s" <input>" DIAG-FILE!
    RES-TRUE SIG-RAW-DEFINER!
    na nu sa su TRUST-USIG!
    RES-FALSE SIG-RAW-DEFINER! ;
+package CHECKER-REG
+' TRUST-RAW DECLARATIONS RAW-OFF + xt!
+;package
+
 
 \ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust-decl`
 \ (above) and `checker-defer` (5208) are both defined now — the earliest safe
@@ -13582,6 +13634,10 @@ variable CD-WIDE
    sa su PARSE-SIG-RAW RAW-SIG!
    CAST-CERTIFY
    sa su na nu CHECKER-USIG-CERT-ADD ;
+package CHECKER-REG
+' CHECKER-DEFCAST DECLARATIONS CAST-OFF + xt!
+;package
+
 
 \ CHECK-DOES! ( body-a body-u sig-a sig-u -- verdict ) verifies a DOES> body
 \ against a created-word runtime effect.  If the created word is declared
@@ -13622,6 +13678,7 @@ variable CD-WIDE
 \ copies any grown registry, persist and mark the live rows, then clear the
 \ later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
+   0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
    TOKBUF-RESET
    HIDX-RESET
    TV-SNAP-RESET
