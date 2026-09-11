@@ -76,6 +76,13 @@ create SECOND-BUF CAPACITY allot
    s\" \xF4\x90\x80\x80" INVALID
    s\" x\xFF" INVALID ;
 
+: IMAGE-REBIND ( -- )
+   2 0 ?do
+      IMAGE-LIFECYCLE:PREPARE
+      s" Straße" s" STRASSE" EQUAL
+      s" İ" s" i̇" FOLDED=
+   loop ;
+
 T-RESET
 s" " s" " EQUAL
 s" AbCd" s" aBcD" EQUAL
@@ -112,6 +119,7 @@ s" УКРАЇНА" s" україна" FOLDED=
 s\" A\zB" s\" a\zb" FOLDED=
 FOLD-PREFLIGHT
 RANDOM-FOLDS
+IMAGE-REBIND
 T-REPORT
 ;using
 ;using
