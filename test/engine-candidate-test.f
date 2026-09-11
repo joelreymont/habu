@@ -29,6 +29,7 @@ package ENGINE-CANDIDATE-TEST
 $1000 constant PATH-CAP
 $4000 constant IO-CAP
 $7530 constant DEADLINE-MS         \ 30s ceiling; AWAIT/capture return as soon as the child exits
+180000 constant LOAD-DEADLINE-MS  \ includes checking the child's required libraries
 
 create ROOT  PATH-CAP allot   variable ROOT-U
 create PLAIN PATH-CAP allot   variable PLAIN-U
@@ -87,7 +88,7 @@ create ERR   IO-CAP  allot
    PROC-ENV-RESET
    NAME$ >LEN s" " >LEN PROC-ENV+          \ empty override -> resolver must fall through to self
    PROC-ENV-INHERIT-MISSING                \ keep PATH/HB_TMP/TMPDIR so the child engine can run
-   ENGINE-ID:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
+   ENGINE-ID:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN LOAD-DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    rc 0 <> if ERR erru LEN>N type cr then  \ surface child stderr on failure
    rc 0 T= ;
