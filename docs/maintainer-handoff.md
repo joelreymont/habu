@@ -40,11 +40,15 @@ Rowan owns, and integrates through `rowan-root`:
   `test/compiler/**`, `test/tier.f`, `docs/compiler-ir-design.md`,
   `docs/bootstrap.md`, `formal/Common/Interning.v`.
 
-The second maintainer owns everything else: the remaining leaves of the
-compiler epic that are not campaign leaves (profiler crash, local-name
-diagnostic, argv bounds follow-ups, hide.f, build and simplification work),
-the V2 types and PTX programs, lib/, tools/ outside the list above, tests
-outside `test/compiler`, docs outside the two named. It may land directly on
+The second maintainer (hazel since 2026-09-11 evening) owns everything else:
+the remaining leaves of the compiler epic that are not campaign leaves
+(profiler crash, local-name diagnostic, argv bounds follow-ups, hide.f, build
+and simplification work), lib/, tools/ outside the list above, tests outside
+`test/compiler`, docs outside the two named. PTX and model CAD are not Habu's:
+on 2026-09-11 Joel had lib/ptx, src/arch/ptx, the PTX lint, the PTX and
+model-CAD documents and the Loom-only tracker entries moved into ../loom unchanged;
+fixing any PTX or model-CAD code in Habu is prohibited, and Loom's agent wires
+the moved code into Loom. The second maintainer may land directly on
 the root after an independent review agent has cleared the stack, announcing
 the tip; rowan rebases the campaign lanes onto it. A change that must touch a
 rowan-owned file is handed to rowan as a commit id with its evidence.
