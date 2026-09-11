@@ -57,8 +57,6 @@ require lib/string.f
 require lib/fmt.f
 require lib/memory.f
 
-using TFAM
-
 require src/compiler/ir/id.f
 
 package COMPILER-ID-PROOF
@@ -71,7 +69,7 @@ private
 NEWTYPE cid-cell-probe 0
 
 variable PROBE-FAM
-TFAM-N@ 1- PROBE-FAM !
+TFAM:TFAM-N@ 1- PROBE-FAM !
 
 public
 
@@ -145,22 +143,27 @@ private
 
 : FAMILY-ID ( n -- n ) {: idx:n :}
    idx FAMILY-RANGE
-   s" IR-ID" idx FAMILY-NAME$ TFAM-FIND-IN 0= if E-CID-FAMILY throw then ;
+   TFAM:TFAM-N@ 0 ?do
+      i TFAM:TFAM-PKG$ s" IR-ID" STR= if
+         i TFAM-NAME$ idx FAMILY-NAME$ STR= if i unloop exit then
+      then
+   loop
+   E-CID-FAMILY throw ;
 
 \ ---- live registry cross-check ----------------------------------------------
 
 : FAMILY-COUNT-CHECK ( -- )
-   0 TFAM-N@ 0 ?do
-      i TFAM-PKG$ s" IR-ID" STR= if 1+ then
+   0 TFAM:TFAM-N@ 0 ?do
+      i TFAM:TFAM-PKG$ s" IR-ID" STR= if 1+ then
    loop
    FAMILY-COUNT <> if E-CID-FAMILY throw then ;
 
 : FAMILY-ROW-CHECK ( n -- ) {: idx:n :}
    idx FAMILY-ID {: id:n :}
    id TFAM-NAME$ idx FAMILY-NAME$ STR= 0= if E-CID-FAMILY throw then
-   id TFAM-ARITY@ 0 <> if E-CID-FAMILY throw then
-   id TFAM-KIND@ PROBE-FAM @ TFAM-KIND@ <> if E-CID-FAMILY throw then
-   id TFAM-PUBLIC? 0= if E-CID-FAMILY throw then ;
+   id TFAM:TFAM-ARITY@ 0 <> if E-CID-FAMILY throw then
+   id TFAM:TFAM-KIND@ PROBE-FAM @ TFAM:TFAM-KIND@ <> if E-CID-FAMILY throw then
+   id TFAM:TFAM-PUBLIC? 0= if E-CID-FAMILY throw then ;
 
 : FAMILY-CHECK ( -- )
    FAMILY-COUNT-CHECK
@@ -463,9 +466,9 @@ variable BYTES-U
    s" family" ROW
       idx +NUM
       id TFAM-NAME$ +TEXT
-      id TFAM-ARITY@ +NUM
-      id TFAM-KIND@ +NUM
-      id TFAM-PUBLIC? if s" public" else s" private" then +TEXT
+      id TFAM:TFAM-ARITY@ +NUM
+      id TFAM:TFAM-KIND@ +NUM
+      id TFAM:TFAM-PUBLIC? if s" public" else s" private" then +TEXT
       idx FAMILY-ROLE$ +TEXT
    ;ROW ;
 

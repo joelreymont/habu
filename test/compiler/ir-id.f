@@ -7,8 +7,6 @@ require lib/test/outcome.f
 require lib/test/subject.f
 require test/checker-assert.f
 
-using TFAM
-
 require src/compiler/ir/id.f
 
 package IR-ID-TEST
@@ -503,11 +501,20 @@ variable PUBLIC-HITS
    PUBLIC# 0 ?do i PUBLIC$ PUBLIC-ROW loop
    s" SERIAL-NEXT" pub XREF-FIND-WL XREF-FOUND? TFALSE ;
 
+\ Read the public metadata surface; checker lookup helpers are private.
+: FAMILY-ID ( n -- n bool ) {: idx:n :}
+   TFAM:TFAM-N@ 0 ?do
+      i TFAM:TFAM-PKG$ s" IR-ID" STR= if
+         i TFAM-NAME$ idx FAMILY$ STR= if i true unloop exit then
+      then
+   loop
+   0 false ;
+
 : FAMILY-SURFACE ( -- )
    FAMILY# 0 ?do
-      s" IR-ID" i FAMILY$ TFAM-FIND-IN TTRUE
-      dup TFAM-ARITY@ 0 T=
-      TFAM-PUBLIC? TTRUE
+      i FAMILY-ID TTRUE
+      dup TFAM:TFAM-ARITY@ 0 T=
+      TFAM:TFAM-PUBLIC? TTRUE
    loop ;
 
 
