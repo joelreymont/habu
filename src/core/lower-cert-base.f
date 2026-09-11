@@ -55,7 +55,7 @@ defer FULL-XT ( ptr u8 n n -- )
 \ ordinary integer flag, which also keeps the single-assignment guard below.
 variable FULL-SET   0 FULL-SET !
 
-: BUF ( -- ptr a ) BUF-P @ ;
+: BUF ( -- ptr n ) BUF-P @ ;
 
 : GROW-CAP ( n n -- n ) {: need:n cap:n :}
    need 0 <= need MAX-CELLS > or if s" lowering certificate capacity overflow" 76 die then
@@ -95,7 +95,7 @@ variable FULL-SET   0 FULL-SET !
    BODY-LEN @ BUF,
    BODY-HASH @ BUF, ;
 
-: CERT-BYTES ( -- ptr u8 n ) BUF BUF-N @ cells ;
+: CERT-BYTES ( -- ptr u8 n ) BUF BYTE-VIEW BUF-N @ cells ;
 
 : CERT-CELL@ ( n -- n ) {: idx:n :}
    idx 0 < idx BUF-N @ >= or if s" lowering certificate cell index" 76 die then
