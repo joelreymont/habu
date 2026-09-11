@@ -13783,7 +13783,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM ;
 
 : TRANSFER-CHECKED ( -- )
-   data-base $360 + 0 ptr-field @ {: owner:ptr u8 :}
+   data-base $360 + 0 ptr-field @ {: owner:ptr :}
    owner 0= if exit then                 \ cold seed has no retained checker
    owner DECLARATIONS = if exit then
    owner BIND-SOURCE

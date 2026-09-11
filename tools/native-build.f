@@ -100,13 +100,13 @@ defer IMPORT-CHECKED ( -- )
 
 \ These execution tokens belong to the retained/target private checker owners.
 TRUSTED: RESET-CHECKER ( -- )
-   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr u8 :}
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ {: owner:ptr :}
    owner 0= if exit then
    owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ is RESET-SOURCE
    RESET-SOURCE ;
 
 TRUSTED: TRANSFER-CHECKER ( -- )
-   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ {: owner:ptr u8 :}
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ {: owner:ptr :}
    owner 0= if s" native-build: target checker owner missing" 76 die then
    owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ is IMPORT-CHECKED
    IMPORT-CHECKED ;
