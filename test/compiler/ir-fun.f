@@ -1094,6 +1094,21 @@ private
    BND [: TD-ESC-BODY ;] IR-CTX:WITH-CONTEXT
    IR-FUN:FUNS drop ;
 
+\ The frozen view outlives its context too. Every public reader resolves its
+\ store once, into an IR-ARENA reader, and reads the row's cells through that
+\ one resolution - so this is the case that proves the resolution is not a
+\ pointer: the context's teardown retires the registry row, and the open
+\ refuses before a cell is touched, exactly as the view itself would have.
+: TD-FESC-BODY ( IR-CTX:ctx -- IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c 8 8 32 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena fp:IR-ARENA:arena fr:IR-ARENA:arena br:IR-ARENA:arena :}
+   fr IR-ARENA:FREEZE ;
+
+: TD-FREAD ( -- )
+   BND [: TD-FESC-BODY ;] IR-CTX:WITH-CONTEXT
+   IR-FUN:FFUNS drop ;
+
 : FROZEN-CASES ( -- )
    s" live readers reject the retired builder handle" T-LABEL
    [: 1 FZ-RETIRED-RUN ;] E-IR-ARENA-FROZEN TTHROWSQ
@@ -1101,7 +1116,9 @@ private
    [: 2 FZ-RETIRED-RUN ;] E-IR-ARENA-FROZEN TTHROWSQ
    CLEAR-STAGE
    s" a function store is dead after its context ends" T-LABEL
-   [: TD-READ ;] E-IR-ARENA-STALE TTHROWSQ ;
+   [: TD-READ ;] E-IR-ARENA-STALE TTHROWSQ
+   s" a frozen function view is dead after its context ends" T-LABEL
+   [: TD-FREAD ;] E-IR-ARENA-STALE TTHROWSQ ;
 
 : TD-FRESH-CASE ( -- )
    s" fresh contexts and stores succeed after teardown" T-LABEL
