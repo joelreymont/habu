@@ -537,6 +537,10 @@ DYNAMIC-BUFFER CL-HI-BUF n
 DYNAMIC-BUFFER CL-SLOT-BUF n
 : CL-SLOT ( -- ptr n ) 0 CL-SLOT-BUF ;
 DYNAMIC-BUFFER CL-REMAT-BUF n
+\ Only evicted roots need temporary registers for their stores and reloads.
+\ The classes stay fixed throughout fitting; this list grows once per eviction.
+DYNAMIC-BUFFER EVICTED-ROOTS n
+variable N-EVICTED
 : CL-REMAT ( -- ptr n ) 0 CL-REMAT-BUF ;
 DYNAMIC-BUFFER CL-DEF-BUF n
 : CL-DEF ( -- ptr n ) 0 CL-DEF-BUF ;
@@ -588,6 +592,7 @@ DYNAMIC-BUFFER READ-END-BUF n
    VMAX CL-HI-BUF-RESERVE
    VMAX CL-SLOT-BUF-RESERVE
    VMAX CL-REMAT-BUF-RESERVE
+   VMAX EVICTED-ROOTS-RESERVE
    VMAX CL-DEF-BUF-RESERVE
    VMAX CL-ANCH-BUF-RESERVE
    VMAX CL-SIZE-BUF-RESERVE
@@ -1021,6 +1026,7 @@ DYNAMIC-BUFFER READ-END-BUF n
    r cells CL-REMAT + @ 0<> ;
 
 : MB-KIND-CLEAR ( -- )
+   0 N-EVICTED !
    VMAX 0 ?do
       NOSLOT i cells CL-SLOT + !
       0 i cells CL-REMAT + !
@@ -1219,18 +1225,20 @@ DYNAMIC-BUFFER READ-END-BUF n
 : MB-LOAD-N ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
    0
-   N-VALS @ 0 ?do
-      i fl MB-FRAMED? if
-         i p MB-ACROSS?  f i p MB-RUN-READS? or if 1+ then
+   N-EVICTED @ 0 ?do
+      i EVICTED-ROOTS @ {: r:n :}
+      r fl MB-FRAMED? if
+         r p MB-ACROSS?  f r p MB-RUN-READS? or if 1+ then
       then
    loop ;
 
 : MB-STORE-N ( n n -- n )
    {: p:n fl:n :}
    0
-   N-VALS @ 0 ?do
-      i fl MB-FRAMED? if
-         i p MB-ACROSS?  i p MB-WRITTEN? or if 1+ then
+   N-EVICTED @ 0 ?do
+      i EVICTED-ROOTS @ {: r:n :}
+      r fl MB-FRAMED? if
+         r p MB-ACROSS?  r p MB-WRITTEN? or if 1+ then
       then
    loop ;
 
@@ -1459,7 +1467,9 @@ DYNAMIC-BUFFER READ-END-BUF n
    f r MB-REMATABLE? if 1 r cells CL-REMAT + ! else NEW-SLOT r cells CL-SLOT + ! then
    f r MB-DEF-POS {: d:n :}
    d r cells CL-DEF + !
-   f d MB-ANCH-POS  r cells CL-ANCH + ! ;
+   f d MB-ANCH-POS  r cells CL-ANCH + !
+   r N-EVICTED @ EVICTED-ROOTS !
+   N-EVICTED @ 1+ N-EVICTED ! ;
 
 : MB-EVICT ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id p:n fl:n :}
@@ -2002,6 +2012,8 @@ public
    CL-HI-BUF-RELEASE
    CL-SLOT-BUF-RELEASE
    CL-REMAT-BUF-RELEASE
+   EVICTED-ROOTS-RELEASE
+   0 N-EVICTED !
    CL-DEF-BUF-RELEASE
    CL-ANCH-BUF-RELEASE
    CL-SIZE-BUF-RELEASE
