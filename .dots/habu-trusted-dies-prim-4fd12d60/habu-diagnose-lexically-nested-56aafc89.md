@@ -1,9 +1,11 @@
 ---
 title: Diagnose lexically nested quotation elaboration rejection
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-11T16:51:00.123952+03:00"
+created-at: "\"2026-09-11T16:51:00.123952+03:00\""
+closed-at: "2026-09-11T17:21:56.229628+03:00"
+close-reason: Reviewed a301eb61 integrated as ebe19a15; combined explicit-tier1 quotation suite passes original nested reducer, deeper/loop/EXIT/sibling cases and capture/unknown-effect negatives. JIT counterpart remains7c5267cd.
 ---
 
 Unassigned; discovered by /root/check_api while testing quotation-frame repair 5137130d on cfcf1baf. Exploratory reducer `[: >r [: >r RV:CALLEE r> + ;] execute r> + ;]` rejects -8651 during elaboration before allocation. This is distinct from spills inside quotation function bodies: runtime nesting via a named callee passes after that frame fix. Acceptance: record full typed enclosing definition and inputs, reduce and determine whether declaration or compiler is wrong, fix responsible layer if valid, and add a real load-path regression without broadening frame repair. Current evidence is the agent's exploratory report, not an independently reproduced root diagnosis.
