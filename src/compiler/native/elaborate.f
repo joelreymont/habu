@@ -2075,6 +2075,10 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    r ix WSYM HIR-WORD:OPCODE@ HIR-OPCODE:STORE HIR-OPCODE:EQ 0= if false exit then
    ix 1 NDICT:CALL-QUOT-IN drop NDICT:QUOT-NONE <> ;
 
+: GUARDED-STORE? ( HIR:opcode -- bool )
+   dup HIR-OPCODE:STORE HIR-OPCODE:EQ
+   swap HIR-OPCODE:BSTORE HIR-OPCODE:EQ or ;
+
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
@@ -2082,7 +2086,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if true exit then
-   m HIR-MEANING:OP HIR-MEANING:EQ if r ix QUOTATION-STORE? exit then
+   m HIR-MEANING:OP HIR-MEANING:EQ if r sy HIR-WORD:OPCODE@ GUARDED-STORE? exit then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
       r sy HIR-WORD:CTRL@ CTRL-CALL? {: op:HIR:opcode calls:bool :}
       calls exit
@@ -3068,6 +3072,14 @@ create DN-BUF DN-CAP allot
    x 0= if exit then
    r  ix WSYM  HIR-WORD:CALLEE-OUT@  x +  CON-BUNDLE-GLUE ;
 
+\ Source stores use the engine's protected-span boundary. A raw HIR store
+\ alone cannot enforce the same sealed-memory rule as interpreted ! and c!.
+: DO-STORE ( n HIR:opcode -- ) {: ix:n k:HIR:opcode :}
+   k HIR-OPCODE:BSTORE HIR-OPCODE:EQ if s" c!" else s" !" then
+   NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-HIR-UNMODELED throw then
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+
 \ ---- moving a whole value between memory and the vector ----------------------
 : WIDE-ADDR ( n IR-ID:ir-value-id n -- )
    {: ix:n base:IR-ID:ir-value-id k:n :}
@@ -3090,19 +3102,17 @@ create DN-BUF DN-CAP allot
    bot w VGLUE-GROW ;
 
 : WIDE-STORE ( n n -- ) {: ix:n w:n :}
-   VN @ 1 < if E-NELAB-UNDER throw then
-   VN @ 1- VAT {: addr:IR-ID:ir-value-id :}
-   1 VDROP
-   w VN @ > if E-NELAB-UNDER throw then
-   VN @ w - {: bot:n :}
+   VN @ w 1+ < if E-NELAB-UNDER throw then
+   VN @ w 1+ - {: bot:n :}
    bot w E-NELAB-BUNDLE BUNDLE-CK
+   \ Keep the address on the vector so every guarded call preserves it.
    w 0 ?do
       bot i + VAT VPUSH
-      ix addr i WIDE-ADDR
-      ix HIR-OPCODE:STORE EMIT-OPCODE
+      ix bot w + VAT i WIDE-ADDR
+      ix HIR-OPCODE:STORE DO-STORE
    loop
-   VN @ bot w + <> if E-NELAB-BUNDLE throw then
-   w VDROP ;
+   VN @ bot w + 1+ <> if E-NELAB-BUNDLE throw then
+   w 1+ VDROP ;
 
 : DO-QUOTATION-STORE ( n -- ) {: ix:n :}
    s" QUOTATION-STORAGE:STORE" NDICT:CALL-TARGET {: entry:n :}
@@ -3115,7 +3125,9 @@ create DN-BUF DN-CAP allot
    a 0 >= if ix a QCALL-FILL then
    VW ix TOK-CELLS {: w:n :}
    w 1 = if
-      r ix QUOTATION-STORE? if ix DO-QUOTATION-STORE else r ix EMIT-OP then
+      r ix QUOTATION-STORE? if ix DO-QUOTATION-STORE exit then
+      r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
+      k GUARDED-STORE? if ix k DO-STORE else r ix EMIT-OP then
       exit
    then
    w 1 < if E-NELAB-BUNDLE throw then

@@ -4,6 +4,7 @@ require test/compiler/native-eval-fixture.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/ieee754.f
 require lib/adt/option.f
 require src/compiler/native/compiler.f
 
@@ -77,6 +78,12 @@ private
 4 TYPED-BUFFER BX-AT bx
 4 TYPED-BUFFER OP-AT opt2<pt>
 variable SC                            \ one ordinary cell: the scalar access's own home
+
+create BYTE-SLOT 1 allot
+variable REAL-SLOT
+
+: E-BYTE-RT ( u8 -- u8 ) BYTE-SLOT c! BYTE-SLOT c@ ;
+: E-REAL-RT ( r -- r ) REAL-SLOT ! REAL-SLOT @ ;
 
 \ A narrow test boundary that views one physical cell of W2 as a scalar. The
 \ checked wide accessors below remain the production path under test.
@@ -208,6 +215,14 @@ TRUSTED: W2-SCALAR-AT ( n -- ptr n )
    3 4 0 E-S2  0 E-L2 27 T=
    2 3 4 0 E-S3  0 E-L3 87 T= ;
 
+: NARROW-STORE-CASE ( -- )
+   s" guarded byte and real stores preserve their values" T-LABEL
+   $AB E-BYTE-RT $AB T=
+   $8000000000000000 IEEE754:BITS>F64 E-REAL-RT
+   IEEE754:F64>BITS $8000000000000000 T=
+   $7FF8000000001234 IEEE754:BITS>F64 E-REAL-RT
+   IEEE754:F64>BITS $7FF8000000001234 T= ;
+
 : STORE-CASE ( -- )
    s" wide stores replace every cell" T-LABEL
    9 9 0 E-S2
@@ -269,6 +284,7 @@ public
    T-RESET
    LOAD-CASE
    STORE-CASE
+   NARROW-STORE-CASE
    PHYSICAL-CASE
    ROUNDTRIP-CASE
    COL-CASE

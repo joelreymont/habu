@@ -235,7 +235,7 @@ create EMPTY 1 allot            \ zero-length stdin
 
 : NULL-PTR-FIXED-MUTATE$ ( -- ptr u8 n )
    SB-RESET
-   s" TRUSTED: IWG-NULL-MUTATE ( -- ) 1 NULL-PTR-CELL ! ;" SB-APPEND LF
+   s" : IWG-NULL-MUTATE ( -- ) 1 NULL-PTR-CELL ! ;" SB-APPEND LF
    s" IWG-NULL-MUTATE" SB-APPEND LF
    SB$ ;
 
@@ -256,8 +256,16 @@ create EMPTY 1 allot            \ zero-length stdin
    NULL-PTR-SEARCH$ RUN-SUBJECT
    ASSERT-OK
    OUT$ S\" 0\n\n" T$=
-   s" a compiled fixed-address store cannot mutate NULL-PTR-CELL" T-LABEL
+   s" checked source cannot compile a NULL-PTR-CELL store" T-LABEL
    NULL-PTR-FIXED-MUTATE$ RUN-SUBJECT
+   s" E-UNDEFINED" ASSERT-DIAG
+   ERR$ s" NULL-PTR-CELL" CONTAINS? TTRUE
+   s" a compiled cell store respects the engine's protected span" T-LABEL
+   s" TRUSTED: IWG-BAND-STORE ( -- ) 1 data-base FRIEND-ARENA + ! ; IWG-BAND-STORE" RUN-SUBJECT
+   EXITED @ TTRUE
+   RC @ ENGINE-ERROR:SEAL-VIOLATION T=
+   s" a compiled byte store respects the same protected span" T-LABEL
+   s" TRUSTED: IWG-BAND-BYTE ( -- ) 1 data-base FRIEND-ARENA + c! ; IWG-BAND-BYTE" RUN-SUBJECT
    EXITED @ TTRUE
    RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" NULL-PTR-CELL remains numeric zero" T-LABEL
