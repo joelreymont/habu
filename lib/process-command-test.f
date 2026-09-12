@@ -9,6 +9,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/fs-mutate.f
 require lib/process-command.f
 require lib/test/outcome.f
 
@@ -145,6 +146,36 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" /usr/bin/false" >LEN PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC
    MATCH result ok OF drop 1 0 T= ENDOF err OF 1 T= ENDOF ;MATCH ;
 
+\ CWD!: the child runs from the given directory, proved by a relative-path
+\ effect (cat of a file that exists only there), so a symlinked or slash-ended
+\ TMPDIR cannot fake a mismatch; the directory is registered for cleanup before
+\ the run so a throw does not leak it. A missing directory is refused before
+\ any spawn.
+create PCMDT-DIR 256 allot   variable PCMDT-DIR-U
+create PCMDT-REL 512 allot   variable PCMDT-REL-U
+: PCMDT-CWD-BODY$ ( -- ptr u8 n )  s" from the private directory" ;
+
+: PCMDT-RUN-CWD ( -- )
+   CLEANUP-RESET
+   s" hb-proc-cmd-cwd" TMPDIR-MKDIR {: d:ptr du :}
+   d du CLEANUP-TREE+
+   du 256 <= TTRUE
+   du 256 > if CLEANUP-RUN exit then
+   d PCMDT-DIR du BYTE-COPY  du PCMDT-DIR-U !
+   PCMDT-DIR PCMDT-DIR-U @ s" here.txt" PCMDT-REL JOIN-PATH PCMDT-REL-U !
+   PCMDT-REL PCMDT-REL-U @ PCMDT-CWD-BODY$ WRITE-ALL
+   PROC-CMD:RESET
+   PCMDT-DIR PCMDT-DIR-U @ >LEN PROC-CMD:CWD!
+   s" here.txt" >LEN PROC-CMD:ARG+
+   s" /bin/cat" >LEN PCMDT-CMD-TIMEOUT-MS >MS PROC-CMD:RUN-RC PCMDT-RC>N 0 T=
+   PROC-CMD:OUT$ PCMDT-CWD-BODY$ T$=
+   s" here.txt" FILE? TFALSE
+   CLEANUP-RUN ;
+
+: PCMDT-CWD-MISSING ( -- )
+   PROC-CMD:RESET
+   s" /nonexistent-hb-proc-cmd-dir" >LEN PROC-CMD:CWD! ;
+
 : PROCESS-COMMAND-TEST-MAIN ( -- )
    T-RESET
    PCMDT-RUN-PRINTF
@@ -155,6 +186,8 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PCMDT-RUN-RC-OK
    PCMDT-RUN-RC-ERR
    PCMDT-RUN-TIMEOUT-OUTCOME
+   PCMDT-RUN-CWD
+   [: PCMDT-CWD-MISSING ;] E-PROC-PATH TTHROWSQ
    [: PCMDT-RUN-YES-TRUNCATED ;] E-PROC-TRUNCATED TTHROWSQ
    [: PCMDT-TOO-MANY-ARGS ;] E-PROC-OUTPUT TTHROWSQ
    [: PCMDT-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ

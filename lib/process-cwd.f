@@ -3,7 +3,8 @@
 \ The module lives in `package PROC-CWD`. External callers use the qualified public
 \ API (PROC-CWD:SPAWN-ARGV-ENV-CWD-RAW, PROC-CWD:CWDZ, PROC-CWD:ARGV-ENV-CWD-RESET,
 \ PROC-CWD:SPAWN-ARGV-ENV-CWD-IO, PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE,
-\ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE); the working-directory copy buffer and
+\ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE,
+\ PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME); the working-directory copy buffer and
 \ the intermediate capture-spawn/wait helpers are package-private.
 require lib/errors.f
 require lib/string.f
@@ -93,5 +94,21 @@ public
    pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
+
+\ The same run reporting the outcome sum (exited / signaled / timeout) with the
+\ captured lengths, the shape PROC-CMD stores.
+: RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
+   {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
+   inu PROC-CAPTURE-CHECK-STDIN
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   cwd cwdu CWDZ {: cwdz:ptr :}
+   timeout PROC-STDIN-CAPTURE-BEGIN
+   pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE
+   in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME ;
 
 ;package

@@ -2,7 +2,7 @@
 \
 \ The module lives in `package PROC-CMD`. External callers use the qualified public
 \ command-builder API (PROC-CMD:RESET, PROC-CMD:ARG+, PROC-CMD:ENV+,
-\ PROC-CMD:ENV-ENTRY+, PROC-CMD:ENV-HERMETIC, PROC-CMD:IN!, PROC-CMD:RUN-OUTCOME,
+\ PROC-CMD:ENV-ENTRY+, PROC-CMD:ENV-HERMETIC, PROC-CMD:IN!, PROC-CMD:CWD!, PROC-CMD:RUN-OUTCOME,
 \ PROC-CMD:RUN-RC, PROC-CMD:OUT$, PROC-CMD:ERR$, PROC-CMD:OUTCOME@, PROC-CMD:RC@);
 \ the argument/environment tables, capture buffers, and staging helpers are
 \ package-private.
@@ -11,6 +11,7 @@ require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/process-cwd.f
 
 package PROC-CMD
 
@@ -34,12 +35,14 @@ create PROC-CMD-ENV-BUF PROC-CMD-ENV-BUF-CAP allot
 create PROC-CMD-IN PROC-CMD-IN-CAP allot
 create PROC-CMD-OUT PROC-CMD-OUT-CAP allot
 create PROC-CMD-ERR PROC-CMD-ERR-CAP allot
+create PROC-CMD-CWD PROC-PATHZ-CAP allot        \ the child's working directory when CWD! set one
 
 variable PROC-CMD-ARG-N
 variable PROC-CMD-ARG-OFF
 variable PROC-CMD-ENV-N
 variable PROC-CMD-ENV-OFF
 variable PROC-CMD-IN-LEN
+variable PROC-CMD-CWD-LEN                \ 0: the child inherits this process's directory
 variable PROC-CMD-OUT-LEN
 variable PROC-CMD-ERR-LEN
 variable PROC-CMD-EXITED                 \ bool: completed by exit (vs signal) when not timed out
@@ -64,6 +67,7 @@ public
    0 >COUNT PROC-CMD-ENV-N !
    0 >OFF PROC-CMD-ENV-OFF !
    0 >LEN PROC-CMD-IN-LEN !
+   0 >LEN PROC-CMD-CWD-LEN !
    1 PROC-CMD-INHERIT !
    PROC-CMD-CAPTURE-RESET
    PROC-ARGV-RESET
@@ -158,7 +162,21 @@ private
 : PROC-CMD-IN-RESET ( -- )
    0 >LEN PROC-CMD-IN-LEN ! ;
 
+private
+
+: PROC-CMD-CWD-CHECK ( ptr u8 len -- ) {: a:ptr u:len :}
+   u LEN>N 0 <= if E-PROC-PATH throw then
+   u LEN>N PROC-PATHZ-CAP 1 - > if E-PROC-PATH throw then
+   a u LEN>N DIR? 0= if E-PROC-PATH throw then ;
+
 public
+
+\ Run the child from this directory instead of the loader's. A missing path or a
+\ non-directory is refused here, before anything is spawned; RESET clears it.
+: CWD! ( ptr u8 len -- ) {: a:ptr u:len :}
+   a u PROC-CMD-CWD-CHECK
+   a u PROC-CMD-CWD PROC-PATHZ-CAP >LEN PROC-ZCOPY drop
+   u PROC-CMD-CWD-LEN ! ;
 
 : IN! ( ptr u8 len -- ) {: a:ptr u:len :}
    u LEN>N 0 < if E-PROC-OUTPUT throw then
@@ -222,10 +240,17 @@ public
    path pathu timeout PROC-CMD-CHECK-RUN
    PROC-CMD-CAPTURE-RESET
    PROC-CMD-PREPARE
-   path pathu PROC-CMD-IN PROC-CMD-IN-LEN @
-   PROC-CMD-OUT PROC-CMD-OUT-CAP >LEN
-   PROC-CMD-ERR PROC-CMD-ERR-CAP >LEN timeout
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-CMD-STORE-RUN
+   PROC-CMD-CWD-LEN @ LEN>N 0 > if
+      path pathu PROC-CMD-CWD PROC-CMD-CWD-LEN @ PROC-CMD-IN PROC-CMD-IN-LEN @
+      PROC-CMD-OUT PROC-CMD-OUT-CAP >LEN
+      PROC-CMD-ERR PROC-CMD-ERR-CAP >LEN timeout
+      PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME PROC-CMD-STORE-RUN
+   else
+      path pathu PROC-CMD-IN PROC-CMD-IN-LEN @
+      PROC-CMD-OUT PROC-CMD-OUT-CAP >LEN
+      PROC-CMD-ERR PROC-CMD-ERR-CAP >LEN timeout
+      RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-CMD-STORE-RUN
+   then
    OUTCOME@ dup PROC-OUTCOME>RC PROC-CMD-RC ! ;
 
 \ Wrap the stored completion rc into a result<n,n> (switchover wave B): ok =
