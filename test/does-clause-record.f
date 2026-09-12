@@ -281,6 +281,13 @@ public
 
 \ Keep the structural test helpers on the already-booted engine, then switch the
 \ definitions SUBJECTS feeds through the interpreter onto the production chain.
+\ Loading the chain is not selecting it: tier 0, the legacy JIT `:` compiler, is
+\ what every `--load` and the REPL run (src/habu/layout.f NCOMP-DISPATCH:TIER-CELL),
+\ and its J-DOES writes the clause name BEFORE the clause body, inside the parent's
+\ span. The layout measured below is the native publication's - habu2.f
+\ DOES-REC:NATIVE-PRIM appends the permanent name past both spans - so this file
+\ selects tier 1 the way an executable build does, ahead of the definitions.
 require src/compiler/native/compiler.f
+1 set-tier
 
 DOESREC-TEST:RUN

@@ -5,12 +5,15 @@
 \ the matching `;using`, the enclosing `;package`, or the end of the load file.
 \ Privates stay invisible, no definition lands in NAME, qualified NAME:WORD is
 \ unchanged, and a bare tail resolving in two used packages is a hard error.
-\ Every case runs a source string through INCLUDE-EVALUATE under catch, so an
+\ Almost every case runs a source string through INCLUDE-EVALUATE under catch, so an
 \ interpret- or compile-time reject surfaces as the engine's named throw code
-\ (0 = accepted). The checked-body cases prove the checker resolves used publics
+\ (0 = accepted); one runs the same text through the production source verifier,
+\ which is where the checker resolves a bare tail with no engine body lookup in
+\ front of it. The checked-body cases prove the checker resolves used publics
 \ identically to the runtime: an unresolved bare tail would fail certification.
 
 require lib/prelude.f
+require src/habu/verify-source.f
 
 variable #FAIL
 variable #CASE
@@ -28,6 +31,11 @@ variable #CASE
 variable UCE-A   variable UCE-U
 : UCE-GO ( -- )  UCE-A @ UCE-U @ INCLUDE-EVALUATE ;
 : UCE-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: UCE-GO ;] catch ;
+
+\ the same source through the production source verifier: the checker resolves the
+\ bare tail itself there, with no engine body lookup in front of it.
+: VS-GO ( -- )   UCE-A @ UCE-U @ VERIFY:SOURCE-BUF ;
+: VS-CATCH ( ptr u8 n -- n )  UCE-U ! UCE-A !  [: VS-GO ;] catch ;
 
 \ Engine reject codes (src/core/engine-error.f USING-*), delivered as catchable
 \ throws inside INCLUDE-EVALUATE.
@@ -87,8 +95,13 @@ s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH E-REJECT T=
 \ ambiguous: AW resolves in two used packages (interpret)
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
-\ The checker reports its own ambiguity code for a compiled body.
-s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
+\ A compiled body is refused by the ENGINE's own used-search, which resolves the
+\ body token before the checker walks it: the same E-AMBIGUOUS the interpret leg
+\ above gets, naming the tail on fd 2. The checker keeps its own rule for the paths
+\ it resolves alone - the production source verifier is one - so the code below
+\ pins E-USING-AMBIGUOUS there (src/core/checker.f CHECKER-USED-SYM).
+s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T=
+s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
 \ unknown package
 s" using NOPE-PKG" UCE-CATCH E-UNKNOWN T=
 \ a colon-bearing name is not a package name

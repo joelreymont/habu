@@ -132,7 +132,10 @@ TRUSTED: EV-STR ( ptr u8 n -- ptr u8 n )
 : LOAD-ENUM-HALF ( -- )  s" : CAX-B4 ( n -- n ) dup create , 1 + ;" EV ;
 : LOAD-IN-STRING ( -- )  s\" : CAX-B5 ( -- ptr u8 n ) s\q create\q ;" EV ;
 : LOAD-IN-COMMENT ( -- ) s" : CAX-B6 ( -- ) ( create ) ;" EV ;
-: LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr a ) here ;" EV ;
+\ `here` hands back a raw storage address, so its wrapper declares `ptr n`: a
+\ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md,
+\ "Use real types, not reflexive n"). What this case measures is the arity.
+: LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr n ) here ;" EV ;
 
 : BODY-CASE ( -- )
    s" a body whose whole content is `create` declares nothing and loads" T-LABEL

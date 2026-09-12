@@ -81,12 +81,13 @@ variable XC-A  variable XC-U
    5 1 HKB-RUN 7 T= ;
 
 \ ---- tick store: `['] W HK !` retypes the tick so the store fit-checks W's -----
-\ certified effect against the cell (dot habu-typed-xt-cells-08e1dc2c). Before the
-\ BTICK lookahead recognised a typed-xt-cell accessor as an xt sink, the tick
-\ erased to a plain n and even a MATCHING store rejected on `actual: n`; T1
-\ certifying is the proof the retype now fires (a plain-n erasure would reject it),
-\ and T1 vs T2 proves the store discriminates on the EFFECT. Candidate-path only,
-\ like every direct-tick fixture (the reconstructed --load body drops the target).
+\ certified effect against the cell (dot habu-typed-xt-cells-08e1dc2c). The retype
+\ no longer keys on what follows the tick: BTICK-TOK types every tick of a word the
+\ checker knows, so T1 certifying is the proof it fires (a plain-n erasure would
+\ reject it), T1 vs T2 proves the store discriminates on the EFFECT, and the buffer
+\ slot store T5 - out of scope while the retype needed a single-token lookahead onto
+\ the accessor - now fit-checks the same way. Candidate-path only, like every
+\ direct-tick fixture (the reconstructed --load body drops the target).
 : XC-SECTION-TICK-STORE ( -- )
    \ matching-effect tick store certifies: the retype fired (else this rejects)
    s" T1 ( -- ) ['] SP HK !" CHECK-QUIET-CANDIDATE! -1 T=
@@ -94,11 +95,13 @@ variable XC-A  variable XC-U
    s" T2 ( -- ) ['] DBL HK !" CHECK-QUIET-CANDIDATE! 0 T=
    \ a non-xt (plain number) store still rejects
    s" T3 ( -- ) 42 HK !" CHECK-QUIET-CANDIDATE! 0 T=
-   \ a tick before a scalar sink stays a plain n: the retype is targeted, not global
-   s" T4 ( n -- n ) ['] SP +" CHECK-QUIET-CANDIDATE! -1 T=
-   \ a buffer slot store stays out of scope (the index splits the tick from the
-   \ accessor); [: SP ;] 0 HKB ! is the supported quotation-store buffer surface
-   s" T5 ( -- ) ['] SP 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T= ;
+   \ a tick before a scalar sink REJECTS: the quotation cannot unify with +'s n
+   s" T4 ( n -- n ) ['] SP +" CHECK-QUIET-CANDIDATE! 0 T=
+   \ a buffer slot store fit-checks too, and on the EFFECT: the index between the
+   \ tick and the accessor no longer hides the sink
+   s" T5 ( -- ) ['] SP 0 HKB !" CHECK-QUIET-CANDIDATE! -1 T=
+   s" T6 ( -- ) ['] DBL 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T=
+   s" T7 ( -- ) 42 0 HKB !" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- define-time admissibility: malformed quotation types still reject -------
 : XC-SECTION-ADMISSIBILITY ( -- )

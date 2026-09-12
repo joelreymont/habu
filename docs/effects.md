@@ -515,15 +515,17 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   fit-checks the row against `E` exactly like executing a literal `xt<E>` (reuses
   `RSEXEC`). Admissibility is gated by `CHECKER-STORAGE-INFO` (a closed quotation
   cell, width 1; a malformed quotation body rejects). The **tick** store
-  `['] W HK !` also works (dot `habu-typed-xt-cells-08e1dc2c`): `BTICK-TOK`'s
-  lookahead treats a typed-xt-cell accessor as an xt sink, so the tick retypes to
-  `xt<effect(W)>` and the same `ptr` unification fit-checks `E` — a matching store
-  certifies, a mismatch rejects on the effect (not the old plain-`n` erasure), and
-  a plain number still rejects. This is candidate-path only, like every direct-tick
-  retype (the reconstructed `--load` body drops the tick target). A **buffer slot**
-  tick store `['] W idx HKB !` stays out of scope — the index token splits the tick
-  from the accessor, past the single-token lookahead — so use the quotation store
-  `[: W ;] idx HKB !` for buffers. This is the sound alternative to the raw xt
+  `['] W HK !` also works (dot `habu-typed-xt-cells-08e1dc2c`): `BTICK-TOK` retypes
+  every tick of a word the checker knows to `xt<effect(W)>` — no consumer lookahead —
+  and the same `ptr` unification fit-checks `E`: a matching store certifies, a
+  mismatch rejects on the effect (not the old plain-`n` erasure), and a plain number
+  still rejects. This is candidate-path only, like every direct-tick retype (the
+  reconstructed `--load` body drops the tick target). A **buffer slot** tick store
+  `['] W idx HKB !` fit-checks the same way, because the index token between the tick
+  and the accessor no longer hides the sink; `[: W ;] idx HKB !` remains the
+  quotation-store spelling. A tick whose sink is a scalar (`['] W +`) now REJECTS: a
+  code address used as a number is a raw-cell operation and belongs in a `TRUSTED:`
+  row whose effect says so. This is the sound alternative to the raw xt
   scratch above: `variable V  ' W V !  : F V @ execute ;` now REJECTS at check
   time (see the opaque-execute rule below), whereas the typed cell carries `E`
   end to end and executes with a statically known effect.

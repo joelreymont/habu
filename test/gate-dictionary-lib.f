@@ -264,11 +264,14 @@ variable CANDIDATE-VERDICT
    s" 0" GE-OUT-LINE
    SB$ s" hb dictionary name over 255 bytes output" GE-EXPECT-OUT ;
 
+\ The clause hands back a cell of raw allot'd storage, so both it and the checked
+\ consumer declare `ptr n`: a parametric pointee over raw storage is
+\ E-NONPARAMETRIC-EFFECT (docs/forth.md, "Use real types, not reflexive n").
 : TRUSTED-DOES-SOURCE ( -- )
    GE-SRC-RESET
-   s" TRUSTED: ARR ( n -- ) create cells allot does> ( n -- ptr a ) swap 0 ?do cell+ loop ;" GE-SRC-LINE
+   s" TRUSTED: ARR ( n -- ) create cells allot does> ( n -- ptr n ) swap 0 ?do cell+ loop ;" GE-SRC-LINE
    s" 4 ARR A4" GE-SRC-LINE
-   s" USE ( n -- ptr a ) A4" GE-SRC-CHECK-LINE
+   s" USE ( n -- ptr n ) A4" GE-SRC-CHECK-LINE
    s" 7 2 A4 !" GE-SRC-LINE
    s" 2 A4 @ ." GE-SRC-LINE ;
 
@@ -1242,7 +1245,11 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" defer GD-XV-ACTION-A ( -- i64 )" GE-SRC-LINE
    s" : GD-XV-BAD-A ( -- ) [: 1 2 ;] is GD-XV-ACTION-A ;" GE-SRC-LINE
-   s" defer GD-XV-ACTION-B ( -- i64 )" GE-SRC-LINE
+   \ A tick now CARRIES the target's certified effect (src/core/checker.f BTICK-TOK
+   \ types every tick, with no consumer lookahead), so `is` fit-checks it like a
+   \ quotation: the misuse to pin is the MISFIT, not the spelling. The fitting tick
+   \ store is the positive in test/xt-effect-test.f (v6/v7).
+   s" defer GD-XV-ACTION-B ( n -- i64 )" GE-SRC-LINE
    s" : GD-XV-FIVE-B ( -- i64 ) 5 ;" GE-SRC-LINE
    s" : GD-XV-BAD-TICK-B ( -- ) ['] GD-XV-FIVE-B is GD-XV-ACTION-B ;" GE-SRC-LINE
    s" : GD-XV-NOT-DEFER-C ( -- ) ;" GE-SRC-LINE
@@ -1251,7 +1258,7 @@ variable CANDIDATE-VERDICT
    s" : GD-XV-BAD-READER-D ( -- ) [: 1 ;] is GD-XV-READER-D ;" GE-SRC-LINE
    s" check.f rejects execution vector misuse batch" CHECK-BAD-ALL
    s" gd-xv-bad-a" s" check.f rejects effect-mismatched execution vector assignment" GE-EXPECT-ERR-HAS
-   s" gd-xv-bad-tick-b" s" check.f rejects raw xt execution vector assignment" GE-EXPECT-ERR-HAS
+   s" gd-xv-bad-tick-b" s" check.f rejects effect-mismatched tick execution vector assignment" GE-EXPECT-ERR-HAS
    s" gd-xv-bad-target-c" s" check.f rejects non-defer execution vector target" GE-EXPECT-ERR-HAS
    s" gd-xv-bad-reader-d" s" check.f rejects reader-shaped effect mismatch" GE-EXPECT-ERR-HAS
    GE-SRC-RESET

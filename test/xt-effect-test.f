@@ -4,10 +4,12 @@
 \ `['] W` retypes from a plain n to xt<effect(W)>: a T-QUOT of W's certified
 \ effect that execute/catch/is fit-check by the existing RSEXEC/RSCATCH/IS-APPLY
 \ quotation unification (src/core/checker.f BTICK-TOK). The effect is materialised
-\ only where W's operand token is in the checked text (the CANDIDATE path -
-\ CHECK-CANDIDATE!) AND the very next token is an xt consumer, so store-consumer
-\ sites (`['] B+ FPRIM-L`) keep the raw xt cell. Positives run each candidate in a
-\ spawned child and read its printed verdict:
+\ wherever W's operand token is in the checked text (the CANDIDATE path -
+\ CHECK-CANDIDATE!), with no lookahead at the consumer: every tick of a word the
+\ checker knows is a quotation, so a consumer declares a quotation parameter
+\ (`FPRIM-L ( ptr u8 n [ -- ] -- )`, src/habu/habu1.f) and a consumer that really
+\ wants the code address as a number takes it through a TRUSTED: row of its own.
+\ Positives run each candidate in a spawned child and read its printed verdict:
 \   fit    `['] A execute`  (A's ( n -- n n ) fits the row)         -> CERT (-1)
 \   misfit `['] A execute`  on ( -- n ) (A needs an input, none)    -> REJ  (0)
 \   catch/is fit + misfit, and an unsafe-definer tick (`['] deflinear`) -> REJ.
@@ -158,10 +160,10 @@ variable XE-CNT
 \ ---- assertions --------------------------------------------------------------
 : XE-HAS ( ptr u8 n -- ) XE-OUT$ 2swap CONTAINS? TTRUE ;   \ stdout carries the needle
 
-\ v9 (`['] A +`) is the store-consumer compatibility case: the retype fires only
-\ when the next token is an xt consumer, so a scalar sink gets a plain n exactly
-\ as today (a T-QUOT would not unify with +'s input) - the byte-identical model
-\ the engine's `['] B+ FPRIM-L` sites rely on.
+\ v9 (`['] A +`) is the scalar-sink case: the retype has no consumer lookahead, so
+\ the tick is a T-QUOT that cannot unify with +'s `n` input and the body REJECTS.
+\ Adding a code address as a number is a raw-cell operation and needs a TRUSTED:
+\ row that says so; the engine's own `['] B+ FPRIM-L` sites declare `[ -- ]`.
 : XE-VALUES ( -- )
    XE-VALUES-PROG$ XE-RUN
    XE-EXITED @ TTRUE
@@ -182,8 +184,8 @@ variable XE-CNT
    s" v7:<<REJ>>" XE-HAS
    s" ['] deflinear execute (unsafe definer tick) rejects" T-LABEL
    s" v8:<<REJ>>" XE-HAS
-   s" ['] A + (non-xt-consumer sink) stays a plain n and certifies" T-LABEL
-   s" v9:<<CERT>>" XE-HAS ;
+   s" ['] A + (scalar sink) rejects: the tick is a quotation, not a number" T-LABEL
+   s" v9:<<REJ>>" XE-HAS ;
 
 \ ---- tier-1 interop + tier-2 pre-arm (top-row tracker, unchanged) ------------
 : XE-EXEC$ ( -- ptr u8 n )               \ ' FOO2 execute on an empty stack

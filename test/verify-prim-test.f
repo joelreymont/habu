@@ -62,9 +62,12 @@ create DIAG-BUF DIAG-MAX allot
 : BUILD$ ( -- ptr u8 n )
    SB$ ;
 
+\ A created cell is raw storage read as a number, so the reference declares
+\ `ptr n`: a parametric pointee there is E-NONPARAMETRIC-EFFECT and would make
+\ EXPECT-HIDDEN's rc 70 arrive for the reference instead of the hidden name.
 : ADD-REF ( ptr u8 n -- )
    ADD-LF
-   s" : U ( -- ptr a ) " ADD
+   s" : U ( -- ptr n ) " ADD
    ADD
    s"  ;" ADD ;
 
@@ -209,7 +212,7 @@ create DIAG-BUF DIAG-MAX allot
    s" CLOSE-PRIVATE closes a PPRIM: row and the next top-level definition stays visible" T-LABEL
    BUF-CLEAR s" PPRIM: PKG FOO PE-N PE-IN CLOSE-PRIVATE" ADD ADD-LF
    s" create PRIVAFTER 0 ," ADD ADD-LF
-   s" : UPRIVAFTER ( -- ptr a ) PRIVAFTER ;" ADD  VERIFY-BUF 0 T= ;
+   s" : UPRIVAFTER ( -- ptr n ) PRIVAFTER ;" ADD  VERIFY-BUF 0 T= ;
 
 : PPRIM-PRIVATE-BODY ( -- )
    s" a definer before CLOSE-PRIVATE is row body, so it registers nothing" T-LABEL
@@ -260,7 +263,7 @@ create DIAG-BUF DIAG-MAX allot
    BUF-CLEAR s" PPRIM: PKG A PE-N PE-OUT PPRIM;" ADD ADD-LF
    s" create MIDPRIV 0 ," ADD ADD-LF
    s" PPRIM: PKG B PE-N PE-IN CLOSE-PRIVATE" ADD ADD-LF
-   s" : UMIDPRIV ( -- ptr a ) MIDPRIV ;" ADD  VERIFY-BUF 0 T= ;
+   s" : UMIDPRIV ( -- ptr n ) MIDPRIV ;" ADD  VERIFY-BUF 0 T= ;
 
 : PRIVATE-ROWS-REAL ( -- )
    s" the four checker.f declaration-frame rows scan clean and expose the next definition" T-LABEL
@@ -287,7 +290,7 @@ create DIAG-BUF DIAG-MAX allot
 : BETWEEN-ROWS ( -- )
    s" a genuine top-level create between two prim rows still registers" T-LABEL
    BUF-CLEAR s" PRIM: A PE-N PRIM; create MID zz PRIM: B PE-N PRIM;" ADD ADD-LF
-   s" : UMID ( -- ptr a ) MID ;" ADD  VERIFY-BUF 0 T= ;
+   s" : UMID ( -- ptr n ) MID ;" ADD  VERIFY-BUF 0 T= ;
 
 : SECOND-ROW ( -- )
    s" a second row's body definer is consumed, not leaked by the first row closer" T-LABEL
@@ -341,13 +344,13 @@ create DIAG-BUF DIAG-MAX allot
    s" a top-level definition after a properly closed row remains visible" T-LABEL
    BUF-CLEAR s" PRIM: FOO PE-N PRIM;" ADD ADD-LF
    s" create AFTERC 0 ," ADD ADD-LF
-   s" : UAFTER ( -- ptr a ) AFTERC ;" ADD  VERIFY-BUF 0 T= ;
+   s" : UAFTER ( -- ptr n ) AFTERC ;" ADD  VERIFY-BUF 0 T= ;
 
 : FOLLOWING-PPRIM ( -- )
    s" a top-level definition after a closed PPRIM: row remains visible" T-LABEL
    BUF-CLEAR s" PPRIM: PKG FOO PE-N PPRIM;" ADD ADD-LF
    s" create PAFTER 0 ," ADD ADD-LF
-   s" : UPAFTER ( -- ptr a ) PAFTER ;" ADD  VERIFY-BUF 0 T= ;
+   s" : UPAFTER ( -- ptr n ) PAFTER ;" ADD  VERIFY-BUF 0 T= ;
 
 : TEST-POSITIVE ( -- )
    PLAIN-ROWS REAL-ROWS FOLLOWING-PRIM FOLLOWING-PPRIM ;
