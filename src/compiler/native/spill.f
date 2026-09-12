@@ -126,8 +126,16 @@ DYNAMIC-BUFFER F-READ-BUF n
 \ it. Read by block, so the plan is walked once instead of once per block.
 DYNAMIC-BUFFER P-FRAME-BUF n
 : P-FRAME ( -- ptr n ) 0 P-FRAME-BUF ;
-variable PRED-SEEN
-variable PRED-ONE
+
+\ Two flags per block of the FUNCTION being rewritten: whether anything reaches
+\ it, and whether every terminator that does leaves through one edge. Both are
+\ read per block and per edge, so the terminators are walked once.
+DYNAMIC-BUFFER PRED-ANY-BUF n
+: PRED-ANY ( -- ptr n ) 0 PRED-ANY-BUF ;
+DYNAMIC-BUFFER PRED-ONE-BUF n
+: PRED-ONE ( -- ptr n ) 0 PRED-ONE-BUF ;
+variable PRED-FUN                    \ the function the four per-function maps hold
+variable PRED-SET                    \ those maps are built
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER RMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER VSET-BUF n
@@ -153,6 +161,8 @@ DYNAMIC-BUFFER RBLK-BUF n
    VMAX RBLK-BUF-RESERVE
    VMAX F-READ-BUF-RESERVE
    BMAX P-FRAME-BUF-RESERVE
+   BMAX PRED-ANY-BUF-RESERVE
+   BMAX PRED-ONE-BUF-RESERVE
    ;
 create NAMEBUF NAME-CAP allot
 
@@ -532,27 +542,43 @@ create NAMEBUF NAME-CAP allot
    SUCC-AT IR-ID:BLOCK-LOCAL  OLD-BBASE @ -
    dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then ;
 
-: TARGETS? ( IR-ID:ir-op-id IR-ID:ir-block-id -- bool )
-   {: id:IR-ID:ir-op-id want:IR-ID:ir-block-id :}
-   false
-   id SUCCS-OF 0 ?do
-      id i SUCC-AT IR-ID:BLOCK-LOCAL
-      want IR-ID:BLOCK-LOCAL = if drop true leave then
-   loop ;
+\ Every edge of the function, read once: which blocks anything reaches, and
+\ which are reached only by terminators that leave through one edge. Asking a
+\ block instead walked every terminator of the function again.
+: PREDS! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT {: n:n :}
+   n 0 ?do
+      0 i cells PRED-ANY + !
+      1 i cells PRED-ONE + !
+   loop
+   n 0 ?do
+      f i BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+      t SUCCS-OF {: sn:n :}
+      sn 0 ?do
+         t i SUCC-ORD {: b:n :}
+         1 b cells PRED-ANY + !
+         sn 1 <> if 0 b cells PRED-ONE + ! then
+      loop
+   loop
+   f IR-ID:FUN-LOCAL PRED-FUN !
+   1 PRED-SET ! ;
+
+\ The two maps are the function's, so a block of another one is a refusal rather
+\ than a flag read at that block's ordinal.
+: PRED-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   PRED-SET @ 0= if E-A64SPILL-SHAPE throw then
+   f IR-ID:FUN-LOCAL PRED-FUN @ <> if E-A64SPILL-SHAPE throw then ;
 
 \ A single-successor edge can carry an order value as a block argument. A
 \ multi-successor edge cannot, so its destination must use the side-table order.
 : ONE-SUCC-IN? ( IR-ID:ir-fun-id IR-ID:ir-block-id -- bool )
    {: f:IR-ID:ir-fun-id want:IR-ID:ir-block-id :}
-   0 PRED-SEEN ! 1 PRED-ONE !
-   f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT TERM-AT {: id:IR-ID:ir-op-id :}
-      id want TARGETS? if
-         1 PRED-SEEN !
-         id SUCCS-OF 1 <> if 0 PRED-ONE ! then
-      then
-   loop
-   PRED-SEEN @ 0<> PRED-ONE @ 0<> and ;
+   f PRED-CK
+   want IR-ID:BLOCK-LOCAL OLD-BBASE @ - {: b:n :}
+   b 0 < b BMAX >= or if E-A64SPILL-SHAPE throw then
+   b cells PRED-ANY + @ 0<>  b cells PRED-ONE + @ 0<>  and ;
 
 : PLAN-FRAME? ( n -- bool )
    dup A64RA:PLAN-STORE? if drop true exit then
@@ -890,6 +916,7 @@ create NAMEBUF NAME-CAP allot
    VCLEAR
    F-ORDER-CLEAR
    f 0 BLOCK-AT IR-ID:BLOCK-LOCAL OLD-BBASE !
+   f PREDS!
    f rb F-NEED-FILL
    0 G-AT !
    f BLOCK-COUNT 0 ?do f i rb WALK-BLOCK loop
@@ -1038,6 +1065,7 @@ public
    NFROZEN:TOTAL-OPS NPROF-PHASE:SPILL-OPS NPROF:ADD
    A64RA:PLAN-N NPROF-PHASE:SPILL-PLAN NPROF:ADD
    RESERVE-SCRATCH
+   0 PRED-SET !
    F-READS! P-FRAMES!
    c b p u SOURCE!
    SHAPE-CK {: nf:n :}
@@ -1059,6 +1087,9 @@ public
    RBLK-BUF-RELEASE
    F-READ-BUF-RELEASE
    P-FRAME-BUF-RELEASE
+   PRED-ANY-BUF-RELEASE
+   PRED-ONE-BUF-RELEASE
+   0 PRED-SET !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
