@@ -41,6 +41,16 @@
 \      rows and must run every guard before its first write; a reader row must
 \      write nothing at all.
 \
+\      The frozen read's row names the PUBLIC read, as IR-FUN's four rows do.
+\      Its tiling check stopped being the private cell reader's when the frozen
+\      row memo landed: `FROW-USE` resolves the row and validates its tiling,
+\      `FWIN@` then reads the eight fields that validation cached, and the
+\      public `FOPERAND@` is what composes the two. Asking `FWIN@` for the
+\      guard now asks a body that cannot reach one by construction. The
+\      behaviour the private pair owes - a malformed tiling refused through the
+\      public read, on a memo hit and a memo miss alike - is `test/compiler/
+\      ir-op.f`'s MEMO-CASES, which drives it through `FOPERAND@`.
+\
 \   4. The terminator field, which the model finds to be derived rather than
 \      recorded: `BROW-ADD` writes `opst opn + 1-` and `TERMINATOR@` recomputes
 \      the same number and rejects anything else. Both bodies are frozen here so
@@ -377,6 +387,20 @@ public
 \ and compared whole. These are the bodies that make the model's hypotheses true
 \ of the shipped code, so a silent edit to any of them is a silent change to
 \ what the proofs are about.
+\
+\ Seven of them were re-derived when the operation store moved onto one resolved
+\ reader per public word (078759d8, 0e8c47e3, f9c7dcac). What changed in each is
+\ WHICH handle the read goes through and what the local holding it is called -
+\ `IR-ARENA:arena`/`IR-ARENA:view` became `IR-ARENA:reader`, `LCELL@` became
+\ `IR-ARENA:RD@`, and the live/frozen twins collapsed onto one word each
+\ (`FRC@` to `RC@`, `FROW-END` to `ROW-END`, `FPCELLS` to `PCELLS`). The
+\ arithmetic, the guard calls and their order are identical token for token.
+\ `FTILE-CK` additionally reads its eight fields in one pass into the frozen row
+\ memo before doing that arithmetic over the cached cells: `OFF-OPST` through
+\ `OFF-ATN` are the eight CONSECUTIVE offsets 1..8 of the row (src/compiler/ir/
+\ op.f), so the batched read covers exactly the cells the interleaved reads did.
+\ No hypothesis of `formal/Common/Structure.v` is about which handle a read is
+\ made through, so all seven still make the same claims true.
 
 16 constant GUARD-COUNT
 
@@ -426,19 +450,19 @@ public
    case
       0 of s" {: hs:n vcnt:n :} L-OP SN@ 0 ?do hs L-OP SEG i + SO@ OWNED-CK L-OP SEG i + SV@ dup 0 < swap vcnt >= or if E-IR-OP-SSA throw then loop" endof
       1 of s" <> if E-IR-OP-WINDOW throw then" endof
-      2 of s" {: p:IR-ARENA:arena r:IR-ARENA:arena l:n :} l 0= if 0 else r l 1- ROW-END then {: at:n :} at r l OFF-OPST RC@ STEP-CK at r l OFF-OPN RC@ LEN-OK + {: a1:n :} a1 r l OFF-RSST RC@ STEP-CK a1 r l OFF-RSN RC@ LEN-OK + {: a2:n :} a2 r l OFF-SCST RC@ STEP-CK a2 r l OFF-SCN RC@ LEN-OK + {: a3:n :} a3 r l OFF-ATST RC@ STEP-CK a3 r l OFF-ATN RC@ LEN-OK + p PCELLS > if E-IR-OP-STATE throw then" endof
-      3 of s" {: p:IR-ARENA:view r:IR-ARENA:view l:n :} l 0= if 0 else r l 1- FROW-END then {: at:n :} at r l OFF-OPST FRC@ STEP-CK at r l OFF-OPN FRC@ LEN-OK + {: a1:n :} a1 r l OFF-RSST FRC@ STEP-CK a1 r l OFF-RSN FRC@ LEN-OK + {: a2:n :} a2 r l OFF-SCST FRC@ STEP-CK a2 r l OFF-SCN FRC@ LEN-OK + {: a3:n :} a3 r l OFF-ATST FRC@ STEP-CK a3 r l OFF-ATN FRC@ LEN-OK + p FPCELLS > if E-IR-OP-STATE throw then" endof
+      2 of s" {: p:IR-ARENA:reader r:IR-ARENA:reader l:n :} l 0= if 0 else r l 1- ROW-END then {: at:n :} at r l OFF-OPST RC@ STEP-CK at r l OFF-OPN RC@ LEN-OK + {: a1:n :} a1 r l OFF-RSST RC@ STEP-CK a1 r l OFF-RSN RC@ LEN-OK + {: a2:n :} a2 r l OFF-SCST RC@ STEP-CK a2 r l OFF-SCN RC@ LEN-OK + {: a3:n :} a3 r l OFF-ATST RC@ STEP-CK a3 r l OFF-ATN RC@ LEN-OK + p PCELLS > if E-IR-OP-STATE throw then" endof
+      3 of s" {: p:IR-ARENA:reader r:IR-ARENA:reader l:n :} 8 0 ?do r l i OFF-OPST + RC@ i FROW-FIELDS ! loop l 0= if 0 else r l 1- ROW-END then {: at:n :} at OFF-OPST FROW-FIELD STEP-CK at OFF-OPN FROW-FIELD LEN-OK + {: a1:n :} a1 OFF-RSST FROW-FIELD STEP-CK a1 OFF-RSN FROW-FIELD LEN-OK + {: a2:n :} a2 OFF-SCST FROW-FIELD STEP-CK a2 OFF-SCN FROW-FIELD LEN-OK + {: a3:n :} a3 OFF-ATST FROW-FIELD STEP-CK a3 OFF-ATN FROW-FIELD LEN-OK + p PCELLS > if E-IR-OP-STATE throw then" endof
       4 of s" {: st:n :} st st L-OP SN@ + st L-OP SN@ + L-RS SN@ + st L-OP SN@ + L-RS SN@ + L-SC SN@ +" endof
       5 of s" {: c:IR-CTX:ctx r:IR-ARENA:arena st:n :} st WIN-STARTS {: sop:n srs:n ssc:n sat:n :} c r STG-OPC @ CELL+ c r sop CELL+ c r L-OP SN@ CELL+ c r srs CELL+ c r L-RS SN@ CELL+ c r ssc CELL+ c r L-SC SN@ CELL+ c r sat CELL+ c r L-AT SN@ AT-CELLS * CELL+ c r STG-SRC @ CELL+ c r STG-SBEG @ CELL+ c r STG-SLEN @ CELL+" endof
-      6 of s" {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :} r CNT r HC-CAP LCELL@ >= if E-IR-OP-CAP throw then v VCNT L-RS SN@ + v HC-CAP LCELL@ > if E-IR-OP-CAP throw then p PCELLS STAGED-CELLS + p HC-CAP LCELL@ > if E-IR-OP-CAP throw then" endof
+      6 of s" {: p:IR-ARENA:reader v:IR-ARENA:reader r:IR-ARENA:reader :} r CNT r HC-CAP IR-ARENA:RD@ >= if E-IR-OP-CAP throw then v VCNT L-RS SN@ + v HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then p PCELLS STAGED-CELLS + p HC-CAP IR-ARENA:RD@ > if E-IR-OP-CAP throw then" endof
       7 of s" <> if E-IR-FUN-WINDOW throw then" endof
-      8 of s" {: b:IR-ARENA:arena l:n :} l 0= if 0 else b l 1- BOP-END then b l OFF-OPST BC@ STEP-CK" endof
-      9 of s" {: f:IR-ARENA:arena l:n :} l 0= if 0 else f l 1- FNBK-END then f l OFF-BST FNC@ STEP-CK" endof
-      10 of s" {: p:IR-ARENA:arena f:IR-ARENA:arena l:n :} l 0= if 0 else f l 1- FNAT-END then {: at:n :} at f l OFF-ATST FNC@ STEP-CK f l FNAT-END p PCELLS > if E-IR-FUN-STATE throw then" endof
+      8 of s" {: blr:IR-ARENA:reader l:n :} l 0= if 0 else blr l 1- BOP-END then blr l OFF-OPST BC@ STEP-CK" endof
+      9 of s" {: fnr:IR-ARENA:reader l:n :} l 0= if 0 else fnr l 1- FNBK-END then fnr l OFF-BST FNC@ STEP-CK" endof
+      10 of s" {: fnp:IR-ARENA:reader fnr:IR-ARENA:reader l:n :} l 0= if 0 else fnr l 1- FNAT-END then {: at:n :} at fnr l OFF-ATST FNC@ STEP-CK fnr l FNAT-END fnp PCELLS > if E-IR-FUN-STATE throw then" endof
       11 of s" {: r:IR-ARENA:arena qr:IR-ARENA:arena key:IR-ID:ir-module-key opst:n opn:n :} opn 1 < if E-IR-FUN-TERM throw then opn 0 ?do r qr key opst i opn 1- TERM-AT-CK loop" endof
       12 of s" {: r:IR-ARENA:arena qr:IR-ARENA:arena key:IR-ID:ir-module-key opst:n i:n last:n :} qr r key key opst i + IR-ID:PACK-OP IR-OP:OPCODE@ IR-SCHEMA:TERMINATOR? {: t:bool :} t if i last <> if E-IR-FUN-TERM throw then exit then i last = if E-IR-FUN-TERM throw then" endof
       13 of s" {: v:IR-ARENA:arena key:IR-ID:ir-module-key l:n agst:n agn:n :} agn 0 ?do key agst i + IR-ID:PACK-VALUE {: id:IR-ID:ir-value-id :} v id IR-OP:VALUE-KIND@ IR--OP-DEF--KIND:BLK-ARG IR--OP-DEF--KIND:EQ 0= if E-IR-FUN-ARG throw then v key id IR-OP:VALUE-BLOCK@ IR-ID:BLOCK-LOCAL l <> if E-IR-FUN-ARG throw then v id IR-OP:VALUE-ARG@ i <> if E-IR-FUN-ARG throw then loop" endof
-      14 of s" {: b:IR-ARENA:arena l:n bst:n bn:n :} bn 0 ?do b bst i + OFF-PAR BC@ l <> if E-IR-FUN-PARENT throw then loop" endof
+      14 of s" {: blr:IR-ARENA:reader l:n bst:n bn:n :} bn 0 ?do blr bst i + OFF-PAR BC@ l <> if E-IR-FUN-PARENT throw then loop" endof
       15 of s" {: c:IR-CTX:ctx b:IR-ARENA:arena par:n agst:n opst:n opn:n :} c b par CELL+ c b agst CELL+ c b BSTG-AGN @ CELL+ c b opst CELL+ c b opn CELL+ c b opst opn + 1- CELL+ c b BSTG-SRC @ CELL+ c b BSTG-SBEG @ CELL+ c b BSTG-SLEN @ CELL+" endof
       E-CIS-ROW throw
    endcase ;
@@ -483,7 +507,7 @@ public
       5 of s" END-FUN" endof
       6 of s" END-FUN" endof
       7 of s" WIN@" endof
-      8 of s" FWIN@" endof
+      8 of s" FOPERAND@" endof
       9 of s" OP@" endof
       10 of s" FOP@" endof
       11 of s" BLOCK@" endof

@@ -860,9 +860,13 @@ s" EXPLICIT-CTOR-FAMILY" type cr
 \ order schema root, and payload cell width are read only through those.
 \ Three things are proved here.
 \  1. A provider that deliberately disagrees with the committed metadata -- it
-\     swaps the two variants' payload views -- changes the checked effect of the
-\     generated constructors. A renderer that still read the variant rows itself
-\     would publish the committed effects and fail these cases.
+\     swaps the two variants' payload views -- decides the payload signature the
+\     constructors are RENDERED with. A renderer that still read the variant rows
+\     itself would render the committed signatures and fail these texts. Since
+\     8fcc7fe84be3 the generated body is the canonical `construct` form, whose
+\     certification is the committed registry's, so such a provider renders but
+\     cannot publish: the generation is refused and nothing reaches the
+\     dictionary. That refusal is the case below, beside the rendered texts.
 \  2. A provider whose answers cannot be true of the family is rejected with the
 \     named E-TDECL-PROVIDER before any text is generated: a negative count, an
 \     unknown schema root, a cell width that contradicts the schema roots the
@@ -881,6 +885,9 @@ package CTOR-PAYPROV-TEST
 
 7132 constant E-COMMITTED-PAYLOAD   \ type-family.f E-TFAM-PAYLOAD
 7133 constant E-PROVIDER            \ sumtype.f E-TDECL-PROVIDER
+\ sumtype.f TDPLAN-PREFLIGHT-DEFINITIONS: a generated definition the checker
+\ refused, which is how a whole generated declaration is rejected.
+70   constant E-PREFLIGHT
 
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the engine-private
 \ registration, event, generator, and plan words go through named trusted shims.
@@ -1090,8 +1097,13 @@ public
 : HOSTILE-FAMILY ( -- n ) HOSTILE-FAM @ ;
 : FLIP-SHORT-FAMILY ( -- n ) FSHORT-FAM @ ;
 : FLIP-LONG-FAMILY ( -- n ) FLONG-FAM @ ;
-: GENERATE-SWAPPED ( n -- n ) ASKED ! SWAP-RUN GOT @ ;
+: SWAP-CODE ( n -- n ) ASKED ! [: SWAP-RUN ;] catch ;
 : GENERATE-COMMITTED ( n -- n ) ASKED ! COMMITTED-RUN GOT @ ;
+\ What the refused generation rendered before it was refused: the plan survives
+\ the throw, so the payload signatures the provider decided are still readable.
+: RENDERED-ROWS ( -- n ) PLAN-ROWS ;
+: RENDERED-DEF ( n -- ptr u8 n ) PLAN-DEF$ ;
+: PREFLIGHT-CODE ( -- n ) E-PREFLIGHT ;
 : NEG-CODE ( n -- n ) ASKED ! [: NEG-RUN ;] catch ;
 : ROOT-CODE ( n -- n ) ASKED ! [: ROOT-RUN ;] catch ;
 : LEAN-CODE ( n -- n ) ASKED ! [: LEAN-RUN ;] catch ;
@@ -1133,24 +1145,42 @@ variable LIVE-CODE
 
 ;package
 
-\ 1. a coherent provider that is NOT the committed view changes what is generated.
+\ 1. a coherent provider that is NOT the committed view decides what is
+\ RENDERED, and the canonical body then refuses to be published against it.
 CTOR-PAYPROV-TEST:DECLARE
 CTOR-PAYPROV-TEST:SWAP-FAMILY 0 < 0= -1 T=
 CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:SWAP-FAMILY <> -1 T=
-\ zps generates under the SWAPPED provider: sone takes stwo's one payload cell
-\ and stwo takes sone's two, so both constructors' checked effects follow the
-\ provider and contradict the committed rows. This is ADMITTED on purpose. The
-\ validation proves a provider's answers are internally consistent and fit the
-\ family; the provider is the authority for WHICH payload a variant carries,
-\ which is exactly what lets an unpublished declaration generate from its own
-\ live view (case 3 below). Callers own the obligation that the view they supply
-\ is the view that will be committed.
-CTOR-PAYPROV-TEST:SWAP-FAMILY CTOR-PAYPROV-TEST:GENERATE-SWAPPED
-   CTOR-PAYPROV-TEST:SWAP-FAMILY T=
-s" ZP1 ( n -- zps ) ZPS:SONE" CHECK-QUIET-CANDIDATE! -1 T=
-s" ZP2 ( n n -- zps ) ZPS:SONE" CHECK-QUIET-CANDIDATE! 0 T=
-s" ZP3 ( n n -- zps ) ZPS:STWO" CHECK-QUIET-CANDIDATE! -1 T=
-s" ZP4 ( n -- zps ) ZPS:STWO" CHECK-QUIET-CANDIDATE! 0 T=
+\ zps renders under the SWAPPED provider: sone's signature takes stwo's one
+\ payload cell and stwo's takes sone's two, which is the renderer reading the
+\ provider and nothing else - a renderer that read the variant rows itself would
+\ render the committed signatures and fail these two texts.
+\
+\ WHAT THIS STOPPED ADMITTING, AND WHY. 8fcc7fe84be3 replaced the generated sum
+\ constructor's physical body - zero pads and the tag, rendered from the same
+\ provider - with the canonical `construct <family> <variant>`, and dropped the
+\ sum constructor's row in the sealed plan with it ("SUM/ENUM constructors do not
+\ use this authority: their generated checked bodies spell the canonical
+\ construct form, which owns both certification and lowering"). The construct
+\ rule resolves that variant's payload in the COMMITTED registry, so the body
+\ asks for the committed cells while the declared signature asks for the
+\ provider's, and the definition is refused: this case used to assert that both
+\ constructors published with the provider's effects, and it cannot, by design.
+\ The provider remains the authority for the signature TEXT and for the DERIVE
+\ walkers; it is no longer the authority for a published sum constructor's
+\ effect, and a view that contradicts the committed rows now fails closed
+\ instead of publishing a constructor whose effect lies about its payload.
+CTOR-PAYPROV-TEST:SWAP-FAMILY CTOR-PAYPROV-TEST:SWAP-CODE
+   CTOR-PAYPROV-TEST:PREFLIGHT-CODE T=
+CTOR-PAYPROV-TEST:GENERATED 0 T=
+\ the refused run's own plan, which is where the provider's answers are visible
+CTOR-PAYPROV-TEST:RENDERED-ROWS 2 T=
+0 CTOR-PAYPROV-TEST:RENDERED-DEF
+   s" ZPS:SONE ( n -- zps ) construct zps sone " T$=
+1 CTOR-PAYPROV-TEST:RENDERED-DEF
+   s" ZPS:STWO ( n n -- zps ) construct zps stwo " T$=
+\ and neither constructor reached the dictionary: an undefined word is uncheckable
+s" ZP1 ( n -- zps ) ZPS:SONE" CHECK-QUIET-CANDIDATE! 1 T=
+s" ZP2 ( n n -- zps ) ZPS:STWO" CHECK-QUIET-CANDIDATE! 1 T=
 
 \ 1b. a provider whose answers CHANGE after the first call cannot corrupt what is
 \ generated: the generator takes the whole payload view once, before any text
@@ -1195,14 +1225,20 @@ CTOR-PAYPROV-TEST:LIVE-COUNT 1 T=
 CTOR-PAYPROV-TEST:LIVE-THROW CTOR-PAYPROV-TEST:COMMITTED-PAYLOAD-CODE T=
 CTOR-PAYPROV-TEST:LIVE-ROWS 1 T=
 CTOR-PAYPROV-TEST:LIVE-NAME s" PV-ZPL:ONE" T$=
-\ the live declaration's own payload cell became the constructor's input and its
-\ own cell width set the zero padding (one slot, one cell, so no pads, tag 0).
+\ the live declaration's own payload cell became the constructor's input (one
+\ slot, one cell), and the body is the canonical construct form 8fcc7fe84be3
+\ replaced the zero pads and the tag with.
 \ The output family is spelled QUALIFIED: the generated word lives in the ctor
 \ package, not the declaring one, so its signature text carries the one spelling
 \ that resolves from anywhere (the seeded-signature scope defect, dot
 \ habu-seeded-signature-loses-78c16109). This pin is the mutation guard: a
 \ generator that drops the qualifier again shortens this text and reds here.
-CTOR-PAYPROV-TEST:LIVE-DEF s" PV-ZPL:ONE ( n -- pv:zpl ) 0 " T$=
+\ The construct body's OWN family token is bare (`construct zpl one`), which is
+\ the same spelling that defect was about, on a token `construct` resolves
+\ owner-only: it is pinned here as measured rather than corrected, because
+\ correcting it changes every generated constructor's text.
+CTOR-PAYPROV-TEST:LIVE-DEF
+   s" PV-ZPL:ONE ( n -- pv:zpl ) construct zpl one " T$=
 
 s" PAYLOAD-PROVIDER" type cr
 

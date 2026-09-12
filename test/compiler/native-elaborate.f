@@ -2545,24 +2545,20 @@ create TW-BUF TW-CAP allot
 
 \ ---- which token a malformed quotation is named by ----------------------------
 \ A quotation is two tokens and what stands between them is another function's
-\ body. A nested opener is decided BEFORE the walks run, because a walk meets
-\ tokens one at a time and would name the outer opener for a fault at the inner
-\ one; every other malformed pair is met by a walk standing on the token at fault.
-\ The first fixture is written as a TAPE rather than as source the engine
-\ compiled, which is the only way it can exist at all - the engine ends the
-\ process at a nested opener and never produces a tape for one - and the lexer
-\ behind TEXT! has no such opinion. The second is here beside it because the two
-\ together say which token each refusal names, which is the whole point.
-: QUOT-NESTED-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" QNEST dup [: [: 1+ ;] ;]" TEXT!
-   c SEALED
-   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
-   c b v p r 1 1 NELAB:COLON drop ;
-
-: QUOT-NESTED ( -- )
-   BND [: QUOT-NESTED-BODY ;] IR-CTX:WITH-CONTEXT ;
-
+\ body. Every malformed pair below is met by a walk standing on the token at
+\ fault, and the row is what separates two faults spelled the same way.
+\
+\ AN OPENER INSIDE ANOTHER ONE IS NOT ONE OF THEM ANY MORE. This group used to
+\ hold a hand-built `QNEST dup [: [: 1+ ;] ;]` tape and assert E-NELAB-QUOT at
+\ the INNER opener, because the pass refused a second opener before any walk ran.
+\ ebe19a15a048 deleted that refusal: an inner opener now records the enclosing
+\ body as its owner and the bodies are elaborated in lexical owner order, so
+\ there is no longer a fault for a row to name. What a nested pair really does is
+\ test/compiler/native-quot.f LEXICAL-CASE's subject, over real compiled source
+\ with values - nested inputs, a nested `exit`, siblings, and the two shapes
+\ nesting still does NOT grant (a captured local, an unknown calling
+\ convention). The engine's own JIT tier still refuses to compile a nested
+\ opener (rc 75), which is why no tape for one can come from a real compilation.
 : QUOT-ORPHAN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    s" QORPH dup ;]" TEXT!
@@ -2574,11 +2570,11 @@ create TW-BUF TW-CAP allot
    BND [: QUOT-ORPHAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ TWO QUOTATIONS ONE AFTER THE OTHER, which is what says the closer really closes.
-\ A pass that opened on `[:` and never cleared would read the second opener as a
-\ nested one and refuse THERE; the pair is well formed, so the pre-scan has
-\ nothing to say about it and the walk declines the first opener it meets. The row
-\ is what separates the two answers - both are the same code about a token spelled
-\ the same way.
+\ A pass that opened on `[:` and never cleared would read the second opener as
+\ the first one's child and give it the wrong owner; the pair is well formed, so
+\ what refuses the body is that nothing consumes either quotation, and the walk
+\ declines the first opener it meets. The row is what separates the two answers -
+\ both are the same code about a token spelled the same way.
 : QUOT-TWO-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    s" QTWO dup [: 1+ ;] drop [: 1- ;] drop" TEXT!
@@ -2590,23 +2586,15 @@ create TW-BUF TW-CAP allot
    BND [: QUOT-TWO-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : QUOT-PAIR-CASES ( -- )
-   s" a quotation opened inside another is refused, at the INNER opener" T-LABEL
-   [: QUOT-NESTED ;] E-NELAB-QUOT TTHROWSQ
-   NELAB:REFUSED$ s" [:" T$=
-   \ Both openers are spelled `[:`, so the spelling above cannot tell them apart
-   \ and the ROW is what says which one. The tape is QNEST dup [: [: 1+ ;] ;] -
-   \ token 2 is the outer opener and token 3 the inner - and a walk meeting these
-   \ tokens one at a time answers 2.
-   NELAB:REFUSED-ROW 3 T=
    s" a quotation closer with nothing open is refused at the closer itself" T-LABEL
    [: QUOT-ORPHAN ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED$ s" ;]" T$=
    \ TWO QUOTATIONS ONE AFTER THE OTHER are two pairs, which is what says the
-   \ closer really closes: a pre-scan that opened on `[:` and never cleared would
-   \ read the second opener as a nested one and refuse THERE. Both pairs are well
-   \ formed, so what refuses the body is that nothing consumes either of them,
-   \ and it names the FIRST of the two - the row is the only thing that can say
-   \ which, because both openers are spelled the same way.
+   \ closer really closes: a pass that opened on `[:` and never cleared would
+   \ give the second opener the first one's owner. Both pairs are well formed, so
+   \ what refuses the body is that nothing consumes either of them, and it names
+   \ the FIRST of the two - the row is the only thing that can say which, because
+   \ both openers are spelled the same way.
    s" two quotations in a row are two pairs, and the first opener is named" T-LABEL
    [: QUOT-TWO ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED-ROW 2 T= ;
@@ -2834,7 +2822,7 @@ create TW-BUF TW-CAP allot
 : QUOT-RSTACK ( -- )
    BND [: QUOT-RSTACK-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ ---- the three ways a body never gets an arity -------------------------------
+\ ---- the two ways a body never gets an arity ---------------------------------
 \ NOTHING CONSUMES IT. The value is dropped, so no term ever says what the body
 \ takes and leaves, and there is no function to build. It is named by its own
 \ `[:`, which is the token a reader can act on.
@@ -2848,10 +2836,15 @@ create TW-BUF TW-CAP allot
 : QUOT-NONE ( -- )
    BND [: QUOT-NONE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
-\ IT CROSSES A BRANCH. A block edge pushes fresh arguments, so the entry the
-\ consumer holds on the far side names no body and the row is never told. That is
-\ the fail-closed direction and the honest one: a body reached through two arms
-\ could be told two arities, and which one won would be the walk's order.
+\ AND CROSSING A BRANCH IS NO LONGER ONE OF THEM. A block edge used to push
+\ fresh arguments the consumer on the far side could not trace back to a body, so
+\ the row was never told its arity and the definition was refused as one nothing
+\ consumed. a83fac9405bd made a quotation's calling convention travel with its
+\ value across joins and return stacks, so the consumer past the join names the
+\ body it was given and the tape elaborates. The values that proves are
+\ test/compiler/native-rstack.f PARKED-QUOT-CASE's (NRS-QBRANCH parks a
+\ different quotation in each arm and executes the one that survived the join);
+\ this fixture states the elaborator's half - that the tape is accepted at all.
 : QUOT-JOIN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    QP-TAKE!
@@ -3036,9 +3029,6 @@ create QHID-TXT
    [: QUOT-DISAGREE ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED-ROW 1 T=
    NELAB:REFUSED$ s" [:" T$=
-   s" a quotation that crosses a branch is refused as one nothing consumed" T-LABEL
-   [: QUOT-JOIN ;] E-NELAB-QUOT TTHROWSQ
-   NELAB:REFUSED-ROW 1 T=
    s" a body whose declared effect is not an ordinary routine's is refused"
    T-LABEL
    [: QUOT-RSTACK ;] E-NELAB-QUOT TTHROWSQ
@@ -3050,6 +3040,11 @@ create QHID-TXT
    s" a locals group inside a body is refused at the group's own closer" T-LABEL
    [: QUOT-LOCALS ;] E-NELAB-QUOT TTHROWSQ
    NELAB:REFUSED$ s" :}" T$= ;
+
+\ The one that used to be the third of those refusals and is now an acceptance.
+: QUOT-JOIN-CASE ( -- )
+   s" a quotation that crosses a branch still reaches its consumer" T-LABEL
+   [: QUOT-JOIN ;] catch 0 T= ;
 
 : CAPS-QUOT-CASE ( -- )
    s" the quotation opener is a word the dialect knows and this leaf declines" T-LABEL
@@ -3155,6 +3150,7 @@ public
    QUOT-PAIR-CASES
    QUOT-SHAPE-CASES
    QUOT-REFUSE-CASES
+   QUOT-JOIN-CASE
    DEFER-CASES
    LOCAL-LOWER-CASE
    T-REPORT ;

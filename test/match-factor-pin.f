@@ -120,11 +120,33 @@ variable ERR-U
 \            add x19,#8; ldr x30,[sp]; add sp,#16; ret            (32 B)
 \   con-err  identical but movz x16,#1(err tag)                   (32 B)
 \   match-2  ldur x9,[x19,#-8]; cmp x9,#0; b.ne +.. ; sub x19,#8;
-\            <arm ok: add>; ...; cmp x9,#1; b.ne ..; <arm err: neg>;
-\            b .. ; inline bad-tag die "hb: bad mfp tag\n" write(2)+exit85 (168 B)
+\            <arm ok: bl +>; ...; cmp x9,#1; b.ne ..; <arm err: bl negate>;
+\            b .. ; inline bad-tag die "hb: bad mfp tag\n" write(2)+exit85 (128 B)
 \   match-3  three cmp #tag / b.ne dispatch arms + shared bad-tag die (164 B)
 \ The bad-tag die block is the C-DIE-BAD-TAG inline emission reached on a
 \ scrutinee whose tag matches no arm; it is emitted per MATCH, not shared.
+\
+\ A CALL IN AN ARM IS PINNED AS A CALL AND NOT AS A DISPLACEMENT. 3e024d582ba5
+\ ("Select the JIT tier for loads and the IR tier for builds") turned the
+\ engine's inline arm off - "THE INLINE ARM IS OFF, AND TIER 0 ALWAYS CALLS" in
+\ src/habu/habu2.f - because the safety scan behind C-CALL-COPY-INLINE was never
+\ validated against the shapes the IR tier emits. So an arm that used to carry a
+\ copy of its callee's body now carries one `bl imm26`: match-2's `1 +` and
+\ `negate` are one call each and match-wide's `100 *` and `nip nip` are three,
+\ which is the whole of what moved in the two strings below (every branch
+\ displacement shrank by exactly the words those copies occupied, and match-3,
+\ con-ok and con-err hold no callee at all and are unchanged byte for byte).
+\ A `bl`'s imm26 is the distance from the call site to the callee's body in the
+\ engine's own text, so it is a fact about where this engine was linked and where
+\ the fixture's own preamble left the code pointer - one added definition ahead of
+\ the dump moves it. MFP-WORD therefore dumps a `bl` as "00000094", the opcode
+\ with a zero displacement, and every other instruction byte for byte. What the
+\ arms CALL is not left unpinned by that: RT-CASES below executes both eliminators
+\ and the wide one and pins the values they answer, which no other callee
+\ produces. A message byte quad that happened to decode as `bl` would also be
+\ normalized; none of the three messages does, and the reading is the safe
+\ direction (the pin changes and has to be re-derived rather than silently
+\ passing).
 \
 \ Per-target pins: con-ok / con-err carry no die block, so their single
 \ tag-push bytes are byte-identical on linux-arm64 and macos-aarch64 and stay
@@ -135,14 +157,19 @@ variable ERR-U
 \ loads x16 (write #4, exit #1) and traps with `svc #0x80`. Every byte before
 \ that pair -- the dispatch arms, the "hb: bad mfp tag" message, and the x0
 \ exit status -- is identical across targets. Both targets are pinned below,
-\ selected with HB-TARGET-MACOS?; the linux strings are spark's measured
-\ linux-arm64 bytes and the macos strings were measured on macos-aarch64, each
-\ at this tree's fixpoint.
+\ selected with HB-TARGET-MACOS?; the linux strings are measured linux-arm64
+\ bytes and the macos strings were measured on macos-aarch64, each at this
+\ tree's fixpoint. match-2's and match-wide's macos strings were re-derived for
+\ the call normalization above by applying that same two-instruction tail
+\ substitution to the re-measured linux string, which reproduces the committed
+\ macos strings from the committed linux ones exactly; they have not been
+\ re-measured on macos-aarch64.
 \
 \ The dump program is assembled once so every representative word shares the
-\ reader/formatter; SHOW prints one word's emitted bytes as an uppercase-hex
-\ line. Each expected line below is CONTAINS?-asserted, so the full per-word
-\ byte string must appear verbatim in the dump.
+\ reader/formatter; SHOW prints one word's emitted instructions as an
+\ uppercase-hex line, four bytes at a time. Each expected line below is
+\ CONTAINS?-asserted, so the full per-word byte string must appear verbatim in
+\ the dump.
 create PIN-PROG 4096 allot
 variable PIN-PROG-U
 
@@ -162,11 +189,18 @@ variable PIN-PROG-U
    \ killed the whole dump with `duplicate definition`. The pinned words below
    \ are unaffected - their bytes hold no absolute address and no helper call.
    s\" variable MFP-A\n" PP+
+   s\" variable MFP-C\n" PP+
    s\" TRUSTED: MFP-CB@ ( n -- n ) {: a:n :} a {: p:ptr :} p c@ ;\n" PP+
    s\" : MFP-HN ( n -- ) $F and dup 10 < if 48 + else 55 + then emit ;\n" PP+
    s\" : MFP-HB ( n -- ) {: v:n :} v 4 rshift MFP-HN v MFP-HN ;\n" PP+
+   s\" : MFP-W@ ( n -- n ) {: a:n :} a MFP-CB@ a 1 + MFP-CB@ 8 lshift or\n" PP+
+   s\"    a 2 + MFP-CB@ 16 lshift or a 3 + MFP-CB@ 24 lshift or ;\n" PP+
+   s\" : MFP-BL? ( n -- bool ) 26 rshift $3F and $25 = ;\n" PP+
+   s\" : MFP-CALL ( -- ) 0 MFP-HB 0 MFP-HB 0 MFP-HB $94 MFP-HB ;\n" PP+
+   s\" : MFP-BYTES ( n -- ) {: at:n :} 4 0 ?do at i + MFP-CB@ MFP-HB loop ;\n" PP+
+   s\" : MFP-WORD ( -- ) MFP-C @ {: at:n :} at MFP-W@ MFP-BL? if MFP-CALL else at MFP-BYTES then ;\n" PP+
    s\" : MFP-MARK ( -- ) cp@ MFP-A ! ;\n" PP+
-   s\" : MFP-SHOW ( -- ) cp@ {: e:n :} MFP-A @ begin dup e < while dup MFP-CB@ MFP-HB 1 + repeat drop cr ;\n" PP+
+   s\" : MFP-SHOW ( -- ) cp@ {: e:n :} MFP-A @ MFP-C ! begin MFP-C @ e < while MFP-WORD MFP-C @ 4 + MFP-C ! repeat cr ;\n" PP+
    s\" MFP-MARK : W-CON ( n -- mfp ) construct mfp ok ; MFP-SHOW\n" PP+
    s\" MFP-MARK : W-CONE ( n -- mfp ) construct mfp err ; MFP-SHOW\n" PP+
    s\" MFP-MARK : W-MATCH ( mfp -- n ) MATCH mfp ok OF 1 + ENDOF err OF negate ENDOF ;MATCH ; MFP-SHOW\n" PP+
@@ -179,16 +213,16 @@ variable PIN-PROG-U
 \ die block and are pinned unconditionally in PIN-CASES.
 : MATCH-2-PIN$ ( -- ptr u8 n )     \ scalar 2-variant eliminator + per-target die
    HB-TARGET-MACOS? if
-      s" FF4300D1FE0300F969825FF83F0100F1A1010054732200D1300080D2700200F973220091732200D16A0240F9732200D1690240F929010A8B690200F973220091170000143F0500F101010054732200D1732200D1690240F9E90309CB690200F9732200910E0000140500001468623A20626164206D6670207461670A400080D261FFFF10020280D2900080D2011000D4A00A80D2300080D2011000D4FE0340F9FF430091C0035FD6"
+      s" FF4300D1FE0300F969825FF83F0100F1E1000054732200D1300080D2700200F97322009100000094130000143F0500F181000054732200D1000000940E0000140500001468623A20626164206D6670207461670A400080D261FFFF10020280D2900080D2011000D4A00A80D2300080D2011000D4FE0340F9FF430091C0035FD6"
    else
-      s" FF4300D1FE0300F969825FF83F0100F1A1010054732200D1300080D2700200F973220091732200D16A0240F9732200D1690240F929010A8B690200F973220091170000143F0500F101010054732200D1732200D1690240F9E90309CB690200F9732200910E0000140500001468623A20626164206D6670207461670A400080D261FFFF10020280D2080880D2010000D4A00A80D2C80B80D2010000D4FE0340F9FF430091C0035FD6"
+      s" FF4300D1FE0300F969825FF83F0100F1E1000054732200D1300080D2700200F97322009100000094130000143F0500F181000054732200D1000000940E0000140500001468623A20626164206D6670207461670A400080D261FFFF10020280D2080880D2010000D4A00A80D2C80B80D2010000D4FE0340F9FF430091C0035FD6"
    then ;
 
 : MATCH-WIDE-PIN$ ( -- ptr u8 n )  \ wide (ptr u8 n n) arm + per-target die
    HB-TARGET-MACOS? if
-      s" FF4300D1FE0300F969825FF83F0100F1A1010054736200D1900C80D2700200F973220091732200D16A0240F9732200D1690240F9297D0A9B690200F9732200911D0000143F0500F1A1010054732200D1732200D1690240F9732200D1690200F973220091732200D1690240F9732200D1690200F9732200910F0000140600001468623A20626164206D667077207461670A000000400080D241FFFF10220280D2900080D2011000D4A00A80D2300080D2011000D4FE0340F9FF430091C0035FD6"
+      s" FF4300D1FE0300F969825FF83F0100F1E1000054736200D1900C80D2700200F97322009100000094150000143F0500F1A1000054732200D100000094000000940F0000140600001468623A20626164206D667077207461670A000000400080D241FFFF10220280D2900080D2011000D4A00A80D2300080D2011000D4FE0340F9FF430091C0035FD6"
    else
-      s" FF4300D1FE0300F969825FF83F0100F1A1010054736200D1900C80D2700200F973220091732200D16A0240F9732200D1690240F9297D0A9B690200F9732200911D0000143F0500F1A1010054732200D1732200D1690240F9732200D1690200F973220091732200D1690240F9732200D1690200F9732200910F0000140600001468623A20626164206D667077207461670A000000400080D241FFFF10220280D2080880D2010000D4A00A80D2C80B80D2010000D4FE0340F9FF430091C0035FD6"
+      s" FF4300D1FE0300F969825FF83F0100F1E1000054736200D1900C80D2700200F97322009100000094150000143F0500F1A1000054732200D100000094000000940F0000140600001468623A20626164206D667077207461670A000000400080D241FFFF10220280D2080880D2010000D4A00A80D2C80B80D2010000D4FE0340F9FF430091C0035FD6"
    then ;
 
 : MATCH-3-PIN$ ( -- ptr u8 n )     \ three-variant dispatch + per-target die

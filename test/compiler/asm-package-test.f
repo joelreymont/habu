@@ -52,6 +52,12 @@ variable AP-A   variable AP-U
 
 70   constant E-REJECT      \ E-UNDEFINED, or a body the checker refuses
 
+\ The engine's own reject for a bare tail that two open imports both claim,
+\ taken from the sealed ENGINE-ERROR ABI rather than written down again. The
+\ qualified name resolves while interpreting and carries no checker symbol, so
+\ the value is bound here and the checked case below reads this constant.
+ENGINE-ERROR:USING-AMBIGUOUS constant E-AMBIGUOUS
+
 \ The unconditional branch with a zero displacement: what the assembler's ENC-B
 \ answers, and nothing a byte appender could produce.
 $14000000 constant B-ZERO
@@ -69,11 +75,17 @@ $14000000 constant B-ZERO
    s" using A64ASM : APT-ASM ( n -- n ) ENC-B ; ;using" AP-EVAL 0 T=
    \ ...and it is the encoder, not the appender.
    s" using A64ASM : APT-ASM-BAD ( n -- ) ENC-B ; ;using" AP-EVAL E-REJECT T=
-   \ Both imports open: the tail really does live in two packages now, so the
-   \ checker refuses it as a genuine ambiguity rather than picking one. This is
-   \ what proves the two cases above were not both answered by one word.
+   \ Both imports open: the tail really does live in two packages now, so it is
+   \ refused as a genuine ambiguity rather than picked one of. This is what
+   \ proves the two cases above were not both answered by one word. The code is
+   \ the ENGINE's, because the engine's wordlists are the one authority for
+   \ which scope claims a bare tail (docs/forth.md Packages) and this body is
+   \ compiled by the engine: its own used-search refuses the token before the
+   \ checker is asked what the word's effect is. The checker's E-USING-AMBIGUOUS
+   \ (7140) is the same rule in the checker's resolver, which is what a tier-1
+   \ replay and the native compiler report.
    s" using A64ASM using COLLIDER : APT-BOTH ( n -- ) ENC-B ; ;using ;using"
-      AP-EVAL E-USING-AMBIGUOUS T=
+      AP-EVAL E-AMBIGUOUS T=
    \ Qualified names always work and never collide, in one body, in either order.
    s" : APT-QUAL ( n n -- n ) A64ASM:ENC-B swap COLLIDER:ENC-B ;" AP-EVAL 0 T= ;
 

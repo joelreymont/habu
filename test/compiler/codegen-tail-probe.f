@@ -49,15 +49,26 @@ using NTAILPROBE
 
 private
 
-: COND-BACKEDGE? ( ptr u8 n -- bool )
+\ Where one instruction of the body branches to, or -1 for one that branches
+\ nowhere. A conditional carries imm19 and an unconditional imm26, so the two
+\ are decoded apart and answered the same way.
+: BRANCH-TARGET ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
+   a u k INSN@ {: word:n :}
+   k NBR:INSN-BYTES * {: at:n :}
+   word NBR:COND? if at word NBR:COND-TARGET exit then
+   word NBR:B? if at word NBR:B-TARGET exit then
+   -1 ;
+
+\ A back edge is a branch to an earlier byte of the same body, of EITHER kind.
+\ The lowering decides which: a counted loop leaves through a forward
+\ conditional and returns on one unconditional `b`, which is the shape
+\ TAIL-BRANCH? is written against (it asks where the last instruction goes
+\ rather than what it is, precisely because a back edge is a `b` too).
+: BACKEDGE? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u INSNS 0 ?do
-      a u i INSN@ {: word:n :}
-      word NBR:COND? if
-         i NBR:INSN-BYTES * {: at:n :}
-         at word NBR:COND-TARGET {: target:n :}
-         target 0 >= target at < and if true unloop exit then
-      then
+      a u i BRANCH-TARGET {: target:n :}
+      target 0 >= target i NBR:INSN-BYTES * < and if true unloop exit then
    loop
    false ;
 
@@ -87,8 +98,8 @@ public
    s" NTP-FIXTURE:LOOPY" TRAILER-RET? TTRUE
 
    \ The guarded store call needs an epilogue after the loop's back edge.
-   s" the counted loop has a conditional back edge within its own body" T-LABEL
-   s" NTP-FIXTURE:LOOPY" COND-BACKEDGE? TTRUE
+   s" the counted loop has a back edge within its own body" T-LABEL
+   s" NTP-FIXTURE:LOOPY" BACKEDGE? TTRUE
 
    s" the tail caller ends in a branch to its callee" T-LABEL
    s" NTP-FIXTURE:TAILED" LAST-BODY NBR:B? TTRUE
