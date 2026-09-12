@@ -6530,6 +6530,8 @@ PRIM: CHECKER-DEFTYPED-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPED-VARIABLE
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFDYNAMIC-BUFFER
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ Two name queries, because a query about a name asks one of two different
 \ questions and they need different answers. CHECKER-DEFINED-HERE? asks whether
@@ -8400,6 +8402,52 @@ variable LBUF-INFO-W
    type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
    drop                                    \ single cell: extent is one slot, width unused here
    type typeu CHECKER-STORAGE-VAR-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
+
+\ Checker-side registration for the DYNAMIC-BUFFER gate path (verify-source
+\ RECORD-DYNAMIC-BUFFER). That definer publishes THREE checked words from one
+\ line (src/core/layout-buffer.f DBUF-SOURCE): the accessor
+\ `NAME ( n -- ptr <type> )`, `NAME-RESERVE ( n -- )` and `NAME-RELEASE ( -- )`.
+\ Certification never executes the definer, so all three are registered here or a
+\ later definition in the same source that calls one of them is E-UNDEFINED -
+\ which is exactly what src/habu/aot-decl.f's AOT-NAMES-RESERVE hit.
+\ The derived name needs its own scratch: publishing one generated word holds its
+\ NAME and its SIGNATURE at the same moment, so they cannot share LBUF-SIG-BUF.
+$100 constant LBUF-NM-CAP
+create LBUF-NM-BUF LBUF-NM-CAP allot
+variable LBUF-NM-U
+variable LBUF-NM-I
+
+: LBUF-NM-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   LBUF-NM-U @ u + LBUF-NM-CAP > IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   0 LBUF-NM-I !
+   BEGIN LBUF-NM-I @ u < WHILE
+      a LBUF-NM-I @ + c@  LBUF-NM-BUF LBUF-NM-U @ + c!
+      LBUF-NM-U @ 1 + LBUF-NM-U !
+      LBUF-NM-I @ 1 + LBUF-NM-I !
+   REPEAT ;
+
+: CHECKER-LBUF-SUFFIXED$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: name:ptr nameu:n sfx:ptr sfxu:n :}
+   0 LBUF-NM-U !
+   name nameu LBUF-NM-APP
+   sfx sfxu LBUF-NM-APP
+   LBUF-NM-BUF LBUF-NM-U @ ;
+
+: CHECKER-DEFDYNAMIC-NAME ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n sfx:ptr sfxu:n sig:ptr sigu:n :}
+   name nameu sfx sfxu CHECKER-LBUF-SUFFIXED$ {: gen:ptr genu:n :}
+   gen genu CHECKER-LBUF-NAME-GUARD
+   sig sigu gen genu CHECKER-USIG-CERT-ADD ;
+
+: CHECKER-DEFDYNAMIC-BUFFER
+   ( ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   name nameu CHECKER-LBUF-NAME-GUARD
+   type typeu CHECKER-STORAGE-INFO 0= IF drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   drop                                    \ two control cells: the extent is dynamic
+   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD
+   name nameu s" -RESERVE" s" n --" CHECKER-DEFDYNAMIC-NAME
+   name nameu s" -RELEASE" s" --" CHECKER-DEFDYNAMIC-NAME ;
 
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
