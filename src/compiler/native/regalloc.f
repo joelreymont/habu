@@ -617,6 +617,12 @@ DYNAMIC-BUFFER DUE-HEAD-BUF n
 : DUE-HEAD ( -- ptr n ) 0 DUE-HEAD-BUF ;
 DYNAMIC-BUFFER DUE-NEXT-BUF n
 : DUE-NEXT ( -- ptr n ) 0 DUE-NEXT-BUF ;
+\ Every call in the module, in position order, because the walk that fills it
+\ visits functions, blocks and operations in the order they lie on the line.
+DYNAMIC-BUFFER CALL-POS-BUF n
+: CALL-POS ( -- ptr n ) 0 CALL-POS-BUF ;
+variable N-CALLS
+0 N-CALLS !
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -656,6 +662,7 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
    OMAX BMAX + READ-END-BUF-RESERVE
    OMAX BMAX + DUE-HEAD-BUF-RESERVE
    VMAX DUE-NEXT-BUF-RESERVE
+   OMAX CALL-POS-BUF-RESERVE
    ;
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
@@ -1308,10 +1315,22 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
       UF-NEXT@
    repeat drop false ;
 
-\ The positions it walks are THIS function's: a class belongs to one function,
-\ and so do the calls that can destroy its register.
-: MB-FORBID ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id r:n :}
+\ The first call at or after a position, by bisection over the index.
+: MB-CALL-FROM ( n -- n )
+   {: p:n :}
+   0 N-CALLS @
+   begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      mid cells CALL-POS + @ p < if mid 1+ hi else lo mid then
+   repeat
+   drop ;
+
+\ The calls it walks are THIS function's: a class belongs to one function, and
+\ the window below is that function's, so the index is entered at the hull and
+\ left at it.
+: MB-FORBID ( n -- n )
+   {: r:n :}
    r FILE-AT {: fl:n :}
    \ No member can cross outside this class's hull. Gaps inside it still need
    \ MB-CROSSES?, because coalesced members need not cover every position.
@@ -1319,14 +1338,12 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
    MB-AT @ r cells CL-HI + @ min {: limit:n :}
    first limit >= if 0 exit then
    0
-   limit first ?do
-      i POS-OP? if
-         f i POS-OP CALL-AT? if
-            r i MB-CROSSES? if
-               \ One crossing call forbids the whole file's writable pool.
-               fl POOL-BITS or unloop exit
-            then
-         then
+   N-CALLS @  first MB-CALL-FROM  ?do
+      i cells CALL-POS + @ {: p:n :}
+      p limit >= if unloop exit then
+      r p MB-CROSSES? if
+         \ One crossing call forbids the whole file's writable pool.
+         fl POOL-BITS or unloop exit
       then
    loop ;
 
@@ -1338,11 +1355,11 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
 
 \ A class the contract pins arrives in exactly that register, and three things
 \ make that impossible rather than merely awkward.
-: MB-PIN ( IR-ID:ir-fun-id n n -- )
-   {: f:IR-ID:ir-fun-id r:n want:n :}
+: MB-PIN ( n n -- )
+   {: r:n want:n :}
    r FILE-AT {: fl:n :}
    fl want POOL-HAS? 0= if E-A64RA-FIXED throw then
-   f r MB-FORBID want FORBIDDEN? if E-A64RA-FIXED throw then
+   r MB-FORBID want FORBIDDEN? if E-A64RA-FIXED throw then
    fl want HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
    r want TAKE ;
 
@@ -1361,8 +1378,8 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
    {: f:IR-ID:ir-fun-id r:n pos:n :}
    r pos MB-DUE? 0= if exit then
    r cells CL-FIX + @ {: fix:n :}
-   fix NOBODY <> if f r fix MB-PIN exit then
-   f r MB-FORBID {: forbid:n :}
+   fix NOBODY <> if r fix MB-PIN exit then
+   r MB-FORBID {: forbid:n :}
    f r forbid MB-WANTED {: w:n :}
    w 0 >= if r w TAKE exit then
    r FILE-AT forbid FREE-REG {: g:n :}
@@ -1793,6 +1810,25 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
       loop
    loop ;
 
+\ Built once per allocation and read by every turn of the fit: the module's
+\ operations do not move under it, and the positions are the module's, as the
+\ hull bounds a class is measured against are.
+: MB-CALL-INDEX ( -- )
+   0 N-CALLS !
+   N-FUNS @ 0 ?do
+      i MB-RELAY
+      i FUN-AT {: f:IR-ID:ir-fun-id :}
+      N-BLKS @ 0 ?do
+         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+         bk OP-COUNT 0 ?do
+            bk i OP-AT CALL-AT? if
+               j i OP-POS  N-CALLS @ cells CALL-POS + !
+               N-CALLS @ 1+ N-CALLS !
+            then
+         loop
+      loop
+   loop ;
+
 \ ---- the three walks over the module's functions ------------------------------
 \ Every function onto the line, in the module's own order.
 : MEASURE-ALL ( A64EFF:conv -- )
@@ -1944,6 +1980,7 @@ public
    COVER-CK
    MB-CLASSES
    MB-USES
+   MB-CALL-INDEX
    MB-KIND-CLEAR
    MB-SIZES
    MB-DECLS!
@@ -2110,6 +2147,8 @@ public
    READ-END-BUF-RELEASE
    DUE-HEAD-BUF-RELEASE
    DUE-NEXT-BUF-RELEASE
+   CALL-POS-BUF-RELEASE
+   0 N-CALLS !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private

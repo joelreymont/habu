@@ -7736,6 +7736,7 @@ and --no-lldbinit.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
+\\\\\\\        to: rrmqnwvw 5cad47ee "Keep each file's free-register count as it moves" (rebase destination)
 
 ## 2026-09-12 - the seeded product boots without its checkout
 
@@ -7752,3 +7753,47 @@ and --no-lldbinit.
   `src/` changes nothing an unrebuilt engine does, so evidence for a core change
   needs a cold rebuild first — a workspace whose `bin/hb` was copied from
   another tree is measuring that tree's core, not its own.
+
+## 2026-09-12 - register allocation's three per-instruction scans
+
+- **A linear-scan allocator that asks a question of the whole module at every
+  instruction pays values squared, and all three questions
+  `src/compiler/native/regalloc.f` asked had a one-time index available.** Which
+  class's hull opens here was two sweeps of every value per position
+  (`MB-PLACE-PINNED`/`MB-PLACE-REST`); how many registers a file has free was a
+  32-cell walk asked twice per position (`MB-FREE-N`); whether a call lies in
+  this class's hull was a walk over every position of that hull, once per class
+  per turn of the fit (`MB-FORBID`) - and the last one was paid in full by a body
+  holding no calls at all. Bucketing class roots by `CL-LO`, maintaining the free
+  count where a register changes hands, and indexing the module's calls once took
+  the chain family's slope from 1.15 to 0.97 and allocation at 1024 SSA values
+  from 80408 us to 28295 us per definition, and the Tender source load under the
+  optimizing tier from 153.3 s to 131.6 s. Allocation is now 7% of tier-1
+  compile time at that size, down from 18%: the next cost is not here.
+  `tools/compile-scaling.f` is the measurement.
+
+- **What makes an index safe to read across every turn of a fixpoint is that the
+  data it indexes is already frozen, and the place to prove that is the writer
+  list.** `MB-DUE-INDEX` is read by every turn of `MB-FIT` and holds because
+  `UF-UNION` is reachable only from `MB-EDGES-OF`, `MB-TIE1` and `MB-COALESCE1`,
+  all inside `MEASURE-ALL`, and `CL-LO` is written only by `UF-INIT` and
+  `MB-CLASS1`. Grep the writers before caching a derived answer; "nothing later
+  changes this" is a claim about a write set, not a feeling.
+
+- **A maintained count beside the table it summarises is two authorities, so ask
+  what reads it before trusting it.** `R-FREE-N` can only drift from `R-HOLD`,
+  but nothing that BINDS a register reads it - `FREE-REG`, `MB-PIN` and
+  `MB-WANTED` all read `HOLD-AT` - so drift can trigger or delay an eviction and
+  never miscolour a value, and `A64RAV` re-derives the answer independently
+  either way. The same ownership makes the `MB-EXPIRE` skip exact rather than a
+  guess: `TAKE` refuses a register outside the pool with `E-A64RA-POOL`, so a
+  non-pool register holds `NOBODY` for the whole allocation and a file whose
+  free count equals its pool size has nothing left to expire.
+
+- **A yardstick's shapes decide which costs it can see, and a step it cannot
+  measure does not get to land on a plausible mechanism.** Replacing
+  `POS-BLOCK`'s scan over every block with a bisection is provably the same
+  function - blocks lie back to back with strictly increasing starts - and moved
+  nothing on either family (47959 us against 48132 us at 1024 values), because
+  neither shape is a many-block body. It was dropped rather than kept on the
+  argument that the big definitions have many blocks.
