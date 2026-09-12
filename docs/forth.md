@@ -416,10 +416,11 @@ ambiguity.
   included file (or aborted by a throw) never leaks to the caller.
 - **A package word shadows the same-named global or primitive, and nothing
   reaches past it.** Inside `package TENDER` a bare `open` is `TENDER:OPEN`,
-  not the syscall primitive; under `using DOC` a bare `close` is refused
-  against `DOC:CLOSE` (`E-USING-SHADOW-GLOBAL`). There is no qualifier for the
-  root vocabulary, so either wrap the primitive in a library word with its own
-  name (`OPEN-APPEND-FD`, `close-rc`) or name the package word differently.
+  not the syscall primitive; in a checked body under `using DOC` a bare `close`
+  is refused against `DOC:CLOSE` (`E-USING-SHADOW-GLOBAL`). There is no
+  qualifier for the root vocabulary, so reach the operation through a
+  differently named word (a library wrapper such as `OPEN-APPEND-FD`, or the
+  primitive's sibling `close-rc`) or name the package word differently.
 
 ### Structures And Enums
 
@@ -704,9 +705,13 @@ address arithmetic at the public boundary.
   cell address is `ptr a`; a pointer-valued cell should preserve its nested
   pointer role. `n` is only for genuine scalar cells. A pointer effect stays
   `ptr a` only while the body keeps the pointee parametric; a body that reads
-  the cell as a number declares `ptr n`.
+  the cell as a number declares `ptr n`, and so does a word that returns a raw
+  cell view of allocated bytes (`( -- ptr a ) 64 MEM:BYTES-ALLOC-LEN
+  MEM:ALLOC-BYTES drop CELL-VIEW` is `E-NONPARAMETRIC-EFFECT`; declare
+  `( -- ptr n )`). A parametric pointee (`ptr a`) belongs only to an effect
+  that really is parametric.
 - **Compare an enum value with its family's derived `EQ`**, never a raw `=`.
-- **A foreign nominal is minted only by its owner.** `CAST: >SLOT ( n -- slot )`
+- **A `CAST:` mints a foreign nominal only in its owner.** `CAST: >SLOT ( n -- slot )`
   outside `package DOC` is refused (`E-CAST-OWNER`, checker code 7135);
   projecting the handle out (`slot -- n`) is allowed anywhere. Store the
   projected identity and resolve it back through the owner's public words.
@@ -1122,6 +1127,12 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
   host/build-time stack (`( -- )`, `( n -- )`); document emitted runtime effects
   in nearby prose or in the generated word's own contract.
 
+- **A child spawned with the argv-only words starts with an empty environment.**
+  `PROC-SPAWN-ARGV-IO` and `PROC-RUN-ARGV-IO-RC` hand the child no variables at
+  all (`/usr/bin/env` prints nothing); to inherit, build the environment first,
+  `PROC-ARGV-ENV-RESET ... PROC-ENV-INHERIT-MISSING`, and spawn through the
+  `*-ARGV-ENV-*` words. `PROC-CMD` inherits by default and
+  `PROC-CMD:ENV-HERMETIC` turns that off.
 ## Native Forth Gotchas That Shape How We Write Code
 
 (Build/environment findings are in `../LESSONS.md`; these are the ones that affect
