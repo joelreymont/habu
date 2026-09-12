@@ -96,6 +96,16 @@ SRC_COMMON=(
   src/habu/regalloc.f
   src/habu/jit.f
   src/habu/fdio.f
+  # The boot-stdlib rows the seed's prefix loads (bootstrap/cg/forth.fs
+  # PFX-LOAD-STDLIB-FILES). They have to be here as well: the boot-hide prologue at
+  # the top of this file hides the startup prefix load's dictionary so this second
+  # load owns every word, so a file the prologue hides and this list does not carry
+  # is simply gone. src/habu/aot-decl.f below declares `DYNAMIC-BUFFER
+  # AOT-NAMES-STORAGE n`, whose generated accessor calls DYNAMIC-STORAGE:RESERVE, so
+  # the three rows sit immediately ahead of the file that needs them.
+  lib/prelude.f
+  lib/errors.f
+  src/core/dynamic-storage.f
   src/habu/aot-decl.f
   src/habu/aot-ident.f
   src/habu/habu2.f

@@ -450,6 +450,7 @@ variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywor
 variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWCHKDOES variable LKWKERNEL
 variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
+variable LKWEXPORT
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
 variable LSIGPTRA variable LSIGA   \ the two effects a raw-storage definer publishes
@@ -1070,6 +1071,13 @@ previous definitions
    invalid-msg LBL,  s" set-preflight: invalid hook" BYTES,
    done LBL, ;
 
+\ seal-captured? ( -- bool ): read-only engine state the checker needs while it is
+\ still bootstrapping — has SEAL-CAPTURE run yet? The watermark cell is the same
+\ cell at the same offset here as natively, so this is native BSEALCAPQ verbatim.
+: BSEALCAPQ ( -- )
+   A DATA SEAL-NDICT-CELL LDR,  A 0 CMPI,
+   A C-NE CSET,  A SP A SUB,  A G-PUSH ;
+
 \ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark
 \ (xref.f baseline token + the cold-prefix assembler's token at the true
 \ engine-prefix end). The friend latch is already sealed by then, so a raw !
@@ -1080,13 +1088,6 @@ previous definitions
 \ after `: TRUST`, always before this runs); a non-empty table means the drain
 \ never ran — name each undrained defer on fd 2 and exit 73. MIRROR of native
 \ BSEALCAP; leaf-safe (syscalls only), loop state stays off write-clobbered regs.
-\ seal-captured? ( -- bool ): read-only engine state the checker needs while it is
-\ still bootstrapping — has SEAL-CAPTURE run yet? The watermark cell is the same
-\ cell at the same offset here as natively, so this is native BSEALCAPQ verbatim.
-: BSEALCAPQ ( -- )
-   A DATA SEAL-NDICT-CELL LDR,  A 0 CMPI,
-   A C-NE CSET,  A SP A SUB,  A G-PUSH ;
-
 : BSEALCAP ( -- )
    LBL LBL LBL {: pdok pdloop pdexit :}
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,
@@ -1850,7 +1851,11 @@ variable LPDECLTXN     variable LPGENDECL     variable LPDECLEVENT    variable L
 variable LPSTRUCTDECL  variable LPENUMDECL
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPGENDECLDICT
-variable LPGENDECLPROT  variable LPLAYOUTSEAL
+variable LPGENDECLPROT  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
+variable LPDYNAMIC      variable LPINTMARK      variable LPTOPROW
+variable LPPRELUDE      variable LPERRORS       variable LPOPTION
+variable LPCADTYPES     variable LPCADARITH     variable LPSTRING
+variable LPMEMORY       variable LPVECTOR
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
 
@@ -2055,13 +2060,54 @@ create ZBYTE 0 c,
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-LOAD-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-LOAD-ROW
-   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW ;
+   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW
+   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-LOAD-CHECKER-FILES
    PFX-LOAD-DECL-FILES
    PFX-LOAD-CORE-FILES ;
 
+\ The boot stdlib (habu2.f PFX-LOAD-STDLIB-FILES). src/core/dynamic-storage.f is
+\ the row that forced this group in: src/core/layout-buffer.f DBUF-SOURCE generates
+\ calls to DYNAMIC-STORAGE:RESERVE/:RELEASE, and stage2-src declares one
+\ (src/habu/aot-decl.f `DYNAMIC-BUFFER AOT-NAMES-STORAGE n`), so without it the
+\ seed compiled a call to a word it had never loaded. dynamic-storage.f needs
+\ lib/errors.f ahead of it for E-MEM-MAP / E-MEM-UNMAP and lib/errors.f needs
+\ lib/prelude.f, so the three are a dependency closure, not a choice. Their order
+\ is native's. None of the three carries a `require` / `required` line of its own,
+\ which is what lets them load here without the provide rows native pairs with the
+\ group -- see EMIT-HOST-LOAD-PREFIX for why this seed cannot emit those yet.
+\
+\ Remaining LOAD drift, recorded rather than left as an unexplained short list:
+\ native's group continues with lib/adt/option.f, lib/cad-num-types.f,
+\ lib/cad-num-arithmetic.f, lib/string.f, lib/memory.f and lib/vector.f. Those six
+\ are exactly the ones that DO carry require lines, and a seed that loads them dies
+\ rc 74 inside C-PACKAGE on a `package` with no name token -- an unfinished seed
+\ require path, which is the same missing piece as the provide rows.
+: PFX-LOAD-STDLIB-FILES ( -- )
+   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
+   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
+   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-LOAD-ROW ;
+
+\ These three tables mirror habu2.f's, row for row and in its order: PFX-LOAD-*
+\ against habu2.f PFX-LOAD-*, PFX-PATH-* against PFX-PATH-*, PFX-PROVIDE-* against
+\ PFX-PROVIDE-*. A file the native engine loads at boot and this seed does not is
+\ not a smaller engine, it is a stage0 that dies on the first token only the native
+\ prefix defines, and nothing in the native gate can see it because the native gate
+\ never builds a stage0 — the periodic no-binary check is what catches the drift.
+\ Two LOAD rows are deliberately absent, and neither carries a provide row here,
+\ because a provide row for a file the seed never loads would turn a later
+\ `require` of it into a silent no-op:
+\
+\ Accepted stage-0 omission — src/core/internal-mark.f. Native runs it as the LAST
+\ prefix source (habu2.f PFX-LOAD-INTMARK) to classify the remaining sig-less
+\ prefix words DNAME-INT internal. Adding it here changes what user source can
+\ reach by name, which is exactly what test/bootstrap-wide-memory-src.f's ABSENT
+\ rows and its `['] DEFER-UNSET` row measure, so it is a behavioural change with
+\ its own evidence to gather rather than a row to append. Recorded so the gap is
+\ visible instead of silent.
+\
 \ Accepted stage-0 omission — src/core/top-row.f (dot habu-mirror-top-row-07072823).
 \ The native cold prefix (habu2.f PFX-LOAD-INTMARK/PFX-LOAD-TOPROW) continues past
 \ this list with internal-mark.f then top-row.f, the tier-1 top-level row tracker
@@ -2123,6 +2169,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
+   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
@@ -2138,24 +2185,30 @@ create ZBYTE 0 c,
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PATH-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PATH-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
-   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW ;
+   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PATH-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
+   PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
+   PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PATH-ROW ;
 
+: PFX-PATH-STDLIB-FILES ( -- )
+   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PATH-ROW
+   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PATH-ROW
+   PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PATH-ROW
+   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-PATH-ROW
+   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-PATH-ROW
+   PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PATH-ROW
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW
+   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PATH-ROW ;
+
+\ The path table names every file the engine knows, loaded or not: the two rows
+\ this seed does not load (internal-mark.f, top-row.f -- see PFX-LOAD-BASE-FILES)
+\ still need their bytes here, so the table stays a row-for-row mirror of habu2.f
+\ PFX-PATH-FILES and drift shows up as a missing row rather than a missing file.
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
    PFX-PATH-DECL-FILES
-   PFX-PATH-CORE-FILES ;
-
-: EMIT-HOST-LOAD-PREFIX ( -- )
-   16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
-   PFX-TARGET-OK
-   PFX-LOAD-BASE-FILES ;
-
-: EMIT-COLD-PREFIX ( -- )
-   LBL {: done :}
-   12 DATA SNAP-CELL LDR,
-   12 done CBNZ,
-   EMIT-HOST-LOAD-PREFIX
-   done LBL, ;
+   PFX-PATH-CORE-FILES
+   PFX-PATH-STDLIB-FILES ;
 
 : C-EMIT-TTY-PROBE ( -- )
    0 0 MOVZ,
@@ -2361,6 +2414,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
+   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PROVIDE-ROW
@@ -2376,6 +2430,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
    EMIT-SEAL-CAPTURE-TOKEN               \ watermark token at the true engine-prefix end
    SRC-SFAIL @ EMIT-SEAL-FRIEND-TOKEN ;  \ seal before user source (all stdin/file/repl paths)
@@ -2384,6 +2439,32 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-PROVIDE-CHECKER-FILES
    PFX-PROVIDE-DECL-FILES
    PFX-PROVIDE-CORE-FILES ;
+
+\ Native keeps the stdlib block in its own SNAP-guarded word because a baked
+\ native program has no cold prefix at all (habu2.f C-SOURCE-BAKED marks the prefix
+\ end immediately). A baked SEED does re-read its prefix from disk -- that is what
+\ makes hb-stage0 work at all -- so here the block belongs inside the one word every
+\ seed path shares, under the SNAP guard EMIT-COLD-PREFIX already has.
+\ Native pairs the block with PFX-PROVIDE-STDLIB-FILES so a `require` inside one of
+\ those files does not re-read a file this table already loaded. This seed emits no
+\ provide row for them, and cannot yet: a provide row is the source text
+\ `s" path" provided`, src/core/include.f canonicalizes that path through CWD-INIT,
+\ and CWD-INIT needs a realpath this static seed image has no loader slot to reach
+\ (see BREALPATH) -- it throws INCLUDE-IO-RC, which is rc 74. The three rows loaded
+\ here carry no require line of their own, so they do not need the rows; the seed's
+\ own PFX-PROVIDE-FILES has the same unmet dependency on every path that calls it.
+: EMIT-HOST-LOAD-PREFIX ( -- )
+   16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
+   PFX-TARGET-OK
+   PFX-LOAD-BASE-FILES
+   PFX-LOAD-STDLIB-FILES ;
+
+: EMIT-COLD-PREFIX ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   EMIT-HOST-LOAD-PREFIX
+   done LBL, ;
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG @ LBL,
@@ -2659,6 +2740,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
+   LKWEXPORT @ LBL, s" export" BYTES,
    LKWUSING @ LBL, s" using" BYTES,  LKWSEMIUSING @ LBL, s" ;using" BYTES,
    LCHKUSING @ LBL, s" checker-using" BYTES,
    LCHKPACKAGE @ LBL, s" checker-package" BYTES,  LCHKPUB @ LBL, s" checker-public" BYTES,
@@ -3751,6 +3833,27 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    5 DATA PKG-REC-CELL STR,
    12 DATA CUR-CELL STR, ;
+
+\ export NAME. Native C-EXPORT (src/habu/habu2.f) has two roles split by package
+\ context: inside an open package it republishes an existing word under its tail
+\ into the current section, and at TOP LEVEL it is the hb-build --repl export
+\ directive, where "a plain load consumes the name as a no-op so directive-carrying
+\ programs stay directly loadable". lib/prelude.f rides the top-level role and is
+\ the only file in this seed's prefix that says `export` at all, so the top-level
+\ half is mirrored here exactly -- consume the name, publish nothing -- and the
+\ in-package half refuses loudly with native's own $4A rather than consuming a name
+\ and silently publishing nothing the source believes it exported. The seed builds
+\ no --repl bundle, so the no-op IS the whole top-level job.
+: C-EXPORT ( -- )
+   LBL LBL LBL {: active named done :}
+   9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
+      LTOK @ BL,  0 named CBNZ,                  \ top level: consume the directive's name
+         0 74 MOVZ,  NR-EXIT-GROUP SYS,          \ `export` with no name: native's $4A
+      named LBL,
+      done B,
+   active LBL,
+   s" hb: stage0 export inside a package is native-only" 74 C-EXIT-DIAG
+   done LBL, ;
 
 : C-PUBLIC ( -- )
    LBL {: active :}
@@ -5890,6 +5993,7 @@ variable P2SK
    lmain LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY
    lmain LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY
    lmain LKWSEMIPACKAGE 8 ['] C-END-PACKAGE CF-ENTRY
+   lmain LKWEXPORT 6 ['] C-EXPORT CF-ENTRY
    lmain LKWUSING 5 ['] C-USING CF-ENTRY
    lmain LKWSEMIUSING 6 ['] C-END-USING CF-ENTRY
    lmain LKWCREATE 6 ['] C-CREATE   CF-ENTRY
@@ -6639,6 +6743,7 @@ variable P2SK
    LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !  LBL LCOLONNONAME !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
+   LBL LKWEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !
    LBL LSIGPTRA !  LBL LSIGA !
@@ -6666,7 +6771,11 @@ variable P2SK
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !
-   LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL ! ;
+   LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
+   LBL LPDYNAMIC !  LBL LPINTMARK !  LBL LPTOPROW !
+   LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
+   LBL LPCADTYPES !  LBL LPCADARITH !  LBL LPSTRING !
+   LBL LPMEMORY !  LBL LPVECTOR ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !
