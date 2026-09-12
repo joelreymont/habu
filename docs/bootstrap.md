@@ -128,6 +128,22 @@ ordinary pre-source friend seal; the generated payload owns a mandatory
 `--load`, stdin, baked-program, and REPL paths remain sealed before their first
 user token.
 
+The ndict seal floor is the other half of that boundary, and `--build` does
+**not** open it. The floor - the watermark under which the records are the
+engine's own - is armed for every entry before any source runs, because
+`--build` is a flag any caller of a shipped engine can pass and the pre-pass
+that makes a payload trustworthy is the tool's, not the engine's. A payload's
+dictionary rewind therefore goes through `seed-ndict!`, the engine's one
+authorized lowering (it refuses a raise, guards the record span it redirects
+the next write to, rebuilds the name index, and clears the floor as one
+operation, reachable only inside a `TRUSTED:` boundary): `src/habu/hide.f`
+`BFR-NDICT!` and `src/habu/prefix-rewind.f` `DICT!` are the two rows that drive
+it, both in payload-only files that no shipped engine carries.
+`tools/native-build.f` `LOGICAL-RESET` drives the same seam for the in-process
+window build. Public `ndict!` still refuses a count below the floor, from a
+payload as from any other program (`test/build-rewind-test.f` pins both halves;
+`test/seal.f` pins the public refusal).
+
 The temporary files are not build products. The final installed `bin/hb` is the
 native checked stdin/TTY engine rebuilt from current source.
 

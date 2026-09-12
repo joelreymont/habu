@@ -954,6 +954,10 @@ SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE
 
+SUITE build-rewind
+   test/build-rewind-test.f
+;SUITE
+
 SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f

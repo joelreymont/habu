@@ -19,7 +19,21 @@ TRUSTED: BFR-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
 TRUSTED: BFR-USIG-END-PTR ( -- ptr n ) USIGS UEND @ + ;
 TRUSTED: BFR-UEND! ( n -- ) UEND ! ;
-TRUSTED: BFR-NDICT! ( n -- ) ndict! ;
+\ THE LOWERING SEAM, and `seed-ndict!` rather than public `ndict!` because the
+\ host this prelude runs on has its seal floor armed: the watermark is set
+\ before any entry (habu2.f EM-SEAL-SEEDED-RUNTIME) and BNDSET refuses every
+\ count below it with a silent exit 83, so the payload used to die with no
+\ diagnostic at all. `seed-ndict!` is the engine's one authorized lowering: it
+\ refuses a raise, guards the record span, rebuilds the name index and clears
+\ the floor, and its checker row is admitted only inside a TRUSTED: boundary -
+\ which is exactly what this row is, and this file is payload-only.
+\ src/habu/prefix-rewind.f drives the same seam for the other rewind.
+\
+\ tools/bootstrap.sh's BOOT-* twin of these words keeps public `ndict!`, and
+\ that asymmetry is the honest one: its host is the stage0 the gforth mirror
+\ emits, whose prim table (bootstrap/cg/forth.fs) registers `ndict!` and no
+\ `seed-ndict!`, and whose BNDSET carries no floor to cross.
+TRUSTED: BFR-NDICT! ( n -- ) seed-ndict! ;
 \ Named refresh-prelude boundary (staged fixpoint source checking,
 \ habu-staged-fixpoint-src-0b5fc6e6): the stage compile loads the checker-boot
 \ region with the hook silenced, but the blocking pre-pass (tools/

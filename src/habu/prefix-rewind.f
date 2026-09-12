@@ -27,11 +27,22 @@ package PREFIX-REWIND
 private
 
 \ THE TWO ENGINE SEAMS THIS REWIND DRIVES, one row each, because a checked body
-\ can name neither. NOT spelled `ndict!`: Habu folds case, so a tail spelled
+\ can name neither. NOT spelled `seed-ndict!`: Habu folds case, so a tail spelled
 \ like the engine word it wraps IS that word inside this package block and the
 \ body would call itself.
+\
+\ `seed-ndict!` AND NOT `ndict!`, because a build host reaches this rewind with
+\ its own seal floor already armed: a seeded engine arms it at startup
+\ (habu2.f EM-SEAL-SEEDED-RUNTIME) and a cold one at its prefix end, and public
+\ `ndict!` refuses every count below that floor (habu1.f BNDSET, exit
+\ ENGINE-ERROR:SEAL-VIOLATION - silently, so the symptom is a build child that
+\ dies with no diagnostic). `seed-ndict!` is the engine's lowering seam: it
+\ refuses a raise, guards the record span it redirects the next write to, and
+\ clears the floor as one operation, which is what lets the recompiled prefix
+\ reopen the engine's own packages below the mark. tools/native-build.f
+\ LOGICAL-RESET drives the same seam for the in-process window build.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: DICT! ( n -- ) ndict! ;
+TRUSTED: DICT! ( n -- ) seed-ndict! ;
 TRUSTED: BOUND! ( -- ) CHECKER-BOUND:REWIND ;
 
 \ BOUND! IS A ROW AND NOT AN AXIOM, which is the other way to reach a pre-hook
@@ -78,9 +89,9 @@ public
 \ own tail retire died `seal: cannot FORGET/HIDE sealed engine definitions`).
 \ SEAL-CAPTURE restates the same cell at the boundary that now exists. It is not
 \ a second floor and it does not weaken the guard: it only ever moves the floor
-\ to the live end of a dictionary this rewind shortened, and it runs here under
-\ the build entry's open latch, alongside the truncation it repairs. It is last
-\ because it reads the dictionary the lines above it settle.
+\ to the live end of a dictionary this rewind shortened, alongside the truncation
+\ it repairs. It is last because it reads the dictionary the lines above it
+\ settle, and because it re-arms the floor that DICT! cleared.
 : TO-CORE ( -- )
    BOUND!
    PREFIX-MARK:DICT DICT!
