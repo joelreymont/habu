@@ -4426,6 +4426,13 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    HIDX-VALID @ 0= IF HIDX-BUILD THEN ;
 
 \ HIDX-RESET ( -- ) : snapshot prepare — the mapping is process-local.
+\ The effect owner goes with it. HIDX-EFF-BASE is a scratch slot (PTR-VARIABLE,
+\ deliberately not in the relocation table), so a capture must bake no store
+\ address through it, and the answers it spoke for are in the mapping this word
+\ just dropped. HIDX-EFF-SYNC binds the live store again at the next read, the
+\ way USX-STAMP, NRX-STAMP and UIX-STAMP bind the other three index owners.
+\ This is the ONE place the owner is unbound, so a capture seam that calls
+\ HIDX-RESET needs no clear of its own.
 : HIDX-RESET ( -- )
    HIDX-MEM-CLEAR
    0 HIDX-VALID !
@@ -14119,7 +14126,6 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    USIGS-SNAPSHOT-PERSIST
    USX-RESET
    UIX-RESET                            \ process-local mmap: never bake its address
-   HIDX-EFF-BASE-CLEAR
    NORET-SNAPSHOT-PERSIST
    NRX-RESET
    REG-EXT-PERSIST-XT

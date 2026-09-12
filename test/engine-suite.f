@@ -1014,21 +1014,23 @@ variable TR-S-LC variable TR-S-STRLC
    HIDX-MEM-READY? 0= -1 T=
    s" hidx snapshot reset invalidates cache" T-LABEL
    HIDX-VALID @ 0= -1 T=
-   s" hidx snapshot reset binds the live effect owner" T-LABEL
-   HIDX-EFF-BASE@ USIGS = -1 T=
+   \ The effect owner is a scratch slot, so the reset unbinds it: a capture bakes
+   \ no store address through it, and the next read binds the live store again.
+   s" hidx snapshot reset unbinds the effect owner" T-LABEL
+   HIDX-EFF-BASE@ 0= -1 T=
    HIDX-ENSURE
    HIDX-EFF-SYNC
    s" hidx snapshot reset rebuilds mmap owner" T-LABEL
    HIDX-MEM-READY? -1 T=
-   s" hidx snapshot reset retains the live effect owner" T-LABEL
+   s" hidx effect sync binds the live effect owner" T-LABEL
    HIDX-EFF-BASE@ USIGS = -1 T=
    CHECKER-CAPTURE-PREPARE
    s" checker snapshot prepare clears mmap owner" T-LABEL
    HIDX-MEM-READY? 0= -1 T=
    s" checker snapshot prepare invalidates cache" T-LABEL
    HIDX-VALID @ 0= -1 T=
-   s" checker snapshot prepare rebinds persisted effect owner" T-LABEL
-   HIDX-EFF-BASE@ USIGS = -1 T= ;
+   s" checker snapshot prepare unbinds the effect owner" T-LABEL
+   HIDX-EFF-BASE@ 0= -1 T= ;
 LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
 

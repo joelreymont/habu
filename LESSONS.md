@@ -7672,6 +7672,18 @@ and --no-lldbinit.
   generalisation: a value derived from a process-local address must not outlive
   the pass that computed it, and the cheapest proof is a same-host double build.
 
+- **The four checker index owners share one rule: the stamp binds the live
+  store, the reset unbinds it, the sync compares and rebinds.** `USX-BASE`,
+  `NRX-BASE`, `UIX-BASE` and `HIDX-EFF-BASE` (`src/core/checker.f`) are scratch
+  `PTR-VARIABLE` slots that deliberately never join the relocation table, so a
+  capture seam leaves them unbound; the next read rebinds for free, because the
+  reset already dropped the answers the owner spoke for and the epoch bump
+  invalidates nothing. A seam that calls `*-RESET` therefore needs no clear of
+  its own. Retyping such a slot can flip the rule in silence:
+  `HIDX-EFF-BASE-CLEAR` went from `USIGS ...!` to `NULL-PTR ...!` with the
+  `variable` -> `PTR-VARIABLE` conversion, and the only readers that noticed were
+  two `test/engine-suite.f` cases written for the old bind.
+
 - **A generation chain can differ by a megabyte with identical state: the image
   represents the window's DATA as its non-zero extents.** After the delta fix
   the chain still needs four generations (B2 vs B3 1,107,585 differing bytes, B3
