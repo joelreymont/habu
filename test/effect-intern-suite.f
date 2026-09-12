@@ -325,6 +325,44 @@ EIX-N N0 @ < TFALSE                                \ the append seam forgot noth
 TABLE-LIVE
 
 \ ---------------------------------------------------------------------------
+\ 6. A REWIND DOES NOT ERASE WHAT IS ABOVE IT
+\ ---------------------------------------------------------------------------
+\ UEND is the store's true top, and lowering it leaves the records above
+\ READABLE: E-INTERN's own hit rewinds mid-record without writing a terminator,
+\ and a terminator a rewind did write is overwritten by the very next append. A
+\ rebuild that walked the record chain without bounding it by UEND therefore
+\ indexed the dead region, and the next intern could answer with an offset the
+\ store was about to write over - measured as test/verify-prim-test.f's cold
+\ differential dying rc 78 on a duplicate definition the store did not hold.
+\
+\ THE CASE IS READ AT THE REBUILD, not after it. `undefine` appends ONE record
+\ and copies nothing, so the append seam's rebuild is the only thing that runs
+\ and the store's end is still just above the cut when the table is inspected -
+\ every dead entry is then provably at or above it. Waiting until the next
+\ definition instead lets the store grow back over those offsets, which is how
+\ the first version of this case passed against the unbounded walk.
+TRUSTED: EIX-RAW-UEND! ( n -- ) UEND ! ;           \ lower UEND alone: no terminator, so the
+                                                   \ records above it stay readable
+
+s" : EIXCUT ( -- ) ;" EIX-EVAL
+EIX-UEND M0 !
+s" enum eixcut1 one two ;enum" EIX-EVAL            \ families nothing else names, so the
+s" : EIXC1 ( eixcut1 -- ) drop ;" EIX-EVAL         \ nodes above the cut are certainly new
+s" enum eixcut2 red green ;enum" EIX-EVAL
+s" : EIXC2 ( eixcut2 -- ) drop ;" EIX-EVAL
+s" EIXC1" EIX-DIN M0 @ > TTRUE                     \ the rows really are above the cut
+s" EIXC2" EIX-DIN M0 @ > TTRUE
+M0 @ EIX-RAW-UEND!                                 \ the store rewinds; the records above it
+                                                   \ keep their chain and their nodes
+s" undefine EIXCUT" EIX-EVAL                       \ one record, not one node
+TABLE-LIVE                                         \ no entry may name the dead region
+s" : EIXC3 ( eixcut1 -- ) drop ;" EIX-EVAL         \ the shape that lived above the cut, again
+s" EIXC3" EIX-DIN EIX-UEND < TTRUE                 \ answered with a live node...
+s" EIXC3" EIX-DIN EIX-KEY-N 0 T<>                  \ ... that is still a node
+TABLE-LIVE
+s" EIXC3" EIX-MIN-IN 1 T=                          \ and the store still answers for it
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

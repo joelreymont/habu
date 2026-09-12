@@ -5090,11 +5090,16 @@ variable UIX-C
 \ twice (a row that is both a data and a return row) and a subterm walked twice is
 \ work squared for nothing. Measured on this engine's own baked store: 1,688 nodes
 \ indexed over 20,567 records in 1.7 ms, once, at the first definition.
-variable UIX-SPAN-LO   variable UIX-SPAN-HI
+variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
 
+\ UIX-OWN? ( n -- bool ) : is this offset a whole live node of the span being
+\ walked? The span is clamped to UEND below, and a node needs every one of its
+\ EFF-NODE bytes inside the live store: UEND is the store's true top, so a node
+\ reaching past it is not in the store this index is being made exact for.
 : UIX-OWN? ( n -- bool ) {: off:n :}
    off UIX-SPAN-LO @ >=
-   off UIX-SPAN-HI @ < and ;
+   off UIX-SPAN-HI @ < and
+   off EFF-NODE + UEND @ <= and ;
 
 : UIX-NODE-ADD ( n -- ) {: off:n :}
    off UIX-OWN? 0= IF EXIT THEN           \ 0, or a node an older record already gave the index
@@ -5130,10 +5135,13 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI
 \ wrong one, because every answer is decided by comparing the nodes themselves.
 : UIX-REC-ADD ( n n -- ) {: rec:n next:n :}
    rec EFF-REC + {: lo:n :}
-   next lo <= IF EXIT THEN                \ the record appended nothing of its own, so it
+   next UEND @ min {: hi:n :}             \ the span is the record's own bytes AND live: a
+                                          \ rewind leaves a record above the new end
+                                          \ readable, and its nodes are dead
+   hi lo <= IF EXIT THEN                  \ the record appended nothing of its own, so it
                                           \ interned nothing: every row it names is older
    lo UIX-SPAN-LO !
-   next UIX-SPAN-HI !
+   hi UIX-SPAN-HI !
    rec E-PTR ER.DIN @ UIX-NODE-ADD
    rec E-PTR ER.DOUT @ UIX-NODE-ADD
    rec E-PTR ER.RIN @ UIX-NODE-ADD
@@ -5144,11 +5152,23 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI
 \ same one tools/effect-store-census.f makes to count the store. A record still
 \ being built is not on it yet (its ER.NEXT is 0 until E-REC-FINISH), so the walk
 \ ends at the record in progress and the nodes above it belong to E-INTERN.
+\ UEND BOUNDS THE WALK, NOT THE CHAIN ALONE. UEND is the store's true top, and a
+\ rewind LEAVES THE BYTES ABOVE IT READABLE: src/habu/hide.f's refresh prelude
+\ assigns UEND directly, and a terminator only ends a chain that has not since
+\ been regrown over. So the walk states its own bound instead of trusting the
+\ links: a record is walked only while its whole header is below UEND, and a link
+\ that does not advance, or that leaves the live store, ends it. Otherwise the
+\ index would offer nodes in the dead region - entries the next append overwrites,
+\ which is the one thing a forgotten table never does and exactly what "exact for
+\ the store as it is now" forbids.
 : UIX-BUILD ( -- )
    0 UIX-BP !
-   BEGIN UIX-BP @ E-PTR ER.NEXT @ 0 <> WHILE
-      UIX-BP @  UIX-BP @ E-PTR ER.NEXT @  UIX-REC-ADD
-      UIX-BP @ E-PTR ER.NEXT @ UIX-BP !
+   BEGIN UIX-BP @ EFF-REC + UEND @ <= WHILE
+      UIX-BP @ E-PTR ER.NEXT @ UIX-BN !
+      UIX-BN @ UIX-BP @ <= IF EXIT THEN            \ 0, or a link that does not advance
+      UIX-BN @ UEND @ > IF EXIT THEN               \ the next record is above the live store
+      UIX-BP @ UIX-BN @ UIX-REC-ADD
+      UIX-BN @ UIX-BP !
    REPEAT ;
 
 \ UIX-EXACT ( -- ) : the index is exact for the store as it is now, which is the
