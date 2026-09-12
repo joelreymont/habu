@@ -909,7 +909,7 @@ package BUILD-FIXPOINT
    build retire < TTRUE
    BFT-READ-BUF u BF-BOUNDARY-RAW-OFF$ CONTAINS? TFALSE
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE
-   BFT-READ-BUF u s" CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" CONTAINS? TTRUE
+   BFT-READ-BUF u s" ' CHECKER-CAPTURE-PREPARE data-base ENGINE-SNAP-XT-CELL + !" CONTAINS? TTRUE
    \ THE KEEP SURFACE, stated as what it is. The core prefix is not re-read here
    \ - the payload rewinds to the mark at its end and the compiling host's own
    \ copy stays live - so the one file the image must bring back is the one the
