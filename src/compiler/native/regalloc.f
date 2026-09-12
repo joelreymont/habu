@@ -570,6 +570,13 @@ DYNAMIC-BUFFER USE-POS-BUF n
 : USE-POS ( -- ptr n ) 0 USE-POS-BUF ;
 DYNAMIC-BUFFER READ-END-BUF n
 : READ-END ( -- ptr n ) 0 READ-END-BUF ;
+\ Class roots bucketed by the position their hull opens at: one list per
+\ position, so the sweep asks a position which classes begin there instead of
+\ asking every value in the module whether it is one of them.
+DYNAMIC-BUFFER DUE-HEAD-BUF n
+: DUE-HEAD ( -- ptr n ) 0 DUE-HEAD-BUF ;
+DYNAMIC-BUFFER DUE-NEXT-BUF n
+: DUE-NEXT ( -- ptr n ) 0 DUE-NEXT-BUF ;
 
 : RESERVE-SCRATCH ( -- )
    SCRATCH-SIZES!
@@ -607,6 +614,8 @@ DYNAMIC-BUFFER READ-END-BUF n
    VMAX 1+ CL-USE-START-BUF-RESERVE
    VMAX CL-USE-NEXT-BUF-RESERVE
    OMAX BMAX + READ-END-BUF-RESERVE
+   OMAX BMAX + DUE-HEAD-BUF-RESERVE
+   VMAX DUE-NEXT-BUF-RESERVE
    ;
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
@@ -1065,6 +1074,10 @@ DYNAMIC-BUFFER READ-END-BUF n
       id FRAME-TOUCH? if id MB-KEEP-OP then
    loop ;
 
+\ Every function's positions lie end to end, so the line ends where the last
+\ function's window does.
+: LINE-N ( -- n )                    N-FUNS @ cells F-BASE + @ ;
+
 \ ---- reading the linear order backwards --------------------------------------
 : POS-BLOCK ( n -- n )
    {: p:n :}
@@ -1345,22 +1358,41 @@ DYNAMIC-BUFFER READ-END-BUF n
       pos i MB-WRITE-PRESSURE
    loop ;
 
-\ Pinned classes first, because the entry block's arguments are all pinned.
-: MB-PLACE-PINNED ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id pos:n :}
+\ Built once the classes are final and read by every turn of the fit: nothing
+\ after coalescing changes which value is a root or where its hull opens.
+\ Roots are prepended from the highest value number down, so each bucket is read
+\ in ascending value order - the order the module-wide sweep this replaces
+\ visited them in, and so the same tie-break.
+: MB-DUE-INDEX ( -- )
+   LINE-N 0 ?do NOBODY i cells DUE-HEAD + ! loop
    N-VALS @ 0 ?do
-      i cells CL-LO + @ pos = if
-         i UF-FIND i =  i cells CL-FIX + @ NOBODY <> and if f i pos MB-PLACE1 then
+      N-VALS @ i - 1- {: k:n :}
+      NOBODY k cells DUE-NEXT + !
+      k UF-FIND k = if
+         k cells CL-LO + @ {: p:n :}
+         p cells DUE-HEAD + @  k cells DUE-NEXT + !
+         k p cells DUE-HEAD + !
       then
    loop ;
 
+\ Pinned classes first, because the entry block's arguments are all pinned.
+: MB-PLACE-PINNED ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id pos:n :}
+   pos cells DUE-HEAD + @
+   begin dup 0 >= while
+      {: r:n :}
+      r cells CL-FIX + @ NOBODY <> if f r pos MB-PLACE1 then
+      r cells DUE-NEXT + @
+   repeat drop ;
+
 : MB-PLACE-REST ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
-   N-VALS @ 0 ?do
-      i cells CL-LO + @ pos = if
-         i UF-FIND i =  i cells CL-FIX + @ NOBODY = and if f i pos MB-PLACE1 then
-      then
-   loop ;
+   pos cells DUE-HEAD + @
+   begin dup 0 >= while
+      {: r:n :}
+      r cells CL-FIX + @ NOBODY = if f r pos MB-PLACE1 then
+      r cells DUE-NEXT + @
+   repeat drop ;
 
 \ A class whose last read is HERE still holds its register while this operation
 \ reads, so the reading instant is measured before the writing one.
@@ -1883,6 +1915,7 @@ public
    MB-SIZES
    MB-DECLS!
    KEEP-ALL
+   MB-DUE-INDEX
    MB-FIT
    MB-FINISH
    PLAN-ALL ;
@@ -2042,6 +2075,8 @@ public
    CL-USE-NEXT-BUF-RELEASE
    USE-POS-BUF-RELEASE
    READ-END-BUF-RELEASE
+   DUE-HEAD-BUF-RELEASE
+   DUE-NEXT-BUF-RELEASE
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
