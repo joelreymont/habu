@@ -204,14 +204,14 @@ shape.
 Measured 2026-09-12 on linux-aarch64 from a seed `hb-stdin`, 173 s wall:
 
 ```
-two-gen: gen 1 built img 5701824 sym-n 10660 usigs 2086904 cap 2097152 norets 107720 cap 131072 rows 21546 heap 9960116 dp-cap 33030080
-two-gen: gen 2 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
-two-gen: gen 3 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
+two-gen: gen 1 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
+two-gen: gen 2 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
+two-gen: gen 3 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
 two-gen: ok gen 3 matches gen 2
-two-gen: gen 4 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
-two-gen: gen 5 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
-two-gen: bytes gen 2 vs 3 1107585
-two-gen: bytes gen 3 vs 4 1018047
+two-gen: gen 4 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
+two-gen: gen 5 built img 5439680 sym-n 12534 usigs 2295704 cap 2359296 norets 135608 cap 196608 rows 25295 heap 10293799 dp-cap 33030080
+two-gen: bytes gen 2 vs 3 1032266
+two-gen: bytes gen 3 vs 4 0
 two-gen: bytes gen 4 vs 5 0
 two-gen: ok gen 5 matches gen 4 byte for byte
 ```
@@ -243,25 +243,22 @@ with no reader in a restored image, so it now travels on the stack
 (`REG-PERSIST-MOVE`) and occupies no cell. Two seed-hosted builds then agreed
 in all 5,701,824 bytes, and `two-gen: bytes gen 4 vs 5` went from 4 to 0.
 
-**The chain still needs four generations, and the reason is representation, not
-state.** The product is a function of its host as well as of the source: the
-capture bakes the window's DATA as its non-zero extents (offset/length rows
-plus the bytes, `AOT-WINDOW:EMIT-RUNS` / `EMIT-RBYTES`), so build-time residue
-in that DATA changes the run partitioning and displaces every later section of
-the image. Measured between B3 and B4: 21 residue cells, one non-zero byte
-each, sitting in the unused tail of a baked boot buffer (`SYM-STR-BOOT`
-+983,624, with `SYM-STR-U` at 182,754) — 1 in B3, 0 in B4. They are worth 21
-run rows (168 bytes) and 21 run bytes, and the image sections after them shift
-by exactly that: content matches at -168 from the run table onward and at -189
-after the run bytes, which is the whole of the 1,018,047 differing bytes. The
-restored state is not what differs — B3 and B4 boot to DATA that differs in 62
-of 10,222,400 bytes, and every one of those cells holds a live per-process
-address. `tools/imgdump.f` reports identical dicts for B2 and B3. The residue
-reaches its own fixpoint at generation 4, where the build is a fixpoint of
-itself: B5 equals B4 in all 5,308,608 bytes. Removing the residue (a
-capture-time reset of the dead tails, the AOT analogue of `snap-lib.f`'s
-`SND-ZERO-DEAD-HEAP`) would shorten the chain; until then four generations is
-the documented length and the (4,5) pair is where bytes are asserted.
+**The chain reaches its fixpoint at generation 3; the (4,5) pair stays the
+asserted one as margin.** The product is a function of its host as well as of
+the source: the capture bakes the window's DATA as its non-zero extents
+(offset/length rows plus the bytes, `AOT-WINDOW:EMIT-RUNS` / `EMIT-RBYTES`), so
+build-time residue in that DATA changes the run partitioning and displaces
+every later section of the image. Until 2026-09-12 that residue made the chain
+four generations long: measured between B3 and B4, 21 residue cells, one
+non-zero byte each, in the unused tail of a baked boot buffer (`SYM-STR-BOOT`
++983,624, with `SYM-STR-U` at 182,754), worth 21 run rows and 21 run bytes and
+the whole of the 1,018,047 differing bytes, while `tools/imgdump.f` reported
+identical dicts for B2 and B3. Re-measured 2026-09-12 on engine c684ef54 (tip
+a6417a47): `bytes gen 2 vs 3 1032266`, `bytes gen 3 vs 4 0`, `bytes gen 4 vs 5
+0`, so B3 already equals B4 in all 5,439,680 bytes and the residue is gone. The
+(4,5) assertion therefore holds with one generation of margin; if it ever fails
+while (3,4) still passes, a new build-time residue has appeared and the
+`cmp -l` offsets name the cell.
 
 The check is deliberately **not** registered in `test/gate-stdlib-cases.f`: the
 five cold builds cost 3-4 minutes, and for the whole of that time the tool owns
