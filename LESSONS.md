@@ -7833,6 +7833,32 @@ and --no-lldbinit.
   neither shape is a many-block body. It was dropped rather than kept on the
   argument that the big definitions have many blocks.
 
+- **A stopwatch in a DATA cell makes the engine image a function of how long the
+  build took.** `A64RA:ALLOCATE` timing itself into `ALLOC-NS-ACC` was correct,
+  measured and reproducible in every test - and it broke same-host build
+  reproducibility, because a build runs the optimizing tier over the compiler's
+  own sources and the AOT capture bakes DATA into the engine it produces. Two
+  builds differed in exactly three bytes: bytes 0-2 of one cell holding 363 ms of
+  accumulated allocation time, byte 3 agreeing because the two totals were 0.1 ms
+  apart. The fix is a session - `ALLOC-NS-OPEN` / `ALLOC-NS-CLOSE`, armed only by
+  `tools/compile-scaling.f`, every entry a no-op outside one - so the cell holds
+  its declared zero whenever a build ends. Any per-process measurement parked in
+  DATA is this bug. The allocator's other new cells (`R-FREE-N`, `R-POOL-N`,
+  `N-CALLS`) were fine because their contents are a function of the program being
+  compiled and not of the clock, which is why the cmp found three bytes and not
+  thirty.
+
+- **Two same-host builds plus the public accessor name the owning cell faster
+  than reading the image.** `cmp -l` gave three file offsets; decoding the 8-byte
+  cell covering them as little-endian gave 0x15ABCF69, and running each engine on
+  `A64RA:ALLOC-NS` printed 363581289 and 363478794 - the same two numbers, which
+  identifies the owner and proves nothing else drifted in one step. Reach for the
+  accessor before image archaeology whenever the suspect cell has one.
+  `tools/two-generation-build.f` is the standing gate: its (4,5) pair is compared
+  byte for byte, so a clock in DATA fails it by construction. Do not kill that
+  tool mid-run - it moves `bin/hb` to `build/twogen/hb-entry` for the chain and
+  only puts it back on its own exit paths.
+
 ## 2026-09-12 - certification is a second registry for generated words
 
 - **A definer that publishes generated words has TWO registries, and the second

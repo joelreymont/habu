@@ -18,6 +18,17 @@
 \ times itself, because one compile enters it several times - the spill fixpoint
 \ re-allocates the rewritten module - and no caller can see those boundaries.
 \
+\ THIS TOOL IS THE ONLY THING THAT ARMS THAT STOPWATCH, and that is a rule about
+\ the engine image and not about tidiness. The accumulator is a DATA cell, a
+\ build runs the optimizing tier over the compiler's own sources, and the AOT
+\ capture bakes DATA into the engine it produces - so a stopwatch that ran
+\ whenever the allocator ran would put the build's own duration in the image, and
+\ two same-host builds would differ in those bytes and nowhere else. A64RA
+\ therefore accumulates only between ALLOC-NS-OPEN and ALLOC-NS-CLOSE; TAKE-OVER
+\ opens the session with the rest of the borrow and PUT-BACK closes it through
+\ `finally`, so the refusing path hands back a disarmed stopwatch too, and CLOSE
+\ zeroes the cell so what a build captures is the zero it was declared with.
+\
 \ MEASURED ON 495dea80 plus this file's accumulator, and on that same tree with
 \ the three cost removals above this commit: aarch64 Linux, 12 cores, 2026-09-12,
 \ three consecutive runs of each engine at a 1-minute load average between 1.05
@@ -459,14 +470,17 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    0 NC-COUNT !
    0 SET-LIVE? !
    ['] COUNTING-COMPILE DISPATCH-CELL xt!
-   1 SELECT-TIER ;
+   1 SELECT-TIER
+   A64RA:ALLOC-NS-OPEN ;
 
 \ TEARDOWN first: on the refusing paths a measured set is still standing, and
-\ the caller gets its dictionary back along with its dispatch and its tier.
+\ the caller gets its dictionary back along with its dispatch, its tier and a
+\ disarmed stopwatch.
 : PUT-BACK ( -- )
    TEARDOWN
    PRIOR-XT @ DISPATCH-CELL xt!
-   PRIOR-TIER @ SELECT-TIER ;
+   PRIOR-TIER @ SELECT-TIER
+   A64RA:ALLOC-NS-CLOSE ;
 
 : MEASURE-ALL ( -- )
    SHAPES-N 0 ?do i RUN-SHAPE loop ;

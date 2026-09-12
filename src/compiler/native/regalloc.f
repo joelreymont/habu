@@ -109,8 +109,6 @@ variable ST
 ST-EMPTY ST !
 variable GEN-N
 0 GEN-N !
-variable ALLOC-NS-ACC                \ mono-ns spent inside ALLOCATE since the last reset
-0 ALLOC-NS-ACC !
 variable N-VALS
 0 N-VALS !
 variable N-PLAN
@@ -183,6 +181,35 @@ DYNAMIC-BUFFER PL-VAL-BUF n
    n PL-KIND-BUF-RESERVE
    n PL-VAL-BUF-RESERVE
    ;
+
+\ ---- the measurement stopwatch -----------------------------------------------
+\ Not allocation state: it answers across allocations, which is the only way to
+\ ask what a whole compile spent in this pass.
+\
+\ These are DATA cells, and a DATA cell that is not zero when a build ends is
+\ baked into the engine that build captures. This pass runs DURING a build - the
+\ optimizing tier compiles the compiler's own sources - so a stopwatch left
+\ running would make the image a function of how long the build took, and two
+\ same-host builds would differ in exactly these bytes and nowhere else. The
+\ stopwatch is therefore armed only inside a measurement session, and only
+\ tools/compile-scaling.f opens one. Outside a session ALLOCATE neither reads the
+\ clock nor writes the accumulator, every public entry is a no-op, and both cells
+\ still hold the zero they were declared with for the capture to copy.
+variable ALLOC-NS-ACC                \ nanoseconds inside ALLOCATE this session
+0 ALLOC-NS-ACC !
+variable ALLOC-NS-ON                 \ a measurement session is open
+0 ALLOC-NS-ON !
+
+: NS-ARMED? ( -- bool )              ALLOC-NS-ON @ 0<> ;
+
+\ Zero when no session is open, which is the reading NS-STOP refuses to use.
+: NS-START ( -- n )
+   NS-ARMED? if mono-ns else 0 then ;
+
+: NS-STOP ( n -- )
+   {: t0:n :}
+   NS-ARMED? 0= if exit then
+   mono-ns t0 -  ALLOC-NS-ACC @ +  ALLOC-NS-ACC ! ;
 
 \ ---- where each function sits on the module's one number line ----------------
 \ Function ordinal to its first position; positions run end to end.
@@ -1992,10 +2019,10 @@ public
 
 \ The pass times itself: no caller can time a pass it does not enter, and a
 \ counter outside the package would have to know bounds only this entry point
-\ knows. A refused allocation throws past the accumulate and is not counted, so
-\ what is read back is time spent on allocations that completed.
+\ knows. A refused allocation throws past NS-STOP and is not counted, so what is
+\ read back is time spent on allocations that completed.
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
-   mono-ns {: t0:n :}
+   NS-START {: t0:n :}
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
@@ -2009,7 +2036,7 @@ public
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST !
-   mono-ns t0 -  ALLOC-NS-ACC @ +  ALLOC-NS-ACC ! ;
+   t0 NS-STOP ;
 
 \ ---- the sealed allocation ---------------------------------------------------
 : SEALED? ( -- bool )
@@ -2018,13 +2045,28 @@ public
 : GEN ( -- n )
    SEAL-CK GEN-N @ ;
 
-\ Nanoseconds spent inside ALLOCATE since the counter was zeroed. Not sealed
-\ state: it answers across allocations, which is the only way to ask what a
-\ whole compile spent here.
+\ ---- the measurement session -------------------------------------------------
+\ OPEN zeroes the accumulator so a session never reads the one before it, and
+\ CLOSE zeroes it again so the cell is back to its declared zero the instant the
+\ session ends - a tool that opens a session and a process that never opens one
+\ leave the same DATA behind, which is what keeps a build reproducible. Both are
+\ called between compiles and never from inside one, so no allocation sees the
+\ arming change under it.
+: ALLOC-NS-OPEN ( -- )
+   0 ALLOC-NS-ACC !
+   1 ALLOC-NS-ON ! ;
+
+: ALLOC-NS-CLOSE ( -- )
+   0 ALLOC-NS-ON !
+   0 ALLOC-NS-ACC ! ;
+
+\ Nanoseconds spent inside ALLOCATE since the session was opened or last reset,
+\ and zero when none is open.
 : ALLOC-NS ( -- n )
    ALLOC-NS-ACC @ ;
 
 : ALLOC-NS-RESET ( -- )
+   NS-ARMED? 0= if exit then
    0 ALLOC-NS-ACC ! ;
 
 : MODULE@ ( -- IR-ID:ir-module-id )
