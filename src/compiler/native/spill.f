@@ -134,6 +134,12 @@ DYNAMIC-BUFFER PRED-ANY-BUF n
 : PRED-ANY ( -- ptr n ) 0 PRED-ANY-BUF ;
 DYNAMIC-BUFFER PRED-ONE-BUF n
 : PRED-ONE ( -- ptr n ) 0 PRED-ONE-BUF ;
+
+\ The frame lane each block of the function carries, or none. The walk that
+\ answers it reads only the old module, so it is answered once per block rather
+\ than once per ask.
+DYNAMIC-BUFFER F-LANE-BUF n
+: F-LANE ( -- ptr n ) 0 F-LANE-BUF ;
 variable PRED-FUN                    \ the function the four per-function maps hold
 variable PRED-SET                    \ those maps are built
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
@@ -163,6 +169,7 @@ DYNAMIC-BUFFER RBLK-BUF n
    BMAX P-FRAME-BUF-RESERVE
    BMAX PRED-ANY-BUF-RESERVE
    BMAX PRED-ONE-BUF-RESERVE
+   BMAX F-LANE-BUF-RESERVE
    ;
 create NAMEBUF NAME-CAP allot
 
@@ -652,7 +659,7 @@ create NAMEBUF NAME-CAP allot
 
 \ A prior lowering's frame lane is identified by a frame consumer or by the
 \ terminator that forwards it, never by its position among unrelated arguments.
-: FRAME-ARG ( IR-ID:ir-block-id -- n )
+: FRAME-LANE ( IR-ID:ir-block-id -- n )
    {: bk:IR-ID:ir-block-id :}
    NO-FRAME-ARG
    bk ARG-COUNT 0 ?do
@@ -663,6 +670,21 @@ create NAMEBUF NAME-CAP allot
          drop x
       then
    loop ;
+
+\ The lane is read off the old module, which this pass does not write, so every
+\ block of the function is asked once and the walk reads the answer. The block
+\ opening, both edge tests and the operand copy all ask the same blocks.
+: F-LANES! ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT FRAME-LANE  i cells F-LANE + !
+   loop ;
+
+: FRAME-ARG ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   bk IR-ID:BLOCK-LOCAL OLD-BBASE @ - {: b:n :}
+   b 0 < b BMAX >= or if E-A64SPILL-SHAPE throw then
+   b cells F-LANE + @ ;
 
 : F-ORDER-SAME? ( n -- bool )
    F-ORDER@ IR-ID:VALUE-LOCAL  TOK IR-ID:VALUE-LOCAL = ;
@@ -917,6 +939,7 @@ create NAMEBUF NAME-CAP allot
    F-ORDER-CLEAR
    f 0 BLOCK-AT IR-ID:BLOCK-LOCAL OLD-BBASE !
    f PREDS!
+   f F-LANES!
    f rb F-NEED-FILL
    0 G-AT !
    f BLOCK-COUNT 0 ?do f i rb WALK-BLOCK loop
@@ -1089,6 +1112,7 @@ public
    P-FRAME-BUF-RELEASE
    PRED-ANY-BUF-RELEASE
    PRED-ONE-BUF-RELEASE
+   F-LANE-BUF-RELEASE
    0 PRED-SET !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
