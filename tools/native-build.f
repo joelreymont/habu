@@ -81,20 +81,80 @@ $1000 constant SMOKE-CAP
 create SMOKE-OUT SMOKE-CAP allot
 create SMOKE-ERR SMOKE-CAP allot
 
-\ The running host may predate a new engine callback. Keep its actual engine
-\ declarations, then discard every declaration belonging to the retired heap.
-: RESET-ADDRESS-ROWS ( -- )
-   0
-   begin
-      dup data-base SNAP-RELOC:XTCELL-N-CELL + @ <
-   while
-      dup cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + @
-      SNAP-RELOC:XTCELL-OFF-MASK and DATA-START >= if
-         data-base SNAP-RELOC:XTCELL-N-CELL + ! exit
+\ The running host may predate a new engine callback, and its reserved bands may be
+\ smaller than this tree's. Keep the host's actual engine declarations -- the cells
+\ below ITS heap floor -- and discard every declaration belonging to the retired
+\ heap above it.
+\
+\ THE BOUNDARY IS THE HOST'S, NOT THE TREE'S. A tree whose reserved bands grew
+\ moves DATA-START and the host that builds it did not move with it, so classifying
+\ the host's rows by the source constant keeps the host's own heap rows, which the
+\ capture then refuses by value (src/habu/aot-capture.f ACAP-TARGET-REFUSE, exit
+\ 74). The engine publishes its floor at boot in BOOT-LAYOUT:HEAP-START-CELL.
+\
+\ FILTERED, NOT TRUNCATED. A fixed-band cell is registered where its kind is
+\ decided, and for two of them that happens after the heap has started growing, so
+\ the rows are NOT partitioned in registration order -- measured 2026-09-12, a
+\ product engine carries 9 engine rows of which 2 sit past its first heap row, and
+\ stopping at the first heap row dropped them. Compacting in place keeps every
+\ engine row and preserves the order the registrar wrote.
+: ADDR-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
+
+: ADDR-ROWS! ( n -- ) data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
+
+: ADDR-ROW@ ( n -- n ) {: k:n :}
+   k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + @ ;
+
+: ADDR-ROW! ( n n -- ) {: k:n row:n :}
+   row k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + ! ;
+
+: ADDR-ROW-OFF ( n -- n ) ADDR-ROW@ SNAP-RELOC:XTCELL-OFF-MASK and ;
+
+\ The host's own heap floor, or 0 from a host built before the cell existed. Read
+\ through habu2.f's host-side mirror of the offset, for the reason stated there:
+\ this file compiles against the HOST's dictionary, which on a pre-cell host has
+\ no BOOT-LAYOUT to name.
+: HOST-HEAP-START ( -- n ) data-base EM-LAYOUT:HEAP-START-OFF + @ ;
+
+: KEEP-ROWS-BELOW ( n -- ) {: floor:n :}
+   0 ADDR-ROWS 0 ?do
+      i ADDR-ROW@ {: row:n :}
+      row SNAP-RELOC:XTCELL-OFF-MASK and floor < if
+         dup row ADDR-ROW! 1+
       then
-      1+
-   repeat
-   data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
+   loop
+   ADDR-ROWS! ;
+
+\ THE FALLBACK'S BOUND IS STRUCTURAL, NOT A THRESHOLD. $7FF8 is the highest DATA
+\ offset emitted code can name with `DATA <off> LDR` -- a 12-bit immediate scaled
+\ by eight -- the ceiling src/habu/layout.f states at every band that had to stay
+\ under it. Every address cell the ENGINE declares is a cell its own compiled code
+\ names that way: the hook cells, the native dispatch cells and the application
+\ entry. So an engine declaration is at or below this bound while a DP-heap row is
+\ far above it (measured 2026-09-12: 17312 for the highest engine cell against a
+\ heap floor of 958280). A row the fallback KEPT above the bound therefore says the
+\ host's reserved bands are smaller than this tree's and the source constant has
+\ misclassified the host's heap, so the build refuses by name instead of baking a
+\ retired host address. A host LARGER than the tree is the one direction this
+\ cannot see; docs/bootstrap.md carries that as the landing rule.
+$7FF8 constant FIXED-CELL-MAX
+
+: FALLBACK-REFUSE ( n -- ) {: off:n :}
+   s" native-build: host predates BOOT-LAYOUT:HEAP-START-CELL and its kept row DATA+" type off .
+   s"  is not an engine cell" type cr
+   s" native-build: host heap start unknown; build from a post-cell host (docs/bootstrap.md)" 76 die ;
+
+: CHECK-FALLBACK-ROWS ( -- )
+   ADDR-ROWS 0 ?do
+      i ADDR-ROW-OFF {: off:n :}
+      off FIXED-CELL-MAX > if off FALLBACK-REFUSE then
+   loop ;
+
+: RESET-ADDRESS-ROWS ( -- )
+   HOST-HEAP-START {: floor:n :}
+   floor 0<> if floor KEEP-ROWS-BELOW exit then
+   DATA-START KEEP-ROWS-BELOW
+   CHECK-FALLBACK-ROWS ;
 
 defer RESET-SOURCE ( -- )
 defer IMPORT-CHECKED ( ptr u8 -- )

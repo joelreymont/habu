@@ -5363,12 +5363,34 @@ public
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL, ;
 
+\ EM-LAYOUT:HEAP-START-OFF MIRRORS src/habu/layout.f BOOT-LAYOUT:HEAP-START-CELL,
+\ and the mirror is not laziness: a native build never loads the tree's layout.f
+\ on the HOST side -- tools/native-build.f requires this file and icode.f, and a
+\ booted engine's `require src/habu/layout.f` is a no-op because its own prefix
+\ already registered that path (measured 2026-09-12). So every layout name this
+\ file compiles against is the HOST's, and the first engine that has the cell has
+\ to be built by a host that does not. Naming BOOT-LAYOUT here would therefore
+\ fail to compile on exactly the hosts that must build it (E-UNDEFINED, measured).
+\ It is the same reason src/core/checker.f mirrors AOT-SIG:POOL-CELL, and the
+\ mirror is not left to prose: test/heap-start-cell.f reads the cell out of a
+\ booted engine, where a disagreement between the two numbers reads as zero.
+\ Both spellings go when every host in use has the cell.
+package EM-LAYOUT
+public
+$47E0 constant HEAP-START-OFF
+;package
+
 : EM-DATA-INIT ( -- )
    20 0 RBASE-CELL STR,
    DATA 0 0 ADDI,
    XDS DATA S0-CELL STR,
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
-   5 DATA-START LIT64,  7 DATA 5 ADD,  7 DATA DP-CELL STR, ;
+   \ x5 is the heap floor: publish it as this engine's own layout in the same
+   \ breath as the DP it sets, out of the same register, so the cell can never
+   \ disagree with the DP-CHECK floor the build emitted beside it -- including in
+   \ a generation whose host layout differs from the tree's.
+   5 DATA-START LIT64,  5 DATA EM-LAYOUT:HEAP-START-OFF STR,
+   7 DATA 5 ADD,  7 DATA DP-CELL STR, ;
 
 : EM-SNAPSHOT-COPY-CODE ( -- )
    LBL LBL {: sc1 sc1d :}

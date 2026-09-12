@@ -344,6 +344,50 @@ the `bin/hb` slot, while `test/run.f` spawns `./bin/hb` children by relative
 path out of a bounded process pool. Run it by hand after any change to the
 checker's persisted stores, the snapshot writer, or the image layout.
 
+## Landing a Reserved-Layout Change
+
+A **reserved-layout change** is anything that moves a band below `DATA-START`:
+raising `SNAP-RELOC:XTCELL-CAP`, appending a band, widening the protected-WID
+bitmap. Every one of them moves `DATA-START` itself, and `DATA-START` is the
+boundary `tools/native-build.f` classifies the host's declared address rows by --
+the cells below the heap are the engine's own declarations and are kept, the rows
+above it belong to the retired heap and are discarded.
+
+**The boundary is the host's, and the host says so itself.** `EM-DATA-INIT`
+(`src/habu/habu2.f`) publishes the running engine's heap floor at boot in
+`BOOT-LAYOUT:HEAP-START-CELL` (`src/habu/layout.f`), out of the same register it
+gives DP, so the two can never disagree. `RESET-ADDRESS-ROWS` reads that cell.
+`test/heap-start-cell.f` is the registered check that an engine publishes a floor
+and that it is the floor its own code uses.
+
+**So: build a reserved-layout change from a post-cell host.** A host that predates
+the cell reads zero there, and the build falls back to the source constant, which
+is right only when the host's layout equals the tree's. The fallback is bounded
+rather than trusted: every row it keeps must lie at or below `$7FF8`, the ceiling
+a `DATA <off> LDR` can address and therefore the ceiling of every cell the engine
+itself declares, and a kept row above it ends the build by name instead of baking a
+retired host address into the image. That catches a host whose bands are **smaller**
+than the tree's, which is the direction a growth produces. A host whose bands are
+**larger** than the tree's -- a downgrade build -- is the one direction the fallback
+cannot see: it drops engine rows early and says nothing. Do not downgrade a layout
+from a pre-cell host.
+
+**Verify at generation 2, not generation 1.** A build's host-side layout constants
+are the *host's*: `tools/native-build.f` never loads the tree's `src/habu/layout.f`
+on the host side, and a booted engine's `require src/habu/layout.f` is a no-op
+because its own prefix already registered that path. Only `LOAD-TARGET` reads the
+tree's copy, into the image's dictionary. So generation 1 of a moved layout is an
+engine whose baked dictionary advertises the new bands while its compiled code
+still uses its host's -- measured 2026-09-12: a grown `XTCELL-CAP` built from a
+pre-grown host reported `cap 65536` and still refused the 32769th row, and its
+published floor was its host's. The two agree from generation 2 on, which is where
+`test/heap-start-cell.f` and the row cap mean what they say.
+
+The fallback arm in `RESET-ADDRESS-ROWS`, and `EM-LAYOUT:HEAP-START-OFF`, the
+host-side mirror of the cell offset that exists only because a pre-cell host cannot
+name `BOOT-LAYOUT`, both go when every host in use has the cell -- the same seed
+refresh that retires the by-name arm of dot `habu-retire-the-pre-a37792de`.
+
 ## DDC Audit (Diverse Double-Compiling)
 
 `tools/ddc-verify.f` is the explicit (never per-commit) trust audit: it builds

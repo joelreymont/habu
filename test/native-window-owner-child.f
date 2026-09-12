@@ -32,20 +32,42 @@ variable PATH-U
 
 \ --- copied from tools/native-build.f ---------------------------------------
 
-\ The running host may predate a new engine callback. Keep its actual engine
-\ declarations, then discard every declaration belonging to the retired heap.
-: RESET-ADDRESS-ROWS ( -- )
-   0
-   begin
-      dup data-base SNAP-RELOC:XTCELL-N-CELL + @ <
-   while
-      dup cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + @
-      SNAP-RELOC:XTCELL-OFF-MASK and DATA-START >= if
-         data-base SNAP-RELOC:XTCELL-N-CELL + ! exit
+\ Keep the host's actual engine declarations -- the cells below ITS heap floor,
+\ which the engine publishes at boot in BOOT-LAYOUT:HEAP-START-CELL -- and discard
+\ every declaration belonging to the retired heap above it. Filtered rather than
+\ truncated because the rows are not partitioned in registration order. The
+\ reasoning, the source-constant fallback and its structural bound are stated once
+\ in tools/native-build.f; this fixture reaches the window through the same steps.
+: ADDR-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
+
+: ADDR-ROWS! ( n -- ) data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
+
+: ADDR-ROW@ ( n -- n ) {: k:n :}
+   k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + @ ;
+
+: ADDR-ROW! ( n n -- ) {: k:n row:n :}
+   row k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + ! ;
+
+\ The layout name itself, not habu2.f's host-side mirror, and no source-constant
+\ fallback: this fixture only ever runs under the engine the tree just built, so
+\ the cell is always there. Saying so out loud is the point -- a silent zero would
+\ classify every row as heap and empty the table, which is not a window this
+\ fixture can claim anything about.
+: HOST-HEAP-START ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
+
+: KEEP-ROWS-BELOW ( n -- ) {: floor:n :}
+   0 ADDR-ROWS 0 ?do
+      i ADDR-ROW@ {: row:n :}
+      row SNAP-RELOC:XTCELL-OFF-MASK and floor < if
+         dup row ADDR-ROW! 1+
       then
-      1+
-   repeat
-   data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
+   loop
+   ADDR-ROWS! ;
+
+: RESET-ADDRESS-ROWS ( -- )
+   HOST-HEAP-START {: floor:n :}
+   floor 0= if s" window: host publishes no heap floor" 76 die then
+   floor KEEP-ROWS-BELOW ;
 
 defer RESET-SOURCE ( -- )
 defer IMPORT-CHECKED ( ptr u8 -- )

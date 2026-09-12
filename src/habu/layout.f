@@ -576,6 +576,43 @@ $47D0 constant POOL-CELL
 $47D8 constant LEN-CELL
 ;package
 
+\ BOOT-LAYOUT:HEAP-START-CELL: the DP-heap floor of the RUNNING engine, as a DATA
+\ offset, stored by habu2.f EM-DATA-INIT out of the same DATA-START it hands DP.
+\ It is the engine stating its own layout, so a tool that has to classify the
+\ engine's DATA can stop reading a SOURCE constant for it.
+\
+\ WHY AN ENGINE HAS TO SAY THIS. tools/native-build.f splits the host's declared
+\ address rows into the engine cells below the heap and the retired heap above it,
+\ and the host's floor is not the loaded tree's: a tree whose reserved bands grew
+\ (XTCELL-CAP here, TIER-PROV:SPANS next) moves DATA-START, while the host that
+\ builds that tree does not move with it. Classified by the source constant, the
+\ host keeps its OWN heap rows and the capture refuses them by value
+\ (aot-capture.f ACAP-TARGET-REFUSE, exit 74; dot
+\ habu-classify-captured-addr-68fcc1df). Measured 2026-09-12: the cold-build seed's
+\ floor was 958280 while the grown tree read 1220424, and the seed's heap row at
+\ DATA+1140613 fell between them.
+\
+\ AN OFFSET, NEVER AN ADDRESS. The cell is a function of this engine's layout and
+\ of nothing else in the process, so two builds by one host agree on it and it
+\ carries no build-time transient. It also needs no relocation, which is why it is
+\ not itself a declared address cell.
+\
+\ ZERO MEANS "THIS ENGINE PREDATES THE CELL", and it is the answer rather than a
+\ sentinel: no engine's heap starts at offset 0 -- the whole reserved band is below
+\ DATA-START -- and the anonymous DATA mapping every boot starts from reads zero
+\ everywhere. tools/native-build.f names its fallback for that case.
+\
+\ WHERE IT HAD TO GO: the next cell of the same unclaimed run PROT:RHI/CF and
+\ AOT-SIG:POOL-CELL/LEN-CELL took, swept for a claimant across src lib tools test
+\ maki bootstrap before taking it, below $7FF8 and below DATA-START for the reasons
+\ above. Sitting in the FIXED header matters more here than for its neighbours: the
+\ consumer reads this cell out of a host whose reserved bands differ from its own,
+\ so the offset it reads has to be one no band growth can move.
+package BOOT-LAYOUT
+public
+$47E0 constant HEAP-START-CELL
+;package
+
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
 \ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no

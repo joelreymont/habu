@@ -878,6 +878,10 @@ SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
 
+SUITE heap-start-cell
+   test/heap-start-cell.f
+;SUITE
+
 SUITE compiler-native-create-does
    test/compiler/native-create-does.f
 ;SUITE

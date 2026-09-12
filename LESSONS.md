@@ -8171,3 +8171,36 @@ and --no-lldbinit.
   The lookup must never be `evaluate`: a compile there runs the window's own
   compiler through the dispatch cell `CHECKER-REG:SEAL` just repointed and
   reserves the records the walk is about to clear.
+
+## 2026-09-13 - a build's host-side layout is the host's, not the tree's
+
+- **`tools/native-build.f` compiles its own words against the HOST's layout, so no
+  tool may classify the host's DATA by a source constant.** Its require list never
+  loads `src/habu/layout.f`, and a booted engine's `require src/habu/layout.f` is a
+  no-op because that engine's own prefix already registered the path; only
+  `LOAD-TARGET`'s `included` reads the tree's copy, into the image being built.
+  Measured: on a product host in a tree with `XTCELL-CAP` doubled, host-side
+  `DATA-START` read 958280 and `SNAP-RELOC:XTCELL-CAP` 32768 while the tree said
+  1220424 and 65536. Two consequences. A SOURCE-prefix host - the cold-build seed,
+  which does load the checkout's prefix - gets the tree's constants over its own
+  baked floor, and that mismatch is what made `RESET-ADDRESS-ROWS` keep the seed's
+  heap rows for the capture to refuse by value (`aot-capture: declared address
+  target outside its capture window`, exit 74, on the row at DATA+1140613). And a
+  NEW layout name cannot be named host-side at all until every host carries it:
+  `BOOT-LAYOUT:HEAP-START-CELL` was `E-UNDEFINED` on exactly the hosts that had to
+  build the first engine holding it, which is why `src/habu/habu2.f` mirrors the
+  offset as `EM-LAYOUT:HEAP-START-OFF` - the same reason `src/core/checker.f`
+  mirrors `AOT-SIG:POOL-CELL`. The fix for the classification is for the engine to
+  publish its own floor at boot and the build to read the running host.
+- **Generation 1 of a reserved-layout change advertises a layout its own code does
+  not implement, so verify a band move at generation 2.** The emitted constants come
+  from the host and the baked dictionary from the tree: a grown `XTCELL-CAP` built
+  from a pre-grown host reported `cap 65536` from its dictionary and still refused
+  the 32769th row (`hb: snapshot address table full`, exit 96), and its published
+  heap floor was its host's, not its dictionary's. The same split makes
+  `AOT-SECTION-CAP` (`src/arch/arm64/icode.f`), a hand-written literal that must
+  equal an arithmetic function of the HOST's `XTCELL-CAP`, unable to be right for
+  two generations at once - bumped it fails generation 1 and unbumped it fails
+  generation 2, both `habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree`,
+  exit 72. Equality between a reserved capacity and a host-dependent need is the
+  wrong relation: a reservation only ever has to be an upper bound on the need.
