@@ -527,8 +527,14 @@ create EMPTY 1 allot            \ zero-length stdin
    s" DEFLINEAR" NEG-OPENER
    s" VALUE-RECORD in a checked body is rejected unsafe" T-LABEL
    s" VALUE-RECORD" NEG-OPENER
-   s" cast: in a checked body is rejected" T-LABEL
-   s" cast:" NEG-OPENER
+   \ `cast:` is an interpret-mode reader keyword (habu2.f EM-INTERPRET-DEFINE-KEYWORDS)
+   \ and not a dictionary word, so a colon body holding it resolves no name and the
+   \ ENGINE answers before the checker: E-UNDEFINED naming the token, the same shift
+   \ PF-FIND made above. The declarer's own unsafe-token reject stays pinned on the
+   \ candidate path by test/cast-negative-suite.f.
+   s" cast: in a checked body is an undefined word" T-LABEL
+   s" cast:" OPENER-BODY-FORGE$ RUN-SUBJECT
+   s" E-UNDEFINED: cast:" ASSERT-DIAG
    s" DEFER-LAYOUT-BUFFER in a checked body is rejected unsafe" T-LABEL
    s" DEFER-LAYOUT-BUFFER" NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
@@ -589,8 +595,10 @@ create EMPTY 1 allot            \ zero-length stdin
    s" : IWG-LBAD ( -- ) IWG-LV @ execute ;" SB-APPEND LF
    SB$ ;
 
-\ Native quotation admission rejects the protected target before it can be
-\ stored or executed through an untyped cell.
+\ The tick itself refuses the protected target, so it never reaches the untyped
+\ cell: habu2.f C-BTICK carries the DNAME-INT dispatch gate C-TICK applies to a
+\ bare tick. Until it did, this source stored the xt and the interpret-level
+\ `IWG-PFV @ execute` returned the protected cell's address (measured).
 : PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick a protected registry cell, launder its execute
    SB-RESET
    s" variable IWG-PFV" SB-APPEND LF
@@ -606,12 +614,6 @@ create EMPTY 1 allot            \ zero-length stdin
    s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV !" SB-APPEND LF
    s" : IWG-LBAD ( -- n ) IWG-LV @ catch ;" SB-APPEND LF
    SB$ ;
-
-: ASSERT-QUOT-REFUSED ( -- )
-   EXITED @ TTRUE
-   RC @ THROW-RC T=
-   ERR$ s" -8651" CONTAINS? TTRUE
-   ERR$ s" at [']" CONTAINS? TTRUE ;
 
 : ASSERT-OPAQUE ( -- )   \ child rejected at CHECK (rc 70) naming the opaque-execute reject
    EXITED @ TTRUE
@@ -637,7 +639,7 @@ create EMPTY 1 allot            \ zero-length stdin
    ASSERT-OPAQUE
    s" protected registry target cannot be ticked into a variable" T-LABEL
    PF-LAUNDER-FORGE$ RUN-SUBJECT
-   ASSERT-QUOT-REFUSED
+   s" SCHEMA-REG:SCH-N" ASSERT-INTERNAL
    s" deflinear laundered through a variable + catch also rejects at CHECK" T-LABEL
    s" deflinear" CATCH-DEFINER$ RUN-SUBJECT
    ASSERT-OPAQUE-CATCH ;
@@ -1021,7 +1023,7 @@ create QNAME QNAME-CAP allot
 : TSEAL-BRIDGE-MARKED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TOKEN$ RUN-SUBJECT  a u ASSERT-INTERNAL ;
 
-: TSEAL-TICK-FORGE$ ( -- ptr u8 n )  \ the launder route, refused at the tick by the seal guard
+: TSEAL-TICK-FORGE$ ( -- ptr u8 n )  \ the launder route, refused at the tick by the seal guard (habu2.f C-BTICK C-QUALIFY-SEAL-GUARD, before any lookup or elaboration)
    SB-RESET
    s" variable IWG-TFV" SB-APPEND LF
    s" : IWG-TFSET ( -- ) ['] TFAM:PF-COMMIT-N IWG-TFV ! ;" SB-APPEND LF
@@ -1050,9 +1052,9 @@ create QNAME QNAME-CAP allot
    s" `99999 SVX-HI !` no longer turns a reject into an engine die" T-LABEL
    TSEAL-SVX-FORGE$ RUN-LOAD
    s" E-UNDEFINED: SVX-HI" ASSERT-DIAG
-   s" native compilation refuses a protected target at the tick" T-LABEL
+   s" a compiled tick of a public tail is refused by the same guard" T-LABEL
    TSEAL-TICK-FORGE$ RUN-SUBJECT
-   ASSERT-QUOT-REFUSED
+   s" TFAM:PF-COMMIT-N" ASSERT-SEALED
    s" a bare tick of a public tail is refused by the same guard" T-LABEL
    s" ' " s" TFAM:" s" PF-COMMIT-N" s" " QUAL-PROG$ RUN-SUBJECT
    s" TFAM:PF-COMMIT-N" ASSERT-SEALED

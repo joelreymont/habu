@@ -4088,12 +4088,20 @@ variable LTOPHOOK
       found B,
    tk LBL, ;
 
+\ A body's `['] W` is the second place a name becomes an address, so it carries
+\ C-TICK's DNAME-INT gate too. An internal word has no checker-known effect, so the
+\ tick erases to a plain cell that an untyped store keeps and an interpret-level
+\ `execute` then runs: `['] SCHEMA-REG:SCH-N V !` in a colon body handed the
+\ protected registry cell's address to a bare `V @ execute` (measured; the case is
+\ test/internal-word-gate.f LAUNDER-CASES).
 : C-BTICK ( -- )
    LBL {: bk :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
    LBCAP LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
+   13 bk CBZ,
+   14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,             \ DNAME-INT: C-TICK's gate, at the only other place a name becomes an address
+   C-CODE-ADDR  bk LBL, ;
 
 \ ---- item 12 slice 3b: pass-2 width-aware recompile, certificate side ------
 \ A definition whose certified check recorded any wider-than-cell width fact is
