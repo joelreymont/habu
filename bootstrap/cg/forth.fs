@@ -6578,20 +6578,6 @@ variable P2SK
    9 15 PKGSNAP-USE LDR,
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR, ;
 
-: EMIT-EVAL-UNDEF-ROLLBACK ( -- )
-   9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
-   14 DATA EVAL-TOP-CELL LDR,
-   CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
-   9 14 56 LDR,  9 DATA DP-CELL STR,
-   EMIT-RESET-COMPILE-STATE
-   9 14 0 LDR,  9 DATA INP-CELL STR,
-   9 14 8 LDR,  9 DATA INE-CELL STR,
-   9 1 MOVZ,  9 DATA EVALERR-CELL STR,
-   EMIT-USE-DEPTH-RESTORE
-   9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
-   9 14 24 LDR,  SP 9 0 ADDI,
-   9 14 16 LDR,  9 BR, ;
-
 : EMIT-REPL-RECOVER ( -- )
    LRREC @ LBL,
    0 2 MOVZ,  1 LQNL @ ADR,  2 2 MOVZ,  NR-WRITE SYS,
@@ -6649,7 +6635,18 @@ variable P2SK
    lundef LBL,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    9 DATA EVALD-CELL LDR,  9 LUN0 @ CBZ,
-      EMIT-EVAL-UNDEF-ROLLBACK
+      \ Inside evaluate the aborted compile unwinds as a catchable rc-70 throw through
+      \ the same LEVALREC recovery BTHROW and EMIT-PREFMISS use: it rolls back every
+      \ escaped eval frame, dropping the partial definition (CP/NDICT/XDS/DP), and
+      \ delivers to the enclosing catch, or fails closed rc 70 with no handler.
+      \ This replaces a rollback-and-return that only set EVALERR-CELL, which native
+      \ retired as fail-open (src/habu/habu2.f EM-COMPILE-UNDEF: "catch read 0 and a
+      \ handlerless caller kept interpreting past the failed evaluate"). That is not
+      \ theoretical here: src/core/layout-buffer.f DYNAMIC-BUFFER evaluates a
+      \ generated accessor and never reads EVALERR-CELL, so an undefined word in the
+      \ generated text left a definition whose body calls nothing, and the stage0
+      \ build died of SIGSEGV later instead of naming the token.
+      15 70 MOVZ,  LEVALREC @ B,
    LUN0 @ LBL,
    9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
    EMIT-REPL-RECOVER

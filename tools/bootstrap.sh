@@ -322,6 +322,38 @@ bootstrap_ptr_cell_mark_gate() {
 
 bootstrap_ptr_cell_mark_gate
 
+# An undefined word inside `evaluate` has to be a catchable rc-70 throw, not a
+# rollback that returns and lets a handlerless caller keep interpreting.
+# src/core/layout-buffer.f evaluates generated accessors and never reads
+# EVALERR-CELL, so the fail-open form cost a SIGSEGV far from the offending token.
+bootstrap_eval_undef_gate() {
+  local src="test/bootstrap-eval-undef-src.f"
+  local bin="$T/bootstrap-eval-undef"
+  local out="$T/bootstrap-eval-undef.out"
+  local err="$T/bootstrap-eval-undef.err"
+  local marker=""
+  local rc=0
+
+  "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/$src\" slurp-file s\" $bin\" FORTH-EXE bye"
+  set +e
+  "$bin" >"$out" 2>"$err"
+  rc=$?
+  set -e
+  if ! IFS= read -r marker < "$out"; then
+    marker=""
+  fi
+  if [[ "$rc" -ne 70 || "$marker" != "BOOTSTRAP-EVAL-UNDEF-ARMED" ]]; then
+    printf 'bootstrap eval undef: expected armed rc=70; got rc=%s marker=%s\n' "$rc" "$marker" >&2
+    exit 75
+  fi
+  if grep -q 'BOOTSTRAP-EVAL-UNDEF-LEAKED' "$out"; then
+    printf 'bootstrap eval undef: interpretation continued past the failed evaluate\n' >&2
+    exit 75
+  fi
+}
+
+bootstrap_eval_undef_gate
+
 # The recovery engine publishes a created word's effect from its definer: `-- ptr a`
 # for `create` and `variable`, `-- a` for `constant`, and the declared created
 # effect for `create ... does>`. Every row goes through `trust-raw`, so its type
