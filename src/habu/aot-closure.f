@@ -180,9 +180,9 @@ create AENB 20 allot  variable AENV  variable AENN
 variable FX
 : REC-CODE-PTR ( ptr a -- ptr ptr u8 ) {: r:ptr :}  r 0 ptr-field ;
 : REC-CODE-PTR@ ( ptr a -- ptr u8 )  REC-CODE-PTR @ ;
-: REC-WID@ ( ptr a -- n ) {: r:ptr :}  r 40 + @ ;
+: REC-WID@ ( ptr n -- n ) {: r:ptr :}  r 40 + @ ;
 
-: FINDMAIN ( -- ptr a )  0 FX !
+: FINDMAIN ( -- ptr n )  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
 \ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
@@ -226,7 +226,7 @@ MAX-CLO CLO-LIMIT!
    NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
    r NCLO @ cells CLO + !  NCLO @ 1+ NCLO ! ;
 variable SP2  variable SEND
-: SCAN-CALLEE ( ptr a ptr a -- ) {: caller:ptr callee:ptr :}
+: SCAN-CALLEE ( ptr n ptr n -- ) {: caller:ptr callee:ptr :}
    callee XREF-FOUND? 0= if exit then
    callee dup AOT-UNSAFE? if caller swap AOT-UNSAFE-DIE then
    ADD-CLO ;
@@ -235,12 +235,12 @@ variable SP2  variable SEND
 \ dict records and match on the code-entry pointer directly (REC-CODE-PTR@) so a
 \ direct-BL target needs no address-to-cell cast. Ordinary words and registered engine
 \ helpers both carry a record; a non-entry address matches nothing (fails closed later).
-: FINDADDR-PTR ( ptr u8 -- ptr a ) {: t:ptr :}  0 FX !
+: FINDADDR-PTR ( ptr u8 -- ptr n ) {: t:ptr :}  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC REC-CODE-PTR@ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
 \ Follow a direct BL (the one native call form) to its callee; leave everything
 \ else (a plain B, conditional/compare branches, intra-record jumps) untouched.
-: SCAN-DIRECT ( ptr a ptr u8 -- ) {: caller:ptr p:ptr :}
+: SCAN-DIRECT ( ptr n ptr u8 -- ) {: caller:ptr p:ptr :}
    p AOT-W32@ dup CALL? if
       p swap TARGET FINDADDR-PTR caller swap SCAN-CALLEE
    else

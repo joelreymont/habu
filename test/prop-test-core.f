@@ -645,7 +645,7 @@ TRUSTED: EVAL-RUNNER ( -- n )
    s" : PROP-PC ( n -- n ) char+ ; " s" 7 " 1 CHECK-CASE
    s" : PROP-PC ( n -- ) . ; " s" 7 " 0 CHECK-CASE
    s" : PROP-PC ( -- n ) depth ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- ptr a ) here ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- ptr n ) here ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) script-argc ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) epoch-seconds ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) mono-ns ; " s" " 1 CHECK-CASE

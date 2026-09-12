@@ -32,7 +32,7 @@ variable B-U
 : A$ ( -- ptr u8 n ) A-PATH A-U @ ;
 : B$ ( -- ptr u8 n ) B-PATH B-U @ ;
 
-: PATH! ( ptr u8 n ptr u8 ptr a -- ) {: name:ptr nameu:n dst:ptr up:ptr :}
+: PATH! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu:n dst:ptr up:ptr :}
    ROOT$ name nameu dst JOIN-PATH up ! ;
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}

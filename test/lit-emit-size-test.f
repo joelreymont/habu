@@ -36,20 +36,23 @@ $1122334455667788 constant Z4              \ four chunks (a genuine 64-bit value
 : SMARK ( -- ) ;                           \ marker: bounds SONE
 
 : BODY ( n n -- n ) - ;                    \ body length = gap to the next contiguous word
+\ Execution tokens as cell values: a constant's ( -- a ) and a string word's ( -- ).
+TRUSTED: XT>N ( [ -- a ] -- n ) ;
+TRUSTED: XT0>N ( [ -- ] -- n ) ;
 
 : SIZES ( -- )
    T-RESET
    \ Exact scalar-body sizes: minimal chain (n chunks) + push (2 instr) + ret = (n+3)*4 bytes.
-   ['] Z1  ['] Z0  BODY 16 T=              \ zero:            1 chunk  -> 16
-   ['] ZN1 ['] Z1  BODY 16 T=              \ 42 (K):          1 chunk  -> 16  (was 28)
-   ['] ZN2 ['] ZN1 BODY 16 T=              \ -1  MOVN:        1 chunk  -> 16
-   ['] Z2  ['] ZN2 BODY 16 T=              \ -2  MOVN:        1 chunk  -> 16
-   ['] Z3  ['] Z2  BODY 20 T=              \ 2 chunks:                -> 20
-   ['] Z4  ['] Z3  BODY 24 T=              \ 3 chunks:                -> 24
-   ['] CEND ['] Z4 BODY 28 T=             \ 4 chunks (full 64-bit):  -> 28
+   ['] Z1 XT>N  ['] Z0 XT>N  BODY 16 T=              \ zero:            1 chunk  -> 16
+   ['] ZN1 XT>N ['] Z1 XT>N  BODY 16 T=              \ 42 (K):          1 chunk  -> 16  (was 28)
+   ['] ZN2 XT>N ['] ZN1 XT>N BODY 16 T=              \ -1  MOVN:        1 chunk  -> 16
+   ['] Z2 XT>N  ['] ZN2 XT>N BODY 16 T=              \ -2  MOVN:        1 chunk  -> 16
+   ['] Z3 XT>N  ['] Z2 XT>N  BODY 20 T=              \ 2 chunks:                -> 20
+   ['] Z4 XT>N  ['] Z3 XT>N  BODY 24 T=              \ 3 chunks:                -> 24
+   ['] CEND XT>N ['] Z4 XT>N BODY 28 T=              \ 4 chunks (full 64-bit):  -> 28
    \ String-word bodies shrink by the same 12 bytes the minimal length-push saves.
-   ['] SONE  ['] SEMPTY BODY 52 T=
-   ['] SMARK ['] SONE   BODY 56 T=
+   ['] SONE XT0>N  ['] SEMPTY XT0>N BODY 52 T=
+   ['] SMARK XT0>N ['] SONE XT0>N   BODY 56 T=
    T-REPORT ;
 
 \ --- Structural proof (item: a scalar numerically inside an address range is never

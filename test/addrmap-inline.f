@@ -121,10 +121,10 @@ cp@ P1 !
 : AMI-REF ( -- ) ;                           \ an empty body: the frame, and nothing else
 cp@ P2 !
 
-: AMI-ONE ( -- ptr a ) AMI-DATA ;            \ short enough to inline: the chain is copied
+: AMI-ONE ( -- ptr n ) AMI-DATA ;            \ short enough to inline: the chain is copied
 cp@ P3 !
 
-: AMI-TWO ( -- ptr a ptr a ) AMI-DATA AMI-DATA ;
+: AMI-TWO ( -- ptr n ptr n ) AMI-DATA AMI-DATA ;
 cp@ P4 !
 
 : AMI-NOCHAIN ( n -- n ) 1 + ;               \ inlinable, and carries no address
@@ -133,7 +133,7 @@ cp@ P5 !
 : AMI-PLAIN ( n -- n ) AMI-NOCHAIN ;
 cp@ P6 !
 
-: AMI-BIGCALL ( -- ptr a ptr a ) AMI-TWO ;   \ AMI-TWO is past the inline limit: one BL
+: AMI-BIGCALL ( -- ptr n ptr n ) AMI-TWO ;   \ AMI-TWO is past the inline limit: one BL
 cp@ P7 !
 
 \ ---- the copied span ---------------------------------------------------------

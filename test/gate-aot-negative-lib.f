@@ -24,7 +24,7 @@ package AOT-NEGATIVE
    s\" : ANT-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
    s" : ANT-TARGET= ( n ptr u8 ptr u8 n -- ) {: instr:n want:ptr label:ptr labelu:n :}" GE-SRC+
    s"  ANT-CODE instr TARGET want = label labelu ANT-EXPECT ;" GE-SRC-LINE
-   s" : ANT-HELPER-REC ( -- ptr a ) 0 ANT-FX !" GE-SRC+
+   s" : ANT-HELPER-REC ( -- ptr n ) 0 ANT-FX !" GE-SRC+
    s"  begin ANT-FX @ ndict@ < while ANT-FX @ REC dup REC-WID@ OWNER-API-PRI-WID =" GE-SRC+
    s"  if exit then drop ANT-FX @ 1+ ANT-FX ! repeat XREF-NULL ;" GE-SRC-LINE
    s\" : ANT-RUN ( -- ) $14000002 DIRECT? s\" AOT direct B decode\" ANT-EXPECT" GE-SRC+

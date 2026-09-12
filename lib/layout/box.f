@@ -77,28 +77,28 @@ BOX-ARENA-RESET
    dup BOX-PAY-COUNT-CHECK
    BOX-HEAD-CELLS + ;
 
-: BOX-ALLOC ( n -- ptr a )              \ a fresh box record with room for m payload cells
+: BOX-ALLOC ( n -- ptr n )              \ a fresh box record with room for m payload cells
    {: m:n :}
    m BOX-RECORD-CELLS BOX-CELLS {: base:ptr :}
    m base !
    base 1 cells + ;
 
 \ --- typed field access through a box pointer.
-: BOX-TAG! ( n ptr a -- )               \ write the variant tag
+: BOX-TAG! ( n ptr n -- )               \ write the variant tag
    BOX-TAG-CELL cells +  ! ;
-: BOX-DEREF-TAG ( ptr a -- n )          \ read the variant tag
+: BOX-DEREF-TAG ( ptr n -- n )          \ read the variant tag
    BOX-TAG-CELL cells +  @ ;
 
-: BOX-PAY-CAP ( ptr a -- n )            \ payload capacity stored before the public record
+: BOX-PAY-CAP ( ptr n -- n )            \ payload capacity stored before the public record
    BOX-CAP-CELL cells +  @ ;
 
-: BOX-PAY-ADDR ( n ptr a -- ptr a )     \ address of payload cell i
+: BOX-PAY-ADDR ( n ptr n -- ptr n )     \ address of payload cell i
    {: i:n p:ptr :}
    i 0 < IF E-TBL-BOUNDS throw THEN
    i p BOX-PAY-CAP >= IF E-TBL-BOUNDS throw THEN
    p  BOX-PAY-CELL0 i +  cells + ;
-: BOX-PAY! ( n n ptr a -- )             \ store val into payload cell i
+: BOX-PAY! ( n n ptr n -- )             \ store val into payload cell i
    {: val:n i:n p:ptr :}
    val  i p BOX-PAY-ADDR  ! ;
-: BOX-PAY@ ( n ptr a -- n )             \ read payload cell i
+: BOX-PAY@ ( n ptr n -- n )             \ read payload cell i
    BOX-PAY-ADDR @ ;

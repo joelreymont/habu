@@ -112,7 +112,7 @@ variable SHT-CAP-V  variable SHT-I  variable H-V
 : H+ ( n -- ) H-V @ xor FNV-PRIME * H-V ! ;
 : H@ ( -- n ) H-V @ ;
 
-: SHT-SLOT ( n -- ptr a ) cells SHT-P @ + ;
+: SHT-SLOT ( n -- ptr n ) cells SHT-P @ + ;
 
 : SHT+ ( n -- ) {: k:n :}
    k SHT-CAP-V @ 1 - and SHT-I !

@@ -153,18 +153,21 @@ SUMTYPE p2m-res 2
   VARIANT err b ;VARIANT
 ;SUMTYPE
 
-: P2M-SINK ( n -- ) drop ;
+\ The sink takes the target's execution token as a typed quotation; the
+\ chains the passes record all name P2M-TARGET, the same code address.
+: P2M-TARGET ( n -- ) drop ;
+: P2M-SINK ( [ n -- ] -- ) drop ;
 
 variable Q0  variable Q1  variable Q2  variable Q3  variable Q4  variable Q5
 
 cp@ Q0 !
-: P2M-Z ( -- ) ['] P2M-SINK P2M-SINK ;                  \ the neighbour below
+: P2M-Z ( -- ) ['] P2M-TARGET P2M-SINK ;                  \ the neighbour below
 cp@ Q1 !
-: P2M-A ( n -- n n ) dup ['] P2M-SINK P2M-SINK ;        \ narrow twin
+: P2M-A ( n -- n n ) dup ['] P2M-TARGET P2M-SINK ;        \ narrow twin
 cp@ Q2 !
-: P2M-B ( p2m-res<n,n> -- p2m-res<n,n> p2m-res<n,n> ) dup ['] P2M-SINK P2M-SINK ;
+: P2M-B ( p2m-res<n,n> -- p2m-res<n,n> p2m-res<n,n> ) dup ['] P2M-TARGET P2M-SINK ;
 cp@ Q3 !
-: P2M-C ( n -- n n ) dup 65 emit ;                      \ narrow twin
+: P2M-C ( n -- n n ) dup 65 emit ;                        \ narrow twin
 cp@ Q4 !
 : P2M-D ( p2m-res<n,n> -- p2m-res<n,n> p2m-res<n,n> ) dup 65 emit ;
 cp@ Q5 !

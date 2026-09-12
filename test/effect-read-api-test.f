@@ -67,7 +67,7 @@ package ERA-FIX
 public
 
 : BUNDLE ( option<n> n -- n option<n> ) swap ;
-: TWOVAR ( a b n -- n a b ) swap ;
+: TWOVAR ( a b n -- n a b ) rot rot ;
 : MKOPT  ( n -- option<n> ) OPTION:SOME ;           \ a user word whose OUTPUT is bundled
 
 \ THE PAIR THE QUOTATION DESCENT EXISTS FOR, built on the same argument as the

@@ -275,8 +275,11 @@ create SUBJECT-ERR SUBJECT-CAP allot
    outu 0 T=
    SUBJECT-ERR erru s" uncaught throw code 7135" CONTAINS? TTRUE ;
 
+\ The forged package must be a name no engine package owns: `package` refuses a
+\ sealed name (ENGINE-ERROR:SEAL-PACKAGE) before the cast is reached, which is a
+\ different refusal than the ownership one this case is about.
 : OWNER-CAST-CASE ( -- )
-   S\" package HIR\npublic\nCAST: ANY ( n -- IR-ID:ir-module-key )\n;package"
+   S\" package FOREIGN\npublic\nCAST: ANY ( n -- IR-ID:ir-module-key )\n;package"
    OWNER-CAST-REJECT ;
 
 : OWNER-CAST-SPOOF ( -- )
@@ -501,10 +504,13 @@ variable PUBLIC-HITS
    PUBLIC# 0 ?do i PUBLIC$ PUBLIC-ROW loop
    s" SERIAL-NEXT" pub XREF-FIND-WL XREF-FOUND? TFALSE ;
 
-\ Read the public metadata surface; checker lookup helpers are private.
+\ Read the public metadata surface; checker lookup helpers are private, so the
+\ family's package name comes through a trusted wrapper of the sealed accessor.
+TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
+
 : FAMILY-ID ( n -- n bool ) {: idx:n :}
    TFAM:TFAM-N@ 0 ?do
-      i TFAM:TFAM-PKG$ s" IR-ID" STR= if
+      i FAMILY-PKG$ s" IR-ID" STR= if
          i TFAM-NAME$ idx FAMILY$ STR= if i true unloop exit then
       then
    loop
@@ -536,5 +542,3 @@ public
 
 IR-ID-AUDIT:RUN
 IR-ID-TEST:RUN
-
-;using

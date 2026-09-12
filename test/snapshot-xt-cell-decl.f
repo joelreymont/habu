@@ -150,6 +150,7 @@ TAKE8
 \ table, because nothing about a `variable` and a store decides a cell's kind.
 
 : RAW-TARGET ( -- n ) 99 ;
+TRUSTED: RAW-TARGET-XT ( -- n ) ['] RAW-TARGET ;   \ the target's code address as a cell value
 
 : RAW-ARM ( -- ) ['] RAW-TARGET RAW-XT ! ;
 
@@ -225,7 +226,7 @@ variable TALLY
    [: TAB-DIAG ;]
    DECLARATION-TRANSACTION:INIT ;
 
-: ROW-CELL ( n n -- ptr a ) {: row:n off:n :}
+: ROW-CELL ( n n -- ptr n ) {: row:n off:n :}
    TAB-ROWS row TAB-ROW-BYTES * + off + ;
 
 : ROW-OFF ( n n -- n )
@@ -235,6 +236,7 @@ variable TALLY
    TAB-STATE off + data-base - ;
 
 : LOOKALIKE-TARGET ( -- n ) 4711 ;
+TRUSTED: LOOKALIKE-TARGET-XT ( -- n ) ['] LOOKALIKE-TARGET ;
 
 : FORGE-TABLE ( -- )
    TAB-CELLS 0 ?do
@@ -344,7 +346,7 @@ public
    s" the ordinary cell holding a real token is not in the table" T-LABEL
    RAW-OFF LISTED? 0= TTRUE
    s" that cell really does hold the token that was stored" T-LABEL
-   RAW-XT @  ['] RAW-TARGET  T=
+   RAW-XT @  RAW-TARGET-XT  T=
    s" initialising a coordinator declares its table pointer and diagnostic callback" T-LABEL
    T1 @ T0 @ 2 + T=
    s" the coordinator's table owner cell is tagged as a DATA pointer" T-LABEL
@@ -362,8 +364,8 @@ public
    s" a lookalike table of real tokens declares nothing" T-LABEL
    LOOKALIKE-LISTED 0 T=
    s" the lookalike cells really do hold the token that was stored" T-LABEL
-   LOOKALIKE @  ['] LOOKALIKE-TARGET  T=
-   LOOKALIKE TAB-CELLS 1 - cells + @  ['] LOOKALIKE-TARGET  T=
+   LOOKALIKE @  LOOKALIKE-TARGET-XT  T=
+   LOOKALIKE TAB-CELLS 1 - cells + @  LOOKALIKE-TARGET-XT  T=
    T-REPORT
    s" snapshot-xt-cell-decl-test: ok" type cr ;
 

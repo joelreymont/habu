@@ -30,7 +30,7 @@ public
 : XRT-CALLER ( n -- n )
    XRT-SAMPLE + ;
 
-: XRT-EXPECT-FOUND ( ptr u8 n -- ptr a )
+: XRT-EXPECT-FOUND ( ptr u8 n -- ptr n )
    XREF-FIND dup XREF-FOUND? TTRUE ;
 
 : XRT-FOUND ( -- )

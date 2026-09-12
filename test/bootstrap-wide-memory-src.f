@@ -62,6 +62,9 @@ variable BWM-CASES
 TRUSTED: BWM-UN2 ( bwm2<n> -- n n ) ;
 TRUSTED: BWM-UN4 ( bwm4<n,n,n> -- n n n n ) ;
 TRUSTED: BWM-XT ( ptr u8 n -- n ) 0 search-wl ;
+\ The unset target is a sealed engine word: a checked tick reaches it where a
+\ wordlist search from user code no longer does.
+TRUSTED: BWM-UNSET-XT ( -- n ) ['] DEFER-UNSET ;
 
 : BWM-RUN2 ( -- n n )
    BWM-MK2 BWM-STORE2
@@ -219,14 +222,14 @@ TRUSTED: BWM-DEF-A ( -- ) [: 42 ;] is BWM-DEF ;
 TRUSTED: BWM-DEF-B ( -- ) [: 99 ;] is BWM-DEF ;
 TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
-: BWM-RD64 ( addr -- x )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
+: BWM-RD64 ( n -- n )  dup 0 BWM-W32  swap 4 BWM-W32  32 lshift  or ;
 
 : BWM-TEST-DEFER ( -- )
    s" BWM-DEF" BWM-XT {: xt:n :}
    xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
    xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
    xt 52 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
-   s" DEFER-UNSET" BWM-XT BWM=                \ = DEFER-UNSET code addr (fail closed, before any is)
+   BWM-UNSET-XT BWM=                          \ = DEFER-UNSET code addr (fail closed, before any is)
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
    BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
 
@@ -253,7 +256,7 @@ defer BWM-CDEF ( -- n )
    xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
    xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
    xt 52 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
-   s" DEFER-UNSET" BWM-XT BWM=                \ = DEFER-UNSET code addr (fail closed, before any is)
+   BWM-UNSET-XT BWM=                          \ = DEFER-UNSET code addr (fail closed, before any is)
    BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
    BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99
 
@@ -284,6 +287,8 @@ variable BWM-CF-ACC
 \ a row registered under the bare tail would leave the qualified call unknown.
 \ Certification is the assertion here: a missing or bare-named row stops these
 \ definitions loading at all. The negative half is test/bootstrap-created-*-src.f.
+\ The consumers below declare the concrete kinds they use (`ptr n`, `n`): the
+\ strict parametric rule keeps `ptr a` and `a` for effects that stay parametric.
 package BWM-PUB ;package
 
 package BWM-PUBLISHED
@@ -291,9 +296,9 @@ create BWM-PUB:MADE 1 cells allot
 variable BWM-PUB:CELL
 41 constant BWM-PUB:KONST
 : BWM-PUB:FN ( -- n ) 7 ;
-: MADE-PTR ( -- ptr a ) BWM-PUB:MADE ;
-: CELL-PTR ( -- ptr a ) BWM-PUB:CELL ;
-: KONST-VAL ( -- a ) BWM-PUB:KONST ;
+: MADE-PTR ( -- ptr n ) BWM-PUB:MADE ;
+: CELL-PTR ( -- ptr n ) BWM-PUB:CELL ;
+: KONST-VAL ( -- n ) BWM-PUB:KONST ;
 : FN-VAL ( -- n ) BWM-PUB:FN ;
 public
 : TEST ( -- )

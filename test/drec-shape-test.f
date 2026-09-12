@@ -18,7 +18,7 @@ require test/checker-assert.f
 : DRS-REC+ ( ptr a n -- ptr a ) + ;
 
 \ numeric slot read ( = XREF-CELL@ over a trusted rec ptr today)
-: DRS-CELL@ ( ptr a n -- n ) cells + @ ;
+: DRS-CELL@ ( ptr n n -- n ) cells + @ ;
 
 \ pointer slot read ( = XREF-PTR@ + TRUSTED: XREF-N>U8 today)
 : DRS-PTR@ ( ptr a n -- ptr u8 ) ptr-field @ ;
@@ -27,17 +27,21 @@ require test/checker-assert.f
 \ with the post-hook structure DSL in src/core/structures.f)
 : DRS-NAME-BYTES ( ptr a -- ptr u8 ) $18 STRUCT-BYTE+ ;
 
-\ sealed friend-band reads ( = TRUSTED: SEAL-LATCH@/SEAL-NDICT@ today;
-\ data-base is already PE-PTR-A in the PES table)
+\ sealed friend-band reads ( = TRUSTED: SEAL-NDICT@ today; the latch band's
+\ trusted reader is gone, the shape below is its only reader now. data-base is
+\ already PE-PTR-A in the PES table)
 : DRS-LATCH@ ( -- n ) data-base FRIEND-LATCH-CELL + @ ;
 : DRS-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
 
 : DRS-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ The latch band has no trusted reader left to hold the direct shape against, so
+\ it is held against the indexed shape over the same cell; the ndict band still
+\ has SEAL-NDICT@ and carries both boundary comparisons.
 : DRS-LATCH-EQUIV ( -- )
-   s" drs latch read matches boundary" T-LABEL
-   DRS-LATCH@ SEAL-LATCH@ T= ;
+   s" drs latch read matches the indexed slot read" T-LABEL
+   DRS-LATCH@ data-base FRIEND-LATCH-CELL CELL / DRS-CELL@ T= ;
 
 : DRS-NDICT-EQUIV ( -- )
    s" drs ndict read matches boundary" T-LABEL
@@ -45,7 +49,7 @@ require test/checker-assert.f
 
 : DRS-CELL-EQUIV ( -- )
    s" drs slot read matches boundary" T-LABEL
-   data-base FRIEND-LATCH-CELL CELL / DRS-CELL@ SEAL-LATCH@ T= ;
+   data-base SEAL-NDICT-CELL CELL / DRS-CELL@ SEAL-NDICT@ T= ;
 
 : DRS-REC+-BASE ( -- )
    s" drs rec+ preserves base" T-LABEL

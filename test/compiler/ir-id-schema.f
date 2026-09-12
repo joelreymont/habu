@@ -141,10 +141,14 @@ private
    idx PACKED-END < if s" packed" exit then
    s" scalar" ;
 
+\ The family's package name comes through a trusted wrapper of the sealed
+\ checker accessor.
+TRUSTED: FAMILY-PKG$ ( n -- ptr u8 n ) TFAM:TFAM-PKG$ ;
+
 : FAMILY-ID ( n -- n ) {: idx:n :}
    idx FAMILY-RANGE
    TFAM:TFAM-N@ 0 ?do
-      i TFAM:TFAM-PKG$ s" IR-ID" STR= if
+      i FAMILY-PKG$ s" IR-ID" STR= if
          i TFAM-NAME$ idx FAMILY-NAME$ STR= if i unloop exit then
       then
    loop
@@ -154,7 +158,7 @@ private
 
 : FAMILY-COUNT-CHECK ( -- )
    0 TFAM:TFAM-N@ 0 ?do
-      i TFAM:TFAM-PKG$ s" IR-ID" STR= if 1+ then
+      i FAMILY-PKG$ s" IR-ID" STR= if 1+ then
    loop
    FAMILY-COUNT <> if E-CID-FAMILY throw then ;
 
@@ -659,5 +663,3 @@ public
    IR-ID:POOL-OFF IR-ID:POOL-OFF-N ;
 
 ;package
-
-;using

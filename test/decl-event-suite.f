@@ -991,7 +991,7 @@ variable RT-OUTER-TOK   variable RT-INNER-FLD
 \ leaves them disagreeing. Swap it, prove the owner rejects pre-mutation, swap it
 \ back.
 variable RT-SAVED-FLD
-: RT-FLD-CELL ( -- ptr a ) RT-TOK @ DEV-TX-INDEX DEV-TX-AT DEVTX.FLDTOK ;
+: RT-FLD-CELL ( -- ptr n ) RT-TOK @ DEV-TX-INDEX DEV-TX-AT DEVTX.FLDTOK ;
 : RT-DESYNC-FLD ( -- )
    RT-FLD-CELL @ RT-SAVED-FLD !
    RT-SAVED-FLD @ RT-STALE + RT-FLD-CELL ! ;
