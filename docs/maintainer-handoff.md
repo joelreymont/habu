@@ -55,34 +55,48 @@ DATA.
 Independent review is mandatory before any landing: a read-only reviewer
 agent given the specification and the diff, never the author's narrative.
 
-## Lanes handed over by rowan, 2026-09-12 morning (state on disk)
+## Lanes in flight, 2026-09-12 afternoon (state on disk)
 
-- `.jj-ws/rowan-reuse` (habu-reuse-one-compile-5ff96de6): the session-compile
-  stack, tip 07bd24c1 over 79098f51 on fc23ff28, ready for review and
-  landing; rowan's report (board, 03:14 UTC) lists six loose ends to fold or
-  dot first: move the native-session opcode case one commit up, squash the
-  vocabulary commit with the memo commit so the stack is monotone, bound the
-  session tenancy of arena slots, the O(rows) IR-SYM:INTERN scan,
-  INTRINSIC-BOUND? at 375 us per call, and the LESSONS.md interner entry.
-- `.jj-ws/rowan-tier` (habu-land-the-tier-5ad0a198): the 19-commit tier stack
-  mid-rebase onto a04dd347; the working copy is "Subtract the written interval
-  from the span table" with uncommitted edits (habu1.f, habu2.f, test/tier.f,
-  LESSONS.md); `jj op log` there shows the sequence. Verify the exit statuses
-  renumbered off 95/96 and the span-full agreement check; the inliner traces
-  were open.
-- `.jj-ws/rowan-alloc` (habu-make-register-allocation-d7ba9e30): uncommitted
-  on 495dea80: `tools/compile-scaling.f` (the yardstick; its MEASURED ON table
-  may be pending) and `src/compiler/native/regalloc.f`; `build/` holds hb-base,
-  hb-d and codeprobe logs. Commit the yardstick first, then the scan removals.
-- `.jj-ws/rowan-combine` (habu-make-spill-rewrite-ca192310): uncommitted on
-  495dea80 across combine.f, spill.f, compiler.f, a prof accumulator,
-  `tools/chain-scale.f` and lib/errors.f; `probe/` and `tmp/` hold its logs.
-  Keep at most one accumulator; commit per removed cost with the floor line.
+Landed today after the runner: create-alignment (04701ef9), path capacity
+(f5885b3b), the strict parametric migration (62f5dbb3), two build-fixture
+fixes (9d7bb928), the compiled-tick internal-word gate and nine record/effect
+suites (f3e7f800, d88e3efd), diagnose-hb retired (7aebfda6), certify learns
+DYNAMIC-BUFFER (4145a44f, 15d51e38), byte-identical builds (a611d84d), the
+register-allocation lane (7f49cf17), seven remaining suites (41d1d6c7). The
+recorded red set is LESSONS.md's last entry; re-measure on a quiet box after
+each engine rebuild.
+
+Opus workers implement in isolated lanes; hazel reads every diff before
+landing. Lanes cut by the API session limit on 2026-09-12 13:30 UTC keep their
+on-disk state and are relaunched from it:
+
+- `.jj-ws/rowan-tier` (tier stack, 23 commits rebased onto f0a26624): landing
+  blocker found by its worker: with the stack's tier-1 selection in
+  tools/native-build.f a product engine cannot rebuild the tree (tier 1 cannot
+  resolve the package-private CHECK-RC in src/core/check-hook.f's PREFLIGHT),
+  and two-generation fails at generation 1. The fix goes in the compiler's
+  private-name resolution, never in the selection.
+- `.jj-ws/rowan-reuse` (session-compile stack): the review found a blocker
+  (SESSION-OPEN under an open context retires the wrong slot: use-after-free
+  and a wedged process) and a non-self-green commit; a worker was folding the
+  fixes (finding list on the board, 2026-09-12 09:2x UTC) when cut.
+- `.jj-ws/rowan-combine` (spill/combine, seven commits on f0a26624): the
+  NPROF accumulator must move out of DATA cells (byte identity); a worker was
+  doing that and adding the E-A64COMB-PLAN negative when cut. F-NEED-FILL is
+  O(blocks^2) (spill.f:947), a follow-up.
+- `.jj-ws/habu-green-the-aot-d30c5a39` (AOT gate family): worker cut while
+  duplicating the certify fix that 15d51e38 landed; rebase and resume.
+- `.jj-ws/habu-rebuild-the-node-73ff3eff` (intern index + verify-window seal):
+  worker cut mid-evidence.
+- `.jj-ws/habu-recover-stage0` (recovery bootstrap): four commits ready (seven
+  stage0 primitives, the seed's prefix mirror, a fail-open crash made a
+  refusal, nf.fs paths); the chain now stops at hb-stage rc 82
+  (habu-let-a-stage2-6744d545).
+- `.jj-ws/habu-size-the-snapshot-1ca5db10` (Tender's address table): built,
+  cannot be captured by any host until habu-classify-captured-addr-68fcc1df.
 - `.jj-ws/rowan-arena`, `rowan-pflayout`, `rowan-selfbuild`, `rowan-verify`,
-  `rowan-checker`, `rowan-floor`, `rowan-jit-nest`: earlier lanes, see the
-  tracker for what landed; retire a workspace once its work is on the root.
-
-Cedar's workspaces `.jj-ws/cedar-*` are reference material; do not edit them.
+  `rowan-checker`, `rowan-floor`, `rowan-jit-nest`: earlier lanes; retire once
+  their work is on the root.
 
 ## Rules that cost us a day when broken
 
