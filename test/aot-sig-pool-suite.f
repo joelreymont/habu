@@ -8,14 +8,19 @@
 \ while layout.f and habu2.f also compile in the gforth recovery host, where
 \ checker.f never loads. So neither file can be the sole owner of an offset both
 \ need, and the checker restates the number with a comment naming layout's
-\ constant. There were two such pairs, both prose-only; the signature pool adds a
-\ third and a fourth, and prose is not a check.
+\ constant. There were four such pairs, all prose-only - the three package-record
+\ cells and the live `using` depth; the signature pool adds a fifth and a sixth,
+\ and prose is not a check. A seal-latch pair was one of them until the engine
+\ grew the `seal-captured?` primitive (habu1.f BSEALCAPQ): the checker asks the
+\ engine instead of restating $20, so there is no offset left to disagree about.
+\ That is the better answer whenever a primitive can carry the read, and it is
+\ why this file asserts the mirrors that exist rather than a fixed count.
 \
-\ WHAT THIS FILE ASSERTS, AND WHY IT IS NOT A NAME SEARCH. The four CK-*-OFF
+\ WHAT THIS FILE ASSERTS, AND WHY IT IS NOT A NAME SEARCH. The six CK-*-OFF
 \ constants are NOT reachable from checked code - checker.f's own definitions
 \ compile with the hook off, so a checked caller has no record to resolve against
-\ and only the words carrying a PRIM: axiom can be named. Adding four axioms so a
-\ test could read four literals would grow the checker's public surface for a
+\ and only the words carrying a PRIM: axiom can be named. Adding six axioms so a
+\ test could read six literals would grow the checker's public surface for a
 \ test's convenience. So the checker's side is read where it is DEFINED: the
 \ source, through tools/lint/source-lex.f, and only a `<number> constant <NAME>` whose
 \ three tokens are all real code tokens counts. The layout side is read from the
@@ -113,16 +118,21 @@ variable VALUE                     \ the number the first one carried
    LINT-LEX:ERROR? 0= TTRUE ;
 
 \ ---- case one: every mirrored pair agrees ------------------------------------
-\ Two pairs are the signature pool's; two were already in the tree carrying only
+\ Two pairs are the signature pool's; four were already in the tree carrying only
 \ a comment, and they are here for the same reason - the drift risk is the same
 \ risk, and a check that covered only the new pairs would leave the older ones
-\ exactly as unverified as they were.
+\ exactly as unverified as they were. The list is the checker's live mirror set,
+\ so a name that is no longer mirrored has to leave this list with the mirror it
+\ describes: naming one that no definition answers reads as drift on the layout
+\ side (0 definitions, 0 for the number) and says nothing about either file.
 
 : MIRROR-CASE ( -- )
    LOAD-CHECKER
    s" CK-AOT-SIG-POOL-OFF" AOT-SIG:POOL-CELL ?MIRROR
    s" CK-AOT-SIG-LEN-OFF"  AOT-SIG:LEN-CELL  ?MIRROR
-   s" CK-SEAL-NDICT-OFF"   SEAL-NDICT-CELL ?MIRROR
+   s" CK-PKG-PUB-OFF"      PKG-PUB-CELL      ?MIRROR
+   s" CK-PKG-PRI-OFF"      PKG-PRI-CELL      ?MIRROR
+   s" CK-PKG-REC-OFF"      PKG-REC-CELL      ?MIRROR
    s" CK-USE-DEPTH-OFF"    USE-DEPTH-CELL    ?MIRROR ;
 
 \ ---- case two: the reader cannot be fooled -----------------------------------

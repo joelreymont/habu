@@ -567,7 +567,7 @@ $47C8 constant CF
 \ before taking them, below $7FF8 and below DATA-START for the reasons above.
 \ THE CHECKER MIRRORS THESE TWO NUMBERS (src/core/checker.f CK-AOT-SIG-*-OFF)
 \ because src/core/checker.f loads BEFORE this file in every host that has both -
-\ the same reason CK-SEAL-LATCH-OFF is mirrored there. The mirror is not left to
+\ the same reason CK-PKG-REC-OFF is mirrored there. The mirror is not left to
 \ prose: test/aot-sig-pool-suite.f reads both names out of a booted engine, where
 \ both are live, and refuses a disagreement.
 package AOT-SIG
