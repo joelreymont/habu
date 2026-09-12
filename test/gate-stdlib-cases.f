@@ -774,6 +774,10 @@ SUITE typed-storage-structural
    test/typed-storage-structural-test.f
 ;SUITE
 
+SUITE certify-dynamic-buffer
+   test/certify-dynamic-buffer.f
+;SUITE
+
 SUITE underdepth-gate
    test/underdepth-gate.f
 ;SUITE

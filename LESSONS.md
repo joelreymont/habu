@@ -7797,3 +7797,21 @@ and --no-lldbinit.
   nothing on either family (47959 us against 48132 us at 1024 values), because
   neither shape is a many-block body. It was dropped rather than kept on the
   argument that the big definitions have many blocks.
+
+## 2026-09-12 - certification is a second registry for generated words
+
+- **A definer that publishes generated words has TWO registries, and the second
+  one only fails in a full build.** `DYNAMIC-BUFFER NAME type` publishes NAME,
+  NAME-RESERVE and NAME-RELEASE by evaluating source it generates
+  (src/core/layout-buffer.f DBUF-SOURCE), so the live load path knows all three
+  and a checked body calling them compiles and runs. Certification never executes
+  a definer: src/habu/verify-source.f dispatches it statically and a CHECKER-DEF*
+  entry point registers what it publishes. DYNAMIC-BUFFER had no row, so the
+  refresh died at `certify: stage2-src rejected rc 70`, E-UNDEFINED on
+  AOT-NAMES-STORAGE-RESERVE (src/habu/aot-decl.f declares its names buffer that
+  way) - and nothing cheaper than a full engine refresh noticed, because every
+  other gate loads that definer instead of certifying it. A new definer needs both
+  rows in the same commit. test/certify-dynamic-buffer.f is the shape of the cheap
+  regression: declare the definer through VERIFY:SOURCE-BUF-IN-SCOPE, certify a
+  candidate that calls each generated name, and require a name the definer does
+  NOT publish to stay unresolvable so the row cannot pass by prefix match.

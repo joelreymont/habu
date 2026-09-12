@@ -661,6 +661,17 @@ variable STG-START
    SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
    type typeu name nameu CHECKER-DEFTYPED-VARIABLE ;
 
+\ DYNAMIC-BUFFER (src/core/layout-buffer.f) publishes THREE words from one line -
+\ the accessor, NAME-RESERVE and NAME-RELEASE - so the whole triple is registered
+\ here. Certification never runs the definer, and without this row a later
+\ definition in the same source calling one of the three is E-UNDEFINED:
+\ src/habu/aot-decl.f's AOT-NAMES-RESERVE was, which took the stage2 certify pass
+\ with it. No count token: a dynamic buffer's extent is set at run time.
+: RECORD-DYNAMIC-BUFFER ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   type typeu name nameu CHECKER-DEFDYNAMIC-BUFFER ;
+
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
@@ -786,6 +797,7 @@ variable STG-START
    a u s" LAYOUT-BUFFER" STR=CI IF RECORD-LAYOUT-BUFFER 0 0= EXIT THEN
    a u s" TYPED-BUFFER" STR=CI IF RECORD-TYPED-BUFFER 0 0= EXIT THEN
    a u s" TYPED-VARIABLE" STR=CI IF RECORD-TYPED-VARIABLE 0 0= EXIT THEN
+   a u s" DYNAMIC-BUFFER" STR=CI IF RECORD-DYNAMIC-BUFFER 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict
