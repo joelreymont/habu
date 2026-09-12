@@ -163,6 +163,11 @@ DYNAMIC-BUFFER V-DECL-BUF n
 create A-REG FIXED-MAX cells allot
 create O-REG FIXED-MAX cells allot
 create R-HOLD FILES-N REGS-N * cells allot
+\ How many registers each file's pool holds, and how many of those are free.
+\ Maintained where a holder changes, because the pressure questions are asked at
+\ every instruction and the answer moves only when a register changes hands.
+create R-POOL-N FILES-N cells allot
+create R-FREE-N FILES-N cells allot
 DYNAMIC-BUFFER PL-BLK-BUF n
 : PL-BLK ( -- ptr n ) 0 PL-BLK-BUF ;
 DYNAMIC-BUFFER PL-POS-BUF n
@@ -195,6 +200,10 @@ variable SHORT-FUN                           \ the function whose scan ran short
    fl F-FPR = if 0 S-FPOOL @ A64EFF:FPRS-N exit then
    fl F-GPR = if 0 S-POOL @ A64EFF:GPRS-N exit then
    E-A64RA-CLASS throw ;
+
+: POOL-HAS? ( n n -- bool )
+   {: fl:n r:n :}
+   fl POOL-BITS 1 r lshift and 0<> ;
 
 \ ---- the per-value tables ----------------------------------------------------
 : SLOT ( IR-ID:ir-value-id -- n )
@@ -231,11 +240,46 @@ variable SHORT-FUN                           \ the function whose scan ran short
    fl REGS-N * r + ;
 
 : HOLD-AT ( n n -- n )               RIX cells R-HOLD + @ ;
-: HOLD! ( n n n -- )                 {: v:n fl:n r:n :} v fl r RIX cells R-HOLD + ! ;
 
+: POOL-N-AT ( n -- n )               cells R-POOL-N + @ ;
+
+\ Per file, because a class that wants a floating register is not served by a
+\ free general one.
+: FREE-N-AT ( n -- n )               cells R-FREE-N + @ ;
+
+: FREE-N+ ( n n -- )                 {: fl:n d:n :}
+   fl FREE-N-AT d +  fl cells R-FREE-N + ! ;
+
+\ Only a pool register is ever handed out, so only a pool register can move the
+\ count, and it moves it by one in the direction the holder went.
+: HOLD! ( n n n -- )
+   {: v:n fl:n r:n :}
+   fl r RIX {: ix:n :}
+   fl r POOL-HAS? if
+      ix cells R-HOLD + @ NOBODY = {: was-free:bool :}
+      v NOBODY = if
+         was-free 0= if fl 1 FREE-N+ then
+      else
+         was-free if fl -1 FREE-N+ then
+      then
+   then
+   v ix cells R-HOLD + ! ;
+
+: POOL-SIZE ( n -- n )
+   {: fl:n :}
+   0
+   REGS-N 0 ?do fl i POOL-HAS? if 1+ then loop ;
+
+\ The counts are restated after the table is cleared rather than carried through
+\ it: what HOLD! reads on the way past is the turn before's holder.
 : HOLDERS-CLEAR ( -- )
    FILES-N 0 ?do
       REGS-N 0 ?do NOBODY j i HOLD! loop
+   loop
+   FILES-N 0 ?do
+      i POOL-SIZE {: n:n :}
+      n i cells R-POOL-N + !
+      n i cells R-FREE-N + !
    loop ;
 
 : TABLES-CLEAR ( -- )
@@ -404,10 +448,6 @@ variable SHORT-FUN                           \ the function whose scan ran short
 \ only part of the program it is allocating for.
 : COVER-CK ( -- )
    N-VALS @ 0 ?do i SET-AT 0= if E-A64RA-SHAPE throw then loop ;
-
-: POOL-HAS? ( n n -- bool )
-   {: fl:n r:n :}
-   fl POOL-BITS 1 r lshift and 0<> ;
 
 : FREE-REG ( n n -- n )
    {: fl:n forbid:n :}
@@ -1209,16 +1249,9 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
 : MB-EXPIRE ( n -- )
    {: limit:n :}
    FILES-N 0 ?do
-      REGS-N 0 ?do j i limit MB-EXPIRE1 loop
-   loop ;
-
-\ Per file, because a class that wants a floating register is not served by a
-\ free general one.
-: MB-FREE-N ( n -- n )
-   {: fl:n :}
-   0
-   REGS-N 0 ?do
-      fl i POOL-HAS? fl i HOLD-AT NOBODY = and if 1+ then
+      i FREE-N-AT  i POOL-N-AT <> if
+         REGS-N 0 ?do j i limit MB-EXPIRE1 loop
+      then
    loop ;
 
 \ ---- what a class already in the frame still costs in registers ---------------
@@ -1338,11 +1371,11 @@ DYNAMIC-BUFFER DUE-NEXT-BUF n
 
 : MB-READ-PRESSURE ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id pos:n fl:n :}
-   f pos fl MB-LOAD-N  fl MB-FREE-N > if pos fl MB-SHORT! then ;
+   f pos fl MB-LOAD-N  fl FREE-N-AT > if pos fl MB-SHORT! then ;
 
 : MB-WRITE-PRESSURE ( n n -- )
    {: pos:n fl:n :}
-   pos fl MB-STORE-N  fl MB-FREE-N > if pos fl MB-SHORT! then ;
+   pos fl MB-STORE-N  fl FREE-N-AT > if pos fl MB-SHORT! then ;
 
 : MB-READ-PRESSURE-ALL ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
