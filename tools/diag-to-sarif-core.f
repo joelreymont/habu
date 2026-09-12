@@ -78,7 +78,7 @@ variable SARIF-PARSE-NODE
    SARIF-STRING
    J-COLON SARIF-C ;
 
-: SARIF-U64 ( u -- )
+: SARIF-U64 ( n -- )
    SARIF-NV !
    SARIF-NV @ 0= if 48 SARIF-C exit then
    0 SARIF-NP !
