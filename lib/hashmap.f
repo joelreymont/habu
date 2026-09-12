@@ -12,6 +12,11 @@
 \ an out-of-bounds slot), and PROBE bounds its scan at cap steps, throwing E-HM-FULL
 \ on a full table rather than looping forever on an absent key.
 \
+\ Keys go in as they are. HASH64 mixes the whole 64-bit key before PROBE masks
+\ it, so no caller has to pre-mix, pre-fold or spread a key to get a usable slot
+\ distribution; a fold that turns a non-integer key (a string, a byte range)
+\ into one cell is a separate job and stays the caller's.
+\
 \ The module lives in `package HM`. External callers use the qualified public API
 \ (HM:HASH64, HM:PROBE, HM:CLEAR); the probe cursor state is package-private.
 
@@ -27,10 +32,22 @@ variable SLOT  variable DONE  variable IX  variable TRIES  \ probe cursor / loop
    cap 0 <= if E-HM-CAP throw then
    cap  cap 1- and  0= 0= if E-HM-CAP throw then ;   \ (cap & (cap-1)) nonzero => not a power of two
 
+\ fmix64's two multipliers, in the spec's hex spelling.
+$FF51AFD7ED558CCD constant FMIX-MUL1
+$C4CEB9FE1A85EC53 constant FMIX-MUL2
+
+\ fmix64's xor-shift step: fold the high half of the cell down onto the low half,
+\ which is what carries a high key's entropy into the bits PROBE masks.
+: XOR-FOLD ( n -- n ) {: x:n :} x  x 33 rshift xor ;
+
 public
 
-\ splitmix-style mix; identity for small sequential keys (ideal for frame indices)
-: HASH64 ( n -- n ) {: x:n :} x  x 33 rshift xor ;
+\ fmix64, murmur3's 64-bit finalizer (splitmix64's finalizer is as good; this one
+\ is the more widely published, so HM-RUN can pin known answers recomputed from
+\ the spec). It is a bijection whose every output bit depends on every input bit,
+\ so the low bits PROBE masks carry the whole key, not a fragment of it. The
+\ multiplies must wrap to mix, and Habu's `*` wraps.
+: HASH64 ( n -- n ) XOR-FOLD FMIX-MUL1 *  XOR-FOLD FMIX-MUL2 *  XOR-FOLD ;
 
 \ slot where key already lives, or the first empty slot for insertion
 : PROBE ( ptr n ptr n n n -- n ) {: keys:ptr used:ptr cap:n key:n :}

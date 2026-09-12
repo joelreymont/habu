@@ -7967,3 +7967,14 @@ and --no-lldbinit.
   reverted still died on the payload generated from the fixed tree; reverting
   the tree and letting the suite regenerate its payload is the test that
   attributes.
+
+## 2026-09-12 - a hash's entropy has to reach the bits the table masks
+
+- **An identity finalizer under a power-of-two mask turns an open-addressed table
+  into a scan with every test still green.** `lib/hashmap.f`'s `x ^ (x >> 33)`
+  was the identity below 2^33, so `HM:PROBE` masked whatever low bits the caller
+  happened to hold: 4096 keys whose entropy sat above bit 33 folded onto 64 home
+  slots at a mean 32.5 probes, against 1.46 for murmur3's fmix64. A slot table
+  confirms every candidate against `keys[]`, so nothing ever returns a wrong
+  answer - only a probe COUNT catches it, and counting probes instead of time
+  makes the regression exact rather than flaky.
