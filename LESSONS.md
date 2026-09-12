@@ -7733,6 +7733,21 @@ and --no-lldbinit.
   p2-map-rewind (1), pre-trust-defer (1), program-diagnostics (1),
   type-ctor (70), using-import (1), verify-prim (1), xt-cell (1),
   xt-effect (1)
+  Re-measured 2026-09-12 14:25 UTC on engine 7f49cf17 (tree 52f21f83, load
+  0.7, quiet box): 19 red, exit code in parentheses, after the record
+  and effect suites, the remaining-family suites and the recovery lane landed;
+  four more names the pool reported (stdlib-process-fixtures,
+  stdlib-runner-fixtures, stdlib-source-default, tool-boundary-aot-call, two
+  of them TIMEOUT-UNDER-LOAD at load 0.7) pass alone and are the pool's own
+  budgets (habu-runner-budgets-uncalibrated-cb11c328), not the tree's.
+  addrmap-inline (1), aot-prelude-band (1), aot-sig-pool (1),
+  aot-wide-format (67), aot-wid-restore (70), app-image (67),
+  build-fixpoint-fixtures (1), cast (1), check-cli-boundary (67),
+  compiler-ir-id (1), effect-store-census (1), engine (1),
+  hb-build-fixtures kind=TIMEOUT-UNDER-LOAD code=0),
+  native-gate-aot-positive (1), native-gate-diagnostics (67),
+  p2-map-rewind (1), pre-trust-defer (1), program-diagnostics (1),
+  verify-prim (1)
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
