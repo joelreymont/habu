@@ -3855,6 +3855,27 @@ PTR-VARIABLE NRX-BASE
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
+\ The node-intern index's store stamp (UIX, far below). Its entries are store
+\ OFFSETS, so a relocation that copies the store verbatim leaves every one of
+\ them naming its own node and only the ADDRESS changes: USIGS-GROW carries this
+\ stamp down with the store, the way a hit in E-INTERN carries the table's end
+\ mark down with the rewind it performs. Declared here because USIGS-GROW is far
+\ above the index words, and read through a cell-indexed ptr-field view so the
+\ nested pointer role survives the fetch — the same shape USX-BASE uses.
+PTR-VARIABLE UIX-BASE
+
+: UIX-BASE-FIELD ( -- ptr ptr u8 )
+   UIX-BASE 0 ptr-field ;
+
+: UIX-BASE@ ( -- ptr u8 )
+   UIX-BASE-FIELD @ ;
+
+: UIX-BASE! ( ptr u8 -- )
+   UIX-BASE-FIELD ! ;
+
+: UIX-REBASE ( -- )
+   USIGS UIX-BASE! ;
+
 \ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
 \ value the checker metadata writes with `!`. USIGS-CELL-AT refines a cell-aligned
 \ offset into that byte store to a cell pointer so the head/metadata stores stay
@@ -3963,7 +3984,8 @@ USIGS-RUNTIME-INIT
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
    USIGS USIGS-GROW-NEXT @ UEND @ CELL + USIGS-COPY
    USIGS-GROW-NEXT @ USIGS-P !
-   USIGS-GROW-CAP @ USIGS-CAP-U ! ;
+   USIGS-GROW-CAP @ USIGS-CAP-U !
+   UIX-REBASE ;                       \ the copy was verbatim: every interned offset is still its own node
 
 : USIGS-ENSURE {: need :}
    need USIGS-CAP-U @ <= IF exit THEN
@@ -4800,20 +4822,11 @@ PTR-VARIABLE UIX-BKT-P   PTR-VARIABLE UIX-ENT-P
 variable UIX-BKT-CAP variable UIX-ENT-CAP
 variable UIX-N       variable UIX-HI
 variable UIX-I       variable UIX-J   variable UIX-H
-PTR-VARIABLE UIX-BASE
+variable UIX-BP      \ the rebuild's record cursor
 
-\ UIX-BASE holds the store the entry offsets were taken against, read through a
-\ cell-indexed ptr-field view so the nested pointer role survives the fetch —
-\ the same shape USX-BASE uses one screen below.
-: UIX-BASE-FIELD ( -- ptr ptr u8 )
-   UIX-BASE 0 ptr-field ;
-
-: UIX-BASE@ ( -- ptr u8 )
-   UIX-BASE-FIELD @ ;
-
-: UIX-BASE! ( ptr u8 -- )
-   UIX-BASE-FIELD ! ;
-
+\ UIX-BASE, the store the entry offsets were taken against, is declared with the
+\ store's other index stamps above USIGS-GROW: the relocation there has to carry
+\ this one with the store, and UIX-RESET below nulls it for the snapshot.
 : UIX-BKT ( -- ptr n ) UIX-BKT-P @ ;
 : UIX-ENT ( -- ptr n ) UIX-ENT-P @ ;
 
@@ -4855,16 +4868,6 @@ PTR-VARIABLE UIX-BASE
    0 UIX-HI ! ;
 
 UIX-RESET
-
-: UIX-SYNC ( -- )
-   UIX-READY? 0= IF EXIT THEN
-   UEND @ UIX-HI @ <
-   USIGS UIX-BASE@ <> or IF UIX-DROP EXIT THEN
-   UIX-STAMP ;
-
-: UIX-ENSURE ( -- )
-   UIX-READY? 0= IF UIX-ALLOC EXIT THEN
-   UIX-SYNC ;
 
 \ --- the key of a node: the one description the hash and the compare share -----
 : E-NODE-TAG ( n -- n )
@@ -5008,6 +5011,148 @@ variable UIX-BK
    BEGIN newend UIX-TOP-DEAD? WHILE UIX-POP REPEAT
    newend UIX-HI @ min UIX-HI ! ;
 
+\ --- finding the twin, and the one table state every caller asks for -----------
+\ UIX-BUCKET/UIX-CHAIN-FIND are the lookup written once: E-INTERN asks it of the
+\ subterm at the top of the arena, and the rebuild below asks it of a node the
+\ store already holds. A second copy of the chain walk is the drift the key's own
+\ comment warns about, one screen up.
+variable UIX-C
+
+: UIX-BUCKET ( n -- n )
+   E-NODE-HASH UIX-BKT-CAP @ 1 - and ;
+
+\ UIX-CHAIN-FIND ( n n -- n ) : the offset+1 of a stored node with this node's
+\ shape, chained in bucket b, or 0. The store opens with a record, so no node
+\ ever sits at offset 0 and offset+1 is a total answer. Newest entry first: a
+\ bucket keeps its head newest, which is the order UIX-POP relies on.
+: UIX-CHAIN-FIND ( n n -- n ) {: noff:n b:n :}
+   b UIX-B @ UIX-J !
+   BEGIN UIX-J @ 0 <> WHILE
+      UIX-J @ 1 - UIX-E-OFF UIX-E @ UIX-C !
+      UIX-C @ noff E-NODE-SAME? IF UIX-C @ 1 + EXIT THEN
+      UIX-J @ 1 - UIX-E-NEXT UIX-E @ UIX-J !
+   REPEAT
+   0 ;
+
+\ --- rebuilding the index from the store it indexes ----------------------------
+\
+\ WHY A BAKED IMAGE NEEDS THIS. The table is process-local mmap memory, so the
+\ image carries none of it (UIX-RESET) while the store it describes is baked
+\ whole. An empty table over a full store is NOT a cold start: the product
+\ engine's first definitions re-record shapes the boot prefix already holds, and
+\ every one of them is written a second time. Measured on bin/hb before this
+\ word, tools/effect-store-census.f answered 1,717 nodes for 1,690 shapes — two
+\ clusters of the same 14 boot shapes, one from the empty table at boot and one
+\ from the drop that used to follow the first USIGS-GROW.
+\
+\ WHY REBUILD RATHER THAN BAKE THE TABLE. The offsets could be persisted — the
+\ store is — but the buckets are hash-keyed, so a baked table would still have to
+\ be re-chained entry by entry at boot, which costs the same hash per node this
+\ walk pays. And the walk answers for every OTHER way the table can end up empty
+\ over a full store, which a baked table does not.
+\
+\ THE STORE'S OWN LAYOUT IS THE VISITED SET, and that is what keeps the walk
+\ linear. A record owns the bytes between its header and the next record: they are
+\ exactly the nodes, name bytes and arg runs E-COPY wrote for its rows, because a
+\ node the interner discarded was rewound off the top before the next append. So
+\ every node in that span is reachable from that record's four row roots, and a
+\ child OUTSIDE the span is a node an older record wrote — one this walk has
+\ already visited, whose span it already covered. Walking each span once therefore
+\ reaches every node in the store exactly once with no visited set at all, and the
+\ store's 42,000 references to older nodes cost a range test each instead of a
+\ hash — most of them not even that, because a record that appended no bytes of
+\ its own cannot have interned anything and is skipped whole. The table's own
+\ lookup still gates the span, because a record MAY name one of its own nodes
+\ twice (a row that is both a data and a return row) and a subterm walked twice is
+\ work squared for nothing. Measured on this engine's own baked store: 1,688 nodes
+\ indexed over 20,567 records in 1.7 ms, once, at the first definition.
+variable UIX-SPAN-LO   variable UIX-SPAN-HI
+
+: UIX-OWN? ( n -- bool ) {: off:n :}
+   off UIX-SPAN-LO @ >=
+   off UIX-SPAN-HI @ < and ;
+
+: UIX-NODE-ADD ( n -- ) {: off:n :}
+   off UIX-OWN? 0= IF EXIT THEN           \ 0, or a node an older record already gave the index
+   off E-KEY-N 0= IF EXIT THEN            \ not a node this file writes; E-INTERN skips it too
+   off dup UIX-BUCKET UIX-CHAIN-FIND 0 <> IF EXIT THEN   \ named twice inside this record
+   off E-NODE-TAG {: tg:n :}
+   tg EN-PTR = IF off E-PTR EN.A @ RECURSE THEN
+   tg EN-PUSH = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE
+   THEN
+   tg EN-QUOT = IF
+      off E-PTR EN.A @ RECURSE
+      off E-PTR EN.B @ RECURSE
+      off E-PTR EN.C @ RECURSE
+      off E-PTR EN.D @ RECURSE
+   THEN
+   tg EN-PARAM = IF
+      off E-PTR EN.C @ {: argc:n :}
+      0 BEGIN dup argc < WHILE            \ data-stack index (RECURSE-safe)
+         off E-PTR EN.D @ over cells + E-PTR CELL-VIEW @ RECURSE
+         1 +
+      REPEAT drop
+   THEN
+   off dup UIX-BUCKET UIX-ADD ;           \ the bucket AFTER the children: a child's add
+                                          \ may have re-sized the buckets, and an entry
+                                          \ chained by a stale mask is invisible for good
+
+\ UIX-REC-ADD ( n n -- ) : every node in the span the record at `rec` owns,
+\ reached from its rows. E-REC-INIT zeroes all four row fields, so a record with
+\ no row effect names 0 in ER.RIN/ER.ROUT and the walk skips it; reading them
+\ without the ER.HASR gate can only make the index offer MORE nodes, never a
+\ wrong one, because every answer is decided by comparing the nodes themselves.
+: UIX-REC-ADD ( n n -- ) {: rec:n next:n :}
+   rec EFF-REC + {: lo:n :}
+   next lo <= IF EXIT THEN                \ the record appended nothing of its own, so it
+                                          \ interned nothing: every row it names is older
+   lo UIX-SPAN-LO !
+   next UIX-SPAN-HI !
+   rec E-PTR ER.DIN @ UIX-NODE-ADD
+   rec E-PTR ER.DOUT @ UIX-NODE-ADD
+   rec E-PTR ER.RIN @ UIX-NODE-ADD
+   rec E-PTR ER.ROUT @ UIX-NODE-ADD ;
+
+\ UIX-BUILD ( -- ) : the store's own chain, from the first record to the
+\ terminator — the same walk USX-BUILD makes for the per-symbol heads, and the
+\ same one tools/effect-store-census.f makes to count the store. A record still
+\ being built is not on it yet (its ER.NEXT is 0 until E-REC-FINISH), so the walk
+\ ends at the record in progress and the nodes above it belong to E-INTERN.
+: UIX-BUILD ( -- )
+   0 UIX-BP !
+   BEGIN UIX-BP @ E-PTR ER.NEXT @ 0 <> WHILE
+      UIX-BP @  UIX-BP @ E-PTR ER.NEXT @  UIX-REC-ADD
+      UIX-BP @ E-PTR ER.NEXT @ UIX-BP !
+   REPEAT ;
+
+\ UIX-EXACT ( -- ) : the index is exact for the store as it is now, which is the
+\ ONE question every caller has. Three cases:
+\   NO TABLE     a fresh process or a snapshot boot. The store may already be
+\                full of nodes, so the table is allocated AND built from it.
+\   STORE MOVED  a rewind this file did not perform (UEND below the mark), or a
+\                base no relocation carried the stamp to — a fresh mapping, or an
+\                arena swapped in under the store. Those entries describe bytes
+\                that are no longer theirs, so the table forgets them and is
+\                re-derived from the store that is there now. Re-deriving is not a
+\                bet on the history: UIX-BUILD reads offsets and shapes out of the
+\                CURRENT store and nothing else, so it is exactly as valid here as
+\                it is at boot.
+\   OTHERWISE    every entry is still exact at a store end that only grew; mark
+\                the new end.
+\ A VERBATIM RELOCATION IS NOT A MOVE in the sense above: USIGS-GROW carries the
+\ stamp, so the offsets stay the index's own and this word sees nothing to do.
+\ THE INVARIANT THE BASE AND THE MARK TOGETHER PROTECT: every entry names the node
+\ that was interned at that offset in the store being asked about. Nothing weaker
+\ would do — an entry over bytes that are no longer a node could answer a lookup
+\ with an offset the store never interned.
+: UIX-EXACT ( -- )
+   UIX-READY? 0= IF UIX-ALLOC UIX-BUILD EXIT THEN
+   UEND @ UIX-HI @ <
+   USIGS UIX-BASE@ <> or IF UIX-DROP UIX-BUILD EXIT THEN
+   UIX-STAMP ;
+
 \ E-INTERN ( n -- n ) : the finished subterm at `noff` spans [noff, UEND). If the
 \ store already holds one just like it, rewind over this copy and answer with the
 \ older offset; otherwise keep it and remember it.
@@ -5022,22 +5167,17 @@ variable UIX-BK
 \ It does NOT go through USIGS-RESTORE-END: that seam also repairs the per-symbol
 \ record index, and this rewind happens mid-record, before the record being built
 \ has an ER.NEXT for a chain walk to follow.
-variable UIX-C
 : E-INTERN ( n -- n ) {: noff:n :}
    noff 0= IF 0 EXIT THEN
    noff E-KEY-N 0= IF noff EXIT THEN
-   UIX-ENSURE
-   noff E-NODE-HASH UIX-BKT-CAP @ 1 - and {: b:n :}
-   b UIX-B @ UIX-J !
-   BEGIN UIX-J @ 0 <> WHILE
-      UIX-J @ 1 - UIX-E-OFF UIX-E @ UIX-C !
-      UIX-C @ noff E-NODE-SAME? IF
-         noff UIX-TRUNCATE
-         noff UEND !
-         UIX-C @ EXIT
-      THEN
-      UIX-J @ 1 - UIX-E-NEXT UIX-E @ UIX-J !
-   REPEAT
+   UIX-EXACT
+   noff UIX-BUCKET {: b:n :}
+   noff b UIX-CHAIN-FIND {: hit:n :}
+   hit 0 <> IF
+      noff UIX-TRUNCATE
+      noff UEND !
+      hit 1 - EXIT
+   THEN
    noff b UIX-ADD
    noff ;
 
@@ -5299,9 +5439,13 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 
 : E-REC-START ( -- ptr u8 )
    HIDX-EFF-SYNC
-   UIX-SYNC                              \ same discipline: UEND is the store's true top
+   UIX-EXACT                             \ same discipline: UEND is the store's true top
                                          \ HERE, so an entry at or above it is dead and a
-                                         \ regrow cannot mask the rewind that killed it
+                                         \ regrow cannot mask the rewind that killed it.
+                                         \ It is also the seam where a snapshot-booted
+                                         \ engine builds its index from the baked store,
+                                         \ which is before any intern can run: E-COPY*
+                                         \ is reached only through E-BUILD-EFFECT below
    USX-ENSURE                            \ USX-LINK writes into the mapping: it has to
                                          \ exist, and be current, before the append
    UEND @ EFF-REC + CELL + USIGS-ENSURE

@@ -277,6 +277,54 @@ EIX-HI EIX-UEND > TFALSE                           \ the append seam noticed
 TABLE-LIVE
 
 \ ---------------------------------------------------------------------------
+\ 5. THE INDEX BELONGS TO THE STORE, NOT TO THE PROCESS
+\ ---------------------------------------------------------------------------
+\ The table is process-local mmap memory a baked image cannot carry, and the store
+\ it describes is baked whole. Both halves below are that asymmetry: an engine
+\ that boots from a snapshot has to find the shapes its own image already holds,
+\ and must not lose them when the store moves underneath it.
+
+TRUSTED: EIX-USER-OFF ( -- n ) USIGS-USER-OFF @ ;
+TRUSTED: EIX-BASE ( -- n ) USIGS ;
+TRUSTED: EIX-STAMPED? ( -- bool ) USIGS UIX-BASE@ = ;
+TRUSTED: EIX-FORCE-GROW ( -- ) USIGS-CAP-U @ 1 + USIGS-ENSURE ;
+
+variable B0                     \ store base before a forced relocation
+variable N0                     \ entry count before it
+
+\ A BOOT-PREFIX SHAPE. `( n n -- n )` is the effect of engine primitives, so the
+\ PRIM region of the baked store — everything below the user offset, which only
+\ the primitive table wrote — already holds every node of it. A definition that
+\ repeats it must ANSWER WITH THOSE NODES. With no index for the baked store the
+\ table was empty at boot, this row was a second copy of them sitting above the
+\ user offset, and the whole-store census answered 1,717 nodes for 1,690 shapes.
+s" : EIXBOOT ( n n -- n ) drop ;" EIX-EVAL
+s" EIXBOOT" EIX-DIN 0 T<>                          \ the comparison is not vacuous
+s" EIXBOOT" EIX-DIN EIX-USER-OFF < TTRUE           \ ... and the row is the prefix's own node
+s" EIXBOOT" EIX-DOUT EIX-USER-OFF < TTRUE
+
+\ A RELOCATION IS NOT A REWIND. USIGS-GROW copies the store verbatim, so every
+\ entry still names its own node and only the ADDRESS changed — which is why the
+\ grow carries the index's base stamp with it instead of leaving the next sync to
+\ read a new base as a store it never indexed. The shape below is interned BEFORE
+\ the move and repeated after it: a table that threw itself away writes a second
+\ copy of the row and answers with a different offset.
+s" enum eixreloc one two ;enum" EIX-EVAL           \ a family nothing else names
+s" : EIXR1 ( eixreloc -- ) drop ;" EIX-EVAL
+s" EIXR1" EIX-DIN IX !
+IX @ 0 T<>
+EIX-BASE B0 !
+EIX-N N0 !
+EIX-FORCE-GROW
+EIX-BASE B0 @ T<>                                  \ the store really did move
+EIX-STAMPED? TTRUE                                 \ ... carrying the index's stamp with it
+EIX-N N0 @ T=                                      \ ... and forgetting no entry
+s" : EIXR2 ( eixreloc -- ) drop ;" EIX-EVAL
+s" EIXR2" EIX-DIN IX @ T=                          \ the same node, across the move
+EIX-N N0 @ < TFALSE                                \ the append seam forgot nothing either
+TABLE-LIVE
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
