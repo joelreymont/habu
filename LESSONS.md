@@ -7661,3 +7661,34 @@ and --no-lldbinit.
   fixpoint only at generation 4 (B2 vs B3 1,129,827 differing bytes, B3 vs B4
   1,015,834, B4 vs B5 3). `install --force` byte-identity is a property of the
   fixpoint refresh, not of a generation chain.
+
+- **The root's real red set (2026-09-12, engine 04701ef9, load 1.6).** Before
+  dot habu-run-every-registered-56d4962d `test/run.f` stopped at the first
+  drain that saw a red, so it ran 151 of 308 registered suites and reported
+  the prefix's ten reds as if they were the tree's. The complete run (`suites:
+  ran 308 of 308`, no timeouts) shows 53 red, exit code in parentheses.
+  The ten the prefix already showed:
+  app-image (67), check-cli-boundary (67), compiler-asm-package (1),
+  compiler-codegen-tail-probe (1), compiler-ir-id (70),
+  compiler-ir-id-manifest (70), compiler-ir-id-proof (70),
+  compiler-ir-structure-manifest (1), compiler-ir-structure-proof (1),
+  compiler-native-elaborate (1)
+  The 43 the prefix never reached:
+  addrmap-inline (70), aot-prelude-band (1), aot-sig-pool (1),
+  aot-wide-format (67), aot-wid-restore (70), bootstrap-wide-memory-src (70),
+  build-fixpoint-fixtures (1), cast (1), c-call-emitter-shape (1),
+  create-axiom (1), ddc-verify (70), decl-event (70), diagnose-hb (1),
+  dictionary-record-shapes (70), does-clause-record (78),
+  effect-read-api (70), effect-store-census (70), engine (1),
+  engine-error-package (1), hb-build-fixtures (67), hb-open-failure (1),
+  internal-word-gate (1), lit-emit-size (70), match-factor-pin (1),
+  native-gate-aot-negative (70), native-gate-aot-positive (1),
+  native-gate-debug (1), native-gate-diagnostics (67),
+  native-gate-dictionary (1), p2-map-rewind (70), pre-trust-defer (1),
+  program-diagnostics (1), prop (1), require-cap (70),
+  snapshot-xt-cell-decl (70), stdlib-standalone-load (1),
+  tail-pure-fixtures (70), type-ctor (70), using-import (1), verify-prim (1),
+  xref (70), xt-cell (1), xt-effect (1)
+  A green root means this list shrinks; a new name on it is a regression.
+  Re-establish the list from a complete run on a quiet machine (1-minute
+  load under 4) and record the engine tip with it.

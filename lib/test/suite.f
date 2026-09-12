@@ -35,6 +35,7 @@ create GROUP-MODES GROUP-MAX cells allot
 create ARGS ARG-CAP allot
 
 variable ITEM-N
+variable ITEM-RAN
 variable GROUP-N
 variable GROUP-CUR
 variable ARG-U
@@ -275,7 +276,8 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
       ITEM-STDIN of id ITEM-RUN-STDIN endof
       E-TBL-FIELD throw
    endcase
-   id SEQUENTIAL? if DRAIN then ;
+   id SEQUENTIAL? if DRAIN then
+   ITEM-RAN @ 1+ ITEM-RAN ! ;
 
 : RUN-BODY ( -- )
    -1 LAST-GROUP !
@@ -313,6 +315,12 @@ public
 : STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- ] -- )
    is STDIN-RUNNER ;
 
+: ITEMS-REGISTERED ( -- n )
+   ITEM-N @ ;
+
+: ITEMS-RUN ( -- n )
+   ITEM-RAN @ ;
+
 : DEFAULTS ( -- )
    [: NOOP ;] SETUP!
    [: drop ;] TEARDOWN!
@@ -324,6 +332,7 @@ public
 
 : RESET ( -- )
    0 ITEM-N !
+   0 ITEM-RAN !
    0 GROUP-N !
    0 ARG-U !
    DEFAULT-GROUP ;

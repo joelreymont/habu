@@ -127,8 +127,8 @@ variable GPT-ROOT-SAVE-U
       s" soft overflow" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
    loop ;
 
-\ One child process runs every failure class; reds accumulate to 17 so the
-\ final fail-closed drain also proves red-list overflow reporting.
+\ One child process runs every failure class; reds accumulate to 17 and the
+\ final fail-closed drain lists every one of them.
 : GPT-BATTERY-CASE ( -- )
    s" gate-pool-test-battery" GT-START
    2 GT-POOL-SLOTS!
@@ -220,8 +220,8 @@ private
 
 : GPT-EXPECT-OVERFLOW-OUT ( n -- ) {: outu:n :}
    GPT-OUT outu s" red tests: 17" CONTAINS? TTRUE
-   GPT-OUT outu s" RED: +1 more failed tests" CONTAINS? TTRUE
-   GPT-OUT outu s" RED: soft overflow" GPT-COUNT$ 11 T= ;
+   GPT-OUT outu s" more failed tests" CONTAINS? TFALSE
+   GPT-OUT outu s" RED: soft overflow" GPT-COUNT$ 12 T= ;
 
 : GPT-EXPECT-BATTERY-ERR ( n -- ) {: erru:n :}
    GPT-ERR erru s" test pool failed" CONTAINS? TTRUE ;
@@ -499,6 +499,23 @@ variable GPT-FC-DONE-U
    GPT-FC-PARENT$ EXISTS? TFALSE
    GPT-FC-EV$ REMOVE-TREE ;
 
+\ A stdin-fed slot: the child engine reads its source from the pool's pipe,
+\ and its output reaches the slot's capture like any spawned child's.
+: GPT-STDIN-SRC$ ( -- ptr u8 n )
+   S\" s\" gate-pool stdin worker\" type cr\n" ;
+
+: GPT-STDIN-CASE ( -- )
+   s" gate-pool-stdin" GT-START
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   GT-POOL-RED-RESET
+   GPT-HB$ s" stdin worker" GPT-STDIN-SRC$ GPT-TIMEOUT-MS GT-POOL-START-STDIN
+   GT-POOL-DRAIN-SOFT
+   s" stdin: a stdin-fed slot runs the child on the piped source" T-LABEL
+   GT-POOL-RED# 0 T=
+   0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ s" gate-pool stdin worker" CONTAINS? TTRUE
+   GT-CLEANUP ;
+
 : GATE-POOL-TEST-MAIN ( -- )
    s" fail-battery-case" GPT-MODE? if GPT-BATTERY-CASE exit then
    T-RESET
@@ -516,6 +533,7 @@ variable GPT-FC-DONE-U
    GPT-WAIT-NEG-CASE
    GPT-EXTERNAL-KILL-CASE
    GPT-FC-CASE
+   GPT-STDIN-CASE
    GPT-BATTERY-REPORT
    T-REPORT
    s" gate-pool-test: ok" type cr ;

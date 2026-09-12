@@ -16,7 +16,9 @@ $64 constant GT-POOL-POLL-MS
 $1000 constant GT-POOL-CHUNK-CAP
 64 constant GT-POOL-NAME-CAP
 32 constant GT-POOL-NUM-CAP
-16 constant GT-POOL-RED-MAX
+\ Red rows: one per registered suite (lib/test/suite.f ITEM-MAX), so a complete
+\ run reports every red with its exit code and capture paths.
+512 constant GT-POOL-RED-MAX
 GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
 GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES
 
@@ -58,10 +60,8 @@ create GT-POOL-RED-LABEL-US GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-EXITEDS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-TIMED-OUTS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-CODES GT-POOL-RED-MAX cells allot
-create GT-POOL-RED-OUT-PATHS GT-POOL-RED-MAX FS-PATH-CAP * allot
-create GT-POOL-RED-OUT-US GT-POOL-RED-MAX cells allot
-create GT-POOL-RED-ERR-PATHS GT-POOL-RED-MAX FS-PATH-CAP * allot
-create GT-POOL-RED-ERR-US GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-SEQS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-PATH-BUF FS-PATH-CAP allot
 create GT-POOL-RED-WAITS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-LIVES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-SAT-LIMITS GT-POOL-RED-MAX cells allot
@@ -79,6 +79,7 @@ variable GT-POOL-NAME-U
 variable GT-POOL-WR
 variable GT-POOL-WR-OFF
 variable GT-POOL-RED-N
+variable GT-POOL-RED-PATH-U
 variable GT-POOL-FALLBACK-U
 variable GT-POOL-DEATH-RD
 variable GT-POOL-DEATH-WR
@@ -531,11 +532,11 @@ GT-POOL-ABORT-KILL!
    rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    rpid idx GT-POOL-REAPER-PID-PTR ! ;
 
-: GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx:idx path:ptr pathu:n :}
+: GT-POOL-SPAWN-FD ( idx ptr u8 n fd -- ) {: idx:idx path:ptr pathu:n stdin:fd :}
    path pathu >LEN PROC-ARGV-CHECK-PATH
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   pathz argv envp -1 >FD idx GT-POOL-OUT-W-PTR @ idx GT-POOL-ERR-W-PTR @
+   pathz argv envp stdin idx GT-POOL-OUT-W-PTR @ idx GT-POOL-ERR-W-PTR @
    PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    pid PID>N 0 < if
       idx path pathu pid GT-POOL-SPAWN-FAIL.
@@ -546,6 +547,9 @@ GT-POOL-ABORT-KILL!
    pid idx GT-POOL-PID-PTR !
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
+
+: GT-POOL-SPAWN ( idx ptr u8 n -- )
+   -1 >FD GT-POOL-SPAWN-FD ;
 
 : GT-POOL-FORK-EXIT ( n -- )
    s" " rot die ;
@@ -712,17 +716,12 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-RED-CODE-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-CODES + ;
 
-: GT-POOL-RED-OUT-BUF ( n -- ptr u8 )
-   GT-POOL-RED-CHECK FS-PATH-CAP * GT-POOL-RED-OUT-PATHS + ;
+: GT-POOL-RED-SEQ-PTR ( n -- ptr n )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-SEQS + ;
 
-: GT-POOL-RED-OUT-U-PTR ( n -- ptr n )
-   GT-POOL-RED-CHECK cells GT-POOL-RED-OUT-US + ;
 
-: GT-POOL-RED-ERR-BUF ( n -- ptr u8 )
-   GT-POOL-RED-CHECK FS-PATH-CAP * GT-POOL-RED-ERR-PATHS + ;
 
-: GT-POOL-RED-ERR-U-PTR ( n -- ptr n )
-   GT-POOL-RED-CHECK cells GT-POOL-RED-ERR-US + ;
+
 
 : GT-POOL-RED-WAITS-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-WAITS + ;
@@ -739,11 +738,23 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-RED-LABEL$ ( n -- ptr u8 n ) {: i:n :}
    i GT-POOL-RED-LABEL-BUF i GT-POOL-RED-LABEL-U-PTR @ ;
 
-: GT-POOL-RED-OUT$ ( n -- ptr u8 n ) {: i:n :}
-   i GT-POOL-RED-OUT-BUF i GT-POOL-RED-OUT-U-PTR @ ;
+\ A red row keeps its capture sequence number; the report rebuilds the two
+\ capture paths from it the way GT-POOL-CAPTURE-PATH! built them, which holds
+\ while the capture root (GT-START) stays the same between the capture and the
+\ report, as it does for every pool session in the tree.
+: GT-POOL-RED-STREAM$ ( n n -- ptr u8 n ) {: i:n stream:n :}
+   GT-POOL-CAPTURE-ROOT$
+   i GT-POOL-RED-SEQ-PTR @ stream GT-POOL-STREAM-SUFFIX$ GT-POOL-CAPTURE-NAME
+   GT-POOL-RED-PATH-BUF JOIN-PATH GT-POOL-RED-PATH-U !
+   GT-POOL-RED-PATH-BUF GT-POOL-RED-PATH-U @ ;
 
-: GT-POOL-RED-ERR$ ( n -- ptr u8 n ) {: i:n :}
-   i GT-POOL-RED-ERR-BUF i GT-POOL-RED-ERR-U-PTR @ ;
+: GT-POOL-RED-OUT$ ( n -- ptr u8 n )
+   0 GT-POOL-RED-STREAM$ ;
+
+: GT-POOL-RED-ERR$ ( n -- ptr u8 n )
+   1 GT-POOL-RED-STREAM$ ;
+
+
 
 : GT-POOL-RED-COPY$ ( ptr u8 n ptr u8 ptr n n -- ) {: a:ptr u:n dst:ptr up:ptr cap:n :}
    u 0 < if E-TBL-FIELD throw then
@@ -760,8 +771,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-SAT-LIVE-PTR @ i GT-POOL-RED-SAT-LIVE-PTR !
    GT-POOL-LIMIT @ i GT-POOL-RED-SAT-LIMIT-PTR !
    idx GT-POOL-ELAPSED-MS i GT-POOL-RED-SAT-MS-PTR !
-   idx 0 GT-POOL-STREAM-FILE$ i GT-POOL-RED-OUT-BUF i GT-POOL-RED-OUT-U-PTR FS-PATH-CAP GT-POOL-RED-COPY$
-   idx 1 GT-POOL-STREAM-FILE$ i GT-POOL-RED-ERR-BUF i GT-POOL-RED-ERR-U-PTR FS-PATH-CAP GT-POOL-RED-COPY$ ;
+   idx GT-POOL-SEQ-PTR @ i GT-POOL-RED-SEQ-PTR ! ;
 
 : GT-POOL-RED+ ( idx -- ) {: idx:idx :}
    GT-POOL-RED-N @ GT-POOL-RED-MAX < if
@@ -806,7 +816,9 @@ GT-POOL-ABORT-KILL!
    repeat drop
    GT-POOL-RED-OVERFLOW-LINE ;
 
-: GT-POOL-START-SLOT ( ptr u8 n ptr u8 n n idx -- ) {: path:ptr pathu label:ptr labelu timeout idx :}
+\ The slot bookkeeping every start shares: pipes, capture files, label and
+\ clocks. The caller then spawns or forks into the slot and counts it live.
+: GT-POOL-OPEN-SLOT ( ptr u8 n n idx -- ) {: label:ptr labelu timeout idx :}
    idx GT-POOL-DONE@ 0= if
       s" test pool: fixed slot already active" type cr
       E-TBL-FIELD GT-POOL-THROW
@@ -818,23 +830,43 @@ GT-POOL-ABORT-KILL!
    label labelu idx GT-POOL-LABEL!
    mono-ns idx GT-POOL-START-PTR !
    idx GT-POOL-START-PTR @ idx GT-POOL-LAST-PTR !
-   timeout idx GT-POOL-TIMEOUT-PTR !
+   timeout idx GT-POOL-TIMEOUT-PTR ! ;
+
+: GT-POOL-START-SLOT ( ptr u8 n ptr u8 n n idx -- ) {: path:ptr pathu label:ptr labelu timeout idx :}
+   label labelu timeout idx GT-POOL-OPEN-SLOT
    idx path pathu GT-POOL-SPAWN
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
-: GT-POOL-START-FORK-SLOT ( ptr u8 n n idx [ -- ] -- ) {: label:ptr labelu:n timeout:n idx:idx q :}
-   idx GT-POOL-DONE@ 0= if
-      s" test pool: fixed slot already active" type cr
-      E-TBL-FIELD GT-POOL-THROW
+\ A stdin-fed slot: the child reads its source from a pipe. The bytes go down
+\ in one write before the pool polls, bounded by PIPE_BUF so the write is
+\ atomic and cannot block on an empty pipe; the write end closes at once so
+\ the child sees end of input. A child that exited before reading makes the
+\ write fail with EPIPE (SIGPIPE is disarmed on the descriptor first); its
+\ exit code, reaped like any slot's, makes the row red.
+4096 constant GT-POOL-STDIN-CAP
+
+: GT-POOL-FEED-STDIN ( fd ptr u8 n -- ) {: w:fd bytes:ptr byten:n :}
+   byten GT-POOL-STDIN-CAP > if E-TBL-BOUNDS GT-POOL-THROW then
+   byten 0 > if
+      w FD>N bytes byten write {: wrote:n :}
+      wrote 0 < 0= wrote byten <> and if E-PROC-OUTPUT GT-POOL-THROW then
    then
-   idx GT-POOL-RESET-SLOT
-   0 idx GT-POOL-DONE-PTR !
-   idx GT-POOL-PIPES
-   idx GT-POOL-CAPTURE-START
-   label labelu idx GT-POOL-LABEL!
-   mono-ns idx GT-POOL-START-PTR !
-   idx GT-POOL-START-PTR @ idx GT-POOL-LAST-PTR !
-   timeout idx GT-POOL-TIMEOUT-PTR !
+   w FD>N close ;
+
+: GT-POOL-START-STDIN-SLOT ( ptr u8 n ptr u8 n ptr u8 n n idx -- )
+   {: path:ptr pathu label:ptr labelu bytes:ptr byten timeout idx :}
+   label labelu timeout idx GT-POOL-OPEN-SLOT
+   PIPE-PAIR {: r w :}
+   r FD-CLOEXEC!
+   w FD-CLOEXEC!
+   w FD-NOSIGPIPE!
+   idx path pathu r GT-POOL-SPAWN-FD
+   r FD>N close
+   w bytes byten GT-POOL-FEED-STDIN
+   GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
+
+: GT-POOL-START-FORK-SLOT ( ptr u8 n n idx [ -- ] -- ) {: label:ptr labelu:n timeout:n idx:idx q :}
+   label labelu timeout idx GT-POOL-OPEN-SLOT
    idx q GT-POOL-FORK
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
@@ -1034,6 +1066,12 @@ GT-POOL-ABORT-KILL!
    GT-POOL-WAIT-FREE
    GT-POOL-FIND-FREE {: idx :}
    path pathu label labelu timeout idx GT-POOL-START-SLOT ;
+
+: GT-POOL-START-STDIN ( ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: path:ptr pathu label:ptr labelu bytes:ptr byten timeout :}
+   GT-POOL-WAIT-FREE
+   GT-POOL-FIND-FREE {: idx :}
+   path pathu label labelu bytes byten timeout idx GT-POOL-START-STDIN-SLOT ;
 
 : GT-POOL-START-FORK ( ptr u8 n n [ -- ] -- ) {: label:ptr labelu:n timeout:n q :}
    GT-POOL-WAIT-FREE

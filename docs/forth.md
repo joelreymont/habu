@@ -990,6 +990,11 @@ bin/hb --load tools/build-fixpoint-refresh.f -- install --force
 bin/hb --load test/run.f
 ```
 
+`test/run.f` runs every registered suite: the pool drains between groups
+without stopping at a red, and the run ends with `suites: ran N of N`, the
+complete red set with each suite's exit code, and a nonzero exit when any
+suite is red.
+
 Run relevant lints when their inputs change. Documentation-only edits and file
 moves do not require an engine rebuild. Loom's model tests belong to its own repo.
 Report failed or unrun checks plainly; never represent them as a passing suite.

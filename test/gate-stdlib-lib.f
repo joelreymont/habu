@@ -20,32 +20,12 @@ package STDLIB-GATE
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING ;
 
-: SUITE-RUN-STDIN ( ptr u8 n ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n in:ptr inu:n timeout:n label:ptr labelu:n :}
-   SUITE-ENV
-   path pathu >LEN PROC-ARGV-CHECK-PATH
-   inu 0 < if E-PROC-OUTPUT throw then
-   PROC-CAPTURE-RESET
-   timeout >MS PROC-CAPTURE-DEADLINE!
-   PROC-SETUP-CAPTURE-FDS
-   PROC-SETUP-STDIN-FDS
-   path pathu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu >LEN label labelu GT-PROGRESS-STDIN-CAPTURE
-   PROC-CLOSE-STDIN-FDS
-   PROC-CLOSE-CAPTURE-FDS ;
 
 : SUITE-RUN-ENV-ASYNC ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n timeout:n label:ptr labelu:n :}
    SUITE-ENV
    path pathu label labelu timeout GT-POOL-START ;
 
-: SUITE-FAIL ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   s" FAIL: " type label labelu type cr
-   s" rc: " type GT-RC@ . cr
-   GT-OUT$ type
-   GT-ERR$ type
-   s" native suite failed" 1 die ;
 
-: SUITE-EXPECT-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GT-RC@ 0 <> if label labelu SUITE-FAIL then ;
 
 : SUITE-AOT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" test/compiler/codegen-tail-probe.f" STR= if true exit then
@@ -66,24 +46,29 @@ package STDLIB-GATE
    s" bin/hb" SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
-   GT-POOL-DRAIN
-   label labelu GT-PROGRESS-RUN
-   s" bin/hb" in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
-   label labelu SUITE-EXPECT-OK
-   label labelu GT-PROGRESS-PASS ;
+   SUITE-ENV
+   s" bin/hb" label labelu in inu SUITE-TIMEOUT-MS GT-POOL-START-STDIN ;
 
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    s" habu-native-suite" GT-START
    GT-POOL-RESET ;
 
-: SUITE-CLEANUP ( n -- ) {: rc:n :}
-   rc 0= GT-POOL-RED# 0= and if GT-CLEANUP then ;
+\ The pool drains softly between groups, so every registered suite runs
+\ whatever went red before it; the complete red set is reported here, once,
+\ with each suite's exit code, and decides the exit status.
+: SUITE-FINISH ( n -- ) {: rc:n :}
+   s" suites: ran " type TEST:ITEMS-RUN GT-U-TYPE
+   s"  of " type TEST:ITEMS-REGISTERED GT-U-TYPE cr
+   GT-POOL-RED-REPORT
+   rc 0 <> if exit then                 \ the body threw: the framework rethrows that code
+   GT-POOL-RED# 0 > if s" test pool failed" 1 die then
+   GT-CLEANUP ;
 
 : SUITE-INSTALL-HOOKS ( -- )
    [: SUITE-SETUP ;] TEST:SETUP!
-   [: SUITE-CLEANUP ;] TEST:TEARDOWN!
-   [: GT-POOL-DRAIN ;] TEST:DRAIN!
+   [: SUITE-FINISH ;] TEST:TEARDOWN!
+   [: GT-POOL-DRAIN-SOFT ;] TEST:DRAIN!
    [: SUITE-HB ;] TEST:ARGS-BEGIN!
    [: SUITE-ARG+ ;] TEST:ARG+!
    [: SUITE-HB-RUN ;] TEST:RUNNER!
