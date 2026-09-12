@@ -7,18 +7,18 @@
 \ could publish a definition into a sealed constructor word-list and the guard
 \ would never fire.
 \
-\ Cold startup restores the baked band immediately after clearing the live one,
-\ before the cold prefix registers its constructor families and before any user
-\ source runs: EM-STARTUP-RUNTIME-STATE (src/habu/habu2.f) clears the band,
-\ publishes the shape tag and then calls the LAOTPROT routine
-\ (EMIT-AOT-PROT-RESTORE). Warm snapshot startup skips both the clear and the
-\ baked replay, keeping the band the snapshot DATA image carried. That call is
-\ load-bearing: removing it turns every probe below red (no baked bits, WIDN not
-\ advanced, forge into a baked wid exits 0 not 84).
+\ Cold startup re-seals the word-lists the capture window sealed immediately
+\ after clearing the live band, before the cold prefix registers its constructor
+\ families and before any user source runs: EM-STARTUP-RUNTIME-STATE
+\ (src/habu/habu2.f) clears the band, publishes the shape tag and then calls the
+\ LAOTPROT routine (EMIT-AOT-PROT-RESTORE). Warm snapshot startup skips both the
+\ clear and the replay, keeping the band the snapshot DATA image carried. That
+\ call is load-bearing: removing it turns every probe below red (nothing sealed,
+\ WIDN not advanced, a forge into the sealed wid exits 0 not 84).
 \
-\ The registry is a WID-INDEXED BITMAP (dot habu-replace-the-protected-ca920a8f),
-\ so what gets baked is a fixed-width image of a SET, behind a shape tag. The
-\ three parts of that format are what the probes below read:
+\ The registry is a WID-INDEXED BITMAP (dot habu-replace-the-protected-ca920a8f)
+\ and what an engine BAKES is the set of word-lists its own capture window sealed,
+\ stored window-relative. The three parts of that are what the probes below read:
 \
 \   the tag        the restore release-publishes PROT-REG-TAG into the tag cell
 \                  LAST, so a half-copied band is never observable as a bitmap;
@@ -26,23 +26,54 @@
 \                  completed a restore.
 \   the band       membership is one bit per wordlist id, read through the shared
 \                  tools/prot-wid-probe.f - the same bits the engine's PROT-WID?
-\                  routine tests. The probes assert WHICH ids came back, not how
-\                  many, and assert that the neighbour of the highest baked id did
-\                  NOT, which a smeared or mis-shifted restore would set.
-\   the legacy leg the capture converts a table-era host's rows into bits when the
-\                  tag cell holds a row count instead. Its guards are probed by
-\                  the two refusal builds below. The row->bit conversion itself
-\                  needs a table-era host, which no longer exists; that gap is
-\                  recorded in test/aot-wid-build.f and owned by dot
-\                  habu-retire-the-legacy-31ad57bc, which deletes the leg.
+\                  routine tests. The probes assert WHICH ids came back, and that
+\                  BOTH NEIGHBOURS of the restored id did not, which a smeared or
+\                  mis-shifted restore would set.
+\   the rows       a captured protected WID is an offset from the window's first
+\                  wordlist id, and the seed rebases it onto the WIDN of the
+\                  engine it boots (habu2.f AOT-WINDOW:SEAL-WIDS,). No build-host id
+\                  survives the cut, so this suite cannot write down the id it
+\                  probes: it asks the built engine which id the fixture's package
+\                  got (tools/pkg-wid-probe.f) and probes that one.
 \
 \ How it is proven: test/aot-wid-build.f is spawned in a child process with a
-\ private HB_TMP; it builds a throwaway `hb-pwid` engine whose AOT band has two
-\ extra word-list ids set (8000 and a low one derived from the shipped engine's
-\ own live band, handed over as HABU_PWID_A) on top of the ones the metabuild host
-\ protects for itself. This suite then probes hb-pwid on the real batch paths, and
-\ spawns the same builder in its three refusal modes and its two boot-gate
-\ modes.
+\ private HB_TMP; it builds a throwaway `hb-pwid` engine whose capture window
+\ holds two packages of the fixture's own - one sealed with `prot-wid-add`, one
+\ left open - and checks the capture's contract against the live band while it is
+\ still there to check. This suite then probes hb-pwid on the real batch paths,
+\ and spawns the same builder in its three refusal modes, its two boot-gate modes
+\ and the wid rebase and forge modes further down.
+\
+\ WHAT THE RETIREMENT CHANGED, and what it cost (commit 3e29a730b0d4, closing dot
+\ habu-retire-the-legacy-31ad57bc). The capture used to copy the host's whole live
+\ band into the artifact, with a second leg that converted a table-era host's u32
+\ rows into bits when the tag cell held a row count instead of PROT-REG-TAG. A
+\ fixture could therefore poke any absolute id into the captured buffer
+\ (ACAP-PWID-SET) and probe that exact id in the built engine. Those words are
+\ gone: membership is derived live, one WID at a time (ACAP-LIVE-PWID?), and only
+\ the window's own seals travel. Three things went with them, and none of them was
+\ weakened into something cheaper that would still pass:
+\
+\   the table-era leg's two cases - an empty registry accepted, and a row count
+\     that is no registry at all refused (HABU_PWID_LEGACY_N) - existed only for
+\     the changeover in which a table-era host built a bitmap-era engine. There is
+\     no table-era host and no capture word that reads a row count. The empty case
+\     keeps its intent live: the build takes a capture of the window BEFORE the
+\     fixture seals anything and requires it to record no row at all.
+\   the absolute baked ids (300 and 8000, plus 8001 as the neighbour of the
+\     highest). A fixture can no longer choose the id it bakes, because the rows
+\     are rebased onto the target's WIDN, and the ids the seed hands out sit just
+\     above it. So the band's HIGH END - a bit near 8000, a thousand bytes into
+\     the band - is no longer reachable through any build this fixture can make. The
+\     restored id and both its neighbours are probed instead. That is a real
+\     reduction in coverage and it is recorded here rather than papered over:
+\     nothing in the tree now sets a bit in the band's upper half through a build.
+\   the HABU_PWID_OOR refusal, whose guard was ACAP-PWID-SET's check on a
+\     caller-supplied index. No capture word takes a WID from a caller any more.
+\     The live owner of that bound is `prot-wid-add`, which refuses an id at or
+\     above it by name, and the build mode that replaced OOR (HABU_PWID_BAD)
+\     drives that word - so the refusal is still proved on the real build path,
+\     with the in-process twin in test/seal.f.
 \
 \ The registry has two ends and this suite now holds both. A program the engine
 \ READS must not publish into a protected word-list (the forge cases). A name the
@@ -60,24 +91,26 @@
 \ asserts; a separate case proves the child engine still defines normally, so the
 \ exit-84 results cannot be read as "this engine refuses everything".
 \
-\ NOT covered here, and recorded rather than faked: a baked band that is invalid
-\ on its face. EMIT-AOT-PROT-RESTORE rejects two shapes at cold startup - a frame
-\ whose tag is not PROT-REG-TAG, and a band with bit 0 set (WID 0 is not a
-\ wordlist) - and exits ENGINE-ERROR:AOT-SEED with a named newline-terminated
-\ diagnostic. This builder cannot stage either one: it injects after CAPTURE-REPL,
-\ and the maker hb-pwid-mk is itself emitted from that same injected source, so a
-\ corrupt band kills the maker run before hb-pwid ever exists. A forge that
-\ corrupts only the FINAL image is what the probe needs - dot
+\ NOT covered here, and recorded rather than faked: the restore's own refusal. The
+\ cold restore no longer reads a baked band, so the two shapes it used to reject
+\ (a frame whose tag is not PROT-REG-TAG, a band with bit 0 set) no longer exist.
+\ What it can refuse now is one baked ROW whose rebased id leaves the window or
+\ passes PROT-WID-MAX - "hb: AOT wid outside the capture window",
+\ ENGINE-ERROR:AOT-SEED. PROBE-WID-FORGED below reaches that message through a
+\ forged RECORD wid; no mode forges a protected-WID ROW, which would need a poke
+\ into the capture buffer after the capture and before the emit. A forge that
+\ corrupts only the FINAL image is still what the direct probe needs - dot
 \ habu-forge-a-corrupt-844064a9.
 \
 \ Note on counts: an earlier revision asserted the registry count was exactly 2
 \ with a plain-engine baseline of 0. The engine registers boot-time protected
 \ word-lists for its own constructor families, so an exact-count proxy is stale
 \ the moment a family is added. Reading the two baked ids back BY ID is the direct,
-\ stable proof, and it is what a bitmap makes cheap.
+\ stable proof, and it is what a bitmap makes cheap - now read back at the id the
+\ engine says it gave the fixture's package, since the id is the seed's to choose.
 \
-\ Cost: six child engine builds (~12 s each). It is registered directly in
-\ test/gate-stdlib-cases.f. Run standalone:
+\ Cost: eleven child engine builds (~12 s each), plus the data-span child's own.
+\ It is registered directly in test/gate-stdlib-cases.f. Run standalone:
 \ bin/hb --load test/aot-wid-suite.f
 
 require lib/errors.f
@@ -93,13 +126,15 @@ require lib/process-env.f
 
 package AOT-WID-SUITE
 
-\ Test vectors - mirror the ids baked by test/aot-wid-build.f.
-variable WID-A-V                     \ baked protected id > 255, DERIVED (see DERIVE-WID-A)
-: WID-A ( -- n ) WID-A-V @ ;
-8000  constant WID-B                 \ baked protected word-list id high in the band
-8001  constant WID-NEIGHBOUR         \ one id past WID-B: must come back UNprotected
-70000 constant WID-OOR               \ far above the bound: the capture must refuse it
-PROT-WID-LEGACY-MAX 1+ constant LEGACY-N-BAD   \ not a legacy row count at all
+\ Test vectors - the two ids the BUILT ENGINE gave the fixture's packages, read
+\ back from it by READ-FIXTURE-WIDS. Neither can be written down here: a captured
+\ protected WID is window-relative and the seed rebases it onto that engine's WIDN.
+variable PROT-WID-V                  \ AWBPROT's public wordlist id, the one sealed
+variable OPEN-WID-V                  \ AWBOPEN's, which the fixture left open
+: PROT-WID ( -- n ) PROT-WID-V @ ;
+: OPEN-WID ( -- n ) OPEN-WID-V @ ;
+PROT-WID-MAX constant WID-AT-BOUND   \ no bit exists for it: prot-wid-add must refuse
+0 constant WID-NOT-A-WORDLIST        \ bit 0 set is a band no capture may accept
 \ Raise the capture window's DATA span start by more than the whole span, so the
 \ span holds nothing and EVERY address chain the band recorded in the blob falls
 \ outside both spans. A small skew would depend on where the first data word
@@ -190,8 +225,6 @@ create NUM-BUF 32 allot   variable NUM-U
 : BUILD-VARIANT ( -- )
    PROC-ENV-RESET
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
-   WID-A NUM$!
-   s" HABU_PWID_A" >LEN NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
 \ A refusal build: the named knob carries a value the capture must reject.
@@ -403,54 +436,71 @@ create PRB PRB-CAP allot   variable PRB-U
    s" PRB-ALIAS" PRB+
    PRB$ ;
 
-\ The low baked id is read off the SHIPPED engine rather than pinned: its only
-\ stated property is that the shipped engine does not protect it, so the shipped
-\ engine is the only thing that can say which ids qualify. Above the live
-\ wordlist count by a margin, and above 255 (the u8 ceiling the old row table
-\ existed to clear) - then checked against the live band, so the derivation
-\ proves its own premise instead of assuming it.
-: DERIVE-WID-A ( -- )
-   PLAIN$ PROBE-WORDLIST$ READ-N {: live:n :}
-   live 64 + 256 max WID-A-V !
-   WID-A 255 > TTRUE
-   WID-A WID-B < TTRUE
-   PLAIN$ WID-A MEMBER-PROBE$ READ-N 0 T= ;
+\ Which wordlist id the built engine gave each fixture package. The seed chooses
+\ it - the capture carries an offset, not an id - so the engine is asked, through
+\ the same package records tools/pkg-wid-probe.f reads for the alias cases below.
+: WID-PROBE-HEAD ( -- )
+   PRB-RESET
+   s" require tools/pkg-wid-probe.f" PRB+ PRB-NL ;
+
+: PROT-PKG-WID$ ( -- ptr u8 n )
+   WID-PROBE-HEAD
+   S\" : PRB-WID ( -- ) s\" AWBPROT\" PKG-WID-PROBE:WID-OF . ;" PRB+ PRB-NL
+   s" PRB-WID" PRB+
+   PRB$ ;
+
+: OPEN-PKG-WID$ ( -- ptr u8 n )
+   WID-PROBE-HEAD
+   S\" : PRB-WID ( -- ) s\" AWBOPEN\" PKG-WID-PROBE:WID-OF . ;" PRB+ PRB-NL
+   s" PRB-WID" PRB+
+   PRB$ ;
+
+: READ-FIXTURE-WIDS ( -- )
+   HBPWID$ PROT-PKG-WID$ READ-N PROT-WID-V !
+   HBPWID$ OPEN-PKG-WID$ READ-N OPEN-WID-V ! ;
 
 : PROBE-VARIANT ( -- )
    s" restored band carries the bitmap shape tag before batch input" T-LABEL
    HBPWID$ PROBE-TAG$ READ-N  1 T=
-   s" baked wid 300 (> 255) is protected before batch input" T-LABEL
-   HBPWID$ WID-A MEMBER-PROBE$ READ-N  1 T=
-   s" baked wid 8000 is protected before batch input" T-LABEL
-   HBPWID$ WID-B MEMBER-PROBE$ READ-N  1 T=
-   s" wid 8001, one bit past the highest baked id, is not protected" T-LABEL
-   HBPWID$ WID-NEIGHBOUR MEMBER-PROBE$ READ-N  0 T=
-   s" WIDN advanced past the largest baked wid before batch input" T-LABEL
-   HBPWID$ PROBE-WORDLIST$ READ-N  WID-B >  TTRUE
-   s" publish into baked wid 300 exits 84 (--load)" T-LABEL
-   HBPWID$ WID-A FORGE-WID$ FORGE-LOAD  ASSERT-REJECT
-   s" publish into baked wid 300 exits 84 (stdin)" T-LABEL
-   HBPWID$ WID-A FORGE-WID$ FORGE-STDIN  ASSERT-REJECT
-   s" publish into baked wid 8000 exits 84 (--load)" T-LABEL
-   HBPWID$ WID-B FORGE-WID$ FORGE-LOAD  ASSERT-REJECT
-   s" publish into baked wid 8000 exits 84 (stdin)" T-LABEL
-   HBPWID$ WID-B FORGE-WID$ FORGE-STDIN  ASSERT-REJECT
+   s" the engine gave the fixture's two packages two different word-lists" T-LABEL
+   READ-FIXTURE-WIDS
+   PROT-WID 0 >  OPEN-WID 0 >  and  PROT-WID OPEN-WID <>  and TTRUE
+   s" the word-list the window sealed is protected before batch input" T-LABEL
+   HBPWID$ PROT-WID MEMBER-PROBE$ READ-N  1 T=
+   s" the id one below it is not protected" T-LABEL
+   HBPWID$ PROT-WID 1 - MEMBER-PROBE$ READ-N  0 T=
+   s" the id one above it is not protected" T-LABEL
+   HBPWID$ PROT-WID 1 + MEMBER-PROBE$ READ-N  0 T=
+   s" a window word-list the fixture left open is not protected" T-LABEL
+   HBPWID$ OPEN-WID MEMBER-PROBE$ READ-N  0 T=
+   s" WIDN advanced past the baked word-list ids before batch input" T-LABEL
+   HBPWID$ PROBE-WORDLIST$ READ-N  PROT-WID >  TTRUE
+   s" publish into the sealed baked wid exits 84 (--load)" T-LABEL
+   HBPWID$ PROT-WID FORGE-WID$ FORGE-LOAD  ASSERT-REJECT
+   s" publish into the sealed baked wid exits 84 (stdin)" T-LABEL
+   HBPWID$ PROT-WID FORGE-WID$ FORGE-STDIN  ASSERT-REJECT
+   s" publish into the open baked wid is refused for the other reason" T-LABEL
+   HBPWID$ OPEN-WID FORGE-WID$ FORGE-LOAD  ASSERT-NOT-PROTECTED
    s" an ordinary packaged define still exits 0 on the variant (--load)" T-LABEL
    HBPWID$ DEFINE-OK$ FORGE-LOAD  ASSERT-OK ;
 
+\ The control is now the SAME id, on the shipped engine: the variant's protected
+\ id sits just above the shipped engine's own WIDN, so the shipped engine both
+\ leaves that bit clear and refuses a publish into it for the unrelated reason.
 : PROBE-CONTROL ( -- )
-   s" shipped engine does not protect wid 300 (control, --load)" T-LABEL
-   PLAIN$ WID-A FORGE-WID$ FORGE-LOAD  ASSERT-NOT-PROTECTED
-   s" shipped engine does not protect wid 8000 (control, --load)" T-LABEL
-   PLAIN$ WID-B FORGE-WID$ FORGE-LOAD  ASSERT-NOT-PROTECTED
-   s" shipped engine's band holds neither baked id (control)" T-LABEL
-   PLAIN$ WID-A MEMBER-PROBE$ READ-N  0 T= ;
+   s" shipped engine's band does not hold the variant's sealed id (control)" T-LABEL
+   PLAIN$ PROT-WID MEMBER-PROBE$ READ-N  0 T=
+   s" shipped engine refuses a publish into it for the other reason (control)" T-LABEL
+   PLAIN$ PROT-WID FORGE-WID$ FORGE-LOAD  ASSERT-NOT-PROTECTED ;
 
-\ --- the capture's three refusals -----------------------------------------------
+\ --- the three refusals on the build path ---------------------------------------
 \ All three are proved on the real build path: the builder dies named, and no
-\ engine is produced. The first two are memory-safety guards on a caller-supplied
-\ index; the runtime twin of the first - `prot-wid-add` refusing an id at the
-\ bound, exit 84 - lives in test/seal.f beside the other seal forges.
+\ engine is produced. The first refuses before the capture is asked anything -
+\ `prot-wid-add` owns the bitmap bound, and an id at or above it has no bit, so
+\ protecting it is impossible rather than approximate; its in-process twin lives
+\ in test/seal.f beside the other seal forges. The second is the capture's own:
+\ WID 0 is not a wordlist, so a band whose bit 0 is set is not a registry at all,
+\ and the re-capture the mode runs is what asks.
 \ The third is a different kind of guard and the reason it needs a build to reach
 \ it. Since the capture stopped recognising an address chain by the value it
 \ carries and started reading the address-literal band, a recorded site is known
@@ -466,12 +516,12 @@ create PRB PRB-CAP allot   variable PRB-U
    REFUSE-HB$ EXISTS? 0= TTRUE ;
 
 : PROBE-REFUSALS ( -- )
-   s" capture refuses a protected wid above the bitmap bound" T-LABEL
-   s" HABU_PWID_OOR" WID-OOR BUILD-REFUSED
-   s" aot-capture: protected WID above the bitmap bound" ASSERT-BUILD-REFUSED
-   s" capture refuses a legacy row count that is not a registry shape" T-LABEL
-   s" HABU_PWID_LEGACY_N" LEGACY-N-BAD BUILD-REFUSED
-   s" aot-capture: unrecognised protected-WID registry shape" ASSERT-BUILD-REFUSED
+   s" the engine refuses to protect a wid at the bitmap bound" T-LABEL
+   s" HABU_PWID_BAD" WID-AT-BOUND BUILD-REFUSED
+   s" hb: protected-WID id above the bound" ASSERT-BUILD-REFUSED
+   s" capture refuses a band that marks WID 0" T-LABEL
+   s" HABU_PWID_BAD" WID-NOT-A-WORDLIST BUILD-REFUSED
+   s" aot-capture: protected-WID registry marks WID 0" ASSERT-BUILD-REFUSED
    s" capture refuses a recorded chain its window cannot place" T-LABEL
    s" HABU_AOT_D0_SKEW" D0-SKEW-PAST-SPAN BUILD-REFUSED
    s" aot-capture: recorded address site outside both window spans" ASSERT-BUILD-REFUSED ;
@@ -652,8 +702,6 @@ variable ALIAS-SEALED   variable ALIAS-OPEN   variable ALIAS-W
 
 : BODY ( -- )
    SETUP
-   s" derived low baked id is outside the shipped engine's band" T-LABEL
-   DERIVE-WID-A
    BUILD-VARIANT
    s" aot-wid variant engine builds cleanly" T-LABEL
    RC @ 0 T=

@@ -7978,3 +7978,29 @@ and --no-lldbinit.
   confirms every candidate against `keys[]`, so nothing ever returns a wrong
   answer - only a probe COUNT catches it, and counting probes instead of time
   makes the regression exact rather than flaky.
+
+## 2026-09-12 - a protected-WID fixture cannot name the id it bakes
+
+- **Since the AOT capture stopped copying the live band, what travels is the
+  window's OWN seals stored window-relative, and the seed rebases each row onto
+  the booting engine's WIDN** (`src/habu/aot-capture.f` ACAP-PWIN-CAPTURE,
+  `src/habu/habu2.f` AOT-WINDOW:SEAL-WIDS,), so a fixture can no longer poke an
+  absolute id into the capture and probe that id in the built engine: it has to
+  seal a package it can NAME inside the window and ask the built engine which
+  wordlist id that package got (`tools/pkg-wid-probe.f` WID-OF). The cost is the
+  band's high end - every baked id now lands just above the target's WIDN, so
+  nothing in the tree sets a bit in the band's upper half through a real build,
+  and `test/aot-wid-suite.f` records that gap in its header. The live refusals a
+  fixture can still reach are `prot-wid-add`'s bound ("hb: protected-WID id
+  above the bound", exit 84) and the capture's own "aot-capture: protected-WID
+  registry marks WID 0" (exit 74) after a `0 prot-wid-add`; both measured
+  directly in a host with the capture closure loaded.
+- **A variant-build suite's red says nothing about that suite until the stage
+  engine boots.** `tools/build-fixpoint.f` BF-STAGE-FIXPOINT builds `hb-stage`
+  and runs it; on this tree that engine exits 82 `hb: AOT metadata corrupt`
+  because EM-SEED-AOT treats an empty capture as fatal (`11 bad CBZ,` where it
+  read `11 askip CBZ,` before commit 3e29a730b0d4), and with that relaxed
+  locally the next stop is `E-UNDEFINED: USIGS` in the stage prefix.
+  aot-wid-restore, aot-wide-format, app-image, hb-build-fixtures and
+  build-fixpoint-fixtures are red on that one path, not on five faults of their
+  own.

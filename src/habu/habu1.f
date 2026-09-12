@@ -3585,7 +3585,7 @@ package ENGINE-EMIT
 \ FIRST-DYNAMIC-WID (3), so the reserved pins never shadow a real allocation.
 \ Beyond the two pins, membership is one bit in the PROT-BITS-OFF bitmap (inside the
 \ sealed friend arena): O(1), where the u32 table this replaced cost a linear scan of
-\ up to PROT-WID-LEGACY-MAX entries on EVERY guarded operation. A WID at or above
+\ up to its 256 entries on EVERY guarded operation. A WID at or above
 \ PROT-WID-MAX has no bit and answers "not protected", which is sound because
 \ prot-wid-add refuses to protect one -- an unprotected wordlist can exist above the
 \ bound, a silently-unprotected one cannot. Preserves x5 x6 x7 x9 x14; x13 is

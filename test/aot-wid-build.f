@@ -2,15 +2,24 @@
 \
 \ Run as `bin/hb --load test/aot-wid-build.f` with HB_TMP pointing at a private
 \ directory; on success it writes an `hb-pwid` engine into that directory. The
-\ variant is identical to the shipped `bin/hb` except that its ahead-of-time
-\ (AOT) section carries a protected-WID bitmap with two extra wordlist ids set
-\ (300 and 8000) on top of whatever the metabuild host itself protects. Nothing
-\ in production is touched: the extra bits are set ONLY in this throwaway
-\ variant, through the same capture-buffer word the real metabuild uses
-\ (aot-capture.f ACAP-PWID-SET), so the shipped engine bakes exactly the band
-\ its own build produced.
+\ variant is identical to the shipped `bin/hb` except that its capture window
+\ holds two packages of this fixture's own and one of them is protected, so the
+\ built engine restores one protected wordlist the shipped engine has not got.
+\ Nothing in production is touched: the protection is asked for inside this
+\ throwaway variant's window, through `prot-wid-add` - the same public word any
+\ package uses to seal its own word-list - and the capture derives what travels
+\ from the live band (aot-capture.f ACAP-PWIN-CAPTURE) exactly as the real
+\ metabuild does.
 \
-\ How the bits are injected without editing production source: the stdin
+\ WHAT A CAPTURE CARRIES IS WINDOW-RELATIVE, which is why this file cannot name
+\ the id the built engine ends up protecting. A captured protected WID is stored
+\ as its offset from the window's first wordlist id (AOT-BUF:AOT-WID-W0) and the
+\ seed rebases each one onto the booting engine's WIDN (habu2.f
+\ AOT-WINDOW:SEAL-WIDS,), so no build-host id survives the cut. The fixture
+\ therefore protects a package it CAN name, and test/aot-wid-suite.f asks the
+\ built engine which id that package got (tools/pkg-wid-probe.f).
+\
+\ How the fixture is injected without editing production source: the stdin
 \ metabuild driver src/habu/stdin.f ends with a single top-level
 \ `STDIN-DRIVER:RUN` call, and everything before it is what a generated driver
 \ keeps. WHICH BYTES THOSE ARE IS NOT THIS FILE'S TO SAY - it asks
@@ -24,24 +33,23 @@
 \ rest of the build reuses tools/build-fixpoint.f exactly as the normal stdin
 \ build does.
 \
-\ Sixteen modes, one per entry below (HABU_AOT_GATE serves two), selected by
+\ Fifteen modes, one per entry below (HABU_AOT_GATE serves two), selected by
 \ environment so one builder serves every case its companion suites need -
 \ test/aot-wid-suite.f, test/aot-wide-format-suite.f and the PTY half in
 \ test/aot-data-span-forge.f:
 \
-\   (default)          bake the two fixture ids, after checking the capture's own
-\                      shape contract on the live host: the band carries
-\                      PROT-REG-TAG, the captured buffer is a bit-for-bit image
-\                      of the live band, and the table-era conversion leg accepts
-\                      an empty registry without setting a bit.
-\   HABU_PWID_OOR=N    hand N to ACAP-PWID-SET instead. The capture must refuse
-\                      any id at or above the bitmap's bound rather than write
-\                      outside the band, so the build dies named and no engine
-\                      appears.
-\   HABU_PWID_LEGACY_N=N  hand N to ACAP-PWID-LEGACY as a table-era row count.
-\                      A count outside [0, PROT-WID-LEGACY-MAX] is not a legacy
-\                      registry at all, so the build dies named rather than
-\                      walking the read loop out of the band.
+\   (default)          define two packages inside the capture window and protect
+\                      one of them, then check the capture's contract against the
+\                      live band on the host: the band carries PROT-REG-TAG, a
+\                      capture taken before the protection records no row at all,
+\                      the rows taken after it are exactly the live protected WIDs
+\                      inside the window, and the host's own protected WIDs - all
+\                      of which sit below the window - do not travel.
+\   HABU_PWID_BAD=N    hand N to `prot-wid-add` inside the window and re-capture.
+\                      N at or above PROT-WID-MAX has no bit in the band and the
+\                      primitive that owns the bound refuses it; N=0 sets the one
+\                      bit no registry may carry and the capture refuses the band.
+\                      Either way the build dies named and no engine appears.
 \   HABU_AOT_SPAN=N    overwrite the captured AOT DATA span (the sibling
 \                      test/aot-data-span-forge.f forge; see SPAN-FORGE-LINE).
 \   HABU_AOT_WID_SKEW=N  move the captured wid window's base up by N after the
@@ -232,70 +240,10 @@ create DRV-CH 1 allot
       p pu DRV+  s"  AOT-BUF:AOT-WID-SPAN !" DRV-LINE
    then ;
 
-\ --- the fixture contract -----------------------------------------------------
-\ These two ids are what test/aot-wid-suite.f probes for in the built engine, so
-\ any drift here turns that suite red (it is self-checking) - keep the two in
-\ step. 8000 sits high in the band, far above any wordlist a boot allocates, so
-\ the suite can also assert that its NEIGHBOUR 8001 came back unprotected - a
-\ restore that smeared or mis-shifted the band would set it.
-\
-\ THE LOW ID IS NOT A LITERAL, because its whole job is to be an id the SHIPPED
-\ engine does not already protect, and that is a fact about the shipped engine
-\ rather than a number. The suite reads it off the live band and hands it over as
-\ HABU_PWID_A; a pinned 300 stopped being outside that band the moment the
-\ engine's wordlist count changed, and the control leg started asserting the
-\ opposite of what it says. The default below is for a standalone run only - the
-\ suite always passes the knob, and its own "baked wid is protected" case is what
-\ catches a knob that failed to arrive.
-: FIXTURE-A$ ( -- ptr u8 n )
-   s" HABU_PWID_A" GETENV dup 0 > if exit then 2drop s" 300" ;
-: FIXTURE-B$ ( -- ptr u8 n ) s" 8000" ;
-
-\ --- shape and conversion checks emitted into the driver ----------------------
-\ These run in the METABUILD HOST, where the live band and the capture buffer both
-\ exist, and they use the very words the real capture uses. They are the only
-\ place the capture's format contract can be checked against a live band. Those
-\ words are private to package AOT-CAPTURE, so the definitions are emitted inside
-\ a reopened block of it and stay private too.
-: SHAPE-CHECK-DEF ( -- )
-   DRV-AOT-CAPTURE
-   s" : PWID-SHAPE-CHECK ( -- )" DRV-LINE
-   s"    ACAP-PWID-TAG@ PROT-REG-TAG <> if" DRV-LINE
-   S\"       s\" aot-wid-build: metabuild host band carries no bitmap tag\" 74 die then" DRV-LINE
-   s"    PROT-BITS-BYTES 0 ?do" DRV-LINE
-   s"       AOT-LIVE-DATA PROT-BITS-OFF + i + AOT-A>U8 c@  AOT-PWID-BUF@ i + c@ <> if" DRV-LINE
-   S\"          s\" aot-wid-build: capture is not a bit-for-bit image of the live band\" 74 die" DRV-LINE
-   s"       then" DRV-LINE
-   s"    loop ;" DRV-LINE ;
-
-\ The table-era leg converts u32 rows read from a FIXED live address into bits, so
-\ it cannot be handed a fabricated table: on a bitmap-era host that address holds
-\ the bitmap, and reading it as rows yields whatever ids the host's own bits happen
-\ to spell. What CAN be checked here without forging live memory is the empty
-\ table-era registry - count 0, which is exactly the shape every shipped
-\ table-era engine carried, and the shape the real changeover fed this leg. It must
-\ be accepted (not mistaken for an unknown lineage) and must leave no bit set.
-\ Its opposite, a count that is not a legacy registry at all, is the
-\ HABU_PWID_LEGACY_N refusal build.
-\
-\ NOT covered here, and recorded as a gap rather than faked: the row->bit mapping
-\ for a NON-empty table. It needs a table-era host, which no longer exists; its
-\ only evidence is the one-time changeover measurement (an old-table host and a
-\ new-bitmap host both building bin/hb to the same bytes). That is a reason to
-\ retire the leg, not to keep it untested - dot habu-retire-the-legacy-31ad57bc.
-: LEGACY-CHECK-DEF ( -- )
-   s" : PWID-LEGACY-CHECK ( -- )" DRV-LINE
-   s"    ACAP-PWID-CLEAR" DRV-LINE
-   s"    0 ACAP-PWID-LEGACY" DRV-LINE
-   s"    ACAP-PWID-COUNT 0 <> if" DRV-LINE
-   S\"       s\" aot-wid-build: empty legacy registry set a bit\" 74 die then" DRV-LINE
-   s"    ACAP-PWID-CAPTURE ;" DRV-LINE
-   s" ;package" DRV-LINE ;
-
 \ --- the body between CAPTURE-REPL and the image emit --------------------------
-: OOR-ENV$ ( -- ptr u8 n )       s" HABU_PWID_OOR" GETENV ;
-: LEGACY-ENV$ ( -- ptr u8 n )    s" HABU_PWID_LEGACY_N" GETENV ;
+: BAD-ENV$ ( -- ptr u8 n )       s" HABU_PWID_BAD" GETENV ;
 : SKEW-ENV$ ( -- ptr u8 n )      s" HABU_AOT_D0_SKEW" GETENV ;
+: SPAN-ENV$ ( -- ptr u8 n )      s" HABU_AOT_SPAN" GETENV ;
 : BAKE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_BAKE" GETENV ;
 : TRAP-ENV$ ( -- ptr u8 n )      s" HABU_AOT_TRAP" GETENV ;
 : BIG-ENV$ ( -- ptr u8 n )       s" HABU_AOT_BIG" GETENV ;
@@ -304,26 +252,13 @@ create DRV-CH 1 allot
 : PREWIN-ENV$ ( -- ptr u8 n )    s" HABU_AOT_PREWIN" GETENV ;
 : GATE-ENV$ ( -- ptr u8 n )      s" HABU_AOT_GATE" GETENV ;
 
-: REFUSE-BODY ( ptr u8 n ptr u8 n -- ) {: v:ptr vu:n w:ptr wu:n :}
-   v vu DRV+  s"  " DRV+  w wu DRV-LINE ;
-
-: CHECKS-WANTED? ( -- bool )       \ only the plain fixture build carries them
-   OOR-ENV$ nip 0 =  LEGACY-ENV$ nip 0 =  and  SKEW-ENV$ nip 0 =  and
-   BAKE-ENV$ nip 0 =  and  TRAP-ENV$ nip 0 =  and  BIG-ENV$ nip 0 =  and
-   EXT-ENV$ nip 0 =  and  XL-ENV$ nip 0 =  and
-   PREWIN-ENV$ nip 0 =  and  GATE-ENV$ nip 0 =  and ;
-
-\ The two shape checks are only DEFINED for the plain fixture build
-\ (CHECKS-WANTED?), so the window-content modes, which reuse the two bits and
-\ nothing else, must not call them.
-: FIXTURE-CHECK-LINES ( -- )
-   s" PWID-SHAPE-CHECK" DRV-LINE
-   s" PWID-LEGACY-CHECK" DRV-LINE ;
-
-: FIXTURE-BODY ( -- )
-   CHECKS-WANTED? if FIXTURE-CHECK-LINES then
-   FIXTURE-A$ DRV+  s"  ACAP-PWID-SET" DRV-LINE
-   FIXTURE-B$ DRV+  s"  ACAP-PWID-SET" DRV-LINE ;
+\ The plain protected-WID fixture is the fallback mode, but two knobs reach that
+\ point with a window of their own to keep: the D0-skew refusal re-captures the
+\ REPL window as CAPTURE-REPL left it, and the DATA-span forge
+\ (test/aot-data-span-forge.f) bakes that same window with a forged span. Neither
+\ wants two packages of ours inside it.
+: PLAIN-MODE? ( -- bool )
+   SKEW-ENV$ nip 0 =  SPAN-ENV$ nip 0 =  and ;
 
 \ Re-run the real capture over the real window with the DATA span start moved.
 \ AOT-ARM's window cells still hold the span CAPTURE-REPL just latched, so raising
@@ -335,14 +270,15 @@ create DRV-CH 1 allot
    s" AOT-ARM:D0 @ " DRV+  v vu DRV+  s"  + AOT-ARM:D0 !" DRV-LINE
    s" AOT-ARM:WINDOW$ CAPTURE" DRV-LINE ;
 
-: PWID-BODY ( -- )
-   OOR-ENV$ {: o:ptr ou:n :}
-   ou 0 > if o ou s" ACAP-PWID-SET" REFUSE-BODY exit then
-   LEGACY-ENV$ {: l:ptr lu:n :}
-   lu 0 > if l lu s" ACAP-PWID-LEGACY" REFUSE-BODY exit then
+\ The D0-skew refusal is the only body that has to sit inside a reopened
+\ AOT-CAPTURE block: it re-enters the capture by its bare name. Every other mode
+\ works at top level, so no other build carries the block.
+: SKEW-MODE-LINES ( -- )
    SKEW-ENV$ {: k:ptr ku:n :}
-   ku 0 > if k ku SKEW-BODY exit then
-   FIXTURE-BODY ;
+   ku 0= if exit then
+   DRV-AOT-CAPTURE
+   k ku SKEW-BODY
+   s" ;package" DRV-LINE ;
 
 \ CAPTURE-REPL is private to package STDIN-DRIVER, so the appended text reopens
 \ that package, ticks it, closes the package and executes the token - reaching the
@@ -353,10 +289,8 @@ create DRV-CH 1 allot
    s" ;package" DRV-LINE
    s" execute" DRV-LINE ;
 
-\ Append the checks the fixture build needs, then stdin.f's own terminal sequence
-\ with the protected-WID work spliced in after CAPTURE-REPL.
-\ --- the two window-content fixtures ------------------------------------------
-\ Both work the way SKEW-BODY does: define at top level, then hand the REAL entry
+\ --- the window-content fixtures ----------------------------------------------
+\ They all work the way SKEW-BODY does: define at top level, then hand the REAL entry
 \ point (AOT-CAPTURE's public CAPTURE) a window widened to take in what was just
 \ defined. stdin.f's own window variables supply the START of every span, so the
 \ blob, record and DATA spans all still begin exactly where CAPTURE-REPL began
@@ -386,6 +320,95 @@ create DRV-CH 1 allot
    S\" s\" INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
    S\" s\" BPW-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
    S\" s\" S-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+
+\ --- the protected-WID fixture (the default build) -----------------------------
+\ TWO PACKAGES, ONE PROTECTED. The unprotected one is defined first so the
+\ protected one's window-relative offset is not zero: a seed that dropped the
+\ offset and protected WIDN itself would still satisfy a fixture whose only
+\ protected wordlist was the window's first. Each publishes one word, so each has
+\ a package record the capture carries and the built engine can be asked about by
+\ name - which is how test/aot-wid-suite.f learns the two rebased ids.
+\
+\ THE CHECK TAKES TWO CAPTURES OVER ONE WINDOW, because the capture's contract has
+\ two halves and one window can show both. The first capture, with nothing in the
+\ window protected, is the EMPTY registry: it must be accepted and must record no
+\ row. The second, after `prot-wid-add`, must record exactly the live protected
+\ WIDs inside the window - no more (the host's own 100-odd protected word-lists
+\ sit below the window and are deliberately dropped, since replaying them would
+\ resurrect the discarded namespace) and no fewer (the fixture's own must be
+\ there, at a non-zero offset). Both run in the METABUILD HOST through the
+\ capture's own words, which is the only place that contract can be checked
+\ against a live band.
+: PROT-CHECK-DEF ( -- )
+   DRV-AOT-CAPTURE
+   s" : PROT-ROW ( n -- n ) 4 * AOT-PWIN-BUF@ + ACAP-W32@ ;" DRV-LINE
+   s" : PROT-ROW? ( n -- bool ) {: rel:n :}" DRV-LINE
+   s"    AOT-PWIN-N @ 0 ?do i PROT-ROW rel = if 0 0= unloop exit then loop  0 0= 0= ;" DRV-LINE
+   s" : PROT-LIVE-IN ( -- n )" DRV-LINE
+   s"    0  AOT-WID-SPAN @ 0 ?do i AOT-WID-W0 @ + ACAP-LIVE-PWID? if 1+ then loop ;" DRV-LINE
+   s" : PROT-LIVE-BELOW ( -- n )" DRV-LINE
+   s"    0  AOT-WID-W0 @ 0 ?do i ACAP-LIVE-PWID? if 1+ then loop ;" DRV-LINE
+   s" : PROT-ROWS-LIVE? ( -- bool )" DRV-LINE
+   s"    AOT-PWIN-N @ 0 ?do" DRV-LINE
+   s"       i PROT-ROW {: rel:n :}" DRV-LINE
+   s"       rel AOT-WID-SPAN @ < 0= if 0 0= 0= unloop exit then" DRV-LINE
+   s"       rel AOT-WID-W0 @ + ACAP-LIVE-PWID? 0= if 0 0= 0= unloop exit then" DRV-LINE
+   s"    loop  0 0= ;" DRV-LINE
+   s" : PROT-CHECK ( -- )" DRV-LINE
+   s"    AOT-LIVE-DATA PROT-REG-TAG-CELL + AOT-CELL@ PROT-REG-TAG <> if" DRV-LINE
+   S\"       s\" aot-wid-build: metabuild host band carries no bitmap tag\" 74 die then" DRV-LINE
+   s"    AWB-PWIN0 @ 0 <> if" DRV-LINE
+   S\"       s\" aot-wid-build: the window held a protected WID before the fixture asked\" 74 die then" DRV-LINE
+   s"    PROT-ROWS-LIVE? 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: a captured row is not a live protected WID in the window\" 74 die then" DRV-LINE
+   s"    PROT-LIVE-IN AOT-PWIN-N @ <> if" DRV-LINE
+   S\"       s\" aot-wid-build: the capture and the live band disagree in the window\" 74 die then" DRV-LINE
+   s"    PROT-LIVE-BELOW 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: the host protects nothing below the window\" 74 die then" DRV-LINE
+   s"    AWB-PROT-WID @ AOT-WID-W0 @ - {: prel:n :}" DRV-LINE
+   s"    prel 0 > 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: the protected wordlist is the window's first\" 74 die then" DRV-LINE
+   s"    prel PROT-ROW? 0= if" DRV-LINE
+   S\"       s\" aot-wid-build: the protected wordlist did not travel\" 74 die then" DRV-LINE
+   s"    AWB-OPEN-WID @ AOT-WID-W0 @ - PROT-ROW? if" DRV-LINE
+   S\"       s\" aot-wid-build: an unprotected window wordlist travelled\" 74 die then" DRV-LINE
+   S\"    s\" aot-wid-build: pwin-rows \" type AOT-PWIN-N @ . cr" DRV-LINE
+   S\"    s\" aot-wid-build: pwin-rel \" type prel . cr" DRV-LINE
+   S\"    s\" aot-wid-build: prot-below \" type PROT-LIVE-BELOW . cr ;" DRV-LINE
+   s" PROT-CHECK" DRV-LINE
+   s" ;package" DRV-LINE ;
+
+: PROT-FIXTURE-LINES ( -- )
+   s" variable AWB-OPEN-WID" DRV-LINE
+   s" variable AWB-PROT-WID" DRV-LINE
+   s" variable AWB-PWIN0" DRV-LINE
+   s" package AWBOPEN" DRV-LINE
+   s" public" DRV-LINE
+   s" : AWB-OPEN-MARK ( -- n ) 1 ;" DRV-LINE
+   s" get-current AWB-OPEN-WID !" DRV-LINE
+   s" ;package" DRV-LINE
+   s" package AWBPROT" DRV-LINE
+   s" public" DRV-LINE
+   s" : AWB-PROT-MARK ( -- n ) 2 ;" DRV-LINE
+   s" get-current AWB-PROT-WID !" DRV-LINE
+   s" ;package" DRV-LINE
+   RECAPTURE-LINE                       \ the empty pass: nothing is protected yet
+   s" AOT-BUF:AOT-PWIN-N @ AWB-PWIN0 !" DRV-LINE
+   s" AWB-PROT-WID @ prot-wid-add" DRV-LINE
+   RECAPTURE-LINE
+   PROT-CHECK-DEF
+   REPL-BOOTRUN-LINES ;
+
+\ The two refusals the live capture path owns, both reached through the word that
+\ owns the bound. An id at or above PROT-WID-MAX has no bit in the band, so
+\ `prot-wid-add` refuses it (exit 84) before any capture is asked anything - the
+\ memory-safety argument for a prim taking a caller-supplied index, whose
+\ in-process twin is in test/seal.f. WID 0 is not a wordlist, so a band with bit 0
+\ set is not a registry, and it is the RE-CAPTURE below that asks the capture
+\ about it (exit 74). Neither build reaches an image.
+: BAD-FIXTURE-LINES ( ptr u8 n -- ) {: v:ptr vu:n :}
+   v vu DRV+  s"  prot-wid-add" DRV-LINE
+   RECAPTURE-LINE ;
 
 \ An initialised cell plus a word that reads it. The word's reference to the cell
 \ is a DATA address literal in the widened window, so the value only reaches the
@@ -767,23 +790,20 @@ create DRV-CH 1 allot
 : FIXTURE-LINES ( -- )
    GATE-ENV$ {: g:ptr gu:n :}
    gu 0 > if g gu GATE-FIXTURE-LINES exit then
+   BAD-ENV$ {: b:ptr bu:n :}
+   bu 0 > if b bu BAD-FIXTURE-LINES exit then
    BAKE-ENV$ nip 0 > if BAKE-FIXTURE-LINES exit then
    TRAP-ENV$ nip 0 > if TRAP-FIXTURE-LINES exit then
    BIG-ENV$ nip 0 > if BIG-FIXTURE-LINES exit then
    EXT-ENV$ nip 0 > if EXT-FIXTURE-LINES exit then
    XL-ENV$ nip 0 > if XL-FIXTURE-LINES exit then
-   PREWIN-ENV$ nip 0 > if PREWIN-FIXTURE-LINES then ;
+   PREWIN-ENV$ nip 0 > if PREWIN-FIXTURE-LINES exit then
+   PLAIN-MODE? if PROT-FIXTURE-LINES then ;
 
 : INJECT ( -- )
-   CHECKS-WANTED? if
-      SHAPE-CHECK-DEF
-      LEGACY-CHECK-DEF
-   then
    GATE-SEAL-CHECK-LINES                \ host-side, before the window: nothing extra is captured
    CAPTURE-REPL-LINES
-   DRV-AOT-CAPTURE
-   PWID-BODY
-   s" ;package" DRV-LINE
+   SKEW-MODE-LINES
    FIXTURE-LINES
    SPAN-FORGE-LINE
    WID-FORGE-LINE
@@ -797,7 +817,7 @@ create DRV-CH 1 allot
    BF-DRV-SOURCE-KEEP {: keep:n :}  \ the build's own split of the stdin driver
    DRV-RESET
    BF-SOURCE-BUF keep DRV+          \ stdin.f minus its terminal driver call
-   INJECT                           \ ... plus the bitmap-working fixture
+   INJECT                           \ ... plus this build's protected-WID fixture
    DRV-IMPORT-CHECK
    DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;
 
