@@ -7767,6 +7767,8 @@ and --no-lldbinit.
   build-fixpoint-fixtures (1), cast (1), engine (1), hb-build-fixtures (67),
   native-gate-aot-positive (1), p2-map-rewind (1), pre-trust-defer (1),
   program-diagnostics (1), verify-prim (1)
+  Re-measured 2026-09-12 15:19 UTC on engine dd305f57 at tip c82b7c18 (310
+  suites, no timeouts): the same 15 after the session-compile stack landed.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
