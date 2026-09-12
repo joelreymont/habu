@@ -69,3 +69,8 @@ Without `START!`, the saved dictionary retains ordinary Habu input and source
 argument handling. A saved image can itself compile more checked definitions
 and be captured again. Typed quotation stores into persistent DATA cells use
 the shared relocation table automatically; application code uses ordinary `!`.
+What makes that automatic is the tier: `src/habu/app-image.f` selects the
+optimizing tier as its last act, so every definition the application makes is
+lowered by the compiler that knows a store holds a quotation and declares the
+cell. Do not select tier 0 after requiring it - the image would then keep the
+builder's own code addresses in those cells and die when it ran them.

@@ -8004,3 +8004,22 @@ and --no-lldbinit.
   aot-wid-restore, aot-wide-format, app-image, hb-build-fixtures and
   build-fixpoint-fixtures are red on that one path, not on five faults of their
   own.
+
+## 2026-09-13 - which compiler built the application decides what an image keeps
+
+- **A checked quotation store only declares its persisted cell on the optimizing
+  tier, so an application image whose own source compiled on tier 0 boots with
+  the builder's code addresses in it.** `src/compiler/native/elaborate.f`
+  routes a store the checker has proven holds a quotation through
+  `QUOTATION-STORAGE:STORE`, which calls `xt!` for a cell inside DATA and so
+  declares it to the persisted-address table; tier 0 compiles each body before
+  the checker has seen it, has no such fact, and emits the plain store. Nothing
+  fails at build time: the writer canonicalises every DECLARED cell and leaves
+  the undeclared one holding the address the builder's own JIT region had, so the
+  restored process jumps into whatever its image mapped there - measured as a
+  SIGILL whose pc sits BELOW the live region base, which is the signature of this
+  class (a live token is always above it). One `TYPED-VARIABLE` holding a
+  quotation was enough. When an image path must accept ordinary checked source,
+  select tier 1 ahead of that source rather than asking every author to reach for
+  `xt!`; when a cell's address is only known at run time, `xt!` remains the only
+  declaration point.

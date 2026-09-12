@@ -54,3 +54,20 @@ public
    SNAP:PERSIST ;
 
 ;package
+
+\ EVERY DEFINITION THE APPLICATION ITSELF MAKES COMPILES ON TIER 1, and this line
+\ is where that is decided: the stdin stream that builds an image requires this
+\ file first, so selecting the tier at its tail puts the selection ahead of the
+\ application's own source without asking every build stream to remember it.
+\ WHY IT IS NOT A PREFERENCE. Tier 0 is the legacy JIT; it compiles a definition
+\ before the checker has seen it, so it cannot route a checked quotation store
+\ through QUOTATION-STORAGE:STORE the way the optimizing tier's elaborator does
+\ (src/compiler/native/elaborate.f DO-QUOTATION-STORE). A store it lowers as a
+\ plain `!` never declares the cell to the persisted-address table
+\ (src/habu/layout.f SNAP-RELOC:XTCELL-*), so the writer leaves the builder's own
+\ code address in the image and the restored process jumps into whatever the
+\ image mapped there - measured as SIGILL at a pc below the live region base,
+\ from one `TYPED-VARIABLE` holding a quotation (test/app-image-subject.f).
+\ Selecting the tier after this file's own requires keeps them on tier 0, where
+\ every persisted cell they own is declared explicitly through `defer`/`is`/`xt!`.
+1 set-tier

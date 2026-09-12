@@ -50,6 +50,22 @@ variable STARTUP-U
    rc 0 T= erru 0 T=
    outu ;
 
+\ The application's own definitions have to reach the OPTIMIZING tier: tier 0
+\ compiles a body before the checker has seen it and lowers a checked quotation
+\ store as a plain `!`, which declares no persisted-address row, so the image
+\ keeps the builder's code address and the restored process jumps into the bytes
+\ the image mapped there (measured: SIGILL below the live region base). The
+\ selection is src/habu/app-image.f's tail, so requiring that file is the whole
+\ precondition, and reading it back through a child is what refuses a move.
+: CHECK-BUILD-TIER ( -- )
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN
+   S\" require src/habu/app-image.f\ntier@ . cr\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
+   OUT swap S\" 1\n\n" T$= ;
+
 : BUILD ( -- )
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
@@ -180,6 +196,7 @@ $20002 constant PTY-OPEN-FLAGS
 
 : RUN ( -- )
    T-RESET PREPARE
+   CHECK-BUILD-TIER
    BUILD
    IMAGE$ CHECK-APPLICATION
    CHECK-REJECTION
