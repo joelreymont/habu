@@ -7757,6 +7757,16 @@ and --no-lldbinit.
   hb-build-fixtures (67), native-gate-aot-positive (1),
   native-gate-diagnostics (67), p2-map-rewind (1), pre-trust-defer (1),
   program-diagnostics (1), verify-prim (1)
+  Re-measured 2026-09-12 15:10 UTC on engine fe51bac4 (309 suites, load 4.2,
+  no timeouts): 15 red after the seal-floor rule, dynamic-storage in the
+  core prefix and TYPE-RESERVED?'s axiom landed; verify-prim's cold differential
+  now exits 78 (a duplicate definition after the intern-index rebuild) where
+  it exited 83.
+  addrmap-inline (1), aot-prelude-band (1), aot-sig-pool (1),
+  aot-wide-format (67), aot-wid-restore (70), app-image (67),
+  build-fixpoint-fixtures (1), cast (1), engine (1), hb-build-fixtures (67),
+  native-gate-aot-positive (1), p2-map-rewind (1), pre-trust-defer (1),
+  program-diagnostics (1), verify-prim (1)
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
