@@ -907,13 +907,31 @@ create NAMEBUF NAME-CAP allot
       t i SUCC-ORD F-NEED? if true unloop exit then
    loop false ;
 
+\ One block: needed already, or newly needed because an edge out of it leads to a
+\ block that is.
+: F-NEED-STEP ( IR-ID:ir-fun-id n -- bool )
+   {: f:IR-ID:ir-fun-id b:n :}
+   b F-NEED? if false exit then
+   f b BLOCK-AT TERM-AT F-NEED-SUCC? 0= if false exit then
+   b F-NEED! true ;
+
+\ DESCENDING BLOCK ORDINAL, which is what makes the fixpoint below converge in a
+\ bounded number of passes instead of one pass per block. The need runs BACKWARD
+\ along the edges, and the selector emits a block before the blocks it branches
+\ to, so visiting high ordinals first carries a need the whole length of a
+\ straight-line region in ONE pass; ascending order moved it exactly one block per
+\ pass, so a function of 2k+1 blocks in a chain took k passes over every block.
+\ Only a back edge - a successor whose ordinal is not above this block's - can
+\ still need another pass, so the count is the loop nesting depth and not the
+\ block count.
+\
+\ The ORDER cannot change the answer, only the number of passes: a pass never
+\ clears a flag, so the iteration is monotone and its fixpoint is unique.
 : F-NEED-PASS ( IR-ID:ir-fun-id n -- bool )
    {: f:IR-ID:ir-fun-id n:n :}
    false
    n 0 ?do
-      i F-NEED? 0= if
-         f i BLOCK-AT TERM-AT F-NEED-SUCC? if drop i F-NEED! true then
-      then
+      f  n 1- i -  F-NEED-STEP if drop true then
    loop ;
 
 : F-NEED-FILL ( IR-ID:ir-fun-id n -- )

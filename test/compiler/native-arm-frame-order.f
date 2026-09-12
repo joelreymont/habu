@@ -111,6 +111,49 @@ private
    x REQ
    x y + total + y ;
 
+
+\ ---- the frame need over a long chain of arms ---------------------------------
+\ The need for a frame order runs BACKWARD along the edges from the blocks that
+\ reach the frame, so WHERE the spills are decides how far it travels. Here the
+\ arms come first and touch no frame, and the live set that spills is behind all
+\ of them, so each arm block learns its need only from the block after it. That is
+\ the shape whose fixpoint cost one pass over every block: measured 25 passes over
+\ 35 blocks while F-NEED-PASS visited ascending, 3 once it visited descending. A
+\ wrong visit order shows up here as a wrong answer, not as a slow one.
+: NEED-TAIL ( n -- n )
+   dup 5 < if 1 + then dup 5 < if 2 + then dup 5 < if 3 + then
+   dup 5 < if 4 + then dup 5 < if 5 + then dup 5 < if 6 + then
+   dup 5 < if 7 + then dup 5 < if 8 + then dup 5 < if 9 + then
+   dup 5 < if 10 + then dup 5 < if 11 + then dup 5 < if 12 + then
+   dup 5 < if 13 + then dup 5 < if 14 + then dup 5 < if 15 + then
+   dup 5 < if 16 + then dup 5 < if 17 + then dup 5 < if 18 + then
+   dup 5 < if 19 + then dup 5 < if 20 + then dup 5 < if 21 + then
+   dup 5 < if 22 + then dup 5 < if 23 + then dup 5 < if 24 + then
+   dup 1 + swap dup 2 + swap dup 3 + swap dup 4 + swap dup 5 + swap
+   dup 6 + swap dup 7 + swap dup 8 + swap dup 9 + swap dup 10 + swap
+   dup 11 + swap dup 12 + swap dup 13 + swap dup 14 + swap dup 15 + swap
+   dup 16 + swap dup 17 + swap dup 18 + swap dup 19 + swap dup 20 + swap
+   dup 21 + swap dup 22 + swap dup 23 + swap dup 24 + swap dup 25 + swap
+   dup 26 + swap dup 27 + swap dup 28 + swap
+   + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;
+
+\ The same two ingredients the other way round, at the k the spill-frame family
+\ of tools/chain-scale.f uses: the live set that spills first, the arms behind it.
+\ The plan then puts a store or a reload in nearly every block, so the need is
+\ seeded almost everywhere and converges in three passes whichever way the blocks
+\ are visited - the neighbour that keeps the reorder an optimisation rather than a
+\ change of answer.
+: NEED-HEAD ( n -- n )
+   dup 1 + swap dup 2 + swap dup 3 + swap dup 4 + swap dup 5 + swap
+   dup 6 + swap dup 7 + swap dup 8 + swap dup 9 + swap dup 10 + swap
+   dup 11 + swap dup 12 + swap dup 13 + swap dup 14 + swap dup 15 + swap
+   dup 16 + swap dup 17 + swap dup 18 + swap dup 19 + swap dup 20 + swap
+   dup 21 + swap dup 22 + swap dup 23 + swap dup 24 + swap dup 25 + swap
+   dup 26 + swap dup 27 + swap dup 28 + swap
+   dup 5 < if 1 + then dup 5 < if 2 + then dup 5 < if 3 + then
+   dup 5 < if 4 + then
+   + + + + + + + + + + + + + + + + + + + + + + + + + + + + ;
+
 public
 
 : CASES ( -- )
@@ -149,7 +192,13 @@ public
 
    s" a MATCH arm that throws beside one that passes its payload on" T-LABEL
    1 2 3 STEP-AT 2 T= 9 T=
-   [: 0 2 3 STEP-AT 2drop ;] E-ARM TTHROWSQ ;
+   [: 0 2 3 STEP-AT 2drop ;] E-ARM TTHROWSQ
+
+   s" a frame need that travels a chain of arms backwards" T-LABEL
+   0 NEED-TAIL 580 T=
+
+   s" the spill-frame shape, arms behind the live set" T-LABEL
+   0 NEED-HEAD 412 T= ;
 
 ;package
 
