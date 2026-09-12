@@ -1,11 +1,17 @@
 # Bootstrap
 
-## Current recovery status (2026-09-10)
+## Current recovery status (2026-09-13)
 
-This checkout's Gforth recovery and native self-refresh currently fail with
-`hb: native compiler dispatch unset`: the generated stage still loads source
-before the sole native compiler has been seeded. Do not use those paths to
-replace a working engine until that build transition is complete.
+Measured on linux-aarch64: the Gforth recovery now reaches `hb-stdin-mk` — Gforth
+builds `hb-stage0`, that stage builds `hb-stage`, and `hb-stage` reaches its
+fixpoint and builds `hb-stdin-mk`, all four engines booting their prefix from
+source (see the cold-runtime rule below). The chain then stops when
+`hb-stdin-mk` compiles its own baked source: `E-UNDEFINED: AOT-PWID-BUF@`, a word
+`src/habu/aot-file.f` `SEC-PTR` and `tools/aot-chain-capture.f` both call and
+nothing defines. The same undefined word rejects the assembled `stdin-src` in the
+native self-refresh's blocking certify pass (`certify: stdin-src rejected rc 70`,
+then `E-BUILD-CERTIFY`), so neither the recovery nor `install`/`all` can replace a
+working engine until that definition is restored.
 
 The compatible local seed `.jj-ws/bootstrap-seed-hardcut/bin/hb` was copied to
 `bin/hb` (SHA-256
@@ -24,13 +30,37 @@ REPL; with piped stdin, EOF exits. `bye` is not defined in this engine.
 
 `bin/hb` is generated and ignored. It is the only installed native build output.
 It is the seeded product, not a source loader: its core, checker and tool prefix
-arrive from the baked AOT artifact, so a boot opens no prefix source at all
-(`EMIT-SOURCE` emits only `EMIT-COLD-PREFIX-SHARED` in `src/habu/habu2.f`, and
-the source-loading `EMIT-COLD-PREFIX` beside it has no caller). The engine
-therefore starts in any directory, and an edit under `src/` changes nothing the
-installed engine does until it is rebuilt.
+arrive from the baked AOT artifact, so a boot opens no prefix source at all. The
+engine therefore starts in any directory, and an edit under `src/` changes
+nothing the installed engine does until it is rebuilt.
 A checkout without `bin/hb` uses Gforth only to create private bootstrap
 artifacts under `HB_TMP`; those artifacts exist only to produce `bin/hb`.
+
+### Where an engine's cold runtime comes from
+
+One fact decides it, and `src/habu/habu2.f` `SEEDED-RUNTIME?` is the one place
+that reads it: the AOT window the build captured.
+
+- **A build that captured one** bakes the whole cold runtime into the image as
+  code. That engine installs it at boot (`EM-SEED-AOT`), seals it there
+  (`EM-SEAL-SEEDED-RUNTIME`), and opens no prefix source — the installed `bin/hb`,
+  and an engine emitted with a merged AOT artifact (`tools/aot-chain-bake.f`). A
+  zero or malformed count in such an image is refused by name (`hb: AOT metadata
+  corrupt`, exit 82).
+- **A build that captured nothing** bakes no runtime, so the engine reads it from
+  the checkout's own prefix source at boot (`EMIT-COLD-PREFIX`), ahead of the
+  first token of its baked program — the capture host's own order, checker prefix
+  first. Only `src/habu/aot-capture.f` fills the capture buffers and only the
+  stdin driver carries it, so `hb-stage0`, `hb-stage`, `hb-stdin-mk` and
+  `hb-build`'s cached maker are all of this kind. Their baked payloads are written
+  against exactly that host: `src/habu/hide.f` and `src/habu/prefix-rewind.f`
+  rewind a dictionary that already holds the core prefix, and name words
+  (`USIGS`, `PREFIX-MARK:DICT`) that only the prefix defines.
+
+So a build-time engine must run with the checkout as its working directory; run
+elsewhere it stops at its first prefix file (`hb: cannot open
+src/core/util.f`, exit 74). `test/cold-runtime-test.f` pins that arm from both
+sides, and `tools/hb-open-failure-test.f` pins the product's.
 
 ## Requirements
 

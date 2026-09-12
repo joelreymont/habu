@@ -1066,6 +1066,31 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-PATH-CORE-FILES
    PFX-PATH-STDLIB-FILES ;
 
+\ WHERE AN ENGINE'S COLD RUNTIME COMES FROM. One fact decides it - the AOT window
+\ this build captured - and this is the one place that reads it.
+\
+\ A build that captured a window bakes the whole cold runtime into the image as
+\ CODE: the checker, the core prefix, the tool words. Such an engine installs it
+\ at boot (EM-SEED-AOT), seals it there (EM-SEAL-SEEDED-RUNTIME) and opens no
+\ prefix source at all, which is what lets an installed bin/hb start in any
+\ directory.
+\
+\ A build that captured nothing bakes NO runtime. The only runtime such an engine
+\ can have is the one it reads from its own prefix source at boot, ahead of the
+\ first token of its baked program - the order the capture host itself used, the
+\ checker prefix first. Every stage2/maker engine is that kind, because only
+\ src/habu/aot-capture.f fills the capture buffers and only the stdin driver
+\ carries it; their baked payloads are written against exactly that host, since
+\ src/habu/hide.f and src/habu/prefix-rewind.f rewind a dictionary that already
+\ holds the core prefix and name words (USIGS, PREFIX-MARK) that only the prefix
+\ defines.
+\
+\ The same count is baked as LAOTNREC (EMIT-AOT-SEED), so the emitted boot code
+\ and this decision cannot disagree: a seeded engine still refuses a zero or
+\ malformed count at boot, by name.
+: SEEDED-RUNTIME? ( -- bool )
+   AOT-REC-N @ 0 > ;
+
 \ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
 \ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
 \ closes that trust hole for every installed engine: the refresh's stage-N
@@ -1079,7 +1104,11 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES ;
 
+\ The core prefix as boot source, for an engine whose runtime is not baked. A
+\ seeded engine emits none of it, and a warm snapshot skips it at runtime
+\ (SNAP-CELL) because the restored image carries the dictionary it was baked with.
 : EMIT-COLD-PREFIX ( -- )
+   SEEDED-RUNTIME? if exit then
    LBL {: done :}
    12 DATA SNAP-CELL LDR,
    12 done CBNZ,
@@ -1654,7 +1683,8 @@ public
    9 0 MOVZ,  9 DATA REPLH-CELL STR,                    \ baked source is never an interactive recovery route
    SRC-BFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
-   SRC-BFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN         \ seeded runtime is complete; seal before baked user source
+   EMIT-COLD-PREFIX                                \ unseeded: the runtime, read from source, ahead of the program
+   SRC-BFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN         \ runtime complete; seal before baked user source
    17 9 0 ADDI,
    9 DATA INE-CELL STR,                            \ the prefix is this boot's first stream and it ends here
    12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
@@ -5197,9 +5227,9 @@ public
 \ IT RUNS AFTER THE RECORDS ARE REGISTERED and before the boot-run list, because
 \ a boot-run entry word is a definition like any other and may name a seeded
 \ word: the checker has to be able to see the pool by the time one is compiled.
-\ A build that captured nothing never reaches here - EM-SEED-AOT skips the whole
-\ pass - so both cells stay the zero the DATA region boots with, which is exactly
-\ "no pool" to the intake.
+\ A build that captured nothing emits no seed pass at all (SEEDED-RUNTIME?), so
+\ both cells stay the zero the DATA region boots with, which is exactly "no pool"
+\ to the intake.
 \ In the package that owns the two cells, the way AOT-WINDOW's boot passes sit in
 \ the package that owns its label ids: src/habu/layout.f declares POOL-CELL and
 \ LEN-CELL, and this is the one writer of them.
@@ -5252,8 +5282,14 @@ public
 \ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
 \ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
 \ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
-\ the icache. LAOTNREC = 0 (stage2/maker/snap: nothing captured) skips the pass.
+\ the icache.
+\ EMITTED ONLY FOR A SEEDED ENGINE (SEEDED-RUNTIME?, which states the rule): an
+\ engine that captured nothing has no pass to run and builds its runtime from the
+\ cold prefix instead, so there is no boot code here to skip at runtime. For the
+\ engine that does carry one the seed is mandatory, and the baked count says so:
+\ zero or malformed metadata in an image that claims a runtime is refused by name.
 : EM-SEED-AOT ( -- )
+   SEEDED-RUNTIME? 0= if exit then
    LBL LBL LBL {: askip:label bad:label msg:label :}
    11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,        \ x11 = N
    11 bad CBZ,                                      \ a native runtime seed is mandatory
@@ -6153,10 +6189,17 @@ public
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
-\ The mandatory seed has installed the complete cold runtime. Seal that target
-\ dictionary before any user token; a warm snapshot restore may then replace
-\ both cells with the floor and latch persisted by that snapshot.
+\ The seed has installed the complete cold runtime. Seal that target dictionary
+\ before any user token; a warm snapshot restore may then replace both cells with
+\ the floor and latch persisted by that snapshot.
+\ EMITTED ONLY FOR A SEEDED ENGINE, for the same reason the seed pass is
+\ (SEEDED-RUNTIME?): this is the seal at the end of the cold runtime, and an
+\ unseeded engine's runtime ends at the end of its cold prefix, not here. The
+\ latch closes the friend arena's range guard (habu1.f GUARD-SPAN), which the
+\ prefix source itself needs open to write the crown-jewel cells, so arming it
+\ ahead of that source would trap the engine's own boot fail-closed.
 : EM-SEAL-SEEDED-RUNTIME ( -- )
+   SEEDED-RUNTIME? 0= if exit then
    NDICT DATA SEAL-NDICT-CELL STR,
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
 
@@ -9087,7 +9130,9 @@ public
 \ and the boot code cannot tell them apart. Reordering the rows below is
 \ therefore free, and an ADR, into this section is a defect whatever today's
 \ measurement says (tools/aot-section-reach-lint.f refuses one).
-\ LAOTNREC = 0 makes EM-SEED-AOT skip the whole pass (stage2/maker/snap).
+\ The section is emitted for every engine and is empty when the build captured
+\ nothing: an unseeded engine bakes LAOTNREC = 0 and, because SEEDED-RUNTIME?
+\ reads the same count at emit time, carries no boot code that reads it back.
 : EMIT-AOT-SITES ( -- )   \ packed rows (blob-off u32 + name-off u32 + scope u32)
    AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ SITE-ROW * BYTES, THEN ;
 : EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets

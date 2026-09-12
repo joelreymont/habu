@@ -4,12 +4,13 @@
 \ bin/hb is the SEEDED PRODUCT (tools/build-fixpoint.f "TWO ENGINES, ONE
 \ PREFIX"): its cold runtime arrives from the baked AOT artifact, so a boot opens
 \ no prefix source and the engine starts anywhere. This file asserted the
-\ opposite - a boot outside the repo dying 74 on src/core/util.f, which only the
-\ source-loading capture-host lineage does (src/habu/habu2.f EMIT-COLD-PREFIX,
-\ which no emission calls any more) - and went red on the product for that
-\ reason. Both halves of the real contract are here now: the product needs no
-\ checkout, and a source file it is handed and cannot open is still named on
-\ stderr with exit 74 rather than skipped.
+\ opposite - a boot outside the repo dying 74 on src/core/util.f, which only an
+\ engine whose build captured nothing does (src/habu/habu2.f EMIT-COLD-PREFIX,
+\ emitted for the stage2/maker engines and never for the product; the rule is
+\ SEEDED-RUNTIME? beside it, and test/cold-runtime-test.f pins that other arm) -
+\ and went red on the product for that reason. Both halves of the real contract
+\ are here now: the product needs no checkout, and a source file it is handed and
+\ cannot open is still named on stderr with exit 74 rather than skipped.
 \ The bare file argument is deliberate - that argv row reads the file through the
 \ engine's own raw arm (habu2.f LSRCRD/sopenerr, "hb: cannot open <path>"), which
 \ is the last read with no registry above it. The `--load` row asks the require

@@ -161,7 +161,7 @@ variable BLR-CNT
    s" ;package" GE-SRC-LINE
    s" package AOT-SURFACE-TEST" GE-SRC-LINE
    s\" : AS-FAIL ( bool -- ) 0= if s\" AOT-LINK surface mismatch\" 74 die then ;" GE-SRC-LINE
-   s\" : AS-NS ( -- ptr a ) s\" AOT-LINK\" XREF-NAMESPACE-WL XREF-FIND-WL ;" GE-SRC-LINE
+   s\" : AS-NS ( -- ptr n ) s\" AOT-LINK\" XREF-NAMESPACE-WL XREF-FIND-WL ;" GE-SRC-LINE
    s" : AS-PUB ( -- n ) AS-NS XREF-START ;" GE-SRC-LINE
    s" : AS-PRI ( -- n ) AS-NS XREF-LEN ;" GE-SRC-LINE
    s\" : AS-HOST-PUB ( -- n ) s\" AOT-SURFACE-HOSTILE\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-START ;" GE-SRC-LINE ;
@@ -174,11 +174,11 @@ variable BLR-CNT
    s"  else drop then loop 2 = AS-FAIL ;" GE-SRC-LINE ;
 
 : SURFACE-PRI-DEFS ( -- )
-   s" : AS-NOT-EXPOSED-WL? ( ptr a n -- bool ) over XREF-NAME$ rot XREF-FIND-WL <> ;" GE-SRC-LINE
+   s" : AS-NOT-EXPOSED-WL? ( ptr n n -- bool ) over XREF-NAME$ rot XREF-FIND-WL <> ;" GE-SRC-LINE
    s" : AS-NAME-ABSENT? ( ptr u8 n n -- bool ) XREF-FIND-WL XREF-FOUND? 0= ;" GE-SRC-LINE
    s" : AS-BARE-NAME ( ptr u8 n -- ) 0 AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
    s" : AS-QUAL-NAME ( ptr u8 n -- ) AS-PUB AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
-   s" : AS-PRIVATE ( ptr u8 n -- ptr a ) AS-PRI XREF-FIND-WL dup XREF-FOUND? AS-FAIL ;" GE-SRC-LINE
+   s" : AS-PRIVATE ( ptr u8 n -- ptr n ) AS-PRI XREF-FIND-WL dup XREF-FOUND? AS-FAIL ;" GE-SRC-LINE
    s" : AS-NAMED ( ptr u8 n -- ) 2dup AS-PRIVATE drop" GE-SRC+
    s"  2dup AS-BARE-NAME AS-QUAL-NAME ;" GE-SRC-LINE
    s\" : AS-HOSTILE-CHECK ( -- ) s\" SENTSET\" AS-PRIVATE" GE-SRC+
@@ -271,7 +271,7 @@ variable BLR-CNT
    s" 4 constant AMAP-BODY-LEN" GE-SRC-LINE
    s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
    s" $40 constant AMAP-R2-OFF" GE-SRC-LINE
-   s" : AMAP-REC! ( ptr a ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
+   s" : AMAP-REC! ( ptr n ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
    s" : AMAP-RECS! ( -- ) AMAP-R1 AMAP-CODE AMAP-BODY-LEN AMAP-REC! AMAP-R2 AMAP-CODE AMAP-CODE-ROW + AMAP-BODY-LEN AMAP-REC! ;" GE-SRC-LINE
    s" : AMAP-CLOSURE! ( -- ) AMAP-R1 CLO 0 ptr-field ! AMAP-R2 CLO 1 ptr-field ! 0 NEWOFF ! AMAP-R2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
    s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE

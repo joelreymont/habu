@@ -532,14 +532,47 @@ create READER-STATE JR:STORAGE-BYTES allot
    s" --" HBT-ARG+
    HBT-REPL-OUT HBT-ARG+ ;
 
+: HBT-IMGDUMP-NAME$ ( -- ptr u8 n )
+   s" hb-build-imgdump" ;
+
+: HBT-IMGDUMP-DUMP$ ( -- ptr u8 n )
+   HBT-IMGDUMP-NAME$ BF-A$ ;
+
+\ The dump, read back through its own size. A buffer sized before the child runs
+\ cannot bound it (see below), so the file's size is what sizes the read.
+: HBT-IMGDUMP-READ$ ( -- ptr u8 n )
+   HBT-IMGDUMP-DUMP$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   HBT-IMGDUMP-DUMP$ buf cap READ-ALL {: u:n :}
+   buf u ;
+
+: HBT-IMGDUMP-RC ( outcome -- n )
+   MATCH outcome
+     exited   OF ENDOF
+     signaled OF 128 + ENDOF
+     timeout  OF -1 ENDOF
+   ;MATCH ;
+
+\ imgdump prints one line per dictionary record of the image it reads, so its
+\ output is the size of that image's dictionary - 407,041 bytes for the REPL
+\ application this case builds, and growing with the engine. A bounded capture
+\ buffer is the wrong instrument for it: PROC-READ-OR-PROBE-STREAM fails closed
+\ when the buffer fills (E-PROC-TRUNCATED), so the case died on its own
+\ measurement rather than on the image. stdout goes to a file, which has no size
+\ chosen in advance, exactly as tools/hb-build-lib.f reads the diag-origin
+\ rewriter's output; stderr stays a bounded capture because an empty stderr is
+\ what this case asserts.
 : HBT-IMGDUMP-REPL ( -- )
+   HBT-TMP BF-TMP!
    HBT-IMGDUMP-ARGV
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
-   rcn 0 T=
+   s" bin/hb" HBT-IMGDUMP-DUMP$ HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS BF-RUN-ARGV-ENV-OUTFILE      \ ( len outcome )
+   swap LEN>N {: errn:n :}
+   HBT-IMGDUMP-RC 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
-   HBT-RUN-OUT outn s" + " CONTAINS? TTRUE ;
+   HBT-IMGDUMP-READ$ s" + " CONTAINS? TTRUE
+   HBT-IMGDUMP-NAME$ BF-REMOVE-TMP
+   BF-TMP-RESET ;
 
 \ Rejected input is compiled in the real snapshot child, before an image exists.
 : HBT-BUILD-REPL-BAD ( -- )

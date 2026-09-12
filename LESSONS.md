@@ -8075,3 +8075,31 @@ and --no-lldbinit.
   copied in, so AOT-WINDOW:EMIT-OUTSIDE has nothing to decline). Dot
   habu-decide-the-tier-374c95ff owns the arm, and AOT-ARM:WINDOW-OPEN-UNARMED is
   parked with it.
+
+## 2026-09-13 - one rule for where an engine's cold runtime comes from
+
+- **An engine has exactly one source of runtime, and the AOT window the build
+  captured is what says which.** A build that captured one bakes the whole cold
+  runtime into the image and installs it at boot; a build that captured nothing
+  bakes none and has to read its runtime from the checkout's prefix source before
+  the first token of its baked program. `src/habu/habu2.f SEEDED-RUNTIME?` is the
+  one place that reads the fact, and three sites obey it: the seed pass, the seal
+  that ends a seeded runtime, and the cold prefix. Emitting the seeded arm for
+  both kinds is what left every stage2/maker engine dead at its own boot with
+  `hb: AOT metadata corrupt` (exit 82) — the no-binary recovery chain stopped at
+  `hb-stage`, and `hb-build` could not build its maker. The earlier lesson's
+  "`EMIT-COLD-PREFIX` has no caller left in the tree" was the defect, not the
+  design: the product's arm was the only one still wired.
+- **The two halves of a boot seal are one rule, not two.** `EM-SEAL-SEEDED-RUNTIME`
+  arms the friend arena's latch, and `habu1.f GUARD-SPAN` is inert only while that
+  latch is open, so arming it before a cold prefix traps the engine's own boot
+  fail-closed (exit 83, no diagnostic). Seal when the runtime is complete: after
+  the seed for a seeded engine, at the end of the cold prefix for a cold one —
+  which is what `src/habu/prefix-rewind.f` already said in prose ("a seeded engine
+  arms it at startup and a cold one at its prefix end") while only one arm existed.
+- **A payload is written against its host, so baking it into an engine that is not
+  that host is a composition defect.** The `--build` payloads open with
+  `src/habu/hide.f` and `PREFIX-REWIND:TO-CORE`, which name `USIGS` and
+  `PREFIX-MARK:DICT` and rewind a dictionary that already holds the core prefix.
+  Relaxing only the seed-count check therefore moved the death from the seed pass
+  to `E-UNDEFINED: USIGS` in the payload; what the payload needed was its host.
