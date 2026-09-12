@@ -27,6 +27,7 @@ require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/frozen.f
+require src/compiler/native/prof.f
 
 package A64COMB
 using NFROZEN
@@ -884,6 +885,7 @@ public
    m VIEWS!
    RESERVE-SCRATCH RESERVE-FOLDS
    COUNT-USES
+   NFROZEN:TOTAL-OPS NPROF-PHASE:COMBINE-OPS NPROF:ADD
    c b p u SOURCE!
    FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    c b IR-BUILD:FREEZE ;

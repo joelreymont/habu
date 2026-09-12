@@ -30,6 +30,7 @@ require src/compiler/native/spill.f
 require src/compiler/native/combine.f
 require src/compiler/native/emit.f
 require src/compiler/native/publish.f
+require src/compiler/native/prof.f
 
 package NCOMP
 
@@ -432,8 +433,11 @@ create SPELL-BUF SPELL-CAP allot
 \ values and the allocator breaks ties on those numbers.
 : COMBINED ( IR-BUILD:module n -- IR-BUILD:module )
    {: m:IR-BUILD:module len:n :}
+   NPROF-PHASE:COMBINE NPROF:START
    m A64COMB:REWRITES {: n:n :}
-   n 0= if A64COMB:RELEASE m exit then
+   n 0= if
+      A64COMB:RELEASE  NPROF-PHASE:COMBINE NPROF:STOP  m exit
+   then
    A64RA:RELEASE
    A64EMIT:RELEASE
    A64SPILL:RELEASE
@@ -445,6 +449,7 @@ create SPELL-BUF SPELL-CAP allot
    CC m nb TXT len A64COMB:REWRITE {: m1:IR-BUILD:module :}
    A64COMB:REWRITTEN n <> if E-A64COMB-SHAPE throw then
    m IR-BUILD:RETIRE
+   NPROF-PHASE:COMBINE NPROF:STOP
    m1 ;
 
 \ Declared for every definition, not only one that calls, so the seam can place
@@ -464,7 +469,9 @@ create SPELL-BUF SPELL-CAP allot
    CC nb A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC nb A64EMIT:BIND-DIALECT
-   CC m nb TXT len A64SPILL:REWRITE ;
+   NPROF-PHASE:SPILL NPROF:START
+   CC m nb TXT len A64SPILL:REWRITE
+   NPROF-PHASE:SPILL NPROF:STOP ;
 
 \ Turn the allocator's absolute frame high-water back into the ABI's slot count.
 \ Alignment holes stay counted, so a later allocation starts after this frame
@@ -723,7 +730,8 @@ public
    NLOOP:RELEASE-SCRATCH
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE
-   NELAB:CAPTURE-PREPARE ;
+   NELAB:CAPTURE-PREPARE
+   NPROF:CLOSE ;
 
 private
 

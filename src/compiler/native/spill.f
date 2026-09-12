@@ -33,6 +33,7 @@ require src/compiler/native/a64ir.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
+require src/compiler/native/prof.f
 
 package A64SPILL
 using NFROZEN
@@ -1012,6 +1013,8 @@ public
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!
+   NFROZEN:TOTAL-OPS NPROF-PHASE:SPILL-OPS NPROF:ADD
+   A64RA:PLAN-N NPROF-PHASE:SPILL-PLAN NPROF:ADD
    RESERVE-SCRATCH
    c b p u SOURCE!
    SHAPE-CK {: nf:n :}
