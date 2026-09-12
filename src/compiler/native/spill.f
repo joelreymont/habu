@@ -121,6 +121,11 @@ DYNAMIC-BUFFER F-NEED-BUF n
 \ Module-wide, because value identities are.
 DYNAMIC-BUFFER F-READ-BUF n
 : F-READ ( -- ptr n ) 0 F-READ-BUF ;
+
+\ One flag per BLOCK of the module: the sealed plan puts a store or a reload in
+\ it. Read by block, so the plan is walked once instead of once per block.
+DYNAMIC-BUFFER P-FRAME-BUF n
+: P-FRAME ( -- ptr n ) 0 P-FRAME-BUF ;
 variable PRED-SEEN
 variable PRED-ONE
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
@@ -147,6 +152,7 @@ DYNAMIC-BUFFER RBLK-BUF n
    VMAX RPOS-BUF-RESERVE
    VMAX RBLK-BUF-RESERVE
    VMAX F-READ-BUF-RESERVE
+   BMAX P-FRAME-BUF-RESERVE
    ;
 create NAMEBUF NAME-CAP allot
 
@@ -553,14 +559,22 @@ create NAMEBUF NAME-CAP allot
    dup A64RA:PLAN-MOVE? if drop false exit then
    A64RA:PLAN-REMAT? 0= ;            \ the remaining plan kind is reload
 
-: PLAN-FRAME-IN? ( n -- bool )
-   {: b:n :}
-   false
+\ The whole plan, read once: which blocks it puts a store or a reload in. Asking
+\ a block instead walked the whole plan again, once per block of every function.
+: P-FRAMES! ( -- )
+   BMAX 0 ?do 0 i cells P-FRAME + ! loop
    A64RA:PLAN-N 0 ?do
-      i A64RA:PLAN-BLOCK@ b OLD-BBASE @ + = if
-         i PLAN-FRAME? if drop true leave then
+      i PLAN-FRAME? if
+         i A64RA:PLAN-BLOCK@ {: b:n :}
+         b 0 < b BMAX >= or if E-A64SPILL-PLAN throw then
+         1 b cells P-FRAME + !
       then
    loop ;
+
+: PLAN-FRAME-IN? ( n -- bool )
+   OLD-BBASE @ +
+   dup 0 < over BMAX >= or if E-A64SPILL-SHAPE throw then
+   cells P-FRAME + @ 0<> ;
 
 \ A block nothing reaches the frame from carries no order, so none is minted for
 \ it: the lane a no-return arm would be handed is one no operation ever reads.
@@ -1024,7 +1038,7 @@ public
    NFROZEN:TOTAL-OPS NPROF-PHASE:SPILL-OPS NPROF:ADD
    A64RA:PLAN-N NPROF-PHASE:SPILL-PLAN NPROF:ADD
    RESERVE-SCRATCH
-   F-READS!
+   F-READS! P-FRAMES!
    c b p u SOURCE!
    SHAPE-CK {: nf:n :}
    nf 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
@@ -1044,6 +1058,7 @@ public
    RPOS-BUF-RELEASE
    RBLK-BUF-RELEASE
    F-READ-BUF-RELEASE
+   P-FRAME-BUF-RELEASE
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
