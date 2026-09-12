@@ -93,8 +93,13 @@ variable BND-MODE
 BOUND-NO BND-MODE !
 variable N-FUSED                     \ pairs this rewrite folded, counted as it goes
 variable N-REMOVED                   \ unused data-stack reads removed
+variable B-BASE                      \ operations of the module before the current block
+variable PLAN-OPS                    \ operations the sealed plan covers
+variable PLAN-FUSED                  \ pairs that plan names
+variable PLAN-SET                    \ a plan is sealed
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
+1 TYPED-BUFFER PLAN-MOD IR-ID:ir-module-id
 A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
@@ -142,6 +147,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
 : SID ( -- IR-ID:ir-source-id )      0 S-SID @ ;
+
 \ An operation of a form outside the family has no rule here and is refused
 \ rather than copied blind.
 : OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
@@ -424,57 +430,65 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 : PLAN-BLOCK ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
-   n OPS-MAX > if E-A64COMB-CAP throw then
+   B-BASE @ {: g:n :}
+   g n + OPS-MAX > if E-A64COMB-CAP throw then
    n 0 ?do
-      -1 i cells FOLD-AT + !
-      -1 i cells IMM-AT + !
-      -1 i cells MASK-AT + !
-      -1 i cells CMP-AT + !
-      0 i cells FOLDED + !
+      -1 g i + cells FOLD-AT + !
+      -1 g i + cells IMM-AT + !
+      -1 g i + cells MASK-AT + !
+      -1 g i + cells CMP-AT + !
+      0 g i + cells FOLDED + !
    loop
    n 0 ?do
       f bk i FOLD-FOR {: d:n :}
       d 0 >= if
-         d i cells FOLD-AT + !
-         1 d cells FOLDED + !
+         d g i + cells FOLD-AT + !
+         1 g d + cells FOLDED + !
+         1 PLAN-FUSED +!
       then
    loop
    n 0 ?do
       f bk i IMM-FOLD-FOR {: d:n :}
       d 0 >= if
-         d i cells IMM-AT + !
-         1 d cells FOLDED + !
+         d g i + cells IMM-AT + !
+         1 g d + cells FOLDED + !
+         1 PLAN-FUSED +!
       then
    loop
    n 0 ?do
       f bk i MASK-FOLD-FOR {: d:n :}
       d 0 >= if
-         d i cells MASK-AT + !
-         1 d cells FOLDED + !
+         d g i + cells MASK-AT + !
+         1 g d + cells FOLDED + !
+         1 PLAN-FUSED +!
       then
    loop
    n 0 ?do
       f bk i CMP-FOLD-FOR {: d:n :}
       d 0 >= if
-         d i cells CMP-AT + !
-         1 d cells FOLDED + !
+         d g i + cells CMP-AT + !
+         1 g d + cells FOLDED + !
+         1 PLAN-FUSED +!
       then
-   loop ;
+   loop
+   g n + B-BASE ! ;
 
+\ Read at the same module-wide position the plan was written at: the walk visits
+\ functions, blocks and operations in the order the plan pass did.
 : FOLD-OF ( n -- n )
-   cells FOLD-AT + @ ;
+   B-BASE @ + cells FOLD-AT + @ ;
 
 : IMM-OF ( n -- n )
-   cells IMM-AT + @ ;
+   B-BASE @ + cells IMM-AT + @ ;
 
 : MASK-OF ( n -- n )
-   cells MASK-AT + @ ;
+   B-BASE @ + cells MASK-AT + @ ;
 
 : CMP-OF ( n -- n )
-   cells CMP-AT + @ ;
+   B-BASE @ + cells CMP-AT + @ ;
 
 : FOLDED? ( n -- bool )
-   cells FOLDED + @ 0<> ;
+   B-BASE @ + cells FOLDED + @ 0<> ;
 
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
@@ -719,7 +733,6 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n 1 < if E-A64COMB-SHAPE throw then
-   f bk PLAN-BLOCK
    bk OPEN-BLOCK
    n 0 ?do
       f bk i OP-AT UNUSED-DLOAD? if
@@ -737,6 +750,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
          then then then then
       then then
    loop
+   B-BASE @ n + B-BASE !
    CTX BLD IR-BUILD:END-BLOCK drop ;
 
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
@@ -789,6 +803,15 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64COMB-BIND throw then ;
 
+\ The plan the scan sealed, and about this module: a rewrite that planned
+\ nothing would walk stale decisions, and one planned for another module would
+\ fold operations that are not there.
+: PLAN-CK ( IR-BUILD:module -- )
+   {: m:IR-BUILD:module :}
+   PLAN-SET @ 0= if E-A64COMB-PLAN throw then
+   m IR-BUILD:FMODULE  0 PLAN-MOD @  IR-ID:MODULE-SAME?
+   0= if E-A64COMB-PLAN throw then ;
+
 : DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
@@ -805,6 +828,7 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    BND-MODE @ BOUND-YES = if E-A64COMB-BIND throw then
    c b DIALECT-CK
+   0 PLAN-SET !
    b IR-BUILD:MODULE@ 0 BND-MOD !
    A64IR:OPCODES 0 ?do
       c b i A64IR:BIND i BND-OP !
@@ -834,34 +858,43 @@ public
 \ Give up a binding without rewriting against it: what a caller does when the
 \ scan below finds no pair, and what one does when a later stage refuses.
 : RELEASE ( -- )
+   0 PLAN-SET !
    BND-TAKE ;
 
 \ ---- what the module holds ---------------------------------------------------
 \ Asked before anything is built. A caller that gets zero keeps the module it
 \ has, which is what keeps every routine without the pattern byte-for-byte.
-: FUSIONS ( IR-BUILD:module -- n )
+\
+\ The search that answers it IS the plan the rewrite walks, so it is made once
+\ and sealed for that module: asking and then rewriting used to fold every
+\ operation's pair twice. Sealing it is this pass's own step - a caller that
+\ sealed a plan and did not rewrite against it would leave one standing - so it
+\ is not part of the package's surface.
+private
+: PLAN! ( IR-BUILD:module -- n )
    {: m:IR-BUILD:module :}
    BOUND? 0= if E-A64COMB-BIND throw then
    m BND-MODULE-CK
+   0 PLAN-SET !
    m VIEWS!
    RESERVE-SCRATCH RESERVE-FOLDS
    COUNT-USES
-   0
+   0 PLAN-FUSED !
+   0 B-BASE !
    FUN-COUNT 0 ?do
       MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
       f BLOCK-COUNT 0 ?do
-         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-         bk OP-COUNT 0 ?do
-            f bk i FOLD-FOR 0 >= if 1+ then
-            f bk i IMM-FOLD-FOR 0 >= if 1+ then
-            f bk i MASK-FOLD-FOR 0 >= if 1+ then
-            f bk i CMP-FOLD-FOR 0 >= if 1+ then
-         loop
+         f  f i BLOCK-AT  PLAN-BLOCK
       loop
-   loop ;
+   loop
+   B-BASE @ PLAN-OPS !
+   m IR-BUILD:FMODULE 0 PLAN-MOD !
+   1 PLAN-SET !
+   PLAN-FUSED @ ;
 
+public
 : REWRITES ( IR-BUILD:module -- n )
-   FUSIONS
+   PLAN!
    FUN-COUNT 0 ?do
       MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
       f BLOCK-COUNT 0 ?do
@@ -882,12 +915,14 @@ public
    0 N-FUSED ! 0 N-REMOVED !
    c 0 S-CTX !
    b 0 S-BLD !
+   m PLAN-CK
    m VIEWS!
-   RESERVE-SCRATCH RESERVE-FOLDS
-   COUNT-USES
    NFROZEN:TOTAL-OPS NPROF-PHASE:COMBINE-OPS NPROF:ADD
    c b p u SOURCE!
+   0 B-BASE !
    FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
+   B-BASE @ PLAN-OPS @ <> if E-A64COMB-SHAPE throw then
+   0 PLAN-SET !
    c b IR-BUILD:FREEZE ;
 
 \ A caller compares it with what the scan promised, so a walk that folded a

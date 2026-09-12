@@ -1084,6 +1084,7 @@ public
 -8635 constant E-A64COMB-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says
 -8636 constant E-NSTR-CAP       \ a string literal this store cannot take: more distinct bodies than its index holds, or more bytes than its arena holds. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
+-8638 constant E-A64COMB-PLAN    \ a rewrite asked for without the scan that plans it, or with a plan sealed for another module. The combine band's own code, taken after the string store's pair rather than before -8630, which belongs to the tail-call band above
 
 \ The counted-loop closed form: -8660..-8669
 \

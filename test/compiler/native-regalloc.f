@@ -93,6 +93,7 @@ require lib/test.f
 require src/compiler/native/select.f
 require src/compiler/native/regalloc-verify.f
 require src/compiler/native/spill.f
+require src/compiler/native/combine.f
 
 package A64RA-TEST
 private
@@ -1853,6 +1854,11 @@ create TXT
 : SPILL-BIND ( -- )
    CC BB A64SPILL:BIND-DIALECT ;
 
+\ The combine takes its binding the same way, and needs it for the case below
+\ that reaches its rewrite without the scan that plans one.
+: COMB-BIND ( -- )
+   CC BB A64COMB:BIND-DIALECT ;
+
 variable LOWER-TURNS
 
 : LOWER-ONE ( IR-BUILD:module -- IR-BUILD:module )
@@ -2462,6 +2468,19 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC m0 nb TXT TXT-N A64SPILL:REWRITE drop ;
 
+\ The same shape one pass over, and the reason the combine needs its own
+\ refusal: A64COMB:REWRITES is what searches for the pairs AND seals the plan
+\ the rewrite walks, so a rewrite reached without it would fold against
+\ whatever the last module left behind. Nothing about the body matters - the
+\ refusal is ahead of the first operation read - so this is the same module.
+: NO-PLAN-COMBINE-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   COMB-BIND
+   BUILD-PLAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC m0 nb TXT TXT-N A64COMB:REWRITE drop ;
+
 \ ---- the frame rules, on modules that are wrong in one way -------------------
 \ Each of these is a lowered shape with one thing changed, allocated and then
 \ presented to the validator. The allocator itself has nothing to say about them
@@ -2701,6 +2720,7 @@ using A64RA
 : SMALL-FRAME ( -- )      WBND [: SMALL-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : TWICE-LOWER ( -- bool n n n )
    WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
+: NO-PLAN-COMBINE ( -- )  WBND [: NO-PLAN-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : FAR-SLOT ( -- )         WBND [: FAR-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2837,6 +2857,20 @@ using A64RA
 : LOWER-NONE-CASE ( -- )
    s" lowering a module whose walk decided no spill is refused" T-LABEL
    [: NO-SPILL-LOWER ;] E-A64SPILL-PLAN TTHROWSQ ;
+
+\ PLAN-CK also refuses a plan sealed for ANOTHER module, which BND-MODULE-CK
+\ reaches first with E-A64COMB-BIND, so that clause is fail-closed rather than
+\ reachable and only this one is asserted.
+\ A64-MOD binds the allocator as well, and A64RA:ALLOCATE is what takes that
+\ binding back; this case refuses before it ever runs, so it gives the binding
+\ back itself or the next A64-MOD in this suite dies of E-A64RA-BIND. A64RAV is
+\ bound there too and needs no such care - its BIND-DIALECT overwrites rather
+\ than refusing a live binding, which is why the spill case beside this one can
+\ leave it standing.
+: COMBINE-NO-PLAN-CASE ( -- )
+   s" combining a module the scan never planned is refused" T-LABEL
+   [: NO-PLAN-COMBINE ;] E-A64COMB-PLAN TTHROWSQ
+   A64RA:BOUND? if A64RA:RELEASE then ;
 
 : SLOT-REFUSE-CASES ( -- )
    s" a slot outside the declared frame is refused" T-LABEL
@@ -3455,7 +3489,7 @@ using A64RA
 : GROUP-PLACE ( IR-CTX:ctx -- )     drop PLACE-REFUSE-CASES ;
 : GROUP-FIXED-ACCEPT ( IR-CTX:ctx -- ) drop FIXED-ACCEPT-CASES ;
 : GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
-: GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE ;
+: GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE COMBINE-NO-PLAN-CASE ;
 : GROUP-SLOT ( IR-CTX:ctx -- )      drop SLOT-REFUSE-CASES ;
 : GROUP-ORDER ( IR-CTX:ctx -- )     drop ORDER-REFUSE-CASES ;
 : GROUP-RELOAD ( IR-CTX:ctx -- )    drop RELOAD-REFUSE-CASES ;

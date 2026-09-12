@@ -1,9 +1,9 @@
 ---
-title: "Plan combine once and fix measured spill scaling"
-status: open
+title: Plan combine once and fix measured spill scaling
+status: active
 priority: 2
 issue-type: task
-created-at: "\"2026-09-11T16:38:06.270563+03:00\""
+created-at: "\"\\\"2026-09-11T16:38:06.270563+03:00\\\"\""
 blocks:
   - habu-walk-the-dynamic-e03edf85
 ---
