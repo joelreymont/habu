@@ -116,6 +116,11 @@ DYNAMIC-BUFFER F-ORDER-SET-BUF n
 : F-ORDER-SET ( -- ptr n ) 0 F-ORDER-SET-BUF ;
 DYNAMIC-BUFFER F-NEED-BUF n
 : F-NEED ( -- ptr n ) 0 F-NEED-BUF ;
+
+\ One flag per VALUE of the module: a frame access of the old module reads it.
+\ Module-wide, because value identities are.
+DYNAMIC-BUFFER F-READ-BUF n
+: F-READ ( -- ptr n ) 0 F-READ-BUF ;
 variable PRED-SEEN
 variable PRED-ONE
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
@@ -141,6 +146,7 @@ DYNAMIC-BUFFER RBLK-BUF n
    VMAX DOP-RESERVE
    VMAX RPOS-BUF-RESERVE
    VMAX RBLK-BUF-RESERVE
+   VMAX F-READ-BUF-RESERVE
    ;
 create NAMEBUF NAME-CAP allot
 
@@ -565,25 +571,27 @@ create NAMEBUF NAME-CAP allot
 
 -1 constant NO-FRAME-ARG
 
-: OP-READS? ( IR-ID:ir-op-id IR-ID:ir-value-id -- bool )
-   {: id:IR-ID:ir-op-id a:IR-ID:ir-value-id :}
-   false
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT a SAME-VALUE? if drop true leave then
+\ Every operand of every frame access of the module, read once: the values a
+\ frame access consumes directly. Asking a value instead walked every operation
+\ of the module again, once per block argument of every block.
+: F-READS! ( -- )
+   VMAX 0 ?do 0 i cells F-READ + ! loop
+   TOTAL-OPS 0 ?do
+      MKEY i IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
+      id FRAME-TOUCH? if
+         id OPERANDS-OF 0 ?do
+            1 id i OPERAND-AT VSLOT cells F-READ + !
+         loop
+      then
    loop ;
 
 \ An argument may dominate a frame access after a conditional edge without
 \ being forwarded as another block argument. Value identities are module-wide,
-\ so inspect every original operation for a direct consumer of this order.
+\ so this asks the module-wide map of direct frame consumers.
 : DIRECT-FRAME-ARG? ( IR-ID:ir-value-id -- bool )
    {: a:IR-ID:ir-value-id :}
    a MEM-VALUE? 0= if false exit then
-   TOTAL-OPS 0 ?do
-      MKEY i IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
-      id FRAME-TOUCH? if
-         id a OP-READS? if true unloop exit then
-      then
-   loop false ;
+   a VSLOT cells F-READ + @ 0<> ;
 
 : FRAME-ARG-PATH? ( IR-ID:ir-block-id IR-ID:ir-value-id n -- bool )
    {: bk:IR-ID:ir-block-id a:IR-ID:ir-value-id fuel:n :}
@@ -1016,6 +1024,7 @@ public
    NFROZEN:TOTAL-OPS NPROF-PHASE:SPILL-OPS NPROF:ADD
    A64RA:PLAN-N NPROF-PHASE:SPILL-PLAN NPROF:ADD
    RESERVE-SCRATCH
+   F-READS!
    c b p u SOURCE!
    SHAPE-CK {: nf:n :}
    nf 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
@@ -1034,6 +1043,7 @@ public
    DOP-RELEASE
    RPOS-BUF-RELEASE
    RBLK-BUF-RELEASE
+   F-READ-BUF-RELEASE
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private
