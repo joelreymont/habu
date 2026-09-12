@@ -1611,6 +1611,12 @@ variable SZA-I
    B-TASK-LIVE-GUARD
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
 
+\ Standard ALIGN: round the data pointer up to a cell, bound-checked, so the
+\ next `,` or allot starts on a cell. `create` applies the same rounding itself.
+: BALIGN ( -- )
+   B-TASK-LIVE-GUARD
+   7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
+
 : BCOMMA ( -- )
    B-TASK-LIVE-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
@@ -2992,6 +2998,7 @@ public
 
 : EMIT-DICT-PRIMS ( -- )
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
+   s" align" ['] BALIGN FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
    s" execute" ['] BEXEC 1 GDEREF-F
    s" run-in-stack" ['] BRUNSTACK 3 GDEREF-F

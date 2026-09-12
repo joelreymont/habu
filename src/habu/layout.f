@@ -1111,13 +1111,13 @@ XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 \ data-base (dot habu-seal-the-declaration-7183177e).
 \
 \ Containment is the whole rule; the cell is deliberately NOT required to be on a
-\ cell boundary. The DP heap does not cell-align what `create` hands out -- two
-\ adjacent `create X 4 cells allot` tables measure at DATA offsets 5114415 and
-\ 5114447, both 7 mod 8 -- and cell loads and stores at any byte address are
-\ well defined on this target, so every declared cell in the tree is already
-\ reached through an unaligned access that works. An alignment clause here would
-\ reject the engine's own tables on the first `xt!`, which is exactly what it did
-\ when this guard was first written with one.
+\ cell boundary. `create` rounds its own field up to a cell (habu2.f LCREATE),
+\ but a cell reached through `allot` after byte-sized data, or one inside a
+\ copied DATA window, keeps whatever residue it was given, and cell loads and
+\ stores at any byte address are well defined on this target. An alignment
+\ clause here would reject such a cell on the first `xt!`, which is exactly what
+\ it did when this guard was first written with one (before the rounding, two
+\ adjacent `create X 4 cells allot` tables measured 7 mod 8).
 DATA-SIZE 8 - constant XTCELL-OFF-MAX
 
 ;package

@@ -2864,6 +2864,56 @@ ES-SWL:N ES-SWL:BATTERY-N T=
 s" search-wl: the rebuilt index answers the battery the original answered" T-LABEL
 ES-SWL:DIFF -1 T=
 
+\ Data space: `create` rounds the data pointer up to a cell before it publishes
+\ the data field (standard CREATE), so a `variable` or a `create ... allot`
+\ block that follows byte-sized storage is cell-aligned. With the odd allots
+\ between them, an engine that does not align cannot place both B and C on a
+\ cell boundary, so the pair fails on such an engine whatever the pointer was.
+create ES-ALIGN-A 1 allot
+create ES-ALIGN-B 1 allot
+create ES-ALIGN-C 3 allot
+variable ES-ALIGN-V
+s" create: a data field after a byte-sized allot is cell-aligned" T-LABEL
+ES-ALIGN-B CELL 1- and 0 T=
+s" create: consecutive byte-sized allots each start on a cell" T-LABEL
+ES-ALIGN-C CELL 1- and 0 T=
+s" variable: a variable after byte-sized storage is cell-aligned" T-LABEL
+ES-ALIGN-V CELL 1- and 0 T=
+
+\ Typed storage: the layout-buffer definers and the deferred binder `align` the
+\ data pointer before they measure or allot at it, so a layout buffer, a typed
+\ variable or a bound column that follows byte-sized storage is cell-aligned,
+\ and the generated `create` leaves the measured pointer in place. The three
+\ regions sit at consecutive odd offsets from one another on an engine that
+\ does not align, so at least two of the three cases fail there.
+package ES-ALIGN-TEST
+public
+SUMTYPE esal 0
+   VARIANT value n ;VARIANT
+;SUMTYPE
+create PAD-LB 1 allot
+1 LAYOUT-BUFFER LB esal
+create PAD-TV 1 allot
+TYPED-VARIABLE TV esal
+DEFER-LAYOUT-BUFFER DC esal
+create PAD-DC 1 allot
+2 DC-BIND
+;package
+s" layout-buffer: a layout buffer after a byte-sized allot is cell-aligned" T-LABEL
+0 ES-ALIGN-TEST:LB CELL 1- and 0 T=
+s" typed-variable: a typed variable after a byte-sized allot is cell-aligned" T-LABEL
+ES-ALIGN-TEST:TV CELL 1- and 0 T=
+s" defer-layout-buffer: a column bound after a byte-sized allot is cell-aligned" T-LABEL
+0 ES-ALIGN-TEST:DC CELL 1- and 0 T=
+
+\ `align` itself: standard ALIGN, the rounding `create` applies, on request.
+\ An interpreted `s"` allots its bytes, so the label goes down before the align.
+create ES-ALIGN-D 1 allot
+s" align: rounds the data pointer up to a cell" T-LABEL
+align here CELL 1- and 0 T=
+s" align: leaves an aligned data pointer in place" T-LABEL
+align here align here - 0 T=
+
 \ report: count + nonzero exit on failure
 : REPORT ( -- )
    #FAIL @ 0 = if [char] o emit [char] k emit cr exit then

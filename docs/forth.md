@@ -1039,11 +1039,14 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
   DATA pressure. `create ... allot` is for dictionary-sized static storage; large
   runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or
   `MEM-ALLOC-64K-BUFFERS`) so composition scales with OS-backed mappings rather
-  than `DATA-SIZE`. A cell-typed reader such as `lib/json-read.f` `INIT`
-  accepts `MEM-ALLOC-BYTES` memory and refuses a `create ... allot` block
-  (`E-STORAGE`); whether `create` should align its data space is open in dot
-  habu-decide-whether-create-18781792. Tools may keep as many 64K buffers and live spans as their
-  workload needs, either as one contiguous `MEM-ALLOC-64K-BUFFERS` span or as
+  than `DATA-SIZE`. `create`, and so `variable`, rounds the data pointer up to
+  a cell before publishing its data field, and `align` rounds it on request,
+  so a `create ... allot` block and `MEM-ALLOC-BYTES` memory are both
+  cell-aligned storage for a cell-typed reader such as `lib/json-read.f`
+  `INIT`. `allot`, `c,` and `,` never realign: storage carved out of one block
+  after byte-sized data is the caller's misalignment unless an `align`
+  precedes it, and such a reader refuses it (`E-STORAGE`). Tools may keep as
+  many 64K buffers and live spans as their workload needs, either as one contiguous `MEM-ALLOC-64K-BUFFERS` span or as
   many independent spans. The only accepted limits are cell-size overflow checks
   and an explicit OS allocation failure. If ordinary composition still hits
   capacity, fix the shared memory model and add a regression for the composed

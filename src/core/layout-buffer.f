@@ -184,12 +184,22 @@ variable STGT-START
    LBUF-EVAL {: rc:n :}
    rc 0 <> if rc throw then ;
 
+\ Every region this file allots holds cells, so it starts on a cell: LBUF-ALIGN
+\ rounds the data pointer up before a definer measures it or a binder allots at
+\ it. `create` rounds the same way, so the generated `create` finds an aligned
+\ pointer and leaves it in place. The pad bytes are dictionary space nothing
+\ names.
+TRUSTED: LBUF-ALIGN-PAD ( -- n )  here CELL 1- and CELL swap - CELL 1- and ;
+
+: LBUF-ALIGN ( -- )
+   LBUF-ALIGN-PAD allot ;
+
 \ The `create` in the generated source publishes the storage word at the DP the
 \ definer measured, and the definer allots and zeroes against that same DP once
 \ the accessor has compiled. If anything moved DP in between, the accessor and
 \ the storage would name different places, so this refuses rather than allot
-\ into the gap. Nothing is allotted before the eval, so a rejected accessor
-\ leaves DP exactly where it found it and needs no rewind.
+\ into the gap. Only the alignment pad is allotted before the eval, so a
+\ rejected accessor leaves DP on the cell where it found it and needs no rewind.
 : LBUF-ALLOT ( ptr n -- ) {: base:ptr :}
    here base <> if E-LAYOUT-BUFFER throw then
    LBUF-BYTES @ allot
@@ -203,6 +213,7 @@ variable STGT-START
    name nameu LBUF-NAME-GUARD
    name nameu LBUF-BASE-GUARD
    count type typeu LBUF-VALIDATE
+   LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
@@ -268,6 +279,7 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    count wc * {: need:n :}
    need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then    \ transactional: die before any mutation
    count  cb CELL + @  > if                             \ count > capacity: grow-to-largest
+      LBUF-ALIGN
       here {: base:ptr :}
       need cells allot
       base need cells LBUF-ZERO
@@ -305,6 +317,7 @@ PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
       cb  cb @  + {: obase:ptr :}                           \ current region base
       cb CELL + @ 2 *  count max {: dbl:n :}                \ grow-to-at-least: doubling floor
       dbl wc * LDEFER-CELL-MAX > if count else dbl then {: newcap:n :}   \ clamp so doubling never trips the ceiling
+      LBUF-ALIGN
       here {: nbase:ptr :}
       newcap wc * cells allot
       nbase newcap wc * cells LBUF-ZERO                      \ fresh region zeroed (new cells read 0)
@@ -373,6 +386,7 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    type typeu CHECKER-LAYOUT-INFO 0= if 2drop E-LAYOUT-BUFFER throw then
    LBUF-W !  drop                                          \ width (cells) from the layout family
    LDEFER-CTRL-CELLS cells LBUF-BYTES !                    \ the control cells this definer owns
+   LBUF-ALIGN
    here {: cbase:ptr :}
    name nameu type typeu LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
@@ -446,6 +460,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    name nameu LBUF-NAME-GUARD
    name nameu LBUF-BASE-GUARD
    count type typeu STORAGE-VALIDATE
+   LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
@@ -459,6 +474,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    name nameu LBUF-NAME-GUARD
    name nameu LBUF-BASE-GUARD
    1 type typeu STORAGE-VALIDATE
+   LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!
@@ -510,6 +526,7 @@ PRIM: TYPED-VARIABLE PRIM;
    name nameu s" -RELEASE" DBUF-SUFFIX-GUARD
    1 type typeu STORAGE-VALIDATE
    2 cells LBUF-BYTES !
+   LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu DBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL!

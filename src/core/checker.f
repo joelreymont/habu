@@ -6345,6 +6345,7 @@ PRIM: depth        PE-N PE-OUT PRIM;
 PRIM: here         PE-PTR-A-RAW PE-OUT PRIM;
 PRIM: tok-imm?     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PRIM;
 PRIM: allot        PE-N PE-IN PRIM;
+PRIM: align        PRIM;
 PRIM: ,            PE-N PE-IN PRIM;
 PRIM: c,           PE-N PE-IN PRIM;
 PRIM: type         PE-PTR-U8 PE-IN PE-N PE-IN PRIM;

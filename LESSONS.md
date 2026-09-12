@@ -6749,9 +6749,10 @@ callee's answer. Use a register the call does not own.
   4. Rounding the length up to eight would have changed the number
   without fixing anything. What a captured address needs kept is its own
   8-residue, and that is a statement about where the two windows START.
-- **Nothing in this engine aligns DATA.** `variable` allots a cell
-  wherever DP stands (habu2.f C-VARIABLE), so every alignment a cell has
-  is inherited from the cursor - which is why the seed had to be made to
+- **`create` aligns its own field; nothing aligns copied DATA.** `create`
+  and `variable` round DP up to a cell before publishing a field (habu2.f
+  LCREATE, since 2026-09-12), but a captured window's cells keep only the
+  residue they had when captured - which is why the seed had to be made to
   advance DP to the capture base's residue before copying, and why the
   merge has to place the artifact's slice at its own base's residue. The
   two together are the whole invariant; either alone leaves it to luck.

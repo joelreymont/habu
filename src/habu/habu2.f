@@ -3271,7 +3271,8 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,   \ the record this create publishes
    C-STORE-DEF-NAME
    CP 9 0 STR,
-   11 DATA 0 LDR,
+   11 DATA 0 LDR,  11 11 7 ADDI,  11 11 3 LSRI,  11 11 3 LSLI,   \ standard CREATE: round the data field up to a cell
+   11 DP-CHECK  11 DATA 0 STR,
    C-DATA-ADDR
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -5021,11 +5022,11 @@ public
 \ multiple of eight changes each address's 8-residue - and the atomics do not
 \ survive that: LDAXR and STLR fault on a misaligned address (dot
 \ habu-merged-data-window-b8fec035, measured: a merged engine died SIGBUS in
-\ FIND-B on a cell four bytes off). Nothing aligns DP for the seed - `variable`
-\ allots a cell wherever DP stands (C-VARIABLE) - so the seed advances DP to the
-\ next address carrying the capture base's OWN residue, and from there the whole
-\ window arrives with every cell exactly as aligned as it was captured. It costs
-\ at most seven bytes of DATA once per boot.
+\ FIND-B on a cell four bytes off). Rounding at `create` aligns a fresh field,
+\ not a copied window: its cells keep the residue they were captured with, so
+\ the seed advances DP to the next address carrying the capture base's OWN
+\ residue, and from there the whole window arrives with every cell exactly as
+\ aligned as it was captured. It costs at most seven bytes of DATA once per boot.
 : EM-AOT-RELOC-DATA ( -- )
    LBL LBL LBL LBL LBL LBL
    {: dloop:label drdone:label ok:label msg:label chain:label next:label :}

@@ -19,13 +19,19 @@ private
 256 constant JRT-CAP
 $4A525443414E4152 constant JRT-CANARY
 create JRT-BUF JRT-CAP allot
-here CELL 1- and CELL swap - CELL 1- and allot
 create JRT-STATE-A-BEFORE JRT-CANARY ,
 create JRT-STATE-A JR:STORAGE-BYTES allot
 create JRT-STATE-A-AFTER JRT-CANARY ,
 create JRT-STATE-B JR:STORAGE-BYTES allot
 create JRT-STATE-B-AFTER JRT-CANARY ,
 create JRT-ZERO-PTR-CELL 0 ,
+\ Two storage blocks, each behind a one-byte allot. `create` rounds its data
+\ field up to a cell, so INIT accepts both; an engine that did not round could
+\ not place both on a cell (STORAGE-BYTES is a whole number of cells).
+create JRT-ODD-PAD-A 1 allot
+create JRT-ODD-A JR:STORAGE-BYTES allot
+create JRT-ODD-PAD-B 1 allot
+create JRT-ODD-B JR:STORAGE-BYTES allot
 create JRT-SUBJECT-OUT $400 allot
 create JRT-SUBJECT-ERR $400 allot
 
@@ -529,6 +535,10 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 : JRT-BAD-MISALIGNED-STORAGE ( -- )
    JRT-STATE-A 1+ JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE ;
 
+: JRT-CREATE-AFTER-BYTES ( -- )
+   JRT-ODD-A JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE
+   JRT-ODD-B JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE ;
+
 : JRT-BAD-NEGATIVE-SOURCE ( -- )
    JRT-STATE-A JR:STORAGE-BYTES s" 0" drop -1 JR:INIT JR:CLOSE ;
 
@@ -629,6 +639,8 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    [: JRT-BAD-NULL-SOURCE ;] JR:E-SOURCE TTHROWSQ
    s" null empty source remains a valid empty reader" T-LABEL
    JRT-STATE-A JR:STORAGE-BYTES JRT-ZERO-U8 0 JR:INIT JR:CLOSE
+   s" create ... allot storage after byte-sized data is cell-aligned" T-LABEL
+   JRT-CREATE-AFTER-BYTES
    s" byte and Unicode implementation constants stay private" T-LABEL
    JRT-TEST-PRIVATE-CONSTANTS
    s" raw representation and state helpers stay private" T-LABEL
