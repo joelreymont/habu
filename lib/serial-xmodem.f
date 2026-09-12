@@ -26,23 +26,23 @@ using XMODEM
 
 \ Caller-owned session header. The packet BUF is the only owned allocation;
 \ the serial handle, source span, and destination BUF remain borrowed.
-: HANDLE-FIELD ( ptr a -- ptr a ) ;
-: CONTROL-WAIT-FIELD ( ptr a -- ptr a ) 1 cells + ;
-: DEADLINE-FIELD ( ptr a -- ptr a ) 2 cells + ;
-: IO-ERROR-FIELD ( ptr a -- ptr a ) 3 cells + ;
-: KIND-FIELD ( ptr a -- ptr a ) 4 cells + ;
-: NEXT-FIELD ( ptr a -- ptr a ) 5 cells + ;
-: TRIES-FIELD ( ptr a -- ptr a ) 6 cells + ;
-: PROGRESS-FIELD ( ptr a -- ptr a ) 7 cells + ;
+: HANDLE-FIELD ( ptr a -- ptr n ) BYTE-VIEW CELL-VIEW ;
+: CONTROL-WAIT-FIELD ( ptr a -- ptr n ) BYTE-VIEW 1 cells + CELL-VIEW ;
+: DEADLINE-FIELD ( ptr a -- ptr n ) BYTE-VIEW 2 cells + CELL-VIEW ;
+: IO-ERROR-FIELD ( ptr a -- ptr n ) BYTE-VIEW 3 cells + CELL-VIEW ;
+: KIND-FIELD ( ptr a -- ptr n ) BYTE-VIEW 4 cells + CELL-VIEW ;
+: NEXT-FIELD ( ptr a -- ptr n ) BYTE-VIEW 5 cells + CELL-VIEW ;
+: TRIES-FIELD ( ptr a -- ptr n ) BYTE-VIEW 6 cells + CELL-VIEW ;
+: PROGRESS-FIELD ( ptr a -- ptr n ) BYTE-VIEW 7 cells + CELL-VIEW ;
 : PACKET-BUF ( ptr a -- ptr a ) 8 cells + ;
-: CONTROL-DATA ( ptr a -- ptr u8 ) 11 cells + ;
+: CONTROL-DATA ( ptr a -- ptr u8 ) BYTE-VIEW 11 cells + ;
 : SOURCE-FIELD ( ptr a -- ptr ptr u8 ) 12 cells ptr-field ;
-: SOURCE-LEN-FIELD ( ptr a -- ptr a ) 13 cells + ;
-: BLOCK-FIELD ( ptr a -- ptr a ) 14 cells + ;
+: SOURCE-LEN-FIELD ( ptr a -- ptr n ) BYTE-VIEW 13 cells + CELL-VIEW ;
+: BLOCK-FIELD ( ptr a -- ptr n ) BYTE-VIEW 14 cells + CELL-VIEW ;
 : OUTPUT-FIELD ( ptr a -- ptr ptr a ) 15 cells ptr-field ;
-: MAXIMUM-FIELD ( ptr a -- ptr a ) 16 cells + ;
-: NEGOTIATED-FIELD ( ptr a -- ptr a ) 17 cells + ;
-: RECEIVE-WAIT-FIELD ( ptr a -- ptr a ) 18 cells + ;
+: MAXIMUM-FIELD ( ptr a -- ptr n ) BYTE-VIEW 16 cells + CELL-VIEW ;
+: NEGOTIATED-FIELD ( ptr a -- ptr n ) BYTE-VIEW 17 cells + CELL-VIEW ;
+: RECEIVE-WAIT-FIELD ( ptr a -- ptr n ) BYTE-VIEW 18 cells + CELL-VIEW ;
 
 CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
