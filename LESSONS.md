@@ -7769,6 +7769,12 @@ and --no-lldbinit.
   program-diagnostics (1), verify-prim (1)
   Re-measured 2026-09-12 15:19 UTC on engine dd305f57 at tip c82b7c18 (310
   suites, no timeouts): the same 15 after the session-compile stack landed.
+  Re-measured 2026-09-12 15:58 UTC on engine e5ffd3ca at tip 2481a732 (310
+  suites, no timeouts, 1-minute load 20-40 from concurrent lanes): 14 red,
+  verify-prim green after the intern rebuild was bounded by the store's end;
+  the four pool-budget artifacts (stdlib-process-fixtures, stdlib-runner-fixtures,
+  stdlib-source-default, tool-boundary-aot-call) appear under that load and
+  every file of theirs passes alone on the same engine.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
@@ -7922,3 +7928,26 @@ and --no-lldbinit.
   ordinary reader answered `E-IR-ARENA-STALE` from a flag that said yes.
   `IR-CTX:SESSION-CLOSE` now runs the owner's stand-down itself, so no ordering
   between two entry points is load-bearing.
+
+## 2026-09-12 - a rewind does not erase what is above it
+
+- **An index rebuilt from a store bounds its walk by the store's end, not by
+  the links.** `UIX-BUILD` rebuilt the node-intern index by following the
+  record chain and trusting the terminator; a rewind lowers `UEND` and leaves
+  the bytes above it readable (`src/habu/hide.f`'s refresh prelude assigns
+  `UEND` directly, `E-INTERN`'s own hit rewinds mid-record without a
+  terminator, and a terminator a rewind did write is overwritten by the next
+  append), so the rebuild indexed the dead region and a later intern answered
+  with an offset the store was about to write over. Symptom: verify-prim's
+  cold differential dying 78 on a duplicate definition the store did not hold,
+  at `CAST: >IMG` deep in a 48,308-line payload. Fix (2481a732): the walk states
+  its own bound at the three places that can admit a dead byte - the chain,
+  the record span and the node - and the regression reads the table at the
+  rebuild, before the store grows back over the offsets. The per-symbol index
+  (`USX-BUILD` from `USIGS-USER-OFF`) has the same blind spot, dotted as
+  habu-bound-the-per-ce1ce3a5.
+- **A cold payload carries the tree's own prefix source, so an engine-only
+  revert cannot attribute a payload failure.** The engine with the fix
+  reverted still died on the payload generated from the fixed tree; reverting
+  the tree and letting the suite regenerate its payload is the test that
+  attributes.
