@@ -6658,6 +6658,13 @@ PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ (dot habu-hb-crash-bare-c5be6634).
 PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+\ TYPE-RESERVED? answers "is this token already a type the checker knows", which
+\ is the question a generator has to ask before it mints a dependency type token.
+\ tools/check-core.f is that caller, and its own `TRUST` row cannot supply the
+\ answer: the row runs long after the marking pass, and a row can only record an
+\ effect for a name that still resolves, so without the axiom the CLI dies
+\ E-TRUST-UNRESOLVED before it has looked at a single file.
+PRIM: TYPE-RESERVED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-START PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
 \ The source verifier's existing private engine boundary. The native compiler
