@@ -15,6 +15,20 @@ package PROGRAM-DIAGNOSTICS
    SB-RESET marker markeru SB-APPEND GE-SB-LF
    SB$ label labelu GE-EXPECT-OUT ;
 
+\ The same assertion for a refusal that says more than its die line. The AOT
+\ capture writes the coordinate it refused - an offset, a row, a range - with `type`
+\ ahead of the `die` that carries the message on stderr (src/habu/aot-capture.f), so
+\ its stdout is the marker line FOLLOWED by those lines rather than the marker
+\ alone. Requiring the marker as a PREFIX keeps what the exact form proves - the
+\ case armed, and printed nothing before it - and admits the detail a reader needs.
+: EXPECT-MARKER-FIRST ( ptr u8 n ptr u8 n -- )
+   {: marker:ptr markeru:n label:ptr labelu:n :}
+   SB-RESET marker markeru SB-APPEND GE-SB-LF
+   GT-OUT$ {: out:ptr outu:n :}
+   SB$ {: want:ptr wantu:n :}
+   outu wantu < if label labelu GE-FAIL then
+   out wantu want wantu STR= 0= if label labelu GE-FAIL then ;
+
 : EXPECT-OK-END ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GT-OUT$ {: out:ptr outu:n :}
    outu 3 < if label labelu GE-FAIL then
@@ -26,6 +40,13 @@ package PROGRAM-DIAGNOSTICS
    path pathu RUN-LOAD
    rc path pathu GE-EXPECT-RC
    marker markeru path pathu EXPECT-MARKER
+   needle needleu path pathu GE-EXPECT-ERR-HAS ;
+
+: NEGATIVE-DIAG ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n rc:n marker:ptr markeru:n needle:ptr needleu:n :}
+   path pathu RUN-LOAD
+   rc path pathu GE-EXPECT-RC
+   marker markeru path pathu EXPECT-MARKER-FIRST
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
 : DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
@@ -43,9 +64,11 @@ package PROGRAM-DIAGNOSTICS
    s" test/xt-cell-band-bad.f" 98
       s" XT-CELL-BAND-ARMED" s" hb: snapshot address cell out of range" NEGATIVE
    s" test/aot-address-cell-lower-straddle-bad.f" 74
-      s" AOT-XTCELL-LOWER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE
+      s" AOT-XTCELL-LOWER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE-DIAG
    s" test/aot-address-cell-upper-straddle-bad.f" 74
-      s" AOT-XTCELL-UPPER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE
+      s" AOT-XTCELL-UPPER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE-DIAG
+   s" test/aot-address-cell-target-out-bad.f" 74
+      s" AOT-XTCELL-TARGET-OUT-ARMED" s" aot-capture: declared address target is not self-contained" NEGATIVE-DIAG
    s" test/checker-decl-nested-bad.f" 76
       s" CHECKER-DECL-NESTED-ARMED" s" checker: declaration rollback frame mismatch" NEGATIVE
    s" test/checker-decl-depth0-bad.f" 76

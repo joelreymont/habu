@@ -8030,3 +8030,42 @@ and --no-lldbinit.
   select tier 1 ahead of that source rather than asking every author to reach for
   `xt!`; when a cell's address is only known at run time, `xt!` remains the only
   declaration point.
+
+## 2026-09-12 - the booting engine's declared address cells
+
+- **A capture owns only the declared address cells its WINDOW contains; the rest
+  belong to the engine it is running in.** `SNAP-RELOC:XTCELL-*` is the LIVE
+  engine's table, so a capture taken inside a booted `bin/hb` walks that engine's
+  own rows first: `HOOK-CELL` (DATA+$38) holding the xt its prefix installed, plus
+  one row per declared cell of the engine's OWN captured window. `aot-capture.f`
+  ACAP-BAKE-DATA emitted a row for each and refused any whose target fell outside
+  the window, so every such capture died on row 0 ("declared address target is not
+  self-contained") while the metabuild never saw it - its window recompiles the
+  checker, and `tools/native-build.f` RESET-ADDRESS-ROWS truncates the heap rows
+  before it opens. A cell BELOW the window earns a row only when it holds an
+  address OF the window, because that store is a load-time effect no captured byte
+  carries; any other target is state the seeded engine's own prefix re-establishes,
+  so no row travels. Measured: the metabuild's 21,894 rows and its run table are
+  byte-identical across the change.
+- **Check a negative fixture's MESSAGE, not only its exit status.** The data/empty
+  case of `test/aot-prelude-band-suite.f` asserted exit 74 and got it from that
+  unrelated row-0 refusal, so it was green on the wrong death for as long as the
+  refusal existed. Its needle assertions beside it were the only thing that said
+  which refusal had fired. In `test/program-diagnostics-test.f` the needle is not
+  enough either: NEGATIVE requires stdout to equal the marker line exactly, so a
+  refusal that `type`s its coordinate to stdout ahead of `die` needs
+  NEGATIVE-DIAG, which asserts the marker as a PREFIX.
+- **An inlined copy carries nothing today, so `is` is the vehicle that puts a
+  pre-window DATA address in a window word.** `src/habu/habu2.f` C-CALL takes the
+  BL arm unconditionally ("THE INLINE ARM IS OFF, AND TIER 0 ALWAYS CALLS") and
+  C-CALL-SCAN-SAFE / C-CALL-COPY-INLINE are retained with no caller, so
+  `test/aot-band-data.f`'s old premise - an unarmed window lets a copied `create`d
+  body keep its address - made HOLDER simply CALL the field and both DATA cases of
+  the prelude-band audit missed the refusal they name. What the engine does emit is
+  `is`: J-IS puts the deferred word's DISPATCH CELL address in the caller's own
+  body as a recorded chain (C-DATA-ADDR-RAW), so a window word re-pointing a
+  prelude `defer` carries a prelude DATA address by construction, needs no unarmed
+  window, and survives the inline arm coming back (the chain is created there, not
+  copied in, so AOT-WINDOW:EMIT-OUTSIDE has nothing to decline). Dot
+  habu-decide-the-tier-374c95ff owns the arm, and AOT-ARM:WINDOW-OPEN-UNARMED is
+  parked with it.

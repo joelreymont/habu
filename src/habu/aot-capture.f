@@ -1187,10 +1187,11 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ the BUILDING host's JIT window or a pointer in that host's captured DATA
 \ window. Neither raw address belongs to the seeded engine. THE INVARIANT: a
 \ declared address cell's value is owned by its declaration, never by the
-\ window's bytes. Every declared row is therefore captured structurally, whether
-\ the cell itself lies inside the DATA window or in fixed engine state below it.
-\ The seed recreates the exact null or window-relative target and re-registers
-\ the cell's kind. A non-null target outside its declared window is refused.
+\ window's bytes. Every declared cell the window contains is therefore captured
+\ structurally: the seed recreates the exact null or window-relative target and
+\ re-registers the cell's kind, and a non-null target the window does not place is
+\ refused. A cell the window does NOT contain is a cell of the booting engine, and
+\ ACAP-BAKE-DATA below says which of those the capture may describe and why.
 \ The set is taken from the table and never from what a cell contains: the table
 \ is written where a cell's kind is decided, which is the only place it is known.
 : ACAP-ADD-XTOFF ( n n -- ) {: celloff:n meta:n :}
@@ -1251,9 +1252,20 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    v lo >= v hi < and 0= if v ACAP-TARGET-REFUSE then
    v lo - 1+ dup AOT-WINDOW:XTOFF-VALUE-MASK > if v ACAP-TARGET-REFUSE then ;
 
+\ The cell's declared target beside the window its KIND names: a DATA-pointer cell
+\ is answered by the DATA span and an execution-token cell by the code span, which
+\ is the whole reason the kind is recorded where it is decided rather than guessed
+\ from the value.
+: ACAP-XTCELL-TARGET ( n n n n n -- n n n ) {: k:n b0:n b1:n d0:n d1:n :}
+   k ACAP-XTCELL-AT AOT-CELL@
+   k ACAP-XTCELL-DATA? if d0 d1 else b0 b1 then ;
+
+: ACAP-XTCELL-TARGET-IN? ( n n n n n -- bool )
+   ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
+   v lo >= v hi < and ;
+
 : ACAP-XTCELL-META ( n n n n n -- n ) {: k:n b0:n b1:n d0:n d1:n :}
-   k ACAP-XTCELL-AT AOT-CELL@ {: v:n :}
-   k ACAP-XTCELL-DATA? if d0 d1 else b0 b1 then {: lo:n hi:n :}
+   k b0 b1 d0 d1 ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
    v 0<> v lo < v hi >= or and if
       s" aot-capture: address row " type k .
       s"  cell DATA+" type k ACAP-XTCELL-OFF .
@@ -1334,8 +1346,40 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
       ACAP-RN @ 8 + ACAP-RQ !
    repeat ;
 
-\ Every declared cell is recorded structurally. A cell inside the captured DATA
-\ span is additionally excluded from sparse byte runs.
+\ Where the seed will find this cell: a window offset under the window tag for a
+\ cell the capture carries, and a plain DATA offset for a fixed engine cell.
+: ACAP-XTCELL-LOC ( n n n -- n ) {: woff:n celloff:n len:n :}
+   woff 0 >= woff len < and if woff AOT-WINDOW:XTOFF-WINDOW-TAG or exit then
+   celloff ;
+
+\ WHOSE CELL IT IS, and it is not always the window's. A cell INSIDE the captured
+\ DATA span travels with the window: its row carries a window-relative location,
+\ the seed recreates its value and re-registers its kind, and ACAP-CLASSIFY-XTCELL
+\ keeps its bytes out of every sparse run.
+\
+\ A CELL THE WINDOW DOES NOT CONTAIN BELONGS TO THE ENGINE THE WINDOW WAS LOADED
+\ INTO, and the capture describes exactly one thing about it: an address of the
+\ WINDOW that the window's load stored there. That store is a load-time effect no
+\ captured byte carries, the seed has a window-relative target to write, and the
+\ target engine has nothing of its own at that address - so the row travels. This
+\ is how a metabuilt engine gets its checker hook: the window recompiles the
+\ checker, `set-check` stores the new xt into the fixed HOOK-CELL below the
+\ window, and row 0 of the table is what puts it back in the engine being written.
+\
+\ ANY OTHER TARGET IS STATE THE WINDOW DID NOT CREATE, and no row may travel for
+\ it. A capture running in a booted engine meets two populations of them, both
+\ declared before the window opened: the engine's own hook cells, holding xts the
+\ booting engine's prefix installed, and one cell per declared cell of that
+\ engine's OWN captured window, holding addresses in that window. Neither has a
+\ correct value the capture could write - a window-relative target would name the
+\ wrong address and a null would erase what the seeded engine's prefix put there -
+\ and the seeded engine's own state is already right, so the cell is left alone.
+\ Refusing instead is what this used to do, and it ended every capture taken
+\ inside a booted engine on row 0, the engine's own HOOK-CELL (dot
+\ habu-keep-declared-addr-dbd7d8d9). The refusal it kept is still reachable and
+\ still fail-closed, on the cell that has no other answer: one INSIDE the window,
+\ whose bytes travel and whose target the window does not place
+\ (test/aot-address-cell-target-out-bad.f).
 : ACAP-BAKE-DATA ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
    d1 d0 - {: len:n :}
    len AOT-WINDOW:SPAN-CAP > if
@@ -1346,13 +1390,12 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
       celloff ACAP-XTCELL-CELL-CHECK
       celloff d0off - {: woff:n :}
       woff len ACAP-CLASSIFY-XTCELL
-      i b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
-      woff 0 >= woff len < and if
-         woff AOT-WINDOW:XTOFF-WINDOW-TAG or
-      else
-         celloff
+      woff 0 >= woff len < and
+      i b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? or if
+         i b0 b1 d0 d1 ACAP-XTCELL-META {: meta:n :}
+         woff celloff len ACAP-XTCELL-LOC
+         meta ACAP-ADD-XTOFF
       then
-      meta ACAP-ADD-XTOFF
    loop
    d0 len ACAP-SCAN-RUNS ;
 

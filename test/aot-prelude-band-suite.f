@@ -34,9 +34,10 @@
 \               a band that begins after the window it bounds describes nothing.
 \   call/dhigh  the same for the DATA mark, moved on its own so the two halves of
 \               that check are told apart rather than sharing one fixture.
-\   data/real   HOLDER holds a prelude buffer's address: refused by the capture's
-\               own totality check, which now names the window word that holds the
-\               address and says the address is in the prelude band.
+\   data/real   HOLDER re-points a prelude `defer`, so it holds that defer's
+\               dispatch-cell address: refused by the capture's own totality check,
+\               which names the window word that holds the address and says the
+\               address is in the prelude band.
 \   data/empty  the same window and the same address with an empty band: refused
 \               the same way and still named, but placed BELOW the band instead of
 \               inside it. The pair is what shows the band classifies the address
