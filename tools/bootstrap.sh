@@ -108,34 +108,34 @@ SRC_COMMON=(
 
 emit_boot_hide() {
   cat >> "$1" <<'EOF'
-TRUSTED: BOOT-N>REC ( n -- ptr a ) ;
-TRUSTED: BOOT-A>U8 ( ptr a -- ptr u8 ) ;
+TRUSTED: BOOT-N>REC ( n -- ptr n ) ;
+TRUSTED: BOOT-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
 TRUSTED: BOOT-USIG-END-PTR ( -- ptr a ) USIGS UEND @ + ;
 TRUSTED: BOOT-UEND! ( n -- ) UEND ! ;
 $0 constant BOOT-XREF-START-SLOT
 $2 constant BOOT-XREF-FLAGS-SLOT
 $3 constant BOOT-XREF-NAME-SLOT
-: BOOT-XREF-REC ( n -- ptr a )
+: BOOT-XREF-REC ( n -- ptr n )
    DREC * dbase@ + BOOT-N>REC ;
-: BOOT-XREF-CELL@ ( ptr a n -- n )
+: BOOT-XREF-CELL@ ( ptr n n -- n )
    cells + @ ;
-: BOOT-XREF-PTR@ ( ptr a n -- ptr u8 )
+: BOOT-XREF-PTR@ ( ptr n n -- ptr u8 )
    BOOT-XREF-CELL@ BOOT-N>U8 ;
-: BOOT-XREF-START ( ptr a -- n )
+: BOOT-XREF-START ( ptr n -- n )
    BOOT-XREF-START-SLOT BOOT-XREF-CELL@ ;
-: BOOT-XREF-FLAGS ( ptr a -- n )
+: BOOT-XREF-FLAGS ( ptr n -- n )
    BOOT-XREF-FLAGS-SLOT BOOT-XREF-CELL@ ;
-: BOOT-XREF-NAME-LEN ( ptr a -- n )
+: BOOT-XREF-NAME-LEN ( ptr n -- n )
    BOOT-XREF-FLAGS DNAME-LEN-MASK and ;
-: BOOT-XREF-EXT? ( ptr a -- bool )
+: BOOT-XREF-EXT? ( ptr n -- bool )
    BOOT-XREF-FLAGS DNAME-EXT and 0= 0= ;
-: BOOT-XREF-INLINE-NAME ( ptr a -- ptr u8 )
+: BOOT-XREF-INLINE-NAME ( ptr n -- ptr u8 )
    $18 + BOOT-A>U8 ;
-: BOOT-XREF-NAME-A ( ptr a -- ptr u8 ) {: rec:ptr :}
+: BOOT-XREF-NAME-A ( ptr n -- ptr u8 ) {: rec:ptr :}
    rec BOOT-XREF-EXT? if rec BOOT-XREF-NAME-SLOT BOOT-XREF-PTR@ exit then
    rec BOOT-XREF-INLINE-NAME ;
-: BOOT-XREF-NAME$ ( ptr a -- ptr u8 n ) {: rec:ptr :}
+: BOOT-XREF-NAME$ ( ptr n -- ptr u8 n ) {: rec:ptr :}
    rec BOOT-XREF-NAME-A
    rec BOOT-XREF-NAME-LEN ;
 : BOOT-XREF-FOLD-C ( n -- n ) {: c:n :}
@@ -150,7 +150,7 @@ $3 constant BOOT-XREF-NAME-SLOT
       1+
    repeat drop
    0 0= ;
-: BOOT-XREF-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr name:ptr u:n :}
+: BOOT-XREF-MATCH? ( ptr n ptr u8 n -- bool ) {: rec:ptr name:ptr u:n :}
    rec BOOT-XREF-NAME$ name u BOOT-XREF-STR=CI ;
 : BOOT-XREF-FIND-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
    0
@@ -300,6 +300,17 @@ bootstrap_wide_gate() {
 }
 
 bootstrap_wide_gate
+
+# PERSISTED-PTR-VARIABLE is the boot prefix's only caller of the engine primitive
+# `ptr-cell-mark`, so a stage0 generator that never registers it takes down every
+# stage0 build at the prefix, naming only the bare token. This gate builds and runs
+# a seed that uses the definer, so the omission -- or a seed word that consumes the
+# wrong depth -- is named as itself.
+bootstrap_ptr_cell_mark_gate() {
+  "$GF" test/bootstrap-ptr-cell-mark.fs
+}
+
+bootstrap_ptr_cell_mark_gate
 
 # The recovery engine publishes a created word's effect from its definer: `-- ptr a`
 # for `create` and `variable`, `-- a` for `constant`, and the declared created

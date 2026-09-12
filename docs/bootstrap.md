@@ -131,6 +131,14 @@ user token.
 The temporary files are not build products. The final installed `bin/hb` is the
 native checked stdin/TTY engine rebuilt from current source.
 
+An engine primitive that the boot prefix uses must also be registered in the
+stage0 generator `bootstrap/cg/forth.fs`, with the semantics that is honest for a
+transient seed rather than the native body — a seed that never snapshots
+registers nothing for `ptr-cell-mark`, and a static seed image with no loader
+slot cannot reach libc for `realpath`. Nothing in the native gate notices the
+omission, because the native gate never builds a stage0; the periodic check
+below is what catches it, as the stage0 build dying on the bare token name.
+
 ## Periodic No-Binary Check
 
 The normal native gate uses an existing `bin/hb`; it does not prove the

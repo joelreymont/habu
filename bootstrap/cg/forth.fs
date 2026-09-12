@@ -804,6 +804,12 @@ previous definitions
 
 : BPTRFIELD ( -- )  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
+\ byte-view / cell-view ( ptr X -- ptr Y ): retype a raw pointer's pointee at the
+\ memory boundary. Only the CHECKED pointee changes, never the machine address, so
+\ the native primitive (src/habu/habu1.f BADDRESSVIEW) emits nothing and so does
+\ this one; the seed's own emitted code for both names is the empty body.
+: BADDRESSVIEW ( -- ) ;
+
 : BPLUSSTORE ( -- ) B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- ) A G-POP  A A 0 LDRB, A G-PUSH ;
@@ -848,6 +854,12 @@ previous definitions
    high-ok LBL, ;
 
 : BALLOT ( -- )  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
+
+\ align ( -- ): round the data pointer up to a cell so the next `,` or allot starts
+\ cell-aligned. Data space is the seed's own, laid out by this file's own DATA
+\ constants, so the native rounding (src/habu/habu1.f BALIGN) is the right rounding
+\ here unchanged -- only its task-liveness guard is native-only, as for BALLOT.
+: BALIGN ( -- )  7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 : BCOMMA ( -- )  A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
 
@@ -909,6 +921,32 @@ previous definitions
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
 : BMUNMAP ( -- )  1 G-POP  0 G-POP  0 1 GUARD-SPAN  NR-MUNMAP SYS,  SYS-PUSH ; \ ( addr len -- 0|-1 )
+
+\ map-anon ( bytes -- ptr a ior ): fresh anonymous storage. The seed makes the same
+\ kernel request with the same flags as the native word (src/habu/habu1.f
+\ BMAPANON), so this is that word unchanged -- a null pointer and -1 on failure.
+: BMAPANON ( -- )
+   LBL LBL {: failed done :}
+   1 G-POP
+   0 0 MOVZ,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,
+   4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,  C-CS failed BCOND,
+   1 0 MOVZ,  done B,
+   failed LBL,  0 0 MOVZ,  1 0 MOVN,
+   done LBL,  0 G-PUSH  1 G-PUSH ;
+
+\ realpath ( pathz dst cap -- n ): the native word (src/habu/habu1.f PATH-OS:EMIT)
+\ calls libc realpath through this image's loader slot. A seed image has no
+\ interpreter and no loader slot -- bootstrap/cg/elf.fs and macho.fs emit a static
+\ image -- so there is no libc realpath to reach, and canonicalizing by some other
+\ rule would answer a question the engine never asked. Report the native word's own
+\ -1 ("resolution/loader failure"), which src/core/include.f already fails closed
+\ on: TRY-CANON is false and CWD-INIT throws INCLUDE-IO-RC. Nothing in the seed's
+\ build path resolves an include (src/habu/stage2.f opens its source through PATH0
+\ and `open`), so the stub is never executed while hb-stage0 builds hb-stage.
+: BREALPATH ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   0 0 MOVN,  0 G-PUSH ;
 
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
@@ -1042,6 +1080,13 @@ previous definitions
 \ after `: TRUST`, always before this runs); a non-empty table means the drain
 \ never ran — name each undrained defer on fd 2 and exit 73. MIRROR of native
 \ BSEALCAP; leaf-safe (syscalls only), loop state stays off write-clobbered regs.
+\ seal-captured? ( -- bool ): read-only engine state the checker needs while it is
+\ still bootstrapping — has SEAL-CAPTURE run yet? The watermark cell is the same
+\ cell at the same offset here as natively, so this is native BSEALCAPQ verbatim.
+: BSEALCAPQ ( -- )
+   A DATA SEAL-NDICT-CELL LDR,  A 0 CMPI,
+   A C-NE CSET,  A SP A SUB,  A G-PUSH ;
+
 : BSEALCAP ( -- )
    LBL LBL LBL {: pdok pdloop pdexit :}
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,
@@ -1195,9 +1240,18 @@ previous definitions
 \ path relocates its own format -- so here the word is exactly the store, which
 \ is what src/core/declaration-transaction.f needs from it while the seed
 \ compiles the sources that build the real bin/hb.
+\ ptr-cell-mark ( ptr a -- ) is the declaration half of xt! on its own: in the
+\ native engine it registers a persisted DATA cell as holding a DATA pointer in
+\ the snapshot address table (src/habu/habu2.f SNAP-RELOC:BPTRCELLMARK, the
+\ LPTRMARK entry of EMIT-MARK). The seed has no such table -- the same reason
+\ xt! above is only its store -- so the honest seed word consumes the address
+\ and registers nothing.
 : EMIT-MEMORY-PRIMS ( -- )
    s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" byte-view" ['] BADDRESSVIEW FPRIM-L
+   s" cell-view" ['] BADDRESSVIEW FPRIM-L
    s" xt!"  ['] BSTORE FPRIM-L
+   s" ptr-cell-mark" ['] BDROP FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
@@ -1211,6 +1265,7 @@ previous definitions
 
 : EMIT-DICT-PRIMS ( -- )
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
+   s" align" ['] BALIGN FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
    s" execute" ['] BEXEC FPRIM
    s" create" ['] BCREATE FPRIM
@@ -1225,6 +1280,7 @@ previous definitions
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
+   s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
@@ -1234,6 +1290,8 @@ previous definitions
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
    s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
+   s" map-anon" ['] BMAPANON FPRIM-L
+   s" realpath" ['] BREALPATH FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L   s" munmap" ['] BMUNMAP FPRIM-L   s" patch32" ['] BPATCH32 FPRIM
    s" reloc-maps-clear" ['] BRELOCMAPSCLEAR FPRIM-L
    s" close" ['] BCLOSE FPRIM-L
@@ -3482,7 +3540,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ as a VS constant (folds like any literal).
 : C-CHAR ( -- )   LTOK @ BL,  9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 G-PUSH ;
 
-: C-BCHAR ( -- )   LTOK @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
+\ [char] C consumes a second token like ['] does, so its operand needs the same
+\ body-capture append as native C-BCHAR (src/habu/habu2.f); src/core/type-family.f
+\ compiles `[char] T` in a checked body and is refused without it.
+: C-BCHAR ( -- )   LTOK @ BL,  LBCAP @ BL,  11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC @ BL, ;
 
 \ ' NAME (interpret): find NAME, push its code address. ['] NAME (compile): bake
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
@@ -3500,8 +3561,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       found B,
    tk LBL, ;
 
+\ The dispatch table appends the `[']` keyword to the body capture, but the NAME it
+\ consumes here is a second token, so this handler has to append it the way native
+\ C-BTICK (src/habu/habu2.f) does. Without that the check hook certifies a body
+\ reading `['] <next token>`, so the tick takes its effect from whatever followed
+\ the name and every `s" x" ['] W FPRIM-L` row in src/habu/habu1.f is refused.
 : C-BTICK ( -- )
-   LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
+   LTOK @ BL,  LBCAP @ BL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    LBL {: bk :}  13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
 
 : C-LBRACE-GUARDS ( -- )
