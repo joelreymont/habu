@@ -59,10 +59,10 @@ s" src/habu/xref.f" required
 s" src/core/generated-declaration-dictionary.f" required
 s" src/core/generated-declaration-protection.f" required
 s" src/core/layout-buffer-seal.f" required
+s" src/core/dynamic-storage.f" required
 s" src/core/lower-cert-seal.f" required
 s" lib/prelude.f" required
 s" lib/errors.f" required
-s" src/core/dynamic-storage.f" required
 s" lib/image-lifecycle.f" required
 s" lib/adt/option.f" required
 s" lib/cad-num-types.f" required

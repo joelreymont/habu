@@ -999,6 +999,7 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-CORE-FILES
    out outu BF-APPEND-ROLES
    out outu BF-APPEND-CORE-BYTES
+   out outu s" src/core/dynamic-storage.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-FLAG
    out outu BF-APPEND-TARGET-LAYOUT
    out outu BF-APPEND-HABU-LAYOUT

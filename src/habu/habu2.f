@@ -892,6 +892,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
+   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-LOAD-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
@@ -945,7 +946,6 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 : PFX-LOAD-STDLIB-FILES ( -- )
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
-   PFX-COMMON LPDYNAMIC      s" src/core/dynamic-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-LOAD-ROW
    PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-LOAD-ROW
    PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-LOAD-ROW
