@@ -78,13 +78,17 @@ variable REG-PROT-N   0 REG-PROT-N !
 \ The checker models PATHZ/path0 as primitives with a stack effect only, so this
 \ throw is invisible to it; callers that want a process exit still get one from
 \ an uncaught throw at their top level.
-256 constant PATH-CAP
-7134 constant E-PATH-RANGE   \ path length negative, or longer than PATH-CAP holds with its NUL
+\ The tree's one path capacity, in path bytes without the NUL: every path
+\ buffer, core or library (lib/fs.f derives FS-PATH-CAP from it), holds a
+\ path of this many bytes plus its NUL, so a path one layer accepts is a path
+\ every layer accepts.
+1024 constant PATH-CAP
+7134 constant E-PATH-RANGE   \ path length negative, or longer than PATH-CAP bytes
 : PATHZ {: a:ptr u d:ptr :} ( ptr u8 n ptr u8 -- )
    u 0 < IF E-PATH-RANGE throw THEN
-   u 1 + PATH-CAP > IF E-PATH-RANGE throw THEN
+   u PATH-CAP > IF E-PATH-RANGE throw THEN
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
-create PZB PATH-CAP allot
+create PZB PATH-CAP 1 + allot
 
 : PATH0 {: a:ptr u :} ( ptr u8 n -- ptr u8 )
    a u PZB PATHZ  PZB ;     \ shared scratch

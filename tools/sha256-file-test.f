@@ -19,10 +19,19 @@ create SFT-A100 100 allot
 create SFT-ROOT FS-PATH-CAP allot
 create SFT-FILE FS-PATH-CAP allot
 create SFT-MISSING FS-PATH-CAP allot
+create SFT-DEEP-DIR FS-PATH-CAP allot
+create SFT-DEEP FS-PATH-CAP allot
+create SFT-DEEP-NAME 230 allot
+create SFT-EDGE-A FS-PATH-CAP allot
+create SFT-EDGE-B FS-PATH-CAP allot
+create SFT-EDGE-NAME 255 allot
 
 variable SFT-ROOT-U
 variable SFT-FILE-U
 variable SFT-MISSING-U
+variable SFT-DEEP-DIR-U
+variable SFT-DEEP-U
+variable SFT-EDGE-U
 
 : SFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -91,6 +100,55 @@ variable SFT-MISSING-U
 : SFT-TEST-MISSING ( -- )
    SFT-MISSING$ SFT-DG-A SHA256-FILE SHA-E-OPEN T= ;
 
+\ A file whose path is longer than the 256 bytes the core's path buffer once
+\ held: the digest words take every path lib/fs.f takes (dot
+\ habu-digest-files-through-308dc561). One 230-byte component keeps the name
+\ under NAME_MAX while the whole path passes 256.
+: SFT-DEEP$ ( -- ptr u8 n )
+   SFT-DEEP SFT-DEEP-U @ ;
+
+: SFT-TEST-DEEP-PATH ( -- )
+   230 0 ?do 100 SFT-DEEP-NAME i + c! loop
+   SFT-ROOT$ SFT-DEEP-NAME 230 SFT-DEEP-DIR JOIN-PATH SFT-DEEP-DIR-U !
+   SFT-DEEP-DIR SFT-DEEP-DIR-U @ MAKE-DIRS
+   SFT-DEEP-DIR SFT-DEEP-DIR-U @ s" deep.bin" SFT-DEEP JOIN-PATH SFT-DEEP-U !
+   SFT-DEEP-U @ 256 > TTRUE
+   SFT-FILL-A100
+   SFT-DEEP$ SFT-A100 100 WRITE-ALL
+   SFT-A100 100 SFT-DG-A SHA256
+   SFT-DG-A SFT-HEX-A SHA256>HEX
+   SFT-DEEP$ SFT-HEX-B SHA256-FILE-HEX 0 T=
+   SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
+
+\ The top of the range: a path of exactly FS-PATH-CAP bytes, built from
+\ 100-byte directory components and a final name that lands on the cap. fs.f
+\ creates and writes it, and the digest words take it too; one byte more is
+\ refused by both layers alike.
+: SFT-EDGE-NAME! ( n -- ) {: n:n :}
+   n 0 ?do 101 SFT-EDGE-NAME i + c! loop ;
+
+: SFT-EDGE-DIRS ( -- )   \ extend SFT-EDGE-A by 100-byte components while more than 201 bytes remain
+   SFT-ROOT$ SFT-EDGE-A swap BYTE-COPY SFT-ROOT-U @ SFT-EDGE-U !
+   begin FS-PATH-CAP SFT-EDGE-U @ - 201 > while
+      100 SFT-EDGE-NAME!
+      SFT-EDGE-A SFT-EDGE-U @ SFT-EDGE-NAME 100 SFT-EDGE-B JOIN-PATH {: u:n :}
+      SFT-EDGE-B SFT-EDGE-A u BYTE-COPY u SFT-EDGE-U !
+   repeat
+   SFT-EDGE-A SFT-EDGE-U @ MAKE-DIRS ;
+
+: SFT-TEST-EDGE-PATH ( -- )
+   SFT-EDGE-DIRS
+   FS-PATH-CAP SFT-EDGE-U @ - 1- {: last:n :}
+   last SFT-EDGE-NAME!
+   SFT-EDGE-A SFT-EDGE-U @ SFT-EDGE-NAME last SFT-EDGE-B JOIN-PATH SFT-EDGE-U !
+   SFT-EDGE-U @ FS-PATH-CAP T=
+   SFT-FILL-A100
+   SFT-EDGE-B SFT-EDGE-U @ SFT-A100 100 WRITE-ALL
+   SFT-A100 100 SFT-DG-A SHA256
+   SFT-DG-A SFT-HEX-A SHA256>HEX
+   SFT-EDGE-B SFT-EDGE-U @ SFT-HEX-B SHA256-FILE-HEX 0 T=
+   SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
+
 : SFT-MAIN ( -- )
    T-RESET
    SFT-PREPARE
@@ -98,6 +156,8 @@ variable SFT-MISSING-U
    SFT-TEST-INCREMENTAL
    SFT-TEST-FILE
    SFT-TEST-MISSING
+   SFT-TEST-DEEP-PATH
+   SFT-TEST-EDGE-PATH
    CLEANUP-RUN
    T-REPORT
    s" sha256-file-test: ok" type cr ;

@@ -6,7 +6,7 @@ require lib/errors.f
 require lib/string.f
 require lib/adt/option.f                        \ option<n> for FS-TRY-*STAT-MODE (switchover wave A)
 
-1024 constant FS-PATH-CAP
+PATH-CAP constant FS-PATH-CAP                   \ the core's one path capacity (src/core/util.f)
 FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 4096 constant FS-DIR-CAP
 32 constant FS-MAX-DEPTH
