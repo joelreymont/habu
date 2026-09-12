@@ -816,6 +816,28 @@ CHECKER-PKG-LIVE-DEFAULT
 \ These two names stay checker-internal: verify-source and the check driver's
 \ fixed scanners compile direct calls from named TRUSTED boundaries. Their
 \ effect rows are trusted-only, so checked code cannot activate the provider.
+\
+\ THE ROW IS WHY THE NAME ALSO NEEDS A SEAL. Both carry a zero-cell PRIM: row
+\ marked PRIM-TRUSTED-ONLY! so the native compiler can compile the call window
+\ from that TRUSTED caller — and a row makes SIG-MIN-IN answer 0, which is what
+\ src/core/internal-mark.f's IMK-MARK reads as "known, and no minimum arity to
+\ record" and leaves executable. A file holding nothing but
+\ CHECKER-VERIFY-PKG-START therefore ran and exited 0, seeding the verifier's
+\ package mirror from top level. REG-PROTECT is the seal CHECKER-RESET-SOURCE
+\ takes for the same reason: it records this record for IMK-SEAL-REGISTRY, which
+\ marks it DNAME-INT, so interpret and tick fail closed (`hb: internal engine
+\ word`, rc 70) while a compile-mode reference from a TRUSTED: body still
+\ resolves — src/compiler/native/dict.f CALL-TARGET admits a DNAME-INT call
+\ while the TRUSTED compilation cell is armed, which is what the row is for.
+\
+\ WHY NOT TEACH THE PASS THAT A TRUSTED-ONLY ROW IS UNKNOWN. Because trusted-only
+\ states a different restriction: CHECKED CODE may not call the word, and some
+\ rows carry it precisely so a top-level build driver still can — `set-tier`'s
+\ row says so in as many words below. The pass classifies colon records, so that
+\ rule would also seal CHECK-DOES! (this file) and LOWER-CERT:BYTES
+\ (src/core/lower-cert-base.f) on a judgement neither row makes. The seal belongs
+\ where the intent is stated, at the definition; REG-PROTECT takes the record it
+\ follows, so it cannot drift off the word it is about.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
    PKG-LIVE-XT 0= IF E-PKG-CONTEXT throw THEN
@@ -839,11 +861,13 @@ CHECKER-PKG-LIVE-DEFAULT
    ELSE
       CK-USE-ENGINE-DEPTH CHECKER-USE-OWNED-N !
    THEN ;
+REG-PROTECT
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
    VPKG-RESTORE
    0 CHECKER-VERIFY-PKG-DEPTH ! ;
+REG-PROTECT
 
 0 constant UK-EXACT
 1 constant UK-INPUT
