@@ -1009,10 +1009,6 @@ SUITE ddc-verify
    tools/ddc-verify-test.f
 ;SUITE
 
-SUITE diagnose-hb
-   tools/diagnose-hb-test.f
-;SUITE
-
 SUITE diff-side-content
    tools/diff-side-content-test.f
 ;SUITE

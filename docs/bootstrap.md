@@ -23,9 +23,12 @@ With terminal stdin, the loaded program continues into the
 REPL; with piped stdin, EOF exits. `bye` is not defined in this engine.
 
 `bin/hb` is generated and ignored. It is the only installed native build output.
-It is the small stdin/TTY engine, not a snapshot launcher: core/checker/tool source
-is loaded from the checkout at process start, and large dictionaries/checker
-arenas live in runtime memory instead of being baked into the executable.
+It is the seeded product, not a source loader: its core, checker and tool prefix
+arrive from the baked AOT artifact, so a boot opens no prefix source at all
+(`EMIT-SOURCE` emits only `EMIT-COLD-PREFIX-SHARED` in `src/habu/habu2.f`, and
+the source-loading `EMIT-COLD-PREFIX` beside it has no caller). The engine
+therefore starts in any directory, and an edit under `src/` changes nothing the
+installed engine does until it is rebuilt.
 A checkout without `bin/hb` uses Gforth only to create private bootstrap
 artifacts under `HB_TMP`; those artifacts exist only to produce `bin/hb`.
 

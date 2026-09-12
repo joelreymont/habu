@@ -517,6 +517,10 @@ fits.
   exact native, recovery, and fixpoint sequences whenever a prefix owner is added.
   Baked prefix files must be marked `provided` (else `require src/core/sha256.f`
   reloads `W32`). The first ceiling a new prefix file trips is stage2's `S2-SOURCE-CAP`.
+  Retired 2026-09-12: the `diagnose-hb-core.f` mirror and the count in its test
+  are gone with the source-loading boot — the seeded product opens no prefix
+  source, so that scanner had nothing left to diagnose; every other owner in this
+  list still holds.
 - **A NEW engine PRIM used by boot-prefix source lands in TWO stages** (the running
   binary re-reads the prefix at its boot, so checker.f can't reference a prim the
   current engine lacks → `E-UNDEFINED` before any build): stage 1 emit+register the
@@ -7732,3 +7736,19 @@ and --no-lldbinit.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
+
+## 2026-09-12 - the seeded product boots without its checkout
+
+- **The installed engine opens no prefix source at boot, so a copied `bin/hb`
+  carries the core of the tree that BUILT it.** `strace -f -e trace=openat` on a
+  boot shows `ld.so.cache` and libc and nothing else; on `bin/hb --load one.f`
+  it shows `one.f` and nothing else. Since bin/hb became the seeded product the
+  cold runtime arrives from the baked AOT artifact, and `EMIT-SOURCE`
+  (`src/habu/habu2.f`) emits only `EMIT-COLD-PREFIX-SHARED`, which loads no
+  files — the source-loading `EMIT-COLD-PREFIX` beside it has no caller left in
+  the tree. Two consequences. The engine starts in any directory: copied into an
+  empty directory with an empty environment it exits 0 silently, which
+  `tools/hb-open-failure-test.f` now pins from both sides. And an edit under
+  `src/` changes nothing an unrebuilt engine does, so evidence for a core change
+  needs a cold rebuild first — a workspace whose `bin/hb` was copied from
+  another tree is measuring that tree's core, not its own.
