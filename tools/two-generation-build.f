@@ -1,11 +1,12 @@
-\ two-generation-build.f - build three engine generations from one host and say
-\ whether the chain converges or accretes image DATA.
+\ two-generation-build.f - build five engine generations from one host and say
+\ whether the chain converges or accretes image DATA, then whether it reaches
+\ its byte fixpoint.
 \
 \ Generation 1 is built by the host named on the command line (default: the
-\ checkout's own bin/hb), generation 2 by generation 1, generation 3 by
-\ generation 2 - each through the production entry point, tools/native-build.f.
-\ Engines land in build/twogen, which is ignored. native-build.f always promotes
-\ to bin/hb, so the checkout's engine is moved aside for the run and put back.
+\ checkout's own bin/hb), generation 2 by generation 1, and so on to generation
+\ 5 - each through the production entry point, tools/native-build.f. Engines land
+\ in build/twogen, which is ignored. native-build.f always promotes to bin/hb, so
+\ the checkout's engine is moved aside for the run and put back.
 \
 \ Each generation prints one line: the image size plus the shape
 \ tools/two-generation-probe.f reads out of it. The chain fails, naming the
@@ -16,10 +17,19 @@
 \ persisted again, and generation 3 died in LOAD-TARGET with
 \ "hb: data space out of range".
 \
-\ The images are NOT compared byte for byte. Two builds by the same host
-\ already differ (measured 2026-09-12 on linux-aarch64: 3-4 bytes), and the
-\ chain reaches its byte fixpoint only at generation 4; docs/bootstrap.md
-\ records both measurements.
+\ THE LAST PAIR IS COMPARED BYTE FOR BYTE, and the pair is (4,5) rather than
+\ (2,3) because the product is a function of its host as well as of the source:
+\ the capture bakes the window's DATA as its non-zero extents, so build-time
+\ residue in that DATA - cells the boot path re-initialises and no restored
+\ reader consults - changes the run partitioning and displaces every later
+\ section. Measured 2026-09-12 on linux-aarch64 from a seed hb-stdin: 21 such
+\ cells (one non-zero byte each) account for the whole of the ~1 MB by which
+\ generations 3 and 4 differ, while their restored DATA differs only in live
+\ per-process addresses. The residue reaches its own fixpoint at generation 4,
+\ where f(B4) = B4 exactly. A byte difference in the last pair is therefore a
+\ real defect - a clock, a pid, an unpinned address or an unordered walk in the
+\ build - and this is the check that names it. docs/bootstrap.md records the
+\ measurement and the counts per pair.
 \
 \ Invocation and today's lines: docs/bootstrap.md, "Generation Chain Check".
 
@@ -39,6 +49,7 @@ package TWO-GEN
 10 constant TG-LF                  \ ASCII newline
 $8000 constant TG-CAP-OUT
 $1000 constant TG-SHAPE-CAP
+$8000 constant TG-CMP-CAP          \ one compare chunk per side
 1800000 constant TG-BUILD-MS       \ a cold generation is ~30-50 s here
 60000 constant TG-PROBE-MS
 
@@ -48,14 +59,22 @@ create TG-SHAPE TG-SHAPE-CAP allot
 create TG-PREV TG-SHAPE-CAP allot
 create TG-HOST FS-PATH-CAP allot
 create TG-PATH FS-PATH-CAP allot
+create TG-PATH-B FS-PATH-CAP allot
 create TG-NAME 8 allot
+create TG-NAME-B 8 allot
+create TG-CMP-A TG-CMP-CAP allot
+create TG-CMP-B TG-CMP-CAP allot
 variable TG-SHAPE-U
 variable TG-PREV-U
 variable TG-HOST-U
-variable TG-PATH-U
 variable TG-IMG
 variable TG-PREV-IMG
 variable TG-STASHED
+variable TG-FDA
+variable TG-FDB
+variable TG-RA
+variable TG-RB
+variable TG-DIFF
 
 : TG-U. ( n -- ) {: v:n :}
    v 0 < if E-STR-BOUNDS throw then
@@ -83,13 +102,18 @@ variable TG-STASHED
 
 : TG-HOST$ ( -- ptr u8 n ) TG-HOST TG-HOST-U @ ;
 
-\ build/twogen/hb-b<g>; one digit, because the chain is three generations long.
-: TG-GEN$ ( n -- ptr u8 n ) {: g:n :}
+\ build/twogen/hb-b<g>; one digit, because the chain is five generations long.
+\ The buffers are the caller's so a compare can hold two generation paths at once.
+: TG-GEN-PATH ( n ptr u8 ptr u8 -- ptr u8 n ) {: g:n nm:ptr path:ptr :}
    g 1 < g 9 > or if E-STR-BOUNDS throw then
-   s" hb-b" drop TG-NAME 4 BYTE-COPY
-   g TG-ZERO + TG-NAME 4 + c!
-   TG-DIR$ TG-NAME 5 TG-PATH JOIN-PATH TG-PATH-U !
-   TG-PATH TG-PATH-U @ ;
+   s" hb-b" drop nm 4 BYTE-COPY
+   g TG-ZERO + nm 4 + c!
+   TG-DIR$ nm 5 path JOIN-PATH {: u:n :}
+   path u ;
+
+: TG-GEN$ ( n -- ptr u8 n ) TG-NAME TG-PATH TG-GEN-PATH ;
+
+: TG-GEN-B$ ( n -- ptr u8 n ) TG-NAME-B TG-PATH-B TG-GEN-PATH ;
 
 \ The first line of a capture, so a stop names one diagnostic, not a trace.
 : TG-LINE1 ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -188,18 +212,85 @@ variable TG-STASHED
    TG-IMG @ TG-PREV-IMG @ =
    TG-SHAPE TG-SHAPE-U @ TG-PREV TG-PREV-U @ STR= and ;
 
-: TG-CHAIN ( -- )
-   TG-HOST0
-   1 TG-GEN
-   2 TG-GEN
-   TG-KEEP
-   3 TG-GEN
+\ ---- the byte compare of one generation pair --------------------------------
+\ Chunked, because an engine image is over five megabytes and the count is all
+\ the caller wants: a differing byte is a defect to name, not a diff to print.
+
+: TG-CMP-CLOSE ( -- )
+   TG-FDA @ 0 >= if TG-FDA @ close then
+   TG-FDB @ 0 >= if TG-FDB @ close then
+   -1 TG-FDA !
+   -1 TG-FDB ! ;
+
+: TG-CMP-OPEN ( ptr u8 n ptr u8 n -- ) {: a:ptr au:n b:ptr bu:n :}
+   -1 TG-FDA !
+   -1 TG-FDB !
+   a au FS-PATHZ open-rd TG-FDA !
+   TG-FDA @ 0 < if E-FS-OPEN throw then
+   b bu FS-PATHZ open-rd TG-FDB !
+   TG-FDB @ 0 < if TG-CMP-CLOSE E-FS-OPEN throw then ;
+
+: TG-READ ( n ptr u8 -- n ) {: fd:n buf:ptr :}
+   fd buf TG-CMP-CAP read {: got:n :}
+   got 0 < got TG-CMP-CAP > or if TG-CMP-CLOSE E-FS-IO throw then
+   got ;
+
+: TG-CHUNK-DIFF ( n -- ) {: u:n :}
+   u 0 ?do
+      TG-CMP-A i + c@ TG-CMP-B i + c@ <> if
+         TG-DIFF @ 1 + TG-DIFF !
+      then
+   loop ;
+
+\ Differing byte count, or -1 when the two files are not the same length.
+: TG-BYTE-DIFF ( ptr u8 n ptr u8 n -- n )
+   TG-CMP-OPEN
+   0 TG-DIFF !
+   begin
+      TG-FDA @ TG-CMP-A TG-READ TG-RA !
+      TG-FDB @ TG-CMP-B TG-READ TG-RB !
+      TG-RA @ TG-RB @ <> if TG-CMP-CLOSE -1 exit then
+      TG-RA @ 0= if TG-CMP-CLOSE TG-DIFF @ exit then
+      TG-RA @ TG-CHUNK-DIFF
+   again ;
+
+\ One line per pair, and the count the caller decides about.
+: TG-PAIR-DIFF ( n n -- n ) {: a:n b:n :}
+   a TG-GEN$ b TG-GEN-B$ TG-BYTE-DIFF {: n:n :}
+   s" two-gen: bytes gen " type a TG-U. s"  vs " type b TG-U. s"  " type
+   n 0 < if s" length mismatch" type cr else n TG-U. cr then
+   n ;
+
+\ The whole chain's byte report, and the fixpoint the last pair has to be at.
+: TG-FIXPOINT ( -- )
+   2 3 TG-PAIR-DIFF drop
+   3 4 TG-PAIR-DIFF drop
+   4 5 TG-PAIR-DIFF {: n:n :}
+   n 0= if
+      s" two-gen: ok gen 5 matches gen 4 byte for byte" type cr
+      exit
+   then
+   s" two-gen: gen 5 is not byte-identical to gen 4" type cr
+   5 TG-FAILED ;
+
+: TG-SHAPE-CHECK ( -- )
    TG-SAME? if
       s" two-gen: ok gen 3 matches gen 2" type cr
       exit
    then
    s" two-gen: gen 3 image size or shape differs from gen 2" type cr
    3 TG-FAILED ;
+
+: TG-CHAIN ( -- )
+   TG-HOST0
+   1 TG-GEN
+   2 TG-GEN
+   TG-KEEP
+   3 TG-GEN
+   TG-SHAPE-CHECK
+   4 TG-GEN
+   5 TG-GEN
+   TG-FIXPOINT ;
 
 public
 

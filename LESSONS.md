@@ -7655,12 +7655,34 @@ and --no-lldbinit.
   zero), so there is no per-generation retired-heap accretion.
   `tools/two-generation-build.f` is the measurement.
 
-- **Engine images are not byte-reproducible, so a generation check compares
-  shape, not bytes.** Two `tools/native-build.f` builds by the SAME host differ
-  in 3-4 bytes (2026-09-12, linux-aarch64), and the chain reaches its byte
-  fixpoint only at generation 4 (B2 vs B3 1,129,827 differing bytes, B3 vs B4
-  1,015,834, B4 vs B5 3). `install --force` byte-identity is a property of the
-  fixpoint refresh, not of a generation chain.
+- **A build-time transient belongs on the stack, not in a DATA cell the capture
+  will bake.** Two `tools/native-build.f` builds by the same host differed in
+  3-4 bytes, and all of them were one cell: `REG-PERSIST-DELTA`
+  (`src/core/checker.f`) held `fresh DATA copy - grown store's mmap address`
+  after the registry persist, so ASLR wrote the difference and the AOT capture
+  baked it (measured 2026-09-12 linux-aarch64: 4 bytes at DATA offset 5354888;
+  the same cell, at 5354896, was the whole B4-vs-B5 difference in the generation
+  chain). The delta has one consumer, the string-pool rebase two lines later,
+  and no reader at all in a restored image, so `REG-PERSIST-MOVE` now returns it
+  and no cell exists to bake. Two builds then agree in every byte. The
+  generalisation: a value derived from a process-local address must not outlive
+  the pass that computed it, and the cheapest proof is a same-host double build.
+
+- **A generation chain can differ by a megabyte with identical state: the image
+  represents the window's DATA as its non-zero extents.** After the delta fix
+  the chain still needs four generations (B2 vs B3 1,107,585 differing bytes, B3
+  vs B4 1,018,047, B4 vs B5 0), and the cause is representation. Between B3 and
+  B4 the entire difference is 21 residue cells holding one non-zero byte each,
+  in the unused tail of a baked boot buffer (`SYM-STR-BOOT` +983,624 with
+  `SYM-STR-U` at 182,754): they are worth 21 run rows and 21 run bytes, and
+  every later image section shifts by exactly 168 then 189 bytes. Their restored
+  DATA differs in 62 of 10,222,400 bytes, all live per-process addresses, and
+  `tools/imgdump.f` reports identical dicts for B2 and B3. So a generation
+  difference is not accretion or nondeterminism, and a byte check belongs where
+  the residue has reached its own fixpoint — the (4,5) pair, which
+  `tools/two-generation-build.f` now asserts. Removing the residue at capture
+  time (the AOT analogue of `snap-lib.f` `SND-ZERO-DEAD-HEAP`) would shorten the
+  chain and is not done.
 
 - **The root's real red set (2026-09-12, engine 04701ef9, load 1.6).** Before
   dot habu-run-every-registered-56d4962d `test/run.f` stopped at the first

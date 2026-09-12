@@ -151,14 +151,15 @@ exactly `hb: compile preflight hook missing` plus one LF on stderr.
 
 ## Generation Chain Check
 
-`tools/two-generation-build.f` builds three engine generations from one host —
-the host builds B1, B1 builds B2, B2 builds B3 — each through the production
+`tools/two-generation-build.f` builds five engine generations from one host —
+the host builds B1, B1 builds B2, and so on to B5 — each through the production
 entry point `tools/native-build.f`, and prints one line per generation. It is
 the check that the chain converges instead of accreting image DATA: an engine
 that carries more baked DATA than its host boots that DATA into its DP heap and
 then persists a copy of it, so the cost lands twice and a later generation dies
 in `LOAD-TARGET` with `hb: data space out of range`, rc 76, at `DP-CHECK`
-(`src/habu/habu1.f`).
+(`src/habu/habu1.f`). It is also the check that the chain reaches its byte
+fixpoint: the last pair is compared byte for byte.
 
 ```sh
 HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed-engine>
@@ -168,17 +169,24 @@ With no argument the checkout's own `bin/hb` is generation 0. `native-build.f`
 always promotes to `bin/hb`, so the tool moves the checkout's engine to
 `build/twogen/hb-entry` for the run and puts it back; every engine lands under
 the ignored `build/twogen`. It exits nonzero, naming the generation, when a
-generation does not build or when generation 3's image size and shape differ
-from generation 2's. `tools/two-generation-probe.f` is the child fixture that
-reads one engine's shape.
+generation does not build, when generation 3's image size and shape differ from
+generation 2's, or when generation 5 is not byte-identical to generation 4.
+`tools/two-generation-probe.f` is the child fixture that reads one engine's
+shape.
 
-Measured 2026-09-12 on linux-aarch64 from a seed `hb-stdin`, 87 s wall:
+Measured 2026-09-12 on linux-aarch64 from a seed `hb-stdin`, 173 s wall:
 
 ```
-two-gen: gen 1 built img 5701824 sym-n 10658 usigs 2086616 cap 2097152 norets 107720 cap 131072 rows 21542 heap 9959356 dp-cap 33030144
-two-gen: gen 2 built img 5308608 sym-n 12345 usigs 2260952 cap 2293760 norets 133424 cap 196608 rows 24916 heap 10221500 dp-cap 33030144
-two-gen: gen 3 built img 5308608 sym-n 12345 usigs 2260952 cap 2293760 norets 133424 cap 196608 rows 24916 heap 10221500 dp-cap 33030144
+two-gen: gen 1 built img 5701824 sym-n 10660 usigs 2086904 cap 2097152 norets 107720 cap 131072 rows 21546 heap 9960116 dp-cap 33030080
+two-gen: gen 2 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
+two-gen: gen 3 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
 two-gen: ok gen 3 matches gen 2
+two-gen: gen 4 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
+two-gen: gen 5 built img 5308608 sym-n 12347 usigs 2261240 cap 2293760 norets 133424 cap 196608 rows 24920 heap 10222415 dp-cap 33030080
+two-gen: bytes gen 2 vs 3 1107585
+two-gen: bytes gen 3 vs 4 1018047
+two-gen: bytes gen 4 vs 5 0
+two-gen: ok gen 5 matches gen 4 byte for byte
 ```
 
 Generation 1 is the deficient seed-lineage engine — the seed's checker records
@@ -187,8 +195,8 @@ generations 2 and 3 agree field for field, which is what "the chain has stopped
 growing" means. The whole B1-to-B2 boot-heap step, 262,144 bytes, is the two
 persisted checker caps growing (`+196,608` signatures, `+65,536` no-returns);
 nothing else moves, and at generation 3 the caps do not move either. The
-B2-hosted build peaks at `here - data-base` 30,675,584 against the 33,030,144
-DP cap (`DATA-SIZE - PROF-CNT-BYTES`), a 2,354,560-byte margin.
+B2-hosted build peaks at `here - data-base` 30,675,584 against the DP cap the
+lines above report (`DATA-SIZE - PROF-CNT-BYTES`), a margin over 2.3 MB.
 
 Before the checker stores were baked at the grain (`USIGS-ROUND-CAP`), those
 caps were rounded to a power of two: generation 2 booted at 12,187,580 instead
@@ -197,14 +205,39 @@ with `two-gen: gen 3 stopped rc 76 hb: data space out of range`. Generation 1
 cannot show that difference — its two pool contents round to the same cap under
 either policy — so the check has to reach generation 2 to mean anything.
 
-**The images are not compared byte for byte, and must not be.** Measured the
-same day: two builds by the SAME host differ in 3-4 bytes, and the chain
-reaches its byte fixpoint only at generation 4 (B2 vs B3 differ in 1,129,827
-bytes, B3 vs B4 in 1,015,834, B4 vs B5 in 3). The shape line is the comparison
-that holds today.
+**Two builds by the same host are byte-identical.** They were not until dot
+habu-make-the-engine-9db99082: one DATA cell held a process-local address.
+`REG-PERSIST-DELTA` (`src/core/checker.f`) kept the distance between a
+registry's freshly allotted DATA copy and the grown store's mmap address after
+the checker's snapshot persist, and the AOT capture baked the cell, so two
+builds from one host differed in the 3-4 bytes of that one cell — 4 bytes at
+DATA offset 5354888 in the pair measured. The delta is a transient of that pass
+with no reader in a restored image, so it now travels on the stack
+(`REG-PERSIST-MOVE`) and occupies no cell. Two seed-hosted builds then agreed
+in all 5,701,824 bytes, and `two-gen: bytes gen 4 vs 5` went from 4 to 0.
+
+**The chain still needs four generations, and the reason is representation, not
+state.** The product is a function of its host as well as of the source: the
+capture bakes the window's DATA as its non-zero extents (offset/length rows
+plus the bytes, `AOT-WINDOW:EMIT-RUNS` / `EMIT-RBYTES`), so build-time residue
+in that DATA changes the run partitioning and displaces every later section of
+the image. Measured between B3 and B4: 21 residue cells, one non-zero byte
+each, sitting in the unused tail of a baked boot buffer (`SYM-STR-BOOT`
++983,624, with `SYM-STR-U` at 182,754) — 1 in B3, 0 in B4. They are worth 21
+run rows (168 bytes) and 21 run bytes, and the image sections after them shift
+by exactly that: content matches at -168 from the run table onward and at -189
+after the run bytes, which is the whole of the 1,018,047 differing bytes. The
+restored state is not what differs — B3 and B4 boot to DATA that differs in 62
+of 10,222,400 bytes, and every one of those cells holds a live per-process
+address. `tools/imgdump.f` reports identical dicts for B2 and B3. The residue
+reaches its own fixpoint at generation 4, where the build is a fixpoint of
+itself: B5 equals B4 in all 5,308,608 bytes. Removing the residue (a
+capture-time reset of the dead tails, the AOT analogue of `snap-lib.f`'s
+`SND-ZERO-DEAD-HEAP`) would shorten the chain; until then four generations is
+the documented length and the (4,5) pair is where bytes are asserted.
 
 The check is deliberately **not** registered in `test/gate-stdlib-cases.f`: the
-three cold builds cost about 87 s, and for the whole of that time the tool owns
+five cold builds cost 3-4 minutes, and for the whole of that time the tool owns
 the `bin/hb` slot, while `test/run.f` spawns `./bin/hb` children by relative
 path out of a bounded process pool. Run it by hand after any change to the
 checker's persisted stores, the snapshot writer, or the image layout.

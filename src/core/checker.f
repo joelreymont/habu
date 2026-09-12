@@ -8634,22 +8634,33 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ into fresh image DATA (here-allot + copy), USIGS/NORET-style. Record/node arrays
 \ hold pointers into their string pool; the string pool is persisted last and its
 \ relocation delta rebases those pointers in the just-persisted arrays.
-variable REG-PERSIST-DELTA
+\ THE DELTA TRAVELS ON THE STACK AND IS NEVER PARKED IN A DATA CELL. One of its
+\ two terms is the grown store's process-local mmap address, so a cell holding it
+\ differs between two builds of the same source, and the AOT capture bakes that
+\ cell into the image: four bytes of one such cell were the entire difference
+\ between two same-host tools/native-build.f products (dot
+\ habu-make-the-engine-9db99082). A build-time transient of this pass has no
+\ reader in a restored image, so it needs no cell at all.
 
 \ Registry persistence copies bytes through the byte-pool view of each slot.
 : REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
 
-: REG-PERSIST-BUF ( ptr ptr u8 ptr u8 n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
-   pvar @ boot = IF RES-FALSE EXIT THEN            \ not grown: boot buffer is baked DATA
+\ How far the persisted copy moved, and whether the store had grown at all.
+: REG-PERSIST-MOVE ( ptr ptr u8 ptr u8 n -- n bool ) {: pvar:ptr boot:ptr bytes:n :}
+   pvar @ boot = IF 0 RES-FALSE EXIT THEN          \ not grown: boot buffer is baked DATA
    pvar @ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
    old dst bytes USIGS-COPY
    dst pvar !
-   dst old - REG-PERSIST-DELTA !
-   RES-TRUE ;
+   dst old - RES-TRUE ;
+
+\ A store of integers or interned offsets has no pool pointer to rebase, so its
+\ caller asks only whether the store grew.
+: REG-PERSIST-BUF ( ptr ptr u8 ptr u8 n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
+   pvar boot bytes REG-PERSIST-MOVE nip ;
 
 : CT-SNAPSHOT-PERSIST ( -- )
    CT-CAP-V @ cells {: ab:n :}
@@ -8658,10 +8669,10 @@ variable REG-PERSIST-DELTA
    CT-CLASS-P CT-CLASS-BOOT ab REG-PERSIST-BUF drop
    CT-WIDTH-P CT-WIDTH-BOOT ab REG-PERSIST-BUF drop
    CT-SIGN-P CT-SIGN-BOOT ab REG-PERSIST-BUF drop
-   CT-STR-P CT-STR-BOOT CT-STR-U @ REG-PERSIST-BUF IF
-      CT-STR-U @ CT-STR-CAP-V !
-      REG-PERSIST-DELTA @ CT-STR-REBASE
-   THEN ;
+   CT-STR-P CT-STR-BOOT CT-STR-U @ REG-PERSIST-MOVE {: moved:n grown:bool :}
+   grown 0= IF EXIT THEN
+   CT-STR-U @ CT-STR-CAP-V !
+   moved CT-STR-REBASE ;
 
 : CT-SNAPSHOT-MARK-POINTERS ( -- )
    CTN @ 1 ?do CT-NAME-A i cells + ptr-cell-mark loop ;
@@ -8686,20 +8697,20 @@ variable REG-PERSIST-DELTA
    VRN-G-P VRN-G-BOOT nb REG-PERSIST-BUF drop
    VRN-H-P VRN-H-BOOT nb REG-PERSIST-BUF drop
    VNARG-P VNARG-BOOT VNARG-CAP-V @ cells REG-PERSIST-BUF drop
-   VREC-STR-P VREC-STR-BOOT VREC-STR-U @ REG-PERSIST-BUF IF
-      VREC-STR-U @ VREC-STR-CAP-V !
-      REG-PERSIST-DELTA @ VREC-STR-REBASE
-   THEN ;
+   VREC-STR-P VREC-STR-BOOT VREC-STR-U @ REG-PERSIST-MOVE {: moved:n grown:bool :}
+   grown 0= IF EXIT THEN
+   VREC-STR-U @ VREC-STR-CAP-V !
+   moved VREC-STR-REBASE ;
 
 : VREC-SNAPSHOT-MARK-POINTERS ( -- )
    VREC-N @ 0 ?do VREC-NAME-A i cells + ptr-cell-mark loop ;
 
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
    SYMS-P SYMS-BOOT SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
-   SYM-STR-P SYM-STR-BOOT SYM-STR-U @ REG-PERSIST-BUF IF
-      SYM-STR-U @ SYM-STR-CAP-V !
-      REG-PERSIST-DELTA @ SYM-STR-REBASE
-   THEN ;
+   SYM-STR-P SYM-STR-BOOT SYM-STR-U @ REG-PERSIST-MOVE {: moved:n grown:bool :}
+   grown 0= IF EXIT THEN
+   SYM-STR-U @ SYM-STR-CAP-V !
+   moved SYM-STR-REBASE ;
 
 : SYM-SNAPSHOT-MARK-POINTERS ( -- )
    SYM-N @ 1 ?do
