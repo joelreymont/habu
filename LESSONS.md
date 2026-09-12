@@ -7748,10 +7748,18 @@ and --no-lldbinit.
   native-gate-aot-positive (1), native-gate-diagnostics (67),
   p2-map-rewind (1), pre-trust-defer (1), program-diagnostics (1),
   verify-prim (1)
+  Re-measured 2026-09-12 14:50 UTC on engine 6410a088 (load 2.5, no
+  timeouts): 17 red after the node-intern index and the verify-window
+  seal landed.
+  addrmap-inline (1), aot-prelude-band (1), aot-sig-pool (1),
+  aot-wid-restore (70), aot-wide-format (67), app-image (67),
+  build-fixpoint-fixtures (1), cast (1), check-cli-boundary (67), engine (1),
+  hb-build-fixtures (67), native-gate-aot-positive (1),
+  native-gate-diagnostics (67), p2-map-rewind (1), pre-trust-defer (1),
+  program-diagnostics (1), verify-prim (1)
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
-\\\\\\\        to: rrmqnwvw 5cad47ee "Keep each file's free-register count as it moves" (rebase destination)
 
 ## 2026-09-12 - the seeded product boots without its checkout
 
