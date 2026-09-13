@@ -12800,6 +12800,23 @@ variable ARMED   0 ARMED !
    0 ARMED !
    REC-OFF ;
 
+private
+: NO-SCAN ( ptr u8 n -- ) 2drop ;
+: NO-TOKEN ( ptr u8 n n n n n -- ) 2drop 2drop 2drop ;
+: NO-DONE ( ptr u8 n n -- ) 2drop drop ;
+public
+
+\ Final capture owns no compilation unit. Drop its installer identity and all
+\ callbacks, which may belong to a retained compiler outside the target window.
+\ Per-unit DISARM deliberately keeps them for reuse; the next INSTALL replaces
+\ these checker-owned defaults before ARM can succeed again.
+: DETACH ( -- )
+   DISARM
+   ['] NO-SCAN is SCAN-XT
+   ['] NO-TOKEN is TOKEN-XT
+   ['] NO-DONE is DONE-XT
+   0 BY !  0 SET ! ;
+
 \ One structurally supplied token between two checker scans still occupies one
 \ reported-token ordinal in the side tables, just as it does in the source tape.
 : ADVANCE ( -- )
@@ -14361,6 +14378,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 \ copies any grown registry, persist and mark the live rows, then clear the
 \ later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
+   CHECKER-TAPE:DETACH
    0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
    TOKBUF-RESET
    HIDX-RESET

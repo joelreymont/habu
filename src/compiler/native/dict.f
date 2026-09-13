@@ -100,10 +100,12 @@ private
    a u BARE-REC ;
 
 \ ---- entering the word the spelling denoted ----------------------------------
-\ `execute` enters a word the dictionary named at run time, so what it consumes
-\ and leaves is unknown here. Retires with habu-guard-an-executed-8a0f2f77.
+\ FIXED-VALUE admits only a live constant/create/variable record before entering
+\ it. The definer stamp supplies the single-cell callable layout; the value's
+\ number/address interpretation remains the caller's recorded kind.
+TRUSTED: AS-FIXED ( n -- [ -- n ] ) ;
 TRUSTED: RUN-WORD ( n -- n )
-   execute ;
+   AS-FIXED execute ;
 
 \ A cell and not a local: a local bound AFTER the entered word ran would itself
 \ read what that word left, which is the failure this check exists to refuse.

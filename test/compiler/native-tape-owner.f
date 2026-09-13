@@ -59,7 +59,7 @@ variable B-SCANS
 
 \ ---- the cases ---------------------------------------------------------------
 \ Read BEFORE anything is installed: the live observer is the engine's own front
-\ end, which named itself with its scan entry. Asserting that first is what makes
+\ end, which names its own producer instance. Asserting that first is what makes
 \ the restore at the end an assertion rather than a hope.
 : TO-ENGINE-OWNS-IT ( -- )
    s" the engine's own front end owns the observer" T-LABEL

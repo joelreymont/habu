@@ -53,3 +53,21 @@ BF-generated first source stage builds at the default tier with no diagnostics;
 its certify-only prefix contains ABI before checker/layout, while COMMON retains
 the host layout and needs no extra ABI row. That stage driver ignores `--load`,
 so its successful boot is not evidence that a requested load fixture ran.
+
+Paired tier1 bridge follow-up: the repaired MWIN seed5b969df8 passes the actual
+76-arm declaration, then exposed two unmodeled caller contracts. NDICT's
+RUN-WORD now gives its guarded fixed-value XT the existing `[ -- n ]` physical
+layout, retaining the live/nonzero definer-kind gate and post-call depth check.
+A fresh source fixture matches constant/create/variable values and refuses
+same-arity ordinary and wrong-effect words before their side effects.
+NFEED's observer identity is now a private producer-cell identity; it is compared,
+never called. Returning a typed callback as plain n had correctly refused -8651.
+
+The checker capture seam now detaches its observer: typed checker-local no-op
+callbacks replace all three possible retained-host callbacks and BY/SET clear.
+Ordinary per-unit DISARM still permits reuse. The full fresh-prefix tier1 fixture
+passes exact `window: 0` on bee6, including actual CAPTURE callback dispatch,
+no remaining observer events, repeated preparation, and reinstall/arm/disarm.
+This repairs capture ownership; product restore still belongs to the combined
+source-bound writer gate. The5b seed is bootstrap input, not an all-AOT result;
+the new in-process compiler and every later target/writer dependency use tier1.

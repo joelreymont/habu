@@ -54,6 +54,7 @@ variable F-N                           \ rows appended so far
 variable F-VERDICT
 variable F-DOES                        \ byte split after `does> `, or zero
 variable F-BASE                        \ start of the scan now being recorded
+variable OBSERVER-ID                   \ address identifies this producer instance
 
 : TXT-FIELD ( -- ptr ptr u8 )
    F-TXT 0 ptr-field ;
@@ -239,11 +240,10 @@ public
 \ PUBLIC so the observer this compiler owns can be put back: a test that installs
 \ its own trio over it (test/compiler/native-tape-owner.f) restores the engine's
 \ by calling this, and the identity below is how either side is read back.
-\ The identity is this unit's own scan entry, read as the number the tape stores:
-\ two compilers in one process (the engine's baked front end and the one a window
-\ loads beside it) have different ones, which is what makes a takeover readable.
+\ The tape compares an opaque identity; it never calls it. Two compiler
+\ instances own different cells, even when they observe the same checker.
 TRUSTED: SCAN-ID ( -- n )
-   ['] ON-SCAN ;
+   OBSERVER-ID ;
 
 : OBSERVE ( -- )
    SCAN-ID [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-OWNER:TAPE-INSTALL ;
