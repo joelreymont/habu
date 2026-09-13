@@ -1149,11 +1149,13 @@ previous definitions
    pos LBL,
    9 G-PUSH ;
 
-\ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
-: BSWL ( -- )
+\ The transient recovery engine has no hash index. Both search results use its
+\ existing newest-match scan; native habu1.f uses the shared indexed WLFIND.
+: C-SWL-RESULTS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
    2 G-POP  1 G-POP  0 G-POP                      \ wid=x2, u=x1, a=x0
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,   \ fold mask, rec, count, result
+   12 0 MOVZ,
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
       9 5 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
@@ -1171,9 +1173,12 @@ previous definitions
          wf2 LBL,
          9 10 CMP,  C-NE wnext BCOND,
          7 7 1 ADDI,  wcmp B,
-      wmatch LBL,  11 5 0 LDR,  wnext B,          \ keep scanning -> LAST (newest) match wins
+      wmatch LBL,  11 5 0 LDR,  12 5 0 ADDI,  wnext B,   \ LAST (newest) match wins
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
-   wend LBL,  11 G-PUSH ;
+   wend LBL, ;
+
+: BSWL ( -- ) C-SWL-RESULTS 11 G-PUSH ;
+: BCOMPILERSWL ( -- ) C-SWL-RESULTS 12 G-PUSH ;
 
 : BPARSE-NAME ( -- )
    LBL LBL {: none done :}
@@ -1302,6 +1307,7 @@ previous definitions
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
+   s" xref-search-wl" ['] BCOMPILERSWL FPRIM-L
    s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM ;

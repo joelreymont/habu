@@ -6864,6 +6864,8 @@ PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
 PRIM: set-current    PE-N PE-IN PRIM;
 PRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: xref-search-wl PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-PTR-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!                       \ NDICT's private indexed-record boundary
 PRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 \ num-parse ( ptr u8 n -- n bool bool ) : the engine's own number reader, over
 \ bytes the caller already holds - the routine the interpret and compile

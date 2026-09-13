@@ -2816,8 +2816,8 @@ private
 
 \ WLFIND:LENTRY is the name's row in ONE wordlist, and the whole of `search-wl`'s
 \ body: in x0 = name, x1 = length, x2 = wid; out x11 = the row's code cell or 0,
-\ x12 = the row itself or 0. Two callers, one implementation - the primitive
-\ below, and the AOT seed's call-site pass, which asks the same question of a
+\ x12 = the row itself or 0. Public and compiler primitives share this routine
+\ with the AOT seed's call-site pass, which asks the same question of a
 \ captured callee's wordlist and needs the ROW for the sealed-WID gate.
 \
 \ ITS ANSWER IS THE LAST MATCHING ROW, and that is not the same rule as "the
@@ -2932,6 +2932,14 @@ public
    9 12 16 LDR,  9 9 DNAME-INT ANDI,  9 done CBZ,
    11 0 MOVZ,
    done LBL,  11 G-PUSH ;
+
+\ xref-search-wl ( ptr u8 n n -- ptr n ): the same lookup's record result.
+\ DNAME-INT and a trusted-only checker row restrict it to a trusted boundary;
+\ NDICT checks live callee visibility after resolving namespace records.
+: BCOMPILERSWL ( -- )
+   2 G-POP  1 G-POP  0 G-POP
+   WLFIND:LENTRY LABEL@ BL,
+   12 G-PUSH ;
 
 : BPARSE-NAME ( -- )
    LBL PARSE-NONE !
@@ -3105,6 +3113,9 @@ package ENGINE-EMIT
    s" finally" ['] BFINALLY 2 GDEREF-F
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-F
+   3 GD-MIN !
+   s" xref-search-wl" ['] BCOMPILERSWL PRIM-GLOBAL-INT-WID FPRIM-WID
+   GD-RECORD
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
    s" set-tier" ['] BSETTIER 1 GDEREF-F     s" tier@" ['] BTIERFETCH FPRIM-L
    s" executable-build-enter" ['] BBUILDENTER PRIM-GLOBAL-INT-WID FPRIM-WID
