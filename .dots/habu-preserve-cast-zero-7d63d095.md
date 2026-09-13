@@ -49,3 +49,34 @@ with this diagnosis.
 
 B3 SHA256:
 `2ef6c87b233f5bd1f4a0e009b806851890aa67e85ccb13844d5a4f8570143781`.
+
+The implementation assigns the remaining value 3 of the existing two-bit
+`DKIND` enum to CAST. The declaration stamps its own record; the JIT skips only
+that resolved binding before spilling cached values, and the native word model
+uses its existing one-input identity rename. Fixed-value/address readers now
+compare exact enum values. First-class execution retains the real cast body.
+Capture already transports both kind bits; no record shape or AOT version
+changes. The recovery emitter stamps the same enum and clears fourteen name
+flag bits, matching production.
+
+Private source-built product `hb-cast-native` (SHA256
+`7e88e5d5a0ef100a49cf79e4e6eec60f05b73b94b8ac31e4b595069ead64907e`)
+passes the new-declaration span/value controls, unchanged nominal rejection
+suite, package/local/prior-binding shadows, non-cast callees, native model and
+binding suites, and a real APP-IMAGE save/restore whose persisted declarations
+have equal caller spans and valid first-class execution at both tiers. Evidence
+is in `/home/joel/.cache/cedar-cast-identity-rYkeN5/`.
+
+Migration remains explicit: this first product was built by old E, so its baked
+core role casts were declared with kind 0. They remain ordinary calls: >IDX/IDX>N
+give 40/48 byte spans at tier 0 and 24/44 at tier 1. The durable `CORE-ROLE`
+span assertion detects exactly this remaining failure in each tier. Build the
+next product with a CAST-capable host to stamp its captured core declarations;
+do not infer semantic identity from old body bytes. Root owns that composed
+product build and the full gate. The standalone second build was stopped before
+completion to avoid duplicating that work.
+
+Recovery execution is not claimed: the same Gforth probe refuses rc70 with no
+output on both unchanged parent and changed emitters. Production cold emission
+and the native product build succeeded; the recovery startup refusal remains a
+separate validation limit.

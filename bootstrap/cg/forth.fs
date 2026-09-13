@@ -43,13 +43,13 @@ $301000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (g
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
 $FFFFFFFE constant WID:MAX
-$000FFFFFFFFFFFFF constant DNAME-LEN-MASK
+$0003FFFFFFFFFFFF constant DNAME-LEN-MASK
+$000C000000000000 constant DKIND:CAST
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
 \ habu-habu-certified-words-84e84eaf). Stage0 never sets the band (no checker),
-\ so narrowing the length mask and the 12-bit LSLI/LSRI length reads below is
-\ behavior-identical here and keeps the mirror's record layout numerically
-\ equal to the native one on the recovery path.
+\ and CAST: stamps kind 3 in bits 50-51. Name reads therefore clear fourteen
+\ bits, matching the production dictionary and its capture format.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -1163,7 +1163,7 @@ previous definitions
    12 0 MOVZ,
    wl LBL,  6 wend CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,    \ wid mismatch
-      9 5 16 LDR,  9 9 12 LSLI,  9 9 12 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
+      9 5 16 LDR,  9 9 14 LSLI,  9 9 14 LSRI,  9 1 CMP,  C-NE wnext BCOND,    \ namelen mismatch
       16 5 24 ADDI,
       9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
          16 5 24 LDR,
@@ -1513,7 +1513,7 @@ previous definitions
    qloop LBL,
       6 qmiss CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE qnext BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 7 CMP,  C-NE qnext BCOND,
+      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 7 CMP,  C-NE qnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 qinl CBZ,
          16 5 24 LDR,
@@ -1551,7 +1551,7 @@ previous definitions
          8 2 CMP,  C-NE fnext BCOND,  14 1 MOVZ,
       fcmp LBL,
       14 7 CMP,  C-LT fnext BCOND,
-      15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,  15 4 CMP,  C-NE fnext BCOND,
+      15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,  15 4 CMP,  C-NE fnext BCOND,
       16 5 24 ADDI,
       15 5 16 LDR,  15 15 DNAME-EXT ANDI,  15 finl CBZ,
          16 5 24 LDR,
@@ -1623,7 +1623,7 @@ previous definitions
          15 14 CMP,  C-EQ member BCOND,
          3 3 1 ADDI,  mloop B,
       member LBL,
-         15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
+         15 5 16 LDR,  15 15 14 LSLI,  15 15 14 LSRI,  15 10 CMP,  C-NE unext BCOND,   \ name-len mismatch
          2 5 24 ADDI,
          14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
             2 5 24 LDR,
@@ -3531,7 +3531,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nloop LBL,
       6 nmake CBZ,
       14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,  14 17 CMP,  C-NE nnext BCOND,
       16 5 24 ADDI,
       14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
          16 5 24 LDR,
@@ -3747,7 +3747,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    {: hit miss :}
    LBL LBL {: cmp inl :}
    14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
+   14 5 16 LDR,  14 14 14 LSLI,  14 14 14 LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
    14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inl CBZ,
@@ -4980,7 +4980,8 @@ variable CFSK2
 \ recovery host has to read the form. A cast is a DECLARATION: no body, no `;`,
 \ and the whole form completes here — the interpret loop never enters compile
 \ state. What it publishes is an empty colon body, so the recorded length follows
-\ the colon rule (CP - entry - 4 = 16) and a call to a cast inlines to nothing.
+\ the colon rule (CP - entry - 4 = 16). The definer-kind stamp also survives
+\ capture into an engine whose compilers use declared identity semantics.
 \ The registrar runs BEFORE the record is counted, so a refused cast leaves no
 \ callable name behind - and it is asked only when a checker hook is installed.
 \ That guard is what keeps recovery readable: tools/bootstrap.sh hands this
@@ -5008,6 +5009,7 @@ variable CFSK2
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,
    C-STORE-DEF-NAME
+   10 9 16 LDR,  10 10 DKIND:CAST ORRI,  10 9 16 STR,
    CP 9 0 STR,                                         \ slot[0] = body start
    C-COLON-WORD-PROLOGUE
    EMIT-COMPILE-RET

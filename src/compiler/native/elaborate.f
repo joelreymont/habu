@@ -2063,8 +2063,8 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 \ ---- the names the dialect does not model, before anything reads the model ----
 \ A name the dialect does not model is resolved through dict.f at the point it
 \ is used, in the order the engine resolves the body that wrote it.
-: RESOLVE-STEP ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
+: RESOLVE-STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    ix MOPERAND? if exit then
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
@@ -2072,12 +2072,12 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? if exit then
    CTX BLD r sy HIR-WORD:RESOLVE-FIXED if exit then
-   CTX BLD r sy HIR-WORD:RESOLVE-CALLABLE drop ;
+   CTX BLD p r sy HIR-WORD:RESOLVE-CALLABLE drop ;
 
-: RESOLVE-SCAN ( IR-ARENA:arena n n -- )
-   {: r:IR-ARENA:arena lo:n hi:n :}
+: RESOLVE-SCAN ( IR-ARENA:arena IR-ARENA:arena n n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
    hi lo ?do
-      r i RESOLVE-STEP
+      p r i RESOLVE-STEP
    loop ;
 
 \ ---- which control actions stage a call, and which call ----------------------
@@ -3724,15 +3724,15 @@ private
 : BEFORE-RETURN ( -- )
    FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH then ;
 
-: SCAN-FUN ( IR-ARENA:arena n n -- )
-   {: r:IR-ARENA:arena lo:n hi:n :}
+: SCAN-FUN ( IR-ARENA:arena IR-ARENA:arena n n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena lo:n hi:n :}
    r lo hi QUOT-SCAN
    FUN-KIND @ FUN-DOES-PARENT = if QBASE @ QN @ + 1+ DOES-FUN ! then
    r lo hi LOCALS-SCAN
    QLOCALS-CK
    r lo hi MATCH-SCAN
    r lo hi DEFER-SCAN
-   r lo hi RESOLVE-SCAN
+   p r lo hi RESOLVE-SCAN
    r lo hi MEM-SCAN
    r lo hi CROSS-SCAN ;
 
@@ -3757,7 +3757,7 @@ private
    IN-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    OUT-GLUE @ NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
    b IR-BUILD:FUNS QBASE !
-   r lo hi SCAN-FUN
+   p r lo hi SCAN-FUN
    r lo hi SKELETON-TRY
    b FUN-STATE!
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}

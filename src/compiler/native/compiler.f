@@ -67,6 +67,7 @@ variable PRIOR-IN
 variable PRIOR-OUT
 variable PRIOR-GLUE
 variable PRIOR-DEAD
+variable PRIOR-CAST
 variable PRIOR-CALLABLE
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
@@ -114,7 +115,7 @@ variable TRUST-SRC-U
 \ denotes while the dictionary and checker still agree about that prior entry.
 : READ-PRIOR ( -- )
    PENDING-NAME$ {: a:ptr u:n :}
-   a u NDICT:CALL-TARGET {: entry:n :}
+   a u NDICT:CALL-BINDING {: entry:n kind:n :}
    entry PRIOR-ENTRY !
    entry 0= if exit then
    a u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
@@ -123,12 +124,13 @@ variable TRUST-SRC-U
    glue NDICT:GLUE-UNKNOWN = if exit then
    a u NDICT:SPELL-DEAD? {: dead:bool :}
    in PRIOR-IN !  out PRIOR-OUT !  glue PRIOR-GLUE !  dead PRIOR-DEAD !
+   kind DKIND:CAST = PRIOR-CAST !
    1 PRIOR-CALLABLE ! ;
 
 \ An ambiguous bare name is no prior binding.  A qualified body token remains
 \ free to resolve its own unambiguous record after the check.
 : KEEP-PRIOR ( -- )
-   0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !
+   0 PRIOR-ENTRY !  0 PRIOR-CALLABLE !  0 PRIOR-CAST !
    [: READ-PRIOR ;] catch {: rc:n :}
    rc E-USING-AMBIGUOUS = if exit then
    rc 0<> if rc throw then ;
@@ -151,7 +153,9 @@ variable TRUST-SRC-U
 \ The overlay holds only what this definition resolves - its callable and fixed
 \ words - and defers every vocabulary spelling to the session's table.
 : MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
-   CC BB MODEL-ROWS 0 HIR-WORD:NEW-LINKED ;
+   \ Each resolved cast needs one identity pick; there cannot be more such
+   \ bindings than body tokens. The arena reserves only picks actually used.
+   CC BB MODEL-ROWS dup HIR-WORD:NEW-LINKED ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
 \ Parked rather than left on the stack, because this runs inside the quotation
@@ -363,8 +367,8 @@ create SPELL-BUF SPELL-CAP allot
 \ Match by the dictionary entry, not by bytes: folding and a qualified spelling
 \ can both name the same prior word.  `recurse` has no callable dictionary
 \ target and therefore keeps its separate elaborator rule.
-: PRIOR-STEP ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
+: PRIOR-STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    PRIOR-ENTRY @ 0= if exit then
    TAPE ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if exit then
    CC BB  TAPE MKEY ix NTAPE:SPELL@  HIR-WORD:KEY-SYM
@@ -377,14 +381,15 @@ create SPELL-BUF SPELL-CAP allot
    \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
    \ discard operands, while a genuine word use reaches the ordinary refusal.
    PRIOR-CALLABLE @ 0= if exit then
+   PRIOR-CAST @ if CC BB p r sy HIR-WORD:DECLARE-BOUND-CAST exit then
    CC BB r sy
    PRIOR-ENTRY @ PRIOR-IN @ PRIOR-OUT @ PRIOR-GLUE @ PRIOR-DEAD @
    HIR-WORD:DECLARE-BOUND-CALLABLE ;
 
-: BIND-PRIOR ( IR-ARENA:arena -- )
-   {: r:IR-ARENA:arena :}
+: BIND-PRIOR ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    TAPE NTAPE:TOKENS 1 ?do
-      r i PRIOR-STEP
+      p r i PRIOR-STEP
    loop ;
 
 \ ---- the chain ---------------------------------------------------------------
@@ -567,7 +572,7 @@ create SPELL-BUF SPELL-CAP allot
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
-   r BIND-PRIOR
+   p r BIND-PRIOR
    NAME-BUF NAME-U @ NDICT:SPELL-GLUE NELAB:FRAME-GLUE!
    p r ELABORATE
    EMITTED
@@ -746,7 +751,7 @@ public
    NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !
    NULL-PTR TRUST-SRC-A !  0 TRUST-SRC-U !
    0 PRIOR-ENTRY !  0 PRIOR-IN !  0 PRIOR-OUT !
-   0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CALLABLE !
+   0 PRIOR-GLUE !  0 PRIOR-DEAD !  0 PRIOR-CAST !  0 PRIOR-CALLABLE !
    A64EMIT:CAPTURE-PREPARE
    \ The registry releases buffers immediately before DATA copy. Reset the
    \ pass reservations here so a restored compiler sizes them again on use.

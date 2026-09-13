@@ -145,9 +145,9 @@ private
    rec XREF-FOUND? 0= if FIXED-NONE exit then
    rec XREF-START 0= if FIXED-NONE exit then
    rec XREF-RETIRED? if FIXED-NONE exit then
-   rec XREF-FLAGS {: f:n :}
-   f DKIND:VAL and 0<> if FIXED-VAL exit then
-   f DKIND:ADDR and 0<> if FIXED-ADDR exit then
+   rec XREF-FLAGS DKIND:MASK and {: kind:n :}
+   kind DKIND:VAL = if FIXED-VAL exit then
+   kind DKIND:ADDR = if FIXED-ADDR exit then
    FIXED-NONE ;
 
 public
@@ -252,19 +252,23 @@ public
 \ code nothing can reach. A DNAME-INT call is resolved only while the existing
 \ TRUSTED: compilation cell is armed; checked bodies cannot branch to internal
 \ engine code even if a trusted-only primitive row supplies its real arity.
-: CALL-TARGET ( ptr u8 n -- n )
+: CALL-BINDING ( ptr u8 n -- n n )
    {: a u:n :}
    a u SPELL-REC {: rec:ptr :}
-   rec XREF-FOUND? 0= if 0 exit then
+   rec XREF-FOUND? 0= if 0 0 exit then
    rec XREF-START {: start:n :}
-   start 0= if 0 exit then
-   rec XREF-RETIRED? if 0 exit then
+   start 0= if 0 0 exit then
+   rec XREF-RETIRED? if 0 0 exit then
    rec XREF-FLAGS {: f:n :}
    f DNAME-INT and 0<> if
-      data-base TRUSTED-CELL + @ 0= if 0 exit then
+      data-base TRUSTED-CELL + @ 0= if 0 0 exit then
    then
-   f DNAME-IMM and 0<> if 0 exit then
-   start ;
+   f DNAME-IMM and 0<> if 0 0 exit then
+   start f DKIND:MASK and ;
+
+\ A caller that needs definer semantics captures them with the same resolved
+\ entry. Most call sites only need the target address.
+: CALL-TARGET ( ptr u8 n -- n ) CALL-BINDING drop ;
 
 -1 constant ARITY-NONE
 

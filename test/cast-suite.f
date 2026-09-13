@@ -109,9 +109,8 @@ s" CSROLE>N" 0 search-wl 0= 0 T=
 \ --- a call to a cast emits ZERO instructions. -------------------------------
 \ Not a memory of a measurement: the code pointer is read around three
 \ definitions that differ only in how many casts they call, and the three spans
-\ must be equal. An empty body is 16 bytes (CP - entry - 4), which is exactly the
-\ inliner's prologue-span window, so the copied span is empty. Make the published
-\ body one instruction longer and this fails.
+\ must be equal. Only the CAST: definer's identity stamp permits this lowering;
+\ the callable body's instruction shape is not a compiler contract.
 package CS-BYTES
 cp@ constant B0
 : NOCAST ( n -- n ) ;
@@ -122,7 +121,71 @@ cp@ constant B2
 cp@ constant B3
 B2 B1 -  B1 B0 -  T=
 B3 B2 -  B1 B0 -  T=
+
+\ A retype cannot force a literal out of the JIT's virtual stack. Equal spans
+\ here also pin constant folding across the two declared casts.
+cp@ constant K0
+: BASE-LITERAL ( -- n ) 7 2 + ;
+cp@ constant K1
+: CAST-LITERAL ( -- n ) 7 >CSROLE CSROLE>N 2 + ;
+cp@ constant K2
+K2 K1 - K1 K0 - T=
+CAST-LITERAL 9 T=
+
+\ Core role casts crossed the native build's dictionary capture. Their kind
+\ must survive exactly as a newly declared cast's kind does.
+cp@ constant R0
+: CORE-ROLE ( n -- n ) >IDX IDX>N ;
+cp@ constant R1
+R1 R0 - B1 B0 - T=
+37 CORE-ROLE 37 T=
+
+\ An ordinary empty body still denotes a call, despite having the same scalar
+\ effect and machine-code shape as a cast's first-class body.
+: ORDINARY ( n -- n ) ;
+cp@ constant O0
+: CALL-ORDINARY ( n -- n ) ORDINARY ORDINARY ;
+cp@ constant O1
+O1 O0 - B1 B0 - > -1 T=
+23 CALL-ORDINARY 23 T=
 ;package
+
+package CS-EXECUTION
+public
+: FIRST-CLASS ( n -- n ) ['] >CSROLE execute ['] CSROLE>N execute ;
+: QUOTED ( n -- n ) [: >CSROLE CSROLE>N ;] execute ;
+: LOCAL ( n -- n ) {: >CSROLE:n :} >csrole 1+ ;
+: CONVERTER ( n -- csrole ) 1+ >CSROLE ;
+: CALL-CONVERTER ( n -- n ) CONVERTER CSROLE>N ;
+;package
+41 CS-EXECUTION:FIRST-CLASS 41 T=
+42 CS-EXECUTION:QUOTED 42 T=
+40 CS-EXECUTION:LOCAL 41 T=
+40 CS-EXECUTION:CALL-CONVERTER 41 T=
+
+package CS-SHADOW
+public
+: >CSROLE ( n -- n ) 2 + ;
+: CALL ( n -- n ) >csrole ;
+;package
+40 CS-SHADOW:CALL 42 T=
+40 >CSROLE CSROLE>N 40 T=
+
+\ The pending name still binds the used package's cast. Once published, the
+\ new package member is an ordinary callable with its own behavior.
+package CS-PRIOR-BASE
+public
+CAST: PRIOR-CAST ( n -- n )
+;package
+package CS-PRIOR
+public
+using CS-PRIOR-BASE
+: PRIOR-CAST ( n -- n ) prior-cast 1+ ;
+;using
+: CALL ( n -- n ) PRIOR-CAST ;
+;package
+40 CS-PRIOR:PRIOR-CAST 41 T=
+40 CS-PRIOR:CALL 41 T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

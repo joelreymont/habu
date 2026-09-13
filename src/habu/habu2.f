@@ -3424,12 +3424,10 @@ package INTERP-EMIT
 \ enters compile state (PEND-CELL is cleared before the return), which is why
 \ none of this needs a cell of engine state to survive a token boundary.
 \
-\ WHAT IT PUBLISHES is byte-for-byte an empty checked colon body: the same
-\ prologue, the same epilogue, and the same recorded length rule (CP - entry - 4
-\ = 16). That is not a coincidence to preserve by hand — it is what makes a call
-\ to a cast free. The inliner's prologue-span rule copies a 16-byte body as the
-\ span [entry+8, entry+8), which is empty, so a call site emits ZERO
-\ instructions and the retype costs nothing at run time.
+\ The empty checked colon body preserves first-class execution and the ordinary
+\ minimum-input guard. Its DKIND:CAST stamp, owned by this declarer, tells both
+\ compilers that a direct mention is identity data flow. No body scan establishes
+\ that fact, and an ordinary empty colon definition has no such stamp.
 \
 \ THE REGISTRAR RUNS BEFORE THE RECORD IS COUNTED. CHECKER-DEFCAST throws the
 \ named refusal (E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR) for an illegal retype, and
@@ -3475,6 +3473,7 @@ package INTERP-EMIT
    9 DATA PEND-CELL STR,
    1 9 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,  \ the record this declaration publishes
    C-STORE-DEF-NAME
+   10 9 16 LDR,  10 10 DKIND:CAST ORRI,  10 9 16 STR,
    CP 9 0 STR,
    9 $D10043FF LIT64,  LCEMIT LABEL@ BL,             \ sub sp, sp, #16
    9 $F90003FE LIT64,  LCEMIT LABEL@ BL,             \ str x30, [sp]
@@ -8120,7 +8119,19 @@ public
 
 
 : EM-COMPILE-CALL ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label prepare:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   13 usedtry CBZ,
+   found LBL,
+   C-COMPILE-CALL-GUARD
+   \ LFIND returns the exact resolved record in x5. An immediate still runs at
+   \ compile time; only an ordinary CAST mention can leave the virtual stack as
+   \ it is. In particular, do not spill a cached value merely to retype it.
+   14 13 2 ANDI,  14 prepare CBNZ,
+   14 5 16 LDR,  14 14 50 LSRI,  14 14 3 ANDI,
+   14 3 CMPI,  C-EQ LMAIN LABEL@ BCOND,
+   prepare LBL,
+   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                          \ x10 = extra pads, x11 = found
@@ -8135,10 +8146,7 @@ public
       SP SP 16 ADDI,
    noxc LBL,
    LVSPILL LABEL@ BL,
-   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 usedtry CBZ,                                        \ open-scope + global miss -> try used publics
-   found LBL,
-   C-COMPILE-CALL-GUARD                                   \ guard typed internal calls and compile-time immediates alike
+   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  SP SP 32 ADDI,
    14 13 2 ANDI,  14 notimm CBZ,
       14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
          14 14 8 LSRI,                                    \ x14 = min-in cells

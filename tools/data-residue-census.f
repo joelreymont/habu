@@ -43,7 +43,7 @@ public
    ndict@ 0 ?do
       i XREF-REC
       dup XREF-WORDLIST -1 = if drop else
-         dup XREF-FLAGS DKIND:ADDR and 0= if drop else
+         dup XREF-FLAGS DKIND:MASK and DKIND:ADDR <> if drop else
             dup XREF-NAME$ type cr
             dup XREF-WORDLIST .
             XREF-START RUN-ADDR ALIGN 1 - and .

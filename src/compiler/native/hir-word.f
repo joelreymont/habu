@@ -697,26 +697,6 @@ public
    FIX-NAME u NDICT:FIXED-VALUE  k LIT-KIND  FIXED-ROW
    true ;
 
-\ Make that row for a spelling nobody staged, by asking the engine about it.
-\ Every way the engine can fail to answer leaves the token to be refused as
-\ unmodeled, by name. The return-stack clause is the one that is not missing
-\ information: the elaborator's return stack is a compile-time vector, and a
-\ call has nowhere to put a callee's motion of it.
-: RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
-      id:IR-ID:ir-symbol-id :}
-   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
-   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   FIX-NAME u NDICT:CALL-TARGET {: entry:n :}
-   entry 0= if false exit then
-   FIX-NAME u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
-   in NDICT:ARITY-NONE = if false exit then
-   neutral 0= if false exit then
-   glue NDICT:GLUE-UNKNOWN = if false exit then   \ a result shape nothing can state is not a call this builds
-   FIX-NAME u NDICT:SPELL-DEAD? {: dead:bool :}
-   c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW
-   true ;
-
 \ Declare that a source word elaborates to one operation of this dialect. The
 \ The second arena is the interner that has to have minted the word's spelling.
 : DECLARE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
@@ -836,6 +816,36 @@ public
       id:IR-ID:ir-symbol-id :}
    STG-TAKE
    c p r  sy id SYM-CK  RENAME-ROW ;
+
+\ A CAST: binding is one value renamed to itself. The checker retains the
+\ nominal input/output terms; this model retains the very same SSA value.
+\ Unlike vocabulary renames, its authority is the captured dictionary definer.
+: DECLARE-BOUND-CAST ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   1 BEGIN-RENAME
+   0 ADD-PICK
+   STG-TAKE
+   c p r  c b id BKEY-CK  RENAME-ROW ;
+
+\ Resolve a callable and its definer kind together. Only a CAST: declaration
+\ gets the identity rename; ordinary empty or effect-compatible words remain
+\ calls. Missing or unsupported effects still leave the token unmodeled.
+: RESOLVE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   c b id IR-BUILD:SYMBOL-LEN FIX-NAME-CAP > if false exit then
+   c b id FIX-NAME FIX-NAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   FIX-NAME u NDICT:CALL-BINDING {: entry:n kind:n :}
+   entry 0= if false exit then
+   FIX-NAME u NDICT:SPELL-CALL {: in:n out:n glue:n neutral:bool :}
+   in NDICT:ARITY-NONE = if false exit then
+   neutral 0= if false exit then
+   glue NDICT:GLUE-UNKNOWN = if false exit then
+   kind DKIND:CAST = if c b p r id DECLARE-BOUND-CAST true exit then
+   FIX-NAME u NDICT:SPELL-DEAD? {: dead:bool :}
+   c r  c b id BKEY-CK  entry in out glue  dead NORET-CODE  CALLABLE-ROW
+   true ;
 
 \ ---- reading -----------------------------------------------------------------
 : MODELED ( IR-ARENA:arena -- n )

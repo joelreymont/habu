@@ -196,11 +196,13 @@ $FFFFFFFE constant MAX
 \ definer stamps its kind here, in the record it just made, and every reader
 \ asks the record.
 \
-\ TWO BITS AND NOT ONE, because the two kinds are not the same fact downstream.
+\ The two-bit kind is an enum, not independent flags.
 \ A `constant` pushes a number; a `create`d or `variable` word pushes an address
 \ of the DATA region, which a snapshot must move with the region. A compiler
 \ that folded the second as if it were the first would bake an address a restore
 \ cannot relocate, so the kinds travel separately all the way to the literal.
+\ CAST: uses the remaining kind for a declared identity retype. Its real body
+\ remains callable, but a compiled mention only renames the checked value.
 \
 \ THE ONE WRITER THAT FALSIFIES A STAMP CLEARS IT. `does>` patches the created
 \ word's RET into a branch to a clause body (habu2.f DOESPATCH:EMIT), and from
@@ -215,18 +217,13 @@ $FFFFFFFE constant MAX
 \ pair as a byte of its compact record (src/habu/aot-capture.f) so a stamp
 \ survives the round trip exactly as the min-in byte does.
 \
-\ THE GFORTH RECOVERY CORPUS KEEPS THE WIDER FIELD ON PURPOSE. bootstrap/cg's
-\ stage-0 engine has no definer that stamps anything, so no record it makes can
-\ carry these bits and its own twelve-bit clear is exact for its own dictionary.
-\ Narrowing it there would be a change with no reader. What the seed hands the
-\ engine it builds is captured through aot-capture.f, which reads a seed record
-\ with the mask above and finds those bits zero, so the two conventions meet
-\ without either being converted. A stamping definer in the recovery corpus is
-\ what would make this band its business too.
+\ The recovery CAST: definer stamps the same kind, so bootstrap/cg's name
+\ readers clear the same fourteen bits. Capture carries the kind unchanged.
 package DKIND
 public
-$0004000000000000 constant VAL       \ bit 50: the body pushes a decided number
-$0008000000000000 constant ADDR      \ bit 51: the body pushes its DATA address
+$0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
+$0008000000000000 constant ADDR      \ kind 2: the body pushes its DATA address
+VAL ADDR or constant CAST           \ kind 3: a declared identity retype
 VAL ADDR or constant MASK
 ;package
 $0003FFFFFFFFFFFF constant DNAME-LEN-MASK
