@@ -268,9 +268,10 @@ admitted only inside the armed window.
   supplies); the checker judges only the type effect.
 - **Arming contract.** The window is armed by the generative crossing only —
   `FIELD-PROJ! ( accessor-name-addr accessor-name-len field-id byte-offset -- )`,
-  a pre-hook internal the seal marks non-executable, so user source can neither
-  execute nor tick it (identical to the `CTOR-PEND!` constructor window). The
-  generator arms it immediately before evaluating the one accessor definition,
+  an explicitly trusted-only operation whose record the seal protects, so user
+  source can neither call it from checked code nor execute or tick it. Its four
+  private state cells carry the same restrictions. The generator arms it
+  immediately before evaluating the one accessor definition,
   keyed on the accessor word name; the window fires once at the `field-project`
   token inside that word's body and disarms (single-shot, even on reject).
 - **Authority.** The committed **field id** is the sole authority. The checker

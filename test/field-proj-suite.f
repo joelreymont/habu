@@ -170,17 +170,11 @@ s" FPX-BID ( ptr fprec -- ptr n ) 0 field-project" CHECK-QUIET-CANDIDATE! 0 T=
 FP-CLEAR
 
 \ ===========================================================================
-\ 3. seal: user CHECKED source cannot arm the window. FIELD-PROJ! is a pre-hook
-\ internal the seal marks non-executable, so a checked body that names it is
-\ E-UNDEFINED — only the generative crossing (a TRUSTED friend forwarder, above)
-\ reaches it, exactly like CTOR-PEND!.
+\ 3. seal: user CHECKED source cannot arm the window. FIELD-PROJ! has an
+\ explicit trusted-only effect; only the generative crossing (a TRUSTED friend
+\ forwarder, above) may call it, including when a user signature is recorded.
 \ ===========================================================================
-\ Verdict 1 = uncheckable: the checker treats FIELD-PROJ! exactly like an
-\ undefined word (an undefined tail returns 1 the same way), never certifying a
-\ body that names it, so user source cannot arm the window; and the seal-time
-\ internal-word pass additionally makes it non-executable, so even a forced build
-\ could not call it.
-s" FPX-FORGE ( ptr u8 n n n -- ) FIELD-PROJ!" CHECK-QUIET-CANDIDATE! 1 T=
+s" FPX-FORGE ( ptr u8 n n n -- ) FIELD-PROJ!" CHECK-QUIET-CANDIDATE! 0 T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

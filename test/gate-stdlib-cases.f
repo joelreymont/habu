@@ -1350,6 +1350,10 @@ SUITE field-proj
    test/field-proj-suite.f
 ;SUITE
 
+SUITE field-proj-boundary
+   test/field-proj-boundary.f
+;SUITE
+
 SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
 ;SUITE

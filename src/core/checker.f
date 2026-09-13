@@ -1824,12 +1824,13 @@ variable LAYOUT-INTRO
 \ pointee, CAST refuses T-PTR). Armed ONLY by the generative crossing (the path
 \ structure-make.f/generate-field use) around the one audited accessor eval, and
 \ keyed on the accessor word name; it fires once at the `field-project` op token
-\ inside that word's body and disarms. The arming word is pre-hook (checker.f
-\ before the check hook) so the seal-time internal-word pass marks it internal —
-\ user source can neither execute nor tick it, exactly like CTOR-PEND!.
-variable FIELD-PROJ-A   variable FIELD-PROJ-U   0 FIELD-PROJ-U !   \ armed accessor word name span
-variable FIELD-PROJ-FID     \ committed field id (the authority: offset/type/role derive from it)
-variable FIELD-PROJ-OFF     \ baked byte offset (cross-checked against the committed offset)
+\ inside that word's body and disarms. Its explicit trusted-only effect and
+\ record protection keep the arming boundary closed even when source-owner
+\ transfer supplies a user signature for this pre-hook definition.
+variable FIELD-PROJ-A   REG-PROTECT
+variable FIELD-PROJ-U   REG-PROTECT   0 FIELD-PROJ-U !   \ armed accessor word name span
+variable FIELD-PROJ-FID REG-PROTECT   \ committed field id (the authority: offset/type/role derive from it)
+variable FIELD-PROJ-OFF REG-PROTECT   \ baked byte offset (cross-checked against the committed offset)
 variable LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 
@@ -6906,6 +6907,17 @@ PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-RESET-SOURCE PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ only the generated accessor's trusted crossing may arm it
+\ The same restriction covers direct access to the armer's private storage.
+PRIM: FIELD-PROJ-A PE-PTR-U8 PE-PTR PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: FIELD-PROJ-U PE-PTR-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: FIELD-PROJ-FID PE-PTR-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: FIELD-PROJ-OFF PE-PTR-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -12461,6 +12473,7 @@ variable CONFAM    \ resolved family id while CONM = 2
 \ word); the checker judges only the type effect here.
 : FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
    a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
+REG-PROTECT
 : FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : FIELD-PROJ-MATCH? ( -- bool )   \ armed AND the word under check is the armed accessor
    FIELD-PROJ-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
