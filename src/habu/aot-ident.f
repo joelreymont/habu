@@ -26,9 +26,10 @@
 \ route, and the digest the reader re-derives has to be the same code the producer
 \ ran or the comparison proves nothing.
 \
-\ THE DIGEST IS RE-DERIVABLE, WHICH IS THE POINT. It is SHA-256 over the ordered
-\ concatenation of those files' bytes, so a reader holding the artifact's file
-\ list can recompute it from disk and compare. That turns "this artifact says it
+\ THE DIGEST IS RE-DERIVABLE, WHICH IS THE POINT. It binds each file's recorded
+\ path and content digest in load order, with explicit lengths and a versioned
+\ domain. A reader holding the artifact's file list recomputes it from disk and
+\ compares. That turns "this artifact says it
 \ came from the chain" into "this artifact came from the chain THAT IS ON DISK NOW",
 \ and a mismatch means a stale artifact, which a recapture cures.
 \
@@ -60,6 +61,10 @@ $4A constant REFUSE-RC
 create PATHS MAX PATH-CAP * allot
 create LENS  MAX cells allot
 create CHUNK-BUF CHUNK allot
+\ The engine SHA state is shared. Finish each file before hashing the framed
+\ list; this bounded scratch is recomputed on every call, never a content cache.
+create FILE-DIGESTS MAX 32 * allot
+create FRAME-WORD 8 allot
 variable N
 
 : SLOT ( n -- ptr u8 ) PATH-CAP * PATHS + ;
@@ -124,18 +129,36 @@ variable RD
    repeat
    fd close ;
 
+: FILE-DIGEST ( n -- ) {: ix:n :}
+   SHA256-RESET
+   ix FEED
+   FILE-DIGESTS ix 32 * + SHA256-FINAL ;
+
+\ Framing integers are unsigned little-endian cells, independent of host byte
+\ order. Counts and path lengths were bounded when the closure was recorded.
+: FEED-U64 ( n -- ) {: value:n :}
+   8 0 ?do value i 8 * rshift $FF and FRAME-WORD i + c! loop
+   FRAME-WORD 8 SHA256-UPDATE ;
+
 public
 
-\ SHA-256 over the ordered concatenation of the closure's bytes, into a 32-byte
-\ buffer. Order is load order, so the digest answers "these files, in the order
-\ the chain pulled them in" - a reader with the artifact's list recomputes it
-\ from disk and refuses on mismatch.
+\ Closure identity v2: fixed domain, version, file count, then for each file its
+\ path length, exact recorded path bytes and 32-byte SHA-256 content digest.
+\ v1 concatenated contents and could move source into a preceding EOF comment
+\ without changing the identity. Recomputing v2 refuses those old identities.
 : CHAIN-DIGEST ( ptr u8 -- ) {: out:ptr :}
    N @ 0= if
       s" aot-ident: chain digest asked for before the closure was latched" REFUSE-RC die
    then
+   N @ 0 ?do i FILE-DIGEST loop
    SHA256-RESET
-   N @ 0 ?do i FEED loop
+   s" Habu AOT source closure" SHA256-UPDATE
+   2 FEED-U64
+   N @ FEED-U64
+   N @ 0 ?do
+      i PATH$ dup FEED-U64 SHA256-UPDATE
+      FILE-DIGESTS i 32 * + 32 SHA256-UPDATE
+   loop
    out SHA256-FINAL ;
 
 ;package
