@@ -11,7 +11,7 @@ package LOWER-CERT-HOOK
    drop
    {: ba:ptr bu:n ta:ptr tu:n :}
    ta tu NEUTRAL-PARSE-IMM? if exit then
-   ba bu ta tu CHECKER-PREFLIGHT:CHECK! 0 <> if
+   ba bu ta tu CHECKER-PREFLIGHT:CHECK-TARGET! 0 <> if
       s" checker: preflight did not reject unmodeled immediate" 76 die
    then
    CHECK-RC throw ;

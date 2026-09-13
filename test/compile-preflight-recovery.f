@@ -1,15 +1,24 @@
 \ compile-preflight-recovery.f - missing preflight remains catchable.
 
 variable CPR-WID
+variable CPR-DEPTH
 
 : CPR-EXPECT ( n n n -- )
    {: got:n want:n code:n :}
    got want <> if code throw then ;
 
-\ Controlled evaluate-under-catch proves missing preflight returns through the
-\ language exception path. Retirement owner: habu-primitive-effect-axiom-1119f176.
-TRUSTED: CPR-EVAL ( ptr u8 n -- n )
-   [: evaluate ;] catch ;
+\ Catch a zero-input action: catching evaluate directly restores its source
+\ arguments on failure, which would contradict the helper's single-result effect.
+package CPR-EVAL
+PTR-VARIABLE SOURCE
+variable LENGTH
+
+TRUSTED: ACT ( -- ) SOURCE @ LENGTH @ evaluate ;
+
+public
+: RUN ( ptr u8 n -- n )
+   LENGTH ! SOURCE ! [: ACT ;] catch ;
+;package
 
 get-current CPR-WID !
 \ Disabling checking and installing CPR-HOOK are the unchecked-region boundary;
@@ -21,8 +30,10 @@ get-current CPR-WID !
 
 ' CPR-HOOK set-check
 
+depth CPR-DEPTH !
 s" package CPR-NEST public : CPR-BAD ( -- ) include README.md ; ;package"
-CPR-EVAL 70 1 CPR-EXPECT
+CPR-EVAL:RUN 70 1 CPR-EXPECT
+depth CPR-DEPTH @ 5 CPR-EXPECT
 
 get-current CPR-WID @ 2 CPR-EXPECT
 

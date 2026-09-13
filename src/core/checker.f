@@ -14806,7 +14806,9 @@ package CHECKER-PREFLIGHT
 
 public
 
-: CHECK! ( ptr u8 n ptr u8 n -- n )
+\ Keep this target-forcing entry distinct from the source checker CHECK! that
+\ RUN calls above. Its published name must not shadow that call on replay.
+: CHECK-TARGET! ( ptr u8 n ptr u8 n -- n )
    {: ba:ptr bu:n ta:ptr tu:n :}
    ba BODY-A!  bu BODY-U !  ta TARGET-A!  tu TARGET-U !
    -1 ACTIVE !
