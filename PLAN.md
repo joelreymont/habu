@@ -124,9 +124,10 @@ whose implementation was JIT-compiled. No verified all-AOT compiler measurement
 establishes the remaining factor. The 1.7-second target is not a promised result
 of multiplying historical improvements.
 
-Source review confirms repeated dictionary scans, linear symbol interning,
-duplicate combine planning and quadratic address registration. Residual spill
-scaling and the payoff from pass-level reader reuse still need attribution.
+Source review confirms repeated dictionary scans, duplicate combine planning
+and quadratic address registration. Symbol indexing is integrated at `41c7af94`;
+its earlier linear-lookup diagnosis is superseded. Residual spill scaling and
+the payoff from pass-level reader reuse still need attribution.
 
 ## Native compiler and build design
 
@@ -187,8 +188,9 @@ scaling and the payoff from pass-level reader reuse still need attribution.
 
 ## Capture and persistence design
 
-- **Address rows:** IO still uses four bytes where `XTOFF-ROW` is eight. Use the
-  shared width for lengths, bases, counts and merge. Preserve window/fixed
+- **Address rows:** complete eight-byte IO and exact-row verification are
+  implemented (`0c1e78ca`, `4aa70f9a`); full changed-layout restore remains pending.
+  Keep the shared width for lengths, bases, counts and merge. Preserve window/fixed
   location tags, CODE/DATA target tags and nullable offset-plus-one encoding.
   Shift only window locations and nonnull targets by their appropriate merged
   bases; check overflow before publication. Reject truncated rows and incompatible
@@ -238,11 +240,10 @@ verified all-AOT product once available.
    owner authority, ambiguity, shadowing, rollback and retired-wordlist latest-row
    fallback. Keep one dictionary index. Reuse authenticated binding results within
    a definition; do not cache by spelling or a recyclable record pointer alone.
-2. **Symbols:** first honor committed symbol/byte ceilings on prototype clones.
-   Add a private context-owned hash index over authoritative insertion-ordered
-   rows, confirming complete bytes on collision. Validate its arena generation
-   before accessing storage; allocate before publication; clone without sharing
-   mutable buckets; release with context. No arbitrary mutable IR operations.
+2. **Symbols:** the private context-owned hash index is implemented (`41c7af94`).
+   Keep exact collision checks, arena-generation checks and ownership through
+   clone/release. The separate committed symbol/byte ceiling check on prototype
+   clones remains pending; do not rebuild the index to address it.
 3. **Word tables:** carry their interner, resolve spelling uniformly and enforce
    intrinsic binding at LOOKUP for both link kinds. Remove separate session
    spelling arrays and the duplicate gate. Keep binding memoization definition-local
