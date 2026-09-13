@@ -1,9 +1,0 @@
----
-title: Let a restored engine grow its signature pool
-status: active
-priority: 2
-issue-type: task
-created-at: "\"2026-09-12T19:01:05.989275+03:00\""
----
-
-Problem: a restored (seeded) engine whose baked signature-pool cap leaves less headroom than its own boot-time appends doubles the pool at boot (USIGS-GROW) and then crashes while hosting a build: tools/two-generation-build.f on the tree aefb2c23 (.jj-ws/habu-fix-the-two-284ac502) prints gen 1 'usigs 2294552 cap 4587520' (content over the baked 2293760, cap doubled at boot) and gen 2 stops rc 134, SIGSEGV at pc in the static engine text; the root tree a6417a47 passes the same chain only because its content sits under the grain ('usigs 2295704 cap 2359296'), so any landing that shifts the checker's content across a grain boundary flips the chain red. Measured 2026-09-12 by the engine-suite lane, identical with and without its change. Likely layer: an index or persisted base (USX/NRX/UIX/REG-PERSIST) not rebased when a restored engine's pool moves, next to aot-sig-pool. Acceptance: the grow path in a restored engine is correct: a regression restores an image, forces a pool grow (load enough definitions to exceed the baked cap) and then certifies and compiles through the real load path, red before and green after; the chain on the aefb2c23-shaped tree reaches gen 5 = gen 4 byte for byte; the persisted cap's headroom rule is stated at USIGS-ROUND-CAP (a cap with no room for the engine's own boot appends is a trap, so either the appends are counted into the cap or the grow is proven and the doubling at boot is just a cost); test/run.f unchanged. Files: src/core/checker.f (USIGS-GROW, USIGS-ROUND-CAP, the *-REBASE words), src/habu/aot-capture.f, test/. Verify: the regression, the chain on both trees, test/run.f. Depends: none. Ownership: hazel. Claim: agent=hazel-worker workspace=.jj-ws/habu-let-a-restored-1ba4b713.

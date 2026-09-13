@@ -7818,6 +7818,12 @@ and --no-lldbinit.
   so an engine built by rowan-root/bin/hb fails suites whose behaviour the
   tree's generator changed (measured: internal-word-gate, type-field-owner,
   verify-prim red on such an engine, green on the seed build of the same tree).
+  Re-measured 2026-09-13 07:50 UTC on engine a503a443 at tip b18f5d84 (313
+  suites, no timeouts): 7 red, the engine-suite block now establishes the
+  restored pool it tests. Set: addrmap-inline (1), aot-wide-format (67),
+  aot-wid-restore (67), build-fixpoint-fixtures (1), cast (1), p2-map-rewind (1),
+  pre-trust-defer (1). Three retire with the tier stack, three wait on the
+  S-PWID retirement, pre-trust-defer on the recovery host.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
