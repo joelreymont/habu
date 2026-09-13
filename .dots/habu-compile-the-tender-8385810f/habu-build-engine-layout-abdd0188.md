@@ -20,7 +20,8 @@ September13 integration verification: private local-case product825c2c609a06
 failed to build the combined local-case/arena source at capture with rc74,
 `aot-capture: defer metadata outside DATA window`. The original integration
 host28e11361 built the same source successfully, yielding0c602d1c194c.
-Logs are in `.jj-ws/cedar-correctness-verify/build/`. A pre-local-case baseline
-generation comparison is in progress; attribution to the known layout problem
-versus a newly exposed source collision remains unproven. No product-hosted
-selfbuild or replacement application pin is certified by the focused fixes.
+Logs are in `.jj-ws/cedar-correctness-verify/build/`. The baseline comparison
+subsequently proved this specific refusal was the local `cell`/constant `CELL`
+collision in ACAP-DEFER-SITE, fixed undera16875d6. Unchangedccc0661a buildsB1/B2;
+after the caller rename, host825c2c60 builds product968cabff successfully. This
+does not establish the separate source-layout transition or all-AOT acceptance.

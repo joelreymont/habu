@@ -5,6 +5,7 @@ priority: 1
 issue-type: task
 created-at: "\"2026-09-11T16:38:06.278925+03:00\""
 blocks:
+  - habu-preserve-language-protection-a772a9a2
   - habu-wire-the-checker-eec26aea
   - habu-select-optimizing-compilation-cf2b21d4
   - habu-check-arena-append-c7b1e040

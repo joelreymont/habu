@@ -5,6 +5,8 @@ priority: 1
 issue-type: task
 created-at: "2026-09-11T16:38:06.249420+03:00"
 blocks:
+  - habu-compare-complete-inherited-440084ec
+  - habu-preserve-language-protection-a772a9a2
   - habu-bind-locals-by-a16875d6
   - habu-keep-a-row-f2c4f3d4
   - habu-check-arena-append-c7b1e040
@@ -43,4 +45,4 @@ Completion: optimizing native compiler selfbuild/product rebuild, executable com
 
 Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under1.7s wall for complete optimizing load and trivial floor below500us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical153.3→131.6s and4106→3668us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
 
-Each leaf has source ownership, prerequisites and decisive behavior checks. Final compiler/runtime gate: rebuild exact source and bin/hb --load test/run.f, with all seven recorded failures resolved by name. PTX/Loom and later cache/digest work are excluded here.
+Each leaf has source ownership, prerequisites and decisive behavior checks. Final compiler/runtime gate: rebuild exact source and bin/hb --load test/run.f, with every recorded failure resolved by name. The fresh315-suite run had12 failures: seven earlier failures, two exposed local-case caller collisions now fixed, environment fixture440084ec and native-product protection/owner regressionsa772a9a2. PTX/Loom and later cache/digest work are excluded here.

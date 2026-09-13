@@ -1,6 +1,6 @@
 # Finish Habu's native compiler
 
-Status: implementation design, 2026-09-13. Cedar owns integration. This replaces
+Status: implementation in progress, 2026-09-13. Cedar owns integration. This replaces
 the obsolete IR/GPU migration plan, preserved in jj history. Reuse the existing
 Tender campaign `habu-compile-the-tender-8385810f`.
 
@@ -37,6 +37,15 @@ Completion means:
 Review base: `.jj-ws/rowan-root`, source `5226a994` plus tracker-only `4f234270`;
 engine SHA-256 `28e11361f60228d24e7e3f6fca496ca0f9a4f2c8c8e66b5fdc91c9db031de462`.
 Hazel reported 314 suites with seven failures. That is not a fresh green gate.
+
+Fresh integration check: native engine `0c602d1c194c` ran315 suites with12
+failures. Two came from caller/fixture case collisions exposed by the corrected
+local rule; both now have verified fixes. The environment fixture exceeds its
+1024-byte string buffer with the real1047-byte PATH (440084ec). Two language
+protection/owner failures also reproduce on an unchanged-source native-build
+product (a772a9a2). The seven earlier failures remain. Full acceptance requires
+these named failures to pass on the final candidate; focused fixes alone do not
+make the gate green.
 
 Hazel's complete Tender pair was 153.3 to 131.6 seconds; the later session pair
 reduced the trivial floor from 4,106 to 3,668 microseconds. Both used a compiler
@@ -193,9 +202,14 @@ leaf must not import another leaf's unfinished changes. A separate Astra reviews
 delegated changes before landing.
 
 Rebuild the exact source, run affected real-load suites, then
-`bin/hb --load test/run.f`. Resolve the seven recorded failures by name. Replace
+`bin/hb --load test/run.f`. Resolve every recorded failure by name. Replace
 obsolete compiler-state assertions with their behavioral claim, preserving saved
 real values across calls, KEEP through `begin ... until`, and quotation-body spills.
+
+Native selfbuild must preserve checked internal-word refusal and type-field-owner
+behavior from its input engine (a772a9a2), including the first product. Repair the
+environment fixture's complete-value comparison (440084ec) without truncating
+the inherited value or changing the user's environment.
 
 Reuse standalone delivery for joint acceptance: Tender's local `required` scanner
 case and full runner closure; Maki's `GEOM:SHAPED-PAIR`, native build, warm capture,

@@ -1,9 +1,11 @@
 ---
 title: Reject overflowing arena append ranges before mutation
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T14:51:13.068869+03:00\""
+created-at: "\"\\\"2026-09-13T14:51:13.068869+03:00\\\"\""
+closed-at: "2026-09-13T16:25:50.475734+03:00"
+close-reason: Integrated4d34fa11 after separate Astra review plus80b4cf59 strengthening overflow-before-growth check. Fresh rebuilt0c602d1c passes test/compiler/ir-arena.f and full315-suite compiler-ir-arena entry. Largest signed start, source extent/end/empty, ownership and unchanged count/content/scratch checks pass. Other named full-suite failures remain in campaign; no invalid access needed to validate fixed implementation.
 ---
 
 Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: active; owner: Sol arena lane, .jj-ws/cedar-arena-range.
