@@ -1,6 +1,7 @@
 \ program-diagnostics-test.f - direct production-load diagnostic contracts.
 
 require test/gate-common.f
+require lib/fmt.f
 
 package PROGRAM-DIAGNOSTICS
 
@@ -56,11 +57,17 @@ package PROGRAM-DIAGNOSTICS
    path pathu EXPECT-OK-END
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
+: ADDRESS-CAP ( -- )
+   s" test/address-cell-cap-bad.f" 96
+      s" ADDRESS-CELL-CAP-ARMED" s" hb: snapshot address table full" NEGATIVE
+   SB-RESET s" hb: snapshot address table full at " SB-APPEND
+   SNAP-RELOC:XTCELL-CAP FMT:SB-U s"  rows" SB-APPEND GE-SB-LF
+   GT-ERR$ SB$ STR= 0= if s" address cell capacity diagnostic" GE-FAIL then ;
+
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 99
       s" ADDRESS-CELL-KIND-ARMED" s" hb: snapshot address cell kind mismatch" NEGATIVE
-   s" test/address-cell-cap-bad.f" 96
-      s" ADDRESS-CELL-CAP-ARMED" s" hb: snapshot address table full" NEGATIVE
+   ADDRESS-CAP
    s" test/xt-cell-band-bad.f" 98
       s" XT-CELL-BAND-ARMED" s" hb: snapshot address cell out of range" NEGATIVE
    s" test/aot-address-cell-lower-straddle-bad.f" 74

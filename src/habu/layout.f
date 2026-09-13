@@ -1211,7 +1211,9 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ in the existing row avoids a second registry and does not move DATA-START. The
 \ engine appends only an identical declaration once and refuses one cell declared
 \ with both kinds.
-32768 constant XTCELL-CAP                 \ measured full-runtime closure: 19088 rows
+\ The complete native compiler plus application-image support exceeds 32768
+\ declarations. The first engine built from this layout must enforce this bound.
+65536 constant XTCELL-CAP
 $8000000000000000 constant XTCELL-DATA-TAG
 $7FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK
 ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows

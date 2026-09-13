@@ -3,6 +3,7 @@
 \ main loop, and ENGINE-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
+require lib/fmt.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
@@ -142,7 +143,7 @@ public
 variable LCALLMSG   \ a recorded call site does not hold a call instruction (CALLMAP-RC)
 31 constant CALLMSG-LEN   \ byte length of "hb: snapshot call map mismatch\n" (LCALLMSG)
 variable LXTMSG     \ more address cells were declared than the table can hold (XTCELL-RC)
-32 constant XTMSG-LEN     \ byte length of "hb: snapshot address table full\n" (LXTMSG)
+46 constant XTMSG-LEN     \ byte length including newline; EMIT-FULL-MESSAGE checks the generated text
 variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOVK chain (ADDRMAP-RC)
 34 constant ADDRMSG-LEN   \ byte length of "hb: snapshot address map mismatch\n" (LADDRMSG)
 variable LXTBANDMSG \ a declared address cell is not a cell-aligned address inside DATA (XTBAND-RC)
@@ -214,6 +215,15 @@ $25 constant BL-OP-HI
    10 lnosite CBZ,
       MARK-SITE                                        \ records the destination word, which is CP
    lnosite LBL, ;
+
+: EMIT-FULL-MESSAGE ( -- )
+   \ BYTES, pads each run to four bytes: compose the whole line before emitting.
+   SB-RESET s" hb: snapshot address table full at " SB-APPEND
+   XTCELL-CAP FMT:SB-U s"  rows" SB-APPEND $A SB-APPEND-C
+   SB$ nip XTMSG-LEN <> if
+      s" habu2: address table diagnostic length mismatch" ICODE-EXIT-RC die
+   then
+   LXTMSG LABEL@ LBL, SB$ BYTES, ;
 
 ;package
 
@@ -629,7 +639,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    SNAP-RELOC:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ SNAP-RELOC:CALLMSG-LEN bytes incl. newline
-   SNAP-RELOC:LXTMSG LABEL@ LBL, s" hb: snapshot address table full" BYTES,  NL-KW 1 BYTES,      \ SNAP-RELOC:XTMSG-LEN bytes incl. newline
+   SNAP-RELOC:EMIT-FULL-MESSAGE
    SNAP-RELOC:LADDRMSG LABEL@ LBL, s" hb: snapshot address map mismatch" BYTES,  NL-KW 1 BYTES,   \ SNAP-RELOC:ADDRMSG-LEN bytes incl. newline
    SNAP-RELOC:LXTBANDMSG LABEL@ LBL, s" hb: snapshot address cell out of range" BYTES,  NL-KW 1 BYTES,  \ SNAP-RELOC:XTBANDMSG-LEN bytes incl. newline
    SNAP-RELOC:LXTKINDMSG LABEL@ LBL, s" hb: snapshot address cell kind mismatch" BYTES,  NL-KW 1 BYTES,  \ SNAP-RELOC:XTKINDMSG-LEN bytes incl. newline
@@ -5607,7 +5617,7 @@ public
    6 XTCELL-OFF-MAX LIT64,  12 6 CMP,  C-HI band BCOND,   \ unsigned: the cell would run past DATA, or start below it
    5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,          \ x5 = row base
    6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,   \ x13 = rows in use
-   6 XTCELL-CAP MOVZ,  13 6 CMP,  C-HI full BCOND,  \ corrupted count is already over capacity
+   6 XTCELL-CAP LIT64,  13 6 CMP,  C-HI full BCOND, \ the cap can exceed MOVZ's 16-bit immediate
    14 0 MOVZ,                                       \ x14 = row index
    scan LBL,  14 13 CMP,  C-GE add BCOND,
       6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,
@@ -5616,7 +5626,7 @@ public
       6 12 CMP,  C-EQ kind BCOND,                   \ same cell, contradictory kind
       14 14 1 ADDI,  scan B,
    add LBL,
-      6 XTCELL-CAP MOVZ,  13 6 CMP,  C-GE full BCOND,
+      6 XTCELL-CAP LIT64,  13 6 CMP,  C-GE full BCOND,
       6 13 3 LSLI,  6 5 6 ADD,  7 12 15 ORR,  7 6 0 STR,
       13 13 1 ADDI,
       6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 STR,

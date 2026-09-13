@@ -12,40 +12,43 @@ review pins remain frozen: `review/current-compiler` at `51546316`, and
 (`3c6bda9d`) predates these compiler changes. None is an accepted replacement
 engine; source review and focused controls are not a rebuilt runtime gate.
 
-Integration through `d7184652` includes source-bound typed writer dispatch,
+Integration through `ee8fd419` includes source-bound typed writer dispatch,
 positive provenance admission, an explicit private bootstrap, private generation
 outputs, owner memo/bounds controls, provenance invalidation on code overwrite,
 and growing captured relocation tables with signed DATA-span validation. The
-primitive registry now grows with its rows and names. The private bootstrap
-completed in 341.180 seconds, producing
-`/tmp/cedar-family-stage-abi/hb-bootstrap-B1-registry` (SHA-256
-`a4fc1996d67ae9a46d53d9cea58622a31291fc5d3f5cf9e1de58f2ce07a6c85a`).
-First-generation heap layout and source-identity tests pass. This runtime's JIT
-works, but native compilation refuses even `: ID ( n -- n ) 1 + ;` with
-`E-NFEED-STATE` (-8400). Native `is` emits its DATA-cell address as an integer,
-so capture leaves the tape installer's callback destinations unrelocated.
-Replacing only that installer in a test process restores native compilation.
-The responsible-layer fix and capture regression are tracked by
-`habu-relocate-native-is-fa0c0c49`; this private engine is not a replacement pin.
+primitive registry now grows with its rows and names. Native `is` now emits a
+typed DATA address, so its captured callback destination relocates correctly.
+The corrected private bootstrap (`051fc42a`) completed in 341.922 seconds;
+its product-hosted build from `9ac8463b` completed in 142.606 seconds, producing
+`/tmp/cedar-family-stage-abi/hb-B2-origin-tracked` (SHA-256
+`cd88273b9c27dd424c934cddee5bf010ede646d6965eab344b19e933fd9132c3`).
+This B2 compiler has positive native origin and compiles/runs a fresh native
+definition. It is private: application capture still fills its 32768-row address
+table, and the compile-floor benchmark fills the checker's defer history.
+The capacity and redundant-history fixes are in progress. The runtime starts
+with 30885 address rows; 30887 remain after loading application-image support.
+The complete capture closure and Tender headroom must be measured on the next
+candidate. Combine planning now runs once per module; no performance acceptance
+is inferred from that source change.
 
 Source-closure framing and the real stale-artifact regression are reviewed at
 `d6809d78` and `ea9904fa`. The regression distinguishes separate-file execution,
 accepts the unchanged artifact, and refuses the changed closure at both tiers.
 Independent controls restore each old bug and make the test fail.
 
-The first private bootstrap may carry unknown origin; only its positively
-tracked product-hosted rebuild can be accepted. Complete source-bound emission,
-changed-layout restore, repeated capture, product-hosted rebuild, the full test
-gate, application acceptance and all-AOT compile-speed measurements remain
-pending. Registry content admission is independently reviewed and integrated:
+The first private bootstrap may carry unknown origin. The positively tracked
+product-hosted rebuild now succeeds, but changed-layout restore, repeated capture,
+the full test gate, application acceptance and all-AOT compile-speed measurements
+remain pending. Registry content admission is independently reviewed and integrated:
 all eight stores validate before publication, duplicate imports require canonical
 content equality, and rejected imports preserve existing state. Its source-owner
 test and new native bodies pass; full rebuilt-runtime validation remains pending.
-Loop obligations await independent review; partial graph capture remains active.
-The process builders also retain heap buffers across application-image capture:
-public argv, environment and command-builder warm/restore controls crash on the
-Maki pin. Lifecycle cleanup belongs in those shared process modules; the BUF/JR
-cleanup control already passes two restored generations.
+Loop obligations passed independent runtime review; their formal model and shared
+vectors are being repaired before landing. Partial graph capture is frozen for
+independent review. Process-builder lifecycle cleanup is integrated: argv,
+environment and command source suites pass on B2, and the matching Maki source
+control passes two warm recaptures. Integrated B2 capture is still blocked by the
+address-table limit, so Maki's replacement acceptance remains open.
 
 `review/partial-payload` preserves the separate, unverified graph producer and
 registry prevalidation work (`f091a068`). It is not composed into this branch.

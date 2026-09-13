@@ -404,8 +404,8 @@ public
 \ layout.f's ENGINE-GPR:DSTACK.
 \ The rounding is the section's headroom for what is not a buffer: the twelve
 \ count cells that head the tables and the pad each BYTES, run takes to the next
-\ 4-byte boundary. The current buffer sum rounds to exactly $530000 at this
-\ grain; the agreement below is the executable owner of that arithmetic. It
+\ 4-byte boundary. The agreement below checks the derived requirement against
+\ the assembler's reservation; unused capacity is permitted. It
 \ is a belt in any case -- a section that outgrew this would be refused by the
 \ emitter's own `icode: code buffer overflow`, and each buffer refuses on its own
 \ overflow long before that.
@@ -437,11 +437,11 @@ constant BYTES
 private
 
 : AGREE ( -- )
-   BYTES AOT-SECTION-CAP <>
+   BYTES AOT-SECTION-CAP >
    if
       s" aot: required section bytes " type BYTES .
       s" , assembler capacity " type AOT-SECTION-CAP . cr
-      s" habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree" ICODE-EXIT-RC die
+      s" habu2: AOT section exceeds assembler capacity" ICODE-EXIT-RC die
    then ;
 AGREE
 

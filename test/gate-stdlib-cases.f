@@ -955,6 +955,10 @@ SUITE snapshot-xt-cell-decl
    test/snapshot-xt-cell-decl.f
 ;SUITE
 
+SUITE address-cell-cap-grown
+   test/address-cell-cap-grown.f
+;SUITE
+
 SUITE catch-frame
    test/catch-frame.f
 ;SUITE
