@@ -1,9 +1,30 @@
 ---
 title: Run pre-trust-defer against a host that reads its prefix from source
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-12T12:48:02.937972+03:00"
 ---
 
-Problem: test/pre-trust-defer.f copies src/ and lib/ into a temp root, patches src/core/exec-vector.f there and spawns bin/hb with cwd = that root, but the seeded product opens no prefix source at boot (strace: three openat calls, only the program itself), so every patch is inert: the positive case's child dies E-UNDEFINED: PTDX-POS and every negative case exits 0 where 72/70/76/73 was expected (12 cases red, measured 2026-09-12). Acceptance: the suite exercises the pre-trust defer backstop on an engine that reads the patched prefix: either the fixpoint's capture host (tools/build-fixpoint.f hb-host, built from source) is made available to the registry as the engine under test for this suite, or the suite drives the gforth-hosted stage0 (test/nf.fs) which reads source; the mechanism is chosen once and stated in the file header; the twelve cases are green or retired with the reason. Files: test/pre-trust-defer.f, test/gate-stdlib-cases.f, tools/build-fixpoint.f or test/nf.fs. Verify: the suite on bin/hb through the registry. Depends: habu-recover-stage0 (the recovery path). Ownership: hazel. Claim: unassigned.
+The fixture patched a private src/lib tree, then executed a captured product
+that never loaded those files. The positive PTDX-POS was undefined and every
+intended refusal returned 0. Product F repeats that failure.
+
+2026-09-14 repair: the selected HABU_UNDER_TEST host builds one private cold stdin
+engine through the production RUN-PRELUDE, COMMON, seal and driver appenders.
+All six cases boot that same engine against the copied tree. No recovery host
+or runtime change is needed. The tree, generated source and engine share the
+existing cleanup registration; builder refusals also run cleanup.
+
+The actual cold prefix now first rejects undrained CWIN-STATE in checked
+CHECKER-CALLS:INSTALL, before its later `is`. With the checker disabled, generated
+constructor validation refuses before the final seal. Preserve that rc76 case,
+and isolate the production SEAL-CAPTURE directly after the blanked hook in a
+matched pair that terminates immediately: drained reaches a unique marker/rc0;
+undrained refuses rc73, names TFAM-RESOLVE-XT and never reaches the marker.
+
+Actual F native load of test/pre-trust-defer.f passes: positive checked `is` and
+42 dispatch, overflow72, checker70 with CWIN-STATE, constructor76, drained seal0,
+undrained seal73. Log: `/home/joel/.cache/cedar-maker-prefix-xr276adl/pre-trust-cold-native.log`.
+Focused source is ready for independent review; the registered suite remains
+the full-gate acceptance owned by the integration run.

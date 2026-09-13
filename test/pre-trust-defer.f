@@ -1,11 +1,11 @@
 \ pre-trust-defer.f - capability + fail-closed regressions for the pre-trust defer
-\ pending table (dot habu-engine-pre-trust-77410827). A `defer NAME ( E )` declared
+\ pending table. A `defer NAME ( E )` declared
 \ in the engine prefix BEFORE `: TRUST` (src/core/checker.f) is copied into a fixed
 \ pending table (src/habu/layout.f PD-*) and drained by the DRAIN-PRETRUST prim,
 \ called by its bare token right after `: TRUST`. All three properties only show at
-\ engine PREFIX load, which is re-read from source at boot, so the suite copies the
-\ src tree ONCE to a private root; each case patches the copy, boots the
-\ engine-under-test with CWD = that root, then restores the touched files -- the
+\ engine PREFIX load. The suite builds one cold stdin engine with the selected
+\ host and copies the src/lib trees ONCE to a private root. Each case patches
+\ the copy, boots that cold engine with CWD = the root, then restores the files -- the
 \ real workspace tree is never touched. The canonical native registry runs it.
 \ Cases:
 \   positive  - a pre-trust defer ( -- n ) + a post-hook CHECKED selftest that
@@ -18,32 +18,17 @@
 \   undrained - the WHOLE bare-token drain region (between the PTD-REGRESSION-BLANK
 \               sentinels) is blanked, so DRAIN-PRETRUST is never called and the
 \               prefix's own real pre-trust defers stay captured-but-undrained.
-\               An engine in that state refuses to boot, and it refuses TWICE, in
-\               this order -- one case each, because asserting only the second one
-\               made this fixture red the moment the first one started firing:
-\                 1. the CHECKER refuses. The first checked `is` binding an
-\                    undrained pre-trust defer has no checker-defer row, so the
-\                    check hook rejects it: exit 70, "hook: non-certified
-\                    definition: <word> at 'is'". Today that word is
-\                    src/habu/xref.f INSTALL (`[: LIVE ;] is PKG-LIVE-XT`), the
-\                    first such site loaded after src/core/check-hook.f.
-\                 2. the RUNTIME backstop refuses. Reached only once the checker
-\                    is out of the way, so this case also blanks check-hook.f's
-\                    bare INSTALL call (between the PTD-HOOK-BLANK sentinels):
-\                    the table is then non-empty at SEAL-CAPTURE -> BSEALCAP,
-\                    exit 73, "undrained pre-trust defer" naming TFAM-RESOLVE-XT.
-\                    A control case boots the SAME hook-blanked tree with the
-\                    drain intact and requires exit 0, so the 73 is attributable
-\                    to the undrained table and not to the missing hook.
-\               Together: an engine that cannot run the drain refuses to run
-\               rather than proceed with un-installed checker hooks (an old engine
-\               lacking the prim sees the bare token as E-UNDEFINED, exit 70, and
-\               never boots either). The prior runtime-lookup shim
-\               (TRUSTED: DRAIN-PRETRUST-COMPAT) and its shim-specific "compat"
-\               lookup-miss case were retired 2026-07-19 when the bare token
-\               replaced the shim; the gate cannot depend on a historical fixpoint
-\               binary, so the previous-fixpoint boot proof stays in the landing
-\               report.
+\               The checker rejects the first checked reference to an undrained
+\               defer: CHECKER-CALLS:INSTALL at CWIN-STATE, exit 70.
+\   hook blank - disabling the check hook alone refuses later generated
+\               constructor declarations, exit 76.
+\   seal control/backstop - disabling both drain and hook otherwise meets that
+\               constructor refusal before reaching the final seal. Append the
+\               real SEAL-CAPTURE directly after the blanked hook, then exit with
+\               a success marker. With the drain intact this reaches the marker,
+\               exit 0; without it the seal refuses first, exit 73, naming the
+\               real pending TFAM-RESOLVE-XT. Neither probe continues with an
+\               artificially early seal floor.
 \ Every child exit code is asserted through CHILD-RC, which prints the child's own
 \ stdout/stderr and this process's launch context (lib/test/spawn-report.f) when
 \ the code is not the expected one -- an unexpected exit arrives with the child's
@@ -60,8 +45,11 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
 require lib/test/spawn-report.f
+require lib/codesign.f
+require tools/build-fixpoint.f
 
 package PRE-TRUST-DEFER-TEST
+using BUILD-FIXPOINT
 private
 
 $8000 constant CAP                                   \ capture buffers (prefix diagnostics are small)
@@ -82,7 +70,7 @@ variable LAST-ERR-U
 
 : ABS? ( ptr u8 n -- bool ) {: a:ptr u:n :}  u 0 >  a c@ [char] / =  and ;
 
-: HB$ ( -- ptr u8 n )                                \ ABSOLUTE engine path (child runs with CWD = temp root)
+: HB$ ( -- ptr u8 n )                                \ selected host builds the cold fixture once
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then {: e:ptr eu:n :}
    e eu ABS? if e eu exit then
    s" PWD" GETENV e eu HB-BUF JOIN-PATH HB-U ! HB-BUF HB-U @ ;
@@ -115,6 +103,8 @@ variable LAST-ERR-U
 
 : SUB$ ( ptr u8 n -- ptr u8 n )                       \ ROOT/<rel> absolute path
    ROOT$ 2swap SUB-BUF JOIN-PATH SUB-U ! SUB-BUF SUB-U @ ;
+
+: COLD$ ( -- ptr u8 n ) s" hb-cold" SUB$ ;
 
 \ ---- patches -------------------------------------------------------------------
 
@@ -177,15 +167,20 @@ variable LAST-ERR-U
    s" src/core/checker.f"
    s" PTD-REGRESSION-BLANK-BEGIN" s" PTD-REGRESSION-BLANK-END" BLANK-REGION ;
 
-\ Blank the bare INSTALL call that arms the source checker hook, so nothing after
-\ check-hook.f is checked and the undrained table reaches the runtime backstop.
+\ Blank the bare INSTALL call that arms the source checker hook.
 : BLANK-CHECK-HOOK ( -- )
    s" src/core/check-hook.f"
    s" PTD-HOOK-BLANK-BEGIN" s" PTD-HOOK-BLANK-END" BLANK-REGION ;
 
+\ Isolate the production seal guard before later constructor declarations need
+\ the disabled hook. Both drained and undrained probes receive this same patch.
+: APPEND-SEAL-PROBE ( -- )
+   s" src/core/check-hook.f" SUB$
+   S\" \nSEAL-CAPTURE\ns\" pre-trust seal passed\" 0 die\n" APPEND-FILE ;
+
 \ ---- spawn + assert ------------------------------------------------------------
 
-\ Boot the engine under test with CWD = ROOT, capture out/err, and ALWAYS give the
+\ Boot the private cold engine with CWD = ROOT, capture out/err, and ALWAYS give the
 \ child an explicit stdin pipe. A capture spawn with infd < 0 skips the dup2 and
 \ hands the child the launcher's own fd 0 (src/habu/habu1.f SPAWN-DUP2-ACTION),
 \ while posix_spawn makes it a process-group leader. Launched from a terminal the
@@ -195,14 +190,16 @@ variable LAST-ERR-U
 \ reporting an exit code. The empty pipe makes the child see a closed stdin - the
 \ state every case here assumes - from a pipe, a terminal, or a gate pool slot
 \ alike.
-: SPAWN-STDIN-RC ( ptr u8 n -- n ) {: in:ptr inu:n :}
-   PROC-ARGV-RESET
-   HB$ >LEN  ROOT$ >LEN  in inu >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE
+: CAPTURE-RC ( result<pcap:captured,pcap:failed> -- n )
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  0 ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N LAST-OUT-U !  e LEN>N LAST-ERR-U !  c RC>N ENDOF
    ;MATCH ;
+
+: SPAWN-STDIN-RC ( ptr u8 n -- n ) {: in:ptr inu:n :}
+   PROC-ARGV-RESET
+   COLD$ >LEN  ROOT$ >LEN  in inu >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RC ;
 
 : SPAWN-RC ( -- n )                                    \ boot with an empty stdin
    s" " SPAWN-STDIN-RC ;
@@ -219,15 +216,38 @@ variable LAST-ERR-U
    got want <> if la lu want got OUT$ ERR$ SPAWN-REPORT:CHILD then
    got want T= ;
 
+\ The production source appender and image writer emit one unseeded engine.
+\ Its output path is an argv element, so no path is interpolated into source.
+: BUILD-COLD ( -- )
+   ROOT$ BF-TMP!
+   s" cold-src.f" BF-RESET-OUT
+   s" cold-src.f" BF-APPEND-RUN-PRELUDE
+   s" cold-src.f" BF-APPEND-COMMON
+   s" cold-src.f" COMPILER-BUILD:SEAL
+   s" cold-src.f" BF-APPEND-DRIVER-IO
+   s" cold-src.f" s" test/pre-trust-cold-engine.f" BF-APPEND-SOURCE
+   BF-TMP-RESET
+   PROC-ARGV-RESET
+   s" --build" >LEN PROC-ARGV+
+   s" cold-src.f" SUB$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   COLD$ >LEN PROC-ARGV+
+   HB$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE CAPTURE-RC {: rc:n :}
+   s" build the cold-prefix fixture engine" rc 0 CHILD-RC
+   rc 0<> if CLEANUP-RUN s" pre-trust-defer-test: cold engine build failed" 76 die then
+   COLD$ FILE? 0= if CLEANUP-RUN s" pre-trust-defer-test: cold engine output missing" 76 die then ;
+
 : FRESH-ROOT ( -- )
    CLEANUP-RESET
    s" habu-pre-trust-defer" TMPDIR-MKDIR {: a:ptr u:n :}  a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
-   COPY-SRC-TREE ;
+   COPY-SRC-TREE
+   BUILD-COLD ;
 
 \ The tree is copied ONCE; each case patches at most three files and restores
 \ the pristine copies afterwards (cases are sequential and independent), so the
-\ suite pays one ~90-file copy + five child boots instead of five full copies.
+\ suite pays one tree copy and one cold engine build for all six child boots.
 : RESTORE-FILES ( -- )
    s" src/core/exec-vector.f" COPY-ONE
    s" src/core/check-hook.f" COPY-ONE
@@ -251,37 +271,20 @@ variable LAST-ERR-U
 
 \ Blank the bare DRAIN-PRETRUST token outright so the drain never runs. No
 \ synthetic defer is injected: the prefix's OWN real pre-trust defers stay
-\ captured-but-undrained. The FIRST engine word that then fails is a checked `is`
-\ binding one of them -- it has no checker-defer row, so the check hook rejects
-\ the definition and the boot dies at exit 70 naming the token. Asserting the
-\ exit-73 backstop here instead is what rotted this fixture: the backstop is real
-\ but unreachable while the checker refuses earlier, and the case went red the day
-\ a checked `is` site was added to the prefix.
+\ captured-but-undrained. CHECKER-CALLS:INSTALL now reads CWIN-STATE before its
+\ `is` installation; without the drain that first reference has no trusted effect.
 : UNDRAINED-CHECKED-CASE ( -- )
    BLANK-DRAIN
-   s" blanked drain: the checker refuses the first `is` on an undrained defer, exits 70"
+   s" blanked drain: the checker refuses an undrained defer reference, exits 70"
       SPAWN-RC 70 CHILD-RC
-   s" undrained-is names the non-certified definition" T-LABEL
+   s" undrained reference names the non-certified definition" T-LABEL
    ERR$ s" hook: non-certified definition" CONTAINS? TTRUE
-   s" undrained-is names the failing token" T-LABEL
-   ERR$ s" at 'is'" CONTAINS? TTRUE
+   s" undrained reference names the failing defer" T-LABEL
+   ERR$ s" at 'CWIN-STATE'" CONTAINS? TTRUE
    RESTORE-FILES ;
 
-\ Control for the backstop case: the SAME hook-blanked tree with the drain intact
-\ must NOT produce the next case's 73. Without it that 73 could be blamed on the
-\ missing check hook instead of on the undrained table.
-\
-\ This control used to expect a clean boot. It cannot any more, and the reason is
-\ a real change in what the boot prefix does: since dot
-\ habu-seed-the-stdlib-d8e3a757 the prefix loads lib/adt/option.f and
-\ lib/cad-num-types.f, so booting now DECLARES types (an ENUM and the CAD-NUM
-\ NEWTYPEs) rather than only defining words. A declaration needs the check hook
-\ this case has just blanked, so the engine refuses at the generated constructor
-\ plan with exit 76 — fail-closed, and a strictly stronger statement than the
-\ silent boot it replaced. What the control has to provide is unchanged and is
-\ asserted directly below: 76 is not 73, so the backstop case's 73 still cannot
-\ be blamed on the blanked hook. The diagnostic is pinned by name so a future
-\ engine that started ignoring an uninstallable hook would fail here.
+\ Normal prefix continuation without its check hook still refuses generated
+\ constructor declarations. This is separate from the isolated seal probes.
 : HOOK-BLANK-CONTROL-CASE ( -- )
    BLANK-CHECK-HOOK
    s" blanked check hook alone refuses the prefix declarations, exits 76"
@@ -292,21 +295,27 @@ variable LAST-ERR-U
    76 73 T<>
    RESTORE-FILES ;
 
-\ Drain blanked AND check hook blanked: nothing after check-hook.f is checked, so
-\ the checked-`is` refusal above cannot fire and the RUNTIME backstop is reached.
-\ The table is non-empty at SEAL-CAPTURE -> BSEALCAP fails closed at exit 73,
-\ naming TFAM-RESOLVE-XT. This is the property that let the runtime-lookup shim
-\ go: an engine that cannot execute the drain refuses to boot rather than run with
-\ un-installed checker hooks. TFAM-RESOLVE-XT is asserted by name so the case
-\ fails loudly for re-audit if that specific prefix hook is ever removed.
+: EARLY-SEAL-CONTROL-CASE ( -- )
+   BLANK-CHECK-HOOK
+   APPEND-SEAL-PROBE
+   s" drained table passes the real seal guard, exits 0" SPAWN-RC 0 CHILD-RC
+   s" drained seal control reaches the success marker" T-LABEL
+   ERR$ s" pre-trust seal passed" CONTAINS? TTRUE
+   RESTORE-FILES ;
+
+\ The same early seal probe with real pending defers must refuse before its
+\ success marker. It exercises BSEALCAP without later declarations masking it.
 : UNDRAINED-BACKSTOP-CASE ( -- )
    BLANK-DRAIN
    BLANK-CHECK-HOOK
+   APPEND-SEAL-PROBE
    s" blanked drain leaves real prefix defers undrained, exits 73" SPAWN-RC 73 CHILD-RC
    s" undrained names the backstop diagnostic" T-LABEL
    ERR$ s" undrained pre-trust defer" CONTAINS? TTRUE
    s" undrained names the real prefix defer TFAM-RESOLVE-XT" T-LABEL
    ERR$ s" TFAM-RESOLVE-XT" CONTAINS? TTRUE
+   s" undrained seal refuses before the success marker" T-LABEL
+   ERR$ s" pre-trust seal passed" CONTAINS? TFALSE
    RESTORE-FILES ;
 
 public
@@ -318,11 +327,13 @@ public
    OVERFLOW-CASE
    UNDRAINED-CHECKED-CASE
    HOOK-BLANK-CONTROL-CASE
+   EARLY-SEAL-CONTROL-CASE
    UNDRAINED-BACKSTOP-CASE
    CLEANUP-RUN
    T-REPORT
    s" pre-trust-defer: ok" type cr ;
 
+;using
 ;package
 
 PRE-TRUST-DEFER-TEST:RUN
