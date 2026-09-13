@@ -1,9 +1,15 @@
 ---
-title: Attribute and remove checker work inside the optimizer
+title: "Reuse indexed dictionary records and binding results"
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-09-11T16:38:06.274143+03:00"
+blocks:
+  - habu-give-a-word-297b990d
 ---
 
-Problem: checker.f and xref.f account for 13.9 s (7.9%) of the forced-tier load while the entire tier-0 load, checking included, is 0.87 s; something in the pipeline re-runs checker or xref work per definition or per call site (CHECKER-CALLS replay is the suspect). Acceptance: the callers into checker.f/xref.f from src/compiler are named with counts; whatever is recomputed per definition is computed once or read from the record; the 13.9 s falls to the tier-0 share; controlled pair. Files: to be named by the attribution. Verify: sampling or counters over the forced-tier load. Depends: none. Ownership: rowan. Claim: unassigned
+Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+
+Own habu1.f WLFIND compiler record wrapper/checked declaration, native/dict.f WL-CANDIDATE/SPELL-REC and binding tests. WLFIND:LENTRY already returns record x12/start x11; consume it instead of indexed search-wl then full XREF rescan. Preserve public search-wl, private/TRUSTED-CELL visibility and retired-wordlist latest-record fallback. Verify precedence/ambiguity, collisions, hide/forget/redeclare and failed-evaluate slot reuse. Keep existing single EFFECT-QUERY; remove further duplicate consumers only if counted. Normal lookup avoids full dictionary scan; measure call counts and all-AOT contribution.375us/intrinsic is historical.
+
+Verification: focused real-load cases above; rebuild and run `bin/hb --load test/run.f` for compiler/runtime integration. Speed acceptance uses the all-AOT campaign pair; functional/count evidence can be developed in parallel.

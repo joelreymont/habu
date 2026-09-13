@@ -1,10 +1,18 @@
-# Habu maintainer handoff (2026-09-12)
+# Habu maintainer handoff
 
-Cedar, the Habu maintainer, is unavailable for a week. As of 2026-09-12 morning
-hazel owns all of Habu: design, lanes, review, landing, the tracker, this file
-and pushes of `master` at coherent points. Rowan moved to Maki and odin and
-files Habu asks on the board. This file is the shared state; update it whenever
-ownership or the root changes.
+Cedar resumed integration ownership on 2026-09-13. The current architecture,
+completion criteria and dispatch order are in [PLAN.md](../PLAN.md), with tasks
+under `habu-compile-the-tender-8385810f`. The integration workspace remains
+`.jj-ws/rowan-root`; the default checkout contains unrelated historical work.
+Hazel handed back source `5226a994` and engine `28e11361`; pending tier, combine,
+capacity and stage stacks are identified in the plan. No replacement compiler
+or improved all-AOT timing is claimed by this documentation update.
+
+The notes below preserve the 2026-09-12 handoff and subsequent investigation.
+Their former ownership, checkpoints and ordering are historical. In particular,
+refreshing the ancient stdin seed is not a prerequisite to using an existing
+native optimizer for the current selfbuild. Use the current plan and dot graph
+for work assignments and dependencies.
 
 ## Identities and channels
 

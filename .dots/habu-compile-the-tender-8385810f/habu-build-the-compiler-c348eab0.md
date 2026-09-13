@@ -1,14 +1,17 @@
 ---
-title: Build the compiler with the optimizer (selfbuild)
-status: active
-priority: 2
+title: "Produce and measure an optimized native compiler"
+status: open
+priority: 1
 issue-type: task
 created-at: "\"2026-09-11T16:38:06.278925+03:00\""
+blocks:
+  - habu-wire-the-checker-eec26aea
+  - habu-select-optimizing-compilation-cf2b21d4
+  - habu-check-arena-append-c7b1e040
 ---
 
-Problem: the cold seed loads compiler.f before NCOMP:COMPILE exists, so the shipped compiler body is JIT code (IR-ID:COUNT-N opens with sub sp,sp,#16); every pass pays JIT frame-call overhead. Acceptance: a stage-2 engine whose compiler is compiled by the stage-1 optimizer, verified by the leaf disassembly probe and the span table reporting 0; the forced-tier Tender load measured on it as the next-generation baseline. Files: tools/native-build.f, src/habu/native-runtime.f, bootstrap. Verify: forced-tier Tender load on the stage-2 binary. Depends: none. Ownership: cedar (workspace .jj-ws/cedar-aot-selfbuild). Claim: unassigned
+Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
 
+Own selfbuild integration and seed/bootstrap documentation; earlier leaves own source interfaces. Use identified current native optimizer and corrected source-owner checker/compiler pair; pending tier91fff115 is unfinished. Verify all compiler/helpers compiled through NCOMP using provenance and representative disassembly, JIT entry denied before dependencies, then product-hosted rebuild. No ancient stdin refresh/fake setter/interpreter/JIT rescue prerequisite. Record first uncached all-AOT Tender3079/3079 baseline, full executable wall time, floor and perdef/scaling rows. Historical131.6s/3668us were JIT-built compiler timings. This baseline does not automatically satisfy1.7s.
 
-Current ownership and handoff: Owner: cedar. Current checkpoint 114c1c09c9c729c052fcc7a84763dbed2ecce424051857ecff04305dc675289b supplies new layout and dispatch. Old optimizing host failed BSETTIER at undefined NCOMP-DISPATCH:TIER-CELL after 38.161 s; replaying baked layout is invalid. Correct transition: temporary cold current checkpoint, fresh process with test/compiler/aot-mode.f before tools/native-build.f. Actual optimizing selfbuild now running, log /tmp/cedar-current-optimizing-selfbuild.log. No completed optimizing output claimed.
-
-Parked 2026-09-13 (hazel, account limit): stack of 30 commits rebased on 78d5af92 in .jj-ws/rowan-tier, top 91fff115 (record extension with 38 front-end operations and two regimes, int-mark/min-in-mark effect rows, CHECK-UNJUDGED on the record, checker-owner lint, tape-owner tests). Product rebuild advances into src/compiler and stops at WITH-CONTEXT-BOUND on habu-keep-a-row-f2c4f3d4 (a root defect). Still to do: p2-map-rewind's two inliner-era cases retired with reason, compiler suites with test/compiler/aot-mode.f, run.f by name vs the recorded 7, coherent squashes, product rebuild and chain after the row fix, then close with habu-retire-the-pre-a37792de's arms documented.
+Verification: focused real-load cases above; rebuild and run `bin/hb --load test/run.f` for compiler/runtime integration. Speed acceptance uses the all-AOT campaign pair; functional/count evidence can be developed in parallel.

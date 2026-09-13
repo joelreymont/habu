@@ -1,500 +1,247 @@
-# Compiler IR implementation plan
+# Finish Habu's native compiler
 
-Status: scope-locked after three adversarial review rounds and distillation
-
-## Task anchor
-
-Read the new compiler-IR design, write and adversarially review the implementation
-plan, split the retained work into dots, and start implementation; use only
-`NEWTYPE`, `ENUM`, and `STRUCTURE`, do not use blackboard coordination, and do not
-interfere with the independent Spark vLLM-replacement work.
-
-## Pins
-
-- Design: `docs/compiler-ir-design.md`
-- Design SHA-256:
-  `78b3fa8b2c9290d9416c94e556e2b0977b8d4b83e403c4abc30f199f5348d7c3`
-- Design audit commit: `eb5742e916978d5c9067218737ce9c62a1af25a4`
-- Reviewed remote base:
-  `197fb07d55b3395cdf9bfd007aac999eb6895473`
-- Re-fetch before every claim and integration. The Spark agents publish through
-  `master`; this campaign does not use `.blackboard`.
+Status: implementation design, 2026-09-13. Cedar owns integration. This replaces
+the obsolete IR/GPU migration plan, preserved in jj history. Reuse the existing
+Tender campaign `habu-compile-the-tender-8385810f`.
 
 ## Required result
 
-`CORE` — Replace both direct-emission pipelines with immutable validated stages:
-
-```text
-source tape -> HIR -> SIR -> LIR -> A64IR -> allocation/layout -> HBOBJ
-model IR -> RIR -> KIR -> GIR -> PTXIR2 -> PTX
-```
-
-The pipelines share identity, storage, source, type, attribute, schema, freeze,
-codec, digest, pass-result, and witness infrastructure, but not dialect
-operations. The current compiler remains the sole publisher while the new native
-path runs in isolation; there is no hidden fallback. Cutover requires zero
-unsupported capabilities for the covered production path, then the old path is
-deleted.
-
-## Binding decisions
-
-### Identity
-
-`DERIVED` — Bounds-only IDs alias across modules, so every referential ID carries
-an owner.
-
-- A process-wide allocator issues nonzero module serials monotonically and never
-  reuses them.
-- A referential ID is `(module-serial << 32) | local-u32-index`.
-- `IR-ID:ir-module-id` carries a module serial. `IR-ID:ir-count` and
-  `IR-ID:ir-pool-offset` are scalar roles and are never packed IDs.
-- A dereference checks owner equality before the kind-specific committed bound.
-- Runtime serials are not serialized. Canonical encoding remaps references to
-  module-local unsigned indices, so construction history cannot change bytes or
-  digests.
-- The ID owner allocates module serials through one process-wide aligned atomic
-  CAS cell. Allocation is monotonic, nonzero, fail-closed at exhaustion, and is
-  not reset by replaying `require`.
-- Source bytes may be cached by the context, but every frozen module owns its
-  source table and `IR-ID:ir-source-id` values. Import remaps equal source
-  digests into module-local source IDs.
-
-### Package boundary
-
-`DERIVED` — Raw conversion authority must have one owner.
-
-- `src/compiler/ir/id.f` owns one package, `IR-ID`. Its public window declares
-  the ID families and semantic operations; its private window owns every
-  checked `CAST:` mint/projection. Both wordlists are protected after
-  definition, so later source cannot reopen either authority.
-- A cast into a resolved scalar-cell family, including a parametric `NEWTYPE`
-  instance, is legal only in the destination family's declaring package.
-  Projections out remain unrestricted. This structural owner rule is what lets
-  `IR-ID` contain its casts without a second authority package.
-- Other substrate concerns use `IR-SOURCE`, `IR-TYPE`, `IR-ATTR`, `IR-SCHEMA`,
-  `IR-BUILD`, `IR-VERIFY`, `IR-CODEC`, and `IR-PASS`.
-- `src/compiler/ir.f` may open `IR` only to publish semantic facade words over
-  public substrate operations. The facade has no `IR-ID` mint authority.
-- The sealed private `IR-ID` package confines every mint: the wordlists reject
-  reopen, qualified publication, direct WID publication, and source replay, and
-  `test/compiler/ir-id.f` pins that. The complete assembly
-  protects package wordlists only after a closed schema has passed through the
-  real builder/freeze path without reopening `IR`.
-- Dialects are separate closed packages: `HIR`, `SIR`, `LIR`, `A64IR`,
-  `GPU-RIR`, `GPU-KIR`, `GPU-GIR`, and `GPU-PTXIR2`. The `GPU-` prefix keeps
-  those architectural stage packages explicit.
-
-### Storage and lifecycle
-
-`DERIVED` — Table-bearing leaves require ownership and storage before source,
-symbol, type, or operation records exist.
-
-- The arena reuses `VEC`/`MEM` allocation and growth and the proven `NOM`
-  seal/truncate invariants without copying `NOM`.
-- Each builder owns disposable append-only vectors. Abort disposes the complete
-  provisional module; freeze commits ceilings and removes every mutation
-  surface. Frozen readers accept nominal IDs only.
-- If dynamic typed-pointee access is not expressible, one narrow arena boundary
-  is audited and tracked for retirement. Generic `n -> a`, public raw converters,
-  and per-table casts are forbidden.
-- Context owns target policy, numeric policy, source cache, diagnostics, module
-  registry, frozen modules, witnesses, and metrics.
-- Before context code, focused checker probes must prove the exact linear result
-  shapes. If the checker cannot preserve an owner on every refusal arm, the
-  missing checker capability is a prerequisite; the IR must not hide ownership
-  in globals or add a leaking throw path.
-
-The lifecycle surface is:
-
-```text
-CONTEXT-NEW       ( target-contract numeric-policy -- compiler-context )
-CONTEXT-DISPOSE   ( compiler-context -- )
-NEW-BUILDER       ( compiler-context dialect-schema -- ir-builder )
-ABORT             ( ir-builder -- compiler-context )
-FREEZE            ( ir-builder -- freeze-result )
-MODULE-RETIRE     ( compiler-context IR-ID:ir-module-id -- compiler-context )
-PASS-VALIDATE     ( compiler-context pass-result -- compiler-context pass-validation-result )
-PASS-ACCEPT       ( compiler-context validated-pass-result -- compiler-context IR-ID:ir-module-id )
-PASS-RELEASE      ( compiler-context pass-result -- compiler-context )
-```
-
-`freeze-result` and `pass-validation-result` return the context on every arm.
-Freeze adds a module only on success. `PASS-VALIDATE` uses a separate validator
-package and mints `validated-pass-result` only after every header binding and
-pass-specific witness check succeeds; `PASS-ACCEPT` is total only for that
-typestate. Disposal uses the repository's owned-release contract: a successful
-whole-range release consumes the owner, while an operating-system refusal is a
-fatal violated invariant and is never catchable. Handle invalidation occurs
-only with successful release. Double release and stale use reject before the
-release sink. Context disposal releases all remaining modules and witnesses.
-
-### Determinism and validation
-
-`DERIVED` — The design requires independent validation and stable proof subjects.
-
-- Every dialect uses a closed `ENUM` opcode set and exhaustive data schema.
-- Target, numeric policy, schema, pass configuration, source, frozen checker
-  environment, compiler/checker identity, input, output, and witness digests are
-  explicit.
-- Freeze validates owners, bounds, windows, parents, definitions, terminators,
-  successor arguments, visibility/dominance, schema, attributes, effects,
-  symbols, spans, target legality, and absence of placeholders.
-- Canonicalization sorts strings first, then remaps dependency-ordered symbols,
-  types, attributes, and sources before rewriting every downstream reference.
-  Function, block, operation, operand, and result order remains semantic and is
-  not sorted.
-- The wire format fixes magic, major/minor version, little-endian scalar widths,
-  table order, counts, lengths, decoder limits, and full-input consumption.
-- Rendered text is diagnostic-only and is never parsed by compiler code.
-- Transformation producers and witness validators are separate packages.
-
-## Ordered implementation
-
-### 0. Baseline evidence
-
-`CORE` — Before changing either backend, record source-pinned inventories and
-representative native/GPU measurements required by design section 14, Wave 0.
-
-- Reuse `habu-add-pinned-engine-90090800` only for its checker, fixpoint,
-  interpreter, and future inference benchmarks.
-- There is no PTX optimizer baseline to take: the line-oriented text optimizer
-  was deleted on 2026-08-20 with no consumer
-  (`habu-delete-the-nimm-329100c9`), and its measured before/after census is on
-  the closed `habu-adjudicate-dormant-ptx-482310bc` leaf.
-- Add the missing native baseline for JIT/AOT latency, emitted bytes, dynamic
-  instructions, stack traffic, spills, calls, branches, runtime, binary size,
-  and peak temporary memory.
-- Add the missing GPU baseline for PTX bytes/instructions, `ptxas` time, cubin
-  size, registers, shared memory, spills, occupancy, memory traffic, device time,
-  effective throughput, and roofline class.
-- Inventory every raw instruction, machine-code scan, branch patch, PTX string
-  emitter, production entry, and unsupported capability.
-- Add a disabled `new-compiler` capability record and comparison-only native/GPU
-  shadow harness plumbing. Wave 0 does not change generated code or publication.
-- Missing live Spark measurements block GPU code-generation changes, not the
-  shared substrate or native isolated shadow work. Committed evidence is valid
-  only when target, toolchain, source digest, and protocol are pinned.
-
-### 1. Shared substrate
-
-`CORE` — Implement in this order:
-
-1. `IR-0.1` ID families, monotonic module authority, and
-   pack/project/owner/bound checks.
-2. Target contract and numeric policy records plus canonical digests.
-3. Context registry, module serial allocation, stale-handle state, and total
-   teardown.
-4. Disposable typed arena, geometric growth, marks, committed ceilings, and
-   module ownership.
-5. Module-local source registry, source digests, spans, origin chains, and cycle
-   checks.
-6. Deterministic string and symbol interning.
-7. Canonical scalar, pointer, and token types.
-8. Canonical attributes.
-9. Closed dialect schema records and exhaustive schema validation.
-10. Operation/value/operand/result/successor pools.
-11. Function/block parents and windows.
-12. Builder, abort, and freeze lifecycle.
-13. Structural freeze verifier and hostile mutation fixtures.
-14. Canonical string-first table reindexing and reference remap.
-15. Deterministic renderer and structural diff.
-16. Canonical codec, validating decoder, and digest.
-17. Pass-result and witness header, accept/release lifecycle, and corrupt-binding
-    fixtures.
-18. One closed schema through the real generic builder/freeze path, then facade
-    assembly and package protection.
-
-Implementation/proof synchronization is stage-local: each stable schema leaf
-may start its proof at the provider instead of waiting for the sealed facade.
-Immediately after IR-0.1, `habu-prove-compiler-id-399232c5` owns
-`formal/Common/Ids.v`, the ID manifest/digest, parity checks, and shared
-valid/hostile vectors while substrate items 2-18 continue.
-
-Memory proof is also stage-local and does not delay the ID proof leaves:
-`habu-model-compiler-heaps-dfef07ae` starts after target policy and compiler
-types, `habu-prove-compiler-separation-db458ea0` starts after that heap model and
-the dialect effect schema, and `habu-prove-compiler-arena-59a8a885` starts after
-separation plus the executable IR arena and freeze lifecycle. Later shared,
-native, and GPU proofs consume those exact memory, frame, ownership, and
-race-freedom obligations.
-
-`habu-type-dsl-prove-93da83c4` is a prerequisite for items 2-18 and every
-dialect leaf. IR-0.1 uses `NEWTYPE`, checked `CAST:`, and one atomic allocator;
-it may proceed before that hard-cutover proof.
-`habu-make-owned-release-79de2b5c` is a prerequisite for context/arena disposal
-in items 3-4.
-
-Exit: equivalent modules built in different insertion orders have identical
-bytes and digests when only unordered intern-table insertion differs; every
-malformed invariant has a named location-aware diagnostic; abort/release leave
-no live owner; frozen mutation and raw casts are unresolvable.
-
-### 2. First native vertical slice
-
-`CORE` — Implement design section 14, Wave 2 without broadening its operation set:
-
-1. checker-bound source tape;
-2. canonical frozen checker-environment manifest plus compiler/checker identity
-   and digest, bound to the source tape and every resulting artifact;
-3. HIR literal, modeled arithmetic call, and return;
-4. straight-line stack SSA;
-5. SIR verification, constant folding, and dead pure elimination;
-6. integer LIR and A64IR;
-7. table-driven selection, no-call linear scan, and independent allocation
-   validation;
-8. typed AArch64 encoder adapter and isolated object runner;
-9. old/new shadow execution, named coverage, dumps, source maps, and metrics.
-
-Exit: a real checked `SQUARE`-shaped definition reaches executable AArch64 bytes,
-matches the old path, and emits no instruction for pure stack renames. The old
-path still publishes.
-
-Existing native dots are reconciled before new native leaves:
-
-| Existing dot | Retained owner |
-|---|---|
-| `habu-idx-arm64-operands-98280863` | A64IR schema, indexed operands, fixups, frame slots, and control effects |
-| `habu-lower-native-emission-cbc7f99b` | validated A64IR-to-`A64ENC` adapter and migrated emitter entry; not a parallel old-emitter IR |
-| `habu-canonicalize-typed-native-7d698b51` | post-slice SIR/LIR structural optimization |
-| `habu-emit-proof-carrying-058f43b6` | allocation witness and independent validator |
-
-### 3. Remaining native, GPU, and proof waves
-
-`CORE` — Follow the exact operation sets and acceptance gates in
-`docs/compiler-ir-design.md`:
-
-- Native Waves 3-8: sections 14.4-14.9.
-- GPU Waves A-E: sections 14.10-14.14.
-- Formal synchronization and gates: sections 10-12 and 16.6.
-
-The decisive exits are structured control, calls/exceptions, defining semantics,
-wide `ENUM`/`STRUCTURE` values, `HBOBJ` AOT, and self-host cutover for native;
-SAXPY PTXIR2, elementwise KIR, softmax, MMA, and planner/tuner cutover for GPU.
-Each stable schema ships its manifest/digest, valid and hostile canonical
-fixtures, witness vectors, and the assumptions report for any covered theorem.
-
-GPU Wave A routes a bounded SAXPY operation set from the existing checked DSL
-boundary into a PTXIR2 builder and renders only at the final sink. It never
-parses generated text. Existing GPU ownership is reconciled first:
-
-| Existing dot | Retained owner |
-|---|---|
-| `habu-verify-ptx-virtual-50281017` | sole PTXIR2 instruction schema, verifier, state, and renderer owner |
-| `habu-ptx-opt-layer-325b9507` | split into KIR/GIR structure and Wave B-E pass/tuner outcomes; no PTXIR2 duplicate |
-| `habu-ptx-register-pressure-ed521b40` | virtual-register liveness/pressure scheduling, dense naming, and exact declarations; physical assignment remains `ptxas` work |
-| `habu-v2-resource-model-985a0b0e` | target resource facts and promotion evidence consumed by GPU validators |
-
-GPU work does not edit `maki/infer/` while the Spark agents are active.
-
-## Specification coverage
-
-`CORE` — Every normative design section has an implementation owner:
-
-| Design sections | Plan owner |
-|---|---|
-| 5-6 | shared substrate items 1-18 |
-| 7, 14.3-14.9 | native first slice and Waves 3-8 |
-| 8, 14.10-14.14 | GPU Waves A-E |
-| 9 | stable pass implementations, independent validator leaves, and explicit numeric policy |
-| 10 | per-stage Rocq semantics, schema parity, witness validators, and composed proof gates |
-| 11-12 | Wave 8 self-host/bootstrap proof and wave-owned retain/replace/retire cuts |
-| 13 | dot-frozen one-concern package/file ownership |
-| 14.2, 15 | Wave 0 capability record plus explicit shadow coverage and no silent fallback |
-| 16 | structural, correctness, performance, and formal gates attached to their owning leaves |
-| 17 | every dot's frozen interface, mutation test, destruction review, and green integration proof |
-| 18-20 | IR-0/NATIVE-1 leaves plus native/GPU lowering fixtures |
-| 21 | final native, GPU, and unchecked-boundary campaign exits |
-
-## First implementation leaf: IR-0.1
-
-`CORE` — This leaf owns ID representation and process-wide module serial
-allocation. It does not create contexts, dereference arenas, or add
-sources/builders/codecs.
-
-Files:
-
-```text
-src/compiler/ir/id.f
-test/compiler/ir-id-concurrency.f
-test/compiler/ir-id.f
-lib/errors.f
-```
-
-The active prerequisite `habu-cast-v2-family-741e7bae` owns the shared
-package-authority repair and its gates:
-
-```text
-src/core/checker.f
-src/core/enum-decl.f
-src/core/structure-decl.f
-src/core/sumtype.f
-src/core/type-family.f
-src/habu/verify-source.f
-src/habu/xref.f
-test/cast-negative-suite.f
-test/type-decl-suite.f
-test/type-export-suite.f
-tools/check-core.f
-docs/forth.md
-```
-
-`PLAN.md`, `LESSONS.md`, and the two dot records are shared
-integration records updated only after both contracts are reconciled.
-
-IR-0.1 changes no task, manifest, loader, fixpoint, AOT, or public-signature
-source. Its CAST prerequisite changes the shared checker, declaration,
-verification, and structural-lint sources listed above; those changes are not
-owned by the ID implementation leaf.
-
-It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
-`ir-module-key`, `ir-module-id`, `ir-source-id`, `ir-fun-id`, `ir-block-id`,
-`ir-op-id`, `ir-value-id`, `ir-type-id`, `ir-attr-id`,
-`ir-symbol-id`, `ir-span-id`, `ir-pool-offset`, and `ir-count`. Private checked
-`CAST:` words in that same owner package implement module capabilities, packed
-referential IDs, and scalar count/offset roles. `NEW-MODULE` is the sole public
-module-key constructor. No raw `n -> ir-module-key` path is public. No new
-unchecked declaration is permitted.
-
-The frozen representation contract is:
-
-```text
-module serial:        1 .. 0x7fffffff
-local unsigned index: 0 .. 0xffffffff
-packed referential:   (serial << 32) | local
-count/pool offset:    0 .. 0x7fffffffffffffff, never packed
-```
-
-The exact 26 private `IR-ID` representation casts are:
-
-```text
-MINT-KEY           ( n -- IR-ID:ir-module-key )
-KEY>N              ( IR-ID:ir-module-key -- n )
-MINT-MODULE        ( n -- IR-ID:ir-module-id )
-MODULE>N           ( IR-ID:ir-module-id -- n )
-MINT-COUNT         ( n -- IR-ID:ir-count )
-COUNT>N            ( IR-ID:ir-count -- n )
-MINT-POOL-OFF      ( n -- IR-ID:ir-pool-offset )
-POOL-OFF>N         ( IR-ID:ir-pool-offset -- n )
-MINT-{KIND}        ( n -- IR-ID:ir-{kind}-id )
-{KIND}>N           ( IR-ID:ir-{kind}-id -- n )
-```
-
-Packing, projection, and validation are public checked `IR-ID` words that
-compose only those private identity-shaped casts:
-
-```text
-PACK-{KIND}        ( IR-ID:ir-module-key n -- IR-ID:ir-{kind}-id )
-{KIND}-OWNER       ( IR-ID:ir-{kind}-id -- IR-ID:ir-module-id )
-{KIND}-LOCAL       ( IR-ID:ir-{kind}-id -- n )
-{KIND}-CHECK       ( IR-ID:ir-module-key IR-ID:ir-count IR-ID:ir-{kind}-id
-                     -- IR-ID:ir-{kind}-id )
-```
-
-`{KIND}` expands exactly to `SOURCE`, `FUN`, `BLOCK`, `OP`, `VALUE`,
-`TYPE`, `ATTR`, `SYMBOL`, and `SPAN`. The later arena/builder is the only
-semantic caller of `PACK-*`; the codec is the only semantic caller of `*-LOCAL`.
-The sealed private `IR-ID` window in `id.f` confines private raw definitions:
-runtime package protection rejects direct definitions, qualified references, and
-`EXPORT` aliases across the complete 19-package compiler API set.
-
-The exact block and named errors reserved in `lib/errors.f` are:
-
-```text
--6600 E-IR-FIRST
--6699 E-IR-LAST
--6600 E-IR-MODULE-ZERO
--6601 E-IR-MODULE-RANGE
--6602 E-IR-INDEX-RANGE
--6603 E-IR-INDEX-BOUND
--6604 E-IR-OWNER
--6605 E-IR-SCALAR-RANGE
--6606 E-IR-MODULE-EXHAUSTED
-```
-
-That block is now full and closed: its last free code went to the attribute
-table. Every compiler stage from the dialect schemas onward mints from the
-compiler growth region, `-8000 E-COMP-FIRST` to `-8999 E-COMP-LAST`, whose
-sub-block map lives at the end of `lib/errors.f`. A lane takes the 20-code
-sub-block named for its stage and records the codes it mints under it. Nothing
-in `-6600..-6699` moves.
-
-Acceptance:
-
-- `NEW-MODULE` yields a nonforgeable key plus matching public module ID;
-- an outcome-bounded fresh child starts every task over a disjoint slice; each
-  worker atomically publishes `READY`, waits without a scheduler-dependent spin
-  limit for the parent `GO`, allocates its slice, validates its typed key/owner
-  pair, and publishes completion;
-- one private test-only erase-only `CAST:` projects a validated module owner to
-  its raw serial for process-shared `create` storage; it is outside `IR-ID`,
-  cannot mint a nominal, is absent from every compiler API and production load
-  path, and does not change the exact 26-cast production inventory;
-- the parent releases `GO` only after all workers are live, verifies every
-  stored serial is nonzero and globally unique, and attempts to kill/release
-  every prepared task on success or caught failure;
-- an activation-failure case catches exact `E-TASK-STATE`, then reruns the
-  normal case with the same four task objects in the same child; deleting
-  cleanup makes reuse fail;
-- deleting the `READY`/`GO` protocol makes the overlap witness fail, while the
-  process outcome timeout owns genuine stalls;
-- require replay in a fresh child does not reset the serial;
-- explicit valid key/local index inputs round-trip each referential ID;
-- scalar count/offset roles never acquire module bits;
-- negative/equal-to-bound/overflow index and foreign owner throw named errors
-  before memory access;
-- `E-IR-MODULE-ZERO`, `E-IR-MODULE-RANGE`, and
-  `E-IR-MODULE-EXHAUSTED` guard private states unreachable through the sole
-  public key/allocator path; the allocator transition and law proof leaves own
-  executable defensive-state coverage plus monotonic, nonzero, unique, and
-  exhaustion-before-wrap unreachability proofs;
-- checker fixtures reject wrong-family substitutions;
-- the CAST owner gate binds the destination package to the engine's live
-  namespace record and actual public/private definition WID; callable
-  `CHECKER-PACKAGE` and direct checker-mirror mutation cannot authorize a mint;
-- canonical local projection excludes the runtime owner;
-- no public raw converter or dialect-specific cast resolves;
-- the 26 package-qualified raw authority tails are definable only as private
-  `CAST:` words in `src/compiler/ir/id.f`'s `IR-ID` window; unrelated/global
-  same-tail role APIs such as global `COUNT>N ( count -- n )` remain distinct;
-- the sealed `IR-ID` wordlists reject direct definitions and `EXPORT` aliases of
-  those raw tails in all 19 compiler API packages, plus compiler-qualified raw
-  references outside the owner;
-- both `IR-ID` wordlists reject reopen, qualified publication, direct WID
-  publication, and source replay;
-- every cast is checker-certified and confined by package ownership;
-- `bin/hb --load test/compiler/ir-id.f` passes;
-- the `compiler-ir-id` suite is declared and scheduled by the inline stdlib
-  dispatcher, and error, refine, package, and typed-local gates pass.
-
-## Dot and worker rules
-
-`DERIVED` — Decomposition must reuse the existing dots named above and create
-only uncovered outcomes. Every retained item appears once; no review-only dot is
-created.
-
-Before dispatch, follow the parallel-work and dot-dispatch rules in `AGENTS.md`: establish an active claim
-on an immutable base and use an isolated `.jj-ws/<dot-id>`. Separate workspaces
-may edit overlapping files concurrently; never assign overlapping files to
-concurrent editors in the same workspace. Each leaf gets its focused test,
-required diff/lint gates, independent destruction review, and exact owning
-integration gate before closure.
-
-Before IR-0.1 integrates or pushes, fetch, rebase, and reconcile every
-overlapping change; verify remotely valid ownership; then run the exact focused
-and publication gates on the reconciled tree. Items 2-18 remain blocked on
-`habu-type-dsl-prove-93da83c4`.
-
-## Cut from the previous plan
-
-Pre-distillation version: `PLAN.md` SHA-256
-`bf375f936846fbd0df6695fad6e14c747dee1e260ce9e3e89103df8fb673fdf7`,
-324 lines, planning base `b8e46224929f6d65062610fec55e2f2f0140f318`.
-
-| Cut | Why it was cut |
-|---|---|
-| Review matrix | Review machinery, not implementation scope |
-| Repeated full acceptance lists for later waves | The design already owns them; the plan retains decisive exits and exact section links |
-| Fixed first-version file layout for every later dialect | Premature detail not required to start the dependency-ordered substrate |
-| Generic per-leaf gate checklist | Repository workflow already owns it; only the first leaf needs exact routing now |
-| Blackboard lifecycle text | Explicitly disabled by the user for the remote Spark agents |
-| Automated Wave 0 semantic rediscovery | The design requires a source-pinned inventory, not a new call-graph/provenance analyzer; audit hashes plus structural review force re-audit without delaying compiler work. Rejected split: `b776cdd872ce25da8dd0c0fc0e8cb09f5c4ca564`. |
+The optimizing compiler is itself optimized native machine code. It compiles
+source directly into native code for every executable, including Habu itself.
+AOT builds do not invoke the JIT compiler, stage bodies through JIT code, or
+fall back to it on an error. Compile-time words, immediates and definers execute
+as native code in the build host. There is no interpreted compiler in this design.
+
+The interactive service uses the JIT. Preserve the previously requested ordinary
+`hb --load` loader behavior; executable-build entries select AOT before loading
+any tool or application dependency, even when launched through `hb --load`.
+A test that disables JIT compiler entry during an AOT build proves independence;
+it does not prohibit native execution or remove the product's REPL capability.
+
+Completion means:
+
+- Optimizing selfbuild and product-hosted rebuild, with no retained JIT-built
+  compiler/application definitions, and no JIT fallback.
+- Correct first-generation layout, artifact IO/merge, capture, restore, repeated
+  capture and checked REPL behavior.
+- Tender, Maki and Kestrel acceptance on an identified replacement toolchain.
+  Preserve their accepted pins until their owners verify the replacement.
+- All 3,079 definitions of the pinned Tender workload through the optimizer in
+  under 1.7 seconds, uncached, with normal checks and validation. Trivial-definition
+  compile time below 500 microseconds. Measure full executable-build time too,
+  including loading, capture and writing; an internal pass time is insufficient.
+- Required compiler/runtime suites green with meaningful behavioral coverage.
+
+## Evidence and limits
+
+Review base: `.jj-ws/rowan-root`, source `5226a994` plus tracker-only `4f234270`;
+engine SHA-256 `28e11361f60228d24e7e3f6fca496ca0f9a4f2c8c8e66b5fdc91c9db031de462`.
+Hazel reported 314 suites with seven failures. That is not a fresh green gate.
+
+Hazel's complete Tender pair was 153.3 to 131.6 seconds; the later session pair
+reduced the trivial floor from 4,106 to 3,668 microseconds. Both used a compiler
+whose implementation was JIT-compiled. No verified all-AOT compiler measurement
+establishes the remaining factor. The 1.7-second target is not a promised result
+of multiplying historical improvements.
+
+Source review confirms repeated dictionary scans, linear symbol interning,
+duplicate combine planning and quadratic address registration. Residual spill
+scaling and the payoff from pass-level reader reuse still need attribution.
+
+## Native compiler and build design
+
+1. **Checker rows.** Fix call recording at `RECORDED-STEP`, `U-CALL-TAIL` and
+   `CALL-FREEZE`. A call instantiates a fresh row; recording must not specialize
+   its reusable provider declaration. Quotation-wrapped `execute` reproduces
+   the defect without `finally`. Cover direct/quotation/cleanup calls at both
+   caller/provider tiers, empty/nonempty saved prefixes and wrong-type/borrow
+   negatives. Do not alter valid `MEM:WITH-BYTES` effects to evade the defect.
+2. **Arena append.** Check `from <= source-count` and
+   `k <= source-count - from` before growing/copying in `APPEND-SPAN`. Preserve
+   ownership/state checks, zero length at the end and unchanged destination
+   on rejection. Never compute an unchecked overflowing endpoint.
+3. **Host capture versus target emission.** `native-build.f` currently binds
+   emitters to resident layout before loading source layout. Retained host
+   reset/capture code must interpret live memory with the host ABI. Load corrected
+   checker, target layout and runtime inside the window. Freeze declaration,
+   code and signature/type membership, then persist target registry stores into
+   target DATA before closing its final bound: USIGS-SNAPSHOT-PERSIST allocates
+   at here even without growth. Run target preparation once (split SEAL's existing
+   call as needed) and copy a complete immutable capture using the host readers.
+   Only then reopen the native compiler session and compile target-bound emission
+   tooling outside that captured value. Pass the owned value explicitly to it.
+   Verify source-owner/compiler reuse after preparation, forced grown registry
+   stores, and unchanged capture bytes while writer definitions are added.
+   Remove the lexical call to the earlier host-bound emitter and
+   ambient cross-instance `AOT-BUF` access. The layout leaf owns this interface;
+   reuse existing capture sections/storage, without another format or disk stage.
+   Keep capture storage live until emission finishes. Translate moved fixed
+   engine slots by semantic identity for supported source-layout transitions;
+   reject an unknown incompatible host before capture. Window offsets remain
+   relative. Test growth/shrinkage and actual versus advertised heap/capacity
+   boundaries in generation 1. Later convergence cannot excuse a hybrid product.
+4. **Tier and owner.** Finish/review pending `.jj-ws/rowan-tier` at `91fff115`,
+   preserving the definition-tier latch and source checker-owner record. Select
+   executable-build mode before the first dependency, including direct APP-IMAGE
+   use. Hold it through include/require/evaluate, generated words and immediates.
+   A tier-0 request during that operation refuses before compilation. Retained
+   callable JIT code also prevents saving; changing tier cannot convert it.
+5. **Native bootstrap.** Use an identified runnable current native optimizer to
+   compile the corrected checker and bind its source owner before providers load.
+   If a bridge is necessary, compile the paired current checker/compiler using
+   that optimizer. An ancient stdin seed, interpreter, fake setter or JIT rescue
+   is unnecessary. After selfbuild, use the product as seed and remove the
+   explicit pre-record by-name bridge.
+6. **Interactive JIT.** Preserve direct native emission and checked call,
+   quotation, loop and KEEP behavior. Delete the uncalled general machine-code
+   copying inliner and tests requiring its existence; pending tier work already
+   contains this deletion. Do not rebuild an optimizer inside the JIT.
+
+## Capture and persistence design
+
+- **Address rows:** IO still uses four bytes where `XTOFF-ROW` is eight. Use the
+  shared width for lengths, bases, counts and merge. Preserve window/fixed
+  location tags, CODE/DATA target tags and nullable offset-plus-one encoding.
+  Shift only window locations and nonnull targets by their appropriate merged
+  bases; check overflow before publication. Reject truncated rows and incompatible
+  old versions. Test cleared-buffer reads, exact rows, both kinds, nulls, real
+  merge and execution after restore. A write-read-write digest alone is vacuous.
+- **Checker payload:** signatures/types are required for a restored checked REPL.
+  Arm and mark the source-owner window explicitly and close before writer tooling.
+  Restore against the correct registry base; exclude writer-only types. Do not
+  delete empty sections to hide an unarmed producer. Define a family, restore it,
+  reject a wrong-type call, and capture it again.
+- **Transient storage:** use existing lifecycle preparation and the registry at
+  both capture and snapshot entry. Register a control record on its first live
+  allocation and unregister on release, so reserve after restore registers again.
+  Declaration-only registration loses old buffers after `RELEASE-ALL`. Use a
+  private membership handle/generation in the control record to avoid a new scan;
+  reserve registry space before publishing allocation and update handles on
+  removal. Release compiler transients after last use and before DATA copy.
+  Writer storage stays live outside the captured value until writing completes.
+  Delete only the per-pass release lists made redundant by this ownership.
+- **Quotation storage:** declare relocation kind where the type is decided, even
+  for an initially null cell. Add a mark-only code-cell operation paired with
+  `ptr-cell-mark`, sharing the registrar with `xt!`. Generated typed DATA storage
+  marks quotation fields; transient mapped callback storage remains unregistered
+  and legal. This does not permit saving retained JIT code.
+- **Capacity:** integrate pending Tender change `0d78b97f` through the corrected
+  layout build. Measure full closure/headroom and exercise 40,000 cells plus
+  actual overflow. Report count/capacity with a complete newline. Compose remaining
+  split/padded diagnostics once at the emitter, without another message framework.
+
+## Compile-speed design
+
+Keep landed session reuse, hash removal, allocator maps and verifier work.
+Independent source fixes can start now; controlled speed acceptance uses the
+verified all-AOT product once available.
+
+1. **Dictionary:** expose the matched record already returned by `WLFIND:LENTRY`.
+   `NDICT:WL-CANDIDATE` must not scan XREF to rediscover it. Preserve visibility,
+   owner authority, ambiguity, shadowing, rollback and retired-wordlist latest-row
+   fallback. Keep one dictionary index. Reuse authenticated binding results within
+   a definition; do not cache by spelling or a recyclable record pointer alone.
+2. **Symbols:** first honor committed symbol/byte ceilings on prototype clones.
+   Add a private context-owned hash index over authoritative insertion-ordered
+   rows, confirming complete bytes on collision. Validate its arena generation
+   before accessing storage; allocate before publication; clone without sharing
+   mutable buckets; release with context. No arbitrary mutable IR operations.
+3. **Word tables:** carry their interner, resolve spelling uniformly and enforce
+   intrinsic binding at LOOKUP for both link kinds. Remove separate session
+   spelling arrays and the duplicate gate. Keep binding memoization definition-local
+   because package shadowing changes during a load.
+4. **Combine/spill:** rebase/retest `172fc17d`: one combine plan for the exact
+   input module, consumed once, preserving fold precedence and cleanup. The module
+   already rebuilds at most once; the defect is repeated planning. Attribute
+   remaining spill-frame visits. If its Boolean frame-need fixed point dominates,
+   propagate once through frozen predecessor lists with a worklist. Preserve the
+   necessary allocation/rewrite fixed point and existing allocator validation.
+5. **Address registration:** index exact DATA byte offsets to existing ordered
+   rows. Same-kind duplicates do nothing; conflicts/capacity refuse before stores.
+   Rebuild/invalidate at restore, reset and compaction, including native-build's
+   `ADDR-ROWS!`. Persist neither scratch pointers nor stale ordinals; unaligned
+   cells are legal. Measure the actual cold-build contribution.
+6. **Remaining reads:** measure pass-level reader opens after selfbuild. If material,
+   retain one existing checked reader per input arena in the pass cursor and add
+   reader-taking dialect operations. Rebind when the module changes; preserve
+   owner/generation/state/bounds checks. This conditional follow-up belongs to
+   the existing reader task, not a new raw-memory fast path.
+
+Use existing Habu floor, per-definition and scaling tools. Record source/binary
+identity, compiler provenance, uncached settings, dispatch count, wall time and
+pass visits versus definition size. Quiet conditions are for measurements, not a
+prerequisite to implement. Preserve the combine/spill slope target at most 1.1
+on established workloads and verify the final total; operation counts distinguish
+complexity changes from noisy clocks.
+
+## Integration and delivery
+
+Reuse dots, correcting stale diagnoses and idle ownership claims. Each leaf owns
+named source sections and focused regressions. The layout, tier-provenance and
+symbol-ceiling leaves establish their interfaces before consumer edits. Encode
+all real dependencies; parallel work uses separate workspaces where necessary.
+Split the pending stacks by these source owners before landing them; the first
+leaf must not import another leaf's unfinished changes. A separate Astra reviews
+delegated changes before landing.
+
+Rebuild the exact source, run affected real-load suites, then
+`bin/hb --load test/run.f`. Resolve the seven recorded failures by name. Replace
+obsolete compiler-state assertions with their behavioral claim, preserving saved
+real values across calls, KEEP through `begin ... until`, and quotation-body spills.
+
+Reuse standalone delivery for joint acceptance: Tender's local `required` scanner
+case and full runner closure; Maki's `GEOM:SHAPED-PAIR`, native build, warm capture,
+restore and REPL; Kestrel's compiler and embedded target handoff. Report hardware
+acceptance separately where hardware is required. Minimal CLI help is insufficient.
+
+Make native-build accept a private output and have chain builds use it; never move
+`bin/hb`. Add same-source two-build byte comparison to the existing chain tool,
+including a dirty-transient negative, rather than creating a second framework.
+Verify a product-hosted rebuild and convergence before candidate promotion.
+
+Repair the supported source-reading stage path alongside this work: load/provide
+stdlib once in its cold prefix, keep the bootstrap mirror consistent, and resolve
+the actual target callee closure before emission. The eight unresolved seed names
+must be supported literals or actual target definitions, with name/site diagnostics
+on refusal. General JIT inlining and fake providers are not remedies. Certify the
+assembled source and complete isolated no-binary recovery including the final native
+refresh/product verification (CHECK_ONLY stops earlier at hb-stdin), after removing
+the pre-record bridge; this route does not
+block use of an existing native optimizer for selfbuild.
+
+Finish bounded review findings too: quote native fixture paths with correct
+argument-buffer capacity; publish/execute a namespaced generated constructor with
+a conflicting same-tail name; exercise actual artifact reader refusals. Preserve
+behavior while deleting obsolete test machinery.
+
+## Exclusions and deferred work
+
+PTX/GPU/model CAD and Loom policy belong in `~/Work/loom`. No new IR architecture,
+general cache framework, verifier bypass or benchmark language is required here.
+The historical IR/GPU plan does not add commitments to this campaign.
+
+Keep the existing object-cache request as a later incremental-build task; it
+cannot satisfy the uncached target. Defer the 75-ms-per-179-s source-digest
+micro-optimization until whole-build speed is measured. Further hotspots need
+evidence and an update to the owning task, not speculative new passes.
+
+## Dispatch order
+
+The dot tree is the detailed work graph; short IDs below identify existing leaves.
+All leaves are currently unassigned. Start independent ready work in separate
+workspaces: checker rows (f2c4f3d4), arena bounds (c7b1e040), artifact rows
+(258c0288), transient lifecycle (e03edf85), and native fixture paths (deafcd5a).
+
+| Result | Dependency path | Ownership boundary |
+|---|---|---|
+| Native selfbuild | rows → tier/owner1dc23a17 → layoutabdd0188 → routingcf2b21d4/payload eec26aea → selfbuildc348eab0 | Checker, tier dispatch, capture/emitter interface, entry routing; separate leaves |
+| Symbol/binding cost | arena → ceilings615f47a9 → symbol indexa35dd84d → word table297b990d → record lookup2b13e978 | Interner contract before callers; one existing dictionary index |
+| Combine/spill | lifecycle → ca192310 | Existing combine/spill algorithms and scratch only |
+| Tender capacity/registration | layout → capacity1ca5db10 → registrar3c5f6d9b | Capacity contract before derived index; reset belongs to registrar |
+| Capture acceptance | artifact/layout/row fixes → payload; lifecycle → quotation storagee92b0571 | Exact rows, checker payload and transient lifetimes each have one owner |
+| Recovery and delivery | tier/artifact → stage2f64be7c → recovery29c5dc0b; private chain9fe66f8e → identity8d249e4d → deliverya86d4699 | Current-native selfbuild does not wait for no-binary recovery |
+| Final speed | all-AOT baseline + speed leaves → reader attribution516b2416 → campaign gate | Existing timing tools; final uncached3079-definition result |
+
+Small cleanup/refusal/constructor leaves remain explicit in the tree. Pending
+tier91fff115, combine172fc17d, capacity0d78b97f and source-prefixb728e382 are
+inputs to review/integration, not evidence that their acceptance has passed.

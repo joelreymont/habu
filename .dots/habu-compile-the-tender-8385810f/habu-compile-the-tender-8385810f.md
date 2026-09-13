@@ -1,9 +1,45 @@
 ---
-title: Compile the Tender load through the optimizer in 1.7 s
+title: Finish the native AOT compiler and meet the uncached Tender target
 status: open
-priority: 2
+priority: 1
 issue-type: task
 created-at: "2026-09-11T16:38:06.249420+03:00"
+blocks:
+  - habu-keep-a-row-f2c4f3d4
+  - habu-check-arena-append-c7b1e040
+  - habu-preserve-complete-addr-258c0288
+  - habu-walk-the-dynamic-e03edf85
+  - habu-track-retained-jit-1dc23a17
+  - habu-build-engine-layout-abdd0188
+  - habu-select-optimizing-compilation-cf2b21d4
+  - habu-build-the-compiler-c348eab0
+  - habu-wire-the-checker-eec26aea
+  - habu-size-the-snapshot-1ca5db10
+  - habu-declare-quotation-typed-e92b0571
+  - habu-honour-the-committed-615f47a9
+  - habu-idx-ir-sym-a35dd84d
+  - habu-give-a-word-297b990d
+  - habu-attr-and-remove-2b13e978
+  - habu-make-spill-rewrite-ca192310
+  - habu-idx-the-addr-3c5f6d9b
+  - habu-read-an-ir-516b2416
+  - habu-remove-test-requirements-fec97925
+  - habu-pass-native-fixture-deafcd5a
+  - habu-exercise-publication-of-ddd5c76f
+  - habu-forge-the-artifact-25770093
+  - habu-let-the-chain-9fe66f8e
+  - habu-gate-build-byte-8d249e4d
+  - habu-compose-every-fd-ffa78ad1
+  - habu-give-the-stage-2f64be7c
+  - habu-bring-the-no-29c5dc0b
+  - habu-retire-the-pre-a37792de
+  - habu-deliver-standalone-native-a86d4699
 ---
 
-Problem: the 3,079-definition Tender source takes 176 s through NCOMP:COMPILE on 41df9051 (forced tier 1, counted), 0.87 s through the JIT; Joel's bar (2026-09-11) is 1.7 s, 0.55 ms per definition, and executables are built 100% by the optimizer so this is the build time of every application. Measured budget (per-pass timers 99.7% accounted, 1 ms sampling): IR substrate handle re-resolution per cell read 92 s across every pass (16 nested calls per read, 1.77 G reads); symbol filter SHA-256 15 s (removed, c64808e4); regalloc.f proper 14 s and superlinear (vals^1.71 top decile, 79 bodies over 256 values cost 48 s); verify ACCEPT 31 s (ops^1.48); spill rewrite ^1.94; combine ops^1.21; checker.f/xref.f 14 s; per-definition fixed setup 17 s (context map, 15 tables, 86-declarer model walk, 7 dialect binds, 46 BIND misses per definition); the compiler in the cold seed is JIT code. Trivial-definition floor 6.8 ms, target under 0.5 ms. Acceptance: forced-tier Tender load under 1.7 s wall with 3,079/3,079 through NCOMP:COMPILE, trivial-definition floor under 0.5 ms, every existing negative test kept, no validator bypass; each child lands with a controlled before/after pair on one root. Files: src/compiler/**. Verify: 1 set-tier entry with a counting xt on NCOMP-DISPATCH:XT-CELL over /home/joel/Work/Tender src/main.f. Depends: none. Ownership: cedar (root), rowan (substrate, reuse, measurement). Claim: unassigned.
+Plan: [PLAN.md](../../PLAN.md). Owner: Cedar for integration; implementation leaves are unassigned until claimed. This campaign reuses the existing speed work and the current correctness findings, without repeating landed session/allocator/hash work.
+
+Completion: optimizing native compiler selfbuild/product rebuild, executable compilation independent of JIT invocation, correct first-generation layout and persistence, full native gate and Tender/Maki/Kestrel handoff. REPL/ordinary loader use JIT; AOT builds execute a compiled native compiler.
+
+Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under1.7s wall for complete optimizing load and trivial floor below500us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical153.3→131.6s and4106→3668us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
+
+Each leaf has source ownership, prerequisites and decisive behavior checks. Final compiler/runtime gate: rebuild exact source and bin/hb --load test/run.f, with all seven recorded failures resolved by name. PTX/Loom and later cache/digest work are excluded here.
