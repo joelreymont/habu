@@ -56,6 +56,21 @@
 \ that consumes every one of them, and a format that lists them in some other
 \ order invites a reader that fills the wrong buffer.
 \
+\ WHAT VERSION 6 DROPPED, and why a section with no producer could not just be
+\ left in place. Through version 5 the payload carried a PROTECTED-WID BITMAP -
+\ the capture host's whole PROT-BITS band, fixed width, section number 12.
+\ Nothing has produced it since the protected-WID capture became a live
+\ derivation whose rows travel WINDOW-RELATIVE (src/habu/aot-capture.f
+\ ACAP-PWIN-CAPTURE): a band is numbered in the capture host's own wordlist
+\ space, which is a namespace the target discarded, so replaying it would seal
+\ ids that mean something else in the engine being built. The merge already read
+\ it past without keeping it, and the two buffer readers the section still had
+\ named a word no filler defines any more. The section table is POSITIONAL and
+\ SECTION-COUNT is checked for hard equality, so dropping a section renumbers
+\ every section after it and changes the count - which is what the version bump
+\ says. An artifact that still carries the band is refused by name on its own
+\ version, not skipped.
+\
 \ THREE OF THE SECTIONS ARE THE CHECKER'S, not the seed's. The signature rows and
 \ the strings they name are src/core/checker.f's signature pool, carried verbatim
 \ so nothing is re-encoded on the way through; the type registry is one opaque
@@ -97,8 +112,12 @@
 \ section, a closure list that does not walk to its own end, a second pass that did
 \ not read what the first one verified,
 \ and a chain digest that does not re-derive from the files on disk.
-\ Every one of them has a case in test/aot-chain-capture-suite.f, forged against a
-\ real artifact and run through the production reader in a child process.
+\ NOT ONE OF THEM IS FORGED YET. test/aot-chain-capture-suite.f drives a real
+\ capture through this writer and this reader in a child process and pins the
+\ header the write produced - magic, version, section count, the length arithmetic
+\ and the producer key - so the round trip and every reader in this file are
+\ proved; a case that truncates a payload, doctors a section table or moves a
+\ chain source belongs in that suite and is not there.
 \
 \ TWO ENTRY POINTS OVER ONE MACHINERY. READ fills the buffers with the artifact,
 \ bases and all, and is what the round trip and the fixpoint compare. MERGE
@@ -110,7 +129,7 @@ package AOT-FILE
 using AOT-BUF
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-5 constant VERSION   \ 5 made the window's DATA sparse: the run table, the run bytes, the span scalar
+6 constant VERSION   \ 6 dropped the protected-WID bitmap section: the window's own rows are all that travel
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -125,7 +144,7 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 104 constant O-PAYSHA
 32 constant SHA-BYTES
 
-18 constant SEC-N
+17 constant SEC-N
 16 constant ROW-BYTES                \ one section-table row: offset u64 + length u64
 
 0 constant S-SCALARS
@@ -140,12 +159,13 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 9 constant S-WRUNS                   \ ... and their bytes, concatenated in row order
 10 constant S-XTSITES
 11 constant S-BOOTRUN
-12 constant S-PWID
-13 constant S-PWIN
-14 constant S-SIGS
-15 constant S-SIGSTR
-16 constant S-REG
-17 constant S-CLOSURE
+\ 12 was the protected-WID bitmap through version 5; see the header for why it is
+\ gone and why the sections after it moved down rather than leaving a hole.
+12 constant S-PWIN
+13 constant S-SIGS
+14 constant S-SIGSTR
+15 constant S-REG
+16 constant S-CLOSURE
 
 \ The five genuine scalars: the capture-time DATA base, the canonical code base,
 \ the window's wordlist base and span, and the window's DATA span. Everything else
@@ -155,13 +175,12 @@ $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in
 \ exceed 8 + 256 * (8 + 256) = 67592 bytes. The cap is the next round number above
 \ it and the overflow is refused rather than truncated.
 $20000 constant CLOSURE-CAP
-\ The verify pass's read granularity, and the floor under it is the widest
-\ section a merge reads PAST without keeping. SKIP-SECTION fills CHUNK-BUF in one
-\ GET, so the buffer is DERIVED from that section instead of being guarded
-\ against it at read time: a length check there would be a value test for a
-\ relationship the declaration can state.
-$10000 constant CHUNK-FLOOR
-PROT-BITS-BYTES CHUNK-FLOOR max constant CHUNK
+\ The verify pass's read granularity, and the whole of what CHUNK-BUF is for:
+\ pass one streams the payload through it and pass two reads the header back
+\ through it to move the cursor. No section is read PAST any more: the only one a
+\ merge ever skipped was the protected-WID bitmap, which version 6 does not
+\ carry, so nothing else puts a floor under this number.
+$10000 constant CHUNK
 
 $4B constant REFUSE-RC
 
@@ -241,7 +260,6 @@ variable CUR
    k S-WRUNS   = if AOT-WINDOW:RBYTES-BUF@ exit then
    k S-XTSITES = if AOT-XTSITE:BUF@ exit then
    k S-BOOTRUN = if AOT-BOOTRUN-BUF@ exit then
-   k S-PWID    = if AOT-PWID-BUF@ exit then
    k S-PWIN    = if AOT-PWIN-BUF@ exit then
    k S-SIGS    = if AOT-SIG-BUF@ exit then
    k S-SIGSTR  = if AOT-SIG-STR-BUF@ exit then
@@ -261,7 +279,6 @@ variable CUR
    k S-WRUNS   = if AOT-WINDOW:RBYTES-LEN @ exit then
    k S-XTSITES = if AOT-XTSITE:N @ 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
-   k S-PWID    = if PROT-BITS-BYTES exit then
    k S-PWIN    = if AOT-PWIN-N @ 4 * exit then
    k S-SIGS    = if AOT-SIG-N @ SIG-ROW * exit then
    k S-SIGSTR  = if AOT-SIG-STR-LEN @ exit then
@@ -290,7 +307,6 @@ variable CUR
    k S-WRUNS   = if AOT-WINDOW:RBYTES-CAP exit then
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
-   k S-PWID    = if PROT-BITS-BYTES exit then
    k S-PWIN    = if AOT-PWIN-MAX 4 * exit then
    k S-SIGS    = if AOT-SIG-MAX SIG-ROW * exit then
    k S-SIGSTR  = if AOT-SIG-STR-CAP exit then
@@ -313,7 +329,6 @@ variable CUR
    k S-WRUNS   = if s" window DATA run bytes" exit then
    k S-XTSITES = if s" named code sites" exit then
    k S-BOOTRUN = if s" boot-run list" exit then
-   k S-PWID    = if s" protected-WID bitmap" exit then
    k S-PWIN    = if s" protected window WIDs" exit then
    k S-SIGS    = if s" signature rows" exit then
    k S-SIGSTR  = if s" signature strings" exit then
@@ -574,8 +589,8 @@ private
    FD @ close
    k s" is larger than the buffer it fills" SECT-DIE ;
 
-\ The two fixed-width sections say their own size, so a short one is a different
-\ shape rather than a smaller one and cannot be filled in part.
+\ The scalars section says its own size, so a short one is a different shape
+\ rather than a smaller one and cannot be filled in part.
 : ?EXACT ( n n -- ) {: k:n want:n :}
    k ROW-LEN@ want = if exit then
    FD @ close
@@ -587,17 +602,6 @@ private
    k S-NAMES = if k BASE@ k ROW-LEN@ + AOT-NAMES-RESERVE then
    k SEC-PTR k BASE@ + k ROW-LEN@ GET
    k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-UPDATE ;
-
-\ Read a section past without keeping it. The bytes still feed the running
-\ digest, so a section this build has no use for is still one the second pass
-\ proves it read. CHUNK-BUF is free here - the verify pass that owns it has
-\ finished - and it is wide enough by construction: the only section a merge
-\ skips is the protected-WID bitmap, ?EXACT has already pinned that section's
-\ length to PROT-BITS-BYTES, and CHUNK is declared no smaller than that.
-: SKIP-SECTION ( n -- ) {: k:n :}
-   k ROW-LEN@ 0= if exit then
-   CHUNK-BUF k ROW-LEN@ GET
-   CHUNK-BUF k ROW-LEN@ SHA256-UPDATE ;
 
 \ Every count is the length the table gave, divided by the row the format fixes -
 \ except the window's DATA SPAN, which no length fixes any more and which the
@@ -740,8 +744,7 @@ variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
    TBL SEC-N ROW-BYTES * SHA256-UPDATE
    ?TABLE
    S-CLOSURE ROW-LEN@ CLEN !
-   S-SCALARS SCAL-BYTES ?EXACT
-   S-PWID PROT-BITS-BYTES ?EXACT ;
+   S-SCALARS SCAL-BYTES ?EXACT ;
 
 public
 
@@ -799,10 +802,9 @@ private
 \                   into the signature strings, which are appended the same way
 \                   the name pool is - and for the same reason, without a
 \                   deduplication pass.
-\ The host's PRE-window protected bitmap is NOT one of them: the artifact's is
-\ the capture engine's own band, numbered in a wordlist space this host does not
-\ share, and the host's band already covers what this engine protects. It is read
-\ past, so the payload digest still proves it arrived.
+\ NO SECTION IS READ PAST, and none has been since version 6 stopped carrying the
+\ capture host's protected-WID band: what each capture contributes to the merged
+\ engine's seals is its own window's ids, which are the wordlist coordinates above.
 
 variable H-BLOB   variable H-REC     variable H-SITE   variable H-NAMES
 variable H-DSITE  variable H-CSITE   variable H-XTOFF  variable H-DATA
@@ -1096,7 +1098,7 @@ public
    OPEN-CSITE-GAP
    SEC-N 0 ?do
       i S-WDATA = if PLACE-WDATA then
-      i S-PWID = if i SKIP-SECTION else i LOAD-SECTION then
+      i LOAD-SECTION
    loop
    FD @ close
    ?PAYLOAD-AGAIN

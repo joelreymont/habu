@@ -870,6 +870,10 @@ SUITE aot-wide-format
    test/aot-wide-format-suite.f
 ;SUITE
 
+SUITE aot-chain-capture
+   test/aot-chain-capture-suite.f
+;SUITE
+
 SUITE aot-prelude-band
    test/aot-prelude-band-suite.f
 ;SUITE

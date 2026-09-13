@@ -32,7 +32,8 @@
 \ carried a capture-side WINDOW-OPEN that forwarded here; it was deleted, because
 \ a second name for a one-writer operation is the one thing that can grow a second
 \ body. What this file publishes now is the whole opening and closing of a window
-\ (WINDOW-OPEN / WINDOW-OPEN-UNARMED / WINDOW-CLOSE, at the foot), so a producer
+\ (WINDOW-OPEN / WINDOW-OPEN-UNARMED / WINDOW-CLOSE, and SIG-CLOSE for the
+\ checker payload's own end, at the foot), so a producer
 \ names the moment rather than spelling four cursor reads out; OPEN itself stays
 \ public because those three are its only callers and the arming is still one
 \ writer. Producers today: stdin.f CAPTURE-REPL, tools/aot-chain-capture.f,
@@ -110,6 +111,24 @@ public
 \ the reason above, and never read again at capture time.
 : WINDOW-CLOSE ( -- )
    cp@ B1 !  ndict@ R1 !  here D1 !  WIDN W1 ! ;
+
+\ WHERE THE WINDOW'S SIGNATURES AND TYPES END, which is a different moment from
+\ where the capture RUNS, and only a producer that captures LATER than its window
+\ needs to say so. The signature pool is armed across a window and the type
+\ registry's delta is two high-waters subtracted, so the registry's end is the
+\ moment it is READ. tools/aot-chain-capture.f loads its own assembler and
+\ artifact writer after the window shuts and those declare families of their own,
+\ so a capture-time read carried the tool's types as well as the window's and the
+\ seeded engine then measured its own registry against a base that had counted
+\ types no target has (measured: the chain's window declares 70 families and the
+\ capture read more). Closing here latches the end at the window's last
+\ definition and stops the collection, so src/habu/aot-capture.f ACAP-SIG-END -
+\ which is where every producer that does NOT close early ends up - finds the
+\ store disarmed and keeps the end this declared.
+: SIG-CLOSE ( -- )
+   CHECKER-ASIG-ARMED? 0= if exit then
+   CHECKER-REG-AOT-CLOSE
+   CHECKER-ASIG-DISARM ;
 
 \ The window as aot-capture.f CAPTURE takes it. One reader, so a caller cannot
 \ hand the six in a different order than the next caller does.

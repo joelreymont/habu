@@ -1420,6 +1420,43 @@ public
    off u + 1+ AOT-BOOTRUN-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;      \ live terminator (uncounted)
 
+\ WHAT THE ROW TABLE MUST HOLD, as the two populations ACAP-BAKE-DATA writes a row
+\ for, each recounted off the LIVE table with that word's own arithmetic. A producer
+\ can then check the length of the table it just produced against a reading that did
+\ not come from the table (tools/aot-chain-capture.f ?XTOFF, and the same predicate
+\ over a real capture in test/aot-artifact-roundtrip.f), which is what catches a row
+\ never written, a row written twice, and a row for a cell in neither population.
+\ The two are disjoint because the classification is: a cell INSIDE the window
+\ counts here however its target is placed.
+\
+\ DECLARED-IN is the cells inside the window's DATA span. Their bytes are kept out
+\ of every sparse run, so the value the seed writes can only come from their row.
+: DECLARED-IN ( n n -- n ) {: d0:n d1:n :}
+   d0 AOT-DATA-N - {: d0off:n :}
+   d1 d0 - {: len:n :}
+   0
+   ACAP-XTCELL-ROWS 0 ?do
+      i ACAP-XTCELL-OFF d0off - {: woff:n :}
+      woff 0 >= woff len < and if 1+ then
+   loop ;
+
+\ TARGETED-OUT is the cells the window does NOT contain whose declared target is
+\ inside their kind's span. They belong to the engine the window was loaded into
+\ and travel for one reason: the window's load stored a window address there, which
+\ is a load-time effect no captured byte carries. TRAPPED-BELOW asks a narrower
+\ question of the same population - the CODE cells below the window, which are the
+\ ones a boot-run installer has to refill - so the two are not interchangeable.
+: TARGETED-OUT ( n n n n -- n ) {: b0:n b1:n d0:n d1:n :}
+   d0 AOT-DATA-N - {: d0off:n :}
+   d1 d0 - {: len:n :}
+   0
+   ACAP-XTCELL-ROWS 0 ?do
+      i ACAP-XTCELL-OFF d0off - {: woff:n :}
+      woff 0 >= woff len < and 0= if
+         i b0 b1 d0 d1 ACAP-XTCELL-TARGET-IN? if 1+ then
+      then
+   loop ;
+
 \ How many declared address cells BELOW the window hold an address inside it.
 \
 \ THIS IS THE OTHER HALF OF THE BOOT-RUN CONTRACT, and the half nothing measured

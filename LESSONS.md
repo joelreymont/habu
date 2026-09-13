@@ -8224,3 +8224,36 @@ and --no-lldbinit.
   generation 2, both `habu2: AOT section caps and icode.f AOT-SECTION-CAP disagree`,
   exit 72. Equality between a reserved capacity and a host-dependent need is the
   wrong relation: a reservation only ever has to be an upper bound on the need.
+
+## 2026-09-13 - a format section outliving its producer
+
+- **An artifact section with no producer survives for as long as nothing loads
+  the format through a suite, and its dead readers surface in generated source.**
+  `src/habu/aot-file.f` carried `S-PWID`, the capture host's protected-WID bitmap,
+  from the moment the capture became a live derivation whose rows travel
+  window-relative (`aot-capture.f` ACAP-PWIN-CAPTURE, commit 3e29a730). The merge
+  already read it past, but `SEC-PTR` and `tools/aot-chain-capture.f`'s poison
+  smear still called `AOT-PWID-BUF@`, which `src/habu/aot-decl.f` had stopped
+  defining, and neither file is loaded by any registered suite - the format reaches
+  a build only inside the generated stdin stage source. So the undefined name
+  arrived as `hb-stdin-mk` dying `E-UNDEFINED` in the Gforth recovery chain and as
+  `certify: stdin-src rejected rc 70`, both far from the line that caused them.
+  The cure is a LOAD, not another reader: `test/aot-chain-capture-suite.f` carries
+  the format and the tool through the real load path, with
+  `test/aot-artifact-roundtrip.f` driving WRITE/READ/WRITE over a small captured
+  window, because a product engine provides the compiler chain and cannot capture
+  it. Two facts made the removal a format change rather than a deletion: the
+  section table is POSITIONAL and `SECTION-COUNT` is hard-equality checked, so
+  dropping section 12 renumbered five sections and bumped `VERSION` 5 to 6, which
+  is what refuses an older artifact by name.
+- **A count assertion written as a literal stops being true when its population
+  gains a second class.** `?XTOFF` asserted `AOT-WINDOW:XTOFF-N = 1` because the
+  only declared address cell in the chain's window was A64RAV:DKEEP-HOOK's. Once
+  below-window cells with in-span targets started travelling
+  (habu-keep-declared-addr-dbd7d8d9) the table held four rows and the literal was
+  wrong by exactly the new class. State the predicate instead - rows = cells
+  inside the window (`AOT-CAPTURE:DECLARED-IN`) + cells outside it whose target
+  is in their kind's span (`AOT-CAPTURE:TARGETED-OUT`; `TRAPPED-BELOW` counts only
+  the code-kind ones), both counted off the LIVE `SNAP-RELOC:XTCELL` table
+  rather than off the table being checked - and the assertion survives a change to
+  either population.

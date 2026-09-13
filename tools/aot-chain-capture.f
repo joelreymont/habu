@@ -51,10 +51,18 @@
 \ prefix, so REQUIRE-N minus REQUIRE-BOOT-N is exactly how many files THIS process
 \ has loaded, and the only acceptable answer is one — this file.
 \
-\ Run it in a booted engine, from the repository root:
-\   bin/hb --load tools/aot-chain-capture.f
+\ WHICH BOOTED ENGINE, and it is not the installed product. Once the chain is
+\ baked, every file its closure names is `provided` and the `require` below is a
+\ registry no-op, so the window comes up empty and this tool says so: under bin/hb
+\ it dies "the window is empty - the chain did not load". The engine that can run
+\ it is the build's capture host, which carries the same prefix with no artifact
+\ declared (tools/build-fixpoint.f BF-KEEP-HOST), and the build runs exactly this
+\ command line in it (BF-PREPARE-CAPTURE-ARGV), from the repository root:
+\   $HB_TMP/hb-host --load tools/aot-chain-capture.f -- <artifact>
 \ It prints one `name=value` line per census field and exits 0, or refuses with
 \ exit 74 and a named diagnostic — its own, or one of src/habu/aot-capture.f's.
+\ test/aot-chain-capture-suite.f runs it under bin/hb for that refusal, which is
+\ what proves this whole file and its closure still compile in a booted engine.
 
 package AOT-CHAIN
 public
@@ -168,7 +176,8 @@ create HEX 64 allot
 \   was a code address in the process that compiled it, and the seed re-traps it.
 \   A64RAV:DKEEP-HOOK is the one - the `defer` regalloc-verify.f opens for a reader
 \   of its refusals - and without its installer the first refusal the verifier
-\   reaches dies "defer: unset execution vector". ?XTOFF holds that count.
+\   reaches dies "defer: unset execution vector". ?XTOFF counts that population
+\   against the row table, together with the one below.
 \   Below the window: three CHECKER-TAPE observer cells planted by NFEED. Without
 \   them a seeded engine dies "checker: no source-tape observer to arm" on the
 \   first definition. ?TRAPPED holds that count against the engine's registry.
@@ -178,6 +187,7 @@ create HEX 64 allot
 \ undeclared installer moves the measurement and not the list, and the capture
 \ stops.
 variable CELLS-OWED           \ pre-window cells the declared installers refill
+1 constant WINDOW-CELLS       \ and the window's own declared cells they refill: DKEEP-HOOK's
 
 : RESOLVE-BAD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n r:ptr ru:n :}
    s" aot-chain-capture: boot-run name " type a u type s"  " type r ru type cr
@@ -206,11 +216,35 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE   \ its cell is in the window: see ?XTOFF
    s" NFEED:INSTALL"             3 DECLARE ; \ CHECKER-TAPE scan, token, verdict
 
+\ ONE DECLARED CELL INSIDE THE WINDOW, AND EVERY ROW ACCOUNTED FOR. Two claims,
+\ because they fail for different reasons and only the first one is about this
+\ tool's own list.
+\   The window's own declared cells arrive TRAPPED - what they held was an address
+\   in the process that compiled them - so each one needs a boot-run entry to put
+\   it back, and this tool declares exactly one (A64RAV:DKEEP-HOOK, DECLARE-ALL
+\   above). A second one appearing is a cell that would boot untrapped.
+\   The row table is that population plus the cells OUTSIDE the window whose
+\   target is inside their kind's span, and nothing else. Both terms are recounted
+\   off the live XTCELL table rather than read out of the table being checked, so
+\   a row never written, a row written twice, and a row for a cell in neither
+\   population all arrive here.
+\
+\ THE FIRST CLAIM USED TO BE WRITTEN AS `XTOFF-N = 1`, which is the same thing only
+\ while the second population is empty. It stopped being empty when the capture
+\ stopped describing the booting engine's own cells and started carrying a cell
+\ below the window whose target is in its kind's span (dot
+\ habu-keep-declared-addr-dbd7d8d9) - the CHECKER-TAPE cells NFEED plants and the
+\ literal pool base NSTR:WINDOW-OPEN latches - so the literal was wrong by exactly
+\ those. Stated as the predicate it holds however either population changes.
 : ?XTOFF ( -- )
-   AOT-WINDOW:XTOFF-N @ 1 = if exit then
-   s" aot-chain-capture: declared address cells in the window=" type AOT-WINDOW:XTOFF-N @ .
-   s" aot-chain-capture: and this tool installs one" type cr
-   s" aot-chain-capture: an unlisted declared address cell would boot untrapped"
+   AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:DECLARED-IN {: win:n :}
+   AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:TARGETED-OUT {: out:n :}
+   win WINDOW-CELLS =  AOT-WINDOW:XTOFF-N @ win out + =  and if exit then
+   s" aot-chain-capture: declared address cell rows=" type AOT-WINDOW:XTOFF-N @ .
+   s" aot-chain-capture: cells inside the window=" type win .
+   s" aot-chain-capture: this tool installs=" type WINDOW-CELLS .
+   s" aot-chain-capture: cells outside it targeting it=" type out . cr
+   s" aot-chain-capture: a declared address cell nothing here accounts for would boot untrapped"
    REFUSE-RC die ;
 
 : ?TRAPPED ( -- )
@@ -286,10 +320,14 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 \ ---- the artifact, and the proof that writing it is a round trip -------------
 \
 \ THE PRODUCER KEY is the SHA-256 of the binary this process is running, taken
-\ over the path lib/engine-id.f resolved for itself. The census prints the same
-\ fact in hex through ENGINE-ID:KEY$, and test/aot-chain-capture-suite.f hashes
-\ bin/hb from the outside and compares - so the key the artifact carries is a
-\ reading of a file this suite has already pinned, not a claim.
+\ over the path lib/engine-id.f resolved for itself, and the census prints the
+\ same fact in hex through ENGINE-ID:KEY$. test/aot-chain-capture-suite.f hashes
+\ bin/hb from the outside and compares it against the key in an artifact's
+\ header, so that field is a reading of a file the suite has pinned rather than a
+\ claim. The artifact it reads is the small-window one test/aot-artifact-roundtrip.f
+\ writes, because a product engine cannot capture the chain at all; what that
+\ suite proves about THIS file is that it loads in a booted engine and refuses by
+\ name there.
 \
 \ THE ROUND TRIP RUNS EVERY TIME AN ARTIFACT IS WRITTEN, and it is the same
 \ comparison the fixpoint loop promotes across generations: write A, destroy the
@@ -332,7 +370,6 @@ $A5 constant POISON-BYTE
 : POISON-BOOT ( -- )
    AOT-XTSITE:BUF@ AOT-XTSITE:N @ 8 * AOT-XTSITE:MAX 8 * SMEAR
    AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ AOT-BOOTRUN-CAP SMEAR
-   AOT-PWID-BUF@ PROT-BITS-BYTES PROT-BITS-BYTES SMEAR
    AOT-PWIN-BUF@ AOT-PWIN-N @ 4 * AOT-PWIN-MAX 4 * SMEAR ;
 
 : POISON-METADATA ( -- )
