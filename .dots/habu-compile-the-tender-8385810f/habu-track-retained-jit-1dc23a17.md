@@ -97,3 +97,16 @@ that invocation's origin. The owned capture admission belongs to the writer
 lane; disk artifacts acquire no positive evidence. The older 5b bootstrap seed
 has no provenance journal, so its private first output stays unknown. Only a
 subsequent fully tracked native capture can become an accepted product.
+
+Review follow-up: generic patch32 could modify a native body while leaving its
+origin positive. Its isolated writer now invalidates intersecting evidence before
+the store; untracked dictionary/DATA metadata writes do not consume code rows.
+The real-load regression writes the instruction's unchanged value and queries
+the resulting unknown origin without executing the patched body. Fresh source
+checker/layout/habu1 and helper emission pass at tier1 on bee6 (exact window:0).
+The actual native helpers pass untracked metadata, adjacent, repeated, interior
+and partial-edge invalidation with preserved neighbouring evidence; the full
+8192-row controls still accept adjacent merging and refuse growth with exit101.
+The real-load engine primitive regression remains pending. The bound is not application
+headroom acceptance: ordinary interactive JIT/native-stub alternation can fill
+it, and Tender/Maki/Kestrel closure counts still need the rebuilt engine.

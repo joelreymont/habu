@@ -130,7 +130,8 @@ private
    16 SP 176 LDR,  16 3 0 STR, ;
 
 : EMIT-SET ( -- )
-   LBL LBL LBL LBL LBL {: append:label interior:label done:label full:label msg:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: append:label interior:label normal:label replace:label done:label full:label msg:label :}
    LSET LABEL@ LBL,
    SAVE,
    9 10 CMP,  C-CS done BCOND,
@@ -139,6 +140,11 @@ private
    3 N-CELL LIT64,  3 DATA 3 ADD,  4 3 0 LDR,
    10 SPANS LIT64,  4 10 CMP,  C-HI full BCOND,
    2 TABLE-OFF LIT64,  2 DATA 2 ADD,
+   \ x12 requests invalidation only where earlier evidence exists. Generic
+   \ patch32 also writes dictionary/DATA metadata, which needs no code row.
+   12 normal CBZ,
+      SEARCH,  5 6 CMP,  C-GE done BCOND,  replace B,
+   normal LBL,
    4 append CBZ,
    12 4 1 SUBI,  13 12 2 ROW,
    10 13 8 LDR,  10 7 CMP,  C-GT interior BCOND,
@@ -151,7 +157,9 @@ private
       7 13 0 STR,  8 13 8 STR,  9 13 16 STR,
       4 4 1 ADDI,  4 3 0 STR,  done B,
    interior LBL,
-      SEARCH,  EDGES,  full MOVE,  PUT,  done B,
+      SEARCH,
+   replace LBL,
+      EDGES,  full MOVE,  PUT,  done B,
    full LBL,
       0 2 MOVZ,  1 msg ADR,  2 31 MOVZ,  NR-WRITE SYS,
       0 101 MOVZ,  NR-EXIT-GROUP SYS,
@@ -191,20 +199,26 @@ private
    LQUERY-END LABEL@ LBL,
    s" engine-code-origin-query" LQUERY @ LQUERY-END @ ENGINE-HELPER:REGISTER ;
 
+\ Runtime addresses enter here; stored coordinates remain relocation-relative.
+\ Keep all caller registers intact, including overlapping argument registers.
+: RANGE-MODE, ( n n n bool -- ) {: first:n end:n origin:n overlap?:bool :}
+   SP SP 64 SUBI,
+   9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  30 SP 24 STR,
+   12 SP 48 STR,
+   first SP 32 STR,  end SP 40 STR,
+   9 SP 32 LDR,  10 SP 40 LDR,  11 origin LIT64,
+   12 overlap? if 1 else 0 then LIT64,
+   LSET LABEL@ BL,
+   9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  30 SP 24 LDR,
+   12 SP 48 LDR,
+   SP SP 64 ADDI, ;
+
 public
 
 : EMIT-HELPERS ( -- ) EMIT-SET EMIT-QUERY ;
 
-\ Runtime addresses enter here; stored coordinates remain relocation-relative.
-\ Keep all caller registers intact, including overlapping argument registers.
-: RANGE, ( n n n -- ) {: first:n end:n origin:n :}
-   SP SP 64 SUBI,
-   9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  30 SP 24 STR,
-   first SP 32 STR,  end SP 40 STR,
-   9 SP 32 LDR,  10 SP 40 LDR,  11 origin LIT64,
-   LSET LABEL@ BL,
-   9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  30 SP 24 LDR,
-   SP SP 64 ADDI, ;
+: RANGE, ( n n n -- ) 0 0<> RANGE-MODE, ;
+: INVALIDATE, ( n n -- ) -1 0 0= RANGE-MODE, ;
 
 : NATIVE-RANGE, ( n n -- ) 1 RANGE, ;
 : UNKNOWN-RANGE, ( n n -- ) -1 RANGE, ;

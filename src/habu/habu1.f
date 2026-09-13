@@ -2104,6 +2104,9 @@ public
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,     \ save w/addr first: the guard call clobbers x10 (B)
    7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
+   \ A generic instruction write carries no optimizer proof, even if its old
+   \ bytes belonged to a native body. Invalidate before the write can publish.
+   9 SP 8 LDR,  10 9 4 ADDI,  9 10 TIER-PROV:INVALIDATE,
    \ THE FLIP IS STATELESS, keyed on the target word, not on the bracket state a
    \ compile is holding. A patch names the address it rewrites outright and its
    \ target does not move between the two flips, which is exactly LPROTREC's

@@ -375,6 +375,9 @@ variable RC     variable EXITED
    0 ASSERT-RC OUT$ S\" 0\n48\n" STR= TTRUE ;
 
 : TEST-ORIGIN-OVERWRITE ( -- )
+   s" a generic instruction patch invalidates native provenance" T-LABEL
+   S\" 1 set-tier : OR-PATCHED ( -- n ) 56 ;\nTRUSTED: OR-PATCH ( n -- ) dup @ swap patch32 ;\n' OR-PATCHED dup 4 + code-origin . ' OR-PATCHED OR-PATCH ' OR-PATCHED dup 4 + code-origin .\n" EXEC
+   0 ASSERT-RC OUT$ S\" 1\n-1\n" STR= TTRUE
    s" exported aliases retain the target body's origin" T-LABEL
    s" 0 set-tier package OA public : V ( -- n ) 51 ; ;package 1 set-tier package OB public export OA:V ;package ' OA:V dup 4 + code-origin . ' OB:V dup 4 + code-origin . OB:V ." EXEC
    0 ASSERT-RC OUT$ S\" 0\n0\n51\n" STR= TTRUE
