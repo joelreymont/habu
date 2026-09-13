@@ -41,3 +41,9 @@ refuses75 at both tiers; negative/max+1/overflowing reservation and late DATA
 append refuse74. D05's five scalar values pass both file/owned matrices with
 the required outcomes. icode-fixup-test passes the updated budget agreement.
 No full bootstrap, restored product or complete compiler gate is claimed here.
+
+Independent review found the adjacent MERGE scalar path could hide source -1
+under an8-byte host span and accept merged span7. SCALARS@ now validates the
+incoming span before storing it or computing a merged extent. Real file MERGE
+refuses that counterexample75 and accepts source0 with exact merged span8;
+both controls are registered beside the file/owned scalar matrix.

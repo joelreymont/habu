@@ -932,7 +932,7 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    SCAL 8 + U64@ A-B0 !
    SCAL 16 + U64@ A-W0 !
    SCAL 24 + U64@ A-SPAN !
-   SCAL 32 + U64@ A-DSPAN ! ;
+   SCAL 32 + U64@ dup ?SPAN A-DSPAN ! ;
 
 \ WHERE THE ARTIFACT'S WINDOW BEGINS, and it is not simply the host's length.
 \ What a captured address needs kept is its 8-RESIDUE - the atomics fault on a

@@ -136,9 +136,17 @@ create KEY 32 allot
    else
       KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE
       CLEAR-COUNTS
-      KEY 0 SCRIPT-ARGV$ AOT-FILE:READ
+      2 SCRIPT-ARGV$ s" merge" STR= if
+         \ As in the address-row merge fixture, one zeroed host record marks
+         \ a captured host. The positive host span must not hide source -1.
+         1 AOT-REC-N ! 8 AOT-DATA-SIZE !
+         KEY 0 SCRIPT-ARGV$ AOT-FILE:MERGE
+      else
+         KEY 0 SCRIPT-ARGV$ AOT-FILE:READ
+      then
    then
-   AOT-DATA-SIZE @ SPAN-VALUE T=
+   AOT-DATA-SIZE @ SPAN-VALUE
+   2 SCRIPT-ARGV$ s" merge" STR= if 8 + then T=
    T-REPORT
    s" aot-data-sites: span ok" type cr ;
 

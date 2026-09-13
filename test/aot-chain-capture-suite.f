@@ -326,7 +326,10 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    s" span-min" $4B SPAN-CASE
    s" span-zero" 0 SPAN-CASE
    s" span-cap" 0 SPAN-CASE
-   s" span-large" $4B SPAN-CASE ;
+   s" span-large" $4B SPAN-CASE
+   s" span-negative" s" merge" RUN-DATA-SITES $4B ROW-RC
+   s" window DATA span exceeds what this engine can bake" ERR-SAID?
+   s" span-zero" s" merge" RUN-DATA-SITES 0 ROW-RC ;
 
 : BODY ( -- )
    PROBE-ROUNDTRIP
