@@ -1,6 +1,8 @@
 require lib/test.f
 require lib/task.f
 require lib/image-lifecycle.f
+\ Quotation-store lowering belongs to the optimizing backend under test.
+require test/compiler/aot-mode.f
 
 package IMAGE-LIFECYCLE-TASK-TEST
 private
@@ -13,8 +15,26 @@ TASK:MIN-STACK TASK:TASK WORKER-A
 TASK:MIN-STACK TASK:TASK WORKER-B
 TASK:MIN-STACK TASK:TASK WORKER-C
 TASK:MIN-STACK TASK:TASK WORKER-D
+TYPED-VARIABLE SHARED-ACTION [ -- ]
+TASK:#USER CELL TASK:+USER LOCAL-CELL drop
+
+\ The task allocator returns a raw cell; this test declares its quotation type.
+TRUSTED: LOCAL-ACTION ( -- ptr [ -- ] ) LOCAL-CELL ;
+
+\ Inspected only by the main thread after its worker has stopped.
+: ADDRESS-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
 : CLEAN ( -- ) 1 CLEANED +! ;
+
+: EMPTY-WORK ( -- ) ;
+
+: LOCAL-WORK ( -- )
+   [: CLEAN ;] LOCAL-ACTION !
+   LOCAL-ACTION @ execute ;
+
+: SHARED-WORK ( -- )
+   [: CLEAN ;] SHARED-ACTION !
+   SHARED-ACTION @ execute ;
 
 : REGISTER-MANY ( -- )
    1 READY atomic-add drop
@@ -24,6 +44,23 @@ TASK:MIN-STACK TASK:TASK WORKER-D
 : JOIN ( ptr n -- ) {: worker:ptr :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat
    worker TASK:KILL ;
+
+: STORE-OWNERS ( -- )
+   \ Establish the TCB's own dispatch rows before measuring application stores.
+   ['] EMPTY-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
+   ADDRESS-ROWS {: before:n :}
+   0 CLEANED !
+   ['] LOCAL-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
+   CLEANED @ 1 T=
+   ADDRESS-ROWS before T=
+   ['] SHARED-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
+   CLEANED @ 2 T=
+   ADDRESS-ROWS before 1+ T=
+   \ Repeated stores own one shared row, and the main thread sees the callback.
+   ['] SHARED-WORK WORKER-A TASK:ACTIVATE WORKER-A JOIN
+   SHARED-ACTION @ execute
+   CLEANED @ 4 T=
+   ADDRESS-ROWS before 1+ T= ;
 
 : ROUND ( -- )
    0 READY ! 0 START ! 0 CLEANED !
@@ -40,6 +77,8 @@ TASK:MIN-STACK TASK:TASK WORKER-D
 
 : RUN ( -- )
    T-RESET
+   s" task-local quotations stay transient; shared stores register once" T-LABEL
+   STORE-OWNERS
    s" concurrent registration preserves every callback through growth and reuse" T-LABEL
    3 0 ?do ROUND loop
    T-REPORT ;

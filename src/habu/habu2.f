@@ -5463,6 +5463,13 @@ public
    18 0 ?do i SP i cells LDR, loop
    SP SP 160 ADDI, RET, ;
 
+\ A worker's x20 names its private context; persisted rows belong to the fixed
+\ shared image mapping. Reload x16 at every acquisition, including after mmap
+\ and munmap: SYS, uses x16 on both Linux and macOS.
+: MARK-HEADER ( -- )
+   16 DATA-VA VA>N LIT64,
+   4 XTCELL-N-CELL LIT64, 4 16 4 ADD, ;
+
 : EMIT-MARK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: common:label scan:label add:label full:label band:label kind:label
@@ -5473,9 +5480,9 @@ public
    LPTRMARK LABEL@ LBL, MARK-SAVE
    15 XTCELL-DATA-TAG LIT64,
    common LBL,
-   12 9 DATA SUB,
+   MARK-HEADER
+   12 9 16 SUB,
    6 XTCELL-OFF-MAX LIT64, 12 6 CMP, C-HI band BCOND,
-   4 XTCELL-N-CELL LIT64, 4 DATA 4 ADD,
    6 4 ADDRESS-CELLS:MAGIC-FIELD LDR,
    7 ADDRESS-CELLS:MAGIC LIT64, 6 7 CMP, C-NE shape BCOND,
    13 4 0 LDR, 10 4 ADDRESS-CELLS:CAP-FIELD LDR,
@@ -5487,7 +5494,7 @@ public
    11 1 CMPI, C-EQ mapped BCOND, C-HI shape BCOND,
    6 DATA-SIZE LIT64, 5 6 CMP, C-HI shape BCOND,
    6 6 5 SUB, 6 6 3 LSRI, 10 6 CMP, C-HI shape BCOND,
-   5 DATA 5 ADD, ready B,
+   5 16 5 ADD, ready B,
    mapped LBL,
    5 0 CMPI, C-LE shape BCOND,
    6 5 7 ANDI, 6 shape CBNZ,
@@ -5519,10 +5526,10 @@ public
       10 SP 144 LDR, 1 10 3 LSLI, NR-MUNMAP SYS, full B,
    copied LBL,
       0 SP 152 STR, 17 0 0 ADDI,
-      4 XTCELL-N-CELL LIT64, 4 DATA 4 ADD,
+      MARK-HEADER
       5 4 ADDRESS-CELLS:BASE-FIELD LDR,
       11 4 ADDRESS-CELLS:MODE-FIELD LDR,
-      LBL {: source:label :} 11 source CBNZ, 5 DATA 5 ADD, source LBL,
+      LBL {: source:label :} 11 source CBNZ, 5 16 5 ADD, source LBL,
       14 0 MOVZ,
    copy LBL, 14 13 CMP, C-CS publish BCOND,
       6 14 3 LSLI, 7 5 6 ADD, 7 7 0 LDR,
@@ -5538,7 +5545,7 @@ public
       0 SP 152 LDR, 1 SP 144 LDR, 1 1 3 LSLI,
       NR-MUNMAP SYS, full B,
    released LBL,
-      4 XTCELL-N-CELL LIT64, 4 DATA 4 ADD,
+      MARK-HEADER
    commit LBL,
       5 SP 152 LDR, 10 SP 144 LDR,
       6 13 3 LSLI, 6 5 6 ADD, 7 12 15 ORR, 7 6 0 STR,
