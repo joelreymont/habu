@@ -1,6 +1,6 @@
 ---
 title: "Measure and finish pass-scoped IR reader reuse"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "\"2026-09-11T16:38:06.256061+03:00\""
@@ -10,8 +10,58 @@ blocks:
   - habu-make-spill-rewrite-ca192310
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale diagnosis/claim. Claim: unassigned.
+Plan: [PLAN.md](../../PLAN.md). Claim: Cedar reader lane; root owns independent
+review and integrated full gate. Existing per-field checked readers remain intact.
 
-Reopen only residual measured pass-level scope;43e272e2 checked readers/per-field migration remains complete. Own NFROZEN cursor bindings and reader-taking IR dialect operations, excluding symbol mutation/hir-word constructors. Measure opens per input arena/pass after selfbuild; if material retain checked readers and rebind on module change, with view wrappers and owner/generation/state/bounds checks. If immaterial close with evidence and no new API. Test stale/retired/reused context/input switching and opens count plus total-time pair. No unchecked pinned pointer: prior no-validation ceiling only5.5% on one word.
+Measured on actual append-B (`1d7b2b71`, SHA
+`7e715bcb19486a0fd4c21631fe9d6b95ea82b1fe38e9bcbffde3de588edb79d7`): one
+warmed trivial definition performs 2,895 frozen OPENs, 2,965 OPEN-LIVEs and
+24,924 RD@ reads. CHECK-SCAN/CHECK!/EFFECT-QUERY/NDICT:CALL-TARGET counts are
+1/1/3/1, so duplicate checker scans or token lookup are not this cost. Startup
+and benchmark teardown are outside the counted interval; GDB counts are not
+timings. Logs: `/tmp/cedar-append-query-count.log` and
+`/tmp/cedar-append-open-callers.log`.
 
-Verification: focused real-load cases above; rebuild and run `bin/hb --load test/run.f` for compiler/runtime integration. Speed acceptance uses the all-AOT campaign pair; functional/count evidence can be developed in parallel.
+The repeated frozen opens belong to IR-OP/FUN readers behind NFROZEN:
+FOPS 336, FATTRS 254, FOPCODE@ 215, FATTR-KEY@ 438 (two opens per call),
+FOP@ 310 and FBLOCK@ 206. Live IR-SYM:LEN@ contributes 761 separate live
+opens and is outside this leaf. A disposable native copy of the existing driver
+with ten stage clocks measured 1,000 definitions: trivial/three-op selection
+326/263 us, combine 252/20 us, emission 145/126 us and elaboration 78/77 us.
+Its total 1,002/687 us agreed with the stock sampler's 1,006/691 us within the
+concurrent-load variation. These are attribution measurements, not quiet speed
+acceptance. Existing probes and logs are `/tmp/cedar-append-pass-{0,1}.log` and
+`/tmp/cedar-append-profile-{0,1}.log`; no production profiling framework added.
+
+Implemented: NFROZEN:VIEWS! opens its fourteen frozen views once per binding.
+Its row accessors use typed reader-taking IR-OP/FUN/TYPE/ATTR/VERIFY APIs;
+the public view wrappers and every existing pass/module rebind remain. Every
+cell read still validates generation, state and bounds. Frozen API admission
+rejects live readers; the eight-field operation tiling memo keys both complete
+reader tokens and the operation owner. It retains no mapping pointer, size or
+new ABI field. Public wrapper admission order is preserved, including a block
+before its companion view and a predecessor pool before its row view.
+
+Actual product `/tmp/cedar-family-stage-abi/hb-native-readers`, source
+`38ed1d24`, SHA `5879a0ccae9c60e5e07285d0d0682b096e854d698affe8bf991dab1a1689bf14`,
+built from append-B in 131.62 s, rc 0. Build log:
+`/tmp/cedar-family-stage-abi/native-build-readers.log`. A test-only frozen-module
+getter correction follows that source; runtime source is unchanged.
+
+Tier-1 product suites passed: ir-arena, ir-op, ir-build, ir-fun, native-select,
+native-combine, native-regalloc and native-loop. New controls cover live-token
+refusal, generation/state error ordering, retired and reused slots, context
+teardown, exact memo identity for alternate tables of one owner, bounds and
+failed-miss recovery through both view and retained-reader APIs, and NFROZEN
+switching between differently sized frozen modules. Logs:
+`/tmp/cedar-readers-{ir-arena,ir-op,ir-build,ir-fun,native-select,native-combine,native-regalloc,native-loop}.log`.
+
+The same warmed actual definition now makes 328 frozen OPENs (88.7% fewer).
+OPEN-LIVE 2,965, RD@ 24,924, FIND-B 2,654 and checker/query counts are unchanged.
+`/tmp/cedar-readers-count.log` uses the same controlled interval and original
+sampler/count tools. Quiet paired timing is pending: both Habu lanes drained,
+but an external Tender corpus launched six busy workers alongside Maki/KiCad
+work. Process/load evidence is `/tmp/cedar-readers-timing-load.txt`; no timing
+under that load is claimed as quiet. Integrated rebuild/full suite remain
+root's gate. This leaf does not claim the 500 us target or optimize live symbol
+reads.
