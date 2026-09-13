@@ -1,7 +1,8 @@
 \ native-window-owner-child.f - tools/native-build.f's window, reduced to the
 \ checker handover. RESET-ADDRESS-ROWS through LOGICAL-RESET are that tool's
 \ words, copied; LOAD-WINDOW is its LOAD-TARGET through src/core/cell-effects.f,
-\ with one fixture after the checked call-store handoff.
+\ with one fixture after the checked call-store handoff. Optional later script
+\ arguments load the fixture's dependencies through the retained continuation.
 \
 \ The verdict goes to stdout as `window: <code>` - 0 when the window accepted
 \ the fixture, the thrown code when it refused. Printing rather than exiting
@@ -116,6 +117,9 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/check-hook.f" included
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
+   \ Optional dependency paths are loaded by this retained continuation: the
+   \ replacement prefix has not installed its own include words yet.
+   SCRIPT-ARGC 1 ?do i SCRIPT-ARGV$ included loop
    PATH$ included ;
 
 \ A quotation carries no locals, so the retained owner crosses the catch here.
@@ -132,5 +136,5 @@ public
 
 ;package
 
-\ Entry: the fixture path is the one script argument.
+\ Entry: the first script argument is the fixture path.
 0 SCRIPT-ARGV$ NW-OWNER:RUN

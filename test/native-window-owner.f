@@ -88,8 +88,7 @@ create ERR IO-CAP allot
 \ the tier-0 cases share). The bound is here to catch a hang, not to time a build.
 600000 constant TIER1-DEADLINE-MS
 
-: WINDOW-TIER1-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
-   fx fxu TIER1-ARGS!
+: WINDOW-TIER1-RESULT ( ptr u8 n -- ) {: want:ptr wantu:n :}
    ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
    TIER1-DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
@@ -99,6 +98,26 @@ create ERR IO-CAP allot
    erru LEN>N 0 <> if ERR erru LEN>N type cr then
    erru LEN>N 0 T= ;
 
+\ Ordinary cases stop at the checker handover. The adapter case adds the
+\ source loader and layout that its real require closure needs.
+: WINDOW-TIER1-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
+   fx fxu TIER1-ARGS! want wantu WINDOW-TIER1-RESULT ;
+
+: WINDOW-ADAPTER ( -- )
+   s" test/native-window-owner-adapter.f" TIER1-ARGS!
+   HB-TARGET-LINUX? if
+      s" src/os/linux/target.f" >LEN PROC-ARGV+
+      s" src/os/linux/layout.f" >LEN PROC-ARGV+
+   else
+      s" src/os/macos/target.f" >LEN PROC-ARGV+
+      s" src/os/macos/layout.f" >LEN PROC-ARGV+
+   then
+   s" src/habu/layout.f" >LEN PROC-ARGV+
+   s" src/core/bytes.f" >LEN PROC-ARGV+
+   s" src/os/env-base.f" >LEN PROC-ARGV+
+   s" src/core/include.f" >LEN PROC-ARGV+
+   S\" window: 0\n" WINDOW-TIER1-RESULT ;
+
 : RUN ( -- )
    T-RESET
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-IS
@@ -106,6 +125,7 @@ create ERR IO-CAP allot
    s" test/native-window-cast-host-bad.f" S\" window: 7131\n" WINDOW-IS
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-TIER1-IS
    s" test/native-window-call-store.f"    S\" window: 0\n"    WINDOW-TIER1-IS
+   WINDOW-ADAPTER
    T-REPORT
    s" native-window-owner: ok" type cr ;
 
