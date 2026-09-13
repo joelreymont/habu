@@ -7,6 +7,10 @@ public
 
 1 constant ABI-VERSION
 9 constant SNAPSHOT-VERSION
+\ Process mutex in fixed image DATA, outside the header and row backing. The
+\ MATCH stack ends before $1A0; $1A0 remains the seal fixture's poke cell, and
+\ CMFAM starts at $1B0. Task USER storage starts much higher, at $41C8.
+$1A8 constant LOCK-CELL
 \ The high six bytes spell HBADDR; the low 16 bits identify header schema 1.
 $4842414444520001 constant MAGIC
 8 constant MAGIC-FIELD
