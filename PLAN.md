@@ -4,6 +4,36 @@ Status: implementation in progress, 2026-09-13. Cedar owns integration. This rep
 the obsolete IR/GPU migration plan, preserved in jj history. Reuse the existing
 Tender campaign `habu-compile-the-tender-8385810f`.
 
+## Current review snapshot
+
+`review/current-compiler` contains the current integration stack plus the source
+target writer, explicit full checker-payload ownership and retained-code
+provenance work. This is an unverified integration snapshot, not an accepted
+replacement engine. The earlier external review used August 23 `master`
+(`3c6bda9d`), which does not contain these compiler changes.
+
+The paired bootstrap has compiled the current compiler at tier 1 and used it
+to compile and execute a new definition. Independent checks cover the source
+checker handoff, descriptor bounds, tape detachment, match storage and fixed-slot
+mapping. The provenance helper has passed isolated emitted-code interval and
+capacity checks; its complete new engine path has not been verified. The owner
+memo/bounds follow-up loads, but its targeted regression controls are incomplete.
+
+The immediate missing seam is positive provenance admission on the owned capture
+and the explicit private bootstrap route. `tools/native-emit.f` still calls the
+ordinary `ENGINE-EMIT:FORTH`, which records an unknown payload origin. The planned
+first private bootstrap may carry unknown origin; only its positively tracked
+product-hosted rebuild can be accepted. Complete source-bound emission, changed
+layout restore, repeated capture, product-hosted rebuild, the full test gate,
+application acceptance and all-AOT compile-speed measurements remain pending.
+
+`review/partial-payload` preserves the separate, unverified graph producer and
+registry prevalidation work (`f091a068`). It is not composed into this branch.
+Validated graph import, payload versioning, corrupt-input controls and artifact
+roundtrips are unfinished; partial capture currently refuses. Review both
+branches when assessing all current work, and use the completion requirements
+below rather than treating source composition as runtime evidence.
+
 ## Required result
 
 The optimizing compiler is itself optimized native machine code. It compiles
