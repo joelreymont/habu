@@ -38,13 +38,18 @@ Review base: `.jj-ws/rowan-root`, source `5226a994` plus tracker-only `4f234270`
 engine SHA-256 `28e11361f60228d24e7e3f6fca496ca0f9a4f2c8c8e66b5fdc91c9db031de462`.
 Hazel reported 314 suites with seven failures. That is not a fresh green gate.
 
-Fresh integration check: native engine `0c602d1c194c` ran315 suites with12
-failures. Two came from caller/fixture case collisions exposed by the corrected
-local rule; both now have verified fixes. The environment fixture exceeds its
-1024-byte string buffer with the real1047-byte PATH (440084ec). An internal-call authorization failure and a neighbor-name fixture failure
-also reproduce on an unchanged-source native-build product (a772a9a2). The seven earlier failures remain. Full acceptance requires
-these named failures to pass on the final candidate; focused fixes alone do not
-make the gate green.
+Fresh integration check: engine `e27fbfac9948` ran 316 suites with 10 failures:
+`internal-word-gate`, `type-field-owner`, `engine-runtime-regressions`,
+`addrmap-inline`, `cast`, `p2-map-rewind`, `aot-wide-format`, `aot-wid-restore`,
+`build-fixpoint-fixtures`, and `pre-trust-defer`. The earlier local-case caller
+collisions and complete environment comparison now pass. Internal-call protection
+has a reviewed fix with three focused suites passing on first and repeated native
+products (a772a9a2); the combined gate remains pending. The source-stage cases
+exposed an early-checker vocabulary/Boolean error in provider publication, corrected
+in `0cf9ec8b`; assembled source certification now passes, but stage execution is
+still under investigation. The new runtime failure is a watchpoint-resume SIGSEGV
+(74e8b1d9), with diagnosis explicit rather than assigned to old PTY timing flakes.
+Full acceptance requires every named failure to pass on the final candidate.
 
 Hazel's complete Tender pair was 153.3 to 131.6 seconds; the later session pair
 reduced the trivial floor from 4,106 to 3,668 microseconds. Both used a compiler
@@ -212,6 +217,10 @@ fixture to use its actual pointer effect. Repair the
 environment fixture's complete-value comparison (440084ec) without truncating
 the inherited value or changing the user's environment.
 
+Restore debugger watchpoint resume in native products (74e8b1d9): reduce the
+first SIGSEGV after `2 WID .`, compare original and product-hosted engines, and
+preserve watchpoint output, signal resume and subsequent REPL behavior.
+
 JIT publication must preserve verified minimum inputs and types (d1bd23c6).
 The safe compile-only `ROW-ADD ( R -- R ) 1 +` pointer-caller counterexample
 currently rejects under AOT but passes under JIT. Reuse the verified effect
@@ -256,9 +265,12 @@ evidence and an update to the owning task, not speculative new passes.
 ## Dispatch order
 
 The dot tree is the detailed work graph; short IDs below identify existing leaves.
-Current claims are recorded in dots. Start independent ready work in separate
-workspaces: checker rows (f2c4f3d4), arena bounds (c7b1e040), artifact rows
-(258c0288), transient lifecycle (e03edf85), and native fixture paths (deafcd5a).
+Current claims are recorded in dots. Local binding, arena bounds and complete
+environment comparison are closed. Provider rows and artifact IO are integrated
+with broader acceptance pending. Internal-call protection and symbol ceilings have
+reviewed focused fixes; source-owner integration is running. Ready independent
+work includes transient lifecycle (e03edf85), native fixture paths (deafcd5a),
+JIT effect publication (d1bd23c6) and watchpoint resume diagnosis (74e8b1d9).
 
 | Result | Dependency path | Ownership boundary |
 |---|---|---|

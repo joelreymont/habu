@@ -5,6 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-09-11T16:38:06.249420+03:00"
 blocks:
+  - habu-preserve-debugger-watchpoint-74e8b1d9
   - habu-preserve-verified-input-d1bd23c6
   - habu-compare-complete-inherited-440084ec
   - habu-preserve-language-protection-a772a9a2
@@ -46,4 +47,4 @@ Completion: optimizing native compiler selfbuild/product rebuild, executable com
 
 Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under1.7s wall for complete optimizing load and trivial floor below500us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical153.3→131.6s and4106→3668us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
 
-Each leaf has source ownership, prerequisites and decisive behavior checks. Final compiler/runtime gate: rebuild exact source and bin/hb --load test/run.f, with every recorded failure resolved by name. The fresh315-suite run had12 failures: seven earlier failures, two exposed local-case caller collisions now fixed, environment fixture440084ec and native-product protection/owner regressionsa772a9a2. PTX/Loom and later cache/digest work are excluded here.
+Each leaf has source ownership, prerequisites and decisive behavior checks. Final compiler/runtime gate: rebuild exact source and `bin/hb --load test/run.f`, with every recorded failure resolved by name. Latest engine e27fbfac9948 ran 316 suites with 10 failures: internal-word-gate, type-field-owner, engine-runtime-regressions, addrmap-inline, cast, p2-map-rewind, aot-wide-format, aot-wid-restore, build-fixpoint-fixtures and pre-trust-defer. The local-case callers and environment fixture are green. Reviewed internal-call and symbol-ceiling fixes await the combined gate; source-stage certification was repaired in0cf9ec8b but stage execution remains pending. New debugger SIGSEGV belongs to74e8b1d9. PTX/Loom and later cache/digest work are excluded here.
