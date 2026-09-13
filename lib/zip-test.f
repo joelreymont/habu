@@ -28,8 +28,8 @@ create PAYLOAD $20 allot
 : FAIL-PATH$ ( -- ptr u8 n ) s" gone/edit.zip" PATH$ ;
 
 : SETUP ( -- )
-   s" habu-zip" TMPDIR-MKDIR {: base:ptr len:n :}
-   base BASE len BYTE-COPY len BASE-LEN !
+   s" habu-zip" TMPDIR-MKDIR {: dir:ptr len:n :}
+   dir BASE len BYTE-COPY len BASE-LEN !
    BASE$ CLEANUP-TREE+ INPUT$ ORIGINAL$ WRITE-ALL
    OTHER$ ORIGINAL$ WRITE-ALL ;
 
