@@ -33,8 +33,8 @@
 \ rest of the build reuses tools/build-fixpoint.f exactly as the normal stdin
 \ build does.
 \
-\ Fifteen modes, one per entry below (HABU_AOT_GATE serves two), selected by
-\ environment so one builder serves every case its companion suites need -
+\ The modes below are selected by environment so one builder serves every case
+\ its companion suites need (HABU_AOT_GATE serves two) -
 \ test/aot-wid-suite.f, test/aot-wide-format-suite.f and the PTY half in
 \ test/aot-data-span-forge.f:
 \
@@ -60,9 +60,6 @@
 \   HABU_AOT_WID_NARROW=N  declare the window's wordlist span N ids late, so a
 \                      wordlist the window really made is outside it. The CAPTURE
 \                      must refuse, naming the record.
-\   HABU_AOT_GATE_WID=N  land the gate fixture's package on wordlist id N in the
-\                      METABUILD HOST, so the case is built on an id the target
-\                      engine already uses (see GATE-WID-LINES).
 \   HABU_AOT_BAKE=1    put an INITIALISED data cell and a word that reads it inside
 \                      the capture window, and run that word from the boot-run
 \                      list. The built engine reports the value when it is entered
@@ -747,41 +744,14 @@ create DRV-CH 1 allot
    then
    S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=open\" type cr ;" DRV-LINE ;
 
-\ --- landing the fixture on a chosen wordlist id -------------------------------
-\ HABU_AOT_GATE_WID names the id the fixture's package must get IN THE HOST, so a
-\ case can be built on an id the TARGET engine already uses - the alias the wid
-\ rebase exists to make harmless (dot habu-rebase-captured-wids-54dec421). The
-\ suite chooses it from the target's own band and its own WIDN; nothing is
-\ written down here. Burning only moves forward, so a host already past the id
-\ refuses BY NAME rather than quietly testing a different one.
-: GATE-WID-ENV$ ( -- ptr u8 n ) s" HABU_AOT_GATE_WID" GETENV ;
-
-: GATE-WID-LINES ( -- )
-   GATE-WID-ENV$ {: w:ptr wu:n :}
-   wu 0= if exit then
-   s" : AWB-WID-WANT ( -- n ) " DRV+  w wu DRV+  s"  ;" DRV-LINE
-   \ The burn reads WIDN through a primitive and a layout constant, never through
-   \ a host word: this text is compiled INSIDE the capture window, so a call to
-   \ anything the metabuild host has and the target has not bakes a name the seed
-   \ cannot resolve (measured: exit 81, the boot BL-range assertion).
-   s" : AWB-BURN ( -- ) begin data-base WIDN-CELL + @ AWB-WID-WANT < while wordlist drop repeat ;" DRV-LINE
-   s" AWB-BURN" DRV-LINE ;
-
-: GATE-WID-CHECK-LINES ( -- )
-   GATE-WID-ENV$ nip 0= if exit then
-   s" : AWB-WID-CHECK ( -- )" DRV-LINE
-   s"    AWB-GATE-WID @ AWB-WID-WANT = if exit then" DRV-LINE
-   S\"    s\" aot-wid-build: the fixture did not land on the wordlist id it was given\" type cr" DRV-LINE
-   S\"    s\" aot-wid-build: host wordlist id already past the alias target\" 74 die ;" DRV-LINE
-   s" AWB-WID-CHECK" DRV-LINE ;
-
 : GATE-FIXTURE-LINES ( ptr u8 n -- ) {: mode:ptr mu:n :}
    s" variable AWB-GATE-WID" DRV-LINE
-   GATE-WID-LINES
    mode mu GATE-ENTRY-LINES
    s" get-current AWB-GATE-WID !" DRV-LINE
    s" ;package" DRV-LINE
-   GATE-WID-CHECK-LINES
+   \ The target collision fixture allocates its own owner at this actual host
+   \ ordinal before seeding. Neither process borrows the other's WIDN.
+   S\" s\" awb-source-wid=\" type AWB-GATE-WID @ . cr" DRV-LINE
    mode mu s" 2" STR= 0= if
       s" AWB-GATE-WID @ prot-wid-add" DRV-LINE
    then

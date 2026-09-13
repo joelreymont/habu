@@ -25,6 +25,21 @@ Integrated at3ed0b9d0 with independent review correction32a21b6e: PREFIX-MARK us
 
 Still open: aot-wid's two alias assertions select IDs from the full native host (next WID273), while the restored source product has next WID134. Actual prefix package IDs are CODE-RECLAIM=99 and CHECKER-TAPE=11. The maker has already allocated past those IDs, so its forward-only burn cannot construct the claimed collision; preserve these assertions until the fixture establishes a real target collision. Full rebuilt integration gate remains pending.
 
+WID fixture correction: the maker reports AWBGATE's actually allocated source
+WID. Each collision case boots in a private linked source tree whose top-row.f
+copy appends a checked target-owner declaration before the existing seed. That
+target burns forward, checks its exact ordinal and either seals the owner or
+leaves it open. Probes retain executed boot entry, distinct restored ownership
+and next-WID checks, and add target ordinal/sole owner/seal/value assertions.
+There is no WID rewind, captured-row forgery or production extension seam.
+
+H compiles the changed suite definitions at tier 1. Isolated target-setup probes
+create the private tree and execute the generated source for both seal states:
+actual ordinal 331, one owner, requested seal, value 41, rc 0 / empty stderr in
+/tmp/cedar-wid-cold-{sealed,open}.{out,err}. These are helper/source checks only;
+real captured-product collision acceptance awaits root's maker certificate
+repair and the product that removes its old public-name collision.
+
 2026-09-14, product F: the native maker's `E-UNDEFINED: 0<>` is an assembly
 ordering failure. Rewind removes the prelude; COMMON loaded habu1.f (which
 requires code-origin.f and its `0<>` caller) before restoring it. Move the

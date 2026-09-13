@@ -123,6 +123,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/process-cwd.f
 
 package AOT-WID-SUITE
 
@@ -162,6 +163,9 @@ create REFUSE-BUF FS-PATH-CAP allot   variable REFUSE-U
 create REFUSE-HB-BUF FS-PATH-CAP allot  variable REFUSE-HB-U
 create GATE-BUF FS-PATH-CAP allot     variable GATE-U
 create GATE-HB-BUF FS-PATH-CAP allot  variable GATE-HB-U
+create COLD-ROOT-BUF FS-PATH-CAP allot variable COLD-ROOT-U
+create COLD-SRC FS-PATH-CAP allot
+create COLD-DST FS-PATH-CAP allot
 
 : ROOT$ ( -- ptr u8 n )   ROOT-BUF ROOT-U @ ;
 : HBPWID$ ( -- ptr u8 n ) HBPWID-BUF HBPWID-U @ ;
@@ -170,6 +174,7 @@ create GATE-HB-BUF FS-PATH-CAP allot  variable GATE-HB-U
 : REFUSE-HB$ ( -- ptr u8 n )   REFUSE-HB-BUF REFUSE-HB-U @ ;
 : GATE-ROOT$ ( -- ptr u8 n )   GATE-BUF GATE-U @ ;
 : GATE-HB$ ( -- ptr u8 n )     GATE-HB-BUF GATE-HB-U @ ;
+: COLD-ROOT$ ( -- ptr u8 n ) COLD-ROOT-BUF COLD-ROOT-U @ ;
 : PLAIN$ ( -- ptr u8 n )  s" bin/hb" ;      \ the shipped engine = the engine under test
 : ERR$ ( -- ptr u8 n )    ERR ERR-U @ ;
 
@@ -245,24 +250,11 @@ create NUM-BUF 32 allot   variable NUM-U
    s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
    RUN-BUILDER ;
 
-\ The same build, with the fixture's package landed on an exact wordlist id in
-\ the METABUILD HOST. The id is one the shipped engine already uses, so what the
-\ capture carries is an alias of a live target wordlist.
 create GWID-BUF 32 allot   variable GWID-U
 : GWID$! ( n -- ) {: v:n :}
    v NUM$!  NUM$ {: a:ptr u:n :}
    a GWID-BUF u BYTE-COPY  u GWID-U ! ;
 : GWID$ ( -- ptr u8 n ) GWID-BUF GWID-U @ ;
-
-: BUILD-GATE-AT ( n n -- ) {: mode:n wid:n :}
-   GATE-SETUP
-   wid GWID$!
-   mode NUM$!
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN GATE-ROOT$ >LEN PROC-ENV+
-   s" HABU_AOT_GATE" >LEN  NUM$ >LEN PROC-ENV+
-   s" HABU_AOT_GATE_WID" >LEN  GWID$ >LEN PROC-ENV+
-   RUN-BUILDER ;
 
 \ The gate fixture built with the baked wid window moved AFTER the capture, so
 \ the records name wordlists it does not contain. `k` is the knob that moves it.
@@ -428,7 +420,13 @@ create PRB PRB-CAP allot   variable PRB-U
    PRB-RESET
    s" require lib/fmt.f" PRB+ PRB-NL
    s" require tools/pkg-wid-probe.f" PRB+ PRB-NL
+   s" require tools/prot-wid-probe.f" PRB+ PRB-NL
    S\" : PRB-ALIAS ( -- ) wordlist {: next:n :} s\" AWBGATE\" PKG-WID-PROBE:WID-OF {: w:n :}" PRB+ PRB-NL
+   S\"    s\" AWBTARGET\" PKG-WID-PROBE:WID-OF {: target:n :}" PRB+ PRB-NL
+   S\"    s\" awb-target-wid=\" type target FMT:.U cr" PRB+ PRB-NL
+   S\"    s\" awb-target-owners=\" type target PKG-WID-PROBE:OWNERS FMT:.U cr" PRB+ PRB-NL
+   S\"    s\" awb-target-sealed=\" type target PROT-WID-PROBE:MEMBER? if 1 else 0 then FMT:.U cr" PRB+ PRB-NL
+   S\"    s\" awb-target-value=\" type AWBTARGET:VALUE FMT:.U cr" PRB+ PRB-NL
    S\"    s\" awb-wid=\" type w FMT:.U cr" PRB+ PRB-NL
    S\"    s\" awb-owners=\" type w PKG-WID-PROBE:OWNERS FMT:.U cr" PRB+ PRB-NL
    S\"    s\" awb-high=\" type PKG-WID-PROBE:HIGH FMT:.U cr" PRB+ PRB-NL
@@ -484,9 +482,9 @@ create PRB PRB-CAP allot   variable PRB-U
    s" an ordinary packaged define still exits 0 on the variant (--load)" T-LABEL
    HBPWID$ DEFINE-OK$ FORGE-LOAD  ASSERT-OK ;
 
-\ The control is now the SAME id, on the shipped engine: the variant's protected
-\ id sits just above the shipped engine's own WIDN, so the shipped engine both
-\ leaves that bit clear and refuses a publish into it for the unrelated reason.
+\ At the same ordinal, the baseline has no protection bit and refuses a publish
+\ for the unrelated package-context reason. This does not assert that the
+\ baseline has never allocated the ordinal; the cases below prove collisions.
 : PROBE-CONTROL ( -- )
    s" shipped engine's band does not hold the variant's sealed id (control)" T-LABEL
    PLAIN$ PROT-WID MEMBER-PROBE$ READ-N  0 T=
@@ -581,41 +579,78 @@ create PRB PRB-CAP allot   variable PRB-U
 \ the boot (exit 84 with nothing in the fixture asking for protection), an
 \ ordinary one takes the word in silence and two packages own one wordlist.
 \
-\ THE TWO IDS ARE THE ENGINE'S, NOT THIS FILE'S. The shipped engine is asked for
-\ its own WIDN and then for the seal state of the ids below it, so the sealed
-\ case and the ordinary case each name a wordlist that engine really has. A
-\ number written down here would stop being an alias the first time the prefix
-\ moved.
-variable ALIAS-SEALED   variable ALIAS-OPEN   variable ALIAS-W
+\ The maker has already allocated past the cold target's prefix WIDs. Read its
+\ actual captured ordinal, then let the target allocate an owner there BEFORE
+\ the seed. Only top-row.f, the last cold-prefix file, gains fixture source;
+\ every other file is linked unchanged into this private invocation directory.
+: COLD-PATH ( ptr u8 n -- ptr u8 n )
+   COLD-ROOT$ 2swap COLD-DST JOIN-PATH COLD-DST swap ;
 
-: PICK-ALIAS-WIDS ( -- )
-   0 ALIAS-SEALED !  0 ALIAS-OPEN !
-   PLAIN$ PROBE-WORDLIST$ READ-N 1 - ALIAS-W !
-   begin
-      ALIAS-W @ 1 >
-      ALIAS-SEALED @ 0=  ALIAS-OPEN @ 0=  or
-      and
-   while
-      PLAIN$ ALIAS-W @ MEMBER-PROBE$ READ-N 1 = if
-         ALIAS-SEALED @ 0= if ALIAS-W @ ALIAS-SEALED ! then
-      else
-         ALIAS-OPEN @ 0= if ALIAS-W @ ALIAS-OPEN ! then
-      then
-      ALIAS-W @ 1 - ALIAS-W !
-   repeat ;
+: COLD-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
+   SOURCE-ROOT:CWD$ a u COLD-SRC JOIN-PATH {: srcu:n :}
+   COLD-SRC srcu a u COLD-PATH MAKE-SYMLINK ;
 
-\ One alias case: build the control fixture (mode 2, nothing protected) on the
-\ given id, and require that the engine boots, that its entry word runs, and that
-\ the id the seed actually gave the captured package is owned by that package
-\ alone.
-: ALIAS-CASE ( n -- ) {: wid:n :}
-   2 wid BUILD-GATE-AT
+: COLD-CORE-LINK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" src/core/top-row.f" STR= if exit then
+   a u COLD-PATH 2dup SOURCE-ROOT:DIRNAME MAKE-DIRS 2drop
+   a u COLD-LINK ;
+
+: COLD-FIXTURE$ ( n bool -- ptr u8 n ) {: wid:n sealed:bool :}
+   PRB-RESET
+   s" package AWB-COLLISION-SETUP" PRB+ PRB-NL
+   s" : TARGET-WID ( -- n ) " PRB+ wid PRB-N s"  ;" PRB+ PRB-NL
+   s" : BURN ( -- ) data-base WIDN-CELL + @ TARGET-WID > if" PRB+ PRB-NL
+   S\"    s\" aot-wid: target has passed the captured ordinal\" 74 die then" PRB+ PRB-NL
+   s"    begin data-base WIDN-CELL + @ TARGET-WID < while wordlist drop repeat ;" PRB+ PRB-NL
+   s" public : CHECK ( n -- ) dup TARGET-WID <> if" PRB+ PRB-NL
+   S\"    s\" aot-wid: target owner missed the captured ordinal\" 74 die then" PRB+ PRB-NL
+   sealed if s"    dup prot-wid-add" PRB+ PRB-NL then
+   S\"    s\" awb-target-before=\" type . cr ;" PRB+ PRB-NL
+   s" ' BURN ;package execute" PRB+ PRB-NL
+   s" package AWBTARGET public : VALUE ( -- n ) 41 ;" PRB+ PRB-NL
+   s" get-current ;package AWB-COLLISION-SETUP:CHECK" PRB+ PRB-NL
+   PRB$ ;
+
+: COLD-SETUP ( n bool -- ) {: wid:n sealed:bool :}
+   GATE-ROOT$ s" cold" COLD-ROOT-BUF JOIN-PATH COLD-ROOT-U !
+   COLD-ROOT$ MAKE-DIR
+   s" lib" COLD-LINK s" tools" COLD-LINK
+   s" src/core" COLD-PATH MAKE-DIRS
+   s" src/habu" COLD-LINK s" src/os" COLD-LINK
+   s" src/arch" COLD-LINK s" src/compiler" COLD-LINK
+   s" src/core" [: COLD-CORE-LINK ;] WALK-FILES
+   s" src/core/top-row.f" s" src/core/top-row.f" COLD-PATH COPY-FILE-STREAM
+   s" src/core/top-row.f" COLD-PATH wid sealed COLD-FIXTURE$ APPEND-FILE ;
+
+: COLD-RUN ( ptr u8 n -- )
+   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
+   >LEN COLD-ROOT$ >LEN EMPTY 0 >LEN
+   OUT CAP >LEN ERR CAP >LEN PROBE-TIMEOUT-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME STORE! ;
+
+: COLD-PROBE ( -- )
+   FORGE$ ALIAS-PROBE$ WRITE-ALL
+   PROC-ARGV-RESET s" --load" >LEN PROC-ARGV+ FORGE$ >LEN PROC-ARGV+
+   GATE-HB$ COLD-RUN ;
+
+\ Both engines must execute their boot entry, keep the target owner's value,
+\ and give the restored package its own newly allocated wordlist.
+: ALIAS-CASE ( bool -- ) {: sealed:bool :}
+   2 BUILD-GATE
    RC @ 0 <> if s" aot-wid-suite: builder stderr:" type cr ERR$ type cr then
    RC @ 0 T=
    GATE-HB$ EXISTS? TTRUE
-   GATE-HB$ BOOT-EMPTY  ASSERT-GATE-RAN
-   GATE-HB$ ALIAS-PROBE$ FORGE-LOAD
+   s" awb-source-wid=" TAGGED-N {: wid:n :}
+   wid sealed COLD-SETUP
+   PROC-ARGV-RESET GATE-HB$ COLD-RUN ASSERT-GATE-RAN
+   s" awb-target-before=" TAGGED-N wid T=
+   COLD-PROBE
    EXITED @ TTRUE  RC @ 0 T=
+   s" awb-target-before=" TAGGED-N wid T=
+   s" awb-target-wid=" TAGGED-N wid T=
+   s" awb-target-owners=" TAGGED-N 1 T=
+   s" awb-target-sealed=" TAGGED-N sealed if 1 else 0 then T=
+   s" awb-target-value=" TAGGED-N 41 T=
    s" ... and the captured package owns its wordlist alone" T-LABEL
    s" awb-owners=" TAGGED-N  1 T=
    s" ... at an id the target's own prefix never handed out" T-LABEL
@@ -667,13 +702,10 @@ variable ALIAS-SEALED   variable ALIAS-OPEN   variable ALIAS-W
    s" HABU_AOT_WID_SPAN" 1 FORGED-CASE ;
 
 : PROBE-WID-REBASE ( -- )
-   PICK-ALIAS-WIDS
-   s" the shipped engine offers a sealed and an unsealed id below its WIDN" T-LABEL
-   ALIAS-SEALED @ 0 >  ALIAS-OPEN @ 0 >  and TTRUE
    s" a captured package on a SEALED target wordlist boots (was exit 84)" T-LABEL
-   ALIAS-SEALED @ ALIAS-CASE
+   true ALIAS-CASE
    s" a captured package on an ORDINARY target wordlist boots" T-LABEL
-   ALIAS-OPEN @ ALIAS-CASE ;
+   false ALIAS-CASE ;
 
 \ AOT DATA-reserve span guard (dot habu-guard-aot-data-49de2ee6): the sibling
 \ seed-pass forge test/aot-data-span-forge.f builds an oversized-span variant and
