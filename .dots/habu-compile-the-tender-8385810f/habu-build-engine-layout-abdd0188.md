@@ -27,3 +27,14 @@ after the caller rename, host825c2c60 builds product968cabff successfully. This
 does not establish the separate source-layout transition or all-AOT acceptance.
 
 Implementation in progress: capture-only host dependencies; target writer compiled after an explicit owned copy of the existing section payload; target preparation moved outside its source load and final DATA bound taken afterwards. Caller-selected output includes temporary emission, smoke and promotion. Four large capture buffers use existing transient mappings so the host/writer pair does not exhaust the32MiB target heap. The owned-copy regression passes at both tiers, retaining both full address rows and code bytes after original buffers change. An all-tier1 build exposed raw indirect calls in CHECKER-OWNER (1dc23a17); typed dispatch repair is active. Full first-generation layout/provenance/restore acceptance remains pending.
+
+The reviewed driver now has a shared core and two explicit entries. Production
+selects tier1 before dependencies and holds executable-build scope; the old-seed
+bootstrap reloads the paired compiler at tier1 and requires an explicit output.
+The owned capture carries the query result for its frozen live code span; the
+source writer forwards it to FORTH-ORIGIN. Both-tier core loads and owned-buffer
+checks pass. Independent controls preserve native/unknown origins, refuse JIT
+even during bootstrap, refuse unknown for production and check the extent before
+the query. Unknown bootstrap output remains private; no complete engine or
+product-hosted positive rebuild is accepted yet. Native script arguments are an
+explicit core dependency after prefix rewind. See commits d6d20b8e/f91cacb4.
