@@ -4,6 +4,7 @@
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 require lib/fmt.f
+require src/habu/address-cells.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
@@ -142,8 +143,10 @@ package SNAP-RELOC
 public
 variable LCALLMSG   \ a recorded call site does not hold a call instruction (CALLMAP-RC)
 31 constant CALLMSG-LEN   \ byte length of "hb: snapshot call map mismatch\n" (LCALLMSG)
-variable LXTMSG     \ more address cells were declared than the table can hold (XTCELL-RC)
-46 constant XTMSG-LEN     \ byte length including newline; EMIT-FULL-MESSAGE checks the generated text
+variable LXTMSG     \ checked growth could not secure storage (XTCELL-RC)
+43 constant XTMSG-LEN
+variable LXTHEADERMSG
+40 constant XTHEADERMSG-LEN
 variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOVK chain (ADDRMAP-RC)
 34 constant ADDRMSG-LEN   \ byte length of "hb: snapshot address map mismatch\n" (LADDRMSG)
 variable LXTBANDMSG \ a declared address cell is not a cell-aligned address inside DATA (XTBAND-RC)
@@ -176,13 +179,8 @@ $25 constant BL-OP-HI
    LADDRSITE LABEL@ BL, ;
 
 : EMIT-FULL-MESSAGE ( -- )
-   \ BYTES, pads each run to four bytes: compose the whole line before emitting.
-   SB-RESET s" hb: snapshot address table full at " SB-APPEND
-   XTCELL-CAP FMT:SB-U s"  rows" SB-APPEND $A SB-APPEND-C
-   SB$ nip XTMSG-LEN <> if
-      s" habu2: address table diagnostic length mismatch" ICODE-EXIT-RC die
-   then
-   LXTMSG LABEL@ LBL, SB$ BYTES, ;
+   LXTMSG LABEL@ LBL, S\" hb: address-cell storage allocation failed\n" BYTES,
+   LXTHEADERMSG LABEL@ LBL, S\" hb: invalid address-cell storage header\n" BYTES, ;
 
 ;package
 
@@ -5217,9 +5215,6 @@ public
 \ and refused the same way: the widgate rules the callee's wordlist and a
 \ missing name is a seed built against a checker that no longer has it, which is
 \ a panic and not a miss.
-: INSTALL-NAME$ ( -- ptr u8 n )
-   s" CK-AOT-REG-INSTALL" ;
-
 \ The emitted immediate comes from the emitted bytes, so the two cannot drift.
 : INSTALL-NAME-LEN ( -- n )
    INSTALL-NAME$ {: a:ptr u:n :} u ;
@@ -5460,51 +5455,112 @@ public
 \ Every register it uses is saved and restored, because the compile-handler call
 \ sites are in the middle of a handler with its own live values and the `xt!` call
 \ site is in the middle of a running checked word.
+: MARK-SAVE ( -- )
+   SP SP 160 SUBI,
+   18 0 ?do i SP i cells STR, loop ;
+
+: MARK-RESTORE ( -- )
+   18 0 ?do i SP i cells LDR, loop
+   SP SP 160 ADDI, RET, ;
+
 : EMIT-MARK ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: common:label scan:label add:label full:label
-                               band:label kind:label ret:label :}
-   LMARK LABEL@ LBL,
-   SP SP 64 SUBI,
-   5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  12 SP 24 STR,
-   13 SP 32 STR,  14 SP 40 STR,  15 SP 48 STR,
-   15 0 MOVZ,  common B,
-   LPTRMARK LABEL@ LBL,
-   SP SP 64 SUBI,
-   5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  12 SP 24 STR,
-   13 SP 32 STR,  14 SP 40 STR,  15 SP 48 STR,
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: common:label scan:label add:label full:label band:label kind:label
+      ret:label shape:label mapped:label ready:label grow:label copy:label
+      copied:label publish:label :}
+   LMARK LABEL@ LBL, MARK-SAVE
+   15 0 MOVZ, common B,
+   LPTRMARK LABEL@ LBL, MARK-SAVE
    15 XTCELL-DATA-TAG LIT64,
    common LBL,
-   12 9 DATA SUB,                                   \ x12 = the cell's offset within DATA
-   6 XTCELL-OFF-MAX LIT64,  12 6 CMP,  C-HI band BCOND,   \ unsigned: the cell would run past DATA, or start below it
-   5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,          \ x5 = row base
-   6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,   \ x13 = rows in use
-   6 XTCELL-CAP LIT64,  13 6 CMP,  C-HI full BCOND, \ the cap can exceed MOVZ's 16-bit immediate
-   14 0 MOVZ,                                       \ x14 = row index
-   scan LBL,  14 13 CMP,  C-GE add BCOND,
-      6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,
-      7 12 15 ORR,  6 7 CMP,  C-EQ ret BCOND,       \ identical declaration: nothing to do
-      7 XTCELL-OFF-MASK LIT64,  6 6 7 AND,
-      6 12 CMP,  C-EQ kind BCOND,                   \ same cell, contradictory kind
-      14 14 1 ADDI,  scan B,
+   12 9 DATA SUB,
+   6 XTCELL-OFF-MAX LIT64, 12 6 CMP, C-HI band BCOND,
+   4 XTCELL-N-CELL LIT64, 4 DATA 4 ADD,
+   6 4 ADDRESS-CELLS:MAGIC-FIELD LDR,
+   7 ADDRESS-CELLS:MAGIC LIT64, 6 7 CMP, C-NE shape BCOND,
+   13 4 0 LDR, 10 4 ADDRESS-CELLS:CAP-FIELD LDR,
+   7 ADDRESS-CELLS:MAX-ROWS LIT64,
+   10 shape CBZ, 10 7 CMP, C-HI shape BCOND,
+   13 10 CMP, C-HI shape BCOND,
+   5 4 ADDRESS-CELLS:BASE-FIELD LDR,
+   11 4 ADDRESS-CELLS:MODE-FIELD LDR,
+   11 1 CMPI, C-EQ mapped BCOND, C-HI shape BCOND,
+   6 DATA-SIZE LIT64, 5 6 CMP, C-HI shape BCOND,
+   6 6 5 SUB, 6 6 3 LSRI, 10 6 CMP, C-HI shape BCOND,
+   5 DATA 5 ADD, ready B,
+   mapped LBL,
+   5 0 CMPI, C-LE shape BCOND,
+   6 5 7 ANDI, 6 shape CBNZ,
+   6 $7FFFFFFFFFFFFFFF LIT64, 6 6 5 SUB, 6 6 3 LSRI,
+   10 6 CMP, C-HI shape BCOND,
+   ready LBL,
+   10 shape CBZ,
+   14 0 MOVZ,
+   scan LBL, 14 13 CMP, C-CS add BCOND,
+      6 14 3 LSLI, 6 5 6 ADD, 6 6 0 LDR,
+      7 12 15 ORR, 6 7 CMP, C-EQ ret BCOND,
+      7 XTCELL-OFF-MASK LIT64, 6 6 7 AND,
+      6 12 CMP, C-EQ kind BCOND,
+      14 14 1 ADDI, scan B,
    add LBL,
-      6 XTCELL-CAP LIT64,  13 6 CMP,  C-GE full BCOND,
-      6 13 3 LSLI,  6 5 6 ADD,  7 12 15 ORR,  7 6 0 STR,
-      13 13 1 ADDI,
-      6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 STR,
-      ret B,
+      13 10 CMP, C-EQ grow BCOND,
+      6 13 3 LSLI, 6 5 6 ADD, 7 12 15 ORR, 7 6 0 STR,
+      13 13 1 ADDI, 13 4 0 STR, ret B,
+   grow LBL,
+      \ Overflow checks precede doubling and the byte product. mmap and copying
+      \ complete before publication; failure preserves the old header and rows.
+      7 ADDRESS-CELLS:MAX-ROWS 2 / LIT64,
+      10 7 CMP, C-HI full BCOND,
+      10 10 1 LSLI, 10 SP 144 STR,
+      0 0 MOVZ, 1 10 3 LSLI, 2 3 MOVZ,
+      3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
+      NR-MMAP SYS, C-CS full BCOND,
+      0 copied CBNZ,
+      10 SP 144 LDR, 1 10 3 LSLI, NR-MUNMAP SYS, full B,
+   copied LBL,
+      0 SP 152 STR, 17 0 0 ADDI,
+      4 XTCELL-N-CELL LIT64, 4 DATA 4 ADD,
+      5 4 ADDRESS-CELLS:BASE-FIELD LDR,
+      11 4 ADDRESS-CELLS:MODE-FIELD LDR,
+      LBL {: source:label :} 11 source CBNZ, 5 DATA 5 ADD, source LBL,
+      14 0 MOVZ,
+   copy LBL, 14 13 CMP, C-CS publish BCOND,
+      6 14 3 LSLI, 7 5 6 ADD, 7 7 0 LDR,
+      6 17 6 ADD, 7 6 0 STR,
+      14 14 1 ADDI, copy B,
+   publish LBL,
+      \ An owned mapping is released only after the replacement is complete.
+      \ A failed release discards the replacement and leaves the old view live.
+      LBL LBL {: commit:label released:label :}
+      11 commit CBZ,
+      0 5 0 ADDI, 1 4 ADDRESS-CELLS:CAP-FIELD LDR, 1 1 3 LSLI,
+      NR-MUNMAP SYS, 0 released CBZ,
+      0 SP 152 LDR, 1 SP 144 LDR, 1 1 3 LSLI,
+      NR-MUNMAP SYS, full B,
+   released LBL,
+      4 XTCELL-N-CELL LIT64, 4 DATA 4 ADD,
+   commit LBL,
+      5 SP 152 LDR, 10 SP 144 LDR,
+      6 13 3 LSLI, 6 5 6 ADD, 7 12 15 ORR, 7 6 0 STR,
+      5 4 ADDRESS-CELLS:BASE-FIELD STR,
+      10 4 ADDRESS-CELLS:CAP-FIELD STR,
+      11 1 MOVZ, 11 4 ADDRESS-CELLS:MODE-FIELD STR,
+      13 13 1 ADDI, 13 4 0 STR, ret B,
    full LBL,
-      1 LXTMSG LABEL@ ADR,  0 2 MOVZ,  2 XTMSG-LEN MOVZ,  NR-WRITE SYS,
-      0 XTCELL-RC MOVZ,  NR-EXIT-GROUP SYS,
+      1 LXTMSG LABEL@ ADR, 0 2 MOVZ, 2 XTMSG-LEN MOVZ, NR-WRITE SYS,
+      0 XTCELL-RC MOVZ, NR-EXIT-GROUP SYS,
+   shape LBL,
+      1 LXTHEADERMSG LABEL@ ADR, 0 2 MOVZ, 2 XTHEADERMSG-LEN MOVZ, NR-WRITE SYS,
+      0 XTCELL-RC MOVZ, NR-EXIT-GROUP SYS,
    band LBL,
-      1 LXTBANDMSG LABEL@ ADR,  0 2 MOVZ,  2 XTBANDMSG-LEN MOVZ,  NR-WRITE SYS,
-      0 XTBAND-RC MOVZ,  NR-EXIT-GROUP SYS,
+      1 LXTBANDMSG LABEL@ ADR, 0 2 MOVZ, 2 XTBANDMSG-LEN MOVZ, NR-WRITE SYS,
+      0 XTBAND-RC MOVZ, NR-EXIT-GROUP SYS,
    kind LBL,
-      1 LXTKINDMSG LABEL@ ADR,  0 2 MOVZ,  2 XTKINDMSG-LEN MOVZ,  NR-WRITE SYS,
-      0 XTKIND-RC MOVZ,  NR-EXIT-GROUP SYS,
-   ret LBL,
-   5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  12 SP 24 LDR,
-   13 SP 32 LDR,  14 SP 40 LDR,  15 SP 48 LDR,
-   SP SP 64 ADDI,  RET, ;
+      1 LXTKINDMSG LABEL@ ADR, 0 2 MOVZ, 2 XTKINDMSG-LEN MOVZ, NR-WRITE SYS,
+      0 XTKIND-RC MOVZ, NR-EXIT-GROUP SYS,
+   ret LBL, MARK-RESTORE ;
+
+: BVERSION ( -- ) A ADDRESS-CELLS:ABI-VERSION MOVZ, A G-PUSH ;
 
 : BPTRCELLMARK ( -- )
    A G-POP
@@ -5554,8 +5610,8 @@ public
 : EMIT-XT ( -- )
    LBL LBL LBL LBL {: loop:label skip:label band:label done:label :}
    LXT LABEL@ LBL,
-   5 XTCELL-ROWS-OFF LIT64,  5 DATA 5 ADD,
-   6 XTCELL-N-CELL LIT64,  6 DATA 6 ADD,  13 6 0 LDR,
+   6 XTCELL-N-CELL LIT64, 6 DATA 6 ADD, 13 6 0 LDR,
+   5 6 ADDRESS-CELLS:BASE-FIELD LDR, 5 DATA 5 ADD,
    14 0 MOVZ,
    loop LBL,  14 13 CMP,  C-GE done BCOND,
       6 14 3 LSLI,  6 5 6 ADD,  6 6 0 LDR,          \ x6 = tagged DATA offset
@@ -5876,6 +5932,22 @@ public
    9 DATA PROT:RLO STR,  9 DATA PROT:RHI STR,  9 DATA PROT:CF STR,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH LABEL@ BL, ;
 
+\ Strict v9 header admission before DATA copying or row relocation. x7 and x12
+\ retain the payload length and trailer address for the following owner checks.
+: EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS ( label -- ) {: bad:label :}
+   5 SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:HEADER-BYTES + LIT64,
+   7 5 CMP, C-CC bad BCOND,
+   10 12 7 SUB,
+   8 SNAP-RELOC:XTCELL-N-CELL LIT64, 8 10 8 ADD,
+   13 8 ADDRESS-CELLS:MAGIC-FIELD LDR,
+   5 ADDRESS-CELLS:MAGIC LIT64, 13 5 CMP, C-NE bad BCOND,
+   13 8 ADDRESS-CELLS:MODE-FIELD LDR, 13 bad CBNZ,
+   13 8 ADDRESS-CELLS:CAP-FIELD LDR, 13 bad CBZ,
+   5 ADDRESS-CELLS:MAX-ROWS LIT64, 13 5 CMP, C-HI bad BCOND,
+   14 8 0 LDR, 14 13 CMP, C-HI bad BCOND,
+   9 8 ADDRESS-CELLS:BASE-FIELD LDR, 9 7 CMP, C-HI bad BCOND,
+   5 7 9 SUB, 5 5 3 LSRI, 13 5 CMP, C-HI bad BCOND, ;
+
 : EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
    LBL LBL LBL LBL LBL
    {: prot-loop:label prot-max:label prot-inner:label prot-next:label widn:label :}
@@ -5952,7 +6024,7 @@ public
    snbadver B,                                                     \ legacy v0 cannot carry owner roles
    snnew LBL,
       14 13 SNAP-TRL-VERSION LDR,                                  \ x14 = image format version
-      5 SNAP-FORMAT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
+      5 ADDRESS-CELLS:SNAPSHOT-VERSION MOVZ,  14 5 CMP,  C-NE snbadver BCOND,
    snhave LBL,
       12 13 0 ADDI,                                                \ x12 = resolved trailer base
    21 12 SNAP-TRL-TBASE LDR,                        \ x21 = snapshot-time text base
@@ -5967,6 +6039,7 @@ public
    SP SP 64 SUBI,
    6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
    15 SP 32 STR,  21 SP 40 STR,  25 SP 48 STR,
+   snbad EM-SNAPSHOT-VALIDATE-ADDRESS-CELLS
    snbad EM-SNAPSHOT-VALIDATE-WIDS
    \ Seeding the native runtime has already closed its dictionary/code pages
    \ RX. Restore replaces that region from engine text, then the ordinary
@@ -6047,6 +6120,10 @@ public
    9 DATA NCOMP-DISPATCH:TARGET-DECL-CELL STR,
    9 DATA REPLH-CELL STR,  9 DATA BPWBASE-CELL STR,  9 DATA BPWN-CELL STR,
    10 SNAP-RELOC:XTCELL-N-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
+   9 ADDRESS-CELLS:MAGIC LIT64, 9 10 ADDRESS-CELLS:MAGIC-FIELD STR,
+   9 ADDRESS-CELLS:BOOT-OFF LIT64, 9 10 ADDRESS-CELLS:BASE-FIELD STR,
+   9 ADDRESS-CELLS:BOOT-CAP LIT64, 9 10 ADDRESS-CELLS:CAP-FIELD STR,
+   9 0 MOVZ, 9 10 ADDRESS-CELLS:MODE-FIELD STR,
    \ The three hooks and the compiler-dispatch cell hold execution tokens once something installs
    \ them, so they are address cells like a deferred word's dispatch cell. They are
    \ declared here, by name, on the cold path only: a restored image already
@@ -9009,7 +9086,8 @@ package LABELS
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
-   LBL SNAP-RELOC:LCALLMSG !  LBL SNAP-RELOC:LXTMSG !  LBL SNAP-RELOC:LADDRMSG !
+   LBL SNAP-RELOC:LCALLMSG ! LBL SNAP-RELOC:LXTMSG ! LBL SNAP-RELOC:LXTHEADERMSG !
+   LBL SNAP-RELOC:LADDRMSG !
    LBL SNAP-RELOC:LXTBANDMSG !  LBL SNAP-RELOC:LXTKINDMSG !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
@@ -9190,6 +9268,7 @@ variable CUR
 ;package
 
 : EMIT-AOT-SEED ( -- )
+   SEEDED-RUNTIME? 0= AOT-SECTION:BYTES drop
    LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
    LAOTCODE LABEL@ LBL,
    AOT-BLOB-LEN @ 0 > IF AOT-BLOB-BUF@ AOT-BLOB-LEN @ BYTES, THEN
@@ -9256,6 +9335,7 @@ package ENGINE-EMIT
    s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
    s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F
    s" ptr-cell-mark" ['] SNAP-RELOC:BPTRCELLMARK 1 GDEREF-F
+   s" addr-cells-abi" ['] SNAP-RELOC:BVERSION FPRIM
    PROF:EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    EMIT-CEMIT

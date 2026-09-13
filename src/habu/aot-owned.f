@@ -43,6 +43,7 @@ using AOT-WINDOW
 : OWN-AS ( n -- AOT-OWNED:capture ) {: origin:n :}
    STAGE BUILD-TABLE BASES-ALONE
    SEC-N 0 ?do i ?ROOM loop
+   0 0 <> ?BUDGET
    PAYLEN @ MEM-ALLOC-BYTES {: dst:ptr size:n :}
    dst COPY-OWNED
    dst size origin AOT--OWNED-CAPTURE:MAKE ;
@@ -76,6 +77,7 @@ public
    S-SCALARS SCAL-BYTES ?EXACT
    BASES-ALONE
    SEC-N 0 ?do i ?ROOM loop
+   0 0 <> ?BUDGET
    SEC-N 0 ?do src i IMPORT-SECTION loop
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN

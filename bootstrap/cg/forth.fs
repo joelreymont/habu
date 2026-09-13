@@ -1288,6 +1288,9 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ LPTRMARK entry of EMIT-MARK). The seed has no such table -- the same reason
 \ xt! above is only its store -- so the honest seed word consumes the address
 \ and registers nothing.
+\ Recovery owns no address-cell registry. The native builder's source ABI
+\ reader must select legacy/no-header behavior in this host.
+: BADDRESSCELLSVERSION ( -- ) A 0 MOVZ, A G-PUSH ;
 : EMIT-MEMORY-PRIMS ( -- )
    s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
    s" byte-view" ['] BADDRESSVIEW FPRIM-L
@@ -1296,6 +1299,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    s" ptr-cell-mark" ['] BDROP FPRIM-L
    s" atomic!" ['] BATSTORE FPRIM-L
    s" atomic-cas" ['] BATCAS FPRIM-L
+   s" addr-cells-abi" ['] BADDRESSCELLSVERSION FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L

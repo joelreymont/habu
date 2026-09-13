@@ -17,6 +17,8 @@
 \ the used public with no diagnostic. snap.f imports this package with
 \ `using SNAP` and calls the entry by its plain tail.
 
+require src/habu/address-cells.f
+
 package SNAP
 
 create OUTPUT FS-PATH-CAP allot
@@ -222,8 +224,13 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 TRUSTED: SND-XT-CELL@ ( n -- n ) SND-N @ + @ ;
 TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 
+: SND-ROWS ( -- ptr n n )
+   ADDRESS-CELLS:CURRENT? if SND-PTR SDL @ ADDRESS-CELLS:DATA-SPAN exit then
+   SND-PTR SNAP-RELOC:XTCELL-ROWS-OFF + cell-view
+   SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ ;
+
 : SND-XT-ROW ( n -- n ) {: row:n :}
-   SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@ ;
+   SND-ROWS drop row cells + @ ;
 
 : SND-XT-OFF ( n -- n ) SNAP-RELOC:XTCELL-OFF-MASK and ;
 
@@ -254,9 +261,8 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    xt dbase@ - RBASE-VA +  cell SND-XT-CELL! ;
 
 : SND-CANON-XT-CELLS ( -- )
-   SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do
-      i SND-XT-ROW SND-CANON-XT-CELL
-   loop ;
+   SND-ROWS {: rows:ptr count:n :}
+   count 0 ?do rows i cells + @ SND-CANON-XT-CELL loop ;
 
 : SND-ZERO-WRITER ( -- )
    SNC-N data-base - SND-ZERO-CELL
@@ -339,7 +345,7 @@ package SNAP
    \ loader tell a legacy image apart from a corrupt one.
    SNAP-MAGIC TRL !  0 TRL SNAP-TRL-TBASE + !  ndict@ TRL SNAP-TRL-NDICT + !
    SCL @ TRL SNAP-TRL-REGLEN + !  SDL @ TRL SNAP-TRL-DATALEN + !
-   SNAP-FORMAT-VERSION TRL SNAP-TRL-VERSION + !
+   ADDRESS-CELLS:SNAPSHOT-FORMAT TRL SNAP-TRL-VERSION + !
    \ stream: header, engine text, region, data, trailer, zero pad
    OUT-PATH PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
@@ -384,6 +390,7 @@ public
          s" snap: retained code lacks native provenance" ENGINE-ERROR:IMAGE-CODE-ORIGIN die
       then
    else 2drop then
+   ADDRESS-CELLS:PERSIST
    HDR
    CANON-REGION
    CANON-DATA

@@ -18,6 +18,8 @@
 \ boundary is confined to the TRUSTED:/TRUST casts below (no `0 set-check` span, so
 \ the checked build stays fail-closed through the image writer).
 
+require src/habu/address-cells.f
+
 package AOT-CAPTURE
 
 \ The buffers this file fills are package AOT-BUF's public surface
@@ -1141,6 +1143,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ is written where a cell's kind is decided, which is the only place it is known.
 : ACAP-ADD-XTOFF ( n n -- ) {: celloff:n meta:n :}
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-MAX >= if s" aot-capture: too many declared address cells" 74 die then
+   AOT-WINDOW:XTOFF-N @ 1+ AOT-WINDOW:XTOFF-RESERVE
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + {: row:ptr :}
    celloff row AOT-P32!
    meta row 4 + AOT-P32!
@@ -1152,14 +1155,9 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-XTMETA@ ( n -- n ) {: k:n :}
    k AOT-WINDOW:XTOFF-ROW * AOT-WINDOW:XTOFF-BUF@ + 4 + ACAP-W32@ ;
 
-: ACAP-XTCELL-ROWS ( -- n )
-   AOT-LIVE-DATA SNAP-RELOC:XTCELL-N-CELL + AOT-CELL@
-   dup 0 < over SNAP-RELOC:XTCELL-CAP > or if
-      s" aot-capture: declared address cell count out of range" 74 die
-   then ;
+: ACAP-XTCELL-ROWS ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
 
-: ACAP-XTCELL-RAW ( n -- n ) {: k:n :}
-   AOT-LIVE-DATA SNAP-RELOC:XTCELL-ROWS-OFF + k cells + AOT-CELL@ ;
+: ACAP-XTCELL-RAW ( n -- n ) ADDRESS-CELLS:ROW@ ;
 
 : ACAP-XTCELL-OFF ( n -- n ) ACAP-XTCELL-RAW SNAP-RELOC:XTCELL-OFF-MASK and ;
 
@@ -1269,9 +1267,8 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
 \ order the engine registered it - so the scan needs no ordering the engine does
 \ not promise. That costs a pass per gap, and the gaps are the cells plus one, so
 \ the whole walk is the window's length plus the square of its declared-cell
-\ count. The count is bounded by SNAP-RELOC:XTCELL-CAP (4096); a runtime that
-\ approached the cap would want the table ordered instead, which is a change to
-\ where the engine writes it.
+\ count. An independently owned index can improve this without changing the
+\ append order of the engine registry or the artifact rows.
 : ACAP-NEXT-CELL ( n n -- n ) {: p:n len:n :}
    len ACAP-RC !
    AOT-WINDOW:XTOFF-N @ 0 ?do
@@ -1609,7 +1606,8 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-NIDX-PROVE                              \ ... and the pool index answers every entry
-   ACAP-PWIN-CAPTURE ;                          \ only the window's own seals travel
+   ACAP-PWIN-CAPTURE                            \ only the window's own seals travel
+   AOT-ARM:PAYLOAD-MODE @ 1 = AOT-SECTION:BYTES drop ;
 
 private
 

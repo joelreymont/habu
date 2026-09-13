@@ -11,12 +11,9 @@
 \ baked wrong data in silence). One declaration file is what lets those two
 \ processes agree on a format instead of each carrying a copy of it.
 \
-\ THE CAPS AND THE BUDGET TRAVEL TOGETHER. AOT-SECTION:BYTES sums the buffers
-\ below and AGREE executes at load, in every build and every recovery compile,
-\ against src/arch/arm64/icode.f AOT-SECTION-CAP. Splitting the budget from the
-\ caps it sums is precisely the drift AGREE exists to stop, so nothing here may
-\ be moved out on its own: raising a cap must either move the section with it or
-\ stop the build.
+\ Individual format caps and a shared aggregate byte budget live together.
+\ AOT-SECTION checks actual encoded lengths, including framing and alignment,
+\ before the engine emitter publishes any of this section.
 \
 \ WHO LOADS IT. It is a common engine-prefix source, immediately before habu2.f
 \ in both builders (tools/bootstrap.sh SRC_COMMON, tools/build-fixpoint.f
@@ -244,17 +241,23 @@ DYNAMIC-BUFFER RBYTES-STORAGE n
    RBYTES-CAP CELL / RBYTES-STORAGE-RESERVE
    0 RBYTES-STORAGE BYTE-VIEW ;
 variable RBYTES-LEN
-\ One row per declared address cell, including fixed cells below the captured
-\ DATA window. The engine's own table bounds it: habu2.f EMIT-MARK is the single
-\ producer of a row, it dedupes and exits XTCELL-RC at the cap, and capture offers
-\ each row here at most once. Taking the bound from that cap keeps the two owners
-\ from drifting apart.
-SNAP-RELOC:XTCELL-CAP constant XTOFF-MAX
+\ Address rows grow independently of the engine's declaration registry. The
+\ artifact's aggregate byte budget, checked before copy or emission, is the
+\ limit; this single-section ceiling also bounds each allocation request.
 8 constant XTOFF-ROW
+AOT-SECTION-CAP XTOFF-ROW / constant XTOFF-MAX
 $80000000 constant XTOFF-WINDOW-TAG
 $80000000 constant XTOFF-DATA-TAG
 $7FFFFFFF constant XTOFF-VALUE-MASK
-create XTOFF-BUF XTOFF-MAX XTOFF-ROW * allot    variable XTOFF-N
+DYNAMIC-BUFFER XTOFF-STORAGE n
+variable XTOFF-N
+: XTOFF-RESERVE ( n -- )
+   dup 0 < over XTOFF-MAX > or if
+      s" aot: address-cell section exceeds its byte budget" 74 die then
+   XTOFF-STORAGE-RESERVE ;
+: XTOFF-BUF ( -- ptr u8 )
+   XTOFF-N @ 1 max XTOFF-RESERVE
+   0 XTOFF-STORAGE BYTE-VIEW ;
 \ Each row is (location u32, target u32). The location's high bit selects a
 \ window-relative offset; otherwise it is a fixed DATA offset. The target's
 \ high bit selects DATA rather than CODE; low bits are zero for null or the
@@ -392,57 +395,65 @@ public
 ;package
 
 
-\ ---- how much window the AOT section can ask for --------------------------
-\ THE THIRD TERM OF THE CODE WINDOW IS OWNED HERE, because the buffers are here.
-\ src/arch/arm64/icode.f sizes CODE-CAP-BYTES as ADR-HI + IBUFSZ +
-\ AOT-SECTION-CAP and cannot see any of these caps -- it is compiled first, and
-\ the recovery host reads it first too. So the sum is derived here from the
-\ buffers themselves and the agreement is EXECUTED at load, in every build and
-\ every recovery compile: raising a cap without the window stops the build
-\ instead of shipping an emitter whose buffer cannot hold what it may bake. That
-\ is the shape src/habu/rt.f RT:DSTACK-AGREE already uses for mnem.f's XDS and
-\ layout.f's ENGINE-GPR:DSTACK.
-\ The rounding is the section's headroom for what is not a buffer: the twelve
-\ count cells that head the tables and the pad each BYTES, run takes to the next
-\ 4-byte boundary. The agreement below checks the derived requirement against
-\ the assembler's reservation; unused capacity is permitted. It
-\ is a belt in any case -- a section that outgrew this would be refused by the
-\ emitter's own `icode: code buffer overflow`, and each buffer refuses on its own
-\ overflow long before that.
+\ The shared physical budget is charged for actual encoded lengths. Individual
+\ tables retain their own format limits; growing one no longer reserves every
+\ other table's maximum in the aggregate.
+package AOT-SIG
+public
+: INSTALL-NAME$ ( -- ptr u8 n ) s" CK-AOT-REG-INSTALL" ;
+;package
+
 package AOT-SECTION
-
-\ the sum below reads the caps by their bare names; the import closes with the package.
 using AOT-BUF
-
 public
 
-$10000 constant GRAIN                              \ 64 KiB, the largest target page
-AOT-BLOB-CAP
-AOT-REC-MAX AOT-CREC-ROW * +                       \ compact dictionary records
-AOT-SITE-MAX SITE-ROW * +                          \ call-site rows
-AOT-NAMES-CAP +                                    \ deduped name pool
-AOT-DSITE-MAX 4 * +                                \ DATA and CODE sites share one bound
-AOT-WINDOW:XTOFF-MAX AOT-WINDOW:XTOFF-ROW * +      \ declared address cells in the window
-AOT-WINDOW:RUN-MAX 8 * +                           \ the captured DATA window's non-zero extents
-AOT-WINDOW:RBYTES-CAP +                            \ ... and their bytes
-AOT-XTSITE:MAX 8 * +                               \ named code-literal rows
-AOT-BOOTRUN-CAP 1 + +                              \ +1 = the live 0 terminator
-AOT-PWIN-MAX 4 * +                                 \ the window's own protected WIDs
-AOT-SIG-MAX SIG-ROW * +                            \ one signature row per window word
-AOT-SIG-STR-CAP +                                  \ the pool strings those rows name
-AOT-REG-CAP +                                      \ the type-family registry delta
-GRAIN 1 - + GRAIN / GRAIN *
-constant BYTES
+: ROOM? ( n n -- bool ) {: used:n bytes:n :}
+   used 0 < used AOT-SECTION-CAP > or bytes 0 < or if 0 0 <> exit then
+   bytes AOT-SECTION-CAP used - <= ;
 
-private
+: REFUSE ( -- ) s" aot: encoded sections exceed their byte budget" ICODE-EXIT-RC die ;
 
-: AGREE ( -- )
-   BYTES AOT-SECTION-CAP >
-   if
-      s" aot: required section bytes " type BYTES .
-      s" , assembler capacity " type AOT-SECTION-CAP . cr
-      s" habu2: AOT section exceeds assembler capacity" ICODE-EXIT-RC die
+: +RAW ( n n -- n )
+   2dup ROOM? 0= if REFUSE then + ;
+
+: +BYTES ( n n -- n ) {: used:n bytes:n :}
+   used bytes +RAW {: end:n :}
+   bytes negate 3 and {: pad:n :}
+   end pad ROOM? 0= if REFUSE then end pad + ;
+
+: +ROWS ( n n n -- n ) {: used:n count:n width:n :}
+   count 0 < width 0 <= or if REFUSE then
+   count AOT-SECTION-CAP width / > if REFUSE then
+   used count width * +BYTES ;
+
+\ Fifteen scalar/count cells frame the common baked section. BYTES, rounds
+\ each byte run to four bytes; packed rows already have that alignment.
+: BODY-BYTES ( -- n )
+   15 cells
+   AOT-BLOB-LEN @ +BYTES
+   AOT-REC-N @ AOT-CREC-ROW +ROWS
+   AOT-SITE-N @ SITE-ROW +ROWS
+   AOT-NAMES-LEN @ +BYTES
+   AOT-DSITE-N @ 4 +ROWS
+   AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW +ROWS
+   AOT-WINDOW:RUN-N @ 8 +ROWS
+   AOT-WINDOW:RBYTES-LEN @ +BYTES
+   AOT-CSITE-N @ 4 +ROWS
+   AOT-XTSITE:N @ 8 +ROWS
+   AOT-BOOTRUN-LEN @ 1+ +BYTES
+   AOT-PWIN-N @ 4 +ROWS ;
+
+\ The sidecar is emitted as one byte run: its sections have no internal pad.
+: PAYLOAD-BYTES ( -- n )
+   AOT-SIG-N @ AOT-SIG-STR-LEN @ or AOT-REG-LEN @ or 0= if 0 exit then
+   56 AOT-SIG-N @ SIG-ROW +ROWS
+   AOT-SIG-STR-LEN @ +RAW AOT-REG-LEN @ +RAW ;
+
+: BYTES ( bool -- n ) {: sidecar:bool :}
+   BODY-BYTES
+   sidecar if
+      8 +BYTES PAYLOAD-BYTES +BYTES
+      AOT-SIG:INSTALL-NAME$ nip +BYTES
    then ;
-AGREE
 
 ;package

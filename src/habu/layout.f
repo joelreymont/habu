@@ -88,7 +88,8 @@ $48425350414E5321 constant SNAP-MAGIC
 \ would interpret the tag as part of an offset, so the hard version equality is
 \ required in both directions.
 \ Version 8 adds the persisted application startup execution token.
-8 constant SNAP-FORMAT-VERSION
+\ Version 9 stores the address-cell vector through a checked DATA-relative header.
+9 constant SNAP-FORMAT-VERSION
 
 \ --- snapshot trailer geometry: the single owner ----------------------------
 \ The trailer is the last thing in the authenticated text extent, so its base is
@@ -1193,13 +1194,14 @@ ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
 \ registered by name at cold boot (habu2.f). Scanning DATA for values that fall
 \ in some address band would be a guess -- an ordinary integer can hold any value
 \ at all -- and is deliberately not what this does.
-\ Layout: a count cell followed by XTCELL-CAP tagged offset cells. Bit 63 is the
+\ Legacy layout: a count followed by XTCELL-CAP tagged offset cells. Bit 63 is the
 \ DATA-pointer kind and the remaining bits are the DATA offset. Keeping the kind
 \ in the existing row avoids a second registry and does not move DATA-START. The
 \ engine appends only an identical declaration once and refuses one cell declared
 \ with both kinds.
-\ The complete native compiler plus application-image support exceeds 32768
-\ declarations. The first engine built from this layout must enforce this bound.
+\ These coordinates freeze the original band and heap floor. New engines use
+\ ADDRESS-CELLS' header and inline boot rows in this band, then grow into mmap.
+\ XTCELL-CAP bounds only legacy host rows; it is not a runtime declaration limit.
 65536 constant XTCELL-CAP
 $8000000000000000 constant XTCELL-DATA-TAG
 $7FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK

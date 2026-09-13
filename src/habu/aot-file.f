@@ -267,21 +267,26 @@ variable CUR
    k S-REG     = if AOT-REG-BUF@ exit then
    CBUF ;
 
+: ROW-BYTES-CHECKED ( n n -- n ) {: count:n width:n :}
+   count 0 < count AOT-SECTION-CAP width / > or if
+      s" aot-file: encoded sections exceed their byte budget" DIE then
+   count width * ;
+
 : SEC-LEN ( n -- n ) {: k:n :}
    k S-SCALARS = if SCAL-BYTES exit then
    k S-BLOB    = if AOT-BLOB-LEN @ exit then
-   k S-RECS    = if AOT-REC-N @ AOT-CREC-ROW * exit then
-   k S-SITES   = if AOT-SITE-N @ SITE-ROW * exit then
+   k S-RECS    = if AOT-REC-N @ AOT-CREC-ROW ROW-BYTES-CHECKED exit then
+   k S-SITES   = if AOT-SITE-N @ SITE-ROW ROW-BYTES-CHECKED exit then
    k S-NAMES   = if AOT-NAMES-LEN @ exit then
-   k S-DSITES  = if AOT-DSITE-N @ 4 * exit then
-   k S-CSITES  = if AOT-CSITE-N @ 4 * exit then
-   k S-XTOFFS  = if XTOFF-N @ XTOFF-ROW * exit then
-   k S-WDATA   = if RUN-N @ 8 * exit then
+   k S-DSITES  = if AOT-DSITE-N @ 4 ROW-BYTES-CHECKED exit then
+   k S-CSITES  = if AOT-CSITE-N @ 4 ROW-BYTES-CHECKED exit then
+   k S-XTOFFS  = if XTOFF-N @ XTOFF-ROW ROW-BYTES-CHECKED exit then
+   k S-WDATA   = if RUN-N @ 8 ROW-BYTES-CHECKED exit then
    k S-WRUNS   = if RBYTES-LEN @ exit then
-   k S-XTSITES = if AOT-XTSITE:N @ 8 * exit then
+   k S-XTSITES = if AOT-XTSITE:N @ 8 ROW-BYTES-CHECKED exit then
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
-   k S-PWIN    = if AOT-PWIN-N @ 4 * exit then
-   k S-SIGS    = if AOT-SIG-N @ SIG-ROW * exit then
+   k S-PWIN    = if AOT-PWIN-N @ 4 ROW-BYTES-CHECKED exit then
+   k S-SIGS    = if AOT-SIG-N @ SIG-ROW ROW-BYTES-CHECKED exit then
    k S-SIGSTR  = if AOT-SIG-STR-LEN @ exit then
    k S-REG     = if AOT-REG-LEN @ exit then
    CLEN @ ;
@@ -405,6 +410,26 @@ create BASE SEC-N cells allot
    FD @ close
    k s" is larger than the buffer it fills" SECT-DIE ;
 
+\ Charge the actual resulting sections before reserving or copying any input.
+\ CODE rows share DATA storage, so their storage base includes the DATA section
+\ and is removed from their own logical byte count. A merge retains a registry
+\ section when the incoming artifact deliberately carries none.
+: ?BUDGET ( bool -- ) {: merged:bool :}
+   SEC-N ROW-BYTES * HDR-BYTES +
+   SEC-N 0 ?do
+      i BASE@ i ROW-LEN@ + {: extent:n :}
+      i S-CSITES = if
+         extent S-DSITES BASE@ S-DSITES ROW-LEN@ + -
+      else
+         i S-REG = merged and i ROW-LEN@ 0= and if
+            AOT-REG-LEN @
+         else extent then
+      then {: bytes:n :}
+      dup bytes AOT-SECTION:ROOM? 0= if
+         FD @ close s" aot-file: encoded sections exceed their byte budget" DIE then
+      bytes +
+   loop drop ;
+
 \ ---- staging the two assembled sections -------------------------------------
 
 : STAGE-SCALARS ( -- )
@@ -437,7 +462,9 @@ create BASE SEC-N cells allot
 : BUILD-TABLE ( -- )
    SEC-N ROW-BYTES * CUR !
    SEC-N 0 ?do
-      CUR @  i SEC-LEN  i ROW!
+      CUR @ i SEC-LEN AOT-SECTION:ROOM? 0= if
+         s" aot-file: encoded sections exceed their byte budget" DIE then
+      CUR @ i SEC-LEN i ROW!
       CUR @ i SEC-LEN + CUR !
    loop
    CUR @ PAYLEN ! ;
@@ -498,6 +525,7 @@ public
    BUILD-TABLE
    BASES-ALONE
    SEC-N 0 ?do i ?ROOM loop
+   0 0 <> ?BUDGET
    PAYLOAD-DIGEST
    DERIVED AOT-IDENT:CHAIN-DIGEST
    prod BUILD-HEADER
@@ -543,6 +571,8 @@ private
       s" aot-file: the artifact was produced by a different engine" DIE
    then
    HDR O-PAYLEN + U64@ PAYLEN !
+   HDR-BYTES PAYLEN @ AOT-SECTION:ROOM? 0= if
+      FD @ close s" aot-file: encoded sections exceed their byte budget" DIE then
    PAYLEN @ SEC-N ROW-BYTES * < if
       FD @ close
       s" aot-file: the payload is shorter than its own section table" DIE
@@ -608,6 +638,7 @@ private
 : RESERVE-SECTION ( n -- ) {: k:n :}
    k ?ROOM
    k ROW-LEN@ 0= if exit then
+   k S-XTOFFS = if k BASE@ k ROW-LEN@ + XTOFF-ROW / XTOFF-RESERVE then
    k S-NAMES = if k BASE@ k ROW-LEN@ + AOT-NAMES-RESERVE then
    k S-DSITES = k S-CSITES = or if
       k BASE@ k ROW-LEN@ + 4 / AOT-DSITE-RESERVE
@@ -804,6 +835,7 @@ public
    LOAD-PASS
    BASES-ALONE
    SEC-N 0 ?do i ?ROOM loop
+   0 0 <> ?BUDGET
    SEC-N 0 ?do i LOAD-SECTION loop
    FD @ close
    ?PAYLOAD-AGAIN
@@ -1232,6 +1264,7 @@ public
    ?REG
    BASES-AFTER-HOST
    SEC-N 0 ?do i ?ROOM loop
+   0 0= ?BUDGET
    OPEN-CSITE-GAP
    SEC-N 0 ?do
       i S-WDATA = if PLACE-WDATA then

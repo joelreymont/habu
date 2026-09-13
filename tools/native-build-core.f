@@ -4,6 +4,7 @@ require lib/errors.f
 require src/core/prefix-boundary.f
 require lib/string.f
 require lib/memory.f
+require src/habu/address-cells.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
@@ -52,13 +53,7 @@ create SMOKE-ERR SMOKE-CAP allot
 \ engine row and preserves the order the registrar wrote.
 : ADDR-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
-: ADDR-ROWS! ( n -- ) data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
-
-: ADDR-ROW@ ( n -- n ) {: k:n :}
-   k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + @ ;
-
-: ADDR-ROW! ( n n -- ) {: k:n row:n :}
-   row k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + ! ;
+: ADDR-ROW@ ( n -- n ) ADDRESS-CELLS:ROW@ ;
 
 : ADDR-ROW-OFF ( n -- n ) ADDR-ROW@ SNAP-RELOC:XTCELL-OFF-MASK and ;
 
@@ -76,14 +71,7 @@ create SMOKE-ERR SMOKE-CAP allot
       then
    loop ;
 
-: KEEP-ROWS-BELOW ( n -- ) {: floor:n :}
-   0 ADDR-ROWS 0 ?do
-      i ADDR-ROW@ {: row:n :}
-      row SNAP-RELOC:XTCELL-OFF-MASK and floor < if
-         dup row ADDR-ROW! 1+
-      then
-   loop
-   ADDR-ROWS! ;
+: KEEP-ROWS-BELOW ( n -- ) ADDRESS-CELLS:KEEP-BELOW ;
 
 : RESET-ADDRESS-ROWS ( -- )
    HOST-HEAP-START {: floor:n :}

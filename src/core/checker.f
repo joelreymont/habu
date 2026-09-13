@@ -6742,6 +6742,7 @@ PRIM: !          PE-A PE-IN PE-PTR-A PE-IN PRIM;
 \ habu-add-a-quotation-1610f30c.
 PRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN PRIM;
 PRIM: ptr-cell-mark PE-PTR-A PE-IN PRIM;
+PRIM: addr-cells-abi PE-N PE-OUT PRIM;
 PRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT PRIM;
 \ Explicit memory views preserve address bits while changing the access type.
 PRIM: byte-view  PE-PTR-A PE-IN PE-PTR-U8 PE-OUT PRIM;
