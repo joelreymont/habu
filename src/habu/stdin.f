@@ -19,20 +19,11 @@ $20000 constant HMAX
 : HB@ ( -- ptr u8 ) HB @ ;
 s" HB@" s" -- ptr u8" TRUST
 
-: H+ ( ptr u8 n -- ) {: a:ptr u :}
-   HL @ u + HMAX > IF s" hb: repl sources exceed buffer" 74 die THEN
-   0 BEGIN dup u < WHILE
-      a over + c@  HB@ HL @ + c!
-      HL @ 1 + HL !  1 +
-   REPEAT drop ;
-
 : HNL ( -- )
    HL @ 1 + HMAX > IF s" hb: repl sources exceed buffer" 74 die THEN
    10 HB@ HL @ + c!  HL @ 1 + HL ! ;
 
-: HLINE ( a u -- )  H+ HNL ;
-
-: RD-1 ( z -- )
+: RD-1 ( ptr u8 -- )
    0 0 open HFD !
    HFD @ 0 < IF s" hb: cannot open repl source" 74 die THEN
    BEGIN                                                 \ read() may return short
