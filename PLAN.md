@@ -4,28 +4,34 @@ Status: implementation in progress, 2026-09-13. Cedar owns integration. This rep
 the obsolete IR/GPU migration plan, preserved in jj history. Reuse the existing
 Tender campaign `habu-compile-the-tender-8385810f`.
 
-## Current review snapshot
+## Current integration and review pins
 
-`review/current-compiler` contains the current integration stack plus the source
-target writer, explicit full checker-payload ownership and retained-code
-provenance work. This is an unverified integration snapshot, not an accepted
-replacement engine. The earlier external review used August 23 `master`
-(`3c6bda9d`), which does not contain these compiler changes.
+`cedar/compiler-integration` is the reviewed integration branch. The external
+review pins remain frozen: `review/current-compiler` at `51546316`, and
+`review/partial-payload` at `f091a068`. The earlier August 23 `master` review
+(`3c6bda9d`) predates these compiler changes. None is an accepted replacement
+engine; source review and focused controls are not a rebuilt runtime gate.
 
-The paired bootstrap has compiled the current compiler at tier 1 and used it
-to compile and execute a new definition. Independent checks cover the source
-checker handoff, descriptor bounds, tape detachment, match storage and fixed-slot
-mapping. The provenance helper has passed isolated emitted-code interval and
-capacity checks; its complete new engine path has not been verified. The owner
-memo/bounds follow-up loads, but its targeted regression controls are incomplete.
+Integration through `746ab84f` includes source-bound typed writer dispatch,
+positive provenance admission, an explicit private bootstrap, private generation
+outputs, owner memo/bounds controls, provenance invalidation on code overwrite,
+and growing captured relocation tables with signed DATA-span validation. The
+latest private bootstrap passed target compilation and capture, then refused
+at the builder's 192-row primitive registry limit after 394.002 seconds. Its log
+is `/tmp/cedar-family-stage-abi/native-bootstrap-B1-capacity.log`; the fix is
+tracked by `habu-grow-the-engine-e48d5fbd`.
 
-The immediate missing seam is positive provenance admission on the owned capture
-and the explicit private bootstrap route. `tools/native-emit.f` still calls the
-ordinary `ENGINE-EMIT:FORTH`, which records an unknown payload origin. The planned
-first private bootstrap may carry unknown origin; only its positively tracked
-product-hosted rebuild can be accepted. Complete source-bound emission, changed
-layout restore, repeated capture, product-hosted rebuild, the full test gate,
-application acceptance and all-AOT compile-speed measurements remain pending.
+Source-closure framing and the real stale-artifact regression are reviewed at
+`d6809d78` and `ea9904fa`. The regression distinguishes separate-file execution,
+accepts the unchanged artifact, and refuses the changed closure at both tiers.
+Independent controls restore each old bug and make the test fail.
+
+The first private bootstrap may carry unknown origin; only its positively
+tracked product-hosted rebuild can be accepted. Complete source-bound emission,
+changed-layout restore, repeated capture, product-hosted rebuild, the full test
+gate, application acceptance and all-AOT compile-speed measurements remain
+pending. Registry content admission and loop obligations are active parallel
+repairs; partial graph capture remains separate until validated.
 
 `review/partial-payload` preserves the separate, unverified graph producer and
 registry prevalidation work (`f091a068`). It is not composed into this branch.
