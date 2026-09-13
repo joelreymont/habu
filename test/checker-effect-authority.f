@@ -1,5 +1,5 @@
 \ Source grants and native ABI facts share a row without sharing authority.
-\ Run directly on the product, or as the native-window-owner child fixture.
+\ Run directly on the product; native builds and graph fixtures cover handover.
 require lib/test.f
 
 package EFFECT-AUTHORITY-TEST

@@ -73,8 +73,7 @@ s" xpp:XP-HID" TWX-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
 s" XPU5 ( n -- n ) xpp:XP-HID" CHECK! -1 T=
 
 \ ---------------------------------------------------------------------------
-\ 3. defer flag + control-effect flags ride the alias; a plain alias carries
-\    neither.
+\ 3. defer + control flags ride the alias, independently of source authority.
 \ ---------------------------------------------------------------------------
 package XPF
 public
@@ -82,6 +81,7 @@ s" n -- n" s" XP-DEF" TWX-USIG-ADD
 s" XP-DEF" CHECKER-DEFER
 s" --" s" XP-THR" TWX-USIG-ADD
 s" XP-THR" CTL-THROW TWX-NORET-ADD
+\ The raw overwrite above carries only a control flag: no authority to invent.
 ;package
 
 package XPF2
@@ -91,7 +91,10 @@ s" xpf:XP-THR" CHECKER-EXPORT
 ;package
 s" xpf2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
 s" xpf2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
-s" xpf2:XP-DEF" TWX-CTL-FLAGS 0 T=
+s" xpf2:XP-THR" TWX-CTL-FLAGS EFFECT-EXTERNAL and 0 T=
+s" xpf2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL invert and 0 T=
+s" xpf2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
+s" xpf:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 s" xpf2:XP-THR" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
@@ -183,12 +186,14 @@ TWX-CAND-START
    s" xpf:XP-DEF" CHECKER-EXPORT
    s" xpf:XP-THR" CHECKER-EXPORT
    s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ -1 T=
+   s" xrb2:XP-DEF" TWX-CTL-FLAGS EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
    s" xrb2:XP-THR" TWX-CTL-FLAGS CTL-THROW T=
    ;package
 0 TWX-CAND-DONE drop
 RBF-DEPTH @ P-DEPTH @ T=
 s" xrb2:XP-DEF" TWX-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
 s" xrb2:XP-DEF" TWX-FIND-DEFER FOUNDF !  FOUNDF @ 0 T=
+s" xrb2:XP-DEF" TWX-CTL-FLAGS 0 T=
 s" xrb2:XP-THR" TWX-CTL-FLAGS 0 T=
 
 \ ---------------------------------------------------------------------------

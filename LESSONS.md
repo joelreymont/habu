@@ -7264,10 +7264,11 @@ and --no-lldbinit.
   forges a plausible, wrong row that rejects somewhere else entirely. A wrong
   hand-written row is not free.
 
-- **Recording a signature is the same act as publishing an API.**
-  `internal-mark.f` welds "checker-known" to "top-level executable", so any
-  move that makes a file checked publishes every global it defines. Count the
-  globals before scoping such a move.
+- **A native call shape does not grant source authority.** An unjudged checker
+  scan can fill ABI rows for raw engine helpers. `EFFECT-EXTERNAL` records an
+  explicit declaration or enforced check separately; transfer and capture must
+  preserve that provenance, and a PRIM grant authorizes its own effect. Seal
+  prefix records from dictionary kind and source authority, never a prologue.
 - **A scout's "costs nothing" about a file is about its CONSUMERS; measure its
   BILL separately.** `layout-valid.f` had zero pre-hook consumers and 29
   pre-hook dependencies.
