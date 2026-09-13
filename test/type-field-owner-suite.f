@@ -97,10 +97,9 @@ variable RC
    s" TFO-R9 ( n -- ) Pf-RollBack" REJECT-VERDICT ;
 
 \ The match is exact, never a prefix or substring. These neighbours must NOT be
-\ caught by the retired set, or it would be silently over-broad. They are
-\ uncheckable (1) rather than certified because they are registry-internal names
-\ with no checker axiom — the point is only that they are not REJECTED (0), so
-\ the assertion stays true if any of them later gains an axiom.
+\ caught by the retired set, or it would be silently over-broad. A source-built
+\ checker may know their ordinary definer effects; use the real result type so
+\ a pointer-versus-number mismatch cannot masquerade as a retired-token reject.
 : NOT-RETIRED ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 <> TTRUE ;
 
@@ -109,7 +108,7 @@ variable RC
    s" TFO-N2 ( -- n ) PF-FLAGS-NONE" NOT-RETIRED
    \ PF-COMMIT-N has a retired name as a strict prefix; prefix matching would
    \ wrongly reject it
-   s" TFO-N3 ( -- n ) PF-COMMIT-N" NOT-RETIRED
+   s" TFO-N3 ( -- ptr n ) PF-COMMIT-N" NOT-RETIRED
    \ and a longer name that merely contains one
    s" TFO-N4 ( -- n ) TFO-PF-BEGIN-LOCAL" NOT-RETIRED
    \ a {: :} local spelled like a retired name shadows the retirement exactly as

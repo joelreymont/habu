@@ -6,6 +6,40 @@ issue-type: task
 created-at: "\"2026-09-13T16:24:10.390520+03:00\""
 ---
 
-Problem: product-hosted source ccc0661a B1 changes checked behavior even before the local-case patch. Original host28e11361 passes internal-word-gate and type-field-owner-suite; unchanged-source B1 SHA45b5b4eb fails both, as does fresh combined0c602d1c. internal-word-gate assertions579-581: checked definition writing NULL-PTR-CELL exits0 instead of rejecting70/E-UNDEFINED. type-field-owner-suite assertion188 unexpectedly false. Preserve these rejection/owner semantics through native-build, reduce both failures, identify whether metadata or declaration publication is lost and fix its responsible layer. Acceptance: original engine and first product agree on checked internal-word rejection and all type-field-owner cases, repeated product-hosted build preserves results, required native suite passes. Files: tools/native-build.f; src/core/pointer-storage.f/checker.f and source owner/payload handoff; src/habu/native-runtime.f/xref.f as proven by reduction; existing two suites. No bypass, weakened rejection or obsolete-state assertion substituted for behavior. Evidence: private baseline B0/B1/B2 under /tmp/cedar-native-baseline.hJ8uHu; full315-suite log in .jj-ws/cedar-correctness-verify/build/full-gate.log. Depends: diagnose independently; coordinate source owner edits with providerf2/tier1dc23a17/payload eec26aea. Ownership: Cedar diagnosis/integration until assigned. Claim: unassigned.
 
-Reduction: native-build products legitimately acquire typed pointer effects for NULL-PTR-CELL and PF-COMMIT-N; this does not mean internal flags were lost. EM-COMPILE-CALL lacks the DNAME-INT/TRUSTED authorization that NDICT:CALL-TARGET enforces, allowing the typed internal store to compile on JIT. Repair that JIT authorization, preserve explicitly TRUSTED use and bare/tick/search guards. The type-field-owner neighbor fixture must use the legitimate pointer effect instead of assuming an unknown signature; its retired-token rejection remains mandatory. Owner: Astra internal-call lane, separate workspace from799f713b; Cedar independent review/integration.
+Confirmed cause: native source replay retains an active declaration owner before
+the replacement checker hooks are enabled. `LASTC-TRUST:PUBLISH-PTR-A` records
+`-- ptr a` for create/variable, and `TRANSFER-CHECKED` preserves those effects.
+Original host `28e11361` had no effects for `NULL-PTR-CELL` or `PF-COMMIT-N`;
+unchanged-source `ccc0661a` product `45b5b4eb` has pointer effects for both.
+Their `DNAME-INT` flags survive unchanged. JIT `EM-COMPILE-CALL` failed to check
+that flag, so a checked NULL-cell store certifies and executes once its effect is
+known. Tier 1 already rejects the same call through `NDICT:CALL-TARGET`.
+
+Repair the JIT's shared found-target path before an immediate executes or a call
+is emitted, allowing internal calls only under explicit `TRUSTED:` compilation.
+Preserve the useful effects and existing bare/tick/search protections. The
+existing native-internal-call fixture now gives a harmless child-owned internal
+word a known checked effect and tests rejection plus trusted execution on both
+tiers. The earlier engine rejection changes seed-ndict!'s whole-load diagnostic
+from the checker's trusted-capability error to E-UNDEFINED; its direct checker
+verdict remains tested independently.
+
+The owner-suite failure was assertion188, candidate `TFO-N3 ( -- n ) PF-COMMIT-N`.
+The new pointer effect correctly rejects that number result; this was not an
+owner rollback or retired-token failure. Declare its real `ptr n` result so the
+neighbor assertion continues to test exact retired-name matching. The retired
+name refusals remain unchanged.
+
+Files: `src/habu/habu2.f` JIT call guard and the existing internal-word,
+native-internal-call and type-field-owner suites. Recovery emits this same native
+source; transient stage0 records carry no DNAME-INT field to mirror. No checker,
+source-owner or tier-dispatch changes are needed for this repair.
+
+Acceptance: first and repeated product-hosted builds preserve these rejection and
+owner behaviors, followed by the required native suite. Private source `799f713b`
+plus this repair builds from `968cabff` to `2b931ed6` and then `541586f5`, both rc0.
+All three focused suites pass on both products. The integrated full suite remains
+pending. These builds are functional evidence, not a byte-fixpoint claim.
+Binaries and diagnostics are preserved under
+`/tmp/cedar-native-baseline.hJ8uHu`. Cedar independently reviewed the source and reran all three focused suites on the repeated product: all passed. Integrated full-suite verification remains pending.

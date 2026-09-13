@@ -285,7 +285,9 @@ create EMPTY 1 allot            \ zero-length stdin
    s" seed-ndict!" ASSERT-INTERNAL
    s" checked source cannot compile seed-ndict!" T-LABEL
    SEED-RESET-CHECKED$ RUN-SUBJECT
-   s" E-CAP-TRUSTED" ASSERT-DIAG
+   \ The engine now refuses this internal call before the checker sees its
+   \ trusted-only primitive row; the checker verdict is covered separately.
+   s" E-UNDEFINED: seed-ndict!" ASSERT-DIAG
    s" search-wl cannot launder seed-ndict! to execute" T-LABEL
    SEED-RESET-SEARCH$ RUN-SUBJECT
    ASSERT-OK

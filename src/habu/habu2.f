@@ -8223,6 +8223,14 @@ public
 
 ;package
 
+
+: C-COMPILE-CALL-GUARD ( -- )
+   LBL {: allowed:label :}
+   14 13 16 ANDI,  14 allowed CBZ,                 \ LFIND's DNAME-INT flag
+   14 DATA TRUSTED-CELL LDR,  14 LUNDEF LABEL@ CBZ,
+   allowed LBL, ;
+
+
 : EM-COMPILE-CALL ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label noxc:label ploop:label pdone:label usedtry:label found:label :}
    9 DATA P2-CELL LDR,  9 noxc CBZ,               \ layout-cap slice 4: pass-2 wide generated-ctor call adds extra pads
@@ -8242,6 +8250,7 @@ public
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                        \ open-scope + global miss -> try used publics
    found LBL,
+   C-COMPILE-CALL-GUARD                                   \ guard typed internal calls and compile-time immediates alike
    14 13 2 ANDI,  14 notimm CBZ,
       14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
          14 14 8 LSRI,                                    \ x14 = min-in cells
