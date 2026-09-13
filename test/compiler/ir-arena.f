@@ -868,11 +868,11 @@ $7FFFFFFFFFFFFFFF constant AS-MAX-N
    d 0 IR-ARENA:READ 7 T=
    d 5 IR-ARENA:READ 60 T=
 
-   \ This start plus one wraps a signed cell. It must be rejected by checking
-   \ the start itself, without forming that endpoint or reaching the copy.
+   \ This start plus three wraps a signed cell. It must be rejected before
+   \ endpoint arithmetic, destination growth, or the copy.
    s" the largest signed start is refused before endpoint arithmetic" T-LABEL
    c IR-CTX:SCRATCH-USED {: before:n :}
-   AS-MAX-N 1 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
+   AS-MAX-N 3 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
    c IR-CTX:SCRATCH-USED before T=
    d IR-ARENA:USED 6 T=
    d 0 IR-ARENA:READ 7 T=
