@@ -903,6 +903,10 @@ SUITE aot-source-identity
    test/aot-source-identity.f
 ;SUITE
 
+SUITE aot-registry-identity
+   test/aot-registry-identity.f
+;SUITE
+
 SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
