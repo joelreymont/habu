@@ -1068,54 +1068,60 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-PATH-CORE-FILES
    PFX-PATH-STDLIB-FILES ;
 
-\ WHERE AN ENGINE'S COLD RUNTIME COMES FROM. One fact decides it - the AOT window
-\ this build captured - and this is the one place that reads it.
-\
-\ A build that captured a window bakes the whole cold runtime into the image as
-\ CODE: the checker, the core prefix, the tool words. Such an engine installs it
-\ at boot (EM-SEED-AOT), seals it there (EM-SEAL-SEEDED-RUNTIME) and opens no
-\ prefix source at all, which is what lets an installed bin/hb start in any
-\ directory.
-\
-\ A build that captured nothing bakes NO runtime. The only runtime such an engine
-\ can have is the one it reads from its own prefix source at boot, ahead of the
-\ first token of its baked program - the order the capture host itself used, the
-\ checker prefix first. Every stage2/maker engine is that kind, because only
-\ src/habu/aot-capture.f fills the capture buffers and only the stdin driver
-\ carries it; their baked payloads are written against exactly that host, since
-\ src/habu/hide.f and src/habu/prefix-rewind.f rewind a dictionary that already
-\ holds the core prefix and name words (USIGS, PREFIX-MARK) that only the prefix
-\ defines.
-\
-\ The same count is baked as LAOTNREC (EMIT-AOT-SEED), so the emitted boot code
-\ and this decision cannot disagree: a seeded engine still refuses a zero or
-\ malformed count at boot, by name.
-: SEEDED-RUNTIME? ( -- bool )
-   AOT-REC-N @ 0 > ;
+\ A nonempty capture may contain only the REPL. Only a captured checker owner
+\ and completed core prefix replace source boot. Read the compact records that
+\ the image actually carries, including after artifact read/merge.
+package AOT-RUNTIME
+private
 
-\ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
-\ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
-\ closes that trust hole for every installed engine: the refresh's stage-N
-\ binary certifies the FULL assembled stage-N+1 source (this prefix included)
-\ before any stage compile (tools/build-fixpoint.f BF-CERTIFY-*, blocking),
-\ and the BF-PIN content hashes close the mid-build reload TOCTOU. That proof
-\ covers the exact installed tree; a later on-disk edit happens after the build
-\ proof and is outside it.
-: EMIT-HOST-LOAD-PREFIX ( -- )
-   16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
-   PFX-TARGET-OK
-   PFX-LOAD-BASE-FILES ;
+: BAD ( -- ) s" hb: incomplete captured runtime" 74 die ;
 
-\ The core prefix as boot source, for an engine whose runtime is not baked. A
-\ seeded engine emits none of it, and a warm snapshot skips it at runtime
-\ (SNAP-CELL) because the restored image carries the dictionary it was baked with.
-: EMIT-COLD-PREFIX ( -- )
-   SEEDED-RUNTIME? if exit then
-   LBL {: done :}
-   12 DATA SNAP-CELL LDR,
-   12 done CBNZ,
-   EMIT-HOST-LOAD-PREFIX
-   done LBL, ;
+: W32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
+
+: REC ( n -- ptr u8 )
+   AOT-CREC-ROW * AOT-REC-MAX 48 * + AOT-REC-BUF@ + ;
+
+: NAME= ( ptr u8 ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
+   rec 8 + W32@ {: off:n :}
+   off AOT-NAMES-LEN @ >= if BAD then
+   AOT-NAMES-BUF@ off + {: name:ptr :}
+   name c@ {: len:n :}
+   len AOT-NAMES-LEN @ off - 1- > if BAD then
+   name 1+ len a u CORE-STR=CI ;
+
+: FIND ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
+   AOT-REC-N @ 0 ?do
+      i REC {: rec:ptr :}
+      rec 16 + W32@ wid = if
+         rec a u NAME= if i unloop exit then
+      then
+   loop
+   -1 ;
+
+: MEMBER? ( ptr u8 n n -- bool ) {: a:ptr u:n pkg:n :}
+   pkg 0 < if 0 0= 0= exit then
+   pkg REC {: rec:ptr :}
+   a u rec W32@ FIND 0 >= if 0 0= exit then
+   rec 4 + W32@ {: wid:n :}
+   wid 0= if 0 0= 0= exit then
+   a u wid FIND 0 >= ;
+
+public
+
+: COMPLETE? ( -- bool )
+   AOT-REC-N @ dup 0 < swap AOT-REC-MAX > or if BAD then
+   AOT-REC-N @ 0= if 0 0= 0= exit then
+   s" CHECKER-REG" $FFFFFFFF FIND {: owner:n :}
+   s" PREFIX-MARK" $FFFFFFFF FIND {: mark:n :}
+   owner 0 < mark 0 < and if 0 0= 0= exit then
+   s" DECLARATIONS" owner MEMBER? 0= if BAD then
+   s" CURSORS" mark MEMBER? 0= if BAD then
+   0 0= ;
+
+;package
+
+: SEEDED-RUNTIME? ( -- bool ) AOT-RUNTIME:COMPLETE? ;
 
 \ Seal the friend arena (TFAM 2b-i): latch := FRIEND-ARENA-LEN. Emitted at the
 \ END of the cold prefix — after the engine's own canonical source is loaded and
@@ -1224,7 +1230,8 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    11 0 0 ADDI, ;
 
 : C-SOURCE-APPEND-X4 ( -- )
-   SRC-SFAIL LABEL@ C-SOURCE-APPEND-X4-TO ;
+   STDIN? @ if SRC-SFAIL LABEL@ else SRC-BFAIL LABEL@ then
+   C-SOURCE-APPEND-X4-TO ;
 
 : C-SOURCE-APPEND-CHAR ( n -- ) {: c:n :}
    4 c MOVZ,
@@ -1420,6 +1427,11 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PROVIDE-ROW
    PFX-COMMON LPTOPROW       s" src/core/top-row.f"     PFX-PROVIDE-ROW ;
 
+: PFX-PROVIDE-FILES ( -- )
+   PFX-PROVIDE-CHECKER-FILES
+   PFX-PROVIDE-DECL-FILES
+   PFX-PROVIDE-CORE-FILES ;
+
 \ The nine boot-stdlib provide rows. They are NOT part of PFX-PROVIDE-FILES:
 \ that word runs on snapshot boots too (it is outside the SNAP-CELL guard), and
 \ the dev snapshot's keep surface (tools/build-fixpoint.f BF-APPEND-SNAP-KEEP)
@@ -1445,6 +1457,41 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    12 done CBNZ,
    PFX-PROVIDE-STDLIB-FILES
    PFX-LOAD-STDLIB-FILES
+   done LBL, ;
+
+\ Emitted here, below the stdlib block, because it loads it: a from-source host's
+\ prefix has to be the seeded product's prefix, or a payload certified against one
+\ dies E-UNDEFINED in the other (bootstrap/cg/forth.fs EMIT-HOST-LOAD-PREFIX has
+\ carried its own mirror of this call all along).
+\ The prefix reload below zeroes HOOK-CELL, so the boot-time load of the
+\ checker/core prefix is itself unchecked. The staged fixpoint pre-pass
+\ closes that trust hole for every installed engine: the refresh's stage-N
+\ binary certifies the FULL assembled stage-N+1 source (this prefix included)
+\ before any stage compile (tools/build-fixpoint.f BF-CERTIFY-*, blocking),
+\ and the BF-PIN content hashes close the mid-build reload TOCTOU. That proof
+\ covers the exact installed tree; a later on-disk edit happens after the build
+\ proof and is outside it.
+: EMIT-HOST-LOAD-PREFIX ( -- )
+   16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
+   PFX-TARGET-OK
+   PFX-LOAD-BASE-FILES
+   PFX-PROVIDE-FILES
+   PFX-LOAD-STDLIB-COLD
+   PFX-LOAD-SCRIPT-ARGV-COLD
+   PFX-LOAD-INTMARK-COLD
+   PFX-LOAD-TOPROW-COLD
+   EMIT-REQUIRE-FREEZE-TOKEN
+   EMIT-SEAL-CAPTURE-TOKEN ;
+
+\ The core prefix as boot source, for an engine whose runtime is not baked. A
+\ seeded engine emits none of it, and a warm snapshot skips it at runtime
+\ (SNAP-CELL) because the restored image carries the dictionary it was baked with.
+: EMIT-COLD-PREFIX ( -- )
+   SEEDED-RUNTIME? if exit then
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   EMIT-HOST-LOAD-PREFIX
    done LBL, ;
 
 \ ---------------------------------------------------------------------------
@@ -1530,11 +1577,6 @@ public
    done LBL, ;
 
 ;package
-
-: PFX-PROVIDE-FILES ( -- )
-   PFX-PROVIDE-CHECKER-FILES
-   PFX-PROVIDE-DECL-FILES
-   PFX-PROVIDE-CORE-FILES ;
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG LABEL@ LBL,
@@ -1734,13 +1776,20 @@ public
 \ source; LCOLDPFXB is the build-only entry used for a statically certified
 \ compiler payload that contains its own SEAL-FRIEND boundary before its
 \ driver. x30 and the entry mode survive the internal LSRCRD/LAPPPROV calls.
+: EMIT-SOURCE-APPEND-SHARED ( -- )
+   \ Both stdin and baked-source prefixes append provided rows. Their callees
+   \ must exist in either product, before any generated prefix can reach them.
+   LBL {: skip:label :}
+   skip B,
+   LAPPPROV LABEL@ LBL,
+      C-SOURCE-APPEND-PROVIDED RET,
+   LAPPREQ LABEL@ LBL,
+      C-SOURCE-APPEND-REQUIRED RET,
+   skip LBL, ;
+
 : EMIT-COLD-PREFIX-SHARED ( -- )
    LBL LBL LBL {: skip:label body:label noseal:label :}
    skip B,
-   LAPPPROV LABEL@ LBL,
-      C-SOURCE-APPEND-PROVIDED  RET,
-   LAPPREQ LABEL@ LBL,
-      C-SOURCE-APPEND-REQUIRED  RET,
    LCOLDPFX LABEL@ LBL,
       SP SP 16 SUBI,  30 SP 0 STR,
       12 0 MOVZ,  12 SP 8 STR,  body B,
@@ -1748,6 +1797,7 @@ public
       SP SP 16 SUBI,  30 SP 0 STR,
       12 1 MOVZ,  12 SP 8 STR,
    body LBL,
+      EMIT-COLD-PREFIX
       12 SP 8 LDR,  12 noseal CBNZ,
       SRC-SFAIL LABEL@ EMIT-SEAL-FRIEND-TOKEN      \ seal the restored runtime before user source
    noseal LBL,
@@ -1757,6 +1807,7 @@ public
 
 : EMIT-SOURCE ( -- )
    C-SOURCE-LABELS
+   EMIT-SOURCE-APPEND-SHARED
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
 \ ---- control-flow JIT helpers ----
@@ -5305,13 +5356,10 @@ public
 \ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
 \ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
 \ the icache.
-\ EMITTED ONLY FOR A SEEDED ENGINE (SEEDED-RUNTIME?, which states the rule): an
-\ engine that captured nothing has no pass to run and builds its runtime from the
-\ cold prefix instead, so there is no boot code here to skip at runtime. For the
-\ engine that does carry one the seed is mandatory, and the baked count says so:
-\ zero or malformed metadata in an image that claims a runtime is refused by name.
+\ Every nonempty capture has a seed pass. Full runtime captures run it at startup;
+\ partial captures run it after the cold prefix, before the first user token.
 : EM-SEED-AOT ( -- )
-   SEEDED-RUNTIME? 0= if exit then
+   AOT-REC-N @ 0= if exit then
    LBL LBL LBL {: askip:label bad:label msg:label :}
    11 5 LAOTNREC LABEL@ TADR,  11 11 0 LDR,        \ x11 = N
    11 bad CBZ,                                      \ a native runtime seed is mandatory
@@ -6236,9 +6284,8 @@ public
 \ The seed has installed the complete cold runtime. Seal that target dictionary
 \ before any user token; a warm snapshot restore may then replace both cells with
 \ the floor and latch persisted by that snapshot.
-\ EMITTED ONLY FOR A SEEDED ENGINE, for the same reason the seed pass is
-\ (SEEDED-RUNTIME?): this is the seal at the end of the cold runtime, and an
-\ unseeded engine's runtime ends at the end of its cold prefix, not here. The
+\ Emitted only for a complete runtime capture (SEEDED-RUNTIME?): an empty or
+\ partial capture's runtime ends after the cold prefix, not here. The
 \ latch closes the friend arena's range guard (habu1.f GUARD-SPAN), which the
 \ prefix source itself needs open to write the crown-jewel cells, so arming it
 \ ahead of that source would trap the engine's own boot fail-closed.
@@ -6262,9 +6309,11 @@ public
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
    EM-STARTUP-COLD-BASELINE
-   LAOTPROT LABEL@ BL,
-   EM-SEED-AOT
-   EM-SEAL-SEEDED-RUNTIME
+   SEEDED-RUNTIME? if
+      LAOTPROT LABEL@ BL,
+      EM-SEED-AOT
+      EM-SEAL-SEEDED-RUNTIME
+   then
    EM-SNAPSHOT-RESTORE
    EM-STARTUP-RUNTIME-STATE
    EM-SNAPSHOT-RX-FLUSH                 \ the region at rest before any application word executes
@@ -8589,12 +8638,11 @@ public
 \ `required` rows `--load` wrote, or the baked LSRC) - see BOOT-SRC:USER-END in
 \ layout.f for why the two are separate streams in one buffer.
 \
-\ The first arrival is the only moment in a boot when the engine is complete and
-\ no user token has run, so it is where the AOT seed belongs: the captured code
-\ resolves its call sites by name against the cold-prefix dictionary, which now
-\ exists, and every mode - pty REPL, piped stdin, `--load`, `--build`, a baked
-\ driver - reaches it before its program. The done cell is the seed's only guard;
-\ the second arrival and any REPL re-entry find it set. (Dot
+\ A partial capture installs at the first arrival, after its dependencies in the
+\ cold prefix and before any user token. A full runtime installs at startup.
+\ Every mode - pty REPL, piped stdin, `--load`, `--build`, a baked driver - crosses
+\ this boundary before its program. Consuming USER-END below makes the seed
+\ one-shot across the second arrival and every REPL re-entry. (Dot
 \ habu-decide-arm-the-5234727b, USER RULING 2026-08-11: one dictionary surface for
 \ every boot mode. The rejected shapes are on that leaf: a new `AOT-SEED` prefix
 \ token would have put an engine-internal name in every program's dictionary, and
@@ -8611,6 +8659,18 @@ public
       EM-EVAL-CLEAN-EXIT
    LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
    9 DATA BOOT-SRC:USER-END LDR,  9 nousrc CBZ,                  \ no second stream -> repl or exit
+      SEEDED-RUNTIME? 0= AOT-REC-N @ 0 > and if
+         LBL {: warm:label :}
+         10 DATA SNAP-CELL LDR,  10 warm CBNZ,
+         LAOTPROT LABEL@ BL,
+         EM-SEED-AOT
+         AOT-SIG:PUBLISH,
+         AOT-SIG:INSTALL,
+         EM-AOT-BOOTRUN
+         NDICT DATA SEAL-NDICT-CELL STR,
+         warm LBL,
+         9 DATA BOOT-SRC:USER-END LDR,
+      then
       10 0 MOVZ,  10 DATA BOOT-SRC:USER-END STR,                 \ one-shot: consume it before installing
       10 DATA INE-CELL LDR,  10 DATA INP-CELL STR,           \ the user stream begins where the prefix ended
       9 DATA INE-CELL STR,
@@ -9185,8 +9245,7 @@ public
 \ therefore free, and an ADR, into this section is a defect whatever today's
 \ measurement says (tools/aot-section-reach-lint.f refuses one).
 \ The section is emitted for every engine and is empty when the build captured
-\ nothing: an unseeded engine bakes LAOTNREC = 0 and, because SEEDED-RUNTIME?
-\ reads the same count at emit time, carries no boot code that reads it back.
+\ nothing: an empty capture bakes LAOTNREC = 0 and EM-SEED-AOT emits no pass.
 : EMIT-AOT-SITES ( -- )   \ packed rows (blob-off u32 + name-off u32 + scope u32)
    AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ SITE-ROW * BYTES, THEN ;
 : EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets
@@ -9309,7 +9368,13 @@ variable CUR
    AOT-WINDOW:LWIDW0 LABEL@ LBL,  AOT-WID-W0 @ DCQ,
    AOT-WINDOW:LWIDSPAN LABEL@ LBL,  AOT-WID-SPAN @ DCQ,
    AOT-WINDOW:LNPWIN LABEL@ LBL,  AOT-PWIN-N @ DCQ,
-   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN ;
+   AOT-WINDOW:LPWIN LABEL@ LBL,  AOT-WINDOW:EMIT-PWIN
+   SEEDED-RUNTIME? 0= if
+      AOT-SIG-PAYLOAD:BUILD
+      AOT-SIG:LLEN LABEL@ LBL,  AOT-SIG-PAYLOAD:LEN @ DCQ,
+      AOT-SIG:LSPAN LABEL@ LBL,  AOT-SIG-PAYLOAD:EMIT
+      AOT-SIG:LNAME LABEL@ LBL,  AOT-SIG:INSTALL-NAME$ BYTES,
+   then ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker
 \ (dot habu-checker-fitting-arity-70dc94e4). Pops a token name, runs the same

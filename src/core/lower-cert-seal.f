@@ -50,10 +50,10 @@ undefine FULL-SET
 \ `duplicate family at 'option'` on the first `require`, and a warm image whose
 \ first type declaration stored through a stale pointer and died.
 \
-\ WHY A NUMBER AND NOT A NAME MARKER. Nothing is defined AT the boundary, and
-\ what comes after it differs per boot mode: the stdlib is cold-boot only, the
-\ merged chain's rows exist only in a seeded engine. So the first name past the
-\ boundary is not one name, and the signature store's end has no name at all.
+\ The dictionary boundary follows this package's final word, CURSORS. Resolve
+\ that identity in the running dictionary: an AOT restore relocates record
+\ ordinals, so a captured host ndict@ is not the restored boundary. The include
+\ registry and checker marks are counts in their own retained stores.
 \
 \ The capture is this file's last act, so the package's own records are below
 \ the mark and survive the rewind that reads them.
@@ -62,7 +62,6 @@ package PREFIX-MARK
 
 private
 
-variable ND
 variable RQ
 variable CU
 
@@ -73,7 +72,9 @@ public
 \ below would read its own empty accessor instead of the dictionary. Measured:
 \ the mark recorded 0, and a build takes that as "truncate everything".
 : DICT ( -- n )
-   ND @ ;
+   s" PREFIX-MARK:CURSORS" XREF-FIND-INDEX
+   dup 0 < if s" prefix boundary: final source record is missing" 76 die then
+   1+ ;
 
 : REQ ( -- n )
    RQ @ ;
@@ -88,7 +89,6 @@ public
 private
 
 CHECKER-BOUND:MARK
-ndict@ ND !
 REQUIRE-REG:COUNT RQ !
 CHECKER-BOUND:CURSORS CU !
 

@@ -15,11 +15,11 @@ package PKG-WID-PROBE
 
 variable HI
 
-: PKG-REC? ( ptr a -- bool ) XREF-WORDLIST PKG-MARK = ;
+: PKG-REC? ( ptr n -- bool ) XREF-WORDLIST PKG-MARK = ;
 
 \ Does this record claim `wid` as either of its two wordlists? A private cell of
 \ 0 means the package has no private wordlist, so it claims nothing.
-: CLAIMS? ( ptr a n -- bool ) {: r w:n :}
+: CLAIMS? ( ptr n n -- bool ) {: r w:n :}
    r PKG-REC? 0= if 0 0= 0= exit then
    r XREF-START w = if 0 0= exit then
    w 0= if 0 0= 0= exit then

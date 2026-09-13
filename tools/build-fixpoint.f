@@ -1023,9 +1023,9 @@ package BUILD-FIXPOINT
 \ WHAT IS NOT HERE. Every core-prefix file the compiling host already carries
 \ from its own boot is absent: the payload rewinds to the mark at the end of
 \ that prefix (BF-STAGE2-HIDE-DEFS) rather than truncating past it and
-\ recompiling. src/os/script-argv.f is the exception that proves the rule - the
-\ engine loads it AFTER the mark, so the rewind takes it away and the payload
-\ has to bring it back. The absent files are still statically checked, as their
+\ recompiling. script-argv, prelude and errors load AFTER that mark, so the
+\ rewind takes them away and the payload has to bring them back. The absent
+\ files are still statically checked, as their
 \ own build phase: BF-APPEND-BOOT-PREFIX.
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
@@ -1046,6 +1046,10 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
+   out outu s" lib/prelude.f" BF-APPEND-SOURCE
+   out outu S\" s\" lib/prelude.f\" provided" BF-APPEND-LINE
+   out outu s" lib/errors.f" BF-APPEND-SOURCE
+   out outu S\" s\" lib/errors.f\" provided" BF-APPEND-LINE
    out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;

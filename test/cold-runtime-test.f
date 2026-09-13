@@ -2,10 +2,10 @@
 \ entry.
 \
 \ WHAT THIS PINS. One fact decides it and src/habu/habu2.f SEEDED-RUNTIME? is the
-\ one place that reads it: the AOT window a build captured. A build that captured
-\ one bakes the whole runtime into the image and installs it at boot; a build that
-\ captured nothing bakes none, so the engine reads its runtime from the checkout's
-\ own prefix source before the first token of its baked program. Only
+\ one place that reads it: whether the AOT window contains the runtime owner and
+\ final core-prefix boundary. A complete runtime installs before source. Empty
+\ and partial captures first read the checkout's cold prefix; a partial capture
+\ then installs its records before the first user token. Only
 \ src/habu/aot-capture.f fills the capture buffers and only the stdin driver
 \ carries it, so every stage2 and maker engine is the second kind - the kind the
 \ no-binary recovery chain (docs/bootstrap.md) and hb-build's cached maker are

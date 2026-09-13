@@ -39,9 +39,9 @@ create STATE 0 , 0 , 0 ,
    prior STATE = if exit then
    prior 0 ptr-field @ STATE 0 ptr-field !
    prior CELL + @ STATE CELL + !
-   prior 2 cells + @ STATE 2 cells + !
+   prior 2 CELL * + @ STATE 2 CELL * + !
    NULL-PTR prior 0 ptr-field !
-   0 prior CELL + !  0 prior 2 cells + !
+   0 prior CELL + !  0 prior 2 CELL * + !
    [: STATE ;] is CWIN-STATE ;
 INSTALL
 

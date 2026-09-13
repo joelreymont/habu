@@ -29,9 +29,10 @@
 \ there, so its `require` adds 0 records and 0 DATA bytes and is kept only as the
 \ dependency statement; aot-arm.f adds 4. asm.f, by contrast, is NOT registered —
 \ requiring it in a booted engine compiles 178 records — which is the whole reason
-\ it must be the chain that brings it in. The native runtime already carries
-\ NSTR; requiring it here adds no source, and opening its literal pool after
-\ the window starts keeps retained-compiler literals inside the capture.
+\ it must be the chain that brings it in. NSTR loads inside the window too: a
+\ retained native host already carries it, while a source-only host needs its
+\ code captured with the compiler. Its fresh literal pool belongs to either
+\ window.
 \
 \ THE PRELUDE MARKS ARE THE FIRST THING THIS PROCESS DOES, before it defines a
 \ variable of its own, because they bound the band the capture refuses to call
@@ -73,7 +74,6 @@ BOOT-REQ !  PRE-REQ !  PRE-D !  PRE-R !
 
 require src/habu/layout.f
 require src/habu/aot-arm.f
-require src/compiler/native/string.f
 
 package AOT-CHAIN
 public
@@ -85,7 +85,6 @@ variable Q0  variable Q1      \ its require-registry span: the closure it loaded
 \ fifth axis, because it is the only process with a window to bracket it across.
 : OPEN ( -- )
    AOT-ARM:WINDOW-OPEN
-   NSTR:WINDOW-OPEN
    REQUIRE-N @ Q0 ! ;
 
 : CLOSE ( -- )
@@ -96,6 +95,8 @@ variable Q0  variable Q1      \ its require-registry span: the closure it loaded
 ;package
 
 AOT-CHAIN:OPEN
+require src/compiler/native/string.f
+NSTR:WINDOW-OPEN
 require src/compiler/native/compiler.f
 AOT-CHAIN:CLOSE
 

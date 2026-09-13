@@ -300,14 +300,14 @@ TRUSTED: SCAN-ID ( -- n )
    CHECKER-OWNER:TAPE-DISARM
    CLEAR ;
 
+: CAPTURE-PREPARE ( -- )
+   ST-IDLE STATE-CK
+   CLEAR ;
+
 private
 get-current prot-wid-add
 
 public
 get-current prot-wid-add
-
-: CAPTURE-PREPARE ( -- )
-   ST-IDLE STATE-CK
-   CLEAR ;
 
 ;package

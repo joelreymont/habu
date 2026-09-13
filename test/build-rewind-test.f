@@ -75,6 +75,8 @@ create BR-ERR   BR-CAP allot
    s"    PREFIX-REWIND:TO-CORE" BR-LINE
    s"    ndict@ PREFIX-MARK:DICT <> if" BR-LINE
    s\"       s\" build-rewind: not at the mark\" 74 die then" BR-LINE
+   s\"    s\" true\" 0 XREF-FIND-WL-INDEX 0 >= if" BR-LINE
+   s\"       s\" build-rewind: post-prefix prelude survived\" 74 die then" BR-LINE
    s"    SEAL-NDICT@ ndict@ <> if" BR-LINE
    s\"       s\" build-rewind: floor not re-armed\" 74 die then" BR-LINE
    s\"    s\" build-rewind: rewound\" type cr ;" BR-LINE

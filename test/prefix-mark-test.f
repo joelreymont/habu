@@ -1,20 +1,18 @@
 \ prefix-mark-test.f - the recorded core-prefix boundary is where it claims.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f test/prefix-mark-test.f
 \
-\ The end of src/core/lower-cert-seal.f captures the engine's own two numbers at
-\ the end of the core prefix - the dictionary end and the include registry's row
-\ count - and asks the checker to record every mark a scope of its own would
-\ carry, keeping the width of that record as a third number. src/habu/
+\ The end of src/core/lower-cert-seal.f identifies its final dictionary record,
+\ captures the include registry's row count and asks the checker to record every
+\ mark a scope of its own would carry, keeping that record's width. src/habu/
 \ prefix-rewind.f returns every generated engine source to them. A mark that is
 \ merely PLAUSIBLE is the dangerous failure: the build truncates to whatever it
 \ says and then compiles a payload against whatever survived.
 \
 \ The subject is the running engine's own boot, not a replay: these are the
-\ cells this process's cold prefix wrote, read through the package's public
-\ readers exactly as hide.f reads them. What a booted engine can state about
-\ them is bounds and identity; that the mark is the RIGHT record is stated by
-\ the build, in tools/build-fixpoint-test.f - the single-load contract over the
-\ two emitted sources, and the capability probe that refuses a host without it.
+\ marks this process's runtime carries, read through the package's public readers
+\ exactly as the rewind reads them. Exact record identity matters after AOT
+\ restore: the captured host's numeric dictionary index changes when the target
+\ registers the window after its own engine records.
 \
 \ WHAT THE FIRST VERSION OF THAT CAPTURE DID. Its readers were spelled `NDICT@`
 \ and `UEND@`. Habu folds case, so inside `package PREFIX-MARK` the tail
@@ -67,7 +65,7 @@ private
    PREFIX-MARK:REQ REQUIRE-REG:COUNT < TTRUE
    s" src/core/checker.f" ENGINE-PROVIDES? TTRUE ;
 
-\ Three cells, not one written three times. A dictionary count, an include
+\ Three quantities. A dictionary count, an include
 \ registry row count and the checker boundary's width are different quantities,
 \ and a reader copy-pasted onto another's variable would make two of them answer
 \ the same number. The registry cursor is zero at the mark - the engine records
@@ -78,14 +76,16 @@ private
    PREFIX-MARK:REQ PREFIX-MARK:CURSORS = TFALSE
    PREFIX-MARK:REQ PREFIX-MARK:DICT = TFALSE ;
 
-\ The mark names a real boundary: the word lower-cert-seal.f defines last
-\ resolves, and it was defined before the mark was taken. `CHECKER-RESOLVES?` is
+\ The mark names the exact boundary after lower-cert-seal.f's final word and
+\ before the cold stdlib. `CHECKER-RESOLVES?` is
 \ the same query tools/build-fixpoint.f BF-WATERMARK? uses to refuse a host that
 \ has no mark at all, so this also pins that the probe's subject exists - and
 \ the bogus tails beside it prove the probe discriminates rather than answering
 \ true for anything that merely looks qualified.
 : BOUNDARY-WORD ( -- )
    LAST-BEFORE-MARK$ CHECKER-RESOLVES? TTRUE
+   LAST-BEFORE-MARK$ XREF-FIND-INDEX 1+ PREFIX-MARK:DICT T=
+   s" true" 0 XREF-FIND-WL-INDEX PREFIX-MARK:DICT >= TTRUE
    s" PREFIX-MARK:NO-SUCH-TAIL" CHECKER-RESOLVES? TFALSE
    s" NOT-A-PACKAGE:NO-SUCH-TAIL" CHECKER-RESOLVES? TFALSE ;
 

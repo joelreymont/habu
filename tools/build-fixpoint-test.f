@@ -6,6 +6,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require lib/test.f
 require lib/memory.f
@@ -850,6 +851,13 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
    BFT-READ-BUF u s" RPD@" VERIFY:DEFINES? TTRUE
    BFT-READ-BUF u s" STDIN-OUT" VERIFY:DEFINES? TTRUE
+   \ These live beyond the core mark in the cold host and must be reassembled
+   \ after rewind, even though certification can also resolve the host's copy.
+   BFT-READ-BUF u s" true" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" false" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" 0<>" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s\" s\" lib/prelude.f\" provided" CONTAINS? TTRUE
+   BFT-READ-BUF u s\" s\" lib/errors.f\" provided" CONTAINS? TTRUE
    BFT-READ-BUF u s" BFR-CHECK-OFF" BFT-FIND BFT-FOUND {: off:n :}
    BFT-READ-BUF u off s" PREFIX-REWIND:TO-CORE" BFT-FIND-AFTER BFT-FOUND {: rewind:n :}
    BFT-READ-BUF u rewind s" LOWER-CERT-HOOK:INSTALL" BFT-FIND-AFTER BFT-FOUND {: hook:n :}
@@ -1459,6 +1467,32 @@ variable BAD-N
    s" verify-source-self" s" src/habu/verify-source.f" BF-CERTIFY-RC 0 T=
    BF-TMP-RESET ;
 
+\ Replaying this package sees its already-published CELLS query. The handoff
+\ must use the byte offset's CELL multiplier, not that same-named query.
+: BFT-TEST-CERTIFY-CALL-STORE ( -- )
+   BFT-ROOT BF-TMP!
+   s" cert-checker" BF-RESET-OUT
+   s" cert-checker" BF-APPEND-CHECKER-BOOT
+   s" call-store-warm" BFT-CERT-CHECKER$ BF-CERTIFY-RC 0 T=
+   s" call-store-repeat" BFT-CERT-CHECKER$ BF-CERTIFY-RC 0 T=
+   BF-TMP-RESET ;
+
+: BFT-TEST-RUNTIME-KIND ( -- )
+   BFT-ROOT BF-TMP!
+   8 0 ?do
+      s" runtime-kind-src" {: out:ptr outu:n :}
+      out outu BF-RESET-OUT
+      out outu BF-APPEND-RUN-PRELUDE
+      out outu BF-APPEND-COMMON
+      out outu COMPILER-BUILD:SEAL
+      out outu s" test/aot-runtime-kind-driver.f" BF-APPEND-SOURCE
+      SB-RESET i FMT:SB-U s"  AOT-KIND-TEST:RUN" SB-APPEND
+      out outu SB$ BF-APPEND-LINE
+      s" bin/hb" out outu BF-A$ COMPILER-BUILD:RUN
+      i 3 < if 0 else 74 then T=
+   loop
+   BF-TMP-RESET ;
+
 \ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
 \ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
 \ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
@@ -1677,6 +1711,7 @@ public
    T-RESET
    BFT-PREPARE
    s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
+   s" runtime capture kind" [: BFT-TEST-RUNTIME-KIND ;] BFT-STEP
    s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
    s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
@@ -1703,6 +1738,7 @@ public
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
+   s" certify call store" [: BFT-TEST-CERTIFY-CALL-STORE ;] BFT-STEP
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
    s" certify boot prefix" [: BFT-TEST-CERTIFY-BOOT-PREFIX ;] BFT-STEP
    s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP

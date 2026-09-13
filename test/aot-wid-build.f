@@ -153,7 +153,7 @@ using BUILD-FIXPOINT
 \ Driver = the stdin source BUILD-FIXPOINT keeps + this file's injection. The
 \ big-window mode writes BIG-FILLER-N definitions into it, which is what sets this
 \ cap rather than the ~4 KB source.
-$10000 constant DRV-CAP
+$20000 constant DRV-CAP
 
 create DRV-BUF DRV-CAP allot   variable DRV-U
 create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
@@ -436,14 +436,14 @@ create DRV-CH 1 allot
 \ row, a DATA-site offset and a CODE-site offset were each u16, so a captured
 \ window could not describe anything past its 65535th byte and the capture died
 \ at AOT-BLOB-CAP before it ever got there. This fixture builds a window that is
-\ several times that, with the three things that have to survive it defined ABOVE
+\ beyond that, with the three things that have to survive it defined ABOVE
 \ the filler: a data cell, a callee too long for the inliner to copy (habu2.f
 \ INL-MAX), and a reporter that calls the callee and prints the cell. So the
 \ engine can only report the magic if a call site AND a DATA site whose blob
 \ offsets do not fit sixteen bits were both recorded and patched at boot.
 \ The filler words carry no calls of their own; they exist to push the three
 \ words that matter past the old ceiling.
-200 constant BIG-FILLER-N          \ ~454 blob bytes each: 200 puts the window near 109 KB
+1024 constant BIG-FILLER-N         \ 80 bytes each on the current JIT; keeps the sites past 64 KiB
 
 : BIG-FILLER ( -- )
    BIG-FILLER-N 0 ?do
@@ -607,7 +607,9 @@ create DRV-CH 1 allot
    s" ;package" DRV-LINE ;
 
 : XL-FIXTURE-LINES ( -- )
-   S\" : AWB-XL-REPORT ( -- ) s\" awb-xl=\" type ['] HH0 . cr ;" DRV-LINE
+   \ Only diagnostic formatting observes the execution token's machine cell.
+   s" TRUSTED: AWB-XL>BITS ( [ -- ptr a ] -- n ) ;" DRV-LINE
+   S\" : AWB-XL-REPORT ( -- ) s\" awb-xl=\" type ['] HH0 AWB-XL>BITS . cr ;" DRV-LINE
    RECAPTURE-LINE
    XL-CHECK-DEF
    REPL-BOOTRUN-LINES
@@ -741,7 +743,7 @@ create DRV-CH 1 allot
    mode mu s" 1" STR= if
       s" : AWB-GATE-CALL ( -- ) ndict@ CODE-RECLAIM:FLOOR-FROM drop ;" DRV-LINE
    else
-      s" : AWB-GATE-CALL ( -- ) CHECKER-TAPE:HOLD-DISARM ;" DRV-LINE
+      s" : AWB-GATE-CALL ( -- ) CHECKER-TAPE:DISARM ;" DRV-LINE
    then
    S\" : AWB-GATE-REPORT ( -- ) s\" awb-gate=open\" type cr ;" DRV-LINE ;
 

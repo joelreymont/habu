@@ -8,11 +8,11 @@
 \ the buffers said - and the capture died at AOT-BLOB-CAP with "blob exceeds
 \ buffer" before it could get there. The compiler chain this seed exists to carry
 \ measures 1.15 MB. With the fields widened to u32 and the buffers lifted to
-\ match, a window several times the old ceiling must capture, bake and boot.
+\ match, a window beyond the old ceiling must capture, bake and boot.
 \
 \ HOW IT IS PROVEN, AND WHAT IS PROVEN WHERE. test/aot-wid-build.f is spawned in
 \ a child process with HABU_AOT_BIG=1 and a private HB_TMP. That mode compiles a
-\ few hundred filler words and then, ABOVE them, the three things that have to
+\ thousand filler words and then, ABOVE them, the three things that have to
 \ survive the crossing: a data cell, a callee too long for the inliner to copy,
 \ and a reporter that calls the callee and prints the cell. The window is taken
 \ in by the same widened re-capture the other window fixtures use - the real
@@ -298,7 +298,7 @@ create HB-BUF FS-PATH-CAP allot      variable HB-U
    OUT$ s" aot-wid-build: xtlit-csites 0" CONTAINS? TTRUE
    s" the code-literal variant image exists after the build" T-LABEL
    HB$ EXISTS? TTRUE
-   S\" : XLP ( -- ) s\" xl-live=\" type ['] HH0 . cr ; XLP" BATCH-RUN
+   S\" TRUSTED: XLP>BITS ( [ -- ptr a ] -- n ) ;\n: XLP ( -- ) s\" xl-live=\" type ['] HH0 XLP>BITS . cr ; XLP" BATCH-RUN
    s" the code-literal variant still runs a batch program" T-LABEL
    RC @ 0 T=
    s" the baked literal is this engine's own entry for the word it names" T-LABEL
