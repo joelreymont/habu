@@ -9,9 +9,9 @@
 \ partial rows and invalid row coordinates must fail through the file reader.
 \
 \ The production capture tool is also loaded and must name its empty-window
-\ refusal: the booted engine already provides its chain, so only the build's
-\ capture host can capture that chain. Compiler-chain capture and other forged
-\ producer/source/section cases remain separate acceptance work.
+\ refusal: the booted engine already provides its chain. A private source-built
+\ host then captures the real compiler and exercises the producer's live-row
+\ checks, including count-preserving corruptions and an order-independent control.
 \
 \ Registered as `TEST:SUITE aot-chain-capture`. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
@@ -24,6 +24,9 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/process-env.f
+require lib/codesign.f
+require tools/build-fixpoint.f
 
 package AOT-CHAIN-SUITE
 
@@ -74,8 +77,8 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    ROOT$ CLEANUP-TREE+
    ROOT$ s" small.aot" ART-BUF JOIN-PATH ART-U ! ;
 
-: RUN-CHILD ( -- )
-   HB$ >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-TIMEOUT-MS >MS
+: RUN-ENGINE ( ptr u8 n -- )
+   >LEN  EMPTY 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  CHILD-TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
@@ -83,6 +86,8 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
+
+: RUN-CHILD ( -- ) HB$ RUN-ENGINE ;
 
 : RUN-ROUNDTRIP ( -- )
    PROC-ARGV-RESET
@@ -226,6 +231,70 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    s" bad-data-site" s" DATA relocation site reaches past its blob" ROW-REFUSED
    s" bad-chain-site" s" DATA relocation site reaches past its blob" ROW-REFUSED ;
 
+\ Run the actual producer in a source-only host. Its private copy adds two
+\ declarations around the window and replaces only the final MAIN invocation
+\ with row checks; no production test switch or alternate row writer is used.
+$10000 constant TOOL-CAP
+create TOOL-SOURCE TOOL-CAP allot variable TOOL-U
+create TOOL-PATH FS-PATH-CAP allot variable TOOL-PATH-U
+create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
+
+: TOOL$ ( -- ptr u8 n ) TOOL-PATH TOOL-PATH-U @ ;
+: HOST$ ( -- ptr u8 n ) HOST-PATH HOST-PATH-U @ ;
+: TOOL+ ( ptr u8 n -- ) {: a:ptr u:n :} TOOL$ a u APPEND-FILE ;
+: TOOL-PART ( n n -- ) {: start:n finish:n :}
+   TOOL-SOURCE start + finish start - TOOL+ ;
+
+: TOOL-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   TOOL-SOURCE TOOL-U @ a u FIND-SUB MATCH option
+      some OF IDX>N ENDOF
+      none OF s" chain-address-rows: producer source boundary missing" 75 die ENDOF
+   ;MATCH ;
+
+: PREPARE-PRODUCER ( -- )
+   ROOT$ s" row-producer.f" TOOL-PATH JOIN-PATH TOOL-PATH-U !
+   ROOT$ s" hb-stdin" HOST-PATH JOIN-PATH HOST-PATH-U !
+   s" tools/aot-chain-capture.f" TOOL-SOURCE TOOL-CAP READ-ALL TOOL-U !
+   S\" AOT-CHAIN:OPEN\n" TOOL-AT {: opened:n :}
+   S\" AOT-CHAIN:CLOSE\n" TOOL-AT {: closed:n :}
+   S\" AOT-CHAIN:MAIN\n" TOOL-AT {: called:n :}
+   called S\" AOT-CHAIN:MAIN\n" nip + TOOL-U @ T=
+   TOOL$ TOOL-SOURCE opened WRITE-ALL
+   S\" package CHAIN-ROW-OUTSIDE\npublic\nPERSISTED-PTR-VARIABLE SLOT\n;package\n" TOOL+
+   opened closed TOOL-PART
+   S\" package CHAIN-ROW-INSIDE\npublic\nPERSISTED-PTR-VARIABLE NIL\nvariable TARGET\n;package\nCHAIN-ROW-INSIDE:TARGET CHAIN-ROW-OUTSIDE:SLOT !\n" TOOL+
+   closed called TOOL-PART
+   S\" require test/aot-chain-row-checks.f\n" TOOL+
+   ROOT$ BUILD-FIXPOINT:BF-TMP!
+   BUILD-FIXPOINT:BF-PREFLIGHT
+   BUILD-FIXPOINT:BF-STAGE-FIXPOINT
+   s" src/habu/stdin.f" BUILD-FIXPOINT:BF-EMIT-ENGINE
+   BUILD-FIXPOINT:BF-TMP-RESET ;
+
+: PRODUCER-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+   a u T-LABEL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   TOOL$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   a u >LEN PROC-ARGV+
+   HOST$ RUN-ENGINE
+   want ROW-RC
+   want 0= if s" chain-address-rows: ok" SAID? else
+      s" declared address rows do not match the live window" ERR-SAID?
+   then ;
+
+: PROBE-PRODUCER-ROWS ( -- )
+   PREPARE-PRODUCER
+   s" valid" 0 PRODUCER-CASE
+   s" reorder" 0 PRODUCER-CASE
+   s" missing" REFUSE-RC PRODUCER-CASE
+   s" duplicate" REFUSE-RC PRODUCER-CASE
+   s" location" REFUSE-RC PRODUCER-CASE
+   s" kind" REFUSE-RC PRODUCER-CASE
+   s" target" REFUSE-RC PRODUCER-CASE
+   s" null-target" REFUSE-RC PRODUCER-CASE ;
+
 : BODY ( -- )
    PROBE-ROUNDTRIP
    PROBE-ARTIFACT
@@ -237,7 +306,8 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    s" owned-capture: restored after source release" SAID?
    s" overflow" RUN-OWNED-CAPTURE
    $4B ROW-RC
-   s" scalars runs past the payload" ERR-SAID? ;
+   s" scalars runs past the payload" ERR-SAID?
+   PROBE-PRODUCER-ROWS ;
 
 public
 

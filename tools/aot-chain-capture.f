@@ -163,36 +163,16 @@ create HEX 64 allot
    AOT-IDENT:RESET
    Q1 @ Q0 @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ AOT-IDENT:PATH+ loop ;
 
-\ WHAT THE SEEDED ENGINE HAS TO RUN BEFORE THE CHAIN IS USABLE, and it is this
-\ tool's to say, the way src/habu/stdin.f CAPTURE-REPL names its own installers.
+\ Address rows restore the window's declared pointers and vectors, including
+\ their exact targets. DKEEP-HOOK-DEFAULT remains the explicit diagnostic-hook
+\ initialization the compiler's boot contract asks for; it is no longer a
+\ substitute for transporting every declared cell.
 \
-\ A window word that runs AT LOAD TIME and writes a cell is the whole class. The
-\ write itself never travels: what the window's own DATA holds is captured byte
-\ for byte, but a cell BELOW the window belongs to the engine the chain was loaded
-\ into, and in a seeded engine that cell holds whatever the target's prefix put
-\ there. Only a boot-run entry can put the window's routine back.
-\
-\ THE TWO AXES ARE COUNTED SEPARATELY BECAUSE THEY FAIL SEPARATELY.
-\   In the window: a captured declared cell arrives trapped, because what it held
-\   was a code address in the process that compiled it, and the seed re-traps it.
-\   A64RAV:DKEEP-HOOK is the one - the `defer` regalloc-verify.f opens for a reader
-\   of its refusals - and without its installer the first refusal the verifier
-\   reaches dies "defer: unset execution vector". ?XTOFF counts that population
-\   against the row table.
-\   Below the window: nothing any more. Three CHECKER-TAPE observer cells used to
-\   be planted once at load by NFEED:INSTALL, so a seeded engine reached ARM with
-\   them trapped and died "checker: no source-tape observer to arm" unless a
-\   boot-run entry refilled them. src/compiler/native/feed.f installs the trio per
-\   compilation unit now, into whichever checker owns the source, so the first
-\   definition refills them itself and the row is gone. ?TRAPPED still holds the
-\   count, which is zero for this axis.
-\
-\ So each row below carries the number of pre-window cells its installer refills,
-\ and the two numbers are checked against what the process measures. An
-\ undeclared installer moves the measurement and not the list, and the capture
-\ stops.
+\ A code cell below the window is a separate load-time effect. NFEED now installs
+\ its checker observer per compilation unit, so this tool owes no such installer.
+\ Keep the independent live count below: a new pre-window installation must be
+\ named, even when its address row also travels.
 variable CELLS-OWED           \ pre-window cells the declared installers refill
-1 constant WINDOW-CELLS       \ and the window's own declared cells they refill: DKEEP-HOOK's
 
 : RESOLVE-BAD ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n r:ptr ru:n :}
    s" aot-chain-capture: boot-run name " type a u type s"  " type r ru type cr
@@ -220,36 +200,70 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    0 CELLS-OWED !
    s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE ; \ its cell is in the window: see ?XTOFF
 
-\ ONE DECLARED CELL INSIDE THE WINDOW, AND EVERY ROW ACCOUNTED FOR. Two claims,
-\ because they fail for different reasons and only the first one is about this
-\ tool's own list.
-\   The window's own declared cells arrive TRAPPED - what they held was an address
-\   in the process that compiled them - so each one needs a boot-run entry to put
-\   it back, and this tool declares exactly one (A64RAV:DKEEP-HOOK, DECLARE-ALL
-\   above). A second one appearing is a cell that would boot untrapped.
-\   The row table is that population plus the cells OUTSIDE the window whose
-\   target is inside their kind's span, and nothing else. Both terms are recounted
-\   off the live XTCELL table rather than read out of the table being checked, so
-\   a row never written, a row written twice, and a row for a cell in neither
-\   population all arrive here.
-\
-\ THE FIRST CLAIM USED TO BE WRITTEN AS `XTOFF-N = 1`, which is the same thing only
-\ while the second population is empty. It stopped being empty when the capture
-\ stopped describing the booting engine's own cells and started carrying a cell
-\ below the window whose target is in its kind's span (dot
-\ habu-keep-declared-addr-dbd7d8d9) - the CHECKER-TAPE cells NFEED plants and the
-\ literal pool base NSTR:WINDOW-OPEN latches - so the literal was wrong by exactly
-\ those. Stated as the predicate it holds however either population changes.
+\ The rows preserve declared locations, kinds and exact null/window-relative
+\ targets. Check them against the live declarations, independently of the row
+\ writer. Counts alone cannot detect one missing row replaced by a duplicate.
+TRUSTED: DATA-N ( -- n ) data-base ;
+
+: ROW-U32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
+
+: ROW-REFUSE ( -- )
+   s" aot-chain-capture: declared address rows do not match the live window"
+   REFUSE-RC die ;
+
+: LIVE-ROW ( n -- n )
+   CELL * SNAP-RELOC:XTCELL-ROWS-OFF + data-base + @ ;
+
+: ?EXACT-ROW ( n n -- ) {: loc:n meta:n :}
+   0
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + {: row:ptr :}
+      row ROW-U32@ loc = row 4 + ROW-U32@ meta = and if 1+ then
+   loop
+   1 <> if ROW-REFUSE then ;
+
+: ?DECLARED-ROW ( n -- ) {: raw:n :}
+   raw SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
+   DATA-N off + {: at:n :}
+   at AOT-ARM:D0 @ < at CELL + AOT-ARM:D0 @ > and if ROW-REFUSE then
+   at AOT-ARM:D0 @ >= at AOT-ARM:D1 @ < and {: inside:bool :}
+   raw SNAP-RELOC:XTCELL-DATA-TAG and 0<> {: data?:bool :}
+   data? if AOT-ARM:D0 @ AOT-ARM:D1 @ else AOT-ARM:B0 @ AOT-ARM:B1 @ then {: lo:n hi:n :}
+   data-base off + @ {: target:n :}
+   inside target lo >= target hi < and or 0= if exit then
+   inside if
+      at AOT-ARM:D1 @ CELL - > if ROW-REFUSE then
+      at AOT-ARM:D0 @ - AOT-WINDOW:XTOFF-WINDOW-TAG or
+   else off then {: loc:n :}
+   target 0= if 0 else
+      target lo < target hi >= or if ROW-REFUSE then
+      target lo - 1+
+   then
+   data? if AOT-WINDOW:XTOFF-DATA-TAG or then {: meta:n :}
+   loc meta ?EXACT-ROW ;
+
+\ The compiler's hook must still be a declared code cell in this window, with
+\ a live captured target. This preserves the original fixture's substantive
+\ check without treating every other DATA pointer or vector as another hook.
+: ?HOOK-CELL ( -- )
+   s" A64RAV:DKEEP-HOOK" NDICT:SPELL-DEFER-CELL {: at:n :}
+   at AOT-ARM:D0 @ < at AOT-ARM:D1 @ CELL - > or if ROW-REFUSE then
+   at DATA-N - {: off:n :}
+   data-base off + @ {: target:n :}
+   target AOT-ARM:B0 @ < target AOT-ARM:B1 @ >= or if ROW-REFUSE then
+   0
+   data-base SNAP-RELOC:XTCELL-N-CELL + @ 0 ?do
+      i LIVE-ROW off = if 1+ then
+   loop
+   1 <> if ROW-REFUSE then ;
+
 : ?XTOFF ( -- )
    AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:DECLARED-IN {: win:n :}
    AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:TARGETED-OUT {: out:n :}
-   win WINDOW-CELLS =  AOT-WINDOW:XTOFF-N @ win out + =  and if exit then
-   s" aot-chain-capture: declared address cell rows=" type AOT-WINDOW:XTOFF-N @ .
-   s" aot-chain-capture: cells inside the window=" type win .
-   s" aot-chain-capture: this tool installs=" type WINDOW-CELLS .
-   s" aot-chain-capture: cells outside it targeting it=" type out . cr
-   s" aot-chain-capture: a declared address cell nothing here accounts for would boot untrapped"
-   REFUSE-RC die ;
+   AOT-WINDOW:XTOFF-N @ win out + <> if ROW-REFUSE then
+   data-base SNAP-RELOC:XTCELL-N-CELL + @ 0 ?do i LIVE-ROW ?DECLARED-ROW loop
+   ?HOOK-CELL ;
 
 : ?TRAPPED ( -- )
    AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-CAPTURE:TRAPPED-BELOW {: got:n :}
