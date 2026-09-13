@@ -70,6 +70,11 @@ variable ART-U
       OUT outu LEN>N mode modeu CONTAINS? TTRUE
       OUT outu LEN>N diagnostic diagnosticu CONTAINS?
       ERR erru LEN>N diagnostic diagnosticu CONTAINS? or TTRUE
+      mode modeu s" scalar-zero" CORE-STR=
+      mode modeu s" wide-width" CORE-STR= or
+      mode modeu s" logical-width" CORE-STR= or IF
+         OUT outu LEN>N s" graph width refusal preserved publication state" CONTAINS? TTRUE
+      THEN
    then ;
 
 : BAD-GRAPH ( ptr u8 n -- ) s" checker: invalid captured effect graph" CASE-RUN ;
@@ -83,6 +88,10 @@ variable ART-U
    s" variables" BAD-GRAPH
    s" family" s" tfam: a seeded effect has the wrong family arity" CASE-RUN
    s" exception" s" checker: exceptional quotation rows are not portable" CASE-RUN
+   s" scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
+   s" wide-width" s" checker: captured row width disagrees with its type" CASE-RUN
+   s" logical-width" s" checker: captured row width disagrees with its type" CASE-RUN
+   s" producer-scalar-zero" s" checker: captured row width disagrees with its type" CASE-RUN
    CLEANUP-RUN T-REPORT ;
 
 RUN

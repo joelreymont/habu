@@ -13,6 +13,45 @@ require src/habu/aot-capture.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-file.f
+require src/core/generated-declaration-dictionary.f
+require src/core/generated-declaration-protection.f
+
+package GRAPH-PUBLICATION
+$800000 constant CAP
+create SNAPSHOT CAP allot
+variable CURSOR variable USED variable COMPARING
+variable SCALAR
+public
+
+TRUSTED: BYTES ( ptr u8 n -- ) {: src:ptr u:n :}
+   u CAP CURSOR @ - > IF 79 throw THEN
+   SNAPSHOT CURSOR @ + {: saved:ptr :}
+   COMPARING @ IF
+      src u saved u CORE-STR= 0= IF 79 throw THEN
+   ELSE src saved u USIGS-COPY THEN
+   u CURSOR +! ;
+
+TRUSTED: VALUE ( n -- ) SCALAR ! SCALAR CELL BYTES ;
+TRUSTED: START ( bool -- ) COMPARING ! 0 CURSOR ! ;
+TRUSTED: FINISH ( -- )
+   COMPARING @ IF CURSOR @ USED @ <> IF 79 throw THEN
+   ELSE CURSOR @ USED ! THEN ;
+
+\ Published effects, symbols, constructors and their effect-index heads.
+TRUSTED: CORE ( -- )
+   UEND @ VALUE USIGS UEND @ BYTES
+   SYM-N @ VALUE SYMS SYM-N @ SYM-REC * BYTES
+   SYM-STR-U @ VALUE SYM-STR SYM-STR-U @ BYTES
+   CTN @ VALUE CT-STR-U @ VALUE CT-STR CT-STR-U @ BYTES
+   CT-NAME-A BYTE-VIEW CTN @ cells BYTES
+   CT-NAME-U BYTE-VIEW CTN @ cells BYTES
+   CT-CLASS BYTE-VIEW CTN @ cells BYTES
+   CT-WIDTH BYTE-VIEW CTN @ cells BYTES
+   CT-SIGN BYTE-VIEW CTN @ cells BYTES
+   USX-GEN @ VALUE USX-HI @ VALUE
+   SYM-N @ 1 ?do i USX@ VALUE loop ;
+
+;package
 
 package TFAM
 public
@@ -28,6 +67,18 @@ TRUSTED: ERASE-REGISTRY-DELTA ( ptr u8 n -- ) {: src:ptr u:n :}
       count i REG-AOT-WIDTH * ASIG-GRAPH-ZERO
    loop ;
 
+TRUSTED: PREPARE-GRAPH-STATE ( -- ) TFX-ENSURE SVX-ENSURE ;
+TRUSTED: GRAPH-STATE ( -- )
+   REG-AOT-N 0 ?do
+      i REG-AOT-COUNT GRAPH-PUBLICATION:VALUE
+      i REG-AOT-BASE-PTR i REG-AOT-COUNT i REG-AOT-WIDTH * GRAPH-PUBLICATION:BYTES
+   loop
+   TFX-READY @ GRAPH-PUBLICATION:VALUE TFX-HI @ GRAPH-PUBLICATION:VALUE
+   TFX-CAP @ GRAPH-PUBLICATION:VALUE TFX-SLOTS GRAPH-PUBLICATION:VALUE
+   SVX-GEN @ GRAPH-PUBLICATION:VALUE SVX-HI @ GRAPH-PUBLICATION:VALUE
+   TFX-BASE BYTE-VIEW TFX-SLOTS cells GRAPH-PUBLICATION:BYTES
+   SYM-N @ 1 ?do i SVX@ GRAPH-PUBLICATION:VALUE loop ;
+
 ;package
 
 package GRAPH-ROUNDTRIP
@@ -35,6 +86,8 @@ using AOT-BUF
 using AOT-ARM
 using AOT-CAPTURE
 using AOT-IDENT
+using STRUCTURE-DECL
+using ENUM-DECL
 $20000 constant CAP
 create POOL CAP allot
 variable USED
@@ -73,6 +126,11 @@ TRUSTED: DIN ( ptr u8 -- ptr u8 ) dup ER.DIN @ + ;
 TRUSTED: DOUT-TYPE ( ptr u8 -- ptr u8 ) {: graph:ptr :}
    graph ER.DOUT @ graph + EN.A @ graph + ;
 
+TRUSTED: NAMED-GRAPH ( ptr u8 n -- ptr u8 ) {: name:ptr u:n :}
+   CK-AOT-ROWS 0 ?do
+      i 0 CK-AOT-FIELD CK-AOT-STR$ name u CORE-STR=CI IF i GRAPH unloop EXIT THEN
+   loop 79 throw NULL-PTR ;
+
 TRUSTED: CORRUPT ( -- )
    s" length" MODE? IF $7FFFFFFFFFFFFFFF 0 GRAPH ER.NEXT ! THEN
    s" cycle" MODE? IF 0 GRAPH dup ER.DIN @ swap DIN EN.B ! THEN
@@ -89,12 +147,64 @@ TRUSTED: CORRUPT ( -- )
       4 GRAPH DOUT-TYPE dup EN.TAG @ EN-QUOT EQ
       -1 swap EN.E !
    THEN
+   s" scalar-zero" MODE? IF
+      1 GRAPH DIN EN.C @ 2 EQ
+      1 1 GRAPH DIN EN.C !
+      0 1 GRAPH ER.MINI !
+   THEN
+   s" wide-width" MODE? IF
+      s" PAYLOAD-WIDE-USE" NAMED-GRAPH {: graph:ptr :}
+      graph DIN EN.C @ 2 EQ
+      graph DIN EN.A @ graph + dup EN.TAG @ EN-PARAM EQ
+      dup EN.E @ 0 > 0= IF 79 throw THEN
+      EN.E @ 2 EQ
+      graph DIN dup EN.C @ 1+ swap EN.C !
+      graph ER.MINI dup @ 1+ swap !
+   THEN
+   s" logical-width" MODE? IF
+      s" PAYLOAD-POLY-USE" NAMED-GRAPH {: graph:ptr :}
+      graph DIN EN.C @ 3 EQ
+      graph DIN EN.A @ graph + dup EN.TAG @ EN-PARAM EQ
+      EN.E @ 0 EQ
+      2 graph DIN EN.C ! 1 graph ER.MINI !
+   THEN
    s" HABU_PAYLOAD_TEST_MODE" GETENV nip IF
       s" graph corruption applied: " type s" HABU_PAYLOAD_TEST_MODE" GETENV type cr
    THEN ;
 
+TRUSTED: WIDTH-MODE? ( -- bool )
+   s" scalar-zero" MODE? s" wide-width" MODE? or s" logical-width" MODE? or ;
+
+\ Exercise the private throwing validator below the public process refusal,
+\ then compare every published store before rerunning the real install path.
+TRUSTED: WIDTH-REFUSAL-ATOMIC ( -- )
+   WIDTH-MODE? 0= IF EXIT THEN
+   TFAM:PREPARE-GRAPH-STATE
+   RES-FALSE GRAPH-PUBLICATION:START
+   GRAPH-PUBLICATION:CORE TFAM:GRAPH-STATE GRAPH-PUBLICATION:FINISH
+   [: CK-AOT-CONTENTS? ;] catch 76 EQ
+   CK-GRAPH-WIDTH-BAD @ -1 EQ
+   CK-GRAPH-RELEASE
+   CK-AOT-STATE @ 0 EQ
+   RES-TRUE GRAPH-PUBLICATION:START
+   GRAPH-PUBLICATION:CORE TFAM:GRAPH-STATE GRAPH-PUBLICATION:FINISH
+   s" graph width refusal preserved publication state" type cr ;
+
 TRUSTED: ARM ( -- ) CHECKER-SCOPE-START UEND @ MARK ! WINDOW-OPEN ;
+TRUSTED: DECLARE-WIDE ( -- )
+   s" payload-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
+   s" payload-empty" s" 0 ;STRUCTURE" SD-REPLAY
+   s" payload-option" s" 1 VARIANT full FIELD value a ;VARIANT VARIANT empty ;VARIANT ;ENUM" ED-REPLAY ;
+TRUSTED: CORRUPT-SOURCE ( -- )
+   s" producer-scalar-zero" MODE? IF
+      s" PAYLOAD-FIXED" FIND-SIG -1 EQ
+      FEP @ {: rec:ptr :}
+      rec ER.DIN @ E-PTR EN.C @ 2 EQ
+      1 rec ER.DIN @ E-PTR EN.C ! 0 rec ER.MINI !
+      s" graph corruption applied: producer-scalar-zero" type cr
+   THEN ;
 TRUSTED: INSTALL ( -- )
+   CORRUPT-SOURCE
    WINDOW-CLOSE
    R0 @ D0 @ PRELUDE-MARK
    PAYLOAD-CAPTURE
@@ -119,9 +229,10 @@ TRUSTED: INSTALL ( -- )
    USED @ data-base CK-AOT-SIG-LEN-OFF + !
    0 CK-AOT-STATE !
    CORRUPT
+   WIDTH-REFUSAL-ATOMIC
    CK-AOT-REG-INSTALL
    CK-AOT-ROWS 0 ?do i CK-AOT-TAKE loop
-   CK-AOT-ROWS 6 EQ ;      \ the six ordinary window definitions below
+   CK-AOT-ROWS 10 EQ ;
 
 ARM
 ;package
@@ -133,9 +244,22 @@ NEWTYPE payload-tag 0
 : PAYLOAD-TAG ( payload-tag -- payload-tag ) ;
 : ANON-PROVIDER [: 1+ ;] ;
 : RETURN-PROVIDER ( n | -- | n ) >r ;
+GRAPH-ROUNDTRIP:DECLARE-WIDE
+: PAYLOAD-WIDE-USE ( payload-wide -- payload-wide ) ;
+: PAYLOAD-NESTED-USE ( payload-option<payload-wide> -- payload-option<payload-wide> ) ;
+: PAYLOAD-POLY-USE ( payload-option<a> -- payload-option<a> ) ;
+: PAYLOAD-ZERO-ARG-USE ( payload-option<payload-empty> -- payload-option<payload-empty> ) ;
 
 package GRAPH-ROUNDTRIP
 INSTALL
+s" PAYLOAD-WIDE-USE" EFFECT-QUERY -1 EQ
+EFFECT-DIN-N 2 EQ EFFECT-DIN-CELLS 2 EQ
+s" PAYLOAD-NESTED-USE" EFFECT-QUERY -1 EQ
+EFFECT-DIN-N 3 EQ EFFECT-DIN-CELLS 3 EQ
+s" PAYLOAD-POLY-USE" EFFECT-QUERY -1 EQ
+EFFECT-DIN-N 1 EQ EFFECT-DIN-CELLS 2 EQ
+s" PAYLOAD-ZERO-ARG-USE" EFFECT-QUERY -1 EQ
+EFFECT-DIN-N 1 EQ EFFECT-DIN-CELLS 1 EQ
 s" ROUND-GOOD ( n -- n ) ROW-ADD" CHECK! -1 EQ
 s" ROUND-BAD ( ptr u8 -- ptr u8 ) ROW-ADD" CHECK! 0 EQ
 s" ROUND-QUANT ( n -- n ) [: 1+ ;] PAYLOAD-QUANT" CHECK! -1 EQ

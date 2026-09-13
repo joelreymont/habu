@@ -3399,6 +3399,74 @@ variable REG-AOT-MEMO-U
    row @ SCH-APP = IF src u 0 row CELL + @ REG-AOT-ITEM REG-AOT-FAM-WIDTH EXIT THEN
    1 ;
 
+\ Portable counterpart of SCH-NODE-IWIDTH / TFAM-INST-WIDTH@: substitute the
+\ graph's already validated logical argument widths for SCH-PARAM. A schema
+\ APP uses its declared family width, exactly as the live width authority does.
+\ The width memo is indexed by graph offsets, so shared arguments are read once
+\ rather than re-instantiated or published in the live checker to measure them.
+: REG-AOT-GRAPH-SCHEMA-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n n -- n )
+   {: term:ptr graph:ptr widths:ptr src:ptr u:n root:n :}
+   src u 7 root REG-AOT-ITEM @ {: node:n :}
+   src u 6 node REG-AOT-ITEM {: schema:ptr :}
+   schema @ SCH-PARAM = IF
+      schema CELL + @ {: arg:n :}
+      arg 0 < arg term EN.C @ >= or IF ASIG-GRAPH-DIE THEN
+      graph term EN.D @ + arg cells + CELL-VIEW @ widths + CELL-VIEW @ EXIT
+   THEN
+   schema @ SCH-APP = IF
+      src u 0 schema CELL + @ REG-AOT-ITEM REG-AOT-FAM-WIDTH EXIT
+   THEN
+   1 ;
+
+\ Leave room for the persisted width+1 encoding. Bounds precede addition.
+: REG-AOT-GRAPH-WIDTH+ ( n n -- n ) {: left:n right:n :}
+   left 0 < right 0 < or IF ASIG-GRAPH-DIE THEN
+   right $7FFFFFFFFFFFFFFE left - > IF ASIG-GRAPH-DIE THEN
+   left right + ;
+
+: REG-AOT-GRAPH-FIELDS-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n ptr n n -- n )
+   {: term:ptr graph:ptr widths:ptr src:ptr u:n family:ptr variant:n :}
+   0 family TF.FLD-COUNT @ 0 ?do
+      src u 3 family TF.FLD-START @ i + REG-AOT-ITEM {: field:ptr :}
+      field PF.VAR @ variant = IF
+         term graph widths src u field PF.SCH @ REG-AOT-GRAPH-SCHEMA-WIDTH
+         REG-AOT-GRAPH-WIDTH+
+      THEN
+   loop ;
+
+: REG-AOT-GRAPH-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
+   {: term:ptr graph:ptr widths:ptr src:ptr u:n :}
+   src u 0 term EN.H @ REG-AOT-ITEM {: family:ptr :}
+   \ With cell-width arguments the checked declaration already owns the exact
+   \ answer. This also handles nullary families without rescanning every field
+   \ for each hidden physical slot of a wide concrete value.
+   RES-TRUE term EN.C @ 0 ?do
+      graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @ 1 = and
+   loop IF family REG-AOT-FAM-WIDTH EXIT THEN
+   family TF.LAYOUT @ {: policy:n :}
+   policy TL-BOXED = policy TL-NICHE = or IF 1 EXIT THEN
+   family TF.KIND @ {: kind:n :}
+   kind TK-PRODUCT = IF
+      term graph widths src u family PF-NO-VARIANT REG-AOT-GRAPH-FIELDS-WIDTH EXIT
+   THEN
+   kind TK-SUM = kind TK-ENUM = or IF
+      0 family TF.VAR-COUNT @ 0 ?do
+         family TF.VAR-START @ i + {: vid:n :}
+         src u 2 vid REG-AOT-ITEM {: variant:ptr :}
+         family TF.FLD-COUNT @ 0 > IF
+            term graph widths src u family vid REG-AOT-GRAPH-FIELDS-WIDTH
+         ELSE
+            0 variant SV.SCH-COUNT @ 0 ?do
+               term graph widths src u variant SV.SCH-START @ i + REG-AOT-GRAPH-SCHEMA-WIDTH
+               REG-AOT-GRAPH-WIDTH+
+            loop
+         THEN
+         max
+      loop
+      1 REG-AOT-GRAPH-WIDTH+ EXIT
+   THEN
+   1 ;
+
 : REG-AOT-SAME-PKG? ( ptr u8 n ptr n ptr n -- bool )
    {: src:ptr u:n left:ptr right:ptr :}
    src u 5 left TF.PKG-OFF @ left TF.PKG-U @ REG-AOT-VIEW left TF.PKG-U @
@@ -3637,6 +3705,7 @@ variable REG-AOT-MEMO-U
    [: REG-AOT-LOAD ;] is REG-EXT-AOT-LOAD-XT
    [: REG-AOT-VALIDATE ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-AOT-PARAM? ;] is REG-EXT-AOT-PARAM-XT
+   [: REG-AOT-GRAPH-WIDTH ;] is REG-EXT-AOT-WIDTH-XT
    [: TFAM-NAME$ ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-INSTALL
 

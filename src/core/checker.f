@@ -1721,7 +1721,8 @@ variable TWALK-D
 \ width as the copy walks past the live term, EFFECT-MIN-IN reads the floor a
 \ call must provide, and RSCATCH measures the window a caught quotation takes
 \ before the fit-check binds anything. There is no second implementation of the
-\ rule anywhere, and this is the highest of those three callers.
+\ rule among source-checking callers, and this is their earliest dependency.
+\ Portable graphs revalidate the stored claim against their captured registry.
 \
 \ A hidden layout parameter already denotes one physical cell; charging its
 \ family's full logical width again would turn a W-cell bundle into W^2 cells.
@@ -5413,8 +5414,9 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
          \ same moment, so the two can never drift. The stored graph cannot answer
          \ it afterwards: a width is a question about the TYPE (T-WIDTH walks the
          \ family registry's schemas), and the copy keeps a term's identity, not
-         \ its layout registry. Held as width+1 so that ZERO means "this node was
-         \ written by something that did not know the question", which is what a
+         \ its layout registry. A portable graph therefore carries that registry
+         \ and revalidates the claim before publication. Held as width+1 so ZERO
+         \ means "this node was written by something that did not know the question", which is what a
          \ snapshot taken before this field existed restores (EN.E on a param node
          \ carries the same pre-3a story). Readers fail closed on it.
          x E-RES P>TYPE ROW-TERM-CELLS 1 + r@ E-PTR EN.C !
@@ -9210,6 +9212,9 @@ defer REG-EXT-AOT-VALIDATE-XT ( ptr u8 n -- )
 \ The graph node and its strings have already passed extent checks. The
 \ registry validates its canonical family identity against the future view.
 defer REG-EXT-AOT-PARAM-XT ( ptr u8 ptr u8 ptr u8 n -- )
+\ Read a graph family's logical width from already validated argument widths
+\ and the same future registry view. Hidden row fields are charged separately.
+defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
 defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
 
 \ A build with no type registry loaded has no delta to write. Reading one is a
@@ -9231,6 +9236,7 @@ defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
    [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-LOAD-XT
    [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
+   [: rot drop REG-EXT-AOT-NO-PARAM 0 ;] is REG-EXT-AOT-WIDTH-XT
    [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-DEFAULTS
 
@@ -13082,6 +13088,9 @@ variable ASIG-GRAPH-MAP-CAP
    src E-PTR EN.A @ E-PTR src E-PTR EN.B @ ASIG-GRAPH-BYTES
    dst ASIG-GRAPH-PTR EN.A ! ;
 
+\ Bound below to the same semantic validator used before graph import.
+defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
+
 : ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
    src 0= IF 0 EXIT THEN
    src ASIG-GRAPH-SOURCE?
@@ -13159,6 +13168,7 @@ variable ASIG-GRAPH-MAP-CAP
    src E-PTR ER.RIN @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.RIN !
    src E-PTR ER.ROUT @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.ROUT !
    ASIG-STR-U @ ASIG-GRAPH-BASE @ - 0 ASIG-GRAPH-PTR ER.NEXT !
+   0 ASIG-GRAPH-PTR dup ER.NEXT @ ASIG-GRAPH-CHECK-XT
    ASIG-GRAPH-BASE @ ;
 
 : CHECKER-PAYLOAD-ARM ( -- )
@@ -13275,20 +13285,28 @@ variable CK-GRAPH-LEN
 PTR-VARIABLE CK-GRAPH-MAP
 variable CK-GRAPH-CAP
 variable CK-GRAPH-MAP-U
+PTR-VARIABLE CK-GRAPH-REG-P
+variable CK-GRAPH-REG-U
+variable CK-GRAPH-WIDTH-BAD
 
 : CK-GRAPH-PTR ( n -- ptr u8 ) CK-GRAPH-BASE @ + ;
 : CK-GRAPH-SLOT ( n -- ptr n ) CK-GRAPH-MAP @ + CELL-VIEW ;
+: CK-GRAPH-WIDTHS ( -- ptr u8 ) CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ 2 * + ;
+: CK-GRAPH-WIDTH-SLOT ( n -- ptr n ) CK-GRAPH-WIDTHS + CELL-VIEW ;
+: CK-GRAPH-REG$ ( -- ptr u8 n ) CK-GRAPH-REG-P @ CK-GRAPH-REG-U @ ;
 
 : CK-GRAPH-RELEASE ( -- )
    CK-GRAPH-MAP @ CK-GRAPH-CAP @ ASIG-RELEASE
    NULL-PTR CK-GRAPH-MAP ! 0 CK-GRAPH-CAP ! ;
 
 \ One map cell per aligned source cell detects both cycles and overlapping
-\ objects. The second half records each variable's kind. Repeated DAG edges
-\ reuse the finished node; validating a graph is linear in its bytes/edges.
+\ objects. The second span records each variable's kind; the third memoizes
+\ logical type widths. Repeated DAG edges reuse both the finished node and its
+\ width, so layout arguments do not expand a shared graph during admission.
 : CK-GRAPH-ROOM ( -- )
-   CK-GRAPH-LEN @ $3FFFFFFFFFFFFFF8 > IF ASIG-GRAPH-DIE THEN
-   CK-GRAPH-LEN @ 7 + -8 and dup CK-GRAPH-MAP-U ! 2 * {: bytes:n :}
+   \ Three aligned spans must fit before rounding the graph length up.
+   CK-GRAPH-LEN @ $7FFFFFFFFFFFFFFF 3 / -8 and > IF ASIG-GRAPH-DIE THEN
+   CK-GRAPH-LEN @ 7 + -8 and dup CK-GRAPH-MAP-U ! 3 * {: bytes:n :}
    bytes CK-GRAPH-CAP @ > IF
       CK-GRAPH-MAP @ CK-GRAPH-CAP @ {: old:ptr oldcap:n :}
       old oldcap bytes ARENA-BYTES-GROW CK-GRAPH-MAP !
@@ -13342,6 +13360,24 @@ variable CK-GRAPH-MAP-U
 : CK-GRAPH-KIND? ( n bool -- ) {: tag:n row:bool :}
    tag EN-ROW = tag EN-PUSH = or row IF 0= THEN IF ASIG-GRAPH-DIE THEN ;
 
+\ A width is certified metadata consumed by native call lowering. Recompute it
+\ from the admitted type before comparing the stored width+1. T-WIDTH charges
+\ every non-layout term one cell; ROW-TERM-CELLS also charges a hidden physical
+\ field one cell, even when its logical family spans several cells.
+: CK-GRAPH-ROW-WIDTH ( n -- n ) {: off:n :}
+   off CK-GRAPH-PTR {: node:ptr :}
+   node EN.TAG @ EN-PARAM = IF node EN.E @ 0 > IF 1 EXIT THEN THEN
+   off CK-GRAPH-WIDTH-SLOT @ ;
+
+: CK-GRAPH-WIDTH-REFUSE ( -- )
+   -1 CK-GRAPH-WIDTH-BAD ! 76 throw ;
+
+: CK-GRAPH-THROW ( n -- )
+   dup 0= IF drop EXIT THEN
+   CK-GRAPH-WIDTH-BAD @ IF
+      drop s" checker: captured row width disagrees with its type" 76 die
+   THEN throw ;
+
 : CK-GRAPH-NODE? ( n bool -- ) {: off:n row:bool :}
    off 0= IF row 0= IF ASIG-GRAPH-DIE THEN EXIT THEN
    off EFF-NODE CK-GRAPH-SPAN?
@@ -13359,9 +13395,9 @@ variable CK-GRAPH-MAP-U
    ELSE tag EN-PTR = IF
       node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
    ELSE tag EN-PUSH = IF
-      node EN.C @ 0 <= IF ASIG-GRAPH-DIE THEN
       node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.A @ CK-GRAPH-ROW-WIDTH 1+ node EN.C @ <> IF CK-GRAPH-WIDTH-REFUSE THEN
    ELSE tag EN-QUOT = IF
       node EN.E @ IF ASIG-GRAPH-EXCEPTION-DIE THEN
       node EN.F @ CK-GRAPH-BOOL?
@@ -13383,8 +13419,15 @@ variable CK-GRAPH-MAP-U
          node EN.D @ i cells + CK-GRAPH-PTR CELL-VIEW @
          RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       loop
-      node CK-GRAPH-BASE @ CK-AOT-REG$ REG-EXT-AOT-PARAM-XT
+      node CK-GRAPH-BASE @ CK-GRAPH-REG$ REG-EXT-AOT-PARAM-XT
    THEN THEN THEN THEN THEN THEN THEN
+   row 0= IF
+      tag EN-PARAM = IF
+         node CK-GRAPH-BASE @ CK-GRAPH-WIDTHS CK-GRAPH-REG$ REG-EXT-AOT-WIDTH-XT
+         dup node EN.E @ < IF drop CK-GRAPH-WIDTH-REFUSE THEN
+      ELSE 1 THEN
+      off CK-GRAPH-WIDTH-SLOT !
+   THEN
    tag 1+ off CK-GRAPH-SLOT ! ;
 
 : CK-GRAPH-MIN-IN ( -- n )
@@ -13396,16 +13439,14 @@ variable CK-GRAPH-MAP-U
       width + swap CK-GRAPH-PTR EN.B @
    REPEAT drop ;
 
-: CK-GRAPH-VALIDATE ( n -- ) {: at:n :}
-   at 7 and 0 <> IF ASIG-GRAPH-DIE THEN
-   at EFF-REC CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
-   CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + CK-GRAPH-BASE !
+: CK-GRAPH-CHECK ( ptr u8 n ptr u8 n -- ) {: graph:ptr bytes:n reg:ptr regu:n :}
+   0 CK-GRAPH-WIDTH-BAD !
+   bytes EFF-REC < IF ASIG-GRAPH-DIE THEN
+   graph CK-GRAPH-BASE ! bytes CK-GRAPH-LEN !
+   reg CK-GRAPH-REG-P ! regu CK-GRAPH-REG-U !
    0 CK-GRAPH-PTR {: rec:ptr :}
    rec ER.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
-   rec ER.NEXT @ {: bytes:n :}
-   bytes EFF-REC < IF ASIG-GRAPH-DIE THEN
-   at bytes CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
-   bytes CK-GRAPH-LEN !
+   rec ER.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
    rec ER.SYMPREV @ 0 <> rec ER.SYM @ $10007 invert and 0 <> or IF ASIG-GRAPH-DIE THEN
    rec ER.HASR @ CK-GRAPH-BOOL?
    rec ER.HASR @ 0= IF rec ER.RIN @ rec ER.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
@@ -13419,6 +13460,23 @@ variable CK-GRAPH-MAP-U
    rec ER.RIN @ RES-TRUE CK-GRAPH-NODE?
    rec ER.ROUT @ RES-TRUE CK-GRAPH-NODE?
    CK-GRAPH-MIN-IN rec ER.MINI @ <> IF ASIG-GRAPH-DIE THEN ;
+
+: CK-GRAPH-VALIDATE ( n -- ) {: at:n :}
+   at 7 and 0 <> IF ASIG-GRAPH-DIE THEN
+   at EFF-REC CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
+   CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + {: graph:ptr :}
+   graph ER.NEXT @ {: bytes:n :}
+   at bytes CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
+   graph bytes CK-AOT-REG$ CK-GRAPH-CHECK ;
+
+: ASIG-GRAPH-CHECK ( ptr u8 n -- )
+   [: 2dup NULL-PTR 0 CK-GRAPH-CHECK ;] catch
+   \ Reuse scratch across the freeze's definitions; capture preparation releases
+   \ it. A refusal releases immediately before crossing the public boundary.
+   dup 0 <> IF CK-GRAPH-RELEASE THEN
+   >r 2drop r> CK-GRAPH-THROW ;
+: ASIG-GRAPH-CHECK-INSTALL ( -- ) [: ASIG-GRAPH-CHECK ;] is ASIG-GRAPH-CHECK-XT ;
+ASIG-GRAPH-CHECK-INSTALL
 
 : CK-AOT-CONTENTS? ( -- )
    CK-AOT-VALIDATE
@@ -13437,9 +13495,10 @@ variable CK-GRAPH-MAP-U
 : CK-AOT-READY? ( -- bool )
    CK-AOT-STATE @ 0 <> IF CK-AOT-STATE @ 0 > EXIT THEN
    CK-AOT-SIG-LEN 0 <= IF -1 CK-AOT-STATE ! RES-FALSE EXIT THEN
+   0 CK-GRAPH-WIDTH-BAD !
    [: CK-AOT-CONTENTS? ;] catch
    CK-GRAPH-RELEASE
-   dup 0 <> IF throw THEN drop
+   CK-GRAPH-THROW
    1 CK-AOT-STATE ! RES-TRUE ;
 
 \ The registry the signatures resolve against. A signature naming a
