@@ -26,3 +26,25 @@ Actual products under /tmp/cedar-family-stage-abi:
 B and C pass the actual tier-1 checker-effect-authority fixture (judged/ABI/explicit rows, primitive pairing, thrown scope, failed check, rollback/regrowth, package shadow/export and real native pre-hook/redefinition publication), the complete original internal-word-gate with an added CHECKER-BOUND cursor negative, and prefix-mark-test. Logs are /tmp/cedar-effect-authority-{unit,internal-gate,prefix-mark}.log and the corresponding -C- names. The complete B aot-payload-graph suite passes, including unknown-bit rejection and exited native producer/reader followed by a fresh consumer that refuses the ABI-only row and executes asserted/checked public calls. The fresh test must trigger lazy intake with CHECK! before EFFECT-QUERY; the ABI query itself does not import rows. The metadata fixture also requires a private bin/hb link to its paired product. Log: /tmp/cedar-effect-authority-graph.log.
 
 Root's independent production review approved all publication paths, CTL ordering, rollback caches, transfer/import flags, primitive pairing and sealing. Root's unchanged checker-scan-index suite passes B (81.828 s). Its type-export run found the former whole-flags-zero expectation now includes EFFECT-EXTERNAL; the focused repair asserts control flags and authority separately and retains raw-zero rollback checks. The repaired suite passes B, rc 0, /tmp/cedar-effect-authority-type-export.log. Root owns combined product composition and the full gate. No compile-floor claim belongs to this correctness repair.
+
+Combined J followup (base `674900c6`): dead-path F5/F11/F12 were whole-flag
+zero assertions now seeing `$8`. They now independently assert the intended
+dead/throw bits and the checked binding's source authority. The rollback-signature
+fixture's ARM/FREEZE/LOOKUP are explicit private payload-owner boundaries;
+their membership, rollback and serialized graph assertions are unchanged.
+Both repaired suites pass actual J, rc0, in 0.541/0.557 s; logs
+`/tmp/cedar-authority-followup-{dead-path,rollback}.log`.
+
+The native window reduction resolved EVENTS' bare SCAN to CHECKER-TAPE:SCAN
+(same symbol 3810 as the qualified spelling, flags0, ABI minimum2), distinct
+from CHECKER-EFFECT-AUTHORITY:SCAN (symbol1568, minimum1). The tape's PPRIM API
+grants observer installation/arming, not its checker-owned event producers.
+Only the whitebox EVENTS injector is now trusted. Actual J's tier1 source-owner
+window passes all existing callback/detach assertions with `window: 0` and no
+stderr, rc0 in31.012 s; `/tmp/cedar-authority-followup-tape-window.log`.
+
+The multi-error cascade is a separate confirmed production regression: failed
+declarations retain ABI facts without source authority, so a downstream caller
+now adds E-CAP-TRUSTED. Recovery must identify current-run failed rows and taint
+dependent analysis without granting executable authority. Root approved that
+bounded design for a separate followup; no broad MULTI-ERR visibility bypass.

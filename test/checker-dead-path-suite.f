@@ -101,7 +101,9 @@ s" die" DEADPATH-SHIM:CTL CTL-DEAD and CTL-DEAD T=
 s" die" DEADPATH-SHIM:CTL CTL-THROW and 0 T=
 
 s" an ordinary word carries neither" T-LABEL
-s" DEADPATH-FIX:THROWN" DEADPATH-SHIM:CTL 0 T=
+s" DEADPATH-FIX:THROWN" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and 0 T=
+s" the ordinary checked word separately carries source authority" T-LABEL
+s" DEADPATH-FIX:THROWN" DEADPATH-SHIM:CTL EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 
 s" a word whose own body ends a path earns the same flags" T-LABEL
 s" DEADPATH-FIX:BOOM" DEADPATH-SHIM:CTL CTL-DEAD and CTL-DEAD T=
@@ -126,8 +128,11 @@ s" DP-D ( n n -- n ) 0 = if drop 5 DEADPATH-FIX:THROWN then" CHECK-QUIET-CANDIDA
 package DEADPATH-SHADOW
 
 s" inside the package the bare tail is not the axiom" T-LABEL
-s" throw" DEADPATH-SHIM:CTL 0 T=
-s" die" DEADPATH-SHIM:CTL 0 T=
+s" throw" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and 0 T=
+s" die" DEADPATH-SHIM:CTL CTL-DEAD CTL-THROW or and 0 T=
+s" both checked package bindings retain their own source authority" T-LABEL
+s" throw" DEADPATH-SHIM:CTL EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
+s" die" DEADPATH-SHIM:CTL EFFECT-EXTERNAL and EFFECT-EXTERNAL T=
 
 s" an arm ending in a package word named throw is refused" T-LABEL
 s" DP-E ( n n -- n ) 0 = if drop 5 throw then" CHECK-QUIET-CANDIDATE! 0 T=

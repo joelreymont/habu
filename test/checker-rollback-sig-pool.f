@@ -31,9 +31,11 @@ variable ROW-U
 PTR-VARIABLE STRINGS
 variable STR-U
 
-: ARM ( -- ) CHECKER-PAYLOAD-ARM ;
+\ Whitebox payload-owner operations; the test deliberately controls the live
+\ capture window and reads its private serialized spans.
+TRUSTED: ARM ( -- ) CHECKER-PAYLOAD-ARM ;
 
-: FREEZE ( -- )
+TRUSTED: FREEZE ( -- )
    CHECKER-PAYLOAD-FREEZE
    CHECKER-PAYLOAD-SPANS STR-U ! STRINGS ! ROW-U ! ROWS ! ;
 
@@ -66,7 +68,7 @@ variable STR-U
    REPEAT drop true ;
 
 \ A known checked word with row zero is exactly the capture audit's refusal.
-: LOOKUP ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+TRUSTED: LOOKUP ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    s" " false a u CHECKER-PAYLOAD-LOOKUP ;
 
 : ROW-NAMES? ( ptr u8 n ptr u8 n -- bool ) {: qa:ptr qu:n wa:ptr wu:n :}

@@ -13,7 +13,9 @@ TRUSTED: BIND-PREPARE ( -- )
    NCOMP-DISPATCH:DECL-CAPTURE-OFF + CELL-VIEW @ is PREPARE ;
 BIND-PREPARE
 
-: EVENTS ( -- )
+\ Inject the checker's own events at this whitebox boundary. Ordinary source
+\ owns the declared observer API, not SCAN/TOKEN/DONE's event-production path.
+TRUSTED: EVENTS ( -- )
    s" name" SCAN
    s" name" 0 0 TOKEN
    s" name" -1 DONE ;
