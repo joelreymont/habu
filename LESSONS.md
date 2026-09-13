@@ -8128,3 +8128,46 @@ and --no-lldbinit.
   walking the live `ndict` (`dbase@` + `DREC`) named both words - `code-owner.f`
   could not, because the address belonged to code the window compiled after the
   tool's own load, so its offsets do not exist in a second process.
+
+## 2026-09-13 - a capture must give back what a mapping holds, not trust a list
+
+- **A DYNAMIC-BUFFER control record that still holds a mapping when the AOT
+  capture copies the window's DATA bakes a dead pointer beside a live capacity,
+  and no per-package release list can close that hole.** The record is two cells
+  (`src/core/dynamic-storage.f`); `RESERVE`'s early return on `need <= old`
+  trusts the capacity, so the generated reader's bounds check passes and the
+  first access dereferences a mapping belonging to a process that has exited —
+  measured rc 134, SIGSEGV, the building process's mmap address in the faulting
+  register, and 3-4 differing bytes between two builds of one tree because that
+  address moves. Releasing at the end of the window's load cannot fix it: the
+  hazard is everything that compiles *after* that point, because every compile
+  reserves again. So the declaring form registers each record (the source
+  `DBUF-SOURCE` generates carries the `REGISTER` call, which is also the only
+  way to reach a runtime that the core prefix loads *after* `layout-buffer.f`)
+  and `AOT-CAPTURE:CAPTURE` walks the registry immediately before
+  `ACAP-BAKE-DATA` — the point where the bytes stop changing.
+- **The AOT capture is not the only thing that writes an image, so the per-pass
+  `RELEASE-SCRATCH` lists stay.** `src/habu/app-image.f` SAVE writes an
+  application image through `SNAP:PERSIST`, a snapshot that copies live DATA and
+  never reaches `AOT-CAPTURE:CAPTURE`; `NCOMP:CAPTURE-PREPARE`'s per-pass releases
+  are that path's only cleanup. Deleting them as "image-only" — they are called
+  from nowhere else, so they look it — turned `test/app-image.f` from green into
+  rc 67 with a SIGSEGV child (sig 0x0b), and `test/snapshot-writer.f` red with it,
+  on an engine whose AOT products were all clean. So the 2026-09-11 rule above
+  still holds for the snapshot path: a new dynamic buffer in a compiler pass needs
+  its release in that pass's list. What the registry removes is the *image*
+  hazard, not the pairing.
+- **A window build loads `src/core/dynamic-storage.f` twice, so "the registry" is
+  two registries, and a host word that calls the name reaches the wrong one.**
+  Measured: a print appended to that file fires twice in one
+  `tools/native-build.f` run — once in the build host's prefix, once inside the
+  window via `src/habu/native-runtime.f`. Window declarations bind to the
+  window's instance; `src/habu/aot-capture.f`, compiled in the host, would bind
+  to the host's. The fix needs no install protocol and no new cell: resolve the
+  qualified name with `XREF-FIND` (which walks records newest-first, exactly as
+  window code binds) and accept the xt only if it lies inside the captured code
+  band. Outside the band is the host's instance, whose records sit below the
+  captured DATA window and are never baked — so it is correctly no answer at all.
+  The lookup must never be `evaluate`: a compile there runs the window's own
+  compiler through the dispatch cell `CHECKER-REG:SEAL` just repointed and
+  reserves the records the walk is about to clear.

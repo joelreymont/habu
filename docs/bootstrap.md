@@ -273,6 +273,43 @@ with no reader in a restored image, so it now travels on the stack
 (`REG-PERSIST-MOVE`) and occupies no cell. Two seed-hosted builds then agreed
 in all 5,701,824 bytes, and `two-gen: bytes gen 4 vs 5` went from 4 to 0.
 
+**No image carries a dynamic-storage mapping, and the capture is what says so.**
+A `DYNAMIC-BUFFER`'s control record is two DATA cells, a mapping pointer and a
+byte capacity (`src/core/dynamic-storage.f`). A record that still holds a mapping
+when the capture copies the window's DATA bakes a pointer into a process that has
+exited, beside a capacity that is real — so `RESERVE`'s early return on `need <=
+old` never replaces it, the generated reader's bounds check passes, and the first
+access dereferences it. Measured on an engine built without the reset: rc 134,
+SIGSEGV, with the building process's mmap address in the faulting register; and
+because that address differs per build, two builds of one tree differed in the 3-4
+bytes of the baked pointer, the same signature `REG-PERSIST-DELTA` had. Releasing
+at the end of the window's load is not enough — everything that compiles after
+that point reserves again — so every declaration registers its record
+(`src/core/layout-buffer.f` `DBUF-SOURCE` emits the `REGISTER` call, so no list is
+kept by hand) and `AOT-CAPTURE:CAPTURE` walks that registry immediately before
+`ACAP-BAKE-DATA`, releasing every mapping, zeroing both cells and giving the
+registry itself back last. `ACAP-BAKE-DATA` is the last point that matters: it
+copies the bytes into the run buffer, and nothing compiled afterwards can reach
+the image. `test/dynamic-buffer-registry.f` reads the invariant from inside a
+booted engine — an empty registry, nothing in it holding a mapping — and dies rc
+134 on an engine built without the walk.
+
+That covers the AOT capture, which is not the only thing that writes an image.
+`src/habu/app-image.f` `SAVE` writes an application image through `SNAP:PERSIST`,
+a snapshot of live DATA that never reaches `AOT-CAPTURE:CAPTURE`, so
+`NCOMP:CAPTURE-PREPARE`'s per-pass `RELEASE-SCRATCH` lists remain that path's
+cleanup and are not redundant: removing them takes `test/app-image.f` to rc 67
+with a SIGSEGV child while every AOT product stays clean. A new dynamic buffer in
+a compiler pass therefore still belongs in its pass's release list.
+
+**There is deliberately no boot-time check of that invariant.** The capture is the
+producer of every image this tree builds, so an invariant enforced there is
+complete for every image; a hand-forged image is a different threat and not one
+this reset is aimed at. This base's engine also has no Forth-level boot hook to
+put such a check in (`EM-AOT-BOOTRUN` is defined in `src/habu/habu2.f` but not
+emitted), so adding one would mean emitting engine code for a case the producer
+already refuses.
+
 **The chain reaches its fixpoint at generation 3; the (4,5) pair stays the
 asserted one as margin.** The product is a function of its host as well as of
 the source: the capture bakes the window's DATA as its non-zero extents

@@ -1169,6 +1169,10 @@ SUITE dynamic-buffer
    test/dynamic-buffer.f
 ;SUITE
 
+SUITE dynamic-buffer-registry
+   test/dynamic-buffer-registry.f
+;SUITE
+
 SUITE layout-defer
    test/layout-defer.f
 ;SUITE

@@ -134,6 +134,24 @@ $FFFFFFFE constant WID-QUAL
 \ so the chain's 1.15 MiB projects to ~14k sites.
 32768 constant AOT-SITE-MAX
 create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ packed rows: blob-off u32 + name-off u32 + callee scope u32
+\ THE ONE DYNAMIC BUFFER THE CAPTURE'S WALK NEVER SEES, AND IT IS STRUCTURE THAT
+\ EXEMPTS IT RATHER THAN A LIST. The pool grows to its used size because its cap is
+\ DICT-CAP * 256 (16 MiB) against a measured ~51 KiB need, so a static buffer is not
+\ an option. It is also alive long after the capture: habu2.f EMIT-AOT-SEED bakes
+\ the section by reading AOT-NAMES-BUF@ during the image emit, and aot-file.f MERGE
+\ reads and writes it too, both after AOT-CAPTURE:CAPTURE has returned - so giving
+\ its mapping back inside the capture would emit an empty name pool and every
+\ seeded engine would lose every name.
+\
+\ Nothing has to remember that. This file is build-host source: tools/native-build.f
+\ requires it before AOT-ARM:WINDOW-OPEN, and tools/hb-build-lib.f and
+\ bootstrap/cg/forth.fs carry it in the stage prefix, so its control record is
+\ always BELOW the captured DATA window and is never baked. The record therefore
+\ registers in the HOST's DYNAMIC-STORAGE instance, and the capture walks the
+\ window's instance only (src/habu/aot-capture.f ACAP-RELEASE-DYNAMIC, span-checked
+\ against the captured code band). Moving this declaration above a window open
+\ would put it in a window's registry and the walk would then take it away
+\ mid-capture, which is what this note is here to prevent.
 DYNAMIC-BUFFER AOT-NAMES-STORAGE n
 variable AOT-NAMES-LEN
 : AOT-NAMES-RESERVE ( n -- ) CELL 1- + CELL / AOT-NAMES-STORAGE-RESERVE ;
