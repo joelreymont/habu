@@ -25,3 +25,8 @@ and fresh-process rows, real merge, and version/row/coordinate/site refusals.
 A private bake of the valid artifact reached compiler fixpoint but then refused
 `E-UNDEFINED: true` before engine emission; restored execution and the integrated
 rebuild/full suite remain unverified here.
+
+Integrated181a01cf after Cedar's independent source review of row widths,
+tag/null rebasing and DATA-site readers, and an independent successful run of
+`test/aot-chain-capture-suite.f`. The combined native suite is running in
+`.jj-ws/cedar-correctness-verify`; restored executable execution remains open.

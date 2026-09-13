@@ -15,3 +15,12 @@ Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale dia
 Own native-build.f phase/output API, aot-capture.f host-to-target capture interface, native-runtime.f SEAL preparation split and habu2.f ENGINE-EMIT entry. Host readers retain host ABI. Freeze target declaration/code/signature membership, persist registry DATA before final D1 (USIGS always allots), prepare once and copy immutable owned capture. Then reopen native compiler session and compile source-bound target emitter outside capture. Pass owned capture explicitly, no ambient AOT-BUF cross-instance access/new format/disk stage. Translate supported moved fixed slots by identity; refuse incompatible host. Caller-selected private output includes temp/smoke/promotion. Test generation1 growth/shrink actual cap/heap versus constants, forced registry growth, session reuse and capture bytes unchanged by writer compilation.
 
 Verification: focused real-load cases above; rebuild and run `bin/hb --load test/run.f` for compiler/runtime integration. Speed acceptance uses the all-AOT campaign pair; functional/count evidence can be developed in parallel.
+
+September13 integration verification: private local-case product825c2c609a06
+failed to build the combined local-case/arena source at capture with rc74,
+`aot-capture: defer metadata outside DATA window`. The original integration
+host28e11361 built the same source successfully, yielding0c602d1c194c.
+Logs are in `.jj-ws/cedar-correctness-verify/build/`. A pre-local-case baseline
+generation comparison is in progress; attribution to the known layout problem
+versus a newly exposed source collision remains unproven. No product-hosted
+selfbuild or replacement application pin is certified by the focused fixes.

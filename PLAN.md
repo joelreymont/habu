@@ -54,10 +54,14 @@ scaling and the payoff from pass-level reader reuse still need attribution.
    local-first in checker, JIT and AOT. Repair existing a16875d6, including
    different-case duplicates and global/package shadowing; execution must match
    certification. This existing P1 was omitted from the first reconciliation.
-   **Provider rows:** Fix call recording at `RECORDED-STEP`, `U-CALL-TAIL` and
-   `CALL-FREEZE`. A call instantiates a fresh row; recording must not specialize
-   its reusable provider declaration. Quotation-wrapped `execute` reproduces
-   the defect without `finally`. Cover direct/quotation/cleanup calls at both
+   **Provider rows:** Fix declaration publication. Quotation inference aliases
+   named rows to implicit callback tails; publishing those inferred kinds changes
+   the reusable declaration. This reproduces with call recording disabled, so
+   `CALL-FREEZE` is not the primary cause. Preserve declared row quantification
+   together with verified fixed cells, types and call-width facts; copying the
+   original scheme wholesale would erase inferred input requirements.
+   Quotation-wrapped `execute` reproduces the defect without `finally`.
+   Cover direct/quotation/cleanup calls at both
    caller/provider tiers, empty/nonempty saved prefixes and wrong-type/borrow
    negatives. Do not alter valid `MEM:WITH-BYTES` effects to evade the defect.
 2. **Arena append.** Check `from <= source-count` and
