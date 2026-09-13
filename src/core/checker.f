@@ -6479,6 +6479,21 @@ variable PRM-FIRST
    sym PRIM-FIRST-IDX dup 0 = IF EXIT THEN
    1 - PE-EFF@ ;
 
+\ A user effect may refine a primitive's call shape, but cannot grant its
+\ trusted-only capability. Query the resolved symbol, so a package shadow
+\ keeps its own policy. Only user-effect hits need this additional walk.
+: PRIM-TRUSTED-SYM? ( n -- bool ) {: sym:n :}
+   sym PRIM-FIRST-IDX dup 0= IF drop RES-FALSE EXIT THEN
+   1 -
+   BEGIN dup #PE @ < WHILE
+      dup PE-ACTIVE? IF
+         dup PE-SYM@ sym = IF
+            dup PE-TRUSTED-ONLY? IF drop RES-TRUE EXIT THEN
+         THEN
+      THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
 : PE-SYM-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
@@ -9988,7 +10003,11 @@ variable WF-I
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
    CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
-   FEP-HIT? IF FEP @ EFF-APPLY ELSE
+   FEP-HIT? IF
+      CURSYM @ PRIM-TRUSTED-SYM? IF
+         -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
+      THEN
+      FEP @ EFF-APPLY ELSE
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN

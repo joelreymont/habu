@@ -268,6 +268,10 @@ SUITE compiler-native-prefix-declarations
    test/compiler/native-prefix-declarations.f
 ;SUITE
 
+SUITE primitive-trust
+   test/primitive-trust.f
+;SUITE
+
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
