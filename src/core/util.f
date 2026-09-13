@@ -1,10 +1,10 @@
 \ util.fs — shared in-subset helpers for the selfhost layer. Load FIRST (before
 \ walk.fs / checker.fs / vs.fs, which all use CORE-STR=).
 
-\ First source-prefix record and heap cell. Its dictionary index is resolved
+\ First source-prefix record. Its dictionary index is resolved
 \ by CORE-PREFIX in the running engine: a captured ndict value would describe
 \ the build host, whose primitive/helper record count can differ from ours.
-\ Its storage address also marks the live heap boundary for snapshots.
+\ This identifies the prefix; earlier DATA allocations can still be live.
 variable IMK-NDICT0
 
 variable SEQ

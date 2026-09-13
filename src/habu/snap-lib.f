@@ -193,43 +193,6 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 : SND-COPY ( -- )
    data-base SND-PTR SDL @ BYTE-COPY ;
 
-\ ---- the heap the refresh prelude abandoned ---------------------------------
-\ The native refresh truncates the dictionary back to the primitive boundary
-\ (src/habu/hide.f BFR-HIDE-DICT-FROM-EARLIEST, driven by tools/build-fixpoint.f
-\ BF-STAGE2-HIDE-DEFS) and then reloads the whole prefix from source. Truncating
-\ the dictionary does not move DP, so everything the previous generation had
-\ allotted stays in the DP heap with no owner and no reader -- and it still holds
-\ that generation's own mmap addresses and region pointers, which the image then
-\ carries into runs where they mean nothing. Measured on this tree with
-\ tools/snap-heap-owner.f: 4.48 MB of abandoned heap holding 50 of the 113 heap cells
-\ that differ between two builds of the same image.
-\ The live generation starts at IMK-NDICT0, the first variable of the first
-\ prefix source file (src/core/util.f records the primitive record watermark
-\ there precisely because it is first), so everything below it is abandoned. A
-\ build with no truncation ahead of it puts IMK-NDICT0 at DATA-START and the
-\ span is empty, which is the same rule with nothing to do.
-\ This replaces a table of twenty hardcoded offsets that had gone stale: measured
-\ against the actual two-build difference, eight of them pointed inside this same
-\ abandoned heap and the other twelve zeroed cells in live checker buffers that
-\ do not differ between builds at all.
-\ IMK-NDICT0 is a prefix-internal word: the whole engine prefix loads inside the
-\ refresh prelude's check-off window, so it carries no charted effect and checked
-\ code cannot name it. This is the same named trusted boundary src/habu/snap.f
-\ uses to reach CHECKER-SNAPSHOT-PREPARE, and for the same reason.
-TRUSTED: SND-DEAD-HEAP-END ( -- n )
-   IMK-NDICT0 data-base - ;
-
-: SND-ZERO-DEAD-HEAP ( -- )
-   SND-DEAD-HEAP-END {: end:n :}
-   end DATA-START < if
-      s" snap: live heap starts below DATA-START" 74 die
-   then
-   DATA-START
-   begin dup 8 + end <= while
-      dup SND-ZERO-SPAN-CELL
-      8 +
-   repeat drop ;
-
 \ ---- persisted cells that hold a JIT-region address --------------------------
 \ Everything inside the region copy is already canonicalised: pointers into the
 \ region are folded to the RBASE-VA sentinel and call displacements to the
@@ -321,9 +284,10 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 : CANON-DATA ( -- )
    SND-ALLOC
    DYNAMIC-STORAGE:RELEASE-ALL
+   \ Allocation order does not establish liveness: the native string pool
+   \ precedes IMK-NDICT0. Owners retire transient state before this copy.
    SND-COPY
    SND-ZERO-LIVE
-   SND-ZERO-DEAD-HEAP
    SND-ZERO-WRITER
    SND-CANON-ORIGIN
    SND-CANON-XT-CELLS ;

@@ -1,6 +1,8 @@
 \ The candidate is already an AOT-restored engine. Its first native definition
 \ reinstalls the compiler's tape callbacks, exercising the saved `is` code.
 \ Public image capture then carries an application's installer across two boots.
+\ Each restored process also compiles fresh JIT and native words: live compiler
+\ literals can be allocated before the first source-prefix dictionary record.
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
@@ -67,7 +69,7 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : CHECK-IMAGE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n want:ptr wantu:n :}
    ENVIRONMENT
    path pathu
-   S\" 1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\n" RUN-INPUT
+   S\" 1 set-tier\n17 DEFER-IMAGE-SUBJECT:CALL . cr\nDEFER-IMAGE-SUBJECT:CHECK-REASSIGNMENT\n0 set-tier\n: DEFER-IMAGE-JIT ( n -- n ) 5 + ;\n17 DEFER-IMAGE-JIT . cr\n1 set-tier\n: DEFER-IMAGE-FRESH ( n -- n ) 7 + ;\n: DEFER-IMAGE-INSTALL ( -- ) ['] DEFER-IMAGE-FRESH DEFER-IMAGE-SUBJECT:INSTALL ;\nDEFER-IMAGE-INSTALL\n17 DEFER-IMAGE-SUBJECT:CALL . cr\n" RUN-INPUT
    OUT swap want wantu T$= ;
 
 : RECAPTURE ( -- )
@@ -82,9 +84,9 @@ create SECOND-BUF FS-PATH-CAP allot variable SECOND-U
 : BODY ( -- )
    PREPARE
    BUILD
-   IMAGE$ S\" 18\n\n24\n\n" CHECK-IMAGE
+   IMAGE$ S\" 18\n\n22\n\n24\n\n" CHECK-IMAGE
    RECAPTURE
-   SECOND$ S\" 34\n\n24\n\n" CHECK-IMAGE ;
+   SECOND$ S\" 34\n\n22\n\n24\n\n" CHECK-IMAGE ;
 
 : RUN ( -- )
    T-RESET CLEANUP-RESET
