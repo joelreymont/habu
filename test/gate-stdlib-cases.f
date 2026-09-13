@@ -895,6 +895,10 @@ SUITE aot-prelude-band
    test/aot-prelude-band-suite.f
 ;SUITE
 
+SUITE aot-payload-admission
+   test/aot-payload-admission.f
+;SUITE
+
 SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
