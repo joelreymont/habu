@@ -179,6 +179,11 @@ SUITE compiler-native-feed
    test/compiler/native-feed.f
 ;SUITE
 
+SUITE compiler-native-tape-owner
+   test/compiler/aot-mode.f
+   test/compiler/native-tape-owner.f
+;SUITE
+
 SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE

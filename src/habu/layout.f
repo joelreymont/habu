@@ -791,7 +791,73 @@ $368 constant TARGET-DECL-CELL
 104 constant DECL-WIDE-OFF
 112 constant DECL-RESET-OFF
 120 constant DECL-CAPTURE-OFF
-128 constant DECL-BYTES
+\ Everything below is the OPTIMIZING front end's half of the same record, and it
+\ is why the record exists at all for tier 1. That front end IS the checker's
+\ scan: the scan feeds the source tape the elaborator reads, answers the does>
+\ split, records the per-call-site facts selection needs, and its effect store is
+\ what the dialect asks about every name a body calls. Reaching any of it by NAME
+\ bound the compiler to the checker instance the engine was BUILT against, so a
+\ run that REPLACES the source dictionary had its own files scanned by the
+\ retired instance -- which has no symbol for a name the new source just defined
+\ (src/core/check-hook.f's package-private CHECK-RC was the first to bite, and a
+\ product engine could not rebuild the tree at tier 1 at all).
+\
+\ APPENDED, so no existing offset moves. There is no size constant: the field
+\ list is the shape, and src/core/checker.f's own view of this record derives its
+\ byte count from the last offset and checks it against the cells it committed,
+\ so a field added on one side and not the other is a build failure rather than a
+\ stale number.
+\ --- the front end the checker IS: the scan, the tape it fills, the does> split,
+\ the declared-effect row and the retract of one
+128 constant DECL-CHECK-OFF
+136 constant DECL-TAPE-INSTALL-OFF
+144 constant DECL-TAPE-ARM-OFF
+152 constant DECL-TAPE-DISARM-OFF
+160 constant DECL-TAPE-ADVANCE-OFF
+168 constant DECL-DOES-CHECK-OFF
+176 constant DECL-DOES-IN-OFF
+184 constant DECL-DOES-OUT-OFF
+192 constant DECL-DOES-WIDE-OFF
+200 constant DECL-USIG-TRUNCATE-OFF
+\ --- the finalized per-call-site facts the scan recorded
+208 constant DECL-CALL-CELLS-OFF
+216 constant DECL-CALL-GLUE-OFF
+224 constant DECL-CALL-MATCH-OFF
+232 constant DECL-CALL-QUOT-IN-OFF
+240 constant DECL-CALL-QUOT-OUT-OFF
+\ --- the front end the checker IS: the scan, the tape it fills, the does> split,
+\ the declared-effect row and the retract of one
+248 constant DECL-TRUST-DECL-OFF
+256 constant DECL-PARSE-IMM-OFF
+\ --- the effect-store query group: EFFECT-QUERY resolves a name into the
+\ instance's query state and every reader below reads THAT state, so all of them
+\ have to reach the same owner or a reader answers about another instance's query
+264 constant DECL-EFFECT-QUERY-OFF
+272 constant DECL-EFFECT-DIN-N-OFF
+280 constant DECL-EFFECT-DOUT-N-OFF
+288 constant DECL-EFFECT-DIN-CELLS-OFF
+296 constant DECL-EFFECT-DOUT-CELLS-OFF
+304 constant DECL-EFFECT-DIN-SLOT-OFF
+312 constant DECL-EFFECT-DOUT-SLOT-OFF
+320 constant DECL-EFFECT-DIN-QUOT-OFF
+328 constant DECL-EFFECT-DOUT-QUOT-OFF
+336 constant DECL-EFFECT-QUOT-UP-OFF
+344 constant DECL-EFFECT-RET-NEUTRAL-OFF
+352 constant DECL-EFFECT-QUOT-SIMPLE-OFF
+360 constant DECL-EFFECT-CATCH-CELLS-OFF
+368 constant DECL-EFFECT-EXEC-CELLS-OFF
+376 constant DECL-EFFECT-FINALLY-CELLS-OFF
+384 constant DECL-EFFECT-MATCH-CELLS-OFF
+392 constant DECL-CTL-DEAD-OFF
+400 constant DECL-WF-W-AT-OFF
+\ --- what the record a definition publishes needs from the checker
+408 constant DECL-REC-MIN-IN-OFF
+416 constant DECL-REC-WIDE-PUBLISH-OFF
+\ --- the scan whose verdict nobody enforces, with the render suppressed for it.
+\ A TRUSTED: body is scanned only to fill the tape, so the suppression has to
+\ happen in the instance that renders; the counter itself is unreachable from a
+\ baked compiler, which is the whole reason this is an operation and not a cell.
+424 constant DECL-CHECK-UNJUDGED-OFF
 ;package
 
 

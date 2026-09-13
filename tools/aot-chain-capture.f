@@ -177,10 +177,14 @@ create HEX 64 allot
 \   A64RAV:DKEEP-HOOK is the one - the `defer` regalloc-verify.f opens for a reader
 \   of its refusals - and without its installer the first refusal the verifier
 \   reaches dies "defer: unset execution vector". ?XTOFF counts that population
-\   against the row table, together with the one below.
-\   Below the window: three CHECKER-TAPE observer cells planted by NFEED. Without
-\   them a seeded engine dies "checker: no source-tape observer to arm" on the
-\   first definition. ?TRAPPED holds that count against the engine's registry.
+\   against the row table.
+\   Below the window: nothing any more. Three CHECKER-TAPE observer cells used to
+\   be planted once at load by NFEED:INSTALL, so a seeded engine reached ARM with
+\   them trapped and died "checker: no source-tape observer to arm" unless a
+\   boot-run entry refilled them. src/compiler/native/feed.f installs the trio per
+\   compilation unit now, into whichever checker owns the source, so the first
+\   definition refills them itself and the row is gone. ?TRAPPED still holds the
+\   count, which is zero for this axis.
 \
 \ So each row below carries the number of pre-window cells its installer refills,
 \ and the two numbers are checked against what the process measures. An
@@ -213,8 +217,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 
 : DECLARE-ALL ( -- )
    0 CELLS-OWED !
-   s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE   \ its cell is in the window: see ?XTOFF
-   s" NFEED:INSTALL"             3 DECLARE ; \ CHECKER-TAPE scan, token, verdict
+   s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE ; \ its cell is in the window: see ?XTOFF
 
 \ ONE DECLARED CELL INSIDE THE WINDOW, AND EVERY ROW ACCOUNTED FOR. Two claims,
 \ because they fail for different reasons and only the first one is about this

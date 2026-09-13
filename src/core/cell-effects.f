@@ -31,7 +31,18 @@ package CHECKER-CALLS
 
 create STATE 0 , 0 , 0 ,
 
-: INSTALL ( -- ) [: STATE ;] is CWIN-STATE ;
+\ The owner can record calls before this checked header is loaded. Transfer
+\ that allocation with its rows, then clear the retired header so capture has
+\ only one live store to prepare. Reinstalling the current header is harmless.
+: INSTALL ( -- )
+   CWIN-STATE {: prior:ptr :}
+   prior STATE = if exit then
+   prior 0 ptr-field @ STATE 0 ptr-field !
+   prior CELL + @ STATE CELL + !
+   prior 2 cells + @ STATE 2 cells + !
+   NULL-PTR prior 0 ptr-field !
+   0 prior CELL + !  0 prior 2 cells + !
+   [: STATE ;] is CWIN-STATE ;
 INSTALL
 
 : FIELD ( n n -- ptr n ) {: row:n field:n :}

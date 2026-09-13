@@ -4,7 +4,7 @@
 \ Each case runs test/native-window-owner-child.f - the tools/native-build.f
 \ window reduced to the checker handover - in its own engine child, and asserts
 \ the verdict that window reached for one fixture included straight after
-\ src/core/check-hook.f:
+\ src/core/cell-effects.f:
 \   - a family the window itself declares resolves (0);
 \   - a family nothing declares does not (E-CAST-FAM 7131). This is the control:
 \     without it the accept case above would pass against a checker that
@@ -37,9 +37,22 @@ create ERR IO-CAP allot
 
 : CHILD$ ( -- ptr u8 n ) s" test/native-window-owner-child.f" ;
 
+\ The optimizing tier, selected the way every other tier-1 subject selects it.
+: TIER1$ ( -- ptr u8 n ) s" test/compiler/aot-mode.f" ;
+
 : ARGS! ( ptr u8 n -- ) {: fx:ptr fxu:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
+   CHILD$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   fx fxu >LEN PROC-ARGV+
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING ;
+
+: TIER1-ARGS! ( ptr u8 n -- ) {: fx:ptr fxu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   TIER1$ >LEN PROC-ARGV+
    CHILD$ >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    fx fxu >LEN PROC-ARGV+
@@ -54,11 +67,45 @@ create ERR IO-CAP allot
    rc 0 T=
    OUT outu LEN>N want wantu T$= ;
 
+\ ---- the same window, compiled by the OPTIMIZING tier -------------------------
+\ Tier 1 is the one that reaches the checker as a CALLER: it has the checker scan
+\ each definition because the scan fills the source tape it elaborates from, so
+\ every question this suite is about is asked for real only here. Tier 0 reads the
+\ engine's hook cell and asks nothing else, which is why the three cases above
+\ pass on a compiler that resolves the checker by name.
+\
+\ STDERR IS HALF THE CLAIM. A TRUSTED: definition's body is scanned only for that
+\ tape and its verdict is never enforced, so nothing may be rendered about it. The
+\ suppression is the OWNER's, reached through the declaration record: a compiler
+\ that bumped the quiet counter by name bumped the counter of the checker it was
+\ compiled into while the window's checker did the rendering, and this window then
+\ printed `habu: in install: at 'set-preflight'` for check-hook.f's own INSTALL --
+\ measured on the engine before the fix, with the same `window: 0` on stdout. Any
+\ byte here means a scan nobody judges reached a renderer again.
+\
+\ Its own deadline: the window's whole core prefix through the optimizing chain is
+\ minutes, not seconds (measured 2m11s on a loaded box against the 3-minute bound
+\ the tier-0 cases share). The bound is here to catch a hang, not to time a build.
+600000 constant TIER1-DEADLINE-MS
+
+: WINDOW-TIER1-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
+   fx fxu TIER1-ARGS!
+   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN
+   TIER1-DEADLINE-MS >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   rc 0 <> if ERR erru LEN>N type cr then
+   rc 0 T=
+   OUT outu LEN>N want wantu T$=
+   erru LEN>N 0 <> if ERR erru LEN>N type cr then
+   erru LEN>N 0 T= ;
+
 : RUN ( -- )
    T-RESET
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-IS
    s" test/native-window-cast-bad.f"      S\" window: 7131\n" WINDOW-IS
    s" test/native-window-cast-host-bad.f" S\" window: 7131\n" WINDOW-IS
+   s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-TIER1-IS
+   s" test/native-window-call-store.f"    S\" window: 0\n"    WINDOW-TIER1-IS
    T-REPORT
    s" native-window-owner: ok" type cr ;
 

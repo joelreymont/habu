@@ -19,6 +19,7 @@ require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require src/compiler/ir/symbol.f
+require src/compiler/native/checker-owner.f
 require src/compiler/native/abi.f
 require src/compiler/native/frame.f
 require src/compiler/native/dict.f
@@ -173,51 +174,75 @@ variable TRUST-SRC-U
    u NAME-CAP > if E-NCOMP-TEXT throw then
    a NAME-BUF u STR-LEN BYTE-COPY-LEN ;
 
+\ The declared effect is this definition's assertion, so the scan is here only to
+\ fill the tape stage N0 reads and its verdict is never enforced (RECORD below
+\ enforces one only for a CHECKED definition). The owner suppresses its own
+\ render for the scan's duration and restores it on either exit.
 : CHECK-TRUSTED-BODY ( -- )
-   TRUST-SRC-A @ TRUST-SRC-U @ CHECK! TRUST-VERDICT ! ;
+   TRUST-SRC-A @ TRUST-SRC-U @ CHECKER-OWNER:CHECK-UNJUDGED TRUST-VERDICT ! ;
 
 \ TRUST-DECL is deliberately unavailable to checked code. Keep that authority
-\ at this one-line boundary; scanning, recovery, and quiet-state ownership stay
-\ checked like the ordinary compiler path.
+\ at this one-line boundary; scanning and recovery stay checked like the ordinary
+\ compiler path.
 TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
-   TRUST-DECL ;
-
-TRUSTED: QUIET+ ( n -- )
-   DIAG-QUIET +! ;
+   CHECKER-OWNER:DECLARED-EFFECT ;
 
 : CHECK-TRUSTED ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: na:ptr nu:n sa:ptr su:n ba:ptr bu:n :}
    ba TRUST-SRC-A !  bu TRUST-SRC-U !
-   1 QUIET+
-   [: CHECK-TRUSTED-BODY ;] catch {: rc:n :}
-   -1 QUIET+
-   rc 0<> if rc throw then
+   CHECK-TRUSTED-BODY
    na nu sa su REGISTER-TRUST
    TRUST-VERDICT @ ;
 
+\ CERTIFICATION IS THE ENGINE'S HOOK CELL, AND THE SCAN IS THE OWNER'S.
+\ Two questions were one call before this: `LOWER-CERT-HOOK:HOOK` by name both
+\ scanned the source (the tape is filled from inside a scan) and enforced a
+\ verdict, and it did so in the checker instance this file was compiled into.
+\ Tier 0 reads the hook CELL per definition, which is why `0 set-check` takes
+\ certification off it and installing another hook moves it; tier 1 could not be
+\ moved at all.
+\
+\ So: a hook in the cell owns the verdict, and it is the live checker's own hook
+\ that scans. With the cell EMPTY the definition is published uncertified -
+\ exactly what tier 0 does under `0 set-check`, and what a window depends on,
+\ because LOGICAL-RESET clears the hook and the window's own check-hook.f
+\ installs one part-way through its prefix - but the tape still has to be filled,
+\ so the owner's scan runs and its verdict is dropped rather than enforced.
+TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
+   execute ;
+
+\ Whether anything is certifying at all. With the hook cell empty nothing is, and
+\ the verdict the scan reports is then a fact about the source and not a refusal:
+\ tier 0 publishes such a definition uncertified (habu2.f reads HOOK-CELL and
+\ skips on zero) and the two tiers have to agree. A window depends on it - its
+\ core prefix is compiled between LOGICAL-RESET and its own check-hook.f - and so
+\ does every `0 set-check` session.
+: CERTIFYING? ( -- bool )
+   check@ 0 <> ;
+
 : CHECK-PARENT ( ptr u8 n -- n ) {: a:ptr u:n :}
    TRUSTED? if PENDING-NAME$ TRUST-SIG$ a u CHECK-TRUSTED exit then
-   a u LOWER-CERT-HOOK:HOOK ;
+   check@ {: hook:n :}
+   hook 0= if
+      a u CHECKER-OWNER:CHECK drop -1 exit then
+   a u hook CALL-INSTALLED ;
 
 : CHECK-SOURCE ( -- n )
    SRC$ CHECK-PARENT ;
 
-\ CHECK-DOES! is a trusted checker mutation, like the ordinary lower-cert hook.
-TRUSTED: CHECK-DOES ( ptr u8 n ptr u8 n -- n )
-   CHECK-DOES! ;
 
 : CHECK-DOES-SPLIT ( -- n )
    M-DOES @ {: cut:n :}
    cut 6 < cut M-SRC-U @ > or if E-NCOMP-TEXT throw then
    M-SRC @ cut 6 - CHECK-PARENT
-   TRUSTED? if drop else -1 <> if E-NCOMP-VERDICT throw then then
+   TRUSTED? CERTIFYING? 0= or if drop else -1 <> if E-NCOMP-VERDICT throw then then
    NFEED:DOES-CLAUSE M-DOES-ROW !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
-   CHECK-DOES -1 <> if E-NCOMP-VERDICT throw then
-   CHECK-DOES-DIN-CELLS M-DOES-IN !
-   CHECK-DOES-DOUT-CELLS M-DOES-OUT !
+   CHECKER-OWNER:DOES-CHECK -1 <> if E-NCOMP-VERDICT throw then
+   CHECKER-OWNER:DOES-IN M-DOES-IN !
+   CHECKER-OWNER:DOES-OUT M-DOES-OUT !
    M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-NCOMP-ARITY throw then
-   CHECK-DOES-WIDE? if E-NELAB-BUNDLE throw then
+   CHECKER-OWNER:DOES-WIDE? if E-NELAB-BUNDLE throw then
    -1 ;
 
 : CHECK-RECORDED ( -- n )
@@ -250,7 +275,7 @@ TRUSTED: CHECK-DOES ( ptr u8 n ptr u8 n -- n )
    ndict@ {: before:n :}
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
-   TRUSTED? 0= if M-VERDICT @ -1 <> if E-NCOMP-VERDICT throw then then
+   TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if E-NCOMP-VERDICT throw then then
    before ;
 
 \ Read off the live builder because selection takes its binding before the
@@ -651,12 +676,12 @@ INSTALL-FORGET
 \ rolled its own failed scan back.
 : RETRACT ( -- )
    TRUSTED? if
-      LATEST-NAME$ CHECKER-USIGS-TRUNCATE-FROM-RAW
+      LATEST-NAME$ CHECKER-OWNER:USIG-TRUNCATE
       exit
    then
    M-VERDICT @ -1 <> if exit then
    NAME-U @ 0= if exit then
-   NAME-A @ NAME-U @ CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+   NAME-A @ NAME-U @ CHECKER-OWNER:USIG-TRUNCATE ;
 
 : LENGTH-CK ( -- )
    M-SRC-U @ TEXT-CAP > if E-NCOMP-TEXT throw then ;
@@ -728,6 +753,7 @@ public
    A64COMB:RELEASE-SCRATCH
    A64SEL:RELEASE-SCRATCH
    NLOOP:RELEASE-SCRATCH
+   CHECKER-OWNER:CAPTURE-PREPARE
    NFEED:CAPTURE-PREPARE
    IR-BUILD:CAPTURE-PREPARE
    NELAB:CAPTURE-PREPARE

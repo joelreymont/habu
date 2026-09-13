@@ -17,6 +17,7 @@ require lib/prelude.f
 require lib/errors.f
 require lib/string.f
 require src/compiler/digest.f
+require src/compiler/native/checker-owner.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
@@ -223,14 +224,37 @@ variable F-BASE                        \ start of the scan now being recorded
    0 F-N !  0 F-LEN !  0 F-VERDICT !
    0 F-DOES !  0 F-BASE ! ;
 
+\ Three events, one authority: the scan's text, each token, and the verdict.
+\
+\ INSTALLED PER UNIT, INTO WHICHEVER CHECKER OWNS THE SOURCE. The observer used
+\ to be planted once at load time, into the instance this file was compiled
+\ against, which left two holes: a run that REPLACES the checker armed a tape the
+\ new instance does not read (src/compiler/native/checker-owner.f says what that
+\ cost), and a seeded engine, whose three captured cells arrive trapped, needed a
+\ boot-run entry to refill them. Three stores per definition close both, and the
+\ install is last-writer-wins for exactly this reason (src/core/checker.f
+\ CHECKER-TAPE).
 public
+
+\ PUBLIC so the observer this compiler owns can be put back: a test that installs
+\ its own trio over it (test/compiler/native-tape-owner.f) restores the engine's
+\ by calling this, and the identity below is how either side is read back.
+\ The identity is this unit's own scan entry, read as the number the tape stores:
+\ two compilers in one process (the engine's baked front end and the one a window
+\ loads beside it) have different ones, which is what makes a takeover readable.
+TRUSTED: SCAN-ID ( -- n )
+   ['] ON-SCAN ;
+
+: OBSERVE ( -- )
+   SCAN-ID [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-OWNER:TAPE-INSTALL ;
 
 \ Both ceilings are the caller's commitment: too many tokens is NTAPE's capacity
 \ error and text longer than the buffer is refused here; neither is truncated.
 : BEGIN-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n -- )
    OPEN
    ST-ARMED F-STATE !
-   CHECKER-TAPE:ARM ;
+   OBSERVE
+   CHECKER-OWNER:TAPE-ARM ;
 
 \ A defining word is checked as two bodies, but remains one source and one tape.
 \ The engine supplies the exact byte split it recorded while consuming `does>`.
@@ -245,7 +269,8 @@ public
    su F-LEN !  cut F-DOES !
    CTX BLD TXT@ su IR-BUILD:ADD-SOURCE 0 F-SID !
    ST-ARMED F-STATE !
-   CHECKER-TAPE:ARM ;
+   OBSERVE
+   CHECKER-OWNER:TAPE-ARM ;
 
 \ Insert the one verified keyword between the two checker bodies and advance the
 \ checker's matching token ordinal, then admit the clause scan.
@@ -256,7 +281,7 @@ public
    TXT@ off + 5 off BYTES-CK
    TXT@ off + 5 off 0 APPEND-NAME ORDER-CK
    F-N @ 1+ F-N !
-   CHECKER-TAPE:ADVANCE
+   CHECKER-OWNER:TAPE-ADVANCE
    F-DOES @ F-BASE !
    ST-ARMED F-STATE !
    row ;
@@ -265,27 +290,15 @@ public
 \ refuses every append. The source is not answered separately - every span names it.
 : END-UNIT ( -- IR-ARENA:view n )
    ST-DONE STATE-CK
-   CHECKER-TAPE:DISARM
+   CHECKER-OWNER:TAPE-DISARM
    TAPE NTAPE:SEAL
    F-VERDICT @
    CLEAR ;
 
 \ The only route out of a unit whose scan threw. It publishes nothing.
 : ABANDON-UNIT ( -- )
-   CHECKER-TAPE:DISARM
+   CHECKER-OWNER:TAPE-DISARM
    CLEAR ;
-
-\ Three events, one authority: the scan's text, each token, and the verdict.
-\
-\ PUBLIC BECAUSE A CAPTURED CHAIN HAS TO RE-RUN IT, the way
-\ A64RAV:DKEEP-HOOK-DEFAULT is. It runs at load time into three declared cells
-\ BELOW the capture window - CHECKER-TAPE's own - so no captured byte carries it
-\ and a seeded engine reaches ARM with nothing installed. Named on
-\ tools/aot-chain-capture.f's boot-run list, which LFIND resolves.
-: INSTALL ( -- )
-   [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-TAPE:INSTALL ;
-
-INSTALL
 
 private
 get-current prot-wid-add

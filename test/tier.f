@@ -180,6 +180,73 @@ variable RC     variable EXITED
    s" : S ( -- ) 1 set-tier ;" RUN  REJECT-RC ASSERT-RC
    ERR$ s" trust-boundary primitive" CONTAINS? TTRUE ;
 
+\ ---- 2b0. certification is the engine's hook CELL, read per definition --------
+\ Tier 0 reads the cell for every definition, which is what makes `0 set-check`
+\ take certification off and installing another hook move it. Tier 1 called its
+\ hook BY NAME, so the cell was decoration: the compiler certified through the
+\ instance it was built into whatever the session had installed, and a run that
+\ replaced the checker had its own files judged by the retired one.
+\
+\ The swap is asserted from BOTH sides in one program: the definition BEFORE it
+\ prints, so the real hook certified that one, and the definition AFTER it carries
+\ the installed hook's own throw code out to the process. A compiler that bound the
+\ hook by name exits 0 here and prints the same 7 - measured on the root engine -
+\ which is why the exit code is the claim and the output alone is not.
+: TEST-HOOK-CELL ( -- )
+   s" a hook installed mid-session certifies the next definition" T-LABEL
+   S\" 1 set-tier\nTRUSTED: HK-STOP ( ptr u8 n -- n ) CHECK! drop 77 throw ;\n: HK-A ( -- n ) 7 ;\nHK-A . cr\nTRUSTED: HK-SWAP ( -- ) ['] HK-STOP set-check ;\nHK-SWAP\n: HK-B ( -- n ) 8 ;\n"
+   EXEC
+   77 ASSERT-RC
+   OUT$ s" 7" CONTAINS? TTRUE           \ the definition before the swap was certified and ran
+   ERR$ s" HK-B" CONTAINS? TTRUE ;      \ the one after it was refused by name
+
+\ ---- 2b'. a TRUSTED: body may call a trust-boundary primitive on BOTH tiers ---
+\ The optimizing compiler reads a callee's cell widths out of the checker's
+\ effect table for every name a body writes, and a PRIMITIVE is the one kind of
+\ name no scan can ever supply one for. `int-mark` and `min-in-mark` -- the two
+\ writers src/core/internal-mark.f seals the dictionary with -- had no row, so
+\ tier 1 could not compile their one-line TRUSTED: wrappers at all
+\ (E-HIR-UNMODELED, `ncomp: cannot compile MARK-INTERNAL at int-mark`), which is
+\ what stopped a product engine from rebuilding the tree. The JIT tier never
+\ asked, so the absence was invisible until the build selected tier 1.
+\
+\ BOTH DIRECTIONS, because a row that admitted checked callers would delete the
+\ boundary instead of crossing it: the wrapper compiles on both tiers, a plain
+\ checked body naming either primitive is refused AND the diagnostic names the
+\ primitive, and the bare name stays unreachable at top level.
+: TEST-MARK-ROWS ( -- )
+   s" int-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
+   s" TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
+
+   s" int-mark's TRUSTED: wrapper compiles on tier 1" T-LABEL
+   s" 1 set-tier TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
+
+   s" min-in-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
+   s" TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
+
+   s" min-in-mark's TRUSTED: wrapper compiles on tier 1" T-LABEL
+   s" 1 set-tier TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
+
+   s" int-mark is refused in a plain checked body on tier 0" T-LABEL
+   s" : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
+   ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
+   ERR$ s" int-mark" CONTAINS? TTRUE
+
+   s" int-mark is refused in a plain checked body on tier 1" T-LABEL
+   s" 1 set-tier : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
+   ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
+
+   s" min-in-mark is refused in a plain checked body" T-LABEL
+   s" : BADM ( n n -- ) min-in-mark ;" RUN  REJECT-RC ASSERT-RC
+   ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
+   ERR$ s" min-in-mark" CONTAINS? TTRUE
+
+   \ The row records an effect; it does not open the name. Both records still
+   \ carry DNAME-INT, so interpret fails closed exactly as before.
+   s" the marking prims stay unreachable at top level" T-LABEL
+   s" 0 int-mark" RUN  REJECT-RC ASSERT-RC
+   ERR$ s" internal engine word" CONTAINS? TTRUE ;
+
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
 : TEST-TIER0-CONSTRUCTS ( -- )
    s" tier 0 compiles a quotation" T-LABEL
@@ -288,6 +355,8 @@ public
    TEST-BOTH-TIERS
    TEST-SELECTION
    TEST-CHECKER-ROWS
+   TEST-HOOK-CELL
+   TEST-MARK-ROWS
    TEST-TIER0-CONSTRUCTS
    TEST-SNAPSHOT-OWNERSHIP
    TEST-NESTED-QUOTATIONS

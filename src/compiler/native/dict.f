@@ -11,6 +11,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/compiler/native/checker-owner.f
 
 package NDICT
 
@@ -167,10 +168,10 @@ public
 \ CELLS and not terms: `ptr u8 n` is two terms and two cells, while one term of
 \ a three-cell family is one term and three cells. The checker publishes cells.
 : EFF-CELLS ( ptr u8 n -- n n )
-   EFFECT-QUERY if EFFECT-DIN-CELLS EFFECT-DOUT-CELLS else -1 -1 then ;
+   CHECKER-OWNER:QUERY if CHECKER-OWNER:DIN-CELLS CHECKER-OWNER:DOUT-CELLS else -1 -1 then ;
 
 : EFF-COUNTS ( -- n n n n )        \ din terms, din cells, dout terms, dout cells
-   EFFECT-DIN-N EFFECT-DIN-CELLS EFFECT-DOUT-N EFFECT-DOUT-CELLS ;
+   CHECKER-OWNER:DIN-N CHECKER-OWNER:DIN-CELLS CHECKER-OWNER:DOUT-N CHECKER-OWNER:DOUT-CELLS ;
 
 public
 0 constant GLUE-NONE                 \ every cell of the row is a value of its own
@@ -209,7 +210,7 @@ variable RG-MASK   variable RG-I   variable RG-S   variable RG-BAD
 
 \ The row's term count and its cell count are the same number here.
 : RG-STEP ( n bool -- ) {: cells:n din:bool :}
-   din if RG-I @ EFFECT-DIN-SLOT else RG-I @ EFFECT-DOUT-SLOT then RG-S !
+   din if RG-I @ CHECKER-OWNER:DIN-SLOT else RG-I @ CHECKER-OWNER:DOUT-SLOT then RG-S !
    RG-S @ 2 < if
       RG-I @ 1 + RG-I !
       exit
@@ -273,7 +274,7 @@ public
 \ GLUE-NONE for a name the checker holds no effect for - the same answer as
 \ "every cell is its own value", and SPELL-ARITY refuses such a name first.
 : SPELL-GLUE ( ptr u8 n -- n n )
-   EFFECT-QUERY 0= if GLUE-NONE GLUE-NONE exit then
+   CHECKER-OWNER:QUERY 0= if GLUE-NONE GLUE-NONE exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
    dn dc true ROW-GLUE
    on oc false ROW-GLUE ;
@@ -303,13 +304,13 @@ public
 \ lookup. What the two share is the name-to-symbol half, and sharing THAT is a
 \ checker-side question, not one this file can answer.
 : SPELL-CALL ( ptr u8 n -- n n n bool )  \ din cells, dout cells, result glue, returns?
-   EFFECT-QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
-   EFFECT-DIN-CELLS {: din:n :}
-   EFFECT-DOUT-CELLS {: dout:n :}
+   CHECKER-OWNER:QUERY 0= if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
+   CHECKER-OWNER:DIN-CELLS {: din:n :}
+   CHECKER-OWNER:DOUT-CELLS {: dout:n :}
    din 0 < dout 0 < or if ARITY-NONE ARITY-NONE GLUE-NONE false exit then
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
    on oc false ROW-GLUE {: glue:n :}
-   din dout glue EFFECT-RET-NEUTRAL? ;
+   din dout glue CHECKER-OWNER:RET-NEUTRAL? ;
 
 \ ---- the quotation a term of one of those rows IS ----------------------------
 public
@@ -319,9 +320,9 @@ private
 \ Read while the latch is down, with the latch put back before either is
 \ answered; declining and answering leave it in the same place.
 : QUOT-CELLS ( -- n n )
-   EFFECT-QUOT-SIMPLE? {: simple:bool :}
+   CHECKER-OWNER:QUOT-SIMPLE? {: simple:bool :}
    EFF-COUNTS {: dn:n dc:n on:n oc:n :}
-   EFFECT-QUOT-UP 0= if QUOT-NONE QUOT-NONE exit then
+   CHECKER-OWNER:QUOT-UP 0= if QUOT-NONE QUOT-NONE exit then
    simple 0= if QUOT-NONE QUOT-NONE exit then
    dc 0 < oc 0 < or if QUOT-NONE QUOT-NONE exit then
    dn dc <> on oc <> or if QUOT-NONE QUOT-NONE exit then
@@ -341,16 +342,16 @@ public
 \ not indexable, or the body is not one a caller may branch to and come back from.
 : SPELL-QUOT-DIN ( ptr u8 n n -- n n )
    {: a u:n i:n :}
-   a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
+   a u CHECKER-OWNER:QUERY 0= if QUOT-NONE QUOT-NONE exit then
    true ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
-   i EFFECT-DIN-QUOT 0= if QUOT-NONE QUOT-NONE exit then
+   i CHECKER-OWNER:DIN-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
 : SPELL-QUOT-DOUT ( ptr u8 n n -- n n )
    {: a u:n i:n :}
-   a u EFFECT-QUERY 0= if QUOT-NONE QUOT-NONE exit then
+   a u CHECKER-OWNER:QUERY 0= if QUOT-NONE QUOT-NONE exit then
    false ROW-INDEXABLE? 0= if QUOT-NONE QUOT-NONE exit then
-   i EFFECT-DOUT-QUOT 0= if QUOT-NONE QUOT-NONE exit then
+   i CHECKER-OWNER:DOUT-QUOT 0= if QUOT-NONE QUOT-NONE exit then
    QUOT-CELLS ;
 
 \ ---- and the window a catch site takes ---------------------------------------
@@ -361,29 +362,29 @@ public
 \ catch stands on rather than by a name. A body that never returns has no
 \ output row, which is what the absent second answer says.
 : CATCH-CELLS ( n -- n n )
-   EFFECT-CATCH-CELLS {: in:n out:n :}
+   CHECKER-OWNER:CATCH-CELLS {: in:n out:n :}
    in 0 < if CATCH-NONE CATCH-NONE exit then
    out 0 < if in CATCH-NONE exit then
    in out ;
 
 : EXEC-CELLS ( n -- n n )
-   EFFECT-EXEC-CELLS ;
+   CHECKER-OWNER:EXEC-CELLS ;
 
 
 : FINALLY-CELLS ( n -- n n n )
-   EFFECT-FINALLY-CELLS ;
+   CHECKER-OWNER:FINALLY-CELLS ;
 
-: CALL-CELLS ( n -- n n ) CHECKER-CALLS:CELLS ;
-: CALL-GLUE ( n -- n n ) CHECKER-CALLS:GLUE ;
-: MATCH-PAYLOAD ( n -- n n ) CHECKER-CALLS:MATCH-PAYLOAD ;
-: CALL-QUOT-IN ( n n -- n n ) CHECKER-CALLS:QUOT-IN ;
-: CALL-QUOT-OUT ( n n -- n n ) CHECKER-CALLS:QUOT-OUT ;
+: CALL-CELLS ( n -- n n ) CHECKER-OWNER:CALL-CELLS ;
+: CALL-GLUE ( n -- n n ) CHECKER-OWNER:CALL-GLUE ;
+: MATCH-PAYLOAD ( n -- n n ) CHECKER-OWNER:MATCH-PAYLOAD ;
+: CALL-QUOT-IN ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-IN ;
+: CALL-QUOT-OUT ( n n -- n n ) CHECKER-OWNER:CALL-QUOT-OUT ;
 
 \ ---- and how many cells a layout token really moves ---------------------------
 -1 constant MATCH-NONE               \ no dispatch cell count was proved for that token
 
 : MATCH-CELLS ( n -- n )
-   EFFECT-MATCH-CELLS {: w:n :}
+   CHECKER-OWNER:MATCH-CELLS {: w:n :}
    w 0 < if MATCH-NONE exit then
    w ;
 
@@ -391,7 +392,7 @@ public
 \ Absent is ZERO here rather than a refusal: this reader is asked about every
 \ call, so absence is the ordinary case and means "adds nothing".
 : CON-PADS ( n -- n )
-   EFFECT-MATCH-CELLS {: w:n :}
+   CHECKER-OWNER:MATCH-CELLS {: w:n :}
    w 0 < if 0 exit then
    w ;
 
@@ -399,19 +400,19 @@ public
 \ Keyed by the token's OFFSET into the checked text, the same key the engine's
 \ own pass 2 reads. Absent is one cell, which is the checker's own answer.
 : MEM-CELLS ( n -- n )
-   0 WF-W-AT ;
+   0 CHECKER-OWNER:WIDTH-AT ;
 
 \ False for a name the checker holds no control flag for, which is every
 \ ordinary word; SPELL-ARITY refuses an uncertified name before this is reached.
 : SPELL-DEAD? ( ptr u8 n -- bool )
-   CTL-DEAD? ;
+   CHECKER-OWNER:DEAD-TOKEN? ;
 
 \ ---- and whether a call to it leaves the caller's return stack alone ----------
 \ It asks what the ROWS say and not what the signature spells: a word with no
 \ `|` clause records two empty rows because the balance check proved it moves none.
 : SPELL-RET-NEUTRAL? ( ptr u8 n -- bool )
-   EFFECT-QUERY 0= if false exit then
-   EFFECT-RET-NEUTRAL? ;
+   CHECKER-OWNER:QUERY 0= if false exit then
+   CHECKER-OWNER:RET-NEUTRAL? ;
 
 private
 

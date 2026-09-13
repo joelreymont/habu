@@ -1,7 +1,7 @@
 \ native-window-owner-child.f - tools/native-build.f's window, reduced to the
 \ checker handover. RESET-ADDRESS-ROWS through LOGICAL-RESET are that tool's
-\ words, copied; LOAD-WINDOW is its LOAD-TARGET through src/core/check-hook.f,
-\ with one fixture where native-build's first window-source file sits.
+\ words, copied; LOAD-WINDOW is its LOAD-TARGET through src/core/cell-effects.f,
+\ with one fixture after the checked call-store handoff.
 \
 \ The verdict goes to stdout as `window: <code>` - 0 when the window accepted
 \ the fixture, the thrown code when it refused. Printing rather than exiting
@@ -95,7 +95,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    CORE-PREFIX:FIRST-RECORD seed-ndict!
    RESET-ADDRESS-ROWS ;
 
-\ --- the window prefix, native-build's LOAD-TARGET through check-hook.f -----
+\ --- the window prefix, native-build's LOAD-TARGET through cell-effects.f ---
 
 : LOAD-WINDOW ( ptr u8 -- ) {: source:ptr :}
    s" src/core/util.f" included
@@ -114,6 +114,8 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/layout-valid.f" included
    source TRANSFER-CHECKER
    s" src/core/check-hook.f" included
+   s" src/core/roles.f" included
+   s" src/core/cell-effects.f" included
    PATH$ included ;
 
 \ A quotation carries no locals, so the retained owner crosses the catch here.

@@ -140,8 +140,8 @@ TRUSTED: DOES-RECORD ( n n -- )
 \ Publishing the checker's one-shot minimum-input latch is engine authority.
 \ Keep the boundary at the native publisher that consumes it for this record.
 TRUSTED: PENDING-FACTS ( n -- ) {: idx:n :}
-   REC-WIDE-PUBLISH
-   REC-MIN-IN@ {: mi:n :}
+   CHECKER-OWNER:WIDE-PUBLISH
+   CHECKER-OWNER:MIN-IN {: mi:n :}
    mi 0<> if idx mi MIN-IN-REC then ;
 
 5 constant DOES-SUFFIX-BYTES

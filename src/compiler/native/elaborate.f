@@ -1637,7 +1637,7 @@ create QSPELL-BUF QSPELL-CAP allot
    \ Leave oversized names to normal admission, which records their refusal.
    CTX BLD VW MKEY ix NTAPE:SPELL@ IR-BUILD:SYMBOL-LEN
    QSPELL-CAP > if false exit then
-   ix QSPELL NEUTRAL-PARSE-IMM? ;
+   ix QSPELL CHECKER-OWNER:PARSE-IMM? ;
 
 : WALK-SKIP? ( n -- bool )
    dup QOWN@ QCUR @ <> if drop true exit then

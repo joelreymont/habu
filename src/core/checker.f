@@ -5,7 +5,6 @@ package CHECKER-REG
 \ TARGET-CELL is the one a replacement checker publishes itself into.
 $360 constant SOURCE-CELL
 $368 constant TARGET-CELL
-$80 constant OWNER-BYTES
 $00 constant RAW-OFF
 $08 constant EFFECT-OFF
 $10 constant DEFER-OFF
@@ -22,7 +21,78 @@ $60 constant EXPORT-OFF
 $68 constant WIDE-OFF
 $70 constant RESET-OFF
 $78 constant CAPTURE-OFF
-create DECLARATIONS 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+\ The optimizing front end's half (src/habu/layout.f says what reaching it by
+\ name cost). Same offsets, stated here because this file is read before that
+\ one, and grouped the same way. A NEW field goes on the END and nowhere else,
+\ whatever group it belongs to by meaning: the compiler that reads this record is
+\ a baked routine of the PREVIOUS generation, so an offset that moves is read at
+\ its old number by the engine hosting the build that publishes the new one.
+\ --- the front end the checker IS: the scan, the tape it fills, the does> split,
+\ the declared-effect row and the retract of one
+$80 constant CHECK-OFF
+$88 constant TAPE-INSTALL-OFF
+$90 constant TAPE-ARM-OFF
+$98 constant TAPE-DISARM-OFF
+$A0 constant TAPE-ADVANCE-OFF
+$A8 constant DOES-CHECK-OFF
+$B0 constant DOES-IN-OFF
+$B8 constant DOES-OUT-OFF
+$C0 constant DOES-WIDE-OFF
+$C8 constant USIG-TRUNCATE-OFF
+\ --- the finalized per-call-site facts the scan recorded
+$D0 constant CALL-CELLS-OFF
+$D8 constant CALL-GLUE-OFF
+$E0 constant CALL-MATCH-OFF
+$E8 constant CALL-QUOT-IN-OFF
+$F0 constant CALL-QUOT-OUT-OFF
+\ --- the front end the checker IS: the scan, the tape it fills, the does> split,
+\ the declared-effect row and the retract of one
+$F8 constant TRUST-DECL-OFF
+$100 constant PARSE-IMM-OFF
+\ --- the effect-store query group: EFFECT-QUERY resolves a name into the
+\ instance's query state and every reader below reads THAT state, so all of them
+\ have to reach the same owner or a reader answers about another instance's query
+$108 constant EFFECT-QUERY-OFF
+$110 constant EFFECT-DIN-N-OFF
+$118 constant EFFECT-DOUT-N-OFF
+$120 constant EFFECT-DIN-CELLS-OFF
+$128 constant EFFECT-DOUT-CELLS-OFF
+$130 constant EFFECT-DIN-SLOT-OFF
+$138 constant EFFECT-DOUT-SLOT-OFF
+$140 constant EFFECT-DIN-QUOT-OFF
+$148 constant EFFECT-DOUT-QUOT-OFF
+$150 constant EFFECT-QUOT-UP-OFF
+$158 constant EFFECT-RET-NEUTRAL-OFF
+$160 constant EFFECT-QUOT-SIMPLE-OFF
+$168 constant EFFECT-CATCH-CELLS-OFF
+$170 constant EFFECT-EXEC-CELLS-OFF
+$178 constant EFFECT-FINALLY-CELLS-OFF
+$180 constant EFFECT-MATCH-CELLS-OFF
+$188 constant CTL-DEAD-OFF
+$190 constant WF-W-AT-OFF
+\ --- what the record a definition publishes needs from the checker
+$198 constant REC-MIN-IN-OFF
+$1A0 constant REC-WIDE-PUBLISH-OFF
+\ --- the scan whose verdict nobody enforces, with the render suppressed for it
+$1A8 constant CHECK-UNJUDGED-OFF
+\ The record's size is DERIVED from the field list above, and the cells below are
+\ checked against it: a field added without a cell, or a cell without a field, is
+\ a load failure here instead of a silent read past the end.
+CHECK-UNJUDGED-OFF 8 + constant OWNER-BYTES
+create DECLARATIONS
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
+OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
+here DECLARATIONS - constant OWNER-COMMITTED   \ what the cells above committed
+: OWNER-SIZE-AGREE ( -- )
+   OWNER-COMMITTED OWNER-CELLS-BYTES <> if
+      s" checker: declaration-owner field list and record size disagree" 76 die then ;
+OWNER-SIZE-AGREE
 data-base TARGET-CELL + ptr-cell-mark
 data-base SOURCE-CELL + ptr-cell-mark
 DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
@@ -1105,6 +1175,18 @@ variable CALL-DIN   variable CALL-DOUT   variable CALL-HIT
 variable REC-ON
 defer CALL-FREEZE-XT ( -- )
 defer CWIN-STATE ( -- ptr n )
+
+\ The bootstrap call-window store, and the reason the cell has one: the scan
+\ records a row per call site through CWIN-STATE, and src/core/cell-effects.f --
+\ which owns the CHECKED storage - loads after src/core/check-hook.f. An
+\ unset cell was invisible while nothing asked this checker to scan before then;
+\ the optimizing front end asks from the moment this checker owns the source
+\ (layout.f NCOMP-DISPATCH), so the store exists from this file's own load. Same
+\ three cells cell-effects.f installs - arena pointer, live rows, capacity. Its
+\ INSTALL transfers that header and clears this one without copying the arena.
+create CWIN-BOOT 0 , 0 , 0 ,
+: CWIN-BOOT-DEFAULT ( -- ) [: CWIN-BOOT ;] is CWIN-STATE ;
+CWIN-BOOT-DEFAULT
 
 : U-PUSH ( n -- )
    USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
@@ -6676,6 +6758,20 @@ PRIM: addrmap-set   PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 PRIM: xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ points a live dictionary record at new code
+\ The seal's own two record writers. A row here is what lets the OPTIMIZING
+\ compiler build the call window from src/core/internal-mark.f's TRUSTED:
+\ wrappers, the same reason CHECKER-VERIFY-PKG-START below carries one: that
+\ compiler reads a callee's cell widths out of this table for every name a body
+\ writes, and a primitive is the one kind of name no scan can ever supply. The
+\ JIT tier never asked, which is why the absence survived until a product engine
+\ hosted a build at tier 1 and `TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;` came
+\ back E-HIR-UNMODELED. TRUSTED-only keeps the boundary exactly where it was:
+\ a CHECKED caller is refused here, and the emitted records carry DNAME-INT
+\ (habu1.f PRIM-GLOBAL-INT-WID) so neither name is executable or tickable.
+PRIM: int-mark      PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ sets DNAME-INT on one live record
+PRIM: min-in-mark   PE-N PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ records a certified minimum input arity on one
 PRIM: reloc-maps-clear PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ clears metadata over reclaimed code
 PRIM: does-patch PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -7015,11 +7111,13 @@ PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 \ is judged and its answer is never read, so it can abort a compilation but
 \ never accept one, and it needs no trust boundary to hold the checker sound.
 PPRIM: CHECKER-TAPE INSTALL
+   PE-N PE-IN
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN ;PE-Q PE-IN
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
 PPRIM;
 PPRIM: CHECKER-TAPE ARM PPRIM;
+PPRIM: CHECKER-TAPE INSTALLED-BY PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE DISARM PPRIM;
 PPRIM: CHECKER-TAPE ADVANCE PPRIM;
 PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
@@ -7136,10 +7234,11 @@ PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ internal-word marking pass leaves the word callable.
 \
 \ WHAT IS DELIBERATELY NOT HERE. `patch32`, `code-publish`, `callmap-set`,
-\ `addrmap-set` and `xref-retarget` already have rows above, marked
-\ PRIM-TRUSTED-ONLY! so a CHECKED caller is refused; `min-in-mark` and
-\ `evaluate` belong with them. Giving any of those an open row would delete the
-\ trust boundary rather than cross it, so their wrappers stay named boundaries.
+\ `addrmap-set`, `xref-retarget`, `int-mark` and `min-in-mark` already have rows
+\ above, marked PRIM-TRUSTED-ONLY! so a CHECKED caller is refused; `evaluate`
+\ belongs with them, and has the elaborator rule of its own that its dynamic
+\ stack effect needs. Giving any of those an OPEN row would delete the trust
+\ boundary rather than cross it, so their wrappers stay named boundaries.
 \ `execute` and the two raw-address casts stay for the reasons their own files
 \ give (owners habu-typed-xt-storage-ddad4af8, habu-guard-an-executed-8a0f2f77).
 \ The registry half of this block is PPRIM: TFAM now, for the reason the
@@ -8153,6 +8252,29 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    out  i CW-OUT CWIN-AT !
    kind i CW-KIND CWIN-AT !
    i 1 + CWIN-N ! ;
+
+\ ---- the finalized call facts, read back by name-independent dispatch --------
+\ These read the rows CWIN-ADD wrote, and they live HERE, beside the writer,
+\ because the reader has to follow the same CWIN-STATE the writer used. They
+\ were in src/core/cell-effects.f, which reads its OWN storage block: correct
+\ while one checker is live, wrong the moment a second one owns the source and
+\ the compiler is still reading the first one's rows. The engine reaches them
+\ through the declaration-owner record (layout.f DECL-CALL-*-OFF), never by
+\ name. -1 -1 means the scan recorded no such site, which is the answer a
+\ caller with no site of that kind must get.
+: CWIN-FIND ( n n -- n n ) {: ord:n kind:n :}
+   CWIN-N @ 0 ?do
+      i CW-ORD CWIN-AT @ ord =  i CW-KIND CWIN-AT @ kind =  and if
+         i CW-IN CWIN-AT @  i CW-OUT CWIN-AT @  unloop exit
+      then
+   loop
+   -1 -1 ;
+
+: CWIN-CELLS ( n -- n n ) CW-CALL CWIN-FIND ;
+: CWIN-GLUE ( n -- n n ) CW-GLUE CWIN-FIND ;
+: CWIN-MATCH-PAYLOAD ( n -- n n ) CW-MATCH-PAYLOAD CWIN-FIND ;
+: CWIN-QUOT-IN ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-IN + CWIN-FIND ;
+: CWIN-QUOT-OUT ( n n -- n n ) {: ord:n idx:n :} ord idx 2 * CW-QUOT-OUT + CWIN-FIND ;
 
 \ Copy only the fixed row spine. Its fresh tail never participates in
 \ unification; the shared type terms can still acquire their final widths.
@@ -12669,6 +12791,16 @@ private
 \ reason CHECKER-CERT:PRODUCER-XT does: the cell holds an execution token, a
 \ snapshot persists it byte for byte, and `defer`/`is` are the only two points
 \ that tell the snapshot writer so.
+\
+\ INSTALL IS LAST-WRITER-WINS, unlike the certificate producer's one-shot grant,
+\ and the difference is what the observer may do: it is called before a token is
+\ judged and its answer is never read, so it can abort a compilation and never
+\ accept one. Two compilers legitimately reach one live checker - the engine's
+\ baked front end, and the one a window loads from source while that engine is
+\ still hosting the build - and each arms this tape with its own three
+\ quotations. Refusing the second one dies on a correct sequence; and a seeded
+\ engine, whose captured cells arrive trapped, needs the first ARM to refill
+\ them (src/compiler/native/feed.f OBSERVE).
 defer SCAN-XT ( ptr u8 n -- )
 defer TOKEN-XT ( ptr u8 n n n n n -- )
 defer DONE-XT ( ptr u8 n n -- )
@@ -12677,18 +12809,26 @@ defer DONE-XT ( ptr u8 n n -- )
 \ dispatch cell cannot be interrogated, so the grant is an ordinary flag.
 variable SET   0 SET !
 
+\ WHICH unit installed the observer that is live, so a takeover is a stated fact
+\ rather than a silent overwrite. The installer names itself; nothing here
+\ interprets the number, and INSTALLED-BY below is how a test or a diagnostic
+\ reads it back.
+variable BY   0 BY !
+
 public
 
 \ Armed by the compilation unit that wants a tape, disarmed after it. The call
 \ sites read this cell directly, so an unarmed checker pays a load and a branch.
 variable ARMED   0 ARMED !
 
-: INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
-   SET @ 0 <> if s" checker: source-tape observer already installed" 76 die then
+: INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
    is DONE-XT
    is TOKEN-XT
    is SCAN-XT
+   BY !
    1 SET ! ;
+
+: INSTALLED-BY ( -- n ) BY @ ;
 
 : ARM ( -- )
    SET @ 0= if s" checker: no source-tape observer to arm" 76 die then
@@ -14028,6 +14168,34 @@ variable CK-RETRY-TOKS
    a u verdict CHECKER-CERT:PRODUCE
    verdict ;
 
+\ ---- the scan whose verdict nobody enforces ----------------------------------
+\ A TRUSTED: definition's declared effect IS the assertion: the body is scanned
+\ only to fill the source tape the optimizing elaborator reads, and the verdict
+\ that scan reports is never acted on (src/compiler/native/compiler.f RECORD
+\ enforces one only for a CHECKED definition). A diagnostic about it therefore
+\ names a refusal nothing refuses, so the render is suppressed for the scan's
+\ duration and restored on either exit.
+\
+\ THE SCOPE BELONGS TO THE INSTANCE THAT RENDERS, which is why this word exists
+\ at all rather than the compiler bumping DIAG-QUIET itself. That compiler is a
+\ BAKED routine in a product engine: a counter reached by name is the counter of
+\ the checker it was compiled into, while the scan runs in whichever checker owns
+\ the source - so the suppression landed on one instance and the render on the
+\ other, and a product-hosted build printed a rejection for every trusted body in
+\ the window it was rebuilding.
+variable UNJ-A   variable UNJ-U   variable UNJ-VERDICT
+
+: CHECK-UNJUDGED-BODY ( -- )
+   UNJ-A @ UNJ-U @ CHECK! UNJ-VERDICT ! ;
+
+: CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a UNJ-A !  u UNJ-U !
+   1 DIAG-QUIET +!
+   [: CHECK-UNJUDGED-BODY ;] catch {: rc:n :}
+   -1 DIAG-QUIET +!
+   rc 0 <> IF rc throw THEN
+   UNJ-VERDICT @ ;
+
 package CHECKER-PREFLIGHT
 
 : RUN ( -- )
@@ -14199,9 +14367,17 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
       if TRANSFER-ROW 1+ else 2drop 2drop drop exit then
    again ;
 
+\ CLAIMING IS NOT CONDITIONAL ON HAVING SOMETHING TO IMPORT. A host that never
+\ published an owner record - a bootstrap seed, whose dispatch predates it -
+\ leaves nothing to transfer, and this used to return without claiming: the
+\ window then compiled its own source with no source owner at all, which the
+\ optimizing front end reads as "no checker owns this" and refuses by name
+\ (src/compiler/native/checker-owner.f). A seed-hosted build and a
+\ product-hosted build have to reach the same state, so the claim happens either
+\ way; re-claiming when this record is already the owner is the same store.
 : TRANSFER-CHECKED ( ptr u8 -- ) {: owner:ptr :}
-   owner 0= if exit then
-   owner DECLARATIONS = if exit then
+   owner 0= if CLAIM-SOURCE-OWNER exit then
+   owner DECLARATIONS = if CLAIM-SOURCE-OWNER exit then
    owner BIND-SOURCE
    CHECKER-REC-SYM @ {: saved:n :}
    [: TRANSFER-ROWS ;] catch {: rc:n :}
@@ -14219,7 +14395,8 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 : CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ( -- )
    NULL-PTR SV-SGBAD-A !  0 SV-SGBAD-U !
    NULL-PTR IS-TA !  0 IS-TU !
-   NULL-PTR CAND-A !  0 CAND-U ! ;
+   NULL-PTR CAND-A !  0 CAND-U !
+   NULL-PTR UNJ-A !  0 UNJ-U ! ;
 
 \ One capture seam owns the order: scrub transient stores before persistence
 \ copies any grown registry, persist and mark the live rows, then clear the
@@ -14251,4 +14428,53 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 
 package CHECKER-REG
 ' CHECKER-CAPTURE-PREPARE DECLARATIONS CAPTURE-OFF + xt!
+;package
+
+\ ---- the optimizing front end's half of the owner record ---------------------
+\ Installed here, at this file's own load, for the reason
+\ src/core/lower-cert-base.f installs its certificate producer at its own: every
+\ checker instance wires its own seams, so whichever instance OWNS the source is
+\ complete no matter who loaded it. The compiler reads these through
+\ NCOMP-DISPATCH:DECL-*-OFF and never by name (src/habu/layout.f says what the
+\ name cost), and a field this file forgets is a named refusal there rather than
+\ a silent answer from the retired instance.
+package CHECKER-REG
+' CHECK!                            DECLARATIONS CHECK-OFF + xt!
+' CHECKER-TAPE:INSTALL              DECLARATIONS TAPE-INSTALL-OFF + xt!
+' CHECKER-TAPE:ARM                  DECLARATIONS TAPE-ARM-OFF + xt!
+' CHECKER-TAPE:DISARM               DECLARATIONS TAPE-DISARM-OFF + xt!
+' CHECKER-TAPE:ADVANCE              DECLARATIONS TAPE-ADVANCE-OFF + xt!
+' CHECK-DOES!                       DECLARATIONS DOES-CHECK-OFF + xt!
+' CHECK-DOES-DIN-CELLS              DECLARATIONS DOES-IN-OFF + xt!
+' CHECK-DOES-DOUT-CELLS             DECLARATIONS DOES-OUT-OFF + xt!
+' CHECK-DOES-WIDE?                  DECLARATIONS DOES-WIDE-OFF + xt!
+' CHECKER-USIGS-TRUNCATE-FROM-RAW   DECLARATIONS USIG-TRUNCATE-OFF + xt!
+' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
+' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
+' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!
+' CWIN-QUOT-IN                      DECLARATIONS CALL-QUOT-IN-OFF + xt!
+' CWIN-QUOT-OUT                     DECLARATIONS CALL-QUOT-OUT-OFF + xt!
+' TRUST-DECL                        DECLARATIONS TRUST-DECL-OFF + xt!
+' NEUTRAL-PARSE-IMM?                DECLARATIONS PARSE-IMM-OFF + xt!
+' EFFECT-QUERY                      DECLARATIONS EFFECT-QUERY-OFF + xt!
+' EFFECT-DIN-N                      DECLARATIONS EFFECT-DIN-N-OFF + xt!
+' EFFECT-DOUT-N                     DECLARATIONS EFFECT-DOUT-N-OFF + xt!
+' EFFECT-DIN-CELLS                  DECLARATIONS EFFECT-DIN-CELLS-OFF + xt!
+' EFFECT-DOUT-CELLS                 DECLARATIONS EFFECT-DOUT-CELLS-OFF + xt!
+' EFFECT-DIN-SLOT                   DECLARATIONS EFFECT-DIN-SLOT-OFF + xt!
+' EFFECT-DOUT-SLOT                  DECLARATIONS EFFECT-DOUT-SLOT-OFF + xt!
+' EFFECT-DIN-QUOT                   DECLARATIONS EFFECT-DIN-QUOT-OFF + xt!
+' EFFECT-DOUT-QUOT                  DECLARATIONS EFFECT-DOUT-QUOT-OFF + xt!
+' EFFECT-QUOT-UP                    DECLARATIONS EFFECT-QUOT-UP-OFF + xt!
+' EFFECT-RET-NEUTRAL?               DECLARATIONS EFFECT-RET-NEUTRAL-OFF + xt!
+' EFFECT-QUOT-SIMPLE?               DECLARATIONS EFFECT-QUOT-SIMPLE-OFF + xt!
+' EFFECT-CATCH-CELLS                DECLARATIONS EFFECT-CATCH-CELLS-OFF + xt!
+' EFFECT-EXEC-CELLS                 DECLARATIONS EFFECT-EXEC-CELLS-OFF + xt!
+' EFFECT-FINALLY-CELLS              DECLARATIONS EFFECT-FINALLY-CELLS-OFF + xt!
+' EFFECT-MATCH-CELLS                DECLARATIONS EFFECT-MATCH-CELLS-OFF + xt!
+' CTL-DEAD?                         DECLARATIONS CTL-DEAD-OFF + xt!
+' WF-W-AT                           DECLARATIONS WF-W-AT-OFF + xt!
+' REC-MIN-IN@                       DECLARATIONS REC-MIN-IN-OFF + xt!
+' REC-WIDE-PUBLISH                  DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
+' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!
 ;package
