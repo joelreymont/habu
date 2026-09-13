@@ -41,3 +41,15 @@ The original-name all-tier1 core-rewind/compiler reload now reaches A64IR's
 76-arm TAG and stops at the independent MWIN24 fact ceiling (9b8c7e24). No
 recompiled compiler product, provenance save acceptance, or full gate is claimed
 for this follow-up yet. Root owns independent review and combined integration.
+
+Binder parity correction: a trusted `[']` of an internal pre-hook word still
+hits the ordinary JIT tick guard. Source callback defers now bind the six
+existing callable fields from the paired owner; the payload-only rewind binds
+the protected CHECKER-BOUND record through XREF. Public tick/search guards are
+unchanged. Fresh original-name adapter loads on bee6 pass at both tiers with
+only `window: 0`; the source callback scan publishes the expected1-in/1-out row.
+On baked158fe, both rewind binder tiers and prefix-mark-test pass. The actual
+BF-generated first source stage builds at the default tier with no diagnostics;
+its certify-only prefix contains ABI before checker/layout, while COMMON retains
+the host layout and needs no extra ABI row. That stage driver ignores `--load`,
+so its successful boot is not evidence that a requested load fixture ran.

@@ -26,6 +26,9 @@ require lib/string.f
 require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
+\ Load the payload's typed boundary binding through the ordinary JIT path.
+\ Its native-only tick previously hid a default-tier stage-build regression.
+require src/habu/prefix-rewind.f
 
 package PREFIX-MARK-TEST
 

@@ -45,12 +45,17 @@ private
 TRUSTED: DICT! ( n -- ) seed-ndict! ;
 defer BOUND! ( -- )
 TRUSTED: BIND-BOUND ( -- )
-   ['] CHECKER-BOUND:REWIND is BOUND! ;
+   s" CHECKER-BOUND:REWIND" XREF-FIND
+   dup XREF-FOUND? 0= if drop s" prefix rewind: checker boundary missing" 76 die then
+   dup XREF-RETIRED? if drop s" prefix rewind: checker boundary retired" 76 die then
+   XREF-START dup 0= if drop s" prefix rewind: checker boundary has no code" 76 die then
+   is BOUND! ;
 BIND-BOUND
 
 \ The rewind is a pre-hook definition, so an older host may carry its code
-\ without a native call model. The typed defer states its actual effect and
-\ the trusted binder grants access only to this private payload-only slot.
+\ without a native call model. The protected package owns its dictionary
+\ record; the trusted binder reads that record into this private typed slot.
+\ Ordinary tick and search continue to refuse internal execution tokens.
 \ It does not publish a global axiom or a checked-callable rewind capability.
 
 public

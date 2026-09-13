@@ -29,20 +29,32 @@ defer SOURCE-CALL-GLUE ( n -- n n )
 defer SOURCE-MATCH-PAYLOAD ( n -- n n )
 defer SOURCE-QUOT-IN ( n n -- n n )
 defer SOURCE-QUOT-OUT ( n n -- n n )
-TRUSTED: BIND-SOURCE-CALLS ( -- )
-   ['] CHECK-UNJUDGED! is SOURCE-UNJUDGED
-   ['] CWIN-CELLS is SOURCE-CALL-CELLS
-   ['] CWIN-GLUE is SOURCE-CALL-GLUE
-   ['] CWIN-MATCH-PAYLOAD is SOURCE-MATCH-PAYLOAD
-   ['] CWIN-QUOT-IN is SOURCE-QUOT-IN
-   ['] CWIN-QUOT-OUT is SOURCE-QUOT-OUT ;
-BIND-SOURCE-CALLS
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
    2 a u write drop
    2 S\" \n" write drop
    E-NCOMP-OWNER throw ;
+
+\ These six callbacks already belong to the original 54-cell owner record.
+\ Bind them once while this source compiler and its checker are paired. A tick
+\ of an internal pre-hook word is intentionally refused by the JIT engine;
+\ the owner's callable field is the authority for this private typed binding.
+: SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
+   RECORD {: rec:ptr :}
+   rec 0= if a u REFUSE then
+   rec off + CELL-VIEW @ {: xt:n :}
+   xt 0= if a u REFUSE then
+   xt ;
+
+TRUSTED: BIND-SOURCE-CALLS ( -- )
+   CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF s" source unjudged scan" SOURCE-FIELD is SOURCE-UNJUDGED
+   CHECKER-OWNER-ABI:CALL-CELLS-OFF s" source call cells" SOURCE-FIELD is SOURCE-CALL-CELLS
+   CHECKER-OWNER-ABI:CALL-GLUE-OFF s" source call glue" SOURCE-FIELD is SOURCE-CALL-GLUE
+   CHECKER-OWNER-ABI:CALL-MATCH-OFF s" source match payload" SOURCE-FIELD is SOURCE-MATCH-PAYLOAD
+   CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF s" source quotation inputs" SOURCE-FIELD is SOURCE-QUOT-IN
+   CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF s" source quotation outputs" SOURCE-FIELD is SOURCE-QUOT-OUT ;
+BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
 \ requires an installed operation from the live source owner.
