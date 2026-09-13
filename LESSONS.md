@@ -7831,6 +7831,10 @@ and --no-lldbinit.
   `( a u -- )` (E-NONPARAMETRIC-EFFECT), reachable since the stage engines
   compile stdin.f for their runtime; dot habu-give-the-stage-2f64be7c. Chain
   gen 5 = gen 4 with fixpoint at generation 2.
+  Re-measured 2026-09-13 08:55 UTC on engine 28e11361 at tip 15045689 (314
+  suites, no timeouts): the same 7, with the per-symbol index bounded by the
+  store's end and the thirteen lowering-certificate arenas relocated; chain
+  gen 5 = gen 4, fixpoint at generation 2.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
