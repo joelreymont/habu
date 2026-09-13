@@ -231,7 +231,8 @@ variable RC     variable EXITED
 
    s" int-mark is refused in a plain checked body on tier 0" T-LABEL
    s" : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
-   ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
+   \ Tier 0 reports the hidden name; tier 1 reports the trust boundary below.
+   ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
    ERR$ s" int-mark" CONTAINS? TTRUE
 
    s" int-mark is refused in a plain checked body on tier 1" T-LABEL
@@ -240,7 +241,7 @@ variable RC     variable EXITED
 
    s" min-in-mark is refused in a plain checked body" T-LABEL
    s" : BADM ( n n -- ) min-in-mark ;" RUN  REJECT-RC ASSERT-RC
-   ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
+   ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
    ERR$ s" min-in-mark" CONTAINS? TTRUE
 
    \ The row records an effect; it does not open the name. Both records still
@@ -369,7 +370,7 @@ variable RC     variable EXITED
    s" 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C dup 4 + code-origin .  ' OR-M dup 4 + code-origin .  OR-C . " EXEC
    0 ASSERT-RC OUT$ S\" 1\n0\n46\n" STR= TTRUE
    s" a tier change inside an immediate affects only the next definition" T-LABEL
-   s" 0 set-tier TRUSTED: OR-SW ( -- ) 1 set-tier ; immediate : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
+   S\" 0 set-tier TRUSTED: OR-SW ( -- ) 1 set-tier ; immediate s\q OR-SW\q 0 parse-imm : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
    0 ASSERT-RC OUT$ S\" 0\n1\n47\n" STR= TTRUE
    s" a code cursor rewind hides bytes without reclassifying them" T-LABEL
    S\" 0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
@@ -450,10 +451,11 @@ variable OR-U
    S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
    0 ASSERT-RC OUT$ S\" 1\n61\n0\n" STR= TTRUE
    s" evaluated tier0 refusal leaves its following definition unpublished" T-LABEL
-   S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch . tier@ . ' BS-FORBIDDEN drop\n" EXEC
-   REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n" STR= TTRUE
+   \ The same wordlist finds BS-RUN and reports BS-FORBIDDEN absent. Rethrow
+   \ the saved guard error after the lookups, preserving its rejection code.
+   S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch dup . tier@ . s\q BS-RUN\q get-current search-wl 0= 0= . s\q BS-FORBIDDEN\q get-current search-wl . throw\n" EXEC
+   REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n-1\n0\n" STR= TTRUE
    ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
-   ERR$ s" BS-FORBIDDEN" CONTAINS? TTRUE
    s" raw stores cannot erase retained provenance" T-LABEL
    s" 0 data-base TIER-PROV:N-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
    s" raw stores cannot disable the executable scope" T-LABEL
