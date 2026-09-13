@@ -10620,7 +10620,9 @@ $58 constant CF.TXD-OFF
 $60 constant CF.TXR-OFF
 $68 constant CF.TXS-OFF
 $70 constant CF.UNI-OFF
-$78 constant CFS-REC
+$78 constant CF.LA-OFF
+$80 constant CF.LB-OFF
+$88 constant CFS-REC
 $8 constant CFS-REC-ALIGN
 0 constant CFS-REC-PTR-MASK
 
@@ -10643,6 +10645,8 @@ $8 constant CFS-REC-ALIGN
 \ so every lane of the block takes the same path. A block-collective/barrier is
 \ sound only when EVERY open frame is uniform (ALL-CF-UNIFORM?).
 : CF.UNI ( ptr a -- ptr a ) CF.UNI-OFF + ;
+: CF.LA ( ptr a -- ptr a ) CF.LA-OFF + ;
+: CF.LB ( ptr a -- ptr a ) CF.LB-OFF + ;
 
 CF.KND-OFF 0 cells CHECKER-LAYOUT=
 CF.SA-OFF 1 cells CHECKER-LAYOUT=
@@ -10659,7 +10663,9 @@ CF.TXD-OFF 11 cells CHECKER-LAYOUT=
 CF.TXR-OFF 12 cells CHECKER-LAYOUT=
 CF.TXS-OFF 13 cells CHECKER-LAYOUT=
 CF.UNI-OFF 14 cells CHECKER-LAYOUT=
-CFS-REC 15 cells CHECKER-LAYOUT=
+CF.LA-OFF 15 cells CHECKER-LAYOUT=
+CF.LB-OFF 16 cells CHECKER-LAYOUT=
+CFS-REC 17 cells CHECKER-LAYOUT=
 CFS-REC-ALIGN CELL CHECKER-LAYOUT=
 CFS-REC CFS-REC-ALIGN mod 0 CHECKER-LAYOUT=
 CFS-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -10678,15 +10684,18 @@ CFS-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 CF.TXR CF.TXR-OFF CHECKER-LAYOUT=
 0 CF.TXS CF.TXS-OFF CHECKER-LAYOUT=
 0 CF.UNI CF.UNI-OFF CHECKER-LAYOUT=
+0 CF.LA CF.LA-OFF CHECKER-LAYOUT=
+0 CF.LB CF.LB-OFF CHECKER-LAYOUT=
 
 create CFS 32 CFS-REC * allot
 variable CTMP  variable RTMP  variable INDO
+\ One bit per CFS slot; all 32 slots fit a cell. A quotation owns a fresh mask.
+variable CF-LOOPS
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
 \ terminated by exit, so the enclosing THEN excludes it from the branch join.
-\ CF.DED saves the if-branch's deadness across CF-ELSE. (leave targets the
-\ enclosing DO frame's loop-exit row; unloop is a typing no-op — loop control
-\ isn't on the typed rows.)
+\ CF.DED saves the if-branch's deadness across CF-ELSE. CF.LA/LB save the
+\ live loop obligations beside the corresponding data and return rows.
 variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-ROW ( n -- ptr n )
@@ -10738,6 +10747,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
      r0 rec CF.RA !  r1 rec CF.RB !
      #LOC @ rec CF.LN !
+     CF-LOOPS @ rec CF.LA !  0 rec CF.LB !
      0 rec CF.UNI !                        \ default non-uniform; CF-IF marks a uniform<bool> branch
      #CFC @ 1 + #CFC ! THEN ;
 
@@ -10752,6 +10762,9 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF@RB CF-TOP CF.RB @ ;
 
 : CF@LN CF-TOP CF.LN @ ;
+
+: CF@LA ( -- n ) CF-TOP CF.LA @ ;
+: CF@LB ( -- n ) CF-TOP CF.LB @ ;
 
 : CF-LOC-REST ( -- )
    CF@LN #LOC ! ;
@@ -10773,6 +10786,32 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-FAIL ( -- )
    0 OK !
    -1 FAILSET ! ;
+
+: CF-LOOPS= ( n -- )
+   CF-LOOPS @ <> IF CF-FAIL THEN ;
+
+
+: CF-LOOP-BIT ( n -- n )
+   1 swap lshift ;
+
+
+: CF-LOOP-ACTIVE? ( n -- bool )
+   CF-LOOP-BIT CF-LOOPS @ and 0 <> ;
+
+
+\ Search only this function's live frames, innermost first.
+: CF-LOOP-FIND ( n -- n )
+   INDO !
+   #CFC @
+   BEGIN dup 0 > WHILE
+      1 -
+      dup CF-ROW CF.KND @ 6 = IF drop -1 EXIT THEN
+      dup CF-LOOP-ACTIVE? IF
+         INDO @ 0= IF EXIT THEN
+         -1 INDO +!
+      THEN
+   REPEAT drop -1 ;
+
 
 : SUNI {: s :}
    DCUR @ s UNIFY
@@ -10892,9 +10931,11 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    idx CF-CASE-HAS? IF
       idx CF-CASE-DATA@ SUNI
       idx CF-CASE-RET@ RSUNI
+      idx CF-ROW CF.LB @ CF-LOOPS=
    ELSE
       DCUR @ idx CF-CASE-DATA!
       RCUR @ idx CF-CASE-RET!
+      CF-LOOPS @ idx CF-ROW CF.LB !
       idx CF-CASE-HAS!
    THEN ;
 
@@ -10911,6 +10952,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    CF-BELOW-CASE? 0= IF CF-FAIL ELSE CF@K 8 <> IF CF-FAIL ELSE
       CF-CASE-IDX CF-CASE-ACCUM
       CF@A CTMP !  CF@RA RTMP !
+      CF@LA CF-LOOPS !
       CF-LOC-REST
       0 DEADP !
       CF-DROP
@@ -10923,6 +10965,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
       #CFC @ 1 - CF-CASE-ACCUM
       CF@DED 0 <> IF
          CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+         CF@LB CF-LOOPS !
       ELSE
          -1 DEADP !
       THEN
@@ -10935,6 +10978,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      DEADP @ CF-TOP CF.DED !  0 DEADP !                  \ save if-branch deadness; else runs live
      DCUR @ CTMP !  CF@A DCUR !
      RCUR @ RTMP !  CF@RA RCUR !
+     CF-LOOPS @ CF-TOP CF.LB !  CF@LA CF-LOOPS !
      2 CF-TOP CF.KND !
      CTMP @ CF-TOP CF.SB !
      RTMP @ CF-TOP CF.RB !
@@ -10949,32 +10993,40 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
          -1 DEADP !
       ELSE
          CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+         CF@LB CF-LOOPS !
       THEN
    ELSE
       if-dead IF
          0 DEADP !
       ELSE
          CF@B SUNI  CF@RB RSUNI  0 DEADP !
+         CF@LB CF-LOOPS=
       THEN
    THEN ;
 
 : CF-THEN
    CF-MT? IF CF-FAIL ELSE
      CF@K 1 = IF                                          \ IF ... THEN (no else)
-        DEADP? IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
-        ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-LOC-REST  CF-DROP
+        DEADP? IF
+           CF@A DCUR !  CF@RA RCUR !  CF@LA CF-LOOPS !  0 DEADP !
+        ELSE CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS= THEN
+        CF-LOC-REST  CF-DROP
      ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
         CF-THEN-ELSE-MERGE
         CF-LOC-REST  CF-DROP
      ELSE CF-FAIL THEN THEN THEN ;
 
 : CF-EXIT ( -- )
+   CF-LOOPS @ 0 <> IF CF-FAIL EXIT THEN
    XSET @ IF  DCUR @ XROW @ UNIFY OK @ and OK !
               RCUR @ XRROW @ UNIFY OK @ and OK !
    ELSE  DCUR @ XROW !  RCUR @ XRROW !  -1 XSET ! THEN
    -1 DEADP ! ;
 
-: CF-UNLOOP ( -- ) ;
+: CF-UNLOOP ( -- )
+   0 CF-LOOP-FIND
+   dup 0 < IF drop CF-FAIL EXIT THEN
+   CF-LOOP-BIT invert CF-LOOPS @ and CF-LOOPS ! ;
 
 : CF-BEGIN ( -- )
    3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
@@ -10983,11 +11035,13 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    STEP-BOOL-IN
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
+     CF@LA CF-LOOPS=
      CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-AGAIN ( -- )
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
-     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
+     DEADP? 0= IF CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS= THEN
+     CF@A DCUR !  CF@RA RCUR !
      CF-LOC-REST  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
@@ -10996,42 +11050,46 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      4 CF-TOP CF.KND !
      DCUR @ CF-TOP CF.SB !
      RCUR @ CF-TOP CF.RB !
+     CF-LOOPS @ CF-TOP CF.LB !
    THEN THEN ;
 
 : CF-REPEAT
    CF-MT? IF CF-FAIL ELSE CF@K 4 <> IF CF-FAIL ELSE
-     CF@A SUNI  CF@B DCUR !  CF@RA RSUNI  CF@RB RCUR !
+     DEADP? 0= IF CF@A SUNI  CF@RA RSUNI  CF@LA CF-LOOPS= THEN
+     CF@B DCUR !  CF@RB RCUR !  CF@LB CF-LOOPS !  0 DEADP !
      CF-LOC-REST  CF-DROP THEN THEN ;
 
-: CF-DO  STEP-NN-IN  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
+: CF-DO ( -- )
+   STEP-NN-IN
+   5 DCUR @ 0 RCUR @ 0 CF-PUSH
+   0 CF-TOP CF.DED !
+   #CFC @ 1 - CF-LOOP-BIT CF-LOOPS @ or CF-LOOPS ! ;
 
-\ At LOOP the exit is always live: ?do/do terminates, and a `leave` jumps here.
-\ If the body fall-through is dead (unconditional leave/exit), the back-edge is
-\ never taken — skip the body-vs-DO-point unify, but the loop-exit row is still
-\ the DO-point row (a zero-trip ?do or a leave both leave exactly that). Live
-\ fall-through: the back edge requires a stack-neutral body (CF@A SUNI).
+: CF-?DO ( -- )
+   CF-DO
+   -1 CF-TOP CF.DED ! ;
+
+\ A live latch, a zero-trip ?do or LEAVE reaches the DO-point exit row.
+\ A DO whose whole body returns or throws has no normal continuation.
 : CF-LOOP
    CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
-     DEADP @ IF  0 DEADP !
-     ELSE  CF@A SUNI  CF@RA RSUNI  THEN
+     DEADP @ IF CF@DED 0= DEADP !
+     ELSE
+        CF@A SUNI  CF@RA RSUNI
+        #CFC @ 1 - CF-LOOP-BIT CF@LA or CF-LOOPS=
+     THEN
+     CF@LA CF-LOOPS !
      CF@A DCUR !  CF@RA RCUR !  CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-+LOOP
-   STEP-N-IN
-   CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
-     DEADP @ IF  0 DEADP !
-     ELSE  CF@A SUNI  CF@RA RSUNI  THEN
-     CF@A DCUR !  CF@RA RCUR !  CF-LOC-REST  CF-DROP THEN THEN ;
+   DEADP? 0= IF STEP-N-IN THEN
+   CF-LOOP ;
 
-: CF-I
-   0 INDO !  0 BEGIN dup #CFC @ < WHILE
-     dup CF-ROW CF.KND @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
-   INDO @ IF STEP-N-OUT ELSE CF-FAIL THEN ;
+: CF-I ( -- )
+   0 CF-LOOP-FIND 0 < IF CF-FAIL ELSE STEP-N-OUT THEN ;
 
-: CF-J                                     \ needs two enclosing DO frames
-   0 INDO !  0 BEGIN dup #CFC @ < WHILE
-     dup CF-ROW CF.KND @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
-   INDO @ 1 > IF STEP-N-OUT ELSE CF-FAIL THEN ;
+: CF-J ( -- )
+   1 CF-LOOP-FIND 0 < IF CF-FAIL ELSE STEP-N-OUT THEN ;
 
 variable LVDO  variable LVDN
 \ CF-FINDDO ( -- ) : LVDO = index of the nearest enclosing DO frame, or -1.
@@ -11051,12 +11109,15 @@ variable LVDO  variable LVDN
 : CF-LEAVE
    CF-FINDDO
    LVDO @ 0< IF CF-FAIL ELSE
+     LVDO @ CF-LOOP-BIT LVDO @ CF-ROW CF.LA @ or CF-LOOPS=
      LVDO @ CF-ROW CF.SA @ SUNI
      LVDO @ CF-ROW CF.RA @ RSUNI
+     -1 LVDO @ CF-ROW CF.DED !
      -1 DEADP ! THEN ;
 
 : CF-QUOT   \ [: — pause the outer inference (incl. its exit state), open a nested one
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
+   0 CF-LOOPS !
    XROW @ CF-TOP CF.XRO !  XRROW @ CF-TOP CF.XRR !
    XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
    THDROW @ CF-TOP CF.TXD !  THRROW @ CF-TOP CF.TXR !
@@ -11082,6 +11143,7 @@ variable QTMP
      CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !  \ restore outer exit state
      CF-TOP CF.TXD @ THDROW !  CF-TOP CF.TXR @ THRROW !
      CF-TOP CF.TXS @ THSET !
+     CF@LA CF-LOOPS !
      QDEPTH @ 1 - QDEPTH !
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !
@@ -11363,10 +11425,12 @@ variable MTCH-W                      \ the bundle width the walk below really co
       FAILSET @ {: fs0:n :}                   \ SUNI pins the token itself: latch the
       MF-CUR MF.OUT @ SUNI                    \ join reason only when THIS unify failed
       MF-CUR MF.ROUT @ RSUNI
+      #CFC @ 2 - CF-ROW CF.LB @ CF-LOOPS=
       OK @ 0=  fs0 0=  and  MDIAG @ 0=  and IF MD-JOIN MDIAG ! THEN
    ELSE
       DCUR @ MF-CUR MF.OUT !
       RCUR @ MF-CUR MF.ROUT !
+      CF-LOOPS @ #CFC @ 2 - CF-ROW CF.LB !
       -1 MF-CUR MF.HAS !
    THEN ;
 
@@ -11374,6 +11438,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MATCH-ACCUM
    CF-LOC-REST
    CF-DROP
+   CF@LA CF-LOOPS !
    0 DEADP !
    MF-CUR MF.BASE @ DCUR !
    MF-CUR MF.RBASE @ RCUR !
@@ -11394,6 +11459,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    MF-CUR MF.HAS @ 0 <> IF
       MF-CUR MF.OUT @ DCUR !
       MF-CUR MF.ROUT @ RCUR !
+      CF@LB CF-LOOPS !
       0 DEADP !
    ELSE
       MF-CUR MF.BASE @ DCUR !
@@ -11456,7 +11522,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" while" CORE-STR= IF CF-WHILE RES-TRUE EXIT THEN
    a u s" repeat" CORE-STR= IF CF-REPEAT RES-TRUE EXIT THEN
    a u s" do" CORE-STR= IF CF-DO RES-TRUE EXIT THEN
-   a u s" ?do" CORE-STR= IF CF-DO RES-TRUE EXIT THEN
+   a u s" ?do" CORE-STR= IF CF-?DO RES-TRUE EXIT THEN
    a u s" loop" CORE-STR= IF CF-LOOP RES-TRUE EXIT THEN
    a u s" +loop" CORE-STR= IF CF-+LOOP RES-TRUE EXIT THEN
    a u s" i" CORE-STR= IF CF-I RES-TRUE EXIT THEN
@@ -13169,6 +13235,7 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
+   0 CF-LOOPS !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !

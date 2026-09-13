@@ -272,6 +272,10 @@ SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
 
+SUITE loop-obligations
+   test/loop-obligations.f
+;SUITE
+
 SUITE native-build-layout
    test/native-layout.f
 ;SUITE

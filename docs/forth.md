@@ -815,6 +815,15 @@ address arithmetic at the public boundary.
   effect. Divergent path arities are soundness bugs; after a dead path, only
   structural closers (`else`, `then`, `loop`, `+loop`, `repeat`, `again`, `;]`)
   may appear.
+- **Discharge counted loops before `exit`.** Each `do`/`?do` opens one loop
+  frame; `unloop` removes the nearest active frame. An `exit` needs one
+  `unloop` for every active loop in that definition or quotation. Live branches
+  must agree on which frames remain, and a loop back edge or `leave` must still
+  own its frame. `i` and `j` read the nearest and next active frames in the
+  current quotation or definition; they cannot reach an enclosing quotation's
+  loops. Loop frames are separate from the typed return stack.
+  A `do` whose every body path returns or throws has no normal continuation;
+  `?do` still has its zero-trip exit, and `leave` supplies an explicit loop exit.
 - **`RECURSE` uses the declared effect.** Recursive calls apply a fresh copy of
   the current definition's declared signature; keep the raw declared signature
   stable after `CHECK!` so rendered/mutated terms cannot corrupt the scheme.

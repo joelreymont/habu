@@ -115,6 +115,8 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
    source TRANSFER-CHECKER
+   \ A source-loaded retained compiler must now use the replacement owner too.
+   CHECKER-OWNER:CAPTURE-PREPARE
    s" src/core/check-hook.f" included
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included

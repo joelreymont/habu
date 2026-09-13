@@ -878,6 +878,7 @@ create SB-BUF SB-CAP allot
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable CS-N
+variable CS-LOOPS                   \ active index frames, one bit per CS slot
 CMAX TYPED-BUFFER CS-KIND HIR:ctrl
 create CS-DEPTH CMAX cells allot
 create CS-JOIN CMAX cells allot
@@ -896,11 +897,14 @@ create CS-ARMR CMAX cells allot      \ parked values the first arm of an `if` le
 create CS-XR CMAX cells allot        \ parked values the first `while` of a loop left, beside CS-XD
 create CS-LB CMAX cells allot        \ bound locals the walk held when this structure opened
 create CS-LARM CMAX cells allot      \ and when the arm being read opened, or -1
+create CS-LOOP0 CMAX cells allot     \ loop visibility at the structure's entry
+create CS-LOOP1 CMAX cells allot     \ loop visibility at its live branch join
 CMAX TYPED-BUFFER CS-IDX IR-ID:ir-value-id
 CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 
 : CS-RESET ( -- )
-   0 CS-N ! ;
+   0 CS-N !
+   0 CS-LOOPS ! ;
 
 : CS-AT ( n -- n )
    dup 0 < over CS-N @ >= or if E-NELAB-CTRL throw then ;
@@ -930,6 +934,8 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
    -1 t cells CS-XR + !
    LBN @ t cells CS-LB + !
    -1 t cells CS-LARM + !
+   CS-LOOPS @ t cells CS-LOOP0 + !
+   0 t cells CS-LOOP1 + !
    t 1+ CS-N ! ;
 
 : CS-POP ( -- )
@@ -960,6 +966,8 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-XR@ ( n -- n )       cells CS-XR + @ ;
 : CS-LB@ ( n -- n )       cells CS-LB + @ ;
 : CS-LARM@ ( n -- n )     cells CS-LARM + @ ;
+: CS-LOOP0@ ( n -- n )    cells CS-LOOP0 + @ ;
+: CS-LOOP1@ ( n -- n )    cells CS-LOOP1 + @ ;
 
 : CS-JOIN! ( n n -- )     cells CS-JOIN + ! ;
 : CS-ARM! ( n n -- )      cells CS-ARM + ! ;
@@ -973,6 +981,12 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-OFIX! ( n n -- )     cells CS-OFIX + ! ;
 : CS-JOINED+ ( n -- )     cells CS-JOINED +  1 swap ! ;
 : CS-LARM! ( n n -- )     cells CS-LARM + ! ;
+: CS-LOOP1! ( n n -- )    cells CS-LOOP1 + ! ;
+
+: CS-LOOP-BIT ( n -- n ) 1 swap lshift ;
+
+: CS-LOOPS= ( n -- )
+   CS-LOOPS @ <> if E-NELAB-JOIN throw then ;
 
 \ ---- giving a structure's names back ------------------------------------------
 : LOC-REST ( n -- )
@@ -1042,6 +1056,20 @@ variable DOK                         \ counted loops the search below has passed
    {: k:n :}
    DO-OPEN-N k 1+ < if E-NELAB-CTRL throw then
    DO-OPEN-N 1- k - DO-NTH ;
+
+\ Discharged frames still carry SSA values across lexical edges, but cannot
+\ supply an index. The checker has already proved each live join agrees.
+: DO-ACTIVE-NTH ( n -- n ) {: k:n :}
+   -1
+   0 DOK !
+   CS-N @ 0 ?do
+      CS-N @ 1- i - {: t:n :}
+      t CS-LOOP-BIT CS-LOOPS @ and 0<> if
+         DOK @ k = if drop t leave then
+         1 DOK +!
+      then
+   loop
+   dup 0 < if E-NELAB-CTRL throw then ;
 
 : CROSS-N ( -- n )
    CALL-NEED @ 0= if 0 exit then
@@ -2255,9 +2283,10 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : SK-REPEAT ( -- )
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0= if E-NELAB-CTRL throw then
-   NB @ 1+ NB !
+   PATH-ENDED? 0= if NB @ 1+ NB ! then
    t CS-JOIN@ NB @ JOIN!
-   CS-POP ;
+   CS-POP
+   PATH-LIVE PATH-END ! ;
 
 : SK-UNTIL ( -- )
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
@@ -2270,14 +2299,25 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : SK-AGAIN ( -- )
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
    t CS-NW@ 0<> if E-NELAB-CTRL throw then
-   NB @ 1+ NB !
+   PATH-ENDED? 0= if NB @ 1+ NB ! then
    CS-POP
    PATH-DEAD PATH-END ! ;
 
 : SK-LEAVE ( -- )
    DO-OPEN-N 0= if E-NELAB-CTRL throw then
+   0 DO-INNER-NTH CS-JOINED+
    NB @ 1+ NB !
    PATH-DEAD PATH-END ! ;
+
+
+: SK-CLOSE-LOOP ( -- )
+   HIR-CTRL:OPEN-DO CS-OPENER-CK {: t:n :}
+   PATH-ENDED? 0= if NB @ 3 + NB ! t CS-JOINED+ then
+   t CS-JOINED? if
+      t CS-JOIN@ NB @ JOIN!
+      PATH-LIVE PATH-END !
+   else PATH-DEAD PATH-END ! then
+   CS-POP ;
 
 \ ---- what a tag dispatch counts ----------------------------------------------
 : SK-ARM ( n -- ) {: ix:n :}
@@ -2339,6 +2379,9 @@ here CELL 1- and CELL swap - CELL 1- and allot
    k HIR-CTRL:MID-ELSE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-ARM HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-CASE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   k HIR-CTRL:CLOSE-LOOP HIR-CTRL:EQ if exit then
+   k HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ if exit then
+   k HIR-CTRL:CLOSE-AGAIN HIR-CTRL:EQ if exit then
    E-NELAB-CTRL throw ;
 
 : SK-STEP ( IR-ARENA:arena n -- )
@@ -2367,9 +2410,9 @@ here CELL 1- and CELL swap - CELL 1- and allot
       close-repeat OF SK-REPEAT ENDOF
       close-again  OF SK-AGAIN ENDOF
       open-do      OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 1+ NB ! ENDOF
-      open-do-skip OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 3 + NB ! ENDOF
-      close-loop   OF HIR-CTRL:OPEN-DO CS-OPENER-CK CS-JOIN@
-                      NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
+      open-do-skip OF HIR-CTRL:OPEN-DO ix SK-PUSH
+                      CS-TOP CS-JOINED+ NB @ 3 + NB ! ENDOF
+      close-loop   OF SK-CLOSE-LOOP ENDOF
       index        OF ENDOF
       outer-index  OF ENDOF
       drop-loop    OF ENDOF
@@ -2448,6 +2491,8 @@ here CELL 1- and CELL swap - CELL 1- and allot
       ix j TERM-BR
    then
    NB @ e <> if E-NELAB-CTRL throw then
+   CS-LOOPS @ t CS-LOOP1!
+   t CS-LOOP0@ CS-LOOPS !
    j t CS-JOIN!
    ix  d rd +  OPEN-ARGS ;
 
@@ -2463,11 +2508,20 @@ here CELL 1- and CELL swap - CELL 1- and allot
    t CS-END@ 0<> if RN @ exit then
    t CS-ARMR@ ;
 
+
+: DO-JOIN-LOOPS ( n bool -- ) {: t:n ended:bool :}
+   t CS-ELSE? if
+      t CS-END@ 0<> if exit then
+      t CS-LOOP1@
+   else t CS-LOOP0@ then
+   ended if CS-LOOPS ! else CS-LOOPS= then ;
+
 : DO-CLOSE-IF ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-LB@ LOC-REST
    PATH-ENDED? {: armend:bool :}
+   t armend DO-JOIN-LOOPS
    t DO-JOIN-WIDTH {: w:n :}
    t DO-JOIN-RD {: rd:n :}
    t CS-JOIN@ {: j:n :}
@@ -2504,7 +2558,9 @@ here CELL 1- and CELL swap - CELL 1- and allot
    t CS-NW@ 0<> if
       VN @ 1- t CS-XD@ <> if E-NELAB-JOIN throw then
       RN @ t CS-XR@ <> if E-NELAB-JOIN throw then
+      t CS-LOOP1@ CS-LOOPS=
    then
+   CS-LOOPS @ t CS-LOOP1!
    NB @ {: c:n :}
    ix  c 1+  c 2 +  TERM-BRZ
    VN @ t CS-XD!
@@ -2526,9 +2582,13 @@ here CELL 1- and CELL swap - CELL 1- and allot
    t CS-EXIT@ JOIN-CK {: j:n :}
    t CS-XD@ {: xd:n :}
    t CS-XR@ {: xr:n :}
-   VN @ d <> if E-NELAB-JOIN throw then
-   RN @ rd <> if E-NELAB-JOIN throw then
-   ix h TERM-BR
+   PATH-ENDED? 0= if
+      VN @ d <> if E-NELAB-JOIN throw then
+      RN @ rd <> if E-NELAB-JOIN throw then
+      ix h TERM-BR
+   then
+   t CS-LOOP1@ CS-LOOPS !
+   PATH-LIVE PATH-END !
    NB @ j <> if E-NELAB-CTRL throw then
    ix  xd xr +  OPEN-ARGS
    CS-POP ;
@@ -2559,9 +2619,11 @@ here CELL 1- and CELL swap - CELL 1- and allot
    t CS-DEPTH@ {: d:n :}
    t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: h:n :}
-   VN @ d <> if E-NELAB-JOIN throw then
-   RN @ rd <> if E-NELAB-JOIN throw then
-   ix h TERM-BR
+   PATH-ENDED? 0= if
+      VN @ d <> if E-NELAB-JOIN throw then
+      RN @ rd <> if E-NELAB-JOIN throw then
+      ix h TERM-BR
+   then
    CS-POP
    PATH-DEAD PATH-END ! ;
 
@@ -2581,6 +2643,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : DO-ENTER ( IR-ID:ir-value-id IR-ID:ir-value-id n n n n -- )
    {: st:IR-ID:ir-value-id lm:IR-ID:ir-value-id ix:n h:n d:n j:n :}
    HIR-CTRL:OPEN-DO d j CS-PUSH
+   CS-TOP CS-LOOP-BIT CS-LOOPS @ or CS-LOOPS !
    h CS-TOP cells CS-HEAD + !
    st CS-TOP CS-IDX !
    lm CS-TOP CS-LIM !
@@ -2591,7 +2654,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    {: ix:n :}
    DO-PAIR {: st:IR-ID:ir-value-id lm:IR-ID:ir-value-id :}
    2 VDROP
-   ix JOIN-OF JOIN-CK {: j:n :}
+   ix JOIN-OF {: j:n :}
    st lm  ix  NB @ 1+  VN @  j  DO-ENTER ;
 
 : DO-OPEN-DO-SKIP ( n -- )
@@ -2610,10 +2673,22 @@ here CELL 1- and CELL swap - CELL 1- and allot
    CALL-NEED @ 0= if 0 0 exit then
    0 DO-OPEN-N 1- ;
 
+
+: DO-DEAD-LOOP ( n n -- ) {: ix:n t:n :}
+   t CS-JOIN@ {: j:n :}
+   t CS-DEPTH@ t CS-RD@ + {: n:n :}
+   t CS-LOOP0@ CS-LOOPS !
+   CS-POP
+   j 0 < if exit then
+   NB @ j <> if E-NELAB-CTRL throw then
+   ix n OPEN-ARGS
+   PATH-LIVE PATH-END ! ;
+
 : DO-CLOSE-LOOP ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-DO CS-OPENER-CK {: t:n :}
    t CS-LB@ LOC-REST
+   PATH-ENDED? if ix t DO-DEAD-LOOP exit then
    t CS-DEPTH@ {: d:n :}
    t CS-RD@ {: rd:n :}
    t CS-JOIN@ {: j:n :}
@@ -2634,6 +2709,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    ix OPEN-PLAIN
    nx t CS-IDX !
    ix h  HEAD-CROSS-DO CROSS-L  TERM-BR-H
+   t CS-LOOP0@ CS-LOOPS !
    CS-POP
    ix  d rd +  OPEN-ARGS
    NB @ j <> if E-NELAB-CTRL throw then ;
@@ -2642,10 +2718,10 @@ here CELL 1- and CELL swap - CELL 1- and allot
    0 DO-INNER-NTH ;
 
 : DO-INDEX ( -- )
-   DO-FRAME CS-IDX @ VPUSH ;
+   0 DO-ACTIVE-NTH CS-IDX @ VPUSH ;
 
 : DO-OUTER-INDEX ( -- )
-   1 DO-INNER-NTH CS-IDX @ VPUSH ;
+   1 DO-ACTIVE-NTH CS-IDX @ VPUSH ;
 
 \ `leave` branches out of the INNERMOST counted loop, to the block that loop's
 \ own exit stub already branches to.
@@ -2737,6 +2813,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    t CS-ADT? 0= if E-NELAB-CTRL throw then
    t CS-OFIX@ 0 >= if E-NELAB-CTRL throw then
    t ARM-WIDTH-CK
+   CS-LOOPS @ t cells CS-LOOP0 + !
    ix t ARM-FLAG
    NB @ {: c:n :}
    ix  c 1+  c 2 +  TERM-BRZ
@@ -2759,8 +2836,10 @@ here CELL 1- and CELL swap - CELL 1- and allot
       PATH-LIVE PATH-END !
    else
       ix  t CS-JOIN@ JOIN-CK  TERM-BR
+      CS-LOOPS @ t CS-LOOP1!
       t CS-JOINED+
    then
+   t CS-LOOP0@ CS-LOOPS !
    -1 t CS-OFIX!
    -1 t CS-LARM!
    ofix MEND@ if exit then
@@ -2776,6 +2855,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
       exit
    then
    j JOIN-CK drop
+   t CS-LOOP1@ CS-LOOPS !
    NB @ j <> if E-NELAB-CTRL throw then
    NB @ ARG-STATED? 0= if E-NELAB-JOIN throw then
    ix  NB @ ARG-WIDTH@  OPEN-ARGS
@@ -2798,6 +2878,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
       VN @ t CS-DEPTH@ 1+ < if E-NELAB-UNDER throw then
       1 VDROP
       ix  t CS-JOIN@ JOIN-CK  TERM-BR
+      CS-LOOPS @ t CS-LOOP1!
       t CS-JOINED+
    then
    ix t ADT-JOIN
@@ -3129,7 +3210,7 @@ create DN-BUF DN-CAP allot
    E-NELAB-BUNDLE throw ;
 
 : DO-UNLOOP ( -- )
-   DO-FRAME drop ;
+   0 DO-ACTIVE-NTH CS-LOOP-BIT invert CS-LOOPS @ and CS-LOOPS ! ;
 
 \ EXIT returns from the current function, including a quotation sibling.
 : DO-EXIT ( n -- )
@@ -3260,6 +3341,9 @@ variable IX                          \ the body token the walk stands on
    k HIR-CTRL:MID-ELSE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-ARM HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-CASE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
+   k HIR-CTRL:CLOSE-LOOP HIR-CTRL:EQ if exit then
+   k HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ if exit then
+   k HIR-CTRL:CLOSE-AGAIN HIR-CTRL:EQ if exit then
    E-NELAB-CTRL throw ;
 
 : STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
