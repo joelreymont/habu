@@ -5477,7 +5477,7 @@ public
    17 16 ADDRESS-CELLS:LOCK-CELL ADDI,
    7 1 MOVZ,
    retry LBL, 6 0 MOVZ,
-   $C8E6FE27 EMITW,                                  \ CASAL x6,x7,[x17]
+   $C8E6FE27 EMITW                                   \ CASAL x6,x7,[x17]
    6 retry CBNZ, ;
 
 : MARK-UNLOCK ( -- )
