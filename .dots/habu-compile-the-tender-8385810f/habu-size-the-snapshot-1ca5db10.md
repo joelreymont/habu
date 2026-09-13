@@ -3,7 +3,7 @@ title: Size the address table for the complete Tender closure
 status: active
 priority: 1
 issue-type: task
-created-at: "\"2026-09-12T10:41:22.834193+03:00\""
+created-at: "2026-09-12T10:41:22.834193+03:00"
 blocks:
   - habu-build-engine-layout-abdd0188
 ---
@@ -37,3 +37,10 @@ REG-PERSIST-MOVE now retains complete allocated DATA spans. Both image suites
 pass on E, with the separate all-native startup fixture correction for app-image.
 Tender 4cc58705 currently stops earlier at native OPEN/-8650; its complete captured
 closure/headroom is still unmeasured, so this leaf stays active.
+
+G2 source 292f9cdb now compiles past Tender OPEN, but the complete standalone
+capture on frozen Tender 4cc58705 still exits 96 at 65,536 rows. The run took
+64 seconds under concurrent work and produced no executable; log
+/tmp/cedar-tender-G2/build.log. Distinguish genuinely live growth from obsolete
+registrations before extending storage. The earlier E image-suite repair stays
+valid; complete Tender closure/headroom is still unmeasured.

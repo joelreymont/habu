@@ -32,7 +32,10 @@ trusted helpers and leaves matching/schema validation checked. Its E-hosted
 whole-prefix native regression passes. Product F from `3e4f0ec5` also self-builds
 through E in 134.074 seconds: `/tmp/cedar-family-stage-abi/hb-clean-F`, SHA-256
 `93fcbcd1600c0e3b1044ad54864e60ca3e6dc06d54aad7105e9645d4fb94412b`.
-Its full suite is next, including the current test-only graph fixture additions.
+Its full suite with fixture source `ef3fc770` ran all 338 suites: 320 passed and
+18 failed. The final failure list is in the campaign dot and
+`/tmp/cedar-F-full-suite.log`; runtime source and suite source are recorded
+separately in `/tmp/cedar-F-full-suite.json`.
 The obsolete JIT copier, scanner and helper-retention test are removed in reviewed
 `dd71ead7`; real call targets, storage values and rollback-map tests pass on B.
 
@@ -42,19 +45,34 @@ and two-cell product words and checks dependent definitions. Disk import retains
 unknown provenance; this test does not claim an all-native partial-engine optimizer.
 Exception-quotation and dynamic-schema refusals remain separate open contracts.
 
-The latest full gate remains B3: all 332 suites ran, with 31 failures named in the
-campaign dot. Focused fixes are passing, but a new full gate is still required.
-Tender `4cc58705` now reaches native MATCH elaboration and refuses `OPEN` with
-`E-NELAB-MATCH` (-8650); attribution and reduction are active. No Tender binary was
-produced, and its accepted pin is unchanged.
+Combined source `292f9cdb` contains reviewed dictionary append, CAST identity and
+catch grouping fixes. G1 built from append B in 132.197 seconds; G2 rebuilt it
+in 131.826 seconds and refreshes the captured core CAST stamps. G2 is
+`/tmp/cedar-family-stage-abi/hb-integrated-G2`, SHA-256
+`36f25285819a56fa7d4edf922022bb909d862cd2d924b6d19c18c598743ed598`.
+Actual G2 CAST tests pass on both tiers, including captured core casts; native
+catch, MATCH and prefix declaration/reset tests pass. The corrected payload
+rollback fixture also passes both tiers, including serialized names and effects.
+Provenance-boundary and section-reach fixture corrections pass on F. The cold
+maker's prelude/provider ordering repair passes focused cold-runtime and
+verify-prim checks; a combined full gate is still required.
 
-The last quiet speed pair is indexed B versus B3: trivial definitions fall from
-1,562–1,564 to 1,233–1,239 microseconds and three-operation definitions from
-1,558–1,563 to 907–909 microseconds. Both fail the 500-microsecond ratchet.
-The next measured cost is a full dictionary-index rebuild on every native
-publication (231–389 microseconds across 15,485–30,485 rows). Its bounded append
-replacement is being built and tested. Complete uncached Tender timing remains
-unmeasured; a projected sum is not acceptance.
+Tender `4cc58705` now gets beyond `OPEN` on G2. The complete standalone build
+then stops at the snapshot address-table limit of 65,536 rows, rc 96, after
+64 seconds under concurrent work. No executable was produced. Attribute live
+versus obsolete registrations before changing storage; its accepted pin stays
+unchanged. Internal-word-gate also exposes a real visibility defect: inferred
+native ABI effects leave raw checker helpers callable. Preserve its rejection
+claims while repairing source visibility, rather than accepting new diagnostics.
+
+The latest three quiet publication pairs reduce trivial definitions from
+1,241–1,245 to 995–1,000 microseconds and three-operation definitions from
+953–958 to 707–713 microseconds; JIT remains 29–30 microseconds. Each run
+records exactly 200 NCOMP calls. Native publication now appends one index entry
+instead of rebuilding the index. The remaining measured cost includes thousands
+of repeated frozen IR reader openings per definition; leaf `516b2416` retains
+generation/state/bounds checks while reusing those reader tokens. The
+500-microsecond and complete uncached Tender targets remain unmet.
 
 ## Required result
 

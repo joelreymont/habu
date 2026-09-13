@@ -1,9 +1,11 @@
 ---
 title: Test rollback against the portable payload lifecycle
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-13T21:38:50Z"
+closed-at: "2026-09-14T00:50:27.213648+03:00"
+close-reason: Independent root review approved ef34273b/044d18a1. Actual F and G2 tests pass both tiers; stale-membership control triggers four assertions. Frozen names/effect graphs and live coverage are preserved.
 blocks:
   - habu-compile-the-tender-8385810f
 ---

@@ -567,6 +567,11 @@ address arithmetic at the public boundary.
 - **Default new public/library Forth to checked typed definitions.** If the
   checker can express the layer, write an explicit typed effect and let `hb`
   verify it, e.g. `: SQUARE ( i64 -- i64 ) dup * ;`.
+- **Guard dependent operations with control flow.** `and` and `or` combine
+  already evaluated values; they cannot guard the computations producing those
+  values. Establish the required shape, owner and bounds with `if ... exit then`
+  before indexing or reading a dependent field. Combine boolean predicates only
+  when each can be evaluated safely on its own.
 - **Keep control flow and multi-step computation out of argument lists.** The
   checker *does* accept `if/else` (and comparisons like `f> 0=`) producing a value
   mid-arg-list — e.g. `s" k" 1 0 > if 5 else 6 then 2.0 L-OF` type-checks and runs,

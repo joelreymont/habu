@@ -51,71 +51,54 @@ Each leaf has source ownership, prerequisites and decisive behavior checks.
 Final gate: rebuild exact source and run `bin/hb --load test/run.f`; resolve every
 failure by behavior. PTX/Loom and later cache/digest work are outside this campaign.
 
-Latest full gate: native B3 source 0c1ca1f3 with tier fixture 7ad2984b,
-SHA 2ef6c87b233f5bd1f4a0e009b806851890aa67e85ccb13844d5a4f8570143781,
-332 of 332 suites, 31 failures. Log `/tmp/cedar-B3-full-suite.log`; individual
-outputs `/tmp/habu-native-suite-1062751897926583-17/`.
+Latest full gate: native F, runtime source 3e4f0ec5 and suite source ef3fc770,
+SHA 93fcbcd1600c0e3b1044ad54864e60ca3e6dc06d54aad7105e9645d4fb94412b.
+All 338 suites ran: 320 passed, 18 failed. Log /tmp/cedar-F-full-suite.log;
+individual outputs /tmp/habu-native-suite-1068277437369875-17/.
 
-- compiler-native-string
 - compiler-native-prefix-declarations
 - check-cli-boundary
-- native-defer-image
-- process-image
-- compiler-native-j
-- compiler-native-leave
-- app-image
 - aot-section-reach
 - internal-word-gate
+- checker-rollback-sig-pool
 - aot-wid-restore
 - verify-prim
 - aot-wide-format
-- aot-chain-capture
-- aot-prelude-band
 - pre-trust-defer
-- snapshot-writer
+- aot-chain-capture
 - core-prefix-mark
 - native-fixture-paths
 - cold-runtime
 - build-fixpoint-fixtures
 - cast
-- program-diagnostics
-- engine
 - hb-build-fixtures
 - native-gate-aot-positive
-- dynamic-buffer-capture
-- addrmap-inline
 - protection-span
-- p2-map-rewind
-- field-proj
 
-Current follow-up (2026-09-14): indexed B passes the repaired native-prefix
-trust boundary and counted-loop cases. Product E (a99cd3fc, SHA
-cefd25fdbd7db8126fb0f63feeb834b662eed2569c7a4cd49584ed69fef1c3d0) builds in
-134.001 seconds and passes registry persistence, process-image recapture,
-native-defer-image, field projection/boundary and graph suites. App-image passes
-with the tier-1 startup fixture 568d66f6. Repeated registry copies caused the image
-row overflow; preserving already allocated DATA storage resolves these fixtures.
-The complete Tender closure still needs acceptance.
+Current integration includes reviewed dictionary append, CAST identity and native
+catch grouping. Source 292f9cdb built G1 in 132.197 seconds, then G2 from G1 in
+131.826 seconds. G2 SHA 36f25285819a56fa7d4edf922022bb909d862cd2d924b6d19c18c598743ed598.
+Both CAST tiers now pass the captured core stamp assertion. Native catch, MATCH,
+prefix declarations and both payload rollback tiers pass focused G2 checks.
+Reviewed layout fixtures pass on F, and the cold maker/provider ordering repair
+passes focused cold-runtime and verify-prim. These are corrections after the
+listed full gate, not a new all-green gate.
 
-E-hosted native checker rebuilding exposed protected field-state accesses;
-reviewed narrow boundary fix 165f2e32 is integrated as 3e4f0ec5 and passes its
-whole native prefix regression. The combined F product builds from E in 134.074 seconds, rc0,
-SHA 93fcbcd1600c0e3b1044ad54864e60ca3e6dc06d54aad7105e9645d4fb94412b.
-Its full gate is next.
-Reviewed dd71ead7 removes obsolete copier/scanner machinery and replaces its
-fixtures with actual call/map/rollback behavior; rebuilt full gate remains open.
-Fresh-process partial artifact execution is covered by reviewed 89c29acf, including
-a native two-cell producer and wrong-type dependent refusals after fresh boot.
-The cold dependent compiler and unknown imported provenance are explicit limits.
+Tender 4cc58705 compiles beyond OPEN on G2, then exits 96 at the 65,536-row
+snapshot address-table bound after 64 seconds under concurrent work. No executable
+or performance acceptance. Attribute live and obsolete registrations before
+changing capacity. The accepted Tender/Maki/Kestrel pins remain unchanged.
 
-Tender 4cc58705, using E with its matching source, refuses native OPEN with
-E-NELAB-MATCH -8650; log /tmp/cedar-tender-E/build.log, 44.924 seconds under
-concurrent work, no executable and no performance acceptance. Cedar's parallel
-lane owns attribution/reduction. Other old full-gate reds remain open until rerun
-and reduction; they are not declared obsolete from their names.
+Internal-word-gate has a real remaining protection defect: native ABI effects
+make raw checker helpers callable. Leaf 07e86028 owns source visibility and
+keeps the original rejection tests. The missing-engine CLI instead hits duplicate
+E-A-FIRST through a symlinked root; leaf e33e56c3 owns portable engine aliases
+without conflating ordinary application file identities. Pre-trust-defer still
+needs an actual cold engine to exercise its patched source-prefix cases.
 
-Indexed B's measured trivial floor remains 1,233–1,239 microseconds versus B3
-1,562–1,564 in three quiet pairs. The 500-microsecond ratchet still fails.
-Native publication currently rebuilds the whole dictionary index; append leaf
-habu-append-native-dictionary-7a7cc379 owns that measured 231–389 microsecond cost.
-Full gate, quiet 3079-definition Tender timing and downstream acceptance remain.
+Three quiet append pairs reduce trivial AOT 1,241–1,245 to 995–1,000 microseconds,
+three-operation AOT 953–958 to 707–713, JIT 29–30 unchanged; exactly 200 NCOMP
+calls per run. The 500-microsecond ratchet still fails. Reader leaf 516b2416
+removes repeated frozen-reader setup while retaining all read validation.
+Complete uncached Tender timing, combined full gate and downstream acceptance
+remain open.

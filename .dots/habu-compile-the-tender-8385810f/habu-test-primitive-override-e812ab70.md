@@ -1,9 +1,11 @@
 ---
 title: Test primitive override reset through checked behavior
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-14T00:20:25.701036+03:00\""
+created-at: "2026-09-14T00:20:25.701036+03:00"
+closed-at: "2026-09-14T00:50:27.201940+03:00"
+close-reason: Independent review approved 57dbcb4f; actual F and G2 native prefix declarations pass all reset, reload and refusal controls. Combined full gate remains the campaign gate.
 ---
 
 Native product F refuses the prefix-declarations fixture at its CHECKER-ASIG-N assertion. Portable graph serialization now fills output rows at freeze, so that count no longer tests whether TRUST installed an override. Owner Cedar; scope test/compiler/native-prefix-declarations.f. Replace the discarded-output assertion with an actual boolean-only dup override: accept boolean use, reject integer use before reset, accept both after reset. Preserve primitive defer/control restoration and the retained-compiler reload cases. Verify through the real native fixture load path; no checker policy relaxation.
