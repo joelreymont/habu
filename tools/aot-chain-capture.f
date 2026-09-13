@@ -123,6 +123,7 @@ require lib/engine-id.f
 \ same reason everything else here does.
 require src/habu/fdio.f
 require src/habu/aot-file.f
+require lib/sort.f
 
 package AOT-CHAIN
 using AOT-BUF
@@ -208,20 +209,41 @@ TRUSTED: DATA-N ( -- n ) data-base ;
 : ROW-U32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
 
+DYNAMIC-BUFFER ROW-INDEX n
+
 : ROW-REFUSE ( -- )
+   ROW-INDEX-RELEASE
    s" aot-chain-capture: declared address rows do not match the live window"
    REFUSE-RC die ;
 
 : LIVE-ROW ( n -- n )
    CELL * SNAP-RELOC:XTCELL-ROWS-OFF + data-base + @ ;
 
-: ?EXACT-ROW ( n n -- ) {: loc:n meta:n :}
-   0
+\ Sort a temporary copy, keeping the artifact's row order intact. Signed cell
+\ ordering is sufficient for the packed pairs: both sort and lookup use it.
+: INDEX-ROWS ( -- )
+   AOT-WINDOW:XTOFF-N @ {: rows:n :}
+   rows 0 < rows AOT-WINDOW:XTOFF-MAX > or if ROW-REFUSE then
+   rows 0= if exit then
+   rows ROW-INDEX-RESERVE
    AOT-WINDOW:XTOFF-N @ 0 ?do
       AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + {: row:ptr :}
-      row ROW-U32@ loc = row 4 + ROW-U32@ meta = and if 1+ then
+      row ROW-U32@ row 4 + ROW-U32@ 32 lshift or i ROW-INDEX !
    loop
-   1 <> if ROW-REFUSE then ;
+   0 ROW-INDEX AOT-WINDOW:XTOFF-N @ [: < ;] SORT:SORT!
+   AOT-WINDOW:XTOFF-N @ 1 ?do
+      i ROW-INDEX @ i 1- ROW-INDEX @ = if ROW-REFUSE then
+   loop ;
+
+: ROW-HAS? ( n n n -- bool ) {: pair:n low:n high:n :}
+   low high >= if false exit then
+   low high low - 2 / + {: mid:n :}
+   mid ROW-INDEX @ {: key:n :}
+   key pair = if true exit then
+   key pair < if pair mid 1+ high else pair low mid then recurse ;
+
+: ?EXACT-ROW ( n n -- )
+   32 lshift or 0 AOT-WINDOW:XTOFF-N @ ROW-HAS? 0= if ROW-REFUSE then ;
 
 : ?DECLARED-ROW ( n -- ) {: raw:n :}
    raw SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
@@ -258,12 +280,17 @@ TRUSTED: DATA-N ( -- n ) data-base ;
    loop
    1 <> if ROW-REFUSE then ;
 
+: CHECK-ROWS ( -- )
+   INDEX-ROWS
+   data-base SNAP-RELOC:XTCELL-N-CELL + @ 0 ?do i LIVE-ROW ?DECLARED-ROW loop
+   ?HOOK-CELL ;
+
 : ?XTOFF ( -- )
    AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:DECLARED-IN {: win:n :}
    AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:TARGETED-OUT {: out:n :}
    AOT-WINDOW:XTOFF-N @ win out + <> if ROW-REFUSE then
-   data-base SNAP-RELOC:XTCELL-N-CELL + @ 0 ?do i LIVE-ROW ?DECLARED-ROW loop
-   ?HOOK-CELL ;
+   \ Heapsort M rows, then at most N binary lookups: O(M log M + N log M).
+   [: CHECK-ROWS ;] [: ROW-INDEX-RELEASE ;] finally ;
 
 : ?TRAPPED ( -- )
    AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-CAPTURE:TRAPPED-BELOW {: got:n :}

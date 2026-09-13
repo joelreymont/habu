@@ -288,6 +288,7 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    PREPARE-PRODUCER
    s" valid" 0 PRODUCER-CASE
    s" reorder" 0 PRODUCER-CASE
+   s" index-scale" 0 PRODUCER-CASE
    s" missing" REFUSE-RC PRODUCER-CASE
    s" duplicate" REFUSE-RC PRODUCER-CASE
    s" location" REFUSE-RC PRODUCER-CASE

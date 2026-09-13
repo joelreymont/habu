@@ -46,12 +46,29 @@ using AOT-WINDOW
    then
    s" valid" CASE? 0= if FIXTURE-REFUSE then ;
 
+\ Exercise the index at the format's actual row capacity, with both signed
+\ halves of the packed key space. These are index inputs, not a fake capture.
+: LARGE-KEY ( n -- n n ) {: k:n :}
+   k CELL * XTOFF-WINDOW-TAG or
+   k 1+ k 1 and 0= if XTOFF-DATA-TAG or then ;
+
+: LARGE-INDEX ( -- )
+   XTOFF-MAX XTOFF-N !
+   XTOFF-N @ 0 ?do
+      i LARGE-KEY i ROW 4 + U32! i ROW U32!
+   loop
+   AOT-CHAIN:INDEX-ROWS
+   XTOFF-N @ 0 ?do i LARGE-KEY AOT-CHAIN:?EXACT-ROW loop
+   AOT-CHAIN:ROW-INDEX-RELEASE ;
+
 public
 : RUN ( -- )
    AOT-CHAIN:RUN
    ?POPULATIONS
-   ALTER
-   AOT-CHAIN:?XTOFF
+   s" index-scale" CASE? if LARGE-INDEX else
+      ALTER
+      AOT-CHAIN:?XTOFF
+   then
    s" chain-address-rows: ok" type cr ;
 ;package
 
