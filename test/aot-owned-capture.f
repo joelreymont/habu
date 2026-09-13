@@ -19,7 +19,7 @@ public
 \ Adding this positive, cell-aligned length to the table's first payload
 \ offset overflows a signed cell. IMPORT must reject it before copying bytes.
 : OWNED-TEST-OVERFLOW ( AOT-OWNED:capture -- AOT-OWNED:capture )
-   dup AOT--OWNED-CAPTURE:UNMAKE drop
+   dup AOT-OWNED:BYTES$ drop
    $7FFFFFFFFFFFFFF8 swap 8 + U64! ;
 
 ;package
@@ -32,7 +32,7 @@ create BEFORE 32 allot
 create AFTER 32 allot
 
 : HASH ( AOT-OWNED:capture ptr u8 -- ) {: digest:ptr :}
-   AOT--OWNED-CAPTURE:UNMAKE
+   AOT-OWNED:BYTES$
    SHA256-RESET SHA256-UPDATE digest SHA256-FINAL ;
 
 \ These are the capture buffers' own mappings. Releasing them after OWN tests

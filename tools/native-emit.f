@@ -70,10 +70,11 @@ private
 public
 
 : WRITE ( AOT-OWNED:capture ptr n n ptr u8 n -- ) {: host:ptr count:n path:ptr size:n :}
+   dup AOT-OWNED:ORIGIN@ {: origin:n :}
    AOT-FILE:IMPORT
    host count TRANSLATE-FIXED
    0 0= STDIN? !
-   NULL$ ENGINE-EMIT:FORTH
+   NULL$ origin ENGINE-EMIT:FORTH-ORIGIN
    s" hb" path size DRV-EMIT-IMAGE ;
 
 ;package

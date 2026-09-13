@@ -9,7 +9,16 @@ public
 STRUCTURE capture 0
    FIELD bytes ptr u8
    FIELD size n
+   FIELD origin n
 ;STRUCTURE
+
+\ Same refusal as ENGINE-ERROR:IMAGE-CODE-ORIGIN. This module also loads in a
+\ bootstrap host that predates that engine primitive and its named constant.
+100 constant ORIGIN-RC
+: ORIGIN-REFUSE ( ptr u8 n -- ) ORIGIN-RC die ;
+
+: BYTES$ ( capture -- ptr u8 n ) AOT--OWNED-CAPTURE:UNMAKE drop ;
+: ORIGIN@ ( capture -- n ) AOT--OWNED-CAPTURE:UNMAKE nip nip ;
 ;package
 
 package AOT-FILE
@@ -31,17 +40,34 @@ using AOT-WINDOW
    k S-NAMES = if k ROW-LEN@ AOT-NAMES-RESERVE then
    src k ROW-OFF@ + k SEC-PTR k BASE@ + k ROW-LEN@ BYTE-COPY ;
 
-public
-
-: OWN ( -- AOT-OWNED:capture )
+: OWN-AS ( n -- AOT-OWNED:capture ) {: origin:n :}
    STAGE BUILD-TABLE BASES-ALONE
    SEC-N 0 ?do i ?ROOM loop
    PAYLEN @ MEM-ALLOC-BYTES {: dst:ptr size:n :}
    dst COPY-OWNED
-   dst size AOT--OWNED-CAPTURE:MAKE ;
+   dst size origin AOT--OWNED-CAPTURE:MAKE ;
+
+public
+
+\ Disk reads and ordinary copies supply no evidence about the generating tier.
+: OWN ( -- AOT-OWNED:capture ) -1 OWN-AS ;
+
+\ Called immediately after the real capture audits, with its frozen live code
+\ bounds. Only the explicit bootstrap entry can carry an unknown origin; it
+\ cannot turn a JIT or invalid answer into a native claim.
+: OWN-WINDOW ( n n [ n n -- n ] bool -- AOT-OWNED:capture )
+   {: first:n end:n query bootstrap:bool :}
+   first 0 < end first < or if
+      S\" aot-owned: invalid live code window\n" AOT-OWNED:ORIGIN-REFUSE then
+   end first - AOT-BLOB-LEN @ <> if
+      S\" aot-owned: copied code differs from the frozen window extent\n" AOT-OWNED:ORIGIN-REFUSE then
+   first end query execute {: origin:n :}
+   origin 1 = if 1 OWN-AS exit then
+   origin -1 = bootstrap and if OWN exit then
+   S\" aot-owned: captured code lacks native provenance\n" AOT-OWNED:ORIGIN-REFUSE ;
 
 : IMPORT ( AOT-OWNED:capture -- )
-   AOT--OWNED-CAPTURE:UNMAKE {: src:ptr size:n :}
+   AOT-OWNED:BYTES$ {: src:ptr size:n :}
    size SEC-N ROW-BYTES * < if s" aot-owned: capture has no section table" DIE then
    -1 FD !
    size PAYLEN !
@@ -68,6 +94,6 @@ package AOT-OWNED
 public
 
 : CLOSE ( capture -- )
-   AOT--OWNED-CAPTURE:UNMAKE munmap 0<> if E-MEM-UNMAP throw then ;
+   BYTES$ munmap 0<> if E-MEM-UNMAP throw then ;
 
 ;package

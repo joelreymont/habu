@@ -16,7 +16,7 @@ create HASH-BEFORE 32 allot
 create HASH-AFTER 32 allot
 
 : HASH ( AOT-OWNED:capture ptr u8 -- ) {: digest:ptr :}
-   AOT--OWNED-CAPTURE:UNMAKE
+   AOT-OWNED:BYTES$
    SHA256-RESET SHA256-UPDATE digest SHA256-FINAL ;
 
 : SOURCE ( -- )
@@ -36,6 +36,7 @@ create HASH-AFTER 32 allot
    $108 XTOFF-BUF@ 8 + CELL-VIEW ! ;
 
 : CHECK-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
+   dup AOT-OWNED:ORIGIN@ -1 T=
    dup HASH-BEFORE HASH
    0 XTOFF-N !
    0 XTOFF-BUF@ CELL-VIEW !
