@@ -7804,6 +7804,20 @@ and --no-lldbinit.
   addrmap-inline (1), aot-wide-format (67), aot-wid-restore (67),
   build-fixpoint-fixtures (1), cast (1), hb-build-fixtures (67),
   native-gate-aot-positive (1), p2-map-rewind (1), pre-trust-defer (1).
+  Re-measured 2026-09-13 07:35 UTC on engine a503a443 at tip e945151f (313
+  suites, no timeouts): 9 red. hb-build-fixtures and native-gate-aot-positive
+  went green with the unseeded-runtime rule; engine and program-diagnostics are
+  one failure, the restored-pool precondition case of test/engine-suite.f
+  asserting a pool still baked when the suite's own loads have grown it (fix
+  in flight). Chain fixpoint moved to generation 2 (bytes gen 2 vs 3 = 0) with
+  LOC-HW-P relocated. Set: addrmap-inline (1), aot-wide-format (67),
+  aot-wid-restore (67), build-fixpoint-fixtures (1), cast (1), engine (1),
+  p2-map-rewind (1), pre-trust-defer (1), program-diagnostics (1).
+  RULE FOR MEASURING THE SET: a seed cold build only. A product-hosted build
+  emits the host's engine code with the tree's dictionary for one generation,
+  so an engine built by rowan-root/bin/hb fails suites whose behaviour the
+  tree's generator changed (measured: internal-word-gate, type-field-owner,
+  verify-prim red on such an engine, green on the seed build of the same tree).
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
