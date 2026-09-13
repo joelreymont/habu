@@ -90,7 +90,8 @@ CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant VARIANT-PAY-TERMS-OFF
 \ checked against it: a field added without a cell, or a cell without a field, is
 \ a load failure here instead of a silent read past the end.
 CHECKER-OWNER-ABI:BYTES constant OWNER-BYTES
-create DECLARATIONS
+create OWNER-STORAGE
+   CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
@@ -100,8 +101,11 @@ create DECLARATIONS
    0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 ,
+\ Measure before another definition can allocate or intern in DATA.
+here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
+: DECLARATIONS ( -- ptr u8 ) OWNER-STORAGE CHECKER-OWNER-ABI:HEADER-BYTES + ;
 OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
-here DECLARATIONS - constant OWNER-COMMITTED   \ what the cells above committed
 : OWNER-SIZE-AGREE ( -- )
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;

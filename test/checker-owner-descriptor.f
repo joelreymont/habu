@@ -1,0 +1,42 @@
+\ Descriptor bounds only: no synthetic record supplies or executes callbacks.
+require lib/test.f
+require src/habu/aot-arm.f
+
+package OWNER-DESCRIPTOR-TEST
+
+create HEADER
+   CHECKER-OWNER-ABI:MAGIC , CHECKER-OWNER-ABI:BYTES ,
+   CHECKER-OWNER-ABI:BYTES allot
+: RECORD ( -- ptr u8 ) HEADER CHECKER-OWNER-ABI:HEADER-BYTES + ;
+PTR-VARIABLE ARG
+variable NEED
+
+: CHECK ( -- ) ARG @ NEED @ CHECKER-OWNER-GUARD:VALIDATE drop ;
+: REJECT ( -- ) ['] CHECK catch -8574 T= ;
+: GOOD ( -- ) ['] CHECK catch 0 T= ;
+TRUSTED: DATA-START ( -- ptr u8 ) data-base ;
+
+: RUN ( -- )
+   T-RESET
+   RECORD ARG ! CHECKER-OWNER-ABI:BYTES NEED ! GOOD
+   NULL-PTR ARG ! REJECT
+   DATA-START ARG ! REJECT
+   RECORD ARG !
+   0 HEADER ! REJECT
+   CHECKER-OWNER-ABI:MAGIC HEADER !
+   16 HEADER CELL + ! REJECT
+   17 HEADER CELL + ! REJECT
+   -1 HEADER CELL + ! REJECT
+   $7FFFFFFFFFFFFFFF HEADER CELL + ! REJECT
+   CHECKER-OWNER-ABI:BYTES HEADER CELL + !
+   -1 NEED ! REJECT
+   CHECKER-OWNER-ABI:BYTES 1+ NEED ! REJECT
+   CHECKER-OWNER-ABI:BYTES NEED ! GOOD
+   \ This opening is valid even while the retained host has a legacy record.
+   AOT-ARM:WINDOW-OPEN-PERSISTENT
+   AOT-ARM:PAYLOAD-MODE @ 0 T=
+   AOT-ARM:PAYLOAD-FROZEN @ 0 T=
+   T-REPORT ;
+
+RUN
+;package

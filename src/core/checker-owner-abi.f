@@ -70,6 +70,17 @@ $1E8 constant VARIANT-PADS-OFF
 $1F0 constant VARIANT-PAY-CELLS-OFF
 $1F8 constant VARIANT-PAY-TERMS-OFF
 
-VARIANT-PAY-TERMS-OFF 8 + constant BYTES
+$200 constant PAYLOAD-ARM-OFF
+$208 constant PAYLOAD-FREEZE-OFF
+$210 constant PAYLOAD-LOOKUP-OFF
+$218 constant PAYLOAD-SPANS-OFF
+$220 constant PAYLOAD-REG-SAVE-OFF
+$228 constant PAYLOAD-DISARM-OFF
+PAYLOAD-DISARM-OFF 8 + constant BYTES
+
+\ These cells precede the record; callable offsets and the record pointer stay
+\ unchanged. Older records have no descriptor and cannot supply appended fields.
+$4842434B4F574E01 constant MAGIC
+16 constant HEADER-BYTES
 
 ;package

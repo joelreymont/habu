@@ -135,6 +135,7 @@ create ERR IO-CAP allot
    s" test/native-window-owner-family.f" WINDOW-SOURCE
    s" test/native-window-owner-fixed.f" WINDOW-SOURCE
    s" test/native-window-tape-detach.f" WINDOW-SOURCE
+   s" test/native-window-owner-payload.f" WINDOW-SOURCE
    T-REPORT
    s" native-window-owner: ok" type cr ;
 
