@@ -9101,7 +9101,7 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    bytes 0 < bytes cap > or IF REG-PERSIST-REFUSE THEN
    pvar @ cap REG-DATA-SPAN? IF 0 RES-FALSE EXIT THEN
    pvar @ data-base - {: off:n :}
-   off 0 >= off DATA-SIZE < and IF REG-PERSIST-REFUSE THEN
+   off 0 >= off here data-base - <= and IF REG-PERSIST-REFUSE THEN
    pvar @ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
