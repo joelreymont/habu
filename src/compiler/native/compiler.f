@@ -230,7 +230,7 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    TRUSTED? if PENDING-NAME$ TRUST-SIG$ a u CHECK-TRUSTED exit then
    check@ {: hook:n :}
    hook 0= if
-      a u CHECKER-OWNER:CHECK drop -1 exit then
+      a u CHECKER-OWNER:CHECK-UNJUDGED drop -1 exit then
    a u hook CALL-INSTALLED ;
 
 : CHECK-SOURCE ( -- n )

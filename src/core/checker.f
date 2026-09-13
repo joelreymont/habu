@@ -646,6 +646,23 @@ variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
 \ publish paths through the one E-ADD-EFFECT choke.
 defer PTX-BARRIER-SET-XT ( n -- )
 
+\ A successful scan used only for native call shapes grants no source authority.
+\ The scope and the late publication hook belong to this checker instance. The
+\ private hook is armed after NORETS is available; declaration dispatch still
+\ belongs to the retained source owner before that point.
+package CHECKER-EFFECT-AUTHORITY
+variable ABI-DEPTH
+defer PUBLISH-XT ( n bool -- )
+: DEFAULT ( -- ) [: 2drop ;] is PUBLISH-XT ;
+DEFAULT
+
+public
+: ENFORCED? ( -- bool ) ABI-DEPTH @ 0 = ;
+: SCAN ( [ -- ] -- n )
+   1 ABI-DEPTH +! catch -1 ABI-DEPTH +! ;
+: PUBLISH ( n bool -- ) PUBLISH-XT ;
+;package
+
 \ --- checker package scope state. Declared here (not with the package words
 \ further down) so signature parsing (SIG-FAM?) can resolve family tokens
 \ through the ACTIVE package scope. The mutators stay in the package block.
@@ -5778,13 +5795,14 @@ variable RECMI   0 RECMI !
 \ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
 \ update: the record just built IS the current effect for its symbol. The
 \ cache stores offset+1 because offset 0 is legal after USIGS-RESET.
-: E-ADD-EFFECT ( n n n n bool -- ) {: din:n dout:n rin:n rout:n hasr:bool :}
+: E-ADD-EFFECT ( n n n n bool bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool external:bool :}
    din EFFECT-MIN-IN drop
    din ROW-WIDE?  dout ROW-WIDE? or
    hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
    RECW !
    din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
-   off E-PTR ER.MINI @ RECMI !
+   external IF off E-PTR ER.MINI @ ELSE 0 THEN RECMI !
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
@@ -5792,7 +5810,8 @@ variable RECMI   0 RECMI !
    CHECKER-REC-SYM @ 0 <>
    din dout PTX-BARRIER-ROWS? and IF
       CHECKER-REC-SYM @ PTX-BARRIER-SET-XT   \ M5: flag the block collective (default no-op before armed)
-   THEN ;
+   THEN
+   CHECKER-REC-SYM @ external CHECKER-EFFECT-AUTHORITY:PUBLISH ;
 
 : E-ADD-DELETED ( -- )
    0 RECW !
@@ -6149,13 +6168,17 @@ variable ASIG-MISS-K
    1 MULTI-ERR-N +!
    sa su na nu BADSIG-XT ;
 
-: USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+: USIG-ADD-AS ( ptr u8 n ptr u8 n bool -- )
+   {: sa:ptr su:n na:ptr nu:n external:bool :}
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW
    SGBAD @ if 2drop 2drop sa su na nu USIG-ADD-BAD exit then
-   SGHASR @ E-ADD-EFFECT
+   SGHASR @ external E-ADD-EFFECT
    sa su CHECKER-ASIG-CAPTURE ;
+
+: USIG-ADD ( ptr u8 n ptr u8 n -- )
+   RES-TRUE USIG-ADD-AS ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -7958,10 +7981,8 @@ variable CHECKER-QBAD-TOK
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
    dup 0 <> IF E-PTR FEP-SET RES-TRUE ELSE drop RES-FALSE THEN ;
 
-\ SIG-MIN-IN: din cell count for a NAME's active effect (user row or prim
-\ axiom); -1 when the checker knows no effect. Seal-time consumer:
-\ src/core/internal-mark.f pokes known engine-prefix records with it (dot
-\ habu-habu-certified-words-84e84eaf).
+\ ABI query: din cell count for the active effect, including an unjudged scan.
+\ Source authority is a separate question, answered by EFFECT-EXTERNAL-MIN-IN.
 : SIG-MIN-IN ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
    FEP @ ER.MINI @ ;
@@ -8708,16 +8729,21 @@ package CHECKER-REG
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
 
-: CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+: CHECKER-USIG-CERT-ADD-AS ( ptr u8 n ptr u8 n bool -- )
+   {: sa:ptr su:n na:ptr nu:n external:bool :}
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
-   sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
+   sa su CHECKER-REC-A@ CHECKER-REC-U@ external USIG-ADD-AS ;
+
+: CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- )
+   RES-TRUE CHECKER-USIG-CERT-ADD-AS ;
 
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
 : CHECKER-PUBLISH-PARSED ( -- )
-   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ E-ADD-EFFECT ;
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @
+   CHECKER-EFFECT-AUTHORITY:ENFORCED? E-ADD-EFFECT ;
 
 : CHECKER-USIG-CERT-PARSED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
@@ -8864,7 +8890,8 @@ variable LBUF-NM-I
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
-   BROW @ DCUR @ 0 0 RES-FALSE E-ADD-EFFECT ;
+   BROW @ DCUR @ 0 0 RES-FALSE
+   CHECKER-EFFECT-AUTHORITY:ENFORCED? E-ADD-EFFECT ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
@@ -8874,6 +8901,9 @@ variable LBUF-NM-I
 1 constant CTL-DEAD
 2 constant CTL-THROW
 4 constant CTL-BARRIER
+\ Positive provenance: this binding's effect was explicitly declared or its
+\ check was enforced. An ABI-only or old producer row carries no grant.
+$8 constant EFFECT-EXTERNAL
 \ $18000 not $10000: the entry carries a third cell (NORET.SYMPREV, the
 \ per-symbol back-link that makes NORET-SCAN-SYM sublinear), so the byte cap is
 \ scaled with it and the store still holds the same number of entries — the
@@ -9432,6 +9462,32 @@ variable NORET-FMEND
 : CTL-FLAGS {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
 
+: EFFECT-EXTERNAL-SYM? ( n -- bool )
+   CTL-FLAGS-SYM EFFECT-EXTERNAL and 0 <> ;
+
+package CHECKER-EFFECT-AUTHORITY
+private
+: STORE ( n bool -- ) {: sym:n external:bool :}
+   sym CTL-FLAGS-SYM {: old:n :}
+   old EFFECT-EXTERNAL invert and
+   external IF EFFECT-EXTERNAL or THEN {: flags:n :}
+   old flags <> IF sym flags NORET-ADD-SYM THEN ;
+: INSTALL ( -- ) [: STORE ;] is PUBLISH-XT ;
+INSTALL
+get-current prot-wid-add
+;package
+
+\ A PRIM declaration grants its own effect, never an ABI-only user row's shape.
+\ Trusted-only is a checked-call restriction; explicit REG-PROTECT still owns
+\ interpret/tick restrictions on such entries.
+: EFFECT-EXTERNAL-MIN-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym CHECKER-FIND-USIG-SYM IF
+      sym EFFECT-EXTERNAL-SYM? IF FEP @ ER.MINI @ EXIT THEN
+   THEN
+   sym PRIM-FIRST-IDX dup 0= IF drop -1 EXIT THEN
+   1 - PE-EFF@ E-PTR ER.MINI @ ;
+
 \ Whether control comes back from a call to the word this spelling denotes.
 \
 \ THE MASK BELONGS WITH THE ENCODING IT READS. Which bit means dead is this
@@ -9705,7 +9761,7 @@ variable UNSAFE-SYM-N
 : EXPORT-META-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-DEFER IF a u EXPORT-TAIL$ DFER-ADD THEN
    a u CTL-FLAGS {: ctl:n :}
-   ctl 0 <> IF a u EXPORT-TAIL$ ctl NORET-ADD THEN ;
+   a u EXPORT-TAIL$ ctl NORET-ADD ;
 
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
@@ -9714,7 +9770,7 @@ variable UNSAFE-SYM-N
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
-   E-ADD-EFFECT
+   a u CHECKER-FIND-ACTIVE-SYM EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-ASIG-EXPORT
    a u EXPORT-META-COPY ;
 
@@ -13495,7 +13551,7 @@ variable CK-GRAPH-WIDTH-BAD
    0 CK-GRAPH-PTR {: rec:ptr :}
    rec ER.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
    rec ER.NEXT @ bytes <> IF ASIG-GRAPH-DIE THEN
-   rec ER.SYMPREV @ 0 <> rec ER.SYM @ $10007 invert and 0 <> or IF ASIG-GRAPH-DIE THEN
+   rec ER.SYMPREV @ 0 <> rec ER.SYM @ $1000F invert and 0 <> or IF ASIG-GRAPH-DIE THEN
    rec ER.HASR @ CK-GRAPH-BOOL?
    rec ER.HASR @ 0= IF rec ER.RIN @ rec ER.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
    rec ER.TVN @ {: tvn:n :} rec ER.RVN @ {: rvn:n :}
@@ -14188,8 +14244,8 @@ variable CTOR-PEND-I
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
-      CHECK-SIG? SGBAD @ 0= and IF                      \ trust the declared sig so later
-         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking —
+      CHECK-SIG? SGBAD @ 0= and IF                      \ retain analysis facts without
+         SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS \ source authority
       THEN                                              \ unless the sig itself was bad
    THEN ;
 
@@ -14789,7 +14845,7 @@ variable UNJ-A   variable UNJ-U   variable UNJ-VERDICT
 : CHECK-UNJUDGED! ( ptr u8 n -- n ) {: a:ptr u:n :}
    a UNJ-A !  u UNJ-U !
    1 DIAG-QUIET +!
-   [: CHECK-UNJUDGED-BODY ;] catch {: rc:n :}
+   [: CHECK-UNJUDGED-BODY ;] CHECKER-EFFECT-AUTHORITY:SCAN {: rc:n :}
    -1 DIAG-QUIET +!
    rc 0 <> IF rc throw THEN
    UNJ-VERDICT @ ;
@@ -14957,7 +15013,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    rec ER.RIN @ pool E-INST-FROM
    rec ER.ROUT @ pool E-INST-FROM
    sym CHECKER-REC-SYM !
-   rec ER.HASR @ 0= 0= E-ADD-EFFECT
+   rec ER.HASR @ 0= 0= flags EFFECT-EXTERNAL and 0 <> E-ADD-EFFECT
    sym flags TRANSFER-DEFER invert and NORET-ADD-SYM
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM ;
 
