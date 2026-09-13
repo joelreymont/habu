@@ -185,6 +185,9 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
    AOT-SEED-DONE-CELL SND-ZERO-CELL
    BOOT-SRC:USER-END SND-ZERO-CELL
    EVAL-TOP-CELL SND-ZERO-CELL
+   NCOMP-DISPATCH:DEF-TIER-CELL SND-ZERO-CELL
+   NCOMP-DISPATCH:BUILD-DEPTH-CELL SND-ZERO-CELL
+   NCOMP-DISPATCH:BUILD-TIER-CELL SND-ZERO-CELL
    SND-ZERO-RSTK ;
 
 : SND-COPY ( -- )
@@ -302,6 +305,18 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SDB data-base - SND-ZERO-CELL
    SFD data-base - SND-ZERO-CELL ;
 
+\ PERSIST admitted the complete retained code interval before copying. Freeze
+\ exactly that interval, excluding abandoned rows and the old engine's ASLR
+\ coordinates. The restoring engine supplies its own primitive-text evidence.
+: SND-CANON-ORIGIN ( -- )
+   TIER-PROV:OPEN-CELL
+   begin dup TIER-PROV:END < while dup SND-ZERO-CELL cell+ repeat drop
+   SCL @ DICT-SIZE <= if exit then
+   1 TIER-PROV:N-CELL SND-XT-CELL!
+   DICT-SIZE TIER-PROV:TABLE-OFF SND-XT-CELL!
+   SCL @ TIER-PROV:TABLE-OFF cell+ SND-XT-CELL!
+   1 TIER-PROV:TABLE-OFF 2 cells + SND-XT-CELL! ;
+
 : CANON-DATA ( -- )
    SND-ALLOC
    DYNAMIC-STORAGE:RELEASE-ALL
@@ -309,6 +324,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ZERO-LIVE
    SND-ZERO-DEAD-HEAP
    SND-ZERO-WRITER
+   SND-CANON-ORIGIN
    SND-CANON-XT-CELLS ;
 
 : CANON-REGION ( -- )
@@ -395,6 +411,14 @@ public
    size OUTPUT-U ! ;
 
 : PERSIST ( -- )
+   \ The retained region includes hidden bodies and stored quotations. Checking
+   \ only live dictionary records would miss both. Empty code is valid; every
+   \ byte of a nonempty retained region needs positive native evidence.
+   dbase@ DICT-SIZE + cp@ 2dup <> if
+      code-origin 1 <> if
+         s" snap: retained code lacks native provenance" ENGINE-ERROR:IMAGE-CODE-ORIGIN die
+      then
+   else 2drop then
    HDR
    CANON-REGION
    CANON-DATA

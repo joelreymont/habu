@@ -18,4 +18,7 @@ public
 92 constant USING-OVERFLOW      \ more than USE-MAX concurrent usings
 93 constant USING-UNBALANCED    \ `;using` with no using open
 94 constant USING-AMBIGUOUS     \ bare tail resolves in more than one used public wordlist
+\ 95..99 belong to SNAP-RELOC relocation failures (layout.f).
+100 constant IMAGE-CODE-ORIGIN  \ retained callable code lacks native evidence
+101 constant CODE-ORIGIN-FULL   \ provenance capacity refuses before dropping a row
 ;package

@@ -71,3 +71,29 @@ no remaining observer events, repeated preparation, and reinstall/arm/disarm.
 This repairs capture ownership; product restore still belongs to the combined
 source-bound writer gate. The5b seed is bootstrap input, not an all-AOT result;
 the new in-process compiler and every later target/writer dependency use tier1.
+
+The paired compiler reload passed on identified seed 5b969df8: TO-CORE retains
+its repaired checker while the complete current compiler compiles at tier 1.
+After installing that new dispatch, a checked increment compiles and executes.
+This is an in-process bridge, not an emitted all-AOT product.
+
+Retained provenance is in progress. The engine owns one normalized interval
+store, with relocation-relative coordinates and explicit unknown/JIT/native
+origins. Definition publication supplies native evidence only after optimizer
+success; tier changes cannot relabel older bodies. Queries use binary search,
+forward publication appends/merges, and interior rewrites preserve both edges.
+An isolated native ELF probe using the actual emitted helpers passed split,
+merge and unknown-coverage checks, filled all 8192 rows and merged an adjacent
+row at capacity; an additional unlike row refused with exit 101 and the complete
+capacity diagnostic. Fresh source checker/layout/habu1 and helper emission passed at tier 1
+on bee6. Definition publication, scoped build mode, save/restore and the all-AOT
+product still require the new source-bound writer and a tracked product rebuild.
+
+Writer interface: ENGINE-EMIT:FORTH-ORIGIN takes source bytes/length and numeric
+origin (-1 unknown, 1 admitted native); known JIT or another value refuses100.
+Ordinary FORTH supplies unknown. After payload install, relocation and flush,
+the seed hook reconstructs its exact start from CP minus blob length and records
+that invocation's origin. The owned capture admission belongs to the writer
+lane; disk artifacts acquire no positive evidence. The older 5b bootstrap seed
+has no provenance journal, so its private first output stays unknown. Only a
+subsequent fully tracked native capture can become an accepted product.

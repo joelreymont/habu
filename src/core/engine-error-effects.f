@@ -11,4 +11,6 @@ s" BAD-TAG" s" -- n" TRUST
 s" CALLABLE-ABI" s" -- n" TRUST
 s" CATCH-STACK" s" -- n" TRUST
 s" CODE-CERT" s" -- n" TRUST
+s" IMAGE-CODE-ORIGIN" s" -- n" TRUST
+s" CODE-ORIGIN-FULL" s" -- n" TRUST
 ;package

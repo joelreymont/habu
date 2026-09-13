@@ -52,6 +52,7 @@ require lib/test/outcome.f
 require lib/test/subject.f
 require lib/memory.f
 require lib/fs.f
+require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
@@ -348,12 +349,124 @@ variable RC     variable EXITED
    S\" TRUSTED: EV ( ptr u8 n -- n ) [: evaluate ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n"
    EXEC  s" 70" ASSERT-OK ;
 
+: TEST-ORIGIN ( -- )
+   s" known primitive text has positive native origin" T-LABEL
+   s" ' dup dup 4 + code-origin . " EXEC s" 1" ASSERT-OK
+   s" absent and empty coverage remain unknown" T-LABEL
+   s" 0 4 code-origin .  0 0 code-origin . ' dup -1 code-origin ." EXEC
+   0 ASSERT-RC OUT$ S\" -1\n-1\n-1\n" STR= TTRUE
+   s" changing the next tier cannot relabel a retained JIT definition" T-LABEL
+   s" 0 set-tier : OR-J ( -- n ) 42 ; ' OR-J dup 4 + code-origin .  1 set-tier ' OR-J dup 4 + code-origin .  OR-J . " EXEC
+   0 ASSERT-RC OUT$ S\" 0\n0\n42\n" STR= TTRUE
+   s" native definition publication supplies positive origin" T-LABEL
+   s" 1 set-tier : OR-N ( -- n ) 43 ; ' OR-N dup 4 + code-origin .  0 set-tier ' OR-N dup 4 + code-origin .  OR-N . " EXEC
+   0 ASSERT-RC OUT$ S\" 1\n1\n43\n" STR= TTRUE
+   s" stored quotations keep their enclosing definition's origin" T-LABEL
+   s" 0 set-tier : OR-Q ( -- [ -- n ] ) [: 44 ;] ; OR-Q dup 4 + code-origin .  1 set-tier : OR-NQ ( -- [ -- n ] ) [: 45 ;] ; OR-NQ dup 4 + code-origin . " EXEC
+   0 ASSERT-RC OUT$ S\" 0\n1\n" STR= TTRUE
+   s" a native CREATE stub cannot relabel its retained JIT does body" T-LABEL
+   s" 0 set-tier : OR-M ( -- ) create does> ( -- n ) drop 46 ; OR-M OR-C ' OR-C dup 4 + code-origin .  ' OR-M dup 4 + code-origin .  OR-C . " EXEC
+   0 ASSERT-RC OUT$ S\" 1\n0\n46\n" STR= TTRUE
+   s" a tier change inside an immediate affects only the next definition" T-LABEL
+   s" 0 set-tier TRUSTED: OR-SW ( -- ) 1 set-tier ; immediate : OR-L ( -- n ) OR-SW 47 ; ' OR-L dup 4 + code-origin .  tier@ .  OR-L . " EXEC
+   0 ASSERT-RC OUT$ S\" 0\n1\n47\n" STR= TTRUE
+   s" a code cursor rewind hides bytes without reclassifying them" T-LABEL
+   S\" 0 set-tier variable OR-LO variable OR-HI cp@ OR-LO ! : OR-HIDDEN ( -- n ) 48 ; cp@ OR-HI ! OR-LO @ cp! OR-HI @ cp! ' OR-HIDDEN dup 4 + code-origin .  OR-HIDDEN . \n" EXEC
+   0 ASSERT-RC OUT$ S\" 0\n48\n" STR= TTRUE ;
+
+: TEST-ORIGIN-OVERWRITE ( -- )
+   s" exported aliases retain the target body's origin" T-LABEL
+   s" 0 set-tier package OA public : V ( -- n ) 51 ; ;package 1 set-tier package OB public export OA:V ;package ' OA:V dup 4 + code-origin . ' OB:V dup 4 + code-origin . OB:V ." EXEC
+   0 ASSERT-RC OUT$ S\" 0\n0\n51\n" STR= TTRUE
+   s" an interior native overwrite retains both JIT edges and merges an adjacent native body" T-LABEL
+   S\" 0 set-tier variable OL variable OH variable ON variable OE variable OC\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\ncp@ OL ! : OLD ( -- ) 1 emit 2 emit 3 emit 4 emit 5 emit 6 emit 7 emit 8 emit ; cp@ OH ! OR-COUNT OC !\nOL @ 16 + dup ON ! cp! 1 set-tier : NEW1 ( -- n ) 52 ; : NEW2 ( -- n ) 53 ; cp@ OE !\nOL @ dup 4 + code-origin . ON @ OE @ code-origin . OH @ 4 - OH @ code-origin . OL @ OH @ code-origin . OR-COUNT OC @ - . NEW1 . NEW2 .\n" EXEC
+   0 ASSERT-RC OUT$ S\" 0\n1\n0\n-1\n2\n52\n53\n" STR= TTRUE
+   s" a full native overwrite removes the JIT provenance it actually replaces" T-LABEL
+   s" 0 set-tier variable OL cp@ OL ! : OLD ( -- n ) 1 ; OL @ cp! 1 set-tier : NEW-WITH-A-LONG-EXTERNAL-NAME ( -- n ) 54 ; OL @ cp@ code-origin . NEW-WITH-A-LONG-EXTERNAL-NAME ." EXEC
+   0 ASSERT-RC OUT$ S\" 1\n54\n" STR= TTRUE ;
+
+\ Generate actual alternating engine/JIT publications up to the physical cap.
+\ No forged count or row store can make this pass without exercising insertion.
+$50000 constant OR-CAP
+60000 constant OR-TIMEOUT-MS
+create OR-BUF OR-CAP allot
+variable OR-U
+
+: OR+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   OR-U @ u + OR-CAP > if E-STR-CAPACITY throw then
+   a OR-BUF OR-U @ + u BYTE-COPY
+   u OR-U +! ;
+
+: OR-NUM+ ( n -- ) SB-RESET SB-NUM+ SB$ OR+ ;
+
+: OR-SOURCE$ ( n -- ptr u8 n ) {: count:n :}
+   0 OR-U !
+   S\" 0 set-tier\nTRUSTED: OR-COUNT ( -- n ) data-base TIER-PROV:N-CELL + @ ;\n: OR-HEADROOM ( -- ) OR-COUNT TIER-PROV:SPANS 64 - > OR-COUNT TIER-PROV:SPANS <= and if s\q headroom-ok\q type else 70 throw then ;\n" OR+
+   count 0 ?do
+      s" variable OV" OR+ i OR-NUM+
+      S\" \n: OD" OR+ i OR-NUM+ S\"  ( -- ) ;\n" OR+
+   loop
+   S\" OR-HEADROOM\n" OR+
+   OR-BUF OR-U @ ;
+
+: OR-PATH$ ( -- ptr u8 n ) s" hb-code-origin-capacity.f" TMP-PATH ;
+
+: OR-LOAD ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   OR-PATH$ >LEN PROC-ARGV+
+   HB$ >LEN s" " >LEN OUT CAP >LEN ERR CAP >LEN
+   OR-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+
+: TEST-ORIGIN-CAPACITY ( -- )
+   s" real publications use the declared capacity with headroom" T-LABEL
+   OR-PATH$ TIER-PROV:SPANS 2 / 16 - OR-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD s" headroom-ok" ASSERT-OK
+   s" exhausting the interval store refuses before losing a row" T-LABEL
+   OR-PATH$ TIER-PROV:SPANS 2 / 16 + OR-SOURCE$ ATOMIC-WRITE-FILE
+   OR-LOAD ENGINE-ERROR:CODE-ORIGIN-FULL ASSERT-RC
+   ERR$ S\" hb: code-origin table capacity\n" STR= TTRUE
+   OR-PATH$ REMOVE-FILE ;
+
+: TEST-BUILD-SCOPE ( -- )
+   s" build scope selects native and restores default JIT through nested scopes" T-LABEL
+   S\" require lib/executable-build.f\n: BS-IN ( -- n ) [: tier@ ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- n n ) [: tier@ BS-IN ;] EXECUTABLE-BUILD:WITH ; BS-RUN . . tier@ . \n" EXEC
+   0 ASSERT-RC OUT$ S\" 1\n1\n0\n" STR= TTRUE
+   s" build scope preserves higher-order inputs and outputs" T-LABEL
+   S\" require lib/executable-build.f\n: BS-RUN ( n -- n n ) [: 1+ dup ;] EXECUTABLE-BUILD:WITH ; 48 BS-RUN . . tier@ . \n" EXEC
+   0 ASSERT-RC OUT$ S\" 49\n49\n0\n" STR= TTRUE
+   s" tier0 requests are refused before compilation and cleanup restores JIT" T-LABEL
+   S\" require lib/executable-build.f\nTRUSTED: BS-BAD ( -- ) 0 set-tier ;\n: BS-RUN ( -- ) [: BS-BAD ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ .  : BS-AFTER ( -- n ) 50 ; BS-AFTER . \n" EXEC
+   0 ASSERT-RC OUT$ S\" 70\n0\n50\n" STR= TTRUE
+   ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
+   s" arbitrary throws preserve their code and the outer tier" T-LABEL
+   S\" 1 set-tier require lib/executable-build.f\n: BS-RUN ( -- ) [: 79 throw ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch .  tier@ . \n" EXEC
+   0 ASSERT-RC OUT$ S\" 79\n1\n" STR= TTRUE
+   s" evaluated source publishes native code inside the scope" T-LABEL
+   S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN ' BS-NATIVE dup 4 + code-origin . BS-NATIVE . tier@ .\n" EXEC
+   0 ASSERT-RC OUT$ S\" 1\n61\n0\n" STR= TTRUE
+   s" evaluated tier0 refusal leaves its following definition unpublished" T-LABEL
+   S\" require lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q 0 set-tier : BS-FORBIDDEN ( -- n ) 62 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; ' BS-RUN catch . tier@ . ' BS-FORBIDDEN drop\n" EXEC
+   REJECT-RC ASSERT-RC OUT$ S\" 70\n0\n" STR= TTRUE
+   ERR$ s" executable build requires native tier 1" CONTAINS? TTRUE
+   ERR$ s" BS-FORBIDDEN" CONTAINS? TTRUE
+   s" raw stores cannot erase retained provenance" T-LABEL
+   s" 0 data-base TIER-PROV:N-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
+   s" raw stores cannot disable the executable scope" T-LABEL
+   s" 0 data-base NCOMP-DISPATCH:BUILD-DEPTH-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
+   s" ordinary source cannot leave the executable scope" T-LABEL
+   s" : BS-ESCAPE ( -- ) executable-build-leave ;" EXEC REJECT-RC ASSERT-RC ;
+
 public
 
 : RUN-ALL ( -- )
    T-RESET
    TEST-BOTH-TIERS
    TEST-SELECTION
+   TEST-ORIGIN
+   TEST-ORIGIN-OVERWRITE
+   TEST-ORIGIN-CAPACITY
+   TEST-BUILD-SCOPE
    TEST-CHECKER-ROWS
    TEST-HOOK-CELL
    TEST-MARK-ROWS

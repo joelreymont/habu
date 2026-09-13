@@ -2609,10 +2609,14 @@ public
 \ instead of a dictionary lookup.
 : TIER-COLON-DISPATCH ( -- )
    LBL LBL {: jit:label done:label :}
-   9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  9 jit CBZ,
+   9 DATA NCOMP-DISPATCH:TIER-CELL LDR,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   TIER-PROV:OPEN,
+   9 jit CBZ,
       LOAD
       done B,
    jit LBL,
+      EXECUTABLE-JIT-GUARD
       9 $D10043FF LIT64,  LCEMIT LABEL@ BL,        \ sub sp, sp, #16
       9 $F90003FE LIT64,  LCEMIT LABEL@ BL,        \ str x30, [sp]
    done LBL, ;
@@ -2925,6 +2929,7 @@ public
          15 10 0 LDRB,  15 11 0 STRB,
          10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
       lcd LBL,
+      CP 16 TIER-PROV:NATIVE-RANGE,
       CP 16 0 ADDI,
       done B,
    short LBL,
@@ -3386,6 +3391,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    10 9 16 LDR,  10 10 DKIND:ADDR ORRI,  10 9 16 STR,     \ this record's body pushes its DATA address
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
+   9 CP TIER-PROV:NATIVE-RANGE,
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
@@ -3427,6 +3433,7 @@ package INTERP-EMIT
    10 9 16 LDR,  10 10 DKIND:VAL ORRI,  10 9 16 STR,      \ this record's body pushes a decided number
    9 DATA LASTC-CELL STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
+   9 CP TIER-PROV:NATIVE-RANGE,
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST 8 C-DEFHOOK
    LASTC-TRUST:PUBLISH-A ;
@@ -3435,6 +3442,7 @@ package INTERP-EMIT
 
 : C-CLEAR-TRUSTED-STATE ( -- )
    9 0 MOVZ,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
    9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
    9 DATA DOESB-CELL STR,
@@ -3601,6 +3609,8 @@ package INTERP-EMIT
    9 $D10043FF LIT64,  LCEMIT LABEL@ BL,             \ sub sp, sp, #16
    9 $F90003FE LIT64,  LCEMIT LABEL@ BL,             \ str x30, [sp]
    EM-COMPILE-RET
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,
+   9 CP TIER-PROV:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       DEF-TRUST:REGISTER-CAST
@@ -3795,6 +3805,7 @@ public
    C-DEFER-META-WRITE
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
+   9 CP TIER-PROV:NATIVE-RANGE,
    PROT:LCLOSE LABEL@ BL,  LFLUSH LABEL@ BL,
    LBL LBL {: ready pdone :}
    C-PRETRUST-READY?  13 ready CBNZ,
@@ -5380,6 +5391,10 @@ public
    CP CP 11 ADD,                                    \ code area top past the blob
    PROT:LCLOSE LABEL@ BL,                           \ region -> RX
    LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
+   \ The flush aligns/clobbers x9. Recover the exact installed payload span;
+   \ its origin came from this emitter invocation's owned capture admission.
+   11 5 LAOTCODELEN LABEL@ TADR,  11 11 0 LDR,
+   9 CP 11 SUB,  9 CP TIER-PROV:CAPTURE-RANGE,
    askip B,
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 25 MOVZ,  NR-WRITE SYS,
@@ -6252,7 +6267,15 @@ public
    ;
 
 : EM-STARTUP-RUNTIME-STATE ( -- )
-   9 0 MOVZ,  9 DATA HND-CELL STR,
+   TIER-PROV:RESTORE-REGION,
+   9 LANCHOR LABEL@ ADR,  10 LSRC LABEL@ ADR,
+   9 10 TIER-PROV:NATIVE-RANGE,
+   9 0 MOVZ,
+   9 DATA NCOMP-DISPATCH:TIER-CELL STR,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
+   9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
+   10 TIER-PROV:OPEN-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,  9 DATA HND-CELL STR,
    9 DATA INP-CELL STR,  9 DATA INE-CELL STR,
    9 DATA ENGINE-SNAP-XT-CELL STR,
    9 DATA AOT-SEED-DONE-CELL STR,
@@ -6440,6 +6463,7 @@ public
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       LOAD
       C-CALL-X11-SAVED
+      1 TIER-PROV:CLOSE,
       C-CLEAR-TRUSTED-STATE
       9 0 MOVZ,  9 DATA PEND-CELL STR,
       LMAIN LABEL@ B,
@@ -6474,7 +6498,7 @@ public
       \ LCOMPILE head, or tier 1's LENTRY with the optimizing entry loaded.
       \ This is the site 04187fff replaced with an unconditional LOAD; before
       \ it, a missing native compiler fell through to LCOMPILE here.
-      9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  9 LCOMPILE LABEL@ CBZ,
+      9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 LCOMPILE LABEL@ CBZ,
       NCOMP-EMIT:LOAD
       NCOMP-EMIT:LENTRY LABEL@ B,
       notcompile LBL, ;
@@ -7983,7 +8007,9 @@ public
    9 CP 10 SUB,                                       \ x9 = the span pass 1 emitted from it
    SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN,      \ x9/x10 survive the clear
    SNAP-RELOC:ADDRMAP-OFF SNAP-RELOC:CLEAR-SPAN,
+   0 TIER-PROV:CLOSE,
    CP 10 0 ADDI,                                      \ CP back to the colon entry: below the band
+   TIER-PROV:OPEN,
    9 DATA P2DP-CELL LDR,  9 DATA DP-CELL STR,
    PROT:LCF LABEL@ BL,                                \ the control-flow depth reset below
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
@@ -8088,7 +8114,8 @@ public
       LOWER-TXN:FREEZE
       EM-P2-TRIGGER
    nohook LBL,  publish B,
-   rejected LBL,  11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
+   rejected LBL,  0 TIER-PROV:CLOSE,
+   11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
       CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP
    inl LBL,  CP 11 0 LDR,                              \ inline name: CP := colon entry
    done LBL,
@@ -8102,6 +8129,7 @@ public
    hooked LBL,
    publish finish EM-COMPILE-PUBLISH-HOOKED
    publish LBL,
+   0 TIER-PROV:CLOSE,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    EM-REC-WIDE-PUBLISH
    DOES-REC:PUBLISH
@@ -8321,7 +8349,9 @@ public
       found B, ;                                       \ resolved via a used package: rejoin the normal compile path
 
 : EM-RESET-COMPILE-STATE ( -- )
+   TIER-PROV:ABANDON,
    9 0 MOVZ,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
@@ -8367,6 +8397,7 @@ public
    LEVLP LABEL@ LBL,
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
+      TIER-PROV:ABANDON,
       CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
       12 13 56 LDR,  12 DATA DP-CELL STR,
       \ Restore package/search state from this escaped native-stack frame.
@@ -8449,6 +8480,7 @@ public
 : EM-REPL-RECOVER ( -- )
    LRREC LABEL@ LBL,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 2 MOVZ,  NR-WRITE SYS,
+   TIER-PROV:ABANDON,
    CP DATA RSAVCP-CELL LDR,
    NDICT DATA RSAVND-CELL LDR,
    9 DATA RSAVDP-CELL LDR,  9 DATA DP-CELL STR,
@@ -9003,6 +9035,7 @@ public
 : EM-COMPILE-LEGACY ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
+   EXECUTABLE-JIT-GUARD
    EM-COMPILE-ADT-MODE
    lnotsemi EM-COMPILE-SEMI
    EM-COMPILE-LOCAL
@@ -9080,7 +9113,7 @@ variable SRCA
 
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
    SRCN !  SRCA !
-   ASM-INIT  0 #PL !  0 PNP !  0 CF-DEF-GUARD ! ;
+   ASM-INIT  TIER-PROV:LABELS  0 #PL !  0 PNP !  0 CF-DEF-GUARD ! ;
 
 \ Label allocation for the emitter: one private allocator per engine region,
 \ one public entry that reserves every label a build uses.
@@ -9398,6 +9431,7 @@ variable CUR
 package ENGINE-EMIT
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
+   TIER-PROV:EMIT-HELPERS
    EMIT-PRIMS
    s" does-patch" ['] DOESPATCH:PRIM FPRIM
    s" does-record" ['] DOES-REC:NATIVE-PRIM FPRIM
@@ -9480,13 +9514,17 @@ public
 \ file refusing first, and the reason dot habu-reach-the-seed-d1326596 exists.
 \ The payload is last and is addressed only through TADR,, so its size cannot
 \ enter any reach.
-: FORTH ( ptr u8 n -- )
+: FORTH-ORIGIN ( ptr u8 n n -- )
+   TIER-PROV:CAPTURE-ORIGIN!
    EMIT-RESET-BUILDER
    LABELS:INIT
    EMIT-CODE-SECTIONS
    EMIT-SOURCE-BYTES
    EMIT-AOT-SEED
    LIMGEND LABEL@ LBL, ;                 \ nothing follows: this label IS the content length
+
+\ Disk artifacts and ordinary source emission carry no positive capture proof.
+: FORTH ( ptr u8 n -- ) -1 FORTH-ORIGIN ;
 
 ;package
 

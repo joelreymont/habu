@@ -6812,6 +6812,11 @@ PRIM: check@         PE-N PE-OUT PRIM;
 \ Reading the selected compiler tier decides nothing and mutates nothing, so it
 \ is an ordinary reader like check@ beside it.
 PRIM: tier@          PE-N PE-OUT PRIM;
+PRIM: code-origin    PE-N PE-IN PE-N PE-IN PE-N PE-OUT PRIM;
+PRIM: executable-build-enter PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: executable-build-leave PRIM;
+PRIM-TRUSTED-ONLY!
 \ Compiler hook installation is an explicit engine boundary.
 PRIM: set-check     PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!

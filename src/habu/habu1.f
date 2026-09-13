@@ -100,6 +100,8 @@ public
 
 ;package
 
+require src/habu/code-origin.f
+
 variable FPL  variable FPE
 
 : FP-ARGS ( ptr u8 n [ -- ] -- )
@@ -302,6 +304,9 @@ package ENGINE-EMIT
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
    addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
    addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-BAND
+   addr NCOMP-DISPATCH:TIER-CELL 1 cells trap GUARD-BAND
+   addr NCOMP-DISPATCH:DEF-TIER-CELL 3 cells trap GUARD-BAND
+   addr TIER-PROV:OPEN-CELL TIER-PROV:END TIER-PROV:OPEN-CELL - trap GUARD-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap GUARD:SPAN
@@ -2252,6 +2257,7 @@ public
    CLEAR-CALLMAP-SPAN                            \ the span's relocation record, reset with it
    9 SP 8 LDR,  10 SP 16 LDR,
    CP 10 9 ADD,                                  \ the slot is claimed
+   10 CP TIER-PROV:UNKNOWN-RANGE,                  \ only the compiler return may certify this emission
    9 10 0 ADDI,  LFLUSH LABEL@ BL,              \ flush [dst, CP), once
    SP SP 48 ADDI, ;
 
@@ -2553,10 +2559,50 @@ public
 \ whole point of the cell is that the choice is deliberate. One unsigned compare
 \ rejects every value above 1 and, because a negative is an enormous unsigned,
 \ every negative too.
+\ Refuse tier0 through the normal throw path so the scoped build wrapper can
+\ run its cleanup after an include/evaluate/immediate abort.
+: EXECUTABLE-JIT-REFUSE ( -- )
+   LBL LBL {: msg:label done:label :}
+   0 2 MOVZ,  1 msg ADR,  2 44 MOVZ,  NR-WRITE SYS,
+   9 70 MOVZ,  9 G-PUSH  BTHROW
+   done B,
+   msg LBL,  S\" hb: executable build requires native tier 1\n" BYTES,
+   done LBL, ;
+
+: EXECUTABLE-JIT-GUARD ( -- )
+   LBL {: allowed:label :}
+   10 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  10 allowed CBZ,
+   EXECUTABLE-JIT-REFUSE
+   allowed LBL, ;
+
+: BBUILDENTER ( -- )
+   LBL {: nested:label :}
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 nested CBNZ,
+   10 DATA NCOMP-DISPATCH:TIER-CELL LDR,
+   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
+   nested LBL,
+   9 9 1 ADDI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
+   9 1 MOVZ,  9 DATA NCOMP-DISPATCH:TIER-CELL STR, ;
+
+: BBUILDLEAVE ( -- )
+   LBL {: done:label :}
+   9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL LDR,  9 done CBZ,
+   9 9 1 SUBI,  9 DATA NCOMP-DISPATCH:BUILD-DEPTH-CELL STR,
+   9 done CBNZ,
+   10 DATA NCOMP-DISPATCH:BUILD-TIER-CELL LDR,
+   10 DATA NCOMP-DISPATCH:TIER-CELL STR,
+   9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
+   done LBL, ;
+
+: BCODEORIGIN ( -- )
+   10 G-POP  9 G-POP  TIER-PROV:QUERY,  9 G-PUSH ;
+
 : BSETTIER ( -- )
-   LBL LBL LBL {: bad:label done:label msg:label :}
+   LBL LBL LBL LBL {: bad:label done:label msg:label native:label :}
    A G-POP                               \ x9 = requested tier
    9 1 CMPI,  C-HI bad BCOND,            \ unsigned > 1: rejects 2.. and every negative
+   9 native CBNZ,  EXECUTABLE-JIT-GUARD
+   native LBL,
       A DATA NCOMP-DISPATCH:TIER-CELL STR,
       done B,
    bad LBL,
@@ -3089,7 +3135,10 @@ package ENGINE-EMIT
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL 3 GDEREF-F
    s" set-check" ['] BSETCHECK 1 GDEREF-L   s" check@" ['] BCHECKFETCH FPRIM-L
-   s" set-tier" ['] BSETTIER 1 GDEREF-L     s" tier@" ['] BTIERFETCH FPRIM-L
+   s" set-tier" ['] BSETTIER 1 GDEREF-F     s" tier@" ['] BTIERFETCH FPRIM-L
+   s" executable-build-enter" ['] BBUILDENTER PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" executable-build-leave" ['] BBUILDLEAVE PRIM-GLOBAL-INT-WID FPRIM-WID
+   s" code-origin" ['] BCODEORIGIN 2 GDEREF-F
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 

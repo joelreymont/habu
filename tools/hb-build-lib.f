@@ -545,6 +545,7 @@ HBB-INSTALL-CHILD-LINT
    s" src/habu/crash.f" HBB-KEY-FILE+
    s" src/os/image-bytes.f" HBB-KEY-FILE+
    s" src/habu/habu1.f" HBB-KEY-FILE+
+   s" src/habu/code-origin.f" HBB-KEY-FILE+
    s" src/habu/prof.f" HBB-KEY-FILE+
    s" src/habu/regalloc.f" HBB-KEY-FILE+
    s" src/habu/jit.f" HBB-KEY-FILE+

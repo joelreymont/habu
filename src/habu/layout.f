@@ -769,6 +769,12 @@ $358 constant XT-CELL
 \ stays 8-aligned and below $7FF8 -- see the measurement recorded at the AOT
 \ window cells further down this file.
 $370 constant TIER-CELL
+\ Latched at the colon; an immediate may only select the NEXT definition.
+$388 constant DEF-TIER-CELL
+\ The outer executable-build scope saves the ordinary selection once. Nested
+\ scopes keep tier 1 until the outer finally restores it.
+$390 constant BUILD-DEPTH-CELL
+$398 constant BUILD-TIER-CELL
 \ One owner record keeps every engine declaration registrar paired with the
 \ active compiler, including while the source dictionary/checker is replaced.
 \ The record is DATA; its fields are execution tokens of existing private
@@ -1360,4 +1366,17 @@ STK-OFF FRAMES FRAME-BYTES * + constant END
 \ ends at $47C0, with PROT:RHI/PROT:CF taking the two cells directly
 \ above them. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
-JIT-SNAP:END constant DATA-START
+\ Sorted, disjoint code intervals. Coordinates are relative to dbase@; a row is
+\ (first, end, origin). Unknown is -1, JIT is 0, positively native is 1.
+\ Missing coverage is unknown, never evidence that older code was native.
+package TIER-PROV
+public
+8192 constant SPANS
+24 constant SPAN-BYTES
+JIT-SNAP:END constant OPEN-CELL
+OPEN-CELL 8 + constant N-CELL
+N-CELL 8 + constant TABLE-OFF
+TABLE-OFF SPANS SPAN-BYTES * + constant END
+;package
+
+TIER-PROV:END constant DATA-START
