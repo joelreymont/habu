@@ -40,6 +40,8 @@
 \ test/aot-band-lib.f (which uses the unarmed variant on purpose),
 \ test/aot-file-merge.f, and the driver text test/aot-wid-build.f generates.
 
+require src/core/checker-owner-guard.f
+
 package AOT-ARM
 
 \ Raw cell boundary, the same shape aot-capture.f uses for the same two cells:
@@ -86,9 +88,81 @@ variable R0  variable R1      \ its dictionary record span
 variable D0  variable D1      \ its DATA span
 variable W0  variable W1      \ its wordlist span
 
+\ A payload belongs to one concrete checker instance for the whole window.
+PTR-VARIABLE PAYLOAD-OWNER
+variable PAYLOAD-MODE                       \ 0 pending, 1 partial, 2 complete runtime
+variable PAYLOAD-FROZEN
+
 private
 
-: LATCH-OPEN ( -- ) cp@ B0 !  ndict@ R0 !  here D0 !  WIDN W0 ! ;
+: PAYLOAD-BAD ( -- )
+   s" aot-arm: missing, changed or unfrozen checker payload owner" 74 die ;
+
+: SOURCE-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
+
+: OWNER! ( ptr u8 -- )
+   CHECKER-OWNER-ABI:BYTES CHECKER-OWNER-GUARD:VALIDATE
+   dup SOURCE-OWNER <> if drop PAYLOAD-BAD then
+   PAYLOAD-OWNER ! ;
+
+: PAYLOAD-FIELD ( n -- n )
+   PAYLOAD-OWNER @ over CELL + CHECKER-OWNER-GUARD:VALIDATE
+   swap + CELL-VIEW @ dup 0= if drop PAYLOAD-BAD then ;
+
+TRUSTED: AS-ACTION ( n -- [ -- ] ) ;
+TRUSTED: AS-LOOKUP ( n -- [ ptr u8 n bool ptr u8 n -- n bool ] ) ;
+TRUSTED: AS-SPANS ( n -- [ -- ptr u8 n ptr u8 n ] ) ;
+TRUSTED: AS-SAVE ( n -- [ ptr u8 n -- n ] ) ;
+
+: RUN-ACTION ( n -- ) PAYLOAD-FIELD AS-ACTION execute ;
+
+: CANCEL ( -- )
+   PAYLOAD-MODE @ 1 = if
+      CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF RUN-ACTION then
+   0 PAYLOAD-MODE !  0 PAYLOAD-FROZEN !
+   NULL-PTR PAYLOAD-OWNER ! ;
+
+public
+
+: PAYLOAD-ARM ( ptr u8 -- )
+   CANCEL OWNER!
+   1 PAYLOAD-MODE !
+   CHECKER-OWNER-ABI:PAYLOAD-ARM-OFF RUN-ACTION ;
+
+: PAYLOAD-PERSISTENT ( ptr u8 -- )
+   CANCEL OWNER!
+   2 PAYLOAD-MODE ! ;
+
+: SIG-CLOSE ( -- )
+   PAYLOAD-FROZEN @ 0= 0= if exit then
+   PAYLOAD-MODE @ 0= if PAYLOAD-BAD then
+   PAYLOAD-OWNER @ SOURCE-OWNER <> if PAYLOAD-BAD then
+   PAYLOAD-MODE @ 1 = if
+      CHECKER-OWNER-ABI:PAYLOAD-FREEZE-OFF RUN-ACTION then
+   -1 PAYLOAD-FROZEN ! ;
+
+: ?FROZEN ( -- )
+   PAYLOAD-FROZEN @ 0= if PAYLOAD-BAD then
+   PAYLOAD-OWNER @ SOURCE-OWNER <> if PAYLOAD-BAD then ;
+
+: PAYLOAD-LOOKUP ( ptr u8 n bool ptr u8 n -- n bool )
+   ?FROZEN
+   CHECKER-OWNER-ABI:PAYLOAD-LOOKUP-OFF PAYLOAD-FIELD AS-LOOKUP execute ;
+
+: PAYLOAD-SPANS ( -- ptr u8 n ptr u8 n )
+   ?FROZEN
+   CHECKER-OWNER-ABI:PAYLOAD-SPANS-OFF PAYLOAD-FIELD AS-SPANS execute ;
+
+: PAYLOAD-REG-SAVE ( ptr u8 n -- n )
+   ?FROZEN
+   CHECKER-OWNER-ABI:PAYLOAD-REG-SAVE-OFF PAYLOAD-FIELD AS-SAVE execute ;
+
+private
+
+: LATCH-OPEN ( -- )
+   CANCEL
+   cp@ B0 ! ndict@ R0 ! here D0 ! WIDN W0 ! ;
 
 public
 
@@ -96,7 +170,8 @@ public
 \ the engine keeps cells for.
 : WINDOW-OPEN ( -- )
    LATCH-OPEN
-   B0 @ D0 @ OPEN ;
+   B0 @ D0 @ OPEN
+   SOURCE-OWNER PAYLOAD-ARM ;
 
 \ The same window with the engine told nothing, so the inliner's decline never
 \ fires and a copied pre-window body keeps its address - the only way to put a
@@ -105,30 +180,18 @@ public
 \ window is still a window being captured.
 : WINDOW-OPEN-UNARMED ( -- )
    LATCH-OPEN
-   0 0 OPEN ;
+   0 0 OPEN
+   SOURCE-OWNER PAYLOAD-ARM ;
+
+: WINDOW-OPEN-PERSISTENT ( -- )
+   LATCH-OPEN
+   B0 @ D0 @ OPEN ;
 
 \ Where the window's definitions end. The wordlist counter is latched HERE for
 \ the reason above, and never read again at capture time.
 : WINDOW-CLOSE ( -- )
-   cp@ B1 !  ndict@ R1 !  here D1 !  WIDN W1 ! ;
-
-\ WHERE THE WINDOW'S SIGNATURES AND TYPES END, which is a different moment from
-\ where the capture RUNS, and only a producer that captures LATER than its window
-\ needs to say so. The signature pool is armed across a window and the type
-\ registry's delta is two high-waters subtracted, so the registry's end is the
-\ moment it is READ. tools/aot-chain-capture.f loads its own assembler and
-\ artifact writer after the window shuts and those declare families of their own,
-\ so a capture-time read carried the tool's types as well as the window's and the
-\ seeded engine then measured its own registry against a base that had counted
-\ types no target has (measured: the chain's window declares 70 families and the
-\ capture read more). Closing here latches the end at the window's last
-\ definition and stops the collection, so src/habu/aot-capture.f ACAP-SIG-END -
-\ which is where every producer that does NOT close early ends up - finds the
-\ store disarmed and keeps the end this declared.
-: SIG-CLOSE ( -- )
-   CHECKER-ASIG-ARMED? 0= if exit then
-   CHECKER-REG-AOT-CLOSE
-   CHECKER-ASIG-DISARM ;
+   cp@ B1 ! ndict@ R1 ! here D1 ! WIDN W1 !
+   SIG-CLOSE ;
 
 \ The window as aot-capture.f CAPTURE takes it. One reader, so a caller cannot
 \ hand the six in a different order than the next caller does.

@@ -9,7 +9,7 @@
 
 require lib/prelude.f
 require lib/errors.f
-require src/core/checker-owner-abi.f
+require src/core/checker-owner-guard.f
 require src/habu/layout.f
 
 package CHECKER-OWNER
@@ -60,8 +60,7 @@ BIND-SOURCE-CALLS
 \ requires an installed operation from the live source owner.
 : FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
    SOURCE-LOADED @ 0<> if 0 exit then
-   RECORD {: rec:ptr :}
-   rec 0= if a u REFUSE then
+   RECORD off CELL + CHECKER-OWNER-GUARD:VALIDATE {: rec:ptr :}
    rec off + CELL-VIEW @ {: xt:n :}
    xt 0= if a u REFUSE then
    xt ;

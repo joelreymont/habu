@@ -1598,8 +1598,57 @@ TRUSTED: ACAP-RANGE-XT ( n n n -- ptr u8 n [ ptr u8 n -- ] ) ;
       s" aot-capture: dynamic storage has no range release" 74 die then
    d0 d1 d0 - range ACAP-RUN-RANGE ;
 
+\ Full-runtime payload mode is explicit. Its verified checker stores travel in
+\ DATA, so an empty sidecar is valid only for that captured owner and closure.
+TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
+
+: ACAP-MEMBER? ( ptr u8 n ptr u8 n -- bool )
+   {: pkg:ptr pkgu:n name:ptr nameu:n :}
+   AOT-ARM:R1 @ AOT-ARM:R0 @ ?do
+      i AOT-REC {: rec:ptr :}
+      rec AOT-RWID dup 0 >= if
+         ACAP-REC-PKG {: pa:ptr pu:n pub:bool found:bool :}
+         found if
+            pa pu pkg pkgu CORE-STR=CI if
+               rec AOT-RNPTR rec AOT-RNLEN name nameu CORE-STR=CI if
+                  0 0= unloop exit then
+            then
+         then
+      else drop then
+   loop
+   0 0= 0= ;
+
+: ACAP-PERSISTENT-OWNER ( -- )
+   AOT-ARM:PAYLOAD-OWNER @ CHECKER-OWNER-ABI:BYTES
+   CHECKER-OWNER-GUARD:VALIDATE {: owner:ptr :}
+   owner ACAP-ADDRESS {: at:n :}
+   at AOT-ARM:D0 @ < if
+      s" aot-capture: persistent checker owner is outside captured DATA" 74 die then
+   at AOT-ARM:D0 @ - CHECKER-OWNER-ABI:HEADER-BYTES < if
+      s" aot-capture: checker owner descriptor is outside captured DATA" 74 die then
+   at AOT-ARM:D1 @ > if
+      s" aot-capture: persistent checker owner is outside captured DATA" 74 die then
+   owner 8 - CELL-VIEW @ AOT-ARM:D1 @ at - > if
+      s" aot-capture: checker owner extends beyond captured DATA" 74 die then
+   owner CHECKER-OWNER-ABI:CAPTURE-OFF + CELL-VIEW @ {: prepare:n :}
+   prepare AOT-ARM:B0 @ < prepare AOT-ARM:B1 @ >= or if
+      s" aot-capture: checker preparation is outside captured code" 74 die then
+   s" CHECKER-REG" s" DECLARATIONS" ACAP-MEMBER? 0= if
+      s" aot-capture: persistent payload has no captured checker declaration owner" 74 die then
+   s" PREFIX-MARK" s" CURSORS" ACAP-MEMBER? 0= if
+      s" aot-capture: persistent payload has no completed core prefix" 74 die then ;
+
+: PAYLOAD-CAPTURE ( -- )
+   AOT-ARM:?FROZEN
+   AOT-ARM:PAYLOAD-MODE @ 2 <> if
+      s" aot-capture: partial capture requires a verified effect graph payload" 74 die then
+   ACAP-PERSISTENT-OWNER
+   0 ACAP-SIG-KNOWN ! 0 ACAP-SIG-EXEMPT !
+   0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;
+
 : CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart rstart rend d0 ACAP-BAND!
+   PAYLOAD-CAPTURE
    ACAP-RESET
    ACAP-TIDX-BUILD                              \ xt -> record index for THIS dictionary
    ACAP-TIDX-PROVE                              \ ... which answers what the scan answers
