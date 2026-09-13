@@ -116,22 +116,35 @@ variable PET-START-NS
    PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
    0 T= 0 T= 0 T= ;
 
-: PET-EXPECT-INHERITED-BODY
-   ( n ptr u8 n ptr u8 n n ptr u8 CAD-NUM:alloc-byte-len -- )
+: PET-HAS-ENV-LINE-BODY
+   ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 CAD-NUM:alloc-byte-len -- bool )
    drop
-   {: outu:n name:ptr nameu:n val:ptr valu:n total:n expected:ptr :}
-   name expected nameu BYTE-COPY
-   $3D expected nameu + c!
-   val expected nameu 1+ + valu BYTE-COPY
-   $0A expected total 1- + c!
-   PET-OUT outu expected total CONTAINS? TTRUE ;
+   {: out:ptr outu:n name:ptr nameu:n val:ptr valu:n lineu:n expected:ptr :}
+   $0A expected c!
+   name expected 1+ nameu BYTE-COPY
+   $3D expected nameu 1+ + c!
+   val expected nameu 2 + + valu BYTE-COPY
+   $0A expected lineu + c!
+   out outu expected 1+ lineu STARTS-WITH?
+   out outu expected lineu 1+ CONTAINS? or ;
+
+: PET-HAS-ENV-LINE? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: out:ptr outu:n name:ptr nameu:n val:ptr valu:n :}
+   nameu valu + 2 + {: lineu:n :}
+   out outu name nameu val valu lineu
+   lineu 1+ MEM:BYTES-ALLOC-LEN [: PET-HAS-ENV-LINE-BODY ;] MEM:WITH-BYTES ;
 
 : PET-EXPECT-INHERITED ( n ptr u8 n -- ) {: outu:n name:ptr nameu:n :}
    name nameu GETENV {: val:ptr valu:n :}
    valu 0= if exit then
-   nameu valu + 2 + {: total:n :}
-   outu name nameu val valu total
-   total MEM:BYTES-ALLOC-LEN [: PET-EXPECT-INHERITED-BODY ;] MEM:WITH-BYTES ;
+   PET-OUT outu name nameu val valu PET-HAS-ENV-LINE? TTRUE ;
+
+: PET-ENV-LINE-BOUNDARIES ( -- )
+   S\" HOME=alpha\nPATH=beta\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TTRUE
+   S\" X=1\nHOME=alpha\nY=2\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TTRUE
+   S\" SOME_HOME=alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE
+   S\" OTHER=HOME=alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE
+   S\" HOME=prefix-alpha\n" s" HOME" s" alpha" PET-HAS-ENV-LINE? TFALSE ;
 
 : PET-INHERIT-ENV-OUT ( n -- ) {: outu:n :}
    PET-OUT outu PET-ALPHA-LINE$ CONTAINS? TTRUE
@@ -322,6 +335,7 @@ variable PET-START-NS
    T-RESET
    s" env-child" [: PET-RUN-ENV-CHILD ;] PET-CASE
    s" empty-env-child" [: PET-RUN-EMPTY-ENV-CHILD ;] PET-CASE
+   s" env-line-boundaries" [: PET-ENV-LINE-BOUNDARIES ;] PET-CASE
    s" inherit-env-child" [: PET-RUN-INHERIT-ENV-CHILD ;] PET-CASE
    s" default-env-child" [: PET-DEFAULT-ENV-CHILD ;] PET-CASE
    s" default-lookup" [: PET-DEFAULT-LOOKUP ;] PET-CASE
