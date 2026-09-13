@@ -96,6 +96,7 @@ variable N-REMOVED                   \ unused data-stack reads removed
 variable B-BASE                      \ operations of the module before the current block
 variable PLAN-OPS                    \ operations the sealed plan covers
 variable PLAN-FUSED                  \ pairs that plan names
+variable PLAN-REMOVED                \ unused data-stack reads that plan removes
 variable PLAN-SET                    \ a plan is sealed
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
@@ -427,11 +428,23 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 
 \ The whole block's plan, read once before a single operation of it is copied,
 \ so the walk and the operation it reaches later agree about what was decided.
+\ Selection can eliminate every use of a branch condition. An unread, total
+\ data-stack load can be removed while forwarding its memory-order result.
+: UNUSED-DLOAD? ( IR-ID:ir-op-id -- bool ) {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s A64IR-OPCODE:DLOAD A64IR:ORD =
+   s A64IR-OPCODE:FDLOAD A64IR:ORD = or 0= if false exit then
+   id 0 RESULT-AT USES-OF 0= ;
+
+\ FOLDED distinguishes a consumed producer (1) from a removed load (2).
+2 constant REMOVE-LOAD
+
 : PLAN-BLOCK ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
    {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    B-BASE @ {: g:n :}
-   g n + OPS-MAX > if E-A64COMB-CAP throw then
+   g 0 < g OPS-MAX > or if E-A64COMB-CAP throw then
+   n 0 < n OPS-MAX g - > or if E-A64COMB-CAP throw then
    n 0 ?do
       -1 g i + cells FOLD-AT + !
       -1 g i + cells IMM-AT + !
@@ -471,6 +484,12 @@ DYNAMIC-BUFFER CMP-AT-BUF n
          1 PLAN-FUSED +!
       then
    loop
+   n 0 ?do
+      bk i OP-AT UNUSED-DLOAD? if
+         REMOVE-LOAD g i + cells FOLDED + !
+         1 PLAN-REMOVED +!
+      then
+   loop
    g n + B-BASE ! ;
 
 \ Read at the same module-wide position the plan was written at: the walk visits
@@ -489,6 +508,9 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 
 : FOLDED? ( n -- bool )
    B-BASE @ + cells FOLDED + @ 0<> ;
+
+: REMOVED? ( n -- bool )
+   B-BASE @ + cells FOLDED + @ REMOVE-LOAD = ;
 
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
@@ -697,16 +719,6 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    cm  CLOSE  BIND-RESULTS
    1 N-FUSED +! ;
 
-\ Selection can eliminate every use of a branch condition. Data-stack reads
-\ are total, nonvolatile operations; an unread value needs no load. Forward its
-\ memory-order result to the input order so later operations remain ordered.
-: UNUSED-DLOAD? ( IR-ID:ir-fun-id IR-ID:ir-op-id -- bool )
-   {: f:IR-ID:ir-fun-id id:IR-ID:ir-op-id :}
-   id OP-SLOT {: s:n :}
-   s A64IR-OPCODE:DLOAD A64IR:ORD =
-   s A64IR-OPCODE:FDLOAD A64IR:ORD = or 0= if false exit then
-   id 0 RESULT-AT USES-OF 0= ;
-
 : REMOVE-DLOAD ( IR-ID:ir-op-id -- ) {: id:IR-ID:ir-op-id :}
    id 1 RESULT-AT id 0 OPERAND-AT VOF VBIND
    1 N-REMOVED +! ;
@@ -735,7 +747,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    n 1 < if E-A64COMB-SHAPE throw then
    bk OPEN-BLOCK
    n 0 ?do
-      f bk i OP-AT UNUSED-DLOAD? if
+      i REMOVED? if
          bk i OP-AT REMOVE-DLOAD
       else i FOLDED? 0= if
          i FOLD-OF {: d:n :}
@@ -806,9 +818,13 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 \ The plan the scan sealed, and about this module: a rewrite that planned
 \ nothing would walk stale decisions, and one planned for another module would
 \ fold operations that are not there.
-: PLAN-CK ( IR-BUILD:module -- )
+: PLAN-TAKE ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
-   PLAN-SET @ 0= if E-A64COMB-PLAN throw then
+   PLAN-SET @ {: planned:n :}
+   0 PLAN-SET !
+   BND-TAKE
+   m BND-MODULE-CK
+   planned 0= if E-A64COMB-PLAN throw then
    m IR-BUILD:FMODULE  0 PLAN-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64COMB-PLAN throw then ;
 
@@ -873,13 +889,13 @@ public
 private
 : PLAN! ( IR-BUILD:module -- n )
    {: m:IR-BUILD:module :}
+   0 PLAN-SET !
    BOUND? 0= if E-A64COMB-BIND throw then
    m BND-MODULE-CK
-   0 PLAN-SET !
    m VIEWS!
    RESERVE-SCRATCH RESERVE-FOLDS
    COUNT-USES
-   0 PLAN-FUSED !
+   0 PLAN-FUSED ! 0 PLAN-REMOVED !
    0 B-BASE !
    FUN-COUNT 0 ?do
       MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
@@ -890,39 +906,27 @@ private
    B-BASE @ PLAN-OPS !
    m IR-BUILD:FMODULE 0 PLAN-MOD !
    1 PLAN-SET !
-   PLAN-FUSED @ ;
+   PLAN-FUSED @ PLAN-REMOVED @ + ;
 
 public
 : REWRITES ( IR-BUILD:module -- n )
-   PLAN!
-   FUN-COUNT 0 ?do
-      MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-      f BLOCK-COUNT 0 ?do
-         f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-         bk OP-COUNT 0 ?do
-            f bk i OP-AT UNUSED-DLOAD? if 1+ then
-         loop
-      loop
-   loop ;
+   PLAN! ;
 
 \ ---- the pass ----------------------------------------------------------------
 \ The bytes are the source text the old module was compiled from, proved by
 \ digest before any span is carried across.
 : REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
-   BND-TAKE
-   m BND-MODULE-CK
+   m PLAN-TAKE
    0 N-FUSED ! 0 N-REMOVED !
    c 0 S-CTX !
    b 0 S-BLD !
-   m PLAN-CK
    m VIEWS!
    NFROZEN:TOTAL-OPS NPROF-PHASE:COMBINE-OPS NPROF:ADD
    c b p u SOURCE!
    0 B-BASE !
    FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    B-BASE @ PLAN-OPS @ <> if E-A64COMB-SHAPE throw then
-   0 PLAN-SET !
    c b IR-BUILD:FREEZE ;
 
 \ A caller compares it with what the scan promised, so a walk that folded a
@@ -935,6 +939,7 @@ public
 
 public
 : RESET-SCRATCH ( -- )
+   0 PLAN-SET !
    0 SCRATCH-VALUES ! 0 SCRATCH-BLOCKS ! 0 SCRATCH-FUNS ! 0 SCRATCH-OPS ! ;
 
 private

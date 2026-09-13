@@ -2481,6 +2481,32 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC m0 nb TXT TXT-N A64COMB:REWRITE drop ;
 
+\ A real immediate fold gives the lifecycle cases a nonempty plan.
+: PLANNED-COMBINE ( IR-CTX:ctx -- IR-BUILD:module )
+   A64-MOD COMB-BIND
+   s" COMBINABLE" 0 1 OPEN-FUN
+   7 M-MOVZ 5 M-MOVZ M-ADD M-RET
+   CLOSE-FUN
+   M-FREEZE dup A64COMB:REWRITES 1 T= ;
+
+: RESET-COMBINE-BODY ( IR-CTX:ctx -- )
+   PLANNED-COMBINE {: m0:IR-BUILD:module :}
+   A64COMB:RESET-SCRATCH
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC m0 nb TXT TXT-N A64COMB:REWRITE drop ;
+
+: SOURCE-COMBINE-BODY ( IR-CTX:ctx -- )
+   PLANNED-COMBINE {: m0:IR-BUILD:module :}
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC m0 nb TXT TXT-N 1- A64COMB:REWRITE drop ;
+
+: TWICE-COMBINE-BODY ( IR-CTX:ctx -- )
+   PLANNED-COMBINE {: m0:IR-BUILD:module :}
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC m0 nb TXT TXT-N A64COMB:REWRITE drop
+   A64COMB:REWRITTEN 1 T=
+   CC m0 nb TXT TXT-N A64COMB:REWRITE drop ;
+
 \ ---- the frame rules, on modules that are wrong in one way -------------------
 \ Each of these is a lowered shape with one thing changed, allocated and then
 \ presented to the validator. The allocator itself has nothing to say about them
@@ -2721,6 +2747,9 @@ using A64RA
 : TWICE-LOWER ( -- bool n n n )
    WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-PLAN-COMBINE ( -- )  WBND [: NO-PLAN-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: RESET-COMBINE ( -- )    WBND [: RESET-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SOURCE-COMBINE ( -- )   WBND [: SOURCE-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TWICE-COMBINE ( -- )    WBND [: TWICE-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : FAR-SLOT ( -- )         WBND [: FAR-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2858,7 +2887,7 @@ using A64RA
    s" lowering a module whose walk decided no spill is refused" T-LABEL
    [: NO-SPILL-LOWER ;] E-A64SPILL-PLAN TTHROWSQ ;
 
-\ PLAN-CK also refuses a plan sealed for ANOTHER module, which BND-MODULE-CK
+\ PLAN-TAKE also refuses a plan sealed for ANOTHER module, which BND-MODULE-CK
 \ reaches first with E-A64COMB-BIND, so that clause is fail-closed rather than
 \ reachable and only this one is asserted.
 \ A64-MOD binds the allocator as well, and A64RA:ALLOCATE is what takes that
@@ -2870,6 +2899,20 @@ using A64RA
 : COMBINE-NO-PLAN-CASE ( -- )
    s" combining a module the scan never planned is refused" T-LABEL
    [: NO-PLAN-COMBINE ;] E-A64COMB-PLAN TTHROWSQ
+   A64RA:BOUND? if A64RA:RELEASE then ;
+
+: COMBINE-PLAN-CASES ( -- )
+   s" resetting scratch discards a pending combine plan" T-LABEL
+   [: RESET-COMBINE ;] E-A64COMB-PLAN TTHROWSQ
+   A64COMB:BOUND? TFALSE
+   A64RA:BOUND? if A64RA:RELEASE then
+   s" a refused source consumes the combine binding" T-LABEL
+   [: SOURCE-COMBINE ;] E-A64COMB-SOURCE TTHROWSQ
+   A64COMB:BOUND? TFALSE
+   A64RA:BOUND? if A64RA:RELEASE then
+   s" a fresh plan succeeds after refusal and cannot be consumed twice" T-LABEL
+   [: TWICE-COMBINE ;] E-A64COMB-BIND TTHROWSQ
+   A64COMB:BOUND? TFALSE
    A64RA:BOUND? if A64RA:RELEASE then ;
 
 : SLOT-REFUSE-CASES ( -- )
@@ -3490,6 +3533,7 @@ using A64RA
 : GROUP-FIXED-ACCEPT ( IR-CTX:ctx -- ) drop FIXED-ACCEPT-CASES ;
 : GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
 : GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE COMBINE-NO-PLAN-CASE ;
+: GROUP-COMBINE-PLAN ( IR-CTX:ctx -- ) drop COMBINE-PLAN-CASES ;
 : GROUP-SLOT ( IR-CTX:ctx -- )      drop SLOT-REFUSE-CASES ;
 : GROUP-ORDER ( IR-CTX:ctx -- )     drop ORDER-REFUSE-CASES ;
 : GROUP-RELOAD ( IR-CTX:ctx -- )    drop RELOAD-REFUSE-CASES ;
@@ -3604,6 +3648,7 @@ public
    WBND [: GROUP-FIXED-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-LOWER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-NO-SPILL ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-COMBINE-PLAN ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SLOT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-ORDER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-RELOAD ;] IR-CTX:WITH-CONTEXT
