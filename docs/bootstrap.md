@@ -2,16 +2,21 @@
 
 ## Current recovery status (2026-09-13)
 
-Measured on linux-aarch64: the Gforth recovery now reaches `hb-stdin-mk` — Gforth
-builds `hb-stage0`, that stage builds `hb-stage`, and `hb-stage` reaches its
-fixpoint and builds `hb-stdin-mk`, all four engines booting their prefix from
-source (see the cold-runtime rule below). The chain then stops when
-`hb-stdin-mk` compiles its own baked source: `E-UNDEFINED: AOT-PWID-BUF@`, a word
-`src/habu/aot-file.f` `SEC-PTR` and `tools/aot-chain-capture.f` both call and
-nothing defines. The same undefined word rejects the assembled `stdin-src` in the
-native self-refresh's blocking certify pass (`certify: stdin-src rejected rc 70`,
-then `E-BUILD-CERTIFY`), so neither the recovery nor `install`/`all` can replace a
-working engine until that definition is restored.
+Measured on linux-aarch64: the Gforth recovery now reaches `hb-stdin`, the last
+engine of the chain — Gforth builds `hb-stage0`, that stage builds `hb-stage`,
+`hb-stage` reaches its fixpoint and builds `hb-stdin-mk` (the step the S-PWID
+retirement unblocked), and `hb-stdin-mk` compiles its own baked source and emits
+`hb-stdin`, all five engines booting their prefix from source (see the
+cold-runtime rule below). The chain then stops when that engine boots: `hb: AOT
+call site unresolved`, exit 82 — the AOT seed's own refusal in
+`src/habu/habu2.f` `EM-AOT-PATCH-SITES`, raised while it relocates a baked call
+site to a name it cannot resolve in the engine it is seeding. Reproduce it
+directly with `$HB_TMP/hb-stdin --load test/engine-error-package.f` after a
+check-only run. The native self-refresh stops earlier and for its own reason:
+`hb-stage` compiles the assembled `stdin-src` with a from-source prefix that
+carries no boot stdlib, so `src/habu/aot-capture.f`'s bare prelude calls die
+`E-UNDEFINED: true` (throw -2802). Neither path can replace a working engine
+until both are repaired.
 
 The compatible local seed `.jj-ws/bootstrap-seed-hardcut/bin/hb` was copied to
 `bin/hb` (SHA-256
