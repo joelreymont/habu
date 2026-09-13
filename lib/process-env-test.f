@@ -116,15 +116,22 @@ variable PET-START-NS
    PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
    0 T= 0 T= 0 T= ;
 
+: PET-EXPECT-INHERITED-BODY
+   ( n ptr u8 n ptr u8 n n ptr u8 CAD-NUM:alloc-byte-len -- )
+   drop
+   {: outu:n name:ptr nameu:n val:ptr valu:n total:n expected:ptr :}
+   name expected nameu BYTE-COPY
+   $3D expected nameu + c!
+   val expected nameu 1+ + valu BYTE-COPY
+   $0A expected total 1- + c!
+   PET-OUT outu expected total CONTAINS? TTRUE ;
+
 : PET-EXPECT-INHERITED ( n ptr u8 n -- ) {: outu:n name:ptr nameu:n :}
    name nameu GETENV {: val:ptr valu:n :}
    valu 0= if exit then
-   SB-RESET
-   name nameu SB-APPEND
-   $3D SB-APPEND-C
-   val valu SB-APPEND
-   $0A SB-APPEND-C
-   PET-OUT outu SB$ CONTAINS? TTRUE ;
+   nameu valu + 2 + {: total:n :}
+   outu name nameu val valu total
+   total MEM:BYTES-ALLOC-LEN [: PET-EXPECT-INHERITED-BODY ;] MEM:WITH-BYTES ;
 
 : PET-INHERIT-ENV-OUT ( n -- ) {: outu:n :}
    PET-OUT outu PET-ALPHA-LINE$ CONTAINS? TTRUE
