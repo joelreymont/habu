@@ -64,8 +64,8 @@
 \ generated-accessor window, field projection, and block-uniform branches. This
 \ gate holds the modelled fragment to the checker; it cannot notice a change
 \ inside an unmodelled one. It also compares BEHAVIOUR only on the frozen
-\ vectors: two machines that agree on those thirty-four programs may still
-\ disagree on the thirty-fifth, and only a soundness proof - which neither
+\ vectors: two machines that agree on those programs may still disagree
+\ on an untested program, and only a soundness proof - which neither
 \ model states yet - would close that. That is not a small caveat. Both models
 \ publish more than a hundred concrete results, and only the decisions a vector
 \ reaches are actually held to the checker; the rest are held to the reader's

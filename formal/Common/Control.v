@@ -164,7 +164,8 @@ Inductive tok : Type :=
   | TAgain                    (* CF-AGAIN,   checker.f:7904 *)
   | TWhile                    (* CF-WHILE,   checker.f:7909 *)
   | TRepeat                   (* CF-REPEAT,  checker.f:7917 *)
-  | TDo                       (* CF-DO, `do` and `?do` alike, checker.f:7922 *)
+  | TDo                       (* CF-DO: the body runs at least once *)
+  | TQDo                      (* CF-?DO: a zero-trip path reaches the exit *)
   | TLoop                     (* CF-LOOP,    checker.f:7929 *)
   | TPlusLoop                 (* CF-+LOOP,   checker.f:7936 *)
   | TI                        (* CF-I,       checker.f:7942 *)
@@ -206,11 +207,11 @@ Inductive tok : Type :=
 (* 8 = a `case` branch, 9 = `match`, 10 = a `match` branch.            *)
 (*                                                                     *)
 (* `CF-PUSH` (checker.f:7651) writes only KND, SA, SB, RA, RB, the      *)
-(* locals mark and CF.UNI; it leaves DED and the save slots at whatever *)
-(* the reused `CFS` cell happened to hold.  Every read of those slots   *)
-(* is preceded by a write from the construct that owns them, so any     *)
-(* initial value is faithful; `cf_push` below takes a whole frame, so   *)
-(* each construct writes its own slots at push time — which also makes  *)
+(* locals mark, CF.UNI and CF.LA/LB; it leaves DED and the other save   *)
+(* slots at whatever the reused CFS cell happened to hold.             *)
+(* Each read follows a write from the construct that owns the slot,   *)
+(* so any initial value is faithful. `cf_push` takes a whole frame;     *)
+(* each construct writes its own slots at push time — which also makes *)
 (* the depth refusal write nothing at all.                              *)
 (*                                                                     *)
 (* CF.TXD and CF.TXR (the saved outer throw ROWS) are omitted for the   *)
@@ -225,13 +226,15 @@ Record frame : Type := MkFrame {
   fr_sb  : stack;     (* CF.SB: written by CF-ELSE / CF-WHILE; the CASE accumulator *)
   fr_ra  : stack;     (* CF.RA *)
   fr_rb  : stack;     (* CF.RB *)
-  fr_ded : bool;      (* CF.DED: the if-arm's deadness; the CASE accumulator's has-flag *)
+  fr_ded : bool;      (* CF.DED: dead arm / CASE has-output / DO has-exit *)
   fr_ln  : nat;       (* CF.LN: #LOC at the push, restored by CF-LOC-REST *)
   fr_xro : stack;     (* CF.XRO \                                        *)
   fr_xrr : stack;     (* CF.XRR  |  outer early-return state, saved by   *)
   fr_xst : bool;      (* CF.XST  |  CF-QUOT and restored by CF-SEMIQ     *)
   fr_xdp : bool;      (* CF.XDP /                                        *)
-  fr_txs : bool       (* CF.TXS: outer THSET, saved and restored likewise *)
+  fr_txs : bool;      (* CF.TXS: outer THSET, saved and restored likewise *)
+  fr_la  : list nat;  (* CF.LA: active loop slots at entry *)
+  fr_lb  : list nat   (* CF.LB: saved branch/while output obligations *)
 }.
 
 (* ------------------------------------------------------------------ *)
@@ -329,7 +332,8 @@ Record st : Type := MkSt {
   st_failset : bool;          (* FAILSET *)
   st_mdiag   : nat;           (* MDIAG *)
   st_hard    : bool;          (* MREJ / LOCALBAD / LINLOCBAD *)
-  st_con     : conm           (* CONM + CONFAM: the open `construct` form *)
+  st_con     : conm;          (* CONM + CONFAM: the open `construct` form *)
+  st_loops   : list nat       (* CF-LOOPS, active CFS slots, innermost first *)
 }.
 
 (* `MDIAG` reason codes, checker.f:8150-8175.  Only the ones this fragment
@@ -362,88 +366,88 @@ Definition qdepth (s : st) : nat :=
    changes; every other slot is carried through by name. *)
 
 Definition put_sub (s : st) (x : subst) : st :=
-  let '(MkSt fenv _ fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv x fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv _ fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv x fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_fv (s : st) (n : nat) : st :=
-  let '(MkSt fenv sub _ dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub n dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub _ dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub n dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_d (s : st) (d : stack) : st :=
-  let '(MkSt fenv sub fv _ rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv d rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv _ rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv d rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_r (s : st) (r : stack) : st :=
-  let '(MkSt fenv sub fv dcur _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_dr (s : st) (d : stack) (r : stack) : st :=
-  let '(MkSt fenv sub fv _ _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv d r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv _ _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv d r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_base (s : st) (b : stack) (rb : stack) : st :=
-  let '(MkSt fenv sub fv dcur rcur _ _ xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur b rb xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur _ _ xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur b rb xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_x (s : st) (xs : bool) (xd : stack) (xr : stack) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow _ _ _ thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xs xd xr thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow _ _ _ thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xs xd xr thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_thset (s : st) (b : bool) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow _ dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow b dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow _ dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow b dead cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_dead (s : st) (b : bool) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset _ cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset b cfs loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset _ cfs loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset b cfs loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_cfs (s : st) (l : list frame) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead _ loc mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead l loc mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead _ loc mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead l loc mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_loc (s : st) (l : list ty) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs _ mm mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs l mm mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs _ mm mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs l mm mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_mm (s : st) (n : nat) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc _ mpend mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc n mpend mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc _ mpend mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc n mpend mf taint ok unck failset mdiag hard con loops.
 
 Definition put_mpend (s : st) (o : option nat) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm _ mf taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm o mf taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm _ mf taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm o mf taint ok unck failset mdiag hard con loops.
 
 Definition put_mf (s : st) (l : list mframe) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend _ taint ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend l taint ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend _ taint ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend l taint ok unck failset mdiag hard con loops.
 
 Definition put_taint (s : st) (l : list tyvar) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf _ ok unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf l ok unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf _ ok unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf l ok unck failset mdiag hard con loops.
 
 Definition put_con (s : st) (c : conm) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard _) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard c.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard _ loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard c loops.
 
 (* `CF-FAIL` (checker.f:7689) and every `0 OK !` site: OK is a LATCH.  The
    checker keeps scanning after a failure, so this must not stop the machine. *)
 Definition fail (s : st) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck failset mdiag hard con loops.
 
 (* `-1 UNCK !`: uncheckable, which `CHECK-VERDICT` ranks ABOVE a plain OK=0
    and BELOW every hard latch (checker.f:9666-9668). *)
 Definition set_unck (s : st) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok _ failset mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok true failset mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok _ failset mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok true failset mdiag hard con loops.
 
 Definition put_failset (s : st) (b : bool) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck _ mdiag hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck b mdiag hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck _ mdiag hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck b mdiag hard con loops.
 
 Definition put_mdiag (s : st) (n : nat) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset _ hard con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset n hard con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset _ hard con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset n hard con loops.
 
 (* The hard structural latches this fragment can raise: `MREJ`
    (`MATCH-REJECT`, checker.f:8177), `LOCALBAD` (`LOC-REJECT`,
@@ -452,8 +456,26 @@ Definition put_mdiag (s : st) (n : nat) : st :=
    ORs them into one reject that outranks UNCK — so one field is enough,
    and nothing downstream can tell them apart either. *)
 Definition set_hard (s : st) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck _ mdiag _ con) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck true mdiag true con.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck _ mdiag _ con loops) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck true mdiag true con loops.
+
+(* The runtime uses a bit per CFS slot. Within CFS capacity, the active slots
+   have this canonical descending order: pushing a DO adds the new top slot,
+   UNLOOP removes the nearest active slot, and joins compare the entire list.
+   Slots, rather than a count, distinguish different enclosing loop frames. *)
+Definition put_loops (s : st) (l : list nat) : st :=
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con _) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con l.
+
+Fixpoint loops_eqb (a b : list nat) : bool :=
+  match a, b with
+  | [], [] => true
+  | x :: xs, y :: ys => Nat.eqb x y && loops_eqb xs ys
+  | _, _ => false
+  end.
+
+Definition loops_check (s : st) (l : list nat) : st :=
+  if loops_eqb (st_loops s) l then s else put_failset (fail s) true.
 
 (* --- fresh variables (`FRESH`, checker.f:1687) ---------------------- *)
 
@@ -845,7 +867,7 @@ Definition cf_push (s : st) (f : frame) : st :=
    locals mark is `#LOC @ rec CF.LN !` (checker.f:7656). *)
 Definition mkf (s : st) (k : nat) (sa sb ra rb : stack) : frame :=
   MkFrame k sa sb ra rb false (length (st_loc s))
-          (SRow 0) (SRow 0) false false false.
+          (SRow 0) (SRow 0) false false false (st_loops s) [].
 
 (* `CF-LOC-REST`, checker.f:7672: a local bound inside a branch, a loop body, a
    `case` arm, a `match` arm or a quotation goes out of scope at that
@@ -879,8 +901,10 @@ Definition do_else (s : st) : st :=
       then
         let f' := MkFrame 2 (fr_sa f) (st_dcur s) (fr_ra f) (st_rcur s)
                           (st_dead s) (fr_ln f)
-                          (fr_xro f) (fr_xrr f) (fr_xst f) (fr_xdp f) (fr_txs f) in
+                          (fr_xro f) (fr_xrr f) (fr_xst f) (fr_xdp f) (fr_txs f)
+                          (fr_la f) (st_loops s) in
         let s := put_cfs s (f' :: rest) in
+        let s := put_loops s (fr_la f) in
         let s := put_dr s (fr_sa f) (fr_ra f) in
         let s := put_dead s false in
         loc_rest s f
@@ -915,12 +939,12 @@ Definition merge_else (s : st) (f : frame) : st :=
   if st_dead s
   then (if fr_ded f
         then put_dead s true
-        else put_dead (put_dr s (fr_sb f) (fr_rb f)) false)
+        else put_dead (put_loops (put_dr s (fr_sb f) (fr_rb f)) (fr_lb f)) false)
   else (if fr_ded f
         then put_dead s false
         else let s := suni s (fr_sb f) in
              let s := rsuni s (fr_rb f) in
-             put_dead s false).
+             put_dead (loops_check s (fr_lb f)) false).
 
 (* `CF-THEN`, checker.f:7877.  Kind 1 is `if` with no `else`: the missing arm
    is the frame's entry row, so an `if` without an `else` must be STACK
@@ -932,8 +956,8 @@ Definition do_then (s : st) : st :=
       if Nat.eqb (fr_knd f) 1
       then
         let s := if st_dead s
-                 then put_dead (put_dr s (fr_sa f) (fr_ra f)) false
-                 else let s := suni s (fr_sa f) in rsuni s (fr_ra f) in
+                 then put_dead (put_loops (put_dr s (fr_sa f) (fr_ra f)) (fr_la f)) false
+                 else loops_check (rsuni (suni s (fr_sa f)) (fr_ra f)) (fr_la f) in
         put_cfs (loc_rest s f) rest
       else if Nat.eqb (fr_knd f) 2
       then put_cfs (loc_rest (merge_else s f) f) rest
@@ -969,7 +993,7 @@ Definition do_until (s : st) : st :=
         let s := put_d s (fr_sa f) in
         let s := rsuni s (fr_ra f) in
         let s := put_r s (fr_ra f) in
-        put_cfs (loc_rest s f) rest
+        put_cfs (loc_rest (loops_check s (fr_la f)) f) rest
       else fail s
   | [] => fail s
   end.
@@ -981,10 +1005,9 @@ Definition do_again (s : st) : st :=
   | f :: rest =>
       if Nat.eqb (fr_knd f) 3
       then
-        let s := suni s (fr_sa f) in
-        let s := put_d s (fr_sa f) in
-        let s := rsuni s (fr_ra f) in
-        let s := put_r s (fr_ra f) in
+        let s := if st_dead s then s
+                 else loops_check (rsuni (suni s (fr_sa f)) (fr_ra f)) (fr_la f) in
+        let s := put_dr s (fr_sa f) (fr_ra f) in
         put_dead (put_cfs (loc_rest s f) rest) true
       else fail s
   | [] => fail s
@@ -1001,7 +1024,7 @@ Definition do_while (s : st) : st :=
       then put_cfs s (MkFrame 4 (fr_sa f) (st_dcur s) (fr_ra f) (st_rcur s)
                               (fr_ded f) (fr_ln f)
                               (fr_xro f) (fr_xrr f) (fr_xst f) (fr_xdp f) (fr_txs f)
-                      :: rest)
+                              (fr_la f) (st_loops s) :: rest)
       else fail s
   | [] => fail s
   end.
@@ -1020,122 +1043,111 @@ Definition do_repeat (s : st) : st :=
   | f :: rest =>
       if Nat.eqb (fr_knd f) 4
       then
-        let s := suni s (fr_sa f) in
-        let s := put_d s (fr_sb f) in
-        let s := rsuni s (fr_ra f) in
-        let s := put_r s (fr_rb f) in
-        put_cfs (loc_rest s f) rest
+        let s := if st_dead s then s
+                 else loops_check (rsuni (suni s (fr_sa f)) (fr_ra f)) (fr_la f) in
+        let s := put_loops (put_dr s (fr_sb f) (fr_rb f)) (fr_lb f) in
+        put_dead (put_cfs (loc_rest s f) rest) false
       else fail s
   | [] => fail s
   end.
 
 (* ------------------------------------------------------------------ *)
-(* `do` loops.                                                         *)
-(*                                                                     *)
-(* A SECOND loop shape, and it differs from `begin` in three ways that *)
-(* each decide programs.                                               *)
-(*                                                                     *)
-(*   - it consumes TWO `n` cells (limit and index) at `do`;            *)
-(*   - the loop EXIT is always live even when the body's fall-through  *)
-(*     is dead, because a zero-trip `?do` and a `leave` both arrive    *)
-(*     there — so `CF-LOOP` revives the path instead of joining;       *)
-(*   - the loop indices `i` and `j` are not on the typed rows at all.  *)
-(*     They are produced out of thin air, and the only thing checked   *)
-(*     is that an enclosing `do` frame EXISTS.                         *)
-(*                                                                     *)
-(* `do` and `?do` are the SAME rule: `CF-TOK?` (checker.f:8375-8376)   *)
-(* sends both to `CF-DO`.  The zero-trip difference is a runtime one.  *)
+(* Counted loops and their resource obligations.                        *)
 (* ------------------------------------------------------------------ *)
 
-(* `CF-DO`, checker.f:7922.  Measured: `: D1 ( i64 -- i64 ) MK-N MK-N do STEP1
-   loop ;` certifies, `: D2 ... do DUP1 loop ;` is refused with `at 'loop'
-   expected: i64 actual: i64 i64`, and `: D3 ... ?do STEP1 loop ;` certifies. *)
+Definition fr_put_ded (f : frame) (b : bool) : frame :=
+  MkFrame (fr_knd f) (fr_sa f) (fr_sb f) (fr_ra f) (fr_rb f) b (fr_ln f)
+          (fr_xro f) (fr_xrr f) (fr_xst f) (fr_xdp f) (fr_txs f) (fr_la f) (fr_lb f).
+
+Definition fr_put_lb (f : frame) (l : list nat) : frame :=
+  MkFrame (fr_knd f) (fr_sa f) (fr_sb f) (fr_ra f) (fr_rb f) (fr_ded f) (fr_ln f)
+          (fr_xro f) (fr_xrr f) (fr_xst f) (fr_xdp f) (fr_txs f) (fr_la f) l.
+
+(* CF-DO consumes the bounds and adds exactly its own control slot. CF-?DO
+   additionally records a reachable zero-trip exit. DED on a DO frame means
+   that a zero-trip path or a checked LEAVE reaches the loop's entry rows. *)
 Definition do_do (s : st) : st :=
   let s := step_nn_in s in
-  cf_push s (mkf s 5 (st_dcur s) (st_dcur s) (st_rcur s) (st_rcur s)).
+  let slot := length (st_cfs s) in
+  let s := cf_push s (mkf s 5 (st_dcur s) (st_dcur s) (st_rcur s) (st_rcur s)) in
+  put_loops s (slot :: st_loops s).
 
-(* `CF-LOOP` / `CF-+LOOP`, checker.f:7929-7941.  The comment at
-   checker.f:7925-7928 states the rule and the code implements it: a dead
-   fall-through means the back edge is never taken, so the body-vs-`do`-point
-   unification is SKIPPED — but the loop-exit row is the `do`-point row either
-   way.  Measured: `: Z1 ( i64 -- i64 ) MK-N MK-N do DROP1 MK-I64 EXIT loop ;`
-   certifies, and `: Z2 ... do DUP1 EXIT loop ;` is refused at `loop` (its
-   `EXIT` row and the loop-exit row disagree at the fold).
+Definition do_qdo (s : st) : st :=
+  let s := do_do s in
+  match st_cfs s with
+  | f :: rest => put_cfs s (fr_put_ded f true :: rest)
+  | [] => s
+  end.
 
-   `+loop` first consumes the increment, and it does so even on a dead path,
-   because `+loop` IS a dead closer.  Measured: `: Z3 ( i64 -- i64 ) MK-N MK-N
-   do EXIT +loop ;` certifies — the `STEP-N-IN` runs against the dead row and
-   its result is then thrown away by `CF@A DCUR !`. *)
+(* A live latch must retain the loop's own resource and all entry obligations,
+   and both rows must be neutral. A dead body has no latch to check. Its exit
+   is live only if a zero-trip path or LEAVE reached it. +LOOP consumes an
+   increment only on a live latch. Both closers restore the enclosing mask. *)
 Definition loop_close (s : st) : st :=
   match st_cfs s with
   | f :: rest =>
       if Nat.eqb (fr_knd f) 5
       then
         let s := if st_dead s
-                 then put_dead s false
-                 else let s := suni s (fr_sa f) in rsuni s (fr_ra f) in
-        let s := put_dr s (fr_sa f) (fr_ra f) in
+                 then put_dead s (negb (fr_ded f))
+                 else loops_check (rsuni (suni s (fr_sa f)) (fr_ra f))
+                                  (length rest :: fr_la f) in
+        let s := put_loops (put_dr s (fr_sa f) (fr_ra f)) (fr_la f) in
         put_cfs (loc_rest s f) rest
       else fail s
   | [] => fail s
   end.
 
 Definition do_loop (s : st) : st := loop_close s.
-Definition do_plus_loop (s : st) : st := loop_close (step_n_in s).
+Definition do_plus_loop (s : st) : st :=
+  loop_close (if st_dead s then s else step_n_in s).
 
-(* `CF-I` and `CF-J`, checker.f:7942-7951.  `i` needs one enclosing `do` frame
-   anywhere on `CFS`, `j` needs two; both then push an `n` out of nothing,
-   because loop control is not carried on the typed rows.  Measured:
-   `: D8 ( -- ) MK-N MK-N do i DROP-N loop ;` certifies, `: D9 ( -- ) i
-   DROP-N ;` is refused at `i`, `: D10 ( -- ) MK-N MK-N do j DROP-N loop ;` is
-   refused at `j`, and the doubly-nested `: D11` certifies.
-
-   A DIVERGENCE FROM `leave`, and it is in the code, not in any document: this
-   scan walks EVERY open frame, while `CF-FINDDO` (checker.f:7955-7962) stops
-   at a quotation frame.  So `i` inside `[: ;]` inside a `do` loop is accepted
-   and `leave` there is not.  Measured: `: L10 ( -- n ) MK-N MK-N do [: i ;]
-   drop loop MK-N ;` certifies (exit 0) while `: L9 ( i64 -- i64 ) MK-N MK-N do
-   [: leave ;] drop loop ;` is refused at `leave`. *)
-Definition count_do (l : list frame) : nat :=
-  length (filter (fun f => Nat.eqb (fr_knd f) 5) l).
-
+(* Quotations clear this scope's obligations on entry and restore the outer
+   ones on close. Thus these lookups cannot cross a quotation boundary or use
+   a discharged frame; after UNLOOP, I refers to the next live outer loop. *)
 Definition do_i (s : st) : st :=
-  if Nat.ltb 0 (count_do (st_cfs s)) then step_n_out s else fail s.
+  if Nat.ltb 0 (length (st_loops s)) then step_n_out s else fail s.
 
 Definition do_j (s : st) : st :=
-  if Nat.ltb 1 (count_do (st_cfs s)) then step_n_out s else fail s.
+  if Nat.ltb 1 (length (st_loops s)) then step_n_out s else fail s.
 
-(* `CF-FINDDO`, checker.f:7955-7962: the nearest enclosing `do` frame, stopping
-   at a quotation boundary so a `leave` inside `[: ;]` cannot escape. *)
-Fixpoint find_do (l : list frame) : option frame :=
+(* LEAVE targets the lexical nearest DO, unlike UNLOOP's active-frame lookup.
+   The returned slot is its bottom-based CFS index, matching CF-FINDDO. *)
+Fixpoint find_do (l : list frame) : option (nat * frame) :=
   match l with
   | [] => None
   | f :: rest =>
-      if Nat.eqb (fr_knd f) 5 then Some f
+      if Nat.eqb (fr_knd f) 5 then Some (length rest, f)
       else if Nat.eqb (fr_knd f) 6 then None
       else find_do rest
   end.
 
-(* `CF-LEAVE`, checker.f:7967-7972.  The stack at `leave` must already match
-   the loop-exit row, which is the `do`-point row, and the path to `loop` is
-   then dead.  Measured: `: L1 ( i64 -- i64 ) MK-N MK-N do MK-BOOL IF leave
-   THEN STEP1 loop ;` certifies, `: L3 ... do DUP1 leave loop ;` is refused
-   with `at 'leave' expected: i64 actual: i64 i64`, `: L4 ( i64 -- i64 )
-   leave ;` is refused at `leave`, and `: L5 ... do leave STEP1 loop ;` is
-   refused with `at 'STEP1' after 'leave'`. *)
+Fixpoint mark_leave (l : list frame) : list frame :=
+  match l with
+  | [] => []
+  | f :: rest =>
+      if Nat.eqb (fr_knd f) 5 then fr_put_ded f true :: rest
+      else if Nat.eqb (fr_knd f) 6 then l
+      else f :: mark_leave rest
+  end.
+
+(* The leaving path must still own exactly the target's entry resources plus
+   that loop itself, and must already have the loop-exit data and return rows.
+   Marking the target records a normal continuation even when its latch dies. *)
 Definition do_leave (s : st) : st :=
   match find_do (st_cfs s) with
   | None => fail s
-  | Some f =>
-      let s := suni s (fr_sa f) in
-      let s := rsuni s (fr_ra f) in
-      put_dead s true
+  | Some (slot, f) =>
+      let s := loops_check s (slot :: fr_la f) in
+      let s := rsuni (suni s (fr_sa f)) (fr_ra f) in
+      put_dead (put_cfs s (mark_leave (st_cfs s))) true
   end.
 
-(* `CF-UNLOOP`, checker.f:7893: `: CF-UNLOOP ( -- ) ;`.  Loop control is not on
-   the typed rows, so discarding it is a typing no-op.  Measured:
-   `: L6 ( i64 -- i64 ) MK-N MK-N do unloop leave loop ;` certifies. *)
-Definition do_unloop (s : st) : st := s.
+Definition do_unloop (s : st) : st :=
+  match st_loops s with
+  | [] => fail s
+  | _ :: rest => put_loops s rest
+  end.
 
 (* ------------------------------------------------------------------ *)
 (* `case`.                                                             *)
@@ -1163,16 +1175,16 @@ Definition do_case (s : st) : st :=
    `match` join's shape minus the reason code: a rejected or dead path
    contributes nothing, the first live arm installs, every later live arm must
    unify at `UK-EXACT`.  Returns the state and the updated accumulator frame. *)
-Definition acc_set (f : frame) (d r : stack) : frame :=
+Definition acc_set (f : frame) (d r : stack) (l : list nat) : frame :=
   MkFrame (fr_knd f) (fr_sa f) d (fr_ra f) r true (fr_ln f)
-          (fr_xro f) (fr_xrr f) (fr_xst f) (fr_xdp f) (fr_txs f).
+          (fr_xro f) (fr_xrr f) (fr_xst f) (fr_xdp f) (fr_txs f) (fr_la f) l.
 
 Definition case_accum (s : st) (f : frame) : st * frame :=
   if negb (st_ok s) then (s, f)
   else if st_dead s then (s, f)
   else if fr_ded f
-       then (rsuni (suni s (fr_sb f)) (fr_rb f), f)
-       else (s, acc_set f (st_dcur s) (st_rcur s)).
+       then (loops_check (rsuni (suni s (fr_sb f)) (fr_rb f)) (fr_lb f), f)
+       else (s, acc_set f (st_dcur s) (st_rcur s) (st_loops s)).
 
 (* `CF-BELOW-CASE?`, checker.f:7626-7628: is the frame UNDER the top a `case`? *)
 Definition below_case (l : list frame) : bool :=
@@ -1214,7 +1226,7 @@ Definition do_endof_case (s : st) : st :=
         let s := loc_rest s f in
         let s := put_dead s false in
         let s := put_cfs s (g' :: rest) in
-        put_dr s (fr_sa f) (fr_ra f)
+        put_loops (put_dr s (fr_sa f) (fr_ra f)) (fr_la f)
       else fail s
   | _ => fail s
   end.
@@ -1235,7 +1247,7 @@ Definition do_endcase (s : st) : st :=
         let s := if st_dead s then s else step_n_in s in
         let '(s, f') := case_accum s f in
         let s := if fr_ded f'
-                 then put_dead (put_dr s (fr_sb f') (fr_rb f')) false
+                 then put_dead (put_loops (put_dr s (fr_sb f') (fr_rb f')) (fr_lb f')) false
                  else put_dead s true in
         put_cfs (loc_rest s f') rest
       else fail s
@@ -1406,17 +1418,18 @@ Definition do_fam_tok (s : st) (f : fam) : st :=
 Definition mf_set (m : mframe) (d r : stack) : mframe :=
   MkMF (mf_fam m) (mf_base m) (mf_rbase m) d r true (mf_seen m).
 
-Definition match_accum (s : st) (m : mframe) : st * mframe :=
-  if negb (st_ok s) then (s, m)
-  else if st_dead s then (s, m)
+Definition match_accum (s : st) (m : mframe) (f : frame) : st * mframe * frame :=
+  if negb (st_ok s) then (s, m, f)
+  else if st_dead s then (s, m, f)
   else if mf_has m
        then
          let fs0 := st_failset s in
          let s := rsuni (suni s (mf_out m)) (mf_rout m) in
+         let s := loops_check s (fr_lb f) in
          let s := if negb (st_ok s) && negb fs0 && Nat.eqb (st_mdiag s) 0
                   then put_mdiag s MD_JOIN else s in
-         (s, m)
-       else (s, mf_set m (st_dcur s) (st_rcur s)).
+         (s, m, f)
+       else (s, mf_set m (st_dcur s) (st_rcur s), fr_put_lb f (st_loops s)).
 
 (* `MATCH-VARIANT-TOK`, checker.f:8318-8328.  A duplicate variant is a hard
    reject; an unknown one leaves no pending variant and still expects an `OF`.
@@ -1464,10 +1477,11 @@ Definition do_of_match (s : st) (is_of : bool) : st :=
 (* `MATCH-ENDOF`, checker.f:8286-8294. *)
 Definition do_endof_match (s : st) : st :=
   match st_cfs s, st_mf s with
-  | f :: rest, m :: mrest =>
-      let '(s, m') := match_accum s m in
+  | f :: g :: rest, m :: mrest =>
+      let '(s, m', g') := match_accum s m g in
       let s := loc_rest s f in
-      let s := put_cfs s rest in
+      let s := put_cfs s (g' :: rest) in
+      let s := put_loops s (fr_la g') in
       let s := put_dead s false in
       let s := put_mf s (m' :: mrest) in
       let s := put_dr s (mf_base m') (mf_rbase m') in
@@ -1497,7 +1511,7 @@ Definition do_semimatch (s : st) : st :=
                                then put_mdiag s MD_NONEXH else s in
                       set_hard s in
         let s := if mf_has m
-                 then put_dead (put_dr s (mf_out m) (mf_rout m)) false
+                 then put_dead (put_loops (put_dr s (mf_out m) (mf_rout m)) (fr_lb f)) false
                  else put_dead (put_dr s (mf_base m) (mf_rbase m)) true in
         let s := loc_rest s f in
         put_mm (put_mf (put_cfs s rest) mrest) 0
@@ -1590,12 +1604,14 @@ Definition step_construct (s : st) (t : tok) : st :=
 
 (* `CF-EXIT`, checker.f:7887.  An early return does NOT meet the declared
    output here.  It meets the OTHER early returns, in ONE per-definition
-   accumulator, at `UK-EXACT`; the fall-through row joins the same accumulator
+   accumulator, at `UK-EXACT`; an undischarged loop rejects first. The
+   fall-through row joins the same accumulator
    at `;` (`CHECK-FOLD-EXITS`); and only the joined result is coerced against
    the declaration.  The accumulator is per-DEFINITION, not per-frame, so two
    `exit`s in unrelated branches still meet each other directly.  `CF-EXIT`
-   calls BARE `UNIFY`, not `SUNI`, so it takes no failure pin. *)
+   uses bare `UNIFY` for the row join; a loop-resource failure takes a pin. *)
 Definition do_exit (s : st) : st :=
+  if negb (loops_eqb (st_loops s) []) then put_failset (fail s) true else
   let s := if st_xset s
            then let s := uni UkExact s (st_dcur s) (st_xrow s) in
                 uni UkExact s (st_rcur s) (st_xrrow s)
@@ -1658,8 +1674,9 @@ Definition do_recurse (c : cfg) (s : st) : st :=
 Definition do_quot (s : st) : st :=
   let f := MkFrame 6 (st_dcur s) (st_brow s) (st_rcur s) (st_rbrow s)
                    false (length (st_loc s))
-                   (st_xrow s) (st_xrrow s) (st_xset s) (st_dead s) (st_thset s) in
-  let s := cf_push s f in
+                   (st_xrow s) (st_xrrow s) (st_xset s) (st_dead s) (st_thset s)
+                   (st_loops s) [] in
+  let s := put_loops (cf_push s f) [] in
   let (b, s) := fresh_id s in
   let (r, s) := fresh_id s in
   let s := put_base s (SRow b) (SRow r) in
@@ -1699,6 +1716,7 @@ Definition do_semiq (s : st) : st :=
         let s := put_x s (fr_xst f) (fr_xro f) (fr_xrr f) in
         let s := put_dead s (fr_xdp f) in
         let s := put_thset s (fr_txs f) in
+        let s := put_loops s (fr_la f) in
         let s := put_base s (fr_sb f) (fr_rb f) in
         let s := put_dr s (SPush q (fr_sa f)) (fr_ra f) in
         put_cfs (loc_rest s f) rest
@@ -1922,6 +1940,7 @@ Definition step_ctl (c : cfg) (s : st) (t : tok) : st :=
   | TWhile => do_while s
   | TRepeat => do_repeat s
   | TDo => do_do s
+  | TQDo => do_qdo s
   | TLoop => do_loop s
   | TPlusLoop => do_plus_loop s
   | TI => do_i s
@@ -2023,7 +2042,7 @@ Definition init (c : cfg) : st :=
        (SRow (cfg_brow c)) (SRow (decl_rbrow d))
        false (SRow 0) (SRow 0)   (* XROW/XRROW are never read while XSET is 0 *)
        false false [] [] 0 None [] []
-       true false false 0 false CmOff.
+       true false false 0 false CmOff [].
 
 (* `CHECK-VERDICT`, checker.f:9666-9668.  Three outcomes, ranked: any hard
    structural latch is a REJECT whatever else happened, then UNCHECKABLE
@@ -2257,8 +2276,8 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 (* --- 4. `do` loops, `i`, `j` and `leave` ---------------------------- *)
 
 (* `do` consumes two `n` cells and its body must be neutral, exactly as
-   `begin`/`until` — but a `do` body does NOT produce a flag, and `?do` is the
-   same rule.
+   `begin`/`until`. `?do` checks the same live latch and separately admits
+   a zero-trip exit.
 
    : D1 ( i64 -- i64 ) MK-N MK-N do  STEP1 loop ;  -> exit 0
    : D3 ( i64 -- i64 ) MK-N MK-N ?do STEP1 loop ;  -> exit 0
@@ -2267,6 +2286,8 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 Example do_loop_must_be_neutral :
   check_ctl (sig [i64] [i64])
             [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TLoop] = VCert
+  /\ check_ctl (sig [i64] [i64])
+               [TCall wMkN; TCall wMkN; TQDo; TCall wStep1; TLoop] = VCert
   /\ check_ctl (sig [i64] [i64])
                [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TLoop] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
@@ -2286,7 +2307,7 @@ Example do_takes_two_bounds_and_plus_loop_an_increment :
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* `i` and `j` are not on the typed rows: nothing is popped, an `n` appears,
-   and the only test is that enough `do` frames are open.
+   and the test is that enough active `do` frames remain in this quotation scope.
 
    : D8  ( -- ) MK-N MK-N do i DROP-N loop ;                     -> exit 0
    : D7  ( -- n ) MK-N MK-N do i loop ;                          -> exit 70,
@@ -2315,7 +2336,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    : L4 ( i64 -- i64 ) leave ;                                          -> exit 70, `at 'leave'`
    : L5 ( i64 -- i64 ) MK-N MK-N do leave STEP1 loop ;                  -> exit 70,
        `at 'STEP1' after 'leave'`
-   : L6 ( i64 -- i64 ) MK-N MK-N do unloop leave loop ;                 -> exit 0 *)
+   : L6 ( i64 -- i64 ) MK-N MK-N do unloop leave loop ;                 -> reject *)
 Example leave_matches_the_loop_exit_row :
   check_ctl (sig [i64] [i64])
             [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TLeave; TThen;
@@ -2327,43 +2348,42 @@ Example leave_matches_the_loop_exit_row :
   /\ check_ctl (sig [i64] [i64])
        [TCall wMkN; TCall wMkN; TDo; TLeave; TCall wStep1; TLoop] = VReject
   /\ check_ctl (sig [i64] [i64])
-       [TCall wMkN; TCall wMkN; TDo; TUnloop; TLeave; TLoop] = VCert.
+       [TCall wMkN; TCall wMkN; TDo; TUnloop; TLeave; TLoop] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* THE LOOP EXIT IS ALWAYS LIVE.  A body whose fall-through is dead does not
-   make the code after `loop` dead — a zero-trip `?do` or a `leave` both arrive
-   there — so `CF-LOOP` revives the path and takes the `do`-point row.  This is
-   the one place a closer REVIVES rather than joins.
-
-   : Z1 ( i64 -- i64 ) MK-N MK-N do DROP1 MK-I64 EXIT loop ;  -> exit 0
-   : Z2 ( i64 -- i64 ) MK-N MK-N do DUP1 EXIT loop ;          -> exit 70, `at 'loop'`
-   : Z3 ( i64 -- i64 ) MK-N MK-N do EXIT +loop ;              -> exit 0
-   : Z6 ( i64 -- i64 ) MK-N MK-N do loop STEP1 ;              -> exit 0 *)
-Example the_loop_exit_is_always_live :
+(* DO has no normal continuation when its whole body returns or throws.
+   ?DO still has the zero-trip path, and LEAVE records a reachable loop exit.
+   A live latch also reaches the exit. No increment is consumed on a dead
+   +LOOP path. A bare EXIT fails before it can record an early-return row. *)
+Example counted_loop_continuations_follow_reachable_edges :
   check_ctl (sig [i64] [i64])
-            [TCall wMkN; TCall wMkN; TDo; TCall wDrop1; TCall wMkI64; TExit; TLoop]
-    = VCert
+            [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop; TCall wStep1]
+    = VReject
   /\ check_ctl (sig [i64] [i64])
-       [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TExit; TLoop] = VReject
-  /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TPlusLoop]
-    = VCert
+       [TCall wMkN; TCall wMkN; TQDo; TUnloop; TExit; TLoop; TCall wStep1] = VCert
   /\ check_ctl (sig [i64] [i64])
-       [TCall wMkN; TCall wMkN; TDo; TLoop; TCall wStep1] = VCert.
+       [TCall wMkN; TCall wMkN; TDo; TLeave; TLoop; TCall wStep1] = VCert
+  /\ check_ctl (sig [i64] [i64])
+       [TCall wMkN; TCall wMkN; TDo; TLoop; TCall wStep1] = VCert
+  /\ check_ctl (sig [i64] [i64])
+       [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TPlusLoop] = VCert
+  /\ check_ctl (sig [i64] [i64])
+       [TCall wMkN; TCall wMkN; TDo; TExit; TLoop] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* `loop` closes a dead path; `leave`, `unloop` and `do` do not.  Reading that
    off `dead_closer`'s own table would be `reflexivity` on this file's
    definition, so it is stated where it decides a program instead: the same
    `EXIT` reaches `loop` and certifies, and one more token in front of the
-   closer turns it into dead code.  That is why the `EXIT` in Z1 above closes
-   at `loop` while the `STEP1` in L5 does not. *)
+   closer turns it into dead code. The UNLOOP before each EXIT discharges its
+   resource; the refusal here is therefore dead code, not a leaked loop. *)
 Example leave_and_do_are_not_dead_closers :
   check_ctl (sig [i64] [i64])
-            [TCall wMkN; TCall wMkN; TDo; TExit; TLoop] = VCert
+            [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop] = VCert
   /\ check_ctl (sig [i64] [i64])
-       [TCall wMkN; TCall wMkN; TDo; TExit; TLeave; TLoop] = VReject
+       [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLeave; TLoop] = VReject
   /\ check_ctl (sig [i64] [i64])
-       [TCall wMkN; TCall wMkN; TDo; TExit; TUnloop; TLoop] = VReject
+       [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TUnloop; TLoop] = VReject
   /\ check_ctl (sig [i64] [i64])
        [TExit; TCall wMkN; TCall wMkN; TDo; TLoop] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
@@ -2798,8 +2818,8 @@ Example an_unterminated_match_is_truncation :
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* A dead branch contributes nothing to the join, and when EVERY branch left
-   early the form itself goes dead — the same rule `if`, `case` and `loop` all
-   use, reached through a fourth accumulator.
+   early the form itself goes dead, as for `if` and `case`, using MATCH's
+   own accumulator.
 
    TA ( mres -- n ) MATCH mres ok OF EXIT ENDOF err OF ENDOF ;MATCH     -> -1
    TB ( mres -- n ) MATCH mres ok OF EXIT ENDOF err OF EXIT ENDOF ;MATCH -> -1

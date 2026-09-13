@@ -173,9 +173,8 @@ variable ARM-N
    s"   (forall t : ty, ty_known t = true) /\ (forall x : stack, stack_known x = true)." +$ +NL
    s" Proof. split; [ destruct t | destruct x ]; reflexivity. Qed." +$ +NL ;
 
-\ Two spellings may name one constructor - `do` and `?do` both run `CF-DO` and
-\ both are `TDo` - so a constructor already written out is not written again;
-\ Rocq refuses a duplicated pattern in one match.
+\ If aliases share a model constructor, emit it once: Rocq refuses a
+\ duplicated pattern in one match. DO and ?DO have distinct constructors.
 : CON-ALREADY? ( n -- bool ) {: k:n :}
    k 0 ?do
       i CFT-CON$ k CFT-CON$ STR= if true unloop exit then

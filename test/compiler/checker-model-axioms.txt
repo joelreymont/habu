@@ -209,7 +209,7 @@ theorem Habu.Common.Control.again_closes_and_kills_the_path
 type check_ctl (sig [i64] [i64]) [TBegin; TCall wStep1; TAgain] = VCert /\ check_ctl (sig [i64] [i64]) [TBegin; TCall wStep1; TAgain; TCall wStep1] = VReject
 closed
 theorem Habu.Common.Control.do_loop_must_be_neutral
-type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TLoop] = VReject
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TQDo; TCall wStep1; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TLoop] = VReject
 closed
 theorem Habu.Common.Control.do_takes_two_bounds_and_plus_loop_an_increment
 type check_ctl (sig [i64] [i64]) [TCall wMkN; TDo; TCall wStep1; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TCall wMkN; TPlusLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TPlusLoop] = VReject
@@ -218,13 +218,13 @@ theorem Habu.Common.Control.loop_indices_need_enclosing_do_frames
 type check_ctl (sig [] []) [TCall wMkN; TCall wMkN; TDo; TI; TCall wDropN; TLoop] = VCert /\ check_ctl (sig [] [nt]) [TCall wMkN; TCall wMkN; TDo; TI; TLoop] = VReject /\ check_ctl (sig [] []) [TI; TCall wDropN] = VReject /\ check_ctl (sig [] []) [TCall wMkN; TCall wMkN; TDo; TJ; TCall wDropN; TLoop] = VReject /\ check_ctl (sig [] []) [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TJ; TCall wDropN; TLoop; TLoop] = VCert
 closed
 theorem Habu.Common.Control.leave_matches_the_loop_exit_row
-type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TLeave; TThen; TCall wStep1; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLeave; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TLeave; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TLeave] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLeave; TCall wStep1; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TLeave; TLoop] = VCert
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TLeave; TThen; TCall wStep1; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLeave; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TLeave; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TLeave] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLeave; TCall wStep1; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TLeave; TLoop] = VReject
 closed
-theorem Habu.Common.Control.the_loop_exit_is_always_live
-type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDrop1; TCall wMkI64; TExit; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TExit; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TPlusLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLoop; TCall wStep1] = VCert
+theorem Habu.Common.Control.counted_loop_continuations_follow_reachable_edges
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop; TCall wStep1] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TQDo; TUnloop; TExit; TLoop; TCall wStep1] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLeave; TLoop; TCall wStep1] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLoop; TCall wStep1] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TPlusLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TLoop] = VReject
 closed
 theorem Habu.Common.Control.leave_and_do_are_not_dead_closers
-type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TLeave; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TUnloop; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TExit; TCall wMkN; TCall wMkN; TDo; TLoop] = VReject
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLeave; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TUnloop; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TExit; TCall wMkN; TCall wMkN; TDo; TLoop] = VReject
 closed
 theorem Habu.Common.Control.a_do_frame_is_closed_only_by_loop
 type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TThen] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TCall wMkBool; TUntil] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TRepeat] = VReject

@@ -32,9 +32,9 @@
 \
 \   4. The control-flow dispatch table. One row per spelling `CF-TOK?`
 \      recognises, in the order it tests them, with the handler it runs and the
-\      `Control.tok` constructor that stands for it. `do` and `?do` are two
-\      spellings of one handler and one constructor, which the table says
-\      rather than assumes.
+\      `Control.tok` constructor that stands for it. `do` and `?do` have
+\      separate handlers and constructors because only `?do` has a zero-trip
+\      exit when the entire body returns or throws.
 \
 \   5. The control frame kinds. One row per kind the checker pushes or
 \      mutates, with the exact source run that writes the kind number and a
@@ -53,8 +53,8 @@
 \      verdict both must answer. The two encodings are necessarily different -
 \      one is text for a token scanner, the other is an already-scanned token
 \      list - but they live in one row and the verdict is written once, so a
-\      row cannot be satisfied by editing only one side. The last twenty-four
-\      rows hold seven decisions nothing else here reaches: the widening
+\      row cannot be satisfied by editing only one side. The additional rows
+\      cover loop resources and seven other decisions: the widening
 \      lattice, the control-frame ceiling, `MATCH`'s own depth guard, the
 \      per-step linear conservation count, `construct`, `MATCH`'s scrutinee
 \      pop, and rigid host identities. Before they existed, halving the
@@ -91,9 +91,9 @@ require lib/fmt.f
 package CHECKER-MODEL-PROOF
 private
 
-$4000 constant POOL-CAP
-$200 constant STR-MAX
-$40 constant ROW-MAX
+$10000 constant POOL-CAP
+$400 constant STR-MAX
+$80 constant ROW-MAX
 
 create POOL POOL-CAP allot
 create SOFF STR-MAX cells allot
@@ -331,7 +331,7 @@ variable VEC-N
    s" while"   s" CF-WHILE"                       s" TWhile"     CFT-ROW
    s" repeat"  s" CF-REPEAT"                      s" TRepeat"    CFT-ROW
    s" do"      s" CF-DO"                          s" TDo"        CFT-ROW
-   s" ?do"     s" CF-DO"                          s" TDo"        CFT-ROW
+   s" ?do"     s" CF-?DO"                        s" TQDo"        CFT-ROW
    s" loop"    s" CF-LOOP"                        s" TLoop"      CFT-ROW
    s" +loop"   s" CF-+LOOP"                       s" TPlusLoop"  CFT-ROW
    s" i"       s" CF-I"                           s" TI"         CFT-ROW
@@ -780,6 +780,210 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" CMV34 ( mask-a -- mask-b )"
       s" sig [aMaskA] [aMaskB]" s" []" V-REJECT VEC-ROW ;
 
+\ Loop resources are independent of the typed data/return rows. These rows
+\ bind each discharge, scope, live join and reachable loop-exit decision to
+\ both the source checker and Control.v. Dead paths contribute no latch or
+\ branch obligation; live paths must agree on the exact enclosing frames.
+: BUILD-DISCHARGE-VECTORS ( -- )
+   s" exit_requires_the_loop_resource_discharged"
+      s" CMV35 ( -- ) 3 0 do exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TExit; TLoop]" V-REJECT VEC-ROW
+   s" unloop_without_a_loop_is_refused"
+      s" CMV36 ( -- ) unloop"
+      s" sig [] []"
+      s" [TUnloop]" V-REJECT VEC-ROW
+   s" unloop_discharges_one_loop_for_exit"
+      s" CMV37 ( -- ) 3 0 do unloop exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop]" V-CERT VEC-ROW
+   s" unloop_cannot_discharge_the_same_frame_twice"
+      s" CMV38 ( -- ) 3 0 do unloop unloop exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TUnloop; TUnloop; TExit; TLoop]" V-REJECT VEC-ROW
+   s" nested_exit_requires_both_resources"
+      s" CMV39 ( -- ) 3 0 do 3 0 do unloop exit loop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop; TLoop]" V-REJECT VEC-ROW
+   s" nested_exit_after_two_unloops_certifies"
+      s" CMV40 ( -- ) 3 0 do 3 0 do unloop unloop exit loop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TUnloop; TUnloop; TExit; TLoop; TLoop]" V-CERT VEC-ROW
+   s" i_skips_the_discharged_inner_frame"
+      s" CMV41 ( -- ) 3 0 do 3 0 do unloop i drop unloop exit loop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TUnloop; TI; TCall wDropN; TUnloop; TExit; TLoop; TLoop]" V-CERT VEC-ROW
+   s" j_skips_the_discharged_inner_frame"
+      s" CMV42 ( -- ) 3 0 do 3 0 do 3 0 do unloop j drop unloop unloop exit loop loop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TUnloop; TJ; TCall wDropN; TUnloop; TUnloop; TExit; TLoop; TLoop; TLoop]" V-CERT VEC-ROW
+   s" i_cannot_use_a_discharged_frame"
+      s" CMV43 ( -- ) 3 0 do unloop i drop exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TUnloop; TI; TCall wDropN; TExit; TLoop]" V-REJECT VEC-ROW
+   s" j_needs_two_remaining_resources"
+      s" CMV44 ( -- ) 3 0 do 3 0 do unloop j drop unloop exit loop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TUnloop; TJ; TCall wDropN; TUnloop; TExit; TLoop; TLoop]" V-REJECT VEC-ROW
+   s" a_live_latch_requires_its_own_resource"
+      s" CMV45 ( -- ) 3 0 do unloop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TUnloop; TLoop]" V-REJECT VEC-ROW
+   s" leave_requires_its_lexical_loop_resource"
+      s" CMV46 ( -- ) 3 0 do unloop leave loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TUnloop; TLeave; TLoop]" V-REJECT VEC-ROW ;
+
+: BUILD-LOOP-BRANCH-VECTORS ( -- )
+   s" live_then_joins_loop_obligations"
+      s" CMV47 ( -- ) 3 0 do true if unloop then exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TUnloop; TThen; TExit; TLoop]" V-REJECT VEC-ROW
+   s" live_else_joins_loop_obligations"
+      s" CMV48 ( -- ) 3 0 do true if else unloop then exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TElse; TUnloop; TThen; TExit; TLoop]" V-REJECT VEC-ROW
+   s" both_arms_can_discharge_before_exit"
+      s" CMV49 ( -- ) 3 0 do true if unloop else unloop then exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TUnloop; TElse; TUnloop; TThen; TExit; TLoop]" V-CERT VEC-ROW
+   s" dead_then_restores_the_live_entry_obligations"
+      s" CMV50 ( -- ) 3 0 do true if unloop exit then i drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TUnloop; TExit; TThen; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW
+   s" dead_else_restores_the_live_if_obligations"
+      s" CMV51 ( -- ) 3 0 do true if else unloop exit then i drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TElse; TUnloop; TExit; TThen; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW
+   s" dead_if_keeps_the_live_else_obligations"
+      s" CMV52 ( -- ) 3 0 do true if unloop exit else then i drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TUnloop; TExit; TElse; TThen; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW
+   s" both_dead_arms_leave_no_latch"
+      s" CMV53 ( -- ) 3 0 do true if unloop exit else unloop exit then loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TUnloop; TExit; TElse; TUnloop; TExit; TThen; TLoop]" V-CERT VEC-ROW ;
+
+: BUILD-LOOP-QUOTATION-VECTORS ( -- )
+   s" quotation_i_cannot_reach_an_outer_loop"
+      s" CMV54 ( -- ) 3 0 do [: i drop ;] drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TOpenQ; TI; TCall wDropN; TCloseQ; TCall wDropAny; TLoop]" V-REJECT VEC-ROW
+   s" quotation_j_cannot_reach_outer_loops"
+      s" CMV55 ( -- ) 3 0 do 3 0 do [: j drop ;] drop loop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TOpenQ; TJ; TCall wDropN; TCloseQ; TCall wDropAny; TLoop; TLoop]" V-REJECT VEC-ROW
+   s" quotation_unloop_cannot_discharge_an_outer_loop"
+      s" CMV56 ( -- ) 3 0 do [: unloop ;] drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TOpenQ; TUnloop; TCloseQ; TCall wDropAny; TLoop]" V-REJECT VEC-ROW
+   s" quotation_exit_owns_a_separate_resource_scope"
+      s" CMV57 ( -- ) 3 0 do [: exit ;] execute i drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TOpenQ; TExit; TCloseQ; TExec; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW
+   s" quotation_close_restores_outer_obligations"
+      s" CMV58 ( -- ) 3 0 do [: ;] execute exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TOpenQ; TCloseQ; TExec; TExit; TLoop]" V-REJECT VEC-ROW
+   s" quotation_loops_own_their_indices"
+      s" CMV59 ( -- ) 3 0 do [: 3 0 do i drop loop ;] execute i drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TOpenQ; TCall wMkN; TCall wMkN; TDo; TI; TCall wDropN; TLoop; TCloseQ; TExec; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW ;
+
+: BUILD-LOOP-REACHABILITY-VECTORS ( -- )
+   s" do_with_no_live_exit_has_no_continuation"
+      s" CMV60 ( -- ) 3 0 do unloop exit loop 0 drop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop; TCall wMkN; TCall wDropN]" V-REJECT VEC-ROW
+   s" qdo_keeps_its_zero_trip_continuation"
+      s" CMV61 ( -- ) 0 0 ?do unloop exit loop 0 drop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TQDo; TUnloop; TExit; TLoop; TCall wMkN; TCall wDropN]" V-CERT VEC-ROW
+   s" leave_keeps_a_normal_continuation"
+      s" CMV62 ( -- ) 3 0 do leave loop 0 drop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TLeave; TLoop; TCall wMkN; TCall wDropN]" V-CERT VEC-ROW
+   s" leave_survives_a_dead_sibling_latch"
+      s" CMV63 ( -- ) 3 0 do true if leave else unloop exit then loop 0 drop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TLeave; TElse; TUnloop; TExit; TThen; TLoop; TCall wMkN; TCall wDropN]" V-CERT VEC-ROW
+   s" do_with_a_throwing_body_stays_dead"
+      s" CMV64 ( -- ) 3 0 do -99 throw loop 0 drop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TThrow; TLoop; TCall wMkN; TCall wDropN]" V-REJECT VEC-ROW
+   s" qdo_with_a_throwing_body_keeps_zero_trip"
+      s" CMV65 ( -- ) 0 0 ?do -99 throw loop 0 drop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TQDo; TCall wMkN; TThrow; TLoop; TCall wMkN; TCall wDropN]" V-CERT VEC-ROW
+   s" dead_plus_loop_does_not_consume_an_increment"
+      s" CMV66 ( ptr u8 -- ptr u8 ) >r 3 0 do r> unloop exit +loop"
+      s" sig [TPtr u8] [TPtr u8]"
+      s" [TToR; TCall wMkN; TCall wMkN; TDo; TFromR; TUnloop; TExit; TPlusLoop]" V-CERT VEC-ROW ;
+
+: BUILD-LOOP-BACKEDGE-VECTORS ( -- )
+   s" dead_again_does_not_check_a_backedge"
+      s" CMV67 ( -- ) 3 0 do begin unloop exit again loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TBegin; TUnloop; TExit; TAgain; TLoop]" V-CERT VEC-ROW
+   s" dead_repeat_restores_the_while_exit"
+      s" CMV68 ( -- ) 3 0 do begin true while unloop exit repeat i drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TBegin; TCall wMkBool; TWhile; TUnloop; TExit; TRepeat; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW
+   s" live_until_requires_entry_obligations"
+      s" CMV69 ( -- ) 3 0 do begin unloop true until exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TBegin; TUnloop; TCall wMkBool; TUntil; TExit; TLoop]" V-REJECT VEC-ROW
+   s" live_again_requires_entry_obligations"
+      s" CMV70 ( -- ) 3 0 do begin unloop again loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TBegin; TUnloop; TAgain; TLoop]" V-REJECT VEC-ROW
+   s" live_repeat_requires_entry_obligations"
+      s" CMV71 ( -- ) 3 0 do begin true while unloop repeat loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TBegin; TCall wMkBool; TWhile; TUnloop; TRepeat; TLoop]" V-REJECT VEC-ROW ;
+
+: BUILD-LOOP-CASE-VECTORS ( -- )
+   s" case_live_arms_join_obligations"
+      s" CMV72 ( -- ) 3 0 do 1 case 1 of unloop endof endcase exit loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCase; TCall wMkN; TOf; TUnloop; TEndof; TEndcase; TExit; TLoop]" V-REJECT VEC-ROW
+   s" case_dead_arm_restores_entry_obligations"
+      s" CMV73 ( -- ) 3 0 do 1 case 1 of unloop exit endof endcase i drop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCase; TCall wMkN; TOf; TUnloop; TExit; TEndof; TEndcase; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW
+   s" case_preserves_discharge_before_of"
+      s" CMV74 ( -- ) 3 0 do 3 0 do 1 case unloop 1 of endof endcase i drop unloop exit loop loop"
+      s" sig [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCase; TUnloop; TCall wMkN; TOf; TEndof; TEndcase; TI; TCall wDropN; TUnloop; TExit; TLoop; TLoop]" V-CERT VEC-ROW ;
+
+: BUILD-LOOP-MATCH-VECTORS ( -- )
+   s" match_live_arms_join_obligations"
+      s" CMV75 ( -- ) 3 0 do 0 construct cmres cmok MATCH cmres cmok OF drop unloop ENDOF cmerr OF drop  ENDOF ;MATCH exit loop"
+      s" sig_fam [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wDropN; TUnloop; TEndof; TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch; TExit; TLoop]" V-REJECT VEC-ROW
+   s" match_dead_arm_restores_entry_obligations"
+      s" CMV76 ( -- ) 3 0 do 0 construct cmres cmok MATCH cmres cmok OF drop unloop exit ENDOF cmerr OF drop  ENDOF ;MATCH i drop loop"
+      s" sig_fam [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wDropN; TUnloop; TExit; TEndof; TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch; TI; TCall wDropN; TLoop]" V-CERT VEC-ROW
+   s" match_both_arms_can_discharge"
+      s" CMV77 ( -- ) 3 0 do 0 construct cmres cmok MATCH cmres cmok OF drop unloop ENDOF cmerr OF drop unloop ENDOF ;MATCH exit loop"
+      s" sig_fam [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wDropN; TUnloop; TEndof; TVarTok 1; TOf; TCall wDropN; TUnloop; TEndof; TSemiMatch; TExit; TLoop]" V-CERT VEC-ROW
+   s" match_both_dead_arms_have_no_latch"
+      s" CMV78 ( -- ) 3 0 do 0 construct cmres cmok MATCH cmres cmok OF drop unloop exit ENDOF cmerr OF drop unloop exit ENDOF ;MATCH loop"
+      s" sig_fam [] []"
+      s" [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wDropN; TUnloop; TExit; TEndof; TVarTok 1; TOf; TCall wDropN; TUnloop; TExit; TEndof; TSemiMatch; TLoop]" V-CERT VEC-ROW ;
+
+: BUILD-LOOP-RETURN-VECTORS ( -- )
+   s" unloop_exit_preserves_declared_return_rows"
+      s" CMV79 ( | n -- | n ) 3 0 do unloop exit loop"
+      s" MkCfg [] (decl_with_return [] 0 9 [] [] [nt] [nt]) 8 true"
+      s" [TCall wMkN; TCall wMkN; TDo; TUnloop; TExit; TLoop]" V-CERT VEC-ROW
+   s" unloop_exit_cannot_erase_a_declared_return_cell"
+      s" CMV80 ( | n -- | n ) 3 0 do r> drop unloop exit loop"
+      s" MkCfg [] (decl_with_return [] 0 9 [] [] [nt] [nt]) 8 true"
+      s" [TCall wMkN; TCall wMkN; TDo; TFromR; TCall wDropN; TUnloop; TExit; TLoop]" V-REJECT VEC-ROW ;
+
 : BUILD-VECTORS ( -- )
    s" straight_line"
       s" CMV1 ( i64 -- i64 ) CHECKER-MODEL-CASES:STEP1"
@@ -823,7 +1027,15 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    BUILD-LINEAR-TRANSFER-VECTORS
    BUILD-CONSTRUCT-VECTORS
    BUILD-SCRUTINEE-VECTORS
-   BUILD-ATOM-VECTORS ;
+   BUILD-ATOM-VECTORS
+   BUILD-DISCHARGE-VECTORS
+   BUILD-LOOP-BRANCH-VECTORS
+   BUILD-LOOP-QUOTATION-VECTORS
+   BUILD-LOOP-REACHABILITY-VECTORS
+   BUILD-LOOP-BACKEDGE-VECTORS
+   BUILD-LOOP-CASE-VECTORS
+   BUILD-LOOP-MATCH-VECTORS
+   BUILD-LOOP-RETURN-VECTORS ;
 
 : BUILD-ALL ( -- )
    0 POOL-U !  0 STR-N !
