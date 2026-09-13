@@ -1831,6 +1831,16 @@ variable FIELD-PROJ-A   REG-PROTECT
 variable FIELD-PROJ-U   REG-PROTECT   0 FIELD-PROJ-U !   \ armed accessor word name span
 variable FIELD-PROJ-FID REG-PROTECT   \ committed field id (the authority: offset/type/role derive from it)
 variable FIELD-PROJ-OFF REG-PROTECT   \ baked byte offset (cross-checked against the committed offset)
+
+\ The retained owner enforces these cells' policy during a native rebuild too.
+\ Keep raw state access here; the matching and schema checks remain checked.
+TRUSTED: FIELD-PROJ-SCRATCH-RESET ( -- )
+   NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U ! ;
+REG-PROTECT
+TRUSTED: FIELD-PROJ-NAME$ ( -- ptr u8 n ) FIELD-PROJ-A @ FIELD-PROJ-U @ ;
+REG-PROTECT
+TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
+REG-PROTECT
 variable LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 
@@ -9304,7 +9314,7 @@ REG-EXT-AOT-DEFAULTS
    NULL-PTR SB !  0 SL !  0 SI !  NULL-PTR SS !
    NULL-PTR PKA !  0 PKU !  PKRESET
    NULL-PTR SYM-DST !
-   NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U !
+   FIELD-PROJ-SCRATCH-RESET
    NULL-PTR DEADTA !  0 DEADTU !
    NULL-PTR SGA !  0 SGU !
    NULL-PTR NMA !  0 NMU !
@@ -12471,13 +12481,14 @@ variable CONFAM    \ resolved family id while CONM = 2
 \ T-PTR), so nothing else can retype a layout pointer. Runtime is a plain
 \ pointer+offset add (the generator/consumer supplies the `( ptr n -- ptr )`
 \ word); the checker judges only the type effect here.
-: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
+TRUSTED: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
    a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
 REG-PROTECT
-: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
+TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : FIELD-PROJ-MATCH? ( -- bool )   \ armed AND the word under check is the armed accessor
-   FIELD-PROJ-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
-   FIELD-PROJ-A @ FIELD-PROJ-U @ NMA @ NMU @ CORE-STR=CI ;   \ NMA is case-folded; the armed name is verbatim
+   FIELD-PROJ-NAME$ {: a:ptr u:n :}
+   u 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
+   a u NMA @ NMU @ CORE-STR=CI ;   \ NMA is case-folded; the armed name is verbatim
 : FIELD-PROJ-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;   \ pin the field-project token, fail closed
 \ Row surgery: peek `ptr family<args>` (second from top; the offset literal is on
 \ top), validate the pointer shape, ask FIELD-PROJ-XT for the instantiated field
@@ -12495,7 +12506,7 @@ REG-PROTECT
    pt TAG T-PTR <> IF FIELD-PROJ-REJECT EXIT THEN         \ not a pointer
    pt PTR>INNER T-RES {: famterm:n :}
    famterm LAYOUT-PARAM? 0= IF FIELD-PROJ-REJECT EXIT THEN   \ pointee is not a layout family
-   FIELD-PROJ-FID @ FIELD-PROJ-OFF @ famterm FIELD-PROJ-XT {: fieldterm:n ok:bool :}
+   FIELD-PROJ-SCHEMA famterm FIELD-PROJ-XT {: fieldterm:n ok:bool :}
    ok 0= IF FIELD-PROJ-REJECT EXIT THEN                   \ wrong offset / off-past-width / arity / role / uncommitted id
    FRESH MK-ROW {: base:n :}
    famterm MK-PTR base MK-PUSH FRESH MK-VAR swap MK-PUSH {: din:n :}   \ base, ptr family<args>, offset-var (MK-PUSH: type rest -- row)

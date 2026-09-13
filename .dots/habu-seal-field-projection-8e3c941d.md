@@ -48,5 +48,28 @@ The integration owner performs independent review and rebuilt-engine gates.
 
 Evidence: `/home/joel/.cache/cedar-cast-field-triage-3lw270rd/`.
 
+The rebuilt product E exposed one follow-up: its retained policy refused a
+tier-1 source rebuild of `CHECKER-CAPTURE-SCRATCH-PREPARE` at `FIELD-PROJ-A`
+(`E-CAP-TRUSTED`, then native verdict -8579). Reproducer from source a99cd3fc:
+
+```sh
+/tmp/cedar-family-stage-abi/hb-graph-persist-E --load \
+  test/compiler/aot-mode.f test/native-window-owner-child.f -- \
+  /home/joel/.cache/cedar-cast-identity-rYkeN5/field-owner-ok.f
+```
+
+The failure precedes the fixture and owner transfer.
+
+Raw access now lives in tiny protected helpers for scratch reset, name read
+and schema read; the existing armer and clear operations are trusted storage
+boundaries. Capture cleanup, accessor-name comparison and field-schema
+validation remain checked, with their existing effects and behavior.
+`test/field-proj-boundary.f` also starts tier 1 before the source-owner window,
+verifies native origin for the rebuilt helpers, and repeats the generated
+accessor positives and ordinary-user refusals. All three paths pass on E
+(SHA256 `cefd25fdbd7db8126fb0f63feeb834b662eed2569c7a4cd49584ed69fef1c3d0`).
+Before/after logs: `/home/joel/.cache/cedar-cast-identity-rYkeN5/field-native-owner-E.log`
+and `field-rebuild-regression.log`.
+
 Original B3 SHA256:
 `2ef6c87b233f5bd1f4a0e009b806851890aa67e85ccb13844d5a4f8570143781`.

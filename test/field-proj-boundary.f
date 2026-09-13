@@ -14,9 +14,10 @@ create ERR IO-CAP allot
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
-: ARGS ( bool -- ) {: native:bool :}
+: ARGS ( bool bool -- ) {: native:bool prefix:bool :}
    PROC-ARGV-RESET
    s" --load" ARG
+   prefix if s" test/compiler/aot-mode.f" ARG then
    s" test/native-window-owner-child.f" ARG
    s" --" ARG
    s" test/field-proj-boundary-child.f" ARG
@@ -40,10 +41,11 @@ create ERR IO-CAP allot
    s" src/core/sha256.f" ARG
    s" test/field-proj-boundary-prepare.f" ARG
    native if s" test/compiler/aot-mode.f" ARG then
+   prefix if s" test/field-proj-native-owner.f" ARG then
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
 
 : RESULT ( -- )
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 30000 >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 120000 >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N S\" ok\nfield boundary: ok\nwindow: 0\n" STR= 0= rc 0 <> or
@@ -55,8 +57,11 @@ create ERR IO-CAP allot
 
 : RUN ( -- )
    T-RESET
-   0 0= 0= ARGS RESULT
-   0 0= ARGS RESULT
+   0 0= 0= dup ARGS RESULT
+   0 0= 0 0= 0= ARGS RESULT
+   \ The retained product owner must also accept the new checker at tier 1.
+   \ Starting tier 1 only after owner transfer cannot exercise this boundary.
+   0 0= dup ARGS RESULT
    T-REPORT ;
 
 RUN
