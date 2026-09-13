@@ -3108,7 +3108,10 @@ create DN-BUF DN-CAP allot
    s" catch" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
    k 0 >= if k win win QFILL then
-   ix entry  win 1+  win 1+  NDICT:GLUE-NONE  STAGE-WCALL ;
+   \ RSCATCH requires the returned row to match the input row. Keep that
+   \ window's value boundaries; the appended result code is a separate cell.
+   VGLUE @ VN @ 1- win - rshift win VGLUE-LOW {: glue:n :}
+   ix entry  win 1+  win 1+  glue  STAGE-WCALL ;
 
 
 \ Both quotations are native calls. The cleanup has a certified empty window;

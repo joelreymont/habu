@@ -4,6 +4,8 @@ require lib/test.f
 require lib/prelude.f
 require lib/string.f
 require lib/errors.f
+require lib/adt/option.f
+require test/checker-assert.f
 require src/compiler/native/compiler.f
 
 package NCA-TEST
@@ -265,6 +267,76 @@ public
    [: NCA-OK1 ;] catch {: rc:n :}
    rc 0 <> if 77 else 0 then ;
 
+\ The caught window contains a family with a multicell payload. A different
+\ multicell value stays below it, outside the window.
+PRODUCT point 0
+   FIELD x n
+   FIELD y n
+;PRODUCT
+
+: SOME-POINT ( -- option<point> )
+   17 25 NCA--FIXTURE-POINT:MAKE OPTION:SOME ;
+
+: BUNDLE-BODY ( option<point> -- option<point> )
+   drop SOME-POINT ;
+
+: BUNDLE-THROW ( option<point> -- option<point> )
+   BUNDLE-BODY -79 throw ;
+
+: BUNDLE-ID ( option<point> -- option<point> ) ;
+
+: NO-POINT ( -- option<point> ) OPTION:NONE ;
+
+: READ-BUNDLES ( point option<point> -- n n )
+   MATCH option
+      none OF 0 ENDOF
+      some OF NCA--FIXTURE-POINT:UNMAKE + ENDOF
+   ;MATCH
+   >r NCA--FIXTURE-POINT:UNMAKE + r> ;
+
+: CATCH-BUNDLE
+   ( point option<point> [ option<point> -- option<point> ] -- n n n )
+   catch {: rc:n :}
+   MATCH option
+      none OF 0 ENDOF
+      some OF NCA--FIXTURE-POINT:UNMAKE + ENDOF
+   ;MATCH
+   >r NCA--FIXTURE-POINT:UNMAKE + r> rc ;
+
+: CATCH-EMPTY ( point option<point> -- n n n )
+   [: ;] catch {: rc:n :}
+   READ-BUNDLES rc ;
+
+: CATCH-DEAD ( point option<point> -- n n n )
+   [: BUNDLE-THROW ;] catch {: rc:n :}
+   READ-BUNDLES rc ;
+
+: CATCH-EMPTY-THROW ( point option<point> -- n n n )
+   [: -80 throw ;] catch {: rc:n :}
+   READ-BUNDLES rc ;
+
+\ Tender's OPEN keeps an archive beside option<document>, catches a reader,
+\ binds the result code, cleans up, then matches the surviving option.
+NEWTYPE document 0
+CAST: >DOCUMENT ( n -- document )
+CAST: DOCUMENT>N ( document -- n )
+
+: READ-DOCUMENT ( n option<document> -- n option<document> )
+   drop
+   dup 0= if OPTION:NONE else 42 >DOCUMENT OPTION:SOME then ;
+
+: NO-DOCUMENT ( -- option<document> ) OPTION:NONE ;
+
+: OPEN-DOCUMENT ( n -- document )
+   {: archive:n :}
+   archive NO-DOCUMENT [: READ-DOCUMENT ;] catch {: code:n :}
+   nip archive drop
+   code 0<> if drop code throw then
+   MATCH option
+      none OF -99 throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
 ;package
 
 package NCA-RUN
@@ -329,6 +401,31 @@ public
    tp 42 T=  tr 9 T=  tu 5 T=
    7 NCA-FIXTURE:NCA-PN {: nu:n nr:n np:n :}
    np 42 T=  nr 0 T=  nu 8 T= ;
+
+: BUNDLE-CASE ( -- )
+   s" catch preserves family and multicell boundaries on both paths" T-LABEL
+   3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:NO-POINT
+   [: NCA-FIXTURE:BUNDLE-BODY ;] NCA-FIXTURE:CATCH-BUNDLE
+   0 T= 42 T= 8 T=
+   3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:NO-POINT
+   NCA-FIXTURE:CATCH-DEAD
+   -79 T= 42 T= 8 T=
+   3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:NO-POINT
+   [: NCA-FIXTURE:BUNDLE-ID ;] NCA-FIXTURE:CATCH-BUNDLE
+   0 T= 0 T= 8 T=
+   s" a zero-window catch leaves both bundles intact" T-LABEL
+   3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:SOME-POINT
+   NCA-FIXTURE:CATCH-EMPTY 0 T= 42 T= 8 T=
+   3 5 NCA--FIXTURE-POINT:MAKE NCA-FIXTURE:SOME-POINT
+   NCA-FIXTURE:CATCH-EMPTY-THROW -80 T= 42 T= 8 T=
+   s" an OPEN-shaped caught reader retains its option through cleanup" T-LABEL
+   1 NCA-FIXTURE:OPEN-DOCUMENT NCA-FIXTURE:DOCUMENT>N 42 T=
+   [: 0 NCA-FIXTURE:OPEN-DOCUMENT drop ;] -99 TTHROWSQ
+   s" catch requires the same returned types, even at equal cell widths" T-LABEL
+   s" SAME-ROW ( NCA-FIXTURE:document -- NCA-FIXTURE:document n ) [: ;] catch"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" CHANGED-ROW ( NCA-FIXTURE:document -- NCA-FIXTURE:document n ) [: NCA-FIXTURE:DOCUMENT>N ;] catch"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- what production compilation still refuses -------------------------------
 : NORET-BODY-CASE ( -- )
@@ -403,6 +500,7 @@ public
    TWO-WINDOW-CASE
    STRING-SITE-CASE
    PARKED-CASE
+   BUNDLE-CASE
    NORET-BODY-CASE
    BODY-CONTROL-CASE
    BODY-CALL-LOCALS-CASE ;
