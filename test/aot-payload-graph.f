@@ -131,6 +131,7 @@ variable IMAGE-U
    s" " s" " CASE-RUN
    FRESH-NATIVE
    s" length" BAD-GRAPH
+   s" authority-bits" BAD-GRAPH
    s" cycle" BAD-GRAPH
    s" tag" BAD-GRAPH
    s" variables" BAD-GRAPH

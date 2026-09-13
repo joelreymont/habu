@@ -93,6 +93,8 @@ $20000 constant CAP
 create POOL CAP allot
 variable USED
 variable MARK
+variable SAVED-CHECK
+variable SAVED-TIER
 create KEY 32 allot
 public
 
@@ -133,6 +135,7 @@ TRUSTED: NAMED-GRAPH ( ptr u8 n -- ptr u8 ) {: name:ptr u:n :}
    loop 79 throw NULL-PTR ;
 
 TRUSTED: CORRUPT ( -- )
+   s" authority-bits" MODE? IF $10 0 GRAPH ER.SYM ! THEN
    s" length" MODE? IF $7FFFFFFFFFFFFFFF 0 GRAPH ER.NEXT ! THEN
    s" cycle" MODE? IF 0 GRAPH dup ER.DIN @ swap DIN EN.B ! THEN
    s" tag" MODE? IF 99 0 GRAPH DIN EN.TAG ! THEN
@@ -192,6 +195,10 @@ TRUSTED: WIDTH-REFUSAL-ATOMIC ( -- )
    s" graph width refusal preserved publication state" type cr ;
 
 TRUSTED: ARM ( -- ) CHECKER-SCOPE-START UEND @ MARK ! WINDOW-OPEN ;
+TRUSTED: ABI-BEGIN ( -- )
+   check@ SAVED-CHECK ! tier@ SAVED-TIER ! 0 set-check 1 set-tier ;
+TRUSTED: ABI-END ( -- ) SAVED-CHECK @ set-check SAVED-TIER @ set-tier ;
+TRUSTED: SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 TRUSTED: DECLARE-WIDE ( -- )
    s" payload-wide" s" 0 FIELD left n FIELD right r ;STRUCTURE" SD-REPLAY
    s" payload-empty" s" 0 ;STRUCTURE" SD-REPLAY
@@ -233,7 +240,7 @@ TRUSTED: INSTALL ( -- )
    WIDTH-REFUSAL-ATOMIC
    CK-AOT-REG-INSTALL
    CK-AOT-ROWS 0 ?do i CK-AOT-TAKE loop
-   CK-AOT-ROWS 10 EQ ;
+   CK-AOT-ROWS 11 EQ ;
 
 ARM
 ;package
@@ -250,9 +257,18 @@ GRAPH-ROUNDTRIP:DECLARE-WIDE
 : PAYLOAD-NESTED-USE ( payload-option<payload-wide> -- payload-option<payload-wide> ) ;
 : PAYLOAD-POLY-USE ( payload-option<a> -- payload-option<a> ) ;
 : PAYLOAD-ZERO-ARG-USE ( payload-option<payload-empty> -- payload-option<payload-empty> ) ;
+GRAPH-ROUNDTRIP:ABI-BEGIN
+: PAYLOAD-ABI ( n -- n ) ;
+GRAPH-ROUNDTRIP:ABI-END
 
 package GRAPH-ROUNDTRIP
 INSTALL
+s" PAYLOAD-FIXED" SOURCE-MIN 1 EQ
+s" PAYLOAD-ABI" EFFECT-QUERY -1 EQ
+EFFECT-DIN-CELLS 1 EQ EFFECT-DOUT-CELLS 1 EQ
+s" PAYLOAD-ABI" SOURCE-MIN -1 EQ
+s" PAYLOAD-ABI" CHECKER-RESOLVES? 0 EQ
+s" ROUND-ABI ( n -- n ) PAYLOAD-ABI" CHECK! 0 EQ
 s" PAYLOAD-WIDE-USE" EFFECT-QUERY -1 EQ
 EFFECT-DIN-N 2 EQ EFFECT-DIN-CELLS 2 EQ
 s" PAYLOAD-NESTED-USE" EFFECT-QUERY -1 EQ

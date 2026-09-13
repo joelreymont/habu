@@ -1,4 +1,4 @@
-\ internal-mark.f - hide unchecked engine entries and record call arity.
+\ internal-mark.f - seal source authority and record its call arity.
 \ Dictionary reads use XREF; private engine boundaries apply the flags and
 \ read checker registries before the runtime is sealed.
 require src/core/prefix-boundary.f
@@ -8,11 +8,6 @@ package ENGINE-INTERNAL
 
 variable IMK-I
 variable IMK-FIRST
-
-\ Compiled-word entry frame setup (sub sp, sp, #16): every
-\ colon body starts with it; create/variable/constant/does>-instance bodies
-\ start with their literal push instead.
-$D10043FF constant IMK-PROLOGUE
 
 : IMK-REC ( n -- ptr n )
    XREF-REC ;
@@ -29,25 +24,17 @@ $D10043FF constant IMK-PROLOGUE
 : IMK-NAME-U ( n -- n )
    IMK-FLAGS@ DNAME-LEN-MASK and ;
 
-: IMK-INSN0 ( n -- n )    \ first instruction word of the record body
-   IMK-REC XREF-START XREF-N>U8 {: b:ptr :}
-   b c@
-   b 1 + c@ 8 lshift or
-   b 2 + c@ 16 lshift or
-   b 3 + c@ 24 lshift or ;
+\ Definers carry an explicit dictionary kind, preserved by native publication
+\ and capture. Every other non-namespace entry requires source authority;
+\ neither a particular prologue nor an inferred native call shape grants it.
+: IMK-EXECUTABLE? ( n -- bool )
+   IMK-FLAGS@ DKIND:MASK and 0 = ;
 
-: IMK-COLON? ( n -- bool )
-   IMK-INSN0 IMK-PROLOGUE = ;
-
-\ Order matters: IMK-COLON? dereferences the body cell, and only global
-\ (wid 0) records are guaranteed to hold a code pointer there - package name
-\ records (wid -1) store the package's wordlist id in the body cell, so the
-\ wid gate must short-circuit before any body read.
-: IMK-GLOBAL-COLON? ( n -- bool )
-   dup IMK-WID 0 = IF IMK-COLON? ELSE drop 0 0= 0= THEN ;
+: IMK-GLOBAL-EXECUTABLE? ( n -- bool )
+   dup IMK-WID 0 = IF IMK-EXECUTABLE? ELSE drop 0 0= 0= THEN ;
 
 : FIRST-CORE ( -- n ) IMK-FIRST @ ;
-TRUSTED: KNOWN-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
+TRUSTED: KNOWN-MIN-IN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
 TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
 TRUSTED: PROTECTED-COUNT ( -- n ) REG-PROT-N @ ;
@@ -61,7 +48,7 @@ TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
    m 0 > IF i m MARK-MIN-IN THEN ;
 
 : IMK-CLASSIFY ( n -- ) {: i:n :}   \ a global record, under its bare name
-   i IMK-GLOBAL-COLON? 0= IF EXIT THEN
+   i IMK-GLOBAL-EXECUTABLE? 0= IF EXIT THEN
    i i IMK-MIN-IN IMK-MARK ;
 
 : IMK-WALK ( -- )            \ classify every source-prefix record
@@ -86,12 +73,12 @@ TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
 \ never names its wordlist. Nothing to mark, and test/internal-word-gate.f pins
 \ that a private stays E-UNDEFINED under its own qualified name.
 \
-\ THE QUESTION IS THE SAME QUESTION, spelled the way the token is: SIG-MIN-IN of
+\ THE QUESTION IS THE SAME QUESTION, spelled the way the token is: source arity of
 \ "PKG:TAIL". checker.f CHECKER-FIND-ACTIVE-SYM routes a qualified name straight
 \ to CHECKER-PUBLIC-SYM? -> SYM-FIND (checker.f:4212) keyed on (package,
 \ SYM-PUBLIC, tail), which is the key PPRIM; interns and the key the checker
 \ itself uses at a reference site. So a package public the checker can type stays
-\ callable and one it cannot fails closed, by the same rule as a global.
+\ callable only when that effect carries authority, by the same rule as a global.
 \
 \ WHY THE PACKAGE ROWS DRIVE THE LOOP rather than a wid -> package map: the row
 \ IS the record that carries both halves of the answer, its public wordlist in
@@ -104,10 +91,8 @@ TRUSTED: PROTECTED-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
 \ before the row does. Measured on the boot prefix, that is 112k record tests
 \ instead of 345k.
 \
-\ The body-read order IMK-GLOBAL-COLON? guards above is kept for the same
-\ reason and by a stronger test: a namespace row carries DICT-WL:NAMESPACE in
-\ its wordlist cell and an allocated wordlist id is never that, so matching the
-\ id first cannot select a row whose [0] is a number rather than a code pointer.
+\ A namespace row carries DICT-WL:NAMESPACE, distinct from every allocated
+\ wordlist id, so the inner walk cannot classify the namespace itself.
 1024 constant IMK-QCAP        \ qualified-name scratch: package + ':' + tail
 create IMK-QBUF IMK-QCAP allot
 variable IMK-QU
@@ -132,7 +117,7 @@ variable IMK-P               \ package-row cursor (IMK-I carries the inner walk)
    IMK-QBUF IMK-QU @ ;
 
 : IMK-CLASSIFY-PUB ( n n -- ) {: p:n i:n :}
-   i IMK-COLON? 0= IF EXIT THEN
+   i IMK-EXECUTABLE? 0= IF EXIT THEN
    i p i IMK-QUAL KNOWN-MIN-IN IMK-MARK ;
 
 : IMK-PKG-PUBLICS ( n -- ) {: p:n :}   \ every public colon record of package row p

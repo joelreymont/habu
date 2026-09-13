@@ -6989,8 +6989,8 @@ PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ questions and they need different answers. CHECKER-DEFINED-HERE? asks whether
 \ the name is already defined in the scope a NEW DEFINITION would land in - the
 \ duplicate-definition guards' question, and theirs alone. CHECKER-RESOLVES?
-\ asks whether the checker knows an effect for the word this token would BIND
-\ to here, resolving through the same scope chain a reference site uses.
+\ asks whether the checker has a source-visible user effect for the word this
+\ token would BIND to here, through the same scope chain a reference site uses.
 \ They had one spelling, wired to the first question, so every caller asking the
 \ second got the first's answer: a global the engine resolves and runs inside an
 \ open package was reported absent, and a load-discipline guard inverted the
@@ -8713,19 +8713,6 @@ package CHECKER-REG
 : CHECKER-DEFINED-HERE? ( ptr u8 n -- bool )
    CHECKER-FIND-USIG ;
 
-\ The REFERENCE-scope question: which word would this token bind to here, and
-\ does the checker know its effect? CHECKER-FIND-ACTIVE-SYM is the resolver the
-\ checker already uses at a reference site, so this answers with the engine's
-\ own binding order and the engine's deciding vote at the package and
-\ used-publics legs. It inherits that resolver's refusal: a bare tail that a
-\ global and a live used public both claim throws E-USING-SHADOW-GLOBAL rather
-\ than answering, which is the same ambiguity a reference to it would hit.
-\ Effect-only, like the question it replaces: a primitive with an axiom but no
-\ recorded signature still answers false here, and whether it should is a
-\ separate question with no consumer yet.
-: CHECKER-RESOLVES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM ;
-
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
 
@@ -9465,6 +9452,15 @@ variable NORET-FMEND
 : EFFECT-EXTERNAL-SYM? ( n -- bool )
    CTL-FLAGS-SYM EFFECT-EXTERNAL and 0 <> ;
 
+\ Reference-scoped existence for source callers and load guards. A private or
+\ ABI-only row is not a callable source effect; EFFECT-QUERY still exposes ABI
+\ facts. Primitive-only rows stay excluded, as this query has always promised.
+\ The common resolver preserves package/using binding order and ambiguity errors.
+: CHECKER-RESOLVES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
+   sym EFFECT-EXTERNAL-SYM? ;
+
 package CHECKER-EFFECT-AUTHORITY
 private
 : STORE ( n bool -- ) {: sym:n external:bool :}
@@ -10121,12 +10117,17 @@ variable WF-I
       CURSYM @ PRIM-TRUSTED-SYM? IF
          -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
       THEN
-      FEP @ EFF-APPLY ELSE
+      CHECKER-EFFECT-AUTHORITY:ENFORCED? 0=
+      CURSYM @ EFFECT-EXTERNAL-SYM? or IF FEP @ EFF-APPLY EXIT THEN
+      CURSYM @ PRIM-FIRST-IDX 0= IF
+         -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
+      THEN
+   THEN
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    a u ASIG-MISS+                                  \ the lazy intake's queue: see ASIG-MISS+
-   -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
+   -1 UNDEFERR ! -1 UNCK ! THEN ;
 
 : ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
    R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN

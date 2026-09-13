@@ -45,6 +45,12 @@ STRUCTURE pair 0
 
 : BUMP ( n -- n ) 1+ ;
 
+\ An unchecked native row is still useful ABI metadata after import.
+0 set-check
+: ABI-ONLY ( n -- n ) ;
+TRUSTED: ASSERTED ( n -- n ) ;
+' LOWER-CERT-HOOK:HOOK set-check
+
 
 : PAIR-SUM ( pair -- n ) PAYLOAD--NATIVE-PAIR:UNMAKE + ;
 

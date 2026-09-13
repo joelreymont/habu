@@ -272,6 +272,10 @@ SUITE primitive-trust
    test/primitive-trust.f
 ;SUITE
 
+SUITE checker-effect-authority
+   test/checker-effect-authority.f
+;SUITE
+
 SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
