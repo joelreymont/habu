@@ -63,6 +63,9 @@ CAST: READER>N ( IR-ARENA:reader -- n )
 
 \ ---- capacities and packing --------------------------------------------------
 64 constant SLOT-MAX                \ live + frozen registry slots
+public
+SLOT-MAX constant REGISTRY-CAP
+private
 6 constant SLOT-BITS
 SLOT-MAX 1- constant SLOT-MASK
 8 constant SEED-CELLS                \ first data span, before any doubling
@@ -112,7 +115,30 @@ create ASTATES SLOT-MAX cells allot
 : AGEN@ ( n -- n )
    cells AHANDLES + @ SLOT-BITS rshift ;
 
+\ One observer owns optional private side storage; replacement is refused.
+defer RETIRE-OBSERVER ( n -- )
+variable OBSERVER-SET
+0 OBSERVER-SET !
+
+: KEEP-OBSERVER ( n -- )
+   drop ;
+
+
+: OBSERVER-RESET ( -- )
+   [: KEEP-OBSERVER ;] is RETIRE-OBSERVER ;
+OBSERVER-RESET
+
+public
+
+: RETIRE-OBSERVER! ( [ n -- ] -- )
+   OBSERVER-SET @ 0<> if E-IR-ARENA-STATE throw then
+   1 OBSERVER-SET !
+   is RETIRE-OBSERVER ;
+
+private
+
 : AGEN! ( n n -- ) {: g:n slot:n :}
+   g 0= if slot RETIRE-OBSERVER then
    g 0= if 0 else g SLOT-BITS lshift slot or then
    slot cells AHANDLES + ! ;
 
@@ -688,6 +714,10 @@ public
       E-IR-ARENA-STATE throw
    then
    slot cells ACOUNTS + @ ;
+
+\ A validated ordinal for private side tables; it grants no arena write access.
+: REGISTRY-SLOT ( IR-ARENA:reader -- n )
+   dup RD-SIZE drop READER>N SLOT-MASK and ;
 
 public
 

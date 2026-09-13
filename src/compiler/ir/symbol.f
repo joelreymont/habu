@@ -15,9 +15,8 @@
 \ STORE SHAPES. Each arena carries a three-cell header (format tag, owning
 \ module serial, committed capacity). The pool's data cells hold symbol bytes
 \ packed eight per cell little-endian; every symbol starts on a fresh cell and
-\ the last cell's tail is zero-padded. That keeps the arena the single storage
-\ owner - no side allocation, no SCRATCH-TAKE bookkeeping - and keeps appends
-\ whole, at a cost of at most seven padding bytes per symbol; the committed
+\ the last cell's tail is zero-padded. Appends stay whole, at a cost of at
+\ most seven padding bytes per symbol; the committed
 \ byte capacity is therefore accounted in whole cells. The row table stores
 \ one three-cell row per symbol: content filter, starting pool data cell, and
 \ byte length. Every row access rechecks the header shape and revalidates that
@@ -52,7 +51,7 @@
 \ that cell is. Completeness does depend on it:
 \ Symbols.sym_row_match_is_byte_equality needs the stored cell to be the
 \ honest filter of the stored bytes before the three-part test is byte
-\ equality. A wrong cell makes the scan walk past a row that does hold the
+\ equality. A wrong cell makes lookup pass over a row that does hold the
 \ presented bytes and mint a second identity for them, and duplicate rows
 \ would also break the induction over ordinals type.f relies on, which assumes
 \ two rows of one table are structurally equal exactly when they are the same
@@ -73,7 +72,8 @@
 \ byte-faithful iteration surface, and that is SYMBOLS/FSYMBOLS plus the
 \ ordinal-packed identities resolved through LEN@ and COPY: the encoder sorts
 \ symbols by their bytes and emits its own permutation. The filter cell is an
-\ in-memory scan aid only and never serializes.
+\ in-memory lookup filter only and never serializes. Mutable buckets are private
+\ context scratch, cleared on arena retirement and copied independently on clone.
 \
 \ NO POINTER ESCAPES. Readers copy bytes into a caller span or compare bytes
 \ in place; no public word returns a pointer into the context mapping, so
@@ -126,8 +126,8 @@ private
 \ twins that used to run down this file collapse into one set, because a reader
 \ carries the state it was opened against and refuses the other with the error
 \ the handle would have given - the only thing the two entry points still differ
-\ in is OPEN-LIVE against OPEN. THE SCAN IS WHY: INTERN reads three cells of
-\ every row and resolved a store for each one, and now resolves two per intern.
+\ in is OPEN-LIVE against OPEN. INTERN resolves the two stores before looking up
+\ a bucket, so a stale generation or frozen builder rejects before index access.
 
 \ ---- headers and shape -------------------------------------------------------
 : PSHAPE-CK ( n -- )
@@ -251,6 +251,15 @@ private
    loop
    true ;
 
+: HASH ( ptr u8 n -- n )
+   {: p u:n :}
+   FNV-OFFSET
+   u 0 ?do
+      p i + c@ xor  FNV-PRIME *
+   loop
+   dup 32 rshift xor
+   dup 16 rshift xor ;
+
 public
 
 \ The deterministic content filter a symbol row stores: FNV-1a over the bytes
@@ -272,34 +281,180 @@ public
 \ contains it, and the section 6.6 encoder reaches symbols through
 \ SYMBOLS/FSYMBOLS, LEN@ and COPY (see INSERTION ORDER AND CANONICALIZATION
 \ above). Nothing outside ROW-MATCH? can observe which function produced it, so
-\ changing it moves no digest anyone has stored. All it buys is scan cost, and
+\ changing it moves no digest anyone has stored. It cheaply rejects candidates;
 \ a cryptographic digest per intern was a steep price for sixteen bits of
 \ reject power that FNV-1a delivers in a few instructions per byte.
 : FILTER ( ptr u8 n -- n )
-   {: p u:n :}
-   FNV-OFFSET
-   u 0 ?do
-      p i + c@ xor  FNV-PRIME *
-   loop
-   dup 32 rshift xor
-   dup 16 rshift xor
-   FILTER-MASK and ;
+   HASH FILTER-MASK and ;
 
 private
 
-\ ---- scan --------------------------------------------------------------------
+\ ---- matching --------------------------------------------------------------------
 : ROW-MATCH? ( IR-ARENA:reader IR-ARENA:reader n ptr u8 n n -- bool )
    {: pr:IR-ARENA:reader rr:IR-ARENA:reader l:n p u:n f:n :}
    rr l OFF-FLT RC@ f <> if false exit then
    rr l OFF-LEN RC@ u <> if false exit then
    pr  pr rr l ROW-START  p u BYTES-EQ ;
 
-: SCAN ( IR-ARENA:reader IR-ARENA:reader ptr u8 n n -- n )
-   {: pr:IR-ARENA:reader rr:IR-ARENA:reader p u:n f:n :}
-   -1
-   rr CNT 0 ?do
-      pr rr i p u f ROW-MATCH? if drop i leave then
+\ Buckets and their control record live in context scratch. Registry pointers
+\ are private and cleared by arena retirement before any owning span is unmapped.
+\ Each bucket keeps the full hash for growth and ordinal+1 (zero means empty).
+\ Load stays at most one half; the insertion-ordered rows remain authoritative.
+create INDEXES IR-ARENA:REGISTRY-CAP cells allot
+8 constant INDEX-SEED
+0 constant IX-CAP
+1 constant IX-COUNT
+2 constant IX-BUCKETS
+3 cells constant INDEX-BYTES
+2 constant BUCKET-CELLS
+0 constant BK-HASH
+1 constant BK-ORD
+
+: INDEX-FIELD ( n -- ptr ptr u8 )
+   cells INDEXES + 0 ptr-field ;
+
+
+: INDEX-CLEAR ( n -- )
+   NULL-PTR swap INDEX-FIELD ! ;
+
+
+: INDEXES-CLEAR ( -- )
+   IR-ARENA:REGISTRY-CAP 0 ?do i INDEX-CLEAR loop ;
+INDEXES-CLEAR
+
+: INDEX-INSTALL ( -- )
+   [: INDEX-CLEAR ;] IR-ARENA:RETIRE-OBSERVER! ;
+INDEX-INSTALL
+
+: BUCKETS-FIELD ( ptr u8 -- ptr ptr u8 )
+   IX-BUCKETS ptr-field ;
+
+
+: INDEX@ ( IR-ARENA:reader -- ptr u8 )
+   IR-ARENA:REGISTRY-SLOT INDEX-FIELD @
+   dup NULL-PTR = if E-IR-SYM-STATE throw then ;
+
+
+: BUCKET@ ( ptr u8 n n -- n )
+   swap BUCKET-CELLS * + CDIGEST:SLOT@ ;
+
+
+: BUCKET! ( n ptr u8 n n -- )
+   swap BUCKET-CELLS * + CDIGEST:SLOT! ;
+
+
+: BUCKET-NEXT ( n n -- n )
+   1- swap 1+ and ;
+
+
+: EMPTY-BUCKET ( ptr u8 n n -- n )
+   {: buckets:ptr cap:n hash:n :}
+   hash cap 1- and
+   begin buckets over BK-ORD BUCKET@ 0<> while
+      cap BUCKET-NEXT
+   repeat ;
+
+
+: BUCKET-ADD ( ptr u8 n n n -- )
+   {: buckets:ptr cap:n hash:n ord:n :}
+   buckets cap hash EMPTY-BUCKET {: at:n :}
+   hash buckets at BK-HASH BUCKET!
+   ord 1+ buckets at BK-ORD BUCKET! ;
+
+
+: BUCKETS-TAKE ( IR-CTX:ctx n -- ptr u8 )
+   BUCKET-CELLS * cells IR-CTX:SCRATCH-TAKE drop ;
+
+
+: BUCKETS-ZERO ( ptr u8 n -- )
+   {: buckets:ptr cap:n :}
+   cap BUCKET-CELLS * 0 ?do 0 buckets i CDIGEST:SLOT! loop ;
+
+
+: BUCKETS-CLONE ( ptr u8 ptr u8 n -- )
+   {: src:ptr dst:ptr cap:n :}
+   cap BUCKET-CELLS * 0 ?do
+      src i CDIGEST:SLOT@ dst i CDIGEST:SLOT!
    loop ;
+
+\ All allocation precedes publishing the control pointer in the registry.
+: INDEX-TAKE ( IR-CTX:ctx n n -- ptr u8 )
+   {: c:IR-CTX:ctx cap:n count:n :}
+   c INDEX-BYTES IR-CTX:SCRATCH-TAKE drop {: ix:ptr :}
+   c cap BUCKETS-TAKE {: buckets:ptr :}
+   cap ix IX-CAP CDIGEST:SLOT!
+   count ix IX-COUNT CDIGEST:SLOT!
+   buckets ix BUCKETS-FIELD !
+   ix ;
+
+
+: INDEX-NEW ( IR-CTX:ctx IR-ARENA:reader -- )
+   {: c:IR-CTX:ctx rr:IR-ARENA:reader :}
+   rr IR-ARENA:REGISTRY-SLOT {: slot:n :}
+   c INDEX-SEED 0 INDEX-TAKE {: ix:ptr :}
+   ix BUCKETS-FIELD @ INDEX-SEED BUCKETS-ZERO
+   ix slot INDEX-FIELD ! ;
+
+
+: BUCKETS-REHASH ( ptr u8 n ptr u8 n -- )
+   {: old:ptr oldcap:n fresh:ptr cap:n :}
+   oldcap 0 ?do
+      old i BK-ORD BUCKET@ {: entry:n :}
+      entry 0<> if
+         fresh cap old i BK-HASH BUCKET@ entry 1- BUCKET-ADD
+      then
+   loop ;
+
+
+: INDEX-ROOM ( IR-CTX:ctx ptr u8 n -- )
+   {: c:IR-CTX:ctx ix:ptr need:n :}
+   ix IX-CAP CDIGEST:SLOT@ {: oldcap:n :}
+   need oldcap 2 / <= if exit then
+   oldcap 2 * {: cap:n :}
+   c cap BUCKETS-TAKE {: fresh:ptr :}
+   fresh cap BUCKETS-ZERO
+   ix BUCKETS-FIELD @ oldcap fresh cap BUCKETS-REHASH
+   fresh ix BUCKETS-FIELD !
+   cap ix IX-CAP CDIGEST:SLOT! ;
+
+
+: INDEX-ADD ( ptr u8 n n -- )
+   {: ix:ptr hash:n ord:n :}
+   ix BUCKETS-FIELD @ ix IX-CAP CDIGEST:SLOT@ hash ord BUCKET-ADD
+   ord 1+ ix IX-COUNT CDIGEST:SLOT! ;
+
+
+: INDEX-CK ( IR-ARENA:reader -- ptr u8 )
+   {: rr:IR-ARENA:reader :}
+   rr INDEX@ {: ix:ptr :}
+   rr CNT ix IX-COUNT CDIGEST:SLOT@ <> if E-IR-SYM-STATE throw then
+   ix ;
+
+
+: LOOKUP ( IR-ARENA:reader IR-ARENA:reader ptr u8 n n -- n )
+   {: pr:IR-ARENA:reader rr:IR-ARENA:reader p u:n hash:n :}
+   rr INDEX-CK {: ix:ptr :}
+   ix BUCKETS-FIELD @ {: buckets:ptr :}
+   ix IX-CAP CDIGEST:SLOT@ {: cap:n :}
+   hash cap 1- and
+   begin
+      buckets over BK-ORD BUCKET@ {: entry:n :}
+      entry 0= if drop -1 exit then
+      pr rr entry 1- p u hash FILTER-MASK and ROW-MATCH? if
+         drop entry 1- exit
+      then
+      cap BUCKET-NEXT
+   again ;
+
+
+: INDEX-CLONE ( IR-CTX:ctx IR-ARENA:reader IR-ARENA:reader -- )
+   {: c:IR-CTX:ctx rr:IR-ARENA:reader proto:IR-ARENA:reader :}
+   proto INDEX-CK {: src:ptr :}
+   rr IR-ARENA:REGISTRY-SLOT {: slot:n :}
+   src IX-CAP CDIGEST:SLOT@ {: cap:n :}
+   c cap proto CNT INDEX-TAKE {: dst:ptr :}
+   src BUCKETS-FIELD @ dst BUCKETS-FIELD @ cap BUCKETS-CLONE
+   dst slot INDEX-FIELD ! ;
 
 \ ---- creation ----------------------------------------------------------------
 : SYM-CAP-OK ( n -- )
@@ -372,13 +527,14 @@ public
    bcap BYTE-CAP-OK
    c key bcap BYTES>CELLS SYB-MAGIC bcap BYTES>CELLS PART-NEW {: a:IR-ARENA:arena :}
    c key scap ROW-CELLS * SYM-MAGIC scap PART-NEW {: r:IR-ARENA:arena :}
+   c r IR-ARENA:OPEN-LIVE INDEX-NEW
    a r ;
 
 \ ---- an interner that starts where another one left off ----------------------
 \ A module's symbols are its own ordinals, so a fresh module starts with an
 \ empty interner and every name a dialect needs is interned into it again. For
 \ the dialect's own vocabulary that is the same hundred-odd names every time,
-\ and each one costs a content filter over its bytes, a scan of the rows and an
+\ and each one costs a content hash over its bytes, a bucket lookup and an
 \ append - per module, for every module a definition builds.
 \
 \ A CLONE IS THE SAME TABLE UNDER A NEW KEY. Ordinals are positions in the row
@@ -414,6 +570,7 @@ public
    pa IR-ARENA:OPEN-LIVE {: par:IR-ARENA:reader :}
    pr IR-ARENA:OPEN-LIVE {: prr:IR-ARENA:reader :}
    par prr PAIR-CK
+   prr INDEX-CK drop
    prr CNT scap > if E-IR-SYM-CAP throw then
    bcap BYTES>CELLS {: poolcap:n :}
    par PCELLS poolcap > if E-IR-SYM-BYTES throw then
@@ -421,6 +578,7 @@ public
    c key scap ROW-CELLS * SYM-MAGIC scap PART-NEW {: r:IR-ARENA:arena :}
    c a pa HDR-CELLS par PCELLS IR-ARENA:APPEND-SPAN
    c r pr HDR-CELLS prr CNT ROW-CELLS * IR-ARENA:APPEND-SPAN
+   c r IR-ARENA:OPEN-LIVE prr INDEX-CLONE
    a r ;
 
 \ Intern the presented bytes: equal bytes answer the identity they already
@@ -433,16 +591,32 @@ public
    a IR-ARENA:OPEN-LIVE {: pr:IR-ARENA:reader :}
    r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
    pr rr key KEY-CK
-   p u FILTER {: f:n :}
-   pr rr p u f SCAN {: hit:n :}
+   p u HASH {: hash:n :}
+   pr rr p u hash LOOKUP {: hit:n :}
    hit 0 < 0= if key hit IR-ID:PACK-SYMBOL exit then
    pr rr u ROOM-CK
    c a r u ROOM-TAKE
+   rr INDEX-CK {: ix:ptr :}
+   c ix rr CNT 1+ INDEX-ROOM
    c a pr p u POOL-ADD {: st:n :}
-   c r rr f st u ROW-ADD
-   key swap IR-ID:PACK-SYMBOL ;
+   c r rr hash FILTER-MASK and st u ROW-ADD {: ord:n :}
+   ix hash ord INDEX-ADD
+   key ord IR-ID:PACK-SYMBOL ;
 
 \ ---- live readers ------------------------------------------------------------
+\ Total bucket visits for one successful lookup of every interned symbol.
+\ This derives deterministic work from placement without instrumenting INTERN.
+: LOOKUP-PROBES ( IR-ARENA:arena -- n )
+   IR-ARENA:OPEN-LIVE dup RHDR-CK INDEX-CK {: ix:ptr :}
+   ix IX-CAP CDIGEST:SLOT@ {: cap:n :}
+   ix BUCKETS-FIELD @ {: buckets:ptr :}
+   0
+   cap 0 ?do
+      buckets i BK-ORD BUCKET@ 0<> if
+         i buckets i BK-HASH BUCKET@ - cap 1- and 1+ +
+      then
+   loop ;
+
 : SYMBOLS ( IR-ARENA:arena -- n )
    IR-ARENA:OPEN-LIVE dup RHDR-CK CNT ;
 

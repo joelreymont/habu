@@ -97,7 +97,7 @@ create CBUF 32 allot
 \ IR-SYM:FILTER's FNV-1a, found by enumerating short words against that
 \ function and confirmed by the first assertion below, which asks the
 \ production filter rather than trusting this comment.
-: CL-BODY ( IR-CTX:ctx -- bool n n bool bool n )
+: CL-BODY ( IR-CTX:ctx -- bool n n bool bool n n )
    {: c:IR-CTX:ctx :}
    c 8 64 TAB-NEW
    {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -108,12 +108,13 @@ create CBUF 32 allot
    sh IR-ID:SYMBOL-LOCAL
    a r sv s" jest" IR-SYM:EQ?
    a r sh s" yank" IR-SYM:EQ?
-   c a r key s" jest" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
+   c a r key s" jest" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL
+   c a r key s" yank" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL ;
 
 : CL-CASE ( -- )
    s" a forced filter collision is split by the byte-compare verify" T-LABEL
    BND [: CL-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= TTRUE TTRUE 1 T= 0 T= TTRUE ;
+   1 T= 0 T= TTRUE TTRUE 1 T= 0 T= TTRUE ;
 
 \ ---- a copy span smaller than the symbol -------------------------------------
 : CP-BODY ( IR-CTX:ctx -- )
@@ -709,6 +710,200 @@ create CBUF 32 allot
    s" interning into the clone leaves the prototype where it was" T-LABEL
    proto-after before T= ;
 
+\ ---- bucket growth, probe scaling, and independent clone mutation ------------
+: NAME$ ( n -- ptr u8 n )
+   CBUF 0 CDIGEST:SLOT!
+   CBUF 8 ;
+
+
+: MANY-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key
+      start:n count:n :}
+   count 0 ?do
+      c a r key start i + NAME$ IR-SYM:INTERN IR-ID:SYMBOL-LOCAL start i + T=
+   loop ;
+
+
+: MANY-HITS ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key count:n :}
+   c IR-CTX:SCRATCH-USED {: before:n :}
+   count 0 ?do
+      i NAME$ CBUF 16 + swap BYTE-COPY
+      c a r key CBUF 16 + 8 IR-SYM:INTERN IR-ID:SYMBOL-LOCAL i T=
+   loop
+   c IR-CTX:SCRATCH-USED before T= ;
+
+
+: SCALE-BODY ( n IR-CTX:ctx -- n )
+   {: count:n c:IR-CTX:ctx :}
+   c count count 8 * TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key 0 count MANY-ADD
+   c a r key count MANY-HITS
+   r IR-SYM:SYMBOLS count T=
+   r IR-SYM:LOOKUP-PROBES ;
+
+
+: SCALE-CASE ( -- )
+   s" indexed lookup probes scale with entries; equal bytes allocate nothing" T-LABEL
+   512 BND [: SCALE-BODY ;] IR-CTX:WITH-CONTEXT {: small:n :}
+   1024 BND [: SCALE-BODY ;] IR-CTX:WITH-CONTEXT {: medium:n :}
+   2048 BND [: SCALE-BODY ;] IR-CTX:WITH-CONTEXT {: large:n :}
+   small 512 3 * < TTRUE
+   medium 1024 3 * < TTRUE
+   large 2048 3 * < TTRUE
+   large medium 3 * < TTRUE
+   ." symbol lookup probes (512/1024/2048): " small . medium . large . cr ;
+
+
+: CLONE-GROW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 128 1024 TAB-NEW
+   {: pk:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c pa pr pk 0 32 MANY-ADD
+   c IR-CTX:NEW-MODULE drop {: ck:IR-ID:ir-module-key :}
+   c ck pa pr 128 1024 IR-SYM:NEW-FROM
+   {: ca:IR-ARENA:arena cr:IR-ARENA:arena :}
+   pr IR-SYM:LOOKUP-PROBES cr IR-SYM:LOOKUP-PROBES T=
+   c ca cr ck 32 32 MANY-ADD
+   c pa pr pk s" prototype only" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 32 T=
+   c ca cr ck s" prototype only" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 64 T=
+   c pa pr pk 32 MANY-HITS
+   c ca cr ck 64 MANY-HITS
+   pr IR-SYM:SYMBOLS 33 T=
+   cr IR-SYM:SYMBOLS 65 T= ;
+
+
+: CLONE-GROW-CASE ( -- )
+   s" cloned buckets are independent through growth on both sides" T-LABEL
+   BND [: CLONE-GROW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A clone's bucket memory depends on occupancy, even when its committed
+\ ceilings are large. Its mapping must also survive retirement of the prototype.
+: CLONE-SOURCE ( IR-CTX:ctx -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx :}
+   c 64 512 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key 0 32 MANY-ADD
+   key a r ;
+
+
+: CLONE-SETUP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c CLONE-SOURCE
+   {: pk:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c IR-CTX:NEW-MODULE drop {: ck:IR-ID:ir-module-key :}
+   c IR-CTX:SCRATCH-USED {: before:n :}
+   c ck pa pr IR-SYM:CAP-MAX IR-SYM:BYTE-MAX IR-SYM:NEW-FROM
+   {: ca:IR-ARENA:arena cr:IR-ARENA:arena :}
+   c IR-CTX:SCRATCH-USED before - $1000 < TTRUE
+   pr IR-ARENA:ABORT
+   pa IR-ARENA:ABORT
+   c ca cr ck 32 MANY-HITS
+   c ca cr ck 32 32 MANY-ADD ;
+
+
+: CLONE-CONTEXT-INNER ( IR-CTX:ctx IR-CTX:ctx -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena )
+   {: dst:IR-CTX:ctx src:IR-CTX:ctx :}
+   src CLONE-SOURCE
+   {: pk:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   dst IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   key dst key pa pr 64 512 IR-SYM:NEW-FROM ;
+
+
+: CLONE-CONTEXT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c BND [: CLONE-CONTEXT-INNER ;] IR-CTX:WITH-CONTEXT
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key 32 MANY-HITS
+   c a r key 32 32 MANY-ADD ;
+
+
+: CLONE-SETUP-CASE ( -- )
+   s" clone storage tracks occupancy and outlives prototype arena retirement" T-LABEL
+   BND [: CLONE-SETUP-BODY ;] IR-CTX:WITH-CONTEXT
+   BND [: CLONE-CONTEXT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ At four entries, the next miss would grow the index. Capacity refusal must
+\ precede that allocation and must leave no rejected spelling in the buckets.
+: INDEX-REFUSE-BODY ( n n n IR-CTX:ctx -- )
+   {: scap:n bcap:n error:n c:IR-CTX:ctx :}
+   c scap bcap TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key 0 4 MANY-ADD
+   c IR-CTX:SCRATCH-USED {: before:n :}
+   r IR-SYM:LOOKUP-PROBES {: probes:n :}
+   c a r key [: CAPF-THIRD ;] catch
+   {: c2:IR-CTX:ctx a2:IR-ARENA:arena r2:IR-ARENA:arena
+      key2:IR-ID:ir-module-key rc:n :}
+   rc error T=
+   c2 IR-CTX:SCRATCH-USED before T=
+   r2 IR-SYM:SYMBOLS 4 T=
+   r2 IR-SYM:LOOKUP-PROBES probes T=
+   c2 a2 r2 key2 4 MANY-HITS
+   error E-IR-SYM-BYTES = if
+      c2 a2 r2 key2 s" " IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 4 T=
+   then ;
+
+
+: INDEX-REFUSE-CASE ( -- )
+   s" a rejected miss leaves rows, bytes and bucket growth untouched" T-LABEL
+   4 128 E-IR-SYM-CAP BND [: INDEX-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   8 32 E-IR-SYM-BYTES BND [: INDEX-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ ---- retirement clears associations before reuse and context unmapping -------
+: STALE-INTERN ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key s" stale" IR-SYM:INTERN drop ;
+
+
+: STALE-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c key a r
+   c key a r STALE-INTERN ;
+
+
+: REUSE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 4 32 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key s" stale" IR-SYM:INTERN drop
+   r IR-ARENA:ABORT
+   a IR-ARENA:ABORT
+   c 4 32 TAB-NEW
+   {: newkey:IR-ID:ir-module-key newa:IR-ARENA:arena newr:IR-ARENA:arena :}
+   c newa newr newkey s" replacement" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0 T=
+   c key a r [: STALE-TRY ;] catch
+   {: oldc:IR-CTX:ctx oldk:IR-ID:ir-module-key olda:IR-ARENA:arena
+      oldr:IR-ARENA:arena rc:n :}
+   rc E-IR-ARENA-STALE T=
+   c newa newr newkey s" replacement" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0 T=
+   newr IR-ARENA:FREEZE IR-ARENA:RETIRE ;
+
+
+: STALE-BODY ( IR-CTX:ctx -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx :}
+   c 4 32 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c a r key s" stale" IR-SYM:INTERN drop
+   c key a r ;
+
+
+: STALE-RUN ( -- )
+   BND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT STALE-INTERN ;
+
+
+: OBSERVER-REPLACE ( -- )
+   [: drop ;] IR-ARENA:RETIRE-OBSERVER! ;
+
+
+: INDEX-LIFETIME-CASE ( -- )
+   s" retirement clears index pointers before slot reuse and context teardown" T-LABEL
+   BND [: REUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   [: STALE-RUN ;] E-IR-ARENA-STALE TTHROWSQ
+   s" replacing the installed index retirement observer refuses" T-LABEL
+   [: OBSERVER-REPLACE ;] E-IR-ARENA-STATE TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -717,6 +912,11 @@ public
    CLONE-EXACT-CASE
    CLONE-EMPTY-CASE
    PROTO-CASE
+   CLONE-GROW-CASE
+   CLONE-SETUP-CASE
+   INDEX-REFUSE-CASE
+   SCALE-CASE
+   INDEX-LIFETIME-CASE
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
    GROW-CASE
    TD-FRESH-CASE
