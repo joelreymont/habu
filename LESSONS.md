@@ -7787,6 +7787,10 @@ and --no-lldbinit.
   the four pool-budget artifacts (stdlib-process-fixtures, stdlib-runner-fixtures,
   stdlib-source-default, tool-boundary-aot-call) appear under that load and
   every file of theirs passes alone on the same engine.
+  Re-measured 2026-09-12 18:55 UTC on engine 44bc47ba at tip d9eca5dd (310
+  suites, no timeouts): 13 red, engine green after the two snapshot-owner cases
+  were pinned to the unbind rule; two same-host builds byte-identical and the
+  chain gen 5 = gen 4 (fixpoint at gen 3) on that engine.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
