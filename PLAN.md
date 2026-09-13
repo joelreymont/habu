@@ -13,66 +13,62 @@ review pins remain frozen: `review/current-compiler` at `51546316`, and
 engine; source review and focused controls are not a rebuilt runtime gate.
 
 The integration includes complete address rows and layout translation, native
-publication provenance, typed `is`, indexed dictionary lookup, counted-loop
-obligations, portable partial-effect graphs and widths, live string-pool capture,
-and repeated registry persistence. No accepted replacement engine is published.
+publication provenance, typed `is`, indexed dictionary append, CAST identity,
+catch grouping, portable partial-effect graphs, repeated registry persistence,
+frozen IR reader reuse and canonical engine aliases through symlinked roots.
+No accepted replacement engine is published.
 
-Private product E, source `a99cd3fc`, built in 134.001 seconds from indexed B:
-`/tmp/cedar-family-stage-abi/hb-graph-persist-E`, SHA-256
-`cefd25fdbd7db8126fb0f63feeb834b662eed2569c7a4cd49584ed69fef1c3d0`.
-Registry persistence, process-image recapture, deferred restore with fresh JIT/native
-compilation, field projection and graph metadata suites pass on that product.
-App-image also passes with fixture `568d66f6`, which compiles its recaptured
-startup word at tier 1. Repeated capture now retains already persisted registry
-storage instead of filling the address table with another relocated copy.
+Latest private product I uses source `c0335a0d`, built from H in 126.943 seconds:
+`/tmp/cedar-family-stage-abi/hb-integrated-I`, SHA-256
+`13969ea2601f7e76eae2729e9d86d1fe10b297f361a7e178fc467db57cdaedae`.
+Its generated prefix now certifies with verdict 0 and the actual preflight
+recovery fixture passes. Renaming the four-argument target API to
+`CHECK-TARGET!` removes its collision with the earlier two-argument `CHECK!`.
+General source-order behavior during warmed verification remains open in
+`0c9fe3d7`. Stage2 certification now reaches a separate undefined `ADD` in
+`ENGINE-HELPER:REGISTER`; the build-fixpoint, wide artifact, chain capture and
+WID collision suites remain blocked there. The WID lane owns that reduction.
 
-E exposed a product-hosted checker rebuild refusal at protected field state.
-Reviewed fix `165f2e32`, integrated as `3e4f0ec5`, keeps raw state access in small
-trusted helpers and leaves matching/schema validation checked. Its E-hosted
-whole-prefix native regression passes. Product F from `3e4f0ec5` also self-builds
-through E in 134.074 seconds: `/tmp/cedar-family-stage-abi/hb-clean-F`, SHA-256
-`93fcbcd1600c0e3b1044ad54864e60ca3e6dc06d54aad7105e9645d4fb94412b`.
-Its full suite with fixture source `ef3fc770` ran all 338 suites: 320 passed and
-18 failed. The final failure list is in the campaign dot and
-`/tmp/cedar-F-full-suite.log`; runtime source and suite source are recorded
-separately in `/tmp/cedar-F-full-suite.json`.
-The obsolete JIT copier, scanner and helper-retention test are removed in reviewed
-`dd71ead7`; real call targets, storage values and rollback-map tests pass on B.
+The latest complete gate is still F: runtime source `3e4f0ec5`, suite source
+`ef3fc770`, 338 suites, 320 passed and 18 failed in 415.366 seconds. Exact
+identities and outputs are in `/tmp/cedar-F-full-suite.{json,log}` and the
+campaign dot. Later focused checks are not a replacement full gate.
+G2 passed both captured-core CAST tiers, native catch/MATCH/prefix declarations,
+payload rollback, verify-prim, cold-runtime, the corrected actual cold pre-trust
+fixture, hb-build-fixtures and the registered native-gate-aot-positive suite.
+H passed the complete checker CLI suite, both corrected source-root fixture
+tiers and native IR build. Fixture provenance and section-reach checks passed F.
+The Gforth native-fixture-paths suite still needs its actual stage0 failure fixed.
 
-Fresh-process graph acceptance (`89c29acf`) passes on E: a native producer exits,
-a fresh reader imports the artifact, and a fresh partial engine executes scalar
-and two-cell product words and checks dependent definitions. Disk import retains
-unknown provenance; this test does not claim an all-native partial-engine optimizer.
-Exception-quotation and dynamic-schema refusals remain separate open contracts.
+Visibility leaf `07e86028` separates source-call permission from native ABI
+shape using positive effect provenance. Its unlanded enforcing product B and
+B-hosted product C are byte-identical; the original internal-word gate, private
+checker-cursor rejection, prefix-mark and effect-authority tests pass. Portable
+graph tests also pass, including a fresh producer/reader/consumer sequence and
+unknown authority-bit refusal. Root source review found one existing export
+test comparing control flags against the entire metadata word; its correction
+is under test. Compose the reviewed final leaf with I and run the complete gate.
 
-Combined source `292f9cdb` contains reviewed dictionary append, CAST identity and
-catch grouping fixes. G1 built from append B in 132.197 seconds; G2 rebuilt it
-in 131.826 seconds and refreshes the captured core CAST stamps. G2 is
-`/tmp/cedar-family-stage-abi/hb-integrated-G2`, SHA-256
-`36f25285819a56fa7d4edf922022bb909d862cd2d924b6d19c18c598743ed598`.
-Actual G2 CAST tests pass on both tiers, including captured core casts; native
-catch, MATCH and prefix declaration/reset tests pass. The corrected payload
-rollback fixture also passes both tiers, including serialized names and effects.
-Provenance-boundary and section-reach fixture corrections pass on F. The cold
-maker's prelude/provider ordering repair passes focused cold-runtime and
-verify-prim checks; a combined full gate is still required.
+Tender `4cc58705` gets beyond `OPEN` on G2, then exits 96 at the fixed 65,536-row
+snapshot address-table limit after 64 seconds under concurrent work. No executable
+was produced. Attribution establishes 75,900 valid distinct address rows: both
+the old symbol storage and its grown replacement remain readable through the
+supported API. Dropping the old rows would corrupt preserved data. Leaf
+`1ca5db10` is implementing a growable owned registry, explicit persistence outside
+registration, and artifact admission against actual aggregate section bytes.
+The existing 28 MiB artifact reservation remains. First-product, restore,
+recapture and complete Tender acceptance are still required; accepted downstream
+pins stay unchanged. Registrar indexing remains a separate measured speed leaf.
 
-Tender `4cc58705` now gets beyond `OPEN` on G2. The complete standalone build
-then stops at the snapshot address-table limit of 65,536 rows, rc 96, after
-64 seconds under concurrent work. No executable was produced. Attribute live
-versus obsolete registrations before changing storage; its accepted pin stays
-unchanged. Internal-word-gate also exposes a real visibility defect: inferred
-native ABI effects leave raw checker helpers callable. Preserve its rejection
-claims while repairing source visibility, rather than accepting new diagnostics.
-
-The latest three quiet publication pairs reduce trivial definitions from
-1,241–1,245 to 995–1,000 microseconds and three-operation definitions from
-953–958 to 707–713 microseconds; JIT remains 29–30 microseconds. Each run
-records exactly 200 NCOMP calls. Native publication now appends one index entry
-instead of rebuilding the index. The remaining measured cost includes thousands
-of repeated frozen IR reader openings per definition; leaf `516b2416` retains
-generation/state/bounds checks while reusing those reader tokens. The
-500-microsecond and complete uncached Tender targets remain unmet.
+Reader reuse reduces frozen OPEN calls per trivial definition from 2,895 to 328
+while preserving generation/state/bounds validation on all 24,924 reads. Three
+interleaved append-B/H pairs measured trivial AOT at 994/953, 994/953 and
+996/961 microseconds, and three-operation AOT at 705/645, 707/640 and 707/641.
+JIT remains 29–30 microseconds; every run counts exactly 200 NCOMP calls. Own
+build lanes were drained, but an external Maki lint used about 34% CPU. These
+are composed-product measurements, not isolated reader attribution or quiet
+acceptance. Logs: `/tmp/cedar-H-reader-pairs/`. The 500-microsecond trivial,
+uncached Tender and complete executable-build targets remain unmet.
 
 ## Required result
 

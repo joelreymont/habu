@@ -3,7 +3,7 @@ title: "Measure and finish pass-scoped IR reader reuse"
 status: active
 priority: 2
 issue-type: task
-created-at: "\"2026-09-11T16:38:06.256061+03:00\""
+created-at: "2026-09-11T16:38:06.256061+03:00"
 blocks:
   - habu-build-the-compiler-c348eab0
   - habu-attr-and-remove-2b13e978
@@ -58,10 +58,14 @@ switching between differently sized frozen modules. Logs:
 
 The same warmed actual definition now makes 328 frozen OPENs (88.7% fewer).
 OPEN-LIVE 2,965, RD@ 24,924, FIND-B 2,654 and checker/query counts are unchanged.
-`/tmp/cedar-readers-count.log` uses the same controlled interval and original
-sampler/count tools. Quiet paired timing is pending: both Habu lanes drained,
-but an external Tender corpus launched six busy workers alongside Maki/KiCad
-work. Process/load evidence is `/tmp/cedar-readers-timing-load.txt`; no timing
-under that load is claimed as quiet. Integrated rebuild/full suite remain
-root's gate. This leaf does not claim the 500 us target or optimize live symbol
-reads.
+`/tmp/cedar-readers-count.log` uses the same interval and original sampler/count
+tools. Integrated source is in product H (`35e16634`, SHA
+`bbc477819d7d7bef0de5940611939ea4b622a08e4e1d7ec5c5af7f9aae915f7d`).
+
+Three interleaved append-B/H pairs measured trivial AOT 994/953, 994/953,
+996/961 us; three-operation AOT 705/645, 707/640, 707/641 us; JIT 29–30 us
+unchanged. Every sample counts exactly 200 NCOMP calls. Own build lanes were
+drained; an external Maki lint used about 34% CPU. This is composed-product
+measurement, not isolated reader attribution or quiet acceptance. Logs and
+results: `/tmp/cedar-H-reader-pairs/`. The integrated full suite remains root's
+gate. This leaf does not claim the 500 us target or optimize live symbol reads.

@@ -75,30 +75,34 @@ individual outputs /tmp/habu-native-suite-1068277437369875-17/.
 - native-gate-aot-positive
 - protection-span
 
-Current integration includes reviewed dictionary append, CAST identity and native
-catch grouping. Source 292f9cdb built G1 in 132.197 seconds, then G2 from G1 in
-131.826 seconds. G2 SHA 36f25285819a56fa7d4edf922022bb909d862cd2d924b6d19c18c598743ed598.
-Both CAST tiers now pass the captured core stamp assertion. Native catch, MATCH,
-prefix declarations and both payload rollback tiers pass focused G2 checks.
-Reviewed layout fixtures pass on F, and the cold maker/provider ordering repair
-passes focused cold-runtime and verify-prim. These are corrections after the
-listed full gate, not a new all-green gate.
+Latest private product I: runtime/source c0335a0d, SHA
+13969ea2601f7e76eae2729e9d86d1fe10b297f361a7e178fc467db57cdaedae,
+126.943 seconds from H. Prefix certification returns0 and preflight recovery
+passes; stage2 certification now refuses ENGINE-HELPER:REGISTER at ADD. This
+still blocks maker/WID suites; indexed lane owns the preserved generated source
+reduction at /tmp/cedar-I-wid-maker-O129pcQz. General warmed-verifier binding is
+tracked separately in0c9fe3d7. These are focused results, not a new full gate.
 
-Tender 4cc58705 compiles beyond OPEN on G2, then exits 96 at the 65,536-row
-snapshot address-table bound after 64 seconds under concurrent work. No executable
-or performance acceptance. Attribute live and obsolete registrations before
-changing capacity. The accepted Tender/Maki/Kestrel pins remain unchanged.
+Since F, G2 passed CAST on both tiers including captured-core stamps, native
+catch/MATCH/prefix declarations, payload rollback, verify-prim, cold-runtime,
+the actual cold pre-trust fixture, hb-build-fixtures and registered
+native-gate-aot-positive. H passed full checker CLI and both corrected source-root
+fixture tiers. Provenance/section-reach fixtures passed F. Visibility leaf07e86028
+has independently reviewed production and byte-identical enforcing B/C products;
+internal/cursor gates, prefix mark and complete graph tests pass. Its final export
+assertion repair and combined integration/full gate remain pending.
 
-Internal-word-gate has a real remaining protection defect: native ABI effects
-make raw checker helpers callable. Leaf 07e86028 owns source visibility and
-keeps the original rejection tests. The missing-engine CLI instead hits duplicate
-E-A-FIRST through a symlinked root; leaf e33e56c3 owns portable engine aliases
-without conflating ordinary application file identities. Pre-trust-defer still
-needs an actual cold engine to exercise its patched source-prefix cases.
+Tender4cc58705 requires75,900 valid distinct address rows, exceeding the65,536
+fixed table. Both old and current symbol stores are supported readable data;
+the old rows cannot be dropped. Digest lane owns growable registry/persistence
+and actual aggregate artifact admission in1ca5db10. G2's64-second build produced
+no executable. First-product growth, restore/recapture and complete standalone
+acceptance remain open. Accepted Tender/Maki/Kestrel pins stay unchanged.
 
-Three quiet append pairs reduce trivial AOT 1,241–1,245 to 995–1,000 microseconds,
-three-operation AOT 953–958 to 707–713, JIT 29–30 unchanged; exactly 200 NCOMP
-calls per run. The 500-microsecond ratchet still fails. Reader leaf 516b2416
-removes repeated frozen-reader setup while retaining all read validation.
-Complete uncached Tender timing, combined full gate and downstream acceptance
-remain open.
+Three interleaved append-B/H pairs measured trivial AOT994/953,994/953,996/961us
+and three-operation705/645,707/640,707/641us; JIT29–30us unchanged, exactly200
+NCOMP calls each. Own lanes drained; external Maki lint used about34%CPU. This
+is composed-product evidence, not an isolated reader result or quiet acceptance.
+Frozen OPEN count falls2895→328 with every read validation retained. Trivial
+<500us, complete uncached Tender timing, combined full gate and downstream
+acceptance remain open. Details and current ownership are in PLAN.md.
