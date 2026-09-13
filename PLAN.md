@@ -46,8 +46,8 @@ collisions and complete environment comparison now pass. Internal-call protectio
 has a reviewed fix with three focused suites passing on first and repeated native
 products (a772a9a2); the combined gate remains pending. The source-stage cases
 exposed an early-checker vocabulary/Boolean error in provider publication, corrected
-in `0cf9ec8b`; assembled source certification now passes, but stage execution is
-still under investigation. The new runtime failure is a watchpoint-resume SIGSEGV
+in `0cf9ec8b`; assembled source certification now passes, but stage execution was trapped in an unresolved self-branch. A private correction now
+reaches the subsequent recorded `E-UNDEFINED: true` maker failure. The new runtime failure is a watchpoint-resume SIGSEGV
 (74e8b1d9), with diagnosis explicit rather than assigned to old PTY timing flakes.
 Full acceptance requires every named failure to pass on the final candidate.
 
