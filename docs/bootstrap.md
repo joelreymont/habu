@@ -227,14 +227,21 @@ fixpoint: the last pair is compared byte for byte.
 HB_TMP=$PWD/build/tmp bin/hb --load tools/two-generation-build.f -- <seed-engine>
 ```
 
-With no argument the checkout's own `bin/hb` is generation 0. `native-build.f`
-always promotes to `bin/hb`, so the tool moves the checkout's engine to
-`build/twogen/hb-entry` for the run and puts it back; every engine lands under
-the ignored `build/twogen`. It exits nonzero, naming the generation, when a
+With no argument the checkout's own `bin/hb` supplies generation 0. The tool
+copies that seed into a fresh private directory under the configured temporary
+root (`HB_TMP`) and prints the directory path. Every generation stays there for
+inspection; the installed engine is never moved or replaced. It exits nonzero,
+naming the generation, when a
 generation does not build, when generation 3's image size and shape differ from
 generation 2's, or when generation 5 is not byte-identical to generation 4.
 `tools/two-generation-probe.f` is the child fixture that reads one engine's
 shape.
+
+`tools/native-build.f` and the private `tools/native-bootstrap.f` require one
+explicit output path after `--`; there is no implicit `bin/hb` replacement.
+Their output passes a basic startup smoke check, which does not establish full
+compiler or application acceptance. Keep candidates at private paths until the
+required verification passes and select any installed replacement explicitly.
 
 Measured 2026-09-12 on linux-aarch64 from a seed `hb-stdin`, 173 s wall:
 

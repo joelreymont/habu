@@ -4,9 +4,9 @@
 \
 \ Generation 1 is built by the host named on the command line (default: the
 \ checkout's own bin/hb), generation 2 by generation 1, and so on to generation
-\ 5 - each through the production entry point, tools/native-build.f. Engines land
-\ in build/twogen, which is ignored. native-build.f always promotes to bin/hb, so
-\ the checkout's engine is moved aside for the run and put back.
+\ 5 - each through the production entry point, tools/native-build.f. Copy the
+\ seed and write each generation in a fresh private temporary directory. No
+\ success, failure or interruption needs to move or restore the installed engine.
 \
 \ Each generation prints one line: the image size plus the shape
 \ tools/two-generation-probe.f reads out of it. The chain fails, naming the
@@ -58,6 +58,7 @@ create TG-ERR TG-CAP-OUT allot
 create TG-SHAPE TG-SHAPE-CAP allot
 create TG-PREV TG-SHAPE-CAP allot
 create TG-HOST FS-PATH-CAP allot
+create TG-ROOT FS-PATH-CAP allot
 create TG-PATH FS-PATH-CAP allot
 create TG-PATH-B FS-PATH-CAP allot
 create TG-NAME 8 allot
@@ -67,9 +68,9 @@ create TG-CMP-B TG-CMP-CAP allot
 variable TG-SHAPE-U
 variable TG-PREV-U
 variable TG-HOST-U
+variable TG-ROOT-U
 variable TG-IMG
 variable TG-PREV-IMG
-variable TG-STASHED
 variable TG-FDA
 variable TG-FDB
 variable TG-RA
@@ -81,19 +82,15 @@ variable TG-DIFF
    v 10 >= if v 10 / RECURSE then
    v 10 mod TG-ZERO + emit ;
 
-: TG-DIR$ ( -- ptr u8 n ) s" build/twogen" ;
+: TG-DIR$ ( -- ptr u8 n ) TG-ROOT TG-ROOT-U @ ;
 : TG-BIN$ ( -- ptr u8 n ) s" bin/hb" ;
-: TG-STASH$ ( -- ptr u8 n ) s" build/twogen/hb-entry" ;
 : TG-TOOL$ ( -- ptr u8 n ) s" tools/native-build.f" ;
 : TG-PROBE$ ( -- ptr u8 n ) s" tools/two-generation-probe.f" ;
 
-: TG-ENSURE-DIR ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u DIR? if exit then
-   a u MAKE-DIR ;
-
 : TG-MKDIRS ( -- )
-   s" build" TG-ENSURE-DIR
-   TG-DIR$ TG-ENSURE-DIR ;
+   s" hb-generations" TMPDIR-MKDIR {: a:ptr u:n :}
+   a TG-ROOT u BYTE-COPY u TG-ROOT-U !
+   s" two-gen: products " type TG-DIR$ type cr ;
 
 : TG-HOST! ( ptr u8 n -- ) {: a:ptr u:n :}
    u FS-PATH-CAP > if E-STR-BOUNDS throw then
@@ -102,10 +99,10 @@ variable TG-DIFF
 
 : TG-HOST$ ( -- ptr u8 n ) TG-HOST TG-HOST-U @ ;
 
-\ build/twogen/hb-b<g>; one digit, because the chain is five generations long.
+\ hb-b<g> below this run's private directory; generation 0 is the seed copy.
 \ The buffers are the caller's so a compare can hold two generation paths at once.
 : TG-GEN-PATH ( n ptr u8 ptr u8 -- ptr u8 n ) {: g:n nm:ptr path:ptr :}
-   g 1 < g 9 > or if E-STR-BOUNDS throw then
+   g 0 < g 9 > or if E-STR-BOUNDS throw then
    s" hb-b" drop nm 4 BYTE-COPY
    g TG-ZERO + nm 4 + c!
    TG-DIR$ nm 5 path JOIN-PATH {: u:n :}
@@ -123,34 +120,21 @@ variable TG-DIFF
    repeat
    drop a u ;
 
-: TG-STASH ( -- )
-   0 TG-STASHED !
-   TG-BIN$ EXISTS? 0= if exit then
-   TG-BIN$ TG-STASH$ RENAME-FILE
-   -1 TG-STASHED ! ;
-
-: TG-UNSTASH ( -- )
-   TG-STASHED @ 0= if exit then
-   TG-STASH$ TG-BIN$ RENAME-FILE
-   0 TG-STASHED ! ;
-
-\ With no argument the stashed checkout engine is generation 0, which is why
-\ the host is resolved after the stash and never through the bin/hb path.
 : TG-HOST0 ( -- )
-   SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ TG-HOST! exit then
-   TG-STASHED @ 0= if
-      s" two-gen: no host: pass a seed engine path, or install bin/hb" type cr
-      TG-FAIL-RC throw
-   then
-   TG-STASH$ TG-HOST! ;
+   SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ else TG-BIN$ then
+   0 TG-GEN$ COPY-FILE-STREAM
+   0 TG-GEN$ CHMOD-X
+   0 TG-GEN$ TG-HOST! ;
 
 \ Only the stderr length and the completion code matter to a caller: a build
 \ that works says nothing on stdout.
-: TG-BUILD ( -- len n )
+: TG-BUILD ( n -- len n ) {: g:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    TG-TOOL$ >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   g TG-GEN$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    TG-HOST$ >LEN
    TG-OUT TG-CAP-OUT >LEN  TG-ERR TG-CAP-OUT >LEN
@@ -191,13 +175,12 @@ variable TG-DIFF
    s"  " type TG-SHAPE TG-SHAPE-U @ type ;
 
 : TG-GEN ( n -- ) {: g:n :}
-   TG-BUILD {: errl:len code:n :}
+   g TG-BUILD {: errl:len code:n :}
    code 0 <> if g errl code TG-STOPPED then
-   TG-BIN$ EXISTS? 0= if
+   g TG-GEN$ EXISTS? 0= if
       s" two-gen: gen " type g TG-U. s"  built no engine" type cr
       g TG-FAILED
    then
-   TG-BIN$ g TG-GEN$ RENAME-FILE
    g TG-GEN$ FILE-SIZE TG-IMG !
    g TG-GEN$ TG-PROBE
    g TG-REPORT
@@ -294,12 +277,12 @@ variable TG-DIFF
 
 public
 
-\ The stash is taken and returned here so it survives every failure path.
 : MAIN ( -- )
+   SCRIPT-ARGC 1 > if
+      S\" two-gen: expected at most one seed engine path\n" TG-FAIL-RC die
+   then
    TG-MKDIRS
-   TG-STASH
    [: TG-CHAIN ;] catch {: code:n :}
-   TG-UNSTASH
    code 0 <> if s" " code die then ;
 
 ;package

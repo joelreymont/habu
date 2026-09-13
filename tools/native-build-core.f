@@ -310,9 +310,6 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 : PROMOTE ( -- )
    TEMP$ OUTPUT$ RENAME-FILE ;
 
-: ENSURE-BIN ( -- )
-   s" bin" DIR? 0= if s" bin" MAKE-DIR then ;
-
 : REMOVE-STALE-TEMP ( -- )
    TEMP$ 2dup SYMLINK? if REMOVE-FILE exit then
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
@@ -335,14 +332,10 @@ public
 
 : RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
    CLEANUP-RESET
-   bootstrap SCRIPT-ARGC 1 <> and if
-      S\" native-bootstrap: one explicit private output path is required\n" BUILD-RC die
+   SCRIPT-ARGC 1 <> if
+      S\" native-build: one explicit output path is required\n" BUILD-RC die
    then
-   SCRIPT-ARGC 1 > if
-      s" native-build: expected at most one output path" BUILD-RC die
-   then
-   SCRIPT-ARGC 0= if s" bin/hb" else 0 SCRIPT-ARGV$ then OUTPUT!
-   ENSURE-BIN
+   0 SCRIPT-ARGV$ OUTPUT!
    REMOVE-STALE-TEMP
    TEMP$ CLEANUP+
    SMOKE-DIR!
