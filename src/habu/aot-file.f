@@ -25,7 +25,7 @@
 \   PRODUCER  - sha256 of the engine binary that produced the capture. Refuses an
 \               artifact some other engine made. A header field, so it is checked
 \               before a single payload byte is trusted.
-\   CHAIN     - sha256 over the ordered bytes of the closure the capture compiled.
+\   CHAIN     - versioned digest of ordered paths and per-file content digests.
 \               The artifact carries the FILE LIST and the reader RE-DERIVES the
 \               digest from disk rather than trusting the stored one, so a match
 \               means "this came from the chain that is on disk NOW". A mismatch
@@ -478,7 +478,11 @@ create BASE SEC-N cells allot
    SHA256-RESET
    HDR HDR-BYTES PUT
    TBL SEC-N ROW-BYTES * PUT
-   SEC-N 0 ?do i SEC-PTR i BASE@ + i SEC-LEN PUT loop
+   \ Empty sections may have no allocated buffer. Do not request its first
+   \ element just to pass a zero length to PUT (notably the name pool).
+   SEC-N 0 ?do
+      i SEC-LEN 0 > if i SEC-PTR i BASE@ + i SEC-LEN PUT then
+   loop
    FILESHA SHA256-FINAL ;
 
 public

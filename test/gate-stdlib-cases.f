@@ -899,6 +899,10 @@ SUITE aot-payload-admission
    test/aot-payload-admission.f
 ;SUITE
 
+SUITE aot-source-identity
+   test/aot-source-identity.f
+;SUITE
+
 SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
