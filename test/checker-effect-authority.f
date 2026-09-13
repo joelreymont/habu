@@ -19,6 +19,13 @@ TRUSTED: SCOPE+ ( -- ) CHECKER-SCOPE-START ;
 TRUSTED: SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
 TRUSTED: MULTI+ ( -- ) MULTI-ERR-BEGIN ;
 TRUSTED: MULTI- ( -- n ) MULTI-ERR-END ;
+TRUSTED: ROW-STATE ( ptr u8 n -- n )
+   CHECKER-FIND-ACTIVE-SIG
+   FEP-HIT? if FEP @ ER.ACTIVE @ else -1 then ;
+TRUSTED: RECOVERY? ( -- bool ) CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
+TRUSTED: CERT-SIZE ( -- n ) LOWER-CERT:BYTES nip ;
+TRUSTED: DICT-MIN ( ptr u8 n -- n )
+   0 xref-search-wl XREF-FLAGS DNAME-MIN-IN-MASK and ;
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 TRUSTED: SELECT ( n -- ) set-tier ;
@@ -101,6 +108,99 @@ TRUSTED: SELECT ( n -- ) set-tier ;
    s" n -- n" s" EAUTH-REUSED" DECLARE
    s" EAUTH-REUSED" SOURCE-MIN 1 T= ;
 
+: RECOVERY-FACT ( ptr u8 n -- )
+   2dup ROW-STATE 2 T=
+   2dup SOURCE-MIN -1 T=
+   CHECKER-RESOLVES? TFALSE ;
+
+: NESTED-ABI ( -- )
+   s" EAUTH-NESTED-ABI ( n -- n )" ABI -1 T=
+   s" n -- n" s" EAUTH-REC-EXPLICIT" DECLARE
+   7329 throw ;
+
+: RECOVERY-CASES ( -- )
+   s" failed declarations support current-run analysis without authority" T-LABEL
+   MULTI+
+   s" EAUTH-REC-BAD ( n -- n ) drop" JUDGE 0 T=
+   MIN-LATCH 0 T=
+   s" EAUTH-REC-BAD" RECOVERY-FACT
+   s" EAUTH-REC-DIRECT ( n -- n ) EAUTH-REC-BAD" JUDGE -1 T=
+   MIN-LATCH 0 T=
+   s" EAUTH-REC-DIRECT" RECOVERY-FACT
+   s" EAUTH-REC-BRANCH ( n bool -- n ) if EAUTH-REC-DIRECT else 1+ then" JUDGE -1 T=
+   s" EAUTH-REC-BRANCH" RECOVERY-FACT
+   s" EAUTH-REC-QUOTE ( n -- n ) [: EAUTH-REC-DIRECT ;] execute" JUDGE -1 T=
+   s" EAUTH-REC-QUOTE" RECOVERY-FACT
+   s" EAUTH-REC-TICK ( n -- n ) ['] EAUTH-REC-QUOTE execute" JUDGE -1 T=
+   s" EAUTH-REC-TICK" RECOVERY-FACT
+   s" EAUTH-REC-INFER EAUTH-REC-TICK" JUDGE -1 T=
+   MIN-LATCH 0 T=
+   s" EAUTH-REC-INFER" RECOVERY-FACT
+
+   s" nested candidates and thrown ABI scans restore the enclosing taint" T-LABEL
+   RECOVERY? TTRUE
+   s" EAUTH-REC-CAND ( n -- n )" CHECK-CANDIDATE! -1 T=
+   RECOVERY? TTRUE
+   [: NESTED-ABI ;] ABI-SCOPE 7329 T=
+   RECOVERY? TTRUE
+   ENFORCED? TTRUE
+   s" EAUTH-NESTED-ABI" ROW-STATE 1 T=
+   s" EAUTH-NESTED-ABI" SOURCE-MIN -1 T=
+   s" EAUTH-REC-EXPLICIT" ROW-STATE 1 T=
+   s" EAUTH-REC-EXPLICIT" SOURCE-MIN 1 T=
+
+   s" recovery mode keeps unrelated ABI-only and trusted-only calls closed" T-LABEL
+   s" EAUTH-REC-RAW ( n -- n )" ABI -1 T=
+   s" EAUTH-REC-RAW-CALL ( n -- n ) EAUTH-REC-RAW" JUDGE 0 T=
+   s" EAUTH-REC-TRUST-CALL ( -- ) 0 set-tier" JUDGE 0 T=
+   s" EAUTH-REC-RAW-CALL" RECOVERY-FACT
+   s" EAUTH-REC-TRUST-CALL" RECOVERY-FACT
+   MULTI- 3 T=
+
+   s" later collection runs cannot borrow old recovery declarations" T-LABEL
+   MULTI+
+   s" EAUTH-REC-STALE ( n -- n ) EAUTH-REC-BAD" JUDGE 0 T=
+   s" EAUTH-REC-STALE-XT ( n -- n ) ['] EAUTH-REC-TICK execute" JUDGE 0 T=
+   MULTI- 2 T=
+   s" independent checks do not inherit earlier analysis taint" T-LABEL
+   s" EAUTH-REC-GOOD ( n -- n ) 1+" JUDGE -1 T=
+   RECOVERY? TFALSE
+   s" EAUTH-REC-GOOD" SOURCE-MIN 1 T=
+
+   s" rollback below a run floor admits only the regrown current rows" T-LABEL
+   SCOPE+
+   s" n -- n" s" EAUTH-REC-REMOVED" DECLARE
+   MULTI+ SCOPE-
+   s" EAUTH-REC-REGROW ( n -- n ) drop" JUDGE 0 T=
+   s" EAUTH-REC-REGROW-CALL ( n -- n ) EAUTH-REC-REGROW" JUDGE -1 T=
+   s" EAUTH-REC-REGROW-CALL" RECOVERY-FACT
+   SCOPE+
+   s" n -- n" s" EAUTH-REC-REGROW" DECLARE
+   s" EAUTH-REC-REGROW" ROW-STATE 1 T=
+   s" EAUTH-REC-REGROW" SOURCE-MIN 1 T=
+   SCOPE-
+   s" EAUTH-REC-REGROW" RECOVERY-FACT
+   s" EAUTH-REC-RESTORED ( n -- n ) EAUTH-REC-REGROW" JUDGE -1 T=
+   s" EAUTH-REC-RESTORED" RECOVERY-FACT
+   MULTI- 1 T= ;
+
+\ The real compile hook keeps diagnostic-only dictionary bindings, but neither
+\ their publication latch nor their lowering certificate may certify the body.
+: RECOVERY-PUBLICATION ( -- )
+   s" multi-error publication retains no executable certificate" T-LABEL
+   0 SELECT                         \ check-only replay publishes through the JIT hook
+   MULTI+
+   s" : EAUTH-REC-LIVE-BAD ( n -- n ) drop ;" EV
+   s" EAUTH-REC-LIVE-BAD" RECOVERY-FACT
+   s" EAUTH-REC-LIVE-BAD" DICT-MIN 0 T=
+   s" : EAUTH-REC-LIVE ( ptr n -- n ) @ EAUTH-REC-LIVE-BAD ;" EV
+   s" EAUTH-REC-LIVE" RECOVERY-FACT
+   s" EAUTH-REC-LIVE" DICT-MIN 0 T=
+   CERT-SIZE LOWER-CERT:HEADER-CELLS cells T=
+   MULTI- 1 T=
+   s" EAUTH-REC-LIVE-CALL ( ptr n -- n ) EAUTH-REC-LIVE" CHECK-CANDIDATE! 0 T=
+   1 SELECT ;
+
 \ The evaluator owns the real publication and redefinition rollback below.
 \ The saved check hook is restored even when a definition throws.
 variable SAVED-HOOK
@@ -143,9 +243,10 @@ TRUSTED: UNCHECKED- ( -- ) SAVED-HOOK @ set-check ;
 
 : RUN ( -- )
    T-RESET SCOPE+
-   SCAN-CASES PRIM-CASES ROLLBACK-CASES
+   SCAN-CASES PRIM-CASES ROLLBACK-CASES RECOVERY-CASES
    SCOPE-
    LIVE-CASES
+   RECOVERY-PUBLICATION
    T-REPORT
    s" effect authority: ok" type cr ;
 

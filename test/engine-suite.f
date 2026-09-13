@@ -1418,8 +1418,8 @@ DIAG-BUFFER$ s\" \"code\":\"E-TOO-MANY-LOCALS\"" T-HAS? -1 T=
 DIAG-BUFFER$ s\" \"repair_class\":\"reduce_local_count\"" T-HAS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ --- multi-error load mode: rejects do not abort the load; the declared sig is
-\ trusted so later definitions keep checking, and the count drives a fail-closed
-\ exit. MEA3 calls the rejected MEA1 and certifies against its trusted n->n sig.
+\ retained so later definitions keep checking, and the count drives a fail-closed
+\ exit. MEA3 uses MEA1's recovery n->n row without gaining source authority.
 TRUSTED: TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;   \ whitebox multi-error boundary
 TRUSTED: TR-ME-END ( -- n ) MULTI-ERR-END ;
 TRUSTED: TR-ME? ( -- bool ) MULTI-ERR? ;

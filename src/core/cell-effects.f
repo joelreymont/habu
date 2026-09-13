@@ -18,7 +18,9 @@ PRIM: MEO-ON PE-PTR-N PE-OUT PRIM;
 s" SIG-RAW-MODE" s" -- ptr n" TRUST
 
 \ Enter a fresh collection; END returns its reject count and clears the mode.
-: MULTI-ERR-BEGIN ( -- )
+\ The floor is read from this source owner's private effect arena.
+TRUSTED: MULTI-ERR-BEGIN ( -- )
+   UEND @ CHECKER-EFFECT-AUTHORITY:RECOVERY-START
    -1 MULTI-ERR !  0 MULTI-ERR-N !  0 MEO-ON ! ;
 
 

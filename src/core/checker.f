@@ -652,6 +652,8 @@ defer PTX-BARRIER-SET-XT ( n -- )
 \ belongs to the retained source owner before that point.
 package CHECKER-EFFECT-AUTHORITY
 variable ABI-DEPTH
+variable RECOVERY-FLOOR
+variable RECOVERY-USED
 defer PUBLISH-XT ( n bool -- )
 : DEFAULT ( -- ) [: 2drop ;] is PUBLISH-XT ;
 DEFAULT
@@ -659,8 +661,20 @@ DEFAULT
 public
 : ENFORCED? ( -- bool ) ABI-DEPTH @ 0 = ;
 : SCAN ( [ -- ] -- n )
-   1 ABI-DEPTH +! catch -1 ABI-DEPTH +! ;
+   RECOVERY-USED @ {: recovery:n :}
+   1 ABI-DEPTH +! catch -1 ABI-DEPTH +!
+   recovery RECOVERY-USED ! ;
 : PUBLISH ( n bool -- ) PUBLISH-XT ;
+
+\ A run may borrow failed declarations for diagnostics, never for executable
+\ authority. The store's real rewind also moves this floor: all rows it removes
+\ are gone, and a replacement row must not inherit an earlier run's tag.
+: RECOVERY-START ( n -- ) RECOVERY-FLOOR ! ;
+: RECOVERY-REWIND ( n -- ) RECOVERY-FLOOR @ min RECOVERY-FLOOR ! ;
+: RECOVERY-NEW? ( n -- bool ) RECOVERY-FLOOR @ >= ;
+: RECOVERY-USED? ( -- bool ) RECOVERY-USED @ 0 <> ;
+: RECOVERY-USED! ( bool -- ) RECOVERY-USED ! ;
+: CERTIFIED? ( -- bool ) ENFORCED? RECOVERY-USED? 0= and ;
 ;package
 
 \ --- checker package scope state. Declared here (not with the package words
@@ -4140,6 +4154,7 @@ TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
 
 : USIGS-CLEAR ( -- )
    0 USX-GEN !                    \ every record the index points at is being dropped
+   0 CHECKER-EFFECT-AUTHORITY:RECOVERY-START
    0 UEND !
    0 USIGS-HEAD !
    0 USIGS-GROW-CAP !
@@ -4719,6 +4734,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 
 0 constant EFF-DELETED
 1 constant EFF-ACTIVE
+2 constant EFF-RECOVERY          \ current-run analysis fact, never a source grant
 
 0 constant EN-CON
 1 constant EN-VAR
@@ -5662,6 +5678,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
 : USIGS-RESTORE-END ( n -- )
    dup UIX-TRUNCATE                      \ drop interned nodes the rewind discards
    dup USX-TRUNCATE
+   dup CHECKER-EFFECT-AUTHORITY:RECOVERY-REWIND
    UEND !
    UTERM! ;
 
@@ -5852,6 +5869,17 @@ defer BADSIG-XT ( ptr u8 n ptr u8 n -- )
 BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
+
+\ Recovery is bound to this exact effect record, not merely its symbol or the
+\ presence of an ABI row. A new declaration writes EFF-ACTIVE; the ordinary
+\ store/index rollback restores the old record and retires any replaced tag.
+: RECOVERY-ROW? ( ptr u8 -- bool ) {: row:ptr :}
+   MULTI-ERR? 0= IF RES-FALSE EXIT THEN
+   row ER.ACTIVE @ EFF-RECOVERY =
+   row USIG-OFF CHECKER-EFFECT-AUTHORITY:RECOVERY-NEW? and ;
+
+: RECOVERY-RECORD ( -- )
+   EFF-RECOVERY CHECKER-REC-SYM @ USIG-NEWEST 1- E-PTR ER.ACTIVE ! ;
 
 : USIG-BAD-FOREIGN? ( ptr u8 n -- bool )   \ not the definition CHECK just handled
    NMA @ NMU @ CORE-STR= 0= ;
@@ -8744,7 +8772,8 @@ package CHECKER-REG
 \ Publish its verified rows without resetting and reparsing that live arena.
 : CHECKER-PUBLISH-PARSED ( -- )
    SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @
-   CHECKER-EFFECT-AUTHORITY:ENFORCED? E-ADD-EFFECT ;
+   CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
 : CHECKER-USIG-CERT-PARSED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
@@ -8892,7 +8921,8 @@ variable LBUF-NM-I
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    BROW @ DCUR @ 0 0 RES-FALSE
-   CHECKER-EFFECT-AUTHORITY:ENFORCED? E-ADD-EFFECT ;
+   CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
@@ -9777,10 +9807,12 @@ variable UNSAFE-SYM-N
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
    a u EXPORT-SEAL-GUARD
    a u EXPORT-RESOLVE
+   FEP @ RECOVERY-ROW? {: recovery:bool :}
    NEW
    FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
    a u EXPORT-TAIL$ EXPORT-RECORD
    a u CHECKER-FIND-ACTIVE-SYM EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
+   recovery IF RECOVERY-RECORD THEN
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-ASIG-EXPORT
    a u EXPORT-META-COPY ;
 
@@ -10133,6 +10165,10 @@ variable WF-I
       THEN
       CHECKER-EFFECT-AUTHORITY:ENFORCED? 0=
       CURSYM @ EFFECT-EXTERNAL-SYM? or IF FEP @ EFF-APPLY EXIT THEN
+      FEP @ RECOVERY-ROW? IF
+         RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+         FEP @ EFF-APPLY EXIT
+      THEN
       CURSYM @ PRIM-FIRST-IDX 0= IF
          -1 CAPREQ !  0 OK !  -1 FAILSET !  EXIT
       THEN
@@ -12459,7 +12495,13 @@ variable IS-PEND-U                   \ and its length
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
-   FEP-HIT? IF FEP @ EFF-QUOT BTICK-PUSH ELSE PE-N BTICK-PUSH THEN ;
+   FEP-HIT? IF
+      FEP @ ER.ACTIVE @ EFF-RECOVERY = IF
+         FEP @ RECOVERY-ROW? 0= IF -1 CAPREQ ! 0 OK ! -1 FAILSET ! EXIT THEN
+         RES-TRUE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+      THEN
+      FEP @ EFF-QUOT BTICK-PUSH
+   ELSE PE-N BTICK-PUSH THEN ;
 
 \ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------
 \ Whole-bundle transport tokens. For an EXPANDED (non-linear) layout the group
@@ -13849,6 +13891,7 @@ ASIG-GRAPH-CHECK-INSTALL
    RES-TRUE CK-AOT-MISSES ;
 
 : CHECK-RESET {: a u :}
+   RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
@@ -14260,7 +14303,9 @@ variable CTOR-PEND-I
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
       CHECK-SIG? SGBAD @ 0= and IF                      \ retain analysis facts without
+         NMA @ NMU @ 0 NORET-ADD                       \ no control claims from a failed body
          SGA @ SGU @  NMA @ NMU @ RES-FALSE CHECKER-USIG-CERT-ADD-AS \ source authority
+         RECOVERY-RECORD
       THEN                                              \ unless the sig itself was bad
    THEN ;
 
@@ -14819,6 +14864,7 @@ variable CK-RETRY-TOKS
    RESCAN @ {: rescan0:n :}
    CK-RETRY-V @ {: v0:n :}
    CK-RETRY-TOKS @ {: toks0:n :}
+   CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
    CHECK-CANDIDATE-START
    [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
    0 CHECK-CANDIDATE-DONE drop
@@ -14827,6 +14873,7 @@ variable CK-RETRY-TOKS
    rescan0 RESCAN !
    v0 CK-RETRY-V !
    toks0 CK-RETRY-TOKS !
+   recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
    rc 0 <> IF rc throw THEN
    CAND-VERDICT @ ;
 

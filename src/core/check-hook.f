@@ -17,7 +17,8 @@ package LOWER-CERT-HOOK
    CHECK-RC throw ;
 
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject,
-\ and trusted the declared signature. Return -1 so the native publishes the
+\ and retained the declared signature for recovery analysis. Return -1 so the
+\ engine publishes the
 \ definition (a non-zero hook return commits it; zero rejects and unpublishes
 \ it) — the name must resolve for later definitions to keep checking. The body
 \ is compiled but never run on a check-only load; the driver exits nonzero via

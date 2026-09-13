@@ -110,6 +110,37 @@ variable B-SCANS
    A-DONES @ 1 T=
    A-TOKENS @ 0 > TTRUE ;
 
+\ A DONE observer may inspect a candidate while CHECK! still owns its outer
+\ result. The candidate's independent analysis must restore recovery taint on
+\ return; it must not turn a diagnostic-only outer row into a source grant.
+TRUSTED: TO-MULTI+ ( -- ) MULTI-ERR-BEGIN ;
+TRUSTED: TO-MULTI- ( -- n ) MULTI-ERR-END ;
+TRUSTED: TO-RECOVERY? ( -- bool ) CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
+TRUSTED: TO-SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
+variable NESTED-DONES
+
+: NESTED-DONE ( ptr u8 n n -- )
+   2drop drop 1 NESTED-DONES +!
+   TO-RECOVERY? TTRUE
+   s" TO-NESTED-INNER ( n -- n )" CHECK-CANDIDATE! -1 T=
+   TO-RECOVERY? TTRUE ;
+
+: TO-NESTED-RECOVERY ( -- )
+   s" a nested candidate restores the enclosing recovery analysis" T-LABEL
+   TO-MULTI+
+   s" TO-RECOVERY-BAD ( n -- n ) drop" CHECK! 0 T=
+   0 NESTED-DONES !
+   UNIT-A [: A-SCAN ;] [: A-TOKEN ;] [: NESTED-DONE ;] CHECKER-TAPE:INSTALL
+   CHECKER-TAPE:ARM
+   s" TO-RECOVERY-OUTER ( n -- n ) TO-RECOVERY-BAD" CHECK! -1 T=
+   CHECKER-TAPE:DISARM
+   NESTED-DONES @ 1 T=
+   s" TO-RECOVERY-OUTER" TO-SOURCE-MIN -1 T=
+   TO-MULTI- 1 T=
+   s" TO-NESTED-LATER ( n -- n )" CHECK! -1 T=
+   TO-RECOVERY? TFALSE
+   s" TO-NESTED-LATER" TO-SOURCE-MIN 1 T= ;
+
 \ Put the engine's own observer back, and prove it is back by its identity. This
 \ runs last and is the reason the session survives the suite.
 : TO-RESTORE-ENGINE ( -- )
@@ -123,6 +154,7 @@ variable B-SCANS
    TO-TWO-UNITS
    TO-LAST-WRITER-RUNS
    TO-ALL-THREE-EVENTS
+   TO-NESTED-RECOVERY
    TO-RESTORE-ENGINE
    T-REPORT
    s" native-tape-owner: ok" type cr ;
