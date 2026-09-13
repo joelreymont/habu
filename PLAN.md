@@ -18,47 +18,47 @@ catch grouping, portable partial-effect graphs, repeated registry persistence,
 frozen IR reader reuse and canonical engine aliases through symlinked roots.
 No accepted replacement engine is published.
 
-Latest private product I uses source `c0335a0d`, built from H in 126.943 seconds:
-`/tmp/cedar-family-stage-abi/hb-integrated-I`, SHA-256
-`13969ea2601f7e76eae2729e9d86d1fe10b297f361a7e178fc467db57cdaedae`.
-Its generated prefix now certifies with verdict 0 and the actual preflight
-recovery fixture passes. Renaming the four-argument target API to
-`CHECK-TARGET!` removes its collision with the earlier two-argument `CHECK!`.
-General source-order behavior during warmed verification remains open in
-`0c9fe3d7`. Stage2 certification now reaches a separate undefined `ADD` in
-`ENGINE-HELPER:REGISTER`; the build-fixpoint, wide artifact, chain capture and
-WID collision suites remain blocked there. The WID lane owns that reduction.
+The latest complete gate is J: source/runtime `674900c6`, SHA-256
+`3146f12e5bcd330ce85728423765c74050cf7f44b2cc801a9abc3adca097017e`.
+All 341 suites ran in 432.942 seconds: 329 passed and 12 failed. Exact results
+are in `/tmp/cedar-J-full-suite.{json,log}`; the campaign dot lists the failures.
+J includes the reviewed source-authority fix and passes the original internal
+word gate, portable payload graphs, prefix certification, preflight recovery,
+checker CLI, CAST, source-root paths and cold-runtime controls.
 
-The latest complete gate is still F: runtime source `3e4f0ec5`, suite source
-`ef3fc770`, 338 suites, 320 passed and 18 failed in 415.366 seconds. Exact
-identities and outputs are in `/tmp/cedar-F-full-suite.{json,log}` and the
-campaign dot. Later focused checks are not a replacement full gate.
-G2 passed both captured-core CAST tiers, native catch/MATCH/prefix declarations,
-payload rollback, verify-prim, cold-runtime, the corrected actual cold pre-trust
-fixture, hb-build-fixtures and the registered native-gate-aot-positive suite.
-H passed the complete checker CLI suite, both corrected source-root fixture
-tiers and native IR build. Fixture provenance and section-reach checks passed F.
-The Gforth native-fixture-paths suite still needs its actual stage0 failure fixed.
+Since J, reviewed fixes restore package-entry imports during verification,
+include actual build-module dependencies, grow the Gforth primitive registry,
+and repair three whitebox/control-flag fixtures. Independent focused checks
+pass, including the package fixture through the actual native source owner on
+J. Generated legacy maker verification still sees host-only type families;
+the WID/chain fixtures are moving to the current native writer with partial
+captures that preserve their actual cold-prefix behavior. Public legacy
+recovery consumers remain separately tracked.
+General warmed-verifier source-order behavior remains open in `0c9fe3d7`.
 
-Visibility leaf `07e86028` separates source-call permission from native ABI
-shape using positive effect provenance. Its unlanded enforcing product B and
-B-hosted product C are byte-identical; the original internal-word gate, private
-checker-cursor rejection, prefix-mark and effect-authority tests pass. Portable
-graph tests also pass, including a fresh producer/reader/consumer sequence and
-unknown authority-bit refusal. Root source review found one existing export
-test comparing control flags against the entire metadata word; its correction
-is under test. Compose the reviewed final leaf with I and run the complete gate.
+The current composition adds the growing address registry and fixes task
+quotation stores to use the shared image's DATA base; worker `data-base` remains
+task-local. K stopped at a nonparametric pointer declaration before emission.
+The corrected byte-view comparison passes focused optimizing compilation and
+independent review; K2 and fresh combined acceptance are pending. A distinct concurrent registrar race is reproduced below inline
+capacity: four writers lose rows; the serialized control preserves every row.
+The registry owner must synchronize lookup, append and growth.
 
-Tender `4cc58705` gets beyond `OPEN` on G2, then exits 96 at the fixed 65,536-row
-snapshot address-table limit after 64 seconds under concurrent work. No executable
-was produced. Attribution establishes 75,900 valid distinct address rows: both
-the old symbol storage and its grown replacement remain readable through the
-supported API. Dropping the old rows would corrupt preserved data. Leaf
-`1ca5db10` is implementing a growable owned registry, explicit persistence outside
-registration, and artifact admission against actual aggregate section bytes.
-The existing 28 MiB artifact reservation remains. First-product, restore,
-recapture and complete Tender acceptance are still required; accepted downstream
-pins stay unchanged. Registrar indexing remains a separate measured speed leaf.
+The registry candidate P2 uses source `6969dc7a`, SHA-256
+`ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c`,
+and built from G2 in 143.102 seconds. Independent checks pass growth beyond
+65,536 rows, persistent-storage lifetime cuts, actual allocation refusal,
+75,900-row artifact transfers and aggregate size admission. Snapshot v9 uses
+an explicit owned-vector header; old-host source snapshots remain v8. Artifact
+format v8 and the existing 28 MiB encoded-payload budget remain unchanged.
+
+P2 built pinned Tender `4cc58705` through its public entry in 63.822 seconds.
+The executable and two recaptures retain exactly 76,154 unique address rows,
+with identical row bytes; the third image restores its public REPL. Full file
+and DATA sizes still grow across recaptures, so this is no size-fixpoint claim.
+Evidence: `/home/joel/.cache/cedar-capture-rows-u5l55np1/` and its `tender-P2/`
+subdirectory. The speed targets and downstream acceptance remain open; accepted
+Tender/Maki/Kestrel pins stay unchanged.
 
 Reader reuse reduces frozen OPEN calls per trivial definition from 2,895 to 328
 while preserving generation/state/bounds validation on all 24,924 reads. Three
@@ -260,10 +260,13 @@ the payoff from pass-level reader reuse still need attribution.
   `ptr-cell-mark`, sharing the registrar with `xt!`. Generated typed DATA storage
   marks quotation fields; transient mapped callback storage remains unregistered
   and legal. This does not permit saving retained JIT code.
-- **Capacity:** integrate pending Tender change `0d78b97f` through the corrected
-  layout build. Measure full closure/headroom and exercise 40,000 cells plus
-  actual overflow. Report count/capacity with a complete newline. Compose remaining
-  split/padded diagnostics once at the emitter, without another message framework.
+- **Capacity:** preserve every live address declaration in a growable owned
+  vector. Keep image layout and heap boundaries stable; secure replacement
+  storage before publication, detach backing storage before a rewind can retire
+  it, and persist outside registration. Validate the snapshot schema before
+  reading rows. Admit artifacts against actual encoded sections plus framing and
+  alignment within the existing budget. The 75,900-row and actual allocation
+  refusal controls replace assertions tied to the obsolete fixed ceiling.
 
 ## Compile-speed design
 
@@ -378,12 +381,11 @@ evidence and an update to the owning task, not speculative new passes.
 ## Dispatch order
 
 The dot tree is the detailed work graph; short IDs below identify existing leaves.
-Current claims are recorded in dots. Local binding, arena bounds and complete
-environment comparison are closed. Provider rows and artifact IO are integrated
-with broader acceptance pending. Internal-call protection and symbol ceilings have
-reviewed focused fixes; source-owner integration is running. Ready independent
-work includes transient lifecycle (e03edf85), native fixture paths (deafcd5a),
-JIT effect publication (d1bd23c6) and watchpoint resume diagnosis (74e8b1d9).
+Current claims are recorded in dots. Cedar owns combined product acceptance and
+shared DATA ownership. The registry lane owns synchronization and measured
+registration cost; the checker lane owns diagnostic recovery without granting
+source authority. The maker lane is determining which cold artifact fixtures
+can use the current native builder, while preserving their behavioral claims.
 
 | Result | Dependency path | Ownership boundary |
 |---|---|---|

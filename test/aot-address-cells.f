@@ -49,6 +49,7 @@ create KEY 32 allot
    $100000 k cells + k 1 and 63 lshift or ;
 : SOURCE ( n -- ) {: count:n :}
    AOT-IDENT:RESET s" src/habu/aot-decl.f" AOT-IDENT:PATH+
+   \ One AArch64 RET instruction gives this nonexecuted fixture a valid code blob.
    4 AOT-BLOB-LEN ! $D65F03C0 AOT-BLOB-BUF@ CELL-VIEW !
    0 AOT-REC-N ! 0 AOT-SITE-N ! 0 AOT-NAMES-LEN !
    0 AOT-DSITE-N ! 0 AOT-CSITE-N !

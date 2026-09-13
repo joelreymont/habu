@@ -45,64 +45,58 @@ Plan: [PLAN.md](../../PLAN.md). Owner: Cedar for integration; implementation lea
 
 Completion: optimizing native compiler selfbuild/product rebuild, executable compilation independent of JIT invocation, correct first-generation layout and persistence, full native gate and Tender/Maki/Kestrel handoff. REPL/ordinary loader use JIT; AOT builds execute a compiled native compiler.
 
-Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under1.7s wall for complete optimizing load and trivial floor below500us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical153.3→131.6s and4106→3668us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
+Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under 1.7 s wall for complete optimizing load and trivial floor below 500 us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical 153.3→131.6 s and 4106→3668 us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
 
 Each leaf has source ownership, prerequisites and decisive behavior checks.
 Final gate: rebuild exact source and run `bin/hb --load test/run.f`; resolve every
 failure by behavior. PTX/Loom and later cache/digest work are outside this campaign.
 
-Latest full gate: native F, runtime source 3e4f0ec5 and suite source ef3fc770,
-SHA 93fcbcd1600c0e3b1044ad54864e60ca3e6dc06d54aad7105e9645d4fb94412b.
-All 338 suites ran: 320 passed, 18 failed. Log /tmp/cedar-F-full-suite.log;
-individual outputs /tmp/habu-native-suite-1068277437369875-17/.
+Latest full gate: native J, source/runtime 674900c6, SHA
+3146f12e5bcd330ce85728423765c74050cf7f44b2cc801a9abc3adca097017e.
+All 341 suites ran in 432.942 seconds: 329 passed, 12 failed.
+Logs: /tmp/cedar-J-full-suite.{json,log}; individual outputs:
+/tmp/habu-native-suite-1074470298998500-17/.
 
-- compiler-native-prefix-declarations
-- check-cli-boundary
-- aot-section-reach
-- internal-word-gate
+- tool-boundary-check-repair
+- image-lifecycle-tasks
+- native-window-owner
+- checker-dead-path
 - checker-rollback-sig-pool
 - aot-wid-restore
-- verify-prim
 - aot-wide-format
-- pre-trust-defer
 - aot-chain-capture
-- core-prefix-mark
 - native-fixture-paths
-- cold-runtime
 - build-fixpoint-fixtures
-- cast
-- hb-build-fixtures
-- native-gate-aot-positive
-- protection-span
+- engine
+- program-diagnostics
 
-Latest private product I: runtime/source c0335a0d, SHA
-13969ea2601f7e76eae2729e9d86d1fe10b297f361a7e178fc467db57cdaedae,
-126.943 seconds from H. Prefix certification returns0 and preflight recovery
-passes; stage2 certification now refuses ENGINE-HELPER:REGISTER at ADD. This
-still blocks maker/WID suites; indexed lane owns the preserved generated source
-reduction at /tmp/cedar-I-wid-maker-O129pcQz. General warmed-verifier binding is
-tracked separately in0c9fe3d7. These are focused results, not a new full gate.
+Reviewed fixes after J: source-replay package import depth, required build module
+assembly, growable Gforth primitive registry, private fixture boundaries/control
+flags, and address-cell growth with actual aggregate artifact admission. Root's
+independent focused checks pass. K stopped at a pointer-type specialization in the shared-DATA store fix
+79563f22. Its corrected byte-view comparison passes focused optimizing
+compilation and independent review; the K2 rebuild is next. A separate concurrent first-registration race is reproduced; serialized
+calls preserve all rows. Fresh combined full-gate acceptance is pending.
 
-Since F, G2 passed CAST on both tiers including captured-core stamps, native
-catch/MATCH/prefix declarations, payload rollback, verify-prim, cold-runtime,
-the actual cold pre-trust fixture, hb-build-fixtures and registered
-native-gate-aot-positive. H passed full checker CLI and both corrected source-root
-fixture tiers. Provenance/section-reach fixtures passed F. Visibility leaf07e86028
-has independently reviewed production and byte-identical enforcing B/C products;
-internal/cursor gates, prefix mark and complete graph tests pass. Its final export
-assertion repair and combined integration/full gate remain pending.
+The real current native builder does not use the old BF phase certifier. The
+maker lane is auditing recovery/fixture consumers before adding machinery to
+restore that pipeline. The emitted payload's retained-prefix type ownership is
+a proven issue, tracked in 369d625d; ordinary duplicate declarations must still
+reject. General warmed source-order binding remains separately in 0c9fe3d7.
 
-Tender4cc58705 requires75,900 valid distinct address rows, exceeding the65,536
-fixed table. Both old and current symbol stores are supported readable data;
-the old rows cannot be dropped. Digest lane owns growable registry/persistence
-and actual aggregate artifact admission in1ca5db10. G2's64-second build produced
-no executable. First-product growth, restore/recapture and complete standalone
-acceptance remain open. Accepted Tender/Maki/Kestrel pins stay unchanged.
+Registry candidate P2 (source 6969dc7a, SHA
+ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c)
+built from G2 in 143.102 seconds. Pinned Tender 4cc58705 public build succeeds
+in 63.822 seconds. Its executable and two recaptures preserve all 76,154 unique
+rows and identical row bytes; the third image restores its public REPL. File and
+DATA sizes still grow, so this does not establish a size fixpoint. Evidence:
+/home/joel/.cache/cedar-capture-rows-u5l55np1/tender-P2/. Accepted downstream
+pins and the uncached speed targets remain unchanged.
 
-Three interleaved append-B/H pairs measured trivial AOT994/953,994/953,996/961us
-and three-operation705/645,707/640,707/641us; JIT29–30us unchanged, exactly200
-NCOMP calls each. Own lanes drained; external Maki lint used about34%CPU. This
+Three interleaved append-B/H pairs measured trivial AOT 994/953, 994/953, 996/961 us
+and three-operation 705/645, 707/640, 707/641 us; JIT 29–30 us unchanged, exactly 200
+NCOMP calls each. Own lanes drained; external Maki lint used about 34% CPU. This
 is composed-product evidence, not an isolated reader result or quiet acceptance.
-Frozen OPEN count falls2895→328 with every read validation retained. Trivial
+Frozen OPEN count falls 2895→328 with every read validation retained. Trivial
 <500us, complete uncached Tender timing, combined full gate and downstream
 acceptance remain open. Details and current ownership are in PLAN.md.

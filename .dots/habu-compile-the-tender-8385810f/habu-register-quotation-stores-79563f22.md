@@ -19,3 +19,9 @@ without reducing the existing four-worker growth/reuse stress.
 A separate registrar race is now reproduced by the registry lane: simultaneous
 first declarations lose rows even below inline capacity. Its fix belongs to the
 shared registrar, alongside explicit row ownership, and is tracked separately.
+
+K caught a declaration error before emission: subtracting ptr n specialized the
+store's quantified element type. The image is now viewed as bytes and only a
+duplicate destination is converted with byte-view, preserving the value and
+original pointer types. Exact helper source passes optimizing compilation in a
+fresh package; independent review approved the correction. K2 is pending.
