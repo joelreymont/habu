@@ -511,11 +511,11 @@ create LBUF LNAME-CAP allot
       ix i LG-A@ >=  ix i LG-B@ <  and or
    loop ;
 
-\ The comparison is against the declared name, not the spelling of the mention.
+\ Local declarations and mentions use the same folded key as dictionary names.
 : LOCAL-OF ( n -- n )
    {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if -1 exit then
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    -1
    LN @ 0 ?do
       sy i LNAME @ NFROZEN:SAME-SYM?  i ix LIVE-AT?  and if drop i then
@@ -1434,8 +1434,8 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    CTX BLD  VW MKEY ix NTAPE:SPELL@  LBUF LNAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
    LBUF u HIR-WORD:LOCAL-NAME-LEN {: nu:n :}
    nu 1 < if E-NELAB-LOCAL throw then
-   CTX BLD LBUF nu IR-BUILD:INTERN-SYMBOL {: sy:IR-ID:ir-symbol-id :}
-   r  CTX BLD sy HIR-WORD:KEY-SYM  PRE-FRAME? if E-NELAB-LOCAL throw then
+   CTX BLD LBUF nu HIR-WORD:KEY-SPELL {: sy:IR-ID:ir-symbol-id :}
+   r sy PRE-FRAME? if E-NELAB-LOCAL throw then
    sy LN @ LNAME !
    -1 LN @ LROW!
    -1 LN @ LEND!
@@ -1477,7 +1477,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
 : SCOPE-LOCAL? ( n -- bool )
    {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   ix WSYM {: sy:IR-ID:ir-symbol-id :}
    false
    LN @ 0 ?do
       i LROW@ 0 >=  i LROW@ ix <  and  i LEND@ 0 <  and if

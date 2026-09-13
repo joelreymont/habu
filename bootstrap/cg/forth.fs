@@ -2677,7 +2677,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
          9 11 0 ADDI,  bcl B,
       bcd LBL,  RET, ;
 
-\ LLOC-FIND ( -- x0 = local slot index, or -1 ) : exact-match TKA/TKL against the
+\ LLOC-FIND ( -- x0 = local slot index, or -1 ) : compare folded TKA/TKL with the
 \ locals table ([x20+LOCNAMES], LOC-N records of {len, 16 name bytes}).
 : EMIT-LOC-FIND ( -- )
    LLOC-FIND @ LBL,
@@ -2685,6 +2685,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    6 DATA TKL-CELL LDR,  7 DATA TKA-CELL LDR,                 \ x9=N  x10=N-1..0
    LBL {: ll :}  LBL {: lmiss :}  LBL {: lhit :}
    LBL {: lcmp :}  LBL {: lnext :}
+   LBL {: lname :}  LBL {: ltoken :}
    ll LBL,  10 0 CMPI,  C-LT lmiss BCOND,
       12 LOC-REC MOVZ,  11 10 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,   \ entry
       12 11 0 LDR,  12 6 CMP,  C-NE lnext BCOND,   \ len mismatch
@@ -2692,6 +2693,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       lcmp LBL,  13 6 CMP,  C-GE lhit BCOND,
          14 11 13 ADD,  14 14 8 ADDI,  14 14 0 LDRB, \ entry.name[j]
          15 7 13 ADD,  15 15 0 LDRB,               \ tok[j]
+         14 $41 CMPI,  C-LT lname BCOND,  14 $5A CMPI,  C-GT lname BCOND,
+         14 14 $20 ADDI,
+         lname LBL,
+         15 $41 CMPI,  C-LT ltoken BCOND,  15 $5A CMPI,  C-GT ltoken BCOND,
+         15 15 $20 ADDI,
+         ltoken LBL,
          14 15 CMP,  C-NE lnext BCOND,
          13 13 1 ADDI,  lcmp B,
       lhit LBL,  0 10 0 ADDI,  RET,                  \ slot = i

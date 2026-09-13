@@ -9,8 +9,8 @@
 \
 \ Every row is keyed by the FOLD of its word's spelling, which is the fold the
 \ engine applies when it decides what a token of a checked body means, so `IF`,
-\ `if` and `If` reach one row. A `{: … :}` local is NOT folded, because the
-\ engine's own local lookup compares those bytes raw.
+\ `if` and `If` reach one row. Local declarations and references use that same
+\ fold; the elaborator resolves a live local before consulting this word model.
 \
 \ `literal`, `real-literal` and `string-literal` belong to a TAPE TOKEN and
 \ never to a word, so no row ever stores one.

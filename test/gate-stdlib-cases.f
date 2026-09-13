@@ -371,6 +371,10 @@ SUITE compiler-native-locals-scope
    test/compiler/native-locals-scope.f
 ;SUITE
 
+SUITE compiler-native-local-case
+   test/compiler/native-local-case.f
+;SUITE
+
 SUITE compiler-native-product-locals
    test/compiler/native-product-locals.f
 ;SUITE

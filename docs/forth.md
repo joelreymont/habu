@@ -52,11 +52,14 @@ file.
   next word, not at the local: `{: address ... :} state i ADDRESS` bound the
   local. Local-first is measured on the engine, not assumed: `{: i:n :} 0 3 0 ?do i +
   loop` answers three turns of the LOCAL, and the same body without the
-  declaration answers the loop index. It holds from the group's closer onwards
-  and byte for byte — mentions before the closer, and mentions in another case,
-  are still whatever else the name means. The quotation's two tokens are the
-  exception, because the native chain finds a body's quotation spans before it
-  knows what the body's locals are: a local named `;]` is refused
+  declaration answers the loop index. A local binds every case spelling of its
+  name from the group's closer to its scope's end. Repeated declarations,
+  including names differing only in case, resolve to the latest live binding.
+  Mentions before the closer still resolve in the preceding scope. Declaring or
+  referencing a local inside a quotation is refused (`E-BAD-LOCAL-SHAPE` by the
+  checker); quotations do not capture an enclosing local. The quotation's two
+  tokens are the exception, because the native chain finds a body's quotation
+  spans before it knows what the body's locals are: a local named `;]` is refused
   (`E-NELAB-LOCAL`), and a group that writes `[:` is refused as the quotation's
   own (`E-NELAB-QUOT`).
 - **Check for collisions with built-ins** before naming — Forth dictionaries are

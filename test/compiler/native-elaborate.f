@@ -2254,16 +2254,10 @@ variable LK-N
 \ name, its operands, its results and its successors, and the comparator's own
 \ falsifier below proves it can say no.
 \
-\ AND A LOCAL IS NOT FOLDED, WHICH IS THE OTHER HALF OF THE DECISION. The engine's
-\ local lookup (src/habu/habu2.f EMIT-LOC-FIND) compares a local's name BYTE FOR
-\ BYTE where its keyword and dictionary compares fold, and the engine was asked
-\ rather than assumed: with `{: I:n :}` bound, `: TUP ( n -- n ) {: I:n :} 0 3 0
-\ ?do I + loop ;` answers 15 for 5 - the local - and the same definition written
-\ `?do i + loop` answers 3 - the loop index. The two spellings are two things
-\ there, so they stay two things here: the elaborator matches a local by the
-\ bytes the body wrote, and only the mention that is NOT a local is put to the
-\ word model under its key. The pair of cases at the end of this section holds
-\ the chain to that split.
+\ Local lookup uses the same fold. With `{: I:n :}` bound, both `I` and `i`
+\ reference the local before the loop-index meaning can be consulted. This
+\ equality matters for correctness: the checker already certifies both as the
+\ local, so compiling one as the index would certify a different program.
 64 constant TW-CAP
 
 create TW-BUF TW-CAP allot
@@ -2400,9 +2394,7 @@ create TW-BUF TW-CAP allot
    {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
    ma fa mb fb TW-FUN? ;
 
-\ The two mentions of one locals name, which the engine keeps apart and so does
-\ this. `I` is the local the group bound; `i` is the loop's index. Both bodies
-\ compile, and they are two different programs.
+\ Both case spellings reference the same local, including inside a counted loop.
 : LOCAL-CASE-BODY ( IR-CTX:ctx -- bool )
    {: c:IR-CTX:ctx :}
    c s" LOCC {: I:n :} 0 3 0 ?do I + loop" 1 1 BUILT
@@ -2474,9 +2466,9 @@ create TW-BUF TW-CAP allot
    TFALSE ;
 
 : LOCAL-CASE-CASE ( -- )
-   s" a locals name is matched by its own bytes, so the other case of it is the dialect's word" T-LABEL
+   s" both case spellings of a local compile to the same module" T-LABEL
    BND [: LOCAL-CASE-BODY ;] IR-CTX:WITH-CONTEXT
-   TFALSE ;
+   TTRUE ;
 
 \ ---- and what capitals do NOT do ---------------------------------------------
 \ The fold is the key of a word this table declared, and nothing else. A word the
