@@ -48,7 +48,7 @@ TRUSTED: RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 
 : INTERPRET-RAW ( -- ) s" xref-search-wl" INCLUDE-EVALUATE ;
-: TICK-RAW ( -- ) s" ' xref-search-wl drop" INCLUDE-EVALUATE ;
+: TICK-RAW ( -- ) s" ' xref-search-wl" INCLUDE-EVALUATE ;
 
 
 : PROTECTED-BOUNDARY ( -- )

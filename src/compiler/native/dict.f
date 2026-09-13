@@ -31,31 +31,32 @@ private
 \ ---- which record a spelling denotes -----------------------------------------
 -2 constant QUAL-BAD
 
-\ `search-wl` is the engine's own scan and case fold, and zero is its absent
-\ answer; no word's code starts there.
 : USE-DEPTH ( -- n )
    data-base USE-DEPTH-CELL + @ ;
 
 : USE-WID ( n -- n )
    cells data-base USE-WIDS-OFF + + @ ;
 
-\ The public search primitive hides internal words even while compiling an
-\ authorized engine body. Resolve those only under the existing compile flag.
-: INTERNAL-CANDIDATE ( ptr u8 n n -- ptr n )
-   data-base TRUSTED-CELL + @ 0= if 2drop drop XREF-NULL exit then
-   XREF-FIND-WL
-   dup XREF-FOUND? 0= if exit then
-   dup XREF-FLAGS DNAME-INT and 0= if drop XREF-NULL then ;
+\ The raw indexed record stays inside this protected package. Visibility is
+\ checked after namespace resolution. Retirement: habu-attr-and-remove-2b13e978.
+TRUSTED: WL-RECORD ( ptr u8 n n -- ptr n ) xref-search-wl ;
 
 
-\ Public lookup stays authoritative; XREF supplies its matching record.
+\ Public search hides internal words; the compiler admits them only while a
+\ TRUSTED: definition is being compiled. Re-read that authority on every call.
+: VISIBLE-RECORD? ( ptr n -- bool )
+   {: rec:ptr :}
+   rec XREF-FLAGS DNAME-INT and 0<> if
+      data-base TRUSTED-CELL + @ 0<> exit
+   then
+   rec XREF-WORDLIST OWNER-API-PRI-WID <>
+   rec XREF-START 0<> and ;
+
+
 : WL-CANDIDATE ( ptr u8 n n -- ptr n )
-   {: a:ptr u:n wid:n :}
-   a u wid search-wl {: start:n :}
-   start 0= if a u wid INTERNAL-CANDIDATE exit then
-   a u wid XREF-FIND-WL
+   WL-RECORD
    dup XREF-FOUND? 0= if exit then
-   dup XREF-START start <> if drop XREF-NULL then ;
+   dup VISIBLE-RECORD? 0= if drop XREF-NULL then ;
 
 \ Duplicate `using` of one package is one binding. Two distinct records are the
 \ same ambiguity the engine refuses before it executes or compiles the token.
@@ -74,9 +75,7 @@ private
       then
    loop ;
 
-\ ---- the same walk, answering the record rather than the code start ----------
-\ `search-wl` stays the authority on whether and where. This walk supplies only
-\ the slots a start does not carry, and is REFUSED unless the two starts agree.
+\ ---- the engine's scope order, retaining its indexed record ------------------
 : OPEN-REC ( ptr u8 n -- ptr n )
    {: a u:n :}
    OPEN-PRI 0= if XREF-NULL exit then
@@ -92,11 +91,20 @@ private
    global XREF-FOUND? if global exit then
    a u USED-REC ;
 
+
+: QUALIFIED-REC ( ptr u8 n n -- ptr n )
+   {: a u:n split:n :}
+   a split XREF-NAMESPACE-WL WL-RECORD
+   dup XREF-FOUND? 0= if exit then
+   XREF-START {: wid:n :}
+   a split 1+ ZPTR+ u split - 1- wid WL-CANDIDATE ;
+
+
 : SPELL-REC ( ptr u8 n -- ptr n )
    {: a u:n :}
    a u XREF-QUAL-INDEX {: q:n :}
    q QUAL-BAD = if XREF-NULL exit then
-   q 0 >= if a u q XREF-FIND-QUALIFIED exit then
+   q 0 >= if a u q QUALIFIED-REC exit then
    a u BARE-REC ;
 
 \ ---- entering the word the spelling denoted ----------------------------------
@@ -126,13 +134,8 @@ public
 2 constant FIXED-ADDR                \ `create`/`variable`: the body pushes a DATA address
 
 \ ---- one walk answers both the record and its start --------------------------
-\ SPELL-START IS SPELL-REC PLUS XREF-START, so a reader that wants the record
-\ and the start once walked the scope chain twice and then tested the record's
-\ start against itself. That test could not fail. SPELL-REC reads the dictionary
-\ and mutates nothing, so two calls in a row answer with the same record; and
-\ WL-CANDIDATE has already refused any record whose start disagrees with
-\ `search-wl`, which is the comparison that does carry a fact. The readers below
-\ take the record the one walk produced and read its start off that record.
+\ The engine returned the record and its start together. Readers retain that
+\ record only for this operation; later source may mutate its binding or slot.
 private
 
 \ Which definer stamped a record. The spelling-level SPELL-FIXED is this reader

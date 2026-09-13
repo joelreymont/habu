@@ -855,6 +855,10 @@ SUITE ndict-spell-call
    test/ndict-spell-call.f
 ;SUITE
 
+SUITE ndict-binding
+   test/ndict-binding.f
+;SUITE
+
 SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
