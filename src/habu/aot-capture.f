@@ -1584,8 +1584,10 @@ public
    XREF-FIND ACAP-XREF-XT ;
 
 \ These operations have known effects but are resolved from the live instance.
-TRUSTED: ACAP-RUN-XT ( n -- ) execute ;
-TRUSTED: ACAP-RUN-RANGE ( n n n -- ) execute ;
+TRUSTED: ACAP-CLEANUP-XT ( n -- [ -- ] ) ;
+TRUSTED: ACAP-RANGE-XT ( n n n -- ptr u8 n [ ptr u8 n -- ] ) ;
+: ACAP-RUN-XT ( n -- ) ACAP-CLEANUP-XT execute ;
+: ACAP-RUN-RANGE ( n n n -- ) ACAP-RANGE-XT execute ;
 
 : ACAP-RELEASE-DYNAMIC ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
    d1 d0 < if s" aot-capture: reversed dynamic DATA span" 74 die then

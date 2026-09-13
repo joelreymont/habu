@@ -92,6 +92,15 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    ART$ >LEN PROC-ARGV+
    RUN-CHILD ;
 
+: RUN-OWNED-CAPTURE ( ptr u8 n -- ) {: mode:ptr modeu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-owned-capture.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   ART$ >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
+   RUN-CHILD ;
+
 
 : RUN-ROW-CASE ( ptr u8 n -- )
    {: name u:n :}
@@ -222,7 +231,13 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    PROBE-ARTIFACT
    PROBE-PRODUCER
    PROBE-CAPTURE-TOOL
-   PROBE-ADDRESS-ROWS ;
+   PROBE-ADDRESS-ROWS
+   s" owned" RUN-OWNED-CAPTURE
+   0 ROW-RC
+   s" owned-capture: restored after source release" SAID?
+   s" overflow" RUN-OWNED-CAPTURE
+   $4B ROW-RC
+   s" scalars runs past the payload" ERR-SAID? ;
 
 public
 

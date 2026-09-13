@@ -111,7 +111,14 @@ package AOT-BUF
 public
 
 $300000 constant AOT-BLOB-CAP     \ 3 MiB: the 2.15 MiB full runtime with room to grow
-create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
+\ Capture storage belongs to the build, not the target DATA heap. A host and a
+\ later source-bound writer can both be live without consuming two heap-sized
+\ sets of buffers. The existing transient registry owns these mappings.
+DYNAMIC-BUFFER BLOB-STORAGE n
+: AOT-BLOB-BUF ( -- ptr u8 )
+   AOT-BLOB-CAP CELL / BLOB-STORAGE-RESERVE
+   0 BLOB-STORAGE BYTE-VIEW ;
+variable AOT-BLOB-LEN
 \ 16384: the chain needs ~6554 records, and DICT-CAP (32768) is the absolute
 \ ceiling a capture window can reach, since the window is a dictionary subrange.
 16384 constant AOT-REC-MAX
@@ -119,7 +126,11 @@ create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)
 \   [MAX*48 .. +MAX*CREC-ROW)  compact 20B records (three u32 role/code/name fields + metadata + wid)
 \   [+MAX*CREC-ROW .. +48)     48B scratch for the build-time expand==verbatim proof
-create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + allot    variable AOT-REC-N
+DYNAMIC-BUFFER REC-STORAGE n
+: AOT-REC-BUF ( -- ptr u8 )
+   AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * + 48 + CELL / REC-STORAGE-RESERVE
+   0 REC-STORAGE BYTE-VIEW ;
+variable AOT-REC-N
 \ A call-site row: three u32 words - blob-off, name-off, and the callee's SCOPE,
 \ the wordlist the seed resolves the name in. A wid below FIRST-DYNAMIC-WID is a
 \ layout constant and passes through, a window coordinate is rebased like a
@@ -209,10 +220,18 @@ $1000000 constant SPAN-CAP
 \ extent, so the count is a property of the window's content and not of its size,
 \ and a window that outgrew this is refused by name rather than truncated.
 262144 constant RUN-MAX
-create RUN-BUF RUN-MAX 8 * allot    variable RUN-N
+DYNAMIC-BUFFER RUN-STORAGE n
+: RUN-BUF ( -- ptr u8 )
+   RUN-MAX RUN-STORAGE-RESERVE
+   0 RUN-STORAGE BYTE-VIEW ;
+variable RUN-N
 \ $100000 against the full runtime's measured 540739 bytes. Overflow is refused by name.
 $100000 constant RBYTES-CAP
-create RBYTES-BUF RBYTES-CAP allot    variable RBYTES-LEN
+DYNAMIC-BUFFER RBYTES-STORAGE n
+: RBYTES-BUF ( -- ptr u8 )
+   RBYTES-CAP CELL / RBYTES-STORAGE-RESERVE
+   0 RBYTES-STORAGE BYTE-VIEW ;
+variable RBYTES-LEN
 \ One row per declared address cell, including fixed cells below the captured
 \ DATA window. The engine's own table bounds it: habu2.f EMIT-MARK is the single
 \ producer of a row, it dedupes and exits XTCELL-RC at the cap, and capture offers

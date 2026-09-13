@@ -574,11 +574,11 @@ private
          FD @ close
          i s" is not a whole number of rows" SECT-DIE
       then
-      CUR @ len + CUR !
-      CUR @ PAYLEN @ > if
+      len PAYLEN @ CUR @ - > if
          FD @ close
          i s" runs past the payload" SECT-DIE
       then
+      CUR @ len + CUR !
    loop
    CUR @ PAYLEN @ <> if
       FD @ close
