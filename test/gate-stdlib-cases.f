@@ -276,6 +276,10 @@ SUITE native-build-layout
    test/native-layout.f
 ;SUITE
 
+SUITE native-build-entry
+   test/native-build-entry.f
+;SUITE
+
 SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE

@@ -5,11 +5,14 @@ require lib/executable-build.f
 package NATIVE-BUILD-ENTRY
 private
 
+\ The dynamically loaded driver receives this already typed code reference.
+: ORIGIN ( n n -- n ) code-origin ;
+
 \ The required driver is loaded inside the protected executable-build scope.
 \ This small source-load boundary resolves its entry only after require returns.
 TRUSTED: BUILD ( -- )
    s" tools/native-build-core.f" required
-   [: code-origin ;] 0 0= 0= s" NATIVE-BUILD:RUN" evaluate ;
+   ['] ORIGIN 0 0= 0= s" NATIVE-BUILD:RUN" evaluate ;
 
 ' BUILD
 ;package
