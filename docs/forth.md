@@ -451,6 +451,31 @@ SUMTYPE message 0                   \ tagged union; positional variant payloads
 ENUM color red green blue ;ENUM     \ payloadless tag-only sum
 ```
 
+A multi-cell record is one logical value. Use it inside a checked definition;
+the interpreter prompt refuses words with multi-cell inputs or outputs with
+`hb: interpret-mode layout value`. Bare `dup`, `drop`, and `swap` at the prompt
+operate on individual cells and cannot preserve such a record. `evaluate` and
+interpret-mode tick follow the same restriction.
+
+To calculate with a record at the REPL, define a word whose public stack effect
+contains only single-cell values, then call it. The record stays inside the
+checked body, where stack operations preserve its full width:
+
+```forth
+package DEMO
+public
+STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE
+: AT ( n n -- point ) DEMO-POINT:MAKE ;
+: FIRST ( point -- n ) DEMO-POINT:UNMAKE drop ;
+: FIRST-X ( -- n ) 2 3 AT FIRST ;
+;package
+DEMO:FIRST-X .                      \ prints 2
+```
+
+The bare expression `2 3 DEMO:AT DEMO:FIRST` is refused at `DEMO:AT`.
+See [the multi-cell type rules](type-system.md#5-families-records-alternatives-and-generics) for the related
+local-binding restriction.
+
 - `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`) with no
   closer: arity `0` is an opaque scalar newtype (see `lib/cad-num-types.f`),
   arity `N` binds positional params.

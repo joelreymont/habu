@@ -88,6 +88,7 @@ variable EXPECT-I   variable EXPECT-READS
 : DRAIN ( process-pty-handle -- process-pty-handle )
    0 EXPECT-I !
    begin EXPECT-I @ 3 < while
+      RN @ RCAP 512 - > if RCLR then
       READ-STEP {: n:n :}
       n 0 < if exit then
       n 0= if EXPECT-I @ 1 + EXPECT-I ! else 0 EXPECT-I ! then
@@ -130,12 +131,33 @@ variable EXPECT-I   variable EXPECT-READS
    PROCESS-PTY:TEARDOWN
    s" PASS: REPL on a pseudo-terminal refuses, recovers and prompts again" type cr ;
 
+\ A normal checked structure needs no TRUSTED seed. The same constructor and
+\ projection are refused as bare tokens and work inside a checked definition.
+: TTY-LAYOUT ( -- )
+   RCLR
+   HB$ PROCESS-PTY:SPAWN-TTY
+   PROCESS-PTY:LAUNCH
+   DRAIN
+   s" package PTYP public STRUCTURE point 0 FIELD x n FIELD y n ;STRUCTURE : AT ( n n -- point ) PTYP-POINT:MAKE ; : FIRST ( point -- n ) PTYP-POINT:UNMAKE drop ; : FIRST-X ( -- n ) 2 3 AT FIRST ; ;package" SEND
+   DRAIN RCLR
+   s" 2 3 PTYP:AT PTYP:FIRST" SEND
+   s" hb: interpret-mode layout value: PTYP:AT" EXPECT!
+   DRAIN RCLR
+   s" PTYP:FIRST-X . cr depth . cr" SEND
+   S\" \r\n2\r\n" EXPECT!
+   S\" \r\n0\r\n" EXPECT!
+   s" habu> " EXPECT!
+   PROCESS-PTY:ALIVE? TTRUE
+   PROCESS-PTY:TEARDOWN
+   s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
+
 public
 
 : RUN ( -- )
    T-RESET
    PIPE-STOPS
    TTY-RECOVERS
+   TTY-LAYOUT
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
 
