@@ -3211,11 +3211,11 @@ variable REG-AOT-ERROR-U
    row TF.SCHEMA-ROOT @ 0 <> IF src u 7 row TF.SCHEMA-ROOT @ REG-AOT-ITEM drop THEN
    row TF.SPAN-OFF @ REG-AOT-NONNEG row TF.SPAN-U @ REG-AOT-NONNEG
    row TF.KIND @ TK-CELL = row TF.KIND @ TK-EVIDENCE = or IF
-      row TF.SLOTS @ row TF.VAR-COUNT @ or row TF.FLD-COUNT @ or IF
+      row TF.SLOTS @ row TF.VAR-COUNT @ or row TF.FLD-COUNT @ or 0 <> IF
          s" tfam: a seeded cell family has layout members" REG-AOT-REFUSE THEN
    THEN
    row TF.KIND @ TK-ENUM = IF
-      row TF.SLOTS @ row TF.ARITY @ or row TF.FLD-COUNT @ or IF
+      row TF.SLOTS @ row TF.ARITY @ or row TF.FLD-COUNT @ or 0 <> IF
          s" tfam: a seeded compact enum has payload members" REG-AOT-REFUSE THEN
    THEN ;
 
@@ -3244,7 +3244,7 @@ variable REG-AOT-ERROR-U
    count 0 ?do
       src u 7 first i + REG-AOT-ITEM @ {: child:n :}
       src u parent child REG-AOT-SCHEMA-CHILD
-      src u 6 child REG-AOT-ITEM @ SCH-ROW = rows <> IF
+      src u 6 child REG-AOT-ITEM @ SCH-ROW = rows xor IF
          s" tfam: a seeded schema edge has the wrong node kind" REG-AOT-REFUSE THEN
    loop ;
 

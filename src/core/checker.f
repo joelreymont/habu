@@ -9245,6 +9245,12 @@ defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
    2drop 2drop
    s" checker: a seeded family arrived with no registry to validate it" 76 die ;
 
+
+\ The callback has a result contract even though this default never returns.
+: REG-EXT-AOT-NO-WIDTH ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
+   rot drop REG-EXT-AOT-NO-PARAM ;
+
+
 : REG-EXT-AOT-DEFAULTS ( -- )
    [: ;] is REG-EXT-AOT-MARK-XT
    [: ;] is REG-EXT-AOT-CLOSE-XT
@@ -9252,7 +9258,7 @@ defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
    [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-LOAD-XT
    [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-VALIDATE-XT
    [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
-   [: rot drop REG-EXT-AOT-NO-PARAM 0 ;] is REG-EXT-AOT-WIDTH-XT
+   [: REG-EXT-AOT-NO-WIDTH ;] is REG-EXT-AOT-WIDTH-XT
    [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-DEFAULTS
 
@@ -13139,7 +13145,7 @@ defer ASIG-GRAPH-CHECK-XT ( ptr u8 n -- )
       \ Old effect records contain transient exception-row IDs in G/H. Their
       \ type/last-write contract must be made persistent before it can travel.
       \ Do not certify a graph that silently discards those exceptional rows.
-      src E-PTR EN.E @ IF ASIG-GRAPH-EXCEPTION-DIE THEN
+      src E-PTR EN.E @ 0 <> IF ASIG-GRAPH-EXCEPTION-DIE THEN
       0 dst ASIG-GRAPH-PTR EN.G !
       0 dst ASIG-GRAPH-PTR EN.H !
    ELSE tag EN-ATOM = IF
@@ -13415,7 +13421,7 @@ variable CK-GRAPH-WIDTH-BAD
       node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
       node EN.A @ CK-GRAPH-ROW-WIDTH 1+ node EN.C @ <> IF CK-GRAPH-WIDTH-REFUSE THEN
    ELSE tag EN-QUOT = IF
-      node EN.E @ IF ASIG-GRAPH-EXCEPTION-DIE THEN
+      node EN.E @ 0 <> IF ASIG-GRAPH-EXCEPTION-DIE THEN
       node EN.F @ CK-GRAPH-BOOL?
       node EN.G @ node EN.H @ or 0 <> IF ASIG-GRAPH-DIE THEN
       node EN.A @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER

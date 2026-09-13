@@ -10,6 +10,18 @@ package OWNER-ADAPTER-CHECK
 : TRUE! ( bool -- ) 0= if 79 throw then ;
 : EQ! ( n n -- ) <> if 79 throw then ;
 
+\ This default was compiled before the new checker hook. Its no-return body
+\ must still transfer the width callback's complete callable contract.
+: PREFIX-DEFAULTS ( -- )
+   s" REG-EXT-AOT-NO-WIDTH" CHECKER-OWNER:QUERY TRUE!
+   CHECKER-OWNER:DIN-CELLS 5 EQ!
+   CHECKER-OWNER:DOUT-CELLS 1 EQ!
+   s" REG-EXT-AOT-NO-WIDTH" CHECKER-OWNER:DEAD-TOKEN? TRUE!
+   s" REG-EXT-AOT-DEFAULTS" CHECKER-OWNER:QUERY TRUE!
+   CHECKER-OWNER:DIN-CELLS 0 EQ!
+   CHECKER-OWNER:DOUT-CELLS 0 EQ! ;
+
+
 : RUN ( -- )
    tier@ 1 EQ!
    CHECKER-OWNER:BY-NAME? TRUE!
@@ -20,6 +32,7 @@ package OWNER-ADAPTER-CHECK
    CHECKER-OWNER:DOUT-CELLS 1 EQ!
    CHECKER-OWNER:CAPTURE-PREPARE
    CHECKER-OWNER:BY-NAME? 0= TRUE!
+   PREFIX-DEFAULTS
    s" ADAPTER-SCAN ( n -- n ) 1 +" CHECKER-OWNER:CHECK -1 EQ!
    s" ADAPTER-SCAN" CHECKER-OWNER:QUERY TRUE!
    CHECKER-OWNER:DIN-N 1 EQ!
