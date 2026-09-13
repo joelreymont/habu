@@ -2842,31 +2842,17 @@ private
 \ them or its family-typed half stays uncallable from checked code while its
 \ scalar-typed half works.
 \
-\ WHY AN APPEND AND NOT A COPY. Every record below is integers and interned
-\ offsets - the persist pass above says so, and each store asserts a zero
-\ pointer mask - so family ids, schema node ids and string offsets are
-\ IDENTITIES rather than addresses. They keep their meaning in another process
-\ exactly when the store they index starts at the same place, so the delta the
-\ window added appends at the base the window opened on. The two engines reach
-\ that base the same way: the cold prefix is the only thing that builds this
-\ registry before a seed runs.
+\ Registry references are integer row IDs and interned string offsets. Partial
+\ payloads append new rows only after all eight captured prefixes compare equal
+\ to the live stores. Already-installed deltas must also compare equal; a count
+\ alone cannot prove identity. Only the rebuilt family tail link and scrubbed
+\ constructor-symbol cell are excluded from those comparisons.
 \
-\ AND WHY THE BASE IS ASSERTED. There is no remap. If a target's store is not at
-\ the base the capture marked, every id in the delta means something else there,
-\ and the honest answer is a refusal - the shape src/habu/aot-file.f ?BASES uses
-\ for a code base that is not the zero the merge shifts against.
-\
-\ Reuse requires both the recorded high-waters and identical canonical bytes.
-\ Counts alone cannot distinguish two same-sized declarations from one base.
-\ Rollback can retire an install, so each load checks the live stores afresh.
-\
-\ AND IT IS ALL EIGHT STORES OR NONE. The stores name each other - a sum variant
-\ names a family, a family names an interned type-name offset, a schema node
-\ names a family - so a delta in one is read against every other store's base
-\ too. Installing part of a delta would leave those references pointing at rows
-\ that were never put in, so a delta that cannot go in whole does not go in.
+\ Validate every store, reference and schema before reserving capacity. All
+\ capacity must exist before the first new count or row is published. A failure
+\ may leave private capacity, but cannot leave a partially installed registry.
 8 constant REG-AOT-N                      \ stores, in the order below
-24 constant REG-AOT-ROW                   \ base u64, count u64, bytes u64
+24 constant REG-AOT-ROW                   \ base, delta count, complete-store bytes
 REG-AOT-N REG-AOT-ROW * 8 + constant REG-AOT-HDR
 
 variable REG-AOT-STATE  variable REG-AOT-J  variable REG-AOT-CUR
@@ -2965,28 +2951,32 @@ create REG-AOT-END-A REG-AOT-N cells allot
    REG-AOT-N 0 ?do  i REG-AOT-COUNT  REG-AOT-END-A i cells +  !  loop
    -1 REG-AOT-CLOSED ! ;
 
-\ ---- writing the delta -------------------------------------------------------
+\ ---- writing the prefix and delta -------------------------------------------
 
 : REG-AOT-OVERFLOW ( -- )
    s" tfam: the captured type registry does not fit the artifact's buffer" 74 die ;
 
-\ A window that declared no type of its own has no delta, and a delta of nothing
-\ is not a registry: it would carry eight bases and no id that depends on them,
-\ and asserting those bases in the target would refuse a capture that never
-\ needed the registry at all. The metabuild host's REPL window is exactly that
-\ case - measured, it declares no family, variant, field, layout or schema node.
-: REG-AOT-EMPTY? ( -- bool )
-   0 REG-AOT-J !
-   REG-AOT-N 0 ?do
-      i REG-AOT-END@ i REG-AOT-MARK@ - REG-AOT-J @ + REG-AOT-J !
-   loop
-   REG-AOT-J @ 0= ;
+\ Version 8 partial payloads carry each complete store through the closed end.
+\ The table retains (base, delta-count, bytes); bytes now includes the prefix.
+\ References into a prefix must prove its contents, even if no registry row was
+\ added by this window. Two prefixes with equal counts can have different types.
+
+\ Schema constructor codes past the fixed primitive table are process-local.
+\ Partial payloads need a canonical constructor identity before carrying them.
+: REG-AOT-SCHEMA-CON-PORTABLE ( -- )
+   6 REG-AOT-END@ 1 ?do
+      i SCHEMA-CON? IF
+         i SCHEMA-A@ dup CC-N < swap CC-MAX >= or IF
+            s" tfam: captured schema constructor has process-local identity" 76 die
+         THEN
+      THEN
+   loop ;
 
 : REG-AOT-SAVE ( ptr u8 n -- n ) {: dst:ptr cap:n :}
    REG-AOT-CLOSED @ 0= IF
       s" tfam: a type registry was captured from a window that never closed" 74 die
    THEN
-   REG-AOT-EMPTY? IF 0 EXIT THEN
+   REG-AOT-SCHEMA-CON-PORTABLE
    cap REG-AOT-HDR < IF REG-AOT-OVERFLOW THEN
    REG-AOT-N dst REG-AOT-U64!
    REG-AOT-HDR REG-AOT-CUR !
@@ -2996,13 +2986,14 @@ create REG-AOT-END-A REG-AOT-N cells allot
       cnt 0 < IF
          s" tfam: a type registry shrank across the capture window" 74 die
       THEN
-      cnt i REG-AOT-WIDTH * {: bytes:n :}
+      i REG-AOT-END@ cap REG-AOT-CUR @ - i REG-AOT-WIDTH / > IF
+         REG-AOT-OVERFLOW THEN
+      i REG-AOT-END@ i REG-AOT-WIDTH * {: bytes:n :}
       base   dst i REG-AOT-ROW * 8 + +       REG-AOT-U64!
       cnt    dst i REG-AOT-ROW * 8 + 8 + +   REG-AOT-U64!
       bytes  dst i REG-AOT-ROW * 8 + 16 + +  REG-AOT-U64!
-      REG-AOT-CUR @ bytes + cap > IF REG-AOT-OVERFLOW THEN
       bytes 0 > IF
-         i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
+         i REG-AOT-BASE-PTR
          dst REG-AOT-CUR @ +
          bytes USIGS-COPY
       THEN
@@ -3022,8 +3013,8 @@ variable REG-AOT-ERROR-U
    drop 2drop
    s" tfam: a seeded type registry does not start where its capture did" REG-AOT-REFUSE ;
 
-\ NO ABSOLUTE FOREIGN ID SURVIVES LOAD. Seven of the eight stores reference
-\ each other by ids the base equality below makes meaningful in this engine;
+\ The eight stores reference one another by IDs bound to their exact prefixes.
+\ An external symbol ID has no such identity:
 \ the variant store's SV.CTOR-SYM is the one cell that does not - it names a
 \ row of the CHECKER'S SYMBOL STORE, which is interned on demand and has no
 \ base alignment between the capture engine and this one. Measured: seeded
@@ -3070,7 +3061,7 @@ variable REG-AOT-ERROR-U
 
 \ Validate every base and byte span before reserving or publishing any store.
 \ Subtraction bounds the product and endpoint before either is computed.
-: REG-AOT-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
+: REG-AOT-TABLE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
    u 0= IF EXIT THEN
    u REG-AOT-HDR < IF
       s" tfam: a seeded type registry is shorter than its own table" REG-AOT-REFUSE THEN
@@ -3082,22 +3073,28 @@ variable REG-AOT-ERROR-U
       src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
       base 0 < cnt 0 < or bytes 0 < or IF
          s" tfam: a seeded type registry has a negative base, count or length" REG-AOT-REFUSE THEN
-      cnt u REG-AOT-CUR @ - i REG-AOT-WIDTH / > IF
+      u REG-AOT-CUR @ - i REG-AOT-WIDTH / {: room:n :}
+      base room > IF
+         s" tfam: a seeded type registry prefix runs past its own bytes" REG-AOT-REFUSE THEN
+      cnt room base - > IF
          s" tfam: a seeded type registry section runs past its own bytes" REG-AOT-REFUSE THEN
-      cnt i REG-AOT-WIDTH * bytes <> IF
+      base cnt + i REG-AOT-WIDTH * bytes <> IF
          s" tfam: a seeded type registry section is not a whole number of records" REG-AOT-REFUSE THEN
       base $7FFFFFFFFFFFFFFF i REG-AOT-WIDTH / cnt - > IF
          s" tfam: a seeded type registry endpoint overflows" REG-AOT-REFUSE THEN
       i REG-AOT-COUNT {: live:n :}
       live base <> live base cnt + <> and IF
          i base live REG-AOT-BASE-BAD THEN
+      src REG-AOT-CUR @ + i 0 base i REG-AOT-WIDTH * REG-AOT-SAME? 0= IF
+         s" tfam: a seeded type registry differs from its captured prefix" REG-AOT-REFUSE THEN
       cnt 0 > IF
          live base = IF 1 ELSE 2 THEN {: next:n :}
          REG-AOT-STATE @ 0 <> REG-AOT-STATE @ next <> and IF
             s" tfam: seeded registry stores disagree about installation" REG-AOT-REFUSE THEN
          next REG-AOT-STATE !
          next 2 = IF
-            src REG-AOT-CUR @ + i base bytes REG-AOT-SAME? 0= IF
+            src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
+            i base cnt i REG-AOT-WIDTH * REG-AOT-SAME? 0= IF
                s" tfam: a seeded type registry differs from the installed records" REG-AOT-REFUSE THEN
          THEN
       THEN
@@ -3105,6 +3102,496 @@ variable REG-AOT-ERROR-U
    loop
    REG-AOT-CUR @ u <> IF
       s" tfam: a seeded type registry does not fill its own bytes" REG-AOT-REFUSE THEN ;
+
+\ Read a wholly prefix-owned or wholly incoming span without installing it.
+\ Registry table validation precedes this view; no live count is changed.
+: REG-AOT-VIEW ( ptr u8 n n n n -- ptr u8 )
+   {: src:ptr u:n k:n first:n count:n :}
+   first 0 < count 0 < or IF
+      s" tfam: a seeded registry reference is negative" REG-AOT-REFUSE THEN
+   u 0= IF
+      first k REG-AOT-COUNT > IF
+         s" tfam: a seeded registry reference exceeds the prefix" REG-AOT-REFUSE THEN
+      count k REG-AOT-COUNT first - > IF
+         s" tfam: a seeded registry span exceeds the prefix" REG-AOT-REFUSE THEN
+      k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
+   THEN
+   src k REG-AOT-ROW@ drop {: base:n cnt:n :}
+   first base < IF
+      count base first - > IF
+         s" tfam: a seeded registry span crosses its capture boundary" REG-AOT-REFUSE THEN
+      k REG-AOT-BASE-PTR first k REG-AOT-WIDTH * + EXIT
+   THEN
+   first base - {: rel:n :}
+   rel cnt > IF
+      s" tfam: a seeded registry reference exceeds its section" REG-AOT-REFUSE THEN
+   count cnt rel - > IF
+      s" tfam: a seeded registry span exceeds its section" REG-AOT-REFUSE THEN
+   REG-AOT-HDR
+   k 0 ?do src i REG-AOT-ROW@ nip nip + loop
+   src + first k REG-AOT-WIDTH * + ;
+
+: REG-AOT-NAME= ( ptr u8 n n n ptr u8 n -- bool )
+   {: src:ptr u:n off:n bytes:n name:ptr nameu:n :}
+   src u 5 off bytes REG-AOT-VIEW bytes name nameu CORE-STR= ;
+
+\ A graph's family ID is meaningful only with its canonical package/tail,
+\ arity and physical/logical form. Consult incoming records even if a previous
+\ idempotent install has already put those IDs into the live registry.
+: REG-AOT-PARAM-CHECK ( ptr u8 ptr u8 ptr u8 n -- )
+   {: node:ptr graph:ptr src:ptr u:n :}
+   src u 0 node EN.H @ 1 REG-AOT-VIEW CELL-VIEW {: rec:ptr :}
+   rec TF.ARITY @ node EN.C @ <> IF
+      s" tfam: a seeded effect has the wrong family arity" REG-AOT-REFUSE THEN
+   src u rec TF.NAME-OFF @ rec TF.NAME-U @
+   graph node EN.A @ + node EN.B @ REG-AOT-NAME= 0= IF
+      s" tfam: a seeded effect names a different family" REG-AOT-REFUSE THEN
+   src u rec TF.PKG-OFF @ rec TF.PKG-U @
+   graph node EN.F @ + node EN.G @ REG-AOT-NAME= 0= IF
+      s" tfam: a seeded effect names a different family package" REG-AOT-REFUSE THEN
+   rec TF.KIND @ dup 0 < swap TK-MAX > or IF
+      s" tfam: a seeded effect has an invalid family kind" REG-AOT-REFUSE THEN
+   rec TF.LAYOUT @ dup 0 < swap TL-MAX > or IF
+      s" tfam: a seeded effect has an invalid family layout" REG-AOT-REFUSE THEN
+   node EN.E @ 0 < IF
+      s" tfam: a seeded effect has a negative hidden field" REG-AOT-REFUSE THEN
+   node EN.E @ 0 > IF
+      rec TF.KIND @ TK-CELL = rec TF.KIND @ TK-EVIDENCE = or IF
+         s" tfam: a seeded cell family cannot have a hidden field" REG-AOT-REFUSE THEN
+   THEN
+   src u 1 rec TF.PK-START @ rec TF.ARITY @ REG-AOT-VIEW drop ;
+
+\ Keep the graph callback at the same named refusal boundary as the loader.
+\ Duplicate all four arguments so the quotation is balanced on both paths.
+: REG-AOT-PARAM? ( ptr u8 ptr u8 ptr u8 n -- )
+   0 REG-AOT-ERROR-U !
+   [: 2over 2over REG-AOT-PARAM-CHECK ;] catch
+   dup 0 <> IF
+      REG-AOT-ERROR-U @ 0= IF throw THEN
+      drop 2drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
+   THEN drop 2drop 2drop ;
+
+\ Semantic references are checked through the uninstalled future view. No
+\ count, constructor association or lookup index changes during this pass.
+: REG-AOT-ITEM ( ptr u8 n n n -- ptr n )
+   1 REG-AOT-VIEW CELL-VIEW ;
+
+: REG-AOT-RANGE ( ptr u8 n n n n -- ) REG-AOT-VIEW drop ;
+
+: REG-AOT-NONNEG ( n -- )
+   0 < IF s" tfam: a seeded registry scalar is negative" REG-AOT-REFUSE THEN ;
+
+: REG-AOT-LIMIT ( n n -- ) {: value:n ceiling:n :}
+   value 0 < value ceiling > or IF
+      s" tfam: a seeded registry scalar is outside its domain" REG-AOT-REFUSE THEN ;
+
+: REG-AOT-STRING ( ptr u8 n n n -- ) {: src:ptr u:n off:n len:n :}
+   src u 5 off len REG-AOT-RANGE ;
+
+: REG-AOT-TAIL ( ptr u8 n n n -- ) {: src:ptr u:n off:n len:n :}
+   src u 5 off len REG-AOT-VIEW len TF-CANON? 0= IF
+      s" tfam: a seeded registry name is not canonical" REG-AOT-REFUSE THEN ;
+
+: REG-AOT-FAMILY ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
+   src u 0 id REG-AOT-ITEM {: row:ptr :}
+   src u row TF.PKG-OFF @ row TF.PKG-U @ REG-AOT-STRING
+   src u row TF.NAME-OFF @ row TF.NAME-U @ REG-AOT-TAIL
+   row TF.VIS @ dup CHECKER-PACKAGE-PRIVATE <
+   swap CHECKER-PACKAGE-PUBLIC > or IF
+      s" tfam: a seeded family has invalid visibility" REG-AOT-REFUSE THEN
+   row TF.KIND @ TK-MAX REG-AOT-LIMIT
+   row TF.LAYOUT @ TL-PACKED-TAG REG-AOT-LIMIT
+   row TF.SLOTS @ $7FFFFFFFFFFFFFFF CELL / 1- REG-AOT-LIMIT
+   row TF.TAGW @ CELL REG-AOT-LIMIT
+   row TF.DERIVE @ DRV-EQ DRV-HASH or invert and 0 <> IF
+      s" tfam: a seeded family has invalid derive flags" REG-AOT-REFUSE THEN
+   src u 1 row TF.PK-START @ row TF.ARITY @ REG-AOT-RANGE
+   src u 2 row TF.VAR-START @ row TF.VAR-COUNT @ REG-AOT-RANGE
+   src u 3 row TF.FLD-START @ row TF.FLD-COUNT @ REG-AOT-RANGE
+   row TF.SCHEMA-ROOT @ 0 <> IF src u 7 row TF.SCHEMA-ROOT @ REG-AOT-ITEM drop THEN
+   row TF.SPAN-OFF @ REG-AOT-NONNEG row TF.SPAN-U @ REG-AOT-NONNEG
+   row TF.KIND @ TK-CELL = row TF.KIND @ TK-EVIDENCE = or IF
+      row TF.SLOTS @ row TF.VAR-COUNT @ or row TF.FLD-COUNT @ or IF
+         s" tfam: a seeded cell family has layout members" REG-AOT-REFUSE THEN
+   THEN
+   row TF.KIND @ TK-ENUM = IF
+      row TF.SLOTS @ row TF.ARITY @ or row TF.FLD-COUNT @ or IF
+         s" tfam: a seeded compact enum has payload members" REG-AOT-REFUSE THEN
+   THEN ;
+
+: REG-AOT-VARIANT ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
+   src u 2 id REG-AOT-ITEM {: row:ptr :}
+   src u 0 row SV.FAM @ REG-AOT-ITEM {: family:ptr :}
+   family TF.VAR-START @ {: first:n :}
+   id first < IF s" tfam: a seeded variant precedes its family" REG-AOT-REFUSE THEN
+   id first - family TF.VAR-COUNT @ >= IF
+      s" tfam: a seeded variant is outside its family" REG-AOT-REFUSE THEN
+   row SV.TAG @ id first - <> IF
+      s" tfam: a seeded variant has the wrong tag" REG-AOT-REFUSE THEN
+   src u row SV.NAME-OFF @ row SV.NAME-U @ REG-AOT-TAIL
+   src u row SV.CTOR-PKG-OFF @ row SV.CTOR-PKG-U @ REG-AOT-STRING
+   src u 7 row SV.SCH-START @ row SV.SCH-COUNT @ REG-AOT-RANGE
+   row SV.PAYCELLS @ family TF.SLOTS @ REG-AOT-LIMIT ;
+
+: REG-AOT-SCHEMA-CHILD ( ptr u8 n n n -- ) {: src:ptr u:n parent:n child:n :}
+   child 0 <= child parent >= or IF
+      s" tfam: a seeded schema has a forward or cyclic edge" REG-AOT-REFUSE THEN
+   src u 6 child REG-AOT-ITEM drop ;
+
+: REG-AOT-SCHEMA-ROOTS ( ptr u8 n n n n bool -- )
+   {: src:ptr u:n parent:n first:n count:n rows:bool :}
+   src u 7 first count REG-AOT-RANGE
+   count 0 ?do
+      src u 7 first i + REG-AOT-ITEM @ {: child:n :}
+      src u parent child REG-AOT-SCHEMA-CHILD
+      src u 6 child REG-AOT-ITEM @ SCH-ROW = rows <> IF
+         s" tfam: a seeded schema edge has the wrong node kind" REG-AOT-REFUSE THEN
+   loop ;
+
+: REG-AOT-SCHEMA ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
+   src u 6 id REG-AOT-ITEM {: row:ptr :}
+   row @ {: tag:n :} row CELL + @ {: a:n :}
+   row 2 cells + @ {: b:n :} row 3 cells + @ {: c:n :}
+   tag SCH-PARAM = IF
+      a REG-AOT-NONNEG b c or 0 <> IF
+         s" tfam: a seeded parameter schema has reserved fields" REG-AOT-REFUSE THEN EXIT
+   THEN
+   tag SCH-CON = IF
+      a CC-N < a CC-MAX >= or IF
+         s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
+      b c or 0 <> IF
+         s" tfam: a seeded constructor schema has reserved fields" REG-AOT-REFUSE THEN EXIT
+   THEN
+   tag SCH-PTR = IF
+      b c or 0 <> IF
+         s" tfam: a seeded pointer schema has reserved fields" REG-AOT-REFUSE THEN
+      src u id a REG-AOT-SCHEMA-CHILD
+      src u 6 a REG-AOT-ITEM @ SCH-ROW = IF
+         s" tfam: a seeded pointer schema names a row" REG-AOT-REFUSE THEN EXIT
+   THEN
+   tag SCH-APP = IF
+      c 0= b 0 <> and IF
+         s" tfam: a seeded nullary schema has a nonzero argument base" REG-AOT-REFUSE THEN
+      src u 0 a REG-AOT-ITEM TF.ARITY @ c <> IF
+         s" tfam: a seeded schema has the wrong family arity" REG-AOT-REFUSE THEN
+      src u id b c RES-FALSE REG-AOT-SCHEMA-ROOTS EXIT
+   THEN
+   tag SCH-QUOT = IF
+      a 0 <> a -1 <> and c SCH-QUOT-ROWS <> or IF
+         s" tfam: a seeded quotation schema has invalid sides" REG-AOT-REFUSE THEN
+      src u id b c RES-TRUE REG-AOT-SCHEMA-ROOTS EXIT
+   THEN
+   tag SCH-ROW = IF
+      c 0 <> IF s" tfam: a seeded row schema has a reserved field" REG-AOT-REFUSE THEN
+      src u id a b RES-FALSE REG-AOT-SCHEMA-ROOTS EXIT
+   THEN
+   s" tfam: a seeded schema has an invalid tag" REG-AOT-REFUSE ;
+
+: REG-AOT-FIELD ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
+   src u 3 id REG-AOT-ITEM {: row:ptr :}
+   src u 0 row PF.FAM @ REG-AOT-ITEM {: family:ptr :}
+   src u row PF.NAME-OFF @ row PF.NAME-U @ REG-AOT-TAIL
+   src u 7 row PF.SCH @ REG-AOT-ITEM @ {: node:n :}
+   src u 6 node REG-AOT-ITEM @ SCH-ROW = IF
+      s" tfam: a seeded field names a row schema" REG-AOT-REFUSE THEN
+   id family TF.FLD-START @ < IF
+      s" tfam: a seeded field precedes its family" REG-AOT-REFUSE THEN
+   id family TF.FLD-START @ - family TF.FLD-COUNT @ >= IF
+      s" tfam: a seeded field is outside its family" REG-AOT-REFUSE THEN
+   row PF.VAR @ -1 = IF
+      family TF.KIND @ TK-PRODUCT <> IF
+         s" tfam: a seeded untagged field is not product-owned" REG-AOT-REFUSE THEN
+   ELSE
+      family TF.KIND @ TK-SUM <> IF
+         s" tfam: a seeded variant field is not sum-owned" REG-AOT-REFUSE THEN
+      src u 2 row PF.VAR @ REG-AOT-ITEM SV.FAM @ row PF.FAM @ <> IF
+         s" tfam: a seeded field names another family's variant" REG-AOT-REFUSE THEN
+   THEN
+   row PF.SLOT @ row PF.CELLS @ PF-RANGE-OK? 0= IF
+      s" tfam: a seeded field has an invalid cell range" REG-AOT-REFUSE THEN
+   row PF.BYTE-OFF @ row PF.BYTES @ PF-RANGE-OK? 0= IF
+      s" tfam: a seeded field has an invalid byte range" REG-AOT-REFUSE THEN
+   row PF.SLOT @ family TF.SLOTS @ > IF
+      s" tfam: a seeded field starts outside its family" REG-AOT-REFUSE THEN
+   row PF.CELLS @ family TF.SLOTS @ row PF.SLOT @ - > IF
+      s" tfam: a seeded field extends outside its family" REG-AOT-REFUSE THEN
+   row PF.ALIGN @ PF-POW2? 0= IF
+      s" tfam: a seeded field alignment is invalid" REG-AOT-REFUSE THEN
+   row PF.BYTE-OFF @ row PF.ALIGN @ mod 0 <> row PF.FLAGS @ 0 <> or IF
+      s" tfam: a seeded field layout is invalid" REG-AOT-REFUSE THEN ;
+
+: REG-AOT-LAYOUT ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
+   src u 4 id REG-AOT-ITEM {: row:ptr :}
+   src u 0 row LAY.FAM @ REG-AOT-ITEM {: family:ptr :}
+   row LAY.POLICY @ TL-PACKED-TAG <>
+   row LAY.POLICY @ family TF.LAYOUT @ <> or IF
+      s" tfam: a seeded layout has an unsupported or mismatched policy" REG-AOT-REFUSE THEN
+   family TF.KIND @ TK-SUM = family TF.KIND @ TK-ENUM = or IF
+      family TF.VAR-COUNT @ PACKED-NARROW ELSE 0 THEN {: tagw:n :}
+   family TF.SLOTS @ cells {: payload:n :}
+   payload 0 > IF CELL ELSE tagw 0 > IF tagw ELSE 1 THEN THEN {: alignment:n :}
+   payload tagw + alignment PACKED-ALIGN-UP row LAY.SIZE @ <>
+   alignment row LAY.ALIGN @ <> or tagw row LAY.TAGW @ <> or IF
+      s" tfam: a seeded layout disagrees with its family descriptor" REG-AOT-REFUSE THEN ;
+
+: REG-AOT-SHAPE-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u REG-AOT-TABLE-CHECK
+   u 0= IF EXIT THEN
+   src 6 REG-AOT-ROW@ drop + 1 ?do
+      src u 6 i REG-AOT-ITEM {: node:ptr :}
+      node @ SCH-CON = IF
+         node CELL + @ dup CC-N < swap CC-MAX >= or IF
+            s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
+      THEN
+   loop
+   REG-AOT-N 0 ?do
+      src i REG-AOT-ROW@ drop {: first:n count:n :}
+      count 0 ?do
+         first i + {: id:n :}
+         j 0 = IF src u id REG-AOT-FAMILY
+         ELSE j 1 = IF src u 1 id REG-AOT-ITEM @ PK-MAX REG-AOT-LIMIT
+         ELSE j 2 = IF src u id REG-AOT-VARIANT
+         ELSE j 3 = IF src u id REG-AOT-FIELD
+         ELSE j 4 = IF src u id REG-AOT-LAYOUT
+         ELSE j 6 = IF src u id REG-AOT-SCHEMA
+         ELSE j 7 = IF
+            src u 7 id REG-AOT-ITEM @ {: node:n :}
+            node 0 <= IF
+               s" tfam: a seeded schema root names nil" REG-AOT-REFUSE THEN
+            src u 6 node REG-AOT-ITEM drop
+         THEN THEN THEN THEN THEN THEN THEN
+      loop
+   loop ;
+
+\ Owner-relative checks run after all node kinds and decreasing schema edges
+\ have validated. A memo per (owner, strictness, node) prevents shared subgraphs
+\ from expanding exponentially; its two-cell rows are private scratch only.
+PTR-VARIABLE REG-AOT-MEMO
+variable REG-AOT-MEMO-U
+
+: REG-AOT-MEMO-DONE ( -- )
+   REG-AOT-MEMO @ REG-AOT-MEMO-U @ ASIG-RELEASE
+   NULL-PTR REG-AOT-MEMO ! 0 REG-AOT-MEMO-U ! ;
+
+: REG-AOT-MEMO-START ( ptr u8 n -- ) {: src:ptr u:n :}
+   src 6 REG-AOT-ROW@ drop + 2 cells * {: bytes:n :}
+   bytes ARENA-ALLOC REG-AOT-MEMO ! bytes REG-AOT-MEMO-U ! ;
+
+: REG-AOT-MEMO-SLOT ( n -- ptr n )
+   2 cells * REG-AOT-MEMO @ + CELL-VIEW ;
+
+: REG-AOT-FAM-KIND ( ptr n -- n ) {: row:ptr :}
+   row TF.KIND @ {: kind:n :}
+   kind TK-EVIDENCE = IF PK-EVIDENCE EXIT THEN
+   kind TK-PRODUCT = kind TK-SUM = or kind TK-ENUM = or IF PK-LAYOUT EXIT THEN
+   PK-CELL ;
+
+: REG-AOT-FAM-WIDTH ( ptr n -- n ) {: row:ptr :}
+   row TF.LAYOUT @ {: policy:n :}
+   policy TL-BOXED = policy TL-NICHE = or IF 1 EXIT THEN
+   row TF.KIND @ {: kind:n :}
+   kind TK-PRODUCT = IF row TF.SLOTS @ EXIT THEN
+   kind TK-SUM = kind TK-ENUM = or IF row TF.SLOTS @ 1+ EXIT THEN
+   1 ;
+
+: REG-AOT-NODE-WIDTH ( ptr u8 n n -- n ) {: src:ptr u:n node:n :}
+   src u 6 node REG-AOT-ITEM {: row:ptr :}
+   row @ SCH-APP = IF src u 0 row CELL + @ REG-AOT-ITEM REG-AOT-FAM-WIDTH EXIT THEN
+   1 ;
+
+: REG-AOT-SAME-PKG? ( ptr u8 n ptr n ptr n -- bool )
+   {: src:ptr u:n left:ptr right:ptr :}
+   src u 5 left TF.PKG-OFF @ left TF.PKG-U @ REG-AOT-VIEW left TF.PKG-U @
+   src u 5 right TF.PKG-OFF @ right TF.PKG-U @ REG-AOT-VIEW right TF.PKG-U @ CORE-STR= ;
+
+: REG-AOT-MEMO-RESULT ( n ptr n n -- n ) {: key:n memo:ptr kind:n :}
+   key memo ! kind memo CELL + ! kind ;
+
+: REG-AOT-OWNED-NODE ( ptr u8 n n n bool -- n )
+   {: src:ptr u:n owner:n node:n strict:bool :}
+   owner 1+ 2 * strict IF 1+ THEN {: key:n :}
+   node REG-AOT-MEMO-SLOT {: memo:ptr :}
+   memo @ key = IF memo CELL + @ EXIT THEN
+   src u 0 owner REG-AOT-ITEM {: owning:ptr :}
+   src u 6 node REG-AOT-ITEM {: row:ptr :}
+   row @ {: tag:n :} row CELL + @ {: a:n :}
+   row 2 cells + @ {: b:n :} row 3 cells + @ {: c:n :}
+   tag SCH-PARAM = IF
+      a owning TF.ARITY @ >= IF
+         s" tfam: a seeded schema parameter exceeds its owner arity" REG-AOT-REFUSE THEN
+      src u 1 owning TF.PK-START @ a + REG-AOT-ITEM @ {: kind:n :}
+      strict kind PK-CELL <> and IF
+         s" tfam: a seeded field parameter is not cell-kinded" REG-AOT-REFUSE THEN
+      key memo kind REG-AOT-MEMO-RESULT EXIT
+   THEN
+   tag SCH-CON = IF
+      a CC-N < a CC-MAX >= or IF
+         s" tfam: captured schema constructor has process-local identity" REG-AOT-REFUSE THEN
+   THEN
+   tag SCH-PTR = IF
+      src u owner a strict TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+   THEN
+   tag SCH-ROW = IF
+      b 0 ?do
+         src u 7 a i + REG-AOT-ITEM @ {: child:n :}
+         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      loop
+   THEN
+   tag SCH-QUOT = IF
+      c 0 ?do
+         src u 7 b i + REG-AOT-ITEM @ {: child:n :}
+         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER drop
+      loop
+   THEN
+   tag SCH-APP = IF
+      \ Ordinary declarations resolve only already-declared families, including
+      \ pointer-wrapped references. Preserve that acyclic dependency boundary.
+      a owner >= IF
+         s" tfam: a seeded schema has a recursive or forward family" REG-AOT-REFUSE THEN
+      src u 0 a REG-AOT-ITEM {: applied:ptr :}
+      applied TF.VIS @ CHECKER-PACKAGE-PUBLIC <>
+      src u owning applied REG-AOT-SAME-PKG? 0= and IF
+         s" tfam: a seeded schema names an inaccessible family" REG-AOT-REFUSE THEN
+      c 0 ?do
+         src u 7 b i + REG-AOT-ITEM @ {: child:n :}
+         src u owner child strict TWALK-DEEPER RECURSE TWALK-SHALLOWER {: got:n :}
+         strict IF
+            src u 1 applied TF.PK-START @ i + REG-AOT-ITEM @ {: want:n :}
+            got want PF-KIND-OK? 0= IF
+               s" tfam: a seeded schema argument has the wrong kind" REG-AOT-REFUSE THEN
+         THEN
+      loop
+      key memo applied REG-AOT-FAM-KIND REG-AOT-MEMO-RESULT EXIT
+   THEN
+   key memo PK-CELL REG-AOT-MEMO-RESULT ;
+
+: REG-AOT-OWNED-ROOT ( ptr u8 n n n bool -- n )
+   {: src:ptr u:n owner:n root:n strict:bool :}
+   src u 7 root REG-AOT-ITEM @ {: node:n :}
+   src u 6 node REG-AOT-ITEM @ SCH-ROW = IF
+      s" tfam: a seeded payload root names an effect row" REG-AOT-REFUSE THEN
+   src u owner node strict REG-AOT-OWNED-NODE drop
+   src u node REG-AOT-NODE-WIDTH ;
+
+: REG-AOT-FIELD-SCHEMA ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
+   src u 3 id REG-AOT-ITEM {: row:ptr :}
+   src u 0 row PF.FAM @ REG-AOT-ITEM {: family:ptr :}
+   src u row PF.FAM @ row PF.SCH @ RES-TRUE REG-AOT-OWNED-ROOT
+   row PF.CELLS @ <> IF
+      s" tfam: a seeded field width disagrees with its schema" REG-AOT-REFUSE THEN
+   family TF.LAYOUT @ TL-PACKED-TAG > IF
+      s" tfam: a seeded field uses an unsupported layout" REG-AOT-REFUSE THEN
+   row PF.SLOT @ $7FFFFFFFFFFFFFFF CELL / >
+   row PF.CELLS @ $7FFFFFFFFFFFFFFF CELL / > or IF
+      s" tfam: a seeded field byte width overflows" REG-AOT-REFUSE THEN
+   row PF.SLOT @ cells row PF.BYTE-OFF @ <>
+   row PF.CELLS @ cells row PF.BYTES @ <> or
+   row PF.ALIGN @ CELL <> or IF
+      s" tfam: a seeded field bytes disagree with its cell layout" REG-AOT-REFUSE THEN ;
+
+\ Field insertion already forbids overlaps and duplicate names within one
+\ owner. Check the same bounded family slice before admitting imported rows.
+: REG-AOT-FIELD-PEERS ( ptr u8 n n -- ) {: src:ptr u:n id:n :}
+   src u 3 id REG-AOT-ITEM {: row:ptr :}
+   src u 0 row PF.FAM @ REG-AOT-ITEM TF.FLD-START @ {: first:n :}
+   id first ?do
+      src u 3 i REG-AOT-ITEM {: other:ptr :}
+      other PF.VAR @ row PF.VAR @ = IF
+         src u 5 row PF.NAME-OFF @ row PF.NAME-U @ REG-AOT-VIEW row PF.NAME-U @
+         src u 5 other PF.NAME-OFF @ other PF.NAME-U @ REG-AOT-VIEW other PF.NAME-U @ CORE-STR= IF
+            s" tfam: a seeded field repeats an owner-local name" REG-AOT-REFUSE THEN
+         row PF.SLOT @ row PF.CELLS @ other PF.SLOT @ other PF.CELLS @ PF-RANGE-OVERLAP?
+         row PF.BYTE-OFF @ row PF.BYTES @ other PF.BYTE-OFF @ other PF.BYTES @ PF-RANGE-OVERLAP? or IF
+            s" tfam: a seeded field overlaps another field" REG-AOT-REFUSE THEN
+      THEN
+   loop ;
+
+: REG-AOT-OWNER-WIDTH ( ptr u8 n ptr n n n -- n )
+   {: src:ptr u:n family:ptr variant:n limit:n :}
+   0 0 family TF.FLD-COUNT @ 0 ?do
+      src u 3 family TF.FLD-START @ i + REG-AOT-ITEM {: field:ptr :}
+      field PF.VAR @ variant = IF
+         {: total:n highest:n :}
+         field PF.CELLS @ limit total - > IF
+            s" tfam: seeded fields exceed their owner's payload width" REG-AOT-REFUSE THEN
+         field PF.SLOT @ limit > IF
+            s" tfam: a seeded field starts outside its variant" REG-AOT-REFUSE THEN
+         field PF.CELLS @ limit field PF.SLOT @ - > IF
+            s" tfam: a seeded field extends outside its variant" REG-AOT-REFUSE THEN
+         total field PF.CELLS @ +
+         highest field PF.SLOT @ field PF.CELLS @ + max
+      THEN
+   loop
+   2dup <> IF
+      s" tfam: seeded fields leave a gap in their owner layout" REG-AOT-REFUSE THEN drop ;
+
+: REG-AOT-FAMILY-MEMBERS ( ptr u8 n n -- ) {: src:ptr u:n fam:n :}
+   src u 0 fam REG-AOT-ITEM {: row:ptr :}
+   row TF.FLD-COUNT @ 0 ?do
+      src u 3 row TF.FLD-START @ i + REG-AOT-ITEM PF.FAM @ fam <> IF
+         s" tfam: a seeded family includes another family's field" REG-AOT-REFUSE THEN
+   loop
+   row TF.KIND @ TK-PRODUCT = IF
+      src u row PF-NO-VARIANT row TF.SLOTS @ REG-AOT-OWNER-WIDTH
+      row TF.SLOTS @ <> IF
+         s" tfam: a seeded product width differs from its fields" REG-AOT-REFUSE THEN
+   THEN
+   0 row TF.VAR-COUNT @ 0 ?do
+      row TF.VAR-START @ i + {: vid:n :}
+      src u 2 vid REG-AOT-ITEM {: variant:ptr :}
+      variant SV.FAM @ fam <> IF
+         s" tfam: a seeded family includes another family's variant" REG-AOT-REFUSE THEN
+      row TF.KIND @ TK-SUM = row TF.FLD-COUNT @ 0 > and
+      variant SV.SCH-COUNT @ 0 > and IF
+         s" tfam: a seeded sum mixes positional and named payloads" REG-AOT-REFUSE THEN
+      0
+      variant SV.SCH-COUNT @ 0 ?do
+         src u fam variant SV.SCH-START @ i + RES-FALSE REG-AOT-OWNED-ROOT {: cellsn:n :}
+         dup row TF.SLOTS @ swap - cellsn < IF
+            s" tfam: a seeded variant schema exceeds its payload width" REG-AOT-REFUSE THEN
+         cellsn +
+      loop
+      row TF.KIND @ TK-SUM = row TF.FLD-COUNT @ 0 > and IF
+         drop
+         src u row vid row TF.SLOTS @ REG-AOT-OWNER-WIDTH
+      ELSE
+         dup variant SV.PAYCELLS @ <> IF
+            s" tfam: a seeded variant width disagrees with its schema" REG-AOT-REFUSE THEN
+      THEN
+      max
+   loop
+   row TF.KIND @ TK-SUM = row TF.KIND @ TK-ENUM = or IF
+      row TF.SLOTS @ <> IF
+         s" tfam: a seeded family's width differs from its maximum payload" REG-AOT-REFUSE THEN
+   ELSE drop THEN ;
+
+: REG-AOT-OWNER-CHECK ( ptr u8 n -- ) {: src:ptr u:n :}
+   TWALK-RESET
+   src 0 REG-AOT-ROW@ drop {: first:n count:n :}
+   count 0 ?do src u first i + REG-AOT-FAMILY-MEMBERS loop
+   src 3 REG-AOT-ROW@ drop {: field-first:n field-count:n :}
+   field-count 0 ?do
+      src u field-first i + REG-AOT-FIELD-SCHEMA
+      src u field-first i + REG-AOT-FIELD-PEERS
+   loop ;
+
+: REG-AOT-CHECK ( ptr u8 n -- )
+   dup 0= IF 2drop EXIT THEN
+   2dup REG-AOT-SHAPE-CHECK
+   2dup REG-AOT-MEMO-START
+   [: 2dup REG-AOT-OWNER-CHECK ;] catch
+   REG-AOT-MEMO-DONE
+   dup 0 <> IF throw THEN drop 2drop ;
+
+\ Keep the public fatal diagnostic while the private validation operation can
+\ be caught to prove that a late refusal leaves all published stores untouched.
+: REG-AOT-VALIDATE ( ptr u8 n -- )
+   0 REG-AOT-ERROR-U !
+   [: 2dup REG-AOT-CHECK ;] catch
+   dup 0 <> IF
+      REG-AOT-ERROR-U @ 0= IF throw THEN
+      drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
+   THEN drop 2drop ;
 
 : REG-AOT-INSTALL ( ptr u8 n -- ) {: src:ptr u:n :}
    u 0= IF EXIT THEN
@@ -3120,10 +3607,10 @@ variable REG-AOT-ERROR-U
    REG-AOT-N 0 ?do
       src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
       i REG-AOT-COUNT base = IF
-         bytes 0 > IF
-            src REG-AOT-CUR @ +
+         cnt 0 > IF
+            src REG-AOT-CUR @ + base i REG-AOT-WIDTH * +
             i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
-            bytes USIGS-COPY
+            cnt i REG-AOT-WIDTH * USIGS-COPY
          THEN
          i base cnt + REG-AOT-COUNT!
          i base cnt REG-AOT-SCRUB
@@ -3147,7 +3634,10 @@ variable REG-AOT-ERROR-U
    [: REG-AOT-MARK ;] is REG-EXT-AOT-MARK-XT
    [: REG-AOT-CLOSE ;] is REG-EXT-AOT-CLOSE-XT
    [: REG-AOT-SAVE ;] is REG-EXT-AOT-SAVE-XT
-   [: REG-AOT-LOAD ;] is REG-EXT-AOT-LOAD-XT ;
+   [: REG-AOT-LOAD ;] is REG-EXT-AOT-LOAD-XT
+   [: REG-AOT-VALIDATE ;] is REG-EXT-AOT-VALIDATE-XT
+   [: REG-AOT-PARAM? ;] is REG-EXT-AOT-PARAM-XT
+   [: TFAM-NAME$ ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-INSTALL
 
 \ ---------------------------------------------------------------------------

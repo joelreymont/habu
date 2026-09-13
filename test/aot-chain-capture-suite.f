@@ -44,7 +44,7 @@ $8000 constant CAP
 32 constant O-PAYLEN
 40 constant O-PRODUCER
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
-7 constant VERSION
+8 constant VERSION
 17 constant SECTIONS
 64 constant HEX-LEN
 

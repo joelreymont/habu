@@ -777,8 +777,11 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 : ACAP-SIG-ROW+ ( n -- ) {: at:n :}
    AOT-SIG-N @ 1 + AOT-SIG-MAX > if ACAP-SIG-OVERFLOW then
+   AOT-ARM:PAYLOAD-SPANS 2drop {: rows:ptr bytes:n :}
+   at 0 < at bytes > or if ACAP-SIG-OVERFLOW then
+   SIG-ROW bytes at - > if ACAP-SIG-OVERFLOW then
    SIG-ROW 0 ?do
-      at i + CHECKER-ASIG-ROW-C@
+      rows at + i + c@
       AOT-SIG-BUF@ AOT-SIG-N @ SIG-ROW * + i + c!
    loop
    AOT-SIG-N @ 1 + AOT-SIG-N ! ;
@@ -790,12 +793,11 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    w ACAP-REC-PKG {: pa:ptr pu:n pub:bool ok:bool :}
    ok 0= if k w ACAP-REFUSE-SIG-WID then
    k AOT-REC AOT-RNPTR k AOT-REC AOT-RNLEN {: na:ptr nu:n :}
-   pa pu pub na nu CHECKER-ASIG-KNOWN? 0= if
+   pa pu pub na nu AOT-ARM:PAYLOAD-LOOKUP {: row:n known:bool :}
+   known 0= if
       ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit
    then
    ACAP-SIG-KNOWN @ 1 + ACAP-SIG-KNOWN !
-   pa pu pub na nu CHECKER-ASIG-MISSING? if k ACAP-REFUSE-SIG then
-   pa pu pub na nu CHECKER-ASIG-ROW-FOR {: row:n :}
    row 0= if k ACAP-REFUSE-SIG then
    row 1 - ACAP-SIG-ROW+ ;
 
@@ -805,17 +807,17 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ that travel is the interned text of the duplicates newest-wins dropped: shared
 \ records, measured in single kilobytes against the 124 KB the names alone need.
 : ACAP-SIG-STRINGS ( -- )
-   CHECKER-ASIG-STR-BYTES {: n:n :}
+   AOT-ARM:PAYLOAD-SPANS {: rows:ptr rowu:n str:ptr n:n :}
    n AOT-SIG-STR-CAP > if
       s" aot-capture: the window's signature strings exceed the artifact's string buffer" 74 die
    then
-   n 0 ?do i CHECKER-ASIG-STR-C@ AOT-SIG-STR-BUF@ i + c! loop
+   n 0 ?do str i + c@ AOT-SIG-STR-BUF@ i + c! loop
    n AOT-SIG-STR-LEN ! ;
 
 \ The type registry the signatures resolve against, written by the registry that
 \ owns those records; this file carries the bytes and never reads them.
 : ACAP-SIG-REGISTRY ( -- )
-   AOT-REG-BUF@ AOT-REG-CAP CHECKER-REG-AOT-SAVE AOT-REG-LEN ! ;
+   AOT-REG-BUF@ AOT-REG-CAP AOT-ARM:PAYLOAD-REG-SAVE AOT-REG-LEN ! ;
 
 \ IT RUNS LAST OF THE AUDITS, after the call and address scans. Those ask whether
 \ what travels is SOUND - a name the target has, an address the target can place;
@@ -845,12 +847,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ a capture-time read counted more, and the seeded engine then refused its own
 \ registry). That tool closes at the window instead (AOT-ARM:SIG-CLOSE), which
 \ disarms the collection, and an already-closed window keeps the end it declared.
-: ACAP-SIG-END ( -- )
-   CHECKER-ASIG-ARMED? 0= if exit then
-   CHECKER-REG-AOT-CLOSE ;
-
 : ACAP-AUDIT-SIGS ( -- )
-   ACAP-SIG-END
    0 ACAP-SIG-KNOWN !  0 ACAP-SIG-EXEMPT !  0 AOT-SIG-N !
    0 ACAP-PKG-MEMO-W !  0 ACAP-PKG-MEMO-ROW !  0 ACAP-PKG-MEMO-PUB !
    ACAP-W-R1 @ ACAP-W-R0 @ ?do i ACAP-?SIG loop
@@ -1649,8 +1646,12 @@ TRUSTED: ACAP-ADDRESS ( ptr u8 -- n ) ;
 
 : PAYLOAD-CAPTURE ( -- )
    AOT-ARM:?FROZEN
-   AOT-ARM:PAYLOAD-MODE @ 2 <> if
-      s" aot-capture: partial capture requires a verified effect graph payload" 74 die then
+   AOT-ARM:PAYLOAD-MODE @ 1 = if
+      AOT-ARM:PAYLOAD-EXPORTED @ if exit then
+      AOT-ARM:B0 @ AOT-ARM:R0 @ AOT-ARM:R1 @ AOT-ARM:D0 @ ACAP-BAND!
+      ACAP-AUDIT-SIGS
+      -1 AOT-ARM:PAYLOAD-EXPORTED ! exit
+   then
    ACAP-PERSISTENT-OWNER
    0 ACAP-SIG-KNOWN ! 0 ACAP-SIG-EXEMPT !
    0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;

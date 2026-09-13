@@ -92,6 +92,7 @@ variable W0  variable W1      \ its wordlist span
 PTR-VARIABLE PAYLOAD-OWNER
 variable PAYLOAD-MODE                       \ 0 pending, 1 partial, 2 complete runtime
 variable PAYLOAD-FROZEN
+variable PAYLOAD-EXPORTED
 
 private
 
@@ -120,7 +121,7 @@ TRUSTED: AS-SAVE ( n -- [ ptr u8 n -- n ] ) ;
 : CANCEL ( -- )
    PAYLOAD-MODE @ 1 = if
       CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF RUN-ACTION then
-   0 PAYLOAD-MODE !  0 PAYLOAD-FROZEN !
+   0 PAYLOAD-MODE !  0 PAYLOAD-FROZEN ! 0 PAYLOAD-EXPORTED !
    NULL-PTR PAYLOAD-OWNER ! ;
 
 public

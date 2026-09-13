@@ -52,11 +52,43 @@ source loading and handoff, two owner CAPTURE callbacks, preserved numeric-call
 acceptance/wrong-pointer-call refusal, and reopening. Full artifact restore
 remains the driver integration boundary; partial graph roundtrip is unfinished.
 
-Reviewed D01 slice integrated as db8396d0 and 045e8a5b (originals d79ce203,
-c9445a9c): all eight registry slices validate before reserve/publication;
-already-installed payloads require canonical content equality and preserve live
-indices. Root and independent Astra source-owner tests pass, including same-name,
-same-count n-versus-r refusal and late/mixed/overflow/base failures without state
-change. New native validator/installer bodies pass the same matrix. The catch
-wrapper preserves its two arguments and propagates unrelated errors. Partial
-graph activation and full restored-runtime acceptance remain open.
+Review handoff, 2026-09-13: the partial v8 producer, graph validator/importer,
+exact registry prefix/delta identity, and owner-relative schema validation are
+implemented and frozen for independent review. This is not an accepted release
+milestone. Tests through a fresh source owner now cover:
+- Every registry store populated by real declarations: products, wide/nested
+  fields, parameters, pointers, compact/named variants, packed layout and quoted
+  schemas. A/A is idempotent; same-count A/B, mixed states, late byte/count and
+  semantic-reference corruption refuse with every published byte/count and both
+  lookup indexes unchanged.
+- A rebuilt foreign prefix with equal counts refuses, including an empty delta;
+  an independently rebuilt identical prefix accepts. Per-store wire bytes carry
+  the entire closed prefix plus delta; only the delta is published. No extra
+  artifact section or hashing provider was added.
+- A 17-section file roundtrip clears its capture buffers, rolls back the source
+  registry and zeroes the retired registry rows and USIG bytes before importing. Numeric,
+  nominal, quantified quotation and return-row checks retain their meanings,
+  including wrong-type refusals. Returned quotations execute under JIT and
+  consumed quotations compile and execute at tier 1. Six malformed graph cases
+  refuse by name.
+- All 46 registry exporter/validator/importer bodies compile at tier 1 and pass
+  the same state tests in a fresh-owner probe. The probe uses typed JIT adapters
+  for 85 pre-hook dependencies; it is not a wholly native prefix or image build.
+
+Focused commands: `bin/hb --load test/aot-registry-identity.f`,
+`bin/hb --load test/aot-payload-graph.f`,
+`bin/hb --load test/aot-payload-unsupported.f`, and
+`bin/hb --load test/aot-payload-admission.f`. Native probe generation and source
+are `build/payload/make-registry-native-probe.py` and
+`build/payload/registry-identity-native.f` in cedar-owner-payload; its log says
+`registry identity and refusal atomicity: ok`, `window: 0`.
+
+Open boundaries are explicit: exceptional quotation contracts and source catch
+unsoundness (89902bde), canonical dynamic schema constructors (8262d7f3), and
+native cross-call return-row effects (608449fe). Partial export/import refuse
+exception-bearing quotations and non-builtin SCH-CON identities rather than
+silently dropping them. The existing native compiler still refuses an ordinary
+return-moving callee at -8286 and an unconsumed returned quotation at -8651.
+Fresh-process native partial-artifact execution, full rebuild and full test/run.f
+remain integration gates. The full persistent-owner route is separate and is
+being integrated by Cedar; these partial boundaries must not be reported closed.

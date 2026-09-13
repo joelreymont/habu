@@ -5878,6 +5878,7 @@ $8 constant ASIG.PKG
 $C constant ASIG.VIS
 $FFFF constant ASIG-STR-MAX             \ what a u16 length prefix can carry
 
+variable ASIG-FROZEN
 variable ASIG-ARMED     variable ASIG-MAPPED
 variable ASIG-ROW-U     variable ASIG-ROW-CAP-V
 variable ASIG-STR-U     variable ASIG-STR-CAP-V
@@ -6036,41 +6037,25 @@ PTR-VARIABLE ASIG-LAST-P
    prev 0= IF RES-FALSE EXIT THEN
    prev 1 - ASIG.SIG + ASIG-ROW-U32@ soff = ;
 
-\ The producer for a row that arrives WITH its text. `sa su` is that text; the
-\ key comes from the symbol row the record was just written under.
-\
-\ THE SAME ROW ARRIVES TWICE AND ONLY ONE IS KEPT. A declared definition reaches
-\ USIG-ADD once when CHECK certifies it and again when the engine's publish tail
-\ re-records the declared signature through TRUST, so keeping both gave 13,974
-\ rows for 6798 words. A row whose symbol's newest row already carries the same
-\ text is that replay and is dropped. A genuine REDEFINITION still appends and
-\ still wins by being later - measured over the compiler chain, 758 of the 7556
-\ rows are a second or later row for their symbol, and every pair looked at is a
-\ data record recorded `--` at definition time and `-- ptr a` when the engine
-\ auto-trusts it at publish. Newest-wins is what makes that the live answer.
-: CHECKER-ASIG-CAPTURE ( ptr u8 n -- ) {: sa:ptr su:n :}
-   CHECKER-ASIG-ARMED? 0= IF exit THEN
-   CHECKER-REC-SYM @ {: sym:n :}
-   sym 0= IF exit THEN
-   sa su ASIG-STR-INTERN {: soff:n :}
-   sym soff ASIG-SAME-AS-NEWEST? IF exit THEN
-   sym soff ASIG-EMIT ;
+\ Record membership while the definition is being published. The final verified
+\ graph and control flags are copied at freeze, after publication is complete.
+\ Text is deliberately not replayed: a declared row may have acquired fixed
+\ input requirements during certification.
+: CHECKER-ASIG-CAPTURE ( ptr u8 n -- )
+   2drop
+   CHECKER-ASIG-ARMED? 0= IF EXIT THEN
+   CHECKER-REC-SYM @ dup 0= IF drop EXIT THEN
+   1 swap ASIG-LAST! ;
 
-\ CHECKER-EXPORT has no signature text of its own: it re-publishes a record that
-\ already exists under a package's public tail. Copying the SOURCE row's text is
-\ exact where a re-render would not be, and a source with no row is a missing
-\ producer rather than something to guess at - the capture audit names it.
 : CHECKER-ASIG-EXPORT ( n -- ) {: src:n :}
-   CHECKER-ASIG-ARMED? 0= IF exit THEN
-   CHECKER-REC-SYM @ {: sym:n :}
-   sym 0= src 0= or IF exit THEN
-   src ASIG-LAST@ {: prev:n :}
-   prev 0= IF exit THEN
-   prev 1 - ASIG.SIG + ASIG-ROW-U32@ {: soff:n :}
-   sym soff ASIG-SAME-AS-NEWEST? IF exit THEN
-   sym soff ASIG-EMIT ;
+   CHECKER-ASIG-ARMED? 0= IF EXIT THEN
+   src 0= IF EXIT THEN
+   src ASIG-LAST@ 0= IF EXIT THEN
+   CHECKER-REC-SYM @ dup 0= IF drop EXIT THEN
+   1 swap ASIG-LAST! ;
 
 : CHECKER-ASIG-RESET ( -- )
+   0 ASIG-FROZEN !
    0 ASIG-ROW-U !  0 ASIG-STR-U !  0 ASIG-DIST-N !
    ASIG-LAST-P @ 0 ASIG-LAST-CAP-V @ ARENA-CELLS-ZERO ;
 
@@ -6086,6 +6071,9 @@ PTR-VARIABLE ASIG-LAST-P
    -1 ASIG-ARMED ! ;
 
 : CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
+
+: ASIG-RELEASE ( ptr u8 n -- )
+   dup 0 > IF munmap drop ELSE 2drop THEN ;
 
 \ The read surface src/habu/aot-capture.f copies the pool out through.
 : CHECKER-ASIG-N ( -- n ) ASIG-ROW-U @ ASIG-ROW / ;
@@ -9218,6 +9206,11 @@ defer REG-EXT-AOT-MARK-XT ( -- )
 defer REG-EXT-AOT-CLOSE-XT ( -- )
 defer REG-EXT-AOT-SAVE-XT ( ptr u8 n -- n )
 defer REG-EXT-AOT-LOAD-XT ( ptr u8 n -- )
+defer REG-EXT-AOT-VALIDATE-XT ( ptr u8 n -- )
+\ The graph node and its strings have already passed extent checks. The
+\ registry validates its canonical family identity against the future view.
+defer REG-EXT-AOT-PARAM-XT ( ptr u8 ptr u8 ptr u8 n -- )
+defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )
 
 \ A build with no type registry loaded has no delta to write. Reading one is a
 \ different matter: bytes that no store can take are a seeded engine whose
@@ -9227,12 +9220,18 @@ defer REG-EXT-AOT-LOAD-XT ( ptr u8 n -- )
 : REG-EXT-AOT-NO-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF EXIT THEN
    s" checker: a seeded type registry arrived with no registry to take it" 76 die ;
+: REG-EXT-AOT-NO-PARAM ( ptr u8 ptr u8 ptr u8 n -- )
+   2drop 2drop
+   s" checker: a seeded family arrived with no registry to validate it" 76 die ;
 
 : REG-EXT-AOT-DEFAULTS ( -- )
    [: ;] is REG-EXT-AOT-MARK-XT
    [: ;] is REG-EXT-AOT-CLOSE-XT
    [: REG-EXT-AOT-NO-SAVE ;] is REG-EXT-AOT-SAVE-XT
-   [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-LOAD-XT ;
+   [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-LOAD-XT
+   [: REG-EXT-AOT-NO-LOAD ;] is REG-EXT-AOT-VALIDATE-XT
+   [: REG-EXT-AOT-NO-PARAM ;] is REG-EXT-AOT-PARAM-XT
+   [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-DEFAULTS
 
 \ What src/habu/aot-arm.f and src/habu/aot-capture.f call. They are checked code
@@ -9246,6 +9245,11 @@ REG-EXT-AOT-DEFAULTS
    SG-ROWS-RESET
    REC-RELEASE
    CHECKER-ASIG-DISARM
+   0 ASIG-FROZEN !
+   ASIG-ROW-P @ ASIG-ROW-CAP-V @ ASIG-RELEASE
+   ASIG-STR-P @ ASIG-STR-CAP-V @ ASIG-RELEASE
+   ASIG-DIST-P @ ASIG-DIST-CAP-V @ cells ASIG-RELEASE
+   ASIG-LAST-P @ ASIG-LAST-CAP-V @ cells ASIG-RELEASE
    0 ASIG-MAPPED !
    NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
    NULL-PTR ASIG-STR-P !  0 ASIG-STR-U !  0 ASIG-STR-CAP-V !
@@ -13008,12 +13012,187 @@ $47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-SIG:LEN-CELL
 \ row of (offset, length) per section, then the sections contiguous behind it -
 \ and every malformation is refused by name before a byte of it is believed.
 \
-\ THE ROWS AND THE STRINGS ARE THIS FILE'S OWN FORMAT, carried verbatim. A row is
-\ four u32 (name, signature, package, visibility) whose first three are offsets
-\ into the string section, and a string is `[len u16][bytes]`. That is the
-\ signature store above, byte for byte: the artifact and the seed are couriers
-\ for it and re-encode nothing, which is why a row that arrives here can be read
-\ with the same arithmetic that wrote it.
+\ A row has four u32 fields (name, graph, package, visibility). Name/package
+\ offsets point at `[len u16][bytes]`; the graph offset points at the aligned
+\ binary object below. The artifact and seed copy this pool without re-encoding.
+\ A signature row points at one versioned, self-contained verified graph.
+\ The E record/node shapes are reused; their references are blob-relative.
+\ ER.ACTIVE carries the version magic, ER.NEXT the byte length, and ER.SYM
+\ carries control/defer flags. No source symbol id or history link travels.
+$4842470000000001 constant ASIG-GRAPH-MAGIC
+$10000 constant ASIG-GRAPH-DEFER
+variable ASIG-GRAPH-BASE
+variable ASIG-GRAPH-GEN
+PTR-VARIABLE ASIG-GRAPH-MAP
+variable ASIG-GRAPH-MAP-CAP
+
+: ASIG-GRAPH-DIE ( -- )
+   s" checker: invalid captured effect graph" 76 die ;
+
+: ASIG-GRAPH-EXCEPTION-DIE ( -- )
+   s" checker: exceptional quotation rows are not portable" 76 die ;
+
+: ASIG-GRAPH-PTR ( n -- ptr u8 )
+   ASIG-GRAPH-BASE @ + ASIG-STR-P @ + ;
+
+: ASIG-GRAPH-ZERO ( ptr u8 n -- ) {: dst:ptr u:n :}
+   u 0 ?do 0 dst i + c! loop ;
+
+: ASIG-GRAPH-ALIGN ( -- )
+   ASIG-STR-U @ 7 + -8 and ASIG-STR-U @ - {: pad:n :}
+   pad ASIG-STR-ROOM
+   ASIG-STR-P @ ASIG-STR-U @ + pad ASIG-GRAPH-ZERO
+   pad ASIG-STR-U +! ;
+
+: ASIG-GRAPH-ALLOC ( n -- n ) {: bytes:n :}
+   ASIG-GRAPH-ALIGN
+   bytes ASIG-STR-ROOM
+   ASIG-STR-U @ ASIG-GRAPH-BASE @ - {: off:n :}
+   off ASIG-GRAPH-PTR bytes ASIG-GRAPH-ZERO
+   bytes ASIG-STR-U +!
+   off ;
+
+: ASIG-GRAPH-BYTES ( ptr u8 n -- n ) {: src:ptr bytes:n :}
+   bytes ASIG-GRAPH-ALLOC {: off:n :}
+   src off ASIG-GRAPH-PTR bytes USIGS-COPY
+   off ;
+
+\ A generation stamp avoids clearing a map proportional to USIGS for every
+\ effect. It maps only source node offsets; variable IDs remain per effect.
+: ASIG-GRAPH-MAP-ROOM ( -- )
+   UEND @ $3FFFFFFFFFFFFFFF > IF ASIG-GRAPH-DIE THEN
+   UEND @ 2 * {: bytes:n :}
+   bytes ASIG-GRAPH-MAP-CAP @ <= IF EXIT THEN
+   ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ {: old:ptr oldcap:n :}
+   oldcap $3FFFFFFFFFFFFFFF > IF ASIG-GRAPH-DIE THEN
+   bytes oldcap 2 * max {: cap:n :}
+   old oldcap cap ARENA-BYTES-GROW ASIG-GRAPH-MAP !
+   cap ASIG-GRAPH-MAP-CAP !
+   old oldcap ASIG-RELEASE ;
+
+: ASIG-GRAPH-SLOT ( n -- ptr n )
+   2 * ASIG-GRAPH-MAP @ + CELL-VIEW ;
+
+: ASIG-GRAPH-SOURCE? ( n -- ) {: off:n :}
+   off 0 < off 8 mod 0 <> or IF ASIG-GRAPH-DIE THEN
+   off UEND @ > IF ASIG-GRAPH-DIE THEN
+   EFF-NODE UEND @ off - > IF ASIG-GRAPH-DIE THEN ;
+
+: ASIG-GRAPH-STRING ( n n -- ) {: src:n dst:n :}
+   src E-PTR EN.A @ E-PTR src E-PTR EN.B @ ASIG-GRAPH-BYTES
+   dst ASIG-GRAPH-PTR EN.A ! ;
+
+: ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
+   src 0= IF 0 EXIT THEN
+   src ASIG-GRAPH-SOURCE?
+   src ASIG-GRAPH-SLOT {: slot:ptr :}
+   slot @ ASIG-GRAPH-GEN @ = IF
+      slot CELL + @ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
+      1- EXIT
+   THEN
+   ASIG-GRAPH-GEN @ slot !  -1 slot CELL + !
+   EFF-NODE ASIG-GRAPH-ALLOC {: dst:n :}
+   src E-PTR dst ASIG-GRAPH-PTR EFF-NODE USIGS-COPY
+   src E-PTR EN.TAG @ {: tag:n :}
+   tag EN-CON = IF
+      src E-PTR EN.A @ {: con:n :}
+      con CT-NAME$ ASIG-GRAPH-BYTES dst ASIG-GRAPH-PTR EN.A !
+      con CT-NAME$ nip dst ASIG-GRAPH-PTR EN.B !
+      con CT-CLASS@ dst ASIG-GRAPH-PTR EN.C !
+      con CT-WIDTH@ dst ASIG-GRAPH-PTR EN.D !
+      con CT-SIGN@ dst ASIG-GRAPH-PTR EN.E !
+   ELSE tag EN-PTR = IF
+      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
+   ELSE tag EN-PUSH = IF
+      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
+      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
+   ELSE tag EN-QUOT = IF
+      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
+      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
+      src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
+      src E-PTR EN.D @ RECURSE dst ASIG-GRAPH-PTR EN.D !
+      \ Old effect records contain transient exception-row IDs in G/H. Their
+      \ type/last-write contract must be made persistent before it can travel.
+      \ Do not certify a graph that silently discards those exceptional rows.
+      src E-PTR EN.E @ IF ASIG-GRAPH-EXCEPTION-DIE THEN
+      0 dst ASIG-GRAPH-PTR EN.G !
+      0 dst ASIG-GRAPH-PTR EN.H !
+   ELSE tag EN-ATOM = IF
+      src E-PTR EN.C @ 0 > IF
+         s" checker: a captured rigid atom has process-local identity" 76 die THEN
+      src dst ASIG-GRAPH-STRING
+   ELSE tag EN-PARAM = IF
+      src E-PTR EN.H @ {: fam:n :}
+      fam REG-EXT-AOT-FAMILY-NAME-XT ASIG-GRAPH-BYTES dst ASIG-GRAPH-PTR EN.A !
+      fam REG-EXT-AOT-FAMILY-NAME-XT nip dst ASIG-GRAPH-PTR EN.B !
+      fam TFAM-PKG$* ASIG-GRAPH-BYTES dst ASIG-GRAPH-PTR EN.F !
+      fam TFAM-PKG$* nip dst ASIG-GRAPH-PTR EN.G !
+      src E-PTR EN.C @ {: argc:n :}
+      argc cells ASIG-GRAPH-ALLOC {: args:n :}
+      args dst ASIG-GRAPH-PTR EN.D !
+      argc 0 ?do
+         src E-PTR EN.D @ i cells + E-PTR CELL-VIEW @ RECURSE
+         args i cells + ASIG-GRAPH-PTR CELL-VIEW !
+      loop
+   ELSE tag EN-VAR <> tag EN-ROW <> and IF ASIG-GRAPH-DIE THEN
+   THEN THEN THEN THEN THEN THEN
+   dst 1+ src ASIG-GRAPH-SLOT CELL + !
+   dst ;
+
+: ASIG-GRAPH-COPY ( n -- n ) {: sym:n :}
+   sym USIG-NEWEST dup 0= IF drop ASIG-GRAPH-DIE THEN
+   1- {: src:n :}
+   ASIG-GRAPH-MAP-ROOM
+   ASIG-GRAPH-GEN @ 1+ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
+   ASIG-GRAPH-GEN !
+   ASIG-GRAPH-ALIGN
+   ASIG-STR-U @ ASIG-GRAPH-BASE !
+   EFF-REC ASIG-GRAPH-ALLOC drop
+   src E-PTR 0 ASIG-GRAPH-PTR EFF-REC USIGS-COPY
+   ASIG-GRAPH-MAGIC 0 ASIG-GRAPH-PTR ER.ACTIVE !
+   0 0 ASIG-GRAPH-PTR ER.SYMPREV !
+   sym CTL-FLAGS-SYM
+   sym DFER-FIND-SYM IF ASIG-GRAPH-DEFER or THEN
+   0 ASIG-GRAPH-PTR ER.SYM !
+   src E-PTR ER.DIN @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.DIN !
+   src E-PTR ER.DOUT @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.DOUT !
+   src E-PTR ER.RIN @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.RIN !
+   src E-PTR ER.ROUT @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.ROUT !
+   ASIG-STR-U @ ASIG-GRAPH-BASE @ - 0 ASIG-GRAPH-PTR ER.NEXT !
+   ASIG-GRAPH-BASE @ ;
+
+: CHECKER-PAYLOAD-ARM ( -- )
+   CHECKER-ASIG-ARM
+   CHECKER-REG-AOT-MARK ;
+
+: CHECKER-PAYLOAD-FREEZE ( -- )
+   ASIG-FROZEN @ IF EXIT THEN
+   CHECKER-ASIG-ARMED? 0= IF ASIG-GRAPH-DIE THEN
+   CHECKER-ASIG-DISARM
+   CHECKER-REG-AOT-CLOSE
+   0 ASIG-ROW-U ! 0 ASIG-STR-U ! 0 ASIG-DIST-N !
+   SYM-N @ 1 ?do
+      i ASIG-LAST@ 0 <> IF
+         0 i ASIG-LAST!
+         i CHECKER-FIND-USIG-SYM IF
+            i i ASIG-GRAPH-COPY ASIG-EMIT
+         THEN
+      THEN
+   loop
+   -1 ASIG-FROZEN ! ;
+
+: CHECKER-PAYLOAD-LOOKUP ( ptr u8 n bool ptr u8 n -- n bool )
+   {: pkg:ptr pkgu:n pub:bool name:ptr nameu:n :}
+   ASIG-FROZEN @ 0= IF ASIG-GRAPH-DIE THEN
+   pkg pkgu pkgu pub ASIG-AUDIT-VIS name nameu SYM-FIND {: sym:n hit:bool :}
+   hit 0= IF 0 RES-FALSE EXIT THEN
+   sym CHECKER-FIND-USIG-SYM 0= IF 0 RES-FALSE EXIT THEN
+   sym ASIG-LAST@ RES-TRUE ;
+
+: CHECKER-PAYLOAD-SPANS ( -- ptr u8 n ptr u8 n )
+   ASIG-FROZEN @ 0= IF ASIG-GRAPH-DIE THEN
+   ASIG-ROW-P @ ASIG-ROW-U @ ASIG-STR-P @ ASIG-STR-U @ ;
+
 3 constant CK-AOT-SEC-N
 16 constant CK-AOT-ROW                  \ = ASIG-ROW: the store's row, carried verbatim
 0 constant CK-AOT-S-ROWS
@@ -13059,21 +13238,14 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
          s" checker: a seeded payload section does not start where the last one ended" CK-AOT-DIE THEN
       i CK-AOT-LEN 0 < IF
          s" checker: a seeded payload section has a negative length" CK-AOT-DIE THEN
+      i CK-AOT-LEN CK-AOT-SIG-LEN CK-AOT-CUR @ - > IF
+         s" checker: a seeded payload section runs past its own bytes" CK-AOT-DIE THEN
       CK-AOT-CUR @ i CK-AOT-LEN + CK-AOT-CUR !
    loop
    CK-AOT-CUR @ CK-AOT-SIG-LEN <> IF
       s" checker: the seeded payload sections do not fill the span the seed published" CK-AOT-DIE THEN
    CK-AOT-S-ROWS CK-AOT-LEN CK-AOT-ROW mod 0 <> IF
       s" checker: the seeded signature rows are not a whole number of rows" CK-AOT-DIE THEN ;
-
-\ Usable once, and the answer is latched: a boot that never names a seeded word
-\ pays one cell read, and one that does pays the validation once.
-: CK-AOT-READY? ( -- bool )
-   CK-AOT-STATE @ 0 <> IF CK-AOT-STATE @ 0 > EXIT THEN
-   CK-AOT-SIG-LEN 0 <= IF -1 CK-AOT-STATE ! RES-FALSE EXIT THEN
-   CK-AOT-VALIDATE
-   1 CK-AOT-STATE !
-   RES-TRUE ;
 
 : CK-AOT-ROWS ( -- n ) CK-AOT-S-ROWS CK-AOT-LEN CK-AOT-ROW / ;
 : CK-AOT-FIELD ( n n -- n ) {: r:n f:n :}
@@ -13084,6 +13256,191 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 : CK-AOT-STR-U ( n -- n ) {: at:n :} CK-AOT-S-STR CK-AOT-OFF at + CK-AOT-U16@ ;
 : CK-AOT-STR-A ( n -- ptr u8 ) {: at:n :} CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + 2 + ;
 : CK-AOT-STR$ ( n -- ptr u8 n ) {: at:n :} at CK-AOT-STR-A at CK-AOT-STR-U ;
+
+: CK-AOT-REG$ ( -- ptr u8 n )
+   CK-AOT-SIG-POOL CK-AOT-S-REG CK-AOT-OFF + CK-AOT-S-REG CK-AOT-LEN ;
+
+\ All lengths are subtraction-bounded before an address/product is formed.
+: CK-AOT-SPAN? ( n n n -- ) {: off:n bytes:n limit:n :}
+   off 0 < bytes 0 < or IF ASIG-GRAPH-DIE THEN
+   off limit > IF ASIG-GRAPH-DIE THEN
+   bytes limit off - > IF ASIG-GRAPH-DIE THEN ;
+
+: CK-AOT-KEY? ( n -- ) {: off:n :}
+   off 2 CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
+   off 2 + off CK-AOT-STR-U CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN? ;
+
+PTR-VARIABLE CK-GRAPH-BASE
+variable CK-GRAPH-LEN
+PTR-VARIABLE CK-GRAPH-MAP
+variable CK-GRAPH-CAP
+variable CK-GRAPH-MAP-U
+
+: CK-GRAPH-PTR ( n -- ptr u8 ) CK-GRAPH-BASE @ + ;
+: CK-GRAPH-SLOT ( n -- ptr n ) CK-GRAPH-MAP @ + CELL-VIEW ;
+
+: CK-GRAPH-RELEASE ( -- )
+   CK-GRAPH-MAP @ CK-GRAPH-CAP @ ASIG-RELEASE
+   NULL-PTR CK-GRAPH-MAP ! 0 CK-GRAPH-CAP ! ;
+
+\ One map cell per aligned source cell detects both cycles and overlapping
+\ objects. The second half records each variable's kind. Repeated DAG edges
+\ reuse the finished node; validating a graph is linear in its bytes/edges.
+: CK-GRAPH-ROOM ( -- )
+   CK-GRAPH-LEN @ $3FFFFFFFFFFFFFF8 > IF ASIG-GRAPH-DIE THEN
+   CK-GRAPH-LEN @ 7 + -8 and dup CK-GRAPH-MAP-U ! 2 * {: bytes:n :}
+   bytes CK-GRAPH-CAP @ > IF
+      CK-GRAPH-MAP @ CK-GRAPH-CAP @ {: old:ptr oldcap:n :}
+      old oldcap bytes ARENA-BYTES-GROW CK-GRAPH-MAP !
+      bytes CK-GRAPH-CAP ! old oldcap ASIG-RELEASE
+   THEN
+   CK-GRAPH-MAP @ bytes ASIG-GRAPH-ZERO ;
+
+: CK-GRAPH-SPAN? ( n n -- ) {: off:n bytes:n :}
+   off EFF-REC < off 7 and 0 <> or IF ASIG-GRAPH-DIE THEN
+   off bytes CK-GRAPH-LEN @ CK-AOT-SPAN? ;
+
+: CK-GRAPH-CLAIM ( n n -- ) {: off:n bytes:n :}
+   off bytes CK-GRAPH-SPAN?
+   bytes 7 + 8 / 0 ?do
+      off i cells + CK-GRAPH-SLOT dup @ 0 <> IF drop ASIG-GRAPH-DIE THEN
+      -1 swap !
+   loop ;
+
+: CK-GRAPH-STRING? ( n n -- ) CK-GRAPH-CLAIM ;
+: CK-GRAPH-NAME? ( ptr u8 -- ) {: node:ptr :}
+   node EN.A @ node EN.B @ CK-GRAPH-STRING?
+   node EN.B @ 0= IF ASIG-GRAPH-DIE THEN ;
+
+: CK-GRAPH-BOOL? ( n -- ) dup 0 <> swap -1 <> and IF ASIG-GRAPH-DIE THEN ;
+
+: CK-GRAPH-VAR? ( n n bool -- ) {: id:n kind:n row:bool :}
+   row IF 0 CK-GRAPH-PTR ER.RVN @ ELSE 0 CK-GRAPH-PTR ER.TVN @ THEN {: count:n :}
+   id 0 < id count >= or IF ASIG-GRAPH-DIE THEN
+   row IF
+      kind 0 <> kind RVK-QUOT <> and kind RVK-INFERRED <> and IF ASIG-GRAPH-DIE THEN
+   ELSE kind TVK-ANY <> kind TVK-RAW <> and IF ASIG-GRAPH-DIE THEN THEN
+   row IF id 0 CK-GRAPH-PTR ER.TVN @ + ELSE id THEN cells
+   CK-GRAPH-MAP-U @ + CK-GRAPH-SLOT {: slot:ptr :}
+   slot @ 0 <> slot @ kind 1+ <> and IF ASIG-GRAPH-DIE THEN
+   kind 1+ slot ! ;
+
+: CK-GRAPH-CON? ( ptr u8 -- ) {: node:ptr :}
+   node CK-GRAPH-NAME?
+   node EN.A @ CK-GRAPH-PTR node EN.B @ CT-FIND {: con:n :}
+   con 0= IF
+      \ New linear constructors have the existing CT-ADD-LINEAR recipe. No
+      \ constructor is installed until every graph and registry has validated.
+      node EN.C @ CT-LINEAR <> node EN.D @ 64 <> or
+      node EN.E @ CS-NONE <> or IF ASIG-GRAPH-DIE THEN
+      node EN.A @ CK-GRAPH-PTR node EN.B @ TYPE-RESERVED? IF ASIG-GRAPH-DIE THEN
+   ELSE
+      con CT-CLASS@ node EN.C @ <> con CT-WIDTH@ node EN.D @ <> or
+      con CT-SIGN@ node EN.E @ <> or IF ASIG-GRAPH-DIE THEN
+   THEN ;
+
+: CK-GRAPH-KIND? ( n bool -- ) {: tag:n row:bool :}
+   tag EN-ROW = tag EN-PUSH = or row IF 0= THEN IF ASIG-GRAPH-DIE THEN ;
+
+: CK-GRAPH-NODE? ( n bool -- ) {: off:n row:bool :}
+   off 0= IF row 0= IF ASIG-GRAPH-DIE THEN EXIT THEN
+   off EFF-NODE CK-GRAPH-SPAN?
+   off CK-GRAPH-SLOT @ {: seen:n :}
+   seen 0 > IF seen 1- row CK-GRAPH-KIND? EXIT THEN
+   seen 0 < IF ASIG-GRAPH-DIE THEN
+   off EFF-NODE CK-GRAPH-CLAIM
+   off CK-GRAPH-PTR {: node:ptr :}
+   node EN.TAG @ {: tag:n :}
+   tag 0 < tag EN-PARAM > or IF ASIG-GRAPH-DIE THEN
+   tag row CK-GRAPH-KIND?
+   tag EN-CON = IF node CK-GRAPH-CON?
+   ELSE tag EN-VAR = IF node EN.A @ node EN.B @ RES-FALSE CK-GRAPH-VAR?
+   ELSE tag EN-ROW = IF node EN.A @ node EN.B @ RES-TRUE CK-GRAPH-VAR?
+   ELSE tag EN-PTR = IF
+      node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   ELSE tag EN-PUSH = IF
+      node EN.C @ 0 <= IF ASIG-GRAPH-DIE THEN
+      node EN.A @ RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   ELSE tag EN-QUOT = IF
+      node EN.E @ IF ASIG-GRAPH-EXCEPTION-DIE THEN
+      node EN.F @ CK-GRAPH-BOOL?
+      node EN.G @ node EN.H @ or 0 <> IF ASIG-GRAPH-DIE THEN
+      node EN.A @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.B @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.C @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      node EN.D @ RES-TRUE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+   ELSE tag EN-ATOM = IF
+      node CK-GRAPH-NAME?
+      node EN.C @ 0 > node EN.C @ EI-AK-CAP negate < or IF ASIG-GRAPH-DIE THEN
+   ELSE
+      node CK-GRAPH-NAME?
+      node EN.F @ node EN.G @ CK-GRAPH-STRING?
+      node EN.C @ {: argc:n :}
+      argc 0 < argc CK-GRAPH-LEN @ CELL / > or IF ASIG-GRAPH-DIE THEN
+      node EN.D @ argc cells CK-GRAPH-CLAIM
+      argc 0 ?do
+         node EN.D @ i cells + CK-GRAPH-PTR CELL-VIEW @
+         RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      loop
+      node CK-GRAPH-BASE @ CK-AOT-REG$ REG-EXT-AOT-PARAM-XT
+   THEN THEN THEN THEN THEN THEN THEN
+   tag 1+ off CK-GRAPH-SLOT ! ;
+
+: CK-GRAPH-MIN-IN ( -- n )
+   0 0 CK-GRAPH-PTR ER.DIN @
+   BEGIN dup 0 <> WHILE
+      dup CK-GRAPH-PTR EN.TAG @ EN-PUSH <> IF drop EXIT THEN
+      dup CK-GRAPH-PTR EN.C @ 1- {: width:n :}
+      swap dup 255 width - > width 255 > or IF ASIG-GRAPH-DIE THEN
+      width + swap CK-GRAPH-PTR EN.B @
+   REPEAT drop ;
+
+: CK-GRAPH-VALIDATE ( n -- ) {: at:n :}
+   at 7 and 0 <> IF ASIG-GRAPH-DIE THEN
+   at EFF-REC CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
+   CK-AOT-SIG-POOL CK-AOT-S-STR CK-AOT-OFF + at + CK-GRAPH-BASE !
+   0 CK-GRAPH-PTR {: rec:ptr :}
+   rec ER.ACTIVE @ ASIG-GRAPH-MAGIC <> IF ASIG-GRAPH-DIE THEN
+   rec ER.NEXT @ {: bytes:n :}
+   bytes EFF-REC < IF ASIG-GRAPH-DIE THEN
+   at bytes CK-AOT-S-STR CK-AOT-LEN CK-AOT-SPAN?
+   bytes CK-GRAPH-LEN !
+   rec ER.SYMPREV @ 0 <> rec ER.SYM @ $10007 invert and 0 <> or IF ASIG-GRAPH-DIE THEN
+   rec ER.HASR @ CK-GRAPH-BOOL?
+   rec ER.HASR @ 0= IF rec ER.RIN @ rec ER.ROUT @ or 0 <> IF ASIG-GRAPH-DIE THEN THEN
+   rec ER.TVN @ {: tvn:n :} rec ER.RVN @ {: rvn:n :}
+   tvn 0 < rvn 0 < or IF ASIG-GRAPH-DIE THEN
+   tvn bytes EFF-NODE / > rvn bytes EFF-NODE / > or IF ASIG-GRAPH-DIE THEN
+   tvn rvn + bytes EFF-NODE / > IF ASIG-GRAPH-DIE THEN
+   CK-GRAPH-ROOM TWALK-RESET
+   rec ER.DIN @ RES-TRUE CK-GRAPH-NODE?
+   rec ER.DOUT @ RES-TRUE CK-GRAPH-NODE?
+   rec ER.RIN @ RES-TRUE CK-GRAPH-NODE?
+   rec ER.ROUT @ RES-TRUE CK-GRAPH-NODE?
+   CK-GRAPH-MIN-IN rec ER.MINI @ <> IF ASIG-GRAPH-DIE THEN ;
+
+: CK-AOT-CONTENTS? ( -- )
+   CK-AOT-VALIDATE
+   CK-AOT-REG$ REG-EXT-AOT-VALIDATE-XT
+   CK-AOT-ROWS 0 ?do
+      i 0 CK-AOT-FIELD dup CK-AOT-KEY? CK-AOT-STR-U 0= IF ASIG-GRAPH-DIE THEN
+      i 8 CK-AOT-FIELD CK-AOT-KEY?
+      i 12 CK-AOT-FIELD dup 0 < swap SYM-PUBLIC > or IF ASIG-GRAPH-DIE THEN
+      i 8 CK-AOT-FIELD CK-AOT-STR-U 0=
+      i 12 CK-AOT-FIELD SYM-GLOBAL = IF 0= THEN IF ASIG-GRAPH-DIE THEN
+      i 4 CK-AOT-FIELD CK-GRAPH-VALIDATE
+   loop ;
+
+\ Validation may reserve scratch, but publishes no symbol/effect/registry.
+\ The existing catch boundary releases that scratch on a thrown refusal.
+: CK-AOT-READY? ( -- bool )
+   CK-AOT-STATE @ 0 <> IF CK-AOT-STATE @ 0 > EXIT THEN
+   CK-AOT-SIG-LEN 0 <= IF -1 CK-AOT-STATE ! RES-FALSE EXIT THEN
+   [: CK-AOT-CONTENTS? ;] catch
+   CK-GRAPH-RELEASE
+   dup 0 <> IF throw THEN drop
+   1 CK-AOT-STATE ! RES-TRUE ;
 
 \ The registry the signatures resolve against. A signature naming a
 \ window-declared family would otherwise be refused as a bad stored signature
@@ -13110,8 +13467,8 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 \ prefix - which is the case the base equality was written for and the one the
 \ seed point cannot rule out.
 : CK-AOT-REG-INSTALL ( -- )
-   CK-AOT-SIG-POOL CK-AOT-S-REG CK-AOT-OFF +  CK-AOT-S-REG CK-AOT-LEN
-   REG-EXT-AOT-LOAD-XT ;
+   CK-AOT-READY? 0= IF EXIT THEN
+   CK-AOT-REG$ REG-EXT-AOT-LOAD-XT ;
 
 \ ---- taking one row ----------------------------------------------------------
 \ THE KEY IS THE ROW'S OWN SCOPE, not the scope the failing reference was
@@ -13135,26 +13492,87 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM ;
 
-\ USIG-ADD's body with the key supplied rather than derived, and its refusal
-\ kept: a signature this engine cannot parse is a build that baked a text its
-\ own parser rejects, which is a death and not a miss.
-: CK-AOT-TAKE ( n -- ) {: r:n :}
-   r 4 CK-AOT-FIELD CK-AOT-STR$ {: sa:ptr su:n :}
+\ Import the validated DAG directly. Instantiating and re-copying it would
+\ expand shared subgraphs and change row kinds; it is already an effect record.
+: CK-GRAPH-REBASE ( ptr n n -- ) {: field:ptr base:n :}
+   field @ dup 0 <> IF base + THEN field ! ;
+
+: CK-GRAPH-CON-INSTALL ( ptr u8 -- ) {: node:ptr :}
+   node EN.A @ CK-GRAPH-PTR node EN.B @ {: name:ptr len:n :}
+   name len CT-FIND 0= IF name len CT-ADD-LINEAR THEN ;
+
+: CK-GRAPH-NODE-REBASE ( n n -- ) {: off:n base:n :}
+   off base + E-PTR {: node:ptr :}
+   node EN.TAG @ {: tag:n :}
+   tag EN-CON = IF
+      off CK-GRAPH-PTR {: source:ptr :}
+      source EN.A @ CK-GRAPH-PTR source EN.B @ CT-FIND node EN.A !
+      0 node EN.B ! 0 node EN.C ! 0 node EN.D ! 0 node EN.E !
+   ELSE tag EN-PTR = IF node EN.A base CK-GRAPH-REBASE
+   ELSE tag EN-PUSH = IF
+      node EN.A base CK-GRAPH-REBASE node EN.B base CK-GRAPH-REBASE
+   ELSE tag EN-QUOT = IF
+      node EN.A base CK-GRAPH-REBASE node EN.B base CK-GRAPH-REBASE
+      node EN.C base CK-GRAPH-REBASE node EN.D base CK-GRAPH-REBASE
+   ELSE tag EN-ATOM = IF node EN.A base CK-GRAPH-REBASE
+   ELSE tag EN-PARAM = IF
+      node EN.A base CK-GRAPH-REBASE node EN.D base CK-GRAPH-REBASE
+      node EN.C @ 0 ?do
+         node EN.D @ i cells + E-PTR CELL-VIEW base CK-GRAPH-REBASE
+      loop
+      \ Canonical package bytes are validation-only, not live EN-PARAM fields.
+      0 node EN.F ! 0 node EN.G !
+   THEN THEN THEN THEN THEN THEN ;
+
+: CK-GRAPH-IMPORT ( n -- ) {: sym:n :}
+   CK-GRAPH-LEN @ 7 + -8 and {: bytes:n :}
+   bytes $7FFFFFFFFFFFFFFF UEND @ - CELL - > IF ASIG-GRAPH-DIE THEN
+   UEND @ bytes + CELL + USIGS-ENSURE
+   0 CK-GRAPH-PTR ER.TVN @ 0 CK-GRAPH-PTR ER.RVN @ max TV-ENSURE
+   \ Reserve constructor space before adding any missing linear constructor.
+   CTN @ bytes EFF-NODE / + CT-ENSURE
+   bytes CT-STR-ENSURE
+   EFF-REC BEGIN dup CK-GRAPH-LEN @ < WHILE
+      dup CK-GRAPH-SLOT @ EN-CON 1+ = IF dup CK-GRAPH-PTR CK-GRAPH-CON-INSTALL THEN
+      CELL +
+   REPEAT drop
+   DFER-NEED DFER-ENSURE
+   NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
+   NRX-ENSURE USX-ENSURE UIX-EXACT
+   UIX-N @ bytes EFF-NODE / + {: maxnodes:n :}
+   BEGIN maxnodes UIX-ENT-CAP @ > WHILE UIX-ENT-GROW REPEAT
+   BEGIN maxnodes 2 * UIX-BKT-CAP @ > WHILE UIX-BKT-GROW REPEAT
    CHECKER-REC-SYM @ {: was:n :}
-   r CK-AOT-ROW-SYM CHECKER-REC-SYM !
-   NEW
-   SGBAD-CLEAR
-   r 8 CK-AOT-FIELD CK-AOT-STR$ SIGSCOPE!   \ bare family tails read in the row's package
-   sa su PARSE-SIG-RAW
-   SIGSCOPE-OFF
-   SGBAD @ IF
-      2drop 2drop
-      2 sa su write drop
-      s" : checker: a seeded signature does not parse in the engine it was baked into"
-      CK-AOT-DIE
-   THEN
-   SGHASR @ E-ADD-EFFECT
+   sym CHECKER-REC-SYM !
+   E-REC-START E-OFF {: base:n :}
+   CK-GRAPH-BASE @ EFF-REC + base EFF-REC + E-PTR
+   CK-GRAPH-LEN @ EFF-REC - USIGS-COPY
+   CK-GRAPH-LEN @ base + E-PTR bytes CK-GRAPH-LEN @ - ASIG-GRAPH-ZERO
+   0 CK-GRAPH-PTR {: source:ptr :}
+   base E-PTR {: rec:ptr :}
+   EFF-ACTIVE rec ER.ACTIVE !
+   source ER.DIN @ rec ER.DIN ! rec ER.DIN base CK-GRAPH-REBASE
+   source ER.DOUT @ rec ER.DOUT ! rec ER.DOUT base CK-GRAPH-REBASE
+   source ER.RIN @ rec ER.RIN ! rec ER.RIN base CK-GRAPH-REBASE
+   source ER.ROUT @ rec ER.ROUT ! rec ER.ROUT base CK-GRAPH-REBASE
+   source ER.HASR @ rec ER.HASR !
+   source ER.TVN @ rec ER.TVN ! source ER.RVN @ rec ER.RVN !
+   source ER.MINI @ rec ER.MINI !
+   EFF-REC BEGIN dup CK-GRAPH-LEN @ < WHILE
+      dup CK-GRAPH-SLOT @ 0 > IF dup base CK-GRAPH-NODE-REBASE THEN
+      CELL +
+   REPEAT drop
+   base bytes + UEND ! rec E-REC-FINISH USX-STAMP
+   base UEND @ UIX-REC-ADD UIX-STAMP
+   HIDX-VALID @ IF base 1+ sym HIDX-EFF! UEND @ HIDX-EFF-DEP+ THEN
+   sym source ER.SYM @ ASIG-GRAPH-DEFER invert and NORET-ADD-SYM
+   sym source ER.SYM @ ASIG-GRAPH-DEFER and 0 <> DFER-ADD-SYM
    was CHECKER-REC-SYM ! ;
+
+: CK-AOT-TAKE ( n -- ) {: r:n :}
+   r 4 CK-AOT-FIELD CK-GRAPH-VALIDATE
+   r CK-AOT-ROW-SYM CK-GRAPH-IMPORT
+   CK-GRAPH-RELEASE ;
 
 \ ---- taking every row one pass could have used -------------------------------
 \ EVERY row whose name the pass could not resolve, not the newest one: the same
@@ -14476,6 +14894,9 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 \ later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
    CHECKER-TAPE:DETACH
+   CK-GRAPH-RELEASE
+   ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ASIG-RELEASE
+   NULL-PTR ASIG-GRAPH-MAP ! 0 ASIG-GRAPH-MAP-CAP !
    0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
    TOKBUF-RESET
    HIDX-RESET
@@ -14551,4 +14972,13 @@ package CHECKER-REG
 ' REC-MIN-IN@                       DECLARATIONS REC-MIN-IN-OFF + xt!
 ' REC-WIDE-PUBLISH                  DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
 ' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!
+;package
+
+package CHECKER-REG
+' CHECKER-PAYLOAD-ARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-ARM-OFF + xt!
+' CHECKER-PAYLOAD-FREEZE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-FREEZE-OFF + xt!
+' CHECKER-PAYLOAD-LOOKUP DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-LOOKUP-OFF + xt!
+' CHECKER-PAYLOAD-SPANS DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-SPANS-OFF + xt!
+' CHECKER-REG-AOT-SAVE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-REG-SAVE-OFF + xt!
+' CHECKER-ASIG-DISARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF + xt!
 ;package

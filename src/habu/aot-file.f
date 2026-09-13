@@ -130,7 +130,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-7 constant VERSION   \ complete eight-byte declared-address rows; version 6 truncated them
+8 constant VERSION   \ SIGSTR carries verified effect graphs; text replay is incompatible
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
