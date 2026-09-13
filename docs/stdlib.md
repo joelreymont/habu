@@ -1650,6 +1650,14 @@ Use `PROC-ENV-DEFAULT$?` when an in-process fixture needs to read the same
 prepared default that would be passed to a child process. Use
 `PROC-ENV-DEFAULT-RESET` at harness setup boundaries.
 
+The argv and environment builders, including inherited defaults, are process
+state. `APP-IMAGE:SAVE` releases their cached mappings and clears their pointer
+tables, counts and offsets through `IMAGE-LIFECYCLE`. A restored image starts
+with empty builders and no default overrides. The same public words allocate
+fresh storage and register cleanup again when used after restore. Ordinary
+`PROC-ARGV-RESET` and `PROC-ENV-RESET` still retain capacity for reuse within the
+current process; capture does not preserve a prepared argv or environment.
+
 `lib/process-command.f` adds a checked command-owned runner above argv/env. It
 keeps separate command arg, env, stdin, stdout, stderr, and outcome storage, then
 transfers that state into the existing `lib/process-argv.f`/`lib/process-env.f`

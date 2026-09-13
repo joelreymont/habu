@@ -4,6 +4,7 @@
 
 s" lib/memory.f" required
 s" lib/process.f" required
+require lib/image-lifecycle.f
 
 $100 constant PROC-ARGV-MAX
 32768 constant PROC-ARGV-BUF-CAP
@@ -23,11 +24,42 @@ variable PROC-ARGV-BUF-A
 : PROC-ARGV-BUF! ( ptr u8 -- )
    PROC-ARGV-BUF-A-FIELD ! ;
 
+package PROC-ARGV-LIFECYCLE
+private
+
+TYPED-VARIABLE REGISTERED bool
+false REGISTERED !
+
+: RELEASE ( -- )
+   PROC-ARGV-BUF@ {: bytes:ptr :}
+   NULL-PTR PROC-ARGV-BUF!
+   0 >COUNT PROC-ARGV-N !
+   0 >OFF PROC-ARGV-OFF !
+   PROC-ARGV-MAX 1+ 0 ?do
+      NULL-PTR PROC-ARGV-TABLE i ptr-field !
+   loop
+   bytes 0= 0= if
+      bytes PROC-ARGV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   then
+   false REGISTERED ! ;
+
+public
+
+\ Register before allocation: refusal cannot leave an untracked mapping.
+\ A failed allocation leaves a harmless hook, cleared by the next capture.
+: REGISTER ( -- )
+   REGISTERED @ if exit then
+   [: RELEASE ;] IMAGE-LIFECYCLE:REGISTER
+   true REGISTERED ! ;
+
+;package
+
 \ PROC-ARGV-BUF-CAP is a positive library constant: MEM:BYTES-ALLOC-LEN narrows the
 \ raw size to the validated alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE
 \ on any refusal (unreachable for the constant).
 : PROC-ARGV-BUF ( -- ptr u8 )
    PROC-ARGV-BUF@ 0= if
+      PROC-ARGV-LIFECYCLE:REGISTER
       PROC-ARGV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop PROC-ARGV-BUF!
    then
    PROC-ARGV-BUF@ ;
@@ -64,6 +96,8 @@ variable PROC-ARGV-BUF-A
 
 : PROC-ARGV-PREPARE ( ptr u8 len -- ptr u8 ptr ptr u8 ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then
+   \ Even an argument-free command stores a process address in the table.
+   PROC-ARGV-LIFECYCLE:REGISTER
    path pathu PROC-PATHZ {: pathz:ptr :}
    pathz 0 >IDX PROC-ARGV-SLOT !
    NULL$ drop PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !

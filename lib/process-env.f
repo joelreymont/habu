@@ -27,6 +27,40 @@ variable PROC-ENV-DEF-OFF
 variable PROC-ENV-DEF-TABLE-A
 variable PROC-ENV-DEF-BUF-A
 
+package PROC-ENV-LIFECYCLE
+private
+
+TYPED-VARIABLE REGISTERED bool
+false REGISTERED !
+
+: RELEASE-MAPPING ( ptr ptr a n -- ) {: field:ptr bytes:n :}
+   field @ {: mapping:ptr :}
+   NULL-PTR field !
+   mapping 0= if exit then
+   mapping BYTE-VIEW bytes MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+: RELEASE ( -- )
+   0 >COUNT PROC-ENV-N !
+   0 >OFF PROC-ENV-OFF !
+   0 >COUNT PROC-ENV-DEF-N !
+   0 >OFF PROC-ENV-DEF-OFF !
+   PROC-ENV-TABLE-A 0 ptr-field PROC-ENV-MAX 1+ cells RELEASE-MAPPING
+   PROC-ENV-BUF-A 0 ptr-field PROC-ENV-BUF-CAP RELEASE-MAPPING
+   PROC-ENV-DEF-TABLE-A 0 ptr-field PROC-ENV-MAX 1+ cells RELEASE-MAPPING
+   PROC-ENV-DEF-BUF-A 0 ptr-field PROC-ENV-BUF-CAP RELEASE-MAPPING
+   false REGISTERED ! ;
+
+public
+
+\ One hook owns all four caches, including partially allocated pairs.
+\ Installing it first also covers an allocation that throws before publication.
+: REGISTER ( -- )
+   REGISTERED @ if exit then
+   [: RELEASE ;] IMAGE-LIFECYCLE:REGISTER
+   true REGISTERED ! ;
+
+;package
+
 \ pinned-raw residuals: STR:SPLIT-NEXT returns a checked CAD-NUM:byte-len field
 \ length and CAD-NUM:byte-off cursor, but the PATH scan feeds them back through
 \ the raw >LEN/>OFF cells and PROC-TRY-PATH-SEG, so each is projected to a bare n
@@ -49,6 +83,7 @@ public
 
 : PROC-ENV-TABLE ( -- ptr a )
    PROC-ENV-TABLE@ 0= if
+      PROC-ENV-LIFECYCLE:REGISTER
       PROC-ENV-MAX 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-TABLE!
    then
    PROC-ENV-TABLE@ ;
@@ -68,6 +103,7 @@ public
 \ env buffer below.
 : PROC-ENV-BUF ( -- ptr u8 )
    PROC-ENV-BUF@ 0= if
+      PROC-ENV-LIFECYCLE:REGISTER
       PROC-ENV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop PROC-ENV-BUF!
    then
    PROC-ENV-BUF@ ;
@@ -83,6 +119,7 @@ public
 
 : PROC-ENV-DEF-TABLE ( -- ptr a )
    PROC-ENV-DEF-TABLE@ 0= if
+      PROC-ENV-LIFECYCLE:REGISTER
       PROC-ENV-MAX 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-DEF-TABLE!
    then
    PROC-ENV-DEF-TABLE@ ;
@@ -98,6 +135,7 @@ public
 
 : PROC-ENV-DEF-BUF ( -- ptr u8 )
    PROC-ENV-DEF-BUF@ 0= if
+      PROC-ENV-LIFECYCLE:REGISTER
       PROC-ENV-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop PROC-ENV-DEF-BUF!
    then
    PROC-ENV-DEF-BUF@ ;
