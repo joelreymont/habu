@@ -8226,6 +8226,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 2 constant CW-OUT                    \ what the body leaves, or CELLS-NONE for one that never returns
 3 constant CW-KIND
 4 constant CW-ROW                    \ cells one recorded site occupies
+-4 constant CW-MATCH-CELLS           \ instantiated bundle width, pads, or construction growth
 -3 constant CW-MATCH-PAYLOAD         \ instantiated payload cells and value boundaries
 2 constant CW-CALL-RAW               \ frozen row spines with live type terms
 3 constant CW-CALL
@@ -8247,14 +8248,27 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    0 CALL-HIT !  0 CALL-ARMED !
    0 CWIN-HIT !  0 CWIN-IN !  0 CWIN-OUT !  0 CWIN-KIND ! ;
 
+: CWIN-UNMAP ( ptr n n -- ) {: base:ptr cap:n :}
+   cap 0= IF EXIT THEN
+   base cap CW-ROW * cells munmap 0 <> IF
+      s" checker: recorded site munmap failed" 76 die
+   THEN ;
+
+: CWIN-RELEASE ( -- )
+   CWIN-P @ CWIN-CAP @ CWIN-UNMAP
+   NULL-PTR CWIN-P !  0 CWIN-CAP !
+   CWIN-RESET ;
+
 : CWIN-ENSURE ( -- )
    CWIN-N @ CWIN-CAP @ < IF EXIT THEN
-   CWIN-N @ CWIN-ROW-MAX >= IF s" checker: quotation site capacity overflow" 76 die THEN
+   CWIN-N @ CWIN-ROW-MAX >= IF s" checker: recorded site capacity overflow" 76 die THEN
    CWIN-N @ 1 + CWIN-INIT max
    CWIN-CAP @ CWIN-ROW-MAX 2 / <= IF CWIN-CAP @ 2 * max THEN
    {: cap:n :}
    CWIN-P @ CWIN-N @ CW-ROW * cells cap CW-ROW * cells
-   ARENA-BYTES-GROW CWIN-P !
+   ARENA-BYTES-GROW {: next:ptr :}
+   CWIN-P @ CWIN-CAP @ CWIN-UNMAP
+   next CWIN-P !
    cap CWIN-CAP ! ;
 
 : CWIN-ADD ( n n n n -- ) {: ord:n in:n out:n kind:n :}
@@ -8393,7 +8407,7 @@ CALL-FREEZE-INSTALL
    loop ;
 
 \ ---- the cells a recorded definition's layout forms really occupy -------------
-\ WHY A SECOND TABLE AND NOT A SECOND READING OF THE REGISTRY. A value of a
+\ WHY RECORDED FACTS AND NOT A SECOND READING OF THE REGISTRY. A value of a
 \ parametric family instantiated with a multi-cell argument occupies MORE cells
 \ than the family's declaration reserves: `option<a>` reserves one payload slot,
 \ and `option<obj:line>` needs two because `obj:line` is two cells. The registry
@@ -8436,84 +8450,21 @@ CALL-FREEZE-INSTALL
 \ lives here, in the per-CHECK scratch the tape observer already resets, and the
 \ certificate keeps exactly the rows pass 2 consumes.
 \
-\ ABSENT IS FAIL-CLOSED, AND A DROPPED ROW IS ABSENT LIKE ANY OTHER. The rows are
-\ filed in reported-token order, so a table that fills drops a SUFFIX of the
-\ definition's tokens, and what that costs depends on which reader meets it.
-\
-\ A DISPATCH TOKEN'S READER REFUSES, because a family token and an arm's `of` are
-\ exactly the tokens it has to shape a dispatch from and it asks about every one
-\ of them. So the first dropped dispatch row is a token the consumer asks about
-\ and gets no cells for, and it refuses the whole body by name rather than
-\ compiling the rows that did fit and guessing the rest.
-\
-\ A CONSTRUCTION'S READER PROCEEDS, AND THE ARITHMETIC IS WHAT MAKES THAT SAFE. A
-\ construction files a row only when its instantiation really adds cells, so
-\ absent means "this token adds nothing" - which is the truth for every
-\ construction of a family that is not parametric, and there are far more of those
-\ than a table could hold. A DROPPED construction row therefore reads as zero and
-\ the site is lowered one bundle short. That is not a wrong program: the deficit
-\ is CONSERVED. Every later cell count the chain makes - a join's two edges, a
-\ callee's declared inputs, the definition's own declared outputs - is against the
-\ width the checker instantiated, and nothing in the dialect discards a variable
-\ number of cells, so the missing cells cannot be absorbed anywhere and the first
-\ join, call or exit the value reaches refuses the definition by name
-\ (test/compiler/native-match.f ROW-CEILING-CASE holds both halves: a body at the
-\ ceiling compiles, and one past it whose dropped row is a wide construction is
-\ refused). A separate "this unit overflowed" flag was written, measured and
-\ removed by the dispatch half, and the construction half is the reader that could
-\ have told the two apart: it is still not worth one, because the arithmetic
-\ already refuses what the flag would have refused.
-\
-\ THE CEILING IS REACHABLE, AND IT NO LONGER RESTS ON THE CONSUMER'S CAPS. It
-\ used to: a recorded definition is one src/compiler/native/compiler.f is
-\ recording, that unit held 512 source bytes and 128 tokens, a `MATCH` form with
-\ A arms is 3 + 3A tokens and files 1 + A rows, so the tape alone capped a
-\ definition at 42 rows and the byte count capped it lower - the densest body
-\ that actually COMPILED filed 22 rows (eleven single-arm dispatches, 470 bytes),
-\ and 24 rows was already 511 bytes. Twenty-four therefore refused nothing the
-\ chain compiled, and the fixture at 26 rows still fitted both caps.
-\
-\ BOTH OF THOSE CAPS ARE DERIVED NOW - the tape from the source it was handed and
-\ the byte ceiling from the engine's own body capture - so the second half of that
-\ argument is gone, and gone in the direction that matters: the tree really does
-\ write bodies far past twenty-four rows (src/compiler/native/a64ir.f OPCODE
-\ dispatches over seventy-six arms, measured 2026-08-14), and while the recorder
-\ refused 512 bytes none of them was recorded. They are recorded now.
-\
-\ WHAT HOLDS INSTEAD IS THE FAIL-CLOSED HALF, WHICH NEVER DEPENDED ON A CAP. A
-\ dropped row is CONSERVED and refuses the definition by name rather than
-\ compiling it a bundle short, so this ceiling is safe at any height and what a
-\ body past it costs is a named refusal a census can attribute, not a wrong
-\ program. The fixture at 24 and 26 rows is unaffected, because both were always
-\ inside the caps and are inside the derived ones. Raising this number is a
-\ capability with its own derivation and its own two-sided fixture, not a
-\ widening to do in passing.
-24 constant MWIN-MAX                 \ layout rows one recorded definition may hold
-0 constant MW-ORD                    \ the token ordinal the row stands on
-1 constant MW-VAL                    \ its cells: a family token's bundle width, an arm's pads, a construction's added cells
-2 constant MW-ROW                    \ cells one recorded row occupies
-
-variable MWIN-N                      \ rows recorded for the open unit
+\ Layout facts share the growing CWIN owner with call facts, under their own
+\ kind. The definition reset, retry cursor and capture cleanup therefore cover
+\ both. Every published fact is retained; a missing query still means that no
+\ fact was recorded for that token. Dispatch requires a fact, while ordinary
+\ constructions need none unless their instantiation adds cells.
 variable MWIN-HIT                    \ the token now being reported published a number
 variable MWIN-VAL                    \ and this is it
-create MWIN-TAB MWIN-MAX MW-ROW * cells allot
-
-: MWIN-AT ( n n -- ptr n )           \ field f of row i
-   {: i:n f:n :}
-   MWIN-TAB  i MW-ROW * f + cells + ;
 
 : MWIN-RESET ( -- )
-   0 MWIN-N !
    0 MWIN-HIT !  0 MWIN-VAL ! ;
 
 : MWIN-COMMIT ( -- )
    MWIN-HIT @ 0= IF EXIT THEN
    0 MWIN-HIT !
-   MWIN-N @ MWIN-MAX >= IF EXIT THEN
-   MWIN-N @ {: i:n :}
-   REC-IX @    i MW-ORD MWIN-AT !
-   MWIN-VAL @  i MW-VAL MWIN-AT !
-   i 1 + MWIN-N ! ;
+   REC-IX @ MWIN-VAL @ CELLS-NONE CW-MATCH-CELLS CWIN-ADD ;
 
 \ Latch the number the token now being read publishes. Outside a recording unit
 \ it writes nothing at all, which is every certification the engine does for
@@ -8524,7 +8475,7 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
    w MWIN-VAL !  -1 MWIN-HIT ! ;
 
 \ ---- the recording unit's lifecycle ------------------------------------------
-\ Opened by the observer that wants the tape, so both tables describe exactly the
+\ Opened by the observer that wants the tape, so all facts describe exactly the
 \ definition that tape is of. Recording stops with the unit; the rows stay,
 \ because the consumer reads them after the unit has closed and the readers'
 \ whole purpose is to be asked then.
@@ -8534,6 +8485,11 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 
 : REC-OFF ( -- )
    0 REC-ON ! ;
+
+: REC-RELEASE ( -- )
+   REC-OFF
+   0 REC-IX !
+   MWIN-RESET  CWIN-RELEASE ;
 
 : REC-COMMIT ( -- )
    REC-ON @ 0= IF EXIT THEN
@@ -8567,18 +8523,10 @@ create MWIN-TAB MWIN-MAX MW-ROW * cells allot
 \ How many cells the layout token `ix` really moves: a `MATCH` family token's
 \ instantiated bundle width, an arm's `of` token's instantiated pad count, or a
 \ construction's added cells. CELLS-NONE for a token that published no such
-\ number, for a definition nobody recorded, and for a row the table had no room
-\ for - which is one answer meaning "nobody proved a number for this". What a
-\ caller does with it is the caller's, and the two policies are the paragraphs
-\ above: a dispatch reader refuses the body by name, a construction reader adds
-\ nothing and lets the conserved deficit be refused where it lands.
+\ number, or for a definition nobody recorded. A dispatch reader refuses missing
+\ facts; a construction with no added cells requires no correction.
 : EFFECT-MATCH-CELLS ( n -- n )
-   {: ix:n :}
-   0 BEGIN dup MWIN-N @ < WHILE
-      dup MW-ORD MWIN-AT @ ix = IF MW-VAL MWIN-AT @ EXIT THEN
-      1 +
-   REPEAT drop
-   CELLS-NONE ;
+   CW-MATCH-CELLS CWIN-FIND drop ;
 
 \ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
 \ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
@@ -9270,8 +9218,7 @@ REG-EXT-AOT-DEFAULTS
 
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
    SG-ROWS-RESET
-   CWIN-RESET
-   NULL-PTR CWIN-P !  0 CWIN-CAP !
+   REC-RELEASE
    CHECKER-ASIG-DISARM
    0 ASIG-MAPPED !
    NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
@@ -14117,7 +14064,6 @@ variable CK-RETRY-TOKS
 : CHECK-RETRY ( ptr u8 n -- n ) {: a:ptr u:n :}
    REC-IX @ {: ix0:n :}
    REC-ON @ IF CWIN-N @ ELSE 0 THEN {: cw0:n :}
-   MWIN-N @ {: mw0:n :}
    0 RESCAN !
    -1 CK-AOT-RETRY-ARMED !
    a u CHECK CK-RETRY-V !
@@ -14130,7 +14076,7 @@ variable CK-RETRY-TOKS
          s" checker: a held diagnostic had no seeded signature to take after all" 76 die
       THEN
       -1 RESCAN !
-      REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! mw0 MWIN-N ! THEN
+      REC-ON @ IF ix0 REC-IX ! cw0 CWIN-N ! MWIN-RESET THEN
       a u CHECK CK-RETRY-V !
       CK-RETRY-STREAM-CK
    REPEAT

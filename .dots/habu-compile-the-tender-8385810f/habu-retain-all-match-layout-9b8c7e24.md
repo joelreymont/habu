@@ -36,3 +36,27 @@ replaced by meaningful runtime checks; then complete the all-tier1 compiler
 bridge and product-hosted rebuild. The normal full gate alone was insufficient:
 native-match explicitly expected the former ceiling to refuse, while the
 compiler implementation was still JIT-built.
+
+The same owner had two mapping leaks: CWIN-ENSURE replaced its pointer with
+ARENA-BYTES-GROW's fresh mmap without releasing the prior capacity, and
+CHECKER-CAPTURE-SCRATCH-PREPARE cleared the retained pointer/capacity without
+unmapping it. No other owner retained either allocation. Layout facts now use
+CWIN kind -4; CWIN growth releases the superseded mapping after copying, and
+REC-RELEASE resets recording/latches and releases the retained mapping at the
+existing capture seam. Ordinary definition reset keeps capacity for reuse.
+Retry restores one CWIN count for call and layout facts together. Finalization
+selects only CW-CALL-RAW; call/glue/payload/quotation readers compare exact kinds.
+
+The native-match regression now executes its former 26-row refusal and the
+widened constructor after 24 dispatch facts. Its additional load fixture reads
+the actual opcode enum from a64ir.f and compiles it in a fresh package, then
+executes TAG and derived equality. Ownership checks use MAPPED:LIVE? against
+the mapping immediately preceding growth and capture cleanup, verify retained
+rows, separate query kinds, cleared pending facts, reuse and repeated release.
+
+Focused validation in cedar-match-layout: the standard native-build rebuilt
+private bin/hb (SHA-256 5b969df80ce504da56583533bab0591c62bf9d507c3d34558297ac2d4937d40a).
+Native-match and native-quot pass with test/compiler/aot-mode.f; the signature
+pool suite passes. This is functional evidence from a normally built native
+host. The paired all-tier1 compiler bridge and integrated full gate remain
+with the design/integration lanes; this binary is not that bridge artifact.

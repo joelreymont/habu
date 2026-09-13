@@ -12,6 +12,7 @@ require src/compiler/native/compiler.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
 require src/compiler/native/trap.f
+require test/compiler/native-match-layout.f
 
 package NMX
 private
@@ -128,12 +129,8 @@ SUMTYPE narrow 1
    VARIANT p1 a ;VARIANT
 ;SUMTYPE
 
-\ ONE VARIANT AND THE SHORTEST SPELLINGS IN THIS FILE, and both are forced by
-\ the ceiling case at the foot of the file. That case has to put MORE dispatch
-\ rows in one definition than the checker records, while staying inside the
-\ recorder's own 512-byte text cap - and the only budget it can buy the extra
-\ rows with is the spelling. One variant is two rows per form at seven tokens,
-\ which is the cheapest dispatch there is.
+\ One variant lets the growth cases put many independent dispatch facts before
+\ a widened construction, so losing a suffix cannot hide behind one arm count.
 ENUM sol ov ;ENUM
 
 \ Four arms, which is the shape the four-armed selector cost was measured on.
@@ -783,7 +780,7 @@ CAPTURE-EMISSION
    RC-NARROWC @ CHECKER-REJECT T= ROW-NARROWC @ -1 T=
    RC-NARROWK @ CHECKER-REJECT T= ROW-NARROWK @ -1 T= ;
 
-: CEILING-CASE ( -- )
+: GROWTH-CASE ( -- )
    s" dispatch beyond the former sixteen-arm selector ceiling remains executable" T-LABEL
    NMX-WIDE:W15 E-WIDE 215 T=
    RC-OVER @ 0 T=
@@ -805,15 +802,17 @@ CAPTURE-EMISSION
    NMX-OVER:V15 C-OVER 315 T=
    NMX-OVER:V16 C-OVER 316 T=
 
-   s" the checker accepts exactly twenty-four dispatch rows" T-LABEL
+   s" dispatch facts grow past twenty-four rows" T-LABEL
    RC-ROWS24 @ 0 T=
    C-ROWS24 144 T=
-   RC-ROWS26 @ E-NELAB-MATCH T=
+   RC-ROWS26 @ 0 T=
+   C-ROWS26 169 T=
 
-   s" a construction row at the ceiling fits and the next one is refused" T-LABEL
+   s" widened constructions remain recorded after many dispatches" T-LABEL
    RC-CONFIT @ 0 T=
    C-CONFIT E-INST 0 T=
-   RC-CONOVER @ E-NELAB-ARITY T= ;
+   RC-CONOVER @ 0 T=
+   C-CONOVER E-INST 0 T= ;
 
 : EMISSION-CASE ( -- )
    s" a compiled dispatch branches, returns, and uses one shared trap edge" T-LABEL
@@ -879,9 +878,10 @@ public
    TRIPLE-CASE
    BUILD-CASE
    REFUSED-CASE
-   CEILING-CASE
+   GROWTH-CASE
    EMISSION-CASE
    FORGE-CASE
+   NMX-LAYOUT:TEST
    T-REPORT
    s" native-match: ok" type cr ;
 
