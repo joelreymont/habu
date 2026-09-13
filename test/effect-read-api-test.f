@@ -21,12 +21,13 @@
 \ Family ABI (EFAM-*, mirrored below as ERA-* to pin the numeric contract):
 \   0 gray (var/row/atom/param)   1 scalar (con)   2 pointer (ptr)   3 xt (quot)
 \
-\ Only EFFECT-QUERY is trusted; the readers are checked. Every entry is name-stripped
-\ past the seal, so it is uncallable from checked code and from bare interpret - the
-\ prefix consumers (the top-row hook) reach it as compiled calls from an unchecked
-\ boundary. This test does the same: the assertion words below run inside a single
-\ `0 set-check` window. Fixtures and queries are GLOBAL: EFFECT-QUERY resolves a NAME
-\ against the active package context, and at top level no package is active.
+\ Only EFFECT-QUERY's implementation is trusted; the readers are checked. Every entry
+\ is name-stripped past the seal, so it is uncallable from checked code and from bare
+\ interpret. Prefix consumers reach these words as compiled calls from a trusted
+\ boundary. This test does the same through exact-signature ERA-WHITEBOX adapters;
+\ the assertions themselves remain checked. Fixtures and queries are GLOBAL because
+\ EFFECT-QUERY resolves a NAME against the active package context, and at top level
+\ no package is active.
 \
 \ NEGATIVE REGRESSION (surface pin): the assertion words call each API word by name.
 \ Renaming or removing an EFFECT-* entry in checker.f makes that name undefined at
@@ -143,50 +144,70 @@ public
 
 ;package
 
-\ The effect-read API reads raw effect-store state, so - like the top-row hook - it
-\ is called from an unchecked window. `0 set-check` opens the named boundary; T= /
-\ TTRUE / T-LABEL from lib/test.f stay callable across it.
-0 set-check
+\ The effect-read API reads raw effect-store state, so - like the top-row hook - each
+\ protected reader is reached through one syntax-simple TRUSTED: adapter. This keeps
+\ the internal names protected while all test assertions remain checked.
+package ERA-WHITEBOX
+public
+
+TRUSTED: QUERY ( ptr u8 n -- bool ) EFFECT-QUERY ;
+TRUSTED: DIN-N ( -- n ) EFFECT-DIN-N ;
+TRUSTED: DOUT-N ( -- n ) EFFECT-DOUT-N ;
+TRUSTED: DIN-FAM ( n -- n ) EFFECT-DIN-FAM ;
+TRUSTED: DOUT-FAM ( n -- n ) EFFECT-DOUT-FAM ;
+TRUSTED: DIN-CELLS ( -- n ) EFFECT-DIN-CELLS ;
+TRUSTED: DOUT-CELLS ( -- n ) EFFECT-DOUT-CELLS ;
+TRUSTED: DIN-SLOT ( n -- n ) EFFECT-DIN-SLOT ;
+TRUSTED: DOUT-SLOT ( n -- n ) EFFECT-DOUT-SLOT ;
+TRUSTED: DIN-QUOT ( n -- bool ) EFFECT-DIN-QUOT ;
+TRUSTED: DOUT-QUOT ( n -- bool ) EFFECT-DOUT-QUOT ;
+TRUSTED: QUOT-UP ( -- bool ) EFFECT-QUOT-UP ;
+TRUSTED: QUOT-SIMPLE? ( -- bool ) EFFECT-QUOT-SIMPLE? ;
+TRUSTED: RET-NEUTRAL? ( -- bool ) EFFECT-RET-NEUTRAL? ;
+TRUSTED: CATCH-CELLS ( n -- n n ) EFFECT-CATCH-CELLS ;
+TRUSTED: MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
+
+;package
 
 : ERA-SCALAR-PRODUCER ( -- )
    s" a net-scalar word: din 1 scalar, dout 2 scalars" T-LABEL
-   s" ERA-A" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 2 T=
-   0 EFFECT-DIN-FAM ERA-SCALAR T=
-   0 EFFECT-DOUT-FAM ERA-SCALAR T=  1 EFFECT-DOUT-FAM ERA-SCALAR T= ;
+   s" ERA-A" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 2 T=
+   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
+   0 ERA-WHITEBOX:DOUT-FAM ERA-SCALAR T=  1 ERA-WHITEBOX:DOUT-FAM ERA-SCALAR T= ;
 
 : ERA-POLYMORPHIC ( -- )
    s" a row-polymorphic var word: din/dout families are gray" T-LABEL
-   s" ERA-G" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 2 T=
-   0 EFFECT-DIN-FAM ERA-GRAY T=
-   0 EFFECT-DOUT-FAM ERA-GRAY T= ;
+   s" ERA-G" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 2 T=
+   0 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
+   0 ERA-WHITEBOX:DOUT-FAM ERA-GRAY T= ;
 
 : ERA-POINTER-ROW ( -- )
    s" a pointer+scalar consumer: din0 scalar (top), din1 pointer" T-LABEL
-   s" ERA-P" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 2 T=            EFFECT-DOUT-N 1 T=
-   0 EFFECT-DIN-FAM ERA-SCALAR T=
-   1 EFFECT-DIN-FAM ERA-POINTER T=
-   0 EFFECT-DOUT-FAM ERA-SCALAR T= ;
+   s" ERA-P" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 2 T=            ERA-WHITEBOX:DOUT-N 1 T=
+   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
+   1 ERA-WHITEBOX:DIN-FAM ERA-POINTER T=
+   0 ERA-WHITEBOX:DOUT-FAM ERA-SCALAR T= ;
 
 : ERA-PRIM-ROW ( -- )
    s" prim type ( ptr u8 n -- ): pure consumer, din1 pointer, dout empty" T-LABEL
-   s" type" EFFECT-QUERY TTRUE
-   EFFECT-DOUT-N 0 T=
-   1 EFFECT-DIN-FAM ERA-POINTER T=
+   s" type" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DOUT-N 0 T=
+   1 ERA-WHITEBOX:DIN-FAM ERA-POINTER T=
    s" @ ( ptr a -- a ): din0 pointer, dout1 gray" T-LABEL
-   s" @" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-FAM ERA-POINTER T=
-   0 EFFECT-DOUT-FAM ERA-GRAY T= ;
+   s" @" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-FAM ERA-POINTER T=
+   0 ERA-WHITEBOX:DOUT-FAM ERA-GRAY T= ;
 
 : ERA-EDGES ( -- )
    s" an unknown word does not resolve" T-LABEL
-   s" ZZ-NO-SUCH-WORD" EFFECT-QUERY TFALSE
+   s" ZZ-NO-SUCH-WORD" ERA-WHITEBOX:QUERY TFALSE
    s" an out-of-range din index reads gray" T-LABEL
-   s" ERA-A" EFFECT-QUERY TTRUE
-   5 EFFECT-DIN-FAM ERA-GRAY T=
-   9 EFFECT-DOUT-FAM ERA-GRAY T= ;
+   s" ERA-A" ERA-WHITEBOX:QUERY TTRUE
+   5 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
+   9 ERA-WHITEBOX:DOUT-FAM ERA-GRAY T= ;
 
 \ ---- the widths, which are a different number from the counts -----------------
 \ EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS answer a row's width in STACK CELLS, the
@@ -205,21 +226,21 @@ private
 
 : ERA-CELLS ( -- )
    s" a scalar word's rows are as many cells as terms" T-LABEL
-   s" ERA-A" EFFECT-QUERY TTRUE
-   EFFECT-DIN-CELLS 1 T=        EFFECT-DOUT-CELLS 2 T=
+   s" ERA-A" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-CELLS 1 T=        ERA-WHITEBOX:DOUT-CELLS 2 T=
 
    s" and a GRAY row is sized too, which the family enum could not do" T-LABEL
-   s" ERA-G" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-FAM ERA-GRAY T=
-   EFFECT-DIN-CELLS 1 T=        EFFECT-DOUT-CELLS 2 T=
+   s" ERA-G" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
+   ERA-WHITEBOX:DIN-CELLS 1 T=        ERA-WHITEBOX:DOUT-CELLS 2 T=
 
    s" a pointer row: ptr u8 n is two terms and two cells" T-LABEL
-   s" ERA-P" EFFECT-QUERY TTRUE
-   EFFECT-DIN-CELLS 2 T=        EFFECT-DOUT-CELLS 1 T=
+   s" ERA-P" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-CELLS 2 T=        ERA-WHITEBOX:DOUT-CELLS 1 T=
 
    s" an empty row is zero cells, not absent" T-LABEL
-   s" type" EFFECT-QUERY TTRUE
-   EFFECT-DOUT-CELLS 0 T= ;
+   s" type" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DOUT-CELLS 0 T= ;
 
 \ ---- which cell of a value each term is, which neither of the other two says --
 \ EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT report a term's position inside a multi-cell
@@ -231,41 +252,41 @@ private
 \ block and fail the second.
 : ERA-SLOTS ( -- )
    s" a bundled signature and a two-variable one agree on counts and families" T-LABEL
-   s" ERA-FIX:BUNDLE" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 3 T=            EFFECT-DIN-CELLS 3 T=
-   0 EFFECT-DIN-FAM ERA-SCALAR T=
-   1 EFFECT-DIN-FAM ERA-GRAY T=   2 EFFECT-DIN-FAM ERA-GRAY T=
-   s" ERA-FIX:TWOVAR" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 3 T=            EFFECT-DIN-CELLS 3 T=
-   0 EFFECT-DIN-FAM ERA-SCALAR T=
-   1 EFFECT-DIN-FAM ERA-GRAY T=   2 EFFECT-DIN-FAM ERA-GRAY T=
+   s" ERA-FIX:BUNDLE" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DIN-CELLS 3 T=
+   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
+   1 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=   2 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
+   s" ERA-FIX:TWOVAR" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DIN-CELLS 3 T=
+   0 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
+   1 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=   2 ERA-WHITEBOX:DIN-FAM ERA-GRAY T=
 
    s" and the slots separate them: the bundle's two cells carry their positions" T-LABEL
-   s" ERA-FIX:BUNDLE" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-SLOT 0 T=       \ the plain n on top
-   1 EFFECT-DIN-SLOT 2 T=       \ the value's upper cell, slot 1
-   2 EFFECT-DIN-SLOT 1 T=       \ its lower cell, slot 0
+   s" ERA-FIX:BUNDLE" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-SLOT 0 T=       \ the plain n on top
+   1 ERA-WHITEBOX:DIN-SLOT 2 T=       \ the value's upper cell, slot 1
+   2 ERA-WHITEBOX:DIN-SLOT 1 T=       \ its lower cell, slot 0
    s" while two independent variables are all logical" T-LABEL
-   s" ERA-FIX:TWOVAR" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-SLOT 0 T=  1 EFFECT-DIN-SLOT 0 T=  2 EFFECT-DIN-SLOT 0 T=
+   s" ERA-FIX:TWOVAR" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-SLOT 0 T=  1 ERA-WHITEBOX:DIN-SLOT 0 T=  2 ERA-WHITEBOX:DIN-SLOT 0 T=
 
    s" the output side reports it too, for a user word returning the value" T-LABEL
-   s" ERA-FIX:MKOPT" EFFECT-QUERY TTRUE
-   EFFECT-DOUT-N 2 T=           EFFECT-DOUT-CELLS 2 T=
-   0 EFFECT-DOUT-SLOT 2 T=      1 EFFECT-DOUT-SLOT 1 T=
+   s" ERA-FIX:MKOPT" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DOUT-N 2 T=           ERA-WHITEBOX:DOUT-CELLS 2 T=
+   0 ERA-WHITEBOX:DOUT-SLOT 2 T=      1 ERA-WHITEBOX:DOUT-SLOT 1 T=
 
    s" a generated constructor keeps it as one wide term instead, so no slot marks it" T-LABEL
-   s" OPTION:SOME" EFFECT-QUERY TTRUE
-   EFFECT-DOUT-N 1 T=           EFFECT-DOUT-CELLS 2 T=
-   0 EFFECT-DOUT-SLOT 0 T=
+   s" OPTION:SOME" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DOUT-N 1 T=           ERA-WHITEBOX:DOUT-CELLS 2 T=
+   0 ERA-WHITEBOX:DOUT-SLOT 0 T=
 
    s" an ordinary word has no bundled cell on either side" T-LABEL
-   s" ERA-A" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-SLOT 0 T=
-   0 EFFECT-DOUT-SLOT 0 T=      1 EFFECT-DOUT-SLOT 0 T=
+   s" ERA-A" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-SLOT 0 T=
+   0 ERA-WHITEBOX:DOUT-SLOT 0 T=      1 ERA-WHITEBOX:DOUT-SLOT 0 T=
 
    s" and an out-of-range index reads logical rather than running off the row" T-LABEL
-   9 EFFECT-DIN-SLOT 0 T=       9 EFFECT-DOUT-SLOT 0 T= ;
+   9 ERA-WHITEBOX:DIN-SLOT 0 T=       9 ERA-WHITEBOX:DOUT-SLOT 0 T= ;
 
 \ ---- the width against the checker's own answer, over the whole dictionary ----
 \ WHAT THIS PROVES THAT THE FIXTURES ABOVE CANNOT. The checker computes a row's
@@ -287,9 +308,9 @@ variable ERA-AGREE   variable ERA-DIFF
 
 : ERA-ONE ( ptr u8 n -- )
    {: a u:n :}
-   a u EFFECT-QUERY 0= if exit then
-   a u SIG-MIN-IN {: mini:n :}
-   EFFECT-DIN-CELLS mini = if ERA-AGREE @ 1+ ERA-AGREE ! exit then
+   a u ERA-WHITEBOX:QUERY 0= if exit then
+   a u ERA-WHITEBOX:MIN-IN {: mini:n :}
+   ERA-WHITEBOX:DIN-CELLS mini = if ERA-AGREE @ 1+ ERA-AGREE ! exit then
    ERA-DIFF @ 1+ ERA-DIFF ! ;
 
 : ERA-WALK ( -- )
@@ -332,59 +353,59 @@ private
 \ The three numbers the older readers give for both fixtures of the pair. Asked
 \ of each of them, so "they agree" is measured rather than asserted once.
 : OUTER ( -- )
-   EFFECT-DIN-N 3 T=            EFFECT-DIN-CELLS 3 T=
-   0 EFFECT-DIN-FAM ERA-XT T=
-   1 EFFECT-DIN-FAM ERA-SCALAR T=
-   2 EFFECT-DIN-FAM ERA-SCALAR T= ;
+   ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DIN-CELLS 3 T=
+   0 ERA-WHITEBOX:DIN-FAM ERA-XT T=
+   1 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T=
+   2 ERA-WHITEBOX:DIN-FAM ERA-SCALAR T= ;
 
 : PAIR ( -- )
    s" two quotation-taking words agree on every number the older readers give" T-LABEL
-   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE   OUTER
-   s" ERA-FIX:QTAKE1" EFFECT-QUERY TTRUE   OUTER
+   s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE   OUTER
+   s" ERA-FIX:QTAKE1" ERA-WHITEBOX:QUERY TTRUE   OUTER
 
    s" and the descent separates them: one quotation takes two and leaves one" T-LABEL
-   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-QUOT TTRUE
-   EFFECT-DIN-N 2 T=            EFFECT-DOUT-N 1 T=
-   EFFECT-DIN-CELLS 2 T=        EFFECT-DOUT-CELLS 1 T=
+   s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-QUOT TTRUE
+   ERA-WHITEBOX:DIN-N 2 T=            ERA-WHITEBOX:DOUT-N 1 T=
+   ERA-WHITEBOX:DIN-CELLS 2 T=        ERA-WHITEBOX:DOUT-CELLS 1 T=
 
    s" while the other takes one and leaves two" T-LABEL
-   s" ERA-FIX:QTAKE1" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-QUOT TTRUE
-   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 2 T=
-   EFFECT-DIN-CELLS 1 T=        EFFECT-DOUT-CELLS 2 T= ;
+   s" ERA-FIX:QTAKE1" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-QUOT TTRUE
+   ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 2 T=
+   ERA-WHITEBOX:DIN-CELLS 1 T=        ERA-WHITEBOX:DOUT-CELLS 2 T= ;
 
 \ THE INDEX HAS TO DECIDE, not the row. Both refusals below are asked of a row
 \ that DOES hold a quotation at another position, so a reader that answered "this
 \ row has one somewhere" would pass the QNONE case and fail here.
 : REFUSALS ( -- )
    s" a scalar term of a row that also holds a quotation is not one" T-LABEL
-   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
-   1 EFFECT-DIN-QUOT TFALSE
-   2 EFFECT-DIN-QUOT TFALSE
+   s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE
+   1 ERA-WHITEBOX:DIN-QUOT TFALSE
+   2 ERA-WHITEBOX:DIN-QUOT TFALSE
    s" and the refused descent left the latch on the outer row" T-LABEL
    OUTER
 
    s" an index past the end of the row is not one either" T-LABEL
-   9 EFFECT-DIN-QUOT TFALSE
+   9 ERA-WHITEBOX:DIN-QUOT TFALSE
 
    s" a row with no quotation in it at all has none at position zero" T-LABEL
-   s" ERA-FIX:QNONE" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 3 T=
-   0 EFFECT-DIN-QUOT TFALSE
+   s" ERA-FIX:QNONE" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 3 T=
+   0 ERA-WHITEBOX:DIN-QUOT TFALSE
 
    s" and the output side is asked separately from the input side" T-LABEL
-   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
-   0 EFFECT-DOUT-QUOT TFALSE ;
+   s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DOUT-QUOT TFALSE ;
 
 : GIVEN ( -- )
    s" a word that hands its caller a body carries the quotation on the OUT side" T-LABEL
-   s" ERA-FIX:QGIVE" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 0 T=            EFFECT-DOUT-N 1 T=
-   0 EFFECT-DOUT-FAM ERA-XT T=
-   0 EFFECT-DOUT-QUOT TTRUE
-   EFFECT-DIN-N 3 T=            EFFECT-DOUT-N 1 T=
-   EFFECT-DIN-CELLS 3 T=        EFFECT-DOUT-CELLS 1 T= ;
+   s" ERA-FIX:QGIVE" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 0 T=            ERA-WHITEBOX:DOUT-N 1 T=
+   0 ERA-WHITEBOX:DOUT-FAM ERA-XT T=
+   0 ERA-WHITEBOX:DOUT-QUOT TTRUE
+   ERA-WHITEBOX:DIN-N 3 T=            ERA-WHITEBOX:DOUT-N 1 T=
+   ERA-WHITEBOX:DIN-CELLS 3 T=        ERA-WHITEBOX:DOUT-CELLS 1 T= ;
 
 \ THE LATCH IS ONE PAIR OF CELLS, so the whole value of the descent depends on it
 \ going back. The outer numbers are read, the descent is made and read, the latch
@@ -394,34 +415,34 @@ private
 \ quotation's numbers where the word's belong.
 : RESTORE ( -- )
    s" the latch goes back to the outer row, with no second query" T-LABEL
-   s" ERA-FIX:QGIVE" EFFECT-QUERY TTRUE
-   EFFECT-DOUT-N 1 T=
-   0 EFFECT-DOUT-QUOT TTRUE
-   EFFECT-DIN-N 3 T=
-   EFFECT-QUOT-UP TTRUE
-   EFFECT-DIN-N 0 T=            EFFECT-DOUT-N 1 T=
-   0 EFFECT-DOUT-FAM ERA-XT T=
+   s" ERA-FIX:QGIVE" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DOUT-N 1 T=
+   0 ERA-WHITEBOX:DOUT-QUOT TTRUE
+   ERA-WHITEBOX:DIN-N 3 T=
+   ERA-WHITEBOX:QUOT-UP TTRUE
+   ERA-WHITEBOX:DIN-N 0 T=            ERA-WHITEBOX:DOUT-N 1 T=
+   0 ERA-WHITEBOX:DOUT-FAM ERA-XT T=
 
    s" a second descent while one is open is refused, and changes nothing" T-LABEL
-   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-QUOT TTRUE
-   EFFECT-DIN-N 2 T=
-   0 EFFECT-DIN-QUOT TFALSE
-   EFFECT-DIN-N 2 T=
-   EFFECT-QUOT-UP TTRUE
+   s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-QUOT TTRUE
+   ERA-WHITEBOX:DIN-N 2 T=
+   0 ERA-WHITEBOX:DIN-QUOT TFALSE
+   ERA-WHITEBOX:DIN-N 2 T=
+   ERA-WHITEBOX:QUOT-UP TTRUE
    OUTER
 
    s" and putting back a latch nothing displaced is refused too" T-LABEL
-   EFFECT-QUOT-UP TFALSE
+   ERA-WHITEBOX:QUOT-UP TFALSE
    OUTER
 
    s" a fresh query closes an open descent rather than carrying it over" T-LABEL
-   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-QUOT TTRUE
-   s" ERA-A" EFFECT-QUERY TTRUE
-   EFFECT-QUOT-SIMPLE? TFALSE
-   EFFECT-QUOT-UP TFALSE
-   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 2 T= ;
+   s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-QUOT TTRUE
+   s" ERA-A" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:QUOT-SIMPLE? TFALSE
+   ERA-WHITEBOX:QUOT-UP TFALSE
+   ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 2 T= ;
 
 \ IS IT A BODY A CALLER MAY COMPILE? The two quotations below have the SAME data
 \ rows - one cell in, one cell out - so their arity separates nothing; what
@@ -455,20 +476,20 @@ private
 \ each run; the two fixtures below are the declared-signature half.
 : SIMPLE ( -- )
    s" a quotation with neither a throw edge nor a dead fall-through is simple" T-LABEL
-   s" ERA-FIX:QTAKE2" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-QUOT TTRUE
-   EFFECT-QUOT-SIMPLE? TTRUE
-   EFFECT-QUOT-UP TTRUE
+   s" ERA-FIX:QTAKE2" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-QUOT TTRUE
+   ERA-WHITEBOX:QUOT-SIMPLE? TTRUE
+   ERA-WHITEBOX:QUOT-UP TTRUE
 
    s" a quotation that states a return effect is not, though its arity is ordinary" T-LABEL
-   s" ERA-FIX:QRET" EFFECT-QUERY TTRUE
-   0 EFFECT-DIN-QUOT TTRUE
-   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 1 T=
-   EFFECT-QUOT-SIMPLE? TFALSE
-   EFFECT-QUOT-UP TTRUE
+   s" ERA-FIX:QRET" ERA-WHITEBOX:QUERY TTRUE
+   0 ERA-WHITEBOX:DIN-QUOT TTRUE
+   ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 1 T=
+   ERA-WHITEBOX:QUOT-SIMPLE? TFALSE
+   ERA-WHITEBOX:QUOT-UP TTRUE
 
    s" and with no descent open there is no quotation to call simple" T-LABEL
-   EFFECT-QUOT-SIMPLE? TFALSE ;
+   ERA-WHITEBOX:QUOT-SIMPLE? TFALSE ;
 
 public
 
@@ -517,25 +538,25 @@ private
 
 : NEUTRAL ( -- )
    s" a word with no return clause leaves the return stack alone" T-LABEL
-   s" ERA-FIX:RETNONE" EFFECT-QUERY TTRUE
-   EFFECT-RET-NEUTRAL? TTRUE
+   s" ERA-FIX:RETNONE" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:RET-NEUTRAL? TTRUE
 
    s" a clause naming one row variable on both sides also moves nothing" T-LABEL
-   s" ERA-FIX:RETVAR" EFFECT-QUERY TTRUE
-   EFFECT-RET-NEUTRAL? TTRUE
+   s" ERA-FIX:RETVAR" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:RET-NEUTRAL? TTRUE
 
    s" a balanced internal >r/r> is invisible to the caller" T-LABEL
-   s" ERA-FIX:RETBAL" EFFECT-QUERY TTRUE
-   EFFECT-RET-NEUTRAL? TTRUE ;
+   s" ERA-FIX:RETBAL" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:RET-NEUTRAL? TTRUE ;
 
 : MOVING ( -- )
    s" a word that leaves a cell on the caller's return stack is not neutral" T-LABEL
-   s" ERA-FIX:RETPUSH" EFFECT-QUERY TTRUE
-   EFFECT-RET-NEUTRAL? TFALSE
+   s" ERA-FIX:RETPUSH" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:RET-NEUTRAL? TFALSE
 
    s" nor is one that takes a cell off it" T-LABEL
-   s" ERA-FIX:RETPOP" EFFECT-QUERY TTRUE
-   EFFECT-RET-NEUTRAL? TFALSE ;
+   s" ERA-FIX:RETPOP" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:RET-NEUTRAL? TFALSE ;
 
 \ The data rows say nothing about this, which is what makes the reader worth
 \ having: RETPUSH and RETPOP disagree with RETNONE about the return stack while
@@ -543,18 +564,18 @@ private
 \ neighbourhood - so these assertions pin the return rows specifically.
 : NOT-THE-DATA-ROWS ( -- )
    s" the data rows do not answer the return question" T-LABEL
-   s" ERA-FIX:RETVAR" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 1 T=
-   s" ERA-FIX:RETNONE" EFFECT-QUERY TTRUE
-   EFFECT-DIN-N 1 T=            EFFECT-DOUT-N 1 T= ;
+   s" ERA-FIX:RETVAR" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 1 T=
+   s" ERA-FIX:RETNONE" ERA-WHITEBOX:QUERY TTRUE
+   ERA-WHITEBOX:DIN-N 1 T=            ERA-WHITEBOX:DOUT-N 1 T= ;
 
 \ Nothing resolved means nothing promised. It is the same fail-closed direction
 \ EFFECT-QUOT-SIMPLE? takes with no descent open: answering true here would let a
 \ caller compile an unresolved name as a neutral one.
 : UNRESOLVED ( -- )
    s" an unknown word is not neutral, because it is not anything" T-LABEL
-   s" ZZ-NO-SUCH-WORD" EFFECT-QUERY TFALSE
-   EFFECT-RET-NEUTRAL? TFALSE ;
+   s" ZZ-NO-SUCH-WORD" ERA-WHITEBOX:QUERY TFALSE
+   ERA-WHITEBOX:RET-NEUTRAL? TFALSE ;
 
 public
 
@@ -604,12 +625,12 @@ private
 
 : NO-RECORDING ( -- )
    s" with no unit recording, no token carries a window" T-LABEL
-   0 EFFECT-CATCH-CELLS  CELLS-NONE T=  CELLS-NONE T=
-   1 EFFECT-CATCH-CELLS  CELLS-NONE T=  CELLS-NONE T=
-   99 EFFECT-CATCH-CELLS CELLS-NONE T=  CELLS-NONE T=
+   0 ERA-WHITEBOX:CATCH-CELLS  CELLS-NONE T=  CELLS-NONE T=
+   1 ERA-WHITEBOX:CATCH-CELLS  CELLS-NONE T=  CELLS-NONE T=
+   99 ERA-WHITEBOX:CATCH-CELLS CELLS-NONE T=  CELLS-NONE T=
 
    s" and a negative ordinal is no more recorded than any other" T-LABEL
-   -1 EFFECT-CATCH-CELLS CELLS-NONE T=  CELLS-NONE T= ;
+   -1 ERA-WHITEBOX:CATCH-CELLS CELLS-NONE T=  CELLS-NONE T= ;
 
 public
 

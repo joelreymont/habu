@@ -411,25 +411,24 @@ variable TC-NEND
 variable TC-SYMN
 variable TC-SYMU
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal state
-\ probes are named unchecked words - bare internal tokens fail closed at top
-\ level under the internal-word gate.
-0 set-check
-: TC-SNAP ( -- )
+\ probes use named trusted words; bare internal tokens fail closed at top level
+\ under the internal-word gate.
+TRUSTED: TC-SNAP ( -- )
    UEND @ TC-UEND !
    NORET-END @ TC-NEND !
    SYM-N @ TC-SYMN !
    SYM-STR-U @ TC-SYMU ! ;
-: TC-DIAG-OFF ( -- )
+TRUSTED: TC-DIAG-OFF ( -- )
    1 DIAG-QUIET +! ;
-: TC-DIAG-ON ( -- )
+TRUSTED: TC-DIAG-ON ( -- )
    -1 DIAG-QUIET +! ;
-: TC-UEND=? ( -- bool )
+TRUSTED: TC-UEND=? ( -- bool )
    UEND @ TC-UEND @ = ;
-: TC-NEND=? ( -- bool )
+TRUSTED: TC-NEND=? ( -- bool )
    NORET-END @ TC-NEND @ = ;
-: TC-SYMN=? ( -- bool )
+TRUSTED: TC-SYMN=? ( -- bool )
    SYM-N @ TC-SYMN @ = ;
-: TC-SYMU=? ( -- bool )
+TRUSTED: TC-SYMU=? ( -- bool )
    SYM-STR-U @ TC-SYMU @ = ;
 LOWER-CERT-HOOK:INSTALL
 TC-SNAP
@@ -963,10 +962,8 @@ variable TR-CT-NAP variable TR-CT-NUP variable TR-CT-CLP variable TR-CT-WDP
 variable TR-CT-SGP variable TR-CT-STP variable TR-CTCODE variable TR-CT-LC
 variable TR-CT-STRLC
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): registry-growth probes
-\ call internal checker colon words, so each block is one named unchecked word
-\ executed at top level instead of bare internal tokens.
-0 set-check
-: TR-CT-WHITEBOX ( -- )
+\ call internal checker colon words through one named trusted boundary.
+TRUSTED: TR-CT-WHITEBOX ( -- )
    CTN @ TR-CTN !  CT-STR-U @ TR-CTU !  CT-CAP-V @ TR-CTC !  CT-STR-CAP-V @ TR-CTSC !
    CT-NAME-A-P @ TR-CT-NAP !  CT-NAME-U-P @ TR-CT-NUP !  CT-CLASS-P @ TR-CT-CLP !
    CT-WIDTH-P @ TR-CT-WDP !  CT-SIGN-P @ TR-CT-SGP !  CT-STR-P @ TR-CT-STP !
@@ -1003,8 +1000,7 @@ variable TR-VN  variable TR-VU  variable TR-VC  variable TR-VSC  variable TR-VRI
 variable TR-V-LC  variable TR-V-STRLC
 variable TR-VNODEN variable TR-VNODEC variable TR-V-NODE-LC
 variable TR-VFN variable TR-VFC variable TR-V-FIELD-LC
-0 set-check
-: TR-VREC-WHITEBOX ( -- )
+TRUSTED: TR-VREC-WHITEBOX ( -- )
    VREC-N @ TR-VN !  VREC-STR-U @ TR-VU !  VREC-CAP-V @ TR-VC !  VREC-STR-CAP-V @ TR-VSC !
    VREC-NODE-N @ TR-VNODEN !  VREC-NODE-CAP-V @ TR-VNODEC !
    VREC-FIELD-N @ TR-VFN !  VREC-FIELD-CAP-V @ TR-VFC !
@@ -1050,8 +1046,7 @@ TR-VREC-WHITEBOX
 variable TR-SC  variable TR-SSC  variable TR-SN  variable TR-SSU
 variable TR-SP  variable TR-SSP  variable TR-SID0 variable TR-SID1
 variable TR-S-LC variable TR-S-STRLC
-0 set-check
-: TR-SYMS-WHITEBOX ( -- )
+TRUSTED: TR-SYMS-WHITEBOX ( -- )
    SYM-CAP-V @ TR-SC !  SYM-STR-CAP-V @ TR-SSC !  SYM-N @ TR-SN !  SYM-STR-U @ TR-SSU !
    SYMS-P @ TR-SP !  SYM-STR-P @ TR-SSP !
    s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-INTERN TR-SID0 !
@@ -1311,8 +1306,7 @@ TR-TRAIL-CAP @ TRAIL-CAP !  TRAIL-BOOT TRAIL-P !  TR-TRAIL-RESET
 \ permanent var pointing at a cleared trial var. Build a v0->v1->v2->CON chain by
 \ hand and observe both behaviors, then restore the var pool.
 variable TC-V0  variable TC-V1  variable TC-V2  variable TC-CON  variable TC-FV
-0 set-check
-: TR-PATHCOMP-WHITEBOX ( -- )
+TRUSTED: TR-PATHCOMP-WHITEBOX ( -- )
    FV @ TC-FV !
    FRESH MK-VAR TC-V0 !   FRESH MK-VAR TC-V1 !   FRESH MK-VAR TC-V2 !   7 MK-CON TC-CON !
    TC-V1 @ TC-V0 @ PAY cells TVT + !     \ v0 -> v1
@@ -1609,11 +1603,10 @@ variable TSHOW-N
    TSHOW-N @ 1 + TSHOW-N ! ;
 \ LOCSHOWXT is a defer, so swap the test hook / render hook in with `is` (which is
 \ compile-mode only, hence colon words). TSHOW-RESTORE names render's
-\ SHOW-LOCAL-TYPE, a checker-internal not published to checked loads, so it is an
-\ unchecked whitebox probe like the file's other internal-state helpers.
-0 set-check
-: TSHOW-INSTALL ( -- ) [: TSHOW-HOOK ;] is LOCSHOWXT ;
-: TSHOW-RESTORE ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
+\ SHOW-LOCAL-TYPE, a checker-internal not published to checked loads, so it uses
+\ trusted whitebox probes like the file's other internal-state helpers.
+TRUSTED: TSHOW-INSTALL ( -- ) [: TSHOW-HOOK ;] is LOCSHOWXT ;
+TRUSTED: TSHOW-RESTORE ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOWER-CERT-HOOK:INSTALL
 TSHOW-INSTALL
 0 TSHOW-N !

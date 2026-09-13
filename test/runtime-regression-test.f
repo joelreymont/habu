@@ -126,7 +126,7 @@ variable GE-SCRIPT-U
    GE-HB-RESET
    GE-SRC-RESET
    GE-ILAYOUT-PRELUDE
-   s" : GE-WDOES ( gewide<n,n> -- gewide<n,n> ) dup drop create does> ( ptr a -- n ) drop 5 ;" GE-SRC-LINE
+   s" : GE-WDOES ( gewide<n,n> -- gewide<n,n> ) dup drop create does> ( -- n ) drop 5 ;" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    75 s" does>-split wide facts fail closed" GE-EXPECT-RC
    s" does>-split cannot lower layout width facts" s" does>-split wide diagnostic" GE-EXPECT-ERR-HAS ;
