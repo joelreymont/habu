@@ -42,3 +42,16 @@ Pending: separate review and B product build, focused product tests, root-owned
 full compiler/runtime gate and all-AOT timing pair. The recovery mirror emits its
 test image, but current stage0 cold-prefix execution stops at unrelated
 `atomic-cas` (rc 70) before the fixture; no recovery execution pass is claimed.
+
+Independent Astra review approved both primitive and consumer changes. Integrated
+product f5f30e8f (SHA 70ccdba483dc7356f501c32fbd22b31a14d36373233ef2a6aa5a0277afc8edb1)
+built from A in 137.386 seconds. All twelve selected product checks pass, including
+binding at both tiers, raw boundary, word/qualified names, code reclamation,
+immediate models, original prefix policy regression, loops and image recapture.
+Logs: `/tmp/cedar-indexed-B-focused/`.
+
+Three low-load pairs (one-minute load 1.33–1.35) move optimizing trivial compile
+from 1,562–1,564 to 1,233–1,239 microseconds and the three-operation fixture from
+1,558–1,563 to 907–909. Counts remain exactly 200 optimizing definitions; the
+500-microsecond ratchet still fails. `/tmp/cedar-indexed-B-floor-pair.json`.
+Full gate and complete Tender contribution remain open.

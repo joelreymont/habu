@@ -102,6 +102,8 @@ suites remain open; they are not classified as obsolete without reduction.
 
 B3 build: 143.626 seconds; actual optimizing trivial floor: 1,577 microseconds,
 ratchet correctly rejected at 500. Reviewed indexed NDICT source is integrated
-at f5f30e8f and its product build is in progress. The partial graph / logical-width
+at f5f30e8f and its product build passed in 137.386 seconds. Twelve focused product checks
+pass. Its measured trivial floor is 1,233–1,239 microseconds versus B3
+1,562–1,564 in three low-load pairs; the 500-microsecond ratchet still fails. The partial graph / logical-width
 slice is approved and being composed; fresh-process native partial execution,
 full gate, quiet Tender timing and downstream acceptance remain required.

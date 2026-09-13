@@ -32,14 +32,22 @@ the campaign dot. Two image suites exceed 65,536 address rows; actual row growth
 is under investigation. Another restored-compiler failure was traced to snapshot
 cleanup erasing the live 512 KiB string pool before IMK-NDICT0. Removing that
 inferred sweep makes native-defer-image pass capture, fresh JIT and optimizing
-compilation after restore, and a second capture. This source fix is under separate
-review; it does not close the remaining image or full-gate failures.
+compilation after restore, and a second capture. This source fix passed separate Astra
+review and the rebuilt indexed product regression. It does not close the remaining
+image or full-gate failures.
 
 The checker trusted-only restriction fix and indexed NDICT lookup have passed
 independent review. Sampled lookup record reads fall from 15,483 to 1 for `dup`,
 with zero full rescans. These are operation counts, not elapsed-time acceptance.
-The combined indexed product is building from the identified primitive-publishing
-A engine; its native product tests and timing remain pending.
+The combined indexed product, source `f5f30e8f`, built in 137.386 seconds using
+primitive-publishing engine A. Product SHA-256:
+`70ccdba483dc7356f501c32fbd22b31a14d36373233ef2a6aa5a0277afc8edb1`.
+Twelve focused product checks pass, including lookup/visibility/binding, the
+original trusted-only bypass, counted-loop fixtures and two image generations.
+Three paired runs at one-minute load 1.33–1.35 reduce the trivial floor from
+1,562–1,564 to 1,233–1,239 microseconds; the three-operation fixture falls from
+1,558–1,563 to 907–909 microseconds. Both still fail the 500-microsecond ratchet.
+The full gate and complete Tender timing remain pending.
 
 Partial graph producer/import validation and its logical-width repair are approved
 at `81a865e9` / `91ceb1c0` and are being composed into this branch. Four focused
