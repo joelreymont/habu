@@ -3488,6 +3488,42 @@ create ROWMAP 26 cells allot
 : ROWMAP-RESET 0 BEGIN dup cells ROWMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 : RVAR-OF {: c :}  c 65 - cells ROWMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-ROW ;
 
+\ Named declaration rows start unrestricted. Body inference may alias them to
+\ a quotation's fixed-window/literal tail; that temporary kind must not become
+\ the reusable provider's kind. Keep their identities across nested parsers.
+create SG-ROWS 26 cells allot
+variable SG-ROWS-N
+variable SG-ROWS-PUBLISH
+
+: SG-ROWS-RESET ( -- )
+   0 SG-ROWS-N !  0 SG-ROWS-PUBLISH ! ;
+
+: SG-ROWS-COLLECT ( -- )
+   SG-ROWS-RESET
+   26 0 do
+      i cells ROWMAP + @ dup UNBOUND <> IF
+         MK-ROW SG-ROWS-N @ cells SG-ROWS + !
+         1 SG-ROWS-N +!
+      ELSE drop THEN
+   loop ;
+
+\ Keep all verified fixed cells and their types. Only the terminal row's kind
+\ is restored, following the aliases the successful check actually established.
+: SG-ROWS-RESOLVE ( -- )
+   SG-ROWS-N @ 0 ?do
+      i cells SG-ROWS + @ R-RES-WALK
+      BEGIN dup TAG S-PUSH = WHILE P>REST R-RES-WALK REPEAT
+      i cells SG-ROWS + !
+   loop ;
+
+: E-ROW-KIND ( n -- n ) {: id:n :}
+   SG-ROWS-PUBLISH @ IF
+      SG-ROWS-N @ 0 ?do
+         i cells SG-ROWS + @ id MK-ROW = IF TVK-ANY unloop EXIT THEN
+      loop
+   THEN
+   id TVK@ ;
+
 \ SGBAD: the declared signature is malformed (a required '--'/']' delimiter was
 \ missing or wrong). A malformed contract must REJECT, never silently parse as
 \ some other effect. EXPECT-SIG consumes the next sig token and fails closed if
@@ -5261,7 +5297,7 @@ variable UIX-SPAN-LO   variable UIX-SPAN-HI   variable UIX-BN
       S-ROW of
          EN-ROW E-NODE-NEW E-OFF >r
          x E-RES PAY E-RV-ID r@ E-PTR EN.A !
-         x E-RES PAY TVK@ r@ E-PTR EN.B !
+         x E-RES PAY E-ROW-KIND r@ E-PTR EN.B !
          r>
       endof
       T-PTR of
@@ -8557,11 +8593,20 @@ package CHECKER-REG
 
 \ The successful CHECK still owns width facts referring to its type terms.
 \ Publish its verified rows without resetting and reparsing that live arena.
+: CHECKER-PUBLISH-PARSED ( -- )
+   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ E-ADD-EFFECT ;
+
 : CHECKER-USIG-CERT-PARSED ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    na nu CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
-   SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ E-ADD-EFFECT
+   SG-ROWS-N @ 0 <> IF
+      SG-ROWS-RESOLVE
+      -1 SG-ROWS-PUBLISH !
+      [: CHECKER-PUBLISH-PARSED ;] catch
+      SG-ROWS-RESET
+      ?dup IF throw THEN
+   ELSE CHECKER-PUBLISH-PARSED THEN
    sa su CHECKER-ASIG-CAPTURE ;
 
 $1000 constant LBUF-SIG-CAP
@@ -9089,6 +9134,7 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-REG-AOT-SAVE ( ptr u8 n -- n ) REG-EXT-AOT-SAVE-XT ;
 
 : CHECKER-CAPTURE-SCRATCH-PREPARE ( -- )
+   SG-ROWS-RESET
    CWIN-RESET
    NULL-PTR CWIN-P !  0 CWIN-CAP !
    CHECKER-ASIG-DISARM
@@ -13006,7 +13052,7 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
-   0 NP-ORIG-N !
+   0 NP-ORIG-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !
@@ -13107,6 +13153,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
            ELSE
              2drop  SGOUT !  dup SGIN !  DCUR !
            THEN  -1 SGSEEN !
+           SG-ROWS-COLLECT
            NP-COLLECT
            SIG-EFF-CACHE!
          THEN

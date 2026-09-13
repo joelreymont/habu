@@ -275,6 +275,10 @@ SUITE compiler-native-generic-calls
    test/compiler/native-generic-calls.f
 ;SUITE
 
+SUITE compiler-native-provider-rows
+   test/compiler/native-provider-rows.f
+;SUITE
+
 SUITE compiler-native-internal-call
    test/compiler/native-internal-call.f
 ;SUITE
