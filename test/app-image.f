@@ -131,7 +131,7 @@ variable REFUSE-U
    STARTUP$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
    IMAGE$
-   S\" package IMAGE-START-TEST\nvariable STARTS\n: MAIN ( -- ) 1 STARTS +! STARTS @ . cr SCRIPT-ARGC . cr SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ type cr loop SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s\q quit\q STR= if s\q \q 0 die then 0 SCRIPT-ARGV$ s\q throw\q STR= if -123 throw then 0 SCRIPT-ARGV$ s\q eval-throw\q STR= if s\q -124 throw\q INCLUDE-EVALUATE then then ;\n' MAIN\n;package\nAPP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
+   S\" 1 set-tier\npackage IMAGE-START-TEST\nvariable STARTS\n: MAIN ( -- ) 1 STARTS +! STARTS @ . cr SCRIPT-ARGC . cr SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ type cr loop SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s\q quit\q STR= if s\q \q 0 die then 0 SCRIPT-ARGV$ s\q throw\q STR= if -123 throw then 0 SCRIPT-ARGV$ s\q eval-throw\q STR= if s\q -124 throw\q INCLUDE-EVALUATE then then ;\n' MAIN\n;package\nAPP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    RUN-INPUT CLEAN drop
    STARTUP$ EXECUTABLE? TTRUE ;
 
