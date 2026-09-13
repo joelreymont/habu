@@ -13,21 +13,30 @@ $100 constant ENV-INIT
 $100 constant GUARD-INIT
 $100 constant TASK-INIT
 
+\ Every base below is PERSISTED, not scratch: each HOLDS A DATA ADDRESS across a
+\ capture, and only a marked cell is rebased when the capture relocates the
+\ window's DATA down to the image's base. As bare PTR-VARIABLEs all twelve kept
+\ the BUILD window's addresses, so a restored engine wrote certificate rows about
+\ 12 MB above its own heap top, into DATA that `allot` later handed out (measured
+\ 2026-09-13: DATA-P at 22,732,832 against a boot buffer at 5,533,288 and a heap
+\ top of 10,031,749). Each *-ENSURE also grows into process-local mmap, which no
+\ image may carry either - SNAP-RESET at the foot of this file is that half.
+\ Same defect and same fix as checker.f's LOC-HW-P (habu-let-a-restored-1ba4b713).
 create DATA-BOOT DATA-INIT cells allot
-PTR-VARIABLE DATA-P   DATA-BOOT DATA-P !
+PERSISTED-PTR-VARIABLE DATA-P   DATA-BOOT DATA-P !
 variable DATA-CAP DATA-INIT DATA-CAP !
 variable DATA-N
 
 create ENV-BOOT ENV-INIT cells allot
-PTR-VARIABLE ENV-P   ENV-BOOT ENV-P !
+PERSISTED-PTR-VARIABLE ENV-P   ENV-BOOT ENV-P !
 variable ENV-CAP ENV-INIT ENV-CAP !
 
 create GUARD-OFF-BOOT GUARD-INIT cells allot
 create GUARD-TAG-BOOT GUARD-INIT cells allot
 create GUARD-LIM-BOOT GUARD-INIT cells allot
-PTR-VARIABLE GUARD-OFF-P   GUARD-OFF-BOOT GUARD-OFF-P !
-PTR-VARIABLE GUARD-TAG-P   GUARD-TAG-BOOT GUARD-TAG-P !
-PTR-VARIABLE GUARD-LIM-P   GUARD-LIM-BOOT GUARD-LIM-P !
+PERSISTED-PTR-VARIABLE GUARD-OFF-P   GUARD-OFF-BOOT GUARD-OFF-P !
+PERSISTED-PTR-VARIABLE GUARD-TAG-P   GUARD-TAG-BOOT GUARD-TAG-P !
+PERSISTED-PTR-VARIABLE GUARD-LIM-P   GUARD-LIM-BOOT GUARD-LIM-P !
 variable GUARD-CAP     GUARD-INIT GUARD-CAP !
 variable GUARD-N
 
@@ -35,19 +44,19 @@ create TASK-KIND-BOOT TASK-INIT cells allot
 create TASK-A-BOOT TASK-INIT cells allot
 create TASK-B-BOOT TASK-INIT cells allot
 create TASK-C-BOOT TASK-INIT cells allot
-PTR-VARIABLE TASK-KIND-P   TASK-KIND-BOOT TASK-KIND-P !
-PTR-VARIABLE TASK-A-P      TASK-A-BOOT TASK-A-P !
-PTR-VARIABLE TASK-B-P      TASK-B-BOOT TASK-B-P !
-PTR-VARIABLE TASK-C-P      TASK-C-BOOT TASK-C-P !
+PERSISTED-PTR-VARIABLE TASK-KIND-P   TASK-KIND-BOOT TASK-KIND-P !
+PERSISTED-PTR-VARIABLE TASK-A-P      TASK-A-BOOT TASK-A-P !
+PERSISTED-PTR-VARIABLE TASK-B-P      TASK-B-BOOT TASK-B-P !
+PERSISTED-PTR-VARIABLE TASK-C-P      TASK-C-BOOT TASK-C-P !
 variable TASK-CAP      TASK-INIT TASK-CAP !
 variable TASK-N
 
 create FETCH-KEY-BOOT FETCH-INIT cells allot
 create FETCH-OFF-BOOT FETCH-INIT cells allot
 create FETCH-LEN-BOOT FETCH-INIT cells allot
-PTR-VARIABLE FETCH-KEY-P   FETCH-KEY-BOOT FETCH-KEY-P !
-PTR-VARIABLE FETCH-OFF-P   FETCH-OFF-BOOT FETCH-OFF-P !
-PTR-VARIABLE FETCH-LEN-P   FETCH-LEN-BOOT FETCH-LEN-P !
+PERSISTED-PTR-VARIABLE FETCH-KEY-P   FETCH-KEY-BOOT FETCH-KEY-P !
+PERSISTED-PTR-VARIABLE FETCH-OFF-P   FETCH-OFF-BOOT FETCH-OFF-P !
+PERSISTED-PTR-VARIABLE FETCH-LEN-P   FETCH-LEN-BOOT FETCH-LEN-P !
 variable FETCH-CAP     FETCH-INIT FETCH-CAP !
 variable FETCH-N
 variable HAS-VALID
@@ -357,11 +366,67 @@ variable FIELD-I
    verdict -1 = if a u MAKE exit then
    a u EMPTY ;
 
+\ SNAP-RESET ( -- ) : the capture seam's job for this family - put all thirteen
+\ bases back on their baked boot buffers and every cap back at its init, so an image
+\ carries neither a grown mmap address nor a window DATA address. Every counter
+\ these arenas are filled through is rewound per certificate by MAKE, so nothing
+\ live is lost. This is checker.f DECOUPLED-ARENA-SNAP-RESET's discipline for the
+\ producer, reached through REG-CERT-SNAP-XT because this file loads after it.
+: SNAP-RESET ( -- )
+   BUF-SNAP-RESET
+   DATA-BOOT DATA-P !              DATA-INIT DATA-CAP !
+   ENV-BOOT ENV-P !                ENV-INIT ENV-CAP !
+   GUARD-OFF-BOOT GUARD-OFF-P !    GUARD-TAG-BOOT GUARD-TAG-P !
+   GUARD-LIM-BOOT GUARD-LIM-P !    GUARD-INIT GUARD-CAP !
+   TASK-KIND-BOOT TASK-KIND-P !    TASK-A-BOOT TASK-A-P !
+   TASK-B-BOOT TASK-B-P !          TASK-C-BOOT TASK-C-P !
+   TASK-INIT TASK-CAP !
+   FETCH-KEY-BOOT FETCH-KEY-P !    FETCH-OFF-BOOT FETCH-OFF-P !
+   FETCH-LEN-BOOT FETCH-LEN-P !    FETCH-INIT FETCH-CAP ! ;
+
+
 \ One-shot install seam: a quotation is a compile-time construct, so the full
 \ producer is handed to the dispatch cell from inside a definition rather than
 \ from the top level. The seal retires this word with FULL-PRODUCE itself.
 : FULL-PRODUCE-INSTALL ( -- ) [: FULL-PRODUCE ;] FULL-INSTALL ;
 FULL-PRODUCE-INSTALL
+
+\ Same seam, same reason, for the capture-time reset.
+: SNAP-RESET-INSTALL ( -- ) [: SNAP-RESET ;] is REG-CERT-SNAP-XT ;
+SNAP-RESET-INSTALL
+
+public
+
+\ ARENAS-STALE ( -- n ) : how many of the thirteen bases are not on their boot
+\ buffer, plus how many of the six caps are not at their init. A restored engine
+\ must answer 0: the boot buffers are what the image carries, and the capture's
+\ relocation of a marked cell is what keeps their addresses true across it. Any
+\ other answer is a base naming DATA this engine does not own, which is what a
+\ bare PTR-VARIABLE gave (all thirteen stale, 12 MB above the heap top). Public
+\ because test/engine-suite.f has to ask it of a BOOTED engine and no other
+\ surface can - the bases are this package's business, the invariant is not.
+: ARENAS-STALE ( -- n )
+   0
+   BUF-P @ BUF-BOOT = 0= if 1 + then
+   DATA-P @ DATA-BOOT = 0= if 1 + then
+   ENV-P @ ENV-BOOT = 0= if 1 + then
+   GUARD-OFF-P @ GUARD-OFF-BOOT = 0= if 1 + then
+   GUARD-TAG-P @ GUARD-TAG-BOOT = 0= if 1 + then
+   GUARD-LIM-P @ GUARD-LIM-BOOT = 0= if 1 + then
+   TASK-KIND-P @ TASK-KIND-BOOT = 0= if 1 + then
+   TASK-A-P @ TASK-A-BOOT = 0= if 1 + then
+   TASK-B-P @ TASK-B-BOOT = 0= if 1 + then
+   TASK-C-P @ TASK-C-BOOT = 0= if 1 + then
+   FETCH-KEY-P @ FETCH-KEY-BOOT = 0= if 1 + then
+   FETCH-OFF-P @ FETCH-OFF-BOOT = 0= if 1 + then
+   FETCH-LEN-P @ FETCH-LEN-BOOT = 0= if 1 + then
+   BUF-CAP @ BUF-INIT = 0= if 1 + then
+   DATA-CAP @ DATA-INIT = 0= if 1 + then
+   ENV-CAP @ ENV-INIT = 0= if 1 + then
+   GUARD-CAP @ GUARD-INIT = 0= if 1 + then
+   TASK-CAP @ TASK-INIT = 0= if 1 + then
+   FETCH-CAP @ FETCH-INIT = 0= if 1 + then ;
+
 
 ;package
 

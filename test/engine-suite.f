@@ -1,6 +1,21 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
 \ gforth. A failure prints F<index>, assertion detail, and exits 1 via report.
 
+\ LATCHED BEFORE THE REQUIRES, WHICH IS THE ONLY SOUND POINT. The claim is about
+\ a RESTORED engine: its thirteen lowering-certificate arena bases must be the
+\ boot buffers the image carries. Once the engine certifies definitions those
+\ arenas may legitimately grow into mmap, so asking later would assert a state
+\ this file does not control - the mistake the restored-pool block below already
+\ made once. `variable` and `!` need no harness, so the boot answer is latched
+\ here, before one user definition exists, and checked with the others further
+\ down. See src/core/layout-valid.f ARENAS-STALE.
+\ A named TRUSTED: shim for the same reason the TG-* probes further down have one:
+\ an engine-internal colon word fails closed under the internal-word gate when a
+\ bare token names it at top level.
+TRUSTED: ES-CERT-STALE ( -- n ) LOWER-CERT:ARENAS-STALE ;
+variable ES-CERT-STALE0
+ES-CERT-STALE ES-CERT-STALE0 !
+
 require test/checker-assert.f
 require lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 
@@ -806,6 +821,16 @@ s" loc-hw restored on its boot buffer" T-LABEL
 LOC-HW-P @ LOC-HW-BOOT = -1 T=
 s" loc-hw restored at its init cap" T-LABEL
 LOC-HW-CAP @ LOC-HW-INIT T=
+\ The same claim for the lowering-certificate producer's thirteen bases and six
+\ caps (src/core/lower-cert-base.f BUF-P + src/core/layout-valid.f), counted by
+\ ARENAS-STALE and latched at the top of this file before any definition could
+\ have grown one. All thirteen were stale as bare PTR-VARIABLEs - measured 12 MB
+\ above the heap top. An engine built from this same tree with only the marks
+\ reverted to bare PTR-VARIABLE - SNAP-RESET, the hook and this case all present -
+\ answers 13 here: the reset does put every base on its boot buffer at the capture,
+\ and only the relocation of a marked cell keeps that address true afterwards.
+s" lower-cert arenas restored on their boot buffers" T-LABEL
+ES-CERT-STALE0 @ 0 T=
 \ normalize first: a restored snapshot boots with a persisted (smaller)
 \ store; one reset guarantees the runtime-sized arena the asserts assume
 TG-RESET

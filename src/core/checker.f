@@ -9018,12 +9018,22 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 defer REG-EXT-PERSIST-XT ( -- )
 defer REG-SCRATCH-SNAP-XT ( -- )
 defer REG-LATE-SCRATCH-SNAP-XT ( -- )
+\ REG-CERT-SNAP-XT is a FOURTH cell rather than a share of one above it because
+\ each of those three already has an owner that loads earlier (type-family.f,
+\ render.f, sumtype.f), and a second `is` on one cell silently RETIRES the first
+\ file's reset - no diagnostic, just a scratch store that stops being reset. The
+\ lowering-certificate producer (src/core/lower-cert-base.f +
+\ src/core/layout-valid.f, the last of the four to load) owns this one: thirteen
+\ per-definition arena bases that must be back on their baked boot buffers before
+\ the capture, for the reason LOC-HW-SNAP-RESET states.
+defer REG-CERT-SNAP-XT ( -- )
 \ registry-not-loaded defaults: no extension registry to persist / no scratch to
 \ snapshot before type-schema.f / type-family.f / render.f install the real words.
 : REG-EXT-DEFAULTS ( -- )
    [: ;] is REG-EXT-PERSIST-XT
    [: ;] is REG-SCRATCH-SNAP-XT
-   [: ;] is REG-LATE-SCRATCH-SNAP-XT ;
+   [: ;] is REG-LATE-SCRATCH-SNAP-XT
+   [: ;] is REG-CERT-SNAP-XT ;
 REG-EXT-DEFAULTS
 
 \ ---- the type registry an AOT capture has to carry ---------------------------
@@ -14189,6 +14199,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    REG-EXT-PERSIST-XT
    REG-SCRATCH-SNAP-XT
    REG-LATE-SCRATCH-SNAP-XT
+   REG-CERT-SNAP-XT
    CHECKER-LATE-CAPTURE-SCRATCH-PREPARE ;
 
 package CHECKER-REG

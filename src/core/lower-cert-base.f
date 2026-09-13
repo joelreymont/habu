@@ -37,7 +37,14 @@ $400 constant BUF-INIT
 $0FFFFFFFFFFFFFFF constant MAX-CELLS
 
 create BUF-BOOT BUF-INIT cells allot
-PTR-VARIABLE BUF-P   BUF-BOOT BUF-P !
+\ PERSISTED because this slot HOLDS A DATA ADDRESS across a capture, and marked
+\ cells are the only ones the capture's relocation rebases when the window's DATA
+\ moves down to the image's base; a bare PTR-VARIABLE kept the BUILD window's
+\ address of BUF-BOOT, so a restored engine wrote certificate cells above its own
+\ heap top, into DATA that `allot` later handed out. BUF-ENSURE also grows into
+\ process-local mmap, which no image may carry either - BUF-SNAP-RESET below is
+\ that half. Same defect and same fix as checker.f's LOC-HW-P.
+PERSISTED-PTR-VARIABLE BUF-P   BUF-BOOT BUF-P !
 variable BUF-CAP BUF-INIT BUF-CAP !
 variable BUF-N
 variable BODY-LEN
@@ -74,6 +81,14 @@ variable FULL-SET   0 FULL-SET !
    need BUF-CAP @ GROW-CAP {: cap:n :}
    BUF-P @ BUF-CAP @ cells cap cells ARENA-BYTES-GROW BUF-P !
    cap BUF-CAP ! ;
+
+\ BUF-SNAP-RESET ( -- ) : put the certificate buffer back on its baked boot
+\ buffer for the capture. MAKE rewinds BUF-N and re-emits the whole certificate
+\ per definition, so nothing live is lost. src/core/layout-valid.f's SNAP-RESET
+\ calls this one - it reopens this package and is the file that installs the
+\ producer, so it installs the whole family's reset too.
+: BUF-SNAP-RESET ( -- )
+   BUF-BOOT BUF-P !   BUF-INIT BUF-CAP ! ;
 
 : BUF, ( n -- )
    BUF-N @ 1 + BUF-ENSURE
