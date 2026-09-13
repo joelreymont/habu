@@ -35,8 +35,9 @@ package NMX-LAYOUT
 private
 
 \ These pre-hook checker words have no native call model. Bind their actual
-\ effects only inside this test, through the same typed boundary as the build
-\ rewind. The recorded numbers remain visible through the real owner readers.
+\ effects only inside this test, through private typed slots. Read their live
+\ records directly; ordinary tick still refuses internal execution tokens.
+\ The recorded numbers remain visible through the real owner readers.
 defer START-RECORD ( -- )
 defer STOP-RECORD ( -- )
 defer RELEASE-RECORD ( -- )
@@ -47,16 +48,22 @@ defer FINALIZE ( -- )
 defer ROWS-PTR ( -- ptr ptr n )
 defer ROWS-CAP ( -- ptr n )
 
+TRUSTED: INTERNAL-XT ( ptr u8 n -- n )
+   XREF-FIND
+   dup XREF-FOUND? 0= if drop s" native-match: checker word missing" 76 die then
+   dup XREF-RETIRED? if drop s" native-match: checker word retired" 76 die then
+   XREF-START dup 0= if drop s" native-match: checker word has no code" 76 die then ;
+
 TRUSTED: BIND ( -- )
-   ['] REC-RESET is START-RECORD
-   ['] REC-OFF is STOP-RECORD
-   ['] REC-RELEASE is RELEASE-RECORD
-   ['] MWIN-CELLS! is LAYOUT!
-   ['] REC-COMMIT is COMMIT-ROW
-   ['] REC-STEP is NEXT-ROW
-   ['] CALL-FINALIZE is FINALIZE
-   ['] CWIN-P is ROWS-PTR
-   ['] CWIN-CAP is ROWS-CAP ;
+   s" REC-RESET" INTERNAL-XT is START-RECORD
+   s" REC-OFF" INTERNAL-XT is STOP-RECORD
+   s" REC-RELEASE" INTERNAL-XT is RELEASE-RECORD
+   s" MWIN-CELLS!" INTERNAL-XT is LAYOUT!
+   s" REC-COMMIT" INTERNAL-XT is COMMIT-ROW
+   s" REC-STEP" INTERNAL-XT is NEXT-ROW
+   s" CALL-FINALIZE" INTERNAL-XT is FINALIZE
+   s" CWIN-P" INTERNAL-XT is ROWS-PTR
+   s" CWIN-CAP" INTERNAL-XT is ROWS-CAP ;
 BIND
 
 : ROW! ( n -- )
