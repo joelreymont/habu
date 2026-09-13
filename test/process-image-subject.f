@@ -5,6 +5,19 @@ require lib/test.f
 package PROCESS-IMAGE-SUBJECT
 private
 
+variable CAPTURE-ROWS
+
+\ The first restored USE fixes the row count. Further captures of these same
+\ registries must reuse their DATA storage and its existing declarations.
+TRUSTED: ADDRESS-ROWS ( -- n )
+   data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
+
+
+: CHECK-CAPTURE-ROWS ( -- )
+   CAPTURE-ROWS @ 0= if ADDRESS-ROWS CAPTURE-ROWS ! then
+   s" repeated capture preserves address declarations" T-LABEL
+   ADDRESS-ROWS CAPTURE-ROWS @ T= ;
+
 : CHECK-DEFAULT ( -- )
    s" HABU_IMAGE_DEFAULT" >LEN PROC-ENV-DEFAULT$? TTRUE
    LEN>N s" default-value" T$= ;
@@ -61,6 +74,7 @@ public
    s" pending-argument" >LEN PROC-ARGV+
    s" HABU_IMAGE_ENV" >LEN s" pending-value" >LEN PROC-ENV+
    PROC-ARGV-N @ COUNT>N 1 T= PROC-ENV-N @ COUNT>N 1 T=
+   CHECK-CAPTURE-ROWS
    T-REPORT ;
 
 ;package

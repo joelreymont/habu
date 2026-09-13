@@ -324,6 +324,10 @@ SUITE app-image
    test/app-image.f
 ;SUITE
 
+SUITE registry-persist
+   test/registry-persist.f
+;SUITE
+
 SUITE native-defer-image
    test/native-defer-image.f
 ;SUITE

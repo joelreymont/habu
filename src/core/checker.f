@@ -9065,9 +9065,9 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 
 \ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS) must
 \ survive into a built image (later checked loads reference persisted signatures).
-\ While a store is still on its baked boot buffer it is captured with the data
-\ region — nothing to do. A grown store lives in process-local mmap, so bake it
-\ into fresh image DATA (here-allot + copy), USIGS/NORET-style. Record/node arrays
+\ A complete store already in image DATA survives the copy, including one
+\ persisted by an earlier capture. A grown store lives in process-local mmap,
+\ so bake it into fresh image DATA (here-allot + copy). Record/node arrays
 \ hold pointers into their string pool; the string pool is persisted last and its
 \ relocation delta rebases those pointers in the just-persisted arrays.
 \ THE DELTA TRAVELS ON THE STACK AND IS NEVER PARKED IN A DATA CELL. One of its
@@ -9083,9 +9083,25 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
 
-\ How far the persisted copy moved, and whether the store had grown at all.
-: REG-PERSIST-MOVE ( ptr ptr u8 ptr u8 n -- n bool ) {: pvar:ptr boot:ptr bytes:n :}
-   pvar @ boot = IF 0 RES-FALSE EXIT THEN          \ not grown: boot buffer is baked DATA
+\ Validate the allocation capacity, not only the live prefix being copied.
+\ Subtraction after the ordered bounds checks avoids a wrapping end address.
+: REG-DATA-SPAN? ( ptr u8 n -- bool ) {: base:ptr cap:n :}
+   cap 0 < IF RES-FALSE EXIT THEN
+   base data-base < IF RES-FALSE EXIT THEN
+   base here > IF RES-FALSE EXIT THEN
+   cap here base - <= ;
+
+
+: REG-PERSIST-REFUSE ( -- )
+   s" checker: invalid registry storage span" 76 die ;
+
+
+\ Return the rebase delta and whether an external allocation was copied.
+: REG-PERSIST-MOVE ( ptr ptr u8 n n -- n bool ) {: pvar:ptr bytes:n cap:n :}
+   bytes 0 < bytes cap > or IF REG-PERSIST-REFUSE THEN
+   pvar @ cap REG-DATA-SPAN? IF 0 RES-FALSE EXIT THEN
+   pvar @ data-base - {: off:n :}
+   off 0 >= off DATA-SIZE < and IF REG-PERSIST-REFUSE THEN
    pvar @ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
@@ -9095,17 +9111,17 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 
 \ A store of integers or interned offsets has no pool pointer to rebase, so its
 \ caller asks only whether the store grew.
-: REG-PERSIST-BUF ( ptr ptr u8 ptr u8 n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
-   pvar boot bytes REG-PERSIST-MOVE nip ;
+: REG-PERSIST-BUF ( ptr ptr u8 n -- bool ) {: pvar:ptr bytes:n :}
+   pvar bytes bytes REG-PERSIST-MOVE nip ;
 
 : CT-SNAPSHOT-PERSIST ( -- )
    CT-CAP-V @ cells {: ab:n :}
-   CT-NAME-A-P CT-NAME-A-BOOT ab REG-PERSIST-BUF drop
-   CT-NAME-U-P CT-NAME-U-BOOT ab REG-PERSIST-BUF drop
-   CT-CLASS-P CT-CLASS-BOOT ab REG-PERSIST-BUF drop
-   CT-WIDTH-P CT-WIDTH-BOOT ab REG-PERSIST-BUF drop
-   CT-SIGN-P CT-SIGN-BOOT ab REG-PERSIST-BUF drop
-   CT-STR-P CT-STR-BOOT CT-STR-U @ REG-PERSIST-MOVE {: moved:n grown:bool :}
+   CT-NAME-A-P ab REG-PERSIST-BUF drop
+   CT-NAME-U-P ab REG-PERSIST-BUF drop
+   CT-CLASS-P ab REG-PERSIST-BUF drop
+   CT-WIDTH-P ab REG-PERSIST-BUF drop
+   CT-SIGN-P ab REG-PERSIST-BUF drop
+   CT-STR-P CT-STR-U @ CT-STR-CAP-V @ REG-PERSIST-MOVE {: moved:n grown:bool :}
    grown 0= IF EXIT THEN
    CT-STR-U @ CT-STR-CAP-V !
    moved CT-STR-REBASE ;
@@ -9115,25 +9131,25 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 
 : VREC-SNAPSHOT-PERSIST ( -- )
    VREC-CAP-V @ cells {: rb:n :}
-   VREC-NAME-A-P VREC-NAME-A-BOOT rb REG-PERSIST-BUF drop
-   VREC-NAME-U-P VREC-NAME-U-BOOT rb REG-PERSIST-BUF drop
-   VREC-START-P VREC-START-BOOT rb REG-PERSIST-BUF drop
-   VREC-COUNT-P VREC-COUNT-BOOT rb REG-PERSIST-BUF drop
-   VREC-TVN-P VREC-TVN-BOOT rb REG-PERSIST-BUF drop
-   VREC-RVN-P VREC-RVN-BOOT rb REG-PERSIST-BUF drop
-   VREC-FIELDS-P VREC-FIELDS-BOOT VREC-FIELD-CAP-V @ cells REG-PERSIST-BUF drop
+   VREC-NAME-A-P rb REG-PERSIST-BUF drop
+   VREC-NAME-U-P rb REG-PERSIST-BUF drop
+   VREC-START-P rb REG-PERSIST-BUF drop
+   VREC-COUNT-P rb REG-PERSIST-BUF drop
+   VREC-TVN-P rb REG-PERSIST-BUF drop
+   VREC-RVN-P rb REG-PERSIST-BUF drop
+   VREC-FIELDS-P VREC-FIELD-CAP-V @ cells REG-PERSIST-BUF drop
    VREC-NODE-CAP-V @ cells {: nb:n :}
-   VRN-TAG-P VRN-TAG-BOOT nb REG-PERSIST-BUF drop
-   VRN-A-P VRN-A-BOOT nb REG-PERSIST-BUF drop
-   VRN-B-P VRN-B-BOOT nb REG-PERSIST-BUF drop
-   VRN-C-P VRN-C-BOOT nb REG-PERSIST-BUF drop
-   VRN-D-P VRN-D-BOOT nb REG-PERSIST-BUF drop
-   VRN-E-P VRN-E-BOOT nb REG-PERSIST-BUF drop
-   VRN-F-P VRN-F-BOOT nb REG-PERSIST-BUF drop
-   VRN-G-P VRN-G-BOOT nb REG-PERSIST-BUF drop
-   VRN-H-P VRN-H-BOOT nb REG-PERSIST-BUF drop
-   VNARG-P VNARG-BOOT VNARG-CAP-V @ cells REG-PERSIST-BUF drop
-   VREC-STR-P VREC-STR-BOOT VREC-STR-U @ REG-PERSIST-MOVE {: moved:n grown:bool :}
+   VRN-TAG-P nb REG-PERSIST-BUF drop
+   VRN-A-P nb REG-PERSIST-BUF drop
+   VRN-B-P nb REG-PERSIST-BUF drop
+   VRN-C-P nb REG-PERSIST-BUF drop
+   VRN-D-P nb REG-PERSIST-BUF drop
+   VRN-E-P nb REG-PERSIST-BUF drop
+   VRN-F-P nb REG-PERSIST-BUF drop
+   VRN-G-P nb REG-PERSIST-BUF drop
+   VRN-H-P nb REG-PERSIST-BUF drop
+   VNARG-P VNARG-CAP-V @ cells REG-PERSIST-BUF drop
+   VREC-STR-P VREC-STR-U @ VREC-STR-CAP-V @ REG-PERSIST-MOVE {: moved:n grown:bool :}
    grown 0= IF EXIT THEN
    VREC-STR-U @ VREC-STR-CAP-V !
    moved VREC-STR-REBASE ;
@@ -9142,8 +9158,8 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    VREC-N @ 0 ?do VREC-NAME-A i cells + ptr-cell-mark loop ;
 
 : SYM-SNAPSHOT-PERSIST ( -- )      \ HIDX is dropped by HIDX-RESET; rebuilt on restore
-   SYMS-P SYMS-BOOT SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
-   SYM-STR-P SYM-STR-BOOT SYM-STR-U @ REG-PERSIST-MOVE {: moved:n grown:bool :}
+   SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
+   SYM-STR-P SYM-STR-U @ SYM-STR-CAP-V @ REG-PERSIST-MOVE {: moved:n grown:bool :}
    grown 0= IF EXIT THEN
    SYM-STR-U @ SYM-STR-CAP-V !
    moved SYM-STR-REBASE ;

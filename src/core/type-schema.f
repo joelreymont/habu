@@ -403,7 +403,7 @@ public
 \ --- snapshot persist: bake any grown store into fresh image DATA. Fields hold no
 \ pointers, so nothing rebases. Called through the checker's REG-EXT-PERSIST hook.
 : SCHEMA-SNAPSHOT-PERSIST ( -- )
-   SCH-A-P    SCH-A-BOOT    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
-   SCH-ROOT-P SCH-ROOT-BOOT SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
+   SCH-A-P    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
+   SCH-ROOT-P SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;
 
 ;package

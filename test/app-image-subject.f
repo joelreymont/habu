@@ -14,6 +14,25 @@ variable VALUE
 PERSISTED-PTR-VARIABLE LINK
 TYPED-VARIABLE ACTION [ n -- n ]
 DYNAMIC-BUFFER SCRATCH n
+variable REGISTRY-ID
+
+\ Force both registry arrays and their name pool into grown mappings. Capture
+\ must move them into DATA and preserve their lookup across both image boots.
+TRUSTED: GROW-REGISTRY ( -- )
+   CTN @ REGISTRY-ID !
+   CTN @ CT-CAP-V !
+   s" AIMG-REGISTRY-FIRST" CTN @ CT-ROLE 64 CS-NONE CT-SET
+   CT-STR-U @ CT-STR-CAP-V !
+   s" AIMG-REGISTRY-SECOND" CTN @ CT-ROLE 64 CS-NONE CT-SET
+   CT-NAME-A-P @ CT-CAP-V @ cells REG-DATA-SPAN? if 70 throw then
+   CT-STR-P @ CT-STR-CAP-V @ REG-DATA-SPAN? if 70 throw then ;
+
+
+TRUSTED: CHECK-REGISTRY ( -- )
+   s" AIMG-REGISTRY-FIRST" CT-FIND REGISTRY-ID @ <> if 70 throw then
+   s" AIMG-REGISTRY-SECOND" CT-FIND REGISTRY-ID @ 1+ <> if 70 throw then
+   CT-NAME-A-P @ CT-CAP-V @ cells REG-DATA-SPAN? 0= if 70 throw then
+   CT-STR-P @ CT-STR-CAP-V @ REG-DATA-SPAN? 0= if 70 throw then ;
 
 : USE-SCRATCH ( -- )
    1 SCRATCH-RESERVE
@@ -29,6 +48,7 @@ DYNAMIC-BUFFER SCRATCH n
 : INITIALIZE ( -- )
    USE-SCRATCH
    CHECK-UNICODE
+   GROW-REGISTRY
    42 VALUE !
    VALUE LINK !
    [: DOUBLE ;] ACTION PUT
@@ -46,6 +66,7 @@ public
 : RUN ( -- n )
    USE-SCRATCH
    CHECK-UNICODE
+   CHECK-REGISTRY
    LINK @ @ ACTION @ execute ;
 
 ;package
