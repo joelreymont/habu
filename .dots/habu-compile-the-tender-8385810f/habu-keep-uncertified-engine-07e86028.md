@@ -48,3 +48,42 @@ declarations retain ABI facts without source authority, so a downstream caller
 now adds E-CAP-TRUSTED. Recovery must identify current-run failed rows and taint
 dependent analysis without granting executable authority. Root approved that
 bounded design for a separate followup; no broad MULTI-ERR visibility bypass.
+
+Recovery repair `5ab65284`, parent `5f0162a5`, uses the existing in-memory
+ER.ACTIVE cell: tag2 is a failed declaration or a dependent analysis result.
+MULTI-ERR-BEGIN records the effect-store floor; only tag2 rows created in that
+run can suppress a cascade. Store rewind moves the floor with the removed
+records. Ordinary checks, later runs, and unrelated ABI-only or trusted-only
+calls still refuse. Checked publication of a dependent row keeps its external
+bit and minimum-input latch clear. Explicit declarations replace tag2 normally,
+including inside an ABI scope. Candidate and ABI catch boundaries restore the
+enclosing recovery taint; CHECK-RESET clears it for the next definition.
+
+ER.ACTIVE audit: SCAN-USIGS-SYM and CHECKED-ROW distinguish deleted0 from live
+rows, so tag2 remains an ABI fact. USX/HIDX cache exact record offsets and
+rollback restores their previous heads; interning keys graph nodes after the
+record header. EXPORT preserves current-run tag2 without granting authority.
+ASIG-GRAPH-COPY replaces the active cell with graph magic, and CK-GRAPH-IMPORT
+sets active1. TRANSFER-ROW rebuilds active1 through E-ADD-EFFECT. Both imports
+preserve external=false and do not inherit recovery eligibility. The graph
+layout and unknown-bit mask are unchanged. Existing FULL-PRODUCE emits an empty
+certificate for every MULTI run; the new real publication control pins that
+behavior and the published dictionary's zero minimum bits.
+
+Actual J-hosted native product: `/tmp/cedar-family-stage-abi/hb-effect-recovery`,
+build rc0 in126.272s from `5ab65284`, SHA256
+`83e0b0ea4c4b13f4d6470c4c43372c674a9b0069dc0b10fba7269941e453bb81`.
+Tier1 authority and nested tape-observer suites pass (1.102/0.970s); engine
+passes (16.342s, MEA1/MEA2 only), lower-cert passes (0.513s), and the complete
+all-errors suite passes (0.694s, including cascade-no-phantom). The complete
+program-diagnostics suite also passes (32.865s). Logs are
+`/tmp/cedar-recovery-{authority,tape,engine,lower-cert,all-errors,program-diagnostics}.log`.
+The complete payload-graph suite, including unknown-bit and fresh-process
+authority controls, passes (20.277s), as does type-export (0.520s):
+`/tmp/cedar-recovery-{graph,type-export}.log`.
+Authority controls cover direct/transitive, branch, quotation, tick and inferred
+dependencies, stale-run refusal, unrelated ABI/trusted-only refusals,
+rollback/regrowth, explicit replacement, thrown ABI scope, nested candidates,
+export, actual JIT publication and empty certificates. The compiler still refuses
+an actually failed tier1 body; diagnostic replay's forced publication is the
+existing tier0 hook path. Root owns combined-product/full-gate acceptance.
