@@ -29,3 +29,11 @@ refuses rc 96 with exact count and newline. Full-gate app-image and process-imag
 still hit that bound. Their logged `got 46` was the stderr-length assertion, not
 the child exit code. Attribute which stage adds the rows and distinguish live
 closure needs from stale/duplicate registrations before changing storage again.
+
+Product E (a99cd3fc) resolves the repeated-capture overflow in app-image and
+process-image: the live SYMS allocation had moved from its boot buffer to a grown
+mapping, and each SAVE then recopied even its already persisted DATA replacement.
+REG-PERSIST-MOVE now retains complete allocated DATA spans. Both image suites
+pass on E, with the separate all-native startup fixture correction for app-image.
+Tender 4cc58705 currently stops earlier at native OPEN/-8650; its complete captured
+closure/headroom is still unmeasured, so this leaf stays active.

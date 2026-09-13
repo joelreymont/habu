@@ -1,6 +1,6 @@
 # Finish Habu's native compiler
 
-Status: implementation in progress, 2026-09-13. Cedar owns integration. This replaces
+Status: implementation in progress, 2026-09-14. Cedar owns integration. This replaces
 the obsolete IR/GPU migration plan, preserved in jj history. Reuse the existing
 Tender campaign `habu-compile-the-tender-8385810f`.
 
@@ -12,49 +12,49 @@ review pins remain frozen: `review/current-compiler` at `51546316`, and
 (`3c6bda9d`) predates these compiler changes. None is an accepted replacement
 engine; source review and focused controls are not a rebuilt runtime gate.
 
-Local integration through `f5f30e8f` includes source-bound writer dispatch,
-positive native provenance, translated target layout, complete address rows,
-once-per-module combine planning, typed native `is` destinations, process-buffer
-lifecycle cleanup, and counted-loop obligations with independently reviewed formal
-parity. The source-owner closure framing and stale-artifact regressions are also
-reviewed. No accepted replacement engine has been published.
+The integration includes complete address rows and layout translation, native
+publication provenance, typed `is`, indexed dictionary lookup, counted-loop
+obligations, portable partial-effect graphs and widths, live string-pool capture,
+and repeated registry persistence. No accepted replacement engine is published.
 
-Tracked B3, source `0c1ca1f3`, built in 143.626 seconds. Its private product is
-`/tmp/cedar-family-stage-abi/hb-B3-integrated` (SHA-256
-`2ef6c87b233f5bd1f4a0e009b806851890aa67e85ccb13844d5a4f8570143781`).
-The first product accepts 40,000 address rows and rejects the first row beyond
-65,536 with the exact diagnostic. Its defer-history fix lets the real all-native
-floor benchmark finish: 1,577 microseconds for a trivial definition, still above
-the 500-microsecond limit. The complete Tender workload is not measured yet.
+Private product E, source `a99cd3fc`, built in 134.001 seconds from indexed B:
+`/tmp/cedar-family-stage-abi/hb-graph-persist-E`, SHA-256
+`cefd25fdbd7db8126fb0f63feeb834b662eed2569c7a4cd49584ed69fef1c3d0`.
+Registry persistence, process-image recapture, deferred restore with fresh JIT/native
+compilation, field projection and graph metadata suites pass on that product.
+App-image also passes with fixture `568d66f6`, which compiles its recaptured
+startup word at tier 1. Repeated capture now retains already persisted registry
+storage instead of filling the address table with another relocated copy.
 
-B3's full gate ran all 332 suites with 31 failures. The complete named list is in
-the campaign dot. Two image suites exceed 65,536 address rows; actual row growth
-is under investigation. Another restored-compiler failure was traced to snapshot
-cleanup erasing the live 512 KiB string pool before IMK-NDICT0. Removing that
-inferred sweep makes native-defer-image pass capture, fresh JIT and optimizing
-compilation after restore, and a second capture. This source fix passed separate Astra
-review and the rebuilt indexed product regression. It does not close the remaining
-image or full-gate failures.
+E exposed a product-hosted checker rebuild refusal at protected field state.
+Reviewed fix `165f2e32`, integrated as `3e4f0ec5`, keeps raw state access in small
+trusted helpers and leaves matching/schema validation checked. Its E-hosted
+whole-prefix native regression passes. Product F from `3e4f0ec5` also self-builds
+through E in 134.074 seconds: `/tmp/cedar-family-stage-abi/hb-clean-F`, SHA-256
+`93fcbcd1600c0e3b1044ad54864e60ca3e6dc06d54aad7105e9645d4fb94412b`.
+Its full suite is next, including the current test-only graph fixture additions.
+The obsolete JIT copier, scanner and helper-retention test are removed in reviewed
+`dd71ead7`; real call targets, storage values and rollback-map tests pass on B.
 
-The checker trusted-only restriction fix and indexed NDICT lookup have passed
-independent review. Sampled lookup record reads fall from 15,483 to 1 for `dup`,
-with zero full rescans. These are operation counts, not elapsed-time acceptance.
-The combined indexed product, source `f5f30e8f`, built in 137.386 seconds using
-primitive-publishing engine A. Product SHA-256:
-`70ccdba483dc7356f501c32fbd22b31a14d36373233ef2a6aa5a0277afc8edb1`.
-Twelve focused product checks pass, including lookup/visibility/binding, the
-original trusted-only bypass, counted-loop fixtures and two image generations.
-Three paired runs at one-minute load 1.33–1.35 reduce the trivial floor from
-1,562–1,564 to 1,233–1,239 microseconds; the three-operation fixture falls from
-1,558–1,563 to 907–909 microseconds. Both still fail the 500-microsecond ratchet.
-The full gate and complete Tender timing remain pending.
+Fresh-process graph acceptance (`89c29acf`) passes on E: a native producer exits,
+a fresh reader imports the artifact, and a fresh partial engine executes scalar
+and two-cell product words and checks dependent definitions. Disk import retains
+unknown provenance; this test does not claim an all-native partial-engine optimizer.
+Exception-quotation and dynamic-schema refusals remain separate open contracts.
 
-Partial graph producer/import validation and its logical-width repair are approved
-at `81a865e9` / `91ceb1c0` and are being composed into this branch. Four focused
-suites pass independently, including exact-state preservation on corrupt input.
-Fresh-process native partial execution remains unverified. Exception quotation
-typing and dynamic constructor identity retain their separate fail-closed contracts.
-The frozen external review branches remain available; neither is a replacement pin.
+The latest full gate remains B3: all 332 suites ran, with 31 failures named in the
+campaign dot. Focused fixes are passing, but a new full gate is still required.
+Tender `4cc58705` now reaches native MATCH elaboration and refuses `OPEN` with
+`E-NELAB-MATCH` (-8650); attribution and reduction are active. No Tender binary was
+produced, and its accepted pin is unchanged.
+
+The last quiet speed pair is indexed B versus B3: trivial definitions fall from
+1,562–1,564 to 1,233–1,239 microseconds and three-operation definitions from
+1,558–1,563 to 907–909 microseconds. Both fail the 500-microsecond ratchet.
+The next measured cost is a full dictionary-index rebuild on every native
+publication (231–389 microseconds across 15,485–30,485 rows). Its bounded append
+replacement is being built and tested. Complete uncached Tender timing remains
+unmeasured; a projected sum is not acceptance.
 
 ## Required result
 

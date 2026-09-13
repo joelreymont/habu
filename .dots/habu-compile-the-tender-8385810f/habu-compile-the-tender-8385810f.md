@@ -56,10 +56,6 @@ SHA 2ef6c87b233f5bd1f4a0e009b806851890aa67e85ccb13844d5a4f8570143781,
 332 of 332 suites, 31 failures. Log `/tmp/cedar-B3-full-suite.log`; individual
 outputs `/tmp/habu-native-suite-1062751897926583-17/`.
 
-- spaces,
-- a
-- fork
-- fork
 - compiler-native-string
 - compiler-native-prefix-declarations
 - check-cli-boundary
@@ -92,18 +88,34 @@ outputs `/tmp/habu-native-suite-1062751897926583-17/`.
 - p2-map-rewind
 - field-proj
 
-Current follow-up: native-defer-image passes after the source snapshot sweep fix
-2d9145f2, including both restored compiler tiers and two captures. App-image and
-process-image overflow at the actual 65,536-row bound; leaf 1ca5db10 owns attribution.
-The native-prefix declaration failure is the trusted-only user-effect bypass
-1fb5ad1d; its reviewed source repair is integrated. Native-j and native-leave
-fixtures are being corrected to preserve the reviewed D04 behavior. Other red
-suites remain open; they are not classified as obsolete without reduction.
+Current follow-up (2026-09-14): indexed B passes the repaired native-prefix
+trust boundary and counted-loop cases. Product E (a99cd3fc, SHA
+cefd25fdbd7db8126fb0f63feeb834b662eed2569c7a4cd49584ed69fef1c3d0) builds in
+134.001 seconds and passes registry persistence, process-image recapture,
+native-defer-image, field projection/boundary and graph suites. App-image passes
+with the tier-1 startup fixture 568d66f6. Repeated registry copies caused the image
+row overflow; preserving already allocated DATA storage resolves these fixtures.
+The complete Tender closure still needs acceptance.
 
-B3 build: 143.626 seconds; actual optimizing trivial floor: 1,577 microseconds,
-ratchet correctly rejected at 500. Reviewed indexed NDICT source is integrated
-at f5f30e8f and its product build passed in 137.386 seconds. Twelve focused product checks
-pass. Its measured trivial floor is 1,233–1,239 microseconds versus B3
-1,562–1,564 in three low-load pairs; the 500-microsecond ratchet still fails. The partial graph / logical-width
-slice is approved and being composed; fresh-process native partial execution,
-full gate, quiet Tender timing and downstream acceptance remain required.
+E-hosted native checker rebuilding exposed protected field-state accesses;
+reviewed narrow boundary fix 165f2e32 is integrated as 3e4f0ec5 and passes its
+whole native prefix regression. The combined F product builds from E in 134.074 seconds, rc0,
+SHA 93fcbcd1600c0e3b1044ad54864e60ca3e6dc06d54aad7105e9645d4fb94412b.
+Its full gate is next.
+Reviewed dd71ead7 removes obsolete copier/scanner machinery and replaces its
+fixtures with actual call/map/rollback behavior; rebuilt full gate remains open.
+Fresh-process partial artifact execution is covered by reviewed 89c29acf, including
+a native two-cell producer and wrong-type dependent refusals after fresh boot.
+The cold dependent compiler and unknown imported provenance are explicit limits.
+
+Tender 4cc58705, using E with its matching source, refuses native OPEN with
+E-NELAB-MATCH -8650; log /tmp/cedar-tender-E/build.log, 44.924 seconds under
+concurrent work, no executable and no performance acceptance. Cedar's parallel
+lane owns attribution/reduction. Other old full-gate reds remain open until rerun
+and reduction; they are not declared obsolete from their names.
+
+Indexed B's measured trivial floor remains 1,233–1,239 microseconds versus B3
+1,562–1,564 in three quiet pairs. The 500-microsecond ratchet still fails.
+Native publication currently rebuilds the whole dictionary index; append leaf
+habu-append-native-dictionary-7a7cc379 owns that measured 231–389 microsecond cost.
+Full gate, quiet 3079-definition Tender timing and downstream acceptance remain.
