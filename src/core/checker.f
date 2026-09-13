@@ -6849,6 +6849,8 @@ PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
 PRIM: seed-ndict!    PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!                       \ explicit trusted reset boundary
+PRIM: ndict-append   PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ native pending-record publication
 PRIM: SEAL-CAPTURE   PRIM;
 PRIM: seal-captured? PE-F PE-OUT PRIM;
 PRIM: SEAL-FRIEND    PRIM;

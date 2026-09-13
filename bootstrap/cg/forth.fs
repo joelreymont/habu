@@ -631,6 +631,11 @@ previous definitions
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 GUARD-SPAN
    NDICT A 0 ADDI, ;
 
+\ The recovery engine has no native pending owner. Its JIT publication stays
+\ local; the native-only append boundary must refuse if it is reached here.
+: BNDAPPEND ( -- )
+   0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS, ;
+
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
@@ -1285,6 +1290,7 @@ previous definitions
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
+   s" ndict-append" ['] BNDAPPEND FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L

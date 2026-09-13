@@ -198,6 +198,7 @@ public
 variable LREBUILD
 variable LFULL
 ;package
+variable LHIDXADD
 \ The one-wordlist search shared by the `search-wl` primitive and the AOT seed's
 \ call-site pass; packaged for the same reason HIDX is.
 package WLFIND
@@ -1243,8 +1244,8 @@ variable SZA-I
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
-\ ndict! is a FORGET sink and every caller in the tree lowers the mark, but the
-\ name lookup reads an empty hash slot as proof that a name is absent, and
+\ ndict! is the general FORGET/restore sink. The name lookup reads an empty
+\ hash slot as proof that a name is absent, and
 \ that proof only holds while every record below NDICT is in the table. Raising
 \ NDICT re-exposes records whose slots a later publication was free to reuse, so
 \ a raise is the one motion that can leave the table short of the dictionary.
@@ -1265,6 +1266,32 @@ variable SZA-I
       done B,
    keep LBL,
    NDICT A 0 ADDI,
+   done LBL, ;
+
+\ Append the completed native pending record at the caller's expected index.
+\ NPUB proves the emission and record shape; this sink owns the live count and
+\ index, so it independently checks pending ownership before either changes.
+\ DOES> publishes its parent and then its one prepared companion. No other row
+\ is eligible, and the ordinary ndict! restore/rebuild contract stays intact.
+: BNDAPPEND ( -- ) B-TASK-LIVE-GUARD  A G-POP                  \ ( expected-index -- )
+   LBL LBL LBL LBL {: owner:label floor-ok:label bad:label done:label :}
+   A NDICT CMP,  C-NE bad BCOND,
+   14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
+   14 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  14 1 CMPI,  C-NE bad BCOND,
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
+   14 DATA PEND-CELL LDR,  14 bad CBZ,
+   14 B CMP,  C-EQ owner BCOND,
+   14 14 DREC ADDI,  14 B CMP,  C-NE bad BCOND,
+   14 DATA DOESB-CELL LDR,  14 0 CMPI,  C-LE bad BCOND,
+   owner LBL,
+   14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
+   A 14 CMP,  C-CC bad BCOND,
+   floor-ok LBL,
+   7 DREC MOVZ,  B 7 PROT-GUARD:CALL
+   NDICT NDICT 1 ADDI,
+   LHIDXADD LABEL@ BL,
+   done B,
+   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 
 \ Lower the dictionary and open the namespace as one engine operation. Its
@@ -3060,6 +3087,9 @@ package ENGINE-EMIT
    1 GD-MIN !
    s" seed-ndict!" ['] BSEEDNDICTSET PRIM-GLOBAL-INT-WID FPRIM-WID
    GD-RECORD
+   1 GD-MIN !
+   s" ndict-append" ['] BNDAPPEND PRIM-GLOBAL-INT-WID FPRIM-WID
+   GD-RECORD
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
@@ -3659,7 +3689,6 @@ package ENGINE-EMIT
    FL-IL LABEL@ LBL,  10 CP CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 64 ADDI,  FL-IL LABEL@ B,
    FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET, ;
 
-variable LHIDXADD
 variable LHIDXBUILD
 
 \ Emit: insert record index x3 into table x14. The dictionary rejects
