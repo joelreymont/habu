@@ -47,16 +47,29 @@ The provider matrix, owner window, internal-call guards, symbol ceilings,
 local-case/environment regressions and new debugger-resume regression pass.
 The runtime suite's new refusal is an invalid created-word effect in its wide
 `does>` fixture; the corrected declaration reaches the intended rejection.
-Private-checker fixture calls are being repaired without weakening protection.
+Private-checker fixture repairs are integrated at `1c4a890d`; the five affected
+suite categories pass focused checks. They have not been counted as a new full gate.
 
 Reviewed transient lifecycle source is integrated at `d90cf0a3`; ten focused
 suites and Cedar's independent capture/concurrent-buffer checks pass. It is newer
-than the combined gate above. Source-stage work now reaches emitted artifacts:
-owner warm replay, a relocated prefix boundary and missing post-rewind dependencies
-were reduced. Partial REPL captures wrongly skip their required cold core prefix;
-that startup ordering fix remains active. The source-bound target writer is being
-built through AOT from the first dependency. This exposed untyped indirect calls
-in the owner adapter, now assigned for typed dispatch repair. No all-AOT product
+than the combined gate above. Symbol indexing is integrated at `41c7af94`: fresh
+source tests pass, with 774/1692/3197 successful lookup probes for 512/1024/2048
+symbols. Typed owner dispatch is integrated at `a5b1956b`; the fresh tier1 owner
+fixture passes. The next all-tier1 failure is `A64IR-OPCODE:TAG`: NFAM reads the
+retained checker's type-family registry while the source checker judges a new one.
+The owner lane is repairing that boundary and preparing a paired native compiler.
+
+Owned artifact sections are integrated at `2b94ee43`. Real captures survive erased
+source sections and released source mappings; exact address rows and all payload
+bytes return. Both tiers pass, as does the artifact suite on lifecycle host
+`cdac89e02a34`. An overflowing positive section length is refused before copying.
+The later source-bound writer and first-generation layout checks remain active.
+
+Source-stage candidate `5ba3fad3` boots partial images and passes wide-format
+checks. Independent review found that its relocated prefix mark follows a rebound
+`CURSORS` spelling; that repair is required before landing. Two obsolete WID
+collision fixtures remain red, and the compiler-chain producer's one-row
+assumption is being replaced with exact declared-row checks. No all-AOT product
 or application replacement is accepted yet.
 
 Hazel's complete Tender pair was 153.3 to 131.6 seconds; the later session pair

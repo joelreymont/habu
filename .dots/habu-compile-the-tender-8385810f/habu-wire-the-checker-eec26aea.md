@@ -15,3 +15,11 @@ Plan: [PLAN.md](../../PLAN.md). Design reconciled 2026-09-13; replaces stale dia
 Own aot-arm.f payload arm/mark/high-waters, aot-capture.f signature/type collection, checker ASIG and type-family registry mark/restore; exclude call-row recording. Payload is required for restored checked REPL. Arm source owner and freeze membership before persistence/writer tools; restore correct registry base, close on refusal. Do not retire empty sections to hide unarmed producer. Verify explicit family/signature content after cleared-buffer read, source-free checked call/wrong-type refusal and second capture, with writer-only types excluded. Consume layout leaf's distinct membership/DATA boundaries.
 
 Verification: focused real-load cases above; rebuild and run `bin/hb --load test/run.f` for compiler/runtime integration. Speed acceptance uses the all-AOT campaign pair; functional/count evidence can be developed in parallel.
+
+Sequencing constraint confirmed while separating the target writer:
+`CHECKER-CAPTURE-SCRATCH-PREPARE` disarms and clears ASIG stores. Freeze/export
+the source owner's required payload before that preparation, then persist its
+runtime registry before the final DATA bound. Current `ACAP-AUDIT-SIGS` is not
+called by CAPTURE and is lexically bound to the host checker; inserting it after
+preparation would still lose the source owner's rows. The owned section transfer
+now preserves supplied payload bytes, but does not establish this producer seam.
