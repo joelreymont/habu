@@ -1,9 +1,11 @@
 ---
 title: Select the native-match emission probe tier explicitly
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-13T19:25:43.291769+03:00"
+closed-at: "2026-09-13T16:35:00Z"
+close-reason: "The private emission probe selects AOT and restores its caller's tier on success or throw. Direct and gate-style loads pass with unchanged instruction assertions; following source reports retained-tier 0 and 1 respectively. Independently reviewed by owner_audit."
 ---
 
 Direct bin/hb --load test/compiler/native-match.f runs at the default tier, but CAPTURE-EMISSION and EMISSION-CASE assert tier 1 instruction shape. The normal suite adapter inserts test/compiler/aot-mode.f for every native-*.f path, so this mismatch is hidden in the full gate. Select the intended tier at the emission probe boundary while preserving caller tier and both existing instruction assertions; do not weaken tick guards or force unrelated test definitions to another tier.
@@ -21,3 +23,9 @@ The new native-match-layout helper independently passes at default and tier 1.
 
 Acceptance: direct and gate-driven native-match pass with the same trap and
 size assertions, and the probe leaves the caller's compilation tier intact.
+
+Validated the final source with the same 5b969df8 host through both real load
+paths. Logs: /tmp/cedar-match-retained-tier0.log and
+/tmp/cedar-match-retained-tier1.log. Both report test: ok and native-match: ok;
+the following source reports the original tier. This is focused fixture
+validation, not a new full gate or an all-AOT product claim.

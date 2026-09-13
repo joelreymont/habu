@@ -632,7 +632,16 @@ variable QUAD-SIZE
    PROBE-UNW$ TRY drop s" PROBE-UNW" CODE! CODE-LEN @ UNW-SIZE !
    PROBE-QUAD$ TRY drop s" PROBE-QUAD" CODE! CODE-LEN @ QUAD-SIZE ! ;
 
-CAPTURE-EMISSION
+\ These instruction assertions describe optimizing emission. Other cases keep
+\ the caller's tier, including when the suite is loaded directly from the REPL.
+TRUSTED: CAPTURE-NATIVE-EMISSION ( -- )
+   tier@ {: prior:n :}
+   1 set-tier
+   ['] CAPTURE-EMISSION catch {: rc:n :}
+   prior set-tier
+   rc 0<> if rc throw then ;
+
+CAPTURE-NATIVE-EMISSION
 
 \ ---- behavior ---------------------------------------------------------------
 
