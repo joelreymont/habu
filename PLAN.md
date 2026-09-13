@@ -38,18 +38,26 @@ Review base: `.jj-ws/rowan-root`, source `5226a994` plus tracker-only `4f234270`
 engine SHA-256 `28e11361f60228d24e7e3f6fca496ca0f9a4f2c8c8e66b5fdc91c9db031de462`.
 Hazel reported 314 suites with seven failures. That is not a fresh green gate.
 
-Fresh integration check: engine `e27fbfac9948` ran 316 suites with 10 failures:
-`internal-word-gate`, `type-field-owner`, `engine-runtime-regressions`,
-`addrmap-inline`, `cast`, `p2-map-rewind`, `aot-wide-format`, `aot-wid-restore`,
-`build-fixpoint-fixtures`, and `pre-trust-defer`. The earlier local-case caller
-collisions and complete environment comparison now pass. Internal-call protection
-has a reviewed fix with three focused suites passing on first and repeated native
-products (a772a9a2); the combined gate remains pending. The source-stage cases
-exposed an early-checker vocabulary/Boolean error in provider publication, corrected
-in `0cf9ec8b`; assembled source certification now passes, but stage execution was trapped in an unresolved self-branch. A private correction now
-reaches the subsequent recorded `E-UNDEFINED: true` maker failure. The new runtime failure is a watchpoint-resume SIGSEGV
-(74e8b1d9), with diagnosis explicit rather than assigned to old PTY timing flakes.
-Full acceptance requires every named failure to pass on the final candidate.
+Fresh combined gate: source `963958d8`, engine `bee6aacab6734`, ran all
+318 suites with 12 failures: `effect-read-api`, `aot-wid-restore`,
+`aot-wide-format`, `pre-trust-defer`, `build-fixpoint-fixtures`, `cast`,
+`engine`, `engine-runtime-regressions`, `program-diagnostics`,
+`multi-error-api`, `addrmap-inline`, and `p2-map-rewind`.
+The provider matrix, owner window, internal-call guards, symbol ceilings,
+local-case/environment regressions and new debugger-resume regression pass.
+The runtime suite's new refusal is an invalid created-word effect in its wide
+`does>` fixture; the corrected declaration reaches the intended rejection.
+Private-checker fixture calls are being repaired without weakening protection.
+
+Reviewed transient lifecycle source is integrated at `d90cf0a3`; ten focused
+suites and Cedar's independent capture/concurrent-buffer checks pass. It is newer
+than the combined gate above. Source-stage work now reaches emitted artifacts:
+owner warm replay, a relocated prefix boundary and missing post-rewind dependencies
+were reduced. Partial REPL captures wrongly skip their required cold core prefix;
+that startup ordering fix remains active. The source-bound target writer is being
+built through AOT from the first dependency. This exposed untyped indirect calls
+in the owner adapter, now assigned for typed dispatch repair. No all-AOT product
+or application replacement is accepted yet.
 
 Hazel's complete Tender pair was 153.3 to 131.6 seconds; the later session pair
 reduced the trivial floor from 4,106 to 3,668 microseconds. Both used a compiler
