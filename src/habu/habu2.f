@@ -1144,9 +1144,20 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ not authority to recover: batch source can name its installer, and --load may
 \ inherit a tty on fd 0. A successful fd-0 terminal probe plus either ARGC==1
 \ or the application startup entry distinguishes the REPL from batch input.
+\ Registered as the sealed (LREPLROUTE) engine helper, exactly like (PROT-SPAN)
+\ and (LP2VEXEC) and for the same reason: the `throw` primitive reaches this
+\ routine by a DIRECT BL (habu1.f BTHROW, the only recovery route a bare tty REPL
+\ may take), and a stripped ahead-of-time image relocates such a call by resolving
+\ its target to a record's exact code entry (aot-closure.f FINDADDR-PTR). With no
+\ record the walk resolves nothing, the callee never enters the closure, and the
+\ linker refuses the branch it cannot rewrite - `aot: PC-relative target removed
+\ or outside closure`, exit 74, for every program whose closure reaches `throw`.
+\ The record is system-private (OWNER-API-PRI-WID), so no word search sees it.
 : EMIT-REPL-ROUTE ( -- )
-   LBL LBL {: no:label tty:label :}
-   LREPLROUTE LABEL@ LBL,
+   LBL LBL LBL {: no:label tty:label end:label :}
+   LREPLROUTE LABEL@ {: start:label :}
+   s" (LREPLROUTE)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
    9 DATA REPLH-CELL LDR,  9 no CBZ,
    9 DATA INP-CELL LDR,  9 no CBZ,       \ startup has no source frame to recover into
    9 DATA APP-ENTRY:XT-CELL LDR,  9 tty CBNZ,
@@ -1157,7 +1168,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    RET,
    no LBL,
    9 0 MOVZ,
-   RET, ;
+   RET,
+   end LBL, ;
 
 variable SRC-TTY  variable SRC-FILE
 variable SRC-RL   variable SRC-RD    variable SRC-PIPEOK
