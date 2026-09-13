@@ -834,6 +834,32 @@ package BUILD-FIXPOINT
    BFT-PREFIX BFT-READ {: v:n :}
    BFT-READ-BUF v name nameu VERIFY:DEFINES? TTRUE ;
 
+\ Dependencies must be in the emitted bytes, even when the warmed host can
+\ supply their effects. Check the module bodies and the provided facts in the
+\ order their real consumers need them.
+: BFT-COMMON-DEPS ( n -- ) {: u:n :}
+   BFT-READ-BUF u s" FIRST-LABEL" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" CAPTURE-RANGE," VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" SB-FIX" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s\" s\" src/habu/primitive-registry.f\" provided" BFT-FIND BFT-FOUND {: prim:n :}
+   BFT-READ-BUF u prim s" package ENGINE-HELPER" BFT-FIND-AFTER BFT-FOUND {: helper:n :}
+   BFT-READ-BUF u helper s" : EMIT-HELPERS " BFT-FIND-AFTER BFT-FOUND {: origin:n :}
+   BFT-READ-BUF u origin s\" s\" src/habu/code-origin.f\" provided" BFT-FIND-AFTER BFT-FOUND {: fact:n :}
+   BFT-READ-BUF u fact s" require src/habu/code-origin.f" BFT-FIND-AFTER BFT-FOUND drop
+   BFT-READ-BUF u s" ENUM option 1" BFT-FIND BFT-FOUND {: opt:n :}
+   BFT-READ-BUF u opt s\" s\" lib/adt/option.f\" provided" BFT-FIND-AFTER BFT-FOUND {: optfact:n :}
+   BFT-READ-BUF u optfact s" NEWTYPE byte-len 0" BFT-FIND-AFTER BFT-FOUND {: num:n :}
+   BFT-READ-BUF u num s\" s\" lib/cad-num-types.f\" provided" BFT-FIND-AFTER BFT-FOUND {: numfact:n :}
+   BFT-READ-BUF u numfact s" : ADD-BYTES " BFT-FIND-AFTER BFT-FOUND {: arith:n :}
+   BFT-READ-BUF u arith s\" s\" lib/cad-num-arithmetic.f\" provided" BFT-FIND-AFTER BFT-FOUND {: arithfact:n :}
+   BFT-READ-BUF u arithfact s" : SB-RESET " BFT-FIND-AFTER BFT-FOUND {: str:n :}
+   BFT-READ-BUF u str s\" s\" lib/string.f\" provided" BFT-FIND-AFTER BFT-FOUND {: strfact:n :}
+   BFT-READ-BUF u strfact s" : POW10 " BFT-FIND-AFTER BFT-FOUND {: fl:n :}
+   BFT-READ-BUF u fl s\" s\" lib/float.f\" provided" BFT-FIND-AFTER BFT-FOUND {: flfact:n :}
+   BFT-READ-BUF u flfact s" : SB-FIX " BFT-FIND-AFTER BFT-FOUND {: fmt:n :}
+   BFT-READ-BUF u fmt s\" s\" lib/fmt.f\" provided" BFT-FIND-AFTER BFT-FOUND {: fmtfact:n :}
+   BFT-READ-BUF u fmtfact s" require lib/fmt.f" BFT-FIND-AFTER BFT-FOUND drop ;
+
 \ Both assemblies are written here rather than inherited from an earlier step,
 \ so the pair the contract compares is one build's. The payload is the STDIN
 \ source - the one that becomes bin/hb - because that is the assembly a shipped
@@ -849,7 +875,7 @@ package BUILD-FIXPOINT
    s" SEAL-DICT-GUARD" BFT-PREFIX-ONCE
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
-   BFT-READ-BUF u s" RPD@" VERIFY:DEFINES? TTRUE
+   BFT-READ-BUF u s" FPRIM" VERIFY:DEFINES? TTRUE
    BFT-READ-BUF u s" STDIN-OUT" VERIFY:DEFINES? TTRUE
    \ These live beyond the core mark in the cold host and must be reassembled
    \ after rewind, even though certification can also resolve the host's copy.
@@ -858,6 +884,7 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u s" 0<>" VERIFY:DEFINES? TTRUE
    BFT-READ-BUF u s\" s\" lib/prelude.f\" provided" CONTAINS? TTRUE
    BFT-READ-BUF u s\" s\" lib/errors.f\" provided" CONTAINS? TTRUE
+   u BFT-COMMON-DEPS
    BFT-READ-BUF u s" BFR-CHECK-OFF" BFT-FIND BFT-FOUND {: off:n :}
    BFT-READ-BUF u off s" PREFIX-REWIND:TO-CORE" BFT-FIND-AFTER BFT-FOUND {: rewind:n :}
    BFT-READ-BUF u rewind s" LOWER-CERT-HOOK:INSTALL" BFT-FIND-AFTER BFT-FOUND {: hook:n :}
@@ -890,7 +917,7 @@ package BUILD-FIXPOINT
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : ASM-CODELEN!" BFT-FIND BFT-FOUND BFT-IMG-I !
    BFT-READ-BUF u BFT-IMG-I @ s" : BUILD-IMAGE" BFT-FIND-AFTER BFT-FOUND BFT-IMG-BUILD-I !
-   BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : RPD@" BFT-FIND-AFTER BFT-FOUND BFT-HABU1-I !
+   BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : FPRIM " BFT-FIND-AFTER BFT-FOUND BFT-HABU1-I !
    BFT-READ-BUF u BFT-IMG-I @ BF-BOUNDARY-RAW-OFF$ BFT-FIND-AFTER BFT-NOT-FOUND
    BFT-IMG-I @ BFT-IMG-BUILD-I @ < TTRUE
    BFT-IMG-BUILD-I @ BFT-HABU1-I @ < TTRUE ;
@@ -1557,9 +1584,11 @@ variable BAD-N
    BFT-ROOT BF-TMP!
    BF-STAGE2-SOURCE
    BFT-STAGE2 FILE? TTRUE
+   BF-CERTIFY-STAGE2
    BF-RECORD-STAGE
    BF-STDIN-SOURCE
    BFT-STAGE2 FILE? TTRUE
+   BF-CERTIFY-STDIN
    BF-RECORD-STDIN
    BF-REC-STAGE-DG BF-STAMP-DG-U BF-REC-STDIN-DG BF-STAMP-DG-U STR= TFALSE
    BF-TMP-RESET ;
@@ -1580,6 +1609,25 @@ variable BAD-N
    [: BFT-PIN-RELOAD ;] E-BUILD-BOOT-DRIFT TTHROWSQ
    BF-PIN-OFF!
    BF-PIN-RESET ;
+
+\ Split emission pins the whole input before copying either side. Changing the
+\ file between its two halves must refuse, and stripped prefixes obey the same
+\ pin instead of opening an untracked source-read path.
+: BFT-TEST-SPLIT-PIN ( -- )
+   BFT-ROOT BF-TMP!
+   BF-PIN-RESET
+   BF-PIN-ON!
+   s" \ before marker after" BFT-CERT-WRITE
+   s" pin-split" BF-RESET-OUT
+   s" pin-split" BFT-CERT s" marker" BF-APPEND-SOURCE-BEFORE
+   BFT-CERT s" \ mid-split edit" APPEND-FILE
+   [: s" pin-split" BFT-CERT s" marker" BF-APPEND-SOURCE-FROM ;]
+      E-BUILD-BOOT-DRIFT TTHROWSQ
+   [: s" pin-split" BFT-CERT s" marker" BF-APPEND-SOURCE-BEFORE-STRIPPED ;]
+      E-BUILD-BOOT-DRIFT TTHROWSQ
+   BF-PIN-OFF!
+   BF-PIN-RESET
+   BF-TMP-RESET ;
 
 \ The native chain's contribution to the stamp key (package STAMP-KEY in
 \ tools/build-fixpoint.f). Two claims, and the second is what makes the first
@@ -1737,6 +1785,7 @@ public
    s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
    s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
+   s" split source pin mismatch" [: BFT-TEST-SPLIT-PIN ;] BFT-STEP
    s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify call store" [: BFT-TEST-CERTIFY-CALL-STORE ;] BFT-STEP

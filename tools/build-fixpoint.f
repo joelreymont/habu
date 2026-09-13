@@ -588,9 +588,9 @@ TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
 \ ---------------------------------------------------------------------------
 \ Boot-prefix hash pin: close the mid-build boot-reload TOCTOU.
 \
-\ Every checkout source file emitted into a stage image is streamed by
-\ BF-APPEND-SOURCE. The same boot-prefix files (checker/core/target/emitter
-\ surface) are re-read across the stage2, stdin, and snap emissions and the
+\ Every checkout source file emitted into a stage image is pinned before the
+\ append or split helpers copy it. The same boot-prefix files (checker, core,
+\ target and emitter surface) are re-read across stage2, stdin and snap, and the
 \ stamp-key re-emit. Between those reads a source edit would let stage N build
 \ from one revision and stage N+1 from another, silently entering the installed
 \ image. The pin records each path's content digest on first read and
@@ -650,6 +650,12 @@ TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
    src srcu BF-PIN-FILE
    src srcu out outu BF-OUT$ BF-APPEND-FILE-STREAM
    out outu BF-APPEND-LF ;
+
+: BF-APPEND-MODULE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n :}
+   out outu src srcu BF-APPEND-SOURCE
+   out outu S\" s\" " BF-APPEND-BYTES
+   out outu src srcu BF-APPEND-BYTES
+   out outu S\" \" provided" BF-APPEND-LINE ;
 
 public
 EXPORT BF-APPEND-SOURCE
@@ -782,18 +788,21 @@ package BUILD-FIXPOINT
    BF-STRIP-W @ ;
 
 : BF-APPEND-SOURCE-BEFORE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
+   src srcu BF-PIN-FILE
    src srcu BF-READ-SOURCE
    mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE {: off:n :}
    out outu BF-SOURCE-BUF off BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
 : BF-APPEND-SOURCE-BEFORE-STRIPPED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
+   src srcu BF-PIN-FILE
    src srcu BF-READ-SOURCE
    mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE BF-STRIP-RANGE {: kept:n :}
    out outu BF-SOURCE-BUF kept BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
 : BF-APPEND-SOURCE-FROM ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
+   src srcu BF-PIN-FILE
    src srcu BF-READ-SOURCE
    mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE {: off:n :}
    out outu BF-SOURCE-BUF off + BF-SOURCE-LEN @ off - BF-APPEND-BYTES
@@ -1023,6 +1032,28 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-DECL-FILES
    out outu BF-APPEND-BOOT-CORE ;
 
+\ The verifier reads the emitted buffer and does not follow require. Include
+\ both build modules at their actual dependency boundaries: code-origin calls
+\ ENGINE-HELPER, so its source belongs after that package in habu1.f.
+: BF-CODE-ORIGIN-REQUIRE$ ( -- ptr u8 n ) s" require src/habu/code-origin.f" ;
+
+: BF-APPEND-HABU1 ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" src/habu/primitive-registry.f" BF-APPEND-MODULE
+   out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-BEFORE
+   out outu s" src/habu/code-origin.f" BF-APPEND-MODULE
+   out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-FROM ;
+
+\ fmt requires float and string; float also requires option, and string
+\ requires CAD-NUM arithmetic/types and errors. Prelude/errors are already
+\ restored here. Each provided fact makes the remaining require a no-op.
+: BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" lib/adt/option.f" BF-APPEND-MODULE
+   out outu s" lib/cad-num-types.f" BF-APPEND-MODULE
+   out outu s" lib/cad-num-arithmetic.f" BF-APPEND-MODULE
+   out outu s" lib/string.f" BF-APPEND-MODULE
+   out outu s" lib/float.f" BF-APPEND-MODULE
+   out outu s" lib/fmt.f" BF-APPEND-MODULE ;
+
 \ WHAT IS NOT HERE. Every core-prefix file the compiling host already carries
 \ from its own boot is absent: the payload rewinds to the mark at the end of
 \ that prefix (BF-STAGE2-HIDE-DEFS) rather than truncating past it and
@@ -1033,8 +1064,7 @@ package BUILD-FIXPOINT
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f's code-origin emitter use its checked flag words.
-   out outu s" lib/prelude.f" BF-APPEND-SOURCE
-   out outu S\" s\" lib/prelude.f\" provided" BF-APPEND-LINE
+   out outu s" lib/prelude.f" BF-APPEND-MODULE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
@@ -1047,16 +1077,16 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-TARGET-IMAGE
    out outu BF-APPEND-TARGET-PROC-WATCH
    out outu BF-APPEND-TARGET-PROC-CONTROL
-   out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-HABU1
    out outu BUILD-EXT:APPEND
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
-   out outu s" lib/errors.f" BF-APPEND-SOURCE
-   out outu S\" s\" lib/errors.f\" provided" BF-APPEND-LINE
+   out outu s" lib/errors.f" BF-APPEND-MODULE
    out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-FMT
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
