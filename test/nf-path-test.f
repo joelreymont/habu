@@ -8,6 +8,8 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/test/runner.f
+require test/gate-pool.f
 
 package NF-PATH-TEST
 private
@@ -24,8 +26,7 @@ create ROOT FS-PATH-CAP allot       variable ROOT-U
 create LONG-ROOT FS-PATH-CAP allot  variable LONG-U
 create QUOTED-ROOT FS-PATH-CAP allot variable QUOTED-U
 create OVERFLOW-ROOT FS-PATH-CAP allot variable OVERFLOW-U
-create LONG-LOG FS-PATH-CAP allot   variable LONG-LOG-U
-create QUOTED-LOG FS-PATH-CAP allot variable QUOTED-LOG-U
+create FORGED-ROOT FS-PATH-CAP allot variable FORGED-U
 create PATH-BUF FS-PATH-CAP allot
 create OUT CAP allot
 create ERR CAP allot
@@ -34,8 +35,7 @@ create ERR CAP allot
 : LONG$ ( -- ptr u8 n ) LONG-ROOT LONG-U @ ;
 : QUOTED$ ( -- ptr u8 n ) QUOTED-ROOT QUOTED-U @ ;
 : OVERFLOW$ ( -- ptr u8 n ) OVERFLOW-ROOT OVERFLOW-U @ ;
-: LONG-LOG$ ( -- ptr u8 n ) LONG-LOG LONG-LOG-U @ ;
-: QUOTED-LOG$ ( -- ptr u8 n ) QUOTED-LOG QUOTED-LOG-U @ ;
+: FORGED$ ( -- ptr u8 n ) FORGED-ROOT FORGED-U @ ;
 
 : TARGET$ ( -- ptr u8 n )
    HB-TARGET-LINUX? if s" linux-aarch64" exit then
@@ -75,8 +75,8 @@ create ERR CAP allot
    ROOT$ S\" lane one 'quote; dollar$ \qdouble\q [brackets]" QUOTED-ROOT JOIN-PATH QUOTED-U !
    LONG$ MAKE-DIRS
    QUOTED$ MAKE-DIRS
-   ROOT$ s" long.log" LONG-LOG JOIN-PATH LONG-LOG-U !
-   ROOT$ s" quoted.log" QUOTED-LOG JOIN-PATH QUOTED-LOG-U ! ;
+   ROOT$ s" forged" FORGED-ROOT JOIN-PATH FORGED-U !
+   FORGED$ MAKE-DIRS ;
 
 : GF-ENV ( ptr u8 n -- ) {: root:ptr rootu:n :}
    PROC-ENV-RESET
@@ -89,23 +89,11 @@ create ERR CAP allot
    GFORTH$ >LEN PROC-ARGV+
    s" test/bootstrap-wide-memory.fs" >LEN PROC-ARGV+ ;
 
-: GF-SPAWN ( ptr u8 n ptr u8 n -- pid )
-   {: root:ptr rootu:n log:ptr logu:n :}
+: GF-START ( ptr u8 n ptr u8 n -- )
+   {: root:ptr rootu:n label:ptr labelu:n :}
    GF-FILE-ARGV
    root rootu GF-ENV
-   log logu FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open
-   {: fd:n :}
-   fd 0 < if E-FS-OPEN throw then
-   s" /usr/bin/env" >LEN -1 >FD fd >FD fd >FD PROC-SPAWN-ARGV-ENV-IO
-   {: pid:pid :}
-   fd close
-   pid ;
-
-: WAIT-RC ( pid -- n )
-   PROC-WAIT-RC MATCH result
-     ok  OF drop 0 ENDOF
-     err OF ENDOF
-   ;MATCH ;
+   s" /usr/bin/env" label labelu BUILD-TIMEOUT-MS GT-POOL-START ;
 
 : ROOT-FILE? ( ptr u8 n ptr u8 n -- bool )
    {: root:ptr rootu:n name:ptr nameu:n :}
@@ -120,20 +108,53 @@ create ERR CAP allot
    OUT outu S\" ok\n" STR= ;
 
 : CONCURRENT-CASE ( -- )
-   LONG$ LONG-LOG$ GF-SPAWN {: lp:pid :}
-   QUOTED$ QUOTED-LOG$ GF-SPAWN {: qp:pid :}
-   lp WAIT-RC {: lrc:n :}
-   qp WAIT-RC {: qrc:n :}
-   s" a 97-byte fixture root builds and runs concurrently" T-LABEL
-   lrc 0 T=
-   s" spaces, quotes, and shell metacharacters stay one complete path" T-LABEL
-   qrc 0 T=
+   GT-POOL-RESET
+   LONG$ s" a 97-byte fixture root builds and runs concurrently" GF-START
+   QUOTED$ s" spaces, quotes, and shell metacharacters stay one complete path" GF-START
+   GT-POOL-DRAIN
    s" the long-root artifact and complete output path exist" T-LABEL
    LONG$ s" nf-bin" ROOT-FILE? TTRUE
    LONG$ ROOT-OUT-OK? TTRUE
    s" the quoted-root artifact and complete output path exist" T-LABEL
    QUOTED$ s" nf-bin" ROOT-FILE? TTRUE
    QUOTED$ ROOT-OUT-OK? TTRUE ;
+
+: FORGED-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" sh" >LEN PROC-ARGV+
+   s" -c" >LEN PROC-ARGV+
+   S\" printf 'fake binary\\n' > \q$1/nf-bin\q; printf 'ok\\n' > \q$1/nf-out\q; printf 'ok\\n'; exit 23" >LEN PROC-ARGV+
+   s" nf-path-forge" >LEN PROC-ARGV+
+   FORGED$ >LEN PROC-ARGV+ ;
+
+: FORGED-RUN ( -- n n n )
+   FORGED-ARGV
+   PROC-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" /usr/bin/env" >LEN OUT CAP >LEN ERR CAP >LEN PROBE-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE MATCH result
+     ok OF
+       PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
+       outu LEN>N erru LEN>N 0
+     ENDOF
+     err OF
+       PCAP-FAILED:UNMAKE {: outu:len erru:len rc:rc :}
+       outu LEN>N erru LEN>N rc RC>N
+     ENDOF
+   ;MATCH ;
+
+: NONZERO-CONTROL-CASE ( -- )
+   FORGED-RUN {: outu:n erru:n rc:n :}
+   s" a child that forged the expected files preserves its nonzero exit" T-LABEL
+   rc 23 T=
+   s" the negative control produced expected-looking output and artifacts" T-LABEL
+   OUT outu S\" ok\n" T$=
+   erru 0 T=
+   FORGED$ s" nf-bin" ROOT-FILE? TTRUE
+   FORGED$ ROOT-OUT-OK? TTRUE
+   s" expected-looking artifacts do not turn a nonzero child green" T-LABEL
+   rc 0= OUT outu S\" ok\n" STR= and
+   FORGED$ s" nf-bin" ROOT-FILE? and FORGED$ ROOT-OUT-OK? and TFALSE ;
 
 : GF-EVAL ( ptr u8 n ptr u8 n -- n n n )
    {: root:ptr rootu:n src:ptr srcu:n :}
@@ -173,6 +194,7 @@ public
    T-RESET
    SETUP
    CONCURRENT-CASE
+   NONZERO-CONTROL-CASE
    COMMAND-CAPACITY-CASE
    OVERFLOW-CASE
    CLEANUP-RUN
