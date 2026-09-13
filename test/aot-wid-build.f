@@ -1,10 +1,10 @@
-\ aot-wid-build.f - build a protected-WID variant of the stdin engine.
+\ aot-wid-build.f - build a protected-WID partial native image.
 \
 \ Run as `bin/hb --load test/aot-wid-build.f` with HB_TMP pointing at a private
 \ directory; on success it writes an `hb-pwid` engine into that directory. The
-\ variant is identical to the shipped `bin/hb` except that its capture window
-\ holds two packages of this fixture's own and one of them is protected, so the
-\ built engine restores one protected wordlist the shipped engine has not got.
+\ default variant carries the REPL and two packages of this fixture's own,
+\ one protected. Its cold boot restores one protected wordlist the ordinary
+\ source prefix has not got.
 \ Nothing in production is touched: the protection is asked for inside this
 \ throwaway variant's window, through `prot-wid-add` - the same public word any
 \ package uses to seal its own word-list - and the capture derives what travels
@@ -19,19 +19,14 @@
 \ therefore protects a package it CAN name, and test/aot-wid-suite.f asks the
 \ built engine which id that package got (tools/pkg-wid-probe.f).
 \
-\ How the fixture is injected without editing production source: the stdin
-\ metabuild driver src/habu/stdin.f ends with a single top-level
-\ `STDIN-DRIVER:RUN` call, and everything before it is what a generated driver
-\ keeps. WHICH BYTES THOSE ARE IS NOT THIS FILE'S TO SAY - it asks
-\ BUILD-FIXPOINT's BF-DRV-SOURCE-KEEP, the same word the production chain driver
-\ asks, so the tail token and its fail-closed check live in one place instead of
-\ two that drift. This builder then appends the driver's own terminal sequence
-\ written out at interpret level, with the protected-WID work spliced in between
-\ capturing the REPL and emitting the image. CAPTURE-REPL and the capture words
-\ are package-private, so the appended text reopens STDIN-DRIVER and AOT-CAPTURE
-\ to reach them by their bare names - it never adds a public tail to either. The
-\ rest of the build reuses tools/build-fixpoint.f exactly as the normal stdin
-\ build does.
+\ The current native writer first emits an empty cold host. That host loads the
+\ real prefix and compiles the REPL and fixture in one partial window, using
+\ the JIT instruction shapes the offset and inlining cases below describe.
+\ All fixture definitions precede the one effect-payload freeze; repeated
+\ captures keep that same membership and measure the live protection band.
+\ The artifact crosses to a fresh optimizing native writer process. Its cold
+\ product reads the restoring checkout's prefix before seeding, so a private
+\ top-row copy can establish a real target WID collision.
 \
 \ The modes below are selected by environment so one builder serves every case
 \ its companion suites need (HABU_AOT_GATE serves two) -
@@ -74,8 +69,7 @@
 \   HABU_AOT_BIG=1     grow the capture window past the 64 KiB world the format
 \                      used to live in (dot habu-widen-the-aot-089f5faf): compile
 \                      BIG-FILLER-N filler words, then a data cell, a callee and a
-\                      reporter ABOVE them, and take the lot in with a widened
-\                      re-capture. The build then asserts the three offsets that
+\                      reporter ABOVE them, and capture the complete window. The build then asserts the three offsets that
 \                      no u16 field could have held - the blob length, the highest
 \                      call-site blob offset and the highest DATA-site blob offset
 \                      are each past 65535 - and dies named if any of them is not,
@@ -131,41 +125,57 @@ require lib/string.f
 require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
-require lib/vector.f
-require lib/fmt.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
-require lib/process-fork.f
-require lib/source.f
-require lib/build.f
-require lib/codesign.f
-require lib/content-key.f
-require lib/date.f
-require tools/build-fixpoint.f
+require lib/engine-candidate.f
 
 package AOT-WID-BUILD
-using BUILD-FIXPOINT
 
-\ Driver = the stdin source BUILD-FIXPOINT keeps + this file's injection. The
-\ big-window mode writes BIG-FILLER-N definitions into it, which is what sets this
-\ cap rather than the ~4 KB source.
+\ The large mode contributes one checked definition per filler row.
 $20000 constant DRV-CAP
+$10000 constant IO-CAP
+120000 constant CHILD-TIMEOUT-MS
+74 constant BUILD-RC
 
 create DRV-BUF DRV-CAP allot   variable DRV-U
 create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
+create ROOT-BUF FS-PATH-CAP allot variable ROOT-U
+create COLD-BUF FS-PATH-CAP allot variable COLD-U
+create ART-BUF FS-PATH-CAP allot variable ART-U
+create IMAGE-BUF FS-PATH-CAP allot variable IMAGE-U
+create PATCH-BUF FS-PATH-CAP allot variable PATCH-U
+create OUT IO-CAP allot
+create ERR IO-CAP allot
+variable WINDOW-ENDED
+
+: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
+: COLD$ ( -- ptr u8 n ) COLD-BUF COLD-U @ ;
+: ART$ ( -- ptr u8 n ) ART-BUF ART-U @ ;
+: IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
+: PATCH$ ( -- ptr u8 n ) PATCH-BUF PATCH-U @ ;
+
+: PATHS ( -- )
+   s" HB_TMP" GETENV {: a:ptr u:n :}
+   u 0= u FS-PATH-CAP > or if
+      s" aot-wid-build: HB_TMP must name a private directory" BUILD-RC die then
+   a ROOT-BUF u BYTE-COPY u ROOT-U !
+   ROOT$ s" hb-cold" COLD-BUF JOIN-PATH COLD-U !
+   ROOT$ s" window.aot" ART-BUF JOIN-PATH ART-U !
+   ROOT$ s" hb-pwid" IMAGE-BUF JOIN-PATH IMAGE-U !
+   ROOT$ s" pwid-patch.f" PATCH-BUF JOIN-PATH PATCH-U ! ;
 
 : DRV-PATH$ ( -- ptr u8 n )
    DRV-PATH-BUF DRV-PATH-U @ ;
 
 : DRV-PATH! ( -- )                 \ <HB_TMP>/pwid-driver.f
-   BF-TMP$ s" pwid-driver.f" DRV-PATH-BUF JOIN-PATH DRV-PATH-U ! ;
+   ROOT$ s" pwid-driver.f" DRV-PATH-BUF JOIN-PATH DRV-PATH-U ! ;
 
 : DRV-RESET ( -- )
    0 DRV-U ! ;
 
 : DRV+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   DRV-U @ u + DRV-CAP > if s" aot-wid-build: driver buffer overflow" BF-BUILD-RC die then
+   DRV-U @ u + DRV-CAP > if s" aot-wid-build: driver buffer overflow" BUILD-RC die then
    a DRV-BUF DRV-U @ + u BYTE-COPY
    DRV-U @ u + DRV-U ! ;
 
@@ -196,7 +206,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 : DRV-IMPORT-CHECK ( -- )
    S\" package AOT-CAPTURE\n" DRV-COUNT
    S\" package AOT-CAPTURE\nusing AOT-BUF\n" DRV-COUNT
-   <> if s" aot-wid-build: a generated AOT-CAPTURE block has no `using AOT-BUF`" BF-BUILD-RC die then ;
+   <> if s" aot-wid-build: a generated AOT-CAPTURE block has no `using AOT-BUF`" BUILD-RC die then ;
 
 create DRV-CH 1 allot
 : DRV-CH+ ( n -- ) {: c:n :}
@@ -205,24 +215,21 @@ create DRV-CH 1 allot
    v 10 >= if v 10 / recurse then
    v 10 mod 48 + DRV-CH+ ;
 
-\ Optional AOT DATA-span forge (dot habu-guard-aot-data-49de2ee6). The reserve in
-\ EM-AOT-RELOC-DATA advances DP by the baked LAOTDATASIZE span read straight from
-\ the image; test/aot-data-span-forge.f probes that guard by baking a forged span.
-\ When HABU_AOT_SPAN is set to a decimal, that value overwrites the captured span
-\ AFTER CAPTURE-REPL and BEFORE ENGINE-EMIT:FORTH, so LAOTDATASIZE carries the forged value
-\ (the forge test passes 2*DATA-SIZE, unambiguously past the seed headroom). No env
-\ leaves the real capture untouched (the plain protected-WID build path).
+\ Forge the emitted scalar after the ordinary artifact reader and image writer
+\ accept the valid capture. The generated patch checks its bound label, full
+\ cell span and original value before rebuilding/signing that image.
 : SPAN-FORGE-LINE ( -- )
    s" HABU_AOT_SPAN" GETENV {: v:ptr vu:n :}
    vu 0 > if
-      v vu DRV+  s"  AOT-BUF:AOT-DATA-SIZE !" DRV-LINE
+      v vu DRV+
+      s"  AOT-BUF:AOT-DATA-SIZE @ LAOTDATASIZE LABEL@ PATCH-CELL" DRV-LINE
    then ;
 
 \ Optional wid-window forges (dot habu-rebase-captured-wids-54dec421). The seed
 \ rebases every captured wid through the baked window, and refuses one the window
 \ does not contain - on either side. The capture refuses such a record at capture
-\ time, so the only way to bake one is to move the window AFTER the capture and
-\ before the emit. Raising the base puts every captured wid BELOW the window;
+\ time, so corrupt the emitted scalar AFTER the normal writer. Raising the base
+\ puts every captured wid BELOW the window;
 \ shrinking the span puts them past its end. Both need a fixture that captures a
 \ non-zero wid at all - the REPL sources define no package, so HABU_AOT_GATE
 \ supplies the package these are combined with.
@@ -230,14 +237,15 @@ create DRV-CH 1 allot
    s" HABU_AOT_WID_SKEW" GETENV {: v:ptr vu:n :}
    vu 0 > if
       s" AOT-BUF:AOT-WID-W0 @ " DRV+  v vu DRV+
-      s"  + AOT-BUF:AOT-WID-W0 !" DRV-LINE
+      s"  + AOT-BUF:AOT-WID-W0 @ AOT-WINDOW:LWIDW0 LABEL@ PATCH-CELL" DRV-LINE
    then
    s" HABU_AOT_WID_SPAN" GETENV {: p:ptr pu:n :}
    pu 0 > if
-      p pu DRV+  s"  AOT-BUF:AOT-WID-SPAN !" DRV-LINE
+      p pu DRV+
+      s"  AOT-BUF:AOT-WID-SPAN @ AOT-WINDOW:LWIDSPAN LABEL@ PATCH-CELL" DRV-LINE
    then ;
 
-\ --- the body between CAPTURE-REPL and the image emit --------------------------
+\ --- the capture window and its fixture source --------------------------------
 : BAD-ENV$ ( -- ptr u8 n )       s" HABU_PWID_BAD" GETENV ;
 : SKEW-ENV$ ( -- ptr u8 n )      s" HABU_AOT_D0_SKEW" GETENV ;
 : SPAN-ENV$ ( -- ptr u8 n )      s" HABU_AOT_SPAN" GETENV ;
@@ -251,14 +259,14 @@ create DRV-CH 1 allot
 
 \ The plain protected-WID fixture is the fallback mode, but two knobs reach that
 \ point with a window of their own to keep: the D0-skew refusal re-captures the
-\ REPL window as CAPTURE-REPL left it, and the DATA-span forge
+\ closed REPL window, and the DATA-span forge
 \ (test/aot-data-span-forge.f) bakes that same window with a forged span. Neither
 \ wants two packages of ours inside it.
 : PLAIN-MODE? ( -- bool )
    SKEW-ENV$ nip 0 =  SPAN-ENV$ nip 0 =  and ;
 
 \ Re-run the real capture over the real window with the DATA span start moved.
-\ AOT-ARM's window cells still hold the span CAPTURE-REPL just latched, so raising
+\ AOT-ARM's window cells still hold the span just latched, so raising
 \ D0 and handing the same WINDOW$ to the production entry point (AOT-CAPTURE's
 \ public CAPTURE) gives a window that cannot describe its own contents - a poked
 \ wrong value, not a stand-in. The line is emitted inside the reopened
@@ -273,26 +281,26 @@ create DRV-CH 1 allot
 : SKEW-MODE-LINES ( -- )
    SKEW-ENV$ {: k:ptr ku:n :}
    ku 0= if exit then
+   s" AOT-ARM:WINDOW-CLOSE" DRV-LINE
+   -1 WINDOW-ENDED !
+   s" AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE" DRV-LINE
    DRV-AOT-CAPTURE
    k ku SKEW-BODY
    s" ;package" DRV-LINE ;
 
-\ CAPTURE-REPL is private to package STDIN-DRIVER, so the appended text reopens
-\ that package, ticks it, closes the package and executes the token - reaching the
-\ real word by its real name without publishing anything.
+\ Load the real REPL source inside the fixture window.
 : CAPTURE-REPL-LINES ( -- )
-   s" package STDIN-DRIVER" DRV-LINE
-   s" ' CAPTURE-REPL" DRV-LINE
-   s" ;package" DRV-LINE
-   s" execute" DRV-LINE ;
+   s" AOT-ARM:WINDOW-OPEN" DRV-LINE
+   HB-TARGET-LINUX? if s" include src/os/linux/repl-term.f"
+   else s" include src/os/macos/repl-term.f" then DRV-LINE
+   s" include src/habu/repl.f" DRV-LINE
+   s" include src/habu/debug-watch.f" DRV-LINE
+   s" include src/habu/stepper.f" DRV-LINE
+   s" include src/habu/debug.f" DRV-LINE ;
 
 \ --- the window-content fixtures ----------------------------------------------
-\ They all work the way SKEW-BODY does: define at top level, then hand the REAL entry
-\ point (AOT-CAPTURE's public CAPTURE) a window widened to take in what was just
-\ defined. stdin.f's own window variables supply the START of every span, so the
-\ blob, record and DATA spans all still begin exactly where CAPTURE-REPL began
-\ them; only the ends move out to the live cursors. Nothing about the capture, the
-\ bake or the seed is stood in for.
+\ Define at top level, then close the real capture window after both the REPL
+\ and the fixture definitions. AOT-ARM owns every span and the checker payload.
 \ The boot-run list is re-stated because CAPTURE resets it, and the three REPL
 \ entries come first so the engine still installs its REPL before the fixture runs.
 \ HABU_AOT_WID_NARROW=N pokes the window's wordlist END back down by N after it
@@ -305,12 +313,14 @@ create DRV-CH 1 allot
    nu 0= if exit then
    s" AOT-ARM:W1 @ " DRV+  n nu DRV+  s"  - AOT-ARM:W1 !" DRV-LINE ;
 
-\ WINDOW-CLOSE moves the window's three END cursors to the live ones and re-reads
-\ WIDN, leaving its START where CAPTURE-REPL put it - which is exactly the widened
-\ window these fixtures need, and one word instead of six cursor reads.
+\ Close only once, after the fixture definitions. Subsequent captures retain
+\ the same frozen membership even if tooling later allocates or defines helpers.
 : RECAPTURE-LINE ( -- )
-   s" AOT-ARM:WINDOW-CLOSE" DRV-LINE
-   WID-NARROW-LINE
+   WINDOW-ENDED @ 0= if
+      s" AOT-ARM:WINDOW-CLOSE" DRV-LINE
+      WID-NARROW-LINE
+      -1 WINDOW-ENDED !
+   then
    s" AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE" DRV-LINE ;
 
 : REPL-BOOTRUN-LINES ( -- )
@@ -408,7 +418,7 @@ create DRV-CH 1 allot
    RECAPTURE-LINE ;
 
 \ An initialised cell plus a word that reads it. The word's reference to the cell
-\ is a DATA address literal in the widened window, so the value only reaches the
+\ is a DATA address literal inside the window, so the value only reaches the
 \ report if the content travelled AND that literal was rebased onto the seeded DP.
 : BAKE-FIXTURE-LINES ( -- )
    s" create AWB-CELL 8 allot" DRV-LINE
@@ -621,7 +631,7 @@ create DRV-CH 1 allot
 \ and leaving it is the building host's address baked into bin/hb.
 \
 \ HH0 is that prefix word: `create HH0 $6a09e667 , ...` in src/core/sha256.f,
-\ which PFX-LOAD-CORE-FILES loads long before CAPTURE-REPL opens the window. It is
+\ which the cold prefix loads before the capture window opens. It is
 \ short enough for habu2.f C-CALL to copy inline, so before the decline landed the
 \ copy carried the chain into the window and the capture died named
 \ ("recorded address site ... in neither the window's DATA span nor its code
@@ -777,46 +787,116 @@ create DRV-CH 1 allot
    CAPTURE-REPL-LINES
    SKEW-MODE-LINES
    FIXTURE-LINES
-   SPAN-FORGE-LINE
-   WID-FORGE-LINE
-   s" 0 0= STDIN? !" DRV-LINE
-   s" HB@ 0 ENGINE-EMIT:FORTH" DRV-LINE
-   S\" s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV-LINE
-   s" DRV-EXIT-OK" DRV-LINE ;
+   WINDOW-ENDED @ 0= if RECAPTURE-LINE REPL-BOOTRUN-LINES then ;
+
+: CAPTURE-PRELUDE ( -- )
+   s" package AOT-WID-PRODUCER" DRV-LINE
+   s" public" DRV-LINE
+   s" ndict@ here variable PRE-R variable PRE-D PRE-D ! PRE-R !" DRV-LINE
+   s" ;package" DRV-LINE
+   s" require src/habu/layout.f" DRV-LINE
+   s" require src/habu/aot-arm.f" DRV-LINE
+   s" require src/arch/arm64/asm.f" DRV-LINE
+   s" require src/arch/arm64/icode.f" DRV-LINE
+   s" require src/habu/aot-decl.f" DRV-LINE
+   s" require src/habu/aot-capture.f" DRV-LINE
+   s" require src/habu/aot-ident.f" DRV-LINE
+   s" require src/habu/fdio.f" DRV-LINE
+   s" require src/habu/aot-file.f" DRV-LINE
+   s" AOT-WID-PRODUCER:PRE-R @ AOT-WID-PRODUCER:PRE-D @ AOT-CAPTURE:PRELUDE-MARK" DRV-LINE ;
+
+: ARTIFACT-WRITE ( -- )
+   s" package AOT-WID-PRODUCER" DRV-LINE
+   s" create KEY 32 allot" DRV-LINE
+   s" : WRITE ( -- )" DRV-LINE
+   s"    AOT-IDENT:RESET" DRV-LINE
+   HB-TARGET-LINUX? if
+      S\"    s\" src/os/linux/repl-term.f\" AOT-IDENT:PATH+"
+   else
+      S\"    s\" src/os/macos/repl-term.f\" AOT-IDENT:PATH+"
+   then DRV-LINE
+   S\"    s\" src/habu/repl.f\" AOT-IDENT:PATH+" DRV-LINE
+   S\"    s\" src/habu/debug-watch.f\" AOT-IDENT:PATH+" DRV-LINE
+   S\"    s\" src/habu/stepper.f\" AOT-IDENT:PATH+" DRV-LINE
+   S\"    s\" src/habu/debug.f\" AOT-IDENT:PATH+" DRV-LINE
+   s"    1 SCRIPT-ARGV$ KEY SHA256-FILE 0<> if 79 throw then" DRV-LINE
+   s"    KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE ;" DRV-LINE
+   s" WRITE" DRV-LINE
+   s" ;package" DRV-LINE ;
 
 : GEN-DRIVER ( -- )
    DRV-PATH!
-   BF-DRV-SOURCE-KEEP {: keep:n :}  \ the build's own split of the stdin driver
    DRV-RESET
-   BF-SOURCE-BUF keep DRV+          \ stdin.f minus its terminal driver call
-   INJECT                           \ ... plus this build's protected-WID fixture
+   0 WINDOW-ENDED !
+   CAPTURE-PRELUDE
+   INJECT
+   ARTIFACT-WRITE
    DRV-IMPORT-CHECK
    DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;
 
-: EMIT-PWID-STDIN ( -- )
-   s" stage2-src" DRV-PATH$ BF-EMIT-STDIN-RUN-SOURCE ;
+: FORGE? ( -- bool )
+   SPAN-ENV$ nip 0 >
+   s" HABU_AOT_WID_SKEW" GETENV nip 0 > or
+   s" HABU_AOT_WID_SPAN" GETENV nip 0 > or ;
 
-\ Build the maker (hb-pwid-mk) from the stage engine, then run the maker to emit
-\ the final variant hb-pwid (mirrors BF-BUILD-STDIN-FROM-STAGE with our driver).
-: RUN-MAKER ( -- )
-   s" stage2-got" s" hb-pwid-mk" BF-RENAME-TMP
-   s" hb-pwid-mk" BF-CHMOD-X-TMP
-   s" hb-stdin-got" BF-REMOVE-TMP
-   s" hb-pwid-mk" BF-RUN-ENV-TMP BF-RC0
-   s" hb-stdin-got" BF-EXPECT
-   s" hb-stdin-got" s" hb-pwid" BF-RENAME-TMP
-   s" hb-pwid" BF-CHMOD-X-TMP
-   s" hb-pwid" BF-CODESIGN-VERIFY-TMP ;
+: GEN-PATCH ( -- )
+   FORGE? 0= if exit then
+   DRV-RESET
+   s" package AOT-WID-IMAGE-PATCH" DRV-LINE
+   s" : PATCH-CELL ( n n label -- ) {: value:n old:n lab:label :}" DRV-LINE
+   s"    lab LBL-BOUND? 0= if 79 throw then" DRV-LINE
+   s"    lab LABEL>N cells LBLP + @ 4 * {: off:n :}" DRV-LINE
+   s"    off 0< off CODELEN @ 8 - > or if 79 throw then" DRV-LINE
+   s"    CODE off + {: dst:ptr :}" DRV-LINE
+   s"    dst FS-U64@ old <> if 79 throw then" DRV-LINE
+   s"    8 0 ?do value i 8 * rshift dst i + c! loop ;" DRV-LINE
+   s" : RUN ( -- )" DRV-LINE
+   SPAN-FORGE-LINE WID-FORGE-LINE
+   S\"    s\" hb\" 0 SCRIPT-ARGV$ DRV-EMIT-IMAGE" DRV-LINE
+   s"    0 SCRIPT-ARGV$ CODESIGN:ENSURE ;" DRV-LINE
+   s" RUN" DRV-LINE
+   s" ;package" DRV-LINE
+   PATCH$ DRV-BUF DRV-U @ WRITE-ALL ;
+
+: ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
+
+: ARGS ( -- )
+   PROC-ARGV-ENV-RESET
+   PROC-ENV-INHERIT-MISSING
+   s" --load" ARG ;
+
+: CHILD ( ptr u8 n -- )
+   >LEN s" " >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   {: outu:len erru:len rc:n :}
+   OUT outu LEN>N type
+   2 ERR erru LEN>N write drop
+   rc 0<> if s" aot-wid-build: child failed" rc die then ;
+
+: BUILD-COLD ( -- )
+   ARGS s" test/native-fixture-write.f" ARG
+   s" --" ARG COLD$ ARG
+   ENGINE-CANDIDATE:PATH$ CHILD ;
+
+: CAPTURE-FIXTURE ( -- )
+   ARGS DRV-PATH$ ARG s" --" ARG ART$ ARG COLD$ ARG
+   COLD$ CHILD ;
+
+: WRITE-FIXTURE ( -- )
+   ARGS s" test/native-fixture-write.f" ARG
+   FORGE? if PATCH$ ARG then
+   s" --" ARG IMAGE$ ARG ART$ ARG COLD$ ARG
+   ENGINE-CANDIDATE:PATH$ CHILD ;
 
 public
 
 : BUILD ( -- )
-   BF-STAGE-FIXPOINT               \ stage engine at fixpoint (reused if bin/hb already converged)
+   PATHS
    GEN-DRIVER
-   EMIT-PWID-STDIN
-   BF-CERTIFY-STDIN
-   BF-RUN-STAGE                    \ stage compiles the injected stdin source -> maker
-   RUN-MAKER
+   GEN-PATCH
+   BUILD-COLD
+   CAPTURE-FIXTURE
+   WRITE-FIXTURE
    s" aot-wid-build: hb-pwid ready" type cr ;
 
 ;package

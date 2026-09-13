@@ -3,7 +3,7 @@ title: Complete source-built stage runtime and callee closure
 status: active
 priority: 2
 issue-type: task
-created-at: "\"\\\"2026-09-13T11:05:27.080398+03:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-09-13T11:05:27.080398+03:00\\\\\\\"\\\"\""
 blocks:
   - habu-track-retained-jit-1dc23a17
   - habu-preserve-complete-addr-258c0288
@@ -61,3 +61,31 @@ corpus expectations pass with the unused COMMON removed. Evidence and reduced
 before/after sources: `/home/joel/.cache/cedar-maker-prefix-xr276adl/`.
 Root owns the next composed product and full gate; the other open cases above
 are not closed by this focused repair.
+
+
+The WID fixture now uses the current source NATIVE-EMIT:WRITE, through
+`test/native-fixture-write.f`: empty cold engine, real source REPL/fixture
+capture, then fresh artifact reader/writer. Both writers compile at tier 1 and
+assert their code origin. The deliberately JIT-shaped wide-offset/HH0 payload
+controls retain that tier; this is not an all-AOT build timing claim. The one
+payload freeze follows every fixture declaration; repeated protection captures
+retain that exact membership. Oversized-span and WID forgeries corrupt only
+an ordinarily emitted image, checking the bound label, cell extent and original
+value before rewriting/signing it. Reader/owned-input validation stays enabled.
+
+Actual K2 sealed and unsealed collision cases both pass. Each target owns WID
+158 alone and returns 41; AWBGATE rebases to 160 alone, executes its boot entry,
+and the next WID is 168 above highest 167. Logs:
+`/tmp/cedar-K2-wid-rebase-{sealed,open}.{out,err}`. The default real partial
+image also boots and executes; `/tmp/cedar-K2-native-wid-gate*`. The complete
+registered WID suite is running through its final PTY helper at this freeze;
+its final outcome will be reported separately. Source prerequisites are the
+independently reviewed cold ABI/owner leaves 299bd843/7f088cb6 and existing
+quotation-store correction b8e069a5. Root owns review and integration.
+
+Chain fixture migration remains separate: its legitimate serialized effect
+pool exceeds the old text-only buffer, and its cold compiler also calls the
+owner guard loaded in the excluded tool prelude. Those refusals are preserved
+while their responsible storage/closure layers are repaired. Legacy public
+recovery and generated-certifier ownership are tracked as a2551190/369d625d;
+no new process certifier or BF fixture generation is introduced.
