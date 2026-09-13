@@ -395,8 +395,10 @@ public
 \ appends to that one alone, and the two agree only about the ordinals that
 \ existed when the copy was taken.
 \
-\ The committed ceilings come from the prototype, so a clone can always hold
-\ what it copied and grows on its own terms afterwards.
+\ The committed ceilings belong to the new module. The caller supplies them
+\ just as it does to NEW; both are validated against the prototype's live
+\ occupancy before either destination arena is allocated. A clone may therefore
+\ start exactly full, and any later miss is still governed by its own plan.
 \
 \ THE TWO SPANS ARE COPIED IN BULK. A clone holds every symbol the prototype
 \ holds, so the copy is the whole committed prefix of each arena and never a
@@ -405,15 +407,18 @@ public
 \ per module, for every module a definition builds. IR-ARENA:APPEND-SPAN is
 \ that same append with the per-cell work reduced to the load and the store it
 \ always was.
-: NEW-FROM ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena -- IR-ARENA:arena IR-ARENA:arena )
-   {: c:IR-CTX:ctx key:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+: NEW-FROM ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena n n -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena scap:n bcap:n :}
+   scap SYM-CAP-OK
+   bcap BYTE-CAP-OK
    pa IR-ARENA:OPEN-LIVE {: par:IR-ARENA:reader :}
    pr IR-ARENA:OPEN-LIVE {: prr:IR-ARENA:reader :}
    par prr PAIR-CK
-   par HC-CAP IR-ARENA:RD@ {: pcap:n :}
-   prr HC-CAP IR-ARENA:RD@ {: rcap:n :}
-   c key pcap SYB-MAGIC pcap PART-NEW {: a:IR-ARENA:arena :}
-   c key rcap ROW-CELLS * SYM-MAGIC rcap PART-NEW {: r:IR-ARENA:arena :}
+   prr CNT scap > if E-IR-SYM-CAP throw then
+   bcap BYTES>CELLS {: poolcap:n :}
+   par PCELLS poolcap > if E-IR-SYM-BYTES throw then
+   c key poolcap SYB-MAGIC poolcap PART-NEW {: a:IR-ARENA:arena :}
+   c key scap ROW-CELLS * SYM-MAGIC scap PART-NEW {: r:IR-ARENA:arena :}
    c a pa HDR-CELLS par PCELLS IR-ARENA:APPEND-SPAN
    c r pr HDR-CELLS prr CNT ROW-CELLS * IR-ARENA:APPEND-SPAN
    a r ;

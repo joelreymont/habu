@@ -666,8 +666,10 @@ variable PROTO-ON
 : SYM-NEW ( IR-CTX:ctx n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx slot:n :}
    PROTO-ON @ 0<> if
+      c slot KEY@ 0 PROTO-SYM @ 1 PROTO-SYM @
+      slot P-SYMS BCEIL@ slot P-SBYTES BCEIL@ IR-SYM:NEW-FROM
       1 PROTO-SYM @ ARENA>N slot BPROTO!
-      c slot KEY@ 0 PROTO-SYM @ 1 PROTO-SYM @ IR-SYM:NEW-FROM exit
+      exit
    then
    0 slot BPROTO!
    c slot KEY@ slot P-SYMS BCEIL@ slot P-SBYTES BCEIL@ IR-SYM:NEW ;

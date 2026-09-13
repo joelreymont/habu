@@ -559,6 +559,98 @@ create CBUF 32 allot
    TD-VIEW-CASE ;
 
 \ ---- an interner cloned from a prototype -------------------------------------
+\ Keep the attempted clone inputs below CATCH so a refusal can be inspected
+\ against the still-live prototype and the context's allocation cursor.
+: CLONE-TRY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena n n -- IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena n n )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key pa:IR-ARENA:arena pr:IR-ARENA:arena
+      scap:n bcap:n :}
+   c key pa pr scap bcap
+   c key pa pr scap bcap IR-SYM:NEW-FROM 2drop ;
+
+: CLONE-REFUSE-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: pk:IR-ID:ir-module-key :}
+   c pk 4 32 IR-SYM:NEW {: pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c pa pr pk s" 12345678" IR-SYM:INTERN drop
+   c pa pr pk s" x" IR-SYM:INTERN drop
+
+   c IR-CTX:NEW-MODULE drop {: rk:IR-ID:ir-module-key :}
+   c IR-CTX:SCRATCH-USED {: rs0:n :}
+   c rk pa pr 1 9 [: CLONE-TRY ;] catch
+   {: rc:IR-CTX:ctx rkey:IR-ID:ir-module-key rpa:IR-ARENA:arena
+      rpr:IR-ARENA:arena rsc:n rbc:n rerr:n :}
+   rerr E-IR-SYM-CAP =
+   rc IR-CTX:SCRATCH-USED rs0 =
+
+   c IR-CTX:NEW-MODULE drop {: bk:IR-ID:ir-module-key :}
+   c IR-CTX:SCRATCH-USED {: bs0:n :}
+   c bk pa pr 2 8 [: CLONE-TRY ;] catch
+   {: bc:IR-CTX:ctx bkey:IR-ID:ir-module-key bpa:IR-ARENA:arena
+      bpr:IR-ARENA:arena bsc:n bbc:n berr:n :}
+   berr E-IR-SYM-BYTES =
+   bc IR-CTX:SCRATCH-USED bs0 =
+   pr IR-SYM:SYMBOLS 2 = ;
+
+: CLONE-REFUSE-CASE ( -- )
+   s" clone ceilings below live occupancy refuse before allocation" T-LABEL
+   BND [: CLONE-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+: CLONE-MISS ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
+   c a r key
+   c a r key s" new" IR-SYM:INTERN drop ;
+
+: CLONE-EXACT-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: pk:IR-ID:ir-module-key :}
+   c pk 4 32 IR-SYM:NEW {: pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c pa pr pk s" 12345678" IR-SYM:INTERN drop
+   c pa pr pk s" x" IR-SYM:INTERN drop
+
+   c IR-CTX:NEW-MODULE drop {: rk:IR-ID:ir-module-key :}
+   c rk pa pr 2 9 IR-SYM:NEW-FROM
+   {: ra:IR-ARENA:arena rr:IR-ARENA:arena :}
+   rr IR-SYM:SYMBOLS 2 =
+   c ra rr rk s" x" IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 1 =
+   rr IR-SYM:SYMBOLS 2 =
+   c ra rr rk [: CLONE-MISS ;] catch
+   {: rc:IR-CTX:ctx ra2:IR-ARENA:arena rr2:IR-ARENA:arena
+      rk2:IR-ID:ir-module-key rerr:n :}
+   rerr E-IR-SYM-CAP =
+   rr2 IR-SYM:SYMBOLS 2 =
+
+   c IR-CTX:NEW-MODULE drop {: bk:IR-ID:ir-module-key :}
+   c bk pa pr 3 9 IR-SYM:NEW-FROM
+   {: ba:IR-ARENA:arena br:IR-ARENA:arena :}
+   c ba br bk [: CLONE-MISS ;] catch
+   {: bc:IR-CTX:ctx ba2:IR-ARENA:arena br2:IR-ARENA:arena
+      bk2:IR-ID:ir-module-key berr:n :}
+   berr E-IR-SYM-BYTES =
+   br2 IR-SYM:SYMBOLS 2 = ;
+
+: CLONE-EXACT-CASE ( -- )
+   s" an exact-fit clone keeps duplicates and enforces its future ceilings" T-LABEL
+   BND [: CLONE-EXACT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+: CLONE-EMPTY-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: pk:IR-ID:ir-module-key :}
+   c pk 4 32 IR-SYM:NEW {: pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c IR-CTX:NEW-MODULE drop {: ck:IR-ID:ir-module-key :}
+   c ck pa pr 1 1 IR-SYM:NEW-FROM
+   {: ca:IR-ARENA:arena cr:IR-ARENA:arena :}
+   cr IR-SYM:SYMBOLS 0=
+   c ca cr ck s" " IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0=
+   c ca cr ck s" " IR-SYM:INTERN IR-ID:SYMBOL-LOCAL 0=
+   cr IR-SYM:SYMBOLS 1 = ;
+
+: CLONE-EMPTY-CASE ( -- )
+   s" an empty prototype accepts the smallest clone ceilings" T-LABEL
+   BND [: CLONE-EMPTY-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE ;
+
 \ A clone is the same table under a new key: the spelling at ordinal k in the
 \ prototype is the spelling at ordinal k in the clone, so a caller that recorded
 \ an ordinal against the prototype can mint the identity it names in the new
@@ -577,7 +669,7 @@ create CBUF 32 allot
    pr IR-SYM:SYMBOLS {: before:n :}
 
    c IR-CTX:NEW-MODULE {: ck:IR-ID:ir-module-key cmid:IR-ID:ir-module-id :}
-   c ck pa pr IR-SYM:NEW-FROM {: ca:IR-ARENA:arena cr:IR-ARENA:arena :}
+   c ck pa pr 16 128 IR-SYM:NEW-FROM {: ca:IR-ARENA:arena cr:IR-ARENA:arena :}
 
    \ the same spelling is the same ordinal, and the clone answers it without
    \ appending anything
@@ -621,6 +713,9 @@ public
 
 : RUN ( -- )
    T-RESET
+   CLONE-REFUSE-CASE
+   CLONE-EXACT-CASE
+   CLONE-EMPTY-CASE
    PROTO-CASE
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
    GROW-CASE

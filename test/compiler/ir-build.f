@@ -1398,6 +1398,50 @@ variable PART-FREE
    LIVE-REFUSE-CASES-G ;
 
 \ ---- which prototype a module's interner was copied from ---------------------
+: CLONE-PLAN ( n n -- )
+   {: syms:n bytes:n :}
+   IR-BUILD:PLAN-BEGIN
+   syms bytes IR-BUILD:PLAN-SYMBOLS
+   16 64 IR-BUILD:PLAN-TYPES
+   16 64 IR-BUILD:PLAN-ATTRS
+   8 IR-BUILD:PLAN-SOURCES
+   8 64 IR-BUILD:PLAN-SCHEMAS
+   16 16 128 IR-BUILD:PLAN-OPS
+   8 8 64 IR-BUILD:PLAN-FUNS ;
+
+: CF-MISS ( IR-CTX:ctx IR-BUILD:builder -- IR-CTX:ctx IR-BUILD:builder )
+   2dup s" new" IR-BUILD:INTERN-SYMBOL drop ;
+
+: CF-CEILING-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: pk:IR-ID:ir-module-key :}
+   c pk 4 32 IR-SYM:NEW {: pa:IR-ARENA:arena pr:IR-ARENA:arena :}
+   c pa pr pk s" hir" IR-SYM:INTERN drop
+   c pa pr pk s" x" IR-SYM:INTERN drop
+
+   2 9 CLONE-PLAN
+   c s" hir" 1 0 pa pr IR-BUILD:NEW-BUILDER-FROM
+   {: rb:IR-BUILD:builder :}
+   c rb s" x" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL 1 =
+   rb IR-BUILD:SYMBOLS 2 =
+   c rb [: CF-MISS ;] catch
+   {: rc:IR-CTX:ctx rb2:IR-BUILD:builder rerr:n :}
+   rerr E-IR-SYM-CAP =
+   rb2 IR-BUILD:SYMBOLS 2 =
+
+   3 9 CLONE-PLAN
+   c s" hir" 1 0 pa pr IR-BUILD:NEW-BUILDER-FROM
+   {: bb:IR-BUILD:builder :}
+   c bb [: CF-MISS ;] catch
+   {: bc:IR-CTX:ctx bb2:IR-BUILD:builder berr:n :}
+   berr E-IR-SYM-BYTES =
+   pr IR-SYM:SYMBOLS 2 = ;
+
+: CF-CEILING-CASE ( -- )
+   s" prototype builders use the symbol ceilings in their staged plan" T-LABEL
+   BND [: CF-CEILING-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
 \ A caller that recorded an ordinal against a prototype may read that ordinal as
 \ naming the same spelling in some module only when the module's interner is a
 \ COPY of that prototype: that is what makes the two sets of ordinals agree. The
@@ -1415,7 +1459,7 @@ variable PART-FREE
    c a1 r1 k1 s" alpha" IR-SYM:INTERN drop
    c a1 r1 k1 s" beta" IR-SYM:INTERN drop
    c IR-CTX:NEW-MODULE drop {: k2:IR-ID:ir-module-key :}
-   c k2 a1 r1 IR-SYM:NEW-FROM {: a2:IR-ARENA:arena r2:IR-ARENA:arena :}
+   c k2 a1 r1 16 256 IR-SYM:NEW-FROM {: a2:IR-ARENA:arena r2:IR-ARENA:arena :}
    PLAN-SMALL
    c s" hir" 1 0 a1 r1 IR-BUILD:NEW-BUILDER-FROM {: cl:IR-BUILD:builder :}
    c MK {: plain:IR-BUILD:builder :}
@@ -1479,6 +1523,7 @@ public
    BND [: HARNESS-LIVE-REFUSE-G ;] IR-CTX:WITH-CONTEXT
    AB-RELEASE-CASE
    PART-CASE
+   CF-CEILING-CASE
    CF-CASE
    RT-RELEASE-CASE
    RT-FREE-CASE
