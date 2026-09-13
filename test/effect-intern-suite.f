@@ -356,6 +356,20 @@ M0 @ EIX-RAW-UEND!                                 \ the store rewinds; the reco
                                                    \ keep their chain and their nodes
 s" undefine EIXCUT" EIX-EVAL                       \ one record, not one node
 TABLE-LIVE                                         \ no entry may name the dead region
+\ THE PER-SYMBOL INDEX HAS THE SAME BLIND SPOT, and this is the half that bites:
+\ USX-BUILD walked the same chain by the same terminator, so after the cut it
+\ still answered EIXC1's dead record as that symbol's newest and the checker
+\ reported a signature for a word the store no longer holds. Downstream that is a
+\ "duplicate definition" on the next definition of the name - verify-prim's cold
+\ differential, rc 78 on `CAST: >IMG`. FIND-SIG is the production query (through
+\ CHECKER-FIND-ACTIVE-SIG -> USIG-NEWEST -> USX), and -1 is what it must answer
+\ for a record in the dead region. The case lives HERE, with the rewind, because
+\ the differential in test/checker-scan-index-suite.f could not host it: the
+\ specification it compares against (USIG-NEWEST-LINEAR) walked the same
+\ terminator, so both sides agreed on the same wrong answer. Both carry the bound
+\ now, which is exactly why the guard has to be a claim about the STORE.
+s" EIXC1" EIX-DIN -1 T=
+s" EIXC2" EIX-DIN -1 T=
 s" : EIXC3 ( eixcut1 -- ) drop ;" EIX-EVAL         \ the shape that lived above the cut, again
 s" EIXC3" EIX-DIN EIX-UEND < TTRUE                 \ answered with a live node...
 s" EIXC3" EIX-DIN EIX-KEY-N 0 T<>                  \ ... that is still a node

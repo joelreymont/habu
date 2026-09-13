@@ -5425,6 +5425,7 @@ USIGS USX-BASE!
    USIGS USX-BASE@ <> or IF 0 USX-GEN ! THEN ;
 
 variable USX-P                          \ index-owned cursor; FP belongs to the scans
+variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its next link
 
 : USX-LINK ( n n -- ) {: off:n sym:n :}
    sym 0= IF EXIT THEN
@@ -5432,12 +5433,32 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
    sym USX@ off E-PTR ER.SYMPREV !
    off 1 + sym USX! ;
 
+\ UEND BOUNDS THIS WALK, NOT THE CHAIN ALONE - the same three admissions
+\ UIX-BUILD states, for the same reason. UEND is the store's true top and a
+\ rewind LEAVES THE BYTES ABOVE IT READABLE: src/habu/hide.f's refresh prelude
+\ assigns UEND directly, E-INTERN's own hit rewinds mid-record without writing a
+\ terminator, and a terminator a rewind did write is overwritten by the very next
+\ append. Walking the chain alone therefore indexed the dead region and answered
+\ a symbol's newest record with an offset the store no longer holds - which the
+\ next definition of that name reads as a duplicate definition (measured:
+\ test/verify-prim-test.f's cold differential, rc 78 on `CAST: >IMG`).
+\ THE LINEAR SPECIFICATION SHARED THE BLIND SPOT, which is why nothing caught it:
+\ USIG-NEWEST-LINEAR walked the same terminator, so the differential in
+\ test/checker-scan-index-suite.f compared two walks that agreed on the same wrong
+\ answer. It carries this bound too now, and the case that does catch a regression
+\ here is in test/effect-intern-suite.f beside the interner's, reading the answer
+\ AT the rebuild - before the store grows back over the dead offsets.
 : USX-BUILD ( -- )
    HT-USX IDX-HEADS-CLEAR
-   USIGS-USER USX-P !
-   begin USX-P @ USIG-END? 0= while
-      USX-P @ USIG-OFF  USX-P @ ER.SYM @  USX-LINK
-      USX-P @ USIG-NEXT USX-P !
+   USIGS-USER-OFF @ USX-BP !
+   begin USX-BP @ EFF-REC + UEND @ <= while
+      USX-BP @  USX-BP @ E-PTR ER.SYM @  USX-LINK
+      USX-BP @ E-PTR ER.NEXT @ USX-BN !
+      USX-BN @ USX-BP @ <=  USX-BN @ UEND @ >  or IF
+         UEND @ 1 + USX-BP !                 \ 0, a link that does not advance, or one
+      ELSE                                   \ that leaves the live store: end the walk
+         USX-BN @ USX-BP !
+      THEN
    repeat
    USX-STAMP
    HIDX-GEN @ USX-GEN ! ;
@@ -5476,13 +5497,22 @@ variable USX-P                          \ index-owned cursor; FP belongs to the 
 \ newest user record for a symbol, offset+1, by walking every record the way the
 \ store is ordered. test/checker-scan-index-suite.f differentials the indexed
 \ answer against this one over shadowing, deletion and rollback corpora, and
-\ USX-BUILD is this same walk done for every symbol at once.
+\ USX-BUILD is this same walk done for every symbol at once — SO IT CARRIES THE
+\ SAME UEND BOUND, stated the same way. A specification written by copying the
+\ implementation's traversal tests the code against itself: while this walk
+\ trusted the terminator alone, it named a dead record exactly as the unbounded
+\ index did, and no differential between the two could ever disagree.
 : USIG-NEWEST-LINEAR ( n -- n ) {: sym:n :}
    0
-   USIGS-USER USX-P !
-   begin USX-P @ USIG-END? 0= while
-      USX-P @ ER.SYM @ sym = IF drop USX-P @ USIG-OFF 1 + THEN
-      USX-P @ USIG-NEXT USX-P !
+   USIGS-USER-OFF @ USX-BP !
+   begin USX-BP @ EFF-REC + UEND @ <= while
+      USX-BP @ E-PTR ER.SYM @ sym = IF drop USX-BP @ 1 + THEN
+      USX-BP @ E-PTR ER.NEXT @ USX-BN !
+      USX-BN @ USX-BP @ <=  USX-BN @ UEND @ >  or IF
+         UEND @ 1 + USX-BP !
+      ELSE
+         USX-BN @ USX-BP !
+      THEN
    repeat ;
 
 : USIG-NEWEST ( n -- n ) {: sym:n :}

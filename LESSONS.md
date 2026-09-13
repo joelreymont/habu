@@ -8264,3 +8264,24 @@ and --no-lldbinit.
   the code-kind ones), both counted off the LIVE `SNAP-RELOC:XTCELL` table
   rather than off the table being checked - and the assertion survives a change to
   either population.
+
+## 2026-09-13 - a specification that shares the blind spot proves nothing
+
+- **A differential test is only as good as the independence of its two sides.**
+  `USX-BUILD`, the checker's per-symbol effect-record index, walked the store's
+  record chain by its terminator with no `UEND` bound, so after a rewind it
+  answered a symbol's newest record with an offset in the dead region and the
+  next definition of that name was refused as a duplicate: verify-prim's cold
+  differential, rc 78 on `CAST: >IMG`, and silent under `--build` because
+  `C-DUP-DEF-FAIL`'s top-level exit is a bare `$4E`.
+  `test/checker-scan-index-suite.f` differentials that index against
+  `USIG-NEWEST-LINEAR` - which walked the same terminator the same unbounded way.
+  Both sides agreed on the same wrong answer, so no differential could ever see
+  it, and the case that does had to be written against the STORE's own state
+  (test/effect-intern-suite.f, beside the interner's twin, reading the answer AT
+  the rebuild before the store regrows over the dead offsets). A specification
+  written by copying the implementation's traversal tests the code against
+  itself. Found by measurement rather than review: adding ONE `defer` to
+  checker.f moved the store's offsets and flipped the latent answer from
+  harmless to fatal, so an unrelated change made a green tree red and the
+  bisect landed on a walk neither commit touched.
