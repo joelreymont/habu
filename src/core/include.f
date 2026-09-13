@@ -49,7 +49,8 @@ INCLUDE-PATH-CAP 1+ constant PATH-BYTES
 PATH-BYTES 2 * constant WORK-BYTES
 create CWD-BUF PATH-BYTES allot
 create CANON-BUF PATH-BYTES allot
-create NORMAL-BUF PATH-BYTES allot
+create NORMAL-BUF WORK-BYTES allot
+create CANDIDATE-BUF PATH-BYTES allot
 create JOIN-BUF WORK-BYTES allot
 create WORK-BUF WORK-BYTES allot
 create ZBUF WORK-BYTES allot
@@ -59,6 +60,7 @@ variable REQUEST-U
 variable CWD-U
 variable CANON-U
 variable NORMAL-U
+variable CANDIDATE-U
 variable JOIN-U
 variable OWNER-U
 variable CURRENT-A
@@ -135,22 +137,22 @@ private
    repeat ;
 
 
-: NORMAL-ROOM ( n -- )
-   NORMAL-U @ + INCLUDE-PATH-CAP > if PATH-RC throw then ;
+: NORMAL-ROOM ( n n -- ) {: limit:n :}
+   NORMAL-U @ + limit > if PATH-RC throw then ;
 
 
-: NORMAL-SEG ( ptr u8 n -- ) {: a:ptr u:n :}
+: NORMAL-SEG ( ptr u8 n n -- ) {: a:ptr u:n limit:n :}
    u 0= if exit then
    a u s" ." CORE-STR= if exit then
    a u s" .." CORE-STR= if
       NORMAL-BUF NORMAL-U @ PARENT-U NORMAL-U ! exit
    then
    NORMAL-U @ 1 > if
-      1 NORMAL-ROOM
+      1 limit NORMAL-ROOM
       47 NORMAL-BUF NORMAL-U @ + c!
       1 NORMAL-U +!
    then
-   u NORMAL-ROOM
+   u limit NORMAL-ROOM
    a NORMAL-BUF NORMAL-U @ + u BYTE-COPY
    u NORMAL-U +! ;
 
@@ -163,14 +165,17 @@ private
    repeat ;
 
 
-: NORMALIZE ( ptr u8 n -- ) {: a:ptr u:n :}
+: NORMALIZE-LIMIT ( ptr u8 n n -- ) {: a:ptr u:n limit:n :}
    47 NORMAL-BUF c! 1 NORMAL-U !
    0 begin dup u < while
       dup a u rot SEG-END {: end:n :}
-      a over + end rot - NORMAL-SEG
+      a over + end rot - limit NORMAL-SEG
       end 1+
    repeat drop
    0 NORMAL-BUF NORMAL-U @ + c! ;
+
+
+: NORMALIZE ( ptr u8 n -- ) INCLUDE-PATH-CAP NORMALIZE-LIMIT ;
 
 
 : EXISTING-PARENT ( -- n )
@@ -278,14 +283,16 @@ public
    SCOPES @ 0= 0= if INCLUDE-IO-RC throw then
    CWD-BUF PATH-BYTES CLEAR-BYTES
    CANON-BUF PATH-BYTES CLEAR-BYTES
-   NORMAL-BUF PATH-BYTES CLEAR-BYTES
+   NORMAL-BUF WORK-BYTES CLEAR-BYTES
+   CANDIDATE-BUF PATH-BYTES CLEAR-BYTES
    OWNER-BUF PATH-BYTES CLEAR-BYTES
    JOIN-BUF WORK-BYTES CLEAR-BYTES
    WORK-BUF WORK-BYTES CLEAR-BYTES
    ZBUF WORK-BYTES CLEAR-BYTES
    REQUEST-BUF WORK-BYTES CLEAR-BYTES
    0 REQUEST-U !
-   0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 JOIN-U ! 0 OWNER-U !
+   0 CWD-U ! 0 CANON-U ! 0 NORMAL-U ! 0 CANDIDATE-U !
+   0 JOIN-U ! 0 OWNER-U !
    NULL$ CURRENT! ;
 
 private
@@ -388,18 +395,38 @@ private
 
 \ Portable names describe only frozen engine facts. Ordinary application facts
 \ retain their canonical identity so identical names in distinct roots coexist.
-: BOOT-KNOWN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   REQUIRE-BASE @ begin dup REQUIRE-BOOT-N @ < while
+: BOOT-KNOWN? ( ptr u8 n n -- bool ) {: a:ptr u:n first:n :}
+   first begin dup REQUIRE-BOOT-N @ < while
       dup a u rot ALIAS= if drop INCLUDE-TRUE exit then
       1+
    repeat drop INCLUDE-FALSE ;
+
+: CANDIDATE$ ( -- ptr u8 n ) CANDIDATE-BUF CANDIDATE-U @ ;
+
+\ A directory symlink may carry an invocation-root engine spelling outside
+\ CWD. Check only that spelling's alias, then require its normalized path to
+\ resolve to the same physical candidate: symlink/.. can name another file.
+: BOOT-CANDIDATE ( ptr u8 n n -- ptr u8 n bool ) {: first:n :}
+   first REQUIRE-BOOT-N @ >= if INCLUDE-FALSE exit then
+   2dup CWD$ RELATIVE first BOOT-KNOWN? if INCLUDE-TRUE exit then
+   dup CANDIDATE-U ! CANDIDATE-BUF swap BYTE-COPY
+   REQUEST$ ABSOLUTE!
+   \ The invocation spelling may be longer than its canonical symlink target.
+   JOIN-BUF JOIN-U @ WORK-BYTES 1- NORMALIZE-LIMIT
+   NORMAL-BUF NORMAL-U @ CWD$ BELOW? if
+      NORMAL-BUF NORMAL-U @ CWD$ RELATIVE first BOOT-KNOWN? if
+         NORMAL-BUF NORMAL-U @ CANONICAL drop
+         CANDIDATE$ CORE-STR= CANDIDATE$ rot exit
+      then
+   then
+   CANDIDATE$ INCLUDE-FALSE ;
 
 : CANDIDATE ( ptr u8 n bool -- ptr u8 n bool bool ) {: fallback:bool :}
    2dup OWNER!
    REQUEST$ JOIN CANONICAL {: exists:bool :}
    2dup REQUIRE-KNOWN? {: known:bool :}
-   fallback if
-      2dup CWD$ RELATIVE BOOT-KNOWN? known or
+   fallback known 0= and if
+      REQUIRE-BASE @ BOOT-CANDIDATE
    else known then
    dup exists or ;
 
@@ -416,8 +443,8 @@ public
       REQUEST$ CANONICAL drop
       2dup ABS-OWNER
       2dup REQUIRE-KNOWN? {: known:bool :}
-      2dup CWD$ BELOW? if
-         2dup CWD$ RELATIVE BOOT-KNOWN? known or
+      known 0= if
+         REQUIRE-BASE @ BOOT-CANDIDATE
       else known then
       exit
    then
@@ -438,13 +465,13 @@ public
    known ;
 
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
-   CANONICAL drop {: a:ptr u:n :}
-   a u CWD$ RELATIVE {: relative:ptr relativeu:n :}
+   REQUEST!
+   REQUEST$ CANONICAL drop {: a:ptr u:n :}
    0 begin dup REQUIRE-BOOT-N @ < while
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
-      dup relative relativeu rot ALIAS= if drop INCLUDE-TRUE exit then
       1+
-   repeat drop INCLUDE-FALSE ;
+   repeat drop
+   a u 0 BOOT-CANDIDATE nip nip ;
 
 ;package
 

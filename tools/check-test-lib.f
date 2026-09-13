@@ -431,13 +431,12 @@ variable START-NS
    s" tools" CLI-LINK+
    s" src" CLI-LINK+ ;
 
-: CLI-MISSING-HB ( -- n n n )
-   CLI-SETUP
+: CLI-MISSING-HB ( ptr u8 n -- n n n ) {: entry:ptr entryu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
-   s" tools/check.f" >LEN PROC-ARGV+
+   entry entryu >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    CLI-HB$ >LEN CLI-ROOT$ >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS
@@ -1400,11 +1399,17 @@ variable LONG-J
    RUN 66 T=
    RESET ;
 
-: TEST-MISSING-ENGINE ( -- )
+: MISSING-ENGINE-PATH ( ptr u8 n -- )
    CLI-MISSING-HB 69 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s\" check.f: bin/hb missing\n" LINT-STR= TTRUE ;
+
+: TEST-MISSING-ENGINE ( -- )
+   CLI-SETUP
+   s" tools/check.f" MISSING-ENGINE-PATH
+   s" ./tools/../tools/check.f" MISSING-ENGINE-PATH
+   CLI-ROOT$ s" tools/./check.f" SOURCE-ROOT:JOIN MISSING-ENGINE-PATH ;
 
 : TEST-REPEAT-SOURCE-OK ( -- )
    RESET

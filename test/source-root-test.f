@@ -3,6 +3,8 @@ require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/fmt.f
+require lib/process-cwd.f
+require lib/engine-candidate.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
 
@@ -29,6 +31,9 @@ variable LINK-U
 variable LOADED
 variable SAVED-DEPTH
 variable SAVED-NAMED
+$4000 constant CHILD-CAP
+create CHILD-OUT CHILD-CAP allot
+create CHILD-ERR CHILD-CAP allot
 
 public
 : BUMP ( n -- ) LOADED +! ;
@@ -127,6 +132,46 @@ private
    4 PATH$ s" leaf.f" FALLBACK-PATH CANONICAL TTRUE T$=
    RESTORED ;
 
+: INVOCATION$ ( -- ptr u8 n ) ROOT$ s" invoke" JOIN ;
+
+: ENGINE-LINK ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   CWD$ name nameu JOIN TARGET TARGET-U COPY!
+   TARGET TARGET-U @ INVOCATION$ name nameu JOIN MAKE-SYMLINK ;
+
+: PREP-ENGINE-ALIASES ( -- )
+   INVOCATION$ MAKE-DIR
+   s" lib" ENGINE-LINK s" test" ENGINE-LINK
+   ROOT$ s" other/nested" JOIN MAKE-DIRS
+   ROOT$ s" other/lib" JOIN MAKE-DIRS
+   ROOT$ s" other/lib/errors.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
+   ROOT$ s" other/nested" JOIN TARGET TARGET-U COPY!
+   TARGET TARGET-U @ INVOCATION$ s" branch" JOIN MAKE-SYMLINK
+   s" lib" A-PATH MAKE-DIR s" lib" B-PATH MAKE-DIR
+   s" lib/errors.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL
+   s" lib/errors.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" WRITE-ALL ;
+
+\ A fresh process must carry its frozen engine facts into a symlinked checkout.
+\ The child also keeps owner-local modules and symlink/.. targets distinct.
+: ENGINE-ALIASES ( -- )
+   s" frozen engine aliases preserve physical source identity" T-LABEL
+   PREP-ENGINE-ALIASES
+   PROC-ARGV-RESET PROC-ENV-RESET PROC-ENV-INHERIT-MISSING
+   s" --load" >LEN PROC-ARGV+
+   s" test/source-root-alias-child.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+ ROOT$ >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ CANONICAL TTRUE >LEN INVOCATION$ >LEN
+   CHILD-OUT CHILD-CAP >LEN CHILD-ERR CHILD-CAP >LEN 30000 >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
+   MATCH result
+      ok OF PCAP-CAPTURED:UNMAKE 0 ENDOF
+      err OF PCAP-FAILED:UNMAKE RC>N ENDOF
+   ;MATCH
+   {: outu:len erru:len rc:n :}
+   rc 0 <> if CHILD-OUT outu LEN>N type CHILD-ERR erru LEN>N type then
+   rc 0 T= erru LEN>N 0 T=
+   CHILD-OUT outu LEN>N s" source root aliases: ok" CONTAINS? TTRUE
+   RESTORED ;
+
 \ Each file resumes after its child. Distinct entry/exit ordinals expose
 \ overwritten parent source bytes as well as missing or out-of-order loads.
 40 constant DEEP-COUNT
@@ -216,6 +261,7 @@ private
 : RUN ( -- )
    T-RESET PREP
    LOAD-ENTRIES ALIASES PROVIDED-MISSING THROW-RESTORES DISCOVERY CLOSURE DEEP-LOADS DEEP-EVALS
+   ENGINE-ALIASES
    CLEANUP-RUN T-REPORT ;
 
 RUN
