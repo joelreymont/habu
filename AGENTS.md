@@ -14,7 +14,8 @@ belong in the language core.
 - Use plain English. Keep changes focused and remove obsolete machinery when
   the existing language or library already expresses the requirement.
 - Use `jj`, preserve unrelated changes, and commit coherent completed work.
-  Use separate workspaces when concurrent edits would conflict.
+  Use separate workspaces when concurrent edits would conflict. Create Habu
+  workspaces under this repository's `.jj-ws/`, never directly under `~/Work/`.
 - Use dots or blackboard only when the task calls for them. Neither is a gate
   for coding, commits, reviews or ordinary communication. Do not post messages
   on the user's behalf without authorization.

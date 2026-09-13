@@ -57,8 +57,13 @@ source tests pass, with 774/1692/3197 successful lookup probes for 512/1024/2048
 symbols. Typed owner dispatch is integrated at `a5b1956b`; the fresh tier1 owner
 fixture passes. `A64IR-OPCODE:TAG` exposed two independent blockers: NFAM reads
 the retained checker's registry after source-owner replacement, and the checker
-drops match-layout facts beyond 24. The family-owner repair is under review;
-the match lane is replacing the fixed store with existing CWIN ownership.
+drops match-layout facts beyond 24. Family-owner dispatch and private callback
+bindings are integrated through `2783bbce`; independent fresh source loads pass
+at both tiers. Match facts use the growing CWIN owner at `62147e15`; the actual
+76-arm enum and widened construction execute, and superseded mappings are freed.
+The private fixture binding is corrected at `48d5a612`. Native-match's emission
+probe now selects AOT explicitly and restores the caller's tier (`200f43bc`);
+both direct and gate-style loads pass with unchanged instruction assertions.
 The old native-match test explicitly expected overflow rejection. Acceptance
 now requires the compiler's actual 76-arm match to compile and execute.
 
@@ -75,6 +80,13 @@ real rewind checks. Compiler-chain row validation is integrated through
 corruption refusals. A sorted index replaces the quadratic verifier; independent
 checks pass at 32,768 rows. Two WID collision fixtures still need real target
 collisions. No all-AOT product or application replacement is accepted yet.
+
+The paired native bootstrap now compiles past the opcode enum. Remaining source
+callable-boundary corrections are under test. The target writer review found a
+retained driver defer that re-registered old heap storage after reset, and fixed
+engine locations that still crossed unchanged when source layout moved them.
+The driver now invokes checker operations through typed execution directly;
+fixed-slot translation and capture validation remain in the layout lane.
 
 Hazel's complete Tender pair was 153.3 to 131.6 seconds; the later session pair
 reduced the trivial floor from 4,106 to 3,668 microseconds. Both used a compiler
@@ -157,6 +169,15 @@ scaling and the payoff from pass-level reader reuse still need attribution.
   Restore against the correct registry base; exclude writer-only types. Do not
   delete empty sections to hide an unarmed producer. Define a family, restore it,
   reject a wrong-type call, and capture it again.
+  The original signature text is insufficient: it loses verified variable kinds,
+  inferred inputs, row tails and quotation/return relationships. Full native
+  capture must explicitly retain the verified registry within target DATA.
+  Partial artifacts must encode the verified graph in the existing signature
+  rows/string section, preserving canonical constructor identity and sharing;
+  reject older payload versions. Validate all graph references and registry
+  bases before publishing any restored store. A textual reparse cannot substitute
+  for the graph that was checked. Final preparation also detaches the previous
+  compiler's tape callbacks and clears its process-local observer identity.
 - **Transient storage:** use existing lifecycle preparation and the registry at
   both capture and snapshot entry. Register a control record on its first live
   allocation and unregister on release, so reserve after restore registers again.
