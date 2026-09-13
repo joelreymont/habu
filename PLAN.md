@@ -55,9 +55,12 @@ suites and Cedar's independent capture/concurrent-buffer checks pass. It is newe
 than the combined gate above. Symbol indexing is integrated at `41c7af94`: fresh
 source tests pass, with 774/1692/3197 successful lookup probes for 512/1024/2048
 symbols. Typed owner dispatch is integrated at `a5b1956b`; the fresh tier1 owner
-fixture passes. The next all-tier1 failure is `A64IR-OPCODE:TAG`: NFAM reads the
-retained checker's type-family registry while the source checker judges a new one.
-The owner lane is repairing that boundary and preparing a paired native compiler.
+fixture passes. `A64IR-OPCODE:TAG` exposed two independent blockers: NFAM reads
+the retained checker's registry after source-owner replacement, and the checker
+drops match-layout facts beyond 24. The family-owner repair is under review;
+the match lane is replacing the fixed store with existing CWIN ownership.
+The old native-match test explicitly expected overflow rejection. Acceptance
+now requires the compiler's actual 76-arm match to compile and execute.
 
 Owned artifact sections are integrated at `2b94ee43`. Real captures survive erased
 source sections and released source mappings; exact address rows and all payload
@@ -65,12 +68,13 @@ bytes return. Both tiers pass, as does the artifact suite on lifecycle host
 `cdac89e02a34`. An overflowing positive section length is refused before copying.
 The later source-bound writer and first-generation layout checks remain active.
 
-Source-stage candidate `5ba3fad3` boots partial images and passes wide-format
-checks. Independent review found that its relocated prefix mark follows a rebound
-`CURSORS` spelling; that repair is required before landing. Two obsolete WID
-collision fixtures remain red, and the compiler-chain producer's one-row
-assumption is being replaced with exact declared-row checks. No all-AOT product
-or application replacement is accepted yet.
+Source-stage repair `3ed0b9d0` and immutable prefix boundary `32a21b6e` are
+integrated. Empty-source and partial restored runtimes pass the boundary and
+real rewind checks. Compiler-chain row validation is integrated through
+`4aa70f9a`: exact location/kind/target checks, reordered-row acceptance and six
+corruption refusals. A sorted index replaces the quadratic verifier; independent
+checks pass at 32,768 rows. Two WID collision fixtures still need real target
+collisions. No all-AOT product or application replacement is accepted yet.
 
 Hazel's complete Tender pair was 153.3 to 131.6 seconds; the later session pair
 reduced the trivial floor from 4,106 to 3,668 microseconds. Both used a compiler
