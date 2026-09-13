@@ -3941,6 +3941,18 @@ variable UCP-I
       UCP-I @ 1 + UCP-I !
    repeat ;
 
+\ HEADROOM IS NOT COUNTED HERE, AND A BOOT-TIME GROW IS A COST, NOT A DEFECT.
+\ The cap is the smallest grain multiple holding the content, so an image whose
+\ content lands just under a grain boundary boots with only a few hundred spare
+\ bytes and the engine's own boot appends grow the pool at once (measured: a
+\ gen-1 engine at content 2,292,824 cap 2,293,760 doubled to 4,587,520 during its
+\ first load). The grow is correct from a RESTORED pool as it is from a runtime
+\ one — the copy is verbatim, UIX-REBASE carries the intern stamp, and USX-BASE /
+\ NRX-BASE / HIDX-EFF-BASE each read the swap as an identity change and rebuild
+\ (test/engine-suite.f "usigs restored-pool grow" certifies and compiles across
+\ one). So the cap does NOT reserve the boot appends: doing that would need this
+\ word to know a quantity only the engine's own prefix decides, and the price of
+\ not knowing it is one extra copy of the pool at boot in the worst case.
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
@@ -10141,7 +10153,16 @@ variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  varia
 LOC-CAP 4 * constant LOC-HW-INIT
 $0FFFFFFFFFFFFFFF constant LOC-HW-MAX-CELLS
 create LOC-HW-BOOT LOC-HW-INIT cells allot
-PTR-VARIABLE LOC-HW-P   LOC-HW-BOOT LOC-HW-P !
+\ PERSISTED, not scratch: this slot HOLDS A DATA ADDRESS across a capture. The
+\ capture relocates the window's DATA down to the image's own base, and only a
+\ marked cell (PERSISTED-PTR-VARIABLE) is rebased with it, so a PTR-VARIABLE here
+\ baked the window's address of LOC-HW-BOOT verbatim and the restored engine read
+\ and WROTE its bind widths 20 MB above its own heap top — into DATA that `allot`
+\ later handed out, so LOC-ADD and a later definition's `variable` shared a cell.
+\ Every other PTR-VARIABLE in this file is NULLed at the capture seam, which is
+\ what earns it the exemption; this one keeps a buffer, so it joins the relocated
+\ family the other per-definition arenas are in (SPA-P, PTRA-P, QEA-P, ...).
+PERSISTED-PTR-VARIABLE LOC-HW-P   LOC-HW-BOOT LOC-HW-P !
 variable LOC-HW-CAP     LOC-HW-INIT LOC-HW-CAP !
 create LOCSEQIX LOC-CAP cells allot
 variable LOCSEQ
@@ -10155,6 +10176,12 @@ variable LOCSEQ
    need LOC-HW-GROW-CAP {: cap:n :}
    LOC-HW-P @ LOC-HW-CAP @ cells cap cells ARENA-BYTES-GROW LOC-HW-P !
    cap LOC-HW-CAP ! ;
+\ LOC-HW-SNAP-RESET ( -- ) : DECOUPLED-ARENA-SNAP-RESET's job for the one
+\ per-definition arena declared below it — a grown LOC-HW lives in process-local
+\ mmap, which no image may carry. The widths are keyed by a bind sequence LOCSEQ
+\ resets per definition, so nothing live is lost.
+: LOC-HW-SNAP-RESET ( -- )
+   LOC-HW-BOOT LOC-HW-P !   LOC-HW-INIT LOC-HW-CAP ! ;
 : LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s (die 76 = pass-2 misalignment)
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
    s cells LOC-HW + @ ;
@@ -14116,6 +14143,7 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
    HIDX-RESET
    TV-SNAP-RESET
    DECOUPLED-ARENA-SNAP-RESET
+   LOC-HW-SNAP-RESET                    \ the same arena job, one file-order later
    CHECKER-CAPTURE-SCRATCH-PREPARE
    CT-SNAPSHOT-PERSIST
    CT-SNAPSHOT-MARK-POINTERS

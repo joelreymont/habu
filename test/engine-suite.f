@@ -760,6 +760,39 @@ USIGS-P @ TG-USIGS-P !
 USIGS-GROW-CAP @ TG-GROW-CAP !
 USIGS-GROW-NEXT @ TG-GROW-NEXT !
 USIGS-USER-OFF @ TG-UOFF !
+\ --- a RESTORED pool grows correctly -------------------------------------------
+\ This engine booted from an image, so USIGS still points at baked DATA and the
+\ store below is the one the image carried. The grow asserts further down run
+\ after TG-RESET, i.e. over a runtime mmap arena, so they never exercise the
+\ restored-pool case the chain actually meets (docs/bootstrap.md: an image whose
+\ content lands just under a grain boundary grows at its first load). Leave one
+\ append of headroom, then certify AND compile a word: the certify appends across
+\ the cap and the compile reads the relocated store back through the per-symbol,
+\ no-return and node-intern indexes that were stamped against the pre-grow base.
+s" usigs restored-pool base is baked DATA" T-LABEL
+TG-USIGS-P @ here < -1 T=
+UEND @ 64 + USIGS-CAP-U !
+s" COK-RESTORED-GROW ( n -- n ) dup drop 1 +" T-CHECK-PASSES
+s" usigs restored-pool grow relocated" T-LABEL
+USIGS-P @ TG-USIGS-P @ = 0 T=
+: ES-RESTORED-GROW ( n -- n ) dup drop 1 + ;
+s" usigs restored-pool compiles after grow" T-LABEL
+41 ES-RESTORED-GROW 42 T=
+s" usigs restored-pool rejects after grow" T-LABEL
+s" CBAD-RESTORED-GROW ( n -- n ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ --- a restored image's per-definition arenas are ITS OWN baked buffers --------
+\ LOC-HW-P holds a DATA address across a capture, so only the relocation table
+\ can keep it true; as a bare PTR-VARIABLE it kept the BUILD window's address and
+\ LOC-ADD wrote bind widths ~20 MB above this engine's heap top, into DATA that
+\ `allot` later handed to a definition's `variable` (the two-generation chain died
+\ SIGSEGV in ASIG-STR-INTERN on the cell they shared). LOCSEQ resets per
+\ definition and no definition above binds LOC-HW-INIT local groups, so these are
+\ still the boot values; a failure means either the regression is back or a
+\ definition in this file grew the arena.
+s" loc-hw restored on its boot buffer" T-LABEL
+LOC-HW-P @ LOC-HW-BOOT = -1 T=
+s" loc-hw restored at its init cap" T-LABEL
+LOC-HW-CAP @ LOC-HW-INIT T=
 \ normalize first: a restored snapshot boots with a persisted (smaller)
 \ store; one reset guarantees the runtime-sized arena the asserts assume
 TG-RESET

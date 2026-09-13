@@ -290,6 +290,17 @@ a6417a47): `bytes gen 2 vs 3 1032266`, `bytes gen 3 vs 4 0`, `bytes gen 4 vs 5
 while (3,4) still passes, a new build-time residue has appeared and the
 `cmp -l` offsets name the cell.
 
+Re-measured 2026-09-13 on a seed-hosted chain after `LOC-HW-P` stopped baking
+the build window's own DATA address (`src/core/checker.f`): all five generations
+report `usigs 2295800 cap 2359296 heap 10293807`, and `bytes gen 2 vs 3` is now
+**0** where it was 1,032,266. The remaining 1 MB of displacement was that
+residue: the stale base sat above the restored heap top, so `LOC-ADD` wrote bind
+widths into DATA that `allot` later handed out, and the capture baked those cells
+as extra non-zero runs. The chain now reaches its byte fixpoint at generation 2,
+so the (4,5) assertion carries two generations of margin. A boot-time signature
+pool grow does not disturb it: two builds hosted by one restored engine forced to
+double its pool at boot are byte-identical.
+
 The check is deliberately **not** registered in `test/gate-stdlib-cases.f`: the
 five cold builds cost 3-4 minutes, and for the whole of that time the tool owns
 the `bin/hb` slot, while `test/run.f` spawns `./bin/hb` children by relative

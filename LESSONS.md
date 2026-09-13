@@ -8103,3 +8103,28 @@ and --no-lldbinit.
   `PREFIX-MARK:DICT` and rewind a dictionary that already holds the core prefix.
   Relaxing only the seed-count check therefore moved the death from the seed pass
   to `E-UNDEFINED: USIGS` in the payload; what the payload needed was its host.
+
+## 2026-09-13 - a pointer that outlives a capture has to be marked
+
+- **`PTR-VARIABLE` is exempt from the relocation table only because every one of
+  them is NULLed at the capture seam; one that keeps a DATA address instead bakes
+  the BUILD WINDOW's address verbatim.** `LOC-HW-P` (the per-definition
+  bind-width arena, `src/core/checker.f`) was initialized to its baked
+  `LOC-HW-BOOT` buffer and never touched at the seam, so every engine built since
+  booted with that base ~20 MB above its own heap top: `LOC-ADD` wrote bind widths
+  into DATA that `allot` later handed out, and `variable` does not zero its cell
+  (`C-VARIABLE` only bumps DP), so a later definition's `variable` and `LOC-ADD`
+  shared cells. The generation chain died `rc 134` SIGSEGV in `ASIG-STR-INTERN` at
+  `ASIG-DIST-P @ ASIG-I @ cells + @` - a NULL arena with a count of 1 - because
+  the window's `ASIG-ARMED`/`ASIG-DIST-N` happened to land on cells `LOC-ADD` had
+  written; WHICH cells collide is a function of the host's DATA layout, so the one
+  defect passes on one generation and kills the next, and the signature pool's
+  boot-time grow it was first attributed to is innocent (forcing a restored pool
+  one append short of its cap and running the whole native build passes).
+  `PERSISTED-PTR-VARIABLE` plus the arena's own snap-reset is the shape every
+  other per-definition arena already had. Diagnosis route, for the next crash in
+  a capture window: the `pc` was in static `__text` and disassembled to the `@`
+  prim, a hardware watchpoint on the colliding cell caught the writer, and
+  walking the live `ndict` (`dbase@` + `DREC`) named both words - `code-owner.f`
+  could not, because the address belonged to code the window compiled after the
+  tool's own load, so its offsets do not exist in a second process.
