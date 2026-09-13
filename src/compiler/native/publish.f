@@ -33,6 +33,9 @@ TRUSTED: MIN-IN-REC ( n n -- )
 TRUSTED: DOES-RECORD ( n n -- )
    does-record ;
 
+TRUSTED: APPEND-PENDING ( n -- )
+   ndict-append ;
+
 : SIZE-CK ( -- n )
    A64EMIT:SIZE {: n:n :}
    A64EMIT:INSNS 0 <= if E-NPUB-SIZE throw then
@@ -167,16 +170,16 @@ public
 : PUBLISH-PENDING ( -- )
    PENDING-PROVE {: idx:n fn:n size:n :}
    idx fn size COMMIT
-   ndict@ 1+ ndict!
+   idx APPEND-PENDING
    idx PENDING-FACTS ;
 
 : PUBLISH-PENDING-DOES ( n -- ) {: fun:n :}
    fun DOES-PROVE {: idx:n fn:n size:n off:n :}
    idx fn size COMMIT
    fn off +  size off - RECORDED-LEN  DOES-RECORD
-   ndict@ 1+ ndict!
+   idx APPEND-PENDING
    idx PENDING-FACTS
-   ndict@ 1+ ndict! ;
+   idx 1+ APPEND-PENDING ;
 
 : NEXT-SLOT ( -- n )
    cp@ ;

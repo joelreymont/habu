@@ -428,6 +428,10 @@ SUITE compiler-native-dictionary-append
    test/compiler/native-dictionary-append.f
 ;SUITE
 
+SUITE compiler-native-dictionary-publish
+   test/compiler/native-dictionary-publish.f
+;SUITE
+
 SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
 ;SUITE
