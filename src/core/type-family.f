@@ -3136,10 +3136,12 @@ variable REG-AOT-ERROR-U
 \ The loader's private operation throws before publication on invalid input.
 \ Keep the established named process refusal at the artifact-load boundary.
 : REG-AOT-LOAD ( ptr u8 n -- )
-   [: REG-AOT-INSTALL ;] catch
+   0 REG-AOT-ERROR-U !
+   [: 2dup REG-AOT-INSTALL ;] catch
    dup 0 <> IF
+      REG-AOT-ERROR-U @ 0= IF throw THEN
       drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
-   THEN drop ;
+   THEN drop 2drop ;
 
 : REG-EXT-AOT-INSTALL ( -- )
    [: REG-AOT-MARK ;] is REG-EXT-AOT-MARK-XT
