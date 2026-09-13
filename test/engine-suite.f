@@ -741,6 +741,7 @@ variable TG-GROW-CAP
 variable TG-GROW-NEXT
 variable TG-UOFF
 variable TG-SMALL-CAP
+variable TG-RBASE
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): internal checker COLON
 \ words probed at top level go through named trusted shims - bare internal
 \ colon tokens fail closed under the internal-word gate (state cells stay
@@ -761,20 +762,32 @@ USIGS-GROW-CAP @ TG-GROW-CAP !
 USIGS-GROW-NEXT @ TG-GROW-NEXT !
 USIGS-USER-OFF @ TG-UOFF !
 \ --- a RESTORED pool grows correctly -------------------------------------------
-\ This engine booted from an image, so USIGS still points at baked DATA and the
-\ store below is the one the image carried. The grow asserts further down run
-\ after TG-RESET, i.e. over a runtime mmap arena, so they never exercise the
-\ restored-pool case the chain actually meets (docs/bootstrap.md: an image whose
-\ content lands just under a grain boundary grows at its first load). Leave one
-\ append of headroom, then certify AND compile a word: the certify appends across
-\ the cap and the compile reads the relocated store back through the per-symbol,
-\ no-return and node-intern indexes that were stamped against the pre-grow base.
-s" usigs restored-pool base is baked DATA" T-LABEL
-TG-USIGS-P @ here < -1 T=
+\ The grow asserts further down run after TG-RESET, i.e. over a runtime mmap
+\ arena, so they never exercise the case the generation chain actually meets: a
+\ pool the IMAGE carried in DATA, growing on the engine's own appends (an image
+\ whose content lands just under a grain boundary grows at its first load -
+\ docs/bootstrap.md).
+\ THIS BLOCK ESTABLISHES THAT STATE RATHER THAN ASSUMING IT. Whether the running
+\ engine's pool is still the baked one by the time the suite gets here is a
+\ property of that engine's content against its cap, not of this file: a root
+\ engine at content 2307240 against cap 2359296 has already grown into a mapping
+\ while loading, and the first version of this block asserted the baked pool as a
+\ precondition and went red on it. TG-PERSIST is the capture's own step, so it
+\ leaves the live store exactly where a restored engine finds it - freshly
+\ allotted DATA below the heap top, capped at the grain - on any engine. Then
+\ leave one append of headroom and certify AND compile a word: the certify appends
+\ across the cap and the compile reads the relocated store back through the
+\ per-symbol, no-return and node-intern indexes stamped against the pre-grow base.
+TG-PERSIST
+USIGS-P @ TG-RBASE !
+s" usigs persisted pool is DATA under the heap top" T-LABEL
+TG-RBASE @ here < -1 T=
+s" usigs persisted pool capped at the grain" T-LABEL
+USIGS-CAP-U @ UEND @ CELL + TG-ROUND T=
 UEND @ 64 + USIGS-CAP-U !
 s" COK-RESTORED-GROW ( n -- n ) dup drop 1 +" T-CHECK-PASSES
 s" usigs restored-pool grow relocated" T-LABEL
-USIGS-P @ TG-USIGS-P @ = 0 T=
+USIGS-P @ TG-RBASE @ = 0 T=
 : ES-RESTORED-GROW ( n -- n ) dup drop 1 + ;
 s" usigs restored-pool compiles after grow" T-LABEL
 41 ES-RESTORED-GROW 42 T=
