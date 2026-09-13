@@ -1152,11 +1152,17 @@ public
 \ ---- frozen readers ----------------------------------------------------------
 \ A frozen module reads its functions and blocks through the three arena views;
 \ the retired builder handles reject every touch with E-IR-ARENA-FROZEN.
+: RFUNS ( IR-ARENA:reader -- n )
+   IR-ARENA:FROZEN-READER FNCNT ;
+
 : FFUNS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN FNCNT ;
+   IR-ARENA:OPEN RFUNS ;
+
+: RBLOCKS ( IR-ARENA:reader -- n )
+   IR-ARENA:FROZEN-READER BCNT ;
 
 : FBLOCKS ( IR-ARENA:view -- n )
-   IR-ARENA:OPEN BCNT ;
+   IR-ARENA:OPEN RBLOCKS ;
 
 : FATTR-CELLS ( IR-ARENA:view -- n )
    IR-ARENA:OPEN PCELLS ;
@@ -1167,11 +1173,15 @@ public
    fnr key FNKEY-CK
    key fnr id OFF-SYM FNFLD ORD-OK IR-ID:PACK-SYMBOL ;
 
-: FSIGNATURE@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-fun-id -- IR-ID:ir-type-id )
-   {: f:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN {: fnr:IR-ARENA:reader :}
+: RSIGNATURE@ ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-fun-id -- IR-ID:ir-type-id )
+   {: f:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-fun-id :}
+   f IR-ARENA:FROZEN-READER {: fnr:IR-ARENA:reader :}
    fnr key FNKEY-CK
    key fnr id OFF-SIG FNFLD ORD-OK IR-ID:PACK-TYPE ;
+
+: FSIGNATURE@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-fun-id -- IR-ID:ir-type-id )
+   {: f:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-fun-id :}
+   f IR-ARENA:OPEN key id RSIGNATURE@ ;
 
 : FLINKAGE@ ( IR-ARENA:view IR-ID:ir-fun-id -- IR-FUN:linkage )
    {: f:IR-ARENA:view id:IR-ID:ir-fun-id :}
@@ -1195,9 +1205,13 @@ public
    fnr l OFF-SLEN FNC@ LEN-OK
    IR--SOURCE-SPAN:MAKE ;
 
+: RBLOCK-COUNT ( IR-ARENA:reader IR-ID:ir-fun-id -- n )
+   {: f:IR-ARENA:reader id:IR-ID:ir-fun-id :}
+   f IR-ARENA:FROZEN-READER id OFF-BN FNFLD LEN-OK ;
+
 : FBLOCK-COUNT ( IR-ARENA:view IR-ID:ir-fun-id -- n )
    {: f:IR-ARENA:view id:IR-ID:ir-fun-id :}
-   f IR-ARENA:OPEN id OFF-BN FNFLD LEN-OK ;
+   f IR-ARENA:OPEN id RBLOCK-COUNT ;
 
 : FATTR-COUNT ( IR-ARENA:view IR-ID:ir-fun-id -- n )
    {: f:IR-ARENA:view id:IR-ID:ir-fun-id :}
@@ -1210,10 +1224,10 @@ public
    fnp fnr key PFN-CK
    key fnp fnr  fnr id FNROW-AT  i AWIN@ IR-ID:PACK-ATTR ;
 
-: FBLOCK@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
-   {: f:IR-ARENA:view b:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
-   b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
-   f IR-ARENA:OPEN {: fnr:IR-ARENA:reader :}
+: RBLOCK@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
+   {: f:IR-ARENA:reader b:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
+   b IR-ARENA:FROZEN-READER {: blr:IR-ARENA:reader :}
+   f IR-ARENA:FROZEN-READER {: fnr:IR-ARENA:reader :}
    blr fnr key BFN-CK
    fnr id FNROW-AT {: l:n :}
    fnr l BTILE-CK
@@ -1224,6 +1238,11 @@ public
    blr ord OFF-PAR BC@ l <> if E-IR-FUN-PARENT throw then
    key ord IR-ID:PACK-BLOCK ;
 
+: FBLOCK@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
+   {: f:IR-ARENA:view b:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-fun-id i:n :}
+   b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
+   f IR-ARENA:OPEN blr key id i RBLOCK@ ;
+
 : FPARENT@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-fun-id )
    {: b:IR-ARENA:view f:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
    b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
@@ -1233,52 +1252,102 @@ public
    par fnr FNCNT >= if E-IR-FUN-BOUND throw then
    key par IR-ID:PACK-FUN ;
 
+: RARG-COUNT ( IR-ARENA:reader IR-ID:ir-block-id -- n )
+   {: b:IR-ARENA:reader id:IR-ID:ir-block-id :}
+   b IR-ARENA:FROZEN-READER id OFF-AGN BFLD LEN-OK ;
+
 : FARG-COUNT ( IR-ARENA:view IR-ID:ir-block-id -- n )
    {: b:IR-ARENA:view id:IR-ID:ir-block-id :}
-   b IR-ARENA:OPEN id OFF-AGN BFLD LEN-OK ;
+   b IR-ARENA:OPEN id RARG-COUNT ;
 
-: FARG@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-value-id )
-   {: b:IR-ARENA:view v:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
-   b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
+private
+
+\ Admit the block before opening its companion view in the public wrappers.
+\ Reader callers retain the same row and window checks.
+: ARG-ORD ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id n -- n n )
+   {: blr:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
    blr key BKEY-CK
    blr id BROW-AT {: l:n :}
    blr l OFF-AGN BC@ LEN-OK {: ln:n :}
    i 0 < i ln >= or if E-IR-FUN-BOUND throw then
-   blr l OFF-AGST BC@ LEN-OK i + {: ord:n :}
-   ord v IR-OP:FVALUES >= if E-IR-FUN-BOUND throw then
+   l blr l OFF-AGST BC@ LEN-OK i + ;
+
+: ARG-VALUE ( IR-ARENA:reader IR-ID:ir-module-key n n n -- IR-ID:ir-value-id )
+   {: v:IR-ARENA:reader key:IR-ID:ir-module-key l:n ord:n i:n :}
+   ord v IR-OP:RVALUES >= if E-IR-FUN-BOUND throw then
    key ord IR-ID:PACK-VALUE {: val:IR-ID:ir-value-id :}
-   v val IR-OP:FVALUE-KIND@ IR--OP-DEF--KIND:BLK-ARG IR--OP-DEF--KIND:EQ
+   v val IR-OP:RVALUE-KIND@ IR--OP-DEF--KIND:BLK-ARG IR--OP-DEF--KIND:EQ
    0= if E-IR-FUN-ARG throw then
-   v key val IR-OP:FVALUE-BLOCK@ IR-ID:BLOCK-LOCAL l <> if E-IR-FUN-ARG throw then
-   v val IR-OP:FVALUE-ARG@ i <> if E-IR-FUN-ARG throw then
+   v key val IR-OP:RVALUE-BLOCK@ IR-ID:BLOCK-LOCAL l <> if E-IR-FUN-ARG throw then
+   v val IR-OP:RVALUE-ARG@ i <> if E-IR-FUN-ARG throw then
    val ;
+
+public
+
+: RARG@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-value-id )
+   {: b:IR-ARENA:reader v:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   b IR-ARENA:FROZEN-READER key id i ARG-ORD {: l:n ord:n :}
+   v key l ord i ARG-VALUE ;
+
+: FARG@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-value-id )
+   {: b:IR-ARENA:view v:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   b IR-ARENA:OPEN key id i ARG-ORD {: l:n ord:n :}
+   v IR-ARENA:OPEN key l ord i ARG-VALUE ;
+
+: ROP-COUNT ( IR-ARENA:reader IR-ID:ir-block-id -- n )
+   {: b:IR-ARENA:reader id:IR-ID:ir-block-id :}
+   b IR-ARENA:FROZEN-READER id OFF-OPN BFLD LEN-OK ;
 
 : FOP-COUNT ( IR-ARENA:view IR-ID:ir-block-id -- n )
    {: b:IR-ARENA:view id:IR-ID:ir-block-id :}
-   b IR-ARENA:OPEN id OFF-OPN BFLD LEN-OK ;
+   b IR-ARENA:OPEN id ROP-COUNT ;
 
-: FOP@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-op-id )
-   {: b:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
-   b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
+private
+
+: OP-ORD ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id n -- n )
+   {: blr:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
    blr key BKEY-CK
    blr id BROW-AT {: l:n :}
    blr l OTILE-CK
    blr l OFF-OPN BC@ LEN-OK {: ln:n :}
    i 0 < i ln >= or if E-IR-FUN-BOUND throw then
-   blr l OFF-OPST BC@ LEN-OK i + {: ord:n :}
-   ord r IR-OP:FOPS >= if E-IR-FUN-BOUND throw then
-   key ord IR-ID:PACK-OP ;
+   blr l OFF-OPST BC@ LEN-OK i + ;
 
-: FTERMINATOR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-op-id )
-   {: b:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
-   b IR-ARENA:OPEN {: blr:IR-ARENA:reader :}
+: TERM-ORD ( IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id -- n )
+   {: blr:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
    blr key BKEY-CK
    blr id BROW-AT {: l:n :}
    blr l OTILE-CK
    blr l BOP-END 1- {: want:n :}
    blr l OFF-TERM BC@ ORD-OK want <> if E-IR-FUN-TERM throw then
-   want r IR-OP:FOPS >= if E-IR-FUN-BOUND throw then
-   key want IR-ID:PACK-OP ;
+   want ;
+
+: OP-ID ( IR-ARENA:reader IR-ID:ir-module-key n -- IR-ID:ir-op-id )
+   {: r:IR-ARENA:reader key:IR-ID:ir-module-key ord:n :}
+   ord r IR-OP:ROPS >= if E-IR-FUN-BOUND throw then
+   key ord IR-ID:PACK-OP ;
+
+public
+
+: ROP@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-op-id )
+   {: b:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   b IR-ARENA:FROZEN-READER key id i OP-ORD {: ord:n :}
+   r key ord OP-ID ;
+
+: FOP@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-op-id )
+   {: b:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   b IR-ARENA:OPEN key id i OP-ORD {: ord:n :}
+   r IR-ARENA:OPEN key ord OP-ID ;
+
+: RTERMINATOR@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-op-id )
+   {: b:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
+   b IR-ARENA:FROZEN-READER key id TERM-ORD {: ord:n :}
+   r key ord OP-ID ;
+
+: FTERMINATOR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id -- IR-ID:ir-op-id )
+   {: b:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}
+   b IR-ARENA:OPEN key id TERM-ORD {: ord:n :}
+   r IR-ARENA:OPEN key ord OP-ID ;
 
 : FBLOCK-SPAN@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id -- IR-SOURCE:span )
    {: b:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id :}

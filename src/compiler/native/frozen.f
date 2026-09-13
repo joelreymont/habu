@@ -20,6 +20,9 @@ private
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
 VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
+VIEWS-N TYPED-BUFFER S-READ IR-ARENA:reader
+
+: RD ( n -- IR-ARENA:reader ) S-READ @ ;
 
 public
 
@@ -43,13 +46,15 @@ public
 : MKEY ( -- IR-ID:ir-module-key )    0 S-KEY @ ;
 : VW ( n -- IR-ARENA:view )          S-VIEW @ ;
 
-: VALUE-COUNT ( -- n ) V-VALR VW IR-OP:FVALUES ;
-: TOTAL-BLOCKS ( -- n ) V-BLKR VW IR-FUN:FBLOCKS ;
-: TOTAL-FUNS ( -- n ) V-FUNR VW IR-FUN:FFUNS ;
-: TOTAL-OPS ( -- n ) V-OPR VW IR-OP:FOPS ;
+: VALUE-COUNT ( -- n ) V-VALR RD IR-OP:RVALUES ;
+: TOTAL-BLOCKS ( -- n ) V-BLKR RD IR-FUN:RBLOCKS ;
+: TOTAL-FUNS ( -- n ) V-FUNR RD IR-FUN:RFUNS ;
+: TOTAL-OPS ( -- n ) V-OPR RD IR-OP:ROPS ;
 
 
-\ A pass calls this once at the start of its own run, before it reads a row.
+\ A pass rebinds all readers at the start of its run, including every input
+\ module switch. Tokens retain no pointer or count; every read still validates
+\ generation, state and bounds through the arena reader API.
 : VIEWS! ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    m IR-BUILD:FKEY 0 S-KEY !
@@ -66,7 +71,8 @@ public
    m IR-BUILD:FFUN-ROWS    V-FUNR S-VIEW !
    m IR-BUILD:FBLOCK-ROWS  V-BLKR S-VIEW !
    m IR-BUILD:FEDGE-POOL   V-EDGEP S-VIEW !
-   m IR-BUILD:FEDGE-ROWS   V-EDGER S-VIEW ! ;
+   m IR-BUILD:FEDGE-ROWS   V-EDGER S-VIEW !
+   VIEWS-N 0 ?do i S-VIEW @ IR-ARENA:OPEN i S-READ ! loop ;
 
 \ ---- identity ----------------------------------------------------------------
 \ Same ordinal of the same module. Nothing here compares spellings.
@@ -87,93 +93,93 @@ public
 
 \ ---- the functions and blocks of the module ----------------------------------
 : FUN-COUNT ( -- n )
-   V-FUNR VW IR-FUN:FFUNS ;
+   V-FUNR RD IR-FUN:RFUNS ;
 
 \ Arity is a fact of the FUNCTION and not of the emission: a module holds a
 \ routine per quotation, and a routine contract states one arity for them all.
 : FUN-ARITY ( IR-ID:ir-fun-id -- n n )
    {: f:IR-ID:ir-fun-id :}
-   V-TYPR VW  V-FUNR VW MKEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@ ;
+   V-TYPR RD  V-FUNR RD MKEY f IR-FUN:RSIGNATURE@  IR-TYPE:RARITY@ ;
 
 : BLOCK-COUNT ( IR-ID:ir-fun-id -- n )
-   V-FUNR VW swap IR-FUN:FBLOCK-COUNT ;
+   V-FUNR RD swap IR-FUN:RBLOCK-COUNT ;
 
 : BLOCK-AT ( IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
    {: f:IR-ID:ir-fun-id i:n :}
-   V-FUNR VW V-BLKR VW MKEY f i IR-FUN:FBLOCK@ ;
+   V-FUNR RD V-BLKR RD MKEY f i IR-FUN:RBLOCK@ ;
 
 : ARG-COUNT ( IR-ID:ir-block-id -- n )
-   V-BLKR VW swap IR-FUN:FARG-COUNT ;
+   V-BLKR RD swap IR-FUN:RARG-COUNT ;
 
 : ARG-AT ( IR-ID:ir-block-id n -- IR-ID:ir-value-id )
    {: bk:IR-ID:ir-block-id i:n :}
-   V-BLKR VW V-VALR VW MKEY bk i IR-FUN:FARG@ ;
+   V-BLKR RD V-VALR RD MKEY bk i IR-FUN:RARG@ ;
 
 : OP-COUNT ( IR-ID:ir-block-id -- n )
-   V-BLKR VW swap IR-FUN:FOP-COUNT ;
+   V-BLKR RD swap IR-FUN:ROP-COUNT ;
 
 : OP-AT ( IR-ID:ir-block-id n -- IR-ID:ir-op-id )
    {: bk:IR-ID:ir-block-id i:n :}
-   V-BLKR VW V-OPR VW MKEY bk i IR-FUN:FOP@ ;
+   V-BLKR RD V-OPR RD MKEY bk i IR-FUN:ROP@ ;
 
 \ Read off the block's own row rather than taken as the last operation.
 : TERM-AT ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ ;
+   V-BLKR RD V-OPR RD MKEY bk IR-FUN:RTERMINATOR@ ;
 
 \ Freeze derives these rows from the checked terminators. Repeated edges may
 \ repeat a predecessor; a dataflow meet is idempotent over those entries.
 : PRED-COUNT ( IR-ID:ir-block-id -- n )
-   V-EDGER VW swap IR-VERIFY:FPRED-COUNT ;
+   V-EDGER RD swap IR-VERIFY:RPRED-COUNT ;
 
 : PRED-AT ( IR-ID:ir-block-id n -- IR-ID:ir-block-id )
    {: bk:IR-ID:ir-block-id i:n :}
-   V-EDGEP VW V-EDGER VW MKEY bk i IR-VERIFY:FPRED@ ;
+   V-EDGEP RD V-EDGER RD MKEY bk i IR-VERIFY:RPRED@ ;
 
 \ ---- one operation's own rows ------------------------------------------------
 : OPCODE-AT ( IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
-   V-OPR VW MKEY rot IR-OP:FOPCODE@ ;
+   V-OPR RD MKEY rot IR-OP:ROPCODE@ ;
 
 : OPERANDS-OF ( IR-ID:ir-op-id -- n )
-   V-OPR VW swap IR-OP:FOPERANDS ;
+   V-OPR RD swap IR-OP:ROPERANDS ;
 
 : OPERAND-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW MKEY id i IR-OP:FOPERAND@ ;
+   V-OPP RD V-OPR RD MKEY id i IR-OP:ROPERAND@ ;
 
 : RESULTS-OF ( IR-ID:ir-op-id -- n )
-   V-OPR VW swap IR-OP:FRESULTS ;
+   V-OPR RD swap IR-OP:RRESULTS ;
 
 : RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW MKEY id i IR-OP:FRESULT@ ;
+   V-OPP RD V-OPR RD MKEY id i IR-OP:RRESULT@ ;
 
 \ A non-terminator names none and answers zero; that is the schema's rule.
 : SUCCS-OF ( IR-ID:ir-op-id -- n )
-   V-OPR VW swap IR-OP:FSUCCESSORS ;
+   V-OPR RD swap IR-OP:RSUCCESSORS ;
 
 : SUCC-AT ( IR-ID:ir-op-id n -- IR-ID:ir-block-id )
    {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW MKEY id i IR-OP:FSUCCESSOR@ ;
+   V-OPP RD V-OPR RD MKEY id i IR-OP:RSUCCESSOR@ ;
 
 : ATTRS-OF ( IR-ID:ir-op-id -- n )
-   V-OPR VW swap IR-OP:FATTRS ;
+   V-OPR RD swap IR-OP:RATTRS ;
 
 : ATTR-KEY-AT ( IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
    {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW MKEY id i IR-OP:FATTR-KEY@ ;
+   V-OPP RD V-OPR RD MKEY id i IR-OP:RATTR-KEY@ ;
 
 \ Which key it is under, and whether it was allowed, is the reading pass's.
 : ATTR-INT-AT ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id i:n :}
-   V-ATTR VW  V-OPP VW V-OPR VW MKEY id i IR-OP:FATTR@  IR-ATTR:FINT@ ;
+   V-ATTR RD  V-OPP RD V-OPR RD MKEY id i IR-OP:RATTR@  IR-ATTR:RINT@ ;
 
 : SPAN-AT ( IR-ID:ir-op-id -- IR-SOURCE:span )
-   V-OPR VW MKEY rot IR-OP:FSPAN@ ;
+   V-OPR RD MKEY rot IR-OP:RSPAN@ ;
 
 \ ---- one value's own row -----------------------------------------------------
 : VALUE-TYPE-AT ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
-   V-VALR VW MKEY rot IR-OP:FVALUE-TYPE@ ;
+   V-VALR RD MKEY rot IR-OP:RVALUE-TYPE@ ;
 
 private
 get-current prot-wid-add

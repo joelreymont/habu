@@ -976,6 +976,9 @@ private
 1 TYPED-BUFFER MEMO-P IR-ARENA:view
 1 TYPED-BUFFER MEMO-R IR-ARENA:view
 1 TYPED-BUFFER MEMO-K IR-ID:ir-module-key
+1 TYPED-BUFFER MEMO-PR IR-ARENA:reader
+1 TYPED-BUFFER MEMO-RR IR-ARENA:reader
+variable MEMO-READERS?
 
 : MEMO-ROW-CELL ( n n n -- n ) {: off:n count:n start:n :}
    off F-OPST = if start exit then
@@ -983,19 +986,30 @@ private
    off F-RSST = off F-SCST = or off F-ATST = or if start count + exit then
    0 ;
 
-: MEMO-TABLE ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:view IR-ARENA:view )
+: MEMO-LIVE ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key count:n start:n :}
    c key 2 2 8 IR-OP:NEW
    {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    v IR-ARENA:ABORT
    count 0 ?do c p i 17 + IR-ARENA:PUSH drop loop
    ROW-CELLS 0 ?do c r i count start MEMO-ROW-CELL IR-ARENA:PUSH drop loop
+   p r ;
+
+: MEMO-TABLE ( IR-CTX:ctx IR-ID:ir-module-key n n -- IR-ARENA:view IR-ARENA:view )
+   MEMO-LIVE {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    p IR-ARENA:FREEZE r IR-ARENA:FREEZE ;
 
 : MEMO-SET ( IR-ARENA:view IR-ARENA:view -- )
-   0 MEMO-R ! 0 MEMO-P ! ;
+   0 MEMO-R ! 0 MEMO-P !
+   0 MEMO-P @ IR-ARENA:OPEN 0 MEMO-PR !
+   0 MEMO-R @ IR-ARENA:OPEN 0 MEMO-RR ! ;
 
 : MEMO-READ ( n -- n ) {: idx:n :}
+   MEMO-READERS? @ if
+      0 MEMO-PR @ 0 MEMO-RR @ 0 MEMO-K @
+      0 MEMO-K @ 0 IR-ID:PACK-OP idx IR-OP:ROPERAND@ IR-ID:VALUE-LOCAL
+      exit
+   then
    0 MEMO-P @ 0 MEMO-R @ 0 MEMO-K @
    0 MEMO-K @ 0 IR-ID:PACK-OP idx IR-OP:FOPERAND@ IR-ID:VALUE-LOCAL ;
 
@@ -1034,7 +1048,7 @@ private
    key 0 MEMO-K !
    c key 1 0 MEMO-TABLE MEMO-SET 0 MEMO-READ 17 T= ;
 
-: MEMO-CASES ( -- )
+: MEMO-CONTROLS ( -- )
    s" frozen row reuse keeps bounds, table identity and failed-miss recovery" T-LABEL
    BND [: MEMO-ALTERNATE ;] IR-CTX:WITH-CONTEXT
    s" cached rows reject retired and reused views" T-LABEL
@@ -1042,6 +1056,25 @@ private
    s" a cached row cannot outlive its context" T-LABEL
    BND [: MEMO-ESCAPE ;] IR-CTX:WITH-CONTEXT
    [: MEMO-READ0 ;] E-IR-ARENA-STALE TTHROWSQ ;
+
+: MEMO-LIVE-REFUSAL ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   key 0 MEMO-K !
+   c key 1 0 MEMO-LIVE {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   p IR-ARENA:OPEN-LIVE 0 MEMO-PR !
+   r IR-ARENA:OPEN-LIVE 0 MEMO-RR !
+   [: MEMO-READ0 ;] E-IR-ARENA-STATE TTHROWSQ
+   p IR-ARENA:FREEZE IR-ARENA:OPEN 0 MEMO-PR !
+   [: MEMO-READ0 ;] E-IR-ARENA-STATE TTHROWSQ
+   r IR-ARENA:FREEZE IR-ARENA:OPEN 0 MEMO-RR !
+   0 MEMO-READ 17 T=
+   0 MEMO-READ 17 T= ;
+
+: MEMO-CASES ( -- )
+   0 MEMO-READERS? ! MEMO-CONTROLS
+   1 MEMO-READERS? ! MEMO-CONTROLS
+   s" reader APIs refuse mutable inputs before admitting a frozen row memo" T-LABEL
+   BND [: MEMO-LIVE-REFUSAL ;] IR-CTX:WITH-CONTEXT ;
 
 \ The retired builder handles reject every touch once the module is frozen, so
 \ there is no public mutation left for a freeze to retract.

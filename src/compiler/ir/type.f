@@ -992,12 +992,16 @@ public
    rr l OFF-A RC@ N>SPACE
    key l rr l OFF-B RC@ REF-OK IR-ID:PACK-TYPE ;
 
-: FARITY@ ( IR-ARENA:view IR-ID:ir-type-id -- n n )
-   {: rv:IR-ARENA:view id:IR-ID:ir-type-id :}
-   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+: RARITY@ ( IR-ARENA:reader IR-ID:ir-type-id -- n n )
+   {: rv:IR-ARENA:reader id:IR-ID:ir-type-id :}
+   rv IR-ARENA:FROZEN-READER {: rr:IR-ARENA:reader :}
    rr id ID-CK {: l:n :}
    rr l OFF-KIND RC@ FNKIND-CK
    rr l OFF-B RC@ rr l OFF-C RC@ ;
+
+: FARITY@ ( IR-ARENA:view IR-ID:ir-type-id -- n n )
+   {: rv:IR-ARENA:view id:IR-ID:ir-type-id :}
+   rv IR-ARENA:OPEN id RARITY@ ;
 
 : FPARAM@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-type-id n -- IR-ID:ir-type-id )
    {: pv:IR-ARENA:view rv:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-type-id i:n :}

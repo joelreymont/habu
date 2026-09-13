@@ -21,6 +21,7 @@ require lib/test.f
 require lib/image-lifecycle.f
 require test/checker-assert.f
 require src/compiler/ir/build.f
+require src/compiler/native/frozen.f
 
 package IR-BUILD-TEST
 private
@@ -1480,6 +1481,74 @@ variable PART-FREE
    s" and a module that interned its own names was copied from nothing" T-LABEL
    plain TFALSE ;
 
+\ ---- the native pass cursor retains checked readers --------------------------
+: CURSOR-MODULE ( IR-CTX:ctx n -- IR-BUILD:module )
+   {: c:IR-CTX:ctx blocks:n :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL c b FN-OPEN
+   blocks 0 ?do c b BLK-BODY loop
+   c b IR-BUILD:END-FUN drop
+   c b IR-BUILD:FREEZE ;
+
+: CURSOR-READ ( IR-BUILD:module n -- )
+   {: m:IR-BUILD:module blocks:n :}
+   m NFROZEN:VIEWS!
+   NFROZEN:TOTAL-FUNS 1 T= NFROZEN:FUN-COUNT 1 T=
+   NFROZEN:TOTAL-BLOCKS blocks T=
+   NFROZEN:TOTAL-OPS blocks 2 * T=
+   NFROZEN:VALUE-COUNT blocks 2 * T=
+   NFROZEN:MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
+   f NFROZEN:FUN-ARITY 1 T= 1 T=
+   f NFROZEN:BLOCK-COUNT blocks T=
+   f blocks 1- NFROZEN:BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk IR-ID:BLOCK-LOCAL blocks 1- T=
+   bk NFROZEN:ARG-COUNT 1 T=
+   bk 0 NFROZEN:ARG-AT NFROZEN:VALUE-TYPE-AT IR-ID:TYPE-LOCAL 0 T=
+   bk NFROZEN:OP-COUNT 2 T=
+   bk 0 NFROZEN:OP-AT {: op:IR-ID:ir-op-id :}
+   op IR-ID:OP-LOCAL blocks 1- 2 * T=
+   op NFROZEN:OPERANDS-OF 0 T=
+   op NFROZEN:RESULTS-OF 1 T=
+   op 0 NFROZEN:RESULT-AT IR-ID:VALUE-LOCAL blocks 1- 2 * 1+ T=
+   op NFROZEN:ATTRS-OF 0 T= op NFROZEN:SUCCS-OF 0 T=
+   op NFROZEN:SPAN-AT IR-SOURCE:SPAN-LEN 4 T=
+   op NFROZEN:OPCODE-AT IR-ID:SYMBOL-OWNER m IR-BUILD:MODULE@ IR-ID:MODULE-SAME? TTRUE
+   bk NFROZEN:TERM-AT IR-ID:OP-LOCAL blocks 1- 2 * 1+ T=
+   bk NFROZEN:PRED-COUNT 0 T= ;
+
+: CURSOR-COUNT ( -- ) NFROZEN:TOTAL-OPS drop ;
+
+: CURSOR-BAD-OWNER ( IR-ID:ir-fun-id -- IR-ID:ir-fun-id )
+   dup NFROZEN:BLOCK-COUNT drop ;
+
+: CURSOR-PAST ( -- )
+   NFROZEN:MKEY 0 IR-ID:PACK-FUN 0 NFROZEN:BLOCK-AT
+   2 NFROZEN:OP-AT drop ;
+
+: CURSOR-BODY ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c 1 CURSOR-MODULE {: first:IR-BUILD:module :}
+   c 2 CURSOR-MODULE {: second:IR-BUILD:module :}
+   first 1 CURSOR-READ
+   second 2 CURSOR-READ
+   first IR-BUILD:FKEY 0 IR-ID:PACK-FUN
+   [: CURSOR-BAD-OWNER ;] catch {: held:IR-ID:ir-fun-id rc:n :}
+   rc E-IR-FUN-OWNER T=
+   [: CURSOR-PAST ;] E-IR-FUN-BOUND TTHROWSQ
+   first 1 CURSOR-READ
+   second 2 CURSOR-READ
+   second IR-BUILD:RETIRE
+   [: CURSOR-COUNT ;] E-IR-ARENA-STALE TTHROWSQ
+   c 1 CURSOR-MODULE {: reused:IR-BUILD:module :}
+   [: CURSOR-COUNT ;] E-IR-ARENA-STALE TTHROWSQ
+   reused 1 CURSOR-READ
+   first IR-BUILD:RETIRE ;
+
+: CURSOR-CASES ( -- )
+   s" native passes rebind frozen readers across modules and reused slots" T-LABEL
+   BND [: CURSOR-BODY ;] IR-CTX:WITH-CONTEXT
+   s" retained native readers refuse after the owning context ends" T-LABEL
+   [: CURSOR-COUNT ;] E-IR-ARENA-STALE TTHROWSQ ;
+
 \ ---- the process holds no compiler session -----------------------------------
 \ TARENA-SLOTS and TSLOTS pin the WHOLE arena and builder registries, and those
 \ registries are process-wide: a tier-1 load opens the compiler's own session
@@ -1498,6 +1567,7 @@ public
 : RUN ( -- )
    T-RESET
    STAND-DOWN
+   CURSOR-CASES
    BND [: HARNESS-CREATE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-APPEND ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-FREEZE ;] IR-CTX:WITH-CONTEXT

@@ -529,11 +529,19 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    {: held:IR-ARENA:reader actual:n :}
    actual expected T= ;
 
+: FROZEN-RD-REFUSES ( IR-ARENA:reader n -- )
+   {: r:IR-ARENA:reader expected:n :}
+   r [: dup IR-ARENA:FROZEN-READER drop ;] catch
+   {: held:IR-ARENA:reader actual:n :}
+   actual expected T= ;
+
 : RD-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 64 IR-ARENA:NEW {: a:IR-ARENA:arena :}
    8 0 ?do c a i 100 * IR-ARENA:PUSH drop loop
    a IR-ARENA:OPEN-LIVE {: lr:IR-ARENA:reader :}
+   lr E-IR-ARENA-STATE FROZEN-RD-REFUSES
+   lr a IR-ARENA:OPEN-LIVE IR-ARENA:READER-SAME? TTRUE
    lr IR-ARENA:RD-SIZE 8 T=
    lr 0 IR-ARENA:RD@ 0 T=
    lr 7 IR-ARENA:RD@ 700 T=
@@ -563,6 +571,9 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
    lr 0 E-IR-ARENA-FROZEN RD-REFUSES
    v IR-ARENA:OPEN {: fr:IR-ARENA:reader :}
+   fr IR-ARENA:FROZEN-READER fr IR-ARENA:READER-SAME? TTRUE
+   fr lr IR-ARENA:READER-SAME? TFALSE
+   lr E-IR-ARENA-FROZEN FROZEN-RD-REFUSES
    fr 0 IR-ARENA:RD@ 0 T=
    fr 7 IR-ARENA:RD@ 700 T=
    fr 8 IR-ARENA:RD@ 999 T=
@@ -572,12 +583,15 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    v IR-ARENA:RETIRE
    fr 0 E-IR-ARENA-STALE RD-REFUSES
    fr E-IR-ARENA-STALE RD-SIZE-REFUSES
+   fr E-IR-ARENA-STALE FROZEN-RD-REFUSES
 
    \ The next arena takes that freed row; the old reader's generation is gone.
    c 8 IR-ARENA:NEW {: b:IR-ARENA:arena :}
    c b 42 IR-ARENA:PUSH drop
    fr 0 E-IR-ARENA-STALE RD-REFUSES
    b IR-ARENA:OPEN-LIVE {: br:IR-ARENA:reader :}
+   fr br IR-ARENA:READER-SAME? TFALSE
+   fr E-IR-ARENA-STALE FROZEN-RD-REFUSES
    br 0 IR-ARENA:RD@ 42 T=
    b IR-ARENA:ABORT
    br 0 E-IR-ARENA-STALE RD-REFUSES ;
@@ -600,6 +614,9 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 
 : RD-DEAD-SIZE ( -- )
    DEAD-READER IR-ARENA:RD-SIZE drop ;
+
+: RD-DEAD-FROZEN ( -- )
+   DEAD-READER IR-ARENA:FROZEN-READER drop ;
 
 : RD-OPEN-FROZEN-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -633,6 +650,8 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    [: RD-DEAD ;] E-IR-ARENA-STALE TTHROWSQ
    s" a reader whose context tore down is stale when asked its size" T-LABEL
    [: RD-DEAD-SIZE ;] E-IR-ARENA-STALE TTHROWSQ
+   s" frozen-reader admission rejects a dead context before checking state" T-LABEL
+   [: RD-DEAD-FROZEN ;] E-IR-ARENA-STALE TTHROWSQ
    s" opening a live reader on a frozen arena refuses" T-LABEL
    [: RD-OPEN-FROZEN ;] E-IR-ARENA-FROZEN TTHROWSQ
    s" opening a reader on a retired view refuses" T-LABEL

@@ -1510,12 +1510,16 @@ public
    rr id ID-CK {: l:n :}
    rr l OFF-KIND RC@ N>KIND ;
 
-: FINT@ ( IR-ARENA:view IR-ID:ir-attr-id -- n )
-   {: rv:IR-ARENA:view id:IR-ID:ir-attr-id :}
-   rv IR-ARENA:OPEN {: rr:IR-ARENA:reader :}
+: RINT@ ( IR-ARENA:reader IR-ID:ir-attr-id -- n )
+   {: rv:IR-ARENA:reader id:IR-ID:ir-attr-id :}
+   rv IR-ARENA:FROZEN-READER {: rr:IR-ARENA:reader :}
    rr id ID-CK {: l:n :}
    rr l OFF-KIND RC@ K-INT KND-CK
    rr l OFF-A RC@ ;
+
+: FINT@ ( IR-ARENA:view IR-ID:ir-attr-id -- n )
+   {: rv:IR-ARENA:view id:IR-ID:ir-attr-id :}
+   rv IR-ARENA:OPEN id RINT@ ;
 
 : FBOOLEAN@ ( IR-ARENA:view IR-ID:ir-attr-id -- bool )
    {: rv:IR-ARENA:view id:IR-ID:ir-attr-id :}

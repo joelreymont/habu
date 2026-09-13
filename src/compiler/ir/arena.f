@@ -715,6 +715,19 @@ public
    then
    slot cells ACOUNTS + @ ;
 
+\ Frozen dialect readers may retain row facts. Refuse a live token before
+\ those facts can be reused, with the usual generation-before-state ordering.
+: FROZEN-READER ( IR-ARENA:reader -- IR-ARENA:reader )
+   dup RD-SIZE drop
+   dup READER>N SLOT-BITS rshift STATE-MASK and ST-FROZEN <>
+   if E-IR-ARENA-STATE throw then ;
+
+\ Exact token identity includes slot, generation and the state it was opened in.
+\ Equality grants no read authority; RD@ and RD-SIZE still validate each use.
+: READER-SAME? ( IR-ARENA:reader IR-ARENA:reader -- bool )
+   {: a:IR-ARENA:reader b:IR-ARENA:reader :}
+   a READER>N b READER>N = ;
+
 \ A validated ordinal for private side tables; it grants no arena write access.
 : REGISTRY-SLOT ( IR-ARENA:reader -- n )
    dup RD-SIZE drop READER>N SLOT-MASK and ;

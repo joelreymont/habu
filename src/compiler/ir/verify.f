@@ -959,22 +959,23 @@ public
    IR-ARENA:OPEN FCNT ;
 
 \ Design line 404: how many blocks branch to this one.
+: RPRED-COUNT ( IR-ARENA:reader IR-ID:ir-block-id -- n )
+   {: rview:IR-ARENA:reader id:IR-ID:ir-block-id :}
+   rview IR-ARENA:FROZEN-READER id OFF-PN FFLD ;
+
 : FPRED-COUNT ( IR-ARENA:view IR-ID:ir-block-id -- n )
    {: rview:IR-ARENA:view id:IR-ID:ir-block-id :}
-   rview IR-ARENA:OPEN id OFF-PN FFLD ;
+   rview IR-ARENA:OPEN id RPRED-COUNT ;
 
 \ Design line 405: how many blocks this one branches to.
 : FSUCC-COUNT ( IR-ARENA:view IR-ID:ir-block-id -- n )
    {: rview:IR-ARENA:view id:IR-ID:ir-block-id :}
    rview IR-ARENA:OPEN id OFF-SN FFLD ;
 
-\ The row view is opened only once its pool has passed its header, so the two
-\ views still refuse in the order they are checked in.
-: FPRED@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-block-id )
-   {: pview:IR-ARENA:view rview:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
-   pview IR-ARENA:OPEN {: p:IR-ARENA:reader :}
-   p FPHDR-CK
-   rview IR-ARENA:OPEN {: r:IR-ARENA:reader :}
+private
+
+: PRED-AT ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-block-id )
+   {: p:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
    r key FRKEY-CK
    r id FROW-AT {: l:n :}
    r l OFF-PN FRC@ {: n:n :}
@@ -982,6 +983,21 @@ public
    p  r l OFF-PST FRC@ i + HDR-CELLS +  IR-ARENA:RD@ {: ord:n :}
    ord 0 < if E-IR-VERIFY-STATE throw then
    key ord IR-ID:PACK-BLOCK ;
+
+public
+
+: RPRED@ ( IR-ARENA:reader IR-ARENA:reader IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-block-id )
+   {: p:IR-ARENA:reader r:IR-ARENA:reader key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   p IR-ARENA:FROZEN-READER FPHDR-CK
+   p r IR-ARENA:FROZEN-READER key id i PRED-AT ;
+
+\ The row view is opened only once its pool has passed its header, so the two
+\ views still refuse in the order they are checked in.
+: FPRED@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-block-id n -- IR-ID:ir-block-id )
+   {: pview:IR-ARENA:view rview:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-block-id i:n :}
+   pview IR-ARENA:OPEN {: p:IR-ARENA:reader :}
+   p FPHDR-CK
+   p rview IR-ARENA:OPEN key id i PRED-AT ;
 
 private
 get-current prot-wid-add
