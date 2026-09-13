@@ -943,73 +943,16 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
       ACAP-P @ 4 + ACAP-P !
    repeat ;
 
-\ --- the recorded address chains of the captured span ------------------------
-\ WHERE THE SITES COME FROM, AND WHY IT IS NOT A SCAN ANY MORE. Every chain the
-\ compiler builds records the region word it starts in, at the emit site, in the
-\ address-literal map (src/habu/layout.f SNAP-RELOC:ADDRMAP-OFF; the producers are
-\ habu2.f C-DATA-ADDR, C-DATA-ADDR-RAW and C-CODE-ADDR, and the native chain's
-\ publication seam). So EXISTENCE is answered by the map and by nothing else.
+\ Address sites come from the emitter's relocation map, never from recognizing
+\ instruction bytes or guessing whether an integer looks like an address.
+\ Both compilers record each chain where they create it. A direct call retains
+\ its callee's chain and creates no address literal in the caller.
 \
-\ AND A COPIED CHAIN IS RECORDED TOO, which is not a detail here but most of what
-\ this pass finds. A `create`d data word's whole body is one chain plus the push
-\ stencil, short enough that habu2.f C-CALL copies it into every caller instead of
-\ calling it, so a captured window holds far more copies than originals: on the
-\ metabuild window, 21 chains were created and 142 are present. The copies carry
-\ their record because the inliner's copy loop reissues it (SNAP-RELOC:CARRY-SITE),
-\ which is what makes a record able to replace the old scan at all - a record that
-\ only covered the CREATED chains would have found 21 of 142 and left the rest
-\ holding the building host's addresses.
-\
-\ WHAT THIS REPLACED. Two passes used to walk the blob looking for the shape of a
-\ four-word MOVZ/MOVK chain into x9 and then test the value against a span to
-\ decide WHETHER the word was a site at all. That was a guess twice over: a
-\ compiled word may carry inline data that decodes as a move-wide chain, and an
-\ ordinary integer may hold any value at all, so a scalar whose value happened to
-\ land in the DATA range was indistinguishable from an address. It also could not
-\ see the chains the native compiler emits, which name whichever register the
-\ allocator picked rather than x9 - the defect this pass exists to close.
-\
-\ WHAT THE SPANS STILL DO, AND WHY THAT IS NOT THE SAME KIND OF TEST. A recorded
-\ site is already known to hold a real address; the only question left is WHICH
-\ address, and that is a total classification over two spans rather than a
-\ recognition. [d0,d1) is the window's DATA span and [b0,b1) its code span, and
-\ the two are DISJOINT BY CONSTRUCTION, not by luck: d0 and d1 are `here` either
-\ side of the compile, so they lie inside the DATA region mapped MAP_FIXED at
-\ DATA-VA, while b0 and b1 are `cp@` either side of it and lie inside the JIT code
-\ region, which the engine maps REGION-OFF above its own __text. DATA-VA is far
-\ above every address that region can hold on either target, so no value can be in
-\ both spans and the two counts partition the recorded set.
-\
-\ AND A SITE IN NEITHER SPAN IS AN ADDRESS THE WINDOW DOES NOT CARRY - the shape a
-\ PRE-WINDOW literal has, whose correct value is fixed by the prefix's own layout
-\ and differs between the metabuild host and bin/hb. Rebasing it by this window's
-\ delta would be wrong and skipping it leaves the host's address baked in. The band
-\ is what makes the case VISIBLE at all: the old value-range scan recorded no site
-\ for such a chain and said nothing, so the seeded engine read a host address in
-\ silence. Which of the two things happens to it now depends on what it names, and
-\ ACAP-OUT-CHAIN below is where that is decided.
-\
-\ PRE-WINDOW DATA IS ELIMINATED, AND THAT IS THE RULING (dot
-\ habu-aot-pre-window-0b01043c). Carrying such a site was measured and REFUTED:
-\ the metabuild host truncates its boot dictionary back to the first prefix file
-\ and recompiles the whole core prefix a second time without rewinding DP, so
-\ every pre-window DATA address a window word can hold lives in a band with no
-\ counterpart in the target, and the two layouts are not even order-isomorphic -
-\ there is no delta and no monotone map, and a verbatim carry is silent
-\ corruption. What was eliminated instead is the way such a site got into a
-\ window: AOT-ARM:OPEN tells the engine where the window starts, and the
-\ compile-mode inliner then declines to COPY a body carrying a chain the window
-\ cannot describe and emits its call instead (habu2.f AOT-WINDOW:EMIT-OUTSIDE), which the
-\ scan above records as an ordinary call site and the seed relocates by name. So
-\ that class is empty by construction and the refusal guards the next producer of
-\ one rather than the one that used to arrive here every build.
-\
-\ PRE-WINDOW CODE IS CARRIED, AND THE DECLINE CANNOT REACH IT. A `['] X`
-\ naming a prefix word is not a copied body - the compile handler
-\ emits the chain into the window word's own body - so there is nothing for the
-\ inliner to decline. It is instead a call target that is not a BL, and it gets the
-\ answer a call target gets: the name travels and the seed resolves it. That is the
-\ name-keyed row above (dot habu-widen-the-aot-089f5faf).
+\ DATA and code sweeps classify recorded values against the captured spans.
+\ In-window addresses move with their span. Pre-window code travels by the
+\ callee's name; pre-window DATA has no general target-layout mapping and is
+\ refused. Explicit compile handlers can still create such a DATA reference
+\ (for example `is` on a pre-window defer), so this audit remains necessary.
 : ACAP-CHAIN-BIT? ( n n -- bool ) {: bstart:n boff:n :}
    bstart boff + AOT-DBASE-N - {: off:n :}
    AOT-LIVE-DATA SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + AOT-A>U8 c@
@@ -1040,10 +983,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ patch is the only thing that can put an address there.
 \ ITS PRODUCER IS ACAP-OUT-CHAIN BELOW. A code literal a window word CREATES for a
 \ pre-window word (`['] X` on a prefix word) is what needs this.
-\ Eliminating the class the way the DATA literals were eliminated does not reach
-\ it: the inliner's decline removes COPIES of such a chain, not the one the compile
-\ handler emits into the window word's own body (habu2.f C-BTICK calls
-\ C-CODE-ADDR there), so the decline leaves the case standing and only a
+\ The compile handler creates that literal in the window body (C-BTICK calls
+\ C-CODE-ADDR); direct call emission does not remove it. Only a name-keyed
 \ carry can answer it. An in-window code literal is NOT a candidate: rebasing it by
 \ the code delta is correct and costs no lookup.
 : ACAP-ADD-XTSITE ( n ptr u8 n -- ) {: boff:n a:ptr u:n :}
@@ -1087,8 +1028,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ do not place, and it can never match here: a record's [0] is a code ENTRY, and
 \ DATA-VA sits far above every address the code region can hold on either target,
 \ so no DATA address equals any record's xt. Pre-window DATA is eliminated at the
-\ producer instead (the inliner decline, dot habu-aot-pre-window-0b01043c) and its
-\ arrival here is still the named refusal.
+\ ordinary call site instead; an explicit pre-window DATA literal still receives
+\ the named refusal.
 : ACAP-OUT-CHAIN ( n n n n -- ) {: boff:n v:n bstart:n bend:n :}
    v bstart >= v bend < and if exit then          \ in-window code: the CODE sweep rebases it
    v ACAP-TGT>REC {: k:n :}
@@ -1538,26 +1479,9 @@ private
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 public
 
-\ THIS FILE DOES NOT ARM THE WINDOW; AOT-ARM:OPEN (src/habu/aot-arm.f) does, and
-\ it is the only word that writes AOT-WINDOW:D0-CELL/B0-CELL. Every producer calls
-\ it directly - src/habu/stdin.f CAPTURE-REPL, test/aot-band-lib.f, and the chain
-\ capture tool - because a capture running inside a booted engine has to arm the
-\ window before its own tooling exists, and this file cannot be loaded that early
-\ without putting its closure (asm.f, icode.f) in front of the compiler chain that
-\ shares it. A capture-side alias for the operation would just be a second name
-\ that could grow a second body.
-\
-\ The arming is why ACAP-UNCLASSIFIED below is a BACKSTOP rather than the
-\ mechanism: with the window declared, a body holding a pre-window address is
-\ called rather than copied (habu2.f AOT-WINDOW:EMIT-OUTSIDE), so the site the
-\ refusal names is unreachable by construction and the refusal stands guard over
-\ whatever produces one next.
-\
-\ THERE IS NO CLOSE, and that is the window's own shape, not an omission. The
-\ capture takes a SNAPSHOT of [d0, here) at the moment it runs; every definition
-\ compiled afterwards extends the same window, which is exactly what the widened
-\ re-captures in test/aot-wid-build.f do. The window therefore stays open for the
-\ life of the metabuild process, which exits once the image is written.
+\ AOT-ARM owns the captured cursors and frozen checker payload. Producers latch
+\ them before loading this tool, whose own compiler dependencies must remain
+\ outside the captured window.
 
 \ The band the two audits read, latched from this capture's own arguments. The
 \ marks are NOT reset with the buffers: they describe the process, and a widened

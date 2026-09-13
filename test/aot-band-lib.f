@@ -43,22 +43,11 @@ public
 \ through C-DATA-ADDR-RAW), so a window word that re-points this defer carries a
 \ prelude address the capture's DATA audit has to classify.
 \
-\ THE VEHICLE USED TO BE AN INLINED COPY of a `create`d field's body, which is
-\ parked: the compile-mode inliner takes the call arm unconditionally (habu2.f
-\ C-CALL, "THE INLINE ARM IS OFF, AND TIER 0 ALWAYS CALLS"), so a copied body
-\ carries nothing and the window word simply CALLED the field. Dot
-\ habu-decide-the-tier-374c95ff owns that decision. `is` is emitted by the engine
-\ as it stands and is unaffected by it either way: the chain is created in the
-\ window word rather than copied into it, so the inliner's decline
-\ (AOT-WINDOW:EMIT-OUTSIDE) has nothing to decline and the case survives the
-\ arm being switched back on.
+\ `is` creates the literal directly, so this tests the DATA audit through a live
+\ compile handler.
 defer SINK ( -- n )
 
-\ A prelude word the window's CALLER calls, and long enough to be worth calling if
-\ the inliner is ever switched back on: the call audit is about call sites, so a
-\ fixture that got inlined would test nothing. Today nothing is inlined (the C-CALL
-\ note above), so the length is insurance rather than the reason; if it ever does
-\ start being copied the case fails loudly - the refusal it expects will not arrive.
+\ A prelude callee gives the call audit a target outside the captured band.
 : CALLEE ( n -- n ) {: v:n :}
    v 1 +  v 2 * +  v 3 * +  v 5 * +  v 7 * +  v 11 * +  v 13 * +
    v 17 * +  v 19 * +  v 23 * +  v 29 * +  v 31 * + ;

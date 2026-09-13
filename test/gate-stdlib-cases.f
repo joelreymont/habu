@@ -733,10 +733,6 @@ SUITE spawn-emitter-shape
    tools/spawn-emitter-test.f
 ;SUITE
 
-SUITE c-call-emitter-shape
-   tools/c-call-emitter-test.f
-;SUITE
-
 SUITE signature-scan-emitter-shape
    tools/signature-scan-emitter-test.f
 ;SUITE
@@ -1318,8 +1314,8 @@ SUITE addrmap-set
    test/addrmap-set.f
 ;SUITE
 
-SUITE addrmap-inline
-   test/addrmap-inline.f
+SUITE addrmap-call
+   test/addrmap-call.f
 ;SUITE
 
 SUITE p2-map-rewind

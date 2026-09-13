@@ -437,8 +437,8 @@ create DRV-CH 1 allot
 \ window could not describe anything past its 65535th byte and the capture died
 \ at AOT-BLOB-CAP before it ever got there. This fixture builds a window that is
 \ beyond that, with the three things that have to survive it defined ABOVE
-\ the filler: a data cell, a callee too long for the inliner to copy (habu2.f
-\ INL-MAX), and a reporter that calls the callee and prints the cell. So the
+\ the filler: a data cell, a callee, and a reporter that calls the callee and
+\ prints the cell. So the
 \ engine can only report the magic if a call site AND a DATA site whose blob
 \ offsets do not fit sixteen bits were both recorded and patched at boot.
 \ The filler words carry no calls of their own; they exist to push the three

@@ -1,62 +1,8 @@
-\ p2-map-rewind.f - the width-aware recompile puts both relocation maps back.
-\
-\ WHAT IS BEING TESTED. A definition whose signature carries a multi-cell layout
-\ value is compiled TWICE: pass 1 lowers every value as one cell, the checker
-\ then certifies the body and hands back the widths it proved, and pass 2
-\ (src/habu/habu2.f EM-P2-START) rewinds the code pointer to the colon entry and
-\ lowers the same body again knowing them. Both relocation maps are indexed by
-\ REGION OFFSET and both are written AT the code pointer as a pass emits - the
-\ address-literal map by SNAP-RELOC:MARK-SITE (a `[']`, a `[: ;]`, a data-word
-\ address) and by SNAP-RELOC:CARRY-SITE (a chain the inliner copied), the
-\ region-to-text call map by EMIT-CEMITBL (a call whose callee is in the engine's
-\ loaded __text). Pass 2's stream has different lengths, so pass 1's records
-\ describe words pass 2 fills with something else. The rewind therefore owns
-\ them: it clears both maps over [entry, pass-1 CP) in the same breath as it puts
-\ the two cursors back.
-\
-\ WHY A STALE BIT IS A DEFECT AND NOT A WASTED BIT. Both maps' readers treat a
-\ recorded word as authoritative and refuse the image outright when the bytes
-\ underneath are not the recorded shape: SNAP-RELOC:EMIT-ADDRS requires the four
-\ move-wide words and exits ADDRMAP-RC otherwise, SNAP-RELOC:EMIT-CALLS requires
-\ a BL and exits CALLMAP-RC. The AOT capture refuses the same site one build step
-\ earlier (src/habu/aot-capture.f ACAP-UNCLASSIFIED, exit 74) because the address
-\ a word that is not a chain decodes to lands in neither of the window's spans.
-\ And a stale call bit that happens to land on a word that IS a call is worse
-\ than a refusal: the relocation pass would shift the displacement of a call that
-\ never needed shifting. Measured on the whole native compiler chain compiled in
-\ one window before this landed: 26 stale address records and 17 stale call
-\ records, 15 of the latter on words that are not calls.
-\
-\ HOW THE SUBJECTS ARE BUILT. Each pass-2 subject has a NARROW TWIN: the same
-\ body text, the same name length, and a signature whose values are all one cell,
-\ so the twin is compiled once and its lowering is exactly what pass 1 emits for
-\ the subject. The twin therefore tells the suite two things it would otherwise
-\ have to hard-code - where pass 1 put its record, and what a correct record at
-\ that site looks like - and every assertion below is stated against it rather
-\ than against a written-down offset or an instruction encoding.
-\
-\ WHAT EACH CASE PROVES.
-\
-\   1. The twins carry exactly one record each. Without this the rest could pass
-\      against a body that compiles no chain and no outside call at all - which
-\      is what a future inline limit that swallowed `emit`, or a change to how
-\      `[']` is compiled, would silently produce.
-\   2. Pass 2 MOVED the record. If the two passes happened to put their records
-\      at the same offset, pass 1's stale bit would land on pass 2's live chain
-\      and every later case would pass on the broken engine. This is the case
-\      that keeps the suite honest, and it is asserted for both maps.
-\   3. The subject carries exactly one record, at pass 2's offset.
-\   4. The word at PASS 1's offset is not recorded. This is the bug itself,
-\      addressed at the exact word.
-\   5. The record names a real site: the four words at the subject's recorded
-\      address are byte-identical to the four words at its twin's recorded
-\      address (the same chain, to the same target, in the same register), and
-\      the subject's recorded call word has the twin's opcode and resolves to the
-\      same callee. Nothing here recognises a site by searching for a shape - it
-\      holds the subject against a site the engine created with no rewind in it.
-\   6. A record made BEFORE the pass-2 definition survives it. Clearing the whole
-\      window, or clearing from the region base, would discard live sites; the
-\      span cleared is the rewound one and nothing below it.
+\ Width-aware JIT recompilation rewinds both relocation maps with the code.
+\ A narrow twin locates each pass-1 site without hardcoded instruction offsets.
+\ The wide subject must move the site, clear the old mark, preserve its target
+\ and leave its earlier neighbour unchanged. Calls are identified by the actual
+\ callee: the narrow `dup` is a call, while the wide `dup` expands at its site.
 
 require lib/errors.f
 require lib/test.f
@@ -68,7 +14,7 @@ private
 \ ---- the boundaries ----------------------------------------------------------
 \ Reading the engine's own relocation bands and its own compiled code needs the
 \ same raw casts src/habu/aot-capture.f, test/addrmap-set.f and
-\ test/addrmap-inline.f declare. They choose nothing: every address handed to
+\ test/addrmap-call.f declare. They choose nothing: every address handed to
 \ them is computed by the checked words below from `cp@`.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: DATA-A ( -- ptr u8 )
@@ -142,6 +88,19 @@ $2000000 constant IMM26-SGN
    d IMM26-SGN >= if d IMM26-SGN 2 * - else d then
    2 lshift at + ;
 
+\ Find the marked call to a specific word, not whichever call happens first.
+: MARKED-CALL ( n n n -- n ) {: from:n to:n target:n :}
+   0 FIRST-A !
+   to from ?do
+      CALL-MAP i MAP-BIT@ 1 = if
+         i BL-TARGET target = if i FIRST-A ! then
+      then
+   4 +loop
+   FIRST-A @ 0= if s" missing marked call target" 76 die then
+   FIRST-A @ ;
+
+: EMIT-CALL ( n n -- n ) s" emit" 0 search-wl MARKED-CALL ;
+
 \ ---- the subjects ------------------------------------------------------------
 \ Compiled here, by the engine under test, through the ordinary interpreter.
 \ P2M-A/P2M-B and P2M-C/P2M-D are twin pairs: identical body text, identical name
@@ -176,16 +135,19 @@ cp@ Q5 !
 : TEST-TWINS ( -- )
    s" the narrow twin compiles one recorded address chain" T-LABEL
    ADDR-MAP Q1 @ Q2 @ MARKS 1 T=
-   s" the narrow twin compiles one recorded call into engine text" T-LABEL
-   CALL-MAP Q3 @ Q4 @ MARKS 1 T= ;
+   s" the narrow twin records both dup and emit calls" T-LABEL
+   CALL-MAP Q3 @ Q4 @ MARKS 2 T=
+   Q3 @ Q4 @ s" dup" 0 search-wl MARKED-CALL drop
+   Q3 @ Q4 @ EMIT-CALL drop ;
 
 \ ---- 2. pass 2 moved both records --------------------------------------------
 \ Stated as offsets from each body's own start. Equal offsets would put pass 1's
 \ stale bit on pass 2's live site, and every case below would pass either way.
 : A-OFF ( -- n ) ADDR-MAP Q1 @ Q2 @ FIRST-MARK Q1 @ - ;
 : B-OFF ( -- n ) ADDR-MAP Q2 @ Q3 @ FIRST-MARK Q2 @ - ;
-: C-OFF ( -- n ) CALL-MAP Q3 @ Q4 @ FIRST-MARK Q3 @ - ;
-: D-OFF ( -- n ) CALL-MAP Q4 @ Q5 @ FIRST-MARK Q4 @ - ;
+: DUP-OFF ( -- n ) Q3 @ Q4 @ s" dup" 0 search-wl MARKED-CALL Q3 @ - ;
+: C-OFF ( -- n ) Q3 @ Q4 @ EMIT-CALL Q3 @ - ;
+: D-OFF ( -- n ) Q4 @ Q5 @ EMIT-CALL Q4 @ - ;
 
 : TEST-MOVED ( -- )
    s" the width-aware pass puts the chain at a different offset" T-LABEL
@@ -207,7 +169,9 @@ cp@ Q5 !
    s" the word pass 1 recorded its chain in is not recorded" T-LABEL
    ADDR-MAP Q2 @ A-OFF + MAP-BIT@ 0 T=
    s" the word pass 1 recorded its call in is not recorded" T-LABEL
-   CALL-MAP Q4 @ C-OFF + MAP-BIT@ 0 T= ;
+   CALL-MAP Q4 @ C-OFF + MAP-BIT@ 0 T=
+   s" the narrow dup call leaves no stale mark after widening" T-LABEL
+   CALL-MAP Q4 @ DUP-OFF + MAP-BIT@ 0 T= ;
 
 \ ---- 5. the surviving record names a real site -------------------------------
 \ Both bodies build the same chain to the same target in the same register, so
@@ -218,12 +182,12 @@ cp@ Q5 !
    ADDR-MAP Q2 @ Q3 @ FIRST-MARK
    ADDR-MAP Q1 @ Q2 @ FIRST-MARK
    CHAIN-BYTES BYTES= TTRUE
-   s" the recorded call word has the twin's instruction" T-LABEL
-   CALL-MAP Q4 @ Q5 @ FIRST-MARK BL-OP
-   CALL-MAP Q3 @ Q4 @ FIRST-MARK BL-OP T=
+   s" each recorded call has the AArch64 BL opcode" T-LABEL
+   Q4 @ Q5 @ EMIT-CALL BL-OP $25 T=
+   Q3 @ Q4 @ EMIT-CALL BL-OP $25 T=
    s" and reaches the same callee" T-LABEL
-   CALL-MAP Q4 @ Q5 @ FIRST-MARK BL-TARGET
-   CALL-MAP Q3 @ Q4 @ FIRST-MARK BL-TARGET T= ;
+   Q4 @ Q5 @ EMIT-CALL BL-TARGET
+   Q3 @ Q4 @ EMIT-CALL BL-TARGET T= ;
 
 \ ---- 6. the clear stops at the rewound span ----------------------------------
 \ P2M-Z was compiled before either pass-2 definition and its chain is still

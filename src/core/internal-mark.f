@@ -9,7 +9,7 @@ package ENGINE-INTERNAL
 variable IMK-I
 variable IMK-FIRST
 
-\ compiled-word entry frame setup (= habu2.f C-CALL-PROLOGUE-INSTR): every
+\ Compiled-word entry frame setup (sub sp, sp, #16): every
 \ colon body starts with it; create/variable/constant/does>-instance bodies
 \ start with their literal push instead.
 $D10043FF constant IMK-PROLOGUE

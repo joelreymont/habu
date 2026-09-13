@@ -1144,16 +1144,6 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ emit points, the native chain's publication seam is the fourth, and the AOT
 \ seed's code-literal rebase (EM-AOT-RELOC-CODE) is the fifth.
 \
-\ THE SIXTH WRITER IS THE ONE THAT DOES NOT CREATE A CHAIN. habu2.f C-CALL copies
-\ a short callee's body into its caller instead of calling it, and a chain in that
-\ body arrives at a second region offset that none of the five above ever visited.
-\ Its VALUE is fine - an absolute address means the same thing wherever the four
-\ words sit - so only the record has to travel, and SNAP-RELOC:CARRY-SITE makes it
-\ travel. Leaving it out is not a small hole: a `create`d data word's whole body is
-\ one chain plus the push stencil, short enough to inline everywhere it is named,
-\ so the copies outnumber the originals by a wide margin. Measured on the metabuild
-\ AOT capture window: 21 chains created, 142 present.
-\
 \ THE DATA LITERALS USED TO BE LEFT OUT, and the reason given was true of the
 \ wrong consumer. DATA is mapped at a fixed address in every run, so a DATA chain
 \ is already correct in the run that restores a snapshot and this map's snapshot
@@ -1242,75 +1232,17 @@ DATA-SIZE 8 - constant XTCELL-OFF-MAX
 
 ;package
 
-\ --- the open AOT capture window (dot habu-aot-pre-window-0b01043c) -------------
-\ Two cells naming where the capture window a metabuild has OPEN begins: the first
-\ address of its DATA span and the first address of its code span. They are what
-\ lets habu2.f C-CALL answer, while it is deciding between copying a body inline
-\ and calling it, whether an address chain that body carries is one the window can
-\ describe. A chain it cannot describe used to be copied in and then refused by the
-\ capture (aot-capture.f ACAP-UNCLASSIFIED, exit 74) with the build already done;
-\ declining to copy it emits the BL instead, which the capture relocates BY NAME
-\ and which is correct in the engine being built. That makes pre-window DATA empty
-\ by construction and leaves the capture's refusal as the backstop it was.
-\
-\ ZERO IS NOT A SENTINEL, IT IS THE ANSWER. An engine with no capture window open
-\ - every shipped bin/hb, every driver but the stdin metabuild - reads both cells
-\ as the zero the anonymous DATA mapping starts at, and C-CALL's test then asks
-\ whether the chain's value lies in [0, here) or in [0, cp). Every address a
-\ recorded chain can hold is below one of those two watermarks by construction (a
-\ DATA chain names a cell already allotted, a code chain a body already compiled),
-\ so an unarmed engine accepts every chain and declines nothing. There is no
-\ armed/unarmed branch to get wrong, and the same arithmetic runs in every compile
-\ in every engine rather than only in a metabuild.
-\
-\ Written by AOT-ARM:OPEN (src/habu/aot-arm.f), the only word in the tree that
-\ writes either cell, and reached through AOT-ARM:WINDOW-OPEN, which latches the
-\ window's four coordinates and arms these two from the same call: the metabuild
-\ through src/habu/stdin.f CAPTURE-REPL, and a capture running inside a booted
-\ engine from its own prelude, because the window it arms opens before that
-\ engine's capture tooling exists. There is no
-\ close: the window stays open for the life of the metabuild process, because
-\ every later definition extends it - the recapture fixtures in
-\ test/aot-wid-build.f widen this same window rather than opening another - and
-\ the process exits after the image is emitted.
-\
-\ WHERE THEY HAD TO GO, MEASURED. C-CALL reads them with `DATA <off> LDR`, whose
-\ unsigned offset is a 12-bit immediate scaled by eight, so an engine cell a
-\ compiled routine names directly cannot sit above $7FF8. Appending a band above
-\ the snapshot-relocation tables - the growth precedent the pre-trust defer table,
-\ the package-scope band and the `using` band all followed, which bumps DATA-START
-\ and moves nothing else - puts the offset near $91C00 and assembles as
-\ "asm: 12-bit immediate out of range", stopping the build. So these two take the
-\ TOP cells of the gap that ran $40C8..$43C0, between the protected-WID guard
-\ band and the evaluator frames. What is left, $40C8..$43A0, is still ONE
-\ CONTIGUOUS run, which is what the growth that gap is reserved for needs: widening
-\ the protected-WID bitmap upward, a band that cannot be split.
-\
-\ They open the package src/habu/habu2.f reopens for the same window's baked half
-\ (AOT-WINDOW:LRUNS, its declared-cell list and its boot-time decode), the way this
-\ file opens SNAP-RELOC for the bands habu2.f and snap-lib.f reopen.
-\
-\ T0-CELL is the SEED side of the same subject: the first wordlist id this boot's
-\ seed allocated for the captured window, latched once by EM-AOT-REGISTER-RECS
-\ before it registers anything, and read by the sealed-WID gate to tell a wordlist
-\ the seed just created from one the engine already had.
-\ IT IS LATCHED BECAUSE IT CANNOT BE DERIVED. The records pass advances WIDN past
-\ the whole span exactly once, so `WIDN - span` answers T0 only while nothing else
-\ has allocated a wordlist - true during the call-site pass and NOT true at
-\ EM-AOT-BOOTRUN, where an entry word already ran and may have opened a package.
-\ A gate that recomputed it would be right on two paths and silently wrong on the
-\ third, which is the implicit-ordering trap this file's neighbours keep naming.
-\ Zero until a seed runs, which reads as an empty window: `wid - 0` is below a
-\ zero span for no wid at all, so a boot with nothing captured admits nothing here.
-\ The application entry occupies the last free cell immediately below the AOT
-\ window cells. It is outside the virtual stack, body/return-stack buffers,
-\ protected-WID bitmap and evaluator frames. Zero preserves ordinary hb CLI
-\ routing; a saved application calls the registered entry before reading input.
+\ The application entry is outside compiler scratch storage. Zero preserves
+\ ordinary hb CLI routing; a saved application calls this entry before input.
 package APP-ENTRY
 public
 $43A0 constant XT-CELL
 ;package
 
+\ Capture-window cells retain their existing offsets in the engine DATA layout.
+\ AOT-ARM:OPEN writes both coordinates; tier-0 call emission does not read them.
+\ T0 is latched when the seed allocates its wordlists: later boot-run entries
+\ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
 package AOT-WINDOW
 public
 $43A8 constant T0-CELL           \ first wordlist id the seed allocated for the window
