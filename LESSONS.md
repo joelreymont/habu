@@ -7824,6 +7824,13 @@ and --no-lldbinit.
   aot-wid-restore (67), build-fixpoint-fixtures (1), cast (1), p2-map-rewind (1),
   pre-trust-defer (1). Three retire with the tier stack, three wait on the
   S-PWID retirement, pre-trust-defer on the recovery host.
+  Re-measured 2026-09-13 08:05 UTC on engine a503a443 at tip c3b6b3de (314
+  suites, no timeouts): the same 7. The S-PWID retirement removed the undefined
+  AOT-PWID-BUF@, and the three fixture suites now stop one wall later: the
+  certify pass rejects the generated stage source on src/habu/stdin.f HLINE's
+  `( a u -- )` (E-NONPARAMETRIC-EFFECT), reachable since the stage engines
+  compile stdin.f for their runtime; dot habu-give-the-stage-2f64be7c. Chain
+  gen 5 = gen 4 with fixpoint at generation 2.
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
