@@ -5,6 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-09-10T18:03:13.378322+03:00"
 blocks:
+  - habu-bind-locals-by-a16875d6
   - habu-build-the-compiler-c348eab0
   - habu-size-the-snapshot-1ca5db10
   - habu-wire-the-checker-eec26aea

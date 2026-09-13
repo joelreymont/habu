@@ -1,9 +1,0 @@
----
-title: Bind locals by one case rule in checker and compiler
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-09-12T00:57:25.366743+03:00"
----
-
-Problem: the checker resolves a reference to a live local case-insensitively while the legacy (tier 0) compiler resolves it case-sensitively, so a mixed-case reference certifies as the local and runs the word. Reproducer on the root bin/hb (found by Maki's shadow lint, 2026-09-12): with global ': G-STEP ( -- n ) 4 ;' and package public ': P-WIDTH ( -- n ) 3 ;', ': SAME ( n -- n ) {: P-WIDTH:n :} P-WIDTH ;' answers 9 for 9 SAME, but ': MIXED-PKG ( n -- n ) {: p-width:n :} P-WIDTH ;' answers 3 and ': MIXED-GLOBAL ( n -- n ) {: g-step:n :} G-STEP ;' answers 4, both certified as ( n -- n ) with no warning; docs/forth.md promises certification and execution name the same word. In Maki three guards (VIEW-READ, OUTLINE, PLACE-ALL) compared a local to the word it shadowed and the checker certified a comparison that was always false. Acceptance: one rule at both layers, case-insensitive like every other Habu lookup: the tier 0 compiler's local binding folds the reference the way the checker does, the tier 1 pipeline is proved to agree (a test compiling the three definitions on each tier, both answering 9 for MIXED-PKG and MIXED-GLOBAL), and a reference that resolves to a local at one layer and a word at the other is impossible by construction rather than linted; docs/forth.md states the rule (a local binds every spelling of its name for its scope) and that a local inside a quotation is refused (E-BAD-LOCAL-SHAPE). Files: src/habu/habu2.f (local binding), src/core/checker.f (local resolution), src/compiler/native/elaborate.f (proof only), test/, docs/forth.md. Verify: the tier test; test/run.f. Depends: the tier stack landing (habu2.f is in flight there). Ownership: rowan. Claim: unassigned

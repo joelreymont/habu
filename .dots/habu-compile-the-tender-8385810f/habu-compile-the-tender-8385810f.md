@@ -5,6 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-09-11T16:38:06.249420+03:00"
 blocks:
+  - habu-bind-locals-by-a16875d6
   - habu-keep-a-row-f2c4f3d4
   - habu-check-arena-append-c7b1e040
   - habu-preserve-complete-addr-258c0288

@@ -50,7 +50,11 @@ scaling and the payoff from pass-level reader reuse still need attribution.
 
 ## Native compiler and build design
 
-1. **Checker rows.** Fix call recording at `RECORDED-STEP`, `U-CALL-TAIL` and
+1. **Local binding and checker rows.** Local names are case-insensitive and
+   local-first in checker, JIT and AOT. Repair existing a16875d6, including
+   different-case duplicates and global/package shadowing; execution must match
+   certification. This existing P1 was omitted from the first reconciliation.
+   **Provider rows:** Fix call recording at `RECORDED-STEP`, `U-CALL-TAIL` and
    `CALL-FREEZE`. A call instantiates a fresh row; recording must not specialize
    its reusable provider declaration. Quotation-wrapped `execute` reproduces
    the defect without `finally`. Cover direct/quotation/cleanup calls at both
@@ -228,7 +232,7 @@ evidence and an update to the owning task, not speculative new passes.
 ## Dispatch order
 
 The dot tree is the detailed work graph; short IDs below identify existing leaves.
-All leaves are currently unassigned. Start independent ready work in separate
+Current claims are recorded in dots. Start independent ready work in separate
 workspaces: checker rows (f2c4f3d4), arena bounds (c7b1e040), artifact rows
 (258c0288), transient lifecycle (e03edf85), and native fixture paths (deafcd5a).
 
