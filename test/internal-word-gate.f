@@ -170,7 +170,9 @@ create EMPTY 1 allot            \ zero-length stdin
    s" bare E-INST fails closed" T-LABEL
    s" E-INST" NEG
    s" bare CT-LIVE? field-liveness query fails closed" T-LABEL
-   s" CT-LIVE?" NEG ;
+   s" CT-LIVE?" NEG
+   s" the unchecked prefix cursor reader is internal" T-LABEL
+   s" CHECKER-BOUND:CURSORS" NEG ;
 
 : ARGS-FORGE$ ( -- ptr u8 n )        \ args present: the gate is not depth-keyed
    SB-RESET
