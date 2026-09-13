@@ -24,6 +24,8 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/test/outcome.f
+require lib/test/subject.f
 
 package PREFIX-MARK-TEST
 
@@ -32,8 +34,9 @@ private
 \ The last definition src/core/lower-cert-seal.f makes before it takes the mark,
 \ so the boundary is not a free number: it is the count of records that existed
 \ when that file finished.
-: LAST-BEFORE-MARK$ ( -- ptr u8 n )
-   s" PREFIX-MARK:CURSORS" ;
+: BOUNDARY-INDEX ( -- n )
+   s" PREFIX-MARK" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN
+   s" BOUNDARY" rot XREF-FIND-WL-INDEX ;
 
 : LOWER-BOUND ( -- )
    PREFIX-MARK:DICT 0 > TTRUE
@@ -76,18 +79,57 @@ private
    PREFIX-MARK:REQ PREFIX-MARK:CURSORS = TFALSE
    PREFIX-MARK:REQ PREFIX-MARK:DICT = TFALSE ;
 
-\ The mark names the exact boundary after lower-cert-seal.f's final word and
-\ before the cold stdlib. `CHECKER-RESOLVES?` is
+\ The mark names the exact boundary after lower-cert-seal.f's final private word
+\ and before the cold stdlib. `CHECKER-RESOLVES?` is
 \ the same query tools/build-fixpoint.f BF-WATERMARK? uses to refuse a host that
 \ has no mark at all, so this also pins that the probe's subject exists - and
 \ the bogus tails beside it prove the probe discriminates rather than answering
 \ true for anything that merely looks qualified.
 : BOUNDARY-WORD ( -- )
-   LAST-BEFORE-MARK$ CHECKER-RESOLVES? TTRUE
-   LAST-BEFORE-MARK$ XREF-FIND-INDEX 1+ PREFIX-MARK:DICT T=
+   s" PREFIX-MARK:CURSORS" CHECKER-RESOLVES? TTRUE
+   BOUNDARY-INDEX dup 0 >= TTRUE
+   1+ PREFIX-MARK:DICT T=
+   s" PREFIX-MARK:BOUNDARY" CHECKER-RESOLVES? TFALSE
    s" true" 0 XREF-FIND-WL-INDEX PREFIX-MARK:DICT >= TTRUE
    s" PREFIX-MARK:NO-SUCH-TAIL" CHECKER-RESOLVES? TFALSE
    s" NOT-A-PACKAGE:NO-SUCH-TAIL" CHECKER-RESOLVES? TFALSE ;
+
+$400 constant CAP
+create OUT CAP allot
+create ERR CAP allot
+
+: RUN ( ptr u8 n -- len len outcome )
+   OUT CAP >LEN ERR CAP >LEN 5000 >MS SUBJECT:RUN ;
+
+: ACCEPTS ( ptr u8 n -- )
+   RUN 0 T-OUTCOME-EXITED=
+   LEN>N 0 T= LEN>N 0 T= ;
+
+: REFUSES-REOPEN ( ptr u8 n -- )
+   RUN ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
+   LEN>N {: erru:n :} LEN>N 0 T=
+   ERR erru s" PREFIX-MARK" CONTAINS? TTRUE ;
+
+\ Public words can be retired even in protected packages. The original public
+\ CURSORS spelling must therefore be dispensable to the private boundary. These
+\ disposable forks change no state in the subject whose marks the suite reads.
+: RETIRED-READER ( -- )
+   s\" package PREFIX-PROBE public\n: SAME ( n n -- ) <> if s\" prefix mark moved\" 74 die then ;\n;package\nPREFIX-MARK:DICT PREFIX-MARK:REQ\nundefine PREFIX-MARK:CURSORS\nPREFIX-MARK:REQ PREFIX-PROBE:SAME\nPREFIX-MARK:DICT PREFIX-PROBE:SAME\n" ACCEPTS ;
+
+: REBOUND-READER ( -- )
+   s\" undefine PREFIX-MARK:CURSORS\npackage PREFIX-MARK public\n: CURSORS ( -- n ) 123 ;\n;package\n" REFUSES-REOPEN
+   s\" undefine PREFIX-MARK:CURSORS\n: PREFIX-MARK:CURSORS ( -- n ) 123 ;\n" REFUSES-REOPEN ;
+
+: PRIVATE-BOUNDARY ( -- )
+   s" undefine PREFIX-MARK:BOUNDARY" RUN 70 T-OUTCOME-EXITED=
+   LEN>N {: erru:n :} LEN>N 0 T=
+   ERR erru s" undefine: word not found" CONTAINS? TTRUE
+   s" package PREFIX-MARK private undefine BOUNDARY" REFUSES-REOPEN ;
+
+\ The protection belongs to this one boot boundary. Ordinary packages retain
+\ their documented explicit undefine/redefine behavior, including these tails.
+: ORDINARY-REBOUND ( -- )
+   s\" package PREFIX-ORDINARY public\n: CURSORS ( -- n ) 11 ;\n;package\nundefine PREFIX-ORDINARY:CURSORS\npackage PREFIX-ORDINARY public\n: CURSORS ( -- n ) 23 ;\n: CHECK ( -- ) CURSORS 23 <> if s\" ordinary replacement failed\" 74 die then ;\n;package\nPREFIX-ORDINARY:CHECK\n" ACCEPTS ;
 
 public
 
@@ -97,6 +139,10 @@ public
    s" prefix mark three cells" T-LABEL THREE-CELLS
    s" prefix mark registry cursor" T-LABEL REGISTRY-CURSOR
    s" prefix mark boundary word" T-LABEL BOUNDARY-WORD
+   s" prefix mark survives public retirement" T-LABEL RETIRED-READER
+   s" prefix mark refuses public replacement" T-LABEL REBOUND-READER
+   s" prefix mark keeps its final record private" T-LABEL PRIVATE-BOUNDARY
+   s" unrelated scopes allow explicit replacement" T-LABEL ORDINARY-REBOUND
    T-REPORT ;
 
 ;package

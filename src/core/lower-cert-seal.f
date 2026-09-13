@@ -50,10 +50,12 @@ undefine FULL-SET
 \ `duplicate family at 'option'` on the first `require`, and a warm image whose
 \ first type declaration stored through a stale pointer and died.
 \
-\ The dictionary boundary follows this package's final word, CURSORS. Resolve
-\ that identity in the running dictionary: an AOT restore relocates record
-\ ordinals, so a captured host ndict@ is not the restored boundary. The include
-\ registry and checker marks are counts in their own retained stores.
+\ The dictionary boundary follows this package's final private word, BOUNDARY.
+\ Resolve its wordlist through the live namespace: an AOT restore relocates
+\ record ordinals and WIDs. The package is protected at the mark, so ordinary
+\ source cannot reopen it or retire/rebind that private word. A public marker
+\ would be insufficient: `undefine` may retire a public word even in a protected
+\ package. The include registry and checker marks remain their owners' counts.
 \
 \ The capture is this file's last act, so the package's own records are below
 \ the mark and survive the rewind that reads them.
@@ -72,7 +74,12 @@ public
 \ below would read its own empty accessor instead of the dictionary. Measured:
 \ the mark recorded 0, and a build takes that as "truncate everything".
 : DICT ( -- n )
-   s" PREFIX-MARK:CURSORS" XREF-FIND-INDEX
+   s" PREFIX-MARK" XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if
+      drop s" prefix boundary: source namespace is missing" 76 die
+   then
+   XREF-LEN
+   s" BOUNDARY" rot XREF-FIND-WL-INDEX
    dup 0 < if s" prefix boundary: final source record is missing" 76 die then
    1+ ;
 
@@ -86,6 +93,13 @@ public
 : CURSORS ( -- n )
    CU @ ;
 
+private
+
+: BOUNDARY ( -- ) ;
+
+get-current prot-wid-add
+public
+get-current prot-wid-add
 private
 
 CHECKER-BOUND:MARK
