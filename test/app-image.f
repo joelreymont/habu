@@ -2,6 +2,7 @@
 require lib/test.f
 require lib/fs-mutate.f
 require lib/process-cwd.f
+require lib/engine-candidate.f
 
 package APP-IMAGE-TEST
 
@@ -13,15 +14,18 @@ create ROOT-BUF FS-PATH-CAP allot
 create IMAGE-BUF FS-PATH-CAP allot
 create SECOND-BUF FS-PATH-CAP allot
 create STARTUP-BUF FS-PATH-CAP allot
+create REFUSE-BUF FS-PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 variable SECOND-U
 variable STARTUP-U
+variable REFUSE-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 : SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
 : STARTUP$ ( -- ptr u8 n ) STARTUP-BUF STARTUP-U @ ;
+: REFUSE$ ( -- ptr u8 n ) REFUSE-BUF REFUSE-U @ ;
 
 : PREPARE ( -- )
    CLEANUP-RESET
@@ -30,7 +34,8 @@ variable STARTUP-U
    ROOT$ CLEANUP-TREE+
    ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U !
    ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U !
-   ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U ! ;
+   ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U !
+   ROOT$ s" refuse-jit.f" REFUSE-BUF JOIN-PATH REFUSE-U ! ;
 
 : RESULT ( result<pcap:captured,pcap:failed> -- n n n )
    MATCH result
@@ -50,32 +55,46 @@ variable STARTUP-U
    rc 0 T= erru 0 T=
    outu ;
 
-\ The application's own definitions have to reach the OPTIMIZING tier: tier 0
-\ compiles a body before the checker has seen it and lowers a checked quotation
-\ store as a plain `!`, which declares no persisted-address row, so the image
-\ keeps the builder's code address and the restored process jumps into the bytes
-\ the image mapped there (measured: SIGILL below the live region base). The
-\ selection is src/habu/app-image.f's tail, so requiring that file is the whole
-\ precondition, and reading it back through a child is what refuses a move.
+\ Start cold: every instruction published by the image support load must carry
+\ native origin, including its dependencies. The selected tier alone cannot
+\ prove that code emitted before the selection was native.
 : CHECK-BUILD-TIER ( -- )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN
-   S\" require src/habu/app-image.f\ntier@ . cr\n" >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
+   S\" variable IMAGE-LOAD-START cp@ IMAGE-LOAD-START !\nrequire src/habu/app-image.f\nIMAGE-LOAD-START @ cp@ code-origin . cr tier@ . cr\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN
-   OUT swap S\" 1\n\n" T$= ;
+   OUT swap S\" 1\n\n1\n\n" T$= ;
 
 : BUILD ( -- )
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    S\" require src/habu/app-image.f\nrequire test/app-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
    IMAGE$ EXECUTABLE? TTRUE ;
+
+: CHECK-BUILD-SCOPE ( -- )
+   REFUSE$
+   S\" TRUSTED: REQUEST-JIT ( -- ) 0 set-tier ; immediate\ns\q REQUEST-JIT\q 0 parse-imm\n: NEVER-PUBLISHED ( -- ) REQUEST-JIT ;\n: MAIN ( -- ) ;\n"
+   ATOMIC-WRITE-FILE
+   PROC-ARGV-ENV-RESET
+   s" --" >LEN PROC-ARGV+
+   REFUSE$ >LEN PROC-ARGV+
+   IMAGE$ >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN
+   S\" require tools/app-build.f\nAPP-BUILD:RUN\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE RESULT {: outu:n erru:n rc:n :}
+   s" application immediates cannot select JIT while building" T-LABEL
+   rc 70 T=
+   ERR erru s" executable build requires native tier 1" CONTAINS? TTRUE
+   IMAGE$ EXISTS? TFALSE ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- n n n )
    {: path:ptr pathu:n input:ptr inputu:n :}
@@ -197,6 +216,7 @@ $20002 constant PTY-OPEN-FLAGS
 : RUN ( -- )
    T-RESET PREPARE
    CHECK-BUILD-TIER
+   CHECK-BUILD-SCOPE
    BUILD
    IMAGE$ CHECK-APPLICATION
    CHECK-REJECTION
