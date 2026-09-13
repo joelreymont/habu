@@ -35,3 +35,12 @@ fails at duplicate E-A-FIRST; all three focused CLI spellings return 78 instead
 of 69 (/tmp/cedar-alias-source-root-old.{out,err},
 /tmp/cedar-alias-cli-focus-old.{out,err}). Root owns independent review and the
 composed product build, followed by these real fresh-process acceptance tests.
+
+Product H exposed a fixture lifetime error: KNOWN reused JOIN's transient span
+after ENGINE-PROVIDES? canonicalization rewrote it. The reduced fifth spelling
+changed from `..././lib/../lib/errors.f` to `.../lib/errors.f/errors.f`; independent
+fresh spellings all returned true (/tmp/cedar-H-alias-scratch.{out,err}). The child
+now retains the original path for every query and real require. Actual H source-
+root loads pass with parent definitions at both tiers, rc 0 and empty stderr:
+/tmp/cedar-H-source-root-fixed{,-tier1}.{out,err}. No production code changed in
+this follow-up; the fresh child uses H's compiled resolver.
