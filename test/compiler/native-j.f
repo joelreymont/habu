@@ -147,38 +147,21 @@ private
    s" : NJ-OK3 ( -- n ) 0 2 0 ?do 2 0 ?do 2 0 ?do i j + + loop loop loop ;" EV-DEF 0 T=
    s" : NJ-BAD3 ( -- n ) 0 2 0 ?do 2 0 ?do 2 0 ?do k + loop loop loop ;" EV-DEF 0 T<> ;
 
+\ The checker counts only active frames in the current quotation or definition.
+\ Literal and `i` twins keep the surrounding quotation/catch shape identical.
 : QUOT-CASE ( -- )
    s" j inside a quotation cannot borrow the caller's loop frames" T-LABEL
    s" : NJ-QBAD ( -- n ) 0 3 0 ?do 2 0 ?do [: j drop ;] catch + loop loop ;"
-   EV-DEF E-NELAB-CTRL T=
+   EV-DEF 70 T=
    s" : NJ-QOK ( -- n ) 0 3 0 ?do 2 0 ?do [: 7 drop ;] catch + loop loop ;"
    EV-DEF 0 T=
 
    s" one loop inside the quotation is still one short" T-LABEL
    s" : NJ-QBAD2 ( -- n ) 0 3 0 ?do [: 0 2 0 ?do j + loop drop ;] catch + loop ;"
-   EV-DEF E-NELAB-CTRL T=
+   EV-DEF 70 T=
    s" : NJ-QI ( -- n ) 0 3 0 ?do [: 0 2 0 ?do i + loop drop ;] catch + loop ;"
-   EV-DEF E-NELAB-CTRL T<> ;
+   EV-DEF 0 T= ;
 
-\ THE SHAPE THE CHAIN REFUSES ON ITS OWN, and each pair is what makes the refusal
-\ a fact about the PLACEMENT rather than about the shape it is written in. Both
-\ bodies below have two counted loops as the CHECKER counts them, and in neither
-\ are both of them in the function that writes the `j`: a quotation's body is
-\ another function, walked here with its own control stack.
-\
-\ THE FIRST PAIR IS THE WHOLE STATEMENT. One quotation writes `j` and the other
-\ writes a literal; everything else about the two bodies is the same text. The
-\ first is refused by name and the second compiles, so what the refusal is about
-\ is the reader and not the quotation, the `catch`, or the loops around it.
-\
-\ THE SECOND PAIR SAYS THE SAME THING WHERE THE QUOTATION HAS A LOOP OF ITS OWN -
-\ one, which is one short. Its twin writes `i`, which that one loop satisfies, and
-\ the twin is held only against NOT being this refusal: a counted loop inside a
-\ quotation does not compile today for a reason of its own (measured: the module
-\ verifier's E-IR-VERIFY-DOM, -8091, for the `i` body and E-IR-VERIFY-SUCCARG,
-\ -8088, for a two-loop one), and this case has no business pinning that code. If
-\ a later lane makes those bodies compile, the twin answers zero and this line
-\ still holds.
 public
 
 : RUN ( -- )

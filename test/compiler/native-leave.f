@@ -64,6 +64,10 @@ public
    {: leave:n :}
    leave leave + ;
 
+\ The body always leaves on its first turn, so there is no live loop back edge.
+: NLV-FINAL ( n -- n )
+   3 0 ?do drop i leave loop ;
+
 ;package
 
 package NLV-TEST
@@ -137,10 +141,13 @@ private
    s" : NLV-OK2 ( n -- n ) 3 0 ?do [: 1 ;] execute drop loop ;" EV-DEF 0 T=
    s" : NLV-BAD2 ( n -- n ) 3 0 ?do [: 1 leave ;] execute drop loop ;" EV-DEF 0 T<> ;
 
-: DEAD-LATCH-CASE ( -- )
-   s" leave as the loop body's final path is refused by name" T-LABEL
-   s" : NLV-DEAD ( n -- n ) 3 0 ?do drop i leave loop ;"
-   EV-DEF E-NELAB-CTRL T=
+: FINAL-PATH-CASE ( -- )
+   s" leave as the loop body's final path returns the first index" T-LABEL
+   -17 NLV-FIXTURE:NLV-FINAL 0 T=
+   29 NLV-FIXTURE:NLV-FINAL 0 T=
+
+   s" the terminal leave preserves its caller's loop frame" T-LABEL
+   0 4 0 do i NLV-FIXTURE:NLV-FINAL + i + loop 6 T=
 
    s" a live fall-through beside the leave compiles" T-LABEL
    s" : NLV-LIVE ( n -- n ) 3 0 ?do dup 2 > if drop i leave then loop ;"
@@ -156,7 +163,7 @@ public
    LOCAL-CASE
    LEAVE-LOCAL-CASE
    OUTSIDE-CASE
-   DEAD-LATCH-CASE ;
+   FINAL-PATH-CASE ;
 
 ;package
 
