@@ -5878,6 +5878,7 @@ $8 constant ASIG.PKG
 $C constant ASIG.VIS
 $FFFF constant ASIG-STR-MAX             \ what a u16 length prefix can carry
 
+variable ASIG-FROZEN
 variable ASIG-ARMED     variable ASIG-MAPPED
 variable ASIG-ROW-U     variable ASIG-ROW-CAP-V
 variable ASIG-STR-U     variable ASIG-STR-CAP-V
@@ -6036,41 +6037,25 @@ PTR-VARIABLE ASIG-LAST-P
    prev 0= IF RES-FALSE EXIT THEN
    prev 1 - ASIG.SIG + ASIG-ROW-U32@ soff = ;
 
-\ The producer for a row that arrives WITH its text. `sa su` is that text; the
-\ key comes from the symbol row the record was just written under.
-\
-\ THE SAME ROW ARRIVES TWICE AND ONLY ONE IS KEPT. A declared definition reaches
-\ USIG-ADD once when CHECK certifies it and again when the engine's publish tail
-\ re-records the declared signature through TRUST, so keeping both gave 13,974
-\ rows for 6798 words. A row whose symbol's newest row already carries the same
-\ text is that replay and is dropped. A genuine REDEFINITION still appends and
-\ still wins by being later - measured over the compiler chain, 758 of the 7556
-\ rows are a second or later row for their symbol, and every pair looked at is a
-\ data record recorded `--` at definition time and `-- ptr a` when the engine
-\ auto-trusts it at publish. Newest-wins is what makes that the live answer.
-: CHECKER-ASIG-CAPTURE ( ptr u8 n -- ) {: sa:ptr su:n :}
-   CHECKER-ASIG-ARMED? 0= IF exit THEN
-   CHECKER-REC-SYM @ {: sym:n :}
-   sym 0= IF exit THEN
-   sa su ASIG-STR-INTERN {: soff:n :}
-   sym soff ASIG-SAME-AS-NEWEST? IF exit THEN
-   sym soff ASIG-EMIT ;
+\ Record membership while the definition is being published. The final verified
+\ graph and control flags are copied at freeze, after publication is complete.
+\ Text is deliberately not replayed: a declared row may have acquired fixed
+\ input requirements during certification.
+: CHECKER-ASIG-CAPTURE ( ptr u8 n -- )
+   2drop
+   CHECKER-ASIG-ARMED? 0= IF EXIT THEN
+   CHECKER-REC-SYM @ dup 0= IF drop EXIT THEN
+   1 swap ASIG-LAST! ;
 
-\ CHECKER-EXPORT has no signature text of its own: it re-publishes a record that
-\ already exists under a package's public tail. Copying the SOURCE row's text is
-\ exact where a re-render would not be, and a source with no row is a missing
-\ producer rather than something to guess at - the capture audit names it.
 : CHECKER-ASIG-EXPORT ( n -- ) {: src:n :}
-   CHECKER-ASIG-ARMED? 0= IF exit THEN
-   CHECKER-REC-SYM @ {: sym:n :}
-   sym 0= src 0= or IF exit THEN
-   src ASIG-LAST@ {: prev:n :}
-   prev 0= IF exit THEN
-   prev 1 - ASIG.SIG + ASIG-ROW-U32@ {: soff:n :}
-   sym soff ASIG-SAME-AS-NEWEST? IF exit THEN
-   sym soff ASIG-EMIT ;
+   CHECKER-ASIG-ARMED? 0= IF EXIT THEN
+   src 0= IF EXIT THEN
+   src ASIG-LAST@ 0= IF EXIT THEN
+   CHECKER-REC-SYM @ dup 0= IF drop EXIT THEN
+   1 swap ASIG-LAST! ;
 
 : CHECKER-ASIG-RESET ( -- )
+   0 ASIG-FROZEN !
    0 ASIG-ROW-U !  0 ASIG-STR-U !  0 ASIG-DIST-N !
    ASIG-LAST-P @ 0 ASIG-LAST-CAP-V @ ARENA-CELLS-ZERO ;
 
@@ -6086,6 +6071,9 @@ PTR-VARIABLE ASIG-LAST-P
    -1 ASIG-ARMED ! ;
 
 : CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
+
+: ASIG-RELEASE ( ptr u8 n -- )
+   dup 0 > IF munmap drop ELSE 2drop THEN ;
 
 \ The read surface src/habu/aot-capture.f copies the pool out through.
 : CHECKER-ASIG-N ( -- n ) ASIG-ROW-U @ ASIG-ROW / ;
@@ -9224,6 +9212,11 @@ REG-EXT-AOT-DEFAULTS
    SG-ROWS-RESET
    REC-RELEASE
    CHECKER-ASIG-DISARM
+   0 ASIG-FROZEN !
+   ASIG-ROW-P @ ASIG-ROW-CAP-V @ ASIG-RELEASE
+   ASIG-STR-P @ ASIG-STR-CAP-V @ ASIG-RELEASE
+   ASIG-DIST-P @ ASIG-DIST-CAP-V @ cells ASIG-RELEASE
+   ASIG-LAST-P @ ASIG-LAST-CAP-V @ cells ASIG-RELEASE
    0 ASIG-MAPPED !
    NULL-PTR ASIG-ROW-P !  0 ASIG-ROW-U !  0 ASIG-ROW-CAP-V !
    NULL-PTR ASIG-STR-P !  0 ASIG-STR-U !  0 ASIG-STR-CAP-V !
@@ -12905,6 +12898,167 @@ $47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-SIG:LEN-CELL
 \ signature store above, byte for byte: the artifact and the seed are couriers
 \ for it and re-encode nothing, which is why a row that arrives here can be read
 \ with the same arithmetic that wrote it.
+\ A signature row points at one versioned, self-contained verified graph.
+\ The E record/node shapes are reused; their references are blob-relative.
+\ ER.ACTIVE carries the version magic, ER.NEXT the byte length, and ER.SYM
+\ carries control/defer flags. No source symbol id or history link travels.
+$4842470000000001 constant ASIG-GRAPH-MAGIC
+$10000 constant ASIG-GRAPH-DEFER
+variable ASIG-GRAPH-BASE
+variable ASIG-GRAPH-GEN
+PTR-VARIABLE ASIG-GRAPH-MAP
+variable ASIG-GRAPH-MAP-CAP
+
+: ASIG-GRAPH-DIE ( -- )
+   s" checker: invalid captured effect graph" 76 die ;
+
+: ASIG-GRAPH-PTR ( n -- ptr u8 )
+   ASIG-GRAPH-BASE @ + ASIG-STR-P @ + ;
+
+: ASIG-GRAPH-ZERO ( ptr u8 n -- ) {: dst:ptr u:n :}
+   u 0 ?do 0 dst i + c! loop ;
+
+: ASIG-GRAPH-ALIGN ( -- )
+   ASIG-STR-U @ 7 + -8 and ASIG-STR-U @ - {: pad:n :}
+   pad ASIG-STR-ROOM
+   ASIG-STR-P @ ASIG-STR-U @ + pad ASIG-GRAPH-ZERO
+   pad ASIG-STR-U +! ;
+
+: ASIG-GRAPH-ALLOC ( n -- n ) {: bytes:n :}
+   ASIG-GRAPH-ALIGN
+   bytes ASIG-STR-ROOM
+   ASIG-STR-U @ ASIG-GRAPH-BASE @ - {: off:n :}
+   off ASIG-GRAPH-PTR bytes ASIG-GRAPH-ZERO
+   bytes ASIG-STR-U +!
+   off ;
+
+: ASIG-GRAPH-BYTES ( ptr u8 n -- n ) {: src:ptr bytes:n :}
+   bytes ASIG-GRAPH-ALLOC {: off:n :}
+   src off ASIG-GRAPH-PTR bytes USIGS-COPY
+   off ;
+
+\ A generation stamp avoids clearing a map proportional to USIGS for every
+\ effect. It maps only source node offsets; variable IDs remain per effect.
+: ASIG-GRAPH-MAP-ROOM ( -- )
+   UEND @ 2 * {: bytes:n :}
+   bytes ASIG-GRAPH-MAP-CAP @ <= IF EXIT THEN
+   ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ {: old:ptr oldcap:n :}
+   bytes oldcap 2 * max {: cap:n :}
+   old oldcap cap ARENA-BYTES-GROW ASIG-GRAPH-MAP !
+   cap ASIG-GRAPH-MAP-CAP !
+   old oldcap ASIG-RELEASE ;
+
+: ASIG-GRAPH-SLOT ( n -- ptr n )
+   2 * ASIG-GRAPH-MAP @ + CELL-VIEW ;
+
+: ASIG-GRAPH-SOURCE? ( n -- ) {: off:n :}
+   off 0 < off 8 mod 0 <> or IF ASIG-GRAPH-DIE THEN
+   off UEND @ > IF ASIG-GRAPH-DIE THEN
+   EFF-NODE UEND @ off - > IF ASIG-GRAPH-DIE THEN ;
+
+: ASIG-GRAPH-STRING ( n n -- ) {: src:n dst:n :}
+   src E-PTR EN.A @ E-PTR src E-PTR EN.B @ ASIG-GRAPH-BYTES
+   dst ASIG-GRAPH-PTR EN.A ! ;
+
+: ASIG-GRAPH-NODE ( n -- n ) {: src:n :}
+   src 0= IF 0 EXIT THEN
+   src ASIG-GRAPH-SOURCE?
+   src ASIG-GRAPH-SLOT {: slot:ptr :}
+   slot @ ASIG-GRAPH-GEN @ = IF
+      slot CELL + @ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
+      1- EXIT
+   THEN
+   ASIG-GRAPH-GEN @ slot !  -1 slot CELL + !
+   EFF-NODE ASIG-GRAPH-ALLOC {: dst:n :}
+   src E-PTR dst ASIG-GRAPH-PTR EFF-NODE USIGS-COPY
+   src E-PTR EN.TAG @ {: tag:n :}
+   tag EN-CON = IF
+      src E-PTR EN.A @ {: con:n :}
+      con CT-NAME$ ASIG-GRAPH-BYTES dst ASIG-GRAPH-PTR EN.A !
+      con CT-NAME$ nip dst ASIG-GRAPH-PTR EN.B !
+      con CT-CLASS@ dst ASIG-GRAPH-PTR EN.C !
+      con CT-WIDTH@ dst ASIG-GRAPH-PTR EN.D !
+      con CT-SIGN@ dst ASIG-GRAPH-PTR EN.E !
+   ELSE tag EN-PTR = IF
+      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
+   ELSE tag EN-PUSH = IF
+      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
+      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
+   ELSE tag EN-QUOT = IF
+      src E-PTR EN.A @ RECURSE dst ASIG-GRAPH-PTR EN.A !
+      src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
+      src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
+      src E-PTR EN.D @ RECURSE dst ASIG-GRAPH-PTR EN.D !
+   ELSE tag EN-ATOM = IF
+      src dst ASIG-GRAPH-STRING
+   ELSE tag EN-PARAM = IF
+      src dst ASIG-GRAPH-STRING
+      src E-PTR EN.C @ {: argc:n :}
+      argc cells ASIG-GRAPH-ALLOC {: args:n :}
+      args dst ASIG-GRAPH-PTR EN.D !
+      argc 0 ?do
+         src E-PTR EN.D @ i cells + E-PTR CELL-VIEW @ RECURSE
+         args i cells + ASIG-GRAPH-PTR CELL-VIEW !
+      loop
+   ELSE tag EN-VAR <> tag EN-ROW <> and IF ASIG-GRAPH-DIE THEN
+   THEN THEN THEN THEN THEN THEN
+   dst 1+ src ASIG-GRAPH-SLOT CELL + !
+   dst ;
+
+: ASIG-GRAPH-COPY ( n -- n ) {: sym:n :}
+   sym USIG-NEWEST dup 0= IF drop ASIG-GRAPH-DIE THEN
+   1- {: src:n :}
+   ASIG-GRAPH-MAP-ROOM
+   ASIG-GRAPH-GEN @ 1+ dup 0 <= IF drop ASIG-GRAPH-DIE THEN
+   ASIG-GRAPH-GEN !
+   ASIG-GRAPH-ALIGN
+   ASIG-STR-U @ ASIG-GRAPH-BASE !
+   EFF-REC ASIG-GRAPH-ALLOC drop
+   src E-PTR 0 ASIG-GRAPH-PTR EFF-REC USIGS-COPY
+   ASIG-GRAPH-MAGIC 0 ASIG-GRAPH-PTR ER.ACTIVE !
+   0 0 ASIG-GRAPH-PTR ER.SYMPREV !
+   sym CTL-FLAGS-SYM
+   sym DFER-FIND-SYM IF ASIG-GRAPH-DEFER or THEN
+   0 ASIG-GRAPH-PTR ER.SYM !
+   src E-PTR ER.DIN @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.DIN !
+   src E-PTR ER.DOUT @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.DOUT !
+   src E-PTR ER.RIN @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.RIN !
+   src E-PTR ER.ROUT @ ASIG-GRAPH-NODE 0 ASIG-GRAPH-PTR ER.ROUT !
+   ASIG-STR-U @ ASIG-GRAPH-BASE @ - 0 ASIG-GRAPH-PTR ER.NEXT !
+   ASIG-GRAPH-BASE @ ;
+
+: CHECKER-PAYLOAD-ARM ( -- )
+   CHECKER-ASIG-ARM
+   CHECKER-REG-AOT-MARK ;
+
+: CHECKER-PAYLOAD-FREEZE ( -- )
+   ASIG-FROZEN @ IF EXIT THEN
+   CHECKER-ASIG-ARMED? 0= IF ASIG-GRAPH-DIE THEN
+   CHECKER-ASIG-DISARM
+   CHECKER-REG-AOT-CLOSE
+   0 ASIG-ROW-U ! 0 ASIG-STR-U ! 0 ASIG-DIST-N !
+   SYM-N @ 1 ?do
+      i ASIG-LAST@ 0 <> IF
+         0 i ASIG-LAST!
+         i CHECKER-FIND-USIG-SYM IF
+            i i ASIG-GRAPH-COPY ASIG-EMIT
+         THEN
+      THEN
+   loop
+   -1 ASIG-FROZEN ! ;
+
+: CHECKER-PAYLOAD-LOOKUP ( ptr u8 n bool ptr u8 n -- n bool )
+   {: pkg:ptr pkgu:n pub:bool name:ptr nameu:n :}
+   ASIG-FROZEN @ 0= IF ASIG-GRAPH-DIE THEN
+   pkg pkgu pkgu pub ASIG-AUDIT-VIS name nameu SYM-FIND {: sym:n hit:bool :}
+   hit 0= IF 0 RES-FALSE EXIT THEN
+   sym CHECKER-FIND-USIG-SYM 0= IF 0 RES-FALSE EXIT THEN
+   sym ASIG-LAST@ RES-TRUE ;
+
+: CHECKER-PAYLOAD-SPANS ( -- ptr u8 n ptr u8 n )
+   ASIG-FROZEN @ 0= IF ASIG-GRAPH-DIE THEN
+   ASIG-ROW-P @ ASIG-ROW-U @ ASIG-STR-P @ ASIG-STR-U @ ;
+
 3 constant CK-AOT-SEC-N
 16 constant CK-AOT-ROW                  \ = ASIG-ROW: the store's row, carried verbatim
 0 constant CK-AOT-S-ROWS
@@ -14365,6 +14519,8 @@ TRUSTED: BIND-SOURCE ( ptr u8 -- ) {: owner:ptr :}
 \ copies any grown registry, persist and mark the live rows, then clear the
 \ later checker scopes that are declared below the registry implementation.
 : CHECKER-CAPTURE-PREPARE ( -- )
+   ASIG-GRAPH-MAP @ ASIG-GRAPH-MAP-CAP @ ASIG-RELEASE
+   NULL-PTR ASIG-GRAPH-MAP ! 0 ASIG-GRAPH-MAP-CAP !
    0 CK-AOT-STATE !                  \ validation belongs to the current signature pool
    TOKBUF-RESET
    HIDX-RESET
@@ -14440,4 +14596,13 @@ package CHECKER-REG
 ' REC-MIN-IN@                       DECLARATIONS REC-MIN-IN-OFF + xt!
 ' REC-WIDE-PUBLISH                  DECLARATIONS REC-WIDE-PUBLISH-OFF + xt!
 ' CHECK-UNJUDGED!                   DECLARATIONS CHECK-UNJUDGED-OFF + xt!
+;package
+
+package CHECKER-REG
+' CHECKER-PAYLOAD-ARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-ARM-OFF + xt!
+' CHECKER-PAYLOAD-FREEZE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-FREEZE-OFF + xt!
+' CHECKER-PAYLOAD-LOOKUP DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-LOOKUP-OFF + xt!
+' CHECKER-PAYLOAD-SPANS DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-SPANS-OFF + xt!
+' CHECKER-REG-AOT-SAVE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-REG-SAVE-OFF + xt!
+' CHECKER-ASIG-DISARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF + xt!
 ;package

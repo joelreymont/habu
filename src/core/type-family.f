@@ -3041,52 +3041,61 @@ create REG-AOT-END-A REG-AOT-N cells allot
       REG-AOT-J @ 1 + REG-AOT-J !
    REPEAT ;
 
-: REG-AOT-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
-   u 0= IF EXIT THEN
+: REG-AOT-ROW@ ( ptr u8 n -- n n n ) {: src:ptr k:n :}
+   src k REG-AOT-ROW * 8 + + {: row:ptr :}
+   row REG-AOT-U64@  row 8 + REG-AOT-U64@  row 16 + REG-AOT-U64@ ;
+
+\ Validate every base and byte span before reserving or publishing any store.
+\ Subtraction bounds the product and endpoint before either is computed.
+: REG-AOT-VALIDATE ( ptr u8 n -- ) {: src:ptr u:n :}
    u REG-AOT-HDR < IF
       s" tfam: a seeded type registry is shorter than its own table" 76 die THEN
    src REG-AOT-U64@ REG-AOT-N <> IF
       s" tfam: a seeded type registry names a store count this engine cannot read" 76 die THEN
    REG-AOT-HDR REG-AOT-CUR !
    REG-AOT-N 0 ?do
-      src i REG-AOT-ROW * 8 + +      REG-AOT-U64@ {: base:n :}
-      src i REG-AOT-ROW * 8 + 8 + +  REG-AOT-U64@ {: cnt:n :}
-      src i REG-AOT-ROW * 8 + 16 + + REG-AOT-U64@ {: bytes:n :}
+      src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
+      base 0 < cnt 0 < or bytes 0 < or IF
+         s" tfam: a seeded type registry has a negative base, count or length" 76 die THEN
+      cnt u REG-AOT-CUR @ - i REG-AOT-WIDTH / > IF
+         s" tfam: a seeded type registry section runs past its own bytes" 76 die THEN
       cnt i REG-AOT-WIDTH * bytes <> IF
          s" tfam: a seeded type registry section is not a whole number of records" 76 die THEN
-      REG-AOT-CUR @ bytes + u > IF
-         s" tfam: a seeded type registry section runs past its own bytes" 76 die THEN
+      base $7FFFFFFFFFFFFFFF cnt - > IF
+         s" tfam: a seeded type registry endpoint overflows" 76 die THEN
       i REG-AOT-COUNT {: live:n :}
-      live base cnt + = IF
-         REG-AOT-CUR @ bytes + REG-AOT-CUR !     \ already appended: nothing to do
-      ELSE
-         live base <> IF i base live REG-AOT-BASE-BAD THEN
+      live base <> live base cnt + <> and IF
+         i base live REG-AOT-BASE-BAD THEN
+      REG-AOT-CUR @ bytes + REG-AOT-CUR !
+   loop
+   REG-AOT-CUR @ u <> IF
+      s" tfam: a seeded type registry does not fill its own bytes" 76 die THEN ;
+
+: REG-AOT-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+   u 0= IF EXIT THEN
+   src u REG-AOT-VALIDATE
+   \ A failed allocation may leave capacity, but no visible registry member.
+   REG-AOT-N 0 ?do
+      src i REG-AOT-ROW@ drop {: base:n cnt:n :}
+      i REG-AOT-COUNT base = cnt 0 > and IF
+         i base cnt + REG-AOT-ROOM THEN
+   loop
+   REG-AOT-HDR REG-AOT-CUR !
+   REG-AOT-N 0 ?do
+      src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
+      i REG-AOT-COUNT base = IF
          bytes 0 > IF
-            i base cnt + REG-AOT-ROOM
             src REG-AOT-CUR @ +
             i REG-AOT-BASE-PTR base i REG-AOT-WIDTH * +
             bytes USIGS-COPY
          THEN
          i base cnt + REG-AOT-COUNT!
          i base cnt REG-AOT-SCRUB
-         REG-AOT-CUR @ bytes + REG-AOT-CUR !
       THEN
+      REG-AOT-CUR @ bytes + REG-AOT-CUR !
    loop
-   REG-AOT-CUR @ u <> IF
-      s" tfam: a seeded type registry does not fill its own bytes" 76 die THEN
-   TFX-SNAP-RESET                                \ the tail index predates these families
-   0 SVX-GEN ! ;                                 \ and so does the ctor-symbol index. The
-                                                 \ bulk copy grew SUMV-N past SVX-HI, a
-                                                 \ direction SVX-SYNC deliberately does not
-                                                 \ watch (ordinary growth links per write),
-                                                 \ so the next SVX-ENSURE rebuilds over the
-                                                 \ seeded rows - which is safe exactly
-                                                 \ because REG-AOT-SCRUB above already made
-                                                 \ their ctor cells structurally absent.
-                                                 \ This reset lands WITH the scrub, never
-                                                 \ alone: over unscrubbed rows it turns the
-                                                 \ carried foreign ids into live bindings
-                                                 \ (dot habu-seeded-variant-ctor-c98479f0).
+   TFX-SNAP-RESET
+   0 SVX-GEN ! ;
 
 : REG-EXT-AOT-INSTALL ( -- )
    [: REG-AOT-MARK ;] is REG-EXT-AOT-MARK-XT

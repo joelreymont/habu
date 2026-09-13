@@ -51,3 +51,13 @@ both tiers. The real replacement-owner fixture passes at both tiers after
 source loading and handoff, two owner CAPTURE callbacks, preserved numeric-call
 acceptance/wrong-pointer-call refusal, and reopening. Full artifact restore
 remains the driver integration boundary; partial graph roundtrip is unfinished.
+
+Review snapshot: the graph producer and whole-table REG prevalidation are WIP,
+not an accepted payload restore path. A real fresh-owner JIT freeze of ROW-ADD,
+a fixed numeric provider and a quantified callback produced three graph rows
+(48 row bytes, 1143 payload bytes). Native compilation of the graph additions,
+whole-graph validation/import, artifact version change, corrupt graph refusal,
+registry rejection controls and file/restore roundtrip remain unverified or
+unimplemented. Partial CAPTURE still refuses. The separate full-owner admission
+follow-up source-loads, but its new stale-memo and mismatched-band controls are
+not yet complete. Frozen review revisions must not be amended.
