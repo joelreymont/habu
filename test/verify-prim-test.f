@@ -544,7 +544,8 @@ variable ROOT-U
    s" cold.f" BF-APPEND-BOOT-PREFIX
    s" cold.f" s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE
    s" cold.f" NATIVE-PATH NATIVE-U @ BF-APPEND-SOURCE
-   s" cold.f" BF-APPEND-COMMON
+   \ The corpus exercises cold primitive declarations, with no engine emitter
+   \ or driver. Its complete checker prefix is the only runtime it needs.
    s" cold.f" COMPILER-BUILD:SEAL ;
 
 : EXPECT-CHILD-OK ( ptr u8 len -- )

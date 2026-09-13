@@ -987,8 +987,10 @@ package BUILD-FIXPOINT
 \ These are the files src/habu/habu2.f PFX-LOAD-BASE-FILES makes every engine
 \ re-read at boot, and this word is the build's mirror of that list:
 \ BF-APPEND-CHECKER-BOOT is PFX-LOAD-CHECKER-FILES, BF-APPEND-DECL-FILES is
-\ PFX-LOAD-DECL-FILES, and BF-APPEND-BOOT-CORE is PFX-LOAD-CORE-FILES. Each
-\ path is spelled once, in the appender that already owned it.
+\ PFX-LOAD-DECL-FILES, and BF-APPEND-BOOT-CORE carries PFX-LOAD-CORE-FILES
+\ followed by the final core seal. Runtime registers the core include facts
+\ before that seal; this certification assembly needs no include registry.
+\ Each path is spelled once, in the appender that already owned it.
 \
 \ The assembly is CERTIFY-ONLY: nothing here is ever fed to a stage compile.
 \ The compiling host already carries these definitions from its own boot and
@@ -1029,6 +1031,10 @@ package BUILD-FIXPOINT
 \ files are still statically checked, as their
 \ own build phase: BF-APPEND-BOOT-PREFIX.
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
+   \ The rewind removed the prelude. Restore it before build-side dependencies
+   \ such as habu1.f's code-origin emitter use its checked flag words.
+   out outu s" lib/prelude.f" BF-APPEND-SOURCE
+   out outu S\" s\" lib/prelude.f\" provided" BF-APPEND-LINE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
@@ -1047,8 +1053,6 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
-   out outu s" lib/prelude.f" BF-APPEND-SOURCE
-   out outu S\" s\" lib/prelude.f\" provided" BF-APPEND-LINE
    out outu s" lib/errors.f" BF-APPEND-SOURCE
    out outu S\" s\" lib/errors.f\" provided" BF-APPEND-LINE
    out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE

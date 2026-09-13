@@ -780,8 +780,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-LOAD-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-LOAD-ROW
-   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW
-   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-LOAD-ROW ;
+   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-BASE-FILES ( -- )
    PFX-LOAD-CHECKER-FILES
@@ -1349,6 +1348,9 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
    PFX-PROVIDE-FILES
+   \ Record the core mark after its include facts exist. A build rewind must
+   \ retain those facts together with the definitions they describe.
+   PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-LOAD-ROW
    PFX-LOAD-STDLIB-COLD
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-LOAD-INTMARK-COLD

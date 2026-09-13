@@ -24,3 +24,25 @@ Private evidence: source census 4919 certified / 0 rejected, compiler fixpoint, 
 Integrated at3ed0b9d0 with independent review correction32a21b6e: PREFIX-MARK uses a protected private final BOUNDARY record, because its public CURSORS spelling can be retired. Original-source and partial restored boundary/rewind checks pass. Compiler-chain exact row validation is integrated through4aa70f9a, preserving the diagnostic-hook claim and checking every location/kind/target. Reordered rows and corruption refusals pass; sorted lookup avoids quadratic validation and passes at32768 rows.
 
 Still open: aot-wid's two alias assertions select IDs from the full native host (next WID273), while the restored source product has next WID134. Actual prefix package IDs are CODE-RECLAIM=99 and CHECKER-TAPE=11. The maker has already allocated past those IDs, so its forward-only burn cannot construct the claimed collision; preserve these assertions until the fixture establishes a real target collision. Full rebuilt integration gate remains pending.
+
+2026-09-14, product F: the native maker's `E-UNDEFINED: 0<>` is an assembly
+ordering failure. Rewind removes the prelude; COMMON loaded habu1.f (which
+requires code-origin.f and its `0<>` caller) before restoring it. Move the
+existing prelude and provided row to the beginning of COMMON. The reduced real
+`--build` prefix changes from rc70 to rc0 without changing any emitter body.
+
+The subsequent cold stage exposed a second ordering error: its core mark saved
+require count 0 before the core provided rows raised it to 53. Rewind retained
+the core definitions but removed all 53 rows, so `require layout-buffer.f`
+failed on duplicate LBUF-GEN-CAP. Cold startup now takes its final core mark
+after the provided rows, before stdlib. Full F's corresponding saved/live counts
+were 41/105 and correctly restored to 41/41. The verify-prim cold parser corpus
+also appended unused compiler machinery after its declarations; removing that
+COMMON append preserves its complete checker prefix and exact corpus checks.
+
+Actual F native `test/cold-runtime-test.f` now passes the stage build, cold boot
+through its driver, and missing-source refusal. The unchanged native/verifier
+corpus expectations pass with the unused COMMON removed. Evidence and reduced
+before/after sources: `/home/joel/.cache/cedar-maker-prefix-xr276adl/`.
+Root owns the next composed product and full gate; the other open cases above
+are not closed by this focused repair.

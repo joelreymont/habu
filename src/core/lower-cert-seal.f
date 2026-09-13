@@ -31,8 +31,8 @@ undefine FULL-SET
 \ THE CORE PREFIX ENDS HERE, and this records where.
 \
 \ The mark's invariant is POSITION: it must be taken at the boundary, and the
-\ boundary is the end of this file — the last row of src/habu/habu2.f
-\ PFX-LOAD-CORE-FILES, so it stays at the fact it records.
+\ boundary is the end of this file. src/habu/habu2.f EMIT-HOST-LOAD-PREFIX
+\ loads it after the core files and their provided rows, before the stdlib.
 \
 \ WHO READS IT. src/habu/prefix-rewind.f, at the head of every generated engine
 \ source. That source used to truncate the dictionary back to util.f's first
