@@ -19,7 +19,13 @@ create NF-OUT NF-PATH-CAP allot   variable NF-OUT-U
 create NF-SRC NF-PATH-CAP allot   variable NF-SRC-U
 create NF-RPL NF-PATH-CAP allot   variable NF-RPL-U
 
-256 constant NF-CMD-CAP
+\ A shell-quoted path needs two wrapper quotes and, in the worst case, four
+\ bytes for every input byte (the portable '\'' spelling of one apostrophe).
+\ NF-REPL-CMD$ carries three such arguments plus its 21 bytes of redirection
+\ syntax, so the combined buffer is sized from the path contract it serves.
+NF-PATH-CAP 4 * 2 + constant NF-ARG-CAP
+21 constant NF-REPL-SYNTAX-CAP
+NF-ARG-CAP 3 * NF-REPL-SYNTAX-CAP + constant NF-CMD-CAP
 create NF-CMD NF-CMD-CAP allot    variable NF-CMD-U
 
 : NF-HB-TMP ( -- a u )  s" HB_TMP" getenv ;
@@ -63,15 +69,25 @@ NF-RPL NF-RPL-U s" nf-repl" NF-BUILD
    a  NF-CMD NF-CMD-U @ +  u move
    u NF-CMD-U +! ;
 
+\ Append one complete shell argument. The command contains only fixture-owned
+\ paths; quoting each as one argument keeps whitespace and shell punctuation in
+\ HB_TMP from changing argv or the surrounding redirections.
+: NF-ARG, ( a u -- )
+   s" '" NF-CMD,
+   bounds ?do
+      i c@ [char] ' = if s" '\''" NF-CMD, else i 1 NF-CMD, then
+   loop
+   s" '" NF-CMD, ;
+
 : NF-RUN-CMD$ ( -- a u )
    0 NF-CMD-U !
-   NF-BIN$ NF-CMD,  s"  > " NF-CMD,  NF-OUT$ NF-CMD,  s"  2>/dev/null" NF-CMD,
+   NF-BIN$ NF-ARG,  s"  > " NF-CMD,  NF-OUT$ NF-ARG,  s"  2>/dev/null" NF-CMD,
    NF-CMD NF-CMD-U @ ;
 
 : NF-REPL-CMD$ ( -- a u )
    0 NF-CMD-U !
-   NF-RPL$ NF-CMD,  s"  < " NF-CMD,  NF-SRC$ NF-CMD,
-   s"  > " NF-CMD,  NF-OUT$ NF-CMD,  s"  2>/dev/null" NF-CMD,
+   NF-RPL$ NF-ARG,  s"  < " NF-CMD,  NF-SRC$ NF-ARG,
+   s"  > " NF-CMD,  NF-OUT$ NF-ARG,  s"  2>/dev/null" NF-CMD,
    NF-CMD NF-CMD-U @ ;
 
 2variable NFOUT

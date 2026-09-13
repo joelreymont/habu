@@ -9,10 +9,13 @@ require elf.fs
 require sign.fs
 [THEN]
 
-512 constant CMD-CAP
-create CMD$ CMD-CAP allot   variable CMD#
 512 constant CG-TMP-CAP
 create CG-TMP$ CG-TMP-CAP allot   variable CG-TMP#
+
+\ One shell argument can expand every byte from an apostrophe to the portable
+\ '\'' spelling. The longest command adds `chmod +x '` and its closing quote.
+CG-TMP-CAP 4 * 11 + constant CMD-CAP
+create CMD$ CMD-CAP allot   variable CMD#
 
 s" cg: command too long" exception constant E-CMD-LONG
 s" cg: unsafe shell path" exception constant E-CMD-PATH
@@ -25,8 +28,8 @@ s" cg: unsafe shell path" exception constant E-CMD-PATH
 
 : CSP+ ( addr u -- )
    bounds ?do
-      i c@ dup [char] ' = if drop E-CMD-PATH throw then
-      C+
+      i c@ dup 0= if drop E-CMD-PATH throw then
+      dup [char] ' = if drop s" '\''" CS+ else C+ then
    loop ;
 
 : P+ ( c -- )
