@@ -272,6 +272,10 @@ SUITE native-window-owner
    test/native-window-owner.f
 ;SUITE
 
+SUITE native-build-layout
+   test/native-layout.f
+;SUITE
+
 SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE

@@ -1,4 +1,5 @@
 \ native-build.f - rebuild the complete native runtime in one AOT window.
+1 set-tier
 
 require lib/errors.f
 require src/core/prefix-boundary.f
@@ -13,64 +14,15 @@ require lib/process-cwd.f
 require lib/codesign.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
-require src/arch/arm64/mnem.f
-
-package NATIVE-BUILD
-
-: LOAD-SYS ( -- )
-   HB-TARGET-LINUX? if s" src/os/linux/sys.f" required exit then
-   HB-TARGET-MACOS? if s" src/os/macos/sys.f" required exit then
-   s" native-build: unknown target" 76 die ;
-
-: LOAD-IMAGE ( -- )
-   HB-TARGET-LINUX? if
-      s" src/os/linux/elf.f" required
-      s" src/os/linux/sign.f" required
-      s" src/os/linux/proc-watch.f" required
-      s" src/os/linux/proc-control.f" required
-      exit
-   then
-   HB-TARGET-MACOS? if
-      s" src/os/macos/macho.f" required
-      s" src/os/macos/sign2.f" required
-      s" src/os/macos/proc-watch.f" required
-      s" src/os/macos/proc-control.f" required
-      exit
-   then
-   s" native-build: unknown target" 76 die ;
-
-public
-
-: LOAD-HOST-TARGET ( -- )
-   LOAD-SYS ;
-
-: LOAD-HOST-IMAGE ( -- )
-   LOAD-IMAGE ;
-
-;package
-
-NATIVE-BUILD:LOAD-HOST-TARGET
-
-require src/os/script-argv.f
-require src/habu/treeshake.f
-require src/habu/rt.f
-require src/habu/crash.f
-require src/os/image-bytes.f
-
-NATIVE-BUILD:LOAD-HOST-IMAGE
-
-require src/habu/regalloc.f
-require src/habu/habu1.f
-require src/habu/jit.f
-require src/habu/prof.f
-require src/habu/fdio.f
+require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-ident.f
-require src/habu/habu2.f
-require src/habu/driver-io.f
+require src/habu/fdio.f
+require src/habu/aot-owned.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/compiler/native/string.f
+require tools/native-layout.f
 
 package NATIVE-BUILD
 
@@ -110,11 +62,19 @@ create SMOKE-ERR SMOKE-CAP allot
 
 : ADDR-ROW-OFF ( n -- n ) ADDR-ROW@ SNAP-RELOC:XTCELL-OFF-MASK and ;
 
-\ The host's own heap floor, or 0 from a host built before the cell existed. Read
-\ through habu2.f's host-side mirror of the offset, for the reason stated there:
-\ this file compiles against the HOST's dictionary, which on a pre-cell host has
-\ no BOOT-LAYOUT to name.
-: HOST-HEAP-START ( -- n ) data-base EM-LAYOUT:HEAP-START-OFF + @ ;
+: HOST-HEAP-START ( -- n )
+   data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
+
+: CHECK-HOST-LAYOUT ( -- )
+   NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
+   ADDR-ROWS 0 ?do
+      i ADDR-ROW@ {: raw:n :}
+      raw SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
+      off HOST-HEAP-START < if
+         NATIVE-LAYOUT:CURRENT off raw SNAP-RELOC:XTCELL-DATA-TAG and 0<>
+         NATIVE-LAYOUT:TRANSLATE drop
+      then
+   loop ;
 
 : KEEP-ROWS-BELOW ( n -- ) {: floor:n :}
    0 ADDR-ROWS 0 ?do
@@ -125,39 +85,15 @@ create SMOKE-ERR SMOKE-CAP allot
    loop
    ADDR-ROWS! ;
 
-\ THE FALLBACK'S BOUND IS STRUCTURAL, NOT A THRESHOLD. $7FF8 is the highest DATA
-\ offset emitted code can name with `DATA <off> LDR` -- a 12-bit immediate scaled
-\ by eight -- the ceiling src/habu/layout.f states at every band that had to stay
-\ under it. Every address cell the ENGINE declares is a cell its own compiled code
-\ names that way: the hook cells, the native dispatch cells and the application
-\ entry. So an engine declaration is at or below this bound while a DP-heap row is
-\ far above it (measured 2026-09-12: 17312 for the highest engine cell against a
-\ heap floor of 958280). A row the fallback KEPT above the bound therefore says the
-\ host's reserved bands are smaller than this tree's and the source constant has
-\ misclassified the host's heap, so the build refuses by name instead of baking a
-\ retired host address. A host LARGER than the tree is the one direction this
-\ cannot see; docs/bootstrap.md carries that as the landing rule.
-$7FF8 constant FIXED-CELL-MAX
-
-: FALLBACK-REFUSE ( n -- ) {: off:n :}
-   s" native-build: host predates BOOT-LAYOUT:HEAP-START-CELL and its kept row DATA+" type off .
-   s"  is not an engine cell" type cr
-   s" native-build: host heap start unknown; build from a post-cell host (docs/bootstrap.md)" 76 die ;
-
-: CHECK-FALLBACK-ROWS ( -- )
-   ADDR-ROWS 0 ?do
-      i ADDR-ROW-OFF {: off:n :}
-      off FIXED-CELL-MAX > if off FALLBACK-REFUSE then
-   loop ;
-
 : RESET-ADDRESS-ROWS ( -- )
    HOST-HEAP-START {: floor:n :}
-   floor 0<> if floor KEEP-ROWS-BELOW exit then
-   DATA-START KEEP-ROWS-BELOW
-   CHECK-FALLBACK-ROWS ;
+   floor 0= floor DATA-START <> or if
+      s" native-build: host layout does not match its published heap floor" 76 die
+   then
+   floor KEEP-ROWS-BELOW ;
 
-defer RESET-SOURCE ( -- )
-defer IMPORT-CHECKED ( ptr u8 -- )
+TRUSTED: RESET-XT ( n -- [ -- ] ) ;
+TRUSTED: IMPORT-XT ( n -- [ ptr u8 -- ] ) ;
 
 \ Resolve the current source owner in its own package. The cold seed uses the
 \ native dispatch header cells for its old compiler's temporary stack.
@@ -167,14 +103,12 @@ TRUSTED: CHECKER-OWNER ( -- ptr u8 )
 \ These execution tokens belong to the retained/target private checker owners.
 TRUSTED: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if exit then
-   owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ is RESET-SOURCE
-   RESET-SOURCE ;
+   owner NCOMP-DISPATCH:DECL-RESET-OFF + CELL-VIEW @ RESET-XT execute ;
 
 TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
    CHECKER-OWNER {: owner:ptr :}
    owner 0= if s" native-build: target checker owner missing" 76 die then
-   owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ is IMPORT-CHECKED
-   source IMPORT-CHECKED ;
+   source owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ IMPORT-XT execute ;
 
 \ The discarded build host remains callable through this compiled continuation,
 \ but none of its dictionary records or address declarations enters the window.
@@ -202,6 +136,10 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/layout-buffer.f" included
    s" src/core/layout-valid.f" included
    source TRANSFER-CHECKER
+   \ Transfer publishes the complete replacement owner. Earlier pre-hook code
+   \ still needs the retained compiler's paired checker; later calls use this one.
+   CHECKER-OWNER:CAPTURE-PREPARE
+   CHECKER-OWNER AOT-ARM:PAYLOAD-PERSISTENT
    s" src/core/check-hook.f" included
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
@@ -228,22 +166,92 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/habu/native-runtime.f" included ;
 
 : OPEN-AND-COMPILE ( ptr u8 -- )
-   AOT-ARM:WINDOW-OPEN
+   AOT-ARM:WINDOW-OPEN-PERSISTENT
    NSTR:WINDOW-OPEN
    LOAD-TARGET
    AOT-ARM:WINDOW-CLOSE ;
 
+\ Resolve a target operation without compiling another definition or opening a
+\ source frame. It must be part of the frozen target code window.
+: TARGET-XT ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if
+      drop s" native-build: target operation missing" 76 die
+   then
+   XREF-START {: xt:n :}
+   xt AOT-ARM:B0 @ < xt AOT-ARM:B1 @ >= or if
+      s" native-build: operation does not belong to target" 76 die
+   then
+   xt ;
+
+TRUSTED: PREPARE-XT ( n -- [ -- ] ) ;
+
+: PREPARE-TARGET ( -- )
+   s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
+   here AOT-ARM:D1 ! ;
+
+\ A retained driver cell is not a fixed engine slot. Registering a target XT
+\ into one after reset would make it look like a load-time engine hook.
+: CHECK-FIXED-ROWS ( -- )
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      \ The first four bytes of each eight-byte row encode its location.
+      AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + CELL-VIEW @ $FFFFFFFF and
+      dup AOT-WINDOW:XTOFF-WINDOW-TAG and 0= if
+         HOST-HEAP-START CELL - > if
+            S\" native-build: captured fixed address belongs to the retired host heap\n" BUILD-RC die
+         then
+      else drop then
+   loop ;
+
 : CAPTURE ( -- )
    AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK
-   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE ;
+   AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+   CHECK-FIXED-ROWS ;
 
-: TEMP$ ( -- ptr u8 n )
-   s" bin/.hb-native-build.tmp" ;
+FS-PATH-CAP constant OUTPUT-CAP
+create OUTPUT-BUF OUTPUT-CAP allot
+variable OUTPUT-U
+create TEMP-BUF OUTPUT-CAP allot
+variable TEMP-U
+create SMOKE-DIR OUTPUT-CAP allot
+variable SMOKE-DIR-U
+
+: OUTPUT$ ( -- ptr u8 n ) OUTPUT-BUF OUTPUT-U @ ;
+: TEMP$ ( -- ptr u8 n ) TEMP-BUF TEMP-U @ ;
+: TEMP-SUFFIX$ ( -- ptr u8 n ) s" .native-build.tmp" ;
+
+: ABSOLUTE-OUTPUT! ( ptr u8 n -- ) {: path:ptr size:n :}
+   size 0 <= size OUTPUT-CAP > or if E-FS-PATH throw then
+   path c@ 47 = if
+      path OUTPUT-BUF size BYTE-COPY size OUTPUT-U ! exit
+   then
+   SOURCE-ROOT:CWD$ path size OUTPUT-BUF JOIN-PATH OUTPUT-U ! ;
+
+: OUTPUT! ( ptr u8 n -- ) {: path:ptr size:n :}
+   path size ABSOLUTE-OUTPUT!
+   OUTPUT-U @ {: absoluteu:n :}
+   absoluteu OUTPUT-CAP TEMP-SUFFIX$ nip - > if E-FS-PATH throw then
+   OUTPUT-BUF TEMP-BUF absoluteu BYTE-COPY
+   TEMP-SUFFIX$ TEMP-BUF absoluteu + swap BYTE-COPY
+   absoluteu TEMP-SUFFIX$ nip + TEMP-U ! ;
+
+: SMOKE-DIR! ( -- )
+   s" hb-native-smoke" TMPDIR-MKDIR {: path:ptr size:n :}
+   path size CLEANUP-TREE+
+   path SMOKE-DIR size BYTE-COPY size SMOKE-DIR-U ! ;
+
+\ The reader's capture has its own bytes. Loading a writer may allocate and
+\ compile freely; none of those definitions or mutations enters that value.
+TRUSTED: WRITE-TARGET ( AOT-OWNED:capture -- )
+   s" tools/native-emit.f" required
+   NATIVE-LAYOUT:CURRENT TEMP$ s" NATIVE-EMIT:WRITE" evaluate ;
+
+: WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
+   dup WRITE-TARGET ;
 
 : EMIT-TEMP ( -- )
-   0 0= STDIN? !
-   NULL$ ENGINE-EMIT:FORTH
-   s" hb" TEMP$ DRV-EMIT-IMAGE
+   AOT-FILE:OWN ['] WRITE-OWNED catch {: rc:n :}
+   AOT-OWNED:CLOSE
+   rc 0<> if rc throw then
    TEMP$ CHMOD-X ;
 
 : SMOKE-RESULT ( result<pcap:captured,pcap:failed> -- n n n )
@@ -260,8 +268,8 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
 
 : SMOKE ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" ./.hb-native-build.tmp" >LEN
-   s" bin" >LEN
+   TEMP$ >LEN
+   SMOKE-DIR SMOKE-DIR-U @ >LEN
    S\" : X ( -- n ) 42 ; X . cr\n" >LEN
    SMOKE-OUT SMOKE-CAP >LEN SMOKE-ERR SMOKE-CAP >LEN SMOKE-TIMEOUT-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE SMOKE-RESULT {: outu:n erru:n rc:n :}
@@ -281,7 +289,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    TEMP$ CODESIGN:ENSURE ;
 
 : PROMOTE ( -- )
-   TEMP$ s" bin/hb" RENAME-FILE ;
+   TEMP$ OUTPUT$ RENAME-FILE ;
 
 : ENSURE-BIN ( -- )
    s" bin" DIR? 0= if s" bin" MAKE-DIR then ;
@@ -291,9 +299,12 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
 : DRIVE ( -- )
+   CHECK-HOST-LAYOUT
    CHECKER-OWNER {: source:ptr :}
    source LOGICAL-RESET
    source OPEN-AND-COMPILE
+   AOT-CAPTURE:PAYLOAD-CAPTURE
+   PREPARE-TARGET
    CAPTURE
    EMIT-TEMP
    SIGN-TEMP
@@ -304,13 +315,18 @@ public
 
 : RUN ( -- )
    CLEANUP-RESET
+   SCRIPT-ARGC 1 > if
+      s" native-build: expected at most one output path" BUILD-RC die
+   then
+   SCRIPT-ARGC 0= if s" bin/hb" else 0 SCRIPT-ARGV$ then OUTPUT!
    ENSURE-BIN
    REMOVE-STALE-TEMP
    TEMP$ CLEANUP+
+   SMOKE-DIR!
    [: DRIVE ;] catch {: rc:n :}
    CLEANUP-RUN
-   rc 0= if DRV-EXIT-OK then
-   rc DRV-FAIL ;
+   rc 0<> if s" native-build: uncaught throw code " type rc . cr then
+   s" " rc die ;
 
 ;package
 
