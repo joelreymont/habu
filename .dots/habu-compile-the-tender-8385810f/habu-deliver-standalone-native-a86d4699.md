@@ -28,4 +28,4 @@ Integration acceptance only: source fixes remain with leaves; own candidate pin/
 
 Verification: focused real-load cases above; rebuild and run `bin/hb --load test/run.f` for compiler/runtime integration. Speed acceptance uses the all-AOT campaign pair; functional/count evidence can be developed in parallel.
 
-Current gate evidence: see PLAN.md and campaign8385810f for the complete 316-suite/10-failure set. Watchpoint-resume SIGSEGV74e8b1d9 is a required release blocker, distinct from historical PTY timing reports.
+Current gate evidence: see PLAN.md and campaign8385810f for the complete B3 332-suite/31-failure set. Watchpoint-resume SIGSEGV74e8b1d9 is a required release blocker, distinct from historical PTY timing reports.

@@ -8291,3 +8291,9 @@ and --no-lldbinit.
   bisect landed on a walk neither commit touched.
 
 A breakpoint restoration write belongs to the saved instruction's protection span, which may precede the live compiler cursor by multiple pages. Opening the cursor's page passed same-page tests but faulted on an older word. The regression must establish distinct pages and execute after restoration (2026-09-13,74e8b1d9).
+
+Snapshot liveness cannot be inferred from dictionary order. Native-build allocates
+its live string pool before IMK-NDICT0; clearing that preceding DATA range produced
+an image that ran saved words but could not compile new ones. Retire transient
+state at its owner and test fresh JIT and native definitions after each restore
+(2026-09-13, 2d9145f2).

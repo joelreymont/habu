@@ -47,4 +47,61 @@ Completion: optimizing native compiler selfbuild/product rebuild, executable com
 
 Speed acceptance: same pinned Tender source, all 3079 definitions counted through NCOMP, no object cache, normal checker/validators, under1.7s wall for complete optimizing load and trivial floor below500us. Report total executable-build wall including loading/capture/write alongside this target. Record source/bin IDs and actual compiler provenance. Run controlled quiet-machine before/after and per-definition pass curves; use existing Habu tools, no new measurement framework. Historical153.3→131.6s and4106→3668us used JIT-built compiler and do not prove all-AOT speed. If target still fails, keep campaign open and name measured remaining owner/pass; do not claim a projected sum.
 
-Each leaf has source ownership, prerequisites and decisive behavior checks. Final compiler/runtime gate: rebuild exact source and `bin/hb --load test/run.f`, with every recorded failure resolved by name. Latest combined source963958d8, enginebee6aacab6734 ran318/318 suites with12 failures: effect-read-api, aot-wid-restore, aot-wide-format, pre-trust-defer, build-fixpoint-fixtures, cast, engine, engine-runtime-regressions, program-diagnostics, multi-error-api, addrmap-inline and p2-map-rewind. Provider rows, owner window, internal-call guards, symbol ceilings and debugger-resume pass. Lifecycle d90cf0a3 is integrated after that gate with ten focused checks plus independent capture/concurrency verification. Source-stage and all-tier1 target-layout paths remain active; see PLAN.md for the named findings. PTX/Loom and later cache/digest work are excluded here.
+Each leaf has source ownership, prerequisites and decisive behavior checks.
+Final gate: rebuild exact source and run `bin/hb --load test/run.f`; resolve every
+failure by behavior. PTX/Loom and later cache/digest work are outside this campaign.
+
+Latest full gate: native B3 source 0c1ca1f3 with tier fixture 7ad2984b,
+SHA 2ef6c87b233f5bd1f4a0e009b806851890aa67e85ccb13844d5a4f8570143781,
+332 of 332 suites, 31 failures. Log `/tmp/cedar-B3-full-suite.log`; individual
+outputs `/tmp/habu-native-suite-1062751897926583-17/`.
+
+- spaces,
+- a
+- fork
+- fork
+- compiler-native-string
+- compiler-native-prefix-declarations
+- check-cli-boundary
+- native-defer-image
+- process-image
+- compiler-native-j
+- compiler-native-leave
+- app-image
+- aot-section-reach
+- internal-word-gate
+- aot-wid-restore
+- verify-prim
+- aot-wide-format
+- aot-chain-capture
+- aot-prelude-band
+- pre-trust-defer
+- snapshot-writer
+- core-prefix-mark
+- native-fixture-paths
+- cold-runtime
+- build-fixpoint-fixtures
+- cast
+- program-diagnostics
+- engine
+- hb-build-fixtures
+- native-gate-aot-positive
+- dynamic-buffer-capture
+- addrmap-inline
+- protection-span
+- p2-map-rewind
+- field-proj
+
+Current follow-up: native-defer-image passes after the source snapshot sweep fix
+2d9145f2, including both restored compiler tiers and two captures. App-image and
+process-image overflow at the actual 65,536-row bound; leaf 1ca5db10 owns attribution.
+The native-prefix declaration failure is the trusted-only user-effect bypass
+1fb5ad1d; its reviewed source repair is integrated. Native-j and native-leave
+fixtures are being corrected to preserve the reviewed D04 behavior. Other red
+suites remain open; they are not classified as obsolete without reduction.
+
+B3 build: 143.626 seconds; actual optimizing trivial floor: 1,577 microseconds,
+ratchet correctly rejected at 500. Reviewed indexed NDICT source is integrated
+at f5f30e8f and its product build is in progress. The partial graph / logical-width
+slice is approved and being composed; fresh-process native partial execution,
+full gate, quiet Tender timing and downstream acceptance remain required.

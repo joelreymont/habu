@@ -22,3 +22,10 @@ increased by32768*8 bytes. Relocation proof/source and assembler suites pass.
 New real-load tests require40000 total rows and exact advertised capacity,
 including duplicate registration at the bound. First rebuilt product, complete
 capture/Tender closure measurements and full gate are still pending.
+
+Tracked B3 source 0c1ca1f3 verifies the real first-generation 65,536-row bound:
+40,000 rows pass, duplicate registration at capacity passes, and the next row
+refuses rc 96 with exact count and newline. Full-gate app-image and process-image
+still hit that bound. Their logged `got 46` was the stderr-length assertion, not
+the child exit code. Attribute which stage adds the rows and distinguish live
+closure needs from stale/duplicate registrations before changing storage again.

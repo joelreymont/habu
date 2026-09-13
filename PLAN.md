@@ -12,50 +12,41 @@ review pins remain frozen: `review/current-compiler` at `51546316`, and
 (`3c6bda9d`) predates these compiler changes. None is an accepted replacement
 engine; source review and focused controls are not a rebuilt runtime gate.
 
-Integration through `ee8fd419` includes source-bound typed writer dispatch,
-positive provenance admission, an explicit private bootstrap, private generation
-outputs, owner memo/bounds controls, provenance invalidation on code overwrite,
-and growing captured relocation tables with signed DATA-span validation. The
-primitive registry now grows with its rows and names. Native `is` now emits a
-typed DATA address, so its captured callback destination relocates correctly.
-The corrected private bootstrap (`051fc42a`) completed in 341.922 seconds;
-its product-hosted build from `9ac8463b` completed in 142.606 seconds, producing
-`/tmp/cedar-family-stage-abi/hb-B2-origin-tracked` (SHA-256
-`cd88273b9c27dd424c934cddee5bf010ede646d6965eab344b19e933fd9132c3`).
-This B2 compiler has positive native origin and compiles/runs a fresh native
-definition. It is private: application capture still fills its 32768-row address
-table, and the compile-floor benchmark fills the checker's defer history.
-The capacity and redundant-history fixes are in progress. The runtime starts
-with 30885 address rows; 30887 remain after loading application-image support.
-The complete capture closure and Tender headroom must be measured on the next
-candidate. Combine planning now runs once per module; no performance acceptance
-is inferred from that source change.
+Local integration through `f5f30e8f` includes source-bound writer dispatch,
+positive native provenance, translated target layout, complete address rows,
+once-per-module combine planning, typed native `is` destinations, process-buffer
+lifecycle cleanup, and counted-loop obligations with independently reviewed formal
+parity. The source-owner closure framing and stale-artifact regressions are also
+reviewed. No accepted replacement engine has been published.
 
-Source-closure framing and the real stale-artifact regression are reviewed at
-`d6809d78` and `ea9904fa`. The regression distinguishes separate-file execution,
-accepts the unchanged artifact, and refuses the changed closure at both tiers.
-Independent controls restore each old bug and make the test fail.
+Tracked B3, source `0c1ca1f3`, built in 143.626 seconds. Its private product is
+`/tmp/cedar-family-stage-abi/hb-B3-integrated` (SHA-256
+`2ef6c87b233f5bd1f4a0e009b806851890aa67e85ccb13844d5a4f8570143781`).
+The first product accepts 40,000 address rows and rejects the first row beyond
+65,536 with the exact diagnostic. Its defer-history fix lets the real all-native
+floor benchmark finish: 1,577 microseconds for a trivial definition, still above
+the 500-microsecond limit. The complete Tender workload is not measured yet.
 
-The first private bootstrap may carry unknown origin. The positively tracked
-product-hosted rebuild now succeeds, but changed-layout restore, repeated capture,
-the full test gate, application acceptance and all-AOT compile-speed measurements
-remain pending. Registry content admission is independently reviewed and integrated:
-all eight stores validate before publication, duplicate imports require canonical
-content equality, and rejected imports preserve existing state. Its source-owner
-test and new native bodies pass; full rebuilt-runtime validation remains pending.
-Loop obligations passed independent runtime review; their formal model and shared
-vectors are being repaired before landing. Partial graph capture is frozen for
-independent review. Process-builder lifecycle cleanup is integrated: argv,
-environment and command source suites pass on B2, and the matching Maki source
-control passes two warm recaptures. Integrated B2 capture is still blocked by the
-address-table limit, so Maki's replacement acceptance remains open.
+B3's full gate ran all 332 suites with 31 failures. The complete named list is in
+the campaign dot. Two image suites exceed 65,536 address rows; actual row growth
+is under investigation. Another restored-compiler failure was traced to snapshot
+cleanup erasing the live 512 KiB string pool before IMK-NDICT0. Removing that
+inferred sweep makes native-defer-image pass capture, fresh JIT and optimizing
+compilation after restore, and a second capture. This source fix is under separate
+review; it does not close the remaining image or full-gate failures.
 
-`review/partial-payload` preserves the separate, unverified graph producer and
-registry prevalidation work (`f091a068`). It is not composed into this branch.
-Validated graph import, payload versioning, corrupt-input controls and artifact
-roundtrips are unfinished; partial capture currently refuses. Review both
-branches when assessing all current work, and use the completion requirements
-below rather than treating source composition as runtime evidence.
+The checker trusted-only restriction fix and indexed NDICT lookup have passed
+independent review. Sampled lookup record reads fall from 15,483 to 1 for `dup`,
+with zero full rescans. These are operation counts, not elapsed-time acceptance.
+The combined indexed product is building from the identified primitive-publishing
+A engine; its native product tests and timing remain pending.
+
+Partial graph producer/import validation and its logical-width repair are approved
+at `81a865e9` / `91ceb1c0` and are being composed into this branch. Four focused
+suites pass independently, including exact-state preservation on corrupt input.
+Fresh-process native partial execution remains unverified. Exception quotation
+typing and dynamic constructor identity retain their separate fail-closed contracts.
+The frozen external review branches remain available; neither is a replacement pin.
 
 ## Required result
 
@@ -91,7 +82,7 @@ Review base: `.jj-ws/rowan-root`, source `5226a994` plus tracker-only `4f234270`
 engine SHA-256 `28e11361f60228d24e7e3f6fca496ca0f9a4f2c8c8e66b5fdc91c9db031de462`.
 Hazel reported 314 suites with seven failures. That is not a fresh green gate.
 
-Fresh combined gate: source `963958d8`, engine `bee6aacab6734`, ran all
+Previous combined gate: source `963958d8`, engine `bee6aacab6734`, ran all
 318 suites with 12 failures: `effect-read-api`, `aot-wid-restore`,
 `aot-wide-format`, `pre-trust-defer`, `build-fixpoint-fixtures`, `cast`,
 `engine`, `engine-runtime-regressions`, `program-diagnostics`,
