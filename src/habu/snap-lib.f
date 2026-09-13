@@ -309,12 +309,13 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
 \ exactly that interval, excluding abandoned rows and the old engine's ASLR
 \ coordinates. The restoring engine supplies its own primitive-text evidence.
 : SND-CANON-ORIGIN ( -- )
+   \ These are byte offsets into the scratch copy, not pointer values.
    TIER-PROV:OPEN-CELL
-   begin dup TIER-PROV:END < while dup SND-ZERO-CELL cell+ repeat drop
+   begin dup TIER-PROV:END < while dup SND-ZERO-CELL CELL + repeat drop
    SCL @ DICT-SIZE <= if exit then
    1 TIER-PROV:N-CELL SND-XT-CELL!
    DICT-SIZE TIER-PROV:TABLE-OFF SND-XT-CELL!
-   SCL @ TIER-PROV:TABLE-OFF cell+ SND-XT-CELL!
+   SCL @ TIER-PROV:TABLE-OFF CELL + SND-XT-CELL!
    1 TIER-PROV:TABLE-OFF 2 cells + SND-XT-CELL! ;
 
 : CANON-DATA ( -- )

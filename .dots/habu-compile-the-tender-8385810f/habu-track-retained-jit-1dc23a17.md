@@ -110,3 +110,10 @@ and partial-edge invalidation with preserved neighbouring evidence; the full
 The real-load engine primitive regression remains pending. The bound is not application
 headroom acceptance: ordinary interactive JIT/native-stub alternation can fill
 it, and Tender/Maki/Kestrel closure counts still need the rebuilt engine.
+
+Fresh d718 B1 exposed a source typing error in SND-CANON-ORIGIN: `cell+` turns
+numeric DATA offsets into pointers, so requiring APP-IMAGE fails certification
+at SND-XT-CELL!. The snapshot writer now advances these offsets with `CELL +`.
+The real APP-IMAGE require passes with the rebuilt checker at both tiers
+(JIT on a4fc1996, native on e11a2779). Runtime offsets are unchanged; capture,
+restore and direct-entry tier admission still need their own acceptance.
