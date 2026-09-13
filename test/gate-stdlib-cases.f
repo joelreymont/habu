@@ -1130,6 +1130,10 @@ SUITE engine
    test/engine-suite.f
 ;SUITE
 
+SUITE debugger-resume
+   test/debugger-resume.f
+;SUITE
+
 SUITE engine-runtime-regressions
    test/runtime-regression-test.f
 ;SUITE

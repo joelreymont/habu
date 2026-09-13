@@ -8289,3 +8289,5 @@ and --no-lldbinit.
   checker.f moved the store's offsets and flipped the latent answer from
   harmless to fatal, so an unrelated change made a green tree red and the
   bisect landed on a walk neither commit touched.
+
+A breakpoint restoration write belongs to the saved instruction's protection span, which may precede the live compiler cursor by multiple pages. Opening the cursor's page passed same-page tests but faulted on an older word. The regression must establish distinct pages and execute after restoration (2026-09-13,74e8b1d9).

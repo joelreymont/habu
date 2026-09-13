@@ -533,7 +533,9 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    17 17 1 ADDI, ;
 
 : C-BP-RESTORE-ONESHOT ( -- )
-   1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
+   \ The breakpoint may precede CP by several protection pages. Open its
+   \ instruction span, not the page where the next definition would be emitted.
+   8 SP 40 LDR,  1 8 0 LDR,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,
    8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,
    PROT:LCLOSE LABEL@ BL,
    9 11 0 ADDI,  LFLUSH LABEL@ BL,
