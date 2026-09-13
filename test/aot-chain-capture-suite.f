@@ -118,6 +118,15 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    RUN-CHILD ;
 
 
+: RUN-ADDRESS-CELLS ( ptr u8 n -- ) {: mode:ptr modeu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-address-cells.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   ART$ >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
+   RUN-CHILD ;
+
 : RUN-ROW-CASE ( ptr u8 n -- )
    {: name u:n :}
    PROC-ARGV-RESET
@@ -311,6 +320,20 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    a u s" file" RUN-DATA-SITES want ROW-RC
    a u s" owned" RUN-DATA-SITES want ROW-RC ;
 
+: ADDRESS-BUDGET-CASE ( ptr u8 n -- )
+   RUN-ADDRESS-CELLS $4B ROW-RC
+   s" encoded sections exceed their byte budget" ERR-SAID? ;
+: PROBE-ADDRESS-STORAGE ( -- )
+   s" rows" RUN-ADDRESS-CELLS 0 ROW-RC s" aot-address-cells: ok" SAID?
+   s" reserve-negative" RUN-ADDRESS-CELLS REFUSE-RC ROW-RC
+   s" reserve-overflow" RUN-ADDRESS-CELLS REFUSE-RC ROW-RC
+   s" reserve-limit" RUN-ADDRESS-CELLS REFUSE-RC ROW-RC
+   s" budget-write" ADDRESS-BUDGET-CASE
+   s" budget-owned" ADDRESS-BUDGET-CASE
+   s" budget-read" ADDRESS-BUDGET-CASE
+   s" budget-import" ADDRESS-BUDGET-CASE
+   s" budget-merge" ADDRESS-BUDGET-CASE ;
+
 : PROBE-DATA-SITES ( -- )
    s" sites" s" file" RUN-DATA-SITES 0 ROW-RC
    s" aot-data-sites: ok" SAID?
@@ -344,6 +367,7 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    $4B ROW-RC
    s" scalars runs past the payload" ERR-SAID?
    PROBE-DATA-SITES
+   PROBE-ADDRESS-STORAGE
    PROBE-PRODUCER-ROWS ;
 
 public

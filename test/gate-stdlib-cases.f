@@ -999,6 +999,10 @@ SUITE address-cell-cap-grown
    test/address-cell-cap-grown.f
 ;SUITE
 
+SUITE address-cell-storage-oom
+   test/address-cell-storage-oom.f
+;SUITE
+
 SUITE catch-frame
    test/catch-frame.f
 ;SUITE

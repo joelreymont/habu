@@ -125,6 +125,7 @@ variable CHAIN-VALUE
 
 
 : MATRIX! ( -- )
+   ROWS XTOFF-RESERVE
    XTOFF-WINDOW-TAG       1                              0 ROW!
    XTOFF-WINDOW-TAG 8 +   XTOFF-DATA-TAG 1+               1 ROW!
    XTOFF-WINDOW-TAG 16 +  0                              2 ROW!

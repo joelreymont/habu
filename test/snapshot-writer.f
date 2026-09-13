@@ -2,6 +2,7 @@
 \ frames are cleared, protected namespaces survive restore, corrupt images
 \ fail closed, and a failed final close is reported.
 require lib/test.f
+require src/habu/address-cells.f
 require lib/fmt.f
 require lib/memory.f
 require lib/fs-mutate.f
@@ -243,7 +244,38 @@ variable BAND-WID
    RC @ SNAP-BAD-RC T=
    ERR$ s" hb: snapshot trailer corrupt" CONTAINS? TTRUE ;
 
+\ The format version chooses the schema before any mutable header byte is read.
+\ Every malformed v9 header must stop before restore touches its row vector.
+: CELL! ( n n -- ) {: off:n value:n :}
+   8 0 ?do off i + value i 8 * rshift $FF and U8! loop ;
+
+: DOCTOR-ADDRESS-CELL ( n n -- ) {: field:n value:n :}
+   DATA-OFF SNAP-RELOC:XTCELL-N-CELL + field + {: off:n :}
+   off U64@ {: old:n :}
+   off value CELL! WRITE-BAND-COPY RUN-BAND-COPY
+   off old CELL! ASSERT-BAND-REFUSED ;
+
+: ADDRESS-HEADER-CASE ( -- )
+   s" snapshots carry the v9 address-vector header" T-LABEL
+   TRAILER-OFF SNAP-TRL-VERSION + U64@ ADDRESS-CELLS:SNAPSHOT-VERSION T=
+   DATA-OFF SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:MAGIC-FIELD +
+      U64@ ADDRESS-CELLS:MAGIC T=
+   s" malformed new headers never select the legacy row layout" T-LABEL
+   ADDRESS-CELLS:MAGIC-FIELD 0 DOCTOR-ADDRESS-CELL
+   ADDRESS-CELLS:MODE-FIELD 1 DOCTOR-ADDRESS-CELL
+   ADDRESS-CELLS:CAP-FIELD 0 DOCTOR-ADDRESS-CELL
+   ADDRESS-CELLS:CAP-FIELD -1 DOCTOR-ADDRESS-CELL
+   ADDRESS-CELLS:CAP-FIELD ADDRESS-CELLS:MAX-ROWS 1+ DOCTOR-ADDRESS-CELL
+   0 -1 DOCTOR-ADDRESS-CELL
+   0 DATA-OFF SNAP-RELOC:XTCELL-N-CELL + ADDRESS-CELLS:CAP-FIELD +
+      U64@ 1+ DOCTOR-ADDRESS-CELL
+   ADDRESS-CELLS:BASE-FIELD
+      TRAILER-OFF SNAP-TRL-DATALEN + U64@ 1+ DOCTOR-ADDRESS-CELL
+   ADDRESS-CELLS:BASE-FIELD
+      TRAILER-OFF SNAP-TRL-DATALEN + U64@ 8 - DOCTOR-ADDRESS-CELL ;
+
 : WARM-CASE ( -- )
+   ADDRESS-HEADER-CASE
    BAND-WID!
    s" persisted protected-WID band carries the bitmap shape tag" T-LABEL
    BAND-TAG PROT-REG-TAG T=

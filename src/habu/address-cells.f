@@ -7,6 +7,7 @@ public
 
 1 constant ABI-VERSION
 9 constant SNAPSHOT-VERSION
+\ The high six bytes spell HBADDR; the low 16 bits identify header schema 1.
 $4842414444520001 constant MAGIC
 8 constant MAGIC-FIELD
 16 constant BASE-FIELD

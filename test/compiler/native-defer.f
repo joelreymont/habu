@@ -1,5 +1,6 @@
 \ native-defer.f - production compilation of `[: … ;] is FOO`.
 
+require src/habu/address-cells.f
 require lib/test.f
 require src/compiler/native/compiler.f
 
@@ -38,7 +39,7 @@ TRUSTED: DBASE-N ( -- n ) data-base ;
    data-base SNAP-RELOC:XTCELL-N-CELL + PCELL@ ;
 
 : XT-ROW ( n -- n ) {: row:n :}
-   data-base SNAP-RELOC:XTCELL-ROWS-OFF + row cells + PCELL@ ;
+   row ADDRESS-CELLS:ROW@ ;
 
 variable HIT
 

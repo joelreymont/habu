@@ -29,20 +29,18 @@ using A64ASM
 \ would only produce engines that die on their first boot, so IBUFSZ is exactly
 \ that part's allowance.
 \
-\ THE AOT PAYLOAD PART IS BOUNDED BY ITS OWN CAPTURE BUFFERS. It is emitted last
+\ THE AOT PAYLOAD HAS ONE AGGREGATE BUDGET. It is emitted last
 \ (EMIT-AOT-SEED) and carries the compiled blob, the dictionary records, the
 \ relocation tables, the name pool and the captured DATA window - megabytes once
 \ the compiler chain is captured, and NOT bounded by any reach, because nothing
 \ addresses it with a PC-relative field: every reference into it goes through
 \ habu2.f's TADR,, which materialises the label's offset with LOFF, below and
-\ adds the text base the boot recorded. Its allowance is the sum of the capture
-\ buffers' own caps, each of which fails closed on overflow at capture time.
+\ adds the text base the boot recorded. Individual section admission and the
+\ actual aggregate bytes, including framing/alignment, are checked separately.
 \
 \ This file loads before layout.f and habu2.f, so all three terms are spelled out
 \ here. test/icode-fixup-test.f holds the window against ADR-HI and IBUFSZ, and
-\ habu2.f derives the third from the buffers themselves and dies at load if it
-\ disagrees with the constant below - the same shape src/habu/rt.f uses to hold
-\ mnem.f's XDS against layout.f's ENGINE-GPR:DSTACK.
+\ habu2.f checks the third against AOT-SECTION:BYTES before emission.
 \
 \ WHAT PAYS FOR IT IS NOTHING THAT IS TOUCHED. CODE is one demand-paged
 \ anonymous mapping taken on first emit (CODE-ALLOC), by build drivers only, and
@@ -70,7 +68,7 @@ using A64ASM
 \ of its allowance. Moving the payload after the source and addressing it with
 \ TADR, took it out of every reach; it is a part of the image, so it is a term of
 \ the window, and this is that term.
-$1B00000 constant AOT-SECTION-CAP  \ src/habu/aot-decl.f AOT-SECTION:BYTES: the capture buffers rounded to the 64 KiB grain
+$1B00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
 $2000000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + IBUFSZ ($400000) + AOT-SECTION-CAP
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON

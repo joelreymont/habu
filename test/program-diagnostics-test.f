@@ -59,10 +59,9 @@ package PROGRAM-DIAGNOSTICS
 
 : ADDRESS-CAP ( -- )
    s" test/address-cell-cap-bad.f" 96
-      s" ADDRESS-CELL-CAP-ARMED" s" hb: snapshot address table full" NEGATIVE
-   SB-RESET s" hb: snapshot address table full at " SB-APPEND
-   SNAP-RELOC:XTCELL-CAP FMT:SB-U s"  rows" SB-APPEND GE-SB-LF
-   GT-ERR$ SB$ STR= 0= if s" address cell capacity diagnostic" GE-FAIL then ;
+      s" ADDRESS-CELL-CAP-ARMED" s" hb: invalid address-cell storage header" NEGATIVE
+   GT-ERR$ S\" hb: invalid address-cell storage header\n" STR= 0= if
+      s" address cell capacity diagnostic" GE-FAIL then ;
 
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 99

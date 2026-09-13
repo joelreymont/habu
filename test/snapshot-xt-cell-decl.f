@@ -27,6 +27,7 @@
 \ src/core/declaration-transaction.f, the one the five boot participants enroll
 \ through -- over a table this file owns, and watch the same engine table.
 
+require src/habu/address-cells.f
 require lib/errors.f
 require lib/test.f
 
@@ -44,7 +45,7 @@ variable HIT
    data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
 : ROW@ ( n -- n ) {: row:n :}
-   data-base SNAP-RELOC:XTCELL-ROWS-OFF + row cells + @ ;
+   row ADDRESS-CELLS:ROW@ ;
 
 \ Is this DATA offset one of the declared address cells?
 : LISTED? ( n -- bool ) {: off:n :}

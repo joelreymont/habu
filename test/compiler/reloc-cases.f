@@ -8,6 +8,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require src/habu/layout.f
+require src/habu/address-cells.f
 require test/compiler/ir-id-source.f
 require test/compiler/reloc-schema.f
 require test/compiler/reloc-vm.f
@@ -190,7 +191,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    s" CALLMAP-OFF" SNAP-RELOC:CALLMAP-OFF RELOC-VM:SYM+
    s" CALLMAP-RC" SNAP-RELOC:CALLMAP-RC RELOC-VM:SYM+
    s" XTCELL-N-CELL" SNAP-RELOC:XTCELL-N-CELL RELOC-VM:SYM+
-   s" XTCELL-ROWS-OFF" SNAP-RELOC:XTCELL-ROWS-OFF RELOC-VM:SYM+
+   s" ADDRESS-CELLS:BASE-FIELD" ADDRESS-CELLS:BASE-FIELD RELOC-VM:SYM+
    s" XTCELL-CAP" SNAP-RELOC:XTCELL-CAP RELOC-VM:SYM+
    s" XTCELL-RC" SNAP-RELOC:XTCELL-RC RELOC-VM:SYM+
    s" XTCELL-OFF-MAX" SNAP-RELOC:XTCELL-OFF-MAX RELOC-VM:SYM+
@@ -341,17 +342,19 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
 : XT-SEGMENTS ( n -- ) {: row:n :}
    RELOC-VM:SEG-RESET
    VM-DATA SNAP-RELOC:XTCELL-N-CELL +
-      TAB-AT SNAP-RELOC:XTCELL-ROWS-OFF SNAP-RELOC:XTCELL-N-CELL - row XROW-LEN@ 8 * +
+      TAB-AT ADDRESS-CELLS:BOOT-OFF SNAP-RELOC:XTCELL-N-CELL - row XROW-LEN@ 8 * +
       RELOC-VM:SEG+
    VM-DATA CELLS-AT row XROW-LEN@ 8 * RELOC-VM:SEG+ ;
 
 : XT-DECLARE ( n n -- ) {: row:n j:n :}
    j 8 * {: off:n :}
-   off VM-DATA SNAP-RELOC:XTCELL-ROWS-OFF + j 8 * + 8 RELOC-VM:POKE
+   off VM-DATA ADDRESS-CELLS:BOOT-OFF + j 8 * + 8 RELOC-VM:POKE
    row XROW-BASE@ j + CELL-V0@ row XROW-DBW@ XT-CANON VM-DATA off + 8 RELOC-VM:POKE ;
 
 : XT-BUILD ( n -- ) {: row:n :}
    row XT-SEGMENTS
+   ADDRESS-CELLS:BOOT-OFF VM-DATA SNAP-RELOC:XTCELL-N-CELL +
+      ADDRESS-CELLS:BASE-FIELD + 8 RELOC-VM:POKE
    row XROW-LEN@ VM-DATA SNAP-RELOC:XTCELL-N-CELL + 8 RELOC-VM:POKE
    row XROW-LEN@ 0 ?do row i XT-DECLARE loop ;
 

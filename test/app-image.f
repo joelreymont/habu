@@ -213,6 +213,31 @@ $20002 constant PTY-OPEN-FLAGS
    s" throw" s" hb: uncaught throw code -123" CHECK-STARTUP-THROW
    s" eval-throw" s" hb: uncaught throw code -124" CHECK-STARTUP-THROW ;
 
+: RUN-ADDRESS-OWNER ( bool -- ) {: native:bool :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   native if s" test/compiler/aot-mode.f" >LEN PROC-ARGV+ then
+   s" test/native-window-owner-child.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" test/address-cell-owner.f" >LEN PROC-ARGV+
+   SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE RESULT CLEAN
+   OUT swap S\" address-cell-owner: ok\nwindow: 0\n" T$= ;
+
+\ Restore a grown DATA-backed registry, then perform the actual source-window
+\ rewind. Its complete backing span must survive outside the retiring heap.
+: CHECK-ADDRESS-OWNER ( -- )
+   PROC-ARGV-ENV-RESET
+   s" --" >LEN PROC-ARGV+ SECOND$ >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN
+   S\" require src/habu/app-image.f\nrequire test/address-cell-cap-grown.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-STDIN-CAPTURE RESULT CLEAN drop
+   SECOND$ EXECUTABLE? TTRUE
+   0 0 <> RUN-ADDRESS-OWNER
+   0 0 = RUN-ADDRESS-OWNER ;
+
 : RUN ( -- )
    T-RESET PREPARE
    CHECK-BUILD-TIER
@@ -227,6 +252,7 @@ $20002 constant PTY-OPEN-FLAGS
    CHECK-STARTUP-ARGS
    CHECK-STARTUP-EXIT
    CHECK-STARTUP-THROWS
+   CHECK-ADDRESS-OWNER
    CLEANUP-RUN
    T-REPORT ;
 

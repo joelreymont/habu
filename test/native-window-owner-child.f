@@ -15,6 +15,7 @@ require lib/errors.f
 require src/core/prefix-boundary.f
 require lib/string.f
 require lib/memory.f
+require src/habu/address-cells.f
 
 package NW-OWNER
 
@@ -22,6 +23,7 @@ $400 constant PATH-CAP
 
 create PATH-BUF PATH-CAP allot
 variable PATH-U
+variable ADDRESS-ABI
 
 : PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u PATH-CAP > if s" window: fixture path too long" 76 die then
@@ -41,13 +43,7 @@ variable PATH-U
 \ in tools/native-build.f; this fixture reaches the window through the same steps.
 : ADDR-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
-: ADDR-ROWS! ( n -- ) data-base SNAP-RELOC:XTCELL-N-CELL + ! ;
-
-: ADDR-ROW@ ( n -- n ) {: k:n :}
-   k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + @ ;
-
-: ADDR-ROW! ( n n -- ) {: k:n row:n :}
-   row k cells data-base SNAP-RELOC:XTCELL-ROWS-OFF + + ! ;
+: ADDR-ROW@ ( n -- n ) ADDRESS-CELLS:ROW@ ;
 
 \ The layout name itself, not habu2.f's host-side mirror, and no source-constant
 \ fallback: this fixture only ever runs under the engine the tree just built, so
@@ -56,14 +52,7 @@ variable PATH-U
 \ fixture can claim anything about.
 : HOST-HEAP-START ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
 
-: KEEP-ROWS-BELOW ( n -- ) {: floor:n :}
-   0 ADDR-ROWS 0 ?do
-      i ADDR-ROW@ {: row:n :}
-      row SNAP-RELOC:XTCELL-OFF-MASK and floor < if
-         dup row ADDR-ROW! 1+
-      then
-   loop
-   ADDR-ROWS! ;
+: KEEP-ROWS-BELOW ( n -- ) ADDRESS-CELLS:KEEP-BELOW ;
 
 : RESET-ADDRESS-ROWS ( -- )
    HOST-HEAP-START {: floor:n :}
@@ -123,7 +112,11 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    \ Optional dependency paths are loaded by this retained continuation: the
    \ replacement prefix has not installed its own include words yet.
    SCRIPT-ARGC 1 ?do i SCRIPT-ARGV$ included loop
-   PATH$ included ;
+   PATH$ included
+   \ Call the retained production detector after the replacement checker loads.
+   ADDRESS-CELLS:CURRENT? if 1 else 0 then ADDRESS-ABI @ <> if
+      s" window: address-cell ABI changed during reset" 76 die
+   then ;
 
 \ A quotation carries no locals, so the retained owner crosses the catch here.
 PTR-VARIABLE SRC-OWNER
@@ -132,6 +125,7 @@ public
 
 : RUN ( ptr u8 n -- )
    PATH!
+   ADDRESS-CELLS:CURRENT? if 1 else 0 then ADDRESS-ABI !
    CHECKER-OWNER SRC-OWNER !
    SRC-OWNER @ LOGICAL-RESET
    [: SRC-OWNER @ LOAD-WINDOW ;] catch
