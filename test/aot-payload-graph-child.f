@@ -1,7 +1,8 @@
 \ Roundtrip the supported checker graph through the real 17-section file.
 \ Clear capture buffers and retired source effects before importing metadata.
-\ Runtime bodies remain in this process; fresh native-image execution is a
-\ separate acceptance boundary, and exceptional quotes are refused explicitly.
+\ Runtime bodies remain in this process. The companion native producer,
+\ reader and consumer test execution across process exits in the same suite.
+\ Exceptional quotes are refused explicitly.
 s" src/habu/layout.f" provided
 s" src/core/checker-owner-abi.f" provided
 require src/habu/aot-arm.f
