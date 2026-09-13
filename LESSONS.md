@@ -7791,6 +7791,13 @@ and --no-lldbinit.
   suites, no timeouts): 13 red, engine green after the two snapshot-owner cases
   were pinned to the unbind rule; two same-host builds byte-identical and the
   chain gen 5 = gen 4 (fixpoint at gen 3) on that engine.
+  Re-measured 2026-09-13 06:40 UTC on engine 44bc47ba at tip 88f7ef6a (310
+  suites, no timeouts): 11 red; aot-sig-pool asserts the checker's live mirror
+  set and app-image compiles application code on the optimizing tier.
+  addrmap-inline (1), aot-prelude-band (1), aot-wide-format (67),
+  aot-wid-restore (67), build-fixpoint-fixtures (1), cast (1),
+  hb-build-fixtures (67), native-gate-aot-positive (1), p2-map-rewind (1),
+  pre-trust-defer (1), program-diagnostics (1).
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.
