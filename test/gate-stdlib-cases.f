@@ -863,6 +863,10 @@ SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
+SUITE defer-history
+   test/defer-history.f
+;SUITE
+
 SUITE effect-intern
    test/effect-intern-suite.f
 ;SUITE

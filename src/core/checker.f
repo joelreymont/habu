@@ -8555,31 +8555,6 @@ variable MWIN-VAL                    \ and this is it
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
 
-\ Scopes DO rewind DFER-END (item 3 made rollback restore it; the watermark below
-\ exists precisely for that), so the deferred-target cache cannot assume later-wins
-\ permanence: HIDX-DFR-SYNC / HIDX-DFR-DEP+ record the DFER-END a cached answer
-\ depends on and flush it (epoch bump) when a rollback rewinds below that mark.
-: DFER-ADD-SYM ( n bool -- ) {: sym:n flag:bool :}
-   HIDX-DFR-SYNC
-   DFER-NEED DFER-ENSURE
-   sym DFER-CUR DFER.SYM !
-   flag IF -1 ELSE 0 THEN DFER-CUR DFER.FLAG !
-   DFER-END @ DFER-REC + DFER-END !
-   DFER-TERM
-   sym 0 <> HIDX-VALID @ and IF
-      flag sym HIDX-DFR!
-      DFER-END @ HIDX-DFR-DEP+
-   THEN ;
-
-: DFER-ADD-FLAG ( ptr u8 n bool -- ) {: a:ptr u:n flag:bool :}
-   a u CHECKER-RECORD-SYM flag DFER-ADD-SYM ;
-
-: DFER-ADD ( ptr u8 n -- )
-   RES-TRUE DFER-ADD-FLAG ;
-
-: DFER-DELETE ( ptr u8 n -- )
-   RES-FALSE DFER-ADD-FLAG ;
-
 : DFER-NEXT ( ptr n -- ptr n )
    DFER-REC + ;
 
@@ -8622,6 +8597,31 @@ variable DFER-POS
    DFER-HIT @ IF DFER-VALUE @ ELSE RES-FALSE THEN
    dup sym HIDX-DFR!
    DFER-END @ HIDX-DFR-DEP+ ;
+
+\ Only a change of defer state needs rollback history. Ordinary undefine and
+\ owner transfer also publish false for symbols that have never been deferred.
+\ DFER-FIND-SYM synchronizes its cache after a rewind before this comparison;
+\ every real transition still appends, preserving saved offsets and old flags.
+: DFER-ADD-SYM ( n bool -- ) {: sym:n flag:bool :}
+   sym DFER-FIND-SYM flag xor 0= IF EXIT THEN
+   DFER-NEED DFER-ENSURE
+   sym DFER-CUR DFER.SYM !
+   flag IF -1 ELSE 0 THEN DFER-CUR DFER.FLAG !
+   DFER-END @ DFER-REC + DFER-END !
+   DFER-TERM
+   sym 0 <> HIDX-VALID @ and IF
+      flag sym HIDX-DFR!
+      DFER-END @ HIDX-DFR-DEP+
+   THEN ;
+
+: DFER-ADD-FLAG ( ptr u8 n bool -- ) {: a:ptr u:n flag:bool :}
+   a u CHECKER-RECORD-SYM flag DFER-ADD-SYM ;
+
+: DFER-ADD ( ptr u8 n -- )
+   RES-TRUE DFER-ADD-FLAG ;
+
+: DFER-DELETE ( ptr u8 n -- )
+   RES-FALSE DFER-ADD-FLAG ;
 
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
