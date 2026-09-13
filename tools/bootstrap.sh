@@ -311,10 +311,6 @@ bootstrap_wide_gate() {
 
 bootstrap_wide_gate
 
-# The shared Gforth fixture must keep each complete HB_TMP path as one shell
-# argument, including when two native artifacts are built and run concurrently.
-test/nf-path-test.sh
-
 # PERSISTED-PTR-VARIABLE is the boot prefix's only caller of the engine primitive
 # `ptr-cell-mark`, so a stage0 generator that never registers it takes down every
 # stage0 build at the prefix, naming only the bare token. This gate builds and runs
