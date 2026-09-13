@@ -397,6 +397,14 @@ create BASE SEC-N cells allot
    SEC-N 0 ?do 0 i BASE! loop
    S-DSITES ROW-LEN@ S-CSITES BASE! ;
 
+: ?ROOM ( n -- ) {: k:n :}
+   k BASE@ {: base:n :} k ROW-LEN@ {: len:n :} k SEC-CAP {: cap:n :}
+   base 0< 0= base cap <= and len 0< 0= and if
+      len cap base - <= if exit then
+   then
+   FD @ close
+   k s" is larger than the buffer it fills" SECT-DIE ;
+
 \ ---- staging the two assembled sections -------------------------------------
 
 : STAGE-SCALARS ( -- )
@@ -485,6 +493,7 @@ public
    STAGE
    BUILD-TABLE
    BASES-ALONE
+   SEC-N 0 ?do i ?ROOM loop
    PAYLOAD-DIGEST
    DERIVED AOT-IDENT:CHAIN-DIGEST
    prod BUILD-HEADER
@@ -585,11 +594,6 @@ private
       s" aot-file: the sections do not fill the payload" DIE
    then ;
 
-: ?ROOM ( n -- ) {: k:n :}
-   k BASE@ k ROW-LEN@ + k SEC-CAP <= if exit then
-   FD @ close
-   k s" is larger than the buffer it fills" SECT-DIE ;
-
 \ The scalars section says its own size, so a short one is a different shape
 \ rather than a smaller one and cannot be filled in part.
 : ?EXACT ( n n -- ) {: k:n want:n :}
@@ -597,10 +601,17 @@ private
    FD @ close
    k s" is not its fixed width" SECT-DIE ;
 
-: LOAD-SECTION ( n -- ) {: k:n :}
+: RESERVE-SECTION ( n -- ) {: k:n :}
    k ?ROOM
    k ROW-LEN@ 0= if exit then
    k S-NAMES = if k BASE@ k ROW-LEN@ + AOT-NAMES-RESERVE then
+   k S-DSITES = k S-CSITES = or if
+      k BASE@ k ROW-LEN@ + 4 / AOT-DSITE-RESERVE
+   then ;
+
+: LOAD-SECTION ( n -- ) {: k:n :}
+   k RESERVE-SECTION
+   k ROW-LEN@ 0= if exit then
    k SEC-PTR k BASE@ + k ROW-LEN@ GET
    k SEC-PTR k BASE@ + k ROW-LEN@ SHA256-UPDATE ;
 
@@ -647,7 +658,7 @@ variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
 : RUN-LEN@ ( n -- n ) RUN-AT 4 + U32@ ;
 
 : ?SPAN ( n -- ) {: span:n :}
-   span SPAN-CAP <= if exit then
+   span 0< 0= span SPAN-CAP <= and if exit then
    s" aot-file: the window DATA span exceeds what this engine can bake" DIE ;
 
 
@@ -788,6 +799,7 @@ public
 : READ ( ptr u8 ptr u8 n -- )
    LOAD-PASS
    BASES-ALONE
+   SEC-N 0 ?do i ?ROOM loop
    SEC-N 0 ?do i LOAD-SECTION loop
    FD @ close
    ?PAYLOAD-AGAIN
@@ -879,7 +891,14 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    H-SITE @ SITE-ROW *     S-SITES BASE!
    H-NAMES @                   S-NAMES BASE!
    H-DSITE @ 4 *               S-DSITES BASE!
-   H-DSITE @ 4 * S-DSITES ROW-LEN@ + H-CSITE @ 4 * +   S-CSITES BASE!
+   S-DSITES ?ROOM
+   S-DSITES BASE@ S-DSITES ROW-LEN@ + {: dend:n :}
+   H-CSITE @ 4 * {: cbytes:n :}
+   cbytes 0< cbytes AOT-DSITE-MAX 4 * dend - > or if
+      FD @ close
+      S-CSITES s" is larger than the buffer it fills" SECT-DIE
+   then
+   dend cbytes +               S-CSITES BASE!
    H-XTOFF @ XTOFF-ROW *       S-XTOFFS BASE!
    H-RUN @ 8 *                 S-WDATA BASE!
    H-RBYTES @                  S-WRUNS BASE!
@@ -893,11 +912,10 @@ variable H-DATA-R                    \ where the artifact's window begins inside
 \ read into the gap they leave. Copied from the top down, because the source and
 \ the destination overlap.
 : OPEN-CSITE-GAP ( -- )
-   H-DSITE @ S-DSITES ROW-LEN@ 4 / + H-CSITE @ + S-CSITES ROW-LEN@ 4 / +
-   AOT-DSITE-MAX > if
-      FD @ close
-      s" aot-file: the merged DATA and CODE site tables do not fit one buffer" DIE
-   then
+   \ The CODE section's end includes both DATA tables and both CODE tables.
+   \ Validate the end by subtraction before summing or moving existing rows.
+   S-CSITES ?ROOM
+   S-CSITES BASE@ S-CSITES ROW-LEN@ + 4 / AOT-DSITE-RESERVE
    S-DSITES ROW-LEN@ {: d:n :}
    d 0= if exit then
    H-CSITE @ 0 ?do
@@ -1209,6 +1227,7 @@ public
    LOAD-PASS
    ?REG
    BASES-AFTER-HOST
+   SEC-N 0 ?do i ?ROOM loop
    OPEN-CSITE-GAP
    SEC-N 0 ?do
       i S-WDATA = if PLACE-WDATA then

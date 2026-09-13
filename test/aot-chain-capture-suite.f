@@ -106,6 +106,17 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    mode modeu >LEN PROC-ARGV+
    RUN-CHILD ;
 
+: RUN-DATA-SITES ( ptr u8 n ptr u8 n -- )
+   {: mode:ptr modeu:n transport:ptr transportu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-data-sites.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   ART$ >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
+   transport transportu >LEN PROC-ARGV+
+   RUN-CHILD ;
+
 
 : RUN-ROW-CASE ( ptr u8 n -- )
    {: name u:n :}
@@ -296,6 +307,27 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    s" target" REFUSE-RC PRODUCER-CASE
    s" null-target" REFUSE-RC PRODUCER-CASE ;
 
+: SPAN-CASE ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+   a u s" file" RUN-DATA-SITES want ROW-RC
+   a u s" owned" RUN-DATA-SITES want ROW-RC ;
+
+: PROBE-DATA-SITES ( -- )
+   s" sites" s" file" RUN-DATA-SITES 0 ROW-RC
+   s" aot-data-sites: ok" SAID?
+   s" reserve-overflow" s" file" RUN-DATA-SITES REFUSE-RC ROW-RC
+   s" relocation site count exceeds the code blob bound" ERR-SAID?
+   s" reserve-limit" s" file" RUN-DATA-SITES REFUSE-RC ROW-RC
+   s" reserve-negative" s" file" RUN-DATA-SITES REFUSE-RC ROW-RC
+   s" bad-order" s" file" RUN-DATA-SITES REFUSE-RC ROW-RC
+   s" DATA sites follow CODE sites" ERR-SAID?
+   s" shared-overflow" s" owned" RUN-DATA-SITES $4B ROW-RC
+   s" CODE sites is larger than the buffer it fills" ERR-SAID?
+   s" span-negative" $4B SPAN-CASE
+   s" span-min" $4B SPAN-CASE
+   s" span-zero" 0 SPAN-CASE
+   s" span-cap" 0 SPAN-CASE
+   s" span-large" $4B SPAN-CASE ;
+
 : BODY ( -- )
    PROBE-ROUNDTRIP
    PROBE-ARTIFACT
@@ -308,6 +340,7 @@ create HOST-PATH FS-PATH-CAP allot variable HOST-PATH-U
    s" overflow" RUN-OWNED-CAPTURE
    $4B ROW-RC
    s" scalars runs past the payload" ERR-SAID?
+   PROBE-DATA-SITES
    PROBE-PRODUCER-ROWS ;
 
 public

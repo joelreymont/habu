@@ -171,10 +171,22 @@ variable AOT-NAMES-LEN
 \ Both move by (seed-DP - AOT-DATA-D0), preserving their window coordinate.
 $80000000 constant AOT-DSITE-CELL
 $7FFFFFFF constant AOT-DSITE-OFF-MASK
-\ 16384 shared rows: the metabuild window records one address chain per 127 blob
-\ bytes, so the chain's 1.15 MiB projects to ~9k DATA plus CODE sites together.
-16384 constant AOT-DSITE-MAX
-create AOT-DSITE-BUF AOT-DSITE-MAX 4 * allot    variable AOT-DSITE-N   \ packed u32 blob offsets (DATA then CODE)
+\ DATA and CODE rows partition the aligned relocation starts in the blob.
+\ At most one row can name each four-byte word, including deduplicated defer
+\ metadata cells. This is a format bound; allocate only the rows actually used.
+AOT-BLOB-CAP 4 / constant AOT-DSITE-MAX
+DYNAMIC-BUFFER DSITE-STORAGE n
+variable AOT-DSITE-N                            \ packed u32 offsets, DATA then CODE
+
+: AOT-DSITE-RESERVE ( n -- )
+   dup 0< over AOT-DSITE-MAX > or if
+      s" aot: relocation site count exceeds the code blob bound" 74 die
+   then
+   1+ 2 / DSITE-STORAGE-RESERVE ;
+
+: AOT-DSITE-BUF ( -- ptr u8 )
+   1 AOT-DSITE-RESERVE
+   0 DSITE-STORAGE BYTE-VIEW ;
 variable AOT-DATA-D0    variable AOT-DATA-SIZE
 \ The window's wordlist span, [W0, W0+SPAN). A captured wid is a window-relative
 \ coordinate the same way a blob offset is: only wid 0, the global wordlist, means
@@ -409,8 +421,7 @@ AOT-BLOB-CAP
 AOT-REC-MAX AOT-CREC-ROW * +                       \ compact dictionary records
 AOT-SITE-MAX SITE-ROW * +                          \ call-site rows
 AOT-NAMES-CAP +                                    \ deduped name pool
-AOT-DSITE-MAX 4 * +                                \ DATA-literal sites
-AOT-DSITE-MAX 4 * +                                \ CODE-literal sites (same buffer's tail)
+AOT-DSITE-MAX 4 * +                                \ DATA and CODE sites share one bound
 AOT-WINDOW:XTOFF-MAX AOT-WINDOW:XTOFF-ROW * +      \ declared address cells in the window
 AOT-WINDOW:RUN-MAX 8 * +                           \ the captured DATA window's non-zero extents
 AOT-WINDOW:RBYTES-CAP +                            \ ... and their bytes

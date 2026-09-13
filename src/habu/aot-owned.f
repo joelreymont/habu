@@ -36,8 +36,8 @@ using AOT-WINDOW
    loop ;
 
 : IMPORT-SECTION ( ptr u8 n -- ) {: src:ptr k:n :}
+   k RESERVE-SECTION
    k ROW-LEN@ 0= if exit then
-   k S-NAMES = if k ROW-LEN@ AOT-NAMES-RESERVE then
    src k ROW-OFF@ + k SEC-PTR k BASE@ + k ROW-LEN@ BYTE-COPY ;
 
 : OWN-AS ( n -- AOT-OWNED:capture ) {: origin:n :}

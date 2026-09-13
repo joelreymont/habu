@@ -1019,13 +1019,20 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    off 2 rshift 7 and rshift 1 and 0= 0= ;
 
 : ACAP-ADD-DSITE ( n -- ) {: boff:n :}   \ store blob offset as u32
-   AOT-DSITE-N @ AOT-DSITE-MAX >= if s" aot-capture: too many DATA sites" 74 die then
+   AOT-CSITE-N @ 0<> if s" aot-capture: DATA sites follow CODE sites" 74 die then
+   AOT-DSITE-N @ dup 0< swap AOT-DSITE-MAX >= or if
+      s" aot-capture: too many DATA sites" 74 die then
+   AOT-DSITE-N @ 1+ AOT-DSITE-RESERVE
    boff  AOT-DSITE-N @ 4 * AOT-DSITE-BUF@ +  AOT-P32!
    AOT-DSITE-N @ 1+ AOT-DSITE-N ! ;
 
 : ACAP-ADD-CSITE ( n -- ) {: boff:n :}   \ append (as u32) after the DATA offsets in the DSITE buffer
-   AOT-DSITE-N @ AOT-CSITE-N @ + AOT-DSITE-MAX >= if s" aot-capture: too many reloc sites" 74 die then
-   boff  AOT-DSITE-N @ AOT-CSITE-N @ + 4 * AOT-DSITE-BUF@ +  AOT-P32!
+   AOT-DSITE-N @ {: dn:n :} AOT-CSITE-N @ {: cn:n :}
+   dn 0< dn AOT-DSITE-MAX > or cn 0< or if
+      s" aot-capture: invalid relocation site counts" 74 die then
+   cn AOT-DSITE-MAX dn - >= if s" aot-capture: too many reloc sites" 74 die then
+   dn cn + 1+ AOT-DSITE-RESERVE
+   boff dn cn + 4 * AOT-DSITE-BUF@ + AOT-P32!
    AOT-CSITE-N @ 1+ AOT-CSITE-N ! ;
 
 \ A NAMED code site: the chain at this blob offset holds the entry of the word

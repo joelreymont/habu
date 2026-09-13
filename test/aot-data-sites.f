@@ -1,0 +1,172 @@
+\ Exercise the actual packed-site appenders beyond their former 16,384 rows.
+\ No generated code is executed: the buffer contains tagged metadata cells and
+\ correctly shaped address chains, then survives file and owned-value transfer.
+require lib/test.f
+require src/os/script-argv.f
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/habu/layout.f
+require src/habu/aot-decl.f
+require src/habu/aot-arm.f
+require src/habu/aot-capture.f
+require src/habu/aot-ident.f
+require src/habu/fdio.f
+require src/habu/aot-owned.f
+
+package AOT-CAPTURE
+public
+: SITE-TEST-DATA+ ( n -- ) ACAP-ADD-DSITE ;
+: SITE-TEST-CODE+ ( n -- ) ACAP-ADD-CSITE ;
+;package
+
+package AOT-FILE
+public
+
+\ Exercise the actual overlapping tail move used by MERGE. Incoming DATA rows
+\ make a gap before 20,001 existing CODE rows; reserve must precede the move.
+: SITE-TEST-GAP ( -- )
+   LATCH-HOST
+   S-DSITES ROW-OFF@ 12 S-DSITES ROW!
+   S-CSITES ROW-OFF@ 0 S-CSITES ROW!
+   BASES-AFTER-HOST OPEN-CSITE-GAP ;
+
+\ Keep total payload length and contiguous table offsets valid. Reassign some
+\ blob bytes to DATA/CODE sections whose combined length is four bytes too big.
+: SITE-TEST-FORGE ( AOT-OWNED:capture -- AOT-OWNED:capture )
+   dup AOT-OWNED:BYTES$ drop {: dst:ptr :}
+   AOT-BUF:AOT-DSITE-MAX 4 * 4 +
+   S-DSITES ROW-LEN@ S-CSITES ROW-LEN@ + - {: extra:n :}
+   S-BLOB ROW-OFF@ S-BLOB ROW-LEN@ extra - S-BLOB ROW!
+   S-DSITES ROW-OFF@ AOT-BUF:AOT-DSITE-MAX 4 * 4 - S-DSITES ROW!
+   S-CSITES ROW-OFF@ 8 S-CSITES ROW!
+   SEC-N ROW-BYTES * CUR !
+   SEC-N 0 ?do
+      CUR @ i ROW-LEN@ i ROW!
+      CUR @ i ROW-LEN@ + CUR !
+   loop
+   TBL dst SEC-N ROW-BYTES * BYTE-COPY ;
+;package
+
+package AOT-DATA-SITES-TEST
+using AOT-BUF
+using AOT-WINDOW
+
+20001 constant ROWS
+create KEY 32 allot
+
+: DATA-OFF ( n -- n ) 16 * 16 + ;
+: CODE-OFF ( n -- n ) ROWS + 16 * 8 + ;
+: U32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
+: U32! ( n ptr u8 -- ) {: value:n p:ptr :}
+   4 0 ?do value i 8 * rshift p i + c! loop ;
+: ROW@ ( n -- n ) 4 * AOT-DSITE-BUF@ + U32@ ;
+
+: CLEAR-COUNTS ( -- )
+   0 AOT-BLOB-LEN ! 0 AOT-REC-N ! 0 AOT-SITE-N ! 0 AOT-NAMES-LEN !
+   0 AOT-DSITE-N ! 0 AOT-CSITE-N !
+   0 AOT-CODE-B0 ! 0 AOT-DATA-D0 ! 0 AOT-DATA-SIZE !
+   0 AOT-WID-W0 ! 0 AOT-WID-SPAN !
+   0 RUN-N ! 0 RBYTES-LEN ! 0 XTOFF-N !
+   0 AOT-XTSITE:N ! 0 AOT-BOOTRUN-LEN ! 0 AOT-PWIN-N !
+   0 AOT-SIG-N ! 0 AOT-SIG-STR-LEN ! 0 AOT-REG-LEN ! ;
+
+: SOURCE ( -- )
+   CLEAR-COUNTS AOT-IDENT:RESET
+   s" src/habu/aot-decl.f" AOT-IDENT:PATH+
+   AOT-BLOB-CAP AOT-BLOB-LEN !
+   $1000 AOT-DATA-D0 ! 8 AOT-DATA-SIZE !
+   $D65F03C0 AOT-BLOB-BUF@ U32!
+   ROWS 0 ?do
+      AOT-BLOB-BUF@ i DATA-OFF + {: addr:ptr :}
+      DEFER-MAGIC addr 8 - CELL-VIEW !
+      $1000 addr CELL-VIEW !
+      i DATA-OFF AOT-DSITE-CELL or AOT-CAPTURE:SITE-TEST-DATA+
+   loop
+   ROWS 0 ?do
+      AOT-BLOB-BUF@ i CODE-OFF + {: addr:ptr :}
+      $D2800009 addr U32!
+      $F2A00009 addr 4 + U32!
+      $F2C00009 addr 8 + U32!
+      $F2E00009 addr 12 + U32!
+      i CODE-OFF AOT-CAPTURE:SITE-TEST-CODE+
+   loop ;
+
+: CHECK ( -- )
+   AOT-DSITE-N @ ROWS T= AOT-CSITE-N @ ROWS T=
+   ROWS 0 ?do
+      i ROW@ i DATA-OFF AOT-DSITE-CELL or T=
+      ROWS i + ROW@ i CODE-OFF T=
+   loop
+   AOT-BLOB-BUF@ ROWS 1- DATA-OFF + CELL-VIEW @ $1000 T=
+   AOT-BLOB-BUF@ ROWS 1- CODE-OFF + SNAP-RELOC:CHAINV 0 T= ;
+
+: RELEASE ( -- ) CLEAR-COUNTS DSITE-STORAGE-RELEASE ;
+
+: TRANSFER ( AOT-OWNED:capture -- )
+   RELEASE
+   dup AOT-FILE:IMPORT CHECK
+   AOT-OWNED:CLOSE ;
+
+: GAP ( -- )
+   AOT-FILE:OWN
+   AOT-FILE:SITE-TEST-GAP
+   ROWS 0 ?do
+      i ROW@ i DATA-OFF AOT-DSITE-CELL or T=
+      ROWS 3 + i + ROW@ i CODE-OFF T=
+   loop
+   TRANSFER ;
+
+: SPAN-VALUE ( -- n )
+   1 SCRIPT-ARGV$ {: a:ptr u:n :}
+   a u s" span-negative" STR= if -1 exit then
+   a u s" span-min" STR= if $8000000000000000 exit then
+   a u s" span-zero" STR= if 0 exit then
+   a u s" span-cap" STR= if SPAN-CAP exit then
+   SPAN-CAP 1+ ;
+
+: SPAN-CASE ( -- )
+   CLEAR-COUNTS AOT-IDENT:RESET
+   s" src/habu/aot-decl.f" AOT-IDENT:PATH+
+   SPAN-VALUE AOT-DATA-SIZE !
+   2 SCRIPT-ARGV$ s" owned" STR= if
+      AOT-FILE:OWN
+      CLEAR-COUNTS
+      dup AOT-FILE:IMPORT AOT-OWNED:CLOSE
+   else
+      KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE
+      CLEAR-COUNTS
+      KEY 0 SCRIPT-ARGV$ AOT-FILE:READ
+   then
+   AOT-DATA-SIZE @ SPAN-VALUE T=
+   T-REPORT
+   s" aot-data-sites: span ok" type cr ;
+
+: RUN ( -- )
+   T-RESET
+   1 SCRIPT-ARGV$ 5 min s" span-" STR= if SPAN-CASE exit then
+   1 SCRIPT-ARGV$ s" reserve-overflow" STR= if
+      $7FFFFFFFFFFFFFFF AOT-DSITE-RESERVE exit then
+   1 SCRIPT-ARGV$ s" reserve-limit" STR= if
+      AOT-DSITE-MAX 1+ AOT-DSITE-RESERVE exit then
+   1 SCRIPT-ARGV$ s" reserve-negative" STR= if
+      -1 AOT-DSITE-RESERVE exit then
+   SOURCE CHECK
+   1 SCRIPT-ARGV$ s" bad-order" STR= if
+      0 AOT-CAPTURE:SITE-TEST-DATA+ exit then
+   1 SCRIPT-ARGV$ s" shared-overflow" STR= if
+      AOT-FILE:OWN AOT-FILE:SITE-TEST-FORGE AOT-FILE:IMPORT exit then
+   AOT-FILE:OWN TRANSFER
+   KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE
+   RELEASE
+   KEY 0 SCRIPT-ARGV$ AOT-FILE:READ CHECK
+   GAP
+   AOT-DSITE-MAX AOT-DSITE-RESERVE CHECK
+   DSITE-STORAGE-RELEASE
+   T-REPORT
+   s" aot-data-sites: ok" type cr ;
+
+RUN
+;using
+;using
+;package
