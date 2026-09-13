@@ -8605,7 +8605,7 @@ package CHECKER-REG
       -1 SG-ROWS-PUBLISH !
       [: CHECKER-PUBLISH-PARSED ;] catch
       SG-ROWS-RESET
-      ?dup IF throw THEN
+       dup IF throw THEN drop
    ELSE CHECKER-PUBLISH-PARSED THEN
    sa su CHECKER-ASIG-CAPTURE ;
 
