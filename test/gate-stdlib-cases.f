@@ -1198,6 +1198,14 @@ SUITE dynamic-buffer-registry
    test/dynamic-buffer-registry.f
 ;SUITE
 
+SUITE dynamic-buffer-capture
+   test/dynamic-buffer-capture.f
+;SUITE
+
+SUITE dynamic-buffer-tasks
+   test/dynamic-buffer-tasks.f
+;SUITE
+
 SUITE layout-defer
    test/layout-defer.f
 ;SUITE

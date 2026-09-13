@@ -22,7 +22,7 @@
 \ durations.
 \
 \ Putting the slots in a mapping is necessary and NOT sufficient, and the second
-\ half is the part that bites. A DYNAMIC-BUFFER keeps a two-cell control record
+\ half is the part that bites. A DYNAMIC-BUFFER keeps a control record
 \ in DATA, and the generated reader bounds-checks the index against the capacity
 \ in it: a RELEASED buffer therefore refuses, but a buffer whose capacity was
 \ baked non-zero while its mapping address belongs to a dead process passes that

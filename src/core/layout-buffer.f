@@ -492,17 +492,9 @@ PRIM: TYPED-VARIABLE PRIM;
 \ accessor is the same checked storage introduction as TYPED-BUFFER. A reserve
 \ preserves old cells and may move the mapping; callers retain indices across it.
 \
-\ THE GENERATED SOURCE REGISTERS THE RECORD, AND THAT IS WHY THE CALL IS HERE
-\ RATHER THAN IN THE DEFINER. The AOT capture must be able to walk every control
-\ record this declaration surface ever handed out (src/core/dynamic-storage.f
-\ RELEASE-ALL, called from src/habu/aot-capture.f), and a list kept by hand is a
-\ list a new declaration gets left out of. The definer itself cannot make the
-\ call: the core prefix loads this file BEFORE src/core/dynamic-storage.f, so
-\ `DYNAMIC-STORAGE:REGISTER` does not exist while this file compiles. The
-\ generated source does not have that problem - it is evaluated at declaration
-\ time, when the runtime it already names for RESERVE and RELEASE is loaded - so
-\ the registration travels the same way those two calls do, as a trailing
-\ top-level line of the source this word builds.
+\ The private third control cell is the live registry handle. RESERVE registers
+\ on first allocation; RELEASE unregisters, so an existing declaration remains
+\ reusable after capture and restore without replaying this generated source.
 : DBUF-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
@@ -520,8 +512,7 @@ PRIM: TYPED-VARIABLE PRIM;
    s"  " LBUF-APP LBUF-W @ cells LBUF-DEC,
    s"  DYNAMIC-STORAGE:RESERVE ; : " LBUF-APP name nameu LBUF-APP
    s" -RELEASE ( -- ) " LBUF-APP name nameu LBUF-BASE,
-   s"  DYNAMIC-STORAGE:RELEASE ; " LBUF-APP name nameu LBUF-BASE,
-   s"  DYNAMIC-STORAGE:REGISTER" LBUF-APP
+   s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
 : DBUF-SUFFIX-GUARD ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n suffix:ptr su:n :}
@@ -538,7 +529,7 @@ PRIM: TYPED-VARIABLE PRIM;
    name nameu s" -RESERVE" DBUF-SUFFIX-GUARD
    name nameu s" -RELEASE" DBUF-SUFFIX-GUARD
    1 type typeu STORAGE-VALIDATE
-   2 cells LBUF-BYTES !
+   3 cells LBUF-BYTES !
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu DBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}

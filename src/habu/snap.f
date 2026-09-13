@@ -26,6 +26,7 @@
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 
 require src/habu/snap-lib.f
+require lib/image-lifecycle.f
 
 \ The image writer lives in package SNAP (src/habu/snap-lib.f). Import its
 \ public wordlist for the rest of this file so the driver below can call
@@ -47,6 +48,7 @@ package SNAPSHOT
 $4A constant E-SNAP-HOOK
 
 TRUSTED: RETIRE-AND-PERSIST ( -- )
+   IMAGE-LIFECYCLE:PREPARE
    s" SNAP-TAIL-MARK" FORGET-DEFS-FROM
    data-base ENGINE-SNAP-XT-CELL + @ dup 0= if
       s" snap: engine snapshot hook missing" E-SNAP-HOOK die

@@ -1577,45 +1577,24 @@ public
    AOT-ARM:W0 @ AOT-WID-W0 !
    AOT-ARM:W1 @ AOT-ARM:W0 @ - AOT-WID-SPAN ! ;
 
-\ ---- giving back every dynamic-storage mapping before the DATA is baked --------
-\ A DYNAMIC-BUFFER's control record is two DATA cells, a mapping pointer and a byte
-\ capacity (src/core/dynamic-storage.f). ACAP-BAKE-DATA below copies the window's
-\ non-zero bytes, so a record still holding a mapping here bakes a pointer into a
-\ process that is about to exit, beside a capacity that is real; RESERVE's early
-\ return then never replaces it and the next generation dereferences it.
-\
-\ THIS IS THE LAST POINT, AND NOT THE END OF THE WINDOW'S LOAD. The hazard is not
-\ the load - it is everything that compiles after the load, because every compile
-\ reserves again. Releasing at the end of src/habu/native-runtime.f CAPTURE-PREPARE
-\ leaves the window dirty for exactly those reserves. ACAP-BAKE-DATA is the moment
-\ the bytes stop changing: it copies them into AOT-WINDOW's run buffer, and nothing
-\ compiled afterwards can reach the image. So the walk belongs immediately before it.
-\
-\ THE INSTANCE IS FOUND, NOT INSTALLED. A window build loads dynamic-storage.f a
-\ second time, so there are two DYNAMIC-STORAGE packages and two registries: the
-\ window's declarations are in the window's, and this file - compiled in the build
-\ host - would reach the HOST's if it simply called the name. XREF-FIND walks the
-\ dictionary from the newest record down, which is how window code binds too, so it
-\ answers the window's instance; the span test is what makes that a fact rather than
-\ a hope. An xt inside the captured code band [b0, b1) is window code by
-\ construction. An xt outside it is the host's own instance, whose records sit below
-\ the captured DATA window and are never baked - so is no answer at all: either way
-\ the window declared no dynamic storage of its own and there is nothing to walk.
-\ The lookup must not compile, which is why it is XREF-FIND and never `evaluate`:
-\ a compile here would run the window's own compiler, through the dispatch cell
-\ CHECKER-REG:SEAL just repointed, and reserve the very records the walk is about
-\ to clear.
-: ACAP-DBUF-XT ( n n -- n ) {: b0:n b1:n :}
-   s" DYNAMIC-STORAGE:RELEASE-ALL" XREF-FIND ACAP-XREF-XT {: xt:n :}
-   xt b0 >= xt b1 < and if xt else 0 then ;
+\ Release transient mappings at their last use, immediately before DATA copy.
+\ A replacement runtime in the window owns the whole registry being captured;
+\ a retained runtime also owns host/writer records outside this DATA span.
+: ACAP-DBUF-XT ( ptr u8 n -- n )
+   XREF-FIND ACAP-XREF-XT ;
 
-\ `execute` enters a word the dictionary named at run time, so what it consumes and
-\ leaves is unknown here; RELEASE-ALL's own signature is ( -- ).
+\ These operations have known effects but are resolved from the live instance.
 TRUSTED: ACAP-RUN-XT ( n -- ) execute ;
+TRUSTED: ACAP-RUN-RANGE ( n n n -- ) execute ;
 
-: ACAP-RELEASE-DYNAMIC ( n n -- )
-   ACAP-DBUF-XT {: xt:n :}
-   xt 0<> if xt ACAP-RUN-XT then ;
+: ACAP-RELEASE-DYNAMIC ( n n n n -- ) {: b0:n b1:n d0:n d1:n :}
+   d1 d0 < if s" aot-capture: reversed dynamic DATA span" 74 die then
+   s" DYNAMIC-STORAGE:RELEASE-ALL" ACAP-DBUF-XT {: xt:n :}
+   xt b0 >= xt b1 < and if xt ACAP-RUN-XT exit then
+   s" DYNAMIC-STORAGE:RELEASE-RANGE" ACAP-DBUF-XT {: range:n :}
+   range 0= if
+      s" aot-capture: dynamic storage has no range release" 74 die then
+   d0 d1 d0 - range ACAP-RUN-RANGE ;
 
 : CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    bstart rstart rend d0 ACAP-BAND!
@@ -1629,7 +1608,7 @@ TRUSTED: ACAP-RUN-XT ( n -- ) execute ;
    bstart bend d0 d1 ACAP-SCAN-DSITES
    bstart bend d0 d1 ACAP-SCAN-DEFER-SITES
    bstart bend ACAP-SCAN-CSITES
-   bstart bend ACAP-RELEASE-DYNAMIC            \ no dynamic-storage mapping may reach the bytes below
+   bstart bend d0 d1 ACAP-RELEASE-DYNAMIC      \ no dynamic-storage mapping may reach the bytes below
    bstart bend d0 d1 ACAP-BAKE-DATA            \ DATA bytes plus every declared address cell
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof

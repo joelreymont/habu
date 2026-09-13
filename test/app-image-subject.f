@@ -13,12 +13,21 @@ create FOLDED 32 allot
 variable VALUE
 PERSISTED-PTR-VARIABLE LINK
 TYPED-VARIABLE ACTION [ n -- n ]
+DYNAMIC-BUFFER SCRATCH n
+
+: USE-SCRATCH ( -- )
+   1 SCRATCH-RESERVE
+   23 0 SCRATCH !
+   0 SCRATCH @ 23 <> if 70 throw then ;
+
+: SCRATCH-ADDRESS ( -- ) 0 SCRATCH drop ;
 
 : INCREMENT ( n -- n ) 1+ ;
 : DOUBLE ( n -- n ) 2 * ;
 : PUT ( [ a -- a ] ptr [ a -- a ] -- ) ! ;
 
 : INITIALIZE ( -- )
+   USE-SCRATCH
    CHECK-UNICODE
    42 VALUE !
    VALUE LINK !
@@ -29,7 +38,13 @@ INITIALIZE
 
 public
 
+\ Inspect bounds without dereferencing a stale process pointer. Both restored
+\ generations must start released even though this declaration is never replayed.
+: SCRATCH-CLEAN ( -- )
+   [: SCRATCH-ADDRESS ;] catch 7122 <> if 70 throw then ;
+
 : RUN ( -- n )
+   USE-SCRATCH
    CHECK-UNICODE
    LINK @ @ ACTION @ execute ;
 

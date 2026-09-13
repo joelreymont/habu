@@ -1,54 +1,20 @@
-\ dynamic-storage.f - checked allocation behind DYNAMIC-BUFFER declarations.
-\ A control record contains a mapping pointer and its byte capacity. Element
-\ identity and width are fixed by the declaration that owns that record.
-\
-\ CORE-PREFIX FILE, and that is why the mapping refusals below are this
-\ package's own codes rather than the memory codes lib/errors.f owns. The
-\ declaration surface that generates calls into here is
-\ src/core/layout-buffer.f, which the prefix loads before
-\ src/core/lower-cert-seal.f takes the core-prefix mark; a generated build
-\ source rewinds to that mark (src/habu/prefix-rewind.f) and then compiles
-\ engine files that declare DYNAMIC-BUFFERs, so a runtime living above the mark
-\ is undefined exactly where it is needed (measured: `E-UNDEFINED:
-\ DYNAMIC-STORAGE:RESERVE` compiling src/habu/aot-decl.f in every hb-build
-\ stage source). lib/errors.f loads after the mark, so reaching a code out of it
-\ from here is what put this file above the mark.
+\ Checked transient allocation behind DYNAMIC-BUFFER declarations.
+\ A private control record holds mapping, byte capacity and registry slot + 1.
+\ Membership follows live allocation, including a precompiled reserve after
+\ restore. Release zeroes the record; no process address survives capture.
+\ This runtime belongs below the core-prefix mark: generated declarations in
+\ a rewound build source already call it, before lib/errors.f is available.
 package DYNAMIC-STORAGE
 private
 
 $7FFFFFFFFFFFFFFF constant MAX-BYTES
 7121 constant E-SIZE
-7138 constant E-MAP                      \ mmap refused the growth this reserve asked for
-7139 constant E-UNMAP                    \ munmap refused a mapping this package owns
+7138 constant E-MAP
+7139 constant E-UNMAP
 
-\ ---- the registry of every control record this package owns -------------------
-\ WHY A REGISTRY EXISTS AT ALL. An AOT capture copies the window's DATA, so a
-\ control record that still holds a mapping when the capture runs bakes a pointer
-\ into a dead process beside a capacity that is real. RESERVE's early return on
-\ `need <= old` then never replaces the mapping and the generated reader's bounds
-\ check passes, so the next generation dereferences it: measured rc 134, SIGSEGV,
-\ x11 holding the building process's mmap address. Releasing at the end of the
-\ window's load is not enough, because anything that compiles after that point
-\ reserves again; the only complete answer is one list the capture can walk, and
-\ the only complete list is one the declaring form builds.
-\
-\ THE REGISTRY IS PROCESS-LOCAL AND NOTHING ABOUT IT SURVIVES AN IMAGE. It lives
-\ in a mapping of its own, and the two DATA cells below are a pointer and a count
-\ in the pairing every pointer slot in this tree uses: the count is the authority,
-\ so `REG-U` at 0 means there is no mapping and the pointer is not read. RELEASE-ALL
-\ gives the mapping back and zeroes both cells last of all, after the walk, so an
-\ image carries neither the registry nor anything it named. A booted image whose
-\ first declaration re-registers builds the registry again from nothing, which is
-\ the same state a cold process starts in.
-\
-\ ONE REGISTRY PER PACKAGE INSTANCE, AND THAT IS THE POINT. A window build loads
-\ this file a second time (measured: `src/core/dynamic-storage.f` loads twice in one
-\ tools/native-build.f run), so the window's declarations register into the window's
-\ instance and the build host's into the host's. The capture walks the window's
-\ instance and only that one - see src/habu/aot-capture.f ACAP-RELEASE-DYNAMIC -
-\ because the host's records sit below the captured DATA window and are never baked.
-$40 constant REG-INIT                    \ entries the first registry mapping holds
-1 constant REG-HEAD                      \ cells ahead of the first entry: the capacity
+$40 constant REG-INIT
+1 constant REG-HEAD
+3 cells constant CONTROL-BYTES
 
 : EXTENT ( n n -- n ) {: count:n width:n :}
    count 0 < width 0 <= or if E-SIZE throw then
@@ -62,61 +28,68 @@ $40 constant REG-INIT                    \ entries the first registry mapping ho
 : COPY ( ptr n ptr n n -- ) {: src:ptr dst:ptr bytes:n :}
    bytes CELL / 0 ?do src i cells + @ dst i cells + ! loop ;
 
-create REG 0 ,                           \ the registry mapping; read only when REG-U is non-zero
-variable REG-U                           \ entries in use, and the authority on whether REG is live
-variable REG-I
-variable REG-DIRTY
+\ One registry per runtime instance. Empty capacity is retained until capture,
+\ so the pointer itself is the authority on whether the mapping is live.
+create REG 0 ,
+variable REG-U
+here data-base - negate 7 and allot
+variable MUTEX
 
-: REG-BYTES ( n -- n ) {: entries:n :}
-   REG-HEAD entries + cells ;
+: LOCK ( -- ) begin 0 1 MUTEX atomic-cas 0= until ;
+: UNLOCK ( -- ) 0 MUTEX atomic! ;
 
-: REG@ ( -- ptr n )  REG 0 ptr-field @ ;
+: REG@ ( -- ptr n ) REG 0 ptr-field @ ;
+: REG-CAP ( -- n ) REG@ @ ;
+: REG-BYTES ( n -- n ) REG-HEAD + CELL EXTENT ;
+: REG-AT ( n -- ptr ptr n ) REG-HEAD + REG@ swap ptr-field ;
+: REG-ENTRY ( n -- ptr n ) REG-AT @ ;
+: SLOT ( ptr n -- ptr n ) 2 cells + ;
 
-: REG-CAP ( -- n )   REG@ @ ;
+: REG-MAP ( n -- ptr n )
+   REG-BYTES map-anon 0< if drop E-MAP throw then ;
 
-: REG-AT ( n -- ptr n ) {: i:n :}
-   REG@ REG-HEAD i + cells + ;
+: REG-CLOSE ( -- )
+   REG@ 0= if exit then
+   REG@ REG-CAP REG-BYTES munmap 0< if E-UNMAP throw then
+   NULL-PTR REG 0 ptr-field ! ;
 
-: REG-ENTRY ( n -- ptr n ) {: i:n :}
-   i REG-AT 0 ptr-field @ ;
-
-: REG-MAP ( n -- ptr n ) {: entries:n :}
-   entries REG-BYTES map-anon 0< if drop E-MAP throw then ;
-
-\ Opened by the first REGISTER and never observed empty: the caller stores an entry
-\ and raises the count before it returns, and a grow cannot be reached on that first
-\ entry, so `REG-U` 0 always means no mapping.
-: REG-OPEN ( -- )
-   REG-INIT REG-MAP {: fresh:ptr :}
-   REG-INIT fresh !
-   fresh REG 0 ptr-field ! ;
-
-\ The old mapping is given back only after the copy succeeded, and a refused unmap
-\ gives the fresh one back rather than leaving two live: REG still names the old one.
-: REG-GROW ( -- )
+\ Capacity is secured before RESERVE publishes either mapping or membership.
+\ A failed grow leaves the old registry and every handle intact.
+: REG-ROOM ( -- )
+   REG@ 0= if
+      REG-INIT REG-MAP {: fresh:ptr :}
+      REG-INIT fresh !
+      fresh REG 0 ptr-field !
+      exit
+   then
+   REG-U @ REG-CAP < if exit then
    REG-CAP {: old:n :}
+   old MAX-BYTES CELL / 1- 2 / > if E-SIZE throw then
    old 2 * {: cap:n :}
    cap REG-MAP {: fresh:ptr :}
-   REG@ fresh  REG-HEAD old + cells  COPY
+   REG@ fresh old REG-BYTES COPY
    cap fresh !
    REG@ old REG-BYTES munmap 0< if
       fresh cap REG-BYTES munmap drop E-UNMAP throw
    then
    fresh REG 0 ptr-field ! ;
 
-\ EVERY CELL THIS PACKAGE OWNS, and that is the whole point of the word: the two
-\ walk cursors are as much a build-time transient as the mapping is. Left at the
-\ entry count they reached, they would be baked into every image as residue - a
-\ deterministic number, so not a byte-identity break, but a build-time count in a
-\ cell no restored image has a reader for, which is exactly what lengthens the
-\ generation chain (docs/bootstrap.md). When this returns, DYNAMIC-STORAGE's DATA
-\ is zero in all four cells.
-: REG-CLOSE ( -- )
-   REG@ REG-CAP REG-BYTES munmap 0< if E-UNMAP throw then
-   NULL-PTR REG 0 ptr-field !
-   0 REG-U !
-   0 REG-I !
-   0 REG-DIRTY ! ;
+: REGISTER ( ptr n -- ) {: cb:ptr :}
+   cb REG-U @ REG-AT !
+   REG-U @ 1+ dup cb SLOT ! REG-U ! ;
+
+\ Swap removal is bounded and repairs the moved record's private handle.
+: UNREGISTER ( ptr n -- ) {: cb:ptr :}
+   cb SLOT @ 1- {: at:n :}
+   REG-U @ 1- {: last:n :}
+   at last <> if
+      last REG-ENTRY {: moved:ptr :}
+      moved at REG-AT !
+      at 1+ moved SLOT !
+   then
+   NULL-PTR last REG-AT !
+   last REG-U !
+   0 cb SLOT ! ;
 
 public
 
@@ -126,6 +99,20 @@ public
    need old <= if exit then
    need old CAPACITY {: cap:n :}
    cap map-anon 0< if drop E-MAP throw then {: fresh:ptr :}
+   old 0= if
+      \ Distinct controls may allocate concurrently. Keep their mapping work
+      \ outside the lock; registry room and publication form one commit.
+      LOCK
+      [: REG-ROOM ;] catch {: rc:n :}
+      rc 0 <> if
+         UNLOCK fresh cap munmap drop rc throw
+      then
+      fresh cb 0 ptr-field !
+      cap cb cell+ !
+      cb REGISTER
+      UNLOCK
+      exit
+   then
    old 0 > if
       cb 0 ptr-field @ fresh old COPY
       cb 0 ptr-field @ old munmap 0< if
@@ -137,54 +124,55 @@ public
 
 : RELEASE ( ptr n -- ) {: cb:ptr :}
    cb cell+ @ {: cap:n :}
-   cap 0 > if
-      cb 0 ptr-field @ cap munmap 0< if E-UNMAP throw then
-   then
-   0 cb ! 0 cb cell+ ! ;
+   cap 0= if exit then
+   cb 0 ptr-field @ cap munmap 0< if E-UNMAP throw then
+   LOCK
+   cb UNREGISTER
+   NULL-PTR cb 0 ptr-field !
+   0 cb cell+ !
+   UNLOCK ;
 
-\ Called once per declaration, by the source the declaring form generates
-\ (src/core/layout-buffer.f DBUF-SOURCE), so no caller keeps a list by hand and a
-\ new declaration cannot be forgotten. A record enters exactly once and stays: a
-\ RELEASE leaves it registered and zero, which is what the walk below wants to see.
-: REGISTER ( ptr n -- ) {: cb:ptr :}
-   REG-U @ 0= if REG-OPEN then
-   REG-U @ REG-CAP >= if REG-GROW then
-   cb  REG-U @ REG-AT 0 ptr-field !
-   REG-U @ 1 + REG-U ! ;
+: REGISTERED-N ( -- n ) REG-U @ ;
+: DIRTY-N ( -- n ) REG-U @ ;
 
-\ How many records this instance has registered. A booted image answers 0: the
-\ capture gave the registry back, so a non-zero answer before the first declaration
-\ of a process would mean an image carrying one - which is what test/dynamic-buffer-
-\ registry.f reads it for.
-: REGISTERED-N ( -- n )  REG-U @ ;
+private
 
-\ How many registered records still hold something. The walk asserts on it, and a
-\ test reads it directly: after RELEASE-ALL it answers 0 because there is no
-\ registry left to hold a record, which is the same statement.
-: DIRTY-N ( -- n )
-   0 REG-DIRTY !
-   0 REG-I !
-   begin REG-I @ REG-U @ < while
-      REG-I @ REG-ENTRY {: cb:ptr :}
-      cb @ 0 <> cb cell+ @ 0 <> or if REG-DIRTY @ 1 + REG-DIRTY ! then
-      REG-I @ 1 + REG-I !
-   repeat
-   REG-DIRTY @ ;
+\ Refuse a cut through a live control record before releasing any member.
+: RANGE-CHECK ( ptr u8 n -- ) {: start:ptr size:n :}
+   size 0 < if E-SIZE throw then
+   size 0= if exit then
+   REG-U @ 0 ?do
+      i REG-ENTRY byte-view start - {: off:n :}
+      off 0 < if
+         off CONTROL-BYTES + 0 > if E-SIZE throw then
+      else
+         off size < if
+            CONTROL-BYTES size off - > if E-SIZE throw then
+         then
+      then
+   loop ;
 
-\ THE CAPTURE'S ONE CALL. Releases every mapping this instance handed out, zeroes
-\ both cells of every record it named, and gives the registry itself back last, so
-\ the DATA the capture is about to copy holds no mapping, no capacity and no
-\ registry. The DIRTY-N assertion is not decoration: RELEASE zeroes a record it
-\ could unmap, so a record still holding something here means a mapping this
-\ package owns did not come back, which is E-UNMAP's subject.
+public
+
+\ Removal shrinks the registry, so each successful release consumes its last
+\ entry. A refused unmap preserves that entry for the next preparation attempt.
+\ Capture runs after tasks stop, as IMAGE-LIFECYCLE:PREPARE requires, so registry
+\ walks need no second lock. Concurrent mutation of one buffer remains its
+\ caller's responsibility; the lock protects membership of distinct controls.
 : RELEASE-ALL ( -- )
-   REG-U @ 0= if exit then
-   0 REG-I !
-   begin REG-I @ REG-U @ < while
-      REG-I @ REG-ENTRY RELEASE
-      REG-I @ 1 + REG-I !
-   repeat
-   DIRTY-N 0 <> if E-UNMAP throw then
+   begin REG-U @ 0 > while REG-U @ 1- REG-ENTRY RELEASE repeat
    REG-CLOSE ;
+
+\ A retained runtime can own both capture-window and writer buffers. Only
+\ records wholly in this DATA span belong to that captured value.
+: RELEASE-RANGE ( ptr u8 n -- ) {: start:ptr size:n :}
+   start size RANGE-CHECK
+   REG-U @
+   begin dup 0 > while
+      1- dup REG-ENTRY {: cb:ptr :}
+      cb byte-view start - {: off:n :}
+      off 0 >= off size < and if cb RELEASE then
+   repeat drop
+   REG-U @ 0= if REG-CLOSE then ;
 
 ;package
