@@ -38,19 +38,25 @@ variable LAYOUT-XT
    then ;
 
 \ Exercise overrides on primitive IDs, which survive source-name retirement.
+\ Test the live type rule: artifact output rows are serialized only at freeze.
 TRUSTED: OVERRIDE-PRIMITIVES ( -- )
-   CHECKER-ASIG-ARM
-   s" dup" s" a -- a a" TRUST
+   s" dup" s" bool -- bool bool" TRUST
+   s" PF-BOOL-DUP ( bool -- bool bool ) dup" CHECK-CANDIDATE! -1 <> if
+      s" boolean override did not accept its declared input" 76 die then
+   s" PF-NUM-DUP ( n -- n n ) dup" CHECK-CANDIDATE! 0<> if
+      s" signature override did not reject a different input" 76 die then
    s" throw" CHECKER-UNDEFINE
    s" dup" CHECKER-DEFER
-   CHECKER-ASIG-N 0= if s" signature override was not recorded" 76 die then
    s" throw" CTL-DEAD? if s" control override was not recorded" 76 die then
    s" PF-PRIM-DEFER ( -- ) [: dup ;] is dup" CHECK-CANDIDATE! -1 <> if
       s" primitive defer override was not recorded" 76 die
    then ;
 
 TRUSTED: CHECK-PRIMITIVES ( -- )
-   CHECKER-ASIG-N 0<> if s" source signature override survived reset" 76 die then
+   s" PF-NUM-DUP ( n -- n n ) dup" CHECK-CANDIDATE! -1 <> if
+      s" source signature override survived reset" 76 die then
+   s" PF-BOOL-DUP ( bool -- bool bool ) dup" CHECK-CANDIDATE! -1 <> if
+      s" primitive dup lost its polymorphic effect" 76 die then
    s" throw" CTL-DEAD? 0= if s" primitive throw lost its control effect" 76 die then
    s" PF-PRIM-DEFER ( -- ) [: dup ;] is dup" CHECK-CANDIDATE! 0<> if
       s" primitive inherited a source defer flag" 76 die
