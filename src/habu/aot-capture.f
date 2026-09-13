@@ -1128,8 +1128,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    rec AOT-RXT rec AOT-RLEN + {: meta:n :}
    meta bstart < meta 16 + bend > or if exit then
    meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if exit then
-   meta 8 + AOT-N>U8 CELL-VIEW AOT-CELL@ {: cell:n :}
-   cell d0 < cell CELL + d1 > or if
+   meta 8 + AOT-N>U8 CELL-VIEW AOT-CELL@ {: addr:n :}
+   addr d0 < addr CELL + d1 > or if
       s" aot-capture: defer metadata outside DATA window" 74 die
    then
    meta 8 + bstart - AOT-DSITE-CELL or {: site:n :}

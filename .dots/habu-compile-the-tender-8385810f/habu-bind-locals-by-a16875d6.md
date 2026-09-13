@@ -15,4 +15,18 @@ Current acceptance includes REVIEW-WIDTH lowercase/mixed/uppercase references re
 Integrated55455720 after independent Astra review. Fresh private engine0c602d1c194c
 from the combined local-case/arena source passes `native-local-case.f` and
 `native-elaborate.f`; the dedicated regression checks both compiler tiers.
-The full native suite is running in `.jj-ws/cedar-correctness-verify`.
+The full native suite ran315 suites in `.jj-ws/cedar-correctness-verify`.
+
+The repaired lookup exposed one capture caller collision: `ACAP-DEFER-SITE`
+declared `cell` and used `cell CELL +`, intending the global cell-size constant.
+Both spellings now correctly bind the local, causing the false `defer metadata
+outside DATA window` refusal. Rename the address local to `addr`; retain `CELL`
+and the bounds check. No second mixed-case local collision was found in this file.
+
+Attribution: unchanged source `ccc0661a`, built twice from host `28e11361`,
+produced `45b5b4eb` then `2fc1a47e`, both rc0. This refusal is an exposed caller
+bug, not evidence for the separate layout task. On host `825c2c60`, the existing
+`aot-chain-capture` suite failed before the rename and passed afterward. The
+private native build of `181a01cf` plus this rename also passed from that host,
+producing `968cabff`, whose real capture suite passes too. These are functional
+results, not a byte-fixpoint claim.
