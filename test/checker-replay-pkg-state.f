@@ -46,6 +46,11 @@ public
 : SPROCKET ( -- n ) 99 ;
 ;package
 
+package CRPS-CLASH
+public
+: WIDGET ( -- n ) 31 ;
+;package
+
 \ The replay driver. It owns no caller context of its own; every case supplies
 \ that by where it is written.
 package CRPS
@@ -70,6 +75,8 @@ public
 \ sources, so the code is named here with its checker spelling, the same way
 \ test/using-test.f names 7141.
 7142 constant E-UNBALANCED     \ E-USING-UNBALANCED: `;using` with no using open in a replay
+
+7140 constant E-AMBIGUOUS      \ two active imported publics claim the same tail
 
 \ One replay at neutral top level, with the checker's diagnostics captured rather
 \ than printed: several cases reject deliberately and their text belongs to the
@@ -99,6 +106,24 @@ TRUSTED: NESTED-IMPORTS ( -- bool bool )
    s" CRPS-INNER ( -- n ) SPROCKET" CHECK! -1 =
    CHECKER-SCOPE-DONE
    s" CRPS-OUTER ( -- n ) WIDGET" CHECK! -1 =
+   CHECKER-VERIFY-PKG-DONE
+   CHECKER-SCOPE-DONE ;
+
+\ The nested scope replaces a package whose import baseline is one with a
+\ package whose baseline is zero. Rollback must restore that baseline too.
+TRUSTED: NESTED-PACKAGE-IMPORTS ( -- bool bool )
+   CHECKER-SCOPE-START-NEUTRAL
+   CHECKER-VERIFY-PKG-START
+   s" CRPS-SUPPLIER" CHECKER-USING-PUSH
+   s" CRPS-FRAME" CHECKER-PACKAGE
+   s" CRPS-OTHER" CHECKER-USING-PUSH
+   CHECKER-SCOPE-START-NEUTRAL
+   s" CRPS-INNER-FRAME" CHECKER-PACKAGE
+   s" CRPS-OTHER" CHECKER-USING-PUSH
+   CHECKER-SCOPE-DONE
+   CHECKER-END-PACKAGE
+   CHECKER-USING-N 1 =
+   s" CRPS-FRAME-USE ( -- n ) WIDGET" CHECK! -1 =
    CHECKER-VERIFY-PKG-DONE
    CHECKER-SCOPE-DONE ;
 
@@ -149,6 +174,28 @@ s" using CRPS-SUPPLIER : CRPS-R4 ( -- n ) WIDGET ; ;using : CRPS-R5 ( -- n ) GAD
 s" a ;using with no using open is refused by name" T-LABEL
 s" ;using" CRPS:REPLAY CRPS:E-UNBALANCED T=
 
+\ Package close restores the depth at package entry, including imports opened
+\ outside that package. An explicit inner ;using must give the same result.
+s" ;package removes only the package's imports" T-LABEL
+s" using CRPS-SUPPLIER package CRPS-CLOSE using CRPS-CLASH public : V ( -- n ) 7 ; ;package : CRPS-CLOSED ( -- n ) WIDGET ; ;using"
+   CRPS:REPLAY 0 T=
+s" an inner import is unavailable after ;package" T-LABEL
+s" package CRPS-GONE using CRPS-OTHER public : V ( -- n ) SPROCKET ; ;package : CRPS-GONE-USE ( -- n ) SPROCKET ;"
+   CRPS:REPLAY 70 T=
+s" explicit ;using preserves the outer import across ;package" T-LABEL
+s" using CRPS-SUPPLIER package CRPS-EXPLICIT using CRPS-OTHER public : V ( -- n ) SPROCKET ; ;using ;package : CRPS-EXPLICIT-USE ( -- n ) WIDGET ; ;using"
+   CRPS:REPLAY 0 T=
+s" active imports remain ambiguous inside the package" T-LABEL
+s" using CRPS-SUPPLIER package CRPS-AMBIG using CRPS-CLASH public : V ( -- n ) WIDGET ; ;package ;using"
+   CRPS:REPLAY CRPS:E-AMBIGUOUS T=
+s" a closed package import cannot shadow a later global primitive" T-LABEL
+s" package CRPS-COUNTS public : COUNT ( -- n ) 19 ; ;package package CRPS-COUNT-USER using CRPS-COUNTS public : V ( -- n ) 7 ; ;package : CRPS-GLOBAL-COUNT ( ptr u8 -- ptr u8 n ) count ;"
+   CRPS:REPLAY 0 T=
+\ Compile anew after the throwing package replay: an old callable would retain
+\ its binding even if restoration had corrupted the caller's import rows.
+: AFTER-PACKAGE-REJECT ( -- n ) WIDGET SPROCKET + ;
+AFTER-PACKAGE-REJECT 176 T=
+
 \ 6. The caller comes back intact, after the rejecting cases as well as the
 \ accepting ones. A further replay is the exact test of the package half:
 \ entering the verifier window PROVES the mirror still equals the engine's live
@@ -164,6 +211,7 @@ s" using CRPS-OTHER : CRPS-RBAD ( -- n ) ;" CRPS:REPLAY 0 <> TTRUE
 : AFTER-REJECT ( -- n ) WIDGET ;
 AFTER-REJECT 77 T=
 CRPS:NESTED-IMPORTS TTRUE TTRUE
+CRPS:NESTED-PACKAGE-IMPORTS TTRUE TTRUE
 : AFTER-NESTED ( -- n ) WIDGET SPROCKET + ;
 AFTER-NESTED 176 T=
 

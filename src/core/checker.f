@@ -710,6 +710,10 @@ variable CHECKER-PACKAGE-NEUTRAL
 \ that word is defined long before the mirror.
 variable CHECKER-USE-OWNED-N
 0 CHECKER-USE-OWNED-N !
+\ The package's import baseline travels with the import rows through every
+\ verifier and rollback savepoint, including nested neutral source scopes.
+variable CHECKER-PACKAGE-USE-N
+0 CHECKER-PACKAGE-USE-N !
 
 \ Import row storage is shared by the live compiler and verifier mirror.
 \ Savepoints must preserve the names and lengths as well as their depth.
@@ -717,7 +721,8 @@ variable CHECKER-USE-OWNED-N
 create CK-USE-NAMES CK-USE-MAX CHECKER-PACKAGE-CAP * allot
 create CK-USE-LENS  CK-USE-MAX cells allot
 CHECKER-PACKAGE-CAP CELL + constant CK-USE-SNAP-ROW
-CELL CK-USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
+2 cells constant CK-USE-SNAP-HEADER
+CK-USE-SNAP-HEADER CK-USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
 create VPKG-IMPORTS CK-USE-SNAP-BYTES allot
 
 \ The mirror above records parser state and is rollback-aware. It is authority
@@ -761,16 +766,18 @@ variable VPKG-I
 
 : CK-USE-SAVE ( ptr u8 n -- ) {: dst:ptr u:n :}
    u dst cell-view !
+   CHECKER-PACKAGE-USE-N @ dst CELL + cell-view !
    u 0 ?DO
-      dst CELL + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      dst CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
       CK-USE-LENS i cells + @ {: len:n :}
       len row cell-view !
       CK-USE-NAMES i CHECKER-PACKAGE-CAP * + row CELL + len VPKG-COPY
    LOOP ;
 
 : CK-USE-RESTORE ( ptr u8 -- ) {: src:ptr :}
+   src CELL + cell-view @ CHECKER-PACKAGE-USE-N !
    src cell-view @ 0 ?DO
-      src CELL + i CK-USE-SNAP-ROW * + {: row:ptr :}
+      src CK-USE-SNAP-HEADER + i CK-USE-SNAP-ROW * + {: row:ptr :}
       row cell-view @ {: len:n :}
       len CK-USE-LENS i cells + !
       row CELL + CK-USE-NAMES i CHECKER-PACKAGE-CAP * + len VPKG-COPY
@@ -7672,6 +7679,7 @@ CTOR-PROT-DEFAULTS
 
 : CHECKER-PACKAGE ( ptr u8 n -- )
    2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
+   CK-USE-DEPTH CHECKER-PACKAGE-USE-N !
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 package CHECKER-REG
@@ -7694,6 +7702,11 @@ package CHECKER-REG
 
 
 : CHECKER-END-PACKAGE ( -- )
+   \ The engine restores its own depth on a real close. A replay must restore
+   \ the depth its package opened with; imports outside the package stay live.
+   CHECKER-PKG-MIRROR-AUTHORITY? CHECKER-PACKAGE-ACTIVE? and IF
+      CHECKER-PACKAGE-USE-N @ CHECKER-USE-OWNED-N !
+   THEN
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U ! ;
 package CHECKER-REG
@@ -14696,6 +14709,7 @@ TYPES-DEFAULTS
    RBF-PUSH
    CHECKER-END-PACKAGE
    0 CHECKER-USE-OWNED-N !
+   0 CHECKER-PACKAGE-USE-N !
    1 CHECKER-PACKAGE-NEUTRAL ! ;
 
 : CHECKER-SCOPE-FINALIZE ( -- )
