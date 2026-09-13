@@ -7798,6 +7798,12 @@ and --no-lldbinit.
   aot-wid-restore (67), build-fixpoint-fixtures (1), cast (1),
   hb-build-fixtures (67), native-gate-aot-positive (1), p2-map-rewind (1),
   pre-trust-defer (1), program-diagnostics (1).
+  Re-measured 2026-09-13 07:05 UTC on engine 44bc47ba at tip 32e71c84 (310
+  suites, no timeouts): 9 red; aot-prelude-band and program-diagnostics green
+  after the capture stopped describing the booting engine's own cells.
+  addrmap-inline (1), aot-wide-format (67), aot-wid-restore (67),
+  build-fixpoint-fixtures (1), cast (1), hb-build-fixtures (67),
+  native-gate-aot-positive (1), p2-map-rewind (1), pre-trust-defer (1).
   A green root means this list shrinks; a new name on it is a regression.
   Re-establish the list from a complete run on a quiet machine (1-minute
   load under 4) and record the engine tip with it.

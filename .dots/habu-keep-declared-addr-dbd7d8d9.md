@@ -1,9 +1,0 @@
----
-title: Keep declared address cells inside the capture window
-status: active
-priority: 2
-issue-type: task
-created-at: "\"2026-09-12T18:21:57.347842+03:00\""
----
-
-Problem: test/aot-prelude-band.f is red because its child dies 'aot-capture: address row 0 / cell DATA+56 / expected range 26697144 26697264' (DATA+$38 is HOOK-CELL, an engine-declared prefix cell whose target falls outside the capture window) and test/program-diagnostics.f shares that root; program-diagnostics also has a broken fixture: test/aot-address-cell-lower-straddle-bad.f:17 names the package-private AOT-XTCELL-LOWER-STRADDLE:MARK, which can never resolve (E-UNDEFINED), and its upper sibling exits 74 with the target refusal instead of the straddle refusal it claims to test (zeroing the marked cell changes the reported value, so an engine-declared prefix cell is refused first). Measured 2026-09-12 on the root by the AOT gate lane. Acceptance: the root cause named at the responsible layer (the capture window's bounds, the declaration of HOOK-CELL, or the classification of engine-declared cells) and fixed there, not in the assertion; the straddle fixtures exercise what they claim and reach the straddle refusal; a regression for the target-outside-window case; aot-prelude-band and program-diagnostics green on a cold-built engine; two same-host builds byte-identical and tools/two-generation-build.f gen 5 = gen 4. Adjacent dot habu-classify-captured-addr-68fcc1df (classify address rows by the host's layout) is not this dot; if the roots coincide, report that instead of implementing it. Files: src/habu/aot-capture.f, src/habu/layout.f, test/aot-prelude-band*.f, test/program-diagnostics*.f, test/aot-address-cell-*.f. Verify: the two suites, test/run.f. Depends: none. Ownership: hazel. Claim: agent=hazel-worker workspace=.jj-ws/habu-keep-declared-addr-dbd7d8d9.
