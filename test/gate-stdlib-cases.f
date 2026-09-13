@@ -1214,6 +1214,10 @@ SUITE dynamic-buffer
    test/dynamic-buffer.f
 ;SUITE
 
+SUITE primitive-registry
+   test/primitive-registry.f
+;SUITE
+
 SUITE dynamic-buffer-registry
    test/dynamic-buffer-registry.f
 ;SUITE

@@ -88,20 +88,17 @@ require lib/test/src-shape.f
 
 : CDT-TEST-HABU1 ( -- )
    s" src/habu/habu1.f" SHAPE:LOAD
-   s" variable PR-A  variable PR-U  variable PR-L  variable PR-E" SHAPE:MUST-HAVE
+   \ Registry growth and name ownership are exercised by
+   \ test/primitive-registry.f; the retired staging cells are not an interface.
    s" defer FP-EMIT ( -- )" SHAPE:MUST-HAVE
    s" variable SDA-FD  variable SDA-NEW  variable SDA-SKIP" SHAPE:MUST-HAVE
    s" variable BSP-OK  variable BSP-DN  variable BSP-SAD" SHAPE:MUST-HAVE
    s" variable SZA-I" SHAPE:MUST-HAVE
-   s" : REG-PRIM ( ptr u8 n n n -- )" SHAPE:MUST-HAVE
    s" : FPRIM ( ptr u8 n [ -- ] -- )" SHAPE:MUST-HAVE
    s" : FPRIM-L ( ptr u8 n [ -- ] -- )" SHAPE:MUST-HAVE
-   s" : PR-COPY-NAME ( -- )" SHAPE:MUST-HAVE
    s" : BSP-LABELS3 ( -- )" SHAPE:MUST-HAVE
    s" : FPRIM {: na:ptr nu xt :}" SHAPE:MUST-LACK
    s" : FPRIM-L {: na:ptr nu xt :}" SHAPE:MUST-LACK
-   s" : REG-PRIM {: na:ptr nu lbl elbl :}" SHAPE:MUST-LACK
-   s" : ?PRIM-SPACE {: na:ptr nu :}" SHAPE:MUST-LACK
    s" : SPAWN-DUP2-ACTION ( reg fd -- )" SHAPE:MUST-HAVE
    s" : SPAWN-CHDIR-ACTION ( reg label -- )" SHAPE:MUST-HAVE
    s" : SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}" SHAPE:MUST-LACK

@@ -9113,7 +9113,7 @@ variable SRCA
 
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
    SRCN !  SRCA !
-   ASM-INIT  TIER-PROV:LABELS  0 #PL !  0 PNP !  0 CF-DEF-GUARD ! ;
+   ASM-INIT  TIER-PROV:LABELS  ENGINE-PRIMS:RESET  0 CF-DEF-GUARD ! ;
 
 \ Label allocation for the emitter: one private allocator per engine region,
 \ one public entry that reserves every label a build uses.

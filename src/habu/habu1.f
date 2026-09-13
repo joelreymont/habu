@@ -29,15 +29,7 @@ $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
-192 constant PRIM-CAP
-2048 constant PRIM-NAME-CAP
-create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
-create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
-create PNLBL PRIM-CAP cells allot
-create PWID PRIM-CAP cells allot
-create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
-variable RPD
-variable PR-A  variable PR-U  variable PR-L  variable PR-E
+require src/habu/primitive-registry.f
 variable FP-A  variable FP-U
 
 \ A primitive whose dictionary record is globally searchable but cannot be
@@ -47,30 +39,7 @@ variable FP-A  variable FP-U
 \ Every primitive body emitter has the same Habu effect. Keep that type when
 \ selecting a different emitter for each registry row.
 defer FP-EMIT ( -- )
-: RPD@ ( -- ptr u8 ) RPD 0 ptr-field @ ;
-: PR-A@ ( -- ptr u8 ) PR-A 0 ptr-field @ ;
 : FP-A@ ( -- ptr u8 ) FP-A 0 ptr-field @ ;
-
-: PR-SPACE ( -- )
-   #PL @ PRIM-CAP >= IF s" primitive registry full" 76 die THEN
-   PNP @ PR-U @ + PRIM-NAME-CAP > IF s" primitive name pool full" 76 die THEN ;
-
-: PR-ARGS ( ptr u8 n n n -- )
-   PR-E !  PR-L !  PR-U !  PR-A ! ;
-
-: PR-COPY-NAME ( -- )
-   0 BEGIN dup PR-U @ < WHILE  dup PR-A@ + c@  over RPD@ + c!  1 + REPEAT drop ;
-
-: REG-PRIM ( ptr u8 n n n -- )
-   PR-ARGS
-   PR-SPACE
-   PR-L @ #PL @ cells PLBL + !
-   PR-E @ #PL @ cells PEL  + !
-   PR-U @ #PL @ cells PLEN + !
-   0 #PL @ cells PWID + !
-   PNPOOL PNP @ + RPD !  RPD@ #PL @ cells PNAM + !
-   PR-COPY-NAME
-   PNP @ PR-U @ + PNP !  #PL @ 1 + #PL ! ;
 
 \ An engine helper is an engine-resident routine that guarded primitives reach
 \ by a direct branch (a shared span guard, a bounds loop). REGISTER records it as
@@ -83,20 +52,20 @@ defer FP-EMIT ( -- )
 \ in unintended code. DNAME folds the same marker into a record's baked name/flags
 \ cell so the seed dictionary carries the internal bit for helper records.
 package ENGINE-HELPER
+using ENGINE-PRIMS
 
 public
 
 : REGISTER ( ptr u8 n n n -- )
-   REG-PRIM
-   OWNER-API-PRI-WID #PL @ 1- cells PWID + ! ;
+   >LABEL swap >LABEL swap ADD OWNER-API-PRI-WID swap WID! ;
 
 : DNAME ( n -- n ) {: idx:n :}
-   idx cells PLEN + @
-   idx cells PWID + @ {: wid:n :}
+   idx NAME-LEN
+   idx WID {: wid:n :}
    wid OWNER-API-PRI-WID =  wid PRIM-GLOBAL-INT-WID = or if DNAME-INT or then ;
 
 : WID ( n -- n )
-   cells PWID + @ dup PRIM-GLOBAL-INT-WID = if drop 0 then ;
+   ENGINE-PRIMS:WID dup PRIM-GLOBAL-INT-WID = if drop 0 then ;
 
 ;package
 
@@ -110,14 +79,14 @@ variable FPL  variable FPE
 : FP-KEEP? ( -- bool )
    FP-A@ FP-U @ KEEP? ;
 
-: FP-REG ( -- )
-   FP-A@ FP-U @ FPL @ FPE @ REG-PRIM ;
+: FP-REG ( -- n )
+   FP-A@ FP-U @ FPL LABEL@ FPE LABEL@ ENGINE-PRIMS:ADD ;
 
 : FPRIM ( ptr u8 n [ -- ] -- )
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
-   FP-REG
+   FP-REG drop
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
@@ -125,7 +94,7 @@ variable FPL  variable FPE
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
-   FP-REG
+   FP-REG drop
    FPL LABEL@ LBL,  FP-EMIT  RET,  FPE LABEL@ LBL, ;
 
 variable FP-WID
@@ -135,8 +104,7 @@ variable FP-WID
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
-   FP-REG
-   FP-WID @ #PL @ 1- cells PWID + !
+   FP-REG FP-WID @ swap ENGINE-PRIMS:WID!
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
@@ -4204,30 +4172,34 @@ variable FIND-HMATCH
    NUM-DONE LABEL@ LBL,  RET, ;
 
 package ENGINE-EMIT
+using ENGINE-PRIMS
+
+\ Dictionary inline-name padding is always zero, independent of registry data.
+create NAME-PADDING 0 , 0 ,
 
 : EMIT-DICT ( -- )
-   0 BEGIN dup #PL @ < WHILE
-      dup cells PLEN + @ DNAME-INL > IF
-         LBL over cells PNLBL + !
-         dup cells PNLBL + LABEL@ LBL,
-         dup cells PNAM + @ over cells PLEN + @ BYTES,
+   0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE
+      dup NAME-LEN DNAME-INL > IF
+         LBL over NAME-LABEL!
+         dup NAME-LABEL LBL,
+         dup NAME$ BYTES,
       ELSE
-         -1 over cells PNLBL + !
+         -1 >LABEL over NAME-LABEL!
       THEN
       1 + REPEAT drop
-   LNCOUNT LABEL@ LBL,  #PL @ DCQ,
+   LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT DCQ,
    LDICT LABEL@ LBL,
-   0 BEGIN dup #PL @ < WHILE
-      dup cells PLBL + LABEL@ DLBL,
-      dup cells PEL  + LABEL@ DLBL,
-      dup cells PLEN + @ DNAME-INL > IF
+   0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE
+      dup FIRST-LABEL DLBL,
+      dup LAST-LABEL DLBL,
+      dup NAME-LEN DNAME-INL > IF
          dup ENGINE-HELPER:DNAME DNAME-EXT or DCQ,
-         dup cells PNLBL + LABEL@ DLBL,
+         dup NAME-LABEL DLBL,
          0 DCQ,
       ELSE
          dup ENGINE-HELPER:DNAME DCQ,
-         dup cells PNAM + @  over cells PLEN + @  BYTES,
-         16  over cells PLEN + @  3 + -4 and  -  dup 0 > IF PNPOOL swap BYTES, ELSE drop THEN
+         dup NAME$ BYTES,
+         16 over NAME-LEN 3 + -4 and - dup 0 > IF NAME-PADDING swap BYTES, ELSE drop THEN
       THEN
       dup ENGINE-HELPER:WID DCQ,
       1 + REPEAT drop ;
