@@ -224,10 +224,10 @@ $80000000 constant XTOFF-WINDOW-TAG
 $80000000 constant XTOFF-DATA-TAG
 $7FFFFFFF constant XTOFF-VALUE-MASK
 create XTOFF-BUF XTOFF-MAX XTOFF-ROW * allot    variable XTOFF-N
-\ Each row is (cell-DATA-offset u32, kind/target u32). The high bit of the target
-\ marks a DATA pointer; its low bits are zero for null or target-window-offset+1.
-\ An untagged target is an XT with the same null/offset+1 rule. The cell location
-\ is not window-relative: fixed hooks below the captured heap window travel too.
+\ Each row is (location u32, target u32). The location's high bit selects a
+\ window-relative offset; otherwise it is a fixed DATA offset. The target's
+\ high bit selects DATA rather than CODE; low bits are zero for null or the
+\ corresponding target-window offset plus one.
 ;package
 
 package AOT-BUF

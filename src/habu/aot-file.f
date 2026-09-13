@@ -127,9 +127,10 @@
 
 package AOT-FILE
 using AOT-BUF
+using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-6 constant VERSION   \ 6 dropped the protected-WID bitmap section: the window's own rows are all that travel
+7 constant VERSION   \ complete eight-byte declared-address rows; version 6 truncated them
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -255,9 +256,9 @@ variable CUR
    k S-NAMES   = if AOT-NAMES-BUF@ exit then
    k S-DSITES  = if AOT-DSITE-BUF@ exit then
    k S-CSITES  = if AOT-DSITE-BUF@ exit then
-   k S-XTOFFS  = if AOT-WINDOW:XTOFF-BUF@ exit then
-   k S-WDATA   = if AOT-WINDOW:RUN-BUF@ exit then
-   k S-WRUNS   = if AOT-WINDOW:RBYTES-BUF@ exit then
+   k S-XTOFFS  = if XTOFF-BUF@ exit then
+   k S-WDATA   = if RUN-BUF@ exit then
+   k S-WRUNS   = if RBYTES-BUF@ exit then
    k S-XTSITES = if AOT-XTSITE:BUF@ exit then
    k S-BOOTRUN = if AOT-BOOTRUN-BUF@ exit then
    k S-PWIN    = if AOT-PWIN-BUF@ exit then
@@ -274,9 +275,9 @@ variable CUR
    k S-NAMES   = if AOT-NAMES-LEN @ exit then
    k S-DSITES  = if AOT-DSITE-N @ 4 * exit then
    k S-CSITES  = if AOT-CSITE-N @ 4 * exit then
-   k S-XTOFFS  = if AOT-WINDOW:XTOFF-N @ 4 * exit then
-   k S-WDATA   = if AOT-WINDOW:RUN-N @ 8 * exit then
-   k S-WRUNS   = if AOT-WINDOW:RBYTES-LEN @ exit then
+   k S-XTOFFS  = if XTOFF-N @ XTOFF-ROW * exit then
+   k S-WDATA   = if RUN-N @ 8 * exit then
+   k S-WRUNS   = if RBYTES-LEN @ exit then
    k S-XTSITES = if AOT-XTSITE:N @ 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-LEN @ exit then
    k S-PWIN    = if AOT-PWIN-N @ 4 * exit then
@@ -293,7 +294,7 @@ variable CUR
    k S-SITES   = if SITE-ROW exit then
    k S-DSITES  = if 4 exit then
    k S-CSITES  = if 4 exit then
-   k S-XTOFFS  = if 4 exit then
+   k S-XTOFFS  = if XTOFF-ROW exit then
    k S-WDATA   = if 8 exit then
    k S-XTSITES = if 8 exit then
    k S-PWIN    = if 4 exit then
@@ -304,7 +305,7 @@ variable CUR
 \ buffer, so both name the whole of it and their BASEs are what keeps them apart
 \ - which is also what makes the room check `base + length` rather than length.
 : SEC-CAP-TAIL ( n -- n ) {: k:n :}
-   k S-WRUNS   = if AOT-WINDOW:RBYTES-CAP exit then
+   k S-WRUNS   = if RBYTES-CAP exit then
    k S-XTSITES = if AOT-XTSITE:MAX 8 * exit then
    k S-BOOTRUN = if AOT-BOOTRUN-CAP exit then
    k S-PWIN    = if AOT-PWIN-MAX 4 * exit then
@@ -321,8 +322,8 @@ variable CUR
    k S-NAMES   = if AOT-NAMES-CAP exit then
    k S-DSITES  = if AOT-DSITE-MAX 4 * exit then
    k S-CSITES  = if AOT-DSITE-MAX 4 * exit then
-   k S-XTOFFS  = if AOT-WINDOW:XTOFF-MAX 4 * exit then
-   k S-WDATA   = if AOT-WINDOW:RUN-MAX 8 * exit then
+   k S-XTOFFS  = if XTOFF-MAX XTOFF-ROW * exit then
+   k S-WDATA   = if RUN-MAX 8 * exit then
    k SEC-CAP-TAIL ;
 
 : SEC-NAME-TAIL ( n -- ptr u8 n ) {: k:n :}
@@ -620,9 +621,9 @@ private
    S-NAMES ROW-LEN@ AOT-NAMES-LEN !
    S-DSITES ROW-LEN@ 4 / AOT-DSITE-N !
    S-CSITES ROW-LEN@ 4 / AOT-CSITE-N !
-   S-XTOFFS ROW-LEN@ 4 / AOT-WINDOW:XTOFF-N !
-   S-WDATA ROW-LEN@ 8 / AOT-WINDOW:RUN-N !
-   S-WRUNS ROW-LEN@ AOT-WINDOW:RBYTES-LEN !
+   S-XTOFFS ROW-LEN@ XTOFF-ROW / XTOFF-N !
+   S-WDATA ROW-LEN@ 8 / RUN-N !
+   S-WRUNS ROW-LEN@ RBYTES-LEN !
    S-XTSITES ROW-LEN@ 8 / AOT-XTSITE:N !
    S-BOOTRUN ROW-LEN@ AOT-BOOTRUN-LEN !
    S-PWIN ROW-LEN@ 4 / AOT-PWIN-N !
@@ -641,13 +642,45 @@ private
 \ and a booted engine could not survive, so each is refused by name here.
 variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
 
-: RUN-AT ( n -- ptr u8 ) {: k:n :} AOT-WINDOW:RUN-BUF@ k 8 * + ;
+: RUN-AT ( n -- ptr u8 ) {: k:n :} RUN-BUF@ k 8 * + ;
 : RUN-OFF@ ( n -- n ) RUN-AT U32@ ;
 : RUN-LEN@ ( n -- n ) RUN-AT 4 + U32@ ;
 
 : ?SPAN ( n -- ) {: span:n :}
-   span AOT-WINDOW:SPAN-CAP <= if exit then
+   span SPAN-CAP <= if exit then
    s" aot-file: the window DATA span exceeds what this engine can bake" DIE ;
+
+
+: ?XTOFF-LOC ( n n -- )
+   {: loc:n span:n :}
+   loc XTOFF-VALUE-MASK and {: off:n :}
+   loc XTOFF-WINDOW-TAG and 0= if
+      off SNAP-RELOC:XTCELL-OFF-MAX <= if exit then
+      s" aot-file: a fixed address cell is outside DATA" DIE
+   then
+   off 8 + span <= if exit then
+   s" aot-file: an address cell reaches past its window DATA span" DIE ;
+
+
+: ?XTOFF-TARGET ( n n n -- )
+   {: meta:n dspan:n blen:n :}
+   meta XTOFF-VALUE-MASK and {: value:n :}
+   value 0= if exit then
+   meta XTOFF-DATA-TAG and 0<> if
+      value dspan <= if exit then
+      s" aot-file: an address cell DATA target is outside its window" DIE
+   then
+   value blen <= if exit then
+   s" aot-file: an address cell CODE target is outside its blob" DIE ;
+
+
+: ?XTOFFS ( ptr u8 n n n -- )
+   {: rows cnt:n dspan:n blen:n :}
+   cnt 0 ?do
+      rows i XTOFF-ROW * + {: row :}
+      row U32@ dspan ?XTOFF-LOC
+      row 4 + U32@ dspan blen ?XTOFF-TARGET
+   loop ;
 
 \ `at` is the first row of the artifact's own block: a plain read puts it at 0 and
 \ a merge puts it behind the host's rows, whose ascending order this has already
@@ -761,6 +794,8 @@ public
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN
    0  S-WDATA ROW-LEN@ 8 /  span  ?RUNS
+   XTOFF-BUF@ S-XTOFFS ROW-LEN@ XTOFF-ROW /
+   span S-BLOB ROW-LEN@ ?XTOFFS
    RESTORE-COUNTS
    RESTORE-CLOSURE
    ?CHAIN ;
@@ -819,11 +854,11 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    AOT-BLOB-LEN @ H-BLOB !            AOT-REC-N @ H-REC !
    AOT-SITE-N @ H-SITE !              AOT-NAMES-LEN @ H-NAMES !
    AOT-DSITE-N @ H-DSITE !            AOT-CSITE-N @ H-CSITE !
-   AOT-WINDOW:XTOFF-N @ H-XTOFF !     AOT-DATA-SIZE @ H-DATA !
+   XTOFF-N @ H-XTOFF !               AOT-DATA-SIZE @ H-DATA !
    AOT-XTSITE:N @ H-XTSITE !          AOT-BOOTRUN-LEN @ H-BOOTRUN !
    AOT-PWIN-N @ H-PWIN !              AOT-WID-SPAN @ H-SPAN !
    AOT-SIG-N @ H-SIG !                AOT-SIG-STR-LEN @ H-SIGSTR !
-   AOT-WINDOW:RUN-N @ H-RUN !         AOT-WINDOW:RBYTES-LEN @ H-RBYTES !
+   RUN-N @ H-RUN !                   RBYTES-LEN @ H-RBYTES !
    AOT-REG-LEN @ H-REG ! ;
 
 \ A merge appends, so there has to be something to append to. A host that has not
@@ -845,7 +880,7 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    H-NAMES @                   S-NAMES BASE!
    H-DSITE @ 4 *               S-DSITES BASE!
    H-DSITE @ 4 * S-DSITES ROW-LEN@ + H-CSITE @ 4 * +   S-CSITES BASE!
-   H-XTOFF @ 4 *               S-XTOFFS BASE!
+   H-XTOFF @ XTOFF-ROW *       S-XTOFFS BASE!
    H-RUN @ 8 *                 S-WDATA BASE!
    H-RBYTES @                  S-WRUNS BASE!
    H-XTSITE @ 8 *              S-XTSITES BASE!
@@ -995,13 +1030,58 @@ variable H-DATA-R                    \ where the artifact's window begins inside
       w SCOPE-FIXED? 0= if  r 4 + U32@ w REWID  r 8 + U32!  then
    loop ;
 
+
+\ Preserve the tag and reject an offset that would carry into it.
+: XTOFF+ ( n n -- n )
+   {: field:n delta:n :}
+   field XTOFF-VALUE-MASK and {: value:n :}
+   delta 0 < delta XTOFF-VALUE-MASK value - > or if
+      s" aot-file: a merged address row offset exceeds its encoding" DIE
+   then
+   field XTOFF-VALUE-MASK invert and value delta + or ;
+
+
+: MERGED-XTOFF-LOC ( n -- n )
+   {: loc:n :}
+   loc XTOFF-WINDOW-TAG and 0= if loc exit then
+   loc H-DATA-R @ XTOFF+ ;
+
+
+: MERGED-XTOFF-TARGET ( n -- n )
+   {: meta:n :}
+   meta XTOFF-VALUE-MASK and 0= if meta exit then
+   meta XTOFF-DATA-TAG and 0<> if
+      meta H-DATA-R @ XTOFF+ exit
+   then
+   meta H-BLOB @ XTOFF+ ;
+
+
+\ Check the whole incoming table before changing any row or publishing counts.
+: ?MERGED-XTOFFS ( -- )
+   S-XTOFFS SEC-AT S-XTOFFS SEC-ROWS A-DSPAN @ S-BLOB ROW-LEN@ ?XTOFFS
+   S-XTOFFS SEC-ROWS 0 ?do
+      S-XTOFFS SEC-AT i XTOFF-ROW * + {: row :}
+      row U32@ MERGED-XTOFF-LOC H-DATA-R @ A-DSPAN @ + ?XTOFF-LOC
+      row 4 + U32@ MERGED-XTOFF-TARGET
+      H-DATA-R @ A-DSPAN @ + H-BLOB @ S-BLOB ROW-LEN@ + ?XTOFF-TARGET
+   loop ;
+
+
+: MERGE-XTOFFS ( -- )
+   S-XTOFFS SEC-ROWS 0 ?do
+      S-XTOFFS SEC-AT i XTOFF-ROW * + {: row :}
+      row U32@ MERGED-XTOFF-LOC row U32!
+      row 4 + U32@ MERGED-XTOFF-TARGET row 4 + U32!
+   loop ;
+
+
 : MERGE-ROWS ( -- )
    S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 0 H-BLOB @ FIELD+
    S-SITES SEC-AT    S-SITES SEC-ROWS    SITE-ROW 4 H-NAMES @ FIELD+
    MERGE-SITE-SCOPE
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 0 H-BLOB @ FIELD+
    S-XTSITES SEC-AT  S-XTSITES SEC-ROWS  8 4 H-NAMES @ FIELD+
-   S-XTOFFS SEC-AT   S-XTOFFS SEC-ROWS   4 0 H-DATA-R @ FIELD+
+   MERGE-XTOFFS
    S-WDATA SEC-AT    S-WDATA SEC-ROWS    8 0 H-DATA-R @ FIELD+
    S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+
    S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 0 H-SIGSTR @ FIELD+
@@ -1014,21 +1094,55 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    s" which its own window's DATA span does not contain" type cr
    s" aot-file: a merged DATA literal is outside the artifact's DATA window" DIE ;
 
-\ Each recorded chain holds an address in the ARTIFACT's DATA window; the merged
-\ window continues the host's, so the address moves to the same place inside it.
-\ The site's own blob offset moves with the blob, and it is read before it moves
-\ because it is what locates the chain.
+
+: DSITE-AT ( n -- ptr u8 )
+   {: site:n :}
+   site AOT-DSITE-OFF-MASK and {: off:n :}
+   site AOT-DSITE-CELL and 0<> if 8 else SNAP-RELOC:ADDR-CHAIN-BYTES then
+   off + S-BLOB ROW-LEN@ > if
+      s" aot-file: a DATA relocation site reaches past its blob" DIE
+   then
+   AOT-BLOB-BUF@ H-BLOB @ + off + ;
+
+
+: DSITE-VALUE ( ptr u8 n -- n )
+   {: p site:n :}
+   site AOT-DSITE-CELL and 0<> if p U64@ exit then
+   p SNAP-RELOC:CHAINV ;
+
+
+: DSITE-VALUE! ( ptr u8 n n -- )
+   {: p value:n site:n :}
+   site AOT-DSITE-CELL and 0<> if value p U64! exit then
+   p value SNAP-RELOC:SET-CHAIN ;
+
+
+: MERGED-DSITE ( n -- n )
+   {: site:n :}
+   site AOT-DSITE-OFF-MASK and H-BLOB @ + {: off:n :}
+   off AOT-DSITE-OFF-MASK > if
+      s" aot-file: a merged DATA site offset exceeds its encoding" DIE
+   then
+   site AOT-DSITE-CELL and off or ;
+
+
+\ A site holds either a raw metadata address or an instruction-chain address in
+\ the artifact's DATA window. Its tag selects the reader/writer; its masked blob
+\ offset and the value move into the merged window's coordinates.
 : MERGE-DSITES ( -- )
    S-DSITES SEC-AT {: p:ptr :}
    A-DSPAN @ {: dlen:n :}
    S-DSITES SEC-ROWS 0 ?do
       p i 4 * + {: q:ptr :}
-      q U32@ {: boff:n :}
-      AOT-BLOB-BUF@ H-BLOB @ + boff + {: ch:ptr :}
-      ch SNAP-RELOC:CHAINV {: v:n :}
-      v A-D0 @ >= v A-D0 @ dlen + < and 0= if boff v ?DVALUE then
-      ch  v A-D0 @ -  AOT-DATA-D0 @ +  H-DATA-R @ +  SNAP-RELOC:SET-CHAIN
-      boff H-BLOB @ +  q U32!
+      q U32@ {: site:n :}
+      site MERGED-DSITE {: merged:n :}
+      site DSITE-AT {: ch :}
+      ch site DSITE-VALUE {: v:n :}
+      v A-D0 @ >= v A-D0 @ dlen + < and 0= if
+         site AOT-DSITE-OFF-MASK and v ?DVALUE
+      then
+      ch v A-D0 @ - AOT-DATA-D0 @ + H-DATA-R @ + site DSITE-VALUE!
+      merged q U32!
    loop ;
 
 : ?CVALUE ( n n -- ) {: boff:n v:n :}
@@ -1063,10 +1177,10 @@ variable H-DATA-R                    \ where the artifact's window begins inside
    H-NAMES @ S-NAMES ROW-LEN@ + AOT-NAMES-LEN !
    H-DSITE @ S-DSITES SEC-ROWS + AOT-DSITE-N !
    H-CSITE @ S-CSITES SEC-ROWS + AOT-CSITE-N !
-   H-XTOFF @ S-XTOFFS SEC-ROWS + AOT-WINDOW:XTOFF-N !
+   H-XTOFF @ S-XTOFFS SEC-ROWS + XTOFF-N !
    H-DATA-R @ A-DSPAN @ + AOT-DATA-SIZE !
-   H-RUN @ S-WDATA SEC-ROWS + AOT-WINDOW:RUN-N !
-   H-RBYTES @ S-WRUNS ROW-LEN@ + AOT-WINDOW:RBYTES-LEN !
+   H-RUN @ S-WDATA SEC-ROWS + RUN-N !
+   H-RBYTES @ S-WRUNS ROW-LEN@ + RBYTES-LEN !
    H-XTSITE @ S-XTSITES SEC-ROWS + AOT-XTSITE:N !
    H-BOOTRUN @ S-BOOTRUN ROW-LEN@ + AOT-BOOTRUN-LEN !
    H-PWIN @ S-PWIN SEC-ROWS + AOT-PWIN-N !
@@ -1106,6 +1220,7 @@ public
    ?BASES
    H-DATA-R @ A-DSPAN @ + ?SPAN
    H-RUN @  S-WDATA SEC-ROWS  A-DSPAN @  ?RUNS
+   ?MERGED-XTOFFS
    MERGE-RECS
    MERGE-ROWS
    MERGE-DSITES
@@ -1114,4 +1229,6 @@ public
    RESTORE-CLOSURE
    ?CHAIN ;
 
+;using
+;using
 ;package

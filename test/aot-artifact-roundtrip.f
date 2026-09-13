@@ -16,12 +16,9 @@
 \ the mark is what the capture may call into, and the writer's own buffers must be
 \ allotted past the window's last DATA byte so no window word can hold one.
 \
-\ THE ROUND TRIP IS THE ASSERTION. Write A, zero every count the format restores,
-\ read A back, write B, and require sha256(A) = sha256(B). The counts are zeroed on
-\ purpose: each one comes back as a section length divided by the row width the
-\ format fixes, so a section whose NUMBER moved without its readers moving with it
-\ restores the wrong count and B stops matching A. That is the exact failure a
-\ renumbered section table can cause, and version 6 renumbered five of them.
+\ Save the complete address rows, clear their buffer and the restored counts,
+\ then compare the rows after READ. Digest equality alone cannot detect a writer
+\ and reader that both truncate the same rows.
 \
 \ THE PRODUCER KEY is sha256 of the engine running this, so the parent suite can
 \ hash bin/hb from the outside and compare against the key in the header. READ is
@@ -95,6 +92,7 @@ require src/habu/aot-file.f
 
 package AOTRT
 using AOT-BUF
+using AOT-WINDOW
 public
 
 $4C constant REFUSE-RC
@@ -102,12 +100,14 @@ $4C constant REFUSE-RC
 
 create KEY SHA-BYTES allot
 create SHA-A SHA-BYTES allot
+create SAVED-XTOFFS XTOFF-MAX XTOFF-ROW * allot
+variable SAVED-XTOFF-N
 
 : ART$ ( -- ptr u8 n ) 0 SCRIPT-ARGV$ ;
 
 : ?ARGS ( -- )
-   SCRIPT-ARGC 1 = if exit then
-   s" aot-artifact-roundtrip: one argument, the artifact path, is required"
+   SCRIPT-ARGC 1 >= SCRIPT-ARGC 2 <= and if exit then
+   s" aot-artifact-roundtrip: expected an artifact path and optional row-test case"
    REFUSE-RC die ;
 
 \ The engine running this, by the relative path the suite spawns it with;
@@ -137,8 +137,8 @@ create SHA-A SHA-BYTES allot
 \ READ brings its own.
 : FORGET-COUNTS ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
-   0 AOT-DSITE-N !  0 AOT-CSITE-N !  0 AOT-WINDOW:XTOFF-N !
-   0 AOT-WINDOW:RUN-N !  0 AOT-WINDOW:RBYTES-LEN !
+   0 AOT-DSITE-N !  0 AOT-CSITE-N !  0 XTOFF-N !
+   0 RUN-N !  0 RBYTES-LEN !
    0 AOT-XTSITE:N !  0 AOT-BOOTRUN-LEN !  0 AOT-PWIN-N !
    0 AOT-SIG-N !  0 AOT-SIG-STR-LEN !  0 AOT-REG-LEN !
    0 AOT-DATA-SIZE !  0 AOT-DATA-D0 !  0 AOT-CODE-B0 !
@@ -150,6 +150,27 @@ create SHA-A SHA-BYTES allot
 : ?ROUND-TRIP ( -- )
    SHA-A AOT-FILE:SHA$ drop SHA-BYTES SAME? if exit then
    s" aot-artifact-roundtrip: the artifact does not survive its own round trip"
+   REFUSE-RC die ;
+
+
+: SAVE-XTOFFS ( -- )
+   XTOFF-N @ SAVED-XTOFF-N !
+   XTOFF-BUF@ SAVED-XTOFFS
+   SAVED-XTOFF-N @ XTOFF-ROW * BYTE-COPY ;
+
+
+: CLEAR-XTOFFS ( -- )
+   XTOFF-MAX XTOFF-ROW * 0 ?do
+      0 XTOFF-BUF@ i + c!
+   loop ;
+
+
+: ?XTOFFS-RESTORED ( -- )
+   XTOFF-N @ SAVED-XTOFF-N @ = if
+      XTOFF-BUF@ SAVED-XTOFFS
+      SAVED-XTOFF-N @ XTOFF-ROW * SAME? if exit then
+   then
+   s" aot-artifact-roundtrip: the complete address rows were not restored"
    REFUSE-RC die ;
 
 \ THE PREDICATE tools/aot-chain-capture.f ?XTOFF asserts, over a window this process
@@ -165,8 +186,8 @@ create SHA-A SHA-BYTES allot
       s" aot-artifact-roundtrip: this window declared no address cell, so the row count proves nothing"
       REFUSE-RC die
    then
-   AOT-WINDOW:XTOFF-N @ win out + = if exit then
-   s" aot-artifact-roundtrip: declared address cell rows=" type AOT-WINDOW:XTOFF-N @ .
+   XTOFF-N @ win out + = if exit then
+   s" aot-artifact-roundtrip: declared address cell rows=" type XTOFF-N @ .
    s" inside the window=" type win .
    s" outside it targeting it=" type out . cr
    s" aot-artifact-roundtrip: a declared address cell row belongs to neither population"
@@ -174,34 +195,41 @@ create SHA-A SHA-BYTES allot
 
 : ?RESTORED ( -- )
    AOT-REC-N @ 0 >  AOT-BLOB-LEN @ 0 >  and
-   AOT-WINDOW:RUN-N @ 0 >  and  AOT-DATA-SIZE @ 0 >  and
+   RUN-N @ 0 >  and  AOT-DATA-SIZE @ 0 >  and
    AOT-PWIN-N @ 0 >  and  AOT-NAMES-LEN @ 0 >  and if exit then
    s" aot-artifact-roundtrip: the read left the capture empty" REFUSE-RC die ;
 
 : REPORT ( -- )
    s" roundtrip: recs=" type AOT-REC-N @ .
    s" sites=" type AOT-SITE-N @ .
-   s" runs=" type AOT-WINDOW:RUN-N @ .
+   s" runs=" type RUN-N @ .
    s" pwin=" type AOT-PWIN-N @ .
-   s" xtcells=" type AOT-WINDOW:XTOFF-N @ .
+   s" xtcells=" type XTOFF-N @ .
    s" dataspan=" type AOT-DATA-SIZE @ . cr
    s" roundtrip=ok" type cr ;
 
 : MAIN ( -- )
    ?ARGS
+   \ The two-argument row fixture reuses this capture without running this case.
+   SCRIPT-ARGC 2 = if exit then
    KEY!
    CLOSURE!
    CAPTURE
    ?XTCELLS
+   SAVE-XTOFFS
    KEY ART$ AOT-FILE:WRITE
    AOT-FILE:SHA$ drop SHA-A SHA-BYTES BYTE-COPY
+   CLEAR-XTOFFS
    FORGET-COUNTS
    KEY ART$ AOT-FILE:READ
+   ?XTOFFS-RESTORED
    ?RESTORED
    KEY ART$ AOT-FILE:WRITE
    ?ROUND-TRIP
    REPORT ;
 
+;using
+;using
 ;package
 
 AOTRT:MAIN

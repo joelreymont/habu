@@ -1,53 +1,19 @@
 \ aot-chain-capture-suite.f - the AOT artifact format and the chain capture tool,
 \ both through the real load path (dot habu-retire-the-s-4fbc244f).
 \
-\ WHY A SUITE AT ALL. src/habu/aot-file.f and tools/aot-chain-capture.f were loaded
-\ by exactly two things, neither of them a registered check: the stdin metabuild
-\ host, which assembles the format into its own generated stage source, and the
-\ capture tool, which the build runs inside its capture host. So a word one of them
-\ named and nothing defined was not a red suite - it was a build dying much later,
-\ in generated source, on a name whose reader could not place it. That is what
-\ happened: the format kept a protected-WID bitmap section for months after its
-\ producer became a live derivation, and the two buffer readers it still had named
-\ AOT-PWID-BUF@, which no filler defines. Two lanes measured it as `hb-stdin-mk`
-\ dying E-UNDEFINED in the Gforth recovery chain and as the native refresh's
-\ certify pass rejecting the assembled stdin source. Both files are loaded here, so
-\ that class of residue is a red suite now.
+\ The small capture runs WRITE/READ over real records, DATA runs and declared
+\ address cells, clearing the row buffer before restoration. The parent checks
+\ the header's independent magic/version/count and the producer engine digest.
+\ A separate reader process checks chosen rows; MERGE checks location/target
+\ rebasing and raw-cell/instruction-chain DATA relocation sites. Old versions,
+\ partial rows and invalid row coordinates must fail through the file reader.
 \
-\ TWO CHILDREN, BECAUSE THE PRODUCT CANNOT CAPTURE ITS OWN CHAIN.
-\   test/aot-artifact-roundtrip.f captures a small window in this engine and drives
-\   AOT-FILE:WRITE, READ and WRITE again over it, which is the whole format: the
-\   header, the section table, both digest passes, every section's length
-\   arithmetic and the closure walk. It also executes the declared-address-cell
-\   predicate tools/aot-chain-capture.f ?XTOFF asserts, which only the capture host
-\   could otherwise reach - hence the `xtcells=2` line pinned below: one cell inside
-\   that window and one outside it targeting it. Its refusals are its assertions.
-\   tools/aot-chain-capture.f is run as the build runs it, and must refuse by name:
-\   bin/hb provides every file the compiler chain's closure names, so `require` is
-\   a no-op there and the window comes up empty (the capture host is the only
-\   engine that can run it - LESSONS.md 2026-08-17). Reaching that refusal is what
-\   proves the tool's whole closure - the window prelude, the capture, the identity
-\   and src/habu/aot-file.f - compiled in a booted engine; an undefined word
-\   anywhere in it answers E-UNDEFINED with a different code instead.
+\ The production capture tool is also loaded and must name its empty-window
+\ refusal: the booted engine already provides its chain, so only the build's
+\ capture host can capture that chain. Compiler-chain capture and other forged
+\ producer/source/section cases remain separate acceptance work.
 \
-\ WHAT THIS FILE ADDS THAT NEITHER CHILD CAN SAY ABOUT ITSELF. The artifact's
-\ header is read back as bytes and checked against the format's identity written
-\ down a second time here - magic, version, section count - and against the
-\ arithmetic it promises (136 + payload length = the file). Two files having to
-\ agree is what makes a version bump or a dropped section a deliberate change. And
-\ the PRODUCER KEY the artifact carries is compared against a SHA-256 this process
-\ takes of bin/hb from the outside, so the key is a reading of a file pinned here
-\ rather than a claim the writer made about itself.
-\
-\ WHAT IT DOES NOT COVER. Every refusal src/habu/aot-file.f lists in its own header
-\ is still unforged: nothing here truncates a payload, doctors a section table or
-\ moves a chain source behind a stored digest. Those cases belong in this suite
-\ when they are written. Nor does anything here capture the compiler chain - that
-\ needs the build's capture host, and the capture tool's own assertions over that
-\ window run in tools/build-fixpoint.f's artifact fixpoint.
-\
-\ Cost: two child engine runs, both under two seconds. Registered as
-\ `TEST:SUITE aot-chain-capture` in test/gate-stdlib-cases.f. Run standalone:
+\ Registered as `TEST:SUITE aot-chain-capture`. Run standalone:
 \   bin/hb --load test/aot-chain-capture-suite.f
 
 require lib/errors.f
@@ -75,7 +41,7 @@ $8000 constant CAP
 32 constant O-PAYLEN
 40 constant O-PRODUCER
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order
-6 constant VERSION
+7 constant VERSION
 17 constant SECTIONS
 64 constant HEX-LEN
 
@@ -124,6 +90,17 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    s" test/aot-artifact-roundtrip.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    ART$ >LEN PROC-ARGV+
+   RUN-CHILD ;
+
+
+: RUN-ROW-CASE ( ptr u8 n -- )
+   {: name u:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/aot-artifact-rows.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   ART$ >LEN PROC-ARGV+
+   name u >LEN PROC-ARGV+
    RUN-CHILD ;
 
 \ The argv the build uses (tools/build-fixpoint.f BF-PREPARE-CAPTURE-ARGV), with
@@ -204,11 +181,48 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    s" and names the empty window rather than a missing word" T-LABEL
    s" the window is empty - the chain did not load" ERR-SAID? ;
 
+
+: ROW-RC ( n -- )
+   {: want:n :}
+   RC @ want <> if
+      s" artifact-row child stdout:" type cr OUT$ type cr
+      s" artifact-row child stderr:" type cr ERR$ type cr
+   then
+   RC @ want T= ;
+
+
+: ROW-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: name u:n message mu:n :}
+   name u T-LABEL
+   name u RUN-ROW-CASE
+   $4B ROW-RC
+   message mu ERR-SAID? ;
+
+
+: PROBE-ADDRESS-ROWS ( -- )
+   s" matrix" RUN-ROW-CASE
+   s" eight address rows merge with separate location and target coordinates" T-LABEL
+   0 ROW-RC
+   s" address-rows: merge=ok" SAID?
+   s" fresh" RUN-ROW-CASE
+   s" all address rows survive a fresh reader process" T-LABEL
+   0 ROW-RC
+   s" address-rows: fresh=ok" SAID?
+   s" old-version" s" the artifact is not one this engine can read" ROW-REFUSED
+   s" short-row" s" address cells is not a whole number of rows" ROW-REFUSED
+   s" bad-window" s" address cell reaches past its window DATA span" ROW-REFUSED
+   s" bad-fixed" s" fixed address cell is outside DATA" ROW-REFUSED
+   s" bad-data" s" address cell DATA target is outside its window" ROW-REFUSED
+   s" bad-code" s" address cell CODE target is outside its blob" ROW-REFUSED
+   s" bad-data-site" s" DATA relocation site reaches past its blob" ROW-REFUSED
+   s" bad-chain-site" s" DATA relocation site reaches past its blob" ROW-REFUSED ;
+
 : BODY ( -- )
    PROBE-ROUNDTRIP
    PROBE-ARTIFACT
    PROBE-PRODUCER
-   PROBE-CAPTURE-TOOL ;
+   PROBE-CAPTURE-TOOL
+   PROBE-ADDRESS-ROWS ;
 
 public
 
