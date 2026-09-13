@@ -2989,7 +2989,7 @@ create DN-BUF DN-CAP allot
    entry 0= if E-NELAB-DEFER throw then
    VN @ 1- VQ@ {: k:n :}
    k 0 >= if k din dout QFILL then
-   ix cell EMIT-LIT
+   ix cell HIR:ADDR-DATA EMIT-KIND-LIT
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- entering the routine a quotation names ----------------------------------

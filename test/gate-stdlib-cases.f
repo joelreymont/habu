@@ -312,6 +312,10 @@ SUITE app-image
    test/app-image.f
 ;SUITE
 
+SUITE native-defer-image
+   test/native-defer-image.f
+;SUITE
+
 SUITE compiler-native-many-locals
    test/compiler/native-many-locals.f
 ;SUITE
