@@ -363,16 +363,37 @@ $F2C00009 constant W-MOVK2     \ movk x9,#0,lsl#32
 $F2E00009 constant W-MOVK3     \ movk x9,#0,lsl#48
 
 \ --- primitive registry (host-side, to build the seed dictionary) ---
-128 constant PRIM-CAP
-2048 constant PRIM-NAME-CAP
-create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
-create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
-create PWID PRIM-CAP cells allot
-create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
+\ Host rows are [start-label end-label name-length name-offset wid]. Keeping
+\ offsets instead of name pointers lets either buffer move during registration.
+\ Only EMIT-DICT, after the final registration, lends name pointers to the IR.
+5 cells constant /PRIM
+-1 1 rshift constant PRIM-SIZE-MAX
+s" cg: primitive registry size overflow" exception constant E-PRIM-SIZE
+variable PRIM-ROWS-A   variable PRIM-ROWS-CAP
+variable PNPOOL-A      variable PRIM-NAME-CAP
+variable PNP          variable #PL
+create PRIM-NAME-PAD DNAME-INL allot
+PRIM-NAME-PAD DNAME-INL erase
+
+: PNPOOL ( -- addr ) PNPOOL-A @ ;
+: PRIM-ROW ( i -- addr ) /PRIM * PRIM-ROWS-A @ + ;
+: PRIM-NAME$ ( row -- addr u )
+   dup 3 cells + @ PNPOOL + swap 2 cells + @ ;
+
+\ BUF-FIT accepts an exact byte count. Double only when that rounding also
+\ fits; near the host size limit, reserve exactly the already-checked need.
+: PRIM-FIT ( need buf cap -- ) {: need bp cp :}
+   need cp @ <= if exit then
+   cp @ PRIM-SIZE-MAX 2/ <= if need cp @ 2* max else need then
+   bp cp BUF-FIT ;
 
 : REG-ROOM? ( u -- )
-   #PL @ PRIM-CAP >= if 1 abort" cg: primitive table overflow" then
-   PNP @ + PRIM-NAME-CAP > if 1 abort" cg: primitive name pool overflow" then ;
+   {: size :}
+   size 0<= if E-PRIM-SIZE throw then
+   #PL @ 0< #PL @ PRIM-SIZE-MAX /PRIM / >= or if E-PRIM-SIZE throw then
+   PNP @ 0< PNP @ PRIM-SIZE-MAX size - > or if E-PRIM-SIZE throw then
+   #PL @ 1+ /PRIM * PRIM-ROWS-A PRIM-ROWS-CAP PRIM-FIT
+   PNP @ size + PNPOOL-A PRIM-NAME-CAP PRIM-FIT ;
 
 \ Fail-closed inline-name cap: EMIT-DICT stores prim names in a fixed 16-byte
 \ (DNAME-INL) inline slot and never emits DNAME-EXT external-name records, so a
@@ -389,12 +410,10 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
 : REG-PRIM ( ptr u8 n n -- ) {: na nu lbl elbl -- :}
    na nu PRIM-INL-CAP?
    nu REG-ROOM?
-   lbl  #PL @ cells PLBL + !
-   elbl #PL @ cells PEL  + !
-   nu   #PL @ cells PLEN + !
-   0    #PL @ cells PWID + !
-   PNPOOL PNP @ +  {: dst :}   dst #PL @ cells PNAM + !
-   na dst nu move   nu PNP +!   1 #PL +! ;
+   #PL @ PRIM-ROW {: row :}
+   lbl row !  elbl row cell+ !  nu row 2 cells + !
+   PNP @ row 3 cells + !  0 row 4 cells + !
+   na PNPOOL PNP @ + nu move   nu PNP +!   1 #PL +! ;
 
 : FPRIM ( ptr u8 xt -- ) {: na nu xt -- :}            \ define+register a primitive (start..RET..end labels)
    LBL LBL {: lbl elbl :}                \ both allocated BEFORE the locals bind:
@@ -409,7 +428,7 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
 
 : FPRIM-WID ( ptr u8 xt n -- ) {: na nu xt wid -- :}
    na nu xt FPRIM
-   wid #PL @ 1- cells PWID + ! ;
+   wid #PL @ 1- PRIM-ROW 4 cells + ! ;
 
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
@@ -807,6 +826,18 @@ previous definitions
 \ near the top of this file -- before the earliest guarded sink (cp!/ndict!).
 
 : BSTORE ( -- )  B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  A B 0 STR, ;  \ ( val addr -- )
+
+\ The cold prefix's DYNAMIC-STORAGE lock uses these same acquire/release
+\ operations as the native engine. GUARD-SPAN preserves x9/x10/x11 here.
+: BATSTORE ( -- )
+   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  A B STLR, ;
+
+\ CASAL x9,x10,[x11], the fixed-register LSE instruction used by native
+\ BATCAS. BYTES, keeps this four-byte stencil in the host IR unchanged.
+create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
+: BATCAS ( -- )
+   C G-POP B G-POP A G-POP  7 8 MOVZ,  C 7 GUARD-SPAN
+   BATCAS-INSN 4 BYTES,  A G-PUSH ;
 
 : BPTRFIELD ( -- )  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
@@ -1263,6 +1294,8 @@ previous definitions
    s" cell-view" ['] BADDRESSVIEW FPRIM-L
    s" xt!"  ['] BSTORE FPRIM-L
    s" ptr-cell-mark" ['] BDROP FPRIM-L
+   s" atomic!" ['] BATSTORE FPRIM-L
+   s" atomic-cas" ['] BATCAS FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
@@ -1752,12 +1785,13 @@ previous definitions
    LNCOUNT @ LBL,  #PL @ DCQ,                              \ live count, read at startup
    LDICT @ LBL,
    #PL @ 0 ?do
-      i cells PLBL + @ DLBL,                                \ +0  start byte-offset
-      i cells PEL  + @ DLBL,                                \ +8  end   byte-offset
-      i cells PLEN + @ DCQ,                                 \ +16 name length
-      i cells PNAM + @  i cells PLEN + @  BYTES,            \ +24 name (padded to 4)
-      16  i cells PLEN + @  3 + -4 and  -  ?dup if  PNPOOL  swap BYTES, then
-      i cells PWID + @ DCQ,                                \ +40 wid
+      i PRIM-ROW {: row :}
+      row @ DLBL,                                         \ +0  start byte-offset
+      row cell+ @ DLBL,                                   \ +8  end   byte-offset
+      row 2 cells + @ DCQ,                                \ +16 name length
+      row PRIM-NAME$ BYTES,                               \ +24 name (padded to 4)
+      DNAME-INL row 2 cells + @ 3 + -4 and - ?dup if PRIM-NAME-PAD swap BYTES, then
+      row 4 cells + @ DCQ,                                \ +40 wid
    loop ;
 
 \ ---- literal emitters: scalars vs relocatable addresses (mirrors src/habu/habu2.f) --

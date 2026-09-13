@@ -25,6 +25,7 @@ SUMTYPE bwm4 3
 
 variable BWM-FAILS
 variable BWM-CASES
+align variable BWM-ATOMIC
 
 : BWM-ORDINARY ( -- ) ;
 : BWM-IMMEDIATE ( -- ) ; immediate
@@ -39,6 +40,14 @@ variable BWM-CASES
       s" case " type BWM-CASES @ .
       s" expected " type want . s" got " type got . cr
    then ;
+
+: BWM-TEST-ATOMICS ( -- )
+   17 BWM-ATOMIC !
+   18 23 BWM-ATOMIC atomic-cas 17 BWM=
+   BWM-ATOMIC @ 17 BWM=
+   17 42 BWM-ATOMIC atomic-cas 17 BWM=
+   BWM-ATOMIC @ 42 BWM=
+   93 BWM-ATOMIC atomic! BWM-ATOMIC @ 93 BWM= ;
 
 1 LAYOUT-BUFFER BWM-MEM2 bwm2<n>
 1 LAYOUT-BUFFER BWM-MEM4 bwm4<n,n,n>
@@ -316,6 +325,7 @@ public
 
 BWM-TEST-GOLDENS
 BWM-TEST-RUNTIME
+BWM-TEST-ATOMICS
 BWM-TEST-DEFER
 BWM-TEST-CDEFER
 BWM-TEST-CATCH-FRAME
