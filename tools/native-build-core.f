@@ -239,11 +239,30 @@ variable SMOKE-DIR-U
    path size CLEANUP-TREE+
    path SMOKE-DIR size BYTE-COPY size SMOKE-DIR-U ! ;
 
+\ This private boundary has the source writer's exact compiled ABI. Its capture
+\ is a multi-cell value, which cannot be passed through interpret-mode evaluate.
+TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
+
+: SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
+   s" NATIVE-EMIT:WRITE" XREF-FIND dup XREF-FOUND? 0= if
+      drop S\" native-build: source writer missing\n" BUILD-RC die
+   then
+   dup XREF-RETIRED? if
+      drop S\" native-build: source writer retired\n" BUILD-RC die
+   then
+   XREF-START {: xt:n :}
+   \ Resolve after loading: neither the retained host nor captured target owns
+   \ this writer. It was compiled above the frozen target window.
+   xt 0= xt AOT-ARM:B1 @ < or xt cp@ >= or if
+      S\" native-build: writer does not belong to the source load\n" BUILD-RC die
+   then
+   xt WRITER-XT ;
+
 \ The reader's capture has its own bytes. Loading a writer may allocate and
 \ compile freely; none of those definitions or mutations enters that value.
-TRUSTED: WRITE-TARGET ( AOT-OWNED:capture -- )
+: WRITE-TARGET ( AOT-OWNED:capture -- )
    s" tools/native-emit.f" required
-   NATIVE-LAYOUT:CURRENT TEMP$ s" NATIVE-EMIT:WRITE" evaluate ;
+   NATIVE-LAYOUT:CURRENT TEMP$ SOURCE-WRITER execute ;
 
 : WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
    dup WRITE-TARGET ;
