@@ -490,7 +490,9 @@ public
    dst LIVE-SLOT {: d:n :}
    src LIVE-SLOT {: s:n :}
    c d OWN-CHECK
-   from 0 < from k + s ACOUNT@ > or if E-IR-ARENA-BOUND throw then
+   s ACOUNT@ {: sc:n :}
+   from 0 < from sc > or if E-IR-ARENA-BOUND throw then
+   k sc from - > if E-IR-ARENA-BOUND throw then
    k 0= if exit then
    c d  d ACOUNT@ k +  GROW-TO
    d ACOUNT@ {: at:n :}

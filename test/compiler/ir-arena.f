@@ -752,6 +752,7 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 1 TYPED-BUFFER AS-SRC IR-ARENA:arena
 variable AS-FROM
 variable AS-K
+$7FFFFFFFFFFFFFFF constant AS-MAX-N
 
 : AS-DO ( -- )
    0 AS-CTX @  0 AS-DST @  0 AS-SRC @  AS-FROM @ AS-K @ IR-ARENA:APPEND-SPAN ;
@@ -764,6 +765,51 @@ variable AS-K
 : AS-REFUSES ( n -- )
    {: expected:n :}
    [: AS-DO ;] catch expected T= ;
+
+: AS-FOREIGN-SRC-INNER ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: d:IR-ARENA:arena :}
+   c d 0 AS-SRC @ 1 2 IR-ARENA:APPEND-SPAN
+   d IR-ARENA:USED
+   d 0 IR-ARENA:READ
+   d 1 IR-ARENA:READ ;
+
+: AS-FOREIGN-SRC-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: s:IR-ARENA:arena :}
+   c s 11 IR-ARENA:PUSH drop
+   c s 22 IR-ARENA:PUSH drop
+   c s 33 IR-ARENA:PUSH drop
+   s 0 AS-SRC !
+   BND [: AS-FOREIGN-SRC-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: AS-FOREIGN-DST-INNER ( IR-CTX:ctx -- )
+   0 AS-CTX !
+   0 1 AS-STAGE
+   AS-DO ;
+
+: AS-FOREIGN-DST-RUN ( -- )
+   BND [: AS-FOREIGN-DST-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: AS-FOREIGN-DST-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c 8 IR-ARENA:NEW {: s:IR-ARENA:arena :}
+   c s 17 IR-ARENA:PUSH drop
+   s 0 AS-SRC !
+   c 8 IR-ARENA:NEW {: d:IR-ARENA:arena :}
+   c d 29 IR-ARENA:PUSH drop
+   d 0 AS-DST !
+   [: AS-FOREIGN-DST-RUN ;] catch
+   d IR-ARENA:USED
+   d 0 IR-ARENA:READ ;
+
+: AS-OWNER-CASES ( -- )
+   s" a source arena owned by another live context can be cloned" T-LABEL
+   BND [: AS-FOREIGN-SRC-BODY ;] IR-CTX:WITH-CONTEXT
+   33 T= 22 T= 2 T=
+   s" a foreign destination context rejects before changing the destination" T-LABEL
+   BND [: AS-FOREIGN-DST-BODY ;] IR-CTX:WITH-CONTEXT
+   29 T= 1 T= E-IR-ARENA-OWNER T= ;
 
 : AS-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -779,6 +825,17 @@ variable AS-K
    0 0 AS-STAGE AS-DO
    d IR-ARENA:USED 1 T=
 
+   s" an empty span at the exact source end appends nothing" T-LABEL
+   8 0 AS-STAGE AS-DO
+   d IR-ARENA:USED 1 T=
+
+   s" an empty arena supplies its exact-end empty span" T-LABEL
+   c 8 IR-ARENA:NEW {: empty:IR-ARENA:arena :}
+   empty 0 AS-SRC !
+   0 0 AS-STAGE AS-DO
+   d IR-ARENA:USED 1 T=
+   s 0 AS-SRC !
+
    s" a span lands at the end in order" T-LABEL
    2 5 AS-STAGE AS-DO
    d IR-ARENA:USED 6 T=
@@ -790,9 +847,36 @@ variable AS-K
    s IR-ARENA:USED 8 T=
    s 2 IR-ARENA:READ 20 T=
 
+   s" a whole source arena clones into a fresh destination" T-LABEL
+   c 8 IR-ARENA:NEW {: clone:IR-ARENA:arena :}
+   clone 0 AS-DST !
+   0 8 AS-STAGE AS-DO
+   clone IR-ARENA:USED 8 T=
+   clone 0 IR-ARENA:READ 0 T=
+   clone 7 IR-ARENA:READ 70 T=
+   d 0 AS-DST !
+
    s" a range past the source's cells is refused, and writes nothing" T-LABEL
    6 3 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
    d IR-ARENA:USED 6 T=
+   d 0 IR-ARENA:READ 7 T=
+   d 5 IR-ARENA:READ 60 T=
+
+   s" a one-past empty range is refused, and writes nothing" T-LABEL
+   9 0 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
+   d IR-ARENA:USED 6 T=
+   d 0 IR-ARENA:READ 7 T=
+   d 5 IR-ARENA:READ 60 T=
+
+   \ This start plus one wraps a signed cell. It must be rejected by checking
+   \ the start itself, without forming that endpoint or reaching the copy.
+   s" the largest signed start is refused before endpoint arithmetic" T-LABEL
+   c IR-CTX:SCRATCH-USED {: before:n :}
+   AS-MAX-N 1 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
+   c IR-CTX:SCRATCH-USED before T=
+   d IR-ARENA:USED 6 T=
+   d 0 IR-ARENA:READ 7 T=
+   d 5 IR-ARENA:READ 60 T=
 
    s" a negative start is refused" T-LABEL
    -1 1 AS-STAGE E-IR-ARENA-BOUND AS-REFUSES
@@ -826,6 +910,7 @@ public
    STAND-DOWN
    BND [: HARNESS-BODY ;] IR-CTX:WITH-CONTEXT
    BND [: AS-BODY ;] IR-CTX:WITH-CONTEXT
+   AS-OWNER-CASES
    SPAN-CASES
    SL-CASE
    WR-CASES
