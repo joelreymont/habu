@@ -47,6 +47,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 require lib/test.f
 require lib/test/outcome.f
 require lib/test/subject.f
@@ -400,7 +401,7 @@ variable OR-U
    a OR-BUF OR-U @ + u BYTE-COPY
    u OR-U +! ;
 
-: OR-NUM+ ( n -- ) SB-RESET SB-NUM+ SB$ OR+ ;
+: OR-NUM+ ( n -- ) SB-RESET FMT:SB-U SB$ OR+ ;
 
 : OR-SOURCE$ ( n -- ptr u8 n ) {: count:n :}
    0 OR-U !

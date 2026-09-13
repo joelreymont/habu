@@ -12,14 +12,21 @@ review pins remain frozen: `review/current-compiler` at `51546316`, and
 (`3c6bda9d`) predates these compiler changes. None is an accepted replacement
 engine; source review and focused controls are not a rebuilt runtime gate.
 
-Integration through `746ab84f` includes source-bound typed writer dispatch,
+Integration through `d7184652` includes source-bound typed writer dispatch,
 positive provenance admission, an explicit private bootstrap, private generation
 outputs, owner memo/bounds controls, provenance invalidation on code overwrite,
 and growing captured relocation tables with signed DATA-span validation. The
-latest private bootstrap passed target compilation and capture, then refused
-at the builder's 192-row primitive registry limit after 394.002 seconds. Its log
-is `/tmp/cedar-family-stage-abi/native-bootstrap-B1-capacity.log`; the fix is
-tracked by `habu-grow-the-engine-e48d5fbd`.
+primitive registry now grows with its rows and names. The private bootstrap
+completed in 341.180 seconds, producing
+`/tmp/cedar-family-stage-abi/hb-bootstrap-B1-registry` (SHA-256
+`a4fc1996d67ae9a46d53d9cea58622a31291fc5d3f5cf9e1de58f2ce07a6c85a`).
+First-generation heap layout and source-identity tests pass. This runtime's JIT
+works, but native compilation refuses even `: ID ( n -- n ) 1 + ;` with
+`E-NFEED-STATE` (-8400). Native `is` emits its DATA-cell address as an integer,
+so capture leaves the tape installer's callback destinations unrelocated.
+Replacing only that installer in a test process restores native compilation.
+The responsible-layer fix and capture regression are tracked by
+`habu-relocate-native-is-fa0c0c49`; this private engine is not a replacement pin.
 
 Source-closure framing and the real stale-artifact regression are reviewed at
 `d6809d78` and `ea9904fa`. The regression distinguishes separate-file execution,
@@ -34,7 +41,11 @@ pending. Registry content admission is independently reviewed and integrated:
 all eight stores validate before publication, duplicate imports require canonical
 content equality, and rejected imports preserve existing state. Its source-owner
 test and new native bodies pass; full rebuilt-runtime validation remains pending.
-Loop obligations and partial graph capture remain active parallel repairs.
+Loop obligations await independent review; partial graph capture remains active.
+The process builders also retain heap buffers across application-image capture:
+public argv, environment and command-builder warm/restore controls crash on the
+Maki pin. Lifecycle cleanup belongs in those shared process modules; the BUF/JR
+cleanup control already passes two restored generations.
 
 `review/partial-payload` preserves the separate, unverified graph producer and
 registry prevalidation work (`f091a068`). It is not composed into this branch.

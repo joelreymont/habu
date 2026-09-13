@@ -38,3 +38,13 @@ even during bootstrap, refuse unknown for production and check the extent before
 the query. Unknown bootstrap output remains private; no complete engine or
 product-hosted positive rebuild is accepted yet. Native script arguments are an
 explicit core dependency after prefix rewind. See commits d6d20b8e/f91cacb4.
+
+Private bootstrap from d7184652 now succeeds (341.180 s), yielding
+`/tmp/cedar-family-stage-abi/hb-bootstrap-B1-registry`, SHA-256
+`a4fc1996d67ae9a46d53d9cea58622a31291fc5d3f5cf9e1de58f2ce07a6c85a`.
+The heap-start and source-identity regressions pass on that actual first product.
+The tracked rebuild refuses after 0.517 s with E-NFEED-STATE (-8400), reduced to
+`1 set-tier : ID ( n -- n ) 1 + ;`. Its native tape installer retained the build
+address of deferred cells because DO-IS emitted ADDR-NONE. Replacing only the
+installer in a test process restores compilation; fa0c0c49 owns the DATA-address
+fix and fresh capture regression. Full product-hosted acceptance remains open.

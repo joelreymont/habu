@@ -1211,7 +1211,10 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
 - **`s" "` is empty, not a one-space string.** The parser consumes the delimiter
   after `s"`, so generated-source builders that need a literal space should emit
   byte `32` or use an existing `*-SP` byte helper.
-- **"is it a defined word?"** → `find-name ( c-addr u -- nt|0 )`, not `find`.
+- **To query a wordlist**, use `s" WORD" get-current search-wl`. It returns
+  the word's execution token, or zero if that wordlist has no visible match.
+  Built native application images do not provide `find-name`, `defined`, or
+  `[defined]`.
 - **`catch` restores the stack depth, not the values.** On a throw
   `nv ' WORD catch` leaves `( x code )` where `x` is whatever the callee left in
   that cell: if `WORD`'s locals consumed `nv` and later pushes overwrote the
