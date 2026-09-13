@@ -72,14 +72,9 @@ create ERR CAP allot
    s" require lib/task.f TASK:#USER TXN-STATE-OFF over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
    s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
-\ The pending pre-trust defer band [PD-TABLE-OFF, DATA-START) (dot
-\ habu-engine-pre-trust-77410827) is UNGUARDED engine scratch of the BODYBUF
-\ class: a raw user store into it grants nothing beyond the public
-\ `trust`/`checker-defer` words (the drain replays only name+sig slot copies,
-\ and the table is empty whenever user source runs — populated and drained
-\ entirely inside the checker.f prefix load). The guarded upper edge below
-\ DATA-START is therefore the TXN band end, pinned layout-independently; the
-\ DATA-START edge pins document the unguarded band explicitly.
+\ Pending pre-trust defer scratch ends at PD-TABLE-END. The later provenance
+\ table is protected through DATA-START: a store crossing its end must reject,
+\ while a store beginning at the user heap remains valid.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
@@ -88,7 +83,12 @@ create ERR CAP allot
    s" 0 data-base TXN-STATE-OFF 1 cells - + !" ACCEPTS
    s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1- + !" REJECTS
    s" 0 data-base PD-TABLE-OFF + c!" ACCEPTS
-   s" 0 data-base DATA-START 1- + !" ACCEPTS
+   s" 0 data-base PD-TABLE-END 1 cells - + !" ACCEPTS
+   s" 0 data-base TIER-PROV:OPEN-CELL 1 cells - + !" ACCEPTS
+   s" 0 data-base TIER-PROV:OPEN-CELL 1- + !" REJECTS
+   s" 0 data-base TIER-PROV:OPEN-CELL + c!" REJECTS
+   s" 0 data-base DATA-START 1 cells - + !" REJECTS
+   s" 0 data-base DATA-START 1- + !" REJECTS
    s" 0 data-base DATA-START + c!" ACCEPTS ;
 
 : TEST-SNAP-REBASE ( -- )

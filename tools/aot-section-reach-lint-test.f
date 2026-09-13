@@ -126,11 +126,10 @@ using AOT-REACH-LINT
    FINDINGS-RESET
    s" src/habu/habu2.f" SCAN-FILE
    FINDINGS 0 T=
-   \ Full runtime capture retired LAOTNPWID/LAOTPWID and the separate checker
-   \ payload's AOT-SIG:LLEN/LNAME/LSPAN bindings. The current section binds 27
-   \ labels, including the sparse DATA runs and window-relative WID records;
-   \ the following LIMGEND is the final protected address.
-   LABELS-FOUND 28 T= ;
+   \ The 27 ordinary payload labels and LIMGEND remain covered. Partial images
+   \ also bind AOT-SIG:LLEN/LSPAN/LNAME for the portable checker graph; the lint
+   \ must include those conditional bindings even when full capture omits them.
+   LABELS-FOUND 31 T= ;
 
 : MAIN ( -- )
    T-RESET
