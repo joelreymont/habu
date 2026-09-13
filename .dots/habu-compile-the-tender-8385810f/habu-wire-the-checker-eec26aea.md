@@ -51,3 +51,12 @@ both tiers. The real replacement-owner fixture passes at both tiers after
 source loading and handoff, two owner CAPTURE callbacks, preserved numeric-call
 acceptance/wrong-pointer-call refusal, and reopening. Full artifact restore
 remains the driver integration boundary; partial graph roundtrip is unfinished.
+
+Reviewed D01 slice integrated as db8396d0 and 045e8a5b (originals d79ce203,
+c9445a9c): all eight registry slices validate before reserve/publication;
+already-installed payloads require canonical content equality and preserve live
+indices. Root and independent Astra source-owner tests pass, including same-name,
+same-count n-versus-r refusal and late/mixed/overflow/base failures without state
+change. New native validator/installer bodies pass the same matrix. The catch
+wrapper preserves its two arguments and propagates unrelated errors. Partial
+graph activation and full restored-runtime acceptance remain open.

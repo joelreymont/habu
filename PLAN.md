@@ -30,8 +30,11 @@ The first private bootstrap may carry unknown origin; only its positively
 tracked product-hosted rebuild can be accepted. Complete source-bound emission,
 changed-layout restore, repeated capture, product-hosted rebuild, the full test
 gate, application acceptance and all-AOT compile-speed measurements remain
-pending. Registry content admission and loop obligations are active parallel
-repairs; partial graph capture remains separate until validated.
+pending. Registry content admission is independently reviewed and integrated:
+all eight stores validate before publication, duplicate imports require canonical
+content equality, and rejected imports preserve existing state. Its source-owner
+test and new native bodies pass; full rebuilt-runtime validation remains pending.
+Loop obligations and partial graph capture remain active parallel repairs.
 
 `review/partial-payload` preserves the separate, unverified graph producer and
 registry prevalidation work (`f091a068`). It is not composed into this branch.
