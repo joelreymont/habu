@@ -6050,10 +6050,9 @@ variable P2SK
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
 
 : EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :}
-   LBL LBL LBL {: ttrusted ndhas ndchk :}
-   10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
-      lmain EM-P2-CHECK-DEFINER
-   ttrusted LBL,
+   LBL LBL LBL LBL {: ttrusted ndhas ndchk publish :}
+   \ Mirror habu2.f: created-body checking resets publication latches, so
+   \ certify the definer last and retain its verified graph.
    10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-DIE-DOES
@@ -6061,7 +6060,12 @@ variable P2SK
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
    ndchk LBL,
+   10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
+      lmain EM-P2-CHECK-DEFINER
+      publish B,
+   ttrusted LBL,
    C-CALL-TRUST-PEND
+   publish LBL,
    NDICT NDICT 1 ADDI,
    EM-REC-WIDE-PUBLISH
    C-DOES-PUB

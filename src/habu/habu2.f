@@ -7969,8 +7969,8 @@ public
 \ (which registers the certified signature) and then the pass-2 trigger. The
 \ pass-2 second ';' must NOT re-run the hook — a second CHECK! of the same name
 \ hits the checker's certified-duplicate guard (CHECKER-DUP-DEFINITION, throw
-\ $4E) — so it skips straight to the normal TRUST-PEND publish tail, giving the
-\ exact pass-1 registration sequence (one certify add + one trust row).
+\ $4E) — so it publishes the verified effect from pass 1 without recording a
+\ second, textual effect that would erase inferred cells and types.
 : EM-P2-CHECK-DEFINER ( -- )
    LBL {: p2sk:label :}
    9 DATA P2-CELL LDR,  9 p2sk CBNZ,
@@ -7981,7 +7981,7 @@ public
    p2sk LBL, ;
 
 \ EM-P2-FINISH: emitted on the publish tail — the pass-2 second ';' published
-\ through the ordinary trusted tail (hook re-check skipped), so resume the
+\ through the ordinary publication tail (hook re-check skipped), so resume the
 \ saved real input and clear the pass-2 state (dead pointers zeroed for image
 \ determinism).
 : EM-P2-FINISH ( -- )
@@ -8000,13 +8000,8 @@ public
 
 : EM-COMPILE-PUBLISH-TRUSTED ( label -- ) {: publish:label :}
    LBL LBL LBL {: ttrusted ndhas ndchk :}
-   10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
-      \ hook-certified sig'd definition (TSIG holds the captured signature, so
-      \ every checked `: NAME ( .. )` publishes HERE): a wider-than-cell width
-      \ fact triggers the pass-2 width-aware re-run (item 12 slice 3b); the
-      \ pass-2 second ';' skips the re-check and publishes below.
-      EM-P2-CHECK-DEFINER
-   ttrusted LBL,
+   \ Check the created-word body first: CHECK-DOES! resets the checker's
+   \ publication latches. The definer's own verified effect must be last.
    10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-DIE-DOES
@@ -8014,6 +8009,12 @@ public
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
    ndchk LBL,
+   10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
+      EM-P2-CHECK-DEFINER
+      publish B,
+   ttrusted LBL,
+   \ Only an explicit TRUSTED: declaration publishes its textual effect.
+   \ Checked definitions already own the graph certified by the hook.
    DEF-TRUST:REGISTER
    publish B, ;
 
