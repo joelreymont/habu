@@ -41,9 +41,8 @@ Hazel reported 314 suites with seven failures. That is not a fresh green gate.
 Fresh integration check: native engine `0c602d1c194c` ran315 suites with12
 failures. Two came from caller/fixture case collisions exposed by the corrected
 local rule; both now have verified fixes. The environment fixture exceeds its
-1024-byte string buffer with the real1047-byte PATH (440084ec). Two language
-protection/owner failures also reproduce on an unchanged-source native-build
-product (a772a9a2). The seven earlier failures remain. Full acceptance requires
+1024-byte string buffer with the real1047-byte PATH (440084ec). An internal-call authorization failure and a neighbor-name fixture failure
+also reproduce on an unchanged-source native-build product (a772a9a2). The seven earlier failures remain. Full acceptance requires
 these named failures to pass on the final candidate; focused fixes alone do not
 make the gate green.
 
@@ -206,10 +205,17 @@ Rebuild the exact source, run affected real-load suites, then
 obsolete compiler-state assertions with their behavioral claim, preserving saved
 real values across calls, KEEP through `begin ... until`, and quotation-body spills.
 
-Native selfbuild must preserve checked internal-word refusal and type-field-owner
-behavior from its input engine (a772a9a2), including the first product. Repair the
+Native selfbuild must preserve checked internal-word refusal (a772a9a2), including
+the first product. JIT must authorize internal calls even when a typed pointer
+effect is available. Keep retired-token rejection while correcting the neighbor
+fixture to use its actual pointer effect. Repair the
 environment fixture's complete-value comparison (440084ec) without truncating
 the inherited value or changing the user's environment.
+
+JIT publication must preserve verified minimum inputs and types (d1bd23c6).
+The safe compile-only `ROW-ADD ( R -- R ) 1 +` pointer-caller counterexample
+currently rejects under AOT but passes under JIT. Reuse the verified effect
+contract; ordinary loader/REPL routing remains JIT.
 
 Reuse standalone delivery for joint acceptance: Tender's local `required` scanner
 case and full runner closure; Maki's `GEOM:SHAPED-PAIR`, native build, warm capture,

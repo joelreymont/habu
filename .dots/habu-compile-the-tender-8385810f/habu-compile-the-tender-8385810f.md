@@ -5,6 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-09-11T16:38:06.249420+03:00"
 blocks:
+  - habu-preserve-verified-input-d1bd23c6
   - habu-compare-complete-inherited-440084ec
   - habu-preserve-language-protection-a772a9a2
   - habu-bind-locals-by-a16875d6
