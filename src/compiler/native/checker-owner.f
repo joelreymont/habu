@@ -9,6 +9,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/core/checker-owner-abi.f
 require src/habu/layout.f
 
 package CHECKER-OWNER
@@ -19,6 +20,23 @@ package CHECKER-OWNER
 
 \ Set by this module's load, cleared before the compiler is captured.
 variable SOURCE-LOADED   -1 SOURCE-LOADED !
+
+\ A retained prefix may carry these pre-hook words without native call models.
+\ Bind their actual execution tokens with their existing callable contracts.
+defer SOURCE-UNJUDGED ( ptr u8 n -- n )
+defer SOURCE-CALL-CELLS ( n -- n n )
+defer SOURCE-CALL-GLUE ( n -- n n )
+defer SOURCE-MATCH-PAYLOAD ( n -- n n )
+defer SOURCE-QUOT-IN ( n n -- n n )
+defer SOURCE-QUOT-OUT ( n n -- n n )
+TRUSTED: BIND-SOURCE-CALLS ( -- )
+   ['] CHECK-UNJUDGED! is SOURCE-UNJUDGED
+   ['] CWIN-CELLS is SOURCE-CALL-CELLS
+   ['] CWIN-GLUE is SOURCE-CALL-GLUE
+   ['] CWIN-MATCH-PAYLOAD is SOURCE-MATCH-PAYLOAD
+   ['] CWIN-QUOT-IN is SOURCE-QUOT-IN
+   ['] CWIN-QUOT-OUT is SOURCE-QUOT-OUT ;
+BIND-SOURCE-CALLS
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
    2 s" ncomp: the source owner carries no " write drop
@@ -54,6 +72,9 @@ TRUSTED: AS-SLOT ( n -- [ n -- n ] ) ;
 TRUSTED: AS-SLOT-PREDICATE ( n -- [ n -- bool ] ) ;
 TRUSTED: AS-FINALLY-CELLS ( n -- [ n -- n n n ] ) ;
 TRUSTED: AS-WIDTH ( n -- [ n n -- n ] ) ;
+TRUSTED: AS-FAMILY ( n -- [ ptr u8 n -- n bool ] ) ;
+TRUSTED: AS-VARIANT ( n -- [ ptr u8 n n -- n bool ] ) ;
+TRUSTED: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] ) ;
 
 public
 
@@ -78,7 +99,7 @@ public
 \ the declared-effect row and the retract of one ----------------
 
 TRUSTED: CHECK ( ptr u8 n -- n )
-   NCOMP-DISPATCH:DECL-CHECK-OFF s" scan" FIELD
+   CHECKER-OWNER-ABI:CHECK-OFF s" scan" FIELD
    dup 0= if drop CHECK! exit then
    AS-CHECK execute ;
 
@@ -89,52 +110,52 @@ TRUSTED: CHECK ( ptr u8 n -- n )
 \ checker and the render on the other, and a product-hosted build printed a
 \ rejection for every trusted body in the window it was rebuilding.
 TRUSTED: CHECK-UNJUDGED ( ptr u8 n -- n )
-   NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" unjudged scan" FIELD
-   dup 0= if drop CHECK-UNJUDGED! exit then
+   CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF s" unjudged scan" FIELD
+   dup 0= if drop SOURCE-UNJUDGED exit then
    AS-CHECK execute ;
 
 TRUSTED: TAPE-INSTALL ( n [ ptr u8 n -- ] [ ptr u8 n n n n n -- ] [ ptr u8 n n -- ] -- )
-   NCOMP-DISPATCH:DECL-TAPE-INSTALL-OFF s" tape install" FIELD
+   CHECKER-OWNER-ABI:TAPE-INSTALL-OFF s" tape install" FIELD
    dup 0= if drop CHECKER-TAPE:INSTALL exit then
    AS-TAPE-INSTALL execute ;
 
 TRUSTED: TAPE-ARM ( -- )
-   NCOMP-DISPATCH:DECL-TAPE-ARM-OFF s" tape arm" FIELD
+   CHECKER-OWNER-ABI:TAPE-ARM-OFF s" tape arm" FIELD
    dup 0= if drop CHECKER-TAPE:ARM exit then
    AS-ACTION execute ;
 
 TRUSTED: TAPE-DISARM ( -- )
-   NCOMP-DISPATCH:DECL-TAPE-DISARM-OFF s" tape disarm" FIELD
+   CHECKER-OWNER-ABI:TAPE-DISARM-OFF s" tape disarm" FIELD
    dup 0= if drop CHECKER-TAPE:DISARM exit then
    AS-ACTION execute ;
 
 TRUSTED: TAPE-ADVANCE ( -- )
-   NCOMP-DISPATCH:DECL-TAPE-ADVANCE-OFF s" tape advance" FIELD
+   CHECKER-OWNER-ABI:TAPE-ADVANCE-OFF s" tape advance" FIELD
    dup 0= if drop CHECKER-TAPE:ADVANCE exit then
    AS-ACTION execute ;
 
 TRUSTED: DOES-CHECK ( ptr u8 n ptr u8 n -- n )
-   NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" does> split" FIELD
+   CHECKER-OWNER-ABI:DOES-CHECK-OFF s" does> split" FIELD
    dup 0= if drop CHECK-DOES! exit then
    AS-DOES-CHECK execute ;
 
 TRUSTED: DOES-IN ( -- n )
-   NCOMP-DISPATCH:DECL-DOES-IN-OFF s" does> input cells" FIELD
+   CHECKER-OWNER-ABI:DOES-IN-OFF s" does> input cells" FIELD
    dup 0= if drop CHECK-DOES-DIN-CELLS exit then
    AS-N execute ;
 
 TRUSTED: DOES-OUT ( -- n )
-   NCOMP-DISPATCH:DECL-DOES-OUT-OFF s" does> output cells" FIELD
+   CHECKER-OWNER-ABI:DOES-OUT-OFF s" does> output cells" FIELD
    dup 0= if drop CHECK-DOES-DOUT-CELLS exit then
    AS-N execute ;
 
 TRUSTED: DOES-WIDE? ( -- bool )
-   NCOMP-DISPATCH:DECL-DOES-WIDE-OFF s" does> width" FIELD
+   CHECKER-OWNER-ABI:DOES-WIDE-OFF s" does> width" FIELD
    dup 0= if drop CHECK-DOES-WIDE? exit then
    AS-BOOL execute ;
 
 TRUSTED: USIG-TRUNCATE ( ptr u8 n -- )
-   NCOMP-DISPATCH:DECL-USIG-TRUNCATE-OFF s" signature retract" FIELD
+   CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF s" signature retract" FIELD
    dup 0= if drop CHECKER-USIGS-TRUNCATE-FROM-RAW exit then
    AS-NAME-ACTION execute ;
 
@@ -142,28 +163,28 @@ TRUSTED: USIG-TRUNCATE ( ptr u8 n -- )
 \ ---- the finalized per-call-site facts the scan recorded ----------------
 
 TRUSTED: CALL-CELLS ( n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" call cells" FIELD
-   dup 0= if drop CWIN-CELLS exit then
+   CHECKER-OWNER-ABI:CALL-CELLS-OFF s" call cells" FIELD
+   dup 0= if drop SOURCE-CALL-CELLS exit then
    AS-CELLS execute ;
 
 TRUSTED: CALL-GLUE ( n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" call glue" FIELD
-   dup 0= if drop CWIN-GLUE exit then
+   CHECKER-OWNER-ABI:CALL-GLUE-OFF s" call glue" FIELD
+   dup 0= if drop SOURCE-CALL-GLUE exit then
    AS-CELLS execute ;
 
 TRUSTED: MATCH-PAYLOAD ( n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" match payload" FIELD
-   dup 0= if drop CWIN-MATCH-PAYLOAD exit then
+   CHECKER-OWNER-ABI:CALL-MATCH-OFF s" match payload" FIELD
+   dup 0= if drop SOURCE-MATCH-PAYLOAD exit then
    AS-CELLS execute ;
 
 TRUSTED: CALL-QUOT-IN ( n n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" quotation inputs" FIELD
-   dup 0= if drop CWIN-QUOT-IN exit then
+   CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF s" quotation inputs" FIELD
+   dup 0= if drop SOURCE-QUOT-IN exit then
    AS-QUOT-CELLS execute ;
 
 TRUSTED: CALL-QUOT-OUT ( n n -- n n )
-   NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" quotation outputs" FIELD
-   dup 0= if drop CWIN-QUOT-OUT exit then
+   CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF s" quotation outputs" FIELD
+   dup 0= if drop SOURCE-QUOT-OUT exit then
    AS-QUOT-CELLS execute ;
 
 
@@ -171,12 +192,12 @@ TRUSTED: CALL-QUOT-OUT ( n n -- n n )
 \ the declared-effect row and the retract of one ----------------
 
 TRUSTED: DECLARED-EFFECT ( ptr u8 n ptr u8 n -- )
-   NCOMP-DISPATCH:DECL-TRUST-DECL-OFF s" declared-effect row" FIELD
+   CHECKER-OWNER-ABI:TRUST-DECL-OFF s" declared-effect row" FIELD
    dup 0= if drop TRUST-DECL exit then
    AS-DECLARATION execute ;
 
 TRUSTED: PARSE-IMM? ( ptr u8 n -- bool )
-   NCOMP-DISPATCH:DECL-PARSE-IMM-OFF s" parse-neutral immediate" FIELD
+   CHECKER-OWNER-ABI:PARSE-IMM-OFF s" parse-neutral immediate" FIELD
    dup 0= if drop NEUTRAL-PARSE-IMM? exit then
    AS-NAME-PREDICATE execute ;
 
@@ -186,92 +207,92 @@ TRUSTED: PARSE-IMM? ( ptr u8 n -- bool )
 \ reach the same owner or a reader answers about another instance's query ----------------
 
 TRUSTED: QUERY ( ptr u8 n -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-QUERY-OFF s" effect query" FIELD
+   CHECKER-OWNER-ABI:EFFECT-QUERY-OFF s" effect query" FIELD
    dup 0= if drop EFFECT-QUERY exit then
    AS-NAME-PREDICATE execute ;
 
 TRUSTED: DIN-N ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-N-OFF s" din terms" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DIN-N-OFF s" din terms" FIELD
    dup 0= if drop EFFECT-DIN-N exit then
    AS-N execute ;
 
 TRUSTED: DOUT-N ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-N-OFF s" dout terms" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DOUT-N-OFF s" dout terms" FIELD
    dup 0= if drop EFFECT-DOUT-N exit then
    AS-N execute ;
 
 TRUSTED: DIN-CELLS ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-CELLS-OFF s" din cells" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DIN-CELLS-OFF s" din cells" FIELD
    dup 0= if drop EFFECT-DIN-CELLS exit then
    AS-N execute ;
 
 TRUSTED: DOUT-CELLS ( -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-CELLS-OFF s" dout cells" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DOUT-CELLS-OFF s" dout cells" FIELD
    dup 0= if drop EFFECT-DOUT-CELLS exit then
    AS-N execute ;
 
 TRUSTED: DIN-SLOT ( n -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-SLOT-OFF s" din slot" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DIN-SLOT-OFF s" din slot" FIELD
    dup 0= if drop EFFECT-DIN-SLOT exit then
    AS-SLOT execute ;
 
 TRUSTED: DOUT-SLOT ( n -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-SLOT-OFF s" dout slot" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DOUT-SLOT-OFF s" dout slot" FIELD
    dup 0= if drop EFFECT-DOUT-SLOT exit then
    AS-SLOT execute ;
 
 TRUSTED: DIN-QUOT ( n -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-DIN-QUOT-OFF s" din quotation" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DIN-QUOT-OFF s" din quotation" FIELD
    dup 0= if drop EFFECT-DIN-QUOT exit then
    AS-SLOT-PREDICATE execute ;
 
 TRUSTED: DOUT-QUOT ( n -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-DOUT-QUOT-OFF s" dout quotation" FIELD
+   CHECKER-OWNER-ABI:EFFECT-DOUT-QUOT-OFF s" dout quotation" FIELD
    dup 0= if drop EFFECT-DOUT-QUOT exit then
    AS-SLOT-PREDICATE execute ;
 
 TRUSTED: QUOT-UP ( -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-QUOT-UP-OFF s" quotation upward" FIELD
+   CHECKER-OWNER-ABI:EFFECT-QUOT-UP-OFF s" quotation upward" FIELD
    dup 0= if drop EFFECT-QUOT-UP exit then
    AS-BOOL execute ;
 
 TRUSTED: RET-NEUTRAL? ( -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-RET-NEUTRAL-OFF s" return neutrality" FIELD
+   CHECKER-OWNER-ABI:EFFECT-RET-NEUTRAL-OFF s" return neutrality" FIELD
    dup 0= if drop EFFECT-RET-NEUTRAL? exit then
    AS-BOOL execute ;
 
 TRUSTED: QUOT-SIMPLE? ( -- bool )
-   NCOMP-DISPATCH:DECL-EFFECT-QUOT-SIMPLE-OFF s" simple quotation" FIELD
+   CHECKER-OWNER-ABI:EFFECT-QUOT-SIMPLE-OFF s" simple quotation" FIELD
    dup 0= if drop EFFECT-QUOT-SIMPLE? exit then
    AS-BOOL execute ;
 
 TRUSTED: CATCH-CELLS ( n -- n n )
-   NCOMP-DISPATCH:DECL-EFFECT-CATCH-CELLS-OFF s" catch cells" FIELD
+   CHECKER-OWNER-ABI:EFFECT-CATCH-CELLS-OFF s" catch cells" FIELD
    dup 0= if drop EFFECT-CATCH-CELLS exit then
    AS-CELLS execute ;
 
 TRUSTED: EXEC-CELLS ( n -- n n )
-   NCOMP-DISPATCH:DECL-EFFECT-EXEC-CELLS-OFF s" execute cells" FIELD
+   CHECKER-OWNER-ABI:EFFECT-EXEC-CELLS-OFF s" execute cells" FIELD
    dup 0= if drop EFFECT-EXEC-CELLS exit then
    AS-CELLS execute ;
 
 TRUSTED: FINALLY-CELLS ( n -- n n n )
-   NCOMP-DISPATCH:DECL-EFFECT-FINALLY-CELLS-OFF s" finally cells" FIELD
+   CHECKER-OWNER-ABI:EFFECT-FINALLY-CELLS-OFF s" finally cells" FIELD
    dup 0= if drop EFFECT-FINALLY-CELLS exit then
    AS-FINALLY-CELLS execute ;
 
 TRUSTED: MATCH-CELLS ( n -- n )
-   NCOMP-DISPATCH:DECL-EFFECT-MATCH-CELLS-OFF s" match cells" FIELD
+   CHECKER-OWNER-ABI:EFFECT-MATCH-CELLS-OFF s" match cells" FIELD
    dup 0= if drop EFFECT-MATCH-CELLS exit then
    AS-SLOT execute ;
 
 TRUSTED: DEAD-TOKEN? ( ptr u8 n -- bool )
-   NCOMP-DISPATCH:DECL-CTL-DEAD-OFF s" dead control token" FIELD
+   CHECKER-OWNER-ABI:CTL-DEAD-OFF s" dead control token" FIELD
    dup 0= if drop CTL-DEAD? exit then
    AS-NAME-PREDICATE execute ;
 
 TRUSTED: WIDTH-AT ( n n -- n )
-   NCOMP-DISPATCH:DECL-WF-W-AT-OFF s" width fact" FIELD
+   CHECKER-OWNER-ABI:WF-W-AT-OFF s" width fact" FIELD
    dup 0= if drop WF-W-AT exit then
    AS-WIDTH execute ;
 
@@ -279,13 +300,65 @@ TRUSTED: WIDTH-AT ( n n -- n )
 \ ---- what the record a definition publishes needs from the checker ----------------
 
 TRUSTED: MIN-IN ( -- n )
-   NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF s" minimum input arity" FIELD
+   CHECKER-OWNER-ABI:REC-MIN-IN-OFF s" minimum input arity" FIELD
    dup 0= if drop REC-MIN-IN@ exit then
    AS-N execute ;
 
 TRUSTED: WIDE-PUBLISH ( -- )
-   NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF s" wide record publish" FIELD
+   CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF s" wide record publish" FIELD
    dup 0= if drop REC-WIDE-PUBLISH exit then
    AS-ACTION execute ;
+
+\ Family ids, variant ids and their metadata belong to the owner's registry.
+\ Name lookup alone cannot transfer an id to a different registry's reader.
+TRUSTED: FAMILY-MATCH ( ptr u8 n -- n bool )
+   CHECKER-OWNER-ABI:FAMILY-MATCH-OFF s" match family" FIELD
+   dup 0= if drop TFL-MATCH-FAM? exit then
+   AS-FAMILY execute ;
+
+TRUSTED: FAMILY-CON ( ptr u8 n -- n bool )
+   CHECKER-OWNER-ABI:FAMILY-CON-OFF s" construct family" FIELD
+   dup 0= if drop TFL-CON-FAM? exit then
+   AS-FAMILY execute ;
+
+TRUSTED: FAMILY-VARIANT ( ptr u8 n n -- n bool )
+   CHECKER-OWNER-ABI:FAMILY-VARIANT-OFF s" family variant" FIELD
+   dup 0= if drop TFAM:TFL-VAR? exit then
+   AS-VARIANT execute ;
+
+TRUSTED: FAMILY-SLOTS ( n -- n )
+   CHECKER-OWNER-ABI:FAMILY-SLOTS-OFF s" family slots" FIELD
+   dup 0= if drop TFAM:TFAM-SLOTS@ exit then
+   AS-SLOT execute ;
+
+TRUSTED: FAMILY-VARIANTS ( n -- n )
+   CHECKER-OWNER-ABI:FAMILY-VARIANTS-OFF s" family variants" FIELD
+   dup 0= if drop TFAM:TFAM-VAR-COUNT@ exit then
+   AS-SLOT execute ;
+
+TRUSTED: FAMILY-NAME$ ( n -- ptr u8 n )
+   CHECKER-OWNER-ABI:FAMILY-NAME-OFF s" family name" FIELD
+   dup 0= if drop TFAM-NAME$ exit then
+   AS-FAMILY-NAME execute ;
+
+TRUSTED: VARIANT-TAG ( n -- n )
+   CHECKER-OWNER-ABI:VARIANT-TAG-OFF s" variant tag" FIELD
+   dup 0= if drop TFAM:SUMV-TAG@ exit then
+   AS-SLOT execute ;
+
+TRUSTED: VARIANT-PADS ( n n -- n )
+   CHECKER-OWNER-ABI:VARIANT-PADS-OFF s" variant pads" FIELD
+   dup 0= if drop TFAM:TFL-VPADS exit then
+   AS-WIDTH execute ;
+
+TRUSTED: VARIANT-PAY-CELLS ( n -- n )
+   CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF s" variant payload cells" FIELD
+   dup 0= if drop TFAM:SUMV-PAYCELLS@ exit then
+   AS-SLOT execute ;
+
+TRUSTED: VARIANT-PAY-TERMS ( n -- n )
+   CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF s" variant payload terms" FIELD
+   dup 0= if drop TFAM:SUMV-PAY-N exit then
+   AS-SLOT execute ;
 
 ;package

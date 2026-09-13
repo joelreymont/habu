@@ -103,8 +103,8 @@ create ERR IO-CAP allot
 : WINDOW-TIER1-IS ( ptr u8 n ptr u8 n -- ) {: fx:ptr fxu:n want:ptr wantu:n :}
    fx fxu TIER1-ARGS! want wantu WINDOW-TIER1-RESULT ;
 
-: WINDOW-ADAPTER ( -- )
-   s" test/native-window-owner-adapter.f" TIER1-ARGS!
+: WINDOW-SOURCE ( ptr u8 n -- )
+   TIER1-ARGS!
    HB-TARGET-LINUX? if
       s" src/os/linux/target.f" >LEN PROC-ARGV+
       s" src/os/linux/layout.f" >LEN PROC-ARGV+
@@ -125,7 +125,8 @@ create ERR IO-CAP allot
    s" test/native-window-cast-host-bad.f" S\" window: 7131\n" WINDOW-IS
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-TIER1-IS
    s" test/native-window-call-store.f"    S\" window: 0\n"    WINDOW-TIER1-IS
-   WINDOW-ADAPTER
+   s" test/native-window-owner-adapter.f" WINDOW-SOURCE
+   s" test/native-window-owner-family.f" WINDOW-SOURCE
    T-REPORT
    s" native-window-owner: ok" type cr ;
 

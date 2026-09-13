@@ -208,8 +208,10 @@ TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
 \ because LOGICAL-RESET clears the hook and the window's own check-hook.f
 \ installs one part-way through its prefix - but the tape still has to be filled,
 \ so the owner's scan runs and its verdict is dropped rather than enforced.
+TRUSTED: AS-HOOK ( n -- [ ptr u8 n -- n ] ) ;
+
 TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
-   execute ;
+   AS-HOOK execute ;
 
 \ Whether anything is certifying at all. With the hook cell empty nothing is, and
 \ the verdict the scan reports is then a fact about the source and not a refusal:

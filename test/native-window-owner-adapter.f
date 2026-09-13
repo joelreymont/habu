@@ -2,6 +2,7 @@
 \ Explicit source loading prevents a product host's provided-file list from
 \ turning the tier1 adapter regression into a baked compiler no-op.
 s" src/habu/layout.f" provided
+s" src/core/checker-owner-abi.f" provided
 require src/compiler/native/checker-owner.f
 
 package OWNER-ADAPTER-CHECK

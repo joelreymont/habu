@@ -236,6 +236,8 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/exec-vector.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/checker-owner-abi.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/engine-error-effects.f >> "$out"

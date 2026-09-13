@@ -1458,6 +1458,7 @@ variable BAD-N
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error.f" BF-APPEND-SOURCE
+   out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE ;
 
 : BFT-TEST-CERTIFY-CHECKER-SELF ( -- )

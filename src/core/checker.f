@@ -1,26 +1,26 @@
-\ Private view of the native declaration-owner ABI (layout.f NCOMP-DISPATCH).
-\ Like CK-PKG-*-OFF below, these fields are needed before layout.f is loaded.
+\ Private aliases of the shared declaration-owner ABI loaded by the prefix.
+\ Only the two fixed engine cells are mirrored before layout.f is available.
 package CHECKER-REG
 \ SOURCE-CELL (DECL-CELL) is the record the engine certifies through;
 \ TARGET-CELL is the one a replacement checker publishes itself into.
 $360 constant SOURCE-CELL
 $368 constant TARGET-CELL
-$00 constant RAW-OFF
-$08 constant EFFECT-OFF
-$10 constant DEFER-OFF
-$18 constant CAST-OFF
-$20 constant USING-OFF
-$28 constant PACKAGE-OFF
-$30 constant PUBLIC-OFF
-$38 constant PRIVATE-OFF
-$40 constant END-PACKAGE-OFF
-$48 constant TRANSFER-OFF
-$50 constant SOURCE-ROW-OFF
-$58 constant SOURCE-CON-OFF
-$60 constant EXPORT-OFF
-$68 constant WIDE-OFF
-$70 constant RESET-OFF
-$78 constant CAPTURE-OFF
+CHECKER-OWNER-ABI:RAW-OFF constant RAW-OFF
+CHECKER-OWNER-ABI:EFFECT-OFF constant EFFECT-OFF
+CHECKER-OWNER-ABI:DEFER-OFF constant DEFER-OFF
+CHECKER-OWNER-ABI:CAST-OFF constant CAST-OFF
+CHECKER-OWNER-ABI:USING-OFF constant USING-OFF
+CHECKER-OWNER-ABI:PACKAGE-OFF constant PACKAGE-OFF
+CHECKER-OWNER-ABI:PUBLIC-OFF constant PUBLIC-OFF
+CHECKER-OWNER-ABI:PRIVATE-OFF constant PRIVATE-OFF
+CHECKER-OWNER-ABI:END-PACKAGE-OFF constant END-PACKAGE-OFF
+CHECKER-OWNER-ABI:TRANSFER-OFF constant TRANSFER-OFF
+CHECKER-OWNER-ABI:SOURCE-ROW-OFF constant SOURCE-ROW-OFF
+CHECKER-OWNER-ABI:SOURCE-CON-OFF constant SOURCE-CON-OFF
+CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
+CHECKER-OWNER-ABI:WIDE-OFF constant WIDE-OFF
+CHECKER-OWNER-ABI:RESET-OFF constant RESET-OFF
+CHECKER-OWNER-ABI:CAPTURE-OFF constant CAPTURE-OFF
 \ The optimizing front end's half (src/habu/layout.f says what reaching it by
 \ name cost). Same offsets, stated here because this file is read before that
 \ one, and grouped the same way. A NEW field goes on the END and nowhere else,
@@ -29,56 +29,67 @@ $78 constant CAPTURE-OFF
 \ its old number by the engine hosting the build that publishes the new one.
 \ --- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one
-$80 constant CHECK-OFF
-$88 constant TAPE-INSTALL-OFF
-$90 constant TAPE-ARM-OFF
-$98 constant TAPE-DISARM-OFF
-$A0 constant TAPE-ADVANCE-OFF
-$A8 constant DOES-CHECK-OFF
-$B0 constant DOES-IN-OFF
-$B8 constant DOES-OUT-OFF
-$C0 constant DOES-WIDE-OFF
-$C8 constant USIG-TRUNCATE-OFF
+CHECKER-OWNER-ABI:CHECK-OFF constant CHECK-OFF
+CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant TAPE-INSTALL-OFF
+CHECKER-OWNER-ABI:TAPE-ARM-OFF constant TAPE-ARM-OFF
+CHECKER-OWNER-ABI:TAPE-DISARM-OFF constant TAPE-DISARM-OFF
+CHECKER-OWNER-ABI:TAPE-ADVANCE-OFF constant TAPE-ADVANCE-OFF
+CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DOES-CHECK-OFF
+CHECKER-OWNER-ABI:DOES-IN-OFF constant DOES-IN-OFF
+CHECKER-OWNER-ABI:DOES-OUT-OFF constant DOES-OUT-OFF
+CHECKER-OWNER-ABI:DOES-WIDE-OFF constant DOES-WIDE-OFF
+CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
-$D0 constant CALL-CELLS-OFF
-$D8 constant CALL-GLUE-OFF
-$E0 constant CALL-MATCH-OFF
-$E8 constant CALL-QUOT-IN-OFF
-$F0 constant CALL-QUOT-OUT-OFF
+CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
+CHECKER-OWNER-ABI:CALL-GLUE-OFF constant CALL-GLUE-OFF
+CHECKER-OWNER-ABI:CALL-MATCH-OFF constant CALL-MATCH-OFF
+CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant CALL-QUOT-IN-OFF
+CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant CALL-QUOT-OUT-OFF
 \ --- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one
-$F8 constant TRUST-DECL-OFF
-$100 constant PARSE-IMM-OFF
+CHECKER-OWNER-ABI:TRUST-DECL-OFF constant TRUST-DECL-OFF
+CHECKER-OWNER-ABI:PARSE-IMM-OFF constant PARSE-IMM-OFF
 \ --- the effect-store query group: EFFECT-QUERY resolves a name into the
 \ instance's query state and every reader below reads THAT state, so all of them
 \ have to reach the same owner or a reader answers about another instance's query
-$108 constant EFFECT-QUERY-OFF
-$110 constant EFFECT-DIN-N-OFF
-$118 constant EFFECT-DOUT-N-OFF
-$120 constant EFFECT-DIN-CELLS-OFF
-$128 constant EFFECT-DOUT-CELLS-OFF
-$130 constant EFFECT-DIN-SLOT-OFF
-$138 constant EFFECT-DOUT-SLOT-OFF
-$140 constant EFFECT-DIN-QUOT-OFF
-$148 constant EFFECT-DOUT-QUOT-OFF
-$150 constant EFFECT-QUOT-UP-OFF
-$158 constant EFFECT-RET-NEUTRAL-OFF
-$160 constant EFFECT-QUOT-SIMPLE-OFF
-$168 constant EFFECT-CATCH-CELLS-OFF
-$170 constant EFFECT-EXEC-CELLS-OFF
-$178 constant EFFECT-FINALLY-CELLS-OFF
-$180 constant EFFECT-MATCH-CELLS-OFF
-$188 constant CTL-DEAD-OFF
-$190 constant WF-W-AT-OFF
+CHECKER-OWNER-ABI:EFFECT-QUERY-OFF constant EFFECT-QUERY-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-N-OFF constant EFFECT-DIN-N-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-N-OFF constant EFFECT-DOUT-N-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-CELLS-OFF constant EFFECT-DIN-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-CELLS-OFF constant EFFECT-DOUT-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-SLOT-OFF constant EFFECT-DIN-SLOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-SLOT-OFF constant EFFECT-DOUT-SLOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-QUOT-OFF constant EFFECT-DIN-QUOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-QUOT-OFF constant EFFECT-DOUT-QUOT-OFF
+CHECKER-OWNER-ABI:EFFECT-QUOT-UP-OFF constant EFFECT-QUOT-UP-OFF
+CHECKER-OWNER-ABI:EFFECT-RET-NEUTRAL-OFF constant EFFECT-RET-NEUTRAL-OFF
+CHECKER-OWNER-ABI:EFFECT-QUOT-SIMPLE-OFF constant EFFECT-QUOT-SIMPLE-OFF
+CHECKER-OWNER-ABI:EFFECT-CATCH-CELLS-OFF constant EFFECT-CATCH-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-EXEC-CELLS-OFF constant EFFECT-EXEC-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-FINALLY-CELLS-OFF constant EFFECT-FINALLY-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-MATCH-CELLS-OFF constant EFFECT-MATCH-CELLS-OFF
+CHECKER-OWNER-ABI:CTL-DEAD-OFF constant CTL-DEAD-OFF
+CHECKER-OWNER-ABI:WF-W-AT-OFF constant WF-W-AT-OFF
 \ --- what the record a definition publishes needs from the checker
-$198 constant REC-MIN-IN-OFF
-$1A0 constant REC-WIDE-PUBLISH-OFF
+CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant REC-MIN-IN-OFF
+CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
 \ --- the scan whose verdict nobody enforces, with the render suppressed for it
-$1A8 constant CHECK-UNJUDGED-OFF
+CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant CHECK-UNJUDGED-OFF
+\ Family and variant ids are local to this same checker owner.
+CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant FAMILY-MATCH-OFF
+CHECKER-OWNER-ABI:FAMILY-CON-OFF constant FAMILY-CON-OFF
+CHECKER-OWNER-ABI:FAMILY-VARIANT-OFF constant FAMILY-VARIANT-OFF
+CHECKER-OWNER-ABI:FAMILY-SLOTS-OFF constant FAMILY-SLOTS-OFF
+CHECKER-OWNER-ABI:FAMILY-VARIANTS-OFF constant FAMILY-VARIANTS-OFF
+CHECKER-OWNER-ABI:FAMILY-NAME-OFF constant FAMILY-NAME-OFF
+CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant VARIANT-TAG-OFF
+CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant VARIANT-PADS-OFF
+CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant VARIANT-PAY-CELLS-OFF
+CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant VARIANT-PAY-TERMS-OFF
 \ The record's size is DERIVED from the field list above, and the cells below are
 \ checked against it: a field added without a cell, or a cell without a field, is
 \ a load failure here instead of a silent read past the end.
-CHECK-UNJUDGED-OFF 8 + constant OWNER-BYTES
+CHECKER-OWNER-ABI:BYTES constant OWNER-BYTES
 create DECLARATIONS
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
@@ -87,6 +98,8 @@ create DECLARATIONS
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+   0 , 0 ,
 OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
 here DECLARATIONS - constant OWNER-COMMITTED   \ what the cells above committed
 : OWNER-SIZE-AGREE ( -- )

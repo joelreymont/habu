@@ -43,22 +43,15 @@ private
 \ LOGICAL-RESET drives the same seam for the in-process window build.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: DICT! ( n -- ) seed-ndict! ;
-TRUSTED: BOUND! ( -- ) CHECKER-BOUND:REWIND ;
+defer BOUND! ( -- )
+TRUSTED: BIND-BOUND ( -- )
+   ['] CHECKER-BOUND:REWIND is BOUND! ;
+BIND-BOUND
 
-\ BOUND! IS A ROW AND NOT AN AXIOM, which is the other way to reach a pre-hook
-\ package. A checked body may only name a QUALIFIED word the checker knows, and
-\ src/core/checker.f loads before src/core/check-hook.f, so nothing defined
-\ there records a signature (measured: certify rc 70, `undefined word` in
-\ to-core). checker.f makes such a word known with a PPRIM: axiom and states its
-\ preference for that over a TRUSTED shim - but every MUTATING axiom on that
-\ list is token-scoped: TYPE-FIELD-OWNER:OPEN mints an opaque token that each
-\ later phase must present unchanged, so an arbitrary checked caller holds
-\ nothing. CHECKER-BOUND:REWIND takes no token. It puts every mark a checker
-\ scope carries back to a boundary recorded once at boot, so a public axiom
-\ would hand that truncation to any checked program in every shipped engine -
-\ the corruption REG-PROTECT exists to refuse (`99 PF-COMMIT-N !`), handed back
-\ through a name. A row in a payload-only file hands it to nobody: measured on a
-\ built engine, a checked body naming the seam is E-UNDEFINED.
+\ The rewind is a pre-hook definition, so an older host may carry its code
+\ without a native call model. The typed defer states its actual effect and
+\ the trusted binder grants access only to this private payload-only slot.
+\ It does not publish a global axiom or a checked-callable rewind capability.
 
 public
 

@@ -3741,3 +3741,18 @@ TFAM-HOOK-INSTALL
 
 ;using
 ;using
+
+\ The native lowerer and the checker must resolve names and interpret the
+\ resulting family/variant ids in this same registry, including after handover.
+package CHECKER-REG
+' TFL-MATCH-FAM?       DECLARATIONS FAMILY-MATCH-OFF + xt!
+' TFL-CON-FAM?         DECLARATIONS FAMILY-CON-OFF + xt!
+' TFAM:TFL-VAR?        DECLARATIONS FAMILY-VARIANT-OFF + xt!
+' TFAM:TFAM-SLOTS@     DECLARATIONS FAMILY-SLOTS-OFF + xt!
+' TFAM:TFAM-VAR-COUNT@ DECLARATIONS FAMILY-VARIANTS-OFF + xt!
+' TFAM-NAME$           DECLARATIONS FAMILY-NAME-OFF + xt!
+' TFAM:SUMV-TAG@       DECLARATIONS VARIANT-TAG-OFF + xt!
+' TFAM:TFL-VPADS       DECLARATIONS VARIANT-PADS-OFF + xt!
+' TFAM:SUMV-PAYCELLS@  DECLARATIONS VARIANT-PAY-CELLS-OFF + xt!
+' TFAM:SUMV-PAY-N      DECLARATIONS VARIANT-PAY-TERMS-OFF + xt!
+;package

@@ -775,22 +775,22 @@ $370 constant TIER-CELL
 \ checker operations, with no new checked-callable trust alias.
 $360 constant DECL-CELL
 $368 constant TARGET-DECL-CELL
-0 constant DECL-RAW-OFF
-8 constant DECL-EFFECT-OFF
-16 constant DECL-DEFER-OFF
-24 constant DECL-CAST-OFF
-32 constant DECL-USING-OFF
-40 constant DECL-PACKAGE-OFF
-48 constant DECL-PUBLIC-OFF
-56 constant DECL-PRIVATE-OFF
-64 constant DECL-END-PACKAGE-OFF
-72 constant DECL-TRANSFER-OFF
-80 constant DECL-SOURCE-ROW-OFF
-88 constant DECL-SOURCE-CON-OFF
-96 constant DECL-EXPORT-OFF
-104 constant DECL-WIDE-OFF
-112 constant DECL-RESET-OFF
-120 constant DECL-CAPTURE-OFF
+CHECKER-OWNER-ABI:RAW-OFF constant DECL-RAW-OFF
+CHECKER-OWNER-ABI:EFFECT-OFF constant DECL-EFFECT-OFF
+CHECKER-OWNER-ABI:DEFER-OFF constant DECL-DEFER-OFF
+CHECKER-OWNER-ABI:CAST-OFF constant DECL-CAST-OFF
+CHECKER-OWNER-ABI:USING-OFF constant DECL-USING-OFF
+CHECKER-OWNER-ABI:PACKAGE-OFF constant DECL-PACKAGE-OFF
+CHECKER-OWNER-ABI:PUBLIC-OFF constant DECL-PUBLIC-OFF
+CHECKER-OWNER-ABI:PRIVATE-OFF constant DECL-PRIVATE-OFF
+CHECKER-OWNER-ABI:END-PACKAGE-OFF constant DECL-END-PACKAGE-OFF
+CHECKER-OWNER-ABI:TRANSFER-OFF constant DECL-TRANSFER-OFF
+CHECKER-OWNER-ABI:SOURCE-ROW-OFF constant DECL-SOURCE-ROW-OFF
+CHECKER-OWNER-ABI:SOURCE-CON-OFF constant DECL-SOURCE-CON-OFF
+CHECKER-OWNER-ABI:EXPORT-OFF constant DECL-EXPORT-OFF
+CHECKER-OWNER-ABI:WIDE-OFF constant DECL-WIDE-OFF
+CHECKER-OWNER-ABI:RESET-OFF constant DECL-RESET-OFF
+CHECKER-OWNER-ABI:CAPTURE-OFF constant DECL-CAPTURE-OFF
 \ Everything below is the OPTIMIZING front end's half of the same record, and it
 \ is why the record exists at all for tier 1. That front end IS the checker's
 \ scan: the scan feeds the source tape the elaborator reads, answers the does>
@@ -802,62 +802,71 @@ $368 constant TARGET-DECL-CELL
 \ (src/core/check-hook.f's package-private CHECK-RC was the first to bite, and a
 \ product engine could not rebuild the tree at tier 1 at all).
 \
-\ APPENDED, so no existing offset moves. There is no size constant: the field
-\ list is the shape, and src/core/checker.f's own view of this record derives its
-\ byte count from the last offset and checks it against the cells it committed,
-\ so a field added on one side and not the other is a build failure rather than a
-\ stale number.
+\ APPENDED, so no existing offset moves. checker-owner-abi.f owns the offsets
+\ and derives its byte count from the last field. checker.f checks that count
+\ against the cells it commits. These names preserve the engine-facing API.
 \ --- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one
-128 constant DECL-CHECK-OFF
-136 constant DECL-TAPE-INSTALL-OFF
-144 constant DECL-TAPE-ARM-OFF
-152 constant DECL-TAPE-DISARM-OFF
-160 constant DECL-TAPE-ADVANCE-OFF
-168 constant DECL-DOES-CHECK-OFF
-176 constant DECL-DOES-IN-OFF
-184 constant DECL-DOES-OUT-OFF
-192 constant DECL-DOES-WIDE-OFF
-200 constant DECL-USIG-TRUNCATE-OFF
+CHECKER-OWNER-ABI:CHECK-OFF constant DECL-CHECK-OFF
+CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant DECL-TAPE-INSTALL-OFF
+CHECKER-OWNER-ABI:TAPE-ARM-OFF constant DECL-TAPE-ARM-OFF
+CHECKER-OWNER-ABI:TAPE-DISARM-OFF constant DECL-TAPE-DISARM-OFF
+CHECKER-OWNER-ABI:TAPE-ADVANCE-OFF constant DECL-TAPE-ADVANCE-OFF
+CHECKER-OWNER-ABI:DOES-CHECK-OFF constant DECL-DOES-CHECK-OFF
+CHECKER-OWNER-ABI:DOES-IN-OFF constant DECL-DOES-IN-OFF
+CHECKER-OWNER-ABI:DOES-OUT-OFF constant DECL-DOES-OUT-OFF
+CHECKER-OWNER-ABI:DOES-WIDE-OFF constant DECL-DOES-WIDE-OFF
+CHECKER-OWNER-ABI:USIG-TRUNCATE-OFF constant DECL-USIG-TRUNCATE-OFF
 \ --- the finalized per-call-site facts the scan recorded
-208 constant DECL-CALL-CELLS-OFF
-216 constant DECL-CALL-GLUE-OFF
-224 constant DECL-CALL-MATCH-OFF
-232 constant DECL-CALL-QUOT-IN-OFF
-240 constant DECL-CALL-QUOT-OUT-OFF
+CHECKER-OWNER-ABI:CALL-CELLS-OFF constant DECL-CALL-CELLS-OFF
+CHECKER-OWNER-ABI:CALL-GLUE-OFF constant DECL-CALL-GLUE-OFF
+CHECKER-OWNER-ABI:CALL-MATCH-OFF constant DECL-CALL-MATCH-OFF
+CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant DECL-CALL-QUOT-IN-OFF
+CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant DECL-CALL-QUOT-OUT-OFF
 \ --- the front end the checker IS: the scan, the tape it fills, the does> split,
 \ the declared-effect row and the retract of one
-248 constant DECL-TRUST-DECL-OFF
-256 constant DECL-PARSE-IMM-OFF
+CHECKER-OWNER-ABI:TRUST-DECL-OFF constant DECL-TRUST-DECL-OFF
+CHECKER-OWNER-ABI:PARSE-IMM-OFF constant DECL-PARSE-IMM-OFF
 \ --- the effect-store query group: EFFECT-QUERY resolves a name into the
 \ instance's query state and every reader below reads THAT state, so all of them
 \ have to reach the same owner or a reader answers about another instance's query
-264 constant DECL-EFFECT-QUERY-OFF
-272 constant DECL-EFFECT-DIN-N-OFF
-280 constant DECL-EFFECT-DOUT-N-OFF
-288 constant DECL-EFFECT-DIN-CELLS-OFF
-296 constant DECL-EFFECT-DOUT-CELLS-OFF
-304 constant DECL-EFFECT-DIN-SLOT-OFF
-312 constant DECL-EFFECT-DOUT-SLOT-OFF
-320 constant DECL-EFFECT-DIN-QUOT-OFF
-328 constant DECL-EFFECT-DOUT-QUOT-OFF
-336 constant DECL-EFFECT-QUOT-UP-OFF
-344 constant DECL-EFFECT-RET-NEUTRAL-OFF
-352 constant DECL-EFFECT-QUOT-SIMPLE-OFF
-360 constant DECL-EFFECT-CATCH-CELLS-OFF
-368 constant DECL-EFFECT-EXEC-CELLS-OFF
-376 constant DECL-EFFECT-FINALLY-CELLS-OFF
-384 constant DECL-EFFECT-MATCH-CELLS-OFF
-392 constant DECL-CTL-DEAD-OFF
-400 constant DECL-WF-W-AT-OFF
+CHECKER-OWNER-ABI:EFFECT-QUERY-OFF constant DECL-EFFECT-QUERY-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-N-OFF constant DECL-EFFECT-DIN-N-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-N-OFF constant DECL-EFFECT-DOUT-N-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-CELLS-OFF constant DECL-EFFECT-DIN-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-CELLS-OFF constant DECL-EFFECT-DOUT-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-SLOT-OFF constant DECL-EFFECT-DIN-SLOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-SLOT-OFF constant DECL-EFFECT-DOUT-SLOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DIN-QUOT-OFF constant DECL-EFFECT-DIN-QUOT-OFF
+CHECKER-OWNER-ABI:EFFECT-DOUT-QUOT-OFF constant DECL-EFFECT-DOUT-QUOT-OFF
+CHECKER-OWNER-ABI:EFFECT-QUOT-UP-OFF constant DECL-EFFECT-QUOT-UP-OFF
+CHECKER-OWNER-ABI:EFFECT-RET-NEUTRAL-OFF constant DECL-EFFECT-RET-NEUTRAL-OFF
+CHECKER-OWNER-ABI:EFFECT-QUOT-SIMPLE-OFF constant DECL-EFFECT-QUOT-SIMPLE-OFF
+CHECKER-OWNER-ABI:EFFECT-CATCH-CELLS-OFF constant DECL-EFFECT-CATCH-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-EXEC-CELLS-OFF constant DECL-EFFECT-EXEC-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-FINALLY-CELLS-OFF constant DECL-EFFECT-FINALLY-CELLS-OFF
+CHECKER-OWNER-ABI:EFFECT-MATCH-CELLS-OFF constant DECL-EFFECT-MATCH-CELLS-OFF
+CHECKER-OWNER-ABI:CTL-DEAD-OFF constant DECL-CTL-DEAD-OFF
+CHECKER-OWNER-ABI:WF-W-AT-OFF constant DECL-WF-W-AT-OFF
 \ --- what the record a definition publishes needs from the checker
-408 constant DECL-REC-MIN-IN-OFF
-416 constant DECL-REC-WIDE-PUBLISH-OFF
+CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant DECL-REC-MIN-IN-OFF
+CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant DECL-REC-WIDE-PUBLISH-OFF
 \ --- the scan whose verdict nobody enforces, with the render suppressed for it.
 \ A TRUSTED: body is scanned only to fill the tape, so the suppression has to
 \ happen in the instance that renders; the counter itself is unreachable from a
 \ baked compiler, which is the whole reason this is an operation and not a cell.
-424 constant DECL-CHECK-UNJUDGED-OFF
+CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant DECL-CHECK-UNJUDGED-OFF
+\ Family/variant ids and all metadata about them share the live source owner.
+CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant DECL-FAMILY-MATCH-OFF
+CHECKER-OWNER-ABI:FAMILY-CON-OFF constant DECL-FAMILY-CON-OFF
+CHECKER-OWNER-ABI:FAMILY-VARIANT-OFF constant DECL-FAMILY-VARIANT-OFF
+CHECKER-OWNER-ABI:FAMILY-SLOTS-OFF constant DECL-FAMILY-SLOTS-OFF
+CHECKER-OWNER-ABI:FAMILY-VARIANTS-OFF constant DECL-FAMILY-VARIANTS-OFF
+CHECKER-OWNER-ABI:FAMILY-NAME-OFF constant DECL-FAMILY-NAME-OFF
+CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant DECL-VARIANT-TAG-OFF
+CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant DECL-VARIANT-PADS-OFF
+CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant DECL-VARIANT-PAY-CELLS-OFF
+CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
 ;package
 
 

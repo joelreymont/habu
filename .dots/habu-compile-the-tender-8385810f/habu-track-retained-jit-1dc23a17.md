@@ -16,13 +16,28 @@ Verification: focused real-load cases above; rebuild and run `bin/hb --load test
 
 Source-owner slice integrated as09bc4b7e after independent Astra review and focused native-window/tape/tier tests on c3d0888c. Its54-cell owner record, callback arities, absent-owner/missing-field refusals and CWIN transfer were verified. This closes only the source-owner portion: retained-JIT provenance remains assigned to the Astra tier lane; routing/layout remain separate leaves.
 
-Typed indirect dispatch is integrated at `a5b1956b` after independent review and
-a fresh tier1 checker/adapter load, exact `window: 0` with no diagnostics.
-All 38 wrappers now expose callable layouts through 15 narrow typed views.
-The full tier1 source load next fails at `A64IR-OPCODE:TAG` (-8650). Reduced case:
-the source checker accepts a fresh sum and resolves family36; retained NFAM
-reports it absent. NFAM's static TFL/TFAM bindings must follow that same owner.
-The active owner lane is adding canonical record ABI fields and a paired native
-compiler bridge; merely loading new wrappers cannot repair old native call sites.
-Independent max Astra audit found no further live checker-state binding outside
-NFAM. Provenance runtime verification still awaits the repaired compiler.
+Typed indirect dispatch is integrated at a5b1956b after independent review and
+fresh tier1 checker/adapter acceptance (window:0, no diagnostics). All38 wrappers
+use15 narrow callable views. Independent max Astra audit found no further live
+checker-state binding outside NFAM.
+
+Family/bridge follow-up: NFAM still bound the retired type-family registry after
+checker handover. A fresh recorded two-arm MATCH was accepted by CHECK! but
+native lowering returned -8650: the source lookup found family36 and retained
+NFAM reported no family. The owner ABI now appends all ten family/variant
+operations (offsets432..504, 64 cells/512 bytes) and has one canonical source
+file loaded before checker.f. No fixed engine slot moved. The fresh tier1 owner
+fixture exercises every reader through both source bindings and record dispatch,
+including unknown family/variant controls; bee6 host prints only `window: 0`.
+
+Older retained pre-hook words can lack native call models. Private typed defers
+bind the actual CHECK-UNJUDGED!/CWIN and prefix-rewind callable contracts without
+invented trust rows. NCOMP's installed-hook boundary likewise views its raw token
+as `[ ptr u8 n -- n ]` before execute. Safe compile-only reproduction on host
+158fe0ff: the old `( ptr u8 n n -- n ) execute` definition refuses -8651; the
+exact corrected source compiles at tier1 and returns73 from a supplied test hook.
+
+The original-name all-tier1 core-rewind/compiler reload now reaches A64IR's
+76-arm TAG and stops at the independent MWIN24 fact ceiling (9b8c7e24). No
+recompiled compiler product, provenance save acceptance, or full gate is claimed
+for this follow-up yet. Root owns independent review and combined integration.
