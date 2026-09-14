@@ -38,7 +38,7 @@ variable IMAGE-U
       OUT outu type ERR erru type
    then ;
 
-: BUILD ( -- )
+: BUILD ( -- bool )
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build.f" >LEN PROC-ARGV+
@@ -54,7 +54,8 @@ variable IMAGE-U
    outu LEN>N erru LEN>N rc SHOW-FAILURE
    rc 0 T=
    erru LEN>N 0 T=
-   IMAGE$ EXECUTABLE? TTRUE ;
+   IMAGE$ EXECUTABLE? TTRUE
+   rc 0= IMAGE$ EXECUTABLE? and ;
 
 : RUN-IMAGE ( -- )
    PROC-ARGV-ENV-RESET
@@ -70,8 +71,7 @@ variable IMAGE-U
 
 : BODY ( -- )
    PREPARE
-   BUILD
-   RUN-IMAGE ;
+   BUILD if RUN-IMAGE then ;
 
 : RUN ( -- )
    T-RESET

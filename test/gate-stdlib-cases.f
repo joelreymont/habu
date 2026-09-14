@@ -300,6 +300,14 @@ SUITE stripped-quotation
    test/stripped-quotation.f
 ;SUITE
 
+SUITE stripped-address
+   test/stripped-address.f
+;SUITE
+
+SUITE aot-seeded-address-sites
+   test/aot-seeded-address-sites.f
+;SUITE
+
 SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE

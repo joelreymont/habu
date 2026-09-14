@@ -25,12 +25,46 @@ s" AOT-CP-N" s" -- n" TRUST
 s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 
 \ --- read a little-endian 32-bit instruction word from a code pointer. Used by the
-\ direct-BL closure scan (SCAN-DIRECT) and the linker's fail-closed abs-chain guard
-\ (aot-lib.f ABS-CHAIN?). The absolute movz/movk/movk x16 + blr x16 call form is no
-\ longer recognized here: every native call is a direct BL, so the closure walks BL
-\ only and the linker narrows to direct-BL-only input.
+\ direct-BL closure scan and the linker's address-chain validation.
 : AOT-W32@ ( ptr u8 -- n ) {: a:ptr :}
    a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
+
+\ The map declares address sites, so an ordinary numeric literal with the same
+\ bits is never relocated. Engine-text records are outside this region map.
+: ADDRESS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
+   p AOT-DBASE@ BYTE-VIEW - {: off:n :}
+   off DICT-SIZE < off REGION >= or if false exit then
+   data-base SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + BYTE-VIEW c@
+   off 2 rshift 7 and rshift 1 and 0<> ;
+
+\ MOVZ #lo; MOVK #hi,lsl16/32/48. Keep opcode, shift and register bits;
+\ only the four immediate fields may differ. CHAINV itself is only a decoder.
+: ADDRESS-CHAIN? ( ptr u8 ptr u8 -- bool ) {: p:ptr e:ptr :}
+   p e > if false exit then
+   e p - SNAP-RELOC:ADDR-CHAIN-BYTES < if false exit then
+   p AOT-W32@ SNAP-RELOC:ADDR-RD-MASK and {: rd:n :}
+   p AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $D2800000 rd or =
+   p 4 + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $F2A00000 rd or = and
+   p 8 + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $F2C00000 rd or = and
+   p 12 + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $F2E00000 rd or = and ;
+
+: ADDRESS-VALUE ( ptr u8 ptr u8 -- n ) {: p:ptr e:ptr :}
+   p e ADDRESS-CHAIN? 0= if s" aot: malformed recorded address chain" 74 die then
+   p SNAP-RELOC:CHAINV ;
+
+: DATA-ADDRESS? ( n -- bool ) {: v:n :}
+   \ The outer mapping has the same stable one-past address as a captured span.
+   v DATA-VA VA>N >= v DATA-VA VA>N DATA-SIZE + <= and ;
+
+\ Only the user DATA span is copied by stripped startup. A fixed address into
+\ the compiler's earlier heap would otherwise silently read a zeroed replacement.
+variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN  variable BLOB-LBL
+: DATA-ADDRESS! ( n -- ) {: v:n :}
+   \ The end is a valid one-past pointer for a zero-length buffer. Relocation
+   \ preserves the address; it does not certify a later memory access.
+   v BLOB-SRC @ < v BLOB-END @ > or if
+      s" aot: address refers to data outside the restored span" 74 die
+   then ;
 
 \ Decode an AArch64 direct branch (B / BL). Both share opcode bits: masking off
 \ the link bit leaves $14000000, so DIRECT? recognizes B and BL and excludes the
@@ -233,6 +267,34 @@ variable SP2  variable SEND
 : FINDADDR-PTR ( ptr u8 -- ptr n ) {: t:ptr :}  0 FX !
    BEGIN FX @ ndict@ < WHILE  FX @ REC REC-CODE-PTR@ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
+\ Ticks may name engine-text entries; anonymous bodies can be interior to their
+\ owner's emission. Use exact entry identity first, then the recorded span
+\ (record length excludes its final RET), never a nearest-address heuristic.
+\ Namespace records hold wordlist IDs in those fields, not code spans.
+: ADDRESS-OWNER ( n -- ptr n ) {: t:n :}
+   t 3 and 0<> if XREF-NULL exit then
+   ndict@ 0 ?do
+      i REC REC-WID@ -1 <> if
+         i REC @ t = if i REC unloop exit then
+      then
+   loop
+   ndict@ 0 ?do
+      i REC {: r:ptr :}
+      r REC-WID@ -1 <> if
+         t r @ >= if t r @ - r 8 + @ 4 + < if r unloop exit then then
+      then
+   loop XREF-NULL ;
+
+: SCAN-ADDRESS ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
+   p ADDRESS-SITE? 0= if exit then
+   p e ADDRESS-VALUE {: v:n :}
+   v DATA-ADDRESS? if
+      v DATA-ADDRESS! exit
+   then
+   v ADDRESS-OWNER {: owner:ptr :}
+   owner XREF-FOUND? 0= if s" aot: code address has no dictionary owner" 74 die then
+   caller owner SCAN-CALLEE ;
+
 \ Follow a direct BL (the one native call form) to its callee; leave everything
 \ else (a plain B, conditional/compare branches, intra-record jumps) untouched.
 : SCAN-DIRECT ( ptr n ptr u8 -- ) {: caller:ptr p:ptr :}
@@ -243,8 +305,9 @@ variable SP2  variable SEND
    then ;
 
 : SCAN-REC {: r:ptr :} ( ptr a -- )
-   r @ SP2 !  r @ r 8 + @ + SEND !
+   r @ SP2 !  r @ r 8 + @ + 4 + SEND !
    BEGIN SP2 @ SEND @ < WHILE
+      r SP2 @ SEND @ SCAN-ADDRESS
       r SP2 @ SCAN-DIRECT
       SP2 @ 4 + SP2 !
    REPEAT ;

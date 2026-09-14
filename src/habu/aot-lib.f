@@ -33,12 +33,14 @@ create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
 \ VA (DATA-VA is a fixed MAP_FIXED VA, so those addresses are load-stable). All
 \ other runtime cells stay zero from the fresh anonymous mmap; only x20, S0-CELL,
 \ and DP-CELL need explicit init.
-variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN  variable BLOB-LBL
 variable DSCAN
 $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB range
 
 : AOT-DATA-START ( -- )
-   here BLOB-SRC ! ;
+   here BLOB-SRC !
+   \ The retained compiler must intern this application's strings and trap
+   \ messages inside the span the stripped image restores.
+   NSTR:WINDOW-OPEN ;
 
 : AOT-DATA-SPAN ( -- )
    here  BLOB-END !
@@ -275,11 +277,45 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
 : ABS-CHAIN-DIE ( -- )
    JSON-DIAGS @ IF ABS-CHAIN-JSON ELSE ABS-CHAIN-PROSE THEN
    s" aot: absolute call chain in linker input" 74 die ;
+
+\ Replace a code-address literal without changing the blob's size. ELF and
+\ Mach-O place CODE at a 4 KiB-aligned VA; ADRP's signed 21-bit page delta plus
+\ ADDI's low twelve bits remains valid when the entire image moves.
+: EMIT-CODE-ADDRESS ( n n -- ) {: target:n rd:n :}
+   rd 31 = if s" aot: code address cannot use the zero register" 74 die then
+   CODE-OFF $FFF and 0<> if s" aot: code origin is not page aligned" 74 die then
+   target 12 rshift ASM-LEN 12 rshift - {: pages:n :}
+   pages -1048576 < pages 1048575 > or if s" aot: code address is outside ADRP reach" 74 die then
+   \ ADRP Xd: immlo[30:29], immhi[23:5], Rd[4:0].
+   $90000000 pages 3 and 29 lshift or
+   pages 2 rshift $7FFFF and 5 lshift or rd or EMITW
+   rd rd target $FFF and ADDI,
+   NOP, NOP, ;
+
+: COPY-ADDRESS ( ptr u8 ptr u8 -- ) {: p:ptr e:ptr :}
+   p e ADDRESS-VALUE {: v:n :}
+   v DATA-ADDRESS? if
+      v DATA-ADDRESS!
+      SNAP-RELOC:ADDR-CHAIN-BYTES 4 / 0 ?do p i 4 * + AOT-W32@ EMITW loop
+      exit
+   then
+   v ADDRESS-OWNER {: owner:ptr :}
+   owner XREF-FOUND? 0= if s" aot: code address has no dictionary owner" 74 die then
+   owner REC-NEWOFF {: start:n :}
+   start 0 < if s" aot: code address is outside the closure" 74 die then
+   start v owner @ - +
+   p AOT-W32@ SNAP-RELOC:ADDR-RD-MASK and EMIT-CODE-ADDRESS ;
+
 : COPY-COMPACT-BLOB {: r:ptr :} ( ptr a -- )
    r @ CP2 !  r @ r RAW-LEN + CEND !
    BEGIN CP2 @ CEND @ < WHILE
       CP2 @ CEND @ ABS-CHAIN? IF ABS-CHAIN-DIE THEN
-      r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
+      CP2 @ ADDRESS-SITE? if
+         CP2 @ CEND @ COPY-ADDRESS
+         SNAP-RELOC:ADDR-CHAIN-BYTES
+      else
+         r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW 4
+      then CP2 +!
    REPEAT ;
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE
