@@ -42,7 +42,6 @@ $40000 constant BFT-BIG-CAP
 \ there, so a format change cannot leave one side addressing the wrong cells.
 
 $A5 constant FORGE
-$4A constant MISSING-RC
 
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
@@ -62,7 +61,7 @@ variable BFT-STALE-U
 variable BFT-STALE-HB-U
 variable BFT-STALE-TMP-U
 variable BFT-STALE-STAMP-U
-variable BFT-STALE-HIDE-U
+variable BFT-STALE-PAYLOAD-U
 variable BFT-STALE-MARK-U
 variable BFT-CP-U
 variable BFT-BIG-OUT-A
@@ -97,7 +96,7 @@ create BFT-STALE-BUF FS-PATH-CAP allot
 create BFT-STALE-HB-BUF FS-PATH-CAP allot
 create BFT-STALE-TMP-BUF FS-PATH-CAP allot
 create BFT-STALE-STAMP-BUF FS-PATH-CAP allot
-create BFT-STALE-HIDE-BUF FS-PATH-CAP allot
+create BFT-STALE-PAYLOAD-BUF FS-PATH-CAP allot
 create BFT-STALE-MARK-BUF FS-PATH-CAP allot
 create BFT-CP-BUF FS-PATH-CAP allot
 create BFT-NL 10 c,
@@ -181,8 +180,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 : BFT-STALE-STAMP ( -- ptr u8 n )
    BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U @ ;
 
-: BFT-STALE-HIDE ( -- ptr u8 n )
-   BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U @ ;
+: BFT-STALE-PAYLOAD ( -- ptr u8 n )
+   BFT-STALE-PAYLOAD-BUF BFT-STALE-PAYLOAD-U @ ;
 
 : BFT-STALE-MARK ( -- ptr u8 n )
    BFT-STALE-MARK-BUF BFT-STALE-MARK-U @ ;
@@ -522,7 +521,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    pa pu BFT-READ-BUF BFT-READ-CAP @ READ-ALL ;
 
 \ Stale-seed install regression: a refresh child that dies (here: a crash baked
-\ into the fixture's src/habu/hide.f, the first stage2 prefix file, so the
+\ into the fixture's src/arch/arm64/mnem.f emitter payload, so the
 \ bootstrap child aborts with SIGABRT rc 134 exactly like a seed that cannot
 \ load the current engine prefix) must fail the install loudly: deterministic
 \ BF-BUILD-RC exit, a named stderr diagnostic, the engine binary byte-unchanged,
@@ -533,7 +532,8 @@ create BFT-ERR BFT-CAPTURE-CAP allot
 \ rejected statically before ever running) -- the stale-seed scenario this
 \ models is a semantic runtime failure, not a type error.
 : BFT-STALE-DST ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   BFT-STALE a u BFT-CP-BUF JOIN-PATH BFT-CP-U !
+   BFT-STALE a u SOURCE-ROOT:CWD$ SOURCE-ROOT:RELATIVE
+   BFT-CP-BUF JOIN-PATH BFT-CP-U !
    BFT-CP-BUF BFT-CP-U @ ;
 
 : BFT-STALE-COPY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -549,10 +549,10 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    [: BFT-STALE-COPY-ENTRY ;] WALK-FILES ;
 
 : BFT-STALE-SABOTAGE ( -- )
-   s" src/habu/hide.f" BFT-READ {: u:n :}
-   BFT-STALE-HIDE s" TRUSTED: BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
-   BFT-STALE-HIDE BFT-NL 1 APPEND-FILE
-   BFT-STALE-HIDE BFT-READ-BUF u APPEND-FILE ;
+   s" src/arch/arm64/mnem.f" BFT-READ {: u:n :}
+   BFT-STALE-PAYLOAD s" TRUSTED: BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
+   BFT-STALE-PAYLOAD BFT-NL 1 APPEND-FILE
+   BFT-STALE-PAYLOAD BFT-READ-BUF u APPEND-FILE ;
 
 : BFT-STALE-PATHS! ( -- )
    s" habu-bft-stale" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -561,7 +561,7 @@ create BFT-ERR BFT-CAPTURE-CAP allot
    BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!
    BFT-STALE s" tmp" BFT-STALE-TMP-BUF BFT-STALE-TMP-U BFT-PATH!
    BFT-STALE s" stamp" BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U BFT-PATH!
-   BFT-STALE s" src/habu/hide.f" BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U BFT-PATH!
+   BFT-STALE s" src/arch/arm64/mnem.f" BFT-STALE-PAYLOAD-BUF BFT-STALE-PAYLOAD-U BFT-PATH!
    BFT-STALE s" src/core/lower-cert-seal.f" BFT-STALE-MARK-BUF BFT-STALE-MARK-U BFT-PATH! ;
 
 \ The sandbox needs every tools/ file the refresh loads. That list used to be
@@ -633,22 +633,21 @@ variable IX
 
 \ Staged-fixpoint refusal regression (dot habu-staged-fixpoint-src-0b5fc6e6):
 \ a deliberately type-broken CHECKED definition in a source file of the
-\ assembled stage list (here appended to the sandbox copy of src/habu/hide.f,
-\ the first emitted file, so the certify scan reaches it early) must make the
+\ assembled stage list (here appended to the sandbox copy of src/arch/arm64/mnem.f, so the certify scan reaches it early) must make the
 \ refresh REFUSE at the blocking pre-pass: deterministic BF-BUILD-RC exit, the
 \ certify diagnostic naming the injected word on stdout, the E-BUILD-CERTIFY
 \ name on stderr, the sandbox engine byte-unchanged, and no stamp. Runs in the
 \ BFT-STALE sandbox tree (private tmp + scratch install target - the real
 \ workspace bin/hb is never touched) with a fresh sabotage replacing the
 \ stale-seed one.
-: BFT-STALE-HIDE-RESTORE ( -- )
-   s" src/habu/hide.f" BFT-READ {: u:n :}
-   BFT-STALE-HIDE BFT-READ-BUF u WRITE-ALL ;
+: BFT-STALE-PAYLOAD-RESTORE ( -- )
+   s" src/arch/arm64/mnem.f" BFT-READ {: u:n :}
+   BFT-STALE-PAYLOAD BFT-READ-BUF u WRITE-ALL ;
 
 : BFT-CERT-INJ-SABOTAGE ( -- )
-   BFT-STALE-HIDE-RESTORE
-   BFT-STALE-HIDE s" : BFT-CERT-INJ ( n -- n ) drop ;" APPEND-FILE
-   BFT-STALE-HIDE BFT-NL 1 APPEND-FILE ;
+   BFT-STALE-PAYLOAD-RESTORE
+   BFT-STALE-PAYLOAD s" : BFT-CERT-INJ ( n -- n ) drop ;" APPEND-FILE
+   BFT-STALE-PAYLOAD BFT-NL 1 APPEND-FILE ;
 
 : BFT-TEST-CERT-INJECT-INSTALL ( -- )
    BFT-CERT-INJ-SABOTAGE
@@ -768,13 +767,22 @@ package BUILD-FIXPOINT
 \ to the workspace one. Runs after the certify-injection case, so it restores
 \ that case's sabotaged src/habu/hide.f first.
 : BFT-MARK-SABOTAGE ( -- )
-   BFT-STALE-HIDE-RESTORE
+   BFT-STALE-PAYLOAD-RESTORE
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" package PREFIX-MARK" BFT-FIND BFT-FOUND {: cut:n :}
    cut 0 > TTRUE
    BFT-STALE-MARK BFT-READ-BUF cut WRITE-ALL ;
 
+: BFT-SOURCE-HOST$ ( -- ptr u8 n )
+   BFT-ROOT s" hb-host" BFT-CP-BUF JOIN-PATH BFT-CP-U !
+   BFT-CP-BUF BFT-CP-U @ ;
+
+: BFT-SOURCE-HOST! ( -- )
+   BFT-SOURCE-HOST$ BFT-STALE-HB COPY-FILE-STREAM
+   BFT-STALE-HB CHMOD-X ;
+
 : BFT-TEST-WATERMARK-REQUIRED ( -- )
+   BFT-SOURCE-HOST!
    BFT-MARK-SABOTAGE
    BFT-STALE-ARGV
    BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
@@ -782,7 +790,7 @@ package BUILD-FIXPOINT
    BFT-BIG-ERR erru s" no core-prefix watermark" CONTAINS? TTRUE
    BFT-BIG-ERR erru s" src/core/lower-cert-seal.f" CONTAINS? TTRUE
    BFT-BIG-OUT outu s" self-check census" CONTAINS? TFALSE
-   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-HB BFT-SOURCE-HOST$ BF-FILE= TTRUE
    BFT-STALE-STAMP FILE? TFALSE ;
 
 \ THE SAME PROBE'S VALUE LAYER, forged twice. Both fixtures leave every name in
@@ -798,7 +806,7 @@ package BUILD-FIXPOINT
 \ name clause is blind to and the value clause exists for. The rewrite starts
 \ from the workspace file, so it cannot inherit an earlier case's damage.
 : BFT-MARK-VALUE-FORGE ( ptr u8 n -- ) {: tail:ptr tailu:n :}
-   BFT-STALE-HIDE-RESTORE
+   BFT-STALE-PAYLOAD-RESTORE
    s" src/core/lower-cert-seal.f" BFT-READ {: u:n :}
    BFT-READ-BUF u s" CHECKER-BOUND:CURSORS CU !" BFT-FIND BFT-FOUND {: cut:n :}
    cut 0 > TTRUE
@@ -811,7 +819,7 @@ package BUILD-FIXPOINT
    rcn BF-BUILD-RC T=
    BFT-BIG-ERR erru msg msgu CONTAINS? TTRUE
    BFT-BIG-OUT outu s" self-check census" CONTAINS? TFALSE
-   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-HB BFT-SOURCE-HOST$ BF-FILE= TTRUE
    BFT-STALE-STAMP FILE? TFALSE ;
 
 : BFT-TEST-WATERMARK-VALUE ( -- )
@@ -944,75 +952,18 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u s" SOURCE-CAP allot" CONTAINS? TFALSE
    BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
 
-\ The snap tail's RETIRE-AND-PERSIST is a named TRUSTED: boundary,
-\ not a `0 set-check` window: the emitted snap source carries NO raw
-\ check-off line - BFR-CHECK-OFF (src/habu/hide.f) is the one named
-\ checking-disabled boundary a generated source may call.
-: BFT-TEST-SNAP-SOURCE ( -- )
-   BFT-ROOT BF-TMP!
-   BF-SNAP-SOURCE
-   BFT-SNAP BFT-READ {: u :}
-   BFT-READ-BUF u s" : SNAP-TAIL-MARK" BFT-FIND BFT-FOUND {: mark:n :}
-   BFT-READ-BUF u mark s" SEAL-FRIEND" BFT-FIND-AFTER BFT-FOUND {: seal:n :}
-   BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER BFT-FOUND {: build:n :}
-   BFT-READ-BUF u build s" TRUSTED: RETIRE-AND-PERSIST ( -- )" BFT-FIND-AFTER BFT-FOUND {: retire:n :}
-   mark seal < TTRUE
-   seal build < TTRUE
-   build retire < TTRUE
-   BFT-READ-BUF u BF-BOUNDARY-RAW-OFF$ CONTAINS? TFALSE
-   BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE
-   BFT-READ-BUF u s" ' CHECKER-CAPTURE-PREPARE data-base ENGINE-SNAP-XT-CELL + !" CONTAINS? TTRUE
-   \ THE KEEP SURFACE, stated as what it is. The core prefix is not re-read here
-   \ - the payload rewinds to the mark at its end and the compiling host's own
-   \ copy stays live - so the one file the image must bring back is the one the
-   \ engine loads AFTER that mark and the rewind therefore takes away.
-   BFT-READ-BUF u s" CORE-STR=" VERIFY:DEFINES? TFALSE
-   BFT-READ-BUF u s" ATOMA-FIELD" VERIFY:DEFINES? TFALSE
-   BFT-READ-BUF u s" SEAL-DICT-GUARD" VERIFY:DEFINES? TFALSE
-   BFT-READ-BUF u s" SCRIPT-ARGV$" VERIFY:DEFINES? TTRUE
-   BFT-READ-BUF u s" : SCRIPT-ARGV$" BFT-FIND BFT-FOUND mark < TTRUE
-   BF-TMP-RESET ;
-
-\ Doctored snapshot-trailer regression (TFAM 12 item 6, dot
-\ habu-tfam-12-layout-057181a9): the loader EM-SNAPSHOT-RESTORE
-\ (src/habu/habu2.f) validates the format-versioned trailer before restoring
-\ regions - a version cell that is not SNAP-FORMAT-VERSION exits 80
-\ (E-SNAP-VERSION), an oversized region-len/data-len/ndict field exits 79
-\ (corrupt trailer). The snapshot binary
-\ is built through the SAME gated route
-\ the pipeline uses (BF-SNAP-SOURCE + BF-CERTIFY-SNAP + hb-stdin --build
-\ hb-snap-src -> hb-snap0, the BF-BUILD-SNAP-FROM-STDIN mechanism): snap.f's
-\ former 0 set-check window is now the TRUSTED: RETIRE-AND-PERSIST boundary, so
-\ the emitted snap source certifies clean and the `-- snap` route is gated
-\ end-to-end again (dot habu-tfam-12-item-346f03c2 part 1).
-\ The target header's full 64-bit text-size field owns the trailer location;
-\ padding and the codesign blob may follow the trailer.
-\ - A patched image must be re-signed (CODESIGN:FORCE) or macOS SIGKILLs it
-\   before the loader runs.
-\ - EM-SNAPSHOT-RESTORE labels both fatal exits on fd 2 before NR-EXIT-GROUP:
-\   rc 79 prints "hb: snapshot trailer corrupt", rc 80 prints
-\   "hb: snapshot format version unsupported". BFT-DOCTORED-CAPTURE captures the
-\   doctored engine's stderr, so this fixture asserts the diagnostic TEXT and not
-\   just the rc.
+\ Corrupt the current native snapshot's trailer and assert the loader's named
+\ version and bounds refusals. Re-sign mutations so macOS reaches the loader.
 : BFT-BYTES-FIELD ( -- ptr ptr u8 )
    BFT-BYTES-A 0 ptr-field ;
 
 : BFT-BYTES ( -- ptr u8 )
    BFT-BYTES-FIELD @ ;
 
-\ The image is built from the engine BF-BUILD-SNAP-FROM-STDIN builds it from -
-\ the capture host - asked from the tool rather than named here. A snapshot
-\ restore skips the AOT seed, so an image made by the seeded product carries
-\ call sites nothing resolves and exits 82 at boot; that is the seed refusing
-\ correctly, about an engine the build never asks for.
 : BFT-SNAP0-BUILD ( -- )
-   BF-SNAP-SOURCE
-   BF-CERTIFY-SNAP
+   BF-BUILD-SNAP-FRESH
    s" hb-snap0" BF-REMOVE-TMP
-   BF-SNAP-ENGINE$ s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
-   s" hb-snap0" BF-EXPECT
-   s" hb-snap0" BF-CODESIGN-FORCE-TMP
-   s" hb-snap0" BF-CHMOD-X-TMP ;
+   s" hb-new" s" hb-snap0" BF-RENAME-TMP ;
 
 : BFT-EMPTY-STDIN! ( -- )
    s" empty-stdin" BF-A$ BFT-EMPTY$ WRITE-ALL ;
@@ -1137,48 +1088,9 @@ variable BFT-DOC-CODE
    BFT-DOC-ERR$ BFT-EMPTY$ T$=
    BFT-DOC-CODE @ 0 T= ;
 
-: NOHOOK-SOURCE ( -- )
-   s" hb-snap-nohook-src" BF-RESET-OUT
-   s" hb-snap-nohook-src" BF-APPEND-SNAP-PRESEAL
-   s" hb-snap-nohook-src" s" 0 data-base ENGINE-SNAP-XT-CELL + !" BF-APPEND-LINE
-   s" hb-snap-nohook-src" s" src/habu/snap.f" BF-APPEND-SNAP-SEALED ;
-
-: NOHOOK-ARGV ( -- )
-   PROC-ARGV-RESET
-   s" --build" BFT-ARG+
-   s" hb-snap-nohook-src" BF-A$ BFT-ARG+
-   s" --" BFT-ARG+
-   BFT-ROOT BFT-ARG+ ;
-
-: NOHOOK-CAPTURE ( -- )
-   NOHOOK-ARGV
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN BFT-ROOT >LEN PROC-ENV+
-   BFT-HB >LEN BFT-OUT BFT-CAPTURE-CAP >LEN
-   BFT-ERR BFT-CAPTURE-CAP >LEN BFT-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
-   MATCH outcome
-     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
-     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
-   ;MATCH {: ou:len eu:len :}
-   ou LEN>N BFT-DOC-OUT-U !
-   eu LEN>N BFT-DOC-ERR-U ! ;
-
 : VERIFY-IMAGE ( -- )
    RAW
    STARTUP ;
-
-: MISSING ( -- )
-   BFT-ROOT BF-TMP!
-   NOHOOK-SOURCE
-   s" snap-hook-missing" s" hb-snap-nohook-src" BF-A$ BF-CERTIFY-GENERATED
-   NOHOOK-CAPTURE
-   BFT-DOC-EXITED @ TTRUE
-   BFT-DOC-CODE @ MISSING-RC T=
-   BFT-DOC-OUT$ BFT-EMPTY$ T$=
-   BFT-DOC-ERR$ s" snap: engine snapshot hook missing" T$=
-   BF-TMP-RESET ;
 
 : TEST-TRAILER ( -- )
    BFT-ROOT BF-TMP!
@@ -1815,8 +1727,6 @@ public
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
-   s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
-   s" snap missing hook" [: MISSING ;] BFT-STEP
    s" snap trailer" [: TEST-TRAILER ;] BFT-STEP
    s" source boundary" [: SOURCE-BOUNDARY ;] BFT-STEP
    s" stage2 source cap" [: STAGE2 ;] BFT-STEP

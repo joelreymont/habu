@@ -9,9 +9,6 @@
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
 require src/habu/verify-source.f
-require lib/process-fork.f
-require src/habu/hide.f
-require src/habu/prefix-rewind.f
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
@@ -54,6 +51,66 @@ $2F constant BF-SLASH
    S\" build-fixpoint: missing required load; --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb\n" BF-USAGE-RC die ;
 BF-NEED-PREAMBLE
 
+\ THE HOST CAPABILITY THE EMITTED REWIND NEEDS. The stage source rewinds to the
+\ mark src/core/lower-cert-seal.f records at the core prefix's end, and it
+\ carries no copy of that prefix for an older rewind to land on. So a host
+\ engine without the mark cannot build this tree at all, and the honest place to
+\ say so is here - before a byte is emitted - naming the file and the repair.
+\ Emitting the old earliest-marker rewind instead would truncate below a prefix
+\ the source no longer re-emits, and the first symptom would be an undefined
+\ core word reported from somewhere inside a 900KB generated file.
+\
+\ CHECKER-RESOLVES? is the check because it is the only existence query in the
+\ boot prefix that answers for a package-qualified name: `search-wl` searches
+\ one wordlist on the raw spelling and a package name is not itself a
+\ dictionary word, so it answers 0 for PKG:TAIL whether or not the package has
+\ it (measured, against STR:LENGTH).
+: BF-WATERMARK? ( -- bool )
+   s" PREFIX-MARK:CURSORS" CHECKER-RESOLVES? ;
+
+\ AND THE FACT THE NAME CANNOT CARRY. Resolvability answers "could this host
+\ compile the call"; it cannot answer "did this host's mark record the boundary
+\ set", because a name resolves whether or not anything ever wrote through it -
+\ and an engine built from a tree that carried the words but never took the
+\ boundary is exactly the host that would emit a rewind restoring nothing. So the
+\ value is read too, and it is DATA no other writer can produce: CU is private to
+\ PREFIX-MARK and src/core/lower-cert-seal.f assigns it once, from
+\ CHECKER-BOUND:CURSORS. Zero therefore means the boundary set never landed in
+\ this engine, not that it never ran - the mark is top-level in a prefix file, so
+\ every host that boots has reached it.
+\
+\ Through `evaluate`, and only after the resolvability check has passed, because
+\ the two clauses answer different hazards and the compile one comes first: a
+\ host without the word cannot COMPILE a body that names it, so this file's load
+\ would die E-UNDEFINED before any guard could speak. That is what a resolvability
+\ query is for, and it is why the value cannot simply be called.
+\
+\ WHAT THIS DELIBERATELY DOES NOT CHECK, and why the reason is a measurement and
+\ not an omission: that the recorded width still equals the seam's live one.
+\ CHECKER-BOUND lives below the lower-cert seal, and the seal is what makes it
+\ unreachable from every consumer outside the prefix - measured here,
+\ `s" CHECKER-BOUND:CURSORS" CHECKER-RESOLVES?` answers 0 on a booted engine while
+\ the same query answers -1 for PREFIX-MARK:CURSORS. It is the same wall that made
+\ src/habu/prefix-rewind.f reach the seam through a trusted row rather than a
+\ name. So no consumer can hold the two numbers at once, and the property that
+\ the count comes OFF the seam is carried by construction instead: one assignment,
+\ in the file that owns the mark, from the seam itself.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
+TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
+
+: BF-MARK-CURSORS ( -- n )
+   s" PREFIX-MARK:CURSORS" BF-EVAL-N ;
+
+: BF-REQUIRE-WATERMARK ( -- )
+   BF-WATERMARK? 0= if
+      s" build-fixpoint: host engine has no core-prefix watermark (src/core/lower-cert-seal.f); reseed bin/hb from a current engine and refresh" BF-BUILD-RC die
+   then
+   BF-MARK-CURSORS 0= if
+      s" build-fixpoint: host engine's core-prefix mark carries no checker boundary (src/core/lower-cert-seal.f never recorded CHECKER-BOUND:CURSORS); reseed bin/hb from a current engine and refresh" BF-BUILD-RC die
+   then ;
+
+BF-REQUIRE-WATERMARK
+
 ;package
 
 \ The package closes for these two requires, and not for the guard above: both
@@ -62,6 +119,9 @@ BF-NEED-PREAMBLE
 \ preamble libraries in through their own requires, so requiring them earlier
 \ would satisfy FS-PATH-CAP by side effect and the missing-preamble case would
 \ stop being reported at all.
+require lib/process-fork.f
+require src/habu/hide.f
+require src/habu/prefix-rewind.f
 require lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
 
@@ -481,64 +541,6 @@ public
 ;package
 
 package BUILD-FIXPOINT
-
-\ THE HOST CAPABILITY THE EMITTED REWIND NEEDS. The stage source rewinds to the
-\ mark src/core/lower-cert-seal.f records at the core prefix's end, and it
-\ carries no copy of that prefix for an older rewind to land on. So a host
-\ engine without the mark cannot build this tree at all, and the honest place to
-\ say so is here - before a byte is emitted - naming the file and the repair.
-\ Emitting the old earliest-marker rewind instead would truncate below a prefix
-\ the source no longer re-emits, and the first symptom would be an undefined
-\ core word reported from somewhere inside a 900KB generated file.
-\
-\ CHECKER-RESOLVES? is the check because it is the only existence query in the
-\ boot prefix that answers for a package-qualified name: `search-wl` searches
-\ one wordlist on the raw spelling and a package name is not itself a
-\ dictionary word, so it answers 0 for PKG:TAIL whether or not the package has
-\ it (measured, against STR:LENGTH).
-: BF-WATERMARK? ( -- bool )
-   s" PREFIX-MARK:CURSORS" CHECKER-RESOLVES? ;
-
-\ AND THE FACT THE NAME CANNOT CARRY. Resolvability answers "could this host
-\ compile the call"; it cannot answer "did this host's mark record the boundary
-\ set", because a name resolves whether or not anything ever wrote through it -
-\ and an engine built from a tree that carried the words but never took the
-\ boundary is exactly the host that would emit a rewind restoring nothing. So the
-\ value is read too, and it is DATA no other writer can produce: CU is private to
-\ PREFIX-MARK and src/core/lower-cert-seal.f assigns it once, from
-\ CHECKER-BOUND:CURSORS. Zero therefore means the boundary set never landed in
-\ this engine, not that it never ran - the mark is top-level in a prefix file, so
-\ every host that boots has reached it.
-\
-\ Through `evaluate`, and only after the resolvability check has passed, because
-\ the two clauses answer different hazards and the compile one comes first: a
-\ host without the word cannot COMPILE a body that names it, so this file's load
-\ would die E-UNDEFINED before any guard could speak. That is what a resolvability
-\ query is for, and it is why the value cannot simply be called.
-\
-\ WHAT THIS DELIBERATELY DOES NOT CHECK, and why the reason is a measurement and
-\ not an omission: that the recorded width still equals the seam's live one.
-\ CHECKER-BOUND lives below the lower-cert seal, and the seal is what makes it
-\ unreachable from every consumer outside the prefix - measured here,
-\ `s" CHECKER-BOUND:CURSORS" CHECKER-RESOLVES?` answers 0 on a booted engine while
-\ the same query answers -1 for PREFIX-MARK:CURSORS. It is the same wall that made
-\ src/habu/prefix-rewind.f reach the seam through a trusted row rather than a
-\ name. So no consumer can hold the two numbers at once, and the property that
-\ the count comes OFF the seam is carried by construction instead: one assignment,
-\ in the file that owns the mark, from the seam itself.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
-
-: BF-MARK-CURSORS ( -- n )
-   s" PREFIX-MARK:CURSORS" BF-EVAL-N ;
-
-: BF-REQUIRE-WATERMARK ( -- )
-   BF-WATERMARK? 0= if
-      s" build-fixpoint: host engine has no core-prefix watermark (src/core/lower-cert-seal.f); reseed bin/hb from a current engine and refresh" BF-BUILD-RC die
-   then
-   BF-MARK-CURSORS 0= if
-      s" build-fixpoint: host engine's core-prefix mark carries no checker boundary (src/core/lower-cert-seal.f never recorded CHECKER-BOUND:CURSORS); reseed bin/hb from a current engine and refresh" BF-BUILD-RC die
-   then ;
 
 \ The one line every generated engine source opens its payload with. The
 \ earliest-marker form src/habu/hide.f still carries is the recovery script's
@@ -1139,98 +1141,6 @@ package BUILD-FIXPOINT
    out outu s" src/habu/aot-file.f" BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 
-\ Snapshot keep surface: what the persisted image must carry that the rewind
-\ above does not already leave live. SNAP-TAIL-MARK opens the builder-only tail
-\ after it, and snap.f retires everything from that marker before SNAP:PERSIST.
-\
-\ This used to re-read the whole core prefix here. It could not work twice: the
-\ prefix installs into one-shot `defer` cells that the first load seals, so the
-\ second load's rows went nowhere - and every snapshot carried the orphaned
-\ first copy in its persisted DATA. The keep surface is now what it always
-\ meant: src/os/script-argv.f, which the engine loads AFTER the mark and the
-\ rewind therefore takes away, plus whatever an extension build keeps.
-: BF-APPEND-SNAP-KEEP ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu BF-APPEND-SCRIPT-ARGV
-   out outu BUILD-EXT:APPEND-KEEP ;
-
-: BF-APPEND-TARGET-REPL-TERM ( ptr u8 n -- ) {: out:ptr outu:n :}
-   HB-TARGET-LINUX? if
-      out outu s" src/os/linux/repl-term.f" BF-APPEND-SOURCE
-      exit
-   then
-   HB-TARGET-MACOS? if
-      out outu s" src/os/macos/repl-term.f" BF-APPEND-SOURCE
-      exit
-   then
-   BF-TARGET-UNKNOWN ;
-
-: BF-APPEND-SNAP-REPL ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu BF-APPEND-TARGET-REPL-TERM
-   out outu s" src/habu/repl.f" BF-APPEND-SOURCE
-   out outu s" src/habu/debug-watch.f" BF-APPEND-SOURCE
-   out outu s" src/habu/stepper.f" BF-APPEND-SOURCE
-   out outu s" src/habu/debug.f" BF-APPEND-SOURCE ;
-
-: BF-APPEND-SNAP-MARK ( ptr u8 n -- )
-   s" : SNAP-TAIL-MARK ( -- ) ;" BF-APPEND-LINE ;
-
-: BF-APPEND-SNAP-BUILD ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
-   out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
-   out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-TARGET-SYS
-   out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
-   out outu s" src/habu/rt.f" BF-APPEND-SOURCE
-   out outu s" src/habu/crash.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-IMAGE-BYTES
-   out outu BF-APPEND-TARGET-IMAGE
-   out outu BF-APPEND-TARGET-PROC-WATCH
-   out outu BF-APPEND-TARGET-PROC-CONTROL
-   out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
-   out outu s" src/habu/prof.f" BF-APPEND-SOURCE
-   out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
-   out outu s" src/habu/jit.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-FDIO
-   out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
-   out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
-   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-DRIVER-IO ;
-
-: BF-APPEND-SNAP-PRESEAL ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu BF-APPEND-STDIN-RUN-PRELUDE
-   out outu BF-APPEND-SNAP-KEEP
-   out outu BF-APPEND-SNAP-REPL
-   out outu BF-APPEND-SNAP-MARK ;
-
-: BF-APPEND-SNAP-SEALED ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
-   out outu COMPILER-BUILD:SEAL
-   out outu BF-APPEND-SNAP-BUILD
-   out outu driver driveru BF-APPEND-SOURCE ;
-
-: BF-EMIT-SNAP-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
-   out outu BF-RESET-OUT
-   out outu BF-APPEND-SNAP-PRESEAL
-   out outu driver driveru BF-APPEND-SNAP-SEALED ;
-
-\ Snapshot source with one extra test source appended after the builder tail
-\ (snap-lib.f and the target image words are live by then) and just before the
-\ driver, so a snapshot fixture can plant return-stack canaries or arm
-\ the test-only close seam before SNAP:PERSIST runs. Builder-only: the injected
-\ source sits above the SNAP-TAIL-MARK, so RETIRE-AND-PERSIST forgets it before the
-\ written and nothing reaches a shipped snapshot.
-: BF-APPEND-SNAP-SEALED-WITH ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: out:ptr outu:n inject:ptr injectu:n driver:ptr driveru:n :}
-   out outu COMPILER-BUILD:SEAL
-   out outu BF-APPEND-SNAP-BUILD
-   out outu inject injectu BF-APPEND-SOURCE
-   out outu driver driveru BF-APPEND-SOURCE ;
-
-: BF-EMIT-SNAP-RUN-SOURCE-WITH ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: out:ptr outu:n inject:ptr injectu:n driver:ptr driveru:n :}
-   out outu BF-RESET-OUT
-   out outu BF-APPEND-SNAP-PRESEAL
-   out outu inject injectu driver driveru BF-APPEND-SNAP-SEALED-WITH ;
-
 : BF-CLOSE-CMP ( -- )
    BF-FDA @ dup 0 >= if close else drop then
    BF-FDB @ dup 0 >= if close else drop then
@@ -1286,7 +1196,9 @@ package BUILD-FIXPOINT
    s" stage2-src" s" src/habu/stdin.f" BF-EMIT-STDIN-RUN-SOURCE ;
 
 : BF-SNAP-SOURCE ( -- )
-   s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-SNAP-RUN-SOURCE ;
+   s" hb-snap-src" BF-RESET-OUT
+   s" hb-snap-src" s" require src/habu/app-image.f" BF-APPEND-LINE
+   s" hb-snap-src" s" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE" BF-APPEND-LINE ;
 
 : BF-CERT-LABEL$ ( -- ptr u8 n )
    BF-CERT-LAB-A@ BF-CERT-LAB-U @ ;
@@ -1393,9 +1305,6 @@ package BUILD-FIXPOINT
 
 : BF-CERTIFY-STDIN ( -- )
    s" stdin-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED-CORE ;
-
-: BF-CERTIFY-SNAP ( -- )
-   s" hb-snap-src" s" hb-snap-src" BF-A$ BF-CERTIFY-GENERATED-CORE ;
 
 \ Self-check certification census (dot habu-census-assert-the-f3a20b1f). Every
 \ certify above fail-closes on any uncheckable/rejected definition, so reaching
@@ -1740,40 +1649,9 @@ variable BF-DRV-R
    BF-STAGE-FIXPOINT
    BF-BUILD-STDIN-FROM-STAGE ;
 
-\ THE SNAPSHOT BUILDS FROM THE CAPTURE HOST, which is the shape snap has always
-\ consumed: the dev snapshot's keep surface is the plain engine's, and a seeded
-\ product's is not - its chain arrives from the AOT seed at boot, which a snapshot
-\ restore skips. Building the image from the host keeps the two products
-\ independent instead of making the snapshot a function of the chain.
-\ It is a word because tools/build-fixpoint-test.f builds its own snap0 the same
-\ way. While each side named its engine itself, the fixture went on naming the
-\ product after this rule landed, and the image it built died at boot with
-\ `hb: AOT call site unresolved` - the seed's own refusal, reported against an
-\ engine production never asks for.
-: BF-SNAP-ENGINE$ ( -- ptr u8 n )
-   s" hb-host" ;
-
-: BF-BUILD-SNAP-FROM-STDIN ( -- )
-   BF-SNAP-SOURCE
-   BF-CERTIFY-SNAP
-   s" hb-snap0" BF-REMOVE-TMP
-   s" hb-new" BF-REMOVE-TMP
-   BF-SNAP-ENGINE$ s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
-   s" hb-snap0" BF-EXPECT
-   s" hb-snap0" s" hb-new" BF-RENAME-TMP
-   s" hb-new" BF-CODESIGN-FORCE-TMP
-   s" hb-new" BF-CHMOD-X-TMP
-   s" hb-new" BF-EXPECT
-   s" snapshot image OK: candidate validated" type cr ;
-
 : BF-BUILD-ALL ( -- )
    BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-STDIN-FRESH ;
-
-: BF-BUILD-SNAP-FRESH ( -- )
-   BUILD-EXT:ASSERT-EMPTY
-   BF-BUILD-ALL
-   BF-BUILD-SNAP-FROM-STDIN ;
 
 : BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-BUILD-PATH throw then
@@ -1788,6 +1666,41 @@ variable BF-DRV-R
    BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
    s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
    s" bin/hb" ;
+
+\ Rebuild the complete native runtime before taking its snapshot. APP-IMAGE owns
+\ preparation and provenance; the source-only recovery host is not an image.
+: BF-BUILD-NATIVE ( -- )
+   s" hb-native" BF-REMOVE-TMP
+   BF-PREPARE-ENV
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/native-build.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" hb-native" BF-A$ >LEN PROC-ARGV+
+   BF-ENGINE$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID BF-RC0
+   s" hb-native" BF-EXPECT ;
+
+: BF-SAVE-SNAPSHOT ( -- )
+   BF-SNAP-SOURCE
+   s" hb-new" BF-REMOVE-TMP
+   BF-PREPARE-ENV
+   PROC-ARGV-RESET
+   s" --" >LEN PROC-ARGV+
+   s" hb-new" BF-A$ >LEN PROC-ARGV+
+   s" hb-snap-src" BF-A$ BF-OPEN-INPUT {: infd:n :}
+   s" hb-native" BF-A$ >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
+   infd >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
+   infd close
+   pid BF-FINISH-PID BF-RC0
+   s" hb-new" BF-EXPECT
+   s" hb-new" BF-CODESIGN-VERIFY-TMP ;
+
+: BF-BUILD-SNAP-FRESH ( -- )
+   BUILD-EXT:ASSERT-EMPTY
+   BF-BUILD-NATIVE
+   BF-SAVE-SNAPSHOT
+   s" snapshot image OK: candidate validated" type cr ;
 
 : BF-INSTALL-TMP$ ( -- ptr u8 n )
    BF-ENGINE$ s" .tmp" BF-INSTALL-TMP-BUF FS-MUT-SUFFIX-PATH BF-INSTALL-TMP-U !
@@ -2248,7 +2161,6 @@ EXPORT BF-CODESIGN-FORCE-TMP
 EXPORT BF-CODESIGN-VERIFY-TMP
 EXPORT BF-DRV-SOURCE-KEEP
 EXPORT BF-EMIT-ENGINE
-EXPORT BF-EMIT-SNAP-RUN-SOURCE-WITH
 EXPORT BF-EMIT-STDIN-RUN-SOURCE
 EXPORT BF-ENGINE!
 EXPORT BF-ENGINE$

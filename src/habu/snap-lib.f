@@ -17,6 +17,8 @@
 \ the used public with no diagnostic. snap.f imports this package with
 \ `using SNAP` and calls the entry by its plain tail.
 
+require lib/fs.f
+require lib/codesign.f
 require src/habu/address-cells.f
 
 package SNAP
