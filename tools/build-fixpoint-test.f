@@ -834,6 +834,12 @@ package BUILD-FIXPOINT
    BFT-PREFIX BFT-READ {: v:n :}
    BFT-READ-BUF v name nameu VERIFY:DEFINES? TTRUE ;
 
+: BFT-PREFIX-GUARD ( -- )
+   BFT-PREFIX BFT-READ {: u:n :}
+   BFT-READ-BUF u s" package CHECKER-OWNER-GUARD" BFT-FIND BFT-FOUND {: guard:n :}
+   BFT-READ-BUF u guard s" : VALIDATE " BFT-FIND-AFTER BFT-FOUND {: body:n :}
+   BFT-READ-BUF u body s" package PREFIX-MARK" BFT-FIND-AFTER BFT-FOUND drop ;
+
 \ Dependencies must be in the emitted bytes, even when the warmed host can
 \ supply their effects. Check the module bodies and the provided facts in the
 \ order their real consumers need them.
@@ -873,6 +879,7 @@ package BUILD-FIXPOINT
    s" CORE-STR=" BFT-PREFIX-ONCE
    s" ATOMA-FIELD" BFT-PREFIX-ONCE
    s" SEAL-DICT-GUARD" BFT-PREFIX-ONCE
+   BFT-PREFIX-GUARD
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
    BFT-READ-BUF u s" FPRIM" VERIFY:DEFINES? TTRUE

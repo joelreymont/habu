@@ -1025,6 +1025,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
+   out outu s" src/core/checker-owner-guard.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-BOOT-PREFIX ( ptr u8 n -- ) {: out:ptr outu:n :}

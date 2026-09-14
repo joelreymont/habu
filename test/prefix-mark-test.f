@@ -71,6 +71,13 @@ private
    PREFIX-MARK:REQ REQUIRE-REG:COUNT < TTRUE
    s" src/core/checker.f" ENGINE-PROVIDES? TTRUE ;
 
+\ The compiler's descriptor reader and AOT arming share this real core owner.
+\ Its dependency must already exist below the mark before tooling can load it.
+: OWNER-GUARD ( -- )
+   s" src/core/checker-owner-guard.f" ENGINE-PROVIDES? TTRUE
+   s" CHECKER-OWNER-GUARD:VALIDATE" XREF-FIND-INDEX
+   dup 0 >= TTRUE PREFIX-MARK:DICT < TTRUE ;
+
 \ Three quantities. A dictionary count, an include
 \ registry row count and the checker boundary's width are different quantities,
 \ and a reader copy-pasted onto another's variable would make two of them answer
@@ -141,6 +148,7 @@ public
    s" prefix mark upper bound" T-LABEL UPPER-BOUND
    s" prefix mark three cells" T-LABEL THREE-CELLS
    s" prefix mark registry cursor" T-LABEL REGISTRY-CURSOR
+   s" owner guard is part of the core prefix" T-LABEL OWNER-GUARD
    s" prefix mark boundary word" T-LABEL BOUNDARY-WORD
    s" prefix mark survives public retirement" T-LABEL RETIRED-READER
    s" prefix mark refuses public replacement" T-LABEL REBOUND-READER

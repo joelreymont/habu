@@ -273,6 +273,7 @@ variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable 
 variable LPENGINEERROR  variable LPENGINEERROREFFECTS
 variable LPDYNAMIC      variable LPBYTES        variable LPOWNERABI     variable LPCHECKER      variable LPRENDER
 variable LPLOWERCERTBASE
+variable LPOWNERGUARD
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
 variable LPHOOK         variable LPCELLEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
@@ -916,6 +917,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PATH-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PATH-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
+   PFX-COMMON LPOWNERGUARD   s" src/core/checker-owner-guard.f" PFX-PATH-ROW
    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PATH-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
    PFX-COMMON LPINTMARK      s" src/core/internal-mark.f" PFX-PATH-ROW
@@ -1346,6 +1348,10 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
    PFX-PROVIDE-FILES
+   \ The checked owner guard requires the ABI facts above. Carry it before
+   \ the core mark, so a partial compiler never borrows a tool's copy.
+   PFX-COMMON LPOWNERGUARD s" src/core/checker-owner-guard.f" PFX-LOAD-ROW
+   PFX-COMMON LPOWNERGUARD s" src/core/checker-owner-guard.f" PFX-PROVIDE-ROW
    \ Record the core mark after its include facts exist. A build rewind must
    \ retain those facts together with the definitions they describe.
    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-LOAD-ROW
@@ -9133,7 +9139,7 @@ package LABELS
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !  LBL LPGENDECLPROT !
-   LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
+   LBL LPLAYOUTSEAL !  LBL LPOWNERGUARD !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
    LBL LPCADTYPES !  LBL LPCADARITH !  LBL LPSTRING !
