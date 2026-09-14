@@ -1,11 +1,13 @@
 \ fs-mutate-test.f - focused tests for lib/fs-mutate.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f
+\ Real special-inode fixtures require mkfifo and socat on PATH.
 
 require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/fs.f
 require lib/fs-mutate.f
+require lib/process-env.f
 
 variable FMT-ROOT-U
 variable FMT-REMOVE-U
@@ -440,6 +442,96 @@ create FMT-LINK-READ-BUF FS-PATH-CAP allot
    FMT-LINK-DIR DIR? TTRUE
    FMT-LINK-DIR-FILE FILE? TTRUE ;
 
+package FMT-SPECIAL
+
+variable LISTENER
+create MKFIFO-PATH FS-PATH-CAP allot
+create SOCAT-PATH FS-PATH-CAP allot
+variable MKFIFO-U
+variable SOCAT-U
+
+
+: TOOL ( ptr u8 n ptr u8 -- len ) {: name:ptr size:n dst:ptr :}
+   name size >LEN dst FIND-EXECUTABLE MATCH option
+      none OF
+         2 s" fs-mutate-test: required executable missing: " write drop
+         2 name size write drop 2 S\" \n" write drop
+         E-PROC-PATH throw
+      ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+
+: FIND-TOOLS ( -- )
+   s" mkfifo" MKFIFO-PATH TOOL MKFIFO-U !
+   s" socat" SOCAT-PATH TOOL SOCAT-U ! ;
+
+
+: MAKE-FIFO ( -- )
+   PROC-ARGV-RESET
+   FMT-TREE-LEAF >LEN PROC-ARGV+
+   MKFIFO-PATH MKFIFO-U @ -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result
+      ok OF drop ENDOF
+      err OF drop E-FS-IO throw ENDOF
+   ;MATCH ;
+
+
+\ A real filesystem socket stays bound until the tree has been removed.
+\ The peer must not unlink it during shutdown: REMOVE-TREE owns that claim.
+: START-LISTENER ( -- )
+   SB-RESET s" UNIX-LISTEN:" SB-APPEND FMT-TREE-ROOT-FILE SB-APPEND
+   s" ,unlink-close=0" SB-APPEND
+   PROC-ARGV-RESET
+   SB$ >LEN PROC-ARGV+
+   s" /dev/null" >LEN PROC-ARGV+
+   SOCAT-PATH SOCAT-U @ -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO
+   LISTENER ! ;
+
+
+: STOP-LISTENER ( -- )
+   LISTENER @ SIGKILL PROC-KILL-RAW drop
+   LISTENER @ PROC-WAIT-STATUS drop ;
+
+
+: WAIT-LISTENER ( -- )
+   100 0 do
+      FMT-TREE-ROOT-FILE FS-TRY-LSTAT if
+         FS-STAT-MODE@ S-IFMT and $C000 = if unloop exit then
+      then
+      NULL-PTR 0 10 poll drop
+   loop
+   E-FS-IO throw ;
+
+
+: REMOVE-SPECIAL-TREE ( -- )
+   WAIT-LISTENER
+   s" the child bound a real Unix socket" T-LABEL
+   FMT-TREE-ROOT-FILE STAT-MODE S-IFMT and $C000 T=
+   s" the nested inode is a FIFO" T-LABEL
+   FMT-TREE-LEAF STAT-MODE S-IFMT and $1000 T=
+   FMT-TREE REMOVE-TREE ;
+
+
+public
+
+: RUN ( -- )
+   FIND-TOOLS
+   FMT-TREE-GRAND MAKE-DIRS
+   MAKE-FIFO
+   START-LISTENER
+   [: REMOVE-SPECIAL-TREE ;] catch {: rc:n :}
+   STOP-LISTENER
+   s" REMOVE-TREE unlinks a bound Unix socket and a nested FIFO" T-LABEL
+   rc 0 T=
+   FMT-TREE EXISTS? TFALSE
+   \ Clean up even when the regression fails against the old implementation.
+   FMT-TREE-ROOT-FILE EXISTS? if FMT-TREE-ROOT-FILE REMOVE-FILE then
+   FMT-TREE-LEAF EXISTS? if FMT-TREE-LEAF REMOVE-FILE then
+   FMT-TREE REMOVE-TREE ;
+
+;package
+
 : FMT-TEST-CLEANUP ( -- )
    FMT-WRITE-TREE
    FMT-TREE CLEANUP-TREE+
@@ -495,6 +587,7 @@ create FMT-LINK-READ-BUF FS-PATH-CAP allot
    [: FMT-COPY-TOO-SMALL ;] E-FS-CAPACITY TTHROWSQ
    [: FMT-REMOVE-TREE-EMPTY ;] E-FS-PATH TTHROWSQ
    FMT-TEST-REMOVE-TREE
+   FMT-SPECIAL:RUN
    FMT-TEST-REMOVE-TREE-SYMLINK-DIR
    FMT-TEST-CLEANUP
    T-REPORT

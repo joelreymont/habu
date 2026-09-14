@@ -99,8 +99,11 @@ create FS-MUT-ATOMIC-SUFFIX
 : FS-MUT-REMOVE-TREE-PATH ( ptr u8 n -- ) {: a:ptr u :}
    a u SYMLINK? if a u FS-MUT-REMOVE-FILE-WALK exit then
    a u EXISTS? 0= if exit then
-   a u FILE? if a u FS-MUT-REMOVE-FILE-WALK exit then
-   a u DIR? 0= if E-FS-STAT FS-THROW-WALK then
+   \ Only a directory is traversed; every other inode belongs to unlink.
+   a u FS-TRY-LSTAT 0= if E-FS-STAT FS-THROW-WALK then
+   FS-STAT-MODE@ S-IFMT and S-IFDIR <> if
+      a u FS-MUT-REMOVE-FILE-WALK exit
+   then
    a u FS-OPEN-WALK-DIR
    begin FS-READ-DIR while
       FS-DIR-BLOCK-BEGIN
