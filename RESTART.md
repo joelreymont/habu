@@ -3,6 +3,35 @@
 Correctness first; Joel deferred performance. Mutual review before integration.
 Do not call Habu release-qualified yet.
 
+Latest steering: leave TRUST/TRUSTED retirement until last. Finish correctness
+and the shared compiler/backend handoff so Kestrel can add targets. Hazel owns
+native +loop from ebc986c7 in .jj-ws/hazel-native-plusloop; Cedar owns typed
+loads and integration. Astra literal_ownership owns engine stack bounds;
+closure_integration_review owns gate repairs; backend_handoff is reviewing
+the existing target boundary read-only. All implementations get independent
+review before landing. See PLAN.md for the active split.
+
+Current combined engine: bin/checkpoints/hb-correctness-8c1b0755 in this
+integration workspace (bin/hb points there), SHA-256
+8c1b07555a940b6ecf0ea1a42566631ef68aaef1a1200ae23e2d747a8d1fd39c.
+The full gate completed:378/378 suites,374 pass,4 red; log
+/tmp/cedar-integrated-literals-gate.log. native-again is already fixed and
+focused green at2b09e979. Other reds: aot-chain-capture (pointer-row census),
+native-gate-aot-negative (missing SNAP-RELOC:ADDR-CHAIN-BYTES), and
+native-gate-aot-positive (bundle/data -8303 and missing typed-fetch validation).
+The latter is confirmed with allocated memory and a checked preseed entry:
+native fetch/drop prints a marker for invalid tag5, while JIT refuses85 before
+returning the typed value. Dot38ad40e8 now owns the P1 fix; keep its diagnostic
+assertion intact.
+
+Ownership selfbuild convergence completed on frozen ee8dc15c: B3/B4 are
+byte-identical, SHA-256
+3d0913233e1aeff79ae63f0d3732448ec861e2ddc7c7b242a4539bf656906f90,
+6160576 bytes. B4 build and native-string tests pass. All B2/B3 differences
+were registered DATA address sites plus the stored capture origin, shifted
+by131120 bytes; attribution /tmp/cedar-native-seed-diff.log. This is separate
+from the combined engine above and is not a release qualification.
+
 ## Workspace and communication
 
 - Integration: `/home/joel/Work/habu/.jj-ws/cedar-closure-identity`.

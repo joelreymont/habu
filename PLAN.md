@@ -9,10 +9,26 @@ Tender campaign `habu-compile-the-tender-8385810f`.
 Restart checkpoint: read [RESTART.md](RESTART.md) first. Cedar owns integration;
 performance work is deferred by Joel's latest instruction.
 
-The complete native gate ran all 353 suites: 351 passed, build-fixpoint-fixtures
-failed, and WID restore timed out under load. The rewritten build-fixpoint fixture
-now passes through a full native rebuild and APP-IMAGE snapshot; a new combined
-gate is still required after the outstanding correctness fixes.
+Joel's current order is compiler correctness and the Kestrel backend handoff,
+then TRUST/TRUSTED retirement. Do not add new unchecked boundaries while the
+legacy migration waits. Current ownership:
+
+- Cedar: native typed-load validation (38ad40e8), integration and qualification.
+- Hazel: dynamic native +loop (db5978a3); warmed source-order verification
+  (0c9fe3d7) follows that coherent patch.
+- Astra literal_ownership: physical stack bounds, engine/layout/lifecycle
+  (986147f9); native emitter and recovery parity follow the reviewed guard ABI.
+- Astra closure_integration_review: remaining gate fixture/dependency repairs
+  and the AOT bundle/data failure, with separate review before integration.
+- Astra backend_handoff: read-only review of the shared compiler/target boundary
+  (4e96cb27) and exact Kestrel handoff blockers.
+
+The combined engine SHA8c1b0755 ran all 378 suites: 374 passed and four failed.
+compiler-native-again's obsolete expectation is already repaired at2b09e979 and
+passes focused validation. The remaining failures are aot-chain-capture's
+pointer-row census, native-gate-aot-negative's missing SNAP-RELOC dependency,
+and native-gate-aot-positive (bundle/data -8303 plus the confirmed missing
+typed-load tag validation). No full green gate or release qualification yet.
 
 The September audit targets an older branch and engine. Current revalidation
 confirms quotation-input variance, implicit return-row reads, and trailing
