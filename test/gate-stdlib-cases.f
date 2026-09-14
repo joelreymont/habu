@@ -975,6 +975,10 @@ SUITE checker-verify-pkg-scope
    test/checker-verify-pkg-scope.f
 ;SUITE
 
+SUITE checker-verify-order
+   test/checker-verify-order.f
+;SUITE
+
 SUITE checker-replay-pkg-state
    test/checker-replay-pkg-state.f
 ;SUITE

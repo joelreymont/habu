@@ -923,6 +923,21 @@ CHECKER-PKG-LIVE-DEFAULT
 : CHECKER-AUTH-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-NONE <> ;
 
+\ The binding horizon of the definition being checked: a record offset + 1, and
+\ 0 when every record is visible. Inside a verifier scope CHECK sets it at the
+\ definition's name token and clears it before the verdict is recorded; it is
+\ declared here so the scope exit below can clear it after a throw. The
+\ visibility words live with the record store (search HORIZON-VISIBLE?).
+variable BIND-HORIZON   0 BIND-HORIZON !
+
+\ The pass floor: the first record the running verifier scope appended, as
+\ offset + 1. What the scope has recorded so far is what a cold compile of its
+\ text would have defined, so it stays visible under any horizon. -1 is a scope
+\ that has recorded nothing yet and 0 no scope at all. E-REC-START resolves the
+\ -1; rollback frames and the scope exit restore the value they found.
+variable PASS-FLOOR   0 PASS-FLOOR !
+variable VERIFY-FLOOR0
+
 \ Before the mirror becomes the replay's package authority it has to be proved
 \ against the context the enclosing scope claims, and both proofs are exact
 \ equalities rather than defaults. An inherited scope claims the caller's
@@ -977,6 +992,7 @@ CHECKER-PKG-LIVE-DEFAULT
    THEN
    mira miru mirmode VPKG-SAVE
    1 CHECKER-VERIFY-PKG-DEPTH !
+   PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
    \ Seed the owned using depth the same way the package half is proved: a
    \ neutral replay declares top level and therefore no imports, while an
    \ inherited replay continues the caller's scope and keeps the caller's usings,
@@ -992,6 +1008,8 @@ REG-PROTECT
 : CHECKER-VERIFY-PKG-DONE ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
    VPKG-RESTORE
+   0 BIND-HORIZON !
+   VERIFY-FLOOR0 @ PASS-FLOOR !
    0 CHECKER-VERIFY-PKG-DEPTH ! ;
 REG-PROTECT
 
@@ -4753,6 +4771,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 0 constant EFF-DELETED
 1 constant EFF-ACTIVE
 2 constant EFF-RECOVERY          \ current-run analysis fact, never a source grant
+3 constant EFF-SEEDED            \ taken from the baked signature pool: the engine's word since boot
 
 0 constant EN-CON
 1 constant EN-VAR
@@ -5726,6 +5745,49 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
    USX-ENSURE
    sym USX@ ;
 
+\ ---- source-order visibility under the binding horizon ------------------------
+\ A REPLAY checks a definition as the engine compiles it, so it sees exactly the
+\ records that existed then. A RECONSTRUCTION checks recorded source in an engine
+\ that already holds that source and everything after it, so a body token would
+\ bind to the NEWEST record of its spelling, which may be a later shadow: a
+\ package word declared after a definition that named its global twin. Inside a
+\ verifier scope CHECK therefore latches the definition's own record as
+\ BIND-HORIZON, and every lookup below sees only records recorded before it. A
+\ check outside one - the live load path, a candidate probe whose name is only
+\ a label - keeps the whole store. Nothing is hidden by name and
+\ nothing older is hidden, so an existing package dependency still binds; a
+\ definition the store does not know binds against the whole store, as before.
+\
+\ WHAT THE PASS ITSELF RECORDED IS ALWAYS VISIBLE. The text being verified may
+\ differ from the text on record - a build certifies the next source in the
+\ engine built from the last one - and a word it defined earlier in its own
+\ order is exactly what a cold compile would see, wherever the old record of
+\ that name sits (PASS-FLOOR).
+\
+\ A SEEDED RECORD IS ALWAYS VISIBLE. The pool is taken by reference, at whatever
+\ definition first misses on the name, so a seeded record's offset says when it
+\ was needed, not when its word was defined: the word has been in the engine
+\ since boot. (dot habu-preserve-src-order-0c9fe3d7)
+: HORIZON-VISIBLE? ( n -- bool ) {: off1:n :}   \ record offset+1: visible under the horizon?
+   BIND-HORIZON @ 0= IF RES-TRUE EXIT THEN
+   off1 BIND-HORIZON @ < IF RES-TRUE EXIT THEN
+   PASS-FLOOR @ 0 >  off1 PASS-FLOOR @ >=  and IF RES-TRUE EXIT THEN
+   off1 1 - E-PTR ER.ACTIVE @ EFF-SEEDED = ;
+
+: USIG-NEWEST-VISIBLE ( n -- n ) {: sym:n :}   \ newest visible record, offset+1, 0 = none
+   sym USIG-NEWEST
+   BEGIN dup 0 <> WHILE
+      dup HORIZON-VISIBLE? IF EXIT THEN
+      1 - E-PTR ER.SYMPREV @
+   REPEAT ;
+
+: SYM-VISIBLE ( n -- n ) {: sym:n :}   \ the symbol, or 0 when its records all lie beyond the horizon
+   sym 0= IF 0 EXIT THEN
+   BIND-HORIZON @ 0= IF sym EXIT THEN
+   sym USIG-NEWEST 0= IF sym EXIT THEN            \ no record at all: a primitive's, not the store's, to answer
+   sym USIG-NEWEST-VISIBLE 0= IF 0 EXIT THEN
+   sym ;
+
 \ E-REC-START runs the effect-cache sync first: it is the single choke point
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
@@ -5750,6 +5812,7 @@ variable USX-BP   variable USX-BN        \ the rebuild's record cursor and its n
                                          \ exist, and be current, before the append
    UEND @ EFF-REC + CELL + USIGS-ENSURE
    USIGS UEND @ + {: p:ptr :}
+   PASS-FLOOR @ -1 = IF UEND @ 1 + PASS-FLOOR ! THEN   \ the pass's first record
    p E-REC-INIT
    p USIGS - CHECKER-REC-SYM @ USX-LINK
    p EFF-REC + USIGS - UEND !
@@ -6261,7 +6324,7 @@ variable FMEND
 : SCAN-USIGS-SYM {: sym:n :}
    FEP-CLEAR
    0 FMEND !
-   sym USIG-NEWEST dup 0= if drop exit then
+   sym USIG-NEWEST-VISIBLE dup 0= if drop exit then
    1 - E-PTR {: rec:ptr :}
    rec ER.NEXT @ FMEND !
    rec ER.ACTIVE @ 0 <> if rec FEP-SET then ;
@@ -7915,6 +7978,25 @@ variable CHECKER-QBAD-TOK
    vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM EXIT THEN
    a u CHECKER-GLOBAL-SYM ;
 
+\ The same scope, asked rather than interned: 0 when the name was never recorded.
+: CHECKER-RECORD-SYM? ( ptr u8 n -- n ) {: a u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
+   CHECKER-QBAD-TOK @ IF 0 EXIT THEN
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n vis:n :}
+   vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM? EXIT THEN
+   a u CHECKER-GLOBAL-SYM? ;
+
+\ The definition's own record: the newest record its name would be recorded
+\ under, when that record is a source record. A tombstone means the name is
+\ being defined afresh and a seeded record is the engine's word, not this
+\ source's; either way the body binds against the whole store.
+: OWN-RECORD ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECKER-RECORD-SYM? dup 0= IF EXIT THEN
+   USIG-NEWEST dup 0= IF EXIT THEN
+   dup 1 - E-PTR ER.ACTIVE @ {: off1:n state:n :}
+   state EFF-DELETED = state EFF-SEEDED = or IF 0 EXIT THEN
+   off1 ;
+
 \ The scope chain, in the engine's own order (habu1.f EMIT-FIND): the open
 \ package's private wordlist, then its public one, then the global wordlist,
 \ then the used publics. The checker walks it over ITS symbol table, which holds
@@ -7946,11 +8028,11 @@ variable CHECKER-QBAD-TOK
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
    mode CHECKER-PACKAGE-NONE <> IF
-      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
-      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
+      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? SYM-VISIBLE dup 0 <> IF EXIT THEN drop
+      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? SYM-VISIBLE dup 0 <> IF EXIT THEN drop
    THEN
    a u CK-OPEN-CLAIMS? IF 0 EXIT THEN       \ engine-authoritative: an open-package word the checker cannot see
-   a u CHECKER-GLOBAL-SYM? dup 0 <> IF
+   a u CHECKER-GLOBAL-SYM? SYM-VISIBLE dup 0 <> IF
       dup >r a u r> CHECKER-USED-SHADOW      \ throws if a live used public also exports this bare tail
       EXIT
    THEN drop
@@ -7961,6 +8043,7 @@ variable CHECKER-QBAD-TOK
 \ arena scan and memoizes both the answer and its watermark dependency.
 : CHECKER-FIND-USIG-SYM ( n -- bool ) {: sym:n :}
    sym 0= IF RES-FALSE EXIT THEN
+   BIND-HORIZON @ 0 <> IF sym SCAN-USIGS-SYM FEP-HIT? EXIT THEN   \ bounded answers never touch the memo
    HIDX-ENSURE
    HIDX-EFF-SYNC
    sym HIDX-EFF@ {: cached:n hit:bool :}
@@ -12673,13 +12756,22 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    s" field-project" CORE-STR= 0= IF RES-FALSE EXIT THEN
    FIELD-PROJ-STEP RES-TRUE ;
 
+\ The first token names the definition. Inside a verifier scope the text is a
+\ replay of recorded source, so the name's own record bounds what the body
+\ binds; anywhere else - the live load path, a candidate probe whose name is a
+\ label - the name claims nothing and the body binds against the whole store.
+: NAME-TOK ( -- )
+   TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 !
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF NMA @ NMU @ OWN-RECORD ELSE 0 THEN
+   BIND-HORIZON ! ;
+
 : DO-TOK1 {: a u :}
    0 CALL-HIT !
    a u TOKFOLD drop
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
-   TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
+   TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
@@ -13824,7 +13916,7 @@ ASIG-GRAPH-CHECK-INSTALL
    CK-GRAPH-LEN @ base + E-PTR bytes CK-GRAPH-LEN @ - ASIG-GRAPH-ZERO
    0 CK-GRAPH-PTR {: source:ptr :}
    base E-PTR {: rec:ptr :}
-   EFF-ACTIVE rec ER.ACTIVE !
+   EFF-SEEDED rec ER.ACTIVE !
    source ER.DIN @ rec ER.DIN ! rec ER.DIN base CK-GRAPH-REBASE
    source ER.DOUT @ rec ER.DOUT ! rec ER.DOUT base CK-GRAPH-REBASE
    source ER.RIN @ rec ER.RIN ! rec ER.RIN base CK-GRAPH-REBASE
@@ -13955,7 +14047,7 @@ ASIG-GRAPH-CHECK-INSTALL
    0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
-   0 TOKIX !  0 FAILIX !  0 DVERD !
+   0 TOKIX !  0 FAILIX !  0 DVERD !  0 BIND-HORIZON !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
@@ -14345,6 +14437,7 @@ variable CTOR-PEND-I
    \ A pass another pass will replace has not judged anything yet, so it says
    \ nothing: the diagnostic belongs to the verdict the definition is given.
    DIAG-QUIET @ 0= and CK-AOT-RETRY-DUE @ 0= and IF DIAGXT THEN
+   0 BIND-HORIZON !                                   \ the record step asks the store, not the walk
    dup -1 = NMU @ 0 > and IF
       CALL-FINALIZE
       0 CTLNEW !
@@ -14420,7 +14513,8 @@ $80 constant RBF.DFEREND-OFF
 $88 constant RBF.COORD-OFF
 $90 constant RBF.PKGNEU-OFF
 $98 constant RBF.PKGUSE-OFF
-$A0 constant RBF-REC
+$A0 constant RBF.FLOOR-OFF
+$A8 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
 
@@ -14450,6 +14544,7 @@ $8 constant RBF-REC-ALIGN
 : RBF.COORD ( ptr a -- ptr a ) RBF.COORD-OFF + ;
 : RBF.PKGNEU ( ptr a -- ptr a ) RBF.PKGNEU-OFF + ;
 : RBF.PKGUSE ( ptr a -- ptr a ) RBF.PKGUSE-OFF + ;
+: RBF.FLOOR ( ptr a -- ptr a ) RBF.FLOOR-OFF + ;
 
 RBF.UEND-OFF 0 cells CHECKER-LAYOUT=
 RBF.NEND-OFF 1 cells CHECKER-LAYOUT=
@@ -14471,7 +14566,8 @@ RBF.DFEREND-OFF 16 cells CHECKER-LAYOUT=
 RBF.COORD-OFF 17 cells CHECKER-LAYOUT=
 RBF.PKGNEU-OFF 18 cells CHECKER-LAYOUT=
 RBF.PKGUSE-OFF 19 cells CHECKER-LAYOUT=
-RBF-REC 20 cells CHECKER-LAYOUT=
+RBF.FLOOR-OFF 20 cells CHECKER-LAYOUT=
+RBF-REC 21 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -14494,6 +14590,7 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 RBF.DFEREND RBF.DFEREND-OFF CHECKER-LAYOUT=
 0 RBF.COORD RBF.COORD-OFF CHECKER-LAYOUT=
 0 RBF.PKGNEU RBF.PKGNEU-OFF CHECKER-LAYOUT=
+0 RBF.FLOOR RBF.FLOOR-OFF CHECKER-LAYOUT=
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
@@ -14569,6 +14666,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-PACKAGE-NEUTRAL @ r RBF.PKGNEU !
    CHECKER-USE-OWNED-N @ r RBF.PKGUSE !
    DFER-END @ r RBF.DFEREND !
+   PASS-FLOOR @ r RBF.FLOOR !
    RBF-NO-COORDINATOR r RBF.COORD ! ;
 
 : RBF-RESTORE-FROM ( ptr n -- ) {: r:ptr :}
@@ -14592,6 +14690,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.PKGU @ CHECKER-PACKAGE-U !
    r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
    r RBF.PKGUSE @ CHECKER-USE-OWNED-N !
+   r RBF.FLOOR @ PASS-FLOOR !
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 
@@ -14834,6 +14933,7 @@ TYPES-DEFAULTS
 
 : CHECK-CANDIDATE-DONE ( n -- n )
    -1 PIMM-STREAM !    \ back to the engine-stream default (hook loads)
+   0 BIND-HORIZON !
    RBF-POP ;
 
 variable CAND-A   variable CAND-U   variable CAND-VERDICT
@@ -14924,6 +15024,7 @@ variable CK-RETRY-TOKS
    CK-RETRY-V @ {: v0:n :}
    CK-RETRY-TOKS @ {: toks0:n :}
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? {: recovery0:bool :}
+   BIND-HORIZON @ {: horizon0:n :}
    CHECK-CANDIDATE-START
    [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
    0 CHECK-CANDIDATE-DONE drop
@@ -14933,6 +15034,7 @@ variable CK-RETRY-TOKS
    v0 CK-RETRY-V !
    toks0 CK-RETRY-TOKS !
    recovery0 CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   horizon0 BIND-HORIZON !
    rc 0 <> IF rc throw THEN
    CAND-VERDICT @ ;
 

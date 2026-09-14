@@ -185,6 +185,25 @@ fits.
 
 ## Checker Soundness
 
+- **A record's store offset is process order, not source order, and a seeded
+  row has no source position at all.** The effect store appends as definitions
+  are checked, so a warm verifier can reconstruct source order for a loaded
+  program by hiding every record from the definition's own record on
+  (`BIND-HORIZON`, set at `NAME-TOK` inside a verifier scope only - a candidate
+  probe's name is a label, and `PAIR` is also a checker word - and cleared
+  before the record step). It cannot
+  do that for the baked signature pool: `CK-GRAPH-IMPORT` takes a row at whatever
+  definition first misses on the name, so a seeded record's offset is when it was
+  needed. Those records carry `EFF-SEEDED` and stay visible under any horizon;
+  a certify of a seeded prefix binds as it always did. Nor is the verified text
+  the recorded text: a build certifies the NEXT source, so a word that source
+  defined earlier must bind though its old record is later - the records the
+  pass itself appended (from `PASS-FLOOR`, resolved at the pass's first
+  `E-REC-START`) are visible under any horizon. And a symbol with NO
+  record is not the store's to hide: a primitive such as `+` resolves through
+  its own row, so `SYM-VISIBLE` hides only a symbol whose records all lie beyond
+  the horizon - hiding the recordless ones reported `+` undefined in every
+  reconstruction.
 - **Deleting a word does not retire it; only an always-reject token row does.**
   Removing a name from the dictionary makes `CHECK` answer 1 (uncheckable), not
   0 (rejected), because an unknown token is simply unmodelled — and any later

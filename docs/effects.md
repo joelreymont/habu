@@ -720,6 +720,31 @@ path. No runtime stack-depth calculation is needed.
 - There is no `EFFECT-OF` word in `bin/hb`; it belongs to the Gforth bootstrap
   engine (`bootstrap/src/db.fs`) and naming it in checked source is
   `E-UNDEFINED`.
+- **Replay versus reconstruction.** When the engine compiles a definition, the
+  checker sees exactly the records that exist at that moment, so a package word
+  declared later cannot shadow the global a body named. A warm verifier
+  (`src/habu/verify-source.f`, the build's certify step, the all-errors tool)
+  reads recorded source in an engine that already holds that source and
+  everything after it. Inside the verifier's scope `CHECK` reconstructs the
+  order: it latches the definition's own record, the newest source record its
+  name would be recorded under, as a binding horizon, and binds every body
+  token to the newest record before it, in the usual package-first order. A
+  check outside that scope, the live load path or a candidate probe whose name
+  is only a label, binds against the whole store as before. An earlier use of a spelling
+  keeps its earlier binding, an existing package dependency stays visible, and a
+  definition the store does not know binds against the whole store. No name is
+  hidden and no verdict is altered by anything but the record it binds to. The
+  horizon bounds the body walk only; the duplicate guard and the record step
+  ask the store unfiltered. What the pass itself has recorded so far stays
+  visible under any horizon: the text may differ from the text on record (a
+  build certifies the next source in the engine built from the last one), and a
+  word the pass defined earlier in its own order is what a cold compile would
+  see. Two limits: a seeded engine takes a baked word's
+  signature row when a check first misses on it, so a seeded record's offset is
+  not its definition's place in the source and every seeded record stays visible
+  under a horizon (a certify of a seeded prefix binds as before); and a spelling
+  that was `undefine`d and defined again has no source record of its own until
+  the redefinition, so its earlier text binds against the whole store.
 
 ## CAD semantic effect vocabulary (package `CAD-EFFECT`)
 
