@@ -157,6 +157,7 @@ variable LCALLS     \ region-to-text call relocation routine (snapshot write + r
 variable LXT        \ declared-address-cell relocation routine (snapshot restore)
 variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
+variable LINDEXRELEASE \ release this process's derived address index before restore
 variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
 variable LADDRSITE  \ record the chain about to be emitted at CP as an address literal
 \ The six opcode bits of an AArch64 BL, i.e. $94000000 >> 26. The call relocation
@@ -5443,10 +5444,9 @@ public
 \ Membership is a set: `defer` registers a dispatch cell when it allocates it,
 \ `is` registers the cell it is about to store into, and the `xt!` primitive
 \ registers a cell whose address its caller worked out at run time, so the same
-\ cell arrives here more than once and must be listed once. The table is short
-\ (one row per deferred word plus one per declared table cell in the image), the
-\ walk runs while `defer`/`is` is being compiled or while a dispatch table is
-\ being filled in, and the alternative -- letting a cell in twice -- would apply
+\ cell arrives here more than once and must be listed once. A derived hash index
+\ maps exact byte offsets to the original row ordinals; it never reorders or
+\ duplicates the authoritative rows. Declaring a cell twice would otherwise apply
 \ the relocation twice and produce an address that points nowhere.
 \ Overflow is a hard stop: dropping a row would leave a stale writer-run address in
 \ a restored image, which is exactly the failure this table exists to prevent.
@@ -5462,12 +5462,12 @@ public
 \ sites are in the middle of a handler with its own live values and the `xt!` call
 \ site is in the middle of a running checked word.
 : MARK-SAVE ( -- )
-   SP SP 160 SUBI,
+   SP SP 192 SUBI,
    18 0 ?do i SP i cells STR, loop ;
 
 : MARK-RESTORE ( -- )
    18 0 ?do i SP i cells LDR, loop
-   SP SP 160 ADDI, RET, ;
+   SP SP 192 ADDI, RET, ;
 
 \ A worker's x20 names its private context; persisted rows belong to the fixed
 \ shared image mapping. Reload x16 at every acquisition, including after mmap
@@ -5490,11 +5490,118 @@ public
    17 16 ADDRESS-CELLS:LOCK-CELL ADDI,
    6 0 MOVZ, 6 17 STLR, ;
 
+\ Reacquire the row backing after SYS,. Only ordinals live in the index, so
+\ moving this backing does not invalidate any entry.
+: MARK-ROWS ( -- )
+   5 4 ADDRESS-CELLS:BASE-FIELD LDR,
+   11 4 ADDRESS-CELLS:MODE-FIELD LDR,
+   LBL {: mapped:label :}
+   11 mapped CBNZ, 5 16 5 ADD, mapped LBL, ;
+
+\ x8 = owned index mapping; x10 = slot capacity on return. Requested bytes
+\ and geometric rounding are bounded separately. An incoming snapshot pointer
+\ is cleared without entering here: only this process can own the mapping.
+: INDEX-SHAPE ( label -- ) {: bad:label :}
+   8 0 CMPI, C-LE bad BCOND,
+   6 8 7 ANDI, 6 bad CBNZ,
+   7 $7FFFFFFFFFFFFFFF ADDRESS-CELLS:INDEX-HEADER - LIT64,
+   8 7 CMP, C-HI bad BCOND,
+   10 8 ADDRESS-CELLS:INDEX-SLOTS LDR,
+   10 2 CMPI, C-LT bad BCOND,
+   7 ADDRESS-CELLS:INDEX-MAX-SLOTS LIT64, 10 7 CMP, C-HI bad BCOND,
+   7 10 1 SUBI, 6 10 7 AND, 6 bad CBNZ,
+   6 $7FFFFFFFFFFFFFFF LIT64, 6 6 8 SUB,
+   7 10 3 LSLI, 7 7 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   7 6 CMP, C-HI bad BCOND, ;
+
+\ x8 = index, x10 = slots, x5 = current rows, x13 = row count, x12 = key.
+\ A slot holds ordinal+1; compare the exact offset in that authoritative row.
+\ Return x7 = tagged row on a hit, or x6 = empty slot / x11 = its bucket.
+\ Probe at most the capacity even if a malformed derived table has no hole.
+: INDEX-PROBE ( label label label -- ) {: hit:label miss:label bad:label :}
+   LBL {: probe:label :}
+   7 $9E3779B97F4A7C15 LIT64, 11 12 7 MUL,
+   7 11 32 LSRI, 11 11 7 EOR,
+   17 10 1 SUBI, 11 11 17 AND, 14 10 0 ADDI,
+   probe LBL,
+      14 bad CBZ,
+      6 11 3 LSLI, 6 8 6 ADD, 6 6 ADDRESS-CELLS:INDEX-HEADER ADDI,
+      9 6 0 LDR, 9 miss CBZ,
+      9 9 1 SUBI, 9 13 CMP, C-CS bad BCOND,
+      7 9 3 LSLI, 7 5 7 ADD, 7 7 0 LDR,
+      9 XTCELL-OFF-MASK LIT64, 9 7 9 AND,
+      9 12 CMP, C-EQ hit BCOND,
+      11 11 1 ADDI, 11 11 17 AND,
+      14 14 1 SUBI, probe B, ;
+
+\ Build a replacement solely from the ordered rows. It is complete before the
+\ old index is unmapped; failure leaves authoritative rows/header untouched.
+\ Existing duplicate keys retain their first ordinal, exactly as the old scan.
+\ Stack scratch: 144 new slots, 152 new map, 160 incoming key, 168 old map.
+: INDEX-BUILD ( label label label -- ) {: lookup:label full:label bad:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: size:label sized:label mapped:label rows:label hole:label next:label
+      built:label publish:label released:label :}
+   8 SP 168 STR, 12 SP 160 STR,
+   7 ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / 1- LIT64,
+   13 7 CMP, C-HI full BCOND,
+   7 13 1 ADDI, 7 7 1 LSLI, 10 2 MOVZ,
+   size LBL, 10 7 CMP, C-CS sized BCOND,
+      6 ADDRESS-CELLS:INDEX-MAX-SLOTS 2 / LIT64,
+      10 6 CMP, C-HI full BCOND,
+      10 10 1 LSLI, size B,
+   sized LBL,
+   10 SP 144 STR,
+   0 0 MOVZ, 1 10 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   2 3 MOVZ, 3 MAP-ANON-PRIVATE LIT64, 4 0 MOVN, 5 0 MOVZ,
+   NR-MMAP SYS, C-CS full BCOND,
+   0 mapped CBNZ,
+      1 SP 144 LDR, 1 1 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+      NR-MUNMAP SYS, full B,
+   mapped LBL,
+   0 SP 152 STR, 8 0 0 ADDI,
+   MARK-HEADER MARK-ROWS
+   10 SP 144 LDR,
+   10 8 ADDRESS-CELLS:INDEX-SLOTS STR,
+   13 8 ADDRESS-CELLS:INDEX-COUNT STR,
+   3 0 MOVZ,
+   rows LBL, 3 13 CMP, C-CS built BCOND,
+      7 3 3 LSLI, 7 5 7 ADD, 12 7 0 LDR,
+      7 XTCELL-OFF-MASK LIT64, 12 12 7 AND,
+      next hole bad INDEX-PROBE
+   hole LBL, 7 3 1 ADDI, 7 6 0 STR,
+   next LBL, 3 3 1 ADDI, rows B,
+   built LBL,
+   0 SP 168 LDR, 0 publish CBZ,
+   1 0 ADDRESS-CELLS:INDEX-SLOTS LDR,
+   1 1 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   NR-MUNMAP SYS, 0 released CBZ,
+      0 SP 152 LDR, 1 SP 144 LDR,
+      1 1 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+      NR-MUNMAP SYS, full B,
+   released LBL,
+   MARK-HEADER
+   publish LBL,
+   8 SP 152 LDR, 8 16 ADDRESS-CELLS:INDEX-CELL STR,
+   12 SP 160 LDR,
+   MARK-ROWS
+   lookup B, ;
+
+\ The row was written and every fallible allocation/release is over. Publish
+\ its derived entry and finally the live count while still holding the mutex.
+: MARK-COMMIT-INDEX ( -- )
+   8 16 ADDRESS-CELLS:INDEX-CELL LDR,
+   11 SP 176 LDR, 7 11 3 LSLI,
+   7 8 7 ADD, 7 7 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   13 13 1 ADDI, 13 7 0 STR,
+   13 8 ADDRESS-CELLS:INDEX-COUNT STR,
+   13 4 0 STR, ;
+
 : EMIT-MARK ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: common:label scan:label add:label full:label band:label kind:label
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: common:label lookup:label full:label band:label kind:label
       ret:label shape:label mapped:label ready:label grow:label copy:label
-      copied:label publish:label :}
+      copied:label publish:label rebuild:label hit:label missing:label :}
    LMARK LABEL@ LBL, MARK-SAVE
    15 0 MOVZ, common B,
    LPTRMARK LABEL@ LBL, MARK-SAVE
@@ -5522,18 +5629,26 @@ public
    6 $7FFFFFFFFFFFFFFF LIT64, 6 6 5 SUB, 6 6 3 LSRI,
    10 6 CMP, C-HI shape BCOND,
    ready LBL,
-   10 shape CBZ,
-   14 0 MOVZ,
-   scan LBL, 14 13 CMP, C-CS add BCOND,
-      6 14 3 LSLI, 6 5 6 ADD, 6 6 0 LDR,
-      7 12 15 ORR, 6 7 CMP, C-EQ ret BCOND,
-      7 XTCELL-OFF-MASK LIT64, 6 6 7 AND,
-      6 12 CMP, C-EQ kind BCOND,
-      14 14 1 ADDI, scan B,
-   add LBL,
+   8 16 ADDRESS-CELLS:INDEX-CELL LDR, 8 rebuild CBZ,
+   shape INDEX-SHAPE
+   7 8 ADDRESS-CELLS:INDEX-COUNT LDR,
+   7 13 CMP, C-NE rebuild BCOND,
+   7 10 1 LSRI, 13 7 CMP, C-HI shape BCOND,
+   lookup LBL,
+   8 16 ADDRESS-CELLS:INDEX-CELL LDR,
+   10 8 ADDRESS-CELLS:INDEX-SLOTS LDR,
+   hit missing shape INDEX-PROBE
+   hit LBL,
+      6 12 15 ORR, 7 6 CMP, C-EQ ret BCOND, kind B,
+   missing LBL,
+      7 13 1 ADDI, 6 10 1 LSRI, 7 6 CMP, C-HI rebuild BCOND,
+      11 SP 176 STR,
+      10 4 ADDRESS-CELLS:CAP-FIELD LDR,
       13 10 CMP, C-EQ grow BCOND,
       6 13 3 LSLI, 6 5 6 ADD, 7 12 15 ORR, 7 6 0 STR,
-      13 13 1 ADDI, 13 4 0 STR, ret B,
+      MARK-COMMIT-INDEX ret B,
+   rebuild LBL,
+      lookup full shape INDEX-BUILD
    grow LBL,
       \ Overflow checks precede doubling and the byte product. mmap and copying
       \ complete before publication; failure preserves the old header and rows.
@@ -5573,7 +5688,7 @@ public
       5 4 ADDRESS-CELLS:BASE-FIELD STR,
       10 4 ADDRESS-CELLS:CAP-FIELD STR,
       11 1 MOVZ, 11 4 ADDRESS-CELLS:MODE-FIELD STR,
-      13 13 1 ADDI, 13 4 0 STR, ret B,
+      MARK-COMMIT-INDEX ret B,
    full LBL,
       1 LXTMSG LABEL@ ADR, 0 2 MOVZ, 2 XTMSG-LEN MOVZ, NR-WRITE SYS,
       0 XTCELL-RC MOVZ, NR-EXIT-GROUP SYS,
@@ -5587,6 +5702,24 @@ public
       1 LXTKINDMSG LABEL@ ADR, 0 2 MOVZ, 2 XTKINDMSG-LEN MOVZ, NR-WRITE SYS,
       0 XTKIND-RC MOVZ, NR-EXIT-GROUP SYS,
    ret LBL, MARK-UNLOCK MARK-RESTORE ;
+
+\ The cold seed has already registered cells when snapshot restore begins.
+\ Release THAT live mapping before the DATA copy can overwrite its pointer.
+\ Never call this entry on a pointer just read from a snapshot.
+: EMIT-INDEX-RELEASE ( -- )
+   LBL LBL {: done:label bad:label :}
+   LINDEXRELEASE LABEL@ LBL, MARK-SAVE
+   MARK-HEADER MARK-LOCK
+   8 16 ADDRESS-CELLS:INDEX-CELL LDR, 8 done CBZ,
+   bad INDEX-SHAPE
+   0 8 0 ADDI, 1 10 3 LSLI, 1 1 ADDRESS-CELLS:INDEX-HEADER ADDI,
+   NR-MUNMAP SYS, 0 bad CBNZ,
+   MARK-HEADER
+   6 0 MOVZ, 6 16 ADDRESS-CELLS:INDEX-CELL STR,
+   done LBL, MARK-UNLOCK MARK-RESTORE
+   bad LBL,
+   1 LXTMSG LABEL@ ADR, 0 2 MOVZ, 2 XTMSG-LEN MOVZ, NR-WRITE SYS,
+   0 XTCELL-RC MOVZ, NR-EXIT-GROUP SYS, ;
 
 : BVERSION ( -- ) A ADDRESS-CELLS:ABI-VERSION MOVZ, A G-PUSH ;
 
@@ -5607,7 +5740,7 @@ public
 \ x9 the token, and the guard leaves both alone.
 \ The declaration runs BEFORE the store, which is the ordering `defer` and `is`
 \ have always had and the reason the band check above can be called a
-\ precondition: LMARK refuses a cell that is not a cell-aligned address inside
+\ precondition: LMARK refuses a cell that is not wholly inside
 \ DATA by terminating, so a refused cell is never written. Doing the store first
 \ would leave the caller's token in a cell the engine then declines to declare.
 \ The swap below is what that ordering costs: LMARK wants the cell in x9, so the
@@ -6084,10 +6217,12 @@ public
       1 LSNAPVER LABEL@ ADR,  0 2 MOVZ,  2 SNAPVER-MSG-LEN MOVZ,  NR-WRITE SYS,
       0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
+   SNAP-RELOC:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    EM-SNAPSHOT-COPY-CODE
    EM-SNAPSHOT-COPY-DATA
+   5 0 MOVZ, 5 DATA ADDRESS-CELLS:INDEX-CELL STR,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA S0-CELL STR,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
@@ -6148,6 +6283,7 @@ public
    9 DATA NCOMP-DISPATCH:TARGET-DECL-CELL STR,
    9 DATA REPLH-CELL STR,  9 DATA BPWBASE-CELL STR,  9 DATA BPWN-CELL STR,
    9 DATA ADDRESS-CELLS:LOCK-CELL STR,
+   9 DATA ADDRESS-CELLS:INDEX-CELL STR,
    10 SNAP-RELOC:XTCELL-N-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 ADDRESS-CELLS:MAGIC LIT64, 9 10 ADDRESS-CELLS:MAGIC-FIELD STR,
    9 ADDRESS-CELLS:BOOT-OFF LIT64, 9 10 ADDRESS-CELLS:BASE-FIELD STR,
@@ -9062,6 +9198,7 @@ package LABELS
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX:LREBUILD !  LBL HIDX:LFULL !  LBL WLFIND:LENTRY !
    LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !  LBL SNAP-RELOC:LPTRMARK !
+   LBL SNAP-RELOC:LINDEXRELEASE !
    LBL SNAP-RELOC:LADDRS !  LBL SNAP-RELOC:LADDRSITE !
    LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !  LBL LDEFKWGUARD !  LBL LDEFKWFAIL !
    LBL LAOTWIDGATE !
@@ -9391,7 +9528,8 @@ package ENGINE-EMIT
    EMIT-CF-HELPERS  COMPILE-EMIT:EMIT-DEF-KW-GUARD
    EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
    EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE  EMIT-AOT-PROT-RESTORE
-   SNAP-RELOC:EMIT-CALLS  SNAP-RELOC:EMIT-MARK  SNAP-RELOC:EMIT-XT
+   SNAP-RELOC:EMIT-CALLS  SNAP-RELOC:EMIT-MARK
+   SNAP-RELOC:EMIT-INDEX-RELEASE  SNAP-RELOC:EMIT-XT
    SNAP-RELOC:EMIT-ADDR-SITE  SNAP-RELOC:EMIT-ADDRS
    EMIT-LOC-FIND
    KWDATA:EMIT

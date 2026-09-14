@@ -11,6 +11,15 @@ public
 \ MATCH stack ends before $1A0; $1A0 remains the seal fixture's poke cell, and
 \ CMFAM starts at $1B0. Task USER storage starts much higher, at $41C8.
 $1A8 constant LOCK-CELL
+\ Derived process storage, never an address declaration or part of the row
+\ schema. $36C8 is the single unused cell between BPA ($36C0) and the eight
+\ breakpoint records ($36D0..$37D0), below FFI/task USER and outside JIT arrays.
+\ Existing storage-v1 engines leave it zero, so new source can still use them.
+$36C8 constant INDEX-CELL
+0 constant INDEX-SLOTS
+8 constant INDEX-COUNT
+16 constant INDEX-HEADER
+$7FFFFFFFFFFFFFFF INDEX-HEADER - CELL / constant INDEX-MAX-SLOTS
 \ The high six bytes spell HBADDR; the low 16 bits identify header schema 1.
 $4842414444520001 constant MAGIC
 8 constant MAGIC-FIELD
@@ -58,6 +67,27 @@ TRUSTED: N>ROWS ( n -- ptr n ) ;
 TRUSTED: ROWS>N ( ptr n -- n ) ;
 TRUSTED: DATA-ROWS ( n -- ptr n ) data-base + ;
 
+: LOCK-ADDR ( -- ptr n ) data-base LOCK-CELL + ;
+: INDEX-ADDR ( -- ptr n ) data-base INDEX-CELL + ;
+: LOCK ( -- ) begin 0 1 LOCK-ADDR atomic-cas 0= until ;
+: UNLOCK ( -- ) 0 LOCK-ADDR atomic! ;
+
+\ Main-owner preparation is quiescent, as it was before the index. Hold the
+\ registrar mutex through release AND the following row/header mutation, so a
+\ marker cannot rebuild the derived view between invalidation and compaction.
+: INDEX-RELEASE ( -- )
+   INDEX-ADDR @ dup 0= if drop exit then {: address:n :}
+   address 0 < address 7 and 0<> or
+   address $7FFFFFFFFFFFFFFF INDEX-HEADER - > or if REFUSE then
+   address N>ROWS INDEX-SLOTS + @ {: slots:n :}
+   slots 2 < slots INDEX-MAX-SLOTS > or if REFUSE then
+   slots slots 1- and 0<> if REFUSE then
+   slots cells INDEX-HEADER + {: bytes:n :}
+   bytes $7FFFFFFFFFFFFFFF address - > if REFUSE then
+   address N>ROWS bytes munmap 0<> if
+      s" address-cells: cannot release index" 96 die then
+   0 INDEX-ADDR ! ;
+
 \ Subtraction precedes addition/multiplication, including on malformed input.
 : WITHIN ( n n n -- ) {: off:n cap:n bytes:n :}
    off 0 < off bytes > or if REFUSE then
@@ -103,10 +133,9 @@ public
    row 0 < row count >= or if REFUSE then
    base row cells + @ ;
 
-\ Native-build owns the explicit lifetime cut through its retired source heap.
-\ Preserve registration order and all declarations below that boundary.
-: KEEP-BELOW ( n -- ) {: floor:n :}
-   CURRENT? if floor KEEP-STORAGE then
+private
+
+: KEEP-ROWS ( n -- ) {: floor:n :}
    LIVE-SPAN {: base:ptr count:n :}
    0 count 0 ?do
       base i cells + @ {: row:n :}
@@ -116,10 +145,7 @@ public
    loop
    HEADER ! ;
 
-\ Called outside the registrar, before snapshot DATA length is frozen. DATA
-\ allocation inside ptr-cell-mark would split `here ptr-cell-mark 0 ,`.
-: PERSIST ( -- )
-   CURRENT? 0= if exit then
+: PERSIST-ROWS ( -- )
    LIVE-HEADER {: old:ptr cap:n mode:n :}
    mode 0= if exit then
    cap cells {: bytes:n :}
@@ -132,6 +158,22 @@ public
    then
    fresh data-base - HEADER BASE-FIELD + !
    0 HEADER MODE-FIELD + ! ;
+
+public
+
+\ Native-build owns the explicit lifetime cut through its retired source heap.
+\ Preserve registration order and invalidate even when the count is unchanged.
+: KEEP-BELOW ( n -- ) {: floor:n :}
+   CURRENT? if
+      LOCK INDEX-RELEASE floor KEEP-STORAGE floor KEEP-ROWS UNLOCK
+   else floor KEEP-ROWS then ;
+
+\ Called outside the registrar, before snapshot DATA length is frozen. DATA
+\ allocation inside ptr-cell-mark would split `here ptr-cell-mark 0 ,`.
+\ An already DATA-backed vector still releases its process-owned index.
+: PERSIST ( -- )
+   CURRENT? 0= if exit then
+   LOCK INDEX-RELEASE PERSIST-ROWS UNLOCK ;
 
 \ Strict v9 reader for a complete snapshot DATA copy. Legacy admission is a
 \ separate caller decision; malformed v9 headers never take that branch.
