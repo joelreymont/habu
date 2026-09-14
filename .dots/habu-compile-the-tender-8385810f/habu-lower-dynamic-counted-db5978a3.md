@@ -1,10 +1,18 @@
 ---
 title: Lower dynamic counted-loop steps in the optimizing compiler
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "\"2026-09-14T15:00:03.712796+03:00\""
 ---
+
+Resolved 2026-09-14: Hazel's fdf58aa3 integrated as 4b31dbcf after Cedar's
+independent review and directed-boundary correction. Native+loop, native-j,
+native-leave, native-hir and the vocabulary session fixtures pass on rebuilt
+SHAd5d84808. The +loop fixture explicitly selects tier 1 and covers the standard
+gd2/gd7/gd8 tables, opposite-boundary wraps, dynamic steps, nested indices,
+leave/unloop, dead bodies and the real buffer reproducer. Existing do/loop
+inventory tests need tier attribution; full qualification remains separate.
 
 Current native engine 2a49a29c rejects checked : COPY-DATA ( ptr u8 -- ) {: p:ptr :} 16 0 ?do p i + c@ drop 4 +loop ; with -8502 E-NELAB-CTRL. src/compiler/native/hir-word.f declares loop but no +loop control; DO-CLOSE-LOOP hardcodes increment 1. JIT supports +loop. Add the proper HIR control and signed step/crossing semantics, preserve empty/?do, negative/dynamic steps, nested i/j, leave/unloop/dead bodies and overflow behavior. Reproducer /tmp/cedar-plusloop-reduce.f. Discovered while testing C5 copier; that copier iterates its four instruction indices using ordinary loop. No native +loop implementation yet.
 

@@ -188,6 +188,10 @@ SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
 
+SUITE compiler-native-string-forms
+   test/compiler/native-string-forms.f
+;SUITE
+
 SUITE compiler-native-hir
    test/compiler/native-hir.f
 ;SUITE
