@@ -153,6 +153,25 @@ create BR-ERR   BR-CAP allot
    s" ... and the store past the floor never ran" T-LABEL
    outu BR-OUT$ s" build-rewind: floor did not refuse" CONTAINS? TFALSE ;
 
+\ Refuse the whole invalid index range before deriving a dictionary address.
+: BR-SEED-REFUSED ( ptr u8 n -- ) {: value:ptr valueu:n :}
+   SB-RESET
+   s" TRUSTED: BR-SEED ( -- ) " SB-APPEND
+   value valueu SB-APPEND
+   s"  seed-ndict! ; BR-SEED" BR-LINE
+   BR-FLOOR$ SB$ WRITE-ALL
+   BR-FLOOR$ BR-ARGV
+   BR-RUN {: outu:n erru:n rc:n :}
+   value valueu T-LABEL
+   rc 74 T=
+   outu 0 T= ;
+
+: BR-SEED-BOUNDS ( -- )
+   s" -1" BR-SEED-REFUSED
+   s" $8000000000000000" BR-SEED-REFUSED
+   s" ndict@" BR-SEED-REFUSED
+   s" ndict@ 1+" BR-SEED-REFUSED ;
+
 public
 
 : BUILD-REWIND-TEST-MAIN ( -- )
@@ -160,6 +179,7 @@ public
    BR-SETUP
    BR-REWIND-RUNS
    BR-FLOOR-HOLDS
+   BR-SEED-BOUNDS
    CLEANUP-RUN
    T-REPORT
    s" build-rewind-test: ok" type cr ;

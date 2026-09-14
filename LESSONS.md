@@ -8310,3 +8310,8 @@ shared prefix-name validation is applied (2026-09-14).
 `BYTES,` pads each invocation to four bytes. Emit a diagnostic and its newline
 as one string: separate calls put NUL padding inside the bytes sent to stderr.
 The named-address-cell seed test checks the complete message (2026-09-14).
+
+Resolve the native rewind boundary from the earliest global `IMK-NDICT0`
+dictionary row, not the marker cell's contents. Retained/replayed prefixes can
+contain a later marker. Bound `seed-ndict!` before deriving an address; negative
+indices must fail in a child process (2026-09-14).

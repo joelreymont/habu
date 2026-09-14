@@ -1301,9 +1301,10 @@ variable SZA-I
 \ boundary. TRUSTED: is authority by design (docs/registry-band.md), and the
 \ native builder keeps this reset inside one named boundary.
 : BSEEDNDICTSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                         \ ( n -- )
-   LBL {: lower:label :}
+   LBL LBL {: lower:label bad:label :}
+   A 0 CMPI,  C-LT bad BCOND,
    A NDICT CMP,  C-LT lower BCOND,
-      0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   bad LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    lower LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    NDICT A 0 ADDI,

@@ -175,7 +175,10 @@ operation, reachable only inside a `TRUSTED:` boundary): `src/habu/hide.f`
 `BFR-NDICT!` and `src/habu/prefix-rewind.f` `DICT!` are the two rows that drive
 it, both in payload-only files that no shipped engine carries.
 `tools/native-build.f` `LOGICAL-RESET` drives the same seam for the in-process
-window build. Public `ndict!` still refuses a count below the floor, from a
+window build. `CORE-PREFIX:FIRST-RECORD` selects the earliest global `IMK-NDICT0`
+dictionary row, matching recovery; the marker cell is not a saved record index.
+`seed-ndict!` requires `0 <= n < ndict@` before deriving its target address.
+Public `ndict!` still refuses a count below the floor, from a
 payload as from any other program (`test/build-rewind-test.f` pins both halves;
 `test/seal.f` pins the public refusal).
 
