@@ -132,11 +132,17 @@ TRUSTED: EV1 ( n ptr u8 n -- n )
    s" 7 NAG-WA" EV-N 0 T= ;
 
 : BARE-CASE ( -- )
-   s" a loop with no call or memory order is refused at the machine boundary" T-LABEL
-   s" : NAG-BARE ( n -- n ) begin 1 - again ;" EV-DEF E-A64RAV-ORDER T=
+   \ Neither definition is executed: both are deliberately nonreturning. The
+   \ production compile and retained back edge are the complete observations.
+   s" a loop with no call or memory access compiles" T-LABEL
+   s" : NAG-BARE ( n -- n ) begin 1 - again ;" EV-DEF 0 T=
+   s" and its back edge is retained" T-LABEL
+   s" NAG-BARE" KEPT
 
    s" and the same loop with a memory access compiles" T-LABEL
-   s" : NAG-MEM ( n -- n ) begin NAG-FIXTURE:NAG-CELL @ + again ;" EV-DEF 0 T= ;
+   s" : NAG-MEM ( n -- n ) begin NAG-FIXTURE:NAG-CELL @ + again ;" EV-DEF 0 T=
+   s" and its back edge is retained" T-LABEL
+   s" NAG-MEM" KEPT ;
 
 public
 
