@@ -5,6 +5,15 @@ require src/compiler/native/compiler.f
 package NATIVE-ORDER-EXIT
 private
 
+\ Compilation must accept nonreturning cycles; the unbounded bodies are never run.
+: FOREVER ( -- ) begin again ;
+: FOREVER-DROP ( n -- ) drop begin again ;
+: RETURN-OR-LOOP ( n -- n ) dup 0= if begin again then 1+ ;
+
+: CHECK-RETURN ( -- )
+   3 RETURN-OR-LOOP 4 <> if -2 throw then ;
+CHECK-RETURN
+
 : BYTE@ ( ptr u8 n -- n )
    BYTE+ c@ ;
 

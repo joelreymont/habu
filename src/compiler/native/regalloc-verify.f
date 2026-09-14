@@ -430,9 +430,52 @@ variable FPO-RUN                     \ where the next predecessor run starts
    loop
    true ;
 
+\ An order may also end before a pure nonreturning region, including an
+\ infinite loop. Every later operation must be independent of memory order;
+\ a backedge to the defining operation or any reachable return refuses it.
+: ORDER-TOUCH? ( IR-ID:ir-op-id -- bool ) {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT CLS-AT C-TOKEN = if true unloop exit then
+   loop
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT CLS-AT C-TOKEN = if true unloop exit then
+   loop
+   false ;
+
+: ORDER-QUIET? ( IR-ID:ir-block-id -- bool ) {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT ORDER-TOUCH? if false unloop exit then
+   loop
+   true ;
+
+: LAST-ORDER-TOKEN ( IR-ID:ir-block-id -- n ) {: bk:IR-ID:ir-block-id :}
+   -1
+   bk OP-COUNT 0 ?do
+      bk i OP-AT {: id:IR-ID:ir-op-id :}
+      id ORDER-TOUCH? if drop id FRAME-TOKEN then
+   loop ;
+
+: TERMINAL-ORDER? ( n -- bool ) {: k:n :}
+   k DB-AT {: b:n :}
+   b 0 < if false exit then
+   FUN b BLOCK-AT LAST-ORDER-TOKEN k <> if false exit then
+   FUN RET-ORD {: rb:n :}
+   b rb = if false exit then
+   b -1 REACH-FILL
+   NB-N @ 0 ?do
+      i RCH? if
+         i rb = FUN i BLOCK-AT ORDER-QUIET? 0= or if false unloop exit then
+      then
+   loop
+   true ;
+
 : ORDER-VALUE-CK ( n -- )
    {: k:n :}
-   k USES-AT 1 < if k TRAP-FRAME-END? if exit then E-A64RAV-ORDER throw then
+   k USES-AT 1 < if
+      k TRAP-FRAME-END? if exit then
+      k TERMINAL-ORDER? if exit then
+      E-A64RAV-ORDER throw
+   then
    k USES-AT k UB-BLOCKS <> if E-A64RAV-ORDER throw then
    k DB-AT 0 < if E-A64RAV-ORDER throw then
    \ What the sweep below refuses is a second block using this order that a

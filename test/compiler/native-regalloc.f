@@ -2935,7 +2935,38 @@ using A64RA
    s" a frame that is not the one the contract declares is refused" T-LABEL
    [: WRONG-FRAME ;] E-A64RA-FRAME TTHROWSQ ;
 
+\ The entry data-stack order is unused only when the rest of the CFG is pure
+\ and cannot return. Change that suffix to revisit entry, return, or start
+\ another order chain: each must still be refused.
+: TERMINAL-ORDER-BODY ( n IR-CTX:ctx -- ) {: mode:n c:IR-CTX:ctx :}
+   c A64-MOD
+   s" TERMINAL-ORDER" 0 0 OPEN-FUN
+   0 M-DTAKE drop
+   1 M-BR0
+   M-BLOCK+
+   mode case
+      0 of 1 M-BR0 endof
+      1 of 0 M-BR0 endof
+      2 of M-RET0 endof
+      3 of 0 M-DTAKE drop 1 M-BR0 endof
+   endcase
+   CLOSE-FUN
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m 4 0 0 HABU-N A64RA:ALLOCATE
+   m 4 0 0 HABU-N A64RAV:ACCEPT ;
+
+: TERMINAL-ORDER ( n -- )
+   WBND [: TERMINAL-ORDER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : ORDER-REFUSE-CASES ( -- )
+   s" the last data-stack order may precede a pure nonreturning cycle" T-LABEL
+   0 TERMINAL-ORDER
+   s" a backedge may not discard the previous iteration's order" T-LABEL
+   [: 1 TERMINAL-ORDER ;] E-A64RAV-ORDER TTHROWSQ
+   s" a returning path must consume its incoming order" T-LABEL
+   [: 2 TERMINAL-ORDER ;] E-A64RAV-ORDER TTHROWSQ
+   s" a later memory chain may not discard an earlier order" T-LABEL
+   [: 3 TERMINAL-ORDER ;] E-A64RAV-ORDER TTHROWSQ
    s" a memory order the module mints and nothing reads is refused" T-LABEL
    [: LOOSE-ORDER ;] E-A64RAV-ORDER TTHROWSQ
    s" an unused frame order with a backedge to its store is refused" T-LABEL
