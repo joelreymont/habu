@@ -1215,6 +1215,10 @@ SUITE engine-stack-jit
    test/engine-stack-jit.f
 ;SUITE
 
+SUITE engine-stack-debugger
+   test/engine-stack-debugger.f
+;SUITE
+
 SUITE combinators
    test/combinators.f
 ;SUITE
