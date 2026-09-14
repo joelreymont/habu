@@ -1255,7 +1255,13 @@ variable SZA-I
 \ (HIDX:LREBUILD), so the index stays authoritative instead of being silently
 \ dropped for the rest of the process (CG-25).
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
-   LBL LBL LBL {: floor-ok:label keep:label done:label :}
+   LBL LBL LBL LBL LBL {: bounded:label msg:label floor-ok:label keep:label done:label :}
+   \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
+   14 DICT-CAP LIT64,  A 14 CMP,  C-LS bounded BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 33 MOVZ,  NR-WRITE SYS,
+      0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: dictionary count out of range" BYTES,
+   bounded LBL,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 PROT-GUARD:CALL
    14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
    A 14 CMP,  C-CS floor-ok BCOND,
