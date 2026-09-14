@@ -7,6 +7,7 @@
 \ already present in the native cold prefix.
 
 require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
+require src/habu/code-span.f
 
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
@@ -224,7 +225,8 @@ variable OKV
    repeat drop ;
 
 : PC-HIT? ( n -- bool ) {: o :}
-   o E-S PCV @ <=  PCV @ o E-S o E-E + < and ;
+   o E-WID XREF-NAMESPACE-WL = if IMG-FALSE exit then
+   o E-S PCV @ <=  PCV @ o E-S o E-E CODE-SPAN:BYTES + < and ;
 
 : PC>DICT ( n -- )
    PCV !

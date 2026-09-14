@@ -34,16 +34,15 @@ private
 variable HITS
 
 : SPAN? ( n ptr n -- bool ) {: a:n r:ptr :}
-   r XREF-LEN 0= if 0 0= 0= exit then
    r XREF-WORDLIST XREF-NAMESPACE-WL = if 0 0= 0= exit then   \ a package row's [0] is a wid, not code
    r XREF-RETIRED? if 0 0= 0= exit then
-   a r XREF-START >=  a r XREF-START r XREF-LEN + <  and ;
+   a r XREF-START >=  a r XREF-START r XREF-CODE-BYTES + <  and ;
 
 : ROW. ( n ptr n -- ) {: a:n r:ptr :}
    s" owner=" type r XREF-NAME$ type
    s"  wid=" type r XREF-WORDLIST .
    s"  start=" type r XREF-START .
-   s"  len=" type r XREF-LEN .
+   s"  len=" type r XREF-CODE-BYTES .
    s"  off=" type a r XREF-START - . cr ;
 
 public

@@ -4,6 +4,7 @@ require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
 require src/habu/aot-decl.f
+require src/habu/code-span.f
 
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
 
@@ -103,6 +104,7 @@ $94000000 constant CALL-OP
 
 : REC {: k:n :} ( n -- ptr a )
    AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:name-len|flags 24:name|ptr)
+: REC-BYTES ( ptr n -- n ) 8 + @ CODE-SPAN:BYTES ;
 : AOT-FOLD {: c:n :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
 \ A dict record is one raw 48-byte block that holds BOTH cells (code address,
 \ code length, name-length|flags) and — for a short name — the name BYTES. A
@@ -280,7 +282,7 @@ variable SP2  variable SEND
 
 \ Ticks may name engine-text entries; anonymous bodies can be interior to their
 \ owner's emission. Use exact entry identity first, then the recorded span
-\ (record length excludes its final RET), never a nearest-address heuristic.
+\ (including the explicit full-span bit), never a nearest-address heuristic.
 \ Namespace records hold wordlist IDs in those fields, not code spans.
 : ADDRESS-OWNER ( n -- ptr n ) {: t:n :}
    t 3 and 0<> if XREF-NULL exit then
@@ -292,7 +294,7 @@ variable SP2  variable SEND
    ndict@ 0 ?do
       i REC {: r:ptr :}
       r REC-WID@ -1 <> if
-         t r @ >= if t r @ - r 8 + @ 4 + < if r unloop exit then then
+         t r @ >= if t r @ - r REC-BYTES < if r unloop exit then then
       then
    loop XREF-NULL ;
 
@@ -328,7 +330,7 @@ variable SP2  variable SEND
    then ;
 
 : SCAN-REC {: r:ptr :} ( ptr a -- )
-   r @ SP2 !  r @ r 8 + @ + 4 + SEND !
+   r @ SP2 !  r @ r REC-BYTES + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       r SP2 @ SEND @ SCAN-ADDRESS
       r SP2 @ SCAN-DIRECT

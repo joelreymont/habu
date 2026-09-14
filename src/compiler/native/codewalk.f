@@ -43,9 +43,9 @@ public
    k XREF-REC XREF-START ;
 
 : REC-LEN ( n -- n ) {: k:n :}
-   k XREF-REC XREF-LEN ;
+   k XREF-REC XREF-CODE-BYTES ;
 
-\ A record holds code when its wordlist is real and its length is not zero:
+\ A record holds code when its wordlist is real, including an empty RET body:
 \ wordlist -1 is a package name and -2 is retired, and neither start is code.
 : CODED? ( n -- bool ) {: k:n :}
    k REC-WL LOWEST-WL < if false exit then

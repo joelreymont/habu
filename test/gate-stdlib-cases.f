@@ -492,6 +492,14 @@ SUITE compiler-native-dictionary-publish
    test/compiler/native-dictionary-publish.f
 ;SUITE
 
+SUITE compiler-code-span
+   test/compiler/code-span.f
+;SUITE
+
+SUITE compiler-native-code-span
+   test/compiler/native-code-span.f
+;SUITE
+
 SUITE compiler-native-quot-scope
    test/compiler/native-quot-scope.f
 ;SUITE

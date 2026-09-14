@@ -19,6 +19,7 @@
 \ the checked build stays fail-closed through the image writer).
 
 require src/habu/address-cells.f
+require src/habu/code-span.f
 
 package AOT-CAPTURE
 
@@ -47,7 +48,9 @@ TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;
 \ --- host dictionary record k (48 bytes): field readers (ptr-first byte offsets) ---
 : AOT-REC ( n -- ptr n ) 48 * AOT-DBASE swap + ;
 : AOT-RXT ( ptr n -- n ) AOT-CELL@ ;                          \ [0] code entry (xt)
-: AOT-RLEN ( ptr n -- n ) 8 + AOT-CELL@ ;                     \ [8] code LENGTH (habu2.f EM-AOT-REGISTER-RECS) or package private WID
+: AOT-RLEN ( ptr n -- n ) 8 + AOT-CELL@ ;                     \ raw [8]: encoded code length or package private WID
+: AOT-RBODY ( ptr n -- n ) AOT-RLEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
+: AOT-RBYTES ( ptr n -- n ) AOT-RLEN CODE-SPAN:BYTES ;
 : AOT-RFLAGS ( ptr n -- n ) 16 + AOT-CELL@ ;                  \ [16] flags | name len
 : AOT-RNLEN ( ptr n -- n ) AOT-RFLAGS $0003FFFFFFFFFFFF and ;   \ = DNAME-LEN-MASK (top 14 bits are flags + DNAME-MIN-IN + DKIND)
 : AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS $2000000000000000 and 0= 0= ;
@@ -437,6 +440,7 @@ variable ACAP-NIDX-PM                                        \ pool-proof mismat
       v 4 + ACAP-W32@ 0= 0= if s" aot-capture: rec blob-off exceeds u32" 74 die then
       v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
       pkg 0= if
+         v 8 + ACAP-W32@ CODE-SPAN:CHECK
          v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
       then
       v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
@@ -584,7 +588,7 @@ private
    ACAP-W-R1 @ ACAP-W-R0 @ ?do
       i AOT-REC AOT-RWID -1 <> if
          i AOT-REC AOT-RXT a <=
-         i AOT-REC AOT-RXT i AOT-REC AOT-RLEN + a > and if i unloop exit then
+         i AOT-REC AOT-RXT i AOT-REC AOT-RBYTES + a > and if i unloop exit then
       then
    loop
    -1 ;
@@ -1104,7 +1108,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-DEFER-SITE ( n n n n n -- )
    {: k:n bstart:n bend:n d0:n d1:n :}
    k AOT-REC {: rec:ptr :}
-   rec AOT-RXT rec AOT-RLEN + {: meta:n :}
+   rec AOT-RXT rec AOT-RBODY + {: meta:n :}
    meta bstart < meta 16 + bend > or if exit then
    meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if exit then
    meta 8 + AOT-N>U8 CELL-VIEW AOT-CELL@ {: addr:n :}
@@ -1687,6 +1691,10 @@ private
    ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
    0 ACAP-CREC-DST 16 + ACAP-W32@ 1000 <> if
       s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
+   8 CODE-SPAN:EXACT d 8 + AOT-N-C!
+   ACAP-COMPACT-RECS ACAP-PROVE-RECS
+   0 ACAP-CREC-DST 4 + ACAP-W32@ 8 CODE-SPAN:EXACT <> if
+      s" aot-capture: full code span corrupted" 74 die then
    0 AOT-REC-N !  ACAP-POOL-RESET ;                 \ leave buffers clean for the real capture
 
 \ --- build-time regression: the pool index answers what the linear pool walk

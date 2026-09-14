@@ -3,6 +3,8 @@
 \ Load after src/habu/layout.f. These words inspect the running image dictionary
 \ through dbase@/ndict@ and are intended for the REPL/debug path.
 
+\ CODE-SPAN is loaded immediately before XREF by the cold prefix.
+
 0 constant XREF-START-SLOT
 1 constant XREF-LEN-SLOT
 2 constant XREF-FLAGS-SLOT
@@ -57,7 +59,7 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-START ( ptr n -- n )
    XREF-START-SLOT XREF-CELL@ ;
 
-: XREF-LEN ( ptr n -- n )
+: XREF-RAW-LEN ( ptr n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
 
 : XREF-FLAGS ( ptr n -- n )
@@ -65,6 +67,16 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 
 : XREF-WORDLIST ( ptr n -- n )
    XREF-WORDLIST-SLOT XREF-CELL@ ;
+
+\ Keep the namespace private-WID API and the historical body length distinct
+\ from the exact code span. A raw length is only for record serialization.
+: XREF-LEN ( ptr n -- n ) {: rec:ptr :}
+   rec XREF-WORDLIST XREF-NAMESPACE-WL = if rec XREF-RAW-LEN exit then
+   rec XREF-RAW-LEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
+
+: XREF-CODE-BYTES ( ptr n -- n ) {: rec:ptr :}
+   rec XREF-WORDLIST XREF-NAMESPACE-WL = if 0 exit then
+   rec XREF-RAW-LEN CODE-SPAN:BYTES ;
 
 : XREF-RETIRED? ( ptr n -- bool )
    XREF-WORDLIST XREF-RETIRED-WL = ;

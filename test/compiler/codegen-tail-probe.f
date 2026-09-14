@@ -112,7 +112,8 @@ public
    s" NTP-FIXTURE:TAILED" TAIL-BRANCH? TTRUE
 
    \ Bytes after this complete tail routine belong to the next definition.
-   \ TRAILER-RET? can see EMPTY's return there, so it cannot prove ownership.
+   \ The full-span bit prevents TRAILER-RET? from reading EMPTY's return.
+   s" NTP-FIXTURE:TAILED" TRAILER-RET? TFALSE
    s" the tail routine consists of one branch and makes no call" T-LABEL
    s" NTP-FIXTURE:TAILED" CALLS 0 T=
    s" NTP-FIXTURE:TAILED" INSNS 1 T=
@@ -149,6 +150,8 @@ public
    s" NTP-FIXTURE:TAILED" CODE-BYTES
       s" NTP-FIXTURE:TAILED" INSNS NBR:INSN-BYTES * T=
    s" NTP-FIXTURE:TAILED" CODE-BYTES NBR:INSN-BYTES T=
+   [: s" NTP-FIXTURE:TAILED" TRAILER drop ;]
+      E-CODEGEN-PROBE-EXTENT TTHROWSQ
 
    s" an empty routine records no length at all, and is not a word of no size"
    T-LABEL

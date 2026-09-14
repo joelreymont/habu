@@ -8,11 +8,8 @@
 \ before the trailing return a branch-with-link - and this tool is where that
 \ question is asked.
 \
-\ WHERE THE TRAILING RETURN IS. A word's recorded code length EXCLUDES its
-\ trailing return, and src/habu/habu2.f's C-CALL-REQUIRE-RET-SLOT reads the
-\ return at entry+length to confirm the record still ends in one. So the last
-\ instruction of the BODY is at entry+length-4 and the return itself is at
-\ entry+length, and both are read here through the record's own bounds.
+\ Legacy body lengths exclude the final slot; explicit full spans include the
+\ terminal branch or trap. The record bit decides whether a trailer exists.
 \
 \ WHY IT DOES NOT WALK TO THE FIRST RETURN. JITDUMP:JD (tools/jitdump-core.f) does, which
 \ is right for a routine somebody is reading and wrong for this question twice
@@ -97,13 +94,13 @@ public
 
 \ And the one after it, which is where the trailing return lives.
 : TRAILER ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u REC XREF-RAW-LEN CODE-SPAN:FULL? if E-CODEGEN-PROBE-EXTENT throw then
    a u START  a u LEN +  W@ ;
 
-\ Whether that trailer really is a return. It is the record convention every
-\ reader of a word's code depends on - src/habu/habu2.f reads it before copying
-\ a callee - so a lane that changes how a routine leaves has to be able to say
-\ what stands there now.
+\ Read a final slot only when the record owns one. A complete body may be
+\ followed immediately by another word's RET, which says nothing about it.
 : TRAILER-RET? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u REC XREF-RAW-LEN CODE-SPAN:FULL? if false exit then
    a u TRAILER RET? ;
 
 \ How many instructions the recorded body holds.
@@ -147,34 +144,10 @@ public
    t a u START < if true exit then
    t a u START a u LEN + > ;
 
-\ ---- and how many bytes of code the word really is ---------------------------
-\ THE RECORDED LENGTH IS NOT THE ROUTINE. It is everything before the trailing
-\ return. So a word that runs four instructions and returns records twelve
-\ bytes, and an empty word - which is a
-\ return and nothing else - records NONE. Anything comparing a habu word's size
-\ with a size that came from somewhere else, and a C symbol's size is the whole
-\ function, is comparing two different things until the return is put back.
-\
-\ WHICH WORDS HAVE ONE IS NOT GUESSED, and it is the reason this lives here
-\ rather than being four added at the call site. A routine that leaves by a
-\ branch has no trailing return to leave out, so ITS record is already the whole
-\ emission and adding four would count an instruction that is not there - that
-\ is every tail-call row of the fifth corpus. The question is answered by
-\ TAIL-BRANCH? above, which asks where the last instruction GOES and not merely
-\ what it is, so a loop's back edge is not mistaken for a tail branch.
-\
-\ AND THE OTHER ARM IS CHECKED RATHER THAN ASSUMED. A record that does not end in
-\ a tail branch is claimed to be followed by a return, so the return is READ. It
-\ is the same instruction, at the same address, that src/habu/habu2.f's
-\ C-CALL-REQUIRE-RET-SLOT reads before it copies a callee, so what is checked
-\ here is the engine's own record convention rather than a rule of this file's.
-\ A record that keeps neither promise is refused: it is not a word this reader
-\ can state the extent of, and a silent four would be a number nobody could
-\ trust.
+\ The shared dictionary contract owns extents; branch analysis above describes
+\ control flow and never supplies a missing length or borrows adjacent bytes.
 : CODE-BYTES ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u TAIL-BRANCH? if a u LEN exit then
-   a u TRAILER-RET? 0= if E-CODEGEN-PROBE-EXTENT throw then
-   a u LEN INSN-BYTES + ;
+   a u REC XREF-CODE-BYTES ;
 
 \ One line per word: its recorded length, the calls it makes, what follows the
 \ last of them, and whether it leaves through a branch.
@@ -191,7 +164,7 @@ public
 \ show what moved rather than assert it.
 : DUMP ( ptr u8 n -- ) {: a:ptr u:n :}
    s" --- " type a u type s"  bytes " type a u LEN . cr
-   a u LEN INSN-BYTES / 1+ 0 ?do
+   a u CODE-BYTES INSN-BYTES / 0 ?do
       a u START i INSN-BYTES * + W@ DIS1
    loop ;
 

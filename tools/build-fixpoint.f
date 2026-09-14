@@ -1028,6 +1028,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
    out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
+   out outu s" src/habu/code-span.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE

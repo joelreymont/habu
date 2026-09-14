@@ -7,6 +7,7 @@ require lib/errors.f
 require src/compiler/native/branch.f
 require src/compiler/native/dict.f
 require src/compiler/native/emit.f
+require src/habu/code-span.f
 
 package NPUB
 
@@ -103,9 +104,10 @@ TRUSTED: APPEND-PENDING ( n -- )
       fn  i A64EMIT:ADDR-SITE@ INSN-BYTES * +  RELOC-ADDR
    loop ;
 
-\ Dictionary records omit a trailing return and retain the whole span otherwise.
+\ Legacy records omit the final RET slot. No-RET emissions explicitly record
+\ their whole span, so a reader never borrows the next record's instruction.
 : RECORDED-LEN ( n -- n ) {: size:n :}
-   A64EMIT:TRAILING-RETURN? 0= if size exit then
+   A64EMIT:TRAILING-RETURN? 0= if size CODE-SPAN:EXACT exit then
    size INSN-BYTES - ;
 
 : VALIDATE-EMISSION ( n -- n ) {: size:n :}

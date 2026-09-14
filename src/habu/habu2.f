@@ -5,6 +5,7 @@
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 require lib/fmt.f
 require src/habu/address-cells.f
+require src/habu/code-span.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 \ The AOT capture buffers, their caps and the section budget are src/habu/aot-decl.f,
@@ -288,7 +289,7 @@ variable LPROLES
 variable LPDECLTXN      variable LPGENDECL      variable LPDECLEVENT    variable LPSTRUCTMAKE
 variable LPSTRUCTDECL   variable LPENUMDECL
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
-variable LPCOMBINATORS  variable LPXREF  variable LPGENDECLDICT  variable LPGENDECLPROT
+variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPGENDECLDICT  variable LPGENDECLPROT
 variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPTOPROW
 \ Boot stdlib block (dot habu-seed-the-stdlib-d8e3a757): the checked stdlib the
@@ -784,6 +785,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
+   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-LOAD-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-LOAD-ROW
@@ -923,6 +925,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
+   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PATH-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PATH-ROW
@@ -1302,6 +1305,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PROVIDE-ROW
@@ -2727,13 +2731,16 @@ public
    B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
 
 : EMIT ( -- )
-   LBL {: nocr :}
+   LBL LBL {: nocr:label slot:label :}
    LDOESPATCH LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ code band -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
-   12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
+   12 11 0 LDR,  13 11 8 LDR,
+   14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
+   14 slot CBZ,  13 13 4 SUBI,
+   slot LBL,  12 12 13 ADD,                              \ final RET/B slot from either representation
    1 11 0 ADDI,  2 DREC MOVZ,  PROT:LSPAN LABEL@ BL,     \ the created record, whose kind stamp clears below
    1 12 0 ADDI,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,        \ the created body's RET, below CP
    14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
@@ -3659,7 +3666,7 @@ public
    CP 9 0 STR,
    C-DEFER-EMIT-CODE
    9 DATA PEND-CELL LDR,
-   10 9 0 LDR,  10 CP 10 SUB,  10 9 8 STR,
+   10 9 0 LDR,  10 CP 10 SUB,  10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,
    C-DEFER-META-WRITE
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
@@ -3688,7 +3695,7 @@ public
    13 found CBNZ,
       DEFER-DIAG:DIE-NOT-FOUND
    found LBL,
-   14 11 12 ADD,
+   12 12 CODE-SPAN:MASK ANDI,  14 11 12 ADD,
    15 14 0 LDR,
    5 DEFER-MAGIC LIT64,
    15 5 CMP,  C-EQ ok BCOND,
@@ -9317,7 +9324,7 @@ package LABELS
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
-   LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !  LBL LPGENDECLPROT !
+   LBL LPCOMBINATORS !  LBL LPCODESPAN !  LBL LPXREF !  LBL LPGENDECLDICT !  LBL LPGENDECLPROT !
    LBL LPLAYOUTSEAL !  LBL LPOWNERGUARD !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !

@@ -17,8 +17,8 @@
 \ adjustment of nothing. An elided instruction gets NO source-map row, because
 \ row k describes the instruction WORD@ k answers.
 \
-\ Block zero is written first and the block control leaves through last, because
-\ publish.f records a length that says the emission ends in the return.
+\ Block zero is written first and the block control leaves through last.
+\ Publication explicitly distinguishes a trailing RET slot from a full span.
 
 require lib/prelude.f
 require lib/errors.f

@@ -5,6 +5,7 @@ s" lib/prelude.f" provided
 include src/core/enums.f
 include src/core/type-family-sha.f
 include src/core/combinators.f
+include src/habu/code-span.f
 include src/habu/xref.f
 include src/core/generated-declaration-dictionary.f
 include src/core/generated-declaration-protection.f

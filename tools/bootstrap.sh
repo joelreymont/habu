@@ -110,6 +110,7 @@ SRC_COMMON=(
   src/habu/aot-decl.f
   src/habu/aot-ident.f
   src/habu/habu2.f
+  src/habu/code-span.f
   src/habu/xref.f
   src/core/generated-declaration-dictionary.f
   src/core/generated-declaration-protection.f

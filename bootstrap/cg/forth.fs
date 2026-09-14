@@ -38,6 +38,9 @@ $301000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (g
                                \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
                                \ mirrors src/habu/layout.f)
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
+\ src/habu/code-span.f: exact spans use bit31; namespace WIDs remain raw.
+$80000000 constant CODE-SPAN:FULL
+$7FFFFFFF constant CODE-SPAN:MASK
 16      constant DNAME-INL
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
@@ -1847,6 +1850,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 : C-CALL ( -- )
    LBL {: lcall :}  LBL {: lcopy :}  LBL {: lscan :}  LBL {: lsbody :}
    LBL {: lnopro :}  LBL {: linl :}  LBL {: ldone :}
+   9 12 CODE-SPAN:FULL ANDI,  9 lcall CBNZ,          \ a no-RET body cannot be copied inline
    9 11 0 LDRW,  8 $D10043FF LIT64,  9 8 CMP,  C-NE lnopro BCOND,
       12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
       13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI,  lscan B,   \ meat [addr+8, addr+clen-8)
@@ -1900,7 +1904,7 @@ variable LPSCRIPTARGV   variable LPROLES
 variable LPDECLTXN     variable LPGENDECL     variable LPDECLEVENT    variable LPSTRUCTMAKE
 variable LPSTRUCTDECL  variable LPENUMDECL
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
-variable LPCOMBINATORS  variable LPXREF  variable LPGENDECLDICT
+variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPGENDECLDICT
 variable LPGENDECLPROT  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPDYNAMIC      variable LPINTMARK      variable LPTOPROW
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
@@ -2110,6 +2114,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
+   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-LOAD-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-LOAD-ROW
@@ -2237,6 +2242,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
+   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PATH-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PATH-ROW
@@ -2485,6 +2491,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPCODESPAN     s" src/habu/code-span.f"   PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PROVIDE-ROW
@@ -3466,13 +3473,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ LDOESPATCH ( x10=D ): patch the last-created word's RET into `b D`.
 \ Runs from engine text, so the region RW/RX flips are safe mid-execution.
 : EMIT-DOESPATCH ( -- )
-   LBL {: nocr :}
+   LBL LBL {: nocr slot :}
    LDOESPATCH @ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
    2 3 MOVZ,  LPROT @ BL,                                \ region -> RW
    10 SP 8 LDR,
    11 DATA LASTC-CELL LDR,                               \ created slot
-   12 11 0 LDR,  13 11 8 LDR,  12 12 13 ADD,             \ x12 = RET addr
+   12 11 0 LDR,  13 11 8 LDR,
+   14 13 CODE-SPAN:FULL ANDI,  13 13 CODE-SPAN:MASK ANDI,
+   14 slot CBZ,  13 13 4 SUBI,
+   slot LBL,  12 12 13 ADD,
    14 10 12 SUB,  14 14 2 ASRI,                          \ delta words (negative)
    5 $3FFFFFF LIT64,  14 14 5 AND,
    5 $14000000 LIT64,  14 14 5 ORR,                      \ b D
@@ -5206,7 +5216,8 @@ variable CFSK2
    C-STORE-DEF-NAME
    CP 9 0 STR,                                      \ slot[0] = body start
    C-DEFER-EMIT-CODE
-   9 DATA PEND-CELL LDR,  10 9 0 LDR,  10 CP 10 SUB,  10 9 8 STR,   \ clen = CP-bodystart
+   9 DATA PEND-CELL LDR,  10 9 0 LDR,  10 CP 10 SUB,
+   10 10 CODE-SPAN:FULL ORRI,  10 9 8 STR,              \ exact code span before the metadata trailer
    C-DEFER-META-WRITE
    NDICT NDICT 1 ADDI,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,               \ x9 = body start for the flush
@@ -5233,7 +5244,7 @@ variable CFSK2
    13 found CBNZ,
       $46 C-DEFER-DIE-TOKEN
    found LBL,
-   14 11 12 ADD,                                    \ x14 = addr + clen = meta trailer
+   12 12 CODE-SPAN:MASK ANDI,  14 11 12 ADD,          \ x14 = addr + decoded body length = metadata
    15 14 0 LDR,
    5 DEFER-MAGIC LIT64,
    15 5 CMP,  C-EQ ok BCOND,
@@ -6841,7 +6852,7 @@ variable P2SK
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
-   LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !
+   LBL LPCOMBINATORS !  LBL LPCODESPAN !  LBL LPXREF !  LBL LPGENDECLDICT !
    LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPDYNAMIC !  LBL LPINTMARK !  LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !

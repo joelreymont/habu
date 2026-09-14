@@ -157,7 +157,7 @@ variable CP2  variable CEND  variable NEXT-OFF
 : ADR? {: w:n :}  w $9F000000 and $10000000 = ;
 : ADRP? {: w:n :}  w $9F000000 and $90000000 = ;
 : RAW-LEN {: r:ptr :} ( ptr a -- n )
-   r 8 + @ 4 + ;
+   r REC-BYTES ;
 : REC-END {: r:ptr :} ( ptr a -- ptr u8 )
    r @ r RAW-LEN + ;
 \ Compacted blob length. Under the direct-BL-only contract every word maps 1:1

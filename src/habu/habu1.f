@@ -31,6 +31,7 @@ $F2E00009 constant W-MOVK3
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f
 require src/habu/task-abi.f
+require src/habu/code-span.f
 variable FP-A  variable FP-U
 
 \ A primitive whose dictionary record is globally searchable but cannot be
@@ -2404,8 +2405,8 @@ public
 \ routine, in one protection window and one order.
 \
 \ WHY BOTH CELLS ARE WRITTEN BY ONE PRIMITIVE. A record's first two cells are the
-\ address a caller branches to and the number of bytes the inliner may copy from
-\ there, and they only mean anything together. Writing them as four 32-bit pokes
+\ address a caller branches to and its CODE-SPAN encoded length, and they only
+\ mean anything together. Writing them as four 32-bit pokes
 \ - which is what a cell store built out of `patch32` is - tears each cell across
 \ two protection windows and leaves the pair inconsistent between them: a reader
 \ that arrived in the middle would see half of one address. One primitive writes
@@ -2417,8 +2418,7 @@ public
 \ code-publish already flushed - is visible to any observer that acquires the
 \ address before the address itself is. A reader loads START with LDAR and the
 \ length it then reads belongs to that start. Writing START first would leave a
-\ window in which callers reach the new code with the old routine's length, which
-\ is the length the engine's inliner copies.
+\ window in which callers reach the new code with the old routine's length.
 : BXREFRETARGET ( -- )
    LBL LBL {: live:label bad:label :}
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
@@ -2444,6 +2444,8 @@ public
    \ Exactly one row past the count is admitted; NDICT+1 and beyond still trap,
    \ so this stays a bound and not an opening.
    9 NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
+   14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI bad BCOND,
+   14 10 3 ANDI,  14 bad CBNZ,                  \ encoded lengths remain instruction aligned
    live B,
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    live LBL,
