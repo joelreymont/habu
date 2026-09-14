@@ -153,6 +153,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       tick         OF 29 ENDOF
       eval         OF 30 ENDOF
       finally      OF 31 ENDOF
+      close-loop-step OF 32 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -189,6 +190,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       29 of HIR-CTRL:TICK endof
       30 of HIR-CTRL:EVAL endof
       31 of HIR-CTRL:FINALLY endof
+      32 of HIR-CTRL:CLOSE-LOOP-STEP endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -341,7 +343,7 @@ private
 \ spelling has in the prototype, which is where the binding gate reads bytes.
 \ The two ceilings are named against what a load actually holds: the prototype
 \ interns about 230 symbols (two dialect names, 46 HIR and 76 A64 opcodes, their
-\ attribute keys, and the 86 vocabulary spellings this file folds into it), and
+\ attribute keys, and the 87 vocabulary spellings this file folds into it), and
 \ this dialect's vocabulary is WORDS rows. Both refuse by name rather than grow.
 512 constant ORD-CAP                 \ prototype ordinals the map can cover
 128 constant SROW-CAP                \ session rows the gate can remember
@@ -1121,7 +1123,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The exact ceilings this registration writes, so a caller commits a table to
 \ them rather than to a guess. Only the eight renames contribute pick cells.
-86 constant WORDS
+87 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -1222,6 +1224,7 @@ private
    c b r c b s" do" MODEL-SYM HIR-CTRL:OPEN-DO BDECLARE-CONTROL
    c b r c b s" ?do" MODEL-SYM HIR-CTRL:OPEN-DO-SKIP BDECLARE-CONTROL
    c b r c b s" loop" MODEL-SYM HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
+   c b r c b s" +loop" MODEL-SYM HIR-CTRL:CLOSE-LOOP-STEP BDECLARE-CONTROL
    c b r c b s" i" MODEL-SYM HIR-CTRL:INDEX BDECLARE-CONTROL
    c b r c b s" j" MODEL-SYM HIR-CTRL:OUTER-INDEX BDECLARE-CONTROL
    c b r c b s" unloop" MODEL-SYM HIR-CTRL:DROP-LOOP BDECLARE-CONTROL

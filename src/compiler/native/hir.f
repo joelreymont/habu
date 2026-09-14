@@ -139,6 +139,7 @@ ENUM ctrl DERIVE eq
    tick
    eval
    finally
+   close-loop-step
 ;ENUM
 
 \ Three actions and not two, because a peek is not a pop: `fetch-r` copies the

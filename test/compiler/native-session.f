@@ -222,7 +222,7 @@ variable RC     variable EXITED
    STANDDOWN-SRC$ EXEC  S\" 0\n0\n" ASSERT-OK
 
    s" and the definition after it opens a fresh session" T-LABEL
-   OUT$ S\" 86\n2\n" CONTAINS? TTRUE
+   OUT$ S\" 87\n2\n" CONTAINS? TTRUE
 
    s" a definition compiled inside a context is refused, not served" T-LABEL
    NESTED-SRC$ EXEC  S\" refused\n0\n5\n" ASSERT-OK ;

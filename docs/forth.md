@@ -828,6 +828,11 @@ address arithmetic at the public boundary.
   loops. Loop frames are separate from the typed return stack.
   A `do` whose every body path returns or throws has no normal continuation;
   `?do` still has its zero-trip exit, and `leave` supplies an explicit loop exit.
+  `+loop` adds its step in wrapping arithmetic and ends the loop only when the
+  index crosses the boundary between limit-1 and limit in the step's direction
+  (Forth 2012 6.1.0140); wrapping at the boundary opposite the limit keeps
+  looping, so equal bounds run once with a negative step and a whole cycle with
+  a positive one, unlike `loop`.
 - **`RECURSE` uses the declared effect.** Recursive calls apply a fresh copy of
   the current definition's declared signature; keep the raw declared signature
   stable after `CHECK!` so rendered/mutated terms cannot corrupt the scheme.

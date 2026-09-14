@@ -420,6 +420,10 @@ SUITE compiler-native-do
    test/compiler/native-do.f
 ;SUITE
 
+SUITE compiler-native-plusloop
+   test/compiler/native-plusloop.f
+;SUITE
+
 SUITE compiler-native-j
    test/compiler/native-j.f
 ;SUITE

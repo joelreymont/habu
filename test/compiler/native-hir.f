@@ -32,7 +32,7 @@ require src/compiler/native/abi.f
 \ falls through to the callable path and reaches that package's own word.
 \
 \ This package is the fixture: it owns `xor`, and the registration runs INSIDE
-\ it, so the table it builds must model `and` and not `xor`. Registering all 86
+\ it, so the table it builds must model `and` and not `xor`. Registering all 87
 \ rows unconditionally models both.
 package HIR-BOUND-XOR
 public
@@ -2424,7 +2424,7 @@ variable MEMO-IDX
 \ those rows; a definition's own table is an OVERLAY that holds only what that
 \ definition resolves for itself. So a definition must add no vocabulary row and
 \ cost its module no symbol, while still seeing every vocabulary word. The
-\ filtered registration this replaces bought the second half by interning all 86
+\ filtered registration this replaces bought the second half by interning all 87
 \ spellings into every module and rejecting the ones the body had not written.
 : OV-BODY ( IR-CTX:ctx -- n n bool bool )
    {: c:IR-CTX:ctx :}

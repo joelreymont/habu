@@ -1530,6 +1530,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
       open-do      OF SS-PUSH ENDOF
       open-do-skip OF SS-PUSH ENDOF
       close-loop   OF ix SS-CLOSE ENDOF
+      close-loop-step OF ix SS-CLOSE ENDOF
       index        OF ENDOF
       outer-index  OF ENDOF
       drop-loop    OF ENDOF
@@ -2170,7 +2171,8 @@ variable LS-SEQ                      \ identity of the current outer loop
    r ix HIR-CTRL:CLOSE-UNTIL ROW-CTRL?
    r ix HIR-CTRL:CLOSE-REPEAT ROW-CTRL? or
    r ix HIR-CTRL:CLOSE-AGAIN ROW-CTRL? or
-   r ix HIR-CTRL:CLOSE-LOOP ROW-CTRL? or ;
+   r ix HIR-CTRL:CLOSE-LOOP ROW-CTRL? or
+   r ix HIR-CTRL:CLOSE-LOOP-STEP ROW-CTRL? or ;
 
 : LS-PUSH ( -- )
    LSN @ 0= if 1 LS-SEQ +! then
@@ -2380,6 +2382,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    k HIR-CTRL:CLOSE-ARM HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-CASE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-LOOP HIR-CTRL:EQ if exit then
+   k HIR-CTRL:CLOSE-LOOP-STEP HIR-CTRL:EQ if exit then
    k HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ if exit then
    k HIR-CTRL:CLOSE-AGAIN HIR-CTRL:EQ if exit then
    E-NELAB-CTRL throw ;
@@ -2413,6 +2416,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
       open-do-skip OF HIR-CTRL:OPEN-DO ix SK-PUSH
                       CS-TOP CS-JOINED+ NB @ 3 + NB ! ENDOF
       close-loop   OF SK-CLOSE-LOOP ENDOF
+      close-loop-step OF SK-CLOSE-LOOP ENDOF
       index        OF ENDOF
       outer-index  OF ENDOF
       drop-loop    OF ENDOF
@@ -2703,6 +2707,63 @@ here CELL 1- and CELL swap - CELL 1- and allot
    VN @ 1- VAT {: nx:IR-ID:ir-value-id :}
    lv VPUSH
    ix HIR-OPCODE:LT EMIT-OPCODE
+   NB @ {: c:n :}
+   ix  c 1+  c 2 +  TERM-BRZ
+   ix j  EXIT-CROSS-DO CROSS-L  STUB-H
+   ix OPEN-PLAIN
+   nx t CS-IDX !
+   ix h  HEAD-CROSS-DO CROSS-L  TERM-BR-H
+   t CS-LOOP0@ CS-LOOPS !
+   CS-POP
+   ix  d rd +  OPEN-ARGS
+   NB @ j <> if E-NELAB-CTRL throw then ;
+
+\ `+loop` closes the same frame with a step it takes from the stack. The index
+\ advances by that step in wrapping arithmetic and the loop ends only when the
+\ index crosses the boundary between limit-1 and limit IN THE STEP'S DIRECTION
+\ (Forth 2012 6.1.0140): with old = index - limit and next = index' - limit,
+\ terminate iff ((old xor next) and (old xor step)) < 0. A bare sign change of
+\ old/next is not enough: it also fires when the index wraps at the boundary
+\ opposite the limit (limit 0, index MAX, step 1), which must keep looping.
+\ So equal bounds with a negative step end after one turn and with a positive
+\ step run a whole cycle, unlike `loop`, which this patch leaves as it is. The
+\ blocks and their successor order are those of DO-CLOSE-LOOP, so every later
+\ pass sees one loop shape; only the latch arithmetic differs, and the
+\ closed-form pass declines it because the flag is not LT over ADD of one.
+: DO-CLOSE-LOOP-STEP ( n -- )
+   {: ix:n :}
+   HIR-CTRL:OPEN-DO CS-OPENER-CK {: t:n :}
+   t CS-LB@ LOC-REST
+   PATH-ENDED? if ix t DO-DEAD-LOOP exit then
+   t CS-DEPTH@ {: d:n :}
+   t CS-RD@ {: rd:n :}
+   t CS-JOIN@ {: j:n :}
+   t CS-HEAD@ {: h:n :}
+   t CS-IDX @ {: iv:IR-ID:ir-value-id :}
+   t CS-LIM @ {: lv:IR-ID:ir-value-id :}
+   VN @ d 1+ <> if E-NELAB-JOIN throw then
+   RN @ rd <> if E-NELAB-JOIN throw then
+   VN @ 1- VAT {: step:IR-ID:ir-value-id :}
+   1 VDROP
+   iv VPUSH
+   step VPUSH
+   ix HIR-OPCODE:ADD EMIT-OPCODE
+   VN @ 1- VAT {: nx:IR-ID:ir-value-id :}
+   1 VDROP
+   iv VPUSH
+   lv VPUSH
+   ix HIR-OPCODE:SUB EMIT-OPCODE
+   VN @ 1- VAT {: old:IR-ID:ir-value-id :}
+   nx VPUSH
+   lv VPUSH
+   ix HIR-OPCODE:SUB EMIT-OPCODE
+   ix HIR-OPCODE:XOR EMIT-OPCODE
+   old VPUSH
+   step VPUSH
+   ix HIR-OPCODE:XOR EMIT-OPCODE
+   ix HIR-OPCODE:AND EMIT-OPCODE
+   ix 0 EMIT-LIT
+   ix HIR-OPCODE:GE EMIT-OPCODE
    NB @ {: c:n :}
    ix  c 1+  c 2 +  TERM-BRZ
    ix j  EXIT-CROSS-DO CROSS-L  STUB-H
@@ -3316,6 +3377,7 @@ create DN-BUF DN-CAP allot
       open-do      OF ix DO-OPEN-DO ENDOF
       open-do-skip OF ix DO-OPEN-DO-SKIP ENDOF
       close-loop   OF ix DO-CLOSE-LOOP ENDOF
+      close-loop-step OF ix DO-CLOSE-LOOP-STEP ENDOF
       index        OF DO-INDEX ENDOF
       outer-index  OF DO-OUTER-INDEX ENDOF
       drop-loop    OF DO-UNLOOP ENDOF
@@ -3351,6 +3413,7 @@ variable IX                          \ the body token the walk stands on
    k HIR-CTRL:CLOSE-ARM HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-CASE HIR-CTRL:EQ  PATH-DEAD?  and if exit then
    k HIR-CTRL:CLOSE-LOOP HIR-CTRL:EQ if exit then
+   k HIR-CTRL:CLOSE-LOOP-STEP HIR-CTRL:EQ if exit then
    k HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ if exit then
    k HIR-CTRL:CLOSE-AGAIN HIR-CTRL:EQ if exit then
    E-NELAB-CTRL throw ;
