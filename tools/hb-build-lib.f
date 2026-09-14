@@ -21,7 +21,6 @@ require tools/event-closure-lib.f
 \ surface.
 package HB-BUILD-CLI
 using BUILD-FIXPOINT                     \ the emitted-source and tmp-root surface
-using SOURCE                             \ the EXPORT-directive strip
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -36,8 +35,6 @@ $2B constant HBB-PLUS
 
 create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
-create HBB-MAKER-PATH FS-PATH-CAP allot
-create HBB-MAKER-NAME-BUF 128 allot
 create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-CLOSURE-HEX 80 allot
 create HBB-CHECKER-ABI-BUF HBB-ABI-CAP allot
@@ -69,8 +66,6 @@ variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-CHECKER-ABI-U
 variable HBB-COMPILER-ABI-U
-variable HBB-MAKER-U
-variable HBB-MAKER-NAME-U
 variable HBB-ARTIFACT-U
 variable HBB-ARTIFACT-TMP-U
 variable HBB-ARTIFACT-LOCK-U
@@ -82,6 +77,7 @@ variable HBB-KEY-I
 variable HBB-REPL
 variable HBB-JSON
 variable HBB-REPORT-JSON
+\ Keep the report schema: a fresh native compiler runs without a cached maker.
 variable HBB-MAKER-HIT
 variable HBB-MAKER-BUILD
 variable HBB-MAKER-RUN
@@ -96,8 +92,6 @@ variable HBB-SEED-HEX-U
 variable HBB-PRESEED-MODE
 variable HBB-START-NS
 variable HBB-ELAPSED-NS
-variable HBB-COMMENTED-A
-variable HBB-COMMENTED-U
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -114,15 +108,6 @@ variable HBB-COMMENTED-U
 : HBB-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
    slot @ 0= if cap HBB-ALLOC-BUF slot HBB-PTR-U8! then
    slot HBB-PTR-U8@ ;
-
-\ The commented source is a SPAN the strip hands back, not a buffer this file
-\ sizes: lib/source.f owns the emission rule, so it owns how big the result is.
-: HBB-COMMENTED! ( ptr u8 len -- ) {: a:ptr u:len :}
-   a HBB-COMMENTED-A HBB-PTR-U8!
-   u LEN>N HBB-COMMENTED-U ! ;
-
-: HBB-COMMENTED$ ( -- ptr u8 n )
-   HBB-COMMENTED-A HBB-PTR-U8@ HBB-COMMENTED-U @ ;
 
 : HBB-OUT-BUF ( -- ptr u8 )
    HBB-OUT-BUF-A HBB-CAPTURE-CAP HBB-BUF ;
@@ -328,7 +313,7 @@ variable HBB-COMMENTED-U
    HBB-ENV-TMP? if exit then
    s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
-: HBB-PREPARE-MAKER-CACHE ( -- )
+: HBB-PREPARE-CACHE ( -- )
    BUILD-CACHE:RESOLVE drop 2drop ;
 
 : HBB-CLEANUP ( -- )
@@ -361,28 +346,10 @@ variable HBB-COMMENTED-U
    s" tools/aot-lint.f"  >LEN PROC-ARGV+
    HBB-LOAD-END ;
 
-: HBB-ADD-DIAG-ORIGIN-ENTRY ( -- )
-   s" tools/diag-origin.f" CLI-TOOLS-LOAD if exit then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+
-   s" tools/lint/token.f" >LEN PROC-ARGV+
-   s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/diag-origin-core.f"  >LEN PROC-ARGV+
-   s" tools/diag-origin.f"  >LEN PROC-ARGV+
-   HBB-LOAD-END ;
-
 : HBB-ADD-AOT-LINT-CMD ( -- )
    HBB-CMD-RESET
    HBB-ADD-AOT-LINT-ENTRY
    HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-SRC$  >LEN PROC-ARGV+ ;
-
-: HBB-ADD-DIAG-ORIGIN-CMD ( -- )
-   HBB-CMD-RESET
-   HBB-ADD-DIAG-ORIGIN-ENTRY
    HBB-SRC$  >LEN PROC-ARGV+ ;
 
 : HBB-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
@@ -395,12 +362,6 @@ variable HBB-COMMENTED-U
    CLI-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
-
-: HBB-DIAG-NAME$ ( -- ptr u8 n )
-   s" hb-diag-src" ;
-
-: HBB-DIAG-SRC$ ( -- ptr u8 n )
-   HBB-DIAG-NAME$ BF-B$ ;
 
 : HBB-FINISH-TOOL ( n n n -- ) {: outu erru rc :}
    rc 0= if exit then
@@ -423,50 +384,11 @@ HBB-INSTALL-CHILD-LINT
    HBB-REPL @ if exit then
    HBB-AOT-LINT-HOOK ;
 
-: HBB-DIAG-TIMEOUT$ ( -- ptr u8 n )
-   SB-RESET
-   s" hb-build: diag-origin timed out after " SB-APPEND
-   HBB-TIMEOUT-MS FS-MUT-SB-U
-   s" ms on " SB-APPEND
-   HBB-SRC$ SB-APPEND
-   SB$ ;
-
-: HBB-FINISH-DIAG ( outcome -- )
-   MATCH outcome
-     exited   OF dup 0 <> if HBB-EXIT else drop then ENDOF
-     signaled OF 128 + HBB-EXIT ENDOF
-     timeout  OF HBB-DIAG-TIMEOUT$ HBB-BUILD-RC die ENDOF
-   ;MATCH ;
-
-\ diag-origin rewrites the source, so its output grows with the source and with
-\ no ratio anything here could name; it goes to a file and comes back through
-\ FILE-SIZE. Its stderr is still captured and forwarded verbatim, under the same
-\ deadline the lint and maker children get, so a hung rewriter fails the build
-\ by its own name instead of hanging it. Only the partial stdout a failing child
-\ had written is no longer echoed.
-: HBB-DIAG-ORIGIN-SOURCE ( -- )
-   HBB-ADD-DIAG-ORIGIN-CMD
-   CLI-TOOLS$ HBB-DIAG-SRC$ HBB-ERR-BUF HBB-CAPTURE-CAP >LEN HBB-TIMEOUT-MS >MS
-   BF-RUN-ARGV-ENV-OUTFILE                 \ ( len outcome )
-   swap LEN>N HBB-WERR-ERR                 \ the child's stderr, forwarded verbatim
-   HBB-FINISH-DIAG
-   HBB-DIAG-SRC$ BF-READ-SOURCE
-   HBB-DIAG-NAME$ BF-REMOVE-TMP ;
-
-: HBB-SRC-NAME$ ( -- ptr u8 n )
-   s" hb-aot-src" ;
-
 : HBB-GOT-NAME$ ( -- ptr u8 n )
    HBB-REPL @ if s" hb-build-got" else s" hb-aot-got" then ;
 
 : HBB-OBJ-NAME$ ( -- ptr u8 n )
    s" hb-aot-obj" ;
-
-: HBB-MK-NAME$ ( -- ptr u8 n )
-   s" hb-aot-mk" ;
-
-: HBB-MAKER-NAME$ ( -- ptr u8 n )
-   HBB-MAKER-NAME-BUF HBB-MAKER-NAME-U @ ;
 
 : HBB-ARTIFACT-NAME$ ( -- ptr u8 n )
    HBB-ARTIFACT-NAME-BUF HBB-ARTIFACT-NAME-U @ ;
@@ -505,69 +427,11 @@ HBB-INSTALL-CHILD-LINT
    s" tools/hb-build-report.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
 
-: HBB-KEY-COMMON-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   s" src/habu/hide.f" HBB-KEY-FILE+
-   s" src/habu/prefix-rewind.f" HBB-KEY-FILE+
-   s" src/core/util.f" HBB-KEY-FILE+
-   s" src/core/cell.f" HBB-KEY-FILE+
-   s" src/core/pointer-storage.f" HBB-KEY-FILE+
-   s" src/core/engine-error.f" HBB-KEY-FILE+
-   s" src/core/checker-owner-abi.f" HBB-KEY-FILE+
-   s" src/core/checker.f" HBB-KEY-FILE+
-   s" src/core/engine-error-effects.f" HBB-KEY-FILE+
-   s" src/core/lower-cert-base.f" HBB-KEY-FILE+
-   s" src/core/type-schema.f" HBB-KEY-FILE+
-   s" src/core/type-family.f" HBB-KEY-FILE+
-   s" src/core/render.f" HBB-KEY-FILE+
-   s" src/core/sumtype.f" HBB-KEY-FILE+
-   s" src/core/layout-buffer.f" HBB-KEY-FILE+
-   s" src/core/layout-valid.f" HBB-KEY-FILE+
-   s" src/core/check-hook.f" HBB-KEY-FILE+
-   s" src/core/cell-effects.f" HBB-KEY-FILE+
-   s" src/core/declaration-transaction.f" HBB-KEY-FILE+
-   s" src/core/generated-declaration.f" HBB-KEY-FILE+
-   s" src/core/structures.f" HBB-KEY-FILE+
-   s" src/core/roles.f" HBB-KEY-FILE+
-   s" src/core/bytes.f" HBB-KEY-FILE+
-   s" src/arch/arm64/asm.f" HBB-KEY-FILE+
-   s" src/arch/arm64/icode.f" HBB-KEY-FILE+
-   s" src/arch/arm64/mnem.f" HBB-KEY-FILE+
-   s" src/habu/layout.f" HBB-KEY-FILE+
-   s" src/os/env-base.f" HBB-KEY-FILE+
-   s" src/os/script-argv.f" HBB-KEY-FILE+
-   s" src/core/enums.f" HBB-KEY-FILE+
-   s" src/core/exec-vector.f" HBB-KEY-FILE+
-   s" src/core/sha256.f" HBB-KEY-FILE+
-   s" src/core/type-family-sha.f" HBB-KEY-FILE+
-   s" src/core/combinators.f" HBB-KEY-FILE+
-   s" src/habu/treeshake.f" HBB-KEY-FILE+
-   s" src/habu/rt.f" HBB-KEY-FILE+
-   s" src/habu/crash.f" HBB-KEY-FILE+
-   s" src/os/image-bytes.f" HBB-KEY-FILE+
-   s" src/habu/habu1.f" HBB-KEY-FILE+
-   s" src/habu/code-origin.f" HBB-KEY-FILE+
-   s" src/habu/prof.f" HBB-KEY-FILE+
-   s" src/habu/regalloc.f" HBB-KEY-FILE+
-   s" src/habu/jit.f" HBB-KEY-FILE+
-   s" src/habu/fdio.f" HBB-KEY-FILE+
-   s" src/habu/aot-decl.f" HBB-KEY-FILE+
-   s" src/habu/habu2.f" HBB-KEY-FILE+
-   s" src/habu/xref.f" HBB-KEY-FILE+
-   s" src/core/generated-declaration-dictionary.f" HBB-KEY-FILE+
-   s" src/core/generated-declaration-protection.f" HBB-KEY-FILE+
-   s" src/core/layout-buffer-seal.f" HBB-KEY-FILE+
-   s" src/core/lower-cert-seal.f" HBB-KEY-FILE+
-   s" src/core/top-row.f" HBB-KEY-FILE+
-   s" src/habu/driver-io.f" HBB-KEY-FILE+
-   s" src/habu/maker.f" HBB-KEY-FILE+ ;
-
 : HBB-KEY-LINUX-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
    s" target:linux-aarch64" CONTENT-KEY:TEXT+
    s" src/os/linux/target.f" HBB-KEY-FILE+
    s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux/sys.f" HBB-KEY-FILE+
-   s" src/os/linux/proc-watch.f" HBB-KEY-FILE+
-   s" src/os/linux/proc-control.f" HBB-KEY-FILE+
    s" src/os/linux/elf.f" HBB-KEY-FILE+
    s" src/os/linux/sign.f" HBB-KEY-FILE+ ;
 
@@ -576,8 +440,6 @@ HBB-INSTALL-CHILD-LINT
    s" src/os/macos/target.f" HBB-KEY-FILE+
    s" src/os/macos/layout.f" HBB-KEY-FILE+
    s" src/os/macos/sys.f" HBB-KEY-FILE+
-   s" src/os/macos/proc-watch.f" HBB-KEY-FILE+
-   s" src/os/macos/proc-control.f" HBB-KEY-FILE+
    s" src/os/macos/macho.f" HBB-KEY-FILE+
    s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
 
@@ -587,38 +449,34 @@ HBB-INSTALL-CHILD-LINT
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
 : HBB-KEY-DRIVER-SOURCES ( CONTENT-KEY:fold -- CONTENT-KEY:fold )
+   s" native-stripped:v1" CONTENT-KEY:TEXT+
+   s" lib/executable-build.f" HBB-KEY-FILE+
+   s" tools/aot-build.f" HBB-KEY-FILE+
+   s" tools/aot-build-core.f" HBB-KEY-FILE+
+   s" src/habu/app-image.f" HBB-KEY-FILE+
+   s" src/habu/app-image-core.f" HBB-KEY-FILE+
+   s" src/habu/snap-lib.f" HBB-KEY-FILE+
+   s" src/habu/address-cells.f" HBB-KEY-FILE+
+   s" src/arch/arm64/asm.f" HBB-KEY-FILE+
+   s" src/arch/arm64/icode.f" HBB-KEY-FILE+
+   s" src/arch/arm64/mnem.f" HBB-KEY-FILE+
+   s" src/os/image-bytes.f" HBB-KEY-FILE+
+   s" src/os/script-argv.f" HBB-KEY-FILE+
+   s" src/habu/fdio.f" HBB-KEY-FILE+
+   s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/maker-source.f" HBB-KEY-FILE+
-   s" maker-mode:aot" CONTENT-KEY:TEXT+
+   s" src/habu/aot-decl.f" HBB-KEY-FILE+
    s" src/habu/aot-closure.f" HBB-KEY-FILE+
-   s" src/habu/aot-lib.f" HBB-KEY-FILE+
-   s" src/habu/aot.f" HBB-KEY-FILE+ ;
+   s" src/habu/aot-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-MAKER-KEY! ( -- )
    CONTENT-KEY:OPEN
-   s" hb-build-maker-cache-v2" CONTENT-KEY:TEXT+
+   s" hb-build-native-producer-v1" CONTENT-KEY:TEXT+
    BF-ENGINE$ HBB-KEY-FILE+
    HBB-KEY-LOAD-FILES
-   HBB-KEY-COMMON-SOURCES
    HBB-KEY-TARGET-SOURCES
    HBB-KEY-DRIVER-SOURCES
    HBB-MAKER-KEY-HEX CONTENT-KEY:FINAL-HEX ;
-
-: HBB-MAKER-NAME! ( -- )
-   HBB-MK-NAME$ {: a:ptr u:n :}
-   u 65 + 128 > if E-BUILD-PATH throw then
-   a HBB-MAKER-NAME-BUF u BYTE-COPY
-   45 HBB-MAKER-NAME-BUF u + c!
-   HBB-MAKER-KEY-HEX HBB-MAKER-NAME-BUF u 1 + + 64 BYTE-COPY
-   u 65 + HBB-MAKER-NAME-U ! ;
-
-: HBB-MAKER-CACHE$ ( ptr u8 n -- ptr u8 n ) {: root:ptr rootu:n :}
-   HBB-MAKER-KEY!
-   HBB-MAKER-NAME!
-   root rootu HBB-MAKER-NAME$ HBB-MAKER-PATH JOIN-PATH HBB-MAKER-U !
-   HBB-MAKER-PATH HBB-MAKER-U @ ;
-
-: HBB-MAKER$ ( -- ptr u8 n )
-   BUILD-CACHE:ROOT$ HBB-MAKER-CACHE$ ;
 
 : HBB-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u suf:ptr su dst:ptr up:ptr :}
@@ -626,34 +484,6 @@ HBB-INSTALL-CHILD-LINT
    a dst u BYTE-COPY
    suf dst u + su BYTE-COPY
    u su + up ! ;
-
-: HBB-MAKER-SRC-NAME$ ( -- ptr u8 n )
-   s" hb-maker-src" ;
-
-: HBB-APPEND-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/habu/maker-source.f" BF-APPEND-SOURCE
-   out outu s" src/habu/aot-closure.f" BF-APPEND-SOURCE
-   out outu s" src/habu/aot-lib.f" BF-APPEND-SOURCE
-   out outu s" src/habu/aot.f" BF-APPEND-SOURCE ;
-
-: HBB-MAKER-SOURCE ( -- )
-   HBB-MAKER-SRC-NAME$ BF-RESET-OUT
-   HBB-MAKER-SRC-NAME$ BF-APPEND-RUN-PRELUDE
-   HBB-MAKER-SRC-NAME$ BF-APPEND-COMMON
-   HBB-MAKER-SRC-NAME$ COMPILER-BUILD:SEAL
-   HBB-MAKER-SRC-NAME$ BF-APPEND-DRIVER-IO
-   HBB-MAKER-SRC-NAME$ HBB-APPEND-DRIVER ;
-
-: HBB-STAGE2-SOURCE ( -- )
-   s" stage2-src" BF-RESET-OUT
-   s" stage2-src" BF-APPEND-RUN-PRELUDE
-   s" stage2-src" BF-APPEND-COMMON
-   s" stage2-src" COMPILER-BUILD:SEAL
-   s" stage2-src" BF-APPEND-DRIVER-IO
-   s" stage2-src" s" src/habu/maker.f" BF-APPEND-SOURCE ;
-
-: HBB-MAKER-READY? ( -- bool )
-   HBB-MAKER$ EXECUTABLE? ;
 
 : HBB-INSTALL-TMP$ ( -- ptr u8 n )
    HBB-INSTALL-TMP-PATH HBB-INSTALL-TMP-U @ ;
@@ -682,68 +512,16 @@ HBB-INSTALL-CHILD-LINT
       rc throw
    then ;
 
-: HBB-INSTALL-MAKER-ACT ( -- )
-   s" stage2-got" BF-A$ HBB-INSTALL-TMP$ COPY-FILE-STREAM
-   HBB-INSTALL-TMP$ CHMOD-X
-   HBB-INSTALL-TMP$ HBB-MAKER$ RENAME-FILE ;
-
-: HBB-INSTALL-MAKER ( -- )
-   HBB-MAKER$ HBB-INSTALL-TMP!
-   [: HBB-INSTALL-MAKER-ACT ;] catch HBB-PUBLISH-DONE
-   s" stage2-got" BF-A$ REMOVE-FILE ;
-
-\ Attributable maker-build failure: the child engine's diagnostics stream to
-\ the inherited stderr, but a silent child (e.g. an uncaught throw) must still
-\ be identifiable, so the die message carries the child's exit code.
-: HBB-MAKER-DIE$ ( n -- ptr u8 n ) {: rc:n :}
-   SB-RESET
-   s" hb-build: native maker build failed, rc " SB-APPEND
-   rc 0 < if 45 SB-APPEND-C then
-   rc 0 < if 0 rc - else rc then FS-MUT-SB-U
-   SB$ ;
-
-: HBB-BUILD-MAKER-FRESH ( -- )
-   HBB-MAKER-READY? if exit then
-   HBB-MAKER-SOURCE
-   HBB-STAGE2-SOURCE
-   s" stage2-got" BF-REMOVE-TMP
-   HBB-MK-NAME$ BF-REMOVE-TMP
-   BF-ENGINE$ s" stage2-src" BF-A$ COMPILER-BUILD:RUN {: rc:n :}
-   rc 0 <> if
-      rc HBB-MAKER-DIE$ HBB-BUILD-RC die
-   then
-   s" stage2-got" BF-EXPECT
-   HBB-INSTALL-MAKER ;
-
-: HBB-BUILD-MAKER ( -- )
-   HBB-PREPARE-MAKER-CACHE
-   HBB-MAKER-READY? if -1 HBB-MAKER-HIT ! exit then
-   -1 HBB-MAKER-BUILD !
-   HBB-BUILD-MAKER-FRESH ;
-
-: HBB-COMMENT-SOURCE ( -- )
-   BF-SOURCE-BUF BF-SOURCE-LEN @ >LEN COMMENT-EXPORTS$ HBB-COMMENTED! ;
-
-: HBB-READ-ORIGIN-COMMENTED-SOURCE ( -- )
-   HBB-DIAG-ORIGIN-SOURCE
-   HBB-COMMENT-SOURCE ;
-
-: HBB-WRITE-COMMENTED-SOURCE ( ptr u8 n -- ) {: name:ptr nameu :}
-   name nameu BF-OUT$ HBB-COMMENTED$ WRITE-ALL ;
-
 : HBB-TARGET-UNKNOWN ( -- )
    s" hb-build: unknown target" HBB-BUILD-RC die ;
-
-: HBB-PREPARE-AOT-SOURCE ( -- )
-   HBB-READ-ORIGIN-COMMENTED-SOURCE
-   HBB-SRC-NAME$ HBB-WRITE-COMMENTED-SOURCE ;
 
 : HBB-JSON-FLAG$ ( -- ptr u8 n )
    HBB-JSON @ if s" 1" exit then
    s" 0" ;
 
 : HBB-RUN-MAKER-ARGS ( -- )
-   PROC-ARGV-RESET
+   HBB-CMD-RESET
+   s" --" >LEN PROC-ARGV+
    HBB-SRC$ >LEN PROC-ARGV+
    HBB-JSON-FLAG$ >LEN PROC-ARGV+
    HBB-PRESEED? if
@@ -753,9 +531,11 @@ HBB-INSTALL-CHILD-LINT
 
 : HBB-RUN-MAKER-CMD ( -- n n n )
    HBB-RUN-MAKER-ARGS
-   BF-PREPARE-ENV
-   HBB-MAKER$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
-   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   BF-ENGINE$ >LEN
+   S\" require tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" >LEN
+   HBB-OUT-BUF HBB-CAPTURE-CAP >LEN
+   HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE
    HBB-CAPTURE>N ;
 
 : HBB-FINISH-MAKER ( n n n -- ) {: outu erru rc :}
@@ -855,8 +635,6 @@ HBB-INSTALL-CHILD-LINT
    s" hb-build-artifact-cache-v2" CONTENT-KEY:TEXT+
    HBB-MAKER-KEY-HEX 64 CONTENT-KEY:TEXT+
    s" json" HBB-JSON @ 0 <> HBB-OPTION-TEXT+
-   s" tools/diag-origin-core.f" HBB-KEY-FILE+
-   s" tools/diag-origin.f" HBB-KEY-FILE+
    HBB-SRC-CLOSURE+
    HBB-PRESEED-CK+
    HBB-ARTIFACT-KEY-HEX CONTENT-KEY:FINAL-HEX ;
@@ -877,7 +655,7 @@ HBB-INSTALL-CHILD-LINT
    HBB-ARTIFACT$ s" .lock" HBB-ARTIFACT-LOCK-PATH HBB-ARTIFACT-LOCK-U HBB-SUFFIX! ;
 
 : HBB-PREPARE-ARTIFACT-CACHE ( -- )
-   HBB-PREPARE-MAKER-CACHE
+   HBB-PREPARE-CACHE
    HBB-ARTIFACT-PATHS
    -1 HBB-ARTIFACT-CACHE ! ;
 
@@ -1018,8 +796,6 @@ HBB-INSTALL-CHILD-LINT
 : HBB-BUILD-REST ( -- )
    HBB-RESTORE-ARTIFACT? if HBB-FINISH exit then
    HBB-OBJECT-HIT? if HBB-INSTALL-ARTIFACT HBB-FINISH exit then
-   HBB-PREPARE-AOT-SOURCE
-   HBB-BUILD-MAKER
    HBB-RUN-MAKER
    HBB-STORE-OBJECT
    HBB-INSTALL-OUT
@@ -1095,6 +871,5 @@ EXPORT HBB-RESET-OPTIONS
 EXPORT HBB-RUN-AOT-LINT
 EXPORT HBB-SRC$
 
-;using
 ;using
 ;package

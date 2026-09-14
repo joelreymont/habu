@@ -170,7 +170,7 @@ create HBT-EXP-HEX2 64 allot
    s" : MAIN ( -- ) ; \ trailing source comment" ;
 
 : HBT-AOT-SRC2$ ( -- ptr u8 n )
-   s" : MAIN ( -- ) 0 drop ;" ;
+   S\" package HBT-NATIVE\n: LOADING ( -- ) tier@ 1 <> if -9040 throw then ;\nLOADING\npublic\n: INC ( n -- n ) 1+ ;\n: APPLY ( n [ n -- n ] -- n ) execute ;\n: RUN ( -- ) 41 [: INC ;] APPLY 42 <> if -9041 throw then ;\n;package\n: MAIN ( -- ) HBT-NATIVE:RUN ;\n" ;
 
 : HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
    s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
@@ -477,7 +477,7 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-OUT aout s" hb-build OK" CONTAINS? TTRUE
    aerr 0 T=
    HBT-TMP BF-TMP!
-   s" hb-aot-src" BF-A$ FILE-SIZE $40000 > TTRUE
+   s" hb-aot-src" BF-A$ EXISTS? TFALSE
    BF-TMP-RESET
    HBT-AOT-OUT FILE? TTRUE
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
@@ -558,8 +558,7 @@ create READER-STATE JR:STORAGE-BYTES allot
 \ buffer is the wrong instrument for it: PROC-READ-OR-PROBE-STREAM fails closed
 \ when the buffer fills (E-PROC-TRUNCATED), so the case died on its own
 \ measurement rather than on the image. stdout goes to a file, which has no size
-\ chosen in advance, exactly as tools/hb-build-lib.f reads the diag-origin
-\ rewriter's output; stderr stays a bounded capture because an empty stderr is
+\ chosen in advance; stderr stays a bounded capture because an empty stderr is
 \ what this case asserts.
 : HBT-IMGDUMP-REPL ( -- )
    HBT-TMP BF-TMP!
@@ -615,6 +614,17 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-ERR erru s" E-AOT-UNSUPPORTED" CONTAINS? TTRUE
    HBT-NEW-TMP DIR? TTRUE
    HBT-BAD-OUT EXISTS? TFALSE ;
+
+: HBT-AOT-JIT-REJECT ( -- )
+   HBT-REPL-BAD-SRC s" 0 set-tier : MAIN ( -- ) ;" WRITE-ALL
+   HBT-ARGV-BASE
+   HBT-REPL-BAD-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-REPL-BAD-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 70 T= outu 0 T=
+   HBT-ERR erru s" executable build requires native tier 1" CONTAINS? TTRUE
+   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
 
 \ The object cache key is the ordered-closure hex of the source (a self-contained
 \ AOT source closes over only itself), so the fixtures that pre-store objects must
@@ -678,7 +688,7 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
    HBB-OBJECT-STORE @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE CHECK-REPORT
    HBT-OBJ-LOAD? TTRUE
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
@@ -694,7 +704,7 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
 
-: BUILD-AOT-MAKER-HIT ( -- )
+: BUILD-AOT-NATIVE ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
    HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
    HBT-REMOVE-AOT-OUT
@@ -702,13 +712,32 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBB-BUILD
    HBB-ARTIFACT-HIT @ 0= TTRUE
    HBB-OBJECT-HIT @ 0= TTRUE
-   HBB-MAKER-HIT @ 0 <> TTRUE
+   HBB-MAKER-HIT @ 0= TTRUE
    HBB-MAKER-RUN @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
+   HB-BUILD:REPORT$ JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-FALSE JR:T-TRUE CHECK-REPORT
+   HBT-RUN-AOT
    HBT-REMOVE-ARTIFACT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL
    BF-TMP-RESET ;
+
+: BUILD-AOT-PRESEED ( -- )
+   HBT-AOT-SRC s" : ALTERNATE ( n n -- ) 42 <> if -9042 throw then 10 <> if -9043 throw then ; : MAIN ( -- ) -9044 throw ;" WRITE-ALL
+   HBT-REMOVE-AOT-OUT
+   HBT-ARGV-BASE
+   s" --preseed-entry" >LEN PROC-ARGV+
+   s" ALTERNATE" >LEN PROC-ARGV+
+   s" --preseed-seed" >LEN PROC-ARGV+
+   s" 000000000000000A000000000000002a" >LEN PROC-ARGV+
+   HBT-AOT-SRC >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   HBT-AOT-OUT >LEN PROC-ARGV+
+   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
+   rc 0 T= erru 0 T=
+   HBT-OUT outu s" hb-build OK" CONTAINS? TTRUE
+   HBT-RUN-AOT
+   HBT-REMOVE-AOT-OUT
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 : HBT-BUILD-AOT-OBJECT-HIT ( -- )
    HBT-TMP BUILD-CACHE:ROOT!
@@ -871,20 +900,14 @@ create READER-STATE JR:STORAGE-BYTES allot
    HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-B 64 BYTE-COPY
    HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE ;
 
-\ Maker-build failures must be attributable even when the child is silent:
-\ the die message carries the child rc.
-: HBT-MAKER-DIE-MSG ( -- )
-   7 HBB-MAKER-DIE$ s" hb-build: native maker build failed, rc 7" T$=
-   75 HBB-MAKER-DIE$ s" rc 75" CONTAINS? TTRUE ;
-
 \ tools/dynamic-tail-manifest.f is a behaviour-bearing dependency of the
 \ discovery producer (tools/source-discovery.f requires it, and its rows steer
-\ closure computation), so its content must fold into the maker cache key. The
+\ closure computation), so its content must fold into the producer cache key. The
 \ key preimage records each tool source through CONTENT-KEY:FILE+, which appends
 \ the path fragment and then the file's content digest with no earlier return, so
 \ the presence of the manifest path in the preimage (CONTENT-KEY:BUF$) proves its
 \ content participates in the key. If the manifest is missing from
-\ HBB-KEY-LOAD-FILES a manifest edit silently reuses a stale hb-build maker artifact.
+\ HBB-KEY-LOAD-FILES a manifest edit silently reuses a stale hb-build artifact.
 : HBT-MAKER-KEY-FOLDS-MANIFEST ( -- )
    CONTENT-KEY:CACHE-CLEAR!
    CONTENT-KEY:OPEN
@@ -897,7 +920,6 @@ create READER-STATE JR:STORAGE-BYTES allot
 public
 : HBT-MAIN ( -- )
    T-RESET
-   HBT-MAKER-DIE-MSG
    HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    BUILD-REPL
@@ -914,7 +936,9 @@ public
    HBT-BAD-MAIN-EFFECTS
    HBT-BUILD-MISSING-TMP
    BUILD-AOT-OBJECT-PRODUCER
-   BUILD-AOT-MAKER-HIT
+   BUILD-AOT-NATIVE
+   BUILD-AOT-PRESEED
+   HBT-AOT-JIT-REJECT
    HBT-BUILD-AOT-OBJECT-HIT
    HBT-BUILD-AOT-EXPORT-ONE-BODY
    HBT-ENGINE-KEY-FLIP
