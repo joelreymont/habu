@@ -138,6 +138,34 @@ DYNAMIC-BUFFER UBN-BUF n             \ distinct blocks that use each value
 DYNAMIC-BUFFER RCH-BUF n
 : RCH ( -- ptr n ) 0 RCH-BUF ;
 
+\ Runtime envelopes belong to the accepted module, just like register answers.
+\ A negative lower extent means no guard; zero still validates the live cursor.
+DYNAMIC-BUFFER DG-BELOW n
+DYNAMIC-BUFFER DG-ABOVE n
+DYNAMIC-BUFFER DG-RETURN n
+
+: DG-CLEAR ( -- )
+   OMAX 0 ?do
+      -1 i DG-BELOW !  0 i DG-ABOVE !  -1 i DG-RETURN !
+   loop ;
+
+: DG-INDEX ( IR-ID:ir-op-id -- n )
+   dup IR-ID:OP-OWNER A64RA:MODULE@ IR-ID:MODULE-SAME? 0=
+   if E-A64RAV-MODULE throw then
+   IR-ID:OP-LOCAL dup OMAX >= if E-A64RAV-COVER throw then ;
+
+: DG-BEFORE! ( IR-ID:ir-op-id n n -- )
+   {: id:IR-ID:ir-op-id below:n above:n :}
+   below 0 < above 0 < or if E-A64RAV-DSTACK throw then
+   id DG-INDEX {: i:n :}
+   i DG-BELOW @ 0 >= if E-A64RAV-DSTACK throw then
+   below i DG-BELOW !  above i DG-ABOVE ! ;
+
+: DG-AFTER! ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id below:n :}
+   below 0 < if E-A64RAV-DSTACK throw then
+   below id DG-INDEX DG-RETURN ! ;
+
 \ One frame slot's state is three-valued - TOP, DEF, UNDEF - and no slot's
 \ state depends on another's, so every slot's bit rides in the same word: a
 \ slot is TOP where its TOP bit is set, DEF where its DEF bit is, and UNDEF
@@ -193,7 +221,7 @@ variable FPO-RUN                     \ where the next predecessor run starts
    loop ;
 
 : TABLES-CLEAR ( -- )
-   VALUES-CLEAR ;
+   VALUES-CLEAR DG-CLEAR ;
 
 \ ---- reading the frozen module -----------------------------------------------
 : SLOT ( IR-ID:ir-value-id -- n )
@@ -1395,6 +1423,9 @@ DYNAMIC-BUFFER VD-DOUT-BUF n
    VMAX DB-BUF-RESERVE
    VMAX UBN-BUF-RESERVE
    BMAX RCH-BUF-RESERVE
+   OMAX DG-BELOW-RESERVE
+   OMAX DG-ABOVE-RESERVE
+   OMAX DG-RETURN-RESERVE
    FPLANES BMAX * SETC * FLOW-BUF-RESERVE
    BMAX SETC * FST-BUF-RESERVE
    SETC FCUR-BUF-RESERVE
@@ -1830,6 +1861,7 @@ DKEEP-HOOK-DEFAULT
    id DBYTES-OF NOSLOT = if E-A64RAV-DSTACK throw then
    entry id DBYTES-OF - {: stand:n :}
    stand 0 < if E-A64RAV-DSTACK throw then
+   stand entry > if E-A64RAV-DSTACK throw then
    stand A64EFF:SLOT-BACK > if E-A64RAV-DSTACK throw then
    stand A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
    stand VD-STAND ! ;
@@ -1848,7 +1880,8 @@ DKEEP-HOOK-DEFAULT
       args a  eb VD-P @ VDSLOT-AT  VDSEQ-FIND
       VD-P @ 1+ VD-P !
       VD-EL @ 1+ VD-EL !
-   repeat ;
+   repeat
+   eb PRO-N OP-AT  a A64IR:SLOT-WIDTH *  0 DG-BEFORE! ;
 
 : VDEXIT-CK ( IR-ID:ir-fun-id n n A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n r:n outs:A64EFF:placeseq :}
@@ -1867,7 +1900,9 @@ DKEEP-HOOK-DEFAULT
    0 VD-J !
    VD-ES @ 0 ?do
       outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
-   loop ;
+   loop
+   xb VD-P @ OP-AT VD-STAND @
+   r A64IR:SLOT-WIDTH * VD-STAND @ - 0 max DG-BEFORE! ;
 
 \ The same window for a routine that leaves through a CALLEE, whose results the
 \ callee publishes into the very cells this routine's caller reads.
@@ -1889,7 +1924,8 @@ DKEEP-HOOK-DEFAULT
    0 VD-J !
    VD-ES @ 0 ?do
       outs r  xb  VD-P @ i +  VDSLOT-AT  VDSEQ-FIND
-   loop ;
+   loop
+   xb VD-P @ OP-AT VD-STAND @ 0 DG-BEFORE! ;
 
 \ Which of the two exit runs this routine has - and the third answer, NEITHER,
 \ for a routine every path of which traps.
@@ -1970,6 +2006,7 @@ DKEEP-HOOK-DEFAULT
    id DBACK-OF NOSLOT <> if E-A64RAV-CALL throw then
    id DBYTES-OF VD-STAND @ + VDREQ+
    bk at  cp at -  id DBYTES-OF VDCELL  VDRUN-BOUND
+   bk at OP-AT VD-STAND @ id DBYTES-OF 0 max DG-BEFORE!
    cp 1+ ;
 
 : VCALL-SITE ( IR-ID:ir-block-id n -- n )
@@ -1986,6 +2023,8 @@ DKEEP-HOOK-DEFAULT
    bk at g  id DBYTES-OF VDCELL  VDRUN-BOUND
    bk cp 1+ DLOAD-RUN {: b:n :}
    bk cp 1+ b  id DBACK-OF VDCELL  VDRUN-BOUND
+   bk at OP-AT VD-STAND @ id DBYTES-OF 0 max DG-BEFORE!
+   id id DBACK-OF VD-STAND @ + DG-AFTER!
    cp 1+ b + ;
 
 : VDCLEAN1 ( IR-ID:ir-fun-id n n n -- )
@@ -2015,7 +2054,8 @@ DKEEP-HOOK-DEFAULT
 
 : VDPLACE-OK? ( n -- bool )
    {: c:n :}
-   c 0 >=  c A64EFF:SLOT-BACK <=  and ;
+   c 0 >=  c A64EFF:SLOT-BACK <=  and
+   c VD-ENTRY @ <= and ;
 
 : VDPLACE-BETTER? ( n n -- bool )
    {: c:n k:n :}
@@ -2165,11 +2205,24 @@ DKEEP-HOOK-DEFAULT
    in din <> if E-A64RAV-CONTRACT throw then
    out dout <> if E-A64RAV-CONTRACT throw then ;
 
+\ This native convention moves its cursor by the number of live cells. Check
+\ the original declaration before normalizing its order: the general effect
+\ model also supports sparse placements, which this boundary cannot implement.
+: VDPLACES-CK ( A64EFF:placeseq n -- )
+   {: seq:A64EFF:placeseq count:n :}
+   count 0 ?do
+      seq i A64EFF:SEQ-SLOT@ count >= if E-A64RAV-DSTACK throw then
+   loop ;
+
+
 : FUN-PLACES ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- A64EFF:placeseq A64EFF:placeseq )
    {: f:IR-ID:ir-fun-id ord:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
    V-DSTACK @ 0= if args outs exit then
    f NFROZEN:FUN-ARITY {: in:n out:n :}
-   ord 0= if in out  args A64EFF:SEQ-LEN outs A64EFF:SEQ-LEN  DECL-CK then
+   ord 0= if
+      in out  args A64EFF:SEQ-LEN outs A64EFF:SEQ-LEN  DECL-CK
+      args in VDPLACES-CK outs out VDPLACES-CK
+   then
    in FUN-SLOTS  out FUN-SLOTS ;
 
 \ ---- the contract's control statement, against the module's own answer --------
@@ -2304,6 +2357,15 @@ public
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
    REGGED? ;
+
+\ Complete transfer bounds, checked before a cursor move or the first store.
+\ A returning call's second check precedes its cursor restore and result loads.
+: STACK-BEFORE ( IR-ID:ir-op-id -- n n bool )
+   FRESH-CK DG-INDEX {: i:n :}
+   i DG-BELOW @ i DG-ABOVE @ i DG-BELOW @ 0 >= ;
+
+: STACK-AFTER ( IR-ID:ir-op-id -- n bool )
+   FRESH-CK DG-INDEX DG-RETURN @ dup 0 >= ;
 
 \ ---- reading back what the last residency run was about ----------------------
 : DKEEP-HELD? ( -- bool )            LAST-HELD @ 0<> ;

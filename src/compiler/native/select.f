@@ -2505,7 +2505,9 @@ create D-MEET DSLOT-MAX cells allot
 
 : DPLACE-OK? ( n -- bool )
    {: c:n :}
-   c 0 >=  c A64EFF:SLOT-BACK <=  and ;
+   c 0 >=  c A64EFF:SLOT-BACK <=  and
+   \ An untaken path's future outputs cannot reserve caller stack at entry.
+   c ARGS SLOT-POSITIONS A64IR:SLOT-WIDTH * <= and ;
 
 \ A routine that leaves through a callee has NO choice: the tail branch is the
 \ whole of its site.

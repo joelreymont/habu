@@ -244,6 +244,14 @@ SUITE compiler-native-regalloc
    test/compiler/native-regalloc.f
 ;SUITE
 
+SUITE compiler-native-stack-contract
+   test/compiler/native-stack-contract.f
+;SUITE
+
+SUITE compiler-native-stack-bounds
+   test/compiler/native-stack-bounds.f
+;SUITE
+
 SUITE compiler-native-address-spill
    test/compiler/native-address-spill.f
 ;SUITE
