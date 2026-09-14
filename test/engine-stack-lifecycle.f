@@ -115,7 +115,13 @@ variable ERRLEN
    s" whole return transfer needs two live slots" T-LABEL
    s" 1 data-base RSP-CELL + ! 2r>" REFUSED
    s" empty return-stack read" T-LABEL s" 2r>" REFUSED
-   s" empty data-stack adjustment" T-LABEL s" drop" REFUSED ;
+   s" empty data-stack adjustment" T-LABEL s" drop" REFUSED
+   s" the last loop frame" T-LABEL
+   s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
+   CHILD-RC 0 T=
+   s" one loop frame past the region" T-LABEL
+   s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES 1 + NEST"
+   REFUSED ;
 
 public
 : RUN ( -- )
