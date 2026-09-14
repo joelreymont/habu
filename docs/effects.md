@@ -64,13 +64,12 @@ exit 70 — the same silent-acceptance failure shape as the truncation trap belo
 ```
 
 **Do not write the quotation shape at the top level.** `( R a -- R | S -- S a )`
-does not mean "moves `a` to the return stack". It **parses silently** and means
-something else: `PSIG` reads `Din = R a`, the top-level `--`, then `Dout = R`,
-`Rout = S`, and stops — the trailing `-- S a` is never consumed and no error is
-raised. Declaring such a word exits 0; the first checked word that *calls* it
-fails with exit 70 at the call site. Writing the top-level shape inside a
-quotation is the safer error: `[ R a | S -- R | S a ]` is a hard syntax reject
-(`checker: bad stored signature`, exit 76).
+does not mean "moves `a` to the return stack". `PSIG` reads `Din = R a`, the
+top-level `--`, then `Dout = R`, `Rout = S`, and then refuses the definition:
+nothing may follow the output side, so the trailing `-- S a` is a syntax reject
+at that token (`fix_signature_syntax`, exit 70). Writing the top-level shape
+inside a quotation is refused the same way: `[ R a | S -- R | S a ]` is a hard
+syntax reject (`checker: bad stored signature`, exit 76).
 
 ### Rows, variables, and lexing
 

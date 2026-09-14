@@ -3801,6 +3801,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    dr PSIDE  PR-IN ! PD-IN !
    s" --" EXPECT-SIG                              \ require the top-level '--'
    dr PSIDE  PR-OUT ! PD-OUT !
+   NEXT-SIG-TOK dup 0 <> IF SGBAD-SYNTAX! ELSE 2drop THEN   \ nothing may follow the output side
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows

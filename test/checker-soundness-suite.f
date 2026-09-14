@@ -47,9 +47,17 @@ TRUSTED: MK-U8 ( -- u8 ) 3 ;
    [: CALL-U8 ;] CALL-I64-Q
    depth 0 T= ;
 
+: SIGNATURE-END ( -- )
+   s" tokens after the output side are a syntax error" T-LABEL
+   s" CS-S1 ( n -- n -- n n ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+   s" CS-S2 ( n -- n n ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+   s" a quotation effect inside the signature still closes cleanly" T-LABEL
+   s" CS-S3 ( n [ n -- n ] -- n ) execute" CHECK-QUIET-CANDIDATE! -1 T= ;
+
 : RUN ( -- )
    T-RESET
    QUOTATION-INPUTS
+   SIGNATURE-END
    T-REPORT ;
 
 RUN
