@@ -52,3 +52,11 @@ proves task creation, start/join/kill, cooperative halt, task-local user
 storage, `HIS`, facility owner semantics, worker FFI calls, atomics, an
 application-shaped five-task repeated soak, live-task compile guards, and fail-closed
 process termination when a task dies or throws.
+
+Task startup uses an immutable C-to-Habu entry in the native engine. The engine
+and library share its task-control-block layout, and the library checks the
+typed field offsets when loaded. Starting a worker or preparing an image no
+longer appends a generated callback to retained code. Foreign symbols are
+resolved again in each restored process. `test/task-entry.f` checks code-space
+stability across restarts; `test/host-io-image.py` exercises concurrent serial
+and UDP workers through three captured executable generations.

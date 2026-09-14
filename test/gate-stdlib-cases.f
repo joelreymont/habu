@@ -607,6 +607,10 @@ SUITE tasking-threads
    lib/task-test.f
 ;SUITE
 
+SUITE task-entry
+   test/task-entry.f
+;SUITE
+
 SUITE string-helpers
    lib/string-test.f
 ;SUITE

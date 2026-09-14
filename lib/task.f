@@ -5,6 +5,7 @@ s" lib/memory.f" required
 s" lib/ffi-abi.f" required
 s" lib/image-lifecycle.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
+require src/habu/task-abi.f
 
 package TASK
 
@@ -16,27 +17,13 @@ $80 constant TASK-MUTEX-BYTES
 $8 constant TASK-FACILITY-MUTEX-OFF
 TASK-FACILITY-MUTEX-OFF TASK-MUTEX-BYTES + constant TASK-FACILITY-BYTES
 
-0 constant TASK-EMPTY
-1 constant TASK-CONSTRUCTED
-2 constant TASK-RUNNING
-3 constant TASK-DONE
-4 constant TASK-HALT-REQ
+TASK-ABI:EMPTY constant TASK-EMPTY
+TASK-ABI:CONSTRUCTED constant TASK-CONSTRUCTED
+TASK-ABI:RUNNING constant TASK-RUNNING
+TASK-ABI:DONE constant TASK-DONE
+TASK-ABI:HALT-REQ constant TASK-HALT-REQ
 
-0 constant TCB.SIZE-OFF
-$8 constant TCB.XT-OFF
-$10 constant TCB.THREAD-OFF
-$18 constant TCB.STACK-OFF
-$20 constant TCB.STACK-U-OFF
-$28 constant TCB.REGION-OFF
-$30 constant TCB.REGION-U-OFF
-$38 constant TCB.DBASE-OFF
-$40 constant TCB.NDICT-OFF
-$48 constant TCB.CP-OFF
-$50 constant TCB.STATUS-OFF
-$58 constant TCB.STOP-OFF
-$60 constant TCB.RET-OFF
-$68 constant TCB.USER-XT-OFF
-$70 constant TASK-TCB-BYTES
+TASK-ABI:TCB-BYTES constant TASK-TCB-BYTES
 
 BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.SIZE
@@ -55,8 +42,21 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.USER-XT-CELL
 END-STRUCTURE
 
+: TASK-TCB-OFFSET ( ptr a ptr b n -- ) {: field:ptr origin:ptr want:n :}
+   field FFI:>CELL origin FFI:>CELL - want <> if
+      s" task: tcb field layout" E-TASK-STATE die then ;
+
 : TASK-TCB-LAYOUT-CHECK ( -- )
-   TASK-TCB-SIZE TASK-TCB-BYTES <> if s" task: tcb layout" E-TASK-STATE die then ;
+   TASK-TCB-SIZE TASK-TCB-BYTES <> if s" task: tcb layout" E-TASK-STATE die then
+   \ Check the typed field accessors used by the immutable engine entry.
+   here CELL-VIEW {: origin:ptr :}
+   origin TCB.XT-CELL origin TASK-ABI:XT-OFF TASK-TCB-OFFSET
+   origin TCB.STACK origin TASK-ABI:STACK-OFF TASK-TCB-OFFSET
+   origin TCB.REGION origin TASK-ABI:REGION-OFF TASK-TCB-OFFSET
+   origin TCB.DBASE origin TASK-ABI:DBASE-OFF TASK-TCB-OFFSET
+   origin TCB.NDICT origin TASK-ABI:NDICT-OFF TASK-TCB-OFFSET
+   origin TCB.CP origin TASK-ABI:CP-OFF TASK-TCB-OFFSET
+   origin TCB.STATUS origin TASK-ABI:STATUS-OFF TASK-TCB-OFFSET ;
 
 TASK-TCB-LAYOUT-CHECK
 
@@ -85,7 +85,6 @@ create TASK-SYM-PTHREAD-MUTEX-UNLOCK
 create TASK-SYM-MUNMAP
    109 c, 117 c, 110 c, 109 c, 97 c, 112 c, 0 c,
 
-variable TASK-ENTRY
 variable TASK-USER-NEXT
 
 FFI:SCRATCH-END constant TASK-USER-BASE
@@ -133,12 +132,12 @@ variable SYMBOLS-READY
    HB-TARGET-MACOS? if -2 else 0 then
    name FFI:DLSYM dup 0= if E-TASK-DLSYM throw then ;
 
-\ Capture is quiescent. Both foreign addresses and the generated pthread entry
-\ belong to this process; the next task operation constructs them afresh.
+\ Capture is quiescent. Foreign addresses belong to this process; the next
+\ task operation resolves them afresh. The task entry itself is engine text.
 : RESET-SYMBOLS ( -- )
    0 MUNMAP-XT ! 0 PTHREAD-CREATE-XT ! 0 PTHREAD-JOIN-XT !
    0 PTHREAD-EXIT-XT ! 0 SCHED-YIELD-XT ! 0 MUTEX-INIT-XT !
-   0 MUTEX-LOCK-XT ! 0 MUTEX-UNLOCK-XT ! 0 TASK-ENTRY !
+   0 MUTEX-LOCK-XT ! 0 MUTEX-UNLOCK-XT !
    0 SYMBOLS-REGISTERED ! 0 SYMBOLS-READY atomic! ;
 
 : LOAD-SYMBOLS ( -- )
@@ -295,62 +294,17 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
    tcb TASK-REGION-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
+\ This is a foreign C entry address with TASK-ABI's fixed argument contract.
+TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
+
 : TASK-PTHREAD-CREATE-RC ( ptr n -- n ) {: tcb:ptr :}
-   tcb TCB.THREAD 0 TASK-ENTRY @ tcb PTHREAD-CREATE-CALL ;
+   tcb TCB.THREAD 0 PTHREAD-ENTRY tcb PTHREAD-CREATE-CALL ;
 
 : TASK-PTHREAD-JOIN-CALL ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.THREAD @ tcb TCB.RET PTHREAD-JOIN-CALL TASK-RC0 ;
 
-: TASK-ENTRY-NEEDED? ( -- bool )
-   TASK-ENTRY @ 0= ;
-
-: A64-LDRX ( n n n -- n ) {: rt:n rn:n off:n :}
-   $F9400000 off 8 / 10 lshift or rn 5 lshift or rt or ;
-
-: A64-STRX ( n n n -- n ) {: rt:n rn:n off:n :}
-   $F9000000 off 8 / 10 lshift or rn 5 lshift or rt or ;
-
-: A64-MOVZ ( n n -- n ) {: rd:n imm:n :}
-   $D2800000 imm 5 lshift or rd or ;
-
-: A64-BLR ( n -- n )
-   5 lshift $D63F0000 or ;
-
-TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
-   patch32 ;                             \ TRUSTED-ONLY capability prim (F3 gate)
-\ Retirement owner: habu-checker-capability-gate-14022ba9.
-
-: TASK-ENTRY-BUILD ( -- )
-   TASK-ENTRY-NEEDED? 0= if exit then
-   cp@ {: fn:n :}
-   $A9BF7BFD                            fn       TASK-PATCH
-   $A9BF53F3                            fn $4 +  TASK-PATCH
-   $A9BF6FFA                            fn $8 +  TASK-PATCH
-   $F81F0FFC                            fn $C +  TASK-PATCH
-   9 0 TCB.XT-OFF A64-LDRX              fn $10 + TASK-PATCH
-   19 0 TCB.STACK-OFF A64-LDRX          fn $14 + TASK-PATCH
-   20 0 TCB.REGION-OFF A64-LDRX         fn $18 + TASK-PATCH
-   26 0 TCB.DBASE-OFF A64-LDRX          fn $1C + TASK-PATCH
-   27 0 TCB.NDICT-OFF A64-LDRX          fn $20 + TASK-PATCH
-   28 0 TCB.CP-OFF A64-LDRX             fn $24 + TASK-PATCH
-   0 20 TASK-TCB-CELL A64-STRX          fn $28 + TASK-PATCH
-   10 TASK-RUNNING A64-MOVZ             fn $2C + TASK-PATCH
-   10 0 TCB.STATUS-OFF A64-STRX         fn $30 + TASK-PATCH
-   9 A64-BLR                            fn $34 + TASK-PATCH
-   10 20 TASK-TCB-CELL A64-LDRX         fn $38 + TASK-PATCH
-   11 TASK-DONE A64-MOVZ                fn $3C + TASK-PATCH
-   11 10 TCB.STATUS-OFF A64-STRX        fn $40 + TASK-PATCH
-   0 0 A64-MOVZ                         fn $44 + TASK-PATCH
-   $F84107FC                            fn $48 + TASK-PATCH
-   $A8C16FFA                            fn $4C + TASK-PATCH
-   $A8C153F3                            fn $50 + TASK-PATCH
-   $A8C17BFD                            fn $54 + TASK-PATCH
-   $D65F03C0                            fn $58 + TASK-PATCH
-   fn TASK-ENTRY !
-   fn $5C + cp! ;
-
 : TASK-READY ( -- )
-   TASK-SYMBOLS TASK-ENTRY-BUILD ;
+   TASK-SYMBOLS ;
 
 : TASK-JOIN-RELEASE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-PTHREAD-JOIN-CALL

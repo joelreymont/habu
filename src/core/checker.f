@@ -7292,6 +7292,8 @@ PRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
+PRIM: task-entry PE-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!                       \ C ABI entry address, never a Habu quotation
 PRIM: ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
                            PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
                            PE-N PE-OUT PRIM;

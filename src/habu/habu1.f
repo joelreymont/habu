@@ -30,6 +30,7 @@ $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f
+require src/habu/task-abi.f
 variable FP-A  variable FP-U
 
 \ A primitive whose dictionary record is globally searchable but cannot be
@@ -1885,6 +1886,37 @@ variable SZA-I
    BFFI-GUARD-BOUNDS
    BFFI-CALL-N-CORE ;
 
+\ Return an immutable pthread entry, not a Habu execution token. Its C ABI
+\ argument is the TASK-ABI descriptor; the body enters that task's VM state.
+\ Preserve the complete base AAPCS64 callee-save set, including d8..d15:
+\ https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst
+: BTASK-ENTRY ( -- )
+   LBL LBL {: entry:label done:label :}
+   A entry ADR, A G-PUSH done B,
+   entry LBL,
+   SP SP $A0 SUBI,
+   29 19 do i SP i 19 - cells STR, loop
+   29 SP $50 STR, 30 SP $58 STR,
+   16 8 do i SP i 8 - cells $60 + ENC-STRD EMITW loop
+   29 SP $50 ADDI,                         \ previous FP/LR form the C frame
+   9 0 TASK-ABI:XT-OFF LDR,
+   XDS 0 TASK-ABI:STACK-OFF LDR,
+   DATA 0 TASK-ABI:REGION-OFF LDR,
+   DBASE 0 TASK-ABI:DBASE-OFF LDR,
+   NDICT 0 TASK-ABI:NDICT-OFF LDR,
+   CP 0 TASK-ABI:CP-OFF LDR,
+   0 DATA TASK-TCB-CELL STR,
+   10 TASK-ABI:RUNNING MOVZ, 10 0 TASK-ABI:STATUS-OFF STR,
+   9 BLR,
+   9 DATA TASK-TCB-CELL LDR,
+   10 TASK-ABI:DONE MOVZ, 10 9 TASK-ABI:STATUS-OFF STR,
+   0 0 MOVZ,
+   16 8 do i SP i 8 - cells $60 + ENC-LDRD EMITW loop
+   29 19 do i SP i 19 - cells LDR, loop
+   29 SP $50 LDR, 30 SP $58 LDR,
+   SP SP $A0 ADDI, RET,
+   done LBL, ;
+
 \ Mixed-ABI bounded calls guard every integer register slot (x0..x8) and
 \ every caller-packed stack slot before the foreign branch.  The two extent
 \ tables are distinct because stack slot zero is not integer slot zero.
@@ -3116,6 +3148,7 @@ package ENGINE-EMIT
    s" ffi-call" ['] BFFI-CALL 3 GDEREF-F
    s" ffi-call-n" ['] BFFI-CALL-N 3 GDEREF-F
    s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED 4 GDEREF-F
+   s" task-entry" ['] BTASK-ENTRY FPRIM
    s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED 7 GDEREF-F
    s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED 7 GDEREF-F
    s" ffi-call-abi" ['] BFFI-CALL-ABI 7 GDEREF-F
