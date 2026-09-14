@@ -3,26 +3,52 @@
 Correctness first; Joel deferred performance. Mutual review before integration.
 Do not call Habu release-qualified yet.
 
-Latest steering: leave TRUST/TRUSTED retirement until last. Finish correctness
-and the shared compiler/backend handoff so Kestrel can add targets. Hazel owns
-native +loop from ebc986c7 in .jj-ws/hazel-native-plusloop; Cedar owns typed
-loads and integration. Astra literal_ownership owns engine stack bounds;
-closure_integration_review owns gate repairs; backend_handoff is reviewing
-the existing target boundary read-only. All implementations get independent
-review before landing. See PLAN.md for the active split.
+Latest steering: leave TRUST/TRUSTED retirement until last; performance and
+both downloaded x86-64/TI DSP proposals are deferred. Finish current compiler
+correctness and a qualified handoff before new backend work.
 
-Current combined engine: bin/checkpoints/hb-correctness-8c1b0755 in this
-integration workspace (bin/hb points there), SHA-256
-8c1b07555a940b6ecf0ea1a42566631ef68aaef1a1200ae23e2d747a8d1fd39c.
-The full gate completed:378/378 suites,374 pass,4 red; log
-/tmp/cedar-integrated-literals-gate.log. native-again is already fixed and
-focused green at2b09e979. Other reds: aot-chain-capture (pointer-row census),
-native-gate-aot-negative (missing SNAP-RELOC:ADDR-CHAIN-BYTES), and
-native-gate-aot-positive (bundle/data -8303 and missing typed-fetch validation).
-The latter is confirmed with allocated memory and a checked preseed entry:
-native fetch/drop prints a marker for invalid tag5, while JIT refuses85 before
-returning the typed value. Dot38ad40e8 now owns the P1 fix; keep its diagnostic
-assertion intact.
+Integration source through864cd575 includes reviewed shared IR successor checks
+(2d197293), target binding/backend admission (ded890aa), JIT +loop1215c0be,
+native +loop4b31dbcf and string formsaca8e6c3. GitHub bookmark
+cedar/compiler-integration was pushed through4b31dbcf; later commits need the
+next periodic push.
+
+Tested intermediate engines:
+- /tmp/cedar-shared-ir-native, SHA91ea98b7a1500e4c5f38ca1ace479924d01379dc44eaf2279bd832e25f77edeb:
+  ir-verify, backend-boundary, native-hir, native-select, native-elaborate,
+  arm32-asm and tic6x-asm pass. No +loop/string/fetch/stack additions in it.
+- /tmp/cedar-loop-integration-native, SHAd5d84808d2381856352741b8d7e9698b192aff0094fb15c5fdbab52fe4b30796:
+  both loop tiers, native-j, native-leave, native-session and native-hir pass.
+  It includes IR and loop fixes, not later string/fetch/stack work.
+- /tmp/cedar-string-native-runtime/hb-native, SHAc3273f26a756a90b245dc5bcdbdd6b943af9feb6301361065470cb14f9a8d298:
+  independent string lane passes 13 string-form cases, feed/tape/ownership and
+  exact bundle output. It is a sibling checkpoint, not the integration engine.
+
+The integration bin/hb still points to bin/checkpoints/hb-correctness-8c1b0755,
+SHA8c1b07555a940b6ecf0ea1a42566631ef68aaef1a1200ae23e2d747a8d1fd39c.
+Its full gate ran378/378:374 pass,4 red, log
+/tmp/cedar-integrated-literals-gate.log. Three reds have focused repairs:
+native-again2b09e979, aot-chain-capture/native-gate-aot-negative2483995e.
+The positive bundle now executes on the string candidate; its old size test
+counts DATA/padding as code. Typed fetch still needs emitted validation:
+a checked preseed with tag5 can fetch/drop and return instead of exit85.
+
+Active independent work:
+- literal_ownership: .jj-ws/cedar-stack-bounds, engine guard ABI/lifecycle.
+  STACK-ABI leaf must load before layout, before require exists. First produce
+  a guarded engine checkpoint, then use it to build native-emitter guards.
+- backend_handoff: .jj-ws/cedar-native-fetch, source-owned immutable tag-check
+  descriptors and appended checker callback. Coordinating real cold-prefix
+  leaf dependencies with the stack owner; no replay of loaded ABI packages.
+- closure_integration_review: .jj-ws/cedar-gate-repairs, code/DATA separation in
+  stripped-image fixture assertions. String repair already independently reviewed.
+- Hazel: native loop buffer cleanup, then warmed source-order VERIFY0c9fe3d7.
+
+Cedar reviews each coherent patch, integrates, rebuilds the combined engine,
+runs focused tests and the complete gate, then selfbuild/restore/recovery and
+application acceptance. Do not promote an intermediate checkpoint. Remaining
+September audit claims are tracked under6f360270; no old audit red count is a
+current result. Page-size API is pending dotc9528f06 (Rowan now cites it).
 
 Ownership selfbuild convergence completed on frozen ee8dc15c: B3/B4 are
 byte-identical, SHA-256
@@ -43,8 +69,8 @@ from the combined engine above and is not a release qualification.
   Prefer the live name or `--current`; old external pane `w1:p4` is stale.
 - Hazel and independent Astra integer_overflow approved persistent NSTR ownership
   and the retained-host/new-target handoff. Source is integrated atde322418.
-  Astra literal_ownership is checking the second/third generation fixpoint;
-  closure_integration_review completed the physical stack-guard design.
+  Ownership fixpoint is complete as recorded above; current agent work is listed
+  above.
   Prefix every message to another agent with your own live name,
   including one-liners; the shared Herdr skill now requires this.
 
@@ -86,10 +112,9 @@ from the combined engine above and is not a release qualification.
 - `de322418`: persistent literal descriptors, private import, captured source
   arena validation, malformed-row/visibility/restore tests. Hazel and a separate
   Astra reviewer approved. First guarded engine is SHAc3ddf790; native-string
-  passes. A combined integration rebuild is running at
-  `/tmp/cedar-integrated-literals-native`, log `/tmp/cedar-integrated-literals-build.log`.
+  passes. The later combined build and full gate are recorded above.
 
-## Current integration check
+## Earlier integration evidence
 
 A native rebuild exposed RETURN-BORROWED?'s numeric 0 in a `( -- f )` helper.
 Reviewed correction 6594f822 returns RES-FALSE; the rebuild succeeds as
