@@ -50,22 +50,42 @@ open in `0c9fe3d7`.
 
 The WID/chain fixtures are moving to the current native writer with partial
 captures that preserve their actual cold-prefix behavior. Both real sealed and
-open WID collision controls pass. The complete current-writer WID run ends at
+open WID collision controls pass. The complete current-writer WID run previously ended at
 the unassigned-defer capture refusal (`4ccf56d9`), before its BIG/EXT/PREWIN
 tail. The cold owner guard dependency is repaired and independently accepted
 (`023e338e`, integrated as `d5ddce87`): the genuine empty native image keeps
 VALIDATE below the core mark and passes prefix/descriptor controls; unchanged M
 fails the new prefix assertion. The real cold compiler capture now reaches six
-declared callback cells targeting exact global prefix entries. Named CODE
-address targets remain under repair in `4ccf56d9`; named code-literal identity
-has separate regression work in `8f880800`.
+declared callback cells targeting exact global prefix entries. The named CODE
+address repair is now independently reviewed and integrated as `77ec3869`;
+named code-literal identity is integrated as `41876234`. Both pass focused
+capture/read/fresh-seed controls, including exact target identity and private,
+hidden, post-cut and nonentry refusals. Artifact version 9 carries named CODE
+rows through the existing name pool. Complete WID/chain and native gate
+acceptance remain pending the combined N build from `41876234`.
+
+The registrar index and scoped unlock correction are integrated as `ec91419b`
+and `0af37f52`, after independent review and focused growth, OOM, concurrency,
+rewind, caught-refusal and snapshot tests. A registrar-only pair reduces
+32,768 registrations from 966.486 ms to 0.896 ms; this is not a whole-build
+measurement. The immutable TASK entry is integrated as `a4d2cc3d`, with
+independent review, checked field-layout validation and three-generation
+concurrent UDP/serial image acceptance. Its native candidate passes the
+unchanged host-I/O test in 8.475 s. These fixes join the single combined N gate.
+
+Tender's newer rules142 workload exposes a separate native CASE lowering
+underflow (`a9d7bef5`), reduced to a default arm consuming preceding stack
+values. The JIT control passes; native lowering incorrectly compares the
+default's final depth with the CASE entry depth. Its repair and both-tier
+regressions are in progress in `cedar-native-case`; no application workaround
+or JIT fallback is accepted.
 
 The reviewed dynamic effect pool is integrated at `8f0749b3`. Its actual-source
 checks preserve 1,536 effects / 847,893 bytes through file and owned transfers,
 including merge and malformed-length refusals. This removes the old text-only
 cap within existing section and aggregate bounds. Complete chain acceptance
-for its legitimate 7,670 effects / 3,635,865 bytes remains pending the named
-address repair. Public legacy recovery consumers remain separately tracked;
+for its legitimate 7,670 effects / 3,635,865 bytes remains pending the combined
+native acceptance. Public legacy recovery consumers remain separately tracked;
 the current native builder does not need their BF phase certifier.
 
 Earlier registry candidate P2 (source `6969dc7a`, SHA-256
