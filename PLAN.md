@@ -38,11 +38,21 @@ General warmed-verifier source-order behavior remains open in `0c9fe3d7`.
 
 The current composition adds the growing address registry and fixes task
 quotation stores to use the shared image's DATA base; worker `data-base` remains
-task-local. K stopped at a nonparametric pointer declaration before emission.
-The corrected byte-view comparison passes focused optimizing compilation and
-independent review; K2 and fresh combined acceptance are pending. A distinct concurrent registrar race is reproduced below inline
-capacity: four writers lose rows; the serialized control preserves every row.
-The registry owner must synchronize lookup, append and growth.
+task-local. K2, source `b8e069a5`, built from J in 135.940 seconds, SHA-256
+`6428d167d119e683322c7f4f17b28cb6f7d10e63ffe38087df49ed355228a68f`.
+All eight independent storage/image suites pass: worker lifecycle, both-tier
+quotation stores, growth, allocation refusal, declared snapshot cells, snapshot
+writer and application capture/recapture. Logs: `/tmp/cedar-K2-focused/`.
+A distinct concurrent registrar race is reproduced through K2's public task API
+below inline capacity: four writers lose rows; the serialized control preserves
+every row. The registry owner must synchronize lookup, append and growth.
+
+Scoped diagnostic recovery is independently reviewed and integrated at
+`a775e66e`/`e0562cb2`. Its native product, source `5ab65284`, SHA-256
+`83e0b0ea4c4b13f4d6470c4c43372c674a9b0069dc0b10fba7269941e453bb81`,
+passes eight focused suites including the complete engine and diagnostics gates.
+Current-run recovery facts grant no executable authority; nested analysis,
+rollback, export and graph controls pass. Fresh combined acceptance is pending.
 
 The registry candidate P2 uses source `6969dc7a`, SHA-256
 `ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c`,
@@ -55,7 +65,8 @@ format v8 and the existing 28 MiB encoded-payload budget remain unchanged.
 P2 built pinned Tender `4cc58705` through its public entry in 63.822 seconds.
 The executable and two recaptures retain exactly 76,154 unique address rows,
 with identical row bytes; the third image restores its public REPL. Full file
-and DATA sizes still grow across recaptures, so this is no size-fixpoint claim.
+and DATA sizes still grow across recaptures (`4e8a865e`), so this is no
+size-fixpoint claim.
 Evidence: `/home/joel/.cache/cedar-capture-rows-u5l55np1/` and its `tender-P2/`
 subdirectory. The speed targets and downstream acceptance remain open; accepted
 Tender/Maki/Kestrel pins stay unchanged.

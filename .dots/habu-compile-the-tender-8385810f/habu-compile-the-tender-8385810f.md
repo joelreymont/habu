@@ -73,10 +73,15 @@ Logs: /tmp/cedar-J-full-suite.{json,log}; individual outputs:
 Reviewed fixes after J: source-replay package import depth, required build module
 assembly, growable Gforth primitive registry, private fixture boundaries/control
 flags, and address-cell growth with actual aggregate artifact admission. Root's
-independent focused checks pass. K stopped at a pointer-type specialization in the shared-DATA store fix
-79563f22. Its corrected byte-view comparison passes focused optimizing
-compilation and independent review; the K2 rebuild is next. A separate concurrent first-registration race is reproduced; serialized
-calls preserve all rows. Fresh combined full-gate acceptance is pending.
+independent focused checks pass. K2 source b8e069a5 built from J in 135.940 s,
+SHA6428d167d119e683322c7f4f17b28cb6f7d10e63ffe38087df49ed355228a68f.
+All eight independent storage/image suites pass; evidence is in
+/tmp/cedar-K2-focused/. Shared-DATA store fix 79563f22 is accepted locally.
+A separate concurrent first-registration race is reproduced through the public
+K2 task API; serialized calls preserve all rows. Scoped diagnostic recovery
+a775e66e/e0562cb2 is independently reviewed, with eight focused native suites
+green, including complete engine and program diagnostics. Fresh combined
+full-gate acceptance is pending.
 
 The real current native builder does not use the old BF phase certifier. The
 maker lane is auditing recovery/fixture consumers before adding machinery to
@@ -89,7 +94,8 @@ ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c)
 built from G2 in 143.102 seconds. Pinned Tender 4cc58705 public build succeeds
 in 63.822 seconds. Its executable and two recaptures preserve all 76,154 unique
 rows and identical row bytes; the third image restores its public REPL. File and
-DATA sizes still grow, so this does not establish a size fixpoint. Evidence:
+DATA sizes still grow, tracked separately in 4e8a865e; this does not establish a
+size fixpoint. Evidence:
 /home/joel/.cache/cedar-capture-rows-u5l55np1/tender-P2/. Accepted downstream
 pins and the uncached speed targets remain unchanged.
 
