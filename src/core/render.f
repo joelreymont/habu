@@ -629,7 +629,7 @@ variable MDV-I   variable MDV-F
       DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN
    THEN ;
 : RETURN-BORROWED? ( -- f )   \ the body bound the return tail below its declared frame
-   SGRBASE @ dup 0= IF drop 0 EXIT THEN ROW-OPEN? 0= ;
+   SGRBASE @ dup 0= IF drop RES-FALSE EXIT THEN ROW-OPEN? 0= ;
 : RETURN-MISMATCH? ( -- f )
    SGHASR @ IF
       RCUR @ R-RES  SGROUT @ R-RES  <>
