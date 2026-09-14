@@ -709,6 +709,7 @@ TRUSTED: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
 TRUSTED: CTOR-COLLIDE ( n n n -- ) TDECL-DERIVE-COLLIDE ;
 TRUSTED: CTOR-REQUIRE ( n n n -- ) TDECL-DERIVE-REQUIRE ;
 TRUSTED: CTOR-PUBLISH ( n n n -- ) TDECL-CTOR-PUBLISH ;
+TRUSTED: CTOR-REPLAY ( n -- ) TDECL-CTOR-REPLAY ;
 TRUSTED: CTOR-PROVIDER ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
    TDECL-SUMV-PROVIDER ;
 TRUSTED: CTOR-GEN ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
@@ -799,17 +800,9 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ generator. Both role gates read committed rows, which is why they work here and
 \ could not work in the body phase.
 \
-\ The last step, and ONLY the last step, is what a replayed declaration skips.
-\ The split is not a shortcut, it is where the legacy definer already drew the
-\ line: sumtype.f's global ENUM keyword was CHECKER-DEFENUM followed by
-\ TDECL-CTOR-WORDS, and CHECKER-DEFENUM — the metadata-only entry check-core and
-\ verify-source drove before this one existed — ended with TDECL-CTOR-PUBLISH and
-\ defined no word.
-\ So the constructor PACKAGE STAMP on each variant row is registration, not
-\ generation: it is how a later `FAMILY:VARIANT` in the same source resolves at
-\ all. Skipping the arming instead of the rendering would have left every
-\ constructor use in a replayed file undefined, which is the whole reason the
-\ legacy entry published those rows in the first place.
+\ Replay renders and checks the same constructor bodies, publishing their
+\ effects for later source definitions. It emits no runtime code. The package
+\ stamp alone is insufficient: a call needs the checked constructor effect.
 : PART-COMMIT ( n -- n ) {: depth:n :}
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY = IF depth EXIT THEN
@@ -819,7 +812,7 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
    fam vstart count CTOR-COLLIDE
    fam vstart count CTOR-REQUIRE
    fam vstart count CTOR-PUBLISH
-   DECL-REPLAY:RP-ACTIVE? IF depth EXIT THEN
+   DECL-REPLAY:RP-ACTIVE? IF fam CTOR-REPLAY depth EXIT THEN
    CTOR-PROVIDER fam CTOR-GEN drop
    depth ;
 

@@ -25,11 +25,8 @@
 \             constructor package stamped on that row
 \   fields:   the TYPE-FIELD row count keyed (family, variant), and each row's
 \             name, schema root, slot, and cell width
-\ The ONE intended difference is the constructor SYMBOL: executing a declaration
-\ renders its constructor words, replaying it must not, so the live rows carry a
-\ symbol and the replayed rows carry zero. That asymmetry is asserted, not
-\ tolerated — it is the property that makes the replay safe to run inside a tool
-\ that is reading source rather than building a program.
+\ Both paths register constructor symbols and checked effects. Replay emits no
+\ code or runtime dictionary entries; VS-LOAD checks that distinction directly.
 \
 \ IN-SCOPE, deliberately: VERIFY:SOURCE-BUF wraps its run in a candidate scope
 \ that rolls every registration back, which is right for validating a candidate
@@ -156,9 +153,9 @@ private
       \ lost by skipping the arming instead of the rendering.
       b V-PKG$ nip 0 > T-TRUE
       a V-PKG$ nip 0 > T-TRUE
-      \ the one intended asymmetry: words rendered live, never on replay
+      \ Both paths register the checked constructor effects.
       a V-SYM 0 <> T-TRUE
-      b V-SYM 0 T=
+      b V-SYM 0 <> T-TRUE
       af a bf b SAME-FIELDS
       SI @ 1 + SI !
    REPEAT ;
@@ -181,7 +178,10 @@ public
 
 \ VS-LOAD ( source -- ) : register a source's declarations the way the
 \ in-process tools do, without executing it.
-TRUSTED: VS-LOAD ( ptr u8 n -- ) VERIFY:SOURCE-BUF-IN-SCOPE ;
+TRUSTED: VS-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+   ndict@ {: before:n :}
+   src u VERIFY:SOURCE-BUF-IN-SCOPE
+   ndict@ before T= ;
 
 : VCOUNT ( ptr u8 n -- n ) FAMID F-VCOUNT ;
 : FCOUNT ( ptr u8 n -- n ) FAMID F-FCOUNT ;
@@ -285,6 +285,16 @@ s" package edrep public ENUM colour red green blue ;ENUM ;package"
 VSPARITY:VS-LOAD
 
 s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
+
+\ Checked uses must work immediately after replay, including parametric
+\ payloads and product make/unmake. No runtime word is evaluated here.
+s" package vruse public ENUM box 1 VARIANT ok FIELD value a ;VARIANT VARIANT no ;VARIANT ;ENUM : WRAP ( a -- box<a> ) VRUSE-BOX:OK ; ;package"
+VSPARITY:VS-LOAD
+s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" CHECK-QUIET-CANDIDATE! -1 VSPARITY:T=
+s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
+s" WRONG-COLOUR ( -- n ) EDREP-COLOUR:RED" CHECK-QUIET-CANDIDATE! 0 VSPARITY:T=
 
 \ ---------------------------------------------------------------------------
 \ 3. A STRUCTURE named as a later declaration's payload type. Without a

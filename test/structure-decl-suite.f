@@ -407,8 +407,7 @@ DECL-DIAG:OFF
 \ as its payload type.
 \
 \ Registration here includes the family's MAKE/UNMAKE variant rows and their
-\ constructor package, because that is how a later `FAMILY:MAKE` in the same
-\ source resolves. Only the rendering of those two words is skipped.
+\ constructor package and checked effects. Replay emits no runtime code.
 \ ---------------------------------------------------------------------------
 package struct-replay-test
 public
@@ -447,11 +446,11 @@ SV0 @ struct-replay-test:SV-NAME$ s" make" CORE-STR= T-TRUE
 SV0 @ 1 + struct-replay-test:SV-NAME$ s" unmake" CORE-STR= T-TRUE
 SV0 @ struct-replay-test:CTOR-PKG$ s" RPSD" CORE-STR= T-TRUE
 
-\ registration yes, generation no: no constructor symbol, and the word does not
-\ resolve (1 = uncheckable; the identical live declaration answers -1, accepted).
-SV0 @ struct-replay-test:CTOR-SYM 0 T=
-SV0 @ 1 + struct-replay-test:CTOR-SYM 0 T=
-s" S1 ( n n -- rpsd ) RPSD:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
+\ Checked calls resolve, while DICT-SAME above proves no runtime word appeared.
+SV0 @ struct-replay-test:CTOR-SYM 0 <> T-TRUE
+SV0 @ 1 + struct-replay-test:CTOR-SYM 0 <> T-TRUE
+s" S1 ( n n -- rpsd ) RPSD:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" S1BAD ( n -- rpsd ) RPSD:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ Header clauses replay onto the same family record.
 s" rpsdh" s" 0 POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"

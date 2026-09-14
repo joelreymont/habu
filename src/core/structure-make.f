@@ -112,10 +112,11 @@ TRUSTED: SM-EMIT-ROWS ( n n n n -- ) {: tok:n fam:n fs:n fc:n :}
    fam SM-VSTART @ 2 TDECL-CTOR-PUBLISH ;
 
 \ SM-EMIT-WORDS: the GENERATION half — render, evaluate, certify and seal the
-\ MAKE/UNMAKE pair. Split from the rows above because a replayed declaration
-\ performs the registration and stops here (see GENERATE).
+\ MAKE/UNMAKE pair. Replay uses the same plan to register checked effects only.
 TRUSTED: SM-EMIT-WORDS ( n -- ) {: fam:n :}
    fam TDECL-PROD-WORDS ;
+
+TRUSTED: SM-REPLAY-WORDS ( n -- ) TDECL-CTOR-REPLAY ;
 
 \ --- validation pass (checked; no registry write). A reject here leaves every
 \ registry byte-identical, so publication is attempted only after it wholly passes.
@@ -145,12 +146,9 @@ public
 \ before any registry write, so a rejected call publishes nothing.
 \
 \ A REPLAYED declaration (tools/check-core.f's nominal pass, verify-source)
-\ registers the make/unmake variant rows and the constructor package, then
-\ stops: it is reading source, not building a program, so it must define no
-\ word. It cannot skip the rows, because they are how a later `FAMILY:MAKE` in
-\ the same source resolves — the same reason the legacy metadata-only entry
-\ CHECKER-DEFENUM ended with TDECL-CTOR-PUBLISH and defined nothing, before the
-\ ENUM cutover deleted it.
+\ registers the make/unmake rows and checks their generated bodies. Those
+\ effects allow later source to call the constructors without emitting code
+\ or adding runtime dictionary entries during verification.
 : GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY
    fam SM-FLD-COUNT {: fc:n :}
@@ -158,7 +156,7 @@ public
    fam SM-REQUIRE-UNGENERATED
    tok fam fc SM-REQUIRE-READABLE
    tok fam  fam SM-FLD-START  fc  SM-EMIT-ROWS
-   DECL-REPLAY:RP-ACTIVE? IF EXIT THEN
+   DECL-REPLAY:RP-ACTIVE? IF fam SM-REPLAY-WORDS EXIT THEN
    fam SM-EMIT-WORDS ;
 
 ;package

@@ -1127,13 +1127,9 @@ DECL-DIAG:OFF
 \     the SAME grammar loop, validation, registry writes and reject packet as
 \     ED-RUN, reading its tokens from the caller's buffer.
 \
-\     What these cases have to separate is registration from generation, because
-\     the two used to be one step. Registration includes the constructor PACKAGE
-\     stamped on each variant row — that is metadata the checker resolves types
-\     through, and the legacy metadata-only entry CHECKER-DEFENUM published it
-\     too. Generation is the rendering of the constructor WORDS, and that is the
-\     only thing a replay skips. So each case below pins both halves: the rows
-\     are there, the words are not.
+\     Replay checks the generated constructor bodies and records their effects.
+\     Runtime code and dictionary entries are absent; later source calls must
+\     still resolve and check against those effects.
 \ ---------------------------------------------------------------------------
 package enum-replay-test
 public
@@ -1177,15 +1173,11 @@ VS0 @ 2 + SV-TAG@ 2 T=
 VS0 @ enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
 VS0 @ 2 + enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
 
-\ GENERATION did not: no constructor symbol was recorded on any row, and the
-\ constructor word genuinely does not exist. This is the observable that fails
-\ the moment the replay driver is allowed to generate.
-VS0 @ enum-ctor-test:CTOR-SYM 0 T=
-VS0 @ 2 + enum-ctor-test:CTOR-SYM 0 T=
-\ 1 = uncheckable: the family type resolves (it IS registered) but the
-\ constructor word does not exist, so the body cannot be checked at all. The
-\ identical live declaration in section 20a answers -1, accepted.
-s" R1 ( -- rpcompact ) RPCOMPACT:RED" CHECK-QUIET-CANDIDATE! 1 T=
+\ The dictionary stayed unchanged above, but checked constructor calls resolve.
+VS0 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
+VS0 @ 2 + enum-ctor-test:CTOR-SYM 0 <> T-TRUE
+s" R1 ( -- rpcompact ) RPCOMPACT:RED" CHECK-QUIET-CANDIDATE! -1 T=
+s" R1BAD ( -- n ) RPCOMPACT:RED" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ 23b. FULL mode replays too. The legacy CHECKER-DEFENUM this entry replaces read
 \      a compact list of bare variant names and nothing else, so an arity header
@@ -1201,7 +1193,7 @@ VS0 @ SV-NAME$ s" quit" CORE-STR= T-TRUE
 VS0 @ 1 + SV-NAME$ s" move" CORE-STR= T-TRUE
 FID @ VS0 @ enum-ctor-test:PAY-ROWS 0 T=
 FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS 2 T=
-VS0 @ 1 + enum-ctor-test:CTOR-SYM 0 T=    \ still no words
+VS0 @ 1 + enum-ctor-test:CTOR-SYM 0 <> T-TRUE
 
 \ 23c. Header clauses replay: POLICY and DERIVE reach the same family record.
 s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
@@ -1256,8 +1248,7 @@ s" ENUM-DECL:ED-RUN rpafterbusy 0 VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
 
 \ 23i. Live and replayed declarations of the SAME shape register the SAME
 \      registry state. Declared in two packages so both families coexist; every
-\      reflected field is compared, and the only intended difference is that the
-\      replayed one carries no constructor symbol.
+\      reflected field is compared; both register checked constructor effects.
 package rp-live-test
 public
 s" ENUM-DECL:ED-RUN shape 0 POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM" EV
@@ -1286,9 +1277,9 @@ VS0 @ SV-TAG@ enum-replay-test:VS1 @ SV-TAG@ T=
 VS0 @ 1 + SV-TAG@ enum-replay-test:VS1 @ 1 + SV-TAG@ T=
 FID @ VS0 @ enum-ctor-test:PAY-ROWS  VID @ enum-replay-test:VS1 @ enum-ctor-test:PAY-ROWS  T=
 FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS VID @ enum-replay-test:VS1 @ 1 + enum-ctor-test:PAY-ROWS T=
-\ the one intended divergence: words for the live family, none for the replayed
+\ Both registries carry their own constructor symbols.
 VS0 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
-enum-replay-test:VS1 @ enum-ctor-test:CTOR-SYM 0 T=
+enum-replay-test:VS1 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
 
 \ ---------------------------------------------------------------------------
 \ 24. Control words are reserved in every declaration name position, and the list

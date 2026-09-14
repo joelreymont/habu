@@ -843,6 +843,10 @@ SUITE certify-dynamic-buffer
    test/certify-dynamic-buffer.f
 ;SUITE
 
+SUITE certify-generated
+   test/certify-generated.f
+;SUITE
+
 SUITE underdepth-gate
    test/underdepth-gate.f
 ;SUITE

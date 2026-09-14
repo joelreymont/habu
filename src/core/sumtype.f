@@ -1924,14 +1924,17 @@ variable TDD-H
    fam TFAM-DERIVE-EQ? IF fam TDECL-EQ-WORD THEN
    fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN ;
 
-: TDECL-PROD-WORDS-BODY ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
+: TDECL-PROD-PLAN ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
    fam TFAM-VAR-START@ {: vstart:n :}
    TDPLAN-BEGIN
    fam vstart 1 TDECL-PROD-WORD
    fam vstart 1 + 0 TDECL-PROD-WORD
-   fam TDECL-DRV-WORDS                    \ derived words BEFORE the WID closes
+   fam TDECL-DRV-WORDS ;
+
+: TDECL-PROD-WORDS-BODY ( n -- ) {: fam:n :}
+   fam TDECL-PROD-PLAN
    TDECL-GEN-EVAL
-   vstart TDECL-CTOR-PROT-WID ;
+   fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID ;
 
 \ Legacy adapter for the product generator, kept so the STRUCTURE make/unmake
 \ publisher (src/core/structure-make.f) keeps its ( fam -- ) call: it declares its
@@ -1956,12 +1959,12 @@ public
 
 private
 
-: TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
+: TDECL-GEN-PLAN ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
    {: ctx:n qn qr qc fam:n :}
    fam TFAM-PUBLIC? 0= IF ctx qn qr qc fam EXIT THEN
    ctx qn qr qc fam TDPV-CAPTURE          \ the whole payload view, once, validated
    fam TFAM-PRODUCT? IF
-      fam TDECL-PROD-WORDS-BODY  ctx qn qr qc fam EXIT THEN
+      fam TDECL-PROD-PLAN  ctx qn qr qc fam EXIT THEN
    \ parametric (arity > 0) families publish too (item 11 slice 1): a
    \ constructor's parametric result stays one conservative logical cell while
    \ its args are unresolved, expands to hidden fields where instantiation
@@ -1974,13 +1977,32 @@ private
       fam  fam TFAM-VAR-START@ TDGEN-M @ +  TDECL-CTOR-WORD
       TDGEN-M @ 1 + TDGEN-M !
    REPEAT
-   fam TDECL-DRV-WORDS                    \ derived words BEFORE the WID closes
-   TDECL-GEN-EVAL
-   fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID
+   fam TDECL-DRV-WORDS
    ctx qn qr qc fam ;
+
+: TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
+   dup TFAM-PUBLIC? 0= IF EXIT THEN
+   TDECL-GEN-PLAN
+   TDECL-GEN-EVAL
+   dup TFAM-VAR-START@ TDECL-CTOR-PROT-WID ;
+
+\ Replay publishes checked effects from the same constructor bodies as a live
+\ declaration. It emits no code and creates no runtime dictionary entries.
+: TDECL-REPLAY-BODY ( n -- n ) {: family:n :}
+   TDECL-SUMV-PROVIDER family TDECL-GEN-PLAN
+   TDPLAN-PREFLIGHT-DEFINITIONS
+   {: ctx:n qn qr qc fam:n :}
+   fam ;
 
 
 public
+
+: TDECL-CTOR-REPLAY ( n -- )
+   dup TFAM-PUBLIC? 0= IF drop EXIT THEN
+   [: TDECL-REPLAY-BODY ;] catch {: rc:n :}
+   CTOR-PEND-CLEAR
+   rc 0 <> IF rc throw THEN
+   drop ;
 
 : TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )   \ generate one live family's constructors
    [: TDECL-GEN-BODY ;] catch {: rc:n :}
