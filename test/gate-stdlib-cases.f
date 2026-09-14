@@ -1195,6 +1195,10 @@ SUITE engine-stack-lifecycle
    test/engine-stack-lifecycle.f
 ;SUITE
 
+SUITE engine-stack-jit
+   test/engine-stack-jit.f
+;SUITE
+
 SUITE combinators
    test/combinators.f
 ;SUITE
