@@ -93,3 +93,13 @@ no new process certifier or BF fixture generation is introduced.
 Final current-writer WID result: rc1 at F112, the real unassigned-defer target refusal recorded in 4ccf56d9; no timeout. Its BIG/EXT/PREWIN tail did not run. Root reviewed and integrated d8cba1bf/ca5d7150 as 510c8892/eb97cdea.
 
 2026-09-14 root acceptance: the current native-writer wide suite passes all BIG, EXT, XTLIT and PREWIN cases, rc0 in 171.233s on source 8f0749b3 using the matched-M opcode-batch engine (SHA256 46a9d66884fafba495d309ddd1ca077fabee466798a10c31f3c9a14c7819ed3c). Exact command/results: `/tmp/cedar-current-fixture-gate/wide.{json,log}`. The separate full WID run still awaits named prefix CODE address targets (4ccf56d9); this is not a full-suite or chain pass.
+
+2026-09-14 orchestration correction: the WID gate formerly put eleven builds
+(each with a 240 s process timeout) and a nested six-build data-span child under
+one 360 s registry deadline. Both focused programs now accept one named case per
+independent build while their no-argument forms retain the complete assertion
+sets; the WID suite no longer spawns the data-span suite. On source 7bc7d386,
+the `restore` and `refuse-bound` cases pass against
+`/tmp/cedar-data-site-native` (SHA256 515efca8); malformed and multiple case
+arguments exit 64.
+The remaining fifteen selected build variants await the composed parent gate.

@@ -67,16 +67,15 @@
 \         runs on every host and reads the capture tables directly; this is the
 \         half that says the name reaches the right address at boot.
 \
-\ Spawn-only helper: test/aot-wid-suite.f runs it as a child and gates on its exit
-\ code; it is not a TEST:SUITE member, like test/aot-wid-build.f. The PTY
-\ primitives below mirror test/proc-pty.f
+\ The gate registers one case per independent build; a standalone run with no
+\ case keeps the complete focused sequence. The PTY primitives below mirror test/proc-pty.f
 \ verbatim; factoring them into a shared lib is out of this dot's scope. Linux gate
 \ hosts provide /dev/ptmx + a mounted /dev/pts (docs/process-pty.md).
 \
 \ Standalone:
 \   bin/hb --load lib/errors.f lib/string.f lib/fmt.f lib/memory.f lib/fs.f lib/fs-mutate.f \
 \     lib/process.f lib/process-argv.f lib/process-env.f lib/test.f \
-\     test/aot-data-span-forge.f
+\     test/aot-data-span-forge.f [-- CASE]
 
 require lib/errors.f
 require lib/string.f
@@ -110,6 +109,7 @@ create SPAN-BUF 32 allot   variable SPAN-U             \ decimal text of OVERSIZ
 : OVERSIZED-SPAN$ ( -- ptr u8 n )   SPAN-BUF SPAN-U @ ;
 
 240000 constant BUILD-TIMEOUT-MS
+$40 constant ARG-RC
 
 \ --- PTY constants + poll tuning (mirror test/proc-pty.f) ---
 $40045431 constant LINUX-TIOCSPTLCK
@@ -142,6 +142,12 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U ! ;
 
+: REQUIRE-PROBE ( -- )
+   T-FAILURES 0 <> if
+      s" aot-data-span-forge: stopping after failed probe" type cr
+      T-EX-FAIL throw
+   then ;
+
 \ --- build the forged oversized image: spawn aot-wid-build with HABU_AOT_SPAN, so
 \ its emitted hb-pwid bakes LAOTDATASIZE = OVERSIZED-SPAN (see aot-wid-build.f
 \ SPAN-FORGE-LINE). Private HB_TMP so nothing in the tree is touched.
@@ -161,7 +167,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !
             s" aot-data-span-forge: forged builder stderr:" type cr  ERR$ type cr
-            s" aot-data-span-forge: forged build failed" c RC>N die ENDOF
+            c RC>N throw ENDOF
    ;MATCH ;
 
 \ --- build a window-content variant: same builder, a different mode. The fixture
@@ -184,7 +190,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !
             s" aot-data-span-forge: window-content builder stderr:" type cr  ERR$ type cr
-            s" aot-data-span-forge: window-content build failed" c RC>N die ENDOF
+            c RC>N throw ENDOF
    ;MATCH ;
 
 \ --- PTY plumbing (mirror test/proc-pty.f) ---
@@ -298,15 +304,29 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    ;MATCH
    MFD @ close ;
 
-: PROBE-WINDOW-CONTENT ( -- )
+: REQUIRE-IMAGE ( -- )
+   HBPWID$ EXISTS? 0= if
+      s" aot-data-span-forge: builder wrote no engine" type cr
+      E-FS-OPEN throw
+   then ;
+
+: PROBE-CONTENT ( -- )
    s" HABU_AOT_BAKE" BUILD-MODE
    s" AOT window content: the content variant built" T-LABEL
    HBPWID$ EXISTS? TTRUE
-   ASSERT-CONTENT-TRAVELS
+   REQUIRE-IMAGE
+   ASSERT-CONTENT-TRAVELS ;
+
+: PROBE-TRAP ( -- )
    s" HABU_AOT_TRAP" BUILD-MODE
    s" AOT declared cell: the trap variant built" T-LABEL
    HBPWID$ EXISTS? TTRUE
+   REQUIRE-IMAGE
    ASSERT-TRAP-DIES-NAMED ;
+
+: PROBE-WINDOW-CONTENT ( -- )
+   PROBE-CONTENT  REQUIRE-PROBE
+   PROBE-TRAP ;
 
 \ --- the wide format's boot half ----------------------------------------------
 \ The magic is the value aot-wid-build.f stores into the big-window fixture cell.
@@ -334,6 +354,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" HABU_AOT_BIG" BUILD-MODE
    s" AOT wide format: the over-64 KiB variant built" T-LABEL
    HBPWID$ EXISTS? TTRUE
+   REQUIRE-IMAGE
    ASSERT-BIG-WINDOW-BOOTS ;
 
 \ The out-of-line name, proved where it can only be proved. The reporter's own
@@ -362,6 +383,7 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" HABU_AOT_EXT" BUILD-MODE
    s" AOT out-of-line name: the variant built" T-LABEL
    HBPWID$ EXISTS? TTRUE
+   REQUIRE-IMAGE
    ASSERT-EXT-NAME-BOOTS ;
 
 \ The pre-window elimination, proved where the relocation actually happens (dot
@@ -397,27 +419,66 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" HABU_AOT_PREWIN" BUILD-MODE
    s" AOT pre-window: the variant built" T-LABEL
    HBPWID$ EXISTS? TTRUE
+   REQUIRE-IMAGE
    ASSERT-PREWINDOW-BOOTS ;
 
-: BODY ( -- )
+: CHECK-SPAN-TEXT ( -- )
    RENDER-SPAN
    s" AOT data span guard: rendered span text parses back to 2*DATA-SIZE" T-LABEL
    OVERSIZED-SPAN$ STR>NUMBER? MATCH option
      some OF  DATA-SIZE 2 *  T=  ENDOF
      none OF  T-FAIL  ENDOF
-   ;MATCH
+   ;MATCH ;
+
+: LINUX-SETUP? ( -- bool )
    HB-TARGET-LINUX? 0= if
-      s" aot-data-span-forge: PTY boot cases run on linux only; skipped" type cr exit then
+      s" aot-data-span-forge: PTY boot cases run on linux only; skipped" type cr
+      false exit
+   then
    SETUP
+   true ;
+
+: PROBE-SPAN ( -- )
    BUILD-FORGED
    s" AOT data span guard: forged variant image exists after build" T-LABEL
    HBPWID$ EXISTS? TTRUE
-   ASSERT-FORGED-DIES
-   ASSERT-LEGAL-BOOTS
-   PROBE-WINDOW-CONTENT
-   PROBE-BIG-WINDOW
-   PROBE-EXT-NAME
+   REQUIRE-IMAGE
+   ASSERT-FORGED-DIES  REQUIRE-PROBE
+   ASSERT-LEGAL-BOOTS ;
+
+: FULL ( -- )
+   CHECK-SPAN-TEXT
+   LINUX-SETUP? 0= if exit then
+   PROBE-SPAN  REQUIRE-PROBE
+   PROBE-WINDOW-CONTENT  REQUIRE-PROBE
+   PROBE-BIG-WINDOW  REQUIRE-PROBE
+   PROBE-EXT-NAME  REQUIRE-PROBE
    PROBE-PREWINDOW ;
+
+: ARG= ( ptr u8 n -- bool )
+   0 SCRIPT-ARGV$ 2swap STR= ;
+
+: ARG-ERROR ( -- )
+   s" aot-data-span-forge: expected exactly one known case" type cr
+   ARG-RC throw ;
+
+: SELECTED ( -- )
+   s" span" ARG= if
+      CHECK-SPAN-TEXT
+      LINUX-SETUP? if PROBE-SPAN then
+      exit
+   then
+   s" content" ARG= if LINUX-SETUP? if PROBE-CONTENT then exit then
+   s" trap" ARG= if LINUX-SETUP? if PROBE-TRAP then exit then
+   s" big" ARG= if LINUX-SETUP? if PROBE-BIG-WINDOW then exit then
+   s" ext" ARG= if LINUX-SETUP? if PROBE-EXT-NAME then exit then
+   s" prewin" ARG= if LINUX-SETUP? if PROBE-PREWINDOW then exit then
+   ARG-ERROR ;
+
+: BODY ( -- )
+   SCRIPT-ARGC 0= if FULL exit then
+   SCRIPT-ARGC 1 <> if ARG-ERROR then
+   SELECTED ;
 
 public
 

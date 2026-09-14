@@ -109,9 +109,9 @@
 \ stable proof, and it is what a bitmap makes cheap - now read back at the id the
 \ engine says it gave the fixture's package, since the id is the seed's to choose.
 \
-\ Cost: eleven child engine builds (~12 s each), plus the data-span child's own.
-\ It is registered directly in test/gate-stdlib-cases.f. Run standalone:
-\ bin/hb --load test/aot-wid-suite.f
+\ Cost: eleven independent child engine builds. The gate registers one case per
+\ build; a standalone run with no case keeps the complete focused sequence.
+\ Run standalone: bin/hb --load test/aot-wid-suite.f [-- CASE]
 
 require lib/errors.f
 require lib/string.f
@@ -148,6 +148,7 @@ $8000 constant CAP                   \ build + probe stdout/stderr capture
 2048  constant FORGE-CAP             \ stdin-piped forge source
 240000 constant BUILD-TIMEOUT-MS
 30000  constant PROBE-TIMEOUT-MS
+$40    constant ARG-RC
 
 create OUT CAP allot     variable OUT-U
 create ERR CAP allot     variable ERR-U
@@ -185,6 +186,12 @@ create COLD-DST FS-PATH-CAP allot
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U !
    ROOT$ s" forge.f" FORGE-BUF JOIN-PATH FORGE-U ! ;
+
+: REQUIRE-PROBE ( -- )
+   T-FAILURES 0 <> if
+      s" aot-wid-suite: stopping after failed probe" type cr
+      T-EX-FAIL throw
+   then ;
 
 \ Each refusal build gets its own tree, so "no engine appeared" is a statement
 \ about that build and not about a leftover from the good one.
@@ -454,31 +461,31 @@ create PRB PRB-CAP allot   variable PRB-U
    PRB$ ;
 
 : READ-FIXTURE-WIDS ( -- )
-   HBPWID$ PROT-PKG-WID$ READ-N PROT-WID-V !
-   HBPWID$ OPEN-PKG-WID$ READ-N OPEN-WID-V ! ;
+   HBPWID$ PROT-PKG-WID$ READ-N PROT-WID-V !  REQUIRE-PROBE
+   HBPWID$ OPEN-PKG-WID$ READ-N OPEN-WID-V !  REQUIRE-PROBE ;
 
 : PROBE-VARIANT ( -- )
    s" restored band carries the bitmap shape tag before batch input" T-LABEL
-   HBPWID$ PROBE-TAG$ READ-N  1 T=
+   HBPWID$ PROBE-TAG$ READ-N  1 T=  REQUIRE-PROBE
    s" the engine gave the fixture's two packages two different word-lists" T-LABEL
    READ-FIXTURE-WIDS
-   PROT-WID 0 >  OPEN-WID 0 >  and  PROT-WID OPEN-WID <>  and TTRUE
+   PROT-WID 0 >  OPEN-WID 0 >  and  PROT-WID OPEN-WID <>  and TTRUE  REQUIRE-PROBE
    s" the word-list the window sealed is protected before batch input" T-LABEL
-   HBPWID$ PROT-WID MEMBER-PROBE$ READ-N  1 T=
+   HBPWID$ PROT-WID MEMBER-PROBE$ READ-N  1 T=  REQUIRE-PROBE
    s" the id one below it is not protected" T-LABEL
-   HBPWID$ PROT-WID 1 - MEMBER-PROBE$ READ-N  0 T=
+   HBPWID$ PROT-WID 1 - MEMBER-PROBE$ READ-N  0 T=  REQUIRE-PROBE
    s" the id one above it is not protected" T-LABEL
-   HBPWID$ PROT-WID 1 + MEMBER-PROBE$ READ-N  0 T=
+   HBPWID$ PROT-WID 1 + MEMBER-PROBE$ READ-N  0 T=  REQUIRE-PROBE
    s" a window word-list the fixture left open is not protected" T-LABEL
-   HBPWID$ OPEN-WID MEMBER-PROBE$ READ-N  0 T=
+   HBPWID$ OPEN-WID MEMBER-PROBE$ READ-N  0 T=  REQUIRE-PROBE
    s" WIDN advanced past the baked word-list ids before batch input" T-LABEL
-   HBPWID$ PROBE-WORDLIST$ READ-N  PROT-WID >  TTRUE
+   HBPWID$ PROBE-WORDLIST$ READ-N  PROT-WID >  TTRUE  REQUIRE-PROBE
    s" publish into the sealed baked wid exits 84 (--load)" T-LABEL
-   HBPWID$ PROT-WID FORGE-WID$ FORGE-LOAD  ASSERT-REJECT
+   HBPWID$ PROT-WID FORGE-WID$ FORGE-LOAD  ASSERT-REJECT  REQUIRE-PROBE
    s" publish into the sealed baked wid exits 84 (stdin)" T-LABEL
-   HBPWID$ PROT-WID FORGE-WID$ FORGE-STDIN  ASSERT-REJECT
+   HBPWID$ PROT-WID FORGE-WID$ FORGE-STDIN  ASSERT-REJECT  REQUIRE-PROBE
    s" publish into the open baked wid is refused for the other reason" T-LABEL
-   HBPWID$ OPEN-WID FORGE-WID$ FORGE-LOAD  ASSERT-NOT-PROTECTED
+   HBPWID$ OPEN-WID FORGE-WID$ FORGE-LOAD  ASSERT-NOT-PROTECTED  REQUIRE-PROBE
    s" an ordinary packaged define still exits 0 on the variant (--load)" T-LABEL
    HBPWID$ DEFINE-OK$ FORGE-LOAD  ASSERT-OK ;
 
@@ -487,7 +494,7 @@ create PRB PRB-CAP allot   variable PRB-U
 \ baseline has never allocated the ordinal; the cases below prove collisions.
 : PROBE-CONTROL ( -- )
    s" shipped engine's band does not hold the variant's sealed id (control)" T-LABEL
-   PLAIN$ PROT-WID MEMBER-PROBE$ READ-N  0 T=
+   PLAIN$ PROT-WID MEMBER-PROBE$ READ-N  0 T=  REQUIRE-PROBE
    s" shipped engine refuses a publish into it for the other reason (control)" T-LABEL
    PLAIN$ PROT-WID FORGE-WID$ FORGE-LOAD  ASSERT-NOT-PROTECTED ;
 
@@ -513,16 +520,25 @@ create PRB PRB-CAP allot   variable PRB-U
    ERR$ m mu CONTAINS? TTRUE
    REFUSE-HB$ EXISTS? 0= TTRUE ;
 
-: PROBE-REFUSALS ( -- )
+: PROBE-REFUSE-BOUND ( -- )
    s" the engine refuses to protect a wid at the bitmap bound" T-LABEL
    s" HABU_PWID_BAD" WID-AT-BOUND BUILD-REFUSED
-   s" hb: protected-WID id above the bound" ASSERT-BUILD-REFUSED
+   s" hb: protected-WID id above the bound" ASSERT-BUILD-REFUSED ;
+
+: PROBE-REFUSE-WID0 ( -- )
    s" capture refuses a band that marks WID 0" T-LABEL
    s" HABU_PWID_BAD" WID-NOT-A-WORDLIST BUILD-REFUSED
-   s" aot-capture: protected-WID registry marks WID 0" ASSERT-BUILD-REFUSED
+   s" aot-capture: protected-WID registry marks WID 0" ASSERT-BUILD-REFUSED ;
+
+: PROBE-REFUSE-ADDRESS-SPAN ( -- )
    s" capture refuses a recorded chain its window cannot place" T-LABEL
    s" HABU_AOT_D0_SKEW" D0-SKEW-PAST-SPAN BUILD-REFUSED
    s" aot-capture: recorded address site outside both window spans" ASSERT-BUILD-REFUSED ;
+
+: PROBE-REFUSALS ( -- )
+   PROBE-REFUSE-BOUND  REQUIRE-PROBE
+   PROBE-REFUSE-WID0  REQUIRE-PROBE
+   PROBE-REFUSE-ADDRESS-SPAN ;
 
 \ --- the AOT boot gate (dot habu-return-the-record-9c9b1731) --------------------
 \ The other end of the protected-WID registry. Everything above proves that a
@@ -556,19 +572,35 @@ create PRB PRB-CAP allot   variable PRB-U
 \ seed rebases into the window, and LFIND's qualifier path reads only a package's
 \ public slot, so nothing an artifact carries reaches the refuse leg.
 \ EM-AOTWIDGATE's own note carries that proof and the reason the leg is kept.
-: PROBE-BOOT-GATE ( -- )
-   s" a call site into an UNSEALED prefix package boots and runs (control)" T-LABEL
-   2 BUILD-GATE
+: REQUIRE-GATE-BUILD ( -- )
+   RC @ 0 <> if
+      s" aot-wid-suite: builder stderr:" type cr ERR$ type cr
+      RC @ throw
+   then
+   GATE-HB$ EXISTS? 0= if
+      s" aot-wid-suite: builder wrote no engine" type cr
+      E-FS-OPEN throw
+   then ;
+
+: BOOT-GATE-CASE ( n -- )
+   BUILD-GATE
    RC @ 0 T=
    GATE-HB$ EXISTS? TTRUE
-   GATE-HB$ BOOT-EMPTY
-   ASSERT-GATE-ADMITTED
-   s" a call site into a SEALED prefix package's PUBLIC word-list is admitted" T-LABEL
-   1 BUILD-GATE
-   RC @ 0 T=
-   GATE-HB$ EXISTS? TTRUE
+   REQUIRE-GATE-BUILD
    GATE-HB$ BOOT-EMPTY
    ASSERT-GATE-ADMITTED ;
+
+: PROBE-BOOT-GATE-OPEN ( -- )
+   s" a call site into an UNSEALED prefix package boots and runs (control)" T-LABEL
+   2 BOOT-GATE-CASE ;
+
+: PROBE-BOOT-GATE-SEALED ( -- )
+   s" a call site into a SEALED prefix package's PUBLIC word-list is admitted" T-LABEL
+   1 BOOT-GATE-CASE ;
+
+: PROBE-BOOT-GATE ( -- )
+   PROBE-BOOT-GATE-OPEN  REQUIRE-PROBE
+   PROBE-BOOT-GATE-SEALED ;
 
 \ --- the wid rebase (dot habu-rebase-captured-wids-54dec421) --------------------
 \ A captured record travels with the wordlist id it had in the METABUILD HOST,
@@ -640,12 +672,13 @@ create PRB PRB-CAP allot   variable PRB-U
    RC @ 0 <> if s" aot-wid-suite: builder stderr:" type cr ERR$ type cr then
    RC @ 0 T=
    GATE-HB$ EXISTS? TTRUE
+   REQUIRE-GATE-BUILD
    s" awb-source-wid=" TAGGED-N {: wid:n :}
    wid sealed COLD-SETUP
-   PROC-ARGV-RESET GATE-HB$ COLD-RUN ASSERT-GATE-RAN
+   PROC-ARGV-RESET GATE-HB$ COLD-RUN ASSERT-GATE-RAN  REQUIRE-PROBE
    s" awb-target-before=" TAGGED-N wid T=
    COLD-PROBE
-   EXITED @ TTRUE  RC @ 0 T=
+   EXITED @ TTRUE  RC @ 0 T=  REQUIRE-PROBE
    s" awb-target-before=" TAGGED-N wid T=
    s" awb-target-wid=" TAGGED-N wid T=
    s" awb-target-owners=" TAGGED-N 1 T=
@@ -689,65 +722,91 @@ create PRB PRB-CAP allot   variable PRB-U
    k ku v BUILD-GATE-FORGED
    RC @ 0 T=
    GATE-HB$ EXISTS? TTRUE
+   REQUIRE-GATE-BUILD
    GATE-HB$ BOOT-EMPTY
    EXITED @ TTRUE
    RC @ SEED-RC T=
    ERR$ s" hb: AOT wid outside the capture window" CONTAINS? TTRUE
    OUT$ s" awb-gate=" CONTAINS? 0= TTRUE ;
 
-: PROBE-WID-FORGED ( -- )
+: PROBE-WID-FORGED-LOW ( -- )
    s" a baked wid below the baked window is refused at the seed" T-LABEL
-   s" HABU_AOT_WID_SKEW" 5 FORGED-CASE
+   s" HABU_AOT_WID_SKEW" 5 FORGED-CASE ;
+
+: PROBE-WID-FORGED-HIGH ( -- )
    s" a baked wid past the baked window's end is refused at the seed" T-LABEL
    s" HABU_AOT_WID_SPAN" 1 FORGED-CASE ;
 
-: PROBE-WID-REBASE ( -- )
+: PROBE-WID-FORGED ( -- )
+   PROBE-WID-FORGED-LOW  REQUIRE-PROBE
+   PROBE-WID-FORGED-HIGH ;
+
+: PROBE-WID-REBASE-SEALED ( -- )
    s" a captured package on a SEALED target wordlist boots (was exit 84)" T-LABEL
-   true ALIAS-CASE
+   true ALIAS-CASE ;
+
+: PROBE-WID-REBASE-OPEN ( -- )
    s" a captured package on an ORDINARY target wordlist boots" T-LABEL
    false ALIAS-CASE ;
 
-\ AOT DATA-reserve span guard (dot habu-guard-aot-data-49de2ee6): the sibling
-\ seed-pass forge test/aot-data-span-forge.f builds an oversized-span variant and
-\ PTY-boots it (the reserve+guard only run on interactive REPL entry), proving a
-\ forged span dies named/exit-82 while the legal span still boots. It is a
-\ spawn-only helper; run it as a child here and gate on its exit code.
-: PROBE-DATA-SPAN ( -- )
-   PROC-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/aot-data-span-forge.f" >LEN PROC-ARGV+
-   PLAIN$ >LEN  OUT CAP >LEN  ERR CAP >LEN  BUILD-TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE
-   s" AOT data-span guard: forged span dies named, legal span boots" T-LABEL
-   MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !  0 0= TTRUE ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
-            o LEN>N OUT-U !  e LEN>N ERR-U !
-            s" aot-wid-suite: data-span child failed rc " type  c RC>N .  cr
-            s" aot-wid-suite: data-span child stdout:" type cr  OUT OUT-U @ type cr
-            s" aot-wid-suite: data-span child stderr:" type cr  ERR$ type cr
-            0 0= 0= TTRUE ENDOF
-   ;MATCH ;
+: PROBE-WID-REBASE ( -- )
+   PROBE-WID-REBASE-SEALED  REQUIRE-PROBE
+   PROBE-WID-REBASE-OPEN ;
 
-: BODY ( -- )
-   SETUP
+: REQUIRE-VARIANT-BUILD ( -- )
+   RC @ 0 <> if
+      s" aot-wid-suite: builder stderr:" type cr ERR$ type cr
+      RC @ throw
+   then
+   HBPWID$ EXISTS? 0= if
+      s" aot-wid-suite: builder wrote no engine" type cr
+      E-FS-OPEN throw
+   then ;
+
+: PROBE-RESTORE ( -- )
    BUILD-VARIANT
    s" aot-wid variant engine builds cleanly" T-LABEL
    RC @ 0 T=
-   RC @ 0 <> if s" aot-wid-suite: builder stderr:" type cr  ERR$ type cr  RC @ throw then
    s" hb-pwid variant exists after build" T-LABEL
    HBPWID$ EXISTS? TTRUE
-   PROBE-VARIANT
-   PROBE-CONTROL
-   PROBE-REFUSALS
-   PROBE-BOOT-GATE
-   PROBE-WID-REBASE
-   PROBE-WID-CAPTURE-REFUSAL
-   PROBE-WID-FORGED
-   PROBE-DATA-SPAN ;
+   REQUIRE-VARIANT-BUILD
+   PROBE-VARIANT  REQUIRE-PROBE
+   PROBE-CONTROL ;
+
+: FULL ( -- )
+   PROBE-RESTORE  REQUIRE-PROBE
+   PROBE-REFUSALS  REQUIRE-PROBE
+   PROBE-BOOT-GATE  REQUIRE-PROBE
+   PROBE-WID-REBASE  REQUIRE-PROBE
+   PROBE-WID-CAPTURE-REFUSAL  REQUIRE-PROBE
+   PROBE-WID-FORGED ;
+
+: ARG= ( ptr u8 n -- bool )
+   0 SCRIPT-ARGV$ 2swap STR= ;
+
+: ARG-ERROR ( -- )
+   s" aot-wid-suite: expected exactly one known case" type cr
+   ARG-RC throw ;
+
+: SELECTED ( -- )
+   SETUP
+   s" restore" ARG= if PROBE-RESTORE exit then
+   s" refuse-bound" ARG= if PROBE-REFUSE-BOUND exit then
+   s" refuse-wid0" ARG= if PROBE-REFUSE-WID0 exit then
+   s" refuse-address-span" ARG= if PROBE-REFUSE-ADDRESS-SPAN exit then
+   s" boot-open" ARG= if PROBE-BOOT-GATE-OPEN exit then
+   s" boot-sealed" ARG= if PROBE-BOOT-GATE-SEALED exit then
+   s" rebase-sealed" ARG= if PROBE-WID-REBASE-SEALED exit then
+   s" rebase-open" ARG= if PROBE-WID-REBASE-OPEN exit then
+   s" capture-refusal" ARG= if PROBE-WID-CAPTURE-REFUSAL exit then
+   s" forged-low" ARG= if PROBE-WID-FORGED-LOW exit then
+   s" forged-high" ARG= if PROBE-WID-FORGED-HIGH exit then
+   ARG-ERROR ;
+
+: BODY ( -- )
+   SCRIPT-ARGC 0= if SETUP FULL exit then
+   SCRIPT-ARGC 1 <> if ARG-ERROR then
+   SELECTED ;
 
 public
 
