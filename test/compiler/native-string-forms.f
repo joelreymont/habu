@@ -95,8 +95,32 @@ create BOUNDARY COUNTED-MAX 1+ allot
    76 s" counted string too long" s" native counted string bound" GE-EVAL-FORK-BAD ;
 
 
+: EVAL-FLOOR ( -- ptr u8 )
+   data-base S0-CELL + 0 ptr-field @ ;
+
+
+\ Source evaluation owns an isolated stack. Its results are discarded there;
+\ neither those results nor the stack allocation may leak into this caller.
+: CHECK-EVAL-CALLER ( ptr u8 n n -- ) {: source:ptr size:n want:n :}
+   source size GE-EVAL-SRC!
+   depth {: before:n :}
+   EVAL-FLOOR {: old:ptr :}
+   [: GE-EVAL-SOURCE ;] catch {: rc:n :}
+   rc want <> if s" isolated evaluation result" GE-FAIL then
+   depth before <> if s" isolated evaluation caller stack" GE-FAIL then
+   EVAL-FLOOR old <> if s" isolated evaluation caller floor" GE-FAIL then ;
+
+
+: EVAL-CALLER-CASES ( -- )
+   s" " 0 CHECK-EVAL-CALLER
+   s" 11 22" 0 CHECK-EVAL-CALLER
+   s" 7 throw" 7 CHECK-EVAL-CALLER
+   s" 33 44" 0 CHECK-EVAL-CALLER ;
+
+
 : BODY ( -- )
    s" native-string-forms" GT-START
+   EVAL-CALLER-CASES
    PRINTED-CASES COUNTED-CASES COUNTED-BOUNDARY
    CARRIED-CASE
    S\" c\q" TOO-LONG

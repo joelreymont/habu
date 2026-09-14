@@ -482,7 +482,7 @@ TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
    ['] GE-EVAL-SOURCE-ACT GE-EVAL-STACK run-in-stack ;
 
 TRUSTED: GE-EVAL-SOURCE ( -- )
-   GE-EVAL-STACK drop
+   GE-EVAL-STACK 2drop
    data-base S0-CELL + @ {: old:n :}
    GE-EVAL-STACK@ data-base S0-CELL + !
    [: GE-EVAL-SOURCE-RUNSTACK ;] catch {: rc:n :}
