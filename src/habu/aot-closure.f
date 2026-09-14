@@ -126,8 +126,8 @@ $94000000 constant CALL-OP
    ELSE 0 0= 0= THEN ;
 \ Selected AOT entry word. Defaults to MAIN (the zero-argument process entry);
 \ a preseeded test entry (tools/hb-build.f --preseed-entry) sets it to a matched
-\ helper so the stripped image starts at a non-MAIN root. Identity is resolved by
-\ record here, not carried as a bare name.
+\ helper so the stripped image starts at a non-MAIN root. Bare names select
+\ global words; package entries use their public qualified token.
 create ENTRY-NAME-BUF 64 allot   variable ENTRY-NAME-U
 : ENTRY-NAME$ ( -- ptr u8 n )
    ENTRY-NAME-BUF ENTRY-NAME-U @ ;
@@ -137,8 +137,6 @@ create ENTRY-NAME-BUF 64 allot   variable ENTRY-NAME-U
    a ENTRY-NAME-BUF u BYTE-COPY
    u ENTRY-NAME-U ! ;
 s" MAIN" ENTRY-NAME!
-: MAIN? {: r:ptr :} ( ptr a -- bool )
-   r ENTRY-NAME$ REC-NAME= ;
 \ Data-space words (@ ! c@ c! here allot , c,) are now supported: the AOT entry
 \ maps the fixed DATA region and restores the program's persistent data (see
 \ aot-lib.f). Only words that need machinery the stripped binary does not carry
@@ -211,8 +209,8 @@ variable FX
 : REC-CODE-PTR@ ( ptr a -- ptr u8 )  REC-CODE-PTR @ ;
 : REC-WID@ ( ptr n -- n ) {: r:ptr :}  r 40 + @ ;
 
-: FINDMAIN ( -- ptr n )  0 FX !
-   BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
+: FINDMAIN ( -- ptr n )
+   ENTRY-NAME$ XREF-FIND ;
 
 \ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
 \ COPY/RELOCATE arrays (NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails

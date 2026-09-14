@@ -546,7 +546,7 @@ variable BLR-CNT
    s" 00000000000000000000000000000005" ;
 
 : PRESEED-FETCH-ARM ( -- )                 \ select the fetch helper entry + forged seed
-   s" HLP" HBB-PRESEED-ENTRY!
+   s" AOT-LAYOUT-FETCH-BAD:HLP" HBB-PRESEED-ENTRY!
    PRESEED-FETCH-SEED$ HBB-PRESEED-SEED! ;
 
 : PRESEED-FETCH-BUILD ( -- )
