@@ -42,6 +42,7 @@ using AOT-BUF
 \ the same fixed chain followed by the push stencil.
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
+   0 8 JIT-STACK:CHECK-DATA
    9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
 \ The three words that NAME the relocation kind of a chain, and the compile-mode
 \ CALL-or-INLINE emitter, are defined further down, right after the snapshot-
@@ -1945,9 +1946,13 @@ variable LCOLONNONAME
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-EMITW ( n -- ) {: w:n :}  9 w LIT64,  LCEMIT LABEL@ BL, ;
 
-: C-POPFLAG ( -- )  $D1002273 C-EMITW  $F9400269 C-EMITW ;
+: C-POPFLAG ( -- )
+   8 0 JIT-STACK:CHECK-DATA
+   $D1002273 C-EMITW  $F9400269 C-EMITW ;
 
-: C-POP-X16 ( -- )  $D1002273 C-EMITW  $F9400270 C-EMITW ;
+: C-POP-X16 ( -- )
+   8 0 JIT-STACK:CHECK-DATA
+   $D1002273 C-EMITW  $F9400270 C-EMITW ;
 
 : C-PUSHCP ( -- )   9 CP 0 ADDI,  LCFPUSH LABEL@ BL, ;
 
@@ -1988,6 +1993,7 @@ variable LCOLONNONAME
    9 0 MOVZ,  LCFPUSH LABEL@ BL,
    9 DATA CMFRD-CELL LDR,  9 9 1 ADDI,  9 DATA CMFRD-CELL STR,
    12 3 MOVZ,  12 DATA CMM-CELL STR,
+   8 0 JIT-STACK:CHECK-DATA
    $F85F8269 C-EMITW ;                  \ ldur x9,[x19,#-8]: single per-dispatch tag peek
 
 \ J-OF pushes a CASE-arm marker (bit 0) onto the CMBK branch-kind bitstack so the
@@ -2002,6 +2008,7 @@ variable LCOLONNONAME
 \ one executed instruction per arm.
 : J-OF ( -- )
    14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 DATA CMBK-CELL STR,
+   16 0 JIT-STACK:CHECK-DATA
    C-POP-X16                             \ pop arm value into x16
    $F85F8269 C-EMITW                     \ ldur x9,[x19,#-8]  peek scrutinee
    $EB10013F C-EMITW                     \ cmp x9,x16
@@ -2022,6 +2029,7 @@ variable LCOLONNONAME
 
 : J-ENDCASE ( -- )
    LBL LBL {: cloop:label done:label :}
+   8 0 JIT-STACK:CHECK-DATA
    $D1002273 C-EMITW
    cloop LBL,
       LCFPOP LABEL@ BL,
@@ -2043,7 +2051,9 @@ variable LCOLONNONAME
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $B4000011 LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL, ;
 
-: J-UNTIL ( -- )  $D1002273 C-EMITW  $F9400271 C-EMITW  J-UNTILX ;   \ pop flag -> x17
+: J-UNTIL ( -- )
+   8 0 JIT-STACK:CHECK-DATA
+   $D1002273 C-EMITW  $F9400271 C-EMITW  J-UNTILX ;   \ pop flag -> x17
 
 : J-WHILE ( -- ) C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
 
@@ -2058,6 +2068,7 @@ variable LCOLONNONAME
    SP SP 16 ADDI, ;
 
 : J-FRAME ( -- )                                \ pop limit/start, push a loop frame
+   16 0 JIT-STACK:CHECK-DATA  0 1 JIT-STACK:CHECK-LOOP
    3506446963 C-EMITW  4181721705 C-EMITW  3506446963 C-EMITW  4181721706 C-EMITW
    4181780107 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
@@ -2122,10 +2133,12 @@ package LOOP-EMIT
 : J-LEAVE ( -- )  LVLEAVE ;
 
 : J-UNLOOP ( -- )                               \ pop one loop frame, no branch
+   1 0 JIT-STACK:CHECK-LOOP
    4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW ;
 
 : J-LOOPEND ( -- )                              \ shared LOOP/+LOOP tail: pop frame, patch
    14 CP 0 ADDI,                         \ LEAVE/?DO skips to the pop point, LVD--
+   1 0 JIT-STACK:CHECK-LOOP
    4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,  9 DATA LVD-CELL STR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,  9 10 0 LDR,
@@ -2133,6 +2146,7 @@ package LOOP-EMIT
 
 : J-LOOP ( -- )
    LVREQUIRE                             \ no open DO level: reject before emitting or popping
+   1 0 JIT-STACK:CHECK-LOOP
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP LABEL@ BL,
@@ -2142,6 +2156,7 @@ package LOOP-EMIT
 
 : J-+LOOP ( -- )                                \ cross the limit boundary in the step's direction
    LVREQUIRE                             \ no open DO level: reject before emitting or popping
+   8 0 JIT-STACK:CHECK-DATA  1 0 JIT-STACK:CHECK-LOOP
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
@@ -2162,10 +2177,12 @@ package LOOP-EMIT
 ;package
 
 : J-I ( -- )
+   1 0 JIT-STACK:CHECK-LOOP  0 8 JIT-STACK:CHECK-DATA
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
 : J-J ( -- )                                    \ outer loop index: frame[LOOPSP-2]
+   2 0 JIT-STACK:CHECK-LOOP  0 8 JIT-STACK:CHECK-DATA
    4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
@@ -2588,6 +2605,7 @@ public
    9 DATA CRSIG-U-CELL STR, ;
 
 : J-TOR ( -- )                                                \ pop data -> push RSTK
+   8 0 JIT-STACK:CHECK-DATA  0 1 JIT-STACK:CHECK-RETURN
    $D1002273 C-EMITW  $F9400269 C-EMITW                \ sub x19,#8 ; ldr x9,[x19]
    10 20 RSP-CELL W-LDRX C-EMITW
    $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
@@ -2596,6 +2614,7 @@ public
    10 20 RSP-CELL W-STRX C-EMITW ;
 
 : J-RPOP ( -- )                                               \ x9 = RSTK top, x10 = RSP-1
+   1 0 JIT-STACK:CHECK-RETURN  0 8 JIT-STACK:CHECK-DATA
    10 20 RSP-CELL W-LDRX C-EMITW
    $D100054A C-EMITW                                   \ sub x10,x10,#1
    $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
@@ -7390,6 +7409,7 @@ public
    LP2VEXEC LABEL@ {: start:label :}
    s" (LP2VEXEC)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
    start LBL,
+   8 0 STACK-GUARD:CHECK-DATA
    15 30 4 ADDI,                                      \ descriptor follows return-site B
    9 15 0 LDR,  15 15 8 ADDI,
    19 19 8 SUBI,  10 19 0 LDR,  19 19 8 ADDI,        \ typed base; stack unchanged
@@ -9227,6 +9247,7 @@ package LABELS
 
 : CORE ( -- )
    STACK-GUARD:LABELS
+   JIT-STACK:LABELS
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !  LBL LIMGEND !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL PROT:LOPEN !  LBL PROT:LCLOSE !  LBL PROT:LGROW !  LBL PROT:LSPAN !  LBL PROT:LCF !

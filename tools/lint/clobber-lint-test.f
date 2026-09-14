@@ -81,7 +81,7 @@ require tools/lint/clobber-lint.f
    BAD @ 0= CLT-ASSERT
    CLOBBER-CENSUS:COUNTS {: routines:n calls:n :}
    routines 1 = CLT-ASSERT
-   calls 3 = CLT-ASSERT ;
+   calls 8 = CLT-ASSERT ;
 
 CLT-SYS-CLOBBERS-X8
 CLT-CURRENT-SYNTAX-CENSUS

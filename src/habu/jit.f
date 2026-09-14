@@ -15,9 +15,89 @@ $FD000260 constant W-FPUSHR     \ str dR,[x19]  (or with R) — tag 2 = FLOAT re
 $FD400260 constant W-FPOPR      \ ldr dR,[x19]
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 
+\ The runtime compiler emits the same preserved guard ABI as engine primitives.
+\ Its own registers and NZCV must survive code emission too: LCEMITBL and the
+\ minimal constant synthesizer use compiler scratch that a keyword may still
+\ hold live. Only CP and the emitted code/call map change on a successful call.
+package JIT-STACK
+
+variable LREQUEST
+
+: WORD ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
+
+: SAVE-REQUEST ( -- )
+   SP SP 32 SUBI,
+   11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  30 SP 24 STR, ;
+
+: RESTORE-REQUEST ( -- )
+   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  30 SP 24 LDR,
+   SP SP 32 ADDI, ;
+
+: REQUEST ( n n label -- ) {: below above target:label :}
+   SAVE-REQUEST
+   11 below LIT64,  12 above LIT64,  13 target ADR,
+   LREQUEST LABEL@ BL,
+   RESTORE-REQUEST ;
+
+: REQUEST-REGS ( n n label -- ) {: below above target:label :}
+   \ Save both operands before assigning either argument register.
+   SP SP 48 SUBI,
+   11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  30 SP 24 STR,
+   below SP 32 STR,  above SP 40 STR,
+   11 SP 32 LDR,  12 SP 40 LDR,  13 target ADR,
+   LREQUEST LABEL@ BL,
+   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  30 SP 24 LDR,
+   SP SP 48 ADDI, ;
+
+: SAVE-EMITTER ( -- )
+   SP SP 160 SUBI,
+   0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,  3 SP 24 STR,
+   4 SP 32 STR,  5 SP 40 STR,  6 SP 48 STR,  7 SP 56 STR,
+   8 SP 64 STR,  9 SP 72 STR,  10 SP 80 STR,  11 SP 88 STR,
+   12 SP 96 STR,  13 SP 104 STR,  14 SP 112 STR,  15 SP 120 STR,
+   16 SP 128 STR,  17 SP 136 STR,  30 SP 144 STR,
+   $D53B4209 EMITW  9 SP 152 STR, ;                  \ mrs x9,NZCV
+
+: RESTORE-EMITTER ( -- )
+   9 SP 152 LDR,  $D51B4209 EMITW                   \ msr NZCV,x9
+   0 SP 0 LDR,  1 SP 8 LDR,  2 SP 16 LDR,  3 SP 24 LDR,
+   4 SP 32 LDR,  5 SP 40 LDR,  6 SP 48 LDR,  7 SP 56 LDR,
+   8 SP 64 LDR,  9 SP 72 LDR,  10 SP 80 LDR,  11 SP 88 LDR,
+   12 SP 96 LDR,  13 SP 104 LDR,  14 SP 112 LDR,  15 SP 120 LDR,
+   16 SP 128 LDR,  17 SP 136 LDR,  30 SP 144 LDR,
+   SP SP 160 ADDI,  RET, ;
+
+public
+
+: LABELS ( -- ) LBL LREQUEST ! ;
+
+: CHECK-DATA ( n n -- ) STACK-GUARD:DATA-ENTRY REQUEST ;
+: CHECK-RETURN ( n n -- ) STACK-GUARD:RETURN-ENTRY REQUEST ;
+: CHECK-LOOP ( n n -- ) STACK-GUARD:LOOP-ENTRY REQUEST ;
+: DATA-REGS ( n n -- ) STACK-GUARD:DATA-ENTRY REQUEST-REGS ;
+: RETURN-REGS ( n n -- ) STACK-GUARD:RETURN-ENTRY REQUEST-REGS ;
+
+: EMIT ( -- )
+   LBL {: end:label :}
+   s" (JIT-STACK)" LREQUEST LABEL@ LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   LREQUEST LABEL@ LBL,
+   SAVE-EMITTER
+   SP SP 32 ENC-SUBI WORD
+   16 SP 0 ENC-STR WORD  17 SP 8 ENC-STR WORD  30 SP 16 ENC-STR WORD
+   11 SP 88 LDR,  14 16 MOVZ,  LVMOVK LABEL@ BL,
+   11 SP 96 LDR,  14 17 MOVZ,  LVMOVK LABEL@ BL,
+   11 SP 104 LDR,  LCEMITBL LABEL@ BL,
+   16 SP 0 ENC-LDR WORD  17 SP 8 ENC-LDR WORD  30 SP 16 ENC-LDR WORD
+   SP SP 32 ENC-ADDI WORD
+   RESTORE-EMITTER
+   end LBL, ;
+
+;package
+
 : EMIT-VLITPUSH ( -- )
    LVLITPUSH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
+   0 8 JIT-STACK:CHECK-DATA
    14 16 MOVZ,  LVMOVK LABEL@ BL,                            \ movz/movk x16,val (x16: never pooled)
    9 $F9000270 LIT64,  LCEMIT LABEL@ BL,                     \ str x16,[x19]
    9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL,
@@ -27,6 +107,11 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
    LVSPILL LABEL@ LBL,
    LBL LBL LBL LBL {: vl vd vcon vnext :}
    SP SP 16 SUBI,  30 SP 0 STR,
+   \ Empty flushes emit nothing, including outside an open code-write window.
+   \ A nonempty flush is one physical transfer, including constant slots.
+   6 DATA VSP-CELL LDR,  6 vd CBZ,
+   5 0 MOVZ,  6 6 3 LSLI,
+   5 6 JIT-STACK:DATA-REGS
    5 0 MOVZ,  5 SP 8 STR,                                   \ k (in the frame: the
    vl LBL,                                                  \ helper calls clobber x5)
       5 SP 8 LDR,
@@ -772,6 +857,7 @@ variable LVSNAP  variable LVRECON
    13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
    LVSPILL LABEL@ BL,
    13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
+   5 13 3 LSLI,  6 0 MOVZ,  5 6 JIT-STACK:DATA-REGS
    11 0 MOVZ,  6 0 MOVZ,  6 DATA FRCLM-CELL STR,
    5 13 0 ADDI, ;                           \ x11=claimed bits, x5=i
 
@@ -940,6 +1026,7 @@ variable FESK4
 package ENGINE-EMIT
 
 : EMIT-JIT ( -- )
+   JIT-STACK:EMIT
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;

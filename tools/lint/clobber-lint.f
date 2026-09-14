@@ -167,6 +167,8 @@ variable RX  variable RACC
    a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD 11 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
+   \ The JIT stack-guard emitter frames every compiler scratch register.
+   a u s" Lrequest" LINT-STR=CI if $3FFFF exit then
    \ Every registrar entry saves/restores x0..x17 around its emitted helpers.
    a u s" Lmark" LINT-STR=CI if $3FFFF exit then
    a u s" Lptrmark" LINT-STR=CI if $3FFFF exit then
@@ -218,15 +220,29 @@ public
    a u s" STACK-GUARD:CHECK-RETURN" LINT-STR= if LINT-TRUE exit then
    a u s" STACK-GUARD:CHECK-LOOP" LINT-STR= ;
 
+: JIT-REGS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" JIT-STACK:DATA-REGS" LINT-STR= if LINT-TRUE exit then
+   a u s" JIT-STACK:RETURN-REGS" LINT-STR= ;
+
+: JIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u JIT-REGS? if LINT-TRUE exit then
+   a u s" JIT-STACK:CHECK-DATA" LINT-STR= if LINT-TRUE exit then
+   a u s" JIT-STACK:CHECK-RETURN" LINT-STR= if LINT-TRUE exit then
+   a u s" JIT-STACK:CHECK-LOOP" LINT-STR= ;
+
+: SAVES-LR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u STACK? a u JIT? or ;
 
 : WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ shape of a wrapped emitter call
    a u GLOBAL-FIND? if LINT-TRUE exit then
    a u STACK? if LINT-TRUE exit then
+   a u JIT? if LINT-TRUE exit then
    u 6 < if LINT-FALSE exit then
    a u s" :CALL" LINT-SUFFIX? ;
 
 : MASK  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ clobbered registers
    a u STACK? if 0 exit then
+   a u JIT? if 0 28 CL-ADD exit then
    \ C-FIND-GLOBAL loads a literal name, calls LFIND, then restores package
    \ state through x14. Its successful path preserves x0/x1 and clobbers
    \ x2..x17 and x30. A missing name exits the process.
@@ -240,6 +256,11 @@ public
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
+   a u JIT? if
+      0 20 CL-ADD 26 CL-ADD 28 CL-ADD 31 CL-ADD
+      a u JIT-REGS? if addr CL-ADD len CL-ADD then
+      exit
+   then
    a u STACK? if
       0 20 CL-ADD 31 CL-ADD
       a u s" STACK-GUARD:CHECK-DATA" LINT-STR= if 19 CL-ADD then
@@ -251,6 +272,7 @@ public
 
 : RETURNS  ( ptr u8 n -- n ) {: a:ptr u:n :}   \ registers the call redefines
    a u STACK? if 0 exit then
+   a u JIT? if 0 28 CL-ADD exit then
    a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u PROT? if GUARD-ABI exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
@@ -471,6 +493,9 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    \ Stack distances are emitter values, not runtime register numbers. The
    \ wrapper's fixed ABI saves every scratch register, flags, and LR itself.
    DI @ TOK CLOBBER-WRAP:STACK? if 0 0 exit then
+   DI @ TOK CLOBBER-WRAP:JIT? if
+      DI @ TOK CLOBBER-WRAP:JIT-REGS? 0= if 0 0 exit then
+   then
    DI @ OPLO @ - 2 < if E-CLOBBER-WRAP-UNRESOLVED throw then
    DI @ 2 - TOK REG-OF  DI @ 1 - TOK REG-OF
    2dup 0 < swap 0 < or if E-CLOBBER-WRAP-UNRESOLVED throw then ;
@@ -724,7 +749,7 @@ variable TRACK-LR
    fa fu WRAP-READS NOTE-READS
    DI @ TOK C-ENSURE CALIDX !
    WRAP-MASK CALIDX @ POISON-DIRTY
-   DI @ TOK CLOBBER-WRAP:STACK? 0= if CALIDX @ POISON-LINK-REGISTER then
+   DI @ TOK CLOBBER-WRAP:SAVES-LR? 0= if CALIDX @ POISON-LINK-REGISTER then
    DI @ TOK CLOBBER-WRAP:RETURNS APPLY-RETURNS ;
 
 : PASS2-DEF  {: fa fu lo hi :}  ( -- )
