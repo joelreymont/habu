@@ -234,7 +234,8 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    a u hook CALL-INSTALLED ;
 
 : CHECK-SOURCE ( -- n )
-   SRC$ CHECK-PARENT ;
+   SRC$ CHECK-PARENT
+   SRC$ 0 NFETCH:CAPTURE ;
 
 
 : CHECK-DOES-SPLIT ( -- n )
@@ -242,9 +243,11 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    cut 6 < cut M-SRC-U @ > or if E-NCOMP-TEXT throw then
    M-SRC @ cut 6 - CHECK-PARENT
    TRUSTED? CERTIFYING? 0= or if drop else -1 <> if E-NCOMP-VERDICT throw then then
+   M-SRC @ cut 6 - 0 NFETCH:CAPTURE
    NFEED:DOES-CLAUSE M-DOES-ROW !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK -1 <> if E-NCOMP-VERDICT throw then
+   M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
    CHECKER-OWNER:DOES-IN M-DOES-IN !
    CHECKER-OWNER:DOES-OUT M-DOES-OUT !
    M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-NCOMP-ARITY throw then
@@ -589,6 +592,7 @@ create SPELL-BUF SPELL-CAP allot
    A64EMIT:BOUND? if A64EMIT:RELEASE then ;
 
 : RETIRE-BODY ( -- )
+   NFETCH:RELEASE
    M-RC @ 0<> if RETURN-BINDINGS then
    A64EMIT:RETIRE ;
 
@@ -719,6 +723,7 @@ INSTALL-FORGET
 : STAGE ( ptr u8 n -- )
    {: sa su:n :}
    IDLE-CK
+   NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    KEEP-PRIOR
    0 M-IN ! 0 M-OUT !
@@ -751,6 +756,7 @@ public
 \ and no order between the two entry points to get right.
 : CAPTURE-PREPARE ( -- )
    IDLE-CK
+   NFETCH:RELEASE
    NULL-PTR NAME-A !  0 NAME-U !
    NULL-PTR M-SRC !  0 M-SRC-U !
    NULL-PTR M-DOES-SIG !  0 M-DOES-SIG-U !

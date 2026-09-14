@@ -159,6 +159,16 @@ public
 : CELL@ ( n -- n ) CERT-CELL@ ;
 : BYTES ( -- ptr u8 n ) CERT-BYTES ;
 
+\ Resolve only the certificate the caller's source produced. Its returned header
+\ also carries the byte length, checked by consumers before copying any facts.
+: FOR-HASH ( n -- ptr u8 n )
+   BODY-HASH @ <> if s" lowering certificate source hash mismatch" 76 die then
+   CERT-BYTES ;
+
 DISPATCH-INSTALL
 
+;package
+
+package CHECKER-REG
+' LOWER-CERT:FOR-HASH DECLARATIONS CHECKER-FETCH-ABI:CERTIFICATE-OFF + xt!
 ;package

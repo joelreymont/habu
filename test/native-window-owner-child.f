@@ -101,6 +101,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/pointer-storage.f" included
    s" src/core/engine-error.f" included
    s" src/core/exec-vector.f" included
+   s" src/core/checker-fetch-abi.f" included
    s" src/core/checker-owner-abi.f" included
    s" src/core/checker.f" included
    source CHECK-RETAINED-OWNER

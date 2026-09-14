@@ -284,6 +284,14 @@ SUITE compiler-native-layout-control
    test/compiler/native-layout-control.f
 ;SUITE
 
+SUITE compiler-native-fetch-check
+   test/compiler/native-fetch-check.f
+;SUITE
+
+SUITE compiler-native-fetch-snapshot
+   test/compiler/native-fetch-snapshot.f
+;SUITE
+
 SUITE compiler-native-prefix-declarations
    test/compiler/native-prefix-declarations.f
 ;SUITE

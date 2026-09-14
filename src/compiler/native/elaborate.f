@@ -26,6 +26,7 @@ require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
 require src/compiler/native/string.f
+require src/compiler/native/fetch.f
 require src/compiler/native/frozen.f
 require src/compiler/native/trap.f
 require src/compiler/native/family.f
@@ -2174,6 +2175,10 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    dup HIR-OPCODE:STORE HIR-OPCODE:EQ
    swap HIR-OPCODE:BSTORE HIR-OPCODE:EQ or ;
 
+: VALIDATED-FETCH? ( HIR:opcode n -- bool ) {: op:HIR:opcode ix:n :}
+   op HIR-OPCODE:LOAD HIR-OPCODE:EQ 0= if false exit then
+   VW ix TOK-OFF NFETCH:CHECKED? ;
+
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    ix PRINTED-STRING? if true exit then
@@ -2182,7 +2187,10 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if true exit then
-   m HIR-MEANING:OP HIR-MEANING:EQ if r sy HIR-WORD:OPCODE@ GUARDED-STORE? exit then
+   m HIR-MEANING:OP HIR-MEANING:EQ if
+      r sy HIR-WORD:OPCODE@ {: op:HIR:opcode :}
+      op GUARDED-STORE? op ix VALIDATED-FETCH? or exit
+   then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
       r sy HIR-WORD:CTRL@ CTRL-CALL? {: op:HIR:opcode calls:bool :}
       calls exit
@@ -3310,19 +3318,34 @@ create DN-BUF DN-CAP allot
    entry 0= if E-HIR-UNMODELED throw then
    ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
+\ The original address remains on the vector while the validator consumes a
+\ duplicate and the immutable descriptor. Its call precedes every value load.
+: VALIDATE-FETCH ( n -- ) {: ix:n :}
+   VW ix TOK-OFF NFETCH:AT {: address:n bytes:n width:n :}
+   bytes 0= if exit then
+   width VW ix TOK-CELLS <> if E-NELAB-BUNDLE throw then
+   VN @ 1 < if E-NELAB-UNDER throw then
+   s" NFETCH-CHECK:CHECK" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-HIR-UNMODELED throw then
+   VN @ 1- VAT VPUSH
+   ix address HIR:ADDR-DATA EMIT-KIND-LIT
+   ix bytes EMIT-LIT
+   ix width EMIT-LIT
+   ix entry 4 0 NDICT:GLUE-NONE STAGE-WCALL ;
+
 : DO-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix NDICT:CALL-CELLS drop {: a:n :}
    a 0 >= if ix a QCALL-FILL then
    VW ix TOK-CELLS {: w:n :}
+   r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
+   k HIR-OPCODE:LOAD HIR-OPCODE:EQ if ix VALIDATE-FETCH then
    w 1 = if
       r ix QUOTATION-STORE? if ix DO-QUOTATION-STORE exit then
-      r ix WSYM HIR-WORD:OPCODE@ {: k:HIR:opcode :}
       k GUARDED-STORE? if ix DO-STORE else r ix EMIT-OP then
       exit
    then
    w 1 < if E-NELAB-BUNDLE throw then
-   r  ix WSYM  HIR-WORD:OPCODE@ {: k:HIR:opcode :}
    k HIR-OPCODE:LOAD HIR-OPCODE:EQ if ix w WIDE-LOAD exit then
    k HIR-OPCODE:STORE HIR-OPCODE:EQ if ix w WIDE-STORE exit then
    E-NELAB-BUNDLE throw ;
