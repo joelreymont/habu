@@ -296,6 +296,10 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
+SUITE stripped-quotation
+   test/stripped-quotation.f
+;SUITE
+
 SUITE compiler-native-exec
    test/compiler/native-exec.f
 ;SUITE
