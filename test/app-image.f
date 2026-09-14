@@ -1,6 +1,7 @@
 \ Build once, then run and recapture outside the source checkout.
 require lib/test.f
 require lib/fs-mutate.f
+require lib/memory.f
 require lib/process-cwd.f
 require lib/engine-candidate.f
 
@@ -13,17 +14,20 @@ create ERR CAP allot
 create ROOT-BUF FS-PATH-CAP allot
 create IMAGE-BUF FS-PATH-CAP allot
 create SECOND-BUF FS-PATH-CAP allot
+create THIRD-BUF FS-PATH-CAP allot
 create STARTUP-BUF FS-PATH-CAP allot
 create REFUSE-BUF FS-PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
 variable SECOND-U
+variable THIRD-U
 variable STARTUP-U
 variable REFUSE-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 : SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
+: THIRD$ ( -- ptr u8 n ) THIRD-BUF THIRD-U @ ;
 : STARTUP$ ( -- ptr u8 n ) STARTUP-BUF STARTUP-U @ ;
 : REFUSE$ ( -- ptr u8 n ) REFUSE-BUF REFUSE-U @ ;
 
@@ -34,6 +38,7 @@ variable REFUSE-U
    ROOT$ CLEANUP-TREE+
    ROOT$ s" application" IMAGE-BUF JOIN-PATH IMAGE-U !
    ROOT$ s" second" SECOND-BUF JOIN-PATH SECOND-U !
+   ROOT$ s" third" THIRD-BUF JOIN-PATH THIRD-U !
    ROOT$ s" startup" STARTUP-BUF JOIN-PATH STARTUP-U !
    ROOT$ s" refuse-jit.f" REFUSE-BUF JOIN-PATH REFUSE-U ! ;
 
@@ -117,13 +122,38 @@ variable REFUSE-U
    ERR erru s" expected:" CONTAINS? TTRUE
    ERR erru s" actual:" CONTAINS? TTRUE ;
 
-: RECAPTURE ( -- )
+: RECAPTURE-TO ( ptr u8 n ptr u8 n -- )
+   {: source:ptr sourceu:n target:ptr targetu:n :}
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
-   SECOND$ >LEN PROC-ARGV+
+   target targetu >LEN PROC-ARGV+
    PROC-ENV-INHERIT-MISSING
-   IMAGE$ S\" APP-IMAGE-SUBJECT:SCRATCH-CLEAN\nAPP-IMAGE-SUBJECT:RUN drop\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RUN-INPUT CLEAN drop
-   SECOND$ EXECUTABLE? TTRUE ;
+   source sourceu S\" APP-IMAGE-SUBJECT:SCRATCH-CLEAN\nAPP-IMAGE-SUBJECT:RUN drop\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RUN-INPUT CLEAN drop
+   target targetu EXECUTABLE? TTRUE ;
+
+\ Compare the emitted extents, independent of signing metadata. Region bytes
+\ retain the application dictionary; DATA and the engine prefix must stop
+\ growing when a fresh process recaptures without any new definitions.
+: EXTENTS ( ptr u8 n -- n n n ) {: path:ptr pathu:n :}
+   path pathu FILE-SIZE {: bytes:n :}
+   bytes MEM-ALLOC-BYTES drop {: image:ptr :}
+   path pathu image bytes READ-ALL bytes T=
+   image IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ {: text:n :}
+   image text IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - + {: trailer:ptr :}
+   trailer CELL-VIEW @ SNAP-MAGIC T=
+   trailer SNAP-TRL-REGLEN + CELL-VIEW @ {: region:n :}
+   trailer SNAP-TRL-DATALEN + CELL-VIEW @ {: data:n :}
+   image bytes munmap 0 T=
+   text IMAGE-TEXT-CONTENT-ADJ - SNAP-TRL-BYTES - region - data -
+   region data ;
+
+: RECAPTURE ( -- )
+   IMAGE$ SECOND$ RECAPTURE-TO
+   SECOND$ THIRD$ RECAPTURE-TO
+   IMAGE$ EXTENTS {: prefix:n region:n data:n :}
+   SECOND$ EXTENTS data T= region T= prefix T=
+   THIRD$ EXTENTS data T= region T= prefix T=
+   THIRD$ CHECK-APPLICATION ;
 
 : CAPTURE-STARTUP ( -- )
    PROC-ARGV-ENV-RESET

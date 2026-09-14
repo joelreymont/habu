@@ -11,6 +11,12 @@ TRUSTED: DATA-SPAN? ( ptr u8 n -- bool ) REG-DATA-SPAN? ;
 TRUSTED: PERSIST ( n n -- n bool ) STORE -rot REG-PERSIST-MOVE ;
 TRUSTED: ALLOC ( n -- ptr u8 ) ARENA-ALLOC ;
 TRUSTED: RELEASE ( ptr u8 n -- n ) munmap ;
+TRUSTED: EFFECTS ( -- ptr u8 n ) USIGS USIGS-SNAPSHOT-SIZE ;
+TRUSTED: PERSIST-EFFECTS ( -- ) USIGS-SNAPSHOT-PERSIST ;
+TRUSTED: GROW-EFFECTS ( -- ) USIGS-CAP-U @ 1+ USIGS-ENSURE ;
+TRUSTED: CONTROLS ( -- ptr u8 n ) NORETS NORET-END @ CELL + ;
+TRUSTED: PERSIST-CONTROLS ( -- ) NORET-SNAPSHOT-PERSIST ;
+TRUSTED: GROW-CONTROLS ( -- ) NORET-CAP-U @ 1+ NORET-ENSURE ;
 
 
 : SPANS ( -- )
@@ -48,12 +54,60 @@ TRUSTED: RELEASE ( ptr u8 n -- n ) munmap ;
    here end = TTRUE
    old $1000 RELEASE 0 T= ;
 
+\ Exercise both real stores, including all live bytes and their terminators.
+\ Persistence must be stable again after a subsequent runtime allocation.
+: EFFECT-CAPTURES ( -- )
+   s" unchanged effect capture reuses DATA; runtime growth remains complete" T-LABEL
+   EFFECTS {: old:ptr used:n :}
+   PERSIST-EFFECTS
+   EFFECTS {: saved:ptr size:n :}
+   old used saved size CORE-STR= TTRUE
+   here {: end:ptr :}
+   PERSIST-EFFECTS
+   EFFECTS used T= saved = TTRUE
+   here end = TTRUE
+   GROW-EFFECTS
+   EFFECTS {: grown:ptr grown-size:n :}
+   grown saved <> TTRUE
+   saved size grown grown-size CORE-STR= TTRUE
+   PERSIST-EFFECTS
+   EFFECTS {: final:ptr final-size:n :}
+   grown grown-size final final-size CORE-STR= TTRUE
+   here {: final-end:ptr :}
+   PERSIST-EFFECTS
+   EFFECTS used T= final = TTRUE
+   here final-end = TTRUE ;
+
+: CONTROL-CAPTURES ( -- )
+   s" unchanged control capture reuses DATA; runtime growth remains complete" T-LABEL
+   CONTROLS {: old:ptr used:n :}
+   PERSIST-CONTROLS
+   CONTROLS {: saved:ptr size:n :}
+   old used saved size CORE-STR= TTRUE
+   here {: end:ptr :}
+   PERSIST-CONTROLS
+   CONTROLS used T= saved = TTRUE
+   here end = TTRUE
+   GROW-CONTROLS
+   CONTROLS {: grown:ptr grown-size:n :}
+   grown saved <> TTRUE
+   saved size grown grown-size CORE-STR= TTRUE
+   PERSIST-CONTROLS
+   CONTROLS {: final:ptr final-size:n :}
+   grown grown-size final final-size CORE-STR= TTRUE
+   here {: final-end:ptr :}
+   PERSIST-CONTROLS
+   CONTROLS used T= final = TTRUE
+   here final-end = TTRUE ;
+
 
 : RUN ( -- )
    T-RESET
    SPANS T-NEXT
    RETAIN T-NEXT
    GROW T-NEXT
+   EFFECT-CAPTURES T-NEXT
+   CONTROL-CAPTURES T-NEXT
    T-REPORT ;
 
 RUN

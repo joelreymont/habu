@@ -4187,15 +4187,27 @@ USIGS-RUNTIME-INIT
    n allot
    dst ;
 
+\ Validate the allocation capacity, not only the live prefix being copied.
+\ Subtraction after the ordered bounds checks avoids a wrapping end address.
+: REG-DATA-SPAN? ( ptr u8 n -- bool ) {: base:ptr cap:n :}
+   cap 0 < IF RES-FALSE EXIT THEN
+   base data-base < IF RES-FALSE EXIT THEN
+   base here > IF RES-FALSE EXIT THEN
+   cap here base - <= ;
+
 \ Bake the store at the grain above its content. A power-of-two cap shipped up
 \ to 2 MB of zero padding per image; USIGS-GROW still doubles at runtime.
+\ A restored DATA allocation already belongs to the image. Recopying it would
+\ retain another full effect store on every unchanged application recapture.
 : USIGS-SNAPSHOT-PERSIST ( -- )
-   USIGS-SNAPSHOT-SIZE {: n:n :}
-   n USIGS-ROUND-CAP {: cap:n :}
-   cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
-   USIGS dst n USIGS-COPY
-   dst USIGS-P !
-   cap USIGS-CAP-U !
+   USIGS USIGS-CAP-U @ REG-DATA-SPAN? 0= IF
+      USIGS-SNAPSHOT-SIZE {: n:n :}
+      n USIGS-ROUND-CAP {: cap:n :}
+      cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
+      USIGS dst n USIGS-COPY
+      dst USIGS-P !
+      cap USIGS-CAP-U !
+   THEN
    0 USIGS-GROW-CAP !
    0 USIGS-GROW-NEXT ! ;
 
@@ -9105,12 +9117,14 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 \ The table can outgrow its initial buffer. Persist the complete live prefix
 \ in image DATA at the grain, just like stored signatures; NORET-GROW doubles.
 : NORET-SNAPSHOT-PERSIST ( -- )
-   NORET-END @ CELL + {: n:n :}
-   n USIGS-ROUND-CAP {: cap:n :}
-   cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
-   NORETS dst n USIGS-COPY
-   dst NORET-P !
-   cap NORET-CAP-U !
+   NORETS NORET-CAP-U @ REG-DATA-SPAN? 0= IF
+      NORET-END @ CELL + {: n:n :}
+      n USIGS-ROUND-CAP {: cap:n :}
+      cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
+      NORETS dst n USIGS-COPY
+      dst NORET-P !
+      cap NORET-CAP-U !
+   THEN
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
@@ -9180,15 +9194,6 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 : REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
-
-\ Validate the allocation capacity, not only the live prefix being copied.
-\ Subtraction after the ordered bounds checks avoids a wrapping end address.
-: REG-DATA-SPAN? ( ptr u8 n -- bool ) {: base:ptr cap:n :}
-   cap 0 < IF RES-FALSE EXIT THEN
-   base data-base < IF RES-FALSE EXIT THEN
-   base here > IF RES-FALSE EXIT THEN
-   cap here base - <= ;
-
 
 : REG-PERSIST-REFUSE ( -- )
    s" checker: invalid registry storage span" 76 die ;

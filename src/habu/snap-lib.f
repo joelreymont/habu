@@ -85,12 +85,34 @@ s" SDB@" s" -- ptr u8" TRUST
    0 MP !
    0 MLEN! ;
 
+: BAD-SOURCE ( -- )
+   s" snap: invalid source image extent" 74 die ;
+
+: TEXT-CUT ( n n -- n ) {: bytes:n cut:n :}
+   cut 0 < cut bytes > or if BAD-SOURCE then
+   bytes cut - ;
+
+\ A restored snapshot's authenticated text contains its old region, DATA and
+\ trailer. Copy only the prefix preceding those payloads; otherwise every
+\ recapture embeds the previous snapshot inside the next one. The loader has
+\ already validated this trailer. Do not guess at older trailers inside the
+\ prefix of an image produced by a previous, nesting writer.
+: ENGINE-TEXT-SIZE ( -- n )
+   STB-CELL@ CODE-OFF - IMAGE-TEXT-SIZE-OFF + @
+   IMAGE-TEXT-CONTENT-ADJ - {: bytes:n :}
+   data-base SNAP-CELL + CELL-VIEW @ 0= if bytes exit then
+   bytes SNAP-TRL-BYTES TEXT-CUT {: end:n :}
+   STB@ end + {: trailer:ptr :}
+   trailer CELL-VIEW @ SNAP-MAGIC <> if BAD-SOURCE then
+   end trailer SNAP-TRL-REGLEN + CELL-VIEW @ TEXT-CUT
+   trailer SNAP-TRL-DATALEN + CELL-VIEW @ TEXT-CUT ;
+
 : HDR ( -- snap )
    RESET-BUF
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
    data-base RBASE-CELL + @ STB !         \ text CONTENT base
-   STB-CELL@ CODE-OFF - IMAGE-TEXT-SIZE-OFF + @ IMAGE-TEXT-CONTENT-ADJ - STSZ !  \ own text content size
+   ENGINE-TEXT-SIZE STSZ !
    dbase@ SDB !
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
    here data-base - SDL !                 \ data payload (through DP)
