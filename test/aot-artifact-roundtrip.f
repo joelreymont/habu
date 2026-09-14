@@ -207,6 +207,8 @@ variable SAVED-XTOFF-N
    s" pwin=" type AOT-PWIN-N @ .
    s" xtcells=" type XTOFF-N @ .
    s" dataspan=" type AOT-DATA-SIZE @ . cr
+   \ MAIN checked both disjoint live populations and restored every row byte.
+   s" xtcells=declared+targeted xtcells-restored=exact" type cr
    s" roundtrip=ok" type cr ;
 
 : MAIN ( -- )

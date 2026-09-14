@@ -1,5 +1,10 @@
 \ aot-closure.f - stripped AOT closure analysis and diagnostics.
 
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/habu/layout.f
+require src/habu/aot-decl.f
+
 \ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
 
 \ The checker registry does not publish its diagnostic-mode cell to later
@@ -8,6 +13,7 @@
 s" JSON-DIAGS" s" -- ptr a" TRUST
 
 package AOT-LINK
+using SNAP-RELOC
 
 \ These views expose mixed dictionary fields and the live code/dictionary extent
 \ used to classify stripped-image cells. Retirement:
@@ -34,23 +40,23 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 : ADDRESS-SITE? ( ptr u8 -- bool ) {: p:ptr :}
    p AOT-DBASE@ BYTE-VIEW - {: off:n :}
    off DICT-SIZE < off REGION >= or if false exit then
-   data-base SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + BYTE-VIEW c@
+   data-base ADDRMAP-OFF + off 5 rshift + BYTE-VIEW c@
    off 2 rshift 7 and rshift 1 and 0<> ;
 
 \ MOVZ #lo; MOVK #hi,lsl16/32/48. Keep opcode, shift and register bits;
 \ only the four immediate fields may differ. CHAINV itself is only a decoder.
 : ADDRESS-CHAIN? ( ptr u8 ptr u8 -- bool ) {: p:ptr e:ptr :}
    p e > if false exit then
-   e p - SNAP-RELOC:ADDR-CHAIN-BYTES < if false exit then
-   p AOT-W32@ SNAP-RELOC:ADDR-RD-MASK and {: rd:n :}
-   p AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $D2800000 rd or =
-   p 4 + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $F2A00000 rd or = and
-   p 8 + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $F2C00000 rd or = and
-   p 12 + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and $F2E00000 rd or = and ;
+   e p - ADDR-CHAIN-BYTES < if false exit then
+   p AOT-W32@ ADDR-RD-MASK and {: rd:n :}
+   p AOT-W32@ ADDR-OPC-MASK and $D2800000 rd or =
+   p 4 + AOT-W32@ ADDR-OPC-MASK and $F2A00000 rd or = and
+   p 8 + AOT-W32@ ADDR-OPC-MASK and $F2C00000 rd or = and
+   p 12 + AOT-W32@ ADDR-OPC-MASK and $F2E00000 rd or = and ;
 
 : ADDRESS-VALUE ( ptr u8 ptr u8 -- n ) {: p:ptr e:ptr :}
    p e ADDRESS-CHAIN? 0= if s" aot: malformed recorded address chain" 74 die then
-   p SNAP-RELOC:CHAINV ;
+   p CHAINV ;
 
 : DATA-ADDRESS? ( n -- bool ) {: v:n :}
    \ The outer mapping has the same stable one-past address as a captured span.
@@ -323,4 +329,5 @@ variable WI
 : CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-CLO
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ cells CLO + @ SCAN-REC  WI @ 1+ WI ! REPEAT ;
 
+;using
 ;package

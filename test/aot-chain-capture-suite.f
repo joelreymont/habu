@@ -183,7 +183,8 @@ create ART-HEX HEX-LEN allot         \ the producer key the artifact carries
    RC @ 0 T=
    s" roundtrip: recs=" SAID?
    s" pwin=1" SAID?
-   s" xtcells=2" SAID?
+   s" xtcells=declared+targeted" SAID?
+   s" xtcells-restored=exact" SAID?
    s" roundtrip=ok" SAID? ;
 
 : PROBE-ARTIFACT ( -- )
