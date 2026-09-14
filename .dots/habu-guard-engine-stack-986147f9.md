@@ -53,3 +53,19 @@ pass. Guarded rebuild/code-usage measurement is still running. Engine/JIT slice
 ffb57fb5 has focused passing evidence and is under independent review; wide
 transfers, remaining primitives and recovery parity are still open. This dot
 does not claim complete physical stack coverage or a green combined gate.
+
+2026-09-14 integration checkpoint: native guards 6739c962, emission fixture
+f8104159 and complete primitive/wide JIT transfers 61b07c76 are independently
+reviewed and integrated. Guarded generation 2 succeeds with 16,076,868 region
+bytes and 124,137 call rows. Capture budgets 7a16d3de use the bounded code-band
+blob and 163,840 rows. No unbounded growth was introduced.
+
+Remaining ownership: engine agent in cedar-stack-bounds finishes recovery
+preflights and saved diagnostic cursor validation. Hazel reviews the recovery
+ABI, corrects the 62 stale bootstrap-wide-memory byte assertions, exercises real
+recovery boundaries and owns the combined full gate. Cedar builds the frozen
+source/engine pair and coordinates downstream acceptance. Recovery review found
+missing drop/2drop/nip whole-transfer guards and raw return/loop templates in the
+unfinished draft; these must close before parity is claimed. Combined native
+build runs from b589ce65 in cedar-combined-qualification. Dot remains open until
+recovery and combined qualification pass.

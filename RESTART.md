@@ -4,11 +4,12 @@ Correctness first. Do not call Habu release-qualified yet. TRUST/TRUSTED
 retirement is last; performance and the x86-64/TI DSP proposals are deferred.
 Joel explicitly chose a bounded core code budget, not allocator growth.
 
-Current integration: 6739c962 in `.jj-ws/cedar-closure-identity`. Reviewed and
+Current production integration: b589ce65 in `.jj-ws/cedar-closure-identity`. Reviewed and
 integrated: shared IR/target admission, both +loop tiers, string forms, typed
 fetch validation and bootstrap mirror, active stack allocation ABI, test stack
 switching, fixed 32 MiB dictionary/code region, exact dictionary code spans,
-native entry/call/return stack guards and the first direct-JIT guard slice.
+native entry/call/return stack guards, complete wide/local JIT transfers,
+warmed source-order verification and socket/FIFO tree removal.
 The span fix uses a full-span bit for nonreturning bodies rather than borrowing
 the next word's first instruction. It still needs native generation qualification.
 
@@ -44,31 +45,41 @@ Tested intermediate engines (not release pairs):
   is integrated 6739c962, emission fixture update f8104159. First build used
   10,716,748 region bytes after its writer, above the old 10 MiB budget.
 
-Active work:
-- Cedar: second guarded selfbuild in `.jj-ws/cedar-bounded-capture`, output
-  `/tmp/cedar-native-stack-bounded-gen2`, log ending `-gen2-build.log`.
-  Measured target code7,159,360 bytes and region use13,202,952 before its writer.
-  This passed region bounds but exposed old capture limits: 3 MiB blob and
-  32,768 external call rows. Blob cap now derives CODE-BAND:BYTES; existing
-  section/file/refusal limits remain. Call rows are fixed at131,072, with the
-  actual completed count still pending. No new allocator or unbounded growth.
-  AOT chain capture suite passes with the new blob bound in native-stack.
-- literal_ownership: `.jj-ws/cedar-stack-bounds`, remaining engine/JIT transfers
-  and recovery parity. ABI and the fixed direct-JIT slice are integrated.
-- backend_handoff: native emission fixture update approved/integrated; exact-span
-  implementation is integrated. Native preseed matrix awaits two generations.
-- closure_integration_review: independent capacity review; confirmed one VERIFY
-  blocker across used-public and fallback-global lookup paths.
-- Hazel: correcting that blocker in warmed source-order patch75ab2c16,
-  `.jj-ws/hazel-verify-order` on4b31dbcf. Existing focused suites and two builds
-  pass, but two valid `using` programs reject warm with7141 because later exports
-  still enter ambiguity checks. Hold integration until both paths and genuine
-  ambiguity refusal controls pass independent review.
+Completed since that checkpoint:
+- `/tmp/cedar-native-stack-bounded-gen2`, SHA-256
+  `68b6a5d6b9d498f1712846867704b5f57980b17c02640b2ab50bf6e47e0942a4`,
+  rebuild and native runtime bounds pass. Target code 7,159,360 bytes; completed
+  region use 16,076,868 of 33,554,432 bytes; 124,137 external call rows.
+  This intermediate engine predates VERIFY, exact spans and wide JIT changes.
+- Capture budgets reviewed and integrated 7a16d3de: bounded CODE-BAND:BYTES
+  blob and 163,840 call rows. AOT chain capture passes. Final combined DATA
+  use and generation convergence still need measurement.
+- Wide JIT 61b07c76 independently approved; candidate
+  `/tmp/cedar-stack-wide-native`, SHA-256
+  `be35b0017f001f82a2d0bdd9d46bf65c87628e4a42ba87bafc3ed423f341607a`,
+  passes wide/runtime/locals/clobber checks. The bootstrap-wide-memory fixture
+  still has 62 stale byte assertions; Hazel owns its correction.
+- VERIFY c555630e/53f64249 independently reviewed and integrated. Used-public
+  visibility and hidden-global fallback regressions pass on Hazel's hb-new6.
+- Socket/FIFO tree removal b589ce65 reviewed; real special-node and symlink
+  fixtures pass at ordinary and native tiers. The old code fails the regression.
 
-Remaining sequence: finish/review stack and VERIFY patches; qualify combined
+Active work:
+- Cedar: production build from frozen b589ce65 in
+  `.jj-ws/cedar-combined-qualification`, output `/tmp/cedar-combined-native-gen1`,
+  log `/tmp/cedar-combined-native-gen1-build.log`. This tests integration while
+  recovery is finished; it is not yet the final qualified pair.
+- literal_ownership: `.jj-ws/cedar-stack-bounds`, recovery stack parity and
+  saved diagnostic cursor validation. Production wide JIT work is integrated.
+- Hazel: recovery ABI review, executed parity, wide-memory fixture correction,
+  then full gate on Cedar's frozen combined pair. No old VERIFY rebase/build.
+- backend_handoff: exact-span/native preseed matrix after combined generations;
+  available for independent fixture review.
+
+Remaining sequence: finish/review recovery and fixture patches; qualify combined
 selfbuild, capture/restore, recovery and full gate; hand frozen source/engine to
-Maki, Tender and Kestrel. Page-size query c9528f06 and socket/FIFO REMOVE-TREE
-7bef09db remain requested library tasks. TRUST/TRUSTED retirement follows.
+Maki, Tender and Kestrel. Page-size query c9528f06 remains a requested runtime
+task. TRUST/TRUSTED retirement follows.
 Always pin both HABU_UNDER_TEST and HABU_FIXPOINT_ENGINE: integration bin/hb
 still names the older 8c1b0755 checkpoint and is not the current candidate.
 

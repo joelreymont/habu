@@ -12,29 +12,33 @@ x86-64/TI DSP implementations are deferred. Retire TRUST/TRUSTED last.
 
 Remaining implementation and qualification:
 
-1. Complete physical stack bounds (986147f9): wide/local JIT transfers and
-   remaining primitives, then recovery parity. Allocation lifecycle, native
-   entry/call/return envelopes and the fixed direct-JIT slice are reviewed and
-   integrated, with passing focused tests. Combined qualification remains.
-2. Finish Hazel's warmed source-order verification (0c9fe3d7), independently
-   review it and integrate on the current source line. The initial patch is held
-   for two `using` lookup paths that still see later shadows during reconstruction.
+1. Complete recovery stack parity (986147f9). Allocation lifecycle, native
+   entry/call/return envelopes and complete wide/local JIT transfers are reviewed
+   and integrated. The engine owner finishes recovery; Hazel independently
+   reviews it, updates the wide-memory fixture and validates real recovery code.
+2. Warmed source-order verification (0c9fe3d7) is reviewed and integrated,
+   including the used-public and fallback-global corrections. Include its
+   focused fixtures in combined qualification; no implementation remains here.
 3. Qualify the combined engine: exact code-span/preseed tests (9471db20 and
    38ad40e8), repeated native selfbuild, capture/restore, recovery and full gate.
    The last full run was 382/386; all four failures have source repairs, but the
-   complete rerun remains necessary.
+   complete rerun remains necessary. Cedar owns the combined rebuild and frozen
+   source/engine pair; Hazel owns the full gate on that pair.
 4. Supply the identified source/engine pair for Maki, Tender and Kestrel
    acceptance. Preserve their existing pins until their owners accept it.
-5. Complete the requested runtime page-size query (c9528f06) and removal of
-   directory trees holding sockets/FIFOs (7bef09db).
+5. Complete the requested runtime page-size query (c9528f06). Socket/FIFO tree
+   removal (7bef09db) is reviewed and integrated, with ordinary and tier 1 tests
+   passing; it joins the combined gate.
 6. Finish TRUST/TRUSTED retirement. Add no new unchecked ordinary Forth while
    that migration waits.
 
 Core capacity policy: a deliberately bounded 32 MiB dictionary/code region,
 reviewed together with derived maps, bootstrap mirror and relocation model.
-Measure the actual guarded selfbuild and headroom; retain the bounds and BL
-reach checks. Align capture limits with the measured guarded core and preserve
-their explicit bounds. No automatic allocator growth is requested or planned.
+The guarded second-generation build used 16,076,868 region bytes and 124,137
+external call rows. Capture blob capacity derives from the bounded code band;
+the call table has 163,840 rows (25% measured headroom, rounded to 32,768-row
+units). Retain bounds and BL reach checks. Measure the combined build too.
+No automatic allocator growth is requested or planned.
 
 ## Required result
 
