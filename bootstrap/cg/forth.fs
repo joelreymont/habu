@@ -2038,7 +2038,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ everything else gets an absolute `movz/movk x16 + blr x16` call. Absolute, not BL:
 \ the JIT region is a kernel-placed mmap and prims live in __TEXT — BL's +-128MB imm26
 \ would silently truncate if they land far apart. x16 is IP0, the ABI call scratch.
-\ Inline criteria: meat <= INL-MAX bytes AND no call/branch/RET/ADR/ADRP word in it
+\ Inline criteria: meat <= INL-MAX bytes AND no call/branch/RET/ADR/ADRP/BRK word in it
 \ (calls need the frame; ADR is PC-relative). Internal label branches are relative and
 \ copy safely. Bodies without the prologue (CREATE/VARIABLE/CONSTANT literal-pushes)
 \ inline whole. Dict clen: prim = end-start-4, user word = set at `;` — both excl RET.
@@ -2060,6 +2060,9 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
       15 13 0 ADDI,
    lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
       9 15 0 LDRW,  15 15 4 ADDI,
+      \ A breakpoint belongs to its registered PC. Copying it into a caller
+      \ would turn a resumable breakpoint into an unowned trap.
+      8 $FFE0001F LIT64, 10 9 8 AND, 8 $D4200000 LIT64, 10 8 CMP, C-EQ lcall BCOND,
       8 $FC000000 LIT64,  10 9 8 AND,  8 $94000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
       8 $FC000000 LIT64,  10 9 8 AND,  8 $14000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND, \ B
       8 $FF000010 LIT64,  10 9 8 AND,  8 $54000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ B.cond

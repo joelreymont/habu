@@ -96,6 +96,26 @@ require nf.fs
    s\" create BUF 32 allot : RAISE ( -- ) 7 throw ; : CROSS ( -- ) ['] RAISE BUF 8 run-in-stack ; : INNER ( -- ) s\" CROSS\" INCLUDE-EVALUATE ; ' INNER catch . 1 2 3 4 . . . ." BES-OK
    s\" 7\n4\n3\n2\n1\n" NF= 0= abort" recovery evaluate unwind lost the caller allocation" ;
 
-BES-ABI BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE
+: BES-CAT ( a u b v -- c w ) {: a u b v :}
+   u v + allocate throw {: c :}
+   a c u move b c u + v move c u v + ;
+
+: BES-DEBUG-RUN ( tail size -- ) {: tail size :}
+   \ The static seed has no realpath loader; bake the unchanged debug module.
+   \ Its two ordinary REPL interfaces are enough for these batch breakpoints.
+   s" src/habu/debug.f" slurp-file {: module bytes :}
+   s\" package BES-BP : DATAB ( -- ptr a ) data-base ; : EMITS ( ptr u8 n -- ) type ;\n"
+   module bytes BES-CAT {: head headsize :}
+   head headsize tail size BES-CAT {: source sourcesize :}
+   module free throw head free throw
+   source sourcesize BES-OK source free throw ;
+
+: BES-DEBUGGER ( -- )
+   s" create BUF 32 allot : EMPTY ( -- ) ; ' EMPTY BP+ : GO ( -- ) ['] EMPTY BUF 0 run-in-stack ; GO ;package" BES-DEBUG-RUN
+   NFOUT 2@ nip 26 BES=
+   s" create BUF 32 allot : KEEP ( n -- n ) ; ' KEEP BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF 8 run-in-stack ; GO ;package" BES-DEBUG-RUN
+   NFOUT 2@ nip 43 BES= ;
+
+BES-ABI BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-DEBUGGER
 .( bootstrap-engine-stack: ok ) cr
 bye
