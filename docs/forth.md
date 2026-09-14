@@ -8,6 +8,22 @@ Durable Forth language guidance belongs here, not in `LESSONS.md`. Lessons may
 record the incident that taught a rule, but the reusable rule itself lives in this
 file.
 
+## Checked code and primitive boundaries
+
+- Write ordinary Forth as checked definitions, including tools, tests, emitters,
+  build drivers, source generators, cleanup and dispatch code.
+- Do not add `TRUST`, `TRUSTED:` or unchecked spans to bypass a missing checker
+  model. Fix the declaration, checker or primitive interface at its owner.
+- Use precise `PRIM:`/`PPRIM:` axioms only for genuine engine, syscall and FFI
+  operations. Keep callers checked. A Forth algorithm or unchecked wrapper does
+  not become a primitive by renaming it or asserting its effect.
+- Model dynamic source evaluation honestly; never assert that arbitrary
+  `evaluate` preserves the stack. Use typed quotations for known callbacks.
+- Existing TRUST forms are legacy code awaiting removal, not an approved pattern.
+  Retirement is tracked in
+  [minimal PRIM migration](../.dots/habu-trusted-dies-prim-4fd12d60/habu-finish-minimal-prim-c00c6a93.md).
+  References to those forms below describe current legacy syntax only.
+
 ## Naming
 
 - **Our words UPPER-CASE; built-in Forth words as-is.** Words we define
@@ -555,10 +571,8 @@ address arithmetic at the public boundary.
   definitions may remain together. Keep a word's introductory comment attached
   to that word, after the separating blank lines.
 
-- **Strictly typed Habu, everywhere you can (BLOCKING).** The default is not
-  "checked when convenient" — it is checked/typed, and unchecked is only a named,
-  tested boundary the checker genuinely cannot express (see *Unchecked code is a
-  named boundary*). Think in small, typed words: factor aggressively, give each a
+- **Write checked, typed Habu.** See *Checked code and primitive boundaries*.
+  Think in small, typed words: factor aggressively, give each a
   real `( in -- out )` effect, and compose them into **nice-reading checked DSLs**
   that read as the domain, not as stack plumbing. The three detailed rules below —
   typed by default, small factored words, DSL-first vocabulary — are this one
@@ -587,26 +601,11 @@ address arithmetic at the public boundary.
   unless a specific primitive boundary proves otherwise. Verify with the owning
   `bin/hb --load ...` or `tools/check.f --source-list` path before claiming the
   checker cannot express a layer.
-- **Unchecked code is a named boundary, not a habit.** Use `0 set-check`,
-  raw emitter words, or `TRUST` only for layers the checker cannot express:
-  metaprogramming, source-string generators, primitive emitters, snapshot/build
-  drivers, and similarly low-level support. Keep the boundary obvious in the
-  file and add focused tests for the contract it asserts.
-- **Do not stub real facts with `TRUSTED:`.** A predicate, target selector, or
-  runtime fact named with `?` must execute a real body that pushes a boolean.
-  `TRUSTED:` may assert nominal identity casts or primitive boundaries, but it is
-  not a signature-only forward declaration for words owned by another file.
-- **Factor reusable helpers back into checked Forth.** If an unchecked harness or
-  tool grows a helper that can be typed, move that helper to checked code instead
-  of letting unchecked scaffolding become the library surface.
-- **Try the checked factor before adding trust.** If existing primitive effects
-  can express the operation, define a small typed word and use it from callers;
-  add a primitive model or `TRUSTED:` shim only after proving the checker cannot
-  certify that helper.
-- **Trust the uncheckable operation, not the dispatcher.** For indirect emitter
-  callbacks, keep the row/dispatch word checked and isolate only the raw
-  `execute` in a tiny `TRUSTED:` shim. Do not convert a whole factored dispatcher
-  to trusted just because one leaf operation is higher-order.
+- **Predicates and target selectors execute real bodies.** A declared effect
+  does not establish a runtime fact or define a word owned by another file.
+- **Keep helpers and dispatch checked.** Express indirect calls with typed
+  quotation effects. If an engine operation lacks a usable model, repair its
+  primitive interface instead of adding a `TRUSTED:` shim or unchecked caller.
 - **Build checked task vocabulary before fighting syntax.** If a test, tool, or
   benchmark needs structured rows, JSON/TSV fragments, generated source,
   diagnostics, packets, or repeated assertions, factor domain words or a focused
@@ -791,9 +790,9 @@ address arithmetic at the public boundary.
   consistency; user builds verify the body against the declared `( in -- out )`
   and make rejection fatal. Tests for bad programs must assert build rejection,
   not just runtime failure.
-- **Every `TRUST` has source-local rationale and proof.** Document why the
-  checker cannot express the boundary, name its retirement owner, and exercise
-  its asserted effect through a focused production-path test in the same change.
+- **Fix missing models at their owner.** A checker rejection does not authorize
+  a TRUST form. Reduce the case and repair the primitive effect, declaration or
+  checker while preserving rejection of invalid programs.
 - **Typed booleans are real `bool` values.** Produce true/false with typed
   producers such as `0 0=` and `0 0= 0=` or domain helpers. Do not store raw
   `0`/`-1` into a `ptr bool` cell, and do not compare bools with numeric `=`.
@@ -805,16 +804,16 @@ address arithmetic at the public boundary.
 - **Pointer-valued cells use cell-indexed `ptr-field`.** When a typed DATA cell
   or record field stores a pointer, compute the cell slot with `ptr-field` so
   `@`/`!` preserve nested pointer types. The index is a cell slot, not a byte
-  offset. Raw fixed-header byte offsets need an explicit trusted boundary or a
+  offset. Raw fixed-header byte offsets need a checked view or a precisely
   modeled byte-offset primitive.
 - **Byte pointers are not cell pointers.** `ptr u8` is a byte span and must use
   `c@`/`c!` for byte access. Cell `@`/`!` over a concrete `ptr u8` is a checker
   error; if a cell stores a byte pointer, model the address as `ptr ptr u8`
   through `ptr-field` and then use `@`/`!` on that cell address.
-- **Raw state cells still need typed public effects.** Variables used from
-  checked code need explicit `TRUST` rows such as `-- ptr n`, `-- ptr bool`, or
-  `-- ptr ptr u8`. Boolean state cells are `ptr bool`, and string-pointer state
-  should remain `ptr ptr u8` plus a separate length cell.
+- **State cells need typed public effects.** Use typed declarations and checked
+  accessors: `-- ptr n`, `-- ptr bool`, or `-- ptr ptr u8`. Boolean state cells
+  are `ptr bool`; string-pointer state is `ptr ptr u8` plus a separate length
+  cell. Do not assert variable types through `TRUST` rows.
 - **Path-sensitive control is a checker invariant.** `LEAVE`, `EXIT`, `throw`,
   `die`, and `again` must fold or kill paths according to their declared control
   effect. Divergent path arities are soundness bugs; after a dead path, only
@@ -866,9 +865,8 @@ address arithmetic at the public boundary.
   A comparator heapsort, map, fold, and filter all check this way. Do NOT reach
   for `0 set-check`/`TRUST` for function-passing by precedent — the older
   `src/core/combinators.f` (MAP/FOLD/EACH) is an unchecked boundary that predates
-  this and is *not* a model to copy. Only drop to an unchecked boundary after a
-  minimal reproducer proves the checker rejects the specific higher-order shape,
-  and file a checker-capability gap (per the Checker-Miss RCA below).
+  this and is *not* a model to copy. If a valid higher-order shape is rejected,
+  reduce it and fix the checker; keep its callers checked.
 - **Execution vectors are typed `defer` words, not raw xt cells.**
   `defer ACTION ( in -- out )` declares the vector's public effect, and checked
   code installs an implementation with a typed quotation:
@@ -884,7 +882,7 @@ address arithmetic at the public boundary.
 - **New type tokens need a checker-only bootstrap stage.** Old `bin/hb` rejects
   unknown stack-comment tokens before checked source can use them. Add parser,
   renderer, and `CC-*` checker support, refresh the native binary, then use the
-  role in `TRUST` rows and checked definitions.
+  role in primitive axioms and checked definitions.
 - **Phase tokens must reach the side effect they order.** `asm`, `img`, and
   `snap` phase cells should flow through the final sign/write/header operation,
   not just an early wrapper, so callers cannot skip required build stages.
@@ -1103,29 +1101,25 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
   and the boolean/float conveniences (`true`, `false`, `fdup`, `fover`, `fdrop`,
   `f<=`, `f>=`) are not in core either — `require lib/prelude.f` for them instead
   of re-deriving `0 0=` / `0 0= 0=` by hand.
-- **Trust is asserted, not proved — it is explicit, tested debt.** `TRUST` records
-  asserted effects so callers can be checked; the assertion is the boundary's own
-  contract, and the file that declares it is where the reason for it is written.
-  Each site needs source-local rationale, a retirement owner, and a focused
-  production-path test.
+- **Primitive effects are assumptions, not proofs.** Each genuine primitive's
+  axiom must describe its actual behavior and have focused coverage through its
+  real call path. Ordinary Forth remains checked.
 - **Typed pointer fields use cell indexes.** When a variable or record cell
   stores a pointer, construct a `ptr ptr x` field with `ptr-field`, then use
-  normal `@`/`!`. Do not multiply indexes by cell size before `ptr-field`; use a
-  named trusted boundary for raw byte-offset header cells.
-- **Keep `TRUSTED:` bodies syntax-simple.** Do not use locals inside a trusted
-  body. Factor checked helper words for real work, then keep the trusted body to
-  the minimal operation that the checker cannot express.
-- **Checked tool libraries restore checking.** A shared lint/check/tool library
-  must not leave callers in unchecked mode. Declare and test any boundary
-  locally, then reinstall `CHECK!` immediately after the raw declarations.
-- **Generated unchecked spans are split at the first checkable file.** When a
-  build tool emits `0 set-check`, prove the shortest source span empirically,
-  reinstall the hook as soon as the next file checks, and pin the cut with a
-  source-shape regression.
-- **Generated checker preludes must rebind the existing hook.** If generated
-  source emits `0 set-check` for an audited unchecked span after loading
-  `src/core/check-hook.f`, it must reinstall that existing `HOOK` immediately
-  afterward with `' HOOK set-check`. Do not define a second hook name in baked
+  normal `@`/`!`. Do not multiply indexes by cell size before `ptr-field`. Express
+  byte-offset header access with checked views and explicit alignment/bounds;
+  fix a missing primitive model instead of introducing a trusted cast.
+- **Tool libraries keep checking enabled.** A shared lint/check/tool library
+  must not disable checking for itself or its callers. When removing a legacy
+  unchecked span, preserve hook restoration until that span is gone.
+- **Keep pre-checker bootstrap initialization minimal.** Install checking as soon
+  as the checker exists. Do not extend that startup exception to generated
+  application code or turn checking off to load ordinary Forth.
+- **Legacy checker preludes must rebind the existing hook until removed.** An
+  existing prelude that disables checking after loading `src/core/check-hook.f`
+  must restore that existing `HOOK` immediately afterward with `' HOOK set-check`.
+  This is a migration constraint, not permission for new unchecked spans.
+  Do not define a second hook name in baked
   tty/stdin bundles; explicit duplicate-definition enforcement makes that fail
   closed on startup. Snapshot/AOT stages that install a different hook keep that
   hook local to the stage and must not leak a duplicate REPL hook into `bin/hb`.
@@ -1146,11 +1140,10 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
 - **Source-use guards match tokens, not substrings.** Required-word checks and
   boundary scans must lex whole tokens and skip comments/strings; substring
   matches create false positives (`FOO` matching `FOO-BAR`) and hide policy bugs.
-- **Preflight unchecked native emitters.** Raw image/primitive emitters still
-  need checked shape tests before `BUILD-IMAGE`: no mid-control locals, no second
-  locals groups, no hand-balanced descriptor math. Use named scratch cells and
-  small helpers, then gate the forbidden source shapes in `tools/build-fixpoint.f`
-  so bad emitters fail before a snapshot or `bin/hb` candidate is written.
+- **Check native emitters before building an image.** Keep emitter algorithms
+  checked and validate their emitted code through focused tests. Existing
+  pre-checker emitters retain their source-shape checks until converted; those
+  checks do not justify new unchecked emitter bodies.
 - **Fixed DATA header cells need a layout audit.** Before adding a new native
   runtime cell in `src/habu/layout.f`, check the reserved JIT/runtime ranges:
   virtual stack tags/values (`VTAG-OFF`, `VVAL-OFF`), snapshot stack
