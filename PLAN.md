@@ -28,17 +28,21 @@ cd82e4d9. Reviewed boolean correction 6594f822 rebuilds successfully as engine
 Astra integer-overflow agent implemented engine admission; Cedar implemented the
 matching checker admission. Both and the float overflow/name-claiming follow-up
 are reviewed and focused tests pass on combined engine SHA2a49a29c. Public ndict
-count bounds (M3) are integrated at180b7e63; a combined rebuild is still required.
+count bounds (M3) are integrated at180b7e63 and included in engine SHA515efca8.
 
 The default stripped route now selects the optimizing tier before dependencies
 and retains EXECUTABLE-BUILD scope through source loading. Obsolete maker code is
-removed through e9111ac2. The C5 relocation patch is under integration: direct
-native linker builds and fresh quotation images pass, as do malformed-chain
-refusals. Dynamic object payload storage is integrated at1fb297ec; the full
-hb-build quotation regression now passes. Retained pre-window library strings
-still lose their bytes (dot31ba3e76): seed DATA relocation drops their map bits,
-and the target compiler lacks persistent ownership of previous string pools.
-Both repairs are active before qualification.
+removed through e9111ac2. C5 code-address relocation is committed at1948ba71:
+native linker builds, fresh quotation images and malformed-chain refusals pass.
+Dynamic object payload storage is integrated at1fb297ec. Seed DATA address-site
+publication is repaired at7bc7d386 and survives two native generations. Persistent
+literal ownership and linker re-interning pass on test engine SHA4ccbc973: Cedar
+and Hazel independently confirm the actual MEM:UNMAP error image emits its exact
+20-byte message, and mutable pre-window DATA still refuses without an image.
+Guarded ownership is integrated atde322418, split WID cases at6d60ebba and normal
+entry lookup atb91ad53e. The guarded native engine SHAc3ddf790 passes ownership and
+entry fixtures; snapshot ownership passes. Combined rebuild/full gate is next.
+No new release pair is qualified yet.
 These are separate from Maki's accepted --repl images. Warm source-order
 verification and public recovery remain open. Tender reports its previous
 frozen9d pair passes standalone/REPL acceptance; Kestrel acceptance is pending.

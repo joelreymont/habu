@@ -12,11 +12,10 @@ Do not call Habu release-qualified yet.
   `herdr agent prompt hazel "[cedar] ..."` (similarly rowan, alder, tender).
 - Our agent name is `cedar`; pane `w3:p1`, tab label `4`, workspace `habu`.
   Prefer the live name or `--current`; old external pane `w1:p4` is stale.
-- Hazel is available and reviewing retained NSTR pool ownership for stripped
-  closures. Internal Astra agent integer_overflow completed dynamic object
-  payload storage; checker_followup_review is repairing missing DATA-site bitmap
-  publication at seed restore. Astra literal_ownership owns persistent NSTR
-  ownership and the native-build source-owner handoff in cedar-literal-ownership.
+- Hazel and independent Astra integer_overflow approved persistent NSTR ownership
+  and the retained-host/new-target handoff. Source is integrated atde322418.
+  Astra literal_ownership is checking the second/third generation fixpoint;
+  closure_integration_review completed the physical stack-guard design.
   Prefix every message to another agent with your own live name,
   including one-liners; the shared Herdr skill now requires this.
 
@@ -39,17 +38,27 @@ Do not call Habu release-qualified yet.
 - `2929bda4` + `9709aa17`: integer overflow admission and float-shaped overflow
   claiming. `220930e4`: matching checker integer admission. Hazel and Cedar
   reviewed; focused integer, float and checker tests pass on the combined engine.
-- `180b7e63`: public ndict count bounds (M3), reviewed by Cedar; agent engine
-  passes dictionary controls. It still needs the combined native rebuild/gate.
+- `180b7e63`: public ndict count bounds (M3), reviewed by Cedar; dictionary
+  controls pass. Included in the newer DATA-site and ownership engines.
 - `a5dfb5f8` + `37e78525`: stripped build and outer CLI execute in native build
   scope, with tier 1 selected before dependencies. `e9111ac2` removes obsolete
   maker entry/helpers. Cedar reviewed the Astra implementation. Focused CLI,
   tier, preseed, quotation, hook-registry and surface checks pass on their stated
-  pre-C5 sources. Bookmark pushed through e9111ac2; C5 remains a working patch.
+  pre-C5 sources. C5 code-address relocation is committed at1948ba71.
 - `1fb297ec`: dynamic object codec/cache/link payload storage, reviewed by Cedar.
   Five optimized object suites pass; >512KiB text/data, aliased self-load/append,
   returned cache-key corruption and actual raw-object executable controls pass.
   Combined test/stripped-quotation.f now passes full hb-build and fresh execution.
+- `7bc7d386`: seed DATA map publication; two native generations byte-identical.
+- `6d60ebba`: WID/data-span tests split into17 independent registered cases.
+- `b91ad53e`: stripped entry selection uses normal global/public-qualified
+  language lookup. Five image cases pass with driver and producer explicitly
+  pinned. The existing preseed tag-diagnostic mismatch is separately dotted38ad40e8.
+- `de322418`: persistent literal descriptors, private import, captured source
+  arena validation, malformed-row/visibility/restore tests. Hazel and a separate
+  Astra reviewer approved. First guarded engine is SHAc3ddf790; native-string
+  passes. A combined integration rebuild is running at
+  `/tmp/cedar-integrated-literals-native`, log `/tmp/cedar-integrated-literals-build.log`.
 
 ## Current integration check
 
@@ -145,19 +154,36 @@ span. The engine prints `memory: unmap failed`; its stripped image builds0/exits
 but emits20 NUL bytes. Internal Astra confirmed the owner is seeded REGION code;
 EM-AOT-RELOC-DATA fails to republish ADDRMAP bits (CODE/named passes do). Engine
 text's201 records have only5 canonical scalar chains, so no separate engine-text
-table is indicated. The seed fix/rebuild is active in cedar-native-stripped.
+table is indicated. Seed site publication is committed at7bc7d386. Native engines
+`/tmp/cedar-data-site-native` and `-second` are byte-identical SHA515efca8; both
+restore DATA map bits. The original subject then refuses at link rather than
+emitting silent zero bytes.
 Dot31ba3e76 owns this plus persistent previous-pool row ownership. literal_ownership
 must transfer the retained host's compiled literal rows into the new target NSTR
 owner; target tables are otherwise empty even though its code uses host strings.
-Do not relax DATA checks or claim a general stripped compiler until these close.
+The first ownership engine `/tmp/cedar-owned-literals-native` (SHA4ccbc973) now
+passes retained-host OWNER-ROW and the full stripped quotation/address fixtures.
+With DATA-TARGET and fixed-width immediate rewriting, Cedar and Hazel independently
+confirm the MEM:UNMAP image builds0/runs71 and emits exactly the20 bytes
+`memory: unmap failed` (no newline). `test/stripped-literal.f` also proves mutable
+pre-window DATA still refuses74 with no image. The importer is private; its
+captured-arena bounds guard and regressions are integrated atde322418. The warm
+snapshot-writer ownership probe passes. Guarded old-host candidate is
+`/tmp/cedar-owned-literals-final`, SHAc3ddf790; its second-generation selfbuild
+`/tmp/cedar-owned-literals-b2`, SHAff50b3d7, also passes native-string. B1→B2 adds
+exactly131120 DATA bytes and2 pointer rows for the new host pool descriptor/tables;
+B2→B3 comparison is pending to prove the transition stops growing.
+Explicitly pin HABU_FIXPOINT_ENGINE as well as the test launcher: BF-ENGINE$
+otherwise defaults to bin/hb. Do not call this test engine release-qualified.
 
 ## Remaining closure
 
 Full native gate on earlier engine ran353/353,351 passed. build-fixpoint is now
-focused green; WID restore still has mismatched aggregate deadlines. Its eleven
-builds plus data-span child cannot be budgeted as one build. data-span makes
-several240s children under a240s parent; gate gives whole WID360s. Preserve cases
-and distinguish timeouts from semantic failures; no fresh full green gate exists.
+focused green. The WID/data-span split is integrated at6d60ebba after independent
+Astra review: eleven WID cases and six DATA cases each get their own gate deadline,
+with no nested aggregate data-span child. Restore/refuse-bound and malformed-arg
+dispatch pass focused tests; all17 registry rows are prepared for the combined
+gate. No fresh full green gate exists.
 
 Public recovery dot a2551190 remains: partial recovery engine
 `/tmp/cedar-compiler-fixpoint/tmp/hb-stdin` cannot build the full compiler
