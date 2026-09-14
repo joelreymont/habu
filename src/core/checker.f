@@ -7642,11 +7642,14 @@ package CHECKER-REG
 \ Resolve a bare tail against the live used publics (searched only after the open-scope +
 \ global chain missed). A single distinct interned public sym wins; a second distinct sym
 \ across the used packages is the ambiguity hard error, matching the engine's used-search.
+\ A used public whose records all lie beyond the binding horizon was exported
+\ after this definition: it is neither a candidate nor a cause of ambiguity.
 : CHECKER-USED-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 CK-USED-FOUND !
    -1 CK-USED-SLOT !
    CK-USE-SCAN-N 0 ?DO
-      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF     ( -- sym )
+      i CK-USE-SLOT i CK-USE-LEN@ SYM-PUBLIC a u SYM-FIND IF SYM-VISIBLE ELSE drop 0 THEN
+      dup 0 <> IF                                            ( -- sym )
          CK-USED-FOUND @ 0= IF
             i CK-USED-SLOT !
             CK-USED-FOUND !
@@ -7778,11 +7781,21 @@ USHADOW-DIAG-DEFAULT
 \   reference is uncheckable — 0 here is E-UNDEFINED at the call site;
 \ - a global claims the tail: the documented global-vs-used collision, rejected
 \   at the reference site exactly as when the global carries a signature.
+\ A global the store knows only beyond the binding horizon was defined after
+\ this definition, so the engine's live wordlist claiming the tail is not a
+\ collision this reference can see. A global the store has no record of keeps
+\ the engine's vote: that is the engine's own word, and its claim stands.
+: GLOBAL-BEYOND-HORIZON? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   s" " SYM-GLOBAL a u SYM-FIND 0= IF drop RES-FALSE EXIT THEN
+   SYM-VISIBLE 0= ;
+
 : CHECKER-USED-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u CHECKER-USED-SYM {: usym:n :}
    usym 0= IF 0 EXIT THEN
    a u CK-OPEN-CLAIMS? IF 0 EXIT THEN
-   a u 0 CK-WL-CLAIMS? IF a u 0 CHECKER-USED-SHADOW THEN
+   a u GLOBAL-BEYOND-HORIZON? 0= IF
+      a u 0 CK-WL-CLAIMS? IF a u 0 CHECKER-USED-SHADOW THEN
+   THEN
    usym ;
 
 \ --- generated-constructor protection (item 8 slice 3). The registry-backed

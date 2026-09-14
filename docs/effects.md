@@ -728,7 +728,10 @@ path. No runtime stack-depth calculation is needed.
   everything after it. Inside the verifier's scope `CHECK` reconstructs the
   order: it latches the definition's own record, the newest source record its
   name would be recorded under, as a binding horizon, and binds every body
-  token to the newest record before it, in the usual package-first order. A
+  token to the newest record before it, in the usual package-first order, the
+  used publics included: a used public exported after the definition is
+  neither a candidate nor a shadow of the global it named, and a global
+  defined after it does not shadow the used public it named. A
   check outside that scope, the live load path or a candidate probe whose name
   is only a label, binds against the whole store as before. An earlier use of a spelling
   keeps its earlier binding, an existing package dependency stays visible, and a
