@@ -66,6 +66,13 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN  variable BLOB-LBL
       s" aot: address refers to data outside the restored span" 74 die
    then ;
 
+\ Immutable literal rows can be copied into the capture's active pool. Other
+\ pre-window DATA has no ownership proof and must keep the link refusal.
+: DATA-TARGET ( n -- n ) {: v:n :}
+   v BLOB-SRC @ >= v BLOB-END @ <= and if v exit then
+   v NSTR:REINTERN-OWNED if dup DATA-ADDRESS! exit then
+   dup DATA-ADDRESS! ;
+
 \ Decode an AArch64 direct branch (B / BL). Both share opcode bits: masking off
 \ the link bit leaves $14000000, so DIRECT? recognizes B and BL and excludes the
 \ conditional/compare branches (BCOND/CBZ/TBZ), which stay intra-record and are
@@ -287,7 +294,7 @@ variable SP2  variable SEND
    p ADDRESS-SITE? 0= if exit then
    p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
-      v DATA-ADDRESS! exit
+      v DATA-TARGET drop exit
    then
    v ADDRESS-OWNER {: owner:ptr :}
    owner XREF-FOUND? 0= if s" aot: code address has no dictionary owner" 74 die then

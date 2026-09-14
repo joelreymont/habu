@@ -295,8 +295,13 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
 : COPY-ADDRESS ( ptr u8 ptr u8 -- ) {: p:ptr e:ptr :}
    p e ADDRESS-VALUE {: v:n :}
    v DATA-ADDRESS? if
-      v DATA-ADDRESS!
-      SNAP-RELOC:ADDR-CHAIN-BYTES 4 / 0 ?do p i 4 * + AOT-W32@ EMITW loop
+      v DATA-TARGET {: target:n :}
+      \ Keep all four instructions and their Rd/shift/opcode fields. A variable
+      \ length literal encoder would invalidate the planned code offsets.
+      SNAP-RELOC:ADDR-CHAIN-BYTES 4 / 0 ?do
+         p i 4 * + AOT-W32@ SNAP-RELOC:ADDR-OPC-MASK and
+         target i 16 * rshift $FFFF and 5 lshift or EMITW
+      loop
       exit
    then
    v ADDRESS-OWNER {: owner:ptr :}
