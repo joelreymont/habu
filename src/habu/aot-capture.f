@@ -1108,6 +1108,8 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 : ACAP-DEFER-SITE ( n n n n n -- )
    {: k:n bstart:n bend:n d0:n d1:n :}
    k AOT-REC {: rec:ptr :}
+   \ Namespace [8] is a private wordlist ID, not a dictionary code length.
+   rec AOT-RWID DICT-WL:NAMESPACE = if exit then
    rec AOT-RXT rec AOT-RBODY + {: meta:n :}
    meta bstart < meta 16 + bend > or if exit then
    meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if exit then

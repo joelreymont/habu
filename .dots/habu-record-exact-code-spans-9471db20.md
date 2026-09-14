@@ -42,3 +42,19 @@ two-generation native transition; exact pinned scalar,
 empty-sum, nested valid/inactive/invalid preseed controls. Invalid typed loads
 must exit 85 with `hb: bad layout tag`, including dropped results. Every image
 build pins both `HABU_UNDER_TEST` and `HABU_FIXPOINT_ENGINE` to its qualified host.
+
+Combined-build correction: frozen `b589ce65` refused exit 74 with
+`hb: malformed dictionary code length`. `ACAP-SCAN-DEFER-SITES` visits namespace
+rows too; `ACAP-DEFER-SITE` decoded their private WID before checking whether
+the resulting address was in the code window. A checked reduction on guarded
+host `68b6a5d6` selects `CHECKER-FETCH-ABI` with valid private WID 6 and reproduces
+the refusal. The caller now skips `DICT-WL:NAMESPACE` before decoding [8].
+Ordinary code records still pass through the unchanged `CODE-SPAN:CHECK`.
+
+`test/compiler/code-span-capture.f` captures two actual namespaces, verifies a
+private WID is not divisible by four, and preserves the exact exit-74 refusal
+for an ordinary synthetic record with length 3. On the same guarded host it
+failed before the caller fix and passes afterward; logs
+`/tmp/cedar-span-capture-{before,after}.log`. The fixture is registered in the
+gate. Combined native generations and the stripped preseed matrix remain
+pending; this focused source-load result does not qualify a rebuilt image.

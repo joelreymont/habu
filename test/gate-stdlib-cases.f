@@ -504,6 +504,10 @@ SUITE compiler-code-span
    test/compiler/code-span.f
 ;SUITE
 
+SUITE compiler-code-span-capture
+   test/compiler/code-span-capture.f
+;SUITE
+
 SUITE compiler-native-code-span
    test/compiler/native-code-span.f
 ;SUITE
