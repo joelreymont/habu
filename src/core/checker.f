@@ -15227,4 +15227,11 @@ package CHECKER-REG
 ' CHECKER-PAYLOAD-SPANS DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-SPANS-OFF + xt!
 ' CHECKER-REG-AOT-SAVE DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-REG-SAVE-OFF + xt!
 ' CHECKER-ASIG-DISARM DECLARATIONS CHECKER-OWNER-ABI:PAYLOAD-DISARM-OFF + xt!
+
+\ The first cold checker has no retained owner to transfer from. Publish it
+\ only after every callback is installed. A replacement keeps the nonzero
+\ source owner until TRANSFER-CHECKED completes the explicit handover.
+: CLAIM-COLD-SOURCE ( -- )
+   data-base SOURCE-CELL + 0 ptr-field @ 0= if CLAIM-SOURCE-OWNER then ;
+CLAIM-COLD-SOURCE
 ;package

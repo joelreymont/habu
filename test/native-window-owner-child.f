@@ -78,6 +78,14 @@ TRUSTED: TRANSFER-CHECKER ( ptr u8 -- ) {: source:ptr :}
    owner NCOMP-DISPATCH:DECL-TRANSFER-OFF + CELL-VIEW @ is IMPORT-CHECKED
    source IMPORT-CHECKED ;
 
+\ Installing a replacement's callbacks must not claim a nonzero source owner
+\ before the explicit transfer below; the retained compiler still uses it.
+: CHECK-RETAINED-OWNER ( ptr u8 -- ) {: source:ptr :}
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ source <> if
+      s" window: replacement checker claimed the source before transfer" 76 die then
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ source = if
+      s" window: replacement checker did not publish a distinct target" 76 die then ;
+
 TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    0 set-check
    0 set-top-check
@@ -95,6 +103,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    s" src/core/exec-vector.f" included
    s" src/core/checker-owner-abi.f" included
    s" src/core/checker.f" included
+   source CHECK-RETAINED-OWNER
    s" src/core/engine-error-effects.f" included
    s" src/core/lower-cert-base.f" included
    s" src/core/type-schema.f" included

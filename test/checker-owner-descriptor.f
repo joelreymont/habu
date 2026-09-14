@@ -20,6 +20,21 @@ variable NEED
 : GOOD ( -- ) ['] CHECK catch 0 T= ;
 TRUSTED: DATA-START ( -- ptr u8 ) data-base ;
 
+: SOURCE-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
+: TARGET-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ ;
+
+\ A real cold prefix owns its checker before a partial window can open. The
+\ same invariant holds in the retained product after its boot installer runs.
+: LIVE-OWNER ( -- )
+   SOURCE-OWNER dup TARGET-OWNER = TTRUE
+   CHECKER-OWNER-ABI:BYTES CHECKER-OWNER-GUARD:VALIDATE drop
+   AOT-ARM:WINDOW-OPEN
+   AOT-ARM:PAYLOAD-MODE @ 1 T=
+   AOT-ARM:WINDOW-CLOSE
+   AOT-ARM:PAYLOAD-FROZEN @ -1 T= ;
+
 TRUSTED: ABI-ONLY ( -- )
    s" OD-ABI-ONLY ( -- n ) 7" CHECK-UNJUDGED! -1 T= ;
 
@@ -44,6 +59,7 @@ TRUSTED: ABI-ONLY ( -- )
    -1 NEED ! REJECT
    CHECKER-OWNER-ABI:BYTES 1+ NEED ! REJECT
    CHECKER-OWNER-ABI:BYTES NEED ! GOOD
+   LIVE-OWNER
    \ This opening is valid even while the retained host has a legacy record.
    AOT-ARM:WINDOW-OPEN-PERSISTENT
    AOT-ARM:PAYLOAD-MODE @ 0 T=
