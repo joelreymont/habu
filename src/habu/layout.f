@@ -41,10 +41,10 @@ constant MASK
 
 ;package
 
-\ REGION: the one mapping that holds BOTH the dictionary and the emitted code.
-\ CODE-BAND:BYTES below states the split; grow REGION whenever DICT-SIZE grows,
-\ or the dictionary takes its records out of the code band's bytes.
-$A00000 constant REGION
+\ Fixed budget for dictionary and code, including the retained build host and
+\ its replacement core. The bounds checks and boot BL-range assertion remain
+\ mandatory. Keep the Gforth recovery mirror in bootstrap/cg/forth.fs in step.
+$2000000 constant REGION
 \ RBASE-VA: snapshot CANONICAL region base (a fixed portability sentinel, NOT the
 \ runtime map address). The live JIT region maps at __text base + REGION-OFF (see
 \ habu2.f EM-MMAP-CODE-REGION) so every call site and callee sit inside BL's
@@ -136,13 +136,13 @@ $301000 constant DICT-SIZE
 \ that is invisible while only REGION and DICT-SIZE have names. It cost this lane
 \ a near miss - lifting DICT-CAP alone would have left 36 KB of code band and
 \ traded `dictionary full` for `code space full` at the same suite.
-\ SIZED BY THE SAME METHOD AS DICT-CAP, over the same composite: the monolithic
-\ maki inventory emits 4,047,032 code bytes unseeded and 5,234,436 seeded (the
-\ chain restores 1,208,800 of code at boot), so 5,234,436 + 25% = 6,543,045.
-\ REGION $A00000 leaves 7,335,936 - 1.40x the measurement, and the inventory
-\ finishes at 71% of the band. REGION costs nothing at rest (it is an
-\ anonymous mapping, and a snapshot writes only [SDB, CP)), so the grain is the
-\ 2 MiB step, not a doubling.
+\ The former 10 MiB region was sized from a Maki load. It left 7,335,936 code
+\ bytes and failed the guarded core rebuild at EM-COMPILE-UNDEF. A core rebuild
+\ also retains its running compiler while compiling the replacement. The fixed
+\ 32 MiB region gives these two generations 30,404,608 code bytes. Qualification
+\ measures both generations and their live build peak; it does not resize this
+\ budget at runtime. Anonymous pages are populated on demand, and snapshots
+\ write only the used span [SDB, CP).
 package CODE-BAND
 public
 REGION DICT-SIZE - constant BYTES

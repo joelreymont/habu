@@ -179,7 +179,7 @@ public
       0 of $1000000 endof
       1 of $300000000 endof
       2 of $8000000 endof
-      3 of $A00000 endof
+      3 of $2000000 endof
       4 of 95 endof
       5 of $25 endof
       6 of 97 endof

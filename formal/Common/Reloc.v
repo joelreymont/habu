@@ -201,9 +201,9 @@ Definition imm_half : Z := 33554432.
    region base.  A region that sat exactly here would need no call pass. *)
 Definition region_off : Z := 16777216.
 
-(* $A00000, src/habu/layout.f: the JIT region's size - the dictionary band and
+(* $2000000, src/habu/layout.f: the JIT region's size - the dictionary band and
    the code band together, which is what CODE-BAND:BYTES splits. *)
-Definition region_bytes : Z := 10485760.
+Definition region_bytes : Z := 33554432.
 
 (* $300000000, src/habu/layout.f: the canonical region base a declared
    address cell is stored relative to.  A portability sentinel, never a

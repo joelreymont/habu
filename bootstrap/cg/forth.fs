@@ -18,7 +18,7 @@
 20 constant RBASE
 26 constant DBASE  27 constant NDICT  28 constant CP
 
-$A00000 constant REGION       \ mmap region size (10 MB; dict band + code band, mirrors src/habu/layout.f REGION/CODE-BAND:BYTES; grown 8->10 MB with DICT-CAP 32768->65536, dot habu-seeded-words-invisible-c7505a49)
+$2000000 constant REGION      \ fixed 32 MiB dictionary/code budget; mirrors src/habu/layout.f
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
