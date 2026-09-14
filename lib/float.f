@@ -20,7 +20,6 @@ require lib/adt/option.f                      \ option<CAD-NUM:index> for STR:IN
 $7FFFFFFFFFFFFFFF constant FL-MAX-I64
 $8000000000000000 constant FL-MIN-I64
 
-variable FL-IX                              \ digit-loop index (leaf, single-threaded)
 variable FL-EXPV                            \ parsed exponent value
 variable FL-VALID                           \ exponent validity flag
 variable FL-MANT                            \ retained significant prefix
@@ -39,7 +38,8 @@ public
 
 \ ---- powers of ten --------------------------------------------------------
 : POW10+ ( n -- r ) {: k:n :}
-   1.0 k 0 ?do
+   \ Preserve the public helper's empty product for negative exponents.
+   1.0 k 0 max 0 ?do
       10.0 f*
    loop ;
 
