@@ -6,6 +6,7 @@ s" lib/ffi-abi.f" required
 s" lib/image-lifecycle.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 require src/habu/task-abi.f
+require src/habu/stack-abi.f
 
 package TASK
 
@@ -267,7 +268,8 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL
    rbase reg RBASE-CELL + !
-   tcb TCB.STACK @ reg S0-CELL TASK-PTR!
+   tcb TCB.STACK @ reg STACK-ABI:BASE-CELL TASK-PTR!
+   tcb TCB.STACK-U @ reg STACK-ABI:CAP-CELL + !
    0 reg RSP-CELL + !
    0 reg LOOPSP-CELL + !
    0 reg LVD-CELL + !

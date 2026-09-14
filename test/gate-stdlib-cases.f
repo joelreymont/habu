@@ -1183,6 +1183,10 @@ SUITE catch-frame
    test/catch-frame.f
 ;SUITE
 
+SUITE engine-stack-lifecycle
+   test/engine-stack-lifecycle.f
+;SUITE
+
 SUITE combinators
    test/combinators.f
 ;SUITE

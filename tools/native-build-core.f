@@ -189,6 +189,7 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    else
       s" native-build: unknown target" 76 die
    then then
+   s" src/habu/stack-abi.f" included
    s" src/habu/layout.f" included
    s" src/os/env-base.f" included
    s" src/core/include.f" included

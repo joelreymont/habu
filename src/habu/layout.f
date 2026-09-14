@@ -1,4 +1,5 @@
 \ layout.f - shared native image, dictionary, and snapshot layout constants.
+\ The cold prefix loads stack-abi.f first; require is not defined at this stage.
 
 20 constant XREG-RBASE
 26 constant DBASE
@@ -416,7 +417,7 @@ $D0 constant CMFR-OFF                   \ MATCH fam stack base (one cell per ope
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
-$1D0 constant S0-CELL
+STACK-ABI:BASE-CELL constant S0-CELL
 $3640 constant REPLH-CELL
 $3648 constant RSAVCP-CELL
 $3650 constant RSAVND-CELL
@@ -436,7 +437,7 @@ $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
 $43C0 constant EVAL-TOP-CELL  \ current native-stack evaluator frame, zero at rest
-$80 constant EVAL-FRAME-SIZE
+STACK-ABI:EVAL-BYTES constant EVAL-FRAME-SIZE
 $40 constant EVAL-PREV
 $48 constant EVAL-PKG
 
@@ -874,8 +875,8 @@ CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
 ;package
 
 
-$600 constant LOOP-STK-OFF
-$800 constant BODYBUF-OFF
+STACK-ABI:LOOP-OFF constant LOOP-STK-OFF
+STACK-ABI:LOOP-END constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
 $570 constant EXITH-CELL
@@ -945,24 +946,25 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 4 constant TOP-EV-CHAR      \ char literal pushed ( n )
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
-$2800 constant RSTK-OFF
-256 constant RSTK-CELLS
-RSTK-OFF RSTK-CELLS cells + constant RSTK-END
+STACK-ABI:RETURN-OFF constant RSTK-OFF
+STACK-ABI:RETURN-CELLS constant RSTK-CELLS
+STACK-ABI:RETURN-END constant RSTK-END
 
 \ ---- catch/throw handler frame (habu1.f BCATCH/BTHROW, habu2.f
 \ EM-EVAL-THROW-RECOVER; bootstrap/cg/forth.fs mirror) ----
-\ A HNDF-SIZE machine-stack frame chained through HND-CELL ([DATA+8]). Grown from
-\ 48 to also save the user return-stack depth (RSP-CELL) and loop-stack depth
-\ (LOOPSP-CELL) so a caught throw restores the COMPLETE caller execution frame
+\ A HNDF-SIZE machine-stack frame chained through HND-CELL ([DATA+8]). Saves the
+\ user return-stack depth (RSP-CELL), loop-stack depth (LOOPSP-CELL), and active
+\ data-stack allocation so a caught throw restores the complete caller frame
 \ (dot habu-restore-complete-exec-abb8baca). Field offsets are byte offsets from
 \ the frame base; every delivery site (BTHROW, LEVLD, seed BTHROW) reads them and
-\ validates the sentinel + saved depths BEFORE any restore store. Keep this block
+\ validates the sentinel, saved depths and allocation BEFORE any restore store. Keep this block
 \ byte-for-byte in step with the bootstrap/cg/forth.fs mirror.
-64 constant HNDF-SIZE                   \ frame bytes (was 48; +RSP +LOOPSP +MAGIC, 16-B aligned)
+STACK-ABI:CATCH-BYTES constant HNDF-SIZE
 \ frame layout: 0 prev-HND | 8 data-sp(x19) | 16 machine-sp | 24 resume-pc
 \               32 link | 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel
-BODYBUF-OFF LOOP-STK-OFF - 16 / constant LOOP-STK-FRAMES  \ 32 nested DO/LOOP frames (16 B each)
-$CA7CF4A3E00D constant CATCH-FRAME-MAGIC \ frame sentinel: forged/adjacent-mutated frames fail closed
+\               64 saved-base | 72 saved-capacity
+STACK-ABI:LOOP-FRAMES constant LOOP-STK-FRAMES
+STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 
 \ Compiler lowering transaction. All mutable pass-2 authority lives in one
 \ engine band. The frozen source+certificate lives in a separately mmap'd,

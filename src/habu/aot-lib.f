@@ -4,6 +4,7 @@
 \ LINK writes the selected entry's reachable closure into a standalone image,
 \ relocates its code and emits the minimal runtime entry. tools/hb-build.f owns
 \ the output paths; the default application entry is MAIN.
+require src/habu/stack-abi.f
 
 \ The AOT relocation core compiles checked. MAP-IN-BLOB is the remaining
 \ named TRUSTED: boundary - a dictionary-record blob-span walk whose record
@@ -86,7 +87,8 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL,
    DATA 0 0 ADDI,                                \ x20 = DATA-VA (mmap result, verified)
-   XDS DATA S0-CELL STR, ;                        \ S0-CELL = value-stack base
+   XDS DATA STACK-ABI:BASE-CELL STR,
+   7 STACK-ABI:BOOT-BYTES LIT64,  7 DATA STACK-ABI:CAP-CELL STR, ;
 
 : EMIT-DATA-COPY ( -- )
    BLOB-LEN @ 0= IF
@@ -132,6 +134,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    SEED-N @ SEED-MAX >= IF s" aot: too many preseed cells" 74 die THEN
    SEED-CELLS SEED-N @ cells + !  SEED-N @ 1 + SEED-N ! ;
 : EMIT-SEED ( -- )                               \ push SEED-CELLS onto the value stack (x19)
+   SEED-N @ STACK-ABI:BOOT-BYTES 8 / > if s" aot: initial data stack exceeds allocation" 74 die then
    0 BEGIN dup SEED-N @ < WHILE
       9 over cells SEED-CELLS + @ LIT64,          \ x9 = seed cell value
       9 XDS 0 STR,                                \ *x19 = x9  (value-stack top)
@@ -140,8 +143,7 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    REPEAT drop ;
 
 : EMIT-ENTRY
-   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
-   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
+   STACK-ABI:BOOT-BYTES 2048 / 0 do SP SP 2048 SUBI, loop
    XDS SP 0 ADDI,
    EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
    EMIT-DATA-COPY                                \ restore persistent data + DP

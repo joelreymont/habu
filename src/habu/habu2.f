@@ -282,6 +282,7 @@ variable LPOWNERGUARD
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF  variable LPLAYOUTVALID
 variable LPHOOK         variable LPCELLEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
+variable LPSTACKABI
 variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
 variable LPDECLTXN      variable LPGENDECL      variable LPDECLEVENT    variable LPSTRUCTMAKE
@@ -775,6 +776,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
+   PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
@@ -913,6 +915,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PATH-ROW
+   PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PATH-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
@@ -1291,6 +1294,7 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PROVIDE-ROW
    PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PROVIDE-ROW
+   PFX-COMMON LPSTACKABI     s" src/habu/stack-abi.f"   PFX-PROVIDE-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
@@ -4566,8 +4570,7 @@ variable CFSK2
 
 : EM-RUNTIME-STACK ( -- )
    XREG-RBASE LANCHOR LABEL@ ADR,
-   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
-   SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
+   STACK-ABI:BOOT-BYTES 2048 / 0 do SP SP 2048 SUBI, loop
    XDS SP 0 ADDI, ;
 
 : EM-MMAP-CODE-REGION ( -- )
@@ -5343,7 +5346,8 @@ $47E0 constant HEAP-START-OFF
 : EM-DATA-INIT ( -- )
    20 0 RBASE-CELL STR,
    DATA 0 0 ADDI,
-   XDS DATA S0-CELL STR,
+   XDS DATA STACK-ABI:BASE-CELL STR,
+   7 STACK-ABI:BOOT-BYTES LIT64,  7 DATA STACK-ABI:CAP-CELL STR,
    13 DATA ARGC-CELL STR,  14 DATA ARGV-CELL STR,  15 DATA ENVP-CELL STR,
    \ x5 is the heap floor: publish it as this engine's own layout in the same
    \ breath as the DP it sets, out of the same register, so the cell can never
@@ -6233,7 +6237,8 @@ public
    EM-SNAPSHOT-COPY-DATA
    5 0 MOVZ, 5 DATA ADDRESS-CELLS:INDEX-CELL STR,
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
-   XDS DATA S0-CELL STR,
+   XDS DATA STACK-ABI:BASE-CELL STR,
+   5 STACK-ABI:BOOT-BYTES LIT64,  5 DATA STACK-ABI:CAP-CELL STR,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
@@ -8445,6 +8450,7 @@ public
 \ Recovery, undefined/exit handling, ADT construction/matching, and main-loop helpers
 \ emit raw machine state transitions and diagnostics.
 : EM-EVAL-THROW-RECOVER ( -- )
+   LBL {: bounds:label :}
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
    LBL LEVCORRUPT !  LBL LEVCORRUPTMSG !
@@ -8463,6 +8469,10 @@ public
       \ into a band already re-protected: SIGSEGV after a correct reject message.
       11 14 CMP,  C-CC LEVLD LABEL@ BCOND,
    LEVLP LABEL@ LBL,
+      14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
+      12 13 32 LDR,  0 bounds STACK-GUARD:CHECK-CURSOR
+      14 DATA STACK-ABI:BASE-CELL STR,
+      12 13 STACK-ABI:EVAL-CAP LDR,  12 DATA STACK-ABI:CAP-CELL STR,
       12 13 0 LDR,   12 DATA INP-CELL STR,
       12 13 8 LDR,   12 DATA INE-CELL STR,
       TIER-PROV:ABANDON,
@@ -8486,12 +8496,16 @@ public
    9 15 0 ADDI,                                       \ x9 = code
    11 LEVLN LABEL@ CBZ,
    \ handler-frame integrity (same contract as habu1.f BTHROW): validate before any restore store
-   14 CATCH-FRAME-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE LEVCORRUPT LABEL@ BCOND,   \ forged/adjacent-mutated frame
-   10 11 40 LDR,  10 0 CMPI,  C-LT LEVCORRUPT LABEL@ BCOND,            \ saved RSP underflow
-   14 RSTK-CELLS MOVZ,  10 14 CMP,  C-GT LEVCORRUPT LABEL@ BCOND,      \ saved RSP past region
-   10 11 48 LDR,  10 0 CMPI,  C-LT LEVCORRUPT LABEL@ BCOND,            \ saved LOOPSP underflow
-   14 LOOP-STK-FRAMES MOVZ,  10 14 CMP,  C-GT LEVCORRUPT LABEL@ BCOND, \ saved LOOPSP past region
+   14 STACK-ABI:CATCH-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE LEVCORRUPT LABEL@ BCOND,
+   10 11 40 LDR,  14 STACK-ABI:RETURN-CELLS MOVZ,
+   10 14 CMP,  C-HI LEVCORRUPT LABEL@ BCOND,
+   10 11 48 LDR,  14 STACK-ABI:LOOP-FRAMES MOVZ,
+   10 14 CMP,  C-HI LEVCORRUPT LABEL@ BCOND,
+   14 11 STACK-ABI:CATCH-BASE LDR,  10 11 STACK-ABI:CATCH-CAP LDR,  12 11 8 LDR,
+   8 LEVCORRUPT LABEL@ STACK-GUARD:CHECK-CURSOR
    19 11 8 LDR,
+   14 DATA STACK-ABI:BASE-CELL STR,
+   10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
    10 11 40 LDR,  10 DATA RSP-CELL STR,               \ restore user return-stack depth
    10 11 48 LDR,  10 DATA LOOPSP-CELL STR,            \ restore loop-stack depth
    10 11 0 LDR,  10 DATA 8 STR,                       \ HND = prev
@@ -8543,10 +8557,16 @@ public
    LEVCORRUPT LABEL@ LBL,                              \ eval-cross forged/corrupt handler frame: fail closed before any restore
    0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
-   LEVCORRUPTMSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
+   LEVCORRUPTMSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES,
+   bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
 : EM-REPL-RECOVER ( -- )
+   LBL {: bounds:label :}
    LRREC LABEL@ LBL,
+   14 DATA STACK-ABI:REPL-BASE-CELL LDR,  10 DATA STACK-ABI:REPL-CAP-CELL LDR,
+   12 14 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
+   14 DATA STACK-ABI:BASE-CELL STR,
+   12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 2 MOVZ,  NR-WRITE SYS,
    TIER-PROV:ABANDON,
    CP DATA RSAVCP-CELL LDR,
@@ -8565,7 +8585,8 @@ public
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
-   LREAD LABEL@ B, ;
+   LREAD LABEL@ B,
+   bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
 \ Reject rc: an undefined word in a `:`-body is a rejected definition. Used both
 \ as the catchable throw code delivered to an enclosing catch and as the
@@ -8703,6 +8724,12 @@ public
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
 : EM-EVAL-CLEAN-EXIT ( -- )
+   LBL {: bounds:label :}
+   13 DATA EVAL-TOP-CELL LDR,
+   14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
+   12 XDS 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
+   14 DATA STACK-ABI:BASE-CELL STR,
+   12 13 STACK-ABI:EVAL-CAP LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
    14 DATA EVAL-TOP-CELL LDR,
    9 14 0 LDR,  9 DATA INP-CELL STR,
@@ -8714,11 +8741,15 @@ public
    15 USE-DEPTH-CELL LIT64,  15 DATA 15 ADD,  9 15 0 STR,
    9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
    9 14 24 LDR,  SP 9 0 ADDI,
-   9 14 16 LDR,  9 BR, ;
+   9 14 16 LDR,  9 BR,
+   bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
 : EM-REPL-READ ( -- )
    LREAD LABEL@ LBL,
+   0 0 STACK-GUARD:CHECK-DATA
    9 SP 0 ADDI,  9 DATA RSAVSP-CELL STR,
+   9 DATA STACK-ABI:BASE-CELL LDR,  9 DATA STACK-ABI:REPL-BASE-CELL STR,
+   9 DATA STACK-ABI:CAP-CELL LDR,  9 DATA STACK-ABI:REPL-CAP-CELL STR,
    CP DATA RSAVCP-CELL STR,
    NDICT DATA RSAVND-CELL STR,
    9 DATA DP-CELL LDR,  9 DATA RSAVDP-CELL STR,
@@ -9188,6 +9219,7 @@ variable SRCA
 package LABELS
 
 : CORE ( -- )
+   STACK-GUARD:LABELS
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !  LBL LIMGEND !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL PROT:LOPEN !  LBL PROT:LCLOSE !  LBL PROT:LGROW !  LBL PROT:LSPAN !  LBL PROT:LCF !
@@ -9281,6 +9313,7 @@ package LABELS
    LBL LPCELLEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
+   LBL LPSTACKABI !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !

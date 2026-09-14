@@ -974,6 +974,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/bytes.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-HABU-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/habu/stack-abi.f" BF-APPEND-SOURCE
    out outu s" src/habu/layout.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-ENV-BASE ( ptr u8 n -- ) {: out:ptr outu :}

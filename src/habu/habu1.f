@@ -91,7 +91,7 @@ variable FPL  variable FPE
    FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
    FP-EMIT  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 
-: FPRIM-L ( ptr u8 n [ -- ] -- )      \ LEAF prim: no BL/BLR in body -> no x30 frame
+: FPRIM-L ( ptr u8 n [ -- ] -- )      \ body preserves LR; stack guards frame their own BL
    FP-ARGS
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
@@ -410,12 +410,15 @@ public
    B G-POP  A G-POP  A A B MUL,  A G-PUSH ;
 
 : BDUP ( -- )
+   8 8 STACK-GUARD:CHECK-DATA
    A G-POP  A G-PUSH  A G-PUSH ;
 
 : BDROP ( -- )
+   8 0 STACK-GUARD:CHECK-DATA
    XDS XDS 8 SUBI, ;
 
 : BSWAP ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
    A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
 
 : BDOT ( -- )
@@ -1348,18 +1351,21 @@ variable SZA-I
 \ throw-recovery (LEVALREC), which rolls each escaped frame back, records the
 \ code in EVALERR-CELL, and delivers to the nearest handler / REPL / process exit.
 : B-EVAL ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
    B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   SP SP EVAL-FRAME-SIZE SUBI,
+   SP SP STACK-ABI:EVAL-BYTES SUBI,
    14 SP 0 ADDI,
    11 DATA EVAL-TOP-CELL LDR,  11 14 EVAL-PREV STR,
    14 DATA EVAL-TOP-CELL STR,
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    30 14 16 STR,                                     \ leaf prim: x30 = caller return
-   11 SP EVAL-FRAME-SIZE ADDI,  11 14 24 STR,
+   11 SP STACK-ABI:EVAL-BYTES ADDI,  11 14 24 STR,
    XDS 14 32 STR,  CP 14 40 STR,  NDICT 14 48 STR,
    11 DATA DP-CELL LDR,  11 14 56 STR,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 14 STACK-ABI:EVAL-BASE STR,
+   11 DATA STACK-ABI:CAP-CELL LDR,  11 14 STACK-ABI:EVAL-CAP STR,
    \ Snapshot package/search state alongside the input and caller frame.
    12 14 EVAL-PKG ADDI,
    11 DATA CUR-CELL LDR,        11 12 PKGSNAP-CUR STR,
@@ -1390,11 +1396,12 @@ variable SZA-I
    13 32 MOVZ,  G-EMITC ;
 
 : B.S ( -- )
+   0 0 STACK-GUARD:CHECK-DATA
    LBL PS-LOOP !
    LBL PS-DONE !
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
    PS-LOOP LABEL@ LBL,
-      9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-GE PS-DONE LABEL@ BCOND,
+      9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-CS PS-DONE LABEL@ BCOND,
       9 9 0 LDR,  G-PRINT9
       9 DATA SSCR-CELL LDR,  9 9 8 ADDI,  9 DATA SSCR-CELL STR,
       PS-LOOP LABEL@ B,
@@ -1486,35 +1493,46 @@ variable SZA-I
    B G-POP A G-POP  A B CMP,  C-GE PRIM-DONE LABEL@ BCOND,  A B 0 ADDI,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;
 
 : BNIP ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
    A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
 
 : BOVER ( -- )
+   16 8 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
 
 : BTUCK ( -- )
+   16 8 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  B G-PUSH A G-PUSH B G-PUSH ;
 
 : BROT ( -- )
+   24 0 STACK-GUARD:CHECK-DATA
    C G-POP B G-POP A G-POP  B G-PUSH C G-PUSH A G-PUSH ;
 
 : BMROT ( -- )
+   24 0 STACK-GUARD:CHECK-DATA
    C G-POP B G-POP A G-POP  C G-PUSH A G-PUSH B G-PUSH ;
 
 : B2DUP ( -- )
+   16 16 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH B G-PUSH ;
 
 : B2DROP ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
    XDS XDS 16 SUBI, ;
 
 : B2SWAP ( -- )
+   32 0 STACK-GUARD:CHECK-DATA
    EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
 : B2OVER ( -- )
+   32 16 STACK-GUARD:CHECK-DATA
    EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
 : BQDUP ( -- )
    LBL PRIM-DONE !
-   A G-POP  A G-PUSH  A PRIM-DONE LABEL@ CBZ,  A G-PUSH  PRIM-DONE LABEL@ LBL, ;
+   8 0 STACK-GUARD:CHECK-DATA
+   14 XDS 8 SUBI,  A 14 0 LDR,
+   A PRIM-DONE LABEL@ CBZ,  A G-PUSH  PRIM-DONE LABEL@ LBL, ;
 
 : BFETCH ( -- )
    A G-POP  A A 0 LDR,  A G-PUSH ;
@@ -1567,6 +1585,7 @@ variable SZA-I
 
 : RSTK-PUSH ( n -- )
    RSTK-REG !
+   0 1 STACK-GUARD:CHECK-RETURN
    14 DATA RSP-CELL LDR,
    15 14 3 LSLI,  15 DATA 15 ADD,
    RSTK-REG @ 15 RSTK-OFF STR,
@@ -1574,6 +1593,7 @@ variable SZA-I
 
 : RSTK-POP ( n -- )
    RSTK-REG !
+   1 0 STACK-GUARD:CHECK-RETURN
    14 DATA RSP-CELL LDR,
    14 14 1 SUBI,
    15 14 3 LSLI,  15 DATA 15 ADD,
@@ -1581,12 +1601,18 @@ variable SZA-I
    14 DATA RSP-CELL STR, ;
 
 : B2TOR ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
+   0 2 STACK-GUARD:CHECK-RETURN
    B G-POP A G-POP  A RSTK-PUSH  B RSTK-PUSH ;
 
 : B2RFROM ( -- )
+   2 0 STACK-GUARD:CHECK-RETURN
+   0 16 STACK-GUARD:CHECK-DATA
    B RSTK-POP  A RSTK-POP  A G-PUSH  B G-PUSH ;
 
 : B2RFETCH ( -- )
+   2 0 STACK-GUARD:CHECK-RETURN
+   0 16 STACK-GUARD:CHECK-DATA
    B RSTK-POP  A RSTK-POP  A RSTK-PUSH  B RSTK-PUSH  A G-PUSH  B G-PUSH ;
 
 : BHERE ( -- )
@@ -1912,6 +1938,7 @@ variable SZA-I
    DBASE 0 TASK-ABI:DBASE-OFF LDR,
    NDICT 0 TASK-ABI:NDICT-OFF LDR,
    CP 0 TASK-ABI:CP-OFF LDR,
+   0 0 STACK-GUARD:CHECK-DATA
    0 DATA TASK-TCB-CELL STR,
    10 TASK-ABI:RUNNING MOVZ, 10 0 TASK-ABI:STATUS-OFF STR,
    9 BLR,
@@ -2440,42 +2467,71 @@ public
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
+\ The current engine owns this entry; compiler consumers must query it anew.
+\ The helper takes x16=bytes below XDS and x17=bytes above XDS. Its caller
+\ frames x16/x17/LR as STACK-GUARD:CHECK-DATA does; the helper preserves all
+\ other GPRs and NZCV, touches no FP register, and exits on an invalid envelope.
+: BSTACKDATAENTRY ( -- )
+   9 STACK-GUARD:DATA-ENTRY ADR,  9 G-PUSH ;
+
 : BEXEC ( -- )
    A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 \ run-in-stack ( xt base size -- ) : run xt on a fresh data stack (x19=base,
-\ full-ascending). Proves per-task data stacks for the threads work. size is the
-\ buffer capacity (caller's guarantee of headroom); x20/region unchanged here.
+\ full-ascending). The supplied extent becomes active allocation authority,
+\ saved alongside XDS so normal return and nonlocal unwind restore the caller.
 : BRUNSTACK ( -- )
-   C G-POP B G-POP A G-POP                        \ x11=size(unused) x10=base x9=xt
-   SP SP 16 SUBI,  30 SP 0 STR,  19 SP 8 STR,     \ save lr + caller XDS(x19)
-   19 10 0 ADDI,                                  \ x19 = base
-   9 BLR,                                         \ run the xt on the fresh stack
-   19 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI, ;   \ restore XDS + lr
+   LBL LBL {: bad:label done:label :}
+   24 0 STACK-GUARD:CHECK-DATA
+   12 XDS 24 SUBI,
+   9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
+   10 11 0 ADDI,  12 14 0 ADDI,
+   0 bad STACK-GUARD:CHECK-CURSOR
+   XDS XDS 24 SUBI,
+   SP SP 32 SUBI,  30 SP 0 STR,  XDS SP 8 STR,
+   12 DATA STACK-ABI:BASE-CELL LDR,  12 SP 16 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 24 STR,
+   14 DATA STACK-ABI:BASE-CELL STR,  11 DATA STACK-ABI:CAP-CELL STR,
+   XDS 14 0 ADDI,
+   9 BLR,
+   14 SP 16 LDR,  10 SP 24 LDR,  12 SP 8 LDR,
+   0 bad STACK-GUARD:CHECK-CURSOR
+   14 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 24 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   done B,
+   bad LBL,  STACK-GUARD:EXIT-BOUNDS
+   done LBL, ;
 
 \ catch ( xt -- exc ): a HNDF-SIZE handler frame chained through HND-CELL saves the
 \ COMPLETE caller execution frame so a caught throw resumes it (dot
 \ habu-restore-complete-exec-abb8baca). Frame: 0 prev-HND | 8 data-sp(x19) |
 \ 16 machine-sp | 24 resume-pc | 32 link | 40 saved-RSP | 48 saved-LOOPSP |
-\ 56 sentinel. BTHROW / EM-EVAL-THROW-RECOVER restore all of it; keep in step with
+\ 56 sentinel | 64 saved base | 72 saved capacity. BTHROW /
+\ EM-EVAL-THROW-RECOVER restore all of it; keep in step with
 \ the bootstrap/cg/forth.fs mirror.
 : BCATCH ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
+   0 0 STACK-GUARD:CHECK-RETURN
+   0 0 STACK-GUARD:CHECK-LOOP
    A G-POP
-   SP SP HNDF-SIZE SUBI,
+   SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
    19 SP 8 STR,
-   13 SP HNDF-SIZE ADDI,  13 SP 16 STR,
+   13 SP STACK-ABI:CATCH-BYTES ADDI,  13 SP 16 STR,
    12 CATCH-RES LABEL@ ADR,  12 SP 24 STR,
    11 DATA RSP-CELL LDR,     11 SP 40 STR,   \ save user return-stack depth
    11 DATA LOOPSP-CELL LDR,  11 SP 48 STR,   \ save loop-stack depth
-   11 CATCH-FRAME-MAGIC LIT64,  11 SP 56 STR, \ frame sentinel
+   11 STACK-ABI:CATCH-MAGIC LIT64,  11 SP 56 STR,
+   11 DATA STACK-ABI:BASE-CELL LDR,  11 SP STACK-ABI:CATCH-BASE STR,
+   11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
    14 SP 0 ADDI,  14 DATA 8 STR,
    9 BLR,
+   0 8 STACK-GUARD:CHECK-DATA
    11 SP 0 LDR,  11 DATA 8 STR,
-   30 SP 32 LDR,  SP SP HNDF-SIZE ADDI,
+   30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
    CATCH-RES LABEL@ LBL,
    CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
@@ -2497,13 +2553,17 @@ public
    9 15 0 ADDI,                                        \ x9 = code
    11 THROW-NOH LABEL@ CBZ,
    \ handler-frame integrity: check sentinel + saved depths BEFORE any restore store
-   14 CATCH-FRAME-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE THROW-CORRUPT LABEL@ BCOND,   \ forged/adjacent-mutated frame
-   10 11 40 LDR,  10 0 CMPI,  C-LT THROW-CORRUPT LABEL@ BCOND,            \ saved RSP underflow
-   14 RSTK-CELLS MOVZ,  10 14 CMP,  C-GT THROW-CORRUPT LABEL@ BCOND,      \ saved RSP past region
-   10 11 48 LDR,  10 0 CMPI,  C-LT THROW-CORRUPT LABEL@ BCOND,            \ saved LOOPSP underflow
-   14 LOOP-STK-FRAMES MOVZ,  10 14 CMP,  C-GT THROW-CORRUPT LABEL@ BCOND, \ saved LOOPSP past region
+   14 STACK-ABI:CATCH-MAGIC LIT64,  10 11 56 LDR,  10 14 CMP,  C-NE THROW-CORRUPT LABEL@ BCOND,
+   10 11 40 LDR,  14 STACK-ABI:RETURN-CELLS MOVZ,
+   10 14 CMP,  C-HI THROW-CORRUPT LABEL@ BCOND,
+   10 11 48 LDR,  14 STACK-ABI:LOOP-FRAMES MOVZ,
+   10 14 CMP,  C-HI THROW-CORRUPT LABEL@ BCOND,
+   14 11 STACK-ABI:CATCH-BASE LDR,  10 11 STACK-ABI:CATCH-CAP LDR,  12 11 8 LDR,
+   8 THROW-CORRUPT LABEL@ STACK-GUARD:CHECK-CURSOR
    \ restore the complete caller execution frame
    19 11 8 LDR,
+   14 DATA STACK-ABI:BASE-CELL STR,
+   10 11 STACK-ABI:CATCH-CAP LDR,  10 DATA STACK-ABI:CAP-CELL STR,
    10 11 40 LDR,  10 DATA RSP-CELL STR,               \ restore user return-stack depth
    10 11 48 LDR,  10 DATA LOOPSP-CELL STR,            \ restore loop-stack depth
    10 11 0 LDR,  10 DATA 8 STR,                       \ HND = prev
@@ -3121,6 +3181,7 @@ package ENGINE-EMIT
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
+   s" stack-data-entry" ['] BSTACKDATAENTRY FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-F
    1 GD-MIN !
@@ -3196,7 +3257,18 @@ package ENGINE-EMIT
 
 package ENGINE-EMIT
 
+: EMIT-STACK-GUARDS ( -- )
+   s" (STACK-DATA)" STACK-GUARD:EMIT-DATA
+   LABEL>N swap LABEL>N swap ENGINE-HELPER:REGISTER
+   s" (STACK-RETURN)"
+   RSP-CELL STACK-ABI:RETURN-CELLS STACK-GUARD:RETURN-ENTRY STACK-GUARD:EMIT-FIXED
+   LABEL>N swap LABEL>N swap ENGINE-HELPER:REGISTER
+   s" (STACK-LOOP)"
+   LOOPSP-CELL STACK-ABI:LOOP-FRAMES STACK-GUARD:LOOP-ENTRY STACK-GUARD:EMIT-FIXED
+   LABEL>N swap LABEL>N swap ENGINE-HELPER:REGISTER ;
+
 : EMIT-PRIMS ( -- )
+   EMIT-STACK-GUARDS
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS

@@ -6898,6 +6898,7 @@ PRIM: prof-on       PE-N PE-IN PRIM;
 PRIM: prof-report   PRIM;
 
 PRIM: rbase          PE-N PE-OUT PRIM;
+PRIM: stack-data-entry PE-N PE-OUT PRIM;
 PRIM: cp@            PE-N PE-OUT PRIM;
 PRIM: cp!            PE-N PE-IN PRIM;
 PRIM: dbase@         PE-N PE-OUT PRIM;

@@ -20,6 +20,7 @@
 require lib/fs.f
 require lib/codesign.f
 require src/habu/address-cells.f
+require src/habu/stack-abi.f
 
 package SNAP
 
@@ -191,6 +192,9 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 
 : SND-ZERO-LIVE ( -- )
    RBASE-CELL SND-ZERO-CELL   S0-CELL SND-ZERO-CELL
+   STACK-ABI:CAP-CELL SND-ZERO-CELL
+   STACK-ABI:REPL-BASE-CELL SND-ZERO-CELL
+   STACK-ABI:REPL-CAP-CELL SND-ZERO-CELL
    ARGC-CELL SND-ZERO-CELL    ARGV-CELL SND-ZERO-CELL
    ENVP-CELL SND-ZERO-CELL    SNAP-CELL SND-ZERO-CELL
    HND-CELL SND-ZERO-CELL     PEND-CELL SND-ZERO-CELL

@@ -75,6 +75,7 @@ SRC_COMMON=(
   src/arch/arm64/mnem.f
   "$OS_LAYOUT"
   "$OS_SYS"
+  src/habu/stack-abi.f
   src/habu/layout.f
   src/os/env-base.f
   src/core/include.f

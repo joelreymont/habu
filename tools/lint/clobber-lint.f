@@ -200,7 +200,8 @@ variable RX  variable RACC
 \ clobbers x30. Any other `:CALL` shape, or a call whose operands do not resolve
 \ to registers, fails closed via E-CLOBBER-WRAP-UNRESOLVED. C-FIND-GLOBAL is
 \ also modeled: its literal label/count arguments feed LFIND and its returned
-\ registers follow that helper's ABI.
+\ registers follow that helper's ABI. The three exact STACK-GUARD check
+\ wrappers instead preserve every GPR and LR around their internal BL.
 package CLOBBER-WRAP
 
 0 12 CL-ADD 13 CL-ADD constant GUARD-BODY   \ registers the LPROTSPAN body clobbers
@@ -212,13 +213,20 @@ public
 
 : GLOBAL-FIND? ( ptr u8 n -- bool ) s" C-FIND-GLOBAL" LINT-STR= ;
 
+: STACK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" STACK-GUARD:CHECK-DATA" LINT-STR= if LINT-TRUE exit then
+   a u s" STACK-GUARD:CHECK-RETURN" LINT-STR= if LINT-TRUE exit then
+   a u s" STACK-GUARD:CHECK-LOOP" LINT-STR= ;
+
 
 : WRAP?  ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ shape of a wrapped emitter call
    a u GLOBAL-FIND? if LINT-TRUE exit then
+   a u STACK? if LINT-TRUE exit then
    u 6 < if LINT-FALSE exit then
    a u s" :CALL" LINT-SUFFIX? ;
 
 : MASK  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ clobbered registers
+   a u STACK? if 0 exit then
    \ C-FIND-GLOBAL loads a literal name, calls LFIND, then restores package
    \ state through x14. Its successful path preserves x0/x1 and clobbers
    \ x2..x17 and x30. A missing name exits the process.
@@ -232,11 +240,17 @@ public
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
+   a u STACK? if
+      0 20 CL-ADD 31 CL-ADD
+      a u s" STACK-GUARD:CHECK-DATA" LINT-STR= if 19 CL-ADD then
+      exit
+   then
    a u GLOBAL-FIND? if 0 exit then
    a u PROT? if 0 addr CL-ADD len CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : RETURNS  ( ptr u8 n -- n ) {: a:ptr u:n :}   \ registers the call redefines
+   a u STACK? if 0 exit then
    a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u PROT? if GUARD-ABI exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
@@ -454,6 +468,9 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    \ The global lookup's arguments are an emitter label and byte count, not
    \ target registers. No caller register is read to construct its arguments.
    DI @ TOK CLOBBER-WRAP:GLOBAL-FIND? if 0 0 exit then
+   \ Stack distances are emitter values, not runtime register numbers. The
+   \ wrapper's fixed ABI saves every scratch register, flags, and LR itself.
+   DI @ TOK CLOBBER-WRAP:STACK? if 0 0 exit then
    DI @ OPLO @ - 2 < if E-CLOBBER-WRAP-UNRESOLVED throw then
    DI @ 2 - TOK REG-OF  DI @ 1 - TOK REG-OF
    2dup 0 < swap 0 < or if E-CLOBBER-WRAP-UNRESOLVED throw then ;
@@ -701,12 +718,13 @@ variable TRACK-LR
 
 \ Modeled wrapped emitter call at token DI: its argument registers are read
 \ first, then its move+guard clobbers poison any live value, its emitted branch
-\ poisons the link register, and its ABI-return registers (x10/x11) are redefined.
+\ poisons the link register unless the wrapper saves it, and its ABI-return
+\ registers (x10/x11 for PROT-GUARD) are redefined.
 : APPLY-WRAP  ( ptr u8 n -- ) {: fa:ptr fu:n :}
    fa fu WRAP-READS NOTE-READS
    DI @ TOK C-ENSURE CALIDX !
    WRAP-MASK CALIDX @ POISON-DIRTY
-   CALIDX @ POISON-LINK-REGISTER
+   DI @ TOK CLOBBER-WRAP:STACK? 0= if CALIDX @ POISON-LINK-REGISTER then
    DI @ TOK CLOBBER-WRAP:RETURNS APPLY-RETURNS ;
 
 : PASS2-DEF  {: fa fu lo hi :}  ( -- )

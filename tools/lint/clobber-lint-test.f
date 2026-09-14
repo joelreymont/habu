@@ -72,6 +72,17 @@ require tools/lint/clobber-lint.f
    [: s" FFI-GUARD:CALL" CLOBBER-WRAP:RETURNS drop ;] catch
       E-CLOBBER-WRAP-UNRESOLVED = CLT-ASSERT ;
 
+: CLT-STACK-CALLS ( -- )
+   0 PARENS? !  0 CN# !  0 CEND !  0 EN# !  CLOBBER-CENSUS:RESET
+   s" tools/lint/clobber-stack-fixture.f" PASS1-FILE
+   CLOSE-CLOBBERS
+   0 BAD !
+   s" tools/lint/clobber-stack-fixture.f" PASS2-FILE
+   BAD @ 0= CLT-ASSERT
+   CLOBBER-CENSUS:COUNTS {: routines:n calls:n :}
+   routines 1 = CLT-ASSERT
+   calls 3 = CLT-ASSERT ;
+
 CLT-SYS-CLOBBERS-X8
 CLT-CURRENT-SYNTAX-CENSUS
 CLT-LABEL-ACCESSORS
@@ -79,4 +90,5 @@ CLT-MACHINE-CONTRACTS
 CLT-WRAP-CONTRACTS
 CLT-WRAP-UNMODELED
 CLT-WRAPPED-CALLS
+CLT-STACK-CALLS
 s" clobber-lint-test: ok" type NL

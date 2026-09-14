@@ -24,6 +24,7 @@ package NATIVE-RUNTIME
 ' PROVIDE-TARGET
 ;package
 execute
+s" src/habu/stack-abi.f" provided
 s" src/habu/layout.f" provided
 s" src/core/pointer-storage.f" provided
 s" src/core/engine-error.f" provided
