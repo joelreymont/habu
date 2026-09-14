@@ -2,7 +2,16 @@
 
 require src/habu/address-cells.f
 require lib/test.f
+
+\ A baked compiler must publish its source closure before a caller requires it.
+T-RESET
+s" src/compiler/native/compiler.f" ENGINE-PROVIDES? TTRUE
+s" src/compiler/ir/id.f" ENGINE-PROVIDES? TTRUE
+ndict@
 require src/compiler/native/compiler.f
+require src/compiler/ir/id.f
+require src/compiler/native/compiler.f
+ndict@ T=
 
 package NDEFER-TEST
 
@@ -143,7 +152,6 @@ variable HIT
 public
 
 : RUN ( -- )
-   T-RESET
    BIND-CASE
    DECLARED-CASE
    REFUSE-CASE
