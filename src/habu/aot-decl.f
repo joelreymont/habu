@@ -107,7 +107,11 @@ public
 package AOT-BUF
 public
 
-$300000 constant AOT-BLOB-CAP     \ 3 MiB: the 2.15 MiB full runtime with room to grow
+\ A capture must hold any code window admitted by the fixed runtime region.
+\ The fully guarded core measured 7,159,360 bytes; the old 3 MiB image limit
+\ rejected it after compilation. Reuse the code budget, keeping capture and
+\ file/merge bounds checks and the independent aggregate section budget.
+CODE-BAND:BYTES constant AOT-BLOB-CAP
 \ Capture storage belongs to the build, not the target DATA heap. A host and a
 \ later source-bound writer can both be live without consuming two heap-sized
 \ sets of buffers. The existing transient registry owns these mappings.
@@ -138,9 +142,10 @@ variable AOT-REC-N
 12 constant SITE-ROW
 $FFFFFFFE constant WID-QUAL
 
-\ 32768 call sites: the metabuild window carries one BL site per 83 blob bytes,
-\ so the chain's 1.15 MiB projects to ~14k sites.
-32768 constant AOT-SITE-MAX
+\ The guarded core captures 124,137 call rows. Add 25% headroom and round up
+\ to 32,768-row units: 163,840 rows, a fixed 1,966,080-byte table. Guards add
+\ calls at entries and transfers; the old 32,768-row budget no longer fits.
+$28000 constant AOT-SITE-MAX
 create AOT-SITE-BUF AOT-SITE-MAX SITE-ROW * allot    variable AOT-SITE-N   \ packed rows: blob-off u32 + name-off u32 + callee scope u32
 \ THE ONE DYNAMIC BUFFER THE CAPTURE'S WALK NEVER SEES, AND IT IS STRUCTURE THAT
 \ EXEMPTS IT RATHER THAN A LIST. The pool grows to its used size because its cap is
