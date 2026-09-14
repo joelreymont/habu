@@ -19,10 +19,8 @@ require lib/process-env.f
 require lib/codesign.f
 require lib/test/outcome.f
 require src/habu/verify-source.f
-require tools/build-fixpoint.f
 
 package VERIFY-PRIM-TEST
-using BUILD-FIXPOINT
 
 $2000 constant DIAG-MAX
 $22 constant QUOTE-C
@@ -364,14 +362,12 @@ $1000 constant CORPUS-MAX
 create NATIVE-PATH FS-PATH-CAP allot
 create VERIFY-PATH FS-PATH-CAP allot
 create DRIVER-PATH FS-PATH-CAP allot
-create COLD-PATH FS-PATH-CAP allot
 create ROOT-PATH FS-PATH-CAP allot
 create CORPUS-A CORPUS-MAX allot
 create CORPUS-B CORPUS-MAX allot
 variable NATIVE-U
 variable VERIFY-U
 variable DRIVER-U
-variable COLD-U
 variable ROOT-U
 
 : CHILD-CAP ( -- len ) CHILD-MAX >LEN ;
@@ -413,10 +409,10 @@ variable ROOT-U
 : RUN-COLD-CHILD ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n )
    {: path:ptr pathu:len out:ptr outcap:len err:ptr errcap:len timeout:ms :}
    PROC-ARGV-RESET
-   s" --build" >LEN PROC-ARGV+
-   path pathu PROC-ARGV+
+   s" --load" >LEN PROC-ARGV+
+   s" test/native-window-owner-child.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
-   ROOT-PATH ROOT-U @ >LEN PROC-ARGV+
+   path pathu PROC-ARGV+
    s" bin/hb" >LEN out outcap err errcap timeout RUN-ARGV-CAPTURE
    CAPTURE> ;
 
@@ -490,11 +486,9 @@ variable ROOT-U
    root rootu s" native.f" NATIVE-PATH JOIN-PATH NATIVE-U !
    root rootu s" verify.f" VERIFY-PATH JOIN-PATH VERIFY-U !
    root rootu s" driver.f" DRIVER-PATH JOIN-PATH DRIVER-U !
-   root rootu s" cold.f" COLD-PATH JOIN-PATH COLD-U !
    NATIVE-PATH NATIVE-U @ CLEANUP+
    VERIFY-PATH VERIFY-U @ CLEANUP+
-   DRIVER-PATH DRIVER-U @ CLEANUP+
-   COLD-PATH COLD-U @ CLEANUP+ ;
+   DRIVER-PATH DRIVER-U @ CLEANUP+ ;
 
 : WRITE-CORPUS ( -- )
    BUILD-CORPUS
@@ -521,32 +515,9 @@ variable ROOT-U
    VERIFY-PATH VERIFY-U @ >LEN BUILD-VERIFY-DRIVER
    DRIVER-PATH DRIVER-U @ BUILD$ WRITE-ALL ;
 
-\ THE COLD PAYLOAD ASSEMBLES ITS OWN PRELUDE, and the reason is this fixture's
-\ whole subject. The corpus declares checker primitive rows at top level, which
-\ is what the engine's own cold prefix does - and there `PRIM:` is still an
-\ ordinary word, because src/core/internal-mark.f classifies the prefix only at
-\ its very end. A PRODUCTION payload is past that point: it rewinds to the
-\ core-prefix mark and inherits the host's classified `PRIM:`, so an interpreted
-\ row fails closed with `hb: internal engine word: PRIM:` and rc 70. That
-\ narrowing is intended and production keeps exactly one rewind shape.
-\
-\ So this reaches for the OTHER rewind src/habu/hide.f still carries for the
-\ recovery mirror: truncate to util.f's first record and re-read the whole boot
-\ prefix, which is the deliberately cold, unmarked shape this differential is a
-\ differential OF. Both words are production's - the builder's own boot-prefix
-\ assembly and the recovery host's own rewind - so nothing here is a stand-in.
-: WRITE-COLD-PAYLOAD ( -- )
-   s" cold.f" BF-RESET-OUT
-   s" cold.f" s" src/habu/hide.f" BF-APPEND-SOURCE
-   s" cold.f" s" BFR-CHECK-OFF" BF-APPEND-LINE
-   s" cold.f" s" BFR-USIGS-RESET" BF-APPEND-LINE
-   s" cold.f" S\" s\" IMK-NDICT0\" s\" SEQ\" BFR-HIDE-DICT-FROM-EARLIEST" BF-APPEND-LINE
-   s" cold.f" BF-APPEND-BOOT-PREFIX
-   s" cold.f" s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE
-   s" cold.f" NATIVE-PATH NATIVE-U @ BF-APPEND-SOURCE
-   \ The corpus exercises cold primitive declarations, with no engine emitter
-   \ or driver. Its complete checker prefix is the only runtime it needs.
-   s" cold.f" COMPILER-BUILD:SEAL ;
+\ The native-build handoff fixture supplies a fresh, unsealed checker prefix.
+\ PRIM rows are legal at that bootstrap boundary. Reuse its complete owner
+\ reset instead of truncating one obsolete signature cursor in a warm checker.
 
 : EXPECT-CHILD-OK ( ptr u8 len -- )
    CHILD-OUT CHILD-CAP CHILD-ERR CHILD-CAP CHILD-TIMEOUT RUN-CHILD
@@ -559,7 +530,7 @@ variable ROOT-U
    CHILD-OUT CHILD-CAP CHILD-ERR CHILD-CAP CHILD-TIMEOUT RUN-COLD-CHILD
    {: outn:len errn:len code:n :}
    code 0 T=
-   CHILD-OUT outn LEN>N s" " T$=
+   CHILD-OUT outn LEN>N S\" window: 0\n" T$=
    CHILD-ERR errn LEN>N s" " T$= ;
 
 : PRODUCTION-DIFFERENTIAL ( -- )
@@ -568,12 +539,10 @@ variable ROOT-U
    s" habu-verify-prim-diff" TMPDIR-MKDIR {: root:ptr rootu:n :}
    root rootu CLEANUP-DIR+
    root rootu DIFFERENTIAL-PATHS
-   root rootu BF-TMP!
    WRITE-CORPUS
    PROVE-CORPUS-BYTES
    WRITE-VERIFY-DRIVER
-   WRITE-COLD-PAYLOAD
-   COLD-PATH COLD-U @ >LEN EXPECT-COLD-OK
+   NATIVE-PATH NATIVE-U @ >LEN EXPECT-COLD-OK
    DRIVER-PATH DRIVER-U @ >LEN EXPECT-CHILD-OK
    CLEANUP-RUN ;
 
