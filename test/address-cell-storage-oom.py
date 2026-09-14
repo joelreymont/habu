@@ -20,7 +20,7 @@ try:
     resource.prlimit(child.pid, resource.RLIMIT_AS, (size_kib * 1024,) * 2)
     out, err = child.communicate("x", timeout=30)
     assert child.returncode == 96, (child.returncode, out, err)
-    assert out == "", repr(out)
+    assert out == "address-cell-oom: duplicate-ok\n", repr(out)
     assert err == "hb: address-cell storage allocation failed\n", repr(err)
 finally:
     if child.poll() is None:

@@ -159,21 +159,29 @@ private
    fresh data-base - HEADER BASE-FIELD + !
    0 HEADER MODE-FIELD + ! ;
 
+: KEEP-LOCKED ( n -- )
+   INDEX-RELEASE dup KEEP-STORAGE KEEP-ROWS ;
+
+\ allot and protected memory sinks can throw through an active evaluator.
+\ Cleanup must release the mutex before such a caller resumes after catch.
+: WITH-LOCK ( R [ R -- S ] -- S )
+   LOCK [: UNLOCK ;] finally ;
+
 public
 
 \ Native-build owns the explicit lifetime cut through its retired source heap.
 \ Preserve registration order and invalidate even when the count is unchanged.
-: KEEP-BELOW ( n -- ) {: floor:n :}
+: KEEP-BELOW ( n -- )
    CURRENT? if
-      LOCK INDEX-RELEASE floor KEEP-STORAGE floor KEEP-ROWS UNLOCK
-   else floor KEEP-ROWS then ;
+      [: KEEP-LOCKED ;] WITH-LOCK
+   else KEEP-ROWS then ;
 
 \ Called outside the registrar, before snapshot DATA length is frozen. DATA
 \ allocation inside ptr-cell-mark would split `here ptr-cell-mark 0 ,`.
 \ An already DATA-backed vector still releases its process-owned index.
 : PERSIST ( -- )
    CURRENT? 0= if exit then
-   LOCK INDEX-RELEASE PERSIST-ROWS UNLOCK ;
+   [: INDEX-RELEASE PERSIST-ROWS ;] WITH-LOCK ;
 
 \ Strict v9 reader for a complete snapshot DATA copy. Legacy admission is a
 \ separate caller decision; malformed v9 headers never take that branch.

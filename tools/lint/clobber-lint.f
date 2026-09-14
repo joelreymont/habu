@@ -167,6 +167,10 @@ variable RX  variable RACC
    a u s" Lp2cwat" LINT-STR=CI if 0 10 CL-ADD 11 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
+   \ Every registrar entry saves/restores x0..x17 around its emitted helpers.
+   a u s" Lmark" LINT-STR=CI if $3FFFF exit then
+   a u s" Lptrmark" LINT-STR=CI if $3FFFF exit then
+   a u s" Lindexrelease" LINT-STR=CI if $3FFFF exit then
    a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
    a u s" Lvpushr" LINT-STR=CI if 0 14 CL-ADD exit then
    a u s" Lvforcek" LINT-STR=CI if 0 5 CL-ADD exit then
@@ -240,7 +244,16 @@ public
 ;package
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" mark-save" LINT-STR=CI if LINT-TRUE exit then
+   a u s" mark-restore" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-header" LINT-STR=CI if LINT-TRUE exit then
+   a u s" mark-lock" LINT-STR=CI if LINT-TRUE exit then
+   a u s" mark-unlock" LINT-STR=CI if LINT-TRUE exit then
+   a u s" mark-rows" LINT-STR=CI if LINT-TRUE exit then
+   a u s" index-shape" LINT-STR=CI if LINT-TRUE exit then
+   a u s" index-probe" LINT-STR=CI if LINT-TRUE exit then
+   a u s" index-build" LINT-STR=CI if LINT-TRUE exit then
+   a u s" mark-commit-index" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-print9" LINT-STR=CI if LINT-TRUE exit then
@@ -308,9 +321,31 @@ variable RK
 : ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
+   \ These inline registrar helpers use a fixed machine-register ABI.
+   a u s" mark-save" LINT-STR=CI if
+      $3FFFF 31 CL-ADD CL-ROR 0 31 CL-ADD CL-WOR exit then
+   a u s" mark-restore" LINT-STR=CI if
+      0 31 CL-ADD CL-ROR $3FFFF 31 CL-ADD CL-WOR exit then
    \ SNAP-RELOC:MARK-HEADER materializes the fixed image base in x16 and
    \ its address-table header in x4. Neither depends on a caller register.
    a u s" mark-header" LINT-STR=CI if 0 4 CL-ADD 16 CL-ADD CL-WOR exit then
+   a u s" mark-lock" LINT-STR=CI if
+      0 16 CL-ADD CL-ROR 0 6 CL-ADD 7 CL-ADD 17 CL-ADD CL-WOR exit then
+   a u s" mark-unlock" LINT-STR=CI if
+      0 16 CL-ADD CL-ROR 0 6 CL-ADD 17 CL-ADD CL-WOR exit then
+   a u s" mark-rows" LINT-STR=CI if
+      0 4 CL-ADD 16 CL-ADD CL-ROR 0 5 CL-ADD 11 CL-ADD CL-WOR exit then
+   a u s" index-shape" LINT-STR=CI if
+      0 8 CL-ADD CL-ROR 0 6 CL-ADD 7 CL-ADD 10 CL-ADD CL-WOR exit then
+   a u s" index-probe" LINT-STR=CI if
+      0 5 CL-ADD 8 CL-ADD 10 CL-ADD 12 CL-ADD 13 CL-ADD CL-ROR
+      0 6 CL-ADD 7 CL-ADD 9 CL-ADD 11 CL-ADD 14 CL-ADD 17 CL-ADD CL-WOR exit then
+   a u s" index-build" LINT-STR=CI if
+      0 8 CL-ADD 12 CL-ADD 13 CL-ADD 31 CL-ADD CL-ROR
+      $1FFF 14 CL-ADD 16 CL-ADD 17 CL-ADD CL-WOR exit then
+   a u s" mark-commit-index" LINT-STR=CI if
+      0 4 CL-ADD 13 CL-ADD 16 CL-ADD 31 CL-ADD CL-ROR
+      0 7 CL-ADD 8 CL-ADD 11 CL-ADD 13 CL-ADD CL-WOR exit then
    a u s" g-push" LINT-STR=CI if 0 ER 19 ER 19 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW 19 ER 19 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
