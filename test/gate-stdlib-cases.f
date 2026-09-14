@@ -404,6 +404,10 @@ SUITE compiler-native-loop
    test/compiler/native-loop.f
 ;SUITE
 
+SUITE compiler-jit-plusloop
+   test/compiler/jit-plusloop.f
+;SUITE
+
 SUITE compiler-native-edge-permutation
    test/compiler/native-edge-permutation.f
 ;SUITE

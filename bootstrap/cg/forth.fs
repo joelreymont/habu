@@ -2989,9 +2989,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 $5400000B LIT64,  9 9 10 ORR,  LCEMIT @ BL,       \ b.lt loop-top
    J-LOOPEND ;
 
-: J-+LOOP ( -- )                   \ index += n; loop while (old-limit) and
+: J-+LOOP ( -- )                   \ cross the limit boundary in the step's direction
    J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
-   $D1002273 C-EMITW  $F9400269 C-EMITW  \ (new-limit) agree in sign (ANS crossing)
+   $D1002273 C-EMITW  $F9400269 C-EMITW  \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
    4181722506 C-EMITW                    \ ldr x10,[x12,#8]   limit
@@ -2999,7 +2999,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $8B0901AD C-EMITW                     \ add x13,x13,x9
    $F900018D C-EMITW                     \ str x13,[x12]
    $CB0A01B0 C-EMITW                     \ sub x16,x13,x10    new
-   $CA1001EF C-EMITW                     \ eor x15,x15,x16
+   $CA1001F0 C-EMITW                     \ eor x16,x15,x16   old xor new
+   $CA0901EF C-EMITW                     \ eor x15,x15,x9    old xor step
+   $8A1001EF C-EMITW                     \ and x15,x15,x16   directed boundary crossing
    $F10001FF C-EMITW                     \ cmp x15,#0
    LCFPOP @ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
