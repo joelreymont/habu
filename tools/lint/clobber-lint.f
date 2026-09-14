@@ -221,6 +221,8 @@ public
    a u s" STACK-GUARD:CHECK-LOOP" LINT-STR= ;
 
 : JIT-REGS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" JIT-STACK:LITERAL-REG" LINT-STR= if LINT-TRUE exit then
+   a u s" JIT-STACK:CELL-BYTES" LINT-STR= if LINT-TRUE exit then
    a u s" JIT-STACK:DATA-REGS" LINT-STR= if LINT-TRUE exit then
    a u s" JIT-STACK:RETURN-REGS" LINT-STR= ;
 
@@ -241,6 +243,7 @@ public
    a u s" :CALL" LINT-SUFFIX? ;
 
 : MASK  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ clobbered registers
+   a u s" JIT-STACK:CELL-BYTES" LINT-STR= if 0 addr CL-ADD exit then
    a u STACK? if 0 exit then
    a u JIT? if 0 28 CL-ADD exit then
    \ C-FIND-GLOBAL loads a literal name, calls LFIND, then restores package
@@ -256,8 +259,10 @@ public
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
 : READS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ input registers read
+   a u s" JIT-STACK:CELL-BYTES" LINT-STR= if 0 len CL-ADD exit then
    a u JIT? if
       0 20 CL-ADD 26 CL-ADD 28 CL-ADD 31 CL-ADD
+      a u s" JIT-STACK:LITERAL-REG" LINT-STR= if addr CL-ADD exit then
       a u JIT-REGS? if addr CL-ADD len CL-ADD then
       exit
    then
@@ -270,7 +275,8 @@ public
    a u PROT? if 0 addr CL-ADD len CL-ADD exit then
    E-CLOBBER-WRAP-UNRESOLVED throw ;
 
-: RETURNS  ( ptr u8 n -- n ) {: a:ptr u:n :}   \ registers the call redefines
+: RETURNS  ( ptr u8 n n n -- n ) {: a:ptr u:n addr:n len:n :}   \ registers the call redefines
+   a u s" JIT-STACK:CELL-BYTES" LINT-STR= if 0 addr CL-ADD exit then
    a u STACK? if 0 exit then
    a u JIT? if 0 28 CL-ADD exit then
    a u GLOBAL-FIND? if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
@@ -503,6 +509,8 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    WRAP-REGS  DI @ TOK 2swap CLOBBER-WRAP:MASK ;
 : WRAP-READS  ( -- n )  \ registers the wrapped call at DI reads
    WRAP-REGS  DI @ TOK 2swap CLOBBER-WRAP:READS ;
+: WRAP-RETURNS ( -- n ) \ register-valued outputs are resolved from the same operands
+   WRAP-REGS  DI @ TOK 2swap CLOBBER-WRAP:RETURNS ;
 
 : DEF-END  {: lo :}  ( -- hi )
    lo 2 + DI !
@@ -750,7 +758,7 @@ variable TRACK-LR
    DI @ TOK C-ENSURE CALIDX !
    WRAP-MASK CALIDX @ POISON-DIRTY
    DI @ TOK CLOBBER-WRAP:SAVES-LR? 0= if CALIDX @ POISON-LINK-REGISTER then
-   DI @ TOK CLOBBER-WRAP:RETURNS APPLY-RETURNS ;
+   WRAP-RETURNS APPLY-RETURNS ;
 
 : PASS2-DEF  {: fa fu lo hi :}  ( -- )
    lo hi RET-IN-RANGE? TRACK-LR !

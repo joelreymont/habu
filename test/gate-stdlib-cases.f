@@ -1203,6 +1203,10 @@ SUITE catch-frame
    test/catch-frame.f
 ;SUITE
 
+SUITE engine-stack-wide
+   test/engine-stack-wide.f
+;SUITE
+
 SUITE engine-stack-lifecycle
    test/engine-stack-lifecycle.f
 ;SUITE

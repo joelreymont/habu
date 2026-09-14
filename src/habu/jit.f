@@ -15,6 +15,9 @@ $FD000260 constant W-FPUSHR     \ str dR,[x19]  (or with R) — tag 2 = FLOAT re
 $FD400260 constant W-FPOPR      \ ldr dR,[x19]
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 
+\ Emit one fixed instruction into the running compiler's code window.
+: C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
+
 \ The runtime compiler emits the same preserved guard ABI as engine primitives.
 \ Its own registers and NZCV must survive code emission too: LCEMITBL and the
 \ minimal constant synthesizer use compiler scratch that a keyword may still
@@ -22,8 +25,6 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 package JIT-STACK
 
 variable LREQUEST
-
-: WORD ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
 
 : SAVE-REQUEST ( -- )
    SP SP 32 SUBI,
@@ -64,8 +65,7 @@ variable LREQUEST
    4 SP 32 LDR,  5 SP 40 LDR,  6 SP 48 LDR,  7 SP 56 LDR,
    8 SP 64 LDR,  9 SP 72 LDR,  10 SP 80 LDR,  11 SP 88 LDR,
    12 SP 96 LDR,  13 SP 104 LDR,  14 SP 112 LDR,  15 SP 120 LDR,
-   16 SP 128 LDR,  17 SP 136 LDR,  30 SP 144 LDR,
-   SP SP 160 ADDI,  RET, ;
+   16 SP 128 LDR,  17 SP 136 LDR, ;
 
 public
 
@@ -77,19 +77,40 @@ public
 : DATA-REGS ( n n -- ) STACK-GUARD:DATA-ENTRY REQUEST-REGS ;
 : RETURN-REGS ( n n -- ) STACK-GUARD:RETURN-ENTRY REQUEST-REGS ;
 
+\ Emit a full-width runtime constant without losing compiler scratch values.
+\ The input is one of x0..x17, already saved before any emitter call can grow
+\ the code-write window. Runtime destination registers are explicit.
+: LITERAL-REG ( n n -- ) {: value:n dest:n :}
+   value 0< value 17 > or if s" jit stack: invalid literal register" 74 die then
+   SAVE-EMITTER
+   11 SP value cells LDR,  14 dest MOVZ,  LVMOVK LABEL@ BL,
+   RESTORE-EMITTER
+   30 SP 144 LDR,  SP SP 160 ADDI, ;
+
+\ Width metadata is measured in cells. Prove the scale before computing it;
+\ the source register survives so no truncation can turn a wide access small.
+\ This compile-time calculation writes dest and NZCV, not the physical stack.
+: CELL-BYTES ( n n -- ) {: dest:n count:n :}
+   dest count = if s" jit stack: cell scale needs distinct registers" 74 die then
+   LBL {: good:label :}
+   dest count 61 LSRI,  dest good CBZ,
+   STACK-GUARD:EXIT-BOUNDS
+   good LBL,  dest count 3 LSLI, ;
+
 : EMIT ( -- )
    LBL {: end:label :}
    s" (JIT-STACK)" LREQUEST LABEL@ LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
    LREQUEST LABEL@ LBL,
    SAVE-EMITTER
-   SP SP 32 ENC-SUBI WORD
-   16 SP 0 ENC-STR WORD  17 SP 8 ENC-STR WORD  30 SP 16 ENC-STR WORD
+   SP SP 32 ENC-SUBI C-EMITW
+   16 SP 0 ENC-STR C-EMITW  17 SP 8 ENC-STR C-EMITW  30 SP 16 ENC-STR C-EMITW
    11 SP 88 LDR,  14 16 MOVZ,  LVMOVK LABEL@ BL,
    11 SP 96 LDR,  14 17 MOVZ,  LVMOVK LABEL@ BL,
    11 SP 104 LDR,  LCEMITBL LABEL@ BL,
-   16 SP 0 ENC-LDR WORD  17 SP 8 ENC-LDR WORD  30 SP 16 ENC-LDR WORD
-   SP SP 32 ENC-ADDI WORD
+   16 SP 0 ENC-LDR C-EMITW  17 SP 8 ENC-LDR C-EMITW  30 SP 16 ENC-LDR C-EMITW
+   SP SP 32 ENC-ADDI C-EMITW
    RESTORE-EMITTER
+   30 SP 144 LDR,  SP SP 160 ADDI,  RET,
    end LBL, ;
 
 ;package

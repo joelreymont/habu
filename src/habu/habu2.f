@@ -1676,11 +1676,14 @@ public
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
 \ ---- control-flow JIT helpers ----
-\ Raw-register helper emits a variable-width value-stack drop.
+\ Release an exact byte count from the machine-stack locals frame.
 : C-EMIT-DROP-X12 ( -- )
    LBL {: done:label :}
    12 done CBZ,
-      9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,
+      12 9 JIT-STACK:LITERAL-REG
+      9 $910003EA LIT64,  LCEMIT LABEL@ BL,      \ mov x10,sp
+      9 $8B09014A LIT64,  LCEMIT LABEL@ BL,      \ add x10,x10,x9
+      9 $9100015F LIT64,  LCEMIT LABEL@ BL,      \ mov sp,x10
    done LBL, ;
 
 : EMIT-CF-HELPERS ( -- )
@@ -1944,8 +1947,6 @@ variable LCOLONNONAME
 ;package
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
-: C-EMITW ( n -- ) {: w:n :}  9 w LIT64,  LCEMIT LABEL@ BL, ;
-
 : C-POPFLAG ( -- )
    8 0 JIT-STACK:CHECK-DATA
    $D1002273 C-EMITW  $F9400269 C-EMITW ;
@@ -2221,6 +2222,7 @@ package LOOP-EMIT
 \ Scratch stays off x11: DEF-TRUST:FIND/C-FIND-GLOBAL leave the record XT in x11
 \ for the caller's later C-CALL-X11-SAVED, so this word must preserve it.
 : C-PUSH-DREC-NAME ( -- )
+   0 16 STACK-GUARD:CHECK-DATA
    LBL LBL {: scan:label done:label :}
    9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
    10 0 MOVZ,                           \ x10 = name length
@@ -2239,6 +2241,7 @@ package LOOP-EMIT
    9 DATA off LDR,  9 G-PUSH ;
 
 : C-PUSH-TRUST-SIG ( n n -- ) {: aoff uoff :}
+   0 16 STACK-GUARD:CHECK-DATA
    aoff C-PUSH-DATA-CELL
    uoff C-PUSH-DATA-CELL ;
 
@@ -2272,6 +2275,7 @@ public
 : SIGNATURE ( n n n -- ) {: off:n aoff:n uoff:n :}
    LBL {: done:label :}
    off FIND  11 done CBZ,
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    aoff uoff C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -2328,6 +2332,7 @@ public
    NCOMP-DISPATCH:DECL-EFFECT-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
    NCOMP-DISPATCH:DECL-EFFECT-OFF done DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-EFFECT-OFF done DECL-OWNER:SKIP-SAME
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -2345,6 +2350,7 @@ public
    NCOMP-DISPATCH:DECL-CAST-OFF TSIG-A-CELL TSIG-U-CELL DECL-OWNER:SIGNATURE
    NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:TARGET
    NCOMP-DISPATCH:DECL-CAST-OFF done DECL-OWNER:SKIP-SAME
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -2400,10 +2406,12 @@ public
 : PUBLISH ( -- )
    LBL {: nohook:label :}
    nohook FIND-ACTIVE
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
    nohook FIND-TARGET
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -2412,11 +2420,13 @@ public
 : PUBLISH-PTR-A ( -- )
    LBL {: nohook:label :}
    nohook FIND-ACTIVE
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    9 LSIGPTRA LABEL@ ADR,  9 G-PUSH
    9 8 MOVZ,  9 G-PUSH
    C-CALL-X11-SAVED
    nohook FIND-TARGET
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    9 LSIGPTRA LABEL@ ADR,  9 G-PUSH
    9 8 MOVZ,  9 G-PUSH
@@ -2426,11 +2436,13 @@ public
 : PUBLISH-A ( -- )
    LBL {: nohook:label :}
    nohook FIND-ACTIVE
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    9 LSIGA LABEL@ ADR,  9 G-PUSH
    9 4 MOVZ,  9 G-PUSH
    C-CALL-X11-SAVED
    nohook FIND-TARGET
+   0 32 STACK-GUARD:CHECK-DATA
    C-PUSH-DREC-NAME
    9 LSIGA LABEL@ ADR,  9 G-PUSH
    9 4 MOVZ,  9 G-PUSH
@@ -2553,6 +2565,7 @@ public
       0 2 MOVZ,  1 LKWCHKDOES LABEL@ ADR,  2 11 MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    found LBL,
+   0 32 STACK-GUARD:CHECK-DATA
    9 DATA BODYBUF-OFF ADDI,
    10 DATA DOESB-CELL LDR,
    9 9 10 ADD,  9 G-PUSH
@@ -2567,6 +2580,7 @@ public
 : C-CALL-CHECK-DEFINER ( -- )
    LBL LBL LBL LBL {: nohook fulllen lenok good :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   0 16 STACK-GUARD:CHECK-DATA
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
    10 DATA DOESB-CELL LDR,  10 fulllen CBZ,
       10 10 6 SUBI,  lenok B,
@@ -2745,6 +2759,7 @@ public
 \ created-word signature. The existing patch routine remains the one owner of
 \ the created record, branch, kind stamp, and checker publication.
 : PRIM ( -- )
+   24 0 STACK-GUARD:CHECK-DATA
    C G-POP  B G-POP  A G-POP
    B DATA CRSIG-A-CELL STR,  C DATA CRSIG-U-CELL STR,
    B A 0 ADDI,  LDOESPATCH LABEL@ BL, ;
@@ -2787,6 +2802,7 @@ public
 : C-DEFHOOK ( ptr n n -- )  LBL {: kwv:ptr klen:n nohk:label :}
    11 kwv LABEL@ ADR,  12 klen MOVZ,  LBCS LABEL@ BL,
    9 DATA HOOK-CELL LDR,  9 nohk CBZ,
+   0 16 STACK-GUARD:CHECK-DATA
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
    10 DATA BODYLEN-CELL LDR,  10 G-PUSH
    SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
@@ -2977,6 +2993,7 @@ public
 \ Native publication has already emitted the clause. Append only the permanent
 \ derived name and record, using the measured entry and length it supplies.
 : NATIVE-PRIM ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP
    5 A 0 ADDI,  6 B 0 ADDI,
    NAME$
@@ -3642,6 +3659,7 @@ public
    15 PD-SLOT MOVZ,  15 13 15 MUL,                   \ x15 = count*PD-SLOT
    14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,           \ x14 = slot base (survives C-PUSH-DREC-NAME/copies)
    C-PUSH-DREC-NAME                                  \ G: name-addr, name-len (clobbers x9,x10,x12,x13)
+   16 0 STACK-GUARD:CHECK-DATA
    10 G-POP  9 G-POP                                 \ x10=name-len  x9=name-addr
    16 PD-NAME-CAP MOVZ,  10 16 CMP,  C-LS nameok BCOND,
       C-PD-DIE-FULL
@@ -3752,12 +3770,14 @@ public
       DEF-TRUST:FIND                                  \ x11 = trust-decl XT (clobbers x12-x16)
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  \ index = remaining-1
       15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,   \ x14 = slot base (x11 preserved)
+      0 32 STACK-GUARD:CHECK-DATA
       9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
       9 14 PD-SIG-OFF ADDI,   9 G-PUSH   9 14 PD-SLEN-OFF LDR,  9 G-PUSH        \ push sig addr,len
       C-CALL-X11-SAVED                                \ trust-decl( na nu sa su )
       NCOMP-DISPATCH:DECL-DEFER-OFF done DECL-OWNER:TARGET  \ x11 = target defer XT
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,
       15 PD-SLOT MOVZ,  15 13 15 MUL,  14 12 PD-SLOTS-REL ADDI,  14 14 15 ADD,
+      0 16 STACK-GUARD:CHECK-DATA
       9 14 PD-NAME-OFF ADDI,  9 G-PUSH   9 14 PD-NLEN-OFF LDR,  9 G-PUSH        \ push name addr,len
       C-CALL-X11-SAVED                                \ checker-defer( ptr-u8 n )
       12 PD-TABLE-OFF LIT64,  12 DATA 12 ADD,  13 12 0 LDR,  13 13 1 SUBI,  13 12 0 STR,   \ remaining--
@@ -3976,6 +3996,7 @@ variable LTOPHOOK
 \ executed word's. Clobbers x9-x17.
 : EMIT-TOPHOOK ( -- )
    LTOPHOOK LABEL@ LBL,
+   0 32 STACK-GUARD:CHECK-DATA
    SP SP 16 SUBI,  30 SP 0 STR,
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
@@ -3986,6 +4007,7 @@ variable LTOPHOOK
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 : C-ISDQ ( -- )
+   0 16 STACK-GUARD:CHECK-DATA
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
@@ -4025,6 +4047,7 @@ variable LTOPHOOK
    0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
 
 : C-EISDQ ( -- )
+   0 16 STACK-GUARD:CHECK-DATA
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
    C-ESC-QUOTE-CONSUME
@@ -4141,7 +4164,7 @@ variable VDESC  variable DRIFT-FAIL
    ok LBL, ;
 
 : EM-P2-CARVE-W ( -- )             \ x10 := next certified bind width; bind it to live local [SP]
-   LBL LBL {: localok:label bindok:label :}
+   LBL LBL LBL {: localok:label bindok:label widthok:label :}
    9 SP 0 LDR,  9 localok EM-P2-LOCAL-GUARD
    11 DATA TXN-CERT-A-CELL LDR,
    12 11 LOWER-CERT:WF-COUNT-CELL cells LDR,       \ certified WF row count
@@ -4155,6 +4178,9 @@ variable VDESC  variable DRIFT-FAIL
    11 11 LOWER-CERT:HEADER-CELLS cells ADDI,
    11 11 12 ADD,
    12 14 3 LSLI,  11 11 12 ADD,  10 11 0 LDR,
+   \ The existing scaled local load/store slot admits exactly 4096 cells.
+   12 4096 MOVZ,  10 12 CMP,  C-LS widthok BCOND,  EM-P2-SLOT-DIE
+   widthok LBL,
    12 TXN-LIVE-W-OFF MOVZ,  12 DATA 12 ADD,
    13 9 3 LSLI,  12 12 13 ADD,  10 12 0 STR,
    14 14 1 ADDI,  14 DATA TXN-BIND-I-CELL STR, ;
@@ -4215,8 +4241,15 @@ variable VDESC  variable DRIFT-FAIL
       9 SP 24 LDR,  9 9 1 ADDI,  9 SP 0 STR,
       vl B,
    vd LBL,
-   9 SP 8 LDR,  5 9 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
-   9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,
+   LBL {: frameok:label :}
+   9 SP 8 LDR,  7 9 JIT-STACK:CELL-BYTES  8 0 MOVZ,
+   7 8 JIT-STACK:DATA-REGS
+   5 7 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
+   15 DATA LOCF-CELL LDR,  15 15 5 ADD,
+   12 32768 MOVZ,  15 12 CMP,  C-LS frameok BCOND,  EM-P2-SLOT-DIE
+   frameok LBL,
+   5 9 JIT-STACK:LITERAL-REG
+   $910003EA C-EMITW  $CB09014A C-EMITW  $9100015F C-EMITW  \ sp -= complete frame
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
    9 DATA LOCN-CELL LDR,  9 9 1 SUBI,  9 SP 0 STR,    \ i := last local
    pl LBL,
@@ -4253,6 +4286,8 @@ variable VDESC  variable DRIFT-FAIL
    EM-P2-LIVE-W  10 SP 8 STR,                         \ w
    EM-P2-LIVE-CUM  10 SP 16 STR,                      \ cum
    LVSPILL LABEL@ BL,
+   10 SP 8 LDR,  7 10 JIT-STACK:CELL-BYTES  8 0 MOVZ,
+   8 7 JIT-STACK:DATA-REGS
    12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
    10 SP 16 LDR,  12 12 10 SUB,                       \ x12 = base slot
    10 0 MOVZ,                                         \ j := 0 (bottom cell first)
@@ -4317,6 +4352,7 @@ variable VDESC  variable DRIFT-FAIL
       pjoin B,
    p1c LBL,
    13 DATA LOCN-CELL LDR,  14 13 6 SUB,
+   7 14 JIT-STACK:CELL-BYTES  8 0 MOVZ,  7 8 JIT-STACK:DATA-REGS
    5 14 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
    9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
@@ -4348,6 +4384,7 @@ variable VDESC  variable DRIFT-FAIL
    6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
    7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
    9 8 0 ADDI,  LCEMIT LABEL@ BL,                                          \ emit the ADR word
+   0 8 JIT-STACK:CHECK-DATA
    9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
 
 : C-SDQ ( -- )
@@ -4368,6 +4405,7 @@ variable VDESC  variable DRIFT-FAIL
    cd LBL,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    9 15 0 ADDI,  15 10 0 ADDI,  LPAT LABEL@ BL,
+   0 16 JIT-STACK:CHECK-DATA
    11 12 0 ADDI,  C-ADR                                \ push byte addr PC-relative (AOT/ASLR-safe)
    11 15 0 ADDI,  C-LIT                                \ push len (a value, absolute is fine)
    C-QUOTE-SAVED-DROP ;
@@ -4422,6 +4460,7 @@ variable VDESC  variable DRIFT-FAIL
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    12 13 0 ADDI,
    9 13 4 SUBI,  15 10 0 ADDI,  LPAT LABEL@ BL,
+   0 16 JIT-STACK:CHECK-DATA
    11 12 0 ADDI,  C-ADR
    11 15 0 ADDI,  C-LIT
    C-ESC-QUOTE-SAVED-DROP ;
@@ -4577,6 +4616,7 @@ variable CFSK2
    CLOC-MAIN LABEL@ B,
    CLOC-MEM LABEL@ LBL,
    LVSPILL LABEL@ BL,
+   0 8 JIT-STACK:CHECK-DATA
    7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
    9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
    9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL,
@@ -5789,6 +5829,7 @@ public
 \ LMARK preserves x9 and saves every other register it touches, so both survive.
 \ Registered framed, because the guard and LMARK are both BL.
 : BXTSTORE ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP
    7 8 MOVZ,  B 7 PROT-GUARD:CALL
    C A 0 ADDI,                                      \ x11 = the token
@@ -6096,6 +6137,7 @@ public
 \ x8=base, x16=end are the write-region endpoints. The half-open span guard rejects
 \ every protected-band intersection. The legitimate builder uses a high scratch copy.
 : BSNAPREBASE ( -- )
+   48 0 STACK-GUARD:CHECK-DATA
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 PROT-GUARD:CALL
    LSNAPRBD LABEL@ BL,
@@ -6462,6 +6504,7 @@ public
    PROT:LCLOSE LABEL@ BL,
    9 DATA HOOK-CELL LDR,  9 callimm CBZ,
    9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ,  9 SP 16 STR,
+   0 40 STACK-GUARD:CHECK-DATA
    9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
    9 DATA BODYLEN-CELL LDR,  9 G-PUSH
    9 DATA TKA-CELL LDR,  9 G-PUSH
@@ -6517,6 +6560,7 @@ public
    SP SP 16 SUBI,  11 SP 0 STR,
    PROT:LCLOSE LABEL@ BL,
    LNEUTRAL 18 C-FIND-GLOBAL
+   0 16 STACK-GUARD:CHECK-DATA
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
@@ -6549,6 +6593,7 @@ public
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       PROT:LCLOSE LABEL@ BL,
+      0 16 STACK-GUARD:CHECK-DATA
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       LOAD
@@ -6569,10 +6614,8 @@ public
    LBL LBL LBL LBL {: notcom skln skpar notcompile :}
    LMAIN LABEL@ LBL,
       EM-PKG-RESYNC
-      \ depth-floor guard: the just-interpreted top-level word must never leave
-      \ the data stack below its base (S0). XDS < S0 is a proven underflow — name
-      \ the offending word and fail closed instead of running on garbage / a signal.
-      9 DATA S0-CELL LDR,  XDS 9 CMP,  C-LT LUNDERFLOW LABEL@ BCOND,
+      \ Validate the active descriptor and cursor before another token runs.
+      0 0 STACK-GUARD:CHECK-DATA
       LTOK LABEL@ BL,  0 LEXIT LABEL@ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
@@ -6650,6 +6693,7 @@ public
 : C-CALL-CHECKER-PACKAGE ( -- )
    LBL {: done:label :}
    NCOMP-DISPATCH:DECL-PACKAGE-OFF done DECL-OWNER:TARGET
+   0 16 STACK-GUARD:CHECK-DATA
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
@@ -7098,6 +7142,7 @@ public
 
 : C-CALL-CHECKER-EXPORT ( -- )
    LCHKEXPORT 14 C-FIND-GLOBAL
+   0 16 STACK-GUARD:CHECK-DATA
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED ;
@@ -7231,7 +7276,8 @@ package INTERP-EMIT
    14 13 16 ANDI,  14 LINTERNAL LABEL@ CBNZ,           \ DNAME-INT: engine-internal word with no checker-known effect - fail closed before the body runs on the untyped interpret stack
    14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): certified min input arity; 0 = unguarded boundary
       14 14 8 LSRI,                                    \ x14 = min-in cells
-      9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI, \ x10 = interpret depth in cells
+      0 0 STACK-GUARD:CHECK-DATA
+      9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
       10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ depth < declared inputs -> named reject BEFORE the body can read below base
    depthok LBL,
    LARITY LABEL@ BL,          \ pre-exec arity guard (fable): deref/execute prims fault on a shallow
@@ -7261,10 +7307,7 @@ public
 ;package
 
 : EM-COMPILE-DROP-LOCALS ( -- )
-   LBL {: done :}
-   12 DATA LOCF-CELL LDR,  12 done CBZ,
-      9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,
-   done LBL, ;
+   12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12 ;
 
 \ ---- item 12 slice 3b: pass-2 width-aware transport lowering ---------------
 \ ONE mechanism for every transport tier (register shuffle, inline rs keyword,
@@ -7280,32 +7323,46 @@ public
 \ LP2COPY ( x5=len-cells x6=src-off-cells ) : emit a push of len cells starting
 \ src-off cells below the top — a whole-group copy, bottom cell first.
 : EMIT-P2-COPY ( -- )
+   LBL LBL {: valid:label done:label :}
    LP2COPY LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ movz x9,#len
-   8 $D100026A LIT64,  7 6 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x10,x19,#off*8
+   5 done CBZ,
+   6 5 CMP,  C-CS valid BCOND,  STACK-GUARD:EXIT-BOUNDS
+   valid LBL,
+   7 6 JIT-STACK:CELL-BYTES  8 5 JIT-STACK:CELL-BYTES
+   7 8 JIT-STACK:DATA-REGS
+   5 9 JIT-STACK:LITERAL-REG  7 10 JIT-STACK:LITERAL-REG
+   $CB0A026A C-EMITW                                                \ sub x10,x19,x10
    $F940014B C-EMITW                                                \ ldr x11,[x10]
    $9100214A C-EMITW                                                \ add x10,x10,#8
    $F900026B C-EMITW                                                \ str x11,[x19]
    W-PUSH1 C-EMITW                                                  \ add x19,x19,#8
    $F1000529 C-EMITW                                                \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                                \ b.ne loop (-5)
+   done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2DROPN ( x5=cells ) : emit a pop of the top span.
 : EMIT-P2-DROPN ( -- )
    LP2DROPN LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   8 $D1000273 LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x19,x19,#n*8
+   7 5 JIT-STACK:CELL-BYTES  8 0 MOVZ,
+   7 8 JIT-STACK:DATA-REGS
+   7 9 JIT-STACK:LITERAL-REG
+   $CB090273 C-EMITW                                                \ sub x19,x19,x9
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2REV ( x5=lo-off-bytes x6=hi-off-bytes ) : emit an in-place reversal of the
 \ cells from x19-lo up to x19-hi (two-pointer swap; empty/1-cell span is a noop).
 : EMIT-P2-REV ( -- )
+   LBL {: done:label :}
    LP2REV LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   8 $D100026A LIT64,  7 5 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x10,x19,#lo
-   8 $D100026B LIT64,  7 6 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x11,x19,#hi
+   5 6 CMP,  C-LS done BCOND,
+   7 0 MOVZ,  5 7 JIT-STACK:DATA-REGS
+   5 10 JIT-STACK:LITERAL-REG  6 11 JIT-STACK:LITERAL-REG
+   $CB0A026A C-EMITW                                                \ sub x10,x19,x10
+   $CB0B026B C-EMITW                                                \ sub x11,x19,x11
    $EB0B015F C-EMITW                                                \ cmp x10,x11
    $54000102 C-EMITW                                                \ b.hs done (+8)
    $F940014C C-EMITW                                                \ ldr x12,[x10]
@@ -7315,14 +7372,21 @@ public
    $9100214A C-EMITW                                                \ add x10,x10,#8
    $D100216B C-EMITW                                                \ sub x11,x11,#8
    $17FFFFF8 C-EMITW                                                \ b cmp (-8)
+   done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2ROT ( x5=T-cells x6=k-cells ) : emit a left-rotation of the top T cells
 \ moving the bottom k cells to the top — triple reversal, whole-group order
 \ preserving (== the checker's group permutation for swap/rot/-rot/2swap).
 : EMIT-P2-ROT ( -- )
+   LBL LBL {: valid:label done:label :}
    LP2ROT LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,  6 SP 16 STR,
+   6 5 CMP,  C-LS valid BCOND,  STACK-GUARD:EXIT-BOUNDS
+   valid LBL,
+   6 done CBZ,  6 5 CMP,  C-EQ done BCOND,
+   7 5 JIT-STACK:CELL-BYTES  8 0 MOVZ,
+   7 8 JIT-STACK:DATA-REGS                     \ all three reversals before the first write
    5 5 3 LSLI,
    7 SP 16 LDR,  6 SP 8 LDR,  6 6 7 SUB,  6 6 3 LSLI,  6 6 8 ADDI,
    LP2REV LABEL@ BL,                                  \ reverse the bottom k cells
@@ -7330,6 +7394,7 @@ public
    LP2REV LABEL@ BL,                                  \ reverse the top T-k cells
    5 SP 8 LDR,  5 5 3 LSLI,  6 8 MOVZ,
    LP2REV LABEL@ BL,                                  \ reverse the whole span
+   done LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ LP2RS ( x5=T-cells x6=mode ) : emit a block transfer between the data stack
@@ -7338,15 +7403,20 @@ public
 \ pop (r>/2r>), 2 = rstk->data copy (r@/2r@). T=1 reproduces J-TOR/J-RFROM/
 \ J-RFETCH cell order; T=2 reproduces B2TOR/B2RFROM/B2RFETCH.
 : EMIT-P2-RS ( -- )
-   LBL LBL {: rsto:label rsdone:label :}
+   LBL LBL LBL {: rsto:label rsdone:label valid:label :}
    LP2RS LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,  6 SP 16 STR,
-   10 20 RSP-CELL W-LDRX C-EMITW                      \ ldr x10,[x20,#RSP-CELL]
+   5 rsdone CBZ,
+   6 2 CMPI,  C-LS valid BCOND,  STACK-GUARD:EXIT-BOUNDS
+   valid LBL,
+   8 5 JIT-STACK:CELL-BYTES  7 0 MOVZ,
    6 rsto CBZ,
    \ modes 1/2: x10 -= T; x11 = block base; copy T cells rstk->data
-   8 $D100014A LIT64,  5 SP 8 LDR,  7 5 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   5 7 JIT-STACK:RETURN-REGS  7 8 JIT-STACK:DATA-REGS
+   10 20 RSP-CELL W-LDRX C-EMITW
+   5 9 JIT-STACK:LITERAL-REG
+   $CB09014A C-EMITW                                  \ sub x10,x10,x9
    $8B0A0E8B C-EMITW                                  \ add x11,x20,x10,lsl#3
-   8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
    13 11 RSTK-OFF W-LDRX C-EMITW                      \ ldr x13,[x11,#RSTK-OFF]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F900026D C-EMITW                                  \ str x13,[x19]
@@ -7358,17 +7428,22 @@ public
    rsdone B,
    rsto LBL,
    \ mode 0: x11 = rstk top; copy T cells data->rstk, pop, depth += T
+   8 7 JIT-STACK:DATA-REGS  7 5 JIT-STACK:RETURN-REGS
+   10 20 RSP-CELL W-LDRX C-EMITW
    $8B0A0E8B C-EMITW
-   8 $D100026C LIT64,  5 SP 8 LDR,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x12,x19,#T*8
-   8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   8 12 JIT-STACK:LITERAL-REG
+   $CB0C026C C-EMITW                                  \ sub x12,x19,x12
+   $AA0C03EE C-EMITW                                  \ mov x14,x12 (new data cursor)
+   5 9 JIT-STACK:LITERAL-REG
+   $AA0903EF C-EMITW                                  \ mov x15,x9 (complete transfer count)
    $F940018D C-EMITW                                  \ ldr x13,[x12]
    $9100218C C-EMITW                                  \ add x12,x12,#8
    13 11 RSTK-OFF W-STRX C-EMITW                      \ str x13,[x11,#RSTK-OFF]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
-   8 $D1000273 LIT64,  5 SP 8 LDR,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x19,x19,#T*8
-   8 $9100014A LIT64,  5 SP 8 LDR,  7 5 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ add x10,x10,#T
+   $AA0E03F3 C-EMITW                                  \ mov x19,x14
+   $8B0F014A C-EMITW                                  \ add x10,x10,x15
    10 20 RSP-CELL W-STRX C-EMITW
    rsdone LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
@@ -7377,17 +7452,23 @@ public
 \ the typed base address, reads memory in ascending slot order, and pushes
 \ slot0..tag so the tag is again the top physical cell.
 : EMIT-P2-FETCH ( -- )
+   LBL LBL {: empty:label done:label :}
    LP2FETCH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
+   7 5 JIT-STACK:CELL-BYTES  6 8 MOVZ,  8 0 MOVZ,
+   5 empty CBZ,  8 7 8 SUBI,
+   empty LBL,  6 8 JIT-STACK:DATA-REGS
    $D1002273 C-EMITW                                  \ sub x19,x19,#8
    $F940026A C-EMITW                                  \ ldr x10,[x19] : base
-   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   5 done CBZ,
+   5 9 JIT-STACK:LITERAL-REG
    $F940014B C-EMITW                                  \ ldr x11,[x10]
    $9100214A C-EMITW                                  \ add x10,x10,#8
    $F900026B C-EMITW                                  \ str x11,[x19]
    W-PUSH1 C-EMITW
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2VEXEC is called by a compiled typed fetch before its address is popped.
@@ -7484,13 +7565,20 @@ public
 \ calls LPROTSPAN once with x10=destination and x11=width*8 before any mutation;
 \ that ABI preserves the live bundle registers and rejects whole-span crossing.
 : EMIT-P2-STORE ( -- )
+   LBL LBL {: valid:label done:label :}
    LP2STORE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  5 SP 8 STR,
+   7 5 JIT-STACK:CELL-BYTES
+   8 $FFFFFFFFFFFFFFF7 LIT64,  7 8 CMP,  C-LS valid BCOND,
+   STACK-GUARD:EXIT-BOUNDS
+   valid LBL,
+   8 7 8 ADDI,  6 0 MOVZ,  8 6 JIT-STACK:DATA-REGS
    $D1002273 C-EMITW                                  \ sub x19,x19,#8
    $F940026A C-EMITW                                  \ ldr x10,[x19] : dst
-   8 $D100026E LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x14,x19,#W*8
-   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
-   8 $D280000B LIT64,  7 5 8 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ mov x11,#W*8
+   5 done CBZ,
+   7 14 JIT-STACK:LITERAL-REG
+   $CB0E026E C-EMITW                                  \ sub x14,x19,x14
+   5 9 JIT-STACK:LITERAL-REG  7 11 JIT-STACK:LITERAL-REG
    11 LPROTSPAN LABEL@ ADR,
    LCEMITBL LABEL@ BL,                                \ direct BL to the registered (PROT-SPAN) helper
    $F94001CF C-EMITW                                  \ ldr x15,[x14]
@@ -7500,7 +7588,9 @@ public
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne store (-5)
    5 SP 8 LDR,
-   8 $D1000273 LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x19,x19,#W*8
+   7 5 3 LSLI,  7 9 JIT-STACK:LITERAL-REG
+   $CB090273 C-EMITW                                  \ sub x19,x19,x9
+   done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 package LOWER-TXN-LOOKUP
@@ -7594,6 +7684,8 @@ public
    9 9 10 SUB,
    10 pos MOVZ,
    LP2CWAT LABEL@ BL,
+   \ At most four admitted widths are summed below, so those sums cannot wrap.
+   11 10 JIT-STACK:CELL-BYTES
    10 DATA wcell STR, ;
 
 : EM-P2-QUERY-WIDTHS ( n -- ) {: k:n :}   \ emit: query k widths; x13 = any wider than 1
@@ -7649,6 +7741,9 @@ variable P2SK
    EM-P2X-SWAP
    5 DATA P2W1-CELL LDR,  LP2DROPN LABEL@ BL, ;
 : EM-P2X-TUCK ( -- )               \ ( g1 g0 -- g0 g1 g0 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
+   5 9 10 ADD,  7 5 JIT-STACK:CELL-BYTES  8 9 JIT-STACK:CELL-BYTES
+   7 8 JIT-STACK:DATA-REGS                     \ reserve the copy before swapping either group
    EM-P2X-SWAP
    9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
    5 9 0 ADDI,  6 9 10 ADD,  LP2COPY LABEL@ BL, ;
@@ -8010,6 +8105,7 @@ public
    LBL LBL LBL LBL {: skip:label copy:label room:label alloc:label :}
    LCERTBYTES 16 C-FIND-GLOBAL
    C-CALL-X11-SAVED
+   16 0 STACK-GUARD:CHECK-DATA
    10 G-POP  11 G-POP                              \ x11=certificate, x10=bytes
    VALIDATE
    10 11 LOWER-CERT:TOTAL-BYTES-CELL cells LDR,      \ validator helpers use x10 as scratch
@@ -8196,6 +8292,7 @@ public
    LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
    9 DATA P2-CELL LDR,  9 nohook CBNZ,                \ pass-2 second ';': no hook re-check
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+      0 16 STACK-GUARD:CHECK-DATA
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
@@ -8425,6 +8522,9 @@ public
       11 noxc CBZ,                                \ ordinary call (no fact): normal lowering
       SP SP 16 SUBI,  10 SP 0 STR,                \ frame the count across LVPUSHC spills
       1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                 \ region -> RW for emission
+      LVSPILL LABEL@ BL,
+      10 SP 0 LDR,  7 10 JIT-STACK:CELL-BYTES  8 0 MOVZ,
+      8 7 JIT-STACK:DATA-REGS                    \ reserve the complete generated pad group
       ploop LBL,
          10 SP 0 LDR,  10 pdone CBZ,
          11 0 MOVZ,  LVPUSHC LABEL@ BL,           \ push one extra zero pad below the declared body's pads
@@ -8437,7 +8537,8 @@ public
    14 13 2 ANDI,  14 notimm CBZ,
       14 13 $FF00 ANDI,  14 depthok CBZ,                  \ DNAME-MIN-IN (x13 bits 8-15): the immediate's certified min input arity; 0 = unguarded boundary (compile path floor beneath the p5 checker/hook reject, reached under 0 set-check)
          14 14 8 LSRI,                                    \ x14 = min-in cells
-         9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI, \ x10 = interpret depth in cells
+         0 0 STACK-GUARD:CHECK-DATA
+         9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI, \ descriptor proves a nonnegative unsigned depth
          10 14 CMP,  C-LT LMININ LABEL@ BCOND,            \ compile-time depth < declared inputs -> named reject BEFORE the immediate BLRs below the interpret base (dict region still RW here; LDIAGRET restores RX)
       depthok LBL,
       C-CALL-COMPILE-IMMEDIATE
@@ -8789,6 +8890,7 @@ public
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,        \ snapshot the using-scope depth for this REPL line
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 DATA REPLH-CELL LDR,  9 BLR,
+   16 0 STACK-GUARD:CHECK-DATA
    XDS XDS 8 SUBI,  10 XDS 0 LDR,
    XDS XDS 8 SUBI,  11 XDS 0 LDR,
    10 LRBYE LABEL@ CBZ,
@@ -8908,6 +9010,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    LTFLCONFAM 12 C-FIND-GLOBAL
    LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
+   16 0 STACK-GUARD:CHECK-DATA
    10 G-POP                             \ ok flag (top)
    9 G-POP                              \ family id
    10 fok CBNZ,
@@ -8923,6 +9026,10 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    LBL LBL {: ploop:label pdone:label :}
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,   \ frame the counters: LVPUSHC may
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ spill (emission -> region RW first)
+   LVSPILL LABEL@ BL,
+   12 SP 0 LDR,  7 12 JIT-STACK:CELL-BYTES
+   14 12 1 ADDI,  7 14 JIT-STACK:CELL-BYTES  8 0 MOVZ,
+   8 7 JIT-STACK:DATA-REGS                       \ pads and tag form one physical push
    ploop LBL,
       12 SP 0 LDR,  12 pdone CBZ,
       11 0 MOVZ,  LVPUSHC LABEL@ BL,
@@ -8936,9 +9043,11 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
    PROT:LCLOSE LABEL@ BL,          \ region -> RX: checker-call window
    LTFLCVAR 9 C-FIND-GLOBAL
+   0 24 STACK-GUARD:CHECK-DATA
    LADTPUSHTOK LABEL@ BL,
    9 DATA CMFAM-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
+   24 0 STACK-GUARD:CHECK-DATA
    10 G-POP                             \ ok flag (top)
    12 G-POP                             \ pads
    13 G-POP                             \ tag
@@ -8946,12 +9055,14 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       1 vmsg ADR,  2 CONVMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    vmsg LBL,  s" hb: construct: unknown variant: " BYTES,
    vok LBL,
+   7 12 JIT-STACK:CELL-BYTES                     \ prove the pad count before a possible addition
    9 DATA P2-CELL LDR,  9 nox CBZ,      \ layout-cap slice 4: pass-2 wide construct adds extra pads
       SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,      \ save declared pads + tag across the query
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                              \ x10 = extra pads, x11 = found
       12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
       11 nox CBZ,
+         7 10 JIT-STACK:CELL-BYTES
          12 12 10 ADD,                                \ x12 = declared + extra pads
    nox LBL,
    EM-ADT-CON-PUSHES                    \ frames the counters, then flips back to RW
@@ -9017,6 +9128,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    LMFRTOP LABEL@ BL,  9 15 0 LDR,
    9 G-PUSH                             \ top match-frame family id
    C-CALL-X11-SAVED
+   16 0 STACK-GUARD:CHECK-DATA
    12 G-POP                             \ family name length
    11 G-POP                             \ family name address
    SP SP 16 SUBI,  11 SP 0 STR,  12 SP 8 STR,    \ frame the name span across the RW flip
@@ -9040,6 +9152,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    LTFLMATCHFAM 14 C-FIND-GLOBAL
    LADTPUSHTOK LABEL@ BL,
    C-CALL-X11-SAVED
+   16 0 STACK-GUARD:CHECK-DATA
    10 G-POP                             \ ok flag
    9 G-POP                              \ family id
    10 fok CBNZ,
@@ -9060,9 +9173,11 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    notsemi LBL,
    PROT:LCLOSE LABEL@ BL,
    LTFLCVAR 9 C-FIND-GLOBAL
+   0 24 STACK-GUARD:CHECK-DATA
    LADTPUSHTOK LABEL@ BL,
    LMFRTOP LABEL@ BL,  9 15 0 LDR,  9 G-PUSH
    C-CALL-X11-SAVED
+   24 0 STACK-GUARD:CHECK-DATA
    10 G-POP                             \ ok flag
    12 G-POP                             \ pads (M-p)
    13 G-POP                             \ tag
@@ -9071,6 +9186,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    vmsg LBL,  s" hb: match: unknown variant: " BYTES,
    vok LBL,
    13 DATA CMTAG-CELL STR,
+   7 12 JIT-STACK:CELL-BYTES
    12 DATA CMPADS-CELL STR,
    12 5 MOVZ,  12 DATA CMM-CELL STR,
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
@@ -9088,6 +9204,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                \ x10 = extra pads, x11 = found
       11 noxm CBZ,
+         7 10 JIT-STACK:CELL-BYTES
          14 DATA CMPADS-CELL LDR,  14 14 10 ADD,  14 DATA CMPADS-CELL STR,
    noxm LBL,
    \ Dispatch compare+skip (reductions 1/2/3). The tag is already live in x9
@@ -9100,13 +9217,16 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    14 $FFF CMPI,  C-HI bigtag BCOND,    \ tag > 2^12-1: outside cmp's imm12 field
       9 $F100013F LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,  tagdone B,   \ cmp x9,#tag
    bigtag LBL,
-      9 C-CALL-MOVZ-X16 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x16,#tag
+      14 16 JIT-STACK:LITERAL-REG
       $EB10013F C-EMITW                 \ cmp x9,x16
    tagdone LBL,
    C-PUSHCP
    $54000001 C-EMITW                    \ b.ne +0  (skip to next variant on tag mismatch)
-   14 DATA CMPADS-CELL LDR,  14 14 1 ADDI,  14 14 3 LSLI,
-   9 $D1000273 LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ sub x19,x19,#(8*(1+pads))
+   14 DATA CMPADS-CELL LDR,  14 14 1 ADDI,
+   7 14 JIT-STACK:CELL-BYTES  8 0 MOVZ,
+   7 8 JIT-STACK:DATA-REGS                      \ only the selected arm removes its complete tag/pad group
+   7 16 JIT-STACK:LITERAL-REG
+   $CB100273 C-EMITW                            \ sub x19,x19,x16
    14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 14 1 ORRI,  14 DATA CMBK-CELL STR,   \ push match-branch marker (1)
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    LMAIN LABEL@ B, ;
@@ -9130,6 +9250,7 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    \ before the s2 dispatch label: reached only via BL/B, never by fall-through,
    \ and each is self-terminating (RET, or C-DIE-TOKEN-NL's tail branch).
    LADTPUSHTOK LABEL@ LBL,              \ push captured token addr+len as checker-bridge args
+      0 16 STACK-GUARD:CHECK-DATA
       9 DATA TKA-CELL LDR,  9 G-PUSH
       9 DATA TKL-CELL LDR,  9 G-PUSH  RET,
    LMFRTOP LABEL@ LBL,                  \ x15 = &top match-frame family-id slot (x14 scratch)
@@ -9226,7 +9347,8 @@ package ENGINE-EMIT
 
 : EMIT-ARITY-GUARD ( -- )             \ bake LARITY: depth into x10, then a compare row per guarded prim
    LARITY LABEL@ LBL,
-   9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI,   \ x10 = (XDS - S0) / 8 = depth in cells
+   0 0 STACK-GUARD:CHECK-DATA
+   9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 LSRI,   \ descriptor proves a nonnegative unsigned depth
    0 BEGIN dup GDR-N @ < WHILE
       dup cells GDR-LBL + @  over cells GDR-MIN + @  ARITY-EMIT
       1+
@@ -9551,6 +9673,7 @@ variable CUR
 \ immediate as a checked body step. LFIND clobbers x3-x16 and preserves XDS
 \ (x19)/DATA (x20); the FPRIM frame (GDEREF-F) holds our x30 across the BL.
 : BTOKIMM ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
    10 G-POP  9 G-POP                   \ x10 = len (TOS), x9 = addr: LFIND's token registers
    LFIND LABEL@ BL,                    \ x13 = found | imm<<1 | min-in byte | int flags
    9 13 2 ANDI,
