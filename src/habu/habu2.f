@@ -384,19 +384,29 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ out of the same mcontext the pc comes from, so it is the value the trapped
 \ thread held - not this handler's own link register, which the BL to LHEX has
 \ already overwritten by the time the first number is printed.
+: C-BP-STACK-RANGE ( -- )
+   LBL LBL {: bad:label ready:label :}
+   14 DATA STACK-ABI:BASE-CELL LDR,  10 DATA STACK-ABI:CAP-CELL LDR,
+   9 SP 24 LDR,  C-MCTX-X19>R12
+   0 bad STACK-GUARD:CHECK-CURSOR
+   12 14 12 ADD,  12 SP 56 STR,  17 14 0 ADDI,
+   ready B,
+   bad LBL, STACK-GUARD:EXIT-BOUNDS
+   ready LBL, ;
+
 : C-BP-PRINT-HIT ( -- )
+   LBL {: empty:label :}
    1 LBPH LABEL@ ADR,  0 2 MOVZ,  2 9 MOVZ,  NR-WRITE SYS,
    9 SP 32 LDR,  LHEX LABEL@ BL,
-   9 SP 24 LDR,  C-MCTX-X19>R12
+   \ An empty interrupted stack has no top cell to print. Validate the saved
+   \ cursor against the active allocation before either diagnostic reads it.
+   C-BP-STACK-RANGE
+   12 17 CMP, C-EQ empty BCOND,
    9 12 8 SUBI,  9 9 0 LDR,  LHEX LABEL@ BL,
+   empty LBL,
    1 BP-CALLER:LBPLH LABEL@ ADR,  0 2 MOVZ,  2 BP-CALLER:BPL-LEN MOVZ,  NR-WRITE SYS,
    9 SP 24 LDR,  BP-CALLER:C-MCTX-LR>R9  LHEX LABEL@ BL,
    1 LBPSH LABEL@ ADR,  0 2 MOVZ,  2 15 MOVZ,  NR-WRITE SYS, ;
-
-: C-BP-STACK-RANGE ( -- )
-   17 DATA S0-CELL LDR,
-   9 SP 24 LDR,  C-MCTX-X19>R12
-   12 SP 56 STR, ;
 
 : C-BP-WATCH-HEAD ( -- )
    1 LBPWH LABEL@ ADR,  0 2 MOVZ,  2 15 MOVZ,  NR-WRITE SYS,
@@ -436,7 +446,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 : C-BP-STACK-DUMP ( label label -- )
    {: sdump:label sdone:label :}
    sdump LBL,
-      14 SP 56 LDR,  17 14 CMP,  C-GE sdone BCOND,
+      14 SP 56 LDR,  17 14 CMP,  C-CS sdone BCOND,
       9 17 0 LDR,  17 SP 48 STR,  LHEX LABEL@ BL,
       17 SP 48 LDR,  17 17 8 ADDI,  sdump B,
    sdone LBL, ;
