@@ -159,7 +159,7 @@ variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
 variable LINDEXRELEASE \ release this process's derived address index before restore
 variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
-variable LADDRSITE  \ record the chain about to be emitted at CP as an address literal
+variable LADDRSITE  \ record the address-literal chain whose first word is in x9
 \ The six opcode bits of an AArch64 BL, i.e. $94000000 >> 26. The call relocation
 \ pass reads them with one shift rather than a mask-and-compare against a 64-bit
 \ literal.
@@ -173,11 +173,15 @@ $25 constant BL-OP-HI
 : MARK-CELL ( n -- ) {: cell:n :}
    9 cell LIT64,  9 DATA 9 ADD,  LMARK LABEL@ BL, ;
 
-\ Emit "the four-instruction chain that starts at the current CP is an address of
-\ code". The recorder reads CP itself, so the compile handler has nothing to pass
-\ and the site can never be off by an instruction.
-: MARK-SITE ( -- )
+\ Record an address chain whose first instruction is held in the named register.
+\ Compile handlers use CP; boot relocation uses the captured site's address.
+: MARK-SITE-AT ( n -- ) {: site:n :}
+   9 site 0 ADDI,
    LADDRSITE LABEL@ BL, ;
+
+\ The compile handler records CP before emitting the chain's first instruction.
+: MARK-SITE ( -- )
+   CP MARK-SITE-AT ;
 
 : EMIT-FULL-MESSAGE ( -- )
    LXTMSG LABEL@ LBL, S\" hb: address-cell storage allocation failed\n" BYTES,
@@ -5062,6 +5066,11 @@ public
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      \ A later capture or stripped link still needs the DATA site's provenance.
+      \ The shared recorder clobbers x6; retain this pass's live DATA delta.
+      SP SP 16 SUBI,  6 SP 0 STR,
+      9 SNAP-RELOC:MARK-SITE-AT
+      6 SP 0 LDR,  SP SP 16 ADDI,
       next LBL,
       21 21 4 ADDI,  22 22 1 ADDI,  dloop B,
    drdone LBL,
@@ -5787,16 +5796,14 @@ public
       0 XTBAND-RC MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,  RET, ;
 
-\ Record the four-instruction MOVZ/MOVK chain that is about to be written at CP as
-\ an address of code, so the two relocation passes can find it again without ever
-\ decoding region bytes. Called from C-CODE-ADDR before the chain is emitted, so
-\ CP is exactly the chain's first word.
-\ x11 holds the address the caller is about to compile in and must survive; x30 is
-\ already dead here, because the chain emission itself calls LCEMIT four times.
+\ Record the four-instruction MOVZ/MOVK address chain whose first word is in x9.
+\ Compile handlers supply CP before emission; seed relocation supplies its site.
+\ Preserve x11, the literal value held by compile and seed callers. Both callers
+\ have no live x30 across this call; compile handlers also call LCEMIT afterward.
 \ Clobbers x5, x6, x9.
 : EMIT-ADDR-SITE ( -- )
    LADDRSITE LABEL@ LBL,
-   6 CP DBASE SUB,                                  \ x6 = chain's byte offset within the region
+   6 9 DBASE SUB,                                   \ x6 = chain's byte offset within the region
    9 6 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,            \ x9 = bit number = word index & 7
    6 6 5 LSRI,                                      \ x6 = map byte index = offset >> 5
    5 ADDRMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD,  \ x6 = map byte address
