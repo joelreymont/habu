@@ -12,9 +12,13 @@ Do not call Habu release-qualified yet.
   `herdr agent prompt hazel "[cedar] ..."` (similarly rowan, alder, tender).
 - Our agent name is `cedar`; pane `w3:p1`, tab label `4`, workspace `habu`.
   Prefer the live name or `--current`; old external pane `w1:p4` is stale.
-- Hazel is account-limited until 17:50 local time. Internal Astra agent
-  integer_overflow owns M4 in .jj-ws/cedar-integer-overflow; checker_followup_review
-  approved the boolean correction and is reviewing the stripped-linker design.
+- Hazel is available and reviewing retained NSTR pool ownership for stripped
+  closures. Internal Astra agent integer_overflow completed dynamic object
+  payload storage; checker_followup_review is repairing missing DATA-site bitmap
+  publication at seed restore. Astra literal_ownership owns persistent NSTR
+  ownership and the native-build source-owner handoff in cedar-literal-ownership.
+  Prefix every message to another agent with your own live name,
+  including one-liners; the shared Herdr skill now requires this.
 
 ## Integrated and reviewed
 
@@ -32,7 +36,20 @@ Do not call Habu release-qualified yet.
   Cedar reviewed source, added independent return-input/nested-polarity probes,
   and asked for the existing SGRBASE seal instead of per-word peek guards.
   Final fixtures include the added probes and grouped/quotation borrow controls.
-- Bookmark was pushed through cd82e4d9. Later working edits require a checkpoint.
+- `2929bda4` + `9709aa17`: integer overflow admission and float-shaped overflow
+  claiming. `220930e4`: matching checker integer admission. Hazel and Cedar
+  reviewed; focused integer, float and checker tests pass on the combined engine.
+- `180b7e63`: public ndict count bounds (M3), reviewed by Cedar; agent engine
+  passes dictionary controls. It still needs the combined native rebuild/gate.
+- `a5dfb5f8` + `37e78525`: stripped build and outer CLI execute in native build
+  scope, with tier 1 selected before dependencies. `e9111ac2` removes obsolete
+  maker entry/helpers. Cedar reviewed the Astra implementation. Focused CLI,
+  tier, preseed, quotation, hook-registry and surface checks pass on their stated
+  pre-C5 sources. Bookmark pushed through e9111ac2; C5 remains a working patch.
+- `1fb297ec`: dynamic object codec/cache/link payload storage, reviewed by Cedar.
+  Five optimized object suites pass; >512KiB text/data, aliased self-load/append,
+  returned cache-key corruption and actual raw-object executable controls pass.
+  Combined test/stripped-quotation.f now passes full hb-build and fresh execution.
 
 ## Current integration check
 
@@ -46,9 +63,16 @@ collected. The entire checker fixture forced to AOT refuses TAKE-RU8 (-8304):
 the same non-neutral return-stack helper also refuses on c37b51ff. This is an
 existing native effect limitation, not a passing AOT test or checker regression.
 
-Integer-overflow agent owns engine admission and parser fixtures; Cedar owns
-checker integer admission and independent review. Hazel's broad source-engine
-gate/control runs are supplemental evidence, not the native release gate.
+Latest combined numeric engine: `/tmp/cedar-numeric-native`, SHA-256
+`2a49a29c9804f00292652d45f0a32aa27e6f224034585501e890bf9d2acbc14c`,
+source through220930e4. It includes integer engine/checker admission and the float
+claiming fix. New integer, float, checker and native-feed focused suites pass.
+It does not include M3. Agent M3 engine `/tmp/cedar-ndict-native`, SHAeaf37486,
+does not include Cedar's checker integer admission; neither is a release pair.
+
+Hazel's broad source-engine attribution reran23 suites against6ce2e21e and
+e637ee61 with the same engine: no exit-code differences. Native-window-owner was
+skipped (>5min). This is supplemental evidence, not a passing native release gate.
 
 ## Frozen downstream candidates
 
@@ -103,7 +127,29 @@ Fix both closure traversal and relocation using the emitter's address bitmap:
   chain shape/extent, retain address-only reachable words, refuse missing mappings.
 - Regression must build/run default stripped binaries, including named ticks,
   anonymous/nested quotations, saved values, DATA/scalar controls. No --repl workaround.
-No C5 source patch has been made yet. Peer review required before landing.
+C5 working patch now follows marked code addresses and emits ADRP/ADDI/NOP/NOP
+while preserving each16-byte site. It validates opcode/register/shift/extent,
+retains address-only closure targets and allows a stable one-past DATA pointer.
+Hazel reviewed these and the NSTR window lifecycle. NSTR:WINDOW-OPEN now follows
+the BLOB-SRC latch so new application strings/trap messages live in restored DATA.
+Direct native writer builds and runs QUOTAPP and test/stripped-quotation-subject.f;
+the latter prints exactly `stripped-quotation: ok`. Logs/artifacts are under
+`/tmp/cedar-c5-linker` and `/tmp/cedar-c5-subject`. New stripped-address test passes
+seven malformed-chain/DATA/zero-register refusals and valid boundaries. Namespace
+IDs and unaligned instruction interiors are now refused as code owners; both
+were demonstrated failing before correction and now pass with valid-entry controls.
+
+Object payload limits are fixed above (dot2e2a7bed). Hazel reduced a real retained
+library failure: /tmp/hazel-c5/unmap-fail-subject.f calls MEM:UNMAP on an invalid
+span. The engine prints `memory: unmap failed`; its stripped image builds0/exits71
+but emits20 NUL bytes. Internal Astra confirmed the owner is seeded REGION code;
+EM-AOT-RELOC-DATA fails to republish ADDRMAP bits (CODE/named passes do). Engine
+text's201 records have only5 canonical scalar chains, so no separate engine-text
+table is indicated. The seed fix/rebuild is active in cedar-native-stripped.
+Dot31ba3e76 owns this plus persistent previous-pool row ownership. literal_ownership
+must transfer the retained host's compiled literal rows into the new target NSTR
+owner; target tables are otherwise empty even though its code uses host strings.
+Do not relax DATA checks or claim a general stripped compiler until these close.
 
 ## Remaining closure
 
@@ -125,6 +171,8 @@ and the old RESTART.md in jj history for its scoped source-visibility overlay.
 Audit `/tmp/habu-audit-2026-09-14.md` used oldc3e1b024/Sept10engine. C2/C4/M8 now
 implemented; C5 confirmed above. Tested C1 and listed C3 exploits reject, broader
 C3 remains unvalidated. C6 dispatch and M10 early-gate-stop were already fixed.
-M1/M2 stack bounds, M3 ndict bounds, M4 literal overflow, M9 IR successors,
+M1/M2 stack bounds remain source-confirmed (dot986147f9). M3/M4 are implemented
+above but require combined qualification. Native dynamic +loop is missing
+(dotdb5978a3, source reproducer throws E-NELAB-CTRL). M9 IR successors,
 M11 environment cap and M13 zero UNMAP still require current evidence/fixes.
 Original probes are in `/tmp/claude-1001/-home-joel-Work-habu/3954d386-699e-4c6e-b454-0300ac86489f/scratchpad/`.

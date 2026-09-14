@@ -25,13 +25,22 @@ until Habu release qualification. That native engine rebuilt itself byte-identic
 Hazel's reviewed C2/C4/M8 fixes and the reviewed decimal fix are integrated through
 cd82e4d9. Reviewed boolean correction 6594f822 rebuilds successfully as engine
 954c53fd; focused checker, layout, float and native-finally tests pass. The internal
-Astra integer-overflow agent owns engine admission; Cedar owns checker admission.
+Astra integer-overflow agent implemented engine admission; Cedar implemented the
+matching checker admission. Both and the float overflow/name-claiming follow-up
+are reviewed and focused tests pass on combined engine SHA2a49a29c. Public ndict
+count bounds (M3) are integrated at180b7e63; a combined rebuild is still required.
 
-Current default stripped AOT builds still copy quotation code addresses from the
-maker: a six-word checked app builds then jumps to unmapped0x1865de0. Cedar owns
-dotf372a04a for address-aware closure traversal and position-independent literal
-relocation. This is separate from Maki's accepted --repl images. Warm source-order
-verification and public recovery also remain open. Tender reports its previous
+The default stripped route now selects the optimizing tier before dependencies
+and retains EXECUTABLE-BUILD scope through source loading. Obsolete maker code is
+removed through e9111ac2. The C5 relocation patch is under integration: direct
+native linker builds and fresh quotation images pass, as do malformed-chain
+refusals. Dynamic object payload storage is integrated at1fb297ec; the full
+hb-build quotation regression now passes. Retained pre-window library strings
+still lose their bytes (dot31ba3e76): seed DATA relocation drops their map bits,
+and the target compiler lacks persistent ownership of previous string pools.
+Both repairs are active before qualification.
+These are separate from Maki's accepted --repl images. Warm source-order
+verification and public recovery remain open. Tender reports its previous
 frozen9d pair passes standalone/REPL acceptance; Kestrel acceptance is pending.
 
 ## Required result
