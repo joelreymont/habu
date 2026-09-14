@@ -6,73 +6,33 @@ Tender campaign `habu-compile-the-tender-8385810f`.
 
 ## Current correctness work
 
-Restart checkpoint: read [RESTART.md](RESTART.md) first. Cedar owns integration;
-performance work is deferred by Joel's latest instruction.
+Read [RESTART.md](RESTART.md) for exact revisions, engines and test evidence.
+Correctness and a qualified Kestrel handoff come first; performance and new
+x86-64/TI DSP implementations are deferred. Retire TRUST/TRUSTED last.
 
-Joel's current order is compiler correctness and the Kestrel backend handoff,
-then TRUST/TRUSTED retirement. Do not add new unchecked boundaries while the
-legacy migration waits. Current ownership:
+Remaining implementation and qualification:
 
-- Cedar: integration, independent review, native-emitter stack guards after the
-  engine ABI checkpoint, and combined qualification.
-- Hazel: warmed source-order verification (0c9fe3d7), after reviewed native
-  +loop (db5978a3, integrated at4b31dbcf).
-- Astra literal_ownership: physical stack bounds, engine/layout/lifecycle
-  (986147f9); native emitter and recovery parity follow the reviewed guard ABI.
-- Astra backend_handoff: native typed-load validation (38ad40e8), including
-  source/captured checker ownership and the real cold-prefix dependency.
-- Astra closure_integration_review: stripped-image test code/DATA attribution
-  after reviewed string-form repair (96bd2cf1, integrated ataca8e6c3).
+1. Complete physical stack bounds (986147f9): native emitter entry/call/return
+   envelopes; direct JIT, wide/local transfers and remaining primitives; recovery
+   parity. The allocation ABI and lifecycle are reviewed and integrated. Native
+   verifier fixtures must reject invalid windows before machine code executes.
+2. Finish Hazel's warmed source-order verification (0c9fe3d7), independently
+   review it and integrate on the current source line.
+3. Qualify the combined engine: exact code-span/preseed tests (9471db20 and
+   38ad40e8), repeated native selfbuild, capture/restore, recovery and full gate.
+   The last full run was 382/386; all four failures have source repairs, but the
+   complete rerun remains necessary.
+4. Supply the identified source/engine pair for Maki, Tender and Kestrel
+   acceptance. Preserve their existing pins until their owners accept it.
+5. Complete the requested runtime page-size query (c9528f06) and removal of
+   directory trees holding sockets/FIFOs (7bef09db).
+6. Finish TRUST/TRUSTED retirement. Add no new unchecked ordinary Forth while
+   that migration waits.
 
-The last full gate is SHA8c1b0755:378 suites,374 passed,4 failed. Three failures
-have focused passing repairs: native-again2b09e979, aot-chain-capture and
-native-gate-aot-negative2483995e. The positive AOT bundle now builds and prints
-its exact expected bytes on the string-form candidate; its next failure counts
-restored literal DATA as executable code. That assertion is being repaired at
-its reader. The separate missing typed-fetch tag check remains an active P1.
-
-Shared IR successor validation and target binding are reviewed and integrated
-at2d197293/ded890aa; seven focused fixtures pass on rebuilt SHA91ea98b7.
-Both native and JIT +loop use directed boundary crossing (4b31dbcf/1215c0be);
-six focused fixtures pass on combined loop engine SHAd5d84808. These are tested
-intermediate checkpoints, not a full green gate or a release pair.
-
-Joel deferred the downloaded x86-64 and TI DSP design archives until current
-Habu correctness is qualified. Preserve the existing backend handoff task;
-do not start new backend implementations during this integration.
-
-The September audit targets an older branch and engine. Current revalidation
-confirms quotation-input variance, implicit return-row reads, and trailing
-signature tokens as blockers. Tested repeat/dead-tail cases and the listed
-row-variable caller exploits now reject. Further audit claims remain to assess.
-
-Maki accepted frozen source54e9ae7c + SHAc37b51ff for its full suite, plain and
-all-Kiapi/native-cell images, restore, recapture and REPL. Its pin remains held
-until Habu release qualification. That native engine rebuilt itself byte-identically.
-Hazel's reviewed C2/C4/M8 fixes and the reviewed decimal fix are integrated through
-cd82e4d9. Reviewed boolean correction 6594f822 rebuilds successfully as engine
-954c53fd; focused checker, layout, float and native-finally tests pass. The internal
-Astra integer-overflow agent implemented engine admission; Cedar implemented the
-matching checker admission. Both and the float overflow/name-claiming follow-up
-are reviewed and focused tests pass on combined engine SHA2a49a29c. Public ndict
-count bounds (M3) are integrated at180b7e63 and included in engine SHA515efca8.
-
-The default stripped route now selects the optimizing tier before dependencies
-and retains EXECUTABLE-BUILD scope through source loading. Obsolete maker code is
-removed through e9111ac2. C5 code-address relocation is committed at1948ba71:
-native linker builds, fresh quotation images and malformed-chain refusals pass.
-Dynamic object payload storage is integrated at1fb297ec. Seed DATA address-site
-publication is repaired at7bc7d386 and survives two native generations. Persistent
-literal ownership and linker re-interning pass on test engine SHA4ccbc973: Cedar
-and Hazel independently confirm the actual MEM:UNMAP error image emits its exact
-20-byte message, and mutable pre-window DATA still refuses without an image.
-Guarded ownership is integrated atde322418, split WID cases at6d60ebba and normal
-entry lookup atb91ad53e. The guarded native engine SHAc3ddf790 passed ownership and
-entry fixtures; snapshot ownership passes. The later combined gate is above.
-No new release pair is qualified yet.
-These are separate from Maki's accepted --repl images. Warm source-order
-verification and public recovery remain open. Tender reports its previous
-frozen9d pair passes standalone/REPL acceptance; Kestrel acceptance is pending.
+Core capacity policy: a deliberately bounded 32 MiB dictionary/code region,
+reviewed together with derived maps, bootstrap mirror and relocation model.
+Measure the actual guarded selfbuild and headroom; retain the bounds and BL
+reach checks. No automatic allocator growth is requested or planned.
 
 ## Required result
 

@@ -41,3 +41,15 @@ atomic2-cell transfers, loop32/33 and j/one-frame, malformed/wrapped descriptors
 run-in-stack/task/caught-cross-stack-throw, native/JIT/interpreted/stripped and
 recovery paths with unchanged adjacent sentinels. No invalid access was executed
 during this design review. Implementation remains open.
+
+2026-09-14 checkpoint: reviewed allocation ABI 2f3e0f90 is integrated dcd369bf;
+run-in-stack now owns test helper switching too (a0b2ec7a). Native emitter guards
+and safe verifier fixtures are in .jj-ws/cedar-native-stack. The old 10 MiB code
+region exhausted at EM-COMPILE-UNDEF with E-NPUB-ROOM (-8561). Joel explicitly
+chose a fixed capacity budget: 32 MiB region, 30,404,608 code bytes after dictionary,
+no allocator growth. Integrated 90dc1891 includes the recovery and relocation
+model mirrors; its transitional engine rebuild, reloc-proof and snapshot-writer
+pass. Guarded rebuild/code-usage measurement is still running. Engine/JIT slice
+ffb57fb5 has focused passing evidence and is under independent review; wide
+transfers, remaining primitives and recovery parity are still open. This dot
+does not claim complete physical stack coverage or a green combined gate.

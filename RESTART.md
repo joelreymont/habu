@@ -1,62 +1,65 @@
 # Cedar restart — 2026-09-14
 
-Correctness first; Joel deferred performance. Mutual review before integration.
-Do not call Habu release-qualified yet.
+Correctness first. Do not call Habu release-qualified yet. TRUST/TRUSTED
+retirement is last; performance and the x86-64/TI DSP proposals are deferred.
+Joel explicitly chose a bounded core code budget, not allocator growth.
 
-Latest steering: leave TRUST/TRUSTED retirement until last; performance and
-both downloaded x86-64/TI DSP proposals are deferred. Finish current compiler
-correctness and a qualified handoff before new backend work.
+Current integration: 463e3548 in `.jj-ws/cedar-closure-identity`. Reviewed and
+integrated: shared IR/target admission, both +loop tiers, string forms, typed
+fetch validation and bootstrap mirror, active stack allocation ABI, test stack
+switching, fixed 32 MiB dictionary/code region, and exact dictionary code spans.
+The span fix uses a full-span bit for nonreturning bodies rather than borrowing
+the next word's first instruction. It still needs native generation qualification.
 
-Integration source through864cd575 includes reviewed shared IR successor checks
-(2d197293), target binding/backend admission (ded890aa), JIT +loop1215c0be,
-native +loop4b31dbcf and string formsaca8e6c3. GitHub bookmark
-cedar/compiler-integration was pushed through4b31dbcf; later commits need the
-next periodic push.
+Latest complete full gate: `/tmp/cedar-fetch-string-native`, SHA-256
+`a4137573a39e31808d60d05e3eee9f228874b1468ad55682752364170202a9a2`,
+386 suites: 382 passed, 4 failed (`/tmp/cedar-fetch-string-full-gate.log`).
+All four have source repairs; no newer complete green run is claimed:
+- stringforms: evaluation helper leaked its allocation pointer; fixed 41d699b0,
+  then reviewed stack-switch simplification a0b2ec7a. Focused cases pass.
+- native-regalloc: fixture expected the old allocator error after the shared IR
+  verifier began rejecting the same malformed edge earlier; fixed 01cad299.
+- native-fetch-snapshot: duplicate certified test declarations; fixed 56fee8f3.
+- native-gate-aot-positive: a no-RET record borrowed the next address chain;
+  exact code spans integrated 246fbd59/463e3548. Native preseed rerun pending.
 
-Tested intermediate engines:
-- /tmp/cedar-shared-ir-native, SHA91ea98b7a1500e4c5f38ca1ace479924d01379dc44eaf2279bd832e25f77edeb:
-  ir-verify, backend-boundary, native-hir, native-select, native-elaborate,
-  arm32-asm and tic6x-asm pass. No +loop/string/fetch/stack additions in it.
-- /tmp/cedar-loop-integration-native, SHAd5d84808d2381856352741b8d7e9698b192aff0094fb15c5fdbab52fe4b30796:
-  both loop tiers, native-j, native-leave, native-session and native-hir pass.
-  It includes IR and loop fixes, not later string/fetch/stack work.
-- /tmp/cedar-string-native-runtime/hb-native, SHAc3273f26a756a90b245dc5bcdbdd6b943af9feb6301361065470cb14f9a8d298:
-  independent string lane passes 13 string-form cases, feed/tape/ownership and
-  exact bundle output. It is a sibling checkpoint, not the integration engine.
+Tested intermediate engines (not release pairs):
+- `/tmp/cedar-stack-abi-native`, SHA-256
+  `0e234a96363658d8f6226b52c36fec58b9d6569f993bb59b369a7daf26178aca`:
+  active base/capacity follows run-in-stack, task, catch/eval and restore;
+  focused lifecycle, catch/task, engine and helper transition tests pass.
+- `/tmp/cedar-core-capacity-native`: built from 3eda33ce with the preceding
+  engine. REGION=33554432; DICT-SIZE=3149824; boot region use 5378628 bytes.
+  Relocation proof and snapshot-writer pass. It has neither new native guards
+  nor the exact-span publisher. This is the transitional host for those builds.
+- `/tmp/cedar-stack-jit-native2`, SHA f7ff3fcd: first direct-JIT guard slice
+  ffb57fb5, independently under review. Focused tests pass; wide transfers,
+  remaining multi-pop primitives and recovery mirror are unfinished.
 
-The integration bin/hb still points to bin/checkpoints/hb-correctness-8c1b0755,
-SHA8c1b07555a940b6ecf0ea1a42566631ef68aaef1a1200ae23e2d747a8d1fd39c.
-Its full gate ran378/378:374 pass,4 red, log
-/tmp/cedar-integrated-literals-gate.log. Three reds have focused repairs:
-native-again2b09e979, aot-chain-capture/native-gate-aot-negative2483995e.
-The positive bundle now executes on the string candidate; its old size test
-counts DATA/padding as code. Typed fetch still needs emitted validation:
-a checked preseed with tag5 can fetch/drop and return instead of exit85.
+Active work:
+- Cedar: native guards in `.jj-ws/cedar-native-stack`, build running as
+  `/tmp/cedar-native-stack-bounded` with log
+  `/tmp/cedar-native-stack-bounded-build.log`. A temporary copy of the real
+  driver reports target and completion code usage. The earlier10 MiB host
+  failed at EM-COMPILE-UNDEF with E-NPUB-ROOM (-8561). The32 MiB budget remains
+  fixed and retains allocation and BL-range bounds.
+- literal_ownership: `.jj-ws/cedar-stack-bounds`, remaining engine/JIT transfers
+  and recovery parity. ABI 2f3e0f90 is integrated dcd369bf; ffb57fb5 awaits review.
+- backend_handoff: independent review of ffb57fb5; exact-span implementation
+ 9faabc23/88861be1 is integrated. Native preseed matrix awaits two generations.
+- closure_integration_review: reviewed native guard design; added unconditional
+  standing<=entry and original declaration slot checks, plus six safe IR cases
+  in native-stack-contract.f. Actual fixed-engine validation is pending.
+- Hazel: warmed source-order VERIFY 0c9fe3d7, `.jj-ws/hazel-verify-order` on
+ 4b31dbcf, focused validation in progress. Commit/review before rebase; combined
+  full gate belongs on the integration tip, not that old base.
 
-Active independent work:
-- literal_ownership: .jj-ws/cedar-stack-bounds, engine guard ABI/lifecycle.
-  STACK-ABI leaf must load before layout, before require exists. First produce
-  a guarded engine checkpoint, then use it to build native-emitter guards.
-- backend_handoff: .jj-ws/cedar-native-fetch, source-owned immutable tag-check
-  descriptors and appended checker callback. Coordinating real cold-prefix
-  leaf dependencies with the stack owner; no replay of loaded ABI packages.
-- closure_integration_review: .jj-ws/cedar-gate-repairs, code/DATA separation in
-  stripped-image fixture assertions. String repair already independently reviewed.
-- Hazel: native loop buffer cleanup, then warmed source-order VERIFY0c9fe3d7.
-
-Cedar reviews each coherent patch, integrates, rebuilds the combined engine,
-runs focused tests and the complete gate, then selfbuild/restore/recovery and
-application acceptance. Do not promote an intermediate checkpoint. Remaining
-September audit claims are tracked under6f360270; no old audit red count is a
-current result. Page-size API is pending dotc9528f06 (Rowan now cites it).
-
-Ownership selfbuild convergence completed on frozen ee8dc15c: B3/B4 are
-byte-identical, SHA-256
-3d0913233e1aeff79ae63f0d3732448ec861e2ddc7c7b242a4539bf656906f90,
-6160576 bytes. B4 build and native-string tests pass. All B2/B3 differences
-were registered DATA address sites plus the stored capture origin, shifted
-by131120 bytes; attribution /tmp/cedar-native-seed-diff.log. This is separate
-from the combined engine above and is not a release qualification.
+Remaining sequence: finish/review stack and VERIFY patches; qualify combined
+selfbuild, capture/restore, recovery and full gate; hand frozen source/engine to
+Maki, Tender and Kestrel. Page-size query c9528f06 and socket/FIFO REMOVE-TREE
+7bef09db remain requested library tasks. TRUST/TRUSTED retirement follows.
+Always pin both HABU_UNDER_TEST and HABU_FIXPOINT_ENGINE: integration bin/hb
+still names the older 8c1b0755 checkpoint and is not the current candidate.
 
 ## Workspace and communication
 
