@@ -1,6 +1,7 @@
 \ Integer admission is shared by interpret, evaluate, and native compilation.
 require lib/test.f
 require test/gate-common.f
+require test/checker-assert.f
 
 package INTEGER-LITERALS-TEST
 
@@ -110,6 +111,19 @@ package INTEGER-LITERALS-TEST
    s" $1FFFFFFFFFFFFFFFF" BAD-LITERAL
    s" -$1FFFFFFFFFFFFFFFF" BAD-LITERAL ;
 
+\ Checker-only admission must refuse the same spellings before compilation.
+\ Numeric-shaped names stay claimed by the literal grammar even on overflow.
+: CHECKER-ADMISSION ( -- )
+   s" IL-MAX ( -- n ) 9223372036854775807" CHECK-QUIET-CANDIDATE! -1 T=
+   s" IL-MIN ( -- n ) -9223372036854775808" CHECK-QUIET-CANDIDATE! -1 T=
+   s" IL-HEX ( -- n ) $FFFFFFFFFFFFFFFF" CHECK-QUIET-CANDIDATE! -1 T=
+   s" IL-NEG-HEX ( -- n ) -$FFFFFFFFFFFFFFFF" CHECK-QUIET-CANDIDATE! -1 T=
+   s" IL-OVER ( -- n ) 9223372036854775808" CHECK-QUIET-CANDIDATE! 0 T=
+   s" IL-UNDER ( -- n ) -9223372036854775809" CHECK-QUIET-CANDIDATE! 0 T=
+   s" IL-WRAP ( -- n ) 18446744073709551616" CHECK-QUIET-CANDIDATE! 0 T=
+   s" IL-HEX-WRAP ( -- n ) $10000000000000000" CHECK-QUIET-CANDIDATE! 0 T=
+   s" IL-NAME ( -- n ) 18446744073709551616X" CHECK-QUIET-CANDIDATE! -1 T= ;
+
 T-RESET
 9223372036854775807 MAXIMUM T=
 -9223372036854775808 MINIMUM T=
@@ -121,6 +135,9 @@ $8000000000000000 MINIMUM T=
 $10000000000000000G 42 T=
 VALUES
 REFUSALS
+: 9223372036854775808 ( -- n ) 42 ;
+: $10000000000000000 ( -- n ) 42 ;
+CHECKER-ADMISSION
 T-REPORT
 
 ;package

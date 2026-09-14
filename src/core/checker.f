@@ -9946,6 +9946,11 @@ variable FLD  variable FLI  variable FLO  variable FLC
    v drop
    flt ok and ;
 
+: INTEGER-LITERAL-ADMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u num-parse {: v:n flt:bool ok:bool :}
+   v drop
+   flt 0= ok and ;
+
 : DEFINER-TOK ( ptr u8 n -- bool ) {: a:ptr u:n :}
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF
       a u s" variable" CORE-STR=  a u s" constant" CORE-STR= or IF
@@ -9957,7 +9962,10 @@ variable FLD  variable FLI  variable FLO  variable FLC
    RES-FALSE ;
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u ALLDIG? IF STEP-N-OUT RES-TRUE EXIT THEN
+   a u ALLDIG? IF
+      a u INTEGER-LITERAL-ADMITTED? IF STEP-N-OUT ELSE 0 OK ! -1 FAILSET ! THEN
+      RES-TRUE EXIT
+   THEN
    a u FLODIG? IF
       a u FLOAT-LITERAL-ADMITTED? IF STEP-R-OUT ELSE 0 OK ! -1 FAILSET ! THEN
       RES-TRUE EXIT
