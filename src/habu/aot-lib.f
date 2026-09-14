@@ -1,67 +1,25 @@
 \ aot-lib.f - stripped AOT linker words. Load after src/habu/aot-closure.f.
 \
-\ The MAKER compiles the program in-process (we point
-\ INP/INE at the program text + an AOT-LINK:LINK sentinel and return, so the maker's
-\ own interpret loop compiles the definitions into its JIT region), then AOT-LINK:LINK
-\ serializes ONLY the native-reachable closure of MAIN into a standalone binary:
-\ a minimal runtime entry (reserve the value stack, x19=sp) + `BL MAIN; exit`,
-\ with every other word, the interpreter, the compiler and the parser stripped.
-\ All reachable blobs are copied into the output __text and their absolute
-\ inter-word calls relocated. The program MUST define `: MAIN ;`.
-\ tools/hb-build.f owns the I/O paths. A DRIVER (appended last, like build.f).
+\ tools/aot-build.f loads the application through the retained native compiler.
+\ LINK writes the selected entry's reachable closure into a standalone image,
+\ relocates its code and emits the minimal runtime entry. tools/hb-build.f owns
+\ the output paths; the default application entry is MAIN.
 
-\ The toolchain hook is on when this file is appended and stays on: the AOT
-\ relocation core below compiles checked. MAP-IN-BLOB is the one remaining
+\ The AOT relocation core compiles checked. MAP-IN-BLOB is the remaining
 \ named TRUSTED: boundary - a dictionary-record blob-span walk whose record
 \ reads and pointer round-trips through scratch cells are outside checked
 \ pointer inference until the typed dictionary-record schema lands (dot
-\ habu-typed-dictionary-record-c67adddb). The driver installs USER-HOOK below
-\ for user source only.
+\ habu-typed-dictionary-record-c67adddb).
 \ Retirement: MAP-IN-BLOB under habu-typed-dictionary-record-c67adddb.
 
 package AOT-LINK
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 using A64ASM
 
-variable PN
-variable AOT-SI
-10 constant AOT-LF
-: AOT-IN   s" hb-aot-src" TMP-PATH ;
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 : AOT-OBJ ( -- ptr u8 n )  s" hb-aot-obj" TMP-PATH ;
-: AOT-SENT$ ( -- ptr u8 n )  s"  AOT-LINK:LINK " ;
 
 : AOT-FALSE ( -- bool ) 0 0= 0= ;
-: AOT-JSON-ARG? ( -- bool )
-   ARGC 2 <= IF AOT-FALSE EXIT THEN
-   2 ARGV$ dup 1 = IF drop c@ 49 = ELSE 2drop AOT-FALSE THEN ;
-: AOT-RUNTIME-ARGS ( -- )
-   ARGC 1 > IF 1 ARGV$ DIAG-FILE! THEN
-   AOT-JSON-ARG? IF -1 JSON-DIAGS ! THEN ;
-
-: USER-HOOK
-   CHECK!  dup -1 <> IF s" hb-build: check did not certify" 70 die THEN ;
-
-: READ-PROG
-   AOT-IN AOT-SENT$ nip 1 + MAKER-SOURCE:READ PN ! ;
-
-: SENT-ROOM ( n -- )
-   PN @ + MAKER-SOURCE:CAPACITY > IF s" aot: source exceeds buffer" 74 die THEN ;
-
-: SENTLF ( -- )
-   1 SENT-ROOM
-   AOT-LF MAKER-SOURCE:SOURCE PN @ + c!
-   PN @ 1 + PN ! ;
-
-: SENTSET ( -- )  AOT-SENT$ {: sa:ptr su:n :}
-   SENTLF
-   su SENT-ROOM
-   0 AOT-SI !
-   BEGIN AOT-SI @ su < WHILE
-      sa AOT-SI @ + c@  MAKER-SOURCE:SOURCE PN @ + AOT-SI @ + c!
-      AOT-SI @ 1 + AOT-SI !
-   REPEAT
-   PN @ su + PN ! ;
 
 \ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL  variable REC2

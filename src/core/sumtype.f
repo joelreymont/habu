@@ -1017,7 +1017,7 @@ public
 \ adds no unchecked code.
 \ Generated-plan eval crossing and protected-wordlist recorder, reached
 \ through `defer` hooks so the call is statically effect-known (no execute of a
-\ raw stored xt). include.f / aot.f bind TDECL-EVAL-XT; xref.f binds
+\ raw stored xt). include.f binds TDECL-EVAL-XT; xref.f binds
 \ TDECL-PROT-WID-XT. A separate ARMED flag records whether the real word is
 \ installed: a stage builder that omits those files leaves the flag 0, and the
 \ generator fails closed exactly as the old `hook @ 0=` guard did (a `defer`
@@ -1028,7 +1028,7 @@ defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )   REG-PROTECT
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )   REG-PROTECT
 \ These two flags are the only public records here that do NOT carry
 \ REG-PROTECT, and the reason is measured rather than chosen. Their writers are
-\ src/core/include.f, src/habu/aot.f, src/habu/xref.f and the three stage0
+\ src/core/include.f, src/habu/xref.f and the three stage0
 \ test/bootstrap-wide-*-src.f fixtures, and every one of them arms at genuine
 \ TOP LEVEL. Two facts close the door on moving the store into a compiled body:
 \ this file is loaded UNCHECKED, so nothing it defines except a `defer` is

@@ -157,7 +157,7 @@ variable BLR-CNT
 : SURFACE-BASE-DEFS ( -- )
    s" package AOT-SURFACE-HOSTILE" GE-SRC-LINE
    s" public" GE-SRC-LINE
-   s" : SENTSET ( -- ) ;" GE-SRC-LINE
+   s" : NATIVE-BUILD ( -- ) ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" package AOT-SURFACE-TEST" GE-SRC-LINE
    s\" : AS-FAIL ( bool -- ) 0= if s\" AOT-LINK surface mismatch\" 74 die then ;" GE-SRC-LINE
@@ -167,7 +167,7 @@ variable BLR-CNT
    s\" : AS-HOST-PUB ( -- n ) s\" AOT-SURFACE-HOSTILE\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-START ;" GE-SRC-LINE ;
 
 : SURFACE-PUB-DEFS ( -- )
-   s\" : AS-PUB-NAME? ( ptr u8 n -- bool ) 2dup s\" LINK\" XREF-STR=CI >r s\" RUN\" XREF-STR=CI r> or ;" GE-SRC-LINE
+   s\" : AS-PUB-NAME? ( ptr u8 n -- bool ) 2dup s\" LINK\" XREF-STR=CI >r s\" BUILD-NATIVE\" XREF-STR=CI r> or ;" GE-SRC-LINE
    s" : AS-PUB-CHECK ( -- ) AS-NS XREF-FOUND? AS-FAIL" GE-SRC+
    s"  0 ndict@ 0 ?do i XREF-REC dup XREF-WORDLIST AS-PUB = if" GE-SRC+
    s"  dup XREF-NAME$ AS-PUB-NAME? AS-FAIL drop 1+" GE-SRC+
@@ -181,9 +181,9 @@ variable BLR-CNT
    s" : AS-PRIVATE ( ptr u8 n -- ptr n ) AS-PRI XREF-FIND-WL dup XREF-FOUND? AS-FAIL ;" GE-SRC-LINE
    s" : AS-NAMED ( ptr u8 n -- ) 2dup AS-PRIVATE drop" GE-SRC+
    s"  2dup AS-BARE-NAME AS-QUAL-NAME ;" GE-SRC-LINE
-   s\" : AS-HOSTILE-CHECK ( -- ) s\" SENTSET\" AS-PRIVATE" GE-SRC+
+   s\" : AS-HOSTILE-CHECK ( -- ) s\" NATIVE-BUILD\" AS-PRIVATE" GE-SRC+
    s"  dup AS-HOST-PUB AS-NOT-EXPOSED-WL? AS-FAIL drop" GE-SRC+
-   s\"  s\" SENTSET\" AS-HOST-PUB AS-NAME-ABSENT? 0= AS-FAIL ;" GE-SRC-LINE
+   s\"  s\" NATIVE-BUILD\" AS-HOST-PUB AS-NAME-ABSENT? 0= AS-FAIL ;" GE-SRC-LINE
    s\" : AS-MAIN-CHECK ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? AS-FAIL" GE-SRC+
    s\"  s\" MAIN\" AS-PRI XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE
    \ Representative words, one per way the packaging could regress: REC and

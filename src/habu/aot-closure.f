@@ -1,16 +1,11 @@
 \ aot-closure.f - stripped AOT closure analysis and diagnostics.
 
-\ The toolchain hook is on when this file is appended and stays on: this file
-\ compiles checked, with its raw-pointer boundaries as explicit TRUST rows.
-\ The driver installs USER-HOOK below for user source only.
+\ This file compiles checked, with raw-pointer boundaries as explicit TRUST rows.
 
-\ Checker-internal surface used by AOT diagnostics and the driver hook: the
-\ checker registry does not publish its own words to later checked loads
-\ (same boundary class as verify-source.f CHECK-BODY), so the two entrypoints
-\ the AOT tail needs are typed here as axioms.
+\ The checker registry does not publish its diagnostic-mode cell to later
+\ checked loads, so the AOT diagnostic reader types that boundary here.
 \ Retirement: habu-primitive-effect-axiom-1119f176.
 s" JSON-DIAGS" s" -- ptr a" TRUST
-s" CHECK!" s" ptr u8 n -- n" TRUST
 
 package AOT-LINK
 

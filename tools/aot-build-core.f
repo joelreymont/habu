@@ -1,7 +1,6 @@
 \ The application and linker run in one native executable-build scope.
 require src/habu/app-image.f
 require src/os/script-argv.f
-require src/habu/maker-source.f
 require src/habu/aot-decl.f
 require src/habu/aot-closure.f
 require src/habu/aot-lib.f

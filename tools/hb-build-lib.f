@@ -466,7 +466,6 @@ HBB-INSTALL-CHILD-LINT
    s" src/os/script-argv.f" HBB-KEY-FILE+
    s" src/habu/fdio.f" HBB-KEY-FILE+
    s" src/habu/driver-io.f" HBB-KEY-FILE+
-   s" src/habu/maker-source.f" HBB-KEY-FILE+
    s" src/habu/aot-decl.f" HBB-KEY-FILE+
    s" src/habu/aot-closure.f" HBB-KEY-FILE+
    s" src/habu/aot-lib.f" HBB-KEY-FILE+ ;
