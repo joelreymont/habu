@@ -480,6 +480,10 @@ SUITE compiler-native-local-case
    test/compiler/native-local-case.f
 ;SUITE
 
+SUITE compiler-native-local-ambiguity
+   test/compiler/native-local-ambiguity.f
+;SUITE
+
 SUITE compiler-native-product-locals
    test/compiler/native-product-locals.f
 ;SUITE

@@ -69,6 +69,8 @@ variable PRIOR-GLUE
 variable PRIOR-DEAD
 variable PRIOR-CAST
 variable PRIOR-CALLABLE
+variable PRIOR-TARGET-VALUE
+variable PRIOR-TARGET-U
 variable M-OPEN                      \ a compilation is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
@@ -378,7 +380,16 @@ create SPELL-BUF SPELL-CAP allot
    {: sy:IR-ID:ir-symbol-id :}
    CC BB sy IR-BUILD:SYMBOL-LEN SPELL-CAP > if exit then
    CC BB sy SPELL-BUF SPELL-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
-   SPELL-BUF u NDICT:CALL-TARGET PRIOR-ENTRY @ <> if exit then
+   \ A local can have the same spelling as a public word in more than one
+   \ used package. This pass runs before NELAB has built its local table, so
+   \ an ambiguous token cannot be identified as a local here. Ambiguity proves
+   \ that the token is not a prior binding; preserve that result and leave the
+   \ normal elaborator to resolve the local first.
+   u PRIOR-TARGET-U !
+   [: SPELL-BUF PRIOR-TARGET-U @ NDICT:CALL-TARGET PRIOR-TARGET-VALUE ! ;] catch {: rc:n :}
+   rc E-USING-AMBIGUOUS = if exit then
+   rc 0<> if rc throw then
+   PRIOR-TARGET-VALUE @ PRIOR-ENTRY @ <> if exit then
    r sy HIR-WORD:MODELS? if exit then
    \ Structural operands can have the same spelling as the definition's bare
    \ tail. Leave an uncallable prior binding unmodeled: NELAB's existing scans
