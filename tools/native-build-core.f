@@ -83,6 +83,46 @@ create SMOKE-ERR SMOKE-CAP allot
 TRUSTED: RESET-XT ( n -- [ -- ] ) ;
 TRUSTED: IMPORT-XT ( n -- [ ptr u8 -- ] ) ;
 
+defer SOURCE-ARENA ( -- ptr u8 )
+defer SOURCE-CAP ( -- n )
+defer SOURCE-OFFSETS ( -- ptr n )
+defer SOURCE-LENGTHS ( -- ptr n )
+
+\ Inspect the retained owner's exact namespace and declarations without
+\ reopening its protected package. These getters also exist in the older seed.
+: LITERAL-OWNER-XT ( ptr u8 n -- n ) {: name:ptr size:n :}
+   s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if
+      drop s" native-build: literal owner missing" 76 die
+   then
+   XREF-LEN name size rot XREF-FIND-WL
+   dup XREF-FOUND? 0= if
+      drop s" native-build: literal operation missing" 76 die
+   then
+   XREF-START ;
+
+TRUSTED: BIND-LITERAL-SOURCE ( -- )
+   s" ARENA" LITERAL-OWNER-XT is SOURCE-ARENA
+   s" ARENA-CAP" LITERAL-OWNER-XT is SOURCE-CAP
+   s" R-OFF" LITERAL-OWNER-XT is SOURCE-OFFSETS
+   s" R-LEN" LITERAL-OWNER-XT is SOURCE-LENGTHS ;
+
+: LITERAL-SOURCE-ROWS ( -- ptr u8 n ptr n ptr n )
+   SOURCE-ARENA NSTR:COUNT SOURCE-OFFSETS SOURCE-LENGTHS ;
+
+TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
+
+: LITERAL-SPAN-REFUSE ( -- )
+   s" native-build: source literal arena outside capture" BUILD-RC die ;
+
+: CHECK-LITERAL-SPAN ( -- )
+   SOURCE-ARENA LITERAL-ADDRESS {: start:n :}
+   SOURCE-CAP {: size:n :}
+   start AOT-ARM:D0 @ < start AOT-ARM:D1 @ > or if LITERAL-SPAN-REFUSE then
+   AOT-ARM:D1 @ start - {: remaining:n :}
+   remaining CELL < if LITERAL-SPAN-REFUSE then
+   size 0 < size remaining CELL - > or if LITERAL-SPAN-REFUSE then ;
+
 \ Resolve the current source owner in its own package. The cold seed uses the
 \ native dispatch header cells for its old compiler's temporary stack.
 TRUSTED: CHECKER-OWNER ( -- ptr u8 )
@@ -161,17 +201,25 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
 
 \ Resolve a target operation without compiling another definition or opening a
 \ source frame. It must be part of the frozen target code window.
-: TARGET-XT ( ptr u8 n -- n )
-   XREF-FIND dup XREF-FOUND? 0= if
-      drop s" native-build: target operation missing" 76 die
-   then
-   XREF-START {: xt:n :}
+: TARGET-CODE ( n -- n ) {: xt:n :}
    xt AOT-ARM:B0 @ < xt AOT-ARM:B1 @ >= or if
       s" native-build: operation does not belong to target" 76 die
    then
    xt ;
 
+: TARGET-XT ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if
+      drop s" native-build: target operation missing" 76 die
+   then
+   XREF-START TARGET-CODE ;
+
 TRUSTED: PREPARE-XT ( n -- [ -- ] ) ;
+TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
+
+: TRANSFER-LITERALS ( -- )
+   CHECK-LITERAL-SPAN
+   LITERAL-SOURCE-ROWS
+   s" IMPORT-ROWS" LITERAL-OWNER-XT TARGET-CODE LITERAL-IMPORT-XT execute ;
 
 : PREPARE-TARGET ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
@@ -304,9 +352,11 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 
 : DRIVE ( [ n n -- n ] bool -- [ n n -- n ] bool ) {: query bootstrap:bool :}
    CHECK-HOST-LAYOUT
+   BIND-LITERAL-SOURCE
    CHECKER-OWNER {: source:ptr :}
    source LOGICAL-RESET
    source OPEN-AND-COMPILE
+   TRANSFER-LITERALS
    AOT-CAPTURE:PAYLOAD-CAPTURE
    PREPARE-TARGET
    CAPTURE

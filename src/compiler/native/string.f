@@ -19,16 +19,48 @@ $80000 constant ARENA-CAP            \ 512 KB of bodies
 8192 constant ROWS-MAX               \ distinct bodies
 16384 constant SLOTS                 \ a power of two, twice ROWS-MAX
 
-create BOOT-ARENA ARENA-CAP allot
-PERSISTED-PTR-VARIABLE ARENA-P
-BOOT-ARENA ARENA-P !
-: ARENA ( -- ptr u8 ) ARENA-P @ ;
-create R-OFF ROWS-MAX cells allot    \ each row's offset into the arena
-create R-LEN ROWS-MAX cells allot    \ and its length
-create SLOT SLOTS cells allot        \ hash slot: row index plus one, zero is empty
+$28 constant OWNER-BYTES
 
-variable USED
-variable ROWS
+\ Each pool owns its metadata as well as its bytes. Forward links leave a new
+\ capture free of references into the older pools excluded from that capture.
+\ The two complete row tables reserve 128 KiB per pool for that lasting authority.
+: NEXT-FIELD ( ptr u8 -- ptr ptr u8 ) 0 ptr-field ;
+: ARENA-FIELD ( ptr u8 -- ptr ptr u8 ) 1 ptr-field ;
+: CAP-FIELD ( ptr u8 -- ptr n ) 2 cells + CELL-VIEW ;
+: ROWS-FIELD ( ptr u8 -- ptr n ) 3 cells + CELL-VIEW ;
+: USED-FIELD ( ptr u8 -- ptr n ) 4 cells + CELL-VIEW ;
+: OFFSETS ( ptr u8 -- ptr n ) OWNER-BYTES + CELL-VIEW ;
+
+: LENGTHS ( ptr u8 -- ptr n ) {: owner:ptr :}
+   owner OFFSETS owner CAP-FIELD @ cells + ;
+
+: OWNER-SIZE ( n -- n ) cells 2 * OWNER-BYTES + ;
+
+: OWNER-INIT ( ptr u8 ptr u8 n -- ) {: owner:ptr arena:ptr cap:n :}
+   owner ptr-cell-mark
+   owner CELL + ptr-cell-mark
+   NULL-PTR owner NEXT-FIELD !
+   arena owner ARENA-FIELD !
+   cap owner CAP-FIELD !
+   0 owner ROWS-FIELD !  0 owner USED-FIELD ! ;
+
+create BOOT-OWNER ROWS-MAX OWNER-SIZE allot
+\ The separate empty-row byte gives it an address no nonempty row can own,
+\ without charging a byte to BYTES or reducing the arena's body capacity.
+create BOOT-ARENA ARENA-CAP CELL + allot
+BOOT-OWNER BOOT-ARENA ROWS-MAX OWNER-INIT
+
+PERSISTED-PTR-VARIABLE FIRST-P
+PERSISTED-PTR-VARIABLE ACTIVE-P
+BOOT-OWNER FIRST-P !  BOOT-OWNER ACTIVE-P !
+
+: ARENA ( -- ptr u8 ) ACTIVE-P @ ARENA-FIELD @ ;
+: R-OFF ( -- ptr n ) ACTIVE-P @ OFFSETS ;
+: R-LEN ( -- ptr n ) ACTIVE-P @ LENGTHS ;
+: USED ( -- ptr n ) ACTIVE-P @ USED-FIELD ;
+: ROWS ( -- ptr n ) ACTIVE-P @ ROWS-FIELD ;
+
+create SLOT SLOTS cells allot       \ live hash slot: row index plus one
 variable PROBE
 variable FOUND
 variable HV
@@ -49,6 +81,48 @@ TRUSTED: PTR>N ( ptr a -- n ) ;
 
 : ROW$ ( n -- ptr u8 n ) {: k:n :}
    ARENA k ROW-OFF +  k ROW-LEN ;
+
+: OWNER-ROW$ ( ptr u8 n -- ptr u8 n ) {: owner:ptr row:n :}
+   owner ARENA-FIELD @ owner OFFSETS row cells + @ +
+   owner LENGTHS row cells + @ ;
+
+: APPEND-OWNER ( ptr u8 -- ) {: owner:ptr :}
+   FIRST-P @
+   begin dup NEXT-FIELD @ 0= 0= while NEXT-FIELD @ repeat
+   NEXT-FIELD owner swap ! ;
+
+: NEW-POOL ( -- ptr u8 )
+   align here {: owner:ptr :}
+   ROWS-MAX OWNER-SIZE allot
+   here {: arena:ptr :}
+   ARENA-CAP CELL + allot
+   owner arena ROWS-MAX OWNER-INIT
+   owner ;
+
+: ROW-CONTAINS? ( n ptr u8 n -- bool ) {: address:n body:ptr size:n :}
+   body PTR>N {: start:n :}
+   address start < if false exit then
+   size 0= if address start = exit then
+   address start - size < ;
+
+\ Reverse order also handles the older seed's shared empty/next-row address:
+\ the later nonempty row owns its bytes, while a terminal empty row still fits.
+: FIND-OWNER-ROW ( n ptr u8 -- ptr u8 n bool ) {: address:n owner:ptr :}
+   owner ROWS-FIELD @ {: rows:n :}
+   rows 0 ?do
+      owner rows 1- i - OWNER-ROW$ {: body:ptr size:n :}
+      address body size ROW-CONTAINS? if body size true unloop exit then
+   loop
+   NULL-PTR 0 false ;
+
+: IMPORT-CHECK ( n ptr n ptr n -- ) {: rows:n offsets:ptr lengths:ptr :}
+   rows 0 < rows ROWS-MAX > or if E-NSTR-BODY throw then
+   rows 0 ?do
+      offsets i cells + @ {: off:n :}
+      lengths i cells + @ {: size:n :}
+      off 0 < off ARENA-CAP > or if E-NSTR-BODY throw then
+      size 0 < size ARENA-CAP off - > or if E-NSTR-BODY throw then
+   loop ;
 
 \ ---- finding a body that is already here --------------------------------------
 \ FNV-1a, masked by an `and` against a positive constant so a hash whose top bit
@@ -91,11 +165,13 @@ TRUSTED: PTR>N ( ptr a -- n ) ;
 : ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
    ROWS @ ROWS-MAX >= if E-NSTR-CAP throw then
-   USED @ u + ARENA-CAP > if E-NSTR-CAP throw then
+   u ARENA-CAP USED @ - > if E-NSTR-CAP throw then
    a u FREE-SLOT {: s:n :}
    s 0 < if E-NSTR-CAP throw then
-   a  ARENA USED @ +  u BYTE-COPY
-   USED @ ROWS @ cells R-OFF + !
+   USED @ {: off:n :}
+   u 0= if ARENA-CAP else off then {: stored:n :}
+   a  ARENA stored +  u BYTE-COPY
+   stored ROWS @ cells R-OFF + !
    u ROWS @ cells R-LEN + !
    ROWS @ 1+ s cells SLOT + !
    USED @ u + USED !
@@ -106,18 +182,51 @@ public
 
 \ The capture driver calls this after latching D0, before evaluating source.
 \ Old pools stay allocated because published routines still hold their bytes.
-\ Only the lookup table starts over in the newly reserved capture domain.
+\ Call outside any evaluation that could rewind this reservation on failure.
 : WINDOW-OPEN ( -- )
-   here ARENA-P !
-   ARENA-CAP allot
-   0 USED !  0 ROWS !
+   NEW-POOL dup APPEND-OWNER ACTIVE-P !
    SLOTS 0 ?do 0 i cells SLOT + ! loop ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
 : INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 0 < if E-NSTR-BODY throw then
    a u FIND {: k:n :}
    k 0 >= if BASE k ROW-OFF + exit then
    BASE  a u ADD ROW-OFF  + ;
+
+private
+
+\ Only the build driver may import the retained owner's actual row tables;
+\ it proves the byte arena belongs to the capture before invoking this private seam.
+: IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
+   {: arena:ptr rows:n source-off:ptr source-len:ptr :}
+   rows source-off source-len IMPORT-CHECK
+   align here {: owner:ptr :}
+   rows OWNER-SIZE allot
+   owner arena rows OWNER-INIT
+   source-off BYTE-VIEW owner OFFSETS BYTE-VIEW rows cells BYTE-COPY
+   source-len BYTE-VIEW owner LENGTHS BYTE-VIEW rows cells BYTE-COPY
+   rows owner ROWS-FIELD !
+   owner APPEND-OWNER ;
+
+public
+
+\ Query only registered row metadata, never memory at the candidate address.
+: OWNER-ROW ( n -- ptr u8 n bool ) {: address:n :}
+   FIRST-P @
+   begin dup 0= 0= while
+      dup address swap FIND-OWNER-ROW if
+         rot drop true exit
+      then
+      2drop NEXT-FIELD @
+   repeat
+   drop NULL-PTR 0 false ;
+
+: REINTERN-OWNED ( n -- n bool ) {: address:n :}
+   address OWNER-ROW 0= if 2drop address false exit then
+   {: body:ptr size:n :}
+   address body PTR>N - {: offset:n :}
+   body size INTERN offset + true ;
 
 : COUNT ( -- n )
    ROWS @ ;

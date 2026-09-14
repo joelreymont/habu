@@ -1,5 +1,6 @@
 \ native-string.f - a string literal, compiled by the native chain and run.
 
+require test/compiler/aot-mode.f
 require lib/test.f
 require lib/string.f
 require src/compiler/native/compiler.f
@@ -163,6 +164,106 @@ TRUSTED: N>BYTES ( n -- ptr u8 ) ;
    s" lone-body" NSTR:INTERN {: newest:n :}
    newest fresh T= ;
 
+variable MUTABLE-CELL
+
+: OWNED-ROW ( n ptr u8 n -- ) {: address:n body:ptr size:n :}
+   address NSTR:OWNER-ROW TTRUE
+   size T= PTR>N body PTR>N T= ;
+
+: UNOWNED-ROW ( n -- )
+   NSTR:OWNER-ROW TFALSE
+   0 T= PTR>N 0 T= ;
+
+: OWNER-CASE ( -- )
+   s" row ownership survives a window opened at an odd DATA cursor" T-LABEL
+   align 0 c,
+   NSTR:WINDOW-OPEN
+   NSTR:COUNT 0 T=  NSTR:BYTES 0 T=
+   s" exact-row" NSTR:INTERN {: old:n :}
+   old old N>BYTES 9 OWNED-ROW
+   old 1+ old N>BYTES 9 OWNED-ROW
+   old 8 + old N>BYTES 9 OWNED-ROW
+   old 1- UNOWNED-ROW
+   old 9 + UNOWNED-ROW
+
+   s" empty rows have a distinct valid address and cost zero body bytes" T-LABEL
+   s" " NSTR:INTERN {: empty:n :}
+   empty empty N>BYTES 0 OWNED-ROW
+   empty old T<>
+   empty 1- UNOWNED-ROW
+   empty 1+ UNOWNED-ROW
+   NSTR:COUNT 2 T=  NSTR:BYTES 9 T=
+
+   NSTR:WINDOW-OPEN
+   old 2 + old N>BYTES 9 OWNED-ROW
+   empty empty N>BYTES 0 OWNED-ROW
+   s" exact-row" NSTR:INTERN {: fresh:n :}
+   fresh old T<>
+   old 2 + NSTR:REINTERN-OWNED TTRUE fresh 2 + T=
+   old 8 + NSTR:REINTERN-OWNED TTRUE fresh 8 + T=
+   NSTR:COUNT 1 T=  NSTR:BYTES 9 T=
+   empty NSTR:REINTERN-OWNED TTRUE {: new-empty:n :}
+   new-empty empty T<>
+   new-empty new-empty N>BYTES 0 OWNED-ROW
+   NSTR:COUNT 2 T=  NSTR:BYTES 9 T=
+
+   s" ordinary DATA and arbitrary numbers never acquire literal ownership" T-LABEL
+   MUTABLE-CELL PTR>N UNOWNED-ROW
+   0 UNOWNED-ROW  -1 UNOWNED-ROW
+   MUTABLE-CELL PTR>N NSTR:REINTERN-OWNED TFALSE MUTABLE-CELL PTR>N T= ;
+
+\ ROUTINE$ was compiled into the engine by its retained build host. Its literal
+\ predates this load and belongs to the transferred source pool after seeding.
+: SEEDED-OWNER-CASE ( -- )
+   s" the rebuilt target owns literals compiled by its retained host" T-LABEL
+   NTRAP:ROUTINE$ {: body:ptr size:n :}
+   body size s" die" T$=
+   body PTR>N body size OWNED-ROW
+   NSTR:WINDOW-OPEN
+   body PTR>N body size OWNED-ROW
+   body PTR>N 1+ NSTR:REINTERN-OWNED TTRUE
+   s" die" NSTR:INTERN 1+ T= ;
+
+variable BAD-ROWS
+variable BAD-OFFSET
+variable BAD-LENGTH
+
+\ This negative fixture reaches the real private importer by its dictionary
+\ identity. It never grants ownership: every supplied row is malformed.
+TRUSTED: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
+
+: IMPORT-OP ( -- [ ptr u8 n ptr n ptr n -- ] )
+   s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? TTRUE
+   XREF-LEN {: wid:n :}
+   s" IMPORT-ROWS" wid XREF-FIND-WL
+   dup XREF-FOUND? TTRUE
+   XREF-START IMPORT-XT ;
+
+: BAD-IMPORT ( -- )
+   MUTABLE-CELL BYTE-VIEW BAD-ROWS @ BAD-OFFSET BAD-LENGTH IMPORT-OP execute ;
+
+: REJECT-IMPORT ( -- )
+   here PTR>N {: before:n :}
+   [: BAD-IMPORT ;] E-NSTR-BODY TTHROWSQ
+   here PTR>N before T=
+   MUTABLE-CELL PTR>N UNOWNED-ROW
+   NTRAP:ROUTINE$ {: body:ptr size:n :}
+   body PTR>N body size OWNED-ROW ;
+
+: IMPORT-CASE ( -- )
+   s" only the build driver can invoke literal ownership import" T-LABEL
+   s" NSTR:IMPORT-ROWS" XREF-FIND XREF-FOUND? TFALSE
+   \ The checker reports an unknown public name (1), never a certificate (-1).
+   s" NST-PUBLIC-IMPORT ( ptr u8 n ptr n ptr n -- ) NSTR:IMPORT-ROWS"
+   CHECK-CANDIDATE! 1 T=
+
+   s" malformed imports leave DATA and existing row ownership unchanged" T-LABEL
+   -1 BAD-ROWS ! REJECT-IMPORT
+   1 BAD-ROWS ! -1 BAD-OFFSET ! 0 BAD-LENGTH ! REJECT-IMPORT
+   0 BAD-OFFSET ! $7FFFFFFFFFFFFFFF BAD-LENGTH ! REJECT-IMPORT
+   $80000 BAD-OFFSET ! 1 BAD-LENGTH ! REJECT-IMPORT ;
+
 \ ---- what a literal costs in code bytes ---------------------------------------
 \ The payload lives in DATA space, so the two chain emissions have the same code
 \ length even though one string is much longer. Address materialization depends
@@ -213,6 +314,9 @@ public
    INTERN-IDEMPOTENT-CASE
    WINDOW-CASE
    ROLLBACK-CASE
+   OWNER-CASE
+   SEEDED-OWNER-CASE
+   IMPORT-CASE
    BYTE-COST-CASE
    CAP-CASE
    T-REPORT ;

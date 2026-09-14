@@ -294,6 +294,10 @@ variable BAND-WID
    s" restored compiler accepts a fresh type and existing nominal signatures" T-LABEL
    PROBE-DECLARE$ WARM-STDIN
    EXITED @ TTRUE RC @ 0 T= PARSE-OUT 42 T=
+   s" restored compiler retains current and prior literal row ownership" T-LABEL
+   s" require test/compiler/native-string.f" WARM-STDIN
+   EXITED @ TTRUE RC @ 0 T= ERR-U @ 0 T=
+   OUT OUT-U @ s" test: ok" CONTAINS? TTRUE
    s" restored compiler rejects a scalar used as an arena view" T-LABEL
    s" : BAD-VIEW ( n -- n ) NTAPE:TOKENS ;" WARM-STDIN
    EXITED @ TTRUE RC @ 70 T=
