@@ -147,7 +147,7 @@ variable SRC-U
    S\" using CVR-V\n: CVR-Q ( n -- n ) CVR-G ;\n;using\n" VERDICT 7141 T=
    s" a later second used public does not make an earlier reference ambiguous" T-LABEL
    S\" using CVR-V\nusing CVR-W\n: CVR-T ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 0 T=
-   S\" using CVR-V\nusing CVR-W\n: CVR-Q ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 7140 T= ;
+   S\" using CVR-V\nusing CVR-W\n: CVR-Q ( n -- n ) CVR-H ;\n;using\n;using\n" VERDICT 7144 T= ;
 
 : REJECT-CASE ( -- )
    s" a real mismatch inside the horizon is still rejected and named" T-LABEL

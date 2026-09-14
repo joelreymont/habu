@@ -7556,7 +7556,7 @@ variable DFER-END
 \ engine depth and the checker automatically follows. CHECKER-USING (called by the engine
 \ C-USING before it increments the shared depth, and by verify-source likewise) records the
 \ name into the slot at the current depth; resolution reads names[0..depth).
-7140 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
+7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-FOUND                     \ interned sym of the first used-public match while resolving
 variable CK-USED-SLOT                      \ used-scan slot of that first match (-1 = none), for the shadow diagnostic
 

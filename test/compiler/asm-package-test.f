@@ -82,7 +82,7 @@ $14000000 constant B-ZERO
    \ which scope claims a bare tail (docs/forth.md Packages) and this body is
    \ compiled by the engine: its own used-search refuses the token before the
    \ checker is asked what the word's effect is. The checker's E-USING-AMBIGUOUS
-   \ (7140) is the same rule in the checker's resolver, which is what a tier-1
+   \ (7144) is the same rule in the checker's resolver, which is what a tier-1
    \ replay and the native compiler report.
    s" using A64ASM using COLLIDER : APT-BOTH ( n -- ) ENC-B ; ;using ;using"
       AP-EVAL E-AMBIGUOUS T=
