@@ -31,6 +31,10 @@ public
 : EFFECT-TEST-HEADER ( ptr u8 n -- )
    AOT-SECTION-CAP HDR O-PAYLEN + U64!
    HDR HDR-BYTES WRITE-ALL ;
+
+\ Exercise the pre-copy guard with the captured host and an incoming extent.
+: EFFECT-TEST-REGISTRY-GUARD ( n -- )
+   LATCH-HOST 0 swap S-REG ROW! ?REG ;
 ;package
 
 package EFFECT-POOL-TEST
@@ -60,7 +64,7 @@ public
    ROOT$ s" definitions.f" SOURCE JOIN-PATH SOURCE-U !
    ROOT$ s" effects.aot" ART JOIN-PATH ART-U !
    ROOT$ s" bad-header.aot" BAD-ART JOIN-PATH BAD-ART-U !
-   SOURCE$ S\" package EFFECT-POOL-WINDOW public\n" WRITE-ALL
+   SOURCE$ S\" package EFFECT-POOL-WINDOW public\nNEWTYPE effect-tag 0\n" WRITE-ALL
    WORDS 0 ?do
       SB-RESET s" : EFFECT-" SB-APPEND i NAME+
       S\"  ( n n n n -- n n n n ) 1+ ;\n" SB-APPEND
@@ -199,6 +203,21 @@ public
    0 AOT-REG-LEN !
    AOT-SIG-STR-CAP EXPECTED-U @ - -8 and AOT-SIG-STR-LEN ! KEY ART$ AOT-FILE:MERGE ;
 : BAD-REGISTRY ( -- ) KEY ART$ AOT-FILE:MERGE ;
+: BAD-REGISTRY-LIVE ( -- )
+   \ Closing a later empty window changes the live serializer's delta to zero,
+   \ but the original captured buffer must still refuse a competing payload.
+   AOT-ARM:WINDOW-OPEN AOT-ARM:WINDOW-CLOSE
+   AOT-REG-LEN @ 1+ AOT-FILE:EFFECT-TEST-REGISTRY-GUARD ;
+: BAD-REGISTRY-SHORT ( -- )
+   8 AOT-REG-LEN ! 9 AOT-FILE:EFFECT-TEST-REGISTRY-GUARD ;
+: PREFIX-REGISTRY ( -- )
+   AOT-ARM:WINDOW-OPEN AOT-ARM:WINDOW-CLOSE
+   AOT-REG-BUF@ AOT-REG-CAP CHECKER-REG-AOT-SAVE AOT-REG-LEN !
+   \ Equal byte lengths alone do not imply two declaration deltas.
+   AOT-REG-LEN @ AOT-FILE:EFFECT-TEST-REGISTRY-GUARD
+   KEY ART$ AOT-FILE:MERGE
+   WORDS 2 * AOT-SIG-N @ <> if 79 throw then
+   s" prefix registry merge: ok" type cr ;
 : BAD-STAGING ( -- ) AOT-SIG-STR-CAP AOT-SIG-STR-LEN ! AOT-SIG-PAYLOAD:BUILD ;
 
 private
@@ -224,6 +243,11 @@ private
    s" EFFECT-POOL-TEST:BAD-MERGE" REJECT-BUDGET
    s" EFFECT-POOL-TEST:BAD-REGISTRY" 75
    s" aot-file: two type-registry deltas cannot share one base" REJECT
+   s" EFFECT-POOL-TEST:BAD-REGISTRY-LIVE" 75
+   s" aot-file: two type-registry deltas cannot share one base" REJECT
+   s" EFFECT-POOL-TEST:BAD-REGISTRY-SHORT" 75
+   s" aot-file: invalid captured type registry table" REJECT
+   s" EFFECT-POOL-TEST:PREFIX-REGISTRY" 0 s" prefix registry merge: ok" REJECT
    s" EFFECT-POOL-TEST:BAD-STAGING" 72 s" aot: encoded sections exceed their byte budget" REJECT ;
 
 : RUN ( -- )

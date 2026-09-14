@@ -947,24 +947,33 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
 variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
-\ REG-AOT-SAVE's table is deliberately opaque to this reader, but its fixed
-\ shape is part of the checker/AOT payload ABI: eight stores, 24 bytes per row,
-\ and a 200-byte header.  The second u64 in each row is the captured delta
-\ count.  Read the host through the existing checker serializer, then inspect
-\ only those counts to distinguish a prefix from a real host delta.
+\ Version 9 carries REG-AOT-SAVE's table: eight (base, delta-count, bytes)
+\ rows, followed by the complete stores. Inspect the captured bytes; a live
+\ checker may since have closed another window or belong to another owner.
 8 constant REG-TABLE-N
 8 constant REG-TABLE-OFF
 24 constant REG-TABLE-ROW
-variable REG-DELTA-HIT
+REG-TABLE-N REG-TABLE-ROW * REG-TABLE-OFF + constant REG-TABLE-BYTES
 
-: REG-HAS-DELTA? ( ptr u8 -- bool ) {: p:ptr :}
-   0 REG-DELTA-HIT !
+: REG-FORMAT-BAD ( -- )
+   s" aot-file: invalid captured type registry table" DIE ;
+
+: REG-HAS-DELTA? ( ptr u8 n -- bool ) {: p:ptr u:n :}
+   u REG-TABLE-BYTES < if REG-FORMAT-BAD then
+   p U64@ REG-TABLE-N <> if REG-FORMAT-BAD then
+   0 REG-TABLE-BYTES
    REG-TABLE-N 0 ?do
-      p REG-TABLE-OFF + i REG-TABLE-ROW * + 8 + U64@ 0<> IF
-         -1 REG-DELTA-HIT !
-      THEN
+      {: delta:n used:n :}
+      p REG-TABLE-OFF + i REG-TABLE-ROW * + {: row:ptr :}
+      row U64@ 0 < if REG-FORMAT-BAD then
+      row 8 + U64@ {: count:n :}
+      row 16 + U64@ {: bytes:n :}
+      count 0 < bytes 0 < or if REG-FORMAT-BAD then
+      bytes u used - > if REG-FORMAT-BAD then
+      delta count or used bytes +
    loop
-   REG-DELTA-HIT @ 0<> ;
+   u <> if REG-FORMAT-BAD then
+   0<> ;
 
 : LATCH-HOST ( -- )
    AOT-BLOB-LEN @ H-BLOB !            AOT-REC-N @ H-REC !
@@ -1083,32 +1092,13 @@ variable REG-DELTA-HIT
 \ delta is expressed against the registry high-water its own window opened on.
 \ A partial payload carries the complete prefix as well as that delta, so the
 \ host's prefix bytes do not count as a competing declaration. Two actual
-\ deltas would still claim the same ids, and there is no remap that could tell
-\ them apart. The existing checker serializer reports the closed host payload
-\ length before a longer incoming payload is admitted; the registry loader's
-\ normal semantic validation remains the final check on the artifact bytes.
+\ deltas would still claim the same ids. This merge keeps a host delta only
+\ when the incoming section is empty; otherwise the host must be prefix-only.
+\ The registry loader validates incoming records against the target prefix.
 : ?REG ( -- )
    H-REG @ 0= if exit then
    S-REG ROW-LEN@ 0= if exit then
-   H-REG @ S-REG ROW-LEN@ = IF
-      s" aot-file: the host window declared " type H-REG @ .
-      s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
-      s" aot-file: two type-registry deltas cannot share one base" DIE
-   THEN
-   S-REG ROW-LEN@ H-REG @ > IF
-      AOT-REG-BUF@ AOT-REG-CAP CHECKER-REG-AOT-SAVE {: saved:n :}
-      saved H-REG @ <> IF
-         s" aot-file: the host window declared " type H-REG @ .
-         s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
-         s" aot-file: two type-registry deltas cannot share one base" DIE
-      THEN
-      AOT-REG-BUF@ REG-HAS-DELTA? IF
-         s" aot-file: the host window declared " type H-REG @ .
-         s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
-         s" aot-file: two type-registry deltas cannot share one base" DIE
-      THEN
-      EXIT
-   THEN
+   AOT-REG-BUF@ H-REG @ REG-HAS-DELTA? 0= if exit then
    s" aot-file: the host window declared " type H-REG @ .
    s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
    s" aot-file: two type-registry deltas cannot share one base" DIE ;
