@@ -376,6 +376,11 @@ variable MOVED                       \ did any set change this round
 : SUCC-EXISTS-CK ( n -- n )
    dup 0 < over BLOCKS >= or if E-IR-VERIFY-SUCC throw then ;
 
+: SAME-FUN? ( n n -- bool )
+   {: a:n b:n :}
+   T-BLR T@ T-FNR T@ K@ a BLK IR-FUN:PARENT@ IR-ID:FUN-LOCAL
+   T-BLR T@ T-FNR T@ K@ b BLK IR-FUN:PARENT@ IR-ID:FUN-LOCAL = ;
+
 : EDGES-COUNT ( -- )
    BLOCKS 0 ?do
       i TERM-OF {: o:IR-ID:ir-op-id :}
@@ -383,6 +388,7 @@ variable MOVED                       \ did any set change this round
       n i SN!
       n 0 ?do
          o i SUCC-OF SUCC-EXISTS-CK {: s:n :}
+         j s SAME-FUN? 0= if E-IR-VERIFY-SCOPE throw then
          s PN@ 1+ s PN!
       loop
    loop ;
@@ -418,9 +424,8 @@ variable MOVED                       \ did any set change this round
 \ ---- successor arguments (design line 536) ------------------------------------
 \ A terminator's operands are the arguments it hands its successor, so with one
 \ successor the count and the types must be the destination block's. With more
-\ than one successor the operation model has no way to say which operand belongs
-\ to which destination, so the count is all that can be stated: see MODEL GAPS in
-\ the dot. The single-successor case is the one every dialect built so far uses.
+\ than one successor there are no per-edge argument windows. Such destinations
+\ must have no arguments; branch operands may still carry a condition.
 : SUCCARG-TYPE-CK ( IR-ID:ir-op-id n n -- )
    {: o:IR-ID:ir-op-id s:n i:n :}
    T-OPP T@ T-OPR T@ K@ o i IR-OP:OPERAND@ {: v:IR-ID:ir-value-id :}
@@ -432,7 +437,13 @@ variable MOVED                       \ did any set change this round
 : SUCCARGS-CK ( n -- )
    {: b:n :}
    b TERM-OF {: o:IR-ID:ir-op-id :}
-   o SUCC-COUNT 1 <> if exit then
+   o SUCC-COUNT {: successors:n :}
+   successors 1 <> if
+      successors 0 ?do
+         o i SUCC-OF ARG-COUNT 0<> if E-IR-VERIFY-SUCCARG throw then
+      loop
+      exit
+   then
    o 0 SUCC-OF {: s:n :}
    T-OPR T@ o IR-OP:OPERANDS {: n:n :}
    n s ARG-COUNT <> if E-IR-VERIFY-SUCCARG throw then
@@ -569,11 +580,6 @@ variable MOVED                       \ did any set change this round
       T-VAL T@ K@ v VAL IR-OP:VALUE-BLOCK@ IR-ID:BLOCK-LOCAL BLK-OK exit
    then
    T-VAL T@ T-OPR T@ K@ v VAL IR-OP:VALUE-OP@ IR-ID:OP-LOCAL OP-BLOCK ;
-
-: SAME-FUN? ( n n -- bool )
-   {: a:n b:n :}
-   T-BLR T@ T-FNR T@ K@ a BLK IR-FUN:PARENT@ IR-ID:FUN-LOCAL
-   T-BLR T@ T-FNR T@ K@ b BLK IR-FUN:PARENT@ IR-ID:FUN-LOCAL = ;
 
 : OPERAND-DOM-CK ( n IR-ID:ir-op-id n -- )
    {: b:n o:IR-ID:ir-op-id i:n :}

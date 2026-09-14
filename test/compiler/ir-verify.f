@@ -68,7 +68,7 @@ private
    b  c b s" verify-source" IR-BUILD:ADD-SOURCE  0 4 IR-BUILD:ADD-SPAN ;
 
 \ ---- the dialect -------------------------------------------------------------
-\ Seven opcodes, chosen so each fixture can break one rule and nothing else.
+\ Opcodes chosen so each fixture can break one rule and nothing else.
 0 constant K-CONST                   \ no operands, one i64 result
 1 constant K-USE                     \ one i64 operand, no result
 2 constant K-RET                     \ terminator, no successor
@@ -76,6 +76,7 @@ private
 4 constant K-BR1                     \ terminator, one successor, one i64 operand
 5 constant K-TAGGED                  \ one i64 result and one required attribute key
 6 constant K-MEM                     \ a memory effect with no token to carry it
+7 constant K-BR2                     \ two successors, no argument windows
 
 : OPC-NAME ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:n :}
@@ -85,6 +86,7 @@ private
    k K-BR = if c b s" hir.br" IR-BUILD:INTERN-SYMBOL exit then
    k K-BR1 = if c b s" hir.br1" IR-BUILD:INTERN-SYMBOL exit then
    k K-TAGGED = if c b s" hir.tagged" IR-BUILD:INTERN-SYMBOL exit then
+   k K-BR2 = if c b s" hir.br2" IR-BUILD:INTERN-SYMBOL exit then
    c b s" hir.mem" IR-BUILD:INTERN-SYMBOL ;
 
 : ATT-KEY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
@@ -105,6 +107,7 @@ private
    {: k:n :}
    k K-RET = if true 0 0 IR-SCHEMA:SET-CONTROL exit then
    k K-BR = k K-BR1 = or if true 1 0 IR-SCHEMA:SET-CONTROL exit then
+   k K-BR2 = if true 2 0 IR-SCHEMA:SET-CONTROL exit then
    false 0 0 IR-SCHEMA:SET-CONTROL ;
 
 \ hir.mem declares a data-memory effect and no memory-token operand or result to
@@ -139,6 +142,7 @@ private
    c b K-BR SCH-DEF
    c b K-BR1 SCH-DEF
    c b K-TAGGED SCH-DEF
+   c b K-BR2 SCH-DEF
    c b K-MEM SCH-DEF ;
 
 \ ---- appending operations ----------------------------------------------------
@@ -485,6 +489,58 @@ private
 : SCOPE-RUN ( -- )
    BND [: SCOPE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ Block ordinals also span the module. Both branch directions must stay in
+\ their function even when the target exists and needs no arguments.
+: EDGE-SCOPE-BODY ( IR-CTX:ctx bool -- )
+   {: c:IR-CTX:ctx back:bool :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   c b MAIN-OPEN
+   c b BLK-OPEN
+   back if c b RET+ else c b c b 1 BLK-ID BR+ then
+   c b IR-BUILD:END-BLOCK drop
+   c b IR-BUILD:END-FUN drop
+   c b s" other" FN-OPEN
+   c b BLK-OPEN
+   back if c b c b 0 BLK-ID BR+ else c b RET+ then
+   c b IR-BUILD:END-BLOCK drop
+   c b IR-BUILD:END-FUN drop
+   c b IR-BUILD:FREEZE drop ;
+
+: EDGE-FORWARD-RUN ( -- )
+   BND [: false EDGE-SCOPE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: EDGE-BACKWARD-RUN ( -- )
+   BND [: true EDGE-SCOPE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ Multiple successors carry no per-edge argument windows in the current IR.
+\ Zero selects the legal case; 1/2 add an unprovided argument to that edge.
+: MULTI-ARG-BODY ( IR-CTX:ctx n -- )
+   {: c:IR-CTX:ctx argdest:n :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   c b MAIN-OPEN
+   c b BLK-OPEN
+   c b K-BR2 OP-OPEN
+   c b c b 1 BLK-ID IR-BUILD:ADD-SUCCESSOR
+   c b c b 2 BLK-ID IR-BUILD:ADD-SUCCESSOR
+   c b IR-BUILD:END-OP drop
+   c b IR-BUILD:END-BLOCK drop
+   3 1 ?do
+      c b BLK-OPEN
+      argdest i = if c b c b I64 IR-BUILD:ADD-BLOCK-ARG drop then
+      c b RET+
+      c b IR-BUILD:END-BLOCK drop
+   loop
+   c b IR-BUILD:END-FUN drop
+   c b IR-BUILD:FREEZE drop ;
+
+: MULTI-ARG-LEFT-RUN ( -- )
+   BND [: 1 MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: MULTI-ARG-RIGHT-RUN ( -- )
+   BND [: 2 MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- the derived predecessor and successor tables ----------------------------
 \ A diamond: the entry branches to two blocks and both branch to a join. The
 \ counts the verifier derives are read back through the published views, which
@@ -654,6 +710,20 @@ private
    s" an operand defined in another function rejects" T-LABEL
    [: SCOPE-RUN ;] E-IR-VERIFY-SCOPE TTHROWSQ ;
 
+: EDGE-SCOPE-CASE ( -- )
+   s" forward branch into another function rejects" T-LABEL
+   [: EDGE-FORWARD-RUN ;] E-IR-VERIFY-SCOPE TTHROWSQ
+   s" backward branch into another function rejects" T-LABEL
+   [: EDGE-BACKWARD-RUN ;] E-IR-VERIFY-SCOPE TTHROWSQ ;
+
+: MULTI-ARG-CASE ( -- )
+   s" argument-free multiple successors freeze" T-LABEL
+   BND [: 0 MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT
+   s" unprovided argument on first successor rejects" T-LABEL
+   [: MULTI-ARG-LEFT-RUN ;] E-IR-VERIFY-SUCCARG TTHROWSQ
+   s" unprovided argument on second successor rejects" T-LABEL
+   [: MULTI-ARG-RIGHT-RUN ;] E-IR-VERIFY-SUCCARG TTHROWSQ ;
+
 : PREDIDX-CASE ( -- )
    s" a predecessor index past the derived count rejects" T-LABEL
    [: PREDIDX-RUN ;] E-IR-VERIFY-BOUND TTHROWSQ ;
@@ -681,6 +751,8 @@ public
    BND [: drop EFFECT-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop DOM-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop SCOPE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop EDGE-SCOPE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop MULTI-ARG-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop PREDIDX-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop DEADROW-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop REFUSE-CASE ;] IR-CTX:WITH-CONTEXT
