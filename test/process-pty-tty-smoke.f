@@ -151,6 +151,36 @@ variable EXPECT-I   variable EXPECT-READS
    PROCESS-PTY:TEARDOWN
    s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
 
+\ An uncaught throw from inside run-in-stack reaches the tty REPL while the
+\ callback's tiny allocation is active. Recovery must reinstate the REPL's own
+\ allocation, not merely the prompt: four cells pushed at once exceed the
+\ eight-byte pool and only fit the recovered boot stack, and the depth after
+\ recovery is zero. A leaked pool descriptor would end the child with exit 102
+\ at the second push and no prompt would follow.
+: STACK-DEFS$ ( -- ptr u8 n )
+   s" create TTY-POOL 32 allot : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL 8 run-in-stack ;" ;
+
+: TTY-STACK-RECOVERS ( -- )
+   RCLR
+   HB$ PROCESS-PTY:SPAWN-TTY
+   PROCESS-PTY:LAUNCH
+   DRAIN
+   STACK-DEFS$ SEND
+   s" ok" EXPECT!
+   RCLR
+   s" TTY-CROSS" SEND
+   s" ?" EXPECT!                          \ the uncaught throw's mark, with nothing refused or undefined
+   s" E-UNDEFINED" HAS? 0= TTRUE
+   s" non-certified" HAS? 0= TTRUE
+   s" habu> " EXPECT!
+   RCLR
+   s" 1 2 3 4 . . . . depth . cr" SEND
+   S\" 4\r\n3\r\n2\r\n1\r\n0\r\n" EXPECT!
+   s" habu> " EXPECT!
+   PROCESS-PTY:ALIVE? TTRUE
+   PROCESS-PTY:TEARDOWN
+   s" PASS: REPL recovers its own stack allocation after an uncaught throw inside run-in-stack" type cr ;
+
 public
 
 : RUN ( -- )
@@ -158,6 +188,7 @@ public
    PIPE-STOPS
    TTY-RECOVERS
    TTY-LAYOUT
+   TTY-STACK-RECOVERS
    T-REPORT
    s" process-pty-tty-smoke: ok" type cr ;
 
