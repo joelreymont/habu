@@ -296,9 +296,21 @@ variable SP2  variable SEND
       then
    loop XREF-NULL ;
 
+: REFUSE-ADDRESS-SITE ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
+   s" aot: malformed recorded address chain caller=" AETXT
+   caller AEJREC
+   s"  region-off=" AETXT p AOT-DBASE@ BYTE-VIEW - AEJNUM
+   s"  words=" AETXT
+   e p - 4 / 4 min 0 max 0 ?do
+      i 0<> if 32 AE1 then
+      p i 4 * + AOT-W32@ AEJNUM
+   loop
+   10 AE1 s" " 74 die ;
+
 : SCAN-ADDRESS ( ptr n ptr u8 ptr u8 -- ) {: caller:ptr p:ptr e:ptr :}
    p ADDRESS-SITE? 0= if exit then
-   p e ADDRESS-VALUE {: v:n :}
+   p e ADDRESS-CHAIN? 0= if caller p e REFUSE-ADDRESS-SITE then
+   p CHAINV {: v:n :}
    v DATA-ADDRESS? if
       v DATA-TARGET drop exit
    then
