@@ -14,8 +14,10 @@ Remaining implementation and qualification:
 
 1. Complete recovery stack parity (986147f9). Allocation lifecycle, native
    entry/call/return envelopes and complete wide/local JIT transfers are reviewed
-   and integrated. The engine owner finishes recovery; Hazel independently
-   reviews it, updates the wide-memory fixture and validates real recovery code.
+   and integrated. Hazel's wide-memory, loop-boundary and tty REPL regressions
+   are reviewed and integrated. Recovery checkpoint a2b52038 is under review;
+   its executed debugger test exposed breakpoint copying by the recovery
+   inliner. The engine owner fixes that; Hazel validates the final recovery.
 2. Warmed source-order verification (0c9fe3d7) is reviewed and integrated,
    including the used-public and fallback-global corrections. Include its
    focused fixtures in combined qualification; no implementation remains here.
@@ -23,7 +25,10 @@ Remaining implementation and qualification:
    38ad40e8), repeated native selfbuild, capture/restore, recovery and full gate.
    The last full run was 382/386; all four failures have source repairs, but the
    complete rerun remains necessary. Cedar owns the combined rebuild and frozen
-   source/engine pair; Hazel owns the full gate on that pair.
+   source/engine pair; Hazel owns the full gate on that pair. First combined
+   generation r1 (source 93a972eb, SHA 07d6f0db) builds and passes source-free
+   startup, exact-span and focused stack/JIT/REPL tests. Its same-source r2
+   rebuild is running. Neither is release-qualified yet.
 4. Supply the identified source/engine pair for Maki, Tender and Kestrel
    acceptance. Preserve their existing pins until their owners accept it.
 5. Complete the requested runtime page-size query (c9528f06). Socket/FIFO tree

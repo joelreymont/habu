@@ -60,12 +60,17 @@ reviewed and integrated. Guarded generation 2 succeeds with 16,076,868 region
 bytes and 124,137 call rows. Capture budgets 7a16d3de use the bounded code-band
 blob and 163,840 rows. No unbounded growth was introduced.
 
-Remaining ownership: engine agent in cedar-stack-bounds finishes recovery
-preflights and saved diagnostic cursor validation. Hazel reviews the recovery
-ABI, corrects the 62 stale bootstrap-wide-memory byte assertions, exercises real
-recovery boundaries and owns the combined full gate. Cedar builds the frozen
-source/engine pair and coordinates downstream acceptance. Recovery review found
-missing drop/2drop/nip whole-transfer guards and raw return/loop templates in the
-unfinished draft; these must close before parity is claimed. Combined native
-build runs from b589ce65 in cedar-combined-qualification. Dot remains open until
-recovery and combined qualification pass.
+Native debugger cursor correction 16776919 and Hazel's reviewed wide-memory,
+loop 32/33 and tty REPL recovery fixtures are integrated. Combined r1, source
+93a972eb and SHA 07d6f0db, builds and passes source-free startup plus focused
+wide/lifecycle/JIT/debugger/stack-switch/PTY checks. Its same-source r2 rebuild
+is running; Hazel owns the subsequent complete native gate.
+
+Recovery checkpoint a2b52038 closes the earlier drop/2drop/nip and return/loop
+request gaps. Actual recovery wide transfers, guard ABI/register preservation,
+physical boundaries and direct/evaluate unwinds pass. Independent production
+review and the final test/launcher commit remain pending. The debugger test
+exposed recovery C-CALL copying a patched BRK into a caller without a matching
+breakpoint-table entry; the engine owner is correcting inline eligibility.
+Hazel independently validates the final recovery chain. This dot stays open
+until recovery and combined qualification pass.

@@ -4,14 +4,27 @@ Correctness first. Do not call Habu release-qualified yet. TRUST/TRUSTED
 retirement is last; performance and the x86-64/TI DSP proposals are deferred.
 Joel explicitly chose a bounded core code budget, not allocator growth.
 
-Current production integration: b589ce65 in `.jj-ws/cedar-closure-identity`. Reviewed and
+Current native production: 93a972eb; reviewed fixture integration through
+663ad11d in `.jj-ws/cedar-closure-identity`. Reviewed and
 integrated: shared IR/target admission, both +loop tiers, string forms, typed
 fetch validation and bootstrap mirror, active stack allocation ABI, test stack
 switching, fixed 32 MiB dictionary/code region, exact dictionary code spans,
 native entry/call/return stack guards, complete wide/local JIT transfers,
 warmed source-order verification and socket/FIFO tree removal.
 The span fix uses a full-span bit for nonreturning bodies rather than borrowing
-the next word's first instruction. It still needs native generation qualification.
+the next word's first instruction. First-generation publisher checks pass;
+second-generation and stripped preseed qualification remain pending.
+
+Current candidate: `/tmp/cedar-combined-native-r1`, 12,517,568 bytes, SHA-256
+`07d6f0dbaa95b81af102c19a0b23b240bdd56858736d712a9e608a4af9e5dc7a`,
+frozen native source 93a972eb. Production build and source-free startup pass.
+Schema/native code-span, wide-memory, lifecycle, wide/JIT/debugger stack,
+run-in-stack and all four tty PTY cases pass with both engine variables pinned.
+Boot region use is 10,320,476 bytes and DATA use 12,358,515 bytes, each bounded
+by 32 MiB; these are boot counts, not measured writer peaks. Its same-source
+selfbuild to `/tmp/cedar-combined-native-r2` is running in the frozen
+`.jj-ws/cedar-combined-qualification`, log `/tmp/cedar-combined-native-r2-build.log`.
+Do not change that workspace during the build. Neither candidate is qualified.
 
 Latest complete full gate: `/tmp/cedar-fetch-string-native`, SHA-256
 `a4137573a39e31808d60d05e3eee9f228874b1468ad55682752364170202a9a2`,
@@ -57,24 +70,30 @@ Completed since that checkpoint:
 - Wide JIT 61b07c76 independently approved; candidate
   `/tmp/cedar-stack-wide-native`, SHA-256
   `be35b0017f001f82a2d0bdd9d46bf65c87628e4a42ba87bafc3ed423f341607a`,
-  passes wide/runtime/locals/clobber checks. The bootstrap-wide-memory fixture
-  still has 62 stale byte assertions; Hazel owns its correction.
+  passes wide/runtime/locals/clobber checks. Hazel's wide-memory fixture repairs
+  are reviewed and integrated 28228a27/50df694b, recursive loop boundaries at
+  d7ca6d6d, and tty stack restoration at 48afda26; all pass on r1.
 - VERIFY c555630e/53f64249 independently reviewed and integrated. Used-public
   visibility and hidden-global fallback regressions pass on Hazel's hb-new6.
 - Socket/FIFO tree removal b589ce65 reviewed; real special-node and symlink
   fixtures pass at ordinary and native tiers. The old code fails the regression.
 
 Active work:
-- Cedar: production build from frozen b589ce65 in
-  `.jj-ws/cedar-combined-qualification`, output `/tmp/cedar-combined-native-gen1`,
-  log `/tmp/cedar-combined-native-gen1-build.log`. This tests integration while
-  recovery is finished; it is not yet the final qualified pair.
+- Cedar: r2 selfbuild above, recovery integration and frozen acceptance pair.
+  The first attempt at b589ce65 failed because defer capture interpreted a
+  namespace's private WID as code length. Reviewed fix 93a972eb skips namespace
+  records there; malformed ordinary lengths still fail closed. r1 succeeds.
 - literal_ownership: `.jj-ws/cedar-stack-bounds`, recovery stack parity and
-  saved diagnostic cursor validation. Production wide JIT work is integrated.
-- Hazel: recovery ABI review, executed parity, wide-memory fixture correction,
-  then full gate on Cedar's frozen combined pair. No old VERIFY rebase/build.
-- backend_handoff: exact-span/native preseed matrix after combined generations;
-  available for independent fixture review.
+  saved diagnostic cursor validation. Production recovery checkpoint a2b52038
+  is under independent review. The final debugger fixture exposed C-CALL
+  copying a patched BRK; a separate inline-eligibility fix is in progress.
+- Hazel: independent final recovery execution, then full gate on r2. Her
+  focused r1 after-tests pass. Wait for final recovery test/launcher revision;
+  the older 76079ed8 fixture has a known debugger loader setup failure.
+- backend_handoff: exact-span/native preseed matrix and AOT-positive on r2.
+  r1 span test passes after reviewed fixture fix 663ad11d retains the root's
+  actual guard callees using normal CLOSURE traversal. Original extent and
+  ownership assertions remain intact.
 
 Remaining sequence: finish/review recovery and fixture patches; qualify combined
 selfbuild, capture/restore, recovery and full gate; hand frozen source/engine to
