@@ -77,6 +77,10 @@ is exactly what the trusted boundaries in § 8 exist to make visible and rare.
 - **Sized integers** — `u8`, `u16`, `u32` widen to `n` on their own when
   nothing is lost. Going the other way, or changing sign at the same width,
   needs an explicit conversion.
+  A quotation argument reads the lattice from the other side: its inputs are
+  supplied by whoever executes it, so `[ u8 -- ]` does not satisfy a
+  `[ i64 -- ]` parameter while `[ i64 -- ]` satisfies `[ u8 -- ]`; quotation
+  outputs widen in the ordinary direction.
 - **Roles** — `idx`, `len`, `fd`, `rc`, `pid` and friends are integers with a
   job title. They never silently become each other or bare `n`. This is the
   cheapest defense the system has: a file descriptor handed where a length

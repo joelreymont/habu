@@ -2086,9 +2086,13 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    T-RES swap T-RES swap
    2dup = IF 2drop ELSE
    over TAG T-QUOT =  over TAG T-QUOT =  and IF
-     2dup Q>DIN swap Q>DIN swap PAIR-QUOT
+     \ Inputs flow INTO a quotation from whoever executes it, so the din and rin
+     \ pairs are pushed flipped: the expected effect's inputs take the actual
+     \ position and the widening lattice reads supplied-into-consumed. Outputs
+     \ flow out and keep the outer (actual, expected) order.
+     2dup Q>DIN swap Q>DIN PAIR-QUOT
      2dup Q>DOUT swap Q>DOUT swap PAIR-QUOT
-     2dup Q>RIN swap Q>RIN swap PAIR-QUOT
+     2dup Q>RIN swap Q>RIN PAIR-QUOT
      Q>ROUT swap Q>ROUT swap PAIR-QUOT ELSE
    over TAG T-PTR =  over TAG T-PTR =  and IF
      over PTR>INNER over PTR>INNER PAIR-STRICT 2drop ELSE
