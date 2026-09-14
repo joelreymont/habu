@@ -4201,7 +4201,8 @@ variable FIND-HMATCH
    14 14 1 ADDI,  NUM-LOOP LABEL@ B, ;
 
 : C-NUM-FLOAT-FINISH ( -- )
-   3 1 CMPI,  C-EQ NUM-DONE LABEL@ BCOND,                       \ "1." (no frac digits) -> fail
+   \ x15 is the last consumed character; overflow can leave the scale at one.
+   15 46 CMPI,  C-EQ NUM-DONE LABEL@ BCOND,                     \ "1." (no frac digits) -> ordinary word
    5 $7FFFFFFFFFFFFFFF LIT64,  11 5 CMP,  5 C-HI CSET,          \ SCVTF needs a signed integer magnitude
    17 16 5 ORR,  17 NUM-DONE LABEL@ CBNZ,                      \ a complete decimal owns its range refusal
    0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale

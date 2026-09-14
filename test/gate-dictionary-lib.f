@@ -793,14 +793,42 @@ variable CANDIDATE-VERDICT
    s"  ;" GE-SRC-LINE
    70 lit litu label labelu GE-EVAL-FORK-BAD ;
 
-: LITERAL-FLOAT-HOSTILE-NAME ( -- )
+: LITERAL-FLOAT-HOSTILE ( ptr u8 n -- ) {: lit:ptr litu:n :}
    GE-HB-RESET
    GE-SRC-RESET
-   s" 0 set-check" GE-SRC-LINE
-   s" : 0.0000000000000000000 42 ;" GE-SRC-LINE
-   s" 0.0000000000000000000 ." GE-SRC-LINE
-   70 s" E-UNDEFINED: 0.0000000000000000000"
+   s" : " GE-SRC+ lit litu GE-SRC+
+   s"  ( -- n ) 42 ;" GE-SRC-LINE
+   lit litu GE-SRC+ s"  ." GE-SRC-LINE
+   70 lit litu
    s" hb rejects an overflowing decimal before hostile dictionary lookup" GE-EVAL-FORK-BAD ;
+
+: LITERAL-FLOAT-HOSTILE-NAME ( -- )
+   s" 0.0000000000000000000" LITERAL-FLOAT-HOSTILE
+   s" 18446744073709551616.0" LITERAL-FLOAT-HOSTILE
+   s" -18446744073709551616.0" LITERAL-FLOAT-HOSTILE
+   s" 36893488147419103232.1" LITERAL-FLOAT-HOSTILE
+   s" -36893488147419103232.1" LITERAL-FLOAT-HOSTILE ;
+
+: LITERAL-FLOAT-NONSHAPE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : 18446744073709551616. ( -- n ) 41 ;" GE-SRC-LINE
+   s" : -18446744073709551616. ( -- n ) 42 ;" GE-SRC-LINE
+   s" : 18446744073709551616.0X ( -- n ) 43 ;" GE-SRC-LINE
+   s" : 18446744073709551616..0 ( -- n ) 44 ;" GE-SRC-LINE
+   s" 18446744073709551616. . -18446744073709551616. ." GE-SRC-LINE
+   s" 18446744073709551616.0X . 18446744073709551616..0 ." GE-SRC-LINE
+   s" : GD-FLOAT-NONSHAPE ( -- )" GE-SRC-LINE
+   s" 18446744073709551616. . -18446744073709551616. ." GE-SRC-LINE
+   s" 18446744073709551616.0X . 18446744073709551616..0 . ;" GE-SRC-LINE
+   s" GD-FLOAT-NONSHAPE" GE-SRC-LINE
+   s" hb keeps malformed overflowing decimals available as names" GE-EVAL-RUN-STDIN
+   SB-RESET
+   2 0 do
+      s" 41" GE-OUT-LINE s" 42" GE-OUT-LINE
+      s" 43" GE-OUT-LINE s" 44" GE-OUT-LINE
+   loop
+   SB$ s" hb malformed decimal name values" GE-EXPECT-OUT ;
 
 : LITERAL-FLOAT-BOUNDARY ( -- )
    LITERAL-FLOAT-LAST-SAFE
@@ -810,7 +838,10 @@ variable CANDIDATE-VERDICT
    s" -9223372036854775808.0" s" hb rejects an interpreted negative cell overflow" LITERAL-FLOAT-BAD-INTERPRETED
    s" 9223372036854775808.0" s" hb rejects a positive cell overflow in a checked definition" LITERAL-FLOAT-BAD-CHECKED
    s" -9223372036854775808.0" s" hb rejects a negative cell overflow in a checked definition" LITERAL-FLOAT-BAD-CHECKED
-   LITERAL-FLOAT-HOSTILE-NAME ;
+   s" 18446744073709551616.0" s" hb rejects a wrapped integer magnitude in a float definition" LITERAL-FLOAT-BAD-CHECKED
+   s" -18446744073709551616.0" s" hb rejects a negative wrapped integer magnitude in a float definition" LITERAL-FLOAT-BAD-CHECKED
+   LITERAL-FLOAT-HOSTILE-NAME
+   LITERAL-FLOAT-NONSHAPE ;
 
 : DUPLICATE-DEFINITION-REJECTS ( -- )
    GE-HB-RESET
