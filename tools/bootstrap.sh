@@ -292,6 +292,7 @@ emit_src() {
 }
 
 bootstrap_wide_gate() {
+  "$GF" test/bootstrap-engine-stack.fs
   "$GF" test/bootstrap-wide-memory.fs
 
   local src bin out err marker rc
