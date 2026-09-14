@@ -2945,6 +2945,7 @@ public
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
+   c A64IR:CHECK-TARGET
    BND-TAKE
    m BND-MODULE-CK
    gi 0 S-ARGS !

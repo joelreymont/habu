@@ -179,14 +179,16 @@ private
    IR-CTX:BINDING@ CBIND:POLICY@ CNUM:OVERFLOW@
    CNUM-OVERFLOW:TRAP CNUM-OVERFLOW:EQ ;
 
-\ The native pipeline's architecture, with the baseline feature set.
-: TARGET ( -- )
-   CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET ;
+\ Shared HIR takes its architecture from the immutable compilation binding.
+: TARGET ( IR-CTX:ctx -- )
+   IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@
+   CTARGET:F-BASE IR-SCHEMA:SET-TARGET ;
 
 \ A different requirement, declared as one: a binding with no floating-point
 \ feature is refused at the first float schema.
-: FP-TARGET ( -- )
-   CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
+: FP-TARGET ( IR-CTX:ctx -- )
+   IR-CTX:BINDING@ CBIND:TARGET@ CTARGET:ARCH@
+   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
    IR-SCHEMA:SET-TARGET ;
 
 \ Design lines 236-238: a value-producing straight-line operation ends no block,
@@ -537,7 +539,10 @@ ADDR-CODE constant ADDR-KIND-MAX
    K-FUN KEY-BIND ;
 
 \ ---- the type of an ordinary value -------------------------------------------
-\ One signed 64-bit integer per stack value, which every schema here declares.
+\ Habu cells are signed 64-bit values, including on a target with 32-bit
+\ pointers. This language layout is separate from the target address width.
+8 constant CELL-BYTES
+
 : CELL-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
 
@@ -675,7 +680,7 @@ private
    c b KEY-ADDR IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:CONST NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -688,7 +693,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    c TRAPS? IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -702,7 +707,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    true IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:DIV NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -717,7 +722,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -729,7 +734,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -749,7 +754,7 @@ private
    k IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:MEM NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -764,7 +769,7 @@ private
    k IR-SCHEMA:ADD-RESULT
    IR--SCHEMA-EFFECT:READ GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:LOAD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -779,7 +784,7 @@ private
    k IR-SCHEMA:ADD-RESULT
    IR--SCHEMA-EFFECT:WRITE GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:STORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -794,7 +799,7 @@ private
    k IR-SCHEMA:ADD-RESULT
    IR--SCHEMA-EFFECT:READ GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:BLOAD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -808,7 +813,7 @@ private
    k IR-SCHEMA:ADD-RESULT
    IR--SCHEMA-EFFECT:WRITE GENERIC-MEM
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:BSTORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -821,7 +826,7 @@ private
    true 1 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:BR NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -834,7 +839,7 @@ private
    true 2 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:BRZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -847,7 +852,7 @@ private
    true 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:RETURN NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -862,7 +867,7 @@ private
    true 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE
    true IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:TRAP NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -878,7 +883,7 @@ private
    t IR-SCHEMA:ADD-RESULT-TAIL
    IR--SCHEMA-EFFECT:READ-WRITE GENERIC-MEM
    true IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:CALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -897,7 +902,7 @@ private
    c b KEY-OUT IR-SCHEMA:ADD-ATTR
    IR--SCHEMA-EFFECT:READ-WRITE GENERIC-MEM
    true IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -911,7 +916,7 @@ private
    c b KEY-FUN IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   TARGET
+   c TARGET
    c b HIR-OPCODE:QUOT NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -924,7 +929,7 @@ private
    c b KEY-VALUE IR-SCHEMA:ADD-ATTR
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   FP-TARGET
+   c FP-TARGET
    c b HIR-OPCODE:FCONST NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -938,7 +943,7 @@ private
    f IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   FP-TARGET
+   c FP-TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -950,7 +955,7 @@ private
    f IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   FP-TARGET
+   c FP-TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -965,7 +970,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   FP-TARGET
+   c FP-TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -979,7 +984,7 @@ private
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   FP-TARGET
+   c FP-TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
@@ -993,7 +998,7 @@ private
    to IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    false IR-SCHEMA:SET-TRAP
-   FP-TARGET
+   c FP-TARGET
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 

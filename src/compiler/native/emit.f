@@ -1311,8 +1311,7 @@ variable CH-AT
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64EMIT-MODULE throw then ;
 
 : TARGET-CK ( IR-CTX:ctx -- )
-   IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ CTARGET:ARCH@
-   CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   A64IR:TARGET-OK?
    0= if E-A64EMIT-TARGET throw then ;
 
 \ The probe makes staleness a refusal before a byte is written. It asks whether

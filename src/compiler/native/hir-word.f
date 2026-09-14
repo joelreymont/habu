@@ -1159,14 +1159,14 @@ private
    c b r c b s" invert" MODEL-SYM HIR-OPCODE:INVERT BDECLARE-OP ;
 
 \ `0=` is `0` then `=`, which answers false for EVERY nonzero value; `cells` is
-\ `8` then `*`, the same function on every bit pattern as the engine's shift.
+\ the language cell byte width then `*`; pointer width is a separate target fact.
 \ `1-` ( n -- n ) and `1+` ( n -- n ): subtract or add one. Each is one token of
 : DEF-STEP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" 1-" MODEL-SYM HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
    c b r c b s" 1+" MODEL-SYM HIR-OPCODE:ADD 1 BDECLARE-CONST-OP
    c b r c b s" 0=" MODEL-SYM HIR-OPCODE:EQUAL 0 BDECLARE-CONST-OP
-   c b r c b s" cells" MODEL-SYM HIR-OPCODE:MUL 8 BDECLARE-CONST-OP ;
+   c b r c b s" cells" MODEL-SYM HIR-OPCODE:MUL HIR:CELL-BYTES BDECLARE-CONST-OP ;
 
 \ The width is not stored: it is which opcode the row names, because hir.f makes
 \ the width a form. The memory order is the dialect's own token.

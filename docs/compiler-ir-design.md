@@ -266,6 +266,23 @@ A target contract is an immutable value containing, as appropriate:
 
 Its digest is part of every cached artifact and proof witness.
 
+Current implementation boundary (2026-09-14): `HIR` schemas use the architecture
+from `IR-CTX`'s immutable binding. Habu's cell policy remains signed 64-bit values
+and eight-byte cells, including when a target has 32-bit pointers; `HIR:CELL-TYPE`
+and `HIR:CELL-BYTES` own that policy. A32, Thumb2 and C66x bindings can build
+integer HIR. ARM64 machine construction, selection and emission explicitly
+require AArch64, little endian and 64-bit pointers. Shared optimizations remain
+under `src/compiler/ir/`; ARM64 ABI, selection and emission remain under
+`src/compiler/native/`. The generic ARM and C6x encoder fixtures are registered
+in the main suite.
+
+These are compiler extension boundaries, not complete foreign backends.
+`NCOMP`/`NABI` still provide host-native compilation and calls resolve through
+the host dictionary. A new backend must supply target calls, ABI lowering and
+emission before executing foreign HIR. `backend-boundary.f` tests schema
+bindings and ARM64 refusal; it does not claim foreign execution or DSP packet
+scheduling.
+
 ### 5.5 Explicit numerical policy
 
 Floating-point transformations are never justified by a generic `commutative` or `associative` flag.

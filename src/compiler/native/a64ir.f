@@ -298,6 +298,18 @@ private
 public
 
 \ ---- the type of a virtual register ------------------------------------------
+: TARGET-OK? ( IR-CTX:ctx -- bool )
+   IR-CTX:BINDING@ CBIND:VALIDATE CBIND:TARGET@ CTARGET-CONTRACT:UNMAKE drop
+   {: arch:CTARGET:arch abi:CTARGET:abi order:CTARGET:endian width:CTARGET:ptr-width :}
+   arch CTARGET-ARCH:AARCH64 CTARGET-ARCH:EQ
+   order CTARGET-ENDIAN:LITTLE CTARGET-ENDIAN:EQ and
+   width CTARGET-PTR--WIDTH:BITS64 CTARGET-PTR--WIDTH:EQ and ;
+
+\ A coherent foreign target can own HIR, but this backend emits only the
+\ supported AArch64 layout. Refuse before allocating a machine module.
+: CHECK-TARGET ( IR-CTX:ctx -- )
+   TARGET-OK? 0= if E-IR-SCHEMA-TARGET throw then ;
+
 : GPR-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
 
@@ -1817,6 +1829,7 @@ public
 \ While a session prototype stands, the module's interner starts as a copy of
 \ it; the module identity, the plan and every check are the ordinary ones.
 : NEW-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
+   dup CHECK-TARGET
    PROTO-ON @ 0= if NAME MAJOR MINOR IR-BUILD:NEW-BUILDER exit then
    NAME MAJOR MINOR 0 PROTO @ 1 PROTO @ IR-BUILD:NEW-BUILDER-FROM
    dup MEMO-ADOPT ;

@@ -4,8 +4,8 @@
 \ src/compiler/native/hir-word.f: registering the dialect defines exactly five
 \ opcodes and every declared field of each one reads back through the frozen
 \ schema table; the may-trap flag follows the compilation unit's overflow policy
-\ instead of being fixed in the dialect; a target the dialect cannot run on and
-\ a second registration are refused; the source-word model binds the three
+\ instead of being fixed in the dialect; foreign targets retain their binding
+\ and a second registration is refused; the source-word model binds the three
 \ arithmetic words to operations and the six stack words to compile-time
 \ renames that produce no operation; a word the model does not model is refused
 \ by name and a declared boundary names the capability it is waiting for;
@@ -101,8 +101,7 @@ private
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-\ A GPU kernel contract: this dialect is the native pipeline's, so it must not
-\ register here at all.
+\ Shared HIR can describe a GPU target; A64IR still rejects that binding.
 : PBND ( -- CBIND:binding )
    CTARGET-ARCH:PTX CTARGET-ABI:PTX-KERNEL CTARGET-ENDIAN:LITTLE
    CTARGET-PTR--WIDTH:BITS64
@@ -612,8 +611,8 @@ private
    BND [: TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : REG-REFUSE-CASES ( -- )
-   s" the native dialect refuses to register against a GPU target" T-LABEL
-   [: PTX-REG ;] E-IR-SCHEMA-TARGET TTHROWSQ
+   s" shared HIR registers against a coherent GPU target" T-LABEL
+   PTX-REG
    s" and on a machine with no floating unit the double type cannot be interned" T-LABEL
    [: NOFP-REG ;] E-IR-TYPE-TARGET TTHROWSQ
    s" registering the dialect twice into one module is refused" T-LABEL

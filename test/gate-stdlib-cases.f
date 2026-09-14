@@ -220,6 +220,18 @@ SUITE compiler-target-policy
    test/compiler/target-policy.f
 ;SUITE
 
+SUITE compiler-arm32-asm
+   test/compiler/arm32-asm.f
+;SUITE
+
+SUITE compiler-tic6x-asm
+   test/compiler/tic6x-asm.f
+;SUITE
+
+SUITE compiler-backend-boundary
+   test/compiler/backend-boundary.f
+;SUITE
+
 SUITE compiler-native-select
    test/compiler/native-select.f
 ;SUITE

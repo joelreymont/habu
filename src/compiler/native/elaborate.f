@@ -544,7 +544,7 @@ variable OPJ                         \ general operands taken so far by the open
 
 \ ---- staging one operation ---------------------------------------------------
 : CELL-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
-   IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
+   HIR:CELL-TYPE ;
 
 \ Every operation this pass stages carries the span of the TOKEN that produced
 \ it, so a diagnostic points at the source.
