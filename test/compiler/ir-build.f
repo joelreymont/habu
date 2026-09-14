@@ -1549,6 +1549,62 @@ variable PART-FREE
    s" retained native readers refuse after the owning context ends" T-LABEL
    [: CURSOR-COUNT ;] E-IR-ARENA-STALE TTHROWSQ ;
 
+\ Cached ordinals are meaningful only for their exact live builder. A mismatch
+\ must not read the deliberately null source span or change the destination.
+1 TYPED-BUFFER BS-CTX IR-CTX:ctx
+1 TYPED-BUFFER BS-BLD IR-BUILD:builder
+1 TYPED-BUFFER BS-MOD IR-ID:ir-module-id
+2 TYPED-BUFFER BS-SRC n
+2 TYPED-BUFFER BS-DST IR-ID:ir-symbol-id
+
+: BS-RUN ( -- )
+   0 BS-CTX @ 0 BS-BLD @ 0 BS-MOD @ 0 BS-SRC 2 0 BS-DST 2
+   IR-BUILD:BIND-SYMBOLS? TTRUE
+   0 BS-MOD @ IR-ID:MODULE-SAME? TTRUE ;
+
+: BS-FOREIGN ( IR-CTX:ctx -- )
+   0 BS-CTX ! [: BS-RUN ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
+: BS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c 0 BS-CTX ! b 0 BS-BLD ! b IR-BUILD:MODULE@ 0 BS-MOD !
+   c b s" one" IR-BUILD:INTERN-SYMBOL {: one:IR-ID:ir-symbol-id :}
+   c b s" two" IR-BUILD:INTERN-SYMBOL {: two:IR-ID:ir-symbol-id :}
+   one IR-ID:SYMBOL-LOCAL 0 BS-SRC !
+   two IR-ID:SYMBOL-LOCAL 1 BS-SRC !
+   BS-RUN
+   0 BS-DST @ IR-ID:SYMBOL-LOCAL one IR-ID:SYMBOL-LOCAL T=
+   1 BS-DST @ IR-ID:SYMBOL-LOCAL two IR-ID:SYMBOL-LOCAL T=
+   c MK {: other:IR-BUILD:builder :}
+   c b other IR-BUILD:MODULE@ NULL-PTR 2 0 BS-DST 2
+   IR-BUILD:BIND-SYMBOLS? TFALSE
+   b IR-BUILD:MODULE@ IR-ID:MODULE-SAME? TTRUE
+   0 BS-DST @ IR-ID:SYMBOL-LOCAL one IR-ID:SYMBOL-LOCAL T=
+   1 BS-DST @ IR-ID:SYMBOL-LOCAL two IR-ID:SYMBOL-LOCAL T=
+   0 BS-DST @ IR-ID:SYMBOL-OWNER one IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? TTRUE
+   1 BS-DST @ IR-ID:SYMBOL-OWNER two IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? TTRUE
+   BND [: BS-FOREIGN ;] IR-CTX:WITH-CONTEXT c 0 BS-CTX !
+   c b s" appended" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL 1 BS-SRC !
+   BS-RUN 1 BS-DST @ IR-ID:SYMBOL-LOCAL 3 T=
+   c b IR-BUILD:FREEZE IR-BUILD:RETIRE
+   [: BS-RUN ;] E-IR-BUILD-FROZEN TTHROWSQ
+   other 0 BS-BLD ! other IR-BUILD:MODULE@ 0 BS-MOD !
+   other IR-BUILD:ABORT
+   [: BS-RUN ;] E-IR-BUILD-ABORTED TTHROWSQ ;
+
+: BS-REUSE ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   [: BS-RUN ;] E-IR-BUILD-STALE TTHROWSQ
+   b IR-BUILD:ABORT ;
+
+: BS-CASE ( -- )
+   s" batch bindings preserve exact module and builder lifetime" T-LABEL
+   BND [: BS-BODY ;] IR-CTX:WITH-CONTEXT
+   [: BS-RUN ;] E-IR-BUILD-STALE TTHROWSQ
+   BND [: BS-REUSE ;] IR-CTX:WITH-CONTEXT ;
+
 \ ---- the process holds no compiler session -----------------------------------
 \ TARENA-SLOTS and TSLOTS pin the WHOLE arena and builder registries, and those
 \ registries are process-wide: a tier-1 load opens the compiler's own session
@@ -1567,6 +1623,7 @@ public
 : RUN ( -- )
    T-RESET
    STAND-DOWN
+   BS-CASE
    CURSOR-CASES
    BND [: HARNESS-CREATE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-APPEND ;] IR-CTX:WITH-CONTEXT

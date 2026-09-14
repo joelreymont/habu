@@ -23,3 +23,45 @@ native-regalloc suites pass; the latter exercises a nonempty plan discarded by
 reset, source-digest refusal followed by success, and a refused second use.
 The source compiler was JIT-compiled for these behavioral controls. Independent
 review, all-AOT timing/slopes and F-NEED spill measurements remain open.
+
+2026-09-14 follow-up, Cedar, `.jj-ws/cedar-select-combine`: the one-plan change
+is integrated. One warmed actual trivial compile plans once and rewrites once;
+the seven selected operations become six. Recovery product `5ab65284`, SHA
+`83e0b0ea4c4b13f4d6470c4c43372c674a9b0069dc0b10fba7269941e453bb81`, has
+identical compiler/IR source to this follow-up's base `b8e069a5`.
+
+The existing per-definition driver, with disposable subphase clocks, attributes
+314/242 us of a 953 us trivial compile to selection/combine. Binding their
+downstream dialects costs 59/46 us; combine also takes 41 us for its builder,
+78 us walking/copying and 42 us freezing. Exact GDB counts inside one warmed
+compile show 536 A64IR memo bindings. Each hit resolves the same builder through
+MODULE@, MODULE-KEY and SYMBOL-CK and reopens the live symbol header. The 402
+discarded NTH conversions account for only about 1.5 us in a calibrated probe,
+so they are not the floor fix. Raw evidence is under
+`/tmp/cedar-select-combine-{count,pass-0,deep,samples,ordinal-cost}.log`; clocks
+and counts exclude startup and dictionary cleanup. These are attribution runs
+under concurrent engine work, not quiet timing or 500 us acceptance.
+
+Production `54fad493` binds the full opcode vocabulary as one checked batch in
+combine, spill and emit. IR-BUILD resolves the live builder and exact module;
+IR-SYM validates the current header/key and every ordinal before copying any
+identity. Missing, partial or mismatched memos still use the existing interner.
+No borrowed arena state survives the call or an append. Public per-entry
+bindings, dialect keys/types, combine planning and freeze validation are unchanged.
+M (`99caf411`) built that source successfully as
+`/tmp/cedar-family-stage-abi/hb-opcode-batch`, SHA
+`6a29d0618063dbd36b0d138804cad63618315be101f6d318e0b937fe70a66da0`.
+Forced-tier-1 ir-build, native-a64ir, native-select, native-combine and
+native-regalloc suites pass on the product, including real spill rewriting.
+The full ir-symbol suite passes with ordinary fixture loading. Its unchanged
+SCALE-CASE refuses forced-tier-1 compilation with E-NELAB-ARITY on both candidate
+and the prior recovery product; the new IDS controls also pass independently
+as a forced-tier-1 excerpt. No existing assertion was changed for that refusal.
+Logs are `/tmp/cedar-batch-{ir-build,native-a64ir,native-select,native-combine,
+native-regalloc,ir-symbol-default,symbol-controls,baseline-symbol}.log`.
+
+The same one-compile GDB interval now counts 156 A64IR memo bindings (88 select,
+68 combine), exactly 380 fewer; SYMBOL-CK and LEN@ each fall by 380. There are
+five owned batches, one combine plan/rewrite, and the same three builders and
+freezes. `/tmp/cedar-batch-count.log` records the counts. Independent final
+test review and the controlled performance pair remain pending; no 500 us claim.

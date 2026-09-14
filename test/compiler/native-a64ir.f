@@ -1935,10 +1935,81 @@ variable MEMO-IDX
    s" and its module's symbol count is unchanged by binding" T-LABEL
    after before T= ;
 
+\ The opcode batch agrees with individual bindings, including when a
+\ different builder has different ordinals and when only one memo entry exists.
+A64IR:OPCODES TYPED-BUFFER BATCH-OPS IR-ID:ir-symbol-id
+variable BATCH-CAP
+
+: BATCH-BIND ( -- )
+   0 MEMO-CTX @ 0 MEMO-BLD @ 0 BATCH-OPS BATCH-CAP @ A64IR:BIND-OPCODES! drop ;
+
+: BATCH-IDS-CHECK ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   A64IR:OPCODES 0 ?do
+      c b i A64IR:BIND {: want:IR-ID:ir-symbol-id :}
+      i BATCH-OPS @ IR-ID:SYMBOL-LOCAL want IR-ID:SYMBOL-LOCAL T=
+      i BATCH-OPS @ IR-ID:SYMBOL-OWNER want IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? TTRUE
+   loop
+   c b 0 BATCH-OPS @ s" a64.movz" IR-BUILD:SYMBOL-IS? TTRUE
+   b IR-BUILD:SCHEMAS 0 T= ;
+
+: BATCH-CHECK ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b 0 BATCH-OPS A64IR:OPCODES A64IR:BIND-OPCODES!
+      b IR-BUILD:MODULE@ IR-ID:MODULE-SAME? TTRUE
+   c b BATCH-IDS-CHECK ;
+
+: BATCH-OTHER ( IR-CTX:ctx -- )
+   0 MEMO-CTX ! [: BATCH-BIND ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
+: BATCH-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 0 MEMO-CTX ! A64IR:OPCODES BATCH-CAP !
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c A64IR:NAME A64IR:MAJOR A64IR:MINOR IR-BUILD:NEW-BUILDER
+   {: b:IR-BUILD:builder :}
+   b 0 MEMO-BLD !
+   c b s" padding" IR-BUILD:INTERN-SYMBOL drop
+   c b 0 A64IR:BIND drop
+   A64IR:MISSES-CLEAR c b BATCH-CHECK
+   A64IR:MISSES A64IR:OPCODES 1- T=
+   A64IR:MISSES-CLEAR c b BATCH-CHECK A64IR:MISSES 0 T=
+   A64IR:OPCODES 1- BATCH-CAP !
+   [: BATCH-BIND ;] E-IR-SYM-RANGE TTHROWSQ
+   c b BATCH-IDS-CHECK
+   A64IR:OPCODES BATCH-CAP !
+   BND [: BATCH-OTHER ;] IR-CTX:WITH-CONTEXT c 0 MEMO-CTX !
+   c b s" appended" IR-BUILD:INTERN-SYMBOL drop c b BATCH-CHECK
+   IR-BUILD:PLAN-BEGIN IR-BUILD:PLAN-DEFAULT
+   c A64IR:NAME A64IR:MAJOR A64IR:MINOR IR-BUILD:NEW-BUILDER
+   {: other:IR-BUILD:builder :}
+   c other BATCH-CHECK 0 BATCH-OPS @ IR-ID:SYMBOL-LOCAL 1 T=
+   c b BATCH-CHECK 0 BATCH-OPS @ IR-ID:SYMBOL-LOCAL 2 T=
+   other IR-BUILD:ABORT
+   c b IR-BUILD:FREEZE drop
+   [: BATCH-BIND ;] E-IR-BUILD-FROZEN TTHROWSQ ;
+
+: BATCH-PROTO ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MOD-NEW {: b:IR-BUILD:builder :}
+   b 0 MEMO-BLD ! c 0 MEMO-CTX !
+   A64IR:MISSES-CLEAR c b BATCH-CHECK A64IR:MISSES 0 T=
+   b IR-BUILD:ABORT [: BATCH-BIND ;] E-IR-BUILD-ABORTED TTHROWSQ ;
+
+: BATCH-CASE ( -- )
+   s" opcode batches preserve cold, partial, switched and prototype bindings" T-LABEL
+   BND [: BATCH-BODY ;] IR-CTX:WITH-CONTEXT
+   [: BATCH-BIND ;] E-IR-BUILD-STALE TTHROWSQ
+   IR-CTX:SESSION-LIVE? 0= {: own:bool :}
+   own if SESSION-MINE then
+   BND [: BATCH-PROTO ;] IR-CTX:WITH-CONTEXT
+   own if SESSION-DROP-MINE then ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   BATCH-CASE
    SESSION-MEMO-CASE
    MEMO-CASE
    LAZY-CASE

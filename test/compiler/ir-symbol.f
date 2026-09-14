@@ -904,10 +904,105 @@ create CBUF 32 allot
    s" replacing the installed index retirement observer refuses" T-LABEL
    [: OBSERVER-REPLACE ;] E-IR-ARENA-STATE TTHROWSQ ;
 
+\ Batch identity binding checks every ordinal before publishing, and opens
+\ the current table on each call rather than retaining a count across growth.
+1 TYPED-BUFFER IDS-ROWS IR-ARENA:arena
+1 TYPED-BUFFER IDS-KEY IR-ID:ir-module-key
+3 TYPED-BUFFER IDS-SRC n
+3 TYPED-BUFFER IDS-DST IR-ID:ir-symbol-id
+1 TYPED-BUFFER IDS-SENTINEL IR-ID:ir-symbol-id
+create IDS-OVER 4 cells allot
+variable IDS-N
+variable IDS-CAP
+
+\ Deliberately alias differently typed spans to exercise the copy boundary.
+: IDS-OVER-SRC ( -- ptr n ) IDS-OVER ;
+TRUSTED: IDS-OVER-DST ( -- ptr IR-ID:ir-symbol-id ) IDS-OVER ;
+
+: IDS-RUN ( -- )
+   0 IDS-ROWS @ 0 IDS-KEY @ 0 IDS-SRC IDS-N @ 0 IDS-DST IDS-CAP @ IR-SYM:IDS! ;
+
+: IDS-UNCHANGED ( -- )
+   3 0 ?do
+      i IDS-DST @ IR-ID:SYMBOL-LOCAL 1 T=
+      i IDS-DST @ IR-ID:SYMBOL-OWNER 0 IDS-SENTINEL @ IR-ID:SYMBOL-OWNER
+         IR-ID:MODULE-SAME? TTRUE
+   loop ;
+
+: IDS-REFUSES ( n -- )
+   [: IDS-RUN ;] swap TTHROWSQ IDS-UNCHANGED ;
+
+: IDS-INPUT ( -- )
+   3 0 ?do i 1 and i IDS-SRC ! loop ;
+
+: IDS-CHECK ( ptr IR-ID:ir-symbol-id -- )
+   {: dst:ptr :}
+   3 0 ?do
+      dst i cells + @ {: id:IR-ID:ir-symbol-id :}
+      id IR-ID:SYMBOL-LOCAL i 1 and T=
+      id IR-ID:SYMBOL-OWNER 0 IDS-KEY @ 0 IR-ID:PACK-SYMBOL
+         IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? TTRUE
+   loop ;
+
+: IDS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 32 256 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   r 0 IDS-ROWS ! key 0 IDS-KEY !
+   c a r key s" first" IR-SYM:INTERN drop
+   c a r key s" second" IR-SYM:INTERN drop
+   key 1 IR-ID:PACK-SYMBOL 0 IDS-SENTINEL !
+   3 0 ?do key 1 IR-ID:PACK-SYMBOL i IDS-DST ! loop
+   IDS-INPUT 3 IDS-N ! 3 IDS-CAP !
+   -1 2 IDS-SRC ! E-IR-SYM-BOUND IDS-REFUSES
+   2 2 IDS-SRC ! E-IR-SYM-BOUND IDS-REFUSES
+   IDS-INPUT
+   -1 IDS-N ! E-IR-SYM-RANGE IDS-REFUSES
+   3 IDS-N ! 2 IDS-CAP ! E-IR-SYM-RANGE IDS-REFUSES
+   -1 IDS-CAP ! E-IR-SYM-RANGE IDS-REFUSES
+   $7FFFFFFFFFFFFFFF IDS-CAP ! E-IR-SYM-RANGE IDS-REFUSES
+   $7FFFFFFFFFFFFFFF IDS-N ! E-IR-SYM-RANGE IDS-REFUSES
+   0 IDS-N ! 0 IDS-CAP ! IDS-RUN IDS-UNCHANGED
+   3 IDS-N ! 3 IDS-CAP !
+   c IR-CTX:NEW-MODULE drop 0 IDS-KEY !
+   E-IR-SYM-OWNER IDS-REFUSES key 0 IDS-KEY !
+   IDS-RUN 0 IDS-DST IDS-CHECK
+   3 0 ?do i 1 and IDS-OVER-SRC i cells + ! loop
+   r key IDS-OVER-SRC 3 IDS-OVER-DST cell+ 3 IR-SYM:IDS!
+   IDS-OVER-DST cell+ IDS-CHECK
+   3 0 ?do i 1 and IDS-OVER-SRC i 1+ cells + ! loop
+   r key IDS-OVER-SRC cell+ 3 IDS-OVER-DST 3 IR-SYM:IDS!
+   IDS-OVER-DST IDS-CHECK
+   3 0 ?do i 1 and IDS-OVER-SRC i cells + ! loop
+   r key IDS-OVER-SRC 3 IDS-OVER-DST 3 IR-SYM:IDS!
+   IDS-OVER-DST IDS-CHECK
+   20 0 ?do
+      i $41 + CBUF c! c a r key CBUF 1 IR-SYM:INTERN drop
+   loop
+   21 2 IDS-SRC ! IDS-RUN 2 IDS-DST @ IR-ID:SYMBOL-LOCAL 21 T=
+   r IR-ARENA:FREEZE drop
+   [: IDS-RUN ;] E-IR-ARENA-FROZEN TTHROWSQ ;
+
+: IDS-MALFORMED ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 2 32 TAB-NEW
+   {: key:IR-ID:ir-module-key a:IR-ARENA:arena r:IR-ARENA:arena :}
+   r 0 IDS-ROWS ! key 0 IDS-KEY !
+   c r 0 IR-ARENA:PUSH drop
+   0 IDS-N ! 0 IDS-CAP !
+   [: IDS-RUN ;] E-IR-SYM-STATE TTHROWSQ ;
+
+: IDS-CASE ( -- )
+   s" batch symbol identities preserve bounds, ownership, overlap and growth" T-LABEL
+   BND [: IDS-BODY ;] IR-CTX:WITH-CONTEXT
+   [: IDS-RUN ;] E-IR-ARENA-STALE TTHROWSQ
+   BND [: IDS-MALFORMED ;] IR-CTX:WITH-CONTEXT ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   IDS-CASE
    CLONE-REFUSE-CASE
    CLONE-EXACT-CASE
    CLONE-EMPTY-CASE
