@@ -13,6 +13,10 @@ $FFFFFFFF constant RAW-MAX
 : FULL? ( n -- bool ) FULL and 0= 0= ;
 : BODY ( n -- n ) MASK and ;
 
+: SIZE? ( n -- bool ) {: size:n :}
+   size INSN-BYTES < size MASK > or if 0 0= 0= exit then
+   size INSN-BYTES mod 0 = ;
+
 : VALID? ( n -- bool ) {: raw:n :}
    raw 0 < raw RAW-MAX > or if 0 0= 0= exit then
    raw BODY INSN-BYTES mod 0 <> if 0 0= 0= exit then
@@ -25,7 +29,8 @@ $FFFFFFFF constant RAW-MAX
    raw CHECK
    raw FULL? if raw BODY else raw BODY INSN-BYTES + then ;
 
-: EXACT ( n -- n )
-   FULL or dup CHECK ;
+: EXACT ( n -- n ) {: size:n :}
+   size SIZE? 0= if s" hb: malformed dictionary code size" 74 die then
+   size FULL or ;
 
 ;package

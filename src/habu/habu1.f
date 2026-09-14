@@ -2446,6 +2446,7 @@ public
    9 NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
    14 CODE-SPAN:RAW-MAX LIT64,  10 14 CMP,  C-HI bad BCOND,
    14 10 3 ANDI,  14 bad CBNZ,                  \ encoded lengths remain instruction aligned
+   14 CODE-SPAN:FULL LIT64,  10 14 CMP,  C-EQ bad BCOND, \ exact spans cannot be empty
    live B,
    bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    live LBL,
