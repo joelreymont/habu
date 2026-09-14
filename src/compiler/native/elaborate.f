@@ -2875,7 +2875,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
    PATH-ENDED? if
       PATH-LIVE PATH-END !
    else
-      VN @ t CS-DEPTH@ 1+ < if E-NELAB-UNDER throw then
+      \ The default may consume entry values; only its current selector is dropped.
       1 VDROP
       ix  t CS-JOIN@ JOIN-CK  TERM-BR
       CS-LOOPS @ t CS-LOOP1!

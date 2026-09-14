@@ -488,6 +488,10 @@ SUITE compiler-native-match
    test/compiler/native-match.f
 ;SUITE
 
+SUITE compiler-native-case
+   test/compiler/native-case.f
+;SUITE
+
 SUITE compiler-native-rename-rows
    test/compiler/native-rename-rows.f
 ;SUITE
