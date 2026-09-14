@@ -1,6 +1,6 @@
 ---
 title: Preserve grouped result rows through native finally
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-14T13:27:14.065195+03:00"
@@ -15,5 +15,8 @@ when ordinary call rows are absent and skips grouping for a dead output. New
 native-finally covers named/literal/callback products, saved values, both throw
 paths, dead quotations, cleanup borrow refusal and the real build wrapper.
 Fresh hb SHA c37b51ff3be1daf520cc0ba682403c87021618b5ff8e404eb26e4dd2143cbcda
-passes this fixture at both tiers. Product-hosted rebuild and Maki acceptance
-are still pending; the dot remains open until the application reproducer passes.
+passes this fixture at both tiers. The product-hosted rebuild is byte-identical.
+Rowan accepted source54e9ae7c/c37b51ff on Maki master066a09ec with native-cell
+de65f404: 50/50 tests, native_image.py restore/recapture/DRC, plain/items/full-Kiapi
+images and Kiapi/native-cell REPL probes. FOOTPRINT-POSE compiles. Recorded in
+Maki dot4e152522. Maki's pin still awaits Habu's separate full release gate.

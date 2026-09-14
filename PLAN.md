@@ -19,12 +19,20 @@ confirms quotation-input variance, implicit return-row reads, and trailing
 signature tokens as blockers. Tested repeat/dead-tail cases and the listed
 row-variable caller exploits now reject. Further audit claims remain to assess.
 
-Maki's full suite and plain/minimal Kiapi snapshot build/restore/recapture pass on
-the frozen source9d0a44a3 + SHA24d8075c pair. Full Kiapi compilation is blocked by
-FOOTPRINT-POSE through native finally (-8503); no downstream pin is accepted.
-Tender/Kestrel acceptance remains pending. The decimal fix is saved on a separate
-WIP bookmark awaiting review; warmed source-order verification is reproduced and
-has a design but no implementation.
+Maki accepted frozen source54e9ae7c + SHAc37b51ff for its full suite, plain and
+all-Kiapi/native-cell images, restore, recapture and REPL. Its pin remains held
+until Habu release qualification. That native engine rebuilt itself byte-identically.
+Hazel's reviewed C2/C4/M8 fixes and the reviewed decimal fix are integrated through
+cd82e4d9. Reviewed boolean correction 6594f822 rebuilds successfully as engine
+954c53fd; focused checker, layout, float and native-finally tests pass. The internal
+Astra integer-overflow agent owns engine admission; Cedar owns checker admission.
+
+Current default stripped AOT builds still copy quotation code addresses from the
+maker: a six-word checked app builds then jumps to unmapped0x1865de0. Cedar owns
+dotf372a04a for address-aware closure traversal and position-independent literal
+relocation. This is separate from Maki's accepted --repl images. Warm source-order
+verification and public recovery also remain open. Tender reports its previous
+frozen9d pair passes standalone/REPL acceptance; Kestrel acceptance is pending.
 
 ## Required result
 
