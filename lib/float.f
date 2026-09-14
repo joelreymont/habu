@@ -2,14 +2,11 @@
 \
 \ STR>FLOAT parses an optionally-signed decimal with an optional fraction and an
 \ optional `e`/`E` exponent: [+|-] digits [. digits] [ (e|E) [+|-] digits ].
-\ The significand is accumulated in a double and scaled by a power of ten, so it
-\ is exact for values whose significand fits in 2^53 and within double's range
-\ (every sensor/JSON float the application emits); it is not a bit-exact arbitrary-precision
-\ parser. Depends on lib/string.f (digit predicates, STR>NUMBER?).
-\
-\ Habu locals discipline: a local may not be bound after an `exit` has appeared
-\ on a path, so every word here binds all its locals up front (after the
-\ producing calls / value-only if-else) and keeps a single trailing exit guard.
+\ Conversion keeps 18 significant decimal digits and combines the remaining
+\ digit positions with the exponent before scaling. Binary64 arithmetic rounds
+\ the result; this is not a correctly rounded arbitrary-precision parser.
+\ Overflow yields signed infinity, underflow signed zero, and zero stays zero.
+\ Exponents must fit signed i64; engine-shaped decimals retain engine admission.
 
 require lib/string.f                         \ STR-DIGITS? / STR-DIGIT-VALUE / STR-MINUS / STR-PLUS
 require lib/adt/option.f                      \ option<CAD-NUM:index> for STR:INDEX-OF (switchover wave A)
@@ -17,11 +14,18 @@ require lib/adt/option.f                      \ option<CAD-NUM:index> for STR:IN
 46 constant FL-DOT
 101 constant FL-E-LOWER
 69 constant FL-E-UPPER
-400 constant FL-EXP-MAX                     \ clamp: |exp| beyond this is inf/0 anyway
+400 constant FL-EXP-MAX                     \ enough for any bounded significand
+18 constant FL-SIG-DIGITS                   \ decimal prefix fits a signed cell
+22 constant FL-SCALE-CHUNK                  \ 10^0 through 10^22 are exact binary64
+$7FFFFFFFFFFFFFFF constant FL-MAX-I64
+$8000000000000000 constant FL-MIN-I64
 
 variable FL-IX                              \ digit-loop index (leaf, single-threaded)
 variable FL-EXPV                            \ parsed exponent value
 variable FL-VALID                           \ exponent validity flag
+variable FL-MANT                            \ retained significant prefix
+variable FL-KEPT                            \ retained digit count
+variable FL-SCALE                           \ omitted digits minus fraction length
 
 \ ---- pinned-raw residual: STR:INDEX-OF returns a checked option<CAD-NUM:index>,
 \ but the found position immediately drives raw pointer/length arithmetic
@@ -34,19 +38,69 @@ public
 ;package
 
 \ ---- powers of ten --------------------------------------------------------
-: POW10+ ( n -- r ) {: k :}                 \ 10^k for k >= 0, iterative
-   1.0  0 FL-IX !
-   begin FL-IX @ k < while
+: POW10+ ( n -- r ) {: k:n :}
+   1.0 k 0 ?do
       10.0 f*
-      FL-IX @ 1+ FL-IX !
-   repeat ;
+   loop ;
+
+
 : FL-CLAMP-EXP ( n -- n ) {: k :}
    k FL-EXP-MAX > if FL-EXP-MAX exit then
    k FL-EXP-MAX negate < if FL-EXP-MAX negate exit then
    k ;
-: POW10 ( n -- r ) FL-CLAMP-EXP {: k :}     \ 10^k for any signed k
-   k 0 >= if k POW10+ exit then
-   0 k - POW10+ 1.0 swap f/ ;
+
+
+: FL-SCALE-UP ( r n -- r ) {: k:n :}
+   k FL-SCALE-CHUNK / 0 ?do FL-SCALE-CHUNK POW10+ f* loop
+   k FL-SCALE-CHUNK mod POW10+ f* ;
+
+
+: FL-SCALE-DOWN ( r n -- r ) {: k:n :}
+   k FL-SCALE-CHUNK / 0 ?do FL-SCALE-CHUNK POW10+ f/ loop
+   k FL-SCALE-CHUNK mod POW10+ f/ ;
+
+
+: FL-SCALE-F ( r n -- r ) FL-CLAMP-EXP {: k:n :}
+   dup 0.0 f= if exit then
+   k 0 >= if k FL-SCALE-UP else k negate FL-SCALE-DOWN then ;
+
+
+: POW10 ( n -- r )
+   1.0 swap FL-SCALE-F ;
+
+
+\ Saturate only after combining the exponent with the full digit displacement.
+: FL-ADD-EXP ( n n -- n ) {: exponent:n shift:n :}
+   shift 0 > if
+      exponent FL-MAX-I64 shift - > if FL-EXP-MAX exit then
+   then
+   shift 0 < if
+      exponent FL-MIN-I64 shift - < if FL-EXP-MAX negate exit then
+   then
+   exponent shift + FL-CLAMP-EXP ;
+
+
+: FL-RESET-SIG ( n -- )
+   FL-SCALE ! 0 FL-MANT ! 0 FL-KEPT ! ;
+
+
+: FL-KEEP-DIGIT ( n -- ) {: digit:n :}
+   FL-MANT @ 0= digit 0= and if exit then
+   FL-KEPT @ FL-SIG-DIGITS < if
+      FL-MANT @ 10 * digit + FL-MANT !
+      1 FL-KEPT +!
+   else
+      1 FL-SCALE +!
+   then ;
+
+
+: FL-KEEP-DIGITS ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do a i + c@ STR-DIGIT-VALUE FL-KEEP-DIGIT loop ;
+
+
+: FL-SIG-VALUE ( n -- r )
+   FL-SCALE @ FL-ADD-EXP
+   FL-MANT @ s>f swap FL-SCALE-F ;
 
 \ ---- digit string -> double -----------------------------------------------
 \ Unsigned run of decimal digits. Empty is valid and yields 0.0; any non-digit
@@ -54,11 +108,9 @@ public
 : FL-DIGITS>F ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME digit-run value (empty -> SOME 0.0), NONE on a non-digit
    u 0= if 0.0 OPTION:SOME exit then
    a u STR-DIGITS? 0= if OPTION:NONE exit then
-   0.0  0 FL-IX !
-   begin FL-IX @ u < while
-      10.0 f*  a FL-IX @ + c@ STR-DIGIT-VALUE s>f f+
-      FL-IX @ 1+ FL-IX !
-   repeat  OPTION:SOME ;
+   0 FL-RESET-SIG
+   a u FL-KEEP-DIGITS
+   0 FL-SIG-VALUE OPTION:SOME ;
 
 \ ---- field splitting ------------------------------------------------------
 : FL-STRIP-SIGN ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u :}
@@ -92,23 +144,23 @@ public
    a u num-parse and nip ;
 
 \ ---- significand (no sign, no exponent) -----------------------------------
-\ Split the mantissa at the dot, parse both halves, combine. Requires at least
-\ one digit across the two halves, so "" and "." are rejected.
-: FL-SIG ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME significand, NONE if no digits / bad
+\ Validate both halves before keeping their significant prefix and net scale.
+: FL-SCALED-SIG ( ptr u8 n n -- option<r> ) {: a:ptr u:n exponent:n :}
    a u STR:LENGTH FL-DOT STR:INDEX-OF MATCH option    \ split at the dot: ilen fa flen
      none OF u  a u +  0 ENDOF                        \ no dot: int = whole string, empty fraction
      some OF CAD-NUM:FL-IX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
    ;MATCH {: ilen:n fa:ptr flen:n :}
    ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
-   a ilen FL-DIGITS>F MATCH option
-     none OF OPTION:NONE exit ENDOF
-     some OF ENDOF                                \ int value (ival) left on the stack
-   ;MATCH
-   fa flen FL-DIGITS>F MATCH option
-     none OF drop OPTION:NONE exit ENDOF          \ drop ival, reject a bad fraction
-     some OF ENDOF                                \ stack: ival fval
-   ;MATCH
-   flen POW10 f/ f+ OPTION:SOME ;                 \ SOME (ival + fval/10^flen)
+   ilen 0 > if a ilen STR-DIGITS? 0= if OPTION:NONE exit then then
+   flen 0 > if fa flen STR-DIGITS? 0= if OPTION:NONE exit then then
+   flen negate FL-RESET-SIG
+   a ilen FL-KEEP-DIGITS
+   fa flen FL-KEEP-DIGITS
+   exponent FL-SIG-VALUE OPTION:SOME ;
+
+
+: FL-SIG ( ptr u8 n -- option<r> )
+   0 FL-SCALED-SIG ;
 
 \ ---- exponent -------------------------------------------------------------
 \ FL-EXP-AT parses the exponent text after position epos, records it, and
@@ -132,12 +184,10 @@ public
    a0 u0 FL-STRIP-SIGN {: a:ptr u neg :}
    a u FL-PARSE-EXP {: mlen :}
    admitted 0= if OPTION:NONE exit then
-   a mlen FL-SIG MATCH option
+   u 0= FL-VALID @ 0= or if OPTION:NONE exit then
+   a mlen FL-EXPV @ FL-SCALED-SIG MATCH option
      none OF OPTION:NONE exit ENDOF                 \ bad significand -> NONE
      some OF ENDOF                                  \ SOME significand left on the stack
    ;MATCH
-   u 0=  FL-VALID @ 0= or
-   if drop OPTION:NONE exit then                    \ empty mantissa / invalid -> NONE
-   FL-EXPV @ POW10 f*
    neg if fnegate then
    OPTION:SOME ;
