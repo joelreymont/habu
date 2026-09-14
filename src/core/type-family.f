@@ -3052,6 +3052,81 @@ variable REG-AOT-ERROR-U
    THEN
    src off + c@ ;
 
+\ Validate a captured table without consulting the active checker. Merge may
+\ compare two frozen windows after the live registry has changed owners.
+: REG-AOT-SHAPE ( ptr u8 n -- bool ) {: src:ptr u:n :}
+   u REG-AOT-HDR < IF
+      s" tfam: captured registry is shorter than its table" REG-AOT-REFUSE THEN
+   src REG-AOT-U64@ REG-AOT-N <> IF
+      s" tfam: captured registry has an invalid store count" REG-AOT-REFUSE THEN
+   0 REG-AOT-HDR
+   REG-AOT-N 0 ?do
+      {: delta:n used:n :}
+      src i REG-AOT-ROW@ {: base:n cnt:n bytes:n :}
+      base 0 < cnt 0 < or bytes 0 < or IF
+         s" tfam: captured registry has a negative extent" REG-AOT-REFUSE THEN
+      u used - i REG-AOT-WIDTH / {: room:n :}
+      base room > IF
+         s" tfam: captured registry prefix exceeds its bytes" REG-AOT-REFUSE THEN
+      cnt room base - > IF
+         s" tfam: captured registry delta exceeds its bytes" REG-AOT-REFUSE THEN
+      base cnt + i REG-AOT-WIDTH * bytes <> IF
+         s" tfam: captured registry has an invalid record extent" REG-AOT-REFUSE THEN
+      delta cnt or used bytes +
+   loop
+   u <> IF s" tfam: captured registry does not fill its bytes" REG-AOT-REFUSE THEN
+   0 <> ;
+
+: REG-AOT-MERGE-REFUSE ( -- )
+   s" tfam: captured registries have incompatible prefixes" REG-AOT-REFUSE ;
+
+\ Choose the incoming payload iff it is the one to retain. A prefix-only
+\ capture can accompany a delta at its opening or closed boundary. Compare
+\ canonical records, not byte lengths or the currently installed registry.
+: REG-AOT-MERGE-INCOMING-BODY ( ptr u8 n ptr u8 n -- bool )
+   {: host:ptr hu:n incoming:ptr iu:n :}
+   hu 0= IF iu 0 <> IF incoming iu REG-AOT-SHAPE drop THEN RES-TRUE EXIT THEN
+   host hu REG-AOT-SHAPE {: hd:bool :}
+   iu 0= IF RES-FALSE EXIT THEN
+   incoming iu REG-AOT-SHAPE {: id:bool :}
+   hd id and IF
+      s" tfam: two type-registry deltas cannot share one base" REG-AOT-REFUSE THEN
+   REG-AOT-HDR REG-AOT-HDR
+   REG-AOT-N 0 ?do
+      {: ho:n io:n :}
+      host i REG-AOT-ROW@ {: hb:n hc:n hbytes:n :}
+      incoming i REG-AOT-ROW@ {: ib:n ic:n ibytes:n :}
+      hd IF
+         ib hb < ib hb hc + > or IF REG-AOT-MERGE-REFUSE THEN
+      ELSE id IF
+         hb ib < hb ib ic + > or IF REG-AOT-MERGE-REFUSE THEN
+      ELSE
+         hb ib <> IF REG-AOT-MERGE-REFUSE THEN
+      THEN THEN
+      hbytes ibytes min 0 ?do
+         host ho + i j REG-AOT-CANON-C@
+         incoming io + i j REG-AOT-CANON-C@ <> IF REG-AOT-MERGE-REFUSE THEN
+      loop
+      ho hbytes + io ibytes +
+   loop 2drop
+   hd 0= ;
+
+variable REG-AOT-KEEP-INCOMING
+
+: REG-AOT-MERGE-CHECK ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
+   2over 2over REG-AOT-MERGE-INCOMING-BODY REG-AOT-KEEP-INCOMING ! ;
+
+public
+
+: REG-AOT-MERGE-INCOMING? ( ptr u8 n ptr u8 n -- bool )
+   0 REG-AOT-ERROR-U !
+   ['] REG-AOT-MERGE-CHECK catch dup 0 <> IF
+      REG-AOT-ERROR-U @ 0= IF throw THEN
+      drop 2drop 2drop REG-AOT-ERROR-A @ REG-AOT-ERROR-U @ 76 die
+   THEN drop 2drop 2drop REG-AOT-KEEP-INCOMING @ 0 <> ;
+
+private
+
 : REG-AOT-SAME? ( ptr u8 n n n -- bool ) {: src:ptr k:n base:n bytes:n :}
    k REG-AOT-BASE-PTR base k REG-AOT-WIDTH * + {: live:ptr :}
    bytes 0 ?do

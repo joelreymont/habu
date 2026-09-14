@@ -32,9 +32,6 @@ public
    AOT-SECTION-CAP HDR O-PAYLEN + U64!
    HDR HDR-BYTES WRITE-ALL ;
 
-\ Exercise the pre-copy guard with the captured host and an incoming extent.
-: EFFECT-TEST-REGISTRY-GUARD ( n -- )
-   LATCH-HOST 0 swap S-REG ROW! ?REG ;
 ;package
 
 package EFFECT-POOL-TEST
@@ -90,6 +87,7 @@ using AOT-WINDOW
 DYNAMIC-BUFFER EXPECTED n
 variable EXPECTED-U
 create EXPECTED-ROWS WORDS SIG-ROW * allot
+create EXPECTED-REG AOT-REG-CAP allot variable EXPECTED-REG-U
 $1000 constant IO-CAP
 create OUT IO-CAP allot create ERR IO-CAP allot
 
@@ -122,7 +120,9 @@ create OUT IO-CAP allot create ERR IO-CAP allot
 : SAVE ( -- )
    AOT-SIG-STR-LEN @ dup EXPECTED-U ! CELL 1- + CELL / EXPECTED-RESERVE
    AOT-SIG-STR-BUF@ EXPECTED$ BYTE-COPY
-   AOT-SIG-BUF@ EXPECTED-ROWS WORDS SIG-ROW * BYTE-COPY ;
+   AOT-SIG-BUF@ EXPECTED-ROWS WORDS SIG-ROW * BYTE-COPY
+   AOT-REG-LEN @ EXPECTED-REG-U !
+   AOT-REG-BUF@ EXPECTED-REG AOT-REG-LEN @ BYTE-COPY ;
 
 : CHECK ( -- )
    AOT-SIG-N @ WORDS T=
@@ -207,17 +207,40 @@ public
    \ Closing a later empty window changes the live serializer's delta to zero,
    \ but the original captured buffer must still refuse a competing payload.
    AOT-ARM:WINDOW-OPEN AOT-ARM:WINDOW-CLOSE
-   AOT-REG-LEN @ 1+ AOT-FILE:EFFECT-TEST-REGISTRY-GUARD ;
+   KEY ART$ AOT-FILE:MERGE ;
 : BAD-REGISTRY-SHORT ( -- )
-   8 AOT-REG-LEN ! 9 AOT-FILE:EFFECT-TEST-REGISTRY-GUARD ;
-: PREFIX-REGISTRY ( -- )
+   8 AOT-REG-LEN ! KEY ART$ AOT-FILE:MERGE ;
+: BAD-REGISTRY-BOUNDS ( -- )
+   $7FFFFFFFFFFFFFFF AOT-REG-BUF@ 8 + CELL-VIEW !
+   KEY ART$ AOT-FILE:MERGE ;
+: MAKE-PREFIX ( -- )
    AOT-ARM:WINDOW-OPEN AOT-ARM:WINDOW-CLOSE
-   AOT-REG-BUF@ AOT-REG-CAP CHECKER-REG-AOT-SAVE AOT-REG-LEN !
-   \ Equal byte lengths alone do not imply two declaration deltas.
-   AOT-REG-LEN @ AOT-FILE:EFFECT-TEST-REGISTRY-GUARD
+   AOT-REG-BUF@ AOT-REG-CAP CHECKER-REG-AOT-SAVE AOT-REG-LEN ! ;
+: CHECK-REGISTRY ( -- )
+   AOT-REG-BUF@ AOT-REG-LEN @ EXPECTED-REG EXPECTED-REG-U @ STR= 0= if 79 throw then
+   WORDS 2 * AOT-SIG-N @ <> if 79 throw then ;
+: PREFIX-REGISTRY ( -- )
+   MAKE-PREFIX
    KEY ART$ AOT-FILE:MERGE
-   WORDS 2 * AOT-SIG-N @ <> if 79 throw then
+   CHECK-REGISTRY
    s" prefix registry merge: ok" type cr ;
+: HOST-DELTA-REGISTRY ( -- )
+   MAKE-PREFIX KEY BAD-ART$ AOT-FILE:WRITE
+   EXPECTED-REG AOT-REG-BUF@ EXPECTED-REG-U @ BYTE-COPY
+   EXPECTED-REG-U @ AOT-REG-LEN !
+   KEY BAD-ART$ AOT-FILE:MERGE CHECK-REGISTRY
+   s" host delta merge: ok" type cr ;
+: BAD-REGISTRY-PREFIX ( -- )
+   MAKE-PREFIX
+   \ First family record: alter an identity field without changing its extent.
+   AOT-REG-BUF@ 200 + dup c@ 1 xor swap c!
+   KEY ART$ AOT-FILE:MERGE ;
+: CANONICAL-REGISTRY ( -- )
+   MAKE-PREFIX
+   \ TF.TAILNEXT is a rebuilt link, not part of captured family identity.
+   AOT-REG-BUF@ 200 152 + + dup c@ 1 xor swap c!
+   KEY ART$ AOT-FILE:MERGE CHECK-REGISTRY
+   s" canonical registry merge: ok" type cr ;
 : BAD-STAGING ( -- ) AOT-SIG-STR-CAP AOT-SIG-STR-LEN ! AOT-SIG-PAYLOAD:BUILD ;
 
 private
@@ -241,13 +264,19 @@ private
    s" EFFECT-POOL-TEST:BAD-IMPORT" REJECT-BUDGET
    s" EFFECT-POOL-TEST:BAD-READ" REJECT-BUDGET
    s" EFFECT-POOL-TEST:BAD-MERGE" REJECT-BUDGET
-   s" EFFECT-POOL-TEST:BAD-REGISTRY" 75
-   s" aot-file: two type-registry deltas cannot share one base" REJECT
-   s" EFFECT-POOL-TEST:BAD-REGISTRY-LIVE" 75
-   s" aot-file: two type-registry deltas cannot share one base" REJECT
-   s" EFFECT-POOL-TEST:BAD-REGISTRY-SHORT" 75
-   s" aot-file: invalid captured type registry table" REJECT
+   s" EFFECT-POOL-TEST:BAD-REGISTRY" 76
+   s" tfam: two type-registry deltas cannot share one base" REJECT
+   s" EFFECT-POOL-TEST:BAD-REGISTRY-LIVE" 76
+   s" tfam: two type-registry deltas cannot share one base" REJECT
+   s" EFFECT-POOL-TEST:BAD-REGISTRY-SHORT" 76
+   s" tfam: captured registry is shorter than its table" REJECT
+   s" EFFECT-POOL-TEST:BAD-REGISTRY-BOUNDS" 76
+   s" tfam: captured registry prefix exceeds its bytes" REJECT
+   s" EFFECT-POOL-TEST:BAD-REGISTRY-PREFIX" 76
+   s" tfam: captured registries have incompatible prefixes" REJECT
    s" EFFECT-POOL-TEST:PREFIX-REGISTRY" 0 s" prefix registry merge: ok" REJECT
+   s" EFFECT-POOL-TEST:HOST-DELTA-REGISTRY" 0 s" host delta merge: ok" REJECT
+   s" EFFECT-POOL-TEST:CANONICAL-REGISTRY" 0 s" canonical registry merge: ok" REJECT
    s" EFFECT-POOL-TEST:BAD-STAGING" 72 s" aot: encoded sections exceed their byte budget" REJECT ;
 
 : RUN ( -- )

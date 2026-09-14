@@ -947,33 +947,27 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
 variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
-\ Version 9 carries REG-AOT-SAVE's table: eight (base, delta-count, bytes)
-\ rows, followed by the complete stores. Inspect the captured bytes; a live
-\ checker may since have closed another window or belong to another owner.
-8 constant REG-TABLE-N
-8 constant REG-TABLE-OFF
-24 constant REG-TABLE-ROW
-REG-TABLE-N REG-TABLE-ROW * REG-TABLE-OFF + constant REG-TABLE-BYTES
+\ Preserve the closed host payload while the incoming sections are read. The
+\ registry owner compares their format and identity; no live serialization.
+DYNAMIC-BUFFER HOST-REG n
 
-: REG-FORMAT-BAD ( -- )
-   s" aot-file: invalid captured type registry table" DIE ;
+TRUSTED: REG-INCOMING? ( ptr u8 n ptr u8 n -- bool )
+   TFAM:REG-AOT-MERGE-INCOMING? ;
 
-: REG-HAS-DELTA? ( ptr u8 n -- bool ) {: p:ptr u:n :}
-   u REG-TABLE-BYTES < if REG-FORMAT-BAD then
-   p U64@ REG-TABLE-N <> if REG-FORMAT-BAD then
-   0 REG-TABLE-BYTES
-   REG-TABLE-N 0 ?do
-      {: delta:n used:n :}
-      p REG-TABLE-OFF + i REG-TABLE-ROW * + {: row:ptr :}
-      row U64@ 0 < if REG-FORMAT-BAD then
-      row 8 + U64@ {: count:n :}
-      row 16 + U64@ {: bytes:n :}
-      count 0 < bytes 0 < or if REG-FORMAT-BAD then
-      bytes u used - > if REG-FORMAT-BAD then
-      delta count or used bytes +
-   loop
-   u <> if REG-FORMAT-BAD then
-   0<> ;
+: SAVE-REG ( -- )
+   H-REG @ 0 < H-REG @ AOT-REG-CAP > or if
+      s" aot-file: captured host registry exceeds its buffer" DIE then
+   H-REG @ 7 + 8 / 1 max HOST-REG-RESERVE
+   H-REG @ 0 ?do AOT-REG-BUF@ i + c@ 0 HOST-REG BYTE-VIEW i + c! loop ;
+
+: MERGE-REG ( -- )
+   0 HOST-REG BYTE-VIEW H-REG @ AOT-REG-BUF@ S-REG ROW-LEN@ REG-INCOMING? if
+      S-REG ROW-LEN@ AOT-REG-LEN !
+   else
+      H-REG @ 0 ?do 0 HOST-REG BYTE-VIEW i + c@ AOT-REG-BUF@ i + c! loop
+      H-REG @ AOT-REG-LEN !
+   then
+   HOST-REG-RELEASE ;
 
 : LATCH-HOST ( -- )
    AOT-BLOB-LEN @ H-BLOB !            AOT-REC-N @ H-REC !
@@ -1086,22 +1080,6 @@ REG-TABLE-N REG-TABLE-ROW * REG-TABLE-OFF + constant REG-TABLE-BYTES
 : PLACE-WDATA ( -- )
    SCALARS@
    A-D0 @  AOT-DATA-D0 @ -  H-DATA @ -  7 and  H-DATA @ +  H-DATA-R ! ;
-
-\ THE TYPE REGISTRY IS THE ONE SECTION A MERGE CANNOT APPEND. Its records name
-\ each other by family id, schema node id and interned string offset, and each
-\ delta is expressed against the registry high-water its own window opened on.
-\ A partial payload carries the complete prefix as well as that delta, so the
-\ host's prefix bytes do not count as a competing declaration. Two actual
-\ deltas would still claim the same ids. This merge keeps a host delta only
-\ when the incoming section is empty; otherwise the host must be prefix-only.
-\ The registry loader validates incoming records against the target prefix.
-: ?REG ( -- )
-   H-REG @ 0= if exit then
-   S-REG ROW-LEN@ 0= if exit then
-   AOT-REG-BUF@ H-REG @ REG-HAS-DELTA? 0= if exit then
-   s" aot-file: the host window declared " type H-REG @ .
-   s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
-   s" aot-file: two type-registry deltas cannot share one base" DIE ;
 
 \ Both captures canonicalize their code literals against base 0 (aot-capture.f
 \ ACAP-SCAN-CSITES), which is what lets a merge move one into the other's blob by
@@ -1337,7 +1315,6 @@ REG-TABLE-N REG-TABLE-ROW * REG-TABLE-OFF + constant REG-TABLE-BYTES
    H-SPAN @ A-SPAN @ + AOT-WID-SPAN !
    H-SIG @ S-SIGS SEC-ROWS + AOT-SIG-N !
    S-SIGSTR BASE@ S-SIGSTR ROW-LEN@ + AOT-SIG-STR-LEN !
-   S-REG ROW-LEN@ 0 > if S-REG ROW-LEN@ AOT-REG-LEN ! then
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 public
@@ -1357,10 +1334,10 @@ public
    ?HOST-CAPTURED
    LATCH-HOST
    LOAD-PASS
-   ?REG
    BASES-AFTER-HOST
    SEC-N 0 ?do i ?ROOM loop
    0 0= ?BUDGET
+   SAVE-REG
    OPEN-CSITE-GAP
    OPEN-SIGSTR-GAP
    SEC-N 0 ?do
@@ -1369,6 +1346,7 @@ public
    loop
    FD @ close
    ?PAYLOAD-AGAIN
+   MERGE-REG
    SCALARS@
    ?BASES
    H-DATA-R @ A-DSPAN @ + ?SPAN
