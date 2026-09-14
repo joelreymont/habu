@@ -136,7 +136,7 @@ create UTXT UNITS TEXT-CAP * allot
 
 : HEX ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    c s" NF-HEX ( -- n ) -$FF" 0 REC 0 1 LIT -255 T=
-   c s" NF-WRAP ( -- n ) 18446744073709551617" 0 REC 0 1 LIT 1 T= ;
+   c s" NF-HEX-BITS ( -- n ) $FFFFFFFFFFFFFFFF" 0 REC 0 1 LIT -1 T= ;
 
 : REALS ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    c s" NF-REAL ( -- r ) 1.9482199351819093" 0 REC
@@ -277,6 +277,7 @@ create INPUT TEXT-CAP allot
    s" -0.0085031157383406233" PARSED? TFALSE
    s" 9223372036854775808.0" PARSED? TFALSE
    s" -9223372036854775808.0" PARSED? TFALSE
+   s" 18446744073709551617" PARSED? TFALSE
    s" a declined spelling answers no value and no float flag" T-LABEL
    s" 12a" PARSED-VALUE 0 T=
    s" 12a" PARSED-FLOAT? TFALSE

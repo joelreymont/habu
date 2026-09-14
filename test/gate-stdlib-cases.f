@@ -476,6 +476,10 @@ SUITE compiler-native-literals
    test/compiler/native-literals.f
 ;SUITE
 
+SUITE compiler-integer-literals
+   test/compiler/integer-literals.f
+;SUITE
+
 SUITE compiler-native-eval
    test/compiler/native-eval.f
 ;SUITE

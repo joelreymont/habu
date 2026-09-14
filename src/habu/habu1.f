@@ -3025,7 +3025,7 @@ public
 \
 \ A REFUSED SPELLING ANSWERS NOTHING, and that is what the two ANDs are for. A
 \ syntax miss stops at the first unreadable byte (`12a` leaves 12); a complete
-\ over-bound decimal reaches float finish with x12 still false. Neither partial
+\ over-bound literal reaches finish with x12 still false. Neither partial
 \ cell is a value the engine pushes, so a caller sees zero with the false flag.
 package ENGINE-EMIT
 public
@@ -4149,7 +4149,7 @@ variable FIND-HMATCH
 
 : C-NUM-INIT-REGS ( -- )
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ,
-   16 0 MOVZ,  17 0 MOVZ, ;                                  \ overflow latch, final decimal refusal
+   16 0 MOVZ,  17 0 MOVZ, ;                                  \ overflow latch, final literal refusal
 
 : C-NUM-SIGN ( -- )
    10 NUM-DONE LABEL@ CBZ,
@@ -4186,8 +4186,8 @@ variable FIND-HMATCH
       7 15 55 SUBI, ;
 
 : C-NUM-INT-STEP ( -- )
-   5 $7FFFFFFFFFFFFFFF LIT64,  5 5 7 SUB,
-   8 5 6 UDIV,  11 8 CMP,  5 C-GT CSET,  16 16 5 ORR,
+   5 0 MOVN,  5 5 7 SUB,                                    \ unsigned cell limit minus this digit
+   8 5 6 UDIV,  11 8 CMP,  5 C-HI CSET,  16 16 5 ORR,
    11 11 6 MUL,  11 11 7 ADD,
    14 14 1 ADDI,  NUM-LOOP LABEL@ B, ;
 
@@ -4202,13 +4202,21 @@ variable FIND-HMATCH
 
 : C-NUM-FLOAT-FINISH ( -- )
    3 1 CMPI,  C-EQ NUM-DONE LABEL@ BCOND,                       \ "1." (no frac digits) -> fail
-   17 16 0 ADDI,  17 NUM-DONE LABEL@ CBNZ,                      \ a complete decimal owns its range refusal
+   5 $7FFFFFFFFFFFFFFF LIT64,  11 5 CMP,  5 C-HI CSET,          \ SCVTF needs a signed integer magnitude
+   17 16 5 ORR,  17 NUM-DONE LABEL@ CBNZ,                      \ a complete decimal owns its range refusal
    0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
    1 1 2 FDIV,  0 0 1 FADD,
    13 0 CMPI,  C-GE NUM-FPOS LABEL@ BCOND,  0 0 FNEG,
    NUM-FPOS LABEL@ LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET, ;
 
 : C-NUM-INT-FINISH ( -- )
+   LBL {: bounded:label :}
+   17 16 0 ADDI,
+   6 10 CMPI,  C-NE bounded BCOND,                             \ hex preserves all 64 bits, with modular negation
+   5 $7FFFFFFFFFFFFFFF LIT64,  8 13 63 LSRI,  5 5 8 ADD,       \ decimal magnitude: INT64_MAX, or 2^63 when negative
+   11 5 CMP,  5 C-HI CSET,  17 17 5 ORR,
+   bounded LBL,
+   17 NUM-DONE LABEL@ CBNZ,                                   \ a complete overflowed integer never becomes a name
    11 11 13 MUL,  12 1 MOVZ, ;
 
 : EMIT-NUM ( -- )
