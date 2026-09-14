@@ -947,6 +947,25 @@ variable A-D0     variable A-B0      variable A-W0     variable A-SPAN
 variable A-DSPAN                     \ the artifact's own window DATA span
 variable H-DATA-R                    \ where the artifact's window begins inside the merged one
 
+\ REG-AOT-SAVE's table is deliberately opaque to this reader, but its fixed
+\ shape is part of the checker/AOT payload ABI: eight stores, 24 bytes per row,
+\ and a 200-byte header.  The second u64 in each row is the captured delta
+\ count.  Read the host through the existing checker serializer, then inspect
+\ only those counts to distinguish a prefix from a real host delta.
+8 constant REG-TABLE-N
+8 constant REG-TABLE-OFF
+24 constant REG-TABLE-ROW
+variable REG-DELTA-HIT
+
+: REG-HAS-DELTA? ( ptr u8 -- bool ) {: p:ptr :}
+   0 REG-DELTA-HIT !
+   REG-TABLE-N 0 ?do
+      p REG-TABLE-OFF + i REG-TABLE-ROW * + 8 + U64@ 0<> IF
+         -1 REG-DELTA-HIT !
+      THEN
+   loop
+   REG-DELTA-HIT @ 0<> ;
+
 : LATCH-HOST ( -- )
    AOT-BLOB-LEN @ H-BLOB !            AOT-REC-N @ H-REC !
    AOT-SITE-N @ H-SITE !              AOT-NAMES-LEN @ H-NAMES !
@@ -1048,16 +1067,35 @@ variable H-DATA-R                    \ where the artifact's window begins inside
 
 \ THE TYPE REGISTRY IS THE ONE SECTION A MERGE CANNOT APPEND. Its records name
 \ each other by family id, schema node id and interned string offset, and each
-\ delta is expressed against the registry high-water its own window opened on -
-\ the same one for both, because the cold prefix is all that fills it before a
-\ capture. So two non-empty deltas would both claim the same ids, and there is no
-\ remap that could tell them apart afterwards. Measured, the metabuild host's
-\ REPL window declares no families at all, so one of the two is always empty; if
-\ that ever stops being true this refuses by name rather than baking a registry
-\ in which one window's ids silently mean another's.
+\ delta is expressed against the registry high-water its own window opened on.
+\ A partial payload carries the complete prefix as well as that delta, so the
+\ host's prefix bytes do not count as a competing declaration. Two actual
+\ deltas would still claim the same ids, and there is no remap that could tell
+\ them apart. The existing checker serializer reports the closed host payload
+\ length before a longer incoming payload is admitted; the registry loader's
+\ normal semantic validation remains the final check on the artifact bytes.
 : ?REG ( -- )
    H-REG @ 0= if exit then
    S-REG ROW-LEN@ 0= if exit then
+   H-REG @ S-REG ROW-LEN@ = IF
+      s" aot-file: the host window declared " type H-REG @ .
+      s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
+      s" aot-file: two type-registry deltas cannot share one base" DIE
+   THEN
+   S-REG ROW-LEN@ H-REG @ > IF
+      AOT-REG-BUF@ AOT-REG-CAP CHECKER-REG-AOT-SAVE {: saved:n :}
+      saved H-REG @ <> IF
+         s" aot-file: the host window declared " type H-REG @ .
+         s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
+         s" aot-file: two type-registry deltas cannot share one base" DIE
+      THEN
+      AOT-REG-BUF@ REG-HAS-DELTA? IF
+         s" aot-file: the host window declared " type H-REG @ .
+         s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
+         s" aot-file: two type-registry deltas cannot share one base" DIE
+      THEN
+      EXIT
+   THEN
    s" aot-file: the host window declared " type H-REG @ .
    s"  bytes of type registry and the merged one declares " type S-REG ROW-LEN@ . cr
    s" aot-file: two type-registry deltas cannot share one base" DIE ;

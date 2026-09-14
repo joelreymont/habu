@@ -657,6 +657,18 @@ TRUSTED: BF-EVAL-N ( ptr u8 n -- n ) evaluate ;
    out outu src srcu BF-APPEND-BYTES
    out outu S\" \" provided" BF-APPEND-LINE ;
 
+: BF-APPEND-PRELOADED-MODULE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n :}
+   \ Bracket a module that the build preamble has already loaded.  The warm
+   \ static certifier skips the bracketed body; the stage compile still reads
+   \ and checks it after PREFIX-REWIND:TO-CORE.
+   out outu S\" s\" " BF-APPEND-BYTES
+   out outu src srcu BF-APPEND-BYTES
+   out outu S\" \" provided" BF-APPEND-LINE
+   out outu src srcu BF-APPEND-SOURCE
+   out outu S\" s\" " BF-APPEND-BYTES
+   out outu src srcu BF-APPEND-BYTES
+   out outu S\" \" provided" BF-APPEND-LINE ;
+
 public
 EXPORT BF-APPEND-SOURCE
 EXPORT BF-BUILD-RC
@@ -1049,10 +1061,10 @@ package BUILD-FIXPOINT
 \ requires CAD-NUM arithmetic/types and errors. Prelude/errors are already
 \ restored here. Each provided fact makes the remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu s" lib/adt/option.f" BF-APPEND-MODULE
-   out outu s" lib/cad-num-types.f" BF-APPEND-MODULE
-   out outu s" lib/cad-num-arithmetic.f" BF-APPEND-MODULE
-   out outu s" lib/string.f" BF-APPEND-MODULE
+   out outu s" lib/adt/option.f" BF-APPEND-PRELOADED-MODULE
+   out outu s" lib/cad-num-types.f" BF-APPEND-PRELOADED-MODULE
+   out outu s" lib/cad-num-arithmetic.f" BF-APPEND-PRELOADED-MODULE
+   out outu s" lib/string.f" BF-APPEND-PRELOADED-MODULE
    out outu s" lib/float.f" BF-APPEND-MODULE
    out outu s" lib/fmt.f" BF-APPEND-MODULE ;
 
@@ -1086,6 +1098,7 @@ package BUILD-FIXPOINT
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
    out outu s" lib/errors.f" BF-APPEND-MODULE
+   out outu s" src/habu/address-cells.f" BF-APPEND-MODULE
    out outu s" src/habu/aot-decl.f" BF-APPEND-SOURCE
    out outu s" src/habu/aot-ident.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FMT
@@ -1311,10 +1324,26 @@ package BUILD-FIXPOINT
    BF-CERT-PATH$ buf cap READ-ALL {: u:n :}
    buf u VERIFY:SOURCE-BUF ;
 
+: BF-CERTIFY-ACT-PRELOADED ( -- )
+   BF-CERT-LABEL$ DIAG-FILE!
+   BF-FALSE DIAG-JSON!
+   BF-CERT-DIAG BF-CERT-DIAG-CAP DIAG-BUFFER!
+   BF-CERT-PATH$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   BF-CERT-PATH$ buf cap READ-ALL {: u:n :}
+   buf u VERIFY:SOURCE-BUF-PRELOADED ;
+
 : BF-CERTIFY-RC ( ptr u8 n ptr u8 n -- n )
    BF-CERTIFY-INPUT!
    0 BF-CERT-DIAG-U !
    [: BF-CERTIFY-ACT ;] catch BF-CERT-RC !
+   DIAG-BUFFER$ nip BF-CERT-DIAG-U !
+   DIAG-BUFFER-OFF
+   BF-CERT-RC @ ;
+
+: BF-CERTIFY-RC-PRELOADED ( ptr u8 n ptr u8 n -- n )
+   BF-CERTIFY-INPUT!
+   0 BF-CERT-DIAG-U !
+   [: BF-CERTIFY-ACT-PRELOADED ;] catch BF-CERT-RC !
    DIAG-BUFFER$ nip BF-CERT-DIAG-U !
    DIAG-BUFFER-OFF
    BF-CERT-RC @ ;
@@ -1339,6 +1368,12 @@ package BUILD-FIXPOINT
    BF-CERT-LABEL$ BF-CERTIFY-REPORT
    E-BUILD-CERTIFY throw ;
 
+: BF-CERTIFY-GENERATED-PRELOADED ( ptr u8 n ptr u8 n -- )
+   BF-CERTIFY-RC-PRELOADED
+   0= IF exit THEN
+   BF-CERT-LABEL$ BF-CERTIFY-REPORT
+   E-BUILD-CERTIFY throw ;
+
 \ The stage engine reads its source from the fixed `stage2-src` name in the temp
 \ root (BF-PREPARE-STAGE-ARGV runs hb-stage with just `-- <tmp>`, no --load), so
 \ both build phases emit into that one path. BF-STAGE2-SOURCE writes the stage2
@@ -1353,13 +1388,13 @@ package BUILD-FIXPOINT
    s" prefix-src" s" prefix-src" BF-A$ BF-CERTIFY-GENERATED ;
 
 : BF-CERTIFY-STAGE2 ( -- )
-   s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;
+   s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED-PRELOADED ;
 
 : BF-CERTIFY-STDIN ( -- )
-   s" stdin-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;
+   s" stdin-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED-PRELOADED ;
 
 : BF-CERTIFY-SNAP ( -- )
-   s" hb-snap-src" s" hb-snap-src" BF-A$ BF-CERTIFY-GENERATED ;
+   s" hb-snap-src" s" hb-snap-src" BF-A$ BF-CERTIFY-GENERATED-PRELOADED ;
 
 \ Self-check certification census (dot habu-census-assert-the-f3a20b1f). Every
 \ certify above fail-closes on any uncheckable/rejected definition, so reaching

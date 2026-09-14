@@ -31,6 +31,25 @@ variable TOP-PREV-A
 variable TOP-PREV-U
 variable TOP-CUR-A
 variable TOP-CUR-U
+\ Generated stage sources are certified in a warm host that already carries
+\ the stdlib families.  This flag is scoped to that one certifier entrypoint;
+\ the ordinary source verifier keeps duplicate declarations rejecting.
+variable PRELOADED-MODE
+0 PRELOADED-MODE !
+variable PRELOADED-SKIP
+0 PRELOADED-SKIP !
+
+TRUSTED: PRELOADED-PATH? ( -- bool )
+   STR-LAST-A @ STR-LAST-U @ s" lib/adt/option.f" CORE-STR= IF -1 EXIT THEN
+   STR-LAST-A @ STR-LAST-U @ s" lib/cad-num-types.f" CORE-STR= IF -1 EXIT THEN
+   STR-LAST-A @ STR-LAST-U @ s" lib/cad-num-arithmetic.f" CORE-STR= IF -1 EXIT THEN
+   STR-LAST-A @ STR-LAST-U @ s" lib/string.f" CORE-STR= IF -1 EXIT THEN
+   0 0= 0= ;
+
+: RECORD-PROVIDED ( -- )
+   PRELOADED-MODE @ 0<> PRELOADED-PATH? and IF
+      PRELOADED-SKIP @ 0= IF -1 ELSE 0 THEN PRELOADED-SKIP !
+   THEN ;
 
 create BODY-BUF BODYBUF-CAP allot
 
@@ -843,8 +862,16 @@ variable STG-START
    BEGIN
       NEXT-SCAN dup 0 > WHILE
       2dup TOP-CUR-U ! TOP-CUR-A !
-      2dup s" :" CORE-STR= IF 2drop VERIFY-DEFINITION ELSE
-      2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
+      2dup s" provided" CORE-STR=CI IF
+         2drop RECORD-PROVIDED
+      ELSE
+         PRELOADED-MODE @ 0<> PRELOADED-SKIP @ 0<> and IF
+            2drop
+         ELSE
+            2dup s" :" CORE-STR= IF 2drop VERIFY-DEFINITION ELSE
+            2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
+         THEN
+      THEN
       TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop ;
 
@@ -874,5 +901,20 @@ public
    [: RUN ;] catch
    CHECKER-CANDIDATE-SCOPE-DONE
    THROW-RESULT ;
+
+\ Generated stage certification runs after the host has loaded the same
+\ stdlib families.  Consume an already-resident declaration after its complete
+\ body has been lexed; the stage compile, after PREFIX-REWIND:TO-CORE, remains
+\ the independent check of that body against a fresh registry.
+: SOURCE-BUF-PRELOADED ( ptr u8 n -- )
+   SOURCE!
+   CHECKER-CANDIDATE-SCOPE-START
+   0 PRELOADED-SKIP !
+   -1 PRELOADED-MODE !
+   [: RUN ;] catch {: rc:n :}
+   0 PRELOADED-MODE !
+   0 PRELOADED-SKIP !
+   CHECKER-CANDIDATE-SCOPE-DONE
+   rc THROW-RESULT ;
 
 ;package
