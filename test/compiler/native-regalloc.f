@@ -80,7 +80,7 @@
 \ register is delivered here too, which is the capability that let the second
 \ allocator be retired. The refusals left are the two shapes this pass will not
 \ put in a frame, a routine with no frame to put anything in, the class the edge
-\ rule cannot serve, and the one edge shape only the validator refuses.
+\ rule cannot serve, and an unfilled edge argument refused before allocation.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so a case that builds a source module and a
@@ -1590,14 +1590,9 @@ create TXT
    CLOSE-FUN ;
 
 \ A two-way branch one of whose destinations takes an argument. Nothing hands
-\ that argument a value: a branch with two successors carries no operands but the
-\ register it tests, so the argument arrives in whatever register the allocation
-\ happened to give it. The allocator says nothing about it - its edge rule reads
-\ single-successor terminators only - and the freeze verifier says nothing either,
-\ because its own successor-argument rule is the single-successor one. The
-\ validator is the only reader that refuses it, which is why this is the shape
-\ that reaches VMULTI-CK. Reddened by: dropping VMULTI-CK from VEDGE-OF, which
-\ accepts an argument no edge ever filled.
+\ that argument a value: its only operand is the condition, not an edge argument.
+\ Shared IR verification now refuses this at freeze, before allocation. Keep
+\ this caller-path regression alongside the direct IR successor tests.
 : BUILD-MB-MULTI-ARG ( -- )
    s" MBMULTI" 0 1 OPEN-FUN
    $0 M-MOVZ {: t:IR-ID:ir-value-id :}
@@ -3045,7 +3040,7 @@ using A64RA
 
 : MB-ACCEPT-REFUSE-CASES ( -- )
    s" a two-way branch into a block that takes an argument is refused" T-LABEL
-   [: MB-MULTI-ARG ;] E-A64RAV-EDGE TTHROWSQ ;
+   [: MB-MULTI-ARG ;] E-IR-VERIFY-SUCCARG TTHROWSQ ;
 
 : STATE-REFUSE-CASES ( -- )
    s" a claim no validator has accepted is not an answer" T-LABEL
