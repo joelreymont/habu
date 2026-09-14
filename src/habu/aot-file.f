@@ -1010,7 +1010,20 @@ variable REG-DELTA-HIT
    H-BOOTRUN @                 S-BOOTRUN BASE!
    H-PWIN @ 4 *                S-PWIN BASE!
    H-SIG @ SIG-ROW *           S-SIGS BASE!
-   H-SIGSTR @                  S-SIGSTR BASE! ;
+   H-SIGSTR @                  S-SIGSTR BASE!
+   \ Graph offsets are eight-byte aligned within each pool. Bound the host
+   \ extent before rounding; the usual room/budget checks include this pad.
+   S-SIGSTR ?ROOM
+   S-SIGSTR ROW-LEN@ 0 > if
+      H-SIGSTR @ 7 + -8 and S-SIGSTR BASE!
+   then ;
+
+: OPEN-SIGSTR-GAP ( -- )
+   S-SIGSTR ROW-LEN@ 0= if exit then
+   S-SIGSTR RESERVE-SECTION
+   S-SIGSTR BASE@ H-SIGSTR @ - 0 ?do
+      0 AOT-SIG-STR-BUF@ H-SIGSTR @ + i + c!
+   loop ;
 
 \ The host's CODE rows move up by the artifact's DATA rows before anything is
 \ read into the gap they leave. Copied from the top down, because the source and
@@ -1231,9 +1244,9 @@ variable REG-DELTA-HIT
    MERGE-XTOFFS
    S-WDATA SEC-AT    S-WDATA SEC-ROWS    8 0 H-DATA-R @ FIELD+
    S-PWIN SEC-AT     S-PWIN SEC-ROWS     4 0 H-SPAN @ FIELD+
-   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 0 H-SIGSTR @ FIELD+
-   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 4 H-SIGSTR @ FIELD+
-   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 8 H-SIGSTR @ FIELD+ ;
+   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 0 S-SIGSTR BASE@ FIELD+
+   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 4 S-SIGSTR BASE@ FIELD+
+   S-SIGS SEC-AT     S-SIGS SEC-ROWS     SIG-ROW 8 S-SIGSTR BASE@ FIELD+ ;
 
 : ?DVALUE ( n n -- ) {: boff:n v:n :}
    s" aot-file: the chain at merged blob offset " type boff H-BLOB @ + .
@@ -1333,7 +1346,7 @@ variable REG-DELTA-HIT
    H-PWIN @ S-PWIN SEC-ROWS + AOT-PWIN-N !
    H-SPAN @ A-SPAN @ + AOT-WID-SPAN !
    H-SIG @ S-SIGS SEC-ROWS + AOT-SIG-N !
-   H-SIGSTR @ S-SIGSTR ROW-LEN@ + AOT-SIG-STR-LEN !
+   S-SIGSTR BASE@ S-SIGSTR ROW-LEN@ + AOT-SIG-STR-LEN !
    S-REG ROW-LEN@ 0 > if S-REG ROW-LEN@ AOT-REG-LEN ! then
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
@@ -1359,6 +1372,7 @@ public
    SEC-N 0 ?do i ?ROOM loop
    0 0= ?BUDGET
    OPEN-CSITE-GAP
+   OPEN-SIGSTR-GAP
    SEC-N 0 ?do
       i S-WDATA = if PLACE-WDATA then
       i LOAD-SECTION

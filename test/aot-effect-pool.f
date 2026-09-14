@@ -165,20 +165,24 @@ create OUT IO-CAP allot create ERR IO-CAP allot
    \ incoming artifact; the negative control below retains the two-owner refusal.
    \ This is a section courier check, not execution of duplicated dictionaries.
    AOT-REG-LEN @ {: regu:n :}
+   EXPECTED-U @ 7 + -8 and {: base:n :}
+   EXPECTED-U @ base < TTRUE
    0 AOT-REG-LEN !
    KEY ART$ AOT-FILE:MERGE
    AOT-REG-LEN @ regu T=
    AOT-SIG-N @ WORDS 2 * T=
-   AOT-SIG-STR-LEN @ EXPECTED-U @ 2 * T=
+   AOT-SIG-STR-LEN @ base EXPECTED-U @ + T=
    AOT-SIG-STR-BUF@ EXPECTED-U @ EXPECTED$ STR= TTRUE
-   AOT-SIG-STR-BUF@ EXPECTED-U @ + EXPECTED-U @ EXPECTED$ STR= TTRUE
+   AOT-SIG-STR-BUF@ base + EXPECTED-U @ EXPECTED$ STR= TTRUE
+   base EXPECTED-U @ ?do AOT-SIG-STR-BUF@ i + c@ 0 T= loop
    AOT-SIG-BUF@ WORDS SIG-ROW * EXPECTED-ROWS WORDS SIG-ROW * STR= TTRUE
    WORDS 0 ?do
       AOT-SIG-BUF@ WORDS i + SIG-ROW * + {: row:ptr :}
       EXPECTED-ROWS i SIG-ROW * + {: old:ptr :}
-      row U32@ old U32@ EXPECTED-U @ + T=
-      row 4 + U32@ old 4 + U32@ EXPECTED-U @ + T=
-      row 8 + U32@ old 8 + U32@ EXPECTED-U @ + T=
+      row U32@ old U32@ base + T=
+      row 4 + U32@ old 4 + U32@ base + T=
+      row 4 + U32@ 7 and 0 T=
+      row 8 + U32@ old 8 + U32@ base + T=
       row 12 + U32@ old 12 + U32@ T=
    loop ;
 
@@ -193,7 +197,7 @@ public
    BAD-ART$ AOT-FILE:EFFECT-TEST-HEADER KEY BAD-ART$ AOT-FILE:READ ;
 : BAD-MERGE ( -- )
    0 AOT-REG-LEN !
-   AOT-SIG-STR-CAP EXPECTED-U @ - AOT-SIG-STR-LEN ! KEY ART$ AOT-FILE:MERGE ;
+   AOT-SIG-STR-CAP EXPECTED-U @ - -8 and AOT-SIG-STR-LEN ! KEY ART$ AOT-FILE:MERGE ;
 : BAD-REGISTRY ( -- ) KEY ART$ AOT-FILE:MERGE ;
 : BAD-STAGING ( -- ) AOT-SIG-STR-CAP AOT-SIG-STR-LEN ! AOT-SIG-PAYLOAD:BUILD ;
 
