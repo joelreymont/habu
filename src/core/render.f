@@ -628,6 +628,8 @@ variable MDV-I   variable MDV-F
    ELSE
       DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN
    THEN ;
+: RETURN-BORROWED? ( -- f )   \ the body bound the return tail below its declared frame
+   SGRBASE @ dup 0= IF drop 0 EXIT THEN ROW-OPEN? 0= ;
 : RETURN-MISMATCH? ( -- f )
    SGHASR @ IF
       RCUR @ R-RES  SGROUT @ R-RES  <>
@@ -650,6 +652,7 @@ variable MDV-I   variable MDV-F
       SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE SGBAD-ARITY? IF s" fix_signature_arity" ELSE s" fix_signature_syntax" THEN THEN THEN
       EXIT
    THEN
+   RETURN-BORROWED? IF s" fix_return_stack" EXIT THEN
    RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
    DEXP @ 0= IF
       s" unknown_rejection" EXIT
@@ -696,6 +699,7 @@ variable MDV-I   variable MDV-F
       THEN THEN THEN
       EXIT
    THEN
+   RETURN-BORROWED? IF s" Read or pop only return-row cells this definition pushed with >r or declared after |; below them lies the caller's frame." EXIT THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
    DEXP @ 0= IF
       s" Inspect the token, signature, and raw stack evidence." EXIT

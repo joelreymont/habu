@@ -14025,7 +14025,12 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
            TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
            SGBAD-FAIL!
            PD-BASE @ SGDBASE !
-           RR-SHARED @ SGRBASE !
+           \ The return tail a body may not bind: the shared row behind `|`, or
+           \ without a return clause the implicit base RBROW. Latching the base
+           \ here puts every consumer (r> r@ 2r> 2r@, transport, catch) under
+           \ CHECK-NO-BORROW, so a body cannot read the caller's frame and
+           \ still balance.
+           SGHASR @ IF RR-SHARED @ ELSE RBROW @ THEN SGRBASE !
            SGHASR @ IF
              SGROUT !  dup SGRIN !  RCUR !  SGOUT !  dup SGIN !  DCUR !
            ELSE
@@ -14983,7 +14988,7 @@ variable CD-WIDE
 
 : RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
-   RR-SHARED @ SGRBASE !
+   SGHASR @ IF RR-SHARED @ ELSE RBROW @ THEN SGRBASE !   \ no `|`: the implicit base is the sealed tail
    SGHASR @ IF
       SGROUT !  SGRIN !  SGOUT !  SGIN !
    ELSE

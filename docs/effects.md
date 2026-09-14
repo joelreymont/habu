@@ -81,7 +81,11 @@ syntax reject (`checker: bad stored signature`, exit 76).
 - Stacks with no leading row var share one implicit data row (and one implicit
   return row).
 - The implicit row in a checked definition is sealed for the body: callees may
-  preserve it, but may not bind it by consuming below the declared inputs. This
+  preserve it, but may not bind it by consuming below the declared inputs. The
+  implicit return row is sealed the same way: `r>`, `r@`, `2r>` and `2r@` may
+  reach only cells this definition pushed with `>r` or declared after `|`;
+  reading or popping below them is refused (`fix_return_stack`), even when a
+  later `>r` restores the balance. This
   rejects hidden underflow such as a trusted `img -- img` boundary called from a
   word declared `( -- )`.
 - A **type var** (`a`, `b`, …) is a fresh polymorphic type; reusing the same
