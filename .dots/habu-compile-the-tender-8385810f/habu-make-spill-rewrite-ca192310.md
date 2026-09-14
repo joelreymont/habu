@@ -63,5 +63,20 @@ native-regalloc,ir-symbol-default,symbol-controls,baseline-symbol}.log`.
 The same one-compile GDB interval now counts 156 A64IR memo bindings (88 select,
 68 combine), exactly 380 fewer; SYMBOL-CK and LEN@ each fall by 380. There are
 five owned batches, one combine plan/rewrite, and the same three builders and
-freezes. `/tmp/cedar-batch-count.log` records the counts. Independent final
-test review and the controlled performance pair remain pending; no 500 us claim.
+freezes. `/tmp/cedar-batch-count.log` records the counts. Independent Astra
+source and native behavior review approved production and tests. Root integrated
+them as `e73c85f6`/`f1528833`.
+
+For an attributable current-product pair, the same delta was duplicated onto
+M (`99caf411`) as `e474055d`/`94a118c1`. M built it successfully as
+`/tmp/cedar-family-stage-abi/hb-opcode-batch-M`, SHA
+`46a9d66884fafba495d309ddd1ca077fabee466798a10c31f3c9a14c7819ed3c`.
+The build took approximately 135.5 s from log creation through final promotion;
+a monotonic whole-build timer was not captured. Three interleaved stock
+`tools/compile-floor.f` pairs measured M→candidate trivial
+983→925, 981→925, 980→928 us, and three-op 642→611, 647→612, 642→610 us.
+Every run compiled exactly 200 definitions; JIT remained 30–31 us. Load was
+0.90 throughout and the initial process snapshot contained no competing hb.
+`/tmp/cedar-batch-M-pairs.json` records source identities, process/load state,
+and raw output. Mean savings are 55 us (5.6%) trivial and 33 us (5.1%) three-op.
+The 500 us target remains open.
