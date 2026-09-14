@@ -98,6 +98,7 @@ AOT-CHAIN:OPEN
 require src/compiler/native/string.f
 NSTR:WINDOW-OPEN
 require src/compiler/native/compiler.f
+NCOMP:CAPTURE-PREPARE
 AOT-CHAIN:CLOSE
 
 \ The capture's own tooling, all of it above the window's last record and past its
@@ -199,6 +200,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 
 : DECLARE-ALL ( -- )
    0 CELLS-OWED !
+   s" NCOMP:INSTALL" 0 DECLARE
    s" A64RAV:DKEEP-HOOK-DEFAULT" 0 DECLARE ; \ its cell is in the window: see ?XTOFF
 
 \ The rows preserve declared locations, kinds and exact null/window-relative

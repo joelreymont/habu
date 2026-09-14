@@ -739,6 +739,11 @@ public
 : COMPILE ( ptr u8 n -- )
    STAGE RUN ;
 
+\ The fixed engine header lies outside a partial compiler capture. Reinstall
+\ its dispatch after the captured words have been relocated at fresh boot.
+: INSTALL ( -- )
+   ['] COMPILE data-base NCOMP-DISPATCH:XT-CELL + xt! ;
+
 \ The session is already gone by the time this runs, and it took what NCOMP held
 \ in it with it: IMAGE-LIFECYCLE:PREPARE closed the session, and SESSION-FORGET
 \ above is the stand-down that close ran, before the interner the dialects were
