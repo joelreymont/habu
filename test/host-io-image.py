@@ -99,9 +99,9 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
 public
 
 
-: RUN ( ptr u8 n UDP4:port -- ) {: path size:n port:UDP4:port :}
+: RUN ( ptr u8 n UDP4:port -- ) {: text size:n port:UDP4:port :}
    size 1 < size 64 > or if -1 throw then
-   path PATH size BYTE-COPY size PATH-SIZE ! port UDP4:PORT>N PEER-PORT !
+   text PATH size BYTE-COPY size PATH-SIZE ! port UDP4:PORT>N PEER-PORT !
    0 ENTERED atomic! 0 DONE atomic!
    ['] UDP-RUN UDP-WORKER TASK:ACTIVATE
    ['] SERIAL-RUN SERIAL-WORKER TASK:ACTIVATE
@@ -211,7 +211,8 @@ def main():
     foreign = run / 'outside-source'
     foreign.mkdir(exist_ok=True)
     subject = run / 'subject.f'
-    subject.write_text('require src/habu/app-image.f\n' + SUBJECT)
+    # The subject and its dependencies become code in each saved executable.
+    subject.write_text('1 set-tier\nrequire src/habu/app-image.f\n' + SUBJECT)
     first = run / 'first'
     second = run / 'second'
     exercise(args.habu.resolve(), ROOT, subject, first)
