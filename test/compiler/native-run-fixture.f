@@ -2,16 +2,37 @@
 \ C ABI entries use the bounded FFI call. Habu ABI entries refine the emitted
 \ address to the quotation effect promised by the fixture's source program;
 \ that test-only machine-code boundary does not certify arbitrary addresses.
+\ The bytes run immediately in the free slot; no snapshot retains this slot.
 \ Store at source-map offsets so execution also checks the emitted layout.
 
 require lib/ffi-abi.f
 require src/compiler/native/emit.f
 
 package NRUN
+using A64EMIT
 
 private
 
 TRUSTED: POKE ( n n -- ) patch32 ;
+
+
+: MAP-CHECK ( -- )
+   INSNS 0 ?do
+      i MAP-OFFSET@ i 4 * <> if E-NPUB-OFFSET throw then
+   loop ;
+
+
+: PLACE-CHECK ( n -- ) {: fn:n :}
+   PLACED? if
+      PLACEMENT fn <> if E-NPUB-PLACE throw then
+   then ;
+
+
+: ROOM-CHECK ( n -- ) {: fn:n :}
+   INSNS 0 <= if E-NPUB-SIZE throw then
+   dbase@ REGION + $4000 - {: ceiling:n :}
+   fn ceiling > if E-NPUB-ROOM throw then
+   SIZE ceiling fn - > if E-NPUB-ROOM throw then ;
 
 public
 
@@ -20,11 +41,13 @@ public
 \ the line being interpreted.
 : PUBLISH ( -- n )
    cp@ {: fn:n :}
-   A64EMIT:INSNS {: n:n :}
-   n 0 ?do
-      i A64EMIT:WORD@  fn i A64EMIT:MAP-OFFSET@ +  POKE
+   MAP-CHECK fn PLACE-CHECK fn ROOM-CHECK
+   INSNS 0 ?do
+      i WORD@ fn i MAP-OFFSET@ + POKE
    loop
    fn ;
+
+;using
 
 TRUSTED: EXEC0 ( n -- n ) {: fn:n :}
    FFI:RESET
