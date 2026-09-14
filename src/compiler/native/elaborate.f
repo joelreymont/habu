@@ -830,6 +830,33 @@ create SB-BUF SB-CAP allot
    ix  a u NSTR:INTERN  HIR:ADDR-DATA  EMIT-KIND-LIT
    ix  u  EMIT-LIT ;
 
+
+255 constant COUNTED-MAX
+create COUNTED-BUF COUNTED-MAX 1+ allot
+
+: COUNTED-LENGTH-CK ( n -- )
+   COUNTED-MAX <= if exit then
+   2 S\" hb: counted string too long (max 255)\n" write drop
+   76 throw ;
+
+
+using IR-BUILD
+
+: COUNTED-BODY ( n -- ptr u8 n ) {: ix:n :}
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   CTX BLD sy SYMBOL-LEN {: u:n :}
+   u COUNTED-LENGTH-CK
+   u COUNTED-BUF c!
+   CTX BLD sy COUNTED-BUF 1+ COUNTED-MAX SYMBOL-COPY drop
+   COUNTED-BUF u 1+ ;
+
+;using
+
+
+: EMIT-COUNTED-STRING ( n -- ) {: ix:n :}
+   ix ix COUNTED-BODY NSTR:INTERN HIR:ADDR-DATA EMIT-KIND-LIT ;
+
+
 : EMIT-CONST-OP-SYM ( IR-ARENA:arena n IR-ID:ir-symbol-id -- )
    {: r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
    ix  r sy HIR-WORD:CONST-VALUE@  EMIT-LIT
@@ -2107,8 +2134,13 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
    false ;
 
 \ ---- does this definition touch memory at all? -------------------------------
+: PRINTED-STRING? ( n -- bool )
+   VW swap NTAPE:KIND@ NTAPE-KIND:PRINTED-STRING-LITERAL NTAPE-KIND:EQ ;
+
+
 : WORD-ORDER? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
+   ix PRINTED-STRING? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
@@ -2144,6 +2176,7 @@ variable MV-ROW                      \ the variant row read last, whose `of` is 
 
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
+   ix PRINTED-STRING? if true exit then
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
@@ -3060,6 +3093,21 @@ create DN-BUF DN-CAP allot
    back o oglue CALL-CLOSE
    LIT-RESET ;
 
+
+: EMIT-PRINTED-STRING ( n -- ) {: ix:n :}
+   s" type" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-HIR-UNMODELED throw then
+   ix EMIT-STRING
+   ix entry 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+
+
+: DO-STRING ( n -- ) {: ix:n :}
+   VW ix NTAPE:KIND@ {: kind:NTAPE:kind :}
+   kind NTAPE-KIND:COUNTED-STRING-LITERAL NTAPE-KIND:EQ if ix EMIT-COUNTED-STRING exit then
+   kind NTAPE-KIND:PRINTED-STRING-LITERAL NTAPE-KIND:EQ if ix EMIT-PRINTED-STRING exit then
+   ix EMIT-STRING ;
+
+
 : DO-WORD-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
@@ -3430,7 +3478,7 @@ variable IX                          \ the body token the walk stands on
    MATCH HIR:meaning
       literal      OF ix EMIT-CONST ENDOF
       real-literal OF ix EMIT-FCONST ENDOF
-      string-literal OF ix EMIT-STRING ENDOF
+      string-literal OF ix DO-STRING ENDOF
       op           OF r ix DO-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF
@@ -3695,6 +3743,7 @@ public
 \ Whether the callee this definition would leave through may be one.
 : TAIL-CALLEE? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MEANING@ HIR-MEANING:CALLABLE HIR-MEANING:EQ 0= if false exit then
    r sy HIR-WORD:CALLEE-IN@ IN-N @ <> if false exit then

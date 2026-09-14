@@ -29,6 +29,8 @@ ENUM kind DERIVE eq
    char-literal
    string-literal
    real-literal
+   counted-string-literal
+   printed-string-literal
 ;ENUM
 
 \ Which mode applied is a fact about the token, not about the tape.
@@ -82,6 +84,8 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       char-literal   OF 2 ENDOF
       string-literal OF 3 ENDOF
       real-literal   OF 4 ENDOF
+      counted-string-literal OF 5 ENDOF
+      printed-string-literal OF 6 ENDOF
    ;MATCH ;
 
 : N>KIND ( n -- NTAPE:kind )
@@ -91,6 +95,8 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       2 of NTAPE-KIND:CHAR-LITERAL endof
       3 of NTAPE-KIND:STRING-LITERAL endof
       4 of NTAPE-KIND:REAL-LITERAL endof
+      5 of NTAPE-KIND:COUNTED-STRING-LITERAL endof
+      6 of NTAPE-KIND:PRINTED-STRING-LITERAL endof
       E-NTAPE-KIND throw
    endcase ;
 
@@ -117,6 +123,8 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       char-literal   OF true ENDOF
       string-literal OF false ENDOF
       real-literal   OF true ENDOF
+      counted-string-literal OF false ENDOF
+      printed-string-literal OF false ENDOF
    ;MATCH ;
 
 : SIGNED-KIND? ( NTAPE:kind -- bool )
@@ -126,6 +134,8 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       char-literal   OF false ENDOF
       string-literal OF false ENDOF
       real-literal   OF true ENDOF
+      counted-string-literal OF false ENDOF
+      printed-string-literal OF false ENDOF
    ;MATCH ;
 
 : LIT-CK ( NTAPE:kind n -- )
@@ -234,6 +244,17 @@ public
 : STRING-TOKEN ( IR-SOURCE:span IR-ID:ir-symbol-id NTAPE:mode -- NTAPE:token )
    {: sy:IR-ID:ir-symbol-id m:NTAPE:mode :}
    NTAPE-KIND:STRING-LITERAL m sy 0 MK ;
+
+
+: COUNTED-STRING-TOKEN ( IR-SOURCE:span IR-ID:ir-symbol-id NTAPE:mode -- NTAPE:token )
+   {: sy:IR-ID:ir-symbol-id m:NTAPE:mode :}
+   NTAPE-KIND:COUNTED-STRING-LITERAL m sy 0 MK ;
+
+
+: PRINTED-STRING-TOKEN ( IR-SOURCE:span IR-ID:ir-symbol-id NTAPE:mode -- NTAPE:token )
+   {: sy:IR-ID:ir-symbol-id m:NTAPE:mode :}
+   NTAPE-KIND:PRINTED-STRING-LITERAL m sy 0 MK ;
+
 
 : INT-TOKEN ( IR-SOURCE:span IR-ID:ir-symbol-id NTAPE:mode n -- NTAPE:token )
    {: sy:IR-ID:ir-symbol-id m:NTAPE:mode v:n :}

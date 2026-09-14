@@ -145,11 +145,29 @@ variable OBSERVER-ID                   \ address identifies this producer instan
 
 \ Spelling is the body and span is the source it was written as, so this takes
 \ both lengths. A string is never the token a colon definition is named by.
-: APPEND-STRING ( ptr u8 n n n -- n ) {: a:ptr u:n off:n ru:n :}
+using CHECKER-TAPE
+using NTAPE
+
+: STRING-KIND? ( n -- bool )
+   dup K-STRING = over K-COUNTED-STRING = or
+   swap K-PRINTED-STRING = or ;
+
+
+: STRING-TOKEN-FOR ( IR-SOURCE:span IR-ID:ir-symbol-id NTAPE:mode n -- NTAPE:token )
+   {: kind:n :}
+   kind K-COUNTED-STRING = if COUNTED-STRING-TOKEN exit then
+   kind K-PRINTED-STRING = if PRINTED-STRING-TOKEN exit then
+   kind K-STRING = if STRING-TOKEN exit then
+   E-NFEED-KIND throw ;
+
+
+: APPEND-STRING ( ptr u8 n n n n -- n ) {: a:ptr u:n off:n ru:n kind:n :}
    CTX BLD a u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
    CTX BLD TAPE
-   BLD SID off ru IR-BUILD:ADD-SPAN  sym  NTAPE-MODE:COMPILING  NTAPE:STRING-TOKEN
-   NTAPE:PUSH-INTO ;
+   BLD SID off ru IR-BUILD:ADD-SPAN sym NTAPE-MODE:COMPILING kind STRING-TOKEN-FOR
+   PUSH-INTO ;
+
+;using
 
 : APPEND-CHAR ( ptr u8 n n n -- n ) {: a:ptr u:n off:n ru:n :}
    u 1 < if E-NFEED-KIND throw then
@@ -161,11 +179,11 @@ variable OBSERVER-ID                   \ address identifies this producer instan
 \ A literal class this stage has no tape kind for is refused: recording it as a
 \ name would say the elaborator may resolve it, which is false.
 : APPEND ( ptr u8 n n n n n -- n ) {: a:ptr u:n off:n ru:n kind:n first:n :}
-   kind CHECKER-TAPE:K-NAME = if a u off first APPEND-NAME exit then
-   kind CHECKER-TAPE:K-INT = if a u off first APPEND-INT exit then
-   kind CHECKER-TAPE:K-REAL = if a u off first APPEND-REAL exit then
-   kind CHECKER-TAPE:K-STRING = if a u off ru APPEND-STRING exit then
-   kind CHECKER-TAPE:K-CHAR = if a u off ru APPEND-CHAR exit then
+   kind K-NAME = if a u off first APPEND-NAME exit then
+   kind K-INT = if a u off first APPEND-INT exit then
+   kind K-REAL = if a u off first APPEND-REAL exit then
+   kind STRING-KIND? if a u off ru kind APPEND-STRING exit then
+   kind K-CHAR = if a u off ru APPEND-CHAR exit then
    E-NFEED-KIND throw ;
 
 \ They differ only if the tape gained a row this producer did not write.
@@ -190,10 +208,12 @@ variable OBSERVER-ID                   \ address identifies this producer instan
 : ON-TOKEN ( ptr u8 n n n n n -- ) {: a:ptr u:n off:n ru:n kind:n first:n :}
    ST-SCANNING STATE-CK
    off F-BASE @ + {: goff:n :}
-   kind CHECKER-TAPE:K-STRING = kind CHECKER-TAPE:K-CHAR = or
+   kind STRING-KIND? kind K-CHAR = or
    if u goff ru SPAN-CK else a u goff BYTES-CK then
    a u goff ru kind first APPEND ORDER-CK
    F-N @ 1+ F-N ! ;
+
+;using
 
 \ A verdict for some other text is a verdict for some other tape.
 : ON-DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}

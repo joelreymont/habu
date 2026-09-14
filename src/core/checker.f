@@ -7267,6 +7267,8 @@ PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-STRING PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-CHAR PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-TAPE K-COUNTED-STRING PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-TAPE K-PRINTED-STRING PE-N PE-OUT PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -13032,11 +13034,11 @@ package CHECKER-TAPE
 public
 
 \ The reader's own token vocabulary, as codes an observer can store. `name` is
-\ every token to be resolved later, including a character opener, whose payload
-\ this reader skips rather than consumes. `string` is a string literal, and the
+\ every token to be resolved later. String classes preserve the opener's
+\ counted, printed or address/length behavior, and the
 \ bytes reported for it are its BODY rather than the opener that introduced it —
 \ the opener is what the reader read, the body is what the literal is, and a
-\ stage that has to compile one needs the second. The four are closed: an
+\ stage that has to compile one needs the second. These classes are closed: an
 \ observer that meets something else has met a construct this reader does not
 \ have, which is a class to add here rather than a number to smuggle past.
 0 constant K-NAME
@@ -13044,6 +13046,8 @@ public
 2 constant K-REAL
 3 constant K-STRING
 4 constant K-CHAR
+5 constant K-COUNTED-STRING
+6 constant K-PRINTED-STRING
 
 private
 
@@ -13161,8 +13165,19 @@ public
 \ interpreter before the parser switches to compiling, and the reader reports
 \ that one token before it has consumed any payload at all, so `first` is not a
 \ question this event can be asked.
+private
+
+\ The reader already recognized the opener; preserve its behavior with its body.
+: STRING-KIND ( -- n )
+   TKF c@ $63 = if K-COUNTED-STRING exit then
+   TKF c@ $2E = if K-PRINTED-STRING exit then
+   K-STRING ;
+
+
+public
+
 : STRING ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}
-   a u off ru K-STRING 0 TOKEN-XT
+   a u off ru STRING-KIND 0 TOKEN-XT
    REC-STEP ;
 
 : CHARACTER ( ptr u8 n n n -- ) {: a:ptr u:n off:n ru:n :}

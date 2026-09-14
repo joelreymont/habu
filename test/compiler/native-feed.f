@@ -170,6 +170,32 @@ create UTXT UNITS TEXT-CAP * allot
    0 TOKENS 4 T= 0 1 s" " SPELL-IS? TTRUE
    0 1 NTAPE-KIND:STRING-LITERAL KIND-IS? TTRUE ;
 
+using NTAPE-KIND
+
+: COUNTED-FORMS ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c S\" NF-COUNTED ( -- ptr u8 ) C\q body\q" 0 REC
+   0 VERDICT@ -1 T= 0 TOKENS 2 T=
+   0 1 COUNTED-STRING-LITERAL KIND-IS? TTRUE
+   0 1 s" body" SPELL-IS? TTRUE ;
+
+
+: PRINTED-FORMS ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c S\" NF-PRINTED ( -- ) .\q body\q" 0 REC
+   0 VERDICT@ -1 T= 0 TOKENS 2 T=
+   0 1 PRINTED-STRING-LITERAL KIND-IS? TTRUE
+   0 1 s" body" SPELL-IS? TTRUE ;
+
+
+: ESCAPED-FORMS ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
+   c S\" NF-COUNTED-ESC ( -- ptr u8 ) c\\\q a\\tb\q" 0 REC
+   0 1 COUNTED-STRING-LITERAL KIND-IS? TTRUE
+   0 1 S\" a\tb" SPELL-IS? TTRUE
+   c S\" NF-PRINTED-ESC ( -- ) .\\\q a\\tb\q" 0 REC
+   0 1 PRINTED-STRING-LITERAL KIND-IS? TTRUE
+   0 1 S\" a\tb" SPELL-IS? TTRUE ;
+
+;using
+
 : REPEATED ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    c s" NF-TWICE ( n -- n ) dup + dup +" 0 REC
    0 TOKENS 5 T=
@@ -299,6 +325,9 @@ public
    BND [: ZEROS ;] IR-CTX:WITH-CONTEXT
    BND [: CHARACTER ;] IR-CTX:WITH-CONTEXT
    BND [: STRINGS ;] IR-CTX:WITH-CONTEXT
+   BND [: COUNTED-FORMS ;] IR-CTX:WITH-CONTEXT
+   BND [: PRINTED-FORMS ;] IR-CTX:WITH-CONTEXT
+   BND [: ESCAPED-FORMS ;] IR-CTX:WITH-CONTEXT
    BND [: ESCAPES ;] IR-CTX:WITH-CONTEXT
    BND [: REPEATED ;] IR-CTX:WITH-CONTEXT
    BND [: NAME-DIGEST ;] IR-CTX:WITH-CONTEXT
