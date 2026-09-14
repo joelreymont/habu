@@ -4,6 +4,10 @@ require src/habu/aot-arm.f
 
 package OWNER-DESCRIPTOR-TEST
 
+\ Also run on an empty cold engine: these constants precede the checker there,
+\ so their public interface must be declared before the guard can compile.
+: ABI-READ ( -- n ) CHECKER-OWNER-ABI:HEADER-BYTES ;
+
 create HEADER
    CHECKER-OWNER-ABI:MAGIC , CHECKER-OWNER-ABI:BYTES ,
    CHECKER-OWNER-ABI:BYTES allot
@@ -16,8 +20,16 @@ variable NEED
 : GOOD ( -- ) ['] CHECK catch 0 T= ;
 TRUSTED: DATA-START ( -- ptr u8 ) data-base ;
 
+TRUSTED: ABI-ONLY ( -- )
+   s" OD-ABI-ONLY ( -- n ) 7" CHECK-UNJUDGED! -1 T= ;
+
 : RUN ( -- )
    T-RESET
+   ABI-READ 16 T=
+   ABI-ONLY
+   s" OD-PUBLIC ( -- n ) CHECKER-OWNER-ABI:HEADER-BYTES" CHECK-CANDIDATE! -1 T=
+   s" OD-ABI-CALL ( -- n ) OD-ABI-ONLY" CHECK-CANDIDATE! -1 <> TTRUE
+   s" OD-PRIVATE ( ptr u8 -- n ) CHECKER-OWNER-GUARD:ADDRESS" CHECK-CANDIDATE! -1 <> TTRUE
    RECORD ARG ! CHECKER-OWNER-ABI:BYTES NEED ! GOOD
    NULL-PTR ARG ! REJECT
    DATA-START ARG ! REJECT
