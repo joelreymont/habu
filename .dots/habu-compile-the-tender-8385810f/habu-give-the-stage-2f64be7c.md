@@ -91,3 +91,5 @@ recovery and generated-certifier ownership are tracked as a2551190/369d625d;
 no new process certifier or BF fixture generation is introduced.
 
 Final current-writer WID result: rc1 at F112, the real unassigned-defer target refusal recorded in 4ccf56d9; no timeout. Its BIG/EXT/PREWIN tail did not run. Root reviewed and integrated d8cba1bf/ca5d7150 as 510c8892/eb97cdea.
+
+2026-09-14 root acceptance: the current native-writer wide suite passes all BIG, EXT, XTLIT and PREWIN cases, rc0 in 171.233s on source 8f0749b3 using the matched-M opcode-batch engine (SHA256 46a9d66884fafba495d309ddd1ca077fabee466798a10c31f3c9a14c7819ed3c). Exact command/results: `/tmp/cedar-current-fixture-gate/wide.{json,log}`. The separate full WID run still awaits named prefix CODE address targets (4ccf56d9); this is not a full-suite or chain pass.

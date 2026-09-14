@@ -22,8 +22,10 @@ The latest complete native gate is M (`99caf411`): all 343 suites ran in
 429.559 seconds, with 336 passing and seven failing. The failures were the two
 clobber lint entries, stage0 atomic guard inventory, WID/wide/chain capture,
 and legacy build-fixpoint fixtures. The three lint entries are now repaired,
-independently reviewed, and pass focused real-source checks on M. The complete
-gate has not been rerun with those fixture corrections.
+independently reviewed, and pass focused real-source checks on M. The current
+native writer also passes the complete wide-artifact suite (BIG, EXT, XTLIT and
+PREWIN), rc0 in 171.233 seconds. The complete gate has not been rerun with these
+corrections. Wide-suite evidence: `/tmp/cedar-current-fixture-gate/`.
 Exact gate results: `/tmp/cedar-M-full-suite.{json,log}`.
 
 Current candidate M is source `99caf411`, SHA-256
@@ -50,12 +52,21 @@ The WID/chain fixtures are moving to the current native writer with partial
 captures that preserve their actual cold-prefix behavior. Both real sealed and
 open WID collision controls pass. The complete current-writer WID run ends at
 the unassigned-defer capture refusal (`4ccf56d9`), before its BIG/EXT/PREWIN
-tail. The cold compiler owner guard dependency is tracked in `c57132da`.
-The legitimate chain capture now exposes an obsolete 262,144-byte effect-pool
-limit: 7,670 verified effect rows occupy 3,635,865 bytes. Storage must grow within
-the existing section and aggregate bounds. Public legacy recovery consumers
-remain separately tracked; the current native builder does not need their BF
-phase certifier.
+tail. The cold owner guard dependency is repaired and independently accepted
+(`023e338e`, integrated as `d5ddce87`): the genuine empty native image keeps
+VALIDATE below the core mark and passes prefix/descriptor controls; unchanged M
+fails the new prefix assertion. The real cold compiler capture now reaches six
+declared callback cells targeting exact global prefix entries. Named CODE
+address targets remain under repair in `4ccf56d9`; named code-literal identity
+has separate regression work in `8f880800`.
+
+The reviewed dynamic effect pool is integrated at `8f0749b3`. Its actual-source
+checks preserve 1,536 effects / 847,893 bytes through file and owned transfers,
+including merge and malformed-length refusals. This removes the old text-only
+cap within existing section and aggregate bounds. Complete chain acceptance
+for its legitimate 7,670 effects / 3,635,865 bytes remains pending the named
+address repair. Public legacy recovery consumers remain separately tracked;
+the current native builder does not need their BF phase certifier.
 
 Earlier registry candidate P2 (source `6969dc7a`, SHA-256
 `ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c`)
@@ -63,8 +74,12 @@ built pinned Tender `4cc58705` through its public entry in 63.822 seconds. Its
 executable and two recaptures retained all 76,154 unique address rows with
 identical row bytes. Their file/DATA growth led to `4e8a865e`, now repaired in M
 and accepted on the application fixture. M built the same Tender workload
-through its public entry in 63.216 seconds; recapture and standalone acceptance
-are running. Evidence: `/tmp/cedar-tender-M/`.
+through its public entry in 63.216 seconds. Both recaptures succeed in about
+2.1 seconds; all three files retain identical prefix/region/DATA extents and
+all 76,271 unique address rows. The third generation passes Tender’s complete
+standalone gate in 16.140 seconds: DOCX/XLSX extraction, filling, preservation
+and refusals, plus REPL checked definitions and type rejection. Interactive
+recovery remains explicitly untested by that gate. Evidence: `/tmp/cedar-tender-M/`.
 Evidence: `/home/joel/.cache/cedar-capture-rows-u5l55np1/tender-P2/`.
 The speed targets and downstream acceptance remain open; accepted
 Tender/Maki/Kestrel pins stay unchanged.

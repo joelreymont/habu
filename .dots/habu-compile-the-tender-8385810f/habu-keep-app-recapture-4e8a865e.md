@@ -33,3 +33,5 @@ Independent source review and combined M focused acceptance complete. M source
 built in135.602s; all eight focused suites pass. Relevant commands, exact times
 and outputs: /tmp/cedar-M-focused/results.json and adjacent logs. The campaign
 retains the combined full gate and downstream acceptance.
+
+Real Tender followup: pinned source4cc58705 built publicly on M (`99caf411`) in63.216s, then two fresh-process APP-IMAGE:SAVE recaptures passed in2.167/2.117s. All three files are31,588,544bytes; prefix6,025,216, region6,839,096 and DATA18,719,896bytes stay exact. All76,271 unique address rows are byte-identical (SHAe8ff76d807af4baa4d321a6b797a9eb6701beb0990af2a19f67f51fc30508fd2). Third image passes the complete public standalone gate in16.140s, including document behavior and checked REPL definitions/refusal. The gate explicitly leaves interactive recovery unchecked. Evidence `/tmp/cedar-tender-M/{build,recapture-preservation,standalone}.json` and standalone.log.
