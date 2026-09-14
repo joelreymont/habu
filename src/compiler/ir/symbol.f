@@ -626,6 +626,40 @@ public
    rr id ID-CK {: l:n :}
    rr l OFF-LEN RC@ ;
 
+\ Bind a batch of existing ordinals under this table's module. Resolve the
+\ live table once, and check the entire input before writing any identity.
+\ Nothing calls back or appends while the checked header/count are in use.
+\ Copy direction also covers overlapping caller spans; the common pointer-field
+\ views compare addresses only and are never dereferenced.
+: IDS! ( IR-ARENA:arena IR-ID:ir-module-key ptr n n ptr IR-ID:ir-symbol-id n -- )
+   {: r:IR-ARENA:arena key:IR-ID:ir-module-key src:ptr n:n dst:ptr cap:n :}
+   r IR-ARENA:OPEN-LIVE {: rr:IR-ARENA:reader :}
+   rr RHDR-CK
+   rr HC-SERIAL IR-ARENA:RD@ key KEY-SERIAL SERIAL-CK
+   key 0 IR-ID:PACK-SYMBOL drop
+   rr CNT {: cnt:n :}
+   n 0 < cap n < or
+   n $7FFFFFFFFFFFFFFF CELL-BYTES / > or
+   cap $7FFFFFFFFFFFFFFF CELL-BYTES / > or
+   if E-IR-SYM-RANGE throw then
+   src n cells + src < dst cap cells + dst < or
+   if E-IR-SYM-RANGE throw then
+   n 0 ?do
+      src i cells + @ dup 0 < swap cnt >= or
+      if E-IR-SYM-BOUND throw then
+   loop
+   src 0 ptr-field dst 0 ptr-field < if
+      n begin dup 0 > while
+         1- {: ix:n :}
+         key src ix cells + @ IR-ID:PACK-SYMBOL dst ix cells + !
+         ix
+      repeat drop
+   else
+      n 0 ?do
+         key src i cells + @ IR-ID:PACK-SYMBOL dst i cells + !
+      loop
+   then ;
+
 \ Byte equality between a symbol and a presented span - the observable form
 \ of the interning invariant, with no pointer crossing the boundary.
 : EQ? ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id ptr u8 n -- bool )

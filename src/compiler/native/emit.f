@@ -1358,10 +1358,7 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    BND-MODE @ BOUND-YES = if E-A64EMIT-BIND throw then
    c b DIALECT-CK
-   b IR-BUILD:MODULE@ 0 BND-MOD !
-   A64IR:OPCODES 0 ?do
-      c b i A64IR:BIND i BND-OP !
-   loop
+   c b 0 BND-OP A64IR:OPCODES A64IR:BIND-OPCODES! 0 BND-MOD !
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-ADDR   0 BND-ADDR !

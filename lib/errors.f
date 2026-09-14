@@ -363,7 +363,7 @@ public
 -6673 constant E-IR-SYM-CAP       \ a symbol capacity outside the accepted range, or an intern past it
 -6674 constant E-IR-SYM-BYTES     \ a byte capacity outside the accepted range, or bytes past the committed ceiling
 -6675 constant E-IR-SYM-LEN       \ a negative symbol byte length at intern
--6676 constant E-IR-SYM-RANGE     \ a destination span smaller than the symbol being copied
+-6676 constant E-IR-SYM-RANGE     \ an invalid or undersized destination span for symbol bytes or identities
 
 \ Compiler type table (package IR-TYPE): -6680..-6690
 -6680 constant E-IR-TYPE-STATE    \ a type store failed its header, row-shape, span, or stored-reference recheck

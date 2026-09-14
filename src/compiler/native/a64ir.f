@@ -722,6 +722,34 @@ public
 : OPCODE ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- IR-ID:ir-symbol-id )
    ORD BIND ;
 
+private
+
+: MEMO-OPCODES? ( -- bool )
+   MEMO-OWNED @ 0= if false exit then
+   OPCODES 0 ?do i MEMO-SEEN @ 0= if false unloop exit then loop
+   true ;
+
+: MEMO-OPCODES! ( IR-CTX:ctx IR-BUILD:builder ptr IR-ID:ir-symbol-id n -- IR-ID:ir-module-id bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder dst:ptr cap:n :}
+   c b 0 MEMO-MOD @ 0 MEMO-ORD OPCODES dst cap IR-BUILD:BIND-SYMBOLS? ;
+
+public
+
+\ The full opcode vocabulary is bound by three downstream passes. The existing
+\ memo supplies ordinals, while the builder and symbol owners validate one
+\ whole batch. Missing entries still use BIND's ordinary interning path; that
+\ may grow the symbol arena, so the final batch opens its current storage again.
+: BIND-OPCODES! ( IR-CTX:ctx IR-BUILD:builder ptr IR-ID:ir-symbol-id n -- IR-ID:ir-module-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder dst:ptr cap:n :}
+   cap OPCODES < cap $7FFFFFFFFFFFFFFF 1 cells / > or
+   if E-IR-SYM-RANGE throw then
+   dst cap cells + dst < if E-IR-SYM-RANGE throw then
+   MEMO-OPCODES? if
+      c b dst cap MEMO-OPCODES! if exit then drop
+   then
+   OPCODES 0 ?do c b i BIND drop loop
+   c b dst cap MEMO-OPCODES! 0= if drop E-IR-BUILD-STATE throw then ;
+
 \ ---- the condition a comparison is made under --------------------------------
 : COND-CODE ( A64IR:cond -- n )
    MATCH cond

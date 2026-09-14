@@ -1225,6 +1225,18 @@ public
 : SYMBOL-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    SYMBOL-LEN drop ;
 
+\ A dialect memo names one exact module. A mismatch grants no use of its
+\ ordinals and touches neither caller span. On a hit, the symbol owner checks
+\ the current live header and every ordinal before publishing the batch.
+: BIND-SYMBOLS? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-module-id ptr n n ptr IR-ID:ir-symbol-id n -- IR-ID:ir-module-id bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder prior:IR-ID:ir-module-id
+      src:ptr n:n dst:ptr cap:n :}
+   c b USE {: slot:n :}
+   slot BMID @ {: mid:IR-ID:ir-module-id :}
+   mid prior IR-ID:MODULE-SAME? 0= if mid false exit then
+   slot T-SR TAB@ slot KEY@ src n dst cap IR-SYM:IDS!
+   mid true ;
+
 \ Byte equality between one of this module's symbols and a presented span. This
 \ is how a caller that knows a spelling checks an identity it was handed without
 \ interning anything: asking the interner for the identity of those bytes would
