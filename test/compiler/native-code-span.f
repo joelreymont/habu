@@ -33,8 +33,9 @@ package AOT-LINK
    rec SPAN-END next XREF-START T=
    next XREF-START ADDRESS-OWNER next = TTRUE
    rec SPAN-END 4 - ADDRESS-OWNER rec = TTRUE
-   0 NCLO ! rec SCAN-REC
-   0 NCLO ! rec ADD-CLO
+   \ Retain the real root closure, including emitted stack-guard helpers.
+   a u ENTRY-NAME! CLOSURE
+   ROOTREC @ rec = TTRUE
    ASM-INIT PLAN-BLOBS
    ASM-LEN {: before:n :}
    rec COPY-COMPACT-BLOB

@@ -58,3 +58,17 @@ failed before the caller fix and passes afterward; logs
 `/tmp/cedar-span-capture-{before,after}.log`. The fixture is registered in the
 gate. Combined native generations and the stripped preseed matrix remain
 pending; this focused source-load result does not qualify a rebuilt image.
+
+First combined generation: frozen source `93a972eb` builds and launches without
+source as `/tmp/cedar-combined-native-r1`, SHA-256
+`07d6f0dbaa95b81af102c19a0b23b240bdd56858736d712a9e608a4af9e5dc7a`.
+The schema and actual native publisher fixture pass on this image with both
+engine environment variables pinned. Native guards exposed a fixture-only
+closure mistake: `ADJACENT` scanned callees, discarded that closure, then copied
+only its root. It now uses the existing `ENTRY-NAME!`/`CLOSURE` traversal and
+checks root identity, preserving the exact extent, adjacency, ownership and
+copied-root byte assertions. The original test exits 74 for a PC-relative target
+outside that incomplete closure; the corrected test passes. Logs:
+`/tmp/cedar-combined-r1-code-span.log` and
+`/tmp/cedar-combined-r1-native-code-span{,-after}.log`. Generation two and fresh
+stripped preseed/cache evidence are still pending.
