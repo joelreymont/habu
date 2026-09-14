@@ -94,7 +94,12 @@ require nf.fs
    s\" create BUF 2048 allot : INNER ( -- ) s\" 17 .\" INCLUDE-EVALUATE data-base STACK-ABI:CAP-CELL + @ . ; : GO ( -- ) ['] INNER BUF 2048 run-in-stack ; GO data-base STACK-ABI:CAP-CELL + @ ." BES-OK
    s\" 17\n2048\n16384\n" NF= 0= abort" recovery evaluate lost its active allocation"
    s\" create BUF 32 allot : RAISE ( -- ) 7 throw ; : CROSS ( -- ) ['] RAISE BUF 8 run-in-stack ; : INNER ( -- ) s\" CROSS\" INCLUDE-EVALUATE ; ' INNER catch . 1 2 3 4 . . . ." BES-OK
-   s\" 7\n4\n3\n2\n1\n" NF= 0= abort" recovery evaluate unwind lost the caller allocation" ;
+   s\" 7\n4\n3\n2\n1\n" NF= 0= abort" recovery evaluate unwind lost the caller allocation"
+   \ Evaluation consumes a two-cell token span. The reverse nesting must
+   \ restore the boot allocation before the four-cell post-throw control.
+   s\" create BUF 16 allot : RAISE ( -- ) 7 throw ; : INNER ( -- ) s\" RAISE\" INCLUDE-EVALUATE ; : CROSS ( -- ) ['] INNER BUF 8 run-in-stack ; ' CROSS catch ." BES-REFUSED
+   s\" create BUF 16 allot : RAISE ( -- ) 7 throw ; : INNER ( -- ) s\" RAISE\" INCLUDE-EVALUATE ; : CROSS ( -- ) ['] INNER BUF 16 run-in-stack ; ' CROSS catch . 1 2 3 4 . . . ." BES-OK
+   s\" 7\n4\n3\n2\n1\n" NF= 0= abort" recovery nested evaluate unwind lost the caller allocation" ;
 
 : BES-CAT ( a u b v -- c w ) {: a u b v :}
    u v + allocate throw {: c :}
@@ -114,7 +119,9 @@ require nf.fs
    s" create BUF 32 allot : EMPTY ( -- ) ; ' EMPTY BP+ : GO ( -- ) ['] EMPTY BUF 0 run-in-stack ; GO ;package" BES-DEBUG-RUN
    NFOUT 2@ nip 26 BES=
    s" create BUF 32 allot : KEEP ( n -- n ) ; ' KEEP BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF 8 run-in-stack ; GO ;package" BES-DEBUG-RUN
-   NFOUT 2@ nip 43 BES= ;
+   NFOUT 2@ nip 43 BES=
+   NFOUT 2@ 26 /string s\" 0000000000000011\n" compare 0<>
+      abort" recovery breakpoint lost its actual top cell" ;
 
 BES-ABI BES-DATA BES-RETURN BES-LOOP BES-LIFECYCLE BES-DEBUGGER
 .( bootstrap-engine-stack: ok ) cr
