@@ -214,12 +214,9 @@ variable BWM-GXT
    idx 10 + BWM-W32@ $D63F0200 = and if 2 exit then
    0 ;
 
-\ A frame that has already failed a case resolves no target: the decoded
-\ address of a mismatched frame is arbitrary, and a stale engine must fail
-\ the fixture, not crash it. The named exit leaves the index after the frame.
-: BWM-UNRESOLVED ( n -- n ) {: after:n :}
-   s" request frame failed: target not resolved, continuing at " type after . cr
-   after ;
+\ Stop before decoding an arbitrary target or reading a guessed continuation.
+: BWM-UNRESOLVED ( -- )
+   s" bootstrap-wide-memory: invalid stack request" 1 die ;
 
 : BWM-REQUEST-GOLD ( n n n -- n ) {: idx:n below:n above:n :}
    idx     $D10083FF BWM-GOLD                     \ sub sp,sp,#32
@@ -231,17 +228,17 @@ variable BWM-GXT
    shape 0= if
       BWM-CASES @ 1 + BWM-CASES !  BWM-FAIL
       s" case " type BWM-CASES @ . s" unknown request shape at " type idx . cr
-      idx 7 + exit
+      BWM-UNRESOLVED
    then
    shape 1 = if
       idx 5 + $D2800011 above 5 lshift or BWM-GOLD   \ movz x17,#above
-      BWM-FAILS @ 0 <> if idx 7 + BWM-UNRESOLVED exit then
+      BWM-FAILS @ 0 <> if BWM-UNRESOLVED then
       idx 6 + BWM-CALL-TARGET {: target:n n:n :}
       target stack-data-entry BWM=
       n
    else
       idx 6 + $D2800011 above 5 lshift or BWM-GOLD   \ movz x17,#above
-      BWM-FAILS @ 0 <> if idx 11 + BWM-UNRESOLVED exit then
+      BWM-FAILS @ 0 <> if BWM-UNRESOLVED then
       idx 7 + BWM-CALL-TARGET {: target:n n:n :}
       target 0 BWM-W32 $F9400FF0 BWM=                       \ shim: ldr x16,[sp,#24]
       target 4 BWM-W32 $FC000000 and $14000000 BWM=         \ shim: b helper
