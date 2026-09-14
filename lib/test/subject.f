@@ -57,12 +57,11 @@ PTR-VARIABLE STACK-A
 TRUSTED: EVAL ( -- )
    SRC$ evaluate ;
 
-\ `run-in-stack` installs S0 but cannot clear inherited engine recovery state.
+\ `run-in-stack` owns the active allocation, including its floor and capacity.
 \ The fork child must enter evaluation with no catch or TTY recovery handler.
 \ This raw runtime-cell boundary is tracked by the same active capability dot.
 \ Retirement owner: habu-batch-candidate-valid-517bfb6f.
 TRUSTED: STACK-ARM ( -- )
-   STACK@ data-base S0-CELL + !
    0 data-base HND-CELL + !
    0 data-base REPLH-CELL + ! ;
 

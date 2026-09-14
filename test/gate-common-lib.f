@@ -481,13 +481,9 @@ TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
 : GE-EVAL-SOURCE-RUNSTACK ( -- )
    ['] GE-EVAL-SOURCE-ACT GE-EVAL-STACK run-in-stack ;
 
-TRUSTED: GE-EVAL-SOURCE ( -- )
-   GE-EVAL-STACK 2drop
-   data-base S0-CELL + @ {: old:n :}
-   GE-EVAL-STACK@ data-base S0-CELL + !
-   [: GE-EVAL-SOURCE-RUNSTACK ;] catch {: rc:n :}
-   old data-base S0-CELL + !
-   rc 0 <> if rc throw then ;
+\ run-in-stack owns the active allocation on normal return and unwinding.
+: GE-EVAL-SOURCE ( -- )
+   GE-EVAL-SOURCE-RUNSTACK ;
 
 \ Store a synthesized in-process outcome (exited rc) straight into the GT
 \ runner state; the capture machine no longer stores a (kind code) pair to
