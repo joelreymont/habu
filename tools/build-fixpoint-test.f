@@ -840,10 +840,20 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u guard s" : VALIDATE " BFT-FIND-AFTER BFT-FOUND {: body:n :}
    BFT-READ-BUF u body s" package PREFIX-MARK" BFT-FIND-AFTER BFT-FOUND drop ;
 
+
+: BFT-TASK-ABI-DEPS ( n -- ) {: u:n :}
+   s" src/habu/task-abi.f" BF-READ-SOURCE
+   BFT-READ-BUF u BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-FIND BFT-FOUND {: abi:n :}
+   BFT-READ-BUF u abi s\" s\" src/habu/task-abi.f\" provided" BFT-FIND-AFTER BFT-FOUND {: fact:n :}
+   BFT-READ-BUF u fact s" require src/habu/task-abi.f" BFT-FIND-AFTER BFT-FOUND {: req:n :}
+   BFT-READ-BUF u req s" : BTASK-ENTRY " BFT-FIND-AFTER BFT-FOUND drop ;
+
+
 \ Dependencies must be in the emitted bytes, even when the warmed host can
 \ supply their effects. Check the module bodies and the provided facts in the
 \ order their real consumers need them.
 : BFT-COMMON-DEPS ( n -- ) {: u:n :}
+   u BFT-TASK-ABI-DEPS
    BFT-READ-BUF u s" FIRST-LABEL" VERIFY:DEFINES? TTRUE
    BFT-READ-BUF u s" CAPTURE-RANGE," VERIFY:DEFINES? TTRUE
    BFT-READ-BUF u s" SB-FIX" VERIFY:DEFINES? TTRUE
@@ -1591,6 +1601,7 @@ variable BAD-N
    BFT-ROOT BF-TMP!
    BF-STAGE2-SOURCE
    BFT-STAGE2 FILE? TTRUE
+   BFT-STAGE2 BFT-READ BFT-TASK-ABI-DEPS
    BF-CERTIFY-STAGE2
    BF-RECORD-STAGE
    BF-STDIN-SOURCE
