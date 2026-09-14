@@ -22,53 +22,45 @@ The latest complete gate is J: source/runtime `674900c6`, SHA-256
 `3146f12e5bcd330ce85728423765c74050cf7f44b2cc801a9abc3adca097017e`.
 All 341 suites ran in 432.942 seconds: 329 passed and 12 failed. Exact results
 are in `/tmp/cedar-J-full-suite.{json,log}`; the campaign dot lists the failures.
-J includes the reviewed source-authority fix and passes the original internal
-word gate, portable payload graphs, prefix certification, preflight recovery,
-checker CLI, CAST, source-root paths and cold-runtime controls.
 
-Since J, reviewed fixes restore package-entry imports during verification,
-include actual build-module dependencies, grow the Gforth primitive registry,
-and repair three whitebox/control-flag fixtures. Independent focused checks
-pass, including the package fixture through the actual native source owner on
-J. Generated legacy maker verification still sees host-only type families;
-the WID/chain fixtures are moving to the current native writer with partial
-captures that preserve their actual cold-prefix behavior. Public legacy
-recovery consumers remain separately tracked.
-General warmed-verifier source-order behavior remains open in `0c9fe3d7`.
+Current candidate M is source `99caf411`, SHA-256
+`9522a8e5685129b17b107bd547dc0797a1f11e0bb3f89f8282b2b8206770b58c`.
+It built through the optimizing native entry on K2 in 135.602 seconds. All eight
+focused suites pass: real registry persistence at both tiers, three-generation
+application capture, concurrent address registration and restore, worker
+lifecycle, checker-owner descriptors, source-authority recovery and the complete
+engine suite. The application fixture preserves identical engine-prefix,
+region and DATA extents in all three generations, then restores checked
+application execution. Logs and commands: `/tmp/cedar-M-focused/`.
+The combined full gate is running on this exact source and binary; it is not yet
+an accepted replacement for downstream pins.
 
-The current composition adds the growing address registry and fixes task
-quotation stores to use the shared image's DATA base; worker `data-base` remains
-task-local. K2, source `b8e069a5`, built from J in 135.940 seconds, SHA-256
-`6428d167d119e683322c7f4f17b28cb6f7d10e63ffe38087df49ed355228a68f`.
-All eight independent storage/image suites pass: worker lifecycle, both-tier
-quotation stores, growth, allocation refusal, declared snapshot cells, snapshot
-writer and application capture/recapture. Logs: `/tmp/cedar-K2-focused/`.
-A distinct concurrent registrar race is reproduced through K2's public task API
-below inline capacity: four writers lose rows; the serialized control preserves
-every row. The registry owner must synchronize lookup, append and growth.
+The composition includes growing address storage with actual aggregate artifact
+admission, shared image ownership for worker quotation stores, synchronized
+first registration and process mutex reset. Scoped diagnostic recovery retains
+no executable authority. The cold prefix now declares its public owner ABI
+constants and publishes its first complete checker owner; replacement checkers
+still require explicit transfer. These changes have independent source review
+and focused acceptance. General warmed-verifier source-order behavior remains
+open in `0c9fe3d7`.
 
-Scoped diagnostic recovery is independently reviewed and integrated at
-`a775e66e`/`e0562cb2`. Its native product, source `5ab65284`, SHA-256
-`83e0b0ea4c4b13f4d6470c4c43372c674a9b0069dc0b10fba7269941e453bb81`,
-passes eight focused suites including the complete engine and diagnostics gates.
-Current-run recovery facts grant no executable authority; nested analysis,
-rollback, export and graph controls pass. Fresh combined acceptance is pending.
+The WID/chain fixtures are moving to the current native writer with partial
+captures that preserve their actual cold-prefix behavior. Both real sealed and
+open WID collision controls pass; the complete fixture run remains pending.
+The legitimate chain capture now exposes an obsolete 262,144-byte effect-pool
+limit: 7,670 verified effect rows occupy 3,635,865 bytes. Storage must grow within
+the existing section and aggregate bounds. Public legacy recovery consumers
+remain separately tracked; the current native builder does not need their BF
+phase certifier.
 
-The registry candidate P2 uses source `6969dc7a`, SHA-256
-`ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c`,
-and built from G2 in 143.102 seconds. Independent checks pass growth beyond
-65,536 rows, persistent-storage lifetime cuts, actual allocation refusal,
-75,900-row artifact transfers and aggregate size admission. Snapshot v9 uses
-an explicit owned-vector header; old-host source snapshots remain v8. Artifact
-format v8 and the existing 28 MiB encoded-payload budget remain unchanged.
-
-P2 built pinned Tender `4cc58705` through its public entry in 63.822 seconds.
-The executable and two recaptures retain exactly 76,154 unique address rows,
-with identical row bytes; the third image restores its public REPL. Full file
-and DATA sizes still grow across recaptures (`4e8a865e`), so this is no
-size-fixpoint claim.
-Evidence: `/home/joel/.cache/cedar-capture-rows-u5l55np1/` and its `tender-P2/`
-subdirectory. The speed targets and downstream acceptance remain open; accepted
+Earlier registry candidate P2 (source `6969dc7a`, SHA-256
+`ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c`)
+built pinned Tender `4cc58705` through its public entry in 63.822 seconds. Its
+executable and two recaptures retained all 76,154 unique address rows with
+identical row bytes. Their file/DATA growth led to `4e8a865e`, now repaired in M
+and accepted on the application fixture; Tender acceptance on M remains due.
+Evidence: `/home/joel/.cache/cedar-capture-rows-u5l55np1/tender-P2/`.
+The speed targets and downstream acceptance remain open; accepted
 Tender/Maki/Kestrel pins stay unchanged.
 
 Reader reuse reduces frozen OPEN calls per trivial definition from 2,895 to 328

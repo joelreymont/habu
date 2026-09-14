@@ -1,9 +1,11 @@
 ---
 title: Serialize first registration at the address-cell owner
-status: open
+status: closed
 priority: 1
 issue-type: bug
-created-at: "2026-09-14T02:44:01.149747+03:00"
+created-at: "2026-09-14T02:44:01.149747+03:00\"
+closed-at: "2026-09-14T03:31:29.120288+03:00"
+close-reason: Independent review and exact combined M focused tests pass; the campaign owns full-gate and downstream acceptance.
 ---
 
 Cedar. `SNAP-RELOC:EMIT-MARK` reads the row count, scans, writes one row, then
@@ -66,3 +68,9 @@ their existing 96/99/98 refusals. The worker DATA-owner/lifecycle stress passes.
 Evidence: `address-cell-tasks-L2.log`, `lock-focused-L2.json`,
 `address-cell-oom-L2.log`, `image-lifecycle-tasks-L2.log`. Independent review and
 the parent's combined product/full suite remain pending.
+
+Independent source review and combined M focused acceptance complete. M source
+99caf411, SHA9522a8e5685129b17b107bd547dc0797a1f11e0bb3f89f8282b2b8206770b58c,
+built in135.602s; all eight focused suites pass. Relevant commands, exact times
+and outputs: /tmp/cedar-M-focused/results.json and adjacent logs. The campaign
+retains the combined full gate and downstream acceptance.

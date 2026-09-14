@@ -106,3 +106,15 @@ is composed-product evidence, not an isolated reader result or quiet acceptance.
 Frozen OPEN count falls 2895→328 with every read validation retained. Trivial
 <500us, complete uncached Tender timing, combined full gate and downstream
 acceptance remain open. Details and current ownership are in PLAN.md.
+
+
+M composition 99caf411 builds through the optimizing entry on K2 in135.602s,
+SHA9522a8e5685129b17b107bd547dc0797a1f11e0bb3f89f8282b2b8206770b58c.
+All eight focused suites pass, including stable effect/control storage at both
+tiers, three fresh application generations with identical prefix/region/DATA
+extents, concurrent address growth/restore, worker lifecycle, cold owner
+publication, scoped recovery and the complete engine suite. Independent review
+is complete. Exact commands/results: /tmp/cedar-M-focused/. The full native
+gate is running on that exact source/product, logged to
+/tmp/cedar-M-full-suite.log. Final gate, current-writer chain storage and target
+closure, uncached compiler speed and downstream acceptance remain open.
