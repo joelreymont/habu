@@ -201,9 +201,9 @@ variable AOT-WID-W0    variable AOT-WID-SPAN
 \ cell holds a code address in the BUILDING host; a DATA-pointer cell can hold an
 \ address in that host's captured window. Neither address is valid after seeding.
 \ Both cells are therefore excluded from every run and listed with their kind.
-\ The seed reconstructs either kind as null or as an address relative to its
-\ captured target window.  A row's first u32 is the cell location relative to
-\ engine DATA; its second u32 is a typed CODE/DATA-window target offset.
+\ The seed reconstructs nulls and window-relative targets; an exact prefix CODE
+\ entry travels under its resolving global or public name. The first u32 locates
+\ the cell, and the second carries the target kind and offset or name-pool entry.
 
 ;package
 
@@ -248,7 +248,10 @@ variable RBYTES-LEN
 AOT-SECTION-CAP XTOFF-ROW / constant XTOFF-MAX
 $80000000 constant XTOFF-WINDOW-TAG
 $80000000 constant XTOFF-DATA-TAG
-$7FFFFFFF constant XTOFF-VALUE-MASK
+$40000000 constant XTOFF-NAME-TAG
+$C0000000 constant XTOFF-KIND-MASK
+$7FFFFFFF constant XTOFF-LOC-MASK
+$3FFFFFFF constant XTOFF-VALUE-MASK
 DYNAMIC-BUFFER XTOFF-STORAGE n
 variable XTOFF-N
 : XTOFF-RESERVE ( n -- )
@@ -260,8 +263,9 @@ variable XTOFF-N
    0 XTOFF-STORAGE BYTE-VIEW ;
 \ Each row is (location u32, target u32). The location's high bit selects a
 \ window-relative offset; otherwise it is a fixed DATA offset. The target's
-\ high bit selects DATA rather than CODE; low bits are zero for null or the
-\ corresponding target-window offset plus one.
+\ two high bits select CODE (00), named CODE (01), or DATA (10); 11 is invalid.
+\ CODE/DATA low bits are zero for null or the target-window offset plus one.
+\ Named CODE carries a nonzero name-pool entry offset plus one.
 ;package
 
 package AOT-BUF

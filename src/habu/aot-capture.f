@@ -664,6 +664,39 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
    wu 0 ?do wa i + c@  ACAP-QUAL-BUF pu 1+ + i + c!  loop
    ACAP-QUAL-BUF  pu wu + 1+ ;
 
+\ A prefix CODE entry travels only under a resolving global or public name.
+\ Its record and namespace must predate the tooling cut. Aliases sharing an
+\ entry are tried separately because the first record can be private or retired.
+: ACAP-PREFIX-NAME? ( n n -- ptr u8 n bool ) {: k:n target:n :}
+   k 0 < k ACAP-PRE-R @ >= or if NULL$ false exit then
+   k AOT-REC {: rec:ptr :}
+   rec AOT-RXT target <> if NULL$ false exit then
+   rec AOT-RWID {: wid:n :}
+   wid 0 < if NULL$ false exit then
+   rec AOT-RNPTR rec AOT-RNLEN {: name:ptr size:n :}
+   size 0= if NULL$ false exit then
+   wid 0= if name size else
+      wid FIRST-DYNAMIC-WID < if NULL$ false exit then
+      wid ACAP-PKG-PUB {: pkg:n :}
+      pkg 0 < pkg ACAP-PRE-R @ >= or if NULL$ false exit then
+      pkg AOT-REC {: owner:ptr :}
+      owner AOT-RNPTR owner AOT-RNLEN DICT-WL:NAMESPACE XREF-FIND-WL-INDEX
+      dup 0 < swap ACAP-PRE-R @ >= or if NULL$ false exit then
+      owner AOT-RNPTR owner AOT-RNLEN name size ACAP-QUAL$
+   then {: a:ptr u:n :}
+   a u XREF-FIND-INDEX {: resolved:n :}
+   resolved 0 < resolved ACAP-PRE-R @ >= or if NULL$ false exit then
+   resolved AOT-REC AOT-RXT target <> if NULL$ false exit then
+   a u true ;
+
+
+: ACAP-TARGET-NAME? ( n -- ptr u8 n bool ) {: target:n :}
+   target ACAP-TGT>REC target ACAP-PREFIX-NAME? if true exit then 2drop
+   ACAP-PRE-R @ 0 ?do
+      i target ACAP-PREFIX-NAME? if true unloop exit then 2drop
+   loop
+   NULL$ false ;
+
 variable ACAP-P
 
 \ A private word of a pre-window package is the one callee no scope can carry:
@@ -1205,8 +1238,17 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
    v lo >= v hi < and ;
 
+: ACAP-CELL-NAMED ( n -- n ) {: target:n :}
+   target ACAP-TARGET-NAME? if
+      ACAP-POOL-ADD 1+ AOT-WINDOW:XTOFF-NAME-TAG or exit
+   then 2drop
+   target ACAP-TARGET-REFUSE ;
+
 : ACAP-XTCELL-META ( n n n n n -- n ) {: k:n b0:n b1:n d0:n d1:n :}
    k b0 b1 d0 d1 ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
+   k ACAP-XTCELL-DATA? 0= v 0<> and if
+      v lo < v hi >= or if v ACAP-CELL-NAMED exit then
+   then
    v 0<> v lo < v hi >= or and if
       s" aot-capture: address row " type k .
       s"  cell DATA+" type k ACAP-XTCELL-OFF .
@@ -1272,7 +1314,7 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
    AOT-WINDOW:XTOFF-N @ 0 ?do
       i ACAP-XTOFF@ {: loc:n :}
       loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
-         loc AOT-WINDOW:XTOFF-VALUE-MASK and {: off:n :}
+         loc AOT-WINDOW:XTOFF-LOC-MASK and {: off:n :}
          off p >= off ACAP-RC @ < and if off ACAP-RC ! then
       then
    loop

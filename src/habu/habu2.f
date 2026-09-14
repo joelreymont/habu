@@ -4981,10 +4981,12 @@ public
    rdone LBL, ;
 
 \ Heap cell locations move with the captured window; fixed engine cells remain
-\ DATA-relative. The value has a separate null/CODE/DATA coordinate.
+\ DATA-relative. The value has a separate null/CODE/DATA/name coordinate.
 : RESTORE-ADDRESS-CELLS ( -- )
-   LBL LBL LBL LBL LBL LBL {: xloop:label xdata:label xnull:label
-                             xstore:label xdone:label xcell:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   S\" hb: AOT named address cell unresolved\n"
+   {: xloop:label xdata:label xnull:label xstore:label xdone:label
+      xcell:label xnamed:label xbad:label msg:label ma mu :}
    23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,         \ x23 = declared-cell count
    23 xdone CBZ,
    3 DATA DP-CELL LDR,                              \ x3 = DP, now past the window
@@ -4996,11 +4998,14 @@ public
       24 21 0 LDRW,                                 \ cell location plus window tag
       15 21 4 LDRW,                                 \ x15 = kind plus target offset+1
       5 XTOFF-WINDOW-TAG LIT64,  6 24 5 AND,
-      5 XTOFF-VALUE-MASK LIT64,  24 24 5 AND,
+      5 XTOFF-LOC-MASK LIT64,  24 24 5 AND,
       9 DATA 24 ADD,                                \ fixed engine cell
       6 xcell CBZ,
          9 25 24 ADD,                               \ cell in the rebased heap window
       xcell LBL,
+      5 XTOFF-KIND-MASK LIT64,  6 15 5 AND,
+      6 5 CMP,  C-EQ xbad BCOND,
+      5 XTOFF-NAME-TAG LIT64,  6 15 5 AND,  6 xnamed CBNZ,
       5 AOT-WINDOW:XTOFF-DATA-TAG LIT64,
       6 15 5 AND,  6 xdata CBNZ,
          SNAP-RELOC:LMARK LABEL@ BL,
@@ -5015,6 +5020,29 @@ public
       xnull LBL,  5 0 MOVZ,
       xstore LBL,  5 9 0 STR,
       21 21 AOT-WINDOW:XTOFF-ROW ADDI,  22 22 1 ADDI,  xloop B,
+      xnamed LBL,
+         24 9 0 ADDI,                               \ destination survives LFIND/gate; x25 remains the DATA base
+         5 XTOFF-VALUE-MASK LIT64,  4 15 5 AND,  4 xbad CBZ,
+         4 4 1 SUBI,                                \ name-pool entry offset
+         5 10 LAOTNAMESLEN LABEL@ TADR,  5 5 0 LDR,
+         4 5 CMP,  C-CS xbad BCOND,
+         9 10 LAOTNAMES LABEL@ TADR,  9 9 4 ADD,
+         10 9 0 LDRB,  10 xbad CBZ,
+         5 5 4 SUB,  5 5 1 SUBI,  10 5 CMP,  C-HI xbad BCOND,
+         9 9 1 ADDI,
+         LFIND LABEL@ BL,
+         13 xbad CBZ,
+         \ CP is the blob landing base until EM-SEED-AOT finishes all relocation
+         \ passes. A named row can refer only to a prefix entry below that base.
+         11 CP CMP,  C-CS xbad BCOND,
+         LAOTWIDGATE LABEL@ BL,
+         9 24 0 ADDI,
+         SNAP-RELOC:LMARK LABEL@ BL,
+         5 11 0 ADDI,  xstore B,
+   xbad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  ma mu BYTES,
    xdone LBL, ;
 ;package
 

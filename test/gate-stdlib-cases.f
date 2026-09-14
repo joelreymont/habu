@@ -939,6 +939,18 @@ SUITE aot-chain-capture
    test/aot-chain-capture-suite.f
 ;SUITE
 
+SUITE aot-named-cells
+   test/aot-named-cells.f
+;SUITE
+
+SUITE aot-named-cells-native
+   test/aot-named-cells.f -- native
+;SUITE
+
+SUITE aot-named-cells-image
+   test/aot-named-cells-suite.f
+;SUITE
+
 SUITE aot-prelude-band
    test/aot-prelude-band-suite.f
 ;SUITE

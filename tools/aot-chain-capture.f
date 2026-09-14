@@ -210,9 +210,13 @@ TRUSTED: DATA-N ( -- n ) data-base ;
    p c@ p 1+ c@ 8 lshift or p 2 + c@ 16 lshift or p 3 + c@ 24 lshift or ;
 
 DYNAMIC-BUFFER ROW-INDEX n
+DYNAMIC-BUFFER NAME-INDEX n
+variable NAME-COUNT
+
+: RELEASE-ROW-INDEX ( -- ) ROW-INDEX-RELEASE NAME-INDEX-RELEASE ;
 
 : ROW-REFUSE ( -- )
-   ROW-INDEX-RELEASE
+   RELEASE-ROW-INDEX
    s" aot-chain-capture: declared address rows do not match the live window"
    REFUSE-RC die ;
 
@@ -228,12 +232,35 @@ DYNAMIC-BUFFER ROW-INDEX n
    rows ROW-INDEX-RESERVE
    AOT-WINDOW:XTOFF-N @ 0 ?do
       AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + {: row:ptr :}
-      row ROW-U32@ row 4 + ROW-U32@ 32 lshift or i ROW-INDEX !
+      row ROW-U32@ 32 lshift row 4 + ROW-U32@ or i ROW-INDEX !
    loop
    0 ROW-INDEX AOT-WINDOW:XTOFF-N @ [: < ;] SORT:SORT!
    AOT-WINDOW:XTOFF-N @ 1 ?do
-      i ROW-INDEX @ i 1- ROW-INDEX @ = if ROW-REFUSE then
+      i ROW-INDEX @ 32 rshift i 1- ROW-INDEX @ 32 rshift = if ROW-REFUSE then
    loop ;
+
+\ The producer's pool is walked once. This ordered entry list is independent
+\ of the artifact reader's boundary bitmap and does not outlive the check.
+: INDEX-NAMES ( -- )
+   0 NAME-COUNT !
+   0
+   begin dup AOT-NAMES-LEN @ < while
+      dup {: off:n :}
+      AOT-NAMES-BUF@ off + c@ {: size:n :}
+      size AOT-NAMES-LEN @ off - 1- > if ROW-REFUSE then
+      size 0 > if
+         NAME-COUNT @ 1+ NAME-INDEX-RESERVE
+         off NAME-COUNT @ NAME-INDEX ! 1 NAME-COUNT +!
+      then
+      size 1+ +
+   repeat drop ;
+
+: NAME-ENTRY? ( n n n -- bool ) {: off:n low:n high:n :}
+   low high >= if false exit then
+   low high low - 2 / + {: mid:n :}
+   mid NAME-INDEX @ {: entry:n :}
+   entry off = if true exit then
+   entry off < if off mid 1+ high else off low mid then recurse ;
 
 : ROW-HAS? ( n n n -- bool ) {: pair:n low:n high:n :}
    low high >= if false exit then
@@ -243,7 +270,25 @@ DYNAMIC-BUFFER ROW-INDEX n
    key pair < if pair mid 1+ high else pair low mid then recurse ;
 
 : ?EXACT-ROW ( n n -- )
-   32 lshift or 0 AOT-WINDOW:XTOFF-N @ ROW-HAS? 0= if ROW-REFUSE then ;
+   swap 32 lshift or 0 AOT-WINDOW:XTOFF-N @ ROW-HAS? 0= if ROW-REFUSE then ;
+
+: ROW-TARGET ( n n n -- n ) {: location:n low:n high:n :}
+   low high >= if ROW-REFUSE then
+   low high low - 2 / + {: mid:n :}
+   mid ROW-INDEX @ {: pair:n :}
+   pair $FFFFFFFF00000000 and {: entry:n :}
+   entry location = if pair $FFFFFFFF and exit then
+   entry location < if location mid 1+ high else location low mid then recurse ;
+
+: ?NAMED-ROW ( n n -- ) {: loc:n target:n :}
+   loc 32 lshift 0 AOT-WINDOW:XTOFF-N @ ROW-TARGET {: meta:n :}
+   meta AOT-WINDOW:XTOFF-KIND-MASK and AOT-WINDOW:XTOFF-NAME-TAG <> if ROW-REFUSE then
+   meta AOT-WINDOW:XTOFF-VALUE-MASK and 1- {: off:n :}
+   off 0 NAME-COUNT @ NAME-ENTRY? 0= if ROW-REFUSE then
+   AOT-NAMES-BUF@ off + {: name:ptr :}
+   name 1+ name c@ XREF-FIND {: rec:ptr :}
+   rec XREF-FOUND? 0= if ROW-REFUSE then
+   rec XREF-START target <> if ROW-REFUSE then ;
 
 : ?DECLARED-ROW ( n -- ) {: raw:n :}
    raw SNAP-RELOC:XTCELL-OFF-MASK and {: off:n :}
@@ -258,6 +303,9 @@ DYNAMIC-BUFFER ROW-INDEX n
       at AOT-ARM:D1 @ CELL - > if ROW-REFUSE then
       at AOT-ARM:D0 @ - AOT-WINDOW:XTOFF-WINDOW-TAG or
    else off then {: loc:n :}
+   data? 0= target 0<> and if
+      target lo < target hi >= or if loc target ?NAMED-ROW exit then
+   then
    target 0= if 0 else
       target lo < target hi >= or if ROW-REFUSE then
       target lo - 1+
@@ -281,7 +329,7 @@ DYNAMIC-BUFFER ROW-INDEX n
    1 <> if ROW-REFUSE then ;
 
 : CHECK-ROWS ( -- )
-   INDEX-ROWS
+   INDEX-ROWS INDEX-NAMES
    data-base SNAP-RELOC:XTCELL-N-CELL + @ 0 ?do i LIVE-ROW ?DECLARED-ROW loop
    ?HOOK-CELL ;
 
@@ -290,7 +338,7 @@ DYNAMIC-BUFFER ROW-INDEX n
    AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-ARM:D1 @ AOT-CAPTURE:TARGETED-OUT {: out:n :}
    AOT-WINDOW:XTOFF-N @ win out + <> if ROW-REFUSE then
    \ Heapsort M rows, then at most N binary lookups: O(M log M + N log M).
-   [: CHECK-ROWS ;] [: ROW-INDEX-RELEASE ;] finally ;
+   [: CHECK-ROWS ;] [: RELEASE-ROW-INDEX ;] finally ;
 
 : ?TRAPPED ( -- )
    AOT-ARM:B0 @ AOT-ARM:B1 @ AOT-ARM:D0 @ AOT-CAPTURE:TRAPPED-BELOW {: got:n :}

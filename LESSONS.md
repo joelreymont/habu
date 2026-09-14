@@ -8298,3 +8298,7 @@ its live string pool before IMK-NDICT0; clearing that preceding DATA range produ
 an image that ran saved words but could not compile new ones. Retire transient
 state at its owner and test fresh JIT and native definitions after each restore
 (2026-09-13, 2d9145f2).
+
+`BYTES,` pads each invocation to four bytes. Emit a diagnostic and its newline
+as one string: separate calls put NUL padding inside the bytes sent to stderr.
+The named-address-cell seed test checks the complete message (2026-09-14).

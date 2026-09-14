@@ -44,6 +44,7 @@ using AOT-WINDOW
    STAGE BUILD-TABLE BASES-ALONE
    SEC-N 0 ?do i ?ROOM loop
    0 0 <> ?BUDGET
+   ?ADDRESS-ROWS
    PAYLEN @ MEM-ALLOC-BYTES {: dst:ptr size:n :}
    dst COPY-OWNED
    dst size origin AOT--OWNED-CAPTURE:MAKE ;
@@ -82,8 +83,7 @@ public
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN
    0 S-WDATA ROW-LEN@ 8 / span ?RUNS
-   XTOFF-BUF@ S-XTOFFS ROW-LEN@ XTOFF-ROW /
-   span S-BLOB ROW-LEN@ ?XTOFFS
+   ?ADDRESS-ROWS
    RESTORE-COUNTS
    S-CLOSURE ROW-LEN@ CLEN !
    RESTORE-CLOSURE ;

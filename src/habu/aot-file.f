@@ -130,7 +130,7 @@ using AOT-BUF
 using AOT-WINDOW
 
 $00544F4155424148 constant MAGIC     \ "HABUAOT\0" in LE byte order, readable in a dump
-8 constant VERSION   \ SIGSTR carries verified effect graphs; text replay is incompatible
+9 constant VERSION   \ address rows can name a prefix CODE target through the name pool
 1 constant TARGET-MACOS
 2 constant TARGET-LINUX
 
@@ -700,7 +700,7 @@ variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
 
 : ?XTOFF-LOC ( n n -- )
    {: loc:n span:n :}
-   loc XTOFF-VALUE-MASK and {: off:n :}
+   loc XTOFF-LOC-MASK and {: off:n :}
    loc XTOFF-WINDOW-TAG and 0= if
       off SNAP-RELOC:XTCELL-OFF-MAX <= if exit then
       s" aot-file: a fixed address cell is outside DATA" DIE
@@ -709,9 +709,44 @@ variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
    s" aot-file: an address cell reaches past its window DATA span" DIE ;
 
 
+\ Rebuilt for one admission, then released. One bit per pool byte records only
+\ complete nonempty entry starts, so checking many rows never rescans the pool.
+DYNAMIC-BUFFER NAME-BOUNDARIES n
+variable NAME-BOUNDARY-LEN
+
+: ?NAME-POOL ( ptr u8 n -- ) {: pool:ptr size:n :}
+   size 0 < size AOT-NAMES-CAP > or if
+      s" aot-file: invalid address target name pool" DIE then
+   size 63 + 64 / {: words:n :}
+   words NAME-BOUNDARIES-RESERVE
+   words 0 ?do 0 i NAME-BOUNDARIES ! loop
+   0
+   begin dup size < while
+      dup {: off:n :}
+      pool off + c@ {: len:n :}
+      len size off - 1- > if
+         s" aot-file: address target name pool ends inside an entry" DIE then
+      len 0 > if
+         off 64 / NAME-BOUNDARIES
+         dup @ 1 off 63 and lshift or swap !
+      then
+      len 1+ +
+   repeat drop
+   size NAME-BOUNDARY-LEN ! ;
+
+: ?NAMED-TARGET ( n -- ) {: value:n :}
+   value 0 <= value NAME-BOUNDARY-LEN @ > or if
+      s" aot-file: an address cell name is not a pool entry" DIE then
+   value 1- {: off:n :}
+   off 64 / NAME-BOUNDARIES @ 1 off 63 and lshift and 0= if
+      s" aot-file: an address cell name is not a pool entry" DIE then ;
+
 : ?XTOFF-TARGET ( n n n -- )
    {: meta:n dspan:n blen:n :}
+   meta XTOFF-KIND-MASK and XTOFF-KIND-MASK = if
+      s" aot-file: an address cell has an invalid target kind" DIE then
    meta XTOFF-VALUE-MASK and {: value:n :}
+   meta XTOFF-NAME-TAG and 0<> if value ?NAMED-TARGET exit then
    value 0= if exit then
    meta XTOFF-DATA-TAG and 0<> if
       value dspan <= if exit then
@@ -721,13 +756,27 @@ variable RN-PREV-OFF   variable RN-PREV-END   variable RN-SUM
    s" aot-file: an address cell CODE target is outside its blob" DIE ;
 
 
-: ?XTOFFS ( ptr u8 n n n -- )
-   {: rows cnt:n dspan:n blen:n :}
+: ?XTOFFS ( ptr u8 n n n ptr u8 n -- )
+   {: rows cnt:n dspan:n blen:n names:ptr namesu:n :}
+   names namesu ?NAME-POOL
    cnt 0 ?do
       rows i XTOFF-ROW * + {: row :}
       row U32@ dspan ?XTOFF-LOC
       row 4 + U32@ dspan blen ?XTOFF-TARGET
-   loop ;
+   loop
+   NAME-BOUNDARIES-RELEASE 0 NAME-BOUNDARY-LEN ! ;
+
+: NAME-POOL$ ( n -- ptr u8 n ) {: size:n :}
+   size 0= if NULL$ exit then AOT-NAMES-BUF@ size ;
+
+: NAME-SECTION$ ( -- ptr u8 n )
+   S-NAMES ROW-LEN@ dup 0= if drop NULL$ exit then
+   S-NAMES SEC-PTR S-NAMES BASE@ + swap ;
+
+: ?ADDRESS-ROWS ( -- )
+   SCAL 32 + U64@ {: span:n :}
+   XTOFF-BUF@ S-XTOFFS ROW-LEN@ XTOFF-ROW /
+   span S-BLOB ROW-LEN@ NAME-SECTION$ ?XTOFFS ;
 
 \ `at` is the first row of the artifact's own block: a plain read puts it at 0 and
 \ a merge puts it behind the host's rows, whose ascending order this has already
@@ -843,8 +892,7 @@ public
    SCAL 32 + U64@ {: span:n :}
    span ?SPAN
    0  S-WDATA ROW-LEN@ 8 /  span  ?RUNS
-   XTOFF-BUF@ S-XTOFFS ROW-LEN@ XTOFF-ROW /
-   span S-BLOB ROW-LEN@ ?XTOFFS
+   ?ADDRESS-ROWS
    RESTORE-COUNTS
    RESTORE-CLOSURE
    ?CHAIN ;
@@ -1087,39 +1135,45 @@ variable H-DATA-R                    \ where the artifact's window begins inside
 
 
 \ Preserve the tag and reject an offset that would carry into it.
-: XTOFF+ ( n n -- n )
-   {: field:n delta:n :}
-   field XTOFF-VALUE-MASK and {: value:n :}
-   delta 0 < delta XTOFF-VALUE-MASK value - > or if
+: XTOFF+ ( n n n -- n )
+   {: field:n delta:n mask:n :}
+   field mask and {: value:n :}
+   delta 0 < delta mask value - > or if
       s" aot-file: a merged address row offset exceeds its encoding" DIE
    then
-   field XTOFF-VALUE-MASK invert and value delta + or ;
+   field mask invert and value delta + or ;
 
 
 : MERGED-XTOFF-LOC ( n -- n )
    {: loc:n :}
    loc XTOFF-WINDOW-TAG and 0= if loc exit then
-   loc H-DATA-R @ XTOFF+ ;
+   loc H-DATA-R @ XTOFF-LOC-MASK XTOFF+ ;
 
 
 : MERGED-XTOFF-TARGET ( n -- n )
    {: meta:n :}
    meta XTOFF-VALUE-MASK and 0= if meta exit then
-   meta XTOFF-DATA-TAG and 0<> if
-      meta H-DATA-R @ XTOFF+ exit
+   meta XTOFF-NAME-TAG and 0<> if
+      meta H-NAMES @ XTOFF-VALUE-MASK XTOFF+ exit
    then
-   meta H-BLOB @ XTOFF+ ;
+   meta XTOFF-DATA-TAG and 0<> if
+      meta H-DATA-R @ XTOFF-VALUE-MASK XTOFF+ exit
+   then
+   meta H-BLOB @ XTOFF-VALUE-MASK XTOFF+ ;
 
 
 \ Check the whole incoming table before changing any row or publishing counts.
 : ?MERGED-XTOFFS ( -- )
-   S-XTOFFS SEC-AT S-XTOFFS SEC-ROWS A-DSPAN @ S-BLOB ROW-LEN@ ?XTOFFS
+   S-XTOFFS SEC-AT S-XTOFFS SEC-ROWS A-DSPAN @ S-BLOB ROW-LEN@
+   NAME-SECTION$ ?XTOFFS
+   H-NAMES @ S-NAMES ROW-LEN@ + NAME-POOL$ ?NAME-POOL
    S-XTOFFS SEC-ROWS 0 ?do
       S-XTOFFS SEC-AT i XTOFF-ROW * + {: row :}
       row U32@ MERGED-XTOFF-LOC H-DATA-R @ A-DSPAN @ + ?XTOFF-LOC
       row 4 + U32@ MERGED-XTOFF-TARGET
       H-DATA-R @ A-DSPAN @ + H-BLOB @ S-BLOB ROW-LEN@ + ?XTOFF-TARGET
-   loop ;
+   loop
+   NAME-BOUNDARIES-RELEASE 0 NAME-BOUNDARY-LEN ! ;
 
 
 : MERGE-XTOFFS ( -- )
