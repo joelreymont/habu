@@ -22,8 +22,10 @@ public
 ;package
 
 package OBJ
+using CONTENT-KEY
 
-$40000 constant CAP
+\ Cell-backed transient storage can represent this many whole bytes.
+MEM-MAX-N CELL / CELL * constant CAP
 $1000 constant FIELD-CAP
 64 constant HASH-U
 6 constant ROW-BASE
@@ -36,7 +38,7 @@ $1000 constant FIELD-CAP
 97 constant LOW-A
 103 constant LOW-G
 
-create BUF CAP allot
+DYNAMIC-BUFFER STORAGE n
 create DG 40 allot
 
 variable OUT-LEN
@@ -47,6 +49,24 @@ variable COMPILER?
 variable SEEN
 variable FIND-SEEN
 variable LOAD-OFF
+
+: RESERVE ( n -- ) {: bytes:n :}
+   bytes 0 < bytes CAP > or if E-OBJ-CAPACITY throw then
+   bytes CELL / bytes CELL mod 0 > if 1+ then
+   1 max STORAGE-RESERVE ;
+
+: BUF ( -- ptr u8 )
+   0 STORAGE byte-view ;
+
+\ Published slices remain usable as append inputs even if reserve moves BUF.
+: SOURCE-OFF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a BUF - {: off:n :}
+   off 0 < off OUT-LEN @ > or if -1 exit then
+   u 0 < u OUT-LEN @ off - > or if -1 exit then
+   off ;
+
+: SOURCE-PTR ( ptr u8 n -- ptr u8 ) {: a:ptr off:n :}
+   off 0 < if a else BUF off + then ;
 
 : TRUE ( -- bool )
    0 0= ;
@@ -63,7 +83,8 @@ variable LOAD-OFF
 
 : ROOM ( n -- ) {: n:n :}
    n 0 < if E-OBJ-CAPACITY throw then
-   OUT-LEN @ n + CAP > if E-OBJ-CAPACITY throw then ;
+   n CAP OUT-LEN @ - > if E-OBJ-CAPACITY throw then
+   OUT-LEN @ n + RESERVE ;
 
 : C+ ( n -- ) {: c:n :}
    1 ROOM
@@ -73,8 +94,9 @@ variable LOAD-OFF
    OUT-LEN @ 1+ OUT-LEN ! ;
 
 : BYTES+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SOURCE-OFF {: off:n :}
    u ROOM
-   a BUF OUT-LEN @ + u BYTE-COPY
+   a off SOURCE-PTR BUF OUT-LEN @ + u BYTE-COPY
    OUT-LEN @ u + OUT-LEN ! ;
 
 : LF+ ( -- )
@@ -123,8 +145,7 @@ variable LOAD-OFF
    0 begin dup u < while
       dup a + c@ HEX? 0= if E-OBJ-FIELD throw then
       1+
-   repeat drop
-   a u FIELD+ ;
+   repeat drop ;
 
 : HEX-FIELD ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-OBJ-FIELD throw then
@@ -139,16 +160,19 @@ variable LOAD-OFF
    TAB+ ;
 
 : LINE1 ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n tag:ptr tagu:n :}
+   a u SOURCE-OFF {: off:n :}
    tag tagu TAG+
-   a u FIELD+
+   a off SOURCE-PTR u FIELD+
    LF+ ;
 
 : LINE2 ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: a:ptr u:n b:ptr v:n tag:ptr tagu:n :}
+   a u SOURCE-OFF {: ao:n :}
+   b v SOURCE-OFF {: bo:n :}
    tag tagu TAG+
-   a u FIELD+
+   a ao SOURCE-PTR u FIELD+
    TAB+
-   b v FIELD+
+   b bo SOURCE-PTR v FIELD+
    LF+ ;
 
 : U+ ( n -- ) {: n:n :}
@@ -169,25 +193,30 @@ variable LOAD-OFF
 : HEX-BYTES+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-OBJ-FIELD throw then
    u CAP 2 / > if E-OBJ-CAPACITY throw then
+   a u SOURCE-OFF {: off:n :}
    u 2 * ROOM
+   a off SOURCE-PTR {: src:ptr :}
    0 begin dup u < while
-      dup a + c@ HEX-BYTE+
+      dup src + c@ HEX-BYTE+
       1+
    repeat drop ;
 
 : LINE3N ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: a:ptr u:n off:n b:ptr v:n tag:ptr tagu:n :}
+   a u SOURCE-OFF {: ao:n :}
+   b v SOURCE-OFF {: bo:n :}
    tag tagu TAG+
-   a u FIELD+
+   a ao SOURCE-PTR u FIELD+
    TAB+
    off U+
    TAB+
-   b v FIELD+
+   b bo SOURCE-PTR v FIELD+
    LF+ ;
 
 : SECTION+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n tag:ptr tagu:n :}
+   a u SOURCE-OFF {: off:n :}
    tag tagu TAG+
-   a u HEX-BYTES+
+   a off SOURCE-PTR u HEX-BYTES+
    LF+ ;
 
 : LINE-VALID ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -373,13 +402,16 @@ private
 public
 
 : RESET ( -- )
+   1 RESERVE
    CLEAR
    MAGIC+ ;
 
 : SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u HASH-FIELD
+   a u SOURCE-OFF {: off:n :}
    SOURCE? FLAG!
    s" source" TAG+
-   a u HASH-FIELD
+   a off SOURCE-PTR u BYTES+
    LF+ ;
 
 : TARGET! ( ptr u8 n -- )
@@ -449,6 +481,7 @@ public
    s" compiler" HEADER$ ;
 
 : MAX-BYTES ( -- n )
+   \ Representable extent, not a suggested allocation size.
    CAP ;
 
 : ROW-COUNT ( -- n )
@@ -469,6 +502,8 @@ public
 : LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    u CAP > if E-OBJ-CAPACITY throw then
    a u END-LF
+   \ Validation only reads the input, including when it is our own BYTES$.
+   a u SOURCE-OFF {: off:n :}
    CLEAR
    0 LOAD-OFF !
    a u NEXT-LINE MATCH option
@@ -484,16 +519,18 @@ public
       PARSE-LINE
    repeat
    READY
-   a BUF u BYTE-COPY
+   u RESERVE
+   a off SOURCE-PTR BUF u BYTE-COPY
    u OUT-LEN ! ;
 
 : KEY-HEX ( ptr u8 -- ) {: dst:ptr :}
    BYTES$ DG SHA256
    CONTENT-KEY:OPEN
    s" habu-object-record-key" CONTENT-KEY:TEXT+
-   DG CONTENT-KEY:DIGEST+
-   dst CONTENT-KEY:FINAL-HEX ;
+   DG DIGEST+
+   dst FINAL-HEX ;
 
+;using
 ;package
 
 OBJ:RESET

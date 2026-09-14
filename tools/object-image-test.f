@@ -14,6 +14,8 @@ require lib/object-link.f
 require tools/object-image.f
 
 package OBJIMG-TEST
+using OBJ
+using OBJIMG
 
 1024 constant CAP
 5000 constant TIMEOUT-MS
@@ -25,6 +27,8 @@ create EXE FS-PATH-CAP allot
 
 variable ROOT-U
 variable EXE-U
+$81000 constant PADDING-U
+DYNAMIC-BUFFER PADDING n
 
 : ROOT$ ( -- ptr u8 n )
    ROOT ROOT-U @ ;
@@ -47,20 +51,20 @@ variable EXE-U
 
 : BUILD-EXIT-OBJ ( -- )
    OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   s" host-aarch64" OBJ:TARGET!
-   s" checker-effect-v1" OBJ:CHECKER!
-   s" hb-arm64-v1" OBJ:COMPILER!
+   HASH$ SOURCE!
+   s" host-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   s" hb-arm64-v1" COMPILER!
    ASM-INIT
    0 0 MOVZ,
    NR-EXIT-GROUP SYS,
-   CODE ASM-LEN OBJ:TEXT+
-   s" MAIN" s" --" OBJ:EXPORT+
-   s" MAIN" 0 s" --" OBJ:DEF+ ;
+   CODE ASM-LEN TEXT+
+   s" MAIN" s" --" EXPORT+
+   s" MAIN" 0 s" --" DEF+ ;
 
 : WRITE-IMAGE ( -- )
    OBJIMG:RESET
-   OBJIMG:ADD
+   ADD
    EXE$ OBJIMG:WRITE
    EXE$ FILE? TTRUE ;
 
@@ -82,14 +86,24 @@ variable EXE-U
    outu 0 T=
    erru 0 T= ;
 
+: LARGE-IMAGE ( -- )
+   BUILD-EXIT-OBJ
+   PADDING-U CELL / PADDING-RESERVE
+   \ The exit stub runs before this zero-filled, unreachable payload.
+   0 PADDING byte-view PADDING-U TEXT+
+   WRITE-IMAGE
+   EXE$ FILE-SIZE PADDING-U > TTRUE
+   RUN-IMAGE
+   PADDING-RELEASE ;
+
 : EMPTY-FAILS ( -- )
    OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   s" host-aarch64" OBJ:TARGET!
-   s" checker-effect-v1" OBJ:CHECKER!
-   s" hb-arm64-v1" OBJ:COMPILER!
+   HASH$ SOURCE!
+   s" host-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   s" hb-arm64-v1" COMPILER!
    OBJIMG:RESET
-   OBJIMG:ADD
+   ADD
    [: EXE$ OBJIMG:WRITE ;] E-OBJ-SCHEMA TTHROWSQ ;
 
 public
@@ -100,10 +114,13 @@ public
    BUILD-EXIT-OBJ
    WRITE-IMAGE
    RUN-IMAGE
+   LARGE-IMAGE
    EMPTY-FAILS
    CLEANUP-RUN
    T-REPORT ;
 
+;using
+;using
 ;package
 
 OBJIMG-TEST:MAIN

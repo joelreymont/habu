@@ -11,6 +11,7 @@ require lib/content-key.f
 require lib/object.f
 
 package OBJSTORE
+using OBJ
 
 64 constant KEY-U
 4 constant SUFFIX-U
@@ -27,7 +28,7 @@ create KEY-BUF 80 allot
 
 variable ROOT-U
 variable PATH-U
-variable READ-BUF-A
+DYNAMIC-BUFFER READ-STORAGE n
 
 : TRUE ( -- bool )
    0 0= ;
@@ -67,23 +68,13 @@ variable READ-BUF-A
    NAME! {: name:ptr nameu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF JOIN-PATH PATH-U ! ;
 
-: READ-BUF-FIELD ( -- ptr ptr u8 )
-   READ-BUF-A 0 ptr-field ;
+: READ-ROOM ( n -- ) {: bytes:n :}
+   bytes 0 < bytes MAX-BYTES > or if E-OBJ-CAPACITY throw then
+   bytes CELL / bytes CELL mod 0 > if 1+ then
+   1 max READ-STORAGE-RESERVE ;
 
-: READ-BUF@ ( -- ptr u8 )
-   READ-BUF-FIELD @ ;
-
-: READ-BUF! ( ptr u8 -- )
-   READ-BUF-FIELD ! ;
-
-\ OBJ:MAX-BYTES is a positive library constant: MEM:BYTES-ALLOC-LEN narrows the raw
-\ size to the validated alloc role before MEM:ALLOC-BYTES, throwing E-MEM-SIZE on
-\ any refusal (unreachable for the constant).
 : READ-BUF ( -- ptr u8 )
-   READ-BUF@ 0= if
-      OBJ:MAX-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop READ-BUF!
-   then
-   READ-BUF@ ;
+   0 READ-STORAGE byte-view ;
 
 public
 
@@ -105,18 +96,22 @@ public
    PATH$ FILE? ;
 
 : STORE ( -- ptr u8 n )
-   OBJ:BYTES$ {: obj:ptr obju:n :}
-   KEY-BUF OBJ:KEY-HEX
+   BYTES$ {: obj:ptr obju:n :}
+   KEY-BUF KEY-HEX
    ROOT$ MAKE-DIRS
    KEY-BUF KEY-U PATH!
    PATH-BUF PATH-U @ obj obju ATOMIC-WRITE-FILE
    KEY-BUF KEY-U ;
 
 : LOAD ( ptr u8 n -- ) {: key:ptr keyu:n :}
-   key keyu PATH$
-   READ-BUF OBJ:MAX-BYTES READ-ALL {: u:n :}
+   key keyu PATH$ 2dup FILE? 0= if 2drop E-FS-OPEN throw then
+   FILE-SIZE {: size:n :}
+   size READ-ROOM
+   PATH-BUF PATH-U @ READ-BUF size READ-ALL {: u:n :}
    READ-BUF u OBJ:LOAD
-   KEY-BUF OBJ:KEY-HEX
-   KEY-BUF KEY-U key keyu STR= 0= if E-OBJ-SCHEMA throw then ;
+   KEY-BUF KEY-HEX
+   \ PATH! preserved the requested key; the caller may hold STORE's KEY-BUF.
+   KEY-BUF KEY-U NAME-BUF KEY-U STR= 0= if E-OBJ-SCHEMA throw then ;
 
+;using
 ;package

@@ -11,12 +11,12 @@ require lib/content-key.f
 require lib/object.f
 
 package OBJLINK
+using OBJ
 
 32 constant MAX-SYMS
 64 constant MAX-RELOCS
 32 constant MAX-OBJS
 $4000 constant SYM-CAP
-$10000 constant MERGE-CAP
 8 constant ABS64-U
 65 constant HEX-UP-A
 71 constant HEX-UP-G
@@ -24,8 +24,8 @@ $10000 constant MERGE-CAP
 103 constant HEX-LOW-G
 
 create SYM-BUF SYM-CAP allot
-create TEXT-BUF MERGE-CAP allot
-create DATA-BUF MERGE-CAP allot
+DYNAMIC-BUFFER TEXT-STORAGE n
+DYNAMIC-BUFFER DATA-STORAGE n
 create PKG-OFFS MAX-SYMS cells allot
 create PKG-US MAX-SYMS cells allot
 create PKG-VIS-OFFS MAX-SYMS cells allot
@@ -79,6 +79,17 @@ variable CUR-DATA
 variable APP-TEXT
 variable APP-DATA
 
+: TEXT-BUF ( -- ptr u8 )
+   0 TEXT-STORAGE byte-view ;
+
+: DATA-BUF ( -- ptr u8 )
+   0 DATA-STORAGE byte-view ;
+
+: SIZE-CELLS ( n -- n ) {: bytes:n :}
+   bytes 0 < bytes MAX-BYTES > or if E-OBJ-CAPACITY throw then
+   bytes CELL / bytes CELL mod 0 > if 1+ then
+   1 max ;
+
 : TRUE ( -- bool )
    0 0= ;
 
@@ -86,6 +97,8 @@ variable APP-DATA
    TRUE 0= ;
 
 : CLEAR ( -- )
+   1 TEXT-STORAGE-RESERVE
+   1 DATA-STORAGE-RESERVE
    0 SYM-U !
    0 PKG-N !
    0 REQ-N !
@@ -245,7 +258,7 @@ variable APP-DATA
 
 : SYM-ROOM ( n -- ) {: u:n :}
    u 0 <= if E-OBJ-FIELD throw then
-   SYM-U @ u + SYM-CAP > if E-OBJ-CAPACITY throw then ;
+   u SYM-CAP SYM-U @ - > if E-OBJ-CAPACITY throw then ;
 
 : SYM+ ( ptr u8 n -- n ) {: a:ptr u:n :}
    u SYM-ROOM
@@ -254,9 +267,11 @@ variable APP-DATA
    off u + SYM-U !
    off ;
 
-: MERGE-ROOM ( n n -- ) {: have:n add:n :}
+: MERGE-SIZE ( n n -- n ) {: have:n add:n :}
    add 0 < if E-OBJ-CAPACITY throw then
-   have add + MERGE-CAP > if E-OBJ-CAPACITY throw then ;
+   have 0 < have MAX-BYTES > or if E-OBJ-CAPACITY throw then
+   add MAX-BYTES have - > if E-OBJ-CAPACITY throw then
+   have add + ;
 
 : EXPORT-ROOM ( -- )
    EXP-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
@@ -480,7 +495,7 @@ variable APP-DATA
    off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
 
 : ROW-OFF ( n n -- n ) {: row:n field:n :}
-   row field OBJ:ROW-FIELD$ STR>NUMBER? MATCH option
+   row field ROW-FIELD$ STR>NUMBER? MATCH option
      none OF E-OBJ-FIELD throw ENDOF
      some OF ENDOF
    ;MATCH ;
@@ -488,75 +503,75 @@ variable APP-DATA
 : ADD-DEF ( n -- ) {: row:n :}
    row 1 ROW-OFF {: off:n :}
    off TEXT-OFF-CHECK
-   row 0 OBJ:ROW-FIELD$
-   row 2 OBJ:ROW-FIELD$
+   row 0 ROW-FIELD$
+   row 2 ROW-FIELD$
    TEXT-U @ off + DEF+ ;
 
 : ADD-RELOC ( n -- ) {: row:n :}
    row 1 ROW-OFF {: off:n :}
    off TEXT-OFF-CHECK
-   row 0 OBJ:ROW-FIELD$
-   row 2 OBJ:ROW-FIELD$
+   row 0 ROW-FIELD$
+   row 2 ROW-FIELD$
    TEXT-U @ off + REL+ ;
 
 : APPEND-TEXT ( n -- ) {: row:n :}
-   row 0 OBJ:ROW-FIELD$ {: a:ptr u:n :}
+   row 0 ROW-FIELD$ {: a:ptr u:n :}
    u 2 / {: bytes:n :}
    a u TEXT-BUF TEXT-U @ APP-TEXT @ + HEX>BUF
    APP-TEXT @ bytes + APP-TEXT ! ;
 
 : APPEND-DATA ( n -- ) {: row:n :}
-   row 0 OBJ:ROW-FIELD$ {: a:ptr u:n :}
+   row 0 ROW-FIELD$ {: a:ptr u:n :}
    u 2 / {: bytes:n :}
    a u DATA-BUF DATA-U @ APP-DATA @ + HEX>BUF
    APP-DATA @ bytes + APP-DATA ! ;
 
 : APPEND-ROW ( n -- ) {: row:n :}
-   row OBJ:ROW-TAG$ s" text" STR= if row APPEND-TEXT exit then
-   row OBJ:ROW-TAG$ s" data" STR= if row APPEND-DATA exit then ;
+   row ROW-TAG$ s" text" STR= if row APPEND-TEXT exit then
+   row ROW-TAG$ s" data" STR= if row APPEND-DATA exit then ;
 
 : ADD-ROW ( n -- ) {: row:n :}
-   row OBJ:ROW-TAG$ s" package" STR= if
-      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ PKG+
+   row ROW-TAG$ s" package" STR= if
+      row 0 ROW-FIELD$ row 1 ROW-FIELD$ PKG+
       exit
    then
-   row OBJ:ROW-TAG$ s" require" STR= if
-      row 0 OBJ:ROW-FIELD$ REQ+
+   row ROW-TAG$ s" require" STR= if
+      row 0 ROW-FIELD$ REQ+
       exit
    then
-   row OBJ:ROW-TAG$ s" type" STR= if
-      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ TYPE+
+   row ROW-TAG$ s" type" STR= if
+      row 0 ROW-FIELD$ row 1 ROW-FIELD$ TYPE+
       exit
    then
-   row OBJ:ROW-TAG$ s" noret" STR= if
-      row 0 OBJ:ROW-FIELD$ NORET+
+   row ROW-TAG$ s" noret" STR= if
+      row 0 ROW-FIELD$ NORET+
       exit
    then
-   row OBJ:ROW-TAG$ s" export" STR= if
-      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ EXP+
+   row ROW-TAG$ s" export" STR= if
+      row 0 ROW-FIELD$ row 1 ROW-FIELD$ EXP+
       exit
    then
-   row OBJ:ROW-TAG$ s" import" STR= if
-      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ IMP+
+   row ROW-TAG$ s" import" STR= if
+      row 0 ROW-FIELD$ row 1 ROW-FIELD$ IMP+
       exit
    then
-   row OBJ:ROW-TAG$ s" def" STR= if
+   row ROW-TAG$ s" def" STR= if
       row ADD-DEF
       exit
    then
-   row OBJ:ROW-TAG$ s" reloc" STR= if
+   row ROW-TAG$ s" reloc" STR= if
       row ADD-RELOC
       exit
    then ;
 
 : SECTION-ROOM ( -- )
-   TEXT-U @ CUR-TEXT @ MERGE-ROOM
-   DATA-U @ CUR-DATA @ MERGE-ROOM ;
+   TEXT-U @ CUR-TEXT @ MERGE-SIZE SIZE-CELLS TEXT-STORAGE-RESERVE
+   DATA-U @ CUR-DATA @ MERGE-SIZE SIZE-CELLS DATA-STORAGE-RESERVE ;
 
 : APPEND-SECTIONS ( -- )
    0 APP-TEXT !
    0 APP-DATA !
-   0 begin dup OBJ:ROW-COUNT < while
+   0 begin dup ROW-COUNT < while
       dup APPEND-ROW
       1+
    repeat drop
@@ -569,27 +584,27 @@ variable APP-DATA
    idx IMP-EFF$ exp EXP-EFF$ STR= ;
 
 : ROW-TAG= ( n ptr u8 n -- bool ) {: row:n tag:ptr tagu:n :}
-   row OBJ:ROW-TAG$ tag tagu STR= ;
+   row ROW-TAG$ tag tagu STR= ;
 
 : ROW-HEX-U ( n -- n ) {: row:n :}
-   row 0 OBJ:ROW-FIELD$ nip {: hexu:n :}
+   row 0 ROW-FIELD$ nip {: hexu:n :}
    hexu 1 and 0 <> if E-OBJ-FIELD throw then
    hexu 2 / ;
 
 : SIZE-ROW ( n -- ) {: row:n :}
    row s" text" ROW-TAG= if
-      CUR-TEXT @ row ROW-HEX-U + CUR-TEXT !
+      CUR-TEXT @ row ROW-HEX-U MERGE-SIZE CUR-TEXT !
       exit
    then
    row s" data" ROW-TAG= if
-      CUR-DATA @ row ROW-HEX-U + CUR-DATA !
+      CUR-DATA @ row ROW-HEX-U MERGE-SIZE CUR-DATA !
       exit
    then ;
 
 : SCAN-SIZES ( -- )
    0 CUR-TEXT !
    0 CUR-DATA !
-   0 begin dup OBJ:ROW-COUNT < while
+   0 begin dup ROW-COUNT < while
       dup SIZE-ROW
       1+
    repeat drop ;
@@ -621,7 +636,8 @@ variable APP-DATA
 : TEXT-RANGE ( n n -- ) {: off:n u:n :}
    off 0 < if E-OBJ-SCHEMA throw then
    u 0 < if E-OBJ-SCHEMA throw then
-   off u + TEXT-U @ > if E-OBJ-SCHEMA throw then ;
+   off TEXT-U @ > if E-OBJ-SCHEMA throw then
+   u TEXT-U @ off - > if E-OBJ-SCHEMA throw then ;
 
 : TEXT-U8! ( n n -- ) {: val:n off:n :}
    val STR-BYTE-MAX and TEXT-BUF off + c! ;
@@ -779,7 +795,7 @@ public
 : ADD ( -- )
    SCAN-SIZES
    SECTION-ROOM
-   0 begin dup OBJ:ROW-COUNT < while
+   0 begin dup ROW-COUNT < while
       dup ADD-ROW
       1+
    repeat drop
@@ -797,4 +813,5 @@ public
    CHECK
    APPLY-RELOCS ;
 
+;using
 ;package

@@ -12,6 +12,8 @@ require lib/object.f
 require lib/object-cache.f
 
 package OBJSTORE-TEST
+using OBJ
+using OBJSTORE
 
 64 constant KEY-U
 
@@ -26,16 +28,16 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
    s" 0000000000000000000000000000000000000000000000000000000000000000" ;
 
 : SETUP ( -- )
-   s" habu-object-cache" TMPDIR-MKDIR 2dup CLEANUP-TREE+ OBJSTORE:ROOT! ;
+   s" habu-object-cache" TMPDIR-MKDIR 2dup CLEANUP-TREE+ ROOT! ;
 
 : BUILD ( -- )
-   OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   s" macos-aarch64" OBJ:TARGET!
-   s" checker-effect-v1" OBJ:CHECKER!
-   s" hb-arm64-v1" OBJ:COMPILER!
-   TEXT-BYTES 3 OBJ:TEXT+
-   s" SQUARE" s" n -- n" OBJ:EXPORT+ ;
+   RESET
+   HASH$ SOURCE!
+   s" macos-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   s" hb-arm64-v1" COMPILER!
+   TEXT-BYTES 3 TEXT+
+   s" SQUARE" s" n -- n" EXPORT+ ;
 
 : COPY-KEY1 ( ptr u8 n -- )
    KEY-U T=
@@ -43,38 +45,46 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
 
 : STORE-LOADS ( -- )
    BUILD
-   OBJSTORE:STORE COPY-KEY1
+   STORE COPY-KEY1
    KEY1 KEY-U OBJSTORE:EXISTS? TTRUE
-   KEY1 KEY-U OBJSTORE:PATH$ s" .hbo" ENDS-WITH? TTRUE
+   KEY1 KEY-U PATH$ s" .hbo" ENDS-WITH? TTRUE
    KEY1 KEY-U OBJSTORE:LOAD
-   OBJ:ROW-COUNT 6 T=
-   4 OBJ:ROW-TAG$ s" text" T$=
-   5 OBJ:ROW-TAG$ s" export" T$=
-   KEY2 OBJ:KEY-HEX
+   ROW-COUNT 6 T=
+   4 ROW-TAG$ s" text" T$=
+   5 ROW-TAG$ s" export" T$=
+   KEY2 KEY-HEX
    KEY1 KEY-U KEY2 KEY-U T$= ;
 
 : STORES-ATOMIC-OVERWRITE ( -- )
    BUILD
-   OBJSTORE:STORE COPY-KEY1
+   STORE COPY-KEY1
    BUILD
-   OBJSTORE:STORE 2drop
+   STORE 2drop
    KEY1 KEY-U OBJSTORE:LOAD
-   OBJ:ROW-COUNT 6 T= ;
+   ROW-COUNT 6 T= ;
 
 : WRITE-BAD-FILE ( -- )
-   BADKEY$ OBJSTORE:PATH$ s" not-an-object\n" WRITE-ALL ;
+   BADKEY$ PATH$ s" not-an-object\n" WRITE-ALL ;
 
 : WRITE-WRONG-KEY-FILE ( -- )
    BUILD
-   BADKEY$ OBJSTORE:PATH$ OBJ:BYTES$ WRITE-ALL ;
+   BADKEY$ PATH$ BYTES$ WRITE-ALL ;
+
+: LOAD-RETURNED-KEY ( -- )
+   BUILD
+   STORE {: key:ptr keyu:n :}
+   TEXT-BYTES 3 DATA+
+   key keyu PATH$ BYTES$ WRITE-ALL
+   key keyu OBJSTORE:LOAD ;
 
 : FAILURES ( -- )
-   [: s" nope" OBJSTORE:PATH$ 2drop ;] E-OBJ-FIELD TTHROWSQ
+   [: s" nope" PATH$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    [: BADKEY$ OBJSTORE:LOAD ;] E-FS-OPEN TTHROWSQ
    WRITE-BAD-FILE
    [: BADKEY$ OBJSTORE:LOAD ;] E-OBJ-SCHEMA TTHROWSQ
    WRITE-WRONG-KEY-FILE
-   [: BADKEY$ OBJSTORE:LOAD ;] E-OBJ-SCHEMA TTHROWSQ ;
+   [: BADKEY$ OBJSTORE:LOAD ;] E-OBJ-SCHEMA TTHROWSQ
+   [: LOAD-RETURNED-KEY ;] E-OBJ-SCHEMA TTHROWSQ ;
 
 public
 
@@ -87,6 +97,8 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
+;using
+;using
 ;package
 
 OBJSTORE-TEST:MAIN

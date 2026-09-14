@@ -10,6 +10,7 @@ require lib/content-key.f
 require lib/object.f
 
 package OBJ-TEST
+using OBJ
 
 64 constant KEY-U
 
@@ -54,29 +55,29 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    SB$ ;
 
 : BUILD ( -- )
-   OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   s" macos-aarch64" OBJ:TARGET!
-   s" checker-effect-v1" OBJ:CHECKER!
-   s" hb-arm64-v1" OBJ:COMPILER!
-   s" lib/string.f" OBJ:REQUIRE+
-   TEXT-BYTES 3 OBJ:TEXT+
-   DATA-BYTES 3 OBJ:DATA+
-   s" OBJ" s" public" OBJ:PACKAGE+
-   s" SQUARE" s" n -- n" OBJ:EXPORT+
-   s" SQUARE" 1 s" n -- n" OBJ:DEF+
-   s" PRINT" s" ptr u8 n --" OBJ:IMPORT+
-   s" abs64" 16 s" PRINT" OBJ:RELOC+
-   s" count" s" nominal" OBJ:TYPE+
-   s" DIE" OBJ:NORET+ ;
+   RESET
+   HASH$ SOURCE!
+   s" macos-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   s" hb-arm64-v1" COMPILER!
+   s" lib/string.f" REQUIRE+
+   TEXT-BYTES 3 TEXT+
+   DATA-BYTES 3 DATA+
+   s" OBJ" s" public" PACKAGE+
+   s" SQUARE" s" n -- n" EXPORT+
+   s" SQUARE" 1 s" n -- n" DEF+
+   s" PRINT" s" ptr u8 n --" IMPORT+
+   s" abs64" 16 s" PRINT" RELOC+
+   s" count" s" nominal" TYPE+
+   s" DIE" NORET+ ;
 
 : SERIALIZES ( -- )
    BUILD
-   OBJ:BYTES$ EXPECTED$ T$= ;
+   BYTES$ EXPECTED$ T$= ;
 
 : LOAD-ROUNDTRIP ( -- )
-   EXPECTED$ OBJ:LOAD
-   OBJ:BYTES$ EXPECTED$ T$= ;
+   EXPECTED$ LOAD
+   BYTES$ EXPECTED$ T$= ;
 
 : LINE-ROUNDTRIP ( -- )
    s" object-line" OBJ-LINE:MAKE
@@ -85,102 +86,107 @@ create DATA-BYTES 1 c, 2 c, 16 c,
 
 : HEADERS ( -- )
    BUILD
-   OBJ:SOURCE$ HASH$ T$=
-   OBJ:TARGET$ s" macos-aarch64" T$=
-   OBJ:CHECKER$ s" checker-effect-v1" T$=
-   OBJ:COMPILER$ s" hb-arm64-v1" T$=
-   EXPECTED$ OBJ:LOAD
-   OBJ:SOURCE$ HASH$ T$=
-   OBJ:TARGET$ s" macos-aarch64" T$=
-   OBJ:CHECKER$ s" checker-effect-v1" T$=
-   OBJ:COMPILER$ s" hb-arm64-v1" T$= ;
+   SOURCE$ HASH$ T$=
+   TARGET$ s" macos-aarch64" T$=
+   CHECKER$ s" checker-effect-v1" T$=
+   COMPILER$ s" hb-arm64-v1" T$=
+   EXPECTED$ LOAD
+   SOURCE$ HASH$ T$=
+   TARGET$ s" macos-aarch64" T$=
+   CHECKER$ s" checker-effect-v1" T$=
+   COMPILER$ s" hb-arm64-v1" T$= ;
 
 : KEY-STABLE ( -- )
    BUILD
-   KEY1 OBJ:KEY-HEX
-   EXPECTED$ OBJ:LOAD
-   KEY2 OBJ:KEY-HEX
+   KEY1 KEY-HEX
+   EXPECTED$ LOAD
+   KEY2 KEY-HEX
    KEY1 KEY-U KEY2 KEY-U T$= ;
 
 : KEY-CHANGES ( -- )
-   OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   s" linux-aarch64" OBJ:TARGET!
-   s" checker-effect-v1" OBJ:CHECKER!
-   s" hb-arm64-v1" OBJ:COMPILER!
-   KEY2 OBJ:KEY-HEX
+   RESET
+   HASH$ SOURCE!
+   s" linux-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   s" hb-arm64-v1" COMPILER!
+   KEY2 KEY-HEX
    KEY1 KEY-U KEY2 KEY-U T$<> ;
 
 : MAX-BYTES-PUBLISHED ( -- )
-   OBJ:MAX-BYTES 0 > TTRUE ;
+   MAX-BYTES $40000 > TTRUE ;
+
+: SIZE-OVERFLOW-FAILS ( -- )
+   [: TEXT-BYTES MAX-BYTES 2 / 1+ TEXT+ ;] E-OBJ-CAPACITY TTHROWSQ
+   [: TEXT-BYTES MAX-BYTES 2 / DATA+ ;] E-OBJ-CAPACITY TTHROWSQ
+   [: TEXT-BYTES MAX-BYTES 1+ LOAD ;] E-OBJ-CAPACITY TTHROWSQ ;
 
 : ROW-ACCESSORS ( -- )
    BUILD
-   OBJ:ROW-COUNT 14 T=
-   0 OBJ:ROW$ SOURCE-ROW$ T$=
-   0 OBJ:ROW-TAG$ s" source" T$=
-   0 OBJ:ROW-FIELD# 1 T=
-   0 0 OBJ:ROW-FIELD$ HASH$ T$=
-   5 OBJ:ROW-TAG$ s" text" T$=
-   5 0 OBJ:ROW-FIELD$ s" 007fff" T$=
-   6 OBJ:ROW-TAG$ s" data" T$=
-   6 0 OBJ:ROW-FIELD$ s" 010210" T$=
-   9 OBJ:ROW-TAG$ s" def" T$=
-   9 OBJ:ROW-FIELD# 3 T=
-   9 0 OBJ:ROW-FIELD$ s" SQUARE" T$=
-   9 1 OBJ:ROW-FIELD$ s" 1" T$=
-   9 2 OBJ:ROW-FIELD$ s" n -- n" T$=
-   11 OBJ:ROW-TAG$ s" reloc" T$=
-   11 OBJ:ROW-FIELD# 3 T=
-   11 0 OBJ:ROW-FIELD$ s" abs64" T$=
-   11 1 OBJ:ROW-FIELD$ s" 16" T$=
-   11 2 OBJ:ROW-FIELD$ s" PRINT" T$= ;
+   ROW-COUNT 14 T=
+   0 ROW$ SOURCE-ROW$ T$=
+   0 ROW-TAG$ s" source" T$=
+   0 ROW-FIELD# 1 T=
+   0 0 ROW-FIELD$ HASH$ T$=
+   5 ROW-TAG$ s" text" T$=
+   5 0 ROW-FIELD$ s" 007fff" T$=
+   6 ROW-TAG$ s" data" T$=
+   6 0 ROW-FIELD$ s" 010210" T$=
+   9 ROW-TAG$ s" def" T$=
+   9 ROW-FIELD# 3 T=
+   9 0 ROW-FIELD$ s" SQUARE" T$=
+   9 1 ROW-FIELD$ s" 1" T$=
+   9 2 ROW-FIELD$ s" n -- n" T$=
+   11 ROW-TAG$ s" reloc" T$=
+   11 ROW-FIELD# 3 T=
+   11 0 ROW-FIELD$ s" abs64" T$=
+   11 1 ROW-FIELD$ s" 16" T$=
+   11 2 ROW-FIELD$ s" PRINT" T$= ;
 
 create ENTRY-SCRATCH 1024 allot
 variable ENTRY-SCRATCH-U
 
 : ENTRY-BUILD ( -- )
-   OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   s" macos-aarch64" OBJ:TARGET!
-   s" checker-effect-v1" OBJ:CHECKER!
-   s" hb-arm64-v1" OBJ:COMPILER!
-   TEXT-BYTES 3 OBJ:TEXT+
-   s" HLP" s" --" OBJ:EXPORT+
-   s" HLP" 0 s" --" OBJ:DEF+
-   s" HLP" 1 s" 0000000000000005" OBJ:ENTRY+ ;
+   RESET
+   HASH$ SOURCE!
+   s" macos-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   s" hb-arm64-v1" COMPILER!
+   TEXT-BYTES 3 TEXT+
+   s" HLP" s" --" EXPORT+
+   s" HLP" 0 s" --" DEF+
+   s" HLP" 1 s" 0000000000000005" ENTRY+ ;
 
 : ENTRY-ASSERT-ROW ( -- )                         \ row 7: source/target/checker/compiler/text/export/def/entry
-   7 OBJ:ROW-TAG$ s" entry" T$=
-   7 OBJ:ROW-FIELD# 3 T=
-   7 0 OBJ:ROW-FIELD$ s" HLP" T$=
-   7 1 OBJ:ROW-FIELD$ s" 1" T$=
-   7 2 OBJ:ROW-FIELD$ s" 0000000000000005" T$= ;
+   7 ROW-TAG$ s" entry" T$=
+   7 ROW-FIELD# 3 T=
+   7 0 ROW-FIELD$ s" HLP" T$=
+   7 1 ROW-FIELD$ s" 1" T$=
+   7 2 ROW-FIELD$ s" 0000000000000005" T$= ;
 
 \ A selected non-MAIN entry row (name, test mode, forged seed hex) emits, and
 \ re-parses from a serialized copy with a stable content key (item 10 slice 5).
 : ENTRY-ROW ( -- )
    ENTRY-BUILD
    ENTRY-ASSERT-ROW
-   KEY1 OBJ:KEY-HEX
-   OBJ:BYTES$ dup ENTRY-SCRATCH-U ! ENTRY-SCRATCH swap BYTE-COPY
-   ENTRY-SCRATCH ENTRY-SCRATCH-U @ OBJ:LOAD
-   KEY2 OBJ:KEY-HEX
+   KEY1 KEY-HEX
+   BYTES$ dup ENTRY-SCRATCH-U ! ENTRY-SCRATCH swap BYTE-COPY
+   ENTRY-SCRATCH ENTRY-SCRATCH-U @ LOAD
+   KEY2 KEY-HEX
    KEY1 KEY-U KEY2 KEY-U T$=
    ENTRY-ASSERT-ROW ;
 
 : BAD-TAB ( -- )
-   OBJ:RESET
-   s" bad	name" OBJ:REQUIRE+ ;
+   RESET
+   s" bad	name" REQUIRE+ ;
 
 : DUP-SOURCE ( -- )
-   OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   HASH$ OBJ:SOURCE! ;
+   RESET
+   HASH$ SOURCE!
+   HASH$ SOURCE! ;
 
 : BAD-HASH ( -- )
-   OBJ:RESET
-   s" not-a-hash" OBJ:SOURCE! ;
+   RESET
+   s" not-a-hash" SOURCE! ;
 
 : BAD-RELOC ( -- )
    s" HBOBJ
@@ -189,7 +195,7 @@ target	macos-aarch64
 checker	checker-effect-v1
 compiler	hb-arm64-v1
 reloc	abs64	nope	PRINT
-" OBJ:LOAD ;
+" LOAD ;
 
 : BAD-SECTION ( -- )
    s" HBOBJ
@@ -198,7 +204,7 @@ target	macos-aarch64
 checker	checker-effect-v1
 compiler	hb-arm64-v1
 text	00x
-" OBJ:LOAD ;
+" LOAD ;
 
 : BAD-DEF ( -- )
    s" HBOBJ
@@ -207,25 +213,25 @@ target	macos-aarch64
 checker	checker-effect-v1
 compiler	hb-arm64-v1
 def	WORD	nope	n -- n
-" OBJ:LOAD ;
+" LOAD ;
 
 : EMPTY-INPUT ( -- )
-   s" " OBJ:LOAD ;
+   s" " LOAD ;
 
 : ONE-LINE-INPUT ( -- )
    s" HBOBJ
-" OBJ:LOAD ;
+" LOAD ;
 
 : BAD-MAGIC ( -- )
    s" BADOBJ
-" OBJ:LOAD ;
+" LOAD ;
 
 : MISSING-HEADER ( -- )
-   OBJ:RESET
-   HASH$ OBJ:SOURCE!
-   s" macos-aarch64" OBJ:TARGET!
-   s" checker-effect-v1" OBJ:CHECKER!
-   OBJ:BYTES$ 2drop ;
+   RESET
+   HASH$ SOURCE!
+   s" macos-aarch64" TARGET!
+   s" checker-effect-v1" CHECKER!
+   BYTES$ 2drop ;
 
 : FAILURES ( -- )
    [: BAD-TAB ;] E-OBJ-FIELD TTHROWSQ
@@ -237,9 +243,9 @@ def	WORD	nope	n -- n
    [: EMPTY-INPUT ;] E-OBJ-SCHEMA TTHROWSQ
    [: ONE-LINE-INPUT ;] E-OBJ-SCHEMA TTHROWSQ
    [: BAD-MAGIC ;] E-OBJ-SCHEMA TTHROWSQ
-   [: BUILD 99 OBJ:ROW$ 2drop ;] E-OBJ-FIELD TTHROWSQ
-   [: BUILD 0 -1 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
-   [: BUILD 0 99 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
+   [: BUILD 99 ROW$ 2drop ;] E-OBJ-FIELD TTHROWSQ
+   [: BUILD 0 -1 ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
+   [: BUILD 0 99 ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    [: MISSING-HEADER ;] E-OBJ-SCHEMA TTHROWSQ ;
 
 public
@@ -253,11 +259,13 @@ public
    KEY-STABLE
    KEY-CHANGES
    MAX-BYTES-PUBLISHED
+   SIZE-OVERFLOW-FAILS
    ROW-ACCESSORS
    ENTRY-ROW
    FAILURES
    T-REPORT ;
 
+;using
 ;package
 
 OBJ-TEST:MAIN
