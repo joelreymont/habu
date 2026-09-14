@@ -971,6 +971,10 @@ SUITE aot-payload-graph
    test/aot-payload-graph.f
 ;SUITE
 
+SUITE aot-prefix-literal
+   test/aot-prefix-literal.f
+;SUITE
+
 SUITE aot-payload-unsupported
    test/aot-payload-unsupported.f
 ;SUITE

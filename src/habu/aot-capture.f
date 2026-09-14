@@ -1051,10 +1051,9 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ without rewinding DP, so its prefix band has no counterpart in the target and no
 \ delta relates the two -- and it cannot be left, because that bakes the building
 \ host's address into bin/hb. What it CAN be is what a call site already is: a NAME.
-\ The reverse lookup is the same ACAP-TGT>REC the BL scan uses, the name is read the
-\ same way (AOT-RNPTR, so an EXT name travels too), and the seed resolves it with
-\ the same LFIND. ACAP-ADD-XTSITE zeroes the four lanes, so no host address is left
-\ underneath the answer.
+\ The name must resolve to this exact entry in the eligible prefix, using the
+\ same global/public alias check as stored CODE cells. ACAP-ADD-XTSITE zeroes the
+\ four lanes, so no host address is left underneath the seed's answer.
 \
 \ ANYTHING ELSE STILL ENDS THE BUILD, and the two classes cannot be confused. A
 \ pre-window DATA address is the other thing a window word can hold that the spans
@@ -1065,9 +1064,11 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ the named refusal.
 : ACAP-OUT-CHAIN ( n n n n -- ) {: boff:n v:n bstart:n bend:n :}
    v bstart >= v bend < and if exit then          \ in-window code: the CODE sweep rebases it
-   v ACAP-TGT>REC {: k:n :}
-   k 0 < if boff v ACAP-UNCLASSIFIED then         \ no return: the refusal ends the build
-   boff  k AOT-REC AOT-RNPTR  k AOT-REC AOT-RNLEN  ACAP-ADD-XTSITE ;
+   v ACAP-TARGET-NAME? if
+      {: name:ptr size:n :}
+      boff name size ACAP-ADD-XTSITE exit
+   then 2drop
+   boff v ACAP-UNCLASSIFIED ;
 
 \ The DATA half, and the totality check. Every recorded site is classified here:
 \ one in the DATA span is recorded for the boot DATA-reloc pass, and every other

@@ -8299,6 +8299,14 @@ an image that ran saved words but could not compile new ones. Retire transient
 state at its owner and test fresh JIT and native definitions after each restore
 (2026-09-13, 2d9145f2).
 
+Prefix CODE literals need a resolving name for the exact entry, including its
+package and the prefix cut. A reverse dictionary hit alone can select a private
+or retired record, and a public tail can bind a different global after seeding.
+`test/aot-prefix-literal.f` captures checked native source, reads its artifact in
+a new process, and checks exact execution-token identity in a fresh image; the
+public/global collision boots successfully with the wrong callable before the
+shared prefix-name validation is applied (2026-09-14).
+
 `BYTES,` pads each invocation to four bytes. Emit a diagnostic and its newline
 as one string: separate calls put NUL padding inside the bytes sent to stderr.
 The named-address-cell seed test checks the complete message (2026-09-14).
