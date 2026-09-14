@@ -3,7 +3,7 @@ title: Complete source-built stage runtime and callee closure
 status: active
 priority: 2
 issue-type: task
-created-at: "\"\\\"\\\\\\\"2026-09-13T11:05:27.080398+03:00\\\\\\\"\\\"\""
+created-at: "2026-09-13T11:05:27.080398+03:00"
 blocks:
   - habu-track-retained-jit-1dc23a17
   - habu-preserve-complete-addr-258c0288
@@ -89,3 +89,5 @@ owner guard loaded in the excluded tool prelude. Those refusals are preserved
 while their responsible storage/closure layers are repaired. Legacy public
 recovery and generated-certifier ownership are tracked as a2551190/369d625d;
 no new process certifier or BF fixture generation is introduced.
+
+Final current-writer WID result: rc1 at F112, the real unassigned-defer target refusal recorded in 4ccf56d9; no timeout. Its BIG/EXT/PREWIN tail did not run. Root reviewed and integrated d8cba1bf/ca5d7150 as 510c8892/eb97cdea.

@@ -1,9 +1,11 @@
 ---
 title: Keep uncertified engine helpers internal after native compilation
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-09-14T00:49:30.490501+03:00"
+closed-at: "2026-09-14T03:53:49.461762+03:00"
+close-reason: Independent source review and composed M native gate pass the authority/internal-word, payload graph, rollback, native-owner, engine and diagnostic recovery suites; unrelated artifact fixture failures stay on the campaign.
 ---
 
 Owner Cedar. G2 exposed U-TYPE, T-RES, CT-LIVE? and CHECKER-BOUND:CURSORS after native compilation: inferred call shapes were being treated as source authority, and internal-mark recognized only a JIT prologue. The original reproducer is /tmp/cedar-internal-records.f.
@@ -87,3 +89,5 @@ rollback/regrowth, explicit replacement, thrown ABI scope, nested candidates,
 export, actual JIT publication and empty certificates. The compiler still refuses
 an actually failed tier1 body; diagnostic replay's forced publication is the
 existing tier0 hook path. Root owns combined-product/full-gate acceptance.
+
+Composed M full gate (`99caf411`) passes authority, internal-word, payload graph, dead-path, rollback-signature, native owner window, engine and program diagnostics. Entire campaign remains open on the separately reported artifact/recovery failures. Evidence `/tmp/cedar-M-full-suite.log`.

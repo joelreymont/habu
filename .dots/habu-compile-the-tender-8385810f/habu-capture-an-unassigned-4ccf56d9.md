@@ -1,6 +1,6 @@
 ---
 title: Capture an unassigned defer without borrowing the producer prefix
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-09-14T03:40:59.034378+03:00"

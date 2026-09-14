@@ -18,10 +18,13 @@ catch grouping, portable partial-effect graphs, repeated registry persistence,
 frozen IR reader reuse and canonical engine aliases through symlinked roots.
 No accepted replacement engine is published.
 
-The latest complete gate is J: source/runtime `674900c6`, SHA-256
-`3146f12e5bcd330ce85728423765c74050cf7f44b2cc801a9abc3adca097017e`.
-All 341 suites ran in 432.942 seconds: 329 passed and 12 failed. Exact results
-are in `/tmp/cedar-J-full-suite.{json,log}`; the campaign dot lists the failures.
+The latest complete native gate is M (`99caf411`): all 343 suites ran in
+429.559 seconds, with 336 passing and seven failing. The failures were the two
+clobber lint entries, stage0 atomic guard inventory, WID/wide/chain capture,
+and legacy build-fixpoint fixtures. The three lint entries are now repaired,
+independently reviewed, and pass focused real-source checks on M. The complete
+gate has not been rerun with those fixture corrections.
+Exact gate results: `/tmp/cedar-M-full-suite.{json,log}`.
 
 Current candidate M is source `99caf411`, SHA-256
 `9522a8e5685129b17b107bd547dc0797a1f11e0bb3f89f8282b2b8206770b58c`.
@@ -32,8 +35,7 @@ lifecycle, checker-owner descriptors, source-authority recovery and the complete
 engine suite. The application fixture preserves identical engine-prefix,
 region and DATA extents in all three generations, then restores checked
 application execution. Logs and commands: `/tmp/cedar-M-focused/`.
-The combined full gate is running on this exact source and binary; it is not yet
-an accepted replacement for downstream pins.
+This candidate is not yet an accepted replacement for downstream pins.
 
 The composition includes growing address storage with actual aggregate artifact
 admission, shared image ownership for worker quotation stores, synchronized
@@ -46,7 +48,9 @@ open in `0c9fe3d7`.
 
 The WID/chain fixtures are moving to the current native writer with partial
 captures that preserve their actual cold-prefix behavior. Both real sealed and
-open WID collision controls pass; the complete fixture run remains pending.
+open WID collision controls pass. The complete current-writer WID run ends at
+the unassigned-defer capture refusal (`4ccf56d9`), before its BIG/EXT/PREWIN
+tail. The cold compiler owner guard dependency is tracked in `c57132da`.
 The legitimate chain capture now exposes an obsolete 262,144-byte effect-pool
 limit: 7,670 verified effect rows occupy 3,635,865 bytes. Storage must grow within
 the existing section and aggregate bounds. Public legacy recovery consumers
@@ -58,7 +62,9 @@ Earlier registry candidate P2 (source `6969dc7a`, SHA-256
 built pinned Tender `4cc58705` through its public entry in 63.822 seconds. Its
 executable and two recaptures retained all 76,154 unique address rows with
 identical row bytes. Their file/DATA growth led to `4e8a865e`, now repaired in M
-and accepted on the application fixture; Tender acceptance on M remains due.
+and accepted on the application fixture. M built the same Tender workload
+through its public entry in 63.216 seconds; recapture and standalone acceptance
+are running. Evidence: `/tmp/cedar-tender-M/`.
 Evidence: `/home/joel/.cache/cedar-capture-rows-u5l55np1/tender-P2/`.
 The speed targets and downstream acceptance remain open; accepted
 Tender/Maki/Kestrel pins stay unchanged.
@@ -72,6 +78,14 @@ build lanes were drained, but an external Maki lint used about 34% CPU. These
 are composed-product measurements, not isolated reader attribution or quiet
 acceptance. Logs: `/tmp/cedar-H-reader-pairs/`. The 500-microsecond trivial,
 uncached Tender and complete executable-build targets remain unmet.
+
+The reviewed opcode batch (`54fad493`, integrated as `e73c85f6`) removes
+380 repeated symbol checks per small compile. A matched M-source native pair
+measured trivial 983/981/980 to 925/925/928 us and three-op 642/647/642 to
+611/612/610 us, with exactly 200 optimizing compilations in every run. JIT
+stayed 30–31 us. This is a measured 5–6% improvement, not the 500 us target.
+The candidate SHA is `46a9d66884fafba495d309ddd1ca077fabee466798a10c31f3c9a14c7819ed3c`;
+source and measurement evidence are in `/tmp/cedar-batch-M-pairs.json`.
 
 ## Required result
 
