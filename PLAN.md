@@ -4,123 +4,27 @@ Status: implementation in progress, 2026-09-14. Cedar owns integration. This rep
 the obsolete IR/GPU migration plan, preserved in jj history. Reuse the existing
 Tender campaign `habu-compile-the-tender-8385810f`.
 
-## Current integration and review pins
+## Current correctness work
 
-`cedar/compiler-integration` is the reviewed integration branch. The external
-review pins remain frozen: `review/current-compiler` at `51546316`, and
-`review/partial-payload` at `f091a068`. The earlier August 23 `master` review
-(`3c6bda9d`) predates these compiler changes. None is an accepted replacement
-engine; source review and focused controls are not a rebuilt runtime gate.
+Restart checkpoint: read [RESTART.md](RESTART.md) first. Cedar owns integration;
+performance work is deferred by Joel's latest instruction.
 
-The integration includes complete address rows and layout translation, native
-publication provenance, typed `is`, indexed dictionary append, CAST identity,
-catch grouping, portable partial-effect graphs, repeated registry persistence,
-frozen IR reader reuse and canonical engine aliases through symlinked roots.
-No accepted replacement engine is published.
+The complete native gate ran all 353 suites: 351 passed, build-fixpoint-fixtures
+failed, and WID restore timed out under load. The rewritten build-fixpoint fixture
+now passes through a full native rebuild and APP-IMAGE snapshot; a new combined
+gate is still required after the outstanding correctness fixes.
 
-The latest complete native gate is M (`99caf411`): all 343 suites ran in
-429.559 seconds, with 336 passing and seven failing. The failures were the two
-clobber lint entries, stage0 atomic guard inventory, WID/wide/chain capture,
-and legacy build-fixpoint fixtures. The three lint entries are now repaired,
-independently reviewed, and pass focused real-source checks on M. The current
-native writer also passes the complete wide-artifact suite (BIG, EXT, XTLIT and
-PREWIN), rc0 in 171.233 seconds. The complete gate has not been rerun with these
-corrections. Wide-suite evidence: `/tmp/cedar-current-fixture-gate/`.
-Exact gate results: `/tmp/cedar-M-full-suite.{json,log}`.
+The September audit targets an older branch and engine. Current revalidation
+confirms quotation-input variance, implicit return-row reads, and trailing
+signature tokens as blockers. Tested repeat/dead-tail cases and the listed
+row-variable caller exploits now reject. Further audit claims remain to assess.
 
-Current candidate M is source `99caf411`, SHA-256
-`9522a8e5685129b17b107bd547dc0797a1f11e0bb3f89f8282b2b8206770b58c`.
-It built through the optimizing native entry on K2 in 135.602 seconds. All eight
-focused suites pass: real registry persistence at both tiers, three-generation
-application capture, concurrent address registration and restore, worker
-lifecycle, checker-owner descriptors, source-authority recovery and the complete
-engine suite. The application fixture preserves identical engine-prefix,
-region and DATA extents in all three generations, then restores checked
-application execution. Logs and commands: `/tmp/cedar-M-focused/`.
-This candidate is not yet an accepted replacement for downstream pins.
-
-The composition includes growing address storage with actual aggregate artifact
-admission, shared image ownership for worker quotation stores, synchronized
-first registration and process mutex reset. Scoped diagnostic recovery retains
-no executable authority. The cold prefix now declares its public owner ABI
-constants and publishes its first complete checker owner; replacement checkers
-still require explicit transfer. These changes have independent source review
-and focused acceptance. General warmed-verifier source-order behavior remains
-open in `0c9fe3d7`.
-
-The WID/chain fixtures are moving to the current native writer with partial
-captures that preserve their actual cold-prefix behavior. Both real sealed and
-open WID collision controls pass. The complete current-writer WID run previously ended at
-the unassigned-defer capture refusal (`4ccf56d9`), before its BIG/EXT/PREWIN
-tail. The cold owner guard dependency is repaired and independently accepted
-(`023e338e`, integrated as `d5ddce87`): the genuine empty native image keeps
-VALIDATE below the core mark and passes prefix/descriptor controls; unchanged M
-fails the new prefix assertion. The real cold compiler capture now reaches six
-declared callback cells targeting exact global prefix entries. The named CODE
-address repair is now independently reviewed and integrated as `77ec3869`;
-named code-literal identity is integrated as `41876234`. Both pass focused
-capture/read/fresh-seed controls, including exact target identity and private,
-hidden, post-cut and nonentry refusals. Artifact version 9 carries named CODE
-rows through the existing name pool. Complete WID/chain and native gate
-acceptance remain pending the combined N build from `41876234`.
-
-The registrar index and scoped unlock correction are integrated as `ec91419b`
-and `0af37f52`, after independent review and focused growth, OOM, concurrency,
-rewind, caught-refusal and snapshot tests. A registrar-only pair reduces
-32,768 registrations from 966.486 ms to 0.896 ms; this is not a whole-build
-measurement. The immutable TASK entry is integrated as `a4d2cc3d`, with
-independent review, checked field-layout validation and three-generation
-concurrent UDP/serial image acceptance. Its native candidate passes the
-unchanged host-I/O test in 8.475 s. These fixes join the single combined N gate.
-
-Tender's newer rules142 workload exposes a separate native CASE lowering
-underflow (`a9d7bef5`), reduced to a default arm consuming preceding stack
-values. The JIT control passes; native lowering incorrectly compares the
-default's final depth with the CASE entry depth. Its repair and both-tier
-regressions are in progress in `cedar-native-case`; no application workaround
-or JIT fallback is accepted.
-
-The reviewed dynamic effect pool is integrated at `8f0749b3`. Its actual-source
-checks preserve 1,536 effects / 847,893 bytes through file and owned transfers,
-including merge and malformed-length refusals. This removes the old text-only
-cap within existing section and aggregate bounds. Complete chain acceptance
-for its legitimate 7,670 effects / 3,635,865 bytes remains pending the combined
-native acceptance. Public legacy recovery consumers remain separately tracked;
-the current native builder does not need their BF phase certifier.
-
-Earlier registry candidate P2 (source `6969dc7a`, SHA-256
-`ef4a7aa34ada381c90435f98b10298aad4a9030e674cdc5cdc27ec103538ff4c`)
-built pinned Tender `4cc58705` through its public entry in 63.822 seconds. Its
-executable and two recaptures retained all 76,154 unique address rows with
-identical row bytes. Their file/DATA growth led to `4e8a865e`, now repaired in M
-and accepted on the application fixture. M built the same Tender workload
-through its public entry in 63.216 seconds. Both recaptures succeed in about
-2.1 seconds; all three files retain identical prefix/region/DATA extents and
-all 76,271 unique address rows. The third generation passes Tender’s complete
-standalone gate in 16.140 seconds: DOCX/XLSX extraction, filling, preservation
-and refusals, plus REPL checked definitions and type rejection. Interactive
-recovery remains explicitly untested by that gate. Evidence: `/tmp/cedar-tender-M/`.
-Evidence: `/home/joel/.cache/cedar-capture-rows-u5l55np1/tender-P2/`.
-The speed targets and downstream acceptance remain open; accepted
-Tender/Maki/Kestrel pins stay unchanged.
-
-Reader reuse reduces frozen OPEN calls per trivial definition from 2,895 to 328
-while preserving generation/state/bounds validation on all 24,924 reads. Three
-interleaved append-B/H pairs measured trivial AOT at 994/953, 994/953 and
-996/961 microseconds, and three-operation AOT at 705/645, 707/640 and 707/641.
-JIT remains 29–30 microseconds; every run counts exactly 200 NCOMP calls. Own
-build lanes were drained, but an external Maki lint used about 34% CPU. These
-are composed-product measurements, not isolated reader attribution or quiet
-acceptance. Logs: `/tmp/cedar-H-reader-pairs/`. The 500-microsecond trivial,
-uncached Tender and complete executable-build targets remain unmet.
-
-The reviewed opcode batch (`54fad493`, integrated as `e73c85f6`) removes
-380 repeated symbol checks per small compile. A matched M-source native pair
-measured trivial 983/981/980 to 925/925/928 us and three-op 642/647/642 to
-611/612/610 us, with exactly 200 optimizing compilations in every run. JIT
-stayed 30–31 us. This is a measured 5–6% improvement, not the 500 us target.
-The candidate SHA is `46a9d66884fafba495d309ddd1ca077fabee466798a10c31f3c9a14c7819ed3c`;
-source and measurement evidence are in `/tmp/cedar-batch-M-pairs.json`.
+Maki's full suite and plain/minimal Kiapi snapshot build/restore/recapture pass on
+the frozen source9d0a44a3 + SHA24d8075c pair. Full Kiapi compilation is blocked by
+FOOTPRINT-POSE through native finally (-8503); no downstream pin is accepted.
+Tender/Kestrel acceptance remains pending. The decimal fix is saved on a separate
+WIP bookmark awaiting review; warmed source-order verification is reproduced and
+has a design but no implementation.
 
 ## Required result
 
@@ -320,11 +224,11 @@ the payoff from pass-level reader reuse still need attribution.
   alignment within the existing budget. The 75,900-row and actual allocation
   refusal controls replace assertions tied to the obsolete fixed ceiling.
 
-## Compile-speed design
+## Deferred compile-speed design
 
 Keep landed session reuse, hash removal, allocator maps and verifier work.
-Independent source fixes can start now; controlled speed acceptance uses the
-verified all-AOT product once available.
+Resume this work after correctness acceptance; controlled speed acceptance uses
+the verified all-AOT product.
 
 1. **Dictionary:** expose the matched record already returned by `WLFIND:LENTRY`.
    `NDICT:WL-CANDIDATE` must not scan XREF to rediscover it. Preserve visibility,
