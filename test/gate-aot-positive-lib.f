@@ -3,38 +3,41 @@
 \ Load after test/gate-build-common.f and test/gate-build-hbb.f.
 
 require test/gate-pool.f
+require test/gate-aot-image.f
 
 package AOT-POSITIVE
 using HB-BUILD-CLI                       \ the preseed knobs and the json flag
+using AOT-IMAGE
 
 46 constant DOT
 99 constant C-LOWER
-\ Linux reports the padded RX segment; macOS reports the __text section.
-$10000 constant STRIPPED-TEXT-MACOS-MAX
+$10000 constant STRIPPED-CODE-MACOS-MAX
 48 constant PH-ALIGN-OFF       \ p_align inside an Elf64_Phdr; the rest are GB-ELF-PH-*-OFF
 $D63F0200 constant BLR-X16     \ arm64 `blr x16`: an indirect engine-address call the linker never emits
 
 variable BLR-CNT
 
-: STRIPPED-TEXT-MAX ( -- n )
-   HB-TARGET-LINUX? if PROT-PAGE-MAX 2 * exit then
-   STRIPPED-TEXT-MACOS-MAX ;
+\ Preserve the original code budget: Linux code plus headers fits one maximum
+\ page; macOS code stays below 64 KiB. Restored DATA is not generated code.
+: CODE-TOO-LARGE? ( n -- bool )
+   HB-TARGET-LINUX? if CODE-OFF + PROT-PAGE-MAX > exit then
+   STRIPPED-CODE-MACOS-MAX >= ;
 
-\ Count `blr x16` words in the built image's executable text region. A correctly
+\ Count `blr x16` words in the built image's validated code span. A correctly
 \ linked stripped image has none: under the direct-BL-only contract every native call
 \ is a direct BL that the linker relocates in place to a PC-relative branch into the
 \ copied blobs (aot-lib.f COPY-COMPACT-BLOB / RELOC-W32), so a surviving blr x16 is an
 \ un-relocated build-time engine address that would crash at load.
 : COUNT-BLR-X16 ( n n -- n ) {: foff:n fsize:n :}      \ text-file-offset text-size -- count
    0 BLR-CNT !
-   foff begin dup foff fsize + < while
+   foff begin dup 4 + foff fsize + <= while
       dup GB-U32-OFF BLR-X16 = if 1 BLR-CNT +! then
       4 +
    repeat drop
    BLR-CNT @ ;
 
 : ASSERT-BLR-ABSENT ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GB-OUT$ GB-EXEC-TEXT-RANGE COUNT-BLR-X16
+   GB-OUT$ CODE-RANGE COUNT-BLR-X16
    0 <> if label labelu GE-FAIL then ;
 
 : N= ( n n ptr u8 n -- ) {: got:n want:n label:ptr labelu:n :}
@@ -218,6 +221,11 @@ variable BLR-CNT
 
 : BUNDLE-SOURCE ( -- )
    GE-SRC-RESET
+   \ Legitimate aligned DATA carries BLR x16 and NOP/NOP/NOP/BL bytes.
+   \ Whole-RX instruction scans must see them; code-only scans must not.
+   s" align create INSTRUCTION-DATA $00 c, $02 c, $3F c, $D6 c," GE-SRC-LINE
+   s" $1F c, $20 c, $03 c, $D5 c, $1F c, $20 c, $03 c, $D5 c," GE-SRC-LINE
+   s" $1F c, $20 c, $03 c, $D5 c, $00 c, $00 c, $00 c, $94 c," GE-SRC-LINE
    FIB-DEFS
    COMPACT-DEFS
    FEATURE-DEFS
@@ -238,14 +246,19 @@ variable BLR-CNT
    BUNDLE-SOURCE
    s" hb-build AOT compact/features" GB-HBB-BUILD
    BUNDLE-EXPECT s" hb-build AOT compact/features output" GB-RUN-EXPECT
-   GB-OUT$ GB-EXEC-TEXT-SIZE {: textsz:n :}
-   textsz STRIPPED-TEXT-MAX >= if s" hb-build AOT stripped text" GE-FAIL then
+   GB-OUT$ CODE-RANGE nip {: codesz:n :}
+   codesz CODE-TOO-LARGE? if s" hb-build AOT stripped code" GE-FAIL then
    s" hb-build AOT dynamic ELF shape" ASSERT-DYNAMIC-ELF
-   s" hb-build AOT call report" GB-AOT-REPORT
+   GB-OUT$ GB-EXEC-TEXT-RANGE COUNT-BLR-X16
+   0= if s" hb-build AOT instruction-shaped DATA control" GE-FAIL then
+   s" hb-build AOT code excludes DATA blr x16" ASSERT-BLR-ABSENT
+   GB-OUT$ REPORT-FILE! REPORT-COUNT
+   REPORT-STENCILS @ 0= if s" hb-build AOT stencil-shaped DATA control" GE-FAIL then
+   CODE-REPORT
    s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
    s" aot-compact" s" aot-compact call report" AOT-ASSERT
-   s" PASS: hb-build AOT compact/feature coverage (text " type
-   textsz GB-U.
+   s" PASS: hb-build AOT compact/feature coverage (code " type
+   codesz GB-U.
    s"  B)" type cr ;
 
 \ Persistent data region: a program that builds a compile-time table with
@@ -382,7 +395,7 @@ variable BLR-CNT
 \ Because LP2VEXEC is now a registered engine helper the closure walk resolves the
 \ call by record address and collapses it in-image, so this MAIN runs and prints
 \ the stored payload (37). ASSERT-BLR-ABSENT then proves the collapse by
-\ construction: the stripped __text contains zero un-collapsed blr x16.
+\ construction: the validated code span contains zero un-collapsed blr x16.
 : LAYOUT-FETCH-SOURCE ( -- )
    GE-SRC-RESET
    s" package AOT-LAYOUT-FETCH" GE-SRC-LINE
@@ -604,5 +617,6 @@ public
    GT-CLEANUP
    s" PASS: native hb-build AOT positive tests" type cr ;
 
-;using
+;using                                   \ AOT-IMAGE
+;using                                   \ HB-BUILD-CLI
 ;package
