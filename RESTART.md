@@ -4,10 +4,11 @@ Correctness first. Do not call Habu release-qualified yet. TRUST/TRUSTED
 retirement is last; performance and the x86-64/TI DSP proposals are deferred.
 Joel explicitly chose a bounded core code budget, not allocator growth.
 
-Current integration: 463e3548 in `.jj-ws/cedar-closure-identity`. Reviewed and
+Current integration: 6739c962 in `.jj-ws/cedar-closure-identity`. Reviewed and
 integrated: shared IR/target admission, both +loop tiers, string forms, typed
 fetch validation and bootstrap mirror, active stack allocation ABI, test stack
-switching, fixed 32 MiB dictionary/code region, and exact dictionary code spans.
+switching, fixed 32 MiB dictionary/code region, exact dictionary code spans,
+native entry/call/return stack guards and the first direct-JIT guard slice.
 The span fix uses a full-span bit for nonreturning bodies rather than borrowing
 the next word's first instruction. It still needs native generation qualification.
 
@@ -21,7 +22,7 @@ All four have source repairs; no newer complete green run is claimed:
   verifier began rejecting the same malformed edge earlier; fixed 01cad299.
 - native-fetch-snapshot: duplicate certified test declarations; fixed 56fee8f3.
 - native-gate-aot-positive: a no-RET record borrowed the next address chain;
-  exact code spans integrated 246fbd59/463e3548. Native preseed rerun pending.
+  exact code spans integrated c6518992/fc497614. Native preseed rerun pending.
 
 Tested intermediate engines (not release pairs):
 - `/tmp/cedar-stack-abi-native`, SHA-256
@@ -33,26 +34,36 @@ Tested intermediate engines (not release pairs):
   Relocation proof and snapshot-writer pass. It has neither new native guards
   nor the exact-span publisher. This is the transitional host for those builds.
 - `/tmp/cedar-stack-jit-native2`, SHA f7ff3fcd: first direct-JIT guard slice
-  ffb57fb5, independently under review. Focused tests pass; wide transfers,
+  ffb57fb5, independently approved and integrated 7be9b152; full-gate row24b0a41d.
+  Focused tests pass; wide transfers,
   remaining multi-pop primitives and recovery mirror are unfinished.
+- `/tmp/cedar-native-stack-bounded`, SHA-256
+  `ca8ee6687f4d6c1f796cc15c7db6ed3ef16269080ab9a5bdee82e9dbb20f9125`:
+  six native verifier cases, five native runtime boundary cases, native-select,
+  native-emit and the integration's native-regalloc fixture pass. Reviewed source
+  is integrated 6739c962, emission fixture update f8104159. First build used
+  10,716,748 region bytes after its writer, above the old 10 MiB budget.
 
 Active work:
-- Cedar: native guards in `.jj-ws/cedar-native-stack`, build running as
-  `/tmp/cedar-native-stack-bounded` with log
-  `/tmp/cedar-native-stack-bounded-build.log`. A temporary copy of the real
-  driver reports target and completion code usage. The earlier10 MiB host
-  failed at EM-COMPILE-UNDEF with E-NPUB-ROOM (-8561). The32 MiB budget remains
-  fixed and retains allocation and BL-range bounds.
+- Cedar: second guarded selfbuild in `.jj-ws/cedar-bounded-capture`, output
+  `/tmp/cedar-native-stack-bounded-gen2`, log ending `-gen2-build.log`.
+  Measured target code7,159,360 bytes and region use13,202,952 before its writer.
+  This passed region bounds but exposed old capture limits: 3 MiB blob and
+  32,768 external call rows. Blob cap now derives CODE-BAND:BYTES; existing
+  section/file/refusal limits remain. Call rows are fixed at131,072, with the
+  actual completed count still pending. No new allocator or unbounded growth.
+  AOT chain capture suite passes with the new blob bound in native-stack.
 - literal_ownership: `.jj-ws/cedar-stack-bounds`, remaining engine/JIT transfers
-  and recovery parity. ABI 2f3e0f90 is integrated dcd369bf; ffb57fb5 awaits review.
-- backend_handoff: independent review of ffb57fb5; exact-span implementation
- 9faabc23/88861be1 is integrated. Native preseed matrix awaits two generations.
-- closure_integration_review: reviewed native guard design; added unconditional
-  standing<=entry and original declaration slot checks, plus six safe IR cases
-  in native-stack-contract.f. Actual fixed-engine validation is pending.
-- Hazel: warmed source-order VERIFY 0c9fe3d7, `.jj-ws/hazel-verify-order` on
- 4b31dbcf, focused validation in progress. Commit/review before rebase; combined
-  full gate belongs on the integration tip, not that old base.
+  and recovery parity. ABI and the fixed direct-JIT slice are integrated.
+- backend_handoff: native emission fixture update approved/integrated; exact-span
+  implementation is integrated. Native preseed matrix awaits two generations.
+- closure_integration_review: independent capacity review; confirmed one VERIFY
+  blocker across used-public and fallback-global lookup paths.
+- Hazel: correcting that blocker in warmed source-order patch75ab2c16,
+  `.jj-ws/hazel-verify-order` on4b31dbcf. Existing focused suites and two builds
+  pass, but two valid `using` programs reject warm with7141 because later exports
+  still enter ambiguity checks. Hold integration until both paths and genuine
+  ambiguity refusal controls pass independent review.
 
 Remaining sequence: finish/review stack and VERIFY patches; qualify combined
 selfbuild, capture/restore, recovery and full gate; hand frozen source/engine to

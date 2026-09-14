@@ -12,12 +12,13 @@ x86-64/TI DSP implementations are deferred. Retire TRUST/TRUSTED last.
 
 Remaining implementation and qualification:
 
-1. Complete physical stack bounds (986147f9): native emitter entry/call/return
-   envelopes; direct JIT, wide/local transfers and remaining primitives; recovery
-   parity. The allocation ABI and lifecycle are reviewed and integrated. Native
-   verifier fixtures must reject invalid windows before machine code executes.
+1. Complete physical stack bounds (986147f9): wide/local JIT transfers and
+   remaining primitives, then recovery parity. Allocation lifecycle, native
+   entry/call/return envelopes and the fixed direct-JIT slice are reviewed and
+   integrated, with passing focused tests. Combined qualification remains.
 2. Finish Hazel's warmed source-order verification (0c9fe3d7), independently
-   review it and integrate on the current source line.
+   review it and integrate on the current source line. The initial patch is held
+   for two `using` lookup paths that still see later shadows during reconstruction.
 3. Qualify the combined engine: exact code-span/preseed tests (9471db20 and
    38ad40e8), repeated native selfbuild, capture/restore, recovery and full gate.
    The last full run was 382/386; all four failures have source repairs, but the
@@ -32,7 +33,8 @@ Remaining implementation and qualification:
 Core capacity policy: a deliberately bounded 32 MiB dictionary/code region,
 reviewed together with derived maps, bootstrap mirror and relocation model.
 Measure the actual guarded selfbuild and headroom; retain the bounds and BL
-reach checks. No automatic allocator growth is requested or planned.
+reach checks. Align capture limits with the measured guarded core and preserve
+their explicit bounds. No automatic allocator growth is requested or planned.
 
 ## Required result
 
