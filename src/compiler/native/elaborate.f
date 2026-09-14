@@ -3126,7 +3126,13 @@ create DN-BUF DN-CAP allot
    cleanup 0 >= if cleanup 0 0 QFILL then
    s" finally" NDICT:CALL-TARGET {: entry:n :}
    entry 0= if ix QUOT-REFUSE then
-   ix entry in 2 + out 0 max NDICT:GLUE-NONE STAGE-WCALL
+   \ Returning products and wide families need the checker's value boundaries.
+   \ Dead outputs need no grouping. Trusted bodies can carry only quotation
+   \ arity, without ordinary call rows; handle those exactly as execute does.
+   out 0 < ix NDICT:CALL-CELLS drop 0 < or if NDICT:GLUE-NONE
+   else ix NDICT:CALL-GLUE nip then {: glue:n :}
+   glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
+   ix entry in 2 + out 0 max glue STAGE-WCALL
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
 \ ---- a call that BUILDS a value of a wide instantiation ------------------------

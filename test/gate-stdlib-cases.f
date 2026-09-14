@@ -260,6 +260,10 @@ SUITE compiler-native-defer
    test/compiler/native-defer.f
 ;SUITE
 
+SUITE compiler-native-finally
+   test/compiler/native-finally.f
+;SUITE
+
 SUITE compiler-native-layout-control
    test/compiler/native-layout-control.f
 ;SUITE
