@@ -963,6 +963,10 @@ SUITE aot-sig-pool
    test/aot-sig-pool-suite.f
 ;SUITE
 
+SUITE aot-effect-pool
+   test/aot-effect-pool.f
+;SUITE
+
 SUITE heap-start-cell
    test/heap-start-cell.f
 ;SUITE

@@ -803,17 +803,15 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    row 0= if k ACAP-REFUSE-SIG then
    row 1 - ACAP-SIG-ROW+ ;
 
-\ The strings the rows name, whole. They are the pool's own arena and the rows
-\ index it by offset, so re-interning the referenced subset would mean rewriting
-\ every offset - a remap where a copy does. What the arena holds beyond the rows
-\ that travel is the interned text of the duplicates newest-wins dropped: shared
-\ records, measured in single kilobytes against the 124 KB the names alone need.
+\ Carry the owner's complete frozen graph/name arena. Rows index it by offset,
+\ so the copy preserves every graph edge and name without rewriting either.
 : ACAP-SIG-STRINGS ( -- )
    AOT-ARM:PAYLOAD-SPANS {: rows:ptr rowu:n str:ptr n:n :}
-   n AOT-SIG-STR-CAP > if
-      s" aot-capture: the window's signature strings exceed the artifact's string buffer" 74 die
-   then
-   n 0 ?do str i + c@ AOT-SIG-STR-BUF@ i + c! loop
+   \ Admit the known sidecar extent before reserving. The finished capture
+   \ charges its remaining registry/body sections through the same budget.
+   56 AOT-SIG-N @ SIG-ROW AOT-SECTION:+ROWS n AOT-SECTION:+RAW drop
+   n AOT-SIG-STR-RESERVE
+   n 0 > if str AOT-SIG-STR-BUF@ n BYTE-COPY then
    n AOT-SIG-STR-LEN ! ;
 
 \ The type registry the signatures resolve against, written by the registry that

@@ -640,6 +640,7 @@ private
    k ROW-LEN@ 0= if exit then
    k S-XTOFFS = if k BASE@ k ROW-LEN@ + XTOFF-ROW / XTOFF-RESERVE then
    k S-NAMES = if k BASE@ k ROW-LEN@ + AOT-NAMES-RESERVE then
+   k S-SIGSTR = if k BASE@ k ROW-LEN@ + AOT-SIG-STR-RESERVE then
    k S-DSITES = k S-CSITES = or if
       k BASE@ k ROW-LEN@ + 4 / AOT-DSITE-RESERVE
    then ;

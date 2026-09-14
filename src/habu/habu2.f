@@ -9234,20 +9234,20 @@ public
 \ IT IS ASSEMBLED INTO A BUFFER AND EMITTED ONCE. BYTES, pads its run to the
 \ four-byte grain, so three separate runs would leave gaps the table would have
 \ to describe; one run over one contiguous buffer leaves the offsets meaning
-\ exactly what they say. The buffer is the payload's own, sized from the three
-\ caps it concatenates.
+\ exactly what they say. The buffer reserves the checked sum of the three
+\ actual lengths, within the same aggregate budget as their emitted section.
 package AOT-SIG-PAYLOAD
 using AOT-BUF
 public
 
 3 constant SEC-N
 SEC-N 16 * 8 + constant TBL-BYTES
-TBL-BYTES  AOT-SIG-MAX SIG-ROW * +  AOT-SIG-STR-CAP +  AOT-REG-CAP +  constant CAP
-create BUF CAP allot
+AOT-SECTION-CAP constant CAP
+DYNAMIC-BUFFER STORAGE n
 variable LEN
 variable CUR
 
-: BUF@ ( -- ptr u8 ) BUF ;
+: BUF@ ( -- ptr u8 ) 0 STORAGE BYTE-VIEW ;
 
 : U64! ( n n -- ) {: v:n at:n :}
    8 0 ?do  v i 8 * rshift $FF and  BUF@ at i + + c!  loop ;
@@ -9268,6 +9268,7 @@ variable CUR
 : BUILD ( -- )
    0 LEN !
    AOT-SIG-N @ 0= AOT-SIG-STR-LEN @ 0= and AOT-REG-LEN @ 0= and if exit then
+   AOT-SECTION:PAYLOAD-BYTES CELL 1- + CELL / STORAGE-RESERVE
    SEC-N 0 U64!
    TBL-BYTES CUR !
    SEC-N 0 ?do
@@ -9275,12 +9276,11 @@ variable CUR
       i SEC-LEN  i 16 * 16 +  U64!
       CUR @ i SEC-LEN + CUR !
    loop
-   CUR @ CAP > if
-      s" habu2: the checker payload exceeds its own buffer" ICODE-EXIT-RC die
-   then
    TBL-BYTES CUR !
    SEC-N 0 ?do
-      i SEC-PTR  BUF@ CUR @ +  i SEC-LEN  BYTE-COPY
+      i SEC-LEN 0 > if
+         i SEC-PTR  BUF@ CUR @ +  i SEC-LEN  BYTE-COPY
+      then
       CUR @ i SEC-LEN + CUR !
    loop
    CUR @ LEN ! ;

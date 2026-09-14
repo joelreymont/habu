@@ -347,11 +347,19 @@ create AOT-PWIN-BUF AOT-PWIN-MAX 4 * allot    variable AOT-PWIN-N   \ packed u32
 16 constant SIG-ROW
 AOT-REC-MAX constant AOT-SIG-MAX
 create AOT-SIG-BUF AOT-SIG-MAX SIG-ROW * allot    variable AOT-SIG-N
-\ $40000 against the compiler chain's measured 123,979 bytes of pool string: the
-\ names of 6798 words plus the interned signature and package texts. Overflow is
-\ refused by name, never truncated.
-$40000 constant AOT-SIG-STR-CAP
-create AOT-SIG-STR-BUF AOT-SIG-STR-CAP allot    variable AOT-SIG-STR-LEN
+\ The opaque pool carries verified effect graphs beside its names. Its format
+\ bound is the section budget; allocate only the admitted bytes, like names
+\ and relocation rows, rather than imposing the former text-only size guess.
+AOT-SECTION-CAP constant AOT-SIG-STR-CAP
+DYNAMIC-BUFFER SIG-STR-STORAGE n
+variable AOT-SIG-STR-LEN
+
+: AOT-SIG-STR-RESERVE ( n -- )
+   dup 0< over AOT-SIG-STR-CAP > or if
+      s" aot: effect pool exceeds the section byte budget" 74 die then
+   CELL 1- + CELL / SIG-STR-STORAGE-RESERVE ;
+
+: AOT-SIG-STR-BUF ( -- ptr u8 ) 0 SIG-STR-STORAGE BYTE-VIEW ;
 \ The registry delta travels as OPAQUE BYTES with its own internal table, written
 \ and read by the registry that owns those records (src/core/type-family.f and
 \ src/core/type-schema.f through the checker's REG-EXT hook). Record widths and
