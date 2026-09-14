@@ -240,6 +240,7 @@ public
 ;package
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u s" mark-header" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-print9" LINT-STR=CI if LINT-TRUE exit then
@@ -307,6 +308,9 @@ variable RK
 : ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
+   \ SNAP-RELOC:MARK-HEADER materializes the fixed image base in x16 and
+   \ its address-table header in x4. Neither depends on a caller register.
+   a u s" mark-header" LINT-STR=CI if 0 4 CL-ADD 16 CL-ADD CL-WOR exit then
    a u s" g-push" LINT-STR=CI if 0 ER 19 ER 19 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW 19 ER 19 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then

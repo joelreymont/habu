@@ -15,11 +15,11 @@ require tools/lint/clobber-lint.f
    BAD @ ;
 
 : CLT-SYS-CLOBBERS-X8 ( -- )
-   CLT-FIXTURE-BAD# 3 = CLT-ASSERT ;
+   CLT-FIXTURE-BAD# 4 = CLT-ASSERT ;
 
 : CLT-CURRENT-SYNTAX-CENSUS ( -- )
    CLOBBER-CENSUS:COUNTS {: routines:n calls:n :}
-   routines 13 = CLT-ASSERT
+   routines 15 = CLT-ASSERT
    calls 6 = CLT-ASSERT ;
 
 : CLT-LABEL-ACCESSORS ( -- )
