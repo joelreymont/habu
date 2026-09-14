@@ -10,7 +10,6 @@
 require lib/test.f
 require lib/prelude.f
 require lib/string.f
-require lib/memory.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
@@ -91,7 +90,9 @@ variable INCREMENT
 : DEAD ( -- )
    10 0 do 5 throw +loop ;
 
-\ The reproducer that opened this lane, run on a real buffer.
+\ The reproducer that opened this lane, run on a buffer this package owns.
+16 constant STRIDE-BYTES
+create STRIDE-BUF STRIDE-BYTES allot
 : COPY-DATA ( ptr u8 -- ) {: p:ptr :}
    16 0 ?do p i + c@ drop 4 +loop ;
 : CONDITIONAL ( ptr u8 n -- ) {: p:ptr n:n :}
@@ -204,12 +205,11 @@ private
 
 : REPRODUCER-CASE ( -- )
    s" the reproducer strides a real buffer" T-LABEL
-   MEM-ALLOC-64K drop {: buf:ptr :}
-   16 0 do i buf i + c! loop
-   buf NPL-FIXTURE:COPY-DATA
-   buf 1 NPL-FIXTURE:CONDITIONAL
-   buf 0 NPL-FIXTURE:CONDITIONAL
-   buf NPL-FIXTURE:STRIDE-SUM 24 T= ;
+   NPL-FIXTURE:STRIDE-BYTES 0 do i NPL-FIXTURE:STRIDE-BUF i + c! loop
+   NPL-FIXTURE:STRIDE-BUF NPL-FIXTURE:COPY-DATA
+   NPL-FIXTURE:STRIDE-BUF 1 NPL-FIXTURE:CONDITIONAL
+   NPL-FIXTURE:STRIDE-BUF 0 NPL-FIXTURE:CONDITIONAL
+   NPL-FIXTURE:STRIDE-BUF NPL-FIXTURE:STRIDE-SUM 24 T= ;
 
 public
 
