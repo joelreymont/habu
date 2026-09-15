@@ -221,8 +221,10 @@ variable BLR-CNT
 
 : BUNDLE-SOURCE ( -- )
    GE-SRC-RESET
-   \ Legitimate aligned DATA carries BLR x16 and NOP/NOP/NOP/BL bytes.
-   \ Whole-RX instruction scans must see them; code-only scans must not.
+   \ Legitimate aligned DATA carries BLR x16 and NOP/NOP/NOP/BL bytes: code-only
+   \ scans must not see them. The sparse image stores DATA as unaligned non-zero
+   \ runs (src/habu/aot-lib.f), so a whole-range aligned scan no longer sees
+   \ these words verbatim either; only the code-only exclusion is checked below.
    s" align create INSTRUCTION-DATA $00 c, $02 c, $3F c, $D6 c," GE-SRC-LINE
    s" $1F c, $20 c, $03 c, $D5 c, $1F c, $20 c, $03 c, $D5 c," GE-SRC-LINE
    s" $1F c, $20 c, $03 c, $D5 c, $00 c, $00 c, $00 c, $94 c," GE-SRC-LINE
@@ -249,11 +251,12 @@ variable BLR-CNT
    GB-OUT$ CODE-RANGE nip {: codesz:n :}
    codesz CODE-TOO-LARGE? if s" hb-build AOT stripped code" GE-FAIL then
    s" hb-build AOT dynamic ELF shape" ASSERT-DYNAMIC-ELF
-   GB-OUT$ GB-EXEC-TEXT-RANGE COUNT-BLR-X16
-   0= if s" hb-build AOT instruction-shaped DATA control" GE-FAIL then
+   \ No whole-range instruction/stencil control here: the sparse image stores
+   \ DATA as unaligned non-zero runs, so a whole-file aligned scan can no
+   \ longer find INSTRUCTION-DATA's planted blr x16 or NOP/NOP/NOP/BL words
+   \ verbatim. Only the code-only exclusion below remains meaningful.
    s" hb-build AOT code excludes DATA blr x16" ASSERT-BLR-ABSENT
    GB-OUT$ REPORT-FILE! REPORT-COUNT
-   REPORT-STENCILS @ 0= if s" hb-build AOT stencil-shaped DATA control" GE-FAIL then
    CODE-REPORT
    s" aot-stripped" s" aot-stripped call report" AOT-ASSERT
    s" aot-compact" s" aot-compact call report" AOT-ASSERT

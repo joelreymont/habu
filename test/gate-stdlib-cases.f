@@ -339,6 +339,10 @@ SUITE stripped-entry
    test/stripped-entry.f
 ;SUITE
 
+SUITE stripped-sparse-data
+   test/stripped-sparse-data.f
+;SUITE
+
 SUITE aot-seeded-address-sites
    test/aot-seeded-address-sites.f
 ;SUITE

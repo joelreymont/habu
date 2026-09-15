@@ -94,25 +94,113 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    BLOB-LEN @ 0= IF
       7 BLOB-END @ LIT64,  7 DATA DP-CELL STR,  exit         \ DP = data base (no user data)
    THEN
-   9 BLOB-LBL LABEL@ ADR,                         \ x9 = blob src in __text
-   10 BLOB-SRC @ LIT64,                           \ x10 = dst (absolute stable VA)
-   11 BLOB-LEN @ LIT64,                           \ x11 = byte count
-   12 0 MOVZ,                                     \ x12 = i
-   LBL LBL {: cp:label cpd:label :}
-   cp LBL,
-      12 11 CMP,  C-GE cpd BCOND,
-      13 9 12 ADD,  13 13 0 LDRB,
-      14 10 12 ADD,  13 14 0 STRB,
-      12 12 1 ADDI,  cp B,
-   cpd LBL,
+   9 BLOB-LBL LABEL@ ADR,                         \ x9 = sparse header in __text
+   11 9 0 LDRW,                                   \ x11 = run count
+   9 9 4 ADDI,                                    \ x9 = row array start
+   11 11 3 LSLI,                                  \ x11 = row array byte length
+   11 9 11 ADD,                                   \ x11 = row array end == byte payload start
+   10 11 0 ADDI,                                  \ x10 = byte payload cursor
+   12 BLOB-SRC @ LIT64,                           \ x12 = dst absolute base VA
+   LBL LBL LBL LBL {: rowtop:label rowdone:label innertop:label outerback:label :}
+   rowtop LBL,
+      9 11 CMP,  C-CS rowdone BCOND,
+      13 9 0 LDRW,  14 9 4 LDRW,  9 9 8 ADDI,
+      13 12 13 ADD,
+      innertop LBL,
+      14 outerback CBZ,
+      15 10 0 LDRB,  15 13 0 STRB,
+      10 10 1 ADDI,  13 13 1 ADDI,  14 14 1 SUBI,
+      innertop B,
+   outerback LBL,
+      rowtop B,
+   rowdone LBL,
    7 BLOB-END @ LIT64,  7 DATA DP-CELL STR, ;      \ DP = user-end (runtime here/allot base)
 
-: EMIT-DATA-BLOB ( -- )                            \ place the blob after all code
+\ --- sparse encoding: the captured span travels as its NON-ZERO byte extents,
+\ not as the span. A table `allot`ed at declared capacity but only partly
+\ filled left its unused tail as literal zero bytes in every earlier image;
+\ the restore above maps an anonymous (already zero) region, so a zero byte
+\ never has to travel. Format: [count u32] [(offset u32, length u32) x count]
+\ [bytes, row order, concatenated] - one cursor decodes it with no stored
+\ row->byte offset. Mirrors the AOT-WINDOW run format aot-capture.f already
+\ uses for the metabuild seed (src/habu/aot-decl.f package AOT-WINDOW).
+\ SPARSE-CAP is generous headroom over the row/byte overhead of a span already
+\ expected to stay near AOT-DATA-BLOB-MAX; a span that still overflows it dies
+\ closed by name instead of corrupting the buffer.
+AOT-DATA-BLOB-MAX 2 * constant SPARSE-CAP
+create SPARSE-BUF SPARSE-CAP allot   variable SPARSE-LEN
+
+: SPARSE-ROOM? ( n -- )
+   SPARSE-LEN @ + SPARSE-CAP > IF
+      s" aot: sparse data blob exceeds buffer" 74 die THEN ;
+
+: SPARSE-U32! ( n -- ) {: v:n :}
+   4 SPARSE-ROOM?
+   v         $FF and SPARSE-BUF SPARSE-LEN @ + c!
+   v 8  rshift $FF and SPARSE-BUF SPARSE-LEN @ + 1 + c!
+   v 16 rshift $FF and SPARSE-BUF SPARSE-LEN @ + 2 + c!
+   v 24 rshift $FF and SPARSE-BUF SPARSE-LEN @ + 3 + c!
+   SPARSE-LEN @ 4 + SPARSE-LEN ! ;
+
+: SPARSE-BYTE! ( n -- ) {: v:n :}
+   1 SPARSE-ROOM?
+   v SPARSE-BUF SPARSE-LEN @ + c!
+   SPARSE-LEN @ 1 + SPARSE-LEN ! ;
+
+\ BLOB-SRC is a plain address cell; pin its byte-pointer role once here so
+\ every scan/copy site below reads it as a span, not a bare number.
+: BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ ;
+
+\ The maximal non-zero byte extents of [0, BLOB-LEN), visited in declaration
+\ order. Mirrors aot-capture.f ACAP-SCAN-SEG/ACAP-RUN-CLOSE; the stripped span
+\ has no declared address cells to exclude, so the whole span is one gap.
+variable BLOB-RUN-AT   variable BLOB-RUN-OPEN
+
+: BLOB-RUN-CLOSE ( [ n n -- ] n -- ) {: body at:n :}
+   BLOB-RUN-OPEN @ 0 < IF exit THEN
+   BLOB-RUN-OPEN @  at BLOB-RUN-OPEN @ -  body execute
+   -1 BLOB-RUN-OPEN ! ;
+
+: EACH-BLOB-RUN ( [ n n -- ] -- ) {: body :}
+   -1 BLOB-RUN-OPEN !  0 BLOB-RUN-AT !
+   BEGIN BLOB-RUN-AT @ BLOB-LEN @ < WHILE
+      BLOB-SRC@ BLOB-RUN-AT @ + c@ 0= IF
+         body BLOB-RUN-AT @ BLOB-RUN-CLOSE
+      ELSE
+         BLOB-RUN-OPEN @ 0 < IF BLOB-RUN-AT @ BLOB-RUN-OPEN ! THEN
+      THEN
+      BLOB-RUN-AT @ 1+ BLOB-RUN-AT !
+   REPEAT
+   body BLOB-LEN @ BLOB-RUN-CLOSE ;
+
+variable BLOB-RUN-N
+
+: BLOB-RUN-TALLY ( n n -- ) 2drop BLOB-RUN-N @ 1+ BLOB-RUN-N ! ;
+
+: BLOB-RUN-COUNT ( -- n )
+   0 BLOB-RUN-N !
+   [: BLOB-RUN-TALLY ;] EACH-BLOB-RUN
+   BLOB-RUN-N @ ;
+
+: BLOB-ROW! ( n n -- ) {: start:n len:n :}
+   start SPARSE-U32!  len SPARSE-U32! ;
+
+: BLOB-BYTES! ( n n -- ) {: start:n len:n :}
+   len 0 ?do  BLOB-SRC@ start + i + c@ SPARSE-BYTE!  loop ;
+
+: BUILD-SPARSE-DATA ( -- )
+   0 SPARSE-LEN !
+   BLOB-RUN-COUNT SPARSE-U32!
+   [: BLOB-ROW! ;] EACH-BLOB-RUN
+   [: BLOB-BYTES! ;] EACH-BLOB-RUN ;
+
+: EMIT-DATA-BLOB ( -- )                            \ place the sparse blob after all code
    BLOB-LEN @ 0= IF exit THEN
    ASM-LEN AOT-DATA-BLOB-MAX > IF
       s" aot: data blob too far for ADR (program too large); split program" 74 die THEN
+   BUILD-SPARSE-DATA
    BLOB-LBL LABEL@ LBL,
-   BLOB-SRC @ BLOB-LEN @ BYTES, ;
+   SPARSE-BUF SPARSE-LEN @ BYTES, ;
 
 : AOT-WRITE-OBJ ( -- )
    AOT-OBJ PATH0 1537 493 open DRV-WFD !
