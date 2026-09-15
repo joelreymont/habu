@@ -8406,3 +8406,25 @@ compares a pc against a span has to read it through CODE-SPAN, in assembly
 too: the profiler's sample handler compared raw cells, the first record below
 the pc with the bit set owned every sample, and prof-report opened with
 DEFER-UNSET (src/habu/prof.f C-PROF-SPAN-BYTES, 2026-09-15).
+
+The per-transfer stack guards are gone (2026-09-15, Joel's decision). Cedar's
+2026-09-14 series checked the active stack allocation at every native
+transfer, after every call, in every primitive and at every JIT push: an
+11-instruction frame plus a call that saved and restored NZCV. On the pinned
+engine that was 117,716 sequences, 5.2 MB of 7.4 MB of code, 7.5 per word,
+`2dup` at 13 real instructions plus seven guards, primitives that could no
+longer inline, and 213 s to compile the core prefix. The hole they closed
+(fixed stack regions inside the DATA header overflowing into engine cells) is
+a capacity problem and is closed by guard pages: each stack on its own
+page-aligned mapping with an inaccessible page beyond it, the fault named by
+the crash handler; the checker already makes underflow in compiled code
+impossible and the interpreter keeps its depth floor. Bounds are checked only
+at stack switches (STACK-GUARD:CHECK-CURSOR). Never put a check on the
+per-token path to solve a per-allocation problem.
+
+Boot resolved every baked call site by name, and the hash index was built
+after the seed ran, so a trivial program paid 129,729 linear dictionary scans
+(1.3 s) before its first token; EM-STARTUP now builds the index before the
+seed and LHIDXBUILD refills an existing table instead of mapping a second one.
+Binding sites by record at build time removes the lookups altogether
+(dot habu-bind-baked-call-e4d5b58f) (2026-09-15).
