@@ -307,10 +307,18 @@ variable HBB-ELAPSED-NS
    BF-TMP!
    HBB-TRUE ;
 
+\ Every build gets a private directory. The engine's build mode writes fixed
+\ names into the HB_TMP it is handed (src/habu/aot-lib.f `hb-aot-got`,
+\ `hb-aot-obj`; src/habu/build.f `hb-build-got`), so two builds sharing one
+\ HB_TMP - every hb-build the gate pool runs at once - read each other's
+\ artifacts: one saw its image vanish (E-BUILD-PATH), another ran a stranger's
+\ application. A caller's HB_TMP is the base the private directory goes under.
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET
    CLEANUP-RESET
-   HBB-ENV-TMP? if exit then
+   HBB-ENV-TMP? if
+      BF-TMP$ s" hb-build-native" MAKE-TEMP-DIR 2dup BF-TMP! CLEANUP-TREE+ exit
+   then
    s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
 : HBB-PREPARE-CACHE ( -- )
