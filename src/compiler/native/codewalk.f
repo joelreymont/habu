@@ -105,21 +105,44 @@ public
 
 private
 
-\ The same three questions over a span of live code, by address.
+\ The same questions over a span of live code, by address. Live code also has
+\ the one fact the buffer form cannot check: the guard's BL reaches the engine's
+\ stack-data-entry and nothing else, so a lookalike wrapper stays in the count.
 variable SPAN-BASE
 
 : SPAN-WORD ( n -- n )
    NBR:INSN-BYTES * SPAN-BASE @ + INSN@ ;
 
+: SPAN-GUARD-AT? ( n n -- bool ) {: insns:n k:n :}
+   insns k [: SPAN-WORD ;] GUARD-AT? 0= if false exit then
+   k 6 + NBR:INSN-BYTES * SPAN-BASE @ + {: at:n :}
+   at at INSN@ NBR:BL-TARGET stack-data-entry = ;
+
 public
 
 : SPAN-GUARDED? ( n n n -- bool ) {: s:n len:n k:n :}
    s SPAN-BASE !
-   len NBR:INSN-BYTES / k [: SPAN-WORD ;] GUARDED? ;
+   len NBR:INSN-BYTES / {: insns:n :}
+   0 begin dup k <= while
+      insns over SPAN-GUARD-AT? if
+         dup GUARD-INSNS + k > if drop true exit then
+         GUARD-INSNS +
+      else
+         1+
+      then
+   repeat drop
+   false ;
 
 : SPAN-GUARDS ( n n -- n ) {: s:n len:n :}
    s SPAN-BASE !
-   len NBR:INSN-BYTES / [: SPAN-WORD ;] GUARDS ;
+   len NBR:INSN-BYTES / {: insns:n :}
+   0 0 begin dup insns < while
+      insns over SPAN-GUARD-AT? if
+         GUARD-INSNS + swap 1+ swap
+      else
+         1+
+      then
+   repeat drop ;
 
 \ the instruction at it, and a local annotation cannot carry a quotation effect.
 : SPAN-EACH ( n n [ n n -- ] -- ) {: s:n len:n q :}
