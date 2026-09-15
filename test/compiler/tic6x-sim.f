@@ -151,7 +151,99 @@ variable PROGRAM-LEN
    5 A@ 0 T= 6 A@ 5 T= 7 A@ 5 T= 8 A@ 0 T= ;
 
 
+\ Execute packets: every instruction reads before any writes, one cycle each.
+: PACKET-CASES ( -- )
+   P-RESET 7 1 A! 3 2 B! 9 5 A!
+   5 A-REG 1 A-REG 2 B-REG ENC-ADD-L PARALLEL-NEXT P+           \ .L1: A5 = 7 + 3 ...
+   6 A-REG 5 A-REG 0 ALWAYS ENC-SHL-U5 PARALLEL-NEXT P+         \ .S1: ... while A6 takes the old A5
+   7 B-REG 2 B-REG 1 ENC-ADD-I5 P+                              \ .L2: three in one cycle
+   P-RETURN P-RUN 7 T=
+   5 A@ 10 T= 6 A@ 9 T= 7 B@ 4 T=
+   P-RESET 1 1 A! 2 2 B!
+   6 A-REG 1 A-REG 2 B-REG ENC-ADD-L PARALLEL-NEXT P+           \ B2 through 1X ...
+   7 A-REG 2 B-REG 1 A-REG ALWAYS ENC-SHL-S P+                  \ ... twice is allowed
+   P-RETURN P-RUN drop
+   6 A@ 3 T= 7 A@ 4 T=
+   P-RESET 1 1 A! 2 ENC-NOP PARALLEL-NEXT P+ 2 A-REG 1 A-REG 3 ENC-ADD-I5 P+   \ the packet, then one idle cycle
+   3 A-REG 2 A-REG 0 ALWAYS ENC-SHL-U5 P+                       \ sees the sum
+   P-RETURN P-RUN 9 T=
+   3 A@ 4 T= ;
+
+
+\ Reading through a cross path a register a non-load wrote last cycle costs a cycle.
+: STALL-CASES ( -- )
+   P-RESET 1 0 A! 2 0 B!
+   1 A-REG 0 A-REG 0 A-REG ENC-ADD-L P+                         \ A1 = 2
+   1 B-REG 0 B-REG 1 A-REG ENC-ADD-L P+                         \ .L2 reads A1 through 2X: a stall
+   P-RETURN P-RUN 9 T=
+   1 B@ 4 T=
+   P-RESET 1 0 A! 2 0 B!
+   1 A-REG 0 A-REG 0 A-REG ENC-ADD-L P+
+   1 ENC-NOP P+
+   1 B-REG 0 B-REG 1 A-REG ENC-ADD-L P+                         \ a cycle later: no stall
+   P-RETURN P-RUN 9 T=
+   P-RESET MEMORY-BASE 4 A! 5 MEMORY-BASE MEMORY-WORD! 2 0 B!
+   1 A-REG 4 A-REG 0 >BYTE-OFFSET ENC-LDW P+
+   4 ENC-NOP P+
+   1 B-REG 0 B-REG 1 A-REG ENC-ADD-L P+                         \ a load's value: no stall
+   P-RETURN P-RUN 12 T=
+   1 B@ 7 T= ;
+
+
+\ A load may land beside another write of a different cycle, never the same one.
+: LANDING-CASES ( -- )
+   P-RESET MEMORY-BASE 4 A! 5 MEMORY-BASE MEMORY-WORD!
+   1 A-REG 4 A-REG 0 >BYTE-OFFSET ENC-LDW P+
+   2 ENC-NOP P+
+   1 A-REG 9 ENC-MVK P+                                         \ written a cycle before the load lands
+   P-RETURN P-RUN drop
+   1 A@ 5 T=
+   P-RESET MEMORY-BASE 4 A! 5 MEMORY-BASE MEMORY-WORD!
+   1 A-REG 4 A-REG 0 >BYTE-OFFSET ENC-LDW P+
+   4 ENC-NOP P+
+   1 A-REG 9 ENC-MVK P+                                         \ written after the load landed
+   P-RETURN P-RUN drop
+   1 A@ 9 T= ;
+
+
+\ A branch landing cuts a multicycle NOP short.
+: SHORT-NOP-CASES ( -- )
+   P-RESET
+   0 >SIDE 0 2 OFFSET ENC-B-REL P+
+   9 ENC-NOP P+
+   4 A-REG 1 ENC-MVK P+
+   P-RETURN P-RUN 13 T=
+   4 A@ 1 T= ;
+
+
 : UNDECODABLE ( -- ) P-RESET $FFFFFFFF >INSTRUCTION P+ P-RETURN P-RUN drop ;
+: SAME-UNIT ( -- )
+   P-RESET 5 A-REG 1 A-REG 2 A-REG ENC-ADD-L PARALLEL-NEXT P+ 6 A-REG 1 A-REG 2 A-REG ENC-SUB-L P+
+   P-RETURN P-RUN drop ;
+: TWO-CROSSED ( -- )
+   P-RESET 5 A-REG 1 A-REG 2 B-REG ENC-ADD-L PARALLEL-NEXT P+
+   6 A-REG 3 B-REG 1 A-REG ALWAYS ENC-SHL-S P+                  \ a second register on 1X
+   P-RETURN P-RUN drop ;
+: SAME-DATA-SIDE ( -- )
+   P-RESET MEMORY-BASE 4 B! MEMORY-BASE 5 A!
+   7 A-REG 4 B-REG 0 >BYTE-OFFSET ALWAYS ENC-LDB PARALLEL-NEXT P+
+   8 A-REG 5 A-REG 0 >BYTE-OFFSET ALWAYS ENC-LDB P+             \ both move data on side A
+   P-RETURN P-RUN drop ;
+: TWO-IDLES ( -- ) P-RESET 2 ENC-NOP PARALLEL-NEXT P+ 3 ENC-NOP P+ P-RETURN P-RUN drop ;
+: TWO-WRITES ( -- )
+   P-RESET 1 A-REG 0 A-REG 0 A-REG ENC-ADD-L PARALLEL-NEXT P+ 1 A-REG 0 A-REG 1 ALWAYS ENC-SHL-U5 P+
+   P-RETURN P-RUN drop ;
+: LATE-WRITE ( -- )
+   P-RESET MEMORY-BASE 4 A!
+   1 A-REG 4 A-REG 0 >BYTE-OFFSET ENC-LDW P+
+   3 ENC-NOP P+
+   1 A-REG 9 ENC-MVK P+                                         \ lands with the load
+   P-RETURN P-RUN drop ;
+: TWO-BRANCHES ( -- )
+   P-RESET 0 >SIDE 0 2 OFFSET ENC-B-REL PARALLEL-NEXT P+ 1 >SIDE 0 2 OFFSET ENC-B-REL P+
+   4 A-REG 1 ENC-MVK P+ P-RETURN P-RUN drop ;
+: NINE-WORDS ( -- )
+   P-RESET 8 0 ?do 1 ENC-NOP PARALLEL-NEXT P+ loop 1 ENC-NOP P+ P-RETURN P-RUN drop ;
 : OUTSIDE ( -- ) P-RESET 5 A-REG 1 A-REG 0 >BYTE-OFFSET ALWAYS ENC-LDB P+ P-RETURN P-RUN drop ;
 : FOREVER ( -- ) P-RESET 0 >SIDE 0 0 OFFSET ENC-B-REL P+ 5 ENC-NOP P+ 1000 BUDGET! P-RUN drop ;
 : EMPTY ( -- ) P-RESET P-RUN drop ;
@@ -160,12 +252,20 @@ variable PROGRAM-LEN
    [: UNDECODABLE ;] E-DECODE TTHROWSQ
    [: OUTSIDE ;] E-FAULT TTHROWSQ
    [: FOREVER ;] E-LIMIT TTHROWSQ
-   [: EMPTY ;] C6XSIM:E-OPERAND TTHROWSQ ;
+   [: EMPTY ;] C6XSIM:E-OPERAND TTHROWSQ
+   [: SAME-UNIT ;] E-CONFLICT TTHROWSQ
+   [: TWO-CROSSED ;] E-CONFLICT TTHROWSQ
+   [: SAME-DATA-SIDE ;] E-CONFLICT TTHROWSQ
+   [: TWO-IDLES ;] E-CONFLICT TTHROWSQ
+   [: TWO-WRITES ;] E-CONFLICT TTHROWSQ
+   [: LATE-WRITE ;] E-CONFLICT TTHROWSQ
+   [: TWO-BRANCHES ;] E-CONFLICT TTHROWSQ
+   [: NINE-WORDS ;] E-CONFLICT TTHROWSQ ;
 
 
 : RUN ( -- )
    MOVE-CASES ARITHMETIC-CASES SUBC-CASES SHIFT-CASES FIELD-CASES MEMORY-CASES
-   BRANCH-CASES PREDICATE-CASES REFUSALS
+   BRANCH-CASES PREDICATE-CASES PACKET-CASES STALL-CASES LANDING-CASES SHORT-NOP-CASES REFUSALS
    T-REPORT ;
 
 RUN

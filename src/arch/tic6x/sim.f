@@ -1,11 +1,16 @@
 \ A host interpreter for the C66x subset that src/arch/tic6x/asm.f constructs:
-\ one instruction per execute packet, load results after four delay slots,
-\ branches after five, predication, and a small byte-addressed memory window.
+\ execute packets of up to eight instructions that all read before any writes,
+\ load results after four delay slots, branches after five, predication,
+\ multicycle NOPs, cross path stalls, and a small byte-addressed memory window.
 \ It exists to run emitted helper programs on the host against an oracle before
-\ the board does; it models no pipeline hazards beyond those delays, no
-\ parallel packets, and no instruction outside the encoder's subset.
+\ the board does, and it refuses what SPRUGH7 section 3.8 forbids: two
+\ instructions on one unit, two registers through one cross path, two memory
+\ accesses moving data on one register file, two multicycle NOPs in a packet,
+\ two taken branches in a cycle, and two writes landing on one register in one
+\ cycle. It models no other hazard and no instruction outside the subset.
 require lib/errors.f
 require src/arch/tic6x/asm.f
+require src/arch/tic6x/facts.f
 
 package C6XSIM
 public
@@ -14,20 +19,31 @@ E-C6XSIM-DECODE constant E-DECODE
 E-C6XSIM-FAULT constant E-FAULT
 E-C6XSIM-LIMIT constant E-LIMIT
 E-C6XSIM-OPERAND constant E-OPERAND
+E-C6XSIM-CONFLICT constant E-CONFLICT
 $00800000 constant MEMORY-BASE
 $10000 constant MEMORY-BYTES
 $FFFFFFE0 constant RETURN-ADDRESS          \ what B3 holds when CALL starts
 
 private
+using C6XFACTS
 
 $FFFFFFFF constant MASK32
 4 constant LOAD-DELAY
 5 constant BRANCH-DELAY
-8 constant PENDING-MAX
+32 constant PENDING-MAX
+8 constant PACKET-MAX
+16 constant COMMIT-MAX
+16 constant STORE-MAX
 create REGS 64 cells allot
 create MEMORY MEMORY-BYTES allot
 create PENDING PENDING-MAX 3 * cells allot   \ register, value, cycles left
+create PACKET PACKET-MAX cells allot
+create COMMITS COMMIT-MAX 2 * cells allot    \ register, value: written when the packet ends
+create STORES STORE-MAX 3 * cells allot      \ address, size, value: written when the packet ends
 variable PENDING-COUNT
+variable PACKET-COUNT
+variable COMMIT-COUNT
+variable STORE-COUNT
 variable PROGRAM
 variable PROGRAM-WORDS
 variable NEXT-WORD                                 \ word index of the next instruction
@@ -40,6 +56,19 @@ variable CURRENT
 variable SCAN
 variable MAGNITUDE
 variable DONE
+variable MORE
+variable LANDED                                    \ registers whose loads landed this cycle
+variable WRITTEN-LAST                              \ registers the previous packet wrote
+variable RECENT                                    \ the same, for the cross path stall check
+variable CROSS-READS                               \ registers this packet reads through cross paths
+variable UNITS-USED
+variable CROSS-1X                                  \ the B register an A-side unit reads, or -1
+variable CROSS-2X                                  \ the A register a B-side unit reads, or -1
+variable MEMORY-SIDES
+variable IDLE-TICKS                                \ the packet's multicycle NOP count, else 0
+variable TAKEN
+variable JUMPED
+variable CHECKING                                  \ the word under classification
 
 : RANGE ( n n n -- n ) {: value:n low:n high:n :}
    value low < value high > or if E-OPERAND throw then value ;
@@ -68,7 +97,21 @@ variable DONE
    value address BYTE! value 8 rshift address 1+ BYTE! value 16 rshift address 2 + BYTE! value 24 rshift address 3 + BYTE! ;
 
 
-\ ---- delayed register writes ------------------------------------------------------
+\ ---- writes -------------------------------------------------------------------------------
+\ A packet's instructions read the registers and memory as they stand; their
+\ results queue here and land together when the packet ends, loads later.
+
+: RESULT ( n n -- ) {: value:n reg:n :}
+   COMMIT-COUNT @ COMMIT-MAX >= if E-LIMIT throw then
+   COMMITS COMMIT-COUNT @ 2 * cells + {: row:ptr :}
+   reg row ! value >U32 row 1 cells + !
+   1 COMMIT-COUNT +! ;
+
+: STORE ( n n n -- ) {: value:n address:n size:n :}
+   STORE-COUNT @ STORE-MAX >= if E-LIMIT throw then
+   STORES STORE-COUNT @ 3 * cells + {: row:ptr :}
+   address row ! size row 1 cells + ! value row 2 cells + !
+   1 STORE-COUNT +! ;
 
 : PENDING-ROW ( n -- ptr a ) 3 * cells PENDING + ;
 
@@ -78,19 +121,51 @@ variable DONE
    reg row ! value >U32 row 1 cells + ! delay 1+ row 2 cells + !
    1 PENDING-COUNT +! ;
 
-\ Advances every pending write by one cycle, landing those that are due.
+\ A load landing on a register another write reached in the same cycle is undefined.
+: LAND ( ptr a -- ) {: row:ptr :}
+   row @ {: reg:n :}
+   LANDED @ reg MASK-BIT and 0 <> WRITTEN-LAST @ reg MASK-BIT and 0 <> or if E-CONFLICT throw then
+   LANDED @ reg MASK-BIT or LANDED !
+   row 1 cells + @ reg REG! ;
+
+\ Advances every pending load by one cycle, landing those that are due.
 : SETTLE ( -- )
-   0 SCAN !
+   0 LANDED ! 0 SCAN !
    begin SCAN @ PENDING-COUNT @ < while
       SCAN @ PENDING-ROW {: row:ptr :}
       row 2 cells + @ 1- dup row 2 cells + !
       0= if
-         row 1 cells + @ row @ REG!
+         row LAND
          PENDING-COUNT @ 1- PENDING-ROW {: last:ptr :}
          last @ row ! last 1 cells + @ row 1 cells + ! last 2 cells + @ row 2 cells + !
          -1 PENDING-COUNT +!
       else 1 SCAN +! then
    repeat ;
+
+: COMMIT-ROW ( n -- ) {: idx:n :}
+   COMMITS idx 2 * cells + {: row:ptr :}
+   row @ {: reg:n :}
+   WRITTEN-LAST @ reg MASK-BIT and 0 <> if E-CONFLICT throw then
+   WRITTEN-LAST @ reg MASK-BIT or WRITTEN-LAST !
+   row 1 cells + @ reg REG! ;
+
+: STORE-ROW ( n -- ptr a ) 3 * cells STORES + ;
+
+: OVERLAP? ( n n -- bool ) {: a:n b:n :}
+   a STORE-ROW @ {: start:n :} start a STORE-ROW 1 cells + @ + {: limit:n :}
+   b STORE-ROW @ {: other:n :} other b STORE-ROW 1 cells + @ + {: other-limit:n :}
+   start other-limit < other limit < and ;
+
+: STORE-COMMIT ( n -- ) {: idx:n :}
+   idx 0 ?do idx i OVERLAP? if E-CONFLICT throw then loop
+   idx STORE-ROW {: row:ptr :}
+   row 1 cells + @ 1 = if row 2 cells + @ row @ BYTE! else row 2 cells + @ row @ WORD! then ;
+
+\ Lands the packet's writes; two on one register in one cycle are undefined.
+: COMMIT ( -- )
+   0 WRITTEN-LAST !
+   COMMIT-COUNT @ 0 ?do i COMMIT-ROW loop
+   STORE-COUNT @ 0 ?do i STORE-COMMIT loop ;
 
 
 \ ---- decoding -------------------------------------------------------------------------
@@ -136,6 +211,7 @@ variable DONE
 \ ---- execution --------------------------------------------------------------------------
 
 : BRANCH ( n -- ) {: target:n :}
+   TAKEN @ 0 <> if E-CONFLICT throw then 1 TAKEN !
    BRANCH-PENDING @ 0 <> if UNMODELLED then
    target BRANCH-TARGET ! 1 BRANCH-PENDING ! BRANCH-DELAY BRANCH-LEFT ! ;
 
@@ -145,28 +221,28 @@ variable DONE
    5 7 BITS {: op:n :}
    DST {: dst:n :}
    SRC2 REG@ {: b:n :}
-   op 3 = if SRC1 REG@ b + dst REG! exit then
-   op 2 = if SRC1-SIGNED b + dst REG! exit then
-   op 7 = if SRC1 REG@ b - dst REG! exit then
-   op 123 = if SRC1 REG@ b and dst REG! exit then
-   op 127 = if SRC1 REG@ b or dst REG! exit then
-   op 126 = if b dst REG! exit then
-   op 111 = if SRC1 REG@ b xor dst REG! exit then
-   op 83 = if SRC1 REG@ b = if 1 else 0 then dst REG! exit then
+   op 3 = if SRC1 REG@ b + dst RESULT exit then
+   op 2 = if SRC1-SIGNED b + dst RESULT exit then
+   op 7 = if SRC1 REG@ b - dst RESULT exit then
+   op 123 = if SRC1 REG@ b and dst RESULT exit then
+   op 127 = if SRC1 REG@ b or dst RESULT exit then
+   op 126 = if b dst RESULT exit then
+   op 111 = if SRC1 REG@ b xor dst RESULT exit then
+   op 83 = if SRC1 REG@ b = if 1 else 0 then dst RESULT exit then
    op 75 = if                                            \ SUBC compares unsigned operands
       SRC1 REG@ {: a:n :}
-      a b >= if a b - 1 lshift 1 or else a 1 lshift then dst REG! exit
+      a b >= if a b - 1 lshift 1 or else a 1 lshift then dst RESULT exit
    then
-   op 71 = if SRC1 REG@ >S32 b >S32 > if 1 else 0 then dst REG! exit then
-   op 70 = if SRC1-SIGNED b >S32 > if 1 else 0 then dst REG! exit then
-   op 79 = if SRC1 REG@ b > if 1 else 0 then dst REG! exit then
-   op 78 = if SRC1-UNSIGNED b > if 1 else 0 then dst REG! exit then
-   op 87 = if SRC1 REG@ >S32 b >S32 < if 1 else 0 then dst REG! exit then
-   op 86 = if SRC1-SIGNED b >S32 < if 1 else 0 then dst REG! exit then
-   op 95 = if SRC1 REG@ b < if 1 else 0 then dst REG! exit then
-   op 94 = if SRC1-UNSIGNED b < if 1 else 0 then dst REG! exit then
-   op 26 = if b >S32 abs dst REG! exit then
-   op 99 = if b NORM dst REG! exit then
+   op 71 = if SRC1 REG@ >S32 b >S32 > if 1 else 0 then dst RESULT exit then
+   op 70 = if SRC1-SIGNED b >S32 > if 1 else 0 then dst RESULT exit then
+   op 79 = if SRC1 REG@ b > if 1 else 0 then dst RESULT exit then
+   op 78 = if SRC1-UNSIGNED b > if 1 else 0 then dst RESULT exit then
+   op 87 = if SRC1 REG@ >S32 b >S32 < if 1 else 0 then dst RESULT exit then
+   op 86 = if SRC1-SIGNED b >S32 < if 1 else 0 then dst RESULT exit then
+   op 95 = if SRC1 REG@ b < if 1 else 0 then dst RESULT exit then
+   op 94 = if SRC1-UNSIGNED b < if 1 else 0 then dst RESULT exit then
+   op 26 = if b >S32 abs dst RESULT exit then
+   op 99 = if b NORM dst RESULT exit then
    UNMODELLED ;
 
 
@@ -174,12 +250,12 @@ variable DONE
    6 6 BITS {: op:n :}
    DST {: dst:n :}
    SRC2 REG@ {: value:n :}
-   op 51 = if value SRC1 REG@ SHL dst REG! exit then
-   op 50 = if value SRC1-UNSIGNED SHL dst REG! exit then
-   op 55 = if value SRC1 REG@ SHR dst REG! exit then
-   op 54 = if value SRC1-UNSIGNED SHR dst REG! exit then
-   op 39 = if value SRC1 REG@ SHRU dst REG! exit then
-   op 38 = if value SRC1-UNSIGNED SHRU dst REG! exit then
+   op 51 = if value SRC1 REG@ SHL dst RESULT exit then
+   op 50 = if value SRC1-UNSIGNED SHL dst RESULT exit then
+   op 55 = if value SRC1 REG@ SHR dst RESULT exit then
+   op 54 = if value SRC1-UNSIGNED SHR dst RESULT exit then
+   op 39 = if value SRC1 REG@ SHRU dst RESULT exit then
+   op 38 = if value SRC1-UNSIGNED SHRU dst RESULT exit then
    UNMODELLED ;
 
 
@@ -189,25 +265,26 @@ variable DONE
    SRC2-SAME REG@ {: value:n :}
    13 5 BITS {: csta:n :}
    8 5 BITS {: cstb:n :}
-   kind 0 = if value csta SHL cstb SHRU dst REG! exit then
-   kind 1 = if value csta SHL cstb SHR dst REG! exit then
+   kind 0 = if value csta SHL cstb SHRU dst RESULT exit then
+   kind 1 = if value csta SHL cstb SHR dst RESULT exit then
    cstb csta < if UNMODELLED then
-   kind 2 = if value csta cstb FIELD-MASK or dst REG! exit then
-   value csta cstb FIELD-MASK MASK32 xor and dst REG! ;
+   kind 2 = if value csta cstb FIELD-MASK or dst RESULT exit then
+   value csta cstb FIELD-MASK MASK32 xor and dst RESULT ;
 
 
 : EXECUTE-D ( -- )
    7 6 BITS {: op:n :}
    DST {: dst:n :}
    SRC2-SAME REG@ {: base:n :}
-   op 48 = if SRC1 REG@ base + dst REG! exit then
-   op 50 = if SRC1-UNSIGNED base + dst REG! exit then
-   op 56 = if SRC1 REG@ 4 * base + dst REG! exit then
-   op 58 = if SRC1-UNSIGNED 4 * base + dst REG! exit then
+   op 48 = if SRC1 REG@ base + dst RESULT exit then
+   op 50 = if SRC1-UNSIGNED base + dst RESULT exit then
+   op 56 = if SRC1 REG@ 4 * base + dst RESULT exit then
+   op 58 = if SRC1-UNSIGNED 4 * base + dst RESULT exit then
    UNMODELLED ;
 
 
 \ Loads and stores: mode bits select offset or post-modification and its sign.
+\ Loads read memory now and land after the delay; stores land with the packet.
 : EXECUTE-MEMORY ( -- )
    4 3 BITS 8 1 BITS 3 lshift or {: kind:n :}
    9 4 BITS {: mode:n :}
@@ -219,41 +296,32 @@ variable DONE
    mode 4 and 0 <> if UNMODELLED then                    \ register offsets are not modelled
    mode 8 and 0 <> if
       mode 2 and 0= if UNMODELLED then                   \ pre-modification is not modelled
-      base REG@ {: address:n :} address delta + base REG!
+      base REG@ {: address:n :} address delta + base RESULT
       address
    else base REG@ delta + then {: address:n :}
    kind 2 = if data address BYTE@ 8 SEXT LOAD-DELAY SCHEDULE exit then
    kind 1 = if data address BYTE@ LOAD-DELAY SCHEDULE exit then
-   kind 3 = if data REG@ address BYTE! exit then
+   kind 3 = if data REG@ address 1 STORE exit then
    kind 6 = if data address WORD@ LOAD-DELAY SCHEDULE exit then
-   kind 7 = if data REG@ address WORD! exit then
+   kind 7 = if data REG@ address 4 STORE exit then
    kind 14 = if
       data address WORD@ LOAD-DELAY SCHEDULE data 1+ address 4 + WORD@ LOAD-DELAY SCHEDULE exit
    then
-   kind 12 = if data REG@ address WORD! data 1+ REG@ address 4 + WORD! exit then
+   kind 12 = if data REG@ address 4 STORE data 1+ REG@ address 4 + 4 STORE exit then
    UNMODELLED ;
 
 
 : EXECUTE-MOVE ( -- )
    7 16 BITS {: value:n :}
    DST {: dst:n :}
-   6 1 BITS 0 <> if dst REG@ $FFFF and value 16 lshift or dst REG! exit then
-   value 16 SEXT dst REG! ;
+   6 1 BITS 0 <> if dst REG@ $FFFF and value 16 lshift or dst RESULT exit then
+   value 16 SEXT dst RESULT ;
 
 
-\ Executes the word at NEXT-WORD as one execute packet; NOPs take their cycle count.
-: STEP ( -- )
-   NEXT-WORD @ 0 < NEXT-WORD @ PROGRAM-WORDS @ >= or if E-FAULT throw then
-   PROGRAM @ {: base:ptr :}
-   base NEXT-WORD @ cells + @ >U32 CURRENT !
-   1 NEXT-WORD +!
-   CURRENT @ $FFFE1FFF and 0= if
-      13 4 BITS 1+ {: ticks:n :}
-      ticks 0 ?do SETTLE 1 CYCLES +! BRANCH-PENDING @ 0 <> if -1 BRANCH-LEFT +! then loop
-      exit
-   then
-   SETTLE 1 CYCLES +!
-   BRANCH-PENDING @ 0 <> if -1 BRANCH-LEFT +! then
+\ Instruction idx of the packet; a relative branch counts from the fetch packet holding it.
+: RUN-ONE ( n -- ) {: idx:n :}
+   PACKET idx cells + @ $FFFFFFFE and CURRENT !
+   CURRENT @ $FFFE1FFF and 0= if exit then
    CONDITION-TRUE? 0= if exit then
    CURRENT @ $7C and $28 = CURRENT @ $7C and $68 = or if EXECUTE-MOVE exit then
    CURRENT @ $FFF and $362 = if 18 5 BITS 12 1 BITS 1 xor 32 * + REG@ BRANCH exit then
@@ -262,10 +330,96 @@ variable DONE
    CURRENT @ $3C and $08 = if EXECUTE-FIELD exit then
    CURRENT @ $7C and $40 = if EXECUTE-D exit then
    CURRENT @ $7C and $10 = if
-      7 21 BITS 21 SEXT 4 * NEXT-WORD @ 1- 4 * $FFFFFFE0 and + BRANCH exit
+      7 21 BITS 21 SEXT 4 * NEXT-WORD @ PACKET-COUNT @ - idx + 4 * $FFFFFFE0 and + BRANCH exit
    then
    CURRENT @ $0C and $04 = if EXECUTE-MEMORY exit then
    UNMODELLED ;
+
+: RUN-PACKET ( -- )
+   0 COMMIT-COUNT ! 0 STORE-COUNT ! 0 TAKEN !
+   PACKET-COUNT @ 0 ?do i RUN-ONE loop ;
+
+
+\ ---- packets ----------------------------------------------------------------------------
+
+: FETCH ( -- n )
+   NEXT-WORD @ 0 < NEXT-WORD @ PROGRAM-WORDS @ >= or if E-FAULT throw then
+   PROGRAM @ {: base:ptr :}
+   base NEXT-WORD @ cells + @ >U32 1 NEXT-WORD +! ;
+
+\ The words from NEXT-WORD chained by their p bits.
+: GATHER ( -- )
+   0 PACKET-COUNT ! 1 MORE !
+   begin MORE @ 0 <> while
+      PACKET-COUNT @ PACKET-MAX >= if E-CONFLICT throw then
+      FETCH {: w:n :}
+      w PACKET PACKET-COUNT @ cells + ! 1 PACKET-COUNT +!
+      w 1 and MORE !
+   repeat ;
+
+\ One cross path carries one register per cycle, though any number of units may read it.
+: CLAIM-CROSS ( -- )
+   CROSS@ {: reg:n :}
+   reg 32 >= if CROSS-1X else CROSS-2X then {: path:ptr :}
+   path @ 0 >= path @ reg <> and if E-CONFLICT throw then
+   reg path !
+   CROSS-READS @ reg MASK-BIT or CROSS-READS ! ;
+
+: CLASSIFY ( -- ) CHECKING @ FACTS ;
+
+\ A word the facts module cannot classify is one the interpreter cannot model.
+: CHECK-ONE ( n -- ) {: idx:n :}
+   PACKET idx cells + @ CHECKING !
+   [: CLASSIFY ;] catch {: code:n :}
+   code C6XFACTS:E-DECODE = if CHECKING @ CURRENT ! UNMODELLED then
+   code 0 <> if code throw then
+   IDLE@ 1 > if IDLE-TICKS @ 0 <> if E-CONFLICT throw then IDLE@ IDLE-TICKS ! then
+   IDLE@ 0 <> if exit then
+   UNIT@ MASK-BIT UNITS-USED @ and 0 <> if E-CONFLICT throw then
+   UNIT@ MASK-BIT UNITS-USED @ or UNITS-USED !
+   CROSS@ 0 >= if CLAIM-CROSS then
+   MEMORY@ 0 <> if
+      DATA-SIDE@ MASK-BIT MEMORY-SIDES @ and 0 <> if E-CONFLICT throw then
+      DATA-SIDE@ MASK-BIT MEMORY-SIDES @ or MEMORY-SIDES !
+   then ;
+
+\ The packet's resource use against SPRUGH7 3.8.1, 3.8.4, 3.8.6 and 3.8.11.
+: CHECK ( -- )
+   0 UNITS-USED ! -1 CROSS-1X ! -1 CROSS-2X ! 0 MEMORY-SIDES ! 0 IDLE-TICKS ! 0 CROSS-READS !
+   PACKET-COUNT @ 0 ?do i CHECK-ONE loop ;
+
+\ One cycle passes: due loads land, and a pending branch spends a delay slot.
+: TICK ( -- )
+   SETTLE 1 CYCLES +!
+   WRITTEN-LAST @ RECENT ! 0 WRITTEN-LAST !
+   BRANCH-PENDING @ 0 <> if -1 BRANCH-LEFT +! then ;
+
+\ Reading through a cross path a register a non-load wrote last cycle costs a cycle (3.8.5).
+: STALL ( -- )
+   CROSS-READS @ RECENT @ and 0= if exit then
+   SETTLE 1 CYCLES +! ;
+
+\ A branch whose delay slots have run: to the return address, draining the
+\ loads still in flight, or to a word of the program.
+: BRANCH-DUE ( -- )
+   BRANCH-PENDING @ 0= if exit then
+   BRANCH-LEFT @ 0 > if exit then
+   0 BRANCH-PENDING ! 1 JUMPED !
+   BRANCH-TARGET @ RETURN-ADDRESS = if
+      begin PENDING-COUNT @ 0 > while TICK repeat
+      1 DONE ! exit
+   then
+   BRANCH-TARGET @ 4 mod 0 <> if E-FAULT throw then
+   BRANCH-TARGET @ 4 / NEXT-WORD ! ;
+
+: IDLE-ONE ( -- ) JUMPED @ 0 <> DONE @ 0 <> or if exit then TICK BRANCH-DUE ;
+
+\ Executes the packet at NEXT-WORD in one cycle, plus the extra cycles of a
+\ multicycle NOP in it, which a branch landing first cuts short.
+: STEP ( -- )
+   GATHER CHECK TICK STALL RUN-PACKET COMMIT
+   0 JUMPED ! BRANCH-DUE
+   IDLE-TICKS @ 1 > if IDLE-TICKS @ 1- 0 ?do IDLE-ONE loop then ;
 
 public
 
@@ -292,19 +446,10 @@ public
 : CALL ( ptr a n -- n ) {: words:ptr count:n :}
    count 0 <= if E-OPERAND throw then
    words PROGRAM ! count PROGRAM-WORDS ! 0 NEXT-WORD ! 0 CYCLES ! 0 BRANCH-PENDING ! 0 PENDING-COUNT !
+   0 WRITTEN-LAST ! 0 RECENT ! 0 LANDED !
    RETURN-ADDRESS 3 B! 0 DONE !
    begin DONE @ 0= while
       STEP
-      BRANCH-PENDING @ 0 <> BRANCH-LEFT @ 0 <= and if
-         0 BRANCH-PENDING !
-         BRANCH-TARGET @ RETURN-ADDRESS = if
-            begin PENDING-COUNT @ 0 > while SETTLE 1 CYCLES +! repeat
-            1 DONE !
-         else
-            BRANCH-TARGET @ 4 mod 0 <> if E-FAULT throw then
-            BRANCH-TARGET @ 4 / NEXT-WORD !
-         then
-      then
       CYCLES @ BUDGET @ > if E-LIMIT throw then
    repeat
    CYCLES @ ;

@@ -256,9 +256,40 @@ create DOUBLES
    [: 0 64 PERMITTED? drop ;] C6XEABI:E-OPERAND TTHROWSQ ;
 
 
+\ ---- cycles of the packed helpers, so a scheduling change is a deliberate one ---------
+
+: CYCLES-FOR ( n n n -- n ) {: idx:n x:n y:n :}
+   idx HELPER ! idx EMIT-HELPER RESET FILL-REGISTERS x 4 A! y 4 B! PROGRAM$ CALL ;
+
+: DOUBLE-CYCLES ( n n -- n ) {: x:n y:n :}
+   9 HELPER ! 9 EMIT-HELPER RESET FILL-REGISTERS
+   x >U32 4 A! x 32 rshift 5 A! y >U32 4 B! y 32 rshift 5 B! PROGRAM$ CALL ;
+
+: COPY-CYCLES ( n n -- n ) {: soff:n doff:n :}
+   6 EMIT-HELPER PREPARE MEMORY-BASE 512 + doff + 4 A! MEMORY-BASE soff + 4 B! 256 6 A! PROGRAM$ CALL ;
+
+: FILL-CYCLES ( n -- n ) {: doff:n :}
+   7 EMIT-HELPER PREPARE MEMORY-BASE 512 + doff + 4 A! $5A 4 B! 256 6 A! PROGRAM$ CALL ;
+
+: CYCLE-CASES ( -- )
+   1 1000000007 12345 CYCLES-FOR 76 T=                    \ the full 32-step chain
+   1 $FFFFFFFF $80000001 CYCLES-FOR 28 T=                 \ a divisor with its top bit set
+   1 5 0 CYCLES-FOR 15 T=                                 \ division by zero
+   0 -1000000007 12345 CYCLES-FOR 77 T=
+   4 -1000000007 12345 CYCLES-FOR 78 T=
+   0 0 COPY-CYCLES 259 T=                                 \ 256 bytes, both aligned
+   8 0 COPY-CYCLES 259 T=
+   1 0 COPY-CYCLES 1827 T=                                \ mismatched: bytes throughout
+   3 3 COPY-CYCLES 308 T=                                 \ co-aligned after three head bytes
+   0 FILL-CYCLES 259 T=
+   3 FILL-CYCLES 308 T=
+   8 $3FC00000 $406CCCCD CYCLES-FOR 283 T=                \ 1.5 / 3.7
+   $3FF8000000000000 $400D99999999999A DOUBLE-CYCLES 851 T= ;
+
+
 : RUN ( -- )
    0 FAILURES !
-   DIVISION-CASES MEMORY-CASES SWEEPS FLOAT-CASES DOUBLE-CASES REFUSALS
+   DIVISION-CASES MEMORY-CASES SWEEPS FLOAT-CASES DOUBLE-CASES REFUSALS CYCLE-CASES
    FAILURES @ 0 T=
    HELPER-COUNT 10 T=
    1 HELPER-NAME$ s" __c6xabi_divu" T$=

@@ -547,7 +547,8 @@ public
 \                 storage a corpus declares, and the package a derived word is
 \                 published in (package JUDGE-CHAIN)
 \   -8840..-8859  ARM32/Thumb instruction construction (package A32ASM)
-\   -8860..-8879  C66x instruction construction (package C6XASM)
+\   -8860..-8869  C66x instruction construction (package C6XASM)
+\   -8870..-8879  C66x instruction facts (package C6XFACTS)
 \   -8880..-8889  C66x subset interpreter (package C6XSIM)
 \   -8890..-8899  C6000 EABI helper emission (package C6XEABI)
 \   -8420..-8439, -8487..-8499, -8520..-8599, -8666..-8699, -8740..-8839,
@@ -1164,14 +1165,18 @@ public
 -8840 constant E-A32ASM-OPERAND
 -8860 constant E-C6XASM-OPERAND
 
+\ C66x instruction facts for scheduling and packet checks: -8870..-8879.
+-8870 constant E-C6XFACTS-DECODE   \ a word outside the constructed subset
+
 \ C66x subset interpreter for host tests: -8880..-8889.
 -8880 constant E-C6XSIM-DECODE     \ a word the interpreter does not model
 -8881 constant E-C6XSIM-FAULT      \ memory access outside the modelled window
 -8882 constant E-C6XSIM-LIMIT      \ the cycle budget ran out
 -8883 constant E-C6XSIM-OPERAND    \ a register, address or program outside the model
+-8884 constant E-C6XSIM-CONFLICT   \ an execute packet or write SPRUGH7 3.8 forbids
 
 \ C6000 EABI helper emission: -8890..-8899.
--8890 constant E-C6XEABI-OPERAND   \ no helper with that index
+-8890 constant E-C6XEABI-OPERAND   \ no helper with that index, or a NOP or branch given to EMIT
 -8891 constant E-C6XEABI-CAPACITY  \ the program or fixup table is full
 
 \ ELF32 bounded binary reader: -9000..-9019.

@@ -1,11 +1,13 @@
 \ The C6000 EABI helpers TI's reused libraries need, emitted as C66x instruction
 \ words from the constructors in src/arch/tic6x/asm.f: the integer division
-\ family within SPRAB89's Table 8-9 register sets, and memcpy/memset under the
-\ standard convention. One instruction per execute packet with explicit delay
-\ slots; correctness first, scheduling later. Radar's docs/c6x-eabi-helpers.md
+\ family within SPRAB89's Table 8-9 register sets, memcpy/memset under the
+\ standard convention, and bit-exact float division. Each helper is written as
+\ a sequential program; the builder packs it into parallel execute packets and
+\ supplies the load and branch delays itself. Radar's docs/c6x-eabi-helpers.md
 \ records the contracts and decisions.
 require lib/errors.f
 require src/arch/tic6x/asm.f
+require src/arch/tic6x/facts.f
 
 package C6XEABI
 public
@@ -16,14 +18,29 @@ E-C6XEABI-CAPACITY constant E-CAPACITY
 
 private
 using C6XASM
+using C6XFACTS
 
 1024 constant WORDS-MAX
 16 constant FIXUP-MAX
+256 constant PENDING-MAX
+2048 constant CYCLE-MAX
 create WORDS WORDS-MAX cells allot
-create FIXUPS FIXUP-MAX 3 * cells allot     \ word index, guard register code or -1, inverted
+create FIXUPS FIXUP-MAX 4 * cells allot     \ word index or -1 once resolved, guard code or -1, inverted, unit side
 create PERMITTED HELPER-COUNT cells allot   \ register bit masks: A0..A31 bits 0..31, B0..B31 bits 32..63
+create PENDING PENDING-MAX 8 * cells allot  \ word, unit, cross register, reads, writes, loads, memory kind, data side
+create CYCLE-OF PENDING-MAX cells allot     \ the cycle each pending row issues in
+create SLOTS CYCLE-MAX 4 * cells allot      \ per cycle: units used, 1X register, 2X register, memory data sides
 variable LEN
 variable FIXUP-COUNT
+variable PENDING-COUNT
+variable READY
+variable LAST-CYCLE
+variable DRAIN                              \ the cycle by which every pending load has landed
+variable PLACED
+variable BRANCH-AT
+variable BRANCH-SIDE
+variable IDLE-RUN
+variable PACKET-START
 
 
 : A ( n -- gpr ) A-REG ;
@@ -31,17 +48,173 @@ variable FIXUP-COUNT
 
 
 \ ---- the program builder -------------------------------------------------------------
+\ Instructions collect in a block until a label or a branch closes it. A list
+\ scheduler then packs the block into execute packets: each instruction issues
+\ in the earliest cycle in which its unit, cross path and memory data path are
+\ free (SPRUGH7 3.8) and the sequential meaning holds: it reads every earlier
+\ write, its writes land after earlier reads and strictly after earlier writes
+\ of the same register, memory accesses keep their order unless both load, and
+\ a value read through a cross path waits one more cycle so no stall is taken.
+\ The branch closing a block issues as late as its guard allows but early
+\ enough that its five delay slots hold the rest of the block and every load
+\ has landed when the target runs, so no successor needs to know the block.
+
+: PENDING-ROW ( n -- ptr a ) 8 * cells PENDING + ;
+: P-WORD ( n -- n ) PENDING-ROW @ ;
+: P-UNIT ( n -- n ) PENDING-ROW 1 cells + @ ;
+: P-CROSS ( n -- n ) PENDING-ROW 2 cells + @ ;
+: P-READS ( n -- n ) PENDING-ROW 3 cells + @ ;
+: P-WRITES ( n -- n ) PENDING-ROW 4 cells + @ ;
+: P-LOADS ( n -- n ) PENDING-ROW 5 cells + @ ;
+: P-MEMORY ( n -- n ) PENDING-ROW 6 cells + @ ;
+: P-SIDE ( n -- n ) PENDING-ROW 7 cells + @ ;
+: P-CYCLE ( n -- n ) cells CYCLE-OF + @ ;
+: SLOT ( n -- ptr a ) 4 * cells SLOTS + ;
+
+\ Row idx takes the facts of word w.
+: FILL-ROW ( n n -- ) {: w:n idx:n :}
+   w FACTS
+   idx PENDING-ROW {: row:ptr :}
+   w row ! UNIT@ row 1 cells + ! CROSS@ row 2 cells + ! READS@ row 3 cells + !
+   WRITES@ row 4 cells + ! LOADS@ row 5 cells + ! MEMORY@ row 6 cells + ! DATA-SIDE@ row 7 cells + ! ;
 
 : EMIT ( instruction -- )
-   LEN @ WORDS-MAX >= if E-CAPACITY throw then
-   INSTRUCTION>N WORDS LEN @ cells + ! 1 LEN +! ;
+   PENDING-COUNT @ PENDING-MAX >= if E-CAPACITY throw then
+   INSTRUCTION>N dup FACTS
+   IDLE@ 0 <> BRANCH? or if E-OPERAND throw then           \ idles and branches belong to the scheduler
+   PENDING-COUNT @ FILL-ROW 1 PENDING-COUNT +! ;
 
-: HERE ( -- n ) LEN @ ;
+: RAISE ( n -- ) READY @ max READY ! ;
+
+\ Raises READY so row idx keeps its sequential meaning after the placed row j.
+: AFTER ( n n -- ) {: idx:n j:n :}
+   j P-CYCLE {: c:n :}
+   idx P-READS {: reads:n :} idx P-WRITES {: writes:n :} idx P-LOADS {: loads:n :}
+   idx P-CROSS 0 >= if idx P-CROSS MASK-BIT else 0 then {: crossed:n :}
+   j P-WRITES reads and 0 <> if c 1+ RAISE then
+   j P-WRITES crossed and 0 <> if c 2 + RAISE then
+   j P-LOADS reads and 0 <> if c LOAD-LATENCY + RAISE then
+   j P-READS writes and 0 <> if c RAISE then
+   j P-READS loads and 0 <> if c 1+ LOAD-LATENCY - RAISE then
+   j P-WRITES writes and 0 <> if c 1+ RAISE then
+   j P-LOADS writes and 0 <> if c LOAD-LATENCY + RAISE then
+   j P-WRITES loads and 0 <> if c 2 + LOAD-LATENCY - RAISE then
+   j P-LOADS loads and 0 <> if c 1+ RAISE then
+   j P-MEMORY 0 <> idx P-MEMORY 0 <> and j P-MEMORY 1 = idx P-MEMORY 1 = and 0= and if c 1+ RAISE then ;
+
+\ Whether cycle has room for row idx: its unit, its cross path (one register
+\ per path per cycle) and, for a memory access, its data path.
+: FREE? ( n n -- bool ) {: idx:n cycle:n :}
+   cycle SLOT {: slot:ptr :}
+   slot @ idx P-UNIT MASK-BIT and 0 <> if FALSE exit then
+   idx P-CROSS 0 >= if
+      idx P-CROSS 32 >= if slot 1 cells + else slot 2 cells + then @ {: held:n :}
+      held 0 >= held idx P-CROSS <> and if FALSE exit then
+   then
+   idx P-MEMORY 0 <> if slot 3 cells + @ idx P-SIDE MASK-BIT and 0 <> if FALSE exit then then
+   TRUE ;
+
+: CLAIM ( n n -- ) {: idx:n cycle:n :}
+   cycle SLOT {: slot:ptr :}
+   slot @ idx P-UNIT MASK-BIT or slot !
+   idx P-CROSS 0 >= if idx P-CROSS idx P-CROSS 32 >= if slot 1 cells + else slot 2 cells + then ! then
+   idx P-MEMORY 0 <> if slot 3 cells + @ idx P-SIDE MASK-BIT or slot 3 cells + ! then
+   cycle idx cells CYCLE-OF + ! ;
+
+\ Places row idx in the earliest legal cycle after rows 0 to idx-1.
+: PLACE ( n -- ) {: idx:n :}
+   0 READY !
+   idx 0 ?do idx i AFTER loop
+   begin idx READY @ FREE? 0= while
+      1 READY +! READY @ CYCLE-MAX 8 - >= if E-CAPACITY throw then
+   repeat
+   idx READY @ CLAIM ;
+
+\ No unit used, no register on either cross path, no memory data path used.
+: CLEAR-SLOTS ( -- )
+   CYCLE-MAX 0 ?do i SLOT {: slot:ptr :} 0 slot ! -1 slot 1 cells + ! -1 slot 2 cells + ! 0 slot 3 cells + ! loop ;
+
+\ Schedules the pending rows, noting the last issue cycle and the load drain.
+: SCHEDULE-BLOCK ( -- )
+   CLEAR-SLOTS
+   -1 LAST-CYCLE ! 0 DRAIN !
+   PENDING-COUNT @ 0 ?do
+      i PLACE
+      i P-CYCLE LAST-CYCLE @ max LAST-CYCLE !
+      i P-LOADS 0 <> if i P-CYCLE LOAD-LATENCY + DRAIN @ max DRAIN ! then
+   loop ;
+
+: BRANCH-UNIT! ( n -- ) PENDING-COUNT @ PENDING-ROW 1 cells + ! ;
+
+\ Places the branch row, index PENDING-COUNT, after the block; a relative
+\ branch takes whichever .S unit is free first.
+: PLACE-BRANCH ( n -- ) {: flexible:n :}
+   PENDING-COUNT @ {: b:n :}
+   0 READY ! 0 PLACED !
+   b 0 ?do b i AFTER loop
+   LAST-CYCLE @ 5 - RAISE DRAIN @ 6 - RAISE
+   begin PLACED @ 0= while
+      READY @ CYCLE-MAX 8 - >= if E-CAPACITY throw then
+      flexible 0 <> if UNIT-S 2 * BRANCH-UNIT! then
+      b READY @ FREE? if 1 PLACED ! else
+         flexible 0 <> if UNIT-S 2 * 1+ BRANCH-UNIT! b READY @ FREE? if 1 PLACED ! then then
+      then
+      PLACED @ 0= if 1 READY +! then
+   repeat
+   b READY @ CLAIM
+   b P-UNIT 1 and BRANCH-SIDE ! ;
+
+: EMIT-WORD ( n -- )
+   LEN @ WORDS-MAX >= if E-CAPACITY throw then
+   WORDS LEN @ cells + ! 1 LEN +! ;
+
+: EMIT-IDLE ( -- )
+   begin IDLE-RUN @ 0 > while
+      IDLE-RUN @ 9 min {: n:n :}
+      n ENC-NOP INSTRUCTION>N EMIT-WORD
+      IDLE-RUN @ n - IDLE-RUN !
+   repeat ;
+
+\ Lays out one cycle: its rows chained by the p bit, or one more idle cycle.
+: LAYOUT-CYCLE ( n n -- ) {: cycle:n count:n :}
+   -1 PACKET-START !
+   count 0 ?do
+      i P-CYCLE cycle = if
+         PACKET-START @ 0 < if EMIT-IDLE LEN @ PACKET-START !
+         else WORDS LEN @ 1- cells + dup @ 1 or swap ! then
+         i PENDING-COUNT @ = if LEN @ BRANCH-AT ! then
+         i P-WORD EMIT-WORD
+      then
+   loop
+   PACKET-START @ 0 < if 1 IDLE-RUN +! then ;
+
+\ Lays out total cycles of count rows; the branch row, when present, is the last.
+: LAYOUT ( n n -- ) {: total:n count:n :}
+   -1 BRANCH-AT ! 0 IDLE-RUN !
+   total 0 ?do i count LAYOUT-CYCLE loop
+   EMIT-IDLE 0 PENDING-COUNT ! ;
+
+: FLUSH ( -- )
+   PENDING-COUNT @ 0= if exit then
+   SCHEDULE-BLOCK
+   LAST-CYCLE @ 1+ DRAIN @ max PENDING-COUNT @ LAYOUT ;
+
+\ Closes the block with branch word w, whose displacement may still be zero;
+\ returns the word index the branch landed at, for patching.
+: CLOSE ( n n -- n ) {: w:n flexible:n :}
+   PENDING-COUNT @ PENDING-MAX >= if E-CAPACITY throw then
+   w PENDING-COUNT @ FILL-ROW
+   SCHEDULE-BLOCK flexible PLACE-BRANCH
+   READY @ 6 + PENDING-COUNT @ 1+ LAYOUT
+   BRANCH-AT @ ;
+
+\ A label: the block so far is laid out, and the next word starts a packet.
+: HERE ( -- n ) FLUSH LEN @ ;
 
 \ Branch displacements count from the fetch packet holding the branch; every
 \ helper therefore starts on a 32-byte boundary.
-: DISPLACEMENT ( n n -- branch-offset ) {: from:n target:n :}
-   target 4 * from 4 * $FFFFFFE0 and - >BRANCH-OFFSET ;
+: DISPLACEMENT ( n n -- n ) {: from:n target:n :}
+   target 4 * from 4 * $FFFFFFE0 and - ;
 
 \ Guards for branches: a register code or -1, and whether the zero case branches.
 : NEVER ( -- n n ) -1 0 ;
@@ -52,24 +225,38 @@ variable FIXUP-COUNT
    guard 0 < if opcode exit then
    inverted 0 <> if opcode guard >GPR WHEN-ZERO else opcode guard >GPR WHEN-NONZERO then ;
 
-\ A branch back to an earlier word, with its five delay slots.
-: BACK ( n n n -- ) {: target:n guard:n inverted:n :}
-   0 >SIDE HERE target DISPLACEMENT ENC-B-REL guard inverted GUARDED EMIT 5 ENC-NOP EMIT ;
+: REL ( n n n n -- instruction ) {: side:n delta:n guard:n inverted:n :}
+   side >SIDE delta >BRANCH-OFFSET ENC-B-REL guard inverted GUARDED ;
 
-\ A branch forward to a word not yet emitted; RESOLVE aims it at HERE.
+\ Replaces the word at index at, keeping the p bit the layout gave it.
+: PATCH ( n instruction -- ) {: at:n opcode:instruction :}
+   WORDS at cells + @ 1 and opcode INSTRUCTION>N or WORDS at cells + ! ;
+
+\ A branch back to an earlier label.
+: BACK ( n n n -- ) {: target:n guard:n inverted:n :}
+   0 0 guard inverted REL INSTRUCTION>N 1 CLOSE {: at:n :}
+   at BRANCH-SIDE @ at target DISPLACEMENT guard inverted REL PATCH ;
+
+\ A branch forward to a label not yet placed; RESOLVE aims it at HERE.
 : FORWARD ( n n -- n ) {: guard:n inverted:n :}
    FIXUP-COUNT @ FIXUP-MAX >= if E-CAPACITY throw then
-   FIXUP-COUNT @ 3 * cells FIXUPS + {: row:ptr :}
-   HERE row ! guard row 1 cells + ! inverted row 2 cells + !
-   1 ENC-NOP EMIT 5 ENC-NOP EMIT
+   0 0 guard inverted REL INSTRUCTION>N 1 CLOSE {: at:n :}
+   FIXUP-COUNT @ 4 * cells FIXUPS + {: row:ptr :}
+   at row ! guard row 1 cells + ! inverted row 2 cells + ! BRANCH-SIDE @ row 3 cells + !
    FIXUP-COUNT @ 1 FIXUP-COUNT +! ;
 
 : RESOLVE ( n -- ) {: ref:n :}
-   ref 3 * cells FIXUPS + {: row:ptr :}
-   0 >SIDE row @ HERE DISPLACEMENT ENC-B-REL row 1 cells + @ row 2 cells + @ GUARDED
-   INSTRUCTION>N WORDS row @ cells + ! ;
+   ref 4 * cells FIXUPS + {: row:ptr :}
+   row @ 0 < if E-OPERAND throw then                       \ resolved twice
+   HERE {: target:n :}
+   row @ row 3 cells + @ row @ target DISPLACEMENT row 1 cells + @ row 2 cells + @ REL PATCH
+   -1 row ! ;
 
-: RETURN ( -- ) 3 B ENC-B-REG EMIT 5 ENC-NOP EMIT ;
+: RETURN ( -- ) 3 B ENC-B-REG INSTRUCTION>N 0 CLOSE drop ;
+
+\ Every forward branch must have found its label.
+: RESOLVED ( -- )
+   FIXUP-COUNT @ 0 ?do i 4 * cells FIXUPS + @ 0 >= if E-OPERAND throw then loop ;
 
 
 \ ---- unsigned division ------------------------------------------------------------------
@@ -180,7 +367,6 @@ variable FIXUP-COUNT
    2 A UNLESS FORWARD {: done:n :}
    HERE {: loop:n :}
    7 A 4 B 1 >BYTE-OFFSET ALWAYS ENC-LDB++ EMIT
-   4 ENC-NOP EMIT
    7 A 5 A 1 >BYTE-OFFSET ALWAYS ENC-STB++ EMIT
    2 A 2 A -1 ENC-ADD-I5 EMIT
    loop 2 A WHEN BACK
@@ -226,7 +412,6 @@ variable FIXUP-COUNT
    2 A UNLESS FORWARD {: tail:n :}
    HERE {: loop:n :}
    16 A 4 B 8 >BYTE-OFFSET ALWAYS ENC-LDDW++ EMIT
-   4 ENC-NOP EMIT
    16 A 5 A 8 >BYTE-OFFSET ALWAYS ENC-STDW++ EMIT
    2 A 2 A -1 ENC-ADD-I5 EMIT
    loop 2 A WHEN BACK
@@ -582,9 +767,7 @@ public
    E-OPERAND throw ;
 
 
-\ Emits helper idx into the program buffer; PROGRAM$ reads it back.
-: EMIT-HELPER ( n -- ) {: idx:n :}
-   0 LEN ! 0 FIXUP-COUNT !
+: HELPER ( n -- ) {: idx:n :}
    idx 0 = if DIVI exit then
    idx 1 = if DIVU exit then
    idx 2 = if REMI exit then
@@ -596,6 +779,11 @@ public
    idx 8 = if DIVF exit then
    idx 9 = if DIVD exit then
    E-OPERAND throw ;
+
+\ Emits helper idx into the program buffer, packed; PROGRAM$ reads it back.
+: EMIT-HELPER ( n -- ) {: idx:n :}
+   0 LEN ! 0 FIXUP-COUNT ! 0 PENDING-COUNT !
+   idx HELPER FLUSH RESOLVED ;
 
 : PROGRAM$ ( -- ptr a n ) WORDS LEN @ ;
 

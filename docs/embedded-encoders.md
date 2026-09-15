@@ -100,3 +100,36 @@ All 92 LLVM ARM/Thumb comparisons and 47 GNU C674x/C66x comparisons passed.
 The local `immediate` operand name remains covered by the ARM constructors.
 No target program has been executed on hardware; no full native compiler-suite
 result is claimed for these isolated additive modules.
+
+## C66x execute packets
+
+`src/arch/tic6x/facts.f` (`C6XFACTS`) classifies one instruction word from
+the constructed subset: the unit it occupies (`.L`, `.S` or `.D`, by side),
+the register it reads through a cross path, the registers it reads, the
+registers it writes at the end of its cycle, the registers a load fills after
+four delay slots, the register file its memory data moves on, and whether it
+branches or idles. The p bit is packet structure, not a fact. A word outside
+the subset is refused with `E-DECODE`.
+
+`src/arch/tic6x/sim.f` (`C6XSIM`) runs programs as execute packets: the
+words chained by their p bits issue in one cycle, every instruction reads
+before any writes, loads land four cycles later, a branch takes effect after
+five packets, a multicycle `NOP n` idles `n - 1` cycles after its packet
+unless a branch lands first, and a cross-path read of a register a non-load
+wrote in the previous cycle costs one stall cycle. It refuses with
+`E-CONFLICT` what SPRUGH7 section 3.8 forbids: two instructions on one unit,
+two registers through one cross path, two memory accesses moving data on one
+register file, two multicycle NOPs in a packet, two taken branches in a cycle,
+and two writes landing on one register in one cycle, including a load landing
+beside an ALU write issued four cycles after it. `CALL` returns the cycles.
+
+`src/arch/tic6x/eabi.f` (`C6XEABI`) writes each helper as a sequential
+program and schedules it. Instructions collect in a block until a label
+(`HERE`, `RESOLVE`) or a branch (`BACK`, `FORWARD`, `RETURN`) closes it; a
+list scheduler then places each instruction in the earliest cycle where its
+unit, cross path and data path are free and the sequential meaning holds,
+with cross-path reads one cycle later so the hardware never stalls. The
+closing branch issues as late as its guard allows but early enough that its
+delay slots hold the rest of the block and every load has landed when the
+target runs, so blocks stay independent of one another. `EMIT` refuses NOPs
+and branches; the scheduler owns idle cycles and the delay slots.

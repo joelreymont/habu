@@ -230,6 +230,9 @@ SUITE compiler-arm32-asm
 
 SUITE compiler-tic6x-asm
    test/compiler/tic6x-asm.f
+   test/compiler/tic6x-facts.f
+   test/compiler/tic6x-sim.f
+   test/compiler/tic6x-eabi.f
 ;SUITE
 
 SUITE compiler-backend-boundary
