@@ -1,0 +1,9 @@
+---
+title: Bind compiler targets to backends through a registry
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-15T19:22:55.630714+03:00"
+---
+
+Problem: src/compiler/target.f knows aarch64 and ptx as CTARGET arch variants, and the native compiler requires src/arch/arm64/asm.f directly, so adding a tic6x (or arm32) target would tempt an unconditional per-arch require list that bakes every backend into bin/hb. Joel wants optional backends compiled in only when a program does that work. Acceptance: one registry in src/compiler/target.f where a backend module registers ( arch-id lowering emit ) when it loads, through a checked declaration with typed quotation rows (never a raw xt cell); CTARGET resolution asks the registry and an arch with no row refuses with a named E-TARGET-UNLOADED in lib/errors.f; src/arch/arm64/ registers the same way so the host backend is not a special case and the engine's own build proves the path; target.f keeps no per-arch require list; bin/hb bakes only what the prefix requires (arm64), leaving the recovery chain untouched; --target on hb-build resolves through the same registry so a program that requires src/arch/tic6x/ gets it and one that does not gets the refusal. Files: src/compiler/target.f, lib/errors.f, src/arch/arm64/ (registration), src/habu/build.f (--target resolution), test/compiler/target-policy.f or a new test/compiler/target-registry.f with the refusal test and the arm64 registration test. Verify: bin/hb --load test/compiler/target-registry.f; bin/hb --load test/compiler/target-policy.f; full suite after the engine rebuild. Depends: hazel's stack-guard removal and engine rebuild landing first. Ownership: kestrel implements in the Radar workspace; hazel reviews the registry contract before merge. Claim: unassigned.
