@@ -144,8 +144,10 @@ variable IDT-DIFF-U
    IDT-OUT outu s" > B $10" CONTAINS? TTRUE
    IDT-ERR erru s" imgdump: dictionaries differ" CONTAINS? TTRUE ;
 
+\ The forged entry holds one instruction: a code length has to be whole
+\ instructions (CODE-SPAN:CHECK), and the pc asked for is the entry's start.
 : IDT-PC-OK ( ptr u8 n n -- ) {: a:ptr u:n value:n :}
-   IDT-A$ value 1 65 IDT-WRITE-IMG
+   IDT-A$ value CODE-SPAN:INSN-BYTES 65 IDT-WRITE-IMG
    a u IDT-RUN-PC 0 T=
    {: outu:n erru:n :}
    erru 0 T=
