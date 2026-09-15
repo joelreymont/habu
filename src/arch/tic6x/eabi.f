@@ -74,38 +74,57 @@ variable FIXUP-COUNT
 
 \ ---- unsigned division ------------------------------------------------------------------
 
-\ Divides n by d: the quotient lands in q, the remainder stays in n. s (on d's
-\ bank) becomes the aligned divisor, t (n's bank) and u (d's bank) are scratch,
-\ g guards compares (A0..A2 on n's bank) and c counts iterations (B0..B2 on
-\ d's bank). A zero divisor gives a quotient of $FFFFFFFF and leaves n.
-: DIVIDE-U ( gpr gpr gpr gpr gpr gpr gpr gpr -- ) {: n:gpr d:gpr q:gpr s:gpr t:gpr u:gpr g:gpr c:gpr :}
+\ Divides n by d, both unsigned: the quotient lands in q, the remainder stays
+\ in n. Exact and loop-free: a 32-step SUBC chain predicated on the step count
+\ c serves dividends and divisors below 2^31, a divisor with its top bit set
+\ needs one compare, and a dividend with its top bit set is halved first and
+\ rejoined afterwards, so the chain's 32-bit shift never overflows. t (n's
+\ bank) and u (d's bank) are scratch, g (n's bank) and h are guards, c is a
+\ guard on d's bank, and B30 keeps the divisor. A zero divisor gives a
+\ quotient of $FFFFFFFF and leaves n.
+: DIVIDE-U ( gpr gpr gpr gpr gpr gpr gpr gpr -- ) {: n:gpr d:gpr q:gpr t:gpr u:gpr g:gpr h:gpr c:gpr :}
    q 0 ENC-MVK EMIT
    t 0 ENC-MVK EMIT
-   g t d ENC-CMPEQ-L EMIT
+   g t d ENC-CMPEQ-L EMIT                           \ zero divisor
    q -1 ENC-MVK g WHEN-NONZERO EMIT
    g WHEN FORWARD {: zero-ref:n :}
-   u d ALWAYS ENC-NORM-L EMIT                       \ leading zeros of the divisor
-   c d 0 ALWAYS ENC-CMPGT-I5 EMIT                   \ unless its top bit is set
-   u u 1 ENC-ADD-I5 EMIT
-   u 0 ENC-MVK c WHEN-NONZERO EMIT
-   t n ALWAYS ENC-NORM-L EMIT                       \ leading zeros of the dividend
-   g n 0 ALWAYS ENC-CMPGT-I5 EMIT
-   t t 1 ENC-ADD-I5 EMIT
-   t 0 ENC-MVK g WHEN-NONZERO EMIT
-   u u t ENC-SUB-L EMIT                             \ the shift aligning the divisor's top bit
-   g u 0 ALWAYS ENC-CMPGT-I5 EMIT                   \ negative: the dividend is smaller
-   g WHEN FORWARD {: small-ref:n :}
-   s d u ALWAYS ENC-SHL-S EMIT
-   c u 1 ENC-ADD-I5 EMIT
-   HERE {: loop:n :}
-   g n s ALWAYS ENC-CMPLTU-L EMIT
-   q q 1 ALWAYS ENC-SHL-U5 EMIT
-   n n s ENC-SUB-L g WHEN-ZERO EMIT
+   c d 0 ALWAYS ENC-CMPGT-I5 EMIT                   \ top bit set: the quotient is 0 or 1
+   c UNLESS FORWARD {: normal:n :}
+   g n d ALWAYS ENC-CMPLTU-L EMIT
+   q 1 ENC-MVK EMIT
+   q 0 ENC-MVK g WHEN-NONZERO EMIT
+   n n d ENC-SUB-L g WHEN-ZERO EMIT
+   NEVER FORWARD {: done:n :}
+   normal RESOLVE
+   h n 0 ALWAYS ENC-CMPGT-I5 EMIT                   \ dividend top bit set: divide half of it
+   t n 31 31 ALWAYS ENC-EXTU-S EMIT                 \ the bit split off
+   n n 1 h IF-NONZERO ENC-SHRU-U5 EMIT
+   30 B d ENC-MV-L EMIT
+   u d ALWAYS ENC-NORM-L EMIT                       \ leading zeros less one, both below 2^31
+   c n ALWAYS ENC-NORM-L EMIT
+   u u c ENC-SUB-L EMIT                             \ the shift aligning the divisor
+   c u 0 ALWAYS ENC-CMPGT-I5 EMIT                   \ negative: the dividend is smaller
+   c WHEN FORWARD {: small:n :}
+   d d u ALWAYS ENC-SHL-S EMIT
+   c u 1 ENC-ADD-I5 EMIT                            \ steps
+   32 0 ?do
+      n n d c IF-NONZERO ENC-SUBC-L EMIT
+      c c -1 ENC-ADD-I5 c WHEN-NONZERO EMIT
+   loop
+   g 31 ENC-MVK EMIT
+   g g u ENC-SUB-L EMIT                             \ 31 - shift
+   q n g ALWAYS ENC-SHL-S EMIT                      \ the quotient bits
+   q q g ALWAYS ENC-SHRU-S EMIT
+   g u 1 ENC-ADD-I5 EMIT
+   n n g ALWAYS ENC-SHRU-S EMIT                     \ the remainder
+   small RESOLVE
+   n n 1 h IF-NONZERO ENC-SHL-U5 EMIT               \ rejoin the split bit
+   n n t ENC-ADD-L h WHEN-NONZERO EMIT
+   q q 1 h IF-NONZERO ENC-SHL-U5 EMIT
+   g n 30 B ALWAYS ENC-CMPLTU-L EMIT                \ does one more divisor fit?
+   n n 30 B ENC-SUB-L g WHEN-ZERO EMIT
    q q 1 ENC-ADD-I5 g WHEN-ZERO EMIT
-   s s 1 ALWAYS ENC-SHRU-U5 EMIT
-   c c -1 ENC-ADD-I5 EMIT
-   loop c WHEN BACK
-   small-ref RESOLVE zero-ref RESOLVE ;
+   done RESOLVE zero-ref RESOLVE ;
 
 
 \ Negates r in place when guard is nonzero, through a zero in scratch.
@@ -117,15 +136,15 @@ variable FIXUP-COUNT
 \ ---- the helpers ---------------------------------------------------------------------
 
 : DIVU ( -- )
-   4 A 4 B 6 A 4 B 1 A 1 B 0 A 0 B DIVIDE-U
+   4 A 4 B 6 A 1 A 1 B 0 A 2 A 0 B DIVIDE-U
    4 A 6 A ENC-MV-L EMIT RETURN ;
 
 : REMU ( -- )
-   4 A 4 B 5 A 4 B 7 A 1 B 1 A 0 B DIVIDE-U
+   4 A 4 B 5 A 7 A 1 B 1 A 2 B 0 B DIVIDE-U
    RETURN ;
 
 : DIVREMU ( -- )
-   4 A 4 B 6 A 4 B 1 A 1 B 0 A 0 B DIVIDE-U
+   4 A 4 B 6 A 1 A 1 B 0 A 2 A 0 B DIVIDE-U
    5 A 4 A ENC-MV-L EMIT 4 A 6 A ENC-MV-L EMIT RETURN ;
 
 : MAGNITUDES ( -- )
@@ -134,7 +153,7 @@ variable FIXUP-COUNT
 : DIVI ( -- )
    5 B 4 B 4 A ENC-XOR-L EMIT                       \ the quotient's sign
    MAGNITUDES
-   4 A 4 B 6 A 4 B 1 A 1 B 0 A 0 B DIVIDE-U
+   4 A 4 B 6 A 1 A 1 B 0 A 2 A 0 B DIVIDE-U
    2 B 5 B 0 ALWAYS ENC-CMPGT-I5 EMIT
    6 A 1 A 2 B NEGATE-WHEN
    4 A 6 A ENC-MV-L EMIT RETURN ;
@@ -142,7 +161,7 @@ variable FIXUP-COUNT
 : REMI ( -- )
    2 B 4 A 0 ALWAYS ENC-CMPGT-I5 EMIT               \ the remainder takes the dividend's sign
    MAGNITUDES
-   4 A 4 B 6 A 4 B 2 A 1 B 1 A 0 B DIVIDE-U
+   4 A 4 B 6 A 5 A 1 B 1 A 2 A 0 B DIVIDE-U
    4 A 1 A 2 B NEGATE-WHEN
    RETURN ;
 
@@ -150,7 +169,7 @@ variable FIXUP-COUNT
    31 B 4 B 4 A ENC-XOR-L EMIT
    2 B 4 A 0 ALWAYS ENC-CMPGT-I5 EMIT
    MAGNITUDES
-   4 A 4 B 6 A 4 B 2 A 1 B 1 A 0 B DIVIDE-U
+   4 A 4 B 6 A 5 A 1 B 1 A 2 A 0 B DIVIDE-U
    4 A 1 A 2 B NEGATE-WHEN
    2 B 31 B 0 ALWAYS ENC-CMPGT-I5 EMIT
    6 A 1 A 2 B NEGATE-WHEN

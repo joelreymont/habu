@@ -57,11 +57,12 @@ variable PROGRAM-LEN
 
 
 : SUBC-CASES ( -- )
-   P-RESET $125A 1 A! $1F12 2 A! 5 3 A! 3 4 B!
+   P-RESET $125A 1 A! $1F12 2 A! 5 3 A! 3 4 B! $FFFFFFFF 5 A! 1 6 A!
    1 A-REG 1 A-REG 2 A-REG ALWAYS ENC-SUBC-L P+               \ the reference example: 0x125A < 0x1F12
    3 A-REG 3 A-REG 4 B-REG ALWAYS ENC-SUBC-L P+               \ 5 - 3 >= 0: (2 << 1) + 1
+   5 A-REG 5 A-REG 6 A-REG ALWAYS ENC-SUBC-L P+               \ the comparison is unsigned
    P-RETURN P-RUN drop
-   1 A@ $24B4 T= 3 A@ 5 T= ;
+   1 A@ $24B4 T= 3 A@ 5 T= 5 A@ $FFFFFFFD T= ;
 
 
 : SHIFT-CASES ( -- )

@@ -153,9 +153,9 @@ variable DONE
    op 126 = if b dst REG! exit then
    op 111 = if SRC1 REG@ b xor dst REG! exit then
    op 83 = if SRC1 REG@ b = if 1 else 0 then dst REG! exit then
-   op 75 = if
+   op 75 = if                                            \ SUBC compares unsigned operands
       SRC1 REG@ {: a:n :}
-      a b - >S32 0 >= if a b - 1 lshift 1 or else a 1 lshift then dst REG! exit
+      a b >= if a b - 1 lshift 1 or else a 1 lshift then dst REG! exit
    then
    op 71 = if SRC1 REG@ >S32 b >S32 > if 1 else 0 then dst REG! exit then
    op 70 = if SRC1-SIGNED b >S32 > if 1 else 0 then dst REG! exit then
