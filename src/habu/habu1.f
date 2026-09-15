@@ -402,27 +402,21 @@ public
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
 : B+ ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
 
 : B- ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  A A B SUB,  A G-PUSH ;
 
 : B* ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  A A B MUL,  A G-PUSH ;
 
 : BDUP ( -- )
-   8 8 STACK-GUARD:CHECK-DATA
    A G-POP  A G-PUSH  A G-PUSH ;
 
 : BDROP ( -- )
-   8 0 STACK-GUARD:CHECK-DATA
    XDS XDS 8 SUBI, ;
 
 : BSWAP ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
 
 : BDOT ( -- )
@@ -764,7 +758,6 @@ variable NUM-FPOS
    SP SP 64 ADDI, ;
 
 : BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
-   0 24 STACK-GUARD:CHECK-DATA
    LBL LNX-OK !
    LBL LNX-DONE !
    HB-TARGET-LINUX? IF
@@ -787,7 +780,6 @@ variable NUM-FPOS
    LNX-DONE LABEL@ LBL, ;
 
 : BDUP2 ( -- )                     \ ( oldfd newfd -- rc ) rc=newfd or -1
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    LBL LNX-OK !
    LBL LNX-DONE !
@@ -819,7 +811,6 @@ variable NUM-FPOS
    SP SP 64 ADDI, ;
 
 : BFCNTL ( -- )                    \ ( fd cmd arg -- rc ) rc=sysret or -1
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP
    LBL {: ok:label :}
    LBL {: done:label :}
@@ -838,7 +829,6 @@ variable NUM-FPOS
    0 G-PUSH ;
 
 : BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP
    LBL LBL {: plen:label pguard:label :}
    6 1 61 LSRI,  6 plen CBZ,                  \ nfds*8 overflow becomes an all-address span
@@ -878,7 +868,6 @@ variable NUM-FPOS
    0 G-PUSH ;
 
 : BKILL ( -- )                     \ ( pid sig -- rc ) rc=0 or -1
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    LBL LNX-OK !
    LBL LNX-DONE !
@@ -890,7 +879,6 @@ variable NUM-FPOS
    0 G-PUSH ;
 
 : BSETPGID ( -- )                  \ ( pid pgid -- rc ) rc=0 or -1
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    LBL LNX-OK !
    LBL LNX-DONE !
@@ -1146,7 +1134,6 @@ variable SZA-I
    LBL BSP-OK !  LBL BSP-DN ! ;
 
 : BSPAWNIO ( -- )                  \ ( pathz stdinfd stdoutfd stderrfd -- pid|-errno )
-   32 0 STACK-GUARD:CHECK-DATA
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
    HB-TARGET-LINUX? IF
@@ -1174,7 +1161,6 @@ variable SZA-I
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVIO ( -- )              \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-errno )
-   40 0 STACK-GUARD:CHECK-DATA
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -1200,7 +1186,6 @@ variable SZA-I
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVIO ( -- )           \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-errno )
-   48 0 STACK-GUARD:CHECK-DATA
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -1221,7 +1206,6 @@ variable SZA-I
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVCWDIO ( -- )        \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-errno )
-   56 0 STACK-GUARD:CHECK-DATA
    BSP-LABELS2
    12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -1365,7 +1349,6 @@ variable SZA-I
 \ throw-recovery (LEVALREC), which rolls each escaped frame back, records the
 \ code in EVALERR-CELL, and delivers to the nearest handler / REPL / process exit.
 : B-EVAL ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP STACK-ABI:EVAL-BYTES SUBI,
@@ -1410,7 +1393,6 @@ variable SZA-I
    13 32 MOVZ,  G-EMITC ;
 
 : B.S ( -- )
-   0 0 STACK-GUARD:CHECK-DATA
    LBL PS-LOOP !
    LBL PS-DONE !
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
@@ -1422,14 +1404,13 @@ variable SZA-I
    PS-DONE LABEL@ LBL, ;
 
 : BDEPTH ( -- )
-   0 8 STACK-GUARD:CHECK-DATA
    A DATA S0-CELL LDR,
    A XDS A SUB,
    A A 3 LSRI,
    A G-PUSH ;
 
 : (CMP) ( n -- )
-   CMP-COND !  16 0 STACK-GUARD:CHECK-DATA
+   CMP-COND !
    B G-POP  A G-POP  A B CMP,  A CMP-COND @ CSET,  A SP A SUB,  A G-PUSH ;
 
 : B= ( -- )
@@ -1463,15 +1444,12 @@ variable SZA-I
    A G-POP  A A 1 SUBI,  A G-PUSH ;
 
 : BAND ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A A B AND, A G-PUSH ;
 
 : BOR ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A A B ORR, A G-PUSH ;
 
 : BXOR ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A A B EOR, A G-PUSH ;
 
 : BINV ( -- )
@@ -1481,11 +1459,9 @@ variable SZA-I
    A G-POP  A SP A SUB,  A G-PUSH ;
 
 : BLSH ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A A B LSLV, A G-PUSH ;
 
 : BRSH ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
 : BDIV0? ( -- )
@@ -1493,15 +1469,12 @@ variable SZA-I
    B DIV-OK LABEL@ CBNZ, BRK, DIV-OK LABEL@ LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
 
 : BDIV ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
 
 : BMOD ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
 : BDIVMOD ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
 
 : BABS ( -- )
@@ -1509,54 +1482,42 @@ variable SZA-I
    A G-POP  A 0 CMPI,  C-GE PRIM-DONE LABEL@ BCOND,  A SP A SUB,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;
 
 : BMIN ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    LBL PRIM-DONE !
    B G-POP A G-POP  A B CMP,  C-LE PRIM-DONE LABEL@ BCOND,  A B 0 ADDI,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;
 
 : BMAX ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    LBL PRIM-DONE !
    B G-POP A G-POP  A B CMP,  C-GE PRIM-DONE LABEL@ BCOND,  A B 0 ADDI,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;
 
 : BNIP ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
 
 : BOVER ( -- )
-   16 8 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
 
 : BTUCK ( -- )
-   16 8 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  B G-PUSH A G-PUSH B G-PUSH ;
 
 : BROT ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    C G-POP B G-POP A G-POP  B G-PUSH C G-PUSH A G-PUSH ;
 
 : BMROT ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    C G-POP B G-POP A G-POP  C G-PUSH A G-PUSH B G-PUSH ;
 
 : B2DUP ( -- )
-   16 16 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH B G-PUSH ;
 
 : B2DROP ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    XDS XDS 16 SUBI, ;
 
 : B2SWAP ( -- )
-   32 0 STACK-GUARD:CHECK-DATA
    EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
 : B2OVER ( -- )
-   32 16 STACK-GUARD:CHECK-DATA
    EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
 : BQDUP ( -- )
    LBL PRIM-DONE !
-   8 0 STACK-GUARD:CHECK-DATA
    14 XDS 8 SUBI,  A 14 0 LDR,
    A PRIM-DONE LABEL@ CBZ,  A G-PUSH  PRIM-DONE LABEL@ LBL, ;
 
@@ -1564,35 +1525,28 @@ variable SZA-I
    A G-POP  A A 0 LDR,  A G-PUSH ;
 
 : BSTORE ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STR, ;
 
 : BPTRFIELD ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
 : BPLUSSTORE ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- )
    A G-POP  A A 0 LDRB, A G-PUSH ;
 
 : BCSTORE ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  7 1 MOVZ,  B 7 PROT-GUARD:CALL  A B 0 STRB, ;
 
 \ Atomic primitives (ARMv8.1 LSE; Orin is ARMv8.2). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
    A G-POP  $C8DFFD29 EMITW  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  $C89FFD49 EMITW ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP A G-POP  7 8 MOVZ,  B 7 PROT-GUARD:CALL  $F8E90149 EMITW  A G-PUSH ;
 : BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
-   24 0 STACK-GUARD:CHECK-DATA
    C G-POP B G-POP A G-POP  14 B 0 ADDI,  7 8 MOVZ,     \ x14 saves new (x10) across the guard's x10/x11 clobber
    C 7 PROT-GUARD:CALL  C B 0 ADDI,  B 14 0 ADDI,       \ restore addr->x11, new->x10 for the CASAL
    $C8E9FD6A EMITW  A G-PUSH ;
@@ -1614,12 +1568,10 @@ variable SZA-I
    A G-POP  A A 1 ADDI, A G-PUSH ;
 
 : BCOUNT ( -- )
-   8 8 STACK-GUARD:CHECK-DATA
    A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
 : RSTK-PUSH ( n -- )
    RSTK-REG !
-   0 1 STACK-GUARD:CHECK-RETURN
    14 DATA RSP-CELL LDR,
    15 14 3 LSLI,  15 DATA 15 ADD,
    RSTK-REG @ 15 RSTK-OFF STR,
@@ -1627,7 +1579,6 @@ variable SZA-I
 
 : RSTK-POP ( n -- )
    RSTK-REG !
-   1 0 STACK-GUARD:CHECK-RETURN
    14 DATA RSP-CELL LDR,
    14 14 1 SUBI,
    15 14 3 LSLI,  15 DATA 15 ADD,
@@ -1635,18 +1586,12 @@ variable SZA-I
    14 DATA RSP-CELL STR, ;
 
 : B2TOR ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
-   0 2 STACK-GUARD:CHECK-RETURN
    B G-POP A G-POP  A RSTK-PUSH  B RSTK-PUSH ;
 
 : B2RFROM ( -- )
-   2 0 STACK-GUARD:CHECK-RETURN
-   0 16 STACK-GUARD:CHECK-DATA
    B RSTK-POP  A RSTK-POP  A G-PUSH  B G-PUSH ;
 
 : B2RFETCH ( -- )
-   2 0 STACK-GUARD:CHECK-RETURN
-   0 16 STACK-GUARD:CHECK-DATA
    B RSTK-POP  A RSTK-POP  A RSTK-PUSH  B RSTK-PUSH  A G-PUSH  B G-PUSH ;
 
 : BHERE ( -- )
@@ -1694,7 +1639,6 @@ variable SZA-I
    A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 : BTYPE ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;
 
 \ die ( ptr u8 n n -- ): write the message to fd 2, then exit. The requested rc is
@@ -1703,7 +1647,6 @@ variable SZA-I
 \ throw code re-used as rc could exit 0 - the DRV-FAIL second masked layer of the
 \ BTHROW no-handler class), so it maps to the deterministic UNCAUGHT-RC instead.
 : BDIE ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    LBL {: lfixed:label :}
    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
    0 7 0 ADDI,
@@ -1722,7 +1665,6 @@ variable SZA-I
    0 G-PUSH ;
 
 : BOPEN ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 2 0 ADDI,
@@ -1733,19 +1675,15 @@ variable SZA-I
    NR-OPEN SYS,  SYS-PUSH ;
 
 : BWRITE ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
 : BREAD ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP  1 2 PROT-GUARD:CALL  NR-READ SYS,  SYS-PUSH ;
 
 : BIOCTL ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP  GUARD-IOCTL  NR-IOCTL SYS,  SYS-PUSH ;
 
 : BMMAP ( -- )
-   48 0 STACK-GUARD:CHECK-DATA
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
    LBL {: notfixed:label :}
    6 3 $10 ANDI,  6 notfixed CBZ,            \ only MAP_FIXED replaces an existing mapping
@@ -1757,7 +1695,6 @@ variable SZA-I
 \ Fresh anonymous storage has no prior element type. The caller chooses the
 \ pointee type; the OS boundary returns a null pointer and -1 on failure.
 : BMAPANON ( -- )                      \ ( bytes -- ptr a ior )
-   8 8 STACK-GUARD:CHECK-DATA
    LBL {: failed:label :}
    LBL {: done:label :}
    1 G-POP
@@ -1769,7 +1706,6 @@ variable SZA-I
    done LBL,  0 G-PUSH  1 G-PUSH ;
 
 : BMUNMAP ( -- )                   \ ( addr len -- 0|-1 ) release a mapping; span-guard the extent
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    0 1 PROT-GUARD:CALL             \ trap an unmap aimed at any protected engine band
    NR-MUNMAP SYS,  SYS-PUSH ;
@@ -1831,7 +1767,6 @@ variable SZA-I
    nosret LBL, ;
 
 : BFFI-CALL ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = nargs
    15 G-POP                                            \ x15 = argbuf
@@ -1869,7 +1804,6 @@ variable SZA-I
    FFI-SKIP LABEL@ LBL, ;
 
 : BFFI-CALL-ABI-CORE ( -- )
-   56 0 STACK-GUARD:CHECK-DATA
    16 G-POP                                            \ x16 = fn
    9 G-POP                                             \ x9  = sret-present flag
    14 G-POP                                            \ x14 = int-nargs (live x0..x7 count)
@@ -1953,12 +1887,10 @@ variable SZA-I
 
 \ Raw unbounded FFI is checker-restricted to explicit TRUSTED: definitions.
 : BFFI-CALL-N ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    16 G-POP  14 G-POP  15 G-POP
    BFFI-CALL-N-CORE ;
 
 : BFFI-CALL-BOUNDED ( -- )
-   32 0 STACK-GUARD:CHECK-DATA
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = nargs
    17 G-POP                                            \ x17 = writable lengths
@@ -1985,7 +1917,6 @@ variable SZA-I
    DBASE 0 TASK-ABI:DBASE-OFF LDR,
    NDICT 0 TASK-ABI:NDICT-OFF LDR,
    CP 0 TASK-ABI:CP-OFF LDR,
-   0 0 STACK-GUARD:CHECK-DATA
    0 DATA TASK-TCB-CELL STR,
    10 TASK-ABI:RUNNING MOVZ, 10 0 TASK-ABI:STATUS-OFF STR,
    9 BLR,
@@ -2002,7 +1933,6 @@ variable SZA-I
 \ every caller-packed stack slot before the foreign branch.  The two extent
 \ tables are distinct because stack slot zero is not integer slot zero.
 : BFFI-CALL-ABI-BOUNDED-CORE ( -- )
-   56 0 STACK-GUARD:CHECK-DATA
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = stack cell count
    12 G-POP                                            \ x12 = stack extents
@@ -2038,7 +1968,6 @@ variable SZA-I
    A G-POP  A OS-OPEN-RD  SYS-PUSH ;
 
 : BACCESS ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
@@ -2053,7 +1982,6 @@ variable SZA-I
    NR-UNLINK SYS,  SYS-PUSH ;
 
 : BRENAME ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  2 99 MOVN,
@@ -2061,7 +1989,6 @@ variable SZA-I
    NR-RENAME SYS,  SYS-PUSH ;
 
 : BCHMOD ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
@@ -2069,14 +1996,12 @@ variable SZA-I
    NR-CHMOD SYS,  SYS-PUSH ;
 
 : BSYMLINK ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    2 G-POP  0 G-POP
    HB-TARGET-LINUX? IF 1 99 MOVN, ELSE 1 1 MOVN, THEN
    3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
    NR-SYMLINKAT SYS,  SYS-PUSH ;
 
 : BREADLINK ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    3 G-POP  2 G-POP  1 G-POP
    2 3 PROT-GUARD:CALL                         \ x2 = kernel-written link buffer, x3 = length
    HB-TARGET-LINUX? IF 0 99 MOVN, ELSE 0 1 MOVN, THEN
@@ -2109,7 +2034,6 @@ public
 : EMIT ( -- )
    LBL LBL LBL LBL {: badcap:label failed:label short:label done:label :}
    LBL LBL LBL LBL {: count:label counted:label copy:label release:label :}
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP
    SP SP 80 SUBI,
    0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,
@@ -2149,7 +2073,6 @@ public
 ;package
 
 : BMKDIR ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,
@@ -2172,7 +2095,6 @@ public
    8 STAT-BUF @ 64 STR,   9 STAT-BUF @ 72 STR, ;
 
 : BSTAT64 ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP
    7 $90 MOVZ,  1 7 PROT-GUARD:CALL           \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
@@ -2191,7 +2113,6 @@ public
    NR-STAT64 SYS,  SYS-PUSH ;
 
 : BLSTAT64 ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
    7 $90 MOVZ,  1 7 PROT-GUARD:CALL           \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
@@ -2210,7 +2131,6 @@ public
    NR-LSTAT64 SYS,  SYS-PUSH ;
 
 : BGETDIRENTRIES64 ( -- )
-   32 0 STACK-GUARD:CHECK-DATA
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
    1 2 PROT-GUARD:CALL  7 8 MOVZ,  3 7 PROT-GUARD:CALL
    NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
@@ -2219,7 +2139,6 @@ public
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
 
 : BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
-   16 0 STACK-GUARD:CHECK-DATA
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,     \ save w/addr first: the guard call clobbers x10 (B)
@@ -2278,7 +2197,6 @@ public
    done LBL, ;
 
 : BCLEAR-MAPS ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    A G-POP  B G-POP
    SNAP-RELOC:CALLMAP-OFF SNAP-RELOC:CLEAR-SPAN,
    SNAP-RELOC:ADDRMAP-OFF SNAP-RELOC:CLEAR-SPAN, ;
@@ -2357,7 +2275,6 @@ public
 \ [x9, CP) by cache-line stride, which is the range just written once CP has been
 \ advanced - the same order EM-SEED-AOT uses for the AOT blob.
 : BCODEPUBLISH ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    A G-POP  B G-POP  C G-POP     \ x9 = len, x10 = dst, x11 = src
    LBL LBL LBL {: loop:label done:label atcp:label :}
    SP SP 48 SUBI,
@@ -2480,7 +2397,6 @@ public
 \ length it then reads belongs to that start. Writing START first would leave a
 \ window in which callers reach the new code with the old routine's length.
 : BXREFRETARGET ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    LBL LBL {: live:label bad:label :}
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
    \ A record index names a row of the live dictionary, or the ONE pending row a
@@ -2531,13 +2447,6 @@ public
 : BRBASE ( -- )
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
-\ The current engine owns this entry; compiler consumers must query it anew.
-\ The helper takes x16=bytes below XDS and x17=bytes above XDS. Its caller
-\ frames x16/x17/LR as STACK-GUARD:CHECK-DATA does; the helper preserves all
-\ other GPRs and NZCV, touches no FP register, and exits on an invalid envelope.
-: BSTACKDATAENTRY ( -- )
-   9 STACK-GUARD:DATA-ENTRY ADR,  9 G-PUSH ;
-
 : BEXEC ( -- )
    A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
@@ -2546,7 +2455,6 @@ public
 \ saved alongside XDS so normal return and nonlocal unwind restore the caller.
 : BRUNSTACK ( -- )
    LBL LBL {: bad:label done:label :}
-   24 0 STACK-GUARD:CHECK-DATA
    12 XDS 24 SUBI,
    9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
    10 11 0 ADDI,  12 14 0 ADDI,
@@ -2577,8 +2485,6 @@ public
 : BCATCH ( -- )
    LBL CATCH-RES !
    LBL CATCH-PUSH !
-   0 0 STACK-GUARD:CHECK-RETURN
-   0 0 STACK-GUARD:CHECK-LOOP
    A G-POP
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
@@ -2593,7 +2499,6 @@ public
    11 DATA STACK-ABI:CAP-CELL LDR,  11 SP STACK-ABI:CATCH-CAP STR,
    14 SP 0 ADDI,  14 DATA 8 STR,
    9 BLR,
-   0 8 STACK-GUARD:CHECK-DATA
    11 SP 0 LDR,  11 DATA 8 STR,
    30 SP 32 LDR,  SP SP STACK-ABI:CATCH-BYTES ADDI,
    9 0 MOVZ,  CATCH-PUSH LABEL@ B,
@@ -2657,7 +2562,6 @@ public
 \ finally ( body cleanup -- ): preserve the body's result row on success;
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
 : BFINALLY ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    LBL FINALLY-DONE !
    A G-POP
    SP SP $10 SUBI,  9 SP 0 STR,
@@ -2757,7 +2661,6 @@ public
    done LBL, ;
 
 : BCODEORIGIN ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    10 G-POP  9 G-POP  TIER-PROV:QUERY,  9 G-PUSH ;
 
 : BSETTIER ( -- )
@@ -2913,7 +2816,6 @@ package ENGINE-EMIT
 \ prim) and the seal pass marks this prim's own record internal alongside
 \ int-mark, so user source cannot re-drive it.
 : BMININMARK ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP                               \ x10 = min-in cells
    A G-POP                               \ x9  = record index
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n] (x10 min-in survives via kernel x2-x15)
@@ -3116,7 +3018,6 @@ public
 \ `search-wl execute` bypass the interpreter/tick internal-word gate. The refusal
 \ belongs to the primitive, not WLFIND; the AOT relocator uses WLFIND directly.
 : BSWL ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    LBL {: done:label :}
    2 G-POP  1 G-POP  0 G-POP
    11 0 MOVZ,
@@ -3131,13 +3032,11 @@ public
 \ DNAME-INT and a trusted-only checker row restrict it to a trusted boundary;
 \ NDICT checks live callee visibility after resolving namespace records.
 : BCOMPILERSWL ( -- )
-   24 0 STACK-GUARD:CHECK-DATA
    2 G-POP  1 G-POP  0 G-POP
    WLFIND:LENTRY LABEL@ BL,
    12 G-PUSH ;
 
 : BPARSE-NAME ( -- )
-   0 16 STACK-GUARD:CHECK-DATA
    LBL PARSE-NONE !
    LBL PARSE-DONE !
    LTOK LABEL@ BL,
@@ -3167,7 +3066,6 @@ package ENGINE-EMIT
 public
 
 : BNUMPARSE ( -- )
-   16 8 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP
    2 0 MOVZ,
    LNUM LABEL@ BL,
@@ -3252,7 +3150,6 @@ package ENGINE-EMIT
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
-   s" stack-data-entry" ['] BSTACKDATAENTRY FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET 1 GDEREF-L   s" ndict!" ['] BNDSET 1 GDEREF-F
    1 GD-MIN !
@@ -3328,18 +3225,8 @@ package ENGINE-EMIT
 
 package ENGINE-EMIT
 
-: EMIT-STACK-GUARDS ( -- )
-   s" (STACK-DATA)" STACK-GUARD:EMIT-DATA
-   LABEL>N swap LABEL>N swap ENGINE-HELPER:REGISTER
-   s" (STACK-RETURN)"
-   RSP-CELL STACK-ABI:RETURN-CELLS STACK-GUARD:RETURN-ENTRY STACK-GUARD:EMIT-FIXED
-   LABEL>N swap LABEL>N swap ENGINE-HELPER:REGISTER
-   s" (STACK-LOOP)"
-   LOOPSP-CELL STACK-ABI:LOOP-FRAMES STACK-GUARD:LOOP-ENTRY STACK-GUARD:EMIT-FIXED
-   LABEL>N swap LABEL>N swap ENGINE-HELPER:REGISTER ;
 
 : EMIT-PRIMS ( -- )
-   EMIT-STACK-GUARDS
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS
@@ -3350,19 +3237,15 @@ package ENGINE-EMIT
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
 : BF+ ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
 
 : BF- ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A G-PUSH ;
 
 : BF* ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A G-PUSH ;
 
 : BF/ ( -- )
-   16 0 STACK-GUARD:CHECK-DATA
    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A G-PUSH ;
 
 : BFNEG ( -- )
@@ -3375,7 +3258,7 @@ package ENGINE-EMIT
    A G-POP  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A G-PUSH ;
 
 : (FCMP) ( n -- )
-   FP-COND !  16 0 STACK-GUARD:CHECK-DATA
+   FP-COND !
    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
    A FP-COND @ CSET,  A SP A SUB,  A G-PUSH ;
 

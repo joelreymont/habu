@@ -18,37 +18,11 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 \ Emit one fixed instruction into the running compiler's code window.
 : C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
 
-\ The runtime compiler emits the same preserved guard ABI as engine primitives.
-\ Its own registers and NZCV must survive code emission too: LCEMITBL and the
-\ minimal constant synthesizer use compiler scratch that a keyword may still
-\ hold live. Only CP and the emitted code/call map change on a successful call.
+\ The runtime compiler's own registers and NZCV must survive code emission:
+\ LCEMITBL and the minimal constant synthesizer use compiler scratch that a
+\ keyword may still hold live. Only CP and the emitted code/call map change on
+\ a successful call.
 package JIT-STACK
-
-variable LREQUEST
-
-: SAVE-REQUEST ( -- )
-   SP SP 32 SUBI,
-   11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  30 SP 24 STR, ;
-
-: RESTORE-REQUEST ( -- )
-   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  30 SP 24 LDR,
-   SP SP 32 ADDI, ;
-
-: REQUEST ( n n label -- ) {: below above target:label :}
-   SAVE-REQUEST
-   11 below LIT64,  12 above LIT64,  13 target ADR,
-   LREQUEST LABEL@ BL,
-   RESTORE-REQUEST ;
-
-: REQUEST-REGS ( n n label -- ) {: below above target:label :}
-   \ Save both operands before assigning either argument register.
-   SP SP 48 SUBI,
-   11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,  30 SP 24 STR,
-   below SP 32 STR,  above SP 40 STR,
-   11 SP 32 LDR,  12 SP 40 LDR,  13 target ADR,
-   LREQUEST LABEL@ BL,
-   11 SP 0 LDR,  12 SP 8 LDR,  13 SP 16 LDR,  30 SP 24 LDR,
-   SP SP 48 ADDI, ;
 
 : SAVE-EMITTER ( -- )
    SP SP 160 SUBI,
@@ -69,13 +43,6 @@ variable LREQUEST
 
 public
 
-: LABELS ( -- ) LBL LREQUEST ! ;
-
-: CHECK-DATA ( n n -- ) STACK-GUARD:DATA-ENTRY REQUEST ;
-: CHECK-RETURN ( n n -- ) STACK-GUARD:RETURN-ENTRY REQUEST ;
-: CHECK-LOOP ( n n -- ) STACK-GUARD:LOOP-ENTRY REQUEST ;
-: DATA-REGS ( n n -- ) STACK-GUARD:DATA-ENTRY REQUEST-REGS ;
-: RETURN-REGS ( n n -- ) STACK-GUARD:RETURN-ENTRY REQUEST-REGS ;
 
 \ Emit a full-width runtime constant without losing compiler scratch values.
 \ The input is one of x0..x17, already saved before any emitter call can grow
@@ -97,28 +64,11 @@ public
    STACK-GUARD:EXIT-BOUNDS
    good LBL,  dest count 3 LSLI, ;
 
-: EMIT ( -- )
-   LBL {: end:label :}
-   s" (JIT-STACK)" LREQUEST LABEL@ LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
-   LREQUEST LABEL@ LBL,
-   SAVE-EMITTER
-   SP SP 32 ENC-SUBI C-EMITW
-   16 SP 0 ENC-STR C-EMITW  17 SP 8 ENC-STR C-EMITW  30 SP 16 ENC-STR C-EMITW
-   11 SP 88 LDR,  14 16 MOVZ,  LVMOVK LABEL@ BL,
-   11 SP 96 LDR,  14 17 MOVZ,  LVMOVK LABEL@ BL,
-   11 SP 104 LDR,  LCEMITBL LABEL@ BL,
-   16 SP 0 ENC-LDR C-EMITW  17 SP 8 ENC-LDR C-EMITW  30 SP 16 ENC-LDR C-EMITW
-   SP SP 32 ENC-ADDI C-EMITW
-   RESTORE-EMITTER
-   30 SP 144 LDR,  SP SP 160 ADDI,  RET,
-   end LBL, ;
-
 ;package
 
 : EMIT-VLITPUSH ( -- )
    LVLITPUSH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   0 8 JIT-STACK:CHECK-DATA
    14 16 MOVZ,  LVMOVK LABEL@ BL,                            \ movz/movk x16,val (x16: never pooled)
    9 $F9000270 LIT64,  LCEMIT LABEL@ BL,                     \ str x16,[x19]
    9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL,
@@ -132,7 +82,6 @@ public
    \ A nonempty flush is one physical transfer, including constant slots.
    6 DATA VSP-CELL LDR,  6 vd CBZ,
    5 0 MOVZ,  6 6 3 LSLI,
-   5 6 JIT-STACK:DATA-REGS
    5 0 MOVZ,  5 SP 8 STR,                                   \ k (in the frame: the
    vl LBL,                                                  \ helper calls clobber x5)
       5 SP 8 LDR,
@@ -878,7 +827,7 @@ variable LVSNAP  variable LVRECON
    13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
    LVSPILL LABEL@ BL,
    13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
-   5 13 3 LSLI,  6 0 MOVZ,  5 6 JIT-STACK:DATA-REGS
+   5 13 3 LSLI,  6 0 MOVZ,
    11 0 MOVZ,  6 0 MOVZ,  6 DATA FRCLM-CELL STR,
    5 13 0 ADDI, ;                           \ x11=claimed bits, x5=i
 
@@ -1047,7 +996,6 @@ variable FESK4
 package ENGINE-EMIT
 
 : EMIT-JIT ( -- )
-   JIT-STACK:EMIT
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;

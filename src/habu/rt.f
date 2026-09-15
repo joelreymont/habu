@@ -28,46 +28,11 @@ DSTACK-AGREE
 
 package STACK-GUARD
 
-variable LDATA
-variable LRETURN
-variable LLOOP
-variable REQ-BELOW
-variable REQ-ABOVE
-variable REQ-TARGET
 variable FAIL-MESSAGE
 variable DESCRIPTOR-FAIL
 variable DESCRIPTOR-BASE
 variable DESCRIPTOR-CAP
 variable CURSOR-ABOVE
-variable CHECK-FAIL
-variable CHECK-UNDER
-variable CHECK-END
-variable CHECK-START
-variable FIXED-OFF
-variable FIXED-CAP
-
-\ The wrapper preserves its argument registers and LR; the helpers preserve
-\ x14/x15 and NZCV. Successful checks preserve every register and every flag.
-: SAVE-CALLER ( -- )
-   SP SP 32 SUBI,  16 SP 0 STR,  17 SP 8 STR,  30 SP 16 STR, ;
-
-: RESTORE-CALLER ( -- )
-   16 SP 0 LDR,  17 SP 8 LDR,  30 SP 16 LDR,  SP SP 32 ADDI, ;
-
-: REQUEST ( n n label -- )
-   REQ-TARGET !  REQ-ABOVE !  REQ-BELOW !
-   SAVE-CALLER
-   16 REQ-BELOW @ LIT64,  17 REQ-ABOVE @ LIT64,
-   REQ-TARGET LABEL@ BL,
-   RESTORE-CALLER ;
-
-: SAVE-CHECK ( -- )
-   SP SP 32 SUBI,  14 SP 0 STR,  15 SP 8 STR,
-   $D53B420E EMITW  14 SP 16 STR, ;               \ mrs x14,NZCV
-
-: RETURN-CHECK ( -- )
-   14 SP 16 LDR,  $D51B420E EMITW                  \ msr NZCV,x14
-   14 SP 0 LDR,  15 SP 8 LDR,  SP SP 32 ADDI,  RET, ;
 
 : EMIT-FAIL ( -- )
    LBL FAIL-MESSAGE !
@@ -92,42 +57,12 @@ variable FIXED-CAP
 
 public
 
-: LABELS ( -- )
-   LBL LDATA !  LBL LRETURN !  LBL LLOOP ! ;
-
-: DATA-ENTRY ( -- label ) LDATA LABEL@ ;
-: RETURN-ENTRY ( -- label ) LRETURN LABEL@ ;
-: LOOP-ENTRY ( -- label ) LLOOP LABEL@ ;
-
-private
-
-\ A request below the base is the one failure with a name. The interpreter's
-\ E-UNDERFLOW diagnostic names the token whose execution underflowed, throws
-\ RC-REJECT inside evaluate and recovers in the REPL, and it restores SP from
-\ its own saved cells on both recovery legs, so the check releases only its
-\ own frame before leaving for it. It is reached through UNDERFLOW-CELL, which
-\ the interpreter's startup fills (habu2.f EM-STARTUP-RUNTIME-STATE): this
-\ helper is a record that a stripped application relocates, the diagnostic is
-\ interpreter code that no record holds, and the closure refuses a direct
-\ branch between them. An image that never set the cell fails closed below.
-\ Every other failure - a push past the capacity, a descriptor that does not
-\ describe a stack - has no token to name and stays fail-closed here.
-: EMIT-UNDERFLOW ( -- )
-   SP SP 32 ADDI,
-   9 DATA UNDERFLOW-CELL LDR,  9 CHECK-FAIL LABEL@ CBZ,  9 BR, ;
-
-public
-
-\ The envelope is [XDS-below,XDS+above), with both distances in bytes.
-\ It also validates pointer adjustments whose endpoint is XDS +/- distance.
-: CHECK-DATA ( n n -- ) DATA-ENTRY REQUEST ;
-
-\ Fixed stack envelopes use cell/frame counts relative to the saved depth.
-: CHECK-RETURN ( n n -- ) RETURN-ENTRY REQUEST ;
-: CHECK-LOOP ( n n -- ) LOOP-ENTRY REQUEST ;
-
-\ Lifecycle admission: x14=base, x10=capacity, x12=cursor. Leaves base intact;
+\ Lifecycle admission at a stack switch (run-in-stack, catch, evaluate, task
+\ and REPL recovery): x14=base, x10=capacity, x12=cursor. Leaves base intact;
 \ x10 becomes remaining bytes and x12 becomes used bytes. No memory is changed.
+\ This is the only bounds check the engine performs on a data stack: inside
+\ compiled code the checker proves the stack effect, and a push past the
+\ capacity faults on the guard page beyond the allocation.
 : CHECK-CURSOR ( n label -- )
    DESCRIPTOR-FAIL !  CURSOR-ABOVE !
    14 10 DESCRIPTOR-FAIL LABEL@ DESCRIPTOR
@@ -140,50 +75,13 @@ public
 
 : EXIT-BOUNDS ( -- ) EMIT-FAIL ;
 
-: EMIT-DATA ( -- label label )
-   LBL CHECK-FAIL !  LBL CHECK-UNDER !  LBL CHECK-END !
-   DATA-ENTRY LBL,
-   SAVE-CHECK
-   14 DATA STACK-ABI:BASE-CELL LDR,
-   XDS CHECK-FAIL LABEL@ ALIGNED
-   15 DATA STACK-ABI:CAP-CELL LDR,
-   14 15 CHECK-FAIL LABEL@ DESCRIPTOR
-   XDS 14 CMP,  C-CC CHECK-FAIL LABEL@ BCOND,
-   14 XDS 14 SUB,
-   14 15 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
-   16 14 CMP,  C-HI CHECK-UNDER LABEL@ BCOND,
-   15 15 14 SUB,
-   17 15 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
-   RETURN-CHECK
-   CHECK-UNDER LABEL@ LBL,  EMIT-UNDERFLOW
-   CHECK-FAIL LABEL@ LBL,  EMIT-FAIL
-   CHECK-END LABEL@ LBL,
-   DATA-ENTRY CHECK-END LABEL@ ;
-
-: EMIT-FIXED ( n n label -- label label )
-   CHECK-START !  FIXED-CAP !  FIXED-OFF !
-   LBL CHECK-FAIL !  LBL CHECK-END !
-   CHECK-START LABEL@ LBL,
-   SAVE-CHECK
-   14 DATA FIXED-OFF @ LDR,  15 FIXED-CAP @ LIT64,
-   14 15 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
-   16 14 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
-   15 15 14 SUB,
-   17 15 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
-   RETURN-CHECK
-   CHECK-FAIL LABEL@ LBL,  EMIT-FAIL
-   CHECK-END LABEL@ LBL,
-   CHECK-START LABEL@ CHECK-END LABEL@ ;
-
 ;package
 
 \ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs
 : G-PUSH ( n -- )
-   0 8 STACK-GUARD:CHECK-DATA
    XDS 0 STR,  XDS XDS $8 ADDI, ;
 
 : G-POP ( n -- )
-   8 0 STACK-GUARD:CHECK-DATA
    XDS XDS $8 SUBI,  XDS 0 LDR, ;
 variable DOT-LBL  variable ATOI-LBL
 variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE

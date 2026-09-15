@@ -20,11 +20,7 @@ $FD000260 constant W-FPUSHR     \ str dR,[x19]  (or with R) — tag 2 = FLOAT re
 $FD400260 constant W-FPOPR      \ ldr dR,[x19]
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 
-\ Recovery mirror of src/habu/jit.f. The runtime wrapper uses the existing
-\ relocatable absolute call stencil; the registered shim restores x16 from
-\ its SP+24 request slot before entering the real bounds helper.
-variable JIT-STACK:LREQUEST
-
+\ Recovery mirror of src/habu/jit.f.
 : JIT-STACK:SAVE-EMITTER ( -- )
    SP SP 160 SUBI,
    18 0 ?do i SP i cells STR, loop
@@ -34,21 +30,6 @@ variable JIT-STACK:LREQUEST
    18 0 ?do i SP i cells LDR, loop
    30 SP 144 LDR, SP SP 160 ADDI, ;
 
-: JIT-STACK:REQUEST ( below above target -- ) {: below above target :}
-   SP SP 32 SUBI, 11 SP 0 STR, 12 SP 8 STR, 13 SP 16 STR, 30 SP 24 STR,
-   11 below LIT64, 12 above LIT64, 13 target ADR, JIT-STACK:LREQUEST @ BL,
-   11 SP 0 LDR, 12 SP 8 LDR, 13 SP 16 LDR, 30 SP 24 LDR, SP SP 32 ADDI, ;
-: JIT-STACK:REQUEST-REGS ( below above target -- ) {: below above target :}
-   SP SP 48 SUBI, 11 SP 0 STR, 12 SP 8 STR, 13 SP 16 STR, 30 SP 24 STR,
-   below SP 32 STR, above SP 40 STR,
-   11 SP 32 LDR, 12 SP 40 LDR, 13 target ADR, JIT-STACK:LREQUEST @ BL,
-   11 SP 0 LDR, 12 SP 8 LDR, 13 SP 16 LDR, 30 SP 24 LDR, SP SP 48 ADDI, ;
-
-: JIT-STACK:CHECK-DATA ( below above -- ) STACK-GUARD:JDATA @ JIT-STACK:REQUEST ;
-: JIT-STACK:CHECK-RETURN ( below above -- ) STACK-GUARD:JRETURN @ JIT-STACK:REQUEST ;
-: JIT-STACK:CHECK-LOOP ( below above -- ) STACK-GUARD:JLOOP @ JIT-STACK:REQUEST ;
-: JIT-STACK:DATA-REGS ( below above -- ) STACK-GUARD:JDATA @ JIT-STACK:REQUEST-REGS ;
-: JIT-STACK:RETURN-REGS ( below above -- ) STACK-GUARD:JRETURN @ JIT-STACK:REQUEST-REGS ;
 
 : JIT-STACK:LITERAL-REG ( value dest -- ) {: value dest :}
    value 0< value 17 > or abort" jit stack: invalid literal register"
@@ -61,26 +42,11 @@ variable JIT-STACK:LREQUEST
    dest count 61 LSRI, dest good CBZ, STACK-GUARD:EXIT-BOUNDS
    good LBL, dest count 3 LSLI, ;
 
-: JIT-STACK:LABELS ( -- ) LBL JIT-STACK:LREQUEST ! ;
-: JIT-STACK:EMIT ( -- )
-   LBL {: end :}
-   s" (JIT-STACK)" JIT-STACK:LREQUEST @ end STACK-GUARD:REGISTER
-   JIT-STACK:LREQUEST @ LBL, JIT-STACK:SAVE-EMITTER
-   $D10083FF C-EMITW
-   $F90003F0 C-EMITW $F90007F1 C-EMITW $F9000BFE C-EMITW
-   11 SP 88 LDR, 14 16 MOVZ, LVMOVK @ BL, $F9000FF0 C-EMITW
-   11 SP 96 LDR, 14 17 MOVZ, LVMOVK @ BL,
-   11 SP 104 LDR, C-CALL-EMIT-ABSOLUTE
-   $F94003F0 C-EMITW $F94007F1 C-EMITW $F9400BFE C-EMITW
-   $910083FF C-EMITW
-   JIT-STACK:RESTORE-EMITTER RET, end LBL, ;
-
 \ LVLITPUSH ( x11=val ) : emit movz/movk x9,val + push — the C-LIT sequence as a
 \ BL-able routine (the dispatch's inline C-LIT becomes a call to this).
 : EMIT-VLITPUSH ( -- )
    LVLITPUSH @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   0 8 JIT-STACK:CHECK-DATA
    14 16 MOVZ,  LVMOVK @ BL,                            \ movz/movk x16,val (x16: never pooled)
    9 $F9000270 LIT64,  LCEMIT @ BL,                     \ str x16,[x19]
    9 W-PUSH1 LIT64,  LCEMIT @ BL,
@@ -93,7 +59,7 @@ variable JIT-STACK:LREQUEST
    LBL {: vl :}  LBL {: vd :}  LBL {: vcon :}  LBL {: vnext :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 DATA VSP-CELL LDR, 6 vd CBZ,          \ an empty flush emits no code, including outside RW brackets
-   5 0 MOVZ, 6 6 3 LSLI, 5 6 JIT-STACK:DATA-REGS
+   5 0 MOVZ, 6 6 3 LSLI,
    5 0 MOVZ,  5 SP 8 STR,                                   \ k (in the frame: the
    vl LBL,                                                  \ helper calls clobber x5)
       5 SP 8 LDR,
@@ -818,7 +784,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
    rgo EMIT-RECON-RESTORE-FLOAT ;
 
 : EMIT-RECON-RESTORE-LOOP ( n n n n -- ) {: rl rln rhi rnx :}
-   6 5 3 LSLI, 7 0 MOVZ, 6 7 JIT-STACK:DATA-REGS
+   6 5 3 LSLI, 7 0 MOVZ,
    rl LBL,
       5 rln CBZ,
       5 5 1 SUBI,
@@ -936,7 +902,6 @@ variable FESK4
    LKWNEG2 @ LBL,  s" negate" BYTES,  LKWINV2 @ LBL,  s" invert" BYTES, ;
 
 : EMIT-JIT ( -- )
-   JIT-STACK:EMIT
    EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;

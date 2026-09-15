@@ -612,18 +612,6 @@ public
 $47E0 constant HEAP-START-CELL
 ;package
 
-\ UNDERFLOW-CELL: runtime address of the interpreter's E-UNDERFLOW diagnostic
-\ (LUNDERFLOW, habu2.f), set at startup like EVALREC-CELL so the engine's
-\ data-stack guard (src/habu/rt.f EMIT-DATA, a sealed helper record) can leave
-\ for it on a request below the base. A direct branch would not do: a stripped
-\ application carries the helper as a record and relocates its branches, and
-\ the interpreter is no record, so the closure refuses the branch it cannot
-\ rewrite. Zero means no interpreter set it, and the guard then fails closed
-\ with exit STACK-BOUNDS as it does for every other failure. The next cell of
-\ the unclaimed run above the stack ABI cells ($47E8..$47F8), swept for a
-\ claimant across src lib tools test maki bootstrap before taking it, below
-\ $7FF8 for the unsigned LDR offset and below DATA-START.
-$4800 constant UNDERFLOW-CELL
 
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
