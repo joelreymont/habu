@@ -150,11 +150,17 @@ variable BWM-GXT
 
 \ ---- what the compiled wide store and fetch must encode ----------------------
 \ The goldens below pin the invariants a reader of the code can substantiate,
-\ not the whole body: the bounds request each transfer makes and the helper it
-\ reaches, the span the store proves before it mutates memory, and the tag
-\ descriptor the fetch hands its validator. Width, order and the exact fit are
-\ executed (BWM-TEST-RUNTIME, BWM-TEST-EXACT); refusals are process exits and
-\ live in test/engine-stack-wide.f.
+\ not the whole body: the helper each transfer reaches, the span the store
+\ proves before it mutates memory, and the tag descriptor the fetch hands its
+\ validator. Width and order are executed (BWM-TEST-RUNTIME). There is no
+\ per-transfer bounds request to pin any more -- that machinery is gone from
+\ the engine (dot habu-replace-per-transfer-8523fb98, following its earlier
+\ removal from the JIT in "Remove the per-transfer stack guards from the
+\ engine"), and every VM stack run-in-stack accepts is now a guarded mapping
+\ rounded up to a whole STACK-ABI:PAGE-BYTES, far larger than any of these
+\ transfers, so the old BWM-TEST-EXACT dynamic fit is gone too (see the note
+\ below BWM-TEST-GOLDENS); refusals are process exits and live in
+\ test/engine-stack-wide.f.
 \
 \ An engine helper call is one direct `BL imm26` when the JIT region maps within
 \ BL's +/-128 MiB of __text (native bin/hb, dot habu-map-the-code + habu-aot-repl-bl),
@@ -172,107 +178,36 @@ variable BWM-GXT
    idx 3 + $FFFFFFFF $D63F0200 BWM-MASK-GOLD
    idx 4 + ;
 
-\ The target of a branch word (BL or B) at a site, from its signed imm26.
-: BWM-BRANCH-TARGET ( n n -- n ) {: site:n w:n :}
-   w $3FFFFFF and dup $2000000 and 0 <> if $4000000 - then 4 * site + ;
-
-\ The target of the call at idx: the BL's own target, or the address the
-\ movz/movk chain loads into x16. Leaves the index after the call.
-: BWM-CALL-TARGET ( n -- n n ) {: idx:n :}
-   BWM-GXT @ idx 4 * BWM-W32 {: w:n :}
-   w $FC000000 and $94000000 = if
-      BWM-GXT @ idx 4 * + w BWM-BRANCH-TARGET idx 1 + exit
-   then
-   w 5 rshift $FFFF and
-   BWM-GXT @ idx 1 + 4 * BWM-W32 5 rshift $FFFF and 16 lshift or
-   BWM-GXT @ idx 2 + 4 * BWM-W32 5 rshift $FFFF and 32 lshift or
-   idx 4 + ;
-
-\ A bounds request: the caller frames x16/x17/LR, states the bytes it needs
-\ below and above the data-stack top, and calls the DATA guard. Near the
-\ helper (native) the call is a direct BL to the registered helper itself.
-\ Far from it (the stage0 seed) the absolute chain consumes x16, so the
-\ request parks the below-distance in the frame's fourth slot (SP+24) right
-\ after loading it, and the chain reaches a shim that reloads x16 from that
-\ slot and branches to the same helper. Either way the guard the request
-\ reaches is the one stack-data-entry names. Leaves the index after the frame.
-\ The shape of the request at idx, decided from the words after the below
-\ load and never from a decoded address: 1 near (movz x17 then BL), 2 far
-\ (str x16,[sp,#24], movz x17, movz/movk/movk x16, blr x16), 0 neither. An
-\ unknown shape is a failed case that resolves nothing, so a stale engine
-\ cannot hand the fixture an address to dereference.
-: BWM-W32@ ( n -- n ) BWM-GXT @ swap 4 * BWM-W32 ;
-
-: BWM-REQUEST-SHAPE ( n -- n ) {: idx:n :}
-   idx 5 + BWM-W32@ $FFE0001F and $D2800011 =
-   idx 6 + BWM-W32@ $FC000000 and $94000000 = and if 1 exit then
-   idx 5 + BWM-W32@ $F9000FF0 =
-   idx 6 + BWM-W32@ $FFE0001F and $D2800011 = and
-   idx 7 + BWM-W32@ $FFE0001F and $D2800010 = and
-   idx 8 + BWM-W32@ $FFE0001F and $F2A00010 = and
-   idx 9 + BWM-W32@ $FFE0001F and $F2C00010 = and
-   idx 10 + BWM-W32@ $D63F0200 = and if 2 exit then
-   0 ;
-
-\ Stop before decoding an arbitrary target or reading a guessed continuation.
-: BWM-UNRESOLVED ( -- )
-   s" bootstrap-wide-memory: invalid stack request" 1 die ;
-
-: BWM-REQUEST-GOLD ( n n n -- n ) {: idx:n below:n above:n :}
-   idx     $D10083FF BWM-GOLD                     \ sub sp,sp,#32
-   idx 1 + $F90003F0 BWM-GOLD                     \ str x16,[sp]
-   idx 2 + $F90007F1 BWM-GOLD                     \ str x17,[sp,#8]
-   idx 3 + $F9000BFE BWM-GOLD                     \ str x30,[sp,#16]
-   idx 4 + $D2800010 below 5 lshift or BWM-GOLD   \ movz x16,#below
-   idx BWM-REQUEST-SHAPE {: shape:n :}
-   shape 0= if
-      BWM-CASES @ 1 + BWM-CASES !  BWM-FAIL
-      s" case " type BWM-CASES @ . s" unknown request shape at " type idx . cr
-      BWM-UNRESOLVED
-   then
-   shape 1 = if
-      idx 5 + $D2800011 above 5 lshift or BWM-GOLD   \ movz x17,#above
-      BWM-FAILS @ 0 <> if BWM-UNRESOLVED then
-      idx 6 + BWM-CALL-TARGET {: target:n n:n :}
-      target stack-data-entry BWM=
-      n
-   else
-      idx 6 + $D2800011 above 5 lshift or BWM-GOLD   \ movz x17,#above
-      BWM-FAILS @ 0 <> if BWM-UNRESOLVED then
-      idx 7 + BWM-CALL-TARGET {: target:n n:n :}
-      target 0 BWM-W32 $F9400FF0 BWM=                       \ shim: ldr x16,[sp,#24]
-      target 4 BWM-W32 $FC000000 and $14000000 BWM=         \ shim: b helper
-      target 4 + target 4 BWM-W32 BWM-BRANCH-TARGET stack-data-entry BWM=
-      n
-   then {: n:n :}
-   n     $F94003F0 BWM-GOLD                       \ ldr x16,[sp]
-   n 1 + $F94007F1 BWM-GOLD                       \ ldr x17,[sp,#8]
-   n 2 + $F9400BFE BWM-GOLD                       \ ldr x30,[sp,#16]
-   n 3 + $910083FF BWM-GOLD                       \ add sp,sp,#32
-   n 4 + ;
-
-\ A wide store ( value ptr -- ): before anything moves it asks for the value
-\ and its address below the top, pops the address, addresses the value at its
+\ A wide store ( value ptr -- ): pops the address, addresses the value at its
 \ full width (a register offset, never an imm12 that a wide value outgrows),
 \ and proves the whole destination span with (PROT-SPAN) - x10 destination,
-\ x11 bytes, x9 cells - before the first mutating store.
+\ x11 bytes, x9 cells - before the first mutating store. There is no bounds
+\ request ahead of the call any more (dot habu-replace-per-transfer-8523fb98,
+\ following the engine's own per-transfer-guard removal in
+\ "Remove the per-transfer stack guards from the engine"): the frame is just
+\ the return address, the destination comes straight off the data stack, and
+\ (PROT-SPAN) is reached directly. Measured on this stage0 seed with `HABU_
+\ TARGET=linux-aarch64 gforth test/bootstrap-wide-memory.fs`, decoding the
+\ actual compiled BWM-STORE2-G/BWM-STORE4-G bytes byte for byte.
 : BWM-STORE-GOLD ( ptr u8 n n -- ) {: name:ptr nameu:n width:n :}
    name nameu BWM-XT BWM-GXT !
-   0 $D10043FF BWM-GOLD  1 $F90003FE BWM-GOLD
-   2 width 8 + 0 BWM-REQUEST-GOLD {: n:n :}
-   n     $D1002273 BWM-GOLD                       \ sub x19,x19,#8
-   n 1 + $F940026A BWM-GOLD                       \ ldr x10,[x19]     destination
-   n 2 + $D280000E width 5 lshift or BWM-GOLD     \ movz x14,#width
-   n 3 + $CB0E026E BWM-GOLD                       \ sub x14,x19,x14   source
-   n 4 + $D2800009 width 8 / 5 lshift or BWM-GOLD \ movz x9,#cells
-   n 5 + $D280000B width 5 lshift or BWM-GOLD     \ movz x11,#width
-   n 6 + BWM-CALL-GOLD drop ;                     \ (PROT-SPAN)
+   0 $D10043FF BWM-GOLD                           \ sub sp,sp,#16
+   1 $F90003FE BWM-GOLD                           \ str x30,[sp]
+   2 $D1002273 BWM-GOLD                           \ sub x19,x19,#8     destination
+   3 $F940026A BWM-GOLD                           \ ldr x10,[x19]
+   4 $D280000E width 5 lshift or BWM-GOLD         \ movz x14,#width
+   5 $CB0E026E BWM-GOLD                           \ sub x14,x19,x14    source
+   6 $D2800009 width 8 / 5 lshift or BWM-GOLD     \ movz x9,#cells
+   7 $D280000B width 5 lshift or BWM-GOLD         \ movz x11,#width
+   8 BWM-CALL-GOLD drop ;                         \ (PROT-SPAN)
 
 \ A wide fetch ( ptr -- value ): it first calls (LP2VEXEC), whose descriptor
 \ follows the return site behind a branch over it - one CHECK row naming the
 \ tag cell's offset, the exclusive tag domain and no guards - so an invalid tag
-\ is refused before the address is popped. Then it asks for the address below
-\ the top and the value's growth above it, and pops the address.
+\ is refused before the address is popped. It then pops the source address
+\ directly and sets the cell count, with no bounds request in between (same
+\ removal as the store side above). Decoded from the actual compiled
+\ BWM-FETCH2-G/BWM-FETCH4-G bytes.
 : BWM-FETCH-GOLD ( ptr u8 n n n n -- )
    {: name:ptr nameu:n width:n tag:n lim:n :}
    name nameu BWM-XT BWM-GXT !
@@ -283,10 +218,9 @@ variable BWM-GXT
    n 3 + tag BWM-GOLD  n 4 + 0 BWM-GOLD           \ tag cell offset
    n 5 + lim BWM-GOLD  n 6 + 0 BWM-GOLD           \ exclusive tag domain
    n 7 + 0 BWM-GOLD    n 8 + 0 BWM-GOLD           \ no guards
-   n 9 + 8 width 8 - BWM-REQUEST-GOLD {: m:n :}
-   m     $D1002273 BWM-GOLD                       \ sub x19,x19,#8
-   m 1 + $F940026A BWM-GOLD                       \ ldr x10,[x19]     source
-   m 2 + $D2800009 width 8 / 5 lshift or BWM-GOLD ; \ movz x9,#cells
+   n 9 +  $D1002273 BWM-GOLD                      \ sub x19,x19,#8     source
+   n 10 + $F940026A BWM-GOLD                      \ ldr x10,[x19]
+   n 11 + $D2800009 width 8 / 5 lshift or BWM-GOLD ; \ movz x9,#cells
 
 : BWM-TEST-GOLDENS ( -- )
    s" BWM-STORE2-G" 16 BWM-STORE-GOLD
@@ -294,31 +228,20 @@ variable BWM-GXT
    s" BWM-STORE4-G" 32 BWM-STORE-GOLD
    s" BWM-FETCH4-G" 32 3 1 BWM-FETCH-GOLD ;
 
-\ The exact fit, executed: each transfer runs on an allocation of exactly the
-\ bytes its request states, so the guard admits it at the last byte and the
-\ transfer completes there. The destination waits in a local so the callback's
-\ peak is the transfer's own: a store peaks at the value plus its address, a
-\ fetch at the value that replaced its address. Measured on the native engine:
-\ 24, 16, 40 and 32 bytes run, and one cell less exits 102 (a process exit,
-\ so that half lives in test/engine-stack-wide.f).
-create BWM-POOL 64 allot
-1 LAYOUT-BUFFER BWM-SRC2 bwm2<n>
-1 LAYOUT-BUFFER BWM-SRC4 bwm4<n,n,n>
-
-: BWM-SOURCES ( -- ) 8 BWM2:OTHER 0 BWM-SRC2 !  1 2 3 BWM4:QUAD 0 BWM-SRC4 ! ;
-: BWM-EXACT-STORE2 ( -- ) 0 BWM-MEM2 {: dest :} 0 BWM-SRC2 @ dest ! ;
-: BWM-EXACT-FETCH2 ( -- ) 0 BWM-MEM2 @ BWM-UN2 drop drop ;
-: BWM-EXACT-STORE4 ( -- ) 0 BWM-MEM4 {: dest :} 0 BWM-SRC4 @ dest ! ;
-: BWM-EXACT-FETCH4 ( -- ) 0 BWM-MEM4 @ BWM-UN4 drop drop drop drop ;
-
-: BWM-TEST-EXACT ( -- )
-   BWM-SOURCES
-   ['] BWM-EXACT-STORE2 BWM-POOL 24 run-in-stack
-   BWM-FETCH2 BWM-UN2 1 BWM= 8 BWM=
-   ['] BWM-EXACT-FETCH2 BWM-POOL 16 run-in-stack
-   ['] BWM-EXACT-STORE4 BWM-POOL 40 run-in-stack
-   BWM-FETCH4 BWM-UN4 0 BWM= 3 BWM= 2 BWM= 1 BWM=
-   ['] BWM-EXACT-FETCH4 BWM-POOL 32 run-in-stack ;
+\ BWM-TEST-EXACT used to run each transfer on a run-in-stack allocation of
+\ exactly the bytes its request states (24/16/40/32), so the guard admitted
+\ it at the last byte and the transfer completed there -- proving the
+\ compiled request asks for neither more nor less. That per-transfer exact
+\ fit no longer exists to prove: every VM stack run-in-stack accepts is now a
+\ guarded mapping rounded up to a whole STACK-ABI:PAGE-BYTES (dot
+\ habu-replace-per-transfer-8523fb98), so no extent this small (or this
+\ tight) can be constructed any more -- run-in-stack refuses anything that
+\ is not such a mapping (GUARDED-EXTENT?, STACK-ABI:E-UNGUARDED), and the
+\ smallest one is far larger than any of these transfers. The static goldens
+\ above (BWM-TEST-GOLDENS) already prove the compiled request's exact byte
+\ count independently, by decoding the emitted movz/movk immediates rather
+\ than by fitting a live allocation, so that half of the invariant is still
+\ covered; only the dynamic exact-fit confirmation is gone.
 
 : BWM-TEST-RUNTIME ( -- )
    s" BWM-ORDINARY" tok-imm? 0 BWM=
@@ -444,7 +367,6 @@ public
 
 BWM-TEST-GOLDENS
 BWM-TEST-RUNTIME
-BWM-TEST-EXACT
 BWM-TEST-ATOMICS
 BWM-TEST-DEFER
 BWM-TEST-CDEFER
