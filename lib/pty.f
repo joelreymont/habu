@@ -9,6 +9,7 @@
 \
 \ Load after lib/errors.f and lib/fs.f.
 require lib/errors.f
+require lib/type/deftype.f
 require lib/fs.f
 
 package PTY
