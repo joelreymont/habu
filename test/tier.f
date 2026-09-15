@@ -262,7 +262,17 @@ variable RC     variable EXITED
    s" : B2 ( -- n ) 0 begin dup 5 < while 1 + repeat ; B2 . cr" RUN  s" 5" ASSERT-OK
 
    s" tier 0 compiles DO / LOOP" T-LABEL
-   s" : B3 ( -- n ) 0 5 0 do 1 + loop ; B3 . cr" RUN  s" 5" ASSERT-OK ;
+   s" : B3 ( -- n ) 0 5 0 do 1 + loop ; B3 . cr" RUN  s" 5" ASSERT-OK
+
+   \ A local bound inside the loop body allocates and releases its frame on
+   \ every iteration while the loop's own values are live. The JIT's frame
+   \ sequences must not touch pooled registers: the count below read back the
+   \ frame's byte size, 16, in place of 3.
+   s" tier 0 keeps loop values across a local bound in the body" T-LABEL
+   s" : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK
+
+   s" tier 1 keeps loop values across a local bound in the body" T-LABEL
+   s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
 
 \ ---- 4. the snapshot depth dies with the definition --------------------------
 \ THE REGRESSION. Thirty definitions that each open a BEGIN and then fail on an

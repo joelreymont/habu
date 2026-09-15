@@ -1686,14 +1686,17 @@ public
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
 \ ---- control-flow JIT helpers ----
-\ Release an exact byte count from the machine-stack locals frame.
+\ Release an exact byte count from the machine-stack locals frame. The count
+\ is synthesized into x16, which the value allocator never pools, and the
+\ extended-register add moves SP without a second scratch register. The
+\ emitted code runs while x9..x15 (regalloc.f VRPACK) may still hold live
+\ values: a sequence through x9 and x10 handed a loop whose body bound a local
+\ the frame's byte count in place of its own value.
 : C-EMIT-DROP-X12 ( -- )
    LBL {: done:label :}
    12 done CBZ,
-      12 9 JIT-STACK:LITERAL-REG
-      9 $910003EA LIT64,  LCEMIT LABEL@ BL,      \ mov x10,sp
-      9 $8B09014A LIT64,  LCEMIT LABEL@ BL,      \ add x10,x10,x9
-      9 $9100015F LIT64,  LCEMIT LABEL@ BL,      \ mov sp,x10
+      12 16 JIT-STACK:LITERAL-REG
+      9 $8B3063FF LIT64,  LCEMIT LABEL@ BL,      \ add sp,sp,x16
    done LBL, ;
 
 : EMIT-CF-HELPERS ( -- )
@@ -4258,8 +4261,8 @@ variable VDESC  variable DRIFT-FAIL
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,
    12 32768 MOVZ,  15 12 CMP,  C-LS frameok BCOND,  EM-P2-SLOT-DIE
    frameok LBL,
-   5 9 JIT-STACK:LITERAL-REG
-   $910003EA C-EMITW  $CB09014A C-EMITW  $9100015F C-EMITW  \ sp -= complete frame
+   5 16 JIT-STACK:LITERAL-REG
+   $CB3063FF C-EMITW                                   \ sub sp,sp,x16: the complete frame, pooled registers untouched
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
    9 DATA LOCN-CELL LDR,  9 9 1 SUBI,  9 SP 0 STR,    \ i := last local
    pl LBL,

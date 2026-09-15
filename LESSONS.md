@@ -8334,3 +8334,12 @@ Resolve the native rewind boundary from the earliest global `IMK-NDICT0`
 dictionary row, not the marker cell's contents. Retained/replayed prefixes can
 contain a later marker. Bound `seed-ndict!` before deriving an address; negative
 indices must fail in a child process (2026-09-14).
+
+Code the JIT writes into a body must not touch x9..x15 outside a spill: the
+value allocator pools them (`src/habu/regalloc.f` VRPACK). A locals-frame
+sequence through x9 and x10 handed a loop whose body bound a local the frame's
+byte count, 16, in place of its value, and cold engines, which JIT their prefix,
+died in `src/core/sumtype.f` TDPV-COUNT with 7133. Synthesize such counts into
+x16 and move SP with the extended-register `sub sp,sp,x16` (habu2.f
+C-EMIT-DROP-X12 and EM-P2-CARVE; the seed mirrors both). `test/tier.f` pins the
+loop-local case on both tiers (2026-09-15).

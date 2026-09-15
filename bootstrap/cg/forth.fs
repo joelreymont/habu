@@ -2992,11 +2992,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ addresses and local-frame snapshots. THEN/ELSE/REPEAT patch branches. ----
 \ Lcfpush(x9=val), Lcfpop(->x9), Lpat(x9=addr: patch CBZ/B to current CP),
 \ Lkwcmp(x0=kwaddr x1=kwlen -> x0=match? vs TKA/TKL, case-folded).
-: C-EMIT-DROP-X12 ( -- )
+: C-EMIT-DROP-X12 ( -- )   \ mirrors src/habu/habu2.f: x16 is never pooled
    LBL {: done :}
    12 done CBZ,
-      12 9 JIT-STACK:LITERAL-REG
-      $910003EA C-EMITW $8B09014A C-EMITW $9100015F C-EMITW
+      12 16 JIT-STACK:LITERAL-REG
+      $8B3063FF C-EMITW                                \ add sp,sp,x16
    done LBL, ;
 
 : EMIT-CF-HELPERS ( -- )
@@ -4464,8 +4464,8 @@ previous
    15 DATA LOCF-CELL LDR, 15 15 5 ADD,
    12 32768 MOVZ, 15 12 CMP, C-LS frameok BCOND, EM-P2-SLOT-DIE
    frameok LBL,
-   5 9 JIT-STACK:LITERAL-REG
-   $910003EA C-EMITW $CB09014A C-EMITW $9100015F C-EMITW
+   5 16 JIT-STACK:LITERAL-REG
+   $CB3063FF C-EMITW                                   \ sub sp,sp,x16
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
    9 DATA LOCN-CELL LDR,  9 9 1 SUBI,  9 SP 0 STR,
    pl LBL,
