@@ -24,6 +24,8 @@
 \ staged shape-carry fixtures were deleted as unsound (a one-cell bake cannot
 \ carry a multi-cell shape). Parity: check-all-errors-test const-layout-narrow.
 
+require src/compiler/native/codewalk.f
+
 using TFAM
 
 variable #FAIL
@@ -180,11 +182,29 @@ TRUSTED: TLP-W32 ( n n -- n )
 TRUSTED: TLP-XT ( ptr u8 n -- n ) 0 search-wl ;
 
 variable GXT
-: GG ( n n -- ) {: ix:n want:n :}   \ golden: instruction ix of subject GXT
-   GXT @ ix 4 * TLP-W32  want T= ;
+
+\ The goldens index the subject's OWN instructions. The engine's stack guard
+\ (src/compiler/native/codewalk.f, eleven instructions around one BL) precedes
+\ every complete transfer and follows every returning call; the raw index of
+\ own instruction k skips whole guards on the way there.
+512 constant GBOUND                  \ raw instructions a subject is read within
+: GWORD ( n -- n ) GXT @ swap 4 * TLP-W32 ;
+: GRAW ( n -- n ) {: own:n :}
+   0 0 begin over own < while                \ ( seen raw )
+      GBOUND over [: GWORD ;] NWALK:GUARD-AT? if
+         NWALK:GUARD-INSNS +
+      else
+         swap 1 + swap 1 +
+      then
+   repeat
+   begin GBOUND over [: GWORD ;] NWALK:GUARD-AT? while NWALK:GUARD-INSNS + repeat
+   nip ;
+
+: GG ( n n -- ) {: ix:n want:n :}   \ golden: own instruction ix of subject GXT
+   GXT @ ix GRAW 4 * TLP-W32  want T= ;
 
 : GM ( n n n -- ) {: ix:n mask:n want:n :}   \ masked golden instruction
-   GXT @ ix 4 * TLP-W32 mask and  want T= ;
+   GXT @ ix GRAW 4 * TLP-W32 mask and  want T= ;
 
 \ The engine helper call is one direct `BL imm26` when the JIT region maps within BL
 \ range of __text (native bin/hb, dot habu-aot-repl-bl), and the absolute movz/movk/movk
@@ -210,83 +230,188 @@ variable GN
    HB-TARGET-MACOS? if $D4001001 exit then
    s" type-layout-lower: unknown target" 76 die ;
 
+\ Every subject's own instructions, guards read past (GRAW). Whole-group
+\ transports now synthesize their byte counts into a register ahead of the
+\ register-form move (habu2.f LP2COPY / LP2DROPN / LP2REV / LP2RS, x16 for the
+\ locals frame), which is what moved these words from their earlier immediate
+\ forms; the loop shapes are unchanged.
 s" TLP-DUP" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG                          \ prologue
-2 $D2800049 GG  3 $D100426A GG                          \ movz x9,#2 ; sub x10,x19,#16
-4 $F940014B GG  5 $9100214A GG  6 $F900026B GG          \ copy loop: ldr/add/str
-7 $91002273 GG  8 $F1000529 GG  9 $54FFFF61 GG          \ push/subs/b.ne -5
-10 $F94003FE GG  11 $910043FF GG  12 $D65F03C0 GG       \ epilogue
+0 $D10043FF GG                          \ sub sp,sp,#16
+1 $F90003FE GG                          \ str x30,[sp,#0]
+2 $D2800049 GG                          \ movz x9,#2
+3 $D280020A GG                          \ movz x10,#16
+4 $CB0A026A GG                          \ sub x10,x19,x10
+5 $F940014B GG                          \ ldr x11,[x10,#0]
+6 $9100214A GG                          \ add x10,x10,#8
+7 $F900026B GG                          \ str x11,[x19,#0]
+8 $91002273 GG                          \ add x19,x19,#8
+9 $F1000529 GG                          \ subs x9,x9,#1
+10 $54FFFF61 GG                         \ b.ne -5
+11 $F94003FE GG                         \ ldr x30,[sp,#0]
+12 $910043FF GG                         \ add sp,sp,#16
+13 $D65F03C0 GG                         \ ret
 
 s" TLP-SWAP" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG                          \ prologue
-2 $D100626A GG  3 $D100426B GG                          \ rev1: [top-24, top-16]
-4 $EB0B015F GG  5 $54000102 GG  6 $F940014C GG  7 $F940016D GG
-8 $F900014D GG  9 $F900016C GG  10 $9100214A GG  11 $D100216B GG  12 $17FFFFF8 GG
-13 $D100226A GG  14 $D100226B GG                        \ rev2: [top-8, top-8]
-15 $EB0B015F GG  16 $54000102 GG  17 $F940014C GG  18 $F940016D GG
-19 $F900014D GG  20 $F900016C GG  21 $9100214A GG  22 $D100216B GG  23 $17FFFFF8 GG
-24 $D100626A GG  25 $D100226B GG                        \ rev3: whole 3-cell span
-26 $EB0B015F GG  27 $54000102 GG  28 $F940014C GG  29 $F940016D GG
-30 $F900014D GG  31 $F900016C GG  32 $9100214A GG  33 $D100216B GG  34 $17FFFFF8 GG
-35 $F94003FE GG  36 $910043FF GG  37 $D65F03C0 GG       \ epilogue
+0 $D10043FF GG                          \ sub sp,sp,#16
+1 $F90003FE GG                          \ str x30,[sp,#0]
+2 $D280030A GG                          \ movz x10,#24
+3 $D280020B GG                          \ movz x11,#16
+4 $CB0A026A GG                          \ sub x10,x19,x10
+5 $CB0B026B GG                          \ sub x11,x19,x11
+6 $EB0B015F GG                          \ cmp x10,x11
+7 $54000102 GG                          \ b.cs +8
+8 $F940014C GG                          \ ldr x12,[x10,#0]
+9 $F940016D GG                          \ ldr x13,[x11,#0]
+10 $F900014D GG                         \ str x13,[x10,#0]
+11 $F900016C GG                         \ str x12,[x11,#0]
+12 $9100214A GG                         \ add x10,x10,#8
+13 $D100216B GG                         \ sub x11,x11,#8
+14 $17FFFFF8 GG                         \ b -8
+15 $D280030A GG                         \ movz x10,#24
+16 $D280010B GG                         \ movz x11,#8
+17 $CB0A026A GG                         \ sub x10,x19,x10
+18 $CB0B026B GG                         \ sub x11,x19,x11
+19 $EB0B015F GG                         \ cmp x10,x11
+20 $54000102 GG                         \ b.cs +8
+21 $F940014C GG                         \ ldr x12,[x10,#0]
+22 $F940016D GG                         \ ldr x13,[x11,#0]
+23 $F900014D GG                         \ str x13,[x10,#0]
+24 $F900016C GG                         \ str x12,[x11,#0]
+25 $9100214A GG                         \ add x10,x10,#8
+26 $D100216B GG                         \ sub x11,x11,#8
+27 $17FFFFF8 GG                         \ b -8
+28 $F94003FE GG                         \ ldr x30,[sp,#0]
+29 $910043FF GG                         \ add sp,sp,#16
+30 $D65F03C0 GG                         \ ret
 
 s" TLP-MIX-DUP" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $D2800089 GG  3 $D100826A GG                          \ movz x9,#4 ; sub x10,x19,#32
-4 $F940014B GG  5 $9100214A GG  6 $F900026B GG
-7 $91002273 GG  8 $F1000529 GG  9 $54FFFF61 GG
-10 $F94003FE GG  11 $910043FF GG  12 $D65F03C0 GG
+0 $D10043FF GG                          \ sub sp,sp,#16
+1 $F90003FE GG                          \ str x30,[sp,#0]
+2 $D2800089 GG                          \ movz x9,#4
+3 $D280040A GG                          \ movz x10,#32
+4 $CB0A026A GG                          \ sub x10,x19,x10
+5 $F940014B GG                          \ ldr x11,[x10,#0]
+6 $9100214A GG                          \ add x10,x10,#8
+7 $F900026B GG                          \ str x11,[x19,#0]
+8 $91002273 GG                          \ add x19,x19,#8
+9 $F1000529 GG                          \ subs x9,x9,#1
+10 $54FFFF61 GG                         \ b.ne -5
+11 $F94003FE GG                         \ ldr x30,[sp,#0]
+12 $910043FF GG                         \ add sp,sp,#16
+13 $D65F03C0 GG                         \ ret
 
 s" TLP-TOR" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $F942B68A GG  3 $8B0A0E8B GG                          \ >r: ldr rsp ; block base
-4 $D100426C GG  5 $D2800049 GG                          \ src = top-16 ; movz #2
-6 $F940018D GG  7 $9100218C GG  8 $F914016D GG          \ data->rstk loop
-9 $9100216B GG  10 $F1000529 GG  11 $54FFFF61 GG
-12 $D1004273 GG  13 $9100094A GG  14 $F902B68A GG       \ pop 2 ; rsp += 2 ; store
-15 $F942B68A GG  16 $D100094A GG  17 $8B0A0E8B GG       \ r>: rsp -= 2 ; block base
-18 $D2800049 GG  19 $F954016D GG  20 $9100216B GG       \ rstk->data loop
-21 $F900026D GG  22 $91002273 GG  23 $F1000529 GG  24 $54FFFF61 GG
-25 $F902B68A GG                                         \ commit rsp
-26 $F94003FE GG  27 $910043FF GG  28 $D65F03C0 GG
+0 $D10043FF GG                          \ sub sp,sp,#16
+1 $F90003FE GG                          \ str x30,[sp,#0]
+2 $F942B68A GG                          \ ldr x10,[x20,#1384]
+3 $8B0A0E8B GG                          \ add x11,x20,x10,lsl #3
+4 $D280020C GG                          \ movz x12,#16
+5 $CB0C026C GG                          \ sub x12,x19,x12
+6 $AA0C03EE GG                          \ mov x14,x12
+7 $D2800049 GG                          \ movz x9,#2
+8 $AA0903EF GG                          \ mov x15,x9
+9 $F940018D GG                          \ ldr x13,[x12,#0]
+10 $9100218C GG                         \ add x12,x12,#8
+11 $F914016D GG                         \ str x13,[x11,#10240]
+12 $9100216B GG                         \ add x11,x11,#8
+13 $F1000529 GG                         \ subs x9,x9,#1
+14 $54FFFF61 GG                         \ b.ne -5
+15 $AA0E03F3 GG                         \ mov x19,x14
+16 $8B0F014A GG                         \ add x10,x10,x15
+17 $F902B68A GG                         \ str x10,[x20,#1384]
+18 $F942B68A GG                         \ ldr x10,[x20,#1384]
+19 $D2800049 GG                         \ movz x9,#2
+20 $CB09014A GG                         \ sub x10,x10,x9
+21 $8B0A0E8B GG                         \ add x11,x20,x10,lsl #3
+22 $F954016D GG                         \ ldr x13,[x11,#10240]
+23 $9100216B GG                         \ add x11,x11,#8
+24 $F900026D GG                         \ str x13,[x19,#0]
+25 $91002273 GG                         \ add x19,x19,#8
+26 $F1000529 GG                         \ subs x9,x9,#1
+27 $54FFFF61 GG                         \ b.ne -5
+28 $F902B68A GG                         \ str x10,[x20,#1384]
+29 $F94003FE GG                         \ ldr x30,[sp,#0]
+30 $910043FF GG                         \ add sp,sp,#16
+31 $D65F03C0 GG                         \ ret
 
+\ The locals frame is reserved and released through x16, which the value
+\ allocator never pools, so the frame size travels as one movz ahead of the
+\ extended-register move (habu2.f EM-P2-CARVE and C-EMIT-DROP-X12).
 s" TLP-LOCAL" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $D10083FF GG                                          \ sub sp,sp,#32 (3 cells + pad)
-3 $D1002273 GG  4 $F9400269 GG  5 $F90007E9 GG          \ pop y -> slot 1
-6 $D1002273 GG  7 $F9400269 GG  8 $F9000FE9 GG          \ pop x tag -> slot 3
-9 $D1002273 GG  10 $F9400269 GG  11 $F9000BE9 GG        \ pop x slot0 -> slot 2
-12 $F94007E9 GG  13 $F9000269 GG  14 $91002273 GG       \ ref y: slot 1 push
-15 $910083FF GG                                         \ drop-locals: add sp,#32
-16 $F94003FE GG  17 $910043FF GG  18 $D65F03C0 GG
+0 $D10043FF GG                          \ sub sp,sp,#16
+1 $F90003FE GG                          \ str x30,[sp,#0]
+2 $D2800410 GG                          \ movz x16,#32
+3 $CB3063FF GG                          \ sub sp,sp,x16
+4 $D1002273 GG                          \ sub x19,x19,#8
+5 $F9400269 GG                          \ ldr x9,[x19,#0]
+6 $F90007E9 GG                          \ str x9,[sp,#8]
+7 $D1002273 GG                          \ sub x19,x19,#8
+8 $F9400269 GG                          \ ldr x9,[x19,#0]
+9 $F9000FE9 GG                          \ str x9,[sp,#24]
+10 $D1002273 GG                         \ sub x19,x19,#8
+11 $F9400269 GG                         \ ldr x9,[x19,#0]
+12 $F9000BE9 GG                         \ str x9,[sp,#16]
+13 $F94007E9 GG                         \ ldr x9,[sp,#8]
+14 $F9000269 GG                         \ str x9,[x19,#0]
+15 $91002273 GG                         \ add x19,x19,#8
+16 $D2800410 GG                         \ movz x16,#32
+17 $8B3063FF GG                         \ add sp,sp,x16
+18 $F94003FE GG                         \ ldr x30,[sp,#0]
+19 $910043FF GG                         \ add sp,sp,#16
+20 $D65F03C0 GG                         \ ret
 
 \ TLP-STORE2-G: pop the typed address, call the whole-span LPROTSPAN ABI before
 \ mutation, copy slot0 then tag, and pop both source cells.
 s" TLP-STORE2-G" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $D1002273 GG  3 $F940026A GG
-4 $D100426E GG  5 $D2800049 GG
-6 $D280020B GG
-7 GCALL                                                \ whole-span LPROTSPAN call (BL or chain)
-GN @    $F94001CF GG  GN @ 1 + $F900014F GG  GN @ 2 + $910021CE GG  GN @ 3 + $9100214A GG
-GN @ 4 + $F1000529 GG  GN @ 5 + $54FFFF61 GG  GN @ 6 + $D1004273 GG
-GN @ 7 + $F94003FE GG  GN @ 8 + $910043FF GG  GN @ 9 + $D65F03C0 GG
+0 $D10043FF GG                          \ sub sp,sp,#16
+1 $F90003FE GG                          \ str x30,[sp,#0]
+2 $D1002273 GG                          \ sub x19,x19,#8
+3 $F940026A GG                          \ ldr x10,[x19,#0]
+4 $D280020E GG                          \ movz x14,#16
+5 $CB0E026E GG                          \ sub x14,x19,x14
+6 $D2800049 GG                          \ movz x9,#2
+7 $D280020B GG                          \ movz x11,#16
+8 GCALL                                                  \ engine helper call (BL or chain)
+GN @ $F94001CF GG                       \ ldr x15,[x14,#0]
+GN @ 1 + $F900014F GG                   \ str x15,[x10,#0]
+GN @ 2 + $910021CE GG                   \ add x14,x14,#8
+GN @ 3 + $9100214A GG                   \ add x10,x10,#8
+GN @ 4 + $F1000529 GG                   \ subs x9,x9,#1
+GN @ 5 + $54FFFF61 GG                   \ b.ne -5
+GN @ 6 + $D2800209 GG                   \ movz x9,#16
+GN @ 7 + $CB090273 GG                   \ sub x19,x19,x9
+GN @ 8 + $F94003FE GG                   \ ldr x30,[sp,#0]
+GN @ 9 + $910043FF GG                   \ add sp,sp,#16
+GN @ 10 + $D65F03C0 GG                  \ ret
 
 \ TLP-FETCH2-G: validate the inline descriptor before the typed address is
 \ popped, then read slot0 and tag in canonical bundle order. The absolute call
 \ target changes under ASLR, so its four-instruction opcode shape is masked.
 s" TLP-FETCH2-G" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 GCALL                                                 \ inline-descriptor LP2VEXEC call (BL or chain)
-GN @ $14000009 GG                                       \ branch over 8 descriptor u32s
-GN @ 1 + 1 GG  GN @ 2 + 0 GG                             \ one check (u64 cell)
-GN @ 3 + 1 GG  GN @ 4 + 0 GG                             \ tag at cell offset 1
-GN @ 5 + 2 GG  GN @ 6 + 0 GG                             \ two declaration-order tags
-GN @ 7 + 0 GG  GN @ 8 + 0 GG                             \ no ancestor guards
-GN @ 9 + $D1002273 GG  GN @ 10 + $F940026A GG  GN @ 11 + $D2800049 GG
-GN @ 12 + $F940014B GG  GN @ 13 + $9100214A GG  GN @ 14 + $F900026B GG  GN @ 15 + $91002273 GG
-GN @ 16 + $F1000529 GG  GN @ 17 + $54FFFF61 GG
-GN @ 18 + $F94003FE GG  GN @ 19 + $910043FF GG  GN @ 20 + $D65F03C0 GG
+0 $D10043FF GG                          \ sub sp,sp,#16
+1 $F90003FE GG                          \ str x30,[sp,#0]
+2 GCALL                                                  \ engine helper call (BL or chain)
+GN @ $14000009 GG                       \ b +9
+GN @ 1 + $00000001 GG                   \ descriptor u32 1
+GN @ 2 + $00000000 GG                   \ descriptor u32 0
+GN @ 3 + $00000001 GG                   \ descriptor u32 1
+GN @ 4 + $00000000 GG                   \ descriptor u32 0
+GN @ 5 + $00000002 GG                   \ descriptor u32 2
+GN @ 6 + $00000000 GG                   \ descriptor u32 0
+GN @ 7 + $00000000 GG                   \ descriptor u32 0
+GN @ 8 + $00000000 GG                   \ descriptor u32 0
+GN @ 9 + $D1002273 GG                   \ sub x19,x19,#8
+GN @ 10 + $F940026A GG                  \ ldr x10,[x19,#0]
+GN @ 11 + $D2800049 GG                  \ movz x9,#2
+GN @ 12 + $F940014B GG                  \ ldr x11,[x10,#0]
+GN @ 13 + $9100214A GG                  \ add x10,x10,#8
+GN @ 14 + $F900026B GG                  \ str x11,[x19,#0]
+GN @ 15 + $91002273 GG                  \ add x19,x19,#8
+GN @ 16 + $F1000529 GG                  \ subs x9,x9,#1
+GN @ 17 + $54FFFF61 GG                  \ b.ne -5
+GN @ 18 + $F94003FE GG                  \ ldr x30,[sp,#0]
+GN @ 19 + $910043FF GG                  \ add sp,sp,#16
+GN @ 20 + $D65F03C0 GG                  \ ret
 
 \ ---------------------------------------------------------------------------
 \ execution rows: whole-bundle transports at RUNTIME. The seeds are the REAL

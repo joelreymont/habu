@@ -27,6 +27,7 @@ require lib/errors.f
 require lib/string.f
 require src/arch/arm64/disasm.f
 require src/compiler/native/branch.f
+require src/compiler/native/codewalk.f
 
 package NTAILPROBE
 
@@ -111,16 +112,34 @@ public
 : INSN@ ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    a u START k INSN-BYTES * + W@ ;
 
+\ The engine's stack guards in the body (src/compiler/native/codewalk.f): each
+\ is eleven instructions around one BL to the engine, and none of them is a
+\ call the routine makes or work of its own. The readers below step over them.
+: GUARDS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u START a u LEN NWALK:SPAN-GUARDS ;
+
+: GUARDED? ( ptr u8 n n -- bool ) {: a:ptr u:n k:n :}
+   a u START a u LEN k NWALK:SPAN-GUARDED? ;
+
+\ How many instructions are the routine's own: the body less its guards.
+: OWN-INSNS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u INSNS  a u GUARDS NWALK:GUARD-INSNS *  - ;
+
+\ A call the routine makes: a BL of its own, not a guard's.
+: CALL-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n k:n :}
+   a u k INSN@ BL? 0= if false exit then
+   a u k GUARDED? 0= ;
+
 \ How many calls the routine really makes, counted from code rather than source.
 : CALLS ( ptr u8 n -- n ) {: a:ptr u:n :}
    0
-   a u INSNS 0 ?do  a u i INSN@ BL? if 1+ then  loop ;
+   a u INSNS 0 ?do  a u i CALL-AT? if 1+ then  loop ;
 
 \ Where the last of them is, or -1 for a routine that makes none. The lane's
 \ question is what stands between this instruction and the return.
 : LAST-CALL-IX ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1
-   a u INSNS 0 ?do  a u i INSN@ BL? if drop i then  loop ;
+   a u INSNS 0 ?do  a u i CALL-AT? if drop i then  loop ;
 
 \ And how many instructions do stand there. A call in tail position is followed
 \ by the routine's own teardown and nothing else, so this number is what a lane

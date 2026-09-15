@@ -8,6 +8,7 @@ require lib/engine-candidate.f
 require test/compiler/native-chain-fixture.f
 require src/compiler/native/publish.f
 require src/compiler/native/compiler.f
+require src/compiler/native/codewalk.f
 
 package NTRAP-TEST
 private
@@ -362,10 +363,17 @@ $D65F03C0 constant RET-WORD
 : LAST-IS-BRANCH? ( -- bool )
    CODE-INSNS 1- CODE-WORD@ B-WORD? ;
 
+\ The engine's stack guards in the emission (src/compiler/native/codewalk.f)
+\ are not the routine's own instructions: each moves the machine stack pointer
+\ twice for its own frame and branches with link to the engine. The counts
+\ below are of what the routine itself does, so they read past them.
+: GUARDED? ( n -- bool ) {: k:n :}
+   CODE-INSNS k [: CODE-WORD@ ;] NWALK:GUARDED? ;
+
 : RETS-IN-EMISSION ( -- n )
    0
    CODE-INSNS 0 ?do
-      i CODE-WORD@ RET-WORD = if 1+ then
+      i GUARDED? 0= if i CODE-WORD@ RET-WORD = if 1+ then then
    loop ;
 
 \ How many instructions of the emission move the data-stack pointer. Both forms
@@ -385,7 +393,7 @@ $1F constant REG-MASK
 : DMOVES-IN-EMISSION ( -- n )
    0
    CODE-INSNS 0 ?do
-      i CODE-WORD@ DMOVE-WORD? if 1+ then
+      i GUARDED? 0= if i CODE-WORD@ DMOVE-WORD? if 1+ then then
    loop ;
 
 \ And how many move the MACHINE stack pointer, which is what a routine's own
@@ -402,7 +410,7 @@ $1F constant REG-MASK
 : SPMOVES-IN-EMISSION ( -- n )
    0
    CODE-INSNS 0 ?do
-      i CODE-WORD@ SPMOVE-WORD? if 1+ then
+      i GUARDED? 0= if i CODE-WORD@ SPMOVE-WORD? if 1+ then then
    loop ;
 
 \ ---- two routines, one target ------------------------------------------------

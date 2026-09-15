@@ -66,20 +66,26 @@ $94000000 constant BL-FORM
 : INSNS ( ptr u8 n -- n )
    REC-LEN INSN-BYTES / ;
 
+\ A guard's BL to the engine is not one of the routine's branches: the reading
+\ steps over the engine's stack guards (src/compiler/native/codewalk.f).
+: OWN-BL-AT? ( ptr u8 n n -- bool )
+   {: a u:n k:n :}
+   a u REC-START {: start:n :}
+   start k INSN-AT BL? 0= if false exit then
+   start a u REC-LEN k NWALK:SPAN-GUARDED? 0= ;
+
 : BLS ( ptr u8 n -- n )
    {: a u:n :}
-   a u REC-START {: start:n :}
    0
    a u INSNS 0 ?do
-      start i INSN-AT BL? if 1+ then
+      a u i OWN-BL-AT? if 1+ then
    loop ;
 
 : BL-AT ( ptr u8 n -- n )
    {: a u:n :}
-   a u REC-START {: start:n :}
    -1
    a u INSNS 0 ?do
-      start i INSN-AT BL? if drop i leave then
+      a u i OWN-BL-AT? if drop i leave then
    loop ;
 
 : BL-TARGET ( ptr u8 n -- n )

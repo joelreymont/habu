@@ -17,6 +17,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 require lib/test/src-shape.f
+require src/compiler/native/codewalk.f
 
 package LIT-EMIT-SIZE-TEST
 
@@ -40,19 +41,40 @@ $1122334455667788 constant Z4              \ four chunks (a genuine 64-bit value
 TRUSTED: XT>N ( [ -- a ] -- n ) ;
 TRUSTED: XT0>N ( [ -- ] -- n ) ;
 
+\ Every push the JIT compiles is a guarded transfer: the engine's stack guard
+\ (src/compiler/native/codewalk.f, eleven instructions) precedes it. A body's
+\ footprint is therefore its own instructions plus one guard per push, and the
+\ two are stated apart: the guard count is pinned, and the sizes below are the
+\ pre-guard footprints plus that many guards.
+NWALK:GUARD-INSNS 4 * constant GUARD-BYTES
+
+\ The guards in the body [start, next).
+: GUARDS ( n n -- n ) {: next:n start:n :}
+   start next start - NWALK:SPAN-GUARDS ;
+
+\ A body's footprint less its guards.
+: OWN ( n n -- n ) {: next:n start:n :}
+   next start BODY  next start GUARDS GUARD-BYTES * - ;
+
 : SIZES ( -- )
    T-RESET
+   \ A constant's body is one guarded push.
+   ['] Z1 XT>N  ['] Z0 XT>N  GUARDS 1 T=
+   ['] CEND XT>N ['] Z4 XT>N GUARDS 1 T=
+   \ A string word pushes its address and its length, with the address chain
+   \ and the length each guarded, plus the guard of the two-cell window check.
+   ['] SONE XT0>N  ['] SEMPTY XT0>N GUARDS 3 T=
    \ Exact scalar-body sizes: minimal chain (n chunks) + push (2 instr) + ret = (n+3)*4 bytes.
-   ['] Z1 XT>N  ['] Z0 XT>N  BODY 16 T=              \ zero:            1 chunk  -> 16
-   ['] ZN1 XT>N ['] Z1 XT>N  BODY 16 T=              \ 42 (K):          1 chunk  -> 16  (was 28)
-   ['] ZN2 XT>N ['] ZN1 XT>N BODY 16 T=              \ -1  MOVN:        1 chunk  -> 16
-   ['] Z2 XT>N  ['] ZN2 XT>N BODY 16 T=              \ -2  MOVN:        1 chunk  -> 16
-   ['] Z3 XT>N  ['] Z2 XT>N  BODY 20 T=              \ 2 chunks:                -> 20
-   ['] Z4 XT>N  ['] Z3 XT>N  BODY 24 T=              \ 3 chunks:                -> 24
-   ['] CEND XT>N ['] Z4 XT>N BODY 28 T=              \ 4 chunks (full 64-bit):  -> 28
+   ['] Z1 XT>N  ['] Z0 XT>N  OWN 16 T=               \ zero:            1 chunk  -> 16
+   ['] ZN1 XT>N ['] Z1 XT>N  OWN 16 T=               \ 42 (K):          1 chunk  -> 16  (was 28)
+   ['] ZN2 XT>N ['] ZN1 XT>N OWN 16 T=               \ -1  MOVN:        1 chunk  -> 16
+   ['] Z2 XT>N  ['] ZN2 XT>N OWN 16 T=               \ -2  MOVN:        1 chunk  -> 16
+   ['] Z3 XT>N  ['] Z2 XT>N  OWN 20 T=               \ 2 chunks:                -> 20
+   ['] Z4 XT>N  ['] Z3 XT>N  OWN 24 T=               \ 3 chunks:                -> 24
+   ['] CEND XT>N ['] Z4 XT>N OWN 28 T=               \ 4 chunks (full 64-bit):  -> 28
    \ String-word bodies shrink by the same 12 bytes the minimal length-push saves.
-   ['] SONE XT0>N  ['] SEMPTY XT0>N BODY 52 T=
-   ['] SMARK XT0>N ['] SONE XT0>N   BODY 56 T=
+   ['] SONE XT0>N  ['] SEMPTY XT0>N OWN 52 T=
+   ['] SMARK XT0>N ['] SONE XT0>N   OWN 56 T=
    T-REPORT ;
 
 \ --- Structural proof (item: a scalar numerically inside an address range is never
