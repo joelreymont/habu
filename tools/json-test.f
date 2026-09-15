@@ -16,7 +16,9 @@ variable TEST-N
 : ASSERT$ ( ptr u8 n ptr u8 n -- )
    JSON-STR= ASSERT ;
 
-$1000 constant T-CAP
+\ Sized from the reader's node bound: BUILD-TOO-MANY-NODES writes two bytes
+\ per node up to it, and it is the largest fixture the small buffer holds.
+JSON-MAX-NODES 2 * 64 + constant T-CAP
 $9000 constant T-LARGE-BODY
 create TBUF T-CAP allot
 variable TLEN

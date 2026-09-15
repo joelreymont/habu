@@ -40,7 +40,10 @@ $B0 constant GB-ELF-DYNAMIC-SZ
 $100000401 constant GB-ELF-DLOPEN-RINFO
 $200000401 constant GB-ELF-DLSYM-RINFO
 34 constant GB-DQ
-$8000 constant GB-REPORT-CAP
+\ The call report lists every relocated site; a stripped image carries one
+\ stack-guard call per guarded transfer besides its own calls, so the bundle's
+\ report outgrew the earlier 32 KiB (E-JSON-CAPACITY in the writer).
+$40000 constant GB-REPORT-CAP
 
 create GB-SRC-PATH FS-PATH-CAP allot
 create GB-OUT-PATH FS-PATH-CAP allot

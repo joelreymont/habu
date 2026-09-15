@@ -33,9 +33,14 @@ require lib/adt/result.f                 \ result<root,code> for JSON-PARSE-TRY 
 123 constant J-LBRACE
 125 constant J-RBRACE
 
-$400 constant JSON-MAX-NODES
-$800 constant JSON-MAX-ITEMS
-$800 constant JSON-MAX-PAIRS
+\ The tables are heap-allocated on first use (JSON-ENSURE-TABLES), so these
+\ bound one document, not the process. An AOT call report lists every
+\ relocated site, and a stripped image carries one stack-guard call per guarded
+\ transfer besides its own calls, so the bundle report of the AOT gate outgrew
+\ 1024 nodes; eight times that keeps the tables at 1.1 MiB.
+$2000 constant JSON-MAX-NODES
+$4000 constant JSON-MAX-ITEMS
+$4000 constant JSON-MAX-PAIRS
 $8000 constant JSON-STR-BOOT-CAP
 $8000 constant JSON-OUT-CAP
 $10000 constant JSON-STR-GRAIN
