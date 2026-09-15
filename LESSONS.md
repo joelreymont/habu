@@ -8422,6 +8422,15 @@ impossible and the interpreter keeps its depth floor. Bounds are checked only
 at stack switches (STACK-GUARD:CHECK-CURSOR). Never put a check on the
 per-token path to solve a per-allocation problem.
 
+run-in-stack admits only a guarded mapping: GUARDED-EXTENT? (habu1.f
+BRUNSTACK) proves the base is non-null, base and capacity are
+STACK-ABI:PAGE-BYTES aligned, the extent does not wrap and lies outside DATA,
+and throws catchable E-STACK-UNGUARDED before any switch. It runs ahead of the
+older CHECK-CURSOR, whose checks are trivially true for a fresh stack, so a
+malformed descriptor never reaches the "stack bounds exceeded" exit any more,
+and a fixture that wants a refusal hands over a plain buffer or overflows a
+whole guarded page (2026-09-15).
+
 Boot resolved every baked call site by name, and the hash index was built
 after the seed ran, so a trivial program paid 129,729 linear dictionary scans
 (1.3 s) before its first token; EM-STARTUP now builds the index before the

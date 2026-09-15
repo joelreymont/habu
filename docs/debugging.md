@@ -423,19 +423,66 @@ this class was mis-filed once already: the test may not be registered in
 `test/gate-stdlib-cases.f`, and a fixture that asserts a specific exit code may
 simply be asserting a code the tree stopped producing.
 
-## Stack diagnostics — which of the two you are looking at
+## Stack diagnostics — which of the three you are looking at
+Every VM stack (the boot data stack, a task's own data/return/loop stacks, a
+run-in-stack callback's stack) is a mapping with an inaccessible page on each
+side (`STACK-ABI:PAGE-BYTES`, `src/habu/rt.f` EMIT-MAP). Compiled code carries
+no bounds check at all any more — capacity is enforced by the MMU, not by a
+check at every push and pop — so three independent mechanisms answer "why did
+this die", and they are not interchangeable:
 - `E-UNDERFLOW: <token>` (exit 70) is the data stack read below its base while
   `<token>` was being interpreted, however deep the read happened: the
-  interpreter's depth checks catch it before a primitive runs, and the engine's
-  data-stack guard (`src/habu/rt.f` EMIT-DATA) catches it inside compiled code
-  and leaves for the same diagnostic through `UNDERFLOW-CELL`. Inside
+  interpreter's depth checks catch it before a primitive runs. Inside
   `evaluate` it is a catchable RC-REJECT throw; in the REPL the line recovers.
-- `hb: stack bounds exceeded` (exit 102, ENGINE-ERROR:STACK-BOUNDS) is every
-  other guard failure: a push past the capacity, a return or loop frame past
-  its region, a stack descriptor that does not describe a stack, and an
-  underflow in a stripped application, which has no interpreter to name it.
-- A tier-1 top-row warning does not change either: `' FOO2 execute` on an
-  empty stack warns once and then ends in `E-UNDERFLOW: execute`.
+  This is the one check still anywhere near the per-token path, and it only
+  ever fires from the interpreter — a stripped application has no interpreter
+  to name the token, so the same underflow there is a guard-page fault
+  instead (below).
+- `hb: stack bounds exceeded (data)` / `(return)` / `(loop)` (exit 102,
+  `ENGINE-ERROR:STACK-BOUNDS`) is a guard-page fault: a push past the capacity
+  or a read below the base takes SIGSEGV/SIGBUS, and `src/habu/crash.f` reads
+  the faulting address out of the signal context and classifies which of the
+  three named stacks it landed in — the parenthetical names the stack, not
+  the operation. This is what a per-transfer bounds check used to report
+  generically; the message and exit code are unchanged from before guard
+  pages, only the `(name)` suffix is new, so match it as a prefix
+  (`hb: stack bounds exceeded`) rather than the whole line if the specific
+  stack does not matter to the assertion.
+- `E-STACK-UNGUARDED` (-3802, `lib/errors.f`; `STACK-ABI:E-UNGUARDED` spells
+  the same number for the engine emitters, and `test/stack-guard.f` proves
+  the two agree) is run-in-stack's own admission check
+  (`src/habu/habu1.f` BRUNSTACK `GUARDED-EXTENT?`), thrown *before* the
+  callback ever runs and before any stack switch happens — catchable, not a
+  crash. It refuses anything that is not a real guarded mapping made by
+  `lib/memory.f` `MEM-ALLOC-GUARDED`: a create/allot buffer (every such
+  address lies inside the DATA region, which `GUARDED-EXTENT?` excludes on
+  purpose), a null or unaligned base, a capacity that is zero or not a whole
+  `STACK-ABI:PAGE-BYTES` multiple, or an extent that wraps. Because a guarded
+  mapping only comes in whole-page sizes, there is no way to hand
+  run-in-stack a "slightly too small" guarded stack any more: a request is
+  either refused up front with `E-STACK-UNGUARDED`, or it runs on a full page
+  and any real overflow is a guard-page fault instead. See
+  `test/engine-stack-lifecycle.f` MALFORMED for why a null, unaligned, or
+  wrapping run-in-stack descriptor throws `E-STACK-UNGUARDED` now instead of
+  exiting 102: `GUARDED-EXTENT?` runs strictly before the old descriptor
+  check at the same switch and is strictly stronger for a freshly entered
+  stack, so nothing reaches that older check unrefused any more.
+- A tier-1 top-row warning does not change which of these two a given program
+  hits, only that it also warns once first. `' FOO2 execute` on an empty
+  stack (`: FOO2 ( n -- n n ) dup ;`) warns once and then still runs FOO2:
+  since FOO2 is compiled code invoked through `execute`, not a token the
+  interpreter reads directly, its `dup` reading below the base faults the
+  data stack's guard page — `hb: stack bounds exceeded (data)`, rc 102 — not
+  `E-UNDERFLOW`. A bare `drop` on an empty stack, entered directly at the top
+  level or through `evaluate`, still ends in `E-UNDERFLOW: drop` rc 70,
+  because the interpreter's own depth floor sees that one before any
+  primitive runs (see `test/xt-effect-test.f` XE-TIER1,
+  `test/top-row-warn-test.f` TW-POSITIVES, and
+  `test/runtime-regression-test.f` for the unchanged interpreted case).
+
+`test/stack-guard.f` has worked cases for all three: filling a guarded stack
+to its exact capacity versus one push past it, unbounded data/return/loop
+recursion, and each of run-in-stack's structural refusals.
 
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).

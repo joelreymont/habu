@@ -1,4 +1,4 @@
-\ A breakpoint may interrupt a valid empty alternate allocation.
+\ A breakpoint may interrupt a valid guarded allocation.
 require test/engine-stack-lifecycle.f
 require lib/string.f
 
@@ -12,16 +12,21 @@ package STACK-LIFECYCLE-TEST
       ERR i + 16 s" 0000000000000011" STR= if 1+ then
    loop ;
 
+\ run-in-stack no longer accepts a capacity-0 mapping (GUARDED-EXTENT? refuses
+\ it before the callback runs, test/engine-stack-lifecycle.f MALFORMED), so
+\ both cases below run on a real 64 KB guarded stack; only the live depth at
+\ the breakpoint -- not the allocation's capacity -- decides what the dump
+\ shows.
 : DEBUGGER-BOUNDARIES ( -- )
-   s" breakpoint on an empty allocation has no top cell" T-LABEL
-   s" 0 set-tier package SBP create BUF 32 allot : EMPTY ( -- ) ; ' EMPTY BP+ : GO ( -- ) ['] EMPTY BUF 0 run-in-stack ; GO ;package"
+   s" breakpoint on a valid allocation has no top cell" T-LABEL
+   s" 0 set-tier package SBP require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BUF : EMPTY ( -- ) ; ' EMPTY BP+ : GO ( -- ) ['] EMPTY BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
    ERR ERRLEN @ S\" habu-bp-stack:\n" ENDS-WITH? TTRUE
    DEBUGGER-LINES 5 T=
-   s" breakpoint at the exact cell limit preserves its value" T-LABEL
-   s" 0 set-tier package SBP create BUF 32 allot : KEEP ( n -- n ) ; ' KEEP BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF 8 run-in-stack ; GO ;package"
+   s" breakpoint on a valid allocation preserves its value" T-LABEL
+   s" 0 set-tier package SBP require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BUF : KEEP ( n -- n ) ; ' KEEP BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" 0000000000000011" CONTAINS? TTRUE

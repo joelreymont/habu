@@ -152,13 +152,16 @@ variable EXPECT-I   variable EXPECT-READS
    s" PASS: checked layout calculation works at the REPL after bare-layout refusal" type cr ;
 
 \ An uncaught throw from inside run-in-stack reaches the tty REPL while the
-\ callback's tiny allocation is active. Recovery must reinstate the REPL's own
-\ allocation, not merely the prompt: four cells pushed at once exceed the
-\ eight-byte pool and only fit the recovered boot stack, and the depth after
-\ recovery is zero. A leaked pool descriptor would end the child with exit 102
-\ at the second push and no prompt would follow.
+\ callback's guarded allocation is active -- run-in-stack now refuses anything
+\ that is not a real guarded mapping (lib/memory.f MEM-ALLOC-GUARDED), so
+\ TTY-POOL is one, and TTY-RAISE's throw still escapes uncaught from inside it.
+\ Recovery must reinstate the REPL's own allocation, not merely the prompt:
+\ four cells pushed at once only fit the recovered boot stack, not a leaked
+\ pool descriptor, and the depth after recovery is zero. A leaked pool
+\ descriptor would end the child with exit 102 at some later push and no
+\ prompt would follow.
 : STACK-DEFS$ ( -- ptr u8 n )
-   s" create TTY-POOL 32 allot : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL 8 run-in-stack ;" ;
+   s" require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant TTY-POOL-CAP constant TTY-POOL : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 
 : TTY-STACK-RECOVERS ( -- )
    RCLR

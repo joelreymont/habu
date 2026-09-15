@@ -16,8 +16,12 @@
 \ Tier interop with the top-row tracker (src/core/top-row.f): the child tier is
 \ staged by HABU_TOP_TIER (XE-RUN = tier-1 warn, XE-RUN2 = tier-2 reject). XE-TIER1
 \ pins the tier-1 warn contract: `' FOO2 execute` warns once and still runs, and
-\ the run ends in the engine's stack guard naming the underflow (E-UNDERFLOW,
-\ rc 70) rather than reading below the base as it did before the guards. XE-TIER2 pins
+\ FOO2's `dup` then reads below the base INSIDE COMPILED CODE, which carries no
+\ per-transfer bounds check under guard pages -- the read faults the data
+\ stack's guard page before the interpreter's own depth floor can see it, so
+\ the run ends in the crash handler's named "(data)" exit (rc 102), not the
+\ interpreter's E-UNDERFLOW (that stays rc 70, but only for a top-level word
+\ interpreted directly). XE-TIER2 pins
 \ the sub-dot-7 flip: `' FOO2 execute` and `0 0 catch` REJECT pre-execution with a
 \ clean rc-70 diagnostic and no crash (`0 0 catch` no longer reaches the
 \ BLR-into-xt-0 rc-134 crash it hit at tier-1).
@@ -201,12 +205,19 @@ variable XE-CNT
    s" 0 0 catch" XE-LINE
    SB$ ;
 
-: XE-TIER1 ( -- )                        \ tier-1: the tracker observes, the guard names the underflow
+\ FOO2's `dup` runs inside COMPILED code (called through execute, not
+\ interpreted directly), and compiled code carries no per-transfer bounds
+\ check under guard pages: the read below the base faults the data stack's
+\ guard page before the interpreter's own depth floor ever sees it, so this
+\ ends in the crash handler's named "(data)" exit (102), not E-UNDERFLOW/70 --
+\ that diagnostic is reserved for a top-level word interpreted directly (see
+\ test/runtime-regression-test.f, unchanged).
+: XE-TIER1 ( -- )                        \ tier-1: the tracker observes, the guard page names the fault
    s" tier-1: ' FOO2 execute still warns exactly once at underdepth" T-LABEL
    XE-EXEC$ XE-RUN  XE-WARN-COUNT 1 T=
-   s" tier-1: ' FOO2 execute runs into the stack guard's named underflow (rc 70)" T-LABEL
-   XE-EXITED @ TTRUE  XE-RC @ 70 T=
-   XE-ERR$ s" E-UNDERFLOW: execute" XE-COUNT 1 T= ;
+   s" tier-1: ' FOO2 execute's dup faults the data-stack guard page (rc 102)" T-LABEL
+   XE-EXITED @ TTRUE  XE-RC @ 102 T=
+   XE-ERR$ s" hb: stack bounds exceeded (data)" CONTAINS? TTRUE ;
 
 : XE-TIER2 ( -- )                        \ tier-2 (sub-dot 7): the pre-armed pins now REJECT
    s" tier-2: ' FOO2 execute rejects rc 70 pre-execution (xt underflow)" T-LABEL
