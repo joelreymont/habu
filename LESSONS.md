@@ -8399,3 +8399,10 @@ src/habu/hide.f uses, and the gforth seed answers that name with its unsealed
 BNDSET so one prologue serves stage0 and the native stages; with that the chain
 reaches hb-stdin and its five checks (`HABU_BOOTSTRAP_CHECK_ONLY=1`,
 2026-09-15).
+
+A dictionary record's raw length cell carries the exact-span bit
+(src/habu/code-span.f FULL) since the code-span change, so every walker that
+compares a pc against a span has to read it through CODE-SPAN, in assembly
+too: the profiler's sample handler compared raw cells, the first record below
+the pc with the bit set owned every sample, and prof-report opened with
+DEFER-UNSET (src/habu/prof.f C-PROF-SPAN-BYTES, 2026-09-15).

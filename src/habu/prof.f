@@ -56,6 +56,16 @@ $0043 constant MACOS-SA-PROF-FLAGS        \ SA_ONSTACK | SA_RESTART | SA_SIGINFO
    HB-TARGET-LINUX? IF rd 21 LINUX-MCTX-X0-OFF x 8 * + LDR, exit THEN
    rd 21 SS-OFF x 8 * + LDR, ;
 
+\ x13 = the record's code bytes from its raw length cell (src/habu/code-span.f):
+\ bit 31 marks an exact span, otherwise the body precedes one final slot. Read
+\ raw, that bit made the first record below the pc own every sample, and the
+\ report's first line was DEFER-UNSET.
+: C-PROF-SPAN-BYTES ( -- )
+   14 13 31 LSRI,                         \ x14 = the exact-span bit
+   13 13 CODE-SPAN:MASK ANDI,             \ x13 = body
+   13 13 CODE-SPAN:INSN-BYTES ADDI,       \ a legacy body ends before its final slot
+   14 14 2 LSLI,  13 13 14 SUB, ;         \ an exact span does not
+
 public
 
 \ LPROFDUMP ( x15 = record count ): one "name count" line per counted record,
@@ -119,7 +129,7 @@ public
    pl LBL,
       6 15 CMP,  C-GE pdone BCOND,
       12 5 0 LDR,  12 9 12 SUB,
-      13 5 8 LDR,  12 13 CMP,  C-CS pnext BCOND,
+      13 5 8 LDR,  C-PROF-SPAN-BYTES  12 13 CMP,  C-CS pnext BCOND,
       14 PROF-CNT-VA LIT64,  8 6 3 LSLI,  14 14 8 ADD,
       12 14 0 LDR,  12 12 1 ADDI,  12 14 0 STR,
       psig B,
