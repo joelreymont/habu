@@ -47,6 +47,7 @@ variable IMAGE-U
    else
       s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG
    then
+   s" src/habu/stack-abi.f" ARG
    s" src/habu/layout.f" ARG
    s" src/os/env-base.f" ARG
    s" src/core/include.f" ARG

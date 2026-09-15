@@ -2,6 +2,7 @@
 \ constructor. Its numeric code is not a portable constructor identity.
 s" src/habu/layout.f" provided
 s" src/core/checker-owner-abi.f" provided
+require src/habu/code-span.f
 require src/habu/xref.f
 require src/core/generated-declaration-dictionary.f
 require src/core/generated-declaration-protection.f

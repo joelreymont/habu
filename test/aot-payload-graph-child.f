@@ -9,6 +9,7 @@ require src/habu/aot-arm.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/aot-decl.f
+require src/habu/code-span.f
 require src/habu/xref.f
 require src/habu/aot-capture.f
 require src/habu/aot-ident.f
