@@ -6486,6 +6486,10 @@ public
    EM-DATA-INIT
    EM-STARTUP-COLD-BASELINE
    SEEDED-RUNTIME? if
+      \ The seed registers its records through LHIDXADD and resolves every
+      \ baked call site by name; both need the index, and without it each
+      \ lookup walked the whole dictionary (129,729 scans, 1.3 s per start).
+      LHIDXBUILD LABEL@ BL,
       LAOTPROT LABEL@ BL,
       EM-SEED-AOT
       EM-SEAL-SEEDED-RUNTIME

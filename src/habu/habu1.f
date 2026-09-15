@@ -3969,6 +3969,7 @@ variable LHIDXBUILD
    LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: aret:label bfail:label msg:label fmsg:label floop:label fdone:label
       rret:label zloop:label zdone:label :}
+   LBL {: bhave:label :}
    LHIDXADD LABEL@ LBL,
       SP SP 96 SUBI,
       30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
@@ -3988,17 +3989,21 @@ variable LHIDXBUILD
    LHIDXBUILD LABEL@ LBL,
       \ startup runs this by BL between source setup and the interpret
       \ loop, so it must be register-transparent: save everything it or
-      \ the mmap syscall can touch.
+      \ the mmap syscall can touch. A seeded start builds the table before
+      \ the seed registers and resolves, and the runtime-state pass reaches
+      \ here again: an existing table is refilled in place, never mapped twice.
       SP SP 160 SUBI,
       30 SP 0 STR,   0 SP 8 STR,   1 SP 16 STR,  2 SP 24 STR,  3 SP 32 STR,
       4 SP 40 STR,   5 SP 48 STR,  6 SP 56 STR,  7 SP 64 STR,  8 SP 72 STR,
       13 SP 80 STR,  14 SP 88 STR, 15 SP 96 STR, 16 SP 104 STR, 17 SP 112 STR,
+      14 DATA HIDXP-CELL LDR,  14 bhave CBNZ,
       0 0 MOVZ,  1 HIDX-BYTES LIT64,  2 3 MOVZ,
       3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
       4 C-CS CSET,  4 bfail CBNZ,
       14 0 0 ADDI,  14 DATA HIDXP-CELL STR,
       4 0 MOVZ,  4 DATA HIDX:CLAIMS STR,             \ fresh pages hold no claims
-      HIDX:LREBUILD LABEL@ BL,                       \ zero (already zero) + fill [0,NDICT)
+      bhave LBL,
+      HIDX:LREBUILD LABEL@ BL,                       \ zero + fill [0,NDICT)
       30 SP 0 LDR,   0 SP 8 LDR,   1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
       4 SP 40 LDR,   5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,  8 SP 72 LDR,
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
