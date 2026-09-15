@@ -132,6 +132,7 @@ TRUSTED: BOOT-A>U8 ( ptr n -- ptr u8 ) ;
 TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
 TRUSTED: BOOT-USIG-END-PTR ( -- ptr a ) USIGS UEND @ + ;
 TRUSTED: BOOT-UEND! ( n -- ) UEND ! ;
+TRUSTED: BOOT-NDICT! ( n -- ) seed-ndict! ;
 $0 constant BOOT-XREF-START-SLOT
 $2 constant BOOT-XREF-FLAGS-SLOT
 $3 constant BOOT-XREF-NAME-SLOT
@@ -185,7 +186,7 @@ $3 constant BOOT-XREF-NAME-SLOT
 : BOOT-HIDE-DICT-FROM-EARLIEST ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
    a u BOOT-XREF-FIND-INDEX  b v BOOT-XREF-FIND-INDEX  BOOT-MIN-FOUND
    dup 0 < if s" bootstrap: hide marker not found" 76 die then
-   ndict! ;
+   BOOT-NDICT! ;
 : BOOT-USIGS-RESET ( -- )
    0 BOOT-UEND!
    0 BOOT-USIG-END-PTR ! ;
@@ -270,7 +271,11 @@ emit_src() {
   # into hb-stage0 went without it, so the whole no-binary recovery path died at
   # src/habu/xref.f INSTALL with `hook: non-certified definition: install at
   # 'is'` and exit 70. There is one compiler source, so there is one prologue:
-  # every consumer of this function gets it.
+  # every consumer of this function gets it. It lowers the dictionary through
+  # `seed-ndict!`, never public `ndict!`: the native stages this text is fed to
+  # in the fixpoint loop carry the seal floor, and public `ndict!` below it is
+  # a silent exit 83 (src/habu/hide.f says the same for its own rewind); the
+  # gforth stage0 answers the name with its unsealed lowering.
   emit_boot_hide "$out"
   printf "0 set-check\n" >> "$out"
   local f

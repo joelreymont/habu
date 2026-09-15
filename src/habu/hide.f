@@ -29,10 +29,10 @@ TRUSTED: BFR-UEND! ( n -- ) UEND ! ;
 \ which is exactly what this row is, and this file is payload-only.
 \ src/habu/prefix-rewind.f drives the same seam for the other rewind.
 \
-\ tools/bootstrap.sh's BOOT-* twin of these words keeps public `ndict!`, and
-\ that asymmetry is the honest one: its host is the stage0 the gforth mirror
-\ emits, whose prim table (bootstrap/cg/forth.fs) registers `ndict!` and no
-\ `seed-ndict!`, and whose BNDSET carries no floor to cross.
+\ tools/bootstrap.sh's BOOT-* twin of these words lowers through `seed-ndict!`
+\ as well: the launcher feeds one prologue to the gforth stage0 and to the
+\ sealed native stages after it, and the stage0 prim table
+\ (bootstrap/cg/forth.fs) answers the name with its unsealed BNDSET.
 TRUSTED: BFR-NDICT! ( n -- ) seed-ndict! ;
 \ Named refresh-prelude boundary (staged fixpoint source checking,
 \ habu-staged-fixpoint-src-0b5fc6e6): the stage compile loads the checker-boot

@@ -1617,6 +1617,10 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
+   \ The product engine's seed rewind (habu1.f BSEEDNDICTSET) has no floor to
+   \ cross here, so stage0 answers the same name with its plain lowering: one
+   \ boot-hide prologue then serves stage0 and the sealed native stages alike.
+   s" seed-ndict!" ['] BNDSET FPRIM-L
    s" ndict-append" ['] BNDAPPEND FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L

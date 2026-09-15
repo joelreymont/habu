@@ -8371,12 +8371,16 @@ after xref.f grew one). Their order is the manifest's; a fixture that loads
 such a file itself lists its predecessor first (2026-09-15).
 
 The engine's data-stack guard names an underflow instead of exiting 102: a
-request below the base in `src/habu/rt.f` EMIT-DATA branches to the
-interpreter's E-UNDERFLOW routine (habu2.f LUNDERFLOW, reached through
-STACK-GUARD:UNDERFLOW-ENTRY), which prints `E-UNDERFLOW: <token>` for the
-token being interpreted, throws RC-REJECT inside evaluate and recovers in the
-REPL, and both recovery legs restore SP from their saved cells, so the branch
-is safe from any depth. Overflow and a malformed descriptor keep
+request below the base in `src/habu/rt.f` EMIT-DATA leaves for the
+interpreter's E-UNDERFLOW routine (habu2.f LUNDERFLOW), which prints
+`E-UNDERFLOW: <token>` for the token being interpreted, throws RC-REJECT
+inside evaluate and recovers in the REPL, and both recovery legs restore SP
+from their saved cells, so the branch is safe from any depth. It goes through
+UNDERFLOW-CELL (layout.f, filled by EM-STARTUP-RUNTIME-STATE like
+EVALREC-CELL), never a direct branch: the helper is a record that a stripped
+application relocates and the interpreter is no record, so the AOT closure
+refuses the direct form with `aot: PC-relative target removed or outside
+closure` for every stripped build. Overflow and a malformed descriptor keep
 `hb: stack bounds exceeded` (ENGINE-ERROR:STACK-BOUNDS). A tier-1 top-row
 warning no longer ends in a run that reads below the base: `' FOO2 execute`
 warns once and then exits 70 with the name (2026-09-15).
@@ -8385,3 +8389,13 @@ Engines are byte-reproducible only from a quiet tree: an edit to any baked
 source while a generation builds makes the next generation differ (f6 vs f5
 here), which looks like a broken fixpoint. Finish every prefix edit, then run
 the two-generation chain and compare (2026-09-15).
+
+The no-binary recovery chain's native stages are sealed like any product
+engine, so the boot-hide prologue `tools/bootstrap.sh` feeds to every stage
+cannot lower the dictionary with public `ndict!`: on hb-stage that is a silent
+exit 83 (SEAL-VIOLATION), which made every stage after stage0 inert. The
+prologue now lowers through `seed-ndict!` inside a TRUSTED: row, the same seam
+src/habu/hide.f uses, and the gforth seed answers that name with its unsealed
+BNDSET so one prologue serves stage0 and the native stages; with that the chain
+reaches hb-stdin and its five checks (`HABU_BOOTSTRAP_CHECK_ONLY=1`,
+2026-09-15).
