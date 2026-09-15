@@ -101,6 +101,37 @@ variable REMAINDER
    dst MEMORY@ $EE = s" memset with n=0 writes nothing" CHECK ;
 
 
+\ ---- every source and destination misalignment, lengths 0 to 40 ----------------------
+
+variable SWEEP-OK
+
+: COPY-SWEEP-CASE ( n n n -- ) {: soff:n doff:n n:n :}
+   MEMORY-BASE soff + {: src:n :} MEMORY-BASE 256 + doff + {: dst:n :}
+   6 EMIT-HELPER PREPARE dst 4 A! src 4 B! n 6 A! PROGRAM$ CALL drop
+   4 A@ dst <> if 0 SWEEP-OK ! then
+   n 0 ?do dst i + MEMORY@ soff i + 7 * 255 and <> if 0 SWEEP-OK ! then loop
+   dst n + MEMORY@ $EE <> dst 1- MEMORY@ $EE <> or if 0 SWEEP-OK ! then
+   UNTOUCHED? 0= if 0 SWEEP-OK ! then ;
+
+: FILL-SWEEP-CASE ( n n -- ) {: doff:n n:n :}
+   MEMORY-BASE 256 + doff + {: dst:n :}
+   7 EMIT-HELPER PREPARE dst 4 A! $12345A 4 B! n 6 A! PROGRAM$ CALL drop
+   4 A@ dst <> if 0 SWEEP-OK ! then
+   n 0 ?do dst i + MEMORY@ $5A <> if 0 SWEEP-OK ! then loop
+   dst n + MEMORY@ $EE <> dst 1- MEMORY@ $EE <> or if 0 SWEEP-OK ! then
+   UNTOUCHED? 0= if 0 SWEEP-OK ! then ;
+
+: COPY-LENGTHS ( n n -- ) {: soff:n doff:n :} 41 0 ?do soff doff i COPY-SWEEP-CASE loop ;
+
+: SWEEPS ( -- )
+   6 HELPER ! 1 SWEEP-OK !
+   8 1 ?do 8 1 ?do i j COPY-LENGTHS loop loop
+   SWEEP-OK @ 0 <> s" memcpy over every misalignment and length" CHECK
+   7 HELPER ! 1 SWEEP-OK !
+   8 1 ?do 41 0 ?do j i FILL-SWEEP-CASE loop loop
+   SWEEP-OK @ 0 <> s" memset over every misalignment and length" CHECK ;
+
+
 \ ---- float32 division against the host's IEEE arithmetic --------------------------
 
 40 constant FLOAT-COUNT
@@ -227,7 +258,7 @@ create DOUBLES
 
 : RUN ( -- )
    0 FAILURES !
-   DIVISION-CASES MEMORY-CASES FLOAT-CASES DOUBLE-CASES REFUSALS
+   DIVISION-CASES MEMORY-CASES SWEEPS FLOAT-CASES DOUBLE-CASES REFUSALS
    FAILURES @ 0 T=
    HELPER-COUNT 10 T=
    1 HELPER-NAME$ s" __c6xabi_divu" T$=

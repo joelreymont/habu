@@ -175,27 +175,86 @@ variable FIXUP-COUNT
    6 A 1 A 2 B NEGATE-WHEN
    5 A 4 A ENC-MV-L EMIT 4 A 6 A ENC-MV-L EMIT RETURN ;
 
-\ memcpy(dst A4, src B4, n A6) returns dst; a byte loop.
-: MEMCPY ( -- )
-   5 A 4 A ENC-MV-L EMIT 1 A 6 A ENC-MV-L EMIT
-   1 A UNLESS FORWARD {: done:n :}
+\ A2 bytes from *B4++ to *A5++ through A7; A2 may be zero.
+: COPY-BYTES ( -- )
+   2 A UNLESS FORWARD {: done:n :}
    HERE {: loop:n :}
    7 A 4 B 1 >BYTE-OFFSET ALWAYS ENC-LDB++ EMIT
    4 ENC-NOP EMIT
    7 A 5 A 1 >BYTE-OFFSET ALWAYS ENC-STB++ EMIT
-   1 A 1 A -1 ENC-ADD-I5 EMIT
-   loop 1 A WHEN BACK
-   done RESOLVE RETURN ;
+   2 A 2 A -1 ENC-ADD-I5 EMIT
+   loop 2 A WHEN BACK
+   done RESOLVE ;
 
-\ memset(dst A4, c B4, n A6) returns dst.
+\ A2 bytes of B5's low byte to *A5++; A2 may be zero.
+: FILL-BYTES ( -- )
+   2 A UNLESS FORWARD {: done:n :}
+   HERE {: loop:n :}
+   5 B 5 A 1 >BYTE-OFFSET ALWAYS ENC-STB++ EMIT
+   2 A 2 A -1 ENC-ADD-I5 EMIT
+   loop 2 A WHEN BACK
+   done RESOLVE ;
+
+\ The bytes that bring the destination A5 to an 8-byte boundary, bounded by
+\ the count A1, into A2, with A1 reduced accordingly.
+: HEAD-BYTES ( -- )
+   8 A 5 A 29 29 ALWAYS ENC-EXTU-S EMIT               \ A8 = dst & 7
+   2 A 8 ENC-MVK EMIT
+   8 A 2 A 8 A ENC-SUB-L EMIT
+   8 A 8 A 29 29 ALWAYS ENC-EXTU-S EMIT               \ (8 - (dst & 7)) & 7
+   0 A 1 A 8 A ALWAYS ENC-CMPLTU-L EMIT
+   8 A 1 A ENC-MV-L 0 A WHEN-NONZERO EMIT             \ no more than the count
+   2 A 8 A ENC-MV-L EMIT
+   1 A 1 A 8 A ENC-SUB-L EMIT ;
+
+\ The doubleword count of the remaining A1 bytes into A2, A1 keeping the tail;
+\ zero when guard (B0) says the fast path does not apply.
+: DOUBLEWORDS ( -- )
+   8 A 1 A 3 ALWAYS ENC-SHRU-U5 EMIT
+   8 A 0 ENC-MVK 0 B WHEN-NONZERO EMIT
+   2 A 8 A ENC-MV-L EMIT
+   8 A 8 A 3 ALWAYS ENC-SHL-U5 EMIT
+   1 A 1 A 8 A ENC-SUB-L EMIT ;
+
+\ memcpy(dst A4, src B4, n A6) returns dst. Bytes align the destination,
+\ doublewords follow when the source shares that alignment, bytes finish.
+: MEMCPY ( -- )
+   5 A 4 A ENC-MV-L EMIT 1 A 6 A ENC-MV-L EMIT
+   HEAD-BYTES COPY-BYTES
+   0 B 4 B 29 29 ALWAYS ENC-EXTU-S EMIT               \ B0 = the source is still misaligned
+   DOUBLEWORDS
+   2 A UNLESS FORWARD {: tail:n :}
+   HERE {: loop:n :}
+   16 A 4 B 8 >BYTE-OFFSET ALWAYS ENC-LDDW++ EMIT
+   4 ENC-NOP EMIT
+   16 A 5 A 8 >BYTE-OFFSET ALWAYS ENC-STDW++ EMIT
+   2 A 2 A -1 ENC-ADD-I5 EMIT
+   loop 2 A WHEN BACK
+   tail RESOLVE
+   2 A 1 A ENC-MV-L EMIT
+   COPY-BYTES RETURN ;
+
+\ memset(dst A4, c B4, n A6) returns dst: bytes to an 8-byte boundary, then
+\ doublewords of the replicated byte, then the tail.
 : MEMSET ( -- )
    5 A 4 A ENC-MV-L EMIT 1 A 6 A ENC-MV-L EMIT
-   1 A UNLESS FORWARD {: done:n :}
+   5 B 4 B 24 24 ALWAYS ENC-EXTU-S EMIT               \ B5 = the byte
+   6 B 5 B 8 ALWAYS ENC-SHL-U5 EMIT
+   5 B 5 B 6 B ENC-OR-L EMIT
+   6 B 5 B 16 ALWAYS ENC-SHL-U5 EMIT
+   5 B 5 B 6 B ENC-OR-L EMIT                          \ replicated in a word
+   6 B 5 B ENC-MV-L EMIT 7 B 5 B ENC-MV-L EMIT        \ and in the pair B7:B6
+   HEAD-BYTES FILL-BYTES
+   0 B 0 ENC-MVK EMIT
+   DOUBLEWORDS
+   2 A UNLESS FORWARD {: tail:n :}
    HERE {: loop:n :}
-   4 B 5 A 1 >BYTE-OFFSET ALWAYS ENC-STB++ EMIT
-   1 A 1 A -1 ENC-ADD-I5 EMIT
-   loop 1 A WHEN BACK
-   done RESOLVE RETURN ;
+   6 B 5 A 8 >BYTE-OFFSET ALWAYS ENC-STDW++ EMIT
+   2 A 2 A -1 ENC-ADD-I5 EMIT
+   loop 2 A WHEN BACK
+   tail RESOLVE
+   2 A 1 A ENC-MV-L EMIT
+   FILL-BYTES RETURN ;
 
 
 \ ---- float32 division: bit-exact IEEE 754, round to nearest even -------------------
