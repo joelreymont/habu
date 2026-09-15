@@ -8354,3 +8354,18 @@ declaration participants have to precede habu2.f's `require lib/fmt.f`
 (lib/adt/option.f's ENUM). A native stage cannot run that text: its seal floor
 refuses public `ndict!` with a silent exit 83, which is why `src/habu/hide.f`
 rewinds through `seed-ndict!` (2026-09-15).
+
+A JIT stack-guard request cannot sit between an address chain and the push
+that consumes it: the request uses x9 as scratch, and the chain's first
+instruction is the relocation site SNAP-RELOC:MARK-SITE records. Emit the guard
+ahead of MARK-SITE (habu2.f C-DATA-ADDR / C-CODE-ADDR, mirrored in the seed).
+A stripped application built with a tree whose habu2.f differs semantically
+from the engine's still fails at startup with `munmap(0x1001, 4096)`; an engine
+rebuilt from that tree (f4) is fine, so pin engines from the tree they build
+(2026-09-15).
+
+A prefix file loaded ahead of src/core/include.f cannot `require`: window
+children and the recovery stage include those files bare, and `require` is
+undefined there (test/defer-history's window printed `E-UNDEFINED: require`
+after xref.f grew one). Their order is the manifest's; a fixture that loads
+such a file itself lists its predecessor first (2026-09-15).

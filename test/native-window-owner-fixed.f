@@ -1,6 +1,7 @@
 \ Compile the actual dictionary boundary against a fresh owner at tier1.
 s" src/habu/layout.f" provided
 s" src/core/checker-owner-abi.f" provided
+require src/habu/code-span.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
 

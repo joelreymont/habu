@@ -25,6 +25,7 @@
 require lib/prelude.f
 require lib/errors.f
 require lib/string.f
+require src/habu/code-span.f
 require src/arch/arm64/disasm.f
 require src/compiler/native/branch.f
 require src/compiler/native/codewalk.f
