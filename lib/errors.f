@@ -1198,14 +1198,19 @@ public
 -9127 constant E-SXMODEM-RETRIES
 -9128 constant E-SXMODEM-CAPACITY
 
-\ Pseudoterminal pairs for test peers: -9140..-9149.
--9140 constant E-PTY-OPEN
--9141 constant E-PTY-IOCTL
--9142 constant E-PTY-IO
--9143 constant E-PTY-CAPACITY
+\ Pseudoterminal pairs for test peers: -9160..-9169 (-9140..-9159 belong to
+\ lib/byte-edit.f and lib/unicode.f).
+-9160 constant E-PTY-FIRST
+-9169 constant E-PTY-LAST
+-9160 constant E-PTY-OPEN
+-9161 constant E-PTY-IOCTL
+-9162 constant E-PTY-IO
+-9163 constant E-PTY-CAPACITY
 
-\ Directory listings: -9150..-9159.
--9150 constant E-FS-LIST-OPEN
--9151 constant E-FS-LIST-READ
--9152 constant E-FS-LIST-ENTRY
--9153 constant E-FS-LIST-CAPACITY
+\ Directory listings: -9170..-9179.
+-9170 constant E-FS-LIST-FIRST
+-9179 constant E-FS-LIST-LAST
+-9170 constant E-FS-LIST-OPEN
+-9171 constant E-FS-LIST-READ
+-9172 constant E-FS-LIST-ENTRY
+-9173 constant E-FS-LIST-CAPACITY
