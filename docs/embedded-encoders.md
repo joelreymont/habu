@@ -66,6 +66,19 @@ instruction into the execute packet; it does not prove that packet legal.
 constraints and latency rules, including four delay slots after LDW and five
 after a branch. These constructors alone do not make a runnable DSP program.
 
+The constructors added for the C6000 EABI helpers take a predicate as their
+last operand: `ALWAYS`, or `IF-NONZERO`/`IF-ZERO` of A0–A2/B0–B2. They cover
+the `.L` compares (`CMPGT`, `CMPGTU`, `CMPLT`, `CMPLTU` against a register, a
+signed 5-bit or an unsigned 4-bit constant), `SUBC`, `ABS` and `NORM`; the
+`.S` shifts (`SHL`, `SHR`, `SHRU` by a register on the destination bank or a
+5-bit constant) and bit fields (`EXTU`, `EXT`, `SET`, `CLR` with constant
+positions, no cross path); `.D` byte and doubleword access (`LDB`, `LDBU`,
+`STB`, `LDDW`, `STDW`) with a signed byte offset scaled to the access size,
+their `++` forms modifying the base afterwards, and `ADDAB`/`ADDAW` with a
+register or 5-bit constant on the base bank. Doubleword access names the even
+register of the pair. The suite pins every form to the word GNU `tic6x-elf-as`
+2.47 produces for the same operands.
+
 ## Verification
 
 Run focused tests through the normal native engine from the Habu checkout:
