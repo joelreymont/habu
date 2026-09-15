@@ -2115,9 +2115,12 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    7 6 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK2 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
    7 6 48 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 W-MOVK3 LIT64,  9 8 7 ORR,  LCEMIT @ BL, ;
 \ the same fixed chain followed by the push stencil.
+\ The guard runs ahead of the chain (mirrors src/habu/habu2.f C-DATA-ADDR and
+\ C-CODE-ADDR): its request uses x9 as scratch, so it cannot sit between the
+\ chain and the push that consumes x9.
 : C-ADDR-PUSH ( -- )
-   C-ADDR-RAW
    0 8 JIT-STACK:CHECK-DATA
+   C-ADDR-RAW
    9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
 \ push a DATA-region address (create/variable data field).
 : C-DATA-ADDR ( -- )  C-ADDR-PUSH ;

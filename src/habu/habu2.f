@@ -42,7 +42,6 @@ using AOT-BUF
 \ the same fixed chain followed by the push stencil.
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
-   0 8 JIT-STACK:CHECK-DATA
    9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
 \ The three words that NAME the relocation kind of a chain, and the compile-mode
 \ CALL-or-INLINE emitter, are defined further down, right after the snapshot-
@@ -237,7 +236,11 @@ $25 constant BL-OP-HI
 \ per-window kind list, would have cost storage to answer a question the spans
 \ already answer.
 \ push a DATA-region address (create/variable data field).
+\ The guard runs ahead of MARK-SITE: the chain's first instruction has to stay
+\ the marked site, and the guard's request uses x9 as scratch, so it cannot sit
+\ between the chain and the push that consumes x9.
 : C-DATA-ADDR ( -- )
+   0 8 JIT-STACK:CHECK-DATA
    SNAP-RELOC:MARK-SITE
    C-ADDR-PUSH ;
 \ raw DATA-region address into x9, no push (the defer dispatch-cell address).
@@ -249,6 +252,7 @@ $25 constant BL-OP-HI
 \ those is at the same address in the run that restores a snapshot image, so the
 \ relocation pass rewrites this one where it leaves a DATA chain alone.
 : C-CODE-ADDR ( -- )
+   0 8 JIT-STACK:CHECK-DATA
    SNAP-RELOC:MARK-SITE
    C-ADDR-PUSH ;
 

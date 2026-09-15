@@ -26,8 +26,10 @@ create ERR IO-CAP allot
       s" src/os/macos/target.f" >LEN PROC-ARGV+
       s" src/os/macos/layout.f" >LEN PROC-ARGV+
    then
+   s" src/habu/stack-abi.f" >LEN PROC-ARGV+
    s" src/habu/layout.f" >LEN PROC-ARGV+
    s" src/os/env-base.f" >LEN PROC-ARGV+
+   s" src/habu/code-span.f" >LEN PROC-ARGV+
    s" src/habu/xref.f" >LEN PROC-ARGV+
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
 
