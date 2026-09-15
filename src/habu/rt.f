@@ -31,7 +31,6 @@ package STACK-GUARD
 variable LDATA
 variable LRETURN
 variable LLOOP
-variable LUNDER
 variable REQ-BELOW
 variable REQ-ABOVE
 variable REQ-TARGET
@@ -94,15 +93,11 @@ variable FIXED-CAP
 public
 
 : LABELS ( -- )
-   LBL LDATA !  LBL LRETURN !  LBL LLOOP !  LBL LUNDER ! ;
+   LBL LDATA !  LBL LRETURN !  LBL LLOOP ! ;
 
 : DATA-ENTRY ( -- label ) LDATA LABEL@ ;
 : RETURN-ENTRY ( -- label ) LRETURN LABEL@ ;
 : LOOP-ENTRY ( -- label ) LLOOP LABEL@ ;
-
-\ Where a data request below the base goes: the interpreter's E-UNDERFLOW
-\ diagnostic, which habu2.f places under this label.
-: UNDERFLOW-ENTRY ( -- label ) LUNDER LABEL@ ;
 
 private
 
@@ -110,11 +105,16 @@ private
 \ E-UNDERFLOW diagnostic names the token whose execution underflowed, throws
 \ RC-REJECT inside evaluate and recovers in the REPL, and it restores SP from
 \ its own saved cells on both recovery legs, so the check releases only its
-\ own frame before leaving for it. Every other failure - a push past the
-\ capacity, a descriptor that does not describe a stack - has no token to
-\ name and stays fail-closed here.
+\ own frame before leaving for it. It is reached through UNDERFLOW-CELL, which
+\ the interpreter's startup fills (habu2.f EM-STARTUP-RUNTIME-STATE): this
+\ helper is a record that a stripped application relocates, the diagnostic is
+\ interpreter code that no record holds, and the closure refuses a direct
+\ branch between them. An image that never set the cell fails closed below.
+\ Every other failure - a push past the capacity, a descriptor that does not
+\ describe a stack - has no token to name and stays fail-closed here.
 : EMIT-UNDERFLOW ( -- )
-   SP SP 32 ADDI,  UNDERFLOW-ENTRY B, ;
+   SP SP 32 ADDI,
+   9 DATA UNDERFLOW-CELL LDR,  9 CHECK-FAIL LABEL@ CBZ,  9 BR, ;
 
 public
 

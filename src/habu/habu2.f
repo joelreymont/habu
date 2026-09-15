@@ -6447,6 +6447,7 @@ public
    9 LRREC LABEL@ ADR,  9 DATA RRECP-CELL STR,
    9 LMAIN LABEL@ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
    9 LEVALREC LABEL@ ADR,  9 DATA EVALREC-CELL STR,       \ evaluate throw-recovery entry (BTHROW branches here)
+   9 LUNDERFLOW LABEL@ ADR,  9 DATA UNDERFLOW-CELL STR,   \ E-UNDERFLOW entry (the data-stack guard branches here)
    9 LUNCAUGHT LABEL@ ADR,  9 DATA UNCGH-CELL STR,        \ uncaught top-level throw reporter (BTHROW THROW-NOREC branches here)
    LVRINIT LABEL@ BL,  LHIDXBUILD LABEL@ BL,             \ VRTAB/VRITAB fill + dict hash table (data mapped, NDICT final)
    9 0 MOVZ,  9 DATA PEND-CELL STR,
@@ -8966,8 +8967,9 @@ public
 \ guard when the just-interpreted word left XDS below S0 (proven underflow), from
 \ LARITY when a guarded primitive is the token on a shallow stack, and from the
 \ engine's data-stack guard (src/habu/rt.f EMIT-DATA) when any request below the
-\ base fails - a primitive's pop, a compiled word's, however deep - which is why
-\ the guard names this label rather than exiting STACK-BOUNDS for it. Print
+\ base fails - a primitive's pop, a compiled word's, however deep - reached through
+\ UNDERFLOW-CELL (set above in EM-STARTUP-RUNTIME-STATE) because the guard is a
+\ relocated record and this routine is not. Print
 \ `E-UNDERFLOW: <word>` naming the offending token (TKA/TKL still hold it, LTOK has
 \ not overwritten them this iteration), then recover exactly like the undefined-word
 \ path: inside EVALUATE the failure unwinds as a catchable RC-REJECT throw via the
@@ -9321,8 +9323,7 @@ public
 package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
-   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LARITY !
-   STACK-GUARD:UNDERFLOW-ENTRY LUNDERFLOW !     \ the data guard's below-base branch lands here too
+   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
    EM-STARTUP
    \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
    \ at SRC-DONE with no branch, so before this line cold boot fell into the
