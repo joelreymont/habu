@@ -82,7 +82,8 @@ $80000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~257 KB +
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
 13 constant SAB-GUARD-PINS              \ prior 11 sites + BATSTORE and BATCAS destination guards
-3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
+2 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + the one seal every entry path runs
+6 constant SAB-PROVIDE-PINS             \ PFX-PROVIDE-FILES code sites: 1 def + the pipe, file, repl and baked entries
 2 constant SAB-CHKDEFER-PINS            \ CHECKER-DEFER code sites: C-CALL-CHECKER-DEFER def + C-DEFER call
 
 variable SAB-VIOL#                      \ unguarded surfaces found in the current scan
@@ -304,8 +305,12 @@ variable SAB-READY
    s" stage0 atomic stores guard their exact destinations" T-LABEL
    SAB-FORTH$ SAB-ATSTORE-GUARDED? TTRUE
    SAB-FORTH$ SAB-ATCAS-GUARDED? TTRUE
-   s" stage0 seal is emitted on both cold-prefix entry paths" T-LABEL
-   SAB-FORTH$ s" EMIT-SEAL-FRIEND" SAB-COUNT-CODE SAB-SEAL-PINS T= ;
+   \ One seal site, inside PFX-PROVIDE-CORE-FILES, which PFX-PROVIDE-FILES
+   \ reaches from every cold-prefix entry path (pipe, file, repl and baked);
+   \ the entry count pins that every path still goes through it.
+   s" stage0 seal is emitted on every cold-prefix entry path" T-LABEL
+   SAB-FORTH$ s" EMIT-SEAL-FRIEND" SAB-COUNT-CODE SAB-SEAL-PINS T=
+   SAB-FORTH$ s" PFX-PROVIDE-FILES" SAB-COUNT-CODE SAB-PROVIDE-PINS T= ;
 
 : SAB-PRESENT ( ptr u8 n -- )
    SAB-FORTH$ 2swap SAB-COUNT-CODE 0 > TTRUE ;

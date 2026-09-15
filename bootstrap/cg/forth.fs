@@ -1142,15 +1142,89 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ realpath ( pathz dst cap -- n ): the native word (src/habu/habu1.f PATH-OS:EMIT)
 \ calls libc realpath through this image's loader slot. A seed image has no
 \ interpreter and no loader slot -- bootstrap/cg/elf.fs and macho.fs emit a static
-\ image -- so there is no libc realpath to reach, and canonicalizing by some other
-\ rule would answer a question the engine never asked. Report the native word's own
-\ -1 ("resolution/loader failure"), which src/core/include.f already fails closed
-\ on: TRY-CANON is false and CWD-INIT throws INCLUDE-IO-RC. Nothing in the seed's
-\ build path resolves an include (src/habu/stage2.f opens its source through PATH0
-\ and `open`), so the stub is never executed while hb-stage0 builds hb-stage.
+\ image -- so there is no libc realpath to reach. The seed still has to answer:
+\ src/core/include.f resolves every `require` and `provided` through CWD-INIT,
+\ and the engine sources the seed compiles require prefix files by name
+\ (src/habu/rt.f requires src/habu/stack-abi.f), which used to end hb-stage0
+\ with a silent INCLUDE-IO-RC exit. So the Linux seed canonicalizes lexically:
+\ an absolute path is taken as it is, any other path is the kernel's getcwd
+\ joined with one "/", and the result is normalized in place - empty and "."
+\ segments vanish, ".." removes the segment before it and never climbs above
+\ the root. include.f spells roots as "<root>/." and joins them itself, so the
+\ normalization is what makes its registry keys agree. No symlink resolution:
+\ the checkout a seed runs in has none in the paths it names.
+\ The macOS seed keeps the native word's own -1 ("resolution/loader failure"):
+\ that image has no getcwd syscall, and include.f fails closed on -1.
+\ -2 keeps its native meaning: no room for the complete C string.
+: BREALPATH-JOIN ( label label label -- )   \ dst[0..x13) = absolute spelling, x13 its length
+   {: short fail joined :}
+   LBL LBL LBL {: abs join copy :}
+   12 9 0 LDRB,  12 47 CMPI,  C-EQ abs BCOND,        \ "/..." is taken as it is
+   0 10 0 ADDI,  1 11 0 ADDI,  NR-GETCWD SYS,       \ x0 = cwd length with its NUL
+   C-CS fail BCOND,
+   13 0 1 SUBI,
+   12 9 0 LDRB,  12 46 CMPI,  C-NE join BCOND,
+   12 9 1 LDRB,  12 joined CBZ,                      \ "." is the cwd itself
+   join LBL,
+   14 13 2 ADDI,  14 11 CMP,  C-HI short BCOND,      \ "/" and a NUL must still fit
+   12 47 MOVZ,  15 10 13 ADD,  12 15 0 STRB,  13 13 1 ADDI,
+   copy LBL,
+   12 9 0 LDRB,  12 joined CBZ,
+   14 13 2 ADDI,  14 11 CMP,  C-HI short BCOND,
+   15 10 13 ADD,  12 15 0 STRB,  13 13 1 ADDI,  9 9 1 ADDI,  copy B,
+   abs LBL,  13 0 MOVZ,  copy B, ;
+
+\ dst[0..x13) holds an absolute spelling; rewrite it canonical in place. Reading
+\ (x9) never falls behind writing (x14): a segment is copied or dropped.
+: BREALPATH-NORMALIZE ( label -- )   \ leaves x14 = canonical length, dst NUL-terminated
+   {: normalized :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: seg find found keep cp cpdone skipseg pop :}
+   9 0 MOVZ,  14 0 MOVZ,
+   seg LBL,
+   15 10 9 ADD,  12 15 0 LDRB,  12 normalized CBZ,   \ x9 at a separator or the NUL
+   9 9 1 ADDI,  5 9 0 ADDI,                          \ the segment starts after it
+   find LBL,
+   15 10 5 ADD,  12 15 0 LDRB,  12 found CBZ,
+   12 47 CMPI,  C-EQ found BCOND,  5 5 1 ADDI,  find B,
+   found LBL,
+   6 5 9 SUB,                                        \ x6 = segment length
+   6 skipseg CBZ,                                    \ "//"
+   6 1 CMPI,  C-NE keep BCOND,
+   15 10 9 ADD,  12 15 0 LDRB,  12 46 CMPI,  C-EQ skipseg BCOND,   \ "."
+   keep LBL,
+   6 2 CMPI,  C-NE cp BCOND,
+   15 10 9 ADD,  12 15 0 LDRB,  12 46 CMPI,  C-NE cp BCOND,
+   12 15 1 LDRB,  12 46 CMPI,  C-NE cp BCOND,        \ "..": drop the segment before it
+   pop LBL,
+   14 skipseg CBZ,
+   14 14 1 SUBI,  15 10 14 ADD,  12 15 0 LDRB,  12 47 CMPI,  C-NE pop BCOND,
+   skipseg B,
+   cp LBL,
+   12 47 MOVZ,  15 10 14 ADD,  12 15 0 STRB,  14 14 1 ADDI,
+   cpdone LBL,
+   9 5 CMP,  C-EQ seg BCOND,
+   15 10 9 ADD,  12 15 0 LDRB,  15 10 14 ADD,  12 15 0 STRB,
+   14 14 1 ADDI,  9 9 1 ADDI,  cpdone B,
+   skipseg LBL,  9 5 0 ADDI,  seg B, ;
+
 : BREALPATH ( -- ) 24 0 STACK-GUARD:CHECK-DATA
-   2 G-POP  1 G-POP  0 G-POP
-   0 0 MOVN,  0 G-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP                        \ x0 = pathz, x1 = dst, x2 = cap
+   LBL LBL LBL LBL LBL LBL {: joined normalized nonempty short fail out :}
+   HB-TARGET-LINUX? IF
+      9 0 0 ADDI,  10 1 0 ADDI,  11 2 0 ADDI,       \ x9 path, x10 dst, x11 cap
+      short fail joined BREALPATH-JOIN
+      joined LBL,  12 0 MOVZ,  15 10 13 ADD,  12 15 0 STRB,
+      normalized BREALPATH-NORMALIZE
+      normalized LBL,
+      14 nonempty CBNZ,  12 47 MOVZ,  12 10 0 STRB,  14 1 MOVZ,   \ everything vanished: the root
+      nonempty LBL,  12 0 MOVZ,  15 10 14 ADD,  12 15 0 STRB,
+      0 14 0 ADDI,  out B,
+      short LBL,  0 1 MOVN,  out B,
+      fail LBL,  0 0 MOVN,
+      out LBL,  0 G-PUSH
+   ELSE
+      0 0 MOVN,  0 G-PUSH
+   THEN ;
 
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
@@ -1261,6 +1335,24 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    lcorrupt LBL,  s" hb: catch frame corrupt" ENGINE-ERROR:CATCH-STACK C-EXIT-DIAG ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
+\ finally ( body cleanup -- ): mirrors src/habu/habu1.f BFINALLY. The body's
+\ result row survives a clean run; the cleanup runs outside the body's handler,
+\ so a throw from it supersedes the body's, and the body's own throw is rethrown
+\ once the cleanup has run. src/habu/address-cells.f, which the stage source
+\ requires, locks through it, so the seed has to carry it.
+: BFINALLY ( -- )
+   16 0 STACK-GUARD:CHECK-DATA
+   LBL {: ldone :}
+   A G-POP                               \ cleanup xt
+   SP SP $10 SUBI,  9 SP 0 STR,
+   BCATCH                                \ body xt: run under a handler, exc pushed
+   A G-POP  9 SP 8 STR,
+   9 SP 0 LDR,  9 BLR,                   \ cleanup, outside the body's handler
+   9 SP 8 LDR,  SP SP $10 ADDI,
+   9 ldone CBZ,
+   9 G-PUSH  BTHROW                      \ the body's throw goes on
+   ldone LBL, ;
+
 : BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
 
 : BGETCUR ( -- )    9 DATA CUR-CELL LDR,  9 G-PUSH ;                                       \ ( -- wid )
@@ -1546,6 +1638,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
+   s" finally" ['] BFINALLY FPRIM
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
    s" xref-search-wl" ['] BCOMPILERSWL FPRIM-L
@@ -2340,16 +2433,15 @@ create ZBYTE 0 c,
 \ seed compiled a call to a word it had never loaded. dynamic-storage.f needs
 \ lib/errors.f ahead of it for E-MEM-MAP / E-MEM-UNMAP and lib/errors.f needs
 \ lib/prelude.f, so the three are a dependency closure, not a choice. Their order
-\ is native's. None of the three carries a `require` / `required` line of its own,
-\ which is what lets them load here without the provide rows native pairs with the
-\ group -- see EMIT-HOST-LOAD-PREFIX for why this seed cannot emit those yet.
+\ is native's. PFX-PROVIDE-STDLIB-FILES states the first two to include.f, so a
+\ later `require lib/errors.f` (lib/fmt.f through lib/string.f) is a fact, not
+\ a second read; dynamic-storage.f has its row in PFX-PROVIDE-CORE-FILES.
 \
 \ Remaining LOAD drift, recorded rather than left as an unexplained short list:
 \ native's group continues with lib/adt/option.f, lib/cad-num-types.f,
-\ lib/cad-num-arithmetic.f, lib/string.f, lib/memory.f and lib/vector.f. Those six
-\ are exactly the ones that DO carry require lines, and a seed that loads them dies
-\ rc 74 inside C-PACKAGE on a `package` with no name token -- an unfinished seed
-\ require path, which is the same missing piece as the provide rows.
+\ lib/cad-num-arithmetic.f, lib/string.f, lib/memory.f and lib/vector.f. A
+\ `require` of one of them from the seed's program reads it then, through
+\ src/core/include.f and the seed's own realpath (BREALPATH).
 : PFX-LOAD-STDLIB-FILES ( -- )
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
@@ -2602,6 +2694,18 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
 
+\ Mirror of src/habu/habu2.f EMIT-REQUIRE-FREEZE-TOKEN: once the provide rows
+\ are in, `REQUIRE-BOOT-FREEZE` pins include.f's engine surface, so a later
+\ ENGINE-PROVIDES? separates what the seed carries from what its program
+\ required. Cold boots only, like the capture token below.
+: EMIT-REQUIRE-FREEZE-TOKEN ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   s" REQUIRE-BOOT-FREEZE" bounds ?do i c@ C-SOURCE-APPEND-CHAR loop
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
 \ TFAM 2b-iii: append `SEAL-CAPTURE` as the LAST engine-prefix source token
 \ (mirrors src/habu/habu2.f EMIT-SEAL-CAPTURE-TOKEN): xref.f's in-file call is
 \ only the baseline - script-argv.f loads after it, so the truncation watermark
@@ -2705,12 +2809,22 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLOWERCERTSEAL s" src/core/lower-cert-seal.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
+   EMIT-REQUIRE-FREEZE-TOKEN             \ the engine surface is complete: freeze it
    EMIT-SEAL-CAPTURE-TOKEN               \ watermark token at the true engine-prefix end
    SRC-SFAIL @ EMIT-SEAL-FRIEND-TOKEN ;  \ seal before user source (all stdin/file/repl paths)
+
+\ The two stdlib rows the seed loads and a later `require` may name again:
+\ lib/fmt.f (habu2.f) requires lib/string.f, which requires lib/errors.f.
+\ Native's group goes on to the six files this seed does not load, and a row
+\ for a file the seed never read would turn that file's words undefined.
+: PFX-PROVIDE-STDLIB-FILES ( -- )
+   PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PROVIDE-ROW
+   PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-FILES ( -- )
    PFX-PROVIDE-CHECKER-FILES
    PFX-PROVIDE-DECL-FILES
+   PFX-PROVIDE-STDLIB-FILES
    PFX-PROVIDE-CORE-FILES ;
 
 \ Native keeps the stdlib block in its own SNAP-guarded word because a baked
@@ -2719,13 +2833,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ makes hb-stage0 work at all -- so here the block belongs inside the one word every
 \ seed path shares, under the SNAP guard EMIT-COLD-PREFIX already has.
 \ Native pairs the block with PFX-PROVIDE-STDLIB-FILES so a `require` inside one of
-\ those files does not re-read a file this table already loaded. This seed emits no
-\ provide row for them, and cannot yet: a provide row is the source text
-\ `s" path" provided`, src/core/include.f canonicalizes that path through CWD-INIT,
-\ and CWD-INIT needs a realpath this static seed image has no loader slot to reach
-\ (see BREALPATH) -- it throws INCLUDE-IO-RC, which is rc 74. The three rows loaded
-\ here carry no require line of their own, so they do not need the rows; the seed's
-\ own PFX-PROVIDE-FILES has the same unmet dependency on every path that calls it.
+\ those files does not re-read a file this table already loaded. A provide row is
+\ the source text `s" path" provided`, and src/core/include.f canonicalizes that
+\ path through CWD-INIT, which the Linux seed answers through its own realpath
+\ (see BREALPATH); PFX-PROVIDE-STDLIB-FILES carries the seed's own two lib rows.
+\ The macOS seed still cannot answer CWD-INIT, and its programs must not require.
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
@@ -2855,7 +2967,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-BFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
    EMIT-COLD-PREFIX
-   SRC-BFAIL @ EMIT-SEAL-FRIEND-TOKEN     \ seal after the prefix, before baked user source
+   PFX-LOAD-SCRIPT-ARGV-COLD
+   PFX-PROVIDE-FILES                      \ the prefix just read, as include.f facts; seals before baked user source
    17 9 0 ADDI,
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP @ LBL,
@@ -2867,7 +2980,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-BDONE @ LBL,
    LSHBANG @ BL,
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE @ B,
-   SRC-BFAIL @ LBL,  s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ IBUFSZ baked-prefix overflow
+   SRC-BFAIL @ LBL,  SRC-SFAIL @ LBL,       \ the provide rows' appender names SRC-SFAIL; one exit serves both
+   s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ IBUFSZ baked-prefix overflow
    SRC-DONE @ LBL, ;
 
 : EMIT-SOURCE ( -- )
@@ -3863,7 +3977,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot
    C-STORE-DEF-NAME
    CP 9 0 STR,
-   11 DATA 0 LDR,                                        \ x11 = DP (body pushes it)
+   11 DATA 0 LDR,  11 11 7 ADDI,  11 11 3 LSRI,  11 11 3 LSLI,   \ standard CREATE: round the data field up to a cell (mirrors habu2.f EMIT-CREATE)
+   11 DP-CHECK  11 DATA 0 STR,                           \ x11 = DP (body pushes it)
    C-DATA-ADDR                                           \ emit movz/movk x9=DP + push (relocatable data addr)
    9 W-RET LIT64,  LCEMIT @ BL,                          \ emit RET
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ slot again

@@ -34,6 +34,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 222 constant NR-MMAP
 220 constant NR-SPAWN
 260 constant NR-WAIT4
+17  constant NR-GETCWD    \ getcwd(buf, size): length with its NUL, or -errno
 
 : SYS, ( n -- )
    8 swap MOVZ,  0 SVC,
