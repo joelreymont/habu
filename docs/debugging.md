@@ -423,6 +423,20 @@ this class was mis-filed once already: the test may not be registered in
 `test/gate-stdlib-cases.f`, and a fixture that asserts a specific exit code may
 simply be asserting a code the tree stopped producing.
 
+## Stack diagnostics — which of the two you are looking at
+- `E-UNDERFLOW: <token>` (exit 70) is the data stack read below its base while
+  `<token>` was being interpreted, however deep the read happened: the
+  interpreter's depth checks catch it before a primitive runs, and the engine's
+  data-stack guard (`src/habu/rt.f` EMIT-DATA) catches it inside compiled code
+  and leaves for the same diagnostic through `UNDERFLOW-CELL`. Inside
+  `evaluate` it is a catchable RC-REJECT throw; in the REPL the line recovers.
+- `hb: stack bounds exceeded` (exit 102, ENGINE-ERROR:STACK-BOUNDS) is every
+  other guard failure: a push past the capacity, a return or loop frame past
+  its region, a stack descriptor that does not describe a stack, and an
+  underflow in a stripped application, which has no interpreter to name it.
+- A tier-1 top-row warning does not change either: `' FOO2 execute` on an
+  empty stack warns once and then ends in `E-UNDERFLOW: execute`.
+
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).
 - Declaring locals inside `IF`/loop corrupts the frame.
