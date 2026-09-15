@@ -22,9 +22,11 @@ Planned module files:
 - `lib/zip.f`
 - `lib/net/udp4.f`
 - `lib/serial.f`
+- `lib/pty.f`
 - `lib/xmodem.f`
 - `lib/serial-xmodem.f`
 - `lib/fs.f`
+- `lib/fs-list.f`
 - `lib/fs-root.f`
 - `lib/build-cache.f`
 - `lib/source.f`
@@ -1123,6 +1125,23 @@ nested directory cleanups can register parent before child and still remove chil
 `CLEANUP-TREE+` registers a recursive tree cleanup for temporary workspaces.
 Keeping these words outside core `lib/fs.f` keeps path inspection/read helpers
 separate from mutation and cleanup policy.
+
+`lib/fs-list.f` (package `FS-LIST`) lists one directory's entry names for test
+harnesses that assert what an output directory holds. `EACH` hands every name
+except `.` and `..` to a quotation in directory order; `NAMES` writes the names
+newline-separated and in byte order into a caller buffer of a stated capacity,
+so two listings of one directory compare equal, and refuses a buffer that is
+too small with `E-FS-LIST-CAPACITY`. It reads through the raw directory-entry
+primitive and shares the record decoding with `WALK-FILES`.
+
+`lib/pty.f` (package `PTY`) opens a Linux pseudoterminal pair for a test peer:
+`OPEN` unlocks `/dev/ptmx`, writes the slave path (`/dev/pts/<n>`) into a
+caller buffer of at least `SLAVE-PATH-CAP` bytes and returns the master as a
+`PTY:master` nominal; a device driver under test opens the slave like any
+serial device while the test drives the master with `WRITE`, `READ` (one chunk
+within a bound in milliseconds, zero when nothing arrived) and `CLOSE`. The
+pair keeps the terminal's defaults, so a line written at the master is echoed
+back to it with its newline as CR LF; `lib/pty-test.f` pins both directions.
 
 `WALK-FILES` must be implemented either as a checked quotation combinator or as
 one audited `TRUST` boundary with focused tests proving callback invocation,
