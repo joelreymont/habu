@@ -372,19 +372,13 @@ public
 : INSN@ ( n -- n ) {: k:n :}
    ROW-NAME k NTAILPROBE:INSN@ ;
 
-\ The engine's stack guards are not the row's own instructions: a guard's frame
-\ moves are add and subtract immediates on the stack pointer, and counting
-\ them as the row's would report a fold the combine pass never made.
-: GUARDED? ( n -- bool ) {: k:n :}
-   ROW-NAME k NTAILPROBE:GUARDED? ;
-
 \ How many instructions of the row satisfy a predicate.
 \
 \ local annotation cannot carry a quotation effect.
 : COUNT1 ( [ n -- bool ] -- n ) {: q :}
    0
    INSNS 0 ?do
-      i GUARDED? 0= if i INSN@ q execute if 1+ then then
+      i INSN@ q execute if 1+ then
    loop ;
 
 \ How many ADJACENT pairs of the row satisfy a predicate. A row of fewer than
@@ -395,9 +389,7 @@ public
    0
    INSNS 2 < if exit then
    INSNS 1- 0 ?do
-      i GUARDED? 0=  i 1+ GUARDED? 0=  and if
-         i INSN@  i 1+ INSN@  q execute if 1+ then
-      then
+      i INSN@  i 1+ INSN@  q execute if 1+ then
    loop ;
 
 \ ---- the counts themselves ----------------------------------------------------

@@ -138,11 +138,7 @@ create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
    RC @ 0 <> if DIAG. then
    RC @ 0 T=
    s" ... and its call really is a call site, not an inlined copy" T-LABEL
-   \ Two sites are the window's own calls; the other four are the stack guard's
-   \ call into the engine, one per captured record (src/compiler/native/emit.f
-   \ PUT-STACK-GUARD), which the capture relocates like any other call.
-   s" recs=4" SAID? TTRUE
-   s" sites=6" SAID? TTRUE ;
+   s" sites=2" SAID? TTRUE ;
 
 : PROBE-UNMARKED ( -- )
    s" none" CALL-CASE

@@ -75,10 +75,7 @@ private
 public
 
 : CASES ( -- )
-   \ Every routine carries the engine's stack guards, each with a BL of its
-   \ own; those are the engine's calls, not the routine's.
    s" a routine that calls nothing reports no call" T-LABEL
-   s" NTP-FIXTURE:PLAIN" GUARDS 0 > TTRUE
    s" NTP-FIXTURE:PLAIN" CALLS 0 T=
    s" NTP-FIXTURE:PLAIN" LAST-CALL-IX -1 T=
    s" NTP-FIXTURE:PLAIN" AFTER-LAST-CALL -1 T=
@@ -119,7 +116,7 @@ public
    s" NTP-FIXTURE:TAILED" TRAILER-RET? TFALSE
    s" the tail routine consists of one branch and makes no call" T-LABEL
    s" NTP-FIXTURE:TAILED" CALLS 0 T=
-   s" NTP-FIXTURE:TAILED" OWN-INSNS 1 T=
+   s" NTP-FIXTURE:TAILED" INSNS 1 T=
 
    s" while the routine it leaves through is a whole body of its own" T-LABEL
    s" NTP-FIXTURE:BIG" TAIL-BRANCH? TFALSE
@@ -152,22 +149,16 @@ public
    s" but a routine that really leaves by one gets nothing added" T-LABEL
    s" NTP-FIXTURE:TAILED" CODE-BYTES
       s" NTP-FIXTURE:TAILED" INSNS NBR:INSN-BYTES * T=
-   \ The branch and the guards ahead of it, and nothing else.
-   s" NTP-FIXTURE:TAILED" CODE-BYTES
-      s" NTP-FIXTURE:TAILED" GUARDS NWALK:GUARD-INSNS * 1+ NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:TAILED" CODE-BYTES NBR:INSN-BYTES T=
    [: s" NTP-FIXTURE:TAILED" TRAILER drop ;]
       E-CODEGEN-PROBE-EXTENT TTHROWSQ
 
-   s" an empty routine records no instructions of its own, and is not a word of no size"
+   s" an empty routine records no length at all, and is not a word of no size"
    T-LABEL
-   s" NTP-FIXTURE:EMPTY" OWN-INSNS 0 T=
-   s" NTP-FIXTURE:EMPTY" INSNS
-      s" NTP-FIXTURE:EMPTY" GUARDS NWALK:GUARD-INSNS * T=
+   s" NTP-FIXTURE:EMPTY" INSNS 0 T=
    s" NTP-FIXTURE:EMPTY" TAIL-BRANCH? TFALSE
    s" NTP-FIXTURE:EMPTY" TRAILER-RET? TTRUE
-   \ Its guards and the return, and nothing else.
-   s" NTP-FIXTURE:EMPTY" CODE-BYTES
-      s" NTP-FIXTURE:EMPTY" GUARDS NWALK:GUARD-INSNS * 1+ NBR:INSN-BYTES * T=
+   s" NTP-FIXTURE:EMPTY" CODE-BYTES NBR:INSN-BYTES T=
 
    s" a name nothing published is a refusal and not a quiet zero" T-LABEL
    [: s" NTP-FIXTURE:NO-SUCH-WORD" CALLS drop ;]

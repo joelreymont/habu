@@ -51,7 +51,6 @@
 require lib/test.f
 require src/compiler/native/select.f
 require src/compiler/native/emit.f
-require src/compiler/native/branch.f
 require src/compiler/native/spill.f
 require test/compiler/native-chain-fixture.f
 require test/compiler/native-run-fixture.f
@@ -298,11 +297,9 @@ $1000 constant BUMP-ADDR
 \ The same under the convention a Habu word is entered and left through. A body
 \ that touches memory needs it: the generic memory order of a routine begins
 \ where the routine takes the caller's operands, so a routine that takes none is
-\ refused at selection by name. Its guards call the engine helper from the real
-\ slot the transient execution fixture will use.
+\ refused at selection by name.
 : EMITTED-HABU ( n n n -- )
    {: n:n in:n out:n :}
-   cp@ A64EMIT:PLACE-AT
    CC BB TXT TXT-N 0 n in out NFIX:RUN-HABU ;
 
 \ ---- reading the emission ----------------------------------------------------
@@ -341,7 +338,6 @@ $1000 constant BUMP-ADDR
    HIR-MOD
    BUILD-SQUARE
    4 EMITTED
-   A64EMIT:PLACED? TFALSE
    A64EMIT:INSNS
    A64EMIT:SIZE
    0 A64EMIT:WORD@
@@ -796,69 +792,24 @@ $1000 constant BUMP-ADDR
 \ offsets are zero, which is `[Xn]`, and a form that grew an offset it should not
 \ have moves these numbers.
 \
-\ The eleven original instructions retain their encodings. Entry and output
-\ transfers each gain an eleven-instruction guard; the zero pointer adjustments
-\ still emit nothing. Guard rows inherit the transfer's source span.
-using A64EMIT
-using NBR
-
-11 constant GUARD-INSNS
-
-: GUARD-WORD ( n n n -- ) {: at:n index:n word:n :}
-   at index + WORD@ word T= ;
-
-
-: GUARD-MAP ( n n n -- ) {: at:n st:n ln:n :}
-   GUARD-INSNS 0 ?do
-      at i + {: k:n :}
-      k MAP-OFFSET@ k 4 * T=
-      k SPAN-SRC-AT 0 T=
-      k SPAN-START-AT st T=
-      k SPAN-LEN-AT ln T=
-   loop ;
-
-
-\ Both one-cell transfers require eight bytes below the unchanged cursor.
-\ The BL displacement is decoded against the real publication address.
-: CELL-GUARD ( n -- ) {: at:n :}
-   at 0 $D10083FF GUARD-WORD
-   at 1 $F90003F0 GUARD-WORD
-   at 2 $F90007F1 GUARD-WORD
-   at 3 $F9000BFE GUARD-WORD
-   at 4 $D2800110 GUARD-WORD
-   at 5 $D2800011 GUARD-WORD
-   at 6 + WORD@ {: branch:n :}
-   branch BL? TTRUE
-   PLACEMENT at 6 + MAP-OFFSET@ + branch BL-TARGET stack-data-entry T=
-   at 7 $F94003F0 GUARD-WORD
-   at 8 $F94007F1 GUARD-WORD
-   at 9 $F9400BFE GUARD-WORD
-   at 10 $910083FF GUARD-WORD ;
-
-
-: CELL-GUARDS ( n -- ) {: out-at:n :}
-   PLACED? TTRUE
-   PLACEMENT cp@ T=
-   0 CELL-GUARD  out-at CELL-GUARD
-   0 BODY-ST BODY-LN GUARD-MAP
-   out-at CLOSE-ST CLOSE-LN GUARD-MAP
-   ADDR-SITES 0 T= ;
-
-
+\ AND THE ROUTINE IS ELEVEN INSTRUCTIONS AND NOT THIRTEEN, which is where the
+\ positions below come from. It takes one cell and leaves one, so the place the
+\ caller left the data-stack pointer and the place it expects it back are the
+\ same place; the routine stands there, and the two adjustments that used to
+\ bracket the body are distances of zero that no instruction is written for.
 : BUMP-BODY ( IR-CTX:ctx -- n n n n )
    HIR-MOD
    BUILD-BUMP
    6 1 1 EMITTED-HABU
-   20 CELL-GUARDS
-   INSNS
-   2 GUARD-INSNS + WORD@            \ str x0, [x1] - the argument into the cell
-   4 GUARD-INSNS + WORD@            \ ldr x0, [x0] - and back out of it
-   8 GUARD-INSNS + WORD@ ;          \ str x0, [x1] - the bumped value in again
+   A64EMIT:INSNS
+   2 A64EMIT:WORD@                   \ str x0, [x1] - the argument into the cell
+   4 A64EMIT:WORD@                   \ ldr x0, [x0] - and back out of it
+   8 A64EMIT:WORD@ ;                 \ str x0, [x1] - the bumped value in again
 
 : BUMP-CASE ( -- )
    s" an addressed store and load emit through the registers they name" T-LABEL
    WBND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
-   $F9000020 T= $F9400000 T= $F9000020 T= 33 T= ;
+   $F9000020 T= $F9400000 T= $F9000020 T= 11 T= ;
 
 \ ---- the two addressing modes a data-stack access is written in --------------
 \ THE WHOLE OF WHAT THE PLACEMENT COSTS THE ENCODER. A routine stands where the
@@ -874,25 +825,22 @@ using NBR
 \ wrong one reads a cell somewhere else entirely rather than failing to encode.
 \ Squaring one cell is the smallest routine that has both: it stands at 8, so its
 \ load and its store are both eight bytes under the pointer, and both are the
-\ negative form. This Habu-convention routine is also run below, so a wrong
-\ field would answer something other than forty-nine as well as differ here.
+\ negative form. The routine is also RUN, in RUN-SQUARE-CASE above, over the same
+\ contract - so a wrong field would answer something other than forty-nine as
+\ well as read differently here.
 : SQUARE-HABU-BODY ( IR-CTX:ctx -- n n n n )
    HIR-MOD
    BUILD-SQUARE
    4 1 1 EMITTED-HABU
-   13 CELL-GUARDS
-   INSNS
-   GUARD-INSNS WORD@                \ ldur x0, [x19, #-8] - the argument's cell
-   2 GUARD-INSNS 2 * + WORD@        \ stur x0, [x19, #-8] - the result into it
+   A64EMIT:INSNS
+   0 A64EMIT:WORD@                   \ ldur x0, [x19, #-8] - the argument's cell
+   2 A64EMIT:WORD@                   \ stur x0, [x19, #-8] - the result into it
    7 PUBLISH NRUN:ENTER1 ;
 
 : SQUARE-HABU-CASE ( -- )
    s" a cell under the pointer is written in the unscaled signed form" T-LABEL
    WBND [: SQUARE-HABU-BODY ;] IR-CTX:WITH-CONTEXT
-   49 T= $F81F8260 T= $F85F8260 T= 26 T= ;
-
-;using
-;using
+   49 T= $F81F8260 T= $F85F8260 T= 4 T= ;
 
 \ ---- a program that does not fit ---------------------------------------------
 \ The whole spill route, ending in bytes that run: allocate the chain, lower the
@@ -1269,15 +1217,6 @@ using NBR
    c A64-NEW BIND-RA BIND-RAV BIND-EMIT BUILD-SPLIT-RUN c EMIT-BUILT ;
 
 \ ---- refusal cases -----------------------------------------------------------
-: UNPLACED-HABU-BODY ( IR-CTX:ctx -- )
-   HIR-MOD BUILD-SQUARE
-   CC BB TXT TXT-N 0 4 1 1 NFIX:RUN-HABU ;
-
-
-: UNPLACED-HABU ( -- )
-   WBND [: UNPLACED-HABU-BODY ;] IR-CTX:WITH-CONTEXT ;
-
-
 : UNACCEPTED ( -- )      WBND [: UNACCEPTED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )    WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-BIND ( -- )         WBND [: NO-BIND-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1358,18 +1297,11 @@ using NBR
 : GROUP-BOUND ( IR-CTX:ctx -- )   drop BOUND-REFUSE-CASES ;
 : GROUP-ADDR ( IR-CTX:ctx -- )    drop ADDR-REFUSE-CASES ;
 
-
-: GROUP-PLACE ( IR-CTX:ctx -- )
-   drop
-   s" a guarded Habu-stack emission requires its real placement" T-LABEL
-   [: UNPLACED-HABU ;] E-A64EMIT-PLACE TTHROWSQ ;
-
 public
 
 : RUN ( -- )
    T-RESET
    WBND [: GROUP-ALLOC ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-PLACE ;] IR-CTX:WITH-CONTEXT
    SQUARE-CASE
    BYTES-CASE
    DIFF-CASE

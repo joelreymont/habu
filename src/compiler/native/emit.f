@@ -93,10 +93,9 @@ A64IR-OPCODE:CMPBRI    A64IR:ORD constant O-CMPBRI
 1 constant BOUND-YES
 
 \ ---- how much of one routine this pass holds ----------------------------------
-\ A call can carry one full-transfer check before and one return check after it.
-\ Each check uses the engine ABI's 32-byte caller frame and eleven instructions.
-11 constant STACK-GUARD-INSNS
-3 STACK-GUARD-INSNS 2 * + constant INSN-PER-OP
+\ Three per operation is the ceiling: five forms emit more than one and none
+\ emits more than three.
+3 constant INSN-PER-OP
 : INSN-CAP ( -- n ) INSN-PER-OP OMAX BMAX 3 * + * ;
 
 4 constant INSN-BYTES
@@ -550,23 +549,17 @@ variable N-FUNS                        \ how many functions the emission holds
 
 \ The offset is the cursor at the moment the instruction was appended, not four
 \ times its index, so a run that emitted one too few is visible in the map.
-: APPEND-KIND ( IR-ID:ir-op-id n n -- )
-   {: id:IR-ID:ir-op-id w:n kind:n :}
+: APPEND ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id w:n :}
    N-INS @ INSN-CAP >= if E-A64EMIT-CAP throw then
    N-INS @ {: k:n :}
    k INSN-BYTES * {: off:n :}
    w off WORD!
    id off k MAP!
+   id ADDR-OF {: kind:n :}
    kind k cells M-ADDR + !
    kind A64IR:ADDR-NONE = if -1 else id 0 RESULT-REG then  k cells M-ARD + !
    k 1+ N-INS ! ;
-
-: APPEND ( IR-ID:ir-op-id n -- )
-   over ADDR-OF APPEND-KIND ;
-
-\ A guard inherits its transfer's source span, never an address-literal tag.
-: APPEND-GUARD ( IR-ID:ir-op-id n -- )
-   A64IR:ADDR-NONE APPEND-KIND ;
 
 \ ---- the block layout --------------------------------------------------------
 \ An ordinal outside the function's blocks is a module this layout cannot serve.
@@ -722,19 +715,12 @@ variable N-FUNS                        \ how many functions the emission holds
    id 0 BND-DBYTES @ DZERO1
    id 0 BND-DBACK @ DZERO1 + ;
 
-: GUARD-COUNT ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id A64RAV:STACK-BEFORE {: below:n above:n before:bool :}
-   id A64RAV:STACK-AFTER {: returned:n after:bool :}
-   0 before if 1+ then after if 1+ then ;
-
 : OP-INSNS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT INSNS-OF
    id home FALL-THRU? if 1- then
    id SELF-MOV? if 1- then
-   id DZERO-MOVES -
-   id GUARD-COUNT STACK-GUARD-INSNS * + ;
+   id DZERO-MOVES - ;
 
 : BLOCK-INSNS ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id home:n :}
@@ -756,7 +742,6 @@ variable N-FUNS                        \ how many functions the emission holds
    id SLOT-AT INSNS-OF
    id SELF-MOV? if 1- then
    id DZERO-MOVES -
-   id GUARD-COUNT STACK-GUARD-INSNS * +
    0= ;
 
 : SILENT-BEFORE-TERM? ( IR-ID:ir-block-id -- bool )
@@ -1071,44 +1056,19 @@ variable CH-AT
    d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
    d ENC-BL ;
 
-\ Both ends are instruction aligned. The getter names the current engine's
-\ registered helper, whose body preserves x14/x15/NZCV and touches no FP state.
-: PLACEMENT-CK ( -- n )
-   EM-PLACED @ 0= if E-A64EMIT-PLACE throw then
-   EM-PLACE @ ;
-
-: PUT-STACK-GUARD ( IR-ID:ir-op-id n n -- )
-   {: id:IR-ID:ir-op-id below:n above:n :}
-   id A64EFF:SP-GPR A64EFF:SP-GPR 32 ENC-SUBI APPEND-GUARD
-   id 16 A64EFF:SP-GPR 0 ENC-STR APPEND-GUARD
-   id 17 A64EFF:SP-GPR 8 ENC-STR APPEND-GUARD
-   id A64EFF:LINK-GPR A64EFF:SP-GPR 16 ENC-STR APPEND-GUARD
-   id 16 below 0 MOVZHW APPEND-GUARD
-   id 17 above 0 MOVZHW APPEND-GUARD
-   id stack-data-entry PLACEMENT-CK - INSN-BYTES / N-INS @ - BL-WORD APPEND-GUARD
-   id 16 A64EFF:SP-GPR 0 ENC-LDR APPEND-GUARD
-   id 17 A64EFF:SP-GPR 8 ENC-LDR APPEND-GUARD
-   id A64EFF:LINK-GPR A64EFF:SP-GPR 16 ENC-LDR APPEND-GUARD
-   id A64EFF:SP-GPR A64EFF:SP-GPR 32 ENC-ADDI APPEND-GUARD ;
-
-: PUT-GUARD-BEFORE ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id A64RAV:STACK-BEFORE if id -rot PUT-STACK-GUARD else 2drop then ;
-
-: PUT-GUARD-AFTER ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id A64RAV:STACK-AFTER if id swap 0 PUT-STACK-GUARD else drop then ;
-
 : PUT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE
    id  SELF-FUN FUN-START  N-INS @ -  BL-WORD  APPEND
-   id PUT-GUARD-AFTER
    id  id DBACK-SIZE negate  PUT-DMOVE ;
 
 \ ---- calling another word ----------------------------------------------------
 \ Both ends are instruction aligned by construction, so the subtraction is a
 \ whole number of instructions.
+: PLACEMENT-CK ( -- n )
+   EM-PLACED @ 0= if E-A64EMIT-PLACE throw then
+   EM-PLACE @ ;
+
 : WORD-DELTA ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id ENTRY-ADDR  PLACEMENT-CK -  INSN-BYTES /  N-INS @ - ;
@@ -1117,7 +1077,6 @@ variable CH-AT
    {: id:IR-ID:ir-op-id :}
    id  id DBYTES-SIZE  PUT-DMOVE
    id  id WORD-DELTA BL-WORD  APPEND
-   id PUT-GUARD-AFTER
    id  id DBACK-SIZE negate  PUT-DMOVE ;
 
 \ In BYTES, which is the unit this field counts - the branch fields count
@@ -1300,15 +1259,11 @@ variable CH-AT
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT {: k:n :}
    N-INS @ {: was:n :}
-   id PUT-GUARD-BEFORE
    id home PUT-OP
    k EM-LAST !
    k CALL-FORM? if 1 EM-NCALL +! then
    k LEAVE-FORM? if 1 EM-TAIL +! then
-   k IFACE-FORM? 0= if
-      id GUARD-COUNT STACK-GUARD-INSNS * EM-IFACE +!
-      exit
-   then
+   k IFACE-FORM? 0= if exit then
    N-INS @ was - EM-IFACE +! ;
 
 : WALK-BLOCK ( IR-ID:ir-block-id n -- )

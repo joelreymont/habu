@@ -10,7 +10,6 @@ require lib/engine-candidate.f
 require lib/adt/option.f
 require src/compiler/native/compiler.f
 require src/compiler/native/branch.f
-require src/compiler/native/codewalk.f
 require src/compiler/native/dict.f
 require src/compiler/native/trap.f
 require test/compiler/native-match-layout.f
@@ -592,14 +591,6 @@ TRUSTED: CODE-WORD@ ( n -- n )
 
 : CODE-INSNS ( -- n ) CODE-LEN @ INSN-BYTES / ;
 
-\ The engine's stack guards the committed code carries
-\ (src/compiler/native/codewalk.f), each eleven instructions of the engine's.
-: CODE-GUARDS ( -- n )
-   CODE-INSNS [: CODE-WORD@ ;] NWALK:GUARDS ;
-
-: GUARD-BYTES ( n -- n ) {: guards:n :}
-   guards NWALK:GUARD-INSNS * INSN-BYTES * ;
-
 : CODE-BRANCHES? ( -- bool )
    CODE-INSNS 0 ?do
       i CODE-WORD@ NBR:COND? if true unloop exit then
@@ -622,8 +613,6 @@ variable EMIT-RET
 variable EMIT-TRAPS
 variable UNW-SIZE
 variable QUAD-SIZE
-variable UNW-GUARDS
-variable QUAD-GUARDS
 
 : PROBE-HUE$ ( -- ptr u8 n )
    s" : PROBE-HUE ( hue -- n ) MATCH hue red OF 10 ENDOF green OF 20 ENDOF blue OF 30 ENDOF ;MATCH ;" ;
@@ -640,8 +629,8 @@ variable QUAD-GUARDS
    CODE-BRANCHES? if 1 else 0 then EMIT-BRANCH !
    CODE-INSNS CODE-WORD@ NBR:RET? if 1 else 0 then EMIT-RET !
    TRAP-BRANCHES EMIT-TRAPS !
-   PROBE-UNW$ TRY drop s" PROBE-UNW" CODE! CODE-LEN @ UNW-SIZE ! CODE-GUARDS UNW-GUARDS !
-   PROBE-QUAD$ TRY drop s" PROBE-QUAD" CODE! CODE-LEN @ QUAD-SIZE ! CODE-GUARDS QUAD-GUARDS ! ;
+   PROBE-UNW$ TRY drop s" PROBE-UNW" CODE! CODE-LEN @ UNW-SIZE !
+   PROBE-QUAD$ TRY drop s" PROBE-QUAD" CODE! CODE-LEN @ QUAD-SIZE ! ;
 
 \ These instruction assertions describe optimizing emission. Other cases keep
 \ the caller's tier, including when the suite is loaded directly from the REPL.
@@ -841,11 +830,9 @@ CAPTURE-NATIVE-EMISSION
    EMIT-RET @ 1 T=
    EMIT-TRAPS @ 1 T=
 
-   \ The bounds are on the dispatch's own code; the guards it carries are
-\ the engine's, and their bytes are added back explicitly.
    s" dispatch code stays bounded and grows with its arm count" T-LABEL
-   UNW-SIZE @  UNW-GUARDS @ GUARD-BYTES 128 +  < TTRUE
-   QUAD-SIZE @  QUAD-GUARDS @ GUARD-BYTES 184 +  < TTRUE
+   UNW-SIZE @ 128 < TTRUE
+   QUAD-SIZE @ 184 < TTRUE
    QUAD-SIZE @ UNW-SIZE @ > TTRUE ;
 
 \ ---- hostile tag ------------------------------------------------------------

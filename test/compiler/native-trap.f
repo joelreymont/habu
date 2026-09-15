@@ -8,7 +8,6 @@ require lib/engine-candidate.f
 require test/compiler/native-chain-fixture.f
 require src/compiler/native/publish.f
 require src/compiler/native/compiler.f
-require src/compiler/native/codewalk.f
 
 package NTRAP-TEST
 private
@@ -231,11 +230,10 @@ create TXT
 \ A routine of no arguments and no results whose two arms both trap. It is here
 \ for the PLACEMENT survey and not for the terminator: the pointer stands at one
 \ place for the whole routine, the entry wants it where the caller left it and
-\ each trap site wants it three cells up (the diagnostic address, length and
-\ exit code). Two votes beat one, but a routine may not reserve caller stack at
-\ entry for outputs of a path it might not take (select.f DPLACE-OK?, since the
-\ stack guards): the pointer stands where the caller left it and each trap site
-\ pays its own guarded adjustment, which is what the case below measures.
+\ each trap site wants it one cell up, so the two trap sites outvote the entry
+\ and the routine pays ONE adjustment instead of two. A survey that did not count
+\ trap sites would pick the other place and emit the other number, which is what
+\ the case below measures.
 : BUILD-DEAD-VOID ( n -- )
    {: ord:n :}
    s" TRV" 0 0 OPEN-FUN
@@ -364,17 +362,10 @@ $D65F03C0 constant RET-WORD
 : LAST-IS-BRANCH? ( -- bool )
    CODE-INSNS 1- CODE-WORD@ B-WORD? ;
 
-\ The engine's stack guards in the emission (src/compiler/native/codewalk.f)
-\ are not the routine's own instructions: each moves the machine stack pointer
-\ twice for its own frame and branches with link to the engine. The counts
-\ below are of what the routine itself does, so they read past them.
-: GUARDED? ( n -- bool ) {: k:n :}
-   CODE-INSNS k [: CODE-WORD@ ;] NWALK:GUARDED? ;
-
 : RETS-IN-EMISSION ( -- n )
    0
    CODE-INSNS 0 ?do
-      i GUARDED? 0= if i CODE-WORD@ RET-WORD = if 1+ then then
+      i CODE-WORD@ RET-WORD = if 1+ then
    loop ;
 
 \ How many instructions of the emission move the data-stack pointer. Both forms
@@ -394,7 +385,7 @@ $1F constant REG-MASK
 : DMOVES-IN-EMISSION ( -- n )
    0
    CODE-INSNS 0 ?do
-      i GUARDED? 0= if i CODE-WORD@ DMOVE-WORD? if 1+ then then
+      i CODE-WORD@ DMOVE-WORD? if 1+ then
    loop ;
 
 \ And how many move the MACHINE stack pointer, which is what a routine's own
@@ -411,7 +402,7 @@ $1F constant REG-MASK
 : SPMOVES-IN-EMISSION ( -- n )
    0
    CODE-INSNS 0 ?do
-      i GUARDED? 0= if i CODE-WORD@ SPMOVE-WORD? if 1+ then then
+      i CODE-WORD@ SPMOVE-WORD? if 1+ then
    loop ;
 
 \ ---- two routines, one target ------------------------------------------------
@@ -586,14 +577,13 @@ variable CHILD-RC
 
 \ The placement survey with trap sites in it. The routine takes and publishes
 \ nothing, so the entry wants the pointer where the caller left it; its two trap
-\ sites each want it three cells up. Standing it three cells up would reserve
-\ caller stack at entry for a path the routine might not take, which the guarded
-\ entry refuses, so the pointer stays where the caller left it and each trap
-\ site pays one adjustment of its own: two, each right before its transfer.
+\ sites each want it one cell up. Two votes beat one, so the pointer stands one
+\ cell up and the routine pays exactly ONE adjustment - the entry's. A survey
+\ blind to trap sites would stand it where the entry wants and pay two.
 : VOID-PLACE-CASE ( -- )
-   s" a routine of two trap sites pays one pointer adjustment per site" T-LABEL
+   s" a routine of two trap sites pays one pointer adjustment, not two" T-LABEL
    [: RUN-VOID ;] 0 TTHROWSQ
-   DMOVES-IN-EMISSION 2 T= ;
+   DMOVES-IN-EMISSION 1 T= ;
 
 : SHARED-TARGET-CASE ( -- )
    RUN-TWO-TRAPS
