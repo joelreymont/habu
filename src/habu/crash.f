@@ -178,19 +178,19 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 \ CRS-CAPCELL is a header offset to read the capacity from, or 0 to use CRS-CAP.
 : C-CRASH-GUARD-CASE ( -- )
    9 24 CRS-BASE @ LDR,
-   9 CRS-NEXT @ CBZ,
-   10 9 12 AND,  10 CRS-NEXT @ CBNZ,
+   9 CRS-NEXT LABEL@ CBZ,
+   10 9 12 AND,  10 CRS-NEXT LABEL@ CBNZ,
    13 9 11 SUB,                                  \ low guard starts one page below the base
    10 25 13 SUB,
-   10 11 CMP,  C-CC CRS-HIT @ BCOND,
+   10 11 CMP,  C-CC CRS-HIT LABEL@ BCOND,
    CRS-CAPCELL @ 0= IF 13 CRS-CAP @ LIT64, ELSE 13 24 CRS-CAPCELL @ LDR, THEN
    13 9 13 ADD,                                  \ high guard starts at base + capacity
    10 25 13 SUB,
-   10 11 CMP,  C-CC CRS-HIT @ BCOND,
-   CRS-NEXT @ LBL, ;
+   10 11 CMP,  C-CC CRS-HIT LABEL@ BCOND,
+   CRS-NEXT LABEL@ LBL, ;
 
-: C-CRASH-GUARD-REPORT ( n n -- )                \ ( msg-label msg-len -- ) never returns
-   {: msg:n len:n :}
+: C-CRASH-GUARD-REPORT ( label n -- )            \ ( msg-label msg-len -- ) never returns
+   {: msg:label len:n :}
    0 2 MOVZ,  1 msg ADR,  2 len MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS, ;
 
@@ -200,7 +200,7 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
    LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
    20 CRASH-SIGSEGV CMPI,  C-EQ CR-L3 LABEL@ BCOND,
-   20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP @ BCOND,
+   20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP LABEL@ BCOND,
    CR-L3 LABEL@ LBL,
    C-CRASH-FAULT-ADDR>R25
    C-CRASH-DATA>R24
@@ -214,14 +214,14 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
    STACK-ABI:LOOP-BASE-CELL CRS-BASE !  0 CRS-CAPCELL !
    STACK-ABI:LOOP-BYTES CRS-CAP !
    CRS-LOOP-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
-   CRS-SKIP @ B,
-   CRS-DATA-H @ LBL,  CRS-DATA-M @ CRS-DATA-LEN C-CRASH-GUARD-REPORT
-   CRS-RET-H  @ LBL,  CRS-RET-M  @ CRS-RET-LEN  C-CRASH-GUARD-REPORT
-   CRS-LOOP-H @ LBL,  CRS-LOOP-M @ CRS-LOOP-LEN C-CRASH-GUARD-REPORT
-   CRS-DATA-M @ LBL,  s" hb: stack bounds exceeded (data)" BYTES,  NL-KW 1 BYTES,
-   CRS-RET-M  @ LBL,  s" hb: stack bounds exceeded (return)" BYTES,  NL-KW 1 BYTES,
-   CRS-LOOP-M @ LBL,  s" hb: stack bounds exceeded (loop)" BYTES,  NL-KW 1 BYTES,
-   CRS-SKIP @ LBL, ;
+   CRS-SKIP LABEL@ B,
+   CRS-DATA-H LABEL@ LBL,  CRS-DATA-M LABEL@ CRS-DATA-LEN C-CRASH-GUARD-REPORT
+   CRS-RET-H  LABEL@ LBL,  CRS-RET-M  LABEL@ CRS-RET-LEN  C-CRASH-GUARD-REPORT
+   CRS-LOOP-H LABEL@ LBL,  CRS-LOOP-M LABEL@ CRS-LOOP-LEN C-CRASH-GUARD-REPORT
+   CRS-DATA-M LABEL@ LBL,  s" hb: stack bounds exceeded (data)" BYTES,  NL-KW 1 BYTES,
+   CRS-RET-M  LABEL@ LBL,  s" hb: stack bounds exceeded (return)" BYTES,  NL-KW 1 BYTES,
+   CRS-LOOP-M LABEL@ LBL,  s" hb: stack bounds exceeded (loop)" BYTES,  NL-KW 1 BYTES,
+   CRS-SKIP LABEL@ LBL, ;
 
 : EMIT-CRASH-HANDLER ( -- )
    LCRASHH LABEL@ LBL,
