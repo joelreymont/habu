@@ -12,9 +12,11 @@ MEM-MAX-N MEM-64K / constant MEM-MAX-64K-BUFFERS
 MEM-MAX-N MEM-CELL-BYTES / constant MEM-MAX-CELLS
 
 0 constant MEM-ADDR-ANY
+0 constant MEM-PROT-NONE
 3 constant MEM-PROT-RW
 1 constant MEM-MAP-SHARED
 $1002 constant MEM-MAP-PRIVATE-ANON
+$1012 constant MEM-MAP-PRIVATE-ANON-FIXED   \ the engine's mmap treats $10 as MAP_FIXED on every target
 -1 constant MEM-ANON-FD
 0 constant MEM-OFF-ZERO
 
@@ -72,6 +74,43 @@ $1002 constant MEM-MAP-PRIVATE-ANON
 
 : MEM-ALLOC-64K ( -- ptr u8 n )
    1 MEM-ALLOC-64K-BUFFERS ;
+
+\ The address a raw `mmap` returned, as the byte pointer of the mapping this
+\ word just made; the only place in this file a bare address becomes a pointer.
+TRUSTED: MEM-MAPPED>PTR ( n -- ptr u8 ) ;
+
+\ ---- guarded VM stacks -------------------------------------------------------
+\ A stack the engine may run on (run-in-stack, a task's data, return and loop
+\ stacks) is a mapping with an inaccessible page on each side: a push past its
+\ capacity or a read below its base faults, and the engine's crash handler
+\ names the stack (src/habu/crash.f). This is the only way to make such a
+\ stack: run-in-stack refuses any other extent (E-STACK-UNGUARDED), because a
+\ heap buffer has nothing beyond it to stop an overflow. The layout is the one
+\ src/habu/rt.f STACK-GUARD:EMIT-MAP gives the boot stacks: the whole span is
+\ mapped inaccessible first, then the capacity is remapped read/write at a
+\ STACK-ABI:PAGE-BYTES boundary inside it, so the pages on both sides stay
+\ inaccessible whatever granule the kernel returned.
+: MEM-GUARDED-SPAN-BYTES ( n -- n ) {: cap:n :}
+   cap STACK-ABI:PAGE-BYTES 3 * + ;
+
+: MEM-GUARDED-BASE ( n n -- n ) {: span:n cap:n :}
+   span STACK-ABI:PAGE-BYTES 2 * + 1 - STACK-ABI:PAGE-BYTES negate and ;
+
+: MEM-ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
+   cap STACK-ABI:PAGE-BYTES mod 0 <> if E-MEM-SIZE throw then
+   cap MEM-GUARDED-SPAN-BYTES {: span-bytes:n :}
+   MEM-ADDR-ANY span-bytes MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap {: span:n :}
+   span 0 < if E-MEM-MAP throw then
+   span cap MEM-GUARDED-BASE {: base:n :}
+   base cap MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED MEM-ANON-FD MEM-OFF-ZERO mmap base <> if
+      E-MEM-MAP throw
+   then
+   base MEM-MAPPED>PTR cap ;
+
+\ Release a guarded stack: the guard pages go with it, so the whole span is
+\ unmapped from one page below the base.
+: MEM-RELEASE-GUARDED ( ptr u8 n -- ) {: base:ptr cap:n :}
+   base STACK-ABI:PAGE-BYTES - cap MEM-GUARDED-SPAN-BYTES munmap 0 <> if E-MEM-MAP throw then ;
 
 \ ---- package-first typed allocation surface -----------------------------------
 \

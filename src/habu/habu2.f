@@ -2077,9 +2077,39 @@ variable LCOLONNONAME
    14 SP 8 LDR,  15 DATA LOCF-CELL LDR,  12 14 15 SUB,  C-EMIT-DROP-X12
    SP SP 16 ADDI, ;
 
+\ Instruction words the JIT stamps into generated code. They live here, above
+\ the loop and return-stack emitters, because every one of those families now
+\ has to LOAD a stack's base out of the DATA header instead of adding a fixed
+\ band offset to x20 — the stacks are guarded mappings (STACK-ABI), so their
+\ bases are runtime values. Stamping them through these encoders rather than as
+\ literal words is what keeps a cell-offset change from silently re-encoding.
+\ x25/x28 belong to the compiler and word frames on the machine stack would
+\ unbalance the epilogue, which is why neither stack lives in a register.
+: W-LDRX ( n n n -- n ) {: rt RN off :}                               \ ldr rt,[rn,#off]
+   $F9400000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
+
+: W-STRX ( n n n -- n ) {: rt RN off :}                               \ str rt,[rn,#off]
+   $F9000000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
+
+: W-ADDX ( n n n -- n ) {: rd RN RM :}                                \ add rd,rn,rm
+   $8B000000  RM 16 lshift or  RN 5 lshift or  rd or ;
+
+: W-ADDX-LSL3 ( n n n -- n ) {: rd RN RM :}                           \ add rd,rn,rm,lsl#3
+   $8B000000  RM 16 lshift or  3 10 lshift or  RN 5 lshift or  rd or ;
+
+\ LOOP-FRAME-ADDR, : x12 = the frame at [LOOPSP-1] (or at LOOPSP for a push),
+\ from x11 holding the index. The pair it replaced was `add x12,x12,#$600` and
+\ `add x12,x12,x20`, the old in-header band; the base is a header cell now, so
+\ this loads it instead. x13 is the scratch rather than x11 because J-FRAME
+\ still needs the index in x11 to bump the depth afterwards, and x13 is dead at
+\ this point in every one of the seven families that emit it.
+: LOOP-FRAME-ADDR, ( -- )
+   13 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW
+   12 12 13 W-ADDX C-EMITW ;
+
 : J-FRAME ( -- )                                \ pop limit/start, push a loop frame
    3506446963 C-EMITW  4181721705 C-EMITW  3506446963 C-EMITW  4181721706 C-EMITW
-   4181780107 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
 
 \ The loop-emit family: the DO/LEAVE level stack (open a level, prove one is
@@ -2153,7 +2183,7 @@ package LOOP-EMIT
 
 : J-LOOP ( -- )
    LVREQUIRE                             \ no open DO level: reject before emitting or popping
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP LABEL@ BL,
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
@@ -2163,7 +2193,7 @@ package LOOP-EMIT
 : J-+LOOP ( -- )                                \ cross the limit boundary in the step's direction
    LVREQUIRE                             \ no open DO level: reject before emitting or popping
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ step -> x9
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
    4181722506 C-EMITW                    \ ldr x10,[x12,#8]   limit
    $CB0A01AF C-EMITW                     \ sub x15,x13,x10    old
@@ -2182,21 +2212,12 @@ package LOOP-EMIT
 ;package
 
 : J-I ( -- )
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
 : J-J ( -- )                                    \ outer loop index: frame[LOOPSP-2]
-   4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
-
-\ >R R> R@ — the user return stack lives in a data-region stack ([x20+RSTK-OFF],
-\ depth at [x20+RSP-CELL]), like the DO/LOOP frames: x25/x28 belong to the
-\ compiler, and word frames on the machine stack would unbalance the epilogue.
-: W-LDRX ( n n n -- n ) {: rt RN off :}                               \ ldr rt,[rn,#off]
-   $F9400000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
-
-: W-STRX ( n n n -- n ) {: rt RN off :}                               \ str rt,[rn,#off]
-   $F9000000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
 
 \ Native task guard and dictionary/checker lookup bridge operate on generated
 \ registers and dynamically found checker words.
@@ -2607,19 +2628,28 @@ public
    9 DATA CRSIG-A-CELL STR,
    9 DATA CRSIG-U-CELL STR, ;
 
+\ >R R> R@ — the user return stack is a guarded mapping whose base is a header
+\ cell (STACK-ABI:RETURN-BASE-CELL), so the slot address is that base plus
+\ depth*8. `add x11,x20,x10,lsl#3` used to reach it as a fixed band inside the
+\ DATA header; a header has no room for the inaccessible page the capacity is
+\ enforced by, so the band moved out and the base is loaded instead.
+: RSTK-SLOT-ADDR, ( -- )                                      \ x11 = base + x10*8
+   11 20 STACK-ABI:RETURN-BASE-CELL W-LDRX C-EMITW
+   11 11 10 W-ADDX-LSL3 C-EMITW ;
+
 : J-TOR ( -- )                                                \ pop data -> push RSTK
    $D1002273 C-EMITW  $F9400269 C-EMITW                \ sub x19,#8 ; ldr x9,[x19]
    10 20 RSP-CELL W-LDRX C-EMITW
-   $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
-   9 11 RSTK-OFF W-STRX C-EMITW
+   RSTK-SLOT-ADDR,
+   9 11 0 W-STRX C-EMITW
    $9100054A C-EMITW                                   \ add x10,x10,#1
    10 20 RSP-CELL W-STRX C-EMITW ;
 
 : J-RPOP ( -- )                                               \ x9 = RSTK top, x10 = RSP-1
    10 20 RSP-CELL W-LDRX C-EMITW
    $D100054A C-EMITW                                   \ sub x10,x10,#1
-   $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
-   9 11 RSTK-OFF W-LDRX C-EMITW ;
+   RSTK-SLOT-ADDR,
+   9 11 0 W-LDRX C-EMITW ;
 
 : J-RFROM ( -- )  J-RPOP                                      \ pop RSTK -> push data
    10 20 RSP-CELL W-STRX C-EMITW
@@ -4608,8 +4638,16 @@ variable CFSK2
 
 : EM-RUNTIME-STACK ( -- )
    XREG-RBASE LANCHOR LABEL@ ADR,
-   STACK-ABI:BOOT-BYTES 2048 / 0 do SP SP 2048 SUBI, loop
-   XDS SP 0 ADDI, ;
+   STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP ;
+
+\ The boot task's return stack and DO/LOOP frame stack. They come after the DATA
+\ region because their bases are published in header cells; a task maps its own
+\ pair and publishes them into its own region copy (lib/task.f PREPARE).
+: EM-FRAME-STACKS ( -- )
+   STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP
+   10 DATA STACK-ABI:RETURN-BASE-CELL STR,
+   STACK-ABI:LOOP-BYTES 10 STACK-GUARD:EMIT-MAP
+   10 DATA STACK-ABI:LOOP-BASE-CELL STR, ;
 
 : EM-MMAP-CODE-REGION ( -- )
    LBL LBL {: rok:label rvok:label :}
@@ -6270,6 +6308,13 @@ public
    snok LBL,
    SNAP-RELOC:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
+   \ The return and loop stacks are mappings this process made, so the image's
+   \ copies of their base cells are another run's addresses. The data stack
+   \ survives the copy in XDS, a pinned register; these two have no register, so
+   \ they ride the machine stack across it and are republished beside XDS below.
+   SP SP 16 SUBI,
+   11 DATA STACK-ABI:RETURN-BASE-CELL LDR,  11 SP 0 STR,
+   11 DATA STACK-ABI:LOOP-BASE-CELL LDR,    11 SP 8 STR,
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    EM-SNAPSHOT-COPY-CODE
    EM-SNAPSHOT-COPY-DATA
@@ -6277,6 +6322,9 @@ public
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA STACK-ABI:BASE-CELL STR,
    5 STACK-ABI:BOOT-BYTES LIT64,  5 DATA STACK-ABI:CAP-CELL STR,
+   11 SP 0 LDR,  11 DATA STACK-ABI:RETURN-BASE-CELL STR,
+   11 SP 8 LDR,  11 DATA STACK-ABI:LOOP-BASE-CELL STR,
+   SP SP 16 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
@@ -6436,6 +6484,7 @@ public
    EM-SEED-DICT
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
+   EM-FRAME-STACKS
    EM-STARTUP-COLD-BASELINE
    SEEDED-RUNTIME? if
       \ The seed registers its records through LHIDXADD and resolves every
@@ -7366,7 +7415,7 @@ public
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ LP2RS ( x5=T-cells x6=mode ) : emit a block transfer between the data stack
-\ and the return-stack region ([x20+RSTK-OFF], depth at [x20+RSP-CELL]),
+\ and the return-stack mapping ([RETURN-BASE-CELL], depth at [x20+RSP-CELL]),
 \ ascending order preserved. mode 0 = data->rstk pop (>r/2>r), 1 = rstk->data
 \ pop (r>/2r>), 2 = rstk->data copy (r@/2r@). T=1 reproduces J-TOR/J-RFROM/
 \ J-RFETCH cell order; T=2 reproduces B2TOR/B2RFROM/B2RFETCH.
@@ -7383,8 +7432,8 @@ public
    10 20 RSP-CELL W-LDRX C-EMITW
    5 9 JIT-STACK:LITERAL-REG
    $CB09014A C-EMITW                                  \ sub x10,x10,x9
-   $8B0A0E8B C-EMITW                                  \ add x11,x20,x10,lsl#3
-   13 11 RSTK-OFF W-LDRX C-EMITW                      \ ldr x13,[x11,#RSTK-OFF]
+   RSTK-SLOT-ADDR,
+   13 11 0 W-LDRX C-EMITW                             \ ldr x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F900026D C-EMITW                                  \ str x13,[x19]
    W-PUSH1 C-EMITW                                    \ add x19,x19,#8
@@ -7396,7 +7445,7 @@ public
    rsto LBL,
    \ mode 0: x11 = rstk top; copy T cells data->rstk, pop, depth += T
    10 20 RSP-CELL W-LDRX C-EMITW
-   $8B0A0E8B C-EMITW
+   RSTK-SLOT-ADDR,
    8 12 JIT-STACK:LITERAL-REG
    $CB0C026C C-EMITW                                  \ sub x12,x19,x12
    $AA0C03EE C-EMITW                                  \ mov x14,x12 (new data cursor)
@@ -7404,7 +7453,7 @@ public
    $AA0903EF C-EMITW                                  \ mov x15,x9 (complete transfer count)
    $F940018D C-EMITW                                  \ ldr x13,[x12]
    $9100218C C-EMITW                                  \ add x12,x12,#8
-   13 11 RSTK-OFF W-STRX C-EMITW                      \ str x13,[x11,#RSTK-OFF]
+   13 11 0 W-STRX C-EMITW                             \ str x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne loop (-5)

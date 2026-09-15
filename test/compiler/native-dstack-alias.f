@@ -19,7 +19,7 @@ variable SZ                          \ its size
 variable ANS                         \ where a body leaves its answer
 
 : ALLOC ( -- )
-   MEM-ALLOC-64K SZ !  SB 0 ptr-field ! ;
+   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED SZ !  SB 0 ptr-field ! ;
 
 : BASE ( -- ptr u8 )   SB 0 ptr-field @ ;
 : SIZE ( -- n )        SZ @ ;

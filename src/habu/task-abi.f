@@ -22,6 +22,13 @@ $50 constant STATUS-OFF
 $58 constant STOP-OFF
 $60 constant RET-OFF
 $68 constant USER-XT-OFF
-$70 constant TCB-BYTES
+\ A task's return stack and DO/LOOP frame stack are guarded mappings of its
+\ own (src/habu/stack-abi.f); their bases are published into the task's
+\ region copy at construction and the mappings released with the task.
+$70 constant RSTACK-OFF
+$78 constant RSTACK-U-OFF
+$80 constant LSTACK-OFF
+$88 constant LSTACK-U-OFF
+$90 constant TCB-BYTES
 
 ;package

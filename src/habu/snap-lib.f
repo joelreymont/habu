@@ -176,25 +176,19 @@ TRUSTED: SND-PTR ( -- ptr u8 ) SND-N @ ;
 TRUSTED: SND-ZERO-CELL ( n -- )
    SND-N @ + 0 swap ! ;
 
-\ Zero a whole data-relative span in the scratch copy (evaluate frames are
-\ startup-transient input state; every cell is dead after restore).
-TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
-
-\ The return-stack window is transient machine state; stale slots can hold
-\ dangling arena pointers from the build (proven: two old-USIGS pointers
-\ survived here). Dead after restore - zero the whole window.
-: SND-ZERO-RSTK ( -- )
-   RSTK-OFF
-   begin dup RSTK-END < while
-      dup SND-ZERO-SPAN-CELL
-      8 +
-   repeat drop ;
+\ The return-stack window used to live at RSTK-OFF..RSTK-END inside this image
+\ and had to be zeroed: stale slots held dangling arena pointers from the build
+\ (proven: two old-USIGS pointers survived there). It is a guarded mapping
+\ outside DATA now, so the image carries none of it -- only the base cell, which
+\ SND-ZERO-LIVE clears with the other per-process addresses.
 
 : SND-ZERO-LIVE ( -- )
    RBASE-CELL SND-ZERO-CELL   S0-CELL SND-ZERO-CELL
    STACK-ABI:CAP-CELL SND-ZERO-CELL
    STACK-ABI:REPL-BASE-CELL SND-ZERO-CELL
    STACK-ABI:REPL-CAP-CELL SND-ZERO-CELL
+   STACK-ABI:RETURN-BASE-CELL SND-ZERO-CELL
+   STACK-ABI:LOOP-BASE-CELL SND-ZERO-CELL
    ARGC-CELL SND-ZERO-CELL    ARGV-CELL SND-ZERO-CELL
    ENVP-CELL SND-ZERO-CELL    SNAP-CELL SND-ZERO-CELL
    HND-CELL SND-ZERO-CELL     PEND-CELL SND-ZERO-CELL
@@ -218,8 +212,7 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
    EVAL-TOP-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:DEF-TIER-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-DEPTH-CELL SND-ZERO-CELL
-   NCOMP-DISPATCH:BUILD-TIER-CELL SND-ZERO-CELL
-   SND-ZERO-RSTK ;
+   NCOMP-DISPATCH:BUILD-TIER-CELL SND-ZERO-CELL ;
 
 : SND-COPY ( -- )
    data-base SND-PTR SDL @ BYTE-COPY ;

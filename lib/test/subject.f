@@ -33,9 +33,9 @@ PTR-VARIABLE STACK-A
 
 : STACK ( -- ptr u8 n )
    STACK@ 0= if
-      MEM-ALLOC-64K drop STACK!
+      STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop STACK!
    then
-   STACK@ 1 MEM-64K-BYTES ;
+   STACK@ STACK-ABI:PAGE-BYTES ;
 
 : DUP2! ( fd n -- ) {: fd:fd dst:n :}
    fd FD>N dst dup2 dup 0 < if

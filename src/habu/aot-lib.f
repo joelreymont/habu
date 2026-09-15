@@ -142,14 +142,25 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
       1 +
    REPEAT drop ;
 
+\ A stripped image runs the same three guarded VM stacks as the engine, and
+\ installs the same crash handler. Both matter here and not only in the engine:
+\ a stripped application has no interpreter to name an overflow, so before guard
+\ pages its only diagnostic WAS the per-transfer check. Without the handler the
+\ guard page would be a bare SIGSEGV; with it, the overflow is the same named
+\ `hb: stack bounds exceeded (<which>)` and STACK-BOUNDS exit the engine gives.
 : EMIT-ENTRY
-   STACK-ABI:BOOT-BYTES 2048 / 0 do SP SP 2048 SUBI, loop
-   XDS SP 0 ADDI,
+   STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP
    EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
+   STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP
+   10 DATA STACK-ABI:RETURN-BASE-CELL STR,
+   STACK-ABI:LOOP-BYTES 10 STACK-GUARD:EMIT-MAP
+   10 DATA STACK-ABI:LOOP-BASE-CELL STR,
+   G-INSTALL-CRASH                               \ name a guard-page fault instead of dumping SIGSEGV
    EMIT-DATA-COPY                                \ restore persistent data + DP
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
-   0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
+   0 0 MOVZ,  NR-EXIT-GROUP SYS,                 \ exit(0)
+   EMIT-CRASH-HANDLER  EMIT-HEX ;                \ handler body, past the entry's exit
 variable CP2  variable CEND  variable NEXT-OFF
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
@@ -352,6 +363,7 @@ public
    AOT-DATA-SPAN
    AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !          \ the stripped image carries the crash handler too
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DATA-BLOB
    AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;

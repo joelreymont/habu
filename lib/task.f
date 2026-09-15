@@ -41,6 +41,10 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.STOP
    CELL +FIELD TCB.RET
    CELL +FIELD TCB.USER-XT-CELL
+   PTR-FIELD: TCB.RSTACK
+   CELL +FIELD TCB.RSTACK-U
+   PTR-FIELD: TCB.LSTACK
+   CELL +FIELD TCB.LSTACK-U
 END-STRUCTURE
 
 : TASK-TCB-OFFSET ( ptr a ptr b n -- ) {: field:ptr origin:ptr want:n :}
@@ -57,7 +61,9 @@ END-STRUCTURE
    origin TCB.DBASE origin TASK-ABI:DBASE-OFF TASK-TCB-OFFSET
    origin TCB.NDICT origin TASK-ABI:NDICT-OFF TASK-TCB-OFFSET
    origin TCB.CP origin TASK-ABI:CP-OFF TASK-TCB-OFFSET
-   origin TCB.STATUS origin TASK-ABI:STATUS-OFF TASK-TCB-OFFSET ;
+   origin TCB.STATUS origin TASK-ABI:STATUS-OFF TASK-TCB-OFFSET
+   origin TCB.RSTACK origin TASK-ABI:RSTACK-OFF TASK-TCB-OFFSET
+   origin TCB.LSTACK origin TASK-ABI:LSTACK-OFF TASK-TCB-OFFSET ;
 
 TASK-TCB-LAYOUT-CHECK
 
@@ -239,9 +245,19 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
 
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.STACK-U @ 0 <> if
-      tcb TCB.STACK @ tcb TCB.STACK-U @ TASK-MUNMAP-SPAN
+      tcb TCB.STACK @ tcb TCB.STACK-U @ MEM-RELEASE-GUARDED
       TASK-NULL tcb TCB.STACK !
       0 tcb TCB.STACK-U !
+   then
+   tcb TCB.RSTACK-U @ 0 <> if
+      tcb TCB.RSTACK @ tcb TCB.RSTACK-U @ MEM-RELEASE-GUARDED
+      TASK-NULL tcb TCB.RSTACK !
+      0 tcb TCB.RSTACK-U !
+   then
+   tcb TCB.LSTACK-U @ 0 <> if
+      tcb TCB.LSTACK @ tcb TCB.LSTACK-U @ MEM-RELEASE-GUARDED
+      TASK-NULL tcb TCB.LSTACK !
+      0 tcb TCB.LSTACK-U !
    then
    tcb TCB.REGION-U @ 0 <> if
       tcb TCB.REGION @ tcb TCB.REGION-U @ TASK-MUNMAP-SPAN
@@ -270,6 +286,8 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
    rbase reg RBASE-CELL + !
    tcb TCB.STACK @ reg STACK-ABI:BASE-CELL TASK-PTR!
    tcb TCB.STACK-U @ reg STACK-ABI:CAP-CELL + !
+   tcb TCB.RSTACK @ reg STACK-ABI:RETURN-BASE-CELL TASK-PTR!
+   tcb TCB.LSTACK @ reg STACK-ABI:LOOP-BASE-CELL TASK-PTR!
    0 reg RSP-CELL + !
    0 reg LOOPSP-CELL + !
    0 reg LVD-CELL + !
@@ -282,10 +300,17 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
 : TASK-CONSTRUCTED? ( ptr n -- bool )
    TASK-STATE@ TASK-EMPTY <> ;
 
+\ Every stack a task runs on is a guarded mapping (lib/memory.f), so the
+\ requested data-stack size rounds up to whole guard pages.
+: TASK-STACK-BYTES ( n -- n ) {: want:n :}
+   want STACK-ABI:PAGE-BYTES 1 - + STACK-ABI:PAGE-BYTES negate and ;
+
 : PREPARE ( ptr n -- ) {: tcb:ptr :}
    tcb TASK-CONSTRUCTED? if exit then
    tcb TCB.SIZE @ TASK-CHECK-SIZE
-   tcb TCB.SIZE @ MEM-ALLOC-64K-SPAN tcb TCB.STACK-U ! tcb TCB.STACK !
+   tcb TCB.SIZE @ TASK-STACK-BYTES MEM-ALLOC-GUARDED tcb TCB.STACK-U ! tcb TCB.STACK !
+   STACK-ABI:RETURN-BYTES MEM-ALLOC-GUARDED tcb TCB.RSTACK-U ! tcb TCB.RSTACK !
+   STACK-ABI:LOOP-BYTES MEM-ALLOC-GUARDED tcb TCB.LSTACK-U ! tcb TCB.LSTACK !
    TASK-REGION-BYTES 8 / >COUNT MEM-ALLOC-CELLS
    TASK-REGION-BYTES tcb TCB.REGION-U !
    tcb TCB.REGION !

@@ -876,8 +876,10 @@ CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant DECL-VARIANT-PAY-TERMS-OFF
 ;package
 
 
-STACK-ABI:LOOP-OFF constant LOOP-STK-OFF
-STACK-ABI:LOOP-END constant BODYBUF-OFF
+\ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
+\ lived at $600..$800. The frames are a guarded mapping now (STACK-ABI), so this
+\ states its own offset: the $600..$800 hole below it is free header space.
+$800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP
 $568 constant RSP-CELL
 $570 constant EXITH-CELL
@@ -947,9 +949,12 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 4 constant TOP-EV-CHAR      \ char literal pushed ( n )
 5 constant TOP-EV-TICK      \ ' pushed a found word's xt
 6 constant TOP-EV-WORD      \ found word about to execute (pre-BLR)
-STACK-ABI:RETURN-OFF constant RSTK-OFF
+\ The user return stack is a guarded mapping (STACK-ABI), not the $2800..$3000
+\ header band it used to be: a band inside a $8000 header cannot carry an
+\ inaccessible page, and an overflow there silently overwrote LOCNAMES. Its base
+\ lives in STACK-ABI:RETURN-BASE-CELL and the depth stays in RSP-CELL, so a
+\ slot is [RETURN-BASE-CELL] + depth*8. $2800..$3000 is free header space.
 STACK-ABI:RETURN-CELLS constant RSTK-CELLS
-STACK-ABI:RETURN-END constant RSTK-END
 
 \ ---- catch/throw handler frame (habu1.f BCATCH/BTHROW, habu2.f
 \ EM-EVAL-THROW-RECOVER; bootstrap/cg/forth.fs mirror) ----
@@ -973,7 +978,7 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 \ the protected state. It is read-only during replay and unmapped at commit.
 $5000 constant TXN-STATE-OFF
 $3000 constant TXN-STATE-LEN
-$10000 constant PROT-PAGE-MAX
+$10000 constant PROT-PAGE-MAX          \ = STACK-ABI:PAGE-BYTES; rt.f executes the agreement
 
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
 TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL

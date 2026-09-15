@@ -24,6 +24,14 @@ package RT
    if s" rt: mnem.f XDS and layout.f ENGINE-GPR:DSTACK disagree" EXIT-RC die then ;
 DSTACK-AGREE
 
+\ The guard granule is stated twice for the same reason: stack-abi.f is loaded
+\ ahead of layout.f by every window, so layout.f cannot name it, and layout.f's
+\ PROT-PAGE-MAX is what the protection window and the image writers round to.
+: PAGE-AGREE ( -- )
+   STACK-ABI:PAGE-BYTES PROT-PAGE-MAX <>
+   if s" rt: stack-abi.f PAGE-BYTES and layout.f PROT-PAGE-MAX disagree" EXIT-RC die then ;
+PAGE-AGREE
+
 ;package
 
 package STACK-GUARD
@@ -33,6 +41,12 @@ variable DESCRIPTOR-FAIL
 variable DESCRIPTOR-BASE
 variable DESCRIPTOR-CAP
 variable CURSOR-ABOVE
+variable MAP-CAP  variable MAP-DST
+variable MAP-MSG  variable MAP-OK   variable MAP-ROK
+variable MAP-BAD  variable MAP-DONE
+
+31 constant MAP-MSG-LEN     \ "hb: cannot map guarded VM stack"
+78 constant MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
 
 : EMIT-FAIL ( -- )
    LBL FAIL-MESSAGE !
@@ -74,6 +88,64 @@ public
    10 CURSOR-ABOVE @ CMPI,  C-CC DESCRIPTOR-FAIL LABEL@ BCOND, ;
 
 : EXIT-BOUNDS ( -- ) EMIT-FAIL ;
+
+\ EMIT-MAP ( cap dst -- ) : emit the code that maps ONE guarded VM stack of
+\ `cap` bytes and leaves its base in register `dst`.
+\
+\ This is what replaced the per-transfer bounds check. A stack occupies
+\ [base - PAGE, base + cap + PAGE) with the two outer pages inaccessible, so a
+\ push past the capacity or a read below the base takes SIGSEGV and
+\ src/habu/crash.f turns the faulting address into the named STACK-BOUNDS exit.
+\ Compiled code carries no check at all.
+\
+\ TWO mmap CALLS, NO mprotect: the first maps cap + 3*PAGE PROT_NONE, which IS
+\ the guard, and the second reopens the middle read/write with MAP_FIXED. The
+\ third page is alignment slack -- the kernel returns ITS page granule (16 KiB
+\ on this host) but the base has to be PAGE-BYTES aligned, because that is the
+\ granule run-in-stack proves an extent against. Rounding up into the slack
+\ leaves everything below the low guard PROT_NONE, so the slack only widens the
+\ guard, and a stack mapped this way is never released.
+\
+\ It runs before any crash handler exists and, for the boot data stack, before
+\ any region does, so the diagnostic is inline bytes reached by ADR and the exit
+\ is 78 -- the same class as the two fixed-region mappings. Both the engine
+\ (habu2.f EM-RUNTIME-STACK/EM-FRAME-STACKS) and the stripped AOT entry
+\ (aot-lib.f EMIT-ENTRY) emit it, which is why it lives here rather than in
+\ either of them. Local-free like the rest of this file, so the Gforth recovery
+\ compiler can check it.
+: EMIT-MAP ( n n -- )
+   MAP-DST !  MAP-CAP !
+   LBL MAP-MSG !  LBL MAP-OK !  LBL MAP-ROK !  LBL MAP-BAD !  LBL MAP-DONE !
+   0 0 MOVZ,
+   1 MAP-CAP @ STACK-ABI:PAGE-BYTES 3 * + LIT64,
+   2 0 MOVZ,                                        \ PROT_NONE: the whole span is guard
+   3 MAP-ANON-PRIVATE LIT64,
+   4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   6 STACK-ABI:PAGE-BYTES LIT64,  0 6 CMP,
+   C-GE MAP-OK LABEL@ BCOND,                        \ a -errno return is a small negative
+   MAP-BAD LABEL@ B,
+   MAP-OK LABEL@ LBL,
+   9 0 0 ADDI,
+   6 STACK-ABI:PAGE-BYTES 2 * 1 - LIT64,  9 9 6 ADD,
+   6 STACK-ABI:PAGE-BYTES negate LIT64,   9 9 6 AND,   \ x9 = base, one guard page in
+   0 9 0 ADDI,
+   1 MAP-CAP @ LIT64,
+   2 3 MOVZ,                                        \ PROT_READ|PROT_WRITE
+   3 MAP-ANON-PRIVATE-FIXED LIT64,
+   4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   0 9 CMP,
+   C-EQ MAP-ROK LABEL@ BCOND,
+   MAP-BAD LABEL@ B,
+   MAP-ROK LABEL@ LBL,
+   MAP-DST @ 9 0 ADDI,
+   MAP-DONE LABEL@ B,
+   MAP-BAD LABEL@ LBL,
+   0 2 MOVZ,  1 MAP-MSG LABEL@ ADR,  2 MAP-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
+   MAP-MSG LABEL@ LBL,  s" hb: cannot map guarded VM stack" BYTES,
+   MAP-DONE LABEL@ LBL, ;
 
 ;package
 

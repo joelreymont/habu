@@ -1570,20 +1570,28 @@ variable SZA-I
 : BCOUNT ( -- )
    A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
+\ The return stack is a guarded mapping whose base is in the header rather than
+\ a band at a fixed DATA offset, so a slot address is [RETURN-BASE-CELL] +
+\ depth*8. The depth is bumped and stored BEFORE x14 is reloaded with the base,
+\ which keeps the sequence to the same two scratch registers it always used.
+\ A push past RETURN-CELLS lands on the mapping's guard page and faults; there
+\ is no capacity compare here and there was none to remove.
 : RSTK-PUSH ( n -- )
    RSTK-REG !
    14 DATA RSP-CELL LDR,
-   15 14 3 LSLI,  15 DATA 15 ADD,
-   RSTK-REG @ 15 RSTK-OFF STR,
-   14 14 1 ADDI,  14 DATA RSP-CELL STR, ;
+   15 14 3 LSLI,
+   14 14 1 ADDI,  14 DATA RSP-CELL STR,
+   14 DATA STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
+   RSTK-REG @ 15 0 STR, ;
 
 : RSTK-POP ( n -- )
    RSTK-REG !
    14 DATA RSP-CELL LDR,
    14 14 1 SUBI,
-   15 14 3 LSLI,  15 DATA 15 ADD,
-   RSTK-REG @ 15 RSTK-OFF LDR,
-   14 DATA RSP-CELL STR, ;
+   15 14 3 LSLI,
+   14 DATA RSP-CELL STR,
+   14 DATA STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
+   RSTK-REG @ 15 0 LDR, ;
 
 : B2TOR ( -- )
    B G-POP A G-POP  A RSTK-PUSH  B RSTK-PUSH ;
@@ -2450,31 +2458,6 @@ public
 : BEXEC ( -- )
    A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-\ run-in-stack ( xt base size -- ) : run xt on a fresh data stack (x19=base,
-\ full-ascending). The supplied extent becomes active allocation authority,
-\ saved alongside XDS so normal return and nonlocal unwind restore the caller.
-: BRUNSTACK ( -- )
-   LBL LBL {: bad:label done:label :}
-   12 XDS 24 SUBI,
-   9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
-   10 11 0 ADDI,  12 14 0 ADDI,
-   0 bad STACK-GUARD:CHECK-CURSOR
-   XDS XDS 24 SUBI,
-   SP SP 32 SUBI,  30 SP 0 STR,  XDS SP 8 STR,
-   12 DATA STACK-ABI:BASE-CELL LDR,  12 SP 16 STR,
-   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 24 STR,
-   14 DATA STACK-ABI:BASE-CELL STR,  11 DATA STACK-ABI:CAP-CELL STR,
-   XDS 14 0 ADDI,
-   9 BLR,
-   14 SP 16 LDR,  10 SP 24 LDR,  12 SP 8 LDR,
-   0 bad STACK-GUARD:CHECK-CURSOR
-   14 DATA STACK-ABI:BASE-CELL STR,
-   12 SP 24 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   XDS SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
-   done B,
-   bad LBL,  STACK-GUARD:EXIT-BOUNDS
-   done LBL, ;
-
 \ catch ( xt -- exc ): a HNDF-SIZE handler frame chained through HND-CELL saves the
 \ COMPLETE caller execution frame so a caught throw resumes it (dot
 \ habu-restore-complete-exec-abb8baca). Frame: 0 prev-HND | 8 data-sp(x19) |
@@ -2558,6 +2541,64 @@ public
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
+
+\ GUARDED-EXTENT? ( x14 = base, x11 = capacity ): prove the caller handed over a
+\ stack that STACK:GUARDED mapped, not a buffer. There is no per-push bounds
+\ check any more -- the capacity is enforced by the inaccessible page above the
+\ mapping -- so a plain `create BUF … allot` base would overflow into the DP heap
+\ with nothing to stop it. The proof is structural rather than a value heuristic:
+\   base is non-zero and PAGE-BYTES aligned, capacity is non-zero and
+\   PAGE-BYTES aligned, base+capacity does not wrap, and base lies OUTSIDE the
+\   DATA region.
+\ The last clause is what makes it a proof rather than a guess: every `create`,
+\ `allot`, `,` and `buffer` address is inside [DATA-VA, DATA-VA+DATA-SIZE), so
+\ no DP-heap buffer can satisfy it however it happens to be aligned -- and
+\ DATA-VA is itself PAGE-BYTES aligned, so alignment alone would not have
+\ excluded them. Clobbers x12 and x15.
+: GUARDED-EXTENT? ( label -- )
+   {: bad:label :}
+   14 bad CBZ,
+   11 bad CBZ,
+   15 STACK-ABI:PAGE-BYTES 1 - LIT64,
+   12 14 15 AND,  12 bad CBNZ,
+   12 11 15 AND,  12 bad CBNZ,
+   12 14 11 ADD,  12 14 CMP,  C-CC bad BCOND,
+   15 DATA-VA VA>N LIT64,  12 14 15 SUB,
+   15 DATA-SIZE LIT64,  12 15 CMP,  C-CC bad BCOND, ;
+
+\ run-in-stack ( xt base size -- ) : run xt on a fresh data stack (x19=base,
+\ full-ascending). The supplied extent becomes active allocation authority,
+\ saved alongside XDS so normal return and nonlocal unwind restore the caller.
+\ It must be a guarded mapping: an unguarded extent is a CALLER error the
+\ program can fix and recover from, so it throws STACK-ABI:E-UNGUARDED (inlined
+\ the way BFINALLY inlines BTHROW, which is why this word sits below it) rather
+\ than exiting the process. A malformed DESCRIPTOR is still the fail-closed
+\ STACK-BOUNDS exit: that one can arrive from a saved frame or a task, where
+\ there is no caller left to hand a throw to.
+: BRUNSTACK ( -- )
+   LBL LBL LBL {: bad:label unguarded:label done:label :}
+   12 XDS 24 SUBI,
+   9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
+   unguarded GUARDED-EXTENT?
+   10 11 0 ADDI,  12 14 0 ADDI,
+   0 bad STACK-GUARD:CHECK-CURSOR
+   XDS XDS 24 SUBI,
+   SP SP 32 SUBI,  30 SP 0 STR,  XDS SP 8 STR,
+   12 DATA STACK-ABI:BASE-CELL LDR,  12 SP 16 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR,  12 SP 24 STR,
+   14 DATA STACK-ABI:BASE-CELL STR,  11 DATA STACK-ABI:CAP-CELL STR,
+   XDS 14 0 ADDI,
+   9 BLR,
+   14 SP 16 LDR,  10 SP 24 LDR,  12 SP 8 LDR,
+   0 bad STACK-GUARD:CHECK-CURSOR
+   14 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 24 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   XDS SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
+   done B,
+   unguarded LBL,
+   9 STACK-ABI:E-UNGUARDED LIT64,  9 G-PUSH  BTHROW
+   bad LBL,  STACK-GUARD:EXIT-BOUNDS
+   done LBL, ;
 
 \ finally ( body cleanup -- ): preserve the body's result row on success;
 \ cleanup runs outside the body's handler so its throw supersedes that body's.
