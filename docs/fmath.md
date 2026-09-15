@@ -10,6 +10,10 @@
 | `FPOW ( r r -- r )` | Positive finite base raised to a finite exponent. |
 | `FEXP ( r -- r )` | Existing degree-six range-reduced exponential approximation. |
 | `FROUND ( r -- n )` | Nearest signed integer, with half values away from zero. |
+| `SIN ( r -- r )` | Sine of a finite binary64 argument below 2^20 * pi/2 in magnitude. |
+| `COS ( r -- r )` | Cosine, same domain. |
+| `PI ( -- r )` | pi as the nearest binary64, bit pattern $400921FB54442D18. |
+| `LDEXP ( r n -- r )` | `r * 2^n` for a finite `r`, exact for normal results. |
 
 Invalid root inputs, logarithm inputs, bases and exponents throw
 `FMATH:E-DOMAIN` (-9020). An overflowing power or a nonfinite intermediate
@@ -36,6 +40,29 @@ powers of two. It scales the polynomial itself, avoiding an intermediate
 `2^1024` infinity when the final result is finite. The logarithm and product
 rounding can be amplified by large exponents; this is an approximation, not
 a correctly rounded replacement for the platform math library.
+
+`SIN` and `COS` are fdlibm's `__kernel_sin` and `__kernel_cos` with its
+medium-argument reduction (`__ieee754_rem_pio2`): the argument is reduced by
+`n * pi/2` with pi/2 carried in three 33-bit pieces, refined a second and a
+third time only when cancellation removed more than 16, then 49, bits. That
+reduction is exact for |x| below 2^20 * pi/2 (1647099.32...), which is the
+domain; a larger finite argument, an infinity or a NaN throws `E-DOMAIN`
+rather than returning a value with fewer correct bits. Within the domain the
+result is within 1 ulp of the correctly rounded value, fdlibm's bound for these
+kernels; the test compares eighteen arguments across the domain, including the
+twiddle argument `2*pi*7*13/1024` and both reduction refinements, against
+glibc's binary64 results, and every one agrees to the bit. Odd and even
+symmetry hold exactly because the reduction works on |x|. The constants are
+the exact bit patterns fdlibm was fitted with, so the source's decimal parser
+plays no part.
+
+`LDEXP` multiplies by an exact power of two: 2^k for -1074 <= k <= 1023 is
+built from its bit pattern, and larger |n| goes through steps of 2^1023 and
+2^-1022 that are exact while the intermediate stays normal, so a normal result
+is exact and a subnormal result rounds once in the final step. The exponent is
+clamped to [-2200, 2100] first, past which every nonzero finite value has
+overflowed or underflowed already. Overflow throws `E-OUTPUT`, underflow
+returns signed zero, and a nonfinite value throws `E-DOMAIN`.
 
 Run the focused native tests from the Habu root:
 
