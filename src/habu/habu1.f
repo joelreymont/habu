@@ -3226,7 +3226,24 @@ package ENGINE-EMIT
 package ENGINE-EMIT
 
 
+\ Transition only. A host whose compiler still emits calls to the stack-guard
+\ helpers bakes sites named (STACK-DATA), (STACK-RETURN) and (STACK-LOOP) into
+\ the code it captures, and the engine it builds resolves those names at start.
+\ Until the first guard-free host has rebuilt the engine, the names resolve to
+\ routines that return at once. Remove with the first fixpoint after that.
+: EMIT-STACK-GUARD-SHIM ( ptr u8 n -- ) {: a:ptr u:n :}
+   LBL LBL {: start:label end:label :}
+   a u start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,  RET,
+   end LBL, ;
+
+: EMIT-STACK-GUARD-SHIMS ( -- )
+   s" (STACK-DATA)" EMIT-STACK-GUARD-SHIM
+   s" (STACK-RETURN)" EMIT-STACK-GUARD-SHIM
+   s" (STACK-LOOP)" EMIT-STACK-GUARD-SHIM ;
+
 : EMIT-PRIMS ( -- )
+   EMIT-STACK-GUARD-SHIMS
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS
