@@ -39,6 +39,8 @@ CRH-INIT
 264 constant MACOS-MCTX-SP-OFF
 272 constant MACOS-MCTX-PC-OFF
 168 constant MACOS-MCTX-X19-OFF
+16 constant LINUX-SI-ADDR-OFF  \ siginfo_t._sifields._sigfault.si_addr
+24 constant MACOS-SI-ADDR-OFF  \ __siginfo.si_addr, after six ints
 
 \ LHEX ( x9=val -- ) : write 16 hex digits + newline to fd 2. Uses a 32-byte stack
 \ scratch; clobbers x9..x15 and x0-x2/x16 (write syscall). Leaf (no nested call).
@@ -62,13 +64,43 @@ CRH-INIT
    0 2 MOVZ,  1 14 0 ADDI,  2 17 MOVZ,  NR-WRITE SYS,   \ write(2, buf, 17)
    SP SP 32 ADDI,  RET, ;
 
+\ x20 = signal number, x19 = ucontext, x23 = siginfo. The siginfo pointer
+\ carries si_addr, the faulting address, which is how a SIGSEGV inside a VM
+\ stack's guard page is told apart from any other one. Linux enters the
+\ handler with (sig, info, uctx) in x0/x1/x2; the macOS trampoline passes
+\ (catcher, style, sig, info, uctx) in x0..x4.
 : C-CRASH-ENTRY ( -- )
    HB-TARGET-LINUX? IF
       20 0 0 ADDI,
+      23 1 0 ADDI,
       19 2 0 ADDI,
    ELSE
       20 2 0 ADDI,
+      23 3 0 ADDI,
       19 4 0 ADDI,
+   THEN ;
+
+\ si_addr's byte offset inside siginfo_t: Linux aarch64 pads si_signo/errno/code
+\ to 16 bytes, macOS puts six ints ahead of it.
+: C-CRASH-FAULT-ADDR>R25 ( -- )
+   HB-TARGET-LINUX? IF
+      25 23 LINUX-SI-ADDR-OFF LDR,
+   ELSE
+      25 23 MACOS-SI-ADDR-OFF LDR,
+   THEN ;
+
+\ The interrupted engine's DATA base, read out of the signal mcontext the same
+\ way C-CRASH-PC-WORD reads its region base: the handler's own x20 is the
+\ signal number by now. Every stack descriptor is a cell in that region. The
+\ literal 20 is the DATA/RBASE register slot in the saved mcontext register
+\ array: this file loads (and this word compiles) before forth.fs's DATA
+\ alias exists, so the register number is spelled directly, exactly as the
+\ rest of this file already does throughout.
+: C-CRASH-DATA>R24 ( -- )
+   HB-TARGET-LINUX? IF
+      24 21 LINUX-MCTX-X0-OFF 20 8 * + LDR,
+   ELSE
+      24 21 SS-OFF 20 8 * + LDR,
    THEN ;
 
 : C-CRASH-MCTX>R21 ( -- )
@@ -129,14 +161,96 @@ CRH-INIT
 : C-CRASH-PC+4 ( -- )
    4 C-CRASH-PC-WORD ;
 
+\ ---- guard-page classification -----------------------------------------------
+\ Every VM stack is a mapping with an inaccessible page on each side
+\ (forth.fs STACK-GUARD:EMIT-MAP), so "this stack overflowed" is a fault
+\ whose address lands in one of those pages. That is the whole of the
+\ engine's capacity enforcement now: compiled code carries no bounds check,
+\ and this is where the fault becomes the diagnostic the checks used to
+\ print. Mirrors src/habu/crash.f C-CRASH-GUARD-CASE/C-CRASH-STACK-GUARDS.
+\
+\ A case is skipped rather than trusted when its descriptor is not a
+\ plausible one -- zero, or not PAGE-BYTES aligned. The DATA base comes out
+\ of the signal mcontext, so a fault in foreign code that had already
+\ overwritten x20 reads cells that are not descriptors at all; an implausible
+\ one falls through to the ordinary register dump instead of naming a stack
+\ that did not fault.
+variable CRS-BASE   variable CRS-CAP   variable CRS-CAPCELL
+variable CRS-HIT    variable CRS-NEXT  variable CRS-SKIP  variable CRS-FAULT
+variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
+variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
+
+\ The three diagnostics, each a single line emitted by one BYTES, call: the
+\ newline lives inside the string literal, so the length that reaches
+\ C-CRASH-GUARD-REPORT and the length BYTES, embeds are the same read of the
+\ same spelling -- no separately maintained length constant to drift from it.
+: CRS-DATA$ ( -- a u ) s\" hb: stack bounds exceeded (data)\n" ;
+: CRS-RET$  ( -- a u ) s\" hb: stack bounds exceeded (return)\n" ;
+: CRS-LOOP$ ( -- a u ) s\" hb: stack bounds exceeded (loop)\n" ;
+
+11 constant CRASH-SIGSEGV
+7  constant CRASH-SIGBUS
+
+\ x24 = DATA, x25 = fault address, x11 = PAGE-BYTES, x12 = PAGE-BYTES-1.
+\ CRS-CAPCELL is a header offset to read the capacity from, or 0 to use
+\ CRS-CAP.
+: C-CRASH-GUARD-CASE ( -- )
+   9 24 CRS-BASE @ LDR,
+   9 CRS-NEXT @ CBZ,
+   10 9 12 AND,  10 CRS-NEXT @ CBNZ,
+   13 9 11 SUB,                                  \ low guard starts one page below the base
+   10 25 13 SUB,
+   10 11 CMP,  C-CC CRS-HIT @ BCOND,
+   CRS-CAPCELL @ 0= IF 13 CRS-CAP @ LIT64, ELSE 13 24 CRS-CAPCELL @ LDR, THEN
+   13 9 13 ADD,                                  \ high guard starts at base + capacity
+   10 25 13 SUB,
+   10 11 CMP,  C-CC CRS-HIT @ BCOND,
+   CRS-NEXT @ LBL, ;
+
+: C-CRASH-GUARD-REPORT ( n n -- )                \ ( msg-label msg-len -- ) never returns
+   {: msg len :}
+   0 2 MOVZ,  1 msg ADR,  2 len MOVZ,  NR-WRITE SYS,
+   0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: C-CRASH-STACK-GUARDS ( -- )
+   LBL CRS-SKIP !  LBL CRS-FAULT !
+   LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !
+   LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !
+   \ si_addr only describes a memory fault; a trap or an FPE carries no address.
+   20 CRASH-SIGSEGV CMPI,  C-EQ CRS-FAULT @ BCOND,
+   20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP @ BCOND,
+   CRS-FAULT @ LBL,
+   C-CRASH-FAULT-ADDR>R25
+   C-CRASH-DATA>R24
+   11 STACK-ABI:PAGE-BYTES LIT64,
+   12 STACK-ABI:PAGE-BYTES 1 - LIT64,
+   STACK-ABI:BASE-CELL CRS-BASE !  STACK-ABI:CAP-CELL CRS-CAPCELL !
+   CRS-DATA-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   STACK-ABI:RETURN-BASE-CELL CRS-BASE !  0 CRS-CAPCELL !
+   STACK-ABI:RETURN-BYTES CRS-CAP !
+   CRS-RET-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   STACK-ABI:LOOP-BASE-CELL CRS-BASE !  0 CRS-CAPCELL !
+   STACK-ABI:LOOP-BYTES CRS-CAP !
+   CRS-LOOP-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
+   CRS-SKIP @ B,
+   CRS-DATA-H @ LBL,  CRS-DATA-M @ CRS-DATA$ nip C-CRASH-GUARD-REPORT
+   CRS-RET-H  @ LBL,  CRS-RET-M  @ CRS-RET$  nip C-CRASH-GUARD-REPORT
+   CRS-LOOP-H @ LBL,  CRS-LOOP-M @ CRS-LOOP$ nip C-CRASH-GUARD-REPORT
+   CRS-DATA-M @ LBL,  CRS-DATA$ BYTES,
+   CRS-RET-M  @ LBL,  CRS-RET$  BYTES,
+   CRS-LOOP-M @ LBL,  CRS-LOOP$ BYTES,
+   CRS-SKIP @ LBL, ;
+
 \ The crash handler is entered DIRECTLY as the trampoline (sa_tramp=Lcrashh), so
 \ the kernel's register layout applies on entry: x2=sig, x4=ucontext.
 : EMIT-CRASH-HANDLER ( -- )
    LCRASHH @ LBL,
    LBL LBL {: rl RD :}
       C-CRASH-ENTRY
-      1 LHDR @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,   \ write header
       C-CRASH-MCTX>R21
+      C-CRASH-STACK-GUARDS                  \ a guard-page fault exits here, named -- before
+                                             \ the header, so it prints only its own one line
+      1 LHDR @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,   \ write header
       9 20 0 ADDI,  LHEX @ BL,              \ print sig
       20 0 MOVZ,                            \ i = 0..28
       rl LBL,  20 29 CMPI,  C-GE RD BCOND,

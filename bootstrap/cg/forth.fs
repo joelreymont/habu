@@ -81,7 +81,9 @@ SOURCE-ARENA-CAP constant IBUFSZ  \ native mirror src/habu/layout.f
 require exec.fs
 require templ.fs           \ g-push, XDS(=19)
 require rt.fs              \ G-PRINT9 (shared signed-decimal printer)
-require crash.fs           \ in-binary crash handler (register dump on signal)
+\ crash.fs's guard-page classification reads STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS
+\ (below), so it is required after that block, not immediately here -- see the
+\ require crash.fs statement following STACK-ABI:EVAL-BYTES.
 
 \ x20 (RBASE) is dead after startup, so it doubles as DATA: the data-space base.
 \ [x20] holds DP (next-free pointer); usable space is [x20+8 .. x20+DATA-SIZE-PROF-CNT-BYTES)
@@ -124,18 +126,43 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii
 102 constant ENGINE-ERROR:STACK-BOUNDS
 \ Explicit recovery mirror of src/habu/stack-abi.f, exercised by the parity
 \ fixture. Gforth's standalone templ.fs owns a different stack arrangement.
+\
+\ EVERY VM STACK IS A GUARDED MAPPING now, never a band inside the DATA
+\ header: STACK-GUARD:EMIT-MAP maps cap+3*PAGE-BYTES PROT_NONE, then remaps
+\ the capacity read/write at a PAGE-BYTES boundary inside it, so a push past
+\ the capacity or a read below the base faults instead of failing a
+\ per-transfer compare. src/habu/crash.f (mirrored in crash.fs)
+\ C-CRASH-STACK-GUARDS turns that fault into the named diagnostic.
 $1D0 constant STACK-ABI:BASE-CELL
 $47E8 constant STACK-ABI:CAP-CELL
 $47F0 constant STACK-ABI:REPL-BASE-CELL
 $47F8 constant STACK-ABI:REPL-CAP-CELL
-$4000 constant STACK-ABI:BOOT-BYTES
-$2800 constant STACK-ABI:RETURN-OFF
-$3000 constant STACK-ABI:RETURN-END
-STACK-ABI:RETURN-END STACK-ABI:RETURN-OFF - 8 / constant STACK-ABI:RETURN-CELLS
-$600 constant STACK-ABI:LOOP-OFF
-$800 constant STACK-ABI:LOOP-END
+
+\ The guard granule: the maximum arm64 page a supported target can boot with
+\ (64 KiB), not this host's own page size. Mirrors layout.f PROT-PAGE-MAX.
+$10000 constant STACK-ABI:PAGE-BYTES
+
+\ Boot data stack: one guarded page of cells.
+STACK-ABI:PAGE-BYTES constant STACK-ABI:BOOT-BYTES
+
+\ User return stack and DO/LOOP frame stack: each is its own guarded mapping
+\ (moved out of the DATA header, which has no room for an inaccessible page),
+\ base published in a header cell, mapped per task by lib/task.f PREPARE.
+$4800 constant STACK-ABI:RETURN-BASE-CELL
+$4808 constant STACK-ABI:LOOP-BASE-CELL
+
+STACK-ABI:PAGE-BYTES constant STACK-ABI:RETURN-BYTES
+STACK-ABI:RETURN-BYTES 8 / constant STACK-ABI:RETURN-CELLS
 16 constant STACK-ABI:LOOP-FRAME-BYTES
-STACK-ABI:LOOP-END STACK-ABI:LOOP-OFF - STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
+STACK-ABI:PAGE-BYTES constant STACK-ABI:LOOP-BYTES
+STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
+
+\ run-in-stack's refusal code for an extent that is not a guarded mapping.
+\ Spelled twice on purpose, exactly as src/habu/stack-abi.f E-UNGUARDED is:
+\ the engine emitters and this recovery mirror both compile long before any
+\ lib/ file (lib/errors.f E-STACK-UNGUARDED) exists.
+-3802 constant STACK-ABI:E-UNGUARDED
+
 $40 constant STACK-ABI:CATCH-BASE
 $48 constant STACK-ABI:CATCH-CAP
 $50 constant STACK-ABI:CATCH-BYTES
@@ -143,6 +170,10 @@ $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
 $90 constant STACK-ABI:EVAL-BYTES
+
+require crash.fs           \ in-binary crash handler (register dump on signal);
+                            \ needs STACK-ABI:*/ENGINE-ERROR:STACK-BOUNDS above
+
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
 $F2C00010 constant C-CALL-MOVK-X16-32
@@ -287,8 +318,10 @@ $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recove
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
 $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapshot
 $37F8 constant SNAP-CELL    \ nonzero after snapshot restore; source setup skips cold prefix reload
-$600 constant LOOP-STK-OFF \ DO/LOOP frames (index,limit) — 32 nested, 16 B each
-                           \ (baked into the j-do/j-loop/j-i precomputed words — don't move)
+\ BODYBUF-OFF was spelled as the end of the DO/LOOP frame band while that band
+\ lived at $600..$800 in the DATA header. The frames are a guarded mapping now
+\ (STACK-ABI:LOOP-BASE-CELL/LOOP-BYTES), so this states its own offset; the
+\ $600..$800 hole below it is free header space.
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
 8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
 $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
@@ -305,9 +338,12 @@ $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $250 constant DEF-TKA-CELL \ original qualified definition spelling
 $258 constant DEF-TKL-CELL
 $27C0 constant PKGRESYNC-CELL \ checker package-resync latch; mirrors native layout
-$2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
-256 constant RSTK-CELLS
-RSTK-OFF RSTK-CELLS cells + constant RSTK-END
+\ The user return stack is a guarded mapping (STACK-ABI:RETURN-BASE-CELL) now,
+\ not the $2800..$3000 header band it used to be: a band inside a $8000 header
+\ cannot carry an inaccessible page, and an overflow there silently overwrote
+\ LOCNAMES. Its base lives in the header cell and the depth stays in RSP-CELL,
+\ so a slot is [RETURN-BASE-CELL] + depth*8. $2800..$3000 is free header space.
+STACK-ABI:RETURN-CELLS constant RSTK-CELLS
 \ ---- catch/throw handler frame (BCATCH/BTHROW). MIRROR of src/habu/layout.f;
 \ a HNDF-SIZE machine-stack frame chained through HND-CELL that also saves the
 \ user return-stack depth (RSP-CELL) and loop-stack depth (LOOPSP-CELL) so a caught
@@ -315,7 +351,7 @@ RSTK-OFF RSTK-CELLS cells + constant RSTK-END
 \ Frame: 0 prev-HND | 8 data-sp | 16 machine-sp | 24 resume-pc | 32 link |
 \ 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel. Keep byte-for-byte with native. ----
 STACK-ABI:CATCH-BYTES constant HNDF-SIZE
-BODYBUF-OFF LOOP-STK-OFF - 16 / constant LOOP-STK-FRAMES  \ 32 nested DO/LOOP frames
+STACK-ABI:LOOP-FRAMES constant LOOP-STK-FRAMES
 STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
 \ MIRROR of src/habu/layout.f. `defer NAME ( E )` declared before checker.f's
@@ -549,6 +585,57 @@ previous definitions
    12 14 CMP, C-CC fail BCOND,
    12 12 14 SUB, 12 10 CMP, C-HI fail BCOND,
    10 10 12 SUB, 10 above CMPI, C-CC fail BCOND, ;
+
+31 constant STACK-GUARD:MAP-MSG-LEN     \ "hb: cannot map guarded VM stack"
+78 constant STACK-GUARD:MAP-FAIL-RC     \ the rc the two fixed-region mappings already use
+
+\ EMIT-MAP ( cap dst -- ) : emit the code that maps ONE guarded VM stack of
+\ `cap` bytes and leaves its base in register `dst`. Mirrors src/habu/rt.f
+\ STACK-GUARD:EMIT-MAP.
+\
+\ TWO mmap CALLS, NO mprotect: the first maps cap + 3*PAGE-BYTES PROT_NONE,
+\ which IS the guard, and the second reopens the middle read/write with
+\ MAP_FIXED. The third page is alignment slack -- the kernel returns ITS page
+\ granule but the base has to be PAGE-BYTES aligned, because that is the
+\ granule run-in-stack proves an extent against. Rounding up into the slack
+\ leaves everything below the low guard PROT_NONE, so the slack only widens
+\ the guard, and a stack mapped this way is never released.
+\
+\ Runs before any crash handler exists (and, for the boot data stack, before
+\ any region does), so the diagnostic is inline bytes and the exit is 78 --
+\ the same class as the two fixed-region mappings.
+: STACK-GUARD:EMIT-MAP ( cap dst -- )
+   LBL LBL LBL LBL LBL {: cap dst msg ok rok bad done :}
+   0 0 MOVZ,
+   1 cap STACK-ABI:PAGE-BYTES 3 * + LIT64,
+   2 0 MOVZ,                                        \ PROT_NONE: the whole span is guard
+   3 MAP-ANON-PRIVATE LIT64,
+   4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   6 STACK-ABI:PAGE-BYTES LIT64,  0 6 CMP,
+   C-GE ok BCOND,                                    \ a -errno return is a small negative
+   bad B,
+   ok LBL,
+   9 0 0 ADDI,
+   6 STACK-ABI:PAGE-BYTES 2 * 1 - LIT64,  9 9 6 ADD,
+   6 STACK-ABI:PAGE-BYTES negate LIT64,   9 9 6 AND,  \ x9 = base, one guard page in
+   0 9 0 ADDI,
+   1 cap LIT64,
+   2 3 MOVZ,                                        \ PROT_READ|PROT_WRITE
+   3 MAP-ANON-PRIVATE-FIXED LIT64,
+   4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   0 9 CMP,
+   C-EQ rok BCOND,
+   bad B,
+   rok LBL,
+   dst 9 0 ADDI,
+   done B,
+   bad LBL,
+   0 2 MOVZ,  1 msg ADR,  2 STACK-GUARD:MAP-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 STACK-GUARD:MAP-FAIL-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: cannot map guarded VM stack" BYTES,
+   done LBL, ;
 
 
 : G-PUSH ( reg -- ) XDS 0 STR, XDS XDS 8 ADDI, ;
@@ -894,12 +981,23 @@ previous definitions
    LBL {: done :}
    14 XDS 8 SUBI, A 14 0 LDR, A done CBZ, A G-PUSH done LBL, ;
 
+\ The depth is bumped and stored BEFORE x14 is reloaded with the guarded
+\ mapping's base, which keeps the sequence to the same two scratch registers
+\ it always used. A push past RETURN-CELLS lands on the mapping's guard page
+\ and faults; there is no capacity compare here and there was none to remove.
 : RSTK-PUSH ( reg -- ) {: reg :}
-   14 DATA RSP-CELL LDR, 15 14 3 LSLI, 15 DATA 15 ADD,
-   reg 15 RSTK-OFF STR, 14 14 1 ADDI, 14 DATA RSP-CELL STR, ;
+   14 DATA RSP-CELL LDR,
+   15 14 3 LSLI,
+   14 14 1 ADDI,  14 DATA RSP-CELL STR,
+   14 DATA STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
+   reg 15 0 STR, ;
 : RSTK-POP ( reg -- ) {: reg :}
-   14 DATA RSP-CELL LDR, 14 14 1 SUBI, 15 14 3 LSLI, 15 DATA 15 ADD,
-   reg 15 RSTK-OFF LDR, 14 DATA RSP-CELL STR, ;
+   14 DATA RSP-CELL LDR,
+   14 14 1 SUBI,
+   15 14 3 LSLI,
+   14 DATA RSP-CELL STR,
+   14 DATA STACK-ABI:RETURN-BASE-CELL LDR,  15 14 15 ADD,
+   reg 15 0 LDR, ;
 : B2TOR ( -- )
    B G-POP A G-POP A RSTK-PUSH B RSTK-PUSH ;
 : B2RFROM ( -- )
@@ -1167,25 +1265,6 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 
 : BEXEC ( -- )   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;  \ ( xt -- )
 
-
-: BRUNSTACK ( -- )
-   LBL LBL {: bad done :}
-   12 XDS 24 SUBI,
-   9 12 0 LDR, 14 12 8 LDR, 11 12 16 LDR,
-   10 11 0 ADDI, 12 14 0 ADDI, 0 bad STACK-GUARD:CHECK-CURSOR
-   XDS XDS 24 SUBI,
-   SP SP 32 SUBI, 30 SP 0 STR, XDS SP 8 STR,
-   12 DATA STACK-ABI:BASE-CELL LDR, 12 SP 16 STR,
-   12 DATA STACK-ABI:CAP-CELL LDR, 12 SP 24 STR,
-   14 DATA STACK-ABI:BASE-CELL STR, 11 DATA STACK-ABI:CAP-CELL STR,
-   XDS 14 0 ADDI, 9 BLR,
-   14 SP 16 LDR, 10 SP 24 LDR, 12 SP 8 LDR,
-   0 bad STACK-GUARD:CHECK-CURSOR
-   14 DATA STACK-ABI:BASE-CELL STR,
-   12 SP 24 LDR, 12 DATA STACK-ABI:CAP-CELL STR,
-   XDS SP 8 LDR, 30 SP 0 LDR, SP SP 32 ADDI, done B,
-   bad LBL, STACK-GUARD:EXIT-BOUNDS done LBL, ;
-
 \ catch ( xt -- exc ) / throw ( exc -- ). Handler frames chain through [x20+8]
 \ (=HND). A HNDF-SIZE frame on the machine stack saves the COMPLETE caller frame:
 \ 0 prev-HND, 8 data-sp(x19), 16 machine-sp, 24 resume-pc (an ADR within this
@@ -1250,6 +1329,58 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
    \ forged/corrupt handler frame: seed hard-exits (mirrors native BTHROW THROW-CORRUPT)
    lcorrupt LBL,  s" hb: catch frame corrupt" ENGINE-ERROR:CATCH-STACK C-EXIT-DIAG ;
+
+\ GUARDED-EXTENT? ( fail -- ): prove the caller handed over a stack that
+\ STACK-GUARD:EMIT-MAP mapped, not a buffer. There is no per-push bounds check
+\ any more -- the capacity is enforced by the inaccessible page above the
+\ mapping -- so a plain create/allot base would overflow into the DP heap with
+\ nothing to stop it. The proof is structural rather than a value heuristic:
+\ base is non-zero and PAGE-BYTES aligned, capacity is non-zero and PAGE-BYTES
+\ aligned, base+capacity does not wrap, and base lies OUTSIDE the DATA region.
+\ The last clause is what makes it a proof rather than a guess: every create,
+\ allot, `,` and buffer address is inside [DATA-VA, DATA-VA+DATA-SIZE), which
+\ no DP-heap buffer can satisfy however it happens to be aligned. Clobbers x12
+\ and x15. Mirrors src/habu/habu1.f GUARDED-EXTENT?.
+: GUARDED-EXTENT? ( fail -- ) {: bad :}
+   14 bad CBZ,
+   11 bad CBZ,
+   15 STACK-ABI:PAGE-BYTES 1 - LIT64,
+   12 14 15 AND,  12 bad CBNZ,
+   12 11 15 AND,  12 bad CBNZ,
+   12 14 11 ADD,  12 14 CMP,  C-CC bad BCOND,
+   15 DATA-VA LIT64,  12 14 15 SUB,
+   15 DATA-SIZE LIT64,  12 15 CMP,  C-CC bad BCOND, ;
+
+\ run-in-stack ( xt base size -- ): run xt on a fresh data stack (x19=base,
+\ full-ascending). The supplied extent becomes active allocation authority,
+\ saved alongside XDS so normal return and nonlocal unwind restore the caller.
+\ It must be a guarded mapping: an unguarded extent is a CALLER error the
+\ program can fix and recover from, so it throws STACK-ABI:E-UNGUARDED
+\ (inlined the way BFINALLY inlines BTHROW below, which is why this word sits
+\ here) rather than exiting the process. A malformed DESCRIPTOR is still the
+\ fail-closed STACK-BOUNDS exit: that one can arrive from a saved frame or a
+\ task, where there is no caller left to hand a throw to. Mirrors
+\ src/habu/habu1.f BRUNSTACK.
+: BRUNSTACK ( -- )
+   LBL LBL LBL {: bad unguarded done :}
+   12 XDS 24 SUBI,
+   9 12 0 LDR, 14 12 8 LDR, 11 12 16 LDR,
+   unguarded GUARDED-EXTENT?
+   10 11 0 ADDI, 12 14 0 ADDI, 0 bad STACK-GUARD:CHECK-CURSOR
+   XDS XDS 24 SUBI,
+   SP SP 32 SUBI, 30 SP 0 STR, XDS SP 8 STR,
+   12 DATA STACK-ABI:BASE-CELL LDR, 12 SP 16 STR,
+   12 DATA STACK-ABI:CAP-CELL LDR, 12 SP 24 STR,
+   14 DATA STACK-ABI:BASE-CELL STR, 11 DATA STACK-ABI:CAP-CELL STR,
+   XDS 14 0 ADDI, 9 BLR,
+   14 SP 16 LDR, 10 SP 24 LDR, 12 SP 8 LDR,
+   0 bad STACK-GUARD:CHECK-CURSOR
+   14 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 24 LDR, 12 DATA STACK-ABI:CAP-CELL STR,
+   XDS SP 8 LDR, 30 SP 0 LDR, SP SP 32 ADDI, done B,
+   unguarded LBL,
+   9 STACK-ABI:E-UNGUARDED LIT64,  9 G-PUSH  BTHROW
+   bad LBL, STACK-GUARD:EXIT-BOUNDS done LBL, ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 \ finally ( body cleanup -- ): mirrors src/habu/habu1.f BFINALLY. The body's
@@ -3164,13 +3295,47 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    14 SP 8 LDR,  15 DATA LOCF-CELL LDR,  12 14 15 SUB,  C-EMIT-DROP-X12
    SP SP 16 ADDI, ;
 
-\ DO/LOOP/I — loop index/limit live in a data-region frame stack ([x20+LOOP-STK-OFF],
-\ depth [x20+LOOPSP-CELL]) since x27/x28 are the compiler's NDICT/CP. Fixed encodings
-\ (computed offline). J-DO pushes a frame + records loop-top; J-LOOP increments the
-\ index, compares, b.lt back, then pops the frame on exit; J-I pushes the index.
+\ Instruction words the JIT stamps into generated code. They live here, above
+\ the loop and return-stack emitters, because every one of those families now
+\ has to LOAD a stack's base out of the DATA header instead of adding a fixed
+\ band offset to x20 -- the stacks are guarded mappings (STACK-ABI), so their
+\ bases are runtime values. Stamping them through these encoders rather than
+\ as literal words is what keeps a cell-offset change from silently
+\ re-encoding. x25/x28 belong to the compiler and word frames on the machine
+\ stack would unbalance the epilogue, which is why neither stack lives in a
+\ register. Mirrors src/habu/habu2.f W-LDRX/W-STRX/W-ADDX/W-ADDX-LSL3.
+: W-LDRX ( n n n -- n ) {: rt RN off -- w :}                          \ ldr rt,[rn,#off]
+   $F9400000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
+
+: W-STRX ( n n n -- n ) {: rt RN off -- w :}                          \ str rt,[rn,#off]
+   $F9000000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
+
+: W-ADDX ( n n n -- n ) {: rd RN RM -- w :}                           \ add rd,rn,rm
+   $8B000000  RM 16 lshift or  RN 5 lshift or  rd or ;
+
+: W-ADDX-LSL3 ( n n n -- n ) {: rd RN RM -- w :}                      \ add rd,rn,rm,lsl#3
+   $8B000000  RM 16 lshift or  3 10 lshift or  RN 5 lshift or  rd or ;
+
+\ LOOP-FRAME-ADDR, : x12 = the frame at [LOOPSP-1] (or at LOOPSP for a push),
+\ from x11 holding the index. The pair it replaces was `add x12,x12,#$600`
+\ (2434269580) and `add x12,x12,x20` (2333344140), the old in-header band; the
+\ base is a header cell now (STACK-ABI:LOOP-BASE-CELL), so this loads it
+\ instead. x13 is the scratch rather than x11 because J-FRAME still needs the
+\ index in x11 to bump the depth afterwards, and x13 is dead at this point in
+\ every one of the families that emit it. Mirrors src/habu/habu2.f
+\ LOOP-FRAME-ADDR,.
+: LOOP-FRAME-ADDR, ( -- )
+   13 20 STACK-ABI:LOOP-BASE-CELL W-LDRX C-EMITW
+   12 12 13 W-ADDX C-EMITW ;
+
+\ DO/LOOP/I — loop index/limit live in a guarded frame-stack mapping
+\ ([STACK-ABI:LOOP-BASE-CELL], depth [x20+LOOPSP-CELL]) since x27/x28 are the
+\ compiler's NDICT/CP. Fixed encodings (computed offline). J-DO pushes a
+\ frame + records loop-top; J-LOOP increments the index, compares, b.lt back,
+\ then pops the frame on exit; J-I pushes the index.
 : J-FRAME ( -- )                       \ pop limit/start, push a loop frame
    3506446963 C-EMITW  4181721705 C-EMITW  3506446963 C-EMITW  4181721706 C-EMITW
-   4181780107 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
 
 : J-LVOPEN ( -- )                       \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
@@ -3235,7 +3400,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-LOOP ( -- )
    J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP @ BL,                                        \ x9 = loop-top
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
@@ -3245,7 +3410,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : J-+LOOP ( -- )                   \ cross the limit boundary in the step's direction
    J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ step -> x9
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
    4181722506 C-EMITW                    \ ldr x10,[x12,#8]   limit
    $CB0A01AF C-EMITW                     \ sub x15,x13,x10    old
@@ -3262,35 +3427,36 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    J-LOOPEND ;
 
 : J-I ( -- )
-   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
 : J-J ( -- )                                    \ outer loop index: frame[LOOPSP-2]
-   4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
+   4181780107 C-EMITW  $D100096B C-EMITW 3548179820 C-EMITW  LOOP-FRAME-ADDR,
    4181721481 C-EMITW  4177527401 C-EMITW  2432705139 C-EMITW ;
 
-\ >R R> R@ — the user return stack lives in a data-region stack ([x20+RSTK-OFF],
-\ depth at [x20+RSP-CELL]), like the DO/LOOP frames: x25/x28 belong to the
-\ compiler, and word frames on the machine stack would unbalance the epilogue.
-: W-LDRX ( n n n -- n ) {: rt RN off -- w :}                          \ ldr rt,[rn,#off]
-   $F9400000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
-
-: W-STRX ( n n n -- n ) {: rt RN off -- w :}                          \ str rt,[rn,#off]
-   $F9000000  off 8 / 10 lshift or  RN 5 lshift or  rt or ;
+\ >R R> R@ — the user return stack is a guarded mapping whose base is a header
+\ cell (STACK-ABI:RETURN-BASE-CELL), so the slot address is that base plus
+\ depth*8. `add x11,x20,x10,lsl#3` used to reach it as a fixed band inside the
+\ DATA header; a header has no room for the inaccessible page the capacity is
+\ enforced by, so the band moved out and the base is loaded instead. Mirrors
+\ src/habu/habu2.f RSTK-SLOT-ADDR,.
+: RSTK-SLOT-ADDR, ( -- )                                      \ x11 = base + x10*8
+   11 20 STACK-ABI:RETURN-BASE-CELL W-LDRX C-EMITW
+   11 11 10 W-ADDX-LSL3 C-EMITW ;
 
 : J-TOR ( -- )                                                \ pop data -> push RSTK
    $D1002273 C-EMITW  $F9400269 C-EMITW                \ sub x19,#8 ; ldr x9,[x19]
    10 20 RSP-CELL W-LDRX C-EMITW
-   $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
-   9 11 RSTK-OFF W-STRX C-EMITW
+   RSTK-SLOT-ADDR,
+   9 11 0 W-STRX C-EMITW                               \ str x9,[x11]
    $9100054A C-EMITW                                   \ add x10,x10,#1
    10 20 RSP-CELL W-STRX C-EMITW ;
 
 : J-RPOP ( -- )                                               \ x9 = RSTK top, x10 = RSP-1
    10 20 RSP-CELL W-LDRX C-EMITW
    $D100054A C-EMITW                                   \ sub x10,x10,#1
-   $8B0A0E8B C-EMITW                                   \ add x11,x20,x10,lsl#3
-   9 11 RSTK-OFF W-LDRX C-EMITW ;
+   RSTK-SLOT-ADDR,
+   9 11 0 W-LDRX C-EMITW ;                              \ ldr x9,[x11]
 
 : J-RFROM ( -- )  J-RPOP                                      \ pop RSTK -> push data
    10 20 RSP-CELL W-STRX C-EMITW
@@ -4906,8 +5072,17 @@ variable CFSK2
 
 : EMIT-RUNTIME-STACK ( -- )
    RBASE LANCHOR @ ADR,
-   STACK-ABI:BOOT-BYTES 2048 / 0 ?do SP SP 2048 SUBI, loop
-   XDS SP 0 ADDI, ;
+   STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP ;
+
+\ The boot task's return stack and DO/LOOP frame stack. They come after the
+\ DATA region because their bases are published in header cells; a task maps
+\ its own pair and publishes them into its own region copy (lib/task.f
+\ PREPARE). Mirrors src/habu/habu2.f EM-FRAME-STACKS.
+: EMIT-FRAME-STACKS ( -- )
+   STACK-ABI:RETURN-BYTES 10 STACK-GUARD:EMIT-MAP
+   10 DATA STACK-ABI:RETURN-BASE-CELL STR,
+   STACK-ABI:LOOP-BYTES 10 STACK-GUARD:EMIT-MAP
+   10 DATA STACK-ABI:LOOP-BASE-CELL STR, ;
 
 : EMIT-MMAP-CODE-REGION ( -- )
    LBL {: rvok :}
@@ -5098,12 +5273,23 @@ variable CFSK2
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 SNAP-TRL-BYTES SUBI,
+   \ The return and loop stacks are mappings this process made, so the image's
+   \ copies of their base cells are another run's addresses. The data stack
+   \ survives the copy in XDS, a pinned register; these two have no register,
+   \ so they ride the machine stack across it and are republished beside XDS
+   \ below.
+   SP SP 16 SUBI,
+   11 DATA STACK-ABI:RETURN-BASE-CELL LDR,  11 SP 0 STR,
+   11 DATA STACK-ABI:LOOP-BASE-CELL LDR,    11 SP 8 STR,
    8 12 7 SUB,  8 8 6 SUB,
    EMIT-SNAPSHOT-COPY-CODE
    EMIT-SNAPSHOT-COPY-DATA
    25 DATA RBASE-CELL STR,
    XDS DATA S0-CELL STR,
    5 STACK-ABI:BOOT-BYTES LIT64, 5 DATA STACK-ABI:CAP-CELL STR,
+   11 SP 0 LDR,  11 DATA STACK-ABI:RETURN-BASE-CELL STR,
+   11 SP 8 LDR,  11 DATA STACK-ABI:LOOP-BASE-CELL STR,
+   SP SP 16 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
@@ -5157,6 +5343,7 @@ variable CFSK2
    EMIT-SEED-DICT
    EMIT-MMAP-DATA-REGION
    EMIT-DATA-INIT
+   EMIT-FRAME-STACKS
    EMIT-SNAPSHOT-RESTORE
    EMIT-STARTUP-RUNTIME-STATE ;
 
@@ -5607,8 +5794,8 @@ variable CFSK2
    10 20 RSP-CELL W-LDRX C-EMITW
    5 9 JIT-STACK:LITERAL-REG
    $CB09014A C-EMITW                                  \ sub x10,x10,x9
-   $8B0A0E8B C-EMITW                                  \ add x11,x20,x10,lsl#3
-   13 11 RSTK-OFF W-LDRX C-EMITW                      \ ldr x13,[x11,#RSTK-OFF]
+   RSTK-SLOT-ADDR,
+   13 11 0 W-LDRX C-EMITW                             \ ldr x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F900026D C-EMITW                                  \ str x13,[x19]
    W-PUSH1 C-EMITW                                    \ add x19,x19,#8
@@ -5620,7 +5807,7 @@ variable CFSK2
    rsto LBL,
    \ mode 0: x11 = rstk top; copy T cells data->rstk, pop, depth += T
    10 20 RSP-CELL W-LDRX C-EMITW
-   $8B0A0E8B C-EMITW
+   RSTK-SLOT-ADDR,
    8 12 JIT-STACK:LITERAL-REG
    $CB0C026C C-EMITW                                  \ sub x12,x19,x12
    $AA0C03EE C-EMITW                                  \ mov x14,x12 (new data cursor)
@@ -5628,7 +5815,7 @@ variable CFSK2
    $AA0903EF C-EMITW                                  \ mov x15,x9 (complete transfer count)
    $F940018D C-EMITW                                  \ ldr x13,[x12]
    $9100218C C-EMITW                                  \ add x12,x12,#8
-   13 11 RSTK-OFF W-STRX C-EMITW                      \ str x13,[x11,#RSTK-OFF]
+   13 11 0 W-STRX C-EMITW                             \ str x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
