@@ -73,7 +73,10 @@ variable LAST-ERR-U
 : HB$ ( -- ptr u8 n )                                \ selected host builds the cold fixture once
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then {: e:ptr eu:n :}
    e eu ABS? if e eu exit then
-   s" PWD" GETENV e eu HB-BUF JOIN-PATH HB-U ! HB-BUF HB-U @ ;
+   \ against the real working directory: a gate's `env -i` child has no PWD
+   e eu FS-PATHZ HB-BUF FS-PATH-CAP realpath {: n:n :}
+   n 0 <= if E-FS-PATH throw then
+   n HB-U ! HB-BUF HB-U @ ;
 
 : ROOT$ ( -- ptr u8 n )  ROOT-BUF ROOT-U @ ;
 

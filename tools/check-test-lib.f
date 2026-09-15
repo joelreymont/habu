@@ -156,8 +156,18 @@ variable START-NS
 : ABS-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 > if a c@ $2F = else 0 0= 0= then ;
 
+\ A relative path made absolute against the process's real working directory.
+\ The environment's PWD is not that: a gate runs its children under `env -i`,
+\ where PWD is unset, and a link target joined to an empty PWD dangles, so the
+\ missing-engine child died 74 on its own load path before it could say
+\ `bin/hb missing`.
+: CLI-ABS! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n buf:ptr lenp:ptr :}
+   a u FS-PATHZ buf FS-PATH-CAP realpath {: n:n :}
+   n 0 <= if E-FS-PATH throw then
+   n lenp ! ;
+
 : CLI-LINK+ ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   s" PWD" GETENV name nameu CLI-TARGET JOIN-PATH CLI-TARGET-U !
+   name nameu CLI-TARGET CLI-TARGET-U CLI-ABS!
    CLI-ROOT$ name nameu CLI-LINK-PATH JOIN-PATH CLI-LINK-U !
    CLI-TARGET CLI-TARGET-U @ CLI-LINK-PATH CLI-LINK-U @ MAKE-SYMLINK ;
 
@@ -420,7 +430,7 @@ variable START-NS
 : CLI-HB$ ( -- ptr u8 n )
    HB$ {: hb:ptr hbu:n :}
    hb hbu ABS-PATH? if hb hbu exit then
-   s" PWD" GETENV hb hbu CLI-HB JOIN-PATH CLI-HB-U !
+   hb hbu CLI-HB CLI-HB-U CLI-ABS!
    CLI-HB CLI-HB-U @ ;
 
 : CLI-SETUP ( -- )
