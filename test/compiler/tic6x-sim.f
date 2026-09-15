@@ -37,7 +37,7 @@ variable PROGRAM-LEN
    6 A-REG 1 A-REG 2 B-REG ENC-SUB-L P+                       \ 7 - 3
    7 A-REG 1 A-REG -8 ENC-ADD-I5 P+                           \ 7 - 8
    8 A-REG 1 A-REG 2 B-REG ENC-AND-L P+ 9 A-REG 1 A-REG 2 B-REG ENC-XOR-L P+
-   10 A-REG 3 A-REG ALWAYS ENC-ABS-L P+                       \ INT_MIN stays INT_MIN
+   10 A-REG 3 A-REG ALWAYS ENC-ABS-L P+                       \ ABS saturates INT_MIN to INT_MAX (SPRUGH7)
    11 A-REG 4 B-REG ALWAYS ENC-NORM-L P+                      \ -1 has 31 redundant sign bits
    12 A-REG 1 A-REG ALWAYS ENC-NORM-L P+                      \ 7 has 28
    13 A-REG 3 A-REG ALWAYS ENC-NORM-L P+                      \ INT_MIN has none
@@ -52,7 +52,7 @@ variable PROGRAM-LEN
    18 A-REG 1 A-REG 9 ALWAYS ENC-CMPLTU-U4 P+                 \ 9 < 7: no
    P-RETURN P-RUN drop
    5 A@ 10 T= 6 A@ 4 T= 7 A@ $FFFFFFFF T= 8 A@ 3 T= 9 A@ 4 T=
-   10 A@ $80000000 T= 11 A@ 31 T= 12 A@ 28 T= 13 A@ 0 T= 14 A@ 0 T=
+   10 A@ $7FFFFFFF T= 11 A@ 31 T= 12 A@ 28 T= 13 A@ 0 T= 14 A@ 0 T=
    0 A@ 0 T= 1 B@ 1 T= 2 B@ 1 T= 0 B@ 0 T= 15 A@ 0 T= 16 A@ 1 T= 17 A@ 1 T= 18 A@ 0 T= ;
 
 

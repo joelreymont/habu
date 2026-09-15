@@ -334,8 +334,16 @@ variable PACKET-START
    4 A 4 B 6 A 1 A 1 B 0 A 2 A 0 B DIVIDE-U
    5 A 4 A ENC-MV-L EMIT 4 A 6 A ENC-MV-L EMIT RETURN ;
 
+\ |r| by conditional negation through a zero in scratch: the C66x ABS
+\ saturates INT32_MIN to INT32_MAX (SPRUGH7), while the wrap contract needs
+\ the exact 32-bit magnitude $80000000.
+: MAGNITUDE ( gpr gpr gpr -- ) {: r:gpr zero:gpr guard:gpr :}
+   zero 0 ENC-MVK EMIT
+   guard r 0 ALWAYS ENC-CMPGT-I5 EMIT
+   r zero r ENC-SUB-L guard WHEN-NONZERO EMIT ;
+
 : MAGNITUDES ( -- )
-   4 A 4 A ALWAYS ENC-ABS-L EMIT 4 B 4 B ALWAYS ENC-ABS-L EMIT ;
+   4 A 1 A 2 A MAGNITUDE 4 B 1 B 0 B MAGNITUDE ;
 
 : DIVI ( -- )
    5 B 4 B 4 A ENC-XOR-L EMIT                       \ the quotient's sign

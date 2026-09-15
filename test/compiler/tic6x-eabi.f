@@ -79,6 +79,19 @@ variable REMAINDER
    loop loop ;
 
 
+\ INT32_MIN, where the hardware ABS would saturate: the documented wrap and
+\ C's remainder sign.
+: EDGE-CASES ( -- )
+   0 HELPER ! $80000000 $FFFFFFFF CALL-HELPER 4 A@ $80000000 = UNTOUCHED? and s" divi INT32_MIN / -1 wraps to INT32_MIN" CHECK
+   0 HELPER ! $80000000 1 CALL-HELPER 4 A@ $80000000 = s" divi INT32_MIN / 1" CHECK
+   0 HELPER ! $80000000 3 CALL-HELPER 4 A@ -715827882 >U32 = s" divi INT32_MIN / 3" CHECK
+   2 HELPER ! $80000000 3 CALL-HELPER 4 A@ -2 >U32 = UNTOUCHED? and s" remi INT32_MIN % 3 is -2" CHECK
+   2 HELPER ! $80000000 $FFFFFFFF CALL-HELPER 4 A@ 0= s" remi INT32_MIN % -1 is 0" CHECK
+   2 HELPER ! 7 $80000000 CALL-HELPER 4 A@ 7 = s" remi 7 % INT32_MIN is 7" CHECK
+   4 HELPER ! $80000000 $FFFFFFFF CALL-HELPER 4 A@ $80000000 = 5 A@ 0= and UNTOUCHED? and s" divremi INT32_MIN / -1" CHECK
+   4 HELPER ! $80000000 3 CALL-HELPER 4 A@ -715827882 >U32 = 5 A@ -2 >U32 = and s" divremi INT32_MIN / 3" CHECK ;
+
+
 : PREPARE ( -- )
    RESET FILL-REGISTERS
    256 0 ?do i 7 * 255 and MEMORY-BASE i + MEMORY! $EE MEMORY-BASE 256 + i + MEMORY! loop ;
@@ -275,8 +288,8 @@ create DOUBLES
    1 1000000007 12345 CYCLES-FOR 76 T=                    \ the full 32-step chain
    1 $FFFFFFFF $80000001 CYCLES-FOR 28 T=                 \ a divisor with its top bit set
    1 5 0 CYCLES-FOR 15 T=                                 \ division by zero
-   0 -1000000007 12345 CYCLES-FOR 77 T=
-   4 -1000000007 12345 CYCLES-FOR 78 T=
+   0 -1000000007 12345 CYCLES-FOR 78 T=
+   4 -1000000007 12345 CYCLES-FOR 79 T=
    0 0 COPY-CYCLES 259 T=                                 \ 256 bytes, both aligned
    8 0 COPY-CYCLES 259 T=
    1 0 COPY-CYCLES 1827 T=                                \ mismatched: bytes throughout
@@ -289,7 +302,7 @@ create DOUBLES
 
 : RUN ( -- )
    0 FAILURES !
-   DIVISION-CASES MEMORY-CASES SWEEPS FLOAT-CASES DOUBLE-CASES REFUSALS CYCLE-CASES
+   DIVISION-CASES EDGE-CASES MEMORY-CASES SWEEPS FLOAT-CASES DOUBLE-CASES REFUSALS CYCLE-CASES
    FAILURES @ 0 T=
    HELPER-COUNT 10 T=
    1 HELPER-NAME$ s" __c6xabi_divu" T$=

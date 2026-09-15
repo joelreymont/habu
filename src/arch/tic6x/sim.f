@@ -241,7 +241,7 @@ variable CHECKING                                  \ the word under classificati
    op 86 = if SRC1-SIGNED b >S32 < if 1 else 0 then dst RESULT exit then
    op 95 = if SRC1 REG@ b < if 1 else 0 then dst RESULT exit then
    op 94 = if SRC1-UNSIGNED b < if 1 else 0 then dst RESULT exit then
-   op 26 = if b >S32 abs dst RESULT exit then
+   op 26 = if b $80000000 = if $7FFFFFFF else b >S32 abs then dst RESULT exit then   \ ABS saturates
    op 99 = if b NORM dst RESULT exit then
    UNMODELLED ;
 
