@@ -46,8 +46,13 @@ create ERR IO-CAP allot
    prefix if s" test/field-proj-native-owner.f" ARG then
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
 
+\ The native case compiles the window's whole core prefix through the
+\ optimizing chain, which is minutes on a loaded box (test/native-window-owner.f
+\ measured 2m11s); the bound catches a hang, not a slow build.
+600000 constant DEADLINE-MS
+
 : RESULT ( -- )
-   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN 120000 >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
    OUT outu LEN>N S\" ok\nfield boundary: ok\nwindow: 0\n" STR= 0= rc 0 <> or
