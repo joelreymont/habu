@@ -66,6 +66,20 @@ else
   T="$(mktemp -d "${TMPDIR:-/tmp}/habu-gforth.XXXXXX")"
 fi
 
+# The compiler's load order after the checker core. Up to lower-cert-seal.f it
+# is the engine prefix's own order (bootstrap/cg/forth.fs PFX-LOAD-CORE-FILES):
+# the boot-hide prologue hides the startup prefix load's dictionary so this
+# second load owns every word, so a file the prologue hides and this list does
+# not carry is simply gone, and the order has to satisfy the same dependencies
+# the prefix does. In particular the declaration participants
+# (generated-declaration-dictionary.f and -protection.f, which seals their
+# registration) precede every generated declaration, the first of which is
+# lib/adt/option.f's ENUM, reached through src/habu/habu2.f's `require
+# lib/fmt.f`. The boot-stdlib rows the prefix loads (PFX-LOAD-STDLIB-FILES)
+# follow the seals as in the prefix: every `DYNAMIC-BUFFER NAME n` declaration
+# generates an accessor that calls DYNAMIC-STORAGE:RESERVE, and the first one
+# is in src/habu/primitive-registry.f, which src/habu/habu1.f requires from
+# disk. The compiler sources come after, as they do in a native build.
 SRC_COMMON=(
   src/core/roles.f
   src/core/bytes.f
@@ -84,6 +98,15 @@ SRC_COMMON=(
   src/core/sha256.f
   src/core/type-family-sha.f
   src/core/combinators.f
+  src/habu/code-span.f
+  src/habu/xref.f
+  src/core/generated-declaration-dictionary.f
+  src/core/generated-declaration-protection.f
+  src/core/layout-buffer-seal.f
+  src/core/lower-cert-seal.f
+  lib/prelude.f
+  lib/errors.f
+  src/core/dynamic-storage.f
   src/habu/treeshake.f
   src/habu/rt.f
   src/habu/crash.f
@@ -97,25 +120,9 @@ SRC_COMMON=(
   src/habu/regalloc.f
   src/habu/jit.f
   src/habu/fdio.f
-  # The boot-stdlib rows the seed's prefix loads (bootstrap/cg/forth.fs
-  # PFX-LOAD-STDLIB-FILES). They have to be here as well: the boot-hide prologue at
-  # the top of this file hides the startup prefix load's dictionary so this second
-  # load owns every word, so a file the prologue hides and this list does not carry
-  # is simply gone. src/habu/aot-decl.f below declares `DYNAMIC-BUFFER
-  # AOT-NAMES-STORAGE n`, whose generated accessor calls DYNAMIC-STORAGE:RESERVE, so
-  # the three rows sit immediately ahead of the file that needs them.
-  lib/prelude.f
-  lib/errors.f
-  src/core/dynamic-storage.f
   src/habu/aot-decl.f
   src/habu/aot-ident.f
   src/habu/habu2.f
-  src/habu/code-span.f
-  src/habu/xref.f
-  src/core/generated-declaration-dictionary.f
-  src/core/generated-declaration-protection.f
-  src/core/layout-buffer-seal.f
-  src/core/lower-cert-seal.f
 )
 
 emit_boot_hide() {
@@ -187,25 +194,63 @@ s" IMK-NDICT0" s" SEQ" BOOT-HIDE-DICT-FROM-EARLIEST
 EOF
 }
 
-emit_decl_src() {
-  # The shared declaration-event transaction, then the STRUCTURE constructor
-  # generator, then the STRUCTURE declarer (which calls the generator, so it must
-  # come after it), then the ENUM declarer (a pure event-driven leaf) -- all after
-  # the checker hook.
+# The checker core ahead of SRC_COMMON, in load order. After the checker hook
+# come the shared declaration-event transaction, the STRUCTURE constructor
+# generator, the STRUCTURE declarer (which calls the generator, so it must come
+# after it) and the ENUM declarer (a pure event-driven leaf).
+SRC_CORE=(
+  src/core/util.f
+  src/core/cell.f
+  src/core/pointer-storage.f
+  src/core/engine-error.f
+  src/core/exec-vector.f
+  src/core/checker-fetch-abi.f
+  src/core/checker-owner-abi.f
+  src/core/checker.f
+  src/core/engine-error-effects.f
+  src/core/lower-cert-base.f
+  src/core/type-schema.f
+  src/core/type-family.f
+  src/core/render.f
+  src/core/sumtype.f
+  src/core/layout-buffer.f
+  src/core/layout-valid.f
+  src/core/check-hook.f
+  src/core/cell-effects.f
+  src/core/declaration-transaction.f
+  src/core/generated-declaration.f
+  src/core/decl-event.f
+  src/core/structure-make.f
+  src/core/structure-decl.f
+  src/core/enum-decl.f
+  src/core/structures.f
+)
+
+# One `provided` row per file this text inlines. The second load defines its
+# own src/core/include.f, whose registry starts empty, so without the rows a
+# `require` met later in this text reads a file whose definitions the text
+# already carries and dies on the duplicate: src/habu/rt.f requires
+# src/habu/stack-abi.f, and src/habu/primitive-registry.f, which src/habu/habu1.f
+# loads from disk, requires src/core/layout-buffer.f. The rows name every
+# inlined file, including the ones still to come, because a row only settles
+# what `require` skips; the definitions arrive in the order below regardless.
+emit_provided() {
   local out="$1"
-  cat src/core/decl-event.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/structure-make.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/structure-decl.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/enum-decl.f >> "$out"
-  printf '\n' >> "$out"
+  shift
+  local f
+  for f in "$@"; do
+    printf 's" %s" provided\n' "$f" >> "$out"
+  done
 }
 
 emit_src() {
   local out="$1"
   local driver="$2"
+  local tail=(src/habu/driver-io.f)
+  if [[ "$driver" == "src/habu/stdin.f" ]]; then
+    tail+=(src/habu/aot-arm.f src/habu/aot-capture.f src/habu/aot-file.f)
+  fi
+  tail+=("$driver")
   : > "$out"
   # Every engine built from this file re-reads the boot prefix from disk when it
   # starts, and then interprets this file, which loads the whole prefix a second
@@ -228,67 +273,23 @@ emit_src() {
   # every consumer of this function gets it.
   emit_boot_hide "$out"
   printf "0 set-check\n" >> "$out"
-  cat src/core/util.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/cell.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/pointer-storage.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/engine-error.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/exec-vector.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/checker-fetch-abi.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/checker-owner-abi.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/checker.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/engine-error-effects.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/lower-cert-base.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/type-schema.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/type-family.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/render.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/sumtype.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/layout-buffer.f >> "$out"
-  cat src/core/layout-valid.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/check-hook.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/cell-effects.f >> "$out"
-  printf '\n' >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/declaration-transaction.f >> "$out"
-  printf '\n' >> "$out"
-  cat src/core/generated-declaration.f >> "$out"
-  printf '\n' >> "$out"
-  emit_decl_src "$out"
-  cat src/core/structures.f >> "$out"
-  printf '\n' >> "$out"
-  printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
   local f
-  for f in "${SRC_COMMON[@]}"; do
+  for f in "${SRC_CORE[@]}"; do
     cat "$f" >> "$out"
     printf '\n' >> "$out"
   done
-  cat src/habu/driver-io.f >> "$out"
-  printf '\n' >> "$out"
-  if [[ "$driver" == "src/habu/stdin.f" ]]; then
-    cat src/habu/aot-arm.f >> "$out"
+  printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
+  for f in "${SRC_COMMON[@]}"; do
+    cat "$f" >> "$out"
     printf '\n' >> "$out"
-    cat src/habu/aot-capture.f >> "$out"
+    if [[ "$f" == "src/core/include.f" ]]; then
+      emit_provided "$out" "${SRC_CORE[@]}" "${SRC_COMMON[@]}" "${tail[@]}"
+    fi
+  done
+  for f in "${tail[@]}"; do
+    cat "$f" >> "$out"
     printf '\n' >> "$out"
-    cat src/habu/aot-file.f >> "$out"
-    printf '\n' >> "$out"
-  fi
-  cat "$driver" >> "$out"
-  printf '\n' >> "$out"
+  done
 }
 
 bootstrap_wide_gate() {

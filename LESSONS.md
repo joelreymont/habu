@@ -8343,3 +8343,14 @@ died in `src/core/sumtype.f` TDPV-COUNT with 7133. Synthesize such counts into
 x16 and move SP with the extended-register `sub sp,sp,x16` (habu2.f
 C-EMIT-DROP-X12 and EM-P2-CARVE; the seed mirrors both). `test/tier.f` pins the
 loop-local case on both tiers (2026-09-15).
+
+The recovery stage source (`tools/bootstrap.sh` emit_src) is loaded a second
+time by a fresh `src/core/include.f`, so it carries a `provided` row for every
+file it inlines and keeps the prefix's own load order through
+lower-cert-seal.f: a `require` of an inlined file without its row re-reads it
+and dies on the duplicate; the stdlib trio has to precede src/habu/habu1.f
+(src/habu/primitive-registry.f declares the first DYNAMIC-BUFFER) and the
+declaration participants have to precede habu2.f's `require lib/fmt.f`
+(lib/adt/option.f's ENUM). A native stage cannot run that text: its seal floor
+refuses public `ndict!` with a silent exit 83, which is why `src/habu/hide.f`
+rewinds through `seed-ndict!` (2026-09-15).
