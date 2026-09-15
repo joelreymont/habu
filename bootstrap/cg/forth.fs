@@ -5171,6 +5171,12 @@ variable CFSK2
 
 : EMIT-TOKEN-DISPATCH ( n n n -- ) {: lmain lexit lcompile :}
    LBL LBL LBL {: notcom skln skpar :}
+   \ The depth floor, as in the native engine (habu2.f EM-COMMENT): the stage
+   \ engine has no E-UNDERFLOW diagnostic to leave for, so a token that left
+   \ the stack below the base fails closed with the bounds exit.
+   LBL {: floor-ok :}
+   9 DATA S0-CELL LDR,  XDS 9 CMP,  C-CS floor-ok BCOND,  STACK-GUARD:EXIT-BOUNDS
+   floor-ok LBL,
    LTOK @ BL,  0 lexit CBZ,
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,

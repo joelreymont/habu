@@ -6585,7 +6585,11 @@ public
    LBL LBL LBL LBL {: notcom skln skpar notcompile :}
    LMAIN LABEL@ LBL,
       EM-PKG-RESYNC
-      \ Validate the active descriptor and cursor before another token runs.
+      \ The depth floor: a token that left the stack below the active base is
+      \ named by the E-UNDERFLOW diagnostic (TKA/TKL still hold it). This is
+      \ the interpreter's only bounds check; compiled code has none, and a
+      \ push past the capacity faults on the stack's guard page.
+      9 DATA S0-CELL LDR,  XDS 9 CMP,  C-CC LUNDERFLOW LABEL@ BCOND,
       LTOK LABEL@ BL,  0 LEXIT LABEL@ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
