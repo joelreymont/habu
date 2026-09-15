@@ -163,13 +163,14 @@ $110 constant MACOS-MCTX-PC-OFF
 \ cells that are not descriptors at all; an implausible one falls through to the
 \ ordinary register dump instead of naming a stack that did not fault.
 variable CRS-BASE   variable CRS-CAP   variable CRS-CAPCELL
-variable CRS-HIT    variable CRS-NEXT  variable CRS-SKIP
+variable CRS-HIT    variable CRS-NEXT  variable CRS-SKIP  variable CRS-FAULT
 variable CRS-DATA-M variable CRS-RET-M variable CRS-LOOP-M
 variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 
-38 constant CRS-DATA-LEN     \ "hb: stack bounds exceeded (data)\n"
-40 constant CRS-RET-LEN      \ "hb: stack bounds exceeded (return)\n"
-38 constant CRS-LOOP-LEN     \ "hb: stack bounds exceeded (loop)\n"
+\ The three diagnostics, each a single line written in one system call.
+: CRS-DATA$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (data)\n" ;
+: CRS-RET$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (return)\n" ;
+: CRS-LOOP$ ( -- ptr u8 n ) S\" hb: stack bounds exceeded (loop)\n" ;
 
 11 constant CRASH-SIGSEGV
 7  constant CRASH-SIGBUS
@@ -195,13 +196,13 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
    0 ENGINE-ERROR:STACK-BOUNDS MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-CRASH-STACK-GUARDS ( -- )
-   LBL CRS-SKIP !
+   LBL CRS-SKIP !  LBL CRS-FAULT !
    LBL CRS-DATA-M !  LBL CRS-RET-M !  LBL CRS-LOOP-M !
    LBL CRS-DATA-H !  LBL CRS-RET-H !  LBL CRS-LOOP-H !
    \ si_addr only describes a memory fault; a trap or an FPE carries no address.
-   20 CRASH-SIGSEGV CMPI,  C-EQ CR-L3 LABEL@ BCOND,
+   20 CRASH-SIGSEGV CMPI,  C-EQ CRS-FAULT LABEL@ BCOND,
    20 CRASH-SIGBUS CMPI,   C-NE CRS-SKIP LABEL@ BCOND,
-   CR-L3 LABEL@ LBL,
+   CRS-FAULT LABEL@ LBL,
    C-CRASH-FAULT-ADDR>R25
    C-CRASH-DATA>R24
    11 STACK-ABI:PAGE-BYTES LIT64,
@@ -215,21 +216,21 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
    STACK-ABI:LOOP-BYTES CRS-CAP !
    CRS-LOOP-H @ CRS-HIT !  LBL CRS-NEXT !  C-CRASH-GUARD-CASE
    CRS-SKIP LABEL@ B,
-   CRS-DATA-H LABEL@ LBL,  CRS-DATA-M LABEL@ CRS-DATA-LEN C-CRASH-GUARD-REPORT
-   CRS-RET-H  LABEL@ LBL,  CRS-RET-M  LABEL@ CRS-RET-LEN  C-CRASH-GUARD-REPORT
-   CRS-LOOP-H LABEL@ LBL,  CRS-LOOP-M LABEL@ CRS-LOOP-LEN C-CRASH-GUARD-REPORT
-   CRS-DATA-M LABEL@ LBL,  s" hb: stack bounds exceeded (data)" BYTES,  NL-KW 1 BYTES,
-   CRS-RET-M  LABEL@ LBL,  s" hb: stack bounds exceeded (return)" BYTES,  NL-KW 1 BYTES,
-   CRS-LOOP-M LABEL@ LBL,  s" hb: stack bounds exceeded (loop)" BYTES,  NL-KW 1 BYTES,
+   CRS-DATA-H LABEL@ LBL,  CRS-DATA-M LABEL@ CRS-DATA$ nip C-CRASH-GUARD-REPORT
+   CRS-RET-H  LABEL@ LBL,  CRS-RET-M  LABEL@ CRS-RET$  nip C-CRASH-GUARD-REPORT
+   CRS-LOOP-H LABEL@ LBL,  CRS-LOOP-M LABEL@ CRS-LOOP$ nip C-CRASH-GUARD-REPORT
+   CRS-DATA-M LABEL@ LBL,  CRS-DATA$ BYTES,
+   CRS-RET-M  LABEL@ LBL,  CRS-RET$  BYTES,
+   CRS-LOOP-M LABEL@ LBL,  CRS-LOOP$ BYTES,
    CRS-SKIP LABEL@ LBL, ;
 
 : EMIT-CRASH-HANDLER ( -- )
    LCRASHH LABEL@ LBL,
    LBL CR-L1 !  LBL CR-L2 !
       C-CRASH-ENTRY
-      1 LHDR LABEL@ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
       C-CRASH-MCTX>R21
       C-CRASH-STACK-GUARDS                          \ a guard-page fault exits here, named
+      1 LHDR LABEL@ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
       9 20 0 ADDI,  LHEX LABEL@ BL,
       20 0 MOVZ,
       CR-L1 LABEL@ LBL,  20 $1D CMPI,  C-GE CR-L2 LABEL@ BCOND,
