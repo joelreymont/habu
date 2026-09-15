@@ -13,9 +13,9 @@ get-current constant FIELD-WL
    data-base SNAP-RELOC:ADDRMAP-OFF + off 5 rshift + BYTE-VIEW c@
    off 2 rshift 7 and rshift 1 and 0<> ;
 
-\ The address chain is not the word's first instruction: the engine's stack
-\ guard for the push comes ahead of it (src/habu/habu2.f C-DATA-ADDR), so the
-\ site is looked for anywhere in the word's own code.
+\ The address chain need not be the word's first instruction - what the field
+\ word emits ahead of it is the emitter's business - so the site is looked for
+\ anywhere in the word's own code.
 : SITE-MARKED? ( n n -- bool ) {: off:n len:n :}
    off begin dup off len + < while
       dup MARKED? if drop true exit then

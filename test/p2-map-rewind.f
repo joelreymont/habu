@@ -6,7 +6,6 @@
 
 require lib/errors.f
 require lib/test.f
-require src/compiler/native/codewalk.f
 
 package P2-MAP-REWIND-TEST
 
@@ -45,18 +44,6 @@ variable MARK-N
    0 MARK-N !
    to from ?do
       base i MAP-BIT@ MARK-N @ + MARK-N !
-   4 +loop
-   MARK-N @ ;
-
-\ The engine's stack guards (src/compiler/native/codewalk.f) each call the
-\ engine, and the call map records those BLs too, because relocation has to
-\ move them. A body's own recorded calls are the marks outside its guards.
-: OWN-MARKS ( n n n -- n ) {: base:n from:n to:n :}
-   0 MARK-N !
-   to from ?do
-      from to from - i from - 4 / NWALK:SPAN-GUARDED? 0= if
-         base i MAP-BIT@ MARK-N @ + MARK-N !
-      then
    4 +loop
    MARK-N @ ;
 
@@ -114,16 +101,6 @@ $2000000 constant IMM26-SGN
 
 : EMIT-CALL ( n n -- n ) s" emit" 0 search-wl MARKED-CALL ;
 
-\ How many marked calls in [from,to) reach one target.
-: MARKED-CALLS ( n n n -- n ) {: from:n to:n target:n :}
-   0 MARK-N !
-   to from ?do
-      CALL-MAP i MAP-BIT@ 1 = if
-         i BL-TARGET target = if MARK-N @ 1 + MARK-N ! then
-      then
-   4 +loop
-   MARK-N @ ;
-
 \ ---- the subjects ------------------------------------------------------------
 \ Compiled here, by the engine under test, through the ordinary interpreter.
 \ P2M-A/P2M-B and P2M-C/P2M-D are twin pairs: identical body text, identical name
@@ -159,7 +136,7 @@ cp@ Q5 !
    s" the narrow twin compiles one recorded address chain" T-LABEL
    ADDR-MAP Q1 @ Q2 @ MARKS 1 T=
    s" the narrow twin records both dup and emit calls" T-LABEL
-   CALL-MAP Q3 @ Q4 @ OWN-MARKS 2 T=
+   CALL-MAP Q3 @ Q4 @ MARKS 2 T=
    Q3 @ Q4 @ s" dup" 0 search-wl MARKED-CALL drop
    Q3 @ Q4 @ EMIT-CALL drop ;
 
@@ -182,10 +159,8 @@ cp@ Q5 !
 : TEST-ONE-EACH ( -- )
    s" the pass-2 body carries exactly one recorded chain" T-LABEL
    ADDR-MAP Q2 @ Q3 @ MARKS 1 T=
-   s" the pass-2 body carries exactly one recorded call of its own" T-LABEL
-   CALL-MAP Q4 @ Q5 @ OWN-MARKS 1 T=
-   s" and every other recorded call in it is a guard's" T-LABEL
-   CALL-MAP Q4 @ Q5 @ MARKS  Q4 @ Q5 @ Q4 @ - NWALK:SPAN-GUARDS 1 +  T= ;
+   s" the pass-2 body carries exactly one recorded call" T-LABEL
+   CALL-MAP Q4 @ Q5 @ MARKS 1 T= ;
 
 \ ---- 4. pass 1's word is not recorded ----------------------------------------
 \ The twin's offset is where pass 1 put its record, because the twin IS pass 1's
@@ -193,13 +168,10 @@ cp@ Q5 !
 : TEST-NO-STALE ( -- )
    s" the word pass 1 recorded its chain in is not recorded" T-LABEL
    ADDR-MAP Q2 @ A-OFF + MAP-BIT@ 0 T=
-   \ The twin's offset may now hold one of the pass-2 body's guard calls, so
-   \ a stale record is told apart by its target: pass 1's emit call is the one
-   \ site pass 2 moved, and its dup call has no site at all after widening.
    s" the word pass 1 recorded its call in is not recorded" T-LABEL
-   Q4 @ Q5 @ s" emit" 0 search-wl MARKED-CALLS 1 T=
+   CALL-MAP Q4 @ C-OFF + MAP-BIT@ 0 T=
    s" the narrow dup call leaves no stale mark after widening" T-LABEL
-   Q4 @ Q5 @ s" dup" 0 search-wl MARKED-CALLS 0 T= ;
+   CALL-MAP Q4 @ DUP-OFF + MAP-BIT@ 0 T= ;
 
 \ ---- 5. the surviving record names a real site -------------------------------
 \ Both bodies build the same chain to the same target in the same register, so
