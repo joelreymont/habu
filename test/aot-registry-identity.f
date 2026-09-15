@@ -34,10 +34,12 @@ create ERR IO-CAP allot
    else
       s" src/os/macos/target.f" ARG s" src/os/macos/layout.f" ARG
    then
+   s" src/habu/stack-abi.f" ARG
    s" src/habu/layout.f" ARG
    s" src/os/env-base.f" ARG
    s" src/core/include.f" ARG
    s" src/core/sha256.f" ARG
+   s" src/habu/code-span.f" ARG
    s" lib/prelude.f" ARG
    PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
 
