@@ -2,6 +2,8 @@
 require lib/errors.f
 require lib/test.f
 
+require src/habu/code-span.f
+require src/compiler/native/codewalk.f
 0 set-tier
 package ADDRMAP-CALL-TEST
 private
@@ -62,9 +64,14 @@ cp@ P5 !
 : AMC-NESTED ( -- ptr n ptr n ) AMC-TWO ;
 cp@ P6 !
 
+\ The chain is not the word's first instruction: the engine's push guard (eleven
+\ instructions, src/compiler/native/codewalk.f) comes ahead of it.
+: GUARD-BYTES ( -- n )
+   NWALK:GUARD-INSNS CODE-SPAN:INSN-BYTES * ;
+
 : TEST-CALLEE ( -- )
    s" the created word owns exactly one recorded address chain" T-LABEL
-   P0 @ ADDR-BIT@ 1 T=
+   P0 @ GUARD-BYTES + ADDR-BIT@ 1 T=
    P0 @ P1 @ MARKS 1 T= ;
 
 : TEST-CALLS ( -- )
