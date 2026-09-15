@@ -12,7 +12,7 @@ public
 
 E-C6XEABI-OPERAND constant E-OPERAND
 E-C6XEABI-CAPACITY constant E-CAPACITY
-9 constant HELPER-COUNT
+10 constant HELPER-COUNT
 
 private
 using C6XASM
@@ -290,6 +290,185 @@ variable FIXUP-COUNT
    4 A 7 A ENC-MV-L EMIT RETURN ;
 
 
+\ ---- float64 division: bit-exact IEEE 754, round to nearest even -------------------
+
+\ hi:lo <<= count (0..63), all on one bank; g guards and t is scratch there.
+: SHL64 ( gpr gpr gpr gpr gpr -- ) {: hi:gpr lo:gpr count:gpr g:gpr t:gpr :}
+   t count -16 ENC-ADD-I5 EMIT
+   t t -16 ENC-ADD-I5 EMIT                             \ count - 32
+   g t -1 ALWAYS ENC-CMPLT-I5 EMIT                     \ count >= 32
+   hi lo t g IF-NONZERO ENC-SHL-S EMIT
+   lo 0 ENC-MVK g WHEN-NONZERO EMIT
+   t 32 ENC-MVK g WHEN-ZERO EMIT
+   t t count ENC-SUB-L g WHEN-ZERO EMIT                \ 32 - count
+   t lo t g IF-ZERO ENC-SHRU-S EMIT
+   hi hi count g IF-ZERO ENC-SHL-S EMIT
+   hi hi t ENC-OR-L g WHEN-ZERO EMIT
+   lo lo count g IF-ZERO ENC-SHL-S EMIT ;
+
+
+\ The left shift that brings a denormal significand's top bit to bit 52, into
+\ count; t is scratch on the same bank, g and h are guards.
+: DENORMAL-SHIFT ( gpr gpr gpr gpr gpr gpr -- ) {: hi:gpr lo:gpr count:gpr t:gpr g:gpr h:gpr :}
+   count hi ALWAYS ENC-NORM-L EMIT
+   count count -10 ENC-ADD-I5 EMIT                     \ when the high word holds the top bit
+   g hi 0 ALWAYS ENC-CMPLTU-U4 EMIT
+   t lo ALWAYS ENC-NORM-L EMIT
+   t t 1 ENC-ADD-I5 EMIT                               \ leading zeros of the low word
+   h lo 0 ALWAYS ENC-CMPGT-I5 EMIT
+   t 0 ENC-MVK h WHEN-NONZERO EMIT
+   t t 15 ENC-ADD-I5 EMIT t t 6 ENC-ADD-I5 EMIT        \ plus 21 when the high word is zero
+   count t ENC-MV-L g WHEN-ZERO EMIT ;
+
+
+\ rem (rhi:rlo) < d (dhi:dlo) into lt, with the low-word borrow left in borrow
+\ and eq as scratch; rem is on lt's bank.
+: LESS64 ( gpr gpr gpr gpr gpr gpr gpr -- ) {: rhi:gpr rlo:gpr dhi:gpr dlo:gpr lt:gpr eq:gpr borrow:gpr :}
+   lt rhi dhi ALWAYS ENC-CMPLTU-L EMIT
+   eq rhi dhi ENC-CMPEQ-L EMIT
+   borrow rlo dlo ALWAYS ENC-CMPLTU-L EMIT
+   eq eq borrow ENC-AND-L EMIT
+   lt lt eq ENC-OR-L EMIT ;
+
+
+\ divd(x A5:A4, y B5:B4) under the standard convention, as divf with 53-bit
+\ significands held in register pairs and a 54- or 55-step division.
+: DIVD ( -- )
+   8 A 5 A 1 21 ALWAYS ENC-EXTU-S EMIT                  \ A8 = exponent of x
+   8 B 5 B 1 21 ALWAYS ENC-EXTU-S EMIT                  \ B8 = exponent of y
+   6 A 5 A 12 12 ALWAYS ENC-EXTU-S EMIT                 \ A6:A16 = fraction of x
+   6 B 5 B 12 12 ALWAYS ENC-EXTU-S EMIT                 \ B6:B16 = fraction of y
+   16 A 4 A ENC-MV-L EMIT
+   16 B 4 B ENC-MV-L EMIT
+   7 A 5 A 5 B ENC-XOR-L EMIT                           \ A7 = the result's sign bit
+   7 A 7 A 0 30 ALWAYS ENC-CLR-S EMIT
+   17 A 2047 ENC-MVK EMIT
+   0 A 17 A 8 A ENC-CMPEQ-L EMIT                        \ A0 = x has the top exponent
+   1 A 17 A 8 B ENC-CMPEQ-L EMIT                        \ A1 = y has the top exponent
+   2 A 6 A 16 A ENC-OR-L EMIT
+   2 A 2 A 0 ALWAYS ENC-CMPLTU-U4 EMIT
+   2 A 2 A 0 A ENC-AND-L EMIT                           \ x is NaN
+   2 A WHEN FORWARD {: x-nan:n :}
+   2 B 6 B 16 B ENC-OR-L EMIT
+   2 B 2 B 0 ALWAYS ENC-CMPLTU-U4 EMIT
+   2 B 2 B 1 A ENC-AND-L EMIT                           \ y is NaN
+   2 B WHEN FORWARD {: y-nan:n :}
+   2 A 0 A 1 A ENC-AND-L EMIT
+   2 A WHEN FORWARD {: invalid:n :}                     \ both infinite
+   0 A WHEN FORWARD {: infinite:n :}
+   1 A WHEN FORWARD {: zero:n :}
+   0 B 8 B 1 ALWAYS ENC-CMPGTU-U4 EMIT                  \ B0 = y has a zero exponent
+   1 B 6 B 16 B ENC-OR-L EMIT
+   1 B 1 B 1 ALWAYS ENC-CMPGTU-U4 EMIT
+   2 B 0 B 1 B ENC-AND-L EMIT                           \ y is zero
+   0 A 8 A 1 ALWAYS ENC-CMPGTU-U4 EMIT                  \ A0 = x has a zero exponent
+   1 A 6 A 16 A ENC-OR-L EMIT
+   1 A 1 A 1 ALWAYS ENC-CMPGTU-U4 EMIT
+   2 A 0 A 1 A ENC-AND-L EMIT                           \ x is zero
+   1 B 2 B 2 A ENC-AND-L EMIT
+   1 B WHEN FORWARD {: invalid2:n :}                    \ 0 / 0
+   2 B WHEN FORWARD {: infinite2:n :}                   \ x / 0
+   2 A WHEN FORWARD {: zero2:n :}                       \ 0 / y
+   6 A 16 A 17 A 22 A 1 A 2 A DENORMAL-SHIFT            \ normalise a denormal x
+   17 A 0 ENC-MVK 0 A WHEN-ZERO EMIT
+   6 A 16 A 17 A 1 A 23 A SHL64
+   8 A 1 ENC-MVK 0 A WHEN-NONZERO EMIT
+   8 A 8 A 17 A ENC-SUB-L 0 A WHEN-NONZERO EMIT
+   6 A 6 A 20 20 0 A IF-ZERO ENC-SET-S EMIT              \ or restore the hidden bit
+   6 B 16 B 7 B 9 B 1 B 2 B DENORMAL-SHIFT              \ the same for y
+   7 B 0 ENC-MVK 0 B WHEN-ZERO EMIT
+   6 B 16 B 7 B 1 B 17 B SHL64
+   8 B 1 ENC-MVK 0 B WHEN-NONZERO EMIT
+   8 B 8 B 7 B ENC-SUB-L 0 B WHEN-NONZERO EMIT
+   6 B 6 B 20 20 0 B IF-ZERO ENC-SET-S EMIT
+   8 A 8 A 8 B ENC-SUB-L EMIT                           \ A8 = ex - ey + 1023
+   17 A 1023 ENC-MVK EMIT
+   8 A 8 A 17 A ENC-ADD-L EMIT
+   6 A 16 A 6 B 16 B 1 A 2 A 0 A LESS64                 \ A1 = mx < my
+   9 A 0 ENC-MVK EMIT 20 A 1 ENC-MVK EMIT               \ quotient A9:A20 = 1
+   19 A 16 A 16 B ENC-SUB-L EMIT                        \ remainder A18:A19 = mx - my
+   18 A 6 A 6 B ENC-SUB-L EMIT
+   18 A 18 A 0 A ENC-SUB-L EMIT
+   1 B 54 ENC-MVK EMIT
+   20 A 0 ENC-MVK 1 A WHEN-NONZERO EMIT                 \ or 0 and mx with one more step
+   19 A 16 A ENC-MV-L 1 A WHEN-NONZERO EMIT
+   18 A 6 A ENC-MV-L 1 A WHEN-NONZERO EMIT
+   8 A 8 A -1 ENC-ADD-I5 1 A WHEN-NONZERO EMIT
+   1 B 55 ENC-MVK 1 A WHEN-NONZERO EMIT
+   HERE {: loop:n :}
+   17 A 19 A 31 ALWAYS ENC-SHRU-U5 EMIT                 \ remainder <<= 1
+   18 A 18 A 1 ALWAYS ENC-SHL-U5 EMIT
+   18 A 18 A 17 A ENC-OR-L EMIT
+   19 A 19 A 1 ALWAYS ENC-SHL-U5 EMIT
+   17 A 20 A 31 ALWAYS ENC-SHRU-U5 EMIT                 \ quotient <<= 1
+   9 A 9 A 1 ALWAYS ENC-SHL-U5 EMIT
+   9 A 9 A 17 A ENC-OR-L EMIT
+   20 A 20 A 1 ALWAYS ENC-SHL-U5 EMIT
+   18 A 19 A 6 B 16 B 1 A 2 A 0 A LESS64                \ A1 = remainder < my
+   19 A 19 A 16 B ENC-SUB-L 1 A WHEN-ZERO EMIT
+   18 A 18 A 6 B ENC-SUB-L 1 A WHEN-ZERO EMIT
+   18 A 18 A 0 A ENC-SUB-L 1 A WHEN-ZERO EMIT
+   20 A 20 A 1 ENC-ADD-I5 1 A WHEN-ZERO EMIT
+   1 B 1 B -1 ENC-ADD-I5 EMIT
+   loop 1 B WHEN BACK
+   21 A 18 A 19 A ENC-OR-L EMIT
+   21 A 21 A 0 ALWAYS ENC-CMPLTU-U4 EMIT                \ A21 = sticky
+   1 A 8 A 1 ALWAYS ENC-CMPGT-I5 EMIT                   \ A1 = the result is denormal
+   17 A 1 ENC-MVK EMIT
+   17 A 17 A 8 A ENC-SUB-L EMIT                         \ A17 = extra right shift
+   17 A 0 ENC-MVK 1 A WHEN-ZERO EMIT
+   22 A 56 ENC-MVK EMIT
+   2 A 17 A 22 A ALWAYS ENC-CMPGT-L EMIT
+   17 A 56 ENC-MVK 2 A WHEN-NONZERO EMIT
+   8 A 0 ENC-MVK 1 A WHEN-NONZERO EMIT
+   2 B 17 A 0 ALWAYS ENC-CMPLTU-U4 EMIT
+   2 B UNLESS FORWARD {: no-shift:n :}
+   HERE {: shifting:n :}
+   22 A 20 A 31 31 ALWAYS ENC-EXTU-S EMIT               \ the bit about to leave
+   21 A 21 A 22 A ENC-OR-L EMIT
+   20 A 20 A 1 ALWAYS ENC-SHRU-U5 EMIT
+   22 A 9 A 31 ALWAYS ENC-SHL-U5 EMIT
+   20 A 20 A 22 A ENC-OR-L EMIT
+   9 A 9 A 1 ALWAYS ENC-SHRU-U5 EMIT
+   17 A 17 A -1 ENC-ADD-I5 EMIT
+   2 B 17 A 0 ALWAYS ENC-CMPLTU-U4 EMIT
+   shifting 2 B WHEN BACK
+   no-shift RESOLVE
+   22 A 20 A 30 31 ALWAYS ENC-EXTU-S EMIT               \ guard
+   23 A 20 A 31 31 ALWAYS ENC-EXTU-S EMIT               \ round
+   20 A 20 A 2 ALWAYS ENC-SHRU-U5 EMIT                  \ quotient >>= 2
+   17 A 9 A 30 ALWAYS ENC-SHL-U5 EMIT
+   20 A 20 A 17 A ENC-OR-L EMIT
+   9 A 9 A 2 ALWAYS ENC-SHRU-U5 EMIT
+   17 A 20 A 31 31 ALWAYS ENC-EXTU-S EMIT               \ lowest kept bit
+   23 A 23 A 21 A ENC-OR-L EMIT
+   23 A 23 A 17 A ENC-OR-L EMIT
+   22 A 22 A 23 A ENC-AND-L EMIT                        \ increment
+   17 A 2046 ENC-MVK EMIT
+   2 A 8 A 17 A ALWAYS ENC-CMPGT-L EMIT
+   2 A WHEN FORWARD {: infinite3:n :}                   \ overflow
+   20 A 20 A 22 A ENC-ADD-L EMIT
+   17 A 20 A 1 ALWAYS ENC-CMPGTU-U4 EMIT                \ the low word wrapped to zero
+   17 A 17 A 22 A ENC-AND-L EMIT
+   9 A 9 A 17 A ENC-ADD-L EMIT
+   8 A 8 A -1 ENC-ADD-I5 1 A WHEN-ZERO EMIT             \ the hidden bit carries one exponent unit
+   8 A 8 A 20 ALWAYS ENC-SHL-U5 EMIT
+   9 A 9 A 8 A ENC-ADD-L EMIT
+   5 A 7 A 9 A ENC-OR-L EMIT
+   4 A 20 A ENC-MV-L EMIT
+   RETURN
+   x-nan RESOLVE
+   5 A 5 A 19 19 ALWAYS ENC-SET-S EMIT RETURN
+   y-nan RESOLVE
+   4 A 4 B ENC-MV-L EMIT 5 A 5 B ENC-MV-L EMIT 5 A 5 A 19 19 ALWAYS ENC-SET-S EMIT RETURN
+   invalid RESOLVE invalid2 RESOLVE
+   5 A $7FF80000 ENC-MVKL EMIT 5 A $7FF80000 ENC-MVKH EMIT 4 A 0 ENC-MVK EMIT RETURN
+   infinite RESOLVE infinite2 RESOLVE infinite3 RESOLVE
+   9 A $7FF00000 ENC-MVKL EMIT 9 A $7FF00000 ENC-MVKH EMIT 5 A 7 A 9 A ENC-OR-L EMIT 4 A 0 ENC-MVK EMIT RETURN
+   zero RESOLVE zero2 RESOLVE
+   5 A 7 A ENC-MV-L EMIT 4 A 0 ENC-MVK EMIT RETURN ;
+
+
 \ ---- register sets (SPRAB89 Table 8-9; divremu adds A5, which the contract returns) ----
 
 : A-BIT ( n -- n ) 1 swap lshift ;
@@ -306,7 +485,7 @@ variable FIXUP-COUNT
    COMMON 2 A-BIT or 5 A-BIT or 6 A-BIT or PERMITTED 4 cells + !                      \ divremi
    COMMON 0 A-BIT or 2 A-BIT or 5 A-BIT or 6 A-BIT or PERMITTED 5 cells + !           \ divremu
    CALLER-SAVED PERMITTED 6 cells + ! CALLER-SAVED PERMITTED 7 cells + !
-   CALLER-SAVED PERMITTED 8 cells + ! ;
+   CALLER-SAVED PERMITTED 8 cells + ! CALLER-SAVED PERMITTED 9 cells + ! ;
 PERMITTED!
 
 public
@@ -321,6 +500,7 @@ public
    idx 6 = if s" memcpy" exit then
    idx 7 = if s" memset" exit then
    idx 8 = if s" __c6xabi_divf" exit then
+   idx 9 = if s" __c6xabi_divd" exit then
    E-OPERAND throw ;
 
 
@@ -336,6 +516,7 @@ public
    idx 6 = if MEMCPY exit then
    idx 7 = if MEMSET exit then
    idx 8 = if DIVF exit then
+   idx 9 = if DIVD exit then
    E-OPERAND throw ;
 
 : PROGRAM$ ( -- ptr a n ) WORDS LEN @ ;
