@@ -231,10 +231,11 @@ create TXT
 \ A routine of no arguments and no results whose two arms both trap. It is here
 \ for the PLACEMENT survey and not for the terminator: the pointer stands at one
 \ place for the whole routine, the entry wants it where the caller left it and
-\ each trap site wants it one cell up, so the two trap sites outvote the entry
-\ and the routine pays ONE adjustment instead of two. A survey that did not count
-\ trap sites would pick the other place and emit the other number, which is what
-\ the case below measures.
+\ each trap site wants it three cells up (the diagnostic address, length and
+\ exit code). Two votes beat one, but a routine may not reserve caller stack at
+\ entry for outputs of a path it might not take (select.f DPLACE-OK?, since the
+\ stack guards): the pointer stands where the caller left it and each trap site
+\ pays its own guarded adjustment, which is what the case below measures.
 : BUILD-DEAD-VOID ( n -- )
    {: ord:n :}
    s" TRV" 0 0 OPEN-FUN
@@ -585,13 +586,14 @@ variable CHILD-RC
 
 \ The placement survey with trap sites in it. The routine takes and publishes
 \ nothing, so the entry wants the pointer where the caller left it; its two trap
-\ sites each want it one cell up. Two votes beat one, so the pointer stands one
-\ cell up and the routine pays exactly ONE adjustment - the entry's. A survey
-\ blind to trap sites would stand it where the entry wants and pay two.
+\ sites each want it three cells up. Standing it three cells up would reserve
+\ caller stack at entry for a path the routine might not take, which the guarded
+\ entry refuses, so the pointer stays where the caller left it and each trap
+\ site pays one adjustment of its own: two, each right before its transfer.
 : VOID-PLACE-CASE ( -- )
-   s" a routine of two trap sites pays one pointer adjustment, not two" T-LABEL
+   s" a routine of two trap sites pays one pointer adjustment per site" T-LABEL
    [: RUN-VOID ;] 0 TTHROWSQ
-   DMOVES-IN-EMISSION 1 T= ;
+   DMOVES-IN-EMISSION 2 T= ;
 
 : SHARED-TARGET-CASE ( -- )
    RUN-TWO-TRAPS
