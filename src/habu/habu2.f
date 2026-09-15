@@ -8963,7 +8963,11 @@ public
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
-\ guard when the just-interpreted word left XDS below S0 (proven underflow). Print
+\ guard when the just-interpreted word left XDS below S0 (proven underflow), from
+\ LARITY when a guarded primitive is the token on a shallow stack, and from the
+\ engine's data-stack guard (src/habu/rt.f EMIT-DATA) when any request below the
+\ base fails - a primitive's pop, a compiled word's, however deep - which is why
+\ the guard names this label rather than exiting STACK-BOUNDS for it. Print
 \ `E-UNDERFLOW: <word>` naming the offending token (TKA/TKL still hold it, LTOK has
 \ not overwritten them this iteration), then recover exactly like the undefined-word
 \ path: inside EVALUATE the failure unwinds as a catchable RC-REJECT throw via the
@@ -9317,7 +9321,8 @@ public
 package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
-   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
+   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LARITY !
+   STACK-GUARD:UNDERFLOW-ENTRY LUNDERFLOW !     \ the data guard's below-base branch lands here too
    EM-STARTUP
    \ Boot enters the interpret loop, explicitly. EM-STARTUP's last emitter ends
    \ at SRC-DONE with no branch, so before this line cold boot fell into the

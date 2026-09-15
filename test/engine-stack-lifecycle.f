@@ -97,6 +97,12 @@ variable ERRLEN
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" hb: stack bounds exceeded" T$= ;
 
+\ A data request below the base is the one refusal with a name: the guard leaves
+\ for the interpreter's E-UNDERFLOW diagnostic, which names the token and exits 70.
+: NAMED-UNDERFLOW ( ptr u8 n ptr u8 n -- ) {: src:ptr size:n diag:ptr diagu:n :}
+   src size CHILD-RC 70 T=
+   ERR ERRLEN @ diag diagu T$= ;
+
 : MALFORMED ( -- )
    s" null stack base" T-LABEL
    s" : EMPTY ( -- ) ; : GO ( -- ) ['] EMPTY NULL-PTR 0 run-in-stack ; GO" REFUSED
@@ -115,7 +121,8 @@ variable ERRLEN
    s" whole return transfer needs two live slots" T-LABEL
    s" 1 data-base RSP-CELL + ! 2r>" REFUSED
    s" empty return-stack read" T-LABEL s" 2r>" REFUSED
-   s" empty data-stack adjustment" T-LABEL s" drop" REFUSED
+   s" empty data-stack adjustment" T-LABEL
+   s" drop" S\" E-UNDERFLOW: drop\n" NAMED-UNDERFLOW
    s" the last loop frame" T-LABEL
    s" : NEST ( n -- ) dup 0= if drop exit then 1 0 do dup 1 - recurse loop drop ; STACK-ABI:LOOP-FRAMES NEST"
    CHILD-RC 0 T=

@@ -15,7 +15,9 @@
 \   catch/is fit + misfit, and an unsafe-definer tick (`['] deflinear`) -> REJ.
 \ Tier interop with the top-row tracker (src/core/top-row.f): the child tier is
 \ staged by HABU_TOP_TIER (XE-RUN = tier-1 warn, XE-RUN2 = tier-2 reject). XE-TIER1
-\ pins the tier-1 warn contract (`' FOO2 execute` warns once, rc 0). XE-TIER2 pins
+\ pins the tier-1 warn contract: `' FOO2 execute` warns once and still runs, and
+\ the run ends in the engine's stack guard naming the underflow (E-UNDERFLOW,
+\ rc 70) rather than reading below the base as it did before the guards. XE-TIER2 pins
 \ the sub-dot-7 flip: `' FOO2 execute` and `0 0 catch` REJECT pre-execution with a
 \ clean rc-70 diagnostic and no crash (`0 0 catch` no longer reaches the
 \ BLR-into-xt-0 rc-134 crash it hit at tier-1).
@@ -199,11 +201,12 @@ variable XE-CNT
    s" 0 0 catch" XE-LINE
    SB$ ;
 
-: XE-TIER1 ( -- )                        \ tier-1: observe, never block
+: XE-TIER1 ( -- )                        \ tier-1: the tracker observes, the guard names the underflow
    s" tier-1: ' FOO2 execute still warns exactly once at underdepth" T-LABEL
    XE-EXEC$ XE-RUN  XE-WARN-COUNT 1 T=
-   s" tier-1: ' FOO2 execute leaves rc 0 (tracker observes, never blocks)" T-LABEL
-   XE-EXITED @ TTRUE  XE-RC @ 0 T= ;
+   s" tier-1: ' FOO2 execute runs into the stack guard's named underflow (rc 70)" T-LABEL
+   XE-EXITED @ TTRUE  XE-RC @ 70 T=
+   XE-ERR$ s" E-UNDERFLOW: execute" XE-COUNT 1 T= ;
 
 : XE-TIER2 ( -- )                        \ tier-2 (sub-dot 7): the pre-armed pins now REJECT
    s" tier-2: ' FOO2 execute rejects rc 70 pre-execution (xt underflow)" T-LABEL

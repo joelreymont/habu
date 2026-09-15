@@ -31,6 +31,7 @@ package STACK-GUARD
 variable LDATA
 variable LRETURN
 variable LLOOP
+variable LUNDER
 variable REQ-BELOW
 variable REQ-ABOVE
 variable REQ-TARGET
@@ -40,6 +41,7 @@ variable DESCRIPTOR-BASE
 variable DESCRIPTOR-CAP
 variable CURSOR-ABOVE
 variable CHECK-FAIL
+variable CHECK-UNDER
 variable CHECK-END
 variable CHECK-START
 variable FIXED-OFF
@@ -92,11 +94,29 @@ variable FIXED-CAP
 public
 
 : LABELS ( -- )
-   LBL LDATA !  LBL LRETURN !  LBL LLOOP ! ;
+   LBL LDATA !  LBL LRETURN !  LBL LLOOP !  LBL LUNDER ! ;
 
 : DATA-ENTRY ( -- label ) LDATA LABEL@ ;
 : RETURN-ENTRY ( -- label ) LRETURN LABEL@ ;
 : LOOP-ENTRY ( -- label ) LLOOP LABEL@ ;
+
+\ Where a data request below the base goes: the interpreter's E-UNDERFLOW
+\ diagnostic, which habu2.f places under this label.
+: UNDERFLOW-ENTRY ( -- label ) LUNDER LABEL@ ;
+
+private
+
+\ A request below the base is the one failure with a name. The interpreter's
+\ E-UNDERFLOW diagnostic names the token whose execution underflowed, throws
+\ RC-REJECT inside evaluate and recovers in the REPL, and it restores SP from
+\ its own saved cells on both recovery legs, so the check releases only its
+\ own frame before leaving for it. Every other failure - a push past the
+\ capacity, a descriptor that does not describe a stack - has no token to
+\ name and stays fail-closed here.
+: EMIT-UNDERFLOW ( -- )
+   SP SP 32 ADDI,  UNDERFLOW-ENTRY B, ;
+
+public
 
 \ The envelope is [XDS-below,XDS+above), with both distances in bytes.
 \ It also validates pointer adjustments whose endpoint is XDS +/- distance.
@@ -121,7 +141,7 @@ public
 : EXIT-BOUNDS ( -- ) EMIT-FAIL ;
 
 : EMIT-DATA ( -- label label )
-   LBL CHECK-FAIL !  LBL CHECK-END !
+   LBL CHECK-FAIL !  LBL CHECK-UNDER !  LBL CHECK-END !
    DATA-ENTRY LBL,
    SAVE-CHECK
    14 DATA STACK-ABI:BASE-CELL LDR,
@@ -131,10 +151,11 @@ public
    XDS 14 CMP,  C-CC CHECK-FAIL LABEL@ BCOND,
    14 XDS 14 SUB,
    14 15 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
-   16 14 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
+   16 14 CMP,  C-HI CHECK-UNDER LABEL@ BCOND,
    15 15 14 SUB,
    17 15 CMP,  C-HI CHECK-FAIL LABEL@ BCOND,
    RETURN-CHECK
+   CHECK-UNDER LABEL@ LBL,  EMIT-UNDERFLOW
    CHECK-FAIL LABEL@ LBL,  EMIT-FAIL
    CHECK-END LABEL@ LBL,
    DATA-ENTRY CHECK-END LABEL@ ;

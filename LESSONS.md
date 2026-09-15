@@ -8369,3 +8369,19 @@ children and the recovery stage include those files bare, and `require` is
 undefined there (test/defer-history's window printed `E-UNDEFINED: require`
 after xref.f grew one). Their order is the manifest's; a fixture that loads
 such a file itself lists its predecessor first (2026-09-15).
+
+The engine's data-stack guard names an underflow instead of exiting 102: a
+request below the base in `src/habu/rt.f` EMIT-DATA branches to the
+interpreter's E-UNDERFLOW routine (habu2.f LUNDERFLOW, reached through
+STACK-GUARD:UNDERFLOW-ENTRY), which prints `E-UNDERFLOW: <token>` for the
+token being interpreted, throws RC-REJECT inside evaluate and recovers in the
+REPL, and both recovery legs restore SP from their saved cells, so the branch
+is safe from any depth. Overflow and a malformed descriptor keep
+`hb: stack bounds exceeded` (ENGINE-ERROR:STACK-BOUNDS). A tier-1 top-row
+warning no longer ends in a run that reads below the base: `' FOO2 execute`
+warns once and then exits 70 with the name (2026-09-15).
+
+Engines are byte-reproducible only from a quiet tree: an edit to any baked
+source while a generation builds makes the next generation differ (f6 vs f5
+here), which looks like a broken fixpoint. Finish every prefix edit, then run
+the two-generation chain and compare (2026-09-15).

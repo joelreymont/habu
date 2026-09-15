@@ -590,7 +590,7 @@ variable STACK-GUARD:JDATA variable STACK-GUARD:JRETURN variable STACK-GUARD:JLO
    14 15 fail STACK-GUARD:DESCRIPTOR
    XDS 14 CMP, C-CC fail BCOND,
    14 XDS 14 SUB, 14 15 CMP, C-HI fail BCOND,
-   16 14 CMP, C-HI fail BCOND,
+   16 14 CMP, C-HI fail BCOND,   \ stage0 has no E-UNDERFLOW diagnostic to leave for
    15 15 14 SUB, 17 15 CMP, C-HI fail BCOND,
    STACK-GUARD:RETURN-CHECK
    fail LBL, STACK-GUARD:EXIT-BOUNDS end LBL, ;

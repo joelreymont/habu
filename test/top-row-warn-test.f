@@ -10,7 +10,9 @@
 \
 \ Tier-1 positives (docs §1): p1 `' FOO2 execute` (xt underflow) and p3
 \ `s" abc" + .` (byte pointer into a scalar consumer) each emit EXACTLY ONE named
-\ warning with rc 0. Tier-2 (docs §4 Tier 2): p1, p2 `0 0 catch` (non-xt to catch,
+\ warning; p3 then runs to rc 0, and p1 runs until the engine's stack guard names
+\ the underflow it warned about (E-UNDERFLOW, rc 70) instead of reading below the
+\ base. Tier-2 (docs §4 Tier 2): p1, p2 `0 0 catch` (non-xt to catch,
 \ which crashes rc 134 at tier-1), and p3 each REJECT pre-execution - one named
 \ diagnostic, clean exit rc 70, no crash. p2 proves the crash is eliminated.
 \ Negatives (the four zero-warning guards, quiet at BOTH tiers - the no-false-reject
@@ -184,11 +186,12 @@ variable TW-CNT
    TW-RUN2
    TW-EXITED @ TTRUE  TW-RC @ 0 T=  TW-WARN-COUNT 0 T= ;
 
-: TW-POSITIVES ( -- )                    \ tier-1: warn, rc unchanged (observe, never block)
+: TW-POSITIVES ( -- )                    \ tier-1: warn, then run (the guard names a real underflow)
    s" tier-1 p1 ' FOO2 execute emits exactly one xt-underflow warning" T-LABEL
    TW-P1$ 1 TW-ASSERT-WARNS
-   s" tier-1 p1 leaves rc 0 (tier-1 observes, never blocks)" T-LABEL
-   TW-EXITED @ TTRUE  TW-RC @ 0 T=
+   s" tier-1 p1 runs into the stack guard's named underflow (rc 70)" T-LABEL
+   TW-EXITED @ TTRUE  TW-RC @ TW-REJECT-RC T=
+   TW-ERR$ s" E-UNDERFLOW: execute" TW-COUNT 1 T=
    s" tier-1 p3 byte pointer into a scalar consumer emits exactly one warning" T-LABEL
    TW-P3$ 1 TW-ASSERT-WARNS
    s" tier-1 p3 leaves rc 0 (execution unchanged)" T-LABEL
