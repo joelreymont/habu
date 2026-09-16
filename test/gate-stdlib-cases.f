@@ -685,6 +685,10 @@ SUITE proc-signal-primitive-smoke
    test/proc-signal-smoke.f
 ;SUITE
 
+SUITE proc-capture-under-signals
+   test/proc-capture-signal.f
+;SUITE
+
 SUITE process-fork-wrappers
    lib/process-fork-test.f
 ;SUITE

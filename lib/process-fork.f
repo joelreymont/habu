@@ -120,7 +120,10 @@ private
 \ read end (wa) reports EOF. Neither pipe is ever written, so a readable poll
 \ means its write end closed. If pd closed the pool parent died - reap the
 \ worker's process group. If wa closed the worker exited normally - just
-\ return so the reaper exits without signalling. Loops only over EINTR.
+\ return so the reaper exits without signalling. Loops only over EINTR: the wait
+\ is indefinite, so poll can only come back with an event or an error, and any
+\ errno other than EINTR means the watch itself is broken - the reaper leaves
+\ without signalling rather than spinning on a descriptor it can no longer read.
 : PROC-REAP-WATCH2 ( fd fd -- ) {: pd:fd wa:fd :}
    begin
       pd POLLIN 0 >IDX PROC-REAP-PFD!
@@ -130,6 +133,7 @@ private
          0 >IDX PROC-REAP-REVENTS 0 <> if PROC-REAP-KILL-GROUP then
          exit
       then
+      rc EINTR# negate <> if exit then
    again ;
 
 public
@@ -160,7 +164,8 @@ public
 \ Reaper body for a spawned (exec'd) child: block until the single parent-death
 \ read end (pd) EOFs, then reap the reaper's own process group. The reaper has
 \ already joined the child's group, so this kills the child subtree. Loops only
-\ over EINTR.
+\ over EINTR; any other errno means the watch is broken, and the reaper leaves
+\ without signalling rather than spinning.
 
 private
 
@@ -172,6 +177,7 @@ private
          0 >IDX PROC-REAP-REVENTS 0 <> if PROC-REAP-KILL-GROUP then
          exit
       then
+      rc EINTR# negate <> if exit then
    again ;
 
 public

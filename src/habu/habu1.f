@@ -828,15 +828,32 @@ variable NUM-FPOS
    done LBL,
    0 G-PUSH ;
 
-: BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
+\ THE ERRNO RULE FOR THIS FILE'S SYSCALL WRAPPERS. Every wrapper above and below
+\ collapses a failed syscall to a bare -1 (`0 0 MOVN`) because its callers only
+\ ever ask whether the call worked: pipe, dup2, fcntl, kill, setpgid, open,
+\ ioctl, mmap, munmap, fork and the spawn helpers have nothing to retry and no
+\ second course of action, so the errno carries no information they could act on.
+\ BPOLL is the one wrapper that MUST carry it, and it publishes the NEGATED errno
+\ the way src/os/{linux,macos}/proc-control.f already does for kill-errno and
+\ execve: on Linux aarch64 the raw syscall leaves 0/-errno in x0, so publishing
+\ x0 unchanged IS the -errno contract; on macOS (BSD) the carry flag marks
+\ failure and x0 holds the POSITIVE errno, so the error path negates it.
+\
+\ WHY POLL AND ONLY POLL (dot habu-return-errno-from-2ba16110). poll(2) is the
+\ one blocking call the kernel never restarts, SA_RESTART or not. read, write and
+\ wait4 are restarted by it, and the only signal handler this engine installs -
+\ the sampling profiler's SIGALRM, src/habu/prof.f LINUX-SA-PROF-FLAGS - sets
+\ SA_RESTART, so those three cannot return EINTR here and an EINTR branch on them
+\ would be unreachable. That is what keeps them safe, not a property of the
+\ syscalls: a handler installed WITHOUT SA_RESTART would need the same -errno
+\ contract, which is one line per wrapper now that the precedent exists.
+: BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -errno
    2 G-POP  1 G-POP  0 G-POP
    LBL LBL {: plen:label pguard:label :}
    6 1 61 LSRI,  6 plen CBZ,                  \ nfds*8 overflow becomes an all-address span
       6 0 MOVN,  pguard B,
    plen LBL,  6 1 3 LSLI,
    pguard LBL,  0 6 PROT-GUARD:CALL             \ pollfd array: nfds * 8 bytes
-   LBL LNX-OK !
-   LBL LNX-DONE !
    LBL LNX-PNEG !
    LBL LNX-PCALL !
    HB-TARGET-LINUX? IF
@@ -852,19 +869,15 @@ variable NUM-FPOS
       LNX-PCALL LABEL@ LBL,
       3 0 MOVZ,  4 0 MOVZ,
       NR-POLL SYS,
-      9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
-         0 0 MOVN,  LNX-DONE LABEL@ B,
-      LNX-OK LABEL@ LBL,
-      LNX-DONE LABEL@ LBL,
-      0 G-PUSH
+      0 G-PUSH                                  \ x0 already holds nready/0 or -errno
       SP SP 32 ADDI,
       exit
    THEN
+   LBL {: ok:label :}
    NR-POLL SYS,
-   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
-      0 0 MOVN,  LNX-DONE LABEL@ B,
-   LNX-OK LABEL@ LBL,
-   LNX-DONE LABEL@ LBL,
+   9 C-CS CSET,  9 ok CBZ,          \ carry clear -> x0 already holds nready or 0
+      10 0 MOVZ,  0 10 0 SUB,        \ carry set -> x0 = 0 - errno = -errno
+   ok LBL,
    0 G-PUSH ;
 
 : BKILL ( -- )                     \ ( pid sig -- rc ) rc=0 or -1

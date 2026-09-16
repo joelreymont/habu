@@ -47,6 +47,7 @@ private
 8 constant POLLERR
 16 constant POLLHUP
 32 constant POLLNVAL
+4 constant EINTR#                  \ "interrupted by a signal" (POSIX, identical on Linux/macOS)
 9 constant SIGKILL
 2 constant F-SETFD
 3 constant F-GETFL
@@ -167,15 +168,53 @@ variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (S
 : PROC-PFD-REVENTS ( idx -- n )
    PROC-PFD-SLOT @ 48 rshift $FFFF and ;
 
+\ Milliseconds left before an absolute monotonic deadline, floored at zero. Both
+\ the shared capture deadline and a caller's own one-shot window are measured
+\ with this, so a restarted poll always waits out what is left rather than the
+\ interval it was first given.
+: PROC-LEFT-MS ( n -- ms ) {: deadline :}
+   deadline mono-ns - dup 0 <= if
+      drop 0 >MS
+   else
+      PROC-NS-PER-MS / >MS
+   then ;
+
+: PROC-DEADLINE-AT ( ms -- n ) {: timeout :}
+   mono-ns timeout MS>N PROC-NS-PER-MS * + ;
+
+: PROC-POLL-ONCE ( n n -- n ) {: nfds ms :}
+   PROC-PFD nfds ms poll ;
+
+\ poll(2) is the one blocking call SA_RESTART never restarts, so a -EINTR here
+\ says a signal landed before any event did: nothing failed, nothing was
+\ consumed, and the descriptors are untouched. The deadline is untouched too, so
+\ each restart waits out only what is left of it and no signal storm can push a
+\ capture past its timeout; a deadline that has already passed reports the
+\ ordinary zero-event timeout. Every other negative rc is a real errno, and the
+\ caller names it through its own E-PROC-* code.
+: PROC-POLL-RESTART ( n n n -- n ) {: nfds ms deadline :}
+   nfds ms PROC-POLL-ONCE {: rc :}
+   rc EINTR# negate <> if rc exit then
+   begin
+      deadline PROC-LEFT-MS MS>N {: left :}
+      left 0= if 0 exit then
+      nfds left PROC-POLL-ONCE {: restarted :}
+      restarted EINTR# negate <> if restarted exit then
+   again ;
+
+\ One raw poll of a single descriptor: a signal is reported as -EINTR, like any
+\ other errno, because this word owns no deadline to restart against.
 : POLL-IN ( fd ms -- count ) {: fd ms :}
    fd POLLIN PROC-PFD!
    PROC-PFD 1 ms MS>N poll >COUNT ;
 
-: POLL-IN-OR-TIMEOUT ( fd ms -- count )
-   POLL-IN {: rc :}
-   rc COUNT>N 0 < if E-PROC-OUTPUT throw then
-   rc COUNT>N 0= if E-PROC-TIMEOUT throw then
-   rc ;
+: POLL-IN-OR-TIMEOUT ( fd ms -- count ) {: fd ms :}
+   ms PROC-DEADLINE-AT {: deadline :}
+   fd POLLIN PROC-PFD!
+   1 ms MS>N deadline PROC-POLL-RESTART {: rc :}
+   rc 0 < if E-PROC-OUTPUT throw then
+   rc 0= if E-PROC-TIMEOUT throw then
+   rc >COUNT ;
 
 \ Capture-child death-reaper seam. Contexts that own a death-watch fd (a pool
 \ worker's worker-alive read end; lib/process-fork.f installs the live vector)
@@ -313,27 +352,28 @@ PROC-REAP-ARM-DEFAULT
 
 : PROC-CAPTURE-DEADLINE! ( ms -- ) {: timeout :}
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then
-   mono-ns timeout MS>N PROC-NS-PER-MS * + >NS PROC-DEADLINE ! ;
+   timeout PROC-DEADLINE-AT >NS PROC-DEADLINE ! ;
 
 : PROC-REMAINING-MS ( -- ms )
-   PROC-DEADLINE @ NS>N mono-ns - dup 0 <= if
-      drop 0 >MS
-   else
-      PROC-NS-PER-MS / >MS
-   then ;
+   PROC-DEADLINE @ NS>N PROC-LEFT-MS ;
+
+: PROC-ARM-CAPTURE-PFD ( -- )
+   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
+   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT! ;
+
+: PROC-POLL-CAPTURE-RC ( n n -- n ) {: nfds ms :}
+   nfds ms PROC-DEADLINE @ NS>N PROC-POLL-RESTART ;
 
 : PROC-POLL-CAPTURE ( ms -- count ) {: ms :}
-   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
-   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT!
-   PROC-PFD 2 ms MS>N poll {: rc :}
+   PROC-ARM-CAPTURE-PFD
+   2 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc 0= if E-PROC-TIMEOUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
 : PROC-POLL-CAPTURE-OUTCOME ( ms -- count ) {: ms :}
-   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
-   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT!
-   PROC-PFD 2 ms MS>N poll {: rc :}
+   PROC-ARM-CAPTURE-PFD
+   2 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
@@ -407,28 +447,24 @@ PROC-REAP-ARM-DEFAULT
    PROC-IN-OFF @ OFF>N inu LEN>N >= if PROC-IN-W PROC-CLOSE-CELL exit then
    src inu PROC-WRITE-STDIN-ACTIVE ;
 
-: PROC-POLL-IO ( ms -- count ) {: ms :}
-   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
-   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT!
+: PROC-ARM-IO-PFD ( -- )
+   PROC-ARM-CAPTURE-PFD
    PROC-IN-W @ FD>N 0 >= if
       PROC-IN-W @ POLLOUT 2 >IDX PROC-PFD-AT!
    else
       -1 >FD 0 2 >IDX PROC-PFD-AT!
-   then
-   PROC-PFD 3 ms MS>N poll {: rc :}
+   then ;
+
+: PROC-POLL-IO ( ms -- count ) {: ms :}
+   PROC-ARM-IO-PFD
+   3 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc 0= if E-PROC-TIMEOUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 
 : PROC-POLL-IO-OUTCOME ( ms -- count ) {: ms :}
-   PROC-OUT-R @ POLLIN 0 >IDX PROC-PFD-AT!
-   PROC-ERR-R @ POLLIN 1 >IDX PROC-PFD-AT!
-   PROC-IN-W @ FD>N 0 >= if
-      PROC-IN-W @ POLLOUT 2 >IDX PROC-PFD-AT!
-   else
-      -1 >FD 0 2 >IDX PROC-PFD-AT!
-   then
-   PROC-PFD 3 ms MS>N poll {: rc :}
+   PROC-ARM-IO-PFD
+   3 ms MS>N PROC-POLL-CAPTURE-RC {: rc :}
    rc 0 < if E-PROC-OUTPUT PROC-THROW-CAPTURE then
    rc >COUNT ;
 

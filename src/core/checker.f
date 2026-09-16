@@ -6961,7 +6961,7 @@ PRIM: getdirentries64
 PRIM: pipe     PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: dup2     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: fcntl    PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: poll     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: poll     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( fds nfds ms -- nready|0|-errno ) the one unrestartable wait: callers restart on -EINTR
 PRIM: kill     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: setpgid  PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 

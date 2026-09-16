@@ -640,13 +640,16 @@ process, so it works inside a stripped image.
 
 ### Limits
 
-- **A profiled program that spawns and captures a child dies.** `poll(2)` is
-  never restarted by `SA_RESTART`, so every tick that lands in it returns EINTR;
-  the engine's `poll` primitive collapses every error to -1, so `lib/process.f`
-  cannot tell EINTR from a real failure and raises `E-PROC-OUTPUT`. This is what
-  stops a `tools/native-build.f` run under `prof-on` at its final child-spawn
-  phase. Until the primitive reports the errno, profile such a build with a
-  sample limit that reports before that phase.
+- A profiled program that spawns and captures a child used to die, and no longer
+  does. `poll(2)` is never restarted by `SA_RESTART`, so every tick that lands in
+  it returns EINTR; the `poll` primitive used to collapse that to -1, so
+  `lib/process.f` could not tell it from a real failure and raised
+  `E-PROC-OUTPUT` — which stopped a `tools/native-build.f` run under `prof-on` at
+  its final child-spawn phase. The primitive now returns `-errno` and the capture
+  loop restarts on `-EINTR` against its existing deadline, so a profiled
+  self-build runs end to end and needs no sample-limit workaround. A `prof-on`
+  limit still reports and exits 99 at that many samples, so give a whole
+  self-build a limit it cannot reach (or `0`) and call `prof-report` yourself.
 - The handler runs on an alternate stack registered for the thread that called
   `prof-on`; a tick delivered to a `lib/task.f` thread runs on that thread's own
   stack.
