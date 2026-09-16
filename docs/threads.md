@@ -67,8 +67,8 @@ TASK:SEMAPHORE-DESTROY ( TASK:sem -- )
 TASK:WAIT            ( TASK:sem -- )   \ block until positive, then decrement
 TASK:SIGNAL          ( TASK:sem -- )   \ increment and wake one waiter
 TASK:TRY-WAIT        ( TASK:sem -- bool ) \ decrement if positive; never blocks
-TASK:SEMAPHORE-BYTES ( -- n )          \ bytes to embed one in another record
-TASK:FACILITY-BYTES  ( -- n )
+TASK:NEW-SEMAPHORE   ( -- TASK:sem )   \ take one from the pool
+TASK:FREE-SEMAPHORE  ( TASK:sem -- )   \ destroy it and give the record back
 
 TASK:SEND-MESSAGE    ( n ptr a -- )    \ post one cell to that task
 TASK:GET-MESSAGE     ( -- n ptr a )    \ take this task's message and its sender
@@ -107,9 +107,13 @@ ITEMS TASK:SEMAPHORE-DESTROY
 ```
 
 - The handle is `TASK:sem`, a nominal cell, and it is the only thing the
-  definition publishes: the child's `does>` body converts the record address to
-  the handle, so package TASK exposes no raw-address-to-handle crossing and
-  nothing outside it holds the record. The conversion costs no instructions.
+  definition publishes. The family is a `NEWTYPE` and its two `CAST:` converters
+  are defined in package TASK's private section, so the crossing between an
+  address and a handle exists only inside this package: no caller can mint a
+  handle over memory of its own, and none can project a handle back to an
+  address. The conversion costs no instructions.
+- A handle therefore always names a record package TASK owns - one a definition
+  allotted, one of a task's two mailbox records, or one from the pool below.
 - The type is the first line of defence: a bare `( ptr a )` is refused at the
   call site, so the record address a `TASK:FACILITY` also has cannot reach
   `sem_wait`.
@@ -136,6 +140,16 @@ ITEMS TASK:SEMAPHORE-DESTROY
 - A signal delivered while a task is parked interrupts `sem_wait` with `EINTR`
   and consumes no count, so `TASK:WAIT` retries; any other failure is
   `E-TASK-THREAD`.
+- `TASK:NEW-SEMAPHORE` answers a handle over a record from a fixed pool this
+  package owns, for a caller that needs a semaphore at run time instead of
+  defining one; the pool is `TASK-SEM-POOL-N` records and a request past that is
+  `E-TASK-SEM-POOL`. The record arrives uninitialized, exactly like a defined
+  one, so the caller still chooses the count with `TASK:SEMAPHORE-INIT`.
+- `TASK:FREE-SEMAPHORE` destroys the semaphore if it is still live and returns
+  the record to the pool, so a recycled record never carries a POSIX object into
+  its next owner. A handle that did not come from the pool - a defined semaphore,
+  a mailbox record - is `E-TASK-SEM-POOL`. Claiming a record is one atomic step,
+  so two tasks asking at the same moment are handed different records.
 - `sem_init`, `sem_wait`, `sem_post` and `sem_destroy` are declared with
   `FUNCTION:` over `PROCESS-SYMBOLS` in package TASK's private section, so
   package FFI owns their symbol resolution and their bounded staging and this
@@ -221,8 +235,8 @@ JOBS QUEUE:DESTROY
   package's table of records rather than a record address. So a cell that names
   no definition is `E-QUEUE-OPERAND` at the first word that reads it, and no
   handle can ever name storage the package did not allot - the substitute for
-  the raw-address handle `TASK:sem` gets from its own package's cast. One image
-  holds 256 queue definitions; past that a definition is `E-QUEUE-TABLE`.
+  a record address it could dereference. One image holds `QUEUE:MAX-QUEUES` (256)
+  queue definitions; past that a definition is `E-QUEUE-TABLE`.
 - `QUEUE:INIT` opens the semaphores and empties the ring; every other word needs
   a live queue and throws `E-QUEUE-STATE` otherwise, including a second
   `QUEUE:INIT`. `QUEUE:DESTROY` on an inactive queue is a no-op.
@@ -230,10 +244,16 @@ JOBS QUEUE:DESTROY
   producer takes a free slot before it writes and a consumer takes an item before
   it reads, so `QUEUE:TRY-PUSH` and `QUEUE:TRY-POP` are that same take without
   the block and refuse exactly when the ring is full or empty.
-- A facility covers the head and tail indexes, so the slot is filled before the
-  item semaphore announces it: two producers never claim one slot and a consumer
-  never reads a slot a producer has claimed but not yet written. It is held for
-  the index update only, never across a block.
+- A third, binary semaphore is the lock over the head and tail indexes, so the
+  slot is filled before the item semaphore announces it: two producers never
+  claim one slot and a consumer never reads a slot a producer has claimed but not
+  yet written. It is held for the index move and the one cell copy, never across
+  a block, and nothing in between can throw.
+- All three come from `TASK:NEW-SEMAPHORE`, so a live queue holds three pool
+  records and an idle one holds none; the handles live in a typed row of
+  `TASK:sem`, never as bare cells, and `QUEUE:DESTROY` gives them back. A
+  `QUEUE:INIT` that cannot take all three returns the ones it took and throws
+  `E-TASK-SEM-POOL`, so a refused queue leaks no record.
 - Elements are cells. The queue copies the cell and nothing else; a pointer
   pushed through it stays the sender's to keep alive.
 - `QUEUE:COUNT` is the count at the moment it is asked, for reporting rather than
@@ -242,9 +262,11 @@ JOBS QUEUE:DESTROY
 - The same POSIX rule as the semaphores: end a queue's waiters before
   `QUEUE:DESTROY`.
 - `lib/queue-test.f` covers the ring shapes, the wrap, the refusals, a push that
-  blocks until a pop and a pop that blocks until a push, and a soak in which four
-  producers and two consumers move 256 elements through an 8-cell ring and every
-  element arrives exactly once. The full test suite runs it as `bounded-queue`.
+  blocks until a pop and a pop that blocks until a push, an arming the pool
+  refuses part way, and a soak in which four producers and two consumers move 256
+  elements through an 8-cell ring and every element arrives exactly once. The two
+  definition-time refusals run in a child engine, because a definer's throw
+  aborts the load that carries it. The full test suite runs it as `bounded-queue`.
 
 ## Invariants
 
@@ -285,7 +307,8 @@ beside a worker that completes and is joined, a producer/consumer whose consumer
 blocks in `TASK:WAIT` without a PAUSE loop and reads 64 items in order, an
 initial count drawn without any signal, every named semaphore failure, a message
 round trip between two tasks, a send that blocks until its target gets, a get
-that blocks until a send, `TASK:MSG?` before and after a get, and every refused
-message operation.
+that blocks until a send, `TASK:MSG?` before and after a get, every refused
+message operation, and the semaphore pool exhausting, refusing a foreign handle
+and recovering.
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

@@ -3,7 +3,6 @@
 s" lib/errors.f" required
 s" lib/memory.f" required
 s" lib/ffi-abi.f" required
-s" lib/type/deftype.f" required   \ DEFTYPE: the nominal semaphore handle
 s" lib/image-lifecycle.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
 require src/habu/task-abi.f
@@ -14,9 +13,15 @@ public
 
 \ The semaphore handle callers hold. A nominal cell, so a raw address - a
 \ TASK:FACILITY, say, which is the same machine shape - cannot reach TASK:WAIT.
-DEFTYPE SEM
+NEWTYPE sem 0
 
 private
+
+\ The converters are this package's alone: a handle names a record TASK owns,
+\ and no caller can mint one over memory of its own. Both directions stay
+\ private, so nothing outside can project a handle back to an address either.
+CAST: >SEM ( n -- sem )
+CAST: SEM>N ( sem -- n )
 
 $8 constant TASK-CELL
 $10000 constant TASK-MIN-STACK
@@ -315,9 +320,8 @@ FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- n )
 : SEM-REC ( sem -- ptr n )
    SEM>N TASK-N>PTR ;
 
-\ The handle of a semaphore record embedded in a larger record, which is how a
-\ task's mailbox owns its two. The storage belongs to whoever holds the outer
-\ record and its lifetime is that record's.
+\ The handle of a semaphore record this package owns but did not define: a
+\ task's mailbox holds two in its TCB and the pool below holds a fixed row.
 : SEM-AT ( ptr n -- sem )
    FFI:>CELL >SEM ;
 
@@ -383,6 +387,62 @@ FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- n )
       FFI:ERRNO TASK-EAGAIN = if 0 0= 0= exit then
       FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
    again ;
+
+\ ---- the semaphore pool ------------------------------------------------------
+\ A semaphore a caller asks for at run time instead of defining one. The records
+\ are this package's own static storage, so a handed-out handle still names a
+\ record TASK owns and no other package needs the extent of one to hold a
+\ semaphore of its own.
+$40 constant TASK-SEM-POOL-N
+
+: TASK-ZERO-CELLS, ( n -- )
+   0 ?do 0 , loop ;
+
+TASK-ALIGN8
+create TASK-SEM-USED TASK-SEM-POOL-N TASK-ZERO-CELLS,
+TASK-ALIGN8
+create TASK-SEM-POOL
+   TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * 8 / TASK-ZERO-CELLS,
+
+: SEM-POOL-REC ( n -- ptr n ) {: idx:n :}
+   TASK-SEM-POOL CELL-VIEW idx TASK-SEMAPHORE-BYTES * + ;
+
+: SEM-POOL-USED ( n -- ptr n ) {: idx:n :}
+   TASK-SEM-USED CELL-VIEW idx cells + ;
+
+\ One claim wins: the used cell moves 0 -> 1 in one step, so two tasks asking at
+\ the same moment are handed different records.
+: SEM-POOL-CLAIM? ( n -- bool ) {: idx:n :}
+   0 1 idx SEM-POOL-USED atomic-cas 0= ;
+
+: SEM-POOL-RELEASE ( n -- ) {: idx:n :}
+   0 idx SEM-POOL-USED atomic! ;
+
+: SEM-POOL-FREE-INDEX ( -- n )
+   TASK-SEM-POOL-N 0 ?do
+      i SEM-POOL-CLAIM? if i unloop exit then
+   loop
+   -1 ;
+
+: SEM-NEW ( -- sem )
+   SEM-POOL-FREE-INDEX dup 0 < if E-TASK-SEM-POOL throw then
+   SEM-POOL-REC SEM-AT ;
+
+\ The index of a pooled record, or -1 for a handle from anywhere else: a defined
+\ semaphore and a task's mailbox are not the pool's to hand back out.
+: SEM-POOL-INDEX ( sem -- n ) {: s:sem :}
+   s SEM>N TASK-SEM-POOL CELL-VIEW FFI:>CELL - {: off:n :}
+   off 0 < if -1 exit then
+   off TASK-SEM-POOL-N TASK-SEMAPHORE-BYTES * >= if -1 exit then
+   off TASK-SEMAPHORE-BYTES mod 0 <> if -1 exit then
+   off TASK-SEMAPHORE-BYTES / ;
+
+\ Destroys the semaphore if it is still live, so a recycled record never carries
+\ a POSIX object into its next owner; the caller has already ended its waiters.
+: SEM-FREE ( sem -- ) {: s:sem :}
+   s SEM-POOL-INDEX dup 0 < if drop E-TASK-SEM-POOL throw then
+   s SEM-DESTROY
+   SEM-POOL-RELEASE ;
 
 \ ---- the per-task mailbox ----------------------------------------------------
 \ VFX's one-cell mailbox (docs/tasking-models.md section 3) with the semaphores
@@ -743,9 +803,9 @@ TRUSTED: FACILITY ( -- )
 \ Shared counted-semaphore storage, one record per definition (see the
 \ address-kind note above). Unlike TASK and FACILITY this definer needs no
 \ TRUSTED:: the child's `does>` body converts the record address to the handle
-\ in checked code, so the only address a caller ever sees is already a SEM. A
-\ semaphore embedded in a larger record - a task's mailbox, a queue - is minted
-\ by SEM-AT instead, and its owner owns its lifetime.
+\ in checked code, and both converters are private to this package, so the only
+\ address a caller ever sees is already a SEM and no package outside can mint a
+\ handle over memory of its own.
 : SEMAPHORE ( -- )
    TASK-ALIGN8
    create TASK-SEMAPHORE-BYTES allot
@@ -833,10 +893,16 @@ TASK-MIN-STACK constant MIN-STACK
 : TRY-WAIT ( sem -- bool )
    SEM-TRY-WAIT ;
 
-\ The bytes a record must reserve to embed one semaphore or one facility, for a
-\ package that owns the storage and inits it through the words above.
-TASK-SEMAPHORE-BYTES constant SEMAPHORE-BYTES
-TASK-FACILITY-BYTES constant FACILITY-BYTES
+\ A semaphore for a caller that needs one at run time rather than at definition,
+\ over a record from this package's pool: E-TASK-SEM-POOL when every record is
+\ in use. It arrives uninitialized, like a defined one.
+: NEW-SEMAPHORE ( -- sem )
+   SEM-NEW ;
+
+\ Destroys it if it is still live and returns the record to the pool. A handle
+\ that did not come from the pool is E-TASK-SEM-POOL.
+: FREE-SEMAPHORE ( sem -- )
+   SEM-FREE ;
 
 \ ---- messages ----------------------------------------------------------------
 \ Blocks while the target still holds an unread message, then deposits this one

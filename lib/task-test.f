@@ -65,6 +65,9 @@ APP-ITERS 10 * 100 + constant APP-SHARED-WANT
 64 constant SEM-ITEM-N
 3 constant SEM-TICKET-N
 $80000000 constant SEM-OVER-MAX      \ SEM_VALUE_MAX + 1
+$80 constant POOL-CAP                \ handles this fixture can hold; the pool is smaller
+
+POOL-CAP TYPED-BUFFER POOL-SEMS TASK:sem
 
 create TASK-OUT TASK-CAP allot
 create TASK-ERR TASK-CAP allot
@@ -102,6 +105,8 @@ variable MSG-WAITING
 variable MSG-LATE-GOT
 variable MSG-REFUSE-SELF
 variable MSG-REFUSE-IDLE
+variable POOL-N
+variable POOL-RC
 
 : TASK-WAIT-READY ( n -- ) {: want:n :}
    begin TASK-READY-CELL atomic@ want < while TASK:PAUSE repeat ;
@@ -545,6 +550,53 @@ $33 constant MSG-LATE-VALUE
    s" TASK-TRY-WAIT-PTR ( ptr n -- bool ) TASK:TRY-WAIT"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+: POOL-TAKE ( -- )
+   TASK:NEW-SEMAPHORE POOL-N @ POOL-SEMS !
+   POOL-N @ 1 + POOL-N ! ;
+
+: POOL-TAKE? ( -- bool )
+   [: POOL-TAKE ;] catch dup POOL-RC ! 0= ;
+
+: POOL-FILL ( -- )
+   begin
+      POOL-N @ POOL-CAP < if POOL-TAKE? else 0 0= 0= then
+   while repeat ;
+
+: POOL-FREE-ALL ( -- )
+   begin POOL-N @ 0 > while
+      POOL-N @ 1 - POOL-N !
+      POOL-N @ POOL-SEMS @ TASK:FREE-SEMAPHORE
+   repeat ;
+
+\ The pool hands out records until it has none, refuses with its own code before
+\ this fixture runs out of room, and recovers when they are given back. A handle
+\ that never came from the pool - a defined semaphore - cannot be given to it.
+: TASK-TEST-SEM-POOL ( -- )
+   0 POOL-N ! 0 POOL-RC !
+   POOL-FILL
+   POOL-RC @ E-TASK-SEM-POOL T=
+   POOL-N @ 0 > TTRUE
+   POOL-N @ POOL-CAP < TTRUE
+   POOL-FREE-ALL
+   POOL-N @ 0 T=
+   POOL-TAKE? TTRUE
+   POOL-FREE-ALL
+   [: SEM-COLD TASK:FREE-SEMAPHORE ;] E-TASK-SEM-POOL TTHROWSQ ;
+
+\ A pooled semaphore counts like a defined one, and freeing it destroys it: the
+\ handle crosses the quotation on the stack because a quotation reads no local.
+: TASK-TEST-SEM-POOL-USE ( -- )
+   TASK:NEW-SEMAPHORE {: s :}
+   1 s TASK:SEMAPHORE-INIT
+   s TASK:TRY-WAIT TTRUE
+   s TASK:TRY-WAIT TFALSE
+   s TASK:SIGNAL
+   s TASK:WAIT
+   s TASK:FREE-SEMAPHORE
+   s [: dup TASK:TRY-WAIT drop ;] catch {: rc:n :}
+   drop
+   rc E-TASK-SEM-STATE T= ;
+
 \ The handle is nominal, so the raw record address a TASK:FACILITY also has is
 \ refused before it can reach sem_wait - the guard cell is the second line.
 : TASK-TEST-SEM-TYPES ( -- )
@@ -626,6 +678,8 @@ $33 constant MSG-LATE-VALUE
    TASK-TEST-MSG-SEND-BLOCKS
    TASK-TEST-MSG-GET-BLOCKS
    TASK-TEST-MSG-REFUSED
+   TASK-TEST-SEM-POOL
+   TASK-TEST-SEM-POOL-USE
    T-REPORT ;
 
 TASK-TEST-RUN

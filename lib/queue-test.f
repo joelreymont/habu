@@ -17,6 +17,7 @@ package QUEUE-TEST
 1 QUEUE:QUEUE Q-ONE              \ one slot: the blocking handshake
 8 QUEUE:QUEUE Q-SOAK             \ deliberately smaller than the soak's load
 2 QUEUE:QUEUE Q-COLD             \ never initialized
+2 QUEUE:QUEUE Q-STARVED          \ armed while the pool is nearly empty
 
 TASK:MIN-STACK TASK:TASK Q-PROD0
 TASK:MIN-STACK TASK:TASK Q-PROD1
@@ -49,6 +50,9 @@ create Q-ERR Q-CAPTURE-CAP allot
 $2000 CODEGEN:BUFFER Q-SRC
 $40 CODEGEN:BUFFER Q-NEEDLE
 
+$80 constant Q-POOL-CAP              \ handles this fixture can hold
+Q-POOL-CAP TYPED-BUFFER Q-POOL-SEMS TASK:sem
+
 variable Q-PROD-DONE
 variable Q-CONS-DONE
 variable Q-BAD
@@ -56,6 +60,8 @@ variable Q-FILL1
 variable Q-FILL2
 variable Q-WAITING
 variable Q-DRAIN-GOT
+variable Q-POOL-N
+variable Q-POOL-RC
 
 : Q-WAIT-CELL ( ptr n n -- ) {: cell:ptr want:n :}
    begin cell atomic@ want < while TASK:PAUSE repeat ;
@@ -231,6 +237,55 @@ variable Q-DRAIN-GOT
    Q-DRAINER TASK:KILL
    Q-ONE QUEUE:DESTROY ;
 
+\ ---- arming against an empty pool --------------------------------------------
+\ The queue's semaphores come from package TASK's pool, so a queue that cannot
+\ take all three must give back the ones it did take.
+
+: Q-POOL-TAKE ( -- )
+   TASK:NEW-SEMAPHORE Q-POOL-N @ Q-POOL-SEMS !
+   Q-POOL-N @ 1 + Q-POOL-N ! ;
+
+: Q-POOL-TAKE? ( -- bool )
+   [: Q-POOL-TAKE ;] catch dup Q-POOL-RC ! 0= ;
+
+: Q-POOL-FILL ( -- )
+   begin
+      Q-POOL-N @ Q-POOL-CAP < if Q-POOL-TAKE? else 0 0= 0= then
+   while repeat ;
+
+: Q-POOL-GIVE ( n -- ) {: count:n :}
+   count 0 ?do
+      Q-POOL-N @ 1 - Q-POOL-N !
+      Q-POOL-N @ Q-POOL-SEMS @ TASK:FREE-SEMAPHORE
+   loop ;
+
+: Q-POOL-GIVE-ALL ( -- )
+   Q-POOL-N @ Q-POOL-GIVE ;
+
+\ How many records the pool hands out while no queue holds any.
+: Q-POOL-SIZE ( -- n )
+   0 Q-POOL-N !
+   Q-POOL-FILL
+   Q-POOL-N @ {: size:n :}
+   Q-POOL-GIVE-ALL
+   size ;
+
+: QUEUE-TEST-ARM-REFUSED ( -- )
+   Q-POOL-SIZE {: size:n :}
+   size 3 > TTRUE
+   0 Q-POOL-N !
+   Q-POOL-FILL
+   Q-POOL-RC @ E-TASK-SEM-POOL T=
+   2 Q-POOL-GIVE
+   [: Q-STARVED QUEUE:INIT ;] E-TASK-SEM-POOL TTHROWSQ
+   Q-POOL-GIVE-ALL
+   Q-POOL-SIZE size T=
+   Q-STARVED QUEUE:INIT
+   Q-STARVED QUEUE:COUNT 0 T=
+   $12 Q-STARVED QUEUE:PUSH
+   Q-STARVED QUEUE:POP $12 T=
+   Q-STARVED QUEUE:DESTROY ;
+
 \ ---- the soak ----------------------------------------------------------------
 
 : Q-SEEN-SLOT ( n -- ptr n ) {: v:n :}
@@ -320,6 +375,7 @@ variable Q-DRAIN-GOT
    QUEUE-TEST-PUSH-BLOCKS
    QUEUE-TEST-POP-BLOCKS
    QUEUE-TEST-SOAK
+   QUEUE-TEST-ARM-REFUSED
    T-REPORT ;
 
 QUEUE-TEST-RUN
