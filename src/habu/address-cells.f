@@ -9,7 +9,7 @@ public
 9 constant SNAPSHOT-VERSION
 \ Process mutex in fixed image DATA, outside the header and row backing. The
 \ MATCH stack ends before $1A0; $1A0 remains the seal fixture's poke cell, and
-\ CMFAM starts at $1B0. Task USER storage starts much higher, at $41C8.
+\ CMFAM starts at $1B0. Task USER storage is USER-BAND, far above at $5300.
 $1A8 constant LOCK-CELL
 \ Derived process storage, never an address declaration or part of the row
 \ schema. $36C8 is the single unused cell between BPA ($36C0) and the eight

@@ -142,20 +142,20 @@ create TASK-SYM-MUNMAP
 
 variable TASK-USER-NEXT
 
-FFI:SCRATCH-END constant TASK-USER-BASE
+\ Base and bound are USER-BAND's, declared in src/habu/layout.f. They used to be
+\ FFI:SCRATCH-END ($41C8) and APP-ENTRY:XT-CELL ($43A0) - 472 bytes wedged
+\ between FFI's scratch and the AOT capture window, of which the five shipped
+\ libraries already claimed 448. USER-BAND is one declared run of the per-task
+\ header with no engine cell inside it, and the layout asserts that at build
+\ time, so this module states the two ends and computes neither.
+USER-BAND:START constant TASK-USER-BASE
 TASK-USER-BASE TASK-USER-NEXT !
 
-\ THE ARENA STOPS AT THE FIRST ENGINE CELL ABOVE IT, not at the transaction
-\ band. src/habu/layout.f describes the run from TASK-USER-BASE as free to
-\ TXN-STATE-OFF, and it is not: APP-ENTRY:XT-CELL sits in it, then
-\ AOT-WINDOW's T0/D0/B0, the reserved evaluator-pointer band behind
-\ EVAL-TOP-CELL, PROT:RHI/PROT:CF, AOT-SIG:POOL-CELL/LEN-CELL,
-\ BOOT-LAYOUT:HEAP-START-CELL and src/habu/stack-abi.f's five cells. A row
-\ reaching any of them is not a bounds error the region catches later - the
-\ store lands, and the engine dies at teardown reading an AOT window a
-\ library overwrote. The ceiling is named from the layout rather than written
-\ as a number so it follows whatever claims that address next.
-APP-ENTRY:XT-CELL constant TASK-USER-END
+\ The arena stops where USER-BAND does. Nothing engine-owned lies inside it -
+\ src/habu/layout.f asserts that over every declared claim at build time - so
+\ a refused row here means the band is full, not that a library was about to
+\ overwrite the AOT window the way the old $41C8..$5000 bound allowed.
+USER-BAND:END constant TASK-USER-END
 
 : TASK-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;

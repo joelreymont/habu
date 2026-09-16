@@ -324,24 +324,22 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    a TASK-CODE-BUF u BYTE-COPY
    TASK-CODE-BUF u ;
 
-\ The user arena runs from TASK-USER-BASE to TASK-USER-END - APP-ENTRY:XT-CELL,
-\ the first engine cell above it. A row of exactly the free run is a
-\ definition; one byte more is E-TASK-USER at that definition, before any
-\ store can reach the AOT capture window or the evaluator frame pointer behind
-\ it. Both cases run in a child engine: a definer's throw aborts the load that
-\ carries it, and the accepting case claims the whole arena, which no later
-\ require in this image would survive.
+\ The user arena is USER-BAND, declared in src/habu/layout.f. A row filling it
+\ to USER-BAND:END is a definition; one byte more is E-TASK-USER at that
+\ definition. Both cases run in a child engine: a definer's throw aborts the
+\ load that carries it, and the accepting case claims the whole band, which no
+\ later require in this image would survive.
 : TASK-USER-EDGE$ ( -- ptr u8 n )
    SB-RESET
    s" require lib/task.f" SB-APPEND TASK-LF
-   s" : TUE-CEILING ( n -- ) APP-ENTRY:XT-CELL <> if E-TASK-USER throw then ;" SB-APPEND TASK-LF
-   s" TASK:#USER APP-ENTRY:XT-CELL over - TASK:+USER TUE-ARENA TUE-CEILING" SB-APPEND TASK-LF
+   s" : TUE-CEILING ( n -- ) USER-BAND:END <> if E-TASK-USER throw then ;" SB-APPEND TASK-LF
+   s" TASK:#USER USER-BAND:END over - TASK:+USER TUE-ARENA TUE-CEILING" SB-APPEND TASK-LF
    SB$ ;
 
 : TASK-USER-OVER$ ( -- ptr u8 n )
    SB-RESET
    s" require lib/task.f" SB-APPEND TASK-LF
-   s" TASK:#USER APP-ENTRY:XT-CELL over - 1+ TASK:+USER TUE-OVER drop" SB-APPEND TASK-LF
+   s" TASK:#USER USER-BAND:END over - 1+ TASK:+USER TUE-OVER drop" SB-APPEND TASK-LF
    SB$ ;
 
 : TASK-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
@@ -368,8 +366,8 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    outu LEN>N 0 T=
    erru LEN>N 0 T= ;
 
-\ The accepted row claims the whole arena and answers TASK-USER-END from
-\ inside the child, so exit zero means accepted AND landed on the ceiling.
+\ The accepted row fills the band and answers USER-BAND:END from inside the
+\ child, so exit zero means accepted AND landed on the band's end.
 \ The refused row is one byte past it, which is the exact bound: the accepted
 \ case pins it from below and this pins it from above.
 : TASK-TEST-USER-ARENA ( -- )

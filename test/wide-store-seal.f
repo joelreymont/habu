@@ -83,10 +83,18 @@ variable WSS-OUT-U
    WSS-LATER-BODY
    SB$ ;
 
+\ The four transaction-band fixtures name the band's own ends rather than the
+\ addresses they happened to have. A W=2 store is 16 bytes, so the lower one
+\ starts one cell below TXN-STATE-OFF and crosses into it, the upper one starts
+\ one cell below the band's end and crosses out of it, and the two neighbours sit
+\ exactly clear on either side. They were written as $4FF8/$7FF8/$4FF0/$8000 while
+\ TXN-STATE-LEN was $3000; when the band narrowed to its declared extent the upper
+\ pair stopped naming the band at all - $7FF8 landed in STRING-ABI, which is
+\ writable, so the crossing that must trap did not. Derived, they follow the band.
 : WSS-TXN-LOWER$ ( -- ptr u8 n )
    SB-RESET
    WSS-PRELUDE
-   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base $4FF8 + ;" WSS-LINE
+   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base TXN-STATE-OFF 1 cells - + ;" WSS-LINE
    s" : WSS-TXN ( -- ) WSS-ZERO WSS-TXN-P ! ;" WSS-LINE
    WSS-ARM-LINE
    s" WSS-TXN" WSS-LINE
@@ -95,7 +103,7 @@ variable WSS-OUT-U
 : WSS-TXN-UPPER$ ( -- ptr u8 n )
    SB-RESET
    WSS-PRELUDE
-   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base $7FF8 + ;" WSS-LINE
+   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base TXN-STATE-OFF TXN-STATE-LEN + 1 cells - + ;" WSS-LINE
    s" : WSS-TXN ( -- ) WSS-ZERO WSS-TXN-P ! ;" WSS-LINE
    WSS-ARM-LINE
    s" WSS-TXN" WSS-LINE
@@ -104,7 +112,7 @@ variable WSS-OUT-U
 : WSS-TXN-BEFORE$ ( -- ptr u8 n )
    SB-RESET
    WSS-PRELUDE
-   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base $4FF0 + ;" WSS-LINE
+   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base TXN-STATE-OFF 2 cells - + ;" WSS-LINE
    s" : WSS-TXN ( -- ) WSS-ZERO WSS-TXN-P ! ;" WSS-LINE
    WSS-ARM-LINE
    s" WSS-TXN" WSS-LINE
@@ -113,7 +121,7 @@ variable WSS-OUT-U
 : WSS-TXN-AFTER$ ( -- ptr u8 n )
    SB-RESET
    WSS-PRELUDE
-   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base $8000 + ;" WSS-LINE
+   s" TRUSTED: WSS-TXN-P ( -- ptr wss-res<n,n> ) data-base TXN-STATE-OFF TXN-STATE-LEN + + ;" WSS-LINE
    s" : WSS-TXN ( -- ) WSS-ZERO WSS-TXN-P ! ;" WSS-LINE
    WSS-ARM-LINE
    s" WSS-TXN" WSS-LINE
