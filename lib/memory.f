@@ -96,21 +96,36 @@ TRUSTED: MEM-MAPPED>PTR ( n -- ptr u8 ) ;
 : MEM-GUARDED-BASE ( n n -- n ) {: span:n cap:n :}
    span STACK-ABI:PAGE-BYTES 2 * + 1 - STACK-ABI:PAGE-BYTES negate and ;
 
+: MEM-UNMAP-SLIVER ( n n -- ) {: at:n bytes:n :}
+   bytes 0 = if exit then
+   at MEM-MAPPED>PTR bytes munmap 0 <> if E-MEM-UNMAP throw then ;
+
+\ The kernel hands back a span on its own granule, so the page-aligned base
+\ lands up to one page into it. The head and tail slivers outside
+\ [base - PAGE, base + cap + PAGE) are unmapped right away, so the extent that
+\ stays mapped is exactly the two guard pages around the capacity and the
+\ release below can unmap exactly that: a release computed from the span
+\ instead reached past the span's end into whatever the kernel mapped next
+\ (a task's DATA region, found by test/address-cell-tasks.f, 2026-09-16).
 : MEM-ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
    cap STACK-ABI:PAGE-BYTES mod 0 <> if E-MEM-SIZE throw then
    cap MEM-GUARDED-SPAN-BYTES {: span-bytes:n :}
    MEM-ADDR-ANY span-bytes MEM-PROT-NONE MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap {: span:n :}
    span 0 < if E-MEM-MAP throw then
    span cap MEM-GUARDED-BASE {: base:n :}
+   base STACK-ABI:PAGE-BYTES - {: lo:n :}
+   base cap + STACK-ABI:PAGE-BYTES + {: hi:n :}
+   span lo span - MEM-UNMAP-SLIVER
+   hi span span-bytes + hi - MEM-UNMAP-SLIVER
    base cap MEM-PROT-RW MEM-MAP-PRIVATE-ANON-FIXED MEM-ANON-FD MEM-OFF-ZERO mmap base <> if
       E-MEM-MAP throw
    then
    base MEM-MAPPED>PTR cap ;
 
-\ Release a guarded stack: the guard pages go with it, so the whole span is
-\ unmapped from one page below the base.
+\ Release a guarded stack: exactly the extent MEM-ALLOC-GUARDED kept, the
+\ capacity and its two guard pages.
 : MEM-RELEASE-GUARDED ( ptr u8 n -- ) {: base:ptr cap:n :}
-   base STACK-ABI:PAGE-BYTES - cap MEM-GUARDED-SPAN-BYTES munmap 0 <> if E-MEM-MAP throw then ;
+   base STACK-ABI:PAGE-BYTES - cap STACK-ABI:PAGE-BYTES 2 * + munmap 0 <> if E-MEM-UNMAP throw then ;
 
 \ ---- package-first typed allocation surface -----------------------------------
 \

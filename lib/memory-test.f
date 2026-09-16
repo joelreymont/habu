@@ -598,6 +598,30 @@ TEST-WITH-BYTES
 package MEM
 private
 
+\ A released guarded stack must leave its neighbours mapped: the kernel's
+\ granule puts the page-aligned base up to a page into the span, and a release
+\ computed from the span used to reach past its end into the next mapping (a
+\ task's DATA region; test/address-cell-tasks.f, 2026-09-16).
+: GUARDED-SIZE-REFUSAL ( -- )
+   100 MEM-ALLOC-GUARDED MEM-RELEASE-GUARDED ;
+
+: GUARDED ( -- )
+   T-RESET
+   s" releasing a guarded stack leaves its neighbours mapped" T-LABEL
+   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: a:ptr au:n :}
+   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: b:ptr bu:n :}
+   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED {: c:ptr cu:n :}
+   a au MEM-RELEASE-GUARDED
+   c cu MEM-RELEASE-GUARDED
+   77 b CELL-VIEW !
+   88 b bu 8 - + CELL-VIEW !
+   b CELL-VIEW @ 77 T=
+   b bu 8 - + CELL-VIEW @ 88 T=
+   b bu MEM-RELEASE-GUARDED
+   s" a guarded stack needs a whole-page capacity" T-LABEL
+   ['] GUARDED-SIZE-REFUSAL catch E-MEM-SIZE T=
+   T-REPORT ;
+
 : STAT ( -- )
    T-RESET
    \ positive signature controls: the exact B5.5-frozen effects resolve.
@@ -668,6 +692,7 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 
+GUARDED
 STAT
 
 ;package
