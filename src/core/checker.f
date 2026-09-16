@@ -6986,6 +6986,7 @@ PRIM: epoch-seconds PE-N PE-OUT PRIM;
 PRIM: mono-ns       PE-N PE-OUT PRIM;
 PRIM: prof-on       PE-N PE-IN PRIM;
 PRIM: prof-report   PRIM;
+PRIM: prof-pc>rec   PE-N PE-IN  PE-N PE-OUT PRIM;   \ the armed index's record for a pc, -1 when none owns it
 
 PRIM: rbase          PE-N PE-OUT PRIM;
 PRIM: cp@            PE-N PE-OUT PRIM;
