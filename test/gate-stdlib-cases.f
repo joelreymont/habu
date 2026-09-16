@@ -748,6 +748,12 @@ SUITE ffi-cabi
    lib/ffi-test.f
 ;SUITE
 
+\ Loopback HTTP in one process; the one HTTPS request is opt-in behind
+\ HABU_NET_TESTS.
+SUITE curl-http
+   lib/net/curl-test.f
+;SUITE
+
 SUITE float-parse
    lib/float-test.f
    lib/fmath-test.f

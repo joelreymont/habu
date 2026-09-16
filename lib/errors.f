@@ -1268,3 +1268,4 @@ public
 -9231 constant E-CURL-SYMBOL
 -9232 constant E-CURL-STATE
 -9233 constant E-CURL-RESULT
+-9234 constant E-CURL-OPERAND

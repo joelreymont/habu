@@ -21,6 +21,7 @@ Planned module files:
 - `lib/ffi-abi.f`
 - `lib/zip.f`
 - `lib/net/udp4.f`
+- `lib/net/curl.f`
 - `lib/serial.f`
 - `lib/pty.f`
 - `lib/xmodem.f`
@@ -1009,6 +1010,20 @@ their source endpoint, with distinct complete, truncated, timeout, and OS-error
 variants. See [UDP4](udp4.md) for exact effects, buffer and socket lifetime
 contracts, the bounded foreign interface, and independent localhost checks.
 Application protocol framing and retry/ordering policy belong above this module.
+
+## HTTP and HTTPS
+
+`lib/net/curl.f` owns the `CURL` package, libcurl's easy interface through the
+`FUNCTION:` declarer on Linux AArch64/glibc. `INIT` answers a typed handle;
+`URL!`, `METHOD!`, `HEADER+`, `BODY!`, `COOKIE-FILE!`, `COOKIE-JAR!`, `TIMEOUT!`
+and `FOLLOW!` configure the request; `PERFORM` fills a caller-owned span and
+answers the HTTP status with the body length, a truncation carrying the whole
+body's length, or the `CURLcode` that failed; `CLEANUP` frees the handle and its
+header list. TLS, redirects, compression and the system CA bundle come from
+libcurl, and `INIT` restricts the schemes to HTTP and HTTPS so a scraped URL
+cannot reach the filesystem. See [curl](curl.md) for the declarations, the
+callback-free body path and the failure codes. Authentication, retry policy and
+payload formats belong above this module.
 
 ## Files
 
