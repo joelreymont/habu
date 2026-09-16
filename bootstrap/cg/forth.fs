@@ -1359,14 +1359,15 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ (inlined the way BFINALLY inlines BTHROW below, which is why this word sits
 \ here) rather than exiting the process. A malformed DESCRIPTOR is still the
 \ fail-closed STACK-BOUNDS exit: that one can arrive from a saved frame or a
-\ task, where there is no caller left to hand a throw to. Mirrors
-\ src/habu/habu1.f BRUNSTACK.
+\ task, where there is no caller left to hand a throw to. There is no
+\ CHECK-CURSOR on the way in: with cursor = base, every branch it emits is
+\ already proven impossible by GUARDED-EXTENT?. Mirrors src/habu/habu1.f
+\ BRUNSTACK.
 : BRUNSTACK ( -- )
    LBL LBL LBL {: bad unguarded done :}
    12 XDS 24 SUBI,
    9 12 0 LDR, 14 12 8 LDR, 11 12 16 LDR,
    unguarded GUARDED-EXTENT?
-   10 11 0 ADDI, 12 14 0 ADDI, 0 bad STACK-GUARD:CHECK-CURSOR
    XDS XDS 24 SUBI,
    SP SP 32 SUBI, 30 SP 0 STR, XDS SP 8 STR,
    12 DATA STACK-ABI:BASE-CELL LDR, 12 SP 16 STR,

@@ -155,11 +155,16 @@ variable EXPECT-I   variable EXPECT-READS
 \ callback's guarded allocation is active -- run-in-stack now refuses anything
 \ that is not a real guarded mapping (lib/memory.f MEM-ALLOC-GUARDED), so
 \ TTY-POOL is one, and TTY-RAISE's throw still escapes uncaught from inside it.
-\ Recovery must reinstate the REPL's own allocation, not merely the prompt:
-\ four cells pushed at once only fit the recovered boot stack, not a leaked
-\ pool descriptor, and the depth after recovery is zero. A leaked pool
-\ descriptor would end the child with exit 102 at some later push and no
-\ prompt would follow.
+\ Recovery must reinstate the REPL's own allocation, not merely the prompt,
+\ and `depth` is the value that says so: src/habu/habu1.f BDEPTH subtracts the
+\ CONTENTS of the active base cell (src/habu/layout.f S0-CELL, which is
+\ STACK-ABI:BASE-CELL) from XDS, so it reads zero only when the cursor and
+\ that cell came back TOGETHER. A recovery that reset the cursor
+\ to the boot stack but left TTY-POOL's base installed would print the
+\ distance between the two mappings here instead. The four values pushed and
+\ printed ahead of it show the recovered stack works at all -- they would
+\ also fit inside the pool, which is a whole 64 KB page, so it is the zero
+\ and not the four that identifies which stack they landed on.
 : STACK-DEFS$ ( -- ptr u8 n )
    s" require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED constant TTY-POOL-CAP constant TTY-POOL : TTY-RAISE ( -- ) 7 throw ; : TTY-CROSS ( -- ) ['] TTY-RAISE TTY-POOL TTY-POOL-CAP run-in-stack ;" ;
 

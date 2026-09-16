@@ -1,6 +1,6 @@
 \ bootstrap-wide-memory-src.f - stage0 wide ADT memory execution/goldens: the
-\ bounds each wide transfer requests, the span and tag it proves, and the
-\ values and exact fit it delivers, on the native engine and the stage0 seed.
+\ engine helper each wide transfer reaches, the span and tag it proves, and
+\ the values it delivers, on the native engine and the stage0 seed.
 
 \ This isolated fixture does not load xref.f's constructor-package registration
 \ bridge. Keep the hook inert while the fixture exercises wide codegen.
@@ -243,11 +243,30 @@ variable BWM-GXT
 \ habu-replace-per-transfer-8523fb98), so no extent this small (or this
 \ tight) can be constructed any more -- run-in-stack refuses anything that
 \ is not such a mapping (GUARDED-EXTENT?, STACK-ABI:E-UNGUARDED), and the
-\ smallest one is far larger than any of these transfers. The static goldens
-\ above (BWM-TEST-GOLDENS) already prove the compiled request's exact byte
-\ count independently, by decoding the emitted movz/movk immediates rather
-\ than by fitting a live allocation, so that half of the invariant is still
-\ covered; only the dynamic exact-fit confirmation is gone.
+\ smallest one is far larger than any of these transfers. The goldens above
+\ (BWM-TEST-GOLDENS) still pin each transfer's exact byte and cell count,
+\ by decoding the movz immediates the compiled body hands (PROT-SPAN) rather
+\ than by fitting a live allocation.
+\ What BWM-TEST-EXACT also executed, and what the goldens cannot replace, is
+\ a wide transfer RUNNING while a switched stack allocation is active. That
+\ is BWM-TEST-SWITCHED below, on the only kind of extent run-in-stack still
+\ accepts.
+
+\ The wide store runs on a guarded mapping handed to run-in-stack, and the
+\ value is read back through the plain (non-local) wide fetch once the switch
+\ has unwound -- so the transfer is proved by the values it moved rather than
+\ by an exit code, and BWM-FETCH2 is executed here the way BWM-TEST-EXACT
+\ used to execute it. Both engines reach this: the native one through
+\ lib/memory.f directly, the Gforth stage0 seed through the same `require`
+\ in the source it bakes.
+require lib/memory.f
+STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BWM-POOL
+
+: BWM-SWITCHED-STORE ( -- ) BWM-MK2 BWM-STORE2 ;
+
+: BWM-TEST-SWITCHED ( -- )
+   ['] BWM-SWITCHED-STORE BWM-POOL STACK-ABI:PAGE-BYTES run-in-stack
+   BWM-FETCH2 BWM-UN2 0 BWM= 7 BWM= ;
 
 : BWM-TEST-RUNTIME ( -- )
    s" BWM-ORDINARY" tok-imm? 0 BWM=
@@ -373,6 +392,7 @@ public
 
 BWM-TEST-GOLDENS
 BWM-TEST-RUNTIME
+BWM-TEST-SWITCHED
 BWM-TEST-ATOMICS
 BWM-TEST-DEFER
 BWM-TEST-CDEFER

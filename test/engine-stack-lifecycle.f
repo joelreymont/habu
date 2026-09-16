@@ -122,8 +122,8 @@ variable ERRLEN
 \ it expects. T-PREFIX= against the bare "hb: stack bounds exceeded" prefix
 \ (no named helper wraps it -- every case here can name its stack) is still
 \ available for a future case that cannot determine one. A malformed
-\ run-in-stack descriptor no longer reaches this exit at all -- see MALFORMED
-\ below.
+\ run-in-stack descriptor no longer reaches this exit at all -- see
+\ UNGUARDED-UNCAUGHT below.
 : REFUSED-DATA ( ptr u8 n -- )
    CHILD-RC ENGINE-ERROR:STACK-BOUNDS T=
    ERR ERRLEN @ s" hb: stack bounds exceeded (data)" T-PREFIX= ;
@@ -157,31 +157,26 @@ variable ERRLEN
    src size CHILD-RC 70 T=
    ERR ERRLEN @ diag diagu T$= ;
 
-\ GUARDED-EXTENT? (src/habu/habu1.f) runs BEFORE the old descriptor check at
-\ every run-in-stack switch and is strictly stronger for a freshly entered
-\ stack (used bytes = 0): it requires base != 0, base and capacity both
-\ STACK-ABI:PAGE-BYTES aligned, base + capacity not to wrap, and base to lie
-\ OUTSIDE the DATA region. Once it passes, the old STACK-GUARD:CHECK-CURSOR
-\ call right after it can never fail (its own checks -- 8-byte alignment and
-\ overflow -- are a strict subset, and cursor == base so "used <= capacity"
-\ and "remaining >= 0" hold trivially). So none of these three malformed
-\ descriptors can reach the generic "hb: stack bounds exceeded" exit any more:
-\   - a null base fails GUARDED-EXTENT?'s base != 0 check directly;
-\   - `create BUF 32 allot BUF 1 +` and plain `BUF` both name an address
-\     inside [DATA-VA, DATA-VA + DATA-SIZE) -- every create/allot/,/buffer
-\     address does -- so GUARDED-EXTENT?'s "outside DATA region" check
-\     refuses them regardless of alignment;
-\   - `BUF -1` additionally fails the capacity-alignment check on its own,
-\     since -1 (as an unsigned byte count) is never a PAGE-BYTES multiple.
-\ All three now throw E-STACK-UNGUARDED (-3802), catchable, instead of exiting
-\ 102.
-: MALFORMED ( -- )
-   s" null stack base" T-LABEL
-   s" : EMPTY ( -- ) ; : GO ( -- ) ['] EMPTY NULL-PTR 0 run-in-stack ; GO" UNGUARDED-REFUSED
-   s" unaligned stack base" T-LABEL
-   s" create BUF 32 allot : EMPTY ( -- ) ; : GO ( -- ) ['] EMPTY BUF 1 + 32 run-in-stack ; GO" UNGUARDED-REFUSED
-   s" wrapping stack descriptor" T-LABEL
-   s" create BUF 32 allot : EMPTY ( -- ) ; : GO ( -- ) ['] EMPTY BUF -1 run-in-stack ; GO" UNGUARDED-REFUSED ;
+\ GUARDED-EXTENT? (src/habu/habu1.f) runs at every run-in-stack switch, before
+\ the callback and before the stack switch itself, and for a freshly entered
+\ stack (used bytes = 0) it is strictly stronger than the descriptor check
+\ that used to catch a malformed extent at the same place -- so strictly
+\ stronger that the entry STACK-GUARD:CHECK-CURSOR call is gone: with
+\ cursor == base, every branch that check emits was already proven impossible.
+\ A malformed run-in-stack extent therefore never reaches the generic
+\ "hb: stack bounds exceeded" exit any more; it is a catchable
+\ E-STACK-UNGUARDED (-3802) throw.
+\ test/stack-guard.f RUN-IN-STACK-REFUSALS owns one in-process case per clause
+\ (null base, unaligned base, zero capacity, part-page capacity, wrapping
+\ capacity, DATA-region base, create/allot buffer). The case here owns the
+\ other half -- what the refusal looks like from outside a child that does not
+\ catch it -- and pins the part no in-process case can show: the callback never
+\ ran at all. Its body prints, and the child's stdout is empty.
+: UNGUARDED-UNCAUGHT ( -- )
+   s" an uncaught unguarded extent kills the child before its body runs" T-LABEL
+   s" create BUF 32 allot : LOUD ( -- ) 42 . ; : GO ( -- ) ['] LOUD BUF 8 run-in-stack ; GO"
+   UNGUARDED-REFUSED
+   OUTLEN @ 0 T= ;
 
 : PRIMITIVE-BOUNDARIES ( -- )
    s" last two return-stack slots" T-LABEL
@@ -204,7 +199,7 @@ variable ERRLEN
 
 public
 : RUN ( -- )
-   T-RESET IN-PROCESS MALFORMED PRIMITIVE-BOUNDARIES T-REPORT ;
+   T-RESET IN-PROCESS UNGUARDED-UNCAUGHT PRIMITIVE-BOUNDARIES T-REPORT ;
 
 ;package
 

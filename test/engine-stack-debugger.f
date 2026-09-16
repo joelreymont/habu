@@ -13,7 +13,7 @@ package STACK-LIFECYCLE-TEST
    loop ;
 
 \ run-in-stack no longer accepts a capacity-0 mapping (GUARDED-EXTENT? refuses
-\ it before the callback runs, test/engine-stack-lifecycle.f MALFORMED), so
+\ it before the callback runs -- test/stack-guard.f CAPACITY-ZERO-REFUSAL), so
 \ both cases below run on a real 64 KB guarded stack; only the live depth at
 \ the breakpoint -- not the allocation's capacity -- decides what the dump
 \ shows.

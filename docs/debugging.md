@@ -453,22 +453,34 @@ this die", and they are not interchangeable:
   the two agree) is run-in-stack's own admission check
   (`src/habu/habu1.f` BRUNSTACK `GUARDED-EXTENT?`), thrown *before* the
   callback ever runs and before any stack switch happens — catchable, not a
-  crash. It refuses anything that is not a real guarded mapping made by
-  `lib/memory.f` `MEM-ALLOC-GUARDED`: a create/allot buffer (every such
-  address lies inside the DATA region, which `GUARDED-EXTENT?` excludes on
-  purpose), a null or unaligned base, a capacity that is zero or not a whole
-  `STACK-ABI:PAGE-BYTES` multiple, or an extent that wraps. Because a guarded
-  mapping only comes in whole-page sizes, there is no way to hand
-  run-in-stack a "slightly too small" guarded stack any more: a request is
-  either refused up front with `E-STACK-UNGUARDED`, or it runs on a full page
-  and any real overflow is a guard-page fault instead. See
-  `test/engine-stack-lifecycle.f` MALFORMED for why a null, unaligned, or
-  wrapping run-in-stack descriptor throws `E-STACK-UNGUARDED` now instead of
-  exiting 102: `GUARDED-EXTENT?` runs strictly before the old descriptor
-  check at the same switch and is strictly stronger for a freshly entered
-  stack, so nothing reaches that older check unrefused any more.
-- A tier-1 top-row warning does not change which of these two a given program
-  hits, only that it also warns once first. `' FOO2 execute` on an empty
+  crash. It is a STRUCTURAL test of the extent, not a provenance test: it
+  knows nothing about where the extent came from and never asks whether
+  `lib/memory.f` `MEM-ALLOC-GUARDED` made it. It tests six things in a fixed
+  order, and the first that fails is the one that decides — base non-zero,
+  capacity non-zero, base a whole `STACK-ABI:PAGE-BYTES` multiple, capacity a
+  whole `STACK-ABI:PAGE-BYTES` multiple, base + capacity not wrapping, base
+  outside the DATA region. The DATA-region clause is what makes this a proof
+  rather than a guess, because every `create`, `allot`, `,` and `buffer`
+  address lies inside that region — but it is the LAST clause, so an ordinary
+  create/allot buffer is normally refused earlier, on base alignment, and a
+  case that means to exercise the region clause has to hand over an address
+  that is page-aligned to begin with (`test/stack-guard.f`
+  DATA-REGION-REFUSAL uses `data-base` itself). In practice
+  `MEM-ALLOC-GUARDED` is the only thing that returns an extent all six
+  clauses accept. Because a guarded mapping only comes in whole-page sizes,
+  there is no way to hand run-in-stack a "slightly too small" guarded stack
+  any more: a request is either refused up front with `E-STACK-UNGUARDED`, or
+  it runs on a full page and any real overflow is a guard-page fault instead.
+  Nothing malformed reaches the older descriptor check behind this one:
+  `GUARDED-EXTENT?` runs strictly before it at the same switch and, for a
+  freshly entered stack (used bytes = 0), subsumes it so completely that the
+  entry `STACK-GUARD:CHECK-CURSOR` call is gone — the check on the way back
+  OUT, where the callback may have moved the cursor, stays.
+  `test/engine-stack-lifecycle.f` UNGUARDED-UNCAUGHT shows the uncaught shape
+  (exit 67, `hb: uncaught throw code -3802`, and an empty stdout because the
+  callback never ran).
+- A tier-1 top-row warning does not change which of these three a given
+  program hits, only that it also warns once first. `' FOO2 execute` on an empty
   stack (`: FOO2 ( n -- n n ) dup ;`) warns once and then still runs FOO2:
   since FOO2 is compiled code invoked through `execute`, not a token the
   interpreter reads directly, its `dup` reading below the base faults the
@@ -480,9 +492,16 @@ this die", and they are not interchangeable:
   `test/top-row-warn-test.f` TW-POSITIVES, and
   `test/runtime-regression-test.f` for the unchanged interpreted case).
 
-`test/stack-guard.f` has worked cases for all three: filling a guarded stack
-to its exact capacity versus one push past it, unbounded data/return/loop
-recursion, and each of run-in-stack's structural refusals.
+`test/stack-guard.f` has worked cases for all three: filling the boot stack
+short of its page by a margin versus filling the whole page, unbounded
+data/return/loop recursion, and one case per `GUARDED-EXTENT?` clause — each
+changing a single field of an extent the same fixture shows being accepted, so
+the clause named in the label is the one that decided. `test/engine-stack-wide.f`
+and `test/engine-stack-jit.f` add the capacity boundary of individual
+transfers: each wraps the transfer in a ratchet that grows the stack by one
+cell per recursion level on a `MEM-ALLOC-GUARDED` stack, so the transfer is
+what fills the stack and, being wider than the ratchet, its own write is what
+first crosses the guard page.
 
 ## Standalone gotchas a stepper catches fast
 - A 2nd `{: :}` locals group mis-reads its slot (use a variable instead).

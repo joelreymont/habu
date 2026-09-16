@@ -2575,13 +2575,18 @@ public
 \ than exiting the process. A malformed DESCRIPTOR is still the fail-closed
 \ STACK-BOUNDS exit: that one can arrive from a saved frame or a task, where
 \ there is no caller left to hand a throw to.
+\ There is no STACK-GUARD:CHECK-CURSOR on the way IN. It used to run here with
+\ cursor = base right after GUARDED-EXTENT? passed, and every branch it emits
+\ was already proven impossible at that point: base non-zero and 8-byte aligned
+\ (PAGE-BYTES alignment implies it), capacity not wrapping past base, and --
+\ because the cursor IS the base -- used = 0 <= capacity, remaining = capacity,
+\ cursor never below base and never misaligned. The check on the way OUT stays:
+\ it reads the descriptor the callback may have moved, which nothing proves.
 : BRUNSTACK ( -- )
    LBL LBL LBL {: bad:label unguarded:label done:label :}
    12 XDS 24 SUBI,
    9 12 0 LDR,  14 12 8 LDR,  11 12 16 LDR,     \ xt, base, capacity; no pop yet
    unguarded GUARDED-EXTENT?
-   10 11 0 ADDI,  12 14 0 ADDI,
-   0 bad STACK-GUARD:CHECK-CURSOR
    XDS XDS 24 SUBI,
    SP SP 32 SUBI,  30 SP 0 STR,  XDS SP 8 STR,
    12 DATA STACK-ABI:BASE-CELL LDR,  12 SP 16 STR,

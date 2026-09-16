@@ -1,6 +1,7 @@
 \ The guard-page contract itself: the shared refusal code, filling a guarded
-\ stack to its real capacity, the three named overflow faults, run-in-stack's
-\ structural refusals, and a task's own guarded stack.
+\ stack to its real capacity, the three named overflow faults, one case per
+\ GUARDED-EXTENT? clause behind run-in-stack's structural refusal, and a
+\ task's own guarded stack.
 require test/engine-stack-lifecycle.f
 require lib/memory.f
 
@@ -54,30 +55,78 @@ create LIT-SRC LIT-SRC-CAP allot
    s" unbounded DO-frame recursion overflows (loop)" T-LABEL
    s" : Z ( -- ) 1 0 do recurse loop ; Z" REFUSED-LOOP ;
 
-create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mapping
+\ GUARDED-EXTENT? (src/habu/habu1.f) emits its clauses in a fixed order: base
+\ non-zero, capacity non-zero, base PAGE-BYTES aligned, capacity PAGE-BYTES
+\ aligned, base + capacity does not wrap, base outside the DATA region. The
+\ first clause that rejects is the one that decides, so every case below takes
+\ the extent ACCEPTED-EXTENT is admitted with -- POOL and POOL-BYTES, the
+\ guarded mapping test/engine-stack-lifecycle.f made -- and changes exactly
+\ ONE field of it. Every clause throws the same E-STACK-UNGUARDED, so the
+\ code observed never says which one fired: attribution comes from that one
+\ changed field plus the emitted order, and from the accepted control proving
+\ the rest of the extent was fine.
+: ACCEPTED-EXTENT ( -- )
+   ['] EMPTY POOL POOL-BYTES run-in-stack ;
 
-: PLAIN-BUFFER-REFUSAL ( -- )
-   ['] EMPTY GBUF STACK-ABI:PAGE-BYTES run-in-stack ;
-
-: CAPACITY-ZERO-REFUSAL ( -- )
-   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop {: base:ptr :}
-   ['] EMPTY base 0 run-in-stack ;
+: NULL-BASE-REFUSAL ( -- )
+   ['] EMPTY NULL-PTR POOL-BYTES run-in-stack ;
 
 \ A real guarded base shifted by one cell (8 bytes) is neither the mapping's
 \ own base nor PAGE-BYTES aligned any more, even though it still points inside
 \ readable/writable memory -- GUARDED-EXTENT?'s alignment proof, not a bounds
 \ probe, is what catches it.
 : UNALIGNED-BASE-REFUSAL ( -- )
-   STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop {: base:ptr :}
-   ['] EMPTY base 8 + STACK-ABI:PAGE-BYTES run-in-stack ;
+   POOL {: base:ptr :}
+   ['] EMPTY base 8 + POOL-BYTES run-in-stack ;
+
+: CAPACITY-ZERO-REFUSAL ( -- )
+   ['] EMPTY POOL 0 run-in-stack ;
+
+\ One cell over a whole number of pages: a guarded mapping is only ever sized
+\ in whole PAGE-BYTES (MEM-ALLOC-GUARDED throws E-MEM-SIZE otherwise), so a
+\ capacity like this names bytes no guard page stands behind.
+: PARTIAL-PAGE-CAPACITY-REFUSAL ( -- )
+   ['] EMPTY POOL POOL-BYTES 8 + run-in-stack ;
+
+\ The wrap clause, which nothing else here reaches: the capacity is non-zero
+\ and PAGE-BYTES aligned (its low 16 bits are clear), so the two alignment
+\ clauses pass and base + capacity is the first thing that fails -- it lands
+\ one page BELOW the base instead of above it.
+: WRAPPING-EXTENT-REFUSAL ( -- )
+   ['] EMPTY POOL $FFFFFFFFFFFF0000 run-in-stack ;
+
+\ The DATA-region clause, isolated. `data-base` is the region's own start, so
+\ it is PAGE-BYTES aligned by construction and passes every alignment and wrap
+\ clause ahead of it; the only thing wrong with it is that it is DP-heap
+\ memory. An ordinary `create`/`allot` address (GBUF below) is inside the same
+\ region but is page-aligned only by accident, so it is the base-alignment
+\ clause -- emitted first -- that decides that one, which is why the region
+\ needs a case of its own.
+: DATA-REGION-REFUSAL ( -- )
+   ['] EMPTY data-base POOL-BYTES run-in-stack ;
+
+create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mapping
+
+: PLAIN-BUFFER-REFUSAL ( -- )
+   ['] EMPTY GBUF POOL-BYTES run-in-stack ;
 
 : RUN-IN-STACK-REFUSALS ( -- )
-   s" a create/allot buffer is refused" T-LABEL
-   ['] PLAIN-BUFFER-REFUSAL catch E-STACK-UNGUARDED T=
+   s" the unchanged guarded extent is accepted" T-LABEL
+   ['] ACCEPTED-EXTENT catch 0 T=
+   s" a null base is refused" T-LABEL
+   ['] NULL-BASE-REFUSAL catch E-STACK-UNGUARDED T=
+   s" a guarded base shifted by 8 bytes is refused" T-LABEL
+   ['] UNALIGNED-BASE-REFUSAL catch E-STACK-UNGUARDED T=
    s" capacity 0 on a real guarded pointer is refused" T-LABEL
    ['] CAPACITY-ZERO-REFUSAL catch E-STACK-UNGUARDED T=
-   s" a guarded base shifted by 8 bytes is refused" T-LABEL
-   ['] UNALIGNED-BASE-REFUSAL catch E-STACK-UNGUARDED T= ;
+   s" a capacity one cell past a whole page is refused" T-LABEL
+   ['] PARTIAL-PAGE-CAPACITY-REFUSAL catch E-STACK-UNGUARDED T=
+   s" a capacity that wraps past the base is refused" T-LABEL
+   ['] WRAPPING-EXTENT-REFUSAL catch E-STACK-UNGUARDED T=
+   s" a page-aligned address inside the DATA region is refused" T-LABEL
+   ['] DATA-REGION-REFUSAL catch E-STACK-UNGUARDED T=
+   s" a create/allot buffer is refused" T-LABEL
+   ['] PLAIN-BUFFER-REFUSAL catch E-STACK-UNGUARDED T= ;
 
 \ lib/task.f PREPARE gives every task its own guarded data/return/loop stacks
 \ (TASK-STACK-BYTES rounds the requested size up to whole guard pages); a task
