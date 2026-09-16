@@ -264,6 +264,255 @@ build on this machine, for two independent reasons:
 It would become buildable only by backporting four later commits, at which point
 it is no longer the pinned revision.
 
+## 5. Where the per-word compile time goes
+
+Measured 2026-09-16 with the engine's own sampling profiler (`prof-on` /
+`prof-off` / `prof-report`, docs/debugging.md), against the engine
+`/tmp/hazel-fH5`, sha256 `4242ccc8549fe369…`, which is this tree plus the
+profiler slices. Sampling interval 250 µs; load average is quoted with each
+run; both runs pinned to cpu10.
+
+### Method
+
+`set-tier` is engine-global and the compiler's own words are baked, so a
+profile of compilation is taken by selecting the tier at the head of a driver
+file, arming the clock, and loading real source through the engine's own
+`included` / `required`:
+
+```forth
+package PFDRV
+private
+TRUSTED: SET ( n -- ) set-tier ;
+public
+: SELECT1 ( -- ) 1 SET ;
+;package
+
+PFDRV:SELECT1
+250 prof-rate
+0 prof-on
+s" /tmp/gen-trivial.f" included      \ or the corpus `required` one file at a time
+prof-off
+prof-report
+```
+
+Two workloads:
+
+- **floor** — 4,000 definitions `: PFTn ( n -- n ) 1 + ;`, i.e. the trivial body
+  `tools/compile-floor.f` times, 4,000 times over. 11,523 samples, 0 `new`, 0
+  `foreign`: 2.881 s, **720 µs per word**, which is the floor that tool reports
+  on the same box (720 / 718 / 741 µs, load 12.1).
+- **corpus** — the same 13 library and tool files section 1 censuses, 1,772
+  words. 17,804 samples, 2 `foreign`: 4.451 s, **2.51 ms per word**, the same
+  rate section 3 measured by wall clock.
+
+`prof-report` selects its rows by **exclusive** count and prints 24 of them, so
+the tables below are ordered that way; the inclusive column is on every row and
+a word too cheap in itself to make the 24 cannot appear at all. Inclusive comes
+from a frame-pointer-less stack walk and is a superset — an uninitialised spill
+slot still holding a return address adds a frame — so treat exclusive as the
+measurement and inclusive as the attribution.
+
+### The floor: 4,000 trivial definitions, 720 µs each
+
+Load average 8.31. `exc`/`inc` are samples, `%` of the 11,523 delivered.
+
+| exc | % | inc | % | word | top callers (share of this row's exclusive) |
+|---:|---:|---:|---:|---|---|
+| 1405 | 12.1 | 1407 | 12.2 | `(PROT-SPAN)` | `!` 94.6, `c!` 5.1 |
+| 1356 | 11.7 | 1673 | 14.5 | `IR-ARENA:RD@` | `IR-OP:RC@` 15.3, `IR-OP:RHDR-CK` 9.6, `IR-SCHEMA:RC@` 7.5, `IR-FUN:BC@` 6.6, `IR-FUN:BHDR-CK` 5.2 |
+| 562 | 4.8 | 562 | 4.8 | `ptr-field` | `IR-ARENA:RD@` 41.8, `NULL-PTR` 32.3, `IR-ARENA:ADATA-FIELD` 7.1 |
+| 548 | 4.7 | 548 | 4.7 | `IR-ARENA:RD-SIZE` | `IR-ARENA:FROZEN-READER` 18.4, `IR-OP:RHDR-CK` 14.4, `IR-OP:CNT` 8.9, `IR-FUN:BHDR-CK` 7.2 |
+| 333 | 2.8 | 1663 | 14.4 | `!` | `CDIGEST:SLOT!` 39.3, `IR-ARENA:ACOUNT!` 7.8, `MEM:WB-RUN` 5.4 |
+| 261 | 2.2 | 332 | 2.8 | `IR-BUILD:FIND-B` | `IR-BUILD:RESOLVE` 100 |
+| 260 | 2.2 | 498 | 4.3 | `NULL-PTR-CELL` | `NULL-PTR` 100 |
+| 242 | 2.1 | 242 | 2.1 | `data-base` | `NULL-PTR-CELL` 98.3 |
+| 209 | 1.8 | 3489 | 30.2 | `CDIGEST:NATIVE-SLOT?` | `CDIGEST:SLOT!` 58.8, `CDIGEST:SLOT@` 41.1 |
+| 191 | 1.6 | 327 | 2.8 | `IR-ARENA:LIVE-SLOT` | `IR-ARENA:OPEN-LIVE` 51.8, `IR-ARENA:PUSH` 29.3 |
+| 168 | 1.4 | 1578 | 13.6 | `NULL-PTR` | `CDIGEST:NATIVE-SLOT?` 100 |
+| 164 | 1.4 | 164 | 1.4 | `cell-view` | `IR-ARENA:RD@` 50.0, `CDIGEST:SLOT!` 26.2, `CDIGEST:SLOT@` 20.1 |
+| 158 | 1.3 | 1639 | 14.2 | `CDIGEST:SLOT!` | `IR-SYM:BUCKETS-CLONE` 31.6, `IR-ARENA:PUSH` 24.0, `IR-ARENA:APPEND-SPAN` 23.4, `IR-ARENA:COPY-CELLS` 12.0, `IR-CTX:HDR!` 5.6 |
+| 155 | 1.3 | 936 | 8.1 | `CDIGEST:SLOT@` | `IR-ARENA:APPEND-SPAN` 36.1, `IR-SYM:BUCKETS-CLONE` 29.0, `IR-CTX:HDR@` 16.7, `IR-ARENA:COPY-CELLS` 9.0 |
+| 153 | 1.3 | 153 | 1.3 | `IR-CTX:SERIAL-LIVE?` | `IR-ARENA:LIVE-SLOT` 54.9, `IR-BUILD:RESOLVE` 25.4, `IR-ARENA:SWEEP` 9.8 |
+| 128 | 1.1 | 320 | 2.7 | `IR-SCHEMA:SCAN-NAME` | `IR-SCHEMA:ROW-OF` 91.4, `IR-SCHEMA:DEFINED?` 7.8 |
+| 106 | 0.9 | 106 | 0.9 | `IR-ID:LOCAL-N` | `NFROZEN:SAME-SYM?` 49.0, `IR-OP:ROW-ORD` 11.3 |
+| 91 | 0.7 | 91 | 0.7 | `mod` | `IR-OP:RSHAPE-CK` 29.6, `IR-FUN:BSHAPE-CK` 20.8, `IR-SCHEMA:RSHAPE-CK` 12.0 |
+| 81 | 0.7 | 81 | 0.7 | `IR-ARENA:AGEN@` | `IR-ARENA:SWEEP` 53.0, `IR-ARENA:PUSH` 24.6, `IR-ARENA:FREE-SLOT` 22.2 |
+| 75 | 0.6 | 75 | 0.6 | `munmap` | `DYNAMIC-STORAGE:RELEASE` 50.6, `MEM:RELEASE-RANGE` 26.6, `IR-CTX:CHUNKS-FREE` 22.6 |
+| 72 | 0.6 | 72 | 0.6 | `IR-ID:KEY-SERIAL` | `IR-ID:PACK-N` 100 |
+| 72 | 0.6 | 160 | 1.3 | `NFROZEN:SAME-SYM?` | `A64EMIT:OPCODE-SLOT` 37.5, `A64COMB:OPCODE-SLOT` 31.9, `A64RAV:ATTR-INT` 16.6 |
+| 71 | 0.6 | 71 | 0.6 | `IR-BUILD:BGEN@` | `IR-BUILD:FIND-B` 100 |
+| 69 | 0.5 | 69 | 0.5 | `IR-OP:FROW-FIELDS` | `IR-OP:FROW-FIELD` 69.5, `IR-OP:FTILE-CK` 30.4 |
+
+### The corpus: 1,772 real words, 2.51 ms each
+
+Load average 7.27. `%` of the 17,804 delivered.
+
+| exc | % | inc | % | word | top callers |
+|---:|---:|---:|---:|---|---|
+| 3155 | 17.7 | 3982 | 22.3 | `IR-ARENA:RD@` | `IR-OP:RC@` 16.6, `IR-SCHEMA:RC@` 13.1, `IR-OP:RHDR-CK` 8.8, `IR-FUN:BC@` 7.3, `IR-OP:ROW-AT` 4.5 |
+| 1632 | 9.1 | 1639 | 9.2 | `(PROT-SPAN)` | `!` 94.7, `c!` 5.0 |
+| 988 | 5.5 | 988 | 5.5 | `IR-ARENA:RD-SIZE` | `IR-ARENA:FROZEN-READER` 19.5, `IR-OP:RHDR-CK` 15.5, `IR-OP:CNT` 10.2, `IR-FUN:BHDR-CK` 10.1, `IR-OP:PHDR-CK` 6.1 |
+| 977 | 5.4 | 977 | 5.4 | `ptr-field` | `IR-ARENA:RD@` 59.3, `NULL-PTR` 10.4, `IR-ARENA:ADATA-FIELD` 3.7, `A64RAV:D-AT-BUF` 3.2 |
+| 323 | 1.8 | 1873 | 10.5 | `!` | `CDIGEST:SLOT!` 30.3, `IR-OP:FROW-USE` 6.8, `IR-ARENA:ACOUNT!` 4.6 |
+| 305 | 1.7 | 305 | 1.7 | `cell-view` | `IR-ARENA:RD@` 80.9, `CDIGEST:SLOT@` 8.1 |
+| 292 | 1.6 | 499 | 2.8 | `IR-ARENA:LIVE-SLOT` | `IR-ARENA:OPEN-LIVE` 56.8, `IR-ARENA:READ` 20.2, `IR-ARENA:PUSH` 15.7 |
+| 284 | 1.5 | 907 | 5.0 | `IR-SCHEMA:SCAN-NAME` | `IR-SCHEMA:ROW-OF` 87.6, `IR-SCHEMA:DEFINED?` 10.9 |
+| 256 | 1.4 | 331 | 1.8 | `IR-BUILD:FIND-B` | `IR-BUILD:RESOLVE` 100 |
+| 251 | 1.4 | 251 | 1.4 | `IR-ID:LOCAL-N` | `NFROZEN:SAME-SYM?` 53.3, `IR-OP:ROW-ORD` 11.9 |
+| 191 | 1.0 | 191 | 1.0 | `mod` | `IR-OP:RSHAPE-CK` 27.7, `IR-OP:AT-N` 15.1, `IR-FUN:BSHAPE-CK` 13.6 |
+| 187 | 1.0 | 187 | 1.0 | `IR-CTX:SERIAL-LIVE?` | `IR-ARENA:LIVE-SLOT` 75.9, `IR-BUILD:RESOLVE` 15.5 |
+| 187 | 1.0 | 398 | 2.2 | `NFROZEN:SAME-SYM?` | `A64EMIT:OPCODE-SLOT` 24.0, `A64COMB:OPCODE-SLOT` 22.9, `A64SEL:OPCODE-SLOT` 13.3 |
+| 174 | 0.9 | 174 | 0.9 | `IR-OP:FROW-FIELDS` | `IR-OP:FROW-FIELD` 80.4, `IR-OP:FTILE-CK` 19.5 |
+| 147 | 0.8 | 147 | 0.8 | `cell+` | `A64RAV:D-AT-BUF` 20.4, `A64RAV:C-AT-BUF` 7.4, `A64RA:B-ST-BUF` 5.4 |
+| 147 | 0.8 | 292 | 1.6 | `NULL-PTR-CELL` | `NULL-PTR` 100 |
+| 145 | 0.8 | 146 | 0.8 | `data-base` | `NULL-PTR-CELL` 100 |
+| 137 | 0.7 | 137 | 0.7 | `IR-OP:ROW-CELL` | `IR-OP:RC@` 100 |
+| 129 | 0.7 | 1427 | 8.0 | `CDIGEST:NATIVE-SLOT?` | `CDIGEST:SLOT!` 67.4, `CDIGEST:SLOT@` 32.5 |
+| 114 | 0.6 | 114 | 0.6 | `NFROZEN:S-READ` | `NFROZEN:RD` 99.1 |
+| 112 | 0.6 | 971 | 5.4 | `CDIGEST:SLOT!` | `IR-ARENA:PUSH` 31.2, `IR-ARENA:COPY-CELLS` 23.2, `IR-SYM:BUCKETS-ZERO` 14.2, `IR-SYM:BUCKETS-CLONE` 11.6, `IR-ARENA:APPEND-SPAN` 9.8 |
+| 109 | 0.6 | 109 | 0.6 | `IR-ID:KEY-SERIAL` | `IR-ID:PACK-N` 100 |
+| 101 | 0.5 | 1050 | 5.8 | `IR-OP:FTILE-CK` | `IR-OP:FROW-USE` 100 |
+| 92 | 0.5 | 297 | 1.6 | `IR-ARENA:FROZEN-READER` | `IR-OP:FROW-USE` 35.8, `IR-OP:ROPS` 18.4, `IR-OP:ROPCODE@` 10.8 |
+
+### The same two profiles, per phase, by inclusive time
+
+`prof-report` selects its rows by exclusive count, and every word that names a
+phase spends almost none: `NCOMP:SELECTED`, `IR-BUILD:FREEZE`, `A64SEL:SELECT`
+and `A64RAV:ACCEPT` are call frames, not loops. The table below was taken with a
+**measurement engine, not this tree**: `src/habu/prof.f` with `PROF-ROWS` at 120
+and the selection loop's key moved from the exclusive counter to the entry's
+`ENT-INCL` field, so the repeated maximum ranks by inclusive. Nothing of that is
+committed; the engine was built, read and discarded, and the two workloads,
+interval and pinning are the ones above.
+
+**Read inclusive as a lower bound for a shallow word.** The stack walk scans
+`PROF-WALK-CELLS` — 64 cells — of the interrupted stack and never leaves its 4
+KiB block, so a word whose frame sits far below SP while a deep callee runs is
+missed. That is why `NCOMP:WORK` reads 15.4 percent when it is in fact the whole
+compile, and why `catch` reads 46.2: a quotation's frames are what the window
+can still see. The phases in the middle of the pipeline — the verifiers, the
+allocator, the table builders — have their own subtrees inside the window and
+are the numbers to use.
+
+Inclusive samples and percent of the delivered samples, floor (11,462) and
+corpus (17,898):
+
+| phase | floor | corpus |
+|---|---:|---:|
+| `IR-BUILD:TABLES-TRY` — create a module's seventeen tables | **2979 25.9%** | 849 4.7% |
+| ` └ IR-SYM:NEW-FROM` — clone the dialect's interner | 1521 13.2% | 428 2.3% |
+| ` └ └ IR-ARENA:APPEND-SPAN` — pool and rows, cell by cell | 736 6.4% | — |
+| ` └ └ IR-SYM:INDEX-CLONE` / `BUCKETS-CLONE` | 726 6.3% / 731 6.3% | — |
+| `A64IR:ENSURE-OP` — define the dialect's opcodes into the module | 978 8.5% | 924 5.1% |
+| ` └ A64IR:DEFINE-ONE` → `IR-BUILD:DEFINE-OP` | 869 7.5% / 944 8.2% | 710 3.9% / 569 3.1% |
+| ` └ IR-SCHEMA:DEFINE` | 568 4.9% | — |
+| `NELAB:COLON` — elaborate the body | 299 2.6% | 636 3.5% |
+| ` └ NELAB:SCAN-FUN` / `BUILD-FUN` | 271 2.3% / 423 3.6% | 1007 5.6% / 996 5.5% |
+| `IR-BUILD:FREEZE` | 775 6.7% | 531 2.9% |
+| ` └ IR-BUILD:VERIFY-CK` → **`IR-VERIFY:VERIFY`** | 1202 10.4% / **1234 10.7%** | 1734 9.6% / **2388 13.3%** |
+| ` └ └ IR-VERIFY:OP-CK` / `OPS-CK` / `ATTRS-CK` | 755 6.5% / 756 6.5% / 309 2.6% | 1930 10.7% / 1875 10.4% / 1045 5.8% |
+| `A64SEL:SELECT` — instruction selection | 838 7.3% | 412 2.3% |
+| `A64COMB:REWRITE` — the combine rebuild | 438 3.8% | — |
+| `A64RA:ALLOCATE` — register allocation | 621 5.4% | 650 3.6% |
+| ` └ A64RA:WALK` / `MEASURE-ALL` | 768 6.7% / 279 2.4% | 2201 12.2% / 946 5.2% |
+| **`A64RAV:ACCEPT`** — verify the allocation | **525 4.5%** | **1277 7.1%** |
+| ` └ A64RAV:VERIFY` / `WALK` | 607 5.2% / 556 4.8% | 1122 6.2% / 1320 7.3% |
+| `A64EMIT:EMIT` | 297 2.5% | — |
+| `SHA256-FINAL` — the canonical digest, all of it | 267 2.3% | — |
+| `IR-OP:FROW-USE` — resolve one operation's row window | 1115 9.7% | 2617 14.6% |
+| `IR-SCHEMA:ROW-OF` → `SCAN-NAME` | 372 3.2% / 307 2.6% | 1074 6.0% / 950 5.3% |
+| `IR-ARENA:RD@` | 1725 15.0% | 3966 22.1% |
+| `CDIGEST:SLOT!` / `SLOT@` — as the arena's cell accessor | 1632 14.2% / 888 7.7% | 987 5.5% / 485 2.7% |
+
+A dash is a phase that did not reach the 120 rows printed, so it is under about
+2.5 percent on that workload.
+
+**What this changes.**
+
+- **Verification is the largest single phase, on both workloads.** The IR's own
+  freeze verifier is 10.7 percent of the floor and 13.3 percent of the corpus,
+  and the register-allocation verifier another 4.5 and 7.1 — together **15.2
+  percent of the floor and 20.4 percent of the corpus**. Each runs once per
+  module, and a trivial word builds three modules, so a word is verified three
+  times over.
+- **The canonical digest is not a cost.** `SHA256-FINAL` is 2.3 percent of the
+  floor and does not reach the table on the corpus. `CDIGEST:SLOT!`/`SLOT@` are
+  large, but they are not digesting: they are the canonical cell accessor the
+  arena reads and writes its spans through, which is item 3 above.
+- **Building a module is the floor's largest cost and the corpus's smallest.**
+  `IR-BUILD:TABLES-TRY` is 25.9 percent of the floor and 4.7 percent of the
+  corpus — the definition of a fixed per-module cost. Half of it is the interner
+  clone; the dialect then defines its opcode schema into the fresh module again
+  (`A64IR:ENSURE-OP`, 8.5 percent), which is a second copy of the same
+  vocabulary in a second table.
+
+### What the profile says
+
+**There is no single fixed phase to delete.** The 24 rows sum to 59 percent of
+the floor and 58 percent of the corpus, and the largest of them is 12
+percent. The cost is one shape repeated: a cell of an IR arena is reached
+through a call chain, and the compiler reaches a great many cells.
+
+1. **Reading one IR record cell costs three calls.**
+   `IR-ARENA:RD@` re-validates its reader token (generation, then state, then
+   bound: four indexed loads) and then calls `ptr-field` and `cell-view`.
+   Corpus-wide that is `RD@` 17.7 percent plus the 59.3 percent of `ptr-field`
+   and the 80.9 percent of `cell-view` that come from it — **22.3 percent of all
+   compile time in one accessor**, before its callers' own work. `RD-SIZE`
+   (5.5 percent) is the same validation again for the count, and the callers
+   named on both rows — `IR-OP:RHDR-CK`, `IR-FUN:BHDR-CK`, `IR-OP:PHDR-CK`,
+   `IR-OP:CNT`, `IR-ARENA:FROZEN-READER` — are per-access header revalidation,
+   not field reads: roughly a third of both rows.
+2. **Writing one cell costs the span guard.** `(PROT-SPAN)` is 12.1 percent of
+   the floor and 9.1 percent of the corpus, and 94.6 percent of it is reached
+   from `!`. That is the engine's protected-span check, one call and nine band
+   tests per store, and nothing in the compiler can make a store cheaper than
+   one call — only make fewer of them.
+3. **The bulk copies go through the canonical slot words, cell by cell.**
+   `CDIGEST:SLOT@`/`SLOT!` exist so a preimage is byte-canonical on any host;
+   each call asks `NATIVE-SLOT?`, which calls `NULL-PTR` → `NULL-PTR-CELL` →
+   `data-base` → `ptr-field` to re-derive a process constant. On the floor
+   workload that chain is `SLOT!` 1.3 + `SLOT@` 1.3 + `NATIVE-SLOT?` 1.8 +
+   `NULL-PTR` 1.4 + `NULL-PTR-CELL` 2.2 + `data-base` 2.1 = **10.1 percent
+   exclusive**, plus its shares of `ptr-field`, `cell-view` and `!`. The callers
+   name exactly where: `IR-SYM:BUCKETS-CLONE`, `IR-ARENA:APPEND-SPAN`,
+   `IR-ARENA:COPY-CELLS` and `IR-SYM:BUCKETS-ZERO` — the prototype clone every
+   new builder takes — plus `IR-ARENA:PUSH` and `IR-CTX:HDR@`/`HDR!`.
+   `IR-ARENA:CELL-AT` and `RD@` already bypass this path when `NATIVE-CELLS?`;
+   the copies do not.
+4. **The arena registry is scanned twice per arena created.**
+   `IR-ARENA:NEW` runs `SWEEP` and then `FREE-SLOT`, each a loop over all 64
+   registry slots, and a builder creates seventeen arenas. `IR-ARENA:AGEN@`
+   (0.7 percent, 53.0 from `SWEEP` and 22.2 from `FREE-SLOT`) and
+   `IR-CTX:SERIAL-LIVE?` (1.3 percent, 9.8 from `SWEEP`) are what is left of it
+   after the loop bodies inline.
+5. **The schema is searched by name, linearly, on every opcode query.**
+   `IR-SCHEMA:ROW-OF` calls `SCAN-NAME`, which walks every row of the dialect's
+   schema table comparing a symbol ordinal, one `IR-ARENA:RD@` per row. That is
+   5.0 percent of the corpus inclusive and 13.1 percent of every `RD@` call.
+   `NFROZEN:SAME-SYM?` (2.2 percent, from four dialects' `OPCODE-SLOT`) is the
+   same question asked a second way.
+
+**The register-allocation verifier spends its time in other words' rows.** No
+`A64RAV` word reaches either top-24 list on its own account: it appears there
+only as a caller of `ptr-field` (3.2 + 2.6 percent of that row), `cell+` (20.4 +
+7.4 percent) and `!` (3.7 percent) in the corpus, and nowhere at all on the
+floor. The inclusive table below prices it properly at 4.5 percent of the floor
+and 7.1 percent of the corpus — real, proportional to the module's values and
+blocks, and second to the IR's own freeze verifier rather than first.
+
+**What is fixed, measured without the profiler.** `tools/compile-floor.f` times
+two bodies: `1 +`, which carries a combinable pair, and `swap drop`, which does
+not. A pair makes `NCOMP:COMBINED` rebuild the module into a fresh builder;
+without one the module is handed straight back. On this box that is 720 µs
+against 490 µs — so **one extra module rebuild costs 230 µs**, on a two-operation
+body where the rewriting itself is nothing. The trivial word builds three
+modules (the HIR builder, the selection's A64 builder, the combine rebuild), and
+three times 230 µs is the whole floor. What is fixed per word is therefore *the
+builder*: seventeen arenas, two registry scans each, and a verbatim clone of
+the dialect's whole interned vocabulary — items 3 and 4 above, paid once per
+module built rather than once per word.
+
 ## Verdict and the ranked fixes
 
 Tier 1 pays for itself. It halves the calls, wins every run-time benchmark by
