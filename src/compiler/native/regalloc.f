@@ -1612,11 +1612,27 @@ variable N-CALLS
       then
    loop ;
 
+\ ---- the copy that moves nothing ---------------------------------------------
+\ MB-COALESCE puts the two ends of a copy in one class when they can share a
+\ register, MB-FINISH gives a class one frame slot, and NEW-SLOT hands a slot
+\ out once - so a coalesced copy whose class went to the frame names the same
+\ eight bytes on both sides. Storing its result would write back the very slot
+\ its operand is read from, and the emitter would carry the reload and the
+\ store-back as real instructions. The plan records neither, and A64SPILL drops
+\ the operation instead of rewriting it.
+: MB-IDENTITY-COPY? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id MB-COPY? 0= if false exit then
+   id 0 OPERAND-AT SLOT SLOT-AT {: k:n :}
+   k NOSLOT = if false exit then
+   k  id 0 RESULT-AT SLOT SLOT-AT  = ;
+
 \ ---- the decisions, anchored to their blocks ---------------------------------
 \ In front of the first operation after the one that defines the value.
 : MB-PLAN-STORES ( IR-ID:ir-block-id n n n -- )
    {: bk:IR-ID:ir-block-id b:n at:n d:n :}
    bk d OP-AT {: id:IR-ID:ir-op-id :}
+   id MB-IDENTITY-COPY? if exit then
    id ADDRESS-HALF {: half:n :}
    half 0 >= half A64IR:HALVES 1- < and if exit then
    id RESULTS-OF 0 ?do
@@ -1628,6 +1644,7 @@ variable N-CALLS
 : MB-PLAN-LOADS1 ( IR-ID:ir-block-id n n n -- )
    {: bk:IR-ID:ir-block-id b:n at:n use:n :}
    bk use OP-AT {: id:IR-ID:ir-op-id :}
+   id MB-IDENTITY-COPY? if exit then
    id ADDRESS-HALF 0 > if exit then
    id SUCCS-OF 1 = if exit then
    id OPERANDS-OF 0 ?do

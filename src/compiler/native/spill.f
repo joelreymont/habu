@@ -60,6 +60,7 @@ A64IR-OPCODE:RELEASE  A64IR:ORD constant O-RELEASE
 A64IR-OPCODE:LINKSAVE A64IR:ORD constant O-LINKSAVE
 A64IR-OPCODE:LINKLOAD A64IR:ORD constant O-LINKLOAD
 A64IR-OPCODE:TRAP     A64IR:ORD constant O-TRAP
+A64IR-OPCODE:MOV      A64IR:ORD constant O-MOV
 
 \ One slot per attribute key the dialect declares.
 14 constant KEYS-N
@@ -720,6 +721,19 @@ create NAMEBUF NAME-CAP allot
 : SPILL-SLOT ( IR-ID:ir-value-id -- n )
    VSLOT A64RA:SLOT@ ;
 
+\ The copy A64RA planned nothing for. Coalescing put its two ends in one class
+\ and the class went to the frame, so operand and result name one slot and the
+\ copy moves that slot onto itself. Every operation that reads the result reads
+\ it out of that slot through a reload of its own, so the copy carries nothing
+\ across and is left out of the rewritten module; carrying it would need the
+\ reload and the store-back the plan no longer holds.
+: IDENTITY-COPY? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id OPCODE-AT  O-MOV BND-OP @  SAME-SYM? 0= if false exit then
+   id 0 OPERAND-AT SPILL-SLOT {: k:n :}
+   k NO-SLOT = if false exit then
+   k  id 0 RESULT-AT SPILL-SLOT  = ;
+
 : FRAME-EDGE-OPERAND? ( IR-ID:ir-op-id n -- bool )
    {: id:IR-ID:ir-op-id i:n :}
    id SUCCS-OF 1 <> if false exit then
@@ -851,7 +865,7 @@ create NAMEBUF NAME-CAP allot
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id b i G-AT @ INSERT-AT
       i n 1- =  b rb =  and  FRAMES?  and if id EMIT-RELEASE then
-      f id G-AT @ carry COPY-OP
+      id IDENTITY-COPY? 0= if f id G-AT @ carry COPY-OP then
       G-AT @ 1+ G-AT !
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;

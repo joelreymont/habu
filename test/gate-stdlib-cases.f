@@ -251,6 +251,10 @@ SUITE compiler-native-address-spill
    test/compiler/native-address-spill.f
 ;SUITE
 
+SUITE compiler-native-identity-spill
+   test/compiler/native-identity-spill.f
+;SUITE
+
 SUITE compiler-native-loop-frame-order
    test/compiler/native-loop-frame-order.f
 ;SUITE
