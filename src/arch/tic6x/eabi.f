@@ -59,7 +59,7 @@ variable PACKET-START
 \ enough that its five delay slots hold the rest of the block and every load
 \ has landed when the target runs, so no successor needs to know the block.
 
-: PENDING-ROW ( n -- ptr a ) 8 * cells PENDING + ;
+: PENDING-ROW ( n -- ptr n ) 8 * cells PENDING + CELL-VIEW ;
 : P-WORD ( n -- n ) PENDING-ROW @ ;
 : P-UNIT ( n -- n ) PENDING-ROW 1 cells + @ ;
 : P-CROSS ( n -- n ) PENDING-ROW 2 cells + @ ;
@@ -69,7 +69,7 @@ variable PACKET-START
 : P-MEMORY ( n -- n ) PENDING-ROW 6 cells + @ ;
 : P-SIDE ( n -- n ) PENDING-ROW 7 cells + @ ;
 : P-CYCLE ( n -- n ) cells CYCLE-OF + @ ;
-: SLOT ( n -- ptr a ) 4 * cells SLOTS + ;
+: SLOT ( n -- ptr n ) 4 * cells SLOTS + CELL-VIEW ;
 
 \ Row idx takes the facts of word w.
 : FILL-ROW ( n n -- ) {: w:n idx:n :}
@@ -793,7 +793,7 @@ public
    0 LEN ! 0 FIXUP-COUNT ! 0 PENDING-COUNT !
    idx HELPER FLUSH RESOLVED ;
 
-: PROGRAM$ ( -- ptr a n ) WORDS LEN @ ;
+: PROGRAM$ ( -- ptr n n ) WORDS LEN @ ;
 
 \ TRUE when helper idx may modify the register with that code (A0..A31 = 0..31,
 \ B0..B31 = 32..63); B3 is the return address and is never checked.

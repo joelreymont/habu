@@ -80,7 +80,7 @@ variable CHECKING                                  \ the word under classificati
    value 1 bits lshift 1- and dup 1 bits 1- lshift and 0 <> if 1 bits lshift - then ;
 
 
-: REG-CELL ( n -- ptr a ) dup 0 < over 63 > or if E-OPERAND throw then cells REGS + ;
+: REG-CELL ( n -- ptr n ) dup 0 < over 63 > or if E-OPERAND throw then cells REGS + CELL-VIEW ;
 : REG@ ( n -- n ) REG-CELL @ ;
 : REG! ( n n -- ) swap >U32 swap REG-CELL ! ;
 
@@ -113,7 +113,7 @@ variable CHECKING                                  \ the word under classificati
    address row ! size row 1 cells + ! value row 2 cells + !
    1 STORE-COUNT +! ;
 
-: PENDING-ROW ( n -- ptr a ) 3 * cells PENDING + ;
+: PENDING-ROW ( n -- ptr n ) 3 * cells PENDING + CELL-VIEW ;
 
 : SCHEDULE ( n n n -- ) {: reg:n value:n delay:n :}
    PENDING-COUNT @ PENDING-MAX >= if E-LIMIT throw then
@@ -122,7 +122,7 @@ variable CHECKING                                  \ the word under classificati
    1 PENDING-COUNT +! ;
 
 \ A load landing on a register another write reached in the same cycle is undefined.
-: LAND ( ptr a -- ) {: row:ptr :}
+: LAND ( ptr n -- ) {: row:ptr :}
    row @ {: reg:n :}
    LANDED @ reg MASK-BIT and 0 <> WRITTEN-LAST @ reg MASK-BIT and 0 <> or if E-CONFLICT throw then
    LANDED @ reg MASK-BIT or LANDED !
@@ -149,7 +149,7 @@ variable CHECKING                                  \ the word under classificati
    WRITTEN-LAST @ reg MASK-BIT or WRITTEN-LAST !
    row 1 cells + @ reg REG! ;
 
-: STORE-ROW ( n -- ptr a ) 3 * cells STORES + ;
+: STORE-ROW ( n -- ptr n ) 3 * cells STORES + CELL-VIEW ;
 
 : OVERLAP? ( n n -- bool ) {: a:n b:n :}
    a STORE-ROW @ {: start:n :} start a STORE-ROW 1 cells + @ + {: limit:n :}
@@ -443,7 +443,7 @@ public
 
 \ Runs the program from its first word with B3 set to RETURN-ADDRESS until the
 \ program branches there and its delay slots have drained; returns the cycles used.
-: CALL ( ptr a n -- n ) {: words:ptr count:n :}
+: CALL ( ptr n n -- n ) {: words:ptr count:n :}
    count 0 <= if E-OPERAND throw then
    words PROGRAM ! count PROGRAM-WORDS ! 0 NEXT-WORD ! 0 CYCLES ! 0 BRANCH-PENDING ! 0 PENDING-COUNT !
    0 WRITTEN-LAST ! 0 RECENT ! 0 LANDED !
