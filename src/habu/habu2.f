@@ -42,7 +42,7 @@ using AOT-BUF
 \ the same fixed chain followed by the push stencil.
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
-   9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
+   9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
 \ The three words that NAME the relocation kind of a chain, and the compile-mode
 \ CALL-or-INLINE emitter, are defined further down, right after the snapshot-
 \ relocation labels. All four record a site through SNAP-RELOC:MARK-SITE: the
@@ -433,10 +433,47 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    9 11 0 ADDI,  LFLUSH LABEL@ BL,
    8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR, ;
 
+\ Store the interrupted thread's link register at its (already lowered) stack
+\ pointer: the second half of the pre-indexed save, in the ucontext.
+: C-MCTX-LINK>SLOT ( -- )
+   HB-TARGET-LINUX? IF
+      12 9 LINUX-MCTX-SP-OFF LDR,  14 9 LINUX-MCTX-LR-OFF LDR,  14 12 0 STR, exit
+   THEN
+   12 9 MACOS-MCTX-SP-OFF LDR,  14 9 MACOS-MCTX-LR-OFF LDR,  14 12 0 STR, ;
+
+\ A persistent breakpoint keeps its BRK planted, so the instruction the BRK
+\ replaced never runs and this handler has to be it. That instruction is a word
+\ ENTRY, so it is one of exactly two things: the link-register save, or the nop
+\ EM-COMPILE-RET left in a leaf's slot. The saved word in the slot says which,
+\ and a nop needs nothing but the step over it.
+\
+\ THE SAVE'S STORE GOES INTO THE SIGNAL FRAME, DELIBERATELY. `str
+\ x30,[sp,#-16]!` writes sixteen bytes below the interrupted sp, and the kernel
+\ built this handler's signal frame there -- on arm64 those exact sixteen bytes
+\ are the frame_record {fp, lr} it chains a backtrace through. Nothing reads
+\ them back: sigreturn restores from uc_mcontext, which is lower in the frame,
+\ and this handler addresses its own locals off sp and never off x29. The word
+\ being resumed will load the value back with `ldr x30,[sp],#16`, by which time
+\ the signal frame is gone. Writing anywhere else is not an option -- that
+\ address IS the slot the epilogue reads.
 : C-BP-EMULATE ( -- )
-   9 SP 24 LDR,
-   C-MCTX-SP-16!
-   C-MCTX-PC+4! ;
+   LBL LBL LBL {: framed:label step:label done:label :}
+   9 SP 24 LDR,                                       \ the interrupted mcontext
+   8 SP 40 LDR,  13 8 8 LDR,                          \ the word the BRK replaced
+   14 W-LINKSAVE LIT64,  13 14 CMP,  C-EQ framed BCOND,
+   14 W-NOP LIT64,  13 14 CMP,  C-EQ step BCOND,
+      \ An entry this handler cannot be: a tier-1 leaf begins with whatever its
+      \ first operation is. Rather than guess, give the word its instruction
+      \ back and resume ON it -- the breakpoint degrades to one-shot, which is a
+      \ visible loss, where emulating the wrong instruction is a wrong stack.
+      C-BP-RESTORE-ONESHOT
+      done B,
+   framed LBL,
+      C-MCTX-SP-16!
+      C-MCTX-LINK>SLOT
+   step LBL,
+      C-MCTX-PC+4!
+   done LBL, ;
 
 : C-BP-SCAN ( label label label label -- )
    {: tno:label bscan:label bnext:label bhit:label :}
@@ -555,6 +592,12 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 : EMIT-CEMITBL ( -- )
    LBL LBL {: rok:label nomark:label :}
    LCEMITBL LABEL@ LBL,
+   \ The one fact EM-COMPILE-RET needs and cannot recover later: this body now
+   \ holds a call, so x30 does not survive it and the entry slot has to stay a
+   \ save. Marked here rather than read back out of the emitted words, because
+   \ the emitter knows what it emitted and a scan of the body would also have to
+   \ decide what the string and address literals inside it are.
+   5 DATA FRAME-CELL LDR,  5 5 1 ORRI,  5 DATA FRAME-CELL STR,
    10 11 CP SUB,                                       \ x10 = disp = target - CP (signed byte distance)
    5 BL-REACH LIT64,  6 10 5 ADD,  5 5 1 LSLI,  6 5 CMP,    \ (disp + BL-REACH) vs 2*BL-REACH (unsigned window)
    C-CC rok BCOND,                                     \ disp in [-BL-REACH, BL-REACH) -> encode; else fail closed
@@ -2020,10 +2063,10 @@ variable LCOLONNONAME
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-POPFLAG ( -- )
-   $D1002273 C-EMITW  $F9400269 C-EMITW ;
+   W-POP9 C-EMITW ;
 
 : C-POP-X16 ( -- )
-   $D1002273 C-EMITW  $F9400270 C-EMITW ;
+   W-POP16 C-EMITW ;
 
 : C-PUSHCP ( -- )   9 CP 0 ADDI,  LCFPUSH LABEL@ BL, ;
 
@@ -2120,7 +2163,7 @@ variable LCOLONNONAME
    9 $B4000011 LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL, ;
 
 : J-UNTIL ( -- )
-   $D1002273 C-EMITW  $F9400271 C-EMITW  J-UNTILX ;   \ pop flag -> x17
+   W-POP17 C-EMITW  J-UNTILX ;                        \ pop flag -> x17
 
 : J-WHILE ( -- ) C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
 
@@ -2249,7 +2292,7 @@ package LOOP-EMIT
 
 : J-+LOOP ( -- )                                \ cross the limit boundary in the step's direction
    LVREQUIRE                             \ no open DO level: reject before emitting or popping
-   $D1002273 C-EMITW  $F9400269 C-EMITW  \ step -> x9
+   W-POP9 C-EMITW                        \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
    4181722506 C-EMITW                    \ ldr x10,[x12,#8]   limit
@@ -2562,9 +2605,9 @@ public
 \ and `:trusted` in C-TRUSTED). Both reach it having reset every legacy cell the
 \ JIT's closure reads, so the only thing left to decide is who compiles the body.
 \
-\ Tier 0 emits the legacy prologue into the body about to be compiled -- `sub
-\ sp,sp,#16` then `str x30,[sp]`, the frame LCOMPILE's closure expects to find
-\ and that EM-COMPILE-RET unwinds. Tier 1 emits nothing here and loads the
+\ Tier 0 emits the entry half of the frame into the body about to be compiled --
+\ one pre-indexed `str x30,[sp,#-16]!`, whose slot EM-COMPILE-RET either matches
+\ with a restore or rewrites to a nop. Tier 1 emits nothing here and loads the
 \ optimizing entry instead. This is the fork 04187fff removed when it made the
 \ IR pipeline the only compiler; the shape is the same, with the cell deciding
 \ instead of a dictionary lookup.
@@ -2578,8 +2621,8 @@ public
       done B,
    jit LBL,
       EXECUTABLE-JIT-GUARD
-      9 $D10043FF LIT64,  LCEMIT LABEL@ BL,        \ sub sp, sp, #16
-      9 $F90003FE LIT64,  LCEMIT LABEL@ BL,        \ str x30, [sp]
+      9 CP 0 ADDI,  9 DATA FRAME-CELL STR,         \ the entry slot, no call seen yet
+      9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,       \ str x30,[sp,#-16]!
    done LBL, ;
 ;package
 
@@ -2695,7 +2738,7 @@ public
    11 11 10 W-ADDX-LSL3 C-EMITW ;
 
 : J-TOR ( -- )                                                \ pop data -> push RSTK
-   $D1002273 C-EMITW  $F9400269 C-EMITW                \ sub x19,#8 ; ldr x9,[x19]
+   W-POP9 C-EMITW                                      \ ldr x9,[x19,#-8]!
    10 20 RSP-CELL W-LDRX C-EMITW
    RSTK-SLOT-ADDR,
    9 11 0 W-STRX C-EMITW
@@ -2710,10 +2753,10 @@ public
 
 : J-RFROM ( -- )  J-RPOP                                      \ pop RSTK -> push data
    10 20 RSP-CELL W-STRX C-EMITW
-   $F9000269 C-EMITW  $91002273 C-EMITW ;              \ str x9,[x19] ; add x19,#8
+   W-PUSH9 C-EMITW ;                                   \ str x9,[x19],#8
 
 : J-RFETCH ( -- )  J-RPOP                                     \ peek RSTK -> push data
-   $F9000269 C-EMITW  $91002273 C-EMITW ;
+   W-PUSH9 C-EMITW ;
 
 \ EXIT: emit a placeholder word holding the PREVIOUS chain offset (0 = end);
 \ `;` walks the chain and patches each into `b epilogue`. RECURSE: bl back to
@@ -2728,7 +2771,11 @@ public
    10 CP DBASE SUB,  10 DATA EXITH-CELL STR,           \ head := this placeholder
    LCEMIT LABEL@ BL, ;
 
+\ The one call the compiler emits without going through LCEMITBL -- C-BBACK
+\ builds the backward displacement for `b` and for `bl` alike -- so it marks the
+\ body itself.
 : J-RECURSE ( -- )
+   9 DATA FRAME-CELL LDR,  9 9 1 ORRI,  9 DATA FRAME-CELL STR,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
 : C-SIG-START ( label -- ) {: lmiss:label :}
@@ -2784,6 +2831,38 @@ public
 \ J-DOES is emitted further down, past the capacity exits its clause record
 \ reaches for (C-DIE-DICT-FULL / C-DIE-CODE-FULL).
 
+\ THE WORD FRAME IS DECIDED HERE, NOT AT THE COLON. The JIT is single pass, so
+\ when a body opens nobody knows yet whether it will call anything; the opener
+\ emits the link-register save at the entry and leaves the slot's address in
+\ FRAME-CELL, and every emitter that puts a call in the body ORs bit 0 into that
+\ cell (LCEMITBL for a direct BL, J-RECURSE for its own). So by the time the
+\ body closes, one cell says both where the entry slot is and whether anything
+\ can have destroyed x30.
+\
+\ A body that called gets the matching restore. A body that did not has its
+\ entry slot REWRITTEN to a nop, in place: two instructions execute instead of
+\ five, and every address recorded while the body was compiled -- a branch
+\ placeholder, the record's own start, a quotation's entry, a breakpoint -- is
+\ still the address of the same instruction it was recorded for. Removing the
+\ slot instead would move all of them.
+\
+\ The nop is written through PROT:LSPAN and left for the close at `;` to flush,
+\ which is what LPAT and LBCHAIN do with every other write below CP.
+: EM-COMPILE-RET ( -- )
+   LBL LBL {: leaf:label done:label :}
+   11 DATA FRAME-CELL LDR,
+   11 done CBZ,                                        \ no frame was opened for this body
+   10 11 1 ANDI,  10 leaf CBZ,
+      9 W-LINKREST LIT64,  LCEMIT LABEL@ BL,           \ ldr x30,[sp],#16
+      done B,
+   leaf LBL,                                           \ bit 0 clear, so x11 IS the slot
+      9 11 0 ADDI,
+      1 9 0 ADDI,  2 4 MOVZ,  PROT:LSPAN LABEL@ BL,
+      11 W-NOP LIT64,  11 9 0 STRW,                    \ the entry slot stops framing
+   done LBL,
+   9 W-RET LIT64,  LCEMIT LABEL@ BL,
+   9 0 MOVZ,  9 DATA FRAME-CELL STR, ;
+
 : J-QUOT ( -- )
    LBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,                    \ nested [: quotation opener: recoverable inside evaluate (rc 75), fail-closed exit 75 at top level. Fires before J-QUOT touches QPATCH/emit; rollback drops compile-state
@@ -2795,8 +2874,9 @@ public
    9 CP 0 ADDI,  9 DATA QENT-CELL STR,            \ the quotation's entry
    9 DATA EXITH-CELL LDR,  9 DATA QXH-CELL STR,   \ scope the EXIT chain
    12 0 MOVZ,  12 DATA EXITH-CELL STR,
-   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,               \ its own prologue
-   9 $F90003FE LIT64,  LCEMIT LABEL@ BL, ;
+   9 DATA FRAME-CELL LDR,  9 DATA QFRAME-CELL STR,  \ ...and the frame with it
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,             \ its own entry slot, no call yet
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL, ;         \ str x30,[sp,#-16]!
 
 : J-SEMIQUOT ( -- )
    LBL {: sqok :}
@@ -2806,9 +2886,8 @@ public
    sqok LBL,
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,   \ exits -> this epilogue
    9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
-   9 $F94003FE LIT64,  LCEMIT LABEL@ BL,                \ epilogue: ldr x30,[sp]
-   9 $910043FF LIT64,  LCEMIT LABEL@ BL,                \ add sp,#16
-   9 W-RET LIT64,  LCEMIT LABEL@ BL,
+   EM-COMPILE-RET                                       \ its own frame, its own ret
+   9 DATA QFRAME-CELL LDR,  9 DATA FRAME-CELL STR,      \ the enclosing body is open again
    9 DATA QPATCH-CELL LDR,  LPAT LABEL@ BL,             \ b-over lands here
    11 DATA QENT-CELL LDR,  C-CODE-ADDR             \ push the xt in the outer word (relocatable code addr)
    12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
@@ -3110,8 +3189,15 @@ public
    $D63F0200 C-EMITW                     \ blr x16
    J-EXIT                                \ word 4: the defining word ends here
    DOES-REC:MAKE                         \ the name bytes, then the clause's record
-   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,      \ D: fresh prologue for the does-body
-   9 $F90003FE LIT64,  LCEMIT LABEL@ BL, ;
+   \ D: a fresh entry slot for the does-body, opened as ALREADY HAVING CALLED.
+   \ The clause and the defining word share one epilogue -- word 4's J-EXIT is
+   \ chained to the same `;` -- and the defining word reached it through the
+   \ `blr x16` just above, so its frame is standing when control arrives. A leaf
+   \ clause must therefore still be given the restore, and both entry slots must
+   \ keep their saves. Re-pointing the cell is what keeps the defining word's
+   \ slot: EM-COMPILE-RET only ever patches the one the cell names.
+   9 CP 0 ADDI,  9 9 1 ORRI,  9 DATA FRAME-CELL STR,
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL, ;
 
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
@@ -3476,22 +3562,18 @@ package INTERP-EMIT
    NCOMP-EMIT:TIER-COLON-DISPATCH
    done LBL, ;
 
-\ The two ends of every definition's publish, emitted by the `;` tail below and
-\ by the cast declarer just under here. They sit this early because the cast has
+\ The second end of every definition's publish, emitted by the `;` tail below and
+\ by the cast declarer just under here. It sits this early because the cast has
 \ no `;` to wait for: it publishes inside its own keyword handler, and a keyword
-\ handler must be defined before the interpret dispatch rows name it. Their
+\ handler must be defined before the interpret dispatch rows name it. Its
 \ callers and the order they are called in are unchanged, so the emitted image
-\ is too.
+\ is too. The FIRST end, EM-COMPILE-RET, moved further up still, because the
+\ quotation closer needs it too.
 \
 \ The body length lands in the record at the SECOND end of a colon definition,
 \ and a declaration does not survive that far: every checker call inside the body
 \ closes the bracket, and a close clears every band. So the record is declared
 \ again where it is written, rather than once at the colon.
-: EM-COMPILE-RET ( -- )
-   9 $F94003FE LIT64,  LCEMIT LABEL@ BL,
-   9 $910043FF LIT64,  LCEMIT LABEL@ BL,
-   9 W-RET LIT64,  LCEMIT LABEL@ BL, ;
-
 : EM-COMPILE-FLUSH-PEND ( -- )
    DOES-REC:FLUSH
    11 DATA PEND-CELL LDR,
@@ -3578,9 +3660,9 @@ package INTERP-EMIT
    C-STORE-DEF-NAME
    10 9 16 LDR,  10 10 DKIND:CAST ORRI,  10 9 16 STR,
    CP 9 0 STR,
-   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,             \ sub sp, sp, #16
-   9 $F90003FE LIT64,  LCEMIT LABEL@ BL,             \ str x30, [sp]
-   EM-COMPILE-RET
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,              \ the entry slot
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,            \ str x30,[sp,#-16]!
+   EM-COMPILE-RET                                    \ empty body: the slot becomes a nop
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    9 CP TIER-PROV:NATIVE-RANGE,
    EM-COMPILE-FLUSH-PEND
@@ -3675,15 +3757,17 @@ public
    7 7 8 ADDI,  7 DP-CHECK  7 DATA DP-CELL STR,
    9 DATA DEFER-XT-CELL LDR,  SNAP-RELOC:LMARK LABEL@ BL, ;
 
+\ The whole body in one emission, frame included: it reaches its target through
+\ `blr x16`, so the frame is never the leaf kind and there is nothing for
+\ EM-COMPILE-RET to decide. FRAME-CELL is not touched -- this word is emitted
+\ from the interpret-mode `defer` declarer, outside any open body.
 : C-DEFER-EMIT-CODE ( -- )
-   $D10043FF C-EMITW
-   $F90003FE C-EMITW
+   W-LINKSAVE C-EMITW
    11 DATA DEFER-XT-CELL LDR,
    C-DATA-ADDR-RAW                                 \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-LDRX C-EMITW
    C-CALL-BLR-X16 C-EMITW
-   $F94003FE C-EMITW
-   $910043FF C-EMITW
+   W-LINKREST C-EMITW
    W-RET C-EMITW ;
 
 : C-DEFER-META-WRITE ( -- )
@@ -4323,8 +4407,7 @@ variable VDESC  variable DRIFT-FAIL
       10 SP 8 LDR,  10 10 1 SUBI,                     \ j := w-1 (tag cell first)
       jl LBL,
          10 0 CMPI,  C-LT jd BCOND,
-         9 $D1002273 LIT64,  LCEMIT LABEL@ BL,        \ sub x19,x19,#8
-         9 $F9400269 LIT64,  LCEMIT LABEL@ BL,        \ ldr x9,[x19]
+         9 W-POP9 LIT64,  LCEMIT LABEL@ BL,          \ ldr x9,[x19,#-8]!
          5 12 10 ADD,
          5 4095 CMPI,  C-LE sok BCOND,
             EM-P2-SLOT-DIE
@@ -4358,8 +4441,7 @@ variable VDESC  variable DRIFT-FAIL
          EM-P2-SLOT-DIE
       sok2 LBL,
       9 $F94003E9 LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,   \ ldr x9,[sp,#slot]
-      9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,
-      9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL,
+      9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL,
       10 10 1 ADDI,  rl B,
    rd LBL,
    SP SP 32 ADDI, ;
@@ -4419,8 +4501,7 @@ variable VDESC  variable DRIFT-FAIL
    13 DATA LOCN-CELL LDR,  13 13 1 SUBI,
    pl LBL,
       13 6 CMP,  C-LT pd BCOND,
-      9 $D1002273 LIT64,  LCEMIT LABEL@ BL,
-      9 $F9400269 LIT64,  LCEMIT LABEL@ BL,
+      9 W-POP9 LIT64,  LCEMIT LABEL@ BL,
       5 12 13 SUB,  5 5 1 SUBI,
       9 $F90003E9 LIT64,  5 5 10 LSLI,  9 9 5 ORR,  LCEMIT LABEL@ BL,
       13 13 1 SUBI,  pl B,
@@ -4443,7 +4524,7 @@ variable VDESC  variable DRIFT-FAIL
    6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
    7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
    9 8 0 ADDI,  LCEMIT LABEL@ BL,                                          \ emit the ADR word
-   9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
+   9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
 
 : C-SDQ ( -- )
    LBL LBL {: cl cd :}
@@ -4674,7 +4755,7 @@ variable CFSK2
    LVSPILL LABEL@ BL,
    7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
    9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
-   9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL,
+   9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL,
    CLOC-MAIN LABEL@ B, ;
 
 : EM-ENTRY-ARGS ( -- )
@@ -7391,10 +7472,9 @@ public
    8 $D100026A LIT64,  7 6 3 LSLI,  LADDSUBIMM LABEL@ BL,           \ sub x10,x19,#off*8
    $F940014B C-EMITW                                                \ ldr x11,[x10]
    $9100214A C-EMITW                                                \ add x10,x10,#8
-   $F900026B C-EMITW                                                \ str x11,[x19]
-   W-PUSH1 C-EMITW                                                  \ add x19,x19,#8
+   W-PUSH11 C-EMITW                                                 \ str x11,[x19],#8
    $F1000529 C-EMITW                                                \ subs x9,x9,#1
-   $54FFFF61 C-EMITW                                                \ b.ne loop (-5)
+   $54FFFF81 C-EMITW                                                \ b.ne loop (-4)
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -7464,10 +7544,9 @@ public
    8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x9,#T
    13 11 0 W-LDRX C-EMITW                             \ ldr x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
-   $F900026D C-EMITW                                  \ str x13,[x19]
-   W-PUSH1 C-EMITW                                    \ add x19,x19,#8
+   W-PUSH13 C-EMITW                                   \ str x13,[x19],#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
-   $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   $54FFFF81 C-EMITW                                  \ b.ne loop (-4)
    6 SP 16 LDR,  6 2 CMPI,  C-EQ rsdone BCOND,        \ r@/2r@ keep the depth
    10 20 RSP-CELL W-STRX C-EMITW                      \ str x10,[x20,#RSP-CELL]
    rsdone B,
@@ -7496,16 +7575,14 @@ public
    LBL {: done:label :}
    LP2FETCH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   $D1002273 C-EMITW                                  \ sub x19,x19,#8
-   $F940026A C-EMITW                                  \ ldr x10,[x19] : base
+   W-POP10 C-EMITW                                    \ ldr x10,[x19,#-8]! : base
    5 done CBZ,
    8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ movz x9,#width
    $F940014B C-EMITW                                  \ ldr x11,[x10]
    $9100214A C-EMITW                                  \ add x10,x10,#8
-   $F900026B C-EMITW                                  \ str x11,[x19]
-   W-PUSH1 C-EMITW
+   W-PUSH11 C-EMITW                                   \ str x11,[x19],#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
-   $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   $54FFFF81 C-EMITW                                  \ b.ne loop (-4)
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -7605,8 +7682,7 @@ public
    LBL {: done:label :}
    LP2STORE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  5 SP 8 STR,
-   $D1002273 C-EMITW                                  \ sub x19,x19,#8
-   $F940026A C-EMITW                                  \ ldr x10,[x19] : dst
+   W-POP10 C-EMITW                                    \ ldr x10,[x19,#-8]! : dst
    5 done CBZ,
    8 $D100026E LIT64,  7 5 3 LSLI,  LADDSUBIMM LABEL@ BL,            \ sub x14,x19,#W*8
    8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x9,#W
@@ -8231,8 +8307,8 @@ public
    12 DATA QPATCH-CELL STR,
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
-   9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,               \ pass 2 re-opens the entry slot
+   9 W-LINKSAVE LIT64,  LCEMIT LABEL@ BL,
    9 1 MOVZ,  9 DATA P2-CELL STR,
    9 0 MOVZ,
    9 DATA TXN-BIND-I-CELL STR, ;
@@ -8576,6 +8652,7 @@ public
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
+   9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
    9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,

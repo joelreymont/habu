@@ -48,8 +48,18 @@ restores the original instruction and **resumes** the word; the breakpoint is
 one-shot. Feed the `habu-bp-lr:` value to `tools/code-owner.f` (below) to turn it
 into a caller's name; that pair is the only way to answer "who called this?" in a
 seeded engine, because lldb cannot plant a breakpoint in the JIT region at all. `' WORD BP*` is **persistent** (fires every call — the handler
-emulates the entry prologue `sub sp,#16` by adjusting the ucontext sp/pc and
-leaves the BRK planted, so no single-step is needed). `N ' WORD BPN` is
+emulates the word's entry instruction and leaves the BRK planted, so no
+single-step is needed). A tier-0 word entry is one of exactly two instructions:
+`str x30,[sp,#-16]!` in a word that calls, or a `nop` in one that does not
+(`EM-COMPILE-RET` rewrites the slot at `;`). The handler reads the instruction
+the BRK replaced out of the breakpoint slot to tell them apart: a nop needs only
+`pc += 4`, and the save also gets `sp -= 16` and the interrupted `x30` written at
+the new `sp`. That store lands in the sixteen bytes the kernel's signal frame
+keeps for its `frame_record {fp, lr}`; nothing reads those back (`sigreturn`
+restores from `uc_mcontext` lower in the frame, and the handler addresses its
+locals off `sp`, never off `x29`), and the resumed word loads the value with
+`ldr x30,[sp],#16` while the frame is still there. There is no other address to
+write: that one IS the slot the word's epilogue reads. `N ' WORD BPN` is
 persistent but **silent for the first N hits** (skip-count). `BP-` removes;
 `BP.` lists. Up to 8 at once. The SIGTRAP handler (`EMIT-TRAPH`) resumes via
 `sigreturn` with the trampoline token; code is patched through the `patch32`

@@ -15,9 +15,11 @@ variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
 variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
-$F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
-$FD000260 constant W-FPUSHR     \ str dR,[x19]  (or with R) — tag 2 = FLOAT reg
-$FD400260 constant W-FPOPR      \ ldr dR,[x19]
+\ The register-or-ed stack moves, one instruction each (MIRROR of src/habu/jit.f).
+$F8008660 constant W-PUSHR      \ str xR,[x19],#8  (or with R)
+$F85F8E60 constant W-POPR       \ ldr xR,[x19,#-8]!
+$FC008660 constant W-FPUSHR     \ str dR,[x19],#8  — tag 2 = FLOAT reg
+$FC5F8E60 constant W-FPOPR      \ ldr dR,[x19,#-8]!
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 
 \ LVLITPUSH ( x11=val ) : emit movz/movk x9,val + push — the C-LIT sequence as a
@@ -26,8 +28,7 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
    LVLITPUSH @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    14 16 MOVZ,  LVMOVK @ BL,                            \ movz/movk x16,val (x16: never pooled)
-   9 $F9000270 LIT64,  LCEMIT @ BL,                     \ str x16,[x19]
-   9 W-PUSH1 LIT64,  LCEMIT @ BL,
+   9 W-PUSH16 LIT64,  LCEMIT @ BL,                      \ str x16,[x19],#8
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LVSPILL ( -- ) : emit pushes for every VS entry bottom-up, then VS = empty and
@@ -48,11 +49,11 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
       7 3 CMPI,  C-EQ vcon BCOND,
       LBL {: vfr :}
       7 2 CMPI,  C-EQ vfr BCOND,
-         8 W-PUSHR LIT64,  9 8 11 ORR,  LCEMIT @ BL,        \ str xR,[x19]
-         9 W-PUSH1 LIT64,  LCEMIT @ BL,  vnext B,           \ add x19,#8
+         8 W-PUSHR LIT64,  9 8 11 ORR,  LCEMIT @ BL,        \ str xR,[x19],#8
+         vnext B,
       vfr LBL,
-         8 W-FPUSHR LIT64,  9 8 11 ORR,  LCEMIT @ BL,       \ str dR,[x19]
-         9 W-PUSH1 LIT64,  LCEMIT @ BL,  vnext B,
+         8 W-FPUSHR LIT64,  9 8 11 ORR,  LCEMIT @ BL,       \ str dR,[x19],#8
+         vnext B,
       vcon LBL,  LVLITPUSH @ BL,
    vnext LBL,  5 SP 8 LDR,  5 5 1 ADDI,  5 SP 8 STR,  vl B,
    vd LBL,
@@ -737,8 +738,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 
 : EMIT-RECON-RESTORE-INT ( n -- ) {: rgo :}
    7 7 $FF ANDI,                                      \ x7 = L[i] (int reg)
-   9 $D1002273 LIT64,  LCEMIT @ BL,                   \ sub x19,#8
-   8 $F9400260 LIT64,  9 8 7 ORR,  LCEMIT @ BL,       \ ldr L[i],[x19]
+   8 W-POPR LIT64,  9 8 7 ORR,  LCEMIT @ BL,          \ ldr L[i],[x19,#-8]!
    8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 0 MOVZ,  6 8 0 STRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
    LVBIT @ BL,  11 11 8 ORR,
@@ -746,8 +746,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 
 : EMIT-RECON-RESTORE-FLOAT ( n -- ) {: rgo :}
    7 7 $7F ANDI,                                      \ x7 = the d-reg
-   9 $D1002273 LIT64,  LCEMIT @ BL,                   \ sub x19,#8
-   8 W-FPOPR LIT64,  9 8 7 ORR,  LCEMIT @ BL,         \ ldr dN,[x19]
+   8 W-FPOPR LIT64,  9 8 7 ORR,  LCEMIT @ BL,         \ ldr dN,[x19,#-8]!
    8 5 VTAG-OFF ADDI,  8 DATA 8 ADD,  6 2 MOVZ,  6 8 0 STRB,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  7 8 0 STR,
    7 7 8 SUBI,  8 1 MOVZ,  8 8 7 LSLV,

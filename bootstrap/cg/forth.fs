@@ -344,6 +344,12 @@ $230 constant CREATEP-CELL \ runtime address of LCREATE (prims must not name lab
 $238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
 $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
+\ FRAME-CELL: the open body's entry slot, with bit 0 set once the body has
+\ emitted a call (a code address is four-byte aligned, so the bit is free).
+\ Zero means no frame is open. QFRAME-CELL scopes it across a quotation the way
+\ QXH-CELL scopes the EXIT chain. MIRROR of src/habu/layout.f.
+$7D0 constant FRAME-CELL
+$7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL \ original qualified definition spelling
 $258 constant DEF-TKL-CELL
 $27C0 constant PKGRESYNC-CELL \ checker package-resync latch; mirrors native layout
@@ -418,8 +424,22 @@ variable BUILD-SOURCE?   BUILD-SOURCE? off
 
 \ runtime instruction-word constants the JIT compiler stamps out (verified encodings)
 $D65F03C0 constant W-RET
-$F9000269 constant W-PUSH0     \ str  x9,[x19,#0]
-$91002273 constant W-PUSH1     \ add  x19,x19,#8
+$D503201F constant W-NOP        \ nop
+\ The data-stack moves, one instruction each: XDS points just past the top cell,
+\ so a push is a post-indexed store and a pop a pre-indexed load. MIRROR of
+\ src/habu/habu1.f, which spells the same words through the A64ASM encoders.
+$F8008669 constant W-PUSH9      \ str x9,[x19],#8
+$F800866B constant W-PUSH11     \ str x11,[x19],#8
+$F800866D constant W-PUSH13     \ str x13,[x19],#8
+$F8008670 constant W-PUSH16     \ str x16,[x19],#8
+$F85F8E69 constant W-POP9       \ ldr x9,[x19,#-8]!
+$F85F8E6A constant W-POP10      \ ldr x10,[x19,#-8]!
+$F85F8E70 constant W-POP16      \ ldr x16,[x19,#-8]!
+$F85F8E71 constant W-POP17      \ ldr x17,[x19,#-8]!
+\ The word frame: one pre-indexed save at entry, one post-indexed restore before
+\ the return, and W-NOP in the entry slot of a word that never calls.
+$F81F0FFE constant W-LINKSAVE   \ str x30,[sp,#-16]!
+$F84107FE constant W-LINKREST   \ ldr x30,[sp],#16
 $D2800009 constant W-MOVZ0     \ movz x9,#0
 $F2A00009 constant W-MOVK1     \ movk x9,#0,lsl#16
 $F2C00009 constant W-MOVK2     \ movk x9,#0,lsl#32
@@ -653,7 +673,12 @@ previous definitions
 : C-CALL-EMIT-MOVK-X16 ( n n -- ) {: sh op :}
    7 11 sh LSRI, 7 7 5 AND, 7 7 5 LSLI,
    8 op LIT64, 9 8 7 ORR, LCEMIT @ BL, ;
+\ The other call this file emits, and the one the pass-2 helpers reach: the
+\ absolute chain to a routine in fixed engine text. It marks the open body the
+\ way C-CALL's own copy does -- a body that lands one of these has had x30
+\ destroyed just as surely, so its entry slot has to stay a save.
 : C-CALL-EMIT-ABSOLUTE ( -- )
+   6 DATA FRAME-CELL LDR,  6 6 1 ORRI,  6 DATA FRAME-CELL STR,
    C-CALL-EMIT-MOVZ-X16
    16 C-CALL-MOVK-X16-16 C-CALL-EMIT-MOVK-X16
    32 C-CALL-MOVK-X16-32 C-CALL-EMIT-MOVK-X16
@@ -2260,7 +2285,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ chain and the push that consumes x9.
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
-   9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
+   9 W-PUSH9 LIT64,  LCEMIT @ BL, ;
 \ push a DATA-region address (create/variable data field).
 : C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
 \ raw DATA-region address into x9, no push (the defer dispatch-cell address).
@@ -2269,29 +2294,31 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 : C-CODE-ADDR ( -- )  C-ADDR-PUSH ;
 
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
-\ Small leaf bodies are inlined (copy the meat between the x30 prologue/epilogue);
-\ everything else gets an absolute `movz/movk x16 + blr x16` call. Absolute, not BL:
+\ Small leaf bodies are inlined (copy the body whole); everything else gets an
+\ absolute `movz/movk x16 + blr x16` call. Absolute, not BL:
 \ the JIT region is a kernel-placed mmap and prims live in __TEXT — BL's +-128MB imm26
 \ would silently truncate if they land far apart. x16 is IP0, the ABI call scratch.
 \ Inline criteria: meat <= INL-MAX bytes AND no call/branch/RET/ADR/ADRP/BRK word in it
 \ (calls need the frame; ADR is PC-relative). Internal label branches are relative and
-\ copy safely. Bodies without the prologue (CREATE/VARIABLE/CONSTANT literal-pushes)
-\ inline whole. Dict clen: prim = end-start-4, user word = set at `;` — both excl RET.
+\ copy safely. Dict clen: prim = end-start-4, user word = set at `;` — both excl RET.
+\
+\ THE ENTRY WORD DECIDES IT FIRST, AND NOW IT DECIDES IT OUTRIGHT. A body whose
+\ first word is the link-register save is a body EMIT-COMPILE-RET saw call
+\ something, so it is not inlinable at all and the scan below need never run on
+\ it. Everything else -- a leaf's nop entry slot, a CREATE/VARIABLE/CONSTANT
+\ literal push -- is a whole body from its first word, the shape the no-prologue
+\ arm already handled.
 $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 
 : C-CALL ( -- )
-   LBL {: lcall :}  LBL {: lcopy :}  LBL {: lscan :}  LBL {: lsbody :}
-   LBL {: lnopro :}  LBL {: linl :}  LBL {: ldone :}
+   LBL {: lcall :}  LBL {: lcopy :}  LBL {: lsbody :}
+   LBL {: linl :}  LBL {: ldone :}
    9 12 CODE-SPAN:FULL ANDI,  9 lcall CBNZ,          \ a no-RET body cannot be copied inline
-   9 11 0 LDRW,  8 $D10043FF LIT64,  9 8 CMP,  C-NE lnopro BCOND,
-      12 INL-MAX 16 + CMPI,  C-GT lcall BCOND,
-      13 11 8 ADDI,  14 11 12 ADD,  14 14 8 SUBI,  lscan B,   \ meat [addr+8, addr+clen-8)
-   lnopro LBL,
+   9 11 0 LDRW,  8 W-LINKSAVE LIT64,  9 8 CMP,  C-EQ lcall BCOND,   \ framed = it calls
       12 INL-MAX CMPI,  C-GT lcall BCOND,
       13 11 0 ADDI,  14 11 12 ADD,                            \ whole body [addr, addr+clen)
       9 14 0 LDRW,  8 $D65F03C0 LIT64,  9 8 CMP,  C-NE lcall BCOND,   \ ret slot patched
                                                                \ (does>) -> never inline
-   lscan LBL,
       15 13 0 ADDI,
    lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
       9 15 0 LDRW,  15 15 4 ADDI,
@@ -2314,6 +2341,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    linl LBL,  15 14 CMP,  C-GE ldone BCOND,
       9 15 0 LDRW,  15 15 4 ADDI,  LCEMIT @ BL,  linl B,
    lcall LBL,
+      6 DATA FRAME-CELL LDR,  6 6 1 ORRI,  6 DATA FRAME-CELL STR,   \ this body calls
       5 $FFFF MOVZ,
       7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,  \ movz x16,lo
       7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
@@ -2386,6 +2414,15 @@ create ZBYTE 0 c,
       12 9 MACOS-MCTX-PC-OFF LDR,  12 12 4 ADDI,  12 9 MACOS-MCTX-PC-OFF STR,
    THEN ;
 
+\ Store the interrupted thread's link register at its (already lowered) stack
+\ pointer: the second half of the pre-indexed save, in the ucontext.
+: C-MCTX-LINK>SLOT ( -- )
+   HB-TARGET-LINUX? IF
+      12 9 LINUX-MCTX-SP-OFF LDR,  14 9 LINUX-MCTX-LR-OFF LDR,  14 12 0 STR,
+   ELSE
+      12 9 MACOS-MCTX-SP-OFF LDR,  14 9 MACOS-MCTX-LR-OFF LDR,  14 12 0 STR,
+   THEN ;
+
 \ LTRAPH: target signal entry. A one-shot
 \ breakpoint at [BPA-CELL]: print habu-bp: + pc + the data-stack top, restore
 \ the original instruction, clear the bp, sigreturn to re-execute the word.
@@ -2396,7 +2433,7 @@ create ZBYTE 0 c,
    C-TRAP-MCTX>R9                                    \ x9 = mcontext
    C-MCTX-PC>R10                                     \ x10 = pc
    LBL {: bscan :}  LBL {: bnext :}  LBL {: bhit :}
-   LBL {: emu :}  LBL {: fin :}
+   LBL {: emu :}  LBL {: fin :}  LBL {: oneshot :}
    LBL LBL {: stackbad stackempty :}
    6 8 MOVZ,  7 0 MOVZ,                              \ MAXBP=8, i  (scan BPTAB[0..8))
    bscan LBL,
@@ -2421,15 +2458,31 @@ create ZBYTE 0 c,
    12 14 12 ADD, 9 12 8 SUBI, 9 9 0 LDR, LHEX @ BL,
    stackempty LBL,
    8 SP 40 LDR,  15 8 24 LDR,  15 15 1 ANDI,  15 emu CBNZ,   \ persistent -> emulate, keep BRK
+   oneshot LBL,
    2 3 MOVZ,  LPROT @ BL,                            \ one-shot: restore + remove
    8 SP 40 LDR,  11 8 0 LDR,  12 8 8 LDR,  12 11 0 STRW,
    2 5 MOVZ,  LPROT @ BL,
    9 11 0 ADDI,  LFLUSH @ BL,
    8 SP 40 LDR,  12 0 MOVZ,  12 8 0 STR,             \ clear slot addr (resume re-runs orig)
    fin B,
-   emu LBL,                                          \ emulate the entry prologue, keep BRK:
+   emu LBL,                                          \ emulate the entry instruction, keep BRK:
+   LBL {: framed :}  LBL {: step :}
    9 SP 24 LDR,                                      \ mctx
-   C-MCTX-SP-16!                                     \ sp -= 16  (sub sp,sp,#16)
+   \ A word entry is one of two instructions: the link-register save, or the nop
+   \ a leaf's slot was rewritten to. The saved word in the slot says which, and
+   \ anything else is an entry this handler cannot be -- it hands the word its
+   \ instruction back and resumes ON it, degrading to one-shot.
+   \ The save's store lands in the sixteen bytes the kernel's signal frame keeps
+   \ for its frame_record; nothing reads those back, and the resumed word takes
+   \ the value out again with `ldr x30,[sp],#16`.
+   8 SP 40 LDR,  13 8 8 LDR,                         \ the word the BRK replaced
+   14 W-LINKSAVE LIT64,  13 14 CMP,  C-EQ framed BCOND,
+   14 W-NOP LIT64,  13 14 CMP,  C-EQ step BCOND,
+      oneshot B,
+   framed LBL,
+      C-MCTX-SP-16!                                  \ sp -= 16
+      C-MCTX-LINK>SLOT                               \ [sp] = the interrupted x30
+   step LBL,
    C-MCTX-PC+4!                                      \ pc += 4   (skip the BRK)
    fin LBL,
    0 SP 8 LDR,  1 SP 0 LDR,  2 SP 16 LDR,  SP SP 48 ADDI,
@@ -3320,9 +3373,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 
-: C-POPFLAG ( -- ) $D1002273 C-EMITW $F9400269 C-EMITW ;
+: C-POPFLAG ( -- ) W-POP9 C-EMITW ;
 
-: C-POP-X16 ( -- ) $D1002273 C-EMITW $F9400270 C-EMITW ;
+: C-POP-X16 ( -- ) W-POP16 C-EMITW ;
 
 : C-PUSHCP ( -- )   9 CP 0 ADDI,  LCFPUSH @ BL, ;              \ push current CP
 
@@ -3396,7 +3449,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $B4000011 LIT64,  9 9 10 ORR,  LCEMIT @ BL, ;
 
-: J-UNTIL ( -- ) $D1002273 C-EMITW $F9400271 C-EMITW J-UNTILX ;
+: J-UNTIL ( -- ) W-POP17 C-EMITW J-UNTILX ;
 
 : J-WHILE ( -- ) C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
 
@@ -3524,7 +3577,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-+LOOP ( -- )                   \ cross the limit boundary in the step's direction
    J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
-   $D1002273 C-EMITW  $F9400269 C-EMITW  \ step -> x9
+   W-POP9 C-EMITW                        \ step -> x9
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  LOOP-FRAME-ADDR,
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
    4181722506 C-EMITW                    \ ldr x10,[x12,#8]   limit
@@ -3560,7 +3613,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 11 10 W-ADDX-LSL3 C-EMITW ;
 
 : J-TOR ( -- )                                                \ pop data -> push RSTK
-   $D1002273 C-EMITW  $F9400269 C-EMITW                \ sub x19,#8 ; ldr x9,[x19]
+   W-POP9 C-EMITW                                      \ ldr x9,[x19,#-8]!
    10 20 RSP-CELL W-LDRX C-EMITW
    RSTK-SLOT-ADDR,
    9 11 0 W-STRX C-EMITW                               \ str x9,[x11]
@@ -3575,10 +3628,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-RFROM ( -- )  J-RPOP                                      \ pop RSTK -> push data
    10 20 RSP-CELL W-STRX C-EMITW
-   $F9000269 C-EMITW  $91002273 C-EMITW ;              \ str x9,[x19] ; add x19,#8
+   W-PUSH9 C-EMITW ;                                   \ str x9,[x19],#8
 
 : J-RFETCH ( -- )  J-RPOP                                     \ peek RSTK -> push data
-   $F9000269 C-EMITW  $91002273 C-EMITW ;
+   W-PUSH9 C-EMITW ;
 
 \ EXIT: emit a placeholder word holding the PREVIOUS chain offset (0 = end);
 \ `;` walks the chain and patches each into `b epilogue`. RECURSE: bl back to
@@ -3593,7 +3646,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    10 CP DBASE SUB,  10 DATA EXITH-CELL STR,           \ head := this placeholder
    LCEMIT @ BL, ;
 
+\ The one call emitted around C-CALL, so it marks the body itself.
 : J-RECURSE ( -- )
+   9 DATA FRAME-CELL LDR,  9 9 1 ORRI,  9 DATA FRAME-CELL STR,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,  $94000000 $3FFFFFF C-BBACK ;   \ bl entry
 
 \ MIRROR of src/habu/habu2.f DEF-TRUST:FIND (this file has no packages, so the
@@ -3940,13 +3995,44 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $D63F0200 C-EMITW                     \ blr x16
    J-EXIT                                \ word 4: the defining word ends here
    C-DOES-REC                            \ the name bytes, then the clause's record
-   9 $D10043FF LIT64,  LCEMIT @ BL,      \ D: fresh prologue for the does-body
-   9 $F90003FE LIT64,  LCEMIT @ BL, ;
+   \ D: a fresh entry slot for the does-body, opened as ALREADY HAVING CALLED.
+   \ The clause and the defining word share one epilogue -- word 4's J-EXIT is
+   \ chained to the same `;` -- and the defining word reached it through the
+   \ `blr x16` above, so a leaf clause must still be given the restore and both
+   \ entry slots must keep their saves.
+   9 CP 0 ADDI,  9 9 1 ORRI,  9 DATA FRAME-CELL STR,
+   9 W-LINKSAVE LIT64,  LCEMIT @ BL, ;
 
 \ [: ... ;] — an anonymous nested definition: [: jumps over the body, gives it
 \ its own prologue; ;] closes it (epilogue + patch) and pushes its address as a
 \ literal in the OUTER word (xt on the stack at outer runtime). One level; the
 \ EXIT chain is scoped to the quotation; locals inside are refused.
+\ THE WORD FRAME IS DECIDED AT THE CLOSE, NOT AT THE OPEN. MIRROR of
+\ src/habu/habu2.f. The compiler is single pass, so when a body opens nobody
+\ knows whether it will call anything; the opener emits the link-register save
+\ and leaves its slot in FRAME-CELL, and C-CALL and J-RECURSE OR bit 0 in when
+\ they emit a call. A body that called gets the matching restore; one that did
+\ not has its entry slot rewritten to a nop IN PLACE, so every address recorded
+\ while it compiled still names the same instruction. Both ends live here
+\ because the quotation closer below needs the second one, and so do the cast
+\ declarer and the `;` tail much further down.
+: C-COLON-WORD-PROLOGUE ( -- )
+   9 CP 0 ADDI,  9 DATA FRAME-CELL STR,
+   9 W-LINKSAVE LIT64,  LCEMIT @ BL, ;
+
+: EMIT-COMPILE-RET ( -- )
+   LBL {: leaf :}  LBL {: done :}
+   11 DATA FRAME-CELL LDR,
+   11 done CBZ,                                   \ no frame was opened for this body
+   10 11 1 ANDI,  10 leaf CBZ,
+      9 W-LINKREST LIT64,  LCEMIT @ BL,           \ ldr x30,[sp],#16
+      done B,
+   leaf LBL,                                      \ bit 0 clear, so x11 IS the slot
+      9 W-NOP LIT64,  9 11 0 STRW,                \ the entry slot stops framing
+   done LBL,
+   9 W-RET LIT64,  LCEMIT @ BL,
+   9 0 MOVZ,  9 DATA FRAME-CELL STR, ;
+
 : J-QUOT ( -- )
    LBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,
@@ -3958,8 +4044,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 CP 0 ADDI,  9 DATA QENT-CELL STR,            \ the quotation's entry
    9 DATA EXITH-CELL LDR,  9 DATA QXH-CELL STR,   \ scope the EXIT chain
    12 0 MOVZ,  12 DATA EXITH-CELL STR,
-   9 $D10043FF LIT64,  LCEMIT @ BL,               \ its own prologue
-   9 $F90003FE LIT64,  LCEMIT @ BL, ;
+   9 DATA FRAME-CELL LDR,  9 DATA QFRAME-CELL STR,   \ ...and the frame with it
+   C-COLON-WORD-PROLOGUE ;                           \ its own entry slot
 
 : J-SEMIQUOT ( -- )
    LBL {: sqok :}
@@ -3969,9 +4055,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    sqok LBL,
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,   \ exits -> this epilogue
    9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
-   9 $F94003FE LIT64,  LCEMIT @ BL,                \ epilogue: ldr x30,[sp]
-   9 $910043FF LIT64,  LCEMIT @ BL,                \ add sp,#16
-   9 W-RET LIT64,  LCEMIT @ BL,
+   EMIT-COMPILE-RET                                \ its own frame, its own ret
+   9 DATA QFRAME-CELL LDR,  9 DATA FRAME-CELL STR, \ the enclosing body is open again
    9 DATA QPATCH-CELL LDR,  LPAT @ BL,             \ b-over lands here
    11 DATA QENT-CELL LDR,  C-CODE-ADDR             \ push the xt in the outer word (relocatable code addr)
    12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
@@ -4652,8 +4737,7 @@ previous
       10 SP 8 LDR,  10 10 1 SUBI,
       jl LBL,
          10 0 CMPI,  C-LT jd BCOND,
-         9 $D1002273 LIT64,  LCEMIT @ BL,
-         9 $F9400269 LIT64,  LCEMIT @ BL,
+         9 W-POP9 LIT64,  LCEMIT @ BL,
          5 12 10 ADD,
          5 4095 CMPI,  C-LE sok BCOND,
             EM-P2-SLOT-DIE
@@ -4685,8 +4769,7 @@ previous
       sok LBL,
       9 $F94003E9 LIT64,  15 5 10 LSLI,
       9 9 15 ORR,  LCEMIT @ BL,
-      9 W-PUSH0 LIT64,  LCEMIT @ BL,
-      9 W-PUSH1 LIT64,  LCEMIT @ BL,
+      9 W-PUSH9 LIT64,  LCEMIT @ BL,
       10 10 1 ADDI,  rl B,
    rd LBL,
    SP SP 32 ADDI, ;
@@ -4719,8 +4802,7 @@ previous
    LBL {: pl :}  LBL {: pd :}
    pl LBL,
       13 6 CMP,  C-LT pd BCOND,               \ i < start -> done
-      9 $D1002273 LIT64,  LCEMIT @ BL,        \ sub x19,#8
-      9 $F9400269 LIT64,  LCEMIT @ BL,        \ ldr x9,[x19]
+      9 W-POP9 LIT64,  LCEMIT @ BL,           \ ldr x9,[x19,#-8]!
       5 12 13 SUB,  5 5 1 SUBI,               \ scaled off = total - i - 1
       9 $F90003E9 LIT64,  5 5 10 LSLI,  9 9 5 ORR,  LCEMIT @ BL,   \ str x9,[sp,#off]
       13 13 1 SUBI,  pl B,
@@ -4981,7 +5063,7 @@ previous
    6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
    7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
    9 8 0 ADDI,  LCEMIT @ BL,                                          \ emit the ADR word
-   9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL, ;
+   9 W-PUSH9 LIT64,  LCEMIT @ BL, ;
 
 : C-SDQ ( -- )
    C-QUOTE-START
@@ -5547,12 +5629,9 @@ variable CFSK2
    12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
    12 DATA QPATCH-CELL STR,
+   12 DATA FRAME-CELL STR,  12 DATA QFRAME-CELL STR,
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR, ;
-
-: C-COLON-WORD-PROLOGUE ( -- )
-   9 $D10043FF LIT64,  LCEMIT @ BL,
-   9 $F90003FE LIT64,  LCEMIT @ BL, ;
 
 : C-CLEAR-TRUSTED-STATE ( -- )
    9 0 MOVZ,
@@ -5560,15 +5639,6 @@ variable CFSK2
    9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
-
-\ The body epilogue, beside the prologue above: both ends of a body are emitted
-\ from here now, because the cast declarer below publishes a whole body inside
-\ its own keyword handler and a handler must exist before the dispatch rows name
-\ it. The `;` tail calls it in exactly the same place it always did.
-: EMIT-COMPILE-RET ( -- )
-   9 $F94003FE LIT64,  LCEMIT @ BL,
-   9 $910043FF LIT64,  LCEMIT @ BL,
-   9 W-RET LIT64,  LCEMIT @ BL, ;
 
 \ ---- cast: NAME ( in -- out ) -------------------------------------------
 \ MIRROR of src/habu/habu2.f C-CAST. src/core/roles.f is the FIRST file
@@ -5654,17 +5724,17 @@ variable CFSK2
    7 DATA DEFER-XT-CELL STR,
    7 7 8 ADDI,  7 DP-CHECK  7 DATA DP-CELL STR, ;   \ bump DP past the cell
 
-\ Emit the defer body: prologue, materialize the dispatch-cell addr into x9,
-\ ldr x16,[x9], blr x16, epilogue, ret. The BLR keeps it out of the inliner.
+\ Emit the defer body: save, materialize the dispatch-cell addr into x9,
+\ ldr x16,[x9], blr x16, restore, ret. The BLR keeps it out of the inliner, and
+\ means the frame is never the leaf kind: FRAME-CELL is not touched, because
+\ this body is emitted whole from the interpret-mode `defer` declarer.
 : C-DEFER-EMIT-CODE ( -- )
-   $D10043FF C-EMITW                               \ sub sp,sp,#16
-   $F90003FE C-EMITW                               \ str x30,[sp]
+   W-LINKSAVE C-EMITW                              \ str x30,[sp,#-16]!
    11 DATA DEFER-XT-CELL LDR,
    C-DATA-ADDR-RAW                                 \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-LDRX C-EMITW                           \ ldr x16,[x9]
    C-CALL-BLR-X16 C-EMITW                          \ blr x16
-   $F94003FE C-EMITW                               \ ldr x30,[sp]
-   $910043FF C-EMITW                               \ add sp,sp,#16
+   W-LINKREST C-EMITW                              \ ldr x30,[sp],#16
    W-RET C-EMITW ;
 
 \ Two-cell meta trailer written at CP (right after the RET): DEFER-MAGIC then the
@@ -5837,10 +5907,9 @@ variable CFSK2
    8 $D100026A LIT64,  7 6 3 LSLI,  LADDSUBIMM @ BL,                \ sub x10,x19,#off*8
    $F940014B C-EMITW                                                \ ldr x11,[x10]
    $9100214A C-EMITW                                                \ add x10,x10,#8
-   $F900026B C-EMITW                                                \ str x11,[x19]
-   W-PUSH1 C-EMITW                                                  \ add x19,x19,#8
+   W-PUSH11 C-EMITW                                                 \ str x11,[x19],#8
    $F1000529 C-EMITW                                                \ subs x9,x9,#1
-   $54FFFF61 C-EMITW                                                \ b.ne loop (-5)
+   $54FFFF81 C-EMITW                                                \ b.ne loop (-4)
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -5900,10 +5969,9 @@ variable CFSK2
    8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT @ BL,    \ movz x9,#T
    13 11 0 W-LDRX C-EMITW                             \ ldr x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
-   $F900026D C-EMITW                                  \ str x13,[x19]
-   W-PUSH1 C-EMITW                                    \ add x19,x19,#8
+   W-PUSH13 C-EMITW                                   \ str x13,[x19],#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
-   $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   $54FFFF81 C-EMITW                                  \ b.ne loop (-4)
    6 SP 16 LDR,  6 2 CMPI,  C-EQ rsdone BCOND,        \ r@/2r@ keep the depth
    10 20 RSP-CELL W-STRX C-EMITW                      \ str x10,[x20,#RSP-CELL]
    rsdone B,
@@ -6002,16 +6070,14 @@ previous
    LBL {: done :}
    LP2FETCH @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   $D1002273 C-EMITW                                  \ sub x19,x19,#8
-   $F940026A C-EMITW                                  \ ldr x10,[x19] : base
+   W-POP10 C-EMITW                                    \ ldr x10,[x19,#-8]! : base
    5 done CBZ,
    8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT @ BL,   \ movz x9,#width
    $F940014B C-EMITW                                  \ ldr x11,[x10]
    $9100214A C-EMITW                                  \ add x10,x10,#8
-   $F900026B C-EMITW                                  \ str x11,[x19]
-   W-PUSH1 C-EMITW
+   W-PUSH11 C-EMITW                                   \ str x11,[x19],#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
-   $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   $54FFFF81 C-EMITW                                  \ b.ne loop (-4)
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -6021,8 +6087,7 @@ previous
    LBL {: done :}
    LP2STORE @ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  5 SP 8 STR,
-   $D1002273 C-EMITW                                  \ sub x19,x19,#8
-   $F940026A C-EMITW                                  \ ldr x10,[x19] : dst
+   W-POP10 C-EMITW                                    \ ldr x10,[x19,#-8]! : dst
    5 done CBZ,
    8 $D100026E LIT64,  7 5 3 LSLI,  LADDSUBIMM @ BL,            \ sub x14,x19,#W*8
    8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT @ BL,    \ movz x9,#W
@@ -6861,7 +6926,7 @@ variable P2SK
       LVSPILL @ BL,
       7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
       9 $F94003E9 LIT64,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
-      9 W-PUSH0 LIT64,  LCEMIT @ BL,  9 W-PUSH1 LIT64,  LCEMIT @ BL,
+      9 W-PUSH9 LIT64,  LCEMIT @ BL,
       lmain B,
    notloc LBL, ;
 

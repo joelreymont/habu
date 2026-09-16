@@ -186,6 +186,11 @@ variable BWM-GXT
 \ per-transfer-guard removal in "Remove the per-transfer stack guards from the
 \ engine"): the frame is just the return address, the destination comes
 \ straight off the data stack, and (PROT-SPAN) is reached directly.
+\ THE FRAME AND THE POP ARE ONE INSTRUCTION EACH. AArch64 writes the base
+\ register back as part of a load or a store, so taking the frame and saving
+\ the link register is `str x30,[sp,#-16]!` and popping the destination is
+\ `ldr x10,[x19,#-8]!` (dot habu-use-pre-and-1830972f). Both engines emit
+\ these, so these goldens are the same on each.
 \ The source offset is FOLDED into the sub's imm12 field ("Fold transfer
 \ immediates into emitted words"): both engines reach the code window through
 \ one shared add/sub-immediate emitter, which spends one word while the byte
@@ -198,14 +203,12 @@ variable BWM-GXT
 \ actual compiled BWM-STORE2-G/BWM-STORE4-G bytes byte for byte.
 : BWM-STORE-GOLD ( ptr u8 n n -- ) {: name:ptr nameu:n width:n :}
    name nameu BWM-XT BWM-GXT !
-   0 $D10043FF BWM-GOLD                           \ sub sp,sp,#16
-   1 $F90003FE BWM-GOLD                           \ str x30,[sp]
-   2 $D1002273 BWM-GOLD                           \ sub x19,x19,#8     destination
-   3 $F940026A BWM-GOLD                           \ ldr x10,[x19]
-   4 $D100026E width 10 lshift or BWM-GOLD        \ sub x14,x19,#width source
-   5 $D2800009 width 8 / 5 lshift or BWM-GOLD     \ movz x9,#cells
-   6 $D280000B width 5 lshift or BWM-GOLD         \ movz x11,#width
-   7 BWM-CALL-GOLD drop ;                         \ (PROT-SPAN)
+   0 $F81F0FFE BWM-GOLD                           \ str x30,[sp,#-16]!
+   1 $F85F8E6A BWM-GOLD                           \ ldr x10,[x19,#-8]! destination
+   2 $D100026E width 10 lshift or BWM-GOLD        \ sub x14,x19,#width source
+   3 $D2800009 width 8 / 5 lshift or BWM-GOLD     \ movz x9,#cells
+   4 $D280000B width 5 lshift or BWM-GOLD         \ movz x11,#width
+   5 BWM-CALL-GOLD drop ;                         \ (PROT-SPAN)
 
 \ A wide fetch ( ptr -- value ): it first calls (LP2VEXEC), whose descriptor
 \ follows the return site behind a branch over it - one CHECK row naming the
@@ -217,16 +220,15 @@ variable BWM-GXT
 : BWM-FETCH-GOLD ( ptr u8 n n n n -- )
    {: name:ptr nameu:n width:n tag:n lim:n :}
    name nameu BWM-XT BWM-GXT !
-   0 $D10043FF BWM-GOLD  1 $F90003FE BWM-GOLD
-   2 BWM-CALL-GOLD {: n:n :}                      \ index after the (LP2VEXEC) call
+   0 $F81F0FFE BWM-GOLD                           \ str x30,[sp,#-16]!
+   1 BWM-CALL-GOLD {: n:n :}                      \ index after the (LP2VEXEC) call
    n $14000009 BWM-GOLD                           \ b over the descriptor
    n 1 + 1 BWM-GOLD    n 2 + 0 BWM-GOLD           \ one CHECK row
    n 3 + tag BWM-GOLD  n 4 + 0 BWM-GOLD           \ tag cell offset
    n 5 + lim BWM-GOLD  n 6 + 0 BWM-GOLD           \ exclusive tag domain
    n 7 + 0 BWM-GOLD    n 8 + 0 BWM-GOLD           \ no guards
-   n 9 +  $D1002273 BWM-GOLD                      \ sub x19,x19,#8     source
-   n 10 + $F940026A BWM-GOLD                      \ ldr x10,[x19]
-   n 11 + $D2800009 width 8 / 5 lshift or BWM-GOLD ; \ movz x9,#cells
+   n 9 +  $F85F8E6A BWM-GOLD                      \ ldr x10,[x19,#-8]! source
+   n 10 + $D2800009 width 8 / 5 lshift or BWM-GOLD ; \ movz x9,#cells
 
 : BWM-TEST-GOLDENS ( -- )
    s" BWM-STORE2-G" 16 BWM-STORE-GOLD
@@ -304,9 +306,9 @@ TRUSTED: BWM-CALL-DEF ( -- n ) BWM-DEF ;
 
 : BWM-TEST-DEFER ( -- )
    s" BWM-DEF" BWM-XT {: xt:n :}
-   xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
-   xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 52 + BWM-RD64 BWM-RD64 BWM-FRESH !      \ the fresh dispatch cell's value: the unset target
+   xt 36 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
+   xt 40 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 44 + BWM-RD64 BWM-RD64 BWM-FRESH !      \ the fresh dispatch cell's value: the unset target
    BWM-FRESH @ BWM-NONZERO                    \ fail closed before any is: never a null cell
    BWM-DEF-A  BWM-CALL-DEF 42 BWM=            \ is installs a target -> dispatch returns 42
    BWM-DEF-B  BWM-CALL-DEF 99 BWM= ;          \ a second is re-points -> 99
@@ -331,9 +333,9 @@ defer BWM-CDEF ( -- n )
 
 : BWM-TEST-CDEFER ( -- )
    s" BWM-CDEF" BWM-XT {: xt:n :}
-   xt 44 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
-   xt 48 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
-   xt 52 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
+   xt 36 BWM-W32  $46455201 BWM=              \ DEFER-MAGIC low word: meta trailer sits at addr+clen
+   xt 40 BWM-W32  $48424445 BWM=              \ DEFER-MAGIC high word
+   xt 44 + BWM-RD64 BWM-RD64                  \ the fresh dispatch cell's value
    BWM-FRESH @ BWM=                           \ = the same unset target the trusted defer held
    BWM-CDEF-A  BWM-CALL-CDEF 42 BWM=          \ checked is installs a target -> dispatch returns 42
    BWM-CDEF-B  BWM-CALL-CDEF 99 BWM= ;        \ a second checked is re-points -> 99

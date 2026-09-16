@@ -21,12 +21,35 @@ public
 ;package
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET
-$F9000269 constant W-PUSH0
-$91002273 constant W-PUSH1
+$D503201F constant W-NOP
 $D2800009 constant W-MOVZ0
 $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
+
+\ THE DATA-STACK MOVES, ONE INSTRUCTION EACH. XDS points just past the top cell,
+\ so a push stores at it and then advances it and a pop retreats it and then
+\ loads: exactly the post-index and pre-index writeback modes. Each of these was
+\ a transfer plus its own `add x19,#8` / `sub x19,#8` until the modes arrived,
+\ and the second half of every one of those pairs is what is gone.
+\ Spelled through the encoders rather than as hex, so the bit layout has one
+\ owner (src/arch/arm64/asm.f) and an out-of-field offset dies at build time.
+ 9 XDS   8 ENC-STRPOST constant W-PUSH9    \ str x9,[x19],#8
+11 XDS   8 ENC-STRPOST constant W-PUSH11   \ str x11,[x19],#8
+13 XDS   8 ENC-STRPOST constant W-PUSH13   \ str x13,[x19],#8
+16 XDS   8 ENC-STRPOST constant W-PUSH16   \ str x16,[x19],#8
+ 9 XDS  -8 ENC-LDRPRE  constant W-POP9     \ ldr x9,[x19,#-8]!
+10 XDS  -8 ENC-LDRPRE  constant W-POP10    \ ldr x10,[x19,#-8]!
+16 XDS  -8 ENC-LDRPRE  constant W-POP16    \ ldr x16,[x19,#-8]!
+17 XDS  -8 ENC-LDRPRE  constant W-POP17    \ ldr x17,[x19,#-8]!
+
+\ THE WORD FRAME. A compiled word's link register is saved by one pre-indexed
+\ store at entry and restored by one post-indexed load before the return, and a
+\ word that calls nothing gets W-NOP in the entry slot instead (EM-COMPILE-RET
+\ backpatches it). Sixteen bytes and not eight: the AArch64 stack pointer must
+\ stay sixteen-byte aligned at every instruction boundary.
+30 SP -16 ENC-STRPRE  constant W-LINKSAVE  \ str x30,[sp,#-16]!
+30 SP  16 ENC-LDRPOST constant W-LINKREST  \ ldr x30,[sp],#16
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 require src/habu/primitive-registry.f

@@ -926,6 +926,20 @@ $230 constant CREATEP-CELL
 $238 constant QPATCH-CELL
 $240 constant QENT-CELL
 $248 constant QXH-CELL
+\ FRAME-CELL: the open body's link-register frame, in one cell. The JIT is
+\ single pass, so `:` cannot know whether the body will call anything; it emits
+\ the save at the entry and records the slot here, and every emitter that puts a
+\ call in the body ORs bit 0 in. At `;` the cell therefore answers both "where
+\ is the entry slot" and "can anything have destroyed x30", which is the whole
+\ of what EM-COMPILE-RET has to decide. Bit 0 is free because a code address is
+\ four-byte aligned. Zero means no frame is open, so there is nothing to
+\ restore and nothing to patch. QFRAME-CELL scopes it across a quotation
+\ exactly as QXH-CELL scopes the EXIT chain: a quotation's calls are its own
+\ frame's business, not the enclosing body's. Definition-scoped like the Q
+\ cells, cleared by EM-RESET-COMPILE-STATE, never live across a snapshot.
+\ Both sit in the free header hole below BODYBUF-OFF (rg-verified unused).
+$7D0 constant FRAME-CELL
+$7D8 constant QFRAME-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
 \ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/type-families.md §16),
