@@ -158,10 +158,15 @@ WF-N@ 1 T=  0 WF-OFF@ 50 T=  0 WF-WIDTH@ 2 T=
 \   TLP-SWAP    w2-under-scalar swap = triple in-place reversal of the top 3
 \               cells (rotate the bottom 2-cell group to the top)
 \   TLP-MIX-DUP w4 dup     = the same copy loop shape with #4/top-4
-\   TLP-TOR     w2 >r r>   = 2-cell block moves to/from [x20+RSTK-OFF]
+\   TLP-TOR     w2 >r r>   = 2-cell block moves through the return stack
 \   TLP-LOCAL   w2 bundle local = 3-cell frame (align16 -> 32 bytes), capture
 \               pops tag-first into slots 3,2 (bundle) and 1 (scalar), the
 \               reference reloads slot 1
+\ TLP-TOR pins the GUARD-PAGE return stack as of 89f2ff3b ("Map every VM stack
+\ with guard pages"): the band left the DATA header for its own mapping, so its
+\ base is read from STACK-ABI:RETURN-BASE-CELL and a slot is base + depth*8,
+\ where the block address used to be one `add x11,x20,x10,lsl#3` and the
+\ transfer carried an RSTK-OFF displacement.
 \ ---------------------------------------------------------------------------
 \ TLP-W32: read one emitted instruction word out of a compiled subject.
 \ Tested boundary (TRUSTED): reinterprets an xt as the byte base for the four
@@ -238,17 +243,21 @@ s" TLP-MIX-DUP" TLP-XT GXT !
 10 $F94003FE GG  11 $910043FF GG  12 $D65F03C0 GG
 
 s" TLP-TOR" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $F942B68A GG  3 $8B0A0E8B GG                          \ >r: ldr rsp ; block base
-4 $D100426C GG  5 $D2800049 GG                          \ src = top-16 ; movz #2
-6 $F940018D GG  7 $9100218C GG  8 $F914016D GG          \ data->rstk loop
-9 $9100216B GG  10 $F1000529 GG  11 $54FFFF61 GG
-12 $D1004273 GG  13 $9100094A GG  14 $F902B68A GG       \ pop 2 ; rsp += 2 ; store
-15 $F942B68A GG  16 $D100094A GG  17 $8B0A0E8B GG       \ r>: rsp -= 2 ; block base
-18 $D2800049 GG  19 $F954016D GG  20 $9100216B GG       \ rstk->data loop
-21 $F900026D GG  22 $91002273 GG  23 $F1000529 GG  24 $54FFFF61 GG
-25 $F902B68A GG                                         \ commit rsp
-26 $F94003FE GG  27 $910043FF GG  28 $D65F03C0 GG
+0 $D10043FF GG  1 $F90003FE GG                          \ prologue
+2 $F942B68A GG                                          \ >r: ldr x10,[x20,#$568]  depth
+3 $F964028B GG  4 $8B0A0D6B GG                          \ ldr x11,[x20,#$4800] base ; add x11,x11,x10,lsl#3
+5 $D100426C GG  6 $D2800049 GG                          \ sub x12,x19,#16 (src = top-2 cells) ; movz x9,#2
+7 $F940018D GG  8 $9100218C GG  9 $F900016D GG          \ data->rstk loop: ldr x13,[x12] ; add x12,x12,#8 ; str x13,[x11]
+10 $9100216B GG  11 $F1000529 GG  12 $54FFFF61 GG       \ add x11,x11,#8 ; subs x9,x9,#1 ; b.ne -5
+13 $D1004273 GG  14 $9100094A GG  15 $F902B68A GG       \ sub x19,x19,#16 ; add x10,x10,#2 ; str x10,[x20,#$568]
+16 $F942B68A GG  17 $D100094A GG                        \ r>: ldr x10,[x20,#$568] ; sub x10,x10,#2
+18 $F964028B GG  19 $8B0A0D6B GG                        \ ldr x11,[x20,#$4800] base ; add x11,x11,x10,lsl#3
+20 $D2800049 GG                                         \ movz x9,#2
+21 $F940016D GG  22 $9100216B GG                        \ rstk->data loop: ldr x13,[x11] ; add x11,x11,#8
+23 $F900026D GG  24 $91002273 GG                        \ str x13,[x19] ; add x19,x19,#8
+25 $F1000529 GG  26 $54FFFF61 GG                        \ subs x9,x9,#1 ; b.ne -5
+27 $F902B68A GG                                         \ commit rsp
+28 $F94003FE GG  29 $910043FF GG  30 $D65F03C0 GG       \ epilogue
 
 s" TLP-LOCAL" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG
