@@ -8577,3 +8577,46 @@ contains - test/bootstrap-engine-stack.fs measured guard pages, catch, evaluate
 and the debugger that way. Declare the primitive instead, in the axiom form the
 engine's own primitives use (`PRIM: name PE-... PRIM;`): one line, and the rest
 of the program still compiles checked.
+
+## 2026-09-16 - the optimizing tier is bought with compile time, not code size
+
+Tier 0 and tier 1 measured against each other on 1,772 real library and tool
+words (`tools/tier-census.f`, `tools/tier-bench.f`, full tables in
+[docs/compiler-measurements.md](docs/compiler-measurements.md)). Tier 1 runs
+1.1x-9.3x faster on every benchmark, halves the call count (9,250 -> 4,135
+`bl`), and costs 3.9 percent more bytes (169,600 -> 176,276) and 23.8x the
+compile time (0.187 s -> 4.454 s). The bytes are not spread over the code: every
+word that grew carries a large `movk` count and every word that shrank carries
+none, because `docs/compiler-ir-design.md` pins each relocatable address to a
+four-instruction `MOVZ`/`MOVK` stencil and tier 1 lays cold throw paths inline.
+Corpus-wide that is 1,521 extra stencils, 24,336 bytes, against a net regression
+of 6,676 - so the optimizer is saving about 17,700 bytes elsewhere and spending
+them on addresses in never-taken code. Rank a size fix by `movk`, not by
+intuition: register-to-register moves look like a pattern in a disassembly
+(`UTF8:DECODE-LEAD` shuffles four in fourteen instructions) and are 126
+instructions in the whole corpus.
+
+Two things that make such a measurement lie, both hit in one session:
+
+- **Nothing already baked into the engine can be compared across tiers.** Only
+  code compiled after `set-tier` belongs to the selected tier, so a benchmark
+  over `lib/string.f`, `src/core` or the compiler itself reports the same
+  number twice. A corpus for a tier comparison is source the engine does not
+  already carry, loaded with `required` after the selection.
+- **A build tool's `set-tier` line does not select the build's tier.**
+  `EXECUTABLE-BUILD:WITH` forces tier 1 (`src/habu/habu1.f` BBUILDENTER stores 1
+  into `TIER-CELL` and saves the caller's in `BUILD-TIER-CELL`), and
+  EXECUTABLE-JIT-REFUSE refuses a JIT compile inside that scope. Editing
+  `tools/native-build.f` to `0 set-tier` and rebuilding produced a byte-identical
+  engine in the same time. The self-build cannot be run at tier 0 at all; what
+  tier 0 would cost it can only be computed from per-word rates.
+
+Two machine rules the numbers depend on. `HABU_FIXPOINT_ENGINE` is where
+`tools/build-fixpoint.f` PROMOTES its result, not just where it reads a host:
+pointing it at a shared engine replaces the binary every other lane is measuring
+against, and a run that straddles that replacement reads 3.6x slow for no reason
+the tree can explain. Give every build its own copy under the lane's own tmp.
+And this machine is big.LITTLE - cpu0-3 have capacity 561, cpu4-11 have 1024 -
+so an unpinned timing run reads up to 1.6x slow depending on where it lands;
+pin timing runs to a performance core and quote the load average beside every
+number.
