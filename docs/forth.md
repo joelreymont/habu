@@ -390,6 +390,11 @@ ambiguity.
   files covered by the rule above close the scope explicitly with `;using`;
   end-of-file closure remains a language boundary, not the preferred source
   form for those files.
+- A package whose public tails are ordinary verbs cannot be imported at all:
+  `using TCP4` refuses at the first bare `READ`, `WRITE` or `CLOSE`
+  (`E-USING-SHADOW-GLOBAL`) because the global of that name also exists.
+  Qualify such a package; the rule that a uniquely named public surface is the
+  fix applies to whole packages as well as to single words.
 - Lookup order for a bare tail is the open-package scope (private then own
   public) FIRST, then the global wordlist, then each used package's public
   wordlist. A tail found in the OPEN-PACKAGE scope silently wins over a used
@@ -565,6 +570,12 @@ engine, and none of those forms are removed.
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
   for global pointer slots.
+- **A `SUMTYPE`, `PRODUCT` or `ENUM` body is parsed by its definer, not by the
+  interpreter.** Today a `\` comment between the opener and its closer is
+  refused (`E-TDECL-SYNTAX`), so comment the family above its opener. Dot
+  `habu-accept-comments-inside-145f82eb` teaches the unified `ENUM` and
+  `STRUCTURE` front ends to skip comments inside a body; this bullet goes when
+  it lands.
 
 SwiftForth-style relocatable linked-list words (`@REL`, `!REL`, `,REL`,
 `>LINK`, `<LINK`, `CALLS`) are not part of Habu's checked surface. They encode
@@ -596,6 +607,14 @@ address arithmetic at the public boundary.
   values. Establish the required shape, owner and bounds with `if ... exit then`
   before indexing or reading a dependent field. Combine boolean predicates only
   when each can be evaluated safely on its own.
+- **A local is bound once.** There is no assignment to a local, so a value that
+  changes on every turn of a loop lives on the data stack or in a storage
+  cell, not in a local. The loop shape is `begin {: cursor:n :} … cursor' again`:
+  the group binds at the top of the body and the body pushes the next value
+  before the back edge, so the stack at `again` matches the stack at `begin`.
+  Use `RECURSE` for a cursor only where a limit already bounds the depth; a
+  depth a peer controls, such as the bytes arriving on a connection, overflows
+  the task's stack.
 - **Keep control flow and multi-step computation out of argument lists.** The
   checker *does* accept `if/else` (and comparisons like `f> 0=`) producing a value
   mid-arg-list — e.g. `s" k" 1 0 > if 5 else 6 then 2.0 L-OF` type-checks and runs,
@@ -806,6 +825,11 @@ address arithmetic at the public boundary.
 - **Typed booleans are real `bool` values.** Produce true/false with typed
   producers such as `0 0=` and `0 0= 0=` or domain helpers. Do not store raw
   `0`/`-1` into a `ptr bool` cell, and do not compare bools with numeric `=`.
+- **A quotation cannot read a local.** A value that a `catch`, `finally` or
+  locked body needs travels through storage, not through a local. Where the
+  value differs per task, that storage is the task's own slot (a `TASK:+USER`
+  cell, or a row of a typed buffer indexed by the task): the quotation asks
+  which task is running and reads its own row.
 - **Structural integers widen, roles do not.** The checker models structural
   integer tokens with width/sign metadata: `u8 -> u16 -> u32 -> n/cell/i64`
   widening is implicit when lossless, but narrowing and same-width sign changes
