@@ -16,3 +16,4 @@ emitted in the body, rewrite it to nop and emit `ret` alone, otherwise emit
 valid. Note for the record: 3,566 of the engine's 5,374 baked words are the
 boot prefix compiled at tier 0 (docs/compiler-measurements.md), so tier-0
 codegen quality is the engine's own speed, not only the REPL's.
+Parked 2026-09-16 17:12 (Opus session limit): workspace .jj-ws/hazel-word-frame on 83829f06, no commit, working copy clean; the worker was verifying indexed-form encodings against objdump before its first checkpoint. Resume from scratch with the dispatch brief of 16:47 (encoders, JIT backpatched frame, tier-1 forms, crash/debugger/seed in step).
