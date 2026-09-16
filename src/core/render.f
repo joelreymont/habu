@@ -86,7 +86,13 @@ variable RATOM-I
       1 +
    REPEAT drop ;
 
+\ Every entry into the renderer runs SEEN-RESET first, which UNBOUND-fills the
+\ whole array, so what the boot array holds at the capture seam is the last
+\ rendered diagnostic's alpha-renaming and nothing a restored engine reads. It
+\ is dense, though - 16,389 non-zero bytes on the pinned engine - and a capture
+\ carries every non-zero byte into the engine's __text. Empty it here.
 : SEEN-SNAPSHOT-RESET ( -- )
+   SEEN-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO
    SEEN-BOOT SEEN-P !
    MAXTV-INIT SEEN-CAP ! ;
 

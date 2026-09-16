@@ -187,7 +187,15 @@ TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
 
 \ TV arena: the typevar pool plus every var-id-indexed map grows in lockstep
 \ under one shared cap so a fresh var id is a valid index into all of them.
-2048 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
+\ MAXTV-INIT sizes TWELVE var-id arrays (the eleven below plus render.f SEEN),
+\ so every cell of it costs 96 bytes of boot DP, and four of them - TVT, RVT,
+\ EC-TV, EC-RV - are UNBOUND-filled at the capture seam, which is $FF in every
+\ byte, so those four also cost 32 image bytes per cell. Measured high-water of
+\ FV over a whole self-build: 1112 vars in one definition (the pool resets per
+\ definition). 1280 leaves 15% headroom over that mark. A workload above it
+\ grows the arena exactly as it does today: test/type-decl-suite.f already peaks
+\ at 2573, above even the old 2048.
+1280 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
 variable TV-CAP   MAXTV-INIT TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;    \ live cap; every var-id array is TV-CAP cells
 
@@ -1220,7 +1228,12 @@ PTX-BARRIER-DEFAULT
    dup R-RES-WALK {: root:n :}
    root R-COMPRESS
    root ;
-4096 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
+\ MAXUWL sizes five parallel worklist arrays (UWL and the four per-pair flag
+\ tables below), 40 bytes of boot DP per cell. Unlike the arenas this one has no
+\ grow path - U-PUSH refuses by name when it is full - so the cut keeps a wide
+\ margin: measured high-water of USP is 12 pairs over a whole self-build and 48
+\ over every checker suite (test/enum-decl-suite.f), and 1024 is 21x that.
+1024 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
 create UWL MAXUWL cells allot   variable USP   variable UOK
 variable UF-ACT   variable UF-EXP   variable UF-SET
 \ Parallel per-pair strictness flag, keyed by the pair's base worklist index.
@@ -2784,8 +2797,16 @@ variable RSH
 
 64 constant VREC-CAP-INIT       \ value-record table records (grows on demand)
 512 constant VREC-FIELD-INIT     \ field-node index pool (grows on demand)
-$4000 constant VREC-NODE-INIT    \ instantiation nodes (grows on demand)
-$10000 constant VREC-STR-INIT    \ value-record string pool (grows on demand)
+\ VREC-NODE-INIT sizes NINE parallel node arrays (VRN-TAG plus VRN-A..VRN-H),
+\ 72 bytes of boot DP per node. The engine prefix declares no value record at
+\ all - its high-water is one node, the reserved id 0 - and the measured
+\ high-water over every checker suite is 64 nodes (test/engine-suite.f), so
+\ $4000 carried a megabyte of never-written capacity into every image. 512 is
+\ 8x the suite mark; past it VREC-NODE-GROW doubles as before.
+$200 constant VREC-NODE-INIT    \ instantiation nodes (grows on demand)
+\ Value-record name bytes. Measured high-water: 0 in the prefix, 189 bytes over
+\ every checker suite (test/engine-suite.f). $2000 is 43x that mark.
+$2000 constant VREC-STR-INIT    \ value-record string pool (grows on demand)
 variable VREC-CAP-V   VREC-CAP-INIT VREC-CAP-V !
 : VREC-CAP ( -- n ) VREC-CAP-V @ ;
 variable VREC-FIELD-CAP-V   VREC-FIELD-INIT VREC-FIELD-CAP-V !
@@ -2861,7 +2882,9 @@ PERSISTED-PTR-VARIABLE VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 \ VREC-COPY (never across a frame boundary), so at every RBF-PUSH/POP point all
 \ nodes below the VREC-NODE-N mark have runs entirely below the VNARG-N mark —
 \ rewinding both retires a rejected scope's runs without dangling a survivor.
-$4000 constant VNARG-INIT
+\ Measured high-water: 0 cells in the prefix, 44 over every checker suite
+\ (test/engine-suite.f). $200 is 11x that mark; VNARG-GROW doubles past it.
+$200 constant VNARG-INIT
 create VNARG-BOOT VNARG-INIT cells allot
 PERSISTED-PTR-VARIABLE VNARG-P   VNARG-BOOT VNARG-P !
 variable VNARG-CAP-V   VNARG-INIT VNARG-CAP-V !
@@ -4298,7 +4321,13 @@ USIGS-RUNTIME-INIT
 \ at the new cap on the next lookup. SYM-STR relocation rebases the PKG-A/NAME-A
 \ pointers of every existing record.
 $4000 constant SYM-CAP-INIT     \ symbol table records (grows on demand, pow2)
-$100000 constant SYM-STR-INIT    \ symbol string pool (grows on demand)
+\ Measured high-water of SYM-STR-U at the capture seam of a self-build: 235,830
+\ bytes, and 255,709 over every checker suite. $60000 leaves 67% headroom over
+\ the seam mark. Staying above it matters more than the last byte saved: once
+\ the prefix outgrows this pool the capture copies the used span into fresh
+\ image DATA (REG-PERSIST-MOVE) and the dead boot buffer stays, so crossing it
+\ costs DP rather than saving it.
+$60000 constant SYM-STR-INIT    \ symbol string pool (grows on demand)
 variable SYM-CAP-V   SYM-CAP-INIT SYM-CAP-V !
 : SYM-CAP ( -- n ) SYM-CAP-V @ ;
 variable SYM-STR-CAP-V   SYM-STR-INIT SYM-STR-CAP-V !
@@ -9258,8 +9287,17 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
 
 \ The table can outgrow its initial buffer. Persist the complete live prefix
 \ in image DATA at the grain, just like stored signatures; NORET-GROW doubles.
+\ REACHING THE BRANCH MEANS NORET-BOOT IS ABANDONED: the boot buffer is in image
+\ DATA, so a store still sitting in it answers REG-DATA-SPAN? and never gets
+\ here. What that leaves is a buffer no restored engine reads - NORET-RESET
+\ returns to it with an empty end and rewrites from the front - still holding
+\ the entries this build put there before the table grew, which the capture
+\ bakes into the engine: measured on the pinned engine, 13,443 non-zero bytes in
+\ 8,070 sparse runs, 78,003 bytes of image. Empty it with the same stroke that
+\ replaces it.
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORETS NORET-CAP-U @ REG-DATA-SPAN? 0= IF
+      NORET-BOOT 0 NORET-INIT-CAP CELL / ARENA-CELLS-ZERO
       NORET-END @ CELL + {: n:n :}
       n USIGS-ROUND-CAP {: cap:n :}
       cap USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
@@ -9298,24 +9336,50 @@ variable NRX-POS                        \ byte offset cursor over the entry arra
    EC-TV MAXTV-INIT E-MAP-CLEAR   0 EC-TV-HW !
    EC-RV MAXTV-INIT E-MAP-CLEAR   0 EC-RV-HW ! ;
 
+\ ARENA-SNAP-BOOT ( pvar boot cells -- ) : restore one scratch arena to its boot
+\ buffer AND empty that buffer, in one step so neither can be done without the
+\ other. Emptying is not housekeeping. The capture that follows this seam copies
+\ the whole DATA window into the engine's own __text, and whatever these buffers
+\ hold at that moment is the LAST CHECKED DEFINITION'S scratch: dead by the
+\ caller's own contract below, yet baked into the image and laid back down at
+\ every start. It is not cheap either, because the payload is sparse and pays an
+\ (offset, length) row per non-zero extent: a cell array of small numbers breaks
+\ into one run per cell and costs more than its bytes. Measured on the pinned
+\ engine, these arenas held 10,580 non-zero bytes in 6,367 runs, 61,516 bytes of
+\ image, with the push arena alone at 8,418 bytes in 4,698 runs
+\ (tools/data-table-census.f prints the per-owner table). Together with the
+\ NORET buffer above and render.f's SEEN, emptying them took the sparse DATA
+\ blob of a self-built engine from 3,777,887 bytes to 3,644,805.
+: ARENA-SNAP-BOOT ( ptr ptr n ptr n n -- ) {: pv:ptr boot:ptr cells:n :}
+   boot 0 cells ARENA-CELLS-ZERO
+   boot pv ! ;
+
 \ DECOUPLED-ARENA-SNAP-RESET ( -- ) : repoint the per-definition scratch arenas
 \ (push/quot/ptr/atom/param) at their boot buffers and restore their init caps
 \ so no grown mmap address is persisted. Their counters reset in NEW, so no live
-\ content is lost.
+\ content is lost — which is also why ARENA-SNAP-BOOT may empty every one of
+\ them. The two arenas with their own reset words keep them: those reset a
+\ counter, not the bytes, and they run after the buffer is already empty.
+\ SPA and QEA are counted in records rather than cells (16 and 32 bytes).
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
-   SPA-BOOT SPA-P !     MAXPUSH-INIT SPA-CAP !
-   PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
-   QEA-BOOT QEA-P !     QXDA-BOOT QXDA-P !   QXRA-BOOT QXRA-P !
-   QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
-   ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
-   PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-   PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
+   SPA-P SPA-BOOT MAXPUSH-INIT 2 * ARENA-SNAP-BOOT       MAXPUSH-INIT SPA-CAP !
+   PTRA-P PTRA-BOOT MAXPTR-INIT ARENA-SNAP-BOOT          MAXPTR-INIT PTR-CAP !
+   QEA-P QEA-BOOT MAXQE-INIT 4 * ARENA-SNAP-BOOT
+   QXDA-P QXDA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXRA-P QXRA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
+   QXHA-P QXHA-BOOT MAXQE-INIT ARENA-SNAP-BOOT           QXNA-P QXNA-BOOT MAXQE-INIT ARENA-SNAP-BOOT
+   MAXQE-INIT QE-CAP !
+   ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
+   ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
+   PARAMA-P PARAMA-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT    PARAMU-P PARAMU-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
+   PARAMC-P PARAMC-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT    PARAMFAM-P PARAMFAM-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
+   PARAMOFF-P PARAMOFF-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
+   PARAMHID-P PARAMHID-BOOT MAXPARAM-INIT ARENA-SNAP-BOOT
    MAXPARAM-INIT PARAM-CAP !
-   PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
-   PARAM-SCR-BOOT PARAM-SCR-P !   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
-   VRI-AK-BOOT VRI-AK-P !   VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
-   TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET
-   LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   LIN-TAINT-RESET ;
+   PARGP-P PARGP-BOOT PARG-INIT ARENA-SNAP-BOOT          PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
+   PARAM-SCR-P PARAM-SCR-BOOT PARAM-SCR-INIT ARENA-SNAP-BOOT   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
+   VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
+   TRAIL-P TRAIL-BOOT TRAIL-INIT ARENA-SNAP-BOOT         TRAIL-INIT TRAIL-CAP !   TRAIL-RESET
+   LTNT-P LTNT-BOOT LTNT-INIT ARENA-SNAP-BOOT            LTNT-INIT LTNT-CAP !   LIN-TAINT-RESET ;
 
 \ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS) must
 \ survive into a built image (later checked loads reference persisted signatures).
