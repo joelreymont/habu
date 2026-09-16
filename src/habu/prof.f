@@ -30,7 +30,7 @@ package PROF
 public
 variable LPROFH   variable LPROFDUMP   variable LPROFFIND   variable LPROFEDGE
 variable LPROFJSON   variable LPROFNUM   variable LPROFPCT   variable LPROFNAME
-variable LPROFQUAL   variable LPROFSYNC
+variable LPROFQUAL   variable LPROFSYNC   variable LPROFROW
 private
 \ ---- the band: PROF-STATE-BYTES of state cells, then one counter per dict record
 DATA-SIZE PROF-CNT-BYTES - constant PROF-BAND           \ band base, DATA-relative
@@ -118,7 +118,8 @@ ARN-SCR ARN-IDX-BYTES + constant ARN-CALL      \ the caller table
 DICT-CAP cells constant ARN-INCL-BYTES
 PROF-DEFER-SLOTS PROF-DEFER-ENT * constant ARN-DEF-BYTES
 ARN-CALL ARN-CALL-BYTES + constant ARN-INCL    \ inclusive samples, one per RECORD
-ARN-INCL ARN-INCL-BYTES + constant ARN-DEF     \ the deferred samples
+ARN-INCL ARN-INCL-BYTES + constant ARN-STAMP   \ the sample serial each record was last counted in
+ARN-STAMP ARN-INCL-BYTES + constant ARN-DEF    \ the deferred samples
 ARN-DEF ARN-DEF-BYTES + constant ARN-BYTES
 $10000 constant PROF-STACK-BYTES
 14  constant SIGALRM
@@ -208,6 +209,23 @@ public
    ehit LBL,  16 15 8 LDR,  16 16 1 ADDI,  16 15 8 STR,
    edone LBL,  RET, ;
 
+\ x8 = arena, x7 = band, x6 = an index entry, x10 = its record index: one
+\ inclusive sample for that record, and only the first time THIS sample reaches
+\ it. The conservative walk can see one word twice - a recursive call, or a
+\ stale spill slot still holding a return address into it - and an inclusive
+\ count that ran past the sample total would say a word took longer than the
+\ program did. The stamp is the sample serial, so the test is one load and one
+\ compare and needs no per-sample set. Clobbers x11-x13.
+: C-PROF-INCL-ONCE ( -- )
+   LBL {: seen :}
+   11 ARN-STAMP LIT64,  11 8 11 ADD,  12 10 3 LSLI,  11 11 12 ADD,
+   12 11 0 LDR,
+   13 7 PROF-TOT LDR,  13 13 1 ADDI,               \ this sample's serial: TOT is bumped after
+   12 13 CMP,  C-EQ seen BCOND,
+   13 11 0 STR,
+   12 6 ENT-INCL LDR,  12 12 1 ADDI,  12 6 ENT-INCL STR,
+   seen LBL, ;
+
 \ x8 = arena, x9 = the interrupted pc, x21 = mcontext: keep one sample whose code
 \ the index cannot name yet. Only the pc and the interrupted x30 are kept, at a
 \ fixed stride, so the handler still walks nothing here and allocates nothing; the
@@ -258,7 +276,7 @@ public
    LPROFFIND LABEL@ BL,
    6 wlr CBZ,
    10 6 ENT-IDX LDR,  10 25 CMP,  C-EQ wlr BCOND,    \ x30 still points inside the sample
-   12 6 ENT-INCL LDR,  12 12 1 ADDI,  12 6 ENT-INCL STR,
+   C-PROF-INCL-ONCE
    25 10 0 ADDI,  19 1 MOVZ,
    11 8 ARN-FRAMES LDR,  11 11 1 ADDI,  11 8 ARN-FRAMES STR,
    LPROFEDGE LABEL@ BL,
@@ -276,7 +294,7 @@ public
       LPROFFIND LABEL@ BL,
       6 wl CBZ,
       10 6 ENT-IDX LDR,  10 25 CMP,  C-EQ wl BCOND,  \ the frame below named the same word
-      12 6 ENT-INCL LDR,  12 12 1 ADDI,  12 6 ENT-INCL STR,
+      C-PROF-INCL-ONCE
       25 10 0 ADDI,
       11 8 ARN-FRAMES LDR,  11 11 1 ADDI,  11 8 ARN-FRAMES STR,
       19 wl CBNZ,                                    \ the immediate caller is already in
@@ -434,25 +452,30 @@ public
 \ exclusive count, x17 its record index, x6/x3 the caller threshold and rank.
 \ x19-x25 are saved and restored because the compiled callers own them.
 : C-PROF-REP-OPEN ( -- )
-   SP SP 80 SUBI,
+   SP SP 96 SUBI,
    30 SP 0 STR,  19 SP 8 STR,  20 SP 16 STR,  21 SP 24 STR,  22 SP 32 STR,
    23 SP 40 STR,  24 SP 48 STR,  25 SP 56 STR,  17 SP 64 STR, ;
 
 : C-PROF-REP-CLOSE ( -- )
    30 SP 0 LDR,  19 SP 8 LDR,  20 SP 16 LDR,  21 SP 24 LDR,  22 SP 32 LDR,
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
-   SP SP 80 ADDI,  RET, ;
+   SP SP 96 ADDI,  RET, ;
 
 \ x4 = samples attributed to a word: the sum every row's excl column is part of.
 : C-PROF-REP-WORDSUM ( -- )
-   LBL LBL {: wl wd :}
-   4 0 MOVZ,
+   LBL LBL LBL {: wl wd wnext :}
+   4 0 MOVZ,  3 0 MOVZ,
    12 ARN-IDX LIT64,  12 19 12 ADD,
    13 19 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
    wl LBL,
       12 13 CMP,  C-CS wd BCOND,
       10 12 ENT-IDX LDR,  11 PROF-CNT-VA LIT64,  10 10 3 LSLI,  11 11 10 ADD,
       10 11 0 LDR,  4 4 10 ADD,
+      14 12 ENT-INCL LDR,  14 14 10 ORR,
+      15 12 ENT-IDX LDR,  11 ARN-INCL LIT64,  11 19 11 ADD,  15 15 3 LSLI,  11 11 15 ADD,
+      15 11 0 LDR,  14 14 15 ORR,
+      14 wnext CBZ,  3 3 1 ADDI,                   \ a word either count reached
+      wnext LBL,
       12 12 PROF-ENT ADDI,  wl B,
    wd LBL, ;
 
@@ -481,7 +504,9 @@ public
    json IF s\" ,\"indexed\":" ELSE s"  indexed " THEN 10 C-PROF-FIELD
    10 19 ARN-USEC LDR,
    json IF s\" ,\"usec\":" ELSE s"  usec " THEN 10 C-PROF-FIELD
-   json IF s\" ,\"rows\":[" C-PROF-SAY ELSE C-PROF-NL THEN ;
+   json IF s\" ,\"attributed\":" ELSE s"  attributed " THEN 3 C-PROF-FIELD
+   json IF exit THEN
+   C-PROF-NL ;
 
 \ x9 = the current row's inclusive count: what the per-record array holds plus
 \ what the entry has taken since the last fold. An auto-report at the limit never
@@ -496,20 +521,20 @@ public
    17 21 ENT-IDX LDR,
    5 20 PROF-DBASE LDR,  10 DREC MOVZ,  10 17 10 MUL,  5 5 10 ADD, ;
 
-: C-PROF-REP-ROW ( bool -- ) {: json:bool :}
-   json IF
-      LBL {: nc :}
-      25 nc CBZ,  s" ," C-PROF-SAY  nc LBL,
-      s\" {\"word\":\"" C-PROF-SAY
-      C-PROF-REP-ROW-REC
-      LPROFQUAL LABEL@ BL,  LPROFNAME LABEL@ BL,
-      C-PROF-DQ  s\" ,\"excl\":" C-PROF-SAY
-      9 7 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
-      s\" ,\"incl\":" C-PROF-SAY
-      C-PROF-ROW-INCL  10 1 MOVZ,  LPROFNUM LABEL@ BL,
-      s\" ,\"callers\":[" C-PROF-SAY
+\ x11 = what the current entry (x12) is ranked on: its exclusive count, or the
+\ inclusive one a phase word is only ever visible by. Clobbers x10.
+: C-PROF-RANK ( bool -- ) {: incl:bool :}
+   10 12 ENT-IDX LDR,
+   incl IF
+      11 ARN-INCL LIT64,  11 19 11 ADD,  10 10 3 LSLI,  11 11 10 ADD,
+      11 11 0 LDR,
+      10 12 ENT-INCL LDR,  11 11 10 ADD,
       exit
    THEN
+   11 PROF-CNT-VA LIT64,  10 10 3 LSLI,  11 11 10 ADD,  11 11 0 LDR, ;
+
+\ One text row: exclusive, its share, inclusive, its share, then the word.
+: C-PROF-REP-ROW ( -- )
    9 7 0 ADDI,  10 8 MOVZ,  LPROFNUM LABEL@ BL,
    9 7 0 ADDI,  10 22 0 ADDI,  LPROFPCT LABEL@ BL,
    C-PROF-ROW-INCL  10 8 MOVZ,  LPROFNUM LABEL@ BL,
@@ -538,19 +563,9 @@ public
    done LBL, ;
 
 \ One caller line: x9 = the caller's record index, x10 = the edge count.
-: C-PROF-REP-CALLER ( bool -- ) {: json:bool :}
+: C-PROF-REP-CALLER ( -- )
    C-PROF-CALLER-REC
    10 SP 72 STR,
-   json IF
-      LBL {: cc :}
-      3 cc CBZ,  s" ," C-PROF-SAY  cc LBL,
-      s\" {\"word\":\"" C-PROF-SAY
-      C-PROF-CALLER-NAME
-      C-PROF-DQ  s\" ,\"n\":" C-PROF-SAY
-      9 SP 72 LDR,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
-      s" }" C-PROF-SAY
-      exit
-   THEN
    s"          <- " C-PROF-SAY
    9 SP 72 LDR,  10 8 MOVZ,  LPROFNUM LABEL@ BL,
    9 SP 72 LDR,  10 7 0 ADDI,  LPROFPCT LABEL@ BL,
@@ -559,8 +574,9 @@ public
    C-PROF-NL ;
 
 \ The row's top callers: at most PROF-CALLERS passes over the edge table, each
-\ taking the largest count below the one before it.
-: C-PROF-REP-CALLERS ( bool -- ) {: json:bool :}
+\ taking the largest count below the one before it. The text report shows the
+\ top few; prof-json carries every edge there is.
+: C-PROF-REP-CALLERS ( -- )
    LBL LBL LBL LBL LBL LBL {: cr cl cnext cdone ctake crd :}
    3 0 MOVZ,
    6 0 MOVN,                                       \ threshold: nothing printed yet
@@ -583,25 +599,19 @@ public
       15 crd CBZ,                                  \ no caller edge left
       6 15 0 ADDI,
       9 16 0 ADDI,  10 15 0 ADDI,
-      json C-PROF-REP-CALLER
+      C-PROF-REP-CALLER
       3 3 1 ADDI,  cr B,
-   crd LBL,
-   json IF s" ]}" C-PROF-SAY THEN ;
+   crd LBL, ;
 
-: EMIT-PROFREP ( bool -- ) {: json:bool :}
-   json IF LPROFJSON LABEL@ ELSE LPROFDUMP LABEL@ THEN LBL,
+\ One text section: at most PROF-ROWS rows ranked on one of the two counts, each
+\ with its callers.
+\
+\ ROWS ARE SELECTED BY REPEATED MAXIMUM, not sorted: one pass over the index per
+\ row costs less than sorting every entry, no second array is needed, and - the
+\ reason that matters - the counters are left exactly as they were, so a later
+\ prof-report says the same thing.
+: C-PROF-REP-SECTION ( bool -- ) {: incl:bool :}
    LBL LBL LBL LBL LBL LBL LBL {: rowl sell selcmp selnx seld seltake rowsd :}
-   LBL {: armed :}
-   C-PROF-REP-OPEN
-   20 PROF-BAND-VA LIT64,
-   22 20 PROF-TOT LDR,
-   19 20 PROF-ARENA LDR,
-   19 armed CBNZ,
-      json IF s\" {\"samples\":0,\"armed\":false}\n" ELSE s\" profiler not armed\n" THEN C-PROF-SAY
-      C-PROF-REP-CLOSE
-   armed LBL,
-   C-PROF-REP-WORDSUM
-   json C-PROF-REP-HEAD
    23 0 MOVN,  24 0 MOVN,  25 0 MOVZ,
    rowl LBL,
       7 0 MOVZ,  21 0 MOVN,
@@ -609,8 +619,7 @@ public
       13 19 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
       sell LBL,
          12 13 CMP,  C-CS seld BCOND,
-         10 12 ENT-IDX LDR,  11 PROF-CNT-VA LIT64,  10 10 3 LSLI,  11 11 10 ADD,
-         11 11 0 LDR,
+         incl C-PROF-RANK
          11 selnx CBZ,
          11 23 CMP,  C-HI selnx BCOND,             \ above the threshold: already printed
          C-NE selcmp BCOND,
@@ -625,12 +634,131 @@ public
       seld LBL,
       7 rowsd CBZ,                                 \ no counted row left
       23 7 0 ADDI,  24 21 0 ADDI,
-      json C-PROF-REP-ROW
-      json C-PROF-REP-CALLERS
+      17 21 ENT-IDX LDR,
+      7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,  \ the row prints exclusive
+      C-PROF-REP-ROW
+      C-PROF-REP-CALLERS
       25 25 1 ADDI,
       25 PROF-ROWS CMPI,  C-CC rowl BCOND,
-   rowsd LBL,
-   json IF s\" ]}\n" C-PROF-SAY THEN
+   rowsd LBL, ;
+
+\ ---- JSON -----------------------------------------------------------------------
+\ EVERY ATTRIBUTED WORD, not a top-N. A phase word - a compiler pass, a verifier
+\ entry - is often invisible in an exclusive ranking and is exactly what a
+\ per-phase table needs, so the machine-readable report carries the whole set:
+\ one object per index entry that took a sample, and the caller edges as a flat
+\ array rather than nested under each row. Nesting them would mean one pass over
+\ the edge table per row - quadratic, and this walk runs over every row - while
+\ one pass emits every edge there is. Both are bounded by the arena: at most
+\ ARN-COUNT rows and PROF-CALL-SLOTS edges, so the report cannot outgrow it and
+\ nothing is truncated.
+: C-PROF-JSON-ROWS ( -- )
+   LBL LBL LBL LBL {: jl jdone jnext jcomma :}
+   s\" ,\"rows\":[" C-PROF-SAY
+   25 0 MOVZ,
+   21 ARN-IDX LIT64,  21 19 21 ADD,
+   23 19 ARN-COUNT LDR,  23 23 5 LSLI,  23 21 23 ADD,
+   jl LBL,
+      21 23 CMP,  C-CS jdone BCOND,
+      17 21 ENT-IDX LDR,
+      7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,
+      C-PROF-ROW-INCL
+      10 7 9 ORR,  10 jnext CBZ,                   \ neither count moved: not a row
+      25 jcomma CBZ,  s" ," C-PROF-SAY
+      jcomma LBL,  25 1 MOVZ,
+      s\" {\"word\":\"" C-PROF-SAY
+      C-PROF-REP-ROW-REC
+      LPROFQUAL LABEL@ BL,  LPROFNAME LABEL@ BL,
+      C-PROF-DQ  s\" ,\"excl\":" C-PROF-SAY
+      9 7 0 ADDI,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
+      s\" ,\"incl\":" C-PROF-SAY
+      C-PROF-ROW-INCL  10 1 MOVZ,  LPROFNUM LABEL@ BL,
+      s" }" C-PROF-SAY
+   jnext LBL,  21 21 PROF-ENT ADDI,  jl B,
+   jdone LBL,
+   s" ]" C-PROF-SAY ;
+
+\ x9 = a record index, or PROF-CALLER-NONE: its name as a JSON string body.
+: C-PROF-JSON-NAME ( -- )
+   C-PROF-CALLER-REC
+   C-PROF-CALLER-NAME ;
+
+: C-PROF-JSON-EDGES ( -- )
+   LBL LBL LBL LBL {: el edone enext ecomma :}
+   s\" ,\"edges\":[" C-PROF-SAY
+   25 0 MOVZ,
+   21 ARN-CALL LIT64,  21 19 21 ADD,
+   23 PROF-CALL-SLOTS LIT64,
+   el LBL,
+      23 edone CBZ,
+      17 21 0 LDR,  17 enext CBZ,
+      17 17 1 SUBI,
+      7 17 PROF-REC-BITS LSRI,                     \ the sampled word
+      17 17 PROF-REC-MASK ANDI,                    \ its caller
+      10 21 8 LDR,  10 SP 72 STR,
+      25 ecomma CBZ,  s" ," C-PROF-SAY
+      ecomma LBL,  25 1 MOVZ,
+      s\" {\"word\":\"" C-PROF-SAY
+      9 7 0 ADDI,  C-PROF-JSON-NAME
+      C-PROF-DQ  s\" ,\"caller\":\"" C-PROF-SAY
+      9 17 0 ADDI,  C-PROF-JSON-NAME
+      C-PROF-DQ  s\" ,\"n\":" C-PROF-SAY
+      9 SP 72 LDR,  10 1 MOVZ,  LPROFNUM LABEL@ BL,
+      s" }" C-PROF-SAY
+   enext LBL,  21 21 PROF-CALL-ENT ADDI,  23 23 1 SUBI,  el B,
+   edone LBL,
+   s\" ]}\n" C-PROF-SAY ;
+
+: EMIT-PROFREP ( bool -- ) {: json:bool :}
+   json IF LPROFJSON LABEL@ ELSE LPROFDUMP LABEL@ THEN LBL,
+   LBL {: armed :}
+   C-PROF-REP-OPEN
+   20 PROF-BAND-VA LIT64,
+   22 20 PROF-TOT LDR,
+   19 20 PROF-ARENA LDR,
+   19 armed CBNZ,
+      json IF s\" {\"samples\":0,\"armed\":false}\n" ELSE s\" profiler not armed\n" THEN C-PROF-SAY
+      C-PROF-REP-CLOSE
+   armed LBL,
+   C-PROF-REP-WORDSUM
+   json C-PROF-REP-HEAD
+   json IF
+      C-PROF-JSON-ROWS
+      C-PROF-JSON-EDGES
+      C-PROF-REP-CLOSE
+   THEN
+   false C-PROF-REP-SECTION
+   s" by inclusive" C-PROF-SAY  C-PROF-NL
+   true C-PROF-REP-SECTION
+   C-PROF-REP-CLOSE ;
+
+\ LPROFROW ( -- ): the text row for one dictionary record whatever its rank,
+\ with its callers. `prof-row` is how a phase word that no exclusive ranking
+\ would ever show gets read; the record index comes from the caller, which is
+\ where a name lookup belongs.
+: EMIT-PROFROW ( -- )
+   LPROFROW LABEL@ LBL,
+   LBL LBL LBL LBL {: rl rfound rdone rnone :}
+   C-PROF-REP-OPEN                                 \ x6 = the record the caller asked for
+   20 PROF-BAND-VA LIT64,
+   22 20 PROF-TOT LDR,
+   19 20 PROF-ARENA LDR,
+   19 rnone CBZ,
+   21 ARN-IDX LIT64,  21 19 21 ADD,
+   23 19 ARN-COUNT LDR,  23 23 5 LSLI,  23 21 23 ADD,
+   rl LBL,
+      21 23 CMP,  C-CS rnone BCOND,
+      10 21 ENT-IDX LDR,  10 6 CMP,  C-EQ rfound BCOND,
+      21 21 PROF-ENT ADDI,  rl B,
+   rfound LBL,
+   17 21 ENT-IDX LDR,
+   7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,
+   C-PROF-REP-ROW
+   C-PROF-REP-CALLERS
+   rdone LBL,
+   C-PROF-REP-CLOSE
+   rnone LBL,
+   s" profiler: no row for that record" C-PROF-SAY  C-PROF-NL
    C-PROF-REP-CLOSE ;
 
 \ Attribute the interrupted pc FIRST (a dict word's counter, the deferred buffer,
@@ -654,7 +782,7 @@ public
    12 6 ENT-IDX LDR,                                 \ the record owning the pc: bump its counter
    14 PROF-CNT-VA LIT64,  13 12 3 LSLI,  14 14 13 ADD,
    12 14 0 LDR,  12 12 1 ADDI,  12 14 0 STR,
-   12 6 ENT-INCL LDR,  12 12 1 ADDI,  12 6 ENT-INCL STR,   \ a word is inside itself
+   10 6 ENT-IDX LDR,  C-PROF-INCL-ONCE                \ a word is inside itself
    22 6 ENT-IDX LDR,
    C-PROF-WALK
    psig B,
@@ -805,8 +933,8 @@ private
    15 0 ARN-NEW STR,  15 0 ARN-DROP STR,  15 0 ARN-FRAMES STR,
    15 0 ARN-SPILL STR,  15 0 ARN-DEFER STR,
    15 PROF-WALK-CELLS MOVZ,  15 0 ARN-WALK STR,
-   12 ARN-INCL LIT64,  12 0 12 ADD,
-   13 ARN-INCL-BYTES LIT64,  13 12 13 ADD,
+   12 ARN-INCL LIT64,  12 0 12 ADD,               \ the inclusive array and the stamps
+   13 ARN-DEF LIT64,  13 0 13 ADD,                \ sit back to back, so one loop clears both
    15 0 MOVZ,
    il LBL,
       12 13 CMP,  C-CS idone BCOND,
@@ -1083,6 +1211,22 @@ private
 
 : BPROF-JSON ( -- )  LPROFJSON LABEL@ C-PROF-REPORT-CALL ;
 
+\ prof-row ( n -- ): the row for dictionary record n, whatever its rank. The
+\ name lookup stays in the caller, where XREF already answers it.
+: BPROF-ROW ( -- )
+   LBL {: stopped :}
+   SP SP 16 SUBI,  30 SP 0 STR,
+   6 G-POP  6 SP 8 STR,
+   C-PROF-TIMER-STOP
+   LPROFSYNC LABEL@ BL,
+   6 SP 8 LDR,
+   LPROFROW LABEL@ BL,
+   7 PROF-BAND-VA LIT64,  9 7 PROF-ARMED LDR,
+   9 stopped CBZ,
+   C-PROF-TIMER-START
+   stopped LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI, ;
+
 \ prof-rate sets the interval the NEXT prof-on arms, rather than re-arming here:
 \ a rate written while no handler is installed would hand the process a SIGALRM
 \ it has no handler for.
@@ -1112,11 +1256,12 @@ public
    s" prof-on" ['] BPROF-ON FPRIM-L  s" prof-report" ['] BPROF-REPORT FPRIM-L
    s" prof-off" ['] BPROF-OFF FPRIM-L  s" prof-reset" ['] BPROF-RESET FPRIM-L
    s" prof-rate" ['] BPROF-RATE FPRIM-L  s" prof-json" ['] BPROF-JSON FPRIM-L
+   s" prof-row" ['] BPROF-ROW FPRIM-L
    s" prof-pc>rec" ['] BPROF-PCREC FPRIM-L ;
 
 : EMIT-PROF-REPORTS ( -- )
    EMIT-PROFNUM  EMIT-PROFPCT  EMIT-PROFNAME  EMIT-PROFQUAL  EMIT-PROFSYNC
-   false EMIT-PROFREP  true EMIT-PROFREP ;
+   false EMIT-PROFREP  true EMIT-PROFREP  EMIT-PROFROW ;
 
 ;using
 

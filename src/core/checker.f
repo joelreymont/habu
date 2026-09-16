@@ -7019,6 +7019,7 @@ PRIM: prof-off      PRIM;
 PRIM: prof-reset    PRIM;
 PRIM: prof-rate     PE-N PE-IN PRIM;
 PRIM: prof-json     PRIM;
+PRIM: prof-row      PE-N PE-IN PRIM;                \ the report row for one dictionary record
 PRIM: prof-pc>rec   PE-N PE-IN  PE-N PE-OUT PRIM;   \ the armed index's record for a pc, -1 when none owns it
 
 PRIM: rbase          PE-N PE-OUT PRIM;

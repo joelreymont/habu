@@ -49,10 +49,15 @@ variable GDB-I        \ GDB-NUM-AT's cursor
 variable GDB-D        \ the digit run's first byte
 variable GDB-CUT      \ GDB-AFTER's cut point
 
+\ What separates a field name from its value: a space in the text report, a
+\ quote and a colon in the JSON one. Both reports are read by the same helper.
+: GDB-GAP? ( n -- bool ) {: c:n :}
+   c STR-SPACE = c [char] " = or c [char] : = or ;
+
 : GDB-NUM-AT ( n ptr u8 n -- n )   \ the digit run at or after offset i, -1 when none
    {: i:n a:ptr u:n :}
    i GDB-I !
-   begin GDB-I @ u < if a GDB-I @ + c@ STR-SPACE = else STR-FALSE then while
+   begin GDB-I @ u < if a GDB-I @ + c@ GDB-GAP? else STR-FALSE then while
       GDB-I @ 1+ GDB-I !
    repeat
    GDB-I @ GDB-D !
@@ -79,8 +84,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
      some OF IDX>N v + GDB-CUT !  a GDB-CUT @ +  u GDB-CUT @ -  ENDOF
    ;MATCH ;
 
+\ The sample total, from either report: "profiler samples N" or {"samples":N}.
 : GDB-SAMPLES ( ptr u8 n -- n )
-   s" profiler samples" GDB-FIELD ;
+   s" samples" GDB-FIELD ;
 
 \ The header's own identity, plus the sample count the case expects (-1: any).
 : GDB-ACCOUNT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
@@ -255,6 +261,83 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then
    s" PASS: prof-rate sets the interval the next prof-on arms" type cr ;
 
+\ A phase word - the caller that encloses the work - takes no exclusive samples
+\ at all, so no exclusive ranking will ever show it. The inclusive section, the
+\ complete JSON, and prof-row are the three ways to read one.
+: GDB-PROF-PHASE-SRC ( -- )
+   GE-SRC-RESET
+   s" require lib/string.f" GE-SRC-LINE
+   s" package GDBPH" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" variable GDBPH-ACC" GE-SRC-LINE
+   s" : BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
+   s" : PHASE ( -- ) BUSY ;" GE-SRC-LINE
+   s" : FIND-REC ( ptr u8 n -- n ) {: a:ptr u:n :}" GE-SRC-LINE
+   s"    -1 GDBPH-ACC !" GE-SRC-LINE
+   s"    ndict@ 0 ?do i XREF-REC {: rec:ptr :}" GE-SRC-LINE
+   s"       rec XREF-RETIRED? 0= if rec XREF-NAME$ a u STR= if i GDBPH-ACC ! then then" GE-SRC-LINE
+   s"    loop GDBPH-ACC @ ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: GDB-PROFILER-INCLUSIVE ( -- )
+   GE-HB-RESET
+   GDB-PROF-PHASE-SRC
+   s" 0 prof-on GDBPH:PHASE prof-off prof-report" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler inclusive section" GE-EXPECT-OK
+   s" by inclusive" s" profiler printed no inclusive section" GE-EXPECT-OUT-HAS
+   s" GDBPH:PHASE" s" the inclusive section did not surface the phase word" GE-EXPECT-OUT-HAS
+   GT-OUT$ -1 GDB-ACCOUNT
+   GT-OUT$ s" attributed" GDB-FIELD 1 < if
+      s" profiler header does not count the words it attributed" GE-FAIL
+   then
+   s" PASS: the inclusive section shows a word no exclusive ranking would" type cr ;
+
+: GDB-PROFILER-ROW ( -- )
+   GE-HB-RESET
+   GDB-PROF-PHASE-SRC
+   s" 0 prof-on GDBPH:PHASE prof-off" GE-SRC-LINE
+   S\" s\" PHASE\" GDBPH:FIND-REC prof-row" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler chosen row" GE-EXPECT-OK
+   s" GDBPH:PHASE" s" prof-row printed no row for the word it was given" GE-EXPECT-OUT-HAS
+   GT-OUT$ s" by inclusive" CONTAINS? if
+      s" prof-row printed a whole report instead of one row" GE-FAIL
+   then
+   s" PASS: prof-row prints a chosen word whatever its rank" type cr ;
+
+\ Every attributed word, not a top-N, and every caller edge.
+: GDB-PROFILER-JSON-ALL ( -- )
+   GE-HB-RESET
+   GDB-PROF-PHASE-SRC
+   s" 0 prof-on GDBPH:PHASE prof-off prof-json" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler json completeness" GE-EXPECT-OK
+   S\" \"word\":\"GDBPH:BUSY\"" s" json is missing the hot word" GE-EXPECT-OUT-HAS
+   S\" \"word\":\"GDBPH:PHASE\"" s" json is missing the phase word: it is not a top-N" GE-EXPECT-OUT-HAS
+   S\" ,\"edges\":[" s" json carries no edge array" GE-EXPECT-OUT-HAS
+   S\" \"caller\":\"GDBPH:PHASE\"" s" json edge does not name the caller" GE-EXPECT-OUT-HAS
+   GT-OUT$ s" attributed" GDB-FIELD 1 < if
+      s" json header does not count the words it attributed" GE-FAIL
+   then
+   s" PASS: prof-json carries every attributed word and every caller edge" type cr ;
+
+\ An inclusive count above the sample total would say a word ran longer than the
+\ program did. The conservative walk can see one word twice in a sample, so the
+\ handler stamps each record with the sample serial and counts it once.
+: GDB-PROFILER-INCL-BOUND ( -- )
+   GE-HB-RESET
+   GDB-PROF-PHASE-SRC
+   s" 0 prof-on GDBPH:PHASE prof-off prof-json" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler inclusive bound" GE-EXPECT-OK
+   GT-OUT$ GDB-SAMPLES {: tot:n :}
+   GT-OUT$ S\" \"incl\":" GDB-FIELD {: first:n :}
+   first tot > if
+      s" an inclusive count is greater than the sample total" GE-FAIL
+   then
+   s" PASS: no inclusive count passes the sample total" type cr ;
+
 \ --- the surface the profiler dots ask for: package-qualified rows, the caller
 \ under each row, a stop that keeps the counters, a reset that clears them, and
 \ the same walk as JSON ---
@@ -299,7 +382,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    s" profiler json report" GE-EXPECT-OK
    S\" {\"samples\":" s" profiler json has no samples field" GE-EXPECT-OUT-HAS
    S\" \"word\":\"GDBPKG:BUSY\"" s" profiler json row is not qualified" GE-EXPECT-OUT-HAS
-   S\" \"callers\":[" s" profiler json has no callers array" GE-EXPECT-OUT-HAS
+   S\" ,\"edges\":[" s" profiler json has no edge array" GE-EXPECT-OUT-HAS
    s" PASS: profiler json reports the same walk as the text report" type cr ;
 
 : GDB-JITDUMP ( -- )
@@ -325,6 +408,10 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-DEFER
    GDB-PROFILER-UNKNOWN
    GDB-PROFILER-RATE
+   GDB-PROFILER-INCLUSIVE
+   GDB-PROFILER-ROW
+   GDB-PROFILER-JSON-ALL
+   GDB-PROFILER-INCL-BOUND
    GDB-JITDUMP
    GT-CLEANUP
    s" PASS: native prop/debug tests" type cr ;

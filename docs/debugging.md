@@ -553,6 +553,7 @@ machine stack for that word's callers. The surface:
 | `prof-json` | `( -- )` | print the same walk as one JSON object. |
 | `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. |
 | `n prof-rate` | `( n -- )` | set the sampling interval in microseconds for the *next* `prof-on` (default 1000). Writing a rate while no handler is installed would hand the process a SIGALRM it cannot take, so it never re-arms the running clock. |
+| `n prof-row` | `( n -- )` | print the row for one dictionary record, whatever its rank, with its callers. A phase word takes no exclusive samples at all, so no ranking will ever show it; this is how you read one. The record index comes from the caller, where `XREF` already answers a name. |
 | `pc prof-pc>rec` | `( n -- n )` | the record index the armed index gives that pc, or -1. This is the handler's own search, which is what `test/prof-index.f` compares against an exhaustive dictionary scan. |
 
 A report never samples itself: it stops the clock for the walk and starts it
@@ -565,7 +566,7 @@ the report owns x20 and its own ticks read as a foreign context.
 The first line is the accounting, and every field is named:
 
 ```
-profiler samples 92000 words 80215 other 291 new 0 defer 11492 spill 0 foreign 2 frames 764625 dropped 0 indexed 15676 usec 1000
+profiler samples 92000 words 80215 other 291 new 0 defer 11492 spill 0 foreign 2 frames 764625 dropped 0 indexed 15676 usec 1000 attributed 1873
 ```
 
 - `samples` — ticks delivered.
@@ -594,8 +595,14 @@ profiler samples 92000 words 80215 other 291 new 0 defer 11492 spill 0 foreign 2
 - `dropped` — caller edges the edge table could not key because its probe window
   was full. They are reported, never merged into another row.
 - `indexed` — index entries, and `usec` the interval actually sampled at.
+- `attributed` — how many words took a sample of either kind. The text report
+  shows the top 24 of them per section, so this is what says how much it left
+  out; `prof-json` carries all of them.
 
-Then up to 24 rows, ordered by exclusive count, each with its top 5 callers:
+Then two sections, each up to 24 rows with their top 5 callers: first ordered by
+exclusive count, then, under a `by inclusive` line, ordered by inclusive count.
+The second section is the one that shows a phase word — a compiler pass, a
+verifier entry — which does no work of its own and is invisible in the first.
 
 ```
     9257  10.0   11709  12.7  IR-ARENA:ACEIL!
@@ -614,10 +621,27 @@ dropped. Rows are selected by repeated maximum rather than sorted, so the
 counters are left exactly as they were and a second `prof-report` says the same
 thing.
 
-`prof-json` prints the same numbers as
-`{"samples":N,...,"rows":[{"word":"PKG:W","excl":N,"incl":N,"callers":[{"word":"PKG:C","n":N}]}]}`.
-The punctuation is chosen at build time from one shared walk, so the text and
-JSON reports cannot disagree about what they counted.
+`prof-json` prints **every attributed word**, not a top-N, and every caller edge:
+
+```
+{"samples":N,...,"attributed":M,
+ "rows":[{"word":"PKG:W","excl":N,"incl":N}, ...],
+ "edges":[{"word":"PKG:W","caller":"PKG:C","n":N}, ...]}
+```
+
+The edges are a flat array rather than nested under each row on purpose:
+nesting them would mean one pass over the edge table per row, and this walk
+covers every row. Both arrays are bounded by the arena — at most one row per
+index entry and one edge per table slot — so the report cannot outgrow it and
+nothing is truncated. The header is the same one the text report prints, from
+the same walk, so the two cannot disagree about what they counted.
+
+Inclusive counts a word **once per sample**. The conservative walk can see one
+word twice in a single stack — a recursive call, or a stale spill slot still
+holding a return address into it — and an inclusive count that ran past the
+sample total would say a word took longer than the program did. The handler
+stamps each record with the sample serial, so the second sighting costs a load
+and a compare and changes nothing.
 
 ### Code compiled after prof-on
 
@@ -664,11 +688,12 @@ build two more instructions and a register.
 ### Cost
 
 Measured against the same workload run with and without the clock, comparing user
-CPU time across separate processes. At `20 prof-rate` (50 kHz) over 1,055,202
-samples the profiled run's CPU time stayed inside the run-to-run spread of the
-unprofiled baseline (-0.58 s to +0.41 s on a ~20 s run), which bounds the handler
-at **under 0.4 us per tick**; at the 1 kHz default the overhead is far below the
-noise floor of a loaded machine. The handler allocates
+CPU time across separate processes — wall time on a machine carrying other work
+is far too noisy for a signal this small. At `20 prof-rate` (50 kHz) over
+1,054,074 and 1,062,100 samples the profiled runs cost +0.98 s and +1.13 s of
+user CPU against a 19.7 s baseline, i.e. **about 1 us per tick**, inside the 2 us
+budget. At the 1 kHz default that is a tenth of a percent of wall time and sits
+below the noise floor of a loaded machine. The handler allocates
 nothing and takes nothing from the interrupted registers; its state lives in the
 profiler band at the top of the DATA region and in an arena mapped once per
 process, so it works inside a stripped image.
