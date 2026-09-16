@@ -254,7 +254,8 @@ variable LAST-ERR-U
 : RESTORE-FILES ( -- )
    s" src/core/exec-vector.f" COPY-ONE
    s" src/core/check-hook.f" COPY-ONE
-   s" src/core/checker.f" COPY-ONE ;
+   s" src/core/checker.f" COPY-ONE
+   s" lib/string.f" COPY-ONE ;
 
 : POSITIVE-CASE ( -- )
    APPEND-POS-DEFER
@@ -288,8 +289,24 @@ variable LAST-ERR-U
 
 \ Normal prefix continuation without its check hook still refuses generated
 \ constructor declarations. This is separate from the isolated seal probes.
+\ The refusal needs a GENERATED CONSTRUCTOR declaration in the cold prefix after
+\ the blanked hook, and the case used to get one by accident: lib/string.f, a
+\ prefix row, carried package STR and its str:split STRUCTURE. When that surface
+\ moved to lib/string-roles.f - which is not a prefix row - the cold prefix had
+\ no such declaration left, the child ran past every case this was meant to
+\ catch, and died at the first compiled reference to an uncertified word instead
+\ (`E-UNDEFINED: GETENV` while compiling src/core/top-row.f, rc 70). Nothing was
+\ wrong with the engine; the fixture had lost its subject. So the case plants its
+\ own declaration in a prefix row and restores the file afterwards, and what it
+\ asserts no longer depends on which library happens to declare a structure.
+: APPEND-CTOR-PROBE ( -- )
+   s" lib/string.f" SUB$
+   S\" \npackage PTD-CTOR\npublic\nSTRUCTURE probe 0\n  FIELD one n\n;STRUCTURE\n;package\n"
+   APPEND-FILE ;
+
 : HOOK-BLANK-CONTROL-CASE ( -- )
    BLANK-CHECK-HOOK
+   APPEND-CTOR-PROBE
    s" blanked check hook alone refuses the prefix declarations, exits 76"
       SPAWN-RC 76 CHILD-RC
    s" hook-blank control names the refused constructor plan" T-LABEL
