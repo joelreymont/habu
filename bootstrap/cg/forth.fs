@@ -2889,7 +2889,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       4 10 CMPI,  C-EQ SRC-DONE @ BCOND,
       SRC-SHLOOP @ B, ;
 
+\ The scan index is set HERE, not by the caller: see src/habu/habu2.f
+\ C-SOURCE-FIND-SEP. The cold prefix runs between the caller and this loop and
+\ every prefix row leaves x13 holding whatever it last used it for, so a
+\ caller-side `13 2 MOVZ,` is gone by the time the first compare reads it.
 : C-SOURCE-FIND-SEP ( -- )
+   13 2 MOVZ,
    SRC-FSCAN @ LBL,
       13 10 CMP,  C-GE SRC-FREADY @ BCOND,
       12 DATA ARGV-CELL LDR,  5 13 3 LSLI,  12 12 5 ADD,  12 12 0 LDR,
@@ -3166,7 +3171,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-SOURCE-FILE-PREFIX ( -- )
    SRC-FPLAIN @ C-ARG--LOAD?
-   14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
+   14 2 MOVZ,  15 10 0 ADDI,
    EMIT-COLD-PREFIX
    PFX-LOAD-SCRIPT-ARGV-COLD
    PFX-PROVIDE-FILES

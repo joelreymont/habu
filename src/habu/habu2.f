@@ -1329,7 +1329,26 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
       4 10 CMPI,  C-EQ SRC-DONE LABEL@ BCOND,
       SRC-SHLOOP LABEL@ B, ;
 
+\ Scan argv for the `--` separator and leave its index in x15, the limit the
+\ argv loop stops at; with no separator x15 keeps the argc the caller set.
+\
+\ THE SCAN INDEX IS SET HERE, NOT BY THE CALLER. The cold prefix runs between
+\ the caller and this loop, and on an UNSEEDED engine every prefix row is a
+\ subroutine call that leaves x13 holding whatever it last used it for. The
+\ caller's `13 2 MOVZ,` never survived: LSRCRD ended each row with a `CSET`
+\ into x13, so the scan started at argv[0] instead of argv[2] and still found
+\ the separator, because argv[0] is the program and argv[1] is the flag that
+\ selected this route - neither can be `--`. That accident held until the
+\ prefix reader started leaving an arena pointer in x13 (LSRCRDP), which the
+\ first compare below reads as an index past argc: no separator found, x15
+\ stays argc, and the argv loop hands `--` and everything after it to the
+\ registry as files (`include: cannot open <tree>/--`). A seeded engine emits
+\ no prefix rows at all, so only cold images ever showed it.
+\
+\ argv[1] is the flag that selected this route, so argv[2] is the first
+\ argument that can be the separator.
 : C-SOURCE-FIND-SEP ( -- )
+   13 2 MOVZ,
    SRC-FSCAN LABEL@ LBL,
       13 10 CMP,  C-GE SRC-FREADY LABEL@ BCOND,
       12 DATA ARGV-CELL LDR,  5 13 3 LSLI,  12 12 5 ADD,  12 12 0 LDR,
@@ -1728,12 +1747,12 @@ public
    0 MODE-LOAD CMPI,     C-EQ load BCOND,
    SRC-FPLAIN LABEL@ B,
    load LBL,
-   14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
+   14 2 MOVZ,  15 10 0 ADDI,
    LCOLDPFX LABEL@ BL,
    16 1 MOVZ,                                              \ --load: hand argv files to the registry
    multi B,
    build LBL,
-   14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
+   14 2 MOVZ,  15 10 0 ADDI,
    LCOLDPFXB LABEL@ BL,
    16 0 MOVZ,                                              \ --build: one certified payload, read raw
    multi LBL,
