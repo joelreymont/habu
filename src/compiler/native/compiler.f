@@ -458,12 +458,17 @@ create SPELL-BUF SPELL-CAP allot
 
 \ The recorded length is read off the LIVE builder, before the freeze consumes
 \ the handle. The lowering pass is bound here because a module's symbols are its own.
+\
+\ THE HIR MODULE IS FROZEN INTERIM. It is never the module this compilation
+\ emits - selection reads it and writes the A64 module - and that one is
+\ verified whole. So the HIR freeze derives the edge table selection reads and
+\ leaves the checking to the freeze of the module that becomes the routine.
 : SELECTED ( n -- IR-BUILD:module )
    {: len:n :}
    CC BB NLOOP:BIND-DIALECT
    CC BB A64SEL:BIND-SOURCE
    BB IR-BUILD:FUNS M-FUNS !
-   CC BB IR-BUILD:FREEZE {: m0:IR-BUILD:module :}
+   CC BB IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
    m0 len CLOSED {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT

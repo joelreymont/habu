@@ -886,6 +886,19 @@ private
 : TABLES-TAKE ( IR-ID:ir-module-key -- )
    0 VK ! ;
 
+\ The module under one entry point's hands, recorded before anything reads it.
+\ Both entry points below take the same fourteen tables in the same order, so
+\ the recording is written once and neither can hold a different module than
+\ the other would have.
+: TABLES! ( IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
+   {: key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
+   key TABLES-TAKE
+   opp T-OPP T!   val T-VAL T!   opr T-OPR T!
+   fnp T-FNP T!   fnr T-FNR T!   blr T-BLR T!
+   scp T-SCP T!   scr T-SCR T!   syr T-SYR T!
+   tyr T-TYR T!   atr T-ATR T!   src T-SRC T!
+   edp T-EDP T!   edr T-EDR T! ;
+
 public
 
 \ Verify one module whole and derive its predecessor and successor tables. Every
@@ -894,12 +907,7 @@ public
 \ table holds one row per block and IR-BUILD publishes it with the rest.
 : VERIFY ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
-   key TABLES-TAKE
-   opp T-OPP T!   val T-VAL T!   opr T-OPR T!
-   fnp T-FNP T!   fnr T-FNR T!   blr T-BLR T!
-   scp T-SCP T!   scr T-SCR T!   syr T-SYR T!
-   tyr T-TYR T!   atr T-ATR T!   src T-SRC T!
-   edp T-EDP T!   edr T-EDR T!
+   key opp val opr fnp fnr blr scp scr syr tyr atr src edp edr TABLES!
    FITS-CK
    BLOCK-COVER-CK
    OP-COVER-CK
@@ -912,6 +920,29 @@ public
    EDGES-BUILD
    ALL-SUCCARGS-CK
    DOM-CK
+   c EDGES-PUBLISH ;
+
+\ Derive one module's predecessor and successor tables and publish them, without
+\ the whole-module verification VERIFY performs. This is the freeze of a module
+\ that is not the one its compilation emits: IR-BUILD:FREEZE-INTERIM calls it,
+\ the module it publishes is read by one later pass, and that pass's own output
+\ is verified whole before anything is emitted. The derivation is not optional -
+\ A64SEL reads a block's predecessors off the very module it lowers - so what is
+\ dropped here is the checking, never the deriving.
+\
+\ WHAT STILL REFUSES. Three of VERIFY's arms survive because the derivation
+\ needs them and asks them itself: a module with more blocks than the working
+\ set (FITS-CK), a successor naming a block this module never defined or a block
+\ belonging to another function (EDGES-COUNT), and more edges than the pool was
+\ sized for (EDGES-LAYOUT). IR-FUN:TERMINATOR@ refuses a block whose recorded
+\ terminator is not the last operation of its window, so a block that ends in
+\ nothing is named here as well. What is no longer checked on such a module is
+\ listed where the interim freeze is declared.
+: DERIVE-EDGES ( IR-CTX:ctx IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx key:IR-ID:ir-module-key opp:IR-ARENA:arena val:IR-ARENA:arena opr:IR-ARENA:arena fnp:IR-ARENA:arena fnr:IR-ARENA:arena blr:IR-ARENA:arena scp:IR-ARENA:arena scr:IR-ARENA:arena syr:IR-ARENA:arena tyr:IR-ARENA:arena atr:IR-ARENA:arena src:IR-ARENA:arena edp:IR-ARENA:arena edr:IR-ARENA:arena :}
+   key opp val opr fnp fnr blr scp scr syr tyr atr src edp edr TABLES!
+   FITS-CK
+   EDGES-BUILD
    c EDGES-PUBLISH ;
 
 private

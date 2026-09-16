@@ -561,6 +561,31 @@ Dialect packages wrap these generic words with typed constructors. Ordinary comp
 
 Each failure has a named code and reports stage, function, block, operation, source span, expected invariant, and actual value.
 
+Freeze also derives what the tables deliberately do not store: a block's
+predecessors and its successor count (design lines 404-405), published as one
+more module table. That derivation is not a check and the passes downstream read
+it, so it happens at every freeze.
+
+The checking does not. A chain of rewriting passes freezes one module per pass
+per word, and running the whole-module verification on each of them re-derives
+the same facts about the same code in a new numbering: a two-operation body was
+verified three times. `IR-BUILD:FREEZE` keeps the full strength and is what
+publishes the module a compilation emits; `IR-BUILD:FREEZE-INTERIM` publishes a
+module that is only a pass's input to the next pass, deriving the edge table and
+asking only what that derivation itself needs - the block ceiling, a successor
+that names a block of this module and of the same function, the edge pool bound,
+and a block whose recorded terminator is the last operation of its window. A
+structural defect on an interim module either reaches the emitted module, where
+the full verification names it, or is erased by the pass that reads it, in which
+case it never reached published code. What the caller gives up is localisation:
+the refusal names the emitted module's tables rather than the earlier module the
+fault came from.
+
+Which module a compilation emits has to be known when it is frozen, and a pass
+that may run again - the native chain's spill fixpoint decides by allocating on
+the frozen module - is not known to be last. Those modules therefore take the
+full freeze, so a word that spills still verifies each of its rounds.
+
 ### 6.6 Canonical serialization
 
 A frozen module serializes in this order:

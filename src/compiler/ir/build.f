@@ -1404,18 +1404,50 @@ private
       slot i VIEW@ IR-ARENA:RETIRE
    loop ;
 
+\ The refusal arms both freezes run, in order, before any table is frozen, and
+\ the ownership gate that proves the caller owns this compilation.
+: PUBLISH-CK ( IR-CTX:ctx IR-BUILD:builder -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b USE {: slot:n :}
+   slot BGEN@ STG-CLEAR-CK
+   slot CEILINGS-CK
+   slot TABLES-LIVE-CK
+   slot ;
+
+\ Turn the checked builder into the published module. After this the fifteen
+\ tables are read-only views owned by the context and the slot is no longer a
+\ builder.
+: PUBLISH-M ( n -- IR-BUILD:module )
+   {: slot:n :}
+   slot TABLES-FREEZE
+   ST-FROZEN slot BSTATE!
+   slot BGEN@ MINT-M ;
+
+\ The fourteen tables the verifier reads, in its order. Both freezes hand it the
+\ same ones, so neither can present a different module than the other would.
+: VVIEW ( n -- IR-ID:ir-module-key IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
+   {: slot:n :}
+   slot KEY@
+   slot T-OP TAB@  slot T-OV TAB@  slot T-OR TAB@
+   slot T-FP TAB@  slot T-FR TAB@  slot T-BR TAB@
+   slot T-QP TAB@  slot T-QR TAB@  slot T-SR TAB@
+   slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
+   slot T-EP TAB@  slot T-ER TAB@ ;
+
 \ Design section 6.5's whole-module verification, run as the last refusal arm
 \ before any table is frozen. The verifier is its own authority: this file hands
 \ it the module's tables and its own derived table and repeats none of its logic.
 : VERIFY-CK ( IR-CTX:ctx n -- )
    {: c:IR-CTX:ctx slot:n :}
-   c  slot KEY@
-   slot T-OP TAB@  slot T-OV TAB@  slot T-OR TAB@
-   slot T-FP TAB@  slot T-FR TAB@  slot T-BR TAB@
-   slot T-QP TAB@  slot T-QR TAB@  slot T-SR TAB@
-   slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
-   slot T-EP TAB@  slot T-ER TAB@
+   c slot VVIEW
    IR-VERIFY:VERIFY ;
+
+\ The same hand-off for the freeze that derives the module's edge table without
+\ checking the module whole.
+: DERIVE-CK ( IR-CTX:ctx n -- )
+   {: c:IR-CTX:ctx slot:n :}
+   c slot VVIEW
+   IR-VERIFY:DERIVE-EDGES ;
 
 public
 
@@ -1439,14 +1471,38 @@ public
 \ narrower signature.
 : FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b USE {: slot:n :}
-   slot BGEN@ STG-CLEAR-CK
-   slot CEILINGS-CK
-   slot TABLES-LIVE-CK
+   c b PUBLISH-CK {: slot:n :}
    c slot VERIFY-CK
-   slot TABLES-FREEZE
-   ST-FROZEN slot BSTATE!
-   slot BGEN@ MINT-M ;
+   slot PUBLISH-M ;
+
+\ Publish a module this compilation will NOT emit, deriving its edge table
+\ without verifying it whole. Everything else is FREEZE: the same ownership
+\ gate, the same refusal arms before the first table freezes, the same module
+\ identity, and the same published views afterwards.
+\
+\ WHY THERE ARE TWO. Section 6.5's verification is the gate on a module that
+\ becomes a routine, and it costs a full walk of every table. A chain of passes
+\ ran it once per module per word - three times for a two-operation body - and
+\ each run re-derived the same facts about the same code in a new numbering.
+\ The module a pass hands to the next pass is not a routine and is read by that
+\ one pass; the module that IS emitted is verified whole, from its own tables,
+\ trusting nothing any earlier freeze decided. So the strength stays where the
+\ published code is and the repetitions go.
+\
+\ WHAT A CALLER GIVES UP. On an interim module these are no longer checked:
+\ block and operation window coverage, a block's parent, one terminator per
+\ block, one definition per value, function linkage, block and function spans,
+\ every operation against its opcode's schema, successor argument counts and
+\ types, and dominance. A defect in any of them either reaches the emitted
+\ module, where VERIFY names it, or is erased by the pass that reads it - in
+\ which case it was never in the published routine. What is lost is the
+\ localisation, not the refusal: the verifier names the emitted module's own
+\ tables rather than the earlier module the fault came from.
+: FREEZE-INTERIM ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b PUBLISH-CK {: slot:n :}
+   c slot DERIVE-CK
+   slot PUBLISH-M ;
 
 \ Give the module up. Every stage this builder holds goes back to its authority,
 \ all fifteen tables are retired at once - which releases their registry slots

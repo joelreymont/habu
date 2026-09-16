@@ -1394,6 +1394,10 @@ public
 \ ---- the pass ----------------------------------------------------------------
 \ The bytes are the source text the old module was compiled from, proved by
 \ digest before any span is carried across.
+\
+\ The module this writes is HIR, so selection reads it next and the module that
+\ is emitted is the one selection writes: it is frozen interim, deriving the
+\ edge table without the whole-module check.
 : REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
    BND-TAKE
@@ -1406,7 +1410,7 @@ public
    c b p u SOURCE!
    FUN-COUNT 1 <> if E-NLOOP-PLAN throw then
    MKEY 0 IR-ID:PACK-FUN WALK-FUN
-   c b IR-BUILD:FREEZE ;
+   c b IR-BUILD:FREEZE-INTERIM ;
 
 \ A caller compares it with what the scan promised, so a walk that folded a
 \ different number is a refusal rather than a module nobody checked.
