@@ -76,6 +76,13 @@ using A64ASM
 
 : STRW, ( n n n -- )  ENC-STRW EMITW ;
 
+\ The writeback pair the data stack is moved with: a push is one post-indexed
+\ store and a pop is one pre-indexed load. The offset is the byte distance the
+\ base register travels, so it is +8 for a push and -8 for a pop.
+: STRPOST, ( n n n -- )  ENC-STRPOST EMITW ;
+
+: LDRPRE, ( n n n -- )  ENC-LDRPRE EMITW ;
+
 : LDAR, ( n n -- )  ENC-LDAR EMITW ;
 
 : STLR, ( n n -- )  ENC-STLR EMITW ;

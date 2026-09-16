@@ -322,6 +322,21 @@ public
 
 : ENC-STUR ( n n n -- n ) XRDI ?SIMM9 $F8000000 RRSI ;
 
+\ The same signed field again, with the base register written back, which is one
+\ instruction for the pointer move a stack push, a stack pop and a link-register
+\ frame each used two for. Bits 11:10 of the unscaled encoding above name the
+\ mode: 00 is the plain offset LDUR/STUR pack, 01 is post-index (transfer at the
+\ base, THEN base += imm) and 11 is pre-index (base += imm, then transfer
+\ there). The offset is a byte count in both, so it is the amount the base
+\ moves, not a scaled slot number.
+: ENC-LDRPOST ( n n n -- n ) XRDI ?SIMM9 $F8400400 RRSI ;
+
+: ENC-STRPOST ( n n n -- n ) XRDI ?SIMM9 $F8000400 RRSI ;
+
+: ENC-LDRPRE ( n n n -- n ) XRDI ?SIMM9 $F8400C00 RRSI ;
+
+: ENC-STRPRE ( n n n -- n ) XRDI ?SIMM9 $F8000C00 RRSI ;
+
 : ENC-LDRW ( n n n -- n ) XRDI 4 SCALE/ ?IMM12 $B9400000 RRI ;
 
 : ENC-STRW ( n n n -- n ) XRDI 4 SCALE/ ?IMM12 $B9000000 RRI ;
@@ -335,6 +350,12 @@ public
 : ENC-LDURD ( n n n -- n ) DRXN ?SIMM9 $FC400000 RRSI ;
 
 : ENC-STURD ( n n n -- n ) DRXN ?SIMM9 $FC000000 RRSI ;
+
+\ The writeback modes the D file needs: a float push is a post-index store and a
+\ float pop is a pre-index load, the same two bits in the same two positions.
+: ENC-LDRDPRE ( n n n -- n ) DRXN ?SIMM9 $FC400C00 RRSI ;
+
+: ENC-STRDPOST ( n n n -- n ) DRXN ?SIMM9 $FC000400 RRSI ;
 
 : ENC-LDAR ( n n -- n ) XR2 5 lshift or $C8DFFC00 or MSK ;
 

@@ -210,6 +210,13 @@ SUITE compiler-tier1-inline-prims
    test/compiler/tier1-inline-prims.f
 ;SUITE
 
+\ The writeback addressing modes, beside the package boundary that publishes
+\ them. They are the one-instruction spelling of every pointer move the engine
+\ and the native compiler make, so a wrong mode bit is a wrong stack.
+SUITE compiler-a64-indexed
+   test/compiler/a64-indexed.f
+;SUITE
+
 SUITE compiler-native-a64ir
    test/compiler/native-a64ir.f
 ;SUITE
