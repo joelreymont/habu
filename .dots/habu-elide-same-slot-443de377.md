@@ -1,0 +1,9 @@
+---
+title: Elide same-slot reload and store-back pairs in tier 1
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-16T11:59:50.339658+03:00"
+---
+
+Problem: the tier-1 register allocator emits ldr xN,[sp,#k] immediately followed by str xN,[sp,#k] for every local that stays live across a call, at every call site and join: 43,153 such pairs in the 2.24 MB baked engine (15.4 percent of all baked code), 38,798 of them provably dead because the loaded register is overwritten by the next instruction; RD@ (src/compiler/ir/arena.f) is 202 instructions for four loads and three compares and alone carries 24 pairs; weighted by perf samples the pairs are 9.3 percent of the 138 s self-build (LESSONS.md 2026-09-16, workspace hazel-build-profile). Reproducer, no build needed: 1 set-tier : HELP ( n -- n ) 1 + ; : T4 ( n n -- n ) {: a:n b:n :} a 0 < if -1 throw then b HELP {: c:n :} c 0 < if -2 throw then b HELP {: d:n :} d 0 < if -3 throw then a b + c + d + ; compiles to 112 instructions with 12 dead pairs. Cause (read from source, to be confirmed by instrumenting): src/compiler/native/regalloc.f MB-PLAN-STORES plans a P-STORE for a result in slot k while MB-PLAN-LOADS1 plans a P-RELOAD for an operand in the same slot k, and src/compiler/native/spill.f materializes both without asking whether source slot equals destination slot. Acceptance: the planner drops the identity copy (or the coalescer deletes the copy op), a regression fixture asserts zero adjacent same-slot ldr/str pairs in the T4 span and that T4 still computes correctly, the baked engine shrinks by roughly the pair bytes, self-build time recorded before and after, byte fixpoint, full gate. Files: src/compiler/native/regalloc.f, src/compiler/native/spill.f, a new test under test/compiler/. Verify: the fixture through bin/hb, then tools/native-build.f twice and cmp. Depends: none. Ownership: hazel line. Claim: unassigned.
