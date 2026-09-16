@@ -45,43 +45,120 @@ variable FFI-T-MATH
 DEFTYPE FFI-DEV
 DEFTYPE FFI-CTX
 
-\ Every trusted test helper below is a fixed local stub or exact FFI schema;
-\ no raw ABI surface escapes. Retirement owner: habu-ptx-m1-c-1df1d6e7.
-\ Exact strlen binding: one read-only pointer.
-TRUSTED: FFI-T-STRLEN$ ( ptr u8 -- n ) {: str:ptr :}
-   s" strlen" FFI-T-SYM$ {: fn:n :}
-   FFI:RESET
-   str 0 FFI:READABLE!
-   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
+\ The libc bindings are FUNCTION: declarations: the declared effect is the
+\ generated word's effect and decides every argument's staging. What stays
+\ TRUSTED: below is the raw-stub half of this suite - five cp@/patch32 code
+\ minters and the five fixtures that call a stub address - because a
+\ declaration models a C function, and a code-injection minter and a
+\ deliberately non-AAPCS64 stub are neither.
 
-\ Exact strncmp binding: two read-only pointers and one scalar length.
-TRUSTED: FFI-T-STRNCMP$ ( ptr u8 ptr u8 n -- n )
-   {: a:ptr b:ptr len:n :}
-   s" strncmp" FFI-T-SYM$ {: fn:n :}
-   FFI:RESET
-   a 0 FFI:READABLE!
-   b 1 FFI:READABLE!
-   len 2 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 3 fn ffi-call-bounded ;
+PROCESS-SYMBOLS
+FUNCTION: FFI-T-STRLEN$ strlen ( ptr u8 -- n ) ;FUNCTION
+FUNCTION: FFI-T-STRNCMP$ strncmp ( ptr u8 ptr u8 n -- n ) ;FUNCTION
+FUNCTION: FFI-T-GETPID$ getpid ( -- n ) ;FUNCTION
+FUNCTION: FFI-T-CTX-CALL getpid ( n -- n ) ;FUNCTION
 
-\ Exact zero-argument getpid binding.
-TRUSTED: FFI-T-GETPID$ ( -- n )
-   s" getpid" FFI-T-SYM$ {: fn:n :}
-   FFI:RESET
-   FFI:ARGS FFI:REG-LENS 0 fn ffi-call-bounded ;
+\ A declaration with no result drops the machine return cell, so the word is
+\ stack-neutral for its caller.
+FUNCTION: FFI-T-VOID$ getpid ( -- ) ;FUNCTION
 
-\ Nominal-input fixture proves ABI-cell identity does not erase a role.
-TRUSTED: FFI-T-CTX-SET ( ffi-ctx -- rc ) {: ctx:ffi-ctx :}
-   s" getpid" FFI-T-SYM$ {: fn:n :}
-   FFI:RESET
-   ctx 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
+\ Resolution happens inside the call, after the arguments are staged: DLSYM
+\ marshals through its own buffer, so a symbol resolved for the first time here
+\ cannot overwrite the pending argument. This row's first call is that case.
+FUNCTION: FFI-T-STRLEN-LATE strlen ( ptr u8 -- n ) ;FUNCTION
 
-\ Exact void-result binding drops the machine return cell here.
-TRUSTED: FFI-T-VOID$ ( -- )
-   s" getpid" FFI-T-SYM$ {: fn:n :}
-   FFI:RESET
-   FFI:ARGS FFI:REG-LENS 0 fn ffi-call-bounded drop ;
+\ The writable form: memcpy's destination is written and its extent is the
+\ third argument, so the bounded call guards exactly that span.
+FUNCTION: FFI-T-MEMCPY memcpy ( ptr u8 ptr u8 n -- n )
+   0 2 WRITES-ARG
+;FUNCTION
+
+\ Nominal-input fixture proves ABI-cell identity does not erase a role: the
+\ conversion is visible at this call site and the checker keeps ffi-ctx apart
+\ from ffi-dev.
+: FFI-T-CTX-SET ( ffi-ctx -- rc )
+   FFI-CTX>N FFI-T-CTX-CALL >RC ;
+
+\ The declarer's contract to the loader's audited evaluate: a declaration
+\ defines words and leaves the stack exactly as it found it. Measured across a
+\ real declaration rather than asserted in a comment.
+variable FFI-T-DEPTH-BEFORE
+variable FFI-T-DEPTH-AFTER
+
+: FFI-T-DEPTH! ( ptr n -- ) depth swap ! ;
+
+FFI-T-DEPTH-BEFORE FFI-T-DEPTH!
+FUNCTION: FFI-T-DEPTH-PROBE getpid ( -- n ) ;FUNCTION
+FFI-T-DEPTH-AFTER FFI-T-DEPTH!
+
+\ Declarations the declarer must refuse. Each rides INCLUDE-EVALUATE so the
+\ refusal is the throw a file-level declaration would raise, and each names one
+\ structural rule: a pointer without its byte pointee, two results, an extent
+\ that is not a positive width, an extent argument that is not a value, an
+\ extent index past the arity, and more registers than the ABI call packs.
+: FFI-T-BAD-PTR ( -- )
+   s" FUNCTION: FFI-T-X1 getpid ( ptr -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-BAD-RESULTS ( -- )
+   s" FUNCTION: FFI-T-X2 getpid ( -- n n ) ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-BAD-EXTENT ( -- )
+   s" FUNCTION: FFI-T-X3 getpid ( ptr u8 -- n ) 0 0 WRITES-BYTES ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-BAD-EXTENT-ARG ( -- )
+   s" FUNCTION: FFI-T-X4 getpid ( ptr u8 ptr u8 -- n ) 0 1 WRITES-ARG ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-BAD-EXTENT-INDEX ( -- )
+   s" FUNCTION: FFI-T-X5 getpid ( ptr u8 -- n ) 3 $10 WRITES-BYTES ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-BAD-FLOAT-ARITY ( -- )
+   s" FUNCTION: FFI-T-X6 getpid ( r r r r r r r r r -- r ) ;FUNCTION" INCLUDE-EVALUATE ;
+\ A library selection belongs to the scope that states it, and there is no
+\ default: a declaration in a scope that never stated one is refused by name,
+\ so a file cannot inherit the library the previously loaded file selected.
+\ Both cases run in this package's PUBLIC section, a wordlist the file's own
+\ PROCESS-SYMBOLS - stated in the private section - never selected for. A
+\ package of its own would say the same thing, but `package` inside `package
+\ FFI-TEST` is nesting and rejects.
+variable FFI-T-SCOPE-BEFORE
+variable FFI-T-SCOPE-AFTER
+
+: FFI-T-NO-LIBRARY ( -- )
+   s" public FUNCTION: FFI-T-XC getpid ( -- n ) ;FUNCTION"
+   INCLUDE-EVALUATE ;
+: FFI-T-PRIVATE-AGAIN ( -- )
+   s" private" INCLUDE-EVALUATE ;
+\ The scoped selection above is the public section's, so this file's own scope
+\ states its selection again before the fixtures that follow declare in it.
+: FFI-T-RESELECT ( -- )
+   s" private PROCESS-SYMBOLS" INCLUDE-EVALUATE ;
+: FFI-T-SCOPED-LIBRARY ( -- )
+   s" public PROCESS-SYMBOLS FUNCTION: FFI-T-XD getpid ( -- n ) ;FUNCTION private"
+   INCLUDE-EVALUATE ;
+
+\ A refused declaration is ABANDONED, not left half open. The refusal below
+\ names an argument the effect does not have; the good declaration after it must
+\ still compile, and the pair must leave the stack where it found it. Without
+\ that the next declaration in a file refuses too and the first diagnostic names
+\ the wrong one.
+variable FFI-T-PAIR-BEFORE
+variable FFI-T-PAIR-AFTER
+
+: FFI-T-REFUSED-CLAUSE ( -- )
+   s" FUNCTION: FFI-T-XA getpid ( ptr u8 -- n ) 9 $10 WRITES-BYTES ;FUNCTION"
+   INCLUDE-EVALUATE ;
+: FFI-T-GOOD-AFTER ( -- )
+   s" FUNCTION: FFI-T-XB getpid ( -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
+
+\ A declaration that never closes defines nothing, and the next FUNCTION:
+\ refuses because one is still open. Closing it by hand restores the declarer,
+\ and a closer with nothing open is refused in turn.
+: FFI-T-BAD-UNCLOSED ( -- )
+   s" FUNCTION: FFI-T-X7 getpid ( -- n ) FUNCTION: FFI-T-X8 getpid ( -- n )"
+   INCLUDE-EVALUATE ;
+: FFI-T-CLOSE-DANGLING ( -- )
+   s" ;FUNCTION" INCLUDE-EVALUATE ;
+: FFI-T-REDECLARE ( -- )
+   s" FUNCTION: FFI-T-X9 getpid ( -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
+
+\ A declared symbol that no library carries: the failure is named and lands at
+\ the first call, never at the declaration.
+FUNCTION: FFI-T-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION
 
 : FFI-T-CHECK-PASSES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -117,13 +194,6 @@ TRUSTED: FFI-T-FADD-FSTACK ( -- n ) cp@ {: fn:n :}
 
 TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
    $F9000100 fn patch32  $D65F03C0 fn $4 + patch32  fn ;
-
-\ Late strlen resolution proves loader scratch cannot overwrite staged args.
-TRUSTED: FFI-T-STRLEN-LATE ( ptr u8 -- n ) {: str:ptr :}
-   FFI:RESET
-   str 0 FFI:READABLE!
-   FFI-T-STRLEN FFI-T-SYM {: fn:n :}
-   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
 
 \ Exact ten-integer binding covers x0-x7 and two stack-spilled cells.
 TRUSTED: FFI-T-SUM10-CALL ( -- n )
@@ -164,13 +234,20 @@ TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    0 FFI-T-X8-STORE ffi-call-abi-bounded ;
 
-\ Exact libm square-root binding returns one float.
-TRUSTED: FFI-T-SQRT-CALL ( r -- r ) {: value:r :}
-   FFI-T-SQRT FFI-T-MSYM {: fn:n :}
-   FFI:RESET
-   value 0 FFI:FLOAT!
-   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
-   0 fn ffi-call-abi-r-bounded ;
+\ The libm square root: a float argument and a float result, so the declaration
+\ rides the AAPCS64 call. The library is chosen at load time because the two
+\ targets keep it in different files, which is what the runtime-string form of
+\ LIBRARY is for.
+: FFI-T-SELECT-MATH ( -- )
+   HB-TARGET-MACOS? if
+      s" /usr/lib/libSystem.B.dylib"
+   else
+      s" libm.so.6"
+   then FFI-DECL:SELECT-LIBRARY ;
+
+FFI-T-SELECT-MATH
+FUNCTION: FFI-T-SQRT-CALL sqrt ( r -- r ) ;FUNCTION
+PROCESS-SYMBOLS
 
 : FFI-RUN ( -- )
    T-RESET
@@ -195,8 +272,9 @@ TRUSTED: FFI-T-SQRT-CALL ( r -- r ) {: value:r :}
    s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
    s" FFI-T-ROLE-BAD ( ffi-dev -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-REJECTS
 
-   \ FFI-CALLN with INTERLEAVED resolve: fill the arg, THEN resolve via DLSYM.
-   \ DLSYM uses its own FFI-DLBUF, so slot 0 survives -> strlen("hello")==5.
+   \ INTERLEAVED resolve: this row's symbol is still unresolved, so the call
+   \ stages slot 0 and only then reaches DLSYM, which marshals through its own
+   \ FFI-DLBUF -> the staged argument survives and strlen("hello") is 5.
    FFI-T-HELLO FFI-T-STRLEN-LATE 5 T=
    \ 10-arg call: x0..x7 + 2 stack-spilled args, sum 1..10 == 55
    FFI-T-SUM10-CALL 55 T=
@@ -209,6 +287,47 @@ TRUSTED: FFI-T-SQRT-CALL ( r -- r ) {: value:r :}
    FFI-T-X8-OUT @ 42 T=
 
    9.0 FFI-T-SQRT-CALL 3.0 f= T-ASSERT
+
+   \ The declaration is stack-neutral: it defines a word and nothing else, which
+   \ is what the loader's audited evaluate is entitled to assume.
+   s" a declaration leaves the stack as it found it" T-LABEL
+   FFI-T-DEPTH-AFTER @ FFI-T-DEPTH-BEFORE @ T=
+   FFI-T-DEPTH-PROBE 0 T<>
+
+   \ memcpy writes its destination and the extent is argument 2.
+   FFI-T-CSTR-DST FFI-T-HELLO 6 FFI-T-MEMCPY drop
+   FFI-T-CSTR-DST FFI-T-STRLEN$ 5 T=
+
+   \ A symbol nothing carries fails at the CALL, by name, not at the declaration.
+   [: FFI-T-ABSENT drop ;] E-FFI-DLSYM TTHROWSQ
+
+   \ What the declarer refuses, one structural rule each.
+   [: FFI-T-BAD-PTR ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-RESULTS ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-EXTENT ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-EXTENT-ARG ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-EXTENT-INDEX ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-BAD-FLOAT-ARITY ;] E-FFI-ARITY TTHROWSQ
+   s" a library selection is scoped to the scope that states it" T-LABEL
+   FFI-T-SCOPE-BEFORE FFI-T-DEPTH!
+   [: FFI-T-NO-LIBRARY ;] E-FFI-LIBRARY TTHROWSQ
+   FFI-T-PRIVATE-AGAIN
+   [: FFI-T-SCOPED-LIBRARY ;] 0 TTHROWSQ
+   FFI-T-RESELECT
+   FFI-T-SCOPE-AFTER FFI-T-DEPTH!
+   FFI-T-SCOPE-AFTER @ FFI-T-SCOPE-BEFORE @ T=
+
+   s" a refused declaration is abandoned, not left open" T-LABEL
+   FFI-T-PAIR-BEFORE FFI-T-DEPTH!
+   [: FFI-T-REFUSED-CLAUSE ;] E-FFI-SYNTAX TTHROWSQ
+   [: FFI-T-GOOD-AFTER ;] 0 TTHROWSQ
+   FFI-T-PAIR-AFTER FFI-T-DEPTH!
+   FFI-T-PAIR-AFTER @ FFI-T-PAIR-BEFORE @ T=
+
+   [: FFI-T-BAD-UNCLOSED ;] E-FFI-SYNTAX TTHROWSQ
+   FFI-T-CLOSE-DANGLING
+   [: FFI-T-REDECLARE ;] 0 TTHROWSQ
+   [: FFI-T-CLOSE-DANGLING ;] E-FFI-SYNTAX TTHROWSQ
 
    s" FFI-T-RAW ( ptr a ptr a n n -- n ) ffi-call-bounded" FFI-T-CHECK-REJECTS
    s" FFI-T-RAW-ABI ( ptr a ptr a ptr a ptr a ptr a n n -- n ) ffi-call-abi-bounded" FFI-T-CHECK-REJECTS
