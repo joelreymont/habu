@@ -293,12 +293,15 @@ after staging without another task corrupting the pending call. Calls still must
 not nest within one task. `FFI:KPARAM-VALUE+` stores a scalar in task-owned
 storage until `FFI:KPARAM-RESET`; `FFI:KPARAM+` stores a caller-owned pointer.
 
-The checked call surface consists only of explicit per-symbol `TRUSTED:` words.
-There is no binding generator and no public universal call word. Each wrapper is
-a manifest-reviewed assertion of one external ABI contract: it resolves one
-symbol, fixes every value/read/write direction and writable extent, invokes a
-checker-`TRUSTED`-only trampoline, and returns either one machine result or no
-result. Multiple-result C ABIs require an explicit x8/sret wrapper and writable
+The checked call surface is the `FUNCTION:` declarer, and there is still no
+public universal call word: a declaration registers a row inside package `FFI`
+and the word it generates names that row's INDEX, so a checked caller can reach
+only a symbol some declaration published and never an address of its own
+choosing. The foreign-call trampolines stay checker-`TRUSTED`-only globally and
+carry an owner-private row for package `FFI`, which is what lets the package's
+own bodies be ordinary checked Habu. A declaration fixes every value/read/write
+direction and writable extent and returns one machine result or none.
+Multiple-result C ABIs still require an explicit x8/sret wrapper and writable
 extent; declaring multiple stack outputs over one x0 return is rejected.
 
 The staging words (`FFI:VALUE!`, `FFI:READABLE!`, `FFI:WRITABLE!`, and the mixed
@@ -320,26 +323,36 @@ both wordlists after definition, so later source cannot reopen them, add a call,
 or redirect a symbol.
 
 `FFI:DLSYM` uses a dedicated task-DATA loader block, so it cannot overwrite a
-staged call. Wrappers still resolve before staging to keep the foreign-call
-transaction linear. Long-lived libraries such as `TASK` resolve required symbols at load and
-store them as private constants. Optional libraries resolve their symbols inside
-each explicit wrapper before `FFI:RESET`, then stage and call without exporting a
+staged call: a declaration resolves its symbol inside the call, after its
+arguments are staged, and caches the address for the process. Package `FFI`
+registers one `IMAGE-LIFECYCLE` hook that clears every cached address, so a
+restored image re-resolves against its new process, and no consumer exports a
 mutable function-pointer cell.
 
-An exact binding has this shape:
+A binding is a declaration:
 
 ```forth
-TRUSTED: WRITE-ONE ( ptr a n -- n ) {: out:ptr value:n :}
-   s" write_one" SYMBOL {: fn:n :}
-   FFI:RESET
-   out 8 0 FFI:WRITABLE!
-   value 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 fn ffi-call-bounded ;
+LIBRARY libc.so.6                       \ or PROCESS-SYMBOLS for RTLD_DEFAULT
+FUNCTION: WRITE-ONE write_one ( ptr u8 n -- n )
+   0 $08 WRITES-BYTES                   \ argument 0 is written, eight bytes
+;FUNCTION
 ```
 
-The wrapper's checked callers cannot reclassify `out` or change its eight-byte
-extent. The boundary's source-local rationale owns the symbol contract; focused
-tests cover the writer guard and the checked public effect.
+The declared effect is the generated word's effect and decides the staging:
+`n` is a `FFI:VALUE!`, `r` a `FFI:FLOAT!`, and `ptr u8` a read-only
+`FFI:READABLE!` unless a clause names it written - `idx len WRITES-BYTES` for a
+fixed width, `idx arg WRITES-ARG` when another argument carries the length. The
+clauses are words the interpreter runs between the two keywords, so their
+numbers are ordinary literals. `LIBRARY` and `PROCESS-SYMBOLS` select for the
+declarations that follow and the selection belongs to the scope that states it -
+the package section, or the global scope, the declarations land in. There is no
+default: a declaration with no selection in its own scope is `E-FFI-LIBRARY`, so
+one file cannot inherit the library another happened to select. A checked caller
+cannot reclassify an argument or
+change its extent; an absent symbol is `E-FFI-DLSYM` at the first call, never at
+the declaration; and `FFI:ERRNO ( -- n )` is the one errno binding every
+consumer shares. `lib/ffi-test.f` covers the declarer, including the refusals and
+the invariant that a declaration leaves the stack as it found it.
 
 ```forth
 FFI:RESET         ( -- )

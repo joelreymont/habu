@@ -155,6 +155,9 @@
 -3500 constant E-FFI-ARITY
 -3501 constant E-FFI-SYNTAX
 -3502 constant E-FFI-DLSYM
+\ FUNCTION: with no library selected in the declaring scope: state LIBRARY or
+\ PROCESS-SYMBOLS beside the declarations rather than inherit another file's.
+-3503 constant E-FFI-LIBRARY
 
 \ Tasking/threads: -3600..-3699
 -3600 constant E-TASK-FIRST
