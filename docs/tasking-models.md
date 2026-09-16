@@ -175,15 +175,15 @@ notes as a CPU hog when no delay is involved.
 `lib/task.f` provides `TASK:TASK`, `PREPARE`, `ACTIVATE` (takes an xt),
 `PAUSE`, `HALT` (cooperative, observed at `PAUSE`), `KILL` (join and free),
 `SELF`, `+USER`, `HIS`, `FACILITY` with `GET` and `RELEASE` (owner-tracked
-pthread mutex) and atomics. The runner catches the worker xt and then calls
-`die`, so an uncaught throw ends the process. There is no semaphore, message,
+pthread mutex) and atomics. The runner catches the worker xt; since commit 9de16800 an uncaught throw
+is recorded in the task control block (`TASK:THROW@`) and ends only that task. There is no semaphore, message,
 event, queue or result. Compilation is forbidden while tasks live.
 
 ## 5. What to adopt
 
 | Gap | Model to follow | Dot |
 | --- | --- | --- |
-| A worker throw ends the process | SwiftForth trampoline: catch, record, end the thread only | `habu-contain-a-worker-fe0c8eb8` |
+| A worker throw ends the process | SwiftForth trampoline: catch, record, end the thread only | `habu-contain-a-worker-fe0c8eb8`, done in 9de16800 |
 | Waiting means polling | SwiftForth `SEMAPHORE` names, VFX counted semantics, SwiftX-ARM Linux condition variables; also gives blocking `HALT`/`RESTART` | `habu-add-a-blocking-fd79b713` |
 | No result from a worker | VFX exit code and `AtTaskExit`, returned as `result<ok,err>` from a typed join | `habu-return-a-typed-b1c342cd` |
 | No channel between tasks | VFX one-cell mailbox words and a typed bounded queue in the `CQueues` shape, blocking on the semaphore | `habu-add-task-msgs-c5a6af71` |

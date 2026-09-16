@@ -22,7 +22,7 @@ generated code depends on most.
 
 | Priority | Gap | Follow | Dot |
 | --- | --- | --- | --- |
-| 1 | A worker throw ends the process | SwiftForth trampoline | `habu-contain-a-worker-fe0c8eb8` |
+| 1 | A worker throw ends the process | SwiftForth trampoline | `habu-contain-a-worker-fe0c8eb8`, done in 9de16800 |
 | 1 | No blocking wait, only polling | SwiftForth/VFX semaphore | `habu-add-a-blocking-fd79b713` |
 | 1 | No TCP | SwiftForth verbs, `UDP4` typing | `habu-add-tcp-sockets-fb1d351e` |
 | 2 | No result from a joined task | VFX exit code and cleanup, Habu `result` | `habu-return-a-typed-b1c342cd` |
