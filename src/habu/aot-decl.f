@@ -140,6 +140,12 @@ variable AOT-REC-N
 \ Named without the AOT- prefix the older tails here carry: that prefix is the
 \ recorded debt this file's header names, and a new name does not join it.
 12 constant SITE-ROW
+\ What the IMAGE carries for the same site: the callee's index in the dictionary
+\ the boot builds, and nothing else. The capture's name and scope are the only
+\ identity a host record has that survives into another process, so the buffer
+\ above keeps them; the image bakes the callee itself and can name it by
+\ position (habu2.f EMIT-AOT-SITES binds, EM-AOT-PATCH-SITES relocates).
+8 constant SITE-BIND-ROW
 $FFFFFFFE constant WID-QUAL
 
 \ The guarded core captures 124,137 call rows. Add 25% headroom and round up
@@ -470,7 +476,7 @@ public
    15 cells
    AOT-BLOB-LEN @ +BYTES
    AOT-REC-N @ AOT-CREC-ROW +ROWS
-   AOT-SITE-N @ SITE-ROW +ROWS
+   AOT-SITE-N @ SITE-BIND-ROW +ROWS
    AOT-NAMES-LEN @ +BYTES
    AOT-DSITE-N @ 4 +ROWS
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW +ROWS

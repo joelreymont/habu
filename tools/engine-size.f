@@ -290,7 +290,7 @@ variable CAND        variable ACC
 \ engine cannot load, the same reason tools/data-table-census.f mirrors the
 \ payload's 8-byte run row. A width this file gets wrong cannot pass unnoticed:
 \ the walk stops landing on the image's own content end.
-12 constant SITE-ROW                              \ blob-off u32, name-off u32, callee scope u32
+8 constant SITE-ROW                               \ blob-off u32, callee dictionary index u32
 8 constant XTOFF-ROW                              \ location u32, typed target u32
 8 constant RUN-ROW                                \ window offset u32, length u32
 8 constant XTSITE-ROW                             \ blob-off u32, name-off u32
@@ -564,7 +564,10 @@ variable WID-CAP
    s" unmapped-wordlist" ;
 
 \ Pool entries are deduplicated, so a name's bytes belong to the set of roles
-\ that reference it. The bytes that would leave the image with the private
+\ that reference it. A call site no longer references one: the build binds its
+\ callee to a dictionary index (src/habu/habu2.f EMIT-AOT-SITES), so the names
+\ the capture pooled for those callees are carried by nothing and land in the
+\ unreferenced row. The bytes that would leave the image with the private
 \ records are the entries NOTHING ELSE references, so the mask is per entry.
 DYNAMIC-BUFFER PMASK n
 1 constant M-GLOBAL
@@ -590,7 +593,6 @@ DYNAMIC-BUFFER PMASK n
       i CREC-PKG? if i CREC-NAME-OFF M-OTHER PMASK+
       else i CREC-NAME-OFF i CREC-ROLE ROLE-BIT PMASK+ then
    loop
-   SITE-N @ 0 ?do  SITE0 @ i SITE-ROW * + 4 + U32@ M-SITE PMASK+  loop
    XTSITE-N @ 0 ?do  XTSITE0 @ i XTSITE-ROW * + 4 + U32@ M-SITE PMASK+  loop ;
 
 : POOL-ONLY-BYTES ( n -- n ) {: mask:n :}
@@ -634,54 +636,48 @@ DYNAMIC-BUFFER RNAME n
    s" package rows" ROLE-N .CLASS-ROW
    s" name pool entries reachable only from private records, bytes " type
    M-PRIVATE POOL-ONLY-BYTES FMT:.U cr
-   s" name pool entries reachable only from call sites, bytes " type
-   M-SITE POOL-ONLY-BYTES FMT:.U cr ;
+   s" name pool entries reachable only from named code sites, bytes " type
+   M-SITE POOL-ONLY-BYTES FMT:.U cr
+   s" name pool entries nothing in the image references, bytes " type
+   0 POOL-ONLY-BYTES FMT:.U cr ;
 
-\ ---- what the baked call sites name --------------------------------------------
-\ Every site is (blob offset, name offset, callee scope): the boot resolves the
-\ name in that scope at every start (src/habu/habu2.f EM-AOT-PATCH-SITES). What
-\ the sites actually name decides what binding them at build time would cost, so
-\ it is measured rather than assumed.
+\ ---- what the baked call sites bind to ----------------------------------------
+\ Every site is (blob offset, callee dictionary index): the build resolved the
+\ callee's name against the two tables the image bakes and the boot loads
+\ dict[k][0] (src/habu/habu2.f EMIT-AOT-SITES binds, EM-AOT-PATCH-SITES
+\ relocates). An index below the seeded primitive count names a primitive;
+\ anything above it names one of the payload's own records.
 DYNAMIC-BUFFER SMASK n
-variable SITE-GLOBAL   variable SITE-SCOPED
-variable SITE-NAMES    variable SITE-PRIMS
-
-: PRIM-NAMED? ( n n -- bool ) {: at:n len:n :}
-   PDICT-N @ 0 ?do
-      PDICT @ i PREC * + PREC-NAME {: pat:n plen:n :}
-      plen len = if
-         pat at len IMAGE-AT= if true unloop exit then
-      then
-   loop
-   false ;
+variable SITE-PRIMS    variable SITE-RECS
+variable SITE-CALLEES  variable SITE-BAD
 
 : CENSUS-SITES ( -- )
-   NAMES-LEN @ 1+ SMASK-RESERVE
-   NAMES-LEN @ 1+ 0 ?do 0 i SMASK ! loop
-   0 SITE-GLOBAL !  0 SITE-SCOPED !  0 SITE-NAMES !  0 SITE-PRIMS !
+   REC-N @ PDICT-N @ + 1+ SMASK-RESERVE
+   REC-N @ PDICT-N @ + 1+ 0 ?do 0 i SMASK ! loop
+   0 SITE-PRIMS !  0 SITE-RECS !  0 SITE-CALLEES !  0 SITE-BAD !
    SITE-N @ 0 ?do
-      SITE0 @ i SITE-ROW * + {: row:n :}
-      row 8 + U32@ 0= if SITE-GLOBAL @ 1+ SITE-GLOBAL !
-      else SITE-SCOPED @ 1+ SITE-SCOPED ! then
-      row 4 + U32@ {: off:n :}
-      off NAMES-LEN @ < if 1 off SMASK ! then
-   loop
-   0 begin dup NAMES-LEN @ < while
-      dup SMASK @ 0<> if
-         SITE-NAMES @ 1+ SITE-NAMES !
-         dup POOL-TEXT PRIM-NAMED? if SITE-PRIMS @ 1+ SITE-PRIMS ! then
+      SITE0 @ i SITE-ROW * + 4 + U32@ {: k:n :}
+      k 0 < k REC-N @ PDICT-N @ + >= or if
+         SITE-BAD @ 1+ SITE-BAD !
+      else
+         k PDICT-N @ < if SITE-PRIMS @ 1+ SITE-PRIMS !
+         else SITE-RECS @ 1+ SITE-RECS ! then
+         k SMASK @ 0= if
+            1 k SMASK !  SITE-CALLEES @ 1+ SITE-CALLEES !
+         then
       then
-      dup POOL-BYTES +
-   repeat drop ;
+   loop ;
 
 : REPORT-SITES ( -- )
    CENSUS-SITES
-   cr s" baked call sites the boot resolves by name" type cr
+   SITE-BAD @ 0 > if
+      s" engine-size: a call site names no record in this image" RC die
+   then
+   cr s" baked call sites" type cr
    s"   sites " type SITE-N @ FMT:.U
-   s" , in the global wordlist " type SITE-GLOBAL @ FMT:.U
-   s" , in a package wordlist " type SITE-SCOPED @ FMT:.U cr
-   s"   distinct callee names " type SITE-NAMES @ FMT:.U
-   s" , of them seeded primitives " type SITE-PRIMS @ FMT:.U cr ;
+   s" , bound to seeded primitives " type SITE-PRIMS @ FMT:.U
+   s" , to payload records " type SITE-RECS @ FMT:.U cr
+   s"   distinct callees " type SITE-CALLEES @ FMT:.U cr ;
 
 \ ---- reachability --------------------------------------------------------------
 \ The same call graph src/habu/aot-closure.f walks for a stripped application:
