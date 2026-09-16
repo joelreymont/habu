@@ -59,6 +59,7 @@ DB:INT+             ( DB:connection n -- )
 DB:NULL+            ( DB:connection -- )
 
 DB:EXEC             ( DB:connection ptr u8 n -- DB:result )
+DB:SCRIPT           ( DB:connection ptr u8 n -- DB:result )
 DB:PREPARE          ( DB:connection ptr u8 n ptr u8 n -- DB:result )
 DB:EXEC-PREPARED    ( DB:connection ptr u8 n -- DB:result )
 DB:WITH-TRANSACTION ( DB:connection [ DB:connection -- DB:connection ] -- )
@@ -140,6 +141,24 @@ boundary. `BEGIN`, `COMMIT` and `ROLLBACK` are this module's own fixed
 statements and run from a small per-connection buffer, which is why they leave
 a pending parameter list untouched.
 
+### Scripts
+
+`DB:SCRIPT` runs a whole script — a migration file, several statements in one
+text — through libpq's simple-query protocol, which is the only protocol that
+takes more than one statement: `DB:EXEC` and `DB:EXEC-PREPARED` ride the
+extended protocol, where a second command is SQLSTATE `42601`. Use `DB:SCRIPT`
+for scripts and migrations; `DB:EXEC` stays the default for everything else,
+because it is the one that takes parameters and it runs exactly one statement.
+
+libpq answers with the LAST statement's result, and a failing statement
+abandons the rest, so the same `DB:outcome` covers a script unchanged — a
+failure carries the failing statement's SQLSTATE and message. Measured:
+PostgreSQL runs a multi-statement simple query as ONE implicit transaction, so
+a statement that fails rolls the earlier ones back with it; a script is atomic
+even outside `DB:WITH-TRANSACTION`. The protocol carries no parameters at all,
+so a pending parameter list is a caller error and is refused with
+`DB:E-STATEMENT` rather than silently dropped, and so is an empty text.
+
 ### Transactions
 
 `DB:WITH-TRANSACTION` runs `BEGIN`, then the quotation, then `COMMIT`; a throw
@@ -168,7 +187,7 @@ example below does it.
 | `DB:E-HANDLE` | a handle another task owns, or one an image restore invalidated |
 | `DB:E-CAPACITY` | more live connections, results or parameters than the module stores |
 | `DB:E-PLATFORM` | `libpq.so.5` is not the shared-library name this target loads |
-| `DB:E-STATEMENT` | an empty statement text or prepared-statement name |
+| `DB:E-STATEMENT` | an empty statement text or prepared-statement name, or a `DB:SCRIPT` with parameters pending |
 
 The block is `-9250..-9259` in `lib/errors.f`.
 

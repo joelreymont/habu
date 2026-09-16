@@ -124,6 +124,7 @@ FUNCTION: PQ-CONNECTDB PQconnectdb ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: PQ-STATUS PQstatus ( ptr u8 -- n ) ;FUNCTION
 FUNCTION: PQ-ERROR-MESSAGE PQerrorMessage ( ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: PQ-FINISH PQfinish ( ptr u8 -- ) ;FUNCTION
+FUNCTION: PQ-EXEC PQexec ( ptr u8 ptr u8 -- ptr u8 ) ;FUNCTION
 FUNCTION: PQ-EXEC-PARAMS PQexecParams
    ( ptr u8 ptr u8 n ptr u8 ptr u8 ptr u8 ptr u8 n -- ptr u8 ) ;FUNCTION
 FUNCTION: PQ-PREPARE PQprepare ( ptr u8 ptr u8 ptr u8 n ptr u8 -- ptr u8 ) ;FUNCTION
@@ -607,6 +608,18 @@ FUNCTION: PQ-CMD-TUPLES PQcmdTuples ( ptr u8 -- ptr u8 ) ;FUNCTION
    slot res TOOK-RESULT ;
 
 
+\ The simple-query protocol. It takes no parameters at all, so a pending
+\ parameter list is a caller error with nowhere to go: refusing it by name
+\ beats dropping the values the caller believes it bound.
+: SCRIPT-RAW ( n ptr u8 n -- result ) {: slot:n a u:n :}
+   u 0 <= if E-STATEMENT throw then
+   slot PARAM-N@ 0 <> if E-STATEMENT throw then
+   a u slot ARENA-CSTR {: off:n :}
+   CLAIM-RES-SLOT {: res:n :}
+   slot CONN-PG@ slot ARENA-BASE off + PQ-EXEC
+   slot res TOOK-RESULT ;
+
+
 : RESULT-STATUS ( n -- n ) {: slot:n :}
    slot RES-PG@ PQ-RESULT-STATUS C-INT ;
 
@@ -783,6 +796,16 @@ public
 
 : EXEC ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
    handle CONN-SLOT a u EXEC-RAW ;
+
+
+\ SCRIPT runs a whole script - a migration file, several statements in one
+\ text - through the simple-query protocol, which is the only protocol that
+\ takes more than one statement: the extended protocol EXEC rides answers a
+\ second command with 42601. libpq returns the LAST statement's result and a
+\ failing statement abandons the rest, so the outcome ADT covers it unchanged.
+\ EXEC stays the default, because it is the one that takes parameters.
+: SCRIPT ( connection ptr u8 n -- result ) {: handle:connection a u:n :}
+   handle CONN-SLOT a u SCRIPT-RAW ;
 
 
 : PREPARE ( connection ptr u8 n ptr u8 n -- result )

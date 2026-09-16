@@ -371,6 +371,87 @@ variable STMT-U
    c ;
 
 
+\ ---- multi-statement scripts ----------------------------------------------
+\ SCRIPT is the only path that takes more than one statement; EXEC and
+\ EXEC-PREPARED ride the extended protocol, where a second command is 42601.
+\ MEASURED: PostgreSQL runs a multi-statement simple query as ONE implicit
+\ transaction, so a failing statement rolls the earlier ones back with it - the
+\ script is atomic even outside WITH-TRANSACTION.
+: MULTI-VIA-EXEC-CASES ( DB:connection -- DB:connection ) {: c :}
+   c PARAMS
+   c s" select 1; select 2" EXEC
+   dup OUTCOME-TAG TAG-FAILED T=
+   dup FAILED-SQLSTATE$ s" 42601" T$=
+   CLEAR
+   c ;
+
+
+: SCRIPT-OK-CASES ( DB:connection -- DB:connection ) {: c :}
+   c s" drop table if exists pqtscript; create table pqtscript (id int); insert into pqtscript values (7)"
+   SCRIPT
+   dup OUTCOME-TAG TAG-OK T=
+   dup AFFECTED COUNT>N 1 T=
+   CLEAR
+   c PARAMS
+   c s" select count(*) from pqtscript" EXEC {: r :}
+   r 0 >ROW 0 >COL INT 1 T=
+   r CLEAR
+   c ;
+
+
+: SCRIPT-FAIL-CASES ( DB:connection -- DB:connection ) {: c :}
+   c s" insert into pqtscript values (8); insert into pqtnosuch values (1)" SCRIPT
+   dup OUTCOME-TAG TAG-FAILED T=
+   dup FAILED-SQLSTATE$ s" 42P01" T$=
+   dup FAILED-MESSAGE$ nip 0 > TTRUE
+   CLEAR
+   c PARAMS
+   c s" select count(*) from pqtscript where id = 8" EXEC {: r :}
+   r 0 >ROW 0 >COL INT 0 T=
+   r CLEAR
+   c ;
+
+
+: SCRIPT-BODY ( DB:connection -- DB:connection )
+   dup s" insert into pqtscript values (9); insert into pqtscript values (10)" SCRIPT
+   dup OUTCOME-TAG TAG-OK T=
+   CLEAR
+   BOOM throw ;
+
+
+: SCRIPT-TX-RUN ( DB:connection -- DB:connection )
+   dup [: SCRIPT-BODY ;] WITH-TRANSACTION ;
+
+
+: SCRIPT-TX-CASES ( DB:connection -- DB:connection ) {: c :}
+   c [: SCRIPT-TX-RUN ;] catch {: stale-tx code:n :}
+   code BOOM T=
+   c PARAMS
+   c s" select count(*) from pqtscript where id in (9, 10)" EXEC {: r :}
+   r 0 >ROW 0 >COL INT 0 T=
+   r CLEAR
+   c ;
+
+
+: SCRIPT-EMPTY ( DB:connection -- DB:connection )
+   dup s" " SCRIPT CLEAR ;
+
+
+: SCRIPT-WITH-PARAMS ( DB:connection -- DB:connection )
+   dup PARAMS
+   dup 1 INT+
+   dup s" select 1" SCRIPT CLEAR ;
+
+
+: SCRIPT-REFUSAL-CASES ( DB:connection -- DB:connection ) {: c :}
+   c [: SCRIPT-EMPTY ;] catch {: stale-empty code:n :}
+   code E-STATEMENT T=
+   c [: SCRIPT-WITH-PARAMS ;] catch {: stale-params param-code:n :}
+   param-code E-STATEMENT T=
+   c PARAMS
+   c ;
+
+
 \ ---- slot recycling -------------------------------------------------------
 \ More statements than the registry has result slots: every CLEAR must hand its
 \ slot back or the run ends in DB:E-CAPACITY rather than an assertion.
@@ -461,6 +542,11 @@ TASK:MIN-STACK TASK:TASK FOREIGN-WORKER
    BIG-TEXT-CASES
    BIG-STATEMENT-CASES
    PARAM-COUNT-CASES
+   MULTI-VIA-EXEC-CASES
+   SCRIPT-OK-CASES
+   SCRIPT-FAIL-CASES
+   SCRIPT-TX-CASES
+   SCRIPT-REFUSAL-CASES
    CLEARED-CASES
    OWNER-CASES
    RECYCLE-CASES
