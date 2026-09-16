@@ -541,21 +541,115 @@ first crosses the guard page.
 
 ## Sampling profiler
 
-`n prof-on` starts a 1 ms SIGALRM timer and counts each tick against the
-dictionary word whose code holds the interrupted pc; at `n` samples it prints
-one `name count` line per counted word and exits 99. `prof-report` prints the
-same table on demand. Two extra rows can appear: `(other)` for ticks in Habu
-code that belongs to no word (the main loop, engine helpers) and `(foreign)`
-for ticks whose context does not hold the engine's DATA and dictionary base
-registers, which is what a foreign callee reached through the FFI (libc,
-libzip, the CUDA driver) leaves behind. `(foreign)` is a lower bound on
-foreign time: a foreign leaf that keeps those two registers intact is walked
-like Habu code and lands in `(other)`. The sum of every row equals the sample
-total. When the `n`-th sample is foreign the dump waits for the next Habu
-sample, so a program that exits or stays blocked in a foreign call from that
-point on never dumps; call `prof-report` yourself in that case. Profiling a
-foreign call is safe: the handler never reads the interrupted registers and
-keeps its state in the band above the data heap, so a clock query during a
-tick changes nothing. The handler runs on an alternate stack registered for
-the thread that called `prof-on`; a tick delivered to a `lib/task.f` thread
-runs on that thread's own stack.
+`n prof-on` arms a SIGALRM interval timer and counts each tick against the
+dictionary word whose code holds the interrupted pc, then walks the interrupted
+machine stack for that word's callers. The surface:
+
+| word | effect | what it does |
+| --- | --- | --- |
+| `n prof-on` | `( n -- )` | build the pc index, clear the counters, start the clock. `n` is a sample limit: at the `n`-th sample the profiler prints the text report and exits 99. `0` samples until `prof-off`. |
+| `prof-off` | `( -- )` | stop the clock. The handler stays installed and every counter keeps its value, so the phase just measured can be reported afterwards. |
+| `prof-report` | `( -- )` | print the text report. |
+| `prof-json` | `( -- )` | print the same walk as one JSON object. |
+| `prof-reset` | `( -- )` | clear every counter and keep the index, so a second phase costs no rebuild. |
+| `n prof-rate` | `( n -- )` | set the sampling interval in microseconds for the *next* `prof-on` (default 1000). Writing a rate while no handler is installed would hand the process a SIGALRM it cannot take, so it never re-arms the running clock. |
+| `pc prof-pc>rec` | `( n -- n )` | the record index the armed index gives that pc, or -1. This is the handler's own search, which is what `test/prof-index.f` compares against an exhaustive dictionary scan. |
+
+A report never samples itself: it stops the clock for the walk and starts it
+again if `prof-off` has not already stopped it, so the phase loses at most one
+interval. Without that the header's own identity would be false by one, because
+the report owns x20 and its own ticks read as a foreign context.
+
+### Report format
+
+The first line is the accounting, and every field is named:
+
+```
+profiler samples 92000 words 77714 other 294 new 13991 foreign 1 frames 763857 dropped 0 indexed 15676 usec 1000
+```
+
+- `samples` — ticks delivered. `words + other + new + foreign == samples`
+  exactly, and a regression in `test/gate-debug-lib.f` reads those named fields
+  and asserts it.
+- `words` — ticks attributed to a dictionary word, the sum of every row's
+  exclusive column.
+- `other` — ticks in Habu code that belongs to no word: the main loop, engine
+  helpers, the gaps between spans.
+- `new` — ticks at or above the index's high mark, i.e. in code compiled *after*
+  `prof-on` built the index. Profiling a compile (the self-build included) puts
+  the compiler's own words here, which is why a self-build profile still shows a
+  double-digit `new` share.
+- `foreign` — ticks whose context does not hold the engine's DATA and dictionary
+  base registers, which is what a foreign callee reached through the FFI (libc,
+  libzip, the CUDA driver) leaves behind. It is a lower bound on foreign time: a
+  foreign leaf that keeps those two registers intact is walked like Habu code and
+  lands in `other`.
+- `frames` — caller frames the stack walk attributed, over every sample.
+- `dropped` — caller edges the edge table could not key because its probe window
+  was full. They are reported, never merged into another row.
+- `indexed` — index entries, and `usec` the interval actually sampled at.
+
+Then up to 24 rows, ordered by exclusive count, each with its top 5 callers:
+
+```
+    9257  10.0   11709  12.7  IR-ARENA:ACEIL!
+         <-     1564  16.8 IR-OP:OFF-OPN
+         <-     1169  12.6 IR-SCHEMA:UNUSED
+```
+
+The row is `exclusive`, its percent of `samples`, `inclusive`, its percent of
+`samples`, then the package-qualified word. Exclusive counts the ticks whose pc
+was inside that word; inclusive counts the ticks where the word was anywhere on
+the sampled stack. A caller line is `<- count percent-of-this-row's-exclusive
+caller`. The caller lines are the top few, not every caller, so they need not sum
+to the row. `(unknown)` is a real caller row: it is the share of the word's
+samples whose caller the walk could not establish, kept explicit rather than
+dropped. Rows are selected by repeated maximum rather than sorted, so the
+counters are left exactly as they were and a second `prof-report` says the same
+thing.
+
+`prof-json` prints the same numbers as
+`{"samples":N,...,"rows":[{"word":"PKG:W","excl":N,"incl":N,"callers":[{"word":"PKG:C","n":N}]}]}`.
+The punctuation is chosen at build time from one shared walk, so the text and
+JSON reports cannot disagree about what they counted.
+
+### Caller attribution
+
+Emitted words carry no frame pointer — the prologue is `sub sp,sp,#16` +
+`str x30,[sp]` — so there is no chain to follow and return addresses are
+recognised by their value: a stack cell that lands inside the index's code range
+is taken for a return address. That is the standard frame-pointer-less technique
+and it is a *superset* of the true chain: an uninitialised spill slot still
+holding a code address from a returned call adds a frame. The immediate caller is
+usually in x30 rather than on the stack, because a leaf entered by `bl` never
+stores it. The scan never leaves SP's own 4 KiB block, since one cell further
+could be the unmapped page above a thread stack and a SIGSEGV inside a SIGALRM
+handler is not a diagnosis anybody can use.
+
+The x29 chain was not built: it would cost every emitted word in the default
+build two more instructions and a register.
+
+### Cost
+
+Measured on the fixture in `/tmp` against the same workload run twice, at the
+1 kHz default: 19781 ms with the clock on versus 19753 ms off over 19779
+samples, i.e. **1.4 us per tick and 0.14 % of wall time**. The handler allocates
+nothing and takes nothing from the interrupted registers; its state lives in the
+profiler band at the top of the DATA region and in an arena mapped once per
+process, so it works inside a stripped image.
+
+### Limits
+
+- **A profiled program that spawns and captures a child dies.** `poll(2)` is
+  never restarted by `SA_RESTART`, so every tick that lands in it returns EINTR;
+  the engine's `poll` primitive collapses every error to -1, so `lib/process.f`
+  cannot tell EINTR from a real failure and raises `E-PROC-OUTPUT`. This is what
+  stops a `tools/native-build.f` run under `prof-on` at its final child-spawn
+  phase. Until the primitive reports the errno, profile such a build with a
+  sample limit that reports before that phase.
+- The handler runs on an alternate stack registered for the thread that called
+  `prof-on`; a tick delivered to a `lib/task.f` thread runs on that thread's own
+  stack.
+- When the `n`-th sample is foreign the report waits for the next Habu sample, so
+  a program that exits or stays blocked in a foreign call from that point on
+  never reports; call `prof-report` yourself in that case.
