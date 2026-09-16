@@ -5054,26 +5054,67 @@ public
 \ EMIT-CEMITBL, by the same region-extent test. It runs from EM-COMPILE-EXIT, after
 \ the DATA region is mapped, so the map is writable here.
 : EM-AOT-PATCH-SITES ( -- )
-   LBL LBL LBL LBL LBL
-   s" hb: AOT call site binding does not match this dictionary"
-   {: ploop:label pdone:label pnomark:label pbad:label
-      badmsg:label bada badu :}
-   \ The index space the binder bound in, checked once before a single row is
-   \ used: LNCOUNT primitives (EM-SEED-DICT) then LAOTNREC payload records
-   \ (EM-AOT-REGISTER-RECS), and nothing else registers a record between them.
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   s" hb: AOT call site unresolved"  s" hb: AOT call site target is outside this dictionary"
+   {: ploop:label pdone:label pnf:label pnomark:label
+      pqual:label pscope:label pgate:label pbad:label
+      pname:label prec:label pbound:label ppatch:label
+      nfmsg:label badmsg:label
+      nfa nfu bada badu :}
+   \ One bound before the loop: a payload cannot have registered more records
+   \ than the dictionary holds. Every row is bounded again on its own below.
    5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR,
-   6 LNCOUNT LABEL@ ADR,  6 6 0 LDR,
-   5 5 6 ADD,  5 NDICT CMP,  C-NE pbad BCOND,
+   5 NDICT CMP,  C-HI pbad BCOND,
    21 5 LAOTSITES LABEL@ TADR,                       \ x21 = row cursor
    23 5 LAOTNSITE LABEL@ TADR,  23 23 0 LDR,         \ x23 = site count M
    22 0 MOVZ,                                        \ x22 = site index
    ploop LBL,  22 23 CMP,  C-GE pdone BCOND,
-      24 21 0 LDRW,                                  \ x24 = blob offset u32
-      25 21 4 LDRW,                                  \ x25 = callee dictionary index u32
+      24 21 0 LDRW,                                  \ x24 = blob offset u32 (survives every path)
+      25 21 4 LDRW,                                  \ x25 = target word
+      5 25 31 LSRI,  5 pname CBNZ,                   \ name tag: the seed resolves it
+      5 25 30 LSRI,  5 5 1 ANDI,  5 prec CBNZ,       \ record tag: payload-relative index
+      pbound B,                                      \ else an absolute primitive index
+   prec LBL,
+      5 SITE-TARGET-MASK LIT64,  25 25 5 AND,
+      \ The base the records pass left behind: it registered LAOTNREC records and
+      \ left NDICT one past the last, so the first of them is at NDICT - LAOTNREC.
+      \ In a whole-tree image that is the seeded primitive count; in a partial one
+      \ it is that plus the cold prefix THIS boot compiled, which no build knows.
+      5 6 LAOTNREC LABEL@ TADR,  5 5 0 LDR,
+      5 NDICT 5 SUB,
+      25 25 5 ADD,
+   pbound LBL,
       25 NDICT CMP,  C-CS pbad BCOND,                \ one unsigned test refuses both ends
       11 DREC MOVZ,  11 25 11 MUL,  11 DBASE 11 ADD, \ x11 = &dict[k]
       5 11 40 LDR,  5 5 1 ADDI,  5 pbad CBZ,         \ [40] = -1 is a package row, not a word
       11 11 0 LDR,                                   \ x11 = the callee's entry
+      ppatch B,
+   pname LBL,
+      5 SITE-TARGET-MASK LIT64,  4 25 5 AND,         \ x4 = name-off u32, tags cleared
+      5 10 LAOTNAMES LABEL@ TADR,  9 5 4 ADD,        \ x9 = pool entry ptr = LAOTNAMES + name-off
+      10 9 0 LDRB,                                   \ x10 = name length = pool[entry]
+      9 9 1 ADDI,                                    \ x9 = name ptr = entry + 1
+      25 21 8 LDRW,                                  \ x25 = callee scope u32 (survives the lookup)
+      5 WID-QUAL LIT64,  25 5 CMP,  C-EQ pqual BCOND,
+      25 FIRST-DYNAMIC-WID CMPI,  C-CC pscope BCOND, \ layout constant: this number in every engine
+      6 7 AOT-WINDOW:LWIDW0 LABEL@ TADR,  6 6 0 LDR,
+      25 25 6 SUB,                                   \ window-relative
+      6 7 AOT-WINDOW:LWIDSPAN LABEL@ TADR,  6 6 0 LDR,
+      25 6 CMP,  C-CS pbad BCOND,                    \ one unsigned test refuses both sides
+      7 DATA WIDN-CELL LDR,  7 7 6 SUB,              \ x7 = T0; the records pass moved WIDN past the window
+      25 25 7 ADD,
+   pscope LBL,
+      0 9 0 ADDI,  1 10 0 ADDI,  2 25 0 ADDI,
+      WLFIND:LENTRY LABEL@ BL,                       \ x11 = xt or 0, x12 = the row
+      11 pnf CBZ,
+      5 12 0 ADDI,                                   \ the row the gate asks about
+      pgate B,
+   pqual LBL,
+      LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?, x5 = record
+      13 pnf CBZ,
+   pgate LBL,
+      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: the one sealed-WID rule, shared with the other two passes (reads x5/x11; x24 survives)
+   ppatch LBL,
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
       10 11 9 SUB,  10 10 2 ASRI,  5 $3FFFFFF LIT64,  10 10 5 AND,   \ x10 = imm26, masked
       14 9 0 LDRW,  5 $FC000000 LIT64,  14 14 5 AND,  14 14 10 ORR,  14 9 0 STRW,   \ keep the opcode
@@ -5085,7 +5126,11 @@ public
          5 SNAP-RELOC:CALLMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
          5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
       pnomark LBL,
-      21 21 SITE-BIND-ROW ADDI,  22 22 1 ADDI,  ploop B,
+      21 21 SITE-ROW ADDI,  22 22 1 ADDI,  ploop B,
+   pnf LBL,
+      1 nfmsg ADR,  0 2 MOVZ,  2 nfu 1+ MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
+   nfmsg LBL,  nfa nfu BYTES,  NL-KW 1 BYTES,        \ unreachable: the leg above exit_groups
    pbad LBL,
       1 badmsg ADR,  0 2 MOVZ,  2 badu 1+ MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
@@ -9634,12 +9679,14 @@ public
 \ is resolved there any more. The gate stays for the two passes that do resolve
 \ names at boot: the boot-run entry list and the named code sites.
 \
-\ A NAME THAT RESOLVES TO NEITHER TABLE ENDS THE BUILD BY NAME. The callee is
-\ then not in the image at all, and a seed that cannot reach its callee is a
-\ broken engine, not a warning. A qualified scope (WID-QUAL, a pre-window
-\ package's public word) is refused the same way: no build produces one today,
-\ and guessing which package row a qualifier means is how a wrong callee gets
-\ wired silently.
+\ A NAME THAT RESOLVES TO NEITHER TABLE KEEPS ITS NAME. That is not a failure:
+\ a PARTIAL capture - a stripped application, a chain capture, any window
+\ smaller than the whole tree - calls words the engine it boots into carries
+\ from its own prefix, and no index of this payload can name one of those. The
+\ row then sets SITE-NAME-TAG and the seed resolves it the way it always did,
+\ in the scope the capture recorded, through the sealed-WID gate. A qualified
+\ scope (WID-QUAL) takes the same path, because the qualifier names a package
+\ whose id belongs to the booting engine and not to this image.
 : AOT-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
@@ -9659,7 +9706,7 @@ public
 \ ENGINE-EMIT:EMIT-DICT bakes into [40], so the match asks the same question the
 \ boot dictionary answers.
 : AOT-PRIM-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n w:n :}
-   ENGINE-PRIMS:COUNT 0 ?do
+   SEEDED-PRIM-N @ 0 ?do
       i ENGINE-HELPER:WID w = if
          i ENGINE-PRIMS:NAME$ a u CORE-STR=CI if i unloop exit then
       then
@@ -9674,22 +9721,18 @@ public
    loop
    -1 ;
 
-: AOT-REFUSE-BIND ( n -- ) {: s:n :}
-   s" aot: call site " type s .
-   s"  names " type s AOT-SITE-NOFF AOT-POOL$ type
-   s"  in scope " type s AOT-SITE-SCOPE .
-   s" , which is neither a seeded primitive nor a captured record" type cr
-   s" aot: a baked call site names no record in the image" ICODE-EXIT-RC die ;
-
 : AOT-BIND-SITE ( n -- n ) {: s:n :}
    s AOT-SITE-SCOPE {: w:n :}
-   w WID-QUAL = if s AOT-REFUSE-BIND then
+   w WID-QUAL = if -1 exit then                      \ a qualified name is the seed's to resolve
    s AOT-SITE-NOFF AOT-POOL$ {: a:ptr u:n :}
    a u w AOT-PRIM-INDEX {: p:n :}
    p 0 >= if p exit then
    a u w AOT-PAYLOAD-INDEX {: k:n :}
-   k 0 < if s AOT-REFUSE-BIND then
-   k ENGINE-PRIMS:COUNT + ;
+   k 0 < if -1 exit then                             \ the image does not carry it: keep the name
+   \ Marked as payload-relative: the seed adds the base it can compute and this
+   \ build cannot, because a partial image's records land above a cold prefix
+   \ that does not exist yet here.
+   k SITE-TARGET-MASK and SITE-REC-TAG or ;
 
 \ One binding per distinct callee, not per site: the sites repeat a handful of
 \ callees (83 names over 12,438 sites on this engine) and every miss walks the
@@ -9704,7 +9747,7 @@ create AOT-BIND-SCOPE AOT-BIND-MEMO-MAX cells allot
 create AOT-BIND-VAL AOT-BIND-MEMO-MAX cells allot
 variable AOT-BIND-MEMO-N
 
-: AOT-MEMO-FIND ( n n -- n ) {: noff:n w:n :}
+: AOT-MEMO-FIND ( n n -- n ) {: noff:n w:n :}   \ -2 when the pair is not memoized
    AOT-BIND-MEMO-N @ 0 ?do
       i cells AOT-BIND-NAME + @ noff = if
          i cells AOT-BIND-SCOPE + @ w = if
@@ -9712,7 +9755,7 @@ variable AOT-BIND-MEMO-N
          then
       then
    loop
-   -1 ;
+   -2 ;
 
 : AOT-MEMO-ADD ( n n n -- ) {: noff:n w:n idx:n :}
    AOT-BIND-MEMO-N @ AOT-BIND-MEMO-MAX >= if exit then
@@ -9725,16 +9768,24 @@ variable AOT-BIND-MEMO-N
    s AOT-SITE-NOFF {: noff:n :}
    s AOT-SITE-SCOPE {: w:n :}
    noff w AOT-MEMO-FIND {: hit:n :}
-   hit 0 >= if hit exit then
+   hit -2 <> if hit exit then                        \ -1 is an answer too: the name stays
    s AOT-BIND-SITE {: idx:n :}
    noff w idx AOT-MEMO-ADD
    idx ;
 
-: EMIT-AOT-SITES ( -- )   \ packed rows (blob-off u32 + callee dictionary index u32)
+: AOT-SITE-TARGET ( n -- n ) {: s:n :}
+   s AOT-SITE-INDEX {: k:n :}
+   k 0 >= if k exit then
+   s AOT-SITE-NOFF SITE-TARGET-MASK and SITE-NAME-TAG or ;
+
+: AOT-SITE-NAMED? ( n -- bool ) AOT-SITE-TARGET SITE-NAME-TAG and 0<> ;
+
+: EMIT-AOT-SITES ( -- )   \ packed rows (blob-off u32 + target u32 + scope u32)
    0 AOT-BIND-MEMO-N !
    AOT-SITE-N @ 0 ?do
       i AOT-SITE-BOFF $FFFFFFFF and EMITW
-      i AOT-SITE-INDEX $FFFFFFFF and EMITW
+      i AOT-SITE-TARGET $FFFFFFFF and EMITW
+      i AOT-SITE-SCOPE $FFFFFFFF and EMITW
    loop ;
 : EMIT-AOT-DSITES ( -- )   \ packed u32 DATA-site offsets
    AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 4 * BYTES, THEN ;

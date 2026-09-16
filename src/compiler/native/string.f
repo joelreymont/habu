@@ -194,17 +194,20 @@ public
    k 0 >= if BASE k ROW-OFF + exit then
    BASE  a u ADD ROW-OFF  + ;
 
-\ THE BUILD DRIVER'S SEAM, AND WHY IT IS PUBLIC. A native build hands the
-\ retained host's literal rows to the freshly loaded target's pool
-\ (tools/native-build-core.f TRANSFER-LITERALS), and the target's copy of this
-\ package did not exist when the driver was compiled, so the driver has to
-\ resolve it after the load. It used to walk this package's PRIVATE wordlist by
-\ name to do it, which is the one thing a shipped engine cannot do once private
-\ records stop travelling. A qualified public name is how every other target
-\ entry point is reached (NATIVE-EMIT:WRITE, NATIVE-RUNTIME:CAPTURE-PREPARE),
-\ so this joins them. The authority did not widen: IMPORT-CHECK still refuses
-\ every row table that is not the caller's to give, and the driver still proves
-\ the arena belongs to the capture before it calls.
+private
+
+\ Only the build driver may import the retained owner's actual row tables; it
+\ proves the byte arena belongs to the capture before invoking this private seam,
+\ and test/compiler/native-string.f pins the name as unfindable so no source can
+\ invoke literal ownership import.
+\ THE DRIVER STILL FINDS IT BY NAME, and it is the last name in the build path
+\ that reaches a private word. A native build hands the retained host's rows to
+\ the FRESHLY LOADED target's pool, which did not exist when the driver was
+\ compiled, so the routine has to be found after the load; a public wrapper
+\ would be a well-typed way for any source to invoke literal ownership import,
+\ which test/compiler/native-string.f exists to forbid, and an engine cell for
+\ the token costs a fixed slot and a layout row. Recorded as the one keep-set
+\ entry of habu-ship-no-dictionary-2fee2dea until that trade is decided.
 : IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
    {: arena:ptr rows:n source-off:ptr source-len:ptr :}
    rows source-off source-len IMPORT-CHECK
@@ -215,6 +218,8 @@ public
    source-len BYTE-VIEW owner LENGTHS BYTE-VIEW rows cells BYTE-COPY
    rows owner ROWS-FIELD !
    owner APPEND-OWNER ;
+
+public
 
 \ The retained owner's literal rows, as the build driver reads them: the arena
 \ and its capacity for the span check, then the rows themselves. Published here,

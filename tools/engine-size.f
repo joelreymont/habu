@@ -290,7 +290,8 @@ variable CAND        variable ACC
 \ engine cannot load, the same reason tools/data-table-census.f mirrors the
 \ payload's 8-byte run row. A width this file gets wrong cannot pass unnoticed:
 \ the walk stops landing on the image's own content end.
-8 constant SITE-ROW                               \ blob-off u32, callee dictionary index u32
+12 constant SITE-ROW                              \ blob-off u32, target u32, callee scope u32
+$80000000 constant SITE-NAME-TAG                  \ target is a name-pool offset, not an index
 8 constant XTOFF-ROW                              \ location u32, typed target u32
 8 constant RUN-ROW                                \ window offset u32, length u32
 8 constant XTSITE-ROW                             \ blob-off u32, name-off u32
@@ -642,28 +643,35 @@ DYNAMIC-BUFFER RNAME n
    0 POOL-ONLY-BYTES FMT:.U cr ;
 
 \ ---- what the baked call sites bind to ----------------------------------------
-\ Every site is (blob offset, callee dictionary index): the build resolved the
-\ callee's name against the two tables the image bakes and the boot loads
-\ dict[k][0] (src/habu/habu2.f EMIT-AOT-SITES binds, EM-AOT-PATCH-SITES
-\ relocates). An index below the seeded primitive count names a primitive;
-\ anything above it names one of the payload's own records.
+\ Every site is (blob offset, target, callee scope). A target with the name tag
+\ clear is the callee's index in the dictionary the boot builds - primitives
+\ first, then the payload's records - and the boot loads dict[k][0]. A target
+\ with the tag set is a name-pool offset the boot resolves in the scope beside
+\ it, which is what a partial capture needs for a callee its own payload does
+\ not carry (src/habu/habu2.f EMIT-AOT-SITES binds, EM-AOT-PATCH-SITES
+\ relocates).
 DYNAMIC-BUFFER SMASK n
 variable SITE-PRIMS    variable SITE-RECS
-variable SITE-CALLEES  variable SITE-BAD
+variable SITE-NAMED    variable SITE-CALLEES  variable SITE-BAD
 
 : CENSUS-SITES ( -- )
    REC-N @ PDICT-N @ + 1+ SMASK-RESERVE
    REC-N @ PDICT-N @ + 1+ 0 ?do 0 i SMASK ! loop
-   0 SITE-PRIMS !  0 SITE-RECS !  0 SITE-CALLEES !  0 SITE-BAD !
+   0 SITE-PRIMS !  0 SITE-RECS !  0 SITE-NAMED !  0 SITE-CALLEES !  0 SITE-BAD !
    SITE-N @ 0 ?do
-      SITE0 @ i SITE-ROW * + 4 + U32@ {: k:n :}
-      k 0 < k REC-N @ PDICT-N @ + >= or if
-         SITE-BAD @ 1+ SITE-BAD !
+      SITE0 @ i SITE-ROW * + 4 + U32@ {: tgt:n :}
+      tgt SITE-NAME-TAG and 0<> if
+         SITE-NAMED @ 1+ SITE-NAMED !
       else
-         k PDICT-N @ < if SITE-PRIMS @ 1+ SITE-PRIMS !
-         else SITE-RECS @ 1+ SITE-RECS ! then
-         k SMASK @ 0= if
-            1 k SMASK !  SITE-CALLEES @ 1+ SITE-CALLEES !
+         tgt {: k:n :}
+         k 0 < k REC-N @ PDICT-N @ + >= or if
+            SITE-BAD @ 1+ SITE-BAD !
+         else
+            k PDICT-N @ < if SITE-PRIMS @ 1+ SITE-PRIMS !
+            else SITE-RECS @ 1+ SITE-RECS ! then
+            k SMASK @ 0= if
+               1 k SMASK !  SITE-CALLEES @ 1+ SITE-CALLEES !
+            then
          then
       then
    loop ;
@@ -671,13 +679,14 @@ variable SITE-CALLEES  variable SITE-BAD
 : REPORT-SITES ( -- )
    CENSUS-SITES
    SITE-BAD @ 0 > if
-      s" engine-size: a call site names no record in this image" RC die
+      s" engine-size: a bound call site names no record in this image" RC die
    then
    cr s" baked call sites" type cr
    s"   sites " type SITE-N @ FMT:.U
    s" , bound to seeded primitives " type SITE-PRIMS @ FMT:.U
-   s" , to payload records " type SITE-RECS @ FMT:.U cr
-   s"   distinct callees " type SITE-CALLEES @ FMT:.U cr ;
+   s" , to payload records " type SITE-RECS @ FMT:.U
+   s" , left as names " type SITE-NAMED @ FMT:.U cr
+   s"   distinct bound callees " type SITE-CALLEES @ FMT:.U cr ;
 
 \ ---- reachability --------------------------------------------------------------
 \ The same call graph src/habu/aot-closure.f walks for a stripped application:

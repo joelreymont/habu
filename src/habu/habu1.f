@@ -167,6 +167,14 @@ variable GD-MIN
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LCEMITBL  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
+\ The number EMIT-DICT actually bakes into LNCOUNT, kept so a later emitter can
+\ use the seeded table's own size instead of re-reading the primitive registry.
+\ The two are the same number only while nothing registers a primitive between
+\ the dictionary and the AOT payload; reading the registry again assumes that,
+\ and the AOT call-site binder (habu2.f) must not assume it - a payload record's
+\ dictionary index is the seeded count plus its position, so a base off by the
+\ primitives one lane added is a call wired to the wrong word.
+variable SEEDED-PRIM-N
 variable LREPLROUTE
 \ The region's write bands track dictionary-record, control-flow and code spans.
 \ EMIT-PROT-WINDOW supplies the bodies; definition, publication and patch
@@ -4445,7 +4453,7 @@ create NAME-PADDING 0 , 0 ,
          -1 >LABEL over NAME-LABEL!
       THEN
       1 + REPEAT drop
-   LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT DCQ,
+   LNCOUNT LABEL@ LBL,  ENGINE-PRIMS:COUNT dup SEEDED-PRIM-N !  DCQ,
    LDICT LABEL@ LBL,
    0 BEGIN dup ENGINE-PRIMS:COUNT < WHILE
       dup FIRST-LABEL DLBL,

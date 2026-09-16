@@ -140,12 +140,30 @@ variable AOT-REC-N
 \ Named without the AOT- prefix the older tails here carry: that prefix is the
 \ recorded debt this file's header names, and a new name does not join it.
 12 constant SITE-ROW
-\ What the IMAGE carries for the same site: the callee's index in the dictionary
-\ the boot builds, and nothing else. The capture's name and scope are the only
-\ identity a host record has that survives into another process, so the buffer
-\ above keeps them; the image bakes the callee itself and can name it by
-\ position (habu2.f EMIT-AOT-SITES binds, EM-AOT-PATCH-SITES relocates).
-8 constant SITE-BIND-ROW
+\ The IMAGE's row is the same three words, but its middle word is a TARGET
+\ rather than a name: the build resolves the callee against the two tables the
+\ image carries - the seeded primitives and the payload's own records - and
+\ stores its index in the dictionary the boot builds, so the seed relocates the
+\ site with a load instead of a lookup (habu2.f EMIT-AOT-SITES binds,
+\ EM-AOT-PATCH-SITES relocates).
+\ A CALLEE THE IMAGE DOES NOT CARRY KEEPS ITS NAME, and that is not an edge
+\ case: a partial capture - a stripped application, a chain capture, any window
+\ smaller than the whole tree - calls words the ENGINE it boots into has from
+\ its own prefix, and no index of this payload can name one. Such a row sets
+\ SITE-NAME-TAG on the target and carries the pool offset in the low bits; the
+\ scope word is then the wordlist the seed resolves the name in, exactly as
+\ before. Both kinds travel in one table because the row width is a property of
+\ the section, not of the site.
+\ THE TWO INDEX KINDS ARE NOT THE SAME NUMBER. A primitive's index is absolute:
+\ the seed copies LDICT to dict[0..LNCOUNT) in every image. A payload record's
+\ is RELATIVE to wherever the records pass put them, and that is not LNCOUNT in
+\ a partial image: a stripped application or a chain capture compiles its own
+\ cold prefix into the dictionary before the payload registers. So the row says
+\ which kind it carries and the seed derives the payload base from the table it
+\ just wrote (NDICT - LAOTNREC), never from a build-time count.
+$80000000 constant SITE-NAME-TAG
+$40000000 constant SITE-REC-TAG
+$3FFFFFFF constant SITE-TARGET-MASK
 $FFFFFFFE constant WID-QUAL
 
 \ The guarded core captures 124,137 call rows. Add 25% headroom and round up
@@ -476,7 +494,7 @@ public
    15 cells
    AOT-BLOB-LEN @ +BYTES
    AOT-REC-N @ AOT-CREC-ROW +ROWS
-   AOT-SITE-N @ SITE-BIND-ROW +ROWS
+   AOT-SITE-N @ SITE-ROW +ROWS
    AOT-NAMES-LEN @ +BYTES
    AOT-DSITE-N @ 4 +ROWS
    AOT-WINDOW:XTOFF-N @ AOT-WINDOW:XTOFF-ROW +ROWS

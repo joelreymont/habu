@@ -201,13 +201,30 @@ TRUSTED: LOGICAL-RESET ( ptr u8 -- )
    then
    XREF-START TARGET-CODE ;
 
+\ The target's row importer is the one private word this driver still finds by
+\ name: it belongs to the FRESHLY LOADED target's pool, which did not exist when
+\ this file was compiled, and the alternatives are a public wrapper - a
+\ well-typed way for any source to invoke literal ownership import, which
+\ test/compiler/native-string.f forbids - or a fixed engine cell for the token.
+\ It is the keep-set entry habu-ship-no-dictionary-2fee2dea has to carry.
+: TARGET-IMPORTER ( -- n )
+   s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if
+      drop s" native-build: literal owner missing" 76 die
+   then
+   XREF-LEN  s" IMPORT-ROWS" rot XREF-FIND-WL
+   dup XREF-FOUND? 0= if
+      drop s" native-build: literal importer missing" 76 die
+   then
+   XREF-START TARGET-CODE ;
+
 TRUSTED: PREPARE-XT ( n -- [ -- ] ) ;
 TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 
 : TRANSFER-LITERALS ( -- )
    CHECK-LITERAL-SPAN
    LITERAL-SOURCE-ROWS
-   s" NSTR:IMPORT-ROWS" TARGET-XT LITERAL-IMPORT-XT execute ;
+   TARGET-IMPORTER LITERAL-IMPORT-XT execute ;
 
 : PREPARE-TARGET ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute

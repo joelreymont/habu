@@ -169,8 +169,15 @@ create HBT-EXP-HEX2 64 allot
 : HBT-AOT-SRC$ ( -- ptr u8 n )
    s" : MAIN ( -- ) ; \ trailing source comment" ;
 
+\ RUN's last line calls NULL$, and that is the point of it: NULL$ is a colon
+\ word of the ENGINE's own prefix, so it sits outside this window's code and the
+\ capture records a call site for it whose callee no index of this payload can
+\ name (habu2.f EMIT-AOT-SITES leaves such a site its name; the seed resolves it
+\ in the engine it boots). Every other call here is to a primitive, which binds
+\ to a seeded record index, so the two site kinds travel in one built image and
+\ a build that can only emit one of them fails this case.
 : HBT-AOT-SRC2$ ( -- ptr u8 n )
-   S\" package HBT-NATIVE\n: LOADING ( -- ) tier@ 1 <> if -9040 throw then ;\nLOADING\npublic\n: INC ( n -- n ) 1+ ;\n: APPLY ( n [ n -- n ] -- n ) execute ;\n: RUN ( -- ) 41 [: INC ;] APPLY 42 <> if -9041 throw then ;\n;package\n: MAIN ( -- ) HBT-NATIVE:RUN ;\n" ;
+   S\" package HBT-NATIVE\n: LOADING ( -- ) tier@ 1 <> if -9040 throw then ;\nLOADING\npublic\n: INC ( n -- n ) 1+ ;\n: APPLY ( n [ n -- n ] -- n ) execute ;\n: RUN ( -- ) 41 [: INC ;] APPLY 42 <> if -9041 throw then NULL$ nip 0 <> if -9045 throw then ;\n;package\n: MAIN ( -- ) HBT-NATIVE:RUN ;\n" ;
 
 : HBT-LARGE-AOT-SRC$ ( -- ptr u8 n )
    s" variable SLOT 9 SLOT ! : MAIN ( -- ) SLOT @ . cr ;" ;
