@@ -62,13 +62,7 @@ require tools/lint/clobber-lint.f
    s" PROT-GUARD:CALL" 9 7 CLOBBER-WRAP:READS
       0 9 CL-ADD 7 CL-ADD = CLT-ASSERT
    s" PROT-GUARD:CALL" 9 7 CLOBBER-WRAP:RETURNS
-      0 10 CL-ADD 11 CL-ADD = CLT-ASSERT
-   s" JIT-STACK:CELL-BYTES" 7 5 CLOBBER-WRAP:READS
-      0 5 CL-ADD = CLT-ASSERT
-   s" JIT-STACK:CELL-BYTES" 7 5 CLOBBER-WRAP:RETURNS
-      0 7 CL-ADD = CLT-ASSERT
-   s" JIT-STACK:LITERAL-REG" 5 9 CLOBBER-WRAP:READS
-      0 5 CL-ADD 20 CL-ADD 26 CL-ADD 28 CL-ADD 31 CL-ADD = CLT-ASSERT ;
+      0 10 CL-ADD 11 CL-ADD = CLT-ASSERT ;
 
 : CLT-WRAP-UNMODELED ( -- )                   \ an unmodeled :CALL shape fails closed
    [: s" FFI-GUARD:CALL" 9 7 CLOBBER-WRAP:MASK drop ;] catch
@@ -78,17 +72,6 @@ require tools/lint/clobber-lint.f
    [: s" FFI-GUARD:CALL" 9 7 CLOBBER-WRAP:RETURNS drop ;] catch
       E-CLOBBER-WRAP-UNRESOLVED = CLT-ASSERT ;
 
-: CLT-STACK-CALLS ( -- )
-   0 PARENS? !  0 CN# !  0 CEND !  0 EN# !  CLOBBER-CENSUS:RESET
-   s" tools/lint/clobber-stack-fixture.f" PASS1-FILE
-   CLOSE-CLOBBERS
-   0 BAD !
-   s" tools/lint/clobber-stack-fixture.f" PASS2-FILE
-   BAD @ 0= CLT-ASSERT
-   CLOBBER-CENSUS:COUNTS {: routines:n calls:n :}
-   routines 1 = CLT-ASSERT
-   calls 2 = CLT-ASSERT ;
-
 CLT-SYS-CLOBBERS-X8
 CLT-CURRENT-SYNTAX-CENSUS
 CLT-LABEL-ACCESSORS
@@ -96,5 +79,4 @@ CLT-MACHINE-CONTRACTS
 CLT-WRAP-CONTRACTS
 CLT-WRAP-UNMODELED
 CLT-WRAPPED-CALLS
-CLT-STACK-CALLS
 s" clobber-lint-test: ok" type NL

@@ -18,54 +18,6 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 \ Emit one fixed instruction into the running compiler's code window.
 : C-EMITW ( n -- ) 9 swap LIT64,  LCEMIT LABEL@ BL, ;
 
-\ The runtime compiler's own registers and NZCV must survive code emission:
-\ LCEMITBL and the minimal constant synthesizer use compiler scratch that a
-\ keyword may still hold live. Only CP and the emitted code/call map change on
-\ a successful call.
-package JIT-STACK
-
-: SAVE-EMITTER ( -- )
-   SP SP 160 SUBI,
-   0 SP 0 STR,  1 SP 8 STR,  2 SP 16 STR,  3 SP 24 STR,
-   4 SP 32 STR,  5 SP 40 STR,  6 SP 48 STR,  7 SP 56 STR,
-   8 SP 64 STR,  9 SP 72 STR,  10 SP 80 STR,  11 SP 88 STR,
-   12 SP 96 STR,  13 SP 104 STR,  14 SP 112 STR,  15 SP 120 STR,
-   16 SP 128 STR,  17 SP 136 STR,  30 SP 144 STR,
-   $D53B4209 EMITW  9 SP 152 STR, ;                  \ mrs x9,NZCV
-
-: RESTORE-EMITTER ( -- )
-   9 SP 152 LDR,  $D51B4209 EMITW                   \ msr NZCV,x9
-   0 SP 0 LDR,  1 SP 8 LDR,  2 SP 16 LDR,  3 SP 24 LDR,
-   4 SP 32 LDR,  5 SP 40 LDR,  6 SP 48 LDR,  7 SP 56 LDR,
-   8 SP 64 LDR,  9 SP 72 LDR,  10 SP 80 LDR,  11 SP 88 LDR,
-   12 SP 96 LDR,  13 SP 104 LDR,  14 SP 112 LDR,  15 SP 120 LDR,
-   16 SP 128 LDR,  17 SP 136 LDR, ;
-
-public
-
-
-\ Emit a full-width runtime constant without losing compiler scratch values.
-\ The input is one of x0..x17, already saved before any emitter call can grow
-\ the code-write window. Runtime destination registers are explicit.
-: LITERAL-REG ( n n -- ) {: value:n dest:n :}
-   value 0< value 17 > or if s" jit stack: invalid literal register" 74 die then
-   SAVE-EMITTER
-   11 SP value cells LDR,  14 dest MOVZ,  LVMOVK LABEL@ BL,
-   RESTORE-EMITTER
-   30 SP 144 LDR,  SP SP 160 ADDI, ;
-
-\ Width metadata is measured in cells. Prove the scale before computing it;
-\ the source register survives so no truncation can turn a wide access small.
-\ This compile-time calculation writes dest and NZCV, not the physical stack.
-: CELL-BYTES ( n n -- ) {: dest:n count:n :}
-   dest count = if s" jit stack: cell scale needs distinct registers" 74 die then
-   LBL {: good:label :}
-   dest count 61 LSRI,  dest good CBZ,
-   STACK-GUARD:EXIT-BOUNDS
-   good LBL,  dest count 3 LSLI, ;
-
-;package
-
 : EMIT-VLITPUSH ( -- )
    LVLITPUSH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -827,7 +779,6 @@ variable LVSNAP  variable LVRECON
    13 SP 8 STR,  12 SP 16 STR,  14 SP 24 STR,
    LVSPILL LABEL@ BL,
    13 SP 8 LDR,  12 SP 16 LDR,  14 SP 24 LDR,
-   5 13 3 LSLI,  6 0 MOVZ,
    11 0 MOVZ,  6 0 MOVZ,  6 DATA FRCLM-CELL STR,
    5 13 0 ADDI, ;                           \ x11=claimed bits, x5=i
 

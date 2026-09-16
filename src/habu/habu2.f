@@ -274,6 +274,9 @@ variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled r
 33 constant MMAPDATA-MSG-LEN   \ byte length of "hb: cannot map fixed data region\n" (LMMAPDATA)
 variable LBLRANGE   \ boot BL-range assertion labeled rc-81 exit: the mapped region fell outside BL's +/-128 MiB of __text
 32 constant BLRANGE-MSG-LEN   \ byte length of "hb: code region out of BL range\n" (LBLRANGE)
+variable LADDSUBIMM   \ the shared add/sub-immediate emitter (EMIT-ADDSUB-IMM): every transfer offset folds through it
+variable LADDSUBBIG   \ transfer immediate past the two-halves range: labeled rc-75 compile refusal
+36 constant ADDSUBBIG-MSG-LEN   \ byte length of "hb: transfer immediate out of range\n" (LADDSUBBIG)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -529,7 +532,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject: " BYTES,                          \ PROTAOT-MSG-LEN bytes; EM-AOTWIDGATE appends the callee name + newline
    LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
    LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
-   LBLRANGE LABEL@ LBL, s" hb: code region out of BL range" BYTES,  NL-KW 1 BYTES, ;            \ BLRANGE-MSG-LEN bytes incl. newline
+   LBLRANGE LABEL@ LBL, s" hb: code region out of BL range" BYTES,  NL-KW 1 BYTES,             \ BLRANGE-MSG-LEN bytes incl. newline
+   LADDSUBBIG LABEL@ LBL, s" hb: transfer immediate out of range" BYTES,  NL-KW 1 BYTES, ;     \ ADDSUBBIG-MSG-LEN bytes incl. newline
 
 \ LCEMITBL ( x11 = absolute target ) : emit ONE direct BL imm26 to x11 at CP, then CP += 4.
 \ The single call-emit primitive for every statically known native call — dictionary words
@@ -568,6 +572,47 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    10 10 2 ASRI,  5 $03FFFFFF LIT64,  10 10 5 AND,      \ imm26 = (disp >> 2) & 0x03FFFFFF (sign-preserving)
    9 $94000000 LIT64,  9 9 10 ORR,                     \ x9 = BL opcode | imm26
    LCEMIT LABEL@ B, ;                                  \ tail: LCEMIT guards CP, stores x9, advances CP += 4, RET
+
+\ LADDSUBIMM ( x8 = an add/sub-immediate word with Rd and Rn set and imm12 = 0,
+\ x7 = the unsigned byte operand ) : emit that instruction with the operand
+\ folded into its immediate field, through LCEMIT. Every variable-width stack
+\ transfer offset in the pass-2 emitters reaches the code window here.
+\ AArch64 carries imm12 plus an optional #12 shift, so any operand below 2^24
+\ is at most two words: the shifted half against the source, then the low half
+\ against the destination. Below 4096 it stays the ONE word it has always been,
+\ which is the shape test/type-layout-lower-pending.f pins; only a transfer
+\ wider than 511 cells pays a second instruction.
+\ Folding inline the way these sites used to sets the operand's own bit 12 INTO
+\ the sh field: `sub x14,x19,#4104` for a 513-cell bundle encoded as
+\ `sub x14,x19,#32768`, and a 4160-byte locals frame released 262144 bytes of
+\ machine stack. 61b07c76706d cured that truncation by materializing the
+\ operand in a user register, one instruction wider at EVERY width; this
+\ routine keeps the cure and spends no user register at any width.
+\ An operand at or above 2^24 cannot come from a checker-certified width, so it
+\ is refused by name instead of encoded.
+\ Clobbers x7, x8, x9 and x30 and nothing else, so a caller may hold a second
+\ operand live across the call (EMIT-P2-REV keeps x6 over the first of two).
+: EMIT-ADDSUB-IMM ( -- )
+   LBL LBL LBL {: ok:label low:label done:label :}
+   LADDSUBIMM LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,  8 SP 16 STR,
+   9 7 24 LSRI,  9 ok CBZ,
+      1 LADDSUBBIG LABEL@ ADR,  0 2 MOVZ,  2 ADDSUBBIG-MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL,
+   9 7 12 LSRI,  9 low CBZ,                           \ x9 = operand >> 12
+      7 $400000 LIT64,  8 8 7 ORR,                    \ sh = 1: this half scales by 4096
+      9 9 10 LSLI,  9 9 8 ORR,  LCEMIT LABEL@ BL,
+      7 SP 8 LDR,  9 7 $FFF ANDI,  9 done CBZ,        \ no low half: the shifted word carried it all
+      8 SP 16 LDR,  9 8 $1F ANDI,  9 9 5 LSLI,        \ the low half reads back the destination
+      7 $FFFFFFFFFFFFFC1F LIT64,  8 8 7 AND,  8 8 9 ORR,
+      7 SP 8 LDR,  7 7 $FFF ANDI,  7 7 10 LSLI,  9 8 7 ORR,
+      LCEMIT LABEL@ BL,
+      done B,
+   low LBL,
+      9 7 10 LSLI,  9 9 8 ORR,  LCEMIT LABEL@ BL,     \ the single folded word
+   done LBL,
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -1689,16 +1734,14 @@ public
 
 \ ---- control-flow JIT helpers ----
 \ Release an exact byte count from the machine-stack locals frame. The count
-\ is synthesized into x16, which the value allocator never pools, and the
-\ extended-register add moves SP without a second scratch register. The
-\ emitted code runs while x9..x15 (regalloc.f VRPACK) may still hold live
-\ values: a sequence through x9 and x10 handed a loop whose body bound a local
-\ the frame's byte count in place of its own value.
+\ folds into the add's imm12 field, so the release is one instruction that
+\ names no scratch register: the emitted code runs while x9..x15 (regalloc.f
+\ VRPACK) may still hold live values, and a sequence through any of them
+\ handed a loop whose body bound a local the frame's byte count instead.
 : C-EMIT-DROP-X12 ( -- )
    LBL {: done:label :}
    12 done CBZ,
-      12 16 JIT-STACK:LITERAL-REG
-      9 $8B3063FF LIT64,  LCEMIT LABEL@ BL,      \ add sp,sp,x16
+      8 $910003FF LIT64,  7 12 0 ADDI,  LADDSUBIMM LABEL@ BL,   \ add sp,sp,#bytes
    done LBL, ;
 
 : EMIT-CF-HELPERS ( -- )
@@ -4250,13 +4293,11 @@ variable VDESC  variable DRIFT-FAIL
       vl B,
    vd LBL,
    LBL {: frameok:label :}
-   9 SP 8 LDR,  7 9 JIT-STACK:CELL-BYTES  8 0 MOVZ,
-   5 7 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
+   9 SP 8 LDR,  5 9 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,
    12 32768 MOVZ,  15 12 CMP,  C-LS frameok BCOND,  EM-P2-SLOT-DIE
    frameok LBL,
-   5 16 JIT-STACK:LITERAL-REG
-   $CB3063FF C-EMITW                                   \ sub sp,sp,x16: the complete frame, pooled registers untouched
+   8 $D10003FF LIT64,  7 5 0 ADDI,  LADDSUBIMM LABEL@ BL,   \ sub sp,sp,#frame
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
    9 DATA LOCN-CELL LDR,  9 9 1 SUBI,  9 SP 0 STR,    \ i := last local
    pl LBL,
@@ -4293,7 +4334,6 @@ variable VDESC  variable DRIFT-FAIL
    EM-P2-LIVE-W  10 SP 8 STR,                         \ w
    EM-P2-LIVE-CUM  10 SP 16 STR,                      \ cum
    LVSPILL LABEL@ BL,
-   10 SP 8 LDR,  7 10 JIT-STACK:CELL-BYTES  8 0 MOVZ,
    12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
    10 SP 16 LDR,  12 12 10 SUB,                       \ x12 = base slot
    10 0 MOVZ,                                         \ j := 0 (bottom cell first)
@@ -4358,9 +4398,8 @@ variable VDESC  variable DRIFT-FAIL
       pjoin B,
    p1c LBL,
    13 DATA LOCN-CELL LDR,  14 13 6 SUB,
-   7 14 JIT-STACK:CELL-BYTES  8 0 MOVZ,
    5 14 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
-   9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,
+   8 $D10003FF LIT64,  7 5 0 ADDI,  LADDSUBIMM LABEL@ BL,   \ sub sp,sp,#frame
    15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
    12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
    13 DATA LOCN-CELL LDR,  13 13 1 SUBI,
@@ -7349,9 +7388,8 @@ public
    5 done CBZ,
    6 5 CMP,  C-CS valid BCOND,  STACK-GUARD:EXIT-BOUNDS
    valid LBL,
-   7 6 JIT-STACK:CELL-BYTES  8 5 JIT-STACK:CELL-BYTES
-   5 9 JIT-STACK:LITERAL-REG  7 10 JIT-STACK:LITERAL-REG
-   $CB0A026A C-EMITW                                                \ sub x10,x19,x10
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ movz x9,#len
+   8 $D100026A LIT64,  7 6 3 LSLI,  LADDSUBIMM LABEL@ BL,           \ sub x10,x19,#off*8
    $F940014B C-EMITW                                                \ ldr x11,[x10]
    $9100214A C-EMITW                                                \ add x10,x10,#8
    $F900026B C-EMITW                                                \ str x11,[x19]
@@ -7365,22 +7403,17 @@ public
 : EMIT-P2-DROPN ( -- )
    LP2DROPN LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   7 5 JIT-STACK:CELL-BYTES  8 0 MOVZ,
-   7 9 JIT-STACK:LITERAL-REG
-   $CB090273 C-EMITW                                                \ sub x19,x19,x9
+   8 $D1000273 LIT64,  7 5 3 LSLI,  LADDSUBIMM LABEL@ BL,           \ sub x19,x19,#n*8
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2REV ( x5=lo-off-bytes x6=hi-off-bytes ) : emit an in-place reversal of the
-\ cells from x19-lo up to x19-hi (two-pointer swap; empty/1-cell span is a noop).
+\ cells from x19-lo up to x19-hi (two-pointer swap; empty/1-cell span is a noop
+\ the emitted `cmp x10,x11 ; b.hs` takes at run time).
 : EMIT-P2-REV ( -- )
-   LBL {: done:label :}
    LP2REV LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   5 6 CMP,  C-LS done BCOND,
-   7 0 MOVZ,
-   5 10 JIT-STACK:LITERAL-REG  6 11 JIT-STACK:LITERAL-REG
-   $CB0A026A C-EMITW                                                \ sub x10,x19,x10
-   $CB0B026B C-EMITW                                                \ sub x11,x19,x11
+   8 $D100026A LIT64,  7 5 0 ADDI,  LADDSUBIMM LABEL@ BL,           \ sub x10,x19,#lo
+   8 $D100026B LIT64,  7 6 0 ADDI,  LADDSUBIMM LABEL@ BL,           \ sub x11,x19,#hi
    $EB0B015F C-EMITW                                                \ cmp x10,x11
    $54000102 C-EMITW                                                \ b.hs done (+8)
    $F940014C C-EMITW                                                \ ldr x12,[x10]
@@ -7390,7 +7423,6 @@ public
    $9100214A C-EMITW                                                \ add x10,x10,#8
    $D100216B C-EMITW                                                \ sub x11,x11,#8
    $17FFFFF8 C-EMITW                                                \ b cmp (-8)
-   done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2ROT ( x5=T-cells x6=k-cells ) : emit a left-rotation of the top T cells
@@ -7403,7 +7435,6 @@ public
    6 5 CMP,  C-LS valid BCOND,  STACK-GUARD:EXIT-BOUNDS
    valid LBL,
    6 done CBZ,  6 5 CMP,  C-EQ done BCOND,
-   7 5 JIT-STACK:CELL-BYTES  8 0 MOVZ,
    5 5 3 LSLI,
    7 SP 16 LDR,  6 SP 8 LDR,  6 6 7 SUB,  6 6 3 LSLI,  6 6 8 ADDI,
    LP2REV LABEL@ BL,                                  \ reverse the bottom k cells
@@ -7426,13 +7457,12 @@ public
    5 rsdone CBZ,
    6 2 CMPI,  C-LS valid BCOND,  STACK-GUARD:EXIT-BOUNDS
    valid LBL,
-   8 5 JIT-STACK:CELL-BYTES  7 0 MOVZ,
    6 rsto CBZ,
    \ modes 1/2: x10 -= T; x11 = block base; copy T cells rstk->data
    10 20 RSP-CELL W-LDRX C-EMITW
-   5 9 JIT-STACK:LITERAL-REG
-   $CB09014A C-EMITW                                  \ sub x10,x10,x9
+   8 $D100014A LIT64,  5 SP 8 LDR,  7 5 0 ADDI,  LADDSUBIMM LABEL@ BL,            \ sub x10,x10,#T
    RSTK-SLOT-ADDR,
+   8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x9,#T
    13 11 0 W-LDRX C-EMITW                             \ ldr x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F900026D C-EMITW                                  \ str x13,[x19]
@@ -7446,19 +7476,16 @@ public
    \ mode 0: x11 = rstk top; copy T cells data->rstk, pop, depth += T
    10 20 RSP-CELL W-LDRX C-EMITW
    RSTK-SLOT-ADDR,
-   8 12 JIT-STACK:LITERAL-REG
-   $CB0C026C C-EMITW                                  \ sub x12,x19,x12
-   $AA0C03EE C-EMITW                                  \ mov x14,x12 (new data cursor)
-   5 9 JIT-STACK:LITERAL-REG
-   $AA0903EF C-EMITW                                  \ mov x15,x9 (complete transfer count)
+   8 $D100026C LIT64,  5 SP 8 LDR,  7 5 3 LSLI,  LADDSUBIMM LABEL@ BL,            \ sub x12,x19,#T*8
+   8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x9,#T
    $F940018D C-EMITW                                  \ ldr x13,[x12]
    $9100218C C-EMITW                                  \ add x12,x12,#8
    13 11 0 W-STRX C-EMITW                             \ str x13,[x11]
    $9100216B C-EMITW                                  \ add x11,x11,#8
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
-   $AA0E03F3 C-EMITW                                  \ mov x19,x14
-   $8B0F014A C-EMITW                                  \ add x10,x10,x15
+   8 $D1000273 LIT64,  5 SP 8 LDR,  7 5 3 LSLI,  LADDSUBIMM LABEL@ BL,            \ sub x19,x19,#T*8
+   8 $9100014A LIT64,  5 SP 8 LDR,  7 5 0 ADDI,  LADDSUBIMM LABEL@ BL,            \ add x10,x10,#T
    10 20 RSP-CELL W-STRX C-EMITW
    rsdone LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
@@ -7467,16 +7494,13 @@ public
 \ the typed base address, reads memory in ascending slot order, and pushes
 \ slot0..tag so the tag is again the top physical cell.
 : EMIT-P2-FETCH ( -- )
-   LBL LBL {: empty:label done:label :}
+   LBL {: done:label :}
    LP2FETCH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
-   7 5 JIT-STACK:CELL-BYTES  6 8 MOVZ,  8 0 MOVZ,
-   5 empty CBZ,  8 7 8 SUBI,
-   empty LBL,
    $D1002273 C-EMITW                                  \ sub x19,x19,#8
    $F940026A C-EMITW                                  \ ldr x10,[x19] : base
    5 done CBZ,
-   5 9 JIT-STACK:LITERAL-REG
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ movz x9,#width
    $F940014B C-EMITW                                  \ ldr x11,[x10]
    $9100214A C-EMITW                                  \ add x10,x10,#8
    $F900026B C-EMITW                                  \ str x11,[x19]
@@ -7579,20 +7603,15 @@ public
 \ calls LPROTSPAN once with x10=destination and x11=width*8 before any mutation;
 \ that ABI preserves the live bundle registers and rejects whole-span crossing.
 : EMIT-P2-STORE ( -- )
-   LBL LBL {: valid:label done:label :}
+   LBL {: done:label :}
    LP2STORE LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,  5 SP 8 STR,
-   7 5 JIT-STACK:CELL-BYTES
-   8 $FFFFFFFFFFFFFFF7 LIT64,  7 8 CMP,  C-LS valid BCOND,
-   STACK-GUARD:EXIT-BOUNDS
-   valid LBL,
-   8 7 8 ADDI,  6 0 MOVZ,
    $D1002273 C-EMITW                                  \ sub x19,x19,#8
    $F940026A C-EMITW                                  \ ldr x10,[x19] : dst
    5 done CBZ,
-   7 14 JIT-STACK:LITERAL-REG
-   $CB0E026E C-EMITW                                  \ sub x14,x19,x14
-   5 9 JIT-STACK:LITERAL-REG  7 11 JIT-STACK:LITERAL-REG
+   8 $D100026E LIT64,  7 5 3 LSLI,  LADDSUBIMM LABEL@ BL,            \ sub x14,x19,#W*8
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x9,#W
+   8 $D280000B LIT64,  7 5 8 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,    \ movz x11,#W*8
    11 LPROTSPAN LABEL@ ADR,
    LCEMITBL LABEL@ BL,                                \ direct BL to the registered (PROT-SPAN) helper
    $F94001CF C-EMITW                                  \ ldr x15,[x14]
@@ -7602,8 +7621,7 @@ public
    $F1000529 C-EMITW                                  \ subs x9,x9,#1
    $54FFFF61 C-EMITW                                  \ b.ne store (-5)
    5 SP 8 LDR,
-   7 5 3 LSLI,  7 9 JIT-STACK:LITERAL-REG
-   $CB090273 C-EMITW                                  \ sub x19,x19,x9
+   8 $D1000273 LIT64,  7 5 3 LSLI,  LADDSUBIMM LABEL@ BL,            \ sub x19,x19,#W*8
    done LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -7698,8 +7716,6 @@ public
    9 9 10 SUB,
    10 pos MOVZ,
    LP2CWAT LABEL@ BL,
-   \ At most four admitted widths are summed below, so those sums cannot wrap.
-   11 10 JIT-STACK:CELL-BYTES
    10 DATA wcell STR, ;
 
 : EM-P2-QUERY-WIDTHS ( n -- ) {: k:n :}   \ emit: query k widths; x13 = any wider than 1
@@ -7755,8 +7771,6 @@ variable P2SK
    EM-P2X-SWAP
    5 DATA P2W1-CELL LDR,  LP2DROPN LABEL@ BL, ;
 : EM-P2X-TUCK ( -- )               \ ( g1 g0 -- g0 g1 g0 )
-   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
-   5 9 10 ADD,  7 5 JIT-STACK:CELL-BYTES  8 9 JIT-STACK:CELL-BYTES
    EM-P2X-SWAP
    9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
    5 9 0 ADDI,  6 9 10 ADD,  LP2COPY LABEL@ BL, ;
@@ -8534,7 +8548,6 @@ public
       SP SP 16 SUBI,  10 SP 0 STR,                \ frame the count across LVPUSHC spills
       1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                 \ region -> RW for emission
       LVSPILL LABEL@ BL,
-      10 SP 0 LDR,  7 10 JIT-STACK:CELL-BYTES  8 0 MOVZ,
       ploop LBL,
          10 SP 0 LDR,  10 pdone CBZ,
          11 0 MOVZ,  LVPUSHC LABEL@ BL,           \ push one extra zero pad below the declared body's pads
@@ -9034,8 +9047,6 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,   \ frame the counters: LVPUSHC may
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,                  \ spill (emission -> region RW first)
    LVSPILL LABEL@ BL,
-   12 SP 0 LDR,  7 12 JIT-STACK:CELL-BYTES
-   14 12 1 ADDI,  7 14 JIT-STACK:CELL-BYTES  8 0 MOVZ,
    ploop LBL,
       12 SP 0 LDR,  12 pdone CBZ,
       11 0 MOVZ,  LVPUSHC LABEL@ BL,
@@ -9059,14 +9070,12 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       1 vmsg ADR,  2 CONVMSG-LEN MOVZ,  LADTDIE LABEL@ B,
    vmsg LBL,  s" hb: construct: unknown variant: " BYTES,
    vok LBL,
-   7 12 JIT-STACK:CELL-BYTES                     \ prove the pad count before a possible addition
    9 DATA P2-CELL LDR,  9 nox CBZ,      \ layout-cap slice 4: pass-2 wide construct adds extra pads
       SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,      \ save declared pads + tag across the query
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                              \ x10 = extra pads, x11 = found
       12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
       11 nox CBZ,
-         7 10 JIT-STACK:CELL-BYTES
          12 12 10 ADD,                                \ x12 = declared + extra pads
    nox LBL,
    EM-ADT-CON-PUSHES                    \ frames the counters, then flips back to RW
@@ -9186,7 +9195,6 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    vmsg LBL,  s" hb: match: unknown variant: " BYTES,
    vok LBL,
    13 DATA CMTAG-CELL STR,
-   7 12 JIT-STACK:CELL-BYTES
    12 DATA CMPADS-CELL STR,
    12 5 MOVZ,  12 DATA CMM-CELL STR,
    1 CP 4 ADDI,  PROT:LOPEN LABEL@ BL,
@@ -9204,7 +9212,6 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
       9 DATA TKA-CELL LDR,  10 DATA TXN-SRC-A-CELL LDR,  9 9 10 SUB,  10 0 MOVZ,
       LP2CWAT LABEL@ BL,                \ x10 = extra pads, x11 = found
       11 noxm CBZ,
-         7 10 JIT-STACK:CELL-BYTES
          14 DATA CMPADS-CELL LDR,  14 14 10 ADD,  14 DATA CMPADS-CELL STR,
    noxm LBL,
    \ Dispatch compare+skip (reductions 1/2/3). The tag is already live in x9
@@ -9217,15 +9224,13 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
    14 $FFF CMPI,  C-HI bigtag BCOND,    \ tag > 2^12-1: outside cmp's imm12 field
       9 $F100013F LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,  tagdone B,   \ cmp x9,#tag
    bigtag LBL,
-      14 16 JIT-STACK:LITERAL-REG
+      9 C-CALL-MOVZ-X16 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x16,#tag
       $EB10013F C-EMITW                 \ cmp x9,x16
    tagdone LBL,
    C-PUSHCP
    $54000001 C-EMITW                    \ b.ne +0  (skip to next variant on tag mismatch)
    14 DATA CMPADS-CELL LDR,  14 14 1 ADDI,
-   7 14 JIT-STACK:CELL-BYTES  8 0 MOVZ,
-   7 16 JIT-STACK:LITERAL-REG
-   $CB100273 C-EMITW                            \ sub x19,x19,x16
+   8 $D1000273 LIT64,  7 14 3 LSLI,  LADDSUBIMM LABEL@ BL,   \ sub x19,x19,#(8*(1+pads))
    14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 14 1 ORRI,  14 DATA CMBK-CELL STR,   \ push match-branch marker (1)
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    LMAIN LABEL@ B, ;
@@ -9445,7 +9450,7 @@ package LABELS
    LBL SNAP-RELOC:LXTBANDMSG !  LBL SNAP-RELOC:LXTKINDMSG !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
-   LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !
+   LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !  LBL LADDSUBIMM !  LBL LADDSUBBIG !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
@@ -9695,6 +9700,7 @@ package ENGINE-EMIT
    EMIT-FP-PRIMS
    EMIT-CEMIT
    EMIT-CEMITBL
+   EMIT-ADDSUB-IMM
    EMIT-BCAP
    EMIT-TOK
    EMIT-PROT
