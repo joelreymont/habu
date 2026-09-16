@@ -13,3 +13,6 @@ Evidence 2026-09-16: (6) Radar: kestrel certified all sixteen Radar harnesses on
 
 
 Evidence 2026-09-16 13:30: (3) stripped applications: test/gate-aot-positive.f fully green on the null-cell engine (both forks; PASS: native hb-build AOT positive tests), stripped-quotation/stripped-sparse-data/internal-word-gate green; the base-relative null cell is dab2c17e on the line. (1) partial: S4 (8acc52fb, 5,832,896 bytes) passes pre-trust-defer, cold-runtime, build-fixpoint-fixtures, error-code-lint (0 findings), stack-guard, snapshot-writer; bootstrap-wide-memory-src stays red until the mirror-fold lane lands. Full chain from dab2c17e started 13:31.
+
+
+Evidence 2026-09-16 13:45: (1) full gate on F2 built from dab2c17e (5,832,896 bytes): 399 PASS, 1 FAIL = bootstrap-wide-memory-src (mirror parity of the folded emitters, lane in flight); the earlier load timeouts and proc-pty-tty-smoke passed. F1->F2 differed by 17,992 bytes beyond the baked path (host-dependent baked facts, dot habu-derive-baked-build-d5df4419); F3 on F2 pending for the fixpoint.
