@@ -19,10 +19,13 @@ $100000 constant HEAPSZ
    0 0 MOVZ,  1 HEAPSZ LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,  HP 0 0 ADDI, ;     \ mmap RW; HP = base
 
-\ data-stack ops (Xds points just past TOS; full-ascending)
-: G-PUSH ( reg -- )  XDS 0 STR,  XDS XDS 8 ADDI, ;
+\ data-stack ops (Xds points just past TOS; full-ascending). ONE INSTRUCTION
+\ EACH: Xds points just past the top cell, so a push stores at it and then
+\ advances it and a pop retreats it and then loads -- the post-index and
+\ pre-index writeback modes. MIRROR of src/habu/rt.f.
+: G-PUSH ( reg -- )  XDS 8 STR-POST, ;
 
-: G-POP  ( reg -- )  XDS XDS 8 SUBI,  XDS 0 LDR, ;
+: G-POP  ( reg -- )  XDS -8 LDR-PRE, ;
 
 : G-LIT  ( n -- )    T0 swap LIT64,  T0 G-PUSH ;
 

@@ -661,8 +661,13 @@ previous definitions
    done LBL, ;
 
 
-: G-PUSH ( reg -- ) XDS 0 STR, XDS XDS 8 ADDI, ;
-: G-POP ( reg -- ) XDS XDS 8 SUBI, XDS 0 LDR, ;
+\ The engine's own data-stack moves, one instruction each: Xds points just past
+\ the top cell, so a push stores at it and then advances it and a pop retreats
+\ it and then loads. These shadow templ.fs's pair on purpose -- this file emits
+\ the ENGINE's primitives -- and both spell the same two instructions.
+\ MIRROR of src/habu/rt.f.
+: G-PUSH ( reg -- ) XDS 8 STR-POST, ;
+: G-POP ( reg -- ) XDS -8 LDR-PRE, ;
 
 : C-EMITW ( n -- ) 9 swap LIT64, LCEMIT @ BL, ;
 

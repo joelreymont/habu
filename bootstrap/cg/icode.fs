@@ -22,6 +22,7 @@ IOP: IOP-B     IOP: IOP-BL    IOP: IOP-BCOND IOP: IOP-CBZ   IOP: IOP-CBNZ
 IOP: IOP-BR    IOP: IOP-BLR   IOP: IOP-RET   IOP: IOP-ADR
 IOP: IOP-LDR   IOP: IOP-STR   IOP: IOP-LDRB  IOP: IOP-STRB
 IOP: IOP-LDRPO IOP: IOP-STRPR IOP: IOP-LDPPO IOP: IOP-STPPR
+IOP: IOP-STRPO IOP: IOP-LDRPR
 IOP: IOP-SVC   IOP: IOP-NOP   IOP: IOP-ICIV  IOP: IOP-DSB   IOP: IOP-ISB
 IOP: IOP-DCCV
 IOP: IOP-LABEL IOP: IOP-DEAD  IOP: IOP-BYTES IOP: IOP-DCQ  IOP: IOP-DLBL
@@ -227,6 +228,11 @@ s" cg: bad logical immediate" exception constant E-BADLIMM
 : LDR-POST, ( rt rn off -- ) 0 IOP-LDRPO IC, ;  \ off: -256..255
 
 : STR-PRE,  ( rt rn off -- ) 0 IOP-STRPR IC, ;
+
+\ The other two writeback modes, which is what a data-stack push and pop are.
+: STR-POST, ( rt rn off -- ) 0 IOP-STRPO IC, ;
+
+: LDR-PRE,  ( rt rn off -- ) 0 IOP-LDRPR IC, ;
 
 : LDP-POST, ( rt1 rt2 rn off -- ) IOP-LDPPO IC, ; \ off: -512..504, 8-aligned
 

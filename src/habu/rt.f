@@ -150,11 +150,16 @@ public
 ;package
 
 \ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs
+\ ONE INSTRUCTION EACH. XDS points just past the top cell, so a push stores at it
+\ and then advances it and a pop retreats it and then loads -- exactly the
+\ post-index and pre-index writeback modes. Every baked primitive is built out
+\ of these, so the separate `add`/`sub` each one used to carry was the widest
+\ single cost in the engine's own code.
 : G-PUSH ( n -- )
-   XDS 0 STR,  XDS XDS $8 ADDI, ;
+   XDS 8 STRPOST, ;
 
 : G-POP ( n -- )
-   XDS XDS $8 SUBI,  XDS 0 LDR, ;
+   XDS -8 LDRPRE, ;
 variable DOT-LBL  variable ATOI-LBL
 variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 

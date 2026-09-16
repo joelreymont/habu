@@ -217,6 +217,12 @@ CHECKING-ON? off
 
 : ENC-STRPR ( i -- )  >r $F8000C00 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM9 12 lshift or EMITW ;
 
+\ Post-index store and pre-index load: the same two base constants with bits
+\ 11:10 the other way round. A data-stack push is the first, a pop the second.
+: ENC-STRPO ( i -- )  >r $F8000400 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM9 12 lshift or EMITW ;
+
+: ENC-LDRPR ( i -- )  >r $F8400C00 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM9 12 lshift or EMITW ;
+
 : ENC-LDPPO ( i -- )  >r $A8C00000 r@ IC-A or r@ IC-B 10 lshift or r@ IC-C 5 lshift or
    r> IC-D ?SC7 15 lshift or EMITW ;
 
@@ -325,6 +331,7 @@ INIT-TABLES
 ' ENC-LDR  IOP-LDR  ENC!   ' ENC-STR  IOP-STR  ENC!
 ' ENC-LDRB IOP-LDRB ENC!   ' ENC-STRB IOP-STRB ENC!
 ' ENC-LDRPO IOP-LDRPO ENC! ' ENC-STRPR IOP-STRPR ENC!
+' ENC-STRPO IOP-STRPO ENC! ' ENC-LDRPR IOP-LDRPR ENC!
 ' ENC-LDPPO IOP-LDPPO ENC! ' ENC-STPPR IOP-STPPR ENC!
 ' ENC-SVC  IOP-SVC  ENC!   ' ENC-NOP  IOP-NOP  ENC!
 ' ENC-ICIV IOP-ICIV ENC!   ' ENC-DSB  IOP-DSB  ENC!   ' ENC-ISB  IOP-ISB  ENC!
