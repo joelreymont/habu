@@ -8491,3 +8491,49 @@ IDENTITY-COPY?). Baked code 2,235,864 -> 1,887,040 bytes (-15.6 percent),
 pairs 43,198 -> 3, engine 6,226,112 -> 5,832,896 bytes, byte fixpoint held;
 the three survivors sit in checker.f loops and come through MB-TIES rather
 than MB-COALESCE (dot habu-elide-tied-identity).
+
+## 2026-09-16 - the gate's wall clock was thirteen copies of one native build
+
+`bin/hb --load test/run.f` on the guard-free engine (gate-F2: 399 suites, 718 s
+wall, 14 red) spends 1983 s of suite CPU, and 1545 s of it is 25 suites. The
+per-suite table the runner already prints (`PASS: <name> (<ms>)`) is the whole
+diagnosis; read it before touching a suite:
+
+| ms | suite | | ms | suite |
+|---:|---|---|---:|---|
+| 221782 | native-window-owner | | 46033 | aot-wid-rebase-open |
+| 221681 | aot-wide-format | | 45012 | aot-wid-boot-open |
+| 105347 | aot-named-cells-image | | 43854 | aot-wid-rebase-sealed |
+| 81132 | checker-scan-index | | 43135 | aot-data-prewin |
+| 77667 | stripped-entry | | 42293 | aot-wid-forged-low |
+| 65989 | aot-data-content | | 42124 | aot-wid-boot-sealed |
+| 58206 | aot-data-big | | 39403 | field-proj-boundary |
+| 55032 | aot-data-span | | 33132 | compiler-native-checker-prefix |
+| 54851 | aot-data-trap | | 24650 | aot-wid-capture-refusal |
+| 52952 | aot-wid-forged-high | | 22304 | aot-payload-graph |
+| 52894 | aot-data-ext | | 21206 | aot-wid-refuse-address-span |
+| 52890 | aot-wid-restore | | 21089 | aot-wid-refuse-wid0 |
+| | | | 20827 | stripped-literal |
+
+- **The number in a fixture's stopwatch is usually one compile, counted twice
+  per suite.** `test/native-fixture-write.f` carries `1 set-tier`, so loading it
+  recompiles `tools/native-emit.f`'s 59-file closure through the optimizing
+  chain: 18.3 s measured against 0.45 s at tier 0. `test/aot-wid-build.f` ran it
+  twice per invocation - once for the cold host, once to write the image - so a
+  41 s fixture was 40 s of the same compile and 0.9 s of the capture it exists
+  to test. Time the phases (`BUILD-COLD` / `CAPTURE-FIXTURE` / `WRITE-FIXTURE`)
+  before attributing a slow AOT suite to the AOT machinery.
+- **An artifact that no mode varies is one artifact.** `BUILD-COLD` reads no
+  environment: every mode of every fixture emitted byte-identical bytes. Its
+  inputs are exactly the engine binary and the writer's own require/include
+  closure, and `tools/event-closure-lib.f` EC:BUILD produces that closure in
+  0.16 s and rejects fail-closed - so `CONTENT-KEY:FILE+` over
+  `ENGINE-CANDIDATE:PATH$` plus every closure entry is a complete key, and
+  `test/cold-engine.f` keeps one keyed host under `BUILD-CACHE:ROOT$`. Adding a
+  comment line to `tools/native-layout.f` moves the key, which is the check to
+  run on a build cache before trusting it.
+- **Suite registration order, not suite count, decides the tail.** All 25 of the
+  suites above are in the first parallel group (1929 s of its 1983 s), and the
+  aot block sits at registration index 240 of 352, so it starts after the pool
+  has drained the cheap suites and then runs alone. A sequential `GROUP SEQ`
+  drains everything before it; what follows it here is 54 s of work.

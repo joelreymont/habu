@@ -3,6 +3,7 @@
 require lib/test.f
 require lib/test/runner.f
 require test/gate-pool.f
+require test/cold-engine.f
 
 package STDLIB-GATE
 
@@ -49,9 +50,13 @@ package STDLIB-GATE
    SUITE-ENV
    s" bin/hb" label labelu in inu SUITE-TIMEOUT-MS GT-POOL-START-STDIN ;
 
+\ Emit the shared cold fixture host here, before the first suite forks: the
+\ fixtures that need it then copy one keyed artifact instead of each paying the
+\ writer's own native build.
 : SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    s" habu-native-suite" GT-START
+   COLD-ENGINE:ENSURE
    GT-POOL-RESET ;
 
 \ The pool drains softly between groups, so every registered suite runs

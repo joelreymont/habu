@@ -129,6 +129,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/engine-candidate.f
+require test/cold-engine.f
 
 package AOT-WID-BUILD
 
@@ -873,10 +874,10 @@ create DRV-CH 1 allot
    2 ERR erru LEN>N write drop
    rc 0<> if s" aot-wid-build: child failed" rc die then ;
 
+\ The cold host depends on nothing this builder varies, so every mode - and
+\ every other fixture - takes the one test/cold-engine.f emits per tree.
 : BUILD-COLD ( -- )
-   ARGS s" test/native-fixture-write.f" ARG
-   s" --" ARG COLD$ ARG
-   ENGINE-CANDIDATE:PATH$ CHILD ;
+   COLD$ COLD-ENGINE:PROVIDE ;
 
 : CAPTURE-FIXTURE ( -- )
    ARGS DRV-PATH$ ARG s" --" ARG ART$ ARG COLD$ ARG

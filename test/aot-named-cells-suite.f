@@ -5,6 +5,7 @@ require lib/test/outcome.f
 require lib/fs-mutate.f
 require lib/process-argv.f
 require lib/engine-candidate.f
+require test/cold-engine.f
 
 package NAMED-CELLS-SUITE
 
@@ -64,9 +65,8 @@ variable CHILD-KIND variable CHILD-CODE variable CHILD-ARGC
    ENGINE-CANDIDATE:PATH$ NULL$ 0 RUN-CHILD IMAGE$ EXISTS? TTRUE ;
 
 : BUILD ( -- )
-   s" source writer emits the real cold prefix host" T-LABEL
-   s" test/native-fixture-write.f" LOAD s" --" ARG+ COLD$ ARG+
-   ENGINE-CANDIDATE:PATH$ NULL$ 0 RUN-CHILD COLD$ EXISTS? TTRUE
+   s" the shared cold prefix host reaches this fixture's private tree" T-LABEL
+   COLD$ COLD-ENGINE:PROVIDE COLD$ EXECUTABLE? TTRUE
    s" actual prefix XTs and the unassigned defer are captured" T-LABEL
    NULL$ CAPTURE
    s" file and owned transfer reach the optimizing source writer" T-LABEL
