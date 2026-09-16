@@ -5,6 +5,11 @@ s" lib/memory.f" required
 s" lib/ffi-abi.f" required
 s" lib/image-lifecycle.f" required
 s" lib/codegen.f" required        \ +USER builds its generated accessor with CODEGEN's buffer
+s" lib/adt/result.f" required     \ TASK:JOIN answers result<n,n>
+\ The cleanup registry below is a checked quotation store; the optimizing tier
+\ lowers such a store through QUOTATION-STORAGE:STORE, so this file owns that
+\ dependency exactly as lib/image-lifecycle.f owns it for its hooks.
+require src/core/quotation-storage.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
 
@@ -71,6 +76,11 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.MSG-PENDING
    TASK-SEMAPHORE-BYTES +FIELD TCB.MSG-FREE
    TASK-SEMAPHORE-BYTES +FIELD TCB.MSG-FULL
+   CELL +FIELD TCB.RESULT
+   CELL +FIELD TCB.RESULT-SET
+   CELL +FIELD TCB.JOINER
+   CELL +FIELD TCB.EXIT-SLOT
+   TASK-SEMAPHORE-BYTES +FIELD TCB.DONE
 END-STRUCTURE
 
 : TASK-TCB-OFFSET ( ptr a ptr b n -- ) {: field:ptr origin:ptr want:n :}
@@ -96,7 +106,12 @@ END-STRUCTURE
    origin TCB.MSG-SENDER origin TASK-ABI:MSG-SENDER-OFF TASK-TCB-OFFSET
    origin TCB.MSG-PENDING origin TASK-ABI:MSG-PENDING-OFF TASK-TCB-OFFSET
    origin TCB.MSG-FREE origin TASK-ABI:MSG-FREE-OFF TASK-TCB-OFFSET
-   origin TCB.MSG-FULL origin TASK-ABI:MSG-FULL-OFF TASK-TCB-OFFSET ;
+   origin TCB.MSG-FULL origin TASK-ABI:MSG-FULL-OFF TASK-TCB-OFFSET
+   origin TCB.RESULT origin TASK-ABI:RESULT-OFF TASK-TCB-OFFSET
+   origin TCB.RESULT-SET origin TASK-ABI:RESULT-SET-OFF TASK-TCB-OFFSET
+   origin TCB.JOINER origin TASK-ABI:JOINER-OFF TASK-TCB-OFFSET
+   origin TCB.EXIT-SLOT origin TASK-ABI:EXIT-SLOT-OFF TASK-TCB-OFFSET
+   origin TCB.DONE origin TASK-ABI:DONE-OFF TASK-TCB-OFFSET ;
 
 TASK-TCB-LAYOUT-CHECK
 
@@ -501,6 +516,96 @@ create TASK-SEM-POOL
 : MBOX-MSG? ( ptr n -- bool )
    TCB.MSG-PENDING atomic@ 0 <> ;
 
+\ ---- the task's outcome ------------------------------------------------------
+\ VFX's task exit code and its AtTaskExit cleanup (docs/tasking-models.md
+\ sections 3 and 5), answered as lib/adt/result.f's result<ok,err> rather than as
+\ a bare code. The rows below live in the TCB, which outlives the thread and its
+\ memory, so the answer survives the release the join performs - the same reason
+\ TASK:THROW@ still answers after a TASK:KILL.
+
+\ One cleanup quotation per task that registers one, in this package's own typed
+\ row. The quotation is stored AS a quotation into storage declared to hold one,
+\ which is what makes the store the checker's proven-quotation store instead of a
+\ cell this module would have to cast back to code. A slot belongs to its task
+\ for the life of the image and registering again replaces the quotation in it,
+\ so the row cannot leak and needs no free list. TCB.EXIT-SLOT holds the slot
+\ plus one; zero is "this task has no cleanup".
+$40 constant TASK-EXIT-MAX
+TASK-EXIT-MAX TYPED-BUFFER TASK-EXIT-QT [ -- ]
+TASK-ALIGN8
+variable TASK-EXIT-N
+
+: TASK-DONE-SEM ( ptr n -- sem )
+   TCB.DONE SEM-AT ;
+
+\ Created with the task and destroyed with its memory, exactly like the mailbox:
+\ a task that was never activated has nothing to signal, and a released task's
+\ record is gone before the next PREPARE opens a fresh one.
+: DONE-INIT ( ptr n -- ) {: tcb:ptr :}
+   0 tcb TASK-DONE-SEM SEM-INIT ;
+
+: DONE-DESTROY ( ptr n -- ) {: tcb:ptr :}
+   tcb TASK-DONE-SEM SEM-DESTROY ;
+
+: TASK-RESULT? ( ptr n -- bool )
+   TCB.RESULT-SET atomic@ 0 <> ;
+
+\ The answer is single-assignment: the flag moves 0 -> 1 in one step and the
+\ first call wins, so neither a second call nor the task's own cleanup can
+\ replace a result the body already gave. A thread with no TCB has no task to
+\ answer for and is refused rather than writing into somebody's storage.
+: TASK-RETURN ( n -- ) {: value:n :}
+   TASK-SELF-N 0= if E-TASK-STATE throw then
+   TASK-SELF {: self:ptr :}
+   0 1 self TCB.RESULT-SET atomic-cas 0 <> if E-TASK-STATE throw then
+   value self TCB.RESULT ! ;
+
+\ Cleared by ACTIVATE, so a reactivated task answers for its new run alone.
+: TASK-OUTCOME-RESET ( ptr n -- ) {: tcb:ptr :}
+   0 tcb TCB.RESULT !
+   0 tcb TCB.RESULT-SET atomic!
+   0 tcb TCB.JOINER atomic! ;
+
+: TASK-EXIT-SLOT@ ( ptr n -- n )
+   TCB.EXIT-SLOT @ ;
+
+\ A slot no task holds yet. The counter moves in one atomic step, so two tasks
+\ registering at the same moment are handed different slots; past the end of the
+\ row there is no slot to hand out.
+: TASK-EXIT-NEXT ( -- n )
+   1 TASK-EXIT-N atomic-add {: idx:n :}
+   idx TASK-EXIT-MAX >= if E-TASK-EXIT-TABLE throw then
+   idx ;
+
+\ The quotation is in its slot before the TCB names that slot, so a task ending
+\ while its first cleanup is being registered runs the old one or the new one -
+\ never an empty slot.
+: TASK-AT-EXIT ( [ -- ] ptr n -- ) {: q tcb:ptr :}
+   tcb TASK-EXIT-SLOT@ {: slot:n :}
+   slot 0 <> if q slot 1 - TASK-EXIT-QT ! exit then
+   TASK-EXIT-NEXT {: idx:n :}
+   q idx TASK-EXIT-QT !
+   idx 1 + tcb TCB.EXIT-SLOT ! ;
+
+\ The cleanup runs in the task's own thread, after the body has returned or its
+\ throw has been recorded. A cleanup that throws ends nothing else: its code
+\ becomes the task's error when the body left none, and is dropped when the body
+\ already failed, so the first failure is the one the join reports.
+: TASK-RUN-EXIT ( -- )
+   TASK-SELF {: self:ptr :}
+   self TASK-EXIT-SLOT@ dup 0= if drop exit then
+   1 - TASK-EXIT-QT @ catch {: rc:n :}
+   rc 0= if exit then
+   self TASK-THROW@ 0 <> if exit then
+   rc self TASK-THROW! ;
+
+\ Every way a task's thread ends passes here: the body returning, the body
+\ throwing, and a halted body leaving at TASK:PAUSE. The signal is last, so a
+\ joiner that wakes finds the cleanup finished and the outcome rows final.
+: TASK-END ( -- )
+   TASK-RUN-EXIT
+   TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
+
 : TASK-LIVE+ ( -- )
    data-base TASKS-LIVE-CELL + dup @ 1 + swap ! ;
 
@@ -512,6 +617,7 @@ create TASK-SEM-POOL
 
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb MBOX-DESTROY
+   tcb DONE-DESTROY
    tcb TCB.STACK-U @ 0 <> if
       tcb TCB.STACK @ tcb TCB.STACK-U @ MEM-RELEASE-GUARDED
       TASK-NULL tcb TCB.STACK !
@@ -602,6 +708,7 @@ create TASK-SEM-POOL
    0 tcb TCB.STOP !
    tcb TASK-REGION-INIT
    tcb MBOX-INIT
+   tcb DONE-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
 \ This is a foreign C entry address with TASK-ABI's fixed argument contract.
@@ -628,9 +735,11 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 \ An uncaught worker throw ends this task only: record the code and return, so
 \ the entry marks the task DONE and the other tasks keep running. A worker
 \ `die` is not catchable and still exits the process with its own status.
+\ Either way the task ends through TASK-END, which runs the cleanup and releases
+\ whoever is joining.
 : TASK-RUNNER ( -- )
-   TASK-RUN-USER dup 0= if drop exit then
-   TASK-SELF TASK-THROW! ;
+   TASK-RUN-USER dup 0= if drop else TASK-SELF TASK-THROW! then
+   TASK-END ;
 
 : ACTIVATE ( [ -- ] ptr n -- ) {: xt tcb:ptr :}
    TASK-READY
@@ -642,6 +751,7 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    ['] TASK-RUNNER tcb TCB.XT !
    0 tcb TCB.STOP !
    0 tcb TASK-THROW!
+   tcb TASK-OUTCOME-RESET
    TASK-RUNNING tcb TASK-STATE!
    TASK-LIVE+
    tcb TASK-PTHREAD-CREATE-RC dup 0 <> if
@@ -657,9 +767,14 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 : TASK-STOP! ( n ptr n -- )
    TCB.STOP ! ;
 
+\ A halted task leaves here rather than through the runner, so this is the third
+\ way a task ends and it runs the same TASK-END. The stop flag is cleared first:
+\ a cleanup that pauses must yield, not re-enter the exit it is part of.
 : PAUSE ( -- )
    TASK-SELF-N dup 0= if drop SCHED-YIELD-CALL TASK-RC0 exit then
    TASK-N>PTR dup TASK-STOP@ 0 <> if
+         0 over TASK-STOP!
+         TASK-END
          TASK-DONE over TASK-STATE!
          0 PTHREAD-EXIT-CALL
    then
@@ -688,6 +803,37 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 
 : TASK-DONE? ( ptr n -- bool )
    TASK-STATE@ TASK-DONE = ;
+
+\ A join needs a task that is running or has ended, and exactly one joiner: the
+\ claim moves 0 -> 1 in one step, so a second joiner is refused instead of being
+\ made to wait for a signal the first has already taken. A task that was never
+\ activated and a task whose join has released it are the same EMPTY task and
+\ get the same refusal.
+: TASK-JOIN-CHECK ( ptr n -- ) {: tcb:ptr :}
+   tcb TASK-STATE@ {: st:n :}
+   st TASK-RUNNING <> st TASK-HALT-REQ <> and st TASK-DONE <> and
+      if E-TASK-JOIN throw then
+   0 1 tcb TCB.JOINER atomic-cas 0 <> if E-TASK-JOIN throw then ;
+
+\ An error beats a value: a body that returned and then failed in its cleanup did
+\ not finish, and the code that ended it is the honest answer. A task that ended
+\ without calling TASK:RETURN has no value to give, and saying so with a named
+\ code keeps ok meaning "the worker answered".
+: TASK-JOIN-ANSWER ( ptr n -- result<n,n> ) {: tcb:ptr :}
+   tcb TASK-THROW@ dup 0 <> if RESULT:ERR exit then
+   drop
+   tcb TASK-RESULT? if tcb TCB.RESULT @ RESULT:OK exit then
+   E-TASK-NO-RESULT RESULT:ERR ;
+
+\ Blocks in the done semaphore, so a joiner is parked in the kernel rather than
+\ polling DONE?. The release is the one TASK:KILL does, which is why a joined
+\ task needs no kill; the outcome is read after it, from TCB rows it leaves
+\ alone.
+: TASK-JOIN ( ptr n -- result<n,n> ) {: tcb:ptr :}
+   tcb TASK-JOIN-CHECK
+   tcb TASK-DONE-SEM SEM-WAIT
+   tcb TASK-JOIN-RELEASE
+   tcb TASK-JOIN-ANSWER ;
 
 \ ---- the three storage definers, and why only one converted -------------------
 \ TWO ADDRESS KINDS LIVE HERE, and only one of them is expressible as generated
@@ -845,6 +991,27 @@ TASK-MIN-STACK constant MIN-STACK
 \ Zero until this task's body ends with an uncaught throw; cleared by ACTIVATE.
 : THROW@ ( ptr n -- n )
    TASK-THROW@ ;
+
+\ ---- the task's outcome ------------------------------------------------------
+\ The worker's answer, stored in its own TCB. Single-assignment: a second call,
+\ including one from the task's cleanup, is E-TASK-STATE, and so is a call from a
+\ thread that is not a task.
+: RETURN ( n -- )
+   TASK-RETURN ;
+
+\ Waits for the task to end, releases it as TASK:KILL would, and answers ok with
+\ the value the worker stored or err with the code that ended it - including
+\ E-TASK-NO-RESULT when the worker ended without an answer. A task that was never
+\ activated, a task already joined, and a second joiner are E-TASK-JOIN.
+: JOIN ( ptr n -- result<n,n> )
+   TASK-JOIN ;
+
+\ One cleanup quotation for that task, run in the task's own thread when it ends
+\ - body returned, body threw, or halted at TASK:PAUSE - before the join is
+\ released. Registering again replaces it. A throw inside the cleanup becomes the
+\ task's error if it has none and never leaves the task.
+: AT-EXIT ( [ -- ] ptr n -- )
+   TASK-AT-EXIT ;
 
 : #USER ( -- n )
    #USER ;

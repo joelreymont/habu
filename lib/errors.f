@@ -174,6 +174,8 @@
 -3609 constant E-TASK-JOIN          \ join of a task never activated or already joined
 -3610 constant E-TASK-MAILBOX       \ message operation no mailbox can serve: no TCB, target not running, or self
 -3611 constant E-TASK-SEM-POOL      \ pooled semaphore: the pool is exhausted, or the handle is not a pooled record
+-3612 constant E-TASK-NO-RESULT     \ the task ended without storing a result; carried by the err arm of a join
+-3613 constant E-TASK-EXIT-TABLE    \ no cleanup slot left: more tasks registered one than this image holds
 
 \ Object/linker records: -3700..-3799
 -3700 constant E-OBJ-FIRST

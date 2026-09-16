@@ -35,10 +35,10 @@ status and message and still ends the process. An uncaught worker `throw` ends
 only that task, as SwiftForth's thread entry does: the wrapper records the throw
 code in the task's TCB, the task reaches `DONE`, and the process and the other
 live tasks continue. `TASK:THROW@` reads the code; it stays readable after
-`TASK:KILL` has joined the task and is cleared by the next `TASK:ACTIVATE`. A
-worker outcome richer than one code needs the typed result model; see
-[tasking-models.md](tasking-models.md) for how SwiftForth, polyFORTH and VFX
-handle this and the dots that change it.
+`TASK:KILL` has joined the task and is cleared by the next `TASK:ACTIVATE`. The
+richer outcome - the value the worker meant to answer with, or the code that
+ended it - is `TASK:JOIN` below; see [tasking-models.md](tasking-models.md) for
+how SwiftForth, polyFORTH and VFX handle this.
 
 ## Public Words
 
@@ -54,6 +54,10 @@ TASK:HALT            ( ptr a -- )      \ request stop at next PAUSE
 TASK:KILL            ( ptr a -- )      \ join/release task memory
 TASK:DONE?           ( ptr a -- bool )
 TASK:THROW@          ( ptr a -- n )    \ uncaught throw code, 0 if none
+
+TASK:RETURN          ( n -- )          \ the worker's answer, from inside the task
+TASK:JOIN            ( ptr a -- result<n,n> ) \ wait for the end, take the outcome
+TASK:AT-EXIT         ( [ -- ] ptr a -- )      \ cleanup run in the task when it ends
 
 TASK:#USER           ( -- n )
 TASK:+USER           ( n n -- n )      \ define task-local user variable
@@ -78,12 +82,79 @@ TASK:GET-MESSAGE     ( -- n ptr a )    \ take this task's message and its sender
 TASK:MSG?            ( ptr a -- bool ) \ does that task hold an unread message
 ```
 
-Use `TASK:KILL` for teardown. A task that loops must call `TASK:PAUSE` or block
-in a host call; `TASK:HALT` is cooperative and is observed by `TASK:PAUSE`.
+Use `TASK:KILL` for teardown of a task whose outcome nobody wants, and
+`TASK:JOIN` when the outcome matters: the join releases the task too. A task that
+loops must call `TASK:PAUSE` or block in a host call; `TASK:HALT` is cooperative
+and is observed by `TASK:PAUSE`.
 
 The surface tracks the SwiftForth multitasking words captured in
 `docs/swiftforth-task-api.md`. Habu keeps the task body typed by passing an XT to
 `TASK:ACTIVATE` instead of parsing a following source body.
+
+## Joins and cleanups
+
+A worker answers with `TASK:RETURN` and the task that started it collects that
+answer with `TASK:JOIN`, taking VFX's task exit code and `AtTaskExit` cleanup
+([tasking-models.md](tasking-models.md) sections 3 and 5) and returning
+`result<ok,err>` from `lib/adt/result.f` rather than a bare code, so no caller can
+read an outcome without deciding what to do about the failing arm.
+
+```forth
+: WORKER ( -- )                        \ inside a task
+   TALLY @ TASK:RETURN ;               \ the task's one answer
+
+\ A result is a layout value, so it is constructed and MATCHed inside a word.
+: COLLECT ( -- )
+   ['] CLOSE-FILES ADDER TASK:AT-EXIT  \ runs in ADDER's thread when it ends
+   ['] WORKER ADDER TASK:ACTIVATE
+   ADDER TASK:JOIN MATCH result        \ blocks; releases ADDER; no TASK:KILL
+     ok  OF TOTAL ! ENDOF              \ the value the worker returned
+     err OF REPORT ENDOF               \ the code that ended it
+   ;MATCH ;
+```
+
+| Word | Effect | Blocks |
+| --- | --- | --- |
+| `TASK:RETURN` | `( n -- )` | never |
+| `TASK:JOIN` | `( ptr a -- result<n,n> )` | until the task has ended |
+| `TASK:AT-EXIT` | `( [ -- ] ptr a -- )` | never |
+
+- `TASK:JOIN` waits on a semaphore the ending task signals, so a joiner is parked
+  in the kernel rather than polling `TASK:DONE?`. The semaphore is created with
+  the task and destroyed with its memory, like the mailbox.
+- The `ok` arm carries the value the worker stored with `TASK:RETURN`. The `err`
+  arm carries the code of the worker's uncaught throw - the same code
+  `TASK:THROW@` keeps - or `E-TASK-NO-RESULT` when the task ended without
+  answering at all. An error beats a value: a body that returned and then failed
+  in its cleanup did not finish.
+- `TASK:RETURN` writes a cell in the task's own TCB and is single-assignment: a
+  second call, including one from the task's own cleanup, is `E-TASK-STATE`, and
+  so is a call from a thread that is not a task. `TASK:ACTIVATE` clears the
+  answer, so a reactivated task answers for its new run alone.
+- `TASK:JOIN` releases the thread and its memory exactly as `TASK:KILL` does, so
+  a joined task needs no kill and `TASK:KILL` on one is the no-op it is on any
+  EMPTY task. The outcome is read after that release, from TCB rows the release
+  leaves alone - the same storage that keeps `TASK:THROW@` readable.
+- A task that was never activated, a task that was only prepared, and a task a
+  join has already released have nothing to wait for: all three are
+  `E-TASK-JOIN`. So is a second joiner of a live task - the right to join is
+  claimed in one atomic step, so the loser is refused rather than waiting for a
+  signal the winner has taken.
+- `TASK:AT-EXIT` registers ONE cleanup quotation for that task, run in the task's
+  own thread when it ends, before the join is released. All three endings run it:
+  the body returning, the body throwing, and a halted body leaving at
+  `TASK:PAUSE`. Registering again replaces it, and the registration belongs to
+  the task definition, so it also serves the task's next activation.
+- A throw inside a cleanup never leaves the task and never ends the process: it
+  becomes the task's error when the body left none, and is dropped when the body
+  already failed, so the first failure is the one the join reports.
+- The cleanup quotations live in a typed row inside package TASK, stored as
+  quotations into storage declared to hold them - the checker's proven-quotation
+  store, not a cell cast back to code. The row holds `$40` registrations for one
+  image; a task registering past that is `E-TASK-EXIT-TABLE`. A slot belongs to
+  its task for the life of the image, so the row cannot leak.
+- The same POSIX rule as everything else here: end a task's joiners before you
+  kill it. `TASK:KILL` destroys the semaphore a joiner may be parked in.
 
 ## Atomics
 
@@ -292,6 +363,11 @@ JOBS QUEUE:DESTROY
 - A mailbox is a rendezvous between two tasks and carries the sender's identity;
   a queue buffers between any number of producers and consumers and carries none.
   Neither is a substitute for the other.
+- Every ending of a task - returned, threw, halted at `TASK:PAUSE` - runs the
+  registered cleanup in the task's own thread and then signals the join, in that
+  order. A task's outcome rows and its cleanup registration live in the TCB, which
+  outlives the thread's memory; its stacks, region, mailbox and done semaphore go
+  with that memory when a join or a kill releases it.
 
 ## Tests
 
@@ -314,7 +390,11 @@ blocks in `TASK:WAIT` without a PAUSE loop and reads 64 items in order, an
 initial count drawn without any signal, every named semaphore failure, a message
 round trip between two tasks, a send that blocks until its target gets, a get
 that blocks until a send, `TASK:MSG?` before and after a get, every refused
-message operation, and the semaphore pool exhausting, refusing a foreign handle
-and recovering.
+message operation, the semaphore pool exhausting, refusing a foreign handle
+and recovering, a joined value and a joined throw, a worker that ends without
+answering, a cleanup counted through `TASK:HIS` on both the returning and the
+throwing ending, a cleanup that throws over a stored value and beside a body that
+already failed, a halted task joined through the `TASK:PAUSE` ending, and every
+refused join and second answer.
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

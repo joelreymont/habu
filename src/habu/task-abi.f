@@ -41,6 +41,16 @@ $A0 constant MSG-SENDER-OFF
 $A8 constant MSG-PENDING-OFF
 $B0 constant MSG-FREE-OFF
 $D8 constant MSG-FULL-OFF
-$100 constant TCB-BYTES
+\ The task's outcome, read by TASK:JOIN after the task has ended: the cell
+\ TASK:RETURN stores and the flag that says it did, the joiner's claim on that
+\ one answer, the index of the task's cleanup quotation (0 for none, else the
+\ slot plus one) and the semaphore the ending task signals. The result rows
+\ outlive the task's memory, like the throw slot above them.
+$100 constant RESULT-OFF
+$108 constant RESULT-SET-OFF
+$110 constant JOINER-OFF
+$118 constant EXIT-SLOT-OFF
+$120 constant DONE-OFF
+$148 constant TCB-BYTES
 
 ;package

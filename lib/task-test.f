@@ -6,6 +6,7 @@ require lib/test.f
 require lib/process.f
 require lib/process-argv.f
 require lib/task.f
+require lib/adt/result.f          \ the join's answer is MATCHed here
 require lib/test/outcome.f
 require test/checker-assert.f
 
@@ -25,6 +26,7 @@ TASK:#USER
 CELL TASK:+USER TASK-USER-CELL
 CELL TASK:+USER TASK-LOCAL-ID
 CELL TASK:+USER TASK-LOCAL-FFI
+CELL TASK:+USER TASK-EXIT-MARK
 drop
 
 TASK:MIN-STACK TASK:TASK WORKER-A
@@ -52,6 +54,12 @@ TASK:MIN-STACK TASK:TASK MSG-LATE
 TASK:MIN-STACK TASK:TASK MSG-REFUSER
 TASK:MIN-STACK TASK:TASK MSG-IDLE
 TASK:SEMAPHORE MSG-GATE
+TASK:MIN-STACK TASK:TASK JOIN-VALUE
+TASK:MIN-STACK TASK:TASK JOIN-SILENT
+TASK:MIN-STACK TASK:TASK JOIN-CLEAN
+TASK:MIN-STACK TASK:TASK JOIN-BAD-CLEAN
+TASK:MIN-STACK TASK:TASK JOIN-HALT
+TASK:MIN-STACK TASK:TASK JOIN-IDLE
 
 $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
@@ -619,6 +627,138 @@ $33 constant MSG-LATE-VALUE
    s" TASK-SEM-INIT-SWAP ( TASK:sem n -- ) TASK:SEMAPHORE-INIT"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ ---- joined results and cleanups ---------------------------------------------
+$2A constant JOIN-VALUE-N
+$3B constant JOIN-AGAIN-N
+
+variable JOIN-SILENT-RAN
+variable JOIN-TWICE-RC
+
+: JOIN-VALUE-WORK ( -- )
+   JOIN-VALUE-N TASK:RETURN ;
+
+: JOIN-AGAIN-WORK ( -- )
+   JOIN-AGAIN-N TASK:RETURN ;
+
+: JOIN-SILENT-WORK ( -- )
+   1 JOIN-SILENT-RAN atomic-add drop ;
+
+\ The answer is single-assignment, so the worker's second one is refused where it
+\ is made rather than replacing the first.
+: JOIN-TWICE-WORK ( -- )
+   JOIN-VALUE-N TASK:RETURN
+   [: JOIN-AGAIN-N TASK:RETURN ;] catch JOIN-TWICE-RC ! ;
+
+\ The cleanup runs in the worker's own thread, so the cell it counts in is the
+\ worker's copy of the user slot and the parent reads it with TASK:HIS.
+: JOIN-MARK ( -- )
+   TASK-EXIT-MARK @ 1 + TASK-EXIT-MARK ! ;
+
+: JOIN-UNWRAP ( result<n,n> -- n n )     \ the payload, then 0 for ok and 1 for err
+   MATCH result ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
+
+: JOIN-DROP ( result<n,n> -- )
+   JOIN-UNWRAP 2drop ;
+
+: JOIN-OK= ( result<n,n> n -- ) {: want:n :}
+   JOIN-UNWRAP 0 T= want T= ;
+
+: JOIN-ERR= ( result<n,n> n -- ) {: want:n :}
+   JOIN-UNWRAP 1 T= want T= ;
+
+\ The worker's value comes back as the ok arm, and the join is the teardown: it
+\ leaves an EMPTY task, so the KILL after it does nothing and the next join has
+\ no task to wait for. Reactivating the same task clears both the answer and the
+\ joiner's claim, so it can be joined again.
+: TASK-TEST-JOIN-VALUE ( -- )
+   0 JOIN-TWICE-RC !
+   ['] JOIN-VALUE-WORK JOIN-VALUE TASK:ACTIVATE
+   JOIN-VALUE TASK:JOIN JOIN-VALUE-N JOIN-OK=
+   JOIN-VALUE TASK:DONE? TFALSE
+   JOIN-VALUE TASK:KILL
+   [: JOIN-VALUE TASK:JOIN JOIN-DROP ;] E-TASK-JOIN TTHROWSQ
+   ['] JOIN-TWICE-WORK JOIN-VALUE TASK:ACTIVATE
+   JOIN-VALUE TASK:JOIN JOIN-VALUE-N JOIN-OK=
+   JOIN-TWICE-RC @ E-TASK-STATE T=
+   [: JOIN-AGAIN-N TASK:RETURN ;] E-TASK-STATE TTHROWSQ ;
+
+\ A worker that ends with an uncaught throw answers err with that code - the same
+\ code TASK:THROW@ keeps.
+: TASK-TEST-JOIN-THROW ( -- )
+   ['] TASK-THROW-WORK JOIN-SILENT TASK:ACTIVATE
+   JOIN-SILENT APP-WAIT-DONE
+   JOIN-SILENT TASK:THROW@ E-TASK-STATE T=
+   JOIN-SILENT TASK:JOIN E-TASK-STATE JOIN-ERR= ;
+
+\ A worker that never answered has no value to give, and the join says so with a
+\ named code instead of a zero that would read like a result.
+: TASK-TEST-JOIN-SILENT ( -- )
+   0 JOIN-SILENT-RAN !
+   ['] JOIN-SILENT-WORK JOIN-SILENT TASK:ACTIVATE
+   JOIN-SILENT TASK:JOIN E-TASK-NO-RESULT JOIN-ERR=
+   JOIN-SILENT-RAN @ 1 T= ;
+
+\ One registration serves every activation of that task and runs on both endings.
+\ The mark is read while the task still holds the region that carries it - the
+\ join releases it - and it counts from zero again because each activation gets a
+\ fresh region.
+: TASK-TEST-JOIN-CLEANUP ( -- )
+   ['] JOIN-MARK JOIN-CLEAN TASK:AT-EXIT
+   ['] JOIN-AGAIN-WORK JOIN-CLEAN TASK:ACTIVATE
+   JOIN-CLEAN APP-WAIT-DONE
+   JOIN-CLEAN TASK-EXIT-MARK TASK:HIS @ 1 T=
+   JOIN-CLEAN TASK:JOIN JOIN-AGAIN-N JOIN-OK=
+   ['] TASK-THROW-WORK JOIN-CLEAN TASK:ACTIVATE
+   JOIN-CLEAN APP-WAIT-DONE
+   JOIN-CLEAN TASK-EXIT-MARK TASK:HIS @ 1 T=
+   JOIN-CLEAN TASK:JOIN E-TASK-STATE JOIN-ERR= ;
+
+\ A cleanup that throws ends nothing but the task: its code becomes the task's
+\ error when the body left none, which overtakes a value the body had stored, and
+\ a body that already failed keeps its own code.
+: TASK-TEST-JOIN-CLEANUP-THROWS ( -- )
+   [: E-TASK-USER throw ;] JOIN-BAD-CLEAN TASK:AT-EXIT
+   ['] JOIN-VALUE-WORK JOIN-BAD-CLEAN TASK:ACTIVATE
+   JOIN-BAD-CLEAN TASK:JOIN E-TASK-USER JOIN-ERR=
+   ['] TASK-THROW-WORK JOIN-BAD-CLEAN TASK:ACTIVATE
+   JOIN-BAD-CLEAN TASK:JOIN E-TASK-STATE JOIN-ERR= ;
+
+\ A halted task leaves at TASK:PAUSE instead of through the runner: that ending
+\ runs the cleanup and releases the joiner too.
+: TASK-TEST-JOIN-HALTED ( -- )
+   ['] JOIN-MARK JOIN-HALT TASK:AT-EXIT
+   ['] TASK-PAUSER JOIN-HALT TASK:ACTIVATE
+   JOIN-HALT TASK:HALT
+   JOIN-HALT APP-WAIT-DONE
+   JOIN-HALT TASK-EXIT-MARK TASK:HIS @ 1 T=
+   JOIN-HALT TASK:JOIN E-TASK-NO-RESULT JOIN-ERR= ;
+
+\ A join needs a task that has been started: one that was never activated and one
+\ that was only prepared have nothing to wait for.
+: TASK-TEST-JOIN-REFUSED ( -- )
+   [: JOIN-IDLE TASK:JOIN JOIN-DROP ;] E-TASK-JOIN TTHROWSQ
+   JOIN-IDLE TASK:PREPARE
+   [: JOIN-IDLE TASK:JOIN JOIN-DROP ;] E-TASK-JOIN TTHROWSQ
+   JOIN-IDLE TASK:KILL ;
+
+: TASK-TEST-JOIN-TYPES ( -- )
+   s" TASK-JOIN-OK ( ptr n -- result<n,n> ) TASK:JOIN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-JOIN-RAW ( n -- result<n,n> ) TASK:JOIN"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-JOIN-N ( ptr n -- n ) TASK:JOIN"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-RET-OK ( n -- ) TASK:RETURN"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-RET-PTR ( ptr n -- ) TASK:RETURN"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-EXIT-OK ( [ -- ] ptr n -- ) TASK:AT-EXIT"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-EXIT-RAW ( n ptr n -- ) TASK:AT-EXIT"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-EXIT-IN ( [ n -- ] ptr n -- ) TASK:AT-EXIT"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : TASK-TEST-CALLBACK-TYPES ( -- )
    s" TASK-CB-GOOD ( [ -- ] ptr n -- ) TASK:ACTIVATE"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -643,6 +783,7 @@ $33 constant MSG-LATE-VALUE
    TASK-TEST-THROW-TYPES
    TASK-TEST-SEM-TYPES
    TASK-TEST-MSG-TYPES
+   TASK-TEST-JOIN-TYPES
    0 TASK-COUNT !
    0 TASK-READY-CELL !
    0 TASK-SELF-A !
@@ -680,6 +821,13 @@ $33 constant MSG-LATE-VALUE
    TASK-TEST-MSG-REFUSED
    TASK-TEST-SEM-POOL
    TASK-TEST-SEM-POOL-USE
+   TASK-TEST-JOIN-VALUE
+   TASK-TEST-JOIN-THROW
+   TASK-TEST-JOIN-SILENT
+   TASK-TEST-JOIN-CLEANUP
+   TASK-TEST-JOIN-CLEANUP-THROWS
+   TASK-TEST-JOIN-HALTED
+   TASK-TEST-JOIN-REFUSED
    T-REPORT ;
 
 TASK-TEST-RUN
