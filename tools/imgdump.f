@@ -98,7 +98,10 @@ create EB 4 allot
 : NIB {: n :}  n 10 < if n 48 + else n 87 + then ;
 create HB 24 allot
 variable HV  variable HP
-: h. {: u :}
+public
+\ The view lives in HB and dies at the next call. Public so
+\ tools/imgdump-test.f can build the exact line the dump prints.
+: HEX$ {: u :} ( n -- ptr u8 n )
    u HV !  20 HP !  0 HN !
    begin
      HP @ 1 - HP !
@@ -109,7 +112,10 @@ variable HV  variable HP
    until
    HP @ 1 - HP !  36 HB HP @ + c!
    HN @ 1 + HN !
-   HB HP @ +  HN @  type ;
+   HB HP @ +  HN @ ;
+private
+: h. ( n -- )
+   HEX$ type ;
 
 \ ---- snapshot and dict entry fields ----
 : I@ ( n -- n ) {: o :}
@@ -125,12 +131,31 @@ variable HV  variable HP
 : E-S {: o :} ( n -- n )
    o I@  HAS-SNAP @ 0= if XTBASE @ + then ;
 : E-E {: o :} ( n -- n )
-   o 8 + I@  HAS-SNAP @ 0= if XTBASE @ + then ;
+   o 8 + I@ ;
 : E-F {: o :} ( n -- n )
    o 16 + I@ ;
 : E-L {: o :} ( n -- n )
    o E-F DNAME-LEN-MASK and ;
 : E-WID ( n -- n ) 40 + I@ ;
+\ A namespace record's slots 0 and 1 are the package's public and private WID
+\ roles, not a code span (src/habu/xref.f XREF-LEN), so no span is computed for
+\ one and its slot 1 is reported as stored.
+: E-CODE? {: o :} ( n -- bool )
+   o E-WID XREF-NAMESPACE-WL <> ;
+
+\ Dictionary slot 1 carries a different quantity in each image class: a
+\ snapshot stores the live CODE-SPAN raw length, a baked no-trailer image the
+\ seed record's __text-relative span end, which src/habu/habu2.f EM-SEED-DICT
+\ turns into that length at boot (src/habu/xref.f XREF-LEN-SLOT). Both classes
+\ answer the same span here; XREF-CODE-BYTES is the live counterpart.
+: E-CODE-END {: o :} ( n -- n )                     \ code records only
+   HAS-SNAP @ if o E-S o E-E CODE-SPAN:BYTES + exit then
+   XTBASE @ o E-E + ;
+
+: E-CODE-BYTES {: o :} ( n -- n )
+   o E-CODE? 0= if o E-E exit then
+   o E-CODE-END o E-S - ;
+
 variable OKV
 : PRN? {: a:ptr u :} ( ptr u8 n -- bool )     \ a..a+u all printable ascii?
    1 OKV !
@@ -188,7 +213,7 @@ variable OKV
    IB@ +  o E-L ;
 : ENT? {: o :} ( n -- bool )
    o E-S 0 <= if IMG-FALSE exit then
-   o E-E 0 < if IMG-FALSE exit then
+   o E-E 0 < if IMG-FALSE exit then                 \ the raw field, never the rebased span
    HAS-SNAP @ if o E-S PTR>OFF 0 < if IMG-FALSE exit then then
    o E-L 1 < if IMG-FALSE exit then
    o E-NAME-OFF dup 0 < if drop 0 0= 0= exit then
@@ -217,7 +242,7 @@ variable OKV
 : .ENT {: o :}
    o E-NAME type  32 EMITC
    o E-S h.  32 EMITC
-   o E-E h.  10 EMITC ;
+   o E-CODE-BYTES h.  10 EMITC ;
 : DICT-START ( -- n )
    HAS-SNAP @ if ROFF @ else BESTO @ then ;
 
@@ -232,8 +257,8 @@ variable OKV
    repeat drop ;
 
 : PC-HIT? ( n -- bool ) {: o :}
-   o E-WID XREF-NAMESPACE-WL = if IMG-FALSE exit then
-   o E-S PCV @ <=  PCV @ o E-S o E-E CODE-SPAN:BYTES + < and ;
+   o E-CODE? 0= if IMG-FALSE exit then
+   o E-S PCV @ <=  PCV @ o E-CODE-END < and ;
 
 : PC>DICT ( n -- )
    PCV !
@@ -246,13 +271,21 @@ variable OKV
    s" imgdump: pc not found" 74 die ;
 
 \ ---- no-trailer xt base ----
-\ Elf64_Ehdr fields (linux only; imgdump has no macOS Mach-O equivalent).
+\ Elf64_Ehdr fields. The header of the image in hand is the only evidence of
+\ its class; this tool's own build target is not a property of that file.
 \ Public so tools/imgdump-test.f's synthetic no-trailer fixtures can build a
 \ header that satisfies (or deliberately fails) this same check.
 public
-16 constant ELF-TYPE-OFF      \ e_type: ET_EXEC=2 marks a fixed-base (non-PIE) image
-2  constant ELF-ET-EXEC
-24 constant ELF-ENTRY-OFF     \ e_entry: XREG-RBASE for a fixed-base image (see below)
+$00 constant ELF-MAG-OFF
+$464C457F constant ELF-MAG    \ e_ident[0..4) = 7f 45 4c 46, little-endian
+$04 constant ELF-CLASS-OFF
+2  constant ELF-CLASS-64      \ EI_CLASS: ELFCLASS64
+$10 constant ELF-TYPE-OFF
+2  constant ELF-ET-EXEC       \ e_type: ET_EXEC, a fixed-base (non-PIE) image
+$12 constant ELF-MACHINE-OFF
+183 constant ELF-EM-AARCH64   \ e_machine: EM_AARCH64, the only machine hb bakes
+$18 constant ELF-ENTRY-OFF    \ e_entry: XREG-RBASE for a fixed-base image (see below)
+$40 constant ELF-EHDR-BYTES
 private
 
 \ Without a snapshot trailer, the only part of the dictionary imgdump can
@@ -262,16 +295,21 @@ private
 \ unrecoverable from a static file. EM-SEED-DICT rebases each seed record's
 \ xt by XREG-RBASE, a register loaded by `ADR x20, LANCHOR` at the image's
 \ entry (src/habu/habu2.f EM-RUNTIME-STACK) -- PC-relative, so for a
-\ fixed-base (ET_EXEC, non-PIE) linux executable it is a build-time constant
+\ fixed-base (ET_EXEC, non-PIE) arm64 executable it is a build-time constant
 \ equal to the image's own ELF entry point, readable straight from the file.
 \ A PIE image's load base is chosen by the loader at exec time and is not in
-\ the file at all, so refuse rather than guess one.
+\ the file at all, and a file that is not this kind of ELF has no such field to
+\ read, so refuse rather than guess one.
+: ELF-FIXED-BASE? ( -- bool )
+   IL @ ELF-EHDR-BYTES < if IMG-FALSE exit then
+   ELF-MAG-OFF I@ $FFFFFFFF and ELF-MAG <> if IMG-FALSE exit then
+   ELF-CLASS-OFF I@ $FF and ELF-CLASS-64 <> if IMG-FALSE exit then
+   ELF-MACHINE-OFF I@ $FFFF and ELF-EM-AARCH64 <> if IMG-FALSE exit then
+   ELF-TYPE-OFF I@ $FFFF and ELF-ET-EXEC = ;
+
 : NO-SNAP-XTBASE ( -- n )
-   HB-TARGET-LINUX? 0= if
-      s" imgdump: no snapshot trailer and target is not linux; refusing to guess the dictionary base" 74 die
-   then
-   ELF-TYPE-OFF I@ $FFFF and ELF-ET-EXEC <> if
-      s" imgdump: no snapshot trailer and image is not a fixed-base executable; refusing to guess the dictionary base" 74 die
+   ELF-FIXED-BASE? 0= if
+      s" imgdump: no snapshot trailer and image is not a fixed-base arm64 ELF executable; refusing to guess the dictionary base" 74 die
    then
    ELF-ENTRY-OFF I@ ;
 
@@ -339,7 +377,7 @@ private
    idx DICT-CAP >= if s" imgdump: too many dict entries" 74 die then
    o E-NAME idx A-NAME-U! idx A-NAME-P!
    o E-S idx A-START!
-   o E-E idx A-LEN! ;
+   o E-CODE-BYTES idx A-LEN! ;
 
 : CAPTURE-A ( -- )
    0 A-N !
@@ -365,32 +403,32 @@ private
    idx A-NAME-P@ idx A-NAME-U@ type 32 EMITC idx A-LEN@ h. 10 EMITC ;
 
 : PRINT-B-NL {: o :} ( n -- )
-   o E-NAME type 32 EMITC o E-E h. 10 EMITC ;
+   o E-NAME type 32 EMITC o E-CODE-BYTES h. 10 EMITC ;
 
 : PRINT-BAD-NL ( -- )
    CMP-BAD-P @ CMP-BAD-U @ type 32 EMITC CMP-BAD-L @ h. 10 EMITC ;
 
 : CMP-NAME-LEN? {: o idx :} ( n n -- bool )
    idx A-NAME-P@ idx A-NAME-U@ o E-NAME CORE-STR=
-   idx A-LEN@ o E-E = and ;
+   idx A-LEN@ o E-CODE-BYTES = and ;
 
 : CMP-ENTRY {: o idx :} ( n n -- )
    idx 0= if
       o E-NAME CMP-B0-U ! CMP-B0-P !
       o E-S CMP-B0-S !
-      o E-E CMP-B0-L !
+      o E-CODE-BYTES CMP-B0-L !
    then
    CMP-NAME-LEN-DIFF @ if exit then
    idx A-N @ >= if
       o E-NAME CMP-BAD-U ! CMP-BAD-P !
-      o E-E CMP-BAD-L !
+      o E-CODE-BYTES CMP-BAD-L !
       idx CMP-BAD-IDX !
       -1 CMP-NAME-LEN-DIFF !
       exit
    then
    o idx CMP-NAME-LEN? 0= if
       o E-NAME CMP-BAD-U ! CMP-BAD-P !
-      o E-E CMP-BAD-L !
+      o E-CODE-BYTES CMP-BAD-L !
       -1 CMP-NAME-LEN-DIFF !
       idx CMP-BAD-IDX !
       exit
