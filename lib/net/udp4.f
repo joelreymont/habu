@@ -4,7 +4,6 @@ require lib/ffi-abi.f
 require lib/type/deftype.f
 require lib/cad-num-types.f
 require lib/task.f
-require lib/image-lifecycle.f
 
 package UDP4
 public
@@ -38,7 +37,6 @@ SUMTYPE receive-result 0
 
 E-UDP4-OPERAND constant E-OPERAND
 E-UDP4-PLATFORM constant E-PLATFORM
-E-UDP4-SYMBOL constant E-SYMBOL
 E-UDP4-RESULT constant E-RESULT
 
 private
@@ -50,19 +48,6 @@ $FFE3 constant MAX-PAYLOAD
 $80802 constant SOCKET-FLAGS       \ SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC.
 $20 constant MSG-TRUNC
 1000000 constant NS-PER-MS
-
-variable FN-SOCKET
-variable FN-BIND
-variable FN-SENDTO
-variable FN-RECVFROM
-variable FN-GETSOCKNAME
-variable FN-CLOSE
-variable FN-POLL
-variable FN-ERRNO
-here FFI:>CELL 7 and 8 swap - 7 and allot
-variable READY
-variable REGISTERED
-create SYMBOL-NAME $20 allot
 
 \ Endpoint/poll storage is per task, matching FFI's argument/extent tables.
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
@@ -144,138 +129,78 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    SOCKADDR $04 + BE32@ >ADDRESS SOCKADDR $02 + BE16@ >PORT ;
 
 
-\ Image capture is quiescent. These are borrowed process addresses; clearing
-\ them needs no foreign call. Caller-owned descriptors must already be closed.
-: RESET-SYMBOLS ( -- )
-   0 FN-SOCKET ! 0 FN-BIND ! 0 FN-SENDTO !
-   0 FN-RECVFROM ! 0 FN-GETSOCKNAME ! 0 FN-CLOSE !
-   0 FN-POLL ! 0 FN-ERRNO !
-   0 REGISTERED ! 0 READY atomic! ;
+\ The exact Linux AArch64 libc schemas. RTLD_DEFAULT borrows process symbols;
+\ the native executable already needs libc.so.6, so no library reference is
+\ acquired or retained here. Each declaration states the C function's own effect
+\ and the extent of every buffer the callee writes, which is what the bounded
+\ call guards; package FFI resolves each symbol on its first call and clears the
+\ cache for image capture. Coverage: test/net/udp4.py exercises every binding
+\ with an independent Python UDP peer.
+PROCESS-SYMBOLS
+
+FUNCTION: SOCKET-CALL socket ( n n n -- n ) ;FUNCTION
+FUNCTION: BIND-CALL bind ( n ptr u8 n -- n ) ;FUNCTION
+FUNCTION: CLOSE-CALL close ( n -- n ) ;FUNCTION
+FUNCTION: SEND-CALL sendto ( n ptr u8 n n ptr u8 n -- n ) ;FUNCTION
+
+FUNCTION: LOCAL-CALL getsockname ( n ptr u8 ptr u8 -- n )
+   1 $10 WRITES-BYTES                     \ sockaddr_in
+   2 $04 WRITES-BYTES                     \ socklen_t
+;FUNCTION
+
+FUNCTION: RECEIVE-CALL recvfrom ( n ptr u8 n n ptr u8 ptr u8 -- n )
+   1 2 WRITES-ARG                         \ the caller's payload span
+   4 $10 WRITES-BYTES                     \ sockaddr_in
+   5 $04 WRITES-BYTES                     \ socklen_t
+;FUNCTION
+
+FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
+   0 $08 WRITES-BYTES                     \ one pollfd
+;FUNCTION
 
 
-\ INIT holds this module's READY lock. The shared registry must support
-\ concurrent registration by different resource owners.
-: REGISTER-CLEANUP ( -- )
-   REGISTERED @ 0= if
-      [: RESET-SYMBOLS ;] IMAGE-LIFECYCLE:REGISTER
-      1 REGISTERED !
-   then ;
-
-
-\ RTLD_DEFAULT borrows process symbols; the native executable already needs
-\ libc.so.6. No library reference is acquired or retained by this module.
-: SYMBOL ( ptr u8 n -- n )
-   SYMBOL-NAME FFI:CSTR 0 SYMBOL-NAME FFI:DLSYM
-   dup 0= if E-SYMBOL throw then ;
-
-
-: LOAD-SYMBOLS ( -- )
-   s" socket" SYMBOL FN-SOCKET !
-   s" bind" SYMBOL FN-BIND !
-   s" sendto" SYMBOL FN-SENDTO !
-   s" recvfrom" SYMBOL FN-RECVFROM !
-   s" getsockname" SYMBOL FN-GETSOCKNAME !
-   s" close" SYMBOL FN-CLOSE !
-   s" poll" SYMBOL FN-POLL !
-   s" __errno_location" SYMBOL FN-ERRNO ! ;
-
-
-\ Publish process-owned immutable symbols once; readers acquire READY=2.
+\ The platform gate. Symbol resolution is package FFI's now, so there is no
+\ publication to synchronize and no cached address to invalidate here.
 : INIT ( -- )
-   HB-TARGET-LINUX? 0= if E-PLATFORM throw then
-   begin
-      READY atomic@ 2 = if exit then
-      0 1 READY atomic-cas 0= if
-         [: REGISTER-CLEANUP LOAD-SYMBOLS ;] catch dup 0 <> if 0 READY atomic! throw then drop
-         2 READY atomic! exit
-      then
-      TASK:PAUSE
-   again ;
+   HB-TARGET-LINUX? 0= if E-PLATFORM throw then ;
 
 
-\ These are exact Linux AArch64 libc schemas. The checker cannot infer a C
-\ function's effect from dlsym; pointer extents are supplied to bounded FFI.
-\ errno's pointer is libc-owned, thread-local, and read as a four-byte C int.
-\ Retirement owner: Habu's checked foreign-binding implementation. Coverage:
-\ test/net/udp4.py exercises every binding with an independent Python UDP peer.
-TRUSTED: ERRNO-POINTER ( -- ptr u8 )
-   FFI:ARGS FFI:REG-LENS 0 FN-ERRNO @ ffi-call-bounded ;
-
-
+\ errno's pointer is libc-owned, thread-local, and its value a four-byte C int;
+\ package FFI owns that binding for every consumer.
 : LAST-ERROR ( -- errno )
-   FFI:RESET ERRNO-POINTER LE32@ >ERRNO ;
-
-
-TRUSTED: SOCKET-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-SOCKET @ ffi-call-bounded ;
+   FFI:ERRNO >ERRNO ;
 
 
 : SOCKET-RAW ( -- n )
-   FFI:RESET 2 0 FFI:VALUE! SOCKET-FLAGS 1 FFI:VALUE! 0 2 FFI:VALUE!
-   SOCKET-CALL C-INT ;
-
-
-TRUSTED: BIND-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-BIND @ ffi-call-bounded ;
+   2 SOCKET-FLAGS 0 SOCKET-CALL C-INT ;
 
 
 : BIND-RAW ( socket -- n ) {: socket:socket :}
-   FFI:RESET socket SOCKET>N 0 FFI:VALUE! SOCKADDR 1 FFI:READABLE!
-   SOCKADDR-BYTES 2 FFI:VALUE!
-   BIND-CALL C-INT ;
-
-
-TRUSTED: CLOSE-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 1 FN-CLOSE @ ffi-call-bounded ;
+   socket SOCKET>N SOCKADDR SOCKADDR-BYTES BIND-CALL C-INT ;
 
 
 : CLOSE-RAW ( socket -- n ) {: socket:socket :}
-   FFI:RESET socket SOCKET>N 0 FFI:VALUE!
-   CLOSE-CALL C-INT ;
-
-
-TRUSTED: LOCAL-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-GETSOCKNAME @ ffi-call-bounded ;
+   socket SOCKET>N CLOSE-CALL C-INT ;
 
 
 : LOCAL-RAW ( socket -- n ) {: socket:socket :}
-   FFI:RESET socket SOCKET>N 0 FFI:VALUE!
-   SOCKADDR SOCKADDR-BYTES 1 FFI:WRITABLE! ADDRLEN $04 2 FFI:WRITABLE!
-   LOCAL-CALL C-INT ;
-
-
-TRUSTED: SEND-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 6 FN-SENDTO @ ffi-call-bounded ;
+   socket SOCKET>N SOCKADDR ADDRLEN LOCAL-CALL C-INT ;
 
 
 : SEND-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
    {: socket:socket bytes size:CAD-NUM:byte-len :}
-   FFI:RESET socket SOCKET>N 0 FFI:VALUE! bytes 1 FFI:READABLE!
-   size BLEN>N 2 FFI:VALUE! 0 3 FFI:VALUE!
-   SOCKADDR 4 FFI:READABLE! SOCKADDR-BYTES 5 FFI:VALUE!
-   SEND-CALL ;
-
-
-TRUSTED: RECEIVE-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 6 FN-RECVFROM @ ffi-call-bounded ;
+   socket SOCKET>N bytes size BLEN>N 0
+   SOCKADDR SOCKADDR-BYTES SEND-CALL ;
 
 
 : RECEIVE-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
    {: socket:socket bytes capacity:CAD-NUM:byte-len :}
-   FFI:RESET socket SOCKET>N 0 FFI:VALUE! bytes capacity BLEN>N 1 FFI:WRITABLE!
-   capacity BLEN>N 2 FFI:VALUE! MSG-TRUNC 3 FFI:VALUE!
-   SOCKADDR SOCKADDR-BYTES 4 FFI:WRITABLE! ADDRLEN $04 5 FFI:WRITABLE!
-   RECEIVE-CALL ;
-
-
-TRUSTED: POLL-CALL ( -- n )
-   FFI:ARGS FFI:REG-LENS 3 FN-POLL @ ffi-call-bounded ;
+   socket SOCKET>N bytes capacity BLEN>N MSG-TRUNC
+   SOCKADDR ADDRLEN RECEIVE-CALL ;
 
 
 : POLL-RAW ( ms -- n ) {: timeout:ms :}
-   FFI:RESET POLLFD $08 0 FFI:WRITABLE! 1 1 FFI:VALUE!
-   timeout MS>N 2 FFI:VALUE!
-   POLL-CALL C-INT ;
+   POLLFD 1 timeout MS>N POLL-CALL C-INT ;
 
 
 : POLL! ( socket -- )

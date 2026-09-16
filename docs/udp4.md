@@ -62,33 +62,38 @@ Handle lifetime is a caller obligation, not a linear ownership proof.
 
 The API and control flow are checked Habu. Eight small private `TRUSTED:`
 definitions describe exact libc schemas through the existing bounded FFI:
-`socket`, `bind`, `getsockname`, `sendto`, `recvfrom`, `poll`, `close`, and
-`__errno_location`. Argument preparation and result normalization are checked helpers; each trusted
-body contains only its fixed foreign call. Writable extents are explicit. C `int` returns are
+`socket`, `bind`, `getsockname`, `sendto`, `recvfrom`, `poll` and `close`, each
+a `FUNCTION:` declaration whose effect is the C function's own; errno is package
+FFI's binding, shared by every consumer. Argument preparation and result
+normalization are checked helpers, and the module carries no `TRUSTED:` body at
+all. Writable extents are explicit. C `int` returns are
 normalized from 32 bits; `ssize_t` results retain the host's 64 bits. The
 16-byte `sockaddr_in`, four-byte `socklen_t`, and eight-byte `pollfd` layouts
 come from this platform's libc headers, not an application wire format.
 
 Temporary endpoint/poll storage is task-local, as are the existing FFI argument
-tables. A synchronized first call resolves libc symbols through
-[`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html) and publishes
-them for other callers. The native executable already depends on libc; these
-addresses are borrowed from the process, without acquiring a library reference.
+tables. Each declared symbol resolves on its first call through
+[`RTLD_DEFAULT`](https://man7.org/linux/man-pages/man3/dlsym.3.html) and is cached
+by package FFI for every later caller. The native executable already depends on
+libc; these addresses are borrowed from the process, without acquiring a library
+reference.
 Separate tasks may use separate sockets and buffers concurrently; calls must not nest within one task. Sharing a socket
 between receivers requires the application's own coordination. Input/output
 storage must remain valid for each call. Loading the module opens no sockets.
 
-Invalid operands throw `E-OPERAND` (`-9100`). Unsupported OS, failed
-symbol resolution, and an unexpected foreign result throw `E-PLATFORM`
-(`-9101`), `E-SYMBOL` (`-9102`), and `E-RESULT` (`-9103`). Ordinary OS operation
-failures are result variants, not those exceptions.
+Invalid operands throw `E-OPERAND` (`-9100`). An unsupported OS throws
+`E-PLATFORM` (`-9101`) and an unexpected foreign result `E-RESULT` (`-9103`). A
+symbol that will not resolve is package FFI's named failure, `E-FFI-DLSYM`
+(`-3502`), raised at the first call that needs it; `E-SYMBOL` (`-9102`) is
+retired with this module's own resolution. Ordinary OS operation failures are
+result variants, not those exceptions.
 
-First use registers cache cleanup with
-[`IMAGE-LIFECYCLE`](../lib/image-lifecycle.f) before resolving any libc symbol.
-A failed resolution retains that registration for cleanup or a later retry.
-Quiescent image preparation clears all cached function addresses and the
-initialization/registration flags, so the next call resolves and registers them
-again. The module acquires no dynamic-library reference to release. Callers must
+Package FFI registers cache cleanup with
+[`IMAGE-LIFECYCLE`](../lib/image-lifecycle.f) when the first declaration is
+made, before any symbol is resolved, and a failed resolution retains that
+registration for a later retry. Quiescent image preparation clears every cached
+function address, so the next call resolves again. The module acquires no
+dynamic-library reference to release. Callers must
 close their descriptors and stop concurrent use before capture; live descriptors
 are process resources, not serializable handles.
 
