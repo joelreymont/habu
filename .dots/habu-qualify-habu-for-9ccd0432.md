@@ -16,3 +16,5 @@ Evidence 2026-09-16 13:30: (3) stripped applications: test/gate-aot-positive.f f
 
 
 Evidence 2026-09-16 13:45: (1) full gate on F2 built from dab2c17e (5,832,896 bytes): 399 PASS, 1 FAIL = bootstrap-wide-memory-src (mirror parity of the folded emitters, lane in flight); the earlier load timeouts and proc-pty-tty-smoke passed. F1->F2 differed by 17,992 bytes beyond the baked path (host-dependent baked facts, dot habu-derive-baked-build-d5df4419); F3 on F2 pending for the fixpoint.
+
+Fixpoint 2026-09-16 13:47: F3 (built on F2) == F2 modulo the baked tree path; engine 5,832,896 bytes; self-build 101 s on a quiet machine (138 s this morning).
