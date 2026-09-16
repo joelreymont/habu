@@ -321,6 +321,10 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
    {: src:ptr dst:ptr off:n :}
    src off + @ dst off + ! ;
 
+: TASK-COPY-SPAN ( ptr n ptr n n n -- )
+   {: src:ptr dst:ptr off:n bytes:n :}
+   bytes 0 ?do src dst off i + TASK-COPY-CELL CELL +loop ;
+
 : TASK-PTR-SLOT ( ptr n n -- ptr ptr n )
    + TASK-CELL>PTR-SLOT ;
 
@@ -335,6 +339,16 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
    data-base reg ARGC-CELL TASK-COPY-CELL
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL
+   \ A task starts on its creator's I/O devices (docs/genio.md). These cells
+   \ hold a device INDEX, not an address, which is what makes copying them into
+   \ a freshly mapped region sound: nothing here needs relocating. The funnel's
+   \ re-entrancy guard and the active-device cell start clear, because the new
+   \ task is not inside an operation.
+   data-base reg GENIO-ABI:OUT-CELL TASK-COPY-CELL
+   data-base reg GENIO-ABI:IN-CELL TASK-COPY-CELL
+   data-base reg GENIO-ABI:WRITE-OFF GENIO-ABI:DEVICES cells TASK-COPY-SPAN
+   0 reg GENIO-ABI:BUSY-CELL + !
+   0 reg GENIO-ABI:ACTIVE-CELL + !
    rbase reg RBASE-CELL + !
    tcb TCB.STACK @ reg STACK-ABI:BASE-CELL TASK-PTR!
    tcb TCB.STACK-U @ reg STACK-ABI:CAP-CELL + !

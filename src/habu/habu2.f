@@ -1246,6 +1246,56 @@ public
    RET,
    end LBL, ;
 
+\ (GENIO-OUT): the device half of src/habu/rt.f's output funnel, reached only
+\ when the current task's output device index is non-zero. x0 carries that
+\ index, x1 the span address and x2 its length; the routine either runs the
+\ device's write operation with the span on the data stack or falls back to
+\ write(1) and returns with the caller's link register intact.
+\
+\ A SEALED ENGINE HELPER for the same reason (LREPLROUTE) and (PROT-SPAN) are:
+\ seven direct BLs reach it from prim bodies and interpreter code, and a
+\ stripped AOT image relocates such a call by resolving its target to a
+\ record's code entry (aot-closure.f FINDADDR-PTR). With no record the linker
+\ refuses the branch it cannot rewrite. The record is system-private, so no
+\ word search sees the name.
+\
+\ It publishes the device in ACTIVE-CELL around the call, which is how a write
+\ shared by several devices finds the one it is running for, and restores the
+\ caller's value from its own frame afterwards.
+\
+\ THREE WAYS BACK TO THE TERMINAL, all of them fail-safe rather than silent:
+\ the re-entrancy guard is set (a device write that itself reached `type`), the
+\ index is outside 1..DEVICES, or the row is empty because nothing registered
+\ it. Output has to keep working while a device is being built or has just gone
+\ away; a device that wants a failure REPORTED latches it and answers on its
+\ next checked operation (docs/genio.md), because a throw out of `emit` would
+\ unwind through engine internals.
+: EMIT-GENIO-OUT ( -- )
+   LBL LBL LBL {: term:label done:label end:label :}
+   LGENIOOUT LABEL@ {: start:label :}
+   s" (GENIO-OUT)" start LABEL>N end LABEL>N ENGINE-HELPER:REGISTER
+   start LBL,
+   SP SP $10 SUBI,  30 SP 0 STR,
+   9 DATA GENIO-ABI:BUSY-CELL LDR,  9 term CBNZ,
+   0 GENIO-ABI:DEVICES CMPI,  C-HI term BCOND,          \ index outside 1..DEVICES
+   9 GENIO-ABI:WRITE-OFF LIT64,  9 DATA 9 ADD,
+   10 0 0 ADDI,  10 10 1 SUBI,  10 10 3 LSLI,  9 9 10 ADD,
+   9 9 0 LDR,  9 term CBZ,                              \ row never registered
+   10 DATA GENIO-ABI:ACTIVE-CELL LDR,  10 SP 8 STR,     \ save the caller's active device
+   0 DATA GENIO-ABI:ACTIVE-CELL STR,                    \ the write runs for this one
+   10 1 MOVZ,  10 DATA GENIO-ABI:BUSY-CELL STR,
+   1 G-PUSH  2 G-PUSH
+   9 BLR,
+   10 0 MOVZ,  10 DATA GENIO-ABI:BUSY-CELL STR,
+   10 SP 8 LDR,  10 DATA GENIO-ABI:ACTIVE-CELL STR,
+   done B,
+   term LBL,
+   0 1 MOVZ,  NR-WRITE SYS,
+   done LBL,
+   30 SP 0 LDR,  SP SP $10 ADDI,
+   RET,
+   end LBL, ;
+
 variable SRC-TTY  variable SRC-FILE
 variable SRC-RL   variable SRC-RD    variable SRC-PIPEOK
 variable SRC-REPL variable SRC-DONE  variable SRC-FSCAN
@@ -4276,7 +4326,7 @@ variable LTOPHOOK
    C-QUOTE-START
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
-   0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
+   1 13 0 ADDI,  2 10 0 ADDI,  G-OUT ;
 
 : C-EISDQ ( -- )
    C-QUOTE-START
@@ -4315,7 +4365,7 @@ variable LTOPHOOK
    14 17 10 ADD,  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,
-   0 1 MOVZ,  1 17 10 SUB,  2 10 0 ADDI,  NR-WRITE SYS, ;
+   1 17 10 SUB,  2 10 0 ADDI,  G-OUT ;
 
 : C-CHAR ( -- )
    LTOK LABEL@ BL,  LBCAP LABEL@ BL,
@@ -9163,7 +9213,7 @@ public
       LMAIN LABEL@ B,
    nousrc LBL,
    LREPLROUTE LABEL@ BL,  9 LRBYE LABEL@ CBZ,
-   0 1 MOVZ,  1 LOKS LABEL@ ADR,  2 4 MOVZ,  NR-WRITE SYS,
+   1 LOKS LABEL@ ADR,  2 4 MOVZ,  G-OUT
    EM-REPL-READ
    LRBYE LABEL@ LBL,
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -9630,7 +9680,7 @@ package LABELS
    LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
 : RUNTIME ( -- )
-   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LREPLROUTE !
+   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LREPLROUTE !  LBL LGENIOOUT !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
@@ -10066,6 +10116,7 @@ package ENGINE-EMIT
 
 : EMIT-RUNTIME-SECTIONS ( -- )
    EMIT-REPL-ROUTE
+   EMIT-GENIO-OUT
    EMIT-CRASH-HANDLER
    EMIT-TRAPH
    EMIT-HEX

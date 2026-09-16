@@ -613,6 +613,70 @@ $47E0 constant HEAP-START-CELL
 ;package
 
 
+\ GENIO-ABI: where the generic I/O layer (docs/genio.md, lib/genio.f) keeps the
+\ routing the ENGINE itself has to read. Everything else about a device -- its
+\ eight operations, its private state, its handle -- belongs to the library and
+\ lives in ordinary dictionary storage; only these cells cross into engine code.
+\
+\ A DEVICE INDEX, NEVER AN ADDRESS. OUT-CELL and IN-CELL hold a small integer:
+\ zero is the built-in terminal path and 1..DEVICES names a row of the write
+\ table below. The distinction matters because these two cells are PER TASK -
+\ DATA is swapped for each task, and lib/task.f TASK-REGION-INIT copies them
+\ into a new task's region so a task inherits its creator's devices. A task
+\ region is an ordinary anonymous mapping: nothing canonicalises a code address
+\ copied into it, so a per-task cell holding an execution token would survive a
+\ snapshot or an AOT capture pointing into the builder's region. An index
+\ survives anything, and the seed mirror is one constant.
+\
+\ THE WRITE TABLE is the one place an execution token does appear, and it is
+\ in the engine header, where SNAP-RELOC already canonicalises declared cells:
+\ lib/genio.f publishes a device's write operation into its row through `xt!`,
+\ exactly as src/habu/repl.f publishes its line reader into REPLH-CELL, and
+\ clears every row again through IMAGE-LIFECYCLE before a capture is taken. The
+\ engine reads a row only to reach a device write; it never learns what a device
+\ is. DEVICES is deliberately small: a process has a terminal, perhaps a
+\ connection or two and a capture buffer, and a fixed table costs no allocation
+\ on a microcontroller. TASK-REGION-INIT copies the rows into a task's region as
+\ well, which is sound for the reason RBASE-CELL's copy is: a task region lives
+\ and dies inside one process and is never snapshotted or captured, so a
+\ process-lifetime code address in it never has to survive anything.
+\
+\ BUSY-CELL guards the output funnel against re-entry. A device write is
+\ ordinary Habu code and may itself reach `type` -- an error report inside a
+\ socket write is the obvious way -- so while a device write runs, the funnel
+\ takes the terminal path instead of calling itself.
+\
+\ ACTIVE-CELL says which device an operation is running FOR, and it exists
+\ because the eight operations are shared code: two TCP devices are the same
+\ eight quotations over two different connections, and a quotation cannot
+\ capture the device it belongs to (docs/forth.md refuses a local inside one).
+\ An operation therefore asks this cell for its own row and reads its state
+\ there. The funnel publishes it around the write it calls, and lib/genio.f
+\ publishes and restores it around every other operation.
+\
+\ WHERE THEY HAD TO GO: the $600..$800 header hole BODYBUF-OFF below names as
+\ free space, left over from the DO/LOOP frame band that became a guarded
+\ mapping. Swept for a claimant across src lib tools test maki bootstrap before
+\ taking it, and read back as zero out of a booted engine. The run above
+\ BOOT-LAYOUT:HEAP-START-CELL that reads free in the source is NOT: src/habu/
+\ stack-abi.f already owns $47E8..$4810, and lib/task.f `+USER` hands out
+\ $41C8..$5000 to library task-local slots. This band ends at $660 and leaves
+\ the word-frame lane's $7D0/$7D8 and the $3800 null cell untouched. Every cell
+\ is below $7FF8 -- the ceiling for a cell a compiled routine names directly as
+\ `DATA <off> LDR`, which the funnel's first instruction is -- and below
+\ DATA-START, so no compiled source can reach it and DATA-START does not move.
+package GENIO-ABI
+public
+8 constant DEVICES                 \ device rows; a device index is 1..DEVICES
+$600 constant OUT-CELL             \ per-task current output device index (0 = terminal)
+$608 constant IN-CELL              \ per-task current input device index (0 = terminal)
+$610 constant BUSY-CELL            \ output-funnel re-entrancy guard (0 = idle)
+$618 constant ACTIVE-CELL          \ device index an operation is running for (0 = none)
+$620 constant WRITE-OFF            \ DEVICES cells: row i-1 = device i's write operation
+WRITE-OFF DEVICES 8 * + constant END
+;package
+
+
 \ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
 \ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no

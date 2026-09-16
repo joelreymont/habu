@@ -163,8 +163,38 @@ public
 variable DOT-LBL  variable ATOI-LBL
 variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
 
-\ print x9 as signed decimal + newline (itoa into an sp buffer, then write(1,..)).
-\ clobbers x9-x14 + 32 bytes of sp scratch; preserves XDS.
+\ ---- the engine's one output funnel (docs/genio.md) --------------------------
+\ Every byte of ORDINARY program text the engine writes leaves through G-OUT:
+\ `.` and `u.` (G-PRINT9/G-PRINTU9 below), `emit`/`cr`/`space` (G-EMITC),
+\ `type` (habu1.f BTYPE), interpreted `."` and `.\"` (habu2.f C-IDOTQ/C-EIDOTQ)
+\ and the REPL's ok prompt (habu2.f EM-COMPILE-EXIT). DIAGNOSTICS DO NOT:
+\ crash.f, `die`, the E-* reports and the REPL's error line write to fd 2
+\ through the syscall directly, so a failing engine still reports on the
+\ descriptor it was started with however a program has routed its output.
+\
+\ THE TERMINAL PATH PAYS ONE LOAD AND ONE COMPARE. G-OUT emits the device test
+\ inline and keeps write(1) where it was; only a non-zero device index leaves
+\ for LGENIOOUT, and only that branch frames the call. x0 is the scratch because
+\ every one of the seven sites was about to load the descriptor into it anyway,
+\ so no site has to say which of its registers are live.
+\
+\ CALLERS PASS x1 = span address, x2 = span length, exactly as the syscall did.
+variable LGENIOOUT
+variable GO-DEV  variable GO-DONE
+
+: G-OUT ( -- )
+   LBL GO-DEV !  LBL GO-DONE !
+   0 DATA GENIO-ABI:OUT-CELL LDR,  0 GO-DEV LABEL@ CBNZ,
+   0 1 MOVZ,  NR-WRITE SYS,
+   GO-DONE LABEL@ B,
+   GO-DEV LABEL@ LBL,
+   SP SP $10 SUBI,  30 SP 0 STR,
+   LGENIOOUT LABEL@ BL,
+   30 SP 0 LDR,  SP SP $10 ADDI,
+   GO-DONE LABEL@ LBL, ;
+
+\ print x9 as signed decimal + newline (itoa into an sp buffer, then out through
+\ G-OUT). clobbers x9-x14 + 32 bytes of sp scratch; preserves XDS.
 : G-PRINT9 ( -- )
    LBL RT-LPOS !  LBL RT-LLOOP !  LBL RT-LDONE !
    SP SP $20 SUBI,  12 SP $20 ADDI,
@@ -179,8 +209,8 @@ variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
    9 11 0 ADDI,  9 RT-LLOOP LABEL@ CBNZ,
    14 RT-LDONE LABEL@ CBZ,
    13 $2D MOVZ,  12 12 1 SUBI,  13 12 0 STRB,  RT-LDONE LABEL@ LBL,
-   0 1 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
-   NR-WRITE SYS,
+   1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
+   G-OUT
    SP SP $20 ADDI, ;
 
 : EMIT-DOT ( -- )
@@ -196,14 +226,18 @@ variable RT-LPOS  variable RT-LLOOP  variable RT-LDONE
    11 9 10 UDIV,  13 11 10 MUL,  13 9 13 SUB,
    13 13 $30 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
    9 11 0 ADDI,  9 RT-LLOOP LABEL@ CBNZ,
-   0 1 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
-   NR-WRITE SYS,
+   1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
+   G-OUT
    SP SP $20 ADDI, ;
 
-\ Write the single byte in x13 to stdout (emit/cr/space share it).
+\ Write the single byte in x13 to the current output device (emit/cr/space
+\ share it). The byte goes to sp scratch first because a device write takes a
+\ span like every other, and the frame G-OUT pushes on the device path sits
+\ below this one.
 : G-EMITC ( -- )
    SP SP $10 SUBI,  13 SP 0 STRB,
-   0 1 MOVZ,  1 SP 0 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   1 SP 0 ADDI,  2 1 MOVZ,
+   G-OUT
    SP SP $10 ADDI, ;
 
 \ ATOI: NUL-terminated decimal string at x9 -> push i64 (leading '-' ok). Leaf.

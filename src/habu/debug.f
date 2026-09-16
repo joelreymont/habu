@@ -61,7 +61,7 @@ TRUSTED: BP-XT>PTR ( n -- ptr u8 )
 
 : BPADD-PTR ( ptr u8 n -- ) {: xt:ptr ctrl :}
    xt FIND 0 < 0= IF exit THEN                \ already set
-   FREE dup 0 < IF drop s" bp: table full (8)" EMITS 76 throw THEN   \ recoverable in the REPL
+   FREE dup 0 < IF drop s" bp: table full (8)" type 76 throw THEN   \ recoverable in the REPL
    xt ctrl rot BP-SET-SLOT
    BRK0 xt BP-PATCH32 ;
 

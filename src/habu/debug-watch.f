@@ -47,7 +47,7 @@ TRUSTED: BPW-DATA-CELL ( n -- ptr n )
 : BPW+ ( ptr n -- )
    {: addr:ptr :}
    addr BPW-FIND 0 >= if exit then
-   BPW-N@ BPW-MAX >= if s" bpw: table full" EMITS 76 throw then
+   BPW-N@ BPW-MAX >= if s" bpw: table full" type 76 throw then
    addr BPW-N@ BPW-SLOT !
    BPW-N@ 1+ BPW-N! ;
 
@@ -69,7 +69,7 @@ TRUSTED: BPW-DATA-CELL ( n -- ptr n )
 
 : BPW-DUMP ( -- )
    BPW-N@ 0 <= if exit then
-   s" watch:" EMITS cr
+   s" watch:" type cr
    BPW. ;
 
 : BPW-INSTALL ( -- )

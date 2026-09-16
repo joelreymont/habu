@@ -3,7 +3,7 @@
 \ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
 \ one token per call, so the engine's own interpret loop is the evaluator.
 \ Baked into bin/hb after layout.f, repl.f, and debug-watch.f (uses DATAB/REPLH-CELL/
-\ TTY?/EMITS/RD-LINE/BPW-DUMP); tools/hb-build.f programs never see it.
+\ TTY?/RD-LINE/BPW-DUMP); tools/hb-build.f programs never see it.
 
 create SBUF 1024 allot          \ captured rest-of-line
 variable SLEN  variable SPOS  variable STEPPING
@@ -73,7 +73,7 @@ variable SLEN  variable SPOS  variable STEPPING
    2dup COLON? IF
       0 STEPPING !  REST-OF                       \ definition -> run whole, stop stepping
    ELSE
-      s" step> " EMITS  over over EMITS  s"  " EMITS
+      s" step> " type  over over type  s"  " type
    THEN ;
 
 : SRD-LINE ( -- ptr u8 n )  STEPPING @ IF S-NEXT-TOK ELSE RD-LINE THEN ;

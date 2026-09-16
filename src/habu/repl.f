@@ -68,20 +68,20 @@ defer REPL-READ ( -- ptr u8 n )
 
 : RAW-OFF ( -- )  0 HBR-TIO-SET TIOB0 ioctl drop ;
 
-: EMITS ( ptr u8 n -- ) {: a u :}  1 a u write drop ;
-
-: REPL-EMIT1 ( n -- )
-   KB c!
-   1 KB 1 write drop ;
-
+\ The editor's echo goes out through `emit` and `type` rather than a write to
+\ descriptor 1, so it follows the task's current output device (docs/genio.md):
+\ a line edited over a connection is echoed back over that connection. KEY1 and
+\ RD-LINE below stay on descriptor 0 because together they ARE the terminal
+\ device's key and accept; another device supplies its own pair, and lib/genio.f
+\ picks between them at REPL-READ.
 : KEY1 ( -- n )  0 KB 1 read drop  KB c@ ;
 
 \ full-line redraw: CR, clear-to-eol, prompt, line, cursor back to LPOS
 : REDRAW ( -- )
-   13 REPL-EMIT1  27 REPL-EMIT1  91 REPL-EMIT1  75 REPL-EMIT1
-   s" habu> " EMITS
-   LBUF LLEN @ EMITS
-   LLEN @ LPOS @ - 0 ?do 8 REPL-EMIT1 loop ;
+   13 emit  27 emit  91 emit  75 emit
+   s" habu> " type
+   LBUF LLEN @ type
+   LLEN @ LPOS @ - 0 ?do 8 emit loop ;
 
 : CLEARLN ( -- )  0 LLEN !  0 LPOS ! ;
 
@@ -133,7 +133,7 @@ defer REPL-READ ( -- ptr u8 n )
    k 66 = IF HDOWN THEN ;
 
 : DOKEY ( n -- ) {: c :}
-   c 13 =  c 10 = or IF 13 REPL-EMIT1 10 REPL-EMIT1  1 DONE !  exit THEN
+   c 13 =  c 10 = or IF 13 emit 10 emit  1 DONE !  exit THEN
    c 4 = IF LLEN @ 0 = IF 2 DONE ! THEN exit THEN
    c 3 = IF CLEARLN REDRAW exit THEN
    c 1 = IF 0 LPOS ! REDRAW exit THEN

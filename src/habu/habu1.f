@@ -1742,7 +1742,7 @@ variable SZA-I
    A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 : BTYPE ( -- )
-   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;
+   2 G-POP  1 G-POP  G-OUT ;
 
 \ die ( ptr u8 n n -- ): write the message to fd 2, then exit. The requested rc is
 \ honored when kernel-representable ([0,255]; 0 stays the deliberate success exit,
