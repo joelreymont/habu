@@ -6689,6 +6689,33 @@ variable PE-EFF-ID
    PE-PKG-A @ PE-PKG-U @ SYM-PUBLIC PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
 
+\ The package row's OTHER closer: intern the axiom into the OWNER's private
+\ wordlist instead of its public one, so the row resolves only while that
+\ package is open (CHECKER-FIND-ACTIVE-SYM's private leg). A checked caller
+\ inside the owner is admitted; every other scope misses the symbol entirely.
+\
+\ IT IS GLOBAL BECAUSE THE CAPABILITY IS EVERY PACKAGE'S. This closer used to be
+\ defined inside package CHECKER-DECL-FRAME, which made the declaration frame's
+\ four rows the only private primitive rows the tree could spell: a second owner
+\ had to reopen that package to reach the closer. The token itself was already
+\ the toolchain's - src/habu/verify-source.f scans for it, tools/lint/source-lex.f
+\ classifies it, tools/check-all-errors-core.f names it in the unterminated-row
+\ repair hint - so only the definition's scope was wrong.
+\
+\ WHAT A PRIVATE ROW DOES NOT DO YET, and why the trusted-only bit still stands
+\ beside it on the capability prims: internal-mark.f classifies a global record
+\ by its BARE name at top level (IMK-CLASSIFY -> EFFECT-EXTERNAL-MIN-IN), so a
+\ primitive whose ONLY row is owner-private answers min-in -1 there and the seal
+\ marks the record DNAME-INT - and src/compiler/native/dict.f CALL-BINDING then
+\ refuses a checked caller of that record from every scope, the owner's included.
+\ A private-only row therefore has no checked caller anywhere. Until the seal and
+\ the engine honour owner-private rows, an owned capability prim carries BOTH: the
+\ global PRIM-TRUSTED-ONLY! row that keeps the outside boundary (E-CAP-TRUSTED)
+\ and the record callable, plus this private row that admits the owner.
+: CLOSE-PRIVATE ( -- )
+   PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
+   PE-CLOSE-SYM ;
+
 : PE-IN ( n -- )
    PE-DIN @ MK-PUSH PE-DIN ! ;
 
@@ -14821,10 +14848,6 @@ public
 ;package
 
 package CHECKER-DECL-FRAME
-
-: CLOSE-PRIVATE ( -- )
-   PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
-   PE-CLOSE-SYM ;
 
 PPRIM: CHECKER-DECL-FRAME START PE-N PE-IN CLOSE-PRIVATE
 PPRIM: CHECKER-DECL-FRAME PREPARE PE-N PE-IN  PE-F PE-OUT CLOSE-PRIVATE

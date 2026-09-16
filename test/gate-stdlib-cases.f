@@ -307,6 +307,10 @@ SUITE primitive-trust
    test/primitive-trust.f
 ;SUITE
 
+SUITE prim-owner-scope
+   test/prim-owner-scope.f
+;SUITE
+
 SUITE checker-effect-authority
    test/checker-effect-authority.f
 ;SUITE

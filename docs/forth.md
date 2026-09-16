@@ -17,6 +17,15 @@ file.
 - Use precise `PRIM:`/`PPRIM:` axioms only for genuine engine, syscall and FFI
   operations. Keep callers checked. A Forth algorithm or unchecked wrapper does
   not become a primitive by renaming it or asserting its effect.
+- A `PPRIM:` row closed with `CLOSE-PRIVATE` instead of `PPRIM;` interns the
+  axiom into the OWNER package's private wordlist, so only a body compiled
+  inside that package resolves the name; every other scope misses it. That is
+  how a capability primitive is bound to the one package entitled to it, with
+  its callers still checked. Such a prim keeps its global `PRIM-TRUSTED-ONLY!`
+  row beside the private one for now: `src/core/internal-mark.f` classifies a
+  dictionary record by its BARE name, so a primitive carrying only an
+  owner-private row is sealed `DNAME-INT` and then has no checked caller at
+  all, the owner's included. `test/prim-owner-scope.f` pins the whole matrix.
 - Model dynamic source evaluation honestly; never assert that arbitrary
   `evaluate` preserves the stack. Use typed quotations for known callbacks.
 - Existing TRUST forms are legacy code awaiting removal, not an approved pattern.
