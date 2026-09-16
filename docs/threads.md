@@ -23,7 +23,10 @@ region are shared read-only while tasks are live. Each task gets:
 
 Compilation and dictionary mutation are forbidden while any task is live.
 Compiler and dictionary mutation paths check `TASKS-LIVE-CELL` and exit with
-code `$4F`, printing the rejected token. Linux fatal exits use `exit_group`
+code `$4F`, printing the rejected token. This bounds what a remote REPL can do:
+a REPL served over a connection ([genio.md](genio.md)) can evaluate while worker
+tasks run, but a colon definition sent to it is dictionary mutation and ends the
+process. Define first, then start the tasks. Linux fatal exits use `exit_group`
 (`94`), not thread-local `exit` (`93`), so an error in any thread terminates the
 whole process instead of leaving worker threads behind.
 
@@ -276,6 +279,9 @@ JOBS QUEUE:DESTROY
 - Ordinary `variable` storage is shared process storage. Use `TASK:+USER` for
   task-local state and `TASK:HIS` to inspect another task's user cell before
   releasing that task.
+- A new task starts on its creator's input and output devices
+  ([genio.md](genio.md)); `TASK-REGION-INIT` copies the routing indices and the
+  device table into the new region.
 - The task trampoline preserves the shared dictionary/code registers and swaps
   the data stack and data/user base for the worker.
 - `TASK:FACILITY` is owner-tracked pthread mutex storage, not a spin lock.

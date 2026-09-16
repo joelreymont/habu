@@ -83,7 +83,7 @@ carrying `errno`, Linux aarch64 with glibc. No TCP, no device abstraction:
 | Gap | Model to follow | Dot |
 | --- | --- | --- |
 | No TCP | SwiftForth's verbs (`BIND`, `LISTEN`, `ACCEPT`, `CONNECT`, `READ`, `READ-EXACT`, `WRITE`, `CLOSE`) in `UDP4`'s typed style, plus VFX's non-blocking readable check | `habu-add-tcp-sockets-fb1d351e` |
-| Text I/O bound to the terminal | VFX generic devices: a device record with the operations above, per-task current input and output device, terminal first, TCP second; the REPL becomes remote for free | `habu-route-text-i-1fbcb2ba` |
+| Text I/O bound to the terminal | VFX generic devices: a device record with the operations above, per-task current input and output device, terminal first, TCP second; the REPL becomes remote for free | `habu-route-text-i-1fbcb2ba`, done: [genio.md](genio.md) |
 | HTTP client | `libcurl` through the FFI, as VFX does; server-side HTTP/1.1 is a small layer over `TCP4` once it exists | after the two above |
 | TLS | terminate at a proxy for servers; `libcurl` or OpenSSL through the FFI for clients | with HTTP |
 

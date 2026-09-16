@@ -1372,6 +1372,12 @@ SUITE tcp4
    lib/net/tcp4-test.f
 ;SUITE
 
+\ Generic text I/O devices: the engine's own text through a memory device, and
+\ a REPL over a loopback connection.
+SUITE genio
+   lib/genio-test.f
+;SUITE
+
 SUITE process-argv
    lib/process-argv-test.f
 ;SUITE

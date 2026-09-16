@@ -1263,6 +1263,7 @@ public
 -9220 constant E-GENIO-OPERAND
 -9221 constant E-GENIO-STATE
 -9222 constant E-GENIO-IO
+-9223 constant E-GENIO-FULL       \ no device row free
 
 \ HTTPS client over libcurl: -9230..-9239.
 -9230 constant E-CURL-FIRST
