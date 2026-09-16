@@ -30,6 +30,13 @@ public
    S-CSITES ROW-OFF@ 0 S-CSITES ROW!
    BASES-AFTER-HOST OPEN-CSITE-GAP ;
 
+\ The smallest aggregate budget this format can be given: a blob filling the
+\ runtime code band, plus the fixed framing every artifact carries around it.
+\ Spelled from AOT-FILE's own constants rather than repeated, because the point
+\ is that src/arch/arm64/icode.f's AOT-SECTION-CAP has to cover exactly these.
+: SITE-TEST-BAND-BYTES ( -- n )
+   AOT-BUF:AOT-BLOB-CAP HDR-BYTES + SEC-N ROW-BYTES * + SCAL-BYTES + CLOSURE-CAP + ;
+
 \ Keep total payload length and contiguous table offsets valid. Reassign some
 \ blob bytes to DATA/CODE sections whose combined length is four bytes too big.
 : SITE-TEST-FORGE ( AOT-OWNED:capture -- AOT-OWNED:capture )
@@ -103,6 +110,15 @@ create KEY 32 allot
 
 : RELEASE ( -- ) CLEAR-COUNTS DSITE-STORAGE-RELEASE ;
 
+\ Regrowing the runtime region past the aggregate byte budget makes AOT-BLOB-CAP
+\ and the shared DATA/CODE site buffer unreachable and kills this file's own
+\ shared-overflow refusal, which the budget would then pre-empt. REGION grew on
+\ 2026-09-14 and AOT-SECTION-CAP did not follow; assert the inequality here, where
+\ icode.f, layout.f and aot-decl.f are all loaded, so the next growth says so.
+: ?BAND-BUDGET ( -- )
+   s" the section budget admits a full code band" T-LABEL
+   AOT-SECTION-CAP AOT-FILE:SITE-TEST-BAND-BYTES >= TTRUE ;
+
 : TRANSFER ( AOT-OWNED:capture -- )
    RELEASE
    dup AOT-FILE:IMPORT CHECK
@@ -152,6 +168,7 @@ create KEY 32 allot
 
 : RUN ( -- )
    T-RESET
+   ?BAND-BUDGET
    1 SCRIPT-ARGV$ 5 min s" span-" STR= if SPAN-CASE exit then
    1 SCRIPT-ARGV$ s" reserve-overflow" STR= if
       $7FFFFFFFFFFFFFFF AOT-DSITE-RESERVE exit then

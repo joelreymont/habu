@@ -8437,3 +8437,13 @@ after the seed ran, so a trivial program paid 129,729 linear dictionary scans
 seed and LHIDXBUILD refills an existing table instead of mapping a second one.
 Binding sites by record at build time removes the lookups altogether
 (dot habu-bind-baked-call-e4d5b58f) (2026-09-15).
+
+A hand-picked budget does not follow a region that grows under it. REGION went
+$A00000 -> $2000000 on 2026-09-14 and carried CODE-BAND:BYTES - and with it
+AOT-BLOB-CAP and the shared DATA/CODE site buffer - to 30,404,608, while
+src/arch/arm64/icode.f AOT-SECTION-CAP stayed at $1B00000: two declared caps
+became unreachable and aot-file.f's "is larger than the buffer it fills" refusal
+went dead, the aggregate budget refusing first. When one constant bounds another
+across a load-order seam that forbids deriving it, state the inequality and gate
+it; test/aot-data-sites.f now asserts it under "the section budget admits a full
+code band" (2026-09-16).

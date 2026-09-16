@@ -68,8 +68,35 @@ using A64ASM
 \ of its allowance. Moving the payload after the source and addressing it with
 \ TADR, took it out of every reach; it is a part of the image, so it is a term of
 \ the window, and this is that term.
-$1B00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
-$2000000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + IBUFSZ ($400000) + AOT-SECTION-CAP
+\
+\ WHAT SIZES THE THIRD TERM IS THE CODE BAND, AS AN INEQUALITY:
+\
+\   AOT-SECTION-CAP >= AOT-BUF:AOT-BLOB-CAP (= CODE-BAND:BYTES)
+\                      + 136 header + 272 section table + 40 scalars
+\                      + AOT-FILE:CLOSURE-CAP
+\
+\ A capture's blob buffer IS the runtime code band (src/habu/aot-decl.f
+\ AOT-BLOB-CAP), so an artifact whose blob is a full band, plus the fixed framing
+\ aot-file.f wraps around it, is the largest one the format can produce. Below
+\ that the format contradicts itself: AOT-BLOB-CAP and the shared DATA/CODE site
+\ buffer (AOT-DSITE-MAX * 4, the same number) become unreachable, and the
+\ per-section refusal "is larger than the buffer it fills" goes dead, because the
+\ aggregate budget refuses first.
+\
+\ IT CANNOT BE COMPUTED HERE: the boot prefix loads this file before
+\ src/habu/layout.f (tools/bootstrap.sh, tools/build-fixpoint.f
+\ BF-APPEND-COMMON), so CODE-BAND:BYTES does not exist yet and the value is
+\ spelled out instead. test/aot-data-sites.f pins the inequality, under "the
+\ section budget admits a full code band", where both files are loaded.
+\
+\ WHY IT GREW AGAIN (2026-09-16). REGION went $A00000 -> $2000000 on 2026-09-14
+\ and took CODE-BAND:BYTES from 7,335,936 to 30,404,608 with it; this constant
+\ stayed at $1B00000 (28,311,552) and the inequality broke by 2,093,056 bytes.
+\ The AOT suite died `aot-file: encoded sections exceed their byte budget` on an
+\ artifact of 30,565,099 bytes - a full-band blob and its 20,001 DATA and 20,001
+\ CODE relocation rows. $1E00000 clears the minimum 30,536,128 and that artifact.
+$1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
+$2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + IBUFSZ ($400000) + AOT-SECTION-CAP
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS
