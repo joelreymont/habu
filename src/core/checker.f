@@ -9763,7 +9763,8 @@ variable CURSYM
 \ The invariant is about the retired GLOBAL words, not about the spelling. A
 \ package that owns its own word with one of these tails owns a DIFFERENT word,
 \ and it must stay live and certifiable. So RETIRED-GLOBAL? matches the spelling first (exact and
-\ case-folded — DO-TOK1 passes folded tokens — never a prefix, so PF-COMMIT-N
+\ case-folded — it is handed the raw token and folds here, as the symbol table
+\ does — never a prefix, so PF-COMMIT-N
 \ and PF-NO-VARIANT are untouched), then asks the ordinary resolver where the
 \ token actually binds. It rejects only at the two positions that would have
 \ reached the retired raw global: the token resolves at global position, or it
@@ -10623,6 +10624,13 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
+\ A local is known by its DECLARED SPELLING: LOCNB holds the declaration's raw
+\ bytes and a reference must match them byte for byte, while word lookup stays
+\ case-insensitive. A body that declares `text` and writes `TEXT` therefore
+\ names the word TEXT, and `text` names the local. DO-TOK1 hands the locals
+\ words the RAW token beside the folded one the dictionary gets; the fold
+\ changes no byte count and moves no ':', so one length and one LCO serve both
+\ spans.
 : CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@
@@ -10778,13 +10786,13 @@ variable LCO
    FAILSET @ 0= IF kind LOCALBAD-KIND !  len LOCALBAD-LEN !  -1 LOCALBAD ! THEN
    0 OK !  -1 FAILSET ! ;
 
-: LOC-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+: LOC-ADD ( ptr u8 ptr u8 n -- ) {: ra:ptr a:ptr u:n :}   \ raw declaration, folded declaration, their shared length
    a u LCOLON
    #LOC @ LOC-CAP 1 - > IF 0 1 LOC-REJECT ELSE
    LCO @ LOC-NAME-W > IF LCO @ 2 LOC-REJECT ELSE
      LOCSEQ @ 1 + LOC-HW-ENSURE
      #LOC @ LOC-SHOW-OFF!
-     a  LOCNB #LOC @ LOC-NAME-W * +  LCO @ CCOPY
+     ra  LOCNB #LOC @ LOC-NAME-W * +  LCO @ CCOPY   \ the spelling a reference must match
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
      1 #LOC @ cells LOCW + !
@@ -10880,10 +10888,10 @@ variable LCO
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
 
-: LOC-TOK {: a u :}
+: LOC-TOK {: ra a u :}
    a u s" :}" CORE-STR= IF 0 LMODE ! LOC-BIND ELSE
    a u s" --" CORE-STR= IF -1 UNCK ! ELSE
-   a u LOC-ADD THEN THEN ;
+   ra a u LOC-ADD THEN THEN ;
 
 : LOC-BEGIN ( -- )
    QDEPTH @ 0 >  DEADP @ or IF 0 0 LOC-REJECT ELSE
@@ -10906,6 +10914,10 @@ variable LCO
       t dup LIN-LOCAL-REF-TAINT  DCUR @ MK-PUSH DCUR !
    THEN ;
 
+\ A reference binds a local only in the local's DECLARED SPELLING: the raw token
+\ against the raw declaration, byte for byte. The engine's own lookup
+\ (src/habu/habu2.f EMIT-LOC-FIND) compares the same two spans the same way, so
+\ the checker's reading of a body and the compiled body's own reading agree.
 : LOC-REF? {: a u :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
@@ -12344,8 +12356,9 @@ DRAIN-PRETRUST
 : REJECT-UNSAFE ( -- )
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
 
-\ A live local name, scanned without LOC-REF?'s side effects (that word also
-\ pushes the reference or latches a quotation reject).
+\ A live local's DECLARED SPELLING, scanned without LOC-REF?'s side effects (that
+\ word also pushes the reference or latches a quotation reject). The caller hands
+\ it the raw token: a differently-cased spelling is not this local.
 variable RTL-I                        \ retired-token local scan index
 : LOC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 RTL-I !
@@ -12785,15 +12798,15 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF NAME-TOK ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
-   LMODE @ IF TKF TKFU @ LOC-TOK ELSE
+   LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
    MM @ 0 <> IF TKF TKFU @ MATCH-TOK ELSE
-   TKF TKFU @ LOC-REF? IF ELSE
+   a u LOC-REF? IF ELSE
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
-   TKF TKFU @ RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
+   a u RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
    TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
    OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN

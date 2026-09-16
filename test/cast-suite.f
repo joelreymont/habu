@@ -154,7 +154,7 @@ package CS-EXECUTION
 public
 : FIRST-CLASS ( n -- n ) ['] >CSROLE execute ['] CSROLE>N execute ;
 : QUOTED ( n -- n ) [: >CSROLE CSROLE>N ;] execute ;
-: LOCAL ( n -- n ) {: >CSROLE:n :} >csrole 1+ ;
+: LOCAL ( n -- n ) {: >CSROLE:n :} >CSROLE 1+ ;   \ the local, in its declared spelling
 : CONVERTER ( n -- csrole ) 1+ >CSROLE ;
 : CALL-CONVERTER ( n -- n ) CONVERTER CSROLE>N ;
 ;package

@@ -422,6 +422,23 @@ DYNAMIC-BUFFER LOCAL-TABLES n
 : LBASE ( -- ptr n ) 9 LOCAL-FIELD ;
 : LWIDTH ( -- ptr n ) 10 LOCAL-FIELD ;
 create LBUF LNAME-CAP allot
+create WBUF LNAME-CAP allot          \ a mention's spelling, for the locals compare
+
+\ A local answers to its DECLARED SPELLING, so the name a mention is compared
+\ under is the one written, not the folded dictionary key HIR-WORD:KEY-SYM
+\ builds. Declarations intern the same way (DECLARE-LOCAL), so both sides name
+\ one table and SAME-SYM? decides them. A token too long to be a local name
+\ keeps its own symbol and matches no declaration.
+: LOCAL-SPELL ( IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id )
+   {: sy:IR-ID:ir-symbol-id :}
+   CTX BLD sy IR-BUILD:SYMBOL-LEN LNAME-CAP > if sy exit then
+   CTX BLD sy WBUF LNAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   CTX BLD WBUF u IR-BUILD:INTERN-SYMBOL ;
+
+\ ---- the name a body token writes, as it writes it ---------------------------
+: WRAW ( n -- IR-ID:ir-symbol-id )
+   {: ix:n :}
+   VW MKEY ix NTAPE:SPELL@ LOCAL-SPELL ;
 
 : LRESET ( -- )
    0 LN !
@@ -512,11 +529,12 @@ create LBUF LNAME-CAP allot
       ix i LG-A@ >=  ix i LG-B@ <  and or
    loop ;
 
-\ Local declarations and mentions use the same folded key as dictionary names.
+\ Local declarations and mentions meet under the DECLARED spelling, byte for
+\ byte; word lookup, which this is not, stays folded.
 : LOCAL-OF ( n -- n )
    {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if -1 exit then
-   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   ix WRAW {: sy:IR-ID:ir-symbol-id :}
    -1
    LN @ 0 ?do
       sy i LNAME @ NFROZEN:SAME-SYM?  i ix LIVE-AT?  and if drop i then
@@ -1483,7 +1501,9 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    r sy HIR-WORD:MEANING@ HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if false exit then
    r sy HIR-WORD:CTRL@ HIR-CTRL:CLOSE-QUOT HIR-CTRL:EQ ;
 
-\ The bare name, interned into this module so every mention reaches one symbol.
+\ The bare name, interned into this module AS WRITTEN so every mention of that
+\ spelling reaches one symbol. The refused-name test below is a question about a
+\ word of the dialect, so it asks under the folded key.
 : DECLARE-LOCAL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    LN @ LMAX @ >= if E-NELAB-LOCAL-CAP throw then
@@ -1492,7 +1512,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    nu 1 < if E-NELAB-LOCAL throw then
    CTX BLD LBUF nu HIR-WORD:KEY-SPELL {: sy:IR-ID:ir-symbol-id :}
    r sy PRE-FRAME? if E-NELAB-LOCAL throw then
-   sy LN @ LNAME !
+   CTX BLD LBUF nu IR-BUILD:INTERN-SYMBOL LN @ LNAME !
    -1 LN @ LROW!
    -1 LN @ LEND!
    -1 LN @ LSLOT!
@@ -1533,7 +1553,7 @@ create SS-M CMAX cells allot         \ names in scope when each of them opened
 : SCOPE-LOCAL? ( n -- bool )
    {: ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   ix WSYM {: sy:IR-ID:ir-symbol-id :}
+   ix WRAW {: sy:IR-ID:ir-symbol-id :}
    false
    LN @ 0 ?do
       i LROW@ 0 >=  i LROW@ ix <  and  i LEND@ 0 <  and if

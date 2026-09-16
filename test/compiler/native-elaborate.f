@@ -2394,7 +2394,10 @@ create TW-BUF TW-CAP allot
    {: mb:IR-BUILD:module fb:IR-ID:ir-fun-id :}
    ma fa mb fb TW-FUN? ;
 
-\ Both case spellings reference the same local, including inside a counted loop.
+\ A LOCAL is not folded: it answers to the spelling it was declared in, so the
+\ same body with its mention in the other case reads the LOOP INDEX instead and
+\ is a different program. The twins above still fold because a word of the
+\ dialect is keyed by its fold and a local is not a word.
 : LOCAL-CASE-BODY ( IR-CTX:ctx -- bool )
    {: c:IR-CTX:ctx :}
    c s" LOCC {: I:n :} 0 3 0 ?do I + loop" 1 1 BUILT
@@ -2466,9 +2469,9 @@ create TW-BUF TW-CAP allot
    TFALSE ;
 
 : LOCAL-CASE-CASE ( -- )
-   s" both case spellings of a local compile to the same module" T-LABEL
+   s" the other case spelling of a local is the loop index, and a different module" T-LABEL
    BND [: LOCAL-CASE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE ;
+   TFALSE ;
 
 \ ---- and what capitals do NOT do ---------------------------------------------
 \ The fold is the key of a word this table declared, and nothing else. A word the

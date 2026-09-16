@@ -1843,7 +1843,6 @@ public
 
 : EMIT-LOC-FIND ( -- )
    LBL LBL LBL LBL LBL {: ll lmiss lhit lcmp lnext :}
-   LBL LBL {: lname ltoken :}
    LLOC-FIND LABEL@ LBL,
    9 DATA LOCN-CELL LDR,  10 9 1 SUBI,
    6 DATA TKL-CELL LDR,  7 DATA TKA-CELL LDR,
@@ -1854,13 +1853,10 @@ public
       lcmp LBL,  13 6 CMP,  C-GE lhit BCOND,
          14 11 13 ADD,  14 14 8 ADDI,  14 14 0 LDRB,
          15 7 13 ADD,  15 15 0 LDRB,
-         \ Fold letters only, as dictionary and checker name lookup do.
-         14 $41 CMPI,  C-LT lname BCOND,  14 $5A CMPI,  C-GT lname BCOND,
-         14 14 $20 ADDI,
-         lname LBL,
-         15 $41 CMPI,  C-LT ltoken BCOND,  15 $5A CMPI,  C-GT ltoken BCOND,
-         15 15 $20 ADDI,
-         ltoken LBL,
+         \ Byte-exact, unlike dictionary lookup: a local answers to its DECLARED
+         \ spelling only, so a body may write a word in the word's own case while
+         \ a local of the same letters is live. src/core/checker.f LOC-REF? reads
+         \ the two names the same way, and docs/forth.md states the rule.
          14 15 CMP,  C-NE lnext BCOND,
          13 13 1 ADDI,  lcmp B,
       lhit LBL,  0 10 0 ADDI,  RET,

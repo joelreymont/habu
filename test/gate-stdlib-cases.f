@@ -1018,6 +1018,10 @@ SUITE checker-dead-path
    test/checker-dead-path-suite.f
 ;SUITE
 
+SUITE local-spelling
+   test/local-spelling-suite.f
+;SUITE
+
 SUITE checker-rollback-sig-pool
    test/checker-rollback-sig-pool.f
 ;SUITE

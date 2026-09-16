@@ -62,15 +62,16 @@ file.
   named `i`, `count`, or `dup` must resolve to that local inside its scope.
   Prefer clearer names (`idx`, `len`, `value`) when they improve readability,
   but do not encode global dictionary collision workarounds into local names.
-  A local deliberately shadows a visible word of the same name; the cost is
-  that a body which also needs that word must give the local another name,
-  because lookup is case-insensitive and the checker reports the damage at the
-  next word, not at the local: `{: address ... :} state i ADDRESS` bound the
-  local. Local-first is measured on the engine, not assumed: `{: i:n :} 0 3 0 ?do i +
-  loop` answers three turns of the LOCAL, and the same body without the
-  declaration answers the loop index. A local binds every case spelling of its
-  name from the group's closer to its scope's end. Repeated declarations,
-  including names differing only in case, resolve to the latest live binding.
+  A local deliberately shadows a visible word of the same name, but only in the
+  spelling it was DECLARED in: a reference binds the local when it matches that
+  spelling byte for byte, while word lookup stays case-insensitive. So a body
+  that declares `text` reads the local as `text` and the word TEXT as `TEXT`,
+  and it needs no rename to use both. Local-first is measured on the engine, not
+  assumed: `{: i:n :} 0 3 0 ?do i + loop` answers three turns of the LOCAL, and
+  the same body without the declaration answers the loop index. A local binds
+  its declared spelling from the group's closer to its scope's end; two names
+  differing only in case are two locals, and repeated declarations of one
+  spelling resolve to the latest live binding.
   Mentions before the closer still resolve in the preceding scope. Declaring or
   referencing a local inside a quotation is refused (`E-BAD-LOCAL-SHAPE` by the
   checker); quotations do not capture an enclosing local. The quotation's two
