@@ -1336,6 +1336,10 @@ SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE
 
+SUITE cold-argv-separator
+   test/cold-argv-separator.f
+;SUITE
+
 SUITE build-rewind
    test/build-rewind-test.f
 ;SUITE
