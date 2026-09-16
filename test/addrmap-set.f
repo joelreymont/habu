@@ -58,10 +58,10 @@ create ERR CAP allot
 TRUSTED: MARK ( n -- )
    addrmap-set ;
 
-TRUSTED: DATA-A ( -- ptr u8 )
+: DATA-A ( -- ptr u8 )
    data-base ;
 
-TRUSTED: REGION-BASE ( -- n )
+: REGION-BASE ( -- n )
    dbase@ ;
 
 \ ---- reading the two bands ---------------------------------------------------

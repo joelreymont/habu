@@ -38,7 +38,7 @@ private
 \ EM-DATA-INIT names this cell with exactly that form.
 $7FF8 constant LDR-CEILING
 
-TRUSTED: RECORDED ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
+: RECORDED ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
 
 \ ---- case one: the engine published its floor, and it is the right one --------
 
@@ -89,7 +89,7 @@ TRUSTED: RECORDED ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
 \ band's end, so tie the number to the two things the classification depends on:
 \ the live heap lies above it, and the address table the build reads lies below it.
 
-TRUSTED: HEAP-LEN ( -- n ) here data-base - ;
+: HEAP-LEN ( -- n ) here data-base - ;
 
 : HEAP-CASE ( -- )
    s" the boot allotted above the published floor" T-LABEL

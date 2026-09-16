@@ -9,7 +9,7 @@ variable CAPTURE-ROWS
 
 \ The first restored USE fixes the row count. Further captures of these same
 \ registries must reuse their DATA storage and its existing declarations.
-TRUSTED: ADDRESS-ROWS ( -- n )
+: ADDRESS-ROWS ( -- n )
    data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
 
 

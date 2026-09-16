@@ -194,7 +194,7 @@ create DIAG-BUF 8192 allot
    3 NX-BUF 2 cells + !
    4 NX-BUF 3 cells + ! ;
 
-TRUSTED: BUF@ ( n -- n )
+: BUF@ ( n -- n )
    cells NX-BUF + @ ;
 
 : ARRAY-CASE ( -- )

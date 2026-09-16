@@ -23,9 +23,10 @@ variable CLEANED
 : QUOTED ( -- point angle side ) [: BODY ;] [: CLEAN ;] finally ;
 : KEPT ( point -- point point angle side ) ['] BODY ['] CLEAN finally ;
 : APPLY ( [ -- point angle side ] -- point angle side ) ['] CLEAN finally ;
-\ A trusted boundary retains its quotation effect without ordinary call rows.
-\ Executable-build's WITH uses this shape to bracket engine scope operations.
-TRUSTED: TRUSTED-APPLY ( R [ R -- S ] -- S ) [: ;] finally ;
+\ The shape a trusted boundary uses: `finally` with an empty cleanup retains the
+\ quotation effect without ordinary call rows. Executable-build's WITH brackets
+\ engine scope operations this way; the model here is an ordinary checked word.
+: TRUSTED-APPLY ( R [ R -- S ] -- S ) [: ;] finally ;
 
 : CHECK-POSE ( point angle side -- )
    SIDE>N 4 T= ANGLE>N 3 T=

@@ -14,13 +14,14 @@ private
 \ ---- the boundaries ----------------------------------------------------------
 \ Reading the engine's own relocation bands and its own compiled code needs the
 \ same raw casts src/habu/aot-capture.f, test/addrmap-set.f and
-\ test/addrmap-call.f declare. They choose nothing: every address handed to
-\ them is computed by the checked words below from `cp@`.
+\ test/addrmap-call.f declare. Only the xt-to-pointer cast still needs an
+\ unchecked body; it chooses nothing, because every address handed to it is
+\ computed by the checked words below from `cp@`.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: DATA-A ( -- ptr u8 )
+: DATA-A ( -- ptr u8 )
    data-base ;
 
-TRUSTED: REGION-BASE ( -- n )
+: REGION-BASE ( -- n )
    dbase@ ;
 
 TRUSTED: CODE-A ( n -- ptr u8 ) ;

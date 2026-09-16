@@ -8,7 +8,7 @@ require src/habu/aot-arm.f
 package OWNER-PAYLOAD-CHECK
 
 : EQ! ( n n -- ) 2dup <> if swap . . cr 79 throw then 2drop ;
-TRUSTED: OWNER ( -- ptr u8 )
+: OWNER ( -- ptr u8 )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;
 TRUSTED: AS-PREPARE ( n -- [ -- ] ) ;
 : PREPARE ( -- )

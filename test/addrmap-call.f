@@ -7,8 +7,8 @@ package ADDRMAP-CALL-TEST
 private
 
 \ Inspection is limited to emitted code and the engine's relocation bitmap.
-TRUSTED: DATA-A ( -- ptr u8 ) data-base ;
-TRUSTED: REGION-BASE ( -- n ) dbase@ ;
+: DATA-A ( -- ptr u8 ) data-base ;
+: REGION-BASE ( -- n ) dbase@ ;
 TRUSTED: CODE-A ( n -- ptr u8 ) ;
 
 : ADDR-BIT@ ( n -- n ) {: at:n :}

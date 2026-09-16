@@ -52,7 +52,7 @@ TRUSTED: OVERRIDE-PRIMITIVES ( -- )
       s" primitive defer override was not recorded" 76 die
    then ;
 
-TRUSTED: CHECK-PRIMITIVES ( -- )
+: CHECK-PRIMITIVES ( -- )
    s" PF-NUM-DUP ( n -- n n ) dup" CHECK-CANDIDATE! -1 <> if
       s" source signature override survived reset" 76 die then
    s" PF-BOOL-DUP ( bool -- bool bool ) dup" CHECK-CANDIDATE! -1 <> if
@@ -103,7 +103,7 @@ create TARGET-OWNER 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 
 : RECORD-USING ( ptr u8 n -- ) 2drop 1 USINGS +! ;
 
 \ Test-owned target uses actual compiled callbacks, hidden with its package.
-TRUSTED: INSTALL-TARGET ( -- )
+: INSTALL-TARGET ( -- )
    ['] RECORD-EFFECT TARGET-OWNER NCOMP-DISPATCH:DECL-EFFECT-OFF + xt!
    ['] RECORD-DEFER TARGET-OWNER NCOMP-DISPATCH:DECL-DEFER-OFF + xt!
    ['] RECORD-RAW TARGET-OWNER NCOMP-DISPATCH:DECL-RAW-OFF + xt!

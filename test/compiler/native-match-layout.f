@@ -48,7 +48,7 @@ defer FINALIZE ( -- )
 defer ROWS-PTR ( -- ptr ptr n )
 defer ROWS-CAP ( -- ptr n )
 
-TRUSTED: INTERNAL-XT ( ptr u8 n -- n )
+: INTERNAL-XT ( ptr u8 n -- n )
    XREF-FIND
    dup XREF-FOUND? 0= if drop s" native-match: checker word missing" 76 die then
    dup XREF-RETIRED? if drop s" native-match: checker word retired" 76 die then

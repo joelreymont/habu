@@ -113,8 +113,8 @@ variable B-SCANS
 \ A DONE observer may inspect a candidate while CHECK! still owns its outer
 \ result. The candidate's independent analysis must restore recovery taint on
 \ return; it must not turn a diagnostic-only outer row into a source grant.
-TRUSTED: TO-MULTI+ ( -- ) MULTI-ERR-BEGIN ;
-TRUSTED: TO-MULTI- ( -- n ) MULTI-ERR-END ;
+: TO-MULTI+ ( -- ) MULTI-ERR-BEGIN ;
+: TO-MULTI- ( -- n ) MULTI-ERR-END ;
 TRUSTED: TO-RECOVERY? ( -- bool ) CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? ;
 TRUSTED: TO-SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
 variable NESTED-DONES
