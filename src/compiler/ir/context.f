@@ -7,11 +7,21 @@
 \ exist from birth but stay in an explicit unbound state that rejects use until
 \ those modules land; nothing is stubbed silently.
 \
-\ Each context owns a header mapping and a chain of scratch chunks. Growth
-\ adds a chunk without moving earlier spans. WITH-CONTEXT releases every chunk
-\ on return and throw. Handles pack a generation and registry slot so direct
-\ lookup can reject stale handles before touching their mappings. The registry
-\ stores complete handles; retirement clears the row.
+\ THE SCRATCH IS ONE REGION WITH A MARK AND A RELEASE, which is Forth's HERE
+\ and ALLOT applied to a transient extent. One mapping serves the whole process;
+\ SCRATCH-TAKE bumps its cursor and hands back a span, entering a context takes
+\ a MARK of the cursor, and leaving one releases the cursor back to that mark.
+\ A context's own header is the first thing it allots from the region, so a
+\ compilation costs no mapping of its own on either path out. Handles pack a
+\ generation and registry slot so direct lookup can reject stale handles before
+\ touching their mappings. The registry stores complete handles; retirement
+\ clears the row.
+\
+\ NOTHING IS FREED BETWEEN A MARK AND ITS RELEASE. Every span a context takes
+\ stays at the same address, holding the same bytes, until that context leaves;
+\ the release is the only thing that moves the cursor back, and it moves it back
+\ over every span the context took at once. So no read inside a context can
+\ reach storage that has been handed to anything else.
 \
 \ PERSISTED STATE. All per-context state lives in the context's own mapping as
 \ eight-byte little-endian slots written with the canonical CDIGEST slot words:
@@ -56,9 +66,12 @@ $7FFFFFFF constant GEN-MAX           \ context generation ceiling
 64 constant DEPTH-MAX                \ live + retired registry slots
 6 constant SLOT-BITS
 DEPTH-MAX 1- constant SLOT-MASK
-$10000 constant INITIAL-SCRATCH
-$7FFFFFFFFFFFFFE0 constant SCRATCH-CAP \ leaves room for chunk header and alignment
-3 cells constant CHUNK-HDR-BYTES      \ previous pointer, payload capacity, cursor
+\ THE REGION IS RESERVED, NOT COMMITTED. It is one anonymous mapping whose
+\ pages cost nothing until a compilation touches them, so the reservation is
+\ sized to dominate the measured high-water of the whole engine self-build
+\ (2,885,144 bytes over every definition src/ contains, 2026-09-16) with room
+\ for a corpus far larger, and the cursor running past it is a named refusal.
+$4000000 constant REGION-BYTES        \ 64 MiB of reserved scratch address space
 
 \ Header slots inside the mapping, one CDIGEST slot each.
 0 constant HF-MINTED                 \ modules minted by this context
@@ -68,10 +81,9 @@ $7FFFFFFFFFFFFFE0 constant SCRATCH-CAP \ leaves room for chunk header and alignm
 13 constant HF-SOURCES               \ source registry slot (unbound)
 14 constant HF-DIAG                  \ diagnostic sink slot (unbound)
 15 constant HF-WITNESS               \ witness allocator slot (unbound)
-16 constant HF-CHUNK                 \ current scratch chunk pointer
+16 constant HF-MARK                  \ region cursor when this context entered
 17 constant HDR-SLOTS
 HDR-SLOTS CDIGEST:SLOT-BYTES * constant HDR-BYTES
-HDR-BYTES CHUNK-HDR-BYTES + INITIAL-SCRATCH + constant MAP-BYTES
 0 constant SLOT-UNBOUND
 
 \ Wire-code slots relative to a ten-slot code window: five target fields then
@@ -123,23 +135,45 @@ create STAGE CODES# CDIGEST:SLOT-BYTES * allot
 : CNT-OK ( n -- n )
    dup 0 < if E-IR-CTX-STATE throw then ;
 
-: CHUNK-FIELD ( ptr u8 -- ptr ptr u8 ) HF-CHUNK ptr-field ;
-: PREVIOUS-FIELD ( ptr u8 -- ptr ptr u8 ) 0 ptr-field ;
-: CHUNK-CAP ( ptr u8 -- n ) 1 HDR@ ;
-: CHUNK-OFF ( ptr u8 -- n ) 2 HDR@ ;
+\ ---- the scratch region ------------------------------------------------------
+\ One mapping for the process, one cursor into it. The mapping is taken on the
+\ first take and given back only at capture, because a region whose pages are
+\ already faulted in is the whole saving: a compilation that mapped its own
+\ storage paid the kernel for the same pages again per definition.
+here CELL 1- and CELL swap - CELL 1- and allot
+PTR-VARIABLE REGION-BASE
+NULL-PTR REGION-BASE !
+variable REGION-HERE
+0 REGION-HERE !
 
-: CHUNK-INIT ( ptr u8 ptr u8 n -- ) {: previous:ptr chunk:ptr cap:n :}
-   previous chunk PREVIOUS-FIELD !
-   cap chunk 1 HDR!
-   0 chunk 2 HDR! ;
+: REGION-ALLOC-LEN ( -- NUM:alloc-byte-len )
+   REGION-BYTES MEM:BYTES-ALLOC-LEN ;
 
-\ The first chunk belongs to the header mapping released by WITH-BYTES.
-\ Return an unmap error only after attempting every separately owned chunk.
-: CHUNKS-FREE ( ptr u8 ptr u8 -- n ) {: chunk:ptr first:ptr :}
-   chunk first = if 0 exit then
-   chunk PREVIOUS-FIELD @ first recurse
-   chunk dup CHUNK-CAP CHUNK-HDR-BYTES + munmap 0<
-   if drop E-MEM-UNMAP then ;
+\ Map the region on demand. The cursor is at zero whenever there is no mapping,
+\ because the only word that drops the mapping is the capture preparation below
+\ and it runs with no context open.
+: REGION-OPEN ( -- )
+   REGION-BASE @ NULL-PTR = 0= if exit then
+   REGION-ALLOC-LEN MEM:ALLOC-BYTES drop REGION-BASE !
+   0 REGION-HERE ! ;
+
+: REGION-CLOSE ( -- )
+   REGION-BASE @ NULL-PTR = if exit then
+   REGION-BASE @ REGION-ALLOC-LEN MEM:RELEASE-BYTES
+   NULL-PTR REGION-BASE !
+   0 REGION-HERE ! ;
+
+: ALIGN8 ( n -- n ) 7 + 8 / 8 * ;
+
+\ Take `need` aligned bytes from the region cursor. The refusal comes before
+\ the cursor moves, so a region that is full stays exactly as usable as it was.
+: REGION-ALLOT ( n -- ptr u8 ) {: need:n :}
+   REGION-OPEN
+   need ALIGN8 {: step:n :}
+   REGION-HERE @ {: off:n :}
+   step REGION-BYTES off - > if E-IR-CTX-SCRATCH throw then
+   off step + REGION-HERE !
+   REGION-BASE @ off + ;
 
 \ ---- generation serials ------------------------------------------------------
 : GEN-NEXT-N ( n -- n )
@@ -359,42 +393,46 @@ private
 : DEPTH-ROOM ( -- )
    DEPTH @ DEPTH-MAX >= if E-IR-CTX-DEPTH throw then ;
 
-: CTX-ALLOC-LEN ( -- NUM:alloc-byte-len )
-   MAP-BYTES MEM:BYTES-ALLOC-LEN ;
-
-\ Install one registry slot: record the mapping base, reset the counters, mark
-\ the not-yet-landed module slots unbound, and copy the staged binding codes.
-: CTX-INSTALL ( n ptr u8 n -- )
-   {: slot:n :}
+\ Install one registry slot: record the header's place in the region and the
+\ mark the context's storage starts at, reset the counters, mark the
+\ not-yet-landed module slots unbound, and copy the staged binding codes.
+: CTX-INSTALL ( n ptr u8 n n -- )
+   {: slot:n mark:n :}
    dup slot BASE-FIELD !
    swap over HF-CEIL HDR!
    0 over HF-MINTED HDR!
    0 over HF-USED HDR!
-   dup HDR-BYTES + {: first:ptr :}
-   NULL-PTR first INITIAL-SCRATCH CHUNK-INIT
-   first over CHUNK-FIELD !
+   mark over HF-MARK HDR!
    SLOT-UNBOUND over HF-SOURCES HDR!
    SLOT-UNBOUND over HF-DIAG HDR!
    SLOT-UNBOUND over HF-WITNESS HDR!
    STAGE>HDR ;
 
 \ ---- leaving, on both paths ---------------------------------------------------
-\ Retire ONE named slot: announce its dying serial to the child registries, free
-\ the chunks it added, and clear its row. The slot is the one its owner took and
-\ never "the deepest one" - a row taken outside a scope is retired by whoever
-\ took it, so the deepest row is not always the row the leaving scope owns.
+\ Retire ONE named slot: announce its dying serial to the child registries,
+\ release the region back to the mark this context took, and clear its row. The
+\ slot is the one its owner took and never "the deepest one" - a row taken
+\ outside a scope is retired by whoever took it, so the deepest row is not
+\ always the row the leaving scope owns.
 \
 \ DEPTH IS THE TOP OF THE SLOT STACK, so it falls back to this slot only when
 \ this slot IS the top. A row retired below the top leaves its slot spent rather
 \ than handing it out again, because rows above it are still live and name the
 \ storage they were given: dropping DEPTH past them would call a live row free.
+\
+\ THE CURSOR OBEYS THE SAME CONDITION, and it must: a context below the top
+\ marked the region before the contexts above it allotted from it, so releasing
+\ to its mark would hand storage those rows are still reading to the next
+\ caller. The slot and the storage come back together or neither does, and the
+\ storage a non-top retirement leaves behind is reclaimed by the release of
+\ whichever context IS the top, whose mark is below this one's.
 : CTX-RETIRE ( n -- ) {: at:n :}
    at cells HANDLES + @ RETIRE-CHILDREN
-   at BASE-FIELD @ {: base:ptr :}
-   base CHUNK-FIELD @ base HDR-BYTES + CHUNKS-FREE {: rc:n :}
    0 at HANDLE!
-   at DEPTH @ 1- = if at DEPTH ! then
-   rc 0<> if rc throw then ;
+   at DEPTH @ 1- = if
+      at BASE-FIELD @ HF-MARK HDR@ REGION-HERE !
+      at DEPTH !
+   then ;
 
 \ ---- which slot a scope took --------------------------------------------------
 \ A cleanup quotation cannot read its word's locals, so a scope that must give
@@ -422,24 +460,29 @@ private
    ENTERED-POP CTX-RETIRE ;
 
 
-\ Install one context into the registry over an ALREADY MAPPED span and answer
-\ its handle and the slot it took. Entering a context is this and nothing else;
-\ the two callers differ only in who owns the mapping and when it goes back, so
+\ Install one context into the registry over a header it allots from the region,
+\ and answer its handle and the slot it took. Entering a context is this and
+\ nothing else; the two callers differ only in when they give the slot back, so
 \ this is the one place that takes a registry slot and CTX-RETIRE is the one
 \ place that gives it up - and each caller retires the slot it was handed here.
-: CTX-TAKE ( n ptr u8 -- IR-CTX:ctx n )
+\
+\ THE MARK IS READ BEFORE THE HEADER IS ALLOTTED, so releasing to it gives back
+\ the header as well as everything the context took after it.
+: CTX-TAKE ( n -- IR-CTX:ctx n )
    DEPTH-ROOM
    DEPTH @ TAKE-GEN {: at:n g:n :}
-   at CTX-INSTALL
+   REGION-OPEN
+   REGION-HERE @ {: mark:n :}
+   HDR-BYTES REGION-ALLOT
+   at mark CTX-INSTALL
    g at PACK-HANDLE at HANDLE!
    at 1+ DEPTH !
    g at PACK-HANDLE MINT-CTX at ;
 
-\ The WITH-BYTES body: build the context in the fresh mapping, run the caller's
-\ quotation with the minted handle, then retire the slot this entry took before
-\ the mapping is released.
-: CTX-ENTER ( R [ R IR-CTX:ctx -- S ] n ptr u8 NUM:alloc-byte-len -- S )
-   drop
+\ Build the context at the region's cursor, run the caller's quotation with the
+\ minted handle, then retire the slot this entry took - which is also what
+\ gives the region's cursor back, on the ordinary path and on a throw alike.
+: CTX-ENTER ( R [ R IR-CTX:ctx -- S ] n -- S )
    CTX-TAKE ENTERED-PUSH swap [: CE-CLEANUP ;] finally ;
 
 public
@@ -453,7 +496,7 @@ public
    {: ceil:n body :}
    ceil CEIL-OK
    CBIND:VALIDATE STAGE-BINDING
-   body ceil CTX-ALLOC-LEN [: CTX-ENTER ;] MEM:WITH-BYTES ;
+   body ceil CTX-ENTER ;
 
 : WITH-CONTEXT ( R CBIND:binding [ R IR-CTX:ctx -- S ] -- S )
    SERIAL-CEILING swap WITH-CONTEXT-BOUND ;
@@ -512,43 +555,24 @@ public
    RESOLVE HF-MINTED HDR@ CNT-OK ;
 
 \ ---- scratch -----------------------------------------------------------------
-private
-
-: ALIGN8 ( n -- n ) 7 + 8 / 8 * ;
-
-: NEXT-CAP ( n n -- n ) {: need:n old:n :}
-   old SCRATCH-CAP 2 / > if need exit then
-   need old 2 * max ;
-
-: CHUNK-ROOM ( ptr u8 n -- ptr u8 ) {: base:ptr step:n :}
-   base CHUNK-FIELD @ {: previous:ptr :}
-   previous CHUNK-CAP previous CHUNK-OFF - step >= if previous exit then
-   step previous CHUNK-CAP NEXT-CAP {: cap:n :}
-   cap CHUNK-HDR-BYTES + map-anon 0< if drop E-MEM-MAP throw then {: fresh:ptr :}
-   previous fresh cap CHUNK-INIT
-   fresh base CHUNK-FIELD !
-   fresh ;
-
 public
 
-\ Every returned span stays at the same address until the context ends.
+\ Every returned span stays at the same address, holding the same bytes, until
+\ the context that took it leaves - which is what makes an offset into it safe
+\ to hand from one pass to the next without any liveness stamp of its own.
 : SCRATCH-TAKE ( IR-CTX:ctx n -- ptr u8 n ) {: c:IR-CTX:ctx need:n :}
    need 1 < if E-IR-CTX-SIZE throw then
-   need SCRATCH-CAP > if E-IR-CTX-SCRATCH throw then
+   need REGION-BYTES > if E-IR-CTX-SCRATCH throw then
    c RESOLVE {: base:ptr :}
-   need ALIGN8 {: step:n :}
    base HF-USED HDR@ CNT-OK {: used:n :}
-   step SCRATCH-CAP used - > if E-IR-CTX-SCRATCH throw then
-   base step CHUNK-ROOM {: chunk:ptr :}
-   chunk CHUNK-OFF {: off:n :}
-   off step + chunk 2 HDR!
-   used step + base HF-USED HDR!
-   chunk CHUNK-HDR-BYTES + off + need ;
+   need REGION-ALLOT {: span:ptr :}
+   used need ALIGN8 + base HF-USED HDR!
+   span need ;
 
 : SCRATCH-USED ( IR-CTX:ctx -- n )
    RESOLVE HF-USED HDR@ CNT-OK ;
 
-: SCRATCH-LIMIT ( -- n ) SCRATCH-CAP ;
+: SCRATCH-LIMIT ( -- n ) REGION-BYTES ;
 
 \ ---- not-yet-landed module slots ---------------------------------------------
 private
@@ -579,24 +603,30 @@ public
    DEPTH @ 0<> if E-IR-CTX-STATE throw then
    DEPTH-MAX 0 ?do
       NULL-PTR i BASE-FIELD !
-   loop ;
+   loop
+   REGION-CLOSE ;
 
 \ ---- the compilation session -------------------------------------------------
-\ A context is scoped because a compilation is: WITH-CONTEXT maps one, runs the
-\ work, and gives it back. One SOURCE LOAD is not that shape. Everything a
-\ definition builds - its modules, its tape, its builders - dies when the
-\ definition ends, while the things a load builds once and every definition
-\ only reads - the dialect's interned opcode identities, the source-word model,
-\ the interner those spellings live in - have to outlive each definition and
-\ die with the load. A scoped context cannot hold the second kind, so the
-\ load-lived half was rebuilt for all 3,079 definitions.
+\ A context is scoped because a compilation is: WITH-CONTEXT marks the region,
+\ runs the work, and gives the cursor back. One SOURCE LOAD is not that shape.
+\ Everything a definition builds - its modules, its tape, its builders - dies
+\ when the definition ends, while the things a load builds once and every
+\ definition only reads - the dialect's interned opcode identities, the
+\ source-word model, the interner those spellings live in - outlive each
+\ definition and die with the load. A scoped context cannot hold the second
+\ kind, so the load-lived half was rebuilt for all 3,079 definitions.
 \
-\ A SESSION IS AN UNSCOPED CONTEXT. SESSION-OPEN takes the mapping with the
-\ unscoped MEM:ALLOC-BYTES and installs it through the same CTX-TAKE that
-\ WITH-CONTEXT uses; SESSION-CLOSE runs the same CTX-RETIRE over the slot
-\ CTX-TAKE answered and gives the mapping back with MEM:RELEASE-BYTES. Mapping
-\ and teardown keep one implementation each, with WITH-CONTEXT and this pair as
-\ their two callers, and each of the two retires the slot it was handed.
+\ A SESSION IS AN UNSCOPED CONTEXT. SESSION-OPEN installs it through the same
+\ CTX-TAKE that WITH-CONTEXT uses, so its mark is the bottom of the region;
+\ SESSION-CLOSE runs the same CTX-RETIRE over the slot CTX-TAKE answered, which
+\ releases the cursor back to that bottom mark. Entry and teardown keep one
+\ implementation each, with WITH-CONTEXT and this pair as their two callers, and
+\ each of the two retires the slot it was handed.
+\
+\ THE SESSION'S MARK DOMINATES EVERY DEFINITION'S. The session enters first, so
+\ everything its owner builds lies below every later mark and no definition's
+\ release can reach it; a definition's tables may hold offsets into the
+\ session's storage and never the reverse.
 \
 \ A DEFINITION IS AN ORDINARY WITH-CONTEXT NESTED IN THE SESSION, not a
 \ watermark inside it. A definition's builders live in a process-wide registry
@@ -629,11 +659,9 @@ public
 private
 
 1 TYPED-BUFFER SESSION-CTX IR-CTX:ctx
-PTR-VARIABLE SESSION-BASE
 variable SESSION-SLOT
 
 : SESSION-FORGET ( -- )
-   NULL-PTR SESSION-BASE !
    -1 SESSION-SLOT ! ;
 SESSION-FORGET
 
@@ -643,15 +671,12 @@ SESSION-FORGET
 \ The slot is recorded from what CTX-TAKE answers, not from DEPTH read a second
 \ time: the row the session gives back is the row it took.
 : SESSION-INSTALL ( -- )
-   SERIAL-CEILING SESSION-BASE @ CTX-TAKE SESSION-SLOT !
+   SERIAL-CEILING CTX-TAKE SESSION-SLOT !
    0 SESSION-CTX ! ;
 
-: SESSION-UNMAP ( -- )
-   SESSION-BASE @ CTX-ALLOC-LEN MEM:RELEASE-BYTES
-   SESSION-FORGET ;
-
 : SESSION-RETIRE ( -- )
-   SESSION-SLOT @ CTX-RETIRE ;
+   SESSION-SLOT @ CTX-RETIRE
+   SESSION-FORGET ;
 
 \ A session outlives every scope, so it is the BOTTOM row of the registry or it
 \ is nothing: one opened inside a scope would be a row that scope encloses and
@@ -693,8 +718,8 @@ variable STAND-SET
 STAND-RESET
 
 \ The row goes back whatever the stand-down did, so an owner that throws cannot
-\ leave a live row over a mapping this close is about to release; the first
-\ error is the one the caller is told.
+\ leave a live row over storage this close is about to release; the first error
+\ is the one the caller is told.
 : SESSION-END ( -- )
    [: SESSION-STAND-DOWN ;] catch {: rc:n :}
    SESSION-RETIRE
@@ -714,14 +739,12 @@ public
    SESSION-SLOT @ 0 < 0= ;
 
 \ Give the load's context back: what its owner holds, then the row this session
-\ took, then its mapping. The mapping is released whatever the teardown did, so
-\ a throw from the retirement cannot strand it.
+\ took - which is what releases the region's cursor back to the bottom mark
+\ this session marked.
 : SESSION-CLOSE ( -- )
    SESSION-CK
    SESSION-DEEPEST-CK
-   [: SESSION-END ;] catch {: rc:n :}
-   SESSION-UNMAP
-   rc 0<> if rc throw then ;
+   SESSION-END ;
 
 private
 
@@ -766,9 +789,7 @@ public
    DEPTH-ROOM
    HOOK-CAPTURE
    CBIND:VALIDATE STAGE-BINDING
-   CTX-ALLOC-LEN MEM:ALLOC-BYTES drop SESSION-BASE !
-   [: SESSION-INSTALL ;] catch {: rc:n :}
-   rc 0<> if SESSION-UNMAP rc throw then
+   SESSION-INSTALL
    0 SESSION-CTX @ ;
 
 private

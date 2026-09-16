@@ -645,6 +645,65 @@ the same shape as the ones above — a counter per table read at the end of a lo
 of the thirteen-file corpus — and it belongs to that lane's first commit, before
 any size is written down.
 
+### The marks, measured
+
+Taken 2026-09-16 on d2b2c3e6 with a temporary counter per table, sampled where
+`IR-BUILD` freezes or aborts a module's seventeen tables, and a second counter
+on the context scratch cursor. Two loads: the thirteen-file corpus of section 8
+at tier 1 (1,967 words) and the engine's own self-build, which is every
+definition under `src/` and is the larger of the two by an order of magnitude.
+
+| table | corpus peak | self-build peak |
+|---|---:|---:|
+| `T-SP` symbol pool | 471 | 857 |
+| `T-SR` symbol rows | 999 | 1,569 |
+| `T-TP` type pool | 16 | 30 |
+| `T-TR` type rows | 23 | 47 |
+| `T-AP` attribute pool | 3 | 3 |
+| `T-AR` attribute rows | 283 | 1,208 |
+| `T-SA` source rows | 9 | 9 |
+| `T-QP` schema pool | 85 | 110 |
+| `T-QR` schema rows | 678 | 798 |
+| `T-OP` operand pool | 1,950 | 8,113 |
+| `T-OV` value rows | 1,655 | 8,687 |
+| `T-OR` operation rows | 4,407 | 20,763 |
+| `T-FP` function attribute pool | 3 | 3 |
+| `T-FR` function rows | 39 | 243 |
+| `T-BR` block rows | 399 | 2,073 |
+| `T-EP` predecessor pool | 60 | 307 |
+| `T-ER` edge rows | 135 | 693 |
+
+Every figure is cells. The peak is per module, over every module either load
+built, so it is the worst single definition and not a sum.
+
+The scratch cursor's own peak — every live context's storage at once, which is
+the session's plus the deepest definition's — is 720,040 bytes over the corpus
+and 2,885,144 bytes over the self-build. That is what the region's reservation
+has to dominate, and it is two orders of magnitude below the 64 MiB the region
+reserves.
+
+### What the region itself was worth
+
+The first commit of that lane replaced the per-context chunk chain and the
+per-context header mapping with one reserved region, a mark taken when a context
+is entered and a release when it leaves. Measured on the corpus and on
+`tools/compile-floor.f`, engines built from d2b2c3e6 and from the commit, pinned
+to cpu8:
+
+| | before | after |
+|---|---:|---:|
+| `mmap` calls over compile-floor's 300 definitions | 774 | 173 |
+| `munmap` calls over the same | 627 | 27 |
+| minor faults, whole process | 2,467 | 1,271 |
+| user instructions, compile-floor | 2,389,985,336 | 2,373,827,093 |
+| user instructions, the 13-file corpus | 52,852,973,348 | 52,812,777,736 |
+
+The instruction counts move by 0.68 and 0.08 percent because the work removed is
+the kernel's: two mappings and two unmappings per definition, and the faults on
+pages a definition had to take again because its predecessor gave them back. The
+corpus census is byte-identical across the change (1,967 words, 179,012 bytes),
+which is the point - this changes where tables live, not what is emitted.
+
 ### What this lane did not do, and why it is recorded here
 
 Borrowing the dialect's interner instead of cloning it into every module was
