@@ -882,7 +882,6 @@ public
 -8440 constant E-A64SPILL-BIND   \ a rewrite attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8441 constant E-A64SPILL-PLAN   \ no sealed spill plan at all, one made for another module, or one a later allocation replaced
 -8442 constant E-A64SPILL-SHAPE  \ a module this pass cannot rewrite: no function at all, a function whose frame operations are neither nothing nor exactly a selector's prologue, an empty block, a span naming another source, or a value used before it is defined
--8443 constant E-A64SPILL-SOURCE \ source text whose digest is not the one the module being rewritten recorded
 -8444 constant E-A64SPILL-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
 -8445 constant E-A64SPILL-CAP    \ more values or more inserted operations in one block than the rewriter's tables hold
 
@@ -1092,7 +1091,6 @@ public
 \ operation now, and the encoder still refuses a form it cannot encode.
 -8630 constant E-A64PRUNE-BIND   \ a prune attempted before the machine dialect's identities were bound, or a second binding over a live one
 -8631 constant E-A64PRUNE-SHAPE  \ a module this pass cannot rewrite: a span naming another source, a block with no operation in it, or a value used before it is defined
--8632 constant E-A64PRUNE-SOURCE \ a module that does not carry exactly the one source the module being rewritten recorded
 -8633 constant E-A64PRUNE-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
 -8634 constant E-A64PRUNE-CAP    \ more values in one function than the rewriter's value map holds
 -8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says
@@ -1113,7 +1111,6 @@ public
 \ something it cannot read, never about a loop it declined.
 -8660 constant E-NLOOP-BIND     \ a rewrite attempted before the source dialect's identities were bound, or a second binding over a live one
 -8661 constant E-NLOOP-SHAPE    \ a module this pass cannot rewrite: a span naming another source, a value used before it is defined, or a value of a type this dialect does not declare
--8662 constant E-NLOOP-SOURCE   \ source text whose digest is not the one the module being rewritten recorded
 -8663 constant E-NLOOP-OPCODE   \ an operation whose opcode is none of the source dialect's family, so this pass has no form to rebuild it as
 -8664 constant E-NLOOP-CAP      \ more values, blocks or invariant addends in one function than the rewriter's tables hold
 -8665 constant E-NLOOP-PLAN     \ a rewrite asked for when the scan had recognised no loop, so there is nothing to fold and the caller and this pass disagree about what was measured
