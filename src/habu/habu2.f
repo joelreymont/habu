@@ -6351,9 +6351,11 @@ public
    \ copies of their base cells are another run's addresses. The data stack
    \ survives the copy in XDS, a pinned register; these two have no register, so
    \ they ride the machine stack across it and are republished beside XDS below.
+   \ x13 is the copy loops' own scratch; x11 holds the snapshot text size the
+   \ text pass below still needs, and x9/x10/x0 carry argc/argv/envp.
    SP SP 16 SUBI,
-   11 DATA STACK-ABI:RETURN-BASE-CELL LDR,  11 SP 0 STR,
-   11 DATA STACK-ABI:LOOP-BASE-CELL LDR,    11 SP 8 STR,
+   13 DATA STACK-ABI:RETURN-BASE-CELL LDR,  13 SP 0 STR,
+   13 DATA STACK-ABI:LOOP-BASE-CELL LDR,    13 SP 8 STR,
    8 12 7 SUB,  8 8 6 SUB,                          \ region payload src
    EM-SNAPSHOT-COPY-CODE
    EM-SNAPSHOT-COPY-DATA
@@ -6361,8 +6363,8 @@ public
    25 DATA RBASE-CELL STR,                          \ live values over stale copies
    XDS DATA STACK-ABI:BASE-CELL STR,
    5 STACK-ABI:BOOT-BYTES LIT64,  5 DATA STACK-ABI:CAP-CELL STR,
-   11 SP 0 LDR,  11 DATA STACK-ABI:RETURN-BASE-CELL STR,
-   11 SP 8 LDR,  11 DATA STACK-ABI:LOOP-BASE-CELL STR,
+   13 SP 0 LDR,  13 DATA STACK-ABI:RETURN-BASE-CELL STR,
+   13 SP 8 LDR,  13 DATA STACK-ABI:LOOP-BASE-CELL STR,
    SP SP 16 ADDI,
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
