@@ -1,0 +1,9 @@
+---
+title: Census and delete dead definitions tree-wide
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-16T16:03:18.841364+03:00"
+---
+
+Problem: the engine ships every record its boot prefix defines (15,842 on the release engine), with no reachability pass; stripped applications get one (src/habu/aot-closure.f) but the engine and its libraries do not. A rough source scan (2026-09-16) finds about 905 definitions under src/ and lib/ with no textual reference anywhere in the tree (src/compiler/ir/build.f 63, src/compiler/a64-effect.f 58, src/compiler/ir/schema.f 49, src/habu/habu2.f 44, src/compiler/ir/id.f 36, src/compiler/ir/attr.f 34, src/compiler/native/hir-word.f 32, src/compiler/ir/fun.f 29, lib/cad-num-arithmetic.f 29, src/core/checker.f 28). Joel: the binary looks full of bloated code; dead code must go. Acceptance: (1) a checked Habu tool tools/dead-words.f that lists, for every definition in src/ lib/ tools/, the reference count across this tree AND the four downstream trees (~/Work/loom, maki, tender, radar sources), by exact and package-qualified spelling, ticks and strings included, so a zero is a real zero; its output on the release head is committed as docs/dead-words.md; (2) per-area sweeps deleting every zero-reference definition together with anything that dies with it (one commit per area: compiler/ir, compiler/native, habu, core, lib, tools), each rebuilt to a byte fixpoint with the full gate green and the engine size before/after reported; (3) the tool registered in the gate so a new dead definition is a red (allowlist only for words the language reserves by name, each with a reason). Files: tools/dead-words.f, docs/dead-words.md, the swept sources. Verify: the tool; tools/native-build.f fixpoint; bin/hb --load test/run.f. Depends: none. Ownership: tree-wide deletions, one area per commit. Claim: unassigned. Related: habu-ship-no-dictionary-2fee2dea (unreachable private code stripped at capture).
