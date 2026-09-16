@@ -11,6 +11,34 @@
 \ chain, so each footprint below was 28 and each assertion fails; the minimal emitter makes
 \ them 16/20/24/28 by needed-chunk count (both-direction proof recorded 2026-07-21: the
 \ base fixpoint yields 28/28/28/28/64/68, this branch 16/20/24/28/52/56).
+\
+\ Dot habu-use-pre-and-1830972f moved every one of them again, because a data-stack
+\ push is now ONE instruction: `str x16,[x19],#8` writes the pointer back as part of
+\ the store, where it used to be `str x16,[x19]` followed by `add x19,x19,#8`. The
+\ figures below are read off the compiled bodies, not adjusted:
+\
+\   0 constant Z0        movz x16,#0 ; str x16,[x19],#8 ; ret                    12
+\   $12345678 constant   movz + movk ; str x16,[x19],#8 ; ret                    16
+\   ...three chunks                                                              20
+\   ...four chunks       movz + movk*3 ; str x16,[x19],#8 ; ret                  24
+\
+\ A constant carries no frame -- a created word never had a prologue -- so its body is
+\ exactly the chunk chain, the one push and the return: (chunks + 2) * 4, where it was
+\ (chunks + 3) * 4.
+\
+\ : SEMPTY ( -- ) s" " 2drop ; loses FOUR instructions and lands at 36:
+\
+\   str x30,[sp,#-16]!     the frame, one instruction now, not sub sp + str x30
+\   b over the bytes
+\   adr x9                 the literal's address
+\   str x9,[x19],#8        ...pushed, one instruction now
+\   movz x16,#0            its length
+\   str x16,[x19],#8       ...pushed, one instruction now
+\   bl 2drop               which is what makes the body keep a frame at all
+\   ldr x30,[sp],#16       one instruction now, not ldr x30 + add sp
+\   ret
+\
+\ SONE is the same nine instructions plus the one word its byte sits in: 40.
 
 require lib/errors.f
 require lib/string.f
@@ -42,17 +70,17 @@ TRUSTED: XT0>N ( [ -- ] -- n ) ;
 
 : SIZES ( -- )
    T-RESET
-   \ Exact scalar-body sizes: minimal chain (n chunks) + push (2 instr) + ret = (n+3)*4 bytes.
-   ['] Z1 XT>N  ['] Z0 XT>N  BODY 16 T=              \ zero:            1 chunk  -> 16
-   ['] ZN1 XT>N ['] Z1 XT>N  BODY 16 T=              \ 42 (K):          1 chunk  -> 16  (was 28)
-   ['] ZN2 XT>N ['] ZN1 XT>N BODY 16 T=              \ -1  MOVN:        1 chunk  -> 16
-   ['] Z2 XT>N  ['] ZN2 XT>N BODY 16 T=              \ -2  MOVN:        1 chunk  -> 16
-   ['] Z3 XT>N  ['] Z2 XT>N  BODY 20 T=              \ 2 chunks:                -> 20
-   ['] Z4 XT>N  ['] Z3 XT>N  BODY 24 T=              \ 3 chunks:                -> 24
-   ['] CEND XT>N ['] Z4 XT>N BODY 28 T=              \ 4 chunks (full 64-bit):  -> 28
-   \ String-word bodies shrink by the same 12 bytes the minimal length-push saves.
-   ['] SONE XT0>N  ['] SEMPTY XT0>N BODY 52 T=
-   ['] SMARK XT0>N ['] SONE XT0>N   BODY 56 T=
+   \ Exact scalar-body sizes: minimal chain (n chunks) + push (1 instr) + ret = (n+2)*4 bytes.
+   ['] Z1 XT>N  ['] Z0 XT>N  BODY 12 T=              \ zero:            1 chunk  -> 12
+   ['] ZN1 XT>N ['] Z1 XT>N  BODY 12 T=              \ 42 (K):          1 chunk  -> 12
+   ['] ZN2 XT>N ['] ZN1 XT>N BODY 12 T=              \ -1  MOVN:        1 chunk  -> 12
+   ['] Z2 XT>N  ['] ZN2 XT>N BODY 12 T=              \ -2  MOVN:        1 chunk  -> 12
+   ['] Z3 XT>N  ['] Z2 XT>N  BODY 16 T=              \ 2 chunks:                -> 16
+   ['] Z4 XT>N  ['] Z3 XT>N  BODY 20 T=              \ 3 chunks:                -> 20
+   ['] CEND XT>N ['] Z4 XT>N BODY 24 T=              \ 4 chunks (full 64-bit):  -> 24
+   \ String-word bodies lose four instructions: both ends of the frame and both pushes.
+   ['] SONE XT0>N  ['] SEMPTY XT0>N BODY 36 T=
+   ['] SMARK XT0>N ['] SONE XT0>N   BODY 40 T=
    T-REPORT ;
 
 \ --- Structural proof (item: a scalar numerically inside an address range is never

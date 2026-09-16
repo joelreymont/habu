@@ -216,86 +216,95 @@ variable GN
    s" type-layout-lower: unknown target" 76 die ;
 
 s" TLP-DUP" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG                          \ prologue
-2 $D2800049 GG  3 $D100426A GG                          \ movz x9,#2 ; sub x10,x19,#16
-4 $F940014B GG  5 $9100214A GG  6 $F900026B GG          \ copy loop: ldr/add/str
-7 $91002273 GG  8 $F1000529 GG  9 $54FFFF61 GG          \ push/subs/b.ne -5
-10 $F94003FE GG  11 $910043FF GG  12 $D65F03C0 GG       \ epilogue
+0 $D503201F GG                                          \ entry slot: a nop, the copy loop calls nothing
+1 $D2800049 GG  2 $D100426A GG                          \ movz x9,#2 ; sub x10,x19,#16
+3 $F940014B GG  4 $9100214A GG                          \ copy loop: ldr x11,[x10] ; add x10,x10,#8
+5 $F800866B GG                                          \ str x11,[x19],#8   the push, one instruction
+6 $F1000529 GG  7 $54FFFF81 GG                          \ subs x9,#1 ; b.ne -4 (the loop is a word shorter)
+8 $D65F03C0 GG                                          \ ret, with no frame to give back
 
 s" TLP-SWAP" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG                          \ prologue
-2 $D100626A GG  3 $D100426B GG                          \ rev1: [top-24, top-16]
-4 $EB0B015F GG  5 $54000102 GG  6 $F940014C GG  7 $F940016D GG
-8 $F900014D GG  9 $F900016C GG  10 $9100214A GG  11 $D100216B GG  12 $17FFFFF8 GG
-13 $D100226A GG  14 $D100226B GG                        \ rev2: [top-8, top-8]
-15 $EB0B015F GG  16 $54000102 GG  17 $F940014C GG  18 $F940016D GG
-19 $F900014D GG  20 $F900016C GG  21 $9100214A GG  22 $D100216B GG  23 $17FFFFF8 GG
-24 $D100626A GG  25 $D100226B GG                        \ rev3: whole 3-cell span
-26 $EB0B015F GG  27 $54000102 GG  28 $F940014C GG  29 $F940016D GG
-30 $F900014D GG  31 $F900016C GG  32 $9100214A GG  33 $D100216B GG  34 $17FFFFF8 GG
-35 $F94003FE GG  36 $910043FF GG  37 $D65F03C0 GG       \ epilogue
+0 $D503201F GG                                          \ entry slot: a nop, the reversals call nothing
+1 $D100626A GG  2 $D100426B GG                          \ rev1: [top-24, top-16]
+3 $EB0B015F GG  4 $54000102 GG  5 $F940014C GG  6 $F940016D GG
+7 $F900014D GG  8 $F900016C GG  9 $9100214A GG  10 $D100216B GG  11 $17FFFFF8 GG
+12 $D100226A GG  13 $D100226B GG                        \ rev2: [top-8, top-8]
+14 $EB0B015F GG  15 $54000102 GG  16 $F940014C GG  17 $F940016D GG
+18 $F900014D GG  19 $F900016C GG  20 $9100214A GG  21 $D100216B GG  22 $17FFFFF8 GG
+23 $D100626A GG  24 $D100226B GG                        \ rev3: whole 3-cell span
+25 $EB0B015F GG  26 $54000102 GG  27 $F940014C GG  28 $F940016D GG
+29 $F900014D GG  30 $F900016C GG  31 $9100214A GG  32 $D100216B GG  33 $17FFFFF8 GG
+34 $D65F03C0 GG                                         \ ret. The reversal loops are untouched: they
+                                                        \ address x10/x11, never the data-stack pointer.
 
 s" TLP-MIX-DUP" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $D2800089 GG  3 $D100826A GG                          \ movz x9,#4 ; sub x10,x19,#32
-4 $F940014B GG  5 $9100214A GG  6 $F900026B GG
-7 $91002273 GG  8 $F1000529 GG  9 $54FFFF61 GG
-10 $F94003FE GG  11 $910043FF GG  12 $D65F03C0 GG
+0 $D503201F GG
+1 $D2800089 GG  2 $D100826A GG                          \ movz x9,#4 ; sub x10,x19,#32
+3 $F940014B GG  4 $9100214A GG  5 $F800866B GG
+6 $F1000529 GG  7 $54FFFF81 GG
+8 $D65F03C0 GG
 
 s" TLP-TOR" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG                          \ prologue
-2 $F942B68A GG                                          \ >r: ldr x10,[x20,#$568]  depth
-3 $F964028B GG  4 $8B0A0D6B GG                          \ ldr x11,[x20,#$4800] base ; add x11,x11,x10,lsl#3
-5 $D100426C GG  6 $D2800049 GG                          \ sub x12,x19,#16 (src = top-2 cells) ; movz x9,#2
-7 $F940018D GG  8 $9100218C GG  9 $F900016D GG          \ data->rstk loop: ldr x13,[x12] ; add x12,x12,#8 ; str x13,[x11]
-10 $9100216B GG  11 $F1000529 GG  12 $54FFFF61 GG       \ add x11,x11,#8 ; subs x9,x9,#1 ; b.ne -5
-13 $D1004273 GG  14 $9100094A GG  15 $F902B68A GG       \ sub x19,x19,#16 ; add x10,x10,#2 ; str x10,[x20,#$568]
-16 $F942B68A GG  17 $D100094A GG                        \ r>: ldr x10,[x20,#$568] ; sub x10,x10,#2
-18 $F964028B GG  19 $8B0A0D6B GG                        \ ldr x11,[x20,#$4800] base ; add x11,x11,x10,lsl#3
-20 $D2800049 GG                                         \ movz x9,#2
-21 $F940016D GG  22 $9100216B GG                        \ rstk->data loop: ldr x13,[x11] ; add x11,x11,#8
-23 $F900026D GG  24 $91002273 GG                        \ str x13,[x19] ; add x19,x19,#8
-25 $F1000529 GG  26 $54FFFF61 GG                        \ subs x9,x9,#1 ; b.ne -5
-27 $F902B68A GG                                         \ commit rsp
-28 $F94003FE GG  29 $910043FF GG  30 $D65F03C0 GG       \ epilogue
+0 $D503201F GG                                          \ entry slot: a nop, the block moves call nothing
+1 $F942B68A GG                                          \ >r: ldr x10,[x20,#$568]  depth
+2 $F964028B GG  3 $8B0A0D6B GG                          \ ldr x11,[x20,#$4800] base ; add x11,x11,x10,lsl#3
+4 $D100426C GG  5 $D2800049 GG                          \ sub x12,x19,#16 (src = top-2 cells) ; movz x9,#2
+6 $F940018D GG  7 $9100218C GG  8 $F900016D GG          \ data->rstk loop: ldr x13,[x12] ; add x12,x12,#8 ; str x13,[x11]
+9 $9100216B GG  10 $F1000529 GG  11 $54FFFF61 GG        \ add x11,x11,#8 ; subs x9,x9,#1 ; b.ne -5
+                                                        \ ...still -5: that loop stores through x11, so it
+                                                        \ keeps its own separate pointer bump.
+12 $D1004273 GG  13 $9100094A GG  14 $F902B68A GG       \ sub x19,x19,#16 ; add x10,x10,#2 ; str x10,[x20,#$568]
+15 $F942B68A GG  16 $D100094A GG                        \ r>: ldr x10,[x20,#$568] ; sub x10,x10,#2
+17 $F964028B GG  18 $8B0A0D6B GG                        \ ldr x11,[x20,#$4800] base ; add x11,x11,x10,lsl#3
+19 $D2800049 GG                                         \ movz x9,#2
+20 $F940016D GG  21 $9100216B GG                        \ rstk->data loop: ldr x13,[x11] ; add x11,x11,#8
+22 $F800866D GG                                         \ str x13,[x19],#8   the push, one instruction
+23 $F1000529 GG  24 $54FFFF81 GG                        \ subs x9,x9,#1 ; b.ne -4 (this loop IS a word shorter)
+25 $F902B68A GG                                         \ commit rsp
+26 $D65F03C0 GG                                         \ ret
 
 s" TLP-LOCAL" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $D10083FF GG                                          \ sub sp,sp,#32 (3 cells + pad)
-3 $D1002273 GG  4 $F9400269 GG  5 $F90007E9 GG          \ pop y -> slot 1
-6 $D1002273 GG  7 $F9400269 GG  8 $F9000FE9 GG          \ pop x tag -> slot 3
-9 $D1002273 GG  10 $F9400269 GG  11 $F9000BE9 GG        \ pop x slot0 -> slot 2
-12 $F94007E9 GG  13 $F9000269 GG  14 $91002273 GG       \ ref y: slot 1 push
-15 $910083FF GG                                         \ drop-locals: add sp,#32
-16 $F94003FE GG  17 $910043FF GG  18 $D65F03C0 GG
+0 $D503201F GG                                          \ entry slot: a nop, the body calls nothing
+1 $D10083FF GG                                          \ sub sp,sp,#32 (3 cells + pad) -- the LOCALS frame,
+                                                        \ which is not the link frame and does not move
+2 $F85F8E69 GG  3 $F90007E9 GG                          \ pop y -> slot 1: ldr x9,[x19,#-8]! ; str x9,[sp,#8]
+4 $F85F8E69 GG  5 $F9000FE9 GG                          \ pop x tag -> slot 3
+6 $F85F8E69 GG  7 $F9000BE9 GG                          \ pop x slot0 -> slot 2
+8 $F94007E9 GG  9 $F8008669 GG                          \ ref y: ldr x9,[sp,#8] ; str x9,[x19],#8
+10 $910083FF GG                                         \ drop-locals: add sp,#32
+11 $D65F03C0 GG                                         \ ret
 
 \ TLP-STORE2-G: pop the typed address, call the whole-span LPROTSPAN ABI before
-\ mutation, copy slot0 then tag, and pop both source cells.
+\ mutation, copy slot0 then tag, and pop both source cells. This one KEEPS a
+\ link frame, because the LPROTSPAN call destroys x30.
 s" TLP-STORE2-G" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 $D1002273 GG  3 $F940026A GG
-4 $D100426E GG  5 $D2800049 GG
-6 $D280020B GG
-7 GCALL                                                \ whole-span LPROTSPAN call (BL or chain)
+0 $F81F0FFE GG                                          \ str x30,[sp,#-16]!  frame + save, one instruction
+1 $F85F8E6A GG                                          \ ldr x10,[x19,#-8]!  the destination, one instruction
+2 $D100426E GG  3 $D2800049 GG
+4 $D280020B GG
+5 GCALL                                                \ whole-span LPROTSPAN call (BL or chain)
 GN @    $F94001CF GG  GN @ 1 + $F900014F GG  GN @ 2 + $910021CE GG  GN @ 3 + $9100214A GG
 GN @ 4 + $F1000529 GG  GN @ 5 + $54FFFF61 GG  GN @ 6 + $D1004273 GG
-GN @ 7 + $F94003FE GG  GN @ 8 + $910043FF GG  GN @ 9 + $D65F03C0 GG
+                                                       \ that loop stays -5: it stores through x10.
+GN @ 7 + $F84107FE GG                                  \ ldr x30,[sp],#16   restore + release, one instruction
+GN @ 8 + $D65F03C0 GG
 
 \ TLP-FETCH2-G: validate the inline descriptor before the typed address is
 \ popped, then read slot0 and tag in canonical bundle order. The absolute call
 \ target changes under ASLR, so its four-instruction opcode shape is masked.
 s" TLP-FETCH2-G" TLP-XT GXT !
-0 $D10043FF GG  1 $F90003FE GG
-2 GCALL                                                 \ inline-descriptor LP2VEXEC call (BL or chain)
+0 $F81F0FFE GG                                          \ str x30,[sp,#-16]!
+1 GCALL                                                 \ inline-descriptor LP2VEXEC call (BL or chain)
 GN @ $14000009 GG                                       \ branch over 8 descriptor u32s
 GN @ 1 + 1 GG  GN @ 2 + 0 GG                             \ one check (u64 cell)
 GN @ 3 + 1 GG  GN @ 4 + 0 GG                             \ tag at cell offset 1
 GN @ 5 + 2 GG  GN @ 6 + 0 GG                             \ two declaration-order tags
 GN @ 7 + 0 GG  GN @ 8 + 0 GG                             \ no ancestor guards
-GN @ 9 + $D1002273 GG  GN @ 10 + $F940026A GG  GN @ 11 + $D2800049 GG
-GN @ 12 + $F940014B GG  GN @ 13 + $9100214A GG  GN @ 14 + $F900026B GG  GN @ 15 + $91002273 GG
-GN @ 16 + $F1000529 GG  GN @ 17 + $54FFFF61 GG
-GN @ 18 + $F94003FE GG  GN @ 19 + $910043FF GG  GN @ 20 + $D65F03C0 GG
+GN @ 9 + $F85F8E6A GG                                    \ ldr x10,[x19,#-8]!  the source, one instruction
+GN @ 10 + $D2800049 GG
+GN @ 11 + $F940014B GG  GN @ 12 + $9100214A GG  GN @ 13 + $F800866B GG
+GN @ 14 + $F1000529 GG  GN @ 15 + $54FFFF81 GG           \ b.ne -4: this loop pushes, so it IS a word shorter
+GN @ 16 + $F84107FE GG  GN @ 17 + $D65F03C0 GG
 
 \ ---------------------------------------------------------------------------
 \ execution rows: whole-bundle transports at RUNTIME. The seeds are the REAL
