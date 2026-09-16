@@ -23,7 +23,7 @@ require lib/process-fork.f
 \ The fail-closed hook recursively invokes CHECK!; dynamic checker invocation
 \ remains owned by habu-primitive-effect-axiom-1119f176. TYPE-FIXES-PLAN item
 \ 26 replaces its set-check installer with NO-TYPE-CHECK.
-TRUSTED: PROP-CHECK-HOOK ( ptr u8 n -- n )
+: PROP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
 TRUSTED: PROP-INSTALL-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
@@ -42,7 +42,7 @@ variable VERD                     \ last verdict, set by the check hook
 \ layout change can't silently point this peek at the wrong cell.
 \ habu-type-isolated-dynamic-244c0e2c retires this direct read by returning a
 \ typed raw dynamic-evaluate outcome.
-TRUSTED: ERR@  ( -- n )
+: ERR@  ( -- n )
    data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
 package PROP-MEAS
@@ -198,11 +198,11 @@ variable FC-KIND  variable FC-EXP  variable FC-MEAS
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV
-TRUSTED: MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
+: MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
 TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND !  UTERM! ;
-TRUSTED: SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
+: SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
 TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND !  UTERM! ;
-TRUSTED: CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
+: CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
 TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM! ;
 \ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
 : RUN1  ( n n -- ) {: name-ch:n in-arity:n :}
@@ -212,7 +212,7 @@ TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM
 \ Records CHECK!'s verdict while accepting the candidate. Dynamic checker
 \ invocation belongs to habu-primitive-effect-axiom-1119f176; subsequent
 \ rollback belongs to TYPE-FIXES-PLAN item 35.
-TRUSTED: CHK-HOOK ( ptr u8 n -- n )
+: CHK-HOOK ( ptr u8 n -- n )
    CHECK! dup VERD ! drop -1 ;
 \ Differential boundary: certification already happened via CHECK! in CHK;
 \ the compile stage runs unchecked so the fuzzer measures the candidate's
@@ -227,7 +227,7 @@ TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
    a 2 + u 4 - ;
 \ Dynamic candidate evaluation belongs to habu-primitive-effect-axiom-1119f176;
 \ exact rollback belongs to TYPE-FIXES-PLAN item 35's savepoint vector.
-TRUSTED: CHK  ( ptr u8 n -- )
+: CHK  ( ptr u8 n -- )
    CHK-MARK
    0 VERD !
    2dup CHK-BODY$ CHECK! VERD !

@@ -121,7 +121,7 @@ defer TO-R-WORD ( a | -- | a )
 TRUSTED: MK-REGION ( -- fresh-region-a ) 0 ;
 TRUSTED: MK-GEN ( -- fresh-gen-a ) 0 ;
 TRUSTED: MK-REGION-PAIR ( -- fresh-region-a fresh-region-a ) 0 0 ;
-TRUSTED: SAME-ID ( x x -- ) 2drop ;
+: SAME-ID ( x x -- ) 2drop ;
 
 private
 

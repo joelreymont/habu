@@ -69,7 +69,7 @@ variable #CASE
 \ whitebox shims. The stores, their indexes, and the walks that specify them
 \ are checker-internal colon words; each is reached through one named boundary.
 \ ---------------------------------------------------------------------------
-TRUSTED: SCX-SYM-N ( -- n ) SYM-N @ ;
+: SCX-SYM-N ( -- n ) SYM-N @ ;
 TRUSTED: SCX-SYM-CAP ( -- n ) SYM-CAP ;
 TRUSTED: SCX-ACTIVE-SYM ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
 TRUSTED: SCX-SIG-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
@@ -84,15 +84,15 @@ TRUSTED: SCX-SVX@ ( n -- n ) SVX-ENSURE SVX@ ;
 TRUSTED: SCX-SUMV-CTOR-FIRST-LINEAR ( n -- n ) SUMV-CTOR-FIRST-LINEAR ;
 TRUSTED: SCX-SUMV-FROM-CTOR ( n -- n bool ) SUMV-FROM-CTOR-SYM ;
 
-TRUSTED: SCX-TFAM-N ( -- n ) TFAM-N@ ;
+: SCX-TFAM-N ( -- n ) TFAM-N@ ;
 TRUSTED: SCX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
-TRUSTED: SCX-TFAM-NAME$ ( n -- ptr u8 n ) TFAM-NAME$ ;
+: SCX-TFAM-NAME$ ( n -- ptr u8 n ) TFAM-NAME$ ;
 TRUSTED: SCX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: SCX-TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN-LINEAR ;
 TRUSTED: SCX-TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) TFAM-FIND-PUBLIC ;
 TRUSTED: SCX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
 TRUSTED: SCX-TFX-SLOTS ( -- n ) TFX-SLOTS ;
-TRUSTED: SCX-TFX-SLOTS-INIT ( -- n ) TFX-SLOTS-INIT ;
+: SCX-TFX-SLOTS-INIT ( -- n ) TFX-SLOTS-INIT ;
 
 \ The span cells are pinned to what they hold, so the store is checked rather
 \ than asserted (test/typed-storage-structural-test.f §2). SCX-SYM-INTERN stays
@@ -108,20 +108,20 @@ TRUSTED: SCX-SYM-INTERN ( -- n ) s" " SYM-GLOBAL SCX-NA @ SCX-NU @ SYM-INTERN ;
 TRUSTED: SCX-SCAN-USIG ( n -- ) SCAN-USIGS-SYM ;
 TRUSTED: SCX-FEP-HIT? ( -- bool ) FEP-HIT? ;
 TRUSTED: SCX-FEP-MINI ( -- n ) FEP @ ER.MINI @ ;
-TRUSTED: SCX-FMEND ( -- n ) FMEND @ ;
+: SCX-FMEND ( -- n ) FMEND @ ;
 TRUSTED: SCX-SCAN-NORET ( n -- ) NORET-SCAN-SYM ;
-TRUSTED: SCX-NORET-FLAG ( -- n ) NORET-FLAG @ ;
+: SCX-NORET-FLAG ( -- n ) NORET-FLAG @ ;
 
 \ Each index carries the store end it was last made exact at. A rollback that
 \ repaired the index in place leaves that mark at or below the store's new end;
 \ a rollback that did NOT leaves it above, and the next lookup is forced to
 \ rebuild the whole index from the store. Both answer correctly, so the mark is
 \ the only thing that tells them apart — and it is the whole point of the seam.
-TRUSTED: SCX-UEND ( -- n ) UEND @ ;
-TRUSTED: SCX-USX-HI ( -- n ) USX-HI @ ;
-TRUSTED: SCX-NORET-END ( -- n ) NORET-END @ ;
-TRUSTED: SCX-NRX-HI ( -- n ) NRX-HI @ ;
-TRUSTED: SCX-SUMV-N ( -- n ) SUMV-N@ ;
+: SCX-UEND ( -- n ) UEND @ ;
+: SCX-USX-HI ( -- n ) USX-HI @ ;
+: SCX-NORET-END ( -- n ) NORET-END @ ;
+: SCX-NRX-HI ( -- n ) NRX-HI @ ;
+: SCX-SUMV-N ( -- n ) SUMV-N@ ;
 TRUSTED: SCX-SVX-HI ( -- n ) SVX-HI @ ;
 TRUSTED: SCX-TFX-HI ( -- n ) TFX-HI @ ;
 

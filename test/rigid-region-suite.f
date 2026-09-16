@@ -54,9 +54,9 @@ package RIGID-REGION
 \ an ordinary call that records the row itself. The harness below still needs
 \ the window - it reads checker-internal state that has no charted effect - so
 \ the declarations moved above it rather than the window moving.
-TRUSTED: RR-UEQ ( matrix<space-global,a,b,f32> matrix<space-global,a,b,f32> -- ) drop drop ;
-TRUSTED: RR-UONE ( matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> -- ) drop drop ;
-TRUSTED: RR-UBOX ( span<space-global,f32,x> span<space-global,f32,x> -- ) drop drop ;
+: RR-UEQ ( matrix<space-global,a,b,f32> matrix<space-global,a,b,f32> -- ) drop drop ;
+: RR-UONE ( matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> -- ) drop drop ;
+: RR-UBOX ( span<space-global,f32,x> span<space-global,f32,x> -- ) drop drop ;
 \ one call, two outputs sharing region AND generation
 TRUSTED: RR-SHARE ( -- matrix<space-global,fresh-region-a,fresh-gen-g,f32> matrix<space-global,fresh-region-a,fresh-gen-g,f32> ) 0 0 ;
 \ equal extent (shared), distinct region
@@ -82,7 +82,7 @@ TRUSTED: RR-SHM ( -- span<space-global,f32,fresh-mask-a> span<space-global,f32,f
 \ habu-add-unique-bounded needs. Consumer binds all three with non-reserved vars
 \ a/b/c; each producer is one allocation whose two outputs share all three ids.
 \ (TRUSTED probe rows owner = habu-add-bounded-host-b40b048f.)
-TRUSTED: RR-UEQ3 ( matrix<space-global,a,b,c> matrix<space-global,a,b,c> -- ) drop drop ;
+: RR-UEQ3 ( matrix<space-global,a,b,c> matrix<space-global,a,b,c> -- ) drop drop ;
 TRUSTED: RR-SHARE3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> ) 0 0 ;
 TRUSTED: RR-XRGN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-b,fresh-extent-x,fresh-gen-g> ) 0 0 ;
 TRUSTED: RR-XEXT3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-g> matrix<space-global,fresh-region-a,fresh-extent-y,fresh-gen-g> ) 0 0 ;
@@ -90,7 +90,7 @@ TRUSTED: RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-g
 \ SAME shape as RR-UEQ3 but the region slot is spelled `r` — the reserved FLOAT con,
 \ not a type var, so it can never bind a fresh-region atom (the sole reason the
 \ >=3-identity owner looked "unbindable"; the fix is a non-reserved letter).
-TRUSTED: RR-U3R ( matrix<space-global,r,b,c> matrix<space-global,r,b,c> -- ) drop drop ;
+: RR-U3R ( matrix<space-global,r,b,c> matrix<space-global,r,b,c> -- ) drop drop ;
 
 0 set-check
 

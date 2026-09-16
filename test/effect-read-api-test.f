@@ -145,26 +145,28 @@ public
 ;package
 
 \ The effect-read API reads raw effect-store state, so - like the top-row hook - each
-\ protected reader is reached through one syntax-simple TRUSTED: adapter. This keeps
-\ the internal names protected while all test assertions remain checked.
+\ protected reader is reached through one syntax-simple adapter. This keeps the
+\ internal names protected while all test assertions remain checked. An adapter is
+\ TRUSTED: only where the name it reads is engine-internal and a checked body cannot
+\ resolve it.
 package ERA-WHITEBOX
 public
 
-TRUSTED: QUERY ( ptr u8 n -- bool ) EFFECT-QUERY ;
-TRUSTED: DIN-N ( -- n ) EFFECT-DIN-N ;
-TRUSTED: DOUT-N ( -- n ) EFFECT-DOUT-N ;
+: QUERY ( ptr u8 n -- bool ) EFFECT-QUERY ;
+: DIN-N ( -- n ) EFFECT-DIN-N ;
+: DOUT-N ( -- n ) EFFECT-DOUT-N ;
 TRUSTED: DIN-FAM ( n -- n ) EFFECT-DIN-FAM ;
 TRUSTED: DOUT-FAM ( n -- n ) EFFECT-DOUT-FAM ;
-TRUSTED: DIN-CELLS ( -- n ) EFFECT-DIN-CELLS ;
-TRUSTED: DOUT-CELLS ( -- n ) EFFECT-DOUT-CELLS ;
-TRUSTED: DIN-SLOT ( n -- n ) EFFECT-DIN-SLOT ;
-TRUSTED: DOUT-SLOT ( n -- n ) EFFECT-DOUT-SLOT ;
-TRUSTED: DIN-QUOT ( n -- bool ) EFFECT-DIN-QUOT ;
-TRUSTED: DOUT-QUOT ( n -- bool ) EFFECT-DOUT-QUOT ;
-TRUSTED: QUOT-UP ( -- bool ) EFFECT-QUOT-UP ;
-TRUSTED: QUOT-SIMPLE? ( -- bool ) EFFECT-QUOT-SIMPLE? ;
-TRUSTED: RET-NEUTRAL? ( -- bool ) EFFECT-RET-NEUTRAL? ;
-TRUSTED: CATCH-CELLS ( n -- n n ) EFFECT-CATCH-CELLS ;
+: DIN-CELLS ( -- n ) EFFECT-DIN-CELLS ;
+: DOUT-CELLS ( -- n ) EFFECT-DOUT-CELLS ;
+: DIN-SLOT ( n -- n ) EFFECT-DIN-SLOT ;
+: DOUT-SLOT ( n -- n ) EFFECT-DOUT-SLOT ;
+: DIN-QUOT ( n -- bool ) EFFECT-DIN-QUOT ;
+: DOUT-QUOT ( n -- bool ) EFFECT-DOUT-QUOT ;
+: QUOT-UP ( -- bool ) EFFECT-QUOT-UP ;
+: QUOT-SIMPLE? ( -- bool ) EFFECT-QUOT-SIMPLE? ;
+: RET-NEUTRAL? ( -- bool ) EFFECT-RET-NEUTRAL? ;
+: CATCH-CELLS ( n -- n n ) EFFECT-CATCH-CELLS ;
 TRUSTED: MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 
 ;package

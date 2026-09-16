@@ -123,10 +123,10 @@ variable DPOS
 
 \ Whitebox multi-error boundaries: MULTI-ERR-BEGIN/END are engine-internal
 \ (DNAME-INT after the seal-time marking pass), so the forced-success
-\ publication below reaches them through TRUSTED: wrappers, matching the
+\ publication below reaches them through named wrappers, matching the
 \ type-decl suite convention (dot habu-hb-crash-bare-c5be6634).
-TRUSTED: LCT-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
-TRUSTED: LCT-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
+: LCT-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
+: LCT-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 
 s" LC-ENUM ( ptr color -- color ) @" 2dup SOURCE! CHECK! -1 EQ
 SNAPSHOT

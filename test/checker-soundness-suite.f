@@ -12,12 +12,12 @@ public
 
 PRODUCT point 0 FIELD x n FIELD y n ;PRODUCT
 
-TRUSTED: TAKE-U8 ( u8 -- ) drop ;
-TRUSTED: TAKE-I64 ( i64 -- ) drop ;
-TRUSTED: TAKE-RU8 ( | u8 -- ) r> drop ;
-TRUSTED: TAKE-RI64 ( | i64 -- ) r> drop ;
-TRUSTED: MK-I64 ( -- i64 ) 300 ;
-TRUSTED: MK-U8 ( -- u8 ) 3 ;
+: TAKE-U8 ( u8 -- ) drop ;
+: TAKE-I64 ( i64 -- ) drop ;
+: TAKE-RU8 ( | u8 -- ) r> drop ;
+: TAKE-RI64 ( | i64 -- ) r> drop ;
+: MK-I64 ( -- i64 ) 300 ;
+: MK-U8 ( -- u8 ) 3 ;
 : CALL-I64 ( [ i64 -- ] -- ) MK-I64 swap execute ;
 : CALL-U8 ( [ u8 -- ] -- ) MK-U8 swap execute ;
 : CALL-RI64 ( [ -- | i64 -- ] -- ) MK-I64 >r execute ;

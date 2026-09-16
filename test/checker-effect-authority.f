@@ -5,20 +5,20 @@ require lib/test.f
 package EFFECT-AUTHORITY-TEST
 
 \ These are inspection and declaration boundaries over the actual source owner.
-TRUSTED: JUDGE ( ptr u8 n -- n ) CHECK! ;
+: JUDGE ( ptr u8 n -- n ) CHECK! ;
 TRUSTED: ABI ( ptr u8 n -- n ) CHECK-UNJUDGED! ;
 TRUSTED: ABI-MIN ( ptr u8 n -- n ) SIG-MIN-IN ;
 TRUSTED: SOURCE-MIN ( ptr u8 n -- n ) EFFECT-EXTERNAL-MIN-IN ;
-TRUSTED: MIN-LATCH ( -- n ) REC-MIN-IN@ ;
+: MIN-LATCH ( -- n ) REC-MIN-IN@ ;
 TRUSTED: ENFORCED? ( -- bool ) CHECKER-EFFECT-AUTHORITY:ENFORCED? ;
 TRUSTED: ABI-SCOPE ( [ -- ] -- n ) CHECKER-EFFECT-AUTHORITY:SCAN ;
 TRUSTED: DECLARE ( ptr u8 n ptr u8 n -- ) CHECKER-USIG-ADD ;
 TRUSTED: ABI-ROW ( ptr u8 n ptr u8 n -- )
    CHECKER-RECORD-NAME RES-FALSE USIG-ADD-AS ;
-TRUSTED: SCOPE+ ( -- ) CHECKER-SCOPE-START ;
-TRUSTED: SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
-TRUSTED: MULTI+ ( -- ) MULTI-ERR-BEGIN ;
-TRUSTED: MULTI- ( -- n ) MULTI-ERR-END ;
+: SCOPE+ ( -- ) CHECKER-SCOPE-START ;
+: SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
+: MULTI+ ( -- ) MULTI-ERR-BEGIN ;
+: MULTI- ( -- n ) MULTI-ERR-END ;
 TRUSTED: ROW-STATE ( ptr u8 n -- n )
    CHECKER-FIND-ACTIVE-SIG
    FEP-HIT? if FEP @ ER.ACTIVE @ else -1 then ;

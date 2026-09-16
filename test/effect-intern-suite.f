@@ -72,9 +72,9 @@ variable #CASE
 \ checker-internal colon words; each is reached through one named boundary.
 \ ---------------------------------------------------------------------------
 TRUSTED: EIX-EVAL ( ptr u8 n -- ) evaluate ;
-TRUSTED: EIX-UEND ( -- n ) UEND @ ;
-TRUSTED: EIX-CELL ( n -- n ) USIGS-CELL-AT @ ;
-TRUSTED: EIX-REC-BYTES ( -- n ) EFF-REC ;
+: EIX-UEND ( -- n ) UEND @ ;
+: EIX-CELL ( n -- n ) USIGS-CELL-AT @ ;
+: EIX-REC-BYTES ( -- n ) EFF-REC ;
 TRUSTED: EIX-MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
 
 \ the two row offsets of a NAME's active record, and -1 when the checker knows
@@ -89,13 +89,13 @@ TRUSTED: EIX-DOUT ( ptr u8 n -- n )
 
 \ the interner's own state: how many nodes it is offering, the end it was last
 \ made exact at, and each entry's node offset.
-TRUSTED: EIX-N ( -- n ) UIX-N @ ;
-TRUSTED: EIX-HI ( -- n ) UIX-HI @ ;
+: EIX-N ( -- n ) UIX-N @ ;
+: EIX-HI ( -- n ) UIX-HI @ ;
 TRUSTED: EIX-ENTRY ( n -- n ) UIX-E-OFF UIX-E @ ;
 \ E-KEY-N answers 0 for anything that is not a node this file writes, so it is
 \ also the cheapest "is there still a node here" question, asked of the owner.
 TRUSTED: EIX-KEY-N ( n -- n ) E-KEY-N ;
-TRUSTED: EIX-TRUNCATE-FROM ( ptr u8 n -- ) CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+: EIX-TRUNCATE-FROM ( ptr u8 n -- ) CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
 variable TC                     \ last caught throw code
 variable M0                     \ store end before a measured load
@@ -284,7 +284,7 @@ TABLE-LIVE
 \ that boots from a snapshot has to find the shapes its own image already holds,
 \ and must not lose them when the store moves underneath it.
 
-TRUSTED: EIX-USER-OFF ( -- n ) USIGS-USER-OFF @ ;
+: EIX-USER-OFF ( -- n ) USIGS-USER-OFF @ ;
 TRUSTED: EIX-BASE ( -- n ) USIGS ;
 TRUSTED: EIX-STAMPED? ( -- bool ) USIGS UIX-BASE@ = ;
 TRUSTED: EIX-FORCE-GROW ( -- ) USIGS-CAP-U @ 1 + USIGS-ENSURE ;
@@ -341,7 +341,7 @@ TABLE-LIVE
 \ every dead entry is then provably at or above it. Waiting until the next
 \ definition instead lets the store grow back over those offsets, which is how
 \ the first version of this case passed against the unbounded walk.
-TRUSTED: EIX-RAW-UEND! ( n -- ) UEND ! ;           \ lower UEND alone: no terminator, so the
+: EIX-RAW-UEND! ( n -- ) UEND ! ;           \ lower UEND alone: no terminator, so the
                                                    \ records above it stay readable
 
 s" : EIXCUT ( -- ) ;" EIX-EVAL

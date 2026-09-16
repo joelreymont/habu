@@ -18,7 +18,7 @@ variable NEED
 : CHECK ( -- ) ARG @ NEED @ CHECKER-OWNER-GUARD:VALIDATE drop ;
 : REJECT ( -- ) ['] CHECK catch -8574 T= ;
 : GOOD ( -- ) ['] CHECK catch 0 T= ;
-TRUSTED: DATA-START ( -- ptr u8 ) data-base ;
+: DATA-START ( -- ptr u8 ) data-base ;
 
 : SOURCE-OWNER ( -- ptr u8 )
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ ;

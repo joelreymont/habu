@@ -7,8 +7,8 @@ private
 
 \ MULTI-ERR-BEGIN/END are checker-internal state transitions. Keep the test's
 \ whitebox access at two named boundaries while the assertions remain checked.
-TRUSTED: ME-MULTI-BEGIN ( -- ) MULTI-ERR-BEGIN ;
-TRUSTED: ME-MULTI-END ( -- n ) MULTI-ERR-END ;
+: ME-MULTI-BEGIN ( -- ) MULTI-ERR-BEGIN ;
+: ME-MULTI-END ( -- n ) MULTI-ERR-END ;
 
 : REJECT ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;

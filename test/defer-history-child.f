@@ -9,28 +9,28 @@ package DEFER-HISTORY-TEST
 
 \ The checker stores and rollback operations are private. These test-only
 \ boundaries expose their state without changing the implementation under test.
-TRUSTED: END@ ( -- n ) DFER-END @ ;
-TRUSTED: ROW-BYTES ( -- n ) DFER-REC ;
+: END@ ( -- n ) DFER-END @ ;
+: ROW-BYTES ( -- n ) DFER-REC ;
 TRUSTED: STATE@ ( n -- bool ) DFER-FIND-SYM ;
 TRUSTED: STATE! ( n bool -- ) DFER-ADD-SYM ;
 TRUSTED: INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 TRUSTED: ACTIVE ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM ;
 TRUSTED: MIN-IN ( ptr u8 n -- n ) SIG-MIN-IN ;
-TRUSTED: SCOPE+ ( -- ) CHECKER-SCOPE-START ;
-TRUSTED: SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
+: SCOPE+ ( -- ) CHECKER-SCOPE-START ;
+: SCOPE- ( -- ) CHECKER-SCOPE-DONE ;
 TRUSTED: CANDIDATE+ ( -- ) CHECK-CANDIDATE-START ;
 TRUSTED: CANDIDATE- ( -- ) 0 CHECK-CANDIDATE-DONE drop ;
 TRUSTED: MARK ( -- ) CHECKER-BOUND:MARK ;
 TRUSTED: REWIND ( -- ) CHECKER-BOUND:REWIND ;
-TRUSTED: TERM? ( -- bool ) DFERS DFER-END @ + @ 0= ;
+: TERM? ( -- bool ) DFERS DFER-END @ + @ 0= ;
 TRUSTED: ROW-CHANGED? ( ptr n -- bool ) {: row:ptr :}
    0 0= 0= DFERS begin dup row < while
       dup DFER-SYM@ row DFER-SYM@ = if swap drop dup DFER-FLAG@ swap then
       DFER-NEXT
    repeat drop
    row DFER-FLAG@ xor ;
-TRUSTED: TRANSITIONS? ( -- bool )
+: TRANSITIONS? ( -- bool )
    DFER-END @ DFER-REC / 0 ?do
       DFERS i DFER-REC * + ROW-CHANGED? 0= if 0 0= 0= unloop exit then
    loop 0 0= ;
