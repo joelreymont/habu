@@ -210,6 +210,11 @@ Compiling the same 1,772 words, pinned to cpu8, three runs each, load 9.7-10.1:
 | `compile-floor` trivial definition | 28 µs | 723 µs | 25.8x |
 | `compile-floor` three-op definition | — | 489 µs | |
 
+Those tier-1 figures are the ones this table was taken at. Section 5 measures
+where that time goes and reports what four changes since then removed: the same
+trivial definition now costs 524 µs and the same corpus 3.880 s, so the ratio
+above is 20.7x rather than 23.8x. The tier-0 column is untouched by them.
+
 **The self-build cannot be run at tier 0, and the tier is not the tool's to
 choose.** `EXECUTABLE-BUILD:WITH` opens a build scope, and `src/habu/habu1.f`
 `BBUILDENTER` saves the caller's tier in `NCOMP-DISPATCH:BUILD-TIER-CELL` and
@@ -901,6 +906,92 @@ table's capacity rather than its contents. `VREC-COPY-RESET`
 same defect in a third place, but it never reached the 64 reported rows at
 either workload — value-record parsing is not on this path — so it is listed
 here rather than cut.
+
+## 8. Where a tier-1 compile's time goes
+
+**How this was measured, and how it was not.** The engine's sampling profiler
+prints the top 24 rows by *exclusive* count, so it cannot attribute inclusive
+time to a named phase: every phase word below has almost no exclusive time and
+never reaches a row. The table therefore comes from the chain's own stopwatch
+(`src/compiler/native/prof.f`), temporarily extended with one phase per stage,
+measured, and reverted — the tree carries only the two phases a released engine
+needs. The ablation table under it comes from engines built with one phase
+disabled and differenced; both are stated where they are used.
+
+Per-phase **inclusive** microseconds per definition, 1,000 definitions per body,
+engine built from this lane's head, pinned to cpu8 at load average 5.8:
+
+| phase | `( n -- n ) 1 + ;` | `( n n -- n ) swap drop ;` | `( n n -- n ) over + swap 3 and + ;` |
+|---|---:|---:|---:|
+| elaborate — the HIR build | 61.8 | 57.4 | 168.3 |
+| HIR freeze — derive the edge table | 1.8 | 1.8 | 1.8 |
+| selection, with its own freeze and that module's whole-module verification | 116.3 | 90.5 | 163.6 |
+| register allocation | 53.9 | 46.9 | 75.2 |
+| the allocation validator | 68.2 | 60.6 | 90.1 |
+| the prune scan | 5.4 | 4.5 | 7.6 |
+| the spill rewrite | 0 | 0 | 0 |
+| emit | 25.4 | 20.1 | 33.4 |
+| publish | 7.2 | 7.2 | 7.6 |
+| **the chain, selection through publish** | **351.9** | **305.8** | **453.5** |
+
+The chain's own row is not the sum of the rows inside it: 73.7, 74.2 and 74.2
+microseconds of it are not in any phase. That residue is nearly constant in the
+size of the body because it is per-word setup — creating the machine builder,
+binding five dialects to it, the counted-loop scan, and retiring the HIR module —
+and it is arena and registry work, which is where a different lane is looking.
+`elaborate` stands outside the chain's row: it runs before it. Neither covers the
+checker, the tape or the feed, which is the rest of the roughly 520 microseconds
+`tools/compile-floor.f` reports for the trivial definition.
+
+**What each removable phase cost, by ablation.** Each row is an engine built from
+this lane's base commit with one thing disabled, differenced against the base
+engine on the same box in the same minute:
+
+| disabled | trivial | three-op | how |
+|---|---:|---:|---:|
+| the whole-module verifier's checks, on all three of a word's modules | −80 µs | −27 µs | `IR-VERIFY:VERIFY` reduced to its edge derivation |
+| every SHA-256 of the word's source text (5 for the trivial body, 3 for the three-op one) | −14.2 µs | −11.1 µs | `CDIGEST:COMPUTE` stubbed |
+| the combine pass, scan and rebuild both | −163 µs | −11 µs | `NCOMP:COMBINED` reduced to a pass-through |
+
+One SHA-256 of a twenty-byte body costs about 49,000 instructions in this engine;
+the rebuild of a two-operation module costs about 152 microseconds and the scan
+that decides whether to rebuild about 11.
+
+**What this lane then removed.** Instruction counts, 3,000 definitions per body,
+`perf stat -e instructions:u`, which is deterministic here to one part in 10^9:
+
+| commit | trivial | three-op | corpus |
+|---|---:|---:|---:|
+| verify a word's IR once, on the emitted module | −2.14 % | −1.10 % | −2.94 % |
+| digest a word's source once, not once per module | −1.75 % | −1.35 % | −0.47 % |
+| fold a producer into its reader during selection | −23.2 % | +0.33 % | −9.58 % |
+| retire the combine pass down to the load it prunes | −2.66 % | −2.01 % | −2.08 % |
+| **together** | **−28.2 %** | **−4.1 %** | **−14.5 %** |
+
+In CPU time per definition: trivial 726.8 → 523.6 µs, three-op 504.3 → 488.2 µs,
+and the 1,772-word corpus 4.483 → 3.880 s. The emitted code is not what paid for
+it: the corpus census reports the same 1,772 words in 176,268 bytes against
+176,276 before, the one word that moved having lost two instructions, and the
+byte fixpoint converges at the second generation with the third build identical
+to the second.
+
+**Reproducing.** Build an engine from the tree under test, then, pinned and with
+the load quoted:
+
+```sh
+E=/tmp/hz/engine
+taskset -c 8 perf stat -e instructions:u,task-clock $E --load tools/compile-floor.f
+taskset -c 8 $E --load tools/tier-census.f -- 1 /tmp/c.txt lib/byte-edit.f \
+  lib/array.f lib/fmt.f lib/float.f lib/json-read.f lib/json-write.f \
+  lib/unicode.f lib/argv.f lib/fs.f lib/task.f lib/build.f tools/lint/text.f \
+  tools/public-signatures-core.f
+```
+
+The per-phase table needs the stopwatch extended again: one `NPROF:phase` per
+stage, `NPROF:START`/`NPROF:STOP` around each call in `src/compiler/native/`
+`compiler.f`, and a driver that opens a session, compiles a set and reads
+`NPROF:NS@`. Take it, then take it back out: a phase per stage is a profiler, and
+what a caller of the compiler cares about is already one number.
 
 ## Verdict and the ranked fixes
 
