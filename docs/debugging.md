@@ -382,7 +382,13 @@ contents and failure boundaries:
   prefix is already resident and the reader reserves an EOF probe. Discover the
   boundary with bounded `--build` probes against the freshly built candidate so
   the measurement uses `LCOLDPFXB`; never assume `IBUFSZ+1` is the first failing
-  file. Overflow exits 74 with `hb: source prefix buffer full`.
+  file. Overflow exits 74 with `hb: source prefix buffer full`. The prefix rows
+  come in through `LSRCRDP`, which drops each file's comment and blank lines
+  (`EMIT-SOURCE-READ-PREFIX`), so the resident prefix is about 41 percent
+  smaller than the files on disk; `LSRCRD` still reads argv files and the
+  `--build` payload byte for byte, so only the prefix term moved. A seeded
+  engine emits no cold prefix at all, so the installed `bin/hb` starts the
+  program at the base of the arena.
 - `S2-SOURCE-CAP` is the anonymous mapping used by `src/habu/stage2.f` to read
   the generated fixpoint compiler source. It is not the engine input arena. A
   candidate-backed regression proves cap-minus-one succeeds and exact-cap exits

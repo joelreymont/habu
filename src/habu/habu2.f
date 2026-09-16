@@ -99,7 +99,7 @@ using IMGREF
 
 \ ---- source setup: baked LSRC or stdin ----
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
-variable LSRCRD   variable LSHBANG   variable LOPENERR   variable LOPENNL
+variable LSRCRD   variable LSRCRDP   variable LSHBANG   variable LOPENERR   variable LOPENNL
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
@@ -714,6 +714,88 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,     \ write(2,"\n",1)
    0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
+\ LSRCRDP: read one ENGINE PREFIX source file and drop the lines the interpreter
+\ would skip anyway. The prefix rows are 41 percent comment bytes, and every cold
+\ boot copies all of them into the source arena ahead of the program (IBUFSZ, a
+\ fixed 4 MiB). The recovery chain's hb-stdin-mk carries the whole compiler as
+\ baked source, so prefix + program crossed the arena and the chain died `hb:
+\ source prefix buffer full`, exit 74, with nothing wrong in either half. The
+\ engine reads its prefix through this entry; LSRCRD keeps serving argv files and
+\ the certified --build payload byte for byte, because those are the user's
+\ source and the engine must not rewrite them.
+\
+\ THE RULE IS THE INTERPRETER'S OWN, AT LINE GRANULARITY. EM-COMMENT skips a
+\ one-byte `\` token to the newline, and habu1.f EMIT-TOK delimits tokens at any
+\ byte <= 32. So a line whose FIRST token is `\` is comment through its newline,
+\ and a line with no token at all is nothing. Both are deleted here; every other
+\ line is copied byte for byte, indentation included.
+\
+\ WHAT IS NOT STRIPPED, AND WHY. A TRAILING `\` comment and a `( ... )` comment
+\ both need state this reader does not have. `( a -- b )` after a definition's
+\ name IS the declared effect and the checker reads it, so no `(` row may go on
+\ that ground alone; and a standalone `(` is not even reliably a comment opener,
+\ because the prefix carries strings whose payload holds one
+\ (src/core/structures.f `s"  ( ptr a -- ptr a ) "`, src/core/layout-buffer.f,
+\ src/core/sumtype.f). A trailing `\` is a comment only OUTSIDE a string, and
+\ those same payloads show the reader cannot tell inside from outside: it sees
+\ bytes, not literals. No prefix string holds a standalone `\` today, which is
+\ exactly the kind of fact that decays silently, so the rule refuses the whole
+\ form rather than the instances. Together those two are 7 percent of the prefix
+\ against the 41 percent taken here.
+\
+\ Compaction is in place and cannot overrun: the write cursor starts where the
+\ read cursor starts and advances at most one byte per byte read, so it stays at
+\ or behind the read cursor, which LSRCRD already bounded by the arena.
+\ x12 = read cursor, x13 = region end, x9 = write cursor, x2 = line start,
+\ x4 = byte - all of them registers LSRCRD already clobbers, so a prefix row
+\ costs its callers nothing new.
+: C-SOURCE-STRIP-COMMENT-LINES ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: line:label blanks:label bump:label eol:label skip:label keep:label copy:label done:label :}
+   line LBL,
+      12 13 CMP,  C-GE done BCOND,
+      2 12 0 ADDI,                                 \ x2 = line start, indentation included
+   blanks LBL,
+      12 13 CMP,  C-GE done BCOND,                 \ only blanks left: nothing to keep
+      4 12 0 LDRB,
+      4 $0A CMPI,  C-EQ eol BCOND,                 \ no token on this line
+      4 $20 CMPI,  C-LS bump BCOND,                \ still in the leading delimiters
+      4 $5C CMPI,  C-NE keep BCOND,                \ first token is not the comment word
+      4 12 1 ADDI,
+      4 13 CMP,  C-GE skip BCOND,                  \ `\` is the last byte: comment to EOF
+      4 12 1 LDRB,
+      4 $20 CMPI,  C-HI keep BCOND,                \ `\x...` is one token, not a comment
+      skip B,
+   bump LBL,
+      12 12 1 ADDI,  blanks B,
+   eol LBL,
+      12 12 1 ADDI,  line B,
+   skip LBL,
+      12 13 CMP,  C-GE done BCOND,
+      4 12 0 LDRB,  12 12 1 ADDI,
+      4 $0A CMPI,  C-NE skip BCOND,
+      line B,
+   keep LBL,
+      12 2 0 ADDI,
+   copy LBL,
+      12 13 CMP,  C-GE done BCOND,
+      4 12 0 LDRB,  12 12 1 ADDI,
+      4 9 0 STRB,   9 9 1 ADDI,
+      4 $0A CMPI,  C-NE copy BCOND,
+      line B,
+   done LBL, ;
+
+\ LSRCRD leaves the region it read at [x17, x9), so the compaction reads its own
+\ bounds out of that pair and reports the shortened end in x9.
+: EMIT-SOURCE-READ-PREFIX ( -- )
+   LSRCRDP LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LSRCRD LABEL@ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI,
+   12 17 0 ADDI,  13 9 0 ADDI,  9 17 0 ADDI,
+   C-SOURCE-STRIP-COMMENT-LINES
+   RET, ;
+
 \ ---- CLI flag classifier ----------------------------------------------------
 \ LFLAGMATCH: BL-callable, register-transparent (SP-frames x1..x7, only x0 set).
 \ Input x12 = argv c-string. Output x0 = MODE-LOAD/MODE-SEP/MODE-FILE/MODE-UNKNOWN.
@@ -804,7 +886,7 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
       0 0= 0= swap endcase ;
 
 : PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
-   kind PFX-LOAD? if 12 var LABEL@ ADR,  LSRCRD LABEL@ BL, then ;
+   kind PFX-LOAD? if 12 var LABEL@ ADR,  LSRCRDP LABEL@ BL, then ;
 
 : PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var LABEL@ LBL,  a u ZBYTES, ;
@@ -9552,7 +9634,7 @@ package LABELS
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL BP-CALLER:LBPLH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
-   LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
+   LBL LSRCRD !  LBL LSRCRDP !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LINTERNAL !  LBL LINTMSG !
@@ -9993,6 +10075,7 @@ package ENGINE-EMIT
    PROF:EMIT-PROF
    EMIT-SHEBANG-COMMENT
    EMIT-SOURCE-READ
+   EMIT-SOURCE-READ-PREFIX
    EMIT-FLAGS
    EMIT-JIT
    EMIT-P2-HELPERS

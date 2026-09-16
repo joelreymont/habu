@@ -2358,7 +2358,7 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 \ stdin mode reads all of fd 0 into a fresh RW mmap buffer, then interprets it
 \ (batch REPL: `echo ': SQ DUP * ; 5 SQ .' | ./forth`). Clobbers x0-x5,x9,x11,x16.
 variable LTRAPH   variable LBPH
-variable LSRCRD   variable LSHBANG
+variable LSRCRD   variable LSRCRDP   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPCELL         variable LPPTRSTORAGE  variable LPSTRUCTURES
@@ -2543,6 +2543,67 @@ create ZBYTE 0 c,
    sopenerr LBL,                                  \ open error: label fd 2 before exit 74 (no per-path name in the tripwire)
    s" hb: cannot open source" 74 C-EXIT-DIAG ;
 
+\ LSRCRDP: the native mirror of src/habu/habu2.f EMIT-SOURCE-READ-PREFIX. The
+\ engine prefix rows come in through here and lose the lines the interpreter
+\ skips anyway - a line whose first token is the one-byte `\` comment word, and
+\ a line with no token at all - so the cold prefix does not spend 41 percent of
+\ IBUFSZ on bytes the checker never reads. LSRCRD still serves argv files and
+\ the certified --build payload verbatim. Trailing `\` and `( ... )` comments
+\ stay: the effect after a definition's name is declaration the checker reads,
+\ and neither token is reliably a comment opener when the prefix carries strings
+\ whose payload holds one - this reader sees bytes, not literals. The two
+\ emitters must agree byte for byte or hb-stage0 and hb-stage disagree about
+\ what they are compiling.
+\ x12 = read cursor, x13 = region end, x9 = write cursor, x2 = line start,
+\ x4 = byte. The write cursor starts where the read cursor starts and advances
+\ at most one byte per byte read, so the in-place compaction cannot overrun.
+: C-SOURCE-STRIP-COMMENT-LINES ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: line blanks bump eol skip keep copy done :}
+   line LBL,
+      12 13 CMP,  C-GE done BCOND,
+      2 12 0 ADDI,                                 \ x2 = line start, indentation included
+   blanks LBL,
+      12 13 CMP,  C-GE done BCOND,                 \ only blanks left: nothing to keep
+      4 12 0 LDRB,
+      4 $0A CMPI,  C-EQ eol BCOND,                 \ no token on this line
+      4 $20 CMPI,  C-LS bump BCOND,                \ still in the leading delimiters
+      4 $5C CMPI,  C-NE keep BCOND,                \ first token is not the comment word
+      4 12 1 ADDI,
+      4 13 CMP,  C-GE skip BCOND,                  \ `\` is the last byte: comment to EOF
+      4 12 1 LDRB,
+      4 $20 CMPI,  C-HI keep BCOND,                \ `\x...` is one token, not a comment
+      skip B,
+   bump LBL,
+      12 12 1 ADDI,  blanks B,
+   eol LBL,
+      12 12 1 ADDI,  line B,
+   skip LBL,
+      12 13 CMP,  C-GE done BCOND,
+      4 12 0 LDRB,  12 12 1 ADDI,
+      4 $0A CMPI,  C-NE skip BCOND,
+      line B,
+   keep LBL,
+      12 2 0 ADDI,
+   copy LBL,
+      12 13 CMP,  C-GE done BCOND,
+      4 12 0 LDRB,  12 12 1 ADDI,
+      4 9 0 STRB,   9 9 1 ADDI,
+      4 $0A CMPI,  C-NE copy BCOND,
+      line B,
+   done LBL, ;
+
+\ LSRCRD leaves the region it read at [x17, x9), so the compaction reads its own
+\ bounds out of that pair and reports the shortened end in x9.
+: EMIT-SOURCE-READ-PREFIX ( -- )
+   LSRCRDP @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LSRCRD @ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI,
+   12 17 0 ADDI,  13 9 0 ADDI,  9 17 0 ADDI,
+   C-SOURCE-STRIP-COMMENT-LINES
+   RET, ;
+
 : C-TARGET-UNKNOWN ( -- )
    1 abort" hb: unknown target" ;
 
@@ -2561,7 +2622,7 @@ create ZBYTE 0 c,
    PFX-MACOS = if HB-TARGET-MACOS? else 0 0= 0= then ;
 
 : PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
-   kind PFX-LOAD? if 12 var @ ADR,  LSRCRD @ BL, then ;
+   kind PFX-LOAD? if 12 var @ ADR,  LSRCRDP @ BL, then ;
 
 : PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var @ LBL,  a u ZBYTES, ;
@@ -7508,7 +7569,7 @@ variable P2SK
 
 : EMIT-LABEL-SIGNALS ( -- )
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
-   LBL LSRCRD !  LBL LSHBANG ! ;
+   LBL LSRCRD !  LBL LSRCRDP !  LBL LSHBANG ! ;
 
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
@@ -7612,6 +7673,7 @@ variable P2SK
    EMIT-PROF
    EMIT-SHEBANG-COMMENT
    EMIT-SOURCE-READ
+   EMIT-SOURCE-READ-PREFIX
    EMIT-JIT
    EMIT-P2-HELPERS
    [ also LOWER-TXN-CODE ] EMIT-DESC EMIT-DRIFT-FAIL [ previous ] ;

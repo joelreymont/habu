@@ -1,20 +1,53 @@
 # Bootstrap
 
-## Current recovery status (2026-09-13)
+## Current recovery status (2026-09-16)
 
-Measured on linux-aarch64: the Gforth recovery now reaches `hb-stdin`, the last
-engine of the chain — Gforth builds `hb-stage0`, that stage builds `hb-stage`,
-`hb-stage` reaches its fixpoint and builds `hb-stdin-mk` (the step the S-PWID
-retirement unblocked), and `hb-stdin-mk` compiles its own baked source and emits
-`hb-stdin`, all five engines booting their prefix from source (see the
-cold-runtime rule below). The chain then stops when that engine boots: `hb: AOT
-call site unresolved`, exit 82 — the AOT seed's own refusal in
-`src/habu/habu2.f` `EM-AOT-PATCH-SITES`, raised while it relocates a baked call
-site to a name it cannot resolve in the engine it is seeding. Reproduce it
-directly with `$HB_TMP/hb-stdin --load test/engine-error-package.f` after a
-check-only run. The native self-refresh stops earlier and for its own reason:
-`hb-stage` compiles the assembled `stdin-src` with a from-source prefix that
-carries no boot stdlib, so `src/habu/aot-capture.f`'s bare prelude calls die
+Run it with
+
+```
+HABU_ALLOW_BOOTSTRAP=1 HABU_BOOTSTRAP_CHECK_ONLY=1 HABU_TARGET=linux-aarch64 \
+  HB_TMP=/tmp/hz-chain tools/bootstrap.sh
+```
+
+Measured on linux-aarch64. The chain builds three engines under `HB_TMP` and
+they are the artifacts to look at after a run:
+
+| artifact | built by | what it is |
+| --- | --- | --- |
+| `hb-stage0` | Gforth, through `bootstrap/cg/forth.fs` | the seed engine |
+| `hb-stage` | `hb-stage0` from `stage2-src`, then itself to a fixpoint | the stage engine |
+| `hb-stdin-mk` | `hb-stage` from `stage2-src` with the stdin driver | the maker for `hb-stdin` |
+
+All three boot their prefix from source (see the cold-runtime rule below) and
+all three get there: `hb-stage` reaches its fixpoint, and `hb-stdin-mk` boots
+and compiles its own baked source. The chain stops in that last compile, at the
+AOT seed's emit-time bind:
+
+```
+aot: call site 165 names NULL$ in scope 0, which is neither a seeded primitive
+     nor a captured record
+aot: a baked call site names no record in the image
+```
+
+exit 72, `src/habu/habu2.f` `AOT-REFUSE-BIND`. `NULL$` is a prefix word
+(`src/os/env-base.f`) that the captured `src/habu/repl.f` calls, and
+`EMIT-AOT-SITES` can only bake an index into the seeded primitives or the
+captured records, so a call to a prefix word has nothing to name. `hb-stdin`
+is therefore not produced and the run never reaches `bootstrap check OK`. The
+refusal is independent of the arena work below: the same site fails on a tree
+whose prefix is not stripped once the payload is made small enough to boot.
+
+Before that bind the chain was stopping earlier, at `hb: source prefix buffer
+full`, exit 74 — the cold prefix plus `hb-stdin-mk`'s baked payload had crossed
+`IBUFSZ`. The prefix rows now drop their comment and blank lines as they are
+read (`src/habu/habu2.f` `EMIT-SOURCE-READ-PREFIX` and its mirror in
+`bootstrap/cg/forth.fs`), which took the linux-aarch64 cold prefix from
+1,635,735 to 963,642 bytes and left the boot stream about 620 KiB under the
+4 MiB arena.
+
+The native self-refresh stops earlier and for its own reason: `hb-stage`
+compiles the assembled `stdin-src` with a from-source prefix that carries no
+boot stdlib, so `src/habu/aot-capture.f`'s bare prelude calls die
 `E-UNDEFINED: true` (throw -2802). Neither path can replace a working engine
 until both are repaired.
 

@@ -834,6 +834,16 @@ fits.
   `M-BOUNDS 75`, raised to $120000), the stage2/maker source caps ($C0000). A load path
   that only ever runs SUBSETS needs an explicit whole-closure regression (the
   native test closure hit ~9.3k dict entries against the old 8192 cap).
+- **The cold source prefix shares `IBUFSZ` with the program, and 41 percent of it
+  was comment bytes.** An unseeded engine reads its prefix rows out of the checkout
+  at every cold boot, so prefix growth and program growth compete for one 4 MiB
+  arena — and the seeded `bin/hb` reads no prefix at all, so the squeeze only ever
+  surfaces in no-binary recovery, as a bare `74` at the end of a long chain. Raising
+  the cap is not the only lever: `LSRCRDP` (habu2.f `EMIT-SOURCE-READ-PREFIX`,
+  mirrored in `bootstrap/cg/forth.fs`) drops comment and blank LINES as it reads,
+  1,635,735 -> 963,642 bytes. Line granularity is the safe granularity: a trailing
+  `\` is a comment only outside a string and `( a -- b )` after a name is the
+  declaration the checker reads, and a byte-level reader can tell neither apart.
 - **A worktree's `bin/hb` is not its commit, and a copied `bin/hb` is not a
   frozen baseline — `install --force` before ANY gate, then attribute against a
   control built the same way** (2026-07, 2026-08-05, 08-06, 08-11, 08-14,
