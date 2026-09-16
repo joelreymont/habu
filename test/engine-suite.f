@@ -403,7 +403,7 @@ TFOLD 9 T=
 
 \ Direct CHECK! assertion cannot certify its own recursive checker call.
 \ Retirement owner: habu-primitive-effect-axiom-1119f176.
-TRUSTED: T-CHECK-PASSES ( ptr u8 n -- )
+: T-CHECK-PASSES ( ptr u8 n -- )
    2dup T-LABEL
    CHECK! -1 T= ;
 variable TC-UEND
@@ -411,24 +411,25 @@ variable TC-NEND
 variable TC-SYMN
 variable TC-SYMU
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal state
-\ probes use named trusted words; bare internal tokens fail closed at top level
-\ under the internal-word gate.
-TRUSTED: TC-SNAP ( -- )
+\ probes use named words; bare internal tokens fail closed at top level under
+\ the internal-word gate, and a probe stays TRUSTED: only where the name it
+\ reads is one of those.
+: TC-SNAP ( -- )
    UEND @ TC-UEND !
    NORET-END @ TC-NEND !
    SYM-N @ TC-SYMN !
    SYM-STR-U @ TC-SYMU ! ;
-TRUSTED: TC-DIAG-OFF ( -- )
+: TC-DIAG-OFF ( -- )
    1 DIAG-QUIET +! ;
-TRUSTED: TC-DIAG-ON ( -- )
+: TC-DIAG-ON ( -- )
    -1 DIAG-QUIET +! ;
-TRUSTED: TC-UEND=? ( -- bool )
+: TC-UEND=? ( -- bool )
    UEND @ TC-UEND @ = ;
-TRUSTED: TC-NEND=? ( -- bool )
+: TC-NEND=? ( -- bool )
    NORET-END @ TC-NEND @ = ;
-TRUSTED: TC-SYMN=? ( -- bool )
+: TC-SYMN=? ( -- bool )
    SYM-N @ TC-SYMN @ = ;
-TRUSTED: TC-SYMU=? ( -- bool )
+: TC-SYMU=? ( -- bool )
    SYM-STR-U @ TC-SYMU @ = ;
 LOWER-CERT-HOOK:INSTALL
 TC-SNAP
@@ -464,9 +465,9 @@ TC-SYMU=? -1 T=
 \ row must replace the first for all later callers (in-place index update).
 \ T-RDF is DEFINED once and then overridden by the two rows below, which is
 \ what this case is about. A row must name a word the engine resolves, and a
-\ second TRUSTED: would be a duplicate definition; one definition plus two
+\ second definition would be a duplicate; one definition plus two
 \ rows leaves the later-wins override exactly as it was.
-TRUSTED: T-RDF ( n -- n ) ;
+: T-RDF ( n -- n ) ;
 s" T-RDF" s" n -- n" TRUST
 s" caller of first TRUST effect certifies" T-LABEL
 s" COK-RDF-V1 ( n -- n ) T-RDF" CHECK-QUIET-CANDIDATE! -1 T=
@@ -477,7 +478,7 @@ s" caller of stale first effect rejects" T-LABEL
 s" CBAD-RDF-V1 ( n -- n ) T-RDF" CHECK-QUIET-CANDIDATE! 0 T=
 \ candidate rollback restores the pre-candidate effect: a candidate may shadow
 \ T-RDF, but after its scope ends the shadow must be gone for later checks.
-TRUSTED: T-SCV ( n -- n ) drop 0 ;
+: T-SCV ( n -- n ) drop 0 ;
 s" candidate shadow of TRUSTed word certifies" T-LABEL
 s" T-SCV ( -- n ) 5" CHECK-QUIET-CANDIDATE! -1 T=
 s" pre-candidate effect restored after scope" T-LABEL
@@ -487,14 +488,14 @@ s" CBAD-SCV-LEAK ( -- n ) T-SCV" CHECK-QUIET-CANDIDATE! 0 T=
 \ control-flag rollback: a candidate that turns T-CTV into a no-return thrower
 \ records CTL flags inside its scope only; after the scope the caller's code
 \ after T-CTV is live again.
-TRUSTED: T-CTV ( -- ) ;
+: T-CTV ( -- ) ;
 s" candidate no-return redefinition certifies" T-LABEL
 s" T-CTV ( -- ) 1 throw" CHECK-QUIET-CANDIDATE! -1 T=
 s" ctl flags rolled back with the scope" T-LABEL
 s" COK-CTV-LIVE ( -- n ) T-CTV 5" CHECK-QUIET-CANDIDATE! -1 T=
 \ checker scope: a name interned inside the scope stops resolving after it.
 CHECKER-SCOPE-START
-TRUSTED: T-SCOPED-W ( -- n ) 0 ;
+: T-SCOPED-W ( -- n ) 0 ;
 s" scoped TRUST resolves inside the scope" T-LABEL
 s" COK-SCOPED-IN ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! -1 T=
 CHECKER-SCOPE-DONE
@@ -502,7 +503,7 @@ s" scoped TRUST retired with the scope" T-LABEL
 s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 1 T=
 \ package resolution order: private wins over public and global inside the
 \ open package; the private row never leaks as qualified or global outside.
-TRUSTED: T-PRESO ( -- n ) 0 ;
+: T-PRESO ( -- n ) 0 ;
 package ES-PRES
 : T-PRESO ( -- n n ) 1 2 ;
 public
@@ -726,8 +727,8 @@ s" CREC-SIGLESS dup recurse" CHECK-QUIET-CANDIDATE! 1 T=
 \ colon never resolves (FIND-QBAD); edge colons stay ordinary names.
 s" a:b:c" s" -- n" TRUST
 s" a:b:" s" -- n" TRUST
-TRUSTED: x: ( -- n ) 0 ;
-TRUSTED: ::x ( -- n ) 0 ;
+: x: ( -- n ) 0 ;
+: ::x ( -- n ) 0 ;
 s" tq:tail" s" -- n" TRUST
 s" double-colon token rejects" T-LABEL
 s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 1 T=
@@ -737,7 +738,7 @@ s" edge-colon names stay ordinary" T-LABEL
 s" COK-QUAL-EDGE ( -- n n ) x: ::x" CHECK-QUIET-CANDIDATE! -1 T=
 s" single-colon qualified resolves" T-LABEL
 s" COK-QUAL-ONE ( -- n ) tq:tail" CHECK-QUIET-CANDIDATE! -1 T=
-TRUSTED: ES-JSON-DIAGS! ( bool -- ) JSON-DIAGS ! ;   \ whitebox diag-mode boundary
+: ES-JSON-DIAGS! ( bool -- ) JSON-DIAGS ! ;   \ whitebox diag-mode boundary
 RSD-BUF RSD-CAP DIAG-BUFFER!
 0 0= ES-JSON-DIAGS!
 s" qualified diag verdict" T-LABEL
@@ -908,7 +909,7 @@ TRUSTED: T-BUILD-IMAGE ( asm -- img ) drop 0 ;
 TRUSTED: T-CODESIG2 ( img -- img ) drop 0 ;
 TRUSTED: T-BUILD-SNAP-HDR ( n -- snap n ) drop 0 0 ;
 TRUSTED: T-SNAP-EXTRA-PTR ( -- ptr u8 ) 0 ;
-TRUSTED: T-SNAP-EXTRA-SIZE ( -- n ) 0 ;
+: T-SNAP-EXTRA-SIZE ( -- n ) 0 ;
 s" COK-BUILD-IMAGE ( -- img ) T-ASM-CODE T-BUILD-IMAGE" T-CHECK-PASSES
 s" COK-CODESIG2 ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-CODESIG2" T-CHECK-PASSES
 s" COK-SNAP-HDR ( n -- snap n ) T-BUILD-SNAP-HDR" T-CHECK-PASSES
@@ -1159,10 +1160,10 @@ TRUSTED: TR-NORET-LAYOUT-RAW ( -- n n n bool )
 
 ;package
 
-TRUSTED: TR-CORE-MARKS@ ( -- n n n n )
+: TR-CORE-MARKS@ ( -- n n n n )
    SYM-N @ UEND @ DFER-END @ NORET-END @ ;
 
-TRUSTED: TR-VREC-MARKS@ ( -- n n n n n )
+: TR-VREC-MARKS@ ( -- n n n n n )
    VREC-N @ VREC-FIELD-N @ VREC-NODE-N @ VNARG-N @ VREC-STR-U @ ;
 
 TRUSTED: TR-SYM-ADD ( -- )
@@ -1420,8 +1421,8 @@ DIAG-BUFFER-OFF  0 DIAG-JSON!
 \ --- multi-error load mode: rejects do not abort the load; the declared sig is
 \ retained so later definitions keep checking, and the count drives a fail-closed
 \ exit. MEA3 uses MEA1's recovery n->n row without gaining source authority.
-TRUSTED: TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;   \ whitebox multi-error boundary
-TRUSTED: TR-ME-END ( -- n ) MULTI-ERR-END ;
+: TR-ME-BEGIN ( -- ) MULTI-ERR-BEGIN ;   \ whitebox multi-error boundary
+: TR-ME-END ( -- n ) MULTI-ERR-END ;
 TRUSTED: TR-ME? ( -- bool ) MULTI-ERR? ;
 TRUSTED: TR-ME-ORIGIN! ( ptr a ptr a n n n -- ) MULTI-ERR-ORIGIN! ;
 TR-ME-BEGIN
@@ -1497,7 +1498,7 @@ s" DNI-RENDER ( frame-idx -- n )" CHECK! drop
 s" nominal type renders by name in diagnostic" T-LABEL
 DIAG-BUFFER$ s\" frame-idx" MEO-CONTAINS? -1 T=
 DIAG-BUFFER-OFF  0 DIAG-JSON!
-TRUSTED: T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
+: T-PTX-SAME-EXTENT ( span<space-global,f32,e> span<space-global,f32,e> -- ) drop drop ;
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
 s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
 s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" T-CHECK-PASSES
@@ -1605,7 +1606,7 @@ variable TSHOW-N
 \ compile-mode only, hence colon words). TSHOW-RESTORE names render's
 \ SHOW-LOCAL-TYPE, a checker-internal not published to checked loads, so it uses
 \ trusted whitebox probes like the file's other internal-state helpers.
-TRUSTED: TSHOW-INSTALL ( -- ) [: TSHOW-HOOK ;] is LOCSHOWXT ;
+: TSHOW-INSTALL ( -- ) [: TSHOW-HOOK ;] is LOCSHOWXT ;
 TRUSTED: TSHOW-RESTORE ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOWER-CERT-HOOK:INSTALL
 TSHOW-INSTALL
@@ -1614,13 +1615,13 @@ s" COK-SHOW-INFERRED ( i64 -- i64 ) {: x:? :} x" T-CHECK-PASSES
 s" CBAD-SHOW-INFERRED ( i64 -- ) {: x:? :} x x" T-CHECK-REJECTS
 TSHOW-N @ 2 T=
 TSHOW-RESTORE
-TRUSTED: T-NEED-I64 ( i64 -- ) drop ;
-TRUSTED: T-NEED-U32 ( u32 -- ) drop ;
-TRUSTED: T-NEED-U16 ( u16 -- ) drop ;
-TRUSTED: T-NEED-U8 ( u8 -- ) drop ;
-TRUSTED: T-GIVE-U16 ( -- u16 ) 0 ;
-TRUSTED: T-GIVE-U8 ( -- u8 ) 0 ;
-TRUSTED: T-GIVE-I64 ( -- i64 ) 0 ;
+: T-NEED-I64 ( i64 -- ) drop ;
+: T-NEED-U32 ( u32 -- ) drop ;
+: T-NEED-U16 ( u16 -- ) drop ;
+: T-NEED-U8 ( u8 -- ) drop ;
+: T-GIVE-U16 ( -- u16 ) 0 ;
+: T-GIVE-U8 ( -- u8 ) 0 ;
+: T-GIVE-I64 ( -- i64 ) 0 ;
 s" COK-U8-WIDEN-IN ( u8 -- ) T-NEED-I64" T-CHECK-PASSES
 s" COK-U8-WIDEN-OUT ( -- i64 ) T-GIVE-U8" T-CHECK-PASSES
 s" COK-U16-WIDEN-IN ( u16 -- ) T-NEED-U32" T-CHECK-PASSES
@@ -1630,8 +1631,8 @@ s" CBAD-I64-NARROW-OUT ( -- u8 ) T-GIVE-I64" T-CHECK-REJECTS
 s" CBAD-U32-NARROW-IN ( u32 -- ) T-NEED-U16" T-CHECK-REJECTS
 DEFTYPE node
 TRUSTED: T->NODE ( n -- node ) drop 0 ;
-TRUSTED: T-NODE>N ( node -- n ) drop 0 ;
-TRUSTED: T-NEED-NODE ( node -- ) drop ;
+: T-NODE>N ( node -- n ) drop 0 ;
+: T-NEED-NODE ( node -- ) drop ;
 s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
 s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
@@ -1819,10 +1820,10 @@ s" CBAD-SNAP-HDR ( n -- n ) T-BUILD-SNAP-HDR" T-CHECK-REJECTS
 s" CBAD-THROW-DUMMY ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-EXIT-DUMMY ( i64 -- i64 ) exit 0" T-CHECK-REJECTS
-TRUSTED: T-LINUX-DUP2-FD ( reg fd reg -- ) drop drop drop ;
-TRUSTED: T-LINUX-SPAWN ( reg reg reg reg reg reg reg -- ) drop drop drop drop drop drop drop ;
-TRUSTED: T-SPAWN-DUP2-ACTION ( reg fd -- ) drop drop ;
-TRUSTED: T-SPAWN-DARWIN-FINISH ( label label -- ) drop drop ;
+: T-LINUX-DUP2-FD ( reg fd reg -- ) drop drop drop ;
+: T-LINUX-SPAWN ( reg reg reg reg reg reg reg -- ) drop drop drop drop drop drop drop ;
+: T-SPAWN-DUP2-ACTION ( reg fd -- ) drop drop ;
+: T-SPAWN-DARWIN-FINISH ( label label -- ) drop drop ;
 s" TROLE-LINUX-DUP2 ( reg fd reg -- ) T-LINUX-DUP2-FD" T-CHECK-PASSES
 s" CBAD-LINUX-DUP2-FD ( reg reg reg -- ) T-LINUX-DUP2-FD" T-CHECK-REJECTS
 s" CBAD-LINUX-SPAWN ( reg reg reg fd reg reg reg -- ) T-LINUX-SPAWN" T-CHECK-REJECTS
@@ -2060,7 +2061,7 @@ TFFI 7 T=
 \ the hook verdict is 0. ES-VERDICT-HOOK is the raw-verdict boundary: unlike
 \ HOOK it returns the checker verdict instead of throwing, so the engine's
 \ reject-continue branch runs in-process.
-TRUSTED: ES-VERDICT-HOOK ( ptr u8 n -- n ) CHECK! ;
+: ES-VERDICT-HOOK ( ptr u8 n -- n ) CHECK! ;
 
 \ CHECK! owns certificate publication, so an alternate hook cannot leave the
 \ previous wide definition's facts live when it accepts a scalar definition.
@@ -2868,8 +2869,8 @@ ES-SWL:CAPTURE  ES-SWL:N ES-SWL:BATTERY-N T=
 package ES-NDX
 
 \ Whitebox: a fixed engine header cell, and the FORGET sink itself.
-TRUSTED: HIDXP@ ( -- n )  data-base HIDXP-CELL + @ ;
-TRUSTED: ND! ( n -- )     ndict! ;
+: HIDXP@ ( -- n )  data-base HIDXP-CELL + @ ;
+: ND! ( n -- )     ndict! ;
 
 variable LO
 variable HI
