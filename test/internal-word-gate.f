@@ -247,6 +247,18 @@ create EMPTY 1 allot            \ zero-length stdin
    s" IWG-NULL-READ . cr" SB-APPEND LF
    SB$ ;
 
+\ The cell is a reserved DATA header offset now, and pointer-storage.f has to
+\ spell that offset for itself because src/habu/layout.f loads about forty files
+\ later in the target prefix. Read all three out of this booted engine, where
+\ they are all live -- the cell's actual address, pointer-storage.f's copy, and
+\ layout.f's reservation -- and refuse any drift between them.
+: NULL-PTR-OFFSET$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: IWG-NULL-AT ( -- n ) NULL-PTR-CELL data-base - NULL-PTR-CELL-OFF - ;" SB-APPEND LF
+   s" TRUSTED: IWG-NULL-MIRROR ( -- n ) NULL-PTR-OFF NULL-PTR-CELL-OFF - ;" SB-APPEND LF
+   s" IWG-NULL-AT . cr IWG-NULL-MIRROR . cr" SB-APPEND LF
+   SB$ ;
+
 : NULL-PTR-CELL-CASES ( -- )
    s" a bare NULL-PTR-CELL store is engine-internal" T-LABEL
    NULL-PTR-BARE$ RUN-SUBJECT
@@ -273,7 +285,11 @@ create EMPTY 1 allot            \ zero-length stdin
    s" NULL-PTR-CELL remains numeric zero" T-LABEL
    NULL-PTR-FIXED@$ RUN-SUBJECT
    ASSERT-OK
-   OUT$ S\" 0\n\n" T$= ;
+   OUT$ S\" 0\n\n" T$=
+   s" NULL-PTR-CELL sits at the layout-reserved offset, and both spellings agree" T-LABEL
+   NULL-PTR-OFFSET$ RUN-SUBJECT
+   ASSERT-OK
+   OUT$ S\" 0\n\n0\n\n" T$= ;
 
 \ seed-ndict! has a global record so the native compiler can resolve the direct
 \ call in a TRUSTED reset. Its DNAME-INT record and BSWL refusal close ordinary

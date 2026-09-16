@@ -8537,3 +8537,10 @@ diagnosis; read it before touching a suite:
   aot block sits at registration index 240 of 352, so it starts after the pool
   has drained the cheap suites and then runs alone. A sequential `GROUP SEQ`
   drains everything before it; what follows it here is 54 s of work.
+
+Checked code reads a pointer's number only by subtracting NULL-PTR, so every
+such conversion ran through one `create`d heap cell whose absolute movz/movk
+chain each AOT closure then carried, and the stripped linker refused it as data
+outside the restored span -- unlinkable once CDIGEST:NATIVE-SLOT? put it under
+every checked wide fetch. The cell is a DATA-base-relative header offset now
+(2026-09-16).
