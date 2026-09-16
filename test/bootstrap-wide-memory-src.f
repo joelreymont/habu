@@ -179,14 +179,21 @@ variable BWM-GXT
    idx 4 + ;
 
 \ A wide store ( value ptr -- ): pops the address, addresses the value at its
-\ full width (a register offset, never an imm12 that a wide value outgrows),
-\ and proves the whole destination span with (PROT-SPAN) - x10 destination,
-\ x11 bytes, x9 cells - before the first mutating store. There is no bounds
-\ request ahead of the call any more (dot habu-replace-per-transfer-8523fb98,
-\ following the engine's own per-transfer-guard removal in
-\ "Remove the per-transfer stack guards from the engine"): the frame is just
-\ the return address, the destination comes straight off the data stack, and
-\ (PROT-SPAN) is reached directly. Measured on this stage0 seed with `HABU_
+\ full width, and proves the whole destination span with (PROT-SPAN) - x10
+\ destination, x11 bytes, x9 cells - before the first mutating store. There is
+\ no bounds request ahead of the call any more (dot
+\ habu-replace-per-transfer-8523fb98, following the engine's own
+\ per-transfer-guard removal in "Remove the per-transfer stack guards from the
+\ engine"): the frame is just the return address, the destination comes
+\ straight off the data stack, and (PROT-SPAN) is reached directly.
+\ The source offset is FOLDED into the sub's imm12 field ("Fold transfer
+\ immediates into emitted words"): both engines reach the code window through
+\ one shared add/sub-immediate emitter, which spends one word while the byte
+\ operand is below 4096 and a shifted high half plus a low half above it. Every
+\ width here is far below 4096, so index 4 is the single folded word; a
+\ register-materialized offset would cost one instruction more at every width.
+\ Measured on the native engine with `bin/hb --load
+\ test/bootstrap-wide-memory-src.f` and on this stage0 seed with `HABU_
 \ TARGET=linux-aarch64 gforth test/bootstrap-wide-memory.fs`, decoding the
 \ actual compiled BWM-STORE2-G/BWM-STORE4-G bytes byte for byte.
 : BWM-STORE-GOLD ( ptr u8 n n -- ) {: name:ptr nameu:n width:n :}
@@ -195,11 +202,10 @@ variable BWM-GXT
    1 $F90003FE BWM-GOLD                           \ str x30,[sp]
    2 $D1002273 BWM-GOLD                           \ sub x19,x19,#8     destination
    3 $F940026A BWM-GOLD                           \ ldr x10,[x19]
-   4 $D280000E width 5 lshift or BWM-GOLD         \ movz x14,#width
-   5 $CB0E026E BWM-GOLD                           \ sub x14,x19,x14    source
-   6 $D2800009 width 8 / 5 lshift or BWM-GOLD     \ movz x9,#cells
-   7 $D280000B width 5 lshift or BWM-GOLD         \ movz x11,#width
-   8 BWM-CALL-GOLD drop ;                         \ (PROT-SPAN)
+   4 $D100026E width 10 lshift or BWM-GOLD        \ sub x14,x19,#width source
+   5 $D2800009 width 8 / 5 lshift or BWM-GOLD     \ movz x9,#cells
+   6 $D280000B width 5 lshift or BWM-GOLD         \ movz x11,#width
+   7 BWM-CALL-GOLD drop ;                         \ (PROT-SPAN)
 
 \ A wide fetch ( ptr -- value ): it first calls (LP2VEXEC), whose descriptor
 \ follows the return site behind a branch over it - one CHECK row naming the
