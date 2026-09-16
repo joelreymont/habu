@@ -1751,6 +1751,7 @@ TASK:PAUSE         ( -- )
 TASK:HALT          ( ptr a -- )
 TASK:KILL          ( ptr a -- )
 TASK:DONE?         ( ptr a -- bool )
+TASK:THROW@        ( ptr a -- n )
 TASK:#USER         ( -- n )
 TASK:+USER         ( n n -- n )
 TASK:HIS           ( ptr a ptr a -- ptr a )
@@ -1766,7 +1767,8 @@ live is fail-closed with exit code `$4F`; on Linux this uses process-wide
 Use `TASK:+USER` for task-local cells, ordinary aligned cells plus atomics for
 shared state, `TASK:FACILITY` for owner-tracked mutex storage, and `TASK:KILL`
 for teardown. Worker `die` is process-fatal with the explicit code/message;
-uncaught worker `throw` is process-fatal with `task: unhandled throw`.
+an uncaught worker `throw` ends only that task, which reaches `DONE` with the
+code readable through `TASK:THROW@` until its next activation.
 
 The public tasking surface tracks the local SwiftForth manual capture in
 `docs/swiftforth-task-api.md`, with `TASK:ACTIVATE` using a checked XT instead

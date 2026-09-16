@@ -28,9 +28,12 @@ code `$4F`, printing the rejected token. Linux fatal exits use `exit_group`
 whole process instead of leaving worker threads behind.
 
 Worker bodies run through a task wrapper. A worker `die` keeps its explicit exit
-status and message; an uncaught worker `throw` terminates the process with the
-low byte of the throw code and `task: unhandled throw` on stderr. Task failure
-is process-fatal by design until a checked result/future model exists; see
+status and message and still ends the process. An uncaught worker `throw` ends
+only that task, as SwiftForth's thread entry does: the wrapper records the throw
+code in the task's TCB, the task reaches `DONE`, and the process and the other
+live tasks continue. `TASK:THROW@` reads the code; it stays readable after
+`TASK:KILL` has joined the task and is cleared by the next `TASK:ACTIVATE`. A
+worker outcome richer than one code needs the typed result model; see
 [tasking-models.md](tasking-models.md) for how SwiftForth, polyFORTH and VFX
 handle this and the dots that change it.
 
@@ -47,6 +50,7 @@ TASK:PAUSE           ( -- )            \ yield; worker exits if HALT requested
 TASK:HALT            ( ptr a -- )      \ request stop at next PAUSE
 TASK:KILL            ( ptr a -- )      \ join/release task memory
 TASK:DONE?           ( ptr a -- bool )
+TASK:THROW@          ( ptr a -- n )    \ uncaught throw code, 0 if none
 
 TASK:#USER           ( -- n )
 TASK:+USER           ( n n -- n )      \ define task-local user variable
@@ -100,6 +104,7 @@ bin/hb --load test/run-in-stack-smoke.f
 task-local `TASK:+USER` isolation via `TASK:HIS`, `TASK:SELF`, `TASK:HALT` /
 `TASK:KILL`, facility owner semantics, a five-task application-shaped repeated
 start/join soak, FFI from worker tasks, task-local FFI scratch isolation, the
-live-task compile guard, and process-fatal worker `die`/`throw` diagnostics.
+live-task compile guard, process-fatal worker `die`, and a contained worker
+`throw` beside a worker that completes and is joined.
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

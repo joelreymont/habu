@@ -45,6 +45,7 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.RSTACK-U
    PTR-FIELD: TCB.LSTACK
    CELL +FIELD TCB.LSTACK-U
+   CELL +FIELD TCB.THROW
 END-STRUCTURE
 
 : TASK-TCB-OFFSET ( ptr a ptr b n -- ) {: field:ptr origin:ptr want:n :}
@@ -53,7 +54,8 @@ END-STRUCTURE
 
 : TASK-TCB-LAYOUT-CHECK ( -- )
    TASK-TCB-SIZE TASK-TCB-BYTES <> if s" task: tcb layout" E-TASK-STATE die then
-   \ Check the typed field accessors used by the immutable engine entry.
+   \ Check the typed field accessors of the shared descriptor: the offsets the
+   \ immutable engine entry loads, and the runner's throw slot behind them.
    here CELL-VIEW {: origin:ptr :}
    origin TCB.XT-CELL origin TASK-ABI:XT-OFF TASK-TCB-OFFSET
    origin TCB.STACK origin TASK-ABI:STACK-OFF TASK-TCB-OFFSET
@@ -63,7 +65,8 @@ END-STRUCTURE
    origin TCB.CP origin TASK-ABI:CP-OFF TASK-TCB-OFFSET
    origin TCB.STATUS origin TASK-ABI:STATUS-OFF TASK-TCB-OFFSET
    origin TCB.RSTACK origin TASK-ABI:RSTACK-OFF TASK-TCB-OFFSET
-   origin TCB.LSTACK origin TASK-ABI:LSTACK-OFF TASK-TCB-OFFSET ;
+   origin TCB.LSTACK origin TASK-ABI:LSTACK-OFF TASK-TCB-OFFSET
+   origin TCB.THROW origin TASK-ABI:THROW-OFF TASK-TCB-OFFSET ;
 
 TASK-TCB-LAYOUT-CHECK
 
@@ -234,6 +237,12 @@ TRUSTED: MUTEX-UNLOCK-CALL ( ptr n -- n ) {: mutex:ptr :}
 : TASK-STATE! ( n ptr n -- )
    TCB.STATUS ! ;
 
+: TASK-THROW@ ( ptr n -- n )
+   TCB.THROW @ ;
+
+: TASK-THROW! ( n ptr n -- )
+   TCB.THROW ! ;
+
 : TASK-LIVE+ ( -- )
    data-base TASKS-LIVE-CELL + dup @ 1 + swap ! ;
 
@@ -345,15 +354,15 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 : TASK-SELF-N ( -- n )
    data-base TASK-TCB-CELL + @ ;
 
-: TASK-RC>EXIT ( n -- n )
-   $FF and ;
-
 : TASK-RUN-USER ( -- n )
    TASK-SELF TCB.USER-XT @ catch ;
 
+\ An uncaught worker throw ends this task only: record the code and return, so
+\ the entry marks the task DONE and the other tasks keep running. A worker
+\ `die` is not catchable and still exits the process with its own status.
 : TASK-RUNNER ( -- )
    TASK-RUN-USER dup 0= if drop exit then
-   TASK-RC>EXIT s" task: unhandled throw" rot die ;
+   TASK-SELF TASK-THROW! ;
 
 : ACTIVATE ( [ -- ] ptr n -- ) {: xt tcb:ptr :}
    TASK-READY
@@ -364,6 +373,7 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    xt tcb TCB.USER-XT !
    ['] TASK-RUNNER tcb TCB.XT !
    0 tcb TCB.STOP !
+   0 tcb TASK-THROW!
    TASK-RUNNING tcb TASK-STATE!
    TASK-LIVE+
    tcb TASK-PTHREAD-CREATE-RC dup 0 <> if
@@ -552,6 +562,10 @@ TASK-MIN-STACK constant MIN-STACK
 
 : DONE? ( ptr n -- bool )
    TASK-DONE? ;
+
+\ Zero until this task's body ends with an uncaught throw; cleared by ACTIVATE.
+: THROW@ ( ptr n -- n )
+   TASK-THROW@ ;
 
 : #USER ( -- n )
    #USER ;

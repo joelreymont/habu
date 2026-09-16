@@ -19,6 +19,7 @@ variable TASK-COUNT
 variable TASK-READY-CELL
 variable TASK-SELF-A
 variable TASK-SELF-B
+variable TASK-OK-CELL
 
 TASK:#USER
 CELL TASK:+USER TASK-USER-CELL
@@ -40,7 +41,6 @@ $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
 $4F constant TASK-LIVE-RC
 $62 constant TASK-DIE-RC
-E-TASK-STATE $FF and constant TASK-THROW-RC
 8 constant APP-CYCLES
 16 constant APP-ITERS
 4 constant APP-ACQ-WANT
@@ -96,6 +96,12 @@ variable APP-BAD
 
 : TASK-PAUSER ( -- )
    begin TASK:PAUSE again ;
+
+: TASK-THROW-WORK ( -- )
+   E-TASK-STATE throw ;
+
+: TASK-OK-WORK ( -- )
+   1 TASK-OK-CELL atomic-add drop ;
 
 : TASK-LF ( -- )
    $0A SB-APPEND-C ;
@@ -252,16 +258,6 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    s" TASK-DIE-WAIT" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-THROW$ ( -- ptr u8 n )
-   SB-RESET
-   s" require lib/task.f" SB-APPEND TASK-LF
-   s" : TASK-THROW-WORK ( -- ) E-TASK-STATE throw ;" SB-APPEND TASK-LF
-   s" TASK:MIN-STACK TASK:TASK TASK-THROW-WORKER" SB-APPEND TASK-LF
-   s" : TASK-THROW-WAIT ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
-   s" ' TASK-THROW-WORK TASK-THROW-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" TASK-THROW-WAIT" SB-APPEND TASK-LF
-   SB$ ;
-
 : TASK-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
@@ -281,8 +277,29 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 : TASK-TEST-WORKER-DIE ( -- )
    TASK-DIE$ TASK-DIE-RC s" task died" TASK-EXPECT-FAIL ;
 
+\ One worker throws while the other completes: the throw ends that task alone
+\ and its code outlives the join.
 : TASK-TEST-WORKER-THROW ( -- )
-   TASK-THROW$ TASK-THROW-RC s" task: unhandled throw" TASK-EXPECT-FAIL ;
+   0 TASK-OK-CELL !
+   ['] TASK-THROW-WORK WORKER-A TASK:ACTIVATE
+   ['] TASK-OK-WORK WORKER-B TASK:ACTIVATE
+   WORKER-A APP-WAIT-DONE
+   WORKER-B APP-WAIT-DONE
+   WORKER-A TASK:DONE? TTRUE
+   WORKER-A TASK:THROW@ E-TASK-STATE T=
+   WORKER-B TASK:THROW@ 0 T=
+   TASK-OK-CELL @ 1 T=
+   WORKER-A TASK:KILL
+   WORKER-B TASK:KILL
+   WORKER-A TASK:THROW@ E-TASK-STATE T= ;
+
+\ Reactivating the task that threw starts it with a clean slot.
+: TASK-TEST-THROW-CLEARED ( -- )
+   ['] TASK-OK-WORK WORKER-A TASK:ACTIVATE
+   WORKER-A APP-WAIT-DONE
+   WORKER-A TASK:THROW@ 0 T=
+   TASK-OK-CELL @ 2 T=
+   WORKER-A TASK:KILL ;
 
 : TASK-TEST-CALLBACK-TYPES ( -- )
    s" TASK-CB-GOOD ( [ -- ] ptr n -- ) TASK:ACTIVATE"
@@ -294,9 +311,18 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    s" TASK-CB-OUTPUT ( [ -- n ] ptr n -- ) TASK:ACTIVATE"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
+: TASK-TEST-THROW-TYPES ( -- )
+   s" TASK-TH-GOOD ( ptr n -- n ) TASK:THROW@"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-TH-RAW ( n -- n ) TASK:THROW@"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-TH-BOOL ( ptr n -- bool ) TASK:THROW@"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 : TASK-TEST-RUN ( -- )
    T-RESET
    TASK-TEST-CALLBACK-TYPES
+   TASK-TEST-THROW-TYPES
    0 TASK-COUNT !
    0 TASK-READY-CELL !
    0 TASK-SELF-A !
@@ -324,6 +350,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    TASK-TEST-APP-SOAK
    TASK-TEST-WORKER-DIE
    TASK-TEST-WORKER-THROW
+   TASK-TEST-THROW-CLEARED
    T-REPORT ;
 
 TASK-TEST-RUN

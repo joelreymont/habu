@@ -29,6 +29,9 @@ $70 constant RSTACK-OFF
 $78 constant RSTACK-U-OFF
 $80 constant LSTACK-OFF
 $88 constant LSTACK-U-OFF
-$90 constant TCB-BYTES
+\ The task runner records the code of an uncaught throw from the worker body
+\ here before the entry marks the task DONE; the entry itself never reads it.
+$90 constant THROW-OFF
+$98 constant TCB-BYTES
 
 ;package
