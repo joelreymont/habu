@@ -1346,6 +1346,11 @@ SUITE pty
    lib/pty-test.f
 ;SUITE
 
+\ IPv4 stream sockets: a listener task and a client in one process.
+SUITE tcp4
+   lib/net/tcp4-test.f
+;SUITE
+
 SUITE process-argv
    lib/process-argv-test.f
 ;SUITE
