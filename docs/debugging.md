@@ -448,7 +448,7 @@ this die", and they are not interchangeable:
   pages, only the `(name)` suffix is new, so match it as a prefix
   (`hb: stack bounds exceeded`) rather than the whole line if the specific
   stack does not matter to the assertion.
-- `E-STACK-UNGUARDED` (-3802, `lib/errors.f`; `STACK-ABI:E-UNGUARDED` spells
+- `E-STACK-UNGUARDED` (-3802, `lib/errors.f`; `STACK-ABI:E-STACK-UNGUARDED` spells
   the same number for the engine emitters, and `test/stack-guard.f` proves
   the two agree) is run-in-stack's own admission check
   (`src/habu/habu1.f` BRUNSTACK `GUARDED-EXTENT?`), thrown *before* the

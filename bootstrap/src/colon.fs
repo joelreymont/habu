@@ -84,9 +84,9 @@ variable RB-A   variable RB-U   variable IN-LOC
       \ falls back to the native colon so existing code still compiles.
       ['] CHECK-CUR catch {: code :}
       code CHECK-CODE !                          \ record outcome for the REPL/tools
-      code 0= if RE-EVAL-SAFE CODEGEN-HOOK exit then
+      code 0= if RE-EVAL-SAFE exit then
       code E-UNCHECKED = code E-UNSAFE = or if
-         code WARN-UNCHECKED  RE-EVAL-SAFE  CODEGEN-HOOK  exit  \ escaped checking — say so
+         code WARN-UNCHECKED  RE-EVAL-SAFE  exit  \ escaped checking — say so
       then
       code DIAG-CODE!  DIAG-REPORT  exit   \ real type error → report, refuse
    then

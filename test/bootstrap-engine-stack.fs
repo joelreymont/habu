@@ -15,33 +15,43 @@ require nf.fs
    then 2drop ;
 
 \ A fresh, independent guarded VM-stack mapping for the built test program to
-\ hand to run-in-stack: run-in-stack now refuses anything that is not one
-\ (GUARDED-EXTENT?), and this stage0 seed carries no lib/memory.f
-\ MEM-ALLOC-GUARDED, so the fixture makes its own with the same emitter the
-\ engine itself uses. Leaves the mapped base on the data stack.
+\ hand to run-in-stack, which refuses anything that is not one
+\ (GUARDED-EXTENT?). The fixture emits it with STACK-GUARD:EMIT-MAP because
+\ that emitter is the thing under test here -- it is where the engine's own
+\ boot, return and loop stacks come from -- so every mapping these programs
+\ run on is its output rather than a library's. Not because the seed cannot
+\ reach the library: it can, and test/bootstrap-wide-memory-src.f bakes
+\ `require lib/memory.f` and MEM-ALLOC-GUARDED into a stage0 program that
+\ builds and runs. Leaves the mapped base on the data stack.
 : BES-MKSTACK ( -- )
    STACK-ABI:PAGE-BYTES 10 STACK-GUARD:EMIT-MAP
    10 G-PUSH ;
 
-\ bes-mkstack is registered as a raw dictionary primitive (FPRIM), not
-\ certified to the checker, so a checked `:` body that calls it would die
-\ "non-certified definition". Disabling the check hook for the built test
-\ program is simpler than declaring a PRIM: axiom for a test-only word: these
-\ fixtures exercise run-in-stack/catch/evaluate/the guard-page fault, not
-\ checked-compile certification, and every baked source is a single, fresh,
-\ standalone program (not the checker's own suite).
-create BES-SRC-BUF 4096 allot
-
+\ bes-mkstack is registered as a raw dictionary primitive (FPRIM), so a checked
+\ `:` body that calls it dies "non-certified definition" until the checker holds
+\ a row for it. Every baked program therefore opens with the axiom form the
+\ engine's own primitives use (src/core/checker.f, e.g. `PRIM: run-in-stack
+\ PE-Q ;PE-Q PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;`) -- NOT with `0 set-check`,
+\ which clears HOOK-CELL and with it the paired compile preflight
+\ (bootstrap/cg/forth.fs BSETCHECK), so every program below would have compiled
+\ unchecked and these fixtures would have measured an engine nobody builds. That
+\ one axiom is the whole exemption; everything else baked here compiles checked.
+\
+\ The text is allocated to exactly the axiom plus the source. A fixed buffer
+\ would have to be re-measured whenever src/habu/debug.f grows: BES-DEBUG-RUN
+\ already bakes 3196 bytes of it, and nothing here could see it overrun.
 : BES-IMAGE ( src-a src-u -- ) {: sa su :}
-   s" 0 set-check " {: pa pu :}
-   pa BES-SRC-BUF pu move
-   sa BES-SRC-BUF pu + su move
-   BES-SRC-BUF pu su +
+   s\" PRIM: bes-mkstack PE-PTR-U8 PE-OUT PRIM;\n" {: pa pu :}
+   pu su + allocate throw {: buf :}
+   pa buf pu move
+   sa buf pu + su move
+   buf pu su +
    SRCN ! SRCA ! EMIT-RESET-BUILDER EMIT-LABELS
    EMIT-MAIN EMIT-PRIMITIVE-SECTIONS EMIT-DICTIONARY-SECTIONS
    EMIT-RUNTIME-SECTIONS
    s" bes-mkstack" ['] BES-MKSTACK FPRIM
-   EMIT-DICT EMIT-SOURCE-BYTES NF-BIN$ EMIT-EXE ;
+   EMIT-DICT EMIT-SOURCE-BYTES NF-BIN$ EMIT-EXE
+   buf free throw ;
 
 \ Combine stdout and stderr so refusals prove both the code and named message.
 : BES-RUN ( src-a src-u -- rc )
@@ -69,10 +79,10 @@ create BES-SRC-BUF 4096 allot
 
 \ The leaf comparison covers exactly the constants src/habu/stack-abi.f
 \ publishes as STACK-ABI: words, because those are the ones the built engine
-\ can evaluate. E-UNGUARDED is not one of them: lib/errors.f owns that code as
-\ E-STACK-UNGUARDED and this Gforth stage, which has no lib/errors.f, spells
-\ its own mirror in bootstrap/cg/forth.fs. The stage value is pinned where it
-\ is observable instead -- BES-DATA's run-in-stack refusals print -3802.
+\ can evaluate. E-STACK-UNGUARDED is not one of them: lib/errors.f owns that
+\ code and this Gforth stage, which has no lib/errors.f, spells its own mirror
+\ under the same name in bootstrap/cg/forth.fs. The stage value is pinned where
+\ it is observable instead -- BES-DATA's run-in-stack refusals print -3802.
 : BES-ABI ( -- )
    s" STACK-ABI:BASE-CELL . STACK-ABI:CAP-CELL . STACK-ABI:REPL-BASE-CELL . STACK-ABI:REPL-CAP-CELL . STACK-ABI:PAGE-BYTES . STACK-ABI:BOOT-BYTES . STACK-ABI:RETURN-BASE-CELL . STACK-ABI:LOOP-BASE-CELL . STACK-ABI:RETURN-BYTES . STACK-ABI:RETURN-CELLS . STACK-ABI:LOOP-BYTES . STACK-ABI:LOOP-FRAME-BYTES . STACK-ABI:LOOP-FRAMES . STACK-ABI:CATCH-BASE . STACK-ABI:CATCH-CAP . STACK-ABI:CATCH-BYTES . STACK-ABI:CATCH-MAGIC . STACK-ABI:EVAL-BASE . STACK-ABI:EVAL-CAP . STACK-ABI:EVAL-BYTES ." BES-OK
    0 NF-CMD-U !
@@ -105,7 +115,7 @@ create BES-SRC-BUF 4096 allot
       abort" recovery run-in-stack on a guarded mapping lost its result"
 
    \ run-in-stack now refuses any extent that is not itself a STACK-GUARD
-   \ mapping (GUARDED-EXTENT?), catchable as STACK-ABI:E-UNGUARDED (-3802).
+   \ mapping (GUARDED-EXTENT?), catchable as STACK-ABI:E-STACK-UNGUARDED (-3802).
    \ A plain create/allot buffer sits inside the DATA region, so it is
    \ refused regardless of size or body.
    s" create BUF 32 allot : EMPTY ( -- ) ; : GO ( -- ) ['] EMPTY BUF 8 run-in-stack ; ' GO catch . " BES-OK
@@ -117,8 +127,10 @@ create BES-SRC-BUF 4096 allot
    s\" -3802\n" NF= 0=
       abort" recovery run-in-stack accepted a zero-capacity extent"
 
-   \ A NULL base is refused before anything else runs.
-   s" : EMPTY ( -- ) ; : GO ( -- ) ['] EMPTY 0 0 run-in-stack ; ' GO catch . " BES-OK
+   \ A NULL base is refused before anything else runs. Spelled NULL-PTR and not
+   \ a bare 0: run-in-stack takes ( ptr u8 n ) and a literal 0 is n, so with the
+   \ checker live the program is refused before the engine can refuse the extent.
+   s" : EMPTY ( -- ) ; : GO ( -- ) ['] EMPTY NULL-PTR 0 run-in-stack ; ' GO catch . " BES-OK
    s\" -3802\n" NF= 0=
       abort" recovery run-in-stack accepted a NULL base"
 

@@ -158,9 +158,11 @@ STACK-ABI:PAGE-BYTES constant STACK-ABI:LOOP-BYTES
 STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 
 \ run-in-stack's refusal code for an extent that is not a guarded mapping.
-\ lib/errors.f E-STACK-UNGUARDED owns this code (the native engine reads it from
-\ there); the Gforth stage has no lib/errors.f, so the mirror spells it once here.
--3802 constant STACK-ABI:E-UNGUARDED
+\ lib/errors.f E-STACK-UNGUARDED owns this code; src/habu/stack-abi.f re-registers
+\ the same (code, name) pair for the engine emitters, which compile before any
+\ lib/ file exists, and this Gforth stage has no lib/errors.f either -- so the
+\ mirror carries stack-abi.f's spelling exactly, never a second name for it.
+-3802 constant STACK-ABI:E-STACK-UNGUARDED
 
 $40 constant STACK-ABI:CATCH-BASE
 $48 constant STACK-ABI:CATCH-CAP
@@ -323,6 +325,14 @@ $37F8 constant SNAP-CELL    \ nonzero after snapshot restore; source setup skips
 \ $600..$800 hole below it is free header space.
 $800 constant BODYBUF-OFF \ captured body text (space-joined tokens), 8 KB
 8000 constant BODYBUF-CAP \ fatal above this (truncation would let the checker certify unseen code)
+\ The user return stack is a guarded mapping (STACK-ABI:RETURN-BASE-CELL) now,
+\ not the $2800..$3000 header band it used to be: a band inside a $8000 header
+\ cannot carry an inaccessible page, and an overflow there silently overwrote
+\ LOCNAMES. Only the depth is still a header cell, so a slot is
+\ [RETURN-BASE-CELL] + depth*8 and $2800..$3000 is free header space. The
+\ capacity has one spelling here, STACK-ABI:RETURN-CELLS: src/habu/layout.f
+\ names it RSTK-CELLS for engine source to read, and no emitter in this file
+\ ever reads it, so this mirror does not repeat the alias.
 $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
 $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
@@ -337,12 +347,6 @@ $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $250 constant DEF-TKA-CELL \ original qualified definition spelling
 $258 constant DEF-TKL-CELL
 $27C0 constant PKGRESYNC-CELL \ checker package-resync latch; mirrors native layout
-\ The user return stack is a guarded mapping (STACK-ABI:RETURN-BASE-CELL) now,
-\ not the $2800..$3000 header band it used to be: a band inside a $8000 header
-\ cannot carry an inaccessible page, and an overflow there silently overwrote
-\ LOCNAMES. Its base lives in the header cell and the depth stays in RSP-CELL,
-\ so a slot is [RETURN-BASE-CELL] + depth*8. $2800..$3000 is free header space.
-STACK-ABI:RETURN-CELLS constant RSTK-CELLS
 \ ---- catch/throw handler frame (BCATCH/BTHROW). MIRROR of src/habu/layout.f;
 \ a HNDF-SIZE machine-stack frame chained through HND-CELL that also saves the
 \ user return-stack depth (RSP-CELL) and loop-stack depth (LOOPSP-CELL) so a caught
@@ -350,7 +354,6 @@ STACK-ABI:RETURN-CELLS constant RSTK-CELLS
 \ Frame: 0 prev-HND | 8 data-sp | 16 machine-sp | 24 resume-pc | 32 link |
 \ 40 saved-RSP | 48 saved-LOOPSP | 56 sentinel. Keep byte-for-byte with native. ----
 STACK-ABI:CATCH-BYTES constant HNDF-SIZE
-STACK-ABI:LOOP-FRAMES constant LOOP-STK-FRAMES
 STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 \ --- Pre-trust defer pending table (dot habu-engine-pre-trust-77410827) ---
 \ MIRROR of src/habu/layout.f. `defer NAME ( E )` declared before checker.f's
@@ -1355,7 +1358,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
 \ full-ascending). The supplied extent becomes active allocation authority,
 \ saved alongside XDS so normal return and nonlocal unwind restore the caller.
 \ It must be a guarded mapping: an unguarded extent is a CALLER error the
-\ program can fix and recover from, so it throws STACK-ABI:E-UNGUARDED
+\ program can fix and recover from, so it throws STACK-ABI:E-STACK-UNGUARDED
 \ (inlined the way BFINALLY inlines BTHROW below, which is why this word sits
 \ here) rather than exiting the process. A malformed DESCRIPTOR is still the
 \ fail-closed STACK-BOUNDS exit: that one can arrive from a saved frame or a
@@ -1380,7 +1383,7 @@ create BATCAS-INSN $6A c, $FD c, $E9 c, $C8 c,
    12 SP 24 LDR, 12 DATA STACK-ABI:CAP-CELL STR,
    XDS SP 8 LDR, 30 SP 0 LDR, SP SP 32 ADDI, done B,
    unguarded LBL,
-   9 STACK-ABI:E-UNGUARDED LIT64,  9 G-PUSH  BTHROW
+   9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
    bad LBL, STACK-GUARD:EXIT-BOUNDS done LBL, ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.

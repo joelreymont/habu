@@ -8566,3 +8566,14 @@ checker and JIT fixed, `TEXT text -` answered -157 at tier 0 and 0 at tier 1.
 `test/compiler/native-local-case.f` is the cross-layer pin; a census of the
 engine build path found 883 same-spelling shadows and zero mixed-case ones,
 so the rule cost one fixture edit.
+
+## 2026-09-16 - `0 set-check` also disarms the compile preflight
+
+`set-check` writes HOOK-CELL, and a ZERO writes COMPILE-PREFLIGHT-CELL as well
+(bootstrap/cg/forth.fs BSETCHECK, src/habu/habu1.f). A fixture that opens its
+baked program with `0 set-check` to get past one uncertified primitive is
+therefore measuring an engine with neither gate, whatever else that program
+contains - test/bootstrap-engine-stack.fs measured guard pages, catch, evaluate
+and the debugger that way. Declare the primitive instead, in the axiom form the
+engine's own primitives use (`PRIM: name PE-... PRIM;`): one line, and the rest
+of the program still compiles checked.

@@ -2,7 +2,12 @@
 \ handler (SIGILL/TRAP/BUS/SEGV) that dumps the faulting registers (from the
 \ signal ucontext) to stderr and exits, so a crash in generated code is
 \ self-diagnosing — no external debugger (lldb can't launch our minimal Mach-O
-\ in sandboxed environments). Shared by NATIVE-EVAL exes and the standalone.
+\ in sandboxed environments). Mirror of src/habu/crash.f.
+\
+\ bootstrap/cg/forth.fs is the only file that requires this one, and it requires
+\ it only once the names below are its own: DATA, RBASE-VA, REGION, the
+\ STACK-ABI: block and ENGINE-ERROR:STACK-BOUNDS. Loading this file on its own
+\ leaves every one of them undefined.
 \
 \ macOS arm64 signal delivery: sigaction(#46) records sa_handler + sa_tramp; on a
 \ signal the kernel enters sa_tramp with x0=catcher, x2=sig, x3=siginfo,
@@ -92,15 +97,13 @@ CRH-INIT
 \ The interrupted engine's DATA base, read out of the signal mcontext the same
 \ way C-CRASH-PC-WORD reads its region base: the handler's own x20 is the
 \ signal number by now. Every stack descriptor is a cell in that region. The
-\ literal 20 is the DATA/RBASE register slot in the saved mcontext register
-\ array: this file loads (and this word compiles) before forth.fs's DATA
-\ alias exists, so the register number is spelled directly, exactly as the
-\ rest of this file already does throughout.
+\ index into the saved register array is the DATA/RBASE register number itself,
+\ so it is spelled DATA, exactly as src/habu/crash.f C-CRASH-DATA>R24 spells it.
 : C-CRASH-DATA>R24 ( -- )
    HB-TARGET-LINUX? IF
-      24 21 LINUX-MCTX-X0-OFF 20 8 * + LDR,
+      24 21 LINUX-MCTX-X0-OFF DATA 8 * + LDR,
    ELSE
-      24 21 SS-OFF 20 8 * + LDR,
+      24 21 SS-OFF DATA 8 * + LDR,
    THEN ;
 
 : C-CRASH-MCTX>R21 ( -- )

@@ -20,28 +20,6 @@ $FD000260 constant W-FPUSHR     \ str dR,[x19]  (or with R) — tag 2 = FLOAT re
 $FD400260 constant W-FPOPR      \ ldr dR,[x19]
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 
-\ Recovery mirror of src/habu/jit.f.
-: JIT-STACK:SAVE-EMITTER ( -- )
-   SP SP 160 SUBI,
-   18 0 ?do i SP i cells STR, loop
-   30 SP 144 STR, $D53B4209 STACK-GUARD:WORD, 9 SP 152 STR, ;
-: JIT-STACK:RESTORE-EMITTER ( -- )
-   9 SP 152 LDR, $D51B4209 STACK-GUARD:WORD,
-   18 0 ?do i SP i cells LDR, loop
-   30 SP 144 LDR, SP SP 160 ADDI, ;
-
-
-: JIT-STACK:LITERAL-REG ( value dest -- ) {: value dest :}
-   value 0< value 17 > or abort" jit stack: invalid literal register"
-   JIT-STACK:SAVE-EMITTER
-   11 SP value cells LDR, 14 dest MOVZ, LVMOVK @ BL,
-   JIT-STACK:RESTORE-EMITTER ;
-: JIT-STACK:CELL-BYTES ( dest count -- ) {: dest count :}
-   dest count = abort" jit stack: cell scale needs distinct registers"
-   LBL {: good :}
-   dest count 61 LSRI, dest good CBZ, STACK-GUARD:EXIT-BOUNDS
-   good LBL, dest count 3 LSLI, ;
-
 \ LVLITPUSH ( x11=val ) : emit movz/movk x9,val + push — the C-LIT sequence as a
 \ BL-able routine (the dispatch's inline C-LIT becomes a call to this).
 : EMIT-VLITPUSH ( -- )

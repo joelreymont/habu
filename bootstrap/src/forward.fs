@@ -24,7 +24,3 @@ defer CHECK-RESET    ( -- )              \ reset per-definition feature state
                                               is CHECK-PICK
 :noname ( -- ) ;  is CHECK-RESET
 
-\ Codegen seam: fired by colon.fs after a checked definition is re-emitted, with
-\ NM@/CAP$ live. Default noop; cg/install.fs re-IS it when codegen is loaded.
-defer CODEGEN-HOOK   ( -- )
-:noname ( -- ) ;  is CODEGEN-HOOK

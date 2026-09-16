@@ -242,7 +242,7 @@ variable BWM-GXT
 \ guarded mapping rounded up to a whole STACK-ABI:PAGE-BYTES (dot
 \ habu-replace-per-transfer-8523fb98), so no extent this small (or this
 \ tight) can be constructed any more -- run-in-stack refuses anything that
-\ is not such a mapping (GUARDED-EXTENT?, STACK-ABI:E-UNGUARDED), and the
+\ is not such a mapping (GUARDED-EXTENT?, STACK-ABI:E-STACK-UNGUARDED), and the
 \ smallest one is far larger than any of these transfers. The goldens above
 \ (BWM-TEST-GOLDENS) still pin each transfer's exact byte and cell count,
 \ by decoding the movz immediates the compiled body hands (PROT-SPAN) rather
