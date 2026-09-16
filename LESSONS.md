@@ -8620,3 +8620,32 @@ And this machine is big.LITTLE - cpu0-3 have capacity 561, cpu4-11 have 1024 -
 so an unpinned timing run reads up to 1.6x slow depending on where it lands;
 pin timing runs to a performance core and quote the load average beside every
 number.
+
+## 2026-09-16 - a boot row is a module identity, not a path
+
+`require src/arch/arm64/asm.f` is answered out of the boot registry in ANY
+directory, because a row IS the CWD-relative spelling the boot prefix recorded
+(97db883a) and BOOT-KNOWN? compares that spelling, never a file. There need be no
+such file below CWD; that is what lets a tool run from outside a checkout require
+`lib/string.f`. The same engine file spelled ABSOLUTELY from a CWD that is not
+above the tree matches no row, loads a second time, and dies `duplicate
+definition: ARM64-W32`, rc 78 (measured: `cd /tmp; echo 'require
+/home/joel/Work/habu/src/arch/arm64/asm.f' | bin/hb`). That asymmetry is the
+price of refusing to bake absolute paths into an engine (dot
+habu-bake-prefix-src-1047b604) and it fails loud, so spell an engine file
+relatively or stand inside the tree. Both halves are pinned in
+`test/boot-row-test.f`, which also walks every row and proves the image really
+carries it: `include` loads unconditionally, so re-including a claimed row must
+collide with what is already there - a clean load is a row without its words.
+
+## 2026-09-16 - a relative require reads the filesystem it is run in
+
+From CWD=/tmp `require src/arch/arm64/icode.f` named `include: cannot open
+/tmp/hazel-maki/.jj-ws/image-probe3/src/arch/arm64/icode.f` on an engine whose
+binary contains none of those bytes and whose CWD$ and CURRENT$ both read /tmp.
+No root discovery invented that path: `/tmp/src` was a stray symlink into an
+unrelated checkout, and `SOURCE-ROOT:CANONICAL` resolves an existing prefix
+PHYSICALLY (EXISTING-PARENT walks up to the first path realpath accepts), so the
+loader named the symlink's target exactly as `cat src/...` would. A fixture that
+runs an engine outside a tree must make its own fresh directory - a shared temp
+root is somebody else's namespace.
