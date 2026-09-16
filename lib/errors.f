@@ -1199,7 +1199,8 @@ public
 -9109 constant E-UDP4-LAST
 -9100 constant E-UDP4-OPERAND
 -9101 constant E-UDP4-PLATFORM
--9102 constant E-UDP4-SYMBOL
+\ -9102 was E-UDP4-SYMBOL: the FUNCTION: declarer resolves this module's
+\ symbols and names its own failure, E-FFI-DLSYM. The number stays unused.
 -9103 constant E-UDP4-RESULT
 
 \ Raw serial host library: -9110..-9119.
@@ -1245,7 +1246,7 @@ public
 -9189 constant E-TCP4-LAST
 -9180 constant E-TCP4-OPERAND
 -9181 constant E-TCP4-PLATFORM
--9182 constant E-TCP4-SYMBOL
+\ -9182 was E-TCP4-SYMBOL, retired for the same reason as -9102 above.
 -9183 constant E-TCP4-RESULT
 
 \ Bounded task queues: -9190..-9199.
