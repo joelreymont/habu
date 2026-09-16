@@ -3353,6 +3353,74 @@ create DN-BUF DN-CAP allot
    ix width EMIT-LIT
    ix entry 4 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
+\ ---- the words that are a short sequence of operations ------------------------
+\ Each of these was an engine primitive the elaborator CALLED, and each body is
+\ arithmetic this dialect already has, so the sequence replaces the call and the
+\ machine stage meets nothing new.
+\
+\ OPERAND ORDER IS THE VECTOR'S. An operation reads the cells it consumes bottom
+\ first, so with `a` under `b` a `sub` is a-b; the order each sequence pushes in
+\ is therefore the order its arithmetic needs, and a value pushed twice is one
+\ value id twice - the vector is compile-time and a copy costs no instruction.
+\
+\ OVERFLOW WRAPS in every unit these reach: src/compiler/native/abi.f pins the
+\ host binding to CNUM-OVERFLOW:WRAP and the selector refuses a trapping unit,
+\ which is what makes `mod` below the engine's own three instructions and not a
+\ narrower word.
+
+\ ptr-field ( ptr a n -- ptr ptr b ): the cell index scaled to bytes and added to
+\ the base, which is `cells +` - and src/compiler/native/combine.f fuses that
+\ pair into the one `madd` the engine's own body ends in.
+: EXPAND-CELL-INDEX ( n -- )
+   {: ix:n :}
+   ix HIR:CELL-BYTES EMIT-LIT
+   ix HIR-OPCODE:MUL EMIT-OPCODE
+   ix HIR-OPCODE:ADD EMIT-OPCODE ;
+
+\ The two values a two-in sequence consumes, taken off the vector together so
+\ what follows pushes copies of them in whatever order it needs.
+: EXPAND-PAIR ( -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   VN @ 2 < if E-NELAB-UNDER throw then
+   VN @ 2 - {: base:n :}
+   base VAT  base 1+ VAT
+   2 VDROP ;
+
+\ mod ( n n -- n ): the remainder the division leaves, a - a/b*b. The division is
+\ this dialect's `div`, whose schema carries the zero-divisor trap, so the refusal
+\ the engine's `mod` makes on a zero divisor is the refusal this sequence makes.
+: EXPAND-MODULO ( n -- )
+   {: ix:n :}
+   EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
+   a VPUSH
+   a VPUSH  b VPUSH  ix HIR-OPCODE:DIV EMIT-OPCODE
+   b VPUSH  ix HIR-OPCODE:MUL EMIT-OPCODE
+   ix HIR-OPCODE:SUB EMIT-OPCODE ;
+
+\ max ( n n -- n ): the larger of two signed cells, branchlessly. `>` answers the
+\ all-ones mask when a is larger and zero when it is not, so `b xor ((a xor b)
+\ and mask)` is a in the first case and b in the second. The exchanging form is
+\ used rather than b + ((a-b) and mask) because `xor` is TOTAL: no step of it can
+\ overflow under any numeric policy, where the difference of two cells can.
+: EXPAND-MAXIMUM ( n -- )
+   {: ix:n :}
+   EXPAND-PAIR {: a:IR-ID:ir-value-id b:IR-ID:ir-value-id :}
+   a VPUSH  b VPUSH  ix HIR-OPCODE:XOR EMIT-OPCODE
+   a VPUSH  b VPUSH  ix HIR-OPCODE:GT EMIT-OPCODE
+   ix HIR-OPCODE:AND EMIT-OPCODE
+   b VPUSH  ix HIR-OPCODE:XOR EMIT-OPCODE ;
+
+\ A sequence computes over CELLS, exactly as the one-operation words do, so a
+\ token whose operands are a wider layout is refused here and not lowered wrong.
+: DO-EXPAND ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   VW ix TOK-CELLS 1 <> if E-NELAB-BUNDLE throw then
+   r ix WSYM HIR-WORD:EXPAND@
+   MATCH HIR:expand
+      cell-index OF ix EXPAND-CELL-INDEX ENDOF
+      modulo     OF ix EXPAND-MODULO ENDOF
+      maximum    OF ix EXPAND-MAXIMUM ENDOF
+   ;MATCH ;
+
 : DO-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix NDICT:CALL-CELLS drop {: a:n :}
@@ -3524,6 +3592,7 @@ variable IX                          \ the body token the walk stands on
       string-literal OF ix DO-STRING ENDOF
       op           OF r ix DO-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
+      expansion    OF r ix DO-EXPAND ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF
       callable     OF r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF

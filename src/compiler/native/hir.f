@@ -150,10 +150,27 @@ ENUM rmove DERIVE eq
    fetch-r
 ;ENUM
 
+\ The short operation sequences one source word can mean. Each is written out of
+\ THIS dialect's own operations and nothing else, so an expansion asks nothing of
+\ the machine stage that `+` does not already ask; a member says only WHICH
+\ sequence, and src/compiler/native/elaborate.f is where each one is written.
+\ `cell-index` is `ptr-field`, the cell index scaled and added to the base;
+\ `modulo` is `mod`, the remainder the engine's own division leaves, which is why
+\ it is spelled with the division that carries the zero-divisor trap; `maximum`
+\ is `max`, the larger of two signed cells, taken branchlessly with the mask a
+\ comparison answers.
+ENUM expand DERIVE eq
+   cell-index
+   modulo
+   maximum
+;ENUM
+
 \ `literal` and `real-literal` are token meanings and never a word's; the rest
 \ are a word's and never a token kind's. `rename`, `open-locals`/`close-locals`
 \ and `rstack` stage no operation at all - they only move value ids at compile
 \ time, which is sound because the checker has already proved the return row.
+\ `expansion` is the one meaning that stages MORE than one operation: it names a
+\ member of the `expand` enum above and the elaborator writes that sequence.
 ENUM meaning DERIVE eq
    literal
    real-literal
@@ -168,6 +185,7 @@ ENUM meaning DERIVE eq
    open-locals
    close-locals
    unmodeled
+   expansion
 ;ENUM
 
 private

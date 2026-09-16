@@ -204,6 +204,12 @@ SUITE compiler-asm-package
    test/compiler/asm-package-test.f
 ;SUITE
 
+\ Reads the code the ENGINE UNDER TEST baked, so it belongs to whichever engine
+\ the gate runs and not to the sources a fixture could compile for itself.
+SUITE compiler-tier1-inline-prims
+   test/compiler/tier1-inline-prims.f
+;SUITE
+
 SUITE compiler-native-a64ir
    test/compiler/native-a64ir.f
 ;SUITE

@@ -98,6 +98,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       callable  OF 9 ENDOF
       open-locals  OF 7 ENDOF
       close-locals OF 8 ENDOF
+      expansion OF 13 ENDOF
    ;MATCH ;
 
 \ The three token meanings are deliberately absent: a row claiming one is corrupt.
@@ -114,6 +115,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       8 of HIR-MEANING:CLOSE-LOCALS endof
       9 of HIR-MEANING:CALLABLE endof
       12 of HIR-MEANING:RSTACK endof
+      13 of HIR-MEANING:EXPANSION endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -209,6 +211,24 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       0 of HIR-RMOVE:TO-R endof
       1 of HIR-RMOVE:FROM-R endof
       2 of HIR-RMOVE:FETCH-R endof
+      E-HIR-CLASS throw
+   endcase ;
+
+\ The operation sequences, under the same discipline: a stable stored code per
+\ member and an exact decoder, so a row written past this package's declarers
+\ cannot decode as some other sequence.
+: EXPAND-CODE ( HIR:expand -- n )
+   MATCH expand
+      cell-index OF 0 ENDOF
+      modulo     OF 1 ENDOF
+      maximum    OF 2 ENDOF
+   ;MATCH ;
+
+: N>EXPAND ( n -- HIR:expand )
+   case
+      0 of HIR-EXPAND:CELL-INDEX endof
+      1 of HIR-EXPAND:MODULO endof
+      2 of HIR-EXPAND:MAXIMUM endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -565,6 +585,16 @@ create FIX-NAME FIX-NAME-CAP allot
    UNUSED UNUSED UNUSED UNUSED
    ROW-ADD ;
 
+\ The row a word that means a short operation sequence writes. Which sequence is
+\ the whole payload: every operation of it, and the constant any of them needs,
+\ belongs to the sequence and not to the word, so there is nothing else to hold.
+: EXPANSION-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:expand -- )
+   {: k:HIR:expand :}
+   HIR-MEANING:EXPANSION MEAN-CODE
+   k EXPAND-CODE
+   UNUSED UNUSED UNUSED UNUSED
+   ROW-ADD ;
+
 \ The count is held against what a row can MEAN: a transfer of no cells would
 \ elaborate to a silent no-op, and one wider than the pair forms is unsanctioned.
 \ The row a return-stack transfer writes: which way it moves cells and how many.
@@ -650,6 +680,12 @@ create FIX-NAME FIX-NAME-CAP allot
       id:IR-ID:ir-symbol-id k:HIR:ctrl :}
    c b r id BVOCAB? 0= if exit then
    c r  c b id BKEY-CK  k CONTROL-ROW ;
+
+: BDECLARE-EXPAND ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:expand -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id k:HIR:expand :}
+   c b r id BVOCAB? 0= if exit then
+   c r  c b id BKEY-CK  k EXPANSION-ROW ;
 
 : BDECLARE-RSTACK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:rmove n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
@@ -1031,6 +1067,13 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    r id HIR-MEANING:CONTROL ROW-AS {: ra:IR-ARENA:arena l:n :}
    ra l OFF-A RC@ N>CTRL ;
 
+\ Which operation sequence a word that means one is. Through ROW-AS, so asking
+\ it about a word of any other meaning is a refusal and not a wrong answer.
+: EXPAND@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:expand )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:EXPANSION ROW-AS {: ra:IR-ARENA:arena l:n :}
+   ra l OFF-A RC@ N>EXPAND ;
+
 \ Which way a return-stack word moves cells, and how many. Both go through
 \ Both go through ROW-AS.
 : RSTACK@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:rmove )
@@ -1124,9 +1167,9 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The exact ceilings this registration writes, so a caller commits a table to
-\ them rather than to a guess. Only the eight renames contribute pick cells.
-87 constant WORDS
-15 constant PICK-CELLS
+\ them rather than to a guess. Only the eleven renames contribute pick cells.
+94 constant WORDS
+20 constant PICK-CELLS
 
 private
 
@@ -1170,7 +1213,8 @@ private
    c b r c b s" 1-" MODEL-SYM HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
    c b r c b s" 1+" MODEL-SYM HIR-OPCODE:ADD 1 BDECLARE-CONST-OP
    c b r c b s" 0=" MODEL-SYM HIR-OPCODE:EQUAL 0 BDECLARE-CONST-OP
-   c b r c b s" cells" MODEL-SYM HIR-OPCODE:MUL HIR:CELL-BYTES BDECLARE-CONST-OP ;
+   c b r c b s" cells" MODEL-SYM HIR-OPCODE:MUL HIR:CELL-BYTES BDECLARE-CONST-OP
+   c b r c b s" cell+" MODEL-SYM HIR-OPCODE:ADD HIR:CELL-BYTES BDECLARE-CONST-OP ;
 
 \ The width is not stored: it is which opcode the row names, because hir.f makes
 \ the width a form. The memory order is the dialect's own token.
@@ -1181,6 +1225,18 @@ private
    c b r c b s" !" MODEL-SYM HIR-OPCODE:STORE BDECLARE-OP
    c b r c b s" c@" MODEL-SYM HIR-OPCODE:BLOAD BDECLARE-OP
    c b r c b s" c!" MODEL-SYM HIR-OPCODE:BSTORE BDECLARE-OP ;
+
+\ The three words that are a SHORT SEQUENCE of this dialect's operations rather
+\ than one of them. Each was an engine primitive the elaborator called, and each
+\ body is arithmetic the dialect already has: `ptr-field` scales a cell index and
+\ adds it to the base, `mod` is the remainder the engine's own division leaves,
+\ and `max` is the larger of two signed cells. What each sequence IS lives in
+\ src/compiler/native/elaborate.f; a row says only which one.
+: DEF-EXPAND ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" ptr-field" MODEL-SYM HIR-EXPAND:CELL-INDEX BDECLARE-EXPAND
+   c b r c b s" mod" MODEL-SYM HIR-EXPAND:MODULO BDECLARE-EXPAND
+   c b r c b s" max" MODEL-SYM HIR-EXPAND:MAXIMUM BDECLARE-EXPAND ;
 
 \ `s>f` rounds to nearest with ties to even; `f>s` truncates toward zero,
 \ saturates at the ends and answers zero for a NaN - two roundings, two rows.
@@ -1362,6 +1418,33 @@ private
    2 ADD-PICK
    c b p r c b s" rot" MODEL-SYM BDECLARE-RENAME ;
 
+\ tuck ( a b -- b a b ): consume two and put back three, the top one twice, so
+\ bottom first that is b, then a, then b - depths 0, 1 and 0.
+: DEF-TUCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   2 BEGIN-RENAME
+   0 ADD-PICK
+   1 ADD-PICK
+   0 ADD-PICK
+   c b p r c b s" tuck" MODEL-SYM BDECLARE-RENAME ;
+
+\ The two memory views ( ptr a -- ptr b ): consume one value and put the SAME
+\ one back. A view changes which pointee the checker sees and nothing about the
+\ machine address, and the engine's own body for both is a bare `ret` - so the
+\ rename that puts its input back unchanged is the whole of what each means, and
+\ it stages no operation at all.
+: DEF-CELL-VIEW ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   1 BEGIN-RENAME
+   0 ADD-PICK
+   c b p r c b s" cell-view" MODEL-SYM BDECLARE-RENAME ;
+
+: DEF-BYTE-VIEW ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   1 BEGIN-RENAME
+   0 ADD-PICK
+   c b p r c b s" byte-view" MODEL-SYM BDECLARE-RENAME ;
+
 \ Six rows over three actions and two widths; the widths are declared because
 \ `2>r` is its own source word. `2>r` keeps the LOWER cell lower on the return
 \ stack, and elaborate.f is where that order is kept.
@@ -1387,6 +1470,7 @@ private
    c b r DEF-BITWISE
    c b r DEF-STEP
    c b r DEF-MEMORY
+   c b r DEF-EXPAND
    c b r DEF-FLOAT
    c b r DEF-FCOMPARE
    c b r DEF-CONTROL
@@ -1401,6 +1485,9 @@ private
    c b p r DEF-OVER
    c b p r DEF-NIP
    c b p r DEF-ROT
+   c b p r DEF-TUCK
+   c b p r DEF-CELL-VIEW
+   c b p r DEF-BYTE-VIEW
    c b p r DEF-2DROP
    c b r DEF-RSTACK ;
 
