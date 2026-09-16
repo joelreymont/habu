@@ -767,6 +767,10 @@ SUITE curl-http
    lib/net/curl-test.f
 ;SUITE
 
+SUITE crypto-evp
+   lib/crypto/evp-test.f
+;SUITE
+
 \ The gate has no PostgreSQL, so this run certifies package DB and prints the
 \ named skip. test/db/pg-fixture.sh is how the module is exercised for real.
 SUITE db-pq

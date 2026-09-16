@@ -23,6 +23,7 @@ Planned module files:
 - `lib/net/udp4.f`
 - `lib/db/pq.f`
 - `lib/net/curl.f`
+- `lib/crypto/evp.f`
 - `lib/serial.f`
 - `lib/pty.f`
 - `lib/xmodem.f`
@@ -1067,6 +1068,19 @@ libcurl, and `INIT` restricts the schemes to HTTP and HTTPS so a scraped URL
 cannot reach the filesystem. See [curl](curl.md) for the declarations, the
 callback-free body path and the failure codes. Authentication, retry policy and
 payload formats belong above this module.
+
+## Authenticated encryption and HMAC
+
+`lib/crypto/evp.f` owns the `CRYPTO` package, OpenSSL 3's libcrypto through the
+`FUNCTION:` declarer on Linux AArch64/glibc. `RANDOM-BYTES` fills a span from the
+system generator; `SEAL` and `UNSEAL` are AES-256-GCM with the 16-byte tag
+appended to the ciphertext and the associated data authenticated in place;
+`HMAC-SHA256` is the one-shot keyed digest. `UNSEAL` answers a typed outcome, and
+a record whose tag does not authenticate answers `failed` with the output span
+cleared, never a partial plaintext. Every `EVP_CIPHER_CTX` is freed on every
+path including a throw. See [crypto](crypto.md) for the vocabulary, a
+sealed-record example and the declarations. Key derivation, rotation, storage
+format and nonce sequencing belong above this module.
 
 ## Files
 

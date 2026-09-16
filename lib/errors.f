@@ -1279,6 +1279,20 @@ public
 -9233 constant E-CURL-RESULT
 -9234 constant E-CURL-OPERAND
 
+\ Authenticated encryption and HMAC over libcrypto (package CRYPTO):
+\ -9270..-9279. After package DB (-9250..-9259); -9240..-9249 is
+\ tools/engine-size.f and -9260..-9269 tools/manifest-lint-core.f, both
+\ outside this file.
+-9270 constant E-CRYPTO-FIRST
+-9279 constant E-CRYPTO-LAST
+-9270 constant E-CRYPTO-OPERAND    \ a key, nonce, span length or output span the operation cannot accept
+-9271 constant E-CRYPTO-SEAL       \ libcrypto refused a step of the encryption
+-9272 constant E-CRYPTO-OPEN       \ libcrypto refused a step of the decryption
+-9273 constant E-CRYPTO-TAG        \ the tag did not authenticate the ciphertext and its associated data
+-9274 constant E-CRYPTO-RANDOM     \ the random generator reported failure
+-9275 constant E-CRYPTO-MAC        \ libcrypto refused the keyed hash, or answered a digest of the wrong width
+-9276 constant E-CRYPTO-PLATFORM   \ libcrypto.so.3 is not the shared-library name this target loads
+
 \ PostgreSQL over libpq (package DB): -9250..-9259. The decade after libcurl;
 \ -9240..-9249 is tools/engine-size.f, outside this file.
 -9250 constant E-DB-FIRST
