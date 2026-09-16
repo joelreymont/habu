@@ -1,0 +1,9 @@
+---
+title: Address DATA cells relative to the DATA base
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-16T16:09:22.600785+03:00"
+---
+
+Problem: every reference to a variable, constant cell or created buffer compiles a four-instruction absolute address chain (movz + three movk) before the load or store, at both tiers. Measured 2026-09-16 on the release engine: REQUIRE-BOOT-OPEN? (body `REQUIRE-BOOT-V @ 0= 0=`) is 15 instructions, 4 of them the chain; REQUIRE-BOOT-LIMIT is 22, with two chains of 4. Every such cell lives in the DATA region whose base sits in x20, so one base-relative load (`ldr x0,[x20,#off]` for offsets under 32 KiB, or one movz/movk pair plus a register-offset load beyond) replaces five instructions with one to three, and a base-relative address needs no relocation in captured or stripped images (the null cell already moved this way: src/core/pointer-storage.f NULL-PTR-OFF, src/habu/layout.f). Acceptance: tier 0 (src/habu/habu2.f cell references) and tier 1 (src/compiler/native select/emit for DATA-ADDRESS) emit base-relative addressing for cells inside the DATA region, absolute chains only for addresses outside it; the two sample words drop to their arithmetic (REQUIRE-BOOT-OPEN? under 8 instructions); baked code bytes and engine size reported before and after; relocation site count reported before and after; engine byte fixpoint; full gate green; the Gforth seed mirrors the tier-0 change (two-stage rule). Files: src/habu/habu2.f, src/compiler/native/select.f, emit.f, a64ir.f, src/habu/aot-lib.f (relocation), bootstrap/cg/forth.fs. Verify: tools/jitdump.f on the sample words at both tiers; tools/native-build.f fixpoint; test/run.f; tools/bootstrap.sh. Depends: the measurement lane habu-measure-the-optimizing-b4b239f1 confirms the count. Ownership: code generation. Claim: unassigned.
