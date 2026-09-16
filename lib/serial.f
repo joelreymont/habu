@@ -1,4 +1,11 @@
 \ Raw serial byte streams on Linux AArch64, through bounded libc bindings.
+\
+\ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the termios
+\ struct, the saved termios and the pollfd are one $60 TASK:+USER row, so each
+\ task drives its own port, and the byte spans READ and WRITE take are
+\ caller-owned. The resolved libc symbols and their one-time registration
+\ flags are PROCESS-WIDE, as symbol resolution should be.
+\ See docs/threads.md.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f

@@ -1,5 +1,13 @@
 \ json-write.f - checked emit-only JSON writer.
 \
+\ STORAGE CLASS. PROCESS-WIDE, so this module is single-task. One growable
+\ output buffer (JW-BUF-A, JW-BUF-CAP, JW-OUT-LEN) and one number buffer serve
+\ the whole image: two tasks writing a response interleave into the same bytes,
+\ and a caller that needs to use it from several tasks must hold a
+\ TASK:FACILITY across the whole RESET-fill-copy-out sequence. Giving the
+\ writer a caller-owned buffer, the way lib/json-read.f already takes the
+\ reader's storage, is dot habu-give-the-json-fd2ba9fc; see docs/threads.md.
+\
 \ The module lives in `package JSON-WRITE`. Callers build compact JSON through
 \ the qualified public API: JSON-WRITE:RESET starts a fresh output buffer, the
 \ value emitters JSON-WRITE:STRING / RAW / U / BOOL / NULL append one JSON value,

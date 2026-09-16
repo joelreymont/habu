@@ -1,4 +1,11 @@
 \ Linux AArch64 HTTPS client over libcurl's easy interface.
+\
+\ STORAGE CLASS. TASK-LOCAL for everything a call runs through: the three
+\ foreign out-parameter cells are one $18 TASK:+USER row, so each task reads
+\ back its own info, buffer and length, and the request and response spans are
+\ caller-owned. The one-time global init flags (GLOBAL-DONE,
+\ GLOBAL-REGISTERED) are PROCESS-WIDE, which is what curl_global_init requires.
+\ See docs/threads.md.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f

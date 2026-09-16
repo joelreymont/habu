@@ -58,6 +58,36 @@ Each module owns focused tests and documentation in this file. Source files stay
 one concern per file, and new public/library words default to checked typed
 definitions.
 
+## Storage class
+
+Every module states, in its own header, whether the state behind its words is
+**process-wide** (one set for the image, so the module is single-task unless
+the caller holds a `TASK:FACILITY` across the whole sequence), **task-local**
+(a `TASK:+USER` row or a per-task DATA cell, so any number of tasks may use it
+at once), or **caller-owned** (the caller supplies the storage). A new module
+declares its class in its header; [threads.md](threads.md) carries the table
+and the size of the arena a task-local row comes from, which is 472 bytes for
+the whole image with 24 currently free.
+
+| module | class |
+| --- | --- |
+| `lib/string.f` | process-wide (the SB builder) / caller-owned (the `BUF-*` family) |
+| `lib/fmt.f` | process-wide |
+| `lib/fs.f` | process-wide |
+| `lib/json-write.f` | process-wide |
+| `lib/json-read.f` | caller-owned |
+| `lib/memory.f` | caller-owned (`WITH-BYTES`'s scope stack is process-wide) |
+| `lib/net/tcp4.f` | task-local |
+| `lib/net/udp4.f` | task-local |
+| `lib/net/curl.f` | task-local |
+| `lib/serial.f` | task-local |
+| `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) |
+
+`lib/string.f`'s SB, `lib/fmt.f`'s number buffer and `lib/fs.f`'s per-call
+slots become task-local under dot `habu-make-the-shared-0c2bfbc6`, and
+`lib/json-write.f` becomes caller-owned under dot
+`habu-give-the-json-fd2ba9fc`. Until then the rows above are the truth.
+
 ## LLM Surface
 
 LLM-facing code should call the highest-level checked word that matches the

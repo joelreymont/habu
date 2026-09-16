@@ -1,5 +1,10 @@
 \ json-read.f - checked zero-allocation JSON pull/cursor parser.
 \
+\ STORAGE CLASS. CALLER-OWNED, so this module is safe from any number of
+\ tasks. The reader holds no module state at all: the caller allots
+\ JR:STORAGE-BYTES and owns both that storage and the source span, so two
+\ tasks parsing two documents share nothing. See docs/threads.md.
+\
 \ The parser is a cursor over the caller's source buffer and fixed storage. INIT
 \ returns a linear reader; every operation threads that reader and CLOSE consumes
 \ it. No allocation or process-global parser state is involved. Structural

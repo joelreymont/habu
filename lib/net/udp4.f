@@ -1,4 +1,8 @@
 \ Linux AArch64 IPv4 datagrams through exact, bounded libc bindings.
+\
+\ STORAGE CLASS. TASK-LOCAL. The endpoint and poll storage is one $20
+\ TASK:+USER row, so each task holds its own, and the datagram spans the
+\ transfer words take are caller-owned. See docs/threads.md.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f

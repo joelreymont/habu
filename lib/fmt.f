@@ -1,5 +1,12 @@
 \ fmt.f - checked number formatting.
 \
+\ STORAGE CLASS. PROCESS-WIDE. The integer render buffer (FMT-NUM-BUF,
+\ FMT-NUM-U) and the POW10I/SB-FRAC scratch cells (FMT-IX, FMT-FR, FMT-DV) are
+\ one set for the image, and the appenders write into lib/string.f's
+\ process-wide SB, so two tasks formatting at once interleave in both. Moving
+\ them to task-local storage is dot habu-make-the-shared-0c2bfbc6; see
+\ docs/threads.md.
+\
 \ The module lives in `package FMT`. External callers reach it through the
 \ qualified public API: FMT:SB-U and FMT:SB-INT append an unsigned or signed
 \ integer to the shared lib/string.f builder (open it with SB-RESET, read it

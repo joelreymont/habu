@@ -2,6 +2,15 @@
 \ device through a vector table instead of the process terminal, and the
 \ current task chooses which device that is.
 \
+\ STORAGE CLASS. TASK-LOCAL for the state an operation runs through: the
+\ current input and output device indices are two per-task cells of the DATA
+\ header (GENIO-ABI), and the single-byte scratch and the READ-LINE line buffer
+\ are two TASK:+USER rows, so two tasks may each drive their own device. The
+\ device table itself - the rows and the eight operations in them - is
+\ PROCESS-WIDE and shared, which is what lets a task inherit its creator's
+\ devices; installing or removing a device is not a per-task act.
+\ See docs/threads.md.
+\
 \ THE SHAPE (docs/genio.md, docs/socket-models.md section 2). A device is eight
 \ operations and one cell of its own data. The terminal is device 0 and is
 \ built in; every other device takes a row of a small fixed table, so a device

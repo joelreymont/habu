@@ -156,6 +156,55 @@ read an outcome without deciding what to do about the failing arm.
 - The same POSIX rule as everything else here: end a task's joiners before you
   kill it. `TASK:KILL` destroys the semaphore a joiner may be parked in.
 
+## Library storage classes
+
+Every library states its class in its own header too, so a caller never has to
+read the source to find out. There are three:
+
+- **process-wide** — one set of state for the image, shared by every task. The
+  library is single-task unless the caller holds a `TASK:FACILITY` across the
+  whole sequence that uses it, not merely across each word.
+- **task-local** — a `TASK:+USER` row, or a per-task cell of the DATA header.
+  Each task's state is its own, so any number of tasks may use the library at
+  once.
+- **caller-owned** — the caller supplies the storage. Safe from any number of
+  tasks, and the caller decides whether two of them share a buffer.
+
+| library | class | what the class is about |
+| --- | --- | --- |
+| `lib/string.f` | process-wide (SB) / caller-owned (`BUF-*`) | `SB-BUF` and `SB-LEN` are one builder for the image; `BUF-RESET`/`BUF-APPEND`/`BUF-APPEND-C`/`BUF-LEN@` take the caller's buffer, capacity and length cell |
+| `lib/fmt.f` | process-wide | one integer render buffer and the `POW10I`/`SB-FRAC` scratch cells, appending into string's SB |
+| `lib/fs.f` | process-wide | one descriptor, length, path and stat buffer per image, plus one walk stack; the data spans `READ-ALL`/`READ-LINK`/`WRITE-ALL` take are caller-owned |
+| `lib/json-write.f` | process-wide | one growable output buffer and one number buffer |
+| `lib/json-read.f` | caller-owned | no module state; the caller allots `JR:STORAGE-BYTES` and owns the source span |
+| `lib/memory.f` | caller-owned | every mapping belongs to its caller; `WITH-BYTES`'s scope stack is the one process-wide part |
+| `lib/net/tcp4.f` | task-local | `$20` row: sockaddr, socklen, pollfd |
+| `lib/net/udp4.f` | task-local | `$20` row: endpoint and poll storage |
+| `lib/net/curl.f` | task-local | `$18` row: per-call staging |
+| `lib/serial.f` | task-local | `$60` row: termios and per-call staging |
+| `lib/genio.f` | task-local (current device, scratch, line) / process-wide (the device table) | the input and output indices are per-task DATA cells `TASK-REGION-INIT` copies; the rows and their eight operations are shared |
+
+Three of these are about to change class, and until they do the workaround is
+the caller's: `lib/string.f`'s SB, `lib/fmt.f`'s number buffer and
+`lib/fs.f`'s per-call slots move to task-local storage under dot
+`habu-make-the-shared-0c2bfbc6`, and `lib/json-write.f` gets a caller-owned
+buffer under dot `habu-give-the-json-fd2ba9fc`.
+
+### The arena a task-local row comes from
+
+`TASK:+USER` hands out offsets from `TASK-USER-BASE` (`FFI:SCRATCH-END`,
+$41C8) up to `TASK-USER-END` (`APP-ENTRY:XT-CELL`, $43A0) — **472 bytes for
+the whole image**, not the run to `TXN-STATE-OFF` that `src/habu/layout.f`
+describes as free. The cells above the ceiling are the AOT capture window, the
+reserved evaluator-pointer band, `PROT`'s two cells and `src/habu/stack-abi.f`'s
+five, and nothing guards them: before the ceiling was corrected, a row reaching
+them stored into engine state and the process died at teardown.
+
+The libraries above claim 448 of those 472 bytes when one image loads them all,
+so **24 bytes are free**. A row that would cross the ceiling is `E-TASK-USER`
+at its definition. Budget accordingly, and do not assume a library can take a
+kilobyte-sized row.
+
 ## Atomics
 
 Shared cells used across tasks must be 8-byte aligned. `atomic@`, `atomic!`,
@@ -349,7 +398,8 @@ JOBS QUEUE:DESTROY
   and other dictionary/code mutation paths are invalid while tasks are live.
 - Ordinary `variable` storage is shared process storage. Use `TASK:+USER` for
   task-local state and `TASK:HIS` to inspect another task's user cell before
-  releasing that task.
+  releasing that task. Every library states which of the three storage classes
+  above it belongs to, in its own header and in the table above.
 - A new task starts on its creator's input and output devices
   ([genio.md](genio.md)); `TASK-REGION-INIT` copies the routing indices and the
   device table into the new region.

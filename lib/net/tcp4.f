@@ -1,4 +1,9 @@
 \ Linux AArch64 IPv4 stream sockets through exact, bounded libc bindings.
+\
+\ STORAGE CLASS. TASK-LOCAL. The endpoint and poll storage is one $20
+\ TASK:+USER row, so each task holds its own sockaddr, socklen and pollfd and
+\ any number of tasks may bind, accept, read and write at once. The payload
+\ spans READ, READ-EXACT and WRITE take are caller-owned. See docs/threads.md.
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f

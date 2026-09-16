@@ -1,6 +1,17 @@
 \ fs.f - checked filesystem helpers.
 \
 \ Load after lib/errors.f and lib/string.f.
+\
+\ STORAGE CLASS. PROCESS-WIDE, so this module is single-task. The per-call
+\ slots (FS-IO-FD, FS-IO-LEN, FS-IO-RD, FS-IO-OFF, FS-IO-WR), the NUL-padded
+\ path buffer FS-PATHZ-BUF and the stat buffer FS-STAT-BUF are one set for the
+\ image: two tasks in READ-ALL, WRITE-ALL, FILE-SIZE, FILE-META or any FS-*
+\ predicate at once read each other's descriptor and length, and a concurrent
+\ READ-ALL pair does not finish. The walk state (FS-DEPTH and the FS-WALK-BUF /
+\ FS-DIR-BUF stacks) is process-wide too, so WALK-FILES runs in one task. Only
+\ the data spans READ-ALL, READ-LINK and WRITE-ALL take are caller-owned.
+\ Moving the per-call slots to task-local storage is dot
+\ habu-make-the-shared-0c2bfbc6; see docs/threads.md.
 
 require lib/errors.f
 require lib/string.f

@@ -1,4 +1,13 @@
 \ string.f - checked byte-string helpers.
+\
+\ STORAGE CLASS. The SB builder (SB-BUF, SB-LEN) is PROCESS-WIDE: one builder
+\ for the image, shared by every task, so two tasks between SB-RESET and SB$
+\ interleave their bytes. The BUF-* family (BUF-RESET, BUF-APPEND,
+\ BUF-APPEND-LEN, BUF-APPEND-C, BUF-LEN@) is CALLER-OWNED - the caller passes
+\ the buffer, its capacity and its length cell - and is the builder to reach
+\ for from a task. Everything else here is pure over the caller's spans.
+\ Moving SB to task-local storage is dot habu-make-the-shared-0c2bfbc6; see
+\ docs/threads.md.
 
 s" lib/errors.f" required
 s" lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (switchover wave A)

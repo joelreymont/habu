@@ -1,6 +1,13 @@
 \ memory.f - checked OS-backed byte buffers.
 \
 \ Load after lib/errors.f.
+\
+\ STORAGE CLASS. CALLER-OWNED: every mapping ALLOC-BYTES, ALLOC-CELLS,
+\ ALLOC-64K and ALLOC-GUARDED hand back belongs to the caller, who releases it,
+\ and the module keeps nothing about it. The one exception is WITH-BYTES: its
+\ quotation-scoped mapping stack (WB-DEPTH and the two dynamic buffers beside
+\ it) is PROCESS-WIDE, so WITH-BYTES scopes nest per image and not per task.
+\ See docs/threads.md.
 
 s" lib/errors.f" required
 require lib/num-arithmetic.f
