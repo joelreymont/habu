@@ -8479,3 +8479,15 @@ of the build, `ptr-field` (9 instructions) 9.3%, `cell+` (6 instructions) 3.6%.
 Measure a word's generated code before believing a source-level cost model —
 `XREF-START`/`XREF-CODE-BYTES` plus `objdump -b binary -m aarch64` disassembles
 any baked word straight out of a running engine.
+
+Follow-up (2026-09-16, later the same day): the pairs came from one operation,
+not two. MB-COALESCE unions both ends of a block-argument copy into one class,
+MB-FINISH gives the class one frame slot, and the planner still planned a
+reload of the operand and a store of the result at the copy, so a coalesced
+copy whose class lives in the frame copied a slot onto itself. The planner now
+plans nothing for such a copy and the spill rewriter leaves it out of the
+module (src/compiler/native/regalloc.f MB-IDENTITY-COPY?, spill.f
+IDENTITY-COPY?). Baked code 2,235,864 -> 1,887,040 bytes (-15.6 percent),
+pairs 43,198 -> 3, engine 6,226,112 -> 5,832,896 bytes, byte fixpoint held;
+the three survivors sit in checker.f loops and come through MB-TIES rather
+than MB-COALESCE (dot habu-elide-tied-identity).
