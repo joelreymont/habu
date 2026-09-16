@@ -46,6 +46,13 @@ RETURN-BYTES 8 / constant RETURN-CELLS
 PAGE-BYTES constant LOOP-BYTES
 LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
+\ run-in-stack's refusal code. lib/errors.f owns it as E-STACK-UNGUARDED; the
+\ engine emitters (src/habu/habu1.f BRUNSTACK) and the Gforth recovery mirror
+\ compile before any lib/ file exists, so the same (code, name) pair is
+\ re-registered here -- the one form tools/error-code-lint.f admits -- and
+\ test/stack-guard.f keeps the two spellings equal.
+-3802 constant E-STACK-UNGUARDED
+
 \ Preserve the old frame fields; append the active allocation descriptor.
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP

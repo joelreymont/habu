@@ -67,6 +67,23 @@ variable SRC#
    BOUNDS$ KEEP
    KEPT$ code MEMBER$ ERROR-CODE-LINT:COUNT2 ;
 
+\ findings when another file re-registers the owner's own (code, name) pair
+: REREGISTERED ( n -- n ) {: code:n :}
+   BOUNDS$ KEEP
+   SB-RESET
+   KEPT$ SB-APPEND  s"   " SB-APPEND  code MEMBER+
+   SB$ KEEP
+   KEPT$ code MEMBER$ ERROR-CODE-LINT:COUNT2 ;
+
+\ findings when the owner minted the code under another name and a second
+\ file claims it as E-CMEMBER
+: RENAMED ( n -- n ) {: code:n :}
+   BOUNDS$ KEEP
+   SB-RESET
+   KEPT$ SB-APPEND  s"   " SB-APPEND  code FMT:SB-INT  s"  constant E-COTHER" SB-APPEND
+   SB$ KEEP
+   KEPT$ code MEMBER$ ERROR-CODE-LINT:COUNT2 ;
+
 : MID ( -- n )    E-COMP-FIRST E-COMP-LAST + 2 / ;
 
 : WIDTH ( -- n )  E-COMP-FIRST E-COMP-LAST - 1+ ;   \ codes the region holds
@@ -91,7 +108,12 @@ variable SRC#
    E-COMP-LAST FOREIGN 1 T=
    \ and it reserves nothing past its bounds: both neighbours stay free
    E-COMP-FIRST 1+ FOREIGN 0 T=
-   E-COMP-LAST 1- FOREIGN 0 T= ;
+   E-COMP-LAST 1- FOREIGN 0 T=
+   \ the owner's own (code, name) re-registered by another file is one identity
+   \ reachable through two files, not a foreign claim; a second NAME for the
+   \ owner's code still is
+   MID REREGISTERED 0 T=
+   MID RENAMED 0 > TTRUE ;
 
 : LIVE ( -- )
    \ the real ledger reserves the region exactly once, and the region still has

@@ -178,7 +178,7 @@
 -3899 constant E-ENGINE-LAST
 -3800 constant E-ENGINE-PATH    \ own executable path cannot be resolved
 -3801 constant E-ENGINE-KEY     \ own binary cannot be content-hashed
--3802 constant E-STACK-UNGUARDED \ run-in-stack was handed an extent that is not a guarded stack mapping (thrown by src/habu/habu1.f BRUNSTACK)
+-3802 constant E-STACK-UNGUARDED \ run-in-stack was handed an extent that is not a guarded stack mapping (thrown by src/habu/habu1.f BRUNSTACK through the same (code, name) re-registered in src/habu/stack-abi.f)
 
 \ JSON reader: -3900..-3999
 -3900 constant E-JR-FIRST

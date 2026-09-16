@@ -2570,7 +2570,7 @@ public
 \ full-ascending). The supplied extent becomes active allocation authority,
 \ saved alongside XDS so normal return and nonlocal unwind restore the caller.
 \ It must be a guarded mapping: an unguarded extent is a CALLER error the
-\ program can fix and recover from, so it throws E-STACK-UNGUARDED (lib/errors.f owns the code; inlined
+\ program can fix and recover from, so it throws STACK-ABI:E-STACK-UNGUARDED (lib/errors.f owns the code; inlined
 \ the way BFINALLY inlines BTHROW, which is why this word sits below it) rather
 \ than exiting the process. A malformed DESCRIPTOR is still the fail-closed
 \ STACK-BOUNDS exit: that one can arrive from a saved frame or a task, where
@@ -2596,7 +2596,7 @@ public
    XDS SP 8 LDR,  30 SP 0 LDR,  SP SP 32 ADDI,
    done B,
    unguarded LBL,
-   9 E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
+   9 STACK-ABI:E-STACK-UNGUARDED LIT64,  9 G-PUSH  BTHROW
    bad LBL,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 

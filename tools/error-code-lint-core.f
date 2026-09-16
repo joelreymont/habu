@@ -31,7 +31,10 @@
 \   A negative E- code claimed INSIDE another file's reserved range is a foreign
 \   claim and is flagged, even before the owning block mints that exact member.
 \ - Identical (code, name) re-registrations are allowed (re-export shims; the
-\   same constant reachable through two entry files).
+\   same constant reachable through two entry files), inside another file's
+\   reserved range too: the owner holds the identity and the copy adds no
+\   second name (src/habu/stack-abi.f E-STACK-UNGUARDED for the engine
+\   emitters that compile before lib/ exists).
 \ - bootstrap/ is not walked: the frozen recovery seed is a pinned corpus in
 \   its own process space; renumbering it would break the audited seed.
 \
@@ -182,17 +185,12 @@ variable JX
 : NAME@  ( n -- n )  cells NAMES + @ ;
 : OWNER@ ( n -- n )  cells OWNERS + @ ;
 
-\ exact (code, name) already recorded -> re-registration, not a new claim
-: CLAIM-DUP? ( n n -- bool ) {: code:n name:n :}
-   0 begin dup CLAIM# @ < while
-      dup CODE@ code =
-      over NAME@ name = and if drop LINT-TRUE exit then
-      1+
-   repeat drop
-   LINT-FALSE ;
-
+\ Every claim is recorded with its file, an identical (code, name) pair from a
+\ second file included: the pair is one identity reachable through two files,
+\ so COLLIDE? ignores same-name pairs and FOREIGN? asks whether the range's
+\ owner registers the pair itself. Dropping the second copy here used to lose
+\ which file was the owner, and the range check then flagged the re-export.
 : CLAIM+ ( n n n -- ) {: code:n name:n file:n :}
-   code name CLAIM-DUP? if exit then
    CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
    code CLAIM# @ cells CODES + !
    name CLAIM# @ cells NAMES + !
@@ -364,13 +362,24 @@ variable JX
    first last ORDER {: lo:n hi:n :}
    code lo >= code hi <= and ;
 
-\ claim ci falls inside a COMPLETE reservation ri owned by another file
+\ the reservation's owner claims the same (code, name) itself: claim ci is a
+\ re-registration of that identity, not a foreign one
+: OWNER-REGISTERED? ( n n -- bool ) {: ci:n ri:n :}
+   CLAIM# @ 0 ?do
+      i OWNER@ ri RES-OWNER@ =
+      i CODE@ ci CODE@ = and
+      i NAME@ ci NAME@ = and if LINT-TRUE unloop exit then
+   loop LINT-FALSE ;
+
+\ claim ci falls inside a COMPLETE reservation ri owned by another file, under
+\ a name the owner does not itself register for that code
 : FOREIGN? ( n n -- bool ) {: ci:n ri:n :}
    ri RES-LO@ {: first:n :}
    ri RES-HI@ {: last:n :}
    first 0= last 0= or if LINT-FALSE exit then
    ci CODE@ first last IN-RANGE? 0= if LINT-FALSE exit then
-   ci OWNER@ ri RES-OWNER@ <> ;
+   ci OWNER@ ri RES-OWNER@ = if LINT-FALSE exit then
+   ci ri OWNER-REGISTERED? 0= ;
 
 : RES-HIT ( n n -- ) {: ci:n ri:n :}
    SHOW? @ if

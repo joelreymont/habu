@@ -6,6 +6,10 @@ require lib/memory.f
 
 package STACK-LIFECYCLE-TEST
 
+: STACK-CONTRACT-AGREEMENT ( -- )
+   s" E-STACK-UNGUARDED matches the engine's own spelling" T-LABEL
+   E-STACK-UNGUARDED STACK-ABI:E-STACK-UNGUARDED T= ;
+
 \ A bare sequence of literal pushes at the top level is interpreted directly,
 \ not compiled as a checked word, so it carries no declared effect and the
 \ runtime data stack really holds COUNT live cells. The boot data stack is one
@@ -92,6 +96,7 @@ create GBUF 32 allot   \ an ordinary create/allot buffer: never a guarded mappin
 public
 : RUN-GUARD ( -- )
    T-RESET
+   STACK-CONTRACT-AGREEMENT
    PAGE-CAPACITY
    OVERFLOW-NAMES
    RUN-IN-STACK-REFUSALS
