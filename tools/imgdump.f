@@ -32,6 +32,13 @@ create ISTAT 144 allot
 variable TOFF  variable IMG-TBASE  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable HAS-SNAP
 variable RUNV  variable BESTO  variable BESTN
+\ No-trailer only: the base added to a raw dict-record xt field. A snapshot's
+\ xt fields are already canonical/absolute (SNAP-CORE?, PTR>OFF); a baked
+\ image with no trailer stores the boot-seeded dictionary's xt fields
+\ __text-relative instead (src/habu/habu2.f EM-SEED-DICT adds XREG-RBASE at
+\ boot), so imgdump must add the same base back before treating them as
+\ addresses. See NO-SNAP-XTBASE below.
+variable XTBASE
 variable HN  variable ISZ
 variable A-N  variable CMP-NAME-LEN-DIFF  variable CMP-OFF-DIFF  variable CMP-IDX
 variable CMP-B0-P  variable CMP-B0-U  variable CMP-B0-S  variable CMP-B0-L
@@ -116,9 +123,9 @@ variable HV  variable HP
    p 6 + c@ 48 lshift or
    p 7 + c@ 56 lshift or ;
 : E-S {: o :} ( n -- n )
-   o I@ ;
+   o I@  HAS-SNAP @ 0= if XTBASE @ + then ;
 : E-E {: o :} ( n -- n )
-   o 8 + I@ ;
+   o 8 + I@  HAS-SNAP @ 0= if XTBASE @ + then ;
 : E-F {: o :} ( n -- n )
    o 16 + I@ ;
 : E-L {: o :} ( n -- n )
@@ -238,9 +245,39 @@ variable OKV
    repeat drop
    s" imgdump: pc not found" 74 die ;
 
+\ ---- no-trailer xt base ----
+\ Elf64_Ehdr fields (linux only; imgdump has no macOS Mach-O equivalent).
+\ Public so tools/imgdump-test.f's synthetic no-trailer fixtures can build a
+\ header that satisfies (or deliberately fails) this same check.
+public
+16 constant ELF-TYPE-OFF      \ e_type: ET_EXEC=2 marks a fixed-base (non-PIE) image
+2  constant ELF-ET-EXEC
+24 constant ELF-ENTRY-OFF     \ e_entry: XREG-RBASE for a fixed-base image (see below)
+private
+
+\ Without a snapshot trailer, the only part of the dictionary imgdump can
+\ locate offline is the boot-seeded table src/habu/habu2.f EM-SEED-DICT reads
+\ from the baked LDICT blob (found by FIND-DICT's longest-run scan): every
+\ other word is JIT-compiled into a region the kernel places at boot and is
+\ unrecoverable from a static file. EM-SEED-DICT rebases each seed record's
+\ xt by XREG-RBASE, a register loaded by `ADR x20, LANCHOR` at the image's
+\ entry (src/habu/habu2.f EM-RUNTIME-STACK) -- PC-relative, so for a
+\ fixed-base (ET_EXEC, non-PIE) linux executable it is a build-time constant
+\ equal to the image's own ELF entry point, readable straight from the file.
+\ A PIE image's load base is chosen by the loader at exec time and is not in
+\ the file at all, so refuse rather than guess one.
+: NO-SNAP-XTBASE ( -- n )
+   HB-TARGET-LINUX? 0= if
+      s" imgdump: no snapshot trailer and target is not linux; refusing to guess the dictionary base" 74 die
+   then
+   ELF-TYPE-OFF I@ $FFFF and ELF-ET-EXEC <> if
+      s" imgdump: no snapshot trailer and image is not a fixed-base executable; refusing to guess the dictionary base" 74 die
+   then
+   ELF-ENTRY-OFF I@ ;
+
 : PREP-IMG ( -- )
    LOAD-SNAPSHOT
-   HAS-SNAP @ 0= if FIND-DICT then ;
+   HAS-SNAP @ 0= if NO-SNAP-XTBASE XTBASE !  FIND-DICT then ;
 
 : A-NAME-P! ( ptr u8 n -- ) cells A-NAME-P + ! ;
 : A-NAME-U! ( n n -- ) cells A-NAME-U + ! ;
