@@ -487,22 +487,17 @@ public
    2dup DIRNAME OWNER!
    known ;
 
-\ Boot rows carry whichever spelling the engine that recorded them used, so the
-\ question is asked in both. A prefix that opened the registry (habu2.f
-\ EMIT-REQUIRE-BOOT-OPEN-TOKEN, src/habu/native-runtime.f) recorded portable
-\ rows, which only BOOT-CANDIDATE can match - a canonical pathname names the
-\ tree the process runs in, and a portable row names no tree at all. A prefix
-\ that does not open it - bootstrap/cg/forth.fs emits the provide rows and the
-\ freeze token, never the open token - recorded canonical rows, and the scan is
-\ the only thing that answers for those.
+\ Every boot row is portable now: each prefix that records one opens the
+\ registry first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
+\ EMIT-REQUIRE-BOOT-OPEN-TOKEN, bootstrap/cg/forth.fs's mirror of it) or
+\ literally (src/habu/native-runtime.f). So one question answers for every
+\ engine kind: BOOT-CANDIDATE, which asks the CWD-relative spelling the rows
+\ are stored in. A canonical scan alongside it would answer for no engine and
+\ hide a prefix that had stopped opening the registry.
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
    REQUEST!
-   REQUEST$ CANONICAL drop {: a:ptr u:n :}
-   0 begin dup REQUIRE-BOOT-LIMIT < while
-      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
-      1+
-   repeat drop
-   a u 0 BOOT-CANDIDATE nip nip ;
+   REQUEST$ CANONICAL drop
+   0 BOOT-CANDIDATE nip nip ;
 
 ;package
 

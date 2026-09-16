@@ -2786,6 +2786,22 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
 
+\ Mirror of src/habu/habu2.f EMIT-REQUIRE-BOOT-OPEN-TOKEN: `REQUIRE-BOOT-OPEN`
+\ opens include.f's boot registry, as the first prefix token after the loader's
+\ own text and before the first row it records, so every row between it and the
+\ freeze token below is kept by PORTABLE name -- the spelling relative to the
+\ tree, not the absolute path of whatever directory this build happened to run
+\ in (dot habu-bake-prefix-src-1047b604). Loading include.f cannot be the
+\ signal: a build re-loads it into an engine that booted long ago. Cold boots
+\ only, like the freeze token.
+: EMIT-REQUIRE-BOOT-OPEN-TOKEN ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   s" REQUIRE-BOOT-OPEN" bounds ?do i c@ C-SOURCE-APPEND-CHAR loop
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
 \ Mirror of src/habu/habu2.f EMIT-REQUIRE-FREEZE-TOKEN: once the provide rows
 \ are in, `REQUIRE-BOOT-FREEZE` pins include.f's engine surface, so a later
 \ ENGINE-PROVIDES? separates what the seed carries from what its program
@@ -2934,6 +2950,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
+   \ habu2.f EMIT-HOST-LOAD-PREFIX opens the registry here, between the base
+   \ files and the provide rows; its stdlib block loads inside the same window
+   \ (PFX-LOAD-STDLIB-COLD, after the rows). This seed loads that block from
+   \ inside this word instead, for the reason above, and its provide rows come
+   \ from the call sites -- so the token keeps the same neighbours: every row
+   \ the prefix records, stdlib requires included, falls after it.
+   EMIT-REQUIRE-BOOT-OPEN-TOKEN
    PFX-LOAD-STDLIB-FILES ;
 
 : EMIT-COLD-PREFIX ( -- )
