@@ -21,6 +21,7 @@ Planned module files:
 - `lib/ffi-abi.f`
 - `lib/zip.f`
 - `lib/net/udp4.f`
+- `lib/db/pq.f`
 - `lib/net/curl.f`
 - `lib/serial.f`
 - `lib/pty.f`
@@ -1010,6 +1011,18 @@ their source endpoint, with distinct complete, truncated, timeout, and OS-error
 variants. See [UDP4](udp4.md) for exact effects, buffer and socket lifetime
 contracts, the bounded foreign interface, and independent localhost checks.
 Application protocol framing and retry/ordering policy belong above this module.
+
+## PostgreSQL
+
+`lib/db/pq.f` owns package `DB`: PostgreSQL over libpq, declared through the
+`FUNCTION:` declarer. `DB:connection` and `DB:result` are nominal handles over
+a slot registry, never a raw cell; the registry holds the owning task and a
+generation, so a closed connection, a cleared result and a handle from another
+task are refused before any foreign call. `DB:CLEAR` is a result's single
+consumption point. Parameters are text format and are built per call with
+`DB:PARAMS`, `DB:TEXT+`, `DB:INT+` and `DB:NULL+`; outcomes are ADTs carrying
+the server's SQLSTATE and message, never a raw `n`. See [db.md](db.md) for the
+vocabulary, the buffer lifetimes, the concurrency rule and a worked example.
 
 ## HTTP and HTTPS
 

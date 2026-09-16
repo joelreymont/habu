@@ -8680,3 +8680,20 @@ which is how `TASK:SEMAPHORE` keeps the semaphore record unreachable. The
 converters, because the child's stored signature names the type and a private
 one does not resolve for a reader: the definition is refused as it is made,
 `s1:  -- sem : checker: bad stored signature` (measured).
+
+## 2026-09-16 - a DEFLINEAR type has no checked producer
+
+`CAST:` refuses every retype whose source or destination is a `DEFLINEAR` type
+(7137 `E-CAST-LINEAR`, measured), and a colon body cannot invent one either:
+`: MINT ( n -- own ) ;` is `expected: own actual: n`. So the ONLY way to mint or
+erase a linear token today is a `TRUSTED:` trio, which is what all four shipped
+linear types use (`lib/json-read.f` MINT-READER/READER>STATE/CONSUME-READER,
+`lib/byte-edit.f`, `lib/xml/state.f`, `lib/process-pty-handle.f`). New code that
+may not write `TRUSTED:` therefore cannot have a checker-enforced linear
+resource at all. The substitute, and what `lib/db/pq.f` does, is a nominal
+(`NEWTYPE`) handle over a slot registry whose generation counter is bumped when
+the slot retires: the handle a caller still holds stops resolving, so
+double-free and use-after-free are named refusals at the entry point instead of
+compile-time rejections. The registry buys back something linearity cannot say
+at all - the owning TASK - which is how the one-connection-per-task rule is
+enforced. Retiring the `TRUSTED:` trios needs a checker-owned linear mint first.

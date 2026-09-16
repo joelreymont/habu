@@ -1269,3 +1269,25 @@ public
 -9232 constant E-CURL-STATE
 -9233 constant E-CURL-RESULT
 -9234 constant E-CURL-OPERAND
+
+\ PostgreSQL over libpq (package DB): -9250..-9259. The decade after libcurl;
+\ -9240..-9249 is tools/engine-size.f, outside this file.
+-9250 constant E-DB-FIRST
+-9259 constant E-DB-LAST
+
+package DB
+
+public
+
+-9250 constant E-CONNECT      \ the server refused the conninfo, or libpq could not build a connection
+-9251 constant E-EXEC         \ libpq returned no result at all, or a transaction verb the server rejected
+-9252 constant E-COLUMN       \ a row or column index outside the result
+-9253 constant E-TYPE         \ a column read as a type its bytes are not, including an integer read of NULL
+-9254 constant E-CLEARED      \ a result used after CLEAR, or cleared a second time
+-9255 constant E-TRANSACTION  \ a WITH-TRANSACTION inside another one on the same connection
+-9256 constant E-HANDLE       \ a handle another task owns, or one an image restore invalidated
+-9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores
+-9258 constant E-PLATFORM     \ libpq.so.5 is not the shared-library name this target loads
+-9259 constant E-STATEMENT    \ an empty statement text or prepared-statement name
+
+;package
