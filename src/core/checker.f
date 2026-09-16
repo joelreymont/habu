@@ -6831,6 +6831,24 @@ variable PE-QDOUT
    0 USX-GEN !
    UTERM! ;
 
+\ ---- package FFI's two retypes ----------------------------------------------
+\ A foreign call takes and returns raw machine cells: an argument buffer slot
+\ holds a pointer as a cell, and __errno_location hands back an address that has
+\ to be read as bytes. Neither direction is expressible today. CAST-CELL?
+\ refuses a pointer term on either side (E-CAST-CLASS; test/cast-negative-suite.f
+\ pins both `( n -- ptr a )` and `( ptr a -- n )`), a bare type variable is
+\ refused as possibly linear, and no primitive converts between the two. That is
+\ why package FFI carried a TRUSTED: PTR>CELL body and why lib/net/udp4.f had to
+\ wrap its errno pointer in another one.
+\
+\ These two are identity words: the retype IS the declaration, and their effects
+\ are the axiom rows near the end of this table, where only package FFI's private
+\ row admits a checked caller. They are defined HERE, before PTABLE-START, for
+\ the same reason type-family.f's registry readers are: a pre-hook file records no
+\ signature, so the axiom is the single authority on what they do.
+: FFI-PTR>CELL ;                         \ ( ptr a -- n ) by axiom
+: FFI-CELL>PTR ;                         \ ( n -- ptr u8 ) by axiom
+
 PTABLE-START
 
 PRIM: finally PE-FINALLY PRIM;
@@ -7451,6 +7469,29 @@ PRIM-TRUSTED-ONLY!
 PRIM: ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                      PE-N PE-IN PE-N PE-IN  PE-R PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
+
+\ ---- package FFI's owner-private capability rows ----------------------------
+\ Each primitive here keeps the global PRIM-TRUSTED-ONLY! row above — the outside
+\ boundary (E-CAP-TRUSTED) and the record's callability past the seal — and gains
+\ an owner-private row, so a CHECKED body compiled inside package FFI resolves it
+\ and every other scope misses the symbol. This is what retires the TRUSTED:
+\ bodies in lib/ffi-abi.f and lib/net/udp4.f: FFI's own words become ordinary
+\ checked Habu, and no consumer can reach a raw foreign call at all.
+PPRIM: FFI ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT CLOSE-PRIVATE
+PPRIM: FFI ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
+                                PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
+                                PE-N PE-OUT CLOSE-PRIVATE
+PPRIM: FFI ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
+                                  PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
+                                  PE-R PE-OUT CLOSE-PRIVATE
+PRIM: FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
+\ FFI-CELL>PTR's result carries no length: every consumer pairs it with the
+\ width it knows (errno is 4 bytes).
+PRIM: FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PPRIM: FFI FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT CLOSE-PRIVATE
 
 PRIM: f+      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
 PRIM: f-      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;

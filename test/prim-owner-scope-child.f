@@ -68,6 +68,7 @@ $0A constant LF-C
 
 : OWNER-OPEN ( -- ) s" package PRIM-OWNER-SCOPE" EV ;
 : OTHER-OPEN ( -- ) s" package PRIM-OWNER-OTHER" EV ;
+: FFI-OPEN ( -- ) s" package FFI" EV ;
 : PKG-CLOSE ( -- ) s" ;package" EV ;
 
 \ ---- the fresh axiom: the closer's effect, with no engine word involved ------
@@ -125,12 +126,42 @@ $0A constant LF-C
    s" TRUSTED: POS-T1-TR ( n -- ) addrmap-set ;" EVAL
    0 SELECT ;
 
+\ ---- the three rows package FFI owns, the first real ones in the tree ---------
+\ ffi-call-bounded is the foreign call itself; FFI-PTR>CELL and FFI-CELL>PTR are
+\ the two identity retypes a marshaller cannot write any other way. All three
+\ carry the dual row, so the owner compiles a CHECKED body and every other scope
+\ gets the named capability reject. No foreign call is EXECUTED here: each case
+\ compiles a definition and throws the body away.
+: FFI-CASES ( -- )
+   0 SELECT
+   FFI-OPEN
+   s" ffi call inside owner"
+   s" : POS-FFI-IN ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
+   s" ptr>cell inside owner"
+   s" : POS-P2C-IN ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
+   s" cell>ptr inside owner"
+   s" : POS-C2P-IN ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
+   PKG-CLOSE
+   s" ffi call top level"
+   s" : POS-FFI-TOP ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
+   s" ptr>cell top level"
+   s" : POS-P2C-TOP ( ptr a -- n ) FFI-PTR>CELL ;" EVAL
+   s" cell>ptr top level"
+   s" : POS-C2P-TOP ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
+   OTHER-OPEN
+   s" ffi call other package"
+   s" : POS-FFI-OTH ( ptr a ptr n n n -- n ) ffi-call-bounded ;" EVAL
+   s" cell>ptr other package"
+   s" : POS-C2P-OTH ( n -- ptr u8 ) FFI-CELL>PTR ;" EVAL
+   PKG-CLOSE ;
+
 public
 
 : RUN ( -- )
    AXIOM-CASES
    TIER0-CASES
    TIER1-CASES
+   FFI-CASES
    s" prim-owner: ok" type LF-C emit ;
 
 ;package

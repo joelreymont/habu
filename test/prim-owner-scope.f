@@ -77,11 +77,26 @@ create ERR IO-CAP allot
    s" t1 checked top level"    s" rejected" CASE+
    s" t1 trusted top level"    s" compiled" CASE+ ;
 
+\ Package FFI's three owned rows: the foreign call and the two retypes package
+\ FFI needs to marshal one. The owner compiles a checked body; every other scope
+\ gets the capability reject, which is what keeps the raw FFI surface sealed
+\ while lib/ffi-abi.f itself carries no TRUSTED: line.
+: FFI-LINES ( -- )
+   s" ffi call inside owner"     s" compiled" CASE+
+   s" ptr>cell inside owner"     s" compiled" CASE+
+   s" cell>ptr inside owner"     s" compiled" CASE+
+   s" ffi call top level"        s" rejected" CASE+
+   s" ptr>cell top level"        s" rejected" CASE+
+   s" cell>ptr top level"        s" rejected" CASE+
+   s" ffi call other package"    s" rejected" CASE+
+   s" cell>ptr other package"    s" rejected" CASE+ ;
+
 : EXPECT$ ( -- ptr u8 n )
    SB-RESET
    AXIOM-LINES
    TIER0-LINES
    TIER1-LINES
+   FFI-LINES
    s" prim-owner: ok" SB-APPEND LF-C SB-APPEND-C
    s" window: 0" SB-APPEND LF-C SB-APPEND-C
    SB$ ;
@@ -99,6 +114,9 @@ create ERR IO-CAP allot
    s" the outside reject is the named capability reject" T-LABEL
    ERR erru LEN>N s" E-CAP-TRUSTED" CONTAINS? TTRUE
    ERR erru LEN>N s" 'addrmap-set' is a trust-boundary primitive" CONTAINS? TTRUE
+   s" the FFI rows reject by the same named capability boundary" T-LABEL
+   ERR erru LEN>N s" 'ffi-call-bounded' is a trust-boundary primitive" CONTAINS? TTRUE
+   ERR erru LEN>N s" 'FFI-CELL>PTR' is a trust-boundary primitive" CONTAINS? TTRUE
    T-REPORT ;
 
 RUN
