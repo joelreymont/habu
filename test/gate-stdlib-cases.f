@@ -723,6 +723,11 @@ SUITE tasking-threads
    lib/task-test.f
 ;SUITE
 
+\ The bounded queue: many producers and many consumers over one ring.
+SUITE bounded-queue
+   lib/queue-test.f
+;SUITE
+
 SUITE task-entry
    test/task-entry.f
 ;SUITE

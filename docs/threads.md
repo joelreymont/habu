@@ -170,7 +170,7 @@ the task and destroyed when it ends.
   which is the address a reply is sent to.
 - Both ends of a send are tasks. A message names its sender and the main thread
   has no TCB, so a message operation from a thread without one is
-  `E-TASK-MAILBOX`.
+  `E-TASK-MAILBOX`. Use a queue (below) where the main thread is one of the ends.
 - Sending to a task that is not running is `E-TASK-MAILBOX`: nothing would read
   the message. Sending to the sending task is `E-TASK-MAILBOX` too; it could only
   wait for a get that task is not making.
@@ -185,6 +185,66 @@ the task and destroyed when it ends.
 - Ending a task ends its mailbox, and POSIX leaves destroying a semaphore with
   blocked waiters undefined: end a task's senders before the task, exactly as the
   semaphore section requires of its waiters.
+
+## Queues
+
+`lib/queue.f` is the other channel: a bounded ring of cells in package `QUEUE`,
+for any number of producers and consumers, taking the blocking put and get of
+VFX's `CQueues` ([tasking-models.md](tasking-models.md) section 3) over the
+semaphores above instead of its `PAUSE` loop, and cells instead of bytes.
+
+```forth
+require lib/queue.f
+
+$10 QUEUE:QUEUE JOBS                  \ JOBS ( -- QUEUE:queue ), 16 cells
+JOBS QUEUE:INIT
+\ producer, any task                  \ consumer, any task
+7 JOBS QUEUE:PUSH                      JOBS QUEUE:POP
+JOBS QUEUE:DESTROY
+```
+
+| Word | Effect | Blocks |
+| --- | --- | --- |
+| `QUEUE:QUEUE` | `( n -- )` | defines a queue of n cells |
+| `QUEUE:INIT` | `( QUEUE:queue -- )` | no |
+| `QUEUE:DESTROY` | `( QUEUE:queue -- )` | no |
+| `QUEUE:PUSH` | `( n QUEUE:queue -- )` | while the queue is full |
+| `QUEUE:POP` | `( QUEUE:queue -- n )` | while the queue is empty |
+| `QUEUE:TRY-PUSH` | `( n QUEUE:queue -- bool )` | never; false when full |
+| `QUEUE:TRY-POP` | `( QUEUE:queue -- n bool )` | never; false and zero when empty |
+| `QUEUE:COUNT` | `( QUEUE:queue -- n )` | no |
+
+- The capacity is a count of cells, not a mask: the ring wraps with a remainder,
+  so any capacity of one or more is legal and a power of two is not required. A
+  capacity below one is `E-QUEUE-OPERAND` at the definition.
+- The handle is `QUEUE:queue`, a nominal cell, and it is an INDEX into the
+  package's table of records rather than a record address. So a cell that names
+  no definition is `E-QUEUE-OPERAND` at the first word that reads it, and no
+  handle can ever name storage the package did not allot - the substitute for
+  the raw-address handle `TASK:sem` gets from its own package's cast. One image
+  holds 256 queue definitions; past that a definition is `E-QUEUE-TABLE`.
+- `QUEUE:INIT` opens the semaphores and empties the ring; every other word needs
+  a live queue and throws `E-QUEUE-STATE` otherwise, including a second
+  `QUEUE:INIT`. `QUEUE:DESTROY` on an inactive queue is a no-op.
+- Two counting semaphores carry the exact state: free slots and items. A
+  producer takes a free slot before it writes and a consumer takes an item before
+  it reads, so `QUEUE:TRY-PUSH` and `QUEUE:TRY-POP` are that same take without
+  the block and refuse exactly when the ring is full or empty.
+- A facility covers the head and tail indexes, so the slot is filled before the
+  item semaphore announces it: two producers never claim one slot and a consumer
+  never reads a slot a producer has claimed but not yet written. It is held for
+  the index update only, never across a block.
+- Elements are cells. The queue copies the cell and nothing else; a pointer
+  pushed through it stays the sender's to keep alive.
+- `QUEUE:COUNT` is the count at the moment it is asked, for reporting rather than
+  for a decision another task can invalidate; use `QUEUE:TRY-PUSH` or
+  `QUEUE:TRY-POP` to act on fullness or emptiness.
+- The same POSIX rule as the semaphores: end a queue's waiters before
+  `QUEUE:DESTROY`.
+- `lib/queue-test.f` covers the ring shapes, the wrap, the refusals, a push that
+  blocks until a pop and a pop that blocks until a push, and a soak in which four
+  producers and two consumers move 256 elements through an 8-cell ring and every
+  element arrives exactly once. The full test suite runs it as `bounded-queue`.
 
 ## Invariants
 
@@ -201,6 +261,9 @@ the task and destroyed when it ends.
   non-owner or an already-free facility.
 - A facility excludes, a semaphore counts. Hold a facility across shared updates;
   wait on a semaphore for work to exist. Neither is a substitute for the other.
+- A mailbox is a rendezvous between two tasks and carries the sender's identity;
+  a queue buffers between any number of producers and consumers and carries none.
+  Neither is a substitute for the other.
 
 ## Tests
 
@@ -208,6 +271,7 @@ Run:
 
 ```sh
 bin/hb --load lib/task-test.f
+bin/hb --load lib/queue-test.f
 bin/hb --load test/atomics-smoke.f
 bin/hb --load test/run-in-stack-smoke.f
 ```

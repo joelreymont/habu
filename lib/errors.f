@@ -1254,6 +1254,7 @@ public
 -9199 constant E-QUEUE-LAST
 -9190 constant E-QUEUE-OPERAND
 -9191 constant E-QUEUE-STATE
+-9192 constant E-QUEUE-TABLE        \ more queue definitions than the package table holds
 
 \ Generic I/O devices: -9220..-9229.
 -9220 constant E-GENIO-FIRST
