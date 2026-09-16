@@ -303,7 +303,7 @@ variable LPTOPROW
 \ program.
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
 variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
-variable LPMEMORY       variable LPVECTOR
+variable LPMEMORY
 variable LCHKSNAPTOKEN
 variable SRC-SFAIL
 
@@ -1011,11 +1011,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-LOAD-ROW
-   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-LOAD-ROW
-   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-LOAD-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"          PFX-LOAD-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f"     PFX-LOAD-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-LOAD-ROW
-   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-LOAD-ROW
-   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-LOAD-ROW ;
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-LOAD-ROW ;
 
 : PFX-LOAD-SCRIPT-ARGV ( -- )
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
@@ -1123,11 +1122,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PATH-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PATH-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PATH-ROW
-   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-PATH-ROW
-   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-PATH-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"          PFX-PATH-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f"     PFX-PATH-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PATH-ROW
-   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW
-   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PATH-ROW ;
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW ;
 
 : PFX-PATH-FILES ( -- )
    PFX-PATH-CHECKER-FILES
@@ -1581,11 +1579,10 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PROVIDE-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PROVIDE-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PROVIDE-ROW
-   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-PROVIDE-ROW
-   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"          PFX-PROVIDE-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PROVIDE-ROW
-   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PROVIDE-ROW
-   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PROVIDE-ROW ;
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PROVIDE-ROW ;
 
 \ Cold boots only, like PFX-LOAD-SCRIPT-ARGV-COLD above: a snapshot restores its
 \ bake-time dictionary and must not reload anything.
@@ -9725,7 +9722,7 @@ package LABELS
    LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
    LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
-   LBL LPMEMORY !  LBL LPVECTOR !
+   LBL LPMEMORY !
    LBL PFX-CHAIN:LTAB !
    LBL LCHKSNAPTOKEN ! ;
 

@@ -2,6 +2,7 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
 \ lib/fs-mutate.f, tools/lint/text.f, and tools/lint/intern.f.
 
+require lib/vector.f                   \ VEC-HEADER-CELLS; the engine no longer bakes it
 require lib/sort.f
 
 package DOT-DEP

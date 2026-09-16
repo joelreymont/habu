@@ -19,14 +19,14 @@ package STACK-LIFECYCLE-TEST
 \ shows.
 : DEBUGGER-BOUNDARIES ( -- )
    s" breakpoint on a valid allocation has no top cell" T-LABEL
-   s" 0 set-tier package SBP require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BUF : EMPTY ( -- ) ; ' EMPTY BP+ : GO ( -- ) ['] EMPTY BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
+   s" 0 set-tier package SBP require src/habu/debug.f require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BUF : EMPTY ( -- ) ; ' EMPTY BP+ : GO ( -- ) ['] EMPTY BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
    ERR ERRLEN @ S\" habu-bp-stack:\n" ENDS-WITH? TTRUE
    DEBUGGER-LINES 5 T=
    s" breakpoint on a valid allocation preserves its value" T-LABEL
-   s" 0 set-tier package SBP require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BUF : KEEP ( n -- n ) ; ' KEEP BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
+   s" 0 set-tier package SBP require src/habu/debug.f require lib/memory.f STACK-ABI:PAGE-BYTES MEM-ALLOC-GUARDED drop constant BUF : KEEP ( n -- n ) ; ' KEEP BP+ : ONE ( -- ) 17 KEEP drop ; : GO ( -- ) ['] ONE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO ;package"
    CHILD-RC 0 T=
    OUTLEN @ 0 T=
    ERR ERRLEN @ s" 0000000000000011" CONTAINS? TTRUE
@@ -48,13 +48,13 @@ package STACK-LIFECYCLE-TEST
 \ handler emulates instead of restoring.
 : PERSISTENT-BOUNDARIES ( -- )
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
-   s" 0 set-tier package PBP : KEEP ( n -- n ) ; ' KEEP BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
+   s" 0 set-tier package PBP require src/habu/debug.f : KEEP ( n -- n ) ; ' KEEP BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
    CHILD-RC 0 T=
    OUT OUTLEN @ s" 17" CONTAINS? TTRUE
    OUT OUTLEN @ s" 25" CONTAINS? TTRUE
    ERR ERRLEN @ s" habu-bp:" CONTAINS? TTRUE
    s" persistent breakpoint on a calling word returns" T-LABEL
-   s" 0 set-tier package PBP : TWICE ( n -- n ) dup + ; ' TWICE BP* : GO ( -- ) 21 TWICE . 3 TWICE . ; GO ;package"
+   s" 0 set-tier package PBP require src/habu/debug.f : TWICE ( n -- n ) dup + ; ' TWICE BP* : GO ( -- ) 21 TWICE . 3 TWICE . ; GO ;package"
    CHILD-RC 0 T=
    OUT OUTLEN @ s" 42" CONTAINS? TTRUE
    OUT OUTLEN @ s" 6" CONTAINS? TTRUE

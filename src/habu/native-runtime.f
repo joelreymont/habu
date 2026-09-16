@@ -5,6 +5,20 @@
 \ gives the target loader, rather than the discarded build host, authoritative
 \ ownership of the complete runtime closure.
 \
+\ WHAT BELONGS HERE is the closure of the compiler, the JIT and the REPL and
+\ nothing else (Joel, 2026-09-16): no package and no type signature reaches the
+\ image unless one of those three requires it. tools/manifest-lint.f checks that
+\ against this file - every row is either a declared entry point, with its reason
+\ on the row there, or a file some file in the closure requires - so a row added
+\ here for convenience fails the lint rather than growing the binary quietly.
+\ Two rows that were here by choice rather than by closure have left: lib/vector.f,
+\ which nothing in the closure requires, and the debugger trio (debug-watch.f,
+\ stepper.f, debug.f), which the REPL reaches by `require src/habu/debug.f` at the
+\ moment a session wants a breakpoint. lib/num-*.f stay, because lib/memory.f
+\ states the allocator's own contract in NUM roles and the compiler allocates;
+\ lib/adt/option.f stays, because lib/string.f returns option<n>; lib/float.f and
+\ lib/fmt.f stay, because src/habu/habu2.f requires fmt for number text.
+\
 \ The manifest IS the engine's boot registry, so it opens that registry here and
 \ CAPTURE-PREPARE below freezes it. Between the two, src/core/include.f keeps
 \ each row by PORTABLE name - relative to the tree - instead of canonicalising it
@@ -81,7 +95,6 @@ s" lib/num-types.f" required
 s" lib/num-arithmetic.f" required
 s" lib/string.f" required
 s" lib/memory.f" required
-s" lib/vector.f" required
 s" src/os/script-argv.f" required
 \ Seal the pre-checker definitions before compiling the checked toolchain.
 \ Later checked publications record their own visibility and minimum arity.
@@ -103,9 +116,6 @@ package NATIVE-RUNTIME
 ;package
 execute
 s" src/habu/repl.f" required
-s" src/habu/debug-watch.f" required
-s" src/habu/stepper.f" required
-s" src/habu/debug.f" required
 s" src/core/top-row.f" required
 
 package NATIVE-RUNTIME

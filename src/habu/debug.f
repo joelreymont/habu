@@ -5,7 +5,11 @@
 \   ' WORD BP*      persistent (fires every call; emulates the entry prologue)
 \   N ' WORD BPN    persistent, but silent for the first N hits (skip-count)
 \   ' WORD BP-      remove      BP. = list active breakpoints (addrs)
-\ Up to 8 at once. Baked into bin/hb after repl/stepper.
+\ Up to 8 at once. Not in the engine: `require src/habu/debug.f` loads it, the
+\ stepper and the shared watch cells over the baked repl.
+
+require src/habu/debug-watch.f
+require src/habu/stepper.f
 
 8 constant MAXBP
 $D4200000 constant BRK0

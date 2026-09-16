@@ -1,6 +1,8 @@
 \ source-lex.f — package LINT-LEX: the one shared source lexer for self-hosted
 \ lint, checker, and codegen tooling.
-\ Load after lib/memory.f, lib/vector.f, tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
+\ It states its own dependencies below rather than naming them in a load order,
+\ the way text.f and intern.f do: lib/vector.f is no longer in the engine, so a
+\ consumer that loaded this file without it now fails at VEC-HEADER-CELLS.
 \
 \ Public surface (all reads; the package owns every cell):
 \   WORD COMMENT REGISTRY              token kinds returned by KIND@
@@ -23,6 +25,12 @@
 \ no token after that site is exposed. Consumers only read it back, so no caller
 \ can mutate lexer state. A consumer that requires valid source must reject when
 \ ERROR? is true, and should read ERROR-KIND@ to name which defect it hit.
+
+require lib/memory.f
+require lib/vector.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
 
 package LINT-LEX
 private

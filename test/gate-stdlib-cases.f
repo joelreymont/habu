@@ -23,6 +23,10 @@ SUITE error-code-lint-fixtures
    tools/error-code-lint-test.f
 ;SUITE
 
+SUITE manifest-lint-fixtures
+   tools/manifest-lint-test.f
+;SUITE
+
 SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
 ;SUITE

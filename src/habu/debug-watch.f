@@ -1,4 +1,7 @@
 \ debug-watch.f - shared REPL watch cells for stepper and breakpoints.
+\ Loaded on demand: `require src/habu/debug.f` pulls this file and stepper.f
+\ with it. Nothing outside the debugger requires it, so it is not in the
+\ engine manifest (src/habu/native-runtime.f).
 \
 \ Load after repl.f and before stepper/debug.f. The watch table itself lives in
 \ normal dictionary data; fixed DATA header cells only publish its address/count

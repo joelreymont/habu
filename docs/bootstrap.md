@@ -437,6 +437,24 @@ would have to be mirrored in both the Gforth host and the native seed to survive
 the sha256 compare, reducing seed trust to "no coordinated cross-host backdoor".
 It is gated on `HABU_ALLOW_BOOTSTRAP=1`, like the launcher it drives.
 
+## What the engine carries
+
+`src/habu/native-runtime.f` is the manifest: the ordered list of files a built
+engine bakes. It carries the closure of the compiler, the JIT and the REPL and
+nothing else, so no package and no type signature reaches the image unless one
+of those three requires it. `tools/manifest-lint.f` enforces that — it reads
+the manifest's rows, walks the require graph out of the entry points it
+declares (the files the engine loads for their own sake, each with its reason
+on the row), and refuses a row that nothing in the closure requires. Run it as
+`bin/hb --load tools/manifest-lint.f`; `tools/manifest-lint-test.f` drives its
+line reader against the near misses and then checks the live tree.
+
+A library the engine does not bake is still one `require` away, and that is the
+intended cost: `require lib/vector.f` is about 19 ms at tier 0, and the
+debugger — `require src/habu/debug.f`, which pulls the stepper and the shared
+watch cells with it — about 14 ms. `bootstrap/cg/forth.fs` mirrors the
+manifest's prefix rows, so a row that moves here moves there too.
+
 The two chains and their comparison point:
 
 - **Native chain** — the current `bin/hb`, which reproduces itself at the native
@@ -520,7 +538,7 @@ For a hot edit/check loop, build a warm snapshot engine with the same command
 but `-- snap`: it writes `$HB_TMP/hb-new`, a snapshot image that boots warm
 (~0.02s vs ~0.07s) and checks user source at least as fast as `bin/hb`. The
 snapshot build retires the image-writer/compiler tail before writing, so the
-image carries only the dev surface (checker, stdlib prefix, REPL/debugger);
+image carries only the dev surface (checker, stdlib prefix, REPL);
 the checker stays fail-closed (a bad definition exits 70). `hb-new` is a
 local dev artifact: it is never installed as `bin/hb`, never used as a gate
 or candidate launcher, and must be rebuilt after source changes.

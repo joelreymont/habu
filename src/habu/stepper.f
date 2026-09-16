@@ -2,8 +2,10 @@
 \ the line ONE TOKEN at a time, echoing each token and printing the data stack
 \ after it executes. No EVALUATE needed: while stepping, the REPL hook returns
 \ one token per call, so the engine's own interpret loop is the evaluator.
-\ Baked into bin/hb after layout.f, repl.f, and debug-watch.f (uses DATAB/REPLH-CELL/
+\ Loaded on demand over the baked layout.f and repl.f (uses DATAB/REPLH-CELL/
 \ TTY?/RD-LINE/BPW-DUMP); tools/hb-build.f programs never see it.
+
+require src/habu/debug-watch.f
 
 create SBUF 1024 allot          \ captured rest-of-line
 variable SLEN  variable SPOS  variable STEPPING

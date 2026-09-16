@@ -2377,7 +2377,7 @@ variable LPGENDECLPROT  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPDYNAMIC      variable LPINTMARK      variable LPTOPROW
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
 variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
-variable LPMEMORY       variable LPVECTOR
+variable LPMEMORY
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
 
@@ -2700,7 +2700,7 @@ create ZBYTE 0 c,
 \
 \ Remaining LOAD drift, recorded rather than left as an unexplained short list:
 \ native's group continues with lib/adt/option.f, lib/num-types.f,
-\ lib/num-arithmetic.f, lib/string.f, lib/memory.f and lib/vector.f. A
+\ lib/num-arithmetic.f, lib/string.f and lib/memory.f. A
 \ `require` of one of them from the seed's program reads it then, through
 \ src/core/include.f and the seed's own realpath (BREALPATH).
 : PFX-LOAD-STDLIB-FILES ( -- )
@@ -2816,11 +2816,10 @@ create ZBYTE 0 c,
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PATH-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PATH-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PATH-ROW
-   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-PATH-ROW
-   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-PATH-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"          PFX-PATH-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f"     PFX-PATH-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PATH-ROW
-   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW
-   PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PATH-ROW ;
+   PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW ;
 
 \ The path table names every file the engine knows, loaded or not: the two rows
 \ this seed does not load (internal-mark.f, top-row.f -- see PFX-LOAD-BASE-FILES)
@@ -3092,7 +3091,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ The two stdlib rows the seed loads and a later `require` may name again:
 \ lib/fmt.f (habu2.f) requires lib/string.f, which requires lib/errors.f.
-\ Native's group goes on to the six files this seed does not load, and a row
+\ Native's group goes on to the five files this seed does not load, and a row
 \ for a file the seed never read would turn that file's words undefined.
 : PFX-PROVIDE-STDLIB-FILES ( -- )
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PROVIDE-ROW
@@ -7588,7 +7587,7 @@ variable P2SK
    LBL LPDYNAMIC !  LBL LPINTMARK !  LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
    LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
-   LBL LPMEMORY !  LBL LPVECTOR ! ;
+   LBL LPMEMORY ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

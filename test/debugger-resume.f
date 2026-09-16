@@ -8,6 +8,7 @@ package DEBUGGER-RESUME
 : SOURCE ( -- )
    GE-SRC-RESET
    s" 0 set-tier" GE-SRC-LINE
+   s" require src/habu/debug.f" GE-SRC-LINE   \ BPW+/BP+ are loaded on demand
    s" package BPR" GE-SRC-LINE
    s" variable WV 17 WV !" GE-SRC-LINE
    s" : TARGET ( n -- n ) WV @ + ;" GE-SRC-LINE
