@@ -57,12 +57,12 @@ require src/core/bytes.f
    s" 9223372036854775808.0" T-FL-BAD
    s" -9223372036854775808.0" T-FL-BAD ;
 
-\ --- switchover wave A: FL-FIND-E now returns option<CAD-NUM:index> (SOME index
-\ of e/E, else NONE) and FL-PARSE-EXP MATCHes it. Test both words directly.
+\ --- FL-FIND-E returns option<idx> (SOME index of e/E, else NONE) and
+\ FL-PARSE-EXP MATCHes it. Test both words directly.
 : T-FE ( ptr u8 n n -- ) {: want:n :}               \ FL-FIND-E: some idx -> want, none -> -1
    FL-FIND-E MATCH option
      none OF -1 ENDOF
-     some OF CAD-NUM:FL-IX>N ENDOF
+     some OF IDX>N ENDOF
    ;MATCH  want T= ;
 : FL-RUN-EXP ( -- )
    \ FL-FIND-E: found -> SOME(index of e/E); absent -> NONE.

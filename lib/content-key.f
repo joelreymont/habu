@@ -21,6 +21,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/string-roles.f               \ package STR: the typed string surface
 require lib/memory.f
 require lib/fs.f
 require lib/sort.f

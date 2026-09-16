@@ -222,6 +222,7 @@ variable EXT-ERR-A
    b u EXT-CLEAR-BUNDLE
    b u s" lib/errors.f" EXT-ADD-SOURCE-LF
    b u s" lib/string.f" EXT-ADD-SOURCE-LF
+   b u s" lib/string-roles.f" EXT-ADD-SOURCE-LF   \ examples/string-regex.f uses STR:
    b u s" lib/test.f" EXT-ADD-SOURCE-LF
    b u s" lib/array.f" EXT-ADD-SOURCE-LF
    b u s" lib/regex.f" EXT-ADD-SOURCE-LF

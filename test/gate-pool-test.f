@@ -3,6 +3,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/string-roles.f               \ package STR: the typed string surface
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:INDEX-OF consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f

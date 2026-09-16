@@ -1,6 +1,7 @@
 \ text.f — checked text/file helpers for native lint tools.
 
 require lib/string.f
+require lib/string-roles.f               \ package STR: the typed string surface
 require lib/memory.f
 require lib/fs.f
 require lib/adt/option.f                      \ option<n> finders (switchover: lint finder trio)

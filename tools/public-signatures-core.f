@@ -3,6 +3,7 @@
 \ tools/public-signatures-core.f` works without the resident DAG ordering.
 
 require tools/lint/text.f
+require lib/string-roles.f               \ package STR: the typed string surface
 require tools/lint/intern.f
 require tools/event-closure-lib.f
 

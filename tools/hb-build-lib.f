@@ -7,6 +7,7 @@
 \ tools/cli-run.f.
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:INDEX-OF consumer
+require lib/string-roles.f               \ package STR: the typed string surface
 require lib/object-resolve.f
 require lib/build-cache.f
 require lib/json-write.f

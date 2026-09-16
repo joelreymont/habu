@@ -8,8 +8,8 @@
 \ Overflow yields signed infinity, underflow signed zero, and zero stays zero.
 \ Exponents must fit signed i64; engine-shaped decimals retain engine admission.
 
-require lib/string.f                         \ STR-DIGITS? / STR-DIGIT-VALUE / STR-MINUS / STR-PLUS
-require lib/adt/option.f                      \ option<CAD-NUM:index> for STR:INDEX-OF (switchover wave A)
+require lib/string.f                         \ STR-DIGITS? / STR-DIGIT-VALUE / STR-MINUS / STR-PLUS / INDEX-OF
+require lib/adt/option.f                      \ option<idx> for INDEX-OF
 
 46 constant FL-DOT
 101 constant FL-E-LOWER
@@ -25,16 +25,6 @@ variable FL-VALID                           \ exponent validity flag
 variable FL-MANT                            \ retained significant prefix
 variable FL-KEPT                            \ retained digit count
 variable FL-SCALE                           \ omitted digits minus fraction length
-
-\ ---- pinned-raw residual: STR:INDEX-OF returns a checked option<CAD-NUM:index>,
-\ but the found position immediately drives raw pointer/length arithmetic
-\ (a+dpos, u-dpos, epos as a substring bound), so it is projected to a bare n
-\ through the existing private CAD-NUM INDEX>N (no new TRUSTED). Retire with
-\ TVK-RAW (habu-nominal-storage-raw-a3430ef2).
-package CAD-NUM
-public
-: FL-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
-;package
 
 \ ---- powers of ten --------------------------------------------------------
 : POW10+ ( n -- r ) {: k:n :}
@@ -113,14 +103,19 @@ public
    0 FL-SIG-VALUE OPTION:SOME ;
 
 \ ---- field splitting ------------------------------------------------------
+\ This file is one of the modules tools/build-fixpoint.f assembles into the
+\ engine's own stage source, and that source is certified against the core
+\ prefix alone. It may therefore use only what the assembly carries: the raw
+\ byte-scan words and the engine's own `idx` role, never the typed STR surface,
+\ which lib/string-roles.f declares outside the engine.
 : FL-STRIP-SIGN ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u :}
    u 0= if a 0 0 0= 0= exit then
    a c@ STR-MINUS = if a 1+ u 1- 0 0= exit then
    a c@ STR-PLUS  = if a 1+ u 1- 0 0= 0= exit then
    a u 0 0= 0= ;
-: FL-FIND-E ( ptr u8 n -- option<CAD-NUM:index> ) {: a:ptr u:n :}   \ SOME index of e/E, else NONE
-   a u STR:LENGTH FL-E-LOWER STR:INDEX-OF MATCH option
-     none OF a u STR:LENGTH FL-E-UPPER STR:INDEX-OF ENDOF
+: FL-FIND-E ( ptr u8 n -- option<idx> ) {: a:ptr u:n :}   \ SOME index of e/E, else NONE
+   a u FL-E-LOWER INDEX-OF MATCH option
+     none OF a u FL-E-UPPER INDEX-OF ENDOF
      some OF OPTION:SOME ENDOF
    ;MATCH ;
 
@@ -134,9 +129,9 @@ public
      none OF 0 0= 0= ENDOF
      some OF drop 0 0= ENDOF
    ;MATCH if 0 0= 0= exit then
-   a u STR:LENGTH FL-DOT STR:INDEX-OF MATCH option
+   a u FL-DOT INDEX-OF MATCH option
      none OF 0 0= 0= ENDOF
-     some OF CAD-NUM:FL-IX>N u 1- <> ENDOF
+     some OF IDX>N u 1- <> ENDOF
    ;MATCH ;
 
 : FL-ENGINE-DECIMAL-ADMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -146,9 +141,9 @@ public
 \ ---- significand (no sign, no exponent) -----------------------------------
 \ Validate both halves before keeping their significant prefix and net scale.
 : FL-SCALED-SIG ( ptr u8 n n -- option<r> ) {: a:ptr u:n exponent:n :}
-   a u STR:LENGTH FL-DOT STR:INDEX-OF MATCH option    \ split at the dot: ilen fa flen
+   a u FL-DOT INDEX-OF MATCH option                  \ split at the dot: ilen fa flen
      none OF u  a u +  0 ENDOF                        \ no dot: int = whole string, empty fraction
-     some OF CAD-NUM:FL-IX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
+     some OF IDX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
    ;MATCH {: ilen:n fa:ptr flen:n :}
    ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
    ilen 0 > if a ilen STR-DIGITS? 0= if OPTION:NONE exit then then
@@ -174,7 +169,7 @@ public
 : FL-PARSE-EXP ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FL-FIND-E MATCH option
      none OF 0 FL-EXPV ! u ENDOF                    \ no exponent: exp 0, mantissa = whole string
-     some OF CAD-NUM:FL-IX>N {: epos:n :} a u epos FL-EXP-AT ENDOF
+     some OF IDX>N {: epos:n :} a u epos FL-EXP-AT ENDOF
    ;MATCH ;
 
 \ ---- public entry ---------------------------------------------------------

@@ -8,6 +8,7 @@
 \ file (see the stamp key section below).
 
 require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
