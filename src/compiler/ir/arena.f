@@ -182,8 +182,8 @@ private
 SLOTS-CLEAR
 
 \ Retire every row this serial owns, called by the owning context from its own
-\ teardown. SWEEP below does the same thing lazily, at the next creation, and
-\ that is late for a scoped reader: a reader resolves once and has no later
+\ teardown. SWEEP below does the same thing for an owner that died without one,
+\ and that is late for a scoped reader: a reader resolves once and has no later
 \ probe, so between the context dying and somebody's next NEW its row would
 \ still read live over a mapping that is gone. Here the row is zeroed while the
 \ context is still tearing down, so the reader's next read is a dead generation.
@@ -352,19 +352,40 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
 \ unmapped and their generations can never resolve again.
 : SWEEP ( -- )
    SLOT-MAX 0 ?do
-      i AGEN@ 0 <> if
-         i AOWNER@ IR-CTX:SERIAL-LIVE? 0= if
+      i cells AHANDLES + @ 0<> if
+         i cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
             0 i AGEN!
          then
       then
    loop ;
 
-: FREE-SLOT ( -- n )
+\ THE SCANS READ AHANDLES AND NOT AGEN@. AGEN! writes a plain zero for a
+\ retired row and `g SLOT-BITS lshift slot or` with g at least one otherwise,
+\ so the stored word is zero exactly when the generation is - which is what
+\ RETIRE-OWNED above already reads. That makes each loop body a load and a
+\ compare instead of a call, and a scan over SLOT-MAX rows is what these words
+\ are.
+: FIRST-FREE ( -- n )              \ -1 when every row is taken
    -1
    SLOT-MAX 0 ?do
-      i AGEN@ 0= if drop i leave then
-   loop
-   dup 0 < if E-IR-ARENA-SLOTS throw then ;
+      i cells AHANDLES + @ 0= if drop i leave then
+   loop ;
+
+\ THE SWEEP IS THE FALLBACK, NOT THE PRELUDE. It reclaims rows whose owning
+\ context died without running its teardown, and RETIRE-OWNED - which the
+\ context installs and runs from that teardown - is what reclaims the rest,
+\ eagerly and by owner. Sweeping before every creation therefore rescanned the
+\ whole registry, and asked IR-CTX:SERIAL-LIVE? once per occupied row, to find
+\ rows that are almost never there: seventeen times per builder, three builders
+\ to a definition. Sweeping only when the registry looks full keeps the answer
+\ exactly the same - a row a sweep would have freed is still freed before this
+\ word refuses - and pays for the walk only on the creation that needs it.
+: FREE-SLOT ( -- n )
+   FIRST-FREE
+   dup 0 < if
+      drop SWEEP FIRST-FREE
+      dup 0 < if E-IR-ARENA-SLOTS throw then
+   then ;
 
 \ ---- allocation scopes --------------------------------------------------------
 \ A caller that needs SEVERAL arenas for one object needs all of them or none.
@@ -446,7 +467,6 @@ public
 : NEW ( IR-CTX:ctx n -- IR-ARENA:arena )
    {: c:IR-CTX:ctx ceil:n :}
    ceil CEIL-OK
-   SWEEP
    FREE-SLOT {: slot:n :}
    TAKE-AGEN {: g:n :}
    ceil SEED-CELLS min {: cap0:n :}
