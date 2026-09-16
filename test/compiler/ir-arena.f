@@ -643,9 +643,74 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
 : RD-DOUBLE-INSTALL ( -- )
    [: drop ;] IR-CTX:RETIRE-CHILDREN! ;
 
+\ ---- RD-FIND ------------------------------------------------------------------
+\ RD-FIND answers the row a walk of RD@ over one strided column would answer,
+\ with the token asked once for the whole run instead of once per cell. WHAT HAS
+\ TO HOLD IS THAT ASKING ONCE IS NOT ASKING LESS. Every refusal the per-cell
+\ walk would have reached is still reached before a cell is read: a run whose
+\ last cell is past the readable count, a start below zero, a stride that does
+\ not advance, a token whose generation is gone and a token that names the other
+\ state. And the answer itself is the walk's: the FIRST match and not any other,
+\ -1 for a value the run does not hold, and -1 rather than a refusal for a run
+\ with no cells in it - which is what a table with no rows asks.
+\
+\ The arguments are parked rather than duplicated because the refusal helper
+\ hands a stack-neutral quotation to catch and there are five of them.
+1 TYPED-BUFFER FF-R IR-ARENA:reader
+variable FF-FIRST
+variable FF-STRIDE
+variable FF-COUNT
+variable FF-WANT
+
+: FF-GO ( -- )
+   0 FF-R @ FF-FIRST @ FF-STRIDE @ FF-COUNT @ FF-WANT @ IR-ARENA:RD-FIND drop ;
+
+: FIND-REFUSES ( IR-ARENA:reader n n n n n -- )
+   {: r:IR-ARENA:reader first:n stride:n count:n want:n expected:n :}
+   r 0 FF-R !
+   first FF-FIRST !  stride FF-STRIDE !  count FF-COUNT !  want FF-WANT !
+   [: FF-GO ;] catch expected T= ;
+
+: FIND-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 64 IR-ARENA:NEW {: a:IR-ARENA:arena :}
+   8 0 ?do c a i 100 * IR-ARENA:PUSH drop loop
+   c a 300 IR-ARENA:PUSH drop                  \ a second 300, at ordinal 8
+   a IR-ARENA:OPEN-LIVE {: lr:IR-ARENA:reader :}
+
+   lr 0 1 9 300 IR-ARENA:RD-FIND 3 T=          \ the first match, not the later one
+   lr 0 1 9 0 IR-ARENA:RD-FIND 0 T=
+   lr 0 1 9 700 IR-ARENA:RD-FIND 7 T=
+   lr 0 1 9 1234 IR-ARENA:RD-FIND -1 T=
+   lr 1 2 4 500 IR-ARENA:RD-FIND 2 T=          \ cells 1, 3, 5, 7
+   lr 4 1 5 300 IR-ARENA:RD-FIND 4 T=          \ a run that starts past the first 300
+   lr 0 1 0 0 IR-ARENA:RD-FIND -1 T=           \ an empty run matches nothing
+   lr 0 1 -1 0 IR-ARENA:RD-FIND -1 T=
+
+   lr 0 1 10 0 E-IR-ARENA-BOUND FIND-REFUSES   \ one cell past the readable count
+   lr 9 1 1 0 E-IR-ARENA-BOUND FIND-REFUSES
+   lr 0 0 2 0 E-IR-ARENA-BOUND FIND-REFUSES    \ a stride that does not advance
+   lr -1 1 1 0 E-IR-ARENA-BOUND FIND-REFUSES
+
+   \ A STRIDE THAT WOULD WRAP THE LAST-CELL ARITHMETIC. Four steps of 2^62
+   \ multiply to exactly 2^64, so a bound computed as first + (count-1) * stride
+   \ answers ordinal zero - inside the count - and the loop's own multiply then
+   \ reaches 2^62 cells past the span on its second step.
+   lr 0 $4000000000000000 5 0 E-IR-ARENA-BOUND FIND-REFUSES
+   lr 0 $7FFFFFFFFFFFFFFF 2 0 E-IR-ARENA-BOUND FIND-REFUSES
+
+   a IR-ARENA:FREEZE {: v:IR-ARENA:view :}
+   lr 0 1 9 0 E-IR-ARENA-FROZEN FIND-REFUSES
+   v IR-ARENA:OPEN {: fr:IR-ARENA:reader :}
+   fr 0 1 9 300 IR-ARENA:RD-FIND 3 T=
+   v IR-ARENA:RETIRE
+   fr 0 1 9 300 E-IR-ARENA-STALE FIND-REFUSES ;
+
 : RD-CASES ( -- )
    s" a reader reads, sizes and bounds-checks like the view it came from" T-LABEL
    BND [: RD-BODY ;] IR-CTX:WITH-CONTEXT
+   s" a strided find answers the first match and refuses what a walk would" T-LABEL
+   BND [: FIND-BODY ;] IR-CTX:WITH-CONTEXT
    s" a reader whose context tore down is stale on the next read" T-LABEL
    [: RD-DEAD ;] E-IR-ARENA-STALE TTHROWSQ
    s" a reader whose context tore down is stale when asked its size" T-LABEL

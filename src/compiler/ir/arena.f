@@ -721,6 +721,57 @@ public
    NATIVE-CELLS? if k CDIGEST:SLOT-BYTES * + CELL-VIEW @ exit then
    k CDIGEST:SLOT@ ;
 
+\ FIND ONE CELL VALUE IN A STRIDED RUN, WITH THE TOKEN ASKED ONCE. A table that
+\ resolves a name by walking one field of every row - IR-SCHEMA:SCAN-NAME is the
+\ one this exists for - asked RD@ per row, and RD@ re-reads the generation, the
+\ state and the bound and then calls ptr-field and cell-view, per row, to read a
+\ cell it has already proved is in range. The questions are the same here and
+\ are asked once: the token's generation and state exactly as RD@ checks them,
+\ then the LAST cell of the run against the readable count, which bounds every
+\ cell before it. What the loop then costs is a load and a compare.
+\
+\ It answers the INDEX of the first match in the stepped sequence, not a cell
+\ ordinal, because that is the row a caller means; -1 when the run holds no
+\ match, and an empty run is -1 rather than a refusal.
+\
+\ THE LAST CELL IS BOUNDED WITHOUT MULTIPLYING, because a ceiling may commit the
+\ whole ordinal range and two values that each fit in it have a product that
+\ does not. Computing first + (count-1) * stride and comparing it would let a
+\ stride large enough to wrap answer an index inside the count and then read
+\ whatever the loop's own multiply reached. Dividing the room that is left by
+\ the number of steps asks the same question - is every cell of the run inside
+\ the readable count - on operands that are all inside it.
+: RD-FIND ( IR-ARENA:reader n n n n -- n )
+   {: r:IR-ARENA:reader first:n stride:n count:n want:n :}
+   r READER>N dup SLOT-MASK and {: t:n slot:n :}
+   slot cells AHANDLES + @ SLOT-BITS rshift t RGEN-SHIFT rshift <>
+   if E-IR-ARENA-STALE throw then
+   t SLOT-BITS rshift STATE-MASK and {: state:n :}
+   slot cells ASTATES + @ state <> if
+      state ST-LIVE = if E-IR-ARENA-FROZEN throw then
+      E-IR-ARENA-STATE throw
+   then
+   count 0 <= if -1 exit then
+   first 0 < stride 1 < or if E-IR-ARENA-BOUND throw then
+   slot cells ACOUNTS + @ {: used:n :}
+   first used >= if E-IR-ARENA-BOUND throw then
+   count 1- {: steps:n :}
+   steps 0 > if
+      used 1- first - steps / stride < if E-IR-ARENA-BOUND throw then
+   then
+   slot cells ADATAS + 0 ptr-field @ {: base:ptr :}
+   NATIVE-CELLS? if
+      count 0 ?do
+         base first i stride * + CDIGEST:SLOT-BYTES * + CELL-VIEW @ want =
+         if i unloop exit then
+      loop
+      -1 exit
+   then
+   count 0 ?do
+      base first i stride * + CDIGEST:SLOT@ want = if i unloop exit then
+   loop
+   -1 ;
+
 \ The readable count through the same token, checked the same way; see RD@.
 : RD-SIZE ( IR-ARENA:reader -- n )
    READER>N dup SLOT-MASK and {: t:n slot:n :}

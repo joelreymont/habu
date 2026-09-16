@@ -526,12 +526,18 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 \ ---- opcode resolution -------------------------------------------------------
 \ A schema is named by its opcode name symbol. LOOKUP is the only way a
 \ reader reaches a row, so an opcode this dialect never defined names nothing.
+\
+\ THE WALK ASKS THE TOKEN ONCE. Every reader below reaches its row through this
+\ word, so a dialect emitting an operation pays one walk of the name column per
+\ schema question it asks. Asked a row at a time it was one IR-ARENA:RD@ per
+\ row - generation, state, bound, ptr-field and cell-view, per row, for one
+\ cell - which the profile in docs/compiler-measurements.md prices at 13.1
+\ percent of every RD@ call the corpus makes. IR-ARENA:RD-FIND asks those same
+\ questions once for the whole column and then loads and compares; the row it
+\ answers, and the -1 for an opcode this table never defined, are the walk's.
 : SCAN-NAME ( IR-ARENA:reader n -- n )
    {: rr:IR-ARENA:reader ord:n :}
-   -1
-   rr CNT 0 ?do
-      rr i OFF-NAME RC@ ord = if drop i leave then
-   loop ;
+   rr  RHDR-CELLS OFF-NAME +  ROW-CELLS  rr CNT  ord  IR-ARENA:RD-FIND ;
 
 : ROW-OF ( IR-ARENA:reader IR-ID:ir-symbol-id -- n )
    {: rr:IR-ARENA:reader op:IR-ID:ir-symbol-id :}
