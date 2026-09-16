@@ -62,10 +62,10 @@ package ENGINE-SIZE
 
 \ The walk's own refusal. Thrown, never died: the payload search probes many
 \ offsets and every wrong one must come back as a failed walk, not as an exit.
-\ This tool's own throw range: -9180..-9189.
--9180 constant E-ES-FIRST
--9189 constant E-ES-LAST
--9180 constant E-ES-WALK
+\ This tool's own throw range: -9240..-9249 (the -9180 decade is lib/errors.f TCP4).
+-9240 constant E-ES-FIRST
+-9249 constant E-ES-LAST
+-9240 constant E-ES-WALK
 
 \ ---- image intake -------------------------------------------------------------
 DYNAMIC-BUFFER IMG n
