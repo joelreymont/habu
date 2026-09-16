@@ -8551,3 +8551,18 @@ Two builds of one revision differ wherever a capture copies a buffer that still
 describes the build directory: `src/core/include.f` REQUIRE-PATHS held canonical
 paths and INCLUDE-PATH kept its bytes AND its copy cursor. Record an engine's boot
 rows as `CWD$ RELATIVE` - what BOOT-KNOWN? asks for - and clear bytes, not lengths.
+
+## 2026-09-16 - a local's name is read in three places
+
+A reference binds a live local only in the spelling it was declared in;
+word lookup stays case-insensitive (`{: text :}` reads the local as `text`
+and the word as `TEXT`). Three resolvers decide that and must agree, or the
+checker certifies one program while the compiler builds another:
+`src/core/checker.f` LOC-REF?, `src/habu/habu2.f` EMIT-LOC-FIND (the JIT's
+compiled lookup) and `src/compiler/native/elaborate.f` LOCAL-OF (tier 1),
+plus the Gforth mirror of EMIT-LOC-FIND in `bootstrap/cg/forth.fs`. The
+tier-1 miss was found only by running the same body at both tiers: with the
+checker and JIT fixed, `TEXT text -` answered -157 at tier 0 and 0 at tier 1.
+`test/compiler/native-local-case.f` is the cross-layer pin; a census of the
+engine build path found 883 same-spelling shadows and zero mixed-case ones,
+so the rule cost one fixture edit.
