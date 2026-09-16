@@ -6,6 +6,15 @@ seven campaigns that stand between today's tree and that, what each is
 grounded in, and how the tracker is organised around them. It is the map;
 the campaign dots are the ledger.
 
+## Design documents
+
+- C2: [ownership-model.md](ownership-model.md), a proposal that needs Joel's yes.
+- C5: the decisions appended to [database-models.md](database-models.md) and
+  [tasking-models.md](tasking-models.md).
+- C6: [x86-64.md](x86-64.md) and [cortex-m.md](cortex-m.md).
+- C3, C4 and C7 are specified by their child dots and by MISSING.md; C1 by
+  PLAN.md and the release checklist.
+
 ## Tracker rules
 
 - Under one hundred open dots. Every open dot is true of the tree today,

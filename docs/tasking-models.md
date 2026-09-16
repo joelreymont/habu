@@ -192,3 +192,29 @@ event, queue or result. Compilation is forbidden while tasks live.
 
 Keep Habu's package prefix `TASK:` and typed handles; take the product word
 names for the operations above.
+
+## Decision (proposed 2026-09-16)
+
+For `habu-decide-the-cooperative-b463cc1c`. One public surface, two kernels:
+
+| Word | Hosted (pthreads) | Target (round robin) |
+| --- | --- | --- |
+| `TASK`, `PREPARE` (build), `ACTIVATE` (xt), `SELF`, `+USER`, `HIS` | yes | yes |
+| `PAUSE` | cancel point and `sched_yield` | store `WAKE` in own `STATUS`, run the ring |
+| `STOP`, `WAKE ( tcb -- )` | block on the task's halt semaphore; `WAKE` posts it | store `SLEEP`/`WAKE` in `STATUS` |
+| `FACILITY`, `GET`, `RELEASE`, `GRAB` | owner-tracked mutex | owner in the facility cell, spin with `PAUSE` |
+| `SEMAPHORE`, `WAIT`, `SIGNAL` | POSIX semaphore | counter plus `STOP`/`WAKE` of the first waiter |
+| `SEND-MESSAGE`, `GET-MESSAGE`, `MSG?` | one-cell mailbox blocking on the semaphore | one-cell mailbox blocking with `STOP` |
+| `HALT` | request stop, observed at `PAUSE` | `ACTIVATE` of `NOD` |
+| `KILL`, `JOIN`, `AT-EXIT` | yes | not present: target tasks are eternal |
+
+The representation on arm32 and tic6x is SwiftX's: `STATUS` is two cells,
+flag then `FOLLOWER`; `PAUSE` is the short assembly sequence in
+[cortex-m.md](cortex-m.md); a driver's blocking word ends in `STOP` and its
+interrupt handler stores `WAKE`. Hosted code that uses only the shared rows
+compiles for a target unchanged; the hosted-only rows are refused by the
+target's checker rows rather than emulated.
+
+Test strategy: the hosted rows keep `lib/task-test.f`; the target rows run
+on the QEMU Cortex-M4 peer with the same test words, so one test file
+exercises both kernels where the surface is shared.
