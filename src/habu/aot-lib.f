@@ -7,6 +7,7 @@
 require src/habu/stack-abi.f
 require src/habu/rt.f
 require src/habu/crash.f
+require src/habu/aot-decl.f
 
 \ The AOT relocation core compiles checked. MAP-IN-BLOB is the remaining
 \ named TRUSTED: boundary - a dictionary-record blob-span walk whose record
@@ -118,11 +119,12 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    rowdone LBL,
    7 BLOB-END @ LIT64,  7 DATA DP-CELL STR, ;      \ DP = user-end (runtime here/allot base)
 
-\ --- sparse encoding: the captured span travels as its NON-ZERO byte extents,
-\ not as the span. A table `allot`ed at declared capacity but only partly
-\ filled left its unused tail as literal zero bytes in every earlier image;
-\ the restore above maps an anonymous (already zero) region, so a zero byte
-\ never has to travel. Format: [count u32] [(offset u32, length u32) x count]
+\ --- sparse encoding: the captured span travels as its non-zero byte extents
+\ (plus the zero gaps under AOT-WINDOW:RUN-GAP-MIN, which are cheaper to carry
+\ than to split around), not as the span. A table `allot`ed at declared capacity
+\ but only partly filled left its unused tail as literal zero bytes in every
+\ earlier image; the restore above maps an anonymous (already zero) region, so a
+\ zero byte never has to travel. Format: [count u32] [(offset u32, length u32) x count]
 \ [bytes, row order, concatenated] - one cursor decodes it with no stored
 \ row->byte offset. Mirrors the AOT-WINDOW run format aot-capture.f already
 \ uses for the metabuild seed (src/habu/aot-decl.f package AOT-WINDOW).
@@ -153,10 +155,13 @@ create SPARSE-BUF SPARSE-CAP allot   variable SPARSE-LEN
 \ every scan/copy site below reads it as a span, not a bare number.
 : BLOB-SRC@ ( -- ptr u8 ) BLOB-SRC @ ;
 
-\ The maximal non-zero byte extents of [0, BLOB-LEN), visited in declaration
-\ order. Mirrors aot-capture.f ACAP-SCAN-SEG/ACAP-RUN-CLOSE; the stripped span
-\ has no declared address cells to exclude, so the whole span is one gap.
-variable BLOB-RUN-AT   variable BLOB-RUN-OPEN
+\ The non-zero byte extents of [0, BLOB-LEN), visited in declaration order.
+\ Mirrors aot-capture.f ACAP-SCAN-SEG/ACAP-RUN-CLOSE, gap rule included: a run
+\ ends at its last non-zero byte and reopens only after AOT-WINDOW:RUN-GAP-MIN
+\ zeros, because a shorter gap costs less to carry than the row that splitting
+\ it buys. The stripped span has no declared address cells to exclude, so the
+\ whole span is one gap.
+variable BLOB-RUN-AT   variable BLOB-RUN-OPEN   variable BLOB-RUN-END
 
 : BLOB-RUN-CLOSE ( [ n n -- ] n -- ) {: body at:n :}
    BLOB-RUN-OPEN @ 0 < IF exit THEN
@@ -164,16 +169,18 @@ variable BLOB-RUN-AT   variable BLOB-RUN-OPEN
    -1 BLOB-RUN-OPEN ! ;
 
 : EACH-BLOB-RUN ( [ n n -- ] -- ) {: body :}
-   -1 BLOB-RUN-OPEN !  0 BLOB-RUN-AT !
+   -1 BLOB-RUN-OPEN !  0 BLOB-RUN-END !  0 BLOB-RUN-AT !
    BEGIN BLOB-RUN-AT @ BLOB-LEN @ < WHILE
       BLOB-SRC@ BLOB-RUN-AT @ + c@ 0= IF
-         body BLOB-RUN-AT @ BLOB-RUN-CLOSE
+         BLOB-RUN-AT @ BLOB-RUN-END @ - AOT-WINDOW:RUN-GAP-MIN >= IF
+            body BLOB-RUN-END @ BLOB-RUN-CLOSE THEN
       ELSE
          BLOB-RUN-OPEN @ 0 < IF BLOB-RUN-AT @ BLOB-RUN-OPEN ! THEN
+         BLOB-RUN-AT @ 1+ BLOB-RUN-END !
       THEN
       BLOB-RUN-AT @ 1+ BLOB-RUN-AT !
    REPEAT
-   body BLOB-LEN @ BLOB-RUN-CLOSE ;
+   body BLOB-RUN-END @ BLOB-RUN-CLOSE ;
 
 variable BLOB-RUN-N
 

@@ -1270,6 +1270,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 \ section with a running cursor, which is the same counts-not-stored discipline
 \ the rest of the format keeps. Both buffers refuse their own overflow by name.
 variable ACAP-RS      \ the open run's start, or -1 when none is open
+variable ACAP-RE      \ one past the open run's last non-zero byte
 variable ACAP-RP      \ the scan cursor inside one segment
 variable ACAP-RQ      \ the segment cursor across the window
 variable ACAP-RN      \ the next declared cell at or above ACAP-RQ
@@ -1280,7 +1281,7 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
       s" aot-capture: too many window DATA runs" 74 die then
    AOT-WINDOW:RBYTES-LEN @ rl + AOT-WINDOW:RBYTES-CAP > if
       s" aot-capture: the window DATA runs exceed the AOT run-byte buffer" 74 die then
-   AOT-WINDOW:RUN-N @ 8 * AOT-WINDOW:RUN-BUF@ + {: r:ptr :}
+   AOT-WINDOW:RUN-N @ AOT-WINDOW:RUN-ROW * AOT-WINDOW:RUN-BUF@ + {: r:ptr :}
    off r AOT-P32!  rl r 4 + AOT-P32!
    rl 0 ?do
       d0 off + i + AOT-N>U8 c@
@@ -1294,20 +1295,26 @@ variable ACAP-RC      \ ACAP-NEXT-CELL's running minimum
    d0 ACAP-RS @ at ACAP-RS @ - ACAP-ADD-RUN
    -1 ACAP-RS ! ;
 
-\ The maximal non-zero extents of [from, to), which is one gap between declared
-\ cells. Nothing outside such a gap is ever offered, which is how the cells stay
-\ out of every run.
+\ The non-zero extents of [from, to), which is one gap between declared cells.
+\ Nothing outside such a gap is ever offered, which is how the cells stay out of
+\ every run - and it is also why the merge below can never swallow one: a run
+\ closes at every segment end, so a declared cell is a boundary no gap crosses.
+\ A run ends at its last non-zero byte and reopens only after RUN-GAP-MIN zeros,
+\ so shorter gaps travel inside it rather than buying a second row.
 : ACAP-SCAN-SEG ( n n n -- ) {: d0:n from:n to:n :}
    -1 ACAP-RS !
+   from ACAP-RE !
    from ACAP-RP !
    begin ACAP-RP @ to < while
       d0 ACAP-RP @ + AOT-N>U8 c@ 0=
-      if    d0 ACAP-RP @ ACAP-RUN-CLOSE
+      if    ACAP-RP @ ACAP-RE @ - AOT-WINDOW:RUN-GAP-MIN >=
+            if d0 ACAP-RE @ ACAP-RUN-CLOSE then
       else  ACAP-RS @ 0 < if ACAP-RP @ ACAP-RS ! then
+            ACAP-RP @ 1+ ACAP-RE !
       then
       ACAP-RP @ 1+ ACAP-RP !
    repeat
-   d0 to ACAP-RUN-CLOSE ;
+   d0 ACAP-RE @ ACAP-RUN-CLOSE ;
 
 \ The lowest declared-cell offset at or above `p`, or the span when none is left.
 \ Asked once per gap rather than once per byte, and it reads the table in whatever

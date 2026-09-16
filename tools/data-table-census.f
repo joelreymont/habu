@@ -33,13 +33,18 @@
 \   printf 'require tools/data-table-census.f\nDATA-CENSUS:RUN\n' | bin/hb
 \ Columns: offset, extent, fill, non-zero, runs, cost, wid, owner. `extent` is
 \ the bytes the owner holds up to the next owner, `fill` is one past its last
-\ non-zero byte (what a capture sized to content would carry), `non-zero`
-\ counts the bytes inside the extent that are not zero and `runs` counts their
-\ maximal contiguous extents. `cost` is what those two are worth in the image:
-\ the bytes plus RUN-ROW per run, because a sparse payload carries an (offset,
-\ length) row for every extent. A table of cells holding small numbers breaks
-\ into one run per cell and costs MORE than its raw bytes; sort on this column
-\ rather than on non-zero.
+\ non-zero byte (what a capture sized to content would carry) and `non-zero`
+\ counts the bytes inside the extent that are not zero. `runs` and `cost` model
+\ what the capture would charge for the extent, so they follow the scanners
+\ (aot-capture.f ACAP-SCAN-SEG, aot-lib.f EACH-BLOB-RUN) rather than the raw
+\ content: a run ends at its last non-zero byte and reopens only after
+\ AOT-WINDOW:RUN-GAP-MIN zeros, so a shorter gap is carried inside the run, and
+\ `cost` is the bytes so carried plus AOT-WINDOW:RUN-ROW for each row. A table
+\ of cells holding small numbers still costs more than its non-zero bytes;
+\ sort on this column rather than on non-zero.
+\
+\ Runs are counted inside one owner's extent, so an owner boundary splits a run
+\ the capture would keep whole. That over-counts by at most one row per owner.
 
 \ The boot DP, latched before this tool's own requires allocate anything. The
 \ census covers [0, DP0); everything the tool itself allots lands above it.
@@ -61,15 +66,12 @@ package DATA-CENSUS
 DYNAMIC-BUFFER T-ROW n
 variable T-N
 variable NZ        variable FILL       variable RUNS
-variable SUM-NZ    variable SUM-FILL   variable SUM-RUNS
+variable PAY       variable OPEN
+variable SUM-NZ    variable SUM-FILL   variable SUM-RUNS   variable SUM-PAY
 variable IN-RUN
 
 32 constant OFF-SHIFT
 $FFFFFFFF constant IDX-MASK
-\ The sparse payload's per-run header: (offset u32, length u32). Its owner is
-\ package AOT-WINDOW (src/habu/aot-decl.f), which emits the rows eight bytes
-\ wide; this is the reader's side of that number.
-8 constant RUN-ROW
 
 : HEAP@ ( n -- ptr u8 ) {: off:n :}
    data-base BYTE-VIEW off + ;
@@ -107,21 +109,28 @@ $FFFFFFFF constant IDX-MASK
    0 T-ROW T-N @ [: < ;] SORT:SORT! ;
 
 : SCAN ( n n -- ) {: base:n len:n :}
-   0 NZ !  0 FILL !  0 RUNS !  false IN-RUN !
+   0 NZ !  0 FILL !  0 RUNS !  0 PAY !  0 OPEN !  false IN-RUN !
    len 0 ?do
       base i + HEAP@ c@ 0<> if
          NZ @ 1+ NZ !  i 1+ FILL !
-         IN-RUN @ 0= if RUNS @ 1+ RUNS !  true IN-RUN ! then
-      else false IN-RUN ! then
-   loop ;
+         IN-RUN @ 0= if i OPEN !  RUNS @ 1+ RUNS !  true IN-RUN ! then
+      else
+         IN-RUN @ if
+            i FILL @ - AOT-WINDOW:RUN-GAP-MIN >= if
+               PAY @ FILL @ OPEN @ - + PAY !  false IN-RUN !
+            then
+         then
+      then
+   loop
+   IN-RUN @ if PAY @ FILL @ OPEN @ - + PAY ! then ;
 
 : ROW ( n n ptr u8 n n -- ) {: off:n len:n name:ptr nameu:n wid:n :}
    off len SCAN
    off FMT:.U TAB  len FMT:.U TAB  FILL @ FMT:.U TAB  NZ @ FMT:.U TAB
-   RUNS @ FMT:.U TAB  NZ @ RUNS @ RUN-ROW * + FMT:.U TAB
+   RUNS @ FMT:.U TAB  PAY @ RUNS @ AOT-WINDOW:RUN-ROW * + FMT:.U TAB
    wid FMT:.INT TAB  name nameu type cr
    SUM-NZ @ NZ @ + SUM-NZ !  SUM-FILL @ FILL @ + SUM-FILL !
-   SUM-RUNS @ RUNS @ + SUM-RUNS ! ;
+   SUM-RUNS @ RUNS @ + SUM-RUNS !  SUM-PAY @ PAY @ + SUM-PAY ! ;
 
 : END-OF ( n -- n ) {: k:n :}
    k 1+ T-N @ >= if DP0 exit then
@@ -139,7 +148,7 @@ $FFFFFFFF constant IDX-MASK
    DATA-START  first DATA-START -  s" (unowned-heap)" -1 ROW ;
 
 : REPORT ( -- )
-   0 SUM-NZ !  0 SUM-FILL !  0 SUM-RUNS !
+   0 SUM-NZ !  0 SUM-FILL !  0 SUM-RUNS !  0 SUM-PAY !
    s" offset" type TAB s" extent" type TAB s" fill" type TAB
    s" nonzero" type TAB s" runs" type TAB s" cost" type TAB
    s" wid" type TAB s" owner" type cr
@@ -150,7 +159,7 @@ $FFFFFFFF constant IDX-MASK
    s"  data-start " type DATA-START FMT:.U
    s"  nonzero " type SUM-NZ @ FMT:.U
    s"  runs " type SUM-RUNS @ FMT:.U
-   s"  cost " type SUM-NZ @ SUM-RUNS @ RUN-ROW * + FMT:.U
+   s"  cost " type SUM-PAY @ SUM-RUNS @ AOT-WINDOW:RUN-ROW * + FMT:.U
    s"  fill " type SUM-FILL @ FMT:.U cr ;
 
 public

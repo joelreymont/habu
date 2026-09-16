@@ -230,17 +230,38 @@ public
 \ closed on a span no engine could reserve. 16 MiB against the full runtime's
 \ measured 8,310,765 bytes leaves honest headroom at no storage cost.
 $1000000 constant SPAN-CAP
-\ 262144 rows against the full runtime's measured 180710. A run is a maximal non-zero
-\ extent, so the count is a property of the window's content and not of its size,
-\ and a window that outgrew this is refused by name rather than truncated.
+\ A run's header: (offset u32, length u32). Every emitter and reader of this
+\ format writes it eight bytes wide.
+8 constant RUN-ROW
+\ HOW SHORT A ZERO GAP HAS TO BE TO TRAVEL RATHER THAN SPLIT A RUN. Carrying g
+\ zero bytes inside a run costs g payload bytes; splitting the run around them
+\ costs one more RUN-ROW. So a gap of fewer than RUN-ROW zeros is cheaper to
+\ carry and a gap of exactly RUN-ROW breaks even: the width is the rule's own
+\ arithmetic, not a tuned constant. It is not a small effect on real content,
+\ because a cell array of small integers breaks into one run per cell. The
+\ engine's own capture window measured 243,891 runs over 729,560 payload bytes,
+\ an average run of three bytes carrying an eight-byte header; merging measured
+\ 84,724 runs over 1,720,230 bytes, which is 282,666 fewer section bytes, an
+\ engine 327,680 bytes smaller, and a run count back from 93% of RUN-MAX to 32%.
+RUN-ROW constant RUN-GAP-MIN
+\ 262144 rows against a full engine window's measured 84,724. A run is a non-zero
+\ extent, maximal except for the zero gaps under RUN-GAP-MIN it carries, so the
+\ count is a property of the window's content and not of its size, and a window
+\ that outgrew this is refused by name rather than truncated. Splitting on every
+\ single zero byte put that same window at 243,891 rows, 93% of this ceiling.
 262144 constant RUN-MAX
 DYNAMIC-BUFFER RUN-STORAGE n
 : RUN-BUF ( -- ptr u8 )
    RUN-MAX RUN-STORAGE-RESERVE
    0 RUN-STORAGE BYTE-VIEW ;
 variable RUN-N
-\ $100000 against the full runtime's measured 540739 bytes. Overflow is refused by name.
-$100000 constant RBYTES-CAP
+\ Run bytes carry the merged zero gaps as well as the non-zero content, so this
+\ cap answers to the merged payload: a full engine window measured 1,720,230
+\ bytes, and the arithmetic worst case for that window's content - every one of
+\ its 243,891 unmerged runs joined across a gap of RUN-ROW-1 zeros, over 729,560
+\ non-zero bytes - is 2,436,797. $300000 leaves 29% over that bound. Overflow is
+\ refused by name.
+$300000 constant RBYTES-CAP
 DYNAMIC-BUFFER RBYTES-STORAGE n
 : RBYTES-BUF ( -- ptr u8 )
    RBYTES-CAP CELL / RBYTES-STORAGE-RESERVE
