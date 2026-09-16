@@ -61,6 +61,10 @@ A64IR-OPCODE:DTAKE     A64IR:ORD constant O-DTAKE
 A64IR-OPCODE:DLOAD     A64IR:ORD constant O-DLOAD
 A64IR-OPCODE:DSTORE    A64IR:ORD constant O-DSTORE
 A64IR-OPCODE:DPUBLISH  A64IR:ORD constant O-DPUBLISH
+A64IR-OPCODE:DPUSH     A64IR:ORD constant O-DPUSH
+A64IR-OPCODE:DPOP      A64IR:ORD constant O-DPOP
+A64IR-OPCODE:FDPUSH    A64IR:ORD constant O-FDPUSH
+A64IR-OPCODE:FDPOP     A64IR:ORD constant O-FDPOP
 A64IR-OPCODE:FLAG      A64IR:ORD constant O-FLAG
 A64IR-OPCODE:BR        A64IR:ORD constant O-BR
 A64IR-OPCODE:BRZ       A64IR:ORD constant O-BRZ
@@ -174,6 +178,7 @@ A64IR:OPCODES TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DWB IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FUN IR-ID:ir-symbol-id
@@ -341,6 +346,9 @@ variable N-FUNS                        \ how many functions the emission holds
 : DBACK-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-DBACK @ ATTR-INT ;
 
+: DWB-SIZE ( IR-ID:ir-op-id -- n )
+   0 BND-DWB @ ATTR-INT ;
+
 \ The callee's own entry and not a displacement, which is why the placement has
 \ to be known here.
 : ENTRY-ADDR ( IR-ID:ir-op-id -- n )
@@ -467,6 +475,18 @@ variable N-FUNS                        \ how many functions the emission holds
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STR ;
 
+\ The two fused forms, which is where the pointer move went. Post-index stores
+\ AT the pointer and then moves it forward; pre-index moves it back and reads
+\ THERE - so the store takes the move and the load takes its negative, and
+\ neither has an offset to read because the form has no field for one.
+: WORD-DPUSH ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DWB-SIZE  ENC-STRPOST ;
+
+: WORD-DPOP ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DWB-SIZE negate  ENC-LDRPRE ;
+
 \ Each is its general twin with one encoder swapped, so a double reaches memory
 \ and leaves it in the file it lives in.
 : DENC-LDRD ( n n n -- n )
@@ -490,6 +510,15 @@ variable N-FUNS                        \ how many functions the emission holds
 : WORD-FDSTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  DENC-STRD ;
+
+\ The same two fused forms in the other register file, which is one opcode bit.
+: WORD-FDPUSH ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DWB-SIZE  ENC-STRDPOST ;
+
+: WORD-FDPOP ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DWB-SIZE negate  ENC-LDRDPRE ;
 
 \ ---- the two addressed forms -------------------------------------------------
 \ Offset zero is `[Xn]`, written here because this dialect has no addressing
@@ -1231,6 +1260,10 @@ variable CH-AT
       dload    OF id  id WORD-DLOAD  APPEND ENDOF
       dstore   OF id  id WORD-DSTORE  APPEND ENDOF
       dpublish OF id PUT-DPUBLISH ENDOF
+      dpush    OF id  id WORD-DPUSH  APPEND ENDOF
+      dpop     OF id  id WORD-DPOP  APPEND ENDOF
+      fdpush   OF id  id WORD-FDPUSH  APPEND ENDOF
+      fdpop    OF id  id WORD-FDPOP  APPEND ENDOF
       aload    OF id  id WORD-ALOAD  APPEND ENDOF
       astore   OF id  id WORD-ASTORE  APPEND ENDOF
       fload    OF id  id WORD-FLOAD  APPEND ENDOF
@@ -1319,7 +1352,8 @@ variable CH-AT
 : IFACE-FORM? ( n -- bool )
    {: k:n :}
    k O-DTAKE = k O-DLOAD = or k O-DSTORE = or k O-DPUBLISH = or k O-RET = or
-   k O-FDLOAD = or k O-FDSTORE = or ;
+   k O-FDLOAD = or k O-FDSTORE = or
+   k O-DPUSH = or k O-DPOP = or  k O-FDPUSH = or k O-FDPOP = or ;
 
 : CALL-FORM? ( n -- bool )
    {: k:n :}
@@ -1441,6 +1475,7 @@ public
    c b A64IR:KEY-FRAME  0 BND-FRAME !
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
+   c b A64IR:KEY-DWB    0 BND-DWB !
    c b A64IR:KEY-COND   0 BND-COND !
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !

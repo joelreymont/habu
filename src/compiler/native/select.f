@@ -447,7 +447,8 @@ variable D-RETS                                    \ returns seen while surveyin
 : XFER-RESULT+ ( A64IR:opcode -- )
    {: o:A64IR:opcode :}
    o A64IR-OPCODE:FALOAD A64IR-OPCODE:EQ
-   o A64IR-OPCODE:FDLOAD A64IR-OPCODE:EQ or if FRESULT+ exit then
+   o A64IR-OPCODE:FDLOAD A64IR-OPCODE:EQ or
+   o A64IR-OPCODE:FDPOP A64IR-OPCODE:EQ or if FRESULT+ exit then
    RESULT+ ;
 
 : TOKEN+ ( -- )
@@ -581,18 +582,46 @@ variable D-RETS                                    \ returns seen while surveyin
    CTX BLD  CTX BLD A64IR:KEY-DSLOT  CTX BLD off DPLACED A64IR:DSLOT-ATTR
    IR-BUILD:ADD-ATTR ;
 
-: DBYTES-ATTR+ ( n -- )
-   {: at:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD at DPLACED A64IR:DBYTES-ATTR
+\ Written in the place the body's pointer stands, because a call site whose
+\ neighbouring transfer carries one of its two moves makes NO move at all, and
+\ nothing is nothing wherever the pointer stands.
+: DBYTES-AT+ ( n -- )
+   {: d:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD d A64IR:DBYTES-ATTR
    IR-BUILD:ADD-ATTR ;
 
+\ The move a TRANSFER carries. It is the same number the operation it replaced
+\ would have carried, in the same frame and with the same sign, so every reader
+\ of a pointer move reads one convention.
+: DWB-ATTR+ ( n -- )
+   {: bytes:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DWB  CTX BLD bytes DPLACED A64IR:DWB-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+\ Whether the move `bytes` can ride the transfer that reaches `off`. Both are
+\ still the caller's numbers, so both go through the placement: the transfer has
+\ to reach the cell the pointer STANDS at - which is the whole of what the two
+\ indexed forms can address - and the move has to fit the writeback field.
+: FUSE? ( n n -- bool )
+   {: off:n bytes:n :}
+   off DPLACED 0<> if false exit then
+   bytes DPLACED A64IR:WRITEBACK? ;
+
+\ What a site is left to move once the transfer beside it has taken its share.
+: SITE-MOVE ( n bool -- n )
+   {: raw:n carried:bool :}
+   carried if 0 exit then
+   raw DPLACED ;
+
 \ The pointer is placed where the BODY addresses from, and the order of every
-\ data-stack access starts here.
+\ data-stack access starts here. The move is PLACED because the first load can
+\ carry it instead, and then this operation moves nothing and writes no
+\ instruction - but it still stands, because it is where the order is minted.
 : EMIT-DTAKE ( IR-ID:ir-op-id n -- )
-   {: at:IR-ID:ir-op-id bytes:n :}
+   {: at:IR-ID:ir-op-id d:n :}
    at A64IR-OPCODE:DTAKE OPEN
    TOKEN+
-   bytes DBYTES-ATTR+
+   d DBYTES-AT+
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
 
@@ -624,13 +653,47 @@ variable D-RETS                                    \ returns seen while surveyin
 : DSTORE-FORM ( bool -- A64IR:opcode )
    if A64IR-OPCODE:FDSTORE exit then A64IR-OPCODE:DSTORE ;
 
+: DPUSH-FORM ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:FDPUSH exit then A64IR-OPCODE:DPUSH ;
+
+: DPOP-FORM ( bool -- A64IR:opcode )
+   if A64IR-OPCODE:FDPOP exit then A64IR-OPCODE:DPOP ;
+
+\ A store and the publish behind it, in one instruction. It reaches the cell the
+\ pointer stands at and takes no slot, because the form has no field for one.
+: EMIT-DPUSH ( IR-ID:ir-op-id IR-ID:ir-value-id n A64IR:opcode -- )
+   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id bytes:n o:A64IR:opcode :}
+   at o OPEN
+   v OPERAND+
+   TOK OPERAND+
+   TOKEN+
+   bytes DWB-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
+
+\ And a take with the load in front of it. The plain operation each of these
+\ rides on stays in the module moving NOTHING and writing no instruction:
+\ a64.dtake is where a routine's data-stack order is minted and a64.dpublish is
+\ where it ends, and an order that is not minted and passed on exactly once is
+\ no order at all (E-A64RAV-ORDER).
+: EMIT-DPOP ( IR-ID:ir-op-id n A64IR:opcode -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id bytes:n o:A64IR:opcode :}
+   at o OPEN
+   TOK OPERAND+
+   o XFER-RESULT+
+   TOKEN+
+   bytes DWB-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 1 IR-BUILD:OP-RESULT@ TOK!
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ ;
+
 \ The pointer is left one past the results, which is the moment they become the
 \ caller's.
 : EMIT-DPUBLISH ( IR-ID:ir-op-id n -- )
-   {: at:IR-ID:ir-op-id bytes:n :}
+   {: at:IR-ID:ir-op-id d:n :}
    at A64IR-OPCODE:DPUBLISH OPEN
    TOK OPERAND+
-   bytes DBYTES-ATTR+
+   d DBYTES-AT+
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ ---- the routine's frame, and the return address in it -----------------------
@@ -699,9 +762,9 @@ variable D-RETS                                    \ returns seen while surveyin
 \ ---- selecting a call --------------------------------------------------------
 \ A call site publishes its arguments through the caller's data stack and takes
 \ its results back out of the same cells.
-: DBACK-ATTR+ ( n -- )
-   {: at:n :}
-   CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD at DPLACED A64IR:DBACK-ATTR
+: DBACK-AT+ ( n -- )
+   {: d:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD d A64IR:DBACK-ATTR
    IR-BUILD:ADD-ATTR ;
 
 : CALL-LIVE ( IR-ID:ir-op-id n n -- n )
@@ -716,8 +779,8 @@ variable D-RETS                                    \ returns seen while surveyin
    at A64IR-OPCODE:CALL OPEN
    TOK OPERAND+
    TOKEN+
-   give DBYTES-ATTR+
-   back DBACK-ATTR+
+   give DBYTES-AT+
+   back DBACK-AT+
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
 
@@ -726,8 +789,8 @@ variable D-RETS                                    \ returns seen while surveyin
    at A64IR-OPCODE:WORDCALL OPEN
    TOK OPERAND+
    TOKEN+
-   give DBYTES-ATTR+
-   back DBACK-ATTR+
+   give DBYTES-AT+
+   back DBACK-AT+
    CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
@@ -760,24 +823,71 @@ variable D-RETS                                    \ returns seen while surveyin
    i DELIDE-MAX >= if false exit then
    mask 1 i lshift and 0<> ;
 
-\ A call site's saves are always in the GENERAL file, which follows from the
-\ placement rule rather than being a case left out of it.
-: CALL-SAVE ( IR-ID:ir-op-id n n n n -- )
-   {: id:IR-ID:ir-op-id kk:n m:n a:n mask:n :}
-   kk a + 0 ?do
-      mask i DBIT? 0= if
-         id  id kk m i DSAVE-VAL VOF  i A64IR:SLOT-WIDTH *
-         false DSTORE-FORM  EMIT-DSTORE
+\ ---- which transfer of a run carries the run's pointer move ------------------
+\ The publish can ride the LAST store a run writes and the take-back the FIRST
+\ load it reads, because those are the two that stand at the pointer. Both
+\ answer -1 for a run that has no such transfer, which is also the answer for a
+\ run that is empty and for a move the writeback field cannot hold.
+: SAVE-RIDER ( n n -- n )
+   {: n:n mask:n :}
+   -1
+   n 0 ?do
+      n i - 1- {: k:n :}
+      mask k DBIT? 0= if
+         drop
+         k A64IR:SLOT-WIDTH *  n A64IR:SLOT-WIDTH *  FUSE?
+         if k else -1 then
+         leave
       then
    loop ;
 
-: CALL-RESTORE ( IR-ID:ir-op-id n n n -- )
+: RESTORE-RIDER ( IR-ID:ir-op-id n n n -- n )
    {: id:IR-ID:ir-op-id kk:n m:n r:n :}
-   kk r + 0 ?do
+   kk r + {: n:n :}
+   -1
+   n 0 ?do
+      id kk m i DBACK-VAL DNEED? if
+         drop
+         i A64IR:SLOT-WIDTH *  n A64IR:SLOT-WIDTH *  FUSE?
+         if i else -1 then
+         leave
+      then
+   loop ;
+
+\ A call site's saves are always in the GENERAL file, which follows from the
+\ placement rule rather than being a case left out of it. This answers whether
+\ the publish went with the run, so the caller knows what is left for the call
+\ itself to move.
+: CALL-SAVE ( IR-ID:ir-op-id n n n n -- bool )
+   {: id:IR-ID:ir-op-id kk:n m:n a:n mask:n :}
+   kk a + {: n:n :}
+   n mask SAVE-RIDER {: rider:n :}
+   n 0 ?do
+      mask i DBIT? 0= if
+         id  id kk m i DSAVE-VAL VOF
+         i rider = if
+            n A64IR:SLOT-WIDTH *  A64IR-OPCODE:DPUSH  EMIT-DPUSH
+         else
+            i A64IR:SLOT-WIDTH *  false DSTORE-FORM  EMIT-DSTORE
+         then
+      then
+   loop
+   rider 0 >= ;
+
+: CALL-RESTORE ( IR-ID:ir-op-id n n n n -- )
+   {: id:IR-ID:ir-op-id kk:n m:n r:n rider:n :}
+   kk r + {: n:n :}
+   n 0 ?do
       id kk m i DBACK-VAL {: v:IR-ID:ir-value-id :}
       v DNEED? if
          v LOAD-PLACE? if v FPLACE! then
-         v  id  i A64IR:SLOT-WIDTH *  v FPLACED? DLOAD-FORM  EMIT-DLOAD  VBIND
+         v
+         i rider = if
+            id  n A64IR:SLOT-WIDTH *  v FPLACED? DPOP-FORM  EMIT-DPOP
+         else
+            id  i A64IR:SLOT-WIDTH *  v FPLACED? DLOAD-FORM  EMIT-DLOAD
+         then
+         VBIND
       then
    loop
    m 0 ?do
@@ -807,9 +917,11 @@ variable D-RETS                                    \ returns seen while surveyin
    {: id:IR-ID:ir-op-id mask:n :}
    id SELF-SHAPE {: a:n r:n kk:n m:n :}
    id 0 OPERAND TOK!
-   id kk m a mask CALL-SAVE
-   id  kk a + A64IR:SLOT-WIDTH *  kk r + A64IR:SLOT-WIDTH *  EMIT-BL
-   id kk m r CALL-RESTORE ;
+   id kk m r RESTORE-RIDER {: rider:n :}
+   id kk m a mask CALL-SAVE {: gave:bool :}
+   id  kk a + A64IR:SLOT-WIDTH * gave SITE-MOVE
+       kk r + A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE  EMIT-BL
+   id kk m r rider CALL-RESTORE ;
 
 \ ---- selecting a call to another word ----------------------------------------
 : ATTR-SLOT-OF ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
@@ -847,10 +959,12 @@ variable D-RETS                                    \ returns seen while surveyin
    id SITE-SHAPE {: a:n r:n kk:n m:n :}
    id WORD-ENTRY {: e:n :}
    id 0 OPERAND TOK!
-   id kk m a mask CALL-SAVE
-   id  kk a + A64IR:SLOT-WIDTH *  kk r + A64IR:SLOT-WIDTH *
+   id kk m r RESTORE-RIDER {: rider:n :}
+   id kk m a mask CALL-SAVE {: gave:bool :}
+   id  kk a + A64IR:SLOT-WIDTH * gave SITE-MOVE
+       kk r + A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE
    e EMIT-WBL
-   id kk m r CALL-RESTORE ;
+   id kk m r rider CALL-RESTORE ;
 
 \ ---- the converted region's literal memo -------------------------------------
 \ One number materialised twice in one converted region is one value.
@@ -1128,16 +1242,40 @@ A64IR:IMM-LIMIT 1- constant ONES-HALF
 \ ---- selecting the return ----------------------------------------------------
 \ Under a register convention the values still live where control leaves become
 \ the return's operands; under the data-stack one they are stored to cells.
+\ The publish rides the last store when that store stands at the pointer, and
+\ then it moves nothing and writes no instruction - but it still stands, the
+\ way the take at the entry does, because the order this run holds is minted at
+\ one end and ended at the other.
+: EXIT-RIDER ( n n -- n )
+   {: r:n mask:n :}
+   -1
+   r 0 ?do
+      r i - 1- {: k:n :}
+      mask k DBIT? 0= if
+         drop
+         OUTS k A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  r A64IR:SLOT-WIDTH *  FUSE?
+         if k else -1 then
+         leave
+      then
+   loop ;
+
 : EMIT-EXIT ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
    OUTS SLOT-POSITIONS {: r:n :}
+   r mask EXIT-RIDER {: rider:n :}
    r 0 ?do
       mask i DBIT? 0= if
-         id  id i OPERAND  OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
-         id i OPERAND-AT FPLACED? DSTORE-FORM  EMIT-DSTORE
+         id  id i OPERAND
+         i rider = if
+            r A64IR:SLOT-WIDTH *
+            id i OPERAND-AT FPLACED? DPUSH-FORM  EMIT-DPUSH
+         else
+            OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
+            id i OPERAND-AT FPLACED? DSTORE-FORM  EMIT-DSTORE
+         then
       then
    loop
-   id  r A64IR:SLOT-WIDTH *  EMIT-DPUBLISH ;
+   id  r A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE  EMIT-DPUBLISH ;
 
 : EMIT-RETURN ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id mask:n :}
@@ -2383,7 +2521,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    id SITE-SHAPE {: a:n r:n kk:n m:n :}
    a r TAIL-CK
    id 0 OPERAND TOK!
-   id kk m a mask CALL-SAVE
+   id kk m a mask CALL-SAVE drop
    id EPILOGUE
    id  id WORD-ENTRY  EMIT-TAIL-BR
    N-TAILS @ 1+ N-TAILS ! ;
@@ -2398,23 +2536,33 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    e ;
 
 \ Under the trap form's own key and not the one a tail branch carries.
-: EMIT-TRAP-BR ( IR-ID:ir-op-id n -- )
-   {: at:IR-ID:ir-op-id entry:n :}
+: EMIT-TRAP-BR ( IR-ID:ir-op-id n n -- )
+   {: at:IR-ID:ir-op-id give:n entry:n :}
    at A64IR-OPCODE:TRAP OPEN
    TOK OPERAND+
    CTX BLD  CTX BLD A64IR:KEY-TRAP-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
    IR-BUILD:ADD-ATTR
-   3 A64IR:SLOT-WIDTH * DBYTES-ATTR+
+   give DBYTES-AT+
    CTX BLD IR-BUILD:END-OP drop ;
 
-\ A call site with nothing to save and nothing to take back.
+\ A call site with nothing to save and nothing to take back. Its publish rides
+\ the last store by the same rule every other run's does.
+3 constant TRAP-CELLS                \ the address, the length and the exit code
+
 : EMIT-TRAP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    DSTACK? 0= if E-A64SEL-TRAP throw then
-   3 0 ?do
-      id  id i OPERAND  i A64IR:SLOT-WIDTH *  false DSTORE-FORM  EMIT-DSTORE
+   TRAP-CELLS 0 SAVE-RIDER {: rider:n :}
+   TRAP-CELLS 0 ?do
+      id  id i OPERAND
+      i rider = if
+         TRAP-CELLS A64IR:SLOT-WIDTH *  A64IR-OPCODE:DPUSH  EMIT-DPUSH
+      else
+         i A64IR:SLOT-WIDTH *  false DSTORE-FORM  EMIT-DSTORE
+      then
    loop
-   id TRAP-ENTRY EMIT-TRAP-BR
+   id  TRAP-CELLS A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE
+   TRAP-ENTRY EMIT-TRAP-BR
    N-TRAPS @ 1+ N-TRAPS ! ;
 
 : EMIT-CALL-OR-TAIL ( IR-ID:ir-op-id n -- )
@@ -2924,6 +3072,20 @@ create D-MEET DSLOT-MAX cells allot
       ord i DDROP? 0= if bk i ARG-AT OPEN-ARG1 then
    loop ;
 
+\ The argument the entry's take can ride on: the first one the body needs, when
+\ its cell is the one the pointer ends up standing at.
+: ENTRY-RIDER ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id a:n :}
+   -1
+   a 0 ?do
+      bk i ARG-AT DNEED? if
+         drop
+         ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  a A64IR:SLOT-WIDTH *  FUSE?
+         if i else -1 then
+         leave
+      then
+   loop ;
+
 \ Under the data-stack convention the block takes no argument at all, because
 \ nothing arrives in a register.
 : OPEN-DARGS ( IR-ID:ir-block-id -- )
@@ -2931,16 +3093,21 @@ create D-MEET DSLOT-MAX cells allot
    ARGS SLOT-POSITIONS {: a:n :}
    bk ARG-COUNT a <> if E-A64SEL-PLACE throw then
    bk 0 OP-AT {: at:IR-ID:ir-op-id :}
+   bk a ENTRY-RIDER {: rider:n :}
    at PROLOGUE
-   at  a A64IR:SLOT-WIDTH *  EMIT-DTAKE
+   at  a A64IR:SLOT-WIDTH * rider 0 >= SITE-MOVE  EMIT-DTAKE
    0 ORDER-EDGE!
    a 0 ?do
       bk i ARG-AT {: v:IR-ID:ir-value-id :}
       v DNEED? if
          v LOAD-PLACE? if v FPLACE! then
          v
-         at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
-         v FPLACED? DLOAD-FORM  EMIT-DLOAD
+         i rider = if
+            at  a A64IR:SLOT-WIDTH *  v FPLACED? DPOP-FORM  EMIT-DPOP
+         else
+            at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *
+            v FPLACED? DLOAD-FORM  EMIT-DLOAD
+         then
          VBIND
       then
    loop ;

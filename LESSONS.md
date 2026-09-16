@@ -8681,6 +8681,16 @@ converters, because the child's stored signature names the type and a private
 one does not resolve for a reader: the definition is refused as it is made,
 `s1:  -- sem : checker: bad stored signature` (measured).
 
+## 2026-09-16 - a fused transfer cannot be the end of a memory order
+
+`E-A64RAV-ORDER` refuses a module whose data-stack order is not minted and passed
+on exactly once, so folding a pointer move into the transfer beside it does not
+delete the operation that carried it: `a64.dtake` still opens a routine's order
+and `a64.dpublish` still closes it, both now moving nothing and writing no
+instruction, while `a64.dpush`/`a64.dpop` carry the move. Discovered by building
+it the other way round - the exit's fused store left its order token unread and
+the self-build died -8522 at the first word.
+
 ## 2026-09-16 - a DEFLINEAR type has no checked producer
 
 `CAST:` refuses every retype whose source or destination is a `DEFLINEAR` type

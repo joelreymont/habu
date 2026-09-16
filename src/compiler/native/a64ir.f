@@ -58,6 +58,10 @@ ENUM opcode DERIVE eq
    dload
    dstore
    dpublish
+   dpush
+   dpop
+   fdpush
+   fdpop
    aload
    astore
    abload
@@ -148,6 +152,12 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 1 OFF-BITS lshift 1- constant OFF-MAX
 OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 
+\ ---- the writeback field -----------------------------------------------------
+\ The signed byte count an indexed load or store moves its base register by.
+\ A64ASM's ?SIMM9 holds the two encoders to the same nine bits.
+9 constant WB-BITS
+1 WB-BITS 1- lshift 1- constant WB-MAX   \ the magnitude either sign of it holds
+
 \ ---- the condition field -----------------------------------------------------
 4 constant COND-BITS
 1 COND-BITS lshift constant COND-LIM
@@ -198,7 +208,7 @@ public
 \ Every consumer compares the version exactly, so a table with a form and one
 \ without are two different tables.
 0 constant MAJOR
-10 constant MINOR
+11 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 : REG-BITS ( -- n )      XBITS ;
@@ -275,6 +285,18 @@ private
    dup SLOT-BYTES mod 0<> if E-A64IR-DBYTES throw then
    dup abs OFF-MAX > if E-A64IR-DBYTES throw then ;
 
+\ The move a TRANSFER carries. A load or a store can write its base register
+\ back, and the amount rides in nine SIGNED bits of bytes - a much narrower field
+\ than the Add and Sub immediate above, which is why it is its own operand. The
+\ post-indexed store moves by +this and the pre-indexed load by -this, so the two
+\ forms use opposite signs of one number and what is bounded is the MAGNITUDE.
+\ A move of nothing is refused rather than rounded away: an access that moves the
+\ pointer by zero IS the plain access, and the selector emits that form for it.
+: DWB ( n -- n )
+   dup 0= if E-A64IR-DWB throw then
+   dup SLOT-BYTES mod 0<> if E-A64IR-DWB throw then
+   dup abs WB-MAX > if E-A64IR-DWB throw then ;
+
 \ How far away it is is not asked here: the distance depends on where the
 \ CALLING routine is written, so the reach stays the emitter's.
 : ENTRY ( n -- n )
@@ -333,6 +355,15 @@ public
 \ bound at MASK is what makes a pass that forgot fail loudly.
 : MASK-IMM? ( n -- bool )   A64ASM:LIMM? ;
 
+\ The same question for the two fused forms: a selector CHOOSES between one
+\ transfer that carries the move and the two operations that do not, and DWB is
+\ what makes a selector that chose wrong fail loudly.
+: WRITEBACK? ( n -- bool )
+   {: d:n :}
+   d 0= if false exit then
+   d SLOT-BYTES mod 0<> if false exit then
+   d abs WB-MAX <= ;
+
 private
 
 \ ---- the opcode names --------------------------------------------------------
@@ -362,6 +393,10 @@ private
       dload    OF s" a64.dload"    ENDOF
       dstore   OF s" a64.dstore"   ENDOF
       dpublish OF s" a64.dpublish" ENDOF
+      dpush    OF s" a64.dpush"    ENDOF
+      dpop     OF s" a64.dpop"     ENDOF
+      fdpush   OF s" a64.fdpush"   ENDOF
+      fdpop    OF s" a64.fdpop"    ENDOF
       aload    OF s" a64.aldr"     ENDOF
       astore   OF s" a64.astr"     ENDOF
       abload   OF s" a64.aldrb"    ENDOF
@@ -424,7 +459,7 @@ public
 \ ---- the closed opcode vocabulary -------------------------------------------
 \ These ordinals predate the enum declaration order and are kept stable for the
 \ native passes that store them in their own tables.
-76 constant OPCODES
+80 constant OPCODES
 
 : ORD ( A64IR:opcode -- n )
    MATCH opcode
@@ -504,6 +539,10 @@ public
       codeaddr  OF 73 ENDOF
       flagi     OF 74 ENDOF
       cmpbri    OF 75 ENDOF
+      dpush     OF 76 ENDOF
+      dpop      OF 77 ENDOF
+      fdpush    OF 78 ENDOF
+      fdpop     OF 79 ENDOF
    ;MATCH ;
 
 : NTH ( n -- A64IR:opcode )
@@ -584,6 +623,10 @@ public
       73 of A64IR-OPCODE:CODEADDR  endof
       74 of A64IR-OPCODE:FLAGI     endof
       75 of A64IR-OPCODE:CMPBRI    endof
+      76 of A64IR-OPCODE:DPUSH     endof
+      77 of A64IR-OPCODE:DPOP      endof
+      78 of A64IR-OPCODE:FDPUSH    endof
+      79 of A64IR-OPCODE:FDPOP     endof
       E-A64IR-OPCODE throw
    endcase ;
 
@@ -606,7 +649,8 @@ private
 11 constant K-TRAP-ENTRY
 12 constant K-FUN
 13 constant K-COND
-14 constant KEYS
+14 constant K-DWB
+15 constant KEYS
 
 : KEY-NAME ( n -- ptr u8 n )
    case
@@ -624,6 +668,7 @@ private
       K-TRAP-ENTRY of s" a64.trap-entry" endof
       K-FUN        of s" a64.fun" endof
       K-COND       of s" a64.cond" endof
+      K-DWB        of s" a64.dwb" endof
       E-A64IR-DIALECT throw
    endcase ;
 
@@ -851,6 +896,11 @@ public
 : KEY-DBACK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-DBACK KEY-BIND ;
 
+\ Its own key and not `a64.dbytes`, because three passes tell a pointer move
+\ that stands alone from one a transfer carries by ASKING which key it is under.
+: KEY-DWB ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   K-DWB KEY-BIND ;
+
 : KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-ENTRY KEY-BIND ;
 
@@ -882,6 +932,9 @@ public
 : DBACK-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    DBYTES IR-BUILD:INTERN-INT-ATTR ;
 
+: DWB-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   DWB IR-BUILD:INTERN-INT-ATTR ;
+
 : ENTRY-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    ENTRY IR-BUILD:INTERN-INT-ATTR ;
 
@@ -911,6 +964,10 @@ private
       dload    OF s" a64.rule.dload"    ENDOF
       dstore   OF s" a64.rule.dstore"   ENDOF
       dpublish OF s" a64.rule.dpublish" ENDOF
+      dpush    OF s" a64.rule.dpush"    ENDOF
+      dpop     OF s" a64.rule.dpop"     ENDOF
+      fdpush   OF s" a64.rule.fdpush"   ENDOF
+      fdpop    OF s" a64.rule.fdpop"    ENDOF
       aload    OF s" a64.rule.aldr"     ENDOF
       astore   OF s" a64.rule.astr"     ENDOF
       abload   OF s" a64.rule.aldrb"    ENDOF
@@ -992,6 +1049,10 @@ private
       dload    OF s" a64.render.dload"    ENDOF
       dstore   OF s" a64.render.dstore"   ENDOF
       dpublish OF s" a64.render.dpublish" ENDOF
+      dpush    OF s" a64.render.dpush"    ENDOF
+      dpop     OF s" a64.render.dpop"     ENDOF
+      fdpush   OF s" a64.render.fdpush"   ENDOF
+      fdpop    OF s" a64.render.fdpop"    ENDOF
       aload    OF s" a64.render.aldr"     ENDOF
       astore   OF s" a64.render.astr"     ENDOF
       abload   OF s" a64.render.aldrb"    ENDOF
@@ -1312,6 +1373,44 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:DPUBLISH NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ ---- the fused forms ---------------------------------------------------------
+\ The machine writes the base register back as part of a load or a store, so one
+\ instruction is a store AND the publish after it, or a take AND the load after
+\ it. Each builder serves both register files, the way the plain load and store
+\ above do. THERE IS NO SLOT ATTRIBUTE ON ANY OF THEM: the form encodes the
+\ transfer at the pointer itself - the post-indexed store writes at the base and then moves it,
+\ the pre-indexed load moves the base and then reads there - so the cell is the
+\ one the pointer stands at and `a64.dwb` is the whole of what they carry.
+\
+\ A store that also publishes writes memory and moves the pointer, which is one
+\ effect; a take that also loads does both, which is why this one is READ-WRITE
+\ where a plain a64.dload is READ.
+: DEF-DPUSH ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-DWB IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
+   TOTAL
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+: DEF-DPOP ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-DWB IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ-WRITE DSTACK-MEM
+   TOTAL
+   TARGET
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the two addressed forms -------------------------------------------------
@@ -1869,6 +1968,8 @@ public
    c b t k A64IR-OPCODE:DLOAD DEF-DLOAD
    c b t k A64IR-OPCODE:DSTORE DEF-DSTORE
    c b k DEF-DPUBLISH
+   c b t k A64IR-OPCODE:DPUSH DEF-DPUSH
+   c b t k A64IR-OPCODE:DPOP DEF-DPOP
    c b t t k A64IR-OPCODE:ALOAD DEF-ALDR
    c b t t k A64IR-OPCODE:ASTORE DEF-ASTR
    c b t k DEF-ALDRB
@@ -1916,6 +2017,8 @@ public
    c b f k A64IR-OPCODE:FLOAD DEF-LDR
    c b f k A64IR-OPCODE:FDLOAD DEF-DLOAD
    c b f k A64IR-OPCODE:FDSTORE DEF-DSTORE
+   c b f k A64IR-OPCODE:FDPUSH DEF-DPUSH
+   c b f k A64IR-OPCODE:FDPOP DEF-DPOP
    c b t f k A64IR-OPCODE:FALOAD DEF-ALDR
    c b t f k A64IR-OPCODE:FASTORE DEF-ASTR ;
 
@@ -1952,6 +2055,8 @@ private
       dload     OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:DLOAD DEF-DLOAD ENDOF
       dstore    OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:DSTORE DEF-DSTORE ENDOF
       dpublish  OF c b c b MEM-TYPE DEF-DPUBLISH ENDOF
+      dpush     OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:DPUSH DEF-DPUSH ENDOF
+      dpop      OF c b c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:DPOP DEF-DPOP ENDOF
       aload     OF c b c b GPR-TYPE c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:ALOAD DEF-ALDR ENDOF
       astore    OF c b c b GPR-TYPE c b GPR-TYPE c b MEM-TYPE A64IR-OPCODE:ASTORE DEF-ASTR ENDOF
       abload    OF c b c b GPR-TYPE c b MEM-TYPE DEF-ALDRB ENDOF
@@ -1998,6 +2103,8 @@ private
       fload     OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FLOAD DEF-LDR ENDOF
       fdload    OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FDLOAD DEF-DLOAD ENDOF
       fdstore   OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FDSTORE DEF-DSTORE ENDOF
+      fdpush    OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FDPUSH DEF-DPUSH ENDOF
+      fdpop     OF c b c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FDPOP DEF-DPOP ENDOF
       faload    OF c b c b GPR-TYPE c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FALOAD DEF-ALDR ENDOF
       fastore   OF c b c b GPR-TYPE c b FPR-TYPE c b MEM-TYPE A64IR-OPCODE:FASTORE DEF-ASTR ENDOF
    ;MATCH ;

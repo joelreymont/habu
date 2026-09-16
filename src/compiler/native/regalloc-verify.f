@@ -108,6 +108,7 @@ variable V-DSTACK                    \ whether the contract declares the data-st
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DWB IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TRAP IR-ID:ir-symbol-id
@@ -217,6 +218,13 @@ variable FPO-RUN                     \ where the next predecessor run starts
 : DSLOT-OF ( IR-ID:ir-op-id -- n )   0 BND-DSLOT @ ATTR-INT ;
 : DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
 : DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
+: DWB-OF ( IR-ID:ir-op-id -- n )     0 BND-DWB @ ATTR-INT ;
+
+\ A transfer that carries the pointer move in its own encoding. The two fused
+\ forms are the only operations this dialect gives that key, so this pass tells
+\ them from the plain moves the way it tells everything else: by ASKING.
+: DFUSED? ( IR-ID:ir-op-id -- bool )
+   DWB-OF NOSLOT <> ;
 
 : DCALL? ( IR-ID:ir-op-id -- bool )
    DBACK-OF NOSLOT <> ;
@@ -231,12 +239,59 @@ variable FPO-RUN                     \ where the next predecessor run starts
 : DSTACK-TOUCH? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    id DBYTES-OF NOSLOT <>  id DSLOT-OF NOSLOT <>  or
-   id DBACK-OF NOSLOT <> or ;
+   id DBACK-OF NOSLOT <> or  id DWB-OF NOSLOT <> or ;
 
 : STORES? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
    V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
    IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
+
+\ An operation that TRANSFERS one cell of the caller's stack. It names the cell
+\ under its own slot, or - fused - by standing at the pointer, because that form
+\ encodes the access at offset zero and has no field for another.
+: DCELL? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF NOSLOT <> if true exit then
+   id DFUSED? ;
+
+: DFUSED-STORE? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id DFUSED? if id STORES? exit then false ;
+
+: DFUSED-LOAD? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id DFUSED? if id STORES? 0= exit then false ;
+
+\ ---- what a pointer move really is ------------------------------------------
+\ Every move this pass re-derives is the operation's own attribute PLUS whatever
+\ the transfer beside it carries in its own encoding: the last store of a
+\ publish run can take the publish and the first load of a take-back run the
+\ take, and then the operation itself moves nothing. The two numbers ADD because
+\ both instructions run, so this is the real movement and not a choice between
+\ two readings of it. The neighbour has to be a transfer of the RIGHT
+\ DIRECTION, or two adjacent sites would read each other's writeback: a fused
+\ load standing before a call is the previous site's take-back, never this
+\ one's publish.
+: VDWB-AT ( IR-ID:ir-block-id n bool -- n )
+   {: bk:IR-ID:ir-block-id at:n store:bool :}
+   at 0 < at bk OP-COUNT >= or if 0 exit then
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   store if id DFUSED-STORE? else id DFUSED-LOAD? then 0= if 0 exit then
+   id DWB-OF ;
+
+\ A publish takes what the store in front of it carries; a take what the load
+\ behind it does.
+: VDPUB-AT ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT DBYTES-OF  bk at 1- true VDWB-AT + ;
+
+: VDTAKE-AT ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT DBYTES-OF  bk at 1+ false VDWB-AT + ;
+
+: VDBACK-AT ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT DBACK-OF  bk at 1+ false VDWB-AT + ;
 
 : FUN-AT ( n -- IR-ID:ir-fun-id )
    {: k:n :}
@@ -687,7 +742,8 @@ variable FPO-RUN                     \ where the next predecessor run starts
    {: bk:IR-ID:ir-block-id at:n want:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
-   id DBYTES-OF want <> if E-A64RAV-DSTACK throw then ;
+   id DBYTES-OF NOSLOT = if E-A64RAV-DSTACK throw then
+   bk at VDPUB-AT want <> if E-A64RAV-DSTACK throw then ;
 
 : FW-IX ( n n n -- n )
    {: pl:n b:n w:n :}
@@ -1532,6 +1588,7 @@ variable VD-BCOST
 
 : VDSLOT-CELL ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
+   id DFUSED? if 0 VDCELL exit then
    id DSLOT-OF {: off:n :}
    off VDREACH-CK
    off VDCELL ;
@@ -1546,9 +1603,9 @@ variable VD-BCOST
    {: id:IR-ID:ir-op-id j:n :}
    VMAX VDSLOTS +  id IR-ID:OP-LOCAL VDSLOTS * +  j + ;
 
-: VDCALL-XFER ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id DBACK-OF VDCELL {: back:n :}
+: VDCALL-XFER ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id take:n :}
+   take VDCELL {: back:n :}
    VDSLOTS 0 ?do VD-BOT VD-UNDEF i VDPUT loop
    back 0 ?do
       id i VDCALLRES  VD-DEF  i VDPUT
@@ -1624,9 +1681,9 @@ DKEEP-HOOK-DEFAULT
    s VDV@ k = if id DKEEP-SAME DKEEP! then
    id VDSLOT-XFER ;
 
-: VDPUBLISH-CK ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id DBYTES-OF VDCELL 0 ?do
+: VDPUBLISH-CK ( n -- )
+   {: give:n :}
+   give VDCELL 0 ?do
       i VDD@ VD-DEF <> if E-A64RAV-DRES throw then
    loop ;
 
@@ -1636,10 +1693,11 @@ DKEEP-HOOK-DEFAULT
       outs i A64EFF:SEQ-SLOT@ VDD@ VD-DEF <> if E-A64RAV-DRES throw then
    loop ;
 
-: VDOP-XFER ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id DCALL? if id VDCALL-XFER exit then
-   id DSLOT-OF NOSLOT <> if id VDSLOT-XFER exit then
+: VDOP-XFER ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id DCALL? if id  bk at VDBACK-AT  VDCALL-XFER exit then
+   id DCELL? if id VDSLOT-XFER exit then
    id VDCLOBBER? if VDCLOBBER-XFER then ;
 
 \ ---- the fixpoint ------------------------------------------------------------
@@ -1719,7 +1777,7 @@ DKEEP-HOOK-DEFAULT
    {: f:IR-ID:ir-fun-id b:n :}
    b VDCUR<IN
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 0 ?do  bk i OP-AT VDOP-XFER  loop
+   bk OP-COUNT 0 ?do  bk i VDOP-XFER  loop
    b VDOUT<CUR ;
 
 : VDENTRY-IN ( n A64EFF:placeseq -- )
@@ -1762,10 +1820,14 @@ DKEEP-HOOK-DEFAULT
 \ A provisional named value may still meet a conflicting path and become BOT.
 \ Check loads and stores only against the settled inputs, in this mandatory
 \ walk over every block. A refusal must not depend on the fixpoint's schedule.
-: VDCK-OP ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id DCALL? if id VDPUBLISH-CK  id VDCALL-XFER exit then
-   id DSLOT-OF NOSLOT <> if
+: VDCK-OP ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id DCALL? if
+      bk at VDPUB-AT VDPUBLISH-CK
+      id  bk at VDBACK-AT  VDCALL-XFER exit
+   then
+   id DCELL? if
       id STORES? if id VDSTORE-CK exit then
       id VDLOAD-CK exit
    then
@@ -1775,7 +1837,7 @@ DKEEP-HOOK-DEFAULT
    {: f:IR-ID:ir-fun-id b:n :}
    b VDCUR<IN
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 0 ?do  bk i OP-AT VDCK-OP  loop ;
+   bk OP-COUNT 0 ?do  bk i VDCK-OP  loop ;
 
 : VDPUB-BACK ( -- n )
    V-TAIL @ 0<> if 1 exit then
@@ -1786,7 +1848,7 @@ DKEEP-HOOK-DEFAULT
    rb VDCUR<IN
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT PRO-N - VDPUB-BACK - {: pub:n :}
-   pub 0 ?do  xb i OP-AT VDOP-XFER  loop
+   pub 0 ?do  xb i VDOP-XFER  loop
    outs r VDOUTS-CK ;
 
 : VDRES-CK ( IR-ID:ir-fun-id n n n A64EFF:placeseq A64EFF:placeseq -- )
@@ -1803,13 +1865,13 @@ DKEEP-HOOK-DEFAULT
 : VDLOAD? ( IR-ID:ir-block-id n -- bool )
    {: bk:IR-ID:ir-block-id at:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
-   id DSLOT-OF NOSLOT = if false exit then
+   id DCELL? 0= if false exit then
    id STORES? 0= ;
 
 : VDSTORE? ( IR-ID:ir-block-id n -- bool )
    {: bk:IR-ID:ir-block-id at:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
-   id DSLOT-OF NOSLOT = if false exit then
+   id DCELL? 0= if false exit then
    id STORES? ;
 
 : VDSLOT-AT ( IR-ID:ir-block-id n -- n )
@@ -1828,7 +1890,7 @@ DKEEP-HOOK-DEFAULT
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
    id DBYTES-OF NOSLOT = if E-A64RAV-DSTACK throw then
-   entry id DBYTES-OF - {: stand:n :}
+   entry  bk at VDTAKE-AT -  {: stand:n :}
    stand 0 < if E-A64RAV-DSTACK throw then
    stand A64EFF:SLOT-BACK > if E-A64RAV-DSTACK throw then
    stand A64IR:SLOT-WIDTH mod 0<> if E-A64RAV-DSTACK throw then
@@ -1950,10 +2012,10 @@ DKEEP-HOOK-DEFAULT
       bk at i + VDSLOT-AT limit >= if E-A64RAV-CALL throw then
    loop ;
 
-: VDNET-CK ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id VCALL-ENTRY NOSLOT <> if exit then
-   id DBACK-OF  id DBYTES-OF -  {: net:n :}
+: VDNET-CK ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id cp:n :}
+   bk cp OP-AT VCALL-ENTRY NOSLOT <> if exit then
+   bk cp VDBACK-AT  bk cp VDPUB-AT -  {: net:n :}
    net VD-SELF @ <> if E-A64RAV-CALL throw then ;
 
 : VDREQ+ ( n -- )
@@ -1968,8 +2030,9 @@ DKEEP-HOOK-DEFAULT
    cp bk OP-COUNT 1- <> if E-A64RAV-CALL throw then
    bk cp OP-AT {: id:IR-ID:ir-op-id :}
    id DBACK-OF NOSLOT <> if E-A64RAV-CALL throw then
-   id DBYTES-OF VD-STAND @ + VDREQ+
-   bk at  cp at -  id DBYTES-OF VDCELL  VDRUN-BOUND
+   bk cp VDPUB-AT {: give:n :}
+   give VD-STAND @ + VDREQ+
+   bk at  cp at -  give VDCELL  VDRUN-BOUND
    cp 1+ ;
 
 : VCALL-SITE ( IR-ID:ir-block-id n -- n )
@@ -1978,14 +2041,15 @@ DKEEP-HOOK-DEFAULT
    at g + {: cp:n :}
    cp bk OP-COUNT >= if E-A64RAV-CALL throw then
    bk cp OP-AT TRAP-AT? if bk at cp VTRAP-SITE exit then
-   bk cp OP-AT {: id:IR-ID:ir-op-id :}
-   id DCALL? 0= if E-A64RAV-CALL throw then
-   id VDNET-CK
-   id DBYTES-OF VD-STAND @ + VDREQ+
-   id DBACK-OF VD-STAND @ + VDREQ+
-   bk at g  id DBYTES-OF VDCELL  VDRUN-BOUND
+   bk cp OP-AT DCALL? 0= if E-A64RAV-CALL throw then
+   bk cp VDNET-CK
+   bk cp VDPUB-AT {: give:n :}
+   bk cp VDBACK-AT {: back:n :}
+   give VD-STAND @ + VDREQ+
+   back VD-STAND @ + VDREQ+
+   bk at g  give VDCELL  VDRUN-BOUND
    bk cp 1+ DLOAD-RUN {: b:n :}
-   bk cp 1+ b  id DBACK-OF VDCELL  VDRUN-BOUND
+   bk cp 1+ b  back VDCELL  VDRUN-BOUND
    cp 1+ b + ;
 
 : VDCLEAN1 ( IR-ID:ir-fun-id n n n -- )
@@ -2243,6 +2307,7 @@ public
    c b A64IR:KEY-FRAME  0 BND-FRAME !
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
+   c b A64IR:KEY-DWB    0 BND-DWB !
    c b A64IR:KEY-DBACK  0 BND-DBACK !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !

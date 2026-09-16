@@ -81,11 +81,12 @@ A64EFF:FILE-SIZE constant REGS-N
 
 -1 constant NOPOS
 
-\ The three keys that say an operation reaches the CALLER's data stack.
-3 constant DKEYS-N
+\ The four keys that say an operation reaches the CALLER's data stack.
+4 constant DKEYS-N
 0 constant DK-SLOT
 1 constant DK-BYTES
 2 constant DK-BACK
+3 constant DK-WB
 
 -1 constant NOBODY
 
@@ -385,17 +386,28 @@ variable SHORT-FUN                           \ the function whose scan ran short
    id 0 BND-SHIFT @ ATTR-INT-OF A64IR:HALF-BITS / ;
 
 
+\ An operation that TRANSFERS one cell of the caller's stack. It names the cell
+\ by its own slot, or - in the two fused forms, which carry the pointer move in
+\ the transfer - by standing at the pointer, which is what `a64.dwb` says. The
+\ plain pointer moves carry neither key and are no transfer.
+: DXFER? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id DK-SLOT BND-DKEY @ ATTR-INT-OF NOATTR <> if true exit then
+   id DK-WB BND-DKEY @ ATTR-INT-OF NOATTR <> ;
+
+\ Which way it moves the cell, asked of the schema. A fused load is READ-WRITE
+\ rather than READ - it moves the pointer as well - so the store is the arm that
+\ names its effect and the load is every other transfer.
 : DSTORE? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id DK-SLOT BND-DKEY @ ATTR-INT-OF NOATTR = if false exit then
+   id DXFER? 0= if false exit then
    V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
    IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
 
 : DLOAD? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id DK-SLOT BND-DKEY @ ATTR-INT-OF NOATTR = if false exit then
-   V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
-   IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ ;
+   id DXFER? 0= if false exit then
+   id DSTORE? 0= ;
 
 : FRAME-ATTR ( IR-ID:ir-op-id -- n )
    0 BND-FRAME @ ATTR-INT-OF ;
@@ -1985,6 +1997,7 @@ public
    c b A64IR:KEY-DSLOT  DK-SLOT BND-DKEY !
    c b A64IR:KEY-DBYTES DK-BYTES BND-DKEY !
    c b A64IR:KEY-DBACK  DK-BACK BND-DKEY !
+   c b A64IR:KEY-DWB    DK-WB BND-DKEY !
    c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    c b A64IR:KEY-TRAP-ENTRY 0 BND-TRAP !
    c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !

@@ -561,7 +561,7 @@ public
 \   -8870..-8879  C66x instruction facts (package C6XFACTS)
 \   -8880..-8889  C66x subset interpreter (package C6XSIM)
 \   -8890..-8899  C6000 EABI helper emission (package C6XEABI)
-\   -8420..-8439, -8487..-8499, -8520..-8599, -8666..-8699, -8740..-8839,
+\   -8420..-8439, -8488..-8499, -8520..-8599, -8666..-8699, -8740..-8839,
 \   -8880..-8999
 \                 unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
@@ -909,7 +909,8 @@ public
 \ A Habu word takes its inputs and publishes its outputs through canonical
 \ data-stack slots rather than through registers, so a position of a calling
 \ convention became a PLACE - a register or a data-stack slot - and the machine
-\ dialect gained the four forms that reach the data stack. These are the facts
+\ dialect gained the forms that reach the data stack - four plain ones, and the
+\ two that carry the pointer move in the transfer itself. These are the facts
 \ the five owners of that convention add. Refusals another authority owns keep
 \ that authority's name: a place list that is not canonical at all is still
 \ A64EFF's E-A64EFF-SEQ, a register no routine may hold state in is
@@ -921,6 +922,7 @@ public
 -8484 constant E-A64RA-PLACE    \ a place list the allocation cannot honour: one side mixing register places with data-stack places, or data-stack places declared on a module whose interface is still block arguments or terminator operands
 -8485 constant E-A64RAV-PLACE   \ the same, re-derived: a mixed side, or data-stack places on a module that still carries its interface as block arguments or terminator operands
 -8486 constant E-A64RAV-DSTACK  \ a data-stack entry or exit sequence that is not the one the contract declares: a missing or misplaced adjustment, a wrong byte count, a load or store naming a slot no place declares, or a module that reaches both the data stack and a frame
+-8487 constant E-A64IR-DWB      \ a pointer move a transfer cannot carry in its own encoding: nothing at all, which is the plain access and not a fused one, not a multiple of one stack cell, or past the magnitude the nine-bit signed writeback field holds in either sign
 
 \ Native ARM64 control flow: -8500..-8519
 \

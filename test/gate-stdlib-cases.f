@@ -284,6 +284,10 @@ SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
 
+SUITE compiler-native-fused-moves
+   test/compiler/native-fused-moves.f
+;SUITE
+
 SUITE compiler-native-session
    test/compiler/native-session.f
 ;SUITE

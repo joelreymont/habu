@@ -141,8 +141,9 @@ private
 \ CMPSEL-SHAPE-CASE, the two that answer a double in FSEL-SHAPE-CASE, the four
 \ whose flags an Fcmp wrote in FFSEL-SHAPE-CASE, the six that reach memory in the
 \ D file in D-ADDR-SHAPE-CASE and D-SLOT-SHAPE-CASE, the six bitwise and
-\ shift forms in BITWISE-CASE, and the two comparisons against an immediate in
-\ CMPI-SHAPE-CASE, and the count covers all of them.
+\ shift forms in BITWISE-CASE, the two comparisons against an immediate in
+\ CMPI-SHAPE-CASE, and the four that carry a pointer move in their own encoding
+\ in FUSED-SPELL-CASE and FUSED-SHAPE-CASE, and the count covers all of them.
 : COUNT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -183,7 +184,7 @@ private
    c b A64IR-OPCODE:CODEADDR A64IR:OPCODE {: ca:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:FLAGI A64IR:OPCODE {: gi:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:CMPBRI A64IR:OPCODE {: bi:IR-ID:ir-symbol-id :}
-   b IR-BUILD:SCHEMAS 76 T=
+   b IR-BUILD:SCHEMAS 80 T=
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED? TTRUE
    rv k IR-SCHEMA:FDEFINED? TTRUE
@@ -273,7 +274,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   10 T= 0 T= TTRUE ;
+   11 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.
@@ -366,6 +367,64 @@ private
    s" the four data-stack opcodes and their two keys are spelled as declared" T-LABEL
    BND [: DSTACK-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ The four forms that carry the pointer move in the transfer itself, and the
+\ key that is the whole of what they hold. THE KEY IS NOT `a64.dbytes`: three
+\ passes tell a move that stands alone from one a transfer carries by asking
+\ which key it is under, and under one key they could not.
+: FUSED-SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:DPUSH A64IR:OPCODE {: sh:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:DPOP A64IR:OPCODE {: pp:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FDPUSH A64IR:OPCODE {: fh:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FDPOP A64IR:OPCODE {: fp:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-DWB {: wk:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   rv sh IR-SCHEMA:FDEFINED?
+   rv pp IR-SCHEMA:FDEFINED?
+   rv fh IR-SCHEMA:FDEFINED?
+   rv fp IR-SCHEMA:FDEFINED?
+   pv yv sh s" a64.dpush" IR-SYM:FEQ?
+   pv yv pp s" a64.dpop" IR-SYM:FEQ?
+   pv yv fh s" a64.fdpush" IR-SYM:FEQ?
+   pv yv fp s" a64.fdpop" IR-SYM:FEQ?
+   pv yv wk s" a64.dwb" IR-SYM:FEQ? ;
+
+: FUSED-SPELL-CASE ( -- )
+   s" the four fused data-stack opcodes and their key are spelled as declared"
+   T-LABEL
+   BND [: FUSED-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ A fused transfer carries ONE attribute and no slot, because the form encodes
+\ the access at the pointer and has no field for an offset - which is the whole
+\ reason a reader may take its cell to be the one the pointer stands at. The
+\ store's effect is WRITE as a plain store's is; the load's is READ-WRITE and
+\ not READ, because it moves the pointer as well as reading through it.
+: FUSED-SHAPE-BODY ( IR-CTX:ctx -- n n n bool n n n bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:DPUSH A64IR:OPCODE {: sh:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:DPOP A64IR:OPCODE {: pp:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv sh IR-SCHEMA:FOPERANDS
+   rv sh IR-SCHEMA:FRESULTS
+   rv sh IR-SCHEMA:FATTRS
+   rv sh IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
+   rv pp IR-SCHEMA:FOPERANDS
+   rv pp IR-SCHEMA:FRESULTS
+   rv pp IR-SCHEMA:FATTRS
+   rv pp IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ-WRITE IR--SCHEMA-EFFECT:EQ ;
+
+: FUSED-SHAPE-CASE ( -- )
+   s" a fused transfer holds its pointer move and no slot at all" T-LABEL
+   BND [: FUSED-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 1 T= 2 T= 1 T=
+   TTRUE 1 T= 1 T= 2 T= ;
 
 \ ---- the declared shapes -----------------------------------------------------
 \ Every field the arithmetic schema declares, read back off the frozen table.
@@ -1487,6 +1546,35 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:DBYTES-ATTR drop ;
 
+\ The writeback field is nine SIGNED bits, which is a much narrower bound than
+\ the add-and-subtract immediate a standalone move rides in - and a move of
+\ NOTHING is refused outright, because an access that moves the pointer by zero
+\ is the plain access and the selector emits that form for it.
+: DWB-ZERO-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b 0 A64IR:DWB-ATTR drop ;
+
+: DWB-ODD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH 1+ A64IR:DWB-ATTR drop ;
+
+: DWB-HIGH-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b 256 A64IR:DWB-ATTR drop ;
+
+: DWB-LOW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b -256 A64IR:DWB-ATTR drop ;
+
+: DWB-ZERO ( -- )  BND [: DWB-ZERO-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DWB-ODD ( -- )   BND [: DWB-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DWB-HIGH ( -- )  BND [: DWB-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DWB-LOW ( -- )   BND [: DWB-LOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : DSLOT-ODD ( -- )    BND [: DSLOT-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DSLOT-DEEP ( -- )   BND [: DSLOT-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
 : DSLOT-UNDER ( -- n ) BND [: DSLOT-UNDER-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1530,6 +1618,33 @@ private
    [: DBYTES-LOW ;] E-A64IR-DBYTES TTHROWSQ
    s" a data-stack adjustment past its immediate is refused" T-LABEL
    [: DBYTES-HIGH ;] E-A64IR-DBYTES TTHROWSQ ;
+
+: DWB-REFUSE-CASES ( -- )
+   s" a writeback of nothing is refused" T-LABEL
+   [: DWB-ZERO ;] E-A64IR-DWB TTHROWSQ
+   s" a writeback that is not a whole cell is refused" T-LABEL
+   [: DWB-ODD ;] E-A64IR-DWB TTHROWSQ ;
+
+: DWB-REACH-CASES ( -- )
+   s" a writeback past the nine-bit field upwards is refused" T-LABEL
+   [: DWB-HIGH ;] E-A64IR-DWB TTHROWSQ
+   s" a writeback past the nine-bit field downwards is refused" T-LABEL
+   [: DWB-LOW ;] E-A64IR-DWB TTHROWSQ ;
+
+\ The bound is a MAGNITUDE, so both signs of the widest move the field holds are
+\ accepted and the two refusals above are about the reach and not about the sign.
+: DWB-EDGE-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b 248 A64IR:DWB-ATTR drop
+   c b -248 A64IR:DWB-ATTR drop
+   248 A64IR:WRITEBACK? if 1 else 0 then
+   0 A64IR:WRITEBACK? if 1 else 0 then ;
+
+: DWB-EDGE-CASE ( -- )
+   s" the widest writeback the field holds is accepted in either sign" T-LABEL
+   BND [: DWB-EDGE-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 1 T= ;
 
 \ ---- the callee entry a call to another word carries -------------------------
 \ An address of CODE on this machine: the address of a whole instruction, and
@@ -1694,6 +1809,20 @@ private
 : GROUP-FRAME-SPELL ( IR-CTX:ctx -- )
    drop
    FRAME-SPELL-CASE ;
+
+: GROUP-FUSED ( IR-CTX:ctx -- )
+   drop
+   FUSED-SPELL-CASE
+   FUSED-SHAPE-CASE ;
+
+: GROUP-DWB-REFUSE ( IR-CTX:ctx -- )
+   drop
+   DWB-REFUSE-CASES ;
+
+: GROUP-DWB-REACH ( IR-CTX:ctx -- )
+   drop
+   DWB-REACH-CASES
+   DWB-EDGE-CASE ;
 
 : GROUP-SHAPE ( IR-CTX:ctx -- )
    drop
@@ -2028,6 +2157,7 @@ public
    BND [: GROUP-FCMP ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-FUSED ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-MOV ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-ADDR ;] IR-CTX:WITH-CONTEXT
@@ -2041,6 +2171,8 @@ public
    BND [: GROUP-DSLOT-SIGN ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DSLOT-REACH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DBYTES-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-DWB-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-DWB-REACH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-ENTRY-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHIFT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TABLE-REFUSE ;] IR-CTX:WITH-CONTEXT

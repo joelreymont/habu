@@ -67,7 +67,7 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 
 \ This pass writes no attribute of its own but COPIES every one the selector
 \ built, and a field copied under the wrong key would misread a frame.
-14 constant KEYS-N
+15 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -82,6 +82,7 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
 12 constant K-FUN                      \ which function of the emission an address form names
 13 constant K-ADDR                     \ the relocation kind of the value a move-wide chain builds
+14 constant K-DWB                      \ the pointer move a fused transfer carries in its own encoding
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -127,11 +128,15 @@ DYNAMIC-BUFFER USE-COUNTS n
    ;
 create NAMEBUF NAME-CAP allot
 
-\ One cell per operation of the module: whether the walk writes it.
+\ One cell per operation of the module: whether the walk writes it, and what a
+\ removed transfer hands back to the operation in front of it.
 DYNAMIC-BUFFER REMOVED-BUF n
 : REMOVED ( -- ptr n ) 0 REMOVED-BUF ;
+DYNAMIC-BUFFER ABSORB-BUF n
+: ABSORB ( -- ptr n ) 0 ABSORB-BUF ;
 : RESERVE-PLAN ( -- )
-   OPS-MAX REMOVED-BUF-RESERVE ;
+   OPS-MAX REMOVED-BUF-RESERVE
+   OPS-MAX ABSORB-BUF-RESERVE ;
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -266,6 +271,31 @@ DYNAMIC-BUFFER REMOVED-BUF n
    s A64IR-OPCODE:FDLOAD A64IR:ORD = or 0= if false exit then
    id 0 RESULT-AT USES-OF 0= ;
 
+\ The same load with a pointer move folded into it. Removing it may not remove
+\ the move, and a fused form has nowhere to keep one it does not transfer for -
+\ so the operation in FRONT of it takes the move back, which is where selection
+\ found it. That operation is the take this load rode on or the call it came
+\ back from, and each of those is the first operation of its own sequence, so
+\ there is always one in front.
+: UNUSED-DPOP? ( IR-ID:ir-op-id -- bool ) {: id:IR-ID:ir-op-id :}
+   id OP-SLOT {: s:n :}
+   s A64IR-OPCODE:DPOP A64IR:ORD =
+   s A64IR-OPCODE:FDPOP A64IR:ORD = or 0= if false exit then
+   id 0 RESULT-AT USES-OF 0= ;
+
+: DWB-OF ( IR-ID:ir-op-id -- n ) {: id:IR-ID:ir-op-id :}
+   0
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT KEY-SLOT-OF K-DWB = if
+         drop id i ATTR-INT-AT leave
+      then
+   loop ;
+
+: PLAN-REMOVE ( n n -- )
+   {: g:n at:n :}
+   1 g at + cells REMOVED + !
+   1 PLAN-REMOVED +! ;
+
 : PLAN-BLOCK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
@@ -274,11 +304,14 @@ DYNAMIC-BUFFER REMOVED-BUF n
    n 0 < n OPS-MAX g - > or if E-A64PRUNE-CAP throw then
    n 0 ?do
       0 g i + cells REMOVED + !
+      0 g i + cells ABSORB + !
    loop
    n 0 ?do
-      bk i OP-AT UNUSED-DLOAD? if
-         1 g i + cells REMOVED + !
-         1 PLAN-REMOVED +!
+      bk i OP-AT UNUSED-DLOAD? if g i PLAN-REMOVE then
+      bk i OP-AT UNUSED-DPOP? if
+         i 0= if E-A64PRUNE-SHAPE throw then
+         g i PLAN-REMOVE
+         bk i OP-AT DWB-OF  g i + 1- cells ABSORB + !
       then
    loop
    g n + B-BASE ! ;
@@ -287,6 +320,9 @@ DYNAMIC-BUFFER REMOVED-BUF n
 \ functions, blocks and operations in the order the plan pass did.
 : REMOVED? ( n -- bool )
    B-BASE @ + cells REMOVED + @ 0<> ;
+
+: ABSORB-AT ( n -- n )
+   B-BASE @ + cells ABSORB + @ ;
 
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
@@ -305,8 +341,19 @@ DYNAMIC-BUFFER REMOVED-BUF n
    CTX BLD id i IR-BUILD:OP-RESULT@ ;
 
 \ ---- copying one operation of the old block ----------------------------------
-: COPY-ATTRS ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\ Which key a handed-back move lands under: a call makes its take under
+\ `a64.dback` and everything else under `a64.dbytes`, and both count the same
+\ way, so the one number goes to whichever of the two the operation holds.
+: HAS-KEY? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id want:n :}
+   false
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT KEY-SLOT-OF want = if drop true leave then
+   loop ;
+
+: COPY-ATTRS ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id back:n :}
+   id K-DBACK HAS-KEY? if 0 back else back 0 then {: bytes+:n back+:n :}
    id ATTRS-OF {: n:n :}
    n 0 ?do
       id i ATTR-KEY-AT KEY-SLOT-OF {: k:n :}
@@ -336,7 +383,11 @@ DYNAMIC-BUFFER REMOVED-BUF n
          IR-BUILD:ADD-ATTR
       then
       k K-DBYTES = if
-         CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD v A64IR:DBYTES-ATTR
+         CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD v bytes+ + A64IR:DBYTES-ATTR
+         IR-BUILD:ADD-ATTR
+      then
+      k K-DWB = if
+         CTX BLD  CTX BLD A64IR:KEY-DWB  CTX BLD v A64IR:DWB-ATTR
          IR-BUILD:ADD-ATTR
       then
       k K-COND = if
@@ -344,7 +395,7 @@ DYNAMIC-BUFFER REMOVED-BUF n
          IR-BUILD:ADD-ATTR
       then
       k K-DBACK = if
-         CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD v A64IR:DBACK-ATTR
+         CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD v back+ + A64IR:DBACK-ATTR
          IR-BUILD:ADD-ATTR
       then
       k K-ENTRY = if
@@ -401,16 +452,19 @@ DYNAMIC-BUFFER REMOVED-BUF n
       old i RESULT-AT  new i RESULT@  VBIND
    loop ;
 
-: COPY-OP ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+: COPY-OP ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id back:n :}
    id OP-SLOT A64IR:NTH {: o:A64IR:opcode :}
    id o OPEN
    id COPY-OPERANDS
    id COPY-RESULTS
    id COPY-SUCCS
-   id COPY-ATTRS
+   id back COPY-ATTRS
    id  CLOSE  BIND-RESULTS ;
 
+\ Both removable forms are shaped the same way here - the order arrives as the
+\ one operand and leaves as the second result - so the chain closes over the
+\ operation whether it was a plain load or a fused one.
 : REMOVE-DLOAD ( IR-ID:ir-op-id -- ) {: id:IR-ID:ir-op-id :}
    id 1 RESULT-AT id 0 OPERAND-AT VOF VBIND
    1 N-REMOVED +! ;
@@ -442,7 +496,7 @@ DYNAMIC-BUFFER REMOVED-BUF n
       i REMOVED? if
          bk i OP-AT REMOVE-DLOAD
       else
-         bk i OP-AT COPY-OP
+         bk i OP-AT  i ABSORB-AT  COPY-OP
       then
    loop
    B-BASE @ n + B-BASE !
@@ -533,6 +587,7 @@ public
    c b A64IR:KEY-FRAME  K-FRAME BND-KEY !
    c b A64IR:KEY-DSLOT  K-DSLOT BND-KEY !
    c b A64IR:KEY-DBYTES K-DBYTES BND-KEY !
+   c b A64IR:KEY-DWB    K-DWB BND-KEY !
    c b A64IR:KEY-COND   K-COND BND-KEY !
    c b A64IR:KEY-DBACK  K-DBACK BND-KEY !
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !

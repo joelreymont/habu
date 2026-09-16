@@ -63,7 +63,7 @@ A64IR-OPCODE:TRAP     A64IR:ORD constant O-TRAP
 A64IR-OPCODE:MOV      A64IR:ORD constant O-MOV
 
 \ One slot per attribute key the dialect declares.
-14 constant KEYS-N
+15 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -78,6 +78,7 @@ A64IR-OPCODE:MOV      A64IR:ORD constant O-MOV
 11 constant K-TRAP-ENTRY               \ the trap form's target, under a key of its own
 12 constant K-FUN                      \ which function of the emission an address form names
 13 constant K-ADDR                     \ the relocation kind of the value a move-wide chain builds
+14 constant K-DWB                      \ the pointer move a fused transfer carries in its own encoding
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -387,6 +388,10 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR  IR-BUILD:ADD-ATTR ;
 
+: DWB-ATTR+ ( n -- )
+   {: size:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DWB  CTX BLD size A64IR:DWB-ATTR  IR-BUILD:ADD-ATTR ;
+
 \ Copied unchanged: this pass decides nothing about where a call goes.
 : ENTRY-ATTR+ ( n -- )
    {: entry:n :}
@@ -448,6 +453,7 @@ create NAMEBUF NAME-CAP allot
       k K-FRAME = if FRAME-N @ FRAME-ATTR+ then
       k K-DSLOT = if v DSLOT-ATTR+ then
       k K-DBYTES = if v DBYTES-ATTR+ then
+      k K-DWB = if v DWB-ATTR+ then
       k K-COND = if v COND-ATTR+ then
       k K-DBACK = if v DBACK-ATTR+ then
       k K-ENTRY = if v ENTRY-ATTR+ then
@@ -1076,6 +1082,7 @@ public
    c b A64IR:KEY-FRAME  K-FRAME BND-KEY !
    c b A64IR:KEY-DSLOT  K-DSLOT BND-KEY !
    c b A64IR:KEY-DBYTES K-DBYTES BND-KEY !
+   c b A64IR:KEY-DWB    K-DWB BND-KEY !
    c b A64IR:KEY-COND   K-COND BND-KEY !
    c b A64IR:KEY-DBACK  K-DBACK BND-KEY !
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !

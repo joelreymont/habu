@@ -1121,6 +1121,120 @@ stage, `NPROF:START`/`NPROF:STOP` around each call in `src/compiler/native/`
 `NPROF:NS@`. Take it, then take it back out: a phase per stage is a profiler, and
 what a caller of the compiler cares about is already one number.
 
+## 9. The pointer move a transfer carries
+
+Tier 0 already pushed a cell with one instruction — `str x9,[x19],#8` writes the
+pointer back as part of the store — and after the word-frame lane tier 1 did the
+same for a routine's link register. It still spent two instructions on every
+data-stack move: `str Xt,[x19]` then `add x19,x19,#8` to publish, and
+`sub x19,x19,#8` then `ldr Xt,[x19]` to take. A linear disassembly of the engine
+image found **11,270 such adjacent pairs**, 7,792 publishing and 3,478 taking.
+
+The fix is in SELECTION and not in a rewrite pass, because the pair is born
+there: `src/compiler/native/select.f` writes the store and the publish itself,
+so it can write one operation instead of two. `a64.dpush`/`a64.dpop` and their
+two twins in the D file are new A64IR forms carrying one attribute, `a64.dwb`,
+and no slot at all — the post-indexed store transfers AT the base and the
+pre-indexed load lands there, so the cell is the one the pointer stands at and
+the form has no field for another. Selection fuses exactly where the transfer
+reaches that cell: the last store of a publish run, the first load of a
+take-back run, at the routine's two ends and at every call and trap site.
+
+Two passes had to learn the forms rather than being told about them.
+`regalloc-verify.f` re-derives the whole data-stack discipline from the module,
+so every move it reads is now the operation's own attribute plus whatever the
+transfer beside it carries; and `prune.f`, which removes a data-stack load
+nothing reads, hands that load's move back to the operation in front of it
+before dropping it — a fused form has nowhere to keep a move it does not
+transfer for. `: W ( -- n ) SRC 0 > if 5 else 5 then ;` is the smallest body
+that needs it, and without the hand-back it does not compile at all
+(`E-A64RAV-DKEEP`); `test/compiler/native-fused-moves.f` pins it.
+
+**What it removed.** The 1,967-word corpus of section 1, compiled at tier 1 by
+an engine built from this lane's head and by one built from its base:
+
+| metric | before | after | delta |
+|---|---:|---:|---:|
+| bytes | 179,012 | 173,688 | **−5,324 (−2.97%)** |
+| instructions | 44,753 | 43,422 | **−1,331** |
+| `bl` | 4,492 | 4,492 | 0 |
+| `ldr` via sp | 4,117 | 4,117 | 0 |
+| `str` via sp | 2,557 | 2,557 | 0 |
+| `mov` reg→reg | 129 | 129 | 0 |
+| `movk` | 5,953 | 5,953 | 0 |
+
+Every removed byte is a removed instruction: 1,331 × 4 = 5,324 exactly, and no
+word in the corpus grew. The same corpus at tier 0 is byte-identical across the
+two engines, which is the control that says nothing but the optimizing tier
+moved.
+
+**Why the `sp` columns do not move, and what to read instead.**
+`tools/tier-census.f`'s `ldr-sp`/`str-sp` columns count loads and stores whose
+BASE REGISTER is x31 — the frame traffic a spill costs. The data stack is x19,
+which those columns do not count and never did, so a data-stack fusion cannot
+show up in them. The columns that answer for this change are `bytes` and
+`instructions`; the pair count is their difference divided by four.
+
+**The engine image.** `tools/engine-size.f` over a generation built with the new
+compiler: `aot/code-blob` 1,790,872 → **1,757,748 bytes, −33,124**, with the
+total image unchanged at 5,308,608 because `image/text-pad` absorbs it
+(20,932 → 40,488). The image's own pair count falls from 11,270 to **three**,
+and all three are at 0xac4c, 0xac54 and 0x1fc1c — inside the 126,976-byte
+`engine/code` section, which `src/habu/habu1.f` emits by hand and no compiler
+tier writes. 11,270 pairs are 45,080 bytes; the blob gave back 33,124 of them
+because the same image now carries the four new forms and everything the chain
+grew to emit, to check and to prune them.
+
+**Run time,** `tools/tier-bench.f` at tier 1, the two engines interleaved over
+fifteen invocations each, pinned to cpu8 at load average 10.9-13.3, median of
+the fifteen per-invocation medians in microseconds:
+
+| benchmark | before | after | after / before |
+|---|---:|---:|---:|
+| `harness` | 2,770 | 2,776 | 1.002 |
+| `arith` | 860 | 863 | 1.003 |
+| `branch` | 1,456 | 1,475 | 1.013 |
+| `search` | 2,107 | **1,895** | **0.899** |
+| `fold` | 80,768 | 80,574 | 0.998 |
+| `move` | 134,517 | 134,450 | 1.000 |
+| `lines` | 5,935 | 5,967 | 1.005 |
+
+One benchmark gains 1.11x and the rest sit inside the tool's own variance, which
+is what a change that removes one instruction per data-stack move and nothing
+else should look like. The census says which is which: `search` runs
+`LINT-CONTAINS?`, 112 → 108 bytes, one instruction out of a loop that crosses
+the data stack once per byte, while `branch` runs `ARRAY:A-COUNT-EVEN`, whose
+176 bytes are **byte-identical** across the two engines — so its 1.3 percent is
+the measurement and not the code, as a quieter nine-round run at load 5.0
+(1.001) says as well.
+
+**What it did not reach, and why.** Where the pointer STANDS is chosen by
+`select.f` `DPLACE-CHOOSE`, which counts one instruction for every required
+place that is not the chosen one — a cost model written before a move could be
+free. `( -- n n )` is the smallest case it now gets wrong: standing at 0 costs
+one move and standing at 8 costs two, so it stands at 0, the last store lands a
+cell under the pointer, and the publish keeps its `add x19,x19,#0x10`. Standing
+at 8 would have cost two moves and fused one of them, for the same instruction
+count today and a shorter body. Teaching the placement that a move beside a
+transfer at the pointer is free is a separate change, and it has to be made in
+`regalloc-verify.f` `VDPLACE-CK` at the same time, because that pass re-derives
+the placement from the module.
+
+**Reproducing.** Build an engine from the tree under test, then build a second
+one WITH it — a compiler change reaches the emitted code only in the generation
+its own compiler wrote, so generation B (built by the old engine) still carries
+the old code and generation C is the first that does not. C and D are then byte
+identical, which is this chain's fixpoint.
+
+```sh
+E=/tmp/hz-fuse
+HB_TMP=$E/tmp HABU_FIXPOINT_ENGINE=$E/engine-A $E/engine-A \
+  --load tools/native-build.f -- $E/gen/hb-B
+HB_TMP=$E/tmp HABU_FIXPOINT_ENGINE=$E/engine-B $E/engine-B \
+  --load tools/native-build.f -- $E/gen/hb-C
+objdump -b binary -m aarch64 -D $E/gen/hb-C | grep -c 'str.*\[x19\], #'
+```
+
 ## Verdict and the ranked fixes
 
 Tier 1 pays for itself. It halves the calls, wins every run-time benchmark by
