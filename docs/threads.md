@@ -30,7 +30,9 @@ whole process instead of leaving worker threads behind.
 Worker bodies run through a task wrapper. A worker `die` keeps its explicit exit
 status and message; an uncaught worker `throw` terminates the process with the
 low byte of the throw code and `task: unhandled throw` on stderr. Task failure
-is process-fatal by design until a checked result/future model exists.
+is process-fatal by design until a checked result/future model exists; see
+[tasking-models.md](tasking-models.md) for how SwiftForth, polyFORTH and VFX
+handle this and the dots that change it.
 
 ## Public Words
 
