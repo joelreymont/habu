@@ -2,6 +2,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f                 \ TASK-CODE$ renders the named code the child prints
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
@@ -65,6 +66,8 @@ $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
 $4F constant TASK-LIVE-RC
 $62 constant TASK-DIE-RC
+67 constant TASK-UNCAUGHT-RC
+$30 constant TASK-CODE-CAP
 8 constant APP-CYCLES
 16 constant APP-ITERS
 4 constant APP-ACQ-WANT
@@ -79,6 +82,7 @@ POOL-CAP TYPED-BUFFER POOL-SEMS TASK:sem
 
 create TASK-OUT TASK-CAP allot
 create TASK-ERR TASK-CAP allot
+create TASK-CODE-BUF TASK-CODE-CAP allot
 create TASK-SYM-STRLEN $73 c, $74 c, $72 c, $6C c, $65 c, $6E c, 0 c,
 create TASK-LIBC $6C c, $69 c, $62 c, $63 c, $2E c, $73 c, $6F c, $2E c, $36 c, 0 c,
 create TASK-LIBSYSTEM
@@ -307,6 +311,39 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    s" TASK-DIE-WAIT" SB-APPEND TASK-LF
    SB$ ;
 
+\ The diagnostic a child prints for an uncaught code, built from the named
+\ constant so a pinned message follows lib/errors.f instead of repeating its
+\ number. It lands in its own buffer because the caller builds the child's
+\ source in SB straight afterwards.
+: TASK-CODE$ ( n -- ptr u8 n ) {: code:n :}
+   SB-RESET
+   s" uncaught throw code " SB-APPEND
+   code FMT:SB-INT
+   SB$ {: a:ptr u :}
+   u TASK-CODE-CAP > if E-STR-CAPACITY throw then
+   a TASK-CODE-BUF u BYTE-COPY
+   TASK-CODE-BUF u ;
+
+\ The user arena runs from TASK-USER-BASE to TASK-USER-END - APP-ENTRY:XT-CELL,
+\ the first engine cell above it. A row of exactly the free run is a
+\ definition; one byte more is E-TASK-USER at that definition, before any
+\ store can reach the AOT capture window or the evaluator frame pointer behind
+\ it. Both cases run in a child engine: a definer's throw aborts the load that
+\ carries it, and the accepting case claims the whole arena, which no later
+\ require in this image would survive.
+: TASK-USER-EDGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/task.f" SB-APPEND TASK-LF
+   s" : TUE-CEILING ( n -- ) APP-ENTRY:XT-CELL <> if E-TASK-USER throw then ;" SB-APPEND TASK-LF
+   s" TASK:#USER APP-ENTRY:XT-CELL over - TASK:+USER TUE-ARENA TUE-CEILING" SB-APPEND TASK-LF
+   SB$ ;
+
+: TASK-USER-OVER$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/task.f" SB-APPEND TASK-LF
+   s" TASK:#USER APP-ENTRY:XT-CELL over - 1+ TASK:+USER TUE-OVER drop" SB-APPEND TASK-LF
+   SB$ ;
+
 : TASK-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
@@ -325,6 +362,20 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 
 : TASK-TEST-WORKER-DIE ( -- )
    TASK-DIE$ TASK-DIE-RC s" task died" TASK-EXPECT-FAIL ;
+
+: TASK-EXPECT-SILENT-OK ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu TASK-RUN-STDIN 0 T-OUTCOME-EXITED= {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru LEN>N 0 T= ;
+
+\ The accepted row claims the whole arena and answers TASK-USER-END from
+\ inside the child, so exit zero means accepted AND landed on the ceiling.
+\ The refused row is one byte past it, which is the exact bound: the accepted
+\ case pins it from below and this pins it from above.
+: TASK-TEST-USER-ARENA ( -- )
+   TASK-USER-EDGE$ TASK-EXPECT-SILENT-OK
+   E-TASK-USER TASK-CODE$ {: needle:ptr needleu:n :}
+   TASK-USER-OVER$ TASK-UNCAUGHT-RC needle needleu TASK-EXPECT-FAIL ;
 
 \ One worker throws while the other completes: the throw ends that task alone
 \ and its code outlives the join.
@@ -809,6 +860,7 @@ variable JOIN-TWICE-RC
    WORKER-A TASK:DONE? TFALSE
    TASK-TEST-LIVE-COMPILE-GUARD
    TASK-TEST-APP-SOAK
+   TASK-TEST-USER-ARENA
    TASK-TEST-WORKER-DIE
    TASK-TEST-WORKER-THROW
    TASK-TEST-THROW-CLEARED

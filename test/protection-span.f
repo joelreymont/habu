@@ -67,9 +67,17 @@ create ERR CAP allot
    s" require lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-STACK ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:STACK-WRITABLE! FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS 1 PST-RET ffi-call-abi-bounded ; data-base TXN-STATE-OFF 1 cells - + PST-STACK drop" REJECTS
    s" require lib/ffi-abi.f TRUSTED: PST-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ; TRUSTED: PST-VALUE ( n -- n ) {: v:n :} FFI:RESET v 0 FFI:VALUE! FFI:ARGS FFI:REG-LENS 1 PST-RET ffi-call-bounded ; -1 PST-VALUE drop" ACCEPTS ;
 
+\ The task-user arena ends at TASK-USER-END - APP-ENTRY:XT-CELL, the first
+\ engine cell above it - and not at TXN-STATE-OFF. The run between the two
+\ holds the AOT capture window, the reserved evaluator-pointer band, PROT's
+\ two cells and src/habu/stack-abi.f's five, none of which a protection span
+\ guards: a row reaching them is an ordinary store into engine state. The
+\ third row is the regression for that, and it is the row this file accepted
+\ before the ceiling was corrected.
 : TEST-TASK-USER ( -- )
-   s" require lib/task.f : PST-EXACT ( n -- ) TXN-STATE-OFF <> if 1 throw then ; TASK:#USER TXN-STATE-OFF over - TASK:+USER PST-EDGE PST-EXACT" ACCEPTS
-   s" require lib/task.f TASK:#USER TXN-STATE-OFF over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
+   s" require lib/task.f : PST-EXACT ( n -- ) APP-ENTRY:XT-CELL <> if 1 throw then ; TASK:#USER APP-ENTRY:XT-CELL over - TASK:+USER PST-EDGE PST-EXACT" ACCEPTS
+   s" require lib/task.f TASK:#USER APP-ENTRY:XT-CELL over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
+   s" require lib/task.f TASK:#USER TXN-STATE-OFF over - TASK:+USER PST-TXN-REACH drop" UNCAUGHT-RC EXPECT
    s" require lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
 \ Pending pre-trust defer scratch ends at PD-TABLE-END. The later provenance

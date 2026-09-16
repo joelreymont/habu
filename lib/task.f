@@ -145,6 +145,18 @@ variable TASK-USER-NEXT
 FFI:SCRATCH-END constant TASK-USER-BASE
 TASK-USER-BASE TASK-USER-NEXT !
 
+\ THE ARENA STOPS AT THE FIRST ENGINE CELL ABOVE IT, not at the transaction
+\ band. src/habu/layout.f describes the run from TASK-USER-BASE as free to
+\ TXN-STATE-OFF, and it is not: APP-ENTRY:XT-CELL sits in it, then
+\ AOT-WINDOW's T0/D0/B0, the reserved evaluator-pointer band behind
+\ EVAL-TOP-CELL, PROT:RHI/PROT:CF, AOT-SIG:POOL-CELL/LEN-CELL,
+\ BOOT-LAYOUT:HEAP-START-CELL and src/habu/stack-abi.f's five cells. A row
+\ reaching any of them is not a bounds error the region catches later - the
+\ store lands, and the engine dies at teardown reading an AOT window a
+\ library overwrote. The ceiling is named from the layout rather than written
+\ as a number so it follows whatever claims that address next.
+APP-ENTRY:XT-CELL constant TASK-USER-END
+
 : TASK-NULL ( -- ptr n )
    NULL$ drop CELL-VIEW ;
 
@@ -855,7 +867,7 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
 \
 \ +USER is the other kind and converts cleanly: its storage IS a task-local slot,
 \ its does> body already read `@ data-base +`, and the offsets it hands out are
-\ bounded by TXN-STATE-OFF, inside every region.
+\ bounded by TASK-USER-END, inside every region.
 
 \ CREATE/DOES> publishes a typed TCB address, outside checker inference.
 \ Retirement owner: habu-typed-defining-words-aa224eb5.
@@ -871,9 +883,9 @@ TRUSTED: TASK ( n -- )
 
 : USER-NEXT ( n n -- n ) {: off:n size:n :}
    off TASK-USER-BASE < if E-TASK-USER throw then
-   off TXN-STATE-OFF > if E-TASK-USER throw then
+   off TASK-USER-END > if E-TASK-USER throw then
    size 0 < if E-TASK-USER throw then
-   size TXN-STATE-OFF off - > if E-TASK-USER throw then
+   size TASK-USER-END off - > if E-TASK-USER throw then
    off size + ;
 
 \ The slot's offset is fixed when the slot is declared, so it is baked into the
