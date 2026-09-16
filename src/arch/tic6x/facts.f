@@ -20,18 +20,36 @@ E-C6XFACTS-DECODE constant E-DECODE
 
 : MASK-BIT ( n -- n ) 1 swap lshift ;       \ register masks: A0..A31 bits 0..31, B0..B31 bits 32..63
 
+\ What one instruction occupies and touches. unit is the unit class times two
+\ plus its side, or -1 for a NOP; cross is the register read through the
+\ cross path, or -1; reads, writes and loads are register masks, writes
+\ landing at the end of the cycle and loads after four delay slots; memory is
+\ 0, 1 for a load or 2 for a store, and side the register file its data moves
+\ on, or -1; idle is a NOP's count, else 0.
+STRUCTURE facts 0
+   FIELD unit n
+   FIELD cross n
+   FIELD reads n
+   FIELD writes n
+   FIELD loads n
+   FIELD memory n
+   FIELD side n
+   FIELD branch bool
+   FIELD idle n
+;STRUCTURE
+
 private
 
 variable CURRENT
-variable UNIT                               \ unit class * 2 + side, or -1 for a NOP
-variable CROSS                              \ the register read through the cross path, or -1
+variable UNIT
+variable CROSS
 variable READS
-variable WRITES                             \ registers written at the end of the packet's cycle
-variable LOADS                              \ registers a load fills after four delay slots
-variable MEMORY                             \ 0 none, 1 load, 2 store
-variable DATA-SIDE                          \ the register file a memory access moves data on
+variable WRITES
+variable LOADS
+variable MEMORY
+variable DATA-SIDE
 variable BRANCHES
-variable IDLE                               \ a NOP's count, else 0
+variable IDLE
 
 : BITS ( n n -- n ) {: low:n width:n :} CURRENT @ low rshift 1 width lshift 1- and ;
 : S-BIT ( -- n ) 1 1 BITS ;
@@ -108,12 +126,8 @@ variable IDLE                               \ a NOP's count, else 0
    kind 12 = if data READ-REG data 1+ READ-REG 2 MEMORY ! exit then
    E-DECODE throw ;
 
-public
-
-\ Classifies one instruction word; the readers below describe it until the next call.
-: FACTS ( n -- ) {: w:n :}
-   w $FFFFFFFE and CURRENT !
-   -1 UNIT ! -1 CROSS ! 0 READS ! 0 WRITES ! 0 LOADS ! 0 MEMORY ! -1 DATA-SIDE ! 0 BRANCHES ! 0 IDLE !
+\ Decodes CURRENT into the accumulators by its form.
+: DECODE ( -- )
    CURRENT @ $FFFE1FFF and 0= if 13 4 BITS 1+ IDLE ! exit then
    READ-GUARD
    CURRENT @ $7C and $28 = CURRENT @ $7C and $68 = or if MOVE-FORM exit then
@@ -126,14 +140,13 @@ public
    CURRENT @ $0C and $04 = if MEMORY-FORM exit then
    E-DECODE throw ;
 
-: UNIT@ ( -- n ) UNIT @ ;
-: CROSS@ ( -- n ) CROSS @ ;
-: READS@ ( -- n ) READS @ ;
-: WRITES@ ( -- n ) WRITES @ ;
-: LOADS@ ( -- n ) LOADS @ ;
-: MEMORY@ ( -- n ) MEMORY @ ;
-: DATA-SIDE@ ( -- n ) DATA-SIDE @ ;
-: BRANCH? ( -- bool ) BRANCHES @ 0 <> ;
-: IDLE@ ( -- n ) IDLE @ ;
+public
+
+\ The facts of one instruction word.
+: CLASSIFY ( n -- facts ) {: w:n :}
+   w $FFFFFFFE and CURRENT !
+   -1 UNIT ! -1 CROSS ! 0 READS ! 0 WRITES ! 0 LOADS ! 0 MEMORY ! -1 DATA-SIDE ! 0 BRANCHES ! 0 IDLE !
+   DECODE
+   UNIT @ CROSS @ READS @ WRITES @ LOADS @ MEMORY @ DATA-SIDE @ BRANCHES @ 0 <> IDLE @ C6XFACTS-FACTS:MAKE ;
 
 ;package

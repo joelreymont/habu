@@ -24,12 +24,34 @@ using C6XFACTS
 16 constant FIXUP-MAX
 256 constant PENDING-MAX
 2048 constant CYCLE-MAX
+BEGIN-STRUCTURE ROW-BYTES                   \ a pending instruction and its facts
+   CELL +FIELD ROW.WORD
+   CELL +FIELD ROW.UNIT
+   CELL +FIELD ROW.CROSS
+   CELL +FIELD ROW.READS
+   CELL +FIELD ROW.WRITES
+   CELL +FIELD ROW.LOADS
+   CELL +FIELD ROW.MEMORY
+   CELL +FIELD ROW.SIDE
+END-STRUCTURE
+BEGIN-STRUCTURE SLOT-BYTES                  \ one cycle's resources
+   CELL +FIELD SLOT.UNITS                   \ units used
+   CELL +FIELD SLOT.CROSS-1X                \ the B register read on 1X, or -1
+   CELL +FIELD SLOT.CROSS-2X                \ the A register read on 2X, or -1
+   CELL +FIELD SLOT.SIDES                   \ memory data paths used
+END-STRUCTURE
+BEGIN-STRUCTURE FIXUP-BYTES                 \ a forward branch awaiting its label
+   CELL +FIELD FIXUP.AT                     \ word index, or -1 once resolved
+   CELL +FIELD FIXUP.GUARD                  \ register code, or -1
+   CELL +FIELD FIXUP.INVERTED
+   CELL +FIELD FIXUP.SIDE                   \ the .S unit the branch took
+END-STRUCTURE
 create WORDS WORDS-MAX cells allot
-create FIXUPS FIXUP-MAX 4 * cells allot     \ word index or -1 once resolved, guard code or -1, inverted, unit side
+create FIXUPS FIXUP-MAX FIXUP-BYTES * allot
 create PERMITTED HELPER-COUNT cells allot   \ register bit masks: A0..A31 bits 0..31, B0..B31 bits 32..63
-create PENDING PENDING-MAX 8 * cells allot  \ word, unit, cross register, reads, writes, loads, memory kind, data side
+create PENDING PENDING-MAX ROW-BYTES * allot
 create CYCLE-OF PENDING-MAX cells allot     \ the cycle each pending row issues in
-create SLOTS CYCLE-MAX 4 * cells allot      \ per cycle: units used, 1X register, 2X register, memory data sides
+create SLOTS CYCLE-MAX SLOT-BYTES * allot
 variable LEN
 variable FIXUP-COUNT
 variable PENDING-COUNT
@@ -59,30 +81,34 @@ variable PACKET-START
 \ enough that its five delay slots hold the rest of the block and every load
 \ has landed when the target runs, so no successor needs to know the block.
 
-: PENDING-ROW ( n -- ptr n ) 8 * cells PENDING + CELL-VIEW ;
-: P-WORD ( n -- n ) PENDING-ROW @ ;
-: P-UNIT ( n -- n ) PENDING-ROW 1 cells + @ ;
-: P-CROSS ( n -- n ) PENDING-ROW 2 cells + @ ;
-: P-READS ( n -- n ) PENDING-ROW 3 cells + @ ;
-: P-WRITES ( n -- n ) PENDING-ROW 4 cells + @ ;
-: P-LOADS ( n -- n ) PENDING-ROW 5 cells + @ ;
-: P-MEMORY ( n -- n ) PENDING-ROW 6 cells + @ ;
-: P-SIDE ( n -- n ) PENDING-ROW 7 cells + @ ;
+: ROW ( n -- ptr n ) ROW-BYTES * PENDING + CELL-VIEW ;
+: P-WORD ( n -- n ) ROW ROW.WORD @ ;
+: P-UNIT ( n -- n ) ROW ROW.UNIT @ ;
+: P-CROSS ( n -- n ) ROW ROW.CROSS @ ;
+: P-READS ( n -- n ) ROW ROW.READS @ ;
+: P-WRITES ( n -- n ) ROW ROW.WRITES @ ;
+: P-LOADS ( n -- n ) ROW ROW.LOADS @ ;
+: P-MEMORY ( n -- n ) ROW ROW.MEMORY @ ;
+: P-SIDE ( n -- n ) ROW ROW.SIDE @ ;
 : P-CYCLE ( n -- n ) cells CYCLE-OF + @ ;
-: SLOT ( n -- ptr n ) 4 * cells SLOTS + CELL-VIEW ;
+: SLOT ( n -- ptr n ) SLOT-BYTES * SLOTS + CELL-VIEW ;
+: FIXUP ( n -- ptr n ) FIXUP-BYTES * FIXUPS + CELL-VIEW ;
 
-\ Row idx takes the facts of word w.
+\ Row idx takes word w and its facts.
 : FILL-ROW ( n n -- ) {: w:n idx:n :}
-   w FACTS
-   idx PENDING-ROW {: row:ptr :}
-   w row ! UNIT@ row 1 cells + ! CROSS@ row 2 cells + ! READS@ row 3 cells + !
-   WRITES@ row 4 cells + ! LOADS@ row 5 cells + ! MEMORY@ row 6 cells + ! DATA-SIDE@ row 7 cells + ! ;
+   w CLASSIFY C6XFACTS-FACTS:UNMAKE
+   {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}
+   idx ROW {: row:ptr :}
+   w row ROW.WORD ! unit row ROW.UNIT ! cross row ROW.CROSS ! reads row ROW.READS !
+   writes row ROW.WRITES ! loads row ROW.LOADS ! memory row ROW.MEMORY ! side row ROW.SIDE ! ;
 
 : EMIT ( instruction -- )
    PENDING-COUNT @ PENDING-MAX >= if E-CAPACITY throw then
-   INSTRUCTION>N dup FACTS
-   IDLE@ 0 <> BRANCH? or if E-OPERAND throw then           \ idles and branches belong to the scheduler
-   PENDING-COUNT @ FILL-ROW 1 PENDING-COUNT +! ;
+   INSTRUCTION>N {: w:n :}
+   w CLASSIFY C6XFACTS-FACTS:UNMAKE
+   {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}
+   idle 0 <> branch or if E-OPERAND throw then              \ idles and branches belong to the scheduler
+   w PENDING-COUNT @ FILL-ROW 1 PENDING-COUNT +! ;
 
 : RAISE ( n -- ) READY @ max READY ! ;
 
@@ -106,19 +132,19 @@ variable PACKET-START
 \ per path per cycle) and, for a memory access, its data path.
 : FREE? ( n n -- bool ) {: idx:n cycle:n :}
    cycle SLOT {: slot:ptr :}
-   slot @ idx P-UNIT MASK-BIT and 0 <> if FALSE exit then
+   slot SLOT.UNITS @ idx P-UNIT MASK-BIT and 0 <> if FALSE exit then
    idx P-CROSS 0 >= if
-      idx P-CROSS 32 >= if slot 1 cells + else slot 2 cells + then @ {: held:n :}
+      idx P-CROSS 32 >= if slot SLOT.CROSS-1X else slot SLOT.CROSS-2X then @ {: held:n :}
       held 0 >= held idx P-CROSS <> and if FALSE exit then
    then
-   idx P-MEMORY 0 <> if slot 3 cells + @ idx P-SIDE MASK-BIT and 0 <> if FALSE exit then then
+   idx P-MEMORY 0 <> if slot SLOT.SIDES @ idx P-SIDE MASK-BIT and 0 <> if FALSE exit then then
    TRUE ;
 
 : CLAIM ( n n -- ) {: idx:n cycle:n :}
    cycle SLOT {: slot:ptr :}
-   slot @ idx P-UNIT MASK-BIT or slot !
-   idx P-CROSS 0 >= if idx P-CROSS idx P-CROSS 32 >= if slot 1 cells + else slot 2 cells + then ! then
-   idx P-MEMORY 0 <> if slot 3 cells + @ idx P-SIDE MASK-BIT or slot 3 cells + ! then
+   slot SLOT.UNITS @ idx P-UNIT MASK-BIT or slot SLOT.UNITS !
+   idx P-CROSS 0 >= if idx P-CROSS idx P-CROSS 32 >= if slot SLOT.CROSS-1X else slot SLOT.CROSS-2X then ! then
+   idx P-MEMORY 0 <> if slot SLOT.SIDES @ idx P-SIDE MASK-BIT or slot SLOT.SIDES ! then
    cycle idx cells CYCLE-OF + ! ;
 
 \ Places row idx in the earliest legal cycle after rows 0 to idx-1.
@@ -132,7 +158,10 @@ variable PACKET-START
 
 \ No unit used, no register on either cross path, no memory data path used.
 : CLEAR-SLOTS ( -- )
-   CYCLE-MAX 0 ?do i SLOT {: slot:ptr :} 0 slot ! -1 slot 1 cells + ! -1 slot 2 cells + ! 0 slot 3 cells + ! loop ;
+   CYCLE-MAX 0 ?do
+      i SLOT {: slot:ptr :}
+      0 slot SLOT.UNITS ! -1 slot SLOT.CROSS-1X ! -1 slot SLOT.CROSS-2X ! 0 slot SLOT.SIDES !
+   loop ;
 
 \ Schedules the pending rows, noting the last issue cycle and the load drain.
 : SCHEDULE-BLOCK ( -- )
@@ -144,7 +173,7 @@ variable PACKET-START
       i P-LOADS 0 <> if i P-CYCLE LOAD-LATENCY + DRAIN @ max DRAIN ! then
    loop ;
 
-: BRANCH-UNIT! ( n -- ) PENDING-COUNT @ PENDING-ROW 1 cells + ! ;
+: BRANCH-UNIT! ( n -- ) PENDING-COUNT @ ROW ROW.UNIT ! ;
 
 \ Places the branch row, index PENDING-COUNT, after the block; a relative
 \ branch takes whichever .S unit is free first.
@@ -241,22 +270,23 @@ variable PACKET-START
 : FORWARD ( n n -- n ) {: guard:n inverted:n :}
    FIXUP-COUNT @ FIXUP-MAX >= if E-CAPACITY throw then
    0 0 guard inverted REL INSTRUCTION>N 1 CLOSE {: at:n :}
-   FIXUP-COUNT @ 4 * cells FIXUPS + {: row:ptr :}
-   at row ! guard row 1 cells + ! inverted row 2 cells + ! BRANCH-SIDE @ row 3 cells + !
+   FIXUP-COUNT @ FIXUP {: row:ptr :}
+   at row FIXUP.AT ! guard row FIXUP.GUARD ! inverted row FIXUP.INVERTED ! BRANCH-SIDE @ row FIXUP.SIDE !
    FIXUP-COUNT @ 1 FIXUP-COUNT +! ;
 
 : RESOLVE ( n -- ) {: ref:n :}
-   ref 4 * cells FIXUPS + {: row:ptr :}
-   row @ 0 < if E-OPERAND throw then                       \ resolved twice
+   ref FIXUP {: row:ptr :}
+   row FIXUP.AT @ 0 < if E-OPERAND throw then               \ resolved twice
    HERE {: target:n :}
-   row @ row 3 cells + @ row @ target DISPLACEMENT row 1 cells + @ row 2 cells + @ REL PATCH
-   -1 row ! ;
+   row FIXUP.AT @ {: at:n :}
+   at row FIXUP.SIDE @ at target DISPLACEMENT row FIXUP.GUARD @ row FIXUP.INVERTED @ REL PATCH
+   -1 row FIXUP.AT ! ;
 
 : RETURN ( -- ) 3 B ENC-B-REG INSTRUCTION>N 0 CLOSE drop ;
 
 \ Every forward branch must have found its label.
 : RESOLVED ( -- )
-   FIXUP-COUNT @ 0 ?do i 4 * cells FIXUPS + @ 0 >= if E-OPERAND throw then loop ;
+   FIXUP-COUNT @ 0 ?do i FIXUP FIXUP.AT @ 0 >= if E-OPERAND throw then loop ;
 
 
 \ ---- unsigned division ------------------------------------------------------------------

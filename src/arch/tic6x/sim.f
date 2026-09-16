@@ -34,12 +34,26 @@ $FFFFFFFF constant MASK32
 8 constant PACKET-MAX
 16 constant COMMIT-MAX
 16 constant STORE-MAX
+BEGIN-STRUCTURE PENDING-BYTES               \ a load in flight
+   CELL +FIELD PENDING.REG
+   CELL +FIELD PENDING.VALUE
+   CELL +FIELD PENDING.LEFT                 \ cycles until it lands
+END-STRUCTURE
+BEGIN-STRUCTURE COMMIT-BYTES                \ a register write landing when the packet ends
+   CELL +FIELD COMMIT.REG
+   CELL +FIELD COMMIT.VALUE
+END-STRUCTURE
+BEGIN-STRUCTURE STORE-BYTES                 \ a memory write landing when the packet ends
+   CELL +FIELD STORE.ADDRESS
+   CELL +FIELD STORE.SIZE
+   CELL +FIELD STORE.VALUE
+END-STRUCTURE
 create REGS 64 cells allot
 create MEMORY MEMORY-BYTES allot
-create PENDING PENDING-MAX 3 * cells allot   \ register, value, cycles left
+create PENDING PENDING-MAX PENDING-BYTES * allot
 create PACKET PACKET-MAX cells allot
-create COMMITS COMMIT-MAX 2 * cells allot    \ register, value: written when the packet ends
-create STORES STORE-MAX 3 * cells allot      \ address, size, value: written when the packet ends
+create COMMITS COMMIT-MAX COMMIT-BYTES * allot
+create STORES STORE-MAX STORE-BYTES * allot
 variable PENDING-COUNT
 variable PACKET-COUNT
 variable COMMIT-COUNT
@@ -69,6 +83,11 @@ variable IDLE-TICKS                                \ the packet's multicycle NOP
 variable TAKEN
 variable JUMPED
 variable CHECKING                                  \ the word under classification
+variable F-UNIT                                    \ its facts, from DESCRIBE
+variable F-CROSS
+variable F-MEMORY
+variable F-SIDE
+variable F-IDLE
 
 : RANGE ( n n n -- n ) {: value:n low:n high:n :}
    value low < value high > or if E-OPERAND throw then value ;
@@ -101,71 +120,74 @@ variable CHECKING                                  \ the word under classificati
 \ A packet's instructions read the registers and memory as they stand; their
 \ results queue here and land together when the packet ends, loads later.
 
+: COMMIT-ROW ( n -- ptr n ) COMMIT-BYTES * COMMITS + CELL-VIEW ;
+: PENDING-ROW ( n -- ptr n ) PENDING-BYTES * PENDING + CELL-VIEW ;
+: STORE-ROW ( n -- ptr n ) STORE-BYTES * STORES + CELL-VIEW ;
+
 : RESULT ( n n -- ) {: value:n reg:n :}
    COMMIT-COUNT @ COMMIT-MAX >= if E-LIMIT throw then
-   COMMITS COMMIT-COUNT @ 2 * cells + {: row:ptr :}
-   reg row ! value >U32 row 1 cells + !
+   COMMIT-COUNT @ COMMIT-ROW {: row:ptr :}
+   reg row COMMIT.REG ! value >U32 row COMMIT.VALUE !
    1 COMMIT-COUNT +! ;
 
 : STORE ( n n n -- ) {: value:n address:n size:n :}
    STORE-COUNT @ STORE-MAX >= if E-LIMIT throw then
-   STORES STORE-COUNT @ 3 * cells + {: row:ptr :}
-   address row ! size row 1 cells + ! value row 2 cells + !
+   STORE-COUNT @ STORE-ROW {: row:ptr :}
+   address row STORE.ADDRESS ! size row STORE.SIZE ! value row STORE.VALUE !
    1 STORE-COUNT +! ;
-
-: PENDING-ROW ( n -- ptr n ) 3 * cells PENDING + CELL-VIEW ;
 
 : SCHEDULE ( n n n -- ) {: reg:n value:n delay:n :}
    PENDING-COUNT @ PENDING-MAX >= if E-LIMIT throw then
    PENDING-COUNT @ PENDING-ROW {: row:ptr :}
-   reg row ! value >U32 row 1 cells + ! delay 1+ row 2 cells + !
+   reg row PENDING.REG ! value >U32 row PENDING.VALUE ! delay 1+ row PENDING.LEFT !
    1 PENDING-COUNT +! ;
 
 \ A load landing on a register another write reached in the same cycle is undefined.
 : LAND ( ptr n -- ) {: row:ptr :}
-   row @ {: reg:n :}
+   row PENDING.REG @ {: reg:n :}
    LANDED @ reg MASK-BIT and 0 <> WRITTEN-LAST @ reg MASK-BIT and 0 <> or if E-CONFLICT throw then
    LANDED @ reg MASK-BIT or LANDED !
-   row 1 cells + @ reg REG! ;
+   row PENDING.VALUE @ reg REG! ;
 
-\ Advances every pending load by one cycle, landing those that are due.
+\ Advances every pending load by one cycle, landing those that are due; the
+\ last row takes a landed row's place.
 : SETTLE ( -- )
    0 LANDED ! 0 SCAN !
    begin SCAN @ PENDING-COUNT @ < while
       SCAN @ PENDING-ROW {: row:ptr :}
-      row 2 cells + @ 1- dup row 2 cells + !
+      row PENDING.LEFT @ 1- dup row PENDING.LEFT !
       0= if
          row LAND
          PENDING-COUNT @ 1- PENDING-ROW {: last:ptr :}
-         last @ row ! last 1 cells + @ row 1 cells + ! last 2 cells + @ row 2 cells + !
+         last PENDING.REG @ row PENDING.REG ! last PENDING.VALUE @ row PENDING.VALUE !
+         last PENDING.LEFT @ row PENDING.LEFT !
          -1 PENDING-COUNT +!
       else 1 SCAN +! then
    repeat ;
 
-: COMMIT-ROW ( n -- ) {: idx:n :}
-   COMMITS idx 2 * cells + {: row:ptr :}
-   row @ {: reg:n :}
+: LAND-COMMIT ( n -- ) {: idx:n :}
+   idx COMMIT-ROW {: row:ptr :}
+   row COMMIT.REG @ {: reg:n :}
    WRITTEN-LAST @ reg MASK-BIT and 0 <> if E-CONFLICT throw then
    WRITTEN-LAST @ reg MASK-BIT or WRITTEN-LAST !
-   row 1 cells + @ reg REG! ;
-
-: STORE-ROW ( n -- ptr n ) 3 * cells STORES + CELL-VIEW ;
+   row COMMIT.VALUE @ reg REG! ;
 
 : OVERLAP? ( n n -- bool ) {: a:n b:n :}
-   a STORE-ROW @ {: start:n :} start a STORE-ROW 1 cells + @ + {: limit:n :}
-   b STORE-ROW @ {: other:n :} other b STORE-ROW 1 cells + @ + {: other-limit:n :}
+   a STORE-ROW {: first:ptr :} b STORE-ROW {: second:ptr :}
+   first STORE.ADDRESS @ {: start:n :} start first STORE.SIZE @ + {: limit:n :}
+   second STORE.ADDRESS @ {: other:n :} other second STORE.SIZE @ + {: other-limit:n :}
    start other-limit < other limit < and ;
 
-: STORE-COMMIT ( n -- ) {: idx:n :}
+: LAND-STORE ( n -- ) {: idx:n :}
    idx 0 ?do idx i OVERLAP? if E-CONFLICT throw then loop
    idx STORE-ROW {: row:ptr :}
-   row 1 cells + @ 1 = if row 2 cells + @ row @ BYTE! else row 2 cells + @ row @ WORD! then ;
+   row STORE.SIZE @ 1 = if row STORE.VALUE @ row STORE.ADDRESS @ BYTE! else row STORE.VALUE @ row STORE.ADDRESS @ WORD! then ;
 
 \ Lands the packet's writes; two on one register in one cycle are undefined.
 : COMMIT ( -- )
    0 WRITTEN-LAST !
-   COMMIT-COUNT @ 0 ?do i COMMIT-ROW loop
-   STORE-COUNT @ 0 ?do i STORE-COMMIT loop ;
+   COMMIT-COUNT @ 0 ?do i LAND-COMMIT loop
+   STORE-COUNT @ 0 ?do i LAND-STORE loop ;
 
 
 \ ---- decoding -------------------------------------------------------------------------
@@ -359,28 +381,32 @@ variable CHECKING                                  \ the word under classificati
 
 \ One cross path carries one register per cycle, though any number of units may read it.
 : CLAIM-CROSS ( -- )
-   CROSS@ {: reg:n :}
+   F-CROSS @ {: reg:n :}
    reg 32 >= if CROSS-1X else CROSS-2X then {: path:ptr :}
    path @ 0 >= path @ reg <> and if E-CONFLICT throw then
    reg path !
    CROSS-READS @ reg MASK-BIT or CROSS-READS ! ;
 
-: CLASSIFY ( -- ) CHECKING @ FACTS ;
+\ The facts of the word under check that the packet checks read.
+: DESCRIBE ( -- )
+   CHECKING @ CLASSIFY C6XFACTS-FACTS:UNMAKE
+   {: unit:n cross:n reads:n writes:n loads:n memory:n side:n branch:bool idle:n :}
+   unit F-UNIT ! cross F-CROSS ! memory F-MEMORY ! side F-SIDE ! idle F-IDLE ! ;
 
 \ A word the facts module cannot classify is one the interpreter cannot model.
 : CHECK-ONE ( n -- ) {: idx:n :}
    PACKET idx cells + @ CHECKING !
-   [: CLASSIFY ;] catch {: code:n :}
+   [: DESCRIBE ;] catch {: code:n :}
    code C6XFACTS:E-DECODE = if CHECKING @ CURRENT ! UNMODELLED then
    code 0 <> if code throw then
-   IDLE@ 1 > if IDLE-TICKS @ 0 <> if E-CONFLICT throw then IDLE@ IDLE-TICKS ! then
-   IDLE@ 0 <> if exit then
-   UNIT@ MASK-BIT UNITS-USED @ and 0 <> if E-CONFLICT throw then
-   UNIT@ MASK-BIT UNITS-USED @ or UNITS-USED !
-   CROSS@ 0 >= if CLAIM-CROSS then
-   MEMORY@ 0 <> if
-      DATA-SIDE@ MASK-BIT MEMORY-SIDES @ and 0 <> if E-CONFLICT throw then
-      DATA-SIDE@ MASK-BIT MEMORY-SIDES @ or MEMORY-SIDES !
+   F-IDLE @ 1 > if IDLE-TICKS @ 0 <> if E-CONFLICT throw then F-IDLE @ IDLE-TICKS ! then
+   F-IDLE @ 0 <> if exit then
+   F-UNIT @ MASK-BIT UNITS-USED @ and 0 <> if E-CONFLICT throw then
+   F-UNIT @ MASK-BIT UNITS-USED @ or UNITS-USED !
+   F-CROSS @ 0 >= if CLAIM-CROSS then
+   F-MEMORY @ 0 <> if
+      F-SIDE @ MASK-BIT MEMORY-SIDES @ and 0 <> if E-CONFLICT throw then
+      F-SIDE @ MASK-BIT MEMORY-SIDES @ or MEMORY-SIDES !
    then ;
 
 \ The packet's resource use against SPRUGH7 3.8.1, 3.8.4, 3.8.6 and 3.8.11.

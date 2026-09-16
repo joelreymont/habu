@@ -103,8 +103,8 @@ result is claimed for these isolated additive modules.
 
 ## C66x execute packets
 
-`src/arch/tic6x/facts.f` (`C6XFACTS`) classifies one instruction word from
-the constructed subset: the unit it occupies (`.L`, `.S` or `.D`, by side),
+`src/arch/tic6x/facts.f` (`C6XFACTS`) returns a `facts` record for one
+instruction word from the constructed subset: the unit it occupies (`.L`, `.S` or `.D`, by side),
 the register it reads through a cross path, the registers it reads, the
 registers it writes at the end of its cycle, the registers a load fills after
 four delay slots, the register file its memory data moves on, and whether it
