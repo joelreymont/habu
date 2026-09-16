@@ -799,66 +799,108 @@ emits two compares in front of the walk: a span that starts at or above the
 hull's end, or ends at or below its start, intersects no band and skips all
 eight tests. `BAND-HI` is `DATA-START`, so every address the DP heap can reach
 takes that exit — which is every variable the checker stores to. The rejection
-set does not move: the hoist uses GUARD-BAND's own two comparison forms against
-the hull, and `test/protection-span.f` `TEST-HULL-EDGE` pins both edges a cell
-and a byte either side, a span ending exactly at `BAND-LO`, a span starting
-exactly at `BAND-HI`, a span entirely below the hull, and a span straddling all
-of it. All nine answer identically on the engine before and after the change.
+set does not move: the hoist uses `GUARD-BAND`'s own two comparison forms
+against the hull, the dynamic blob span still runs on every store, and
+`test/protection-span.f` `TEST-HULL-EDGE` pins both hull edges a byte and a cell
+either side, a span ending exactly at `BAND-LO`, a span starting exactly at
+`BAND-HI`, a span wholly below the hull, and a span straddling all of it. All
+nine answer identically on the engine before and after.
 `bootstrap/cg/forth.fs` carries the same table and hull for its five-band
-stage0 mirror, and its `PROT-GUARD` now walks those rows too instead of keeping
-a second copy of the list.
+stage0 mirror, and its `PROT-GUARD` walks those rows too instead of keeping a
+second copy of the list.
 
-Compile time, three interleaved runs of each engine on the same core
-(`taskset -c 8`), medians, load average 10.3-11.1:
+### Cut 2: two per-call full-table clears
 
-| | before | after | |
+`!`'s two largest callers after cut 1 were table clears, 11.5 and 7.8 percent of
+its exclusive samples:
+
+- `E-I-AK-RESET` (`src/core/checker.f`) UNBOUND-filled all 64 cells of `EI-AK`
+  on every `E-INST-RESET`, which runs once per instantiated effect — once per
+  checked call site — against the handful of fresh atoms a signature mints,
+  usually none.
+- `SEEN-RESET` (`src/core/render.f`) UNBOUND-filled all `MAXTV` = 1,280 cells on
+  every entry into the renderer, which is per rendered term, against the handful
+  of variables one diagnostic names.
+
+Both now clear only the written span, in the high-water shape
+`E-COPY-MAPS-RESET` beside them already used: the writer bumps a mark, the reset
+clears `[0, mark)` and zeroes it. The invariant the mark needs — every cell above
+it is already UNBOUND — is established by a one-time full fill at load
+(`EI-AK`, which `allot` left as zeros) and re-opened wherever the array can stop
+being UNBOUND: `SEEN-ENSURE` after a grow and `SEEN-SNAPSHOT-RESET` after it
+zeroes the boot array at the capture seam. Diagnostics are unchanged: three
+rendered multi-variable rejections produce byte-identical text before and after.
+
+### What both cuts are worth
+
+Five interleaved runs of each engine on the same core (`taskset -c 8`), medians,
+1-minute load average 1.0-2.2 for the compile and run-time rows and 5.1-9.6 for
+the self-build:
+
+| | before | after cut 1 | after cut 2 | total |
+|---|---:|---:|---:|---:|
+| corpus, per definition | 82.2 µs | 69.6 µs | 66.0 µs | **-19.7%** |
+| trivial, per definition | 32.8 µs | 28.6 µs | 27.9 µs | **-15.0%** |
+| self-build, user CPU | 97.70 s | 93.45 s | 91.88 s | **-6.0%** |
+| `(PROT-SPAN)` excl, corpus | 33.3% | 15.2% | 14.3% | |
+| `!` inclusive, corpus | 38.0% | 22.2% | 20.1% | |
+
+The store guard is on every store in the engine, not only the compiler's, so
+run time moves with cut 1. `tools/tier-bench.f` at tier 0, two interleaved runs
+of each engine, medians in µs:
+
+| benchmark | before | after cut 1 | after cut 2 |
 |---|---:|---:|---:|
-| corpus, per definition | 80.9 µs | 67.3 µs | **-16.9%** |
-| trivial, per definition | 33.3 µs | 28.7 µs | **-13.7%** |
-| `(PROT-SPAN)` exclusive, corpus | 33.3% | 15.2% | |
-| `!` inclusive, corpus | 38.0% | 22.2% | |
-
-The guard is on every store in the engine, not only the compiler's, so run time
-and the self-build move with it. `tools/tier-bench.f` at tier 0, two interleaved
-runs of each engine, medians in µs, load 9.9-10.0:
-
-| benchmark | before | after | |
-|---|---:|---:|---:|
-| `harness` (a `SINK !` loop, nothing else) | 5,567 | 3,416 | **-38.6%** |
-| `lines` | 22,335 | 18,482 | **-17.3%** |
-| `move` | 378,137 | 345,530 | **-8.6%** |
-| `fold` | 354,609 | 352,658 | -0.6% |
-| `arith` | 8,235 | 8,257 | +0.3% |
-| `branch` | 11,840 | 11,921 | +0.7% |
-| `search` | 10,127 | 10,196 | +0.7% |
+| `harness` (a `SINK !` loop, nothing else) | 5,561 | 3,420 | 3,411 |
+| `lines` | 22,231 | 18,364 | 18,270 |
+| `move` | 375,654 | 341,433 | 339,844 |
+| `fold` | 352,111 | 350,512 | 350,157 |
+| `arith` | 8,075 | 8,071 | 8,072 |
+| `branch` | 11,733 | 11,728 | 11,701 |
+| `search` | 10,063 | 10,069 | 10,028 |
 
 The three that move are the three that store; `arith`, `branch` and `search`
-read and never write, and they sit inside the noise. Self-build CPU, the same
-tree built by each engine in turn, pinned, two rounds: 97.99 s and 97.52 s user
-before, 93.99 s and 93.94 s after, **-4.0%**. All four builds emitted a
-byte-identical engine, and the A/B/C chain reaches its fixpoint on it.
+read and never write and sit inside the noise. Cut 2 is checker-only and, as
+expected, moves no run-time row.
 
-### The ranked cuts this profile asks for
+Both cuts reach a byte fixpoint one generation out, which is the ordinary shape
+here: the AOT capture bakes the building engine's own DATA window, so the first
+engine built by an engine that does not yet carry the change differs from the
+one built by an engine that does. Cut 1: `A` built `B`, `B` built `C`,
+`B == C`. Cut 2: `D` built `E`, `E` built `F`, `E == F`, and every engine
+without the change builds the same `D` while every engine with it builds the
+same `E` — checked across three builders and two rounds each.
 
-1. **The store guard is a per-store linear scan over eight bands.** One third of
-   corpus compile time and a quarter of trivial compile time is `(PROT-SPAN)`,
-   reached by `!` on 97 percent of its samples. `src/habu/habu1.f`
-   `ENGINE-EMIT:GUARD-SPAN` runs eight half-open `GUARD-BAND` interval tests in
-   sequence — each a `LIT64`/`ADD`/`CMP`/`BCOND` pair, about 100 instructions —
-   on every guarded store in the engine, and the checker makes a great many of
-   them. Every static band lies below `DATA-START`, so a two-compare bounding
-   test in front skips all eight for any store at or above it.
-2. **`DO-TOK1` asks its question with string compares.** `CORE-STR=` is 9.5
-   percent inclusive on the corpus, and its callers are the predicates in the
-   19-deep ladder: `CF-TOK?`, `LAYOUT-XPORT-TOK?`, `RS-TOK?`, plus `DO-TOK1`'s
-   own seven literal spellings. `CORE-STR=CI` adds 2.8 percent for
-   `UNSAFE-TOK?` and `RETIRED-TOK?`, which are themselves 24- and 7-row
-   spelling ladders.
-3. **`PRIM-FIRST-SCAN`** is 5.3 percent inclusive on the corpus, entered only
-   from `PRIM-FIRST-IDX`, and named for what it does.
-4. **Effect interning** (`E-INTERN` 12.6 percent inclusive) dominates the
-   trivial definition, where there is no body to check and the per-definition
-   signature work is all there is.
+The image grows 5,374,144 to 5,439,680 bytes. The content grows about 900 bytes
+(`aot/code-blob` +332, `aot/data-run-bytes` +168, the rest smaller); the other
+64 KiB is `image/text-pad` crossing a page boundary, and the next 64 KiB of work
+absorbs it. `source/baked` is 0 in both: a native engine bakes no source.
+
+### What is left on the tier-0 path, and why
+
+Re-profiled on the engine carrying both cuts, corpus workload, 2,430 samples,
+`words` 1,993 / `other` 431. Exclusive shares are exact; every per-token or
+per-word repetition the audit named is listed with its measured share and its
+disposition.
+
+| what | measured, corpus | disposition |
+|---|---:|---|
+| eight-band scan per store | 33.3% → 14.3% | **cut** (above); what remains is the friend latch, the wrap test, the two hull compares and the dynamic blob span, all of which have to run |
+| `ptr-field` + the two `;does` bodies | 9.5% excl | **left**: `0 ptr-field` is the identity on the address, so every read of a pointer-valued global pays a literal push and two calls for a type. Removing it means an immediate-fold row in the JIT's keyword and `VOPI-ENTRY` machinery (`src/habu/habu2.f`, `src/habu/jit.f`) — the files hazel-word-frame is changing — so it needs coordination, not a race |
+| `CORE-STR=` + `CORE-STR=CI` ladders | 4.6% excl / 11.1% incl | **left**: `DO-TOK1` asks up to ~90 spelling questions per token across `LAYOUT-XPORT-TOK?` (18), `CF-TOK?` (~30), `RS-TOK?` (9), `UNSAFE-TOK?` (24), `RETIRED-TOK?` (7) and its own seven literals. The fix is one hashed lookup of the already-folded token into a shared keyword table and id comparisons after it; that is a ~400-line mechanical edit in the checker for a measured 5-7%, and it wants its own dot and its own review |
+| `TAG`, `RES-FALSE`, `PAY`, `cell-view`, `PE-ROW` | 2.2, 2.0, 0.7, 1.3, 1.1% excl | **left, justified**: these are calls that push a constant or read one cell. They are tier-0 call overhead, not a copy, an allocation or a scan, and the fix for all of them at once is inlining small leaf prims in the JIT |
+| `SYM-FOLD-C` re-folding stored names | 1.3% excl | **left, justified**: `SYM-PKG!`/`SYM-NAME!` store through `SYM-COPY-FOLD`, so `SYM-STR=CI` and `HIDX-H+` fold a side that is already folded. Real repeated work, but 1.8% and it needs the "every writer folds" invariant proved across the store before a fold can be dropped |
+| `PRIM-FIRST-SCAN` | 1.1% excl / 5.5% incl | **left, justified**: entered only from `PRIM-FIRST-IDX`; a linear scan by name, but under 1.5% exclusive after cut 1 |
+| `E-COPY*` / `E-INTERN` signature copy | 12.6% incl on the trivial word, below the corpus report's 64 rows | **left**: it dominates a definition with no body, which is the boot prefix's shape, and it is the next thing to measure after the two above |
+| `VREC-COPY` | did not reach 64 rows at either workload | **left, justified**: not on the measured hot path for either workload |
+
+Nothing on this list allocates per token: the checker's tables are sized once
+and grown only on demand, and cut 2 removed the two clears that paid for a
+table's capacity rather than its contents. `VREC-COPY-RESET`
+(`src/core/checker.f`) still clears two whole `MAXTV` arrays per call and is the
+same defect in a third place, but it never reached the 64 reported rows at
+either workload — value-record parsing is not on this path — so it is listed
+here rather than cut.
 
 ## Verdict and the ranked fixes
 

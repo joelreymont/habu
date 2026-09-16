@@ -4975,6 +4975,7 @@ variable EC-RVN
 
 64 constant EI-AK-CAP
 create EI-AK EI-AK-CAP cells allot
+variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK wrote
 
 variable FEP
 variable FEP-OFF
@@ -4993,6 +4994,9 @@ variable EC-RV-HW
 \ one-time load init; E-COPY-MAPS-RESET clears only the high-water span
 EC-TV MAXTV E-MAP-CLEAR   0 EC-TV-HW !
 EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
+\ EI-AK is the same shape and needs the same init: a high-water reset restores
+\ only what was written, so every cell above the mark has to be UNBOUND already.
+EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 
 : E-COPY-MAPS-RESET ( -- )
    EC-TV EC-TV-HW @ E-MAP-CLEAR
@@ -5002,11 +5006,12 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    0 EC-TVN !
    0 EC-RVN ! ;
 
+\ E-INST-RESET runs per instantiated effect - once per checked call site - and
+\ this table is 64 cells against the handful of fresh atoms a signature
+\ actually mints, usually none. Clear the written span, not the capacity.
 : E-I-AK-RESET ( -- )
-   0 begin dup EI-AK-CAP < while
-      UNBOUND over cells EI-AK + !
-      1 +
-   repeat drop ;
+   EI-AK EI-AK-HW @ E-MAP-CLEAR
+   0 EI-AK-HW ! ;
 
 : E-TV-ID ( n -- n ) {: id:n :}
    id cells EC-TV + dup @ UNBOUND = if
@@ -6387,6 +6392,7 @@ variable FMEND
 : E-I-AK ( ptr u8 n n -- ptr u8 n n ) {: a:ptr u:n k:n :}   \ name kept for domain routing
    k 0 >= if a u k exit then
    k E-I-AK-IDX dup EI-AK-CAP >= if s" checker: fresh atom inst table full" 76 die then
+   dup 1+ EI-AK-HW @ max EI-AK-HW !
    cells EI-AK + dup @ UNBOUND = if a u RIGID-AK-MINT over ! then @
    {: id:n :}
    a u id ;

@@ -64,6 +64,12 @@ variable RDIAG-I
 create SEEN-BOOT MAXTV-INIT cells allot
 PERSISTED-PTR-VARIABLE SEEN-P   SEEN-BOOT SEEN-P !
 variable SEEN-CAP   MAXTV-INIT SEEN-CAP !
+\ SEEN-RESET clears only [0, SEEN-HW), the span LET-OF wrote since the last
+\ reset; every cell above the mark is already UNBOUND. The mark opens AT the
+\ capacity, because `allot` leaves zeros and zero is a letter index rather than
+\ UNBOUND - so the first reset is the full fill that establishes the invariant,
+\ and a grow or the snapshot wipe re-opens it for exactly the same reason.
+variable SEEN-HW   MAXTV-INIT SEEN-HW !
 variable NLET                                      \ SEEN is indexed by typevar (PAY)
 64 constant RATOM-CAP
 create RATOM-KEY RATOM-CAP cells allot
@@ -77,24 +83,31 @@ variable RATOM-I
    MAXTV {: need:n :}
    need SEEN-CAP @ <= IF EXIT THEN
    SEEN-P @ SEEN-CAP @ cells need cells ARENA-BYTES-GROW SEEN-P !
-   need SEEN-CAP ! ;
+   need SEEN-CAP !
+   need SEEN-HW ! ;                                \ the grown tail is not UNBOUND
 
+\ Every entry into the renderer runs this, and the renderer is entered per
+\ rendered term, not per definition; MAXTV is 1280 cells against the handful of
+\ variables one diagnostic names. Clear the written span, not the capacity.
 : SEEN-RESET ( -- )
    SEEN-ENSURE
-   0 BEGIN dup MAXTV < WHILE
+   0 BEGIN dup SEEN-HW @ < WHILE
       UNBOUND over cells SEEN + !
       1 +
-   REPEAT drop ;
+   REPEAT drop
+   0 SEEN-HW ! ;
 
-\ Every entry into the renderer runs SEEN-RESET first, which UNBOUND-fills the
-\ whole array, so what the boot array holds at the capture seam is the last
-\ rendered diagnostic's alpha-renaming and nothing a restored engine reads. It
-\ is dense, though - 16,389 non-zero bytes on the pinned engine - and a capture
-\ carries every non-zero byte into the engine's __text. Empty it here.
+\ SEEN-RESET leaves the whole array UNBOUND - the written span cleared, the
+\ rest never touched - so what the boot array holds at the capture seam is the
+\ last rendered diagnostic's alpha-renaming and nothing a restored engine
+\ reads. It is dense, though - 16,389 non-zero bytes on the pinned engine - and
+\ a capture carries every non-zero byte into the engine's __text. Empty it
+\ here, and re-open the mark so the next reset refills what this zeroed.
 : SEEN-SNAPSHOT-RESET ( -- )
    SEEN-BOOT 0 MAXTV-INIT ARENA-CELLS-ZERO
    SEEN-BOOT SEEN-P !
-   MAXTV-INIT SEEN-CAP ! ;
+   MAXTV-INIT SEEN-CAP !
+   MAXTV-INIT SEEN-HW ! ;
 
 : REG-SCRATCH-SNAP-INSTALL ( -- ) [: SEEN-SNAPSHOT-RESET ;] is REG-SCRATCH-SNAP-XT ;
 REG-SCRATCH-SNAP-INSTALL
@@ -104,6 +117,7 @@ REG-SCRATCH-SNAP-INSTALL
 \ Diagnostic alpha-renaming has its own a..z namespace.  It renders generic
 \ checker variables and is deliberately independent of declaration positions.
 : LET-OF {: vp :}
+   vp 1 + SEEN-HW @ < 0= IF vp 1 + SEEN-HW ! THEN
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
    vp cells SEEN + @ 97 + ;
 : RATOM-CHAR ( n -- n ) {: idx:n :}
