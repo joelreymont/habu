@@ -513,6 +513,155 @@ builder*: seventeen arenas, two registry scans each, and a verbatim clone of
 the dialect's whole interned vocabulary — items 3 and 4 above, paid once per
 module built rather than once per word.
 
+## 6. What a per-word scratch region has to prove
+
+The shape this is written against: one scratch region per compilation, a mark
+at the word's start, every table an index-addressed slice taken from it, a
+release at the word's end; passes hand each other offsets rather than handles;
+sizes are named constants from measured high-water marks with a named refusal
+instead of growth by copy; no registry, no generations, no per-creation scans.
+The checker's nominal index types stay compile-time types, so a raw cell still
+cannot become an index. This section is what that lane has to establish, and it
+is written from the source rather than from the plan.
+
+### What is actually freed today, and when
+
+**Storage is never reclaimed while a word compiles.** `IR-CTX:SCRATCH-TAKE`
+(src/compiler/ir/context.f) is a chunked bump cursor whose own contract line is
+"Every returned span stays at the same address until the context ends"; the one
+`munmap` in that file is `CHUNKS-FREE`, called from the context teardown. `IR-ARENA:GROW-TO`
+says the same thing from the other side: a doubled span is spent whether or not
+the row that asked for it survives, because "context scratch is a monotonic bump
+cursor with no free".
+
+`IR-ARENA:ABORT` and `RETIRE` resolve a slot and then write `0 slot AGEN!`, and
+that is the whole of them. They free a **registry row**, not a span. `IR-BUILD:RETIRE` and `ABORT` retire the module's
+seventeen tables, which is seventeen registry rows and no memory. So the
+mid-word "release" the compiler does today releases nothing but slots.
+
+**Why it does it at all is slot pressure, and the pressure is the registry's
+own.** A builder creates seventeen arenas (`IR-BUILD:TABLES-BUILD`: two symbol,
+two type, two attribute, one source, two schema, three operation, three
+function, two edge). The registry holds 64 rows (`SLOT-MAX`, arena.f) and the
+builder registry 16. `NCOMP:EMITTED` holds a chain — the HIR builder, the tape,
+the selection's A64 builder, the combine rebuild, then a lowering rebuild per
+spill turn — and `IR-BUILD:RETIRE`'s own comment records what happens without
+the mid-word retire: "three chained builders plus the model and tape arenas is
+already the ceiling - which is how a routine that combined and then spilled ran
+out (E-IR-ARENA-SLOTS)".
+
+**So the seal does not defend against a dangling pointer.** It defends against a
+handle whose registry row was given to a later arena. That is the fact the lane
+turns into its proof: remove row reuse and the thing being caught cannot happen.
+
+### Which reads check generation and state
+
+Liveness and identity of the row, i.e. what a region would remove:
+
+| site | what it asks |
+|---|---|
+| `IR-ARENA:LIVE-SLOT`, `FROZEN-SLOT` | handle non-zero; the stored handle equals the presented one (generation and slot); `IR-CTX:SERIAL-LIVE?` of the owner; the row's state |
+| `IR-ARENA:RD@`, `RD-SIZE`, `RD-FIND` | the token's generation against the row's, then the token's state against the row's |
+| `IR-ARENA:IDX-AT` | the generation packed into a cell-id against the row's |
+| `IR-ARENA:FROZEN-READER` | the token was opened against a frozen row |
+| `IR-ARENA:OWN-CHECK` | the writing context's serial against the row's owner |
+| `IR-BUILD:RESOLVE` | a generation to a slot by scanning `BGENS`, then owner liveness; `LIVE-SLOT`/`FROZEN-SLOT` add the state |
+| `IR-CTX:SERIAL-LIVE?` | the owning context's serial is still live |
+
+Shape and identity, i.e. what a region does **not** remove: every table's
+`*HDR-CK` (format tag and row-width modulus), `SERIAL-CK` (the module serial a
+header binds to, which is what refuses a foreign key or a cross-module store
+pairing), every ordinal bound check, and the window revalidations
+`IR-SYM:SPAN-CK-N` and `IR-SCHEMA:WIN-CK-N`. These answer "is this the table I
+think it is, and is this index inside it", not "is this object still alive".
+
+### Which of those can observe a freed object
+
+**None, today or after.** Storage is not freed mid-word now, so no read can
+reach a freed span between a mark and a release; the release is the context
+teardown, and the teardown is already where `RETIRE-OWNED` zeroes every row this
+context owns before the mapping goes. Under the region the release moves to the
+word's end and the same property holds for the same reason, with one thing to
+prove rather than assume:
+
+1. **The region only grows within a word.** No slice is handed back or reused
+   before the release, so an offset a pass obtained stays valid — and stays
+   pointing at the same bytes — for the rest of the word. This is what makes the
+   generation unnecessary; it is not true of any design that recycles a slice.
+2. **Two extents, not one.** The dialect prototype (`A64IR:PROTO`,
+   `HIR`'s `PROTO`) and the session vocabulary (`HIR-WORD:SESS-POOL` /
+   `SESS-ROWS`) live in the session context `NCOMP:SESSION-START` opens, which
+   spans the whole load and is given up at capture. A word's tables read them
+   (`IR-BUILD:SYM-NEW` copies from them today). So the shape is a session region
+   and a word region, with word-to-session offsets allowed and never the
+   reverse, and the obligation is that the session region's extent dominates
+   every word region taken inside it — which `SESSION-OPEN` before every
+   `IR-CTX:WITH-CONTEXT` already gives.
+3. **Frozen is not liveness and does not go away.** `ST-LIVE` / `ST-FROZEN`
+   answers "may this be appended to", and `IR-OP:FROW-USE` demands a frozen
+   reader before it caches a row's facts. That becomes one sealed bit per slice,
+   checked where the state is checked now. The liveness argument does not reach
+   it.
+
+### What the RETIRE contract becomes
+
+Today `IR-BUILD:RETIRE` states its own contract: it cannot prove a module has no
+readers, so it makes being wrong loud — a later read through that handle is
+`E-IR-BUILD-RETIRED`, and through any view or index it handed out
+`E-IR-ARENA-OWNER`, "rather than returning something plausible".
+
+Under the region there is no mid-word retire: release happens once, at the word's
+end, and a consumer that holds an offset past it is reading a released region.
+That is the one guarantee the shape gives up, and it should not be given up
+silently:
+
+- **Inside the word**, a pass that reads a module a later pass superseded now
+  gets intact, valid, stale data instead of a refusal. The honest replacement is
+  static, not dynamic: a rewriting pass should **consume** its input — take the
+  module offset by value and not return it — so holding the old one afterwards
+  is a checker error at the call site rather than a runtime refusal that may
+  never fire. `NCOMP:EMITTED`'s chain (`m0` → `CLOSED` → `SELECTED` →
+  `COMBINED` → `LOWER-FIXPOINT`) is already written that way by hand; making it
+  the type is what replaces the seal.
+- **Across the word boundary**, the release must be loud. Nothing may hold an
+  offset into a released region, and the cheapest honest check is one epoch cell
+  per region compared at the region boundary — not per read, which is the cost
+  this whole section exists to remove.
+
+### What the lane must measure before it sizes anything
+
+Slice sizes are to be named constants from measured high-water marks. The marks
+do not exist yet: `IR-BUILD`'s `D-SYMS`, `D-OPS`, `D-VALS`, `D-OPOOL`, `D-FUNS`,
+`D-BLKS`, `D-FPOOL` and their siblings are committed *ceilings*, chosen to be
+large, and `PLAN-DEFAULT` hands every module the same ones. What a region needs
+is the peak each table actually reaches over a real corpus, per table, with the
+refusal that fires when a word exceeds it named and tested. The measurement is
+the same shape as the ones above — a counter per table read at the end of a load
+of the thirteen-file corpus — and it belongs to that lane's first commit, before
+any size is written down.
+
+### What this lane did not do, and why it is recorded here
+
+Borrowing the dialect's interner instead of cloning it into every module was
+designed and costed and then not done. The workable form is a side table inside
+`IR-SYM` keyed by registry slot, exactly as the bucket index already is, holding
+the borrowed pair and the base ordinal count, so no public signature changes —
+`IR-SYM:FCOPY` has callers in `native/select.f` and `combine.f` that another
+lane owns. It is sound because a prototype only ever appends, so its rows below
+the borrow point are immutable, and a base hit at an ordinal at or above the
+borrow point is treated as a miss. The work is that `CNT` means both "rows in
+this arena" and "ordinals in this interner" and the borrow splits them across
+eight call sites in a file whose interning invariant is machine-checked.
+
+It was dropped on its measured value. The clone was 13.2 percent of the floor
+when it was measured; making the canonical slot words copy whole runs
+(section 5, item 3) took 9.1 percent of the floor off without changing any
+semantics, which leaves the borrow four to five percent — in the file whose
+registry and generations this section proposes to delete. Under the region the
+clone has nowhere to go anyway: the prototype is a slice of the session region
+and a word's interner is a slice of the word's, and borrowing is what an offset
+into the session region already is.
+
 ## Verdict and the ranked fixes
 
 Tier 1 pays for itself. It halves the calls, wins every run-time benchmark by
