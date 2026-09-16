@@ -439,7 +439,7 @@ TRUSTED: TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
    create
-      , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+      ,  TASK-TCB-BYTES 8 / 1 - 0 do 0 , loop
    does> ( -- ptr n ) ;
 
 : #USER ( -- n )
