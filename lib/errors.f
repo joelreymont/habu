@@ -1266,7 +1266,8 @@ public
 -9230 constant E-CURL-FIRST
 -9239 constant E-CURL-LAST
 -9230 constant E-CURL-PLATFORM
--9231 constant E-CURL-SYMBOL
+\ -9231 was E-CURL-SYMBOL, retired for the same reason as -9102: lib/net/curl.f
+\ binds through FUNCTION: and a missing symbol is E-FFI-DLSYM.
 -9232 constant E-CURL-STATE
 -9233 constant E-CURL-RESULT
 -9234 constant E-CURL-OPERAND
