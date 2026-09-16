@@ -194,10 +194,17 @@ public
    k 0 >= if BASE k ROW-OFF + exit then
    BASE  a u ADD ROW-OFF  + ;
 
-private
-
-\ Only the build driver may import the retained owner's actual row tables;
-\ it proves the byte arena belongs to the capture before invoking this private seam.
+\ THE BUILD DRIVER'S SEAM, AND WHY IT IS PUBLIC. A native build hands the
+\ retained host's literal rows to the freshly loaded target's pool
+\ (tools/native-build-core.f TRANSFER-LITERALS), and the target's copy of this
+\ package did not exist when the driver was compiled, so the driver has to
+\ resolve it after the load. It used to walk this package's PRIVATE wordlist by
+\ name to do it, which is the one thing a shipped engine cannot do once private
+\ records stop travelling. A qualified public name is how every other target
+\ entry point is reached (NATIVE-EMIT:WRITE, NATIVE-RUNTIME:CAPTURE-PREPARE),
+\ so this joins them. The authority did not widen: IMPORT-CHECK still refuses
+\ every row table that is not the caller's to give, and the driver still proves
+\ the arena belongs to the capture before it calls.
 : IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
    {: arena:ptr rows:n source-off:ptr source-len:ptr :}
    rows source-off source-len IMPORT-CHECK
@@ -209,7 +216,16 @@ private
    rows owner ROWS-FIELD !
    owner APPEND-OWNER ;
 
-public
+\ The retained owner's literal rows, as the build driver reads them: the arena
+\ and its capacity for the span check, then the rows themselves. Published here,
+\ while the package is open, because the alternative is the driver finding
+\ ARENA, ARENA-CAP, R-OFF and R-LEN by name in this package's private wordlist
+\ after it closes.
+: SOURCE-SPAN ( -- ptr u8 n )
+   ARENA ARENA-CAP ;
+
+: SOURCE-ROWS ( -- ptr u8 n ptr n ptr n )
+   ARENA ROWS @ R-OFF R-LEN ;
 
 \ Query only registered row metadata, never memory at the candidate address.
 : OWNER-ROW ( n -- ptr u8 n bool ) {: address:n :}

@@ -83,32 +83,14 @@ create SMOKE-ERR SMOKE-CAP allot
 TRUSTED: RESET-XT ( n -- [ -- ] ) ;
 TRUSTED: IMPORT-XT ( n -- [ ptr u8 -- ] ) ;
 
-defer SOURCE-ARENA ( -- ptr u8 )
-defer SOURCE-CAP ( -- n )
-defer SOURCE-OFFSETS ( -- ptr n )
-defer SOURCE-LENGTHS ( -- ptr n )
-
-\ Inspect the retained owner's exact namespace and declarations without
-\ reopening its protected package. These getters also exist in the older seed.
-: LITERAL-OWNER-XT ( ptr u8 n -- n ) {: name:ptr size:n :}
-   s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? 0= if
-      drop s" native-build: literal owner missing" 76 die
-   then
-   XREF-LEN name size rot XREF-FIND-WL
-   dup XREF-FOUND? 0= if
-      drop s" native-build: literal operation missing" 76 die
-   then
-   XREF-START ;
-
-TRUSTED: BIND-LITERAL-SOURCE ( -- )
-   s" ARENA" LITERAL-OWNER-XT is SOURCE-ARENA
-   s" ARENA-CAP" LITERAL-OWNER-XT is SOURCE-CAP
-   s" R-OFF" LITERAL-OWNER-XT is SOURCE-OFFSETS
-   s" R-LEN" LITERAL-OWNER-XT is SOURCE-LENGTHS ;
-
+\ The retained host's literal rows come from the package that owns them, which
+\ publishes them while it is open (src/compiler/native/string.f SOURCE-SPAN,
+\ SOURCE-ROWS). This driver used to find ARENA, ARENA-CAP, R-OFF and R-LEN by
+\ name in NSTR's PRIVATE wordlist, through the namespace record, after the
+\ package had closed - four private names a shipped engine had to keep alive
+\ for one caller. A call needs none of them.
 : LITERAL-SOURCE-ROWS ( -- ptr u8 n ptr n ptr n )
-   SOURCE-ARENA NSTR:COUNT SOURCE-OFFSETS SOURCE-LENGTHS ;
+   NSTR:SOURCE-ROWS ;
 
 TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
 
@@ -116,17 +98,21 @@ TRUSTED: LITERAL-ADDRESS ( ptr u8 -- n ) ;
    s" native-build: source literal arena outside capture" BUILD-RC die ;
 
 : CHECK-LITERAL-SPAN ( -- )
-   SOURCE-ARENA LITERAL-ADDRESS {: start:n :}
-   SOURCE-CAP {: size:n :}
+   NSTR:SOURCE-SPAN {: arena:ptr size:n :}
+   arena LITERAL-ADDRESS {: start:n :}
    start AOT-ARM:D0 @ < start AOT-ARM:D1 @ > or if LITERAL-SPAN-REFUSE then
    AOT-ARM:D1 @ start - {: remaining:n :}
    remaining CELL < if LITERAL-SPAN-REFUSE then
    size 0 < size remaining CELL - > or if LITERAL-SPAN-REFUSE then ;
 
-\ Resolve the current source owner in its own package. The cold seed uses the
-\ native dispatch header cells for its old compiler's temporary stack.
-TRUSTED: CHECKER-OWNER ( -- ptr u8 )
-   s" package CHECKER-REG DECLARATIONS ;package" evaluate ;
+\ The checker publishes its own declaration owner into the engine's target
+\ declaration cell as it loads (src/core/checker.f), so the owner is a cell
+\ read: the retained host's before LOAD-TARGET and the freshly loaded target's
+\ after it, which is exactly the late binding this word used to get by
+\ evaluating `package CHECKER-REG DECLARATIONS ;package` - a private name
+\ resolved at runtime, and an unchecked span to carry its result.
+: CHECKER-OWNER ( -- ptr u8 )
+   data-base NCOMP-DISPATCH:TARGET-DECL-CELL + 0 ptr-field @ ;
 
 \ These execution tokens belong to the retained/target private checker owners.
 TRUSTED: RESET-CHECKER ( ptr u8 -- ) {: owner:ptr :}
@@ -221,7 +207,7 @@ TRUSTED: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] ) ;
 : TRANSFER-LITERALS ( -- )
    CHECK-LITERAL-SPAN
    LITERAL-SOURCE-ROWS
-   s" IMPORT-ROWS" LITERAL-OWNER-XT TARGET-CODE LITERAL-IMPORT-XT execute ;
+   s" NSTR:IMPORT-ROWS" TARGET-XT LITERAL-IMPORT-XT execute ;
 
 : PREPARE-TARGET ( -- )
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
@@ -354,7 +340,6 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 
 : DRIVE ( [ n n -- n ] bool -- [ n n -- n ] bool ) {: query bootstrap:bool :}
    CHECK-HOST-LAYOUT
-   BIND-LITERAL-SOURCE
    CHECKER-OWNER {: source:ptr :}
    source LOGICAL-RESET
    source OPEN-AND-COMPILE

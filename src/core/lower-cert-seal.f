@@ -50,12 +50,21 @@ undefine FULL-SET
 \ `duplicate family at 'option'` on the first `require`, and a warm image whose
 \ first type declaration stored through a stale pointer and died.
 \
-\ The dictionary boundary follows this package's final private word, BOUNDARY.
-\ Resolve its wordlist through the live namespace: an AOT restore relocates
-\ record ordinals and WIDs. The package is protected at the mark, so ordinary
-\ source cannot reopen it or retire/rebind that private word. A public marker
-\ would be insufficient: `undefine` may retire a public word even in a protected
-\ package. The include registry and checker marks remain their owners' counts.
+\ The dictionary boundary follows this package's final private word, BOUNDARY,
+\ and the mark is that word's CODE ENTRY, taken the moment it exists. An entry
+\ is what survives what an ordinal does not: an AOT restore re-registers every
+\ record, so the index moves, while the entry is relocated with the code and
+\ the engine's own address-cell table carries the cell that holds it (`xt!`).
+\ The boundary is then the position of the record whose entry this is, which
+\ the read below walks the dictionary to find.
+\ IT USED TO BE A NAME. The read resolved this package's namespace record and
+\ then looked BOUNDARY up in its private wordlist, which made a private name
+\ something a shipped engine had to keep alive for one caller - the last such
+\ name the engine itself resolved at runtime (habu-ship-no-dictionary-2fee2dea).
+\ The package is protected at the mark, so ordinary source can neither reopen it
+\ nor rebind the marker; `undefine` may retire a record, but retiring leaves the
+\ record and its entry in place, so it cannot move the boundary either. The
+\ include registry and checker marks remain their owners' counts.
 \
 \ The capture is this file's last act, so the package's own records are below
 \ the mark and survive the rewind that reads them.
@@ -66,6 +75,10 @@ private
 
 variable RQ
 variable CU
+\ The marker's entry, stored after BOUNDARY exists and declared to the engine's
+\ address-cell table by `xt!` so the restore relocates it. Declared HERE, above
+\ the boundary, because everything this package owns must sit below the mark.
+variable B-XT
 
 public
 
@@ -74,14 +87,14 @@ public
 \ below would read its own empty accessor instead of the dictionary. Measured:
 \ the mark recorded 0, and a build takes that as "truncate everything".
 : DICT ( -- n )
-   s" PREFIX-MARK" XREF-NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? 0= if
-      drop s" prefix boundary: source namespace is missing" 76 die
+   B-XT @ {: entry:n :}
+   entry 0= if
+      s" prefix boundary: the marker's entry was never taken" 76 die
    then
-   XREF-LEN
-   s" BOUNDARY" rot XREF-FIND-WL-INDEX
-   dup 0 < if s" prefix boundary: final source record is missing" 76 die then
-   1+ ;
+   ndict@ 0 ?do
+      i XREF-REC XREF-START entry = if i 1+ unloop exit then
+   loop
+   s" prefix boundary: final source record is missing" 76 die ;
 
 : REQ ( -- n )
    RQ @ ;
@@ -96,6 +109,8 @@ public
 private
 
 : BOUNDARY ( -- ) ;
+
+' BOUNDARY B-XT xt!
 
 get-current prot-wid-add
 public
