@@ -90,6 +90,12 @@ variable HBT-EXP-SRC-U
 variable HBT-EXP-OUT-U
 create HBT-EXP-SRC-BUF FS-PATH-CAP allot
 create HBT-EXP-OUT-BUF FS-PATH-CAP allot
+\ The quoted-path fixture below owns the writer's bytes; json-write holds none.
+6 constant HBT-ESCAPE-MAX
+FS-PATH-CAP HBT-ESCAPE-MAX * 2 + constant HBT-QUOTE-CAP
+HBT-QUOTE-CAP BUFFER: HBT-QUOTE-BUF
+TYPED-VARIABLE HBT-QUOTE-WRITER JSON-WRITE:writer
+
 create HBT-EXP-DG 32 allot
 create HBT-EXP-HEX1 64 allot
 create HBT-EXP-HEX2 64 allot
@@ -306,7 +312,8 @@ create HBT-EXP-HEX2 64 allot
 : HBT-PATH-ERROR-TEXT$ ( -- ptr u8 n )
    SB-RESET
    s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH cache_selected=true cache_root=" SB-APPEND
-   JSON-WRITE:RESET HBT-BAD-OUT JSON-WRITE:STRING JSON-WRITE:$ SB-APPEND
+   HBT-QUOTE-WRITER HBT-QUOTE-BUF HBT-QUOTE-CAP JSON-WRITE:OPEN
+   HBT-BAD-OUT JSON-WRITE:STRING JSON-WRITE:$ SB-APPEND
    s"  cache_source=explicit cause=E-FS-DIR" SB-APPEND
    HBB-LF SB-APPEND-C
    SB$ ;

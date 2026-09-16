@@ -1,32 +1,50 @@
-\ json-write.f - checked emit-only JSON writer.
+\ json-write.f - checked emit-only JSON writer over caller-owned storage.
 \
-\ STORAGE CLASS. PROCESS-WIDE, so this module is single-task. One growable
-\ output buffer (JW-BUF-A, JW-BUF-CAP, JW-OUT-LEN) and one number buffer serve
-\ the whole image: two tasks writing a response interleave into the same bytes,
-\ and a caller that needs to use it from several tasks must hold a
-\ TASK:FACILITY across the whole RESET-fill-copy-out sequence. Giving the
-\ writer a caller-owned buffer, the way lib/json-read.f already takes the
-\ reader's storage, is dot habu-give-the-json-fd2ba9fc; see docs/threads.md.
+\ The module keeps no process state. A caller declares one writer record
+\ (`TYPED-VARIABLE W JSON-WRITE:writer`, or a `TYPED-BUFFER` of them) plus the
+\ output bytes it owns, and JSON-WRITE:OPEN binds the two. Writers over
+\ different buffers share nothing, so two tasks can each write JSON without a
+\ lock; the caller keeps its own buffer live and exclusive until CLOSE.
 \
-\ The module lives in `package JSON-WRITE`. Callers build compact JSON through
-\ the qualified public API: JSON-WRITE:RESET starts a fresh output buffer, the
-\ value emitters JSON-WRITE:STRING / RAW / U / BOOL / NULL append one JSON value,
-\ JSON-WRITE:KEY writes one escaped object key plus its colon, JSON-WRITE:COMMA /
-\ OBJECT-START / OBJECT-END / ARRAY-START / ARRAY-END write structural
-\ delimiters, the JSON-WRITE:FIELD-S / FIELD-U / FIELD-BOOL / FIELD-NULL /
-\ FIELD-RAW helpers write one key-and-value pair, and JSON-WRITE:$ returns the
-\ accumulated output bytes. The growable output buffer, the capacity/length
-\ refinement helpers, the single-byte and escape emitters, and every constant,
-\ buffer, and state variable are package-private.
+\ The handle is the nominal `ptr JSON-WRITE:writer`, which only the typed
+\ storage definers mint: a raw cell cannot stand in for one. A writer that was
+\ never opened - the zero image a definer leaves - or one already closed refuses
+\ every operation with E-JW-STATE.
 \
+\ Every emitter answers its writer, so a document reads as one chain and
+\ JSON-WRITE:$ ends the chain with the bytes written so far. An emitter appends
+\ all of its bytes or none: a value that does not fit the caller's buffer is
+\ E-JW-CAPACITY, never a truncated value. A document that hit a refusal is
+\ incomplete, and the caller RESETs or CLOSEs the writer.
+\
+\ Callers build compact JSON through the qualified public API: JSON-WRITE:OPEN /
+\ RESET / CLOSE own the writer, the value emitters JSON-WRITE:STRING / RAW / U /
+\ BOOL / NULL append one JSON value, JSON-WRITE:KEY writes one escaped object key
+\ plus its colon, JSON-WRITE:COMMA / OBJECT-START / OBJECT-END / ARRAY-START /
+\ ARRAY-END write structural delimiters, the JSON-WRITE:FIELD-S / FIELD-U /
+\ FIELD-BOOL / FIELD-NULL / FIELD-RAW helpers write one key-and-value pair, and
+\ JSON-WRITE:$ returns the accumulated output bytes. The record accessors, the
+\ capacity/length refinement helpers, the single-byte and escape emitters, and
+\ every constant are package-private.
+
 require lib/errors.f
 require lib/string.f
-require lib/memory.f
 
 package JSON-WRITE
 
-1 constant JW-MIN-CAP
-32 constant JW-NUM-CAP
+public
+
+\ out = the caller's output buffer, cap = its byte capacity, len = bytes written.
+\ A closed writer keeps CLOSED-CAP so a stale handle is refused, not written to.
+STRUCTURE writer 0
+  FIELD out ptr u8
+  FIELD cap n
+  FIELD len n
+;STRUCTURE
+
+private
+
+-1 constant JW-CLOSED-CAP
 
 8 constant JW-BS
 9 constant JW-TAB
@@ -45,115 +63,84 @@ package JSON-WRITE
 125 constant JW-RBRACE
 255 constant JW-BYTE-MAX
 
-create JW-NUM-BUF JW-NUM-CAP allot
+10 constant JW-RADIX
+1 constant JW-PLAIN-N            \ escaped width of an ordinary byte
+2 constant JW-SHORT-ESC-N        \ escaped width of \" \\ \b \f \n \r \t
+6 constant JW-U00-N              \ escaped width of \u00XX
+2 constant JW-QUOTE-N            \ the two string delimiters
 
-variable JW-BUF-A
-variable JW-BUF-CAP
-variable JW-OUT-LEN
-variable JW-NUM-I
+: JW-LIVE ( ptr writer -- ptr u8 n n )   \ output buffer, capacity, length
+   @ JSON--WRITE-WRITER:UNMAKE {: vp:ptr cap:n used:n :}
+   vp 0= if E-JW-STATE throw then
+   cap 0 < if E-JW-STATE throw then
+   vp cap used ;
 
-: JW-BUF-FIELD ( -- ptr ptr u8 )
-   JW-BUF-A 0 ptr-field ;
+: JW-USED! ( ptr writer ptr u8 n n -- ) {: w vp:ptr cap:n used:n :}
+   vp cap used JSON--WRITE-WRITER:MAKE w ! ;
 
-: JW-BUF@ ( -- ptr u8 )
-   JW-BUF-FIELD @ ;
+\ Refuse a source span nobody can read.
+: JW-SPAN ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-JW-SOURCE throw then
+   u 0 > a 0= and if E-JW-SOURCE throw then ;
 
-: JW-BUF! ( ptr u8 -- )
-   JW-BUF-FIELD ! ;
-
-: JW-BUF ( -- ptr u8 )
-   JW-BUF@ ;
-
-: JW-CAP ( -- n )
-   JW-BUF-CAP @ ;
-
-: JW-LEN ( n -- len )
-   dup 0 < if E-JW-CAPACITY throw then
-   dup MEM-MAX-N > if E-JW-CAPACITY throw then
+: JW-LEN ( n -- len )   \ refine a byte count JW-SPAN has already accepted
+   dup 0 < if E-JW-SOURCE throw then
    >LEN ;
 
-: JW-STORE-SPAN ( ptr u8 n -- )
-   JW-BUF-CAP ! JW-BUF! ;
+: JW-ROOM ( ptr writer n -- ptr writer ) {: w need:n :}
+   w JW-LIVE {: vp:ptr cap:n used:n :}
+   need cap used - > if E-JW-CAPACITY throw then
+   w ;
 
-: JW-MIN-ONE ( n -- n )
-   dup JW-MIN-CAP < if drop JW-MIN-CAP then ;
+: JW-C ( ptr writer n -- ptr writer ) {: w c:n :}
+   c 0 < c JW-BYTE-MAX > or if E-JW-BYTE throw then
+   w JW-LIVE {: vp:ptr cap:n used:n :}
+   used cap >= if E-JW-CAPACITY throw then
+   c vp used + c!
+   w vp cap used 1+ JW-USED!
+   w ;
 
-: JW-NEED-CAP-LEN ( len -- n ) {: add :}
-   JW-OUT-LEN @ 0 < if E-JW-CAPACITY throw then
-   add LEN>N MEM-MAX-N JW-OUT-LEN @ - >= if E-JW-CAPACITY throw then
-   JW-OUT-LEN @ add LEN>N + ;
-
-: JW-NEED-CAP ( n -- n )
-   JW-LEN JW-NEED-CAP-LEN ;
-
-: JW-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
-   JW-OUT-LEN @ 0 > if JW-BUF dst JW-OUT-LEN @ BYTE-COPY then ;
-
-\ Storage flows through MEM-ALLOC-64K-SPAN / MEM:RELEASE-BYTES.
-: JW-RELEASE-SPAN ( ptr u8 n -- ) {: a:ptr cap:n :}
-   a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
-
-\ Copy into the new mapping, install it, then release the prior one. The release
-\ is LAST and the allocation runs before anything is overwritten, so a grow whose
-\ alloc throws leaves the old span owned and intact (BUF:INSTALL-RESIZE's order).
-\ The first grow has no prior span: capacity zero is the proved no-op.
-: JW-GROW ( n -- ) {: need :}
-   JW-BUF@ {: old:ptr :}
-   JW-CAP {: oldcap:n :}
-   need JW-MIN-ONE MEM-ALLOC-64K-SPAN
-   over JW-COPY-OLD
-   JW-STORE-SPAN
-   oldcap 0 > if old oldcap JW-RELEASE-SPAN then ;
-
-: JW-CHECK-LEN-ROOM ( len -- )
-   JW-NEED-CAP-LEN dup JW-CAP > if JW-GROW else drop then ;
-
-: JW-CHECK-ROOM ( n -- )
-   JW-LEN JW-CHECK-LEN-ROOM ;
-
-: JW-ENSURE-INITIAL ( -- )
-   JW-CAP 0= if JW-MIN-CAP JW-GROW then ;
+\ The source may be a span of this writer's own output: a copy always runs from
+\ [out, out+len) into [out+len, ...), so the two never overlap and the buffer
+\ never moves under the caller.
+: JW-APPEND-LEN ( ptr writer ptr u8 len -- ptr writer ) {: w a:ptr u:len :}
+   w u LEN>N JW-ROOM
+   JW-LIVE {: vp:ptr cap:n used:n :}
+   a vp used + u BYTE-COPY-LEN
+   w vp cap used u LEN>N + JW-USED!
+   w ;
 
 public
 
-: RESET ( -- )
-   JW-ENSURE-INITIAL
-   0 JW-OUT-LEN ! ;
+: OPEN ( ptr writer ptr u8 n -- ptr writer ) {: w vp:ptr cap:n :}
+   vp 0= if E-JW-OUTPUT throw then
+   cap 0 < if E-JW-OUTPUT throw then
+   w vp cap 0 JW-USED!
+   w ;
 
-private
+: RESET ( ptr writer -- ptr writer ) {: w :}
+   w JW-LIVE {: vp:ptr cap:n used:n :}
+   w vp cap 0 JW-USED!
+   w ;
 
-: JW-OUTPUT-ALIAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0 < if false exit then
-   u JW-OUT-LEN @ > if false exit then
-   a JW-BUF = ;
+: CLOSE ( ptr writer -- ) {: w :}
+   w JW-LIVE {: vp:ptr cap:n used:n :}
+   w vp JW-CLOSED-CAP 0 JW-USED! ;
 
-: JW-SOURCE ( ptr u8 bool -- ptr u8 )
-   if drop JW-BUF then ;
+: $ ( ptr writer -- ptr u8 n )
+   JW-LIVE {: vp:ptr cap:n used:n :}
+   vp used ;
 
-: JW-C ( n -- ) {: c :}
-   c 0 < if E-JW-BYTE throw then
-   c JW-BYTE-MAX > if E-JW-BYTE throw then
-   1 JW-CHECK-ROOM
-   c JW-BUF JW-OUT-LEN @ + c!
-   JW-OUT-LEN @ 1+ JW-OUT-LEN ! ;
-
-: JW-RAW-LEN ( ptr u8 len -- ) {: a:ptr u :}
-   a u LEN>N JW-OUTPUT-ALIAS? {: alias:bool :}
-   u JW-CHECK-LEN-ROOM
-   a alias JW-SOURCE JW-BUF JW-OUT-LEN @ + u BYTE-COPY-LEN
-   JW-OUT-LEN @ u LEN>N + JW-OUT-LEN ! ;
-
-public
-
-: RAW ( ptr u8 n -- )
-   JW-LEN JW-RAW-LEN ;
+: RAW ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
+   a u JW-SPAN
+   a u JW-LEN JW-APPEND-LEN ;
 
 private
 
 : JW-HEX ( n -- n )
    dup 10 < if JW-ZERO + else 55 + then ;
 
-: JW-U00 ( n -- ) {: c :}
+: JW-U00 ( ptr writer n -- ptr writer ) {: c:n :}
    JW-BACKSLASH JW-C
    117 JW-C
    JW-ZERO JW-C
@@ -161,7 +148,20 @@ private
    c 4 rshift JW-HEX JW-C
    c $F and JW-HEX JW-C ;
 
-: JW-ESC-C ( n -- ) {: c :}
+: JW-SHORT-ESC? ( n -- bool ) {: c:n :}
+   c JW-DQ = c JW-BACKSLASH = or c JW-BS = or c JW-FF = or
+   c JW-LF = or c JW-CR = or c JW-TAB = or ;
+
+: JW-ESC-N ( n -- n ) {: c:n :}
+   c JW-SHORT-ESC? if JW-SHORT-ESC-N exit then
+   c JW-SP < if JW-U00-N else JW-PLAIN-N then ;
+
+: JW-STR-N ( ptr u8 n -- n ) {: a:ptr u:n :}   \ bytes a quoted string will take
+   JW-QUOTE-N 0 begin dup u < while            \ ( total idx )
+      dup a + c@ JW-ESC-N rot + swap 1+
+   repeat drop ;
+
+: JW-ESC-C ( ptr writer n -- ptr writer ) {: c:n :}
    c JW-DQ = if JW-BACKSLASH JW-C JW-DQ JW-C exit then
    c JW-BACKSLASH = if JW-BACKSLASH JW-C JW-BACKSLASH JW-C exit then
    c JW-BS = if JW-BACKSLASH JW-C 98 JW-C exit then
@@ -172,76 +172,79 @@ private
    c JW-SP < if c JW-U00 exit then
    c JW-C ;
 
+: JW-DIGIT-COUNT ( n -- n ) {: u:n :}
+   u JW-RADIX < if 1 exit then
+   u JW-RADIX / RECURSE 1+ ;
+
+: JW-DIGITS ( ptr writer n -- ptr writer ) {: u:n :}
+   u JW-RADIX >= if u JW-RADIX / RECURSE then
+   u JW-RADIX mod JW-ZERO + JW-C ;
+
 public
 
-: STRING ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u JW-OUTPUT-ALIAS? {: alias:bool :}
+: STRING ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
+   a u JW-SPAN
+   a u JW-STR-N JW-ROOM
    JW-DQ JW-C
-   0 begin dup u < while
-      dup a alias JW-SOURCE + c@ JW-ESC-C
-      1+
+   0 begin dup u < while                      \ ( w idx )
+      dup a + c@ rot swap JW-ESC-C            \ ( idx w ): escape the byte at idx
+      swap 1+
    repeat drop
    JW-DQ JW-C ;
 
-: KEY ( ptr u8 n -- )
-   STRING
+: KEY ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
+   a u JW-SPAN
+   a u JW-STR-N 1+ JW-ROOM
+   a u STRING
    JW-COLON-C JW-C ;
 
-: OBJECT-START ( -- )
+: OBJECT-START ( ptr writer -- ptr writer )
    JW-LBRACE JW-C ;
 
-: OBJECT-END ( -- )
+: OBJECT-END ( ptr writer -- ptr writer )
    JW-RBRACE JW-C ;
 
-: ARRAY-START ( -- )
+: ARRAY-START ( ptr writer -- ptr writer )
    JW-LBRACK JW-C ;
 
-: ARRAY-END ( -- )
+: ARRAY-END ( ptr writer -- ptr writer )
    JW-RBRACK JW-C ;
 
-: COMMA ( -- )
+: COMMA ( ptr writer -- ptr writer )
    JW-COMMA-C JW-C ;
 
-: NULL ( -- )
+: NULL ( ptr writer -- ptr writer )
    s" null" RAW ;
 
-: BOOL ( bool -- )
+: BOOL ( ptr writer bool -- ptr writer )
    if s" true" else s" false" then RAW ;
 
-: U ( n -- ) {: u:n :}
+: U ( ptr writer n -- ptr writer ) {: u:n :}
    u 0 < if E-JW-BYTE throw then
-   JW-NUM-CAP JW-NUM-I !
-   u 0= if JW-ZERO JW-C exit then
-   u begin dup 0 > while
-      dup 10 mod JW-ZERO +
-      JW-NUM-I @ 1- JW-NUM-I !
-      JW-NUM-BUF JW-NUM-I @ + c!
-      10 /
-   repeat drop
-   JW-NUM-BUF JW-NUM-I @ + JW-NUM-CAP JW-NUM-I @ - RAW ;
+   u JW-DIGIT-COUNT JW-ROOM
+   u JW-DIGITS ;
 
-: FIELD-RAW ( ptr u8 n ptr u8 n -- ) {: kp:ptr keyu:n vp:ptr valu:n :}
+: FIELD-RAW ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
+   {: kp:ptr keyu:n vp:ptr valu:n :}
    kp keyu KEY
    vp valu RAW ;
 
-: FIELD-S ( ptr u8 n ptr u8 n -- ) {: kp:ptr keyu:n vp:ptr valu:n :}
+: FIELD-S ( ptr writer ptr u8 n ptr u8 n -- ptr writer )
+   {: kp:ptr keyu:n vp:ptr valu:n :}
    kp keyu KEY
    vp valu STRING ;
 
-: FIELD-U ( ptr u8 n n -- ) {: kp:ptr keyu:n val:n :}
+: FIELD-U ( ptr writer ptr u8 n n -- ptr writer ) {: kp:ptr keyu:n val:n :}
    kp keyu KEY
    val U ;
 
-: FIELD-BOOL ( ptr u8 n bool -- ) {: kp:ptr keyu:n val:bool :}
+: FIELD-BOOL ( ptr writer ptr u8 n bool -- ptr writer )
+   {: kp:ptr keyu:n val:bool :}
    kp keyu KEY
    val BOOL ;
 
-: FIELD-NULL ( ptr u8 n -- )
+: FIELD-NULL ( ptr writer ptr u8 n -- ptr writer )
    KEY
    NULL ;
-
-: $ ( -- ptr u8 n )
-   JW-ENSURE-INITIAL
-   JW-BUF JW-OUT-LEN @ ;
 
 ;package

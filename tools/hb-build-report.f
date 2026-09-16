@@ -1,5 +1,9 @@
 \ hb-build-report.f - typed in-process and wire-format hb-build reports.
 \ Load after lib/json-write.f and lib/build-cache.f.
+\
+\ The JSON writer keeps no state of its own, so this module owns the report
+\ bytes: REPORT-W writes into REPORT-BUF, and a span answered by one report word
+\ stays valid until the next one runs.
 
 require lib/build-cache.f
 require lib/memory.f
@@ -24,8 +28,14 @@ variable MAKER-BUILT-FLAG
 variable MAKER-RAN-FLAG
 variable ELAPSED-VALUE
 
-: FIELD-COMMA ( -- )
-   JSON-WRITE:COMMA ;
+\ Worst case one cache_root byte becomes \u00XX, plus the fixed keys and values.
+6 constant REPORT-ESCAPE-MAX
+FS-PATH-CAP REPORT-ESCAPE-MAX * 512 + constant REPORT-CAP
+REPORT-CAP BUFFER: REPORT-BUF
+TYPED-VARIABLE REPORT-W JSON-WRITE:writer
+
+: REPORT-OPEN ( -- ptr JSON-WRITE:writer )
+   REPORT-W REPORT-BUF REPORT-CAP JSON-WRITE:OPEN ;
 
 : CACHE-SOURCE-PTR ( -- ptr BUILD-CACHE:source )
    0 CACHE-SOURCE-BUF ;
@@ -98,9 +108,8 @@ variable ELAPSED-VALUE
 : TEXT-BOOL+ ( bool -- )
    if s" true" else s" false" then TEXT+ ;
 
-: TEXT-QUOTED+ ( ptr u8 n -- )
-   JSON-WRITE:RESET
-   JSON-WRITE:STRING
+: TEXT-QUOTED+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   REPORT-OPEN a u JSON-WRITE:STRING
    JSON-WRITE:$ TEXT+ ;
 
 : TEXT$ ( -- ptr u8 n )
@@ -167,30 +176,30 @@ public
    ELAPSED-VALUE @ ;
 
 : REPORT$ ( -- ptr u8 n )
-   JSON-WRITE:RESET
+   REPORT-OPEN
    JSON-WRITE:OBJECT-START
-   s" schema" s" hb-build-report" JSON-WRITE:FIELD-S FIELD-COMMA
-   s" version" 1 JSON-WRITE:FIELD-U FIELD-COMMA
-   s" cache_root" CACHE-ROOT$ JSON-WRITE:FIELD-S FIELD-COMMA
-   s" cache_source" CACHE-SOURCE BUILD-CACHE:SOURCE$ JSON-WRITE:FIELD-S FIELD-COMMA
-   s" artifact_hit" ARTIFACT-HIT? JSON-WRITE:FIELD-BOOL FIELD-COMMA
-   s" object_hit" OBJECT-HIT? JSON-WRITE:FIELD-BOOL FIELD-COMMA
-   s" maker_hit" MAKER-HIT? JSON-WRITE:FIELD-BOOL FIELD-COMMA
-   s" maker_built" MAKER-BUILT? JSON-WRITE:FIELD-BOOL FIELD-COMMA
-   s" maker_ran" MAKER-RAN? JSON-WRITE:FIELD-BOOL FIELD-COMMA
+   s" schema" s" hb-build-report" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" cache_root" CACHE-ROOT$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" cache_source" CACHE-SOURCE BUILD-CACHE:SOURCE$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" artifact_hit" ARTIFACT-HIT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
+   s" object_hit" OBJECT-HIT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
+   s" maker_hit" MAKER-HIT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
+   s" maker_built" MAKER-BUILT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
+   s" maker_ran" MAKER-RAN? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
    s" elapsed_ns" ELAPSED-NS JSON-WRITE:FIELD-U
    JSON-WRITE:OBJECT-END
    JSON-WRITE:$ ;
 
 : PATH-ERROR$ ( -- ptr u8 n )
-   JSON-WRITE:RESET
+   REPORT-OPEN
    JSON-WRITE:OBJECT-START
-   s" schema" s" hb-build-error" JSON-WRITE:FIELD-S FIELD-COMMA
-   s" version" 1 JSON-WRITE:FIELD-U FIELD-COMMA
-   s" code" s" E-BUILD-PATH" JSON-WRITE:FIELD-S FIELD-COMMA
-   s" cache_selected" BUILD-CACHE:SELECTED? JSON-WRITE:FIELD-BOOL FIELD-COMMA
-   s" cache_root" BUILD-CACHE:SELECTED-ROOT$ JSON-WRITE:FIELD-S FIELD-COMMA
-   s" cache_source" BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ JSON-WRITE:FIELD-S FIELD-COMMA
+   s" schema" s" hb-build-error" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" code" s" E-BUILD-PATH" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" cache_selected" BUILD-CACHE:SELECTED? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
+   s" cache_root" BUILD-CACHE:SELECTED-ROOT$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" cache_source" BUILD-CACHE:SELECTED-SOURCE BUILD-CACHE:SOURCE$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" cause" BUILD-CACHE:CAUSE$ JSON-WRITE:FIELD-S
    JSON-WRITE:OBJECT-END
    JSON-WRITE:$ ;

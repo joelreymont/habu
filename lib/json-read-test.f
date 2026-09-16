@@ -35,6 +35,10 @@ create JRT-ODD-B JR:STORAGE-BYTES allot
 create JRT-SUBJECT-OUT $400 allot
 create JRT-SUBJECT-ERR $400 allot
 
+\ The round-trip fixture below owns the writer's bytes; json-write holds none.
+JRT-CAP BUFFER: JRT-WRITE-BUF
+TYPED-VARIABLE JRT-WRITER JSON-WRITE:writer
+
 : JRT-OPEN-A ( ptr u8 n -- JR:reader )
    JRT-STATE-A JR:STORAGE-BYTES 2swap JR:INIT ;
 
@@ -364,7 +368,7 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 
 \ ---- round-trip against lib/json-write.f ----------------------------------
 : JRT-RT-BUILD ( -- ptr u8 n )
-   JSON-WRITE:RESET
+   JRT-WRITER JRT-WRITE-BUF JRT-CAP JSON-WRITE:OPEN
    JSON-WRITE:OBJECT-START
    s" name" JRT-NAME$ JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA

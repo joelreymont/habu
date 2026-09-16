@@ -48,6 +48,10 @@ create REPORT-JSON-STATE JR:STORAGE-BYTES allot
 create MAX-ROOT MAX-ROOT-U allot
 create OVER-ROOT OVER-ROOT-U allot
 
+\ The quoted-path fixture below owns the writer's bytes; json-write holds none.
+CAP BUFFER: QUOTE-BUF
+TYPED-VARIABLE QUOTE-WRITER JSON-WRITE:writer
+
 variable ROOT-U
 variable A-U
 variable B-U
@@ -424,8 +428,9 @@ $7E constant ROOT-C
    text textu STR-LF COUNT-CHAR 0 T=
    text textu STR-TAB COUNT-CHAR 0 T=
    text textu s" cache_selected=true" CONTAINS? TTRUE
-   JSON-WRITE:RESET F$ JSON-WRITE:STRING
-   text textu JSON-WRITE:$ CONTAINS? TTRUE
+   QUOTE-WRITER QUOTE-BUF CAP JSON-WRITE:OPEN F$ JSON-WRITE:STRING
+   JSON-WRITE:$ {: qa:ptr qu:n :}
+   text textu qa qu CONTAINS? TTRUE
    F$ MODE-0700 CHMOD-MODE ;
 
 : CHECK-OVER-ROOT-EVIDENCE ( -- )
