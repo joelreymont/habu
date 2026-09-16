@@ -92,8 +92,10 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    a u s" words" GDB-FIELD
    a u s" other" GDB-FIELD +
    a u s" new" GDB-FIELD +
+   a u s" defer" GDB-FIELD +
+   a u s" spill" GDB-FIELD +
    a u s" foreign" GDB-FIELD + tot <> if
-      s" profiler header: words + other + new + foreign != samples" GE-FAIL
+      s" profiler header: the named buckets do not add up to samples" GE-FAIL
    then ;
 
 : GDB-PROF-SRC ( n -- )   \ emit a busy word + "<n> prof-on GDB-BUSY" into GE-SRC
@@ -184,6 +186,75 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    5 GDB-PROFILER-EXACT
    s" PASS: profiler sample totals are exact (sum == limit)" type cr ;
 
+\ Words defined INSIDE the profiled phase: every one of them is compiled after
+\ prof-on built the index, so the handler can only keep the raw pc and the report
+\ has to rebuild and replay to name them. BUSY calls LEAF and then loops, so once
+\ LEAF has returned the interrupted x30 points back inside BUSY - which is the one
+\ construction that deterministically leaves a deferred sample with no caller.
+: GDB-PROF-LATE-SRC ( -- )
+   GE-SRC-RESET
+   s" 0 prof-on" GE-SRC-LINE
+   s" package GDBLATE" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : LEAF ( n -- n ) 1+ ;" GE-SRC-LINE
+   s" : BUSY ( -- ) 80000000 begin 1- LEAF 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
+   s" : OUTER ( -- ) BUSY ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" GDBLATE:OUTER prof-off prof-report" GE-SRC-LINE ;
+
+: GDB-PROFILER-DEFER ( -- )
+   GE-HB-RESET
+   GDB-PROF-LATE-SRC
+   GDB-PROF-RUN
+   s" profiler deferred attribution" GE-EXPECT-OK
+   s" GDBLATE:LEAF" s" profiler did not name a word compiled after prof-on" GE-EXPECT-OUT-HAS
+   s" GDBLATE:BUSY" s" profiler did not name its caller compiled after prof-on" GE-EXPECT-OUT-HAS
+   GT-OUT$ -1 GDB-ACCOUNT
+   GT-OUT$ s" defer" GDB-FIELD 0 <> if
+      s" prof-report left deferred samples unattributed" GE-FAIL
+   then
+   GT-OUT$ s" spill" GDB-FIELD 0 <> if
+      s" the deferred buffer overflowed on a one-word phase" GE-FAIL
+   then
+   GT-OUT$ s" new" GDB-FIELD  GT-OUT$ GDB-SAMPLES 100 / > if
+      s" more than one percent of samples stayed unnamed after the sync" GE-FAIL
+   then
+   s" PASS: a word compiled after prof-on is named by the report, not bucketed" type cr ;
+
+: GDB-PROFILER-UNKNOWN ( -- )
+   GE-HB-RESET
+   GDB-PROF-LATE-SRC
+   GDB-PROF-RUN
+   s" profiler unknown caller" GE-EXPECT-OK
+   s" (unknown)" s" profiler dropped the samples whose caller it cannot establish" GE-EXPECT-OUT-HAS
+   s" PASS: a sample with no establishable caller keeps an explicit (unknown) row" type cr ;
+
+: GDB-PROF-RATE-RUN ( ptr u8 n -- )   \ run GDB-BUSY under one prof-on line
+   {: arm:ptr armu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDB-BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
+   arm armu GE-SRC-LINE
+   GDB-PROF-RUN ;
+
+: GDB-PROFILER-RATE ( -- )
+   s" 100 prof-rate 0 prof-on GDB-BUSY prof-off prof-report" GDB-PROF-RATE-RUN
+   s" profiler non-default rate" GE-EXPECT-OK
+   GT-OUT$ s" usec" GDB-FIELD 100 <> if
+      s" prof-rate did not take: the report names another interval" GE-FAIL
+   then
+   GT-OUT$ GDB-SAMPLES {: fast:n :}
+   s" 0 prof-on GDB-BUSY prof-off prof-report" GDB-PROF-RATE-RUN
+   s" profiler default rate" GE-EXPECT-OK
+   GT-OUT$ s" usec" GDB-FIELD 1000 <> if
+      s" the default sampling interval is not 1000 us" GE-FAIL
+   then
+   GT-OUT$ GDB-SAMPLES {: slow:n :}
+   fast slow 2 * <= if
+      s" a ten-times shorter interval did not take more samples" GE-FAIL
+   then
+   s" PASS: prof-rate sets the interval the next prof-on arms" type cr ;
+
 \ --- the surface the profiler dots ask for: package-qualified rows, the caller
 \ under each row, a stop that keeps the counters, a reset that clears them, and
 \ the same walk as JSON ---
@@ -251,6 +322,9 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-QUAL
    GDB-PROFILER-OFF
    GDB-PROFILER-JSON
+   GDB-PROFILER-DEFER
+   GDB-PROFILER-UNKNOWN
+   GDB-PROFILER-RATE
    GDB-JITDUMP
    GT-CLEANUP
    s" PASS: native prop/debug tests" type cr ;

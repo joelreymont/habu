@@ -565,20 +565,26 @@ the report owns x20 and its own ticks read as a foreign context.
 The first line is the accounting, and every field is named:
 
 ```
-profiler samples 92000 words 77714 other 294 new 13991 foreign 1 frames 763857 dropped 0 indexed 15676 usec 1000
+profiler samples 92000 words 80215 other 291 new 0 defer 11492 spill 0 foreign 2 frames 764625 dropped 0 indexed 15676 usec 1000
 ```
 
-- `samples` — ticks delivered. `words + other + new + foreign == samples`
-  exactly, and a regression in `test/gate-debug-lib.f` reads those named fields
-  and asserts it.
+- `samples` — ticks delivered.
+  `words + other + new + defer + spill + foreign == samples` exactly, and a
+  regression in `test/gate-debug-lib.f` reads those named fields and asserts it.
 - `words` — ticks attributed to a dictionary word, the sum of every row's
   exclusive column.
 - `other` — ticks in Habu code that belongs to no word: the main loop, engine
   helpers, the gaps between spans.
-- `new` — ticks at or above the index's high mark, i.e. in code compiled *after*
-  `prof-on` built the index. Profiling a compile (the self-build included) puts
-  the compiler's own words here, which is why a self-build profile still shows a
-  double-digit `new` share.
+- `new` — deferred ticks the sync could not name at all: their pc belongs to no
+  live record. After a sync this is normally 0.
+- `defer` — ticks in code compiled *after* `prof-on` built the index, still
+  waiting to be named. `prof-report` and `prof-json` name them (see **Code
+  compiled after prof-on** below) and leave this at 0; only the automatic report
+  at a `prof-on` limit, which runs inside the signal handler and cannot rebuild
+  the index, prints a non-zero `defer`.
+- `spill` — deferred ticks the buffer had no room for. It holds `$40000`
+  samples, about eighteen self-builds' worth; a spill is reported, never dropped
+  in silence.
 - `foreign` — ticks whose context does not hold the engine's DATA and dictionary
   base registers, which is what a foreign callee reached through the FFI (libc,
   libzip, the CUDA driver) leaves behind. It is a lower bound on foreign time: a
@@ -613,6 +619,32 @@ thing.
 The punctuation is chosen at build time from one shared walk, so the text and
 JSON reports cannot disagree about what they counted.
 
+### Code compiled after prof-on
+
+`prof-on` builds the pc index once, so a word the profiled phase *defines* has no
+entry to be found by. For a compile — the self-build above, or any program that
+`require`s its own sources — that is most of the profile: a 92-second self-build
+put 11,492 of 92,000 samples in code that did not exist when sampling started.
+
+The handler cannot fix this itself: naming those words means reading the
+dictionary, and the interrupted thread may be in the middle of adding a record to
+it. So the handler keeps the raw pc and the interrupted x30 for such a tick — two
+cells, no walk, no allocation — and `prof-report` / `prof-json` do the work, with
+the clock stopped: fold the index entries' inclusive counts into the per-record
+array, rebuild the index from the dictionary as it now stands, and replay every
+deferred sample through it. That is the first moment at which every word the
+phase compiled exists.
+
+Two consequences worth knowing:
+
+- The automatic report at a `prof-on` limit runs in the signal handler, so it
+  does *not* sync. Its deferred samples stay in the `defer` column. A program
+  that can reach a `prof-off` of its own should use one.
+- A deferred sample carries only x30, not the stack scan, so its caller is
+  whatever x30 pointed at. When the word had already called something that
+  returned, x30 points back inside the word itself and the caller is reported as
+  `(unknown)` rather than guessed.
+
 ### Caller attribution
 
 Emitted words carry no frame pointer — the prologue is `sub sp,sp,#16` +
@@ -631,9 +663,12 @@ build two more instructions and a register.
 
 ### Cost
 
-Measured on the fixture in `/tmp` against the same workload run twice, at the
-1 kHz default: 19781 ms with the clock on versus 19753 ms off over 19779
-samples, i.e. **1.4 us per tick and 0.14 % of wall time**. The handler allocates
+Measured against the same workload run with and without the clock, comparing user
+CPU time across separate processes. At `20 prof-rate` (50 kHz) over 1,055,202
+samples the profiled run's CPU time stayed inside the run-to-run spread of the
+unprofiled baseline (-0.58 s to +0.41 s on a ~20 s run), which bounds the handler
+at **under 0.4 us per tick**; at the 1 kHz default the overhead is far below the
+noise floor of a loaded machine. The handler allocates
 nothing and takes nothing from the interrupted registers; its state lives in the
 profiler band at the top of the DATA region and in an arena mapped once per
 process, so it works inside a stripped image.
