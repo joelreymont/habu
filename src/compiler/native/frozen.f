@@ -181,6 +181,19 @@ public
 : VALUE-TYPE-AT ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
    V-VALR RD MKEY rot IR-OP:RVALUE-TYPE@ ;
 
+\ Whether an operation defines this value. A block argument does not, and the
+\ reader below is only answered for a value this says yes about.
+: VALUE-FROM-OP? ( IR-ID:ir-value-id -- bool )
+   V-VALR RD swap IR-OP:RVALUE-KIND@
+   IR--OP-DEF--KIND:OP-RESULT IR--OP-DEF--KIND:EQ ;
+
+\ The operation that defines it. A pass that wants to write a producer and its
+\ reader as one instruction asks this, because a value names its definition and
+\ nothing names a value's readers.
+: DEF-OP ( IR-ID:ir-value-id -- IR-ID:ir-op-id )
+   {: v:IR-ID:ir-value-id :}
+   V-VALR VW V-OPR VW MKEY v IR-OP:FVALUE-OP@ ;
+
 private
 get-current prot-wid-add
 

@@ -83,6 +83,12 @@ HIR-OPCODE:FEQ      HIR:ORD constant O-FEQ
 HIR-OPCODE:FLTZ     HIR:ORD constant O-FLTZ
 HIR-OPCODE:FEQZ     HIR:ORD constant O-FEQZ
 HIR-OPCODE:TRAP     HIR:ORD constant O-TRAP
+HIR-OPCODE:ADD      HIR:ORD constant O-ADD
+HIR-OPCODE:SUB      HIR:ORD constant O-SUB
+HIR-OPCODE:MUL      HIR:ORD constant O-MUL
+HIR-OPCODE:AND      HIR:ORD constant O-AND
+HIR-OPCODE:OR       HIR:ORD constant O-OR
+HIR-OPCODE:XOR      HIR:ORD constant O-XOR
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -128,6 +134,21 @@ variable S-TAIL                      \ whether the contract says control leaves 
 variable S-DSTACK                    \ whether the contract declares the data-stack convention
 variable S-LSAVE                     \ whether the contract's prologue keeps the caller's return address
 variable FUSE-AT                     \ where in this block the fused comparison is, or -1
+
+\ One cell per operation of the block being selected: which operation of it, if
+\ any, this one folds in, and whether this one is folded into a later one and so
+\ is never written. Four kinds because the combined forms differ, and a producer
+\ is claimed by at most one of them.
+DYNAMIC-BUFFER MUL-AT-BUF n
+: MUL-AT ( -- ptr n ) 0 MUL-AT-BUF ;
+DYNAMIC-BUFFER IMM-AT-BUF n
+: IMM-AT ( -- ptr n ) 0 IMM-AT-BUF ;
+DYNAMIC-BUFFER MASK-AT-BUF n
+: MASK-AT ( -- ptr n ) 0 MASK-AT-BUF ;
+DYNAMIC-BUFFER CMP-AT-BUF n
+: CMP-AT ( -- ptr n ) 0 CMP-AT-BUF ;
+DYNAMIC-BUFFER FOLDED-BUF n
+: FOLDED ( -- ptr n ) 0 FOLDED-BUF ;
 DYNAMIC-BUFFER VMAP IR-ID:ir-value-id
 DYNAMIC-BUFFER VSET-BUF n
 : VSET ( -- ptr n ) 0 VSET-BUF ;
@@ -230,6 +251,11 @@ DYNAMIC-BUFFER D-ORDER IR-ID:ir-value-id
    VMAX D-NEED-BUF-RESERVE
    BMAX D-ORDER-SET-BUF-RESERVE
    BMAX D-ORDER-RESERVE
+   OMAX MUL-AT-BUF-RESERVE
+   OMAX IMM-AT-BUF-RESERVE
+   OMAX MASK-AT-BUF-RESERVE
+   OMAX CMP-AT-BUF-RESERVE
+   OMAX FOLDED-BUF-RESERVE
    ;
 
 \ ---- where the routine's data-stack pointer stands ---------------------------
@@ -1523,6 +1549,269 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : FUSE-SCAN ( IR-ID:ir-block-id -- )
    FUSE-INDEX FUSE-AT ! ;
 
+\ ---- folding a producer into the instruction that reads it -------------------
+\ ARM64 arithmetic, logical and compare forms carry a small constant in the
+\ instruction, and its multiply-add reads a product, so a producer whose one
+\ reader can hold it needs no instruction of its own. The pairs are found HERE,
+\ on the source block, and the reader is written as the combined form - not
+\ found afterwards on a machine module, which is immutable and would have to be
+\ built a second time to be changed.
+\
+\ WHAT MAY BE FOLDED. The producer must define exactly one value, that value
+\ must be read exactly once in the whole function, and its definition must stand
+\ in this block and before its reader. A value read twice still needs its
+\ register, so folding one reader would leave the producer standing and ADD an
+\ instruction; a producer in another block is not this block's to move.
+\
+\ THE COUNT IS TAKEN ON THE SOURCE, AND THAT IS WHY IT IS SAFE. Every machine
+\ value this pass writes comes from a source value, and every machine read of it
+\ comes from a source operand of it - including the operands of a terminator and
+\ of a return, which is how a value that leaves the routine is counted. A value
+\ this pass decided not to write is bound to nothing, so a reader it failed to
+\ account for reaches an unset slot and VOF refuses by name rather than
+\ selecting something plausible.
+\
+\ CONSTANTS ARE FOLDED ONLY WHERE MATERIALISE WOULD HAVE WRITTEN ONE MOVE-WIDE
+\ WHOSE IMMEDIATE IS THE NUMBER ITSELF: an address takes the fixed four-lane
+\ carrier a relocation pass rewrites, and a number wider than one half takes a
+\ chain, and neither is a constant an instruction field can hold.
+: SINGLE-USE? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id RESULTS-OF 1 <> if false exit then
+   id 0 RESULT-AT USES-OF 1 = ;
+
+: WHOLE-CONST ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-CONST <> if -1 exit then
+   id CONST-ADDR A64IR:ADDR-NONE <> if -1 exit then
+   id CONST-VALUE {: v:n :}
+   v 0 < if -1 exit then
+   v A64IR:IMM-LIMIT >= if -1 exit then
+   v ;
+
+\ The arithmetic and compare field is bounded by a width; the logical field is
+\ bounded by whether its thirteen-bit description can rebuild the mask, which
+\ only the packer can answer.
+: IMM-PRODUCER? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id WHOLE-CONST {: v:n :}
+   v 0 < if false exit then
+   v A64IR:OFF-LIMIT > if false exit then
+   id SINGLE-USE? ;
+
+: MASK-PRODUCER? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id WHOLE-CONST {: v:n :}
+   v 0 < if false exit then
+   v A64IR:MASK-IMM? 0= if false exit then
+   id SINGLE-USE? ;
+
+: MUL-PRODUCER? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-MUL <> if false exit then
+   id SINGLE-USE? ;
+
+\ Where in THIS block the operand's definition stands, and -1 when it is a block
+\ argument, a definition of another block, or one that stands at or after the
+\ reader - the combined form is written where the reader stands, so a producer
+\ below it would be a computation moved backwards past its own inputs.
+: PRODUCER-AT ( IR-ID:ir-block-id IR-ID:ir-op-id n n -- n )
+   {: bk:IR-ID:ir-block-id id:IR-ID:ir-op-id i:n k:n :}
+   id i OPERAND-AT {: v:IR-ID:ir-value-id :}
+   v VALUE-FROM-OP? 0= if -1 exit then
+   v DEF-OP {: d:IR-ID:ir-op-id :}
+   bk OP-COUNT {: n:n :}
+   n 0= if -1 exit then
+   d IR-ID:OP-LOCAL  bk 0 OP-AT IR-ID:OP-LOCAL -  {: at:n :}
+   at 0 < at k >= or if -1 exit then
+   at ;
+
+\ A multiply behind EITHER operand will do, and the first asked wins, so
+\ `x*y + x*y` could never be read as folding both.
+: MUL-FOLD-FOR ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id k:n :}
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-ADD <> if -1 exit then
+   id OPERANDS-OF 2 <> if -1 exit then
+   id RESULTS-OF 1 <> if -1 exit then
+   bk id 0 k PRODUCER-AT {: d0:n :}
+   d0 0 >= if bk d0 OP-AT MUL-PRODUCER? if d0 exit then then
+   bk id 1 k PRODUCER-AT {: d1:n :}
+   d1 0 >= if bk d1 OP-AT MUL-PRODUCER? if d1 exit then then
+   -1 ;
+
+\ An addition is asked of both operands and a subtraction only of its second:
+\ the field is unsigned and `5 - x` is not `x - 5`. A pair the multiply-add
+\ already claimed is left alone.
+: IMM-FOLD-FOR ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id k:n :}
+   bk k MUL-FOLD-FOR 0 >= if -1 exit then
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-ADD <>  id OP-SLOT O-SUB <>  and if -1 exit then
+   id OPERANDS-OF 2 <> if -1 exit then
+   id RESULTS-OF 1 <> if -1 exit then
+   id OP-SLOT O-ADD = if
+      bk id 0 k PRODUCER-AT {: d0:n :}
+      d0 0 >= if bk d0 OP-AT IMM-PRODUCER? if d0 exit then then
+   then
+   bk id 1 k PRODUCER-AT {: d1:n :}
+   d1 0 >= if bk d1 OP-AT IMM-PRODUCER? if d1 exit then then
+   -1 ;
+
+\ and, or and xor are commutative, so either operand may be the mask.
+: LOGICAL-SLOT? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id OP-SLOT O-AND =  id OP-SLOT O-OR =  or  id OP-SLOT O-XOR =  or ;
+
+: MASK-FOLD-FOR ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id k:n :}
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id LOGICAL-SLOT? 0= if -1 exit then
+   id OPERANDS-OF 2 <> if -1 exit then
+   id RESULTS-OF 1 <> if -1 exit then
+   bk id 0 k PRODUCER-AT {: d0:n :}
+   d0 0 >= if bk d0 OP-AT MASK-PRODUCER? if d0 exit then then
+   bk id 1 k PRODUCER-AT {: d1:n :}
+   d1 0 >= if bk d1 OP-AT MASK-PRODUCER? if d1 exit then then
+   -1 ;
+
+\ Only the SECOND operand of a comparison may be: `cmp rn, #imm` sets the flags
+\ from rn minus imm, and turning a left-hand constant round means changing the
+\ relation too. Only the general-register comparison has the form at all.
+: CMP-FOLD-FOR ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id k:n :}
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   id OP-KIND A64SEL-CMPKIND:GPR A64SEL-CMPKIND:EQ 0= if -1 exit then
+   id OPERANDS-OF 2 <> if -1 exit then
+   bk id 1 k PRODUCER-AT {: d1:n :}
+   d1 0 >= if bk d1 OP-AT IMM-PRODUCER? if d1 exit then then
+   -1 ;
+
+\ ---- the block's plan, read once before an operation of it is selected -------
+: FOLD-CLEAR ( n -- )
+   {: n:n :}
+   n 0 > if
+      n OMAX > if E-A64SEL-CAP throw then
+   then
+   n 0 ?do
+      -1 i cells MUL-AT + !
+      -1 i cells IMM-AT + !
+      -1 i cells MASK-AT + !
+      -1 i cells CMP-AT + !
+      0 i cells FOLDED + !
+   loop ;
+
+: FOLD-NOTE ( n n ptr n -- )
+   {: d:n k:n at:ptr :}
+   d k cells at + !
+   1 d cells FOLDED + ! ;
+
+: FOLD-SCAN ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT {: n:n :}
+   n FOLD-CLEAR
+   n 0 ?do
+      bk i MUL-FOLD-FOR {: d:n :}
+      d 0 >= if d i MUL-AT FOLD-NOTE then
+   loop
+   n 0 ?do
+      bk i IMM-FOLD-FOR {: d:n :}
+      d 0 >= if d i IMM-AT FOLD-NOTE then
+   loop
+   n 0 ?do
+      bk i MASK-FOLD-FOR {: d:n :}
+      d 0 >= if d i MASK-AT FOLD-NOTE then
+   loop
+   n 0 ?do
+      bk i CMP-FOLD-FOR {: d:n :}
+      d 0 >= if d i CMP-AT FOLD-NOTE then
+   loop ;
+
+: MUL-OF ( n -- n )    cells MUL-AT + @ ;
+: IMM-OF ( n -- n )    cells IMM-AT + @ ;
+: MASK-OF ( n -- n )   cells MASK-AT + @ ;
+: CMP-OF ( n -- n )    cells CMP-AT + @ ;
+: FOLDED? ( n -- bool ) cells FOLDED + @ 0<> ;
+
+\ ---- the combined forms ------------------------------------------------------
+\ Found by identity against the folded value rather than by position, because
+\ either operand of an addition or a logical may carry it.
+: OTHER-OPERAND ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: id:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
+   id 0 OPERAND-AT v SAME-VALUE? if id 1 OPERAND-AT exit then
+   id 0 OPERAND-AT ;
+
+\ Operand order is the schema's and `madd rd, rn, rm, ra`'s. The ADDITION's
+\ result is what the combined operation defines; the product is bound to nothing.
+: EMIT-MADD ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: ml:IR-ID:ir-op-id id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:MADD OPEN
+   CTX BLD  ml 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  ml 1 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  id  ml 0 RESULT-AT  OTHER-OPERAND VOF  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ Reads the operand that is NOT the folded constant and carries the constant in
+\ its own attribute. This dialect's immediate is unsigned; a subtract stays one.
+: EMIT-ADDI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: kc:IR-ID:ir-op-id id:IR-ID:ir-op-id :}
+   id OP-SLOT O-SUB =
+   if A64IR-OPCODE:SUBI else A64IR-OPCODE:ADDI then {: o:A64IR:opcode :}
+   id o OPEN
+   CTX BLD  id  kc 0 RESULT-AT  OTHER-OPERAND VOF  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CTX BLD  CTX BLD A64IR:KEY-OFF
+   CTX BLD  kc CONST-VALUE A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ The same against the other immediate key: the mask is the same number
+\ whichever of the three opcodes reads it.
+: EMIT-MASKI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: kc:IR-ID:ir-op-id id:IR-ID:ir-op-id :}
+   id OP-SLOT O-AND =
+   if   A64IR-OPCODE:ANDI
+   else id OP-SLOT O-OR =
+        if A64IR-OPCODE:ORRI else A64IR-OPCODE:EORI then
+   then {: o:A64IR:opcode :}
+   id o OPEN
+   CTX BLD  id  kc 0 RESULT-AT  OTHER-OPERAND VOF  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CTX BLD  CTX BLD A64IR:KEY-MASK
+   CTX BLD  kc CONST-VALUE A64IR:MASK-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ Operand 0 is taken by POSITION, because only operand 1 was ever a candidate.
+: EMIT-FLAGI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: kc:IR-ID:ir-op-id id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:FLAGI OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CTX BLD  CTX BLD A64IR:KEY-COND
+   CTX BLD  id COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-OFF
+   CTX BLD  kc CONST-VALUE A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ The plan's answer for one operation of the block, written as the combined form
+\ it names. A block whose plan says nothing about it is selected by RULE.
+: FOLD-EMIT? ( IR-ID:ir-block-id n -- bool )
+   {: bk:IR-ID:ir-block-id k:n :}
+   bk k OP-AT {: id:IR-ID:ir-op-id :}
+   k MUL-OF {: d:n :}
+   d 0 >= if bk d OP-AT id EMIT-MADD true exit then
+   k IMM-OF {: e:n :}
+   e 0 >= if bk e OP-AT id EMIT-ADDI true exit then
+   k MASK-OF {: g:n :}
+   g 0 >= if bk g OP-AT id EMIT-MASKI true exit then
+   k CMP-OF {: h:n :}
+   h 0 >= if bk h OP-AT id EMIT-FLAGI true exit then
+   false ;
+
 
 \ ---- which selections become a select instead of a branch --------------------
 : TERM-OP ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
@@ -1971,9 +2260,28 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    id 0 SUCCESSOR+
    CTX BLD IR-BUILD:END-OP drop ;
 
+\ The compare-and-branch with the constant in the instruction. Operand 0 is
+\ taken by position, as it is in the flag form, because only operand 1 was ever
+\ a candidate.
+: EMIT-CMPBRI ( IR-ID:ir-op-id IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id cm:IR-ID:ir-op-id kc:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:CMPBRI OPEN
+   CTX BLD  cm 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  CTX BLD A64IR:KEY-COND
+   CTX BLD  cm COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-OFF
+   CTX BLD  kc CONST-VALUE A64IR:OFF-ATTR  IR-BUILD:ADD-ATTR
+   id 1 SUCCESSOR+
+   id 0 SUCCESSOR+
+   CTX BLD IR-BUILD:END-OP drop ;
+
 : EMIT-BRANCH ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    FUSE-AT @ 0 < if id EMIT-BRZ exit then
+   FUSE-AT @ CMP-OF {: d:n :}
+   d 0 >= if
+      id  BLK FUSE-AT @ OP-AT  BLK d OP-AT  EMIT-CMPBRI exit
+   then
    id  BLK FUSE-AT @ OP-AT  EMIT-CMPBR ;
 
 \ The operation immediately in front of the terminator of a block whose
@@ -2848,9 +3156,12 @@ create D-MEET DSLOT-MAX cells allot
       exit
    then
    bk FUSE-SCAN
+   bk FOLD-SCAN
    bk OP-COUNT {: n:n :}
    n 0 ?do
-      i FUSE-AT @ <> if bk i OP-AT RULE then
+      i FUSE-AT @ <>  i FOLDED? 0=  and if
+         bk i FOLD-EMIT? 0= if bk i OP-AT RULE then
+      then
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;
 

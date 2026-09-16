@@ -1236,6 +1236,205 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: ADD-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE ;
 
+\ ---- the producers that are written into the instruction that reads them -----
+\ Each fixture below is one source pair and the machine operation it must become,
+\ read off the selected module: the combined form, the operand that survived,
+\ and the field the folded producer became. The three fixtures after them are
+\ the same pairs with the one condition removed that makes a fold legal, and
+\ each of those must select to the two operations it always did.
+: BUILD-IMM-ADD ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   5 CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x k BINOP RET1
+   CLOSE-FUN ;
+
+: BUILD-IMM-SUB ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   5 CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB x k BINOP RET1
+   CLOSE-FUN ;
+
+\ `5 - x` is not `x - 5` and the field is unsigned, so the constant stays in a
+\ register of its own.
+: BUILD-IMM-SUB-LEFT ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   5 CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:SUB k x BINOP RET1
+   CLOSE-FUN ;
+
+: BUILD-MASK-AND ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   $FF CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:AND x k BINOP RET1
+   CLOSE-FUN ;
+
+\ `: X ( n -- n ) dup dup * + ;`: the product's one reader is the addition below
+\ it, which is what a multiply-add is.
+: BUILD-MUL-ADD ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   HIR-OPCODE:MUL x x BINOP {: p:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD p x BINOP RET1
+   CLOSE-FUN ;
+
+\ A constant read TWICE keeps its register: folding one reader would leave the
+\ move-wide standing and add an instruction rather than remove one.
+: BUILD-IMM-TWICE ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   5 CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x k BINOP {: t:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD t k BINOP RET1
+   CLOSE-FUN ;
+
+\ One move-wide still materialises it, but 5000 is wider than the arithmetic
+\ field, so there is nothing to fold it into.
+: BUILD-IMM-WIDE ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   5000 CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD x k BINOP RET1
+   CLOSE-FUN ;
+
+\ The comparison a branch reads, against a constant: one compare-and-branch with
+\ the number in it, and no move-wide in front of it.
+: BUILD-BRANCH-IMM ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   5 CONSTOP {: k:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT x k BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   HIR-OPCODE:DIV x y BINOP {: q:IR-ID:ir-value-id :}
+   q 3 BR1
+   BLOCK+
+   y 3 BR1
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+: IMM-ADD-BODY ( IR-CTX:ctx -- n bool bool bool n )
+   HIR-MOD
+   BUILD-IMM-ADD
+   SELECTED READ!
+   OPS
+   0 s" a64.addi" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 0 s" a64.off" ATTR-KEY-IS?
+   0 0 ATTR-INT ;
+
+: IMM-ADD-CASE ( -- )
+   s" a single-use constant selects into the addition that reads it" T-LABEL
+   WBND [: IMM-ADD-BODY ;] IR-CTX:WITH-CONTEXT
+   5 T= TTRUE TTRUE TTRUE 2 T= ;
+
+: IMM-SUB-BODY ( IR-CTX:ctx -- n bool bool n )
+   HIR-MOD
+   BUILD-IMM-SUB
+   SELECTED READ!
+   OPS
+   0 s" a64.subi" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 0 ATTR-INT ;
+
+: IMM-SUB-CASE ( -- )
+   s" the same constant selects into the subtraction's own form" T-LABEL
+   WBND [: IMM-SUB-BODY ;] IR-CTX:WITH-CONTEXT
+   5 T= TTRUE TTRUE 2 T= ;
+
+: IMM-SUB-LEFT-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-IMM-SUB-LEFT
+   SELECTED READ!
+   OPS
+   0 s" a64.movz" OPCODE-IS?
+   1 s" a64.sub" OPCODE-IS? ;
+
+: IMM-SUB-LEFT-CASE ( -- )
+   s" a constant on the LEFT of a subtraction keeps its register" T-LABEL
+   WBND [: IMM-SUB-LEFT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 3 T= ;
+
+: MASK-AND-BODY ( IR-CTX:ctx -- n bool bool bool n )
+   HIR-MOD
+   BUILD-MASK-AND
+   SELECTED READ!
+   OPS
+   0 s" a64.andi" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 0 s" a64.mask" ATTR-KEY-IS?
+   0 0 ATTR-INT ;
+
+: MASK-AND-CASE ( -- )
+   s" a single-use mask selects into the logical operation that reads it" T-LABEL
+   WBND [: MASK-AND-BODY ;] IR-CTX:WITH-CONTEXT
+   $FF T= TTRUE TTRUE TTRUE 2 T= ;
+
+: MUL-ADD-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+   HIR-MOD
+   BUILD-MUL-ADD
+   SELECTED READ!
+   OPS
+   0 s" a64.madd" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 1 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 2 OPERAND@ 0 ARG@ SAME-VALUE? ;
+
+: MUL-ADD-CASE ( -- )
+   s" a single-use product selects into the addition as a multiply-add" T-LABEL
+   WBND [: MUL-ADD-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE 2 T= ;
+
+: IMM-TWICE-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   BUILD-IMM-TWICE
+   SELECTED READ!
+   OPS
+   0 s" a64.movz" OPCODE-IS?
+   1 s" a64.add" OPCODE-IS?
+   2 s" a64.add" OPCODE-IS? ;
+
+: IMM-TWICE-CASE ( -- )
+   s" a constant read twice keeps its register and neither reader folds" T-LABEL
+   WBND [: IMM-TWICE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE 4 T= ;
+
+: IMM-WIDE-BODY ( IR-CTX:ctx -- n bool bool )
+   HIR-MOD
+   BUILD-IMM-WIDE
+   SELECTED READ!
+   OPS
+   0 s" a64.movz" OPCODE-IS?
+   1 s" a64.add" OPCODE-IS? ;
+
+: IMM-WIDE-CASE ( -- )
+   s" a constant wider than the field keeps its register" T-LABEL
+   WBND [: IMM-WIDE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 3 T= ;
+
+: BRANCH-IMM-BODY ( IR-CTX:ctx -- n bool bool bool n n )
+   HIR-MOD
+   BUILD-BRANCH-IMM
+   SELECTED-POOL READ!
+   OPS
+   0 s" a64.cmpbri" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 0 s" a64.cond" ATTR-KEY-IS?
+   0 0 ATTR-INT
+   0 1 ATTR-INT ;
+
+: BRANCH-IMM-CASE ( -- )
+   s" a constant compared against selects into the compare-and-branch" T-LABEL
+   WBND [: BRANCH-IMM-BODY ;] IR-CTX:WITH-CONTEXT
+   5 T=
+   A64IR-COND:LT A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE 1 T= ;
+
 
 \ ---- the selection that becomes a select ------------------------------------
 \ WHAT THE CONVERSION IS, MEASURED. The four-block shape becomes TWO blocks: the
@@ -2445,8 +2644,10 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 \ link or swapped the value and the address is a different VALUE here.
 \
 \ The operation numbering: 0 dtake, 1 dload, 2 movz (the address), 3 astr,
-\ 4 movz (the address again), 5 aldr, 6 movz 1, 7 add, 8 dstore, 9 dpublish,
-\ 10 ret.
+\ 4 movz (the address again), 5 aldr, 6 addi, 7 dstore, 8 dpublish, 9 ret. The
+\ increment's literal is in the addition, because selection folds a single-use
+\ constant into the instruction that reads it, so there is no move-wide for it
+\ and no separate addition.
 : MEM-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool )
    HIR-MOD
    BUILD-BUMP
@@ -2459,12 +2660,12 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    3 2 OPERAND@  1 1 RESULT@  SAME-VALUE?
    5 0 OPERAND@  4 0 RESULT@  SAME-VALUE?
    5 1 OPERAND@  3 0 RESULT@  SAME-VALUE?
-   8 1 OPERAND@  5 1 RESULT@  SAME-VALUE? ;
+   7 1 OPERAND@  5 1 RESULT@  SAME-VALUE? ;
 
 : MEM-CASE ( -- )
    s" a store and a load select to the addressed forms on one memory order" T-LABEL
    WBND [: MEM-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 11 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 10 T= ;
 
 \ ---- a double that never leaves the floating file ----------------------------
 \ WHAT THE FIVE CASES BELOW MEASURE, IN ONE SENTENCE: an instruction that is not
@@ -2807,6 +3008,14 @@ public
    DIFF-CASE
    DIV-CASE
    ADD-CASE
+   IMM-ADD-CASE
+   IMM-SUB-CASE
+   IMM-SUB-LEFT-CASE
+   MASK-AND-CASE
+   MUL-ADD-CASE
+   IMM-TWICE-CASE
+   IMM-WIDE-CASE
+   BRANCH-IMM-CASE
    FUSE-CASE
    FUSE-LE-CASE
    FUSE-EQ-CASE

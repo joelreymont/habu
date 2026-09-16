@@ -792,11 +792,14 @@ $1000 constant BUMP-ADDR
 \ offsets are zero, which is `[Xn]`, and a form that grew an offset it should not
 \ have moves these numbers.
 \
-\ AND THE ROUTINE IS ELEVEN INSTRUCTIONS AND NOT THIRTEEN, which is where the
+\ AND THE ROUTINE IS TEN INSTRUCTIONS AND NOT THIRTEEN, which is where the
 \ positions below come from. It takes one cell and leaves one, so the place the
 \ caller left the data-stack pointer and the place it expects it back are the
 \ same place; the routine stands there, and the two adjustments that used to
 \ bracket the body are distances of zero that no instruction is written for.
+\ The eleventh instruction was the move-wide that put the literal 1 in a
+\ register: selection folds a single-use constant into the addition that reads
+\ it, so the increment is one `add x0, x0, #1` and there is no move to make.
 : BUMP-BODY ( IR-CTX:ctx -- n n n n )
    HIR-MOD
    BUILD-BUMP
@@ -804,12 +807,12 @@ $1000 constant BUMP-ADDR
    A64EMIT:INSNS
    2 A64EMIT:WORD@                   \ str x0, [x1] - the argument into the cell
    4 A64EMIT:WORD@                   \ ldr x0, [x0] - and back out of it
-   8 A64EMIT:WORD@ ;                 \ str x0, [x1] - the bumped value in again
+   7 A64EMIT:WORD@ ;                 \ str x0, [x1] - the bumped value in again
 
 : BUMP-CASE ( -- )
    s" an addressed store and load emit through the registers they name" T-LABEL
    WBND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
-   $F9000020 T= $F9400000 T= $F9000020 T= 11 T= ;
+   $F9000020 T= $F9400000 T= $F9000020 T= 10 T= ;
 
 \ ---- the two addressing modes a data-stack access is written in --------------
 \ THE WHOLE OF WHAT THE PLACEMENT COSTS THE ENCODER. A routine stands where the
