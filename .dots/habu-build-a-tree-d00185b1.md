@@ -1,0 +1,9 @@
+---
+title: Build a tree that moves a baked package from an old host
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-16T20:58:15.088636+03:00"
+---
+
+Problem: tools/native-build.f run from a host engine whose baked lib/string.f still declares package STR dies in one second with 'duplicate definition: BYTE-LEN>N' on a tree where STR moved to lib/string-roles.f (chain N on 02b08bae from the fccb4a02-class host /tmp/hazel-fM2, 2026-09-16 20:55): the host answers the tree's `require lib/string.f` with its own baked module (PFX-PROVIDE-ROW, src/habu/habu2.f), so the tree's lib/string-roles.f reopens the host's STR and redeclares its casts. tools/build-fixpoint.f does not fail because its stage source rewinds the prefix to core (PREFIX-REWIND:TO-CORE, build-fixpoint.f:1234) before loading the tree's modules; an engine built from the moved tree (the lane's NR-N) builds the head. Any change that moves or removes words out of an engine-provided module reproduces it, and the manifest dot habu-bake-only-what-4039004a will do that repeatedly. Acceptance: native-build.f builds such a tree from a host that still bakes the old module, by rewinding to core and loading the tree's copies as the build-fixpoint stage does, or refuses before compiling with a message naming the provided module and the file that reopens it; docs/bootstrap.md states which hosts can build which trees; a fixture builds a tree that moves a package out of an engine-provided module from a pre-move host. Files: tools/native-build-core.f, tools/native-build.f, src/habu/habu2.f (provide rows), docs/bootstrap.md, test/. Verify: the fixture; tools/native-build.f fixpoint on the current head from /tmp/hazel-release/hb-class and NR-N-class hosts. Depends: none. Ownership: build driver. Claim: unassigned.
