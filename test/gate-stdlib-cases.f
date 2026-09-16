@@ -1411,6 +1411,10 @@ SUITE source-root
    test/source-root-test.f
 ;SUITE
 
+SUITE boot-row
+   test/boot-row-test.f
+;SUITE
+
 SUITE json
    tools/json-test.f
 ;SUITE
