@@ -56,8 +56,10 @@ variable NPTR   variable WBX
 variable NQDIN   variable NQDOUT  variable NQRIN   variable NQROUT
 variable NQEMP   variable NQMUL variable NQST
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named trusted shims.
-TRUSTED: TWX-CHECKER-CAPTURE-PREPARE ( -- ) CHECKER-CAPTURE-PREPARE ;
+\ words probed at top level go through named shims; a shim stays TRUSTED: only
+\ where the name it forwards to is engine-internal and a checked body cannot
+\ resolve it.
+: TWX-CHECKER-CAPTURE-PREPARE ( -- ) CHECKER-CAPTURE-PREPARE ;
 TRUSTED: TWX-FRESH ( -- n ) FRESH ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
 TRUSTED: TWX-LAY-ALIGN@ ( n -- n ) LAY-ALIGN@ ;
@@ -71,11 +73,11 @@ TRUSTED: TWX-PACKED-NARROW ( n -- n ) PACKED-NARROW ;
 
 package TF-FIELD
 public
-TRUSTED: OPEN ( -- n ) TYPE-FIELD-OWNER:OPEN ;
-TRUSTED: ADD ( n n n ptr u8 n n n n n n n n -- n ) TYPE-FIELD-OWNER:ADD ;
-TRUSTED: CLOSE ( n -- ) dup TYPE-FIELD-OWNER:PREPARE drop
+: OPEN ( -- n ) TYPE-FIELD-OWNER:OPEN ;
+: ADD ( n n n ptr u8 n n n n n n n n -- n ) TYPE-FIELD-OWNER:ADD ;
+: CLOSE ( n -- ) dup TYPE-FIELD-OWNER:PREPARE drop
    dup TYPE-FIELD-OWNER:COMMIT TYPE-FIELD-OWNER:FINALIZE ;
-TRUSTED: ROLLBACK ( n -- ) TYPE-FIELD-OWNER:ROLLBACK ;
+: ROLLBACK ( n -- ) TYPE-FIELD-OWNER:ROLLBACK ;
 ;package
 
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
@@ -112,10 +114,10 @@ TRUSTED: TWX-SUMV-CTOR-PKG! ( n n n -- ) SUMV-CTOR-PKG! ;
 TRUSTED: TWX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: TWX-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 TRUSTED: TWX-SUMV-PAY-FIELD ( n n -- n bool ) SUMV-PAY-FIELD ;
-TRUSTED: TWX-SUMV-PAY-N ( n -- n ) SUMV-PAY-N ;
+: TWX-SUMV-PAY-N ( n -- n ) SUMV-PAY-N ;
 TRUSTED: TWX-SUMV-PAY-ROOT ( n n -- n ) SUMV-PAY-ROOT ;
-TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
-TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
+: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
+: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
 TRUSTED: TWX-TF-CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: TWX-TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) TF-CTOR-PKG$ ;
 TRUSTED: TWX-TF-HIDDEN? ( ptr u8 n -- bool ) TF-HIDDEN? ;
@@ -148,7 +150,7 @@ TRUSTED: TWX-TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE ;
 TRUSTED: TWX-TFAM-SCHEMA-ROOT! ( n n -- ) TFAM-SCHEMA-ROOT! ;
 TRUSTED: TWX-TFAM-SCHEMA-ROOT@ ( n -- n ) TFAM-SCHEMA-ROOT@ ;
 TRUSTED: TWX-TFAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
-TRUSTED: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
+: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
 TRUSTED: TWX-TFAM-SNAPSHOT-PERSIST ( -- ) TFAM-SNAPSHOT-PERSIST ;
 TRUSTED: TWX-TFAM-SPAN! ( n n n -- ) TFAM-SPAN! ;
 TRUSTED: TWX-TFAM-SPAN@ ( n -- n n ) TFAM-SPAN@ ;
@@ -157,12 +159,12 @@ TRUSTED: TWX-TFAM-TAGW! ( n n -- ) TFAM-TAGW! ;
 TRUSTED: TWX-TFAM-TAGW@ ( n -- n ) TFAM-TAGW@ ;
 TRUSTED: TWX-TFAM-VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
 TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
-TRUSTED: TWX-TFL-CON-FAM? ( ptr u8 n -- n bool ) TFL-CON-FAM? ;
+: TWX-TFL-CON-FAM? ( ptr u8 n -- n bool ) TFL-CON-FAM? ;
 TRUSTED: TWX-TFL-CON? ( ptr u8 n ptr u8 n -- n n bool ) TFL-CON? ;
 TRUSTED: TWX-TFL-CVAR? ( ptr u8 n n -- n n bool ) TFL-CVAR? ;
-TRUSTED: TWX-TFL-MATCH-FAM? ( ptr u8 n -- n bool ) TFL-MATCH-FAM? ;
-TRUSTED: TWX-TFL-VAR? ( ptr u8 n n -- n bool ) TFL-VAR? ;
-TRUSTED: TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
+: TWX-TFL-MATCH-FAM? ( ptr u8 n -- n bool ) TFL-MATCH-FAM? ;
+: TWX-TFL-VAR? ( ptr u8 n n -- n bool ) TFL-VAR? ;
+: TWX-TFL-VPADS ( n n -- n ) TFL-VPADS ;
 \ layout-cap slice 1: build resolved T-PARAM terms directly (bypassing the sig
 \ parser, which rejects a layout arg in a cell param) to unit-test arg-aware width.
 TRUSTED: TWX-T-WIDTH ( n -- n ) T-WIDTH ;

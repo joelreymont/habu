@@ -87,7 +87,9 @@ variable EV     variable EVD    variable PFD
    TYPE-FIELD:TX-DEPTH PFD @ T= ;
 ;package
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named trusted shims.
+\ words probed at top level go through named shims; a shim stays TRUSTED: only
+\ where the name it forwards to is engine-internal and a checked body cannot
+\ resolve it.
 TRUSTED: TWX-CHECKER-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
 TRUSTED: TWX-FRESH ( -- n ) FRESH ;
 TRUSTED: TWX-HIDDEN-PARAM? ( n -- bool ) HIDDEN-PARAM? ;
@@ -102,8 +104,8 @@ TRUSTED: TWX-MK-PARAM ( n ptr u8 n n -- n ) MK-PARAM ;
 TRUSTED: TWX-P>TYPE ( n -- n ) P>TYPE ;
 TRUSTED: TWX-P>REST ( n -- n ) P>REST ;
 TRUSTED: TWX-CON-OF ( ptr u8 n -- n ) CON-OF ;
-TRUSTED: TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
-TRUSTED: TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
+: TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
+: TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 TRUSTED: TWX-NEW ( -- ) NEW ;
 TRUSTED: TWX-PAIR ( n n -- ) PAIR ;
 TRUSTED: TWX-PARAM-SCR+ ( n -- ) PARAM-SCR+ ;
@@ -118,10 +120,10 @@ TRUSTED: TWX-SCHEMA-PARAM? ( n -- bool ) SCHEMA-PARAM? ;
 TRUSTED: TWX-SCHEMA-PTR? ( n -- bool ) SCHEMA-PTR? ;
 TRUSTED: TWX-SCHEMA-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: TWX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
-TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
+: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 TRUSTED: TWX-SUMV-SCH-COUNT@ ( n -- n ) SUMV-SCH-COUNT@ ;
 TRUSTED: TWX-SUMV-SCH-START@ ( n -- n ) SUMV-SCH-START@ ;
-TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
+: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
 TRUSTED: TWX-TDECL-POLICY ( n -- ) TDECL-POLICY ;
 TRUSTED: TWX-TDECL-THROW ( ptr u8 n ptr u8 n n -- ) TDECL-THROW ;
 TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
@@ -136,7 +138,7 @@ TRUSTED: TWX-TFAM-LAYOUT-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 TRUSTED: TWX-TFAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: TWX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
 TRUSTED: TWX-TFAM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
-TRUSTED: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
+: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
 TRUSTED: TWX-TFAM-SUM? ( n -- bool ) TFAM-SUM? ;
 TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
 TRUSTED: TWX-UNIFY ( n n -- bool ) UNIFY ;
@@ -149,7 +151,7 @@ TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
 TRUSTED: TWX-SCHEMA-ROW ( n n -- n ) SCHEMA-ROW ;
 TRUSTED: TWX-SCHEMA-QUOT ( n n n n n -- n ) SCHEMA-QUOT ;
 TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
-TRUSTED: TWX-SCHEMA-ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
+: TWX-SCHEMA-ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
 TRUSTED: TWX-TFAM-SCH-ARITY ( n n -- n ) TFAM-SCH-ARITY ;
 
 : TDT-BASE! ( -- )

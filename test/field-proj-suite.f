@@ -43,7 +43,7 @@ using TFAM
 \ reaches it through a named TRUSTED forwarder, exactly as structure-make-suite.f
 \ forwards to SUMV-ADD / TFAM-DECL and type-layout-lower forwards to TFAM-FIND-IN.
 TRUSTED: FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
-TRUSTED: FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
+: FP-CLEAR ( -- ) FIELD-PROJ-CLEAR ;
 TRUSTED: TWX-FAM ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 
 \ field-id lookup helper (TYPE-FIELD:FIND is a public sealed-package API).

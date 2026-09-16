@@ -46,32 +46,32 @@ variable #FAIL
 variable #CASE
 
 \ --- the registry reflection surface. Every one is a read; none mutates.
-\ TRUSTED: because each forwards to a sealed pre-hook registry word the checker
-\ cannot type from a post-hook checked body — the same idiom the declaration
-\ suites use for their own reflection helpers.
+\ Each forwards to a sealed pre-hook registry word, the same idiom the declaration
+\ suites use for their own reflection helpers; the ones still TRUSTED: forward to
+\ an engine-internal name a checked body cannot resolve.
 TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
-TRUSTED: F-KIND ( n -- n ) TFAM-KIND@ ;
-TRUSTED: F-ARITY ( n -- n ) TFAM-ARITY@ ;
-TRUSTED: F-WIDTH ( n -- n ) TFAM-WIDTH@ ;
+: F-KIND ( n -- n ) TFAM-KIND@ ;
+: F-ARITY ( n -- n ) TFAM-ARITY@ ;
+: F-WIDTH ( n -- n ) TFAM-WIDTH@ ;
 TRUSTED: F-POLICY ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 \ compared as raw registry flag values, not used as conditions, so these
 \ answer the stored cell rather than a bool.
 TRUSTED: F-EQ ( n -- n ) TFAM-DERIVE-EQ? ;
 TRUSTED: F-HASH ( n -- n ) TFAM-DERIVE-HASH? ;
-TRUSTED: F-VSTART ( n -- n ) TFAM-VAR-START@ ;
-TRUSTED: F-VCOUNT ( n -- n ) TFAM-VAR-COUNT@ ;
+: F-VSTART ( n -- n ) TFAM-VAR-START@ ;
+: F-VCOUNT ( n -- n ) TFAM-VAR-COUNT@ ;
 TRUSTED: F-FCOUNT ( n -- n ) TFAM-FLD-COUNT@ ;
-TRUSTED: V-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
-TRUSTED: V-TAG ( n -- n ) SUMV-TAG@ ;
-TRUSTED: V-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+: V-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
+: V-TAG ( n -- n ) SUMV-TAG@ ;
+: V-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
 TRUSTED: V-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
-TRUSTED: R-FAM ( n -- n ) TYPE-FIELD:FAMILY@ ;
-TRUSTED: R-VAR ( n -- n ) TYPE-FIELD:VARIANT@ ;
+: R-FAM ( n -- n ) TYPE-FIELD:FAMILY@ ;
+: R-VAR ( n -- n ) TYPE-FIELD:VARIANT@ ;
 TRUSTED: R-NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
 TRUSTED: R-SCH ( n -- n ) PF-SCH@ ;
 TRUSTED: R-SLOT ( n -- n ) PF-SLOT@ ;
 TRUSTED: R-CELLS ( n -- n ) PF-CELLS@ ;
-TRUSTED: R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
+: R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
 
 variable AV   variable BV
 variable SI   variable SJ
@@ -178,7 +178,7 @@ public
 
 \ VS-LOAD ( source -- ) : register a source's declarations the way the
 \ in-process tools do, without executing it.
-TRUSTED: VS-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
+: VS-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
    ndict@ {: before:n :}
    src u VERIFY:SOURCE-BUF-IN-SCOPE
    ndict@ before T= ;
@@ -198,11 +198,11 @@ variable SRC-U
 
 \ Same `create`-region boundary the product code documents: a checked body
 \ cannot address a `create` region as a typed `ptr u8` span.
-TRUSTED: SRC-C ( n -- ) {: c:n :}
+: SRC-C ( n -- ) {: c:n :}
    SRC-U @ SRC-CAP >= IF E-SRCB-CAP throw THEN
    c SRC-BUF SRC-U @ + c!
    SRC-U @ 1 + SRC-U ! ;
-TRUSTED: SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;
+: SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;
 
 variable SB-I   variable SB-J
 : SRC-RESET ( -- ) 0 SRC-U ! ;

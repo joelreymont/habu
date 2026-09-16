@@ -54,29 +54,30 @@ variable #CASE
 
 \ --- boundary shims: the ENUM-DECL:ED-RUN entry, evaluate, and the sealed
 \ pre-hook registry / schema reflection words are reached at top level through
-\ named trusted forwarders (the same idiom test/structure-decl-suite.f uses).
+\ named forwarders, TRUSTED: only where the name is engine-internal and a checked
+\ body cannot resolve it (the same idiom test/structure-decl-suite.f uses).
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: TRY ( ptr u8 n -- n ) ['] EV catch ;            \ evaluate under catch -> throw code
 TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 TRUSTED: F-ENUM? ( n -- bool ) TFAM-ENUM? ;
 TRUSTED: F-SUM? ( n -- bool ) TFAM-SUM? ;
-TRUSTED: F-VAR-START ( n -- n ) TFAM-VAR-START@ ;
-TRUSTED: F-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
+: F-VAR-START ( n -- n ) TFAM-VAR-START@ ;
+: F-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
 TRUSTED: F-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
-TRUSTED: F-WIDTH ( n -- n ) TFAM-WIDTH@ ;
+: F-WIDTH ( n -- n ) TFAM-WIDTH@ ;
 TRUSTED: F-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
-TRUSTED: F-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
-TRUSTED: F-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
-TRUSTED: SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
-TRUSTED: SV-TAG@ ( n -- n ) SUMV-TAG@ ;
+: F-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
+: F-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
+: SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
+: SV-TAG@ ( n -- n ) SUMV-TAG@ ;
 TRUSTED: SV-SCH-COUNT@ ( n -- n ) SUMV-SCH-COUNT@ ;
 TRUSTED: SV-FAM@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: SCH-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
-TRUSTED: PACKED# ( -- n ) TL-PACKED-TAG ;
-TRUSTED: SCHCON# ( -- n ) SCH-CON ;
-TRUSTED: CCN# ( -- n ) CC-N ;
+: PACKED# ( -- n ) TL-PACKED-TAG ;
+: SCHCON# ( -- n ) SCH-CON ;
+: CCN# ( -- n ) CC-N ;
 
 \ --- registry snapshot, so a reject can be proven byte-identical and the identity
 \ test can re-run an identical declaration against a fresh registry (family id
@@ -588,10 +589,10 @@ public
 variable CT-I   variable CT-N
 variable CT-DICT   variable CT-CP   variable CT-FAM
 
-TRUSTED: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
 TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
-TRUSTED: DICT-RECS ( -- n ) ndict@ ;
-TRUSTED: DICT-CODE ( -- n ) cp@ ;
+: DICT-RECS ( -- n ) ndict@ ;
+: DICT-CODE ( -- n ) cp@ ;
 TRUSTED: ARM-RC ( n -- n ) ['] GENERATED-DECL-CTOR:ARM catch ;
 
 \ Arm the participant with CT-FAM from inside a real coordinator transaction, so
@@ -600,7 +601,7 @@ TRUSTED: ARM-RC ( n -- n ) ['] GENERATED-DECL-CTOR:ARM catch ;
 \ also rolls the transaction back.
 : ARM-IN-TX-BODY ( -- ) CT-FAM @ GENERATED-DECL-CTOR:ARM ;
 : ARM-IN-TX ( -- ) [: ARM-IN-TX-BODY ;] GENERATED-DECL:RUN ;
-TRUSTED: ARM-IN-TX-RC ( -- n ) ['] ARM-IN-TX catch ;
+: ARM-IN-TX-RC ( -- n ) ['] ARM-IN-TX catch ;
 
 \ The committed payload arity, counted straight off the TYPE-FIELD registry
 \ rather than through SUMV-PAY-N — the reader the generator itself uses. This is
@@ -1137,16 +1138,16 @@ public
 \ The replay entry under `catch`, so a reject answers its code the way TRY does
 \ for the live entry. TRUSTED: for the same reason TRY is — `catch` over a word
 \ the checker cannot type through a quotation boundary here.
-TRUSTED: RP-EV ( ptr u8 n ptr u8 n -- ) ENUM-DECL:ED-REPLAY ;
+: RP-EV ( ptr u8 n ptr u8 n -- ) ENUM-DECL:ED-REPLAY ;
 TRUSTED: RP-TRY ( ptr u8 n ptr u8 n -- n ) ['] RP-EV catch ;
 
 \ Force the replay stream open so the re-entry guard can be reached at all; the
 \ production callers never nest, which is exactly why the guard needs a test.
-TRUSTED: RP-FORCE-OPEN ( -- ) s" x" s" y" DECL-REPLAY:RP-CLAIM ;
+: RP-FORCE-OPEN ( -- ) s" x" s" y" DECL-REPLAY:RP-CLAIM ;
 
 \ second variant cursor, for the live-vs-replayed side-by-side comparison
 variable VS1
-TRUSTED: RP-FORCE-CLOSE ( -- ) DECL-REPLAY:RP-RELEASE ;
+: RP-FORCE-CLOSE ( -- ) DECL-REPLAY:RP-RELEASE ;
 
 private
 ;package
@@ -1413,8 +1414,8 @@ variable LI
 
 700 constant LONG-N
 
-TRUSTED: SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;
-TRUSTED: PUT-C ( n -- ) {: c:n :}
+: SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;
+: PUT-C ( n -- ) {: c:n :}
    SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" 1 die THEN
    c SRC-BUF SRC-U @ + c!  SRC-U @ 1 + SRC-U ! ;
 : PUT$ ( ptr u8 n -- ) {: a:ptr u:n :}

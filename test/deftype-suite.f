@@ -41,8 +41,8 @@ create VNDIAG-BUF 8192 allot
 VNDIAG-BUF 8192 DIAG-BUFFER!
 
 \ whitebox shim (dot habu-hb-crash-bare pattern): the checker-internal snapshot
-\ bake reached through a named trusted shim, exactly like test/type-family-suite.f.
-TRUSTED: TWX-SNAP-PREP ( -- ) CHECKER-CAPTURE-PREPARE ;
+\ bake reached through a named checked shim, exactly like test/type-family-suite.f.
+: TWX-SNAP-PREP ( -- ) CHECKER-CAPTURE-PREPARE ;
 
 \ ---------------------------------------------------------------------------
 \ 1. a declared value nominal, checked inside its own package.

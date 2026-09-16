@@ -32,7 +32,7 @@ TRUSTED: CAPTURE-ON ( n -- )              \ json? -> route declaration diagnosti
 TRUSTED: CAPTURE-OFF ( -- )
    DIAG-BUFFER-OFF
    0 DIAG-JSON! ;
-TRUSTED: CAPTURED$ ( -- ptr u8 n ) DIAG-BUFFER$ ;
+: CAPTURED$ ( -- ptr u8 n ) DIAG-BUFFER$ ;
 
 variable SI
 

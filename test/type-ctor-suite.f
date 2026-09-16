@@ -53,14 +53,16 @@ variable TCE-A   variable TCE-U
 
 variable TCF   variable TCOK
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named trusted shims.
+\ words probed at top level go through named shims; a shim stays TRUSTED: only
+\ where the name it forwards to is engine-internal and a checked body cannot
+\ resolve it.
 TRUSTED: TWX-CHECKER-RECORD-SYM ( ptr u8 n -- n ) CHECKER-RECORD-SYM ;
 TRUSTED: TWX-FRESH ( -- n ) FRESH ;
-TRUSTED: TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
-TRUSTED: TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
+: TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
+: TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 TRUSTED: TWX-NEW ( -- ) NEW ;
 TRUSTED: TWX-SUMV-CTOR-SYM@ ( n -- n ) SUMV-CTOR-SYM@ ;
-TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
+: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 TRUSTED: TWX-SYMS ( -- ptr a ) SYMS ;
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-TFAM-VIS@ ( n -- n ) TFAM-VIS@ ;
@@ -798,8 +800,9 @@ s" PARAMETRIC-QUOT-PAYLOAD" type cr
 package CTOR-FAMILY-TEST
 
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the engine-private
-\ registration path, generator, and plan buffer go through named trusted shims.
-TRUSTED: DEFSUM ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
+\ registration path, generator, and plan buffer go through named shims, TRUSTED:
+\ only where the name is engine-internal and a checked body cannot resolve it.
+: DEFSUM ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
 \ the generator now takes the payload provider its caller chooses; this family
 \ is already published, so it gets the committed one the legacy definers use.
 TRUSTED: CTOR-BODY ( n -- n ) {: fam:n :}
@@ -890,11 +893,12 @@ package CTOR-PAYPROV-TEST
 70   constant E-PREFLIGHT
 
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the engine-private
-\ registration, event, generator, and plan words go through named trusted shims.
+\ registration, event, generator, and plan words go through named shims, TRUSTED:
+\ only where the name is engine-internal and a checked body cannot resolve it.
 \ The generator's three payload capabilities carry their exact effects across
 \ those boundaries, so the checker types every provider this suite builds.
-TRUSTED: SUM-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
-TRUSTED: PROD-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFPRODUCT ;
+: SUM-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
+: PROD-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFPRODUCT ;
 TRUSTED: LAST-FAM ( -- n ) TDECL-FAM-REG @ ;
 TRUSTED: GEN-FAMILY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
    TDECL-CTOR-WORDS-BODY ;
@@ -902,20 +906,20 @@ TRUSTED: CAPTURE ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- ) TDPV-
 TRUSTED: RENDER-CTOR ( n n -- ) TDECL-CTOR-WORD ;
 TRUSTED: SUMV-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
    TDECL-SUMV-PROVIDER ;
-TRUSTED: PAY-COUNT ( n -- n ) SUMV-PAY-N ;
+: PAY-COUNT ( n -- n ) SUMV-PAY-N ;
 TRUSTED: PAY-ROOT ( n n -- n ) SUMV-PAY-ROOT ;
-TRUSTED: PAY-CELLS ( n -- n ) SUMV-PAYCELLS@ ;
-TRUSTED: ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
-TRUSTED: VAR-START ( n -- n ) TFAM-VAR-START@ ;
+: PAY-CELLS ( n -- n ) SUMV-PAYCELLS@ ;
+: ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
+: VAR-START ( n -- n ) TFAM-VAR-START@ ;
 TRUSTED: FAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-TRUSTED: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
-TRUSTED: SUM-KIND ( -- n ) TK-SUM ;
+: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
+: SUM-KIND ( -- n ) TK-SUM ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 TRUSTED: SCH-CON ( n -- n ) SCHEMA-CON ;
 TRUSTED: SCH-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: SUMV-COUNT ( -- n ) SUMV-N @ ;
-TRUSTED: FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
-TRUSTED: CELL-BYTES ( -- n ) CELL ;
+: FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
+: CELL-BYTES ( -- n ) CELL ;
 TRUSTED: VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
 TRUSTED: FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
 TRUSTED: SLOTS! ( n n -- ) TFAM-SLOTS! ;

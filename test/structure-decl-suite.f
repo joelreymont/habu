@@ -45,21 +45,22 @@ variable #CASE
 
 \ --- boundary shims: the STRUCTURE opener, evaluate, and the sealed pre-hook
 \ registry / schema reflection words are reached at top level through named
-\ trusted forwarders (the same idiom test/decl-event-suite.f uses).
+\ forwarders, TRUSTED: only where the name is engine-internal and a checked body
+\ cannot resolve it (the same idiom test/decl-event-suite.f uses).
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: TRY ( ptr u8 n -- n ) ['] EV catch ;            \ evaluate under catch -> throw code
 TRUSTED: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
 TRUSTED: FAM-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
-TRUSTED: FAM-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
-TRUSTED: FAM-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
-TRUSTED: FAM-SLOTS@ ( n -- n ) TFAM-WIDTH@ ;
+: FAM-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
+: FAM-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
+: FAM-SLOTS@ ( n -- n ) TFAM-WIDTH@ ;
 TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: SCH-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
-TRUSTED: PACKED# ( -- n ) TL-PACKED-TAG ;
-TRUSTED: STACK# ( -- n ) TL-STACK-CELL-TAG ;
-TRUSTED: SCHCON# ( -- n ) SCH-CON ;
-TRUSTED: CCN# ( -- n ) CC-N ;
+: PACKED# ( -- n ) TL-PACKED-TAG ;
+: STACK# ( -- n ) TL-STACK-CELL-TAG ;
+: SCHCON# ( -- n ) SCH-CON ;
+: CCN# ( -- n ) CC-N ;
 
 \ --- registry snapshot, so a reject can be proven byte-identical and the
 \ identity test can re-run an identical declaration against a fresh registry
@@ -412,16 +413,16 @@ DECL-DIAG:OFF
 package struct-replay-test
 public
 
-TRUSTED: RP-EV ( ptr u8 n ptr u8 n -- ) STRUCTURE-DECL:SD-REPLAY ;
+: RP-EV ( ptr u8 n ptr u8 n -- ) STRUCTURE-DECL:SD-REPLAY ;
 TRUSTED: RP-TRY ( ptr u8 n ptr u8 n -- n ) ['] RP-EV catch ;
-TRUSTED: SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
-TRUSTED: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+: SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
+: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
 TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
-TRUSTED: FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
-TRUSTED: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
+: FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
+: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
 TRUSTED: FAM-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
 TRUSTED: FAM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
-TRUSTED: DICT-RECS ( -- n ) ndict@ ;
+: DICT-RECS ( -- n ) ndict@ ;
 
 variable RP-DICT
 : DICT-MARK ( -- ) DICT-RECS RP-DICT ! ;

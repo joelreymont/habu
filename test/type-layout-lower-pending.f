@@ -176,13 +176,13 @@ WF-N@ 1 T=  0 WF-OFF@ 50 T=  0 WF-WIDTH@ 2 T=
 TRUSTED: TLP-W32 ( n n -- n )
    + dup c@ over 1 + c@ 8 lshift or over 2 + c@ 16 lshift or swap 3 + c@ 24 lshift or ;
 
-\ Tested boundary (TRUSTED): the golden subjects carry wide effects, so their
+\ Tested boundary: the golden subjects carry wide effects, so their
 \ dict records are DNAME-WIDE (habu-tfam-12-interpret) and interpret `'`
 \ correctly fails closed on them. The goldens only READ code bytes, so the xt
 \ comes from the raw-xt introspection boundary (search-wl, wordlist 0) — the
-\ same test-only class as TLP-W32 and the documented unchecked residual.
+\ same test-only class as TLP-W32, checked because `search-wl` carries a row.
 \ Retirement owner: habu-interpret-wide-gate-1d70acf7.
-TRUSTED: TLP-XT ( ptr u8 n -- n ) 0 search-wl ;
+: TLP-XT ( ptr u8 n -- n ) 0 search-wl ;
 
 variable GXT
 : GG ( n n -- ) {: ix:n want:n :}   \ golden: instruction ix of subject GXT

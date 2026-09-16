@@ -36,7 +36,9 @@ variable #CASE
 \ scratch cells (all rollback query values are stashed before compare).
 variable FOUNDF
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
-\ words probed at top level go through named trusted shims.
+\ words probed at top level go through named shims; a shim stays TRUSTED: only
+\ where the name it forwards to is engine-internal and a checked body cannot
+\ resolve it.
 TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
 TRUSTED: TWX-CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
 TRUSTED: TWX-FIND-DEFER ( ptr u8 n -- bool ) CHECKER-FIND-ACTIVE-DEFER ;
@@ -58,7 +60,7 @@ TRUSTED: TWX-SCHEMA-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: TWX-SCHEMA-B@ ( n -- n ) SCHEMA-B@ ;
 TRUSTED: TWX-SCHEMA-C@ ( n -- n ) SCHEMA-C@ ;
-TRUSTED: TWX-LAY-N@ ( -- n ) LAY-N@ ;
+: TWX-LAY-N@ ( -- n ) LAY-N@ ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
 
 \ The constructor-symbol half of the registry rewind, and the cells the case
@@ -73,9 +75,9 @@ TRUSTED: RECORD-SYM ( ptr u8 n -- n ) CHECKER-RECORD-SYM ;
 
 package RB-FIELD
 public
-TRUSTED: OPEN ( -- n ) TYPE-FIELD-OWNER:OPEN ;
-TRUSTED: ADD ( n n n ptr u8 n n n n n n n n -- n ) TYPE-FIELD-OWNER:ADD ;
-TRUSTED: CLOSE ( n -- ) dup TYPE-FIELD-OWNER:PREPARE drop
+: OPEN ( -- n ) TYPE-FIELD-OWNER:OPEN ;
+: ADD ( n n n ptr u8 n n n n n n n n -- n ) TYPE-FIELD-OWNER:ADD ;
+: CLOSE ( n -- ) dup TYPE-FIELD-OWNER:PREPARE drop
    dup TYPE-FIELD-OWNER:COMMIT TYPE-FIELD-OWNER:FINALIZE ;
 ;package
 

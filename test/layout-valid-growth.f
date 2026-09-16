@@ -30,7 +30,7 @@ create NAME 11 allot
    dup 10 < if 48 + exit then
    10 - 97 + ;
 
-TRUSTED: NAME$ ( n -- ptr u8 n )
+: NAME$ ( n -- ptr u8 n )
    {: idx:n :}
    s" lvg-deep-" drop NAME 9 BYTE-COPY
    idx 36 / DIGIT NAME 9 + c!

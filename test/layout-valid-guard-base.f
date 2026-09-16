@@ -60,7 +60,7 @@ OUTER VARIANTS 2 LVG-TFAM-VAR-RANGE!
 
 TRUSTED: RAW ( ptr lvg-outer -- ptr n ) ;
 
-TRUSTED: SET ( n n n -- )
+: SET ( n n n -- )
    {: payload:n tag:n idx:n :}
    idx BUF RAW {: addr:ptr :}
    payload addr !

@@ -50,7 +50,9 @@ variable #CASE
    b 0= if T-FAIL s" assert: expected true" type cr then ;
 
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): sealed pre-hook registry /
-\ checker-frame colon words probed at top level go through named trusted shims.
+\ checker-frame colon words probed at top level go through named shims; a shim
+\ stays TRUSTED: only where the name it forwards to is engine-internal and a
+\ checked body cannot resolve it.
 TRUSTED: TWX-TFAM-RESET ( -- ) TFAM-RESET ;
 TRUSTED: TWX-SCHEMA-RESET ( -- ) SCHEMA-RESET ;
 TRUSTED: TWX-TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
@@ -61,7 +63,7 @@ TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
 TRUSTED: TWX-SCHEMA-PARAM ( n -- n ) SCHEMA-PARAM ;
 TRUSTED: TWX-SCHEMA-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: TWX-TFAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
-TRUSTED: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
+: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
 TRUSTED: TWX-TFAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
 TRUSTED: TWX-TFAM-VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
 
