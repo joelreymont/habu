@@ -287,12 +287,12 @@ $1000 constant BUMP-ADDR
 \ the validator has not agreed with.
 : EMITTED ( n -- )
    {: n:n :}
-   CC BB TXT TXT-N n NFIX:RUN ;
+   CC BB n NFIX:RUN ;
 
 \ The same, out of a pool that starts at `base`.
 : EMITTED-FROM ( n n -- )
    {: base:n n:n :}
-   CC BB TXT TXT-N base n NFIX:RUN-FROM ;
+   CC BB base n NFIX:RUN-FROM ;
 
 \ The same under the convention a Habu word is entered and left through. A body
 \ that touches memory needs it: the generic memory order of a routine begins
@@ -300,7 +300,7 @@ $1000 constant BUMP-ADDR
 \ refused at selection by name.
 : EMITTED-HABU ( n n n -- )
    {: n:n in:n out:n :}
-   CC BB TXT TXT-N 0 n in out NFIX:RUN-HABU ;
+   CC BB 0 n in out NFIX:RUN-HABU ;
 
 \ ---- reading the emission ----------------------------------------------------
 : BYTE-AT ( n -- n )
@@ -864,7 +864,7 @@ $1000 constant BUMP-ADDR
    c nb A64RA:BIND-DIALECT
    c nb A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
-   c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   c m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    c m1 3 16 NFIX:LEAF-FRAMED A64RA:ALLOCATE
    m1 3 16 NFIX:LEAF-FRAMED A64RAV:ACCEPT
    c m1 A64EMIT:EMIT
@@ -921,7 +921,7 @@ $1000 constant BUMP-ADDR
    c nb A64RA:BIND-DIALECT
    c nb A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
-   c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   c m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    c m1 3 0 NFIX:LEAF-FRAMED A64RA:ALLOCATE
    m1 3 0 NFIX:LEAF-FRAMED A64RAV:ACCEPT
    c m1 A64EMIT:EMIT
@@ -983,7 +983,7 @@ $1000 constant BUMP-ADDR
    c nb A64RA:BIND-DIALECT
    c nb A64RAV:BIND-DIALECT
    c nb A64EMIT:BIND-DIALECT
-   c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   c m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    c m1 SECOND-ABI A64RA:ALLOCATE
    m1 SECOND-ABI A64RAV:ACCEPT
    c m1 A64EMIT:EMIT

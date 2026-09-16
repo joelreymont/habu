@@ -54,9 +54,8 @@ private
 
 \ Bind the source dialect to the module being read and the machine dialect to the
 \ module about to be written - to the allocator and to the emitter both, because
-\ each keeps its own identities - then select. The text is the source the module
-\ was compiled from; the selector checks its digest against the one the module
-\ recorded, so a caller cannot present other bytes.
+\ each keeps its own identities - then select. The source row is carried out of
+\ the module being read, so no caller presents the text at all.
 \ The routine contract reaches the selector as well as the allocator now, because
 \ the selector is where a data-stack place becomes a load or a store. It is the
 \ last argument for the same reason it is everywhere else: thirteen cells cannot
@@ -66,13 +65,13 @@ private
 \ ordinals and this is the only moment the machine dialect can be asked them. A
 \ run whose walk decides no spill gives that binding straight back, which is what
 \ the RELEASE in each of the entry points below is.
-: SELECTED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n A64EFF:routine -- IR-BUILD:module )
+: SELECTED ( IR-CTX:ctx IR-BUILD:builder A64EFF:routine -- IR-BUILD:module )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b A64SEL:BIND-SOURCE
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    c A64-BUILDER {: ab:IR-BUILD:builder :}
@@ -80,7 +79,7 @@ private
    c ab A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c ab A64SPILL:BIND-DIALECT
-   c m ab a u
+   c m ab
    cv gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64SEL:SELECT ;
 
@@ -153,24 +152,24 @@ public
    c m A64EMIT:EMIT ;
 
 \ Select and finish in one step, out of a pool of `n` registers from `base`.
-: RUN-FROM ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n :}
-   c b a u base n LEAF-FROM SELECTED {: m:IR-BUILD:module :}
+: RUN-FROM ( IR-CTX:ctx IR-BUILD:builder n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder base:n n:n :}
+   c b base n LEAF-FROM SELECTED {: m:IR-BUILD:module :}
    A64SPILL:RELEASE
    c m base n FINISH ;
 
 \ The same, out of the pool that starts at register zero.
-: RUN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n n:n :}
-   c b a u 0 n RUN-FROM ;
+: RUN ( IR-CTX:ctx IR-BUILD:builder n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder n:n :}
+   c b 0 n RUN-FROM ;
 
 \ Select and finish under the data-stack convention: `in` arguments taken out of
 \ slots 0.. of the caller's stack and `out` results left in slots 0.., with `n`
 \ scratch registers from `base`. This is the whole of what makes an emitted
 \ routine callable the way an interpreted word is.
-: RUN-HABU ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :}
-   c b a u base n in out LEAF-HABU SELECTED {: m:IR-BUILD:module :}
+: RUN-HABU ( IR-CTX:ctx IR-BUILD:builder n n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder base:n n:n in:n out:n :}
+   c b base n in out LEAF-HABU SELECTED {: m:IR-BUILD:module :}
    A64SPILL:RELEASE
    c m base n in out FINISH-HABU ;
 

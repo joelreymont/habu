@@ -393,7 +393,7 @@ create TXT
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
-   CC m ab TXT TXT-N  A64EFF:GPR-NONE LEAF  A64SEL:SELECT ;
+   CC m ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT ;
 
 \ Allocate the selected module for a leaf routine of `n` registers and have the
 \ validator accept it. Every positive case goes through both, so no case reads a
@@ -1861,7 +1861,7 @@ variable LOWER-TURNS
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
-   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    m0 IR-BUILD:RETIRE
    m1 ;
 
@@ -2234,7 +2234,7 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
-   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-KEEP A64RA:ALLOCATE
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 DECL-KEEP A64RAV:ACCEPT
@@ -2344,7 +2344,7 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
-   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 DECL-SPILL-CONTRACT A64RA:ALLOCATE
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 DECL-SPILL-CONTRACT A64RAV:ACCEPT
@@ -2461,7 +2461,7 @@ using A64RA
    M-FREEZE {: m0:IR-BUILD:module :}
    CC m0 4 16 LEAF-FRAMED A64RA:ALLOCATE
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb TXT TXT-N A64SPILL:REWRITE drop ;
+   CC m0 nb A64SPILL:REWRITE drop ;
 
 \ The same shape one pass over, and the reason the combine needs its own
 \ refusal: A64COMB:REWRITES is what searches for the pairs AND seals the plan
@@ -2474,7 +2474,7 @@ using A64RA
    BUILD-PLAIN
    M-FREEZE {: m0:IR-BUILD:module :}
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb TXT TXT-N A64COMB:REWRITE drop ;
+   CC m0 nb A64COMB:REWRITE drop ;
 
 \ A real immediate fold gives the lifecycle cases a nonempty plan.
 : PLANNED-COMBINE ( IR-CTX:ctx -- IR-BUILD:module )
@@ -2488,19 +2488,28 @@ using A64RA
    PLANNED-COMBINE {: m0:IR-BUILD:module :}
    A64COMB:RESET-SCRATCH
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb TXT TXT-N A64COMB:REWRITE drop ;
+   CC m0 nb A64COMB:REWRITE drop ;
 
+\ A module carrying two registered sources: the rewrite cannot know which one it
+\ is continuing, so it refuses before it reads an operation and still consumes
+\ the binding it took.
 : SOURCE-COMBINE-BODY ( IR-CTX:ctx -- )
-   PLANNED-COMBINE {: m0:IR-BUILD:module :}
+   A64-MOD COMB-BIND
+   CC BB TXT TXT-N IR-BUILD:ADD-SOURCE drop
+   s" COMBINABLE" 0 1 OPEN-FUN
+   7 M-MOVZ 5 M-MOVZ M-ADD M-RET
+   CLOSE-FUN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   m0 A64COMB:REWRITES 1 T=
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb TXT TXT-N 1- A64COMB:REWRITE drop ;
+   CC m0 nb A64COMB:REWRITE drop ;
 
 : TWICE-COMBINE-BODY ( IR-CTX:ctx -- )
    PLANNED-COMBINE {: m0:IR-BUILD:module :}
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb TXT TXT-N A64COMB:REWRITE drop
+   CC m0 nb A64COMB:REWRITE drop
    A64COMB:REWRITTEN 1 T=
-   CC m0 nb TXT TXT-N A64COMB:REWRITE drop ;
+   CC m0 nb A64COMB:REWRITE drop ;
 
 \ ---- the frame rules, on modules that are wrong in one way -------------------
 \ Each of these is a lowered shape with one thing changed, allocated and then
@@ -2637,7 +2646,7 @@ using A64RA
    CC BB IR-BUILD:FREEZE {: hm:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
-   CC hm ab TXT TXT-N  A64EFF:GPR-NONE LEAF  A64SEL:SELECT {: m:IR-BUILD:module :}
+   CC hm ab A64EFF:GPR-NONE LEAF  A64SEL:SELECT {: m:IR-BUILD:module :}
    CC m 4 LEAF-N A64RA:ALLOCATE
    hm 4 LEAF-N A64RAV:ACCEPT ;
 
@@ -2902,7 +2911,7 @@ using A64RA
    A64COMB:BOUND? TFALSE
    A64RA:BOUND? if A64RA:RELEASE then
    s" a refused source consumes the combine binding" T-LABEL
-   [: SOURCE-COMBINE ;] E-A64COMB-SOURCE TTHROWSQ
+   [: SOURCE-COMBINE ;] E-A64COMB-SHAPE TTHROWSQ
    A64COMB:BOUND? TFALSE
    A64RA:BOUND? if A64RA:RELEASE then
    s" a fresh plan succeeds after refusal and cannot be consumed twice" T-LABEL
@@ -3461,7 +3470,7 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
-   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m0 nb A64SPILL:REWRITE {: m1:IR-BUILD:module :}
    CC m1 FSPILL-CONTRACT A64RA:ALLOCATE
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    m1 FSPILL-CONTRACT A64RAV:ACCEPT
@@ -3511,7 +3520,7 @@ using A64RA
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
-   CC m ab TXT TXT-N  n in out HABU-N  A64SEL:SELECT ;
+   CC m ab n in out HABU-N  A64SEL:SELECT ;
 
 : TWO-ARITIES-BODY ( IR-CTX:ctx -- bool )
    HIR-MOD

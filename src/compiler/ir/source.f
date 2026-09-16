@@ -192,17 +192,17 @@ private
 \ Append one validated row and report its module-local ordinal. The capacity
 \ check comes first, so a full registry still answers its own named error; the
 \ reservation then makes the whole row's storage real, so none of the six
-\ appends can allocate. The digest is taken before the reservation as well, so
+\ appends can allocate. The digest is in hand before the reservation as well, so
 \ between the first cell of the row and the last there is nothing left that can
 \ fail - which is what makes the six appends one commit.
 \ The reader is opened once and outlives the appends: a PUSH changes neither
 \ the registry generation nor the state, and the reader re-reads the row's
 \ pointer and count on every call, so it follows the reservation's new span.
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader ptr u8 n n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:reader p u:n org:n :}
+: ROW-PUT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader n n CDIGEST:digest -- n )
+   CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:reader u:n org:n :}
    u 0 < if E-IR-SRC-LEN throw then
    r ROOM-CK
-   p u CDIGEST:COMPUTE CDIGEST-DIGEST:UNMAKE {: w0:n w1:n w2:n w3:n :}
    c a ROW-CELLS IR-ARENA:RESERVE
    r CNT {: l:n :}
    c a u IR-ARENA:PUSH drop
@@ -212,6 +212,11 @@ private
    c a w3 IR-ARENA:PUSH drop
    c a org IR-ARENA:PUSH drop
    l ;
+
+\ The same row, for a caller that has the bytes and no digest of them yet.
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:reader ptr u8 n n -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena r:IR-ARENA:reader p u:n org:n :}
+   c a r  u org  p u CDIGEST:COMPUTE  ROW-PUT ;
 
 \ An origin must already be a registered source of this same registry, so a
 \ parent ordinal is strictly below its child's and no chain can close: a self
@@ -353,6 +358,27 @@ public
       swap 1+ swap
    repeat
    drop ;
+
+\ Carry a registered source from a FROZEN registry into this one, copying its
+\ length and its digest instead of taking either again. A pass that rewrites a
+\ module builds a new module over the same source, and the source it was
+\ compiled from is a fact that module already holds: recomputing the digest
+\ from the bytes to compare it with the row that holds it proves only that
+\ SHA-256 is a function. So the row is copied, the two modules carry the same
+\ source identity by construction rather than by agreement, and a chain of
+\ passes digests a word's text once instead of once per module.
+\
+\ ONLY A ROOT CAN BE CARRIED. An origin is a module-local ordinal into the
+\ registry that holds it, and this registry has not registered the parent, so a
+\ row with one is refused by name rather than carried with an origin that would
+\ point at the wrong source here.
+: CARRY ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-module-key IR-ARENA:view IR-ID:ir-source-id -- IR-ID:ir-source-id )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena key:IR-ID:ir-module-key v:IR-ARENA:view id:IR-ID:ir-source-id :}
+   a IR-ARENA:OPEN-LIVE {: r:IR-ARENA:reader :}
+   r key KEY-CK
+   v id FROOT? 0= if E-IR-SRC-ORIGIN throw then
+   c a r  v id FLEN@  ORG-NONE  v id FDIGEST@  ROW-PUT
+   key swap IR-ID:PACK-SOURCE ;
 
 \ ---- byte spans --------------------------------------------------------------
 private

@@ -2879,14 +2879,11 @@ create D-MEET DSLOT-MAX cells allot
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one selection run is told ------------------------------------------
-\ The new module gets the same source the old one has, proved by digest.
-: SOURCE! ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
+\ The new module gets the same source the old one has, carried row and all.
+: SOURCE! ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-A64SEL-SHAPE throw then
-   V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
-   p u CDIGEST:COMPUTE
-   CDIGEST-DIGEST:EQ 0= if E-A64SEL-SOURCE throw then
-   c b p u IR-BUILD:ADD-SOURCE 0 S-SID ! ;
+   c b  V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-BUILD:CARRY-SOURCE 0 S-SID ! ;
 
 : BND-TAKE ( -- )
    BND-MODE @ {: have:n :}
@@ -2938,13 +2935,13 @@ public
 \ ---- the pass ----------------------------------------------------------------
 \ A module with no such loop or no such pair is handed back untouched, because
 \ rebuilding renumbers values and would move registers for nothing.
-: SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n A64EFF:routine -- IR-BUILD:module )
+: SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder A64EFF:routine -- IR-BUILD:module )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: cv:A64EFF:conv gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}
-   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
+   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder :}
    c A64IR:CHECK-TARGET
    BND-TAKE
    m BND-MODULE-CK
@@ -2971,7 +2968,7 @@ public
    b 0 S-BLD !
    m VIEWS!
    RESERVE-SCRATCH
-   c b p u SOURCE!
+   c b SOURCE!
    FUN-COUNT {: n:n :}
    n 0 ?do
       MKEY i IR-ID:PACK-FUN i WALK-FUN

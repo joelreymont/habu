@@ -978,13 +978,10 @@ create NAMEBUF NAME-CAP allot
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one rewrite is told ------------------------------------------------
-: SOURCE! ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :}
+: SOURCE! ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-A64SPILL-SHAPE throw then
-   V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
-   p u CDIGEST:COMPUTE
-   CDIGEST-DIGEST:EQ 0= if E-A64SPILL-SOURCE throw then
-   c b p u IR-BUILD:ADD-SOURCE 0 S-SID ! ;
+   c b  V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-BUILD:CARRY-SOURCE 0 S-SID ! ;
 
 \ The binding is taken whatever the outcome, so neither a rewrite without a
 \ binding nor a refused rewrite can leave one behind for the next caller.
@@ -1102,10 +1099,10 @@ public
    BND-TAKE ;
 
 \ ---- the pass ----------------------------------------------------------------
-\ The bytes are the source text the old module was compiled from, proved by
-\ digest before any span is carried across.
-: REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
-   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :}
+\ The source is carried from the old module, so this pass is never handed the
+\ text and cannot be handed the wrong text.
+: REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder -- IR-BUILD:module )
+   {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder :}
    BND-TAKE
    m BND-MODULE-CK
    m PLAN-CK
@@ -1119,7 +1116,7 @@ public
    RESERVE-SCRATCH
    0 PRED-SET !
    F-READS! P-FRAMES!
-   c b p u SOURCE!
+   c b SOURCE!
    SHAPE-CK {: nf:n :}
    nf 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
    N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then

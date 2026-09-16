@@ -289,12 +289,6 @@ TRUSTED: CALL-INSTALLED ( ptr u8 n n -- n )
    TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if E-NCOMP-VERDICT throw then then
    before ;
 
-\ Read off the live builder because selection takes its binding before the
-\ module freezes.
-: TEXT-LEN ( -- n )
-   CC BB  TAPE MKEY 0 NTAPE:SPAN@ IR-SOURCE:SPAN-SRC
-   IR-BUILD:SOURCE-LEN ;
-
 \ ---- which word the source published -----------------------------------------
 \ The compiler owns one pending record, so the dictionary count must not move.
 : PUBLISHED-NONE ( n -- ) {: before:n :}
@@ -444,46 +438,44 @@ create SPELL-BUF SPELL-CAP allot
 
 \ A module with no such loop is handed back UNTOUCHED: rebuilding renumbers
 \ values, so a routine that gained nothing could still come out with other bytes.
-: CLOSED ( IR-BUILD:module n -- IR-BUILD:module )
-   {: m:IR-BUILD:module len:n :}
+: CLOSED ( IR-BUILD:module -- IR-BUILD:module )
+   {: m:IR-BUILD:module :}
    m NLOOP:FOLDS {: n:n :}
    n 0= if NLOOP:RELEASE m exit then
    A64SEL:RELEASE
    HIR-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64SEL:BIND-SOURCE
-   CC m nb TXT len NLOOP:REWRITE {: m1:IR-BUILD:module :}
+   CC m nb NLOOP:REWRITE {: m1:IR-BUILD:module :}
    NLOOP:FOLDED n <> if E-NLOOP-PLAN throw then
    m IR-BUILD:RETIRE
    m1 ;
 
-\ The recorded length is read off the LIVE builder, before the freeze consumes
-\ the handle. The lowering pass is bound here because a module's symbols are its own.
+\ The lowering pass is bound here because a module's symbols are its own.
 \
 \ THE HIR MODULE IS FROZEN INTERIM. It is never the module this compilation
 \ emits - selection reads it and writes the A64 module - and that one is
 \ verified whole. So the HIR freeze derives the edge table selection reads and
 \ leaves the checking to the freeze of the module that becomes the routine.
-: SELECTED ( n -- IR-BUILD:module )
-   {: len:n :}
+: SELECTED ( -- IR-BUILD:module )
    CC BB NLOOP:BIND-DIALECT
    CC BB A64SEL:BIND-SOURCE
    BB IR-BUILD:FUNS M-FUNS !
    CC BB IR-BUILD:FREEZE-INTERIM {: m0:IR-BUILD:module :}
-   m0 len CLOSED {: m:IR-BUILD:module :}
+   m0 CLOSED {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
    CC ab A64EMIT:BIND-DIALECT
    CC ab A64SPILL:BIND-DIALECT
    CC ab A64COMB:BIND-DIALECT
-   CC m ab TXT len ROUTINE A64SEL:SELECT {: selected:IR-BUILD:module :}
+   CC m ab ROUTINE A64SEL:SELECT {: selected:IR-BUILD:module :}
    m IR-BUILD:RETIRE
    selected ;
 
 \ A module with no such pair is handed back UNTOUCHED: rebuilding renumbers
 \ values and the allocator breaks ties on those numbers.
-: COMBINED ( IR-BUILD:module n -- IR-BUILD:module )
-   {: m:IR-BUILD:module len:n :}
+: COMBINED ( IR-BUILD:module -- IR-BUILD:module )
+   {: m:IR-BUILD:module :}
    NPROF-PHASE:COMBINE NPROF:START
    m A64COMB:REWRITES {: n:n :}
    n 0= if
@@ -497,7 +489,7 @@ create SPELL-BUF SPELL-CAP allot
    CC nb A64RAV:BIND-DIALECT
    CC nb A64EMIT:BIND-DIALECT
    CC nb A64SPILL:BIND-DIALECT
-   CC m nb TXT len A64COMB:REWRITE {: m1:IR-BUILD:module :}
+   CC m nb A64COMB:REWRITE {: m1:IR-BUILD:module :}
    A64COMB:REWRITTEN n <> if E-A64COMB-SHAPE throw then
    m IR-BUILD:RETIRE
    NPROF-PHASE:COMBINE NPROF:STOP
@@ -513,15 +505,15 @@ create SPELL-BUF SPELL-CAP allot
 
 \ The reserve is sized from A64RA:FRAME, the same count ROUTINE declares from,
 \ so the module and its contract agree by construction.
-: LOWERED ( IR-BUILD:module n -- IR-BUILD:module )
-   {: m:IR-BUILD:module len:n :}
+: LOWERED ( IR-BUILD:module -- IR-BUILD:module )
+   {: m:IR-BUILD:module :}
    A64EMIT:RELEASE
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC nb A64RA:BIND-DIALECT
    CC nb A64RAV:BIND-DIALECT
    CC nb A64EMIT:BIND-DIALECT
    NPROF-PHASE:SPILL NPROF:START
-   CC m nb TXT len A64SPILL:REWRITE
+   CC m nb A64SPILL:REWRITE
    NPROF-PHASE:SPILL NPROF:STOP ;
 
 \ Turn the allocator's absolute frame high-water back into the ABI's slot count.
@@ -546,24 +538,21 @@ create SPELL-BUF SPELL-CAP allot
 
 \ Each turn consumes a non-empty sealed plan and rewrites all of its decisions.
 \ The next allocation either seals an empty plan or contributes another class.
-: LOWER-FIXPOINT ( IR-BUILD:module n -- IR-BUILD:module )
+: LOWER-FIXPOINT ( IR-BUILD:module -- IR-BUILD:module )
    begin
-      over NEEDS-LOWERING?
+      dup NEEDS-LOWERING?
    while
-      2dup LOWERED
-      rot IR-BUILD:RETIRE
-      swap
-   repeat
-   drop ;
+      dup LOWERED
+      swap IR-BUILD:RETIRE
+   repeat ;
 
 \ ---- the two stages, or the four ---------------------------------------------
 \ Frame slots and DECISIONS are different counts: a value re-emitted where it is
 \ read takes no slot, so a walk asked through the slot count looks like one that
 \ decided nothing. A routine that calls still cannot spill; it is refused.
 : EMITTED ( -- )
-   TEXT-LEN {: len:n :}
-   len SELECTED len COMBINED {: m:IR-BUILD:module :}
-   m len LOWER-FIXPOINT {: ready:IR-BUILD:module :}
+   SELECTED COMBINED {: m:IR-BUILD:module :}
+   m LOWER-FIXPOINT {: ready:IR-BUILD:module :}
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    ready EMIT-AT ;
 

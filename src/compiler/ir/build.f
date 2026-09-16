@@ -856,6 +856,14 @@ public
    c b USE {: slot:n :}
    c slot T-SA TAB@ slot KEY@ p u IR-SOURCE:REGISTER ;
 
+\ Carry the one source a frozen module registered into the module being built,
+\ so a rewriting pass inherits the source identity it is rewriting instead of
+\ taking the text's digest again. IR-SOURCE owns what a carried row is.
+: CARRY-SOURCE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-source-id -- IR-ID:ir-source-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view id:IR-ID:ir-source-id :}
+   c b USE {: slot:n :}
+   c slot T-SA TAB@ slot KEY@ v id IR-SOURCE:CARRY ;
+
 : ADD-SOURCE-FROM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-source-id ptr u8 n -- IR-ID:ir-source-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder parent:IR-ID:ir-source-id p u:n :}
    c b USE {: slot:n :}
@@ -1268,16 +1276,6 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id st:n ln:n :}
    c b USE {: slot:n :}
    slot T-SA TAB@  src st ln IR--SOURCE-SPAN:MAKE  IR-SOURCE:SPAN-CK ;
-
-\ How many bytes one of this module's sources holds. A stage that has to present
-\ those bytes again - instruction selection does, because it re-registers the
-\ source into the module it writes - needs the length BEFORE the module freezes,
-\ since the binding it selects against is taken on the live builder. The registry
-\ recorded the length when the bytes were registered; this reader only reaches it.
-: SOURCE-LEN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-source-id -- n )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id :}
-   c b USE {: slot:n :}
-   slot T-SA TAB@ src IR-SOURCE:LEN@ ;
 
 \ The dialect this module's schema table was created for, and the schema version
 \ it was created at. NEW-BUILDER fixes all three (design line 1714) and nothing
