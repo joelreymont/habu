@@ -3,7 +3,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test/record.f
-require lib/fmt.f                          \ FMT:.INT - number text with no trailing newline
+require lib/fmt.f                          \ FMT:.INT - one-line number text, shared builder untouched
 
 1 constant T-EX-FAIL
 

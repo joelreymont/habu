@@ -1,13 +1,19 @@
-\ fmt.f - checked number formatting into the string builder.
+\ fmt.f - checked number formatting.
 \
 \ The module lives in `package FMT`. External callers reach it through the
 \ qualified public API: FMT:SB-U and FMT:SB-INT append an unsigned or signed
 \ integer to the shared lib/string.f builder (open it with SB-RESET, read it
 \ back with SB$), FMT:SB-FIX appends a fixed-decimal float rounded half-up, and
-\ the direct printers FMT:.U / FMT:.INT / FMT:F.N reset the builder, format, and
-\ type the result. The word tails stay recognizable (SB-U, SB-INT, F.N, ...)
-\ because they read across hundreds of call sites; only the FMT: package
-\ qualifier is added.
+\ the direct printers FMT:.U / FMT:.INT / FMT:F.N type the formatted text. The
+\ word tails stay recognizable (SB-U, SB-INT, F.N, ...) because they read
+\ across hundreds of call sites; only the FMT: package qualifier is added.
+\
+\ Integers render through a package-private buffer that the appenders and the
+\ direct printers share, so FMT:.U and FMT:.INT leave the shared builder
+\ alone: a caller part-way through building a string can print a number
+\ without losing what it built. FMT:F.N is the exception. A fixed-decimal
+\ fraction has no bounded width, so its text is assembled in the shared
+\ builder and FMT:F.N resets SB like any other builder client.
 \
 \ Every appender is fail-closed on its domain. SB-U / .U are unsigned only: a
 \ negative value throws E-FMT-DOMAIN rather than rendering a byte below '0'.
@@ -18,7 +24,7 @@
 \ (|x| * 10^k) fits an i64; beyond that boundary SB-FIX throws E-FMT-OVERFLOW
 \ instead of letting f>s saturate to a wrong number. The power-of-ten helper
 \ POW10I, the fits-i64 guard FIT-I64, the zero-padded fraction helper SB-FRAC,
-\ and every buffer and constant are package-private.
+\ the integer renderer, and every buffer and constant are package-private.
 \ Depends on lib/float.f (POW10) and lib/string.f (SB builder).
 
 require lib/float.f                        \ POW10 (SB-FIX float scaling)
@@ -33,18 +39,47 @@ variable FMT-IX
 variable FMT-FR
 variable FMT-DV
 
+\ ---- integer render buffer ------------------------------------------------
+\ An i64 never renders wider than one sign byte plus the STR-I64-DIGITS digits
+\ of its magnitude, so the buffer is exact by construction and the renderer
+\ needs no capacity check. Every integer path ends here, which is what keeps
+\ the direct printers off the shared builder.
+
+STR-I64-DIGITS 1+ constant FMT-NUM-CAP
+create FMT-NUM-BUF FMT-NUM-CAP allot
+variable FMT-NUM-U
+
+: NUM-C+ ( n -- )
+   FMT-NUM-BUF FMT-NUM-U @ + c!
+   FMT-NUM-U @ 1+ FMT-NUM-U ! ;
+
+: NUM$ ( -- ptr u8 n )
+   FMT-NUM-BUF FMT-NUM-U @ ;
+
+: DIGITS>NUM ( n -- )                      \ nonnegative magnitude, most significant digit first
+   dup 10 < if FMT-ZERO + NUM-C+ exit then
+   dup 10 / RECURSE  10 mod FMT-ZERO + NUM-C+ ;
+
+: U>NUM ( n -- )                           \ unsigned; negative -> E-FMT-DOMAIN before any byte lands
+   dup 0 < if E-FMT-DOMAIN throw then
+   0 FMT-NUM-U !  DIGITS>NUM ;
+
+: INT>NUM ( n -- )                         \ signed (STR-MIN-I64 has no positive magnitude)
+   0 FMT-NUM-U !
+   dup STR-MIN-I64 = if
+      drop STR-MINUS NUM-C+
+      STR-MIN-I64$ FMT-NUM-BUF FMT-NUM-U @ + STR-I64-DIGITS BYTE-COPY
+      FMT-NUM-U @ STR-I64-DIGITS + FMT-NUM-U ! exit
+   then
+   dup 0 < if STR-MINUS NUM-C+ negate then DIGITS>NUM ;
+
 \ ---- string-builder appenders ---------------------------------------------
 public
 
 : SB-U ( n -- )                            \ unsigned int, no separators; negative -> E-FMT-DOMAIN
-   dup 0 < if E-FMT-DOMAIN throw then
-   dup 10 < if FMT-ZERO + SB-APPEND-C exit then
-   dup 10 / RECURSE  10 mod FMT-ZERO + SB-APPEND-C ;
+   U>NUM NUM$ SB-APPEND ;
 : SB-INT ( n -- )                          \ signed int (STR-MIN-I64 has no positive magnitude)
-   dup STR-MIN-I64 = if
-      drop STR-MINUS SB-APPEND-C  STR-MIN-I64$ STR-I64-DIGITS SB-APPEND exit
-   then
-   dup 0 < if STR-MINUS SB-APPEND-C negate then SB-U ;
+   INT>NUM NUM$ SB-APPEND ;
 
 private
 
@@ -82,9 +117,9 @@ public
    scaled ps / SB-U
    k 0 > if FMT-DOT SB-APPEND-C  scaled ps mod k SB-FRAC then ;
 
-\ ---- direct printers (reset SB, build, emit) ------------------------------
-: .U ( n -- )     SB-RESET SB-U   SB$ type ;   \ unsigned, no trailing space
-: .INT ( n -- )   SB-RESET SB-INT SB$ type ;   \ signed, no trailing space
-: F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;
+\ ---- direct printers ------------------------------------------------------
+: .U ( n -- )     U>NUM   NUM$ type ;          \ unsigned, no trailing space, SB untouched
+: .INT ( n -- )   INT>NUM NUM$ type ;          \ signed, no trailing space, SB untouched
+: F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;   \ unbounded width: assembled in the shared builder
 
 ;package

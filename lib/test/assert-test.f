@@ -43,6 +43,19 @@ variable TAT-SCRIPT-U
    TAT-SCRIPT$ >LEN PROC-ARGV+
    s" bin/hb" GT-DEFAULT-TIMEOUT-MS GT-RUN ;
 
+\ A failing numeric assert renders through FMT's private buffer, so a case that
+\ is part-way through the shared builder keeps what it built. Seeding SB with
+\ text that is not the printed number is what makes the check bite: a printer
+\ that reset the builder would leave the failed number's digits behind.
+: TAT-SB-SURVIVES-FAILURE ( -- )
+   T-RESET
+   SB-RESET s" keep-me" SB-APPEND
+   1 2 T=
+   SB$ s" keep-me" T$=
+   1 1 T<>
+   SB$ s" keep-me" T$=
+   T-FAILURES 2 T= ;
+
 : TAT-TEST-ONE-LINE ( -- )
    TAT-PREPARE
    TAT-RUN
@@ -65,6 +78,8 @@ T-RESET
 ' TT-THROW-5 4 TTHROWS
 T-CASES 1 T=
 T-FAILURES 1 T=
+
+TAT-SB-SURVIVES-FAILURE
 
 T-RESET
 

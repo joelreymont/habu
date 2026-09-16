@@ -18,12 +18,18 @@ package FMT
 : T-FIX ( r n ptr u8 n -- ) {: a:ptr u :}        \ ( value places expect )
    SB-RESET SB-FIX  SB$ a u T$= ;
 
-\ Public printers build into the shared builder and then `type` it; the built
-\ bytes are still readable through SB$ after the call, so compare the buffer.
-: T-PU ( n ptr u8 n -- ) {: a:ptr u:n :}
-   .U    SB$ a u T$= ;
-: T-PINT ( n ptr u8 n -- ) {: a:ptr u:n :}
-   .INT  SB$ a u T$= ;
+\ .U and .INT render the same bytes SB-U / SB-INT append -- one renderer, one
+\ set of digit cases above -- and type them without disturbing the builder. The
+\ sentinel is deliberately not the printed number: a printer that reset SB
+\ would leave that number's digits in the buffer instead.
+: T-PU ( n -- )
+   SB-RESET s" sb-sentinel" SB-APPEND
+   .U    SB$ s" sb-sentinel" T$= ;
+: T-PINT ( n -- )
+   SB-RESET s" sb-sentinel" SB-APPEND
+   .INT  SB$ s" sb-sentinel" T$= ;
+\ F.N has no bounded width and does build in the shared builder, so its text is
+\ still readable through SB$ after the call.
 : T-PFN ( r n ptr u8 n -- ) {: a:ptr u:n :}      \ ( value places expect )
    F.N   SB$ a u T$= ;
 
@@ -37,9 +43,11 @@ package FMT
    0     s" 0"      T-U
    7     s" 7"      T-U
    12345 s" 12345"  T-U
+   99    s" 99"     T-U
    STR-MAX-I64 s" 9223372036854775807" T-U    \ largest unsigned i64 renders exactly
    -7    s" -7"     T-INT
    42    s" 42"     T-INT
+   -123  s" -123"   T-INT
    0     s" 0"      T-INT
    STR-MAX-I64 s" 9223372036854775807" T-INT  \ i64 max
    STR-MIN-I64 s" -9223372036854775808" T-INT \ i64 min: no positive magnitude, table-emitted
@@ -52,9 +60,10 @@ package FMT
    45.0    0 s" 45"     T-FIX         \ zero places omits the point
    0.0     2 s" 0.00"   T-FIX
    9223372036854774784.0 0 s" 9223372036854774784" T-FIX  \ 2^63-1024: largest scaled magnitude that fits
-   \ public printers gain their first coverage (built bytes read back via SB$)
-   99      s" 99"       T-PU
-   -123    s" -123"     T-PINT
+   \ public printers: the shared builder survives a print
+   99                   T-PU
+   -123                 T-PINT
+   STR-MIN-I64          T-PINT             \ the table-emitted magnitude prints too
    2.5     1 s" 2.5"    T-PFN
    \ fail-closed domain guards
    [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ  \ negative into unsigned -> E-FMT-DOMAIN

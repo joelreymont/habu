@@ -4,6 +4,7 @@
 \ lib/process.f, and lib/process-argv.f.
 
 require lib/test/record.f
+require lib/fmt.f                        \ FMT:.INT - one-line number text, shared builder untouched
 
 2 constant GT-EX-FAIL
 256 constant GT-FAIL-MAX
@@ -111,12 +112,15 @@ variable GT-TAIL-U
 
 \ A comparison keeps both sides: reducing them to a bool first leaves the
 \ reader with a label and no evidence. Detail lines follow the TFAIL record in
-\ the shape lib/test/assert.f prints for T= and T$=, under this layer's name.
+\ the shape lib/test/assert.f prints for T= and T$=, under this layer's name:
+\ one line per numeric comparison, so FMT:.INT and not `.`, whose text ends in
+\ a newline of its own.
 : GT-CHECK-N ( n n ptr u8 n -- ) {: got:n want:n name:ptr nameu:n :}
    got want <> if
       name nameu GT-FAIL+
-      s" runner: expected " type want .
-      s" got " type got .
+      s" runner: expected " type want FMT:.INT
+      s"  got " type got FMT:.INT
+      cr
    then ;
 
 : GT-CHECK$ ( ptr u8 n ptr u8 n ptr u8 n -- )

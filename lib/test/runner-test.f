@@ -142,8 +142,7 @@ variable GTT-OFI
 : GTT-DETAIL-OUT$ ( -- ptr u8 n )
    SB-RESET
    S\" TFAIL\trunner\t1\trc-detail" SB-APPEND GTT-LF
-   s" runner: expected 0" SB-APPEND GTT-LF
-   s" got 7" SB-APPEND GTT-LF
+   s" runner: expected 0 got 7" SB-APPEND GTT-LF
    S\" TFAIL\trunner\t2\tout-detail" SB-APPEND GTT-LF
    s" runner: expected string:" SB-APPEND GTT-LF
    s" want-out" SB-APPEND GTT-LF
