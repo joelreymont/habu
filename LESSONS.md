@@ -8544,3 +8544,10 @@ chain each AOT closure then carried, and the stripped linker refused it as data
 outside the restored span -- unlinkable once CDIGEST:NATIVE-SLOT? put it under
 every checked wide fetch. The cell is a DATA-base-relative header offset now
 (2026-09-16).
+
+## 2026-09-16 - a build directory bakes through the require registry
+
+Two builds of one revision differ wherever a capture copies a buffer that still
+describes the build directory: `src/core/include.f` REQUIRE-PATHS held canonical
+paths and INCLUDE-PATH kept its bytes AND its copy cursor. Record an engine's boot
+rows as `CWD$ RELATIVE` - what BOOT-KNOWN? asks for - and clear bytes, not lengths.

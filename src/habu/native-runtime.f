@@ -4,7 +4,14 @@
 \ sources before include.f were loaded directly; replaying their paths here
 \ gives the target loader, rather than the discarded build host, authoritative
 \ ownership of the complete runtime closure.
+\
+\ The manifest IS the engine's boot registry, so it opens that registry here and
+\ CAPTURE-PREPARE below freezes it. Between the two, src/core/include.f keeps
+\ each row by PORTABLE name - relative to the tree - instead of canonicalising it
+\ against whatever directory this build ran in, which the emitted engine then
+\ carried byte for byte (dot habu-bake-prefix-src-1047b604).
 
+REQUIRE-BOOT-OPEN
 s" src/core/util.f" provided
 s" src/core/cell.f" provided
 package NATIVE-RUNTIME

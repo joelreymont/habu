@@ -1252,6 +1252,23 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
 
+\ Open the engine's own registry, as the first prefix token after the loader's
+\ text and before the first row it records. Rows recorded between this token and
+\ REQUIRE-BOOT-FREEZE are the engine's surface, so src/core/include.f keeps them
+\ by PORTABLE name - the spelling relative to the tree, not the absolute path of
+\ whatever directory this build happened to run in, which the engine binary used
+\ to carry (dot habu-bake-prefix-src-1047b604). Loading include.f cannot be the
+\ signal: a build re-loads it into an engine that booted long ago. Cold boots
+\ only, like the freeze token it pairs with.
+: EMIT-REQUIRE-BOOT-OPEN-TOKEN ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   s" REQUIRE-BOOT-OPEN" {: a:ptr u:n :}
+   u 0 ?do a i + c@ C-SOURCE-APPEND-CHAR loop
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
 \ TFAM 2b-iii (dot habu-tfam-2b-iii-5d25b52f): append `SEAL-CAPTURE` as the
 \ LAST engine-prefix source token, after every engine file and the provide
 \ rows. xref.f's in-file call is only the baseline: src/os/script-argv.f loads
@@ -1473,6 +1490,7 @@ public
    16 0 MOVZ,  16 DATA HOOK-CELL STR,  16 DATA COMPILE-PREFLIGHT-CELL STR,
    PFX-TARGET-OK
    PFX-LOAD-BASE-FILES
+   EMIT-REQUIRE-BOOT-OPEN-TOKEN
    PFX-PROVIDE-FILES
    \ The checked owner guard requires the ABI facts above. Carry it before
    \ the core mark, so a partial compiler never borrows a tool's copy.

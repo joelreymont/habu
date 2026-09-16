@@ -26,6 +26,7 @@ variable INCLUDE-PATH-U
 variable INCLUDE-PATH-I
 variable REQUIRE-N
 variable REQUIRE-BOOT-N
+variable REQUIRE-BOOT-V
 variable REQUIRE-BASE
 variable REQUIRE-SAVE-N
 variable REQUIRE-SAVE-BASE
@@ -37,6 +38,30 @@ variable REQUIRE-SAVE-BASE
 
 : INCLUDE-TRUE ( -- bool )
    0 0= ;
+
+\ Rows recorded while the boot registry is open describe what the ENGINE
+\ carries; every other row describes what a process went on to load. Only the
+\ boot prefix may open it, and it says so with a token of its own (habu2.f
+\ EMIT-REQUIRE-BOOT-OPEN-TOKEN) between the loader's own text and the first
+\ row. Loading this file is NOT the signal: a build re-loads it into a booted
+\ engine, and an engine that opened the registry there would record every
+\ later require portably and stop recognising its own canonical rows.
+: REQUIRE-BOOT-OPEN ( -- )
+   INCLUDE-TRUE REQUIRE-BOOT-V ! ;
+
+: REQUIRE-BOOT-OPEN? ( -- bool )
+   REQUIRE-BOOT-V @ 0= 0= ;
+
+\ How many rows are the ENGINE's. While the registry is open every row recorded
+\ so far is one, because only the prefix records there; once it closes the
+\ frozen count says so for the rest of the process. The open case is not a
+\ nicety: the prefix requires engine files WHILE it is recording them, and a
+\ portable row answers no other question, so a bound of REQUIRE-BOOT-N alone
+\ made the prefix reload its own checker (measured: `duplicate definition:
+\ RAW-OFF`, src/core/checker.f loaded twice, exit 78).
+: REQUIRE-BOOT-LIMIT ( -- n )
+   REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
+   REQUIRE-BOOT-N @ ;
 
 \ Canonical source paths and a dynamically scoped owner root. This bootstrap
 \ layer uses only core bytes, mappings and the bounded realpath OS primitive.
@@ -295,23 +320,6 @@ public
    0 JOIN-U ! 0 OWNER-U !
    NULL$ CURRENT! ;
 
-private
-
-create ALIAS-PATHS REQUIRE-MAX REQUIRE-SLOT-BYTES * allot
-create ALIAS-LENS REQUIRE-MAX cells allot
-
-: ALIAS-SLOT ( n -- ptr u8 ) REQUIRE-SLOT-BYTES * ALIAS-PATHS + ;
-
-: ALIAS= ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
-   a u idx ALIAS-SLOT idx cells ALIAS-LENS + @ CORE-STR= ;
-
-public
-
-: REMEMBER ( ptr u8 n n -- ) {: idx:n :}
-   RESOLVED-ROOT$ RELATIVE {: a:ptr u:n :}
-   a idx ALIAS-SLOT u BYTE-COPY
-   u idx cells ALIAS-LENS + ! ;
-
 ;package
 
 using SOURCE-ROOT
@@ -375,12 +383,26 @@ using SOURCE-ROOT
 : REQUIRE-CHECK-ROOM ( -- )
    REQUIRE-N @ REQUIRE-MAX >= if s" require: too many files" INCLUDE-DIE then ;
 
-: REQUIRE-STORE ( ptr u8 n -- ) {: a:ptr u:n :}
+\ A boot row is recorded PORTABLY, in the one spelling BOOT-KNOWN? asks for: the
+\ path relative to CWD where it lies below CWD, and the canonical path where it
+\ does not, which is exactly what `CWD$ RELATIVE` answers. Store and query share
+\ that root deliberately. Against the load's OWN owner root a nested require -
+\ one issued by a boot file rather than by the manifest - would shorten to a bare
+\ basename that no query ever spells, and a basename names a different file in
+\ every directory.
+\
+\ Recording the canonical absolute spelling instead baked the build directory
+\ into the engine binary, so two builds of one revision from two directories
+\ differed (dot habu-bake-prefix-src-1047b604). An application row keeps its
+\ canonical identity, so identical names in distinct roots still coexist. The two
+\ spellings cannot collide: a canonical name always begins with `/` and a
+\ portable one never does.
+: REQUIRE-STORE ( ptr u8 n -- )
    REQUIRE-CHECK-ROOM
+   REQUIRE-BOOT-OPEN? if CWD$ RELATIVE then {: a:ptr u:n :}
    REQUIRE-N @ {: idx:n :}
    a idx REQUIRE-SLOT u BYTE-COPY
    u idx REQUIRE-LEN!
-   a u idx REMEMBER
    idx 1 + REQUIRE-N ! ;
 
 package SOURCE-ROOT
@@ -393,21 +415,22 @@ private
 
 : REQUEST$ ( -- ptr u8 n ) REQUEST-BUF REQUEST-U @ ;
 
-\ Portable names describe only frozen engine facts. Ordinary application facts
+\ Portable names describe only frozen engine facts, and a boot row IS its
+\ portable name, so this reads the registry itself. Ordinary application facts
 \ retain their canonical identity so identical names in distinct roots coexist.
 : BOOT-KNOWN? ( ptr u8 n n -- bool ) {: a:ptr u:n first:n :}
-   first begin dup REQUIRE-BOOT-N @ < while
-      dup a u rot ALIAS= if drop INCLUDE-TRUE exit then
+   first begin dup REQUIRE-BOOT-LIMIT < while
+      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
    repeat drop INCLUDE-FALSE ;
 
 : CANDIDATE$ ( -- ptr u8 n ) CANDIDATE-BUF CANDIDATE-U @ ;
 
 \ A directory symlink may carry an invocation-root engine spelling outside
-\ CWD. Check only that spelling's alias, then require its normalized path to
+\ CWD. Check only that spelling's portable row, then require its normalized path to
 \ resolve to the same physical candidate: symlink/.. can name another file.
 : BOOT-CANDIDATE ( ptr u8 n n -- ptr u8 n bool ) {: first:n :}
-   first REQUIRE-BOOT-N @ >= if INCLUDE-FALSE exit then
+   first REQUIRE-BOOT-LIMIT >= if INCLUDE-FALSE exit then
    2dup CWD$ RELATIVE first BOOT-KNOWN? if INCLUDE-TRUE exit then
    dup CANDIDATE-U ! CANDIDATE-BUF swap BYTE-COPY
    REQUEST$ ABSOLUTE!
@@ -464,10 +487,18 @@ public
    2dup DIRNAME OWNER!
    known ;
 
+\ Boot rows carry whichever spelling the engine that recorded them used, so the
+\ question is asked in both. A prefix that opened the registry (habu2.f
+\ EMIT-REQUIRE-BOOT-OPEN-TOKEN, src/habu/native-runtime.f) recorded portable
+\ rows, which only BOOT-CANDIDATE can match - a canonical pathname names the
+\ tree the process runs in, and a portable row names no tree at all. A prefix
+\ that does not open it - bootstrap/cg/forth.fs emits the provide rows and the
+\ freeze token, never the open token - recorded canonical rows, and the scan is
+\ the only thing that answers for those.
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
    REQUEST!
    REQUEST$ CANONICAL drop {: a:ptr u:n :}
-   0 begin dup REQUIRE-BOOT-N @ < while
+   0 begin dup REQUIRE-BOOT-LIMIT < while
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
    repeat drop
@@ -807,7 +838,9 @@ immediate
 \ just dropped, REQUIRE-BASE would hide surviving rows from REQUIRE-KNOWN?
 \ (dedup silently off), and the two SAVE cells would restore a discovery pass
 \ back to the vanished rows. So each is brought down with the count, and none of
-\ them can end up above it.
+\ them can end up above it. REQUIRE-BOOT-V is deliberately absent from that list:
+\ it says whether the boot registry is still open, not where a row is, and while
+\ it is set REQUIRE-BOOT-LIMIT reads REQUIRE-N, which this word already moves.
 \
 \ ITS CALLER IS THE BUILD'S CORE-PREFIX REWIND (src/habu/prefix-rewind.f), which
 \ returns a compiling host to the end of its own boot prefix: the rows the boot
@@ -842,10 +875,19 @@ public
 \ The loader scratch a fresh pass may reset at any time: the open file, the read
 \ counters, the path buffer, the discovery base and the event log. None of it
 \ describes a load in flight, so resetting it underneath one is safe.
+\
+\ Resetting the path buffer is its BYTES and its copy cursor, not just its
+\ length. Either leftover describes the last pathname resolved, and a capture
+\ taken afterwards bakes it into the engine: the bytes as the absolute path of
+\ the directory the build ran in, and the cursor as that path's length - one
+\ byte, and the only one left between two builds of one revision from two
+\ directories (dot habu-bake-prefix-src-1047b604).
 : INCLUDE-RESET-SCRATCH ( -- )
    INCLUDE-CLOSE
    0 INCLUDE-U !
    0 INCLUDE-RD !
+   INCLUDE-PATH-CAP 1 + 0 ?do 0 INCLUDE-PATH i ZBYTE! loop
+   0 INCLUDE-PATH-I !
    NULL$ INCLUDE-PATH-U ! INCLUDE-PATH-A!
    0 REQUIRE-BASE !
    EVENT-OFF
@@ -872,7 +914,8 @@ public
 \ must not bundle a copy of a file the engine already loaded, and must not skip
 \ one the engine does not have.
 : REQUIRE-BOOT-FREEZE ( -- )
-   REQUIRE-N @ REQUIRE-BOOT-N ! ;
+   REQUIRE-N @ REQUIRE-BOOT-N !
+   INCLUDE-FALSE REQUIRE-BOOT-V ! ;
 
 : ENGINE-PROVIDES? ( ptr u8 n -- bool )
    ENGINE-KNOWN? ;
