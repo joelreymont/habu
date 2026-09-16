@@ -1,0 +1,9 @@
+---
+title: Cut copies, allocations and scans from the JIT path
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-16T17:13:40.270757+03:00"
+---
+
+Problem: 3,566 of the engine's 5,374 baked words are compiled by tier 0, and tools/tier-bench.f measures 0.105 ms per word at tier 0 (28 us for a trivial word) with the checker on that path; nobody has profiled where that time goes. Joel (2026-09-16): eliminate copies and allocations from the hot path in the compiler and the JIT, the same for repeated scans, and lean on the standard Forth bump allocator (HERE and ALLOT) instead of allocators. Known suspects from the audit and the sweep: the checker's DO-TOK1 19-deep IF ladder per token, signature copies (VREC-COPY/E-COPY* walkers), symbol interning per token, the linear scans in the checker registries, per-token dictionary lookups, LCEMIT's per-instruction overhead. Acceptance: (1) a profile of tier 0 compiling the corpus and a trivial word with the internal profiler, per-phase inclusive (tokenize, lookup, check, emit, publish) with callers, committed in docs/compiler-measurements.md; (2) every per-token or per-word copy, allocation and linear scan on that path listed with its measured share and either removed (bump-allocated scratch marked and released per word, tables sized once, lookups indexed) or justified in one line; (3) trivial word and corpus per-word numbers before and after; byte fixpoint; full gate green; the Gforth seed mirrored where the JIT emitters change. Files: src/core/checker.f, src/habu/habu2.f, src/habu/jit.f, tools/tier-bench.f, docs/compiler-measurements.md. Verify: tools/tier-bench.f; tools/native-build.f fixpoint with timing; test/run.f. Depends: none. Ownership: JIT and checker hot path. Claim: unassigned.
