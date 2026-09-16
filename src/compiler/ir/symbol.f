@@ -366,16 +366,17 @@ INDEX-INSTALL
    BUCKET-CELLS * cells IR-CTX:SCRATCH-TAKE drop ;
 
 
+\ A bucket table is a run of canonical slots, so both of these ask the canonical
+\ slot words once for the whole run - same cells, same order, same result as the
+\ per-slot loop each replaces.
 : BUCKETS-ZERO ( ptr u8 n -- )
    {: buckets:ptr cap:n :}
-   cap BUCKET-CELLS * 0 ?do 0 buckets i CDIGEST:SLOT! loop ;
+   buckets cap BUCKET-CELLS * CDIGEST:SLOTS-ZERO ;
 
 
 : BUCKETS-CLONE ( ptr u8 ptr u8 n -- )
    {: src:ptr dst:ptr cap:n :}
-   cap BUCKET-CELLS * 0 ?do
-      src i CDIGEST:SLOT@ dst i CDIGEST:SLOT!
-   loop ;
+   src dst cap BUCKET-CELLS * CDIGEST:SLOTS-COPY ;
 
 \ All allocation precedes publishing the control pointer in the registry.
 : INDEX-TAKE ( IR-CTX:ctx n n -- ptr u8 )

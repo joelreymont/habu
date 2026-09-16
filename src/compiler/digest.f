@@ -101,6 +101,42 @@ public
       at i + c@  i 8 * lshift  or
    loop ;
 
+\ ---- whole runs of slots -----------------------------------------------------
+\ A RUN'S ALIGNMENT IS ONE QUESTION, NOT ONE PER SLOT. SLOT! and SLOT@ each ask
+\ NATIVE-SLOT? about their own address, and that asks NULL-PTR, which calls
+\ NULL-PTR-CELL, which calls data-base, to re-derive a process constant before
+\ the eight-byte test. A caller copying or clearing a run pays that chain per
+\ cell, and the run's addresses advance by SLOT-BYTES, so a run whose first slot
+\ is a native cell has every slot a native cell. These two words ask once and
+\ then move cells, and fall back to the two words above - one slot at a time,
+\ byte by byte - on a host where a canonical slot is not a native cell.
+\
+\ They are the canonical slot words for a span and nothing more: same order,
+\ same bytes, same result as the loop each replaces. The IR arena's span growth
+\ and bulk append and the symbol interner's bucket tables are the callers, and
+\ between them they are what a module's creation spends most of its time on.
+
+: SLOTS-COPY ( ptr u8 ptr u8 n -- )
+   {: src:ptr dst:ptr n:n :}
+   n 0 <= if exit then
+   src NATIVE-SLOT? dst NATIVE-SLOT? and if
+      n 0 ?do
+         src i SLOT-BYTES * + CELL-VIEW @
+         dst i SLOT-BYTES * + CELL-VIEW !
+      loop
+      exit
+   then
+   n 0 ?do src i SLOT@ dst i SLOT! loop ;
+
+: SLOTS-ZERO ( ptr u8 n -- )
+   {: dst:ptr n:n :}
+   n 0 <= if exit then
+   dst NATIVE-SLOT? if
+      n 0 ?do 0 dst i SLOT-BYTES * + CELL-VIEW ! loop
+      exit
+   then
+   n 0 ?do 0 dst i SLOT! loop ;
+
 \ SHA-256 over exactly the caller's preimage bytes, read out as four words.
 : COMPUTE ( ptr u8 n -- CDIGEST:digest )
    DG SHA256

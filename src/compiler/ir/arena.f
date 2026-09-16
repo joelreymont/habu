@@ -300,12 +300,6 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
    slot AGEN@ k PACK MINT-IDX ;
 
 \ ---- growth ------------------------------------------------------------------
-: COPY-CELLS ( ptr u8 ptr u8 n -- )
-   {: src:ptr dst:ptr cnt:n :}
-   cnt 0 ?do
-      src i CDIGEST:SLOT@ dst i CDIGEST:SLOT!
-   loop ;
-
 \ The capacity the doubling series reaches for `need` cells. Growing to a whole
 \ row's worth at once lands on exactly the capacity a cell-at-a-time growth
 \ would have climbed to, so reserving changes how many spans are taken, never
@@ -335,7 +329,7 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
    need slot ACEIL@ > if E-IR-ARENA-FULL throw then
    slot ACAP@ need slot ACEIL@ CAP-FOR {: ncap:n :}
    c ncap CDIGEST:SLOT-BYTES * IR-CTX:SCRATCH-TAKE drop {: nbase:ptr :}
-   slot ADATA-FIELD @ nbase slot ACOUNT@ COPY-CELLS
+   slot ADATA-FIELD @ nbase slot ACOUNT@ CDIGEST:SLOTS-COPY
    nbase slot ADATA-FIELD !
    ncap slot ACAP! ;
 
@@ -528,6 +522,10 @@ public
 \ into arenas of another, so only the destination is own-checked; reading a live
 \ arena of another context is what OPEN-LIVE and RD@ already allow.
 \
+\ The run itself is CDIGEST:SLOTS-COPY, the canonical slot words asked once for
+\ the whole span instead of once per cell; the bytes, the order and the result
+\ are the loop it replaces.
+\
 \ The destination's data address is read AFTER the growth, because growth is
 \ what moves it.
 : APPEND-SPAN ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena n n -- )
@@ -544,9 +542,9 @@ public
    d ACOUNT@ {: at:n :}
    s ADATA-FIELD @ {: sb:ptr :}
    d ADATA-FIELD @ {: db:ptr :}
-   k 0 ?do
-      sb from i + CDIGEST:SLOT@  db at i + CDIGEST:SLOT!
-   loop
+   sb from CDIGEST:SLOT-BYTES * +
+   db at CDIGEST:SLOT-BYTES * +
+   k CDIGEST:SLOTS-COPY
    at k + d ACOUNT! ;
 
 \ Make the capacity for k more cells real, so the next k PUSH calls to this
