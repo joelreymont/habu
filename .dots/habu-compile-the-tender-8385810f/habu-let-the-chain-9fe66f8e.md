@@ -1,9 +1,11 @@
 ---
-title: "Build generations privately without moving bin/hb"
-status: open
+title: Build generations privately without moving bin/hb
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-13T09:43:28.051549+03:00"
+created-at: "\"2026-09-13T09:43:28.051549+03:00\""
+closed-at: "2026-09-16T14:34:48.358568+03:00"
+close-reason: "done: Generations build in fresh private directories and the native build refuses to run without an explicit output path. [tools/two-generation-build.f:7-9; tools/native-build-core.f:374-378 RUN dies with \"one explicit output path is required\".]"
 blocks:
   - habu-build-engine-layout-abdd0188
 ---

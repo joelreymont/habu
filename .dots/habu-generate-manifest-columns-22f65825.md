@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-27T10:33:57.118380+02:00"
 closed-at: "2026-08-01T12:36:35.226877+02:00"
 close-reason: "Abolished: the hand-maintained stdlib ledger and its lint were hard-deleted; no generator or replacement authority remains."
-blocks:
-  - habu-pkg-public-signatures-e25db8b1
 ---
 
 lib/std.manifest duplicates two machine-derivable columns (word, effect) by hand, so every future public word in lib/ reintroduces stdlib-manifest-test drift at a later, more expensive moment - proven 2026-07-27 when four VEC: rows went missing for days and were found by a worker on an unrelated dot. Owned result: a checked Habu refresh tool (bin/hb --load, package-owned, in tools/) that runs the public-signatures scanner over the manifest's own kind=module rows and rewrites ONLY the word and effect columns from that emission, preserving the human-owned columns (notes, status, owner, test, doc, gate) byte-for-byte, plus a --check mode that exits nonzero on any derivable-column drift so it can join a gate list. It must assert row anchors and refuse unknown or ambiguous rows rather than guessing. This removes the failure mode instead of repairing instances; stdlib-manifest-test remains the independent cross-check.

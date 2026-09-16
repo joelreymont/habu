@@ -1,9 +1,11 @@
 ---
 title: Check owner product construction
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-07-29T20:53:42.657836+02:00"
+created-at: "\"2026-07-29T20:53:42.657836+02:00\""
+closed-at: "2026-09-16T14:34:51.195427+03:00"
+close-reason: "superseded by habu-campaign-c3-the-a2477c89: The construct form still handles only sum and enum variants, so owner products have no checked constructor; its GPT2 driver moved"
 blocks:
   - habu-parse-owner-construction-d876c9ef
 ---

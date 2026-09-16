@@ -1,0 +1,9 @@
+---
+title: "Campaign C5: runtime services for servers and targets"
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-09-16T13:54:06.639412+03:00"
+---
+
+Problem: Habu has UDP only, pthread tasks whose uncaught throw ends the process, no semaphore, join result, messages, queue, events, TCP, generic I/O devices, HTTP, TLS, database or cooperative kernel; see docs/platform-gaps.md and the three model documents. Without these every server is written from the sockets up. Acceptance: a Habu server accepts TCP connections in worker tasks, survives a worker throw, talks HTTPS to an API through the FFI, stores rows through the chosen database package, and the same task vocabulary compiles for a target with the cooperative kernel. Children (open): habu-bind-libcurl-through-72df8b84 habu-contain-a-worker-fe0c8eb8 habu-add-a-blocking-fd79b713 habu-return-a-typed-b1c342cd habu-add-task-msgs-c5a6af71 habu-add-tcp-sockets-fb1d351e habu-route-text-i-1fbcb2ba habu-decide-the-db-4bb703ee habu-decide-the-cooperative-b463cc1c habu-give-captured-children-9d37d90f habu-expose-runtime-page-size-c9528f06 habu-wait-rc-masks-9ae37cd0 habu-give-atomic-write-995c4408 habu-temp-dir-seed-5f29996a habu-fs-close-fds-027b4cf3 habu-fs-write-by-3d0ea649 habu-fmath-clamp-fexp-23e4e2cb habu-synchronize-task-lifecycle-f9b01bbf . Absorbed on 2026-09-16: 30 dots closed with the reason 'superseded by habu-campaign-c5-runtime-723833a3'; find their text with dot find. Files: lib/task.f, lib/net/, lib/genio.f (new), lib/queue.f (new), docs/tasking-models.md, docs/socket-models.md, docs/database-models.md, docs/roadmap.md section C5. Verify: each child's test; a loopback server smoke test in test/. Depends: none. Ownership: runtime lane. Claim: unassigned. Absorbed: see the archive entries closed with 'superseded by' this id.

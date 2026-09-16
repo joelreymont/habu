@@ -1,9 +1,11 @@
 ---
 title: Complete source-built stage runtime and callee closure
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-13T11:05:27.080398+03:00"
+created-at: "\"2026-09-13T11:05:27.080398+03:00\""
+closed-at: "2026-09-16T14:34:51.322679+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Completing the source-built stage runtime and callee closure is the native-compiler campaign's own critical path, not a one-day leaf"
 blocks:
   - habu-track-retained-jit-1dc23a17
   - habu-preserve-complete-addr-258c0288

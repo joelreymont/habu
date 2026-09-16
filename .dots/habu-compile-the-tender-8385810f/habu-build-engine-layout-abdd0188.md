@@ -1,9 +1,11 @@
 ---
 title: Build the first engine with its source target layout
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-13T14:51:13.073131+03:00\""
+created-at: "\"\\\"2026-09-13T14:51:13.073131+03:00\\\"\""
+closed-at: "2026-09-16T14:34:48.788041+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Building the first engine against its own source target layout is a live design step of the native build campaign, not a dispatchable leaf"
 blocks:
   - habu-preserve-complete-addr-258c0288
   - habu-walk-the-dynamic-e03edf85

@@ -1,9 +1,11 @@
 ---
 title: Sweep reopen bodies for shadowed tails
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-07-27T17:25:37.571270+02:00"
+created-at: "\"2026-07-27T17:25:37.571270+02:00\""
+closed-at: "2026-09-16T14:34:50.371643+03:00"
+close-reason: "superseded by habu-campaign-c3-the-a2477c89: Still true: a bare tail in a reopen body can silently resolve to a package word that shadows a core primitive"
 blocks:
   - habu-share-reopen-name-92885254
 ---

@@ -1,9 +1,11 @@
 ---
 title: Check generic linear owner scopes
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-07-26T20:49:06.223548+02:00"
+created-at: "\"2026-07-26T20:49:06.223548+02:00\""
+closed-at: "2026-09-16T14:34:49.884956+03:00"
+close-reason: "superseded by habu-campaign-c2-mem-c3d7662b: Residue: plain catch cannot express a body that transforms a linear owner to an arbitrary success row while cleanup consumes the original owner only on throw"
 blocks:
   - habu-prove-catch-restores-2f368434
 ---

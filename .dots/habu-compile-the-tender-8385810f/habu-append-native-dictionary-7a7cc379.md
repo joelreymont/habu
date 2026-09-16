@@ -1,9 +1,11 @@
 ---
 title: Append native dictionary publications without a full rebuild
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-14T00:01:46.985086+03:00\""
+created-at: "\"\\\"2026-09-14T00:01:46.985086+03:00\\\"\""
+closed-at: "2026-09-16T14:34:49.468757+03:00"
+close-reason: "done: The primitive and its consumer are in the tree. [src/habu/habu1.f:3200 publishes \"ndict-append\"; src/compiler/native/publish.f:38 calls it]"
 ---
 
 Own native expected-index append primitive, NPUB consumer and focused publication/index tests. Reuse LHIDXADD with pending native parent/DOES ownership and task/seal checks; preserve general ndict! restore/rebuild and rollback. Measured rebuild cost 231–235 us at 15485 records, one rebuild per native ordinary definition; startup address membership scans remain a separate issue. Require actual emitted product behavior and zero ordinary full rebuilds, plus independent Astra review.

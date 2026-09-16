@@ -1,9 +1,11 @@
 ---
 title: Select AOT before every executable dependency
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-09-11T16:07:57.859028+03:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-09-11T16:07:57.859028+03:00\\\\\\\"\\\"\""
+closed-at: "2026-09-16T14:34:48.800623+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Executable builds still leave helper JIT spans because AOT mode is not held across require/include/evaluate and generated words"
 blocks:
   - habu-build-engine-layout-abdd0188
 ---

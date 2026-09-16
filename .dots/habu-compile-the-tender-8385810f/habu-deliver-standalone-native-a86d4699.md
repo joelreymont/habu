@@ -1,9 +1,11 @@
 ---
-title: "Accept the replacement compiler in Tender, Maki and Kestrel"
-status: open
+title: Accept the replacement compiler in Tender, Maki and Kestrel
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-10T18:03:13.378322+03:00"
+created-at: "\"2026-09-10T18:03:13.378322+03:00\""
+closed-at: "2026-09-16T14:34:48.742980+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Downstream acceptance of the replacement compiler in Tender, Maki and Kestrel is the campaign's release gate, not a dispatchable leaf"
 blocks:
   - habu-preserve-debugger-watchpoint-74e8b1d9
   - habu-preserve-verified-input-d1bd23c6

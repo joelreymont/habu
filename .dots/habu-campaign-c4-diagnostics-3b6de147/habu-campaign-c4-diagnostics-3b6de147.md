@@ -1,0 +1,9 @@
+---
+title: "Campaign C4: diagnostics that name the fix"
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-09-16T13:54:06.636339+03:00"
+---
+
+Problem: docs/repair-diagnostics.md gives checker diagnostics a stable JSON contract with code, repair class, span and suggestion, and repair packets feed LLM repair loops, but engine and runtime failures do not follow it, several checker paths die on user-reachable inputs, error codes are minted outside lib/errors.f, and over a hundred codes are provoked by no test. A model iterating on error text cannot fix what the error does not name. Acceptance: a generated program failing at check, compile, load or run time yields one located diagnostic with a code, repair class and suggestion in the same JSON shape; no user-reachable die remains; every code has one owner in lib/errors.f and at least one provoking test; the gate refuses a new code without span, class and fixture. Children (open): habu-extend-the-repair-68f9b2cf habu-make-the-arm64-fa89e081 habu-reject-only-the-e518778d habu-throw-on-generated-38b50740 habu-reader-keywords-at-4f9022a3 habu-tfam-field-proj-206a50d5 habu-control-frame-overflow-33987ab1 habu-derive-eq-dies-36f33fa0 habu-check-f-fails-7276eaab habu-escape-control-bytes-bf1bb9c6 habu-reject-direct-defer-c517b62d habu-route-unterminated-bf0c9b14 habu-eof-inside-a-7a539941 habu-the-engine-crashes-fdfe5e28 habu-var-i-shadows-f4435867 . Absorbed on 2026-09-16: 60 dots closed with the reason 'superseded by habu-campaign-c4-diagnostics-3b6de147'; find their text with dot find. Files: src/core/render.f, lib/errors.f, src/habu/habu2.f diagnostic emission, tools/gate-json-assert.f, docs/repair-diagnostics.md, docs/roadmap.md section C4. Verify: test/gate-diagnostics.f, error-code lint, test/run.f green. Depends: none. Ownership: checker and engine lanes. Claim: unassigned. Absorbed: see the archive entries closed with 'superseded by' this id.

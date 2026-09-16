@@ -1,9 +1,11 @@
 ---
-title: "Measure and finish pass-scoped IR reader reuse"
-status: active
+title: Measure and finish pass-scoped IR reader reuse
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-11T16:38:06.256061+03:00"
+created-at: "\"2026-09-11T16:38:06.256061+03:00\""
+closed-at: "2026-09-16T14:34:49.390899+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Pass-scoped IR reader reuse is a measured compiler optimisation on the current plan; keep the measurement, not the standing lane."
 blocks:
   - habu-build-the-compiler-c348eab0
   - habu-attr-and-remove-2b13e978

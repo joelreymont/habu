@@ -1,9 +1,11 @@
 ---
 title: Remove cryptographic hashing from internal symbol lookup filter
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:07:57.869453+03:00\""
+created-at: "\"\\\"2026-09-11T16:07:57.869453+03:00\\\"\""
+closed-at: "2026-09-16T14:34:50.325295+03:00"
+close-reason: "done: The internal intern filter is FNV-1a now, not SHA-256 [src/compiler/ir/symbol.f:111-113 FNV-OFFSET/FNV-PRIME with the header comment \"the row's filter cell - FNV-1a\"]"
 ---
 
 Owner: Rowan symbol lane .jj-ws/rowan-symbol; src/compiler/ir/symbol.f only, base41df9051. Current FILTER uses SHA256 roughly400000 times per Tender compile, sampled10.6s/9.6%. This16-bit internal intern filter never serializes and full equality confirms matches; canonical content digests elsewhere must remain unchanged.

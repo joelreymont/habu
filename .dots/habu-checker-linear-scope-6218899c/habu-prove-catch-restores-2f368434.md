@@ -1,9 +1,11 @@
 ---
 title: Fix catch argument and linear-owner contract
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-26T20:48:57.220131+02:00"
+created-at: "\"2026-07-26T20:48:57.220131+02:00\""
+closed-at: "2026-09-16T14:34:49.638362+03:00"
+close-reason: "superseded by habu-campaign-c2-mem-c3d7662b: Doc half landed. Residue: RSCATCH still certifies linear owners across a throw and the catch-site audit is undone."
 blocks:
   - habu-unify-all-quotation-56884608
 ---

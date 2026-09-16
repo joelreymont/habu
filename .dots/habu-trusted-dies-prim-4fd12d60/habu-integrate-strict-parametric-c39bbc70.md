@@ -1,9 +1,11 @@
 ---
 title: Integrate strict parametric effects and checked Forth helpers
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-10T18:03:13.337312+03:00"
+created-at: "\"2026-09-10T18:03:13.337312+03:00\""
+closed-at: "2026-09-16T14:34:48.737785+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Strict parametric effects are in force but five suites are still red under them and docs/forth.md does not state the rule"
 ---
 
 Owner: Cedar; nominal_pointer handles the remaining reduced compiler binding failure. Strict nominal/generic pointers and type-variable kinds are integrated. Concrete byte/cell/record declarations replace false generic outputs; accepted nominal-input instantiation, rejected output refinement, typed stores and public tool paths have focused passing tests. Parsed CHECK! publication now preserves live type terms for lowering certificates.

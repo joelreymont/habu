@@ -1,9 +1,11 @@
 ---
 title: Validate partial effect row widths against type semantics
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-13T22:36:30.824089+03:00\""
+created-at: "\"\\\"2026-09-13T22:36:30.824089+03:00\\\"\""
+closed-at: "2026-09-16T14:34:48.394167+03:00"
+close-reason: "done: Producer and importer now validate encoded effect-row widths against the type, with the scalar-zero and hidden-wide negatives in the real suite. [test/aot-payload-graph-child.f:138-174 CORRUPT drives scalar-zero and hidden-wide rows through EN.C and ER.MINI.]"
 ---
 
 Independent Astra review of 81a865e9 found EN-PUSH admits any positive EN.C encoded width without checking its referenced type. Safe real 17-section roundtrip reproducer: in test/aot-payload-graph-child.f CORRUPT set 1 1 GRAPH DIN EN.C ! and 0 1 GRAPH ER.MINI !; import succeeds and PAYLOAD-FIXED has one input term but zero input cells. Native callable metadata consumes these widths; no execution miscompile claimed. Derive/check widths using the actual type and captured registry layout semantics before producer/export and importer publication. Preserve polymorphic, nominal and hidden physical widths. Add scalar-zero contradiction and known wide-layout mismatch refusals, legitimate-width controls and unchanged checker/registry publication state checks. Keep exception, dynamic SCH-CON and native return-row contracts in their separate leaves. Claim: payload_resume; must pass independent Astra review before landing.

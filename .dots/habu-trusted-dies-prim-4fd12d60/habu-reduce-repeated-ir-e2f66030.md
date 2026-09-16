@@ -1,9 +1,11 @@
 ---
 title: Reduce repeated IR arena and context access cost in AOT builds
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:07:57.864391+03:00\""
+created-at: "\"\\\"2026-09-11T16:07:57.864391+03:00\\\"\""
+closed-at: "2026-09-16T14:34:48.001672+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Measured IR handle and arena accessor cost in AOT builds; residue is reducing nested accessor and validation chains without a session cache."
 ---
 
 Owner: Rowan arena lane .jj-ws/rowan-arena; ownership src/compiler/ir/arena.f and context.f, base41df9051. Ask before shared-reader edits. Prior direct O(1) registry-index fix is complete in habu-remove-linear-lookup-b8a6ab72; do not duplicate it or describe FIND-A/FIND-SLOT as linear64-slot scans.

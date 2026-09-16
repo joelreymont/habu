@@ -1,9 +1,11 @@
 ---
 title: Fix generic KEEP call preservation across variable output rows
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:07:57.843696+03:00\""
+created-at: "\"\\\"2026-09-11T16:07:57.843696+03:00\\\"\""
+closed-at: "2026-09-16T14:34:48.774999+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Generic KEEP still mis-orders variable output rows in the optimizing path; the fix is prototyped but not landed or reviewed"
 ---
 
 Owner: /root/check_api; workspace .jj-ws/cedar-return-quotations. Independent review explicitly requested from Rowan on BB 20260911-130440.104-cedar-c5a3. Parent quotation metadata fix b169c546 is reviewed and integrated as a83fac94; it preserves RQ/ARG-Q and distinct literal body identities.

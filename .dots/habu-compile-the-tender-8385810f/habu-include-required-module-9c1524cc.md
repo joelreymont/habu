@@ -1,9 +1,11 @@
 ---
 title: Include required module source in stage certification
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-14T02:03:28.878822+03:00\""
+created-at: "\"\\\"2026-09-14T02:03:28.878822+03:00\\\"\""
+closed-at: "2026-09-16T14:34:49.480222+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Stage certification still does not follow require, so a module's source can be missing from the certified input; keep it with the build source assembly."
 ---
 
 Cedar owns BF source assembly dependencies. Product I certifies prefix-src then

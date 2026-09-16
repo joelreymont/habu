@@ -1,9 +1,11 @@
 ---
 title: Reduce remaining superlinear optimizing allocator work
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:07:57.874253+03:00\""
+created-at: "\"\\\"2026-09-11T16:07:57.874253+03:00\\\"\""
+closed-at: "2026-09-16T14:34:48.005439+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Remaining superlinear allocator, spill-rewrite and combiner scaling above 256 values; residue is the measured growth, not a target multiple."
 ---
 
 Owner: Cedar; src/compiler/native/regalloc.f and measured combiner work. Parallel arena/context and symbol owners are separate. Latest integrated class-member optimization d8b108ae is reviewed and focused allocator/loop/edge tests pass; actual Tender ANSWER-COUNT forced-AOT compile7.817084667s to7.263791792s (7.1%), small call100/150 only2-3%. Do not claim full-app7%.

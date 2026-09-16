@@ -1,12 +1,12 @@
 ---
 title: "Preserve named provider rows when publishing verified effects"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-09-13T11:45:43.535614+03:00\""
 ---
 
-Plan: [PLAN.md](../../PLAN.md). Claim: Cedar integration. Independent Astra source review accepted; independent native-provider-rows and ir-context real loads pass on private candidate e0f2fee7. Combined rebuild and native gate are next.
+Plan: [PLAN.md](../../PLAN.md). Claim: unassigned (stale claim cleared 2026-09-16). Independent Astra source review accepted; independent native-provider-rows and ir-context real loads pass on private candidate e0f2fee7. Combined rebuild and native gate are next.
 
 Cause: quotation execution aliases declared named rows to inference tails with fixed-window/literal kinds. CHECKER-USIG-CERT-PARSED copied those temporary kinds into the provider's reusable effect. Recording disabled reproduces it too; CALL-FREEZE and a finally-only diagnosis are disproved. p-only.f and v-quot-exec.f are the reduced real-load failures in .jj-ws/habu-keep-a-row-f2c4f3d4/build/repro.
 

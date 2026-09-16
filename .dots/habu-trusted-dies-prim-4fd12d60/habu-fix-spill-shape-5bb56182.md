@@ -1,9 +1,11 @@
 ---
 title: Fix spill shape for a quotation carried across an IF
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:16:48.909168+03:00\""
+created-at: "\"\\\"2026-09-11T16:16:48.909168+03:00\\\"\""
+closed-at: "2026-09-16T14:34:48.008620+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: A quotation retained across an IF still faults the spill shape on a valid program; residue is E-A64SPILL-SHAPE -8442 for that lowering."
 ---
 
 Owner: /root/compiler_xhigh_review, workspace cedar-spill-trap, new change on80716458 (parent KEEP931a543c). The prior final-frame-token region bug is separately repaired/reviewed80716458; this is a new observed blocker.

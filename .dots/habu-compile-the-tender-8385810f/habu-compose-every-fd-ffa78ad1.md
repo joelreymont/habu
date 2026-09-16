@@ -1,9 +1,11 @@
 ---
-title: "Emit complete newline-terminated engine diagnostics"
-status: open
+title: Emit complete newline-terminated engine diagnostics
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-09-13T11:09:21.780935+03:00"
+created-at: "\"2026-09-13T11:09:21.780935+03:00\""
+closed-at: "2026-09-16T14:34:48.371006+03:00"
+close-reason: "superseded by habu-campaign-c4-diagnostics-3b6de147: Residue: engine stderr payloads are still emitted in pieces, so a diagnostic can lose its newline or gain padding NULs, and E-BAD-LOCAL-SHAPE prints a bare name."
 blocks:
   - habu-size-the-snapshot-1ca5db10
 ---

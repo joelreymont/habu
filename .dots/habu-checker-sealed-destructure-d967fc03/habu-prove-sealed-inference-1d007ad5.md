@@ -1,9 +1,11 @@
 ---
 title: Prove sealed inference
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-07-29T20:36:50.572569+02:00"
+created-at: "\"2026-07-29T20:36:50.572569+02:00\""
+closed-at: "2026-09-16T14:34:51.187062+03:00"
+close-reason: "moved to loom as loom-prove-sealed-inference-2ff9b96c (commit dcb8d632): The sealed-inference acceptance is over Loom's GPT2 declarations"
 blocks:
   - habu-seal-validated-model-4361ff22
   - habu-seal-gpt-2-1426e51e

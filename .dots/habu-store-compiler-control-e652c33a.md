@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-26T22:54:58.876373+02:00"
 closed-at: "2026-08-15T14:07:28.878467+02:00"
 close-reason: "Closed (vintage audit 2026-08-15, re-executed after the pool incident): control store (op-lane handover landed). Production-consumed by the native chain; suites dual-registered, green through the real entry."
-blocks:
-  - habu-store-compiler-ops-10440e3e
 ---
 
 Full context: design section 6.3 requires function/block parents and deterministic windows over generic operation pools. Add function signatures/regions, block arguments, parent identities, operation/successor windows, visibility, and terminator placement metadata. Acceptance: duplicate insertion, cross-function block use, bad parent/window/order, and foreign-owner cases reject. Dependency: operation pools.

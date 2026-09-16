@@ -1,6 +1,6 @@
 ---
 title: Preserve exceptional stack types across catch and payload restoration
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-09-13T21:26:24.684087+03:00\""
@@ -15,7 +15,7 @@ Safe runtime reproduction defines SWAP-THROW with that checked signature, passes
 
 Responsible checker layer: THROW-EDGE retains only the first exceptional data/return rows; RSCATCH applies ordinary DIN/RIN but ignores exceptional DOUT/ROUT; stored QX rows are copied to effect EN.G/H as transient IDs and copied back unchanged after source arenas reset. No semantic reader does not prove these fields unnecessary. The partial graph WIP must not zero/discard them as a correctness argument.
 
-Fix the exceptional contract at publication and catch application: preserve every admitted exceptional stack requirement, shared variables and data/return row semantics in persistent effects, freshening/copying and portable graphs; reject unsafe type changes before code is accepted. Preserve ordinary value changes and depth restoration where their retained cells keep valid types. Test safe numeric mutation plus throw, unsafe heterogeneous swaps on data/return stacks, multiple throw branches, nested execute/catch, source-state destruction and imported graphs, under JIT and optimizing tiers. Keep the graph milestone open until these cases prove preservation. Claim: payload_resume. Linked review: P01 in Downloads/habu-current-review-51546316/habu-current-review/REVIEW.md.
+Fix the exceptional contract at publication and catch application: preserve every admitted exceptional stack requirement, shared variables and data/return row semantics in persistent effects, freshening/copying and portable graphs; reject unsafe type changes before code is accepted. Preserve ordinary value changes and depth restoration where their retained cells keep valid types. Test safe numeric mutation plus throw, unsafe heterogeneous swaps on data/return stacks, multiple throw branches, nested execute/catch, source-state destruction and imported graphs, under JIT and optimizing tiers. Keep the graph milestone open until these cases prove preservation. Claim: unassigned (stale claim cleared 2026-09-16). Linked review: P01 in Downloads/habu-current-review-51546316/habu-current-review/REVIEW.md.
 
 
 Design boundary from the reduction:

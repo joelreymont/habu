@@ -1,9 +1,11 @@
 ---
 title: Size the portable effect pool from its actual encoded bytes
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-09-14T03:34:37.750797+03:00\""
+created-at: "\"\\\"2026-09-14T03:34:37.750797+03:00\\\"\""
+closed-at: "2026-09-16T14:34:48.398386+03:00"
+close-reason: "done: The effect pool and the writer staging use dynamic storage and the obsolete fixed text-pool cap is gone. [test/aot-effect-pool.f registered at test/gate-stdlib-cases.f:1157; src/habu/aot-file.f uses DYNAMIC-BUFFER and carries no 262144 cap.]"
 ---
 
 The genuine cold compiler window freezes 7,670 unique live effects into 3,635,865 bytes of names and binary effect graphs. The obsolete 262,144-byte text pool cap rejects it. Use existing DYNAMIC-BUFFER ownership for the opaque effect arena and contiguous emitted staging span, reserving from validated lengths in capture, read, owned import and merge. Preserve format, graph semantics and aggregate section budget, including negative/overflow and malformed aggregate rejection before copy. Validate complete bytes through large-pool file roundtrip, source release and owned import, merge, and writer staging; no broad cap increase.

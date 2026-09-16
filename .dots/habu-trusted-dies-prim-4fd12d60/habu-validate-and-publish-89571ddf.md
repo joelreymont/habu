@@ -1,9 +1,11 @@
 ---
 title: Validate and publish the combined Habu changes
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-09-10T18:03:13.409212+03:00"
+created-at: "\"2026-09-10T18:03:13.409212+03:00\""
+closed-at: "2026-09-16T14:34:48.745685+03:00"
+close-reason: "superseded by habu-campaign-c1-finish-1f129a00: Final combined validation of the Habu changes is the campaign's landing step and its handoff notes name workspaces that have moved on"
 blocks:
   - habu-deliver-standalone-native-a86d4699
 ---

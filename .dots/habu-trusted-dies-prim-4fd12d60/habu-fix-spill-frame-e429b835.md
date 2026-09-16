@@ -1,9 +1,11 @@
 ---
 title: Fix spill frame-token order on branches ending in traps
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-09-11T16:07:57.849496+03:00\""
+created-at: "\"\\\"2026-09-11T16:07:57.849496+03:00\\\"\""
+closed-at: "2026-09-16T14:34:51.511761+03:00"
+close-reason: "done: The verifier's global return condition was replaced by reachable-region semantics [src/compiler/native/regalloc-verify.f:417-425 TRAP-FRAME-END? uses REACH-FILL; test/compiler/native-order-exit.f present]"
 ---
 
 Owner: /root/compiler_xhigh_review; coordinate with check_api, which owns elaborate.f/native-rstack.f. Separate workspace based on the frozen KEEP prototype. Own spill.f/regalloc-verify.f or the proven responsible scheduler layer; do not weaken validator checks.
