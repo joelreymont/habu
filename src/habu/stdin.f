@@ -6,12 +6,14 @@
 \ output path — the single knob; the build-fixpoint driver owns the artifact
 : STDIN-OUT ( -- ptr u8 n ) s" hb-stdin-got" TMP-PATH ;
 
-\ the REPL + token stepper + breakpoints baked as the engine's LSRC (paths are
-\ repo-root relative; run the maker from the repo root)
+\ The REPL source this driver compiles and captures (paths are repo-root
+\ relative; run the maker from the repo root). The debugger trio is NOT here.
+\ The engine carries the compiler, the JIT and the REPL and nothing else, which
+\ src/habu/native-runtime.f states for the other emitter and this list states
+\ here, so a session reaches breakpoints with `require src/habu/debug.f`. An
+\ engine that captured the trio as well would carry a second BPW-MAX and that
+\ require would die on the duplicate instead of loading.
 : REPL-SRC ( -- ptr u8 n ) s" src/habu/repl.f" ;
-: WATCH-SRC ( -- ptr u8 n ) s" src/habu/debug-watch.f" ;
-: STEP-SRC ( -- ptr u8 n ) s" src/habu/stepper.f" ;
-: DBG-SRC ( -- ptr u8 n )  s" src/habu/debug.f" ;
 variable HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
 \ HB exposes the raw baked-source buffer cell.
@@ -53,30 +55,29 @@ s" HB@" s" -- ptr u8" TRUST
    here HB !  HMAX allot  0 HL !
    READ-REPL-TARGET
    REPL-SRC PATH0 RD-1
-   WATCH-SRC PATH0 RD-1
-   STEP-SRC PATH0 RD-1
-   DBG-SRC PATH0 RD-1
-   HL @ 2 > 0= IF s" hb: repl/stepper sources missing" 74 die THEN
+   HL @ 2 > 0= IF s" hb: repl sources missing" 74 die THEN
    HL @ HMAX = IF s" hb: sources exceed buffer" 74 die THEN ;
 
-\ AOT-REPL M2: compile the REPL/token-stepper/breakpoint debugger IN THE METABUILD
-\ HOST and capture it (code blob + dict records + call/DATA/CODE relocation tables)
-\ so bin/hb seeds it at boot as CODE -- no re-parse, no embedded REPL source. The
-\ image writer's EMIT-DICT bakes the emit-builder #PL list (the cold prefix), NOT
-\ the host dictionary, so the host-compiled REPL words live ONLY in the AOT blob;
-\ EM-SEED-AOT copies the blob, registers the records, name-relocates calls, and
-\ relocates DATA + CODE (quotation) literals into bin/hb. The install-tail
-\ (INSTALL/BPW-INSTALL/S-INSTALL, the top-level calls at the file tails) becomes
-\ the boot-run list: EM-SEED-AOT LFINDs + calls each after the seed, so the engine
-\ installs the REPL with ZERO baked source. stage2/maker/snap use other drivers,
-\ so their AOT buffers stay empty and EM-SEED-AOT skips.
+\ AOT-REPL M2: compile the REPL IN THE METABUILD HOST and capture it (code blob +
+\ dict records + call/DATA/CODE relocation tables) so bin/hb seeds it at boot as
+\ CODE -- no re-parse, no embedded REPL source. The image writer's EMIT-DICT bakes
+\ the emit-builder #PL list (the cold prefix), NOT the host dictionary, so the
+\ host-compiled REPL words live ONLY in the AOT blob; EM-SEED-AOT copies the blob,
+\ registers the records, name-relocates calls, and relocates DATA + CODE
+\ (quotation) literals into bin/hb. The install-tail (INSTALL, the top-level call
+\ at the file tail) becomes the boot-run list: EM-SEED-AOT LFINDs + calls each
+\ after the seed, so the engine installs the REPL with ZERO baked source.
+\ stage2/maker/snap use other drivers, so their AOT buffers stay empty and
+\ EM-SEED-AOT skips.
 \ WHAT THE CAPTURED SET IS FOR EVERY OTHER BOOT. The seed runs at the end of the
 \ engine prefix on every boot, not only the tty one (dot
 \ habu-decide-arm-the-5234727b), so every name compiled here is in the dictionary
-\ a piped or `--load` program sees. Adding a file to the four above therefore adds
+\ a piped or `--load` program sees. Adding a file to the two above therefore adds
 \ its global names to the engine's contract, and a spelling that some batch
 \ program already defines at global scope makes that program die `duplicate
-\ definition`. Check a new name against the tree before capturing it.
+\ definition`. That is also why the debugger stays out: it is a file a session
+\ REQUIRES, and a required file whose names the engine already carries cannot
+\ load at all. Check a new name against the tree before capturing it.
 \ Dynamic host evaluation is source-dependent and cannot carry a static effect.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in the host dict
@@ -140,9 +141,7 @@ variable DP0
    HB@ HL @ EVAL-HOST                             \ compile the REPL in the host dictionary
    AOT-ARM:WINDOW-CLOSE
    AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
-   s" INSTALL" AOT-CAPTURE:BOOTRUN+                \ repl.f    -> REPL read hook + termios save
-   s" BPW-INSTALL" AOT-CAPTURE:BOOTRUN+            \ debug-watch.f -> watch table init
-   s" S-INSTALL" AOT-CAPTURE:BOOTRUN+ ;            \ stepper.f -> stepper read hook
+   s" INSTALL" AOT-CAPTURE:BOOTRUN+ ;              \ repl.f -> REPL read hook + termios save
 
 \ Append the declared artifact to what CAPTURE-REPL just captured, in the
 \ coordinates of that capture, so EMIT-AOT-SEED still bakes one of everything.

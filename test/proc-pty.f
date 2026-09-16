@@ -281,8 +281,8 @@ variable PTYNUM
 
 \ --- the two boot modes must enumerate ONE dictionary --------------------------
 \ Dot habu-decide-arm-the-5234727b (USER RULING 2026-08-11: one dictionary surface
-\ for every boot mode). The engine's baked REPL/stepper/debugger words are seeded
-\ into the dictionary at boot; that seed used to run at the interactive REPL entry
+\ for every boot mode). The engine's baked REPL words are seeded into the
+\ dictionary at boot; that seed used to run at the interactive REPL entry
 \ alone and now runs at the end of the engine prefix on every boot. Every case in
 \ this file already depends on the interactive half - without the seed there is no
 \ prompt to type at - so what is left to prove is that the BATCH dictionary is the
@@ -411,6 +411,13 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    10 SEND-C
    MFD-DRAIN
    s" 103" EXPECT
+   s"  ok" EXPECT ;
+
+\ The engine bakes the REPL and nothing else (src/habu/native-runtime.f,
+\ src/habu/stdin.f): a session that wants breakpoints, watch cells or the token
+\ stepper loads them here, which is also how a REPL user reaches them.
+: PTY-DEBUGGER-LOAD ( -- )
+   s" require src/habu/debug.f" STEP-LN
    s"  ok" EXPECT ;
 
 : PTY-BP-SOURCE ( -- )
@@ -737,6 +744,7 @@ create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
    PTY-HISTORY-UP ;
 
 : PTY-BREAKPOINTS ( -- )
+   PTY-DEBUGGER-LOAD
    PTY-BP-SOURCE
    PTY-BP-ONESHOT
    PTY-BP-PERSISTENT

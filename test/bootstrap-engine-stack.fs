@@ -190,13 +190,20 @@ require nf.fs
    a c u move b c u + v move c u v + ;
 
 : BES-DEBUG-RUN ( tail size -- ) {: tail size :}
-   \ The static seed has no realpath loader; bake the unchanged debug module.
-   \ Its two ordinary REPL interfaces are enough for these batch breakpoints.
+   \ Bake the unchanged debug module: the breakpoint words are the subject, and
+   \ the seed's loader would read the file a second time if this text asked for
+   \ it by name. src/habu/debug.f requires its two siblings, and this program
+   \ carries neither: it has no REPL, so src/habu/stepper.f cannot compile here
+   \ at all (it calls repl.f's RD-LINE), and the watch cells belong to that same
+   \ REPL. Both paths are declared provided so the requires are no-ops, which is
+   \ also what keeps the module itself read exactly once.
    s" src/habu/debug.f" slurp-file {: module bytes :}
+   s\" s\" src/habu/debug-watch.f\" provided s\" src/habu/stepper.f\" provided\n"
    s\" package BES-BP : DATAB ( -- ptr a ) data-base ; : EMITS ( ptr u8 n -- ) type ;\n"
-   module bytes BES-CAT {: head headsize :}
+   BES-CAT {: decls declsize :}
+   decls declsize module bytes BES-CAT {: head headsize :}
    head headsize tail size BES-CAT {: source sourcesize :}
-   module free throw head free throw
+   module free throw decls free throw head free throw
    source sourcesize BES-OK source free throw ;
 
 : BES-DEBUGGER ( -- )

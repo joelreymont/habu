@@ -357,7 +357,7 @@ package AOT-BUF
 public
 
 \ boot-run name list: 0-terminated [len][name-bytes] records of the top-level entry
-\ words (INSTALL/BPW-INSTALL/S-INSTALL) the metabuild ran at the tail of the REPL
+\ words (the REPL's INSTALL) the metabuild ran at the tail of the REPL
 \ source. With the source dropped, EM-SEED-AOT LFINDs + calls each after RX/flush so
 \ the seeded engine installs the REPL with no embedded source.
 \ THIS LIST RUNS ON EVERY BOOT, and it used to run on one. The seed fires at the

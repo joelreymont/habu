@@ -5558,7 +5558,7 @@ public
    xdone LBL, ;
 ;package
 
-\ Boot-run the captured top-level entry words (INSTALL/BPW-INSTALL/S-INSTALL) once
+\ Boot-run the captured top-level entry words (the REPL's INSTALL) once
 \ the seeded blob is RX + icache-flushed: walk the 0-terminated [len][name] list,
 \ LFIND each in the now-registered dict, and blr its xt. This replaces the embedded
 \ install-tail source -- the engine installs the REPL with zero baked source. Runs

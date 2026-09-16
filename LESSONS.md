@@ -8707,3 +8707,17 @@ double-free and use-after-free are named refusals at the entry point instead of
 compile-time rejections. The registry buys back something linearity cannot say
 at all - the owning TASK - which is how the one-connection-per-task rule is
 enforced. Retiring the `TRUSTED:` trios needs a checker-owned linear mint first.
+
+## 2026-09-17 - an AOT-captured defer cannot be rebound by later source
+
+The REPL the metabuild captures reaches the product engine as code plus its
+checker SIGNATURES but without its defer rows. On a stdin-lineage `bin/hb`
+`: T ( -- ptr u8 n ) RD-LINE ;` certifies, while `[: RD-LINE ;] is REPL-READ`
+is refused (`hook: non-certified definition ... at 'is'`, from the checker's
+CHECKER-FIND-ACTIVE-DEFER leg of IS-TOK). So a file a session REQUIRES cannot
+bind a deferred word the capture defined: `require src/habu/debug.f` dies
+inside `src/habu/stepper.f` S-INSTALL on that engine and loads on a
+native-runtime engine (`tools/native-build.f`), whose repl.f came from source
+with its rows. A defer the program defines itself, and a prefix defer such as
+`TYPE-DECL:TDECL-EVAL-XT`, both bind normally, so the gap is exactly the
+captured window.

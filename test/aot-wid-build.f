@@ -289,15 +289,18 @@ create DRV-CH 1 allot
    k ku SKEW-BODY
    s" ;package" DRV-LINE ;
 
-\ Load the real REPL source inside the fixture window.
+\ Load the real REPL source inside the fixture window. The terminal and REPL
+\ files are INCLUDEd because the window has to compile them here; the debugger is
+\ one REQUIRE because src/habu/debug.f requires the watch cells and the stepper
+\ itself, and naming all three again loaded each of them twice (`duplicate
+\ definition: BPW-MAX`). The cold host provides none of the four, so the require
+\ reads the file.
 : CAPTURE-REPL-LINES ( -- )
    s" AOT-ARM:WINDOW-OPEN" DRV-LINE
    HB-TARGET-LINUX? if s" include src/os/linux/repl-term.f"
    else s" include src/os/macos/repl-term.f" then DRV-LINE
    s" include src/habu/repl.f" DRV-LINE
-   s" include src/habu/debug-watch.f" DRV-LINE
-   s" include src/habu/stepper.f" DRV-LINE
-   s" include src/habu/debug.f" DRV-LINE ;
+   s" require src/habu/debug.f" DRV-LINE ;
 
 \ --- the window-content fixtures ----------------------------------------------
 \ Define at top level, then close the real capture window after both the REPL

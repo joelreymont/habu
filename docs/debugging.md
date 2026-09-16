@@ -20,9 +20,17 @@ the build stack.
 ## `.` — single value (in the standalone)
 Pop + print one signed decimal + newline. Use for a specific intermediate.
 
+## Loading the debugger — `require src/habu/debug.f`
+The engine bakes the compiler, the JIT and the REPL and nothing else
+(`src/habu/native-runtime.f`), so the debugger arrives on demand: one
+`require src/habu/debug.f` loads the breakpoints, the token stepper and the
+shared watch cells over the baked REPL, in a session or at the head of a
+program, and costs about 14 ms. Every `BPW*`, `step` and `BP*` example below
+assumes that line ran first.
+
 ## `BPW+` / `BPW-` / `BPW.` — watched cells
-`src/habu/debug-watch.f` is baked into `bin/hb` before the stepper/debugger. It
-publishes a small watch table used by both `step` and compiled-word breakpoints.
+`src/habu/debug-watch.f` loads before the stepper/debugger. It publishes a small
+watch table used by both `step` and compiled-word breakpoints.
 Add a cell address with `BPW+`, remove it with `BPW-`, clear all watches with
 `BPW-CLEAR`, and list `address value` pairs with `BPW.`. For fixed engine cells:
 
@@ -32,14 +40,14 @@ DATAB ARGV-CELL + BPW+
 ```
 
 ## `step` — native token stepper (in the REPL, `bin/hb` on a tty)
-`src/habu/stepper.f` is baked into `bin/hb`. `step 5 dup * 3 +` runs the rest
-of the line one token at a time, echoing each token and printing the data stack
-and watch table after it executes — no `EVALUATE` needed: the REPL hook feeds
-the engine one token per call, so the engine's own interpret loop is the
-evaluator.
+`src/habu/stepper.f` installs its own REPL read hook. `step 5 dup * 3 +` runs
+the rest of the line one token at a time, echoing each token and printing the
+data stack and watch table after it executes — no `EVALUATE` needed: the REPL
+hook feeds the engine one token per call, so the engine's own interpret loop is
+the evaluator.
 
 ## `BP+` / `BP-` — one-shot breakpoints on compiled words (REPL)
-`src/habu/debug.f` (baked into `bin/hb`): `' WORD BP+` plants a `BRK #0` at the
+`src/habu/debug.f` (the require above): `' WORD BP+` plants a `BRK #0` at the
 word's entry. Hitting it prints `habu-bp:` + the pc + the data-stack top, then
 `habu-bp-lr:` + the **interrupted thread's x30** — the address the word will
 return to, which is what names its caller — then `habu-bp-stack:` with each live
