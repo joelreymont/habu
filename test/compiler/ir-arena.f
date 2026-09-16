@@ -726,8 +726,8 @@ variable FF-WANT
 
 \ ---- registry capacity and whole-range release -------------------------------
 \ The one-past-capacity reject is caught inside the live context, so the
-\ context exits normally and its 64 arenas are reclaimed by the next sweep
-\ instead of lingering behind a throw-aborted registry slot.
+\ context exits normally and its 64 arenas are reclaimed by that context's own
+\ teardown instead of lingering behind a throw-aborted registry slot.
 : SL-65TH ( IR-CTX:ctx -- IR-CTX:ctx )
    dup 1 IR-ARENA:NEW drop ;
 

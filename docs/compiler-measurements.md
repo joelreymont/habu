@@ -529,6 +529,12 @@ The checker's nominal index types stay compile-time types, so a raw cell still
 cannot become an index. This section is what that lane has to establish, and it
 is written from the source rather than from the plan.
 
+**The three subsections that follow describe d2b2c3e6**, the tree this section
+was written against, in its present tense. The lane landed three commits on it
+and the four subsections after those say what each one changed and what it was
+worth, so read the description first and the outcome second; where they
+disagree, the outcome is the tree.
+
 ### What is actually freed today, and when
 
 **Storage is never reclaimed while a word compiles.** `IR-CTX:SCRATCH-TAKE`
@@ -733,6 +739,23 @@ instructions per definition (**-8.25 percent**), 47,763,870,582 over the corpus
 (**-9.56 percent**), the census byte-identical. That is half of what the
 unsound ablation showed; the other half is the owner-liveness probe that the
 handle resolutions still make and the call frames it keeps.
+
+A second commit deleted the owner-liveness probe the two handle resolutions
+still made, and the sweep that backstopped it, on the invariant that every
+context row is installed by `IR-CTX:CTX-TAKE` and given back by `CTX-RETIRE` -
+armed with `finally`, so it runs on a throw too - and that `CTX-RETIRE`
+announces the dying serial to `IR-ARENA:RETIRE-OWNED` before the region cursor
+moves. `IR-ARENA:CAPTURE-PREPARE` is now where that invariant is tested rather
+than swept over: with no context open, a row still holding a token is
+`E-IR-ARENA-STATE`, and the check runs at every capture, which is every
+self-build. That took a further 2.62 percent off the definition (5,186,689) and
+2.38 percent off the corpus (46,627,445,818), again byte-identical.
+
+Against the region commit the two together are **-10.7 percent per trivial
+definition and -11.7 percent on the corpus**, and against d2b2c3e6 -11.8 percent
+on the corpus. What remains of the ablation's 17.6 percent is `IR-BUILD`'s own
+resolution: a builder handle carries only a generation, so `FIND-B` scans up to
+sixteen rows per resolution and `USE` runs one per append.
 
 ### What growth by copy actually costs
 

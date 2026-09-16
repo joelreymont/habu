@@ -26,12 +26,22 @@
 \ presented, instead of a generation read and a state read asked separately;
 \ TOKEN-REFUSE tells the mismatches apart, off the read path. The registry
 \ persists each arena's owner as the context serial - the only storable form,
-\ since handles are sealed nominals a raw cell cannot re-mint - and every
-\ resolution probes IR-CTX:SERIAL-LIVE? so an arena whose context tore down
-\ rejects with E-IR-ARENA-STALE before any pointer is touched.
-\ Registry slots are reclaimed eagerly on ABORT and lazily (dead owner) on the
-\ next creation; the capacity below bounds the live population with a named
-\ error. The linear-ownership work removes the whole mechanism.
+\ since handles are sealed nominals a raw cell cannot re-mint - and the owning
+\ context retires every row it owns from its own teardown, so an arena whose
+\ context has ended is already a zero token and rejects with E-IR-ARENA-STALE
+\ before any pointer is touched. Registry slots are reclaimed on ABORT, on
+\ RETIRE, and by that teardown; the capacity below bounds the live population
+\ with a named error. The linear-ownership work removes the whole mechanism.
+\
+\ NO ROW OUTLIVES ITS OWNER, and it is checked rather than argued. Every
+\ context row is installed by IR-CTX:CTX-TAKE and given back by CTX-RETIRE:
+\ WITH-CONTEXT arms that cleanup with `finally`, so it runs on a throw as well
+\ as a return, and the session's row goes back through the same word. CTX-RETIRE
+\ announces the dying serial to RETIRE-OWNED below BEFORE the region cursor
+\ moves, so the rows die ahead of the storage they name. CAPTURE-PREPARE is
+\ where the invariant is tested: with no context open every row must already be
+\ zero, and a row that is not is E-IR-ARENA-STATE rather than something swept
+\ quietly away. That check runs at every capture, which is every self-build.
 \
 \ APPEND AT THE CEILING. E-IR-ARENA-FULL is thrown before any mutation, so a
 \ full arena stays usable: its contents and indices remain valid and
@@ -198,14 +208,12 @@ private
 SLOTS-CLEAR
 
 \ Retire every row this serial owns, called by the owning context from its own
-\ teardown. SWEEP below does the same thing for an owner that died without one,
-\ and that is late for a scoped reader: a reader resolves once and has no later
-\ probe, so between the context dying and somebody's next NEW its row would
-\ still read live over storage the next compilation is about to be handed. Here
-\ the row is zeroed while the context is still tearing down - before the region
-\ cursor moves back over the spans it named - so the reader's next read is a
-\ dead token. SWEEP stays as the backstop for any owner that dies without
-\ running teardown.
+\ teardown. This is the ONLY thing that ends a row with its context, and it has
+\ to be eager: a reader resolves once and has no later probe, so a row left
+\ standing after its context would read live over storage the next compilation
+\ is about to be handed. Here the row is zeroed while the context is still
+\ tearing down - before the region cursor moves back over the spans it named -
+\ so the reader's next read meets a dead token.
 : RETIRE-OWNED ( n -- ) {: serial:n :}
    SLOT-MAX 0 ?do
       i cells ATOKENS + @ 0<> if
@@ -248,24 +256,29 @@ INSTALL-RETIRE
    if slot else -1 then ;
 
 \ Resolve a builder handle to its registry slot and fail closed on a consumed
-\ handle, a dead owner and a published arena - in ONE definition, not a chain.
-\ A handle names its own slot and the row's one token carries the generation
-\ and the state, so the whole resolution is one indexed load and straight-line
-\ code with one cross-package call for owner liveness. A slot whose context tore
-\ down is retired on touch, before its dangling data offset can be read.
+\ handle, an ended context and a published arena - in ONE definition, not a
+\ chain. A handle names its own slot and the row's one token carries the
+\ generation and the state, so the whole resolution is one indexed load and one
+\ compare with no call at all.
+\
+\ THE OWNER IS NOT PROBED HERE, and does not need to be. A context retires every
+\ row it owns as it tears down, before the region cursor moves back over the
+\ spans those rows name, so a handle into an ended context meets a zero token
+\ and answers E-IR-ARENA-STALE at the generation test. Probing the owner as well
+\ asked IR-CTX the same question this load has already answered, once per
+\ resolution, and a resolution happens millions of times in one compilation. The
+\ header note above says where the invariant is tested.
 \
 \ FROZEN-SLOT below is this word's twin for published views. THE TWO MUST KEEP
-\ THE SAME CHECKS IN THE SAME ORDER: consumed handle, then dead owner, then
-\ state. A state test that ran first would answer E-IR-ARENA-FROZEN for a handle
-\ whose context is gone, reading a retired row to do it.
+\ THE SAME CHECKS IN THE SAME ORDER: consumed handle, then state. A state test
+\ that ran first would answer E-IR-ARENA-FROZEN for a handle whose slot now
+\ belongs to somebody else, which tells the caller its handle still names
+\ something.
 : LIVE-SLOT ( IR-ARENA:arena -- n )
    ARENA>N dup 0= if E-IR-ARENA-STALE throw then
    dup SLOT-MASK and {: h:n slot:n :}
    slot cells ATOKENS + @ {: tk:n :}
    tk RGEN-SHIFT rshift h SLOT-BITS rshift <> if E-IR-ARENA-STALE throw then
-   slot cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
-      slot ROW-RETIRE E-IR-ARENA-STALE throw
-   then
    tk SLOT-BITS rshift STATE-MASK and ST-LIVE <>
    if E-IR-ARENA-FROZEN throw then
    slot ;
@@ -276,9 +289,6 @@ INSTALL-RETIRE
    dup SLOT-MASK and {: h:n slot:n :}
    slot cells ATOKENS + @ {: tk:n :}
    tk RGEN-SHIFT rshift h SLOT-BITS rshift <> if E-IR-ARENA-STALE throw then
-   slot cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
-      slot ROW-RETIRE E-IR-ARENA-STALE throw
-   then
    tk SLOT-BITS rshift STATE-MASK and ST-FROZEN <>
    if E-IR-ARENA-STATE throw then
    slot ;
@@ -367,18 +377,6 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
    dup 1 < over CEIL-MAX > or if E-IR-ARENA-CEIL throw then
    drop ;
 
-\ Retire every slot whose owning context tore down; the region cursor has
-\ already moved back over their storage and their generations can never resolve
-\ again.
-: SWEEP ( -- )
-   SLOT-MAX 0 ?do
-      i cells ATOKENS + @ 0<> if
-         i cells AOWNERS + @ IR-CTX:SERIAL-LIVE? 0= if
-            i ROW-RETIRE
-         then
-      then
-   loop ;
-
 \ THE SCANS READ THE TOKEN AND NOT ITS GENERATION. A retired row's token is a
 \ plain zero and a live one's carries a generation of at least one, so the
 \ stored word is zero exactly when the row is free - which is what RETIRE-OWNED
@@ -390,30 +388,22 @@ NATIVE-PROBE CELL-VIEW @ $0123456789ABCDEF = constant NATIVE-CELLS?
       i cells ATOKENS + @ 0= if drop i leave then
    loop ;
 
-\ THE SWEEP IS THE FALLBACK, NOT THE PRELUDE. It reclaims rows whose owning
-\ context died without running its teardown, and RETIRE-OWNED - which the
-\ context installs and runs from that teardown - is what reclaims the rest,
-\ eagerly and by owner. Sweeping before every creation therefore rescanned the
-\ whole registry, and asked IR-CTX:SERIAL-LIVE? once per occupied row, to find
-\ rows that are almost never there: seventeen times per builder, three builders
-\ to a definition. Sweeping only when the registry looks full keeps the answer
-\ exactly the same - a row a sweep would have freed is still freed before this
-\ word refuses - and pays for the walk only on the creation that needs it.
+\ A FULL REGISTRY IS FULL. Every row a dead context left is retired by that
+\ context's own teardown, so there is no second pass that could find one more:
+\ what this scan sees is what is live, and the refusal is the capacity error.
 : FREE-SLOT ( -- n )
    FIRST-FREE
-   dup 0 < if
-      drop SWEEP FIRST-FREE
-      dup 0 < if E-IR-ARENA-SLOTS throw then
-   then ;
+   dup 0 < if E-IR-ARENA-SLOTS throw then ;
 
 \ ---- allocation scopes --------------------------------------------------------
 \ A caller that needs SEVERAL arenas for one object needs all of them or none.
 \ IR-BUILD:NEW-BUILDER takes seventeen and publishes the builder's generation
 \ only after the last one, so until this record existed a refusal part-way
 \ through left every arena already taken with no handle anybody could ABORT: the
-\ builder did not exist, so nothing could name them, and SWEEP only reclaims a
-\ slot when the whole owning context tears down. Three builders and a fourth
-\ that ran out took thirteen slots and held them for the rest of the context.
+\ builder did not exist, so nothing could name them, and a slot is otherwise
+\ only reclaimed when the whole owning context tears down. Three builders and a
+\ fourth that ran out took thirteen slots and held them for the rest of the
+\ context.
 \
 \ THE RECORD BELONGS HERE, WHERE THE SLOT IS TAKEN. Those seventeen tables are
 \ made by seven other packages, and each of them takes two or three arenas of
@@ -620,8 +610,7 @@ public
 : LIVE? ( IR-ARENA:arena -- bool )
    ARENA>N FIND-A {: slot:n :}
    slot 0 < if 0 0 <> exit then
-   slot AOWNER@ IR-CTX:SERIAL-LIVE?
-   slot cells ATOKENS + @ SLOT-BITS rshift STATE-MASK and ST-LIVE = and ;
+   slot cells ATOKENS + @ SLOT-BITS rshift STATE-MASK and ST-LIVE = ;
 
 \ ---- freeze and abort --------------------------------------------------------
 \ FREEZE consumes the builder into an immutable view over the same storage:
@@ -646,11 +635,11 @@ public
 \ WHY A FROZEN ARENA MAY BE GIVEN BACK AT ALL. A frozen arena is immutable, not
 \ immortal. It stays readable for as long as somebody can still read it, and
 \ when a later pass has copied everything it needed out of a module, nothing
-\ can. Until this word existed the only way a published slot came back was
-\ SWEEP, which waits for the whole owning CONTEXT to tear down - so a chain of
-\ passes that each supersede the last held every intermediate module's slots to
-\ the end of the compilation, and peak pressure was the number of modules ever
-\ BUILT rather than the number live at once.
+\ can. Until this word existed a published slot came back only when the whole
+\ owning CONTEXT tore down - so a chain of passes that each supersede the last
+\ held every intermediate module's slots to the end of the compilation, and peak
+\ pressure was the number of modules ever BUILT rather than the number live at
+\ once.
 \
 \ NOTHING HERE DECIDES THAT THE ARENA IS DEAD, and that is the point. This word
 \ frees the slot; the generation seal is what makes a mistake loud. A view or an
@@ -820,11 +809,13 @@ public
 
 public
 
-\ All arena spans belong to compilation contexts.  With no live context the
-\ sweep retires every slot; only then may their now-unmapped DATA pointers be
-\ cleared for capture.
+\ All arena spans belong to compilation contexts, and every context retires the
+\ rows it owns as it ends, so with no live context every row is already zero.
+\ THIS IS WHERE THAT INVARIANT IS TESTED: a row still holding a token here is a
+\ row that outlived its owner, and it is a named refusal rather than something
+\ swept quietly away. Only once every row is clear may the DATA pointers, which
+\ name storage inside a region this image will not carry, be cleared.
 : CAPTURE-PREPARE ( -- )
-   SWEEP
    SLOT-MAX 0 ?do
       i cells ATOKENS + @ 0<> if E-IR-ARENA-STATE throw then
       NULL-PTR i ADATA-FIELD !
