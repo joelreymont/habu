@@ -355,12 +355,17 @@ TRUSTED: WRITER-XT ( n -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] ) ;
 
 public
 
-: RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+\ The build proper, to an explicit output path, returning its result code.
+\
+\ RUN is this plus the argv convention and the exit. A driver that wants to do
+\ anything AFTER the build needs one that returns, and `die` never does: it is
+\ an unconditional exit_group, so `include tools/native-build.f` has no code
+\ path back to its caller. tools/build-profile.f prints the profiler's report
+\ after the build and is that driver.
+: RUN-PATH-RC ( ptr u8 n [ n n -- n ] bool -- n )
+   {: out:ptr outu:n query bootstrap:bool :}
    CLEANUP-RESET
-   SCRIPT-ARGC 1 <> if
-      S\" native-build: one explicit output path is required\n" BUILD-RC die
-   then
-   0 SCRIPT-ARGV$ OUTPUT!
+   out outu OUTPUT!
    REMOVE-STALE-TEMP
    TEMP$ CLEANUP+
    SMOKE-DIR!
@@ -368,6 +373,13 @@ public
    2drop
    CLEANUP-RUN
    rc 0<> if s" native-build: uncaught throw code " type rc . cr then
+   rc ;
+
+: RUN ( [ n n -- n ] bool -- ) {: query bootstrap:bool :}
+   SCRIPT-ARGC 1 <> if
+      S\" native-build: one explicit output path is required\n" BUILD-RC die
+   then
+   0 SCRIPT-ARGV$ query bootstrap RUN-PATH-RC {: rc:n :}
    s" " rc die ;
 
 ;package

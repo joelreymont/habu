@@ -698,6 +698,30 @@ nothing and takes nothing from the interrupted registers; its state lives in the
 profiler band at the top of the DATA region and in an arena mapped once per
 process, so it works inside a stripped image.
 
+### Profiling the build
+
+`tools/build-profile.f` runs the engine self-build under this profiler and
+writes both reports to files:
+
+```
+bin/hb --load tools/build-profile.f -- /tmp/engine /tmp/build.txt /tmp/build.json
+```
+
+This is the method for "what does the build spend its time on". `strace -c` and
+`perf record` cannot answer it on their own: neither can name a word the engine
+compiled for itself, because it is all one anonymous mapping. The build's own
+phase timers still go to stdout, so they sit beside the profile.
+
+It is not a replacement for `tools/native-build.f`. The self-build is byte
+reproducible for an identical driver and only for that — adding a single
+`require lib/fs.f` to `native-build.f` moves the same baked constant this tool
+moves. The engine it writes is valid and passes the suites, but ship the one
+`tools/native-build.f` produced.
+
+A caller line's share is of the row's own denominator: the exclusive count in the
+flat section, where the edges come from, and the inclusive count in the inclusive
+section, where it says how much of the row the known edges cover.
+
 ### Cross-checking with external perf
 
 `perf record -g` keeps exact call chains where the profiler's conservative walk

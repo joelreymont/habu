@@ -197,8 +197,11 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 \ has to rebuild and replay to name them. BUSY calls LEAF and then loops, so once
 \ LEAF has returned the interrupted x30 points back inside BUSY - which is the one
 \ construction that deterministically leaves a deferred sample with no caller.
+\ Tier 1 on purpose: at tier 0 these words are interpreted and the samples land
+\ in the primitives the interpreter runs, not in the words the case is about.
 : GDB-PROF-LATE-SRC ( -- )
    GE-SRC-RESET
+   s" 1 set-tier" GE-SRC-LINE
    s" 0 prof-on" GE-SRC-LINE
    s" package GDBLATE" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -338,6 +341,25 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    then
    s" PASS: no inclusive count passes the sample total" type cr ;
 
+\ A word counted during the phase and retired before the report loses its index
+\ entry: the sync rebuilds the index from the dictionary as it then stands. The
+\ header summed the entries, so those samples fell out of it and the identity
+\ came up short - 397 of 92,013 on a self-build. The sum walks records now.
+: GDB-PROFILER-RETIRED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDBRET-BUSY ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
+   s" 0 prof-on GDBRET-BUSY prof-off" GE-SRC-LINE
+   s" undefine GDBRET-BUSY" GE-SRC-LINE
+   s" prof-report" GE-SRC-LINE
+   GDB-PROF-RUN
+   s" profiler retired word" GE-EXPECT-OK
+   GT-OUT$ -1 GDB-ACCOUNT
+   GT-OUT$ GDB-SAMPLES 0 <= if
+      s" profiler retired-word case collected no sample" GE-FAIL
+   then
+   s" PASS: a word retired before the report keeps its samples in the total" type cr ;
+
 \ --- the surface the profiler dots ask for: package-qualified rows, the caller
 \ under each row, a stop that keeps the counters, a reset that clears them, and
 \ the same walk as JSON ---
@@ -412,6 +434,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
    GDB-PROFILER-ROW
    GDB-PROFILER-JSON-ALL
    GDB-PROFILER-INCL-BOUND
+   GDB-PROFILER-RETIRED
    GDB-JITDUMP
    GT-CLEANUP
    s" PASS: native prop/debug tests" type cr ;

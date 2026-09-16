@@ -461,16 +461,31 @@ public
    23 SP 40 LDR,  24 SP 48 LDR,  25 SP 56 LDR,  17 SP 64 LDR,
    SP SP 96 ADDI,  RET, ;
 
-\ x4 = samples attributed to a word: the sum every row's excl column is part of.
+\ x4 = samples attributed to a word, x3 = how many words took one.
+\
+\ THE SUM WALKS RECORDS, NOT INDEX ENTRIES. A word counted during the phase can
+\ lose its entry before the report: the sync rebuilds the index from the
+\ dictionary as it then stands, and a record retired in between is not in it.
+\ Summing the entries orphaned those counters and left the header's identity
+\ short - 397 samples of 92,013 on a self-build, which is exactly how this was
+\ found. The counter array is keyed by record, so walking it counts them all.
+\ x3 stays entry-based: it says how many rows the reports can name.
 : C-PROF-REP-WORDSUM ( -- )
-   LBL LBL LBL {: wl wd wnext :}
+   LBL LBL LBL LBL LBL {: wl wd wnext cl cd :}
    4 0 MOVZ,  3 0 MOVZ,
+   11 PROF-CNT-VA LIT64,
+   12 19 ARN-NDICT LDR,
+   cl LBL,
+      12 cd CBZ,
+      10 11 0 LDR,  4 4 10 ADD,
+      11 11 8 ADDI,  12 12 1 SUBI,  cl B,
+   cd LBL,
    12 ARN-IDX LIT64,  12 19 12 ADD,
    13 19 ARN-COUNT LDR,  13 13 5 LSLI,  13 12 13 ADD,
    wl LBL,
       12 13 CMP,  C-CS wd BCOND,
       10 12 ENT-IDX LDR,  11 PROF-CNT-VA LIT64,  10 10 3 LSLI,  11 11 10 ADD,
-      10 11 0 LDR,  4 4 10 ADD,
+      10 11 0 LDR,
       14 12 ENT-INCL LDR,  14 14 10 ORR,
       15 12 ENT-IDX LDR,  11 ARN-INCL LIT64,  11 19 11 ADD,  15 15 3 LSLI,  11 11 15 ADD,
       15 11 0 LDR,  14 14 15 ORR,
@@ -563,12 +578,20 @@ public
    done LBL, ;
 
 \ One caller line: x9 = the caller's record index, x10 = the edge count.
+\
+\ THE SHARE IS OF THE ROW'S OWN DENOMINATOR, AT SP 88. A caller edge is only
+\ recorded for a sample whose pc was inside the row's word, so in the flat
+\ section the denominator is that exclusive count and the shares add to it. In
+\ the inclusive section a phase word may have almost no exclusive samples, and
+\ a share of those would read as "100% of this row" for a single edge; there
+\ the denominator is the inclusive count, so the line says how much of the row
+\ the edges actually cover.
 : C-PROF-REP-CALLER ( -- )
    C-PROF-CALLER-REC
    10 SP 72 STR,
    s"          <- " C-PROF-SAY
    9 SP 72 LDR,  10 8 MOVZ,  LPROFNUM LABEL@ BL,
-   9 SP 72 LDR,  10 7 0 ADDI,  LPROFPCT LABEL@ BL,
+   9 SP 72 LDR,  10 SP 88 LDR,  LPROFPCT LABEL@ BL,
    s"  " C-PROF-SAY
    C-PROF-CALLER-NAME
    C-PROF-NL ;
@@ -636,6 +659,7 @@ public
       23 7 0 ADDI,  24 21 0 ADDI,
       17 21 ENT-IDX LDR,
       7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,  \ the row prints exclusive
+      incl IF C-PROF-ROW-INCL ELSE 9 7 0 ADDI, THEN  9 SP 88 STR,
       C-PROF-REP-ROW
       C-PROF-REP-CALLERS
       25 25 1 ADDI,
@@ -753,6 +777,7 @@ public
    rfound LBL,
    17 21 ENT-IDX LDR,
    7 PROF-CNT-VA LIT64,  10 17 3 LSLI,  7 7 10 ADD,  7 7 0 LDR,
+   C-PROF-ROW-INCL  9 SP 88 STR,                   \ one chosen row is read for its inclusive time
    C-PROF-REP-ROW
    C-PROF-REP-CALLERS
    rdone LBL,

@@ -8460,6 +8460,16 @@ one build attributes it: `IR-ARENA:RD@` 15.6%, `ptr-field` 9.3%, `(PROT-SPAN)`
 compiled into the window, and 22.3% of all samples inside engine-primitive
 bodies entered by a BL.
 
+Superseded as a method (2026-09-16, later the same day): that profile had to
+reach for `strace -c` and `perf record` because our own profiler could not name
+a word the build compiled for itself - most of the build. It can now, and
+`tools/build-profile.f` is how a build profile is taken; see "Profiling the
+build" in docs/debugging.md. Its run over the same self-build puts 0.06% of
+samples in code it cannot name, against 15.2% for the pc-index alone, and reads
+the register allocator's chain the perf profile could not: `catch` 21.1%
+inclusive, `A64RA:MB-READ-PRESSURE` 19.7% down through `MB-COALESCE1` 13.8% to
+`MB-MEETS?` 11.6%, with `IR-ARENA:ACEIL!` 9.1% exclusive at the bottom of it.
+
 Two defects in what tier 1 emits explain most of that, and they compound
 because the compiler is itself tier-1 output. First, 43,153 adjacent
 `ldr xN,[sp,#K]` / `str xN,[sp,#K]` pairs sit in the 2.23 MB baked region —
