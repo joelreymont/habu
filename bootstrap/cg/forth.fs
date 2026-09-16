@@ -250,7 +250,12 @@ COMPILE-PREFLIGHT-CELL constant ENGINE-HOOK-OFF
 3 cells constant ENGINE-HOOK-LEN
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
 $5000 constant TXN-STATE-OFF
-$3000 constant TXN-STATE-LEN
+\ The DECLARED extent, mirroring src/habu/layout.f: the transaction cells end
+\ at TXN-LIVE-W-OFF + TXN-LIVE-W-CAP cells ($5300). It was $3000, which made
+\ the BAND-TAB row below guard 11520 bytes the transaction never owned; that
+\ run is USER-BAND now. A recovery engine that still guarded it would refuse
+\ every task-local store an engine built natively accepts.
+$300 constant TXN-STATE-LEN
 $10000 constant PROT-PAGE-MAX \ maximum supported arm64 page granule (DGX/Jetson Linux: 64 KiB)
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
 TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL
@@ -377,7 +382,13 @@ STACK-ABI:CATCH-MAGIC constant CATCH-FRAME-MAGIC
 PD-NAME-OFF PD-NAME-CAP + constant PD-SIG-OFF
 PD-SIG-OFF PD-SIG-CAP + constant PD-SLOT
 8 constant PD-SLOTS-REL
-TXN-STATE-OFF TXN-STATE-LEN + constant PD-TABLE-OFF   \ band base (= old DATA-START)
+\ USER-REGION-END is the anchor PD-TABLE-OFF has always started at; it does not
+\ move, so DATA-START does not move. $5300..$7BF8 is USER-BAND (lib/task.f
+\ TASK:+USER) and $7BF8..$8000 is STRING-ABI, neither of which this stage
+\ names: the recovery chain has to agree about the GUARD, not about the two
+\ library bands behind it.
+$8000 constant USER-REGION-END
+USER-REGION-END constant PD-TABLE-OFF   \ band base (= old DATA-START)
 PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ Package/search snapshots are fields of each native-stack evaluator frame.
 0  constant PKGSNAP-CUR

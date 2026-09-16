@@ -348,6 +348,41 @@ variable BAND-IX
       BAND-IX @ 1+ BAND-IX !
    REPEAT ;
 
+\ EVERY GUARDED BAND MUST BE A DECLARED CLAIM, start and length both. The
+\ transaction row guarded TXN-STATE-LEN when that constant was $3000 and the
+\ transaction's own cells ended after $300, so PROT-GUARD refused stores across
+\ 11520 bytes no claim owned - which is exactly what kept the task-user arena
+\ out of the only run in the per-task header big enough to hold it. Nothing
+\ compared the guard against the map until this did. It runs at engine build
+\ time and dies, so a band that outgrows or outlives its claim cannot ship.
+variable BDECL-IX
+variable BDECL-HIT
+
+: BAND-CLAIM-AT ( n -- n ) {: ix:n :}       \ claim with this band's offset, else -1
+   DATA-CLAIMS:COUNT-ROWS {: n:n :}
+   0 BEGIN dup n < WHILE
+      dup DATA-CLAIMS:ROW-OFF ix BAND-OFF = IF exit THEN
+      1+
+   REPEAT drop -1 ;
+
+: BANDS-DECLARED ( -- )
+   0 BDECL-IX !
+   BEGIN BDECL-IX @ BAND-LEN 0 <> WHILE
+      BDECL-IX @ BAND-CLAIM-AT BDECL-HIT !
+      BDECL-HIT @ 0 < IF
+         s" habu1: PROT-GUARD band has no DATA-CLAIMS claim at its offset" 76 die
+      THEN
+      BDECL-HIT @ DATA-CLAIMS:ROW-LEN BDECL-IX @ BAND-LEN <> IF
+         DATA-CLAIMS:MSG-RESET
+         s" habu1: PROT-GUARD band length differs from its claim: " DATA-CLAIMS:MSG+
+         BDECL-HIT @ DATA-CLAIMS:NAME-AT DATA-CLAIMS:MSG+
+         DATA-CLAIMS:MSG$ 76 die
+      THEN
+      BDECL-IX @ 1+ BDECL-IX !
+   REPEAT ;
+
+BANDS-DECLARED
+
 : GUARD-SPAN ( n n -- ) {: addr:n len:n :}
    LBL LBL LBL {: ok:label trap:label past:label :}
    BANDS-HULL
