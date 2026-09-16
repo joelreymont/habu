@@ -5,6 +5,8 @@
 \ relocates its code and emits the minimal runtime entry. tools/hb-build.f owns
 \ the output paths; the default application entry is MAIN.
 require src/habu/stack-abi.f
+require src/habu/rt.f
+require src/habu/crash.f
 
 \ The AOT relocation core compiles checked. MAP-IN-BLOB is the remaining
 \ named TRUSTED: boundary - a dictionary-record blob-span walk whose record
