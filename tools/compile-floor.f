@@ -22,13 +22,12 @@
 \ building. The tier-0 line compiles the trivial body a third time under its
 \ own names (`Vn`), so the contrast never redefines the set it contrasts with.
 \
-\ WHY `swap drop` IS THE SECOND BODY. It carries no combinable pair, so
-\ A64COMB:REWRITES answers 0 and COMBINED (src/compiler/native/compiler.f)
-\ hands the module straight back instead of building it a second time; `1 +`
-\ does carry one and pays for that rebuild. The gap between the two lines is
-\ the rebuild and not the op count: substituting a one-op `: Un ( n n -- n )
-\ + ;` for the three-op body moved the second line to 6714 us from 6560 us,
-\ while the trivial line in that same run stayed at 9202 us.
+\ WHY `swap drop` IS THE SECOND BODY. It carries no combinable pair and `1 +`
+\ carries one, so the two lines together price the fold. They used to price a
+\ whole module rebuild: the pair was found after selection and the module was
+\ written again to hold the combined form, which cost about 160 us of the
+\ trivial line. Selection writes the combined form itself now, so what is left
+\ between the two lines is the work the pair's own operations cost.
 \
 \ WHY THE COUNT IS PROVED AND NOT ASSUMED. `set-tier` is engine-global state,
 \ and a tier-1 selection that silently did not take would report the JIT's

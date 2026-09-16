@@ -27,8 +27,8 @@ require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
 require src/compiler/native/loop.f
 require src/compiler/native/select.f
+require src/compiler/native/prune.f
 require src/compiler/native/spill.f
-require src/compiler/native/combine.f
 require src/compiler/native/emit.f
 require src/compiler/native/publish.f
 require src/compiler/native/prof.f
@@ -467,33 +467,10 @@ create SPELL-BUF SPELL-CAP allot
    CC ab A64RAV:BIND-DIALECT
    CC ab A64EMIT:BIND-DIALECT
    CC ab A64SPILL:BIND-DIALECT
-   CC ab A64COMB:BIND-DIALECT
+   CC ab A64PRUNE:BIND-DIALECT
    CC m ab ROUTINE A64SEL:SELECT {: selected:IR-BUILD:module :}
    m IR-BUILD:RETIRE
    selected ;
-
-\ A module with no such pair is handed back UNTOUCHED: rebuilding renumbers
-\ values and the allocator breaks ties on those numbers.
-: COMBINED ( IR-BUILD:module -- IR-BUILD:module )
-   {: m:IR-BUILD:module :}
-   NPROF-PHASE:COMBINE NPROF:START
-   m A64COMB:REWRITES {: n:n :}
-   n 0= if
-      A64COMB:RELEASE  NPROF-PHASE:COMBINE NPROF:STOP  m exit
-   then
-   A64RA:RELEASE
-   A64EMIT:RELEASE
-   A64SPILL:RELEASE
-   A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC nb A64RA:BIND-DIALECT
-   CC nb A64RAV:BIND-DIALECT
-   CC nb A64EMIT:BIND-DIALECT
-   CC nb A64SPILL:BIND-DIALECT
-   CC m nb A64COMB:REWRITE {: m1:IR-BUILD:module :}
-   A64COMB:REWRITTEN n <> if E-A64COMB-SHAPE throw then
-   m IR-BUILD:RETIRE
-   NPROF-PHASE:COMBINE NPROF:STOP
-   m1 ;
 
 \ Declared for every definition, not only one that calls, so the seam can place
 \ it at the slot it really claims.
@@ -546,12 +523,41 @@ create SPELL-BUF SPELL-CAP allot
       swap IR-BUILD:RETIRE
    repeat ;
 
-\ ---- the two stages, or the four ---------------------------------------------
+\ A module with no such load is handed back UNTOUCHED: rebuilding renumbers
+\ values and the allocator breaks ties on those numbers, so a routine that
+\ gained nothing would still come out with other bytes. Nothing in the corpus
+\ reaches the rebuild; the shapes that do are named in prune.f.
+: PRUNED ( IR-BUILD:module -- IR-BUILD:module )
+   {: m:IR-BUILD:module :}
+   NPROF-PHASE:PRUNE NPROF:START
+   m A64PRUNE:REWRITES {: n:n :}
+   n 0= if
+      A64PRUNE:RELEASE  NPROF-PHASE:PRUNE NPROF:STOP  m exit
+   then
+   A64RA:RELEASE
+   A64EMIT:RELEASE
+   A64SPILL:RELEASE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64RA:BIND-DIALECT
+   CC nb A64RAV:BIND-DIALECT
+   CC nb A64EMIT:BIND-DIALECT
+   CC nb A64SPILL:BIND-DIALECT
+   CC m nb A64PRUNE:REWRITE {: m1:IR-BUILD:module :}
+   A64PRUNE:REWRITTEN n <> if E-A64PRUNE-SHAPE throw then
+   m IR-BUILD:RETIRE
+   NPROF-PHASE:PRUNE NPROF:STOP
+   m1 ;
+
+\ ---- the one stage, or the two -----------------------------------------------
+\ Selection publishes the module that is emitted, and a routine whose values do
+\ not all fit its registers is lowered - once per class the allocator seals - and
+\ the last lowering publishes it instead.
+\
 \ Frame slots and DECISIONS are different counts: a value re-emitted where it is
 \ read takes no slot, so a walk asked through the slot count looks like one that
 \ decided nothing. A routine that calls still cannot spill; it is refused.
 : EMITTED ( -- )
-   SELECTED COMBINED {: m:IR-BUILD:module :}
+   SELECTED PRUNED {: m:IR-BUILD:module :}
    m LOWER-FIXPOINT {: ready:IR-BUILD:module :}
    A64SPILL:BOUND? if A64SPILL:RELEASE then
    ready EMIT-AT ;
@@ -593,7 +599,7 @@ create SPELL-BUF SPELL-CAP allot
    A64SEL:BOUND? if A64SEL:RELEASE then
    A64RA:BOUND? if A64RA:RELEASE then
    A64SPILL:BOUND? if A64SPILL:RELEASE then
-   A64COMB:BOUND? if A64COMB:RELEASE then
+   A64PRUNE:BOUND? if A64PRUNE:RELEASE then
    A64EMIT:BOUND? if A64EMIT:RELEASE then ;
 
 : RETIRE-BODY ( -- )
@@ -775,7 +781,7 @@ public
    A64SPILL:RESET-SCRATCH
    A64RAV:RESET-SCRATCH
    A64RA:RESET-SCRATCH
-   A64COMB:RESET-SCRATCH
+   A64PRUNE:RESET-SCRATCH
    A64SEL:RESET-SCRATCH
    NLOOP:RESET-SCRATCH
    CHECKER-OWNER:CAPTURE-PREPARE

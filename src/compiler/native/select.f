@@ -1706,7 +1706,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    d k cells at + !
    1 d cells FOLDED + ! ;
 
-: FOLD-SCAN ( IR-ID:ir-block-id -- )
+\ The three rules whose combined form is an ordinary value-producing operation.
+: FOLD-VALUE-RULES ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n FOLD-CLEAR
@@ -1721,11 +1722,36 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    n 0 ?do
       bk i MASK-FOLD-FOR {: d:n :}
       d 0 >= if d i MASK-AT FOLD-NOTE then
-   loop
-   n 0 ?do
-      bk i CMP-FOLD-FOR {: d:n :}
-      d 0 >= if d i CMP-AT FOLD-NOTE then
    loop ;
+
+\ The compare rule, over every comparison of the block but the one at `keep`.
+: FOLD-COMPARE-RULE ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id keep:n :}
+   bk OP-COUNT 0 ?do
+      i keep <> if
+         bk i CMP-FOLD-FOR {: d:n :}
+         d 0 >= if d i CMP-AT FOLD-NOTE then
+      then
+   loop ;
+
+\ The whole plan, for a block whose own walk writes every operation it keeps.
+\ The comparison a branch fuses with is written by the branch, as the
+\ compare-and-branch that has an immediate form of its own, so it folds too.
+: FOLD-SCAN ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk FOLD-VALUE-RULES
+   bk -1 FOLD-COMPARE-RULE ;
+
+\ The plan for a block of an if-converted region, whose ONE comparison at `fz`
+\ is not written by the block's walk: the select the conversion makes reads its
+\ operands and carries its condition, and this dialect has no select form with a
+\ constant in it, so a constant folded into that comparison would be one nothing
+\ materialises. Every other comparison of the block is an ordinary value the
+\ walk writes, and folds.
+: FOLD-SCAN-REGION ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id fz:n :}
+   bk FOLD-VALUE-RULES
+   bk fz FOLD-COMPARE-RULE ;
 
 : MUL-OF ( n -- n )    cells MUL-AT + @ ;
 : IMM-OF ( n -- n )    cells IMM-AT + @ ;
@@ -3030,9 +3056,12 @@ create D-MEET DSLOT-MAX cells allot
 : REGION-OPS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk FUSE-INDEX {: fz:n :}
+   bk fz FOLD-SCAN-REGION
    bk OP-COUNT 1- {: k:n :}
    k 0 ?do
-      i fz <> if bk i OP-AT RULE then
+      i fz <>  i FOLDED? 0=  and if
+         bk i FOLD-EMIT? 0= if bk i OP-AT RULE then
+      then
    loop ;
 
 : REGION-BLOCK-OPS ( IR-ID:ir-fun-id n -- )

@@ -1,18 +1,24 @@
-\ combine.f - the module in which an operation and the one instruction-field it
-\ could have stood in are one instruction: a multiply and the addition that reads
-\ its product, and a constant and the arithmetic, bitwise or comparison that
-\ reads it. One concern: finding those pairs and writing the module that holds
-\ the combined form.
+\ prune.f - the module in which a data-stack load nothing reads is not there.
+\ One concern: finding those loads and writing the module without them.
 \
-\ It runs BEFORE the allocator, which is the whole reason it can see a pattern at
-\ all: the same two instructions after allocation are often unfusable.
+\ WHY THE COMPILER CANNOT SIMPLY NOT WRITE ONE. Selection decides which cells a
+\ block enters holding before its if-conversion decides which comparisons it
+\ will write, and a conversion whose arms all hand the join the same value
+\ writes no comparison at all - so a cell loaded for that comparison is loaded
+\ for a reader that is never written. By then the load is in a module, and a
+\ module is immutable, so removing it means writing the module again. It is not
+\ an optimisation: src/compiler/native/regalloc-verify.f refuses a data-stack
+\ access the emission had no reason to make (E-A64RAV-DKEEP), so a routine that
+\ keeps such a load does not compile.
 \
-\ Every fold requires the folded value to have EXACTLY ONE use and to be defined
-\ in the same block. A value read twice still needs its register, so folding one
-\ reader would leave the producer in place and ADD an instruction.
+\ THE REAL FIX IS IN SELECTION and is not this file: a residency that knew which
+\ readers the conversion will elide would not load the cell, and then nothing
+\ would have to be written twice. Until it does, this pass stands between the
+\ two, and it does nothing at all to a module that has no such load - which is
+\ every module in the 1,772-word corpus.
 \
-\ One rewrite at a time: the value map is a package-owned slot and the old module
-\ is read through the one cursor src/compiler/native/frozen.f owns.
+\ One rewrite at a time: the value map is a package-owned slot and the old
+\ module is read through the one cursor src/compiler/native/frozen.f owns.
 
 require lib/prelude.f
 require lib/errors.f
@@ -29,7 +35,7 @@ require src/compiler/native/a64ir.f
 require src/compiler/native/frozen.f
 require src/compiler/native/prof.f
 
-package A64COMB
+package A64PRUNE
 using NFROZEN
 private
 
@@ -91,11 +97,9 @@ A64IR-OPCODE:EOR   A64IR:ORD constant O-EOR
 here CELL 1- and CELL swap - CELL 1- and allot
 variable BND-MODE
 BOUND-NO BND-MODE !
-variable N-FUSED                     \ pairs this rewrite folded, counted as it goes
 variable N-REMOVED                   \ unused data-stack reads removed
 variable B-BASE                      \ operations of the module before the current block
 variable PLAN-OPS                    \ operations the sealed plan covers
-variable PLAN-FUSED                  \ pairs that plan names
 variable PLAN-REMOVED                \ unused data-stack reads that plan removes
 variable PLAN-SET                    \ a plan is sealed
 
@@ -123,26 +127,11 @@ DYNAMIC-BUFFER USE-COUNTS n
    ;
 create NAMEBUF NAME-CAP allot
 
-\ One cell per operation: which operation of this block folds into the one at
-\ this position, or -1. A multiply named here is not copied.
-DYNAMIC-BUFFER FOLD-AT-BUF n
-: FOLD-AT ( -- ptr n ) 0 FOLD-AT-BUF ;
-DYNAMIC-BUFFER FOLDED-BUF n
-: FOLDED ( -- ptr n ) 0 FOLDED-BUF ;
-DYNAMIC-BUFFER IMM-AT-BUF n
-: IMM-AT ( -- ptr n ) 0 IMM-AT-BUF ;
-DYNAMIC-BUFFER MASK-AT-BUF n
-: MASK-AT ( -- ptr n ) 0 MASK-AT-BUF ;
-DYNAMIC-BUFFER CMP-AT-BUF n
-: CMP-AT ( -- ptr n ) 0 CMP-AT-BUF ;
-
-: RESERVE-FOLDS ( -- )
-   OPS-MAX FOLD-AT-BUF-RESERVE
-   OPS-MAX FOLDED-BUF-RESERVE
-   OPS-MAX IMM-AT-BUF-RESERVE
-   OPS-MAX MASK-AT-BUF-RESERVE
-   OPS-MAX CMP-AT-BUF-RESERVE
-   ;
+\ One cell per operation of the module: whether the walk writes it.
+DYNAMIC-BUFFER REMOVED-BUF n
+: REMOVED ( -- ptr n ) 0 REMOVED-BUF ;
+: RESERVE-PLAN ( -- )
+   OPS-MAX REMOVED-BUF-RESERVE ;
 
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
@@ -157,7 +146,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    A64IR:OPCODES 0 ?do
       sym i BND-OP @ SAME-SYM? if drop i leave then
    loop
-   dup 0 < if E-A64COMB-OPCODE throw then ;
+   dup 0 < if E-A64PRUNE-OPCODE throw then ;
 
 \ Which declared key this symbol is. A frozen module carries no attribute under a
 \ key its opcode's schema did not declare - the freeze verifier decides that - so
@@ -170,7 +159,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    KEYS-N 0 ?do
       sym i BND-KEY @ SAME-SYM? if drop i leave then
    loop
-   dup 0 < if E-A64COMB-OPCODE throw then ;
+   dup 0 < if E-A64PRUNE-OPCODE throw then ;
 
 : OP-SLOT ( IR-ID:ir-op-id -- n )
    OPCODE-AT OPCODE-SLOT ;
@@ -185,7 +174,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 
 : VSLOT ( IR-ID:ir-value-id -- n )
    IR-ID:VALUE-LOCAL
-   dup 0 < over VMAX >= or if E-A64COMB-CAP throw then ;
+   dup 0 < over VMAX >= or if E-A64PRUNE-CAP throw then ;
 
 : VBIND ( IR-ID:ir-value-id IR-ID:ir-value-id -- )
    {: src:IR-ID:ir-value-id new:IR-ID:ir-value-id :}
@@ -195,12 +184,12 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 
 : VOF ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
    VSLOT {: k:n :}
-   k cells VSET + @ 0= if E-A64COMB-SHAPE throw then
+   k cells VSET + @ 0= if E-A64PRUNE-SHAPE throw then
    k VMAP @ ;
 
 \ ---- reading the frozen module -----------------------------------------------
 : SRC-CK ( IR-ID:ir-source-id -- )
-   IR-ID:SOURCE-LOCAL 0<> if E-A64COMB-SHAPE throw then ;
+   IR-ID:SOURCE-LOCAL 0<> if E-A64PRUNE-SHAPE throw then ;
 
 : OP-SPAN ( IR-ID:ir-op-id -- IR-SOURCE:span )
    {: id:IR-ID:ir-op-id :}
@@ -231,7 +220,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    t 0 BND-GPR @ SAME-TYPE? if CTX BLD A64IR:GPR-TYPE exit then
    t 0 BND-FPR @ SAME-TYPE? if CTX BLD A64IR:FPR-TYPE exit then
    t 0 BND-MEM @ SAME-TYPE? if CTX BLD A64IR:MEM-TYPE exit then
-   E-A64COMB-SHAPE throw ;
+   E-A64PRUNE-SHAPE throw ;
 
 \ Count each source operand once. Freeze rejects cross-function references, so
 \ these module-wide value counts are also each value's function-local counts.
@@ -260,233 +249,35 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 
 : USES-OF ( IR-ID:ir-value-id -- n ) VSLOT USE-COUNTS @ ;
 
-\ ---- which pairs this block folds --------------------------------------------
-\ Only a definition IN THIS BLOCK may be folded, because the combined form
-\ stands where the reader stands.
-: DEF-INDEX ( IR-ID:ir-block-id IR-ID:ir-value-id -- n )
-   {: bk:IR-ID:ir-block-id v:IR-ID:ir-value-id :}
-   V-VALR VW v IR-OP:FVALUE-KIND@ IR--OP-DEF--KIND:OP-RESULT
-   IR--OP-DEF--KIND:EQ 0= if -1 exit then
-   V-VALR VW V-OPR VW MKEY v IR-OP:FVALUE-OP@ {: id:IR-ID:ir-op-id :}
-   id RESULTS-OF 1 <> if -1 exit then
-   bk OP-COUNT {: n:n :}
-   n 0= if -1 exit then
-   id IR-ID:OP-LOCAL bk 0 OP-AT IR-ID:OP-LOCAL - {: at:n :}
-   at 0 < at n >= or if -1 else at then ;
-
-\ A multiply defining one value, that value read by exactly one operand of the
-\ whole function.
-: FOLDABLE-MUL? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
-   k 0 < if false exit then
-   bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-MUL <> if false exit then
-   id RESULTS-OF 1 <> if false exit then
-   id 0 RESULT-AT USES-OF 1 = ;
-
-\ The combined form is written where the ADDITION stands, so a multiply below it
-\ would be a computation moved backwards past its own inputs.
-: FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
-   d k >= if false exit then
-   f bk d FOLDABLE-MUL? ;
-
-\ A multiply behind EITHER operand will do, and the first asked wins, so
-\ `x*y + x*y` could never be read as folding both.
-: FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
-   bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-ADD <> if -1 exit then
-   id OPERANDS-OF 2 <> if -1 exit then
-   bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
-   f bk d0 k FOLDS-HERE? if d0 exit then
-   bk  id 1 OPERAND-AT  DEF-INDEX {: d1:n :}
-   f bk d1 k FOLDS-HERE? if d1 exit then
-   -1 ;
-
-\ ---- which constants this block puts in the instruction ------------------------
-\ ARM64's add and subtract carry a small number in the instruction, and the
-\ selector always picks the register form, so the constant costs a move-wide.
-\ Addition is commutative and `sub` is not: `x - 5` folds and `5 - x` does not.
-: ATTR-BY-KEY ( IR-ID:ir-op-id n -- n )
-   {: id:IR-ID:ir-op-id want:n :}
-   -1
-   id ATTRS-OF 0 ?do
-      id i ATTR-KEY-AT KEY-SLOT-OF want = if drop id i ATTR-INT-AT leave then
-   loop ;
-
-\ A movz writing the bottom half of a cleared register IS the number; a movz
-\ under a movk is one half of a larger one, which the single-use test excludes.
-: MOVZ-VALUE ( IR-ID:ir-op-id -- n bool )
-   {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-MOVZ <> if 0 false exit then
-   id RESULTS-OF 1 <> if 0 false exit then
-   id K-SHIFT ATTR-BY-KEY 0<> if 0 false exit then
-   id K-IMM ATTR-BY-KEY {: v:n :}
-   v 0 < if 0 false exit then
-   v true ;
-
-\ The number this operation puts in a register, when it is a whole constant that
-\ the arithmetic field can hold, and -1 when it is anything else.
-: WHOLE-IMM ( IR-ID:ir-op-id -- n )
-   MOVZ-VALUE {: v:n ok:bool :}
-   ok 0= if -1 exit then
-   v A64IR:OFF-LIMIT > if -1 exit then
-   v ;
-
-\ The logical field is not bounded by a width but by whether its thirteen-bit
-\ description can rebuild the mask, which only the packer can answer.
-: WHOLE-MASK? ( IR-ID:ir-op-id -- bool )
-   MOVZ-VALUE {: v:n ok:bool :}
-   ok 0= if false exit then
-   v A64IR:MASK-IMM? ;
-
-: WHOLE-MASK ( IR-ID:ir-op-id -- n )
-   MOVZ-VALUE {: v:n ok:bool :}
-   ok 0= if E-A64COMB-SHAPE throw then
-   v ;
-
-\ Whether the operation at this position is a constant this pass may fold into
-\ the one reading it.
-: FOLDABLE-IMM? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
-   k 0 < if false exit then
-   bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id WHOLE-IMM 0 < if false exit then
-   id 0 RESULT-AT USES-OF 1 = ;
-
-: IMM-FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
-   d k >= if false exit then
-   f bk d FOLDABLE-IMM? ;
-
-\ An addition is asked of both operands and a subtraction only of its second. A
-\ pair the multiply-add already claimed is left alone.
-: IMM-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
-   f bk k FOLD-FOR 0 >= if -1 exit then
-   bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-ADD <>  id OP-SLOT O-SUB <>  and if -1 exit then
-   id OPERANDS-OF 2 <> if -1 exit then
-   id RESULTS-OF 1 <> if -1 exit then
-   id OP-SLOT O-ADD = if
-      bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
-      f bk d0 k IMM-FOLDS-HERE? if d0 exit then
-   then
-   bk  id 1 OPERAND-AT  DEF-INDEX {: d1:n :}
-   f bk d1 k IMM-FOLDS-HERE? if d1 exit then
-   -1 ;
-
-\ ---- which masks this block puts in the instruction ---------------------------
-\ and, orr and eor are all commutative, so either operand may be the mask.
-\ No operation is a candidate for two folds, so no movz can be claimed twice.
-: FOLDABLE-MASK? ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- bool )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
-   k 0 < if false exit then
-   bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id WHOLE-MASK? 0= if false exit then
-   id 0 RESULT-AT USES-OF 1 = ;
-
-: MASK-FOLDS-HERE? ( IR-ID:ir-fun-id IR-ID:ir-block-id n n -- bool )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id d:n k:n :}
-   d k >= if false exit then
-   f bk d FOLDABLE-MASK? ;
-
-: LOGICAL-OP? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-AND =  id OP-SLOT O-ORR =  or  id OP-SLOT O-EOR =  or ;
-
-: MASK-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
-   bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id LOGICAL-OP? 0= if -1 exit then
-   id OPERANDS-OF 2 <> if -1 exit then
-   id RESULTS-OF 1 <> if -1 exit then
-   bk  id 0 OPERAND-AT  DEF-INDEX {: d0:n :}
-   f bk d0 k MASK-FOLDS-HERE? if d0 exit then
-   bk  id 1 OPERAND-AT  DEF-INDEX {: d1:n :}
-   f bk d1 k MASK-FOLDS-HERE? if d1 exit then
-   -1 ;
-
-\ ---- which constants this block compares against without a register -----------
-\ This dialect has no standalone compare: one reaches the machine only fused, as
-\ the flag it materialises or as the branch that reads it, so both are folded.
-\ Only the SECOND operand may be: `cmp rn, #imm` sets flags from rn minus imm,
-\ and turning a left-hand constant round means changing the condition too.
-: COMPARE-OP? ( IR-ID:ir-op-id -- bool )
-   {: id:IR-ID:ir-op-id :}
-   id OP-SLOT O-FLAG =  id OP-SLOT O-CMPBR =  or ;
-
-: CMP-FOLD-FOR ( IR-ID:ir-fun-id IR-ID:ir-block-id n -- n )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id k:n :}
-   bk k OP-AT {: id:IR-ID:ir-op-id :}
-   id COMPARE-OP? 0= if -1 exit then
-   id OPERANDS-OF 2 <> if -1 exit then
-   bk  id 1 OPERAND-AT  DEF-INDEX {: d1:n :}
-   f bk d1 k IMM-FOLDS-HERE? if d1 exit then
-   -1 ;
-
 \ The whole block's plan, read once before a single operation of it is copied,
 \ so the walk and the operation it reaches later agree about what was decided.
-\ Selection can eliminate every use of a branch condition. An unread, total
-\ data-stack load can be removed while forwarding its memory-order result.
+\
+\ A data-stack load whose loaded cell nothing reads is the one operation this
+\ pass removes. The residency pass decides which cells a block enters holding,
+\ before the if-conversion decides which comparisons it will write, and a
+\ conversion whose arms all hand the join the same value writes no comparison at
+\ all - so the cell that comparison would have read was loaded for a reader that
+\ was never written. The load's memory-order result IS read, by the access after
+\ it, so the row is not dropped: its order result is bound to the order it took,
+\ and the chain closes over it.
 : UNUSED-DLOAD? ( IR-ID:ir-op-id -- bool ) {: id:IR-ID:ir-op-id :}
    id OP-SLOT {: s:n :}
    s A64IR-OPCODE:DLOAD A64IR:ORD =
    s A64IR-OPCODE:FDLOAD A64IR:ORD = or 0= if false exit then
    id 0 RESULT-AT USES-OF 0= ;
 
-\ FOLDED distinguishes a consumed producer (1) from a removed load (2).
-2 constant REMOVE-LOAD
-
-: PLAN-BLOCK ( IR-ID:ir-fun-id IR-ID:ir-block-id -- )
-   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id :}
+: PLAN-BLOCK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    B-BASE @ {: g:n :}
-   g 0 < g OPS-MAX > or if E-A64COMB-CAP throw then
-   n 0 < n OPS-MAX g - > or if E-A64COMB-CAP throw then
+   g 0 < g OPS-MAX > or if E-A64PRUNE-CAP throw then
+   n 0 < n OPS-MAX g - > or if E-A64PRUNE-CAP throw then
    n 0 ?do
-      -1 g i + cells FOLD-AT + !
-      -1 g i + cells IMM-AT + !
-      -1 g i + cells MASK-AT + !
-      -1 g i + cells CMP-AT + !
-      0 g i + cells FOLDED + !
-   loop
-   n 0 ?do
-      f bk i FOLD-FOR {: d:n :}
-      d 0 >= if
-         d g i + cells FOLD-AT + !
-         1 g d + cells FOLDED + !
-         1 PLAN-FUSED +!
-      then
-   loop
-   n 0 ?do
-      f bk i IMM-FOLD-FOR {: d:n :}
-      d 0 >= if
-         d g i + cells IMM-AT + !
-         1 g d + cells FOLDED + !
-         1 PLAN-FUSED +!
-      then
-   loop
-   n 0 ?do
-      f bk i MASK-FOLD-FOR {: d:n :}
-      d 0 >= if
-         d g i + cells MASK-AT + !
-         1 g d + cells FOLDED + !
-         1 PLAN-FUSED +!
-      then
-   loop
-   n 0 ?do
-      f bk i CMP-FOLD-FOR {: d:n :}
-      d 0 >= if
-         d g i + cells CMP-AT + !
-         1 g d + cells FOLDED + !
-         1 PLAN-FUSED +!
-      then
+      0 g i + cells REMOVED + !
    loop
    n 0 ?do
       bk i OP-AT UNUSED-DLOAD? if
-         REMOVE-LOAD g i + cells FOLDED + !
+         1 g i + cells REMOVED + !
          1 PLAN-REMOVED +!
       then
    loop
@@ -494,23 +285,8 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 
 \ Read at the same module-wide position the plan was written at: the walk visits
 \ functions, blocks and operations in the order the plan pass did.
-: FOLD-OF ( n -- n )
-   B-BASE @ + cells FOLD-AT + @ ;
-
-: IMM-OF ( n -- n )
-   B-BASE @ + cells IMM-AT + @ ;
-
-: MASK-OF ( n -- n )
-   B-BASE @ + cells MASK-AT + @ ;
-
-: CMP-OF ( n -- n )
-   B-BASE @ + cells CMP-AT + @ ;
-
-: FOLDED? ( n -- bool )
-   B-BASE @ + cells FOLDED + @ 0<> ;
-
 : REMOVED? ( n -- bool )
-   B-BASE @ + cells FOLDED + @ REMOVE-LOAD = ;
+   B-BASE @ + cells REMOVED + @ 0<> ;
 
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
@@ -635,90 +411,6 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    id COPY-ATTRS
    id  CLOSE  BIND-RESULTS ;
 
-\ ---- the operation the pair becomes ------------------------------------------
-\ Found by identity against the product rather than by position, because either
-\ operand of an addition may carry it.
-: ADDEND-OF ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id prod:IR-ID:ir-value-id :}
-   id 0 OPERAND-AT prod SAME-VALUE? if id 1 OPERAND-AT exit then
-   id 0 OPERAND-AT ;
-
-\ Operand order is the schema's and `madd rd, rn, rm, ra`'s. The ADDITION's
-\ result is what the new operation defines; the product is bound to nothing.
-: EMIT-MADD ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
-   {: mul:IR-ID:ir-op-id add:IR-ID:ir-op-id :}
-   mul 0 RESULT-AT {: prod:IR-ID:ir-value-id :}
-   add A64IR-OPCODE:MADD OPEN
-   mul 0 OPERAND-AT VOF OPERAND+
-   mul 1 OPERAND-AT VOF OPERAND+
-   add prod ADDEND-OF VOF OPERAND+
-   CTX BLD  add 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
-   add  CLOSE  BIND-RESULTS
-   1 N-FUSED +! ;
-
-\ Reads the operand that is NOT the folded constant and carries the constant in
-\ its own attribute. This dialect's immediate is unsigned; a subtract stays one.
-: EMIT-ADDI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
-   {: mz:IR-ID:ir-op-id ar:IR-ID:ir-op-id :}
-   mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
-   ar OP-SLOT O-SUB =
-   if A64IR-OPCODE:SUBI else A64IR-OPCODE:ADDI then {: o:A64IR:opcode :}
-   ar o OPEN
-   ar k ADDEND-OF VOF OPERAND+
-   CTX BLD  ar 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
-   CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD mz WHOLE-IMM A64IR:OFF-ATTR
-   IR-BUILD:ADD-ATTR
-   ar  CLOSE  BIND-RESULTS
-   1 N-FUSED +! ;
-
-\ EMIT-ADDI against the other immediate key: the mask is the same number
-\ whichever of the three opcodes reads it.
-: EMIT-MASKI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
-   {: mz:IR-ID:ir-op-id lg:IR-ID:ir-op-id :}
-   mz 0 RESULT-AT {: k:IR-ID:ir-value-id :}
-   lg OP-SLOT O-AND =
-   if   A64IR-OPCODE:ANDI
-   else lg OP-SLOT O-ORR =
-        if A64IR-OPCODE:ORRI else A64IR-OPCODE:EORI then
-   then {: o:A64IR:opcode :}
-   lg o OPEN
-   lg k ADDEND-OF VOF OPERAND+
-   CTX BLD  lg 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
-   CTX BLD  CTX BLD A64IR:KEY-MASK  CTX BLD mz WHOLE-MASK A64IR:MASK-ATTR
-   IR-BUILD:ADD-ATTR
-   lg  CLOSE  BIND-RESULTS
-   1 N-FUSED +! ;
-
-\ A comparison carries its condition under a REQUIRED key, so it is checked
-\ rather than defaulted - a defaulted condition answers the wrong relation.
-: COND-CODE-OF ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id K-COND ATTR-BY-KEY {: v:n :}
-   v 0 < if E-A64COMB-SHAPE throw then
-   v ;
-
-\ Operand 0 is taken by POSITION, because only operand 1 was ever a candidate.
-\ The flag form defines a value; the branch form ends the block and carries its
-\ successors. A third form is refused rather than written as the flag one.
-: EMIT-CMPI ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
-   {: mz:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
-   cm OP-SLOT {: s:n :}
-   s O-FLAG =  s O-CMPBR =  or 0= if E-A64COMB-SHAPE throw then
-   s O-CMPBR =
-   if A64IR-OPCODE:CMPBRI else A64IR-OPCODE:FLAGI then {: o:A64IR:opcode :}
-   cm o OPEN
-   cm 0 OPERAND-AT VOF OPERAND+
-   s O-FLAG = if
-      CTX BLD  cm 0 RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
-   then
-   cm COPY-SUCCS
-   CTX BLD  CTX BLD A64IR:KEY-COND
-   CTX BLD  cm COND-CODE-OF A64IR:N>COND A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
-   CTX BLD  CTX BLD A64IR:KEY-OFF  CTX BLD mz WHOLE-IMM A64IR:OFF-ATTR
-   IR-BUILD:ADD-ATTR
-   cm  CLOSE  BIND-RESULTS
-   1 N-FUSED +! ;
-
 : REMOVE-DLOAD ( IR-ID:ir-op-id -- ) {: id:IR-ID:ir-op-id :}
    id 1 RESULT-AT id 0 OPERAND-AT VOF VBIND
    1 N-REMOVED +! ;
@@ -744,23 +436,14 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
-   n 1 < if E-A64COMB-SHAPE throw then
+   n 1 < if E-A64PRUNE-SHAPE throw then
    bk OPEN-BLOCK
    n 0 ?do
       i REMOVED? if
          bk i OP-AT REMOVE-DLOAD
-      else i FOLDED? 0= if
-         i FOLD-OF {: d:n :}
-         i IMM-OF {: e:n :}
-         i MASK-OF {: g:n :}
-         i CMP-OF {: h:n :}
-         d 0 >= if bk d OP-AT  bk i OP-AT  EMIT-MADD else
-         e 0 >= if bk e OP-AT  bk i OP-AT  EMIT-ADDI else
-         g 0 >= if bk g OP-AT  bk i OP-AT  EMIT-MASKI else
-         h 0 >= if bk h OP-AT  bk i OP-AT  EMIT-CMPI else
-                   bk i OP-AT COPY-OP
-         then then then then
-      then then
+      else
+         bk i OP-AT COPY-OP
+      then
    loop
    B-BASE @ n + B-BASE !
    CTX BLD IR-BUILD:END-BLOCK drop ;
@@ -798,7 +481,7 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 \ ---- what one rewrite is told ------------------------------------------------
 : SOURCE! ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-A64COMB-SHAPE throw then
+   V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-A64PRUNE-SHAPE throw then
    c b  V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-BUILD:CARRY-SOURCE 0 S-SID ! ;
 
 \ The binding is taken whatever the outcome, so neither a rewrite without a
@@ -806,11 +489,11 @@ DYNAMIC-BUFFER CMP-AT-BUF n
 : BND-TAKE ( -- )
    BND-MODE @ {: have:n :}
    BOUND-NO BND-MODE !
-   have BOUND-YES <> if E-A64COMB-BIND throw then ;
+   have BOUND-YES <> if E-A64PRUNE-BIND throw then ;
 
 : BND-MODULE-CK ( IR-BUILD:module -- )
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
-   0= if E-A64COMB-BIND throw then ;
+   0= if E-A64PRUNE-BIND throw then ;
 
 \ The plan the scan sealed, and about this module: a rewrite that planned
 \ nothing would walk stale decisions, and one planned for another module would
@@ -821,16 +504,16 @@ DYNAMIC-BUFFER CMP-AT-BUF n
    0 PLAN-SET !
    BND-TAKE
    m BND-MODULE-CK
-   planned 0= if E-A64COMB-PLAN throw then
+   planned 0= if E-A64PRUNE-PLAN throw then
    m IR-BUILD:FMODULE  0 PLAN-MOD @  IR-ID:MODULE-SAME?
-   0= if E-A64COMB-PLAN throw then ;
+   0= if E-A64PRUNE-PLAN throw then ;
 
 : DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
-   0= if E-A64COMB-BIND throw then
-   c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64COMB-BIND throw then
-   c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64COMB-BIND throw then ;
+   0= if E-A64PRUNE-BIND throw then
+   c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64PRUNE-BIND throw then
+   c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64PRUNE-BIND throw then ;
 
 public
 
@@ -839,7 +522,7 @@ public
 \ because its symbols and types are its own ordinals.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   BND-MODE @ BOUND-YES = if E-A64COMB-BIND throw then
+   BND-MODE @ BOUND-YES = if E-A64PRUNE-BIND throw then
    c b DIALECT-CK
    0 PLAN-SET !
    c b 0 BND-OP A64IR:OPCODES A64IR:BIND-OPCODES! 0 BND-MOD !
@@ -884,23 +567,23 @@ private
 : PLAN! ( IR-BUILD:module -- n )
    {: m:IR-BUILD:module :}
    0 PLAN-SET !
-   BOUND? 0= if E-A64COMB-BIND throw then
+   BOUND? 0= if E-A64PRUNE-BIND throw then
    m BND-MODULE-CK
    m VIEWS!
-   RESERVE-SCRATCH RESERVE-FOLDS
+   RESERVE-SCRATCH RESERVE-PLAN
    COUNT-USES
-   0 PLAN-FUSED ! 0 PLAN-REMOVED !
+   0 PLAN-REMOVED !
    0 B-BASE !
    FUN-COUNT 0 ?do
       MKEY i IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
       f BLOCK-COUNT 0 ?do
-         f  f i BLOCK-AT  PLAN-BLOCK
+         f i BLOCK-AT PLAN-BLOCK
       loop
    loop
    B-BASE @ PLAN-OPS !
    m IR-BUILD:FMODULE 0 PLAN-MOD !
    1 PLAN-SET !
-   PLAN-FUSED @ PLAN-REMOVED @ + ;
+   PLAN-REMOVED @ ;
 
 public
 : REWRITES ( IR-BUILD:module -- n )
@@ -912,24 +595,21 @@ public
 : REWRITE ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder -- IR-BUILD:module )
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder :}
    m PLAN-TAKE
-   0 N-FUSED ! 0 N-REMOVED !
+   0 N-REMOVED !
    c 0 S-CTX !
    b 0 S-BLD !
    m VIEWS!
-   NFROZEN:TOTAL-OPS NPROF-PHASE:COMBINE-OPS NPROF:ADD
+   NFROZEN:TOTAL-OPS NPROF-PHASE:PRUNE-OPS NPROF:ADD
    c b SOURCE!
    0 B-BASE !
    FUN-COUNT 0 ?do MKEY i IR-ID:PACK-FUN WALK-FUN loop
-   B-BASE @ PLAN-OPS @ <> if E-A64COMB-SHAPE throw then
+   B-BASE @ PLAN-OPS @ <> if E-A64PRUNE-SHAPE throw then
    c b IR-BUILD:FREEZE ;
 
-\ A caller compares it with what the scan promised, so a walk that folded a
+\ A caller compares it with what the scan promised, so a walk that removed a
 \ different number is a refusal rather than a module nobody checked.
-: FUSED ( -- n )
-   N-FUSED @ ;
-
 : REWRITTEN ( -- n )
-   N-FUSED @ N-REMOVED @ + ;
+   N-REMOVED @ ;
 
 public
 : RESET-SCRATCH ( -- )

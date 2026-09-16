@@ -1078,25 +1078,27 @@ public
 -8621 constant E-NPUB-RELOC   \ an emission that leaves through a branch to an address outside the code region: the snapshot relocation record can only describe a branch-with-link, so such a branch would survive a restore holding the writing run's displacement
 -8622 constant E-NPUB-PENDING \ the pending record is not the unpublished slot the dictionary count points at
 
-\ Combining two machine operations into one: -8630..-8639
+\ Pruning a machine operation nothing reads, and the string store: -8630..-8639
 \
-\ A multiply whose product one later addition reads, and nothing else does, is
-\ the multiply-add the machine already has. src/compiler/native/combine.f is the
-\ pass that finds those pairs and writes the module in which they are one
-\ operation, and these are its refusals. They are a rewriter's refusals rather
-\ than a validator's: the pass writes a module the ordinary
-\ src/compiler/native/regalloc-verify.f then decides, so anything the rewrite
-\ gets wrong about registers is caught there and not here. What is refused here
-\ is the pass being asked to work on something it cannot read.
--8630 constant E-A64COMB-BIND    \ a combine attempted before the machine dialect's identities were bound, or a second binding over a live one
--8631 constant E-A64COMB-SHAPE   \ a module this pass cannot rewrite: a span naming another source, a block with no operation in it, or a value used before it is defined
--8632 constant E-A64COMB-SOURCE  \ source text whose digest is not the one the module being rewritten recorded
--8633 constant E-A64COMB-OPCODE  \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
--8634 constant E-A64COMB-CAP     \ more values in one function than the rewriter's value map holds
--8635 constant E-A64COMB-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says
+\ src/compiler/native/prune.f writes the module in which a data-stack load whose
+\ loaded cell nothing reads is not there, and these are its refusals. They are a
+\ rewriter's refusals rather than a validator's: the pass writes a module the
+\ ordinary src/compiler/native/regalloc-verify.f then decides, so anything the
+\ rewrite gets wrong about registers is caught there and not here. What is
+\ refused here is the pass being asked to work on something it cannot read.
+\
+\ -8635 is the emitter's, not the pass's: a multiply-add whose addend register
+\ is the zero register. Instruction selection writes those pairs as one
+\ operation now, and the encoder still refuses a form it cannot encode.
+-8630 constant E-A64PRUNE-BIND   \ a prune attempted before the machine dialect's identities were bound, or a second binding over a live one
+-8631 constant E-A64PRUNE-SHAPE  \ a module this pass cannot rewrite: a span naming another source, a block with no operation in it, or a value used before it is defined
+-8632 constant E-A64PRUNE-SOURCE \ a module that does not carry exactly the one source the module being rewritten recorded
+-8633 constant E-A64PRUNE-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
+-8634 constant E-A64PRUNE-CAP    \ more values in one function than the rewriter's value map holds
+-8635 constant E-A64EMIT-ADDEND  \ a multiply-add whose addend register is the zero register: that word IS a plain multiply, which is why formal/Common/Insn.v puts it outside `wf`, so emitting one would be emitting a different instruction than the module says
 -8636 constant E-NSTR-CAP       \ a string literal this store cannot take: more distinct bodies than its index holds, or more bytes than its arena holds. The addresses it has already answered are compiled into published routines, so a body it cannot hold is a refusal rather than a reused address
 -8637 constant E-NSTR-BODY      \ a string literal of negative length, which no reader produces and no arena can hold
--8638 constant E-A64COMB-PLAN    \ a rewrite asked for without the scan that plans it, or with a plan sealed for another module. The combine band's own code, taken after the string store's pair rather than before -8630, which belongs to the tail-call band above
+-8638 constant E-A64PRUNE-PLAN  \ a rewrite asked for without the scan that plans it, or with a plan sealed for another module. The prune band's own code, taken after the string store's pair rather than before -8630, which belongs to the tail-call band above
 
 \ The counted-loop closed form: -8660..-8669
 \

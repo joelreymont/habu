@@ -436,8 +436,8 @@ SUITE compiler-native-tail
    test/compiler/native-tail.f
 ;SUITE
 
-SUITE compiler-native-combine
-   test/compiler/native-combine.f
+SUITE compiler-native-fold
+   test/compiler/native-fold.f
 ;SUITE
 
 SUITE compiler-native-loop

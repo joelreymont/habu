@@ -93,7 +93,7 @@ require lib/test.f
 require src/compiler/native/select.f
 require src/compiler/native/regalloc-verify.f
 require src/compiler/native/spill.f
-require src/compiler/native/combine.f
+require src/compiler/native/prune.f
 
 package A64RA-TEST
 private
@@ -1849,10 +1849,10 @@ create TXT
 : SPILL-BIND ( -- )
    CC BB A64SPILL:BIND-DIALECT ;
 
-\ The combine takes its binding the same way, and needs it for the case below
-\ that reaches its rewrite without the scan that plans one.
-: COMB-BIND ( -- )
-   CC BB A64COMB:BIND-DIALECT ;
+\ The prune takes its binding the same way, and needs it for the cases below
+\ that reach its rewrite without the scan that plans one.
+: PRUNE-BIND ( -- )
+   CC BB A64PRUNE:BIND-DIALECT ;
 
 variable LOWER-TURNS
 
@@ -2463,53 +2463,52 @@ using A64RA
    A64-BUILDER {: nb:IR-BUILD:builder :}
    CC m0 nb A64SPILL:REWRITE drop ;
 
-\ The same shape one pass over, and the reason the combine needs its own
-\ refusal: A64COMB:REWRITES is what searches for the pairs AND seals the plan
-\ the rewrite walks, so a rewrite reached without it would fold against
-\ whatever the last module left behind. Nothing about the body matters - the
-\ refusal is ahead of the first operation read - so this is the same module.
-: NO-PLAN-COMBINE-BODY ( IR-CTX:ctx -- )
+\ The same shape one pass over, and the reason the prune needs its own refusal:
+\ A64PRUNE:REWRITES is what searches for the loads AND seals the plan the
+\ rewrite walks, so a rewrite reached without it would prune against whatever
+\ the last module left behind. Nothing about the body matters - every refusal
+\ below is ahead of the first operation read - so all four stand on the same
+\ plain module, whose plan is empty.
+: PRUNE-NO-PLAN-BODY ( IR-CTX:ctx -- )
    A64-MOD
-   COMB-BIND
+   PRUNE-BIND
    BUILD-PLAIN
    M-FREEZE {: m0:IR-BUILD:module :}
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64COMB:REWRITE drop ;
+   CC m0 nb A64PRUNE:REWRITE drop ;
 
-\ A real immediate fold gives the lifecycle cases a nonempty plan.
-: PLANNED-COMBINE ( IR-CTX:ctx -- IR-BUILD:module )
-   A64-MOD COMB-BIND
-   s" COMBINABLE" 0 1 OPEN-FUN
-   7 M-MOVZ 5 M-MOVZ M-ADD M-RET
-   CLOSE-FUN
-   M-FREEZE dup A64COMB:REWRITES 1 T= ;
+\ A scanned module, whose plan the cases below then misuse. It is sealed and
+\ empty: this corpus builds no unread data-stack load by hand, and an empty
+\ plan is a plan.
+: PLANNED-PRUNE ( IR-CTX:ctx -- IR-BUILD:module )
+   A64-MOD PRUNE-BIND
+   BUILD-PLAIN
+   M-FREEZE dup A64PRUNE:REWRITES 0 T= ;
 
-: RESET-COMBINE-BODY ( IR-CTX:ctx -- )
-   PLANNED-COMBINE {: m0:IR-BUILD:module :}
-   A64COMB:RESET-SCRATCH
+: PRUNE-RESET-BODY ( IR-CTX:ctx -- )
+   PLANNED-PRUNE {: m0:IR-BUILD:module :}
+   A64PRUNE:RESET-SCRATCH
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64COMB:REWRITE drop ;
+   CC m0 nb A64PRUNE:REWRITE drop ;
 
 \ A module carrying two registered sources: the rewrite cannot know which one it
 \ is continuing, so it refuses before it reads an operation and still consumes
 \ the binding it took.
-: SOURCE-COMBINE-BODY ( IR-CTX:ctx -- )
-   A64-MOD COMB-BIND
+: PRUNE-SOURCE-BODY ( IR-CTX:ctx -- )
+   A64-MOD PRUNE-BIND
    CC BB TXT TXT-N IR-BUILD:ADD-SOURCE drop
-   s" COMBINABLE" 0 1 OPEN-FUN
-   7 M-MOVZ 5 M-MOVZ M-ADD M-RET
-   CLOSE-FUN
+   BUILD-PLAIN
    M-FREEZE {: m0:IR-BUILD:module :}
-   m0 A64COMB:REWRITES 1 T=
+   m0 A64PRUNE:REWRITES 0 T=
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64COMB:REWRITE drop ;
+   CC m0 nb A64PRUNE:REWRITE drop ;
 
-: TWICE-COMBINE-BODY ( IR-CTX:ctx -- )
-   PLANNED-COMBINE {: m0:IR-BUILD:module :}
+: PRUNE-TWICE-BODY ( IR-CTX:ctx -- )
+   PLANNED-PRUNE {: m0:IR-BUILD:module :}
    A64-BUILDER {: nb:IR-BUILD:builder :}
-   CC m0 nb A64COMB:REWRITE drop
-   A64COMB:REWRITTEN 1 T=
-   CC m0 nb A64COMB:REWRITE drop ;
+   CC m0 nb A64PRUNE:REWRITE drop
+   A64PRUNE:REWRITTEN 0 T=
+   CC m0 nb A64PRUNE:REWRITE drop ;
 
 \ ---- the frame rules, on modules that are wrong in one way -------------------
 \ Each of these is a lowered shape with one thing changed, allocated and then
@@ -2750,10 +2749,10 @@ using A64RA
 : SMALL-FRAME ( -- )      WBND [: SMALL-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : TWICE-LOWER ( -- bool n n n )
    WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
-: NO-PLAN-COMBINE ( -- )  WBND [: NO-PLAN-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
-: RESET-COMBINE ( -- )    WBND [: RESET-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
-: SOURCE-COMBINE ( -- )   WBND [: SOURCE-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
-: TWICE-COMBINE ( -- )    WBND [: TWICE-COMBINE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: PRUNE-NO-PLAN ( -- )  WBND [: PRUNE-NO-PLAN-BODY ;] IR-CTX:WITH-CONTEXT ;
+: PRUNE-RESET ( -- )    WBND [: PRUNE-RESET-BODY ;] IR-CTX:WITH-CONTEXT ;
+: PRUNE-SOURCE ( -- )   WBND [: PRUNE-SOURCE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: PRUNE-TWICE ( -- )    WBND [: PRUNE-TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : FAR-SLOT ( -- )         WBND [: FAR-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -2892,7 +2891,7 @@ using A64RA
    [: NO-SPILL-LOWER ;] E-A64SPILL-PLAN TTHROWSQ ;
 
 \ PLAN-TAKE also refuses a plan sealed for ANOTHER module, which BND-MODULE-CK
-\ reaches first with E-A64COMB-BIND, so that clause is fail-closed rather than
+\ reaches first with E-A64PRUNE-BIND, so that clause is fail-closed rather than
 \ reachable and only this one is asserted.
 \ A64-MOD binds the allocator as well, and A64RA:ALLOCATE is what takes that
 \ binding back; this case refuses before it ever runs, so it gives the binding
@@ -2900,23 +2899,23 @@ using A64RA
 \ bound there too and needs no such care - its BIND-DIALECT overwrites rather
 \ than refusing a live binding, which is why the spill case beside this one can
 \ leave it standing.
-: COMBINE-NO-PLAN-CASE ( -- )
-   s" combining a module the scan never planned is refused" T-LABEL
-   [: NO-PLAN-COMBINE ;] E-A64COMB-PLAN TTHROWSQ
+: PRUNE-NO-PLAN-CASE ( -- )
+   s" pruning a module the scan never planned is refused" T-LABEL
+   [: PRUNE-NO-PLAN ;] E-A64PRUNE-PLAN TTHROWSQ
    A64RA:BOUND? if A64RA:RELEASE then ;
 
-: COMBINE-PLAN-CASES ( -- )
-   s" resetting scratch discards a pending combine plan" T-LABEL
-   [: RESET-COMBINE ;] E-A64COMB-PLAN TTHROWSQ
-   A64COMB:BOUND? TFALSE
+: PRUNE-PLAN-CASES ( -- )
+   s" resetting scratch discards a pending prune plan" T-LABEL
+   [: PRUNE-RESET ;] E-A64PRUNE-PLAN TTHROWSQ
+   A64PRUNE:BOUND? TFALSE
    A64RA:BOUND? if A64RA:RELEASE then
-   s" a refused source consumes the combine binding" T-LABEL
-   [: SOURCE-COMBINE ;] E-A64COMB-SHAPE TTHROWSQ
-   A64COMB:BOUND? TFALSE
+   s" a refused source consumes the prune binding" T-LABEL
+   [: PRUNE-SOURCE ;] E-A64PRUNE-SHAPE TTHROWSQ
+   A64PRUNE:BOUND? TFALSE
    A64RA:BOUND? if A64RA:RELEASE then
    s" a fresh plan succeeds after refusal and cannot be consumed twice" T-LABEL
-   [: TWICE-COMBINE ;] E-A64COMB-BIND TTHROWSQ
-   A64COMB:BOUND? TFALSE
+   [: PRUNE-TWICE ;] E-A64PRUNE-BIND TTHROWSQ
+   A64PRUNE:BOUND? TFALSE
    A64RA:BOUND? if A64RA:RELEASE then ;
 
 : SLOT-REFUSE-CASES ( -- )
@@ -3567,8 +3566,8 @@ using A64RA
 : GROUP-PLACE ( IR-CTX:ctx -- )     drop PLACE-REFUSE-CASES ;
 : GROUP-FIXED-ACCEPT ( IR-CTX:ctx -- ) drop FIXED-ACCEPT-CASES ;
 : GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
-: GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE COMBINE-NO-PLAN-CASE ;
-: GROUP-COMBINE-PLAN ( IR-CTX:ctx -- ) drop COMBINE-PLAN-CASES ;
+: GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE PRUNE-NO-PLAN-CASE ;
+: GROUP-PRUNE-PLAN ( IR-CTX:ctx -- ) drop PRUNE-PLAN-CASES ;
 : GROUP-SLOT ( IR-CTX:ctx -- )      drop SLOT-REFUSE-CASES ;
 : GROUP-ORDER ( IR-CTX:ctx -- )     drop ORDER-REFUSE-CASES ;
 : GROUP-RELOAD ( IR-CTX:ctx -- )    drop RELOAD-REFUSE-CASES ;
@@ -3683,7 +3682,7 @@ public
    WBND [: GROUP-FIXED-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-LOWER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-NO-SPILL ;] IR-CTX:WITH-CONTEXT
-   WBND [: GROUP-COMBINE-PLAN ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-PRUNE-PLAN ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SLOT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-ORDER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-RELOAD ;] IR-CTX:WITH-CONTEXT

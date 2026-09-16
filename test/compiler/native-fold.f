@@ -1,4 +1,9 @@
-\ native-combine.f - production combine rewrites and their emitted results.
+\ native-fold.f - the pairs one instruction replaces, and their emitted results.
+\
+\ Instruction selection writes the combined form where it finds the pair, so
+\ what these cases read is the whole production chain's answer for an ordinary
+\ definition: the instructions a body compiles to, and the body's own value when
+\ it runs.
 
 require lib/test.f
 require lib/prelude.f

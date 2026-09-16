@@ -1,7 +1,7 @@
 \ prof.f - the native chain's own stopwatch: how long each of the two passes that
 \ build a second module took, and how large the modules they were handed were.
 \
-\ FOUR NUMBERS, AND NO MORE. tools/chain-scale.f asks one question - does either
+\ FIVE NUMBERS, AND NO MORE. tools/chain-scale.f asks one question - does either
 \ pass read more of a module than the module's size - and answering it needs a
 \ total, a call count and an operation count per pass. A phase per stage of the
 \ chain would be a profiler, and what a caller of the compiler actually cares
@@ -53,9 +53,9 @@ public
 \ its calls and the count beside a total is how many modules contributed to it,
 \ so a per-module mean is a division and not an assumption.
 ENUM phase DERIVE eq
-   combine
+   prune
    spill
-   combine-ops
+   prune-ops
    spill-ops
    spill-plan
 ;ENUM
@@ -84,9 +84,9 @@ variable SESSION
 
 : SLOT ( NPROF:phase -- n )
    MATCH phase
-      combine     OF 0 ENDOF
+      prune       OF 0 ENDOF
       spill       OF 1 ENDOF
-      combine-ops OF 2 ENDOF
+      prune-ops   OF 2 ENDOF
       spill-ops   OF 3 ENDOF
       spill-plan  OF 4 ENDOF
    ;MATCH ;

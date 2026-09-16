@@ -1,5 +1,5 @@
-\ chain-scale.f - how the native chain's two module-rebuilding passes grow with
-\ the module they rewrite, as one slope each.
+\ chain-scale.f - how the native chain's module-rebuilding pass grows with the
+\ module it rewrites, as one slope per shape.
 \
 \ Run:
 \     bin/hb --load tools/chain-scale.f              \ report only
@@ -8,7 +8,7 @@
 \ Machine-readable lines, one per family member and then one verdict:
 \
 \     scale: <family> k <k> ops <n> plan <n> calls <n> ns-per-call <n> ns-per-handled <n>
-\     scale: slope combine <milli> spill-line <milli> spill-frame <milli> compiled <n>
+\     scale: slope spill-line <milli> spill-frame <milli> compiled <n>
 \
 \ A slope is ln(ns per call at the last point / at the first) over ln(operations
 \ HANDLED at the last / at the first), times 1000: 1000 is cost proportional to
@@ -25,8 +25,12 @@
 \ hb over 50% CPU), 2026-09-12, on this lane's UNCOMMITTED tree - the state the
 \ commits above this one reconstruct - against its parent 495dea80:
 \
-\     combine 964, spill-line 1002, spill-frame 1033   (the lane's tree)
-\     combine 1547, spill-line 1046, spill-frame 1160  (495dea80)
+\     spill-line 1002, spill-frame 1033   (the lane's tree)
+\     spill-line 1046, spill-frame 1160  (495dea80)
+
+\ Those runs also carried a third family, `combine`, over a body of k foldable
+\ movz/add pairs. Selection folds those pairs as it writes them, so no pass
+\ rebuilds the module for them any more and the family measures nothing.
 \
 \ Only 495dea80 is a commit a reader can check out and re-run; the pair has NOT
 \ been re-taken against the committed stack, because the box has not been quiet
@@ -37,14 +41,11 @@
 \ tools/compile-floor.f, but a box compiling in four other workspaces moves it
 \ by a few percent.
 \
-\ THE THREE FAMILIES. Each is one body shape whose operation count grows with k
+\ THE TWO FAMILIES. Each is one body shape whose operation count grows with k
 \ while its SHAPE - how many functions, how many blocks per function, how many
 \ values live at once - stays put, because a slope only means something when the
 \ thing being scaled is size.
 \
-\   combine     `: Cn ( n -- n ) 1 + 2 + ... k + ;` - k movz/add pairs in one
-\               block, every one of them combinable, so A64COMB:REWRITE builds a
-\               second module and NCOMP:COMBINED is timed whole.
 \   spill-line  28 values live across k additions each, one block: the register
 \               file overflows, so A64SPILL:REWRITE runs, and it runs on a
 \               straight line of operations.
@@ -54,9 +55,8 @@
 \               wall time (about 90% of it at k=4) and is not what is timed.
 \
 \ WHAT IS TIMED. NPROF (src/compiler/native/prof.f) is the chain's own
-\ stopwatch: NCOMP:COMBINED opens the `combine` phase around the whole rebuild
-\ and NCOMP:LOWERED opens `spill` around one A64SPILL:REWRITE call, and each pass
-\ adds the operation count of the module it was handed. This tool resets it,
+\ stopwatch: NCOMP:LOWERED opens `spill` around one A64SPILL:REWRITE call, and
+\ the pass adds the operation count of the module it was handed. This tool resets it,
 \ compiles a set, and divides by the call count the accumulator itself kept, so
 \ a definition that needed two lowering turns counts as two calls and not one.
 \ Every source string is built BEFORE the set is compiled.
@@ -123,8 +123,7 @@ create LIVE-PREFIX PREFIX-CAP allot
 variable PREFIX-U
 variable SET-LIVE?
 
-variable S-COMBINE                 \ the three slopes, in thousandths
-variable S-LINE
+variable S-LINE                    \ the two slopes, in thousandths
 variable S-FRAME
 variable BOUND-MILLI               \ ratchet bound; read only when one was given
 
@@ -161,13 +160,6 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : DEF$ ( n -- ptr u8 n ) {: ix :}
    SRC SRC-OFF ix cells + @ +  SRC-LEN ix cells + @ ;
 
-\ k movz/add pairs, every one of them a pair A64COMB folds.
-: COMBINE-BODY ( n -- ) {: k :}
-   SB-RESET s"  ( n -- n ) " SB-APPEND CHUNK+
-   k 0 ?do
-      SB-RESET i 1+ FMT:SB-U s"  + " SB-APPEND CHUNK+
-   loop ;
-
 \ LIVE-N values live at once, which is what overflows the register file; k
 \ additions inside each one, so the operation count grows and the live set does not.
 : LINE-BODY ( n -- ) {: k :}
@@ -192,12 +184,10 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    loop
    LIVE-N 0 ?do SB-RESET s" + " SB-APPEND CHUNK+ loop ;
 
-0 constant SH-COMBINE
-1 constant SH-LINE
-2 constant SH-FRAME
+0 constant SH-LINE
+1 constant SH-FRAME
 
 : BODY ( n n -- ) {: shape k :}
-   shape SH-COMBINE = if k COMBINE-BODY exit then
    shape SH-LINE = if k LINE-BODY exit then
    k FRAME-BODY ;
 
@@ -255,10 +245,9 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    then
    total calls / ;
 
-\ The plan counter is the lowering's alone: a combine family records zero there
-\ and its handled count is its operations.
-: PLAN-PER-CALL ( NPROF:phase -- n ) {: ph:NPROF:phase :}
-   ph NPROF-PHASE:SPILL NPROF-PHASE:EQ 0= if 0 exit then
+\ The decisions the sealed plan carried, per call: one more operation the
+\ lowering writes for each of them, which is why they count as work handled.
+: PLAN-PER-CALL ( -- n )
    NPROF-PHASE:SPILL-PLAN NPROF:NS@
    NPROF-PHASE:SPILL-PLAN NPROF:N@ MEAN ;
 
@@ -267,7 +256,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    p POINTS-MAX >= if E-SCALE-CAPACITY throw then
    k p cells PT-K + !
    ops NPROF:NS@  ops NPROF:N@ MEAN  p cells PT-OPS + !
-   ph PLAN-PER-CALL  p cells PT-PLAN + !
+   PLAN-PER-CALL  p cells PT-PLAN + !
    ph NPROF:NS@  ph NPROF:N@ MEAN  p cells PT-NS + !
    ph NPROF:N@  p cells PT-CALLS + !
    p 1+ PT-N ! ;
@@ -317,16 +306,6 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
    PT-N @ 0 ?do fam fu i PT-LINE loop
    SLOPE-MILLI ;
 
-: RUN-COMBINE ( -- )
-   0 PT-N !
-   s" C"   SH-COMBINE 8 20 NPROF-PHASE:COMBINE NPROF-PHASE:COMBINE-OPS MEASURE
-   s" D"   SH-COMBINE 16 20 NPROF-PHASE:COMBINE NPROF-PHASE:COMBINE-OPS MEASURE
-   s" E"   SH-COMBINE 32 20 NPROF-PHASE:COMBINE NPROF-PHASE:COMBINE-OPS MEASURE
-   s" F"   SH-COMBINE 64 20 NPROF-PHASE:COMBINE NPROF-PHASE:COMBINE-OPS MEASURE
-   s" G"   SH-COMBINE 128 20 NPROF-PHASE:COMBINE NPROF-PHASE:COMBINE-OPS MEASURE
-   s" H"   SH-COMBINE 256 20 NPROF-PHASE:COMBINE NPROF-PHASE:COMBINE-OPS MEASURE
-   s" combine" FAMILY S-COMBINE ! ;
-
 : RUN-LINE ( -- )
    0 PT-N !
    s" P"   SH-LINE 1 5 NPROF-PHASE:SPILL NPROF-PHASE:SPILL-OPS MEASURE
@@ -344,8 +323,7 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : REPORT ( -- )
    SB-RESET
-   s" scale: slope combine " SB-APPEND  S-COMBINE @ FMT:SB-U
-   s"  spill-line " SB-APPEND           S-LINE @ FMT:SB-U
+   s" scale: slope spill-line " SB-APPEND  S-LINE @ FMT:SB-U
    s"  spill-frame " SB-APPEND          S-FRAME @ FMT:SB-U
    s"  compiled " SB-APPEND             NC-COUNT @ FMT:SB-U
    SB$ type cr ;
@@ -368,7 +346,6 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 : RATCHET ( -- )
    ARGV:POS# 0= if exit then
    BOUND-MILLI @ {: bound:n :}
-   S-COMBINE @ bound > if S-COMBINE @ s" combine" OVER-BOUND then
    S-LINE @ bound > if S-LINE @ s" spill-line" OVER-BOUND then
    S-FRAME @ bound > if S-FRAME @ s" spill-frame" OVER-BOUND then ;
 
@@ -398,7 +375,6 @@ TRUSTED: SELECT-TIER ( n -- ) set-tier ;
 
 : MEASURE-ALL ( -- )
    1 SELECT-TIER
-   RUN-COMBINE
    RUN-LINE
    RUN-FRAME
    REPORT

@@ -414,7 +414,7 @@ public
 \ opportunity - it is the measurement saying a cheaper transform owns these.
 \
 \ THAT TRANSFORM NOW EXISTS, so read this column as what is LEFT rather than as
-\ what is available. src/compiler/native/combine.f folds a small constant into
+\ what is available. src/compiler/native/select.f folds a small constant into
 \ the add, the subtract, the bitwise operation or the COMPARISON that reads it,
 \ and this tool measures the code the chain finally emits, so a constant that
 \ folded is no longer a move-wide here at all. What still counts is the residue

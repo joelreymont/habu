@@ -395,7 +395,7 @@ variable N-FUNS                        \ how many functions the emission holds
 31 constant ZERO-REG
 
 : ?ADDEND ( n -- n )
-   dup ZERO-REG = if E-A64COMB-ADDEND throw then ;
+   dup ZERO-REG = if E-A64EMIT-ADDEND throw then ;
 
 \ In the order `madd rd, rn, rm, ra` names them, which is the order the schema
 \ declares its operands in.
