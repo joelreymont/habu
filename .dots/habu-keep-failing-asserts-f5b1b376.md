@@ -1,9 +1,0 @@
----
-title: Keep failing asserts off the shared string builder
-status: active
-priority: 2
-issue-type: task
-created-at: "\"2026-09-16T14:18:00.821307+03:00\""
----
-
-Problem: lib/test/assert.f:71-79 (2ac7708a) prints the numbers of a failing T= and T<> through FMT:.INT, which calls SB-RESET, so a failure clobbers the shared lib/string.f builder that the test under way may still be reading through SB$. lib/test/runner.f:113-114 says GT-CHECK-N prints "the shape lib/test/assert.f prints for T=", but `.` emits its newline first (src/habu/rt.f:39 G-PRINT9), so the runner prints two lines while assert now prints one; lib/test/runner-test.f:145-147 pins the two-line shape, so the code is self-consistent and the comment is false. lib/image-lifecycle.f:36 COUNT (adea9e43, rowan request) reads N outside LOCK while REGISTER takes it, and its comment names owners that do not exist yet. Acceptance: assert failure output formats numbers without touching SB (a local render buffer or a printer that does not reset the shared builder); a regression asserts SB$ survives a failed T=; the runner detail format and its comment agree (pick one shape and update the golden if the format changes); COUNT stays (rowan asked for it), reads under LOCK or states in its effect comment why the unlocked aligned read is sound, and its comment names test/image-lifecycle.f as the consumer instead of hypothetical owners. Files: lib/test/assert.f, lib/test/assert-test.f, lib/test/runner.f, lib/test/runner-test.f, lib/image-lifecycle.f, test/image-lifecycle.f. Verify: bin/hb --load lib/test/assert-test.f; lib/test/runner-test.f; test/image-lifecycle.f; lib/fmt-test.f if present. Depends: none. Ownership: the listed files. Claim: agent=hazel-audit-testlib workspace=.jj-ws/hazel-audit-testlib. Source: Opus audit of 2ac7708a and adea9e43 (2026-09-16), finding M7 and minors.

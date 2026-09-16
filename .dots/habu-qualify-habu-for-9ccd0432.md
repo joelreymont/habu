@@ -34,3 +34,15 @@ on fH1, 97s, 5,832,896 bytes; cold check green) = 402 PASS, 0 FAIL, exit 0,
 require rows and the declared-spelling locals. Pending before the final chain:
 imgdump --pc, recovery seed fixture + open-token mirror + EMIT-LOC-FIND
 mirror, stack fixtures (all in flight), and the byte fixpoint on the final head.
+
+Evidence 2026-09-16 15:26 (final chain on 6406e0b0, all audit lanes landed):
+F1 built on fH2 in 96s, F2 built on F1 in 95s, both 5,832,896 bytes and
+byte-identical (sha 7e490c6031cc317c): byte fixpoint reached, build
+directory no longer baked. Probes on F1: data/return/loop overflow named,
+exit 102; interpreter underflow E-UNDERFLOW rc 70; plain run rc 0, trivial
+start 22-34 ms. Full gate on F2 in its own tree: 402 PASS, 0 FAIL, exit 0,
+462s at 15:26. Stage0 chain (tools/bootstrap.sh) reached "bootstrap check
+OK" at 15:06 on the same sources; gforth fixtures bootstrap-engine-stack,
+bootstrap-wide-memory, bootstrap-ptr-cell-mark rc 0. Audit dots closed on
+this proof. Remaining: integrate (bookmarks, root bin/hb), notify
+willow/birch/kestrel for downstream re-certification.
