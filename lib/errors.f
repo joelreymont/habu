@@ -165,6 +165,11 @@
 -3603 constant E-TASK-THREAD
 -3604 constant E-TASK-STATE
 -3605 constant E-TASK-USER
+-3606 constant E-TASK-SEM-STATE     \ semaphore not initialized, initialized twice, or destroyed
+-3607 constant E-TASK-SEM-COUNT     \ semaphore count out of range
+-3608 constant E-TASK-SEM-HOST      \ host has no usable unnamed semaphores
+-3609 constant E-TASK-JOIN          \ join of a task never activated or already joined
+-3610 constant E-TASK-MAILBOX       \ message operation on a task without a live mailbox
 
 \ Object/linker records: -3700..-3799
 -3700 constant E-OBJ-FIRST
@@ -1232,3 +1237,32 @@ public
 -9171 constant E-FS-LIST-READ
 -9172 constant E-FS-LIST-ENTRY
 -9173 constant E-FS-LIST-CAPACITY
+
+\ IPv4 TCP host library: -9180..-9189.
+-9180 constant E-TCP4-FIRST
+-9189 constant E-TCP4-LAST
+-9180 constant E-TCP4-OPERAND
+-9181 constant E-TCP4-PLATFORM
+-9182 constant E-TCP4-SYMBOL
+-9183 constant E-TCP4-RESULT
+
+\ Bounded task queues: -9190..-9199.
+-9190 constant E-QUEUE-FIRST
+-9199 constant E-QUEUE-LAST
+-9190 constant E-QUEUE-OPERAND
+-9191 constant E-QUEUE-STATE
+
+\ Generic I/O devices: -9220..-9229.
+-9220 constant E-GENIO-FIRST
+-9229 constant E-GENIO-LAST
+-9220 constant E-GENIO-OPERAND
+-9221 constant E-GENIO-STATE
+-9222 constant E-GENIO-IO
+
+\ HTTPS client over libcurl: -9230..-9239.
+-9230 constant E-CURL-FIRST
+-9239 constant E-CURL-LAST
+-9230 constant E-CURL-PLATFORM
+-9231 constant E-CURL-SYMBOL
+-9232 constant E-CURL-STATE
+-9233 constant E-CURL-RESULT
