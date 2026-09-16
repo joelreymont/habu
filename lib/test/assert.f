@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test/record.f
+require lib/fmt.f                          \ FMT:.INT - number text with no trailing newline
 
 1 constant T-EX-FAIL
 
@@ -70,8 +71,9 @@ variable T-LABEL-U
    T-NEXT
    got want <> if
       T-FAIL
-      s" assert: expected " type want .
-      s" got " type got .
+      s" assert: expected " type want FMT:.INT
+      s"  got " type got FMT:.INT
+      cr
    then
    T-LABEL-CLEAR ;
 
@@ -79,8 +81,9 @@ variable T-LABEL-U
    T-NEXT
    got want = if
       T-FAIL
-      s" assert: expected not " type want .
-      s" got " type got .
+      s" assert: expected not " type want FMT:.INT
+      s"  got " type got FMT:.INT
+      cr
    then
    T-LABEL-CLEAR ;
 
