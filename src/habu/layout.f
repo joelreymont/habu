@@ -670,10 +670,11 @@ $3CB0 constant USER-END
 \ id + 1 that can ever be protected. The band is the SAME $3CC0..$40C0 the 256-slot
 \ table occupied, so nothing above it moves, and $400 bytes of bitmap index 8192 WIDs.
 \ prot-wid-add names the bound itself when handed a WID at or above it. Growing the
-\ bound later means widening the band upward into the free $40C8..$43A8 gap and
-\ bumping UNCGH-CELL, exactly as the 16 -> 256 raise did. That gap ended at $43C0
-\ until the AOT window cells took its top three cells (AOT-WINDOW:T0-CELL below);
-\ it is still contiguous from $40C8, which is what a bitmap needs.
+\ bound later means widening the band upward, exactly as the 16 -> 256 raise did,
+\ and bumping UNCGH-CELL -- but the cells above $40C8 are NOT free any more:
+\ $40C8..$41C8 is FFI:FFI-REG-LEN-BUF-OFF (lib/ffi-abi.f) and $41C8..$5000 is
+\ lib/task.f's TASK-USER arena (measured 2026-09-16, when a null-cell placement
+\ at $40C8 broke test/seal.f). A wider bitmap has to move one of those first.
 \
 \ The band stays engine-reserved -- no compiled source writes it, the DP heap is
 \ bounded >= DATA-START (above it) and snapshot saves it. [PROT-REG-OFF,

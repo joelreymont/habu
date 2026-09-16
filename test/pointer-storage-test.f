@@ -11,7 +11,7 @@ require test/checker-assert.f
 
 package POINTER-STORAGE-TEST
 
-$400 constant SOURCE-CAP
+$800 constant SOURCE-CAP
 
 create SOURCE SOURCE-CAP allot
 variable SOURCE-U
