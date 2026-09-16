@@ -158,9 +158,8 @@ STACK-ABI:PAGE-BYTES constant STACK-ABI:LOOP-BYTES
 STACK-ABI:LOOP-BYTES STACK-ABI:LOOP-FRAME-BYTES / constant STACK-ABI:LOOP-FRAMES
 
 \ run-in-stack's refusal code for an extent that is not a guarded mapping.
-\ Spelled twice on purpose, exactly as src/habu/stack-abi.f E-UNGUARDED is:
-\ the engine emitters and this recovery mirror both compile long before any
-\ lib/ file (lib/errors.f E-STACK-UNGUARDED) exists.
+\ lib/errors.f E-STACK-UNGUARDED owns this code (the native engine reads it from
+\ there); the Gforth stage has no lib/errors.f, so the mirror spells it once here.
 -3802 constant STACK-ABI:E-UNGUARDED
 
 $40 constant STACK-ABI:CATCH-BASE

@@ -46,15 +46,6 @@ RETURN-BYTES 8 / constant RETURN-CELLS
 PAGE-BYTES constant LOOP-BYTES
 LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
-\ run-in-stack's refusal code, thrown when the supplied extent is not one of
-\ these mappings. THE NUMBER IS lib/errors.f's E-STACK-UNGUARDED and is spelled
-\ twice on purpose: the engine emitters (src/habu/habu1.f) and the Gforth
-\ recovery mirror compile long before any lib/ file exists, exactly as
-\ EM-LAYOUT:HEAP-START-OFF and the checker's CK-AOT-SIG-* offsets do. The two
-\ spellings are not left to prose -- test/stack-unguarded.f reads both out of a
-\ booted engine and refuses a disagreement.
--3802 constant E-UNGUARDED
-
 \ Preserve the old frame fields; append the active allocation descriptor.
 $40 constant CATCH-BASE
 $48 constant CATCH-CAP
