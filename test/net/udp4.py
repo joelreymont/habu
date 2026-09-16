@@ -225,7 +225,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
    1 DONE atomic-add drop ;
 : WORK0 ( -- ) BODY0 160 3 {ports[0]} WORK ;
 : WORK1 ( -- ) BODY1 177 11 {ports[1]} WORK ;
-: WAIT-DONE ( ptr a -- ) {{: worker:ptr :}}
+: WAIT-DONE ( ptr n -- ) {{: worker:ptr :}}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat ;
 : RUN ( -- )
    ['] WORK0 WORKER0 TASK:ACTIVATE
