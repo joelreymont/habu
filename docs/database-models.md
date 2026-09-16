@@ -117,11 +117,12 @@ decision must weigh:
 3. Both, with one field vocabulary on top so application code reads the same
    against either store.
 
-## Decision (proposed 2026-09-16)
+## Decision (2026-09-16)
 
-For `habu-decide-the-db-4bb703ee`. Both models survive, in this order:
+For `habu-decide-the-db-4bb703ee`; Joel chose Postgres. Both models survive,
+in this order:
 
-1. **SQL through the FFI first, SQLite then Postgres.** The server in
+1. **SQL through the FFI first, Postgres through libpq.** The server in
    Tender needs relational storage now. Package `DB` wraps the C API with the
    checked discipline the FFI already has: nominal handles (`DB:db`,
    `DB:stmt`), a linear statement owner that must be finalized exactly once,
@@ -131,7 +132,7 @@ For `habu-decide-the-db-4bb703ee`. Both models survive, in this order:
    `FINALIZE`, `CLOSE`, `WITH-TRANSACTION`), because the schema language is
    SQL and generated code writes SQL well. The binding itself is produced by
    the C-header binding generator (a C7 child once the first header is done),
-   so `sqlite3.h` and later `libpq-fe.h` are mechanical, as VFX Forth's is,
+   so `libpq-fe.h` is mechanical, as VFX Forth's is,
    and the typed `DB` layer is the hand-written part. First consumer: the
    Tender backend's tenders, documents, slots, answers and suppliers.
 2. **The polyFORTH record kit later, for targets.** Fixed records, named
