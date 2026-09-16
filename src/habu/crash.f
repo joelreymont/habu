@@ -265,8 +265,11 @@ variable CRS-DATA-H variable CRS-RET-H variable CRS-LOOP-H
 : C-SIGACTION-FRAME-DONE ( -- )
    SP SP $40 ADDI, ;
 
+\ The handler address travels in x11, not x9: a stripped image's startup is
+\ pinned by test/gate-aot-image.f, which finds the DATA restore by its ADR x9,
+\ and this installer runs in that startup before the restore.
 : G-INSTALL-CRASH ( -- )
-   9 LCRASHH LABEL@ ADR,  9 C-SIGACTION-FRAME
+   11 LCRASHH LABEL@ ADR,  11 C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  7 INSTALL-SIGACT  8 INSTALL-SIGACT  11 INSTALL-SIGACT
    ELSE

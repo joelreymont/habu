@@ -249,8 +249,14 @@ create SEED-CELLS SEED-MAX cells allot   variable SEED-N
    EMIT-DATA-COPY                                \ restore persistent data + DP
    EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
-   0 0 MOVZ,  NR-EXIT-GROUP SYS,                 \ exit(0)
-   EMIT-CRASH-HANDLER  EMIT-HEX ;                \ handler body, past the entry's exit
+   0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
+
+\ The handler body and its hex printer follow the copied code, so the root
+\ closure record stays the first word after the startup (test/gate-aot-image.f
+\ pins that) and the entry's ADR to the handler spans at most the code, which
+\ EMIT-DATA-BLOB already bounds for the data blob placed after them.
+: EMIT-CRASH-CODE ( -- )
+   EMIT-CRASH-HANDLER  EMIT-HEX ;
 variable CP2  variable CEND  variable NEXT-OFF
 : BCOND? {: w:n :}  w $FF000010 and $54000000 = ;
 : CBZIMM? {: w:n :}  w $7E000000 and $34000000 = ;
@@ -454,7 +460,7 @@ public
    AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !          \ the stripped image carries the crash handler too
-   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DATA-BLOB
+   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-CRASH-CODE  EMIT-DATA-BLOB
    AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;
 
