@@ -265,8 +265,19 @@ $1000 constant RBT-CAP
 create RBT-OUT RBT-CAP allot
 create RBT-ERR RBT-CAP allot
 
+\ MEM:SIZE-BYTE-LEN is private and the image no longer ships its name
+\ (habu-ship-no-dictionary-2fee2dea), so this suite narrows the result itself
+\ rather than reaching into the package it is testing - the shape MEMT-64K-COUNT
+\ above already uses. Same refusal code, so a bad fixture size still reads as a
+\ memory-sizing refusal.
 : RBT-LEN ( n -- NUM:byte-len )
-   NUM:BYTE-LEN SIZE-BYTE-LEN ;
+   NUM:BYTE-LEN
+   MATCH NUM:numeric-result
+      ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
+      zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
+      underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
+      misaligned OF E-MEM-SIZE throw ENDOF
+   ;MATCH ;
 
 : MEMT-EXIT0 ( -- )
    s" " 0 die ;

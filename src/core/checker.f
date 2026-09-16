@@ -105,7 +105,18 @@ create OWNER-STORAGE
    0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
+public
+\ PUBLIC BECAUSE THE IMAGE IS ASKED ABOUT IT BY NAME. src/habu/habu2.f
+\ AOT-RUNTIME:COMPLETE? decides whether a captured payload replaces source boot
+\ by asking the shipped dictionary for `DECLARATIONS` in this package's wordlist,
+\ and the image no longer carries a name for a private word at all
+\ (habu-ship-no-dictionary-2fee2dea, src/habu/aot-capture.f ACAP-NAMED?), so a
+\ private one would answer "incomplete" on every boot. The word itself is what it
+\ always was: the address of the declaration owner this file publishes into the
+\ engine's target declaration cell on the next lines. PREFIX-MARK:CURSORS, the
+\ other half of that check, is public for the same reason and already was.
 : DECLARATIONS ( -- ptr u8 ) OWNER-STORAGE CHECKER-OWNER-ABI:HEADER-BYTES + ;
+private
 OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
 : OWNER-SIZE-AGREE ( -- )
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
