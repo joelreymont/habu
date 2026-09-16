@@ -1,9 +1,0 @@
----
-title: Profile the build with the internal profiler
-status: active
-priority: 2
-issue-type: task
-created-at: "\"2026-09-16T16:34:52.312469+03:00\""
----
-
-Problem: the only self-build profile on record (LESSONS.md near line 8451, 2026-09-16) was taken with strace -c and perf record -F 2000; perf cannot name JIT-compiled words (15.6 percent of its samples were 'target code freshly compiled into the window') and knows no caller edges by record, while src/habu/prof.f now attributes every sample to a word and its callers with package-qualified names at 1.42 us per tick. Joel: the build profiler must use our own profiler; make the profiler better if needed. Acceptance: tools/build-profile.f, a checked Habu tool that runs tools/native-build.f (or any --load program given as argument) under prof-on and writes the text and JSON reports to files named on the command line, with the build's phase timers beside them; docs/debugging.md gains a 'Profiling the build' section naming this tool as the method and LESSONS.md's strace/perf paragraph gets a dated pointer to it; the tool's output on the current self-build (top 20 by inclusive time with callers) is committed as docs/build-profile.md and refreshed when the build changes materially; the sample limit needed until habu-return-errno-from-2ba16110 lands is an argument with the reason in the header and goes away when that dot lands; any profiler improvement the view needs (deeper caller chains, per-file rollup, callee tree) is delivered with it and named. Files: tools/build-profile.f, docs/debugging.md, docs/build-profile.md, LESSONS.md, src/habu/prof.f if improved. Verify: the tool on the self-build; test/gate-debug.f; tools/native-build.f fixpoint if prof.f changes; test/run.f. Depends: habu-attr-profiler-samples-e610e9f2 (the (new) bucket under 1 percent, so the build view is complete). Ownership: profiler. Claim: agent=hazel-profiler workspace=.jj-ws/hazel-profiler.
