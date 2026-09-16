@@ -791,6 +791,53 @@ percent for the trivial workload; the rest is a long tail below 5 samples.
 | `@` | 8 | 0.3 | 8 | 0.3 | the profile tool's own counter |
 | `RVT` | 8 | 0.3 | 38 | 1.4 | `RV@` 100% |
 
+### Cut 1: the store guard's band walk
+
+`src/habu/habu1.f` `ENGINE-EMIT:GUARD-SPAN` now reads its eight protected bands
+from one table, takes the hull `[BAND-LO, BAND-HI)` from that same table, and
+emits two compares in front of the walk: a span that starts at or above the
+hull's end, or ends at or below its start, intersects no band and skips all
+eight tests. `BAND-HI` is `DATA-START`, so every address the DP heap can reach
+takes that exit — which is every variable the checker stores to. The rejection
+set does not move: the hoist uses GUARD-BAND's own two comparison forms against
+the hull, and `test/protection-span.f` `TEST-HULL-EDGE` pins both edges a cell
+and a byte either side, a span ending exactly at `BAND-LO`, a span starting
+exactly at `BAND-HI`, a span entirely below the hull, and a span straddling all
+of it. All nine answer identically on the engine before and after the change.
+`bootstrap/cg/forth.fs` carries the same table and hull for its five-band
+stage0 mirror, and its `PROT-GUARD` now walks those rows too instead of keeping
+a second copy of the list.
+
+Compile time, three interleaved runs of each engine on the same core
+(`taskset -c 8`), medians, load average 10.3-11.1:
+
+| | before | after | |
+|---|---:|---:|---:|
+| corpus, per definition | 80.9 µs | 67.3 µs | **-16.9%** |
+| trivial, per definition | 33.3 µs | 28.7 µs | **-13.7%** |
+| `(PROT-SPAN)` exclusive, corpus | 33.3% | 15.2% | |
+| `!` inclusive, corpus | 38.0% | 22.2% | |
+
+The guard is on every store in the engine, not only the compiler's, so run time
+and the self-build move with it. `tools/tier-bench.f` at tier 0, two interleaved
+runs of each engine, medians in µs, load 9.9-10.0:
+
+| benchmark | before | after | |
+|---|---:|---:|---:|
+| `harness` (a `SINK !` loop, nothing else) | 5,567 | 3,416 | **-38.6%** |
+| `lines` | 22,335 | 18,482 | **-17.3%** |
+| `move` | 378,137 | 345,530 | **-8.6%** |
+| `fold` | 354,609 | 352,658 | -0.6% |
+| `arith` | 8,235 | 8,257 | +0.3% |
+| `branch` | 11,840 | 11,921 | +0.7% |
+| `search` | 10,127 | 10,196 | +0.7% |
+
+The three that move are the three that store; `arith`, `branch` and `search`
+read and never write, and they sit inside the noise. Self-build CPU, the same
+tree built by each engine in turn, pinned, two rounds: 97.99 s and 97.52 s user
+before, 93.99 s and 93.94 s after, **-4.0%**. All four builds emitted a
+byte-identical engine, and the A/B/C chain reaches its fixpoint on it.
+
 ### The ranked cuts this profile asks for
 
 1. **The store guard is a per-store linear scan over eight bands.** One third of

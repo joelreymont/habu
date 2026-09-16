@@ -708,19 +708,73 @@ also GUARD definitions
 
 previous definitions
 
+\ The protected bands, as one table, mirroring src/habu/habu1.f ENGINE-EMIT.
+\ GUARD-SPAN reads it twice - once for the hull [BAND-LO, BAND-HI) its bounding
+\ test compares against, once for the per-band interval tests - and PROT-GUARD
+\ reads the same rows for its address tests, so stage0 has one list where it
+\ had two. The zero-length row ends every walk. Stage0 owns five bands; the
+\ native engine's table carries three more, and each side's hull is its own
+\ table's min and max rather than a constant written out beside it.
+create BAND-TAB
+   FRIEND-ARENA ,    FRIEND-ARENA-LEN ,
+   PROT-REG-OFF ,    PROT-REG-LEN ,
+   ENGINE-HOOK-OFF , ENGINE-HOOK-LEN ,
+   BODYBUF-OFF ,     BODYBUF-CAP 2 + ,
+   TXN-STATE-OFF ,   TXN-STATE-LEN ,
+   0 ,               0 ,
+
+variable BAND-LO                     \ lowest band base, over the whole table
+variable BAND-HI                     \ highest band end, over the whole table
+variable BAND-IX
+
+: BAND-OFF ( n -- n ) 2 * cells BAND-TAB + @ ;
+: BAND-LEN ( n -- n ) 2 * 1 + cells BAND-TAB + @ ;
+
+: BAND-WIDEN ( n -- )
+   {: ix :}
+   ix BAND-OFF BAND-LO @ < if ix BAND-OFF BAND-LO ! then
+   ix BAND-OFF ix BAND-LEN + BAND-HI @ > if ix BAND-OFF ix BAND-LEN + BAND-HI ! then ;
+
+: BANDS-HULL ( -- )
+   0 BAND-OFF BAND-LO !
+   0 BAND-OFF 0 BAND-LEN + BAND-HI !
+   0 BAND-IX !
+   begin BAND-IX @ BAND-LEN 0 <> while
+      BAND-IX @ BAND-WIDEN
+      BAND-IX @ 1+ BAND-IX !
+   repeat ;
+
+: BANDS-EMIT ( n n -- )
+   {: addr trap :}
+   0 BAND-IX !
+   begin BAND-IX @ BAND-LEN 0 <> while
+      addr BAND-IX @ BAND-OFF BAND-IX @ BAND-LEN trap GUARD-BAND
+      BAND-IX @ 1+ BAND-IX !
+   repeat ;
+
+: BANDS-ADDR-EMIT ( n n -- )
+   {: addr trap :}
+   0 BAND-IX !
+   begin BAND-IX @ BAND-LEN 0 <> while
+      addr BAND-IX @ BAND-OFF BAND-IX @ BAND-LEN trap GUARD-ADDR-BAND
+      BAND-IX @ 1+ BAND-IX !
+   repeat ;
+
 : GUARD-SPAN ( n n -- )
    {: addr len :}
-   LBL LBL {: ok trap :}
+   LBL LBL LBL {: ok trap past :}
+   BANDS-HULL
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
    EREG addr len ADD,
    EREG addr CMP,  C-CC trap BCOND,
-   addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
-   addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-BAND
-   addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
-   addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
+   DREG BAND-HI @ LIT64,  DREG DATA DREG ADD,
+   addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
+   DREG BAND-LO @ LIT64,  DREG DATA DREG ADD,
+   EREG DREG CMP,  C-LS past BCOND,     \ checked end <= hull start
+   addr trap BANDS-EMIT
+   past LBL,
    addr trap [ also GUARD ] BLOB-SPAN [ previous ]
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
@@ -731,11 +785,7 @@ previous definitions
    LBL LBL {: ok trap :}
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
-   addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND
-   addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-ADDR-BAND
-   addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
-   addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
+   addr trap BANDS-ADDR-EMIT
    addr trap [ also GUARD ] BLOB-ADDR [ previous ]
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,

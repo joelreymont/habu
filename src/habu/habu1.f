@@ -265,21 +265,72 @@ public
 \ friend latch. x12/x13 are the only clobbers.
 package ENGINE-EMIT
 
+\ The protected bands, as one table. GUARD-SPAN reads it twice - once for the
+\ hull [BAND-LO, BAND-HI) its bounding test compares against, once to emit the
+\ per-band interval tests - so a band added here widens the bounding test in
+\ the same edit that adds its own test, which a hull written out beside the
+\ list could not promise. The zero-length row ends both walks: no count sits
+\ beside the table to fall out of step with its rows.
+create BAND-TAB
+   FRIEND-ARENA ,                 FRIEND-ARENA-LEN ,
+   PROT-REG-OFF ,                 PROT-REG-LEN ,
+   ENGINE-HOOK-OFF ,              ENGINE-HOOK-LEN ,
+   NCOMP-DISPATCH:TIER-CELL ,     1 cells ,
+   NCOMP-DISPATCH:DEF-TIER-CELL , 3 cells ,
+   TIER-PROV:OPEN-CELL ,          TIER-PROV:END TIER-PROV:OPEN-CELL - ,
+   BODYBUF-OFF ,                  BODYBUF-CAP 2 + ,
+   TXN-STATE-OFF ,                TXN-STATE-LEN ,
+   0 ,                            0 ,
+
+variable BAND-LO                     \ lowest band base, over the whole table
+variable BAND-HI                     \ highest band end, over the whole table
+variable BAND-IX
+
+: BAND-OFF ( n -- n ) {: ix:n :} ix 2 * cells BAND-TAB + @ ;
+: BAND-LEN ( n -- n ) {: ix:n :} ix 2 * 1 + cells BAND-TAB + @ ;
+
+: BAND-WIDEN ( n -- ) {: ix:n :}
+   ix BAND-OFF BAND-LO @ < IF ix BAND-OFF BAND-LO ! THEN
+   ix BAND-OFF ix BAND-LEN + BAND-HI @ > IF ix BAND-OFF ix BAND-LEN + BAND-HI ! THEN ;
+
+\ Opened on the first row and widened by every later one, so the hull needs no
+\ sentinel start value that a band could one day sit outside of.
+: BANDS-HULL ( -- )
+   0 BAND-OFF BAND-LO !
+   0 BAND-OFF 0 BAND-LEN + BAND-HI !
+   0 BAND-IX !
+   BEGIN BAND-IX @ BAND-LEN 0 <> WHILE
+      BAND-IX @ BAND-WIDEN
+      BAND-IX @ 1+ BAND-IX !
+   REPEAT ;
+
+: BANDS-EMIT ( n label -- ) {: addr:n trap:label :}
+   0 BAND-IX !
+   BEGIN BAND-IX @ BAND-LEN 0 <> WHILE
+      addr BAND-IX @ BAND-OFF BAND-IX @ BAND-LEN trap GUARD-BAND
+      BAND-IX @ 1+ BAND-IX !
+   REPEAT ;
+
 : GUARD-SPAN ( n n -- ) {: addr:n len:n :}
-   LBL LBL {: ok:label trap:label :}
+   LBL LBL LBL {: ok:label trap:label past:label :}
+   BANDS-HULL
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    len ok CBZ,
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
-   addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
-   addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-BAND
-   addr NCOMP-DISPATCH:TIER-CELL 1 cells trap GUARD-BAND
-   addr NCOMP-DISPATCH:DEF-TIER-CELL 3 cells trap GUARD-BAND
-   addr TIER-PROV:OPEN-CELL TIER-PROV:END TIER-PROV:OPEN-CELL - trap GUARD-BAND
-   addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
-   addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
+   \ Bounding test, in the two comparison forms GUARD-BAND itself uses. Every
+   \ band lies in [BAND-LO, BAND-HI), so a span starting at or above the hull's
+   \ end, or ending at or below its start, intersects none of them and the
+   \ table walk is skipped whole instead of run to a foregone conclusion. Every
+   \ address the DP heap can reach takes that exit, because the hull ends at
+   \ DATA-START; nothing below it is admitted that a band would refuse.
+   DREG BAND-HI @ LIT64,  DREG DATA DREG ADD,
+   addr DREG CMP,  C-CS past BCOND,     \ start >= hull end
+   DREG BAND-LO @ LIT64,  DREG DATA DREG ADD,
+   EREG DREG CMP,  C-LS past BCOND,     \ checked end <= hull start
+   addr trap BANDS-EMIT
+   past LBL,
    addr trap GUARD:SPAN
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,

@@ -91,6 +91,24 @@ create ERR CAP allot
    s" 0 data-base DATA-START 1- + !" REJECTS
    s" 0 data-base DATA-START + c!" ACCEPTS ;
 
+\ The span guard runs a bounding test (src/habu/habu1.f ENGINE-EMIT:GUARD-SPAN)
+\ in front of the band walk and skips the walk whole when a span provably
+\ misses every band, so the hull's own edges have to answer exactly as the
+\ bands do. BAND-LO is FRIEND-ARENA's base and BAND-HI is the end of the
+\ TIER-PROV table, which is DATA-START; the rows below stand one byte and one
+\ cell either side of each, and the last two are the spans a bounding test
+\ could wrongly admit: one entirely under the hull, one straddling all of it.
+: TEST-HULL-EDGE ( -- )
+   s" 0 data-base FRIEND-ARENA 1 cells - + !" ACCEPTS
+   s" 0 data-base FRIEND-ARENA 1- + !" REJECTS
+   s" 0 data-base FRIEND-ARENA + c!" REJECTS
+   s" 0 data-base FRIEND-ARENA 1+ + c!" REJECTS
+   s" 0 data-base DATA-START 1 cells - + c!" REJECTS
+   s" 0 data-base DATA-START 1- + c!" REJECTS
+   s" 0 data-base DATA-START + c!" ACCEPTS
+   s" 0 data-base 16 read drop" ACCEPTS
+   s" 0 data-base $10 + DATA-START $100 + read drop" REJECTS ;
+
 : TEST-SNAP-REBASE ( -- )
    s" snap-rebase whole-band straddle is rejected" T-LABEL
    s" data-base TXN-STATE-OFF 8 - + data-base DATA-START 8 + + 0 0 0 0 snap-rebase" REJECTS ;
@@ -105,6 +123,7 @@ public
    TEST-FFI
    TEST-TASK-USER
    TEST-BOUNDARY
+   TEST-HULL-EDGE
    TEST-SNAP-REBASE
    T-REPORT
    s" protection-span: ok" type cr ;
