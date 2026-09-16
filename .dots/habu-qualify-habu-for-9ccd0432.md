@@ -27,3 +27,10 @@ the six Sonnet commits filed as dots habu-rebase-only-the-35ab0076,
 habu-keep-the-recovery-1111544c, habu-mirror-the-boot-b94d5e54,
 habu-test-the-guarded-046a7404, habu-keep-failing-asserts-f5b1b376 (workers
 dispatched on f5b95c66); they gate the final full run.
+
+Evidence 2026-09-16 14:46: full gate on /tmp/hazel-fH2 (built from 3b7bbd22
+on fH1, 97s, 5,832,896 bytes; cold check green) = 402 PASS, 0 FAIL, exit 0,
+497s at load 5-9. First fully green gate of the line; it carries the portable
+require rows and the declared-spelling locals. Pending before the final chain:
+imgdump --pc, recovery seed fixture + open-token mirror + EMIT-LOC-FIND
+mirror, stack fixtures (all in flight), and the byte fixpoint on the final head.
