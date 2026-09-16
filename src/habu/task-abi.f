@@ -32,6 +32,15 @@ $88 constant LSTACK-U-OFF
 \ The task runner records the code of an uncaught throw from the worker body
 \ here before the entry marks the task DONE; the entry itself never reads it.
 $90 constant THROW-OFF
-$98 constant TCB-BYTES
+\ The task's one-cell mailbox: the unread message, the TCB of whoever sent it,
+\ the pending flag MSG? reads, and the two semaphores that make a send block
+\ while the cell is full and a get block while it is empty (lib/task.f). Each
+\ semaphore record is a guard cell followed by one sem_t.
+$98 constant MSG-OFF
+$A0 constant MSG-SENDER-OFF
+$A8 constant MSG-PENDING-OFF
+$B0 constant MSG-FREE-OFF
+$D8 constant MSG-FULL-OFF
+$100 constant TCB-BYTES
 
 ;package

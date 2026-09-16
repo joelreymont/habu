@@ -28,6 +28,7 @@ TASK-FACILITY-MUTEX-OFF TASK-MUTEX-BYTES + constant TASK-FACILITY-BYTES
 $20 constant TASK-SEM-BYTES              \ sem_t on an LP64 host
 $7FFFFFFF constant TASK-SEM-MAX          \ SEM_VALUE_MAX
 $04 constant TASK-EINTR
+$0B constant TASK-EAGAIN
 0 constant TASK-SEM-GUARD-OFF
 $8 constant TASK-SEM-OBJ-OFF
 TASK-SEM-OBJ-OFF TASK-SEM-BYTES + constant TASK-SEMAPHORE-BYTES
@@ -60,6 +61,11 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    PTR-FIELD: TCB.LSTACK
    CELL +FIELD TCB.LSTACK-U
    CELL +FIELD TCB.THROW
+   CELL +FIELD TCB.MSG
+   PTR-FIELD: TCB.MSG-SENDER
+   CELL +FIELD TCB.MSG-PENDING
+   TASK-SEMAPHORE-BYTES +FIELD TCB.MSG-FREE
+   TASK-SEMAPHORE-BYTES +FIELD TCB.MSG-FULL
 END-STRUCTURE
 
 : TASK-TCB-OFFSET ( ptr a ptr b n -- ) {: field:ptr origin:ptr want:n :}
@@ -80,7 +86,12 @@ END-STRUCTURE
    origin TCB.STATUS origin TASK-ABI:STATUS-OFF TASK-TCB-OFFSET
    origin TCB.RSTACK origin TASK-ABI:RSTACK-OFF TASK-TCB-OFFSET
    origin TCB.LSTACK origin TASK-ABI:LSTACK-OFF TASK-TCB-OFFSET
-   origin TCB.THROW origin TASK-ABI:THROW-OFF TASK-TCB-OFFSET ;
+   origin TCB.THROW origin TASK-ABI:THROW-OFF TASK-TCB-OFFSET
+   origin TCB.MSG origin TASK-ABI:MSG-OFF TASK-TCB-OFFSET
+   origin TCB.MSG-SENDER origin TASK-ABI:MSG-SENDER-OFF TASK-TCB-OFFSET
+   origin TCB.MSG-PENDING origin TASK-ABI:MSG-PENDING-OFF TASK-TCB-OFFSET
+   origin TCB.MSG-FREE origin TASK-ABI:MSG-FREE-OFF TASK-TCB-OFFSET
+   origin TCB.MSG-FULL origin TASK-ABI:MSG-FULL-OFF TASK-TCB-OFFSET ;
 
 TASK-TCB-LAYOUT-CHECK
 
@@ -266,6 +277,13 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
    0 TASK-SEM-BYTES WRITES-BYTES
 ;FUNCTION
 
+\ sem_trywait is the same decrement without the block: EAGAIN is the answer
+\ "would have blocked", not a failure, and it is what the queue's TRY-PUSH and
+\ TRY-POP refuse on.
+FUNCTION: SEM-TRYWAIT-CALL sem_trywait ( ptr u8 -- n )
+   0 TASK-SEM-BYTES WRITES-BYTES
+;FUNCTION
+
 : TASK-RC0 ( n -- )
    dup 0 <> if E-TASK-THREAD throw then
    drop ;
@@ -286,6 +304,143 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
 : TASK-THROW! ( n ptr n -- )
    TCB.THROW ! ;
 
+: TASK-SELF ( -- ptr n )
+   data-base TASK-TCB-CELL + @ TASK-N>PTR ;
+
+: TASK-SELF-N ( -- n )
+   data-base TASK-TCB-CELL + @ ;
+
+\ A nominal cannot be retyped straight to a pointer (E-CAST-CLASS), so the
+\ handle crosses back through n and the module's existing raw-cell refinement.
+: SEM-REC ( sem -- ptr n )
+   SEM>N TASK-N>PTR ;
+
+\ The handle of a semaphore record embedded in a larger record, which is how a
+\ task's mailbox owns its two. The storage belongs to whoever holds the outer
+\ record and its lifetime is that record's.
+: SEM-AT ( ptr n -- sem )
+   FFI:>CELL >SEM ;
+
+: SEM-GUARD ( sem -- ptr n )
+   SEM-REC TASK-SEM-GUARD-OFF + ;
+
+\ The sem_t itself, as the byte span the declarations above name written.
+: SEM-OBJ ( sem -- ptr u8 )
+   SEM-REC BYTE-VIEW TASK-SEM-OBJ-OFF + ;
+
+\ Defence in depth under the type: the guard cell holds the record's OWN
+\ address exactly while the POSIX object behind it is live, so an uninitialized
+\ record and a destroyed one fail closed instead of entering sem_wait.
+: SEM-LIVE? ( sem -- bool ) {: s:sem :}
+   s SEM-GUARD atomic@ s SEM>N = ;
+
+: SEM-CHECK ( sem -- )
+   SEM-LIVE? 0= if E-TASK-SEM-STATE throw then ;
+
+\ Unnamed POSIX semaphores are a Linux facility: Darwin's sem_init is a
+\ deprecated ENOSYS stub, which is why SwiftForth opens named semaphores there
+\ (docs/tasking-models.md section 1).
+: SEM-HOST-CHECK ( -- )
+   HB-TARGET-LINUX? 0= if E-TASK-SEM-HOST throw then ;
+
+: SEM-COUNT-CHECK ( n -- ) {: value:n :}
+   value 0 < value TASK-SEM-MAX > or if E-TASK-SEM-COUNT throw then ;
+
+: SEM-INIT ( n sem -- ) {: value:n s:sem :}
+   SEM-HOST-CHECK
+   value SEM-COUNT-CHECK
+   s SEM-LIVE? if E-TASK-SEM-STATE throw then
+   s SEM-OBJ 0 value SEM-INIT-CALL TASK-RC0
+   s SEM>N s SEM-GUARD atomic! ;
+
+\ POSIX leaves destroying a semaphore that still has blocked waiters undefined,
+\ so the caller drains its waiters first. Destroying an inactive one is a no-op.
+: SEM-DESTROY ( sem -- ) {: s:sem :}
+   s SEM-LIVE? 0= if exit then
+   0 s SEM-GUARD atomic!
+   s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 ;
+
+\ Blocks inside the host call, so a waiting task needs no PAUSE loop - and
+\ observes no TASK:HALT - until it is signalled. A signal interrupts the wait
+\ without consuming a count, so EINTR retries.
+: SEM-WAIT ( sem -- ) {: s:sem :}
+   begin
+      s SEM-CHECK
+      s SEM-OBJ SEM-WAIT-CALL 0= if exit then
+      FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
+   again ;
+
+: SEM-SIGNAL ( sem -- ) {: s:sem :}
+   s SEM-CHECK
+   s SEM-OBJ SEM-POST-CALL TASK-RC0 ;
+
+\ The decrement that never blocks: true when it took a count, false when the
+\ count was zero. EAGAIN is that answer, EINTR retries as SEM-WAIT does.
+: SEM-TRY-WAIT ( sem -- bool ) {: s:sem :}
+   begin
+      s SEM-CHECK
+      s SEM-OBJ SEM-TRYWAIT-CALL 0= if 0 0= exit then
+      FFI:ERRNO TASK-EAGAIN = if 0 0= 0= exit then
+      FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
+   again ;
+
+\ ---- the per-task mailbox ----------------------------------------------------
+\ VFX's one-cell mailbox (docs/tasking-models.md section 3) with the semaphores
+\ above in place of its PAUSE loop: the slot-free semaphore holds the single
+\ unread slot, the message-present semaphore holds the deposited message, and
+\ the pending cell is the status bit MSG? reads without blocking.
+: MBOX-FREE ( ptr n -- sem )
+   TCB.MSG-FREE SEM-AT ;
+
+: MBOX-FULL ( ptr n -- sem )
+   TCB.MSG-FULL SEM-AT ;
+
+: MBOX-INIT ( ptr n -- ) {: tcb:ptr :}
+   0 tcb TCB.MSG !
+   TASK-NULL tcb TCB.MSG-SENDER !
+   0 tcb TCB.MSG-PENDING atomic!
+   1 tcb MBOX-FREE SEM-INIT
+   0 tcb MBOX-FULL SEM-INIT ;
+
+\ Paired with the task's memory, so a task that ends drops its mailbox with its
+\ stacks. POSIX leaves destroying a semaphore with blocked waiters undefined, so
+\ the owner ends a task's senders before it ends the task.
+: MBOX-DESTROY ( ptr n -- ) {: tcb:ptr :}
+   0 tcb TCB.MSG-PENDING atomic!
+   tcb MBOX-FREE SEM-DESTROY
+   tcb MBOX-FULL SEM-DESTROY ;
+
+\ A message carries its sender, so both ends of a send are tasks: the main
+\ thread has no TCB and so no mailbox of its own. A send to a task that is not
+\ running has nobody to read it, and a send to the sending task could only wait
+\ for a get that task is not making; both are refused rather than deadlocked.
+: MBOX-SEND-CHECK ( ptr n -- ) {: tcb:ptr :}
+   TASK-SELF-N 0= if E-TASK-MAILBOX throw then
+   tcb FFI:>CELL TASK-SELF-N = if E-TASK-MAILBOX throw then
+   tcb TASK-STATE@ TASK-RUNNING <> if E-TASK-MAILBOX throw then ;
+
+: MBOX-SEND ( n ptr n -- ) {: msg:n tcb:ptr :}
+   tcb MBOX-SEND-CHECK
+   tcb MBOX-FREE SEM-WAIT
+   msg tcb TCB.MSG !
+   TASK-SELF tcb TCB.MSG-SENDER !
+   1 tcb TCB.MSG-PENDING atomic!
+   tcb MBOX-FULL SEM-SIGNAL ;
+
+: MBOX-GET ( -- n ptr n )
+   TASK-SELF-N 0= if E-TASK-MAILBOX throw then
+   TASK-SELF {: self:ptr :}
+   self MBOX-FULL SEM-WAIT
+   self TCB.MSG @ self TCB.MSG-SENDER @
+   0 self TCB.MSG-PENDING atomic!
+   self MBOX-FREE SEM-SIGNAL ;
+
+\ A snapshot of the status bit: true from the moment a send deposits a message
+\ until the get that takes it clears it. It never blocks and never throws, so a
+\ task that was never activated simply holds no message.
+: MBOX-MSG? ( ptr n -- bool )
+   TCB.MSG-PENDING atomic@ 0 <> ;
+
 : TASK-LIVE+ ( -- )
    data-base TASKS-LIVE-CELL + dup @ 1 + swap ! ;
 
@@ -296,6 +451,7 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
    MUNMAP-CALL TASK-RC0 ;
 
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
+   tcb MBOX-DESTROY
    tcb TCB.STACK-U @ 0 <> if
       tcb TCB.STACK @ tcb TCB.STACK-U @ MEM-RELEASE-GUARDED
       TASK-NULL tcb TCB.STACK !
@@ -385,6 +541,7 @@ FUNCTION: SEM-DESTROY-CALL sem_destroy ( ptr u8 -- n )
    cp@ tcb TCB.CP !
    0 tcb TCB.STOP !
    tcb TASK-REGION-INIT
+   tcb MBOX-INIT
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
 \ This is a foreign C entry address with TASK-ABI's fixed argument contract.
@@ -404,12 +561,6 @@ TRUSTED: PTHREAD-ENTRY ( -- n ) task-entry ;
    TASK-LIVE-
    tcb TASK-RELEASE-MEM
    TASK-EMPTY tcb TASK-STATE! ;
-
-: TASK-SELF ( -- ptr n )
-   data-base TASK-TCB-CELL + @ TASK-N>PTR ;
-
-: TASK-SELF-N ( -- n )
-   data-base TASK-TCB-CELL + @ ;
 
 : TASK-RUN-USER ( -- n )
    TASK-SELF TCB.USER-XT @ catch ;
@@ -592,70 +743,13 @@ TRUSTED: FACILITY ( -- )
 \ Shared counted-semaphore storage, one record per definition (see the
 \ address-kind note above). Unlike TASK and FACILITY this definer needs no
 \ TRUSTED:: the child's `does>` body converts the record address to the handle
-\ in checked code, so the only address a caller ever sees is already a SEM and
-\ the package publishes no raw-address-to-handle crossing at all.
+\ in checked code, so the only address a caller ever sees is already a SEM. A
+\ semaphore embedded in a larger record - a task's mailbox, a queue - is minted
+\ by SEM-AT instead, and its owner owns its lifetime.
 : SEMAPHORE ( -- )
    TASK-ALIGN8
    create TASK-SEMAPHORE-BYTES allot
    does> ( -- sem ) FFI:>CELL >SEM ;
-
-\ A nominal cannot be retyped straight to a pointer (E-CAST-CLASS), so the
-\ handle crosses back through n and the module's existing raw-cell refinement.
-: SEM-REC ( sem -- ptr n )
-   SEM>N TASK-N>PTR ;
-
-: SEM-GUARD ( sem -- ptr n )
-   SEM-REC TASK-SEM-GUARD-OFF + ;
-
-\ The sem_t itself, as the byte span the declarations above name written.
-: SEM-OBJ ( sem -- ptr u8 )
-   SEM-REC BYTE-VIEW TASK-SEM-OBJ-OFF + ;
-
-\ Defence in depth under the type: the guard cell holds the record's OWN
-\ address exactly while the POSIX object behind it is live, so an uninitialized
-\ record and a destroyed one fail closed instead of entering sem_wait.
-: SEM-LIVE? ( sem -- bool ) {: s:sem :}
-   s SEM-GUARD atomic@ s SEM>N = ;
-
-: SEM-CHECK ( sem -- )
-   SEM-LIVE? 0= if E-TASK-SEM-STATE throw then ;
-
-\ Unnamed POSIX semaphores are a Linux facility: Darwin's sem_init is a
-\ deprecated ENOSYS stub, which is why SwiftForth opens named semaphores there
-\ (docs/tasking-models.md section 1).
-: SEM-HOST-CHECK ( -- )
-   HB-TARGET-LINUX? 0= if E-TASK-SEM-HOST throw then ;
-
-: SEM-COUNT-CHECK ( n -- ) {: value:n :}
-   value 0 < value TASK-SEM-MAX > or if E-TASK-SEM-COUNT throw then ;
-
-: SEM-INIT ( n sem -- ) {: value:n s:sem :}
-   SEM-HOST-CHECK
-   value SEM-COUNT-CHECK
-   s SEM-LIVE? if E-TASK-SEM-STATE throw then
-   s SEM-OBJ 0 value SEM-INIT-CALL TASK-RC0
-   s SEM>N s SEM-GUARD atomic! ;
-
-\ POSIX leaves destroying a semaphore that still has blocked waiters undefined,
-\ so the caller drains its waiters first. Destroying an inactive one is a no-op.
-: SEM-DESTROY ( sem -- ) {: s:sem :}
-   s SEM-LIVE? 0= if exit then
-   0 s SEM-GUARD atomic!
-   s SEM-OBJ SEM-DESTROY-CALL TASK-RC0 ;
-
-\ Blocks inside the host call, so a waiting task needs no PAUSE loop - and
-\ observes no TASK:HALT - until it is signalled. A signal interrupts the wait
-\ without consuming a count, so EINTR retries.
-: SEM-WAIT ( sem -- ) {: s:sem :}
-   begin
-      s SEM-CHECK
-      s SEM-OBJ SEM-WAIT-CALL 0= if exit then
-      FFI:ERRNO TASK-EINTR <> if E-TASK-THREAD throw then
-   again ;
-
-: SEM-SIGNAL ( sem -- ) {: s:sem :}
-   s SEM-CHECK
-   s SEM-OBJ SEM-POST-CALL TASK-RC0 ;
 
 public
 
@@ -734,6 +828,31 @@ TASK-MIN-STACK constant MIN-STACK
 \ Increments the count and wakes one waiter.
 : SIGNAL ( sem -- )
    SEM-SIGNAL ;
+
+\ Takes a count if one is there; false means it would have blocked.
+: TRY-WAIT ( sem -- bool )
+   SEM-TRY-WAIT ;
+
+\ The bytes a record must reserve to embed one semaphore or one facility, for a
+\ package that owns the storage and inits it through the words above.
+TASK-SEMAPHORE-BYTES constant SEMAPHORE-BYTES
+TASK-FACILITY-BYTES constant FACILITY-BYTES
+
+\ ---- messages ----------------------------------------------------------------
+\ Blocks while the target still holds an unread message, then deposits this one
+\ and wakes the target. Both ends are tasks: a target that is not running, the
+\ sending task itself, and a caller with no TCB are E-TASK-MAILBOX.
+: SEND-MESSAGE ( n ptr n -- )
+   MBOX-SEND ;
+
+\ Blocks until this task's mailbox holds a message, then answers it and the TCB
+\ of the task that sent it. A caller with no TCB is E-TASK-MAILBOX.
+: GET-MESSAGE ( -- n ptr n )
+   MBOX-GET ;
+
+\ Whether that task holds an unread message. Never blocks, never throws.
+: MSG? ( ptr n -- bool )
+   MBOX-MSG? ;
 
 private
 

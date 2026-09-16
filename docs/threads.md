@@ -66,6 +66,13 @@ TASK:SEMAPHORE-INIT  ( n TASK:sem -- ) \ n is the initial count
 TASK:SEMAPHORE-DESTROY ( TASK:sem -- )
 TASK:WAIT            ( TASK:sem -- )   \ block until positive, then decrement
 TASK:SIGNAL          ( TASK:sem -- )   \ increment and wake one waiter
+TASK:TRY-WAIT        ( TASK:sem -- bool ) \ decrement if positive; never blocks
+TASK:SEMAPHORE-BYTES ( -- n )          \ bytes to embed one in another record
+TASK:FACILITY-BYTES  ( -- n )
+
+TASK:SEND-MESSAGE    ( n ptr a -- )    \ post one cell to that task
+TASK:GET-MESSAGE     ( -- n ptr a )    \ take this task's message and its sender
+TASK:MSG?            ( ptr a -- bool ) \ does that task hold an unread message
 ```
 
 Use `TASK:KILL` for teardown. A task that loops must call `TASK:PAUSE` or block
@@ -136,6 +143,49 @@ ITEMS TASK:SEMAPHORE-DESTROY
   bindings beside them still hand-stage through `TRUSTED:` and are retired by
   `habu-ptx-m1-c-1df1d6e7`.
 
+## Messages
+
+Every task owns a one-cell mailbox in its TCB, taking VFX's words and semantics
+([tasking-models.md](tasking-models.md) section 3) with the semaphores above in
+place of VFX's `PAUSE` loop. The cell, the sender's TCB and the pending flag sit
+in the TCB behind the throw slot; the two semaphores beside them are created with
+the task and destroyed when it ends.
+
+| Word | Effect | Blocks |
+| --- | --- | --- |
+| `TASK:SEND-MESSAGE` | `( n ptr a -- )` | while the target still holds an unread message |
+| `TASK:GET-MESSAGE` | `( -- n ptr a )` | until this task's mailbox holds a message |
+| `TASK:MSG?` | `( ptr a -- bool )` | never |
+
+```forth
+: WORKER ( -- )                       \ inside a task
+   TASK:GET-MESSAGE {: msg from :}    \ parks in the kernel until a message
+   msg 1 + from TASK:SEND-MESSAGE ;   \ the sender's TCB is the reply address
+```
+
+- The mailbox holds ONE unread message. A second send blocks in the sender until
+  the target's `TASK:GET-MESSAGE` frees the cell, so many senders queue on one
+  target in the order the slot semaphore releases them.
+- `TASK:GET-MESSAGE` answers the message and the TCB of the task that sent it,
+  which is the address a reply is sent to.
+- Both ends of a send are tasks. A message names its sender and the main thread
+  has no TCB, so a message operation from a thread without one is
+  `E-TASK-MAILBOX`.
+- Sending to a task that is not running is `E-TASK-MAILBOX`: nothing would read
+  the message. Sending to the sending task is `E-TASK-MAILBOX` too; it could only
+  wait for a get that task is not making.
+- `TASK:MSG?` is a snapshot of the pending flag, true from the moment a send
+  deposits a message until the get that takes it clears it. It never blocks and
+  never throws, so a task that was never activated simply holds no message.
+- The mailbox is created by `TASK:PREPARE` and destroyed with the task's memory,
+  so messages do not survive a `TASK:KILL` and a reactivated task starts with an
+  empty mailbox. Because the mailbox is part of a task, `TASK:PREPARE` needs the
+  unnamed POSIX semaphores above: on a host without them it throws
+  `E-TASK-SEM-HOST` rather than creating a task that cannot receive.
+- Ending a task ends its mailbox, and POSIX leaves destroying a semaphore with
+  blocked waiters undefined: end a task's senders before the task, exactly as the
+  semaphore section requires of its waiters.
+
 ## Invariants
 
 - Tasks execute XTs only; they do not interpret source and do not compile.
@@ -169,6 +219,9 @@ start/join soak, FFI from worker tasks, task-local FFI scratch isolation, the
 live-task compile guard, process-fatal worker `die`, a contained worker `throw`
 beside a worker that completes and is joined, a producer/consumer whose consumer
 blocks in `TASK:WAIT` without a PAUSE loop and reads 64 items in order, an
-initial count drawn without any signal, and every named semaphore failure.
+initial count drawn without any signal, every named semaphore failure, a message
+round trip between two tasks, a send that blocks until its target gets, a get
+that blocks until a send, `TASK:MSG?` before and after a get, and every refused
+message operation.
 The full test suite includes these as `tasking-primitive-smoke` and
 `tasking-threads`.

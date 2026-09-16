@@ -43,6 +43,15 @@ TASK:SEMAPHORE SEM-SPACE
 TASK:SEMAPHORE SEM-TICKETS
 TASK:SEMAPHORE SEM-GATE
 TASK:SEMAPHORE SEM-COLD
+TASK:MIN-STACK TASK:TASK MSG-PING
+TASK:MIN-STACK TASK:TASK MSG-ECHO
+TASK:MIN-STACK TASK:TASK MSG-FILL
+TASK:MIN-STACK TASK:TASK MSG-DRAIN
+TASK:MIN-STACK TASK:TASK MSG-WAITER
+TASK:MIN-STACK TASK:TASK MSG-LATE
+TASK:MIN-STACK TASK:TASK MSG-REFUSER
+TASK:MIN-STACK TASK:TASK MSG-IDLE
+TASK:SEMAPHORE MSG-GATE
 
 $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling lib/task.f in each child
@@ -81,6 +90,18 @@ variable SEM-GOT
 variable SEM-BAD
 variable SEM-DRAWN
 variable SEM-TICKET-DONE
+variable MSG-PING-GOT
+variable MSG-PING-FROM
+variable MSG-ECHO-GOT
+variable MSG-ECHO-FROM
+variable MSG-SENT1
+variable MSG-SENT2
+variable MSG-SEEN1
+variable MSG-SEEN2
+variable MSG-WAITING
+variable MSG-LATE-GOT
+variable MSG-REFUSE-SELF
+variable MSG-REFUSE-IDLE
 
 : TASK-WAIT-READY ( n -- ) {: want:n :}
    begin TASK-READY-CELL atomic@ want < while TASK:PAUSE repeat ;
@@ -388,6 +409,142 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    [: SEM-COLD TASK:WAIT ;] E-TASK-SEM-STATE TTHROWSQ
    [: SEM-COLD TASK:SIGNAL ;] E-TASK-SEM-STATE TTHROWSQ ;
 
+$5A constant MSG-SEED
+$11 constant MSG-FIRST
+$22 constant MSG-SECOND
+$33 constant MSG-LATE-VALUE
+
+\ The sender's TCB is the reply address; the value is all the rest of the
+\ protocol these two fixtures need.
+: MSG-TAKE ( -- n )
+   TASK:GET-MESSAGE drop ;
+
+: MSG-ECHO-WORK ( -- )
+   TASK:GET-MESSAGE {: msg from :}
+   msg MSG-ECHO-GOT !
+   from FFI:>CELL MSG-ECHO-FROM !
+   msg 1 + from TASK:SEND-MESSAGE ;
+
+: MSG-PING-WORK ( -- )
+   MSG-SEED MSG-ECHO TASK:SEND-MESSAGE
+   TASK:GET-MESSAGE {: msg from :}
+   msg MSG-PING-GOT !
+   from FFI:>CELL MSG-PING-FROM ! ;
+
+\ A message and its answer between two tasks: each end reads the other's TCB
+\ out of the mailbox and replies to it.
+: TASK-TEST-MSG-ROUND-TRIP ( -- )
+   0 MSG-PING-GOT ! 0 MSG-PING-FROM !
+   0 MSG-ECHO-GOT ! 0 MSG-ECHO-FROM !
+   ['] MSG-ECHO-WORK MSG-ECHO TASK:ACTIVATE
+   ['] MSG-PING-WORK MSG-PING TASK:ACTIVATE
+   MSG-PING APP-WAIT-DONE
+   MSG-ECHO APP-WAIT-DONE
+   MSG-ECHO-GOT @ MSG-SEED T=
+   MSG-ECHO-FROM @ MSG-PING FFI:>CELL T=
+   MSG-PING-GOT @ MSG-SEED 1 + T=
+   MSG-PING-FROM @ MSG-ECHO FFI:>CELL T=
+   MSG-PING TASK:THROW@ 0 T=
+   MSG-ECHO TASK:THROW@ 0 T=
+   MSG-PING TASK:KILL
+   MSG-ECHO TASK:KILL ;
+
+: MSG-FILL-WORK ( -- )
+   MSG-FIRST MSG-DRAIN TASK:SEND-MESSAGE
+   1 MSG-SENT1 atomic-add drop
+   MSG-SECOND MSG-DRAIN TASK:SEND-MESSAGE
+   1 MSG-SENT2 atomic-add drop ;
+
+: MSG-DRAIN-WORK ( -- )
+   MSG-GATE TASK:WAIT
+   MSG-TAKE MSG-SEEN1 !
+   MSG-TAKE MSG-SEEN2 ! ;
+
+\ One cell per task: the second send blocks in the sender until the target
+\ takes the first, and MSG? reports the unread message without blocking.
+: TASK-TEST-MSG-SEND-BLOCKS ( -- )
+   0 MSG-SENT1 ! 0 MSG-SENT2 ! 0 MSG-SEEN1 ! 0 MSG-SEEN2 !
+   0 MSG-GATE TASK:SEMAPHORE-INIT
+   MSG-DRAIN TASK:MSG? TFALSE
+   ['] MSG-DRAIN-WORK MSG-DRAIN TASK:ACTIVATE
+   ['] MSG-FILL-WORK MSG-FILL TASK:ACTIVATE
+   MSG-SENT1 1 APP-WAIT-CELL
+   MSG-SENT2 @ 0 T=
+   MSG-DRAIN TASK:MSG? TTRUE
+   MSG-GATE TASK:SIGNAL
+   MSG-FILL APP-WAIT-DONE
+   MSG-DRAIN APP-WAIT-DONE
+   MSG-SENT2 @ 1 T=
+   MSG-SEEN1 @ MSG-FIRST T=
+   MSG-SEEN2 @ MSG-SECOND T=
+   MSG-DRAIN TASK:MSG? TFALSE
+   MSG-FILL TASK:THROW@ 0 T=
+   MSG-DRAIN TASK:THROW@ 0 T=
+   MSG-FILL TASK:KILL
+   MSG-DRAIN TASK:KILL
+   MSG-GATE TASK:SEMAPHORE-DESTROY ;
+
+: MSG-WAITER-WORK ( -- )
+   1 MSG-WAITING atomic-add drop
+   MSG-TAKE MSG-LATE-GOT ! ;
+
+: MSG-LATE-WORK ( -- )
+   MSG-LATE-VALUE MSG-WAITER TASK:SEND-MESSAGE ;
+
+\ The getter parks in the kernel with no PAUSE loop: nothing can have reached
+\ it before a sender exists, and the send releases it.
+: TASK-TEST-MSG-GET-BLOCKS ( -- )
+   0 MSG-WAITING ! 0 MSG-LATE-GOT !
+   ['] MSG-WAITER-WORK MSG-WAITER TASK:ACTIVATE
+   MSG-WAITING 1 APP-WAIT-CELL
+   MSG-LATE-GOT @ 0 T=
+   ['] MSG-LATE-WORK MSG-LATE TASK:ACTIVATE
+   MSG-WAITER APP-WAIT-DONE
+   MSG-LATE APP-WAIT-DONE
+   MSG-LATE-GOT @ MSG-LATE-VALUE T=
+   MSG-WAITER TASK:THROW@ 0 T=
+   MSG-LATE TASK:THROW@ 0 T=
+   MSG-WAITER TASK:KILL
+   MSG-LATE TASK:KILL ;
+
+: MSG-REFUSE-WORK ( -- )
+   [: MSG-SEED TASK:SELF TASK:SEND-MESSAGE ;] catch MSG-REFUSE-SELF !
+   [: MSG-SEED MSG-IDLE TASK:SEND-MESSAGE ;] catch MSG-REFUSE-IDLE ! ;
+
+\ Both ends of a send are running tasks: a task cannot post to itself, nobody
+\ can post to a task that is not running, and the main thread has no mailbox.
+: TASK-TEST-MSG-REFUSED ( -- )
+   0 MSG-REFUSE-SELF ! 0 MSG-REFUSE-IDLE !
+   ['] MSG-REFUSE-WORK MSG-REFUSER TASK:ACTIVATE
+   MSG-REFUSER APP-WAIT-DONE
+   MSG-REFUSE-SELF @ E-TASK-MAILBOX T=
+   MSG-REFUSE-IDLE @ E-TASK-MAILBOX T=
+   MSG-REFUSER TASK:THROW@ 0 T=
+   MSG-REFUSER TASK:KILL
+   [: MSG-SEED MSG-IDLE TASK:SEND-MESSAGE ;] E-TASK-MAILBOX TTHROWSQ
+   [: TASK:GET-MESSAGE drop drop ;] E-TASK-MAILBOX TTHROWSQ
+   MSG-IDLE TASK:MSG? TFALSE ;
+
+: TASK-TEST-MSG-TYPES ( -- )
+   s" TASK-MSG-OK ( n ptr n -- ) TASK:SEND-MESSAGE"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-MSG-RAW ( n n -- ) TASK:SEND-MESSAGE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-MSG-SWAP ( ptr n n -- ) TASK:SEND-MESSAGE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-MSG-GET-OK ( -- n ptr n ) TASK:GET-MESSAGE"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-MSG-GET-RAW ( -- n n ) TASK:GET-MESSAGE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-MSG-Q-OK ( ptr n -- bool ) TASK:MSG?"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-MSG-Q-RAW ( n -- bool ) TASK:MSG?"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" TASK-TRY-WAIT-OK ( TASK:sem -- bool ) TASK:TRY-WAIT"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" TASK-TRY-WAIT-PTR ( ptr n -- bool ) TASK:TRY-WAIT"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
 \ The handle is nominal, so the raw record address a TASK:FACILITY also has is
 \ refused before it can reach sem_wait - the guard cell is the second line.
 : TASK-TEST-SEM-TYPES ( -- )
@@ -433,6 +590,7 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    TASK-TEST-CALLBACK-TYPES
    TASK-TEST-THROW-TYPES
    TASK-TEST-SEM-TYPES
+   TASK-TEST-MSG-TYPES
    0 TASK-COUNT !
    0 TASK-READY-CELL !
    0 TASK-SELF-A !
@@ -464,6 +622,10 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    TASK-TEST-SEM-PIPE
    TASK-TEST-SEM-COUNT
    TASK-TEST-SEM-NEGATIVE
+   TASK-TEST-MSG-ROUND-TRIP
+   TASK-TEST-MSG-SEND-BLOCKS
+   TASK-TEST-MSG-GET-BLOCKS
+   TASK-TEST-MSG-REFUSED
    T-REPORT ;
 
 TASK-TEST-RUN

@@ -172,7 +172,7 @@
 -3607 constant E-TASK-SEM-COUNT     \ semaphore count out of range
 -3608 constant E-TASK-SEM-HOST      \ host has no usable unnamed semaphores
 -3609 constant E-TASK-JOIN          \ join of a task never activated or already joined
--3610 constant E-TASK-MAILBOX       \ message operation on a task without a live mailbox
+-3610 constant E-TASK-MAILBOX       \ message operation no mailbox can serve: no TCB, target not running, or self
 
 \ Object/linker records: -3700..-3799
 -3700 constant E-OBJ-FIRST
