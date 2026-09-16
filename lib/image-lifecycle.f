@@ -8,7 +8,7 @@ package IMAGE-LIFECYCLE
 private
 
 DYNAMIC-BUFFER HOOKS [ -- ]
-variable COUNT
+variable N
 \ Atomic cells require native cell alignment. This dictionary storage is shared
 \ by every task, unlike the engine's per-task DATA header.
 here data-base - negate 7 and allot
@@ -20,9 +20,9 @@ variable MUTEX
 : UNLOCK ( -- ) 0 MUTEX atomic! ;
 
 : APPEND ( [ -- ] -- )
-   COUNT @ 1+ HOOKS-RESERVE
-   COUNT @ HOOKS !
-   1 COUNT +! ;
+   N @ 1+ HOOKS-RESERVE
+   N @ HOOKS !
+   1 N +! ;
 
 public
 
@@ -31,16 +31,20 @@ public
 : REGISTER ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally ;
 
+\ Number of hooks currently registered. A hook that throws during PREPARE
+\ is not removed, so it still counts; owners use this to observe that.
+: COUNT ( -- n ) N @ ;
+
 private
 
 
 \ Cleanup may register another resource. Keep those entries when removing
 \ the completed callback, and retain the original entry if it throws.
 : REMOVE ( n -- )
-   1+ COUNT @ swap ?do
+   1+ N @ swap ?do
       i HOOKS @ i 1- HOOKS !
    loop
-   -1 COUNT +! ;
+   -1 N +! ;
 
 public
 
@@ -48,8 +52,8 @@ public
 \ Capture runs after application tasks stop. Reverse order releases dependents
 \ first; cleanup can register again, and a failed callback remains for retry.
 : PREPARE ( -- )
-   begin COUNT @ 0 > while
-      COUNT @ 1- {: at:n :}
+   begin N @ 0 > while
+      N @ 1- {: at:n :}
       at HOOKS @ execute
       at REMOVE
    repeat
