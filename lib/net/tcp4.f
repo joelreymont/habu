@@ -72,6 +72,8 @@ $80000 constant ACCEPT-FLAGS       \ SOCK_CLOEXEC on the accepted connection.
 $4000 constant MSG-NOSIGNAL        \ A write to a closed peer fails; it never signals.
 1 constant POLL-READ               \ POLLIN.
 $39 constant POLL-DONE             \ POLLIN|POLLERR|POLLHUP|POLLNVAL: a read will not block.
+$7FFFFFFF constant MAX-TIMEOUT     \ poll's timeout is a C int, in milliseconds.
+1000000 constant NS-PER-MS
 4 constant EINTR
 0 constant SHUT-RD
 1 constant SHUT-WR
@@ -289,11 +291,31 @@ FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
    TCP4-READY--RESULT:idle ;
 
 
-: POLL-ONCE ( -- ready-result )
+\ Milliseconds left before an absolute monotonic deadline, floored at zero and
+\ rounded up so a remaining fraction still waits.
+: REMAINING ( ns -- ms )
+   NS>N mono-ns - dup 0 <= if drop 0 >MS exit then
+   NS-PER-MS 1 - + NS-PER-MS / >MS ;
+
+
+\ The deadline is absolute, so an interrupt resumes the wait the signal cut
+\ short instead of restarting it. A deadline already reached still polls once,
+\ which is how the zero timeout asks its question without waiting.
+: POLL-UNTIL ( ms -- ready-result ) {: timeout:ms :}
+   mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}
+   timeout
    begin
-      0 >MS POLL-RAW dup 0 >= if REVENTS>READY exit then
+      POLL-RAW dup 0 >= if REVENTS>READY exit then
       drop LAST-ERROR dup INTERRUPTED? 0= if TCP4-READY--RESULT:failed exit then drop
+      deadline REMAINING
    again ;
+
+
+\ The one poll path: every readiness question a listener or a connection asks
+\ reaches poll(2) through here, with the timeout as their only difference.
+: WAIT-READY ( n ms -- ready-result ) {: fd:n timeout:ms :}
+   timeout MS>N 0 MAX-TIMEOUT WITHIN-RANGE INIT
+   fd POLL! timeout POLL-UNTIL ;
 
 
 \ A transfer longer than the span handed to the OS is not a short answer this
@@ -446,11 +468,25 @@ public
 \ Answers whether a READ would return at once. `ready` includes the end of
 \ stream and a failed connection, whose answers the following READ reports.
 : READABLE? ( connection -- ready-result )
-   CONNECTION-FD INIT POLL! POLL-ONCE ;
+   CONNECTION-FD 0 >MS WAIT-READY ;
+
+
+\ Parks the task in poll(2) until the stream would answer a READ or the
+\ deadline passes, which is `idle`. A timeout below zero is refused.
+: READABLE-WITHIN? ( connection ms -- ready-result )
+   {: conn:connection timeout:ms :}
+   conn CONNECTION-FD timeout WAIT-READY ;
 
 
 : PENDING? ( listener -- ready-result )
-   LISTENER-FD INIT POLL! POLL-ONCE ;
+   LISTENER-FD 0 >MS WAIT-READY ;
+
+
+\ The same wait for an arriving connection: `ready` means ACCEPT answers at
+\ once, `idle` that the deadline passed with the queue still empty.
+: PENDING-WITHIN? ( listener ms -- ready-result )
+   {: lis:listener timeout:ms :}
+   lis LISTENER-FD timeout WAIT-READY ;
 
 
 \ Half-closes the stream in one or both directions; the descriptor stays open

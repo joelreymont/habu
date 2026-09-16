@@ -20,6 +20,15 @@ $6F constant ECONNREFUSED          \ nobody listens on that port
 $20 constant BUF-CAP
 $40 constant POLL-TRIES
 
+1000000 constant NS-PER-MS
+\ The deadlines the timed waits are measured against. The lower bounds allow a
+\ scheduler's slack while still failing a wait that did not happen at all.
+500 constant WAIT-MS               \ far beyond the peer's delay: ready, not idle
+100 constant IDLE-MS               \ what a silent peer and a quiet listener reach
+50 constant PEER-MS                \ the peer's delay before it writes
+40 constant LEAST-WAIT-MS          \ a ready answer still covered the peer's delay
+90 constant LEAST-IDLE-MS          \ an idle answer waited out its deadline
+
 create CLIENT-BUF BUF-CAP allot
 create SERVER-BUF BUF-CAP allot
 
@@ -37,8 +46,10 @@ variable PROBE-LISTENER
 variable PROBE-CONNECTION
 variable PROBE-PORT
 variable CLIENT-FD
+variable PEER-FD
 
 TASK:MIN-STACK TASK:TASK ECHO-TASK
+TASK:MIN-STACK TASK:TASK PEER-TASK
 
 : PING$ ( -- ptr u8 n )
    s" ping" ;
@@ -69,6 +80,14 @@ TASK:MIN-STACK TASK:TASK ECHO-TASK
       ready OF true ENDOF
       idle OF false ENDOF
       failed OF TCP4:ERRNO>N drop s" poll failed" T-FAIL-AS false ENDOF
+   ;MATCH ;
+
+
+: READY-DROP ( TCP4:ready-result -- )
+   MATCH TCP4:ready-result
+      ready OF ENDOF
+      idle OF ENDOF
+      failed OF TCP4:ERRNO>N drop ENDOF
    ;MATCH ;
 
 
@@ -163,6 +182,26 @@ TASK:MIN-STACK TASK:TASK ECHO-TASK
    begin ECHO-DONE atomic@ 0 > if exit then TASK:PAUSE again ;
 
 
+\ ---- the delayed peer --------------------------------------------------------
+
+\ Habu has no sleep word, so the peer yields until its own monotonic deadline.
+: SPIN-MS ( n -- ) {: delay:n :}
+   mono-ns delay NS-PER-MS * + {: deadline:n :}
+   begin mono-ns deadline >= if exit then TASK:PAUSE again ;
+
+
+\ Nothing reaches the reader before PEER-MS, so a ready answer sooner than that
+\ never waited in poll(2).
+: PEER-WORK ( -- )
+   PEER-MS SPIN-MS
+   PEER-FD @ TCP4:>CONNECTION CHAT$ TCP4:TRANSFER-BYTES TCP4:WRITE ECHO-STATUS
+   1 ECHO-DONE atomic-add drop ;
+
+
+: ELAPSED-MS ( n -- n ) {: start:n :}
+   mono-ns start - NS-PER-MS / ;
+
+
 \ ---- endpoints the cases share -----------------------------------------------
 
 : BIND-LISTENER ( -- n )
@@ -210,6 +249,23 @@ TASK:MIN-STACK TASK:TASK ECHO-TASK
    loop false ;
 
 
+\ A loopback pair the timed cases share: the listener plus both ends of one
+\ connection. The accept queue is reached through the timed listener wait, so
+\ nothing here spins on the scheduler.
+: OPEN-PAIR ( -- )
+   NEW-LISTENER PROBE-LISTENER !
+   PROBE-LISTENER @ LISTENER-PORT CONNECT-TO dup 0 >= TTRUE CLIENT-FD !
+   PROBE-LISTENER @ TCP4:>LISTENER WAIT-MS >MS TCP4:PENDING-WITHIN? READY? TTRUE
+   PROBE-LISTENER @ TCP4:>LISTENER TCP4:ACCEPT ACCEPT-FD dup 0 >= TTRUE
+   PROBE-CONNECTION ! ;
+
+
+: CLOSE-PAIR ( -- )
+   PROBE-CONNECTION @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
+   CLIENT-FD @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
+   PROBE-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
+
+
 \ ---- cases -------------------------------------------------------------------
 
 : BAD-PORT ( -- )
@@ -232,6 +288,19 @@ TASK:MIN-STACK TASK:TASK ECHO-TASK
    CLIENT-FD @ TCP4:>CONNECTION CLIENT-BUF 0 TCP4:TRANSFER-BYTES TCP4:READ READ-DROP ;
 
 
+: BAD-TIMEOUT ( -- )
+   CLIENT-FD @ TCP4:>CONNECTION -1 >MS TCP4:READABLE-WITHIN? READY-DROP ;
+
+
+: BAD-LISTEN-TIMEOUT ( -- )
+   PROBE-LISTENER @ TCP4:>LISTENER -1 >MS TCP4:PENDING-WITHIN? READY-DROP ;
+
+
+\ A deadline wider than poll's own C int would be truncated, not waited out.
+: BAD-LONG-TIMEOUT ( -- )
+   CLIENT-FD @ TCP4:>CONNECTION $80000000 >MS TCP4:READABLE-WITHIN? READY-DROP ;
+
+
 \ Operands are checked before the platform and before any descriptor is touched,
 \ so these need no socket.
 : T-OPERANDS ( -- )
@@ -240,7 +309,10 @@ TASK:MIN-STACK TASK:TASK ECHO-TASK
    [: BAD-ADDRESS ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-TRANSFER ;] TCP4:E-OPERAND TTHROWSQ
    [: BAD-BACKLOG ;] TCP4:E-OPERAND TTHROWSQ
-   [: BAD-CAPACITY ;] TCP4:E-OPERAND TTHROWSQ ;
+   [: BAD-CAPACITY ;] TCP4:E-OPERAND TTHROWSQ
+   [: BAD-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ
+   [: BAD-LISTEN-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ
+   [: BAD-LONG-TIMEOUT ;] TCP4:E-OPERAND TTHROWSQ ;
 
 
 : ECHO-EXCHANGE ( -- )
@@ -297,6 +369,62 @@ TASK:MIN-STACK TASK:TASK ECHO-TASK
    PROBE-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
 
 
+: T-WAIT-DATA ( -- )
+   s" a peer writing after 50 ms is ready within 500 ms" T-LABEL
+   ECHO-RESET
+   OPEN-PAIR
+   CLIENT-FD @ PEER-FD !
+   ['] PEER-WORK PEER-TASK TASK:ACTIVATE
+   mono-ns {: start:n :}
+   PROBE-CONNECTION @ TCP4:>CONNECTION WAIT-MS >MS TCP4:READABLE-WITHIN? READY? TTRUE
+   s" and that wait covered the peer's delay" T-LABEL
+   start ELAPSED-MS LEAST-WAIT-MS >= TTRUE
+   WAIT-DONE
+   PEER-TASK TASK:KILL
+   ECHO-BAD @ 0 T=
+   PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:READ
+      CHAT-BYTES WANT-DATA
+   SERVER-BUF CHAT-BYTES CHAT$ T$=
+   CLOSE-PAIR ;
+
+
+: T-WAIT-IDLE ( -- )
+   s" a silent peer answers idle after 100 ms" T-LABEL
+   OPEN-PAIR
+   mono-ns {: start:n :}
+   PROBE-CONNECTION @ TCP4:>CONNECTION IDLE-MS >MS TCP4:READABLE-WITHIN? READY? TFALSE
+   s" and that wait reached its deadline" T-LABEL
+   start ELAPSED-MS LEAST-IDLE-MS >= TTRUE
+   CLOSE-PAIR ;
+
+
+\ The peer's close is readable at once; the READ that follows says which
+\ readiness it was.
+: T-WAIT-CLOSED ( -- )
+   s" a closed peer is ready, and reads as the end of stream" T-LABEL
+   OPEN-PAIR
+   CLIENT-FD @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
+   PROBE-CONNECTION @ TCP4:>CONNECTION WAIT-MS >MS TCP4:READABLE-WITHIN? READY? TTRUE
+   PROBE-CONNECTION @ TCP4:>CONNECTION SERVER-BUF BUF-CAP TCP4:TRANSFER-BYTES TCP4:READ
+      WANT-CLOSED
+   PROBE-CONNECTION @ TCP4:>CONNECTION TCP4:CLOSE STATUS-ERRNO 0 T=
+   PROBE-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
+
+
+: T-WAIT-LISTENER ( -- )
+   s" a quiet listener answers idle after 100 ms" T-LABEL
+   NEW-LISTENER PROBE-LISTENER !
+   mono-ns {: start:n :}
+   PROBE-LISTENER @ TCP4:>LISTENER IDLE-MS >MS TCP4:PENDING-WITHIN? READY? TFALSE
+   s" and that wait reached its deadline" T-LABEL
+   start ELAPSED-MS LEAST-IDLE-MS >= TTRUE
+   s" a pending connect makes the same listener ready" T-LABEL
+   PROBE-LISTENER @ LISTENER-PORT CONNECT-TO dup 0 >= TTRUE CLIENT-FD !
+   PROBE-LISTENER @ TCP4:>LISTENER WAIT-MS >MS TCP4:PENDING-WITHIN? READY? TTRUE
+   PROBE-LISTENER @ TCP4:>LISTENER TCP4:ACCEPT ACCEPT-FD dup 0 >= TTRUE PROBE-CONNECTION !
+   CLOSE-PAIR ;
+
+
 : T-REFUSED ( -- )
    s" connecting where nothing listens fails with ECONNREFUSED" T-LABEL
    NEW-LISTENER PROBE-LISTENER !
@@ -326,6 +454,10 @@ TASK:MIN-STACK TASK:TASK ECHO-TASK
    T-OPERANDS
    T-ECHO
    T-READINESS
+   T-WAIT-DATA
+   T-WAIT-IDLE
+   T-WAIT-CLOSED
+   T-WAIT-LISTENER
    T-REFUSED
    T-READ-AFTER-CLOSE
    T-REPORT

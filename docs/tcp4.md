@@ -25,9 +25,11 @@ nominal conversion words are not validators.
 | `LISTEN` | Listener, backlog | `status`: `ok` or `failed errno` |
 | `LOCAL` | Listener | `endpoint-result`: `endpoint address port` or `failed errno` |
 | `PENDING?` | Listener | `ready-result`, described below |
+| `PENDING-WITHIN?` | Listener, deadline in milliseconds | `ready-result`, described below |
 | `ACCEPT` | Listener | `accept-result`: `accepted connection address port` or `failed errno` |
 | `CONNECT` | Remote address, remote port | `connect-result`: `connected connection` or `failed errno` |
 | `READABLE?` | Connection | `ready-result`, described below |
+| `READABLE-WITHIN?` | Connection, deadline in milliseconds | `ready-result`, described below |
 | `READ` | Connection, writable byte span | `read-result`, described below |
 | `READ-EXACT` | Connection, writable byte span | `read-result`, described below |
 | `WRITE` | Connection, borrowed byte span | `status`: `ok` or `failed errno` |
@@ -38,7 +40,8 @@ nominal conversion words are not validators.
 Byte spans are `ptr u8 NUM:byte-len`. Sockets are created blocking with
 close-on-exec set atomically, so `ACCEPT`, `CONNECT`, `READ`, `READ-EXACT` and
 `WRITE` wait for the stream; `PENDING?` and `READABLE?` are the non-blocking
-questions to ask first. Address zero binds every local IPv4 interface; port zero
+questions to ask first, and their `-WITHIN?` forms wait a bounded time for the
+answer. Address zero binds every local IPv4 interface; port zero
 requests an ephemeral port, obtainable with `LOCAL`. A failed `BIND` or
 `CONNECT` closes the newly created socket and retains the original failure's
 errno, so a `failed` result never leaks a descriptor.
@@ -69,16 +72,28 @@ sends nothing. Writing to a closed peer fails with `EPIPE` and never raises
 `SIGPIPE`, because every send carries `MSG_NOSIGNAL`.
 
 `PENDING?` and `READABLE?` ask the same question of a listener and a connection
-without waiting:
+without waiting, and `PENDING-WITHIN?` and `READABLE-WITHIN?` ask it with a
+deadline:
 
 | Variant | Meaning |
 | --- | --- |
 | `ready` | `ACCEPT` / `READ` will answer at once |
-| `idle` | Nothing is waiting |
+| `idle` | Nothing is waiting; for the timed forms, the deadline passed first |
 | `failed` | Errno from the OS poll |
 
 `ready` covers the end of stream and a failed connection as well as data, since
 those also answer immediately; the following `READ` reports which it was.
+
+The timed forms park the task in
+[`poll(2)`](https://man7.org/linux/man-pages/man2/poll.2.html) instead of
+spinning, so a connection waiting for its peer costs no CPU. Their deadline is
+absolute: an interrupted poll resumes the time still left rather than restarting
+the timeout, so the whole wait is the one the caller asked for however many
+signals arrive. A timeout of zero polls once without waiting and is exactly
+`READABLE?` / `PENDING?` — all four questions share one poll path — while a
+timeout below zero or above `0x7FFFFFFF`, the `int` milliseconds `poll` takes,
+throws `E-OPERAND` before any descriptor is touched. The waiting task holds only
+its own socket and its own task-local `pollfd`, so other tasks keep running.
 
 `SHUTDOWN` half-closes a live stream in one direction or both and leaves the
 descriptor open until `CLOSE`. The direction is the `TCP4:direction` enum built
@@ -146,16 +161,24 @@ bin/hb --load lib/net/tcp4-test.f
 
 The suite holds both peers in one process: the main task binds an ephemeral
 loopback port, listens, starts a listener task that blocks in `ACCEPT`, then
-connects to it. Its 45 assertions cover the echo round trip through `WRITE`,
+connects to it. Its 91 assertions cover the echo round trip through `WRITE`,
 `READ-EXACT` and the peer endpoint `ACCEPT` reports, a server half-close read
 back as the end of stream, an idle listener and an idle stream answering `idle`
 before a waiting connection and a sent request answer `ready`, a partial `READ`,
 a refused connect reported as `failed` with `ECONNREFUSED`, a read through a
 closed connection reported as `failed` with `EBADF`, a live stream half-closed
 in each direction and in both, and out-of-range port, address, transfer,
-backlog and capacity operands rejected before any socket call. It needs neither
-external network access nor root, and binds only `127.0.0.1` on kernel-chosen
-ports.
+backlog, capacity and timeout operands rejected before any socket call. It needs
+neither external network access nor root, and binds only `127.0.0.1` on
+kernel-chosen ports.
+
+The timed waits are measured against the monotonic clock: a peer task that
+writes after 50 ms answers `ready` within a 500 ms deadline after a wait of at
+least 40 ms, a silent peer and a quiet listener answer `idle` after a 100 ms
+deadline having waited at least 90 ms, a peer that closes answers `ready` and
+reads back as the end of stream, and a pending connect answers `ready` on the
+listener. A wait that ignored its timeout would return early and fail those
+lower bounds, which is what separates a parked poll from a busy loop.
 
 `E-PLATFORM`, `E-FFI-DLSYM` and `E-RESULT` have no case here: each needs a host
 this build does not run on, a process without libc, or a kernel returning a
