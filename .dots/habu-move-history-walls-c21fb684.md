@@ -1,0 +1,9 @@
+---
+title: Move history walls out of the two biggest files
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-16T16:25:10.804422+03:00"
+---
+
+Problem: 47 percent of src/core/checker.f bytes and 43 percent of src/habu/habu2.f bytes are not code (Opus audit 2026-09-16): 70 comment blocks of 12 lines or more in checker.f (1,410 lines) and 50 in habu2.f (1,026 lines, the 93-line wall at 6037-6129 enumerating layers (1), (2), (4) with no (3)) narrate history and measurements instead of stating the invariant; 57 of the 62 dot ids cited in comments no longer exist; DO-TOK1 (checker.f about 12793-12845) is a 19-deep IF/ELSE ladder closed by nineteen THENs against docs/forth.md; 102 bare numeric exit codes in checker.f (76 die x94, 70 die x8) and 26 in habu2.f where names exist; 145 file-scope variables in checker.f and 56 in habu2.f are read by exactly one definition; habu2.f section headers no longer match the file (one header covers 2,189 lines). Acceptance: each wall reduced to the invariant it protects (at most about a third of its length), with durable measurement history moved to LESSONS.md or docs/ where it is not already there; dead dot citations removed or replaced by the surviving id; DO-TOK1 dispatched through a table or a case, not a ladder; exit codes named through ENGINE-ERROR or the file constant; single-reader globals turned into locals or moved beside their reader; habu2.f re-sectioned so every header covers what follows it; no behaviour change: engine byte-identical before and after (comments and factoring only; the DO-TOK1 rewrite and the globals move are the exceptions and get their own commit with the full gate). Files: src/core/checker.f, src/habu/habu2.f, LESSONS.md, docs/. Verify: tools/native-build.f byte comparison per commit; test/run.f for the two behaviour commits. Depends: none. Ownership: the two files. Claim: unassigned.
