@@ -662,6 +662,157 @@ clone has nowhere to go anyway: the prototype is a slice of the session region
 and a word's interner is a slice of the word's, and borrowing is what an offset
 into the session region already is.
 
+## 7. Where tier-0 compile time goes
+
+Measured 2026-09-16 with `tools/tier0-profile.f` and the in-binary sampling
+profiler (`docs/debugging.md`, "Sampling profiler") at a 50 µs interval, on an
+engine built from this tree in `/tmp/hz-jit`, pinned with `taskset -c 8`, at a
+1-minute load average of 7.4-9.9. Two workloads: the same 13-file corpus as
+above (1,802 definitions), and 4,000 copies of the trivial definition
+`compile-floor` uses, `: PVn ( n -- n ) 1 + ;`.
+
+**The checker, not the JIT, owns tier-0 compile time.** Tier 0 is usually
+described as "the direct JIT", and the reflex is to look at `src/habu/habu2.f`
+for its cost. The profile says otherwise: not one tier-0 emitter appears in 64
+reported rows at either workload, while `src/core/checker.f` words hold the top
+of both, and turning the check hook off with `0 set-check` removes 73 percent of
+the time for a trivial definition. What is left — tokenize, dictionary lookup,
+emit and publish together — is 9.0 µs per trivial definition.
+
+| workload | per definition | samples | `words` | `other` |
+|---|---:|---:|---:|---:|
+| corpus, checked | 83.6 µs | 3,012 | 2,629 | 379 |
+| trivial, checked | 33.1 µs | 2,648 | 1,859 | 789 |
+| trivial, `0 set-check` | 9.0 µs | 710 | 59 | 651 |
+
+The last row is the phase split, measured rather than attributed. `words`
+collapsing from 1,859 to 59 is the same statement from the other side: with the
+hook off, almost nothing the profiler can name runs at all, because the
+engine's own interpreter loop, tokenizer, tier-0 emitters and publish step are
+unregistered engine text and land in `other`. That is also the limit of this
+instrument — it cannot separate emit from tokenize from publish, only bound the
+three of them together. The corpus has no `0 set-check` twin: it exports, and
+an unchecked load of it dies `E-EXPORT-UNDEFINED` (7113).
+
+### Per-phase inclusive, with callers
+
+Inclusive percentages are of all samples. The stack walk is frame-pointer-less
+and, as `docs/debugging.md` states, recognises return addresses by value, so
+inclusive is a **superset** of the true chain: `DO-TOK1` reading higher than
+`CHECK-SCAN`, which is its only caller, is that inflation made visible and
+bounds it at about ten points. Exclusive counts are exact.
+
+| phase | root | incl, corpus | incl, trivial | callers of the root |
+|---|---|---:|---:|---|
+| check | `CHECK-SCAN` | 55.6% | 37.9% | `CHECK` 100% |
+| check, per token | `DO-TOK1` | 66.0% | 25.7% | `CHECK-SCAN` 100% |
+| tokenize, fold | `TKF` | 20.9% | 6.3% | `DO-TOK1` 100% / 66.6% |
+| lookup, symbols | `SYM-FIND` | 11.4% | 5.6% | `CHECKER-PKG-SYM?` 100% / `SYM-INTERN` 50% |
+| lookup, signatures | `USIGS` | 8.6% | 8.5% | `E-PTR` 72.7% / 75.0% |
+| lookup, hash | `HIDX-HASH` | 6.9% | — | `SYM-FIND` 83.3%, `HIDX-ROW-HASH` 16.6% |
+| lookup, prims | `PRIM-FIRST-SCAN` | 5.3% | — | `PRIM-FIRST-IDX` 100% |
+| effect interning | `E-INTERN` | — | 12.6% | `E-COPY*` 100% |
+| store guard | `!` | 38.0% | 29.1% | `CORE-STR=`, `HIDX-H+`, `E-I-AK-RESET` |
+| tokenize + emit + publish | (`other`) | ≤ 12.6% | ≤ 29.8% | not nameable, see above |
+
+A dash means the row fell outside the 64 the report prints at that workload, not
+that the word was idle.
+
+### Top 30 exclusive words, corpus
+
+| word | excl | % | incl | % | top callers |
+|---|---:|---:|---:|---:|---|
+| `(PROT-SPAN)` | 1006 | 33.3 | 1006 | 33.3 | `!` 97.6%, `c!` 2.3% |
+| `ptr-field` | 197 | 6.5 | 197 | 6.5 | `PERSISTED-PTR-VARIABLE;does` 75.1%, `PTR-VARIABLE;does` 9.6% |
+| `!` | 164 | 5.4 | 1146 | 38.0 | `CORE-STR=` 15.2%, `HIDX-H+` 12.8%, `E-I-AK-RESET` 6.7% |
+| `CORE-STR=` | 93 | 3.0 | 289 | 9.5 | `CF-TOK?` 32.2%, `LAYOUT-XPORT-TOK?` 19.3%, `DO-TOK1` 12.9% |
+| `TAG` | 60 | 1.9 | 60 | 1.9 | `ISVAR` 43.3%, `ISROW` 35.0% |
+| `PERSISTED-PTR-VARIABLE;does` | 54 | 1.7 | 202 | 6.7 | `RVT` 20.3%, `USIGS` 18.5%, `TVT` 11.1% |
+| `SYM-FOLD-C` | 46 | 1.5 | 46 | 1.5 | `HIDX-H+` 71.7%, `SYM-STR=CI` 28.2% |
+| `HIDX-H$` | 41 | 1.3 | 183 | 6.0 | `HIDX-HASH` 100% |
+| `CORE-STR=CI` | 38 | 1.2 | 87 | 2.8 | `UNSAFE-TOK?` 52.6%, `RETIRED-TOK?` 18.4% |
+| `PE-ROW` | 35 | 1.1 | 35 | 1.1 | `PE-SYM@` 54.2%, `PE-FLAGS@` 45.7% |
+| `RV-NEXT?` | 33 | 1.0 | 91 | 3.0 | `R-RES-WALK` 100% |
+| `cell-view` | 32 | 1.0 | 32 | 1.0 | `EN.TAG` 46.8%, `EN.A` 9.3% |
+| `PRIM-FIRST-SCAN` | 30 | 0.9 | 161 | 5.3 | `PRIM-FIRST-IDX` 100% |
+| `RES-FALSE` | 29 | 0.9 | 29 | 0.9 | `TV-NEXT?` 24.1%, `RV-NEXT?` 20.6% |
+| `PAY` | 24 | 0.7 | 24 | 0.7 | `RV-NEXT?` 41.6%, `P>TYPE` 16.6% |
+| `ISVAR` | 17 | 0.5 | 43 | 1.4 | `TV-NEXT?` 70.5%, `T-BOUND-VAR?` 23.5% |
+| `SYM-MATCH?` | 16 | 0.5 | 73 | 2.4 | `SYM-FIND` 100% |
+| `SYM-STR=CI` | 15 | 0.4 | 28 | 0.9 | `SYM-MATCH?` 100% |
+| `SYM-CAP` | 15 | 0.4 | 15 | 0.4 | `HIDX-CELL` 53.3%, `IDX-HEADS-CLEAR` 20.0% |
+| `TV-NEXT?` | 13 | 0.4 | 72 | 2.3 | `T-RES-WALK` 100% |
+| `XREF-CELL@` | 13 | 0.4 | 13 | 0.4 | `XREF-WORDLIST` 61.5%, `XREF-RAW-LEN` 23.0% |
+| `T-RES` | 12 | 0.3 | 184 | 6.1 | `U-TYPE` 25.0%, `LIN-TYPE-COUNT*` 16.6% |
+| `ISROW` | 11 | 0.3 | 32 | 1.0 | `R-BOUND-VAR?` 45.4% |
+| `R-RES` | 11 | 0.3 | 209 | 6.9 | `LIN-ROW-COUNT` 36.3%, `U-ROW` 18.1% |
+| `USIGS` | 11 | 0.3 | 260 | 8.6 | `E-PTR` 72.7% |
+| `HIDX-MEM-FIELD` | 11 | 0.3 | 63 | 2.0 | `HIDX-MEM@` 100% |
+| `E-KEY-N` | 11 | 0.3 | 23 | 0.7 | `E-NODE-KEYS=` 90.9% |
+| `CHECKER-COLON-SCAN` | 11 | 0.3 | 46 | 1.5 | `CHECKER-QUALIFIED?` 100% |
+| `PE-ACTIVE?` | 10 | 0.3 | 32 | 1.0 | `PRIM-FIRST-SCAN` 100% |
+| `TOKFOLD` | 10 | 0.3 | 32 | 1.0 | `DO-TOK1` 90.0% |
+
+The 64 reported rows cover 87.1 percent of `words` for the corpus and 88.6
+percent for the trivial workload; the rest is a long tail below 5 samples.
+
+### Top 30 exclusive words, trivial definition
+
+| word | excl | % | incl | % | top callers |
+|---|---:|---:|---:|---:|---|
+| `(PROT-SPAN)` | 669 | 25.2 | 669 | 25.2 | `!` 97.0%, `c!` 2.9% |
+| `ptr-field` | 146 | 5.5 | 146 | 5.5 | `PERSISTED-PTR-VARIABLE;does` 65.7%, `PTR-VARIABLE;does` 18.4% |
+| `!` | 122 | 4.6 | 771 | 29.1 | `CORE-STR=` 11.4%, `CORE-STR=CI` 5.7%, `CHECK-RESET` 4.9% |
+| `PERSISTED-PTR-VARIABLE;does` | 56 | 2.1 | 152 | 5.7 | `USIGS` 48.2%, `RVT` 14.2% |
+| `cell-view` | 48 | 1.8 | 48 | 1.8 | `EN.TAG` 52.0%, `EN.A` 8.3% |
+| `TAG` | 43 | 1.6 | 43 | 1.6 | `ISROW` 53.4%, `ISVAR` 20.9% |
+| `RES-FALSE` | 41 | 1.5 | 41 | 1.5 | `RV-NEXT?` 31.7%, `TV-NEXT?` 21.9% |
+| `CORE-STR=` | 33 | 1.2 | 149 | 5.6 | `LAYOUT-XPORT-TOK?` 33.3%, `CF-TOK?` 18.1%, `DELIM?` 12.1% |
+| `USIGS` | 28 | 1.0 | 226 | 8.5 | `E-PTR` 75.0%, `E-OFF` 7.1% |
+| `RV-NEXT?` | 25 | 0.9 | 86 | 3.2 | `R-RES-WALK` 100% |
+| `E-KEY-N` | 21 | 0.7 | 52 | 1.9 | `E-NODE-KEYS=` 80.9% |
+| `ISROW` | 19 | 0.7 | 42 | 1.5 | `RV-NEXT?` 63.1%, `R-BOUND-VAR?` 36.8% |
+| `E-PTR` | 19 | 0.7 | 140 | 5.2 | `E-NODE-TAG` 52.6%, `E-KEY` 42.1% |
+| `HIDX-H$` | 17 | 0.6 | 66 | 2.4 | `HIDX-HASH` 100% |
+| `PAY` | 16 | 0.6 | 16 | 0.6 | `RV-NEXT?` 31.2%, `P>TYPE` 25.0% |
+| `R-RES` | 16 | 0.6 | 218 | 8.2 | `LIN-ROW-COUNT` 31.2%, `E-RES` 25.0% |
+| `E-NODE-KEYS=` | 16 | 0.6 | 124 | 4.6 | `E-NODE-SAME?` 100% |
+| `CORE-STR=CI` | 15 | 0.5 | 32 | 1.2 | `UNSAFE-TOK?` 73.3%, `RETIRED-TOK?` 26.6% |
+| `SYM-FOLD-C` | 15 | 0.5 | 15 | 0.5 | `HIDX-H+` 93.3% |
+| `PTR-VARIABLE;does` | 14 | 0.5 | 41 | 1.5 | `HIDX-MEM-FIELD` 28.5%, `UIX-READY?` 21.4% |
+| `ISVAR` | 13 | 0.4 | 22 | 0.8 | `TV-NEXT?` 76.9% |
+| `T-RES-WALK` | 12 | 0.4 | 40 | 1.5 | `T-RES` 100% |
+| `HIDX-CELL` | 12 | 0.4 | 41 | 1.5 | `IDX-HEAD!` 41.6%, `HIDX-BKT-CLEAR` 16.6% |
+| `T-RES` | 11 | 0.4 | 112 | 4.2 | `HIDDEN-PARAM?` 36.3%, `U-TYPE` 18.1% |
+| `CHECK-SCAN` | 11 | 0.4 | 1004 | 37.9 | `CHECK` 100% |
+| `SYM-STR=CI` | 10 | 0.3 | 12 | 0.4 | `SYM-MATCH?` 100% |
+| `SYM-CAP` | 10 | 0.3 | 10 | 0.3 | `HIDX-CELL` 60.0% |
+| `E-KEY` | 9 | 0.3 | 88 | 3.3 | `E-NODE-KEYS=` 55.5%, `E-NODE-HASH` 44.4% |
+| `@` | 8 | 0.3 | 8 | 0.3 | the profile tool's own counter |
+| `RVT` | 8 | 0.3 | 38 | 1.4 | `RV@` 100% |
+
+### The ranked cuts this profile asks for
+
+1. **The store guard is a per-store linear scan over eight bands.** One third of
+   corpus compile time and a quarter of trivial compile time is `(PROT-SPAN)`,
+   reached by `!` on 97 percent of its samples. `src/habu/habu1.f`
+   `ENGINE-EMIT:GUARD-SPAN` runs eight half-open `GUARD-BAND` interval tests in
+   sequence — each a `LIT64`/`ADD`/`CMP`/`BCOND` pair, about 100 instructions —
+   on every guarded store in the engine, and the checker makes a great many of
+   them. Every static band lies below `DATA-START`, so a two-compare bounding
+   test in front skips all eight for any store at or above it.
+2. **`DO-TOK1` asks its question with string compares.** `CORE-STR=` is 9.5
+   percent inclusive on the corpus, and its callers are the predicates in the
+   19-deep ladder: `CF-TOK?`, `LAYOUT-XPORT-TOK?`, `RS-TOK?`, plus `DO-TOK1`'s
+   own seven literal spellings. `CORE-STR=CI` adds 2.8 percent for
+   `UNSAFE-TOK?` and `RETIRED-TOK?`, which are themselves 24- and 7-row
+   spelling ladders.
+3. **`PRIM-FIRST-SCAN`** is 5.3 percent inclusive on the corpus, entered only
+   from `PRIM-FIRST-IDX`, and named for what it does.
+4. **Effect interning** (`E-INTERN` 12.6 percent inclusive) dominates the
+   trivial definition, where there is no body to check and the per-definition
+   signature work is all there is.
+
 ## Verdict and the ranked fixes
 
 Tier 1 pays for itself. It halves the calls, wins every run-time benchmark by
@@ -716,6 +867,10 @@ objdump -b binary -m aarch64 -D /tmp/a1.bin
 
 taskset -c 8 $E --load tools/tier-bench.f -- 0 src/core/checker.f
 taskset -c 8 $E --load tools/tier-bench.f -- 1 src/core/checker.f
+
+taskset -c 8 $E --load tools/tier0-profile.f -- corpus 50 $C
+taskset -c 8 $E --load tools/tier0-profile.f -- trivial 50 4000
+taskset -c 8 $E --load tools/tier0-profile.f -- trivial-raw 50 4000
 ```
 
 Pin the timing runs, quote the load average with every number, and never point
@@ -737,4 +892,7 @@ result over that path, which will replace the binary other lanes are measuring.
   across every run; the timings are wall clock on a shared machine and carry
   their load averages. The `branch` benchmark at tier 1 is the least stable
   figure here (6,844-8,811 µs across invocations).
-- Nothing here measures the checker, only the two compilers behind it.
+- Sections 1 to 4 measure the two compilers, not the checker. Section 5 measures
+  the checker, and finds it owns tier-0 compile time; it in turn cannot separate
+  emit from tokenize from publish, because all three are unregistered engine text
+  that the profiler can only bound together as `other`.

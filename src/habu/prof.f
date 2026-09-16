@@ -108,7 +108,8 @@ $FFF constant PROF-PAGE-MASK            \ a sample never reads past its own 4 Ki
 \ counted in ARN-SPILL and reported, never dropped in silence.
 16 constant PROF-DEFER-ENT              \ the sample's pc, then its x30
 $40000 constant PROF-DEFER-SLOTS
-24 constant PROF-ROWS                   \ rows one report prints
+64 constant PROF-ROWS                   \ rows one report prints: enough that a compiler phase's roots,
+                                        \ which carry a large inclusive share on a small exclusive one, reach the report
 5  constant PROF-CALLERS                \ caller lines under each row: the top few, not every one
 DICT-CAP PROF-ENT * constant ARN-IDX-BYTES
 PROF-CALL-SLOTS PROF-CALL-ENT * constant ARN-CALL-BYTES
