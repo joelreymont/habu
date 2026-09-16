@@ -10,3 +10,6 @@ Problem: Joel builds Loom, Maki, Tender and Radar on Habu and wants release qual
 
 
 Evidence 2026-09-16: (6) Radar: kestrel certified all sixteen Radar harnesses on the guard-page engine (workspace radar-strict at 52508018 + f2fbe08a): 1,769 checks, same counts as on the previous engine; Radar's own rows became BEGIN-STRUCTURE layouts and pointer-returning words became ptr n under the strict parametric rule. Kestrel's repro of the locals-shadowing trap (local text over create TEXT) reproduces on the pinned engine fE too, so it is the known trap, not a regression; the rejection is habu-warn-when-a-8c4d889a in flight.
+
+
+Evidence 2026-09-16 13:30: (3) stripped applications: test/gate-aot-positive.f fully green on the null-cell engine (both forks; PASS: native hb-build AOT positive tests), stripped-quotation/stripped-sparse-data/internal-word-gate green; the base-relative null cell is dab2c17e on the line. (1) partial: S4 (8acc52fb, 5,832,896 bytes) passes pre-trust-defer, cold-runtime, build-fixpoint-fixtures, error-code-lint (0 findings), stack-guard, snapshot-writer; bootstrap-wide-memory-src stays red until the mirror-fold lane lands. Full chain from dab2c17e started 13:31.
