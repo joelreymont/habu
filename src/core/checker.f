@@ -711,6 +711,23 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
+\ The declared-visibility token a family declaration carries, under a public name
+\ with a declared effect. The three constants above are this file's own scope
+\ state; a caller outside the engine needs exactly one of their values - the one
+\ that says "declared public" - to declare a public family or to compare the
+\ visibility a declaration recorded.
+\
+\ WHY THE CONSTANT ITSELF IS NOT THAT NAME: it is created here, thousands of
+\ lines before src/core/check-hook.f installs the check hook, and a created word
+\ publishes its effect only once that hook exists (habu2.f
+\ LASTC-TRUST:FIND-ACTIVE). An engine that boots its prefix from source therefore
+\ knows the name in its dictionary and not in its checker, so a checked reference
+\ to it dies E-UNDEFINED there while the same reference certifies on an engine
+\ whose signature store a capture host baked. This word carries an axiom (the
+\ PRIM: block) and so means the same thing in every engine class
+\ (dot habu-give-the-recovery-447196a8).
+: CHECKER-VIS-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
+
 \ A scope opened by CHECKER-SCOPE-START-NEUTRAL DECLARES its package context
 \ instead of inheriting the caller's: the source it replays is standalone, so
 \ its context is top level whatever package the caller happens to have open.
@@ -7132,6 +7149,25 @@ PRIM: CHECKER-SCOPE-FINALIZE PRIM;
 PRIM: CHECKER-SCOPE-DONE PRIM;
 PRIM: CHECKER-SCOPE-DEPTH PE-N PE-OUT PRIM;
 PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+\ CHECK-QUIET-CANDIDATE! is the probing form of the line above: one candidate
+\ verdict with the rejection text suppressed. It is an axiom for the same reason
+\ CHECK and CHECK! below are - the seal-time internal-word pass leaves only
+\ checker-known names callable, and a probe is called from test and library
+\ source, which every engine class loads after that seal.
+\
+\ WHY THE HARNESS MUST NOT DO THIS ITSELF by bumping DIAG-QUIET: that counter is
+\ a bare `variable` in this file, and a created word publishes its effect only
+\ once the check hook exists (habu2.f LASTC-TRUST:FIND-ACTIVE). An engine that
+\ boots its prefix from source runs the whole of this file before
+\ src/core/check-hook.f installs the hook, so DIAG-QUIET is checker-unknown
+\ there and a checked definition naming it dies E-UNDEFINED - while an engine
+\ whose signature store was baked by a capture host answers the same name. One
+\ public word with a declared effect is the same word in both.
+PRIM: CHECK-QUIET-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+\ The declared-public visibility token, for the same reason: the scope constant
+\ it answers is created before the hook and carries no effect on a from-source
+\ prefix boot (see CHECKER-VIS-PUBLIC above).
+PRIM: CHECKER-VIS-PUBLIC PE-N PE-OUT PRIM;
 \ CHECK / CHECK! are the public verdict words (`s" ..." CHECK! .` is the
 \ documented top-level probing idiom); the axioms keep them checker-known so
 \ the seal-time internal-word marking pass leaves them executable at top level
@@ -12023,10 +12059,13 @@ variable MTCH-W                      \ the bundle width the walk below really co
 \ recorder). RECXT (installed by render.f) records certified sigs by name; DIAGXT
 \ (installed by render.f) renders a reject/uncheckable diagnostic. Both are
 \ `defer`s with no-op DEFAULTS so the calls are statically effect-known and render
-\ rebinds each to the real word. DIAG-QUIET counts nested quiet-check scopes: the
-\ candidate-probe harness suppresses diagnostics by bumping it, and the firer
+\ rebinds each to the real word. DIAG-QUIET counts nested quiet-check scopes:
+\ CHECK-QUIET-CANDIDATE! and CHECK-UNJUDGED! bump it around a probe, and the firer
 \ skips the render while it is non-zero — replacing the old "zero the hook to
-\ suppress" trick, which a `defer` cannot express as data.
+\ suppress" trick, which a `defer` cannot express as data. The counter is an
+\ engine internal and stays one: it is created before the check hook exists, so a
+\ from-source prefix boot publishes no effect for it and no caller outside this
+\ file can name it. Callers name the probe words above instead.
 variable TOK0
 defer RECXT ( ptr u8 n -- )
 defer DIAGXT ( -- )
@@ -15213,6 +15252,28 @@ variable CK-RETRY-TOKS
    horizon0 BIND-HORIZON !
    rc 0 <> IF rc throw THEN
    CAND-VERDICT @ ;
+
+\ The quiet probe. A caller that wants a verdict and not a rejection diagnostic
+\ - every certify/refuse fixture in test/ and lib/ - asks here, so the render
+\ counter stays inside this file.
+\
+\ Throw-safe, and restoring BEFORE the rethrow: CHECK-CANDIDATE! re-throws what
+\ the check threw, and a caught refusal must not leave the renderer muted for the
+\ rest of the load. The count nests, so a probe inside an enclosing quiet scope
+\ leaves that scope quiet. Stash-and-body rather than a capturing quotation,
+\ which is the shape CHECK-CANDIDATE! above and CHECK-UNJUDGED! below both take.
+variable QCAND-A   variable QCAND-U   variable QCAND-VERDICT
+
+: QCAND-BODY ( -- )      \ ( -- ) closure: probe the stashed source, stash the verdict
+   QCAND-A @ QCAND-U @ CHECK-CANDIDATE! QCAND-VERDICT ! ;
+
+: CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a QCAND-A !  u QCAND-U !
+   1 DIAG-QUIET +!
+   [: QCAND-BODY ;] catch {: rc:n :}
+   -1 DIAG-QUIET +!
+   rc 0 <> IF rc throw THEN
+   QCAND-VERDICT @ ;
 
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1 VSIG !

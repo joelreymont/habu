@@ -1,11 +1,17 @@
 \ checker-assert.f - shared test support for asserting what the CHECKER and the type
 \ registry actually recorded.
 \
-\ Two surfaces live here. CHECK-QUIET-CANDIDATE! asks the checker to certify a candidate
-\ definition and answers -1 accepted / 0 refused / 1 unresolvable, with diagnostics muted.
-\ Package REFLECT reads a declared family's recorded shape back out of the live type
-\ registry, through the read-only accessors the checker publishes for public-signature
-\ tooling (src/core/checker.f, src/core/type-family.f).
+\ One surface lives here: package REFLECT reads a declared family's recorded shape back
+\ out of the live type registry, through the read-only accessors the checker publishes
+\ for public-signature tooling (src/core/checker.f, src/core/type-family.f).
+\
+\ The candidate probe that used to live here is the checker's own
+\ CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n ), answering -1 accepted / 0 refused /
+\ 1 unresolvable with the diagnostic render suppressed. A harness copy had to bump the
+\ render counter DIAG-QUIET by name, and that name is a bare `variable` this file's
+\ engine created before the check hook existed: an engine that boots its prefix from
+\ source publishes no effect for it, so the copy certified on a baked engine and died
+\ E-UNDEFINED on the recovery one (dot habu-give-the-recovery-447196a8).
 \
 \ WHY REFLECT EXISTS. Moving a declaration to another front end or another form can change
 \ the recorded kind, case order, width or payload slots without changing anything a suite
@@ -34,13 +40,6 @@
 
 require lib/prelude.f
 require lib/string.f
-
-\ CHECK-CANDIDATE! under a raised DIAG-QUIET: the quiet counter is restored on
-\ the way out so a nested candidate check sees the same state it started in.
-: CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n )
-   1 DIAG-QUIET +!
-   CHECK-CANDIDATE!
-   -1 DIAG-QUIET +! ;
 
 using TFAM
 

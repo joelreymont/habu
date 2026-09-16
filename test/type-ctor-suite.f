@@ -912,7 +912,7 @@ TRUSTED: PAY-ROOT ( n n -- n ) SUMV-PAY-ROOT ;
 : ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
 : VAR-START ( n -- n ) TFAM-VAR-START@ ;
 TRUSTED: FAM-DECL ( ptr u8 n n ptr u8 n n n -- n ) TFAM-DECL ;
-: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
+: PKG-PUBLIC ( -- n ) CHECKER-VIS-PUBLIC ;
 : SUM-KIND ( -- n ) TK-SUM ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 TRUSTED: SCH-CON ( n -- n ) SCHEMA-CON ;
