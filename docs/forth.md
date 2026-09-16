@@ -1181,6 +1181,15 @@ Report failed or unrun checks plainly; never represent them as a passing suite.
   `PROC-ARGV-ENV-RESET ... PROC-ENV-INHERIT-MISSING`, and spawn through the
   `*-ARGV-ENV-*` words. `PROC-CMD` inherits by default and
   `PROC-CMD:ENV-HERMETIC` turns that off.
+- **`IMAGE-LIFECYCLE:PREPARE` keeps a hook registered when it throws.** A
+  hook's entry is removed only after its callback returns normally, so a
+  resource owner whose release refuses must not clear its own registered flag
+  before rethrowing — the next `REGISTER`/`PREPARE` would otherwise add a
+  second entry for the same resource. Follow the shape in `lib/net/udp4.f`
+  `REGISTER-CLEANUP`: keep a private flag and set it only after
+  `IMAGE-LIFECYCLE:REGISTER` actually completes, so a throwing path leaves the
+  flag and the registration consistent for the caller to retry.
+
 ## Native Forth Gotchas That Shape How We Write Code
 
 (Build/environment findings are in `../LESSONS.md`; these are the ones that affect
