@@ -13,15 +13,15 @@ the transfer library adds no foreign boundary beyond `SERIAL`.
 - `BLOCK ( n -- payload-size )` accepts 128 or 1024 payload bytes.
 - `CRC ( -- check-kind )` and `SUM ( -- check-kind )` select the two-byte
   CRC or one-byte arithmetic checksum.
-- `BYTES ( n -- CAD-NUM:byte-len )` validates a nonnegative span length.
-- `PACKET-BYTES ( payload-size check-kind -- CAD-NUM:byte-len )` includes
+- `BYTES ( n -- NUM:byte-len )` validates a nonnegative span length.
+- `PACKET-BYTES ( payload-size check-kind -- NUM:byte-len )` includes
   the three header bytes and checksum trailer.
-- `ENCODE ( ptr u8 CAD-NUM:byte-len sequence payload-size check-kind ptr a -- )`
+- `ENCODE ( ptr u8 NUM:byte-len sequence payload-size check-kind ptr a -- )`
   replaces an initialized output `BUF` with one packet. The borrowed input
   must be disjoint from the output buffer and no longer than the selected
   payload size. Empty input is allowed; all unused payload bytes are `0x1A`.
   Invalid operands leave the buffer unchanged.
-- `DECODE ( ptr u8 CAD-NUM:byte-len check-kind -- ptr u8 CAD-NUM:byte-len sequence )`
+- `DECODE ( ptr u8 NUM:byte-len check-kind -- ptr u8 NUM:byte-len sequence )`
   checks a complete packet, then borrows its full payload and returns its
   sequence number. It validates SOH/STX, exact length, complemented sequence,
   and the negotiated checksum. It does not consume EOT or other controls.
@@ -64,12 +64,12 @@ than the gap it permits during packet recovery. Both waits must be 1 through
 not close the borrowed serial handle. Dispose the session, then close the
 handle exactly once in the caller's cleanup path.
 
-- `SEND ( ptr u8 CAD-NUM:byte-len XMODEM:payload-size ms ptr a -- transfer-result )`
+- `SEND ( ptr u8 NUM:byte-len XMODEM:payload-size ms ptr a -- transfer-result )`
   sends a borrowed source span. The requested payload size applies when the
   receiver requests CRC using `C`; a `NAK` handshake selects checksum and
   128-byte payloads. An exact packet multiple does not cause an extra padding
   packet. Empty input sends EOT after negotiation.
-- `RECEIVE ( CAD-NUM:byte-len ptr a ms ptr a -- transfer-result )` takes a
+- `RECEIVE ( NUM:byte-len ptr a ms ptr a -- transfer-result )` takes a
   maximum byte count, an initialized destination `BUF`, an overall timeout,
   and the session. It clears the destination before starting and appends
   accepted packets. The destination must be disjoint from the session and its

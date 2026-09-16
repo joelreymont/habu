@@ -503,7 +503,7 @@ See [the multi-cell type rules](type-system.md#5-families-records-alternatives-a
 local-binding restriction.
 
 - `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`) with no
-  closer: arity `0` is an opaque scalar newtype (see `lib/cad-num-types.f`),
+  closer: arity `0` is an opaque scalar newtype (see `lib/num-types.f`),
   arity `N` binds positional params.
 - Type-family identity is the exact `(package, tail)` pair. A package-owned
   family may share a tail with a global family or a family in another package,

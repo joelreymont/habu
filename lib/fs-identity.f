@@ -59,7 +59,7 @@ TRUSTED: ERRNO-CALL ( n -- ptr u8 ) >r ARGS REG-LENS 0 r> ffi-call-bounded ;
    else 0 0 FS-FALSE then ;
 
 
-: COMPARE-IDENTITIES ( ptr u8 n ptr u8 n ptr u8 CAD-NUM:alloc-byte-len -- bool )
+: COMPARE-IDENTITIES ( ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- bool )
    drop {: left left-bytes:n right right-bytes:n buffer :}
    STAT-SYMBOL ERRNO-SYMBOL {: stat-fn:n errno-fn:n :}
    left left-bytes buffer stat-fn errno-fn IDENTITY {: left-device:n left-inode:n left-exists:bool :}

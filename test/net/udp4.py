@@ -13,7 +13,7 @@ SETUP = '''
 require lib/net/udp4.f
 package UDP4-TEST
 using UDP4
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 create BODY 65509 allot
 : OK ( UDP4:status -- )
    MATCH UDP4:status
@@ -25,8 +25,8 @@ create BODY 65509 allot
       opened OF ENDOF
       failed OF ERRNO>N throw ENDOF
    ;MATCH ;
-: REPORT ( CAD-NUM:byte-len address port n -- )
-   {: size:CAD-NUM:byte-len address:address port:port capacity:n :}
+: REPORT ( NUM:byte-len address port n -- )
+   {: size:NUM:byte-len address:address port:port capacity:n :}
    size BLEN>N . address ADDRESS>N . port PORT>N .
    0 size BLEN>N capacity min 0 ?do BODY i + c@ + loop .
    BODY capacity + c@ . BODY capacity 1 + + c@ . ;
@@ -210,7 +210,7 @@ TASK:MIN-STACK TASK:TASK WORKER1
       socket bytes expected PAYLOAD-BYTES 2000 >MS UDP4:RECEIVE
       MATCH UDP4:receive-result
          packet OF
-            {{: size:CAD-NUM:byte-len address:address port:port :}}
+            {{: size:NUM:byte-len address:address port:port :}}
             size BLEN>N expected <> if -1 throw then
             address ADDRESS>N $7F000001 <> if -1 throw then
             port PORT>N peer <> if -1 throw then
@@ -273,7 +273,7 @@ def main():
     for capacity, timeout in ((0, 0), (65508, 0), (1, -1), (1, 0x80000000)):
         assert native(habu, output, f'''
 : RUN ( -- )
-   [: 0 >SOCKET BODY {capacity} CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+   [: 0 >SOCKET BODY {capacity} NUM:BYTE-LEN MATCH NUM:numeric-result
       ok OF ENDOF negative OF -1 throw ENDOF zero OF -1 throw ENDOF
       overflow OF -1 throw ENDOF underflow OF -1 throw ENDOF
       bad-alignment OF -1 throw ENDOF misaligned OF -1 throw ENDOF

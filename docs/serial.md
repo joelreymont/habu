@@ -10,13 +10,13 @@ framing, retries, boot sequences, and flash policy belong to callers.
 | Word | Inputs | Result |
 | --- | --- | --- |
 | `BAUD` | Numeric bits per second, `1..0xFFFFFFFF` | `SERIAL:baud` |
-| `BYTES` | Length, `1..0x7FFFF000` | `CAD-NUM:byte-len` |
+| `BYTES` | Length, `1..0x7FFFF000` | `NUM:byte-len` |
 | `OPEN8N1` | Borrowed path `ptr u8 n`, baud | `open-result`: `opened handle`, `failed errno`, or `unsupported` |
 | `READ` | Handle, writable byte span, `ms` timeout | `io-result` |
 | `WRITE` | Handle, borrowed byte span, `ms` timeout | `io-result` |
 | `CLOSE` | Handle | `status`: `ok` or `failed errno` |
 
-A byte span is `ptr u8 CAD-NUM:byte-len`. The `SERIAL:handle`, `SERIAL:baud`,
+A byte span is `ptr u8 NUM:byte-len`. The `SERIAL:handle`, `SERIAL:baud`,
 and `SERIAL:errno` types are distinct. Errno values retain positive Linux error
 numbers. Raw nominal converters such as `>BAUD` are not validators; each public
 operation checks its operands before I/O.

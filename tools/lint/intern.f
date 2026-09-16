@@ -32,27 +32,27 @@ create INTERN-FOLD-BUF INTERN-FOLD-CAP allot
 variable INTERN-READY
 variable INTERN-CHUNK-I
 
-\ ---- raw table cell -> CAD-NUM role bridges for the typed VEC surface ---------
+\ ---- raw table cell -> NUM role bridges for the typed VEC surface ---------
 \ The interner's parallel vectors store raw cells (string / chunk addresses,
 \ lengths, caps, used counts). The typed VEC surface (package VEC) reads a
-\ validated CAD-NUM role - a capacity is a `CAD-NUM:item-count`, an entry position
-\ is a `CAD-NUM:index` - so a count/index role swap at a VEC call is a checker
-\ reject. These lift a nonnegative cell to its role through the PUBLIC CAD-NUM
+\ validated NUM role - a capacity is a `NUM:item-count`, an entry position
+\ is a `NUM:index` - so a count/index role swap at a VEC call is a checker
+\ reject. These lift a nonnegative cell to its role through the PUBLIC NUM
 \ validators (no laundering back to n, no reopened package); the refusal arms are
 \ unreachable invariants (a boot capacity and a bounds-checked id are nonnegative),
 \ an impossible negative surfaces the vector's own capacity / bounds code. This is
 \ the maki/sched-key.f SK>ITEM / SK>INDEX idiom, kept intern-local.
-: INTERN>ITEM ( n -- CAD-NUM:item-count )
-   CAD-NUM:ITEM-COUNT
-   MATCH CAD-NUM:numeric-result
+: INTERN>ITEM ( n -- NUM:item-count )
+   NUM:ITEM-COUNT
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
       zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
       underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
       misaligned OF E-VEC-CAPACITY throw ENDOF
    ;MATCH ;
-: INTERN>INDEX ( n -- CAD-NUM:index )
-   CAD-NUM:INDEX
-   MATCH CAD-NUM:numeric-result
+: INTERN>INDEX ( n -- NUM:index )
+   NUM:INDEX
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
@@ -72,7 +72,7 @@ variable INTERN-CHUNK-I
    1 INTERN-READY ! ;
 
 \ live interned count. RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@
-\ yields a CAD-NUM:item-count and the checker correctly refuses to launder a count
+\ yields a NUM:item-count and the checker correctly refuses to launder a count
 \ back to n, but INTERN# is pinned to a raw n that drives the INTERN$/INTERN-FIND
 \ bounds and the id a new entry is stored under, so the count is read through raw
 \ VEC-LEN@ accessor for this word alone (no new projection). A typed

@@ -24,7 +24,7 @@ $43 constant REQUEST-CRC
 private
 using BUF
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : CHECK-SEQUENCE ( n -- )
@@ -39,8 +39,8 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    dup 0 < swap 1 > or if E-OPERAND throw then ;
 
 
-: LENGTH ( n -- CAD-NUM:byte-len )
-   CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+: LENGTH ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH NUM:numeric-result
       ok OF ENDOF
       negative OF E-OPERAND throw ENDOF
       zero OF E-OPERAND throw ENDOF
@@ -110,22 +110,22 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
 public
 
-: BYTES ( n -- CAD-NUM:byte-len ) LENGTH ;
+: BYTES ( n -- NUM:byte-len ) LENGTH ;
 : SEQUENCE ( n -- sequence ) dup CHECK-SEQUENCE >SEQUENCE ;
 : BLOCK ( n -- payload-size ) dup CHECK-BLOCK >PAYLOAD-SIZE ;
 : SUM ( -- check-kind ) 0 >CHECK-KIND ;
 : CRC ( -- check-kind ) 1 >CHECK-KIND ;
 
 
-: PACKET-BYTES ( payload-size check-kind -- CAD-NUM:byte-len )
+: PACKET-BYTES ( payload-size check-kind -- NUM:byte-len )
    CHECK-KIND>N swap PAYLOAD-SIZE>N {: kind:n block:n :}
    kind CHECK-KIND block CHECK-BLOCK block 4 + kind + LENGTH ;
 
 
 \ Output is an initialized BUF. The borrowed payload must not alias it.
 \ Input length may be zero; unused payload bytes are all 0x1A.
-: ENCODE ( ptr u8 CAD-NUM:byte-len sequence payload-size check-kind ptr a -- )
-   {: data size:CAD-NUM:byte-len sequence:sequence block:payload-size kind:check-kind output:ptr :}
+: ENCODE ( ptr u8 NUM:byte-len sequence payload-size check-kind ptr a -- )
+   {: data size:NUM:byte-len sequence:sequence block:payload-size kind:check-kind output:ptr :}
    size BLEN>N sequence SEQUENCE>N block PAYLOAD-SIZE>N kind CHECK-KIND>N CHECK-ENCODE
    output block kind PACKET-BYTES RESERVE output CLEAR
    sequence SEQUENCE>N block PAYLOAD-SIZE>N output HEADER+
@@ -135,8 +135,8 @@ public
 
 \ Validates one entire packet, then borrows its full 128/1024-byte payload.
 \ XMODEM carries no exact binary length; never strip 0x1A from this span.
-: DECODE ( ptr u8 CAD-NUM:byte-len check-kind -- ptr u8 CAD-NUM:byte-len sequence )
-   {: data size:CAD-NUM:byte-len kind:check-kind :}
+: DECODE ( ptr u8 NUM:byte-len check-kind -- ptr u8 NUM:byte-len sequence )
+   {: data size:NUM:byte-len kind:check-kind :}
    data size BLEN>N kind CHECK-KIND>N CHECK-DECODE {: block:n :}
    data 3 + block LENGTH data 1 + c@ >SEQUENCE ;
 

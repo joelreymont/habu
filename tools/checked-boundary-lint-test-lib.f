@@ -527,7 +527,7 @@ variable TP-PRIV-WID
    {: path:ptr pathu:n :}
    path UB-FILE-A! pathu UB-FILE-U ! ;
 
-: TP-MAP-OK-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
+: TP-MAP-OK-ACT ( n ptr u8 NUM:alloc-byte-len -- )
    UB-MAPPED-FILE
    UB-MAPPED-SPANS-CLEAR? TTRUE ;
 
@@ -545,7 +545,7 @@ variable TP-PRIV-WID
    LINT-OUT-BUFFER-OFF
    UB-MAPPED-SPANS-CLEAR? TTRUE ;
 
-: TP-MAP-THROW-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
+: TP-MAP-THROW-ACT ( n ptr u8 NUM:alloc-byte-len -- )
    TP-OUT 1 LINT-OUT-BUFFER!
    [: UB-MAPPED-FILE ;] [: TP-MAP-THROW-CLEANUP ;] finally ;
 

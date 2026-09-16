@@ -62,16 +62,16 @@ public
 
 ;package
 
-\ pinned-raw residuals: STR:SPLIT-NEXT returns a checked CAD-NUM:byte-len field
-\ length and CAD-NUM:byte-off cursor, but the PATH scan feeds them back through
-\ the raw >LEN/>OFF cells and PROC-TRY-PATH-SEG, so each is projected to a bare n
-\ through the existing private CAD-NUM BYTE-LEN>N / BYTE-OFF>N (no new TRUSTED).
-\ Retire with TVK-RAW (habu-nominal-storage-raw-a3430ef2).
-package CAD-NUM
-public
-: PROC-BL>N ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
-: PROC-BO>N ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
-;package
+\ The PATH scan reads a split field as STR:SPLIT-NEXT states it: a NUM:byte-len
+\ field length and a NUM:byte-off cursor. Both have to cross into the engine's
+\ own len/off roles, because PROC-TRY-PATH-SEG, JOIN-PATH and the PROC-PATH-I
+\ cursor cell are stated in those and that chain reaches this file's public entry.
+\ Two checked role-to-role casts at this file's scope do the crossing, so no raw
+\ cell exists in between and NUM is not reopened. (A NUM role cannot be
+\ stored directly: `!` takes ( a ptr a ) and a type variable does not bind an
+\ arity-zero family, which is what dot habu-nominal-storage-raw-a3430ef2 is for.)
+CAST: PROC-SEG>LEN ( NUM:byte-len -- len )
+CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 
 : PROC-ENV-TABLE-A-FIELD ( -- ptr ptr a )
    PROC-ENV-TABLE-A 0 ptr-field ;
@@ -440,9 +440,9 @@ public
    0 >OFF PROC-PATH-I !
    begin path pathu LEN>N STR:LENGTH PROC-PATH-SEP PROC-PATH-I @ OFF>N STR:OFFSET STR:SPLIT-NEXT MATCH option
      none OF STR-FALSE ENDOF                        \ no more PATH segments: end the scan
-     some OF STR-SPLIT:UNMAKE {: seg:ptr segl:CAD-NUM:byte-len nx:CAD-NUM:byte-off :}
-        nx CAD-NUM:PROC-BO>N >OFF PROC-PATH-I !
-        seg segl CAD-NUM:PROC-BL>N >LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
+     some OF STR-SPLIT:UNMAKE {: seg:ptr segl:NUM:byte-len nx:NUM:byte-off :}
+        nx PROC-CURSOR>OFF PROC-PATH-I !
+        seg segl PROC-SEG>LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
           none OF ENDOF                             \ segment miss: try the next one
           some OF OPTION:SOME exit ENDOF            \ resolved: re-wrap and return
         ;MATCH

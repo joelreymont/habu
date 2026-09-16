@@ -2,7 +2,7 @@
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
-require lib/cad-num-types.f
+require lib/num-types.f
 require lib/task.f
 require lib/image-lifecycle.f
 require lib/memory.f
@@ -26,7 +26,7 @@ SUMTYPE status 0
 ;SUMTYPE
 
 SUMTYPE io-result 0
-   VARIANT transferred CAD-NUM:byte-len ;VARIANT
+   VARIANT transferred NUM:byte-len ;VARIANT
    VARIANT timeout ;VARIANT
    VARIANT closed ;VARIANT
    VARIANT failed errno ;VARIANT
@@ -65,15 +65,15 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $60 TASK:+USER IO-STORAGE drop
 : SAVED ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $2C + ;
 : POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $58 + ;
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
 
 
-: LENGTH ( n -- CAD-NUM:byte-len )
-   CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+: LENGTH ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH NUM:numeric-result
       ok OF ENDOF
       negative OF E-OPERAND throw ENDOF
       zero OF E-OPERAND throw ENDOF
@@ -187,8 +187,8 @@ TRUSTED: READ-CALL ( -- n )
    FFI:ARGS FFI:REG-LENS 3 FN-READ @ ffi-call-bounded ;
 
 
-: READ-RAW ( handle ptr u8 CAD-NUM:byte-len -- n )
-   {: handle:handle bytes capacity:CAD-NUM:byte-len :}
+: READ-RAW ( handle ptr u8 NUM:byte-len -- n )
+   {: handle:handle bytes capacity:NUM:byte-len :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE!
    bytes capacity BLEN>N 1 FFI:WRITABLE! capacity BLEN>N 2 FFI:VALUE!
    READ-CALL ;
@@ -198,8 +198,8 @@ TRUSTED: WRITE-CALL ( -- n )
    FFI:ARGS FFI:REG-LENS 3 FN-WRITE @ ffi-call-bounded ;
 
 
-: WRITE-RAW ( handle ptr u8 CAD-NUM:byte-len -- n )
-   {: handle:handle bytes size:CAD-NUM:byte-len :}
+: WRITE-RAW ( handle ptr u8 NUM:byte-len -- n )
+   {: handle:handle bytes size:NUM:byte-len :}
    FFI:RESET handle HANDLE>N 0 FFI:VALUE!
    bytes 1 FFI:READABLE! size BLEN>N 2 FFI:VALUE!
    WRITE-CALL ;
@@ -227,7 +227,7 @@ TRUSTED: CLOSE-CALL ( -- n )
 : PATH-OPEN ( ptr u8 n -- n ) {: text size:n :}
    size 1 $FFF RANGE
    size 0 do text i + c@ 0= if E-OPERAND throw then loop
-   size 1 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: path extent:CAD-NUM:alloc-byte-len :}
+   size 1 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: path extent:NUM:alloc-byte-len :}
    text size path FFI:CSTR path OPEN-RAW
    dup 0 < if drop LAST-ERROR ERRNO>N negate then
    path extent MEM:RELEASE-BYTES ;
@@ -290,19 +290,19 @@ TRUSTED: CLOSE-CALL ( -- n )
    again ;
 
 
-: TRANSFERRED ( n CAD-NUM:byte-len -- io-result ) {: actual:n capacity:CAD-NUM:byte-len :}
+: TRANSFERRED ( n NUM:byte-len -- io-result ) {: actual:n capacity:NUM:byte-len :}
    actual 0 <= actual capacity BLEN>N > or if E-RESULT throw then
    actual LENGTH SERIAL-IO--RESULT:transferred ;
 
 
-: CHECK-IO ( handle CAD-NUM:byte-len -- )
+: CHECK-IO ( handle NUM:byte-len -- )
    BLEN>N 1 $7FFFF000 RANGE CHECK-HANDLE INIT ;
 
 
 public
 
 : BAUD ( n -- baud ) dup 1 $FFFFFFFF RANGE >BAUD ;
-: BYTES ( n -- CAD-NUM:byte-len ) dup 1 $7FFFF000 RANGE LENGTH ;
+: BYTES ( n -- NUM:byte-len ) dup 1 $7FFFF000 RANGE LENGTH ;
 
 
 \ Opens a caller-owned nonblocking raw 8N1 stream, no flow control. Numeric
@@ -320,8 +320,8 @@ public
 
 \ One available chunk, up to capacity. The caller supplies writable storage.
 \ Timeout is 0..INT32_MAX milliseconds; zero never waits for future readiness.
-: READ ( handle ptr u8 CAD-NUM:byte-len ms -- io-result )
-   {: handle:handle bytes capacity:CAD-NUM:byte-len timeout:ms :}
+: READ ( handle ptr u8 NUM:byte-len ms -- io-result )
+   {: handle:handle bytes capacity:NUM:byte-len timeout:ms :}
    handle capacity CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin
       handle 1 deadline AWAIT {: events:n :}
@@ -337,8 +337,8 @@ public
 
 \ Accepts one chunk into the kernel queue; a short write is visible to callers.
 \ Success does not prove bytes reached the device. Input is borrowed this call.
-: WRITE ( handle ptr u8 CAD-NUM:byte-len ms -- io-result )
-   {: handle:handle bytes size:CAD-NUM:byte-len timeout:ms :}
+: WRITE ( handle ptr u8 NUM:byte-len ms -- io-result )
+   {: handle:handle bytes size:NUM:byte-len timeout:ms :}
    handle size CHECK-IO timeout DEADLINE {: deadline:ns :}
    begin
       handle 4 deadline AWAIT {: events:n :}

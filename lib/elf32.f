@@ -1,6 +1,6 @@
 \ Bounded ELF32 little-endian header and program-segment reader.
 require lib/type/deftype.f
-require lib/cad-num-types.f
+require lib/num-types.f
 require lib/errors.f
 
 package ELF32
@@ -29,11 +29,11 @@ STRUCTURE header 0
 
 STRUCTURE segment 0
    FIELD data ptr u8
-   FIELD size CAD-NUM:byte-len
+   FIELD size NUM:byte-len
    FIELD kind segment-kind
    FIELD virtual address
    FIELD physical address
-   FIELD memory-size CAD-NUM:byte-len
+   FIELD memory-size NUM:byte-len
    FIELD flags n
    FIELD alignment n
 ;STRUCTURE
@@ -43,10 +43,10 @@ private
 $34 constant HEADER-BYTES
 $20 constant PROGRAM-BYTES
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
-: AS-BLEN ( n -- CAD-NUM:byte-len )
-   CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+: AS-BLEN ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH NUM:numeric-result
       ok OF ENDOF
       negative OF E-BOUNDS throw ENDOF
       zero OF E-BOUNDS throw ENDOF
@@ -117,7 +117,7 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    row $10 + LE32@ dup 0 <> if total row $04 + LE32@ rot CHECK-RANGE else drop then
    row LE32@ 1 = if row CHECK-LOAD-EXTENT row CHECK-LOAD-ALIGNMENT then ;
 
-: SEGMENT-SPAN ( ptr u8 ptr u8 -- ptr u8 CAD-NUM:byte-len ) {: data row :}
+: SEGMENT-SPAN ( ptr u8 ptr u8 -- ptr u8 NUM:byte-len ) {: data row :}
    row LE32@ 0= row $10 + LE32@ 0= or if data 0 AS-BLEN exit then
    data row $04 + LE32@ + row $10 + LE32@ AS-BLEN ;
 
@@ -135,21 +135,21 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
 public
 
-: FILE-BYTES ( n -- CAD-NUM:byte-len )
+: FILE-BYTES ( n -- NUM:byte-len )
    AS-BLEN ;
 
 \ INFO validates the header and table bounds, not every segment or the sections.
-: INFO ( ptr u8 CAD-NUM:byte-len -- header ) {: data size:CAD-NUM:byte-len :}
+: INFO ( ptr u8 NUM:byte-len -- header ) {: data size:NUM:byte-len :}
    data size BLEN>N HEADER-CHECKED data MAKE-HEADER ;
 
 \ The result borrows bytes from the unchanged input until its caller is finished.
-: PROGRAM ( ptr u8 CAD-NUM:byte-len program-index -- segment )
-   {: data size:CAD-NUM:byte-len index:program-index :}
+: PROGRAM ( ptr u8 NUM:byte-len program-index -- segment )
+   {: data size:NUM:byte-len index:program-index :}
    data size BLEN>N HEADER-CHECKED data index PROGRAM-INDEX>N CHECK-INDEX
    data index PROGRAM-INDEX>N PROGRAM-ROW {: row :}
    row size BLEN>N CHECK-ROW data row MAKE-SEGMENT ;
 
-: VALIDATE ( ptr u8 CAD-NUM:byte-len -- ) {: data size:CAD-NUM:byte-len :}
+: VALIDATE ( ptr u8 NUM:byte-len -- ) {: data size:NUM:byte-len :}
    data size BLEN>N HEADER-CHECKED
    data PH-COUNT 0 ?do data i PROGRAM-ROW size BLEN>N CHECK-ROW loop ;
 

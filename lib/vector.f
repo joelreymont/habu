@@ -218,12 +218,12 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
       i VEC-IDX vec i VEC-IDX VEC@ q execute
    loop ;
 
-\ ---- typed VEC surface over CAD-NUM roles -------------------------------------
+\ ---- typed VEC surface over NUM roles -------------------------------------
 \
 \ The raw VEC-* words above conflate item counts, capacities, and indices on one
 \ interchangeable `n` and allocate through the raw MEM-ALLOC-CELLS sink. Package
-\ VEC re-states the same growable cell vector over CAD-NUM roles: a length or a
-\ capacity is a `CAD-NUM:item-count`, an element position is a `CAD-NUM:index`, and
+\ VEC re-states the same growable cell vector over NUM roles: a length or a
+\ capacity is a `NUM:item-count`, an element position is a `NUM:index`, and
 \ the ONLY allocation path is the private one-cell-per-item adapter, which produces
 \ a `cell-count` (one cell per item) then an `alloc-cell-count` and calls the
 \ packaged MEM:ALLOC-CELLS - so a count/index swap is a checker reject and a zero or
@@ -242,28 +242,28 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 package VEC
 private
 
-CAST: ITEM-COUNT>N ( CAD-NUM:item-count -- n )
-CAST: INDEX>N ( CAD-NUM:index -- n )
+CAST: ITEM-COUNT>N ( NUM:item-count -- n )
+CAST: INDEX>N ( NUM:index -- n )
 
 \ ---- ok-extractors: the read/derived cell is provably nonnegative, so the -------
 \ refusal arms are unreachable invariants (E-VEC-BOUNDS; mirrors MEM's
 \ E-MEM-TOTALITY discipline of an exhaustive MATCH over an impossible result).
-: OK-ITEM-COUNT ( CAD-NUM:numeric-result<CAD-NUM:item-count> -- CAD-NUM:item-count )
-   MATCH CAD-NUM:numeric-result
+: OK-ITEM-COUNT ( NUM:numeric-result<NUM:item-count> -- NUM:item-count )
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
-: OK-CELL-COUNT ( CAD-NUM:numeric-result<CAD-NUM:cell-count> -- CAD-NUM:cell-count )
-   MATCH CAD-NUM:numeric-result
+: OK-CELL-COUNT ( NUM:numeric-result<NUM:cell-count> -- NUM:cell-count )
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
-: OK-INDEX ( CAD-NUM:numeric-result<CAD-NUM:index> -- CAD-NUM:index )
-   MATCH CAD-NUM:numeric-result
+: OK-INDEX ( NUM:numeric-result<NUM:index> -- NUM:index )
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
@@ -274,8 +274,8 @@ CAST: INDEX>N ( CAD-NUM:index -- n )
 \ cell-count becomes the positive alloc role, or maps zero/overflow explicitly to
 \ the existing named vector-capacity throw (byte-identical to raw VEC-CHECK-CAP).
 : OK-ALLOC-CELL-COUNT
-      ( CAD-NUM:numeric-result<CAD-NUM:alloc-cell-count> -- CAD-NUM:alloc-cell-count )
-   MATCH CAD-NUM:numeric-result
+      ( NUM:numeric-result<NUM:alloc-cell-count> -- NUM:alloc-cell-count )
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
       zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
       underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
@@ -287,20 +287,20 @@ CAST: INDEX>N ( CAD-NUM:index -- n )
 \ (MEM:CELLS-ALLOC-COUNT has this shape but throws E-MEM-SIZE; the plan pins the
 \ vector-capacity refusal here, so the two narrowing steps are re-stated with the
 \ E-VEC-CAPACITY owner boundary.)
-: CAP-ALLOC ( CAD-NUM:item-count -- CAD-NUM:alloc-cell-count )
-   ITEM-COUNT>N CAD-NUM:CELL-COUNT OK-CELL-COUNT      \ N items -> N cells (1 cell/item)
-   CAD-NUM:AS-ALLOC-CELL-COUNT OK-ALLOC-CELL-COUNT ;  \ positive alloc role or E-VEC-CAPACITY
+: CAP-ALLOC ( NUM:item-count -- NUM:alloc-cell-count )
+   ITEM-COUNT>N NUM:CELL-COUNT OK-CELL-COUNT      \ N items -> N cells (1 cell/item)
+   NUM:AS-ALLOC-CELL-COUNT OK-ALLOC-CELL-COUNT ;  \ positive alloc role or E-VEC-CAPACITY
 
-\ ---- role bridges between CAD-NUM roles, raw cells, and the legacy helpers ------
-: N>ITEM   ( n -- CAD-NUM:item-count )  CAD-NUM:ITEM-COUNT OK-ITEM-COUNT ;
-: N>INDEX  ( n -- CAD-NUM:index )       CAD-NUM:INDEX OK-INDEX ;
-: ITEM>RC  ( CAD-NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;   \ role -> legacy count
-: IX>RI    ( CAD-NUM:index -- idx )         INDEX>N >IDX ;          \ role -> legacy index
+\ ---- role bridges between NUM roles, raw cells, and the legacy helpers ------
+: N>ITEM   ( n -- NUM:item-count )  NUM:ITEM-COUNT OK-ITEM-COUNT ;
+: N>INDEX  ( n -- NUM:index )       NUM:INDEX OK-INDEX ;
+: ITEM>RC  ( NUM:item-count -- count )  ITEM-COUNT>N >COUNT ;   \ role -> legacy count
+: IX>RI    ( NUM:index -- idx )         INDEX>N >IDX ;          \ role -> legacy index
 
 public
 
 \ ---- init / clear -------------------------------------------------------------
-: INIT ( ptr a CAD-NUM:item-count -- ) {: vec:ptr cap:CAD-NUM:item-count :}
+: INIT ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}
    vec VEC-CHECK-DEAD                             \ reject re-init of a live header (no leak)
    cap CAP-ALLOC MEM:ALLOC-CELLS vec VEC-DATA!   \ typed alloc; 0/overflow -> E-VEC-CAPACITY
    cap ITEM>RC vec VEC-CAP!
@@ -309,27 +309,27 @@ public
 : DISPOSE ( ptr a -- )  VEC-DISPOSE ;
 
 \ ---- length / capacity readers (raw cell -> item-count role) ------------------
-: LEN@ ( ptr a -- CAD-NUM:item-count )  VEC-LEN@ LEN>N N>ITEM ;
-: CAP@ ( ptr a -- CAD-NUM:item-count )  VEC-CAP@ COUNT>N N>ITEM ;
+: LEN@ ( ptr a -- NUM:item-count )  VEC-LEN@ LEN>N N>ITEM ;
+: CAP@ ( ptr a -- NUM:item-count )  VEC-CAP@ COUNT>N N>ITEM ;
 
 \ ---- resize / ensure (every allocation flows through the typed adapter) -------
-: RESIZE ( ptr a CAD-NUM:item-count -- ) {: vec:ptr cap:CAD-NUM:item-count :}
+: RESIZE ( ptr a NUM:item-count -- ) {: vec:ptr cap:NUM:item-count :}
    cap ITEM>RC {: rc:count :}
    vec rc VEC-CHECK-RESIZE-CAP                     \ reject 0 / cap < active length
    vec rc  cap CAP-ALLOC MEM:ALLOC-CELLS  VEC-INSTALL-RESIZE ;
-: ENSURE ( ptr a CAD-NUM:item-count -- ) {: vec:ptr need:CAD-NUM:item-count :}
+: ENSURE ( ptr a NUM:item-count -- ) {: vec:ptr need:NUM:item-count :}
    need ITEM-COUNT>N {: nn:n :}
    nn >COUNT VEC-CHECK-NEED                        \ reject negative / above max
    nn vec VEC-CAP@ COUNT>N <= if exit then         \ no-op ensure (need <= capacity)
    vec  vec nn >COUNT VEC-GROW-CAP COUNT>N N>ITEM  RESIZE ;
 
 \ ---- append (returns the index the value landed at) ---------------------------
-: PUSH ( a ptr a -- CAD-NUM:index ) {: value:a vec:ptr :}
+: PUSH ( a ptr a -- NUM:index ) {: value:a vec:ptr :}
    value vec VEC-PUSH IDX>N N>INDEX ;
 
 \ ---- iterate active cells, index-first (index lifted to the role) -------------
-\ effect [ R CAD-NUM:index a -- R ], which a local annotation cannot express.
-: EACH ( R ptr a [ R CAD-NUM:index a -- R ] -- R ) {: vec:ptr q :}
+\ effect [ R NUM:index a -- R ], which a local annotation cannot express.
+: EACH ( R ptr a [ R NUM:index a -- R ] -- R ) {: vec:ptr q :}
    vec VEC-LEN@ LEN>N 0 ?do
       i N>INDEX  vec i VEC-IDX VEC@  q execute
    loop ;
@@ -337,9 +337,9 @@ public
 \ ---- element access (index role -> checked raw cell) --------------------------
 \ Defined last: `@`/`!` name the package fetch/store VEC:@ / VEC:!, which would
 \ shadow the core cell primitives inside later VEC bodies.
-: @ ( ptr a CAD-NUM:index -- a ) {: vec:ptr ix:CAD-NUM:index :}
+: @ ( ptr a NUM:index -- a ) {: vec:ptr ix:NUM:index :}
    vec ix IX>RI VEC@ ;
-: ! ( a ptr a CAD-NUM:index -- ) {: value:a vec:ptr ix:CAD-NUM:index :}
+: ! ( a ptr a NUM:index -- ) {: value:a vec:ptr ix:NUM:index :}
    value vec ix IX>RI VEC! ;
 
 ;package

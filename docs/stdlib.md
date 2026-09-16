@@ -969,10 +969,10 @@ MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
 MEM-ALLOC-64K-SPAN    ( n -- ptr u8 n )
 MEM-ALLOC-64K         ( -- ptr u8 n )
 
-MEM:ALLOC-BYTES       ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )
-MEM:RELEASE-BYTES     ( ptr u8 CAD-NUM:alloc-byte-len -- )
-MEM:UNMAP             ( ptr u8 CAD-NUM:byte-len -- )
-MEM:WITH-BYTES        ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+MEM:ALLOC-BYTES       ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
+MEM:RELEASE-BYTES     ( ptr u8 NUM:alloc-byte-len -- )
+MEM:UNMAP             ( ptr u8 NUM:byte-len -- )
+MEM:WITH-BYTES        ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
 ```
 
 `MEM:RELEASE-BYTES` consumes the exact extent returned by `MEM:ALLOC-BYTES`.

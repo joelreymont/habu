@@ -13,7 +13,7 @@ using XMODEM
 using BUF
 create INPUT HDR-BYTES allot
 create OUTPUT HDR-BYTES allot
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 : INPUT-READ ( ptr u8 n n -- ) {: path size:n capacity:n :}
    INPUT capacity 1 max BYTES INIT
@@ -68,8 +68,8 @@ EXERCISE
     def decode(self, data, kind, *, error=0):
         output = self.out / 'payload.bin'
         source = self.input(data) + f'''
-: SAVE ( ptr u8 CAD-NUM:byte-len sequence -- )
-   SEQUENCE>N . {{: payload size:CAD-NUM:byte-len :}}
+: SAVE ( ptr u8 NUM:byte-len sequence -- )
+   SEQUENCE>N . {{: payload size:NUM:byte-len :}}
    s" {output}" payload size BLEN>N WRITE-ALL ;
 
 
@@ -117,8 +117,8 @@ EXERCISE
 using XMODEM
 : CRC-KIND ( -- check-kind ) CRC ;
 : SUM-KIND ( -- check-kind ) SUM ;
-: SIZE ( -- CAD-NUM:byte-len ) 1024 BLOCK CRC-KIND PACKET-BYTES ;
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+: SIZE ( -- NUM:byte-len ) 1024 BLOCK CRC-KIND PACKET-BYTES ;
+CAST: BLEN>N ( NUM:byte-len -- n )
 SIZE BLEN>N . 128 BLOCK SUM-KIND PACKET-BYTES BLEN>N .
 '''
         assert self.run(source) == ['1029', '132']

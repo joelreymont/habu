@@ -27,7 +27,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
-require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require lib/memory.f
 require lib/fs.f
 
@@ -85,21 +85,18 @@ variable CGR-WP
    CGR-MOVZ-0-MASK and CGR-MOVZ-0-BASE = ;
 
 \ typed STR:FIND-SUB / STR:INDEX-OF boundary: route byte-lengths through the STR:
-\ role surface, project the option<CAD-NUM:index> result back to the switchover
-\ option<idx> so the fail-closed extraction consumers below stay unchanged.
-package CAD-NUM
-public
-: CGR-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
-;package
+\ role surface, then read the found option<NUM:index> through NUM's one
+\ public projection and mint the switchover option<idx> from it, so the
+\ fail-closed extraction consumers below stay unchanged.
 : CGR-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
-     some OF CAD-NUM:CGR-IX>N >IDX OPTION:SOME ENDOF
+     some OF NUM:ORDINAL >IDX OPTION:SOME ENDOF
    ;MATCH ;
 : CGR-INDEX-OF ( ptr u8 n n -- option<idx> ) {: a:ptr u:n c:n :}
    a u STR:LENGTH c STR:INDEX-OF MATCH option
      none OF OPTION:NONE ENDOF
-     some OF CAD-NUM:CGR-IX>N >IDX OPTION:SOME ENDOF
+     some OF NUM:ORDINAL >IDX OPTION:SOME ENDOF
    ;MATCH ;
 
 \ ---- source extraction (fail-closed) ----

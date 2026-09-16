@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SETUP = '''
 require lib/serial.f
 package SERIAL-TEST
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 create BODY 1048578 allot
 : OK ( SERIAL:status -- )
    MATCH SERIAL:status
@@ -345,7 +345,7 @@ def main():
         for operation in ('READ', 'WRITE'):
             body = f'''
 : RUN ( -- )
-   [: {handle} SERIAL:>HANDLE BODY {length} CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+   [: {handle} SERIAL:>HANDLE BODY {length} NUM:BYTE-LEN MATCH NUM:numeric-result
       ok OF ENDOF negative OF -1 throw ENDOF zero OF -1 throw ENDOF
       overflow OF -1 throw ENDOF underflow OF -1 throw ENDOF
       bad-alignment OF -1 throw ENDOF misaligned OF -1 throw ENDOF

@@ -17,7 +17,7 @@ package GENERIC-CALL-TEST
 : NON-TOP ( n n -- n ) [: 11 * + ;] swap APPLY-TO ;
 : FORWARDED ( n n -- n ) [: 11 * + ;] KEEP APPLY ;
 
-: BYTE-CONSUMER ( n ptr u8 CAD-NUM:alloc-byte-len -- )
+: BYTE-CONSUMER ( n ptr u8 NUM:alloc-byte-len -- )
    2drop drop ;
 
 : WITH-BYTES-CONSUMING ( n -- ) {: bytes:n :}

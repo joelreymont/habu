@@ -31,7 +31,7 @@ require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
 require lib/float.f
-require lib/adt/option.f                 \ option<CAD-NUM:index> for STR:INDEX-OF (switchover wave A)
+require lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF (switchover wave A)
 
 package JR
 

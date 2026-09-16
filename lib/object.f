@@ -11,16 +11,15 @@ require lib/memory.f
 require lib/fs.f
 require lib/content-key.f
 
-\ pinned-raw residuals: STR:SPLIT-NEXT returns a checked CAD-NUM:byte-len line
-\ length and CAD-NUM:byte-off cursor, but NEXT-LINE feeds the cursor back through
-\ the raw LOAD-OFF cell and returns the raw line length, so each is projected to
-\ a bare n through the existing private CAD-NUM BYTE-LEN>N / BYTE-OFF>N (no new
-\ TRUSTED). Retire with TVK-RAW (habu-nominal-storage-raw-a3430ef2).
-package CAD-NUM
-public
-: OBJ-BL>N ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
-: OBJ-BO>N ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
-;package
+\ STR:SPLIT-NEXT states a line as a NUM:byte-len length and a NUM:byte-off
+\ cursor, and both have to be read out here: the public obj:line structure carries
+\ a raw `n` that MAGIC-LINE and PARSE-LINE consume as a span, and the LOAD-OFF
+\ cursor cell holds a raw offset, because `!` takes ( a ptr a ) and a type
+\ variable does not bind an arity-zero family - a NUM role cannot be stored
+\ as itself until dot habu-nominal-storage-raw-a3430ef2 lands. Two checked casts
+\ at this file's scope, so NUM is not reopened.
+CAST: OBJ-BL>N ( NUM:byte-len -- n )
+CAST: OBJ-BO>N ( NUM:byte-off -- n )
 
 package OBJ
 using CONTENT-KEY
@@ -331,9 +330,9 @@ private
 : NEXT-LINE ( ptr u8 n -- option<obj:line> ) {: a:ptr u:n :}   \ SOME next LF line slice (cursor advanced), else NONE
    a u STR:LENGTH LF LOAD-OFF @ STR:OFFSET STR:SPLIT-NEXT MATCH option
      none OF OPTION:NONE ENDOF
-     some OF STR-SPLIT:UNMAKE {: la:ptr ll:CAD-NUM:byte-len lo:CAD-NUM:byte-off :}
-        lo CAD-NUM:OBJ-BO>N LOAD-OFF !
-        la ll CAD-NUM:OBJ-BL>N OBJ-LINE:MAKE OPTION:SOME ENDOF
+     some OF STR-SPLIT:UNMAKE {: la:ptr ll:NUM:byte-len lo:NUM:byte-off :}
+        lo OBJ-BO>N LOAD-OFF !
+        la ll OBJ-BL>N OBJ-LINE:MAKE OPTION:SOME ENDOF
    ;MATCH ;
 
 : MAGIC-LINE ( ptr u8 n -- ) {: a:ptr u:n :}

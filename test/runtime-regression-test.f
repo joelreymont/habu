@@ -242,7 +242,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    buf i GE-DFULL-DIGITS
    buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;
 
-: GE-DFULL-WRITE ( ptr u8 CAD-NUM:alloc-byte-len -- ) {: buf:ptr len :}   \ generate the define-past-cap program into the scoped buffer, then persist it
+: GE-DFULL-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}   \ generate the define-past-cap program into the scoped buffer, then persist it
    0 GE-DFULL-P !
    buf s" 0 set-check" GE-DFULL-S  buf 10 GE-DFULL-C
    0 GE-DFULL-I !

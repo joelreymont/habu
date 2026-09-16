@@ -6,7 +6,7 @@ package SERIAL-XMODEM
 public
 
 SUMTYPE transfer-result 0
-   VARIANT completed CAD-NUM:byte-len ;VARIANT
+   VARIANT completed NUM:byte-len ;VARIANT
    VARIANT timeout ;VARIANT
    VARIANT closed ;VARIANT
    VARIANT failed SERIAL:errno ;VARIANT
@@ -44,14 +44,14 @@ using XMODEM
 : NEGOTIATED-FIELD ( ptr a -- ptr n ) BYTE-VIEW 17 cells + CELL-VIEW ;
 : RECEIVE-WAIT-FIELD ( ptr a -- ptr n ) BYTE-VIEW 18 cells + CELL-VIEW ;
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : CHECK-MS ( ms -- )
    MS>N dup 1 < swap $7FFFFFFF > or if E-OPERAND throw then ;
 
 
-: CHECK-LENGTH ( CAD-NUM:byte-len -- )
+: CHECK-LENGTH ( NUM:byte-len -- )
    BLEN>N 0 < if E-OPERAND throw then ;
 
 
@@ -242,14 +242,14 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    repeat session SEND-EOT ;
 
 
-: FRAME-SIZE ( n ptr a -- CAD-NUM:byte-len ) {: header:n session:ptr :}
+: FRAME-SIZE ( n ptr a -- NUM:byte-len ) {: header:n session:ptr :}
    header SOH = if 128 else 1024 then >PAYLOAD-SIZE
    session KIND-FIELD @ >CHECK-KIND PACKET-BYTES ;
 
 
-: READ-FRAME ( ptr a -- CAD-NUM:byte-len ) {: session:ptr :}
+: READ-FRAME ( ptr a -- NUM:byte-len ) {: session:ptr :}
    session CONTROL-DATA c@ {: header:n :}
-   header session FRAME-SIZE {: size:CAD-NUM:byte-len :}
+   header session FRAME-SIZE {: size:NUM:byte-len :}
    session PACKET-BUF BUF:SPAN$ drop {: data :}
    header data c!
    data 1 + size BLEN>N 1 - session READ-REST 0= if E-FRAME throw then size ;
@@ -260,8 +260,8 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
    sequence SEQUENCE>N session NEXT-FIELD @ 1 - $FF and = and ;
 
 
-: ACCEPT-PAYLOAD ( ptr u8 CAD-NUM:byte-len sequence ptr a -- )
-   {: data size:CAD-NUM:byte-len sequence:sequence session:ptr :}
+: ACCEPT-PAYLOAD ( ptr u8 NUM:byte-len sequence ptr a -- )
+   {: data size:NUM:byte-len sequence:sequence session:ptr :}
    sequence SEQUENCE>N session NEXT-FIELD @ = if
       size BLEN>N session MAXIMUM-FIELD @ session PROGRESS-FIELD @ - >
       if E-SXMODEM-CAPACITY throw then
@@ -274,7 +274,7 @@ CAST: BLEN>N ( CAD-NUM:byte-len -- n )
 
 : RECEIVE-PACKET ( ptr a -- ) {: session:ptr :}
    1 session NEGOTIATED-FIELD !
-   session READ-FRAME {: size:CAD-NUM:byte-len :}
+   session READ-FRAME {: size:NUM:byte-len :}
    session PACKET-BUF BUF:SPAN$ drop size session KIND-FIELD @ >CHECK-KIND DECODE
    session ACCEPT-PAYLOAD ;
 
@@ -325,8 +325,8 @@ public
 \ The source must be disjoint from the session and its private packet buffer.
 \ CRC mode uses the requested payload size; checksum negotiation selects 128.
 \ Success requires the peer's EOT ACK and reports the original source length.
-: SEND ( ptr u8 CAD-NUM:byte-len XMODEM:payload-size ms ptr a -- transfer-result )
-   {: data size:CAD-NUM:byte-len block:XMODEM:payload-size timeout:ms session:ptr :}
+: SEND ( ptr u8 NUM:byte-len XMODEM:payload-size ms ptr a -- transfer-result )
+   {: data size:NUM:byte-len block:XMODEM:payload-size timeout:ms session:ptr :}
    size CHECK-LENGTH block PAYLOAD-SIZE>N XMODEM:BLOCK drop
    timeout session START
    data session SOURCE-FIELD ! size BLEN>N session SOURCE-LEN-FIELD !
@@ -337,8 +337,8 @@ public
 \ The output is an initialized caller-owned BUF, disjoint from the session.
 \ The limit includes whole padded packets. Failure may leave a partial prefix;
 \ only completed establishes receipt through EOT. No padding is removed.
-: RECEIVE ( CAD-NUM:byte-len ptr a ms ptr a -- transfer-result )
-   {: maximum:CAD-NUM:byte-len output:ptr timeout:ms session:ptr :}
+: RECEIVE ( NUM:byte-len ptr a ms ptr a -- transfer-result )
+   {: maximum:NUM:byte-len output:ptr timeout:ms session:ptr :}
    maximum CHECK-LENGTH output BUF:SPAN$ 2drop timeout session START
    output session OUTPUT-FIELD ! maximum BLEN>N session MAXIMUM-FIELD !
    session [: dup RECEIVE-RUN ;] catch RESULT ;

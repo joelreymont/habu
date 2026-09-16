@@ -15,8 +15,8 @@ require src/core/checker-owner-guard.f
 include src/core/lower-cert-seal.f
 require lib/errors.f
 require lib/adt/option.f
-require lib/cad-num-types.f
-require lib/cad-num-arithmetic.f
+require lib/num-types.f
+require lib/num-arithmetic.f
 require lib/string.f
 require lib/memory.f
 require lib/vector.f

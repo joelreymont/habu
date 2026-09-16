@@ -802,8 +802,8 @@ SUITE adt-result
    lib/adt/result-test.f
 ;SUITE
 
-SUITE cad-num-arithmetic
-   lib/cad-num-arithmetic-test.f
+SUITE num-arithmetic
+   lib/num-arithmetic-test.f
 ;SUITE
 
 SUITE table-stdlib
@@ -1336,8 +1336,8 @@ SUITE gate-pool
    test/gate-pool-test.f
 ;SUITE
 
-SUITE cad-num-types
-   lib/cad-num-types-test.f
+SUITE num-types
+   lib/num-types-test.f
 ;SUITE
 
 SUITE fs-mutate

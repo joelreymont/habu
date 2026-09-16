@@ -56,27 +56,27 @@ create COL-V VEC-HEADER-CELLS cells allot
 create CADDR-V VEC-HEADER-CELLS cells allot
 create CLEN-V VEC-HEADER-CELLS cells allot
 
-\ ---- raw table cell -> CAD-NUM role bridges for the typed VEC surface ---------
+\ ---- raw table cell -> NUM role bridges for the typed VEC surface ---------
 \ The lexer's parallel record columns store raw cells (token / content addresses,
 \ lengths, kinds, byte/line/col positions). The typed VEC surface (package VEC)
-\ reads a validated CAD-NUM role - a capacity is a `CAD-NUM:item-count`, a record
-\ position is a `CAD-NUM:index` - so a count/index role swap at a VEC call is a
+\ reads a validated NUM role - a capacity is a `NUM:item-count`, a record
+\ position is a `NUM:index` - so a count/index role swap at a VEC call is a
 \ checker reject. These lift a nonnegative cell to its role through the PUBLIC
-\ CAD-NUM validators (no laundering back to n, no reopened package); the refusal
+\ NUM validators (no laundering back to n, no reopened package); the refusal
 \ arms are unreachable invariants (MIN-CAP and a live record index are
 \ nonnegative), an impossible negative surfaces the vector's own capacity / bounds
 \ code. This is the maki/sched-key.f SK>ITEM / SK>INDEX idiom, kept lexer-local.
-: N>ITEM ( n -- CAD-NUM:item-count )
-   CAD-NUM:ITEM-COUNT
-   MATCH CAD-NUM:numeric-result
+: N>ITEM ( n -- NUM:item-count )
+   NUM:ITEM-COUNT
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
       zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
       underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
       misaligned OF E-VEC-CAPACITY throw ENDOF
    ;MATCH ;
-: N>INDEX ( n -- CAD-NUM:index )
-   CAD-NUM:INDEX
-   MATCH CAD-NUM:numeric-result
+: N>INDEX ( n -- NUM:index )
+   NUM:INDEX
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
@@ -124,7 +124,7 @@ create CLEN-V VEC-HEADER-CELLS cells allot
    0 TOK-N ! ;
 
 \ RAW residual (maki/sched-key.f SK-N precedent): VEC:LEN@ yields a
-\ CAD-NUM:item-count and the checker correctly refuses to launder it back to n, but
+\ NUM:item-count and the checker correctly refuses to launder it back to n, but
 \ TOK-N is a raw n cache that drives the lexer's raw token arithmetic
 \ (COUNT 1- ...), so the count is read through the raw VEC-LEN@ accessor for this
 \ word alone.

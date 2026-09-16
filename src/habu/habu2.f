@@ -302,7 +302,7 @@ variable LPTOPROW
 \ whole tree already requires, loaded once by the engine instead of once per
 \ program.
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
-variable LPCADTYPES     variable LPCADARITH     variable LPSTRING
+variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
 variable LPMEMORY       variable LPVECTOR
 variable LCHKSNAPTOKEN
 variable SRC-SFAIL
@@ -904,10 +904,10 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
 \ no-op and gives every program the same pre-seal copy.
 \
 \ Order is the files' own require graph, read from the files: prelude and
-\ errors have no requires; adt/option.f is a bare ENUM; cad-num-types.f is the
-\ role NEWTYPEs and cad-num-arithmetic.f requires it; string.f requires errors,
-\ adt/option and cad-num-arithmetic; memory.f requires errors and
-\ cad-num-arithmetic; vector.f requires errors and memory. Three of them spell
+\ errors have no requires; adt/option.f is a bare ENUM; num-types.f is the
+\ role NEWTYPEs and num-arithmetic.f requires it; string.f requires errors,
+\ adt/option and num-arithmetic; memory.f requires errors and
+\ num-arithmetic; vector.f requires errors and memory. Three of them spell
 \ the dependency as `s" path" required` rather than the `require` keyword, so
 \ the graph has to be read from the files and not grepped for one spelling.
 \
@@ -929,8 +929,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-LOAD-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-LOAD-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-LOAD-ROW
-   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-LOAD-ROW
-   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-LOAD-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-LOAD-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-LOAD-ROW
    PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-LOAD-ROW
    PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-LOAD-ROW ;
@@ -1041,8 +1041,8 @@ create BPL-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 108 c, 114 c, 5
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PATH-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PATH-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PATH-ROW
-   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-PATH-ROW
-   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-PATH-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-PATH-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-PATH-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PATH-ROW
    PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW
    PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PATH-ROW ;
@@ -1449,8 +1449,8 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV variable LAPPREQ
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PROVIDE-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PROVIDE-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PROVIDE-ROW
-   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-PROVIDE-ROW
-   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PROVIDE-ROW
    PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PROVIDE-ROW
    PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PROVIDE-ROW ;
@@ -9592,7 +9592,7 @@ package LABELS
    LBL LPLAYOUTSEAL !  LBL LPOWNERGUARD !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
-   LBL LPCADTYPES !  LBL LPCADARITH !  LBL LPSTRING !
+   LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
    LBL LPMEMORY !  LBL LPVECTOR !
    LBL PFX-CHAIN:LTAB !
    LBL LCHKSNAPTOKEN ! ;

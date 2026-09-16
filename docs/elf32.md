@@ -5,16 +5,16 @@ ELF32 headers and bounded program segments. It does not allocate memory, load
 code, interpret sections or relocations, or choose a processor ABI. A firmware
 image builder can apply its machine and loading policy to these records.
 
-The input is a live byte pointer and `CAD-NUM:byte-len`. The caller owns the
+The input is a live byte pointer and `NUM:byte-len`. The caller owns the
 buffer and must provide its actual readable extent. `FILE-BYTES` checks a raw
 nonnegative length; it cannot establish ownership of a pointer.
 
 | Word | Effect | Validation |
 | --- | --- | --- |
-| `FILE-BYTES` | `n -- CAD-NUM:byte-len` | Rejects a negative byte count; zero is allowed. |
-| `INFO` | `ptr u8 CAD-NUM:byte-len -- header` | Header, supported representation, and complete program-table bounds. |
-| `PROGRAM` | `ptr u8 CAD-NUM:byte-len program-index -- segment` | Header/table, index, and the selected segment. |
-| `VALIDATE` | `ptr u8 CAD-NUM:byte-len --` | Header/table and every program segment. |
+| `FILE-BYTES` | `n -- NUM:byte-len` | Rejects a negative byte count; zero is allowed. |
+| `INFO` | `ptr u8 NUM:byte-len -- header` | Header, supported representation, and complete program-table bounds. |
+| `PROGRAM` | `ptr u8 NUM:byte-len program-index -- segment` | Header/table, index, and the selected segment. |
+| `VALIDATE` | `ptr u8 NUM:byte-len --` | Header/table and every program segment. |
 
 `header` contains `kind`, `machine`, `entry`, `flags`, `os-abi`, `abi-version`,
 and `programs`. `segment` contains `data`, `size`, `kind`, `virtual`, `physical`,

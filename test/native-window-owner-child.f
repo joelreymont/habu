@@ -8,7 +8,7 @@
 \ the fixture, the thrown code when it refused. Printing rather than exiting
 \ keeps a refusal distinguishable from an acceptance for the parent test.
 \
-\ lib/memory.f is required HERE and in no window file, so CAD-NUM's families
+\ lib/memory.f is required HERE and in no window file, so NUM's families
 \ are host-only: the retained checker knows them and the window must not.
 
 require lib/errors.f

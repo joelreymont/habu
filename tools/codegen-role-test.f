@@ -10,7 +10,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
-require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require lib/memory.f
 require lib/fs.f
 require lib/test.f
@@ -38,15 +38,12 @@ variable CRT-LEN
    CRT-BUF CRT-LEN @ LEN>N ;
 
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
-\ project the option<CAD-NUM:index> result back to the switchover option<idx>.
-package CAD-NUM
-public
-: CRT-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
-;package
+\ then read the found option<NUM:index> through NUM's one public
+\ projection and mint the switchover option<idx> from it.
 : CRT-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
-     some OF CAD-NUM:CRT-IX>N >IDX OPTION:SOME ENDOF
+     some OF NUM:ORDINAL >IDX OPTION:SOME ENDOF
    ;MATCH ;
 
 : CRT-CORRUPT ( ptr u8 n ptr u8 n -- ) {: good:ptr goodu:n bad:ptr badu:n :}

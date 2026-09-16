@@ -7,14 +7,14 @@
 \ and the shared closure walk, because that input is a file LIST rather than one
 \ file (see the stamp key section below).
 
-require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require lib/string-roles.f               \ package STR: the typed string surface
 require src/habu/verify-source.f
 
 \ The tool itself lives in package BUILD-FIXPOINT. Everything below is private
 \ to it; the export block at the end of the file names the whole surface other
 \ files call. The sibling packages in this file (COMPILER-BUILD, BUILD-EXT,
-\ CAD-NUM, VERIFY) close and reopen BUILD-FIXPOINT around themselves, because
+\ NUM, VERIFY) close and reopen BUILD-FIXPOINT around themselves, because
 \ packages do not nest, and import what they need with `using BUILD-FIXPOINT`.
 package BUILD-FIXPOINT
 
@@ -731,20 +731,13 @@ package BUILD-FIXPOINT
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
 
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
-\ project the option<CAD-NUM:index> result back to the switchover option<idx>.
-;package
-
-package CAD-NUM
-public
-: BF-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
-;package
-
-package BUILD-FIXPOINT
+\ then read the found option<NUM:index> through NUM's one public
+\ projection and mint the switchover option<idx> from it.
 
 : BF-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
-     some OF CAD-NUM:BF-IX>N >IDX OPTION:SOME ENDOF
+     some OF NUM:ORDINAL >IDX OPTION:SOME ENDOF
    ;MATCH ;
 
 : BF-SOURCE-FIND ( ptr u8 n -- option<idx> )
@@ -1055,12 +1048,12 @@ package BUILD-FIXPOINT
    out outu s" src/habu/habu1.f" BF-CODE-ORIGIN-REQUIRE$ BF-APPEND-SOURCE-FROM ;
 
 \ fmt requires float and string; float also requires option, and string
-\ requires CAD-NUM arithmetic/types and errors. Prelude/errors are already
+\ requires NUM arithmetic/types and errors. Prelude/errors are already
 \ restored here. Each provided fact makes the remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" lib/adt/option.f" BF-APPEND-MODULE
-   out outu s" lib/cad-num-types.f" BF-APPEND-MODULE
-   out outu s" lib/cad-num-arithmetic.f" BF-APPEND-MODULE
+   out outu s" lib/num-types.f" BF-APPEND-MODULE
+   out outu s" lib/num-arithmetic.f" BF-APPEND-MODULE
    out outu s" lib/string.f" BF-APPEND-MODULE
    out outu s" lib/float.f" BF-APPEND-MODULE
    out outu s" lib/fmt.f" BF-APPEND-MODULE ;

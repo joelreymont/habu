@@ -117,7 +117,7 @@ variable PET-START-NS
    0 T= 0 T= 0 T= ;
 
 : PET-HAS-ENV-LINE-BODY
-   ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 CAD-NUM:alloc-byte-len -- bool )
+   ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 NUM:alloc-byte-len -- bool )
    drop
    {: out:ptr outu:n name:ptr nameu:n val:ptr valu:n lineu:n expected:ptr :}
    $0A expected c!

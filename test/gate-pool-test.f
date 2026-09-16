@@ -4,7 +4,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
-require lib/adt/option.f                 \ option<CAD-NUM:index> STR:INDEX-OF consumer (switchover wave A)
+require lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -15,15 +15,6 @@ require lib/process-env.f
 require lib/process-fork.f
 require lib/test/runner.f
 require test/gate-pool.f
-
-\ White-box CAD-NUM role reader (precedent: lib/string-test.f STR-T-IX>RAW):
-\ reopen the unsealed CAD-NUM package to project the typed STR:FIND-SUB /
-\ STR:INDEX-OF index back to its raw cell. A plain checked word over the audited
-\ private INDEX>N projection - not a new boundary.
-package CAD-NUM
-public
-: GPT-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
-;package
 
 package GATE-POOL-TEST
 private

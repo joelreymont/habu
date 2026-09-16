@@ -104,8 +104,8 @@ runtime and its own distinct thing to the checker.
 **`NEWTYPE name 0`** is the form to reach for. It registers a nominal cell
 type owned by the package it is declared in (a zero-parameter *family* — § 5
 defines that word), so two packages may each have a type called `index`
-without any confusion between them. `lib/cad-num-types.f`
-is the reference example: package `CAD-NUM` declares ten of them —
+without any confusion between them. `lib/num-types.f`
+is the reference example: package `NUM` declares ten of them —
 `byte-len`, `item-count`, `cell-count`, `index`, `byte-off`, `cell-off`,
 `alignment`, `positive-divisor`, `alloc-byte-len`, `alloc-cell-count` — and
 that one file is why a byte count cannot be passed where a cell count belongs
@@ -113,9 +113,9 @@ anywhere downstream of it.
 
 Strictness is the whole point, and the probe that settles it is always the
 same. Write a checked word that returns a raw `7` where the nominal is
-declared, and watch it fail: `expected: cad-num:byte-len<> actual: n`, exit 70.
+declared, and watch it fail: `expected: num:byte-len<> actual: n`, exit 70.
 
-`CAD-NUM` also shows the discipline that makes nominals worth having. Its
+`NUM` also shows the discipline that makes nominals worth having. Its
 constructors validate, and there is **no public inverse** anywhere — no word
 that turns a `byte-len` back into a bare `n`. Each consumer that genuinely
 needs the raw cell owns its own private, audited projection and says so.
@@ -156,7 +156,7 @@ parameters it takes, its fields or variants, and which derived operations it
 opted into. That row is called a type family. "Family" rather than "type"
 because one declaration can stand for many concrete types: `option` is
 declared once with one parameter, and every use picks a payload —
-`option<n>`, `option<CAD-NUM:index>` — each a different concrete type from
+`option<n>`, `option<NUM:index>` — each a different concrete type from
 the same declaration. A declaration with zero parameters is still a family;
 it just has exactly one member, and the checker prints it with an empty
 parameter list — when an error message says `maki:datatype<>`, that trailing
@@ -353,7 +353,7 @@ arithmetic, so a forged index cannot reach a wrong row.
 **A tagged family cannot instantiate a generic parameter.** A tagged family
 is one declared in variants (`ENUM`, or the older `SUMTYPE`): its values carry
 a tag saying which arm they are. An untagged one (`STRUCTURE`, `NEWTYPE`) has
-exactly one shape and needs no tag. The gap: `option<CAD-NUM:index>` works and is used in
+exactly one shape and needs no tag. The gap: `option<NUM:index>` works and is used in
 production (`lib/float.f`); so does `option<T>` over a `STRUCTURE`, complete
 with a `MATCH` that unmakes the record inside the `some` arm. But
 `option<MAKI:datatype>` — an `option` over a plain tag `ENUM` — is rejected at the
@@ -403,7 +403,7 @@ another small word whose entry consumes the bundle.
 - `docs/effects.md` — the effect language itself.
 - `docs/typed-top-level.md` — what may and may not run at the interpreter.
 The best worked examples in the tree, if you would rather read code:
-`lib/cad-num-types.f` for nominals, `lib/adt/option.f` and `lib/adt/result.f`
+`lib/num-types.f` for nominals, `lib/adt/option.f` and `lib/adt/result.f`
 for generics, and in Loom (`../loom/maki/`) `infer/safetensors.f` for linear owners
 and transition chains, `infer/gpt2-config.f` for a validating constructor and a
 proof token, and `infer/gpt2-pin.f` for the smallest possible authority — a

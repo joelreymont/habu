@@ -45,22 +45,18 @@
 require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
-require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer (switchover wave A)
+require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
 
-\ White-box CAD-NUM role readers (precedent: lib/string-test.f STR-T-*>RAW):
-\ reopen the unsealed CAD-NUM package to project the typed STR: index/byte-len/
-\ byte-off results back to raw cells, keeping SAB-OCCURS and the line scanners
-\ byte-identical. Plain checked words over the audited private *>N projections -
-\ not a new boundary.
-package CAD-NUM
-public
-: SAB-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
-: SAB-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
-: SAB-BO>RAW ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
-;package
+\ White-box role readers at this file's own scope: SAB-SPLIT-NEXT hands the line
+\ scanners the raw-shaped (ptr u8 n n bool) they consume, so the field length and
+\ next offset are read out here. Checked casts; projection out of a cell family
+\ needs no ownership (checker.f CAST-OWNER?), so NUM is not reopened. A found
+\ index goes through the package's own public NUM:ORDINAL.
+CAST: SAB-BL>RAW ( NUM:byte-len -- n )   \ field length for the raw-shaped return
+CAST: SAB-BO>RAW ( NUM:byte-off -- n )   \ next offset for the raw-shaped return
 
 \ Typed STR:SPLIT-NEXT with the raw-shaped result the line scanners consume:
 \ convert the length/offset args to roles, then project the sub-length and
@@ -69,8 +65,8 @@ public
 : SAB-SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool ) {: a:ptr u:n sep:n start:n :}
    a u STR:LENGTH sep start STR:OFFSET STR:SPLIT-NEXT MATCH option
      none OF a 0 start STR-FALSE ENDOF   \ mirror the raw split's (a, 0, start, false)
-     some OF STR-SPLIT:UNMAKE {: fa:ptr bl:CAD-NUM:byte-len bo:CAD-NUM:byte-off :}
-        fa  bl CAD-NUM:SAB-BL>RAW  bo CAD-NUM:SAB-BO>RAW  STR-TRUE ENDOF
+     some OF STR-SPLIT:UNMAKE {: fa:ptr bl:NUM:byte-len bo:NUM:byte-off :}
+        fa  bl SAB-BL>RAW  bo SAB-BO>RAW  STR-TRUE ENDOF
    ;MATCH ;
 
 \ Mirror scan buffer. This was first sized as "forth.fs ~137 KB + headroom"; the
@@ -186,7 +182,7 @@ variable SAB-NAMES-LEN
    begin SAB-CSTART @ v + u <= while
       a SAB-CSTART @ +  u SAB-CSTART @ - STR:LENGTH  b v STR:LENGTH  STR:FIND-SUB MATCH option
         none OF SAB-CNT @ exit ENDOF
-        some OF CAD-NUM:SAB-IX>RAW ENDOF
+        some OF NUM:ORDINAL ENDOF
       ;MATCH
       SAB-CNT @ 1 + SAB-CNT !
       SAB-CSTART @ + v + SAB-CSTART !

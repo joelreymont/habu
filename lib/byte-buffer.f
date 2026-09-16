@@ -34,19 +34,19 @@ MEM-MAX-N constant MAX-BYTES              \ largest byte extent (one cell); the 
 \ which still consume a bare `n`. BUF-private, no public export; there is no public
 \ inverse, so a length/offset role cannot round-trip through a raw cell by accident.
 \ Deleting the projection outright waits on habu-build-exact-modular-44f4c2dc.
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 \ ---- n -> byte-len: the read/derived cell is provably nonnegative (SET-LEN keeps
 \ len >= 0, INIT keeps cap > 0), so the refusal arms are unreachable invariants
 \ (E-BUF-BOUNDS; mirrors VEC's OK-ITEM-COUNT / MEM's E-MEM-TOTALITY discipline).
-: OK-BLEN ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- CAD-NUM:byte-len )
-   MATCH CAD-NUM:numeric-result
+: OK-BLEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-BUF-BOUNDS throw ENDOF
       zero OF E-BUF-BOUNDS throw ENDOF          overflow OF E-BUF-BOUNDS throw ENDOF
       underflow OF E-BUF-BOUNDS throw ENDOF     bad-alignment OF E-BUF-BOUNDS throw ENDOF
       misaligned OF E-BUF-BOUNDS throw ENDOF
    ;MATCH ;
-: N>BLEN ( n -- CAD-NUM:byte-len )  CAD-NUM:BYTE-LEN OK-BLEN ;
+: N>BLEN ( n -- NUM:byte-len )  NUM:BYTE-LEN OK-BLEN ;
 
 \ ---- header field access ------------------------------------------------------
 : DATA-FIELD ( ptr a -- ptr ptr u8 )  DATA-OFF ptr-field ;
@@ -177,28 +177,28 @@ public
 : HDR-BYTES ( -- n )  HDR-SIZE ;
 
 \ ---- lifecycle ----------------------------------------------------------------
-: INIT ( ptr a CAD-NUM:byte-len -- ) {: buf:ptr cap:CAD-NUM:byte-len :}
+: INIT ( ptr a NUM:byte-len -- ) {: buf:ptr cap:NUM:byte-len :}
    buf cap BLEN>N INIT-RAW ;
 : DISPOSE ( ptr a -- )  DISPOSE-RAW ;
 : CLEAR ( ptr a -- )  CLEAR-RAW ;
 
 \ ---- state readers (fail closed on a disposed / uninitialized buffer) ----------
-: LEN@ ( ptr a -- CAD-NUM:byte-len ) {: buf:ptr :}
+: LEN@ ( ptr a -- NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf LEN-RAW@ N>BLEN ;
-: CAP@ ( ptr a -- CAD-NUM:byte-len ) {: buf:ptr :}
+: CAP@ ( ptr a -- NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf CAP-RAW@ N>BLEN ;
-: SPAN$ ( ptr a -- ptr u8 CAD-NUM:byte-len ) {: buf:ptr :}
+: SPAN$ ( ptr a -- ptr u8 NUM:byte-len ) {: buf:ptr :}
    buf CHECK-LIVE  buf DATA@  buf LEN-RAW@ N>BLEN ;
 
 \ ---- capacity management ------------------------------------------------------
-: RESERVE ( ptr a CAD-NUM:byte-len -- ) {: buf:ptr n:CAD-NUM:byte-len :}
+: RESERVE ( ptr a NUM:byte-len -- ) {: buf:ptr n:NUM:byte-len :}
    buf n BLEN>N RESERVE-RAW ;
 
 \ ---- append / replace (growth doubles through the checked adapter) ------------
 : APPEND-BYTE ( n ptr a -- )  APPEND-BYTE-RAW ;
-: APPEND-SPAN ( ptr u8 CAD-NUM:byte-len ptr a -- ) {: src:ptr u:CAD-NUM:byte-len buf:ptr :}
+: APPEND-SPAN ( ptr u8 NUM:byte-len ptr a -- ) {: src:ptr u:NUM:byte-len buf:ptr :}
    src u BLEN>N buf APPEND-SPAN-RAW ;
-: REPLACE ( ptr u8 CAD-NUM:byte-len ptr a -- ) {: src:ptr u:CAD-NUM:byte-len buf:ptr :}
+: REPLACE ( ptr u8 NUM:byte-len ptr a -- ) {: src:ptr u:NUM:byte-len buf:ptr :}
    src u BLEN>N buf REPLACE-RAW ;
 
 ;package

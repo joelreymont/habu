@@ -1,6 +1,6 @@
-\ cad-num-arithmetic.f - CAD-NUM closed, dimensionally-valid arithmetic.
-\ Reopens package CAD-NUM (slice 2); depends on
-\ lib/cad-num-types.f (slice 1) and adds no roles or overloads.
+\ num-arithmetic.f - NUM closed, dimensionally-valid arithmetic.
+\ Reopens package NUM (slice 2); depends on
+\ lib/num-types.f (slice 1) and adds no roles or overloads.
 \
 \ This file is the COMPLETE admitted role algebra. The B5.2 table is closed: an
 \ omitted, reversed, or cross-unit pair is statically unavailable, because the
@@ -15,7 +15,7 @@
 \ subtraction/retreat/reversed-distance below zero), `misaligned` (a byte
 \ extent/offset that is not a whole cell count), or `zero` (an extent-by-extent
 \ division whose unit-size divisor is a zero-length extent). Failure is a VALUE,
-\ never a throw; consumers throw the matching `E-CADNUM-*` code at their own
+\ never a throw; consumers throw the matching `E-NUM-*` code at their own
 \ boundary. The total positive-divisor DIV/REM operations take the
 \ `positive-divisor` role, so a zero divisor is STATICALLY impossible: they are
 \ total and return their role directly with no error variant. The extent-by-extent
@@ -34,17 +34,17 @@
 \ the same read). They have no public inverse and are retired with TVK-RAW
 \ (dot habu-nominal-storage-raw-a3430ef2), exactly as the slice 1 projections.
 \
-\ No `require lib/memory.f`: MEM:ALLOC-* consumes CAD-NUM alloc roles, so a
+\ No `require lib/memory.f`: MEM:ALLOC-* consumes NUM alloc roles, so a
 \ dependency would be a cycle; CELL-BYTES-N mirrors the machine cell size that
 \ lib/memory.f also names as MEM-CELL-BYTES, and MAX-CELL-N is slice 1's bound.
 
-require lib/cad-num-types.f
+require lib/num-types.f
 
-package CAD-NUM
+package NUM
 private
 
 \ ---- internal invariant code (never reachable; see OK-* extractors) -----------
--5406 constant E-CADNUM-TOTALITY   \ a total op's validator saw a non-ok result
+-5406 constant E-NUM-TOTALITY   \ a total op's validator saw a non-ok result
 
 \ ---- machine cell size (mirrors lib/memory.f MEM-CELL-BYTES; cycle-free) -------
 1 cells constant CELL-BYTES-N
@@ -61,10 +61,10 @@ CAST: ALIGNMENT>N ( alignment -- n )
 CAST: POSITIVE-DIVISOR>N ( positive-divisor -- n )
 
 \ ---- payloadless failure constructors (readable over the escaped ctor names) --
-: A-OVER     ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:OVERFLOW ;
-: A-UNDER    ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:UNDERFLOW ;
-: A-MISALIGN ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:MISALIGNED ;
-: A-ZERO     ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:ZERO ;
+: A-OVER     ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:OVERFLOW ;
+: A-UNDER    ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:UNDERFLOW ;
+: A-MISALIGN ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:MISALIGNED ;
+: A-ZERO     ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:ZERO ;
 
 \ ---- raw checked scalar kernels (nonnegative cells; role-free) -----------------
 \ Each returns the failure predicate as a real bool from a comparison; the caller
@@ -90,30 +90,42 @@ CAST: POSITIVE-DIVISOR>N ( positive-divisor -- n )
 \ ---- ok extractors for the total ops (the non-ok arms are proven unreachable) --
 : OK-BYTE-LEN ( numeric-result<byte-len> -- byte-len )
    MATCH numeric-result
-      ok OF ENDOF                            negative OF E-CADNUM-TOTALITY throw ENDOF
-      zero OF E-CADNUM-TOTALITY throw ENDOF  overflow OF E-CADNUM-TOTALITY throw ENDOF
-      underflow OF E-CADNUM-TOTALITY throw ENDOF
-      bad-alignment OF E-CADNUM-TOTALITY throw ENDOF
-      misaligned OF E-CADNUM-TOTALITY throw ENDOF
+      ok OF ENDOF                            negative OF E-NUM-TOTALITY throw ENDOF
+      zero OF E-NUM-TOTALITY throw ENDOF  overflow OF E-NUM-TOTALITY throw ENDOF
+      underflow OF E-NUM-TOTALITY throw ENDOF
+      bad-alignment OF E-NUM-TOTALITY throw ENDOF
+      misaligned OF E-NUM-TOTALITY throw ENDOF
    ;MATCH ;
 : OK-ITEM-COUNT ( numeric-result<item-count> -- item-count )
    MATCH numeric-result
-      ok OF ENDOF                            negative OF E-CADNUM-TOTALITY throw ENDOF
-      zero OF E-CADNUM-TOTALITY throw ENDOF  overflow OF E-CADNUM-TOTALITY throw ENDOF
-      underflow OF E-CADNUM-TOTALITY throw ENDOF
-      bad-alignment OF E-CADNUM-TOTALITY throw ENDOF
-      misaligned OF E-CADNUM-TOTALITY throw ENDOF
+      ok OF ENDOF                            negative OF E-NUM-TOTALITY throw ENDOF
+      zero OF E-NUM-TOTALITY throw ENDOF  overflow OF E-NUM-TOTALITY throw ENDOF
+      underflow OF E-NUM-TOTALITY throw ENDOF
+      bad-alignment OF E-NUM-TOTALITY throw ENDOF
+      misaligned OF E-NUM-TOTALITY throw ENDOF
    ;MATCH ;
 : OK-CELL-COUNT ( numeric-result<cell-count> -- cell-count )
    MATCH numeric-result
-      ok OF ENDOF                            negative OF E-CADNUM-TOTALITY throw ENDOF
-      zero OF E-CADNUM-TOTALITY throw ENDOF  overflow OF E-CADNUM-TOTALITY throw ENDOF
-      underflow OF E-CADNUM-TOTALITY throw ENDOF
-      bad-alignment OF E-CADNUM-TOTALITY throw ENDOF
-      misaligned OF E-CADNUM-TOTALITY throw ENDOF
+      ok OF ENDOF                            negative OF E-NUM-TOTALITY throw ENDOF
+      zero OF E-NUM-TOTALITY throw ENDOF  overflow OF E-NUM-TOTALITY throw ENDOF
+      underflow OF E-NUM-TOTALITY throw ENDOF
+      bad-alignment OF E-NUM-TOTALITY throw ENDOF
+      misaligned OF E-NUM-TOTALITY throw ENDOF
    ;MATCH ;
 
 public
+
+\ ---- the package's only public projection --------------------------------------
+\ An index is a nonnegative ordinal and nothing consumes one directly: a found
+\ position drives pointer and length arithmetic (a+ix, u-ix-1), a bound test
+\ against a raw extent, or a mint into a foreign index role such as the engine's
+\ `idx`. Fifteen files used to reopen NUM and publish a projection of their own,
+\ which put twenty-eight foreign words in this package's public surface and left
+\ the namespace unsealable. This is the one public way out, declared where the
+\ private cast lives. It erases a proof; it cannot create one, because the mints
+\ have no public counterpart.
+: ORDINAL ( index -- n )
+   INDEX>N ;
 
 \ ---- strict bounds and index -> byte offset -----------------------------------
 : INDEX= ( index index -- bool )
@@ -276,12 +288,12 @@ public
    v BYTE-OFF>N a ALIGNMENT>N ROUND-UP if drop A-OVER else BYTE-OFF then ;
 
 \ ---- pointer advance over a validated offset -----------------------------------
-\ The one public word here that touches a pointer. Every other CAD-NUM word is
+\ The one public word here that touches a pointer. Every other NUM word is
 \ pure arithmetic on roles; this one exists because the byte primitives are
 \ axiomatised on raw numbers (`BYTE+`, `BYTE@`, `BYTE-COPY` all take a bare `n`),
 \ so without it every caller must erase a validated offset through a projection
 \ of its own just to form an address. Publishing the advance here keeps the role
-\ at the boundary and keeps the erasure inside CAD-NUM, next to the algebra that
+\ at the boundary and keeps the erasure inside NUM, next to the algebra that
 \ produced the offset.
 \
 \ IT DOES NOT PROVE BOUNDS. Advancing is not permission to read: nothing in this

@@ -2,7 +2,7 @@
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
-require lib/cad-num-types.f
+require lib/num-types.f
 require lib/task.f
 
 package UDP4
@@ -29,8 +29,8 @@ SUMTYPE status 0
 ;SUMTYPE
 
 SUMTYPE receive-result 0
-   VARIANT packet CAD-NUM:byte-len address port ;VARIANT
-   VARIANT truncated CAD-NUM:byte-len address port ;VARIANT
+   VARIANT packet NUM:byte-len address port ;VARIANT
+   VARIANT truncated NUM:byte-len address port ;VARIANT
    VARIANT timeout ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
@@ -55,15 +55,15 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
 : ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
 : POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
 
 
-: LENGTH ( n -- CAD-NUM:byte-len )
-   CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+: LENGTH ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH NUM:numeric-result
       ok OF ENDOF
       negative OF E-OPERAND throw ENDOF
       zero OF E-OPERAND throw ENDOF
@@ -187,14 +187,14 @@ FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
    socket SOCKET>N SOCKADDR ADDRLEN LOCAL-CALL C-INT ;
 
 
-: SEND-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
-   {: socket:socket bytes size:CAD-NUM:byte-len :}
+: SEND-RAW ( socket ptr u8 NUM:byte-len -- n )
+   {: socket:socket bytes size:NUM:byte-len :}
    socket SOCKET>N bytes size BLEN>N 0
    SOCKADDR SOCKADDR-BYTES SEND-CALL ;
 
 
-: RECEIVE-RAW ( socket ptr u8 CAD-NUM:byte-len -- n )
-   {: socket:socket bytes capacity:CAD-NUM:byte-len :}
+: RECEIVE-RAW ( socket ptr u8 NUM:byte-len -- n )
+   {: socket:socket bytes capacity:NUM:byte-len :}
    socket SOCKET>N bytes capacity BLEN>N MSG-TRUNC
    SOCKADDR ADDRLEN RECEIVE-CALL ;
 
@@ -216,7 +216,7 @@ FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
    ERRNO>N dup 4 = swap 11 = or ;
 
 
-: RECEIVED ( n CAD-NUM:byte-len -- receive-result ) {: actual:n capacity:CAD-NUM:byte-len :}
+: RECEIVED ( n NUM:byte-len -- receive-result ) {: actual:n capacity:NUM:byte-len :}
    actual 0 MAX-PAYLOAD WITHIN-RANGE
    actual capacity BLEN>N > if
       actual LENGTH ENDPOINT@ UDP4-RECEIVE--RESULT:truncated
@@ -271,7 +271,7 @@ public
    dup 0 MAX-PORT WITHIN-RANGE >PORT ;
 
 
-: PAYLOAD-BYTES ( n -- CAD-NUM:byte-len )
+: PAYLOAD-BYTES ( n -- NUM:byte-len )
    dup 0 MAX-PAYLOAD WITHIN-RANGE LENGTH ;
 
 
@@ -293,8 +293,8 @@ public
 
 \ The input is borrowed for this call. Success means the OS accepted the whole
 \ datagram, not that it arrived. Interrupted/would-block errors reach the caller.
-: SEND ( socket address port ptr u8 CAD-NUM:byte-len -- status )
-   {: socket:socket address:address port:port bytes size:CAD-NUM:byte-len :}
+: SEND ( socket address port ptr u8 NUM:byte-len -- status )
+   {: socket:socket address:address port:port bytes size:NUM:byte-len :}
    socket CHECK-SOCKET size BLEN>N 0 MAX-PAYLOAD WITHIN-RANGE
    INIT address port ENDPOINT!
    socket bytes size SEND-RAW dup 0 < if drop LAST-ERROR UDP4-STATUS:failed exit then
@@ -304,8 +304,8 @@ public
 \ A packet may contain zero bytes. Capacity is 1..65507; the caller owns that
 \ writable span. A truncated result carries the ORIGINAL datagram byte length,
 \ while only capacity bytes were copied. Timeout zero makes one immediate try.
-: RECEIVE ( socket ptr u8 CAD-NUM:byte-len ms -- receive-result )
-   {: socket:socket bytes capacity:CAD-NUM:byte-len timeout:ms :}
+: RECEIVE ( socket ptr u8 NUM:byte-len ms -- receive-result )
+   {: socket:socket bytes capacity:NUM:byte-len timeout:ms :}
    socket CHECK-SOCKET capacity BLEN>N 1 MAX-PAYLOAD WITHIN-RANGE
    timeout MS>N 0 $7FFFFFFF WITHIN-RANGE INIT
    mono-ns timeout MS>N NS-PER-MS * + >NS {: deadline:ns :}

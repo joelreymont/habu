@@ -16,7 +16,7 @@ SUMTYPE value 0
 
 SUMTYPE mapping 0
    VARIANT empty ;VARIANT
-   VARIANT owned ptr u8 CAD-NUM:alloc-byte-len ;VARIANT
+   VARIANT owned ptr u8 NUM:alloc-byte-len ;VARIANT
 ;SUMTYPE
 
 private

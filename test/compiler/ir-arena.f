@@ -33,7 +33,7 @@ $20000 constant TMAP-BYTES           \ pins the context mapping size
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-: ACCT-PROBE-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- bool )
+: ACCT-PROBE-BODY ( ptr u8 NUM:alloc-byte-len -- bool )
    drop {: p:ptr :}
    $A5 p c! p c@ $A5 = ;
 

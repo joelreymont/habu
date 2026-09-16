@@ -2376,7 +2376,7 @@ variable LPCOMBINATORS  variable LPCODESPAN  variable LPXREF  variable LPGENDECL
 variable LPGENDECLPROT  variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPDYNAMIC      variable LPINTMARK      variable LPTOPROW
 variable LPPRELUDE      variable LPERRORS       variable LPOPTION
-variable LPCADTYPES     variable LPCADARITH     variable LPSTRING
+variable LPNUMTYPES     variable LPNUMARITH     variable LPSTRING
 variable LPMEMORY       variable LPVECTOR
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
@@ -2638,8 +2638,8 @@ create ZBYTE 0 c,
 \ a second read; dynamic-storage.f has its row in PFX-PROVIDE-CORE-FILES.
 \
 \ Remaining LOAD drift, recorded rather than left as an unexplained short list:
-\ native's group continues with lib/adt/option.f, lib/cad-num-types.f,
-\ lib/cad-num-arithmetic.f, lib/string.f, lib/memory.f and lib/vector.f. A
+\ native's group continues with lib/adt/option.f, lib/num-types.f,
+\ lib/num-arithmetic.f, lib/string.f, lib/memory.f and lib/vector.f. A
 \ `require` of one of them from the seed's program reads it then, through
 \ src/core/include.f and the seed's own realpath (BREALPATH).
 : PFX-LOAD-STDLIB-FILES ( -- )
@@ -2755,8 +2755,8 @@ create ZBYTE 0 c,
    PFX-COMMON LPPRELUDE      s" lib/prelude.f"            PFX-PATH-ROW
    PFX-COMMON LPERRORS       s" lib/errors.f"             PFX-PATH-ROW
    PFX-COMMON LPOPTION       s" lib/adt/option.f"         PFX-PATH-ROW
-   PFX-COMMON LPCADTYPES     s" lib/cad-num-types.f"      PFX-PATH-ROW
-   PFX-COMMON LPCADARITH     s" lib/cad-num-arithmetic.f" PFX-PATH-ROW
+   PFX-COMMON LPNUMTYPES     s" lib/num-types.f"      PFX-PATH-ROW
+   PFX-COMMON LPNUMARITH     s" lib/num-arithmetic.f" PFX-PATH-ROW
    PFX-COMMON LPSTRING       s" lib/string.f"             PFX-PATH-ROW
    PFX-COMMON LPMEMORY       s" lib/memory.f"             PFX-PATH-ROW
    PFX-COMMON LPVECTOR       s" lib/vector.f"             PFX-PATH-ROW ;
@@ -7526,7 +7526,7 @@ variable P2SK
    LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPDYNAMIC !  LBL LPINTMARK !  LBL LPTOPROW !
    LBL LPPRELUDE !  LBL LPERRORS !  LBL LPOPTION !
-   LBL LPCADTYPES !  LBL LPCADARITH !  LBL LPSTRING !
+   LBL LPNUMTYPES !  LBL LPNUMARITH !  LBL LPSTRING !
    LBL LPMEMORY !  LBL LPVECTOR ! ;
 
 : EMIT-LABEL-JIT ( -- )

@@ -8,7 +8,7 @@ require lib/errors.f
 require lib/string.f
 require lib/string-roles.f               \ package STR: the typed string surface
 require lib/fmt.f
-require lib/adt/option.f                 \ option<CAD-NUM:index> STR:FIND-SUB consumer
+require lib/adt/option.f                 \ option<NUM:index> STR:FIND-SUB consumer
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -663,19 +663,12 @@ variable IX
    BFT-STALE-STAMP FILE? TFALSE ;
 
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
-\ project the option<CAD-NUM:index> result back to the switchover option<idx>.
-;package
-
-package CAD-NUM
-public
-: BFT-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
-;package
-
-package BUILD-FIXPOINT
+\ then read the found option<NUM:index> through NUM's one public
+\ projection and mint the switchover option<idx> from it.
 : BFT-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
-     some OF CAD-NUM:BFT-IX>N >IDX OPTION:SOME ENDOF
+     some OF NUM:ORDINAL >IDX OPTION:SOME ENDOF
    ;MATCH ;
 
 : BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- option<idx> ) {: a:ptr u:n start:n needle:ptr nu:n :}
@@ -874,9 +867,9 @@ package BUILD-FIXPOINT
    BFT-READ-BUF u s" ENUM option 1" BFT-FIND BFT-FOUND {: opt:n :}
    BFT-READ-BUF u opt s\" s\" lib/adt/option.f\" provided" BFT-FIND-AFTER BFT-FOUND {: optfact:n :}
    BFT-READ-BUF u optfact s" NEWTYPE byte-len 0" BFT-FIND-AFTER BFT-FOUND {: num:n :}
-   BFT-READ-BUF u num s\" s\" lib/cad-num-types.f\" provided" BFT-FIND-AFTER BFT-FOUND {: numfact:n :}
+   BFT-READ-BUF u num s\" s\" lib/num-types.f\" provided" BFT-FIND-AFTER BFT-FOUND {: numfact:n :}
    BFT-READ-BUF u numfact s" : ADD-BYTES " BFT-FIND-AFTER BFT-FOUND {: arith:n :}
-   BFT-READ-BUF u arith s\" s\" lib/cad-num-arithmetic.f\" provided" BFT-FIND-AFTER BFT-FOUND {: arithfact:n :}
+   BFT-READ-BUF u arith s\" s\" lib/num-arithmetic.f\" provided" BFT-FIND-AFTER BFT-FOUND {: arithfact:n :}
    BFT-READ-BUF u arithfact s" : SB-RESET " BFT-FIND-AFTER BFT-FOUND {: str:n :}
    BFT-READ-BUF u str s\" s\" lib/string.f\" provided" BFT-FIND-AFTER BFT-FOUND {: strfact:n :}
    BFT-READ-BUF u strfact s" : POW10 " BFT-FIND-AFTER BFT-FOUND {: fl:n :}

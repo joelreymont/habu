@@ -77,8 +77,8 @@ s" lib/prelude.f" required
 s" lib/errors.f" required
 s" lib/image-lifecycle.f" required
 s" lib/adt/option.f" required
-s" lib/cad-num-types.f" required
-s" lib/cad-num-arithmetic.f" required
+s" lib/num-types.f" required
+s" lib/num-arithmetic.f" required
 s" lib/string.f" required
 s" lib/memory.f" required
 s" lib/vector.f" required

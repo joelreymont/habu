@@ -11,7 +11,7 @@ require lib/net/tcp4.f
 
 package TCP4-TEST
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 $7F000001 constant LOOPBACK
 4 constant BACKLOG

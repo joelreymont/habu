@@ -19,7 +19,7 @@ create BUFT-REF 4096 allot                    \ property-test reference bytes
 2097152 constant BUFT-BIG-N                    \ 2 MiB fill target (2048 * 1024)
 
 \ ---- white-box readers: reopen BUF to project the raw header cells the lifecycle
-\ proofs need without the public live checks (mirrors vector-test's CAD-NUM reopen).
+\ proofs need without the public live checks (mirrors vector-test's NUM reopen).
 package BUF
 public
 : BUFT-DATA@ ( ptr a -- ptr u8 ) DATA@ ;
@@ -35,22 +35,22 @@ public
 ;package
 
 \ ---- byte-len role builders/readers for scalar assertions ----------------------
-package CAD-NUM
-public
-: BUFT-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
-;package
+\ The reader is a checked cast at this test's own scope: a span assertion takes a
+\ raw length and T= compares against a literal. Projection out of a cell family
+\ needs no ownership (checker.f CAST-OWNER?), so no reopen of NUM.
+CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
-: BUFT-N>BLEN ( n -- CAD-NUM:byte-len )
-   CAD-NUM:BYTE-LEN
-   MATCH CAD-NUM:numeric-result
+: BUFT-N>BLEN ( n -- NUM:byte-len )
+   NUM:BYTE-LEN
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-BUF-BOUNDS throw ENDOF
       zero OF E-BUF-BOUNDS throw ENDOF          overflow OF E-BUF-BOUNDS throw ENDOF
       underflow OF E-BUF-BOUNDS throw ENDOF     bad-alignment OF E-BUF-BOUNDS throw ENDOF
       misaligned OF E-BUF-BOUNDS throw ENDOF
    ;MATCH ;
 
-: BUFT-TLEN ( ptr a -- n )  BUF:LEN@ CAD-NUM:BUFT-BL>RAW ;
-: BUFT-TCAP ( ptr a -- n )  BUF:CAP@ CAD-NUM:BUFT-BL>RAW ;
+: BUFT-TLEN ( ptr a -- n )  BUF:LEN@ BUFT-BL>RAW ;
+: BUFT-TCAP ( ptr a -- n )  BUF:CAP@ BUFT-BL>RAW ;
 
 : BUFT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -70,7 +70,7 @@ public
    67 BUFT-BUF BUF:APPEND-BYTE                 \ 'C' grows (2 -> 4)
    BUFT-BUF BUFT-TLEN 3 T=
    BUFT-BUF BUFT-TCAP 4 T=
-   BUFT-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW s" ABC" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" ABC" T$= ;
 
 \ ---- append span across a growth boundary --------------------------------------
 : BUFT-APPEND-SPAN ( -- )
@@ -79,7 +79,7 @@ public
    s" cdef" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN    \ 2+4 = 6 > 4: grows to 8
    BUFT-BUF BUFT-TLEN 6 T=
    BUFT-BUF BUFT-TCAP 8 T=
-   BUFT-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW s" abcdef" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" abcdef" T$= ;
 
 \ ---- reserve exact grows capacity to exactly the request, preserving bytes ------
 : BUFT-RESERVE ( -- )
@@ -90,7 +90,7 @@ public
    BUFT-BUF BUFT-TLEN 2 T=
    BUFT-BUF 50 BUFT-N>BLEN BUF:RESERVE            \ 50 <= 100: no-op
    BUFT-BUF BUFT-TCAP 100 T=
-   BUFT-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW s" xy" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" xy" T$= ;
 
 \ ---- replace swaps the contents, growing capacity if needed --------------------
 : BUFT-REPLACE ( -- )
@@ -98,7 +98,7 @@ public
    s" hi" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
    s" replacement" BUFT-N>BLEN BUFT-BUF BUF:REPLACE   \ 11 bytes > 8: grows
    BUFT-BUF BUFT-TLEN 11 T=
-   BUFT-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW s" replacement" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" replacement" T$= ;
 
 \ ---- clear reuses the allocation (length 0, capacity + mapping unchanged) -------
 : BUFT-CLEAR ( -- )
@@ -110,7 +110,7 @@ public
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUF:BUFT-DATA@ before = TTRUE            \ same mapping reused
    s" new" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN   \ re-fills from offset 0
-   BUFT-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW s" new" T$= ;
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" new" T$= ;
 
 \ ---- release / dispose lifecycle (address reuse proves the mapping was freed) ---
 : BUFT-GROW-RELEASES ( -- )                       \ a grow frees the prior mapping
@@ -158,7 +158,7 @@ public
    BUFT-REL-BUF BUF:BUFT-DATA@ before = TTRUE          \ mapping not swapped out
    BUFT-REL-BUF BUFT-TLEN 4 T=
    BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T=
-   BUFT-REL-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW s" keep" T$= ;
+   BUFT-REL-BUF BUF:SPAN$ BUFT-BL>RAW s" keep" T$= ;
 
 \ ---- use-after-dispose fails closed (E-BUF-STATE) ------------------------------
 : BUFT-USE-SPAN ( -- )
@@ -196,7 +196,7 @@ public
    BUFT-CHUNK-FILL
    2048 0 ?do  BUFT-CHUNK 1024 BUFT-N>BLEN BUFT-BIG-BUF BUF:APPEND-SPAN  loop
    BUFT-BIG-BUF BUFT-TLEN BUFT-BIG-N T=
-   BUFT-BIG-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW {: data:ptr len:n :}
+   BUFT-BIG-BUF BUF:SPAN$ BUFT-BL>RAW {: data:ptr len:n :}
    len BUFT-BIG-N T=                                                   \ SPAN$ length matches
    data 0 + c@ 0 T=                                                    \ first chunk byte
    data 1000 + c@ 232 T=                                              \ 1000 & 255
@@ -214,7 +214,7 @@ public
       i 1 + BUFT-BUF BUFT-TLEN T=                                     \ length tracks appends
       BUFT-BUF BUFT-TCAP  BUFT-BUF BUFT-TLEN  >= TTRUE                \ capacity always covers length
    loop
-   BUFT-BUF BUF:SPAN$ CAD-NUM:BUFT-BL>RAW  BUFT-REF PROP:COUNT@  T$= ; \ span equals the reference
+   BUFT-BUF BUF:SPAN$ BUFT-BL>RAW  BUFT-REF PROP:COUNT@  T$= ; \ span equals the reference
 
 : BUFT-RUN ( -- )
    T-RESET
@@ -242,8 +242,8 @@ public
    BUFT-BIG-FILL
    BUFT-PROP
    \ ---- static typed role-swap rejections (0) + resolving positives (-1) -------
-   s" BOK-INIT ( ptr a CAD-NUM:byte-len -- ) BUF:INIT" CHECK-QUIET-CANDIDATE! -1 T=
-   s" BOK-SPAN ( ptr u8 CAD-NUM:byte-len ptr a -- ) BUF:APPEND-SPAN" CHECK-QUIET-CANDIDATE! -1 T=
+   s" BOK-INIT ( ptr a NUM:byte-len -- ) BUF:INIT" CHECK-QUIET-CANDIDATE! -1 T=
+   s" BOK-SPAN ( ptr u8 NUM:byte-len ptr a -- ) BUF:APPEND-SPAN" CHECK-QUIET-CANDIDATE! -1 T=
    s" BSWAP-RAW-CAP ( ptr a n -- ) BUF:INIT" BUFT-CHECK-REJECTS
    s" BSWAP-RAW-SPAN ( ptr u8 n ptr a -- ) BUF:APPEND-SPAN" BUFT-CHECK-REJECTS
    s" BSWAP-RAW-RESERVE ( ptr a n -- ) BUF:RESERVE" BUFT-CHECK-REJECTS

@@ -20,7 +20,7 @@ using BUF
 create INPUT HDR-BYTES allot
 create OUTPUT HDR-BYTES allot
 create SESSION SERIAL-XMODEM:SESSION-BYTES allot
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 : INPUT-READ ( ptr u8 n n -- ) {: path size:n capacity:n :}
    INPUT capacity 1 max BYTES INIT

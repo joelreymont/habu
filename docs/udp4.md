@@ -13,7 +13,7 @@ the nominal `UDP4:address`; for example, `$7F000001 UDP4:ADDRESS` represents
 dotted-decimal form: exactly four decimal octets, without signs, surrounding
 whitespace, or redundant leading zeros. It returns the same address type.
 `UDP4:PORT` validates `0..65535` and returns `UDP4:port`.
-`PAYLOAD-BYTES` validates `0..65507` and returns `CAD-NUM:byte-len`.
+`PAYLOAD-BYTES` validates `0..65507` and returns `NUM:byte-len`.
 Addresses and ports are converted to network byte order only at the foreign
 boundary. A `UDP4:socket` is a distinct handle type; `UDP4:errno` preserves
 the positive Linux error number. Raw nominal conversion words are not validators.
@@ -26,7 +26,7 @@ the positive Linux error number. Raw nominal conversion words are not validators
 | `RECEIVE` | Socket, writable byte span, `ms` timeout | `receive-result`, described below |
 | `CLOSE` | Socket | `status`: `ok` or `failed errno` |
 
-Byte spans are `ptr u8 CAD-NUM:byte-len`. `BIND` creates a nonblocking socket
+Byte spans are `ptr u8 NUM:byte-len`. `BIND` creates a nonblocking socket
 with close-on-exec set atomically. Address zero means all local IPv4 interfaces;
 port zero requests an ephemeral port, obtainable with `LOCAL`. A bind failure
 closes the newly created socket and retains the original failure's errno.

@@ -529,8 +529,8 @@ private
    used UB-SRC-U !
    UB-SCAN ;
 
-: UB-MAPPED-FILE ( n ptr u8 CAD-NUM:alloc-byte-len -- )
-   {: size:n src:ptr extent:CAD-NUM:alloc-byte-len :}
+: UB-MAPPED-FILE ( n ptr u8 NUM:alloc-byte-len -- )
+   {: size:n src:ptr extent:NUM:alloc-byte-len :}
    src UB-SRC-A!
    size UB-SRC-CAP !
    [: UB-MAPPED-SCAN ;] catch {: rc:n :}

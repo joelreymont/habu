@@ -11,7 +11,7 @@ policy. Other operating systems are rejected before opening a socket.
 the nominal `TCP4:address`; for example, `$7F000001 TCP4:ADDRESS` represents
 `127.0.0.1`. Dotted-decimal and host-name parsing are not part of this module.
 `TCP4:PORT` validates `0..65535` and returns `TCP4:port`.
-`TRANSFER-BYTES` validates `0..0x7FFFF000` and returns `CAD-NUM:byte-len`;
+`TRANSFER-BYTES` validates `0..0x7FFFF000` and returns `NUM:byte-len`;
 that ceiling is the most Linux moves in one transfer.
 Addresses and ports are converted to network byte order only at the foreign
 boundary. A listening socket and a connected stream are **different types**:
@@ -35,7 +35,7 @@ nominal conversion words are not validators.
 | `CLOSE` | Connection | `status`: `ok` or `failed errno` |
 | `CLOSE-LISTENER` | Listener | `status`: `ok` or `failed errno` |
 
-Byte spans are `ptr u8 CAD-NUM:byte-len`. Sockets are created blocking with
+Byte spans are `ptr u8 NUM:byte-len`. Sockets are created blocking with
 close-on-exec set atomically, so `ACCEPT`, `CONNECT`, `READ`, `READ-EXACT` and
 `WRITE` wait for the stream; `PENDING?` and `READABLE?` are the non-blocking
 questions to ask first. Address zero binds every local IPv4 interface; port zero

@@ -1,18 +1,23 @@
-\ cad-num-types.f - CAD-NUM scalar nominal numeric roles + validators.
+\ num-types.f - NUM scalar nominal numeric roles + validators.
 \
 \ All of these values occupy one cell, but they do not have interchangeable
 \ meaning: a byte length is not a cell count, an index is not an offset, and an
 \ alignment is not a divisor merely because all can currently pass through `n`.
-\ Package CAD-NUM gives each fact a distinct arity-zero nominal family so the
+\ Package NUM gives each fact a distinct arity-zero nominal family so the
 \ checker rejects a cross-role swap or a raw `n` where a role is required.
 \
 \ Authority model: the ONLY way to obtain a role value is through its public
 \ CHECKED validator. Each validator inspects the raw cell first and calls a
 \ PRIVATE `CAST:` mint (`MINT-*`, a no-op representation cast) only on the
-\ success path. There is no public raw mint and no public role->n projection.
-\ The two private `*>N` projections are explicit proof erasure used only where an
-\ allocator bound must read a role's raw cell; they are never paired with a
-\ public inverse.
+\ success path. There is no public raw mint, so no projection can forge a role.
+\ Projection the other way is proof erasure, not forgery, and the checker leaves
+\ it unrestricted (checker.f CAST-OWNER?). This package keeps it narrow: the
+\ eight `*>N` casts are private, and exactly one public checked projection
+\ exists, ORDINAL in lib/num-arithmetic.f, which reads an index's raw
+\ ordinal because pointer and length arithmetic is stated in ordinals and no
+\ primitive consumes an index. A consumer of any other role declares its own
+\ erasure cast at its own scope with its reason (lib/memory.f, lib/string-roles.f,
+\ lib/elf32.f); nothing reopens this package to publish one here.
 \ The mints are declarations the CHECKER certifies, not trusted assertions: a
 \ `CAST:` body is certified under the identity row, and the declaration itself is
 \ refused if it changes cell count, crosses the pointer/quotation class, widens,
@@ -25,12 +30,12 @@
 \ its `role` field, or a payloadless `negative` / `zero` / `overflow` /
 \ `underflow` / `bad-alignment` /
 \ `misaligned`); they never collapse different failures into one flag and never
-\ throw. The `E-CADNUM-*` constants below name each refusal reason so a consumer
+\ throw. The `E-NUM-*` constants below name each refusal reason so a consumer
 \ can throw the named code at its own boundary. `numeric-result<a>` is a layout
 \ value, so it is constructed and MATCHed only inside compiled words. A
 \ polymorphic eliminator (`numeric-result<a> -- n`) is not yet expressible
 \ (whole-bundle MATCH, dot habu-typestate-result-drop-5ae048a7), so a consumer
-\ MATCHes the concrete instantiation it holds; lib/cad-num-types-test.f does
+\ MATCHes the concrete instantiation it holds; lib/num-types-test.f does
 \ exactly that per role.
 \
 \ Zero semantics: zero is VALID for the ordinary extents/counts/offsets
@@ -44,11 +49,11 @@
 \ MAX-CELL-N / CELL-BYTES, before any allocation primitive is reachable.
 \
 \ UNSEALED (B5.1, B5.5 slice 1): these canonical roles and validators already
-\ reach production through lib/cad-num-arithmetic.f, including lib/memory.f and
-\ inference consumers. CAD-NUM remains reopenable while its constituent files
-\ are assembled, so its private mints are not yet unforgeable. lib/cad-num.f
+\ reach production through lib/num-arithmetic.f, including lib/memory.f and
+\ inference consumers. NUM remains reopenable while its constituent files
+\ are assembled, so its private mints are not yet unforgeable. lib/num.f
 \ (dot habu-seal-cad-num-36dbeec6) will close that namespace authority; the
-\ closed B5.2 arithmetic is lib/cad-num-arithmetic.f (dot
+\ closed B5.2 arithmetic is lib/num-arithmetic.f (dot
 \ habu-implement-cad-num-cb413b2a).
 \ Independently of how the mints are declared, a raw cell read back out of
 \ storage can still stand in for the `n` a validator accepts until the TVK-RAW
@@ -56,20 +61,20 @@
 \ themselves no longer assert anything the checker has not certified.
 \
 \ No `require`: the type-declaration grammar (package/NEWTYPE/ENUM/
-\ CAST:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). CAD-NUM must
-\ not depend on lib/memory.f - MEM:ALLOC-* consumes CAD-NUM:alloc-* roles, so a
+\ CAST:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). NUM must
+\ not depend on lib/memory.f - MEM:ALLOC-* consumes NUM:alloc-* roles, so a
 \ dependency would be a cycle; MAX-CELL-N mirrors the machine max cell that
 \ lib/memory.f also names as MEM-MAX-N.
 
 \ ---- named refusal codes (numeric-result error variants; consumers throw) -----
--5400 constant E-CADNUM-NEGATIVE       \ a role rejected a negative raw cell
--5401 constant E-CADNUM-ZERO           \ a positive/allocation role rejected zero
--5402 constant E-CADNUM-OVERFLOW       \ an allocation count would exceed MAX-CELL-N
--5403 constant E-CADNUM-UNDERFLOW      \ a subtraction/retreat went below zero (B5.2)
--5404 constant E-CADNUM-BAD-ALIGNMENT  \ alignment raw cell is not a positive power of two
--5405 constant E-CADNUM-MISALIGNED     \ a byte extent/offset is not a whole cell count (B5.2)
+-5400 constant E-NUM-NEGATIVE       \ a role rejected a negative raw cell
+-5401 constant E-NUM-ZERO           \ a positive/allocation role rejected zero
+-5402 constant E-NUM-OVERFLOW       \ an allocation count would exceed MAX-CELL-N
+-5403 constant E-NUM-UNDERFLOW      \ a subtraction/retreat went below zero (B5.2)
+-5404 constant E-NUM-BAD-ALIGNMENT  \ alignment raw cell is not a positive power of two
+-5405 constant E-NUM-MISALIGNED     \ a byte extent/offset is not a whole cell count (B5.2)
 
-package CAD-NUM
+package NUM
 public
 
 \ ---- scalar nominal role families (one cell each, no widening to/from n) ------
@@ -94,7 +99,7 @@ NEWTYPE alloc-cell-count 0      \ positive cell count accepted by a cell allocat
 \ "cross-role" swap. So `role` names the payload after what it is rather than
 \ after the generic slot it sits in.
 \
-\ Nothing else moves. The generated CAD--NUM-NUMERIC--RESULT:OK, :NEGATIVE,
+\ Nothing else moves. The generated NUM-NUMERIC--RESULT:OK, :NEGATIVE,
 \ :ZERO, :OVERFLOW, :UNDERFLOW, :BAD-ALIGNMENT and :MISALIGNED constructors keep
 \ their exact spellings and their exact checked effects, and every MATCH site in
 \ this package and in its consumers is untouched, because the spellings come from
@@ -139,11 +144,11 @@ CAST: BYTE-LEN>N ( byte-len -- n )
 CAST: CELL-COUNT>N ( cell-count -- n )
 
 \ ---- result constructors (readable names over the escaped ctor spelling) ------
-: NR-OK       ( a -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:OK ;
-: NR-NEG      ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:NEGATIVE ;
-: NR-ZERO     ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:ZERO ;
-: NR-OVER     ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:OVERFLOW ;
-: NR-BADALIGN ( -- numeric-result<a> ) CAD--NUM-NUMERIC--RESULT:BAD-ALIGNMENT ;
+: NR-OK       ( a -- numeric-result<a> ) NUM-NUMERIC--RESULT:OK ;
+: NR-NEG      ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:NEGATIVE ;
+: NR-ZERO     ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:ZERO ;
+: NR-OVER     ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:OVERFLOW ;
+: NR-BADALIGN ( -- numeric-result<a> ) NUM-NUMERIC--RESULT:BAD-ALIGNMENT ;
 
 public
 

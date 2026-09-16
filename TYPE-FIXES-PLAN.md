@@ -118,7 +118,7 @@ path sufficient, or hold the lane for a post-conversion landing.
     fall out of the declaration sweep (the eleven dead CAD-KIND types,
     sched). wave 2+: the rehomes (CUDA handles, PTY lifecycle, nominal
     builder, PTX toolchain policy, autotune census, map types), the 81
-    CAD-NUM projector-alias collapse, and the renames (tcpol, ptxir-node,
+    NUM projector-alias collapse, and the renames (tcpol, ptxir-node,
     CEVID:ucat).]
 
 ## Checker capability work in wave 1
@@ -231,7 +231,7 @@ path sufficient, or hold the lane for a post-conversion landing.
     `MAKI:datatype` (the sole datatype authority, renamed); `SAFET:file`
     (the checkpoint source); `GPT2:config` and `GPT2:tensor-id` — the GPT2
     package owns everything model-specific (weights, execution, catalog);
-    `FS:path` as the borrowed ptr-u8 plus `CAD-NUM:byte-len` structure;
+    `FS:path` as the borrowed ptr-u8 plus `NUM:byte-len` structure;
     config opening returns generic `result<GPT2:config,n>`, not a bespoke
     config-result family; `GPU` owns the GPU runtime; `INFER`
     owns the closed model carrier. `GPT2DEV` and `MDLCFG:mcfg` do not
@@ -294,7 +294,7 @@ check is its rg closure census plus review. The first load of the
 converted tree happens at the completion gate.
 
 2a. `result` and `option` first (everything depends on them), then
-    lib/adt, lib core, CAD-NUM.
+    lib/adt, lib core, NUM.
 2b. src/core + src/habu — the checker's own sources (respell only; zero
     old-form declarations there). Written blind; no refresh.
 2c. maki + tools + test declarations, suite inventories updated as files
@@ -432,11 +432,11 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   carrier form). Closure: cuda-driver consumers in Loom's lib/ptx tests and
   maki device files. blocked-by M1. (Renaming tcpol/ptxir-node is wave
   2+; here they migrate grammar-only under their current names.)
-- M5 CAD-NUM: cad-num-types.f ten roles `byte-len item-count cell-count
+- M5 NUM: num-types.f ten roles `byte-len item-count cell-count
   index byte-off cell-off alignment positive-divisor alloc-byte-len
   alloc-cell-count` + `ENUM numeric-result 1` binder head. Closure:
-  cad-num-arithmetic.f and cad-num-types-test.f (the only two files
-  spelling the generated CAD--NUM names — verified). blocked-by M1.
+  num-arithmetic.f and num-types-test.f (the only two files
+  spelling the generated NUM names — verified). blocked-by M1.
 - M6 boot-prefix respell: the generated-name consumers in src/core
   (no refresh — written blind). blocked-by M2-M5.
 - M7 src respell: the remaining generated-name spellings in src/core +
@@ -495,7 +495,7 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
 - M13c the agreed-dead deletion leaves per item 38: package sealing plus
   the two boot-seal files' census, and dead sched. Same discipline and
   ordering as M13b.
-- M14a FS: `STRUCTURE path` = `data ptr u8`, `len CAD-NUM:byte-len` —
+- M14a FS: `STRUCTURE path` = `data ptr u8`, `len NUM:byte-len` —
   borrowed, never retained. Probe: FS:path resolves; path consumers
   load; probe runs at M17. blocked-by the phase-1 engine leaves.
 - M14b SAFET: `SAFET:file` is the RENAMED linear census owner;
@@ -639,7 +639,7 @@ everything is finished — not during.
     package names become real children:
     - `SAFET-MAP` -> `SAFET:MAP` (the original landmine, fixed by actual
       nesting);
-    - `CAD-NUM` -> `CAD:NUM`, `CAD-KIND` -> `CAD:KIND`;
+    - `NUM` -> `CAD:NUM`, `CAD-KIND` -> `CAD:KIND`;
     - `GPT2PIN` -> `GPT2:PIN`; the reference data package ->
       `GPT2:REF`; the future tokenizer is born `GPT2:TOK`;
     - `HFCFG` -> `HF:CFG` (Joel: Hugging Face is a domain root; its

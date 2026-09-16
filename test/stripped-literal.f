@@ -25,7 +25,7 @@ variable IMAGE-U
 : BUILD-LITERAL ( -- )
    \ This deliberately invalid munmap range reaches MEM's baked error string.
    \ The syscall refuses the unaligned address before touching any memory.
-   S\" package STRIPPED-LITERAL-SUBJECT\nprivate\nTRUSTED: BAD-SPAN ( -- ptr u8 CAD-NUM:byte-len ) 4097 4096 ;\npublic\n: RUN ( -- ) BAD-SPAN MEM:UNMAP ;\n;package\n: MAIN ( -- ) STRIPPED-LITERAL-SUBJECT:RUN ;\n" WRITE-SUBJECT
+   S\" package STRIPPED-LITERAL-SUBJECT\nprivate\nTRUSTED: BAD-SPAN ( -- ptr u8 NUM:byte-len ) 4097 4096 ;\npublic\n: RUN ( -- ) BAD-SPAN MEM:UNMAP ;\n;package\n: MAIN ( -- ) STRIPPED-LITERAL-SUBJECT:RUN ;\n" WRITE-SUBJECT
    GE-HB-RESET
    ENGINE-CANDIDATE:PATH$ GE-ARGV+
    s" --load" GE-ARG+ s" tools/hb-build.f" GE-ARG+

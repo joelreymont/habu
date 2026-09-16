@@ -21,7 +21,7 @@ require lib/serial.f
 package HOST-IO-IMAGE-TEST
 private
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 here FFI:>CELL 7 and 8 swap - 7 and allot
 variable ENTERED
 variable DONE
@@ -55,7 +55,7 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
    handle UDP-BYTE 1 UDP4:PAYLOAD-BYTES 2000 >MS UDP4:RECEIVE
    MATCH UDP4:receive-result
       packet OF
-         {: size:CAD-NUM:byte-len address:UDP4:address port:UDP4:port :}
+         {: size:NUM:byte-len address:UDP4:address port:UDP4:port :}
          size BLEN>N 1 <> if -1 throw then
          address UDP4:ADDRESS>N $7F000001 <> if -1 throw then
          port UDP4:PORT>N PEER-PORT @ <> if -1 throw then

@@ -1333,16 +1333,16 @@ variable LONG-J
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CAP-ERR erru s" missing arity" CONTAINS? TTRUE ;
 
-: OVERCAP-SOURCE-BODY ( n ptr u8 CAD-NUM:alloc-byte-len -- )
-   {: cap:n src:ptr extent:CAD-NUM:alloc-byte-len :}
+: OVERCAP-SOURCE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+   {: cap:n src:ptr extent:NUM:alloc-byte-len :}
    src cap s" <stdin>" SOURCE ;
 
 : OVERCAP-SOURCE-THROW ( -- )
    OVERCAP-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
    [: OVERCAP-SOURCE-BODY ;] MEM:WITH-BYTES ;
 
-: OVERCAP-FILE-BODY ( n ptr u8 CAD-NUM:alloc-byte-len -- )
-   {: cap:n src:ptr extent:CAD-NUM:alloc-byte-len :}
+: OVERCAP-FILE-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+   {: cap:n src:ptr extent:NUM:alloc-byte-len :}
    DIRECT$ src cap WRITE-ALL ;
 
 : TEST-OVERCAP-SOURCE ( -- )
@@ -1357,16 +1357,16 @@ variable LONG-J
    CAP-ERR erru s" source exceeds capacity" CONTAINS? TTRUE
    RESET ;
 
-: OVERCAP-PATH-BODY ( n ptr u8 CAD-NUM:alloc-byte-len -- )
-   {: cap:n path:ptr extent:CAD-NUM:alloc-byte-len :}
+: OVERCAP-PATH-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+   {: cap:n path:ptr extent:NUM:alloc-byte-len :}
    path cap FILE ;
 
 : OVERCAP-PATH ( -- )
    FS-PATH-CAP 1+ dup MEM:BYTES-ALLOC-LEN
    [: OVERCAP-PATH-BODY ;] MEM:WITH-BYTES ;
 
-: OVERCAP-LABEL-BODY ( n ptr u8 CAD-NUM:alloc-byte-len -- )
-   {: cap:n label:ptr extent:CAD-NUM:alloc-byte-len :}
+: OVERCAP-LABEL-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+   {: cap:n label:ptr extent:NUM:alloc-byte-len :}
    s" " label cap SOURCE ;
 
 : OVERCAP-LABEL ( -- )

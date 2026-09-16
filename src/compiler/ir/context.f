@@ -359,7 +359,7 @@ private
 : DEPTH-ROOM ( -- )
    DEPTH @ DEPTH-MAX >= if E-IR-CTX-DEPTH throw then ;
 
-: CTX-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
+: CTX-ALLOC-LEN ( -- NUM:alloc-byte-len )
    MAP-BYTES MEM:BYTES-ALLOC-LEN ;
 
 \ Install one registry slot: record the mapping base, reset the counters, mark
@@ -438,7 +438,7 @@ private
 \ The WITH-BYTES body: build the context in the fresh mapping, run the caller's
 \ quotation with the minted handle, then retire the slot this entry took before
 \ the mapping is released.
-: CTX-ENTER ( R [ R IR-CTX:ctx -- S ] n ptr u8 CAD-NUM:alloc-byte-len -- S )
+: CTX-ENTER ( R [ R IR-CTX:ctx -- S ] n ptr u8 NUM:alloc-byte-len -- S )
    drop
    CTX-TAKE ENTERED-PUSH swap [: CE-CLEANUP ;] finally ;
 

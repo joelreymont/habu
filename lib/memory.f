@@ -3,7 +3,7 @@
 \ Load after lib/errors.f.
 
 s" lib/errors.f" required
-require lib/cad-num-arithmetic.f
+require lib/num-arithmetic.f
 
 $10000 constant MEM-64K
 $7FFFFFFFFFFFFFFF constant MEM-MAX-N
@@ -130,7 +130,7 @@ TRUSTED: MEM-MAPPED>PTR ( n -- ptr u8 ) ;
 \ ---- package-first typed allocation surface -----------------------------------
 \
 \ The raw MEM-ALLOC-* words above enforce positivity at RUNTIME on interchangeable
-\ `n`. Package MEM re-states the same sizing as CHECKED words over CAD-NUM roles:
+\ `n`. Package MEM re-states the same sizing as CHECKED words over NUM roles:
 \ the scalar words (CELLS>BYTES, 64K-BYTES, 64K-COUNT-FOR, 64K-SPAN-BYTES) are
 \ typed compositions of the closed B5.2 algebra that return `numeric-result<a>`
 \ (zero is a valid scalar answer), while the allocation sinks (ALLOC-BYTES,
@@ -149,25 +149,25 @@ private
 
 \ Internal invariant code (never reachable): a validator/narrowing arm proven
 \ impossible by the input still needs an exhaustive MATCH arm. Mirrors the
-\ CAD-NUM E-CADNUM-TOTALITY discipline; lives in-file, not lib/errors.f.
+\ NUM E-NUM-TOTALITY discipline; lives in-file, not lib/errors.f.
 
 \ ---- ok extractors for compile-time-valid role constants (arms unreachable) ----
-: OK-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- CAD-NUM:byte-len )
-   MATCH CAD-NUM:numeric-result
+: OK-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
       zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
       underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
       misaligned OF E-MEM-TOTALITY throw ENDOF
    ;MATCH ;
-: OK-ALIGNMENT ( CAD-NUM:numeric-result<CAD-NUM:alignment> -- CAD-NUM:alignment )
-   MATCH CAD-NUM:numeric-result
+: OK-ALIGNMENT ( NUM:numeric-result<NUM:alignment> -- NUM:alignment )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
       zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
       underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
       misaligned OF E-MEM-TOTALITY throw ENDOF
    ;MATCH ;
-: OK-ALLOC-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:alloc-byte-len> -- CAD-NUM:alloc-byte-len )
-   MATCH CAD-NUM:numeric-result
+: OK-ALLOC-BYTE-LEN ( NUM:numeric-result<NUM:alloc-byte-len> -- NUM:alloc-byte-len )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-TOTALITY throw ENDOF
       zero OF E-MEM-TOTALITY throw ENDOF        overflow OF E-MEM-TOTALITY throw ENDOF
       underflow OF E-MEM-TOTALITY throw ENDOF   bad-alignment OF E-MEM-TOTALITY throw ENDOF
@@ -178,52 +178,52 @@ private
 \ Unlike the OK-* extractors above (compile-time constants; refusal arms are
 \ unreachable invariants -> E-MEM-TOTALITY), these narrow an arbitrary runtime
 \ `n`, so a refusal is the real memory-sizing outcome and throws E-MEM-SIZE.
-: SIZE-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- CAD-NUM:byte-len )
-   MATCH CAD-NUM:numeric-result
+: SIZE-BYTE-LEN ( NUM:numeric-result<NUM:byte-len> -- NUM:byte-len )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
       zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
       underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
       misaligned OF E-MEM-SIZE throw ENDOF
    ;MATCH ;
-: SIZE-ALLOC-BYTE-LEN ( CAD-NUM:numeric-result<CAD-NUM:alloc-byte-len> -- CAD-NUM:alloc-byte-len )
-   MATCH CAD-NUM:numeric-result
+: SIZE-ALLOC-BYTE-LEN ( NUM:numeric-result<NUM:alloc-byte-len> -- NUM:alloc-byte-len )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
       zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
       underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
       misaligned OF E-MEM-SIZE throw ENDOF
    ;MATCH ;
-: SIZE-CELL-COUNT ( CAD-NUM:numeric-result<CAD-NUM:cell-count> -- CAD-NUM:cell-count )
-   MATCH CAD-NUM:numeric-result
+: SIZE-CELL-COUNT ( NUM:numeric-result<NUM:cell-count> -- NUM:cell-count )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
       zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
       underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
       misaligned OF E-MEM-SIZE throw ENDOF
    ;MATCH ;
-: SIZE-ALLOC-CELL-COUNT ( CAD-NUM:numeric-result<CAD-NUM:alloc-cell-count> -- CAD-NUM:alloc-cell-count )
-   MATCH CAD-NUM:numeric-result
+: SIZE-ALLOC-CELL-COUNT ( NUM:numeric-result<NUM:alloc-cell-count> -- NUM:alloc-cell-count )
+   MATCH NUM:numeric-result
       ok OF ENDOF                              negative OF E-MEM-SIZE throw ENDOF
       zero OF E-MEM-SIZE throw ENDOF            overflow OF E-MEM-SIZE throw ENDOF
       underflow OF E-MEM-SIZE throw ENDOF       bad-alignment OF E-MEM-SIZE throw ENDOF
       misaligned OF E-MEM-SIZE throw ENDOF
    ;MATCH ;
 
-\ ---- the 64K granularity as validated CAD-NUM roles ---------------------------
+\ ---- the 64K granularity as validated NUM roles ---------------------------
 \ MEM-64K is a compile-time positive power of two, so BYTE-LEN / ALIGNMENT /
 \ AS-ALLOC-BYTE-LEN all succeed; the extractors' failure arms are unreachable.
-: 64K-LEN ( -- CAD-NUM:byte-len )
-   MEM-64K CAD-NUM:BYTE-LEN OK-BYTE-LEN ;
-: 64K-ALIGN ( -- CAD-NUM:alignment )
-   MEM-64K CAD-NUM:ALIGNMENT OK-ALIGNMENT ;
-: 64K-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
-   64K-LEN CAD-NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
+: 64K-LEN ( -- NUM:byte-len )
+   MEM-64K NUM:BYTE-LEN OK-BYTE-LEN ;
+: 64K-ALIGN ( -- NUM:alignment )
+   MEM-64K NUM:ALIGNMENT OK-ALIGNMENT ;
+: 64K-ALLOC-LEN ( -- NUM:alloc-byte-len )
+   64K-LEN NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
 
 \ Private allocation-role erasure for mmap/cells/munmap; no raw value escapes.
 \ Checked casts, so none of the three can misdeclare its shape. They go away
 \ entirely when those primitives accept the nominal roles directly:
 \ habu-epic-model-cad-70b629a9.
-CAST: ALLOC-BYTES>N ( CAD-NUM:alloc-byte-len -- n )
-CAST: ALLOC-CELLS>N ( CAD-NUM:alloc-cell-count -- n )
-CAST: BYTE-LEN>N ( CAD-NUM:byte-len -- n )
+CAST: ALLOC-BYTES>N ( NUM:alloc-byte-len -- n )
+CAST: ALLOC-CELLS>N ( NUM:alloc-cell-count -- n )
+CAST: BYTE-LEN>N ( NUM:byte-len -- n )
 
 $47 constant UNMAP-EXIT
 
@@ -235,46 +235,46 @@ $47 constant UNMAP-EXIT
 public
 
 \ ---- scalar sizing: typed compositions of the closed B5.2 algebra --------------
-: CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
-   CAD-NUM:CELLS>BYTES ;
-: 64K-BYTES ( CAD-NUM:item-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
-   64K-LEN swap CAD-NUM:SCALE-BYTES ;
-: 64K-SPAN-BYTES ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> )
-   64K-ALIGN CAD-NUM:ALIGN-UP-BYTES ;
-: 64K-COUNT-FOR ( CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:item-count> )
+: CELLS>BYTES ( NUM:cell-count -- NUM:numeric-result<NUM:byte-len> )
+   NUM:CELLS>BYTES ;
+: 64K-BYTES ( NUM:item-count -- NUM:numeric-result<NUM:byte-len> )
+   64K-LEN swap NUM:SCALE-BYTES ;
+: 64K-SPAN-BYTES ( NUM:byte-len -- NUM:numeric-result<NUM:byte-len> )
+   64K-ALIGN NUM:ALIGN-UP-BYTES ;
+: 64K-COUNT-FOR ( NUM:byte-len -- NUM:numeric-result<NUM:item-count> )
    \ ceil(bytes / 64K) as a logical buffer count, purely over the typed
    \ extent-division op: the byte need is the extent, 64K the unit size. A zero
    \ need is 0 buffers (0 / 64K); 64K is a positive extent, so DIV-BYTES-CEIL's
    \ zero-size-unit refusal is unreachable. No raw cell is read here.
-   64K-LEN CAD-NUM:DIV-BYTES-CEIL ;
+   64K-LEN NUM:DIV-BYTES-CEIL ;
 
 \ ---- allocation sinks: only the alloc-* roles reach the mmap primitive ---------
-: ALLOC-BYTES ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )
+: ALLOC-BYTES ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
    dup ALLOC-BYTES>N MEM-ALLOC-PTR
    swap ;
-: ALLOC-CELLS ( CAD-NUM:alloc-cell-count -- ptr a )
+: ALLOC-CELLS ( NUM:alloc-cell-count -- ptr a )
    ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
-: ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len )
+: ALLOC-64K ( -- ptr u8 NUM:alloc-byte-len )
    64K-ALLOC-LEN ALLOC-BYTES ;
 
 \ ---- release: return an ALLOC-BYTES mapping to the OS ---------------------------
-: RELEASE-BYTES ( ptr u8 CAD-NUM:alloc-byte-len -- )
+: RELEASE-BYTES ( ptr u8 NUM:alloc-byte-len -- )
    ALLOC-BYTES>N RELEASE-RANGE ;
 
-: UNMAP ( ptr u8 CAD-NUM:byte-len -- )
+: UNMAP ( ptr u8 NUM:byte-len -- )
    BYTE-LEN>N RELEASE-RANGE ;
 
 \ ---- caller-facing size narrowing: raw n -> validated alloc role --------------
 \ The fixed-capacity buffer callers (source, codesign, content-key, object-cache,
 \ process-argv, process-env) narrow a raw size to the positive alloc role BEFORE
 \ the allocation sink; any refusal (zero/negative/overflow) throws E-MEM-SIZE.
-\ Composes the public CAD-NUM validators only, so no new unchecked boundary.
-: BYTES-ALLOC-LEN ( n -- CAD-NUM:alloc-byte-len )
-   CAD-NUM:BYTE-LEN SIZE-BYTE-LEN
-   CAD-NUM:AS-ALLOC-BYTE-LEN SIZE-ALLOC-BYTE-LEN ;
-: CELLS-ALLOC-COUNT ( n -- CAD-NUM:alloc-cell-count )
-   CAD-NUM:CELL-COUNT SIZE-CELL-COUNT
-   CAD-NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
+\ Composes the public NUM validators only, so no new unchecked boundary.
+: BYTES-ALLOC-LEN ( n -- NUM:alloc-byte-len )
+   NUM:BYTE-LEN SIZE-BYTE-LEN
+   NUM:AS-ALLOC-BYTE-LEN SIZE-ALLOC-BYTE-LEN ;
+: CELLS-ALLOC-COUNT ( n -- NUM:alloc-cell-count )
+   NUM:CELL-COUNT SIZE-CELL-COUNT
+   NUM:AS-ALLOC-CELL-COUNT SIZE-ALLOC-CELL-COUNT ;
 
 \ ---- quotation-scoped owned mapping --------------------------------------------
 \ Each scope records a typed pointer and validated extent. The null pointer is
@@ -283,7 +283,7 @@ public
 private
 
 DYNAMIC-BUFFER WB-BUFFERS ptr u8
-DYNAMIC-BUFFER WB-LENGTHS CAD-NUM:alloc-byte-len
+DYNAMIC-BUFFER WB-LENGTHS NUM:alloc-byte-len
 variable WB-DEPTH
 
 
@@ -303,14 +303,14 @@ variable WB-DEPTH
    at WB-DEPTH ! ;
 
 
-: WB-ALLOC-RUN ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+: WB-ALLOC-RUN ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    {: body :}
    ALLOC-BYTES
    over WB-DEPTH @ 1- WB-BUFFERS !
    body execute ;
 
 
-: WB-RUN ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+: WB-RUN ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    {: body :}
    dup WB-DEPTH @ WB-LENGTHS !
    NULL-PTR WB-DEPTH @ WB-BUFFERS !
@@ -318,11 +318,11 @@ variable WB-DEPTH
    body [: WB-ALLOC-RUN ;] [: WB-LEAVE ;] finally ;
 
 
-: WB-SCOPE ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+: WB-SCOPE ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    [: WB-RESERVE WB-RUN ;] [: WB-CACHE-RELEASE ;] finally ;
 
 public
 
-: WITH-BYTES ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
+: WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    WB-SCOPE ;
 ;package

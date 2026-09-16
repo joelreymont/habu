@@ -283,7 +283,7 @@ $80000 constant TMAP-BYTES           \ independent allocation probe size
 
 \ The WITH-BYTES accounting proof: after a context ends, a fresh mapping of the
 \ same size maps, is writable, and unmaps.
-: ACCT-PROBE-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- bool )
+: ACCT-PROBE-BODY ( ptr u8 NUM:alloc-byte-len -- bool )
    drop {: p:ptr :}
    $A5 p c! p c@ $A5 = ;
 

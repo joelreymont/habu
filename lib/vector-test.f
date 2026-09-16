@@ -211,37 +211,35 @@ variable VECT-IDX-SUM
    1 VECT-VEC VEC-PUSH-N drop
    2 VECT-VEC 1 VEC-IDX VEC-N! ;
 
-\ ---- B5.5 typed VEC surface over CAD-NUM roles --------------------------------
-\ White-box role readers: reopen the unsealed CAD-NUM package to project a role's
-\ raw cell for scalar assertions, the pattern lib/cad-num-arithmetic-test.f and
-\ lib/memory-test.f use. (VEC's own ITEM-COUNT>N/INDEX>N stay VEC-private.)
-package CAD-NUM
-public
-: VECT-IC>RAW ( CAD-NUM:item-count -- n ) ITEM-COUNT>N ;
-: VECT-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
-;package
+\ ---- B5.5 typed VEC surface over NUM roles --------------------------------
+\ White-box count reader, declared at this test's own scope: a length/capacity
+\ assertion compares against a literal n. Checked cast, and projection out of a
+\ cell family needs no ownership (checker.f CAST-OWNER?). A pushed index is read
+\ through the package's own public NUM:ORDINAL. (VEC's own ITEM-COUNT>N /
+\ INDEX>N stay VEC-private.)
+CAST: VECT-IC>RAW ( NUM:item-count -- n )    \ typed length/capacity for T=
 
 \ role builders from a raw cell (the refusal arms are unreachable for the test
 \ inputs; an unexpected refusal throws the vector's own invariant code).
-: VECT-N>ITEM ( n -- CAD-NUM:item-count )
-   CAD-NUM:ITEM-COUNT
-   MATCH CAD-NUM:numeric-result
+: VECT-N>ITEM ( n -- NUM:item-count )
+   NUM:ITEM-COUNT
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
-: VECT-N>INDEX ( n -- CAD-NUM:index )
-   CAD-NUM:INDEX
-   MATCH CAD-NUM:numeric-result
+: VECT-N>INDEX ( n -- NUM:index )
+   NUM:INDEX
+   MATCH NUM:numeric-result
       ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
       zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
       underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
       misaligned OF E-VEC-BOUNDS throw ENDOF
    ;MATCH ;
 
-: VECT-TLEN ( ptr a -- n )  VEC:LEN@ CAD-NUM:VECT-IC>RAW ;   \ typed length as raw n
-: VECT-TCAP ( ptr a -- n )  VEC:CAP@ CAD-NUM:VECT-IC>RAW ;   \ typed capacity as raw n
+: VECT-TLEN ( ptr a -- n )  VEC:LEN@ VECT-IC>RAW ;   \ typed length as raw n
+: VECT-TCAP ( ptr a -- n )  VEC:CAP@ VECT-IC>RAW ;   \ typed capacity as raw n
 : VECT-TAT  ( ptr a n -- a ) VECT-N>INDEX VEC:@ ;              \ typed fetch at a raw index
 : VECT-TPUT ( a ptr a n -- ) VECT-N>INDEX VEC:! ;              \ typed store at a raw index
 
@@ -256,9 +254,9 @@ public
 
 : VECT-T-PUSH ( -- )                                    \ push returns the landing index; growth survives
    2 VECT-T-FRESH
-   11 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 0 T=
-   22 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 1 T=
-   33 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 2 T=                   \ third push grows through the typed adapter
+   11 VECT-VEC VEC:PUSH NUM:ORDINAL 0 T=
+   22 VECT-VEC VEC:PUSH NUM:ORDINAL 1 T=
+   33 VECT-VEC VEC:PUSH NUM:ORDINAL 2 T=                   \ third push grows through the typed adapter
    VECT-VEC VECT-TLEN 3 T=
    VECT-VEC 0 VECT-TAT 11 T=
    VECT-VEC 1 VECT-TAT 22 T=
@@ -276,7 +274,7 @@ public
    VECT-VEC VEC:CLEAR
    VECT-VEC VECT-TLEN 0 T=
    VECT-VEC VECT-TCAP 2 T=
-   9 VECT-VEC VEC:PUSH CAD-NUM:VECT-IX>RAW 0 T= ;
+   9 VECT-VEC VEC:PUSH NUM:ORDINAL 0 T= ;
 
 : VECT-T-RESIZE ( -- )                                  \ resize grows capacity, preserves cells
    2 VECT-T-FRESH
@@ -293,9 +291,9 @@ public
    VECT-VEC 9 VECT-N>ITEM VEC:ENSURE   VECT-VEC VECT-TCAP 16 T= ;  \ need > cap: double 4 -> 8 -> 16
 
 variable VECT-TSUM   variable VECT-TIXSUM
-: VECT-T-EACH-ACC ( CAD-NUM:index n -- ) {: ix:CAD-NUM:index value:n :}
+: VECT-T-EACH-ACC ( NUM:index n -- ) {: ix:NUM:index value:n :}
    VECT-TSUM @ value + VECT-TSUM !
-   VECT-TIXSUM @ ix CAD-NUM:VECT-IX>RAW + VECT-TIXSUM ! ;
+   VECT-TIXSUM @ ix NUM:ORDINAL + VECT-TIXSUM ! ;
 : VECT-T-EACH ( -- )                                    \ EACH visits cells index-first
    2 VECT-T-FRESH
    0 VECT-TSUM !  0 VECT-TIXSUM !
@@ -387,10 +385,10 @@ variable VECT-TSUM   variable VECT-TIXSUM
    [: VECT-T-DISPOSE-USE ;] E-VEC-STATE TTHROWSQ
    [: VECT-T-INIT-LIVE-REJECTS ;] E-VEC-STATE TTHROWSQ  \ typed live re-init rejects; no owned mapping leaks
    \ ---- typed VEC surface: static role-swap rejections (0) + resolving positives (-1)
-   s" VOK-INIT ( ptr a CAD-NUM:item-count -- ) VEC:INIT" CHECK-QUIET-CANDIDATE! -1 T=
-   s" VOK-AT ( ptr a CAD-NUM:index -- a ) VEC:@"        CHECK-QUIET-CANDIDATE! -1 T=
-   s" VSWAP-IDX-FOR-CNT ( ptr a CAD-NUM:index -- ) VEC:INIT"  VECT-CHECK-REJECTS
-   s" VSWAP-CNT-FOR-IDX ( ptr a CAD-NUM:item-count -- a ) VEC:@" VECT-CHECK-REJECTS
+   s" VOK-INIT ( ptr a NUM:item-count -- ) VEC:INIT" CHECK-QUIET-CANDIDATE! -1 T=
+   s" VOK-AT ( ptr a NUM:index -- a ) VEC:@"        CHECK-QUIET-CANDIDATE! -1 T=
+   s" VSWAP-IDX-FOR-CNT ( ptr a NUM:index -- ) VEC:INIT"  VECT-CHECK-REJECTS
+   s" VSWAP-CNT-FOR-IDX ( ptr a NUM:item-count -- a ) VEC:@" VECT-CHECK-REJECTS
    s" VSWAP-RAW-CAP ( ptr a n -- ) VEC:INIT"                  VECT-CHECK-REJECTS
    s" VSWAP-RAW-IDX ( ptr a n -- a ) VEC:@"                   VECT-CHECK-REJECTS
    T-REPORT ;

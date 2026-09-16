@@ -11,16 +11,15 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
 
-\ typed STR:STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW boundary: read each fixture buffer's length as a byte-len
-\ role, then project it back to the raw n the ( -- ptr u8 n ) accessors return.
-package CAD-NUM
-public
-: TFT-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
-;package
-
 package LINT-TEXT-TEST
 using LINT-SPLIT
 private
+
+\ STR:BUF-LEN@ reads a fixture buffer's length as a NUM:byte-len role, and
+\ every ( -- ptr u8 n ) accessor below returns a raw span, so the length is read
+\ out here. A checked cast at this test's own scope: projection out of a cell
+\ family needs no ownership (checker.f CAST-OWNER?), so NUM is not reopened.
+CAST: TFT-BL>RAW ( NUM:byte-len -- n )
 
 variable TEST-N
 : ASSERT  ( bool -- )
@@ -71,7 +70,7 @@ variable BIG-LEX-U
    32 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C
    32 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C
    10 STR-FIX FIX-CAP STR:LENGTH STR-FIX-LEN STR:BUF-APPEND-C ;
-: STR-FIX$  ( -- ptr u8 n )  STR-FIX STR-FIX-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: STR-FIX$  ( -- ptr u8 n )  STR-FIX STR-FIX-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 : INIT-TRUST-FIX  ( -- )
    TRUST-LEN STR:BUF-RESET
@@ -88,7 +87,7 @@ variable BIG-LEX-U
    DQUOTE TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C
    s"  TRUST \\ comment" STR:LENGTH TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND
    10 TRUST-FIX FIX-CAP STR:LENGTH TRUST-LEN STR:BUF-APPEND-C ;
-: TRUST-FIX$  ( -- ptr u8 n )  TRUST-FIX TRUST-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: TRUST-FIX$  ( -- ptr u8 n )  TRUST-FIX TRUST-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 : TRUST-FIX-RESET  ( -- )
    TRUST-LEN STR:BUF-RESET ;
@@ -125,13 +124,13 @@ variable BIG-LEX-U
    DQUOTE SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND-C
    s"  ;" STR:LENGTH SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND
    10 SRC-FIX FIX-CAP STR:LENGTH SRC-LEN STR:BUF-APPEND-C ;
-: SRC-FIX$  ( -- ptr u8 n )  SRC-FIX SRC-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: SRC-FIX$  ( -- ptr u8 n )  SRC-FIX SRC-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 : INIT-BT-FIX  ( -- )
    BT-LEN STR:BUF-RESET
    s" See `tools/lint/source-lex.f` and `plain`." STR:LENGTH BT-FIX FIX-CAP STR:LENGTH BT-LEN STR:BUF-APPEND
    10 BT-FIX FIX-CAP STR:LENGTH BT-LEN STR:BUF-APPEND-C ;
-: BT-FIX$  ( -- ptr u8 n )  BT-FIX BT-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: BT-FIX$  ( -- ptr u8 n )  BT-FIX BT-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 : INIT-LEX-FIX  ( -- )
    LEX-LEN STR:BUF-RESET
@@ -149,7 +148,7 @@ variable BIG-LEX-U
    DQUOTE LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
    s"  ;" STR:LENGTH LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
    10 LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C ;
-: LEX-FIX$  ( -- ptr u8 n )  LEX-FIX LEX-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: LEX-FIX$  ( -- ptr u8 n )  LEX-FIX LEX-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 \ `: BAD s" nope` - the literal opened at byte 6 never closes. It lives in its
 \ own buffer so the good fixture above is never clobbered and any test that
@@ -159,7 +158,7 @@ variable BIG-LEX-U
    s" : BAD s" STR:LENGTH BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND
    DQUOTE BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND-C
    s"  nope" STR:LENGTH BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND
-   BAD-FIX BAD-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+   BAD-FIX BAD-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 : ESC-FIX-RESET  ( -- )
    ESC-LEN STR:BUF-RESET ;
@@ -170,7 +169,7 @@ variable BIG-LEX-U
 : ESC-FIX-C+  ( n -- )
    ESC-FIX FIX-CAP STR:LENGTH ESC-LEN STR:BUF-APPEND-C ;
 
-: ESC-FIX$  ( -- ptr u8 n )  ESC-FIX ESC-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: ESC-FIX$  ( -- ptr u8 n )  ESC-FIX ESC-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 \ `: E S\" a\" b" dup ;` - the S\" opener honours backslash escapes, so the
 \ escaped quote at byte 10 must NOT close the literal. Building it byte-wise
@@ -210,7 +209,7 @@ variable BIG-LEX-U
    s"  skip" STR:LENGTH TOK-FIX FIX-CAP STR:LENGTH TOK-LEN STR:BUF-APPEND
    10 TOK-FIX FIX-CAP STR:LENGTH TOK-LEN STR:BUF-APPEND-C
    s" : Y ;" STR:LENGTH TOK-FIX FIX-CAP STR:LENGTH TOK-LEN STR:BUF-APPEND ;
-: TOK-FIX$  ( -- ptr u8 n )  TOK-FIX TOK-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: TOK-FIX$  ( -- ptr u8 n )  TOK-FIX TOK-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 \ ---- primitive-axiom row fixtures ------------------------------------------
 \ Rows are built byte-wise for the same reason the escaped-quote fixtures are:
@@ -229,7 +228,7 @@ create ROW-FIX ROW-CAP allot     variable ROW-LEN
 : ROW-Q  ( -- )  DQUOTE ROW-C+ ;
 : ROW-BS  ( -- )  92 ROW-C+ ;
 : ROW-NL  ( -- )  10 ROW-C+ ;
-: ROW$  ( -- ptr u8 n )  ROW-FIX ROW-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+: ROW$  ( -- ptr u8 n )  ROW-FIX ROW-LEN STR:BUF-LEN@ TFT-BL>RAW ;
 
 \ Scan a fixture that is exactly one row plus nothing else, so the whole fixture
 \ text is the expected REGISTRY token span.

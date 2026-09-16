@@ -23,7 +23,7 @@ package CURL-TEST
 
 private
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 $7F000001 constant LOOPBACK
 8 constant BACKLOG

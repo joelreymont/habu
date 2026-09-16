@@ -2,7 +2,7 @@
 require lib/errors.f
 require lib/ffi-abi.f
 require lib/type/deftype.f
-require lib/cad-num-types.f
+require lib/num-types.f
 require lib/task.f
 
 package TCP4
@@ -44,8 +44,8 @@ SUMTYPE status 0
 \ One transfer's outcome. `closed` carries the bytes delivered into the caller's
 \ buffer before the peer's end of stream, which READ-EXACT reports as a partial.
 SUMTYPE read-result 0
-   VARIANT data CAD-NUM:byte-len ;VARIANT
-   VARIANT closed CAD-NUM:byte-len ;VARIANT
+   VARIANT data NUM:byte-len ;VARIANT
+   VARIANT closed NUM:byte-len ;VARIANT
    VARIANT failed errno ;VARIANT
 ;SUMTYPE
 
@@ -83,15 +83,15 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and $20 TASK:+USER IO-STORAGE drop
 : ADDRLEN ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $10 + ;
 : POLLFD ( -- ptr u8 ) IO-STORAGE BYTE-VIEW $18 + ;
 
-CAST: BLEN>N ( CAD-NUM:byte-len -- n )
+CAST: BLEN>N ( NUM:byte-len -- n )
 
 
 : WITHIN-RANGE ( n n n -- ) {: value:n minimum:n maximum:n :}
    value minimum < value maximum > or if E-OPERAND throw then ;
 
 
-: LENGTH ( n -- CAD-NUM:byte-len )
-   CAD-NUM:BYTE-LEN MATCH CAD-NUM:numeric-result
+: LENGTH ( n -- NUM:byte-len )
+   NUM:BYTE-LEN MATCH NUM:numeric-result
       ok OF ENDOF
       negative OF E-OPERAND throw ENDOF
       zero OF E-OPERAND throw ENDOF
@@ -314,13 +314,13 @@ FUNCTION: POLL-CALL poll ( ptr u8 n n -- n )
    again ;
 
 
-: EXACT-STEP ( n connection ptr u8 CAD-NUM:byte-len -- read-result )
-   {: got:n conn:connection bytes want:CAD-NUM:byte-len :}
+: EXACT-STEP ( n connection ptr u8 NUM:byte-len -- read-result )
+   {: got:n conn:connection bytes want:NUM:byte-len :}
    conn CONNECTION-FD bytes got + want BLEN>N got - READ-CHUNK ;
 
 
-: SEND-STEP ( n connection ptr u8 CAD-NUM:byte-len -- n )
-   {: sent:n conn:connection bytes size:CAD-NUM:byte-len :}
+: SEND-STEP ( n connection ptr u8 NUM:byte-len -- n )
+   {: sent:n conn:connection bytes size:NUM:byte-len :}
    conn CONNECTION-FD bytes sent + size BLEN>N sent - SEND-RAW
    dup size BLEN>N sent - > if E-RESULT throw then ;
 
@@ -347,7 +347,7 @@ public
    dup 0 MAX-PORT WITHIN-RANGE >PORT ;
 
 
-: TRANSFER-BYTES ( n -- CAD-NUM:byte-len )
+: TRANSFER-BYTES ( n -- NUM:byte-len )
    dup 0 MAX-TRANSFER WITHIN-RANGE LENGTH ;
 
 
@@ -404,16 +404,16 @@ public
 
 \ One partial read of 1..capacity bytes, blocking until the stream answers.
 \ The caller owns the writable span. `closed` carries zero bytes.
-: READ ( connection ptr u8 CAD-NUM:byte-len -- read-result )
-   {: conn:connection bytes capacity:CAD-NUM:byte-len :}
+: READ ( connection ptr u8 NUM:byte-len -- read-result )
+   {: conn:connection bytes capacity:NUM:byte-len :}
    capacity BLEN>N 1 MAX-TRANSFER WITHIN-RANGE INIT
    conn CONNECTION-FD bytes capacity BLEN>N READ-CHUNK ;
 
 
 \ Blocks until the whole span is filled. An end of stream before that is
 \ `closed` carrying the bytes already written into the span.
-: READ-EXACT ( connection ptr u8 CAD-NUM:byte-len -- read-result )
-   {: conn:connection bytes want:CAD-NUM:byte-len :}
+: READ-EXACT ( connection ptr u8 NUM:byte-len -- read-result )
+   {: conn:connection bytes want:NUM:byte-len :}
    want BLEN>N 1 MAX-TRANSFER WITHIN-RANGE INIT
    0
    begin
@@ -429,8 +429,8 @@ public
 
 \ Blocks until every byte is accepted by the OS, which is not delivery. A failed
 \ write may have transmitted part of the span; the stream is then unusable.
-: WRITE ( connection ptr u8 CAD-NUM:byte-len -- status )
-   {: conn:connection bytes size:CAD-NUM:byte-len :}
+: WRITE ( connection ptr u8 NUM:byte-len -- status )
+   {: conn:connection bytes size:NUM:byte-len :}
    size BLEN>N 0 MAX-TRANSFER WITHIN-RANGE INIT
    0
    begin
