@@ -673,6 +673,26 @@ nothing and takes nothing from the interrupted registers; its state lives in the
 profiler band at the top of the DATA region and in an arena mapped once per
 process, so it works inside a stripped image.
 
+### Cross-checking with external perf
+
+`perf record -g` keeps exact call chains where the profiler's conservative walk
+can only approximate one, but it prints every Habu word as `[unknown]`: the
+engine's code lives in one anonymous mapping perf has no symbols for.
+`tools/perf-map.f` puts the names back:
+
+```
+perf record -g bin/hb --load prog.f
+perf script | bin/hb --load tools/perf-map.f
+```
+
+Each call-chain line's address column becomes a package-qualified word plus a
+byte offset — `(PROT-SPAN)+344` — resolved through `prof-pc>rec`, which is the
+handler's own search, so the two profilers cannot disagree about which word owns
+an address. Only the address column of an indented call-chain line is rewritten;
+the sample header's pid and period are decimal runs that also read as hex and are
+left alone. Addresses the profiled program compiled for itself, and everything in
+a shared library, resolve to nothing and stay hex.
+
 ### Limits
 
 - A profiled program that spawns and captures a child used to die, and no longer

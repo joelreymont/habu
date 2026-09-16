@@ -1499,6 +1499,14 @@ SUITE native-gate-debug
    test/gate-debug.f
 ;SUITE
 
+SUITE profiler-index
+   test/prof-index.f
+;SUITE
+
+SUITE perf-map-fixtures
+   tools/perf-map-test.f
+;SUITE
+
 SUITE native-gate-dictionary
    test/gate-dictionary.f
 ;SUITE

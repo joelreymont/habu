@@ -68,6 +68,17 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-WORDLIST ( ptr n -- n )
    XREF-WORDLIST-SLOT XREF-CELL@ ;
 
+\ A namespace row has no code, so it reuses a word's two code-span cells for the
+\ two wordlist ids it publishes: the public wid where a word keeps its start, the
+\ private wid where a word keeps its length (habu2.f C-PACKAGE-NEW-RECORD, which
+\ writes both). Reading them by these names says which field is meant; reading
+\ them as XREF-START / XREF-RAW-LEN says the opposite of what is happening.
+: XREF-PKG-PUBLIC ( ptr n -- n )
+   XREF-START-SLOT XREF-CELL@ ;
+
+: XREF-PKG-PRIVATE ( ptr n -- n )
+   XREF-LEN-SLOT XREF-CELL@ ;
+
 \ Keep the namespace private-WID API and the historical body length distinct
 \ from the exact code span. A raw length is only for record serialization.
 : XREF-LEN ( ptr n -- n ) {: rec:ptr :}
